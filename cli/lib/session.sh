@@ -74,16 +74,18 @@ _session_print_help() {
 cstk session — sessoes paralelas isoladas via git worktree.
 
 USO:
-  cstk session start <name> [--reset|--reuse] [--force]
+  cstk session start <name> [--reset|--reuse] [--force] [--claude]
   cstk session list [--json]
   cstk session pr <name> [--draft] [--title TITLE] [--body BODY] [--reviewer USER]
   cstk session end <name> [--force]
 
 SUBCOMANDOS:
   start    Cria worktree + branch + copia .claude/ filtrado.
-           --reset: recria branch do default branch (descarta historico
-                    local; prompt se ha commits nao-mergeados, --force bypassa).
-           --reuse: forca reutilizar HEAD atual de branch ja mergeada.
+           --reset:  recria branch do default branch (descarta historico
+                     local; prompt se ha commits nao-mergeados, --force bypassa).
+           --reuse:  forca reutilizar HEAD atual de branch ja mergeada.
+           --claude: apos criar a sessao, entra no diretorio e inicia o
+                     Claude Code (exec claude). Combinavel com as demais.
 
   list     Lista sessoes ativas. Marcadores STATUS (combinaveis):
            CURRENT (worktree atual), * (dirty), STALE (path inexistente).
@@ -372,11 +374,13 @@ _session_start() {
   _reset=0
   _reuse=0
   _force=0
+  _launch_claude=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --reset)  _reset=1; shift ;;
       --reuse)  _reuse=1; shift ;;
       --force)  _force=1; shift ;;
+      --claude) _launch_claude=1; shift ;;
       --) shift; break ;;
       -*) log_error "session start: flag desconhecida: $1"; return 2 ;;
       *)
@@ -482,8 +486,17 @@ _session_start() {
     return 1
   fi
 
-  # Output de sucesso (FR-001 / SC-006)
-  cat <<EOF
+  # Output de sucesso (FR-001 / SC-006). Se --claude foi pedido, omite a
+  # linha "Proximo passo" e dispara o launch logo em seguida.
+  if [ "$_launch_claude" = 1 ]; then
+    cat <<EOF
+✓ Sessao '$_name' criada
+  branch: $_name $_note
+  path:   $_session_path
+  .claude/ copiado (excluindo 8 artefatos runtime/per-env)
+EOF
+  else
+    cat <<EOF
 ✓ Sessao '$_name' criada
   branch: $_name $_note
   path:   $_session_path
@@ -491,7 +504,23 @@ _session_start() {
 
 Proximo passo: cd $_session_path
 EOF
-  return 0
+    return 0
+  fi
+
+  # --claude: entra no diretorio e dispara o Claude Code (exec).
+  # Falha tardia: sessao ja foi criada, entao o exit 1 vem com hint manual.
+  if ! command -v claude >/dev/null 2>&1; then
+    log_error "session start: --claude usado mas binario 'claude' nao encontrado no PATH"
+    log_error "session start: sessao criada com sucesso; instale o Claude Code ou rode manualmente: cd $_session_path && claude"
+    return 1
+  fi
+  if ! cd -- "$_session_path" 2>/dev/null; then
+    log_error "session start: --claude usado mas falhou ao entrar em $_session_path"
+    log_error "session start: sessao criada; rode manualmente: cd $_session_path && claude"
+    return 1
+  fi
+  printf 'Iniciando Claude Code em %s...\n' "$_session_path"
+  exec claude
 }
 
 # ==== Subcomando: list ====

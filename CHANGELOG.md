@@ -7,6 +7,33 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.10.0] - 2026-05-19
+
+Upgrade do `cstk session start`: nova flag `--claude` que, apos criar
+a worktree isolada, entra no diretorio e dispara o Claude Code via
+`exec claude`. Atalho para o fluxo mais comum (`cstk session start X
+&& cd ../<repo>-X && claude`) em um unico comando.
+
+### Added
+
+- **`cstk session start <name> --claude`**: apos setup da sessao
+  (worktree + branch + `.claude/` filtrado), faz `cd` para o path
+  da sessao e substitui o processo cstk por `claude` (TTY herdado
+  diretamente, sem shell intermediario). Combinavel com `--reset`,
+  `--reuse` e `--force`. Quando `claude` nao esta no PATH, retorna
+  exit 1 com hint manual (`cd <path> && claude`) — a sessao ja foi
+  criada antes do launch, entao a falha e parcial e reversivel.
+
+### Tests
+
+- 3 novos scenarios em `tests/cstk/test_session.sh` (60 total na
+  suite session, 626 no toolkit completo):
+  - `scenario_start_claude_flag_launches_claude_binary`: stub de
+    `claude` confirma que o CWD do exec e o path da sessao.
+  - `scenario_start_claude_flag_missing_binary_exit_1`: PATH isolado
+    sem `claude` retorna exit 1; sessao foi criada antes da falha.
+  - `scenario_start_claude_flag_in_help_text`: help documenta a flag.
+
 ## [3.9.1] - 2026-05-19
 
 Hotfix do release v3.9.0 — pipeline `release.yml` falhou em CI Ubuntu

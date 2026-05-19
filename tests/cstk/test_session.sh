@@ -474,6 +474,76 @@ scenario_start_path_destination_occupied_exit_7() {
   assert_stderr_contains "ocupado" || return 1
 }
 
+scenario_start_claude_flag_launches_claude_binary() {
+  # --claude: apos criar a sessao, deve cd para o path e exec `claude`.
+  # Stub `claude` grava CWD num sentinel e exit 0.
+  _src="$TMPDIR_TEST/repo-claude-happy"
+  _make_repo "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  _stub_dir="$TMPDIR_TEST/stub-claude-happy"
+  _sentinel="$TMPDIR_TEST/claude-cwd-sentinel.txt"
+  rm -f "$_sentinel"
+  mkdir -p "$_stub_dir"
+  cat > "$_stub_dir/claude" <<STUBC
+#!/bin/sh
+pwd -P > "$_sentinel"
+exit 0
+STUBC
+  chmod +x "$_stub_dir/claude"
+  capture sh -c "cd '$_src' && PATH='$_stub_dir:'\$PATH CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session start claude-feat --claude"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _wt="$_phys/repo-claude-happy-claude-feat"
+  [ -d "$_wt" ] || { _fail "worktree" "nao criada em $_wt"; return 1; }
+  [ -f "$_sentinel" ] || { _fail "stub" "claude nao foi invocado (sentinel ausente)"; return 1; }
+  _captured_cwd=$(cat "$_sentinel")
+  if [ "$_captured_cwd" != "$_wt" ]; then
+    _fail "cwd" "claude invocado em '$_captured_cwd', esperado '$_wt'"
+    return 1
+  fi
+  assert_stdout_contains "Iniciando Claude Code" || return 1
+}
+
+scenario_start_claude_flag_missing_binary_exit_1() {
+  # --claude com `claude` ausente no PATH: sessao criada, mas exit 1
+  # com hint manual para o usuario rodar `cd <path> && claude`.
+  _src="$TMPDIR_TEST/repo-claude-missing"
+  _make_repo "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  # PATH isolado com tools essenciais mas SEM claude
+  _isolated_bin="$TMPDIR_TEST/isolated-bin-no-claude"
+  mkdir -p "$_isolated_bin"
+  for _tool in git sh sed awk grep cut printf cat mkdir rm cp find wc tr sort date tail head basename dirname uname rmdir mv touch ls test true false env stat; do
+    _tool_path=$(command -v "$_tool" 2>/dev/null)
+    if [ -n "$_tool_path" ] && [ "$_tool" != "claude" ]; then
+      ln -sf "$_tool_path" "$_isolated_bin/$_tool" 2>/dev/null || true
+    fi
+  done
+  if PATH="$_isolated_bin" sh -c 'command -v claude >/dev/null 2>&1'; then
+    _fail "setup" "PATH isolado contem claude — teste invalido"
+    return 1
+  fi
+  capture sh -c "cd '$_src' && PATH='$_isolated_bin' CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session start no-claude --claude"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  # Sessao deve ter sido criada antes da tentativa de launch
+  _wt="$_phys/repo-claude-missing-no-claude"
+  [ -d "$_wt" ] || { _fail "worktree" "nao criada em $_wt (sessao deveria existir antes da falha)"; return 1; }
+  assert_stderr_contains "claude" || return 1
+  assert_stderr_contains "PATH" || return 1
+}
+
+scenario_start_claude_flag_in_help_text() {
+  # Help (stderr) deve documentar a flag --claude.
+  capture sh "$CSTK_BIN" session --help
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "--claude" || return 1
+}
+
 # ====================================================================
 # FASE 3 — Subcomando `list` (6 cenarios)
 # ====================================================================
