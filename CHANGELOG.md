@@ -7,6 +7,25 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.9.1] - 2026-05-19
+
+Hotfix do release v3.9.0 — pipeline `release.yml` falhou em CI Ubuntu
+por 2 testes ambient-specific. Sem mudanca de comportamento de feature.
+
+### Fixed
+
+- **`_session_pr` ordem de validacao**: spec FR-009 declara ordem
+  `(a) sessao, (b) commits, (c) gh`. Implementacao inicial tinha gh
+  check antes de commits check, fazendo `scenario_pr_no_commits_exit_13`
+  retornar 12 (unauth) em vez de 13 (sem commits) em ambientes onde
+  `gh auth status` falha (CI Ubuntu sem credenciais). Validacao local
+  agora tem precedencia sobre dep externa, alinhado a spec.
+- **Teste `scenario_pr_gh_not_installed_exit_11`**: PATH=/usr/bin:/bin
+  incluia gh no CI Ubuntu (/usr/bin/gh). Refatorado para criar diretorio
+  `isolated-bin` com symlinks apenas para essentials (git/sh/sed/etc),
+  garantidamente sem gh — robusto entre macOS (brew em /opt/homebrew) e
+  Ubuntu (apt em /usr/bin).
+
 ## [3.9.0] - 2026-05-19
 
 Subcomando `cstk session` — sessoes paralelas isoladas via `git worktree`,
