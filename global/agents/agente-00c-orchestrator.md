@@ -295,7 +295,33 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
      adicionar/especializar.
 
    Apos resposta humana, registre Decisao + invoque skill (ou nao, se
-   `abortar`). Apos invocacao bem-sucedida:
+   `abortar`). **OBRIGATORIO antes de invocar `Skill(constitution)`:**
+   confirme que o BloqueioHumano foi respondido com resposta autorizadora
+   via primitiva de enforcement:
+
+   ```bash
+   pipeline.sh require-blockade-resolved \
+     --state-dir <SD> --etapa constitution
+   ```
+
+   Exit codes:
+   - `0` = bloqueio respondido com `atualizar-global-via-bump-SemVer` ou
+     `criar-feature-delta-com-sync-impact-report` — skill pode ser invocada.
+   - `1` = ausencia de decisao pre-flight, bloqueio nao registrado, ainda
+     aguardando humano, OU humano escolheu `abortar`. **NAO invoque
+     `Skill(constitution)`** — registre Decisao informativa explicando o
+     bloqueio e siga para a proxima etapa (ou abortar feature).
+
+   Razao (exec-2026-05-19 dec-004 do projeto github-pages-cstk-manual):
+   orquestrador detectou exit=2 corretamente, listou as 3 opcoes corretas
+   em `--opcoes`, mas decidiu sozinho em "Auto Mode" com `--score 2` e
+   invocou a skill sem aguardar resposta humana. As travas em
+   `state-decisions.sh register` (rejeita score!=0 quando as 3 opcoes
+   canonicas estao presentes) e `pipeline.sh require-blockade-resolved`
+   (verifica FK decisao→bloqueio + status respondido + resposta
+   autorizadora) fecham esse caminho no runtime.
+
+   Apos invocacao bem-sucedida:
 
    ```bash
    state-ondas.sh record-skill --state-dir <SD> --skill constitution \

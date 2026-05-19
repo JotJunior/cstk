@@ -194,6 +194,91 @@ scenario_score_2_sem_evidencia_ainda_aceita() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "score=2 sem evi" "$_CAPTURED_STDERR"; return 1; }
 }
 
+# --- Travas FR-CONST-PREFLIGHT (regressao do bypass dec-004) --------------
+
+scenario_preflight_constitution_score2_rejeita() {
+  # As 3 opcoes canonicas do BloqueioHumano pre-flight + score!=0 = exit 1.
+  # Reproduz exatamente o bypass de dec-004 no projeto github-pages-cstk-manual.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "orquestrador-00c" --etapa "constitution" \
+    --contexto "Detectada constitution global; alerta pre-skill exit=2" \
+    --opcoes '["atualizar-global-via-bump-SemVer","criar-feature-delta-com-sync-impact-report","abortar-feature-sem-principios-proprios"]' \
+    --escolha "criar-feature-delta-com-sync-impact-report" \
+    --justificativa "Auto Mode — feature e doc-scoped, delta razoavel" \
+    --score 2
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "preflight score=2 deveria rejeitar" "exit=$_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  assert_stderr_contains "violacao protocolo constitution-conflict" || return 1
+  assert_stderr_contains "EXIGE --score 0" || return 1
+}
+
+scenario_preflight_constitution_score0_aceita() {
+  # Mesmas 3 opcoes canonicas com --score 0 + escolha "pause-humano" = OK.
+  # Caminho correto: registrar pre-flight como pause antes do BloqueioHumano.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "orquestrador-00c" --etapa "constitution" \
+    --contexto "Detectada constitution global; alerta pre-skill exit=2" \
+    --opcoes '["atualizar-global-via-bump-SemVer","criar-feature-delta-com-sync-impact-report","abortar-feature-sem-principios-proprios"]' \
+    --escolha "pause-humano" \
+    --justificativa "Exit=2 detectado, registrando para BloqueioHumano" \
+    --score 0
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "preflight score=0" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_preflight_ordem_opcoes_irrelevante() {
+  # As 3 strings canonicas em ordem diferente ainda dispara a trava.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "orquestrador-00c" --etapa "constitution" \
+    --contexto "Detectada constitution global; alerta pre-skill exit=2" \
+    --opcoes '["abortar-feature-sem-principios-proprios","atualizar-global-via-bump-SemVer","criar-feature-delta-com-sync-impact-report"]' \
+    --escolha "atualizar-global-via-bump-SemVer" \
+    --justificativa "Tentativa de bypass com ordem trocada" \
+    --score 2
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "preflight ordem trocada deveria rejeitar" "exit=$_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "violacao protocolo constitution-conflict" || return 1
+}
+
+scenario_etapa_constitution_sem_opcoes_canonicas_passa() {
+  # etapa=constitution com opcoes diferentes (ex: ratificacao tipo dec-005)
+  # + score=2 deve PASSAR — backward-compat para decisoes pos-flight.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "orquestrador-00c" --etapa "constitution" \
+    --contexto "Skill constitution materializou feature-delta com 6 principios" \
+    --opcoes '["aceitar-delta-como-criado","retrabalhar-principios","fundir-com-global"]' \
+    --escolha "aceitar-delta-como-criado" \
+    --justificativa "Delta cobre 6 dominios; Sync Impact Report populado" \
+    --score 2
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ratificacao posterior" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_preflight_apenas_2_opcoes_canonicas_passa() {
+  # Trava so dispara com TODAS as 3 strings canonicas. Decisao com apenas
+  # 2 delas (improvavel mas possivel) cai no fluxo normal.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "orquestrador-00c" --etapa "constitution" \
+    --contexto "Cenario hipotetico com 2 opcoes canonicas + 1 alternativa" \
+    --opcoes '["atualizar-global-via-bump-SemVer","criar-feature-delta-com-sync-impact-report","outra-opcao"]' \
+    --escolha "outra-opcao" \
+    --justificativa "Decisao com perfil parcial das 3 strings canonicas" \
+    --score 2
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "2 de 3 canonicas" "$_CAPTURED_STDERR"; return 1; }
+}
+
 scenario_score_3_persiste_evidencia_no_estado() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"

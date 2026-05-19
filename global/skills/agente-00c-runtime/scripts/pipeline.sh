@@ -59,8 +59,27 @@
 #       — emite info se a skill existe em ambos local e global
 #       — exit 0 (info); exit 1 (so global); exit 2 (so local); exit 3 (nenhum)
 #       — Sempre, skill local vence (quando ambas existem) — output indica isso
+#   pipeline.sh require-blockade-resolved --state-dir SD --etapa STAGE
+#       — para --etapa constitution: valida que o BloqueioHumano pre-flight
+#         (exigido quando constitution-conflict retorna exit=2) foi
+#         registrado E respondido por humano antes da skill ser invocada.
+#         Identifica decisao pre-flight pela presenca das 3 opcoes
+#         canonicas (atualizar-global-via-bump-SemVer /
+#         criar-feature-delta-com-sync-impact-report /
+#         abortar-feature-sem-principios-proprios) em opcoes_consideradas.
+#         exit 0 = bloqueio resolvido com resposta valida — skill pode ser
+#                  invocada
+#         exit 1 = ausencia de decisao pre-flight OU bloqueio nao registrado
+#                  OU bloqueio nao respondido OU resposta "abortar"
+#         exit 2 = uso incorreto
+#         Razao: orchestrator.md secao 5.b exige BloqueioHumano antes de
+#         invocar Skill(constitution) quando exit=2. dec-004 do projeto
+#         github-pages-cstk-manual bypassou esse protocolo. Este subcomando
+#         fecha o caminho no runtime — agente deve rodar antes da invocacao
+#         e abortar se exit != 0.
 #
-# POSIX sh + jq nao requerido (apenas leitura de FS + listas hardcoded).
+# POSIX sh + jq necessario apenas para require-blockade-resolved
+# (demais subcomandos usam FS + listas hardcoded).
 
 set -eu
 
@@ -91,10 +110,13 @@ USO:
                                 [--projeto-alvo-path PAP]
   pipeline.sh constitution-conflict --projeto-alvo-path PAP --feature-dir FD
   pipeline.sh skill-conflict --skill NAME --projeto-alvo-path PATH
+  pipeline.sh require-blockade-resolved --state-dir SD --etapa STAGE
 
 EXIT:
-  0 sucesso (ou skill conflict info; ou constitution sem conflito)
-  1 nao-completion / so global / outro / CONFLITO de constitution
+  0 sucesso (ou skill conflict info; ou constitution sem conflito;
+              ou bloqueio resolvido com resposta valida)
+  1 nao-completion / so global / outro / CONFLITO de constitution /
+    bloqueio pre-flight pendente ou rejeitado
   2 uso incorreto / so local / ALERTA pre-skill constitution
   3 nenhuma skill encontrada
 HELP
@@ -456,6 +478,155 @@ INFO
   return 3
 }
 
+# require-blockade-resolved: enforcement de protocolo pre-flight.
+# Para --etapa constitution: garante que decisao pre-flight (identificada
+# por opcoes canonicas) existe + bloqueio associado foi respondido por
+# humano + resposta nao e "abortar".
+_pl_cmd_require_blockade_resolved() {
+  _sd=""
+  _et=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir) _sd=$2; shift 2 ;;
+      --etapa)     _et=$2; shift 2 ;;
+      *) _pl_die_usage "require-blockade-resolved: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_sd" ] || _pl_die_usage "require-blockade-resolved: --state-dir obrigatorio"
+  [ -n "$_et" ] || _pl_die_usage "require-blockade-resolved: --etapa obrigatorio"
+
+  command -v jq >/dev/null 2>&1 \
+    || _pl_die "require-blockade-resolved: jq nao encontrado no PATH" 1
+
+  _sf="$_sd/state.json"
+  [ -f "$_sf" ] || _pl_die "require-blockade-resolved: state.json ausente em $_sd" 1
+
+  # Hoje so suportamos enforcement para --etapa constitution. Demais
+  # etapas retornam exit 0 (nao bloqueado) por design — outras travas
+  # podem ser adicionadas conforme protocolos cresam.
+  case "$_et" in
+    constitution) ;;
+    *)
+      printf 'status: not-enforced\nstage: %s\nnote: enforcement aplicavel apenas a --etapa constitution\n' "$_et"
+      return 0
+      ;;
+  esac
+
+  # Localiza decisao pre-flight: filtra por opcoes contendo as 3 strings
+  # canonicas do BloqueioHumano exigido em orchestrator.md secao 5.b.
+  _dec_id=$(jq -r '
+    [.decisoes // [] | .[]
+      | select(
+          (.opcoes_consideradas // []) as $op
+          | ($op | index("atualizar-global-via-bump-SemVer") != null)
+            and ($op | index("criar-feature-delta-com-sync-impact-report") != null)
+            and ($op | index("abortar-feature-sem-principios-proprios") != null)
+        )
+      | .id
+    ] | last // ""
+  ' "$_sf")
+
+  if [ -z "$_dec_id" ]; then
+    cat >&2 <<INFO
+status: missing-preflight-decision
+problem: nenhuma decisao pre-flight com as 3 opcoes canonicas encontrada.
+         Antes de invocar Skill(constitution) com constitution-conflict
+         exit=2, registre:
+           1. state-decisions.sh register --etapa constitution --score 0 \\
+              --opcoes '["atualizar-global-via-bump-SemVer",
+                          "criar-feature-delta-com-sync-impact-report",
+                          "abortar-feature-sem-principios-proprios"]' \\
+              --escolha pause-humano ...
+           2. bloqueios.sh register --decisao-id <dec-NNN> ...
+           3. aguardar resposta humana
+           4. re-rodar este subcomando
+INFO
+    return 1
+  fi
+
+  # Localiza bloqueio FK-linkado a essa decisao.
+  _block_json=$(jq --arg id "$_dec_id" '
+    .bloqueios_humanos // []
+    | map(select(.decisao_id == $id))
+    | last // null
+  ' "$_sf")
+
+  if [ "$_block_json" = "null" ]; then
+    cat >&2 <<INFO
+status: missing-blockade
+preflight_decision: $_dec_id
+problem: decisao pre-flight existe mas nenhum BloqueioHumano foi
+         registrado para ela. Rode:
+           bloqueios.sh register --state-dir $_sd --decisao-id $_dec_id \\
+             --pergunta "Detectei docs/constitution.md global. Como tratar?" \\
+             --contexto-para-resposta "..." \\
+             --opcoes-recomendadas '["atualizar-global-via-bump-SemVer",
+                                     "criar-feature-delta-com-sync-impact-report",
+                                     "abortar-feature-sem-principios-proprios"]'
+INFO
+    return 1
+  fi
+
+  _bl_status=$(printf '%s' "$_block_json" | jq -r '.status')
+  _bl_resp=$(printf '%s' "$_block_json" | jq -r '.resposta_humana // ""')
+  _bl_id=$(printf '%s' "$_block_json" | jq -r '.id')
+
+  if [ "$_bl_status" != "respondido" ]; then
+    cat >&2 <<INFO
+status: blockade-pending
+preflight_decision: $_dec_id
+blockade_id: $_bl_id
+blockade_status: $_bl_status
+problem: BloqueioHumano existe mas nao foi respondido pelo humano.
+         Aguarde resposta antes de invocar Skill(constitution).
+INFO
+    return 1
+  fi
+
+  # Valida que a resposta e uma das 2 opcoes que autorizam invocacao
+  # da skill. "abortar-feature-sem-principios-proprios" resolve o
+  # bloqueio mas NAO autoriza skill — a feature continua sem
+  # constitution propria.
+  case "$_bl_resp" in
+    atualizar-global-via-bump-SemVer|criar-feature-delta-com-sync-impact-report)
+      cat <<INFO
+status: resolved
+preflight_decision: $_dec_id
+blockade_id: $_bl_id
+human_response: $_bl_resp
+note: skill constitution pode ser invocada
+INFO
+      return 0
+      ;;
+    abortar-feature-sem-principios-proprios)
+      cat >&2 <<INFO
+status: blockade-resolved-abort
+preflight_decision: $_dec_id
+blockade_id: $_bl_id
+human_response: $_bl_resp
+problem: humano escolheu abortar. NAO invoque Skill(constitution) —
+         a feature seguira sem principios proprios. Avance para a
+         proxima etapa da pipeline.
+INFO
+      return 1
+      ;;
+    *)
+      cat >&2 <<INFO
+status: blockade-invalid-response
+preflight_decision: $_dec_id
+blockade_id: $_bl_id
+human_response: $_bl_resp
+problem: resposta humana nao bate com nenhuma das 3 opcoes canonicas
+         (atualizar-global-via-bump-SemVer /
+         criar-feature-delta-com-sync-impact-report /
+         abortar-feature-sem-principios-proprios). Registre nova
+         decisao + bloqueio com resposta valida.
+INFO
+      return 1
+      ;;
+  esac
+}
+
 # ---------- Dispatch ----------
 
 if [ "$#" -lt 1 ]; then
@@ -467,12 +638,13 @@ _PL_SUBCMD=$1
 shift
 
 case "$_PL_SUBCMD" in
-  stages)                 _pl_cmd_stages "$@" ;;
-  next-stage)             _pl_cmd_next_stage "$@" ;;
-  prev-stage)             _pl_cmd_prev_stage "$@" ;;
-  detect-completion)      _pl_cmd_detect_completion "$@" ;;
-  constitution-conflict)  _pl_cmd_constitution_conflict "$@" ;;
-  skill-conflict)         _pl_cmd_skill_conflict "$@" ;;
-  -h|--help|help)         _pl_print_help; exit 0 ;;
+  stages)                     _pl_cmd_stages "$@" ;;
+  next-stage)                 _pl_cmd_next_stage "$@" ;;
+  prev-stage)                 _pl_cmd_prev_stage "$@" ;;
+  detect-completion)          _pl_cmd_detect_completion "$@" ;;
+  constitution-conflict)      _pl_cmd_constitution_conflict "$@" ;;
+  skill-conflict)             _pl_cmd_skill_conflict "$@" ;;
+  require-blockade-resolved)  _pl_cmd_require_blockade_resolved "$@" ;;
+  -h|--help|help)             _pl_print_help; exit 0 ;;
   *) _pl_die_usage "subcomando desconhecido: $_PL_SUBCMD (use --help)" ;;
 esac

@@ -193,6 +193,26 @@ _sd_cmd_register() {
     fi
   fi
 
+  # Trava FR-CONST-PREFLIGHT: decisao pre-flight de constitution-conflict
+  # (exit=2 do pipeline.sh) e identificada pela presenca das 3 opcoes
+  # canonicas em --opcoes. Quando detectada, exige score=0 (pause-humano)
+  # + registro de BloqueioHumano via bloqueios.sh ANTES da invocacao da
+  # skill constitution. Razao: dec-004 do projeto github-pages-cstk-manual
+  # detectou exit=2 corretamente, listou as 3 opcoes corretamente, mas
+  # decidiu sozinho em Auto Mode (score=2) e invocou a skill sem aguardar
+  # decisao humana — bypassando o protocolo descrito em orchestrator.md
+  # secao 5.b. Esta trava fecha esse caminho no runtime.
+  if printf '%s' "$_ops" | jq -e '
+    type == "array"
+    and (index("atualizar-global-via-bump-SemVer") != null)
+    and (index("criar-feature-delta-com-sync-impact-report") != null)
+    and (index("abortar-feature-sem-principios-proprios") != null)
+  ' >/dev/null 2>&1; then
+    if [ "$_score" != 0 ]; then
+      _sd_die "register: violacao protocolo constitution-conflict — opcoes contem as 3 strings canonicas do BloqueioHumano pre-flight (atualizar-global-via-bump-SemVer, criar-feature-delta-com-sync-impact-report, abortar-feature-sem-principios-proprios), portanto esta e a decisao pre-flight obrigatoria e EXIGE --score 0 (pause-humano). Voce passou score=$_score. Sequencia correta: (1) state-decisions.sh register --score 0 --escolha pause-humano ...; (2) bloqueios.sh register --decisao-id <dec-NNN> ...; (3) aguardar humano responder; (4) pipeline.sh require-blockade-resolved; (5) Skill(constitution). Ver orchestrator.md secao 5.b." 1
+    fi
+  fi
+
   _sf=$(_sd_state_file "$_sdir")
   [ -f "$_sf" ] || _sd_die "register: state.json ausente em $_sdir" 1
 

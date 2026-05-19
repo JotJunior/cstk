@@ -444,4 +444,135 @@ EOF
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
 }
 
+# --- require-blockade-resolved (regressao do bypass dec-004) -----------
+
+_RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+_SD="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
+_BL="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/bloqueios.sh"
+
+_init_preflight_state() {
+  # Cria state.json + registra decisao pre-flight (score=0) com as 3
+  # opcoes canonicas. Retorna o id da decisao em $_CAPTURED_STDOUT.
+  capture "$_RW" init --state-dir "$1" \
+    --execucao-id "exec-test-preflight" --projeto-alvo-path "/tmp/p" --descricao "POC preflight"
+  capture "$_SD" register --state-dir "$1" \
+    --agente "orquestrador-00c" --etapa "constitution" \
+    --contexto "Detectada constitution global; alerta pre-skill exit=2" \
+    --opcoes '["atualizar-global-via-bump-SemVer","criar-feature-delta-com-sync-impact-report","abortar-feature-sem-principios-proprios"]' \
+    --escolha "pause-humano" \
+    --justificativa "Exit=2 detectado, registrando para BloqueioHumano" \
+    --score 0
+}
+
+scenario_require_blockade_etapa_nao_constitution_passa() {
+  # Para etapas que ainda nao tem enforcement, retorna exit 0.
+  _sd="$TMPDIR_TEST/state"
+  capture "$_RW" init --state-dir "$_sd" \
+    --execucao-id "exec-x" --projeto-alvo-path "/tmp/p" --descricao "x"
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa briefing
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "etapa nao enforcada" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "not-enforced" || return 1
+}
+
+scenario_require_blockade_sem_decisao_preflight_falha() {
+  # Sem nenhuma decisao com as 3 opcoes canonicas, exit 1.
+  _sd="$TMPDIR_TEST/state"
+  capture "$_RW" init --state-dir "$_sd" \
+    --execucao-id "exec-x" --projeto-alvo-path "/tmp/p" --descricao "x"
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "esperado exit 1" "exit=$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "missing-preflight-decision" || return 1
+}
+
+scenario_require_blockade_decisao_sem_bloqueio_falha() {
+  # Decisao pre-flight existe mas BloqueioHumano nao foi criado.
+  _sd="$TMPDIR_TEST/state"
+  _init_preflight_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init+register" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "esperado exit 1" "exit=$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "missing-blockade" || return 1
+}
+
+scenario_require_blockade_aguardando_falha() {
+  # Bloqueio criado mas ainda nao respondido = exit 1.
+  _sd="$TMPDIR_TEST/state"
+  _init_preflight_state "$_sd"
+  _dec_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" register --state-dir "$_sd" --decisao-id "$_dec_id" \
+    --pergunta "Detectei docs/constitution.md global v1.1.0. Como tratar?" \
+    --contexto-para-resposta "ver paths X e Y" \
+    --opcoes-recomendadas '["atualizar-global-via-bump-SemVer","criar-feature-delta-com-sync-impact-report","abortar-feature-sem-principios-proprios"]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "bloqueio register" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "esperado exit 1" "exit=$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "blockade-pending" || return 1
+}
+
+scenario_require_blockade_respondido_criar_delta_passa() {
+  # Bloqueio respondido com criar-feature-delta = exit 0.
+  _sd="$TMPDIR_TEST/state"
+  _init_preflight_state "$_sd"
+  _dec_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" register --state-dir "$_sd" --decisao-id "$_dec_id" \
+    --pergunta "Detectei docs/constitution.md global v1.1.0. Como tratar?" \
+    --contexto-para-resposta "ver paths"
+  _bl_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" respond --state-dir "$_sd" --block-id "$_bl_id" \
+    --resposta "criar-feature-delta-com-sync-impact-report"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "respond" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "esperado exit 0" "exit=$_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "status: resolved" || return 1
+  assert_stdout_contains "criar-feature-delta-com-sync-impact-report" || return 1
+}
+
+scenario_require_blockade_respondido_atualizar_global_passa() {
+  # Bloqueio respondido com atualizar-global = exit 0.
+  _sd="$TMPDIR_TEST/state"
+  _init_preflight_state "$_sd"
+  _dec_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" register --state-dir "$_sd" --decisao-id "$_dec_id" \
+    --pergunta "Detectei docs/constitution.md global v1.1.0. Como tratar?" \
+    --contexto-para-resposta "ver paths"
+  _bl_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" respond --state-dir "$_sd" --block-id "$_bl_id" \
+    --resposta "atualizar-global-via-bump-SemVer"
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "esperado exit 0" "exit=$_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "status: resolved" || return 1
+}
+
+scenario_require_blockade_respondido_abortar_falha() {
+  # Bloqueio respondido com abortar = exit 1 (skill nao deve rodar).
+  _sd="$TMPDIR_TEST/state"
+  _init_preflight_state "$_sd"
+  _dec_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" register --state-dir "$_sd" --decisao-id "$_dec_id" \
+    --pergunta "Detectei docs/constitution.md global v1.1.0. Como tratar?" \
+    --contexto-para-resposta "ver paths"
+  _bl_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" respond --state-dir "$_sd" --block-id "$_bl_id" \
+    --resposta "abortar-feature-sem-principios-proprios"
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "esperado exit 1 (abortar)" "exit=$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "blockade-resolved-abort" || return 1
+}
+
+scenario_require_blockade_resposta_invalida_falha() {
+  # Bloqueio respondido com string nao-canonica = exit 1.
+  _sd="$TMPDIR_TEST/state"
+  _init_preflight_state "$_sd"
+  _dec_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" register --state-dir "$_sd" --decisao-id "$_dec_id" \
+    --pergunta "Detectei docs/constitution.md global v1.1.0. Como tratar?" \
+    --contexto-para-resposta "ver paths"
+  _bl_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" respond --state-dir "$_sd" --block-id "$_bl_id" \
+    --resposta "sim por favor faca delta"
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "esperado exit 1 (resposta invalida)" "exit=$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "blockade-invalid-response" || return 1
+}
+
 run_all_scenarios

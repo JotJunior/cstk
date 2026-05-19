@@ -7,6 +7,64 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-05-19
+
+Enforcement runtime do protocolo pre-flight constitution-conflict
+(orchestrator.md §5.b). O hardening v3.8.0 documentou em texto que o
+orquestrador deve emitir BloqueioHumano antes de invocar
+`Skill(constitution)` quando `pipeline.sh constitution-conflict`
+retorna exit=2, mas nao havia trava no runtime — dec-004 do projeto
+github-pages-cstk-manual provou empiricamente que o agente pode
+detectar exit=2 corretamente, listar as 3 opcoes canonicas, e ainda
+assim decidir sozinho em Auto Mode (`--score 2`) e invocar a skill
+sem aguardar resposta humana. Esta release fecha os dois caminhos de
+bypass no runtime, sem mudar comportamento legitimo.
+
+### Added
+
+- **Trava em `state-decisions.sh register`**: quando `--opcoes` contem
+  as 3 strings canonicas do BloqueioHumano pre-flight
+  (`atualizar-global-via-bump-SemVer`,
+  `criar-feature-delta-com-sync-impact-report`,
+  `abortar-feature-sem-principios-proprios`), exige `--score 0`. Score
+  maior reproduz dec-004 e e rejeitado com exit 1 + mensagem
+  detalhada apontando para a sequencia correta (registrar score 0 →
+  `bloqueios.sh register` → aguardar humano →
+  `pipeline.sh require-blockade-resolved` → invocar skill).
+- **`pipeline.sh require-blockade-resolved --state-dir SD --etapa STAGE`**:
+  novo subcomando que valida cadeia decisao→bloqueio→resposta humana
+  antes da invocacao da skill. Para `--etapa constitution`:
+  - exit 0 se bloqueio respondido com `atualizar-global-via-bump-SemVer`
+    ou `criar-feature-delta-com-sync-impact-report`;
+  - exit 1 com diagnostico em stderr (`status: missing-preflight-decision`
+    / `missing-blockade` / `blockade-pending` / `blockade-resolved-abort`
+    / `blockade-invalid-response`) caso contrario;
+  - outras etapas retornam `status: not-enforced` exit 0
+    (extensivel para futuros protocolos).
+
+### Changed
+
+- **`global/agents/agente-00c-orchestrator.md` §5.b**: instrucao
+  OBRIGATORIA para rodar `pipeline.sh require-blockade-resolved`
+  antes de cada `Skill(constitution)`. Inclui descricao dos exit
+  codes + referencia historica ao bypass dec-004 que motivou o
+  enforcement.
+
+### Tests
+
+- 5 novos cenarios em `tests/test_state-decisions.sh` (22 total)
+  cobrindo: rejeicao com 3 opcoes canonicas + score=2; aceitacao com
+  score=0; ordem das opcoes irrelevante; backward-compat para
+  decisoes posteriores (tipo ratificacao) com etapa=constitution mas
+  opcoes diferentes; subconjunto parcial das canonicas nao dispara
+  trava.
+- 8 novos cenarios em `tests/test_pipeline.sh` (35 total) cobrindo:
+  etapa nao-enforcada retorna 0; ausencia de decisao pre-flight
+  falha; decisao sem bloqueio FK falha; bloqueio aguardando falha;
+  respondido com criar-delta passa; respondido com atualizar-global
+  passa; respondido com abortar falha; resposta nao-canonica falha.
+- Suite completa: 639 PASS / 0 FAIL / 0 ORPHANS.
+
 ## [3.10.0] - 2026-05-19
 
 Upgrade do `cstk session start`: nova flag `--claude` que, apos criar
