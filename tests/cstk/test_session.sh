@@ -715,6 +715,8 @@ scenario_pr_no_commits_exit_13() {
   _src="$TMPDIR_TEST/repo-pr-nc"
   _make_repo "$_src"
   ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start empty-pr >/dev/null )
+  # FR-009 ordem: validacao de commits vem ANTES de gh check, entao este
+  # cenario funciona mesmo em ambientes sem gh autenticado (CI Ubuntu).
   capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session pr empty-pr"
   if [ "$_CAPTURED_EXIT" != 13 ]; then
     _fail "exit" "esperado 13, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"
@@ -726,13 +728,32 @@ scenario_pr_no_commits_exit_13() {
 scenario_pr_gh_not_installed_exit_11() {
   _src="$TMPDIR_TEST/repo-pr-nogh"
   _make_repo "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
   ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start gh-x >/dev/null )
-  # PATH sem gh
-  _empty_path="$TMPDIR_TEST/empty-bin-pr"
-  mkdir -p "$_empty_path"
-  capture sh -c "cd '$_src' && PATH='$_empty_path:/usr/bin:/bin' CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session pr gh-x"
+  # Pre-condition: precisa de commits para chegar no gh check
+  _wt="$_phys/repo-pr-nogh-gh-x"
+  ( cd "$_wt" && git commit -q --allow-empty -m "test commit" )
+  # PATH com symlinks para tools essenciais (git, sed, awk, etc), SEM gh.
+  # Mais robusto que PATH=/usr/bin (que pode conter gh dependendo da distro).
+  _isolated_bin="$TMPDIR_TEST/isolated-bin-no-gh"
+  mkdir -p "$_isolated_bin"
+  for _tool in git sh sed awk grep cut printf cat mkdir rm cp find wc tr sort date tail head basename dirname uname rmdir mv touch ls test true false env stat; do
+    _tool_path=$(command -v "$_tool" 2>/dev/null)
+    if [ -n "$_tool_path" ] && [ "$_tool" != "gh" ]; then
+      ln -sf "$_tool_path" "$_isolated_bin/$_tool" 2>/dev/null || true
+    fi
+  done
+  # Validar que nosso PATH isolado realmente nao tem gh
+  if ! PATH="$_isolated_bin" sh -c 'command -v gh >/dev/null 2>&1' && \
+       PATH="$_isolated_bin" sh -c 'command -v git >/dev/null 2>&1'; then
+    : # PATH isolado OK
+  else
+    _fail "setup" "PATH isolado nao funcionou (gh detectado OU git ausente)"
+    return 1
+  fi
+  capture sh -c "cd '$_src' && PATH='$_isolated_bin' CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session pr gh-x"
   if [ "$_CAPTURED_EXIT" != 11 ]; then
-    _fail "exit" "esperado 11, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"
+    _fail "exit" "esperado 11, obtido $_CAPTURED_EXIT; PATH=$_isolated_bin; $_CAPTURED_STDERR"
     return 1
   fi
   assert_stderr_contains "gh CLI nao instalado" || return 1
@@ -741,7 +762,11 @@ scenario_pr_gh_not_installed_exit_11() {
 scenario_pr_gh_unauthenticated_exit_12() {
   _src="$TMPDIR_TEST/repo-pr-unauth"
   _make_repo "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
   ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start unauth-x >/dev/null )
+  # Pre-condition: precisa de commits para chegar no gh check
+  _wt="$_phys/repo-pr-unauth-unauth-x"
+  ( cd "$_wt" && git commit -q --allow-empty -m "test commit" )
   # Stub gh que sempre retorna != 0 em "auth status"
   _stub_dir="$TMPDIR_TEST/stub-gh-unauth"
   mkdir -p "$_stub_dir"

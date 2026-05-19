@@ -885,7 +885,20 @@ _session_pr() {
   _wt_path=$(printf '%s\n' "$_info" | awk -F: '/^path:/ { print substr($0, length("path:")+1) }')
   _wt_branch=$(printf '%s\n' "$_info" | awk -F: '/^branch:/ { print substr($0, length("branch:")+1) }')
 
-  # 2. gh instalado + autenticado (capturar exit code sem set -e abort)
+  # 2. Detectar default branch + validar commits a frente (FR-009 ordem: a/b/c).
+  # Validar commits ANTES de gh: assim, um operador sem gh autenticado em CI
+  # ainda recebe exit 13 (sem commits) se for esse o problema real — gh check
+  # vem depois pq e dep externa, validacao local tem precedencia.
+  _default=$(_session_default_branch)
+  _ahead=$(git -C "$_wt_path" rev-list "$_default..$_wt_branch" --count 2>/dev/null)
+  _ahead=${_ahead:-0}
+  if [ "$_ahead" = 0 ]; then
+    log_error "session pr: branch '$_wt_branch' nao tem commits novos vs '$_default'"
+    log_error "session pr: faca pelo menos 1 commit antes de abrir PR"
+    return "$CSTK_SESSION_EXIT_NO_COMMITS"
+  fi
+
+  # 3. gh instalado + autenticado (capturar exit code sem set -e abort)
   _gh_rc=0
   _session_gh_status >/dev/null 2>&1 || _gh_rc=$?
   case "$_gh_rc" in
@@ -905,16 +918,6 @@ _session_pr() {
       return 1
       ;;
   esac
-
-  # 3. Detectar default branch + validar commits a frente
-  _default=$(_session_default_branch)
-  _ahead=$(git -C "$_wt_path" rev-list "$_default..$_wt_branch" --count 2>/dev/null)
-  _ahead=${_ahead:-0}
-  if [ "$_ahead" = 0 ]; then
-    log_error "session pr: branch '$_wt_branch' nao tem commits novos vs '$_default'"
-    log_error "session pr: faca pelo menos 1 commit antes de abrir PR"
-    return "$CSTK_SESSION_EXIT_NO_COMMITS"
-  fi
 
   # 4. Idempotencia: PR ja existe?
   _existing_json=$(gh pr view "$_wt_branch" --json url,state 2>/dev/null) || _existing_json=""
