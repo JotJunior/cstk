@@ -234,8 +234,105 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    `state-decisions.sh register` com refs aos dois paths; skill local
    vence.
 
-5. **Avancar**: invoque a skill via tool Skill. Em `clarify`, aplique o
-   **padrao de dois atores** (FASE 4):
+5. **Avancar**: invoque a skill via tool Skill. **Para `briefing`,
+   `constitution` e `create-tasks`, a invocacao via tool Skill e
+   OBRIGATORIA — proibido escrever os artefatos diretamente via
+   Write/Edit.** Razao (exec-2026-05-18-iniciacao-membro):
+
+   - `dec-004`: orquestrador detectou `docs/constitution.md` global e
+     decidiu sozinho criar feature-delta em
+     `docs/specs/<feat>/constitution.md` com 8 principios proprios. A
+     skill `constitution` nao foi invocada — orquestrador inventou um
+     padrao paralelo, sem Sync Impact Report, sem coordenacao com a raiz.
+   - `dec-014`: orquestrador decompos a feature em 8 fases via decisao
+     in-process, sem invocar `create-tasks`. O tasks.md gerado usou
+     `P0/P1/P2/P3` em vez de `[C]/[A]/[M]`, sem Matriz de Dependencias,
+     sem Resumo Quantitativo, sem Escopo Coberto/Excluido.
+
+   Pre-flight ANTES da chamada a tool Skill:
+
+   ### 5.a Briefing (skill obrigatoria)
+
+   Proibido escrever `briefing.md` direto. Sequencia:
+
+   1. Invoque `Skill(skill="briefing", args="<descricao>")` via tool Skill.
+   2. Apos retorno, registre a invocacao:
+      ```bash
+      state-ondas.sh record-skill --state-dir <SD> --skill briefing \
+        --decisao-id <dec-NNN-da-decisao-que-cobriu-esta-etapa>
+      ```
+   3. Valide via `pipeline.sh detect-completion --stage briefing` — a
+      primitiva ja roda `_pl_validate_briefing` (header + >=4 secoes
+      nucleares). Falha = registre Decisao informativa + tentativa de
+      re-invocacao OU bloqueio humano para clarificar escopo.
+
+   ### 5.b Constitution (pre-flight de conflito raiz-vs-feature)
+
+   ANTES de invocar a skill `constitution`:
+
+   ```bash
+   pipeline.sh constitution-conflict \
+     --projeto-alvo-path <PAP> \
+     --feature-dir <FD>
+   ```
+
+   Tabela de tratamento:
+
+   | Exit | Significado | Acao do orquestrador |
+   |------|-------------|----------------------|
+   | 0 | sem conflito OU coordenado | invoque `Skill(skill="constitution")` normalmente |
+   | 1 | conflito real (ambos existem, feature nao referencia raiz) | NAO invoque skill — registre Decisao + tente Edit para adicionar header `Predecessor:` OU emita BloqueioHumano para operador decidir |
+   | 2 | alerta pre-skill (raiz existe, feature nao criada) | OBRIGATORIO: emita BloqueioHumano com 3 opcoes (a) atualizar global via bump SemVer (b) criar feature-delta com Sync Impact Report (c) abortar. NAO invoque skill sem resposta humana. |
+
+   Padrao do BloqueioHumano para exit=2 (use `bloqueios.sh register`):
+
+   - **Pergunta**: "Detectei docs/constitution.md global v<X.Y.Z>. Como
+     tratar a constitution desta feature?"
+   - **Opcoes recomendadas**: `["atualizar-global-via-bump-SemVer",
+     "criar-feature-delta-com-sync-impact-report", "abortar-feature-sem-principios-proprios"]`
+   - **Contexto para humano**: paths dos 2 candidatos + 3 linhas
+     resumindo principios da raiz + lista dos principios candidatos a
+     adicionar/especializar.
+
+   Apos resposta humana, registre Decisao + invoque skill (ou nao, se
+   `abortar`). Apos invocacao bem-sucedida:
+
+   ```bash
+   state-ondas.sh record-skill --state-dir <SD> --skill constitution \
+     --decisao-id <dec-NNN>
+   ```
+
+   ### 5.c Create-tasks (skill obrigatoria + validacao de formato)
+
+   Proibido escrever `tasks.md` direto. Sequencia:
+
+   1. Invoque `Skill(skill="create-tasks", args="<spec + plan paths>")`.
+   2. Registre invocacao:
+      ```bash
+      state-ondas.sh record-skill --state-dir <SD> --skill create-tasks \
+        --decisao-id <dec-NNN>
+      ```
+   3. Valide via `pipeline.sh detect-completion --stage create-tasks` —
+      primitiva roda `_pl_validate_tasks` (header + FASE + legendas
+      `[C]/[A]/[M]` + Matriz Dependencias + Resumo Quantitativo +
+      Escopo Coberto + Escopo Excluido).
+   4. Falha de validacao = registre Decisao + tentativa de Edit para
+      adicionar secoes faltantes OU re-invoque a skill com prompt
+      explicito sobre o template (`global/skills/create-tasks/templates/tasks.md`).
+      Nao avance a etapa enquanto detect-completion exit != 0.
+
+   ### 5.d Demais skills (specify, clarify, plan, checklist, analyze, execute-task)
+
+   Invocacao via tool Skill nao e obrigatoria-com-bloqueio, mas e
+   FORTEMENTE recomendada. Para `clarify`, segue o padrao de dois
+   atores abaixo. Apos qualquer invocacao bem-sucedida, sempre chame
+   `state-ondas.sh record-skill` para rastrear a invocacao (telemetria
+   para `/review-task` identificar etapas marcadas completas sem
+   invocacao formal da skill).
+
+   ### 5.e Padrao de dois atores (clarify)
+
+   Em `clarify`, aplique o **padrao de dois atores** (FASE 4):
 
    a. **Pre-flight**: `spawn-tracker.sh check --state-dir <SD>`. Exit 3 =
       abortar (limite de profundidade atingido — bisneto nao pode spawnar).

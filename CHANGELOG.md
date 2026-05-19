@@ -7,6 +7,78 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-05-19
+
+Hardening do agente-00C contra dois bypasses encontrados em
+`exec-2026-05-18-iniciacao-membro-rolledback`: (1) constitution raiz
+ignorada com feature-delta silencioso (dec-004) e (2) `tasks.md` gerado
+in-process sem invocar a skill `create-tasks` (dec-014). O fix endurece
+`pipeline.sh detect-completion`, adiciona novo subcomando
+`constitution-conflict` e introduz audit trail de invocacao de skills
+via `state-ondas.sh record-skill`.
+
+### Added
+
+- **`pipeline.sh constitution-conflict`**: novo subcomando que detecta
+  4 estados entre `docs/constitution.md` raiz e feature constitution
+  (none-exists / pre-skill-alert / conflict / coordinated). Exit 2
+  obriga o orquestrador a emitir BloqueioHumano com 3 opcoes
+  (atualizar global via bump SemVer / criar feature-delta com Sync
+  Impact Report / abortar) antes de invocar a skill `constitution`.
+  Exit 1 sinaliza feature constitution silenciosa sem `Predecessor:`
+  no header.
+- **`state-ondas.sh record-skill`**: subcomando que registra invocacao
+  formal de skill via tool Skill em `.ondas[-1].skills_invoked = [...]`.
+  Idempotente para mesma combinacao (skill + decisao_id). Permite que
+  `review-task` (e auditorias) identifiquem o anti-padrao "etapa
+  marcada completa mas skill canonica nunca foi invocada".
+- **`.ondas[N].skills_invoked: []`**: novo campo no schema do
+  `state.json`, inicializado em `state-ondas.sh start`. Backward
+  compatible — states pre-existentes nao quebram.
+- **Regras 5.a/5.b/5.c/5.d/5.e no `agente-00c-orchestrator.md`**:
+  invocacao via tool Skill OBRIGATORIA para `briefing`, `constitution`,
+  `create-tasks`. Constitution exige pre-flight com
+  `constitution-conflict` antes de chamar a skill. Cada etapa SDD chama
+  `record-skill` apos a invocacao bem-sucedida.
+- **19 novos cenarios de teste**: 13 em `test_pipeline.sh` (validacao
+  briefing/tasks + 4 cenarios constitution-conflict + 2 cenarios de
+  detect-completion constitution) e 7 em `test_state-ondas.sh`
+  (record-skill: append, idempotencia, multi-skill, sem decisao_id,
+  sem onda, validacao de flags, init com skills_invoked vazio).
+
+### Changed
+
+- **`pipeline.sh detect-completion --stage briefing`** agora valida
+  estrutura minima do template (header `# (Project )?Briefing` + >=4
+  secoes nucleares: Visao/Usuarios/Escopo/Prioridades/Restricoes/
+  Stack/Qualidade/Futuro). Antes aceitava qualquer arquivo presente.
+  Razao: defesa contra briefings rasos gerados in-process.
+- **`pipeline.sh detect-completion --stage create-tasks`** agora valida
+  estrutura do template da skill `create-tasks`: cabecalho `# Tarefas`
+  ou `# Tasks`, presenca de `## FASE N`, legendas `[C]/[A]/[M]` (NAO
+  aceita `P0/P1/P2/P3`), `## Matriz de Dependencias`,
+  `## Resumo Quantitativo`, `## Escopo Coberto` e `## Escopo Excluido`.
+  Antes so checava existencia do arquivo.
+- **`pipeline.sh detect-completion --stage constitution`** quando raiz
+  e feature constitution coexistem: agora exige header com
+  `Predecessor:` ou referencia a `docs/constitution.md` nas primeiras
+  30 linhas. Sem essa coordenacao explicita, retorna exit 1 com
+  mensagem orientando o operador.
+
+### Fixed
+
+- **Bypass de skills SDD** (dec-004 + dec-014 da execucao-fonte): o
+  orquestrador podia gerar `constitution.md` (feature-delta) e
+  `tasks.md` direto via Write/Edit, sem invocar a skill canonica e sem
+  detect-completion sinalizar problema. O artefato resultante drifa
+  do template oficial — no caso real, `tasks.md` saiu sem Matriz de
+  Dependencias / Resumo / Escopo, e a feature constitution criou 8
+  principios proprios sem coordenacao com a global v1.0.0. Os 3
+  gates novos (constitution-conflict + validacao estrutural + skills_invoked
+  tracking) fecham esse furo em camadas: pre-flight bloqueia, validacao
+  rejeita artefato fora-do-padrao, audit trail expoe etapa marcada
+  completa sem skill invocada.
+
 ## [3.7.0] - 2026-05-16
 
 Enriquecimento significativo da skill `owasp-security` com atualizacoes

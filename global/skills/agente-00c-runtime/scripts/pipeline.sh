@@ -16,13 +16,13 @@
 #                                  [--projeto-alvo-path PAP]
 #       — exit 0 se artefato esperado da etapa existe; exit 1 se nao
 #       — Mapeamento etapa -> artefato esperado (no feature-dir):
-#           briefing       -> briefing.md
+#           briefing       -> briefing.md (com validacao de estrutura)
 #           constitution   -> constitution.md
 #           specify        -> spec.md
 #           clarify        -> spec.md (assume editado pela skill clarify)
 #           plan           -> plan.md
 #           checklist      -> checklists/ (qualquer .md dentro)
-#           create-tasks   -> tasks.md
+#           create-tasks   -> tasks.md (com validacao de estrutura)
 #           execute-task   -> presenca de pelo menos 1 [x] em tasks.md
 #           review-task    -> sempre passa (review e cross-task — sem artefato)
 #           review-features -> sempre passa
@@ -35,6 +35,26 @@
 #         aceitos como fallback alem do feature-dir convencional. Isso
 #         resolve o conflito com `/initialize-docs` (issue #3) sem quebrar
 #         o layout SDD canonico.
+#       — Validacao estrutural: briefing e create-tasks tem validacao de
+#         template alem da existencia do arquivo. Ver `_pl_validate_<stage>`.
+#         exit 1 com motivo na stderr quando estrutura nao bate. (Razao:
+#         exec-2026-05-18-iniciacao-membro mostrou que orquestrador pode
+#         escrever tasks.md fora-de-padrao sem invocar skill — leniencia
+#         do detect-completion mascarou o drift.)
+#   pipeline.sh constitution-conflict --projeto-alvo-path PAP --feature-dir FD
+#       — detecta se docs/constitution.md global existe enquanto a etapa
+#         constitution e iniciada para uma feature. Saida:
+#           exit 0 = sem conflito (so existe um, ou nenhum)
+#           exit 1 = CONFLITO: global existe + feature ja tem constitution
+#                   propria criada sem coordenacao formal
+#           exit 2 = ALERTA: global existe e feature constitution ainda nao
+#                   foi criada — orquestrador deve emitir BloqueioHumano
+#                   com 3 opcoes (atualizar global / criar delta com
+#                   Sync Impact Report / abortar) antes de invocar a skill.
+#         Razao (exec-2026-05-18-iniciacao-membro dec-004): orquestrador
+#         detectou constitution global existente mas decidiu sozinho criar
+#         feature-delta com 8 principios — padrao nao previsto pela skill
+#         constitution. detect-completion aceitou silenciosamente.
 #   pipeline.sh skill-conflict --skill NAME --projeto-alvo-path PATH
 #       — emite info se a skill existe em ambos local e global
 #       — exit 0 (info); exit 1 (so global); exit 2 (so local); exit 3 (nenhum)
@@ -69,12 +89,13 @@ USO:
   pipeline.sh prev-stage --current STAGE
   pipeline.sh detect-completion --feature-dir DIR --stage STAGE
                                 [--projeto-alvo-path PAP]
+  pipeline.sh constitution-conflict --projeto-alvo-path PAP --feature-dir FD
   pipeline.sh skill-conflict --skill NAME --projeto-alvo-path PATH
 
 EXIT:
-  0 sucesso (ou skill conflict info)
-  1 nao-completion / so global / outro
-  2 uso incorreto / so local
+  0 sucesso (ou skill conflict info; ou constitution sem conflito)
+  1 nao-completion / so global / outro / CONFLITO de constitution
+  2 uso incorreto / so local / ALERTA pre-skill constitution
   3 nenhuma skill encontrada
 HELP
 }
@@ -135,6 +156,85 @@ _pl_cmd_prev_stage() {
   return 0
 }
 
+# Validacao estrutural de briefing.md. Verifica secoes minimas do template
+# da skill briefing (global/skills/briefing/templates/briefing.md):
+#   - Header "# Project Briefing" ou "# Briefing"
+#   - Pelo menos 4 das 8 secoes nucleares do template:
+#       Visao, Usuarios, Escopo, Prioridades, Restricoes, Stack,
+#       Qualidade, Futuro (ou variantes)
+# Razao: lenient demais aceitava .md vazio ou rascunho.
+_pl_validate_briefing() {
+  _bf=$1
+  [ -f "$_bf" ] || { echo "pipeline: briefing nao encontrado: $_bf" >&2; return 1; }
+  # Header valido
+  if ! head -5 "$_bf" 2>/dev/null | grep -Eqi '^#[[:space:]]+(project[[:space:]]+)?briefing'; then
+    echo "pipeline: briefing sem header '# (Project )?Briefing' nas primeiras 5 linhas" >&2
+    return 1
+  fi
+  # Conta secoes nucleares (case-insensitive, em qualquer nivel de heading)
+  _matches=$(grep -Eci '^#+[[:space:]]+([0-9]+\.[[:space:]]*)?(visao|usuarios|escopo|prioridades|restricoes|stack|qualidade|futuro)' "$_bf" 2>/dev/null || true)
+  if [ "${_matches:-0}" -lt 4 ]; then
+    echo "pipeline: briefing tem apenas ${_matches:-0} de >=4 secoes nucleares (Visao/Usuarios/Escopo/Prioridades/Restricoes/Stack/Qualidade/Futuro)" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Validacao estrutural de tasks.md. Verifica conformidade com template da
+# skill create-tasks (global/skills/create-tasks/templates/tasks.md):
+#   1. Header "# Tarefas" ou "# Tasks"
+#   2. Pelo menos 1 secao "## FASE"
+#   3. Legenda de criticidade [C]/[A]/[M] OU sinalizacao explicita por linha
+#   4. Matriz de Dependencias (Mermaid ou ASCII)
+#   5. Resumo Quantitativo
+#   6. Escopo Coberto (ou variante)
+#   7. Escopo Excluido (ou variante)
+# Razao: exec-2026-05-18-iniciacao-membro produziu tasks.md sem invocar a
+# skill, usando P0/P1/P2/P3 em vez de [C]/[A]/[M] e sem matriz/resumo/escopo.
+# Validacao garante que se a skill nao foi invocada (ou foi invocada errado),
+# detect-completion REJEITA o avanco da etapa.
+_pl_validate_tasks() {
+  _tf=$1
+  [ -f "$_tf" ] || { echo "pipeline: tasks.md nao encontrado: $_tf" >&2; return 1; }
+  _missing=""
+  # 1. Header
+  if ! head -3 "$_tf" 2>/dev/null | grep -Eqi '^#[[:space:]]+(tarefas|tasks)'; then
+    _missing="$_missing\n  - header '# Tarefas' ou '# Tasks' nas primeiras 3 linhas"
+  fi
+  # 2. Pelo menos 1 FASE
+  if ! grep -Eq '^##[[:space:]]+FASE[[:space:]]+[0-9]+' "$_tf" 2>/dev/null; then
+    _missing="$_missing\n  - secao '## FASE N - ...' (deve haver pelo menos 1)"
+  fi
+  # 3. Legenda de criticidade [C]/[A]/[M] (em corpo ou cabecalho)
+  if ! grep -Eq '\[C\]|\[A\]|\[M\]' "$_tf" 2>/dev/null; then
+    _missing="$_missing\n  - criticidade no padrao [C]/[A]/[M] (Critico/Alto/Medio); P0/P1/P2 NAO e aceito"
+  fi
+  # 4. Matriz de Dependencias
+  if ! grep -Eqi '^##[[:space:]]+matriz[[:space:]]+de[[:space:]]+dependencias' "$_tf" 2>/dev/null; then
+    _missing="$_missing\n  - secao '## Matriz de Dependencias' (Mermaid flowchart ou ASCII)"
+  fi
+  # 5. Resumo Quantitativo
+  if ! grep -Eqi '^##[[:space:]]+resumo[[:space:]]+quantitativo' "$_tf" 2>/dev/null; then
+    _missing="$_missing\n  - secao '## Resumo Quantitativo' (tabela com totais por fase)"
+  fi
+  # 6. Escopo Coberto
+  if ! grep -Eqi '^##[[:space:]]+escopo[[:space:]]+(coberto|incluido)' "$_tf" 2>/dev/null; then
+    _missing="$_missing\n  - secao '## Escopo Coberto' (lista do que esta no MVP)"
+  fi
+  # 7. Escopo Excluido
+  if ! grep -Eqi '^##[[:space:]]+escopo[[:space:]]+(excluido|fora)' "$_tf" 2>/dev/null; then
+    _missing="$_missing\n  - secao '## Escopo Excluido' (lista do que NAO esta no MVP)"
+  fi
+
+  if [ -n "$_missing" ]; then
+    printf 'pipeline: tasks.md fora-do-padrao da skill create-tasks. Faltam:%b\n' "$_missing" >&2
+    printf '  Acao: invoque a skill create-tasks via tool Skill ao inves de escrever tasks.md direto.\n' >&2
+    printf '  Template: global/skills/create-tasks/templates/tasks.md\n' >&2
+    return 1
+  fi
+  return 0
+}
+
 # detect-completion: artefato esperado por etapa.
 #
 # Fallback PAP (issue #3): briefing e constitution sao project-level. Quando
@@ -162,9 +262,12 @@ _pl_cmd_detect_completion() {
   case "$_st" in
     briefing)
       # feature-dir OR (com PAP) hierarquia numerada do /initialize-docs.
+      # Valida estrutura: header + >=4 secoes nucleares.
       if [ -f "$_fd/briefing.md" ]; then
+        _pl_validate_briefing "$_fd/briefing.md" || return 1
         return 0
       elif [ -n "$_pap" ] && [ -f "$_pap/docs/01-briefing-discovery/briefing.md" ]; then
+        _pl_validate_briefing "$_pap/docs/01-briefing-discovery/briefing.md" || return 1
         return 0
       else
         return 1
@@ -172,7 +275,17 @@ _pl_cmd_detect_completion() {
       ;;
     constitution)
       # feature-dir OR (com PAP) docs/constitution.md (root convencional).
-      if [ -f "$_fd/constitution.md" ]; then
+      # Detecta conflito raiz-vs-feature: se ambos existem, exige que feature
+      # constitution declare 'Predecessor: docs/constitution.md' (defesa
+      # contra dec-004 da execucao-fonte que criou feature-delta silencioso).
+      if [ -f "$_fd/constitution.md" ] && [ -n "$_pap" ] && [ -f "$_pap/docs/constitution.md" ]; then
+        if ! head -30 "$_fd/constitution.md" 2>/dev/null | grep -Eqi 'predecessor|constitution[[:space:]]+global|docs/constitution\.md'; then
+          echo "pipeline: feature constitution existe MAS nao referencia a global em $_pap/docs/constitution.md" >&2
+          echo "pipeline: adicione 'Predecessor: docs/constitution.md vX.Y.Z' no topo OU use 'constitution-conflict' antes de criar" >&2
+          return 1
+        fi
+        return 0
+      elif [ -f "$_fd/constitution.md" ]; then
         return 0
       elif [ -n "$_pap" ] && [ -f "$_pap/docs/constitution.md" ]; then
         return 0
@@ -190,7 +303,11 @@ _pl_cmd_detect_completion() {
       _found=$(find "$_fd/checklists" -maxdepth 1 -type f -name '*.md' 2>/dev/null | head -1)
       [ -n "$_found" ] || return 1
       ;;
-    create-tasks)    [ -f "$_fd/tasks.md" ]            || return 1 ;;
+    create-tasks)
+      # Existencia + validacao de estrutura do template.
+      [ -f "$_fd/tasks.md" ] || return 1
+      _pl_validate_tasks "$_fd/tasks.md" || return 1
+      ;;
     execute-task)
       # Pelo menos 1 marcacao [x] em tasks.md
       [ -f "$_fd/tasks.md" ] || return 1
@@ -203,6 +320,95 @@ _pl_cmd_detect_completion() {
       ;;
   esac
   return 0
+}
+
+# constitution-conflict: detecta conflito entre constitution raiz e feature.
+#
+# Saidas:
+#   exit 0 = sem conflito (so existe um, ou nenhum, ou ambos coordenados)
+#   exit 1 = CONFLITO: ambos existem, feature constitution NAO referencia raiz
+#   exit 2 = ALERTA pre-skill: raiz existe + feature NAO criada ainda. O
+#            orquestrador DEVE emitir BloqueioHumano com 3 opcoes
+#            (atualizar global / criar delta com Sync Impact / abortar)
+#            antes de invocar a skill constitution.
+#
+# Razao (exec-2026-05-18-iniciacao-membro dec-004): orquestrador detectou
+# constitution global existente mas decidiu sozinho criar feature-delta
+# com 8 principios. detect-completion aceitou silenciosamente. Este
+# subcomando expoe o conflito antes da skill correr.
+_pl_cmd_constitution_conflict() {
+  _pap=""
+  _fd=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --projeto-alvo-path) _pap=$2; shift 2 ;;
+      --feature-dir)       _fd=$2;  shift 2 ;;
+      *) _pl_die_usage "constitution-conflict: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_pap" ] || _pl_die_usage "constitution-conflict: --projeto-alvo-path obrigatorio"
+  [ -n "$_fd" ]  || _pl_die_usage "constitution-conflict: --feature-dir obrigatorio"
+
+  _root="$_pap/docs/constitution.md"
+  _feat="$_fd/constitution.md"
+  _has_root=0
+  _has_feat=0
+  [ -f "$_root" ] && _has_root=1
+  [ -f "$_feat" ] && _has_feat=1
+
+  if [ "$_has_root" = 0 ] && [ "$_has_feat" = 0 ]; then
+    printf 'status: none-exists\n'
+    return 0
+  fi
+  if [ "$_has_root" = 1 ] && [ "$_has_feat" = 0 ]; then
+    # Raiz existe + feature ainda nao criada — orquestrador deve emitir
+    # BloqueioHumano ANTES de invocar a skill constitution.
+    cat <<INFO
+status: pre-skill-alert
+root: $_root
+feature_dir: $_fd
+action_required: |
+  Antes de invocar skill constitution para esta feature, registre
+  BloqueioHumano (bloqueios.sh register) com 3 opcoes:
+    a) atualizar-global  — feature adiciona principios via bump SemVer
+                           em docs/constitution.md (skill constitution
+                           detecta diff e propoe MAJOR/MINOR).
+    b) criar-delta-com-sync-impact — feature cria
+                           docs/specs/<feature>/constitution.md COM
+                           header 'Predecessor: docs/constitution.md
+                           vX.Y.Z' + tabela de Reforco/Especializacao.
+                           Sync Impact Report obrigatorio.
+    c) abortar           — feature nao requer principios proprios.
+  Sem decisao explicita do operador, NAO crie feature constitution.
+INFO
+    return 2
+  fi
+  if [ "$_has_root" = 0 ] && [ "$_has_feat" = 1 ]; then
+    # So feature, sem raiz — caso permitido (projeto sem constitution global).
+    printf 'status: only-feature\nfeature: %s\n' "$_feat"
+    return 0
+  fi
+  # Ambos existem — verifica se feature constitution referencia a raiz.
+  if head -30 "$_feat" 2>/dev/null | grep -Eqi 'predecessor|constitution[[:space:]]+global|docs/constitution\.md'; then
+    cat <<INFO
+status: coordinated
+root: $_root
+feature: $_feat
+note: feature constitution referencia a global (header com Predecessor)
+INFO
+    return 0
+  fi
+  cat >&2 <<INFO
+status: conflict
+root: $_root
+feature: $_feat
+problem: feature constitution NAO declara 'Predecessor:' nem referencia
+         docs/constitution.md no header — padrao silencioso de delta
+         (dec-004 da execucao-fonte). Edite o feature/constitution.md
+         para incluir tabela de Reforco/Especializacao + Sync Impact Report,
+         OU mova os principios para a global via bump SemVer.
+INFO
+  return 1
 }
 
 # skill-conflict: detecta skill com mesmo nome em local + global.
@@ -261,11 +467,12 @@ _PL_SUBCMD=$1
 shift
 
 case "$_PL_SUBCMD" in
-  stages)             _pl_cmd_stages "$@" ;;
-  next-stage)         _pl_cmd_next_stage "$@" ;;
-  prev-stage)         _pl_cmd_prev_stage "$@" ;;
-  detect-completion)  _pl_cmd_detect_completion "$@" ;;
-  skill-conflict)     _pl_cmd_skill_conflict "$@" ;;
-  -h|--help|help)     _pl_print_help; exit 0 ;;
+  stages)                 _pl_cmd_stages "$@" ;;
+  next-stage)             _pl_cmd_next_stage "$@" ;;
+  prev-stage)             _pl_cmd_prev_stage "$@" ;;
+  detect-completion)      _pl_cmd_detect_completion "$@" ;;
+  constitution-conflict)  _pl_cmd_constitution_conflict "$@" ;;
+  skill-conflict)         _pl_cmd_skill_conflict "$@" ;;
+  -h|--help|help)         _pl_print_help; exit 0 ;;
   *) _pl_die_usage "subcomando desconhecido: $_PL_SUBCMD (use --help)" ;;
 esac

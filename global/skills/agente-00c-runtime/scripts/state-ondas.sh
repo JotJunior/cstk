@@ -33,6 +33,19 @@
 #   state-ondas.sh current-id --state-dir DIR
 #       — Imprime .ondas[-1].id (ou "init" se nao ha onda).
 #
+#   state-ondas.sh record-skill --state-dir DIR --skill NAME
+#                               [--decisao-id DEC-NNN]
+#       — Registra invocacao da skill na onda corrente. Append em
+#         .ondas[-1].skills_invoked = [..., { skill, timestamp, decisao_id }].
+#         Permite review-task auditar "etapa X foi marcada completa mas a
+#         skill Y nunca foi invocada via tool Skill" — defesa contra o
+#         padrao da execucao-fonte onde orquestrador gerou artefatos
+#         in-process sem chamar a skill canonica (dec-014: tasks.md sem
+#         create-tasks invocada).
+#         Idempotente para a mesma combinacao (skill + decisao_id na mesma
+#         onda) — re-registro nao duplica entrada.
+#         Stdout: numero total de skills invocadas nesta onda.
+#
 #   state-ondas.sh git-commit --state-dir DIR --projeto-alvo-path PATH
 #                             --motivo MOTIVO [--onda-id ID]
 #       — Faz `git add .` + `git commit -m 'chore(agente-00c): onda <ID> - <MOTIVO>'`
@@ -131,7 +144,8 @@ _so_cmd_start() {
       tool_calls: 0,
       wallclock_seconds: 0,
       motivo_termino: null,
-      proxima_onda_agendada_para: null
+      proxima_onda_agendada_para: null,
+      skills_invoked: []
     }]
     | .orcamentos.tool_calls_onda_corrente = 0
     | .orcamentos.inicio_onda_corrente = $ts
@@ -264,6 +278,58 @@ _so_cmd_tool_call_tick() {
   printf '%s\n' "$_next"
 }
 
+_so_cmd_record_skill() {
+  _sdir=""
+  _skill=""
+  _dec=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)  _sdir=$2;  shift 2 ;;
+      --skill)      _skill=$2; shift 2 ;;
+      --decisao-id) _dec=$2;   shift 2 ;;
+      *) _so_die_usage "record-skill: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_sdir" ]  || _so_die_usage "record-skill: --state-dir obrigatorio"
+  [ -n "$_skill" ] || _so_die_usage "record-skill: --skill obrigatorio"
+  _so_require_jq
+  _sf=$(_so_state_file "$_sdir")
+  [ -f "$_sf" ] || _so_die "record-skill: state.json ausente em $_sdir" 1
+
+  # Verifica que existe onda em andamento
+  _has_onda=$(jq -r 'if (.ondas // []) | length > 0 then "yes" else "no" end' "$_sf")
+  [ "$_has_onda" = "yes" ] || _so_die "record-skill: nenhuma onda em andamento (rode state-ondas.sh start primeiro)" 1
+
+  _now=$(_so_iso_now)
+  _dec_json="null"
+  if [ -n "$_dec" ]; then
+    _dec_json=$(printf '%s' "$_dec" | jq -R .)
+  fi
+
+  _new=$(mktemp) || _so_die "mktemp falhou" 1
+  jq \
+    --arg skill "$_skill" \
+    --arg ts "$_now" \
+    --argjson dec "$_dec_json" '
+    (.ondas[-1].skills_invoked //= [])
+    | (.ondas[-1].skills_invoked |=
+        (if (any(.[]; .skill == $skill and (.decisao_id // null) == $dec))
+         then .
+         else . + [{
+           skill: $skill,
+           timestamp: $ts,
+           decisao_id: $dec
+         }]
+         end))
+  ' "$_sf" > "$_new" || { rm -f -- "$_new"; _so_die "jq update falhou" 1; }
+
+  _so_atomic_write "$_sf" "$_new"
+  rm -f -- "$_new" 2>/dev/null || :
+  _so_update_sha "$_sdir"
+  _count=$(jq -r '.ondas[-1].skills_invoked | length' "$_sf")
+  printf '%s\n' "$_count"
+}
+
 _so_cmd_current_id() {
   _sdir=""
   while [ "$#" -gt 0 ]; do
@@ -335,6 +401,8 @@ USO:
                                 [--proxima-agendada-para ISO]
                                 [--add-etapa STAGE]...
   state-ondas.sh tool-call-tick --state-dir DIR
+  state-ondas.sh record-skill   --state-dir DIR --skill NAME
+                                [--decisao-id DEC-NNN]
   state-ondas.sh current-id     --state-dir DIR
   state-ondas.sh git-commit     --state-dir DIR --projeto-alvo-path PATH
                                 --motivo MOTIVO [--onda-id ID]
@@ -360,6 +428,7 @@ case "$_SO_SUBCMD" in
   start)            _so_cmd_start "$@" ;;
   end)              _so_cmd_end "$@" ;;
   tool-call-tick)   _so_cmd_tool_call_tick "$@" ;;
+  record-skill)     _so_cmd_record_skill "$@" ;;
   current-id)       _so_cmd_current_id "$@" ;;
   git-commit)       _so_cmd_git_commit "$@" ;;
   -h|--help|help)   exit 0 ;;

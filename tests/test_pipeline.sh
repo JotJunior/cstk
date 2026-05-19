@@ -8,6 +8,52 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/pipeline.sh"
 
+# Helpers para gerar artefatos validos minimos (estruturas que o pipeline
+# detect-completion aceita).
+_write_briefing_valido() {
+  _path=$1
+  cat > "$_path" <<'EOF'
+# Project Briefing: foo
+
+## 1. Visao e Proposito
+xx
+## 2. Usuarios e Stakeholders
+yy
+## 3. Escopo
+zz
+## 4. Prioridades
+aa
+## 5. Restricoes
+bb
+EOF
+}
+
+_write_tasks_valido() {
+  _path=$1
+  cat > "$_path" <<'EOF'
+# Tarefas Foo - Backlog
+
+## FASE 1 - Fundacao
+### 1.1 Setup `[C]`
+- [ ] 1.1.1 Criar projeto
+
+## Matriz de Dependencias
+```mermaid
+flowchart TD
+F1
+```
+
+## Resumo Quantitativo
+| Fase | T |
+
+## Escopo Coberto
+| 1 | ... |
+
+## Escopo Excluido
+| 1 | ... |
+EOF
+}
+
 scenario_stages_lista_10_etapas_em_ordem() {
   capture "$SCRIPT" stages
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stages exit" "$_CAPTURED_EXIT"; return 1; }
@@ -78,10 +124,10 @@ scenario_detect_completion_briefing() {
     _fail "no briefing.md" "esperado 1, obtido $_CAPTURED_EXIT"
     return 1
   fi
-  printf '# briefing\n' > "$_fd/briefing.md"
+  _write_briefing_valido "$_fd/briefing.md"
   capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage briefing
   if [ "$_CAPTURED_EXIT" != 0 ]; then
-    _fail "with briefing.md" "esperado 0, obtido $_CAPTURED_EXIT"
+    _fail "with briefing.md valido" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
     return 1
   fi
 }
@@ -101,11 +147,11 @@ scenario_detect_completion_briefing_aceita_path_initialize_docs() {
   }
 
   # Briefing SO no path do /initialize-docs -> exit 0 (com PAP)
-  printf '# briefing\n' > "$_pap/docs/01-briefing-discovery/briefing.md"
+  _write_briefing_valido "$_pap/docs/01-briefing-discovery/briefing.md"
   capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage briefing \
     --projeto-alvo-path "$_pap"
   [ "$_CAPTURED_EXIT" = 0 ] || {
-    _fail "briefing em PAP" "esperado 0, obtido $_CAPTURED_EXIT"
+    _fail "briefing em PAP" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
     return 1
   }
 
@@ -226,6 +272,176 @@ scenario_skill_conflict_nenhuma_exit_3() {
     return 1
   fi
   assert_stdout_contains "status: not-found" || return 1
+}
+
+# ==== Validacao estrutural de briefing (defesa contra briefing.md vazio) ====
+scenario_briefing_sem_header_falha() {
+  _fd="$TMPDIR_TEST/feat"
+  mkdir -p "$_fd"
+  printf '## Visao\nxx\n## Usuarios\nyy\n## Escopo\nzz\n## Stack\naa\n' > "$_fd/briefing.md"
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage briefing
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "exit" "esperado 1 (sem header), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "sem header" || return 1
+}
+
+scenario_briefing_poucas_secoes_falha() {
+  _fd="$TMPDIR_TEST/feat"
+  mkdir -p "$_fd"
+  cat > "$_fd/briefing.md" <<'EOF'
+# Project Briefing
+## Visao
+xx
+## Usuarios
+yy
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage briefing
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "exit" "esperado 1 (apenas 2 secoes), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "secoes nucleares" || return 1
+}
+
+# ==== Validacao estrutural de tasks (defesa contra tasks.md fora-de-padrao) ====
+scenario_tasks_sem_legenda_C_A_M_falha() {
+  _fd="$TMPDIR_TEST/feat"
+  mkdir -p "$_fd"
+  # tasks.md com P0/P1/P2/P3 em vez de [C]/[A]/[M] (caso real da exec rolledback)
+  cat > "$_fd/tasks.md" <<'EOF'
+# Tasks: Iniciacao
+## FASE 1 - Foo
+### T1.1 [P0] Test
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage create-tasks
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "exit" "esperado 1 (sem legendas), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "criticidade no padrao" || return 1
+}
+
+scenario_tasks_sem_matriz_dependencias_falha() {
+  _fd="$TMPDIR_TEST/feat"
+  mkdir -p "$_fd"
+  cat > "$_fd/tasks.md" <<'EOF'
+# Tarefas Foo
+## FASE 1 - Foo
+### 1.1 Test `[C]`
+- [ ] 1.1.1 X
+
+## Resumo Quantitativo
+| Fase | T |
+
+## Escopo Coberto
+| 1 | ... |
+
+## Escopo Excluido
+| 1 | ... |
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage create-tasks
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "exit" "esperado 1 (sem matriz), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "Matriz de Dependencias" || return 1
+}
+
+scenario_tasks_completo_passa() {
+  _fd="$TMPDIR_TEST/feat"
+  mkdir -p "$_fd"
+  _write_tasks_valido "$_fd/tasks.md"
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage create-tasks
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "exit" "esperado 0 (template valido), obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+# ==== constitution-conflict (4 cenarios — defesa contra dec-004 rolledback) ====
+scenario_constitution_conflict_none_exists() {
+  _pap="$TMPDIR_TEST/proj"
+  _fd="$_pap/docs/specs/foo"
+  mkdir -p "$_fd" "$_pap/docs"
+  capture "$SCRIPT" constitution-conflict --projeto-alvo-path "$_pap" --feature-dir "$_fd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "status: none-exists" || return 1
+}
+
+scenario_constitution_conflict_pre_skill_alert() {
+  _pap="$TMPDIR_TEST/proj"
+  _fd="$_pap/docs/specs/foo"
+  mkdir -p "$_fd" "$_pap/docs"
+  echo "# Constitution Global v1.0.0" > "$_pap/docs/constitution.md"
+  capture "$SCRIPT" constitution-conflict --projeto-alvo-path "$_pap" --feature-dir "$_fd"
+  if [ "$_CAPTURED_EXIT" != 2 ]; then
+    _fail "exit" "esperado 2 (alerta pre-skill), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stdout_contains "status: pre-skill-alert" || return 1
+  assert_stdout_contains "atualizar-global" || return 1
+  assert_stdout_contains "criar-delta-com-sync-impact" || return 1
+}
+
+scenario_constitution_conflict_conflict_silencioso() {
+  _pap="$TMPDIR_TEST/proj"
+  _fd="$_pap/docs/specs/foo"
+  mkdir -p "$_fd" "$_pap/docs"
+  echo "# Constitution Global" > "$_pap/docs/constitution.md"
+  # Feature constitution SEM referencia a raiz (caso real do dec-004)
+  echo "# Feature Constitution" > "$_fd/constitution.md"
+  capture "$SCRIPT" constitution-conflict --projeto-alvo-path "$_pap" --feature-dir "$_fd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "exit" "esperado 1 (conflito), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "status: conflict" || return 1
+  assert_stderr_contains "Predecessor" || return 1
+}
+
+scenario_constitution_conflict_coordenado() {
+  _pap="$TMPDIR_TEST/proj"
+  _fd="$_pap/docs/specs/foo"
+  mkdir -p "$_fd" "$_pap/docs"
+  echo "# Constitution Global v1.0.0" > "$_pap/docs/constitution.md"
+  cat > "$_fd/constitution.md" <<'EOF'
+# Feature Constitution
+**Predecessor**: docs/constitution.md v1.0.0
+EOF
+  capture "$SCRIPT" constitution-conflict --projeto-alvo-path "$_pap" --feature-dir "$_fd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (coordenado), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "status: coordinated" || return 1
+}
+
+# ==== detect-completion constitution bloqueia feature-delta silencioso ====
+scenario_detect_completion_constitution_bloqueia_delta_sem_predecessor() {
+  _fd="$TMPDIR_TEST/feat"
+  _pap="$TMPDIR_TEST/pap"
+  mkdir -p "$_fd" "$_pap/docs"
+  echo "# Constitution Global" > "$_pap/docs/constitution.md"
+  echo "# Feature Constitution" > "$_fd/constitution.md"  # sem Predecessor
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage constitution --projeto-alvo-path "$_pap"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "exit" "esperado 1 (feature sem Predecessor), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "nao referencia a global" || return 1
+}
+
+scenario_detect_completion_constitution_aceita_delta_com_predecessor() {
+  _fd="$TMPDIR_TEST/feat"
+  _pap="$TMPDIR_TEST/pap"
+  mkdir -p "$_fd" "$_pap/docs"
+  echo "# Constitution Global v1.0.0" > "$_pap/docs/constitution.md"
+  cat > "$_fd/constitution.md" <<'EOF'
+# Feature Constitution
+
+**Predecessor**: docs/constitution.md v1.0.0
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage constitution --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
 }
 
 run_all_scenarios

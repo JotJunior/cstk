@@ -156,4 +156,82 @@ scenario_git_commit_sem_repo_falha() {
   assert_stderr_contains "nao e repositorio git" || return 1
 }
 
+# ==== record-skill (defesa contra dec-014 da exec rolledback) ====
+scenario_record_skill_append_basico() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill briefing --decisao-id dec-001
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].skills_invoked[0].skill'
+  assert_stdout_contains "briefing" || return 1
+}
+
+scenario_record_skill_idempotente_mesma_skill_e_decisao() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill constitution --decisao-id dec-004
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill constitution --decisao-id dec-004
+  assert_stdout_contains "1" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].skills_invoked | length'
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_record_skill_multiplas_skills_acumulam() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill briefing --decisao-id dec-001
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill constitution --decisao-id dec-004
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill create-tasks --decisao-id dec-014
+  assert_stdout_contains "3" || return 1
+}
+
+scenario_record_skill_sem_decisao_id_funciona() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill briefing
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].skills_invoked[0].decisao_id'
+  assert_stdout_contains "null" || return 1
+}
+
+scenario_record_skill_sem_onda_falha() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  # Nao chamar start
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill briefing
+  if [ "$_CAPTURED_EXIT" = 0 ]; then
+    _fail "exit" "esperado != 0, obtido 0"
+    return 1
+  fi
+  assert_stderr_contains "nenhuma onda em andamento" || return 1
+}
+
+scenario_record_skill_obriga_flags() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  # Sem --skill
+  capture "$SCRIPT" record-skill --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" = 0 ]; then
+    _fail "exit" "esperado != 0 sem --skill"
+    return 1
+  fi
+  assert_stderr_contains "skill obrigatorio" || return 1
+}
+
+scenario_start_inclui_skills_invoked_vazio() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].skills_invoked'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "[]" || return 1
+}
+
 run_all_scenarios
