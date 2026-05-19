@@ -138,6 +138,7 @@ COMANDOS:
   self-update   Atualiza o proprio binario cstk
   list          Lista skills instaladas
   doctor        Verifica integridade da instalacao e manifests
+  session       Sessoes paralelas via git worktree (start/list/end/pr)
   00c <path>    Bootstrap interativo de projeto-alvo do agente-00C
                 (cria diretorio, coleta parametros e invoca claude)
 
@@ -156,7 +157,7 @@ HELP
     exit "$CSTK_EXIT_OK"
   fi
   case "$_sub" in
-    install|update|self-update|list|doctor)
+    install|update|self-update|list|doctor|session)
       printf 'cstk help %s: consulte docs/specs/cstk-cli/contracts/cli-commands.md §%s\n' \
         "$_sub" "$_sub"
       exit "$CSTK_EXIT_OK"
@@ -171,7 +172,7 @@ HELP
       ;;
     *)
       printf 'cstk: comando desconhecido para help: %s\n' "$_sub" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, 00c\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, 00c\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac
@@ -193,7 +194,7 @@ _dispatch() {
     -V|--version|version)
       _cmd_version
       ;;
-    install|update|self-update|list|doctor)
+    install|update|self-update|list|doctor|session)
       # Boot-check para todos exceto self-update (que e o caminho de recovery
       # da janela transiente — bloquea-lo aqui causaria deadlock).
       case "$_cmd" in

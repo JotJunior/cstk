@@ -7,6 +7,67 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-05-19
+
+Subcomando `cstk session` — sessoes paralelas isoladas via `git worktree`,
+resolvendo colisao de working tree, branch HEAD e
+`.claude/agente-00c-state/` quando o usuario abre multiplas features
+simultaneas no mesmo repositorio. 4 verbos (`start`/`list`/`end`/`pr`),
+zero dependencias alem de `git` + `gh` (dep opcional confinada em
+`cli/lib/session.sh` sob amendment 1.1.0 da Constitution).
+
+### Added
+
+- **`cstk session start <name> [--reset|--reuse] [--force]`**: cria
+  worktree em `<parent>/<repo>-<name>/` com branch resolvida segundo
+  5 regras (nova / rastreando origin / reutilizar local / recriar
+  com --reset / forcar com --reuse). Copia `.claude/` filtrado
+  excluindo 8 artefatos runtime/per-env (agente-00c-state/,
+  agente-00c-archive/, insights/, settings.local.json,
+  agente-00c-whitelist, agente-00c-report.md,
+  agente-00c-suggestions.md, .agente-00c-state.lock). `--reset` com
+  commits nao-mergeados emite prompt interativo (bypassavel com
+  `--force`).
+- **`cstk session list [--json]`**: tabela com `NAME BRANCH IDLE
+  STATUS PATH`; marcadores combinaveis `CURRENT,*,STALE`. Modo JSON
+  emite array camelCase (`name`/`branch`/`path`/`idleDays`/`dirty`/
+  `stale`/`current`) sem rodape. Ordenacao por idle ASC. Rodape "tip:
+  rode 'git worktree prune'..." se houver STALE.
+- **`cstk session end <name> [--force]`**: remove worktree + branch
+  local com guards. Prompt interativo se ha mudancas nao commitadas,
+  commits nao pushados ou PR aberto no GitHub. Detecta self-end
+  (rodando de dentro da worktree-alvo → exit 14). `gh` opcional —
+  ausente/unauth pula PR check com warning e prossegue.
+- **`cstk session pr <name> [--draft] [--title T] [--body B] [--reviewer USER]`**:
+  push + abre PR via `gh pr create`. Idempotente: se PR ja existe
+  (OPEN/MERGED), retorna URL existente sem criar duplicata. Detecta
+  default branch via `git symbolic-ref refs/remotes/origin/HEAD`
+  (fallback `main`). Falha parcial (push OK + gh create falhou)
+  emite stderr orientativo com comandos de recovery.
+- **Boot-check `git >= 2.36`**: necessario para campo `prunable` em
+  `git worktree list --porcelain`. Versao inferior → exit 15 com
+  mensagem de upgrade.
+- **15 exit codes especificos**: 5 (nome invalido), 6 (sessao ja
+  existe), 7 (path ocupado), 8 (branch mergeada), 9 (sessao nao
+  encontrada), 10 (cancelado), 11 (gh ausente), 12 (gh unauth), 13
+  (sem commits), 14 (self-end), 15 (git antigo). Todos documentados
+  em `contracts/cli-session.md` e exercitados por cenarios
+  automatizados.
+- **57 cenarios de teste** em `tests/cstk/test_session.sh` cobrindo
+  os 4 subcomandos + helpers + dispatch + E2E + lint meta. 2
+  cenarios de PR marcados como MANUAL (exigem rede + repo remoto
+  GitHub).
+
+### Changed
+
+- **`cli/cstk` dispatcher**: adicionada `session` em 3 lugares
+  (linha 159 case help, linha 196 dispatch principal, linha 141
+  secao COMANDOS do help geral).
+- **`README.md`**: nova secao "Sessoes paralelas" com exemplos e
+  referencias para spec + contracts.
+- **`CLAUDE.md`**: secao curta "Sessoes paralelas (cstk session)"
+  apontando para a spec.
+
 ## [3.8.0] - 2026-05-19
 
 Hardening do agente-00C contra dois bypasses encontrados em
