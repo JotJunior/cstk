@@ -233,17 +233,18 @@ Ref: CHANGELOG.md formato Keep a Changelog, projeto SemVer 3.x
 
 - [x] 7.2.1 Secao `[3.9.0]` no CHANGELOG.md com `Added` (4 subcomandos + boot-check + 15 exit codes + 57 cenarios) + `Changed` (cli/cstk dispatch, README, CLAUDE.md) <!-- validado empiricamente sessao -->
 - [x] 7.2.2 Spec header atualizado para `Status: Implemented (v3.9.0)`; tasks.md FASES 1-7 marcadas <!-- validado empiricamente sessao -->
-- [ ] 7.2.3 Commit feat(cstk-session) + tag `v3.9.0` + push (proximo passo apos usuario autorizar — convencao do toolkit nao auto-pusha)
+- [x] 7.2.3 Commit `314407e` + tag `v3.9.0` + push (main + tag). Pipeline release.yml disparada em 2026-05-19T19:50:16Z <!-- validado empiricamente sessao -->
 
-> **Decisao tecnica emergente**: 7.2.3 (commit/tag/push) NAO e auto-executado pela skill `execute-task` — requer comando explicito do operador. Convencao do toolkit (claudeMd raiz): "Never push to the remote repository unless the user explicitly asks". Apos autorizacao, executar:
+> **Decisao tecnica emergente**: 7.2.3 (commit/tag/push) requereu autorizacao explicita do operador conforme convencao do toolkit (claudeMd raiz: "Never push to the remote repository unless the user explicitly asks"). Apos autorizacao em sessao, executado:
 >   ```bash
 >   git add cli/cstk cli/lib/session.sh tests/cstk/test_session.sh \
->     docs/specs/cstk-session/ README.md CLAUDE.md CHANGELOG.md
->   git commit -m "feat(cstk-session): subcomando session para sessoes paralelas via git worktree (v3.9.0)"
->   git tag v3.9.0
->   git push origin main
->   git push origin v3.9.0
+>     docs/specs/cstk-session/ README.md CHANGELOG.md
+>   git commit -m "feat(cstk-session): ... (v3.9.0)"
+>   git tag -a v3.9.0 -m "..."
+>   git push origin main && git push origin v3.9.0
 >   ```
+> CLAUDE.md NAO incluido (gitignored). Pipeline release.yml builda tarball
+> automaticamente ao detectar a tag.
 
 ---
 
