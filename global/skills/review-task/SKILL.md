@@ -122,6 +122,20 @@ git log --oneline --grep="task-keyword"
 Use Agent para verificar tarefas em paralelo quando o arquivo de tarefas
 cobre multiplos servicos — cada agente pode auditar um servico independentemente.
 
+#### Atalhos de auditoria por stack
+
+Para complementar a auditoria de tasks.md com auditoria de codigo no stack
+detectado, invoque skills especializadas via tool Skill:
+
+| Stack | Skill | Quando |
+|-------|-------|--------|
+| Go (servico individual) | `go-review-service` | Auditar UM microservico Go contra todas as convencoes do projeto (arquitetura, testes, factory, layout) — bom antes de marcar marco/release |
+| Go (branch/PR) | `go-review-pr` | Auditar APENAS as mudancas do branch corrente vs `main`/`master` antes de abrir PR — diff-aware, nao re-audita o repo todo |
+
+Essas skills produzem relatorios complementares ao review-task e ajudam
+a flagar tarefas marcadas como concluidas que ainda tem violacoes de
+convencao do projeto.
+
 ### 5. Acoes Automaticas
 
 Ao identificar inconsistencias:

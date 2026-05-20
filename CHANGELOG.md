@@ -7,6 +7,87 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-05-20
+
+Auditoria estrategica de skills "complementares" do toolkit. Skills sem
+referencia em nenhum orquestrador ou skill orquestradora eram codigo
+morto — discoverable so via trigger phrase manual, e raramente
+acionadas na pratica. Esta release toma decisao explicita skill-por-skill:
+incentivar (integrando aos orquestradores), depreciar (com remocao
+agendada), ou remover (quando project-specific demais para o toolkit).
+
+### Added
+
+- **Principio formal de escopo do toolkit** (README §Contribuindo):
+  skills publicadas em `global/skills/` ou `language-related/<stack>/skills/`
+  NAO devem nomear clientes/projetos especificos. Skills com forte
+  acoplamento a um projeto pertencem ao proprio projeto, em
+  `<projeto>/.claude/skills/`. Caso historico: `create-report`.
+- **Quality Gates SDD no orchestrator** (`agente-00c-orchestrator.md`
+  secao 5.f): 3 skills antes orfas (`validate-documentation`,
+  `validate-docs-rendered`, `owasp-security`) viraram gates
+  nao-bloqueantes pos-artefato no pipeline:
+  - apos `specify` → `validate-documentation` em spec.md
+  - apos `plan` → `validate-documentation` em plan.md + `owasp-security`
+    (findings critical/high obrigam BloqueioHumano)
+  - apos `create-tasks` → `validate-docs-rendered` no feature-dir
+
+  Skip de gate e auditavel: requer Decisao com justificativa, e
+  `/review-task` flaga features com >2 skips sem motivo solido como
+  `quality-gate-bypass`.
+- **Delegacao para skills Go em `execute-task` e `review-task`:**
+  6 skills `go-*` antes orfas viraram atalhos explicitos quando stack
+  detectado for Go (`execute-task` §4.2.1 e `review-task` "Atalhos de
+  auditoria por stack"): `go-add-entity`, `go-add-consumer`,
+  `go-add-migration`, `go-add-test`, `go-review-service`, `go-review-pr`.
+
+### Deprecated
+
+- **Skill `create-use-case`**: substituida por `specify` (formato SDD
+  com user stories, success criteria e integracao com pipeline orquestrado).
+  Frontmatter recebe `deprecated: true`, `deprecated_since: 3.12.0`,
+  `remove_in: 4.0.0`. UC classico nao tem mais espaco no fluxo atual.
+- **8 skills `dotnet-*`**: `dotnet-create-entity`, `dotnet-create-feature`,
+  `dotnet-create-project`, `dotnet-create-test`,
+  `dotnet-hexagonal-architecture`, `dotnet-infrastructure`,
+  `dotnet-review-code`, `dotnet-testing`. Stack .NET descontinuada pelo
+  mantenedor; sem substituto no toolkit global. Remocao agendada para
+  v4.0.0 — usuarios que ainda usam .NET devem copiar para
+  `<projeto>/.claude/skills/` antes da remocao.
+
+### Removed
+
+- **Skill `create-report`** (`language-related/go/skills/create-report/`):
+  era altamente acoplada ao sistema GOB (nomes de servico hardcoded
+  `gob-report-service`/`gob-go-commons`, exchange RabbitMQ `gob.reports`,
+  caminhos ETCD do GOB, vocabulario macônico `lodge`/`federal`/`state_orient`,
+  cabecalho fixo "Grande Oriente do Brasil" no PDF). Material project-specific
+  pertence ao `<projeto>/.claude/skills/`, nao ao toolkit global. Caso
+  historico que motivou o principio formal acima.
+
+### Changed
+
+- **README**: arvore de estrutura marca `create-use-case` e diretorio
+  `language-related/dotnet/` como deprecated; tabela "Skills para .NET"
+  recebe aviso de depreciacao; tabela "Skills para Go" reflete a
+  delegacao via orquestradores; secao Contribuindo ganha o principio
+  formal de escopo + regra #8 ("Generalize, ou pertence ao projeto").
+
+### Why this release matters
+
+Skills orfas (sem incentivo nos orquestradores) viram codigo morto
+silencioso: ocupam espaco no install, complicam descoberta, mas
+raramente sao acionadas. A auditoria desta release decidiu o destino
+de cada uma das 24 skills "complementares" do toolkit:
+
+- 13 ACTIVE (ja integradas — sem mudanca)
+- 9 incentivadas via orquestradores (3 gates SDD + 6 go-* via
+  execute-task/review-task)
+- 4 mantidas standalone (`bugfix`, `advisor`, `image-generation`,
+  `apply-insights` — uso por trigger manual cobre o caso)
+- 9 deprecated (8 dotnet-* + create-use-case)
+- 1 removida (`create-report`)
+
 ## [3.11.0] - 2026-05-19
 
 Enforcement runtime do protocolo pre-flight constitution-conflict

@@ -3,6 +3,11 @@ name: dotnet-create-project
 description: |
   Cria novo projeto .NET 10 com arquitetura hexagonal, CQRS, Clean Code e SOLID.
   Triggers: "criar projeto dotnet", "new dotnet project", "novo projeto .NET".
+deprecated: true
+deprecated_since: "3.12.0"
+remove_in: "4.0.0"
+deprecated_reason: "Stack .NET descontinuada pelo mantenedor. Skill sem substituto no toolkit global."
+replacement: null
 allowed-tools:
   - Read
   - Write

@@ -5,6 +5,11 @@ description: |
   Use quando precisar criar novos projetos, módulos ou camadas seguindo os padrões arquiteturais.
   Triggers: "criar projeto dotnet", "nova feature", "hexagonal", "arquitetura",
   "criar módulo", "estrutura de projeto".
+deprecated: true
+deprecated_since: "3.12.0"
+remove_in: "4.0.0"
+deprecated_reason: "Stack .NET descontinuada pelo mantenedor. Skill sem substituto no toolkit global."
+replacement: null
 allowed-tools:
   - Read
   - Write

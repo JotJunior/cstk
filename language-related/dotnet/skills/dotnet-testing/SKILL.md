@@ -5,6 +5,11 @@ description: |
   Usa xUnit, NSubstitute, FluentAssertions e padrão Triple A (Arrange, Act, Assert).
   Triggers: "criar teste", "testar", "unit test", "teste unitário",
   "teste de integração", "coverage".
+deprecated: true
+deprecated_since: "3.12.0"
+remove_in: "4.0.0"
+deprecated_reason: "Stack .NET descontinuada pelo mantenedor. Skill sem substituto no toolkit global."
+replacement: null
 allowed-tools:
   - Read
   - Write

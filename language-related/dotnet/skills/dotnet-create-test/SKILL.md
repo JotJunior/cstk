@@ -3,6 +3,11 @@ name: dotnet-create-test
 description: |
   Cria testes unitarios e de integracao .NET 10 seguindo padrao Triple A (Arrange, Act, Assert) com xUnit, NSubstitute e FluentAssertions.
   Triggers: "criar teste", "novo teste", "create test", "unit test", "teste de integracao".
+deprecated: true
+deprecated_since: "3.12.0"
+remove_in: "4.0.0"
+deprecated_reason: "Stack .NET descontinuada pelo mantenedor. Skill sem substituto no toolkit global."
+replacement: null
 allowed-tools:
   - Read
   - Write

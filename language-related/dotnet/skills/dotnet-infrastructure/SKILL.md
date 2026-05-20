@@ -5,6 +5,11 @@ description: |
   Use para configurar banco de dados, mensageria, comunicação entre serviços e credenciais.
   Triggers: "configurar banco", "postgresql", "rabbitmq", "grpc",
   "etcd", "docker", "infraestrutura".
+deprecated: true
+deprecated_since: "3.12.0"
+remove_in: "4.0.0"
+deprecated_reason: "Stack .NET descontinuada pelo mantenedor. Skill sem substituto no toolkit global."
+replacement: null
 allowed-tools:
   - Read
   - Write

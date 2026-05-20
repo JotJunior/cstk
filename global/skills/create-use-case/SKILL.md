@@ -7,6 +7,11 @@ description: |
   "use case", "criar documentacao de requisitos", "novo UC". NAO use para
   feature spec SDD (use specify) — UC e formato classico; specify e formato
   SDD com user stories e success criteria.
+deprecated: true
+deprecated_since: "3.12.0"
+remove_in: "4.0.0"
+deprecated_reason: "Substituida pela skill `specify` (formato SDD com user stories, success criteria e integracao com o pipeline orquestrado pelo agente-00c). UC classico nao tem mais espaco no fluxo atual."
+replacement: "specify"
 argument-hint: "[descricao da funcionalidade ou caminho para documento base]"
 allowed-tools:
   - Read

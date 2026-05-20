@@ -30,7 +30,7 @@ para tarefas de documentação, desenvolvimento, segurança e qualidade de códi
 │       ├── clarify/
 │       ├── constitution/
 │       ├── create-tasks/
-│       ├── create-use-case/
+│       ├── create-use-case/    # ⚠ deprecated v3.12.0 — usar `specify`
 │       ├── execute-task/
 │       ├── image-generation/
 │       ├── initialize-docs/
@@ -46,8 +46,8 @@ para tarefas de documentação, desenvolvimento, segurança e qualidade de códi
 │   │   ├── skills/             # Skills para projetos Go
 │   │   ├── hooks/              # Hooks de validação para Go
 │   │   └── settings.json       # Configuração de hooks
-│   └── dotnet/                 # .NET
-│       └── skills/             # Skills para projetos .NET
+│   └── dotnet/                 # .NET (⚠ deprecated v3.12.0 — remoção em v4.0.0)
+│       └── skills/             # 8 skills .NET marcadas como deprecated
 ```
 
 ### Anatomia de uma skill
@@ -99,7 +99,7 @@ Skills independentes que podem ser usados em qualquer momento:
 |-------|---------|-----------|
 | **advisor** | "me aconselhe", "analise estratégica" | Conselheiro brutalmente honesto que disseca raciocínio e gera planos de ação |
 | **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
-| **create-use-case** | "criar caso de uso", "gerar UC" | Gera documentação de caso de uso com template de 15 seções e diagramas Mermaid |
+| ~~**create-use-case**~~ ⚠ | "criar caso de uso", "gerar UC" | **Deprecated v3.12.0** — usar `specify` (formato SDD). Remoção planejada para v4.0.0 |
 | **image-generation** | Ao gerar imagens | Aprimora prompts de geração de imagens usando estrutura Subject-Context-Style |
 | **initialize-docs** | "inicializar docs", "setup documentação" | Cria hierarquia padrão de documentação com 9 níveis |
 | **apply-insights** | "aplicar insights", "aplicar playbook", "melhorar claude.md" | Analisa o projeto e aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows. Renomeada de `insights` na 2.0.0 para evitar colisão com o `/insights` nativo do Claude Code (que tem função diferente — analisa suas sessões) |
@@ -311,13 +311,16 @@ Skills em `language-related/go/skills/` para projetos Go:
 | Skill | Trigger | Descrição |
 |-------|---------|-----------|
 | **commit** | "commit", "commitar" | Commits com conventional commits, suporte a submodules e mudanças multi-serviço |
-| **create-report** | "criar relatório", "novo relatório" | Implementa novo tipo de relatório end-to-end em 4 serviços |
-| **go-add-entity** | — | Adiciona uma nova entidade ao serviço |
-| **go-add-migration** | — | Cria nova migration SQL |
-| **go-add-test** | — | Gera testes para código Go |
-| **go-add-consumer** | — | Adiciona consumer de mensagens (RabbitMQ) |
+| **go-add-entity** | "criar entidade", "novo agregado" | Adiciona CRUD vertical slice completo (domain, DTO, repo, service, handler, migration, wiring) |
+| **go-add-migration** | "nova migration", "criar tabela" | Cria nova migration SQL com naming/numeração corretos |
+| **go-add-test** | "adicionar testes", "cobertura" | Gera testes para handler/service seguindo convenções do projeto |
+| **go-add-consumer** | "novo consumer", "subscribe evento" | Adiciona consumer de mensagens RabbitMQ |
 | **go-review-pr** | "review pr", "quality gate" | Quality gate pré-PR, diff-aware, com revisão em 8 etapas |
-| **go-review-service** | — | Revisa qualidade de um serviço Go |
+| **go-review-service** | "review service", "auditar serviço" | Audita microserviço Go contra todas as convenções do projeto |
+
+Estas skills agora são acionadas automaticamente pelos orchestrators
+quando o stack detectado for Go — ver seção 4.2.1 de `execute-task` e
+"Atalhos de auditoria por stack" em `review-task`.
 
 ### Hooks para Go
 
@@ -330,20 +333,26 @@ Hooks em `language-related/go/hooks/` para validações automáticas:
 | **check-schema-prefix.sh** | Valida prefixo de schema nas migrations |
 | **check-route-order.sh** | Verifica ordenação de rotas no router |
 
-## Skills para .NET
+## Skills para .NET (⚠ Deprecated em v3.12.0)
 
-Skills em `language-related/dotnet/skills/` para projetos .NET:
+> **Aviso de depreciação:** todas as 8 skills `dotnet-*` foram marcadas
+> como `deprecated: true` na v3.12.0 e serão **removidas em v4.0.0**.
+> Motivo: stack .NET descontinuada pelo mantenedor. Não há substituto
+> no toolkit global. Se você ainda usa .NET, copie as skills relevantes
+> para `<projeto>/.claude/skills/` antes da remoção.
+
+Skills em `language-related/dotnet/skills/`:
 
 | Skill | Descrição |
 |-------|-----------|
-| **dotnet-create-entity** | Cria entidade com mapeamento EF Core |
-| **dotnet-create-feature** | Gera feature completa (handler, validator, etc.) |
-| **dotnet-create-project** | Scaffolding de novo projeto .NET |
-| **dotnet-create-test** | Gera testes unitários e de integração |
-| **dotnet-hexagonal-architecture** | Aplica arquitetura hexagonal |
-| **dotnet-infrastructure** | Configura infraestrutura (DB, cache, messaging) |
-| **dotnet-review-code** | Revisa qualidade de código .NET |
-| **dotnet-testing** | Estratégias e padrões de teste |
+| ~~**dotnet-create-entity**~~ | Cria entidade com mapeamento EF Core |
+| ~~**dotnet-create-feature**~~ | Gera feature completa (handler, validator, etc.) |
+| ~~**dotnet-create-project**~~ | Scaffolding de novo projeto .NET |
+| ~~**dotnet-create-test**~~ | Gera testes unitários e de integração |
+| ~~**dotnet-hexagonal-architecture**~~ | Aplica arquitetura hexagonal |
+| ~~**dotnet-infrastructure**~~ | Configura infraestrutura (DB, cache, messaging) |
+| ~~**dotnet-review-code**~~ | Revisa qualidade de código .NET |
+| ~~**dotnet-testing**~~ | Estratégias e padrões de teste |
 
 <!-- --8<-- [start:install-section] -->
 ## Instalação
@@ -558,6 +567,26 @@ docs/
 
 Contribuições são bem-vindas. Para adicionar novos skills ou hooks:
 
+> **Princípio fundamental — escopo do toolkit global (v3.12.0+):**
+>
+> Skills publicadas em `global/skills/` ou `language-related/<stack>/skills/`
+> deste toolkit **NÃO devem nomear clientes, empresas ou projetos
+> específicos**. Hardcoded em uma skill global: nomes de serviços de
+> um produto específico, exchanges/queues internas, paths ETCD de um
+> cliente, vocabulário de domínio proprietário, branding em templates
+> de output.
+>
+> Skills com forte acoplamento a um projeto pertencem ao próprio
+> projeto, em `<projeto>/.claude/skills/<nome>/` — ali elas ficam ao
+> lado do código que documentam, versionam com o projeto e não poluem
+> o toolkit reutilizável.
+>
+> Caso histórico: `create-report` foi removida em v3.12.0 porque
+> codificava `gob-report-service`, exchange `gob.reports`, vocabulário
+> maçônico (lodge, federal, state_orient) e cabeçalho fixo "Grande
+> Oriente do Brasil" no PDF — material que pertence ao projeto GOB,
+> não ao toolkit.
+
 1. Siga a estrutura de pasta de uma skill existente (ver [Anatomia de uma skill](#anatomia-de-uma-skill))
 2. Crie um `SKILL.md` como ponto de entrada — mantenha enxuto e use subpastas para conteúdo pesado
 3. **description**: escreva como trigger condition, não resumo — "Use quando X, Y ou Z. Também quando mencionar A, B, C. NÃO use quando W."
@@ -565,7 +594,8 @@ Contribuições são bem-vindas. Para adicionar novos skills ou hooks:
 5. **Templates/examples/references**: extraia conteúdo que o modelo consulta sob demanda
 6. **Scripts**: prefira POSIX sh para operações determinísticas (next-id, validação, scaffold)
 7. **config.json**: use para parâmetros que variam entre projetos
-8. Teste com o Claude Code antes de submeter
+8. **Generalize**: se a skill referencia algo de um projeto específico, refatore para parâmetros — se não der, ela pertence ao `<projeto>/.claude/skills/`, não a este toolkit
+9. Teste com o Claude Code antes de submeter
 
 ## Versionamento
 

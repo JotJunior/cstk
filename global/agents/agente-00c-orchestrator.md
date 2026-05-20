@@ -356,6 +356,11 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    para `/review-task` identificar etapas marcadas completas sem
    invocacao formal da skill).
 
+   Para gates de qualidade complementares apos as etapas `specify`,
+   `plan` e `create-tasks` (validate-documentation, owasp-security,
+   validate-docs-rendered), ver secao **5.f Quality Gates
+   complementares**.
+
    ### 5.e Padrao de dois atores (clarify)
 
    Em `clarify`, aplique o **padrao de dois atores** (FASE 4):
@@ -439,6 +444,64 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
       tratado em FASE 7.
 
    g. Etapa clarify completa: prossiga para o item 6.
+
+   ### 5.f Quality Gates complementares (pos-artefato, nao-bloqueantes)
+
+   Apos `detect-completion` confirmar artefato de uma das etapas abaixo,
+   invoque a skill-gate correspondente como auditoria de qualidade. Os
+   gates produzem RELATORIOS e FINDINGS — eles nao bloqueiam a pipeline
+   por padrao, mas findings de severidade `critical`/`high` DEVEM virar
+   Decisao informativa (e, conforme criterio do orquestrador, podem
+   escalar para BloqueioHumano).
+
+   Cada invocacao registra `state-ondas.sh record-skill` para que
+   `/review-task` e `/review-features` consigam medir cobertura de gates.
+
+   | Apos etapa | Gate | Skill | Foco | Decisao apos findings |
+   |------------|------|-------|------|-----------------------|
+   | `specify` | doc-quality | `validate-documentation` | spec.md estruturada, sem TBD, sem ambiguidades obvias | findings `critical` -> BloqueioHumano; demais -> Decisao informativa |
+   | `plan` | doc-quality | `validate-documentation` | plan.md + research.md + data-model.md coerentes | findings `critical` -> BloqueioHumano; demais -> Decisao informativa |
+   | `plan` | security | `owasp-security` | superficie de ataque OWASP/ASVS na arquitetura proposta | findings `critical`/`high` -> BloqueioHumano obrigatorio (constitution exige seguranca como principio MUST) |
+   | `create-tasks` | docs-render | `validate-docs-rendered` | Mermaid parseavel, links internos, frontmatter, code blocks com linguagem | findings `critical` (link 404, Mermaid invalido) -> Decisao + tentativa de Edit; demais -> Decisao informativa |
+
+   Sequencia padrao por gate:
+
+   ```bash
+   # 1. Invocar skill via tool Skill (passar paths/feature-dir como arg)
+   # Exemplo apos specify:
+   #   Skill(skill="validate-documentation", args="<FD>/spec.md")
+
+   # 2. Capturar saida da skill (relatorio + findings JSON ou MD)
+
+   # 3. Registrar invocacao
+   state-ondas.sh record-skill --state-dir <SD> \
+     --skill validate-documentation --decisao-id <dec-NNN-do-gate>
+
+   # 4. Para cada finding critico, registrar Decisao
+   state-decisions.sh register --state-dir <SD> \
+     --agente "orquestrador-00c" --etapa "<atual>" \
+     --contexto "Gate <NOME> reportou: <resumo do finding>" \
+     --opcoes '["aceitar-risco-com-justificativa","corrigir-agora","escalar-para-humano"]' \
+     --escolha "<escolha>" --justificativa "<...>" --score <0|2|3>
+
+   # 5. Se escolha = "escalar-para-humano", emitir BloqueioHumano
+   ```
+
+   **Opt-out auditavel:** o orquestrador PODE pular um gate (ex: feature
+   trivial sem superficie de seguranca exige pular `owasp-security`),
+   mas DEVE registrar Decisao explicita justificando o skip:
+
+   ```bash
+   state-decisions.sh register --state-dir <SD> \
+     --agente "orquestrador-00c" --etapa "plan" \
+     --contexto "Skip do gate owasp-security: feature e pure-text doc, sem endpoint/dados/auth" \
+     --opcoes '["rodar-gate","skip-com-justificativa"]' \
+     --escolha "skip-com-justificativa" \
+     --justificativa "<...>" --score 3
+   ```
+
+   `/review-task` audita skips: feature com >2 gates skipados sem
+   justificativa solida vira finding `quality-gate-bypass`.
 
 6. **Detectar conclusao da etapa**:
    `pipeline.sh detect-completion --feature-dir <FD> --stage <STAGE>

@@ -3,6 +3,11 @@ name: dotnet-review-code
 description: |
   Review de codigo .NET 10 analisando Clean Code, SOLID, seguranca e performance.
   Triggers: "review code", "revisar codigo", "code review", "analise de codigo".
+deprecated: true
+deprecated_since: "3.12.0"
+remove_in: "4.0.0"
+deprecated_reason: "Stack .NET descontinuada pelo mantenedor. Skill sem substituto no toolkit global."
+replacement: null
 allowed-tools:
   - Read
   - Write
