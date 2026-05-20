@@ -3,6 +3,8 @@
 [![Latest Release](https://img.shields.io/github/v/release/JotJunior/claude-ai-tips?label=latest%20release&color=blue)](https://github.com/JotJunior/claude-ai-tips/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](#licença)
 [![SemVer](https://img.shields.io/badge/SemVer-3.x-orange.svg)](./CHANGELOG.md)
+[![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/claude--ai--tips-blue?logo=readthedocs)](https://jotjunior.github.io/claude-ai-tips/)
+[![Publish Site](https://github.com/JotJunior/claude-ai-tips/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/claude-ai-tips/actions/workflows/publish-site.yml)
 
 Conjunto de ferramentas para aumentar a produtividade no desenvolvimento do dia a dia com
 o [Claude Code](https://claude.ai/code).
@@ -343,6 +345,7 @@ Skills em `language-related/dotnet/skills/` para projetos .NET:
 | **dotnet-review-code** | Revisa qualidade de código .NET |
 | **dotnet-testing** | Estratégias e padrões de teste |
 
+<!-- --8<-- [start:install-section] -->
 ## Instalação
 
 ### Via cstk CLI (recomendado)
@@ -450,6 +453,21 @@ seu-projeto/
 
 - [`cli/README.md`](./cli/README.md) — visão técnica, convenções, processo de release
 - [`docs/specs/cstk-cli/`](./docs/specs/cstk-cli/) — spec, plan, contracts, quickstart
+<!-- --8<-- [end:install-section] -->
+
+<!-- --8<-- [start:profiles-section] -->
+### Perfis de instalação (resumo)
+
+| Perfil | Conteúdo | Uso típico |
+|--------|----------|------------|
+| `sdd` | 10 skills do pipeline Spec-Driven Development (briefing → review-task) | Instalação global default |
+| `complementary` | 9 skills independentes (advisor, bugfix, owasp-security, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 35 skills (sdd + complementary + language-*) | Instalação completa |
+| `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
+| `language-dotnet` | Skills específicos para .NET | Apenas em projetos .NET |
+
+Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --help`.
+<!-- --8<-- [end:profiles-section] -->
 
 ## Sessões paralelas (`cstk session`)
 

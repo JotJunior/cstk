@@ -1,0 +1,115 @@
+# Workflow: Build e publicacao do site MkDocs em GitHub Pages.
+#
+# Spec-Driven Development: refere-se a `docs/specs/github-pages-cstk-manual/`
+# (spec.md FR-007/FR-008/FR-009/FR-022, plan §1.5, tasks FASE 6).
+#
+# Comportamento (resolve gap CHK038):
+#   * push em `main` (ou dispatch manual): roda `build` + `deploy` → site publicado.
+#   * pull_request: roda APENAS `build` (com `--strict`, link check) → quality gate sem deploy.
+#   * concurrency: deploys serializados por `ref`; `cancel-in-progress: false`
+#     para nao interromper deploy em andamento (idempotencia FR-008).
+#
+# Permissoes minimas (principio do menor privilegio):
+#   - contents: read         (checkout)
+#   - pages: write           (deploy-pages)
+#   - id-token: write        (OIDC para deploy-pages@v4)
+#
+# Nota sobre globs em `paths`: usamos `**` (recursivo) intencionalmente para
+# capturar arquivos auxiliares dentro dos diretorios de skills (ex: templates,
+# scripts). Isto difere do glob `*` usado em `gen_pages.py` (que enumera
+# apenas SKILL.md de primeiro nivel). Ver tasks.md §2.6 (CHK028).
+
+name: publish-site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'global/skills/**'
+      - 'language-related/**'
+      - 'global/agents/**'
+      - 'global/commands/**'
+      - 'docs-site/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'cli/README.md'
+      - '.github/workflows/publish-site.yml'
+  pull_request:
+    paths:
+      - 'global/skills/**'
+      - 'language-related/**'
+      - 'global/agents/**'
+      - 'global/commands/**'
+      - 'docs-site/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'cli/README.md'
+      - '.github/workflows/publish-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (mkdocs --strict)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # historico completo (necessario para git-revision-date plugins futuros)
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-docs.txt
+
+      - name: Build MkDocs site (strict mode + link check)
+        # --strict: trata warnings como erros, incluindo broken links internos.
+        # SC-009: build falha se houver link quebrado entre paginas.
+        # NO_MKDOCS_2_WARNING: silencia warning de 12 linhas do mkdocs-material
+        # sobre MkDocs 2.0 (ruido, ja conhecido — ver mkdocs.yml comentarios).
+        env:
+          NO_MKDOCS_2_WARNING: "1"
+        run: mkdocs build --strict
+
+      - name: Upload Pages artifact
+        # So produz artifact em push/dispatch — em PR o build serve como quality gate.
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    # Gating: deploy roda APENAS em push para main ou workflow_dispatch.
+    # PR roda build-only (linha de defesa contra deploy acidental por fork/branch).
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
