@@ -299,6 +299,39 @@ Antes de implementar, verifique:
 - Trace tipos, enums e contratos em TODOS os modulos afetados antes de implementar
 - Grep por referencias residuais apos qualquer rename/refactor
 
+### 4.2.1 Atalhos por stack (delegacao para skills especializadas)
+
+Antes de implementar manualmente, verifique se existe skill especializada
+para o tipo de mudanca no stack detectado. Skills especializadas conhecem
+convencoes do projeto (layout de pastas, naming, wiring, factory, migrations)
+e evitam re-derivar padroes a cada tarefa.
+
+**Stack Go (detectar via `go.mod`):**
+
+| Tipo de tarefa | Skill | Quando invocar |
+|----------------|-------|----------------|
+| Novo CRUD vertical slice (domain + DTO + repo + service + handler + migration + wiring) | `go-add-entity` | Tarefa pede "criar entidade X", "novo recurso REST", "novo agregado" |
+| Novo consumer RabbitMQ | `go-add-consumer` | Tarefa pede "consumir evento Y", "novo consumer", "subscribe topico" |
+| Nova migration PostgreSQL | `go-add-migration` | Tarefa pede "criar tabela", "alterar schema", "nova migration" |
+| Testes unitarios/integracao para handler/service | `go-add-test` | Tarefa pede "adicionar testes para X", "cobertura de Y" |
+
+Invoque via tool Skill antes de comecar a editar arquivos:
+
+```
+Skill(skill="go-add-entity", args="<nome-da-entidade> <servico-alvo>")
+```
+
+A skill cuida do scaffold completo. Depois disso, voce ajusta os pontos
+especificos da tarefa (regras de negocio, validacoes, etc.) — nao re-cria
+a estrutura.
+
+**Stack .NET:** as skills `dotnet-*` foram marcadas como `deprecated: true`
+em v3.12.0 (remocao em v4.0.0) — implementacao manual seguindo convencoes
+do projeto e o caminho atual.
+
+**Outros stacks:** sem skills especializadas; siga implementacao manual
+guiada pelos principios desta secao 4.2.
+
 ### 4.3 Checklist da Implementacao
 
 - [ ] Segui padroes existentes do projeto
@@ -315,7 +348,7 @@ Antes de implementar, verifique:
 
 ```bash
 # Executar testes existentes
-npm test / composer test / pytest / dotnet test
+npm test / composer test / pytest / go test ./... / dotnet test
 
 # Verificar se novos testes sao necessarios
 # Criar testes para codigo novo
@@ -325,6 +358,10 @@ npm test / composer test / pytest / dotnet test
 - [ ] Testes existentes passam
 - [ ] Novos testes foram criados (se necessario)
 - [ ] Cobertura adequada para codigo novo
+
+**Atalho Go:** para gerar esqueleto de testes seguindo convencoes
+do projeto, invoque `Skill(skill="go-add-test", args="<arquivo|pacote>")`
+em vez de escrever do zero.
 
 ### 5.2 Para Projetos de Documentacao
 
