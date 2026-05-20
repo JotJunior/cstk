@@ -1,0 +1,169 @@
+---
+description: |
+  Retoma execucao feature-00c pausada por bloqueio humano (com
+  --resposta-bloqueio) ou apos schedule entre ondas. Le o estado,
+  valida hash de integridade (FR-014 + FR-PRE-004), aplica resposta a
+  bloqueios pendentes (se aplicavel) e delega proxima onda ao agente
+  custom agente-00c-feature-orchestrator.
+argument-hint: "<short-name> [--resposta-bloqueio <texto>]"
+allowed-tools:
+  - Agent
+  - Read
+  - Write
+  - Bash
+  - ScheduleWakeup
+---
+
+# /feature-00c-resume
+
+Voce vai retomar uma execucao pausada do feature-00c conforme contrato
+em `docs/specs/feature-00c/contracts/cli-invocation.md`.
+
+## Argumentos recebidos
+
+```
+$ARGUMENTS
+```
+
+## Comportamento esperado
+
+### 1. Parse de argumentos
+
+```
+short_name           = primeiro argumento posicional (OBRIGATORIO, kebab-case)
+--resposta-bloqueio  = string OBRIGATORIA se status = aguardando_humano
+--projeto PATH       = default = cwd (caso operador esteja em diretorio diferente)
+```
+
+### 2. Localizar state dir
+
+```
+_proj=$(realpath "$PROJETO")
+AGENTE_00C_STATE_DIR="$_proj/.claude/feature-00c-state/$SHORT"
+export AGENTE_00C_STATE_DIR
+
+if [ ! -d "$AGENTE_00C_STATE_DIR" ]; then
+  stderr "feature-00c-state nao existe para '$SHORT' em $_proj"
+  stderr "Verifique o short-name ou invoque /feature-00c novamente"
+  exit 6
+fi
+
+if [ ! -f "$AGENTE_00C_STATE_DIR/state.json" ]; then
+  stderr "state.json ausente em $AGENTE_00C_STATE_DIR"
+  exit 6
+fi
+```
+
+### 3. Fluxo TOCTOU-safe (ordem CRITICA — research.md Decision 5)
+
+```
+1. checar lock — se ocupado (PID vivo), abortar
+   if state-lock.sh check --state-dir "$AGENTE_00C_STATE_DIR"; then
+     stderr "outra sessao ativa para $SHORT"
+     exit 3
+   fi
+
+2. adquirir lock
+   state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" || {
+     stderr "falha ao adquirir lock"; exit 3;
+   }
+
+3. validar hash state.json contra .sha256 (FR-014)
+   state-rw.sh sha256-verify --state-dir "$AGENTE_00C_STATE_DIR" || {
+     # divergencia = bloqueio humano por tampering (gera relatorio parcial)
+     bloqueios.sh register --state-dir "$AGENTE_00C_STATE_DIR" \
+       --pergunta "state.json modificado externamente entre ondas — re-validar ou abortar?" \
+       --contexto-para-resposta "Hash gravado em .sha256 nao bate com hash atual."
+     report.sh emit --flavor feature-00c --short-name "$SHORT" \
+       --state-dir "$AGENTE_00C_STATE_DIR" --parcial
+     state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"
+     stderr "Hash de state.json divergente. Relatorio parcial atualizado."
+     exit 4
+   }
+
+4. validar hash briefing.sha256 + constitution.sha256 (FR-PRE-004)
+   _result=$(feature-00c-preflight.sh check --state-dir "$AGENTE_00C_STATE_DIR")
+   _exit=$?
+   if [ "$_exit" = "1" ]; then
+     # MAJOR drift = bloqueio compulsorio; MINOR/PATCH = warn
+     # feature-00c-preflight.sh ja distingue na saida JSON
+     _has_major=$(printf '%s' "$_result" | jq -r '.findings[] | select(.severity=="error") | .kind' | head -1)
+     if [ -n "$_has_major" ]; then
+       bloqueios.sh register --state-dir "$AGENTE_00C_STATE_DIR" \
+         --pergunta "briefing/constitution alterados entre ondas — re-validar ou abortar?" \
+         --contexto-para-resposta "$_result"
+       report.sh emit --flavor feature-00c --short-name "$SHORT" \
+         --state-dir "$AGENTE_00C_STATE_DIR" --parcial
+       state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"
+       stderr "Divergencia em briefing/constitution. Relatorio parcial atualizado."
+       exit 4
+     fi
+   fi
+
+5. ler status do state
+   _status=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.execucao.status')
+
+6. se status == aguardando_humano:
+   - se --resposta-bloqueio NAO fornecido, listar bloqueios pendentes e exit 5
+   - senao: bloqueios.sh respond --state-dir "$AGENTE_00C_STATE_DIR" \
+       --block-id <auto> --resposta "$RESPOSTA"
+     - registrar Decisao resultante via state-decisions.sh register
+     - mudar status para em_andamento
+
+7. delegar ao orquestrador
+   Agent {
+     subagent_type: "agente-00c-feature-orchestrator",
+     prompt: <contexto com short_name, state_dir, projeto, instrucao "continue de proxima_instrucao">
+   }
+```
+
+### 4. Pos-orquestrador: capturar Schedule intent (idem `/feature-00c`)
+
+Se `Schedule intent: delaySeconds=N; reason=...; prompt="/feature-00c-resume $SHORT"`:
+```
+ScheduleWakeup(
+  delaySeconds: <N>,
+  reason: <reason>,
+  prompt: "/feature-00c-resume $SHORT"
+)
+```
+
+Se `Schedule intent: none`, NAO invocar ScheduleWakeup.
+
+### 5. Cleanup
+
+- `state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"` SEMPRE.
+- `git commit -m "feature-00c resume: $SHORT (onda N)"` apos artefatos
+  atualizados.
+
+## Exit codes
+
+| Exit | Significado |
+|------|-------------|
+| 0 | Retomada com sucesso |
+| 3 | Lock ocupado |
+| 4 | Hash divergente (state/briefing/constitution) — bloqueio humano gerado |
+| 5 | Bloqueio pendente sem --resposta-bloqueio |
+| 6 | state.json inexistente ou corrompido |
+
+## Listar bloqueios pendentes (exit 5)
+
+```
+bloqueios.sh list --state-dir "$AGENTE_00C_STATE_DIR" --status aguardando | jq -r '.[] | "\(.id): \(.pergunta)\n  contexto: \(.contexto)"' >&2
+stderr ""
+stderr "Para responder, re-invoque:"
+stderr "  /feature-00c-resume $SHORT --resposta-bloqueio \"<sua resposta>\""
+exit 5
+```
+
+## Anti-padroes
+
+- **NAO pular** a validacao de hash (passo 3) — TOCTOU window e onde
+  tampering escapa.
+- **NAO validar** hash ANTES de adquirir lock — outra sessao pode
+  estar escrevendo state.json.
+- **NAO chamar** ScheduleWakeup se a onda terminou em bloqueio_humano,
+  aborto ou concluido.
+- **NAO assumir** que --resposta-bloqueio aplica a TODOS os bloqueios
+  pendentes — opera no primeiro `aguardando` em ordem cronologica;
+  multiplos bloqueios exigem re-invocacoes sucessivas.

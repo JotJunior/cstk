@@ -242,6 +242,52 @@ _sf_cmd_check() {
   exit 1
 }
 
+# _sf_cmd_for_backup
+#   Le state.json em stdin, aplica filtros (incluindo passo 5 se --env-file),
+#   computa SHA-256 do conteudo filtrado e emite envelope JSON em stdout:
+#     {wave_number, captured_at, state_sha256_self, state_snapshot}
+#   Hash e calculado SOBRE O CONTEUDO FILTRADO (state_snapshot), nao sobre
+#   o state original. Implementa FR-029 §extensao + FR-034 (Decision 6).
+_sf_cmd_for_backup() {
+  _env=""
+  _ig=""
+  _wave=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --env-file)     _env=$2;  shift 2 ;;
+      --ignore-file)  _ig=$2;   shift 2 ;;
+      --wave-number)  _wave=$2; shift 2 ;;
+      *) _sf_die_usage "for-backup: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_wave" ] || _sf_die_usage "for-backup: --wave-number obrigatorio"
+  # Validar que wave-number e inteiro nao-negativo
+  case "$_wave" in
+    ''|*[!0-9]*) _sf_die_usage "for-backup: --wave-number invalido: $_wave (esperado inteiro >=0)" ;;
+  esac
+
+  _filt=$(mktemp)
+  _sf_apply_filters "$_env" "$_ig" > "$_filt"
+  # Hash do conteudo filtrado
+  _sha=$(sha256sum < "$_filt" | awk '{print $1}')
+  _ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  # Construir envelope JSON. state_snapshot e o JSON filtrado (parseado
+  # como objeto, nao como string). jq --slurpfile carrega como array;
+  # acessa primeiro elemento.
+  if ! jq -n \
+       --argjson wave "$_wave" \
+       --arg ts "$_ts" \
+       --arg sha "$_sha" \
+       --slurpfile state "$_filt" \
+       '{wave_number: $wave, captured_at: $ts, state_sha256_self: $sha, state_snapshot: ($state[0] // null)}' 2>/dev/null; then
+    rm -f -- "$_filt"
+    printf '%s: falha ao montar envelope JSON (state.json invalido?)\n' "$_SF_NAME" >&2
+    exit 1
+  fi
+  rm -f -- "$_filt"
+}
+
 # ---------- Dispatch ----------
 
 if [ "$#" -lt 1 ]; then
@@ -271,6 +317,7 @@ shift
 case "$_SF_SUBCMD" in
   scrub)           _sf_cmd_scrub "$@" ;;
   check)           _sf_cmd_check "$@" ;;
+  for-backup)      _sf_cmd_for_backup "$@" ;;
   -h|--help|help)  exit 0 ;;
   *) _sf_die_usage "subcomando desconhecido: $_SF_SUBCMD" ;;
 esac
