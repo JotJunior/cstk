@@ -157,9 +157,22 @@ Cinco campos obrigatorios + 4 auxiliares.
 | `score_justificativa` | int (0..3) | condicional | obrigatorio para clarify-answerer |
 | `referencias` | array<string> | condicional | `>= 1` quando justifica cita briefing/constitution/spec |
 | `artefato_originador` | string (path) | nao | quando aplicavel |
+| `kind` | enum | nao | tipo da Decisao para auditoria por `/review-task`. Valores: `clarify-answer`, `phase-transition`, `gate-finding`, `gate_skipped`, `human-block-resolved`, `manual-abort`. Default = `clarify-answer` quando ausente |
 
 Decisao com qualquer dos 5 obrigatorios faltando = violacao de
 Principio I (auditabilidade) e bloqueio.
+
+**Valores de `kind` adicionados pela §"Quality Gates complementares"
+do agente-00c-feature-orchestrator** (alinhamento com PR #6 do
+toolkit):
+- `gate-finding`: Decisao registrando finding `critical`/`high` de um
+  gate (`validate-documentation`, `owasp-security`,
+  `validate-docs-rendered`). Escolha tipica: `aceitar-risco-com-justificativa`,
+  `corrigir-agora`, `escalar-para-humano`.
+- `gate_skipped`: Decisao registrando skip auditavel de um gate
+  (escolha = `skip-com-justificativa`). `/review-task` audita
+  features com >2 skips sem justificativa solida como
+  `quality-gate-bypass`.
 
 ---
 

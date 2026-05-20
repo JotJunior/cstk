@@ -62,11 +62,21 @@ Se confirmado, execute em sequencia (cada item dispara o prompt nativo):
 | 5 | tool Skill — `create-tasks` | idem |
 | 6 | tool Skill — `execute-task` | idem |
 | 7 | tool Skill — `review-task` | idem |
-| 8 | tool Agent — `agente-00c-feature-orchestrator` | spawn com prompt `"warm-up: responda READY"` |
-| 9 | tool Agent — `feature-00c-clarify-asker` | idem |
-| 10 | tool Agent — `feature-00c-clarify-answerer` | idem |
-| 11 | tool ScheduleWakeup | `delaySeconds: 60` + `prompt: "warm-up no-op"` |
-| 12 | tool Bash — `state-rw.sh --help` | dispara permissao Bash |
+| 8 | tool Skill — `validate-documentation` (Quality Gate) | invocar com `--help` ou prompt minimo "responda OK" |
+| 9 | tool Skill — `validate-docs-rendered` (Quality Gate) | idem |
+| 10 | tool Skill — `owasp-security` (Quality Gate) | idem |
+| 11 | tool Agent — `agente-00c-feature-orchestrator` | spawn com prompt `"warm-up: responda READY"` |
+| 12 | tool Agent — `feature-00c-clarify-asker` | idem |
+| 13 | tool Agent — `feature-00c-clarify-answerer` | idem |
+| 14 | tool ScheduleWakeup | `delaySeconds: 60` + `prompt: "warm-up no-op"` |
+| 15 | tool Bash — `state-rw.sh --help` | dispara permissao Bash |
+
+> **Quality Gates (items 8-10)**: skills incentivadas pelo PR #6 do
+> toolkit (v3.12.0), portadas para feature-00c via §"Quality Gates
+> complementares" do `agente-00c-feature-orchestrator.md`. Cobrem
+> doc-quality apos specify+plan, security (OWASP) apos plan, e
+> docs-render apos create-tasks. Sem warm-up, primeira invocacao trava
+> aguardando permissao.
 
 Se o operador NAO confirmar, abortar com exit 0 + mensagem instrutiva.
 

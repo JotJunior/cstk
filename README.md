@@ -290,6 +290,29 @@ Detalhamento completo (briefing, constitution, spec com 31 FRs, plan,
 research, threat-model, contracts, quickstart) em
 [`docs/specs/agente-00c/`](./docs/specs/agente-00c/).
 
+### Feature-00C — Variante de escopo de feature individual
+
+A partir de v3.13.0, o toolkit oferece `/feature-00c` como variante do
+agente-00c focada em **uma feature** dentro de projeto que JA possui
+`briefing.md` + `docs/constitution.md` ratificados. Pipeline reduzida:
+`specify → clarify → plan → checklist → create-tasks → execute-task →
+review-task` (sem briefing/constitution/review-features, que sao
+pre-requisitos validados em FR-PRE-001..004).
+
+| Comando | Quando usar |
+|---------|-------------|
+| `/feature-00c "<descricao>" [<short-name>]` | Adicionar feature nova em projeto existente |
+| `/feature-00c-resume <short-name> [--resposta-bloqueio "..."]` | Retomar apos pausa ou schedule |
+| `/feature-00c-abort <short-name> [--purge-backups]` | Aborto manual (SIGTERM + grace period 60s) |
+
+Co-existencia com `/agente-00c`: namespaces isolados
+(`agente-00c-state/` vs `feature-00c-state/<short_name>/`). Features
+paralelas no mesmo projeto sao permitidas; concorrencia com agente-00c
+ativo e bloqueada (FR-026). Reuso integral do runtime POSIX
+compartilhado (`agente-00c-runtime`). Detalhamento em
+[`docs/specs/feature-00c/`](./docs/specs/feature-00c/) (37 FRs, 14
+SCs, 11 cenarios de validacao + roundtrip empirico de secrets).
+
 ## Insights de Uso
 
 A skill `apply-insights` aplica insights de uso ao projeto. Ela lê de

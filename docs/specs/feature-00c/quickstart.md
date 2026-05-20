@@ -293,6 +293,53 @@ contrato real (filtro + hash) sobre um payload realista, nao um mock.
 
 ---
 
+## Cenario 12 — Quality Gate de seguranca dispara BloqueioHumano (§5.f port)
+
+**Pre-condicoes**:
+- Execucao em andamento que acabou de gerar `plan.md`
+- Plan descreve arquitetura com endpoint HTTP autenticado por API key
+  em URL queryparam (anti-pattern OWASP)
+- 3 skills-gate (`validate-documentation`, `validate-docs-rendered`,
+  `owasp-security`) pre-aprovadas no warm-up
+
+**Passos**:
+
+1. Orquestrador conclui fase `plan` (skill `plan` retorna plan.md valido)
+2. Orquestrador entra na §"Quality Gates complementares" (posicao
+   apos passo 7 do Loop, antes do passo 8 backup)
+3. Invoca `Skill(skill="owasp-security", args="<feature-dir>/plan.md")`
+4. owasp-security retorna finding `severity: high` ("API key em URL
+   queryparam — log/proxy exposure")
+5. Orquestrador detecta `severity in [critical, high]` E `gate=security`
+6. Bloqueio humano OBRIGATORIO (constitution exige seguranca como MUST)
+7. `bloqueios.sh register` com pergunta + contexto do finding
+8. `state-decisions.sh register` com `kind=gate-finding`,
+   `agente=agente-00c-feature-orchestrator`,
+   `escolha=escalar-para-humano`
+9. Backup da onda gerado (filtrado), report parcial emitido
+10. Status: `aguardando_humano`; Schedule intent: none
+
+**Expected**:
+- Bloqueio in `state.json.bloqueios_humanos[]` com `status=aguardando`
+- Relatorio parcial Secao 4 (Bloqueios Humanos) lista o blq
+- Operador resolve via `/feature-00c-resume <short> --resposta-bloqueio "..."`
+- Resposta gera nova Decisao referenciando o blq + alteracao no plan.md
+  (corrigir-agora) OU aborto graceful (escalar=abortar)
+
+**Variantes**:
+- 12a: severity=`critical` em `validate-documentation` apos specify
+  (spec com TBD em FR critico) → BloqueioHumano (mesmo fluxo)
+- 12b: severity=`high` em `validate-docs-rendered` apos create-tasks
+  (Mermaid invalido) → NAO obrigatorio (apenas Decisao + tentativa de
+  Edit automatico)
+- 12c: feature trivial sem superficie de seguranca, orquestrador opta
+  por skip do gate `owasp-security` apos plan → registrar Decisao com
+  `kind=gate_skipped`, `escolha=skip-com-justificativa`, score 3.
+  `/review-task` audita: features com >2 skips sem justificativa
+  solida viram finding `quality-gate-bypass`.
+
+---
+
 ## Resumo dos cenarios
 
 | # | Foco | Story | FRs cobertos | SC verificado |
@@ -308,3 +355,4 @@ contrato real (filtro + hash) sobre um payload realista, nao um mock.
 | 9 | Loop trigger | US4 | FR-022 | SC-004 |
 | 10 | **Roundtrip secrets** | seguranca | FR-029, FR-034 | privacy gap |
 | 11 | Constitution drift | edge case | FR-PRE-004 | SC-PRE-002 |
+| 12 | **Quality Gate security** | §5.f port | FR-024, owasp-security | gate-finding flow |

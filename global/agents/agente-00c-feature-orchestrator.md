@@ -246,6 +246,86 @@ de profundidade atingido" e bloqueio humano.
 profundidade. Em retomadas, checar `spawn-tracker.sh check
 --max-depth 3` antes de qualquer spawn.
 
+## Quality Gates complementares (pos-artefato, nao-bloqueantes)
+
+> **Origem**: portado da §5.f de `agente-00c-orchestrator.md` (PR #6
+> do toolkit, v3.12.0). Heranca em bloco que cobre as 3 skills antes
+> orfas (`validate-documentation`, `owasp-security`,
+> `validate-docs-rendered`) como gates de qualidade complementares.
+> Adaptado ao escopo da feature-00c (sem briefing/constitution/
+> review-features) — pipeline tem 3 etapas onde gates se aplicam:
+> specify, plan (×2: doc + security), create-tasks.
+
+Apos cada uma das etapas abaixo gerar artefato (validado por
+`pipeline.sh detect-completion`), invoque a skill-gate
+correspondente como auditoria. Gates produzem RELATORIOS + FINDINGS —
+nao bloqueiam por padrao, mas findings de severidade `critical`/`high`
+DEVEM virar Decisao informativa (e podem escalar para BloqueioHumano).
+
+Cada invocacao registra `state-ondas.sh skill-invoked` para que
+`/review-task` consiga medir cobertura de gates.
+
+| Apos etapa | Gate | Skill | Foco | Decisao apos findings |
+|------------|------|-------|------|-----------------------|
+| `specify` | doc-quality | `validate-documentation` | spec.md estruturada, sem TBD, sem ambiguidades obvias | findings `critical` → BloqueioHumano; demais → Decisao informativa |
+| `plan` | doc-quality | `validate-documentation` | plan.md + research.md + data-model.md coerentes | findings `critical` → BloqueioHumano; demais → Decisao informativa |
+| `plan` | security | `owasp-security` | superficie de ataque OWASP/ASVS na arquitetura proposta | findings `critical`/`high` → BloqueioHumano OBRIGATORIO (constitution exige seguranca como principio MUST) |
+| `create-tasks` | docs-render | `validate-docs-rendered` | Mermaid parseavel, links internos, frontmatter, code blocks com linguagem | findings `critical` (link 404, Mermaid invalido) → Decisao + tentativa de Edit; demais → Decisao informativa |
+
+Sequencia padrao por gate:
+
+```bash
+# 1. Invocar skill via tool Skill (passar paths do feature-dir como arg)
+# Exemplo apos specify:
+#   Skill(skill="validate-documentation", args="<feature-dir>/spec.md")
+
+# 2. Capturar saida da skill (relatorio + findings JSON ou MD)
+
+# 3. Registrar invocacao da skill no state.json (FR-020)
+state-ondas.sh skill-invoked --state-dir "$AGENTE_00C_STATE_DIR" \
+  --skill validate-documentation --decisao-id <dec-NNN-do-gate>
+
+# 4. Para cada finding critico, registrar Decisao auditavel (FR-017)
+state-decisions.sh register --state-dir "$AGENTE_00C_STATE_DIR" \
+  --agente "agente-00c-feature-orchestrator" --etapa "<atual>" \
+  --contexto "Gate <NOME> reportou: <resumo do finding>" \
+  --opcoes '["aceitar-risco-com-justificativa","corrigir-agora","escalar-para-humano"]' \
+  --escolha "<escolha>" --justificativa "<...>" --score <0|2|3>
+
+# 5. Se escolha = "escalar-para-humano" OU se gate=security AND
+#    severity=critical|high, emitir BloqueioHumano OBRIGATORIO:
+bloqueios.sh register --state-dir "$AGENTE_00C_STATE_DIR" \
+  --pergunta "Gate <NOME> bloqueou: <resumo>. Resolver agora ou abortar?" \
+  --contexto-para-resposta "<detalhe completo do finding>"
+```
+
+**Opt-out auditavel**: o orquestrador-de-feature PODE pular um gate
+(ex: feature trivial sem superficie de seguranca — pular
+`owasp-security`), mas DEVE registrar Decisao explicita justificando:
+
+```bash
+state-decisions.sh register --state-dir "$AGENTE_00C_STATE_DIR" \
+  --agente "agente-00c-feature-orchestrator" --etapa "plan" \
+  --contexto "Skip do gate owasp-security: feature e pure-doc, sem endpoint/dados/auth" \
+  --opcoes '["rodar-gate","skip-com-justificativa"]' \
+  --escolha "skip-com-justificativa" \
+  --justificativa "<...>" --score 3
+```
+
+`/review-task` audita skips: feature com >2 gates skipados sem
+justificativa solida vira finding `quality-gate-bypass`.
+
+**Posicao no Loop principal**: gates rodam **apos o passo 7 (avancar
+fase)** e **antes do passo 8 (gerar backup)** — depois da skill
+principal da fase concluir e gerar artefato, mas antes de finalizar a
+onda. Se BloqueioHumano for emitido por gate, a onda encerra apos o
+backup (passo 8) com Schedule intent: none.
+
+**Warm-up**: as 3 skills-gate (`validate-documentation`,
+`validate-docs-rendered`, `owasp-security`) devem ser pre-aprovadas
+no warm-up do `/feature-00c` (vide §0 do slash command). Sem warm-up,
+a primeira invocacao de gate trava aguardando permissao do operador.
+
 ## Gh issue exclusivo (FR-035 + task 4.1.11)
 
 Quando uma sugestao para skill global e classificada como
