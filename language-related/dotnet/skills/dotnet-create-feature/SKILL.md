@@ -3,6 +3,11 @@ name: dotnet-create-feature
 description: |
   Cria nova feature .NET 10 seguindo padrao CQRS com Command, Query, Handler e Validator.
   Triggers: "criar feature", "nova feature", "create feature", "novo command", "nova query".
+deprecated: true
+deprecated_since: "3.12.0"
+remove_in: "4.0.0"
+deprecated_reason: "Stack .NET descontinuada pelo mantenedor. Skill sem substituto no toolkit global."
+replacement: null
 allowed-tools:
   - Read
   - Write

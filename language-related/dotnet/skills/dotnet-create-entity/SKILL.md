@@ -3,6 +3,11 @@ name: dotnet-create-entity
 description: |
   Cria entidade de dominio .NET 10 seguindo DDD com Value Objects, eventos de dominio e configuracao EF Core.
   Triggers: "criar entidade", "nova entidade", "create entity", "novo agregado".
+deprecated: true
+deprecated_since: "3.12.0"
+remove_in: "4.0.0"
+deprecated_reason: "Stack .NET descontinuada pelo mantenedor. Skill sem substituto no toolkit global."
+replacement: null
 allowed-tools:
   - Read
   - Write
