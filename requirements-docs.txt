@@ -1,0 +1,27 @@
+# requirements-docs.txt
+# Dependencias Python para o site GitHub Pages (docs-site/) — feature github-pages-cstk-manual.
+#
+# Pinning policy (decidida em onda-008, decisao auditada em state.json):
+#   - Lower bound: versao MINIMA testada e funcional para o build determinista.
+#   - Upper bound: bloqueio em proximo MAJOR (semver), permitindo minor/patch automaticos.
+#   - Bump policy:
+#       * minor/patch: PR automatico (renovate/dependabot pode propor; merge livre apos CI verde).
+#       * MAJOR: evaluation event obrigatorio (revisao manual + smoke local + atualizacao dos
+#         pins abaixo). NUNCA fazer bump major em commit comum.
+#
+# Resolve TODO(MKDOCS_VERSION_PIN) do Sync Impact Report (constitution-delta CHK024).
+# Ref: FR-021 da spec, plan §1.2.
+
+# mkdocs-ng: fork drop-in de mkdocs 1.x mantido por @shenxianpeng. Substitui
+# `mkdocs` (upstream mkdocs/mkdocs sem manutencao desde meados de 2025; ver
+# https://github.com/mkdocs/mkdocs/discussions/4010). CLI continua sendo
+# `mkdocs build`. Sem upper-bound enquanto fork esta ativo e sem releases major.
+mkdocs-ng>=1.6.0
+mkdocs-material>=9.5.0,<10.0.0
+mkdocs-awesome-pages-plugin>=2.9.0,<3.0.0
+# mkdocs-gen-files: limitado a 0.5.x intencionalmente. A versao 0.6.0+ declara
+# `properdocs>=1.6.5` como dependencia transitiva, e ProperDocs (fork de mkdocs
+# de origem questionavel) registra um plugin entrypoint que injeta marketing
+# verbose no build de todo projeto. 0.5.x nao tem essa dependencia.
+mkdocs-gen-files>=0.5.0,<0.6.0
+pymdown-extensions>=10.7.0,<11.0.0

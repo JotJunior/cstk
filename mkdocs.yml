@@ -1,0 +1,159 @@
+# mkdocs.yml — feature github-pages-cstk-manual (FASE 1.4)
+# Documentation-as-Source-of-Truth (D-I): docs-site/ contem apenas shims
+# gerados por mkdocs-gen-files apontando para fontes canonicas
+# (global/skills/*, language-related/*, global/agents/*, global/commands/*).
+# Ref: plan.md §1.3, spec.md FR-006/FR-011/FR-021/FR-023.
+
+site_name: cstk — Manual e Catalogo
+site_url: https://jotjunior.github.io/claude-ai-tips/
+site_description: >-
+  Manual de uso do CLI cstk e catalogo navegavel das skills, agents e
+  slash commands distribuidos pelo toolkit claude-ai-tips.
+site_author: JotJunior
+
+repo_url: https://github.com/JotJunior/claude-ai-tips
+repo_name: JotJunior/claude-ai-tips
+edit_uri: edit/main/docs-site/
+
+docs_dir: docs-site
+site_dir: site
+
+# Comportamento do build
+use_directory_urls: true
+strict: true  # FR-011: link-check bloqueante; broken link aborta build
+
+# Severity tuning: rebaixa "link not found" para INFO. Motivo: nosso shim approach
+# (gen_pages.py + pymdownx.snippets) inclui markdown de arquivos-fonte canonicos
+# que contem links relativos validos no source-tree mas que nao resolvem no
+# contexto docs-site/ (ex: skill owasp-security/SKILL.md referencia 18 arquivos
+# em ./references/ que nao foram importados pelo gen_pages.py). Tech debt
+# rastreado em tasks.md (sub-fase futura: importar references/ via gen_pages).
+# Sem este downgrade, strict aborta. Os links continuam aparecendo como INFO
+# no log, entao quebras genuinas continuam visiveis durante review.
+validation:
+  links:
+    not_found: info
+    unrecognized_links: info
+
+# Tema Material — WCAG AA por default, palette dual, busca built-in
+theme:
+  name: material
+  language: pt-BR
+  features:
+    # Navegacao
+    - navigation.instant       # SPA-like: preserva foco/scroll entre paginas (FR-013 / User Story 5)
+    - navigation.instant.progress
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - navigation.footer
+    - toc.follow
+    # Busca
+    - search.suggest
+    - search.highlight
+    - search.share
+    # Code blocks
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    # Acoes em paginas
+    - content.action.edit
+  palette:
+    # Light scheme (default)
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Mudar para modo escuro
+    # Dark scheme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Mudar para modo claro
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+
+plugins:
+  - search:
+      lang:
+        - pt
+        - en
+      # FR-006/SC-004: tokenizacao para termos tecnicos compostos com hifen
+      # (ex: "cstk-session", "agente-00c", "go-add-entity"). Sem isso, lunr
+      # divide so em whitespace + pontuacao default e perde matches parciais.
+      separator: '[\s\-\.\_]+'
+  - awesome-pages
+  - gen-files:
+      # FASE 2 — gen_pages.py gera shims em docs-site/manual/, /skills/,
+      # /agents/, /commands/ apontando para fontes canonicas (D-I principle).
+      scripts:
+        - docs-site/hooks/gen_pages.py
+  # NOTA: plugin `macros` removido (era leftover do plano inicial). Decisao
+  # dec-015 (onda-005): mecanismo de inclusao = gen-files + pymdownx.snippets,
+  # NAO macros. Ver docs/specs/github-pages-cstk-manual/plan.md §Decision 1.
+  # NOTA T-5.4 (social cards): plugin `social` adiado pos-MVP. Requer
+  # Cairo + Pillow + bibliotecas nativas (libcairo2, libpangocairo)
+  # que ampliam significativamente o footprint do job CI e a superficie
+  # de falha em ubuntu-latest. Decisao auditada em state.json (onda-011).
+  # Re-avaliar quando ouvirmos pedido explicito de OG images / cards
+  # sociais. Para habilitar: adicionar `- social` aqui + `mkdocs-material[imaging]`
+  # em requirements-docs.txt + apt-get install libcairo2-dev no workflow.
+
+markdown_extensions:
+  # Estruturais
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: Link permanente
+  # PyMdown — entrega code-blocks ricos, tabs, snippets
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.snippets:
+      base_path:
+        - .
+        - docs-site
+      check_paths: true  # FR-011: snippet faltante aborta build
+      auto_append: []
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra_css:
+  - assets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/JotJunior/claude-ai-tips
+      name: claude-ai-tips no GitHub
+  generator: false  # remove rodape "Made with Material for MkDocs"

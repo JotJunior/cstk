@@ -1,0 +1,151 @@
+/* docs-site/assets/extra.css
+ *
+ * Customizacoes visuais do site cstk Manual e Catalogo.
+ *
+ * Escopo MVP (FASE 5 — onda 011):
+ *   1. Badges de criticidade [C]/[A]/[M] (catalogos de skills/agents)
+ *   2. Cards na landing (index.md) — grid de entrada por persona/role
+ *   3. Code-block polish minimo (espacamento + altura de linha)
+ *   4. Anchor offset para navigation.instant nao esconder heading sob tab bar
+ *
+ * Customizacoes maiores (logo, tipografia custom, cores tematicas
+ * proprias) ficam pos-MVP. Por enquanto, o restante do estilo vem do
+ * tema Material default + palette indigo (configurada em mkdocs.yml).
+ *
+ * Variaveis CSS do Material disponiveis (uso pontual abaixo):
+ *   --md-primary-fg-color, --md-accent-fg-color
+ *   --md-default-bg-color, --md-default-fg-color
+ *   --md-code-bg-color, --md-code-fg-color
+ *   --md-typeset-a-color
+ */
+
+/* ---------- 1. Badges de criticidade ---------- */
+/* Uso: <span class="badge badge-c">C</span> Critico
+ *      <span class="badge badge-a">A</span> Alto
+ *      <span class="badge badge-m">M</span> Medio
+ *
+ * Tambem reconhecido em texto-corrente via attr_list:
+ *   [C]{.badge .badge-c} no markdown.
+ */
+.badge {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0.05em 0.5em;
+  margin: 0 0.15em;
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  border-radius: 0.35em;
+  vertical-align: baseline;
+  letter-spacing: 0.02em;
+}
+
+.badge-c {
+  /* Critico — vermelho saturado (acessivel em ambos os temas) */
+  background-color: #d32f2f;
+  color: #ffffff;
+}
+
+.badge-a {
+  /* Alto — laranja */
+  background-color: #f57c00;
+  color: #ffffff;
+}
+
+.badge-m {
+  /* Medio — azul */
+  background-color: #1976d2;
+  color: #ffffff;
+}
+
+/* No tema dark, leve ajuste de luminosidade para contraste AA */
+[data-md-color-scheme="slate"] .badge-c { background-color: #ef5350; }
+[data-md-color-scheme="slate"] .badge-a { background-color: #ffa726; }
+[data-md-color-scheme="slate"] .badge-m { background-color: #42a5f5; }
+
+/* ---------- 2. Cards na landing ---------- */
+/* Uso (em index.md, ja com hide:[navigation,toc]):
+ *
+ * <div class="cards-grid">
+ *   <a class="card" href="manual/instalacao/">
+ *     <h3>Instalacao</h3>
+ *     <p>Como instalar o cstk em <1 min.</p>
+ *   </a>
+ *   ...
+ * </div>
+ *
+ * Grid responsivo: 1 col mobile, 2 col tablet, 3 col desktop.
+ */
+.cards-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+@media (min-width: 600px) {
+  .cards-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (min-width: 960px) {
+  .cards-grid { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+.card {
+  display: block;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.07));
+  border-radius: 0.5rem;
+  background: var(--md-default-bg-color);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:hover,
+.card:focus-visible {
+  border-color: var(--md-accent-fg-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  text-decoration: none;
+}
+
+.card h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.05rem;
+  color: var(--md-primary-fg-color);
+}
+
+.card p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--md-default-fg-color--light, rgba(0, 0, 0, 0.7));
+}
+
+/* ---------- 3. Code-block polish ---------- */
+/* Material ja entrega code-blocks excelentes; minimos ajustes. */
+.md-typeset pre > code {
+  line-height: 1.55;
+}
+
+/* ---------- 4. Anchor scroll offset (navigation.instant) ---------- */
+/* Com navigation.instant + sticky header, headings ficam parcialmente
+ * escondidos sob a tab bar quando navegacao via #anchor. scroll-margin-top
+ * resolve sem afetar layout estatico.
+ */
+.md-typeset :is(h1, h2, h3, h4, h5, h6) {
+  scroll-margin-top: 5rem;
+}
+
+/* ---------- 5. Focus visible (acessibilidade) ---------- */
+/* Garante ring visivel em navegacao por teclado (User Story 5).
+ * Material default ja cobre, mas reforco aqui para customizacoes acima
+ * (cards, badges) nao quebrarem o foco.
+ */
+.card:focus-visible,
+.md-typeset a:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 2px;
+}

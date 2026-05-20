@@ -13,3 +13,14 @@ tmp/
 tests/cstk/fixtures/releases/**/*.tar.gz
 tests/cstk/fixtures/releases/**/*.sha256
 tests/cstk/fixtures/releases/**/install.sh
+
+# MkDocs build output (docs-site/) — feature github-pages-cstk-manual
+site/
+site-smoke/
+docs-site/site/
+.cache/
+.venv-docs/
+
+# Python bytecode (gerado pelos hooks do mkdocs-gen-files)
+__pycache__/
+*.pyc
