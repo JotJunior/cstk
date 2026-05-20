@@ -7,6 +7,95 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.13.0] - 2026-05-20
+
+Feature-00C — variante do agente-00C focada em **uma feature
+individual** dentro de projeto que JA tem `briefing.md` +
+`docs/constitution.md` ratificados. Reusa integralmente o runtime
+POSIX do agente-00c via parametrizacao retrocompativel (zero
+mudancas em comportamento do `/agente-00c`). Bump MINOR — nenhuma
+breaking change.
+
+### Added
+
+- **3 slash commands**: `/feature-00c "<descricao>" [<short-name>]`
+  (invocacao), `/feature-00c-resume <short-name>` (retomada com hash
+  validation TOCTOU-safe), `/feature-00c-abort <short-name>` (aborto
+  manual com SIGTERM + grace period 60s).
+- **3 agentes custom**: `agente-00c-feature-orchestrator` (pipeline
+  7-fases: specify → clarify → plan → checklist → create-tasks →
+  execute-task → review-task), `feature-00c-clarify-asker`,
+  `feature-00c-clarify-answerer` (algoritmo de score 0..3 identico
+  ao 00c, mas 3a fonte = spec_corrente em vez de stack_sugerida).
+- **Pre-flight `feature-00c-preflight.sh`** (FR-010A): valida hashes
+  briefing + constitution registrados em state.json contra arquivos
+  em disco; distingue MAJOR drift (bloqueio compulsorio) de
+  MINOR/PATCH (aviso opcional). Output JSON estruturado.
+- **Filtro de secrets estendido** (FR-029 §extensao + FR-036):
+  `secrets-filter.sh for-backup` gera backups por onda com hash
+  auto-registrado (`state_sha256_self`) sobre conteudo filtrado;
+  `_log.sh` aplica filtro em stderr/stdout via helper sourceable
+  com fallback `[NO-FILTER]` graceful.
+- **§Quality Gates complementares** no
+  `agente-00c-feature-orchestrator.md` (alinhamento com PR #6 /
+  v3.12.0): integra `validate-documentation` (apos specify+plan),
+  `owasp-security` (apos plan, findings critical/high =
+  BloqueioHumano OBRIGATORIO) e `validate-docs-rendered` (apos
+  create-tasks) como gates pos-artefato auditaveis.
+- **`gate-finding` e `gate_skipped`** como `kind` validos de Decisao
+  (`data-model.md` §Decisao). `/review-task` audita features com
+  >2 skips sem justificativa como `quality-gate-bypass`.
+- **Helper sourceable `_state-dir.sh`**: resolve diretorio de
+  estado via precedencia `--state-dir arg > AGENTE_00C_STATE_DIR
+  env > erro`. Inclui `_sd_flavor_to_report_name` para nomes
+  canonicos por flavor (agente-00c | feature-00c).
+- **Roundtrip empirico de secrets** documentado em
+  `docs/specs/feature-00c/validation-runs/roundtrip-secrets-2026-05-20.md`
+  — 7 checks PASSED empiricamente (contrato de privacidade da
+  feature-00c validado).
+
+### Changed
+
+- **README.md**: nova subsecao "Feature-00C — Variante de escopo de
+  feature individual" sob a secao Agente-00C, documentando os 3
+  comandos novos + coexistencia com agente-00c.
+- **`global/skills/agente-00c-runtime/SKILL.md`**: description
+  atualizada mencionando os DOIS orquestradores que consomem o
+  runtime; 3 secoes novas + 4 Gotchas cobrindo as adicoes.
+- **21 scripts POSIX do agente-00c-runtime**: refactor de
+  parametrizacao confirmado como majoritariamente DESNECESSARIO
+  (auditoria empirica em
+  `global/skills/agente-00c-runtime/scripts/_audit-paths.md`:
+  18/21 ja aceitavam `--state-dir` desde v1.0).
+
+### Tests
+
+- **+33 cenarios POSIX** na suite global (de 651 → 672 PASS):
+  - `tests/test_state-dir-parametrization.sh` (12 cenarios)
+  - `tests/test_feature-00c-preflight.sh` (7 cenarios)
+  - `tests/test_secrets-filter-backup.sh` (8 cenarios)
+  - `tests/test_runtime-log-redaction.sh` (6 cenarios)
+- **Template de cenarios manuais** em
+  `docs/specs/feature-00c/validation-runs/quickstart-2026-05-20.md`
+  (12 cenarios incluindo roundtrip empirico + gate-finding).
+
+### Backward compatibility
+
+- Zero breaking changes. `/agente-00c` continua funcionando
+  bit-a-bit identico.
+- Refactor de runtime e 100% retrocompativel — comportamento
+  default preservado sem env var.
+- Suite POSIX completa: 672 PASS / 0 FAIL / 0 ERROR / ~140s.
+
+### Detalhamento
+
+[`docs/specs/feature-00c/`](./docs/specs/feature-00c/): 37 FRs, 14
+SCs, 11 user stories, plan + research (7 Decisions Phase 0), data-
+model (8 entidades), 2 contracts (cli-invocation + report-format),
+2 checklists (requirements 35 items, security 40 items), quickstart
+(12 cenarios), validation-runs (coverage + quickstart-template +
+roundtrip empirico).
+
 ## [3.12.0] - 2026-05-20
 
 Auditoria estrategica de skills "complementares" do toolkit. Skills sem

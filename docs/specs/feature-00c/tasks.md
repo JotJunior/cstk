@@ -385,21 +385,21 @@ Sincronizar artefatos do toolkit com a nova feature e fechar com CHANGELOG.
 
 Ref: constitution v1.1.0 §III "Formato Canonico de Skill".
 
-- [ ] 6.1.1 Atualizar `global/skills/agente-00c-runtime/SKILL.md` §Gotchas com (a) parametrizacao AGENTE_00C_STATE_DIR, (b) wrapper `_log.sh` para filtro de stderr, (c) modo `--for-backup` do secrets-filter
-- [ ] 6.1.2 Atualizar `global/skills/agente-00c-runtime/SKILL.md` §descricao mencionando que runtime serve tanto `/agente-00c` quanto `/feature-00c`
-- [ ] 6.1.3 Sync de notas em `agente-00c-orchestrator.md` e `feature-00c-feature-orchestrator.md` apontando heranca de runtime
-- [ ] 6.1.4 Atualizar `README.md` do toolkit (se mencionar agente-00c) para citar feature-00c como variante de escopo menor
+- [x] 6.1.1 Atualizar `global/skills/agente-00c-runtime/SKILL.md` §Gotchas com (a) parametrizacao AGENTE_00C_STATE_DIR, (b) wrapper `_log.sh` para filtro de stderr, (c) modo `--for-backup` do secrets-filter <!-- commit d1799a6 (FASE 1+2 docs) entregou 4 Gotchas novos -->
+- [x] 6.1.2 Atualizar `global/skills/agente-00c-runtime/SKILL.md` §descricao mencionando que runtime serve tanto `/agente-00c` quanto `/feature-00c` <!-- description expandida mencionando os 6 slash commands + helpers -->
+- [x] 6.1.3 Sync de notas em `agente-00c-orchestrator.md` e `feature-00c-feature-orchestrator.md` apontando heranca de runtime <!-- feature-orchestrator §Primitivas operacionais ja referencia; bloco "Origem: portado da §5.f" em §Quality Gates explicita heranca do PR #6 -->
+- [x] 6.1.4 Atualizar `README.md` do toolkit (se mencionar agente-00c) para citar feature-00c como variante de escopo menor <!-- subsecao "Feature-00C — Variante de escopo de feature individual" adicionada apos secao agente-00c -->`
 
 ### 6.2 CHANGELOG + release [M]
 
 Ref: constitution v1.1.0 §"Quality Standards" §"Versionamento SemVer com CHANGELOG".
 
-- [ ] 6.2.1 Adicionar entrada em `CHANGELOG.md` com bump MINOR (nova feature retrocompativel): `feat(feature-00c): orquestrador autonomo de feature individual (vX.Y.0)`
-- [ ] 6.2.2 Listar artefatos novos (6 arquivos + 1 script + extensoes a 21 scripts) na entrada
-- [ ] 6.2.3 Listar breaking changes (zero — refactor retrocompativel)
-- [ ] 6.2.4 Mencionar comandos novos: `/feature-00c`, `/feature-00c-resume`, `/feature-00c-abort`
-- [ ] 6.2.5 Linkar `docs/specs/feature-00c/` para detalhes
-- [ ] 6.2.6 Tag git: `git tag vX.Y.0` apos merge
+- [x] 6.2.1 Adicionar entrada em `CHANGELOG.md` com bump MINOR (nova feature retrocompativel): `feat(feature-00c): orquestrador autonomo de feature individual (vX.Y.0)` <!-- v3.13.0 inserido entre [Unreleased] e [3.12.0] -->
+- [x] 6.2.2 Listar artefatos novos (6 arquivos + 1 script + extensoes a 21 scripts) na entrada <!-- secoes Added/Changed/Tests cobrem 3 commands + 3 agents + preflight + helpers + 33 testes -->
+- [x] 6.2.3 Listar breaking changes (zero — refactor retrocompativel) <!-- secao "Backward compatibility" explicita -->
+- [x] 6.2.4 Mencionar comandos novos: `/feature-00c`, `/feature-00c-resume`, `/feature-00c-abort` <!-- listados em §Added -->
+- [x] 6.2.5 Linkar `docs/specs/feature-00c/` para detalhes <!-- secao "Detalhamento" no fim da entrada -->
+- [ ] 6.2.6 Tag git: `git tag vX.Y.0` apos merge <!-- pendente: aguarda push da branch + merge em main -->`
 
 ### 6.3 Portar Quality Gates §5.f para feature-00c-feature-orchestrator [A]
 
@@ -421,16 +421,36 @@ Ref: PR #6 (v3.12.0) do toolkit, secao 5.f adicionada em
 > FR-029. Subtask emergente identificada na analise de conflito do
 > PR #6 vs branch partial-orchestration.
 
-- [ ] 6.3.1 Aguardar merge do PR #6 (v3.12.0) em `main` para ter §5.f como base estavel
-- [ ] 6.3.2 Adicionar secao "5.f Quality Gates complementares (pos-artefato)" ao `global/agents/agente-00c-feature-orchestrator.md`, alinhada com a do `agente-00c-orchestrator.md` mas adaptada ao escopo de feature:
-  - apos `specify` → `validate-documentation` em `<projeto>/docs/specs/<short>/spec.md`
-  - apos `plan` → `validate-documentation` em `plan.md` + `owasp-security` na arquitetura proposta
-  - apos `create-tasks` → `validate-docs-rendered` em `<projeto>/docs/specs/<short>/`
-- [ ] 6.3.3 Garantir que findings `critical`/`high` do `owasp-security` apos `plan` viram `bloqueios.sh register` obrigatorio (consistente com PR #6 §5.f)
-- [ ] 6.3.4 Adicionar warm-up das 3 skills-gate no `/feature-00c.md` (tabela §0 Warm-up): `validate-documentation`, `validate-docs-rendered`, `owasp-security`
-- [ ] 6.3.5 Documentar opt-out auditavel (Decisao explicita para skip de gate) — mesmo mecanismo do PR #6
-- [ ] 6.3.6 Adicionar cenario manual no `quickstart.md`: forcar finding `critical` no `owasp-security` apos plan e verificar que BloqueioHumano e emitido (FR-024 + §5.f)
-- [ ] 6.3.7 Atualizar `data-model.md` §Decisao incluindo `gate_skipped` como `kind` valido para Decisao do tipo "skip auditavel"
+- [x] 6.3.1 Aguardar merge do PR #6 (v3.12.0) em `main` para ter §5.f como base estavel <!-- PR #6 mergido (commit a4fe41c), branch rebasada via stash+ff+pop limpo -->
+- [x] 6.3.2 Adicionar secao "5.f Quality Gates complementares (pos-artefato)" ao `global/agents/agente-00c-feature-orchestrator.md`, alinhada com a do `agente-00c-orchestrator.md` mas adaptada ao escopo de feature <!-- secao "Quality Gates complementares" adicionada entre §Subagent depth e §Gh issue, com tabela de 4 gates -->
+- [x] 6.3.3 Garantir que findings `critical`/`high` do `owasp-security` apos `plan` viram `bloqueios.sh register` obrigatorio (consistente com PR #6 §5.f) <!-- documentado na tabela "Decisao apos findings" e no passo 5 do snippet bash com regra explicita -->
+- [x] 6.3.4 Adicionar warm-up das 3 skills-gate no `/feature-00c.md` (tabela §0 Warm-up): `validate-documentation`, `validate-docs-rendered`, `owasp-security` <!-- tabela §0 expandida de 12 para 15 itens + nota explicativa -->
+- [x] 6.3.5 Documentar opt-out auditavel (Decisao explicita para skip de gate) — mesmo mecanismo do PR #6 <!-- secao "Opt-out auditavel" com snippet bash + regra /review-task audita >2 skips -->
+- [x] 6.3.6 Adicionar cenario manual no `quickstart.md`: forcar finding `critical` no `owasp-security` apos plan e verificar que BloqueioHumano e emitido (FR-024 + §5.f) <!-- Cenario 12 + variantes 12a/12b/12c adicionado entre Cenario 11 e Resumo -->
+- [x] 6.3.7 Atualizar `data-model.md` §Decisao incluindo `gate_skipped` como `kind` valido para Decisao do tipo "skip auditavel" <!-- campo `kind` (enum) adicionado com 6 valores incluindo gate-finding e gate_skipped + bloco explicativo -->
+
+### Sumario da FASE 6 (post-execucao 2026-05-20)
+
+**Status**: 16/17 subtasks `[x]`; 1 pendente (6.2.6 git tag — aguarda push + merge).
+
+**Artefatos modificados (7)**:
+- `CHANGELOG.md` — entrada v3.13.0 entre Unreleased e v3.12.0
+- `README.md` — subsecao "Feature-00C" apos secao agente-00c
+- `global/skills/agente-00c-runtime/SKILL.md` — description expandida + Gotchas
+- `global/agents/agente-00c-feature-orchestrator.md` — §"Quality Gates complementares" portada do PR #6 §5.f
+- `global/commands/feature-00c.md` — warm-up expandido (12 → 15 itens)
+- `docs/specs/feature-00c/data-model.md` — §Decisao com campo `kind`
+- `docs/specs/feature-00c/quickstart.md` — Cenario 12 + variantes
+
+**Validacao**: suite POSIX 672 PASS / 0 FAIL / 0 ERROR (modificacoes
+sao apenas em .md de instrucao — nao acionam testes POSIX).
+
+**Pendente operacional** (nao-bloqueante, fora do escopo desta fase):
+- Push da branch para origin
+- Merge em main
+- `git tag v3.13.0` apos merge
+- Operador executa 5 cenarios E2E manuais da FASE 5.2 + Cenario 12
+  preenchendo template `quickstart-2026-05-20.md` apos cstk install
 
 ---
 
