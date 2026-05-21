@@ -2,7 +2,7 @@
 
 **Feature**: `model-selector`
 **Created**: 2026-05-21
-**Status**: Draft
+**Status**: Clarified
 
 > **Contexto**: este toolkit (claude-ai-tips) hospeda orquestradores autonomos
 > (agente-00c e feature-00c) que gastam contexto e custo em CADA chamada de
@@ -17,6 +17,53 @@
 > trocar para um modelo mais barato (Haiku, Sonnet) sem perda mensuravel de
 > qualidade. Decisao da troca permanece humana/orquestrador — a feature
 > nunca troca silenciosamente o modelo.
+
+---
+
+## Clarifications
+
+### Session 2026-05-21
+
+- Q: O MVP entrega o catalogo de sinais (FR-004) populado com quantos
+  sinais minimos por faixa, e em qual arquivo exato? → A: **15 sinais
+  minimos no MVP — 5 por faixa** (rasa/media/profunda) em
+  `references/sinais.md` (markdown com colunas: termo, faixa, peso=1).
+  Operadores extendem localmente via FR-004. Justifica SC-001 (80% de
+  acerto em 10 amostras) sem inflar volume; constitution Principio V
+  favorece profundidade > volume. Decisao auditavel: `dec-004`.
+- Q: A sugestao usa rotulo abstrato (haiku/sonnet/opus) ou versao
+  concreta (claude-haiku-4-5)? → A: **Rotulo abstrato** —
+  `haiku`|`sonnet`|`opus`|`manter-atual` conforme FR-002 ja redigido.
+  Skill nunca cita versao especifica; mapeamento harness->versao e
+  responsabilidade do harness (documentado como gotcha em SKILL.md).
+  Versao concreta violaria Principio V (adocao > profundidade) e
+  exigiria update da skill a cada release Anthropic. Decisao
+  auditavel: `dec-005`.
+- Q: Score 3 da SugestaoDeModelo (FR-002b) e atingivel pela heuristica
+  deterministica? Se sim, o que conta como evidencia? Se nao, qual o
+  teto pratico? → A: **Teto pratico = 2 na heuristica auto-invocada.**
+  Score 3 reservado para evolucao futura quando a skill puder citar
+  evidencia empirica externa (ex: media historica de aceite >2.5 em N
+  execucoes anteriores lidas de `state.json`). Match de verbo no
+  input nao satisfaz FR-EVI-001 do runtime (evidencia = comando +
+  output literal). Decisao auditavel: `dec-006`.
+- Q: O SC-002 (30% das chamadas) mede % de chamadas de subagente
+  (ambiguo dado baixo volume de spawns por feature) ou escopo
+  diferente? → A: **SC-002 reescrito** para focar no classificador,
+  nao em volume de spawns. Novo enunciado: "Em uma amostra de 10
+  invocacoes do model-selector durante execucoes reais de
+  feature-00c, >=30% retornam sugestao barata (haiku/sonnet) E das
+  aceitas zero gera retro-execucao (medido via
+  `retro_execucoes_consumidas` no state.json)". Decisao auditavel:
+  `dec-007`.
+- Q: A feature usa o carve-out POSIX 1.1.0 para dependencia opcional
+  (jq? ripgrep?)? → A: **Sim, carve-out apenas para `jq` opcional em
+  `scripts/report.sh`** da skill, com fallback graceful em POSIX puro
+  (awk parseando state.json linha-a-linha) quando `jq` ausente.
+  Catalogo de sinais (FR-004) permanece POSIX puro com grep/awk.
+  Ripgrep NAO entra (vetado pela constitution L97-98 mesmo como dep
+  opcional). Declarado como novo FR-010a abaixo. Decisao auditavel:
+  `dec-008`.
 
 ---
 
@@ -172,9 +219,17 @@ remota — Principio IV).
   contexto estruturado (proxima fase do pipeline, tipo de subagente,
   artefatos de input) e retornar uma sugestao de modelo.
 - **FR-002**: A sugestao retornada MUST conter exatamente: (a) modelo
-  sugerido (`haiku` | `sonnet` | `opus` | `manter-atual`), (b) score
-  de confianca da sugestao em escala 0..3 (alinhado com FR-EVI-001 do
-  runtime — score 3 exige evidencia empirica citada), (c)
+  sugerido (`haiku` | `sonnet` | `opus` | `manter-atual`) — rotulo
+  abstrato, NUNCA versao concreta (mapeamento harness→versao e
+  responsabilidade do harness Claude Code, ver dec-005 e Gotcha em
+  FR-013), (b) score de confianca da sugestao em escala 0..3
+  (alinhado com FR-EVI-001 do runtime — score 3 exige evidencia
+  empirica citada). **Teto pratico atual = 2** para sugestao
+  auto-invocada por heuristica deterministica: match de verbo no
+  input nao constitui evidencia empirica externa conforme
+  FR-EVI-001. Score 3 fica reservado para evolucao futura quando a
+  skill puder citar evidencia historica de `state.json` (ex: media
+  de aceite >2.5 em N execucoes anteriores) — ver dec-006. (c)
   justificativa em texto livre listando os sinais detectados, (d)
   alternativa do mesmo tier (fallback se modelo nao disponivel).
 - **FR-003**: A heuristica MUST classificar entrada em **tres faixas
@@ -196,8 +251,11 @@ remota — Principio IV).
 - **FR-004**: O catalogo de sinais (verbos, ferramentas, padroes)
   MUST viver em arquivo separado em `references/` da skill
   (progressive disclosure — Principio III), nao hardcoded no
-  `SKILL.md`. Operadores podem customizar acrescentando entradas via
-  edicao local, sem necessidade de patch.
+  `SKILL.md`. **MVP entrega 15 sinais minimos populados** — 5 por
+  faixa (rasa/media/profunda) — em `references/sinais.md` com formato
+  markdown listando colunas: termo, faixa associada, peso (default 1).
+  Operadores podem customizar acrescentando entradas via edicao
+  local, sem necessidade de patch. Ver dec-004.
 - **FR-005**: Em caso de **sinais contraditorios** no input, a
   heuristica MUST favorecer o sinal mais conservador (mais
   profundo): ambiguidade entre haiku e sonnet → sonnet; entre sonnet
@@ -231,6 +289,20 @@ remota — Principio IV).
   POSIX sh PURO so permitida via o carve-out de "deps opcionais com
   fallback graceful" do amendment 1.1.0 — se aplicado, MUST estar
   declarado neste spec antes de aparecer no plano.
+- **FR-010a**: **Carve-out POSIX 1.1.0 declarado para esta feature**
+  (conforme condicoes (a)(b)(c) do amendment 1.1.0 da constitution).
+  Escopo do carve-out: `jq` PODE ser usado APENAS em
+  `scripts/report.sh` da skill (FR-012, comando de relatorio) com
+  fallback graceful em POSIX puro (parsing de `state.json` via
+  `awk`/`grep`/`sed` linha-a-linha) quando `jq` ausente. Condicoes
+  satisfeitas: (a) fallback awk produz mesmo resultado e MUST ter
+  teste automatizado em `tests/test_report_without_jq.sh`; (b) `jq`
+  confinado em UM arquivo (`scripts/report.sh`) — `grep -rn '\bjq\b'`
+  na skill retorna apenas esse arquivo; (c) declaracao explicita
+  aqui neste spec. Catalogo de sinais (FR-004) e classificador
+  (FR-003/FR-005) permanecem POSIX puro estrito — sem `jq`. Ripgrep,
+  fd, bats permanecem VETADOS inclusive como deps opcionais
+  (constitution L97-98). Ver dec-008.
 - **FR-011**: A feature MUST **persistir cada sugestao + aceite/
   rejeite no `state.json`** das execucoes do agente-00c/feature-00c,
   em campo dedicado (ex: `metricas_acumuladas.model_selector` com
@@ -289,12 +361,14 @@ remota — Principio IV).
   heuristica acerta a faixa em pelo menos **8 de 10 casos** (80%) —
   com os outros 2 sendo casos ambiguos justificadamente classificados
   como conservadores (FR-005).
-- **SC-002**: Em uma execucao real de `/feature-00c` com a
-  heuristica ativa, **pelo menos 30%** das chamadas de subagente
-  (clarify-asker, clarify-answerer) recebem sugestao de modelo
-  barato (haiku ou sonnet) e, das aceitas, **nenhuma resulta em
-  retro-execucao** por qualidade insuficiente da resposta
-  (medido via `retro_execucoes_consumidas` no state.json).
+- **SC-002**: Em uma **amostra de 10 invocacoes do model-selector**
+  durante execucoes reais de `/feature-00c` (acumuladas ao longo de
+  N features distintas), **>=30% retornam sugestao barata**
+  (`haiku` ou `sonnet`) E, das sugestoes aceitas pelo orquestrador,
+  **zero resulta em retro-execucao** medida via
+  `retro_execucoes_consumidas` no state.json. Foco da metrica e o
+  classificador (controlavel pela heuristica), nao volume de spawns
+  por feature (variavel por escopo). Ver dec-007.
 - **SC-003**: O comando de relatorio (FR-012) executa em **menos de
   500ms** em um diretorio com 20 execucoes de `state.json`
   acumuladas (verificavel via `time` no shell — meta de
