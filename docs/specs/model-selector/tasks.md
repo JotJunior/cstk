@@ -110,12 +110,14 @@ Ref: FR-001, FR-010, CHK001, CHK003, CHK004, Decision 2 do research
 
 Ref: Decision 2, CHK062
 
-- [ ] 2.2.1 Tokenizar input via `tr ' ' '\n' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g'`. Token = sequencia maximal de `[a-z0-9]` apos lowercase + strip de non-alnum (resolve CHK062). Multibyte/unicode explicitamente fora do MVP — ASCII-only por design.
-- [ ] 2.2.2 Filtrar tokens vazios apos sanitizacao
-- [ ] 2.2.3 Rejeitar input contendo null-byte (Plan §Security): `printf '%s' "$input" | tr -d '\0' | cmp -s - <(printf '%s' "$input")` — exit 2 se difere. Stderr: `model-selector: input contem null-byte (rejeitado)` (resolve CHK020, CHK058 — alinhado com contracts/skill-io.md)
-- [ ] 2.2.4 Implementar fail-safe: se `<3 tokens` apos tokenizacao → sair com sugestao `manter-atual` score 0 (Decision 7, Ref: CHK019, CHK062)
-- [ ] 2.2.5 Truncar input >4096 chars para 4096 antes de tokenizar; emitir warning em stderr (resolve CHK061 — alinhado com contracts/skill-io.md L40)
-- [ ] 2.2.6 Nota: input e tratado como string unica via `$1`/stdin SEM `eval` nem `sh -c`. Metacaracteres do shell (`$`, backtick, `\`, `;`, `&&`) sao tokens normais apos `tr '[:punct:]'` (resolve CHK059)
+- [x] 2.2.1 Tokenizar input via `tr ' ' '\n' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g'`. Token = sequencia maximal de `[a-z0-9]` apos lowercase + strip de non-alnum (resolve CHK062). Multibyte/unicode explicitamente fora do MVP — ASCII-only por design. <!-- onda-010: pipeline literal implementado; validado por test_model_selector_tokenization.sh scenario 2.2.1 -->
+- [x] 2.2.2 Filtrar tokens vazios apos sanitizacao <!-- onda-010: `grep -v '^$'` no final do pipeline; validado por scenario 2.2.2 (4 espacos -> 3 tokens) -->
+- [x] 2.2.3 Rejeitar input contendo null-byte (Plan §Security): exit 2 + stderr `model-selector: input contem null-byte (rejeitado)` (resolve CHK020, CHK058 — alinhado com contracts/skill-io.md). <!-- onda-010: implementado via tmpfile + comparacao byte-count antes da command-substitution ($(cat) trunca no NUL em POSIX); cmp+process-substitution sugerido no draft foi substituido por wc -c rationale POSIX-pure (dec-045). Validado por scenario 2.2.3. -->
+- [x] 2.2.4 Implementar fail-safe: se `<3 tokens` apos tokenizacao → sair com sugestao `manter-atual` score 0 (Decision 7, Ref: CHK019, CHK062) <!-- onda-010: variavel FAIL_SAFE_REASON + branch dedicado de output; sem warning ruidoso em stderr (dec-047). Validado por scenario 2.2.4. -->
+- [x] 2.2.5 Truncar input >4096 chars para 4096 antes de tokenizar; emitir warning em stderr (resolve CHK061 — alinhado com contracts/skill-io.md L40) <!-- onda-010: `cut -c 1-4096` + warning `model-selector: warning: input truncado de N para 4096 chars` (dec-046). Validado por scenario 2.2.5. -->
+- [x] 2.2.6 Nota: input e tratado como string unica via `$1`/stdin SEM `eval` nem `sh -c`. Metacaracteres do shell (`$`, backtick, `\`, `;`, `&&`) sao tokens normais apos `tr '[:punct:]'` (resolve CHK059) <!-- onda-010: tokenizacao usa `printf '%s'` para variavel, nunca expandida via eval. Validado por scenario 2.2.6 com input `'echo $(whoami) ; rm -rf /'` — output tem 4 tokens literais e nao contem expansao. -->
+
+**Status 2.2**: concluida em onda-010. Variaveis exportadas para consumo pelas tasks 2.3-2.5: `TOKENS` (lista newline-separated), `TOKEN_COUNT` (int), `FAIL_SAFE` (0|1), `FAIL_SAFE_REASON` (str), `INPUT_HAD_NULL` (0|1 — sempre 0 quando script segue, ja saiu com exit 2 se =1).
 
 ### 2.3 Match contra catalogo `[A]`
 

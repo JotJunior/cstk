@@ -1,13 +1,13 @@
 #!/bin/sh
 # shellcheck shell=sh
 #
-# classify.sh — Esqueleto do classificador deterministico (FASE 2, task 2.1)
+# classify.sh — Classificador deterministico (FASE 2, tasks 2.1 + 2.2)
 #
 # Skill: model-selector
 # Pipeline: input textual -> tokens -> match catalogo -> faixa -> rotulo
-# Status: ESQUELETO (subtarefas 2.1.1-2.1.4) — logica de classificacao
-#         (tokenizacao, match, score, output markdown) entra nas tarefas
-#         2.2, 2.3, 2.4 e 2.5 desta FASE.
+# Status: ESQUELETO + TOKENIZACAO (subtarefas 2.1.1-2.1.4 + 2.2.1-2.2.6).
+#         Match contra catalogo, score e output final entram nas tasks
+#         2.3, 2.4 e 2.5 desta FASE.
 #
 # Conformidade:
 #   - POSIX puro (#!/bin/sh + set -eu, sem bash-isms) — CHK001
@@ -90,15 +90,40 @@ if [ "$#" -gt 1 ]; then
 fi
 
 if [ "$#" -eq 1 ]; then
+    # Caminho 1: arg posicional. Note que o shell POSIX trunca $1 no
+    # primeiro NUL antes mesmo do script receber — `${#1}` para "abc\0def"
+    # = 3. Logo, NUL via $1 e indetectavel aqui, mas tambem inofensivo:
+    # o byte nunca chega no buffer. Subtarefa 2.2.3 mira stdin.
     INPUT="$1"
+    INPUT_HAD_NULL=0
 else
     if [ -t 0 ]; then
         printf '%s: input obrigatorio (uso: classify.sh "<texto>")\n' \
             "$PROG_NAME" >&2
         exit 2
     fi
-    # Le stdin completo. `cat` aqui e portavel; sem `mapfile`/bash-isms.
-    INPUT="$(cat)"
+    # Caminho 2: stdin. Materializa em tmpfile ANTES de command
+    # substitution porque `$(cat)` em POSIX trunca no primeiro NUL —
+    # perderiamos a evidencia para a subtarefa 2.2.3. Tmpfile permite
+    # detectar NUL via byte-count comparativo.
+    INPUT_TMP=$(mktemp -t model-selector.XXXXXX) \
+        || { printf '%s: mktemp falhou\n' "$PROG_NAME" >&2; exit 3; }
+    # Cleanup garantido em qualquer saida.
+    # shellcheck disable=SC2064  # expansao early intencional ($INPUT_TMP fixo)
+    trap "rm -f -- '$INPUT_TMP'" EXIT INT TERM HUP
+    cat > "$INPUT_TMP"
+
+    # Subtarefa 2.2.3: rejeitar NUL no stdin. Compara byte-count bruto
+    # com byte-count apos `tr -d '\0'`. Diferenca = havia NUL.
+    _BYTES_RAW=$(wc -c < "$INPUT_TMP" | tr -d ' ')
+    _BYTES_NONULL=$(tr -d '\0' < "$INPUT_TMP" | wc -c | tr -d ' ')
+    if [ "$_BYTES_RAW" != "$_BYTES_NONULL" ]; then
+        printf '%s: input contem null-byte (rejeitado)\n' \
+            "$PROG_NAME" >&2
+        exit 2
+    fi
+    INPUT_HAD_NULL=0
+    INPUT=$(cat -- "$INPUT_TMP")
 fi
 
 # Validacao basica de input (logica completa entra em 2.2)
@@ -112,6 +137,68 @@ if [ -z "$INPUT" ]; then
         "$PROG_NAME" >&2
     exit 2
 fi
+
+# -----------------------------------------------------------------------
+# Subtarefa 2.2.5: truncamento de input >4096 chars
+# -----------------------------------------------------------------------
+# Limite cravado em contracts/skill-io.md L40. Stderr emite warning
+# estruturado (`model-selector: warning: ...`) sem ofuscar o output
+# principal em stdout. Truncamento e ANTES da tokenizacao para evitar
+# trabalho desnecessario em buffers gigantes.
+_INPUT_LEN=${#INPUT}
+if [ "$_INPUT_LEN" -gt 4096 ]; then
+    printf '%s: warning: input truncado de %s para 4096 chars\n' \
+        "$PROG_NAME" "$_INPUT_LEN" >&2
+    INPUT=$(printf '%s' "$INPUT" | cut -c 1-4096)
+fi
+
+# -----------------------------------------------------------------------
+# Subtarefa 2.2.1 + 2.2.2: tokenizacao + filtro de tokens vazios
+# -----------------------------------------------------------------------
+# Pipeline exato (literal de tasks.md L113):
+#   tr ' ' '\n'                  separa em linhas por espaco
+#   tr '[:upper:]' '[:lower:]'   lowercase ASCII
+#   sed 's/[^a-z0-9]//g'         strip de non-alnum (resolve CHK062)
+# Apos isso, `grep -v '^$'` remove tokens vazios (subtarefa 2.2.2).
+#
+# Subtarefa 2.2.6: input e tratado como string unica via `printf '%s'`
+# SEM `eval`, SEM `sh -c "$INPUT"`. Metacaracteres `$`, `\``, `;`, `&&`
+# viram bytes literais que o `sed` strip de non-alnum elimina junto
+# com pontuacao normal — resolve CHK059 sem branch especial.
+TOKENS=$(printf '%s' "$INPUT" \
+    | tr ' ' '\n' \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed 's/[^a-z0-9]//g' \
+    | grep -v '^$' || true)
+
+# Conta tokens. `grep -v` pode retornar 1 se zero matches — `|| true`
+# acima cobre. Aqui `wc -l` da N (assumindo trailing newline padrao do
+# pipeline; se TOKENS vazio, wc -l = 0).
+if [ -z "$TOKENS" ]; then
+    TOKEN_COUNT=0
+else
+    TOKEN_COUNT=$(printf '%s\n' "$TOKENS" | wc -l | tr -d ' ')
+fi
+
+# -----------------------------------------------------------------------
+# Subtarefa 2.2.4: fail-safe <3 tokens
+# -----------------------------------------------------------------------
+# Decision 7 do research + dec-006: input com menos de 3 tokens nao
+# fornece sinal estatistico suficiente para classificar — emite
+# sugestao `manter-atual` score 0 SEM warning ruidoso em stderr
+# (operador ve o output normal em stdout). Variavel FAIL_SAFE_REASON
+# sera consumida pelas tasks 2.4/2.5 ao montar justificativa final.
+FAIL_SAFE=0
+FAIL_SAFE_REASON=""
+if [ "$TOKEN_COUNT" -lt 3 ]; then
+    FAIL_SAFE=1
+    FAIL_SAFE_REASON="input com $TOKEN_COUNT token(s) apos sanitizacao (<3 = limite minimo)"
+fi
+
+# Exportar para o restante da pipeline classificatoria (placeholder
+# atual nao usa, mas tasks 2.3-2.5 consumirao TOKENS, TOKEN_COUNT e
+# FAIL_SAFE).
+export TOKENS TOKEN_COUNT FAIL_SAFE FAIL_SAFE_REASON INPUT_HAD_NULL
 
 # -----------------------------------------------------------------------
 # Validacao do catalogo (subtarefa 2.1.4 — gate de IO)
@@ -142,7 +229,11 @@ fi
 # Sera SUBSTITUIDO integralmente na task 2.5.
 # -----------------------------------------------------------------------
 
-cat <<'EOF'
+if [ "$FAIL_SAFE" = "1" ]; then
+    # Caminho explicito de fail-safe (subtarefa 2.2.4) — emite output
+    # bem-formado com `manter-atual` score 0 e justificativa citando
+    # contagem de tokens. Sem warning em stderr.
+    cat <<EOF
 ## Sugestao
 
 **modelo**: manter-atual
@@ -151,16 +242,42 @@ cat <<'EOF'
 
 ## Sinais detectados
 
-(nenhum sinal detectado — esqueleto sem logica de match; ver tasks 2.2-2.5)
+(nenhum sinal detectado — fail-safe ativado: $FAIL_SAFE_REASON)
 
 ## Justificativa
 
-input curto demais para classificacao confiavel (esqueleto FASE 2 task 2.1
-sem logica de tokenizacao/match implementada ainda)
+$FAIL_SAFE_REASON; classificador requer >=3 tokens validos para emitir
+sugestao com score >=1.
 
 ## Acao sugerida (operador humano)
 
-`(nenhuma troca sugerida — manter modelo atual)`
+\`(nenhuma troca sugerida — manter modelo atual)\`
+EOF
+    exit 0
+fi
+
+# Placeholder para tasks 2.3-2.5 (match/score/output final). Aqui o
+# input ja foi tokenizado com sucesso (>=3 tokens) — proxima task fara
+# o match contra catalogo.
+cat <<EOF
+## Sugestao
+
+**modelo**: manter-atual
+**score**: 0
+**alternativa**: none
+
+## Sinais detectados
+
+(match contra catalogo nao implementado — tasks 2.3-2.5; tokens=$TOKEN_COUNT)
+
+## Justificativa
+
+esqueleto FASE 2 tasks 2.1+2.2 completas (tokenizacao funcional);
+logica de match/score/output final entra em 2.3/2.4/2.5.
+
+## Acao sugerida (operador humano)
+
+\`(nenhuma troca sugerida — manter modelo atual)\`
 EOF
 
 exit 0
