@@ -3,11 +3,11 @@
 **Feature**: `agente-00c-artifact-cache`
 **Spec**: [`spec.md`](./spec.md)
 **Created**: 2026-05-20
-**Status**: Draft (pre-clarify)
+**Status**: Refinado pos-clarify (Session 2026-05-21)
 
-> Este plano sera revisado apos `clarify` resolver as 5 Open Questions
-> da spec. Decisoes marcadas com `[NEEDS CLARIFY]` ficam tentativas
-> ate la.
+> Plan refinado apos `/clarify` resolver as 5 Open Questions da spec
+> (ver `spec.md` §Clarifications). Decisoes 1-5 consolidadas abaixo;
+> sem `[NEEDS CLARIFY]` restantes.
 
 ---
 
@@ -46,8 +46,9 @@ Verificacao pre-arquitetura contra `docs/constitution.md` do projeto:
   pt-br). Configuravel via campo `config.cache.resumo_max_chars`
   em state.json.
 - **Threshold de passthrough**: default 3000 chars (FR-CACHE-007).
-- **Timeout de geracao do resumo**: N/A se heuristica extractiva;
-  ate 60s se LLM-in-session. Decisao em [NEEDS CLARIFY Q1].
+- **Timeout de geracao do resumo**: N/A — geracao eh heuristica
+  extractiva em POSIX shell, latencia esperada < 100ms para
+  arquivos ate 50k chars (resolucao Q1).
 
 ### Compatibilidade
 
@@ -192,67 +193,93 @@ verifique se ha cache valido:
 
 ## Research
 
-### Decisao 1: Geracao do resumo — heuristica extractiva (provisorio)
-
-`[NEEDS CLARIFY Q1]` — sera decidido em clarify.
+### Decisao 1: Geracao do resumo — heuristica extractiva (decidido em clarify)
 
 Opcoes avaliadas:
 
-**A. LLM in-session**:
-- Pros: resumo de melhor qualidade semantica, preserva nuance.
-- Contras: cada onda 1 paga tokens extras pelo prompt+resposta; nao
-  deterministico (resumo varia entre runs); adiciona dependencia
-  do prompt-cache hit.
+**A. LLM in-session**: resumo de melhor qualidade semantica, mas
+paga tokens extras na onda 1, nao deterministico, dependente do
+prompt-cache hit.
 
-**B. Heuristica extractiva**:
-- Pros: deterministico, zero tokens, trivial de testar.
-- Contras: pode perder contexto importante (resumo bobo).
+**B. Heuristica extractiva** (escolhida): deterministico, zero
+tokens, trivial de testar. Algoritmo:
+1. Extrair todos os `## H2` e `### H3` headings preservando ordem
+   e hierarquia.
+2. Para cada heading, extrair a primeira linha de corpo nao-vazia
+   imediatamente abaixo dele.
+3. Concatenar como markdown valido.
+4. Se output excede `resumo_max_chars` (default 2000), dropar
+   `### H3` em ordem inversa (do fim para o comeco) ate caber.
+5. Mesma entrada de bytes => mesma saida de bytes.
 
-**C. Hibrido (heuristica primeiro, LLM fallback se output >
-threshold)**:
-- Pros: combina vantagens.
-- Contras: 2 caminhos para manter.
+**C. Hibrido (heuristica + LLM fallback)**: descartado por adicionar
+caminho duplicado em codigo POSIX puro sem ganho mensuravel.
 
-**Recomendacao provisoria**: B (heuristica extractiva) para v1.
-Algoritmo:
-1. Extrair todos os `## Heading` e `### Heading` (com numeracao).
-2. Para cada heading, extrair primeira linha de corpo nao-vazia.
-3. Se ainda excede `resumo_max_chars`, dropar `### Heading`s ate
-   caber.
-4. Output formatado como markdown.
+**Reavaliacao para v2**: plug-in LLM-summarizer pode ser avaliado se
+SC-001 falhar no piloto T4.2.
 
-Reavaliar para v2 se SC-001 falhar em pipelines reais.
+### Decisao 2: Threshold de passthrough — 3000 chars (decidido em clarify)
 
-### Decisao 2: Threshold de passthrough
-
-`[NEEDS CLARIFY Q2]` — 3000 chars proposto.
+Default fixo de **3000 chars**, com override opcional via
+`config.cache.passthrough_threshold_chars` em `state.json`.
 
 Racional: arquivo pequeno cabe em ~750 tokens. Re-leitura por skill
-gera <1k tokens overhead. Geracao de resumo (mesmo heuristico)
-exige fork+exec de shell por onda, custo nao-zero. Break-even
-estimado em torno de 3-4k chars.
+gera <1k tokens overhead. Geracao de resumo (heuristica) exige
+fork+exec de shell por onda, custo nao-zero. Break-even empirico em
+torno de 3-4k chars.
 
-Confirmar em clarify se threshold deve ser proporcional ao numero
-de ondas esperado.
+Threshold dinamico proporcional a ondas esperadas foi descartado —
+exige heuristica que so estima, nao mede; mais complexidade sem
+ganho confiavel.
 
-### Decisao 3: Cache da constitution raiz vs feature-delta
+### Decisao 3: Cache da constitution raiz vs feature-delta (decidido em clarify)
 
-`[NEEDS CLARIFY Q3]` — proposto: cachear apenas a "constitution
-ativa" (feature-delta se existe, senao raiz). Path resolvido via
-`pipeline.sh constitution-conflict` (ja existente).
+Cachear apenas a **constitution ativa** — resolvida via
+`pipeline.sh constitution-conflict` (primitiva ja existente):
+- Sem feature-delta no projeto: cache aponta para `docs/constitution.md` raiz.
+- Com feature-delta: cache aponta para `docs/specs/<feat>/constitution.md`.
 
-### Decisao 4: Re-geracao em retomada
-
-`[NEEDS CLARIFY Q4]` — proposto: confiar no backup-de-onda quando
-hash bate; regenerar apenas em drift detectado. Aplica logica ja
-existente do `feature-00c-preflight.sh` estendida para o campo de
+UM campo unico `constitution_cache` em `state.json`, com
+`source_path` indicando qual constitution foi cacheada. Constitution
+raiz nao referenciada pela feature corrente nao consome espaco no
 cache.
 
-### Decisao 5: Medicao de tokens economizados
+Opcao "cachear ambas separadamente" descartada — duplica dados sem
+ganho de comportamento (skills so consomem a ativa).
 
-`[NEEDS CLARIFY Q5]` — proposto: heuristica `chars / 4` (pt-br) ou
-`chars / 3` (en), ratio configuravel em `config.cache.
-tokens_per_char_ratio`. Sem dependencia de API externa.
+### Decisao 4: Re-geracao em retomada (decidido em clarify)
+
+**Confiar no backup-de-onda quando hash bate**. Na retomada:
+1. Le `state.json` (com cache) do backup-de-onda anterior.
+2. Valida `briefing_cache.source_sha256` contra hash do arquivo source em disco AGORA.
+3. Hash igual = cache valido, prossegue normalmente.
+4. Hash diferente = trata como drift padrao (FR-CACHE-009 auto-regen
+   ou FR-CACHE-010 BloqueioHumano se MAJOR).
+
+Reusa logica de `feature-00c-preflight.sh` ja existente, estendida
+para validar campos de cache.
+
+Flag opcional `--regenerate-cache` em /agente-00c-resume foi
+descartada — drift detection ja cobre o caso de cache stale, e flag
+duplicaria caminho de codigo sem ganho real.
+
+### Decisao 5: Medicao de tokens economizados (decidido em clarify)
+
+Heuristica: `tokens_economizados = (source_chars - resumo_chars) *
+tokens_per_char_ratio` por hit.
+
+- `tokens_per_char_ratio` configuravel em
+  `config.cache.tokens_per_char_ratio` no `state.json`.
+- Default 0.25 (chars/4, pt-br).
+- Override para 0.33 (chars/3) em projetos majoritariamente em
+  ingles.
+
+Zero dependencias externas, deterministico, mensuravel em tests
+offline. Precisao boa o suficiente para validar SC-001 (alvo >=70%
+economia) em piloto real T4.2.
+
+Plug-in via API Anthropic (tokenizer real) descartado por exigir
+API key em runtime POSIX puro e falhar offline.
 
 ---
 
