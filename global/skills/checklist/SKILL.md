@@ -1,12 +1,6 @@
 ---
 name: checklist
-description: |
-  Use quando o usuario pedir checklist de qualidade de requisitos, quality gate,
-  ou "unit tests for English". Tambem quando mencionar "criar checklist",
-  "checklist", "validar requisitos", "requirements checklist", tipicamente
-  seguido de dominio (ux, api, security, performance, a11y). NAO use para
-  testar implementacao — a skill valida QUALIDADE DO REQUISITO, nao se o
-  codigo funciona.
+description: 'Requirements quality gate ("unit tests for English") by domain (ux/api/security/performance/a11y). Triggers: "checklist", "validar requisitos", "quality gate". Validates REQUIREMENT quality, not code.'
 argument-hint: "[dominio: ux | api | security | performance] [contexto adicional]"
 allowed-tools:
   - Read

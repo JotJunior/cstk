@@ -1,12 +1,5 @@
 ---
-description: |
-  Aborta manualmente a execucao corrente do feature-00c para uma feature
-  especifica (short-name). Implementa SIGTERM + grace period de 60s
-  para a onda corrente persistir state graciosamente, depois
-  force-acquire do lock como fallback (FR-025 atualizado). Marca status
-  como `abortada`, atualiza `terminada_em`, gera relatorio parcial e
-  faz commit local. Idempotente — se ja em status terminal, apenas
-  reporta.
+description: 'Aborta manualmente feature-00c para um short-name. SIGTERM + grace period 60s para persistir state; force-acquire do lock como fallback (FR-025). Marca abortada, gera relatorio parcial, commit local. Idempotente.'
 argument-hint: "<short-name> [--motivo <texto>] [--purge-backups]"
 allowed-tools:
   - Bash

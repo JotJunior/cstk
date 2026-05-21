@@ -1,11 +1,6 @@
 ---
 name: clarify
-description: |
-  Use quando o usuario pedir para refinar uma spec existente, resolver
-  ambiguidades ou clarificar requisitos via perguntas estruturadas. Tambem
-  quando mencionar "clarify", "clarificar spec", "resolver ambiguidades",
-  "refinar spec", "clarificar requisitos". NAO use para criar spec do zero
-  (use specify) — a skill opera sobre spec.md ja existente.
+description: 'Refine an existing spec via structured Q&A (max 5). Triggers: "clarify", "clarificar spec", "resolver ambiguidades", "refinar spec". Operates on existing spec.md; use specify to create one.'
 argument-hint: "[caminho para spec ou feature name]"
 allowed-tools:
   - Read

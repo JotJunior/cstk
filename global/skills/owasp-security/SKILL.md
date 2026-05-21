@@ -1,16 +1,6 @@
 ---
 name: owasp-security
-description: |
-  Use when reviewing code for security vulnerabilities, implementing
-  authentication/authorization, handling user input, building cryptography,
-  designing API endpoints, or working on AI agent / LLM / MCP systems. Also
-  when the user mentions "security review", "OWASP", "vulnerability check",
-  "auth code", "input validation", "threat model", "passkey", "FAPI",
-  "post-quantum", "prompt injection", "MCP security". Covers OWASP Top 10:2025,
-  ASVS 5.0, Agentic AI 2026, LLM Top 10:2025, API Security Top 10:2023,
-  CI/CD Top 10, CWE Top 25:2025, NIST SP 800-63B-4, WebAuthn/Passkeys,
-  OAuth 2.1, FAPI 2.0, and post-quantum cryptography. Do NOT use for general
-  code review without a security focus — use a general review flow for those.
+description: 'Security review: OWASP Top 10:2025, ASVS 5.0, Agentic AI 2026, LLM Top 10, API/CICD, NIST 800-63B-4, WebAuthn, OAuth 2.1, FAPI 2.0, post-quantum. Triggers: "security review", "OWASP", "vulnerability check", "auth code", "threat model", "MCP security". Skip for general code review.'
 ---
 
 # OWASP Security Best Practices Skill

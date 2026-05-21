@@ -1,12 +1,6 @@
 ---
 name: analyze
-description: |
-  Use quando o usuario pedir para analisar consistencia entre artefatos SDD
-  (spec, plan, tasks, constitution), auditar duplicacoes/ambiguidades/gaps,
-  ou validar cobertura de requisitos. Tambem quando mencionar "analyze",
-  "cross-check", "auditar artefatos", "analise de consistencia", "validar
-  spec vs tasks". NAO use para validar um unico documento (use
-  validate-documentation) ou para modificar arquivos — esta skill e read-only.
+description: 'Cross-artifact SDD consistency analysis (spec/plan/tasks/constitution) — read-only. Triggers: "analyze", "cross-check", "auditar artefatos", "validar spec vs tasks". Skip for single-document validation (use validate-documentation).'
 argument-hint: "[caminho para diretorio da feature ou escopo]"
 allowed-tools:
   - Read
