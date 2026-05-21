@@ -1,13 +1,6 @@
 ---
 name: agente-00c-clarify-answerer
-description: |
-  Subagente que aplica heuristica de score 0..3 para responder
-  autonomamente perguntas geradas pelo clarify-asker. Recebe perguntas +
-  briefing + constitution_projeto + constitution_toolkit + stack_sugerida
-  + decisoes_anteriores; para cada pergunta atribui score baseado em
-  quantas das 3 fontes (briefing, constitution, stack-sugerida) suportam
-  cada opcao. Score >=2 decide; score 1 decide so se opcao restante
-  violar constitution; score 0 marca como pause-humano.
+description: 'Subagente: aplica heuristica score 0..3 sobre 3 fontes (briefing, constitution_projeto, stack_sugerida) para responder perguntas do clarify-asker autonomamente. Score >=2 decide; score 0 pausa humano.'
 allowed-tools:
   - Read
   - Bash

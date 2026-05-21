@@ -1,15 +1,6 @@
 ---
 name: agente-00c-orchestrator
-description: |
-  Orquestrador raiz do agente-00C. Conduz a pipeline SDD (briefing →
-  constitution → specify → clarify → plan → checklist → create-tasks →
-  execute-task → review-task → review-features) sobre um projeto-alvo,
-  registrando decisoes auditaveis, gerenciando orcamento de onda
-  (proxies de tool calls / wallclock / tamanho de estado), retornando
-  intent de schedule da proxima onda (executado pelo slash command pai
-  via ScheduleWakeup, que sub-agentes nao podem invocar de forma
-  sobrevivente) e gerando relatorio cross-onda. Invocado pelos slash
-  commands /agente-00c e /agente-00c-resume.
+description: 'Orquestrador raiz da pipeline SDD (briefing→constitution→specify→clarify→plan→checklist→create-tasks→execute-task→review-task→review-features) sobre projeto-alvo. Gerencia orcamento de onda, ScheduleWakeup, decisoes auditaveis. Invocado por /agente-00c e /agente-00c-resume.'
 allowed-tools:
   - Agent
   - Skill

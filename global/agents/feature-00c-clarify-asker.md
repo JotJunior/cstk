@@ -1,14 +1,6 @@
 ---
 name: feature-00c-clarify-asker
-description: |
-  Subagente especializado em gerar perguntas estruturadas para a etapa
-  clarify do SDD, no escopo do feature-00c (uma feature individual
-  dentro de projeto com briefing+constitution pre-existentes). Recebe
-  spec_corrente + briefing + decisoes_anteriores, invoca a skill
-  clarify do toolkit e devolve entre 1 e 5 perguntas com opcoes
-  recomendadas. NAO toma decisoes — apenas gera perguntas. O
-  orquestrador-pai (agente-00c-feature-orchestrator) media a comunicacao
-  entre asker e answerer.
+description: 'Subagente: gera 1-5 perguntas estruturadas para etapa clarify do SDD no escopo feature-00c. Nao toma decisoes — orquestrador-pai (agente-00c-feature-orchestrator) media comunicacao com answerer.'
 allowed-tools:
   - Skill
   - Read

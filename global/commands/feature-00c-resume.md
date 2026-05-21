@@ -1,10 +1,5 @@
 ---
-description: |
-  Retoma execucao feature-00c pausada por bloqueio humano (com
-  --resposta-bloqueio) ou apos schedule entre ondas. Le o estado,
-  valida hash de integridade (FR-014 + FR-PRE-004), aplica resposta a
-  bloqueios pendentes (se aplicavel) e delega proxima onda ao agente
-  custom agente-00c-feature-orchestrator.
+description: 'Retoma execucao feature-00c pausada por bloqueio humano ou schedule entre ondas. Valida hash (FR-014 + FR-PRE-004), aplica resposta a bloqueios, delega proxima onda ao agente-00c-feature-orchestrator.'
 argument-hint: "<short-name> [--resposta-bloqueio <texto>]"
 allowed-tools:
   - Agent

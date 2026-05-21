@@ -1,14 +1,5 @@
 ---
-description: |
-  Inicia uma nova execucao do orquestrador autonomo feature-00c sobre
-  UMA feature individual dentro de projeto que JA tem briefing +
-  constitution ratificados. Recebe descricao-curta + (opcional)
-  short-name + (opcional) path do projeto + (opcional) whitelist.
-  Cria estado em
-  <projeto-alvo>/.claude/feature-00c-state/<short-name>/ e delega
-  a execucao da pipeline SDD (specify→clarify→plan→checklist→
-  create-tasks→execute-task→review-task) ao agente custom
-  agente-00c-feature-orchestrator.
+description: 'Inicia execucao feature-00c sobre UMA feature individual em projeto com briefing+constitution ratificados. Cria state em .claude/feature-00c-state/<short-name>/ e delega pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→review-task) ao agente-00c-feature-orchestrator.'
 argument-hint: '"<descricao-curta>" [<short-name>] [--projeto <path>] [--whitelist <urls>]'
 allowed-tools:
   - Agent
