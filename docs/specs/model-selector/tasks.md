@@ -67,11 +67,11 @@ Ref: FR-001, Plan §Project Structure, CHK036
 
 Ref: FR-014, CHK029, CHK030, CHK031, SC-004
 
-- [ ] 1.2.1 Criar `SKILL.md` com frontmatter YAML contendo `description` no formato `Use quando X / NAO use quando Y` (FR-014)
-- [ ] 1.2.2 Listar `allowed-tools` no frontmatter conforme convencao do toolkit (sem tool de spawn — Gotcha FR-013e)
-- [ ] 1.2.3 Esbocar secoes obrigatorias da SKILL.md: descricao curta, contrato I/O (link para `contracts/skill-io.md`), Gotchas (placeholder), referencias progressivas
-- [ ] 1.2.4 Escrever teste `tests/cstk/test_model_selector_skill_lines.sh` que mede `wc -l SKILL.md` e falha se >= 200 (Ref: CHK028, SC-004). Criterio operacional: `wc -l` literal sobre o arquivo (qualquer linha conta — frontmatter, branco, code fence) → limite operacional = 199 linhas (resolve CHK026)
-- [ ] 1.2.5 Escrever teste implicito de description-trigger via regex `Use quando.*NAO use` no frontmatter (Ref: CHK030). Minimo: 1 trigger + 1 anti-trigger (resolve CHK029); frontmatter obrigatorio inclui `description` (string) + `allowed-tools` (array, sem `Task`/`Agent` — resolve CHK031)
+- [x] 1.2.1 Criar `SKILL.md` com frontmatter YAML contendo `description` no formato `Use quando X / NAO use quando Y` (FR-014)
+- [x] 1.2.2 Listar `allowed-tools` no frontmatter conforme convencao do toolkit (sem tool de spawn — Gotcha FR-013e) <!-- allowed-tools = Read + Bash, validado por scenario_allowed_tools_sem_task_nem_agent -->
+- [x] 1.2.3 Esbocar secoes obrigatorias da SKILL.md: descricao curta, contrato I/O (link para `contracts/skill-io.md`), Gotchas (placeholder), referencias progressivas <!-- 5 Gotchas (a-e) cobrem FR-013; refs progressivas tem 7 links -->
+- [x] 1.2.4 Escrever teste `tests/cstk/test_model_selector_skill_lines.sh` que mede `wc -l SKILL.md` e falha se >= 200 (Ref: CHK028, SC-004). Criterio operacional: `wc -l` literal sobre o arquivo (qualquer linha conta — frontmatter, branco, code fence) → limite operacional = 199 linhas (resolve CHK026) <!-- onda-007: SKILL.md = 149 linhas, teste PASS -->
+- [x] 1.2.5 Escrever teste implicito de description-trigger via regex `Use quando.*NAO use` no frontmatter (Ref: CHK030). Minimo: 1 trigger + 1 anti-trigger (resolve CHK029); frontmatter obrigatorio inclui `description` (string) + `allowed-tools` (array, sem `Task`/`Agent` — resolve CHK031) <!-- 6 cenarios passam: existe, <200, description-trigger, description-obrig, allowed-tools-obrig, sem-Task/Agent -->
 
 ### 1.3 Catalogo MVP de sinais `[C]`
 
