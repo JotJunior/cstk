@@ -53,6 +53,45 @@ $ARGUMENTS
 
 ---
 
+## Leitura de artefatos foundational (briefing + constitution)
+
+Antes de ler `docs/01-briefing-discovery/briefing.md` ou `docs/constitution.md`
+direto do disco, verifique se ha cache valido populado pelo agente-00c
+ou feature-00c. Aditivo — se nao houver cache, leia direto do disco
+conforme comportamento padrao (FR-CACHE-014).
+
+1. **Detectar agente ativo**: variavel `AGENTE_00C_STATE_DIR` setada,
+   OU `<projeto-alvo>/.claude/agente-00c-state/state.json` existente,
+   OU `<projeto-alvo>/.claude/feature-00c-state/<short>/state.json`.
+
+2. **Se ativo**, tente consumir o resumo via Bash:
+   ```bash
+   ~/.claude/skills/agente-00c-runtime/scripts/state-cache.sh get-resumo \
+     --state-dir "$SD" --artifact briefing
+   ```
+   - **Exit 0** + stdout nao-vazio: use o resumo como conteudo.
+   - **Exit 1**: cache miss (campo ausente, estrategia=passthrough,
+     drift detectado) — caia em leitura direta.
+   - **Exit 2**: erro fatal (state.json corrompido) — aborte com
+     diagnostico do stderr.
+
+   Mesmo protocolo para `--artifact constitution`.
+
+3. **Apos consumo** (hit ou miss), registre metrica via:
+   ```bash
+   ~/.claude/skills/agente-00c-runtime/scripts/state-cache.sh metrics-bump \
+     --state-dir "$SD" --tipo <hit|miss-drift|miss-disabled> \
+     [--chars-economizados N]
+   ```
+   onde N = `source_chars - resumo_chars` quando hit, ou 0 caso contrario.
+
+4. **Standalone** (sem state.json): leia direto do disco. Comportamento
+   identico a versao pre-cache.
+
+Spec: `docs/specs/agente-00c-artifact-cache/spec.md` FR-CACHE-008.
+
+---
+
 ## FLUXO DE EXECUCAO
 
 ```
