@@ -7,6 +7,17 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Skill descriptions**: trim YAML `description:` em todas as 21 skills de
+  `global/skills/` (de ~10k chars / ~2.560 tok para ~4.6k chars / ~1.150 tok
+  no contexto eager-loaded). Reducao de 54% nos descriptions, ~1.350 tokens
+  economizados por boot. Triggers (frases em aspas) preservados — routing
+  inalterado. Detalhe sobre frameworks, listas longas e clausulas
+  "NAO use para X" extensas migrado para o body do `SKILL.md`
+  (so carrega quando a skill e invocada). Otimizacao para reduzir custo
+  por onda em pipelines longos (`agente-00c`, `feature-00c`). PR #8.
+
 ## [3.13.0] - 2026-05-20
 
 Feature-00C — variante do agente-00C focada em **uma feature

@@ -1,12 +1,6 @@
 ---
 name: initialize-docs
-description: |
-  Use quando o usuario pedir para criar a estrutura padrao de documentacao do
-  projeto (diretorios numerados 01-09, READMEs template, organizacao por tipo:
-  briefing, UCs, DER, ADRs, APIs, testes, operacoes). Tambem quando mencionar
-  "inicializar docs", "criar estrutura docs", "setup documentacao",
-  "organizar documentacao", "estrutura de pastas docs". NAO use se a estrutura
-  ja existe e o usuario nao pediu --force.
+description: 'Create standard docs hierarchy (01-09 dirs, READMEs, briefing/UCs/DER/ADRs/APIs/tests/ops). Triggers: "inicializar docs", "criar estrutura docs", "setup documentacao". Skip if structure exists and no --force.'
 argument-hint: "[--dry-run | --force | --no-move]"
 allowed-tools:
   - Read

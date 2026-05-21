@@ -1,13 +1,6 @@
 ---
 name: create-tasks
-description: |
-  Use quando o usuario pedir para decompor um escopo ou spec em backlog de
-  tarefas tecnicas, criar tasks.md, ou organizar trabalho em fases com
-  numeracao hierarquica, criticidade e dependencias. Tambem quando mencionar
-  "criar tarefas", "criar backlog", "montar tasks", "gerar backlog",
-  "planejar tarefas", "task list", "decomposicao de tarefas". NAO use para
-  executar uma tarefa (use execute-task) ou gerar plano tecnico de
-  arquitetura (use plan).
+description: 'Decompose scope or spec into task backlog with phases, dependencies, criticality. Triggers: "criar tarefas", "backlog", "task list", "decomposicao". Skip for executing tasks (use execute-task) or technical plan (use plan).'
 argument-hint: "[descricao do escopo ou caminho para documento de referencia]"
 allowed-tools:
   - Read

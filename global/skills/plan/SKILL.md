@@ -1,11 +1,6 @@
 ---
 name: plan
-description: |
-  Use quando o usuario pedir para gerar plano tecnico de implementacao a partir
-  de uma spec existente — arquitetura, data model, contratos de API, research
-  de tecnologias, cenarios de teste. Tambem quando mencionar "plan", "criar
-  plano", "planejar implementacao", "plano tecnico", "implementation plan".
-  NAO use para criar spec (use specify) ou decompor em tarefas (use create-tasks).
+description: 'Technical implementation plan from a spec — architecture, data model, API contracts, research, test scenarios. Triggers: "plan", "criar plano", "planejar implementacao", "implementation plan". Skip for spec creation (specify) or task decomposition (create-tasks).'
 argument-hint: "[caminho para spec ou descricao da feature]"
 allowed-tools:
   - Read
