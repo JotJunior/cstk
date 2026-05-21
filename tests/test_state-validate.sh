@@ -218,4 +218,123 @@ scenario_campo_obrigatorio_ausente_falha() {
   assert_stderr_contains "proxima_instrucao" || return 1
 }
 
+# ==== Cenarios para FR-CACHE-017 ====
+
+# _cache_valid_payload imprime um cache valido em stdout (JSON object)
+_cache_valid_payload() {
+  cat <<'EOF'
+{
+  "source_path": "/tmp/briefing.md",
+  "source_sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "source_chars": 5000,
+  "resumo": "## H2\nlinha\n",
+  "resumo_chars": 18,
+  "estrategia": "resumo",
+  "gerado_em": "2026-05-21T01:00:00Z",
+  "gerado_na_onda": 1
+}
+EOF
+}
+
+scenario_cache_valido_passa() {
+  _sd="$TMPDIR_TEST/state"
+  _make_valid_state "$_sd"
+  _payload=$(_cache_valid_payload)
+  _patch_state "$_sd" ".briefing_cache = $_payload"
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "cache valido" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_cache_sha256_invalido_falha() {
+  _sd="$TMPDIR_TEST/state"
+  _make_valid_state "$_sd"
+  _payload=$(_cache_valid_payload)
+  _patch_state "$_sd" ".briefing_cache = $_payload | .briefing_cache.source_sha256 = \"abc\""
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "sha256 invalido" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "source_sha256" || return 1
+}
+
+scenario_cache_estrategia_invalida_falha() {
+  _sd="$TMPDIR_TEST/state"
+  _make_valid_state "$_sd"
+  _payload=$(_cache_valid_payload)
+  _patch_state "$_sd" ".briefing_cache = $_payload | .briefing_cache.estrategia = \"foo\""
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "estrategia invalida" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "estrategia invalido" || return 1
+}
+
+scenario_cache_resumo_maior_que_source_falha() {
+  _sd="$TMPDIR_TEST/state"
+  _make_valid_state "$_sd"
+  _payload=$(_cache_valid_payload)
+  _patch_state "$_sd" ".briefing_cache = $_payload | .briefing_cache.resumo_chars = 99999"
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "resumo > source" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "resumo_chars" || return 1
+}
+
+scenario_cache_gerado_em_invalido_falha() {
+  _sd="$TMPDIR_TEST/state"
+  _make_valid_state "$_sd"
+  _payload=$(_cache_valid_payload)
+  _patch_state "$_sd" ".briefing_cache = $_payload | .briefing_cache.gerado_em = \"ontem\""
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "gerado_em invalido" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "gerado_em" || return 1
+}
+
+scenario_cache_gerado_na_onda_zero_falha() {
+  _sd="$TMPDIR_TEST/state"
+  _make_valid_state "$_sd"
+  _payload=$(_cache_valid_payload)
+  _patch_state "$_sd" ".briefing_cache = $_payload | .briefing_cache.gerado_na_onda = 0"
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "gerado_na_onda=0" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "gerado_na_onda" || return 1
+}
+
+scenario_cache_ausente_eh_valido() {
+  # state.json sem campos de cache (caso legado) deve passar
+  _sd="$TMPDIR_TEST/state"
+  _make_valid_state "$_sd"
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "cache ausente deve passar (campos opcionais)" "esperado 0, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+}
+
+scenario_constitution_cache_validado_independente() {
+  _sd="$TMPDIR_TEST/state"
+  _make_valid_state "$_sd"
+  _payload=$(_cache_valid_payload)
+  _patch_state "$_sd" ".constitution_cache = $_payload | .constitution_cache.estrategia = \"bar\""
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "constitution_cache invalido" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "constitution_cache.estrategia" || return 1
+}
+
 run_all_scenarios
