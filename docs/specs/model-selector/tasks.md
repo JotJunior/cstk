@@ -101,10 +101,10 @@ bash-isms. Cada subtarefa de implementacao tem subtarefa de teste pareada.
 
 Ref: FR-001, FR-010, CHK001, CHK003, CHK004, Decision 2 do research
 
-- [ ] 2.1.1 Criar `scripts/classify.sh` com shebang `#!/bin/sh` + `set -eu`
-- [ ] 2.1.2 Documentar exit codes no header (0=sucesso, 2=input invalido, 3=catalogo ausente) — Ref: CHK021
-- [ ] 2.1.3 Implementar leitura de input via stdin OU primeiro arg posicional (contrato em `contracts/skill-io.md`)
-- [ ] 2.1.4 Implementar deteccao de path do catalogo via `${0%/*}/../references/sinais.md` (relativo ao script, sem hardcode absoluto)
+- [x] 2.1.1 Criar `scripts/classify.sh` com shebang `#!/bin/sh` + `set -eu`
+- [x] 2.1.2 Documentar exit codes no header (0=sucesso, 2=input invalido, 3=catalogo ausente) — Ref: CHK021
+- [x] 2.1.3 Implementar leitura de input via stdin OU primeiro arg posicional (contrato em `contracts/skill-io.md`)
+- [x] 2.1.4 Implementar deteccao de path do catalogo via `${0%/*}/../references/sinais.md` (relativo ao script, sem hardcode absoluto)
 
 ### 2.2 Tokenizacao de input `[A]`
 
