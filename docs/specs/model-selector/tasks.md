@@ -57,10 +57,11 @@ implementar logica.
 
 Ref: FR-001, Plan §Project Structure, CHK036
 
-- [ ] 1.1.1 Criar `global/skills/model-selector/` no projeto-alvo
-- [ ] 1.1.2 Criar subdirs `references/`, `scripts/`, `examples/`
-- [ ] 1.1.3 Adicionar entrada `[MINOR] Add model-selector skill (FR-010a invokes optional-deps carve-out for jq in scripts/report.sh)` ao `CHANGELOG.md`
-- [ ] 1.1.4 Verificar empiricamente que estrutura casa com padrao de outras skills (`ls global/skills/clarify/` como baseline)
+- [x] 1.1.1 Criar `global/skills/model-selector/` no projeto-alvo
+- [x] 1.1.2 Criar subdirs `references/`, `scripts/`, `examples/` <!-- .gitkeep adicionado para preservar dirs vazios ate FASE 2 -->
+- [x] 1.1.3 Adicionar entrada `[MINOR] Add model-selector skill (FR-010a invokes optional-deps carve-out for jq in scripts/report.sh)` ao `CHANGELOG.md`
+- [x] 1.1.4 Verificar empiricamente que estrutura casa com padrao de outras skills (`ls global/skills/clarify/` como baseline) <!-- baseline real = analyze/briefing que usam references/, clarify so tem SKILL.md -->
+
 
 ### 1.2 Esqueleto SKILL.md com frontmatter trigger `[C]`
 

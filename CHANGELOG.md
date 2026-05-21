@@ -7,6 +7,16 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Added
+
+- **[MINOR] Add model-selector skill** (FR-010a invokes optional-deps
+  carve-out for jq in scripts/report.sh). Esqueleto canonico criado em
+  `global/skills/model-selector/` com subdirs `references/`, `scripts/`,
+  `examples/` (FASE 1 da feature SDD `model-selector` — tarefa 1.1 do
+  backlog). Implementacao da heuristica de selecao (catalogo MVP 15
+  sinais, classificador POSIX puro, report agregado) deferida para
+  FASES 2-4 do mesmo backlog.
+
 ### Added (drafts SDD — sem implementacao)
 
 - **Feature SDD `agente-00c-artifact-cache`** drafts iniciais em
