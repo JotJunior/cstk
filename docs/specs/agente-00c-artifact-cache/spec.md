@@ -14,6 +14,14 @@
 - Q: Em retomada de execucao (resume apos pausa), o cache deve ser sempre regenerado ou confiar no backup-de-onda quando hash bate? → A: **Confiar no backup quando hash bate**. Na retomada, le `state.json` (com cache) do backup-de-onda + valida sha256 contra arquivo source em disco. Hash igual = cache valido, prossegue. Hash diferente = trata como drift normal (regenera via politica FR-CACHE-009 ou escala para BloqueioHumano se MAJOR via FR-CACHE-010). Reusa logica de `feature-00c-preflight.sh` ja existente. Flag opcional `--regenerate-cache` em /agente-00c-resume foi descartada por adicionar caminho duplicado de codigo sem ganho real (drift detection ja cobre o caso de cache stale). (Resolve Q4.)
 - Q: Como o relatorio mede "tokens economizados"? → A: **Heuristica `(source_chars - resumo_chars) * tokens_per_char_ratio`** por hit. Ratio configuravel via `config.cache.tokens_per_char_ratio` no `state.json` (default 0.25 = chars/4 para pt-br; override para 0.33 = chars/3 em projetos majoritariamente em ingles). Zero dependencias externas, deterministico, mensuravel em tests offline. Precisao boa o suficiente para validar SC-001 (alvo >=70% economia em piloto T4.2). Plug-in via API Anthropic foi descartado por exigir API key em runtime POSIX puro e falhar offline. (Resolve Q5.)
 
+### Session 2026-05-21 (rodada-2 — gaps revelados por /checklist compatibility)
+
+- Q: O novo bloco `## Leitura de artefatos foundational` no body de specify/clarify/plan/execute-task SKILL.md quebra parsers (`cstk doctor`, `validate-documentation`)? → A: **Aditivo no body, sem mudanca no frontmatter YAML**. `cstk doctor` le frontmatter (inalterado, hash do body muda mas isso eh esperado em update); `validate-documentation` valida hierarquia de headings (permite secoes extras). FR-CACHE-008A novo: cada PR que modifica SKILL.md afetada DEVE rodar `cstk doctor` + `validate-documentation` na CI ANTES do merge. Test fixture com SKILL.md modificado incluido na Fase 2 (T2.5). Descartado: flag no frontmatter (amplia schema), bump de skill (4 PRs de release). (Resolve CHK019 do checklist compatibility.)
+- Q: `cstk session` exclui `state.json` ao copiar `.claude/`. Cache vive em state.json. Como tratar? → A: **Cache regenera por sessao**. Comportamento de `cstk session` excluir `state.json` (FR-002 da feature cstk-session) eh intencional e correto — cada sessao parte do zero. Cache eh recriado na onda 1 do agente-00c dentro da sessao (custo ~100ms para um briefing+constitution tipico). FR-CACHE-014A novo: documenta como expected behavior em Edge Cases; sem mudancas em `cli/lib/session.sh`. Descartados: symlink (replica problema do submodule HEAD compartilhado, issue #12); flag `--inherit-cache` (amplia superficie sem ganho real). (Resolve CHK014 + CHK015 do checklist compatibility.)
+- Q: `cstk update` atualiza skills/runtime em `~/.claude/`. Cache em state.json em execucoes ativas. Como interagir? → A: **Cache sobrevive cstk update; schema mismatch detectado por state-validate.sh**. `cstk update` nao toca state.json em projetos (so atualiza `~/.claude/skills/` + `~/.claude/agents/`). Cache em state.json persiste cross-update. Se apos update o runtime espera schema_version novo (e.g., 1.6.0) mas state.json esta em 1.5.0, `state-validate.sh` no proximo `acquire lock` detecta o gap e bloqueia execucao com diagnostico claro ("schema_version do state.json (1.5.0) defasado vs runtime instalado (1.6.0); abortar via /agente-00c-abort ou consultar runbook"). FR-CACHE-017A novo formaliza essa check. Descartados: `cstk update` marcar cache stale (side effect implicito), versao do runtime no cache (overhead por onda sem ganho claro). (Resolve CHK024 do checklist compatibility.)
+- Q: `sha256sum` (linux GNU coreutils) vs `shasum -a 256` (macos BSD) — algoritmos iguais, binarios diferentes. Como garantir consistencia? → A: **Wrapper helper + CI matrix**. Funcao `_cache_sha256()` em `agente-00c-runtime/scripts/_state-dir.sh` (ou novo `_hash.sh`) detecta OS via `uname -s` e despacha: linux → `sha256sum <path> | awk '{print $1}'`; darwin → `shasum -a 256 <path> | awk '{print $1}'`. Outros (BSD/Alpine sem coreutils) ficam fora de escopo v1. CI matrix com 2 runners (`ubuntu-latest` + `macos-latest`) em GitHub Actions valida que hashes do mesmo conteudo batem byte-a-byte. FR-CACHE-016A novo. Algoritmo SHA-256 (FIPS 180-4) garante output identico em ambos os binarios. (Resolve CHK017 + CHK018 do checklist compatibility.)
+- Q: `review-task` skill le state.json + relatorios. Cache adiciona campos novos. Alguma regressao? → A: **review-task ignora cache aditivo; secao no relatorio fica em `report.sh`**. Cache eh aditivo via FR-CACHE-001 (campos opcionais novos). `review-task` SKILL.md atual nao referencia `briefing_cache`/`constitution_cache`, entao output nao muda. A secao "Cache de Artefatos" do relatorio final eh responsabilidade de `report.sh generate` (FR-CACHE-013), nao do `review-task`. Test novo na Fase 2 (T2.5 expandida): rodar `review-task` com state.json (a) sem campos de cache (legado) e (b) com campos de cache populados — validar `diff = 0` no output gerado. Ampliar `review-task` ou criar sub-skill `review-cache` fica fora do escopo v1 (revisitar se demanda surgir). (Resolve CHK022 do checklist compatibility.)
+
 ---
 
 > **Contexto**: o orquestrador agente-00c (e sua variante feature-00c)
@@ -388,12 +396,39 @@ literal (foi substituido por `[REDACTED-AWS-KEY]` ou equivalente).
   - `2`: erro fatal (state.json corrompido, lock indisponivel); skill
     DEVE abortar com diagnostico — NAO assumir fallback silencioso.
 
+**Compatibilidade aditiva e CI gates** (rodada-2 clarifications)
+
+- **FR-CACHE-008A** (resolve CHK019): Cada PR que modifica
+  `SKILL.md` de skills afetadas pelo bloco `## Leitura de
+  artefatos foundational` MUST passar nos quality gates `cstk
+  doctor` e `validate-documentation` na CI antes do merge.
+  Test fixture com SKILL.md modificado incluido na suite da
+  Fase 2 (T2.5). Garante que aditivo no body nao quebra parsers
+  existentes que dependem de frontmatter YAML inalterado +
+  hierarquia de headings valida.
+- **FR-CACHE-014A** (resolve CHK014 + CHK015): Em sessoes criadas
+  via `cstk session start`, o cache **MUST** ser regenerado na
+  proxima onda 1 do agente-00c rodando dentro da sessao, dado
+  que `cstk session` exclui `state.json` ao copiar `.claude/`
+  (comportamento ja documentado em FR-002 da feature
+  cstk-session). Sem mudancas em `cli/lib/session.sh`. Custo
+  estimado: ~100ms para regenerar resumo de briefing+constitution
+  tipico. Edge case documentado.
+
 **Pre-flight e seguranca**
 
 - **FR-CACHE-016**: A primitiva `state-cache.sh` MUST ser
   invocavel SOMENTE quando o `state-lock.sh` esta acquired (mesmo
   contrato das outras primitivas de estado). Tentativa de invocar
   sem lock = exit 2.
+- **FR-CACHE-016A** (resolve CHK017 + CHK018): Calculo de
+  `source_sha256` MUST usar wrapper `_cache_sha256(<path>)` que
+  detecta OS via `uname -s` e despacha para `sha256sum` (linux,
+  GNU coreutils) ou `shasum -a 256` (darwin/macos, BSD). Output
+  byte-a-byte identico em ambos os SOs (FIPS 180-4 garante).
+  CI matrix com runners `ubuntu-latest` + `macos-latest` valida
+  consistencia em cada commit. Outros SOs (BSD nao-darwin, Alpine
+  sem coreutils) ficam fora de escopo v1.
 - **FR-CACHE-017**: `state-validate.sh` MUST validar invariantes
   do cache quando os campos estao presentes:
   - `source_sha256` eh hex de 64 chars.
@@ -402,6 +437,15 @@ literal (foi substituido por `[REDACTED-AWS-KEY]` ou equivalente).
     que original).
   - `gerado_em` eh ISO-8601 valido.
   - `gerado_na_onda` >= 1 e <= numero da onda corrente.
+- **FR-CACHE-017A** (resolve CHK024): `state-validate.sh` MUST
+  validar que `schema_version` do state.json eh <= versao
+  esperada pelo runtime instalado. Mismatch (e.g., state.json em
+  `1.5.0` mas runtime atualizado para `1.6.0` esperar `1.6.0+`)
+  MUST bloquear `acquire lock` com diagnostico claro citando
+  ambas as versoes + instrucao para abortar via `/agente-00c-abort`
+  + ponteiro para runbook. Sem auto-correcao silenciosa. Cache em
+  state.json sobrevive `cstk update` (a primitiva nao toca
+  state.json em projetos); detecao de mismatch eh a salvaguarda.
 
 ---
 

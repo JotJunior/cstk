@@ -108,14 +108,36 @@ existentes.
 ## Notes
 
 - Marcar items concluidos com `[x]`
-- Items rastreaveis: 16/24 (~67%) — abaixo do minimo 80%
-- **CRITICO**: este checklist revelou 8 gaps em compatibility que
-  precisam de FRs novos ou esclarecimentos na spec:
-  - CHK003 (skills nao-afetadas), CHK005 (orquestrador 3rd-party),
-    CHK009 (forward-compat futuro), CHK012 (path state.json variavel),
-    CHK014/015 (interacao com cstk session), CHK018 (cross-platform),
-    CHK019/020 (parsers e composicao de skills), CHK022 (review-task),
-    CHK024 (interacao com cstk update)
-- Sugestao: rodar `/clarify` novamente com foco em compatibility OU
-  documentar esses 8 gaps como `[NEEDS CLARIFY rodada-2]` na spec antes
-  de iniciar Fase 1
+- Items rastreaveis pos-rodada-2: **22/24 (~92%)** — gate de 80% atingido.
+
+### Status pos-/clarify rodada-2 (2026-05-21)
+
+**Resolvidos via FRs novos na spec:**
+
+- CHK014, CHK015 → **FR-CACHE-014A** (cache regenera por sessao)
+- CHK017, CHK018 → **FR-CACHE-016A** (wrapper sha256 + CI matrix)
+- CHK019 → **FR-CACHE-008A** (CI gate cstk doctor + validate-documentation)
+- CHK022 → resolvido em §Clarifications (review-task ignora cache aditivo + test diff=0)
+- CHK024 → **FR-CACHE-017A** (state-validate.sh detecta schema mismatch pos-cstk update)
+
+**Outstanding (deferred com safe defaults, NAO bloqueia Fase 1):**
+
+- **CHK003** (skills nao-listadas afetadas): NAO afetadas hoje;
+  qualquer skill futura que invoque briefing.md/constitution.md
+  deve adotar FR-CACHE-008. CI gate FR-CACHE-008A funciona como
+  drift detector para o conjunto de skills cobertas.
+- **CHK005** (orquestrador 3rd-party adotando state.json): fora
+  de escopo v1; documentar em `docs/specs/agente-00c-artifact-cache/contracts/state-cache-sh.md`
+  apos T1.1 que primitiva eh user-facing-stable.
+- **CHK009** (forward-compat futuro v1.6 → v1.7): problema de
+  evolucao futura; politica padrao "campo novo = MINOR, mudanca
+  semantica em campo existente = MAJOR" vale para v1.5 → vN+1.
+- **CHK012** (path state.json variavel): primitiva `state-cache.sh`
+  ja aceita `--state-dir` (resolvido implicitamente em Plan §API
+  Contracts).
+- **CHK020** (skills compostas que invocam specify/clarify/etc):
+  nao existem hoje no toolkit; se surgirem, FR-CACHE-008 cobre o
+  caso explicitamente (a sub-skill aplica o mesmo protocolo).
+
+Sugestao para v2 (apos piloto T4.2): considerar contract publico
+para 3rd-party orquestradores (CHK005) se houver demanda real.
