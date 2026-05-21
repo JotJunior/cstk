@@ -4,7 +4,7 @@
 **Spec**: [`spec.md`](./spec.md)
 **Plan**: [`plan.md`](./plan.md)
 **Created**: 2026-05-20
-**Status**: Draft (pre-clarify — pode mudar quando Q1-Q5 forem resolvidas)
+**Status**: Refinado pos-clarify (Session 2026-05-21) — T0.1 concluida.
 
 > Criticidade: `[C]` = Critical (bloqueia release), `[A]` = Alto
 > (defeito perceptivel ao usuario), `[M]` = Medio (qualidade /
@@ -45,15 +45,23 @@
 
 ---
 
-## Fase 0 — Clarify + Plan refinado
+## Fase 0 — Clarify + Plan refinado ✅ CONCLUIDA
 
-### T0.1 [C] Resolver Open Questions Q1-Q5 da spec via `/clarify`
+### T0.1 [C] ✅ Resolver Open Questions Q1-Q5 da spec via `/clarify`
 
-**Dependencias**: spec.md draftada (concluido).
-**Saida**: spec.md atualizada com bloco `## Clarifications` populado +
-plan.md atualizado removendo todos os `[NEEDS CLARIFY Qn]`.
-**Bloqueia**: T1.1 (primitiva nao pode ser implementada com
-geracao-de-resumo indefinida).
+**Concluida em**: 2026-05-21 (Session de clarify).
+**Decisoes registradas** (ver `spec.md` §Clarifications + `plan.md` §Research):
+- Q1 → Heuristica extractiva deterministica (sem LLM).
+- Q2 → Threshold fixo 3000 chars, override opcional.
+- Q3 → Cache apenas da "constitution ativa" (1 campo).
+- Q4 → Confiar no backup-de-onda quando hash bate.
+- Q5 → Heuristica `chars * tokens_per_char_ratio` (default 0.25).
+
+**Saida verificada**: spec.md §Clarifications populada com 5 bullets;
+plan.md sem `[NEEDS CLARIFY]` restantes; FR-CACHE-005 substituido com
+algoritmo deterministico.
+
+**Desbloqueia**: T1.1, T1.2 podem iniciar.
 
 ---
 
@@ -67,7 +75,7 @@ geracao-de-resumo indefinida).
 - Receber `--state-dir`, `--artifact`, `--source-path`.
 - Calcular `source_sha256` via `sha256sum` (linux) / `shasum -a 256` (macos).
 - Decidir `estrategia`: se `source_chars < passthrough_threshold` → "passthrough"; senao "resumo".
-- Para "resumo": invocar heuristica extractiva (T1.2) OU LLM-in-session (decidido em T0.1).
+- Para "resumo": invocar heuristica extractiva (T1.2). Sem LLM call (FR-CACHE-005, decidido em T0.1).
 - Aplicar `secrets-filter.sh scrub` ao resumo.
 - Atualizar state.json via `state-rw.sh set` (atomico).
 - Registrar `Decisao` informativa via `state-decisions.sh register`.
@@ -82,7 +90,7 @@ geracao-de-resumo indefinida).
 - Output: markdown reduzido (preserva `## Heading`, drops body
   prolixo, mantem 1a linha de cada heading).
 - Determinista (mesma entrada = mesma saida).
-**Bloqueio**: aguarda T0.1 (heuristica vs LLM).
+**Bloqueio**: nenhum — T0.1 concluida (heuristica decidida).
 
 ### T1.3 [C] Implementar subcomandos `get-resumo`, `check-drift`, `invalidate`
 

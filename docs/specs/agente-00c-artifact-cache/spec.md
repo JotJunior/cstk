@@ -6,7 +6,13 @@
 
 ## Clarifications
 
-_(esta secao sera populada pela skill `clarify` apos draft inicial)_
+### Session 2026-05-21
+
+- Q: Como o orquestrador gera o resumo executivo de briefing/constitution na onda 1? → A: Heuristica extractiva — algoritmo deterministico que extrai todos os `## H2` e `### H3` headings + primeira linha de corpo nao-vazia de cada, dropando `### H3` ate caber em `resumo_max_chars`. Zero tokens, deterministico, totalmente testavel. (Resolve Q1 do bloco "Open Questions for /clarify".)
+- Q: Qual o threshold de chars onde o cache cai em `passthrough`? → A: Fixo em **3000 chars** como default conservador (break-even entre overhead de geracao e ganho de re-leitura), com override opcional via `config.cache.passthrough_threshold_chars` no `state.json`. Threshold dinamico baseado em ondas esperadas foi descartado por exigir heuristica frangil. (Resolve Q2.)
+- Q: Quando ambos existem (raiz `docs/constitution.md` + feature-delta `docs/specs/<feat>/constitution.md`), como o cache trata? → A: Cachear **apenas a "constitution ativa"** — resolvida via `pipeline.sh constitution-conflict` (primitiva ja existente). Para projeto sem feature-delta, cache aponta para a raiz; para projeto com feature-delta, cache aponta para a feature-delta. UM campo unico `constitution_cache` em `state.json` (com `source_path` indicando qual foi cacheada). Constitution raiz nao referenciada pela feature corrente nao consome espaco no cache. (Resolve Q3.)
+- Q: Em retomada de execucao (resume apos pausa), o cache deve ser sempre regenerado ou confiar no backup-de-onda quando hash bate? → A: **Confiar no backup quando hash bate**. Na retomada, le `state.json` (com cache) do backup-de-onda + valida sha256 contra arquivo source em disco. Hash igual = cache valido, prossegue. Hash diferente = trata como drift normal (regenera via politica FR-CACHE-009 ou escala para BloqueioHumano se MAJOR via FR-CACHE-010). Reusa logica de `feature-00c-preflight.sh` ja existente. Flag opcional `--regenerate-cache` em /agente-00c-resume foi descartada por adicionar caminho duplicado de codigo sem ganho real (drift detection ja cobre o caso de cache stale). (Resolve Q4.)
+- Q: Como o relatorio mede "tokens economizados"? → A: **Heuristica `(source_chars - resumo_chars) * tokens_per_char_ratio`** por hit. Ratio configuravel via `config.cache.tokens_per_char_ratio` no `state.json` (default 0.25 = chars/4 para pt-br; override para 0.33 = chars/3 em projetos majoritariamente em ingles). Zero dependencias externas, deterministico, mensuravel em tests offline. Precisao boa o suficiente para validar SC-001 (alvo >=70% economia em piloto T4.2). Plug-in via API Anthropic foi descartado por exigir API key em runtime POSIX puro e falhar offline. (Resolve Q5.)
 
 ---
 
@@ -295,14 +301,20 @@ literal (foi substituido por `[REDACTED-AWS-KEY]` ou equivalente).
   (etapa `briefing` para `briefing_cache`; etapa `constitution`
   para `constitution_cache`). Para `feature-00c`, populacao ocorre
   durante FR-PRE-004 do feature-00c (validacao + registro de hashes).
-- **FR-CACHE-005**: A geracao do resumo MUST seguir politica
-  configuravel (decisao para `/plan`):
-  - Default proposto: usar LLM (mesma sessao do orquestrador) com
-    prompt deterministico — "Resuma X em ate 1500 chars preservando
-    estrutura semantica (secoes, principios, prioridades) e
-    descartando exemplos verbosos e justificativas historicas."
-  - Alternativa avaliavel em /plan: extracao heuristica (manter
-    so headers + 1a linha de cada secao) sem LLM call.
+- **FR-CACHE-005**: A geracao do resumo MUST usar **heuristica
+  extractiva deterministica** (resolvido em clarify 2026-05-21):
+  1. Extrair todos os headings `## H2` e `### H3` do arquivo source.
+  2. Para cada heading, extrair a primeira linha de corpo nao-vazia
+     imediatamente abaixo dele.
+  3. Concatenar como markdown valido preservando hierarquia
+     (`##` antes de `###`).
+  4. Se output excede `resumo_max_chars` (default 2000), dropar
+     `### H3` em ordem inversa (do fim para o comeco) ate caber.
+  5. Mesma entrada de bytes => mesma saida de bytes (deterministico).
+
+  Sem chamada a LLM. Sem dependencia de prompt-cache. Plug-in
+  alternativo (LLM-summarizer) avaliado se SC-001 falhar em piloto
+  real (T4.2 do tasks.md).
 - **FR-CACHE-006**: O resumo gerado MUST ser submetido a
   `secrets-filter.sh scrub` ANTES de ser persistido em
   `state.json`. O resultado filtrado eh o que vai para o campo
@@ -505,20 +517,11 @@ Verificacao contra os 5 principios MUST da constitution
 
 ## Open Questions for /clarify
 
-- **Q1**: Geracao do resumo — LLM in-session ou heuristica extractiva?
-  Trade-off custo (tokens da chamada de resumo) vs qualidade
-  (LLM produz resumo semantico melhor; heuristica eh deterministica
-  e gratuita).
-- **Q2**: Threshold `passthrough` — 3000 chars eh o ponto de
-  equilibrio entre overhead de geracao e ganho? Talvez deva ser
-  proporcional ao numero esperado de ondas (curto = passthrough,
-  longo = cache).
-- **Q3**: Cache de constitution.md raiz vs feature-delta — quando
-  ambos existem, cachear separadamente ou consolidar? Implica em
-  N campos vs 1 campo consolidado em state.json.
-- **Q4**: Re-geracao em retomada (resume) — sempre regenerar do
-  zero, ou confiar no backup-de-onda se hash bate? Trade-off
-  seguranca vs custo.
-- **Q5**: Quem mede "tokens economizados" — orquestrador (proxy
-  via chars / 4) ou plug-in que conta tokens reais via API
-  Anthropic? Plug-in eh mais preciso mas adiciona dependencia.
+_(todas resolvidas em Session 2026-05-21 — ver bloco `## Clarifications`
+no topo deste arquivo. Resumo das decisoes:)_
+
+- **Q1** → Heuristica extractiva deterministica (sem LLM call).
+- **Q2** → Threshold fixo de 3000 chars, override opcional.
+- **Q3** → Cachear apenas a "constitution ativa" (1 campo).
+- **Q4** → Confiar no backup-de-onda quando hash bate (drift detection cobre stale).
+- **Q5** → Heuristica `chars * tokens_per_char_ratio` (default 0.25 pt-br).
