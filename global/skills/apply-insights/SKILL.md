@@ -1,15 +1,6 @@
 ---
 name: apply-insights
-description: |
-  Use quando o usuario pedir para aplicar insights de uso do Claude Code ao
-  projeto atual, melhorar o CLAUDE.md, sugerir hooks ou otimizar workflows
-  baseados em padroes de uso comprovados. Tambem quando mencionar "aplicar
-  insights", "apply insights", "usage insights", "melhorar claude.md",
-  "improve workflow", "otimizar fluxo", "aplicar playbook". NAO use sem
-  que exista um arquivo de insights (default: ~/.claude/insights/usage-insights.md)
-  — a skill precisa de dados empiricos para aplicar. NAO confunda com a
-  slash command nativa /insights do Claude Code, que analisa suas sessoes
-  (funcao diferente: ela e introspectiva, esta e prescritiva).
+description: 'Apply Claude Code usage insights to current project — improve CLAUDE.md, hooks, workflows. Triggers: "aplicar insights", "otimizar fluxo", "melhorar claude.md". Requires ~/.claude/insights/usage-insights.md. Not the native /insights command.'
 argument-hint: "[area especifica: bugfix | migrations | conventions | hooks | all]"
 allowed-tools:
   - Read

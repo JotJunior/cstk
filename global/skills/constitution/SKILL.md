@@ -1,11 +1,6 @@
 ---
 name: constitution
-description: |
-  Use quando o usuario pedir para criar, atualizar ou consolidar principios
-  imutaveis de governanca do projeto. Tambem quando mencionar "criar
-  constituicao", "constitution", "principios do projeto", "governance",
-  "atualizar constituicao". NAO use para documentar decisoes tecnicas
-  pontuais — essas sao ADRs.
+description: 'Create/update immutable project governance principles. Triggers: "constitution", "criar constituicao", "principios do projeto", "governance". For point-in-time technical decisions, use ADRs instead.'
 argument-hint: "[descricao do projeto ou principios desejados]"
 allowed-tools:
   - Read

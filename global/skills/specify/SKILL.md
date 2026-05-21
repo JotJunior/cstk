@@ -1,12 +1,6 @@
 ---
 name: specify
-description: |
-  Use quando o usuario descrever uma nova feature em linguagem natural e pedir
-  para transformar em spec SDD estruturada (user stories, requisitos
-  funcionais, success criteria). Tambem quando mencionar "specify", "criar
-  spec", "nova feature", "especificacao", "feature spec". NAO use para
-  documentacao classica de UC (use create-use-case) ou para refinar spec
-  existente (use clarify).
+description: 'Convert a natural-language feature description into SDD spec (user stories, FRs, success criteria). Triggers: "specify", "criar spec", "nova feature", "feature spec". Skip for classic UC (create-use-case) or refining existing spec (clarify).'
 argument-hint: "[descricao da feature em linguagem natural]"
 allowed-tools:
   - Read

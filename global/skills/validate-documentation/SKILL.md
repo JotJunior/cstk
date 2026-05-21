@@ -1,13 +1,6 @@
 ---
 name: validate-documentation
-description: |
-  Use quando o usuario pedir para validar documentacao existente, verificar
-  qualidade/completude de um UC, auditar um documento individual ou revisar
-  conformidade com padroes estruturais. Tambem quando mencionar "validar
-  documentacao", "verificar UC", "checar qualidade docs", "review
-  documentation", "audit docs". NAO use para validar consistencia
-  CROSS-artifact entre spec/plan/tasks (use analyze) — esta skill valida
-  UM documento por vez.
+description: 'Validate a single existing document''s quality/completeness against structural standards. Triggers: "validar documentacao", "verificar UC", "audit docs". Skip for cross-artifact spec/plan/tasks consistency (use analyze).'
 allowed-tools:
   - Read
   - Glob

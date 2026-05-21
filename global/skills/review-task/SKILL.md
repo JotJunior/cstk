@@ -1,12 +1,6 @@
 ---
 name: review-task
-description: |
-  Use quando o usuario pedir status das tarefas, progresso do projeto,
-  relatorio do backlog, ou quiser identificar tarefas prontas para comecar.
-  Tambem quando mencionar "revisar tarefas", "status das tarefas", "review
-  tasks", "progresso do projeto", "verificar tarefas", "relatorio de tarefas".
-  NAO use para executar tarefas (use execute-task) ou criar novas
-  (use create-tasks).
+description: 'Task status / backlog progress report; identifies tasks ready to start. Triggers: "revisar tarefas", "status das tarefas", "progresso do projeto", "review tasks". Skip for executing (execute-task) or creating tasks (create-tasks).'
 allowed-tools:
   - Read
   - Edit

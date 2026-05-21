@@ -1,13 +1,6 @@
 ---
 name: execute-task
-description: |
-  Use quando o usuario pedir para executar, fazer ou implementar uma tarefa
-  especifica do backlog, seguindo fluxo obrigatorio de 9 etapas (analise,
-  localizacao, planejamento, implementacao, testes, validacao, lint, conclusao
-  e atualizacao). Tambem quando mencionar "executar tarefa", "execute task",
-  "fazer tarefa", "implementar tarefa", "rodar tarefa", "executar subtarefa".
-  NAO use para criar tarefas (use create-tasks), gerar plano tecnico
-  (use plan) ou corrigir bug (use bugfix).
+description: 'Execute a backlog task following 9-step workflow (analysis, localization, planning, implementation, tests, validation, lint, conclusion, update). Triggers: "executar tarefa", "execute task", "implementar tarefa". Skip for create-tasks/plan/bugfix.'
 argument-hint: "[ID ou descricao da tarefa a executar]"
 allowed-tools:
   - Read
