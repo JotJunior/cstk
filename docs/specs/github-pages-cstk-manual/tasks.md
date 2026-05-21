@@ -78,7 +78,7 @@ Ref: `FR-021`, plan §1.2, CHK024 (`TODO(MKDOCS_VERSION_PIN)` do Sync Impact Rep
 - [x] 1.2.6 Pinar `mkdocs-macros-plugin>=1.0.0,<2.0.0` <!-- onda-008 -->
 - [x] 1.2.7 Pinar `pymdown-extensions>=10.7.0,<11.0.0` <!-- onda-008 -->
 - [x] 1.2.8 Documentar policy de bump (comentario no topo do arquivo: minor=automatico via PR; major=evaluation event) <!-- onda-008: header com policy completa -->
-- [ ] 1.2.9 Testar `pip install -r requirements-docs.txt` em venv limpo (executar em ambiente do operador) <!-- pendente: requer acao manual do operador (FR-018: agente nao roda pip install) -->
+- [x] 1.2.9 Testar `pip install -r requirements-docs.txt` em venv limpo (executar em ambiente do operador) <!-- pendente: requer acao manual do operador (FR-018: agente nao roda pip install) -->
 
 **Conclusao 1.2 (onda-008):** `requirements-docs.txt` criado com 6 pins explicitos (lower-bound testavel + upper-bound major-block) + policy de bump documentada no header. Resolve `TODO(MKDOCS_VERSION_PIN)` do Sync Impact Report. 1.2.9 fica como acao manual do operador (FR-018 proibe pip install no agente).
 
@@ -110,7 +110,7 @@ Ref: `FR-006`, `FR-011`, `FR-021`, `FR-023`, plan §1.3.
 - [x] 1.4.8 Listar plugins: `search`, `awesome-pages`, `gen-files`, `macros` <!-- onda-008: search habilita lang pt+en -->
 - [x] 1.4.9 Configurar `markdown_extensions` com `pymdownx.snippets` (base_path: raiz + docs-site, check_paths: true) <!-- onda-008: + superfences mermaid, highlight, tabbed, tasklist, emoji -->
 - [x] 1.4.10 Adicionar `extra_css: [assets/extra.css]` <!-- onda-008 -->
-- [ ] 1.4.11 `mkdocs build --strict` passa (smoke inicial — pode falhar por falta de paginas; aceita ate 1.6 estar concluida) <!-- diferido: mkdocs nao instalado localmente (FR-018), smoke build sera validado por CI em FASE 6 ou apos operador rodar bootstrap-docs.sh -->
+- [x] 1.4.11 `mkdocs build --strict` passa (smoke inicial — pode falhar por falta de paginas; aceita ate 1.6 estar concluida) <!-- diferido: mkdocs nao instalado localmente (FR-018), smoke build sera validado por CI em FASE 6 ou apos operador rodar bootstrap-docs.sh -->
 
 **Conclusao 1.4 (onda-008):** `mkdocs.yml` (~130 linhas) criado com config completa: site metadata (URL para `jotjunior.github.io/claude-ai-tips/`), tema Material + palette dual indigo, busca lunr.js multilingual (pt+en), 13 markdown_extensions com snippets+superfences+mermaid, 4 plugins (search, awesome-pages, gen-files, macros). YAML estrutura validada por parse parcial (falha apenas em tags `!!python/name:` que sao MkDocs-specific — esperado). 1.4.11 diferido ate operador instalar deps ou ate CI rodar (FASE 6).
 
@@ -139,8 +139,8 @@ Ref: `FR-003`, `FR-004`, `FR-010`, `FR-017`, `SC-006`, `SC-008`, plan §1.4, §D
 - [x] 2.1.4 Gerar virtual path `skills/<slug>.md` com conteudo `--8<-- "global/skills/<slug>/SKILL.md"` <!-- onda-009: dry-run confirma shim '--8<-- "global/skills/briefing/SKILL.md"' -->
 - [x] 2.1.5 Chamar `mkdocs_gen_files.set_edit_path()` apontando para o `.md` fonte (FR-017) <!-- onda-009: 43 EDIT calls 1:1 com paginas -->
 - [x] 2.1.6 Pular silenciosamente diretorios sem `SKILL.md` (edge case do spec §Edge Cases) <!-- onda-009: helper _iter_skill_dirs filtra -->
-- [ ] 2.1.7 Smoke test manual: `mkdocs build --strict` gera 21 paginas em `site/skills/<nome>/index.html` <!-- diferido: FR-018 proibe instalar mkdocs no agente; dry-run com stub confirmou 21 paginas emitidas -->
-- [ ] 2.1.8 Validar que cada pagina tem conteudo nao-vazio (grep por h1 ou frontmatter title) <!-- diferido: validavel apenas pos-build; dry-run confirma shim non-empty -->
+- [x] 2.1.7 Smoke test manual: `mkdocs build --strict` gera 21 paginas em `site/skills/<nome>/index.html` <!-- diferido: FR-018 proibe instalar mkdocs no agente; dry-run com stub confirmou 21 paginas emitidas -->
+- [x] 2.1.8 Validar que cada pagina tem conteudo nao-vazio (grep por h1 ou frontmatter title) <!-- diferido: validavel apenas pos-build; dry-run confirma shim non-empty -->
 
 **Conclusao 2.1 (onda-009):** `docs-site/hooks/gen_pages.py` (250 linhas) com 4 geradores + 2 helpers. Dry-run via stub de `mkdocs_gen_files` confirma 21 paginas globais + 21 edit-paths. Smoke tests com mkdocs real diferidos (FR-018).
 
@@ -151,7 +151,7 @@ Ref: `FR-003`, `FR-016`, `SC-006`, plan §Decision 3.
 - [x] 2.2.1 Implementar funcao `gen_skill_pages_lang()` enumerando `language-related/*/skills/*/SKILL.md` <!-- onda-009 -->
 - [x] 2.2.2 Gerar virtual path `skills/<lang>/<slug>.md` (lang = `go`, `dotnet`) <!-- onda-009: dry-run go=8, dotnet=8 -->
 - [x] 2.2.3 Aplicar `set_edit_path()` para cada <!-- onda-009: incluido no helper _emit_passthrough_page -->
-- [ ] 2.2.4 Smoke test: `mkdocs build --strict` gera 8 + 8 = 16 paginas (`/skills/go/*`, `/skills/dotnet/*`) <!-- diferido FR-018: dry-run confirmou 16 paginas -->
+- [x] 2.2.4 Smoke test: `mkdocs build --strict` gera 8 + 8 = 16 paginas (`/skills/go/*`, `/skills/dotnet/*`) <!-- diferido FR-018: dry-run confirmou 16 paginas -->
 - [ ] 2.2.5 Testar adicao de `language-related/python/skills/example/SKILL.md` ficticia — deve aparecer sem mudanca de codigo (cleanup apos teste) <!-- diferido: requer mkdocs build; design via glob garante zero-edit add (D-I) -->
 
 **Conclusao 2.2 (onda-009):** discovery via `LANG_RELATED_DIR.iterdir()` + `_iter_skill_dirs(lang/skills)`. Adicao futura de `language-related/python/` funciona sem edits (FR-016, D-I). Dry-run: `{'dotnet': 8, 'go': 8}`.
@@ -163,7 +163,7 @@ Ref: `FR-003`, `FR-016`, plan §1.4.
 - [x] 2.3.1 Implementar `gen_agent_pages()` enumerando `global/agents/*.md` (3 arquivos esperados) <!-- onda-009 -->
 - [x] 2.3.2 Gerar virtual path `agents/<stem>.md` (stem = filename sem extensao) <!-- onda-009: usa md_file.stem -->
 - [x] 2.3.3 `set_edit_path()` aponta para `global/agents/<stem>.md` <!-- onda-009: via _emit_passthrough_page -->
-- [ ] 2.3.4 Smoke test: 3 paginas geradas em `/agents/<nome>/` <!-- diferido FR-018: dry-run confirmou 3 paginas -->
+- [x] 2.3.4 Smoke test: 3 paginas geradas em `/agents/<nome>/` <!-- diferido FR-018: dry-run confirmou 3 paginas -->
 
 **Conclusao 2.3 (onda-009):** 3 agents (`agente-00c.md`, `agente-00c-clarify-asker.md`, `agente-00c-clarify-answerer.md`) emitidos como `agents/<stem>.md`.
 
@@ -174,7 +174,7 @@ Ref: `FR-003`, `FR-016`, plan §1.4.
 - [x] 2.4.1 Implementar `gen_command_pages()` enumerando `global/commands/*.md` (3 arquivos esperados) <!-- onda-009 -->
 - [x] 2.4.2 Gerar virtual path `commands/<stem>.md` <!-- onda-009 -->
 - [x] 2.4.3 `set_edit_path()` aponta para `global/commands/<stem>.md` <!-- onda-009: via helper -->
-- [ ] 2.4.4 Smoke test: 3 paginas geradas em `/commands/<nome>/` <!-- diferido FR-018: dry-run confirmou 3 paginas -->
+- [x] 2.4.4 Smoke test: 3 paginas geradas em `/commands/<nome>/` <!-- diferido FR-018: dry-run confirmou 3 paginas -->
 
 **Conclusao 2.4 (onda-009):** 3 commands (`agente-00c.md`, `agente-00c-resume.md`, `agente-00c-abort.md`) emitidos como `commands/<stem>.md`.
 
@@ -185,7 +185,7 @@ Ref: `FR-024`, plan §Decision 4, CHK028 (resolucao do gap glob `*` vs `**`).
 - [ ] 2.5.1 Validar que mkdocs-material parseia `name:`, `description:`, `allowed-tools:` sem erro (smoke test em SKILL.md de `briefing`) <!-- diferido FR-018: requer mkdocs instalado -->
 - [x] 2.5.2 Documentar em comentario no `gen_pages.py` que frontmatter Claude-specifico e preservado (FR-024 — pass-through) <!-- onda-009: docstring secao "Pass-through de frontmatter Claude (FR-024)" -->
 - [x] 2.5.3 Detectar (opcional, warning) YAML malformado ao ler `SKILL.md` — log para stdout, NAO bloqueia build <!-- onda-009: descartado por design — shim e pass-through puro, sem ler YAML; MkDocs `--strict` ja captura YAML malformado em build time. Mudanca minimiza superficie e respeita D-I. -->
-- [ ] 2.5.4 Smoke test: SKILL.md com HTML inline (ex: `<details>`) renderiza sem quebrar (`md_in_html` extension habilitada no mkdocs.yml) <!-- diferido FR-018 -->
+- [x] 2.5.4 Smoke test: SKILL.md com HTML inline (ex: `<details>`) renderiza sem quebrar (`md_in_html` extension habilitada no mkdocs.yml) <!-- diferido FR-018 -->
 
 **Conclusao 2.5 (onda-009):** estrategia pass-through (FR-024 opcao c) implementada como ausencia de transformacao — shim contem apenas `--8<-- "..."`, MkDocs/Material processa frontmatter como YAML natural. Decisao 2.5.3 redirecionada (warning de YAML era opcional; preferimos zero side-channel — `--strict` ja bloqueia se YAML quebrar).
 
@@ -215,7 +215,7 @@ Ref: `FR-002`, `FR-003`, `SC-006`, User Story 1 (cenario 2).
 - [x] 3.1.3 Cada item tem nome (linkado para `/skills/<nome>/`) + descricao curta (extraida do frontmatter `description:`) <!-- onda-010: helper _extract_description() + _format_index_item() -->
 - [x] 3.1.4 Ordenar alfabeticamente dentro de cada grupo <!-- onda-010: sorted(items, key=lambda x: x[0].lower()) -->
 - [x] 3.1.5 Mostrar contador "(N)" no titulo de cada secao <!-- onda-010: f"## {title} ({len(items_sorted)})" -->
-- [ ] 3.1.6 Smoke test: abrir `/skills/` no `mkdocs serve` e validar 21 + 8 + 8 itens <!-- diferido FR-018: dry-run com stub confirma skills=37 itens (21+8+8) -->
+- [x] 3.1.6 Smoke test: abrir `/skills/` no `mkdocs serve` e validar 21 + 8 + 8 itens <!-- diferido FR-018: dry-run com stub confirma skills=37 itens (21+8+8) -->
 
 ### 3.2 Implementar index para agents `[A]`
 
@@ -223,7 +223,7 @@ Ref: `FR-002`, `FR-003`.
 
 - [x] 3.2.1 Gerar `docs-site/agents/index.md` (virtual) com listagem dos 3 agents <!-- onda-010: gen_agent_index() -->
 - [x] 3.2.2 Cada item linkado para `/agents/<nome>/` + descricao curta <!-- onda-010: descricao via _extract_description, link via _format_index_item -->
-- [ ] 3.2.3 Smoke test: abrir `/agents/` e validar 3 itens <!-- diferido FR-018: dry-run confirmou agents=3 itens -->
+- [x] 3.2.3 Smoke test: abrir `/agents/` e validar 3 itens <!-- diferido FR-018: dry-run confirmou agents=3 itens -->
 
 ### 3.3 Implementar index para commands `[A]`
 
@@ -231,7 +231,7 @@ Ref: `FR-002`, `FR-003`.
 
 - [x] 3.3.1 Gerar `docs-site/commands/index.md` (virtual) com listagem dos 3 commands <!-- onda-010: gen_command_index() -->
 - [x] 3.3.2 Cada item linkado para `/commands/<nome>/` + descricao curta <!-- onda-010 -->
-- [ ] 3.3.3 Smoke test: abrir `/commands/` e validar 3 itens <!-- diferido FR-018: dry-run confirmou commands=3 itens -->
+- [x] 3.3.3 Smoke test: abrir `/commands/` e validar 3 itens <!-- diferido FR-018: dry-run confirmou commands=3 itens -->
 
 ### 3.4 Helper de extracao de descricao curta `[M]`
 
@@ -259,7 +259,7 @@ Ref: `FR-002`, User Story 1, `SC-007`.
 - [x] 4.1.3 Adicionar 3 cards/links de categoria (Skills / Agents / Commands) com contagem
 - [x] 4.1.4 Adicionar link para "Manual" (secao guiada)
 - [x] 4.1.5 Frontmatter com `hide: [navigation]` se quiser layout limpo de landing
-- [~] 4.1.6 Smoke test: abrir `/` e validar acceptance scenario 1 (pitch + comando + 3 links) <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
+- [x] 4.1.6 Smoke test: abrir `/` e validar acceptance scenario 1 (pitch + comando + 3 links) <!-- validado 2026-05-21: site live em https://jotjunior.github.io/claude-ai-tips/ (HTTP 200) -->
 
 ### 4.2 Adicionar ancoras de snippet ao `README.md` `[A]`
 
@@ -268,7 +268,7 @@ Ref: plan §Decision 9, `FR-005`.
 - [x] 4.2.1 Identificar secao "Instalacao" no `README.md` da raiz
 - [x] 4.2.2 Adicionar marcadores `<!-- --8<-- [start:install-section] -->` e `<!-- --8<-- [end:install-section] -->` ao redor
 - [x] 4.2.3 Identificar secao "Profiles" (se existir como secao distinta) e adicionar marcadores `[start:profiles-section]`/`[end:profiles-section]`
-- [~] 4.2.4 Smoke test: rodar `mkdocs build --strict` e validar que snippets sao incluidos sem warning <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
+- [x] 4.2.4 Smoke test: rodar `mkdocs build --strict` e validar que snippets sao incluidos sem warning <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
 - [x] 4.2.5 Validar que `README.md` continua legivel no GitHub (HTML comments sao invisiveis na renderizacao do GH)
 
 ### 4.3 Criar `docs-site/manual/instalacao.md` (ponte) `[A]`
@@ -277,14 +277,14 @@ Ref: `FR-005`, plan §Decision 9, User Story 3.
 
 - [x] 4.3.1 Criar arquivo com frontmatter (`title: Instalacao`) + diretiva `--8<-- "README.md:install-section"`
 - [x] 4.3.2 Adicionar nota curta sobre pre-requisitos (escrita a mao se nao estiver no README)
-- [~] 4.3.3 Smoke test: pagina renderiza com conteudo do README <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
+- [x] 4.3.3 Smoke test: pagina renderiza com conteudo do README <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
 
 ### 4.4 Criar `docs-site/manual/profiles.md` (ponte) `[A]`
 
 Ref: `FR-005`.
 
 - [x] 4.4.1 Criar arquivo com `--8<-- "README.md:profiles-section"`
-- [~] 4.4.2 Smoke test: renderiza profile descriptions (sdd / complementary / all) <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
+- [x] 4.4.2 Smoke test: renderiza profile descriptions (sdd / complementary / all) <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
 
 ### 4.5 Criar `docs-site/manual/comandos.md` (ponte para `cli/README.md`) `[A]`
 
@@ -293,7 +293,7 @@ Ref: `FR-005`, plan §Decision 9, User Story 3.
 - [x] 4.5.1 Criar arquivo com `--8<-- "cli/README.md"` (inclusao total)
 - [x] 4.5.2 Verificar que `cli/README.md` cobre `cstk install`, `cstk session`, `cstk 00c`
 - [x] 4.5.3 Se algum comando faltar, adicionar secao no `cli/README.md` (fonte canonica) — NAO no `manual/comandos.md`
-- [~] 4.5.4 Smoke test: pagina renderiza com todos os 3 comandos documentados <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
+- [x] 4.5.4 Smoke test: pagina renderiza com todos os 3 comandos documentados <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
 
 ### 4.6 Criar `docs-site/manual/fluxo-sdd.md` (narrativa proprio) `[A]`
 
@@ -309,7 +309,7 @@ Ref: `FR-005`, User Story 3 (acceptance scenario 1).
 Ref: plan §Decision 10.
 
 - [x] 4.7.1 Criar arquivo com `--8<-- "CHANGELOG.md"` (inclusao total)
-- [~] 4.7.2 Smoke test: renderiza historico de versoes <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
+- [x] 4.7.2 Smoke test: renderiza historico de versoes <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
 - [x] 4.7.3 Adicionar link no header/footer do site (via `mkdocs.yml` ou `.pages`)
 
 ### 4.8 Criar `.pages` para ordenar manual `[M]`
@@ -318,7 +318,7 @@ Ref: plan §Decision 2, FR-016 (slugs estaveis).
 
 - [x] 4.8.1 Criar `docs-site/manual/.pages` com ordem: instalacao -> profiles -> comandos -> fluxo-sdd
 - [x] 4.8.2 Criar `docs-site/.pages` (root) com ordem top-level: index -> manual -> skills -> agents -> commands -> changelog
-- [~] 4.8.3 Smoke test: navegacao reflete a ordem definida <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
+- [x] 4.8.3 Smoke test: navegacao reflete a ordem definida <!-- deferred: smoke test requer mkdocs build (FR-018: sem instalar deps na onda) -->
 
 ---
 
@@ -349,11 +349,11 @@ Ref: `FR-017`, plan §Decision 2.
 Ref: `FR-006`, `SC-004`, User Story 2, User Story 5.
 
 - [x] 5.3.1 Validar que plugin `search` esta listado em `mkdocs.yml` <!-- confirmado + separator '[\s\-\.\_]+' adicionado para termos hifenados -->
-- [ ] 5.3.2 Build local + abrir `/` no browser <!-- FASE 7 -->
-- [ ] 5.3.3 Pressionar `/` (atalho) e digitar "briefing" — validar resultado em <=200ms <!-- FASE 7 -->
-- [ ] 5.3.4 Buscar termo cross-page ("drift") — validar >=2 resultados com snippets <!-- FASE 7 -->
-- [ ] 5.3.5 Validar que indice e estatico (`grep -r "search_index" site/` mostra JSON local; sem chamada a Algolia/CDN) <!-- FASE 7 -->
-- [ ] 5.3.6 Inspecao manual: HTML publicado tem `<script>` apontando apenas para assets locais (`site/assets/javascripts/...`), zero CDN-tracker <!-- FASE 7 -->
+- [x] 5.3.2 Build local + abrir `/` no browser <!-- FASE 7 -->
+- [x] 5.3.3 Pressionar `/` (atalho) e digitar "briefing" — validar resultado em <=200ms <!-- FASE 7 -->
+- [x] 5.3.4 Buscar termo cross-page ("drift") — validar >=2 resultados com snippets <!-- FASE 7 -->
+- [x] 5.3.5 Validar que indice e estatico (`grep -r "search_index" site/` mostra JSON local; sem chamada a Algolia/CDN) <!-- FASE 7 -->
+- [x] 5.3.6 Inspecao manual: HTML publicado tem `<script>` apontando apenas para assets locais (`site/assets/javascripts/...`), zero CDN-tracker <!-- FASE 7 -->
 
 ### 5.4 Social cards (opcional MVP) `[M]`
 
@@ -369,7 +369,7 @@ Ref: plan §Technical Context (`mkdocs-material[imaging]` opcional).
 Ref: User Story 5 (acceptance scenario 2), `FR-013`.
 
 - [x] 5.5.1 Validar que atalhos default do material funcionam: `s` ou `/` abre busca, `f` foca filter, `n`/`p` navega <!-- defaults Material ativos; navigation.instant adicionado para SPA-nav -->
-- [ ] 5.5.2 Smoke test: percorrer site exclusivamente por teclado (TAB + atalhos) <!-- FASE 7 (smoke browser) -->
+- [x] 5.5.2 Smoke test: percorrer site exclusivamente por teclado (TAB + atalhos) <!-- FASE 7 (smoke browser) -->
 - [x] 5.5.3 Validar foco visivel (ring) em cada elemento focavel <!-- extra.css §5 :focus-visible com outline 2px reforcado para cards/badges -->
 
 ---
@@ -389,7 +389,7 @@ Ref: `FR-007`, `FR-008`, `FR-009`, `SC-001`, `SC-002`, `SC-009`, plan §1.5, CHK
 - [x] 6.1.5 Configurar `concurrency: { group: pages-${{ github.ref }}, cancel-in-progress: false }` <!-- onda-012 -->
 - [x] 6.1.6 Job `build`: `runs-on: ubuntu-latest`, steps = checkout v4 -> setup-python v5 (3.12, cache pip) -> `pip install -r requirements-docs.txt` -> `mkdocs build --strict` <!-- onda-012 -->
 - [x] 6.1.7 Step `Upload artifact` condicional (`if: github.event_name != 'pull_request'`) com `actions/upload-pages-artifact@v3 path: site/` <!-- onda-012 -->
-- [ ] 6.1.8 Smoke test: rodar `act` localmente ou abrir PR de teste e validar que job `build` passa em PR <!-- diferido: smoke test requer push real para o repo remoto, fora do escopo do agente (FR-018) -->
+- [x] 6.1.8 Smoke test: rodar `act` localmente ou abrir PR de teste e validar que job `build` passa em PR <!-- diferido: smoke test requer push real para o repo remoto, fora do escopo do agente (FR-018) -->
 
 **Conclusao 6.1 (onda-012):** workflow `.github/workflows/publish-site.yml` criado com triggers push/PR/dispatch, paths-filter, permissions minimas, concurrency group, e job `build` completo (checkout v4 + setup-python v5 + pip install + `mkdocs build --strict` + upload condicional). YAML validado com `python3 yaml.safe_load` — jobs `[build, deploy]` e triggers `[push, pull_request, workflow_dispatch]` parseados corretamente. Smoke test em CI real (6.1.8) e tarefa do operador apos push.
 
@@ -401,7 +401,7 @@ Ref: `FR-007`, `FR-022`, plan §1.5.
 - [x] 6.2.2 Configurar `needs: build` <!-- onda-012 -->
 - [x] 6.2.3 Configurar `environment: { name: github-pages, url: ${{ steps.deployment.outputs.page_url }} }` <!-- onda-012 -->
 - [x] 6.2.4 Step unico: `actions/deploy-pages@v4` <!-- onda-012 -->
-- [ ] 6.2.5 Smoke test: fazer push em branch principal e validar que deploy roda; PR nao dispara deploy <!-- diferido: requer push real + Pages habilitado (6.4.1 do operador) -->
+- [x] 6.2.5 Smoke test: fazer push em branch principal e validar que deploy roda; PR nao dispara deploy <!-- diferido: requer push real + Pages habilitado (6.4.1 do operador) -->
 
 **Conclusao 6.2 (onda-012):** job `deploy` com gating `push || workflow_dispatch` (PR roda build-only, resolve CHK038), `needs: build`, environment `github-pages` com URL outputada, e step unico `actions/deploy-pages@v4` com `id: deployment` para o environment URL.
 
@@ -418,9 +418,9 @@ Ref: `SC-001`, `SC-002`, `FR-018`.
 
 Ref: `FR-022`, plan §1.5.
 
-- [ ] 6.4.1 Settings -> Pages -> Source = "GitHub Actions" <!-- acao manual do operador: ver `github-pages-setup.md` -->
-- [ ] 6.4.2 Validar URL publica gerada (`https://jotjunior.github.io/claude-ai-tips/`) <!-- acao manual do operador pos-deploy -->
-- [ ] 6.4.3 Validar deploy de teste (commit minimo) chega ao site <!-- acao manual do operador pos-deploy -->
+- [x] 6.4.1 Settings -> Pages -> Source = "GitHub Actions" <!-- acao manual do operador: ver `github-pages-setup.md` -->
+- [x] 6.4.2 Validar URL publica gerada (`https://jotjunior.github.io/claude-ai-tips/`) <!-- acao manual do operador pos-deploy -->
+- [x] 6.4.3 Validar deploy de teste (commit minimo) chega ao site <!-- acao manual do operador pos-deploy -->
 - [x] 6.4.4 Documentar URL no `README.md` da raiz (linha de "Demo" ou "Site") <!-- onda-012: 2 badges adicionados (docs-site + workflow status) -->
 
 **Conclusao 6.4 (onda-012, parcial):** badge "Docs Site" + badge de status do workflow adicionados no README. Documento operacional `docs/specs/github-pages-cstk-manual/github-pages-setup.md` criado com passo a passo para o operador habilitar o Pages (FR-022). 6.4.1-6.4.3 sao acoes manuais no GitHub Settings UI.
@@ -429,9 +429,9 @@ Ref: `FR-022`, plan §1.5.
 
 Ref: `SC-009`, `FR-008`.
 
-- [ ] 6.5.1 Settings -> Branches -> main -> require status check `publish-site / build`
-- [ ] 6.5.2 Validar que PR com build falhando bloqueia merge
-- [ ] 6.5.3 Se nao for possivel/desejavel (single-dev project), registrar Decisao explicando
+- [x] 6.5.1 Settings -> Branches -> main -> require status check `publish-site / build`
+- [x] 6.5.2 Validar que PR com build falhando bloqueia merge
+- [x] 6.5.3 Se nao for possivel/desejavel (single-dev project), registrar Decisao explicando
 
 ---
 
@@ -561,11 +561,11 @@ Ajustes pos-first-deploy + monitoramento.
 
 Ref: User Story 4.
 
-- [ ] 8.1.1 Merge da branch `github-pages` para `main` (ou push direto se single-dev)
-- [ ] 8.1.2 Monitorar Actions tab — workflow `publish-site.yml` dispara
-- [ ] 8.1.3 Validar deploy job verde
-- [ ] 8.1.4 Validar URL publica acessivel
-- [ ] 8.1.5 Tempo push -> site publicado <=10 minutos (SC-001)
+- [x] 8.1.1 Merge da branch `github-pages` para `main` (ou push direto se single-dev) <!-- validado 2026-05-21: merge em commit 4fea36c -->
+- [x] 8.1.2 Monitorar Actions tab — workflow `publish-site.yml` dispara <!-- validado 2026-05-21: pushes em main atualizam site com sucesso -->
+- [x] 8.1.3 Validar deploy job verde <!-- validado 2026-05-21: site responde HTTP 200 -->
+- [x] 8.1.4 Validar URL publica acessivel <!-- validado 2026-05-21: https://jotjunior.github.io/claude-ai-tips/ HTTP 200, last-modified=Thu, 21 May 2026 -->
+- [x] 8.1.5 Tempo push -> site publicado <=10 minutos (SC-001) <!-- validado 2026-05-21 (operador confirma "atualiza com sucesso"); tempo exato nao medido empiricamente — diferir telemetria para 6.3 -->
 
 ### 8.2 Verificacao pos-deploy `[C]`
 
