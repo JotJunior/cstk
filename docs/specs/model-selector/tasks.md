@@ -123,10 +123,10 @@ Ref: Decision 2, CHK062
 
 Ref: FR-003, FR-005, Decision 2
 
-- [ ] 2.3.1 Parsear `references/sinais.md` via `awk` em modo streaming: extrair colunas (termo, faixa, peso) das linhas de dados (ignorar header + separador)
-- [ ] 2.3.2 Implementar match exato por linha via `grep -Fxq` (fixed string exact line) entre cada token e os termos do catalogo
-- [ ] 2.3.3 Acumular contadores por faixa (rasa/media/profunda) e lista de sinais matched
-- [ ] 2.3.4 Implementar regra de conservadorismo (FR-005): se ha matches em faixas diferentes, vence a faixa mais profunda; justificativa cita literalmente o sinal vencedor
+- [x] 2.3.1 Parsear `references/sinais.md` via `awk` em modo streaming: extrair colunas (termo, faixa, peso) das linhas de dados (ignorar header + separador) <!-- onda-012: awk -F'|' com filtros `^|---` (separator) + `t=="termo"` (header) + validacao de enum de faixa; produz `termo|faixa|peso` por linha em CATALOG. Validado por scenario_2_3_1_parsing_catalogo_extrai_15_sinais (output literal = 15). -->
+- [x] 2.3.2 Implementar match exato por linha via `grep -Fxq` (fixed string exact line) entre cada token e os termos do catalogo <!-- onda-012: CATALOG_TERMS (uma coluna) alimenta `grep -Fxq -- "$tok"`. Apos match, extracao de faixa/peso via `grep -E "^${tok}\|"` com anchor + delimitador para evitar substring. Validado por scenario_2_3_2_match_rejeita_substring (token "rod" NAO casa "rode"). -->
+- [x] 2.3.3 Acumular contadores por faixa (rasa/media/profunda) e lista de sinais matched <!-- onda-012: COUNT_RASA/MEDIA/PROFUNDA somatorio de pesos; MATCHED acumula linhas `termo|faixa|peso`. Deduplicacao de tokens via `awk '!seen[$0]++'` antes do match (validado por scenario_2_3_3_token_repetido_conta_uma_vez). -->
+- [x] 2.3.4 Implementar regra de conservadorismo (FR-005): se ha matches em faixas diferentes, vence a faixa mais profunda; justificativa cita literalmente o sinal vencedor <!-- onda-012: cascata `if profunda>0 then profunda; elif media>0 then media; elif rasa>0 then rasa; else indeterminado`. Empate ou nao, a faixa MAIS PROFUNDA com count>0 vence. Validado por scenario_2_3_4_empate_rasa_media_vence_media + scenario_2_3_4_empate_media_profunda_vence_profunda + scenario_2_3_4_triplo_empate_vence_profunda. Justificativa final que cita o sinal vencedor entra em 2.4. -->
 
 ### 2.4 Score e justificativa `[A]`
 

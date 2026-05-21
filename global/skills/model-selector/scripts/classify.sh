@@ -216,17 +216,14 @@ if [ ! -r "$CATALOG_PATH" ]; then
 fi
 
 # =======================================================================
-# Logica de classificacao (PLACEHOLDER — entra em 2.2..2.5)
+# Logica de classificacao
 # =======================================================================
-# As proximas tarefas implementarao:
-#   2.2 Tokenizacao via `tr | tr | sed`
-#   2.3 Match `grep -Fxq` contra colunas do catalogo (awk streaming)
-#   2.4 Score 0..2 + justificativa + mapeamento faixa->modelo
-#   2.5 Output markdown com 4 secoes fixas
-#
-# Placeholder atual: emite output minimo bem-formado (4 secoes) para
-# permitir smoke test do esqueleto sem quebrar invariantes do contrato.
-# Sera SUBSTITUIDO integralmente na task 2.5.
+# Status:
+#   2.1 esqueleto + path do catalogo                              [DONE]
+#   2.2 tokenizacao (tr | tr | sed | grep -v '^$') + fail-safe    [DONE]
+#   2.3 match contra catalogo (awk streaming + grep -Fxq)         [DONE]
+#   2.4 score 0..2 + justificativa + mapeamento faixa->modelo     [TODO]
+#   2.5 output markdown final (4 secoes fixas)                    [TODO]
 # -----------------------------------------------------------------------
 
 if [ "$FAIL_SAFE" = "1" ]; then
@@ -256,9 +253,139 @@ EOF
     exit 0
 fi
 
-# Placeholder para tasks 2.3-2.5 (match/score/output final). Aqui o
-# input ja foi tokenizado com sucesso (>=3 tokens) — proxima task fara
-# o match contra catalogo.
+# -----------------------------------------------------------------------
+# Subtarefa 2.3.1: parsing awk streaming do catalogo
+# -----------------------------------------------------------------------
+# Extrai (termo, faixa, peso) das linhas de dados de references/sinais.md.
+# Regras:
+#   - Ignorar header (`| termo | faixa | peso |`) — heuristica: pular a
+#     primeira linha de pipe encontrada (NR>1 nao basta porque ha
+#     conteudo pre-tabela no md; usamos $2 != "termo" como filtro).
+#   - Ignorar separator (`|---|---|---|`) — filtrado por `!/^\|---/`
+#     que cobre `|---`, `| ---`, etc.
+#   - Trim de whitespace nas 3 colunas relevantes ($2, $3, $4 — o
+#     campo $1 e o vazio antes do primeiro `|`).
+#   - Output: 3 colunas separadas por `|` (formato interno). Listas
+#     pareadas TERMS (newline-separated) e META (newline-separated
+#     "faixa|peso", indices alinhados ao TERMS) sao geradas em pos-pro
+#     para permitir `grep -Fxq` rapido sobre TERMS.
+# Output do awk = uma linha por sinal: "termo|faixa|peso"
+CATALOG=$(awk -F'|' '
+    /^\|---/ { next }
+    /^\|/ {
+        t = $2; f = $3; p = $4
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", f)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", p)
+        if (t == "termo" || t == "") next
+        if (f != "rasa" && f != "media" && f != "profunda") next
+        if (p == "") p = "1"
+        print t "|" f "|" p
+    }
+' "$CATALOG_PATH")
+
+if [ -z "$CATALOG" ]; then
+    printf '%s: catalogo vazio (esperado >=15 sinais MVP)\n' \
+        "$PROG_NAME" >&2
+    exit 3
+fi
+
+# Lista apenas de termos (uma por linha) para alimentar `grep -Fxq`.
+CATALOG_TERMS=$(printf '%s\n' "$CATALOG" | awk -F'|' '{print $1}')
+
+# -----------------------------------------------------------------------
+# Subtarefa 2.3.2: match exato `grep -Fxq` por token
+# Subtarefa 2.3.3: contadores por faixa (somatorio de pesos)
+# -----------------------------------------------------------------------
+# Para cada token do input, verifica `grep -Fxq` contra CATALOG_TERMS.
+# Se matched, extrai faixa+peso da linha correspondente em CATALOG
+# (grep -E "^${token}\|" — anchor + delimitador previne substring).
+#
+# A lista MATCHED acumula em formato "termo|faixa|peso" — consumida
+# pelas tasks 2.4 (score/justificativa) e 2.5 (Sinais detectados).
+#
+# Deduplicacao: se o mesmo token aparece N vezes no input, conta UMA
+# vez (operador escreve "rode rode rode" nao deve inflar score). A
+# regra de uniq garante 1 contribuicao por termo distinto.
+
+COUNT_RASA=0
+COUNT_MEDIA=0
+COUNT_PROFUNDA=0
+MATCHED=""
+
+# Tokens unicos (dedup preservando ordem de primeira ocorrencia).
+# `awk '!seen[$0]++'` e POSIX e estavel — preferido sobre `sort | uniq`
+# que destrombaria ordem (irrelevante aqui, mas mantemos para previsibilidade).
+UNIQ_TOKENS=$(printf '%s\n' "$TOKENS" | awk '!seen[$0]++')
+
+# Itera por tokens unicos via `while read`. IFS isolado para nao
+# quebrar em tokens com espacos (nao ocorre apos sanitizacao, mas e
+# defensivo).
+OLD_IFS="$IFS"
+IFS='
+'
+for tok in $UNIQ_TOKENS; do
+    # `grep -Fxq` = fixed-string, exact-line, quiet — match exato.
+    if printf '%s\n' "$CATALOG_TERMS" | grep -Fxq -- "$tok"; then
+        # Match: extrair linha do CATALOG com anchor + delimitador.
+        # `grep -E "^${tok}\|"` evita substring (tok="rode" nao casa
+        # com hipotetica linha "roder|..."). Como `tok` veio de tokens
+        # ASCII-only [a-z0-9]+, nao ha metacaracter regex perigoso.
+        _row=$(printf '%s\n' "$CATALOG" | grep -E "^${tok}\|" | head -n 1)
+        _faixa=$(printf '%s' "$_row" | awk -F'|' '{print $2}')
+        _peso=$(printf '%s' "$_row" | awk -F'|' '{print $3}')
+
+        # Acumular no contador da faixa correspondente.
+        case "$_faixa" in
+            rasa)     COUNT_RASA=$((COUNT_RASA + _peso)) ;;
+            media)    COUNT_MEDIA=$((COUNT_MEDIA + _peso)) ;;
+            profunda) COUNT_PROFUNDA=$((COUNT_PROFUNDA + _peso)) ;;
+        esac
+
+        # Registrar na lista de matched (consumido por 2.4/2.5).
+        if [ -z "$MATCHED" ]; then
+            MATCHED="$_row"
+        else
+            MATCHED="$MATCHED
+$_row"
+        fi
+    fi
+done
+IFS="$OLD_IFS"
+
+# -----------------------------------------------------------------------
+# Subtarefa 2.3.4: regra de conservadorismo FR-005
+# -----------------------------------------------------------------------
+# FR-005: "em caso de matches em faixas distintas, vence a faixa MAIS
+# PROFUNDA". Implementacao:
+#   - profunda > media > rasa (ordem de profundidade)
+#   - "vencer" = ter pelo menos 1 match (count > 0); a faixa de maior
+#     profundidade entre as nao-zero vence
+#   - empate de contagem (ex: rasa=2 media=2) -> ainda vence a MAIS
+#     PROFUNDA das duas (media neste caso), per FR-005
+#   - se TODAS forem zero, FAIXA_VENCEDORA=indeterminado (delegado a
+#     2.4/2.5 para mapear -> manter-atual). Como ja passamos do
+#     fail-safe (>=3 tokens), pode ocorrer aqui se nenhum token bateu
+#     no catalogo (input com 3+ palavras nao listadas).
+if [ "$COUNT_PROFUNDA" -gt 0 ]; then
+    FAIXA_VENCEDORA="profunda"
+elif [ "$COUNT_MEDIA" -gt 0 ]; then
+    FAIXA_VENCEDORA="media"
+elif [ "$COUNT_RASA" -gt 0 ]; then
+    FAIXA_VENCEDORA="rasa"
+else
+    FAIXA_VENCEDORA="indeterminado"
+fi
+
+# Exportar para tasks 2.4 e 2.5.
+export CATALOG CATALOG_TERMS MATCHED \
+       COUNT_RASA COUNT_MEDIA COUNT_PROFUNDA FAIXA_VENCEDORA
+
+# -----------------------------------------------------------------------
+# Saida intermediaria (substituida em 2.4/2.5 pelo output markdown
+# definitivo com score/justificativa). Aqui exibimos contadores e
+# faixa vencedora para permitir smoke test da task 2.3.
+# -----------------------------------------------------------------------
 cat <<EOF
 ## Sugestao
 
@@ -268,12 +395,13 @@ cat <<EOF
 
 ## Sinais detectados
 
-(match contra catalogo nao implementado — tasks 2.3-2.5; tokens=$TOKEN_COUNT)
+tokens=$TOKEN_COUNT; matches=$(if [ -z "$MATCHED" ]; then echo 0; else printf '%s\n' "$MATCHED" | wc -l | tr -d ' '; fi)
+rasa=$COUNT_RASA media=$COUNT_MEDIA profunda=$COUNT_PROFUNDA faixa=$FAIXA_VENCEDORA
 
 ## Justificativa
 
-esqueleto FASE 2 tasks 2.1+2.2 completas (tokenizacao funcional);
-logica de match/score/output final entra em 2.3/2.4/2.5.
+task 2.3 implementada (match+contadores+FR-005); score/justificativa
+final entram em 2.4; output markdown definitivo em 2.5.
 
 ## Acao sugerida (operador humano)
 
