@@ -1,9 +1,5 @@
 ---
-description: |
-  Retoma execucao 00C apos pausa por bloqueio humano (com `--resposta-bloqueio`)
-  ou apos schedule entre ondas. Le o estado, valida hash de integridade
-  (FR-029), aplica resposta a bloqueios pendentes (se aplicavel) e delega
-  proxima onda ao agente-00c-orchestrator.
+description: 'Retoma execucao 00C apos pausa por bloqueio humano ou schedule entre ondas. Valida hash de integridade (FR-029), aplica resposta a bloqueios pendentes, delega proxima onda ao agente-00c-orchestrator.'
 argument-hint: "[--projeto-alvo-path <path>] [--resposta-bloqueio <id>:<resposta>] [--init-aspectos <json-array>] [--init-aspectos-tecnicos <json-array>] [--init-aspectos-operacionais <json-array>]"
 allowed-tools:
   - Agent

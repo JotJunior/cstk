@@ -1,11 +1,5 @@
 ---
-description: |
-  Inicia uma nova execucao do orquestrador autonomo agente-00C sobre um
-  projeto-alvo. Recebe uma descricao curta do POC/MVP e (opcionalmente) uma
-  stack-sugerida em JSON, uma whitelist de URLs externas e o caminho do
-  projeto-alvo. Cria estado em <projeto-alvo>/.claude/agente-00c-state/ e
-  delega a execucao da pipeline SDD ao agente custom
-  agente-00c-orchestrator.
+description: 'Inicia execucao do orquestrador autonomo agente-00C sobre um projeto-alvo. Cria state em <projeto-alvo>/.claude/agente-00c-state/ e delega pipeline SDD ao agente-00c-orchestrator.'
 argument-hint: "<descricao-curta> [--stack <stack-json>] [--whitelist <path>] [--projeto-alvo-path <path>]"
 allowed-tools:
   - Agent

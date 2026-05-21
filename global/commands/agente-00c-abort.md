@@ -1,9 +1,5 @@
 ---
-description: |
-  Aborta manualmente a execucao corrente do agente-00C no projeto-alvo.
-  Marca status como `abortada`, atualiza `terminada_em`, gera relatorio
-  final e faz commit local. Idempotente — se a execucao ja esta em status
-  terminal, apenas reporta.
+description: 'Aborta manualmente a execucao corrente do agente-00C no projeto-alvo. Marca status como abortada, gera relatorio final, commit local. Idempotente.'
 argument-hint: "[--projeto-alvo-path <path>]"
 allowed-tools:
   - Agent

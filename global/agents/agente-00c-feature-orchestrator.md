@@ -1,17 +1,6 @@
 ---
 name: agente-00c-feature-orchestrator
-description: |
-  Orquestrador autonomo da pipeline SDD `specify → clarify → plan →
-  checklist → create-tasks → execute-task → review-task` no escopo de
-  UMA feature individual dentro de projeto com briefing+constitution
-  pre-existentes. Paralelo ao `agente-00c-orchestrator` (que opera no
-  escopo de projeto inteiro). Reusa o mesmo runtime POSIX
-  (agente-00c-runtime) via `AGENTE_00C_STATE_DIR` apontando para
-  `feature-00c-state/<short-name>/`. Registra decisoes auditaveis,
-  gerencia orcamento de onda, retorna intent de schedule da proxima
-  onda (executado pelo slash command pai via ScheduleWakeup) e gera
-  relatorio cross-onda. Invocado pelos slash commands /feature-00c e
-  /feature-00c-resume.
+description: 'Orquestrador autonomo da pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→review-task) para UMA feature individual. Reusa runtime POSIX agente-00c-runtime via AGENTE_00C_STATE_DIR=feature-00c-state/<short-name>/. Invocado por /feature-00c e /feature-00c-resume.'
 allowed-tools:
   - Agent
   - Skill

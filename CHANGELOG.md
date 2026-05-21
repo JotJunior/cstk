@@ -9,6 +9,15 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ### Changed
 
+- **Slash commands + custom agents descriptions**: trim YAML `description:`
+  em todos os 6 slash commands (`global/commands/`) e 6 custom agents
+  (`global/agents/`). Reducao de ~5.245 chars para ~2.569 chars (~669 tokens
+  economizados por boot, -51%). Triggers e discriminadores chave preservados
+  (clarify-asker vs answerer, orchestrator vs feature-orchestrator, etc).
+  Detalhes operacionais e flags permanecem no body de cada arquivo (so
+  carrega quando o comando/agente e efetivamente invocado). Continuacao da
+  otimizacao iniciada em PR #8 (skills); combinada, total ~2k tokens/boot.
+  PR #9.
 - **Skill descriptions**: trim YAML `description:` em todas as 21 skills de
   `global/skills/` (de ~10k chars / ~2.560 tok para ~4.6k chars / ~1.150 tok
   no contexto eager-loaded). Reducao de 54% nos descriptions, ~1.350 tokens
