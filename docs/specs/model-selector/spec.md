@@ -318,8 +318,14 @@ remota — Principio IV).
   "sugestao nunca troca modelo silenciosamente", (b) "sinais
   contraditorios = vence o conservador", (c) "input ambiguo = manter
   modelo atual", (d) "score 3 exige evidencia empirica conforme
-  FR-EVI-001 do runtime", (e) "skill nao spawna subagente — sem
-  blast radius alem do diretorio do projeto-alvo".
+  FR-EVI-001 do runtime" — nota CHK034 (onda-006): Gotcha (d) NAO
+  duplica FR-002b porque FR-002b cobre o teto da heuristica auto-
+  invocada, enquanto Gotcha (d) cobre o handshake operador/
+  orquestrador ↔ runtime ao registrar Decisao; sao niveis distintos,
+  ambos necessarios — (e) "skill nao spawna subagente — sem
+  blast radius alem do diretorio do projeto-alvo". Spec lista escopo
+  de cada gotcha; redacao final fica para `/execute-task` 5.4.1
+  (resolve CHK032).
 - **FR-014**: O `description` do `SKILL.md` MUST ser **trigger
   condition** no formato canonico do toolkit ("Use quando X / NAO
   use quando Y") — Principio III.
@@ -372,14 +378,20 @@ remota — Principio IV).
 - **SC-003**: O comando de relatorio (FR-012) executa em **menos de
   500ms** em um diretorio com 20 execucoes de `state.json`
   acumuladas (verificavel via `time` no shell — meta de
-  responsividade interativa, nao "alta performance").
+  responsividade interativa, nao "alta performance"). **Hardware-base**:
+  maquina dev tipica M1/M2 ou Linux x86_64 modesto. **Protocolo de
+  medicao**: 5 runs do comando `time sh scripts/report.sh --state-dir
+  tests/fixtures/state-dirs-20/`, aceita-se mediana <500ms (resolve
+  CHK016/CHK017 via onda-006).
 - **SC-004**: A skill consome **menos de 200 linhas** no
   `SKILL.md` (sem contar templates/exemplos/references) — preserva
   o padrao de progressive disclosure do toolkit.
 - **SC-005**: **Zero invocacoes externas de rede** em qualquer
-  caminho de execucao da skill, verificavel via `grep -rn 'curl\|
-  wget\|http' global/skills/model-selector/` retornando vazio
-  exceto comentarios.
+  caminho de execucao da skill, verificavel via grep estatico
+  estendido sobre as primitivas `curl|wget|http|nc |/dev/tcp|ssh |
+  getent hosts|dig |host ` (resolve CHK046 via onda-006), retornando
+  vazio exceto comentarios markdown filtrados por `grep -v
+  '^[[:space:]]*#'`.
 - **SC-006**: **Zero falsos positivos para "haiku" em inputs com
   verbos de design** (`refatore`, `projete`, `arquitete`,
   `escolha`) — verificavel via teste automatizado dedicado (faz

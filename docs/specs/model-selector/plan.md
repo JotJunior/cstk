@@ -57,10 +57,10 @@ puro em `awk` testado.
 | Test | `tests/cstk/test_model_selector_*.sh` integrado em `tests/run.sh` (suite shell-scripts-tests) |
 | Storage | Nenhum proprio — extensao do `state.json` ja gerenciado pelo runtime `agente-00c-runtime` |
 | Deps obrigatorias | `find`, `grep`, `awk`, `sed`, `tr`, `cut`, `sort`, `printf`, `cat`, `date`, `mkdir` (todas POSIX canonicas) |
-| Deps opcionais | `jq` (>=1.6 — confinado em `scripts/report.sh`, conformidade Constitution II amendment 1.1.0; ver dec-008 + Decision 5 do research) |
-| Platform | macOS + Linux. `date` portavel apenas para output ISO-8601 (`date -u +%Y-%m-%dT%H:%M:%SZ` — POSIX comum). |
+| Deps opcionais | `jq` (>=1.6 — confinado em `scripts/report.sh`, conformidade Constitution II amendment 1.1.0; ver dec-008 + Decision 5 do research). **Justificativa do `>=1.6`**: pipe operator (`\|`), funcoes de objeto (`from_entries`, `to_entries`) e `--arg`/`--argjson` usadas no agregador estao estaveis desde 1.5; 1.6 e a versao amplamente disponivel em distros LTS (Ubuntu 18.04+, Debian 10+, macOS Homebrew). Versoes <1.5 nao sao suportadas (resolve CHK011). |
+| Platform | macOS + Linux (BSD coreutils + GNU coreutils — ambos suportados explicitamente per CHK005 resolvido em onda-006). `date` portavel apenas para output ISO-8601 (`date -u +%Y-%m-%dT%H:%M:%SZ` — POSIX comum). |
 | Project Type | skill toolkit single-layer (sem backend, sem frontend, sem broker, sem DB) |
-| Performance Goals | Classificacao: <50ms p95 (SC implicito — operacao sub-segundo). Relatorio: <500ms para 20 execucoes (SC-003). |
+| Performance Goals | Classificacao: <50ms p95 (**meta interna nao-bloqueante**, nao e SC formal — resolve CHK015). Relatorio: <500ms para 20 execucoes (SC-003, hardware-base M1/M2 ou Linux x86_64 modesto, 5 runs medianos — resolve CHK016/CHK017). |
 | Constraints | `SKILL.md` <200 linhas (SC-004); zero rede em qualquer caminho de execucao (SC-005, Principio IV); zero falsos positivos haiku em verbos de design (SC-006). |
 | Scale/Scope | Catalogo MVP 15 sinais; operador estende localmente sem limite hard. Sugestoes per-execucao tipicas: 0-50 (escala com ondas do feature-00c). |
 | Observability | stdout markdown + exit codes documentados (contracts/skill-io.md). Sem telemetria — Principio IV. |
