@@ -1,12 +1,6 @@
 ---
 name: create-use-case
-description: |
-  Use quando o usuario pedir para documentar um caso de uso funcional com
-  fluxos, atores, regras de negocio, dados tecnicos e casos de teste. Tambem
-  quando mencionar "criar caso de uso", "gerar UC", "documentar funcionalidade",
-  "use case", "criar documentacao de requisitos", "novo UC". NAO use para
-  feature spec SDD (use specify) — UC e formato classico; specify e formato
-  SDD com user stories e success criteria.
+description: 'DEPRECATED (3.12.0, removal 4.0.0) — use specify instead. Documents a functional UC with flows, actors, business rules, test cases.'
 deprecated: true
 deprecated_since: "3.12.0"
 remove_in: "4.0.0"

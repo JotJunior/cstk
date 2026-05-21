@@ -1,14 +1,6 @@
 ---
 name: validate-docs-rendered
-description: |
-  Use quando o usuario pedir para validar que a documentacao do projeto
-  realmente renderiza corretamente — diagramas Mermaid parseaveis, links
-  internos sem 404, frontmatter YAML consistente, code blocks com linguagem
-  declarada. Tambem quando mencionar "validar renderizacao", "verificar
-  diagramas", "checar links", "validate docs rendering", "audit rendered
-  docs". Complementa validate-documentation (que verifica estrutura textual)
-  e analyze (que verifica consistencia cross-artifact), fechando o gap
-  "doc escrita vs doc que renderiza corretamente no browser".
+description: 'Validate that docs RENDER correctly — Mermaid parseable, internal links resolve, YAML frontmatter consistent, code blocks have language. Triggers: "validar renderizacao", "verificar diagramas", "checar links". Complements validate-documentation (textual) and analyze (cross-artifact).'
 argument-hint: "[diretorio a validar | caminho do arquivo | vazio para docs/]"
 allowed-tools:
   - Read

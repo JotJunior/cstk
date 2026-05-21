@@ -1,13 +1,6 @@
 ---
 name: briefing
-description: |
-  Use quando o usuario iniciar um novo projeto, pedir discovery/kickoff, ou
-  quiser levantar contexto estruturado via entrevista (visao, usuarios,
-  restricoes, prioridades, stack, qualidade, futuro). Tambem quando mencionar
-  "briefing", "discovery", "iniciar projeto", "novo projeto", "entrevista do
-  projeto", "project intake", "kickoff". NAO use se ja existe briefing
-  completo e o usuario nao pediu atualizacao — o documento alimenta
-  constitution, specs e demais artefatos SDD.
+description: 'Structured project discovery interview (vision, users, constraints, stack). Triggers: "briefing", "discovery", "iniciar projeto", "kickoff". Skip if briefing already complete and user did not ask for update.'
 argument-hint: "[descricao inicial do projeto ou vazio para entrevista completa]"
 allowed-tools:
   - Read

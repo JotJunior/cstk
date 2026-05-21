@@ -1,11 +1,6 @@
 ---
 name: advisor
-description: |
-  Use quando o usuario pedir avaliacao critica, conselho estrategico ou opiniao
-  honesta sobre uma ideia/plano/decisao. Tambem quando mencionar "me aconselhe",
-  "critique meu plano", "avalie minha ideia", "feedback estrategico", "advisor",
-  "conselheiro", "analise estrategica". NAO use para tarefas puramente tecnicas
-  (bug fix, implementacao, refactor) — essas seguem o fluxo padrao de desenvolvimento.
+description: 'Strategic critique of an idea/plan/decision. Triggers: "me aconselhe", "critique meu plano", "avalie minha ideia", "feedback estrategico", "advisor". Skip for technical tasks (use bugfix/execute-task).'
 argument-hint: "[descricao da ideia, plano ou decisao a ser analisada]"
 allowed-tools:
   - Read

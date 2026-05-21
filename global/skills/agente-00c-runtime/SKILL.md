@@ -1,18 +1,6 @@
 ---
 name: agente-00c-runtime
-description: |
-  Biblioteca interna de scripts POSIX compartilhada entre os dois
-  orquestradores autonomos do toolkit: agente-00C (escopo de projeto
-  inteiro, agentes orchestrator/clarify-asker/clarify-answerer) E
-  feature-00C (escopo de feature individual, agentes
-  agente-00c-feature-orchestrator/feature-00c-clarify-asker/
-  feature-00c-clarify-answerer). NAO e user-invocavel — usuarios usam
-  `/agente-00c`, `/agente-00c-resume`, `/agente-00c-abort`,
-  `/feature-00c`, `/feature-00c-resume` e `/feature-00c-abort`. Esta
-  skill empacota helpers de estado (state.json), validacao de schema,
-  backups por onda, lock anti-concorrencia, pre-flight de hashes
-  (feature-00c-preflight.sh) e filtro de secrets em outputs
-  (_log.sh, secrets-filter.sh for-backup).
+description: 'Internal POSIX runtime helpers for agente-00c/feature-00c orchestrators (state, lock, validation, hashes, secrets filter). NOT user-invocable.'
 allowed-tools:
   - Bash
   - Read

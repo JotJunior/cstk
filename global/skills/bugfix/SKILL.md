@@ -1,12 +1,6 @@
 ---
 name: bugfix
-description: |
-  Use when the user reports a bug, error, unexpected behavior, or asks to
-  investigate/fix a problem in running code. Also when they mention "bugfix",
-  "fix bug", "corrigir bug", "debug", "investigar bug", "why doesn't X work".
-  Traces issues across all affected layers BEFORE implementing fixes, to
-  prevent cascading fix-reveal-fix cycles in multi-service architectures.
-  Do NOT use for new feature work — use execute-task or specify for that.
+description: 'Multi-layer bug investigation and fix (traces across services before patching). Triggers: "bugfix", "fix bug", "corrigir bug", "debug", "investigar bug". Skip for new feature work (use execute-task/specify).'
 argument-hint: "[description of the bug, error message, or screenshot path]"
 allowed-tools:
   - Read

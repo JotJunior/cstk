@@ -1,11 +1,6 @@
 ---
 name: image-generation
-description: |
-  Use when the user asks to generate images, create illustrations, photos,
-  visual assets, edit existing images, or craft prompts for image generation
-  models. Also when they mention "image prompt", "illustration", "mockup image",
-  "visual asset", "generate a picture". Do NOT use for technical diagrams
-  (Mermaid, PlantUML, drawio) — those are generated as code, not images.
+description: 'Image prompt enhancement (Subject-Context-Style) for illustrations, photos, visual assets, edits. Triggers: "image prompt", "illustration", "mockup image", "generate a picture". Skip for technical diagrams (Mermaid/PlantUML/drawio).'
 ---
 
 # Image Generation Prompt Best Practices

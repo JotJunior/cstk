@@ -1,15 +1,6 @@
 ---
 name: review-features
-description: |
-  Use quando o usuario pedir uma visao GLOBAL do portfolio de features —
-  comparar progresso entre features, identificar quais arquivar, abandonar
-  ou priorizar, ou gerar dashboard de "saude" do backlog cross-feature.
-  Tambem quando mencionar "status global", "portfolio de features",
-  "review features", "dashboard de features", "metricas globais",
-  "comparar features", "quais features priorizar". NAO confundir com
-  review-task (que olha UMA feature/projeto em profundidade) — esta skill
-  e cross-feature, agrega varias features lado a lado e sugere acoes
-  de gestao de backlog.
+description: 'GLOBAL feature portfolio dashboard — compare progress, suggest archive/abandon/prioritize. Triggers: "status global", "portfolio de features", "dashboard de features", "comparar features". Cross-feature; for single feature deep-dive use review-task.'
 allowed-tools:
   - Read
   - Glob
