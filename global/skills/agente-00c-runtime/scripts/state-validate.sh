@@ -245,6 +245,67 @@ if [ -n "$_wl_bad" ]; then
   _sv_add "whitelist_urls_externas contem entrada(s) invalida(s) (nao-string ou string vazia) em indice(s): $(printf '%s' "$_wl_bad" | tr '\n' ' ')"
 fi
 
+# 11. Cache de artefatos (FR-CACHE-017) — valida invariantes quando os
+#     campos briefing_cache / constitution_cache estao presentes (nao-null).
+_validate_cache_field() {
+  _cf=$1  # ex: briefing_cache | constitution_cache
+  _present=$(jq -r "if .${_cf} == null then \"absent\" else \"present\" end" "$_SV_FILE" 2>/dev/null) || _present="absent"
+  [ "$_present" = "present" ] || return 0
+
+  # source_sha256: hex de 64 chars
+  _sha=$(jq -r ".${_cf}.source_sha256 // \"\"" "$_SV_FILE" 2>/dev/null) || _sha=""
+  _shalen=${#_sha}
+  if [ "$_shalen" != "64" ]; then
+    _sv_add "FR-CACHE-017: ${_cf}.source_sha256 deve ter 64 chars hex (got $_shalen)"
+  else
+    case "$_sha" in
+      *[!0-9a-f]*)
+        _sv_add "FR-CACHE-017: ${_cf}.source_sha256 contem caracter nao-hex"
+        ;;
+    esac
+  fi
+
+  # estrategia: enum {resumo, passthrough, desabilitado}
+  _est=$(jq -r ".${_cf}.estrategia // \"\"" "$_SV_FILE" 2>/dev/null) || _est=""
+  case "$_est" in
+    resumo|passthrough|desabilitado) : ;;
+    *) _sv_add "FR-CACHE-017: ${_cf}.estrategia invalido: \"$_est\" (esperado: resumo|passthrough|desabilitado)" ;;
+  esac
+
+  # resumo_chars <= source_chars
+  _src_c=$(jq -r ".${_cf}.source_chars // 0" "$_SV_FILE" 2>/dev/null) || _src_c=0
+  _res_c=$(jq -r ".${_cf}.resumo_chars // 0" "$_SV_FILE" 2>/dev/null) || _res_c=0
+  case "$_src_c" in ''|*[!0-9]*) _src_c=0 ;; esac
+  case "$_res_c" in ''|*[!0-9]*) _res_c=0 ;; esac
+  if [ "$_res_c" -gt "$_src_c" ]; then
+    _sv_add "FR-CACHE-017: ${_cf}.resumo_chars ($_res_c) > source_chars ($_src_c)"
+  fi
+
+  # gerado_em: ISO-8601 (formato YYYY-MM-DDTHH:MM:SSZ)
+  _ger=$(jq -r ".${_cf}.gerado_em // \"\"" "$_SV_FILE" 2>/dev/null) || _ger=""
+  case "$_ger" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) : ;;
+    *) _sv_add "FR-CACHE-017: ${_cf}.gerado_em nao eh ISO-8601 (got \"$_ger\")" ;;
+  esac
+
+  # gerado_na_onda: >= 1 e <= numero da onda corrente (ou >=1 se sem ondas)
+  _gon=$(jq -r ".${_cf}.gerado_na_onda // 0" "$_SV_FILE" 2>/dev/null) || _gon=0
+  _ondas_total=$(jq -r '(.ondas // []) | length' "$_SV_FILE" 2>/dev/null) || _ondas_total=0
+  case "$_gon" in ''|*[!0-9]*) _gon=0 ;; esac
+  case "$_ondas_total" in ''|*[!0-9]*) _ondas_total=0 ;; esac
+  if [ "$_gon" -lt 1 ]; then
+    _sv_add "FR-CACHE-017: ${_cf}.gerado_na_onda ($_gon) deve ser >= 1"
+  fi
+  # gerado_na_onda pode ser ate ondas_total+1 (cache populado antes do start da onda atual)
+  _max_onda=$((_ondas_total + 1))
+  if [ "$_gon" -gt "$_max_onda" ]; then
+    _sv_add "FR-CACHE-017: ${_cf}.gerado_na_onda ($_gon) > ondas_total+1 ($_max_onda)"
+  fi
+}
+
+_validate_cache_field briefing_cache
+_validate_cache_field constitution_cache
+
 # ---------- Veredicto ----------
 
 if [ -z "$_SV_VIOL" ]; then

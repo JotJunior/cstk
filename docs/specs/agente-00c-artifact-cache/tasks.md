@@ -65,9 +65,9 @@ algoritmo deterministico.
 
 ---
 
-## Fase 1 — Primitiva + schema
+## Fase 1 — Primitiva + schema ✅ CONCLUIDA (parcial — FR-CACHE-017A deferido p/ Fase 3)
 
-### T1.1 [C] Implementar `state-cache.sh` subcomando `ensure`
+### T1.1 [C] ✅ Implementar `state-cache.sh` subcomando `ensure`
 
 **Path**: `global/skills/agente-00c-runtime/scripts/state-cache.sh`
 **Spec ref**: FR-CACHE-004, FR-CACHE-005, FR-CACHE-006, FR-CACHE-007.
@@ -81,7 +81,7 @@ algoritmo deterministico.
 - Registrar `Decisao` informativa via `state-decisions.sh register`.
 **Testes**: cenarios em T1.5.
 
-### T1.2 [C] Implementar gerador de resumo (heuristica extractiva v1)
+### T1.2 [C] ✅ Implementar gerador de resumo (heuristica extractiva v1)
 
 **Path**: funcao interna em `state-cache.sh` OU script separado em
 `scripts/_summarize.sh`.
@@ -92,7 +92,7 @@ algoritmo deterministico.
 - Determinista (mesma entrada = mesma saida).
 **Bloqueio**: nenhum — T0.1 concluida (heuristica decidida).
 
-### T1.3 [C] Implementar subcomandos `get-resumo`, `check-drift`, `invalidate`
+### T1.3 [C] ✅ Implementar subcomandos `get-resumo`, `check-drift`, `invalidate`
 
 **Spec ref**: FR-CACHE-008, FR-CACHE-009, FR-CACHE-010, FR-CACHE-015.
 **Detalhes**:
@@ -100,48 +100,58 @@ algoritmo deterministico.
 - `check-drift`: compara sha256 registrado vs disco. Distingue MAJOR (version primeiro digito mudou OU >50% chars diff) de MINOR/PATCH.
 - `invalidate`: zera campo de cache, registra Decisao com justificativa fornecida via `--razao`.
 
-### T1.4 [A] Implementar subcomandos `metrics-bump` e `status`
+### T1.4 [A] ✅ Implementar subcomandos `metrics-bump` e `status`
 
 **Spec ref**: FR-CACHE-012.
 **Detalhes**:
 - `metrics-bump`: incrementa contador em `metricas.cache.*` (atomico).
 - `status`: imprime JSON com estado completo do cache (debug/audit).
 
-### T1.5 [C] Suite de testes `tests/test_state-cache.sh`
+### T1.5 [C] ✅ Suite de testes `tests/test_state-cache.sh`
 
 **Spec ref**: SC-005 (>= 15 cenarios).
-**Cenarios obrigatorios**:
-1. `scenario_ensure_popula_cache_em_state_vazio`
-2. `scenario_ensure_arquivo_pequeno_marca_passthrough`
-3. `scenario_ensure_aplica_secrets_filter`
-4. `scenario_ensure_registra_decisao_auditavel`
-5. `scenario_get_resumo_hit_retorna_resumo`
-6. `scenario_get_resumo_miss_estrategia_passthrough_exit_1`
-7. `scenario_get_resumo_drift_detectado_exit_1`
-8. `scenario_check_drift_sem_mudanca_exit_0`
-9. `scenario_check_drift_minor_exit_1`
-10. `scenario_check_drift_major_exit_2`
-11. `scenario_invalidate_zera_cache_e_registra_decisao`
-12. `scenario_metrics_bump_incrementa_atomicamente`
-13. `scenario_invocacao_sem_lock_exit_2`
-14. `scenario_state_json_corrompido_exit_2`
-15. `scenario_artifact_invalido_exit_1`
+**Entregue**: 23 cenarios em `tests/test_state-cache.sh` + 6 cenarios em
+`tests/test__hash.sh` (cobre o wrapper de hash cross-platform). Total
+de 29 cenarios novos cobrindo: passthrough, resumo, drift MINOR/MAJOR,
+TOCTOU double-check, source ausente, source apagado, invalidate,
+metrics-bump (hit/miss-drift/tipo-invalido), status (vazio + populado),
+cache vazio, artifact invalido, sem subcomando, hash determinismo, hex
+64 chars.
 
-### T1.6 [A] Estender `state-validate.sh` com validacoes FR-CACHE-017 + FR-CACHE-017A
+Cenario `scenario_ensure_registra_decisao_auditavel` ficou como **best-effort**
+(invalidate registra Decisao se state-decisions.sh disponivel; smoke test
+inline). Sera reforcado em Fase 3 quando orquestrador invoca primitiva.
+
+### T1.6 [A] ⚠️ Estender `state-validate.sh` — FR-CACHE-017 ✅, FR-CACHE-017A ❌ DEFERIDO
 
 **Path**: `global/skills/agente-00c-runtime/scripts/state-validate.sh`
-**Spec ref**: FR-CACHE-017, FR-CACHE-017A.
-**Detalhes**:
-- Validar `source_sha256` eh hex de 64 chars.
-- Validar `estrategia` no enum permitido.
-- Validar `resumo_chars <= source_chars`.
-- Validar `gerado_em` ISO-8601.
-- Validar `gerado_na_onda >= 1 && <= onda_corrente`.
-- **NOVO FR-CACHE-017A**: validar `schema_version` <= versao esperada
-  pelo runtime instalado; mismatch bloqueia `acquire lock` com
-  diagnostico claro (cita ambas versoes + pointer para `/agente-00c-abort`).
-**Tests**: expandir `tests/test_state-validate.sh` com >= 7 cenarios
-(5 originais + cenario_schema_version_defasada + cenario_schema_version_invalida).
+**Entregue (FR-CACHE-017)**: 5 invariantes validadas quando campos
+`briefing_cache`/`constitution_cache` presentes — sha256 (64 hex),
+estrategia (enum), resumo_chars<=source_chars, gerado_em (ISO-8601),
+gerado_na_onda (>=1 e <=ondas_total+1). +8 cenarios em
+`tests/test_state-validate.sh` cobrindo cache valido, sha256 invalido,
+estrategia invalida, resumo>source, gerado_em invalido, gerado_na_onda=0,
+cache ausente (caso legado valido), validacao independente de
+constitution_cache.
+
+**Deferido (FR-CACHE-017A)**: validacao de schema_version vs runtime
+fica para Fase 3 (T3.1) onde o schema sera bumpado de "1.0.0" para
+"1.1.0" coordenadamente com a integracao no orquestrador. Adicionar
+agora sem o bump nao detecta nada (campos sao opcionais, state.json
+"1.0.0" com cache nulo eh valido).
+
+### T1.7 [A] ✅ Wrapper `_hash.sh` cross-platform (FR-CACHE-016A)
+
+**Path**: `global/skills/agente-00c-runtime/scripts/_hash.sh`
+**Entregue**: `_hash_sha256_file` + `_hash_sha256_stdin` detectam OS via
+`uname -s` e despacham para `sha256sum` (Linux) ou `shasum -a 256`
+(Darwin). Outros SOs → exit 2 com mensagem. 6 cenarios em
+`tests/test__hash.sh` cobrindo arquivo existente (hash conhecido),
+path vazio, path inexistente, stdin, formato 64-hex, determinismo.
+
+**Pendente**: CI matrix linux+macos no GitHub Actions. Sera adicionado
+em Fase 4 (T4.1) junto com o test E2E. Por ora, suite roda em macos
+local + ubuntu via release workflow existente.
 
 ### T1.7 [A] Wrapper `_cache_sha256()` cross-platform (FR-CACHE-016A)
 
