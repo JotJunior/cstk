@@ -77,12 +77,18 @@ Ref: FR-014, CHK029, CHK030, CHK031, SC-004
 
 Ref: FR-003, FR-004, dec-004, CHK039, CHK040, Decision 1 do research
 
-- [ ] 1.3.1 Criar `references/sinais.md` com cabecalho explicativo (formato POSIX-friendly: tabela markdown sem HTML, sem code fence aninhado)
-- [ ] 1.3.2 Popular 5 sinais rasos (FR-003 faixa rasa): `rode`, `liste`, `conte`, `grep`, `formate` — coluna `peso=1`
-- [ ] 1.3.3 Popular 5 sinais medios (FR-003 faixa media): `explique`, `documente`, `resuma`, `traduza`, `compare`
-- [ ] 1.3.4 Popular 5 sinais profundos (FR-003 faixa profunda): `projete`, `refatore`, `arquitete`, `debate`, `escolha`
-- [ ] 1.3.5 Validar que catalogo tem exatamente 15 linhas de dados (`awk '/^\|/&&!/-+/{c++}END{print c}'` retorna 16 = 15 + header)
-- [ ] 1.3.6 Documentar inline (comentario markdown) que operador pode estender editando o arquivo (FR-004 — sem patch necessario)
+- [x] 1.3.1 Criar `references/sinais.md` com cabecalho explicativo (formato POSIX-friendly: tabela markdown sem HTML, sem code fence aninhado) <!-- onda-008: cabecalho + secao Formato + Catalogo + Extensibilidade + Origem; sem HTML real (so dentro de inline-code citando o que NAO usar) -->
+- [x] 1.3.2 Popular 5 sinais rasos (FR-003 faixa rasa): `rode`, `liste`, `conte`, `grep`, `formate` — coluna `peso=1` <!-- onda-008: linhas 41-45 -->
+- [x] 1.3.3 Popular 5 sinais medios (FR-003 faixa media): `explique`, `documente`, `resuma`, `traduza`, `compare` <!-- onda-008: linhas 46-50 -->
+- [x] 1.3.4 Popular 5 sinais profundos (FR-003 faixa profunda): `projete`, `refatore`, `arquitete`, `debate`, `escolha` <!-- onda-008: linhas 51-55 -->
+- [x] 1.3.5 Validar que catalogo tem exatamente 15 linhas de dados (`awk '/^\|/&&!/-+/{c++}END{print c}'` retorna 16 = 15 + header) <!-- onda-008: validado empiricamente, output literal = 16; distribuicao por faixa = 5 rasa + 5 media + 5 profunda -->
+- [x] 1.3.6 Documentar inline (comentario markdown) que operador pode estender editando o arquivo (FR-004 — sem patch necessario) <!-- onda-008: secao "Extensibilidade (FR-004)" com 5 regras + colisao de sinais -->
+
+> **Onda-008 — Decisoes registradas**: dec-038 (escolha dos 15 verbos
+> alinhada com FR-003 e contracts/skill-io.md), dec-039 (esquema de
+> pesos uniforme=1 para MVP; tie-break por FR-005 conservador),
+> dec-040 (formato tabela markdown unica com header + separator + 15
+> data rows, sem tabelas secundarias para preservar awk de 1.3.5).
 
 ---
 
