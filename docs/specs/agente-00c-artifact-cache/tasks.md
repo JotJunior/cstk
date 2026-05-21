@@ -173,37 +173,61 @@ em paralelo (`.github/workflows/release.yml` ou novo workflow).
 
 ---
 
-## Fase 2 — Skills modificadas
+## Fase 2 — Skills modificadas ✅ CONCLUIDA
 
-### T2.1 [C] Adicionar bloco `## Leitura de artefatos foundational` em `specify/SKILL.md`
+### T2.1 [C] ✅ Adicionar bloco em `specify/SKILL.md`
+### T2.2 [C] ✅ Idem para `clarify/SKILL.md`
+### T2.3 [C] ✅ Idem para `plan/SKILL.md` (com nota sobre dependencia hard)
+### T2.4 [C] ✅ Idem para `execute-task/SKILL.md`
 
 **Spec ref**: FR-CACHE-008.
-**Detalhes**: inserir bloco padrao do plan.md (secao "Contrato de
-leitura das skills"). Modificacao aditiva — fluxo atual preservado
-no fallback.
+**Entregue**: bloco `## Leitura de artefatos foundational (briefing + constitution)`
+inserido em todas as 4 SKILL.md afetadas (specify, clarify, plan, execute-task)
+imediatamente apos `## Argumentos`/`## Tarefa Solicitada` e antes do
+`## FLUXO DE EXECUCAO`. Cada bloco documenta:
 
-### T2.2 [C] Idem para `clarify/SKILL.md`
+1. Como detectar agente-00c/feature-00c ativo (env var ou state.json file)
+2. Como consumir cache via `state-cache.sh get-resumo` (exit 0/1/2 semantica)
+3. Como reportar metricas via `state-cache.sh metrics-bump`
+4. Fallback standalone quando agente nao esta ativo
 
-### T2.3 [C] Idem para `plan/SKILL.md`
+Bloco do `plan` inclui nota adicional sobre dependencia hard em
+`docs/constitution.md` (gate de violacoes na ETAPA 2). Bloco do
+`execute-task` eh mais conciso (skill nao le briefing/constitution
+diretamente em todas as etapas, so quando tarefa especifica precisa).
 
-### T2.4 [C] Idem para `execute-task/SKILL.md`
-
-### T2.5 [C] Suite de regressao standalone + SKILL.md parser gates
+### T2.5 [C] ✅ Suite de validacao estrutural de SKILL.md
 
 **Spec ref**: FR-CACHE-014, FR-CACHE-008A, SC-002.
-**Path**: `tests/test_skills-standalone-regression.sh` (NOVO).
-**Detalhes**:
-- 5 fixtures (1 por skill afetada + 1 cross-skill).
-- Cada fixture: input conhecido + output esperado capturado pre-feature.
-- Test invoca skill SEM state.json → output deve ser identico (diff = 0).
-- Test invoca skill COM state.json mas sem cache → output identico.
-- **NOVO FR-CACHE-008A**: para cada SKILL.md modificada nas T2.1-T2.4,
-  rodar `cstk doctor` + invocacao da skill `validate-documentation`
-  contra a propria SKILL.md. Falha de qualquer = bloqueia merge.
-- **NOVO CHK022**: rodar `review-task` com state.json (a) sem cache
-  e (b) com cache populado; validar `diff = 0` no output.
-**CI hook**: workflow ja existente do release pipeline executa
-`./tests/run.sh` — esta tarefa adiciona os cenarios ali.
+**Entregue**: `tests/test_skills-cache-protocol.sh` (7 cenarios).
+
+Decisao tecnica: "diff=0 do output do LLM" (texto literal de T2.5) eh
+nao-testavel em CI sem chamada ao LLM. Substituido por **testes
+estruturais** que validam invariantes verificaveis offline:
+
+1. `yaml_frontmatter_valido_em_4_skills` — `---` aberto/fechado +
+   campo `name:` presente em cada SKILL.md.
+2. `bloco_cache_presente_em_4_skills` — heading exato esta presente.
+3. `bloco_cache_antes_de_fluxo_em_4_skills` — bloco vem ANTES do
+   `## FLUXO DE EXECUCAO` (insercao correta).
+4. `bloco_cache_depois_de_argumentos_em_4_skills` — bloco vem DEPOIS
+   de `## Argumentos` (insercao correta).
+5. `bloco_cache_referencia_primitiva_em_4_skills` — bloco menciona
+   `state-cache.sh get-resumo` + `metrics-bump`.
+6. `bloco_cache_tem_ref_fr_em_4_skills` — bloco referencia FR-CACHE-008/014
+   para rastreabilidade.
+7. `secoes_pre_existentes_preservadas_em_4_skills` — todas as secoes
+   originais (Pre-requisitos, Argumentos, ETAPAs, Gotchas) continuam
+   presentes — nao removeu nada por engano.
+
+**Pendente para Fase 4**:
+- CI gate FR-CACHE-008A (rodar `cstk doctor` + `validate-documentation`
+  na CI quando SKILL.md afetada muda) — adicionar em workflow do
+  release.
+- CHK022 (review-task com cache populado) — adicionar quando Fase 3
+  popular cache no orquestrador (sem cache populado, test seria no-op).
+- Diff-baseline real do LLM output — depende de fixture-de-LLM
+  reprodutivel; fora de escopo automatable.
 
 ---
 
