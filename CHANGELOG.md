@@ -7,6 +7,28 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Added (drafts SDD — sem implementacao)
+
+- **Feature SDD `agente-00c-artifact-cache`** drafts iniciais em
+  `docs/specs/agente-00c-artifact-cache/`:
+  - `spec.md` — feature spec completa com 4 User Stories
+    (P1/P1/P2/P2), 17 Functional Requirements (FR-CACHE-001..017),
+    Edge Cases, Constitutional Alignment, 5 Success Criteria,
+    Out of Scope, e 5 Open Questions para `/clarify`.
+  - `plan.md` — plano tecnico provisorio com Constitution Check,
+    Data Model (state.json novo schema), API Contracts da primitiva
+    nova `state-cache.sh` (6 subcomandos), Research (5 decisoes),
+    Project Structure, Phase plan, Risks.
+  - `tasks.md` — 20 tarefas em 5 fases (Clarify → Primitiva+schema →
+    Skills → Orquestrador+report → Integracao+release), matriz de
+    dependencias, coverage matrix Requirements×Tasks.
+- Proposito: reduzir ~5-10k tokens/onda em pipelines longos do
+  agente-00c via cache opcional de briefing.md + constitution.md
+  em `state.json`, com hash-validation TOCTOU-safe e fallback
+  preservado para skills standalone.
+- Implementacao real fica deferida apos `/clarify` resolver as 5
+  Open Questions.
+
 ### Changed
 
 - **Slash commands + custom agents descriptions**: trim YAML `description:`
