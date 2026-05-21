@@ -98,6 +98,18 @@ SUBCOMANDOS:
            se PR existe, retorna URL existente. Flags --draft/--title/
            --body/--reviewer sao repassadas ao `gh pr create`.
 
+LIMITACOES:
+  Git submodules NAO sao isolados pela sessao. `cstk session start`
+  chama `git worktree add` puro; submodules ficam vazios na sessao
+  (so com gitlink `.git`). Se rodar `git submodule update --init`
+  dentro da sessao, o `.git` de cada submodule e compartilhado com
+  o checkout principal via `.git/modules/<nome>` — branch HEAD do
+  submodule e SHARED entre main e sessao. Mudancas no submodule
+  feitas na sessao afetam o checkout principal silenciosamente.
+  Workaround: edite codigo de submodule pelo checkout principal,
+  OU abra session SEPARADA dentro do submodule
+  (`cd path/to/submodule && cstk session start ...`).
+
 ENVIRONMENT:
   CSTK_LIB              caminho da biblioteca (setado pelo cstk)
 

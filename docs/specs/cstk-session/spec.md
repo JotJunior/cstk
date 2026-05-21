@@ -289,6 +289,21 @@ checa (branch nao tracked, sem commits a frente).
 - Sessao chamada com mesmo nome de branch ja remota (`gh pr create`
   vai pushear): comportamento aceitavel — usuario assume que sabe o
   que faz; `start` ja avisou "branch existente reutilizada".
+- **Repo com git submodules (monorepo)**: `start` chama `git worktree
+  add` puro, sem `git submodule update --init`. Submodules ficam
+  vazios na sessao (so o gitlink `.git` em cada subdir). Se operador
+  inicializar manualmente na sessao, o `.git/modules/<nome>` e
+  compartilhado com o checkout principal — branch HEAD do submodule
+  fica SHARED entre as duas worktrees, quebrando a promessa de
+  isolamento para edits dentro do submodule. **Workaround atual**:
+  editar codigo de submodule pelo checkout principal, OU abrir
+  session SEPARADA dentro do submodule (`cd path/to/submodule &&
+  cstk session start ...`). Limitacao documentada no help do
+  `cstk session` + issue de tracking aberta no repositorio. **Nao
+  e bug do cstk**: limitacao fundamental de como git trata
+  submodules em worktrees — para isolamento real seria necessario
+  criar worktree do submodule tambem, o que extrapola escopo desta
+  feature.
 
 ## Requirements
 
