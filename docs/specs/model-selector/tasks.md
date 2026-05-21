@@ -1,0 +1,399 @@
+# Backlog de Tarefas — model-selector
+
+**Feature**: `model-selector`
+**Origem**: [`spec.md`](spec.md) + [`plan.md`](plan.md) + [`research.md`](research.md) + [`data-model.md`](data-model.md) + [`contracts/skill-io.md`](contracts/skill-io.md) + [`checklists/{shell,skill,security}.md`](checklists/)
+**Created**: 2026-05-21
+**Status**: Draft (aguardando `/analyze` + execucao)
+
+---
+
+## Escopo
+
+Implementar a skill toolkit `global/skills/model-selector/` em POSIX sh puro
+(carve-out 1.1.0 apenas para `jq` opcional em `scripts/report.sh`), com
+catalogo MVP de 15 sinais, classificador deterministico, output markdown
+estruturado, extensao de `state.json` em `metricas_acumuladas.model_selector`,
+relatorio agregado com fallback `awk`, suite de 10 testes shell em
+`tests/cstk/`, fixture `tests/fixtures/state-dirs-20/`, SKILL.md <200 linhas
+com Gotchas obrigatorios e description-trigger canonico.
+
+Cada tarefa tecnica e rastreavel a:
+- **CHK0NN** (item de checklist mensuravel → vira teste), ou
+- **FR-NNN / SC-NNN** (requisito funcional / criterio de sucesso da spec).
+
+Items `[Gap]`, `[Ambiguity]`, `[Consistencia]` dos checklists ficam para
+`/analyze` (resolucao cross-artifact), nao entram como tarefa de execucao.
+
+---
+
+## Legendas
+
+### Status
+
+| Tag | Significado |
+|-----|-------------|
+| `[ ]` | Pendente |
+| `[x]` | Concluida |
+| `[~]` | Em andamento (preenchido pelo `/execute-task`) |
+| `[-]` | Descartada com Decisao auditavel |
+
+### Criticidade
+
+| Tag | Significado | Quando |
+|-----|-------------|--------|
+| `[C]` | Critica | Bloqueia conformidade com constitution (Principio I/II/III/IV) ou SC mensuravel |
+| `[A]` | Alta | Bloqueia funcionalidade core da skill (classificacao, output, integracao state.json) |
+| `[M]` | Media | Suporte (examples, docs, fixture grande) — pode ser adiada sem quebrar MVP |
+
+---
+
+## FASE 1 — Fundacao da Skill (estrutura canonica)
+
+Cria o esqueleto da skill seguindo o padrao canonico do toolkit
+(Principio III — progressive disclosure) e fixa contratos antes de
+implementar logica.
+
+### 1.1 Criar diretorio canonico da skill `[C]`
+
+Ref: FR-001, Plan §Project Structure, CHK036
+
+- [ ] 1.1.1 Criar `global/skills/model-selector/` no projeto-alvo
+- [ ] 1.1.2 Criar subdirs `references/`, `scripts/`, `examples/`
+- [ ] 1.1.3 Adicionar entrada `[MINOR] Add model-selector skill (FR-010a invokes optional-deps carve-out for jq in scripts/report.sh)` ao `CHANGELOG.md`
+- [ ] 1.1.4 Verificar empiricamente que estrutura casa com padrao de outras skills (`ls global/skills/clarify/` como baseline)
+
+### 1.2 Esqueleto SKILL.md com frontmatter trigger `[C]`
+
+Ref: FR-014, CHK029, CHK030, CHK031, SC-004
+
+- [ ] 1.2.1 Criar `SKILL.md` com frontmatter YAML contendo `description` no formato `Use quando X / NAO use quando Y` (FR-014)
+- [ ] 1.2.2 Listar `allowed-tools` no frontmatter conforme convencao do toolkit (sem tool de spawn — Gotcha FR-013e)
+- [ ] 1.2.3 Esbocar secoes obrigatorias da SKILL.md: descricao curta, contrato I/O (link para `contracts/skill-io.md`), Gotchas (placeholder), referencias progressivas
+- [ ] 1.2.4 Escrever teste `tests/cstk/test_model_selector_skill_lines.sh` que mede `wc -l SKILL.md` e falha se >= 200 (Ref: CHK028, SC-004)
+- [ ] 1.2.5 Escrever teste implicito de description-trigger via regex `Use quando.*NAO use` no frontmatter (Ref: CHK030)
+
+### 1.3 Catalogo MVP de sinais `[C]`
+
+Ref: FR-003, FR-004, dec-004, CHK039, CHK040, Decision 1 do research
+
+- [ ] 1.3.1 Criar `references/sinais.md` com cabecalho explicativo (formato POSIX-friendly: tabela markdown sem HTML, sem code fence aninhado)
+- [ ] 1.3.2 Popular 5 sinais rasos (FR-003 faixa rasa): `rode`, `liste`, `conte`, `grep`, `formate` — coluna `peso=1`
+- [ ] 1.3.3 Popular 5 sinais medios (FR-003 faixa media): `explique`, `documente`, `resuma`, `traduza`, `compare`
+- [ ] 1.3.4 Popular 5 sinais profundos (FR-003 faixa profunda): `projete`, `refatore`, `arquitete`, `debate`, `escolha`
+- [ ] 1.3.5 Validar que catalogo tem exatamente 15 linhas de dados (`awk '/^\|/&&!/-+/{c++}END{print c}'` retorna 16 = 15 + header)
+- [ ] 1.3.6 Documentar inline (comentario markdown) que operador pode estender editando o arquivo (FR-004 — sem patch necessario)
+
+---
+
+## FASE 2 — Classificador deterministico (POSIX puro estrito)
+
+Implementa o core da heuristica em `scripts/classify.sh`, sem `jq`, sem
+bash-isms. Cada subtarefa de implementacao tem subtarefa de teste pareada.
+
+### 2.1 Esqueleto `scripts/classify.sh` `[C]`
+
+Ref: FR-001, FR-010, CHK001, CHK003, CHK004, Decision 2 do research
+
+- [ ] 2.1.1 Criar `scripts/classify.sh` com shebang `#!/bin/sh` + `set -eu`
+- [ ] 2.1.2 Documentar exit codes no header (0=sucesso, 2=input invalido, 3=catalogo ausente) — Ref: CHK021
+- [ ] 2.1.3 Implementar leitura de input via stdin OU primeiro arg posicional (contrato em `contracts/skill-io.md`)
+- [ ] 2.1.4 Implementar deteccao de path do catalogo via `${0%/*}/../references/sinais.md` (relativo ao script, sem hardcode absoluto)
+
+### 2.2 Tokenizacao de input `[A]`
+
+Ref: Decision 2, CHK062
+
+- [ ] 2.2.1 Tokenizar input via `tr ' ' '\n' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g'`
+- [ ] 2.2.2 Filtrar tokens vazios apos sanitizacao
+- [ ] 2.2.3 Rejeitar input contendo null-byte (Plan §Security): `printf '%s' "$input" | tr -d '\0' | cmp -s - <(printf '%s' "$input")` — exit 2 se difere
+- [ ] 2.2.4 Implementar fail-safe: se `<3 tokens` apos tokenizacao → sair com sugestao `manter-atual` score 0 (Decision 7, Ref: CHK019, CHK062)
+
+### 2.3 Match contra catalogo `[A]`
+
+Ref: FR-003, FR-005, Decision 2
+
+- [ ] 2.3.1 Parsear `references/sinais.md` via `awk` em modo streaming: extrair colunas (termo, faixa, peso) das linhas de dados (ignorar header + separador)
+- [ ] 2.3.2 Implementar match exato por linha via `grep -Fxq` (fixed string exact line) entre cada token e os termos do catalogo
+- [ ] 2.3.3 Acumular contadores por faixa (rasa/media/profunda) e lista de sinais matched
+- [ ] 2.3.4 Implementar regra de conservadorismo (FR-005): se ha matches em faixas diferentes, vence a faixa mais profunda; justificativa cita literalmente o sinal vencedor
+
+### 2.4 Score e justificativa `[A]`
+
+Ref: FR-002, FR-005, dec-006, CHK067, CHK068
+
+- [ ] 2.4.1 Calcular score 0..2 com regra: 0 sinais=0; 1 sinal=1; >=2 sinais consistentes=2 (teto pratico — dec-006)
+- [ ] 2.4.2 Garantir TETO = 2 absoluto no caminho heuristico (nunca emitir 3) — assercao defensiva no fim do script
+- [ ] 2.4.3 Construir justificativa em texto livre listando sinais detectados e regra aplicada (conservador se contraditorios)
+- [ ] 2.4.4 Mapear faixa → modelo: rasa→`haiku`, media→`sonnet`, profunda→`opus`, indeterminado→`manter-atual`
+- [ ] 2.4.5 Mapear alternativa de fallback (Decision 9, tier-mapping fixo): haiku→sonnet, sonnet→haiku, opus→sonnet, manter-atual→`(n/a)`
+
+### 2.5 Output markdown estruturado `[A]`
+
+Ref: FR-002, Decision 4 do research, contracts/skill-io.md
+
+- [ ] 2.5.1 Imprimir bloco markdown com 4 secoes fixas: `## Modelo Sugerido`, `## Score`, `## Justificativa`, `## Alternativa`
+- [ ] 2.5.2 Garantir rotulo ABSTRATO no output (`haiku|sonnet|opus|manter-atual`) — nunca string tipo `claude-haiku-4-*`
+- [ ] 2.5.3 Escrever teste `tests/cstk/test_model_selector_no_concrete_version.sh` que faz `grep -E 'claude-[a-z]+-[0-9]' SKILL.md scripts/ references/` e exige zero hits (Ref: CHK044, FR-002a, dec-005)
+
+### 2.6 Testes shell por faixa `[C]`
+
+Ref: SC-001, FR-017, Plan §Project Structure
+
+- [ ] 2.6.1 Criar `tests/cstk/test_model_selector_faixa_rasa.sh` (input com verbo raso → output `haiku`, Ref: SC-001)
+- [ ] 2.6.2 Criar `tests/cstk/test_model_selector_faixa_media.sh` (input com verbo medio → output `sonnet`, Ref: SC-001)
+- [ ] 2.6.3 Criar `tests/cstk/test_model_selector_faixa_profunda.sh` (input com verbo profundo → output `opus`, Ref: SC-001, SC-006)
+- [ ] 2.6.4 Criar `tests/cstk/test_model_selector_ambiguo.sh` (sinais contraditorios → vence conservador, Ref: FR-005)
+- [ ] 2.6.5 Criar `tests/cstk/test_model_selector_input_vazio.sh` (input <3 tokens → `manter-atual` score 0, Ref: Decision 7, CHK019)
+- [ ] 2.6.6 Criar `tests/cstk/test_model_selector_falsos_positivos_design.sh` (4 verbos de design isolados → zero `haiku`, Ref: SC-006, CHK070)
+
+---
+
+## FASE 3 — Integracao com state.json (extensao runtime)
+
+A skill em si nao escreve state.json — o orquestrador que consome a
+sugestao registra a Decisao via runtime. Esta fase documenta o contrato
+e adiciona um teste de compat retroativa do validador de schema.
+
+### 3.1 Documentar contrato de extensao `metricas_acumuladas.model_selector` `[A]`
+
+Ref: FR-011, data-model.md, Decision 6 do research
+
+- [ ] 3.1.1 Validar que `contracts/skill-io.md` ja descreve formato `metricas_acumuladas.model_selector` (sugestoes_total, por_modelo_sugerido, por_resultado, ultima_invocacao_iso)
+- [ ] 3.1.2 Confirmar empiricamente que `state-validate.sh` aceita campo novo sob `metricas_acumuladas.*` sem mudanca: rodar `state-validate.sh` contra um state.json mockado com o campo presente — Ref: Plan §Project Structure observacao "NENHUMA mudanca exigida"
+- [ ] 3.1.3 Se 3.1.2 falhar, registrar Decisao auditavel propondo extensao do schema E criar tarefa nova; senao, marcar `[x]` com nota "validado empiricamente onda-NNN"
+
+### 3.2 Documentar handshake skill ↔ orquestrador `[M]`
+
+Ref: FR-007, FR-008, FR-009, Decision 3 do research
+
+- [ ] 3.2.1 Documentar em `SKILL.md` (secao "Integracao com orquestradores autonomos") que a skill emite stdout markdown e o orquestrador parseia para construir Decisao
+- [ ] 3.2.2 Reforcar via Gotcha FR-013e: "skill nao spawna subagente — sem blast radius alem do diretorio do projeto-alvo"
+- [ ] 3.2.3 Linkar para `contracts/skill-io.md` no SKILL.md (progressive disclosure)
+
+---
+
+## FASE 4 — Relatorio agregado `scripts/report.sh` (carve-out 1.1.0)
+
+Implementa o unico ponto onde `jq` opcional e permitido. Fallback `awk`
+puro produz output equivalente. Testes verificam confinamento e
+equivalencia.
+
+### 4.1 Esqueleto `scripts/report.sh` `[C]`
+
+Ref: FR-012, FR-010a, Decision 5 do research
+
+- [ ] 4.1.1 Criar `scripts/report.sh` com shebang `#!/bin/sh` + `set -eu`
+- [ ] 4.1.2 Implementar deteccao de `jq` via `command -v jq >/dev/null 2>&1` (POSIX puro)
+- [ ] 4.1.3 Implementar leitura read-only do(s) state.json passado(s) como arg(s) — ZERO operacoes de escrita (`>`, `>>`, `tee`, `cp -f`, `mv`)
+- [ ] 4.1.4 Documentar exit codes (0=sucesso, 2=arg invalido, 3=arquivo nao legivel)
+
+### 4.2 Caminho `jq` (happy path) `[A]`
+
+Ref: FR-010a (a), Decision 5
+
+- [ ] 4.2.1 Implementar bloco `if jq disponivel`: agregar `metricas_acumuladas.model_selector` via expressao jq compacta
+- [ ] 4.2.2 Emitir tabela markdown com colunas: feature | sugestoes_total | aceitas | rejeitadas | modelo_final_predominante
+- [ ] 4.2.3 Documentar inline (comentario shell) que este e o caminho preferido e que awk e fallback equivalente
+
+### 4.3 Fallback `awk` puro `[C]`
+
+Ref: FR-010a (a), CHK012, CHK014, Decision 5
+
+- [ ] 4.3.1 Implementar bloco `else` (jq indisponivel): parsing linha-a-linha do `state.json` via `awk` puro (sem jq)
+- [ ] 4.3.2 Garantir que campos extraidos casam EXATAMENTE com caminho `jq` (whitespace, ordem de colunas, casas decimais idênticas)
+- [ ] 4.3.3 Documentar limitacoes conhecidas do fallback (ex: state.json multilinhada exige normalizacao)
+
+### 4.4 Testes de confinamento + equivalencia + performance `[C]`
+
+Ref: FR-010a (b), SC-003, CHK009, CHK013, CHK016, CHK017
+
+- [ ] 4.4.1 Criar `tests/cstk/test_report_without_jq.sh` que mascara `jq` via `PATH=/dev/null` (ou wrapper stub) e compara output com run jq-presente — exigir diff vazio (Ref: CHK013, CHK014)
+- [ ] 4.4.2 Criar `tests/cstk/test_report_jq_confinement.sh` que faz `grep -rn '\bjq\b' global/skills/model-selector/` e exige exatamente 1 arquivo (`scripts/report.sh`) — exit 1 se >1 (Ref: CHK009, FR-010a (b))
+- [ ] 4.4.3 Criar `tests/cstk/test_report_performance.sh` que mede `time` da execucao contra fixture `tests/fixtures/state-dirs-20/` e exige <500ms wallclock (Ref: SC-003, CHK016, CHK017)
+
+### 4.5 Fixture `tests/fixtures/state-dirs-20/` `[A]`
+
+Ref: SC-003, Plan §Project Structure, CHK018
+
+- [ ] 4.5.1 Gerar 20 arquivos `state.json` mockados representando features com perfis variados de sugestoes (algumas zero, algumas alto volume)
+- [ ] 4.5.2 Documentar tamanho minimo de cada state.json (afeta tempo medido — Ref: CHK018) em README na fixture
+- [ ] 4.5.3 Garantir que pelo menos 5 dos 20 contem `metricas_acumuladas.model_selector` populado
+
+---
+
+## FASE 5 — Seguranca e auditabilidade
+
+Cobre testes mensuraveis de seguranca (CHK054, CHK056) e garante a
+secao Gotchas conforme FR-013.
+
+### 5.1 Teste de zero-rede `[C]`
+
+Ref: FR-016, SC-005, CHK046, CHK047
+
+- [ ] 5.1.1 Criar `tests/cstk/test_model_selector_zero_rede.sh` que faz `grep -rn 'curl\|wget\|http\|nc \|/dev/tcp\|ssh \|getent hosts\|dig \|host ' global/skills/model-selector/ | grep -v '^[[:space:]]*#'` e exige zero hits (Ref: CHK046 estende as primitivas alem do trio basico)
+- [ ] 5.1.2 Documentar no header do teste que falsos positivos em comentarios sao filtrados via `grep -v '^[[:space:]]*#'`
+
+### 5.2 Teste de sem-spawn (CHK054) `[C]`
+
+Ref: FR-013e, CHK054, Edge Case "loop"
+
+- [ ] 5.2.1 Criar `tests/cstk/test_model_selector_no_spawn.sh` que faz `grep -rn 'Task\|Agent\|claude-code\|subagent' global/skills/model-selector/scripts/` e exige zero hits (excluindo comentarios)
+- [ ] 5.2.2 Adicionar ao mesmo teste verificacao de que SKILL.md cita literalmente o Gotcha "skill nao spawna subagente" (Ref: FR-013e)
+
+### 5.3 Teste de read-only do report.sh (CHK056) `[C]`
+
+Ref: FR-012, CHK056
+
+- [ ] 5.3.1 Criar `tests/cstk/test_report_read_only.sh` que faz `grep -nE '(>|>>|\btee\b|\bmv\b|\bcp -f\b|\brm\b)' global/skills/model-selector/scripts/report.sh | grep -v '^[[:space:]]*#'` e exige zero hits (Ref: CHK056)
+
+### 5.4 Gotchas obrigatorios na SKILL.md (CHK033) `[C]`
+
+Ref: FR-013 (a-e), CHK032, CHK033, CHK035
+
+- [ ] 5.4.1 Adicionar secao `## Gotchas` ao `SKILL.md` com 5 sub-headings (a-e) conforme FR-013
+- [ ] 5.4.2 Cada gotcha cita: sintoma observavel + acao corretiva (Ref: CHK035)
+- [ ] 5.4.3 Estender `test_model_selector_skill_lines.sh` (ou criar `test_model_selector_gotchas.sh`) para validar que existem exatamente 5 sub-headings sob `## Gotchas` via `awk '/^## Gotchas/,/^## /{print}' SKILL.md | grep -c '^### '` >= 5 (Ref: CHK033)
+
+---
+
+## FASE 6 — Exemplos e documentacao (progressive disclosure)
+
+Materiais auxiliares para operadores estenderem e entenderem a skill sem
+inflar SKILL.md.
+
+### 6.1 Exemplos good-case (FASE opcional MVP) `[M]`
+
+Ref: Plan §Project Structure ("NOVO (opcional MVP)"), CHK037, CHK038
+
+- [ ] 6.1.1 Criar `examples/good-haiku.md` com input + output esperado para faixa rasa
+- [ ] 6.1.2 Criar `examples/good-sonnet.md` com input + output esperado para faixa media
+- [ ] 6.1.3 Criar `examples/good-opus.md` com input + output esperado para faixa profunda
+- [ ] 6.1.4 Linkar de SKILL.md (secao "Exemplos") para os 3 arquivos via progressive disclosure
+
+### 6.2 Documentacao de extensibilidade do catalogo `[M]`
+
+Ref: FR-004, CHK041
+
+- [ ] 6.2.1 Adicionar secao em `references/sinais.md` (ou README adjacente) explicando como adicionar sinais locais sem patch
+- [ ] 6.2.2 Documentar comportamento esperado em colisao de sinais (mesma palavra em duas faixas) — referenciar regra conservadora FR-005
+
+---
+
+## Itens deferidos para `/analyze` (NAO sao tarefas de execucao)
+
+Os items abaixo dos checklists sao do tipo `[Gap]`, `[Ambiguity]` ou
+`[Consistencia]` — exigem resolucao cross-artifact (spec ↔ plan ↔ research)
+e nao se traduzem em codigo executavel. Ficam para `/analyze` posterior:
+
+- CHK002, CHK004, CHK005, CHK010 (gaps de declaracao em spec vs plan)
+- CHK006, CHK007, CHK008, CHK011 (deps consistency)
+- CHK015, CHK020 (perf/security ambiguity)
+- CHK022, CHK024, CHK025 (cobertura/clareza)
+- CHK026, CHK027, CHK029, CHK031, CHK032, CHK034, CHK035 (skill.md ambiguity/consistency)
+- CHK037, CHK038, CHK039, CHK040, CHK041, CHK042, CHK043, CHK045 (skill anatomy)
+- CHK047, CHK048, CHK049, CHK050, CHK051, CHK052, CHK053, CHK055, CHK057, CHK058, CHK059, CHK060, CHK061, CHK063, CHK064, CHK065, CHK066, CHK067, CHK068, CHK069 (security + auditabilidade)
+
+> Total: **41 items deferidos / 70 totais (~58.6%)**. Items mensuraveis
+> (29 restantes ou ja cobertos como tarefas acima) viram codigo ou teste.
+
+---
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[FASE 1 - Fundacao da Skill]
+    F2[FASE 2 - Classificador POSIX puro]
+    F3[FASE 3 - Integracao state.json]
+    F4[FASE 4 - Relatorio + carve-out jq]
+    F5[FASE 5 - Seguranca e Gotchas]
+    F6[FASE 6 - Exemplos e doc]
+
+    F1 --> F2
+    F1 --> F3
+    F2 --> F4
+    F2 --> F5
+    F3 --> F4
+    F4 --> F5
+    F2 --> F6
+    F5 --> F6
+```
+
+**Caminho critico**: F1 → F2 → F4 → F5 (entrega MVP minimo testavel —
+classifica + reporta + valida confinamento). F3 e prerequisito leve
+de F4 (confirma compat retroativa). F6 e cosmico e pode ir em paralelo.
+
+---
+
+## Resumo Quantitativo
+
+| Fase | Tarefas | Subtarefas | Criticidade dominante |
+|------|---------|------------|-----------------------|
+| FASE 1 — Fundacao | 3 | 15 | [C] |
+| FASE 2 — Classificador | 6 | 26 | [C] / [A] |
+| FASE 3 — Integracao state.json | 2 | 6 | [A] / [M] |
+| FASE 4 — Relatorio + carve-out | 5 | 16 | [C] / [A] |
+| FASE 5 — Seguranca e Gotchas | 4 | 8 | [C] |
+| FASE 6 — Exemplos e doc | 2 | 6 | [M] |
+| **TOTAL** | **22** | **77** | — |
+
+**Distribuicao por criticidade**: [C] 13 tarefas / [A] 6 tarefas / [M] 3 tarefas.
+
+**Cobertura de CHK mensuraveis (testes shell)**:
+
+| CHK | Teste shell associado | Subtarefa |
+|-----|----------------------|-----------|
+| CHK028 | `test_model_selector_skill_lines.sh` | 1.2.4 |
+| CHK030 | regex de description-trigger | 1.2.5 |
+| CHK033 | extensao de `test_model_selector_skill_lines.sh` ou `test_model_selector_gotchas.sh` | 5.4.3 |
+| CHK044 | `test_model_selector_no_concrete_version.sh` | 2.5.3 |
+| CHK054 | `test_model_selector_no_spawn.sh` | 5.2.1 |
+| CHK056 | `test_report_read_only.sh` | 5.3.1 |
+
+**Cobertura de SCs (testes shell explicitos)**:
+
+| SC | Teste(s) shell associado(s) | Subtarefa(s) |
+|----|----------------------------|--------------|
+| SC-001 | `test_model_selector_faixa_{rasa,media,profunda}.sh` | 2.6.1–2.6.3 |
+| SC-002 | (medido em execucoes reais, nao por teste shell isolado) | — |
+| SC-003 | `test_report_performance.sh` | 4.4.3 |
+| SC-004 | `test_model_selector_skill_lines.sh` | 1.2.4 |
+| SC-005 | `test_model_selector_zero_rede.sh` | 5.1.1 |
+| SC-006 | `test_model_selector_falsos_positivos_design.sh` | 2.6.6 |
+
+---
+
+## Escopo Coberto
+
+- Skill canonica `global/skills/model-selector/` com SKILL.md <200 linhas, frontmatter trigger, Gotchas a-e
+- Catalogo MVP de 15 sinais (5 por faixa) em `references/sinais.md`
+- Classificador POSIX puro deterministico em `scripts/classify.sh`
+- Output markdown estruturado com 4 secoes fixas
+- Tier-mapping fixo para alternativa de fallback
+- Relatorio agregado em `scripts/report.sh` com caminho `jq` + fallback `awk` (carve-out FR-010a)
+- Suite de 10+ testes shell em `tests/cstk/` cobrindo CHK mensuraveis + SCs verificaveis
+- Fixture `tests/fixtures/state-dirs-20/` para teste de performance
+- Examples good-haiku/sonnet/opus para progressive disclosure
+- Entrada MINOR no CHANGELOG.md
+
+## Escopo Excluido
+
+- **Spawn de subagente parametrizado pela skill**: orquestrador faz isso (FR-006, FR-008, Decision 3 do research). A skill so emite stdout.
+- **Persistencia direta no state.json pela skill**: feita pelo runtime via `state-decisions.sh register` (FR-007). Skill nao toca state.json no caminho `classify.sh`.
+- **Mudanca em `state-validate.sh` do runtime**: explicitamente fora — Plan §Project Structure declara "NENHUMA mudanca exigida" (compat retroativa). Subtarefa 3.1.2 confirma empiricamente.
+- **Score 3 destravado**: reservado para evolucao futura (dec-006, FR-002b teto pratico = 2).
+- **Detecao de disponibilidade de modelo no harness em runtime**: Decision 9 do research fixa tier-mapping estatico — sem chamada externa.
+- **Bad examples / anti-padroes**: gap deferido para `/analyze` (CHK038) — pode entrar em onda futura.
+- **Suporte a multibyte/unicode no tokenizador**: CHK062 marcado como ambiguidade — deferido para `/analyze`.
+- **Limite de tamanho do input (DoS local)**: CHK061 marcado como gap — deferido para `/analyze`.
+- **Resolucao dos 41 items `[Gap]/[Ambiguity]/[Consistencia]` dos checklists**: fica para `/analyze` cross-artifact (lista completa na secao "Itens deferidos").
+
+---
+
+## Notas operacionais
+
+1. **Origem SDD**: este `tasks.md` foi gerado a partir de `docs/specs/model-selector/spec.md`. Path canonico de salvamento: `docs/specs/model-selector/tasks.md` (regra "Deteccao de Origem" da skill `create-tasks`).
+2. **Sincronizacao com codigo**: na execucao via `/execute-task`, validar empiricamente cada subtarefa contra arquivos canonicos antes de executar (protocolo §3 da skill `create-tasks` — evita re-fazer trabalho ja existente).
+3. **Sub-FASEs emergentes**: se Decisao tomada durante execucao criar trabalho novo, inserir bloco `N.M.K-bis` neste arquivo no MESMO commit da Decisao (regra anti-drift do `create-tasks`).
+4. **Hook pos-onda**: orquestrador compara `git diff --name-only` contra checkboxes para detectar drift (declarativa neste tasks.md vs realidade no codigo).
+5. **Proximo passo**: `/analyze` para validar consistencia cross-artifact (spec ↔ plan ↔ tasks ↔ research ↔ constitution) + resolver os 41 items deferidos.
