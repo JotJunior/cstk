@@ -127,17 +127,39 @@ algoritmo deterministico.
 14. `scenario_state_json_corrompido_exit_2`
 15. `scenario_artifact_invalido_exit_1`
 
-### T1.6 [A] Estender `state-validate.sh` com validacoes FR-CACHE-017
+### T1.6 [A] Estender `state-validate.sh` com validacoes FR-CACHE-017 + FR-CACHE-017A
 
 **Path**: `global/skills/agente-00c-runtime/scripts/state-validate.sh`
-**Spec ref**: FR-CACHE-017.
+**Spec ref**: FR-CACHE-017, FR-CACHE-017A.
 **Detalhes**:
 - Validar `source_sha256` eh hex de 64 chars.
 - Validar `estrategia` no enum permitido.
 - Validar `resumo_chars <= source_chars`.
 - Validar `gerado_em` ISO-8601.
 - Validar `gerado_na_onda >= 1 && <= onda_corrente`.
-**Tests**: expandir `tests/test_state-validate.sh` com >= 5 cenarios.
+- **NOVO FR-CACHE-017A**: validar `schema_version` <= versao esperada
+  pelo runtime instalado; mismatch bloqueia `acquire lock` com
+  diagnostico claro (cita ambas versoes + pointer para `/agente-00c-abort`).
+**Tests**: expandir `tests/test_state-validate.sh` com >= 7 cenarios
+(5 originais + cenario_schema_version_defasada + cenario_schema_version_invalida).
+
+### T1.7 [A] Wrapper `_cache_sha256()` cross-platform (FR-CACHE-016A)
+
+**Path**: `global/skills/agente-00c-runtime/scripts/_state-dir.sh`
+ou novo `_hash.sh`.
+**Spec ref**: FR-CACHE-016A.
+**Detalhes**:
+- Detectar OS via `uname -s`: `Linux` → `sha256sum`; `Darwin` →
+  `shasum -a 256`.
+- Outros SOs ficam fora de escopo v1 (retornar exit !=0 com
+  mensagem clara).
+- Output: 64 chars hex via `awk '{print $1}'`.
+**Tests**: `tests/test_hash-wrapper.sh` (NOVO):
+- `scenario_linux_sha256sum_funciona` (skipped em macos)
+- `scenario_macos_shasum_funciona` (skipped em linux)
+- `scenario_input_identico_hash_identico` (smoke test).
+**CI matrix**: GitHub Actions roda em `ubuntu-latest` + `macos-latest`
+em paralelo (`.github/workflows/release.yml` ou novo workflow).
 
 ---
 
@@ -156,15 +178,22 @@ no fallback.
 
 ### T2.4 [C] Idem para `execute-task/SKILL.md`
 
-### T2.5 [C] Suite de regressao standalone
+### T2.5 [C] Suite de regressao standalone + SKILL.md parser gates
 
-**Spec ref**: FR-CACHE-014, SC-002.
+**Spec ref**: FR-CACHE-014, FR-CACHE-008A, SC-002.
 **Path**: `tests/test_skills-standalone-regression.sh` (NOVO).
 **Detalhes**:
 - 5 fixtures (1 por skill afetada + 1 cross-skill).
 - Cada fixture: input conhecido + output esperado capturado pre-feature.
 - Test invoca skill SEM state.json → output deve ser identico (diff = 0).
 - Test invoca skill COM state.json mas sem cache → output identico.
+- **NOVO FR-CACHE-008A**: para cada SKILL.md modificada nas T2.1-T2.4,
+  rodar `cstk doctor` + invocacao da skill `validate-documentation`
+  contra a propria SKILL.md. Falha de qualquer = bloqueia merge.
+- **NOVO CHK022**: rodar `review-task` com state.json (a) sem cache
+  e (b) com cache populado; validar `diff = 0` no output.
+**CI hook**: workflow ja existente do release pipeline executa
+`./tests/run.sh` — esta tarefa adiciona os cenarios ali.
 
 ---
 
