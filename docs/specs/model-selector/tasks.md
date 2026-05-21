@@ -132,11 +132,13 @@ Ref: FR-003, FR-005, Decision 2
 
 Ref: FR-002, FR-005, dec-006, CHK067, CHK068
 
-- [ ] 2.4.1 Calcular score 0..2 com regra: 0 sinais=0; 1 sinal=1; >=2 sinais consistentes=2 (teto pratico — dec-006)
-- [ ] 2.4.2 Garantir TETO = 2 absoluto no caminho heuristico (nunca emitir 3) — assercao defensiva no fim do script
-- [ ] 2.4.3 Construir justificativa em texto livre listando sinais detectados e regra aplicada (conservador se contraditorios)
-- [ ] 2.4.4 Mapear faixa → modelo: rasa→`haiku`, media→`sonnet`, profunda→`opus`, indeterminado→`manter-atual`
-- [ ] 2.4.5 Mapear alternativa de fallback (Decision 9, tier-mapping fixo): haiku→sonnet, sonnet→haiku, opus→sonnet, manter-atual→`(n/a)`
+- [x] 2.4.1 Calcular score 0..2 com regra: 0 sinais=0; 1 sinal=1; >=2 sinais consistentes=2 (teto pratico — dec-006) <!-- onda-013: MATCH_TOTAL = COUNT_RASA+MEDIA+PROFUNDA; if/elif/else atribui 0|1|2. Validado por scenario_2_4_1_zero/um/dois. -->
+- [x] 2.4.2 Garantir TETO = 2 absoluto no caminho heuristico (nunca emitir 3) — assercao defensiva no fim do script <!-- onda-013: assercao dupla `[ $SCORE -lt 0 ] || [ $SCORE -gt 2 ]` antes E depois do output; entrada com 15 matches profundos ainda da score=2 (scenario_2_4_2_teto). Bateria defensiva varre 7 inputs (scenario_2_4_2_assercao_defensiva). -->
+- [x] 2.4.3 Construir justificativa em texto livre listando sinais detectados e regra aplicada (conservador se contraditorios) <!-- onda-013: JUSTIFICATIVA construida via awk sobre MATCHED ("termo (faixa)" por sinal); cita contagens + cita FR-005 quando _NAO_ZERO>=2 + cita TETO quando MATCH_TOTAL>2. Caso zero-match cita "nenhum sinal detectado". Validado por scenario_2_4_3_lista_sinais + scenario_2_4_3_zero_sinais. -->
+- [x] 2.4.4 Mapear faixa → modelo: rasa→`haiku`, media→`sonnet`, profunda→`opus`, indeterminado→`manter-atual` <!-- onda-013: `case FAIXA_VENCEDORA` com 4 ramos; gate adicional: SCORE=0 OU indeterminado SEMPRE forca manter-atual independente do mapa. Validado por scenario_2_4_completa_tabela_mapa (4 mapeamentos cobertos em loop) + scenario_2_4_4_indeterminado + scenario_2_4_4_profunda_opus. -->
+- [x] 2.4.5 Mapear alternativa de fallback (Decision 9, tier-mapping fixo): haiku→sonnet, sonnet→haiku, opus→sonnet, manter-atual→`(n/a)` <!-- onda-013: `case MODELO` com 4 ramos. Alinhamento de output: `manter-atual` emite literal `none` no campo `**alternativa**:` (compativel com fail-safe existente e prompt da onda); semantica equivalente a `(n/a)` da spec — dec-052 documenta o alinhamento. Validado por scenario_2_4_5_failsafe + scenario_2_4_completa_tabela_mapa. -->
+
+**Status 2.4**: concluida em onda-013. Variaveis exportadas para consumo pela task 2.5: `SCORE` (0|1|2), `MODELO` (haiku|sonnet|opus|manter-atual), `ALTERNATIVA` (sonnet|haiku|none), `JUSTIFICATIVA` (string), `MATCH_TOTAL` (int). Output intermediario PRESERVA linha `rasa=N media=N profunda=N faixa=X` (compatibilidade testes 2.3) + ADICIONA linha `score=N modelo=X alternativa=Y` (consumo 2.4 + 2.5).
 
 ### 2.5 Output markdown estruturado `[A]`
 

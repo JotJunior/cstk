@@ -230,6 +230,10 @@ if [ "$FAIL_SAFE" = "1" ]; then
     # Caminho explicito de fail-safe (subtarefa 2.2.4) — emite output
     # bem-formado com `manter-atual` score 0 e justificativa citando
     # contagem de tokens. Sem warning em stderr.
+    #
+    # Atende tambem 2.4: score=0, modelo=manter-atual, alternativa=none
+    # — invariantes garantidas neste branch sem precisar atravessar a
+    # logica de score abaixo.
     cat <<EOF
 ## Sugestao
 
@@ -240,6 +244,7 @@ if [ "$FAIL_SAFE" = "1" ]; then
 ## Sinais detectados
 
 (nenhum sinal detectado — fail-safe ativado: $FAIL_SAFE_REASON)
+score=0 modelo=manter-atual alternativa=none
 
 ## Justificativa
 
@@ -381,31 +386,175 @@ fi
 export CATALOG CATALOG_TERMS MATCHED \
        COUNT_RASA COUNT_MEDIA COUNT_PROFUNDA FAIXA_VENCEDORA
 
+# =======================================================================
+# Subtarefa 2.4 — score, justificativa, mapeamento faixa->modelo + fallback
+# =======================================================================
+# Regra de score (2.4.1, dec-006):
+#   0 sinais matched      -> score=0
+#   1 sinal matched       -> score=1
+#   >=2 sinais matched    -> score=2  (TETO absoluto — 2.4.2)
+#
+# "sinais matched" = numero TOTAL de termos distintos do catalogo
+# que bateram com tokens do input (somatorio de COUNT_RASA + COUNT_MEDIA
+# + COUNT_PROFUNDA — como dedup ja foi feita em 2.3 e peso default e 1,
+# este somatorio reflete contagem de termos distintos. Caso operador
+# customize o catalogo com peso>1, a regra continua valida pelo
+# espirito: "mais evidencias = mais confianca" — mas TETO 2 cobre o
+# caso ja).
+#
+# Caso especial: FAIXA_VENCEDORA="indeterminado" (zero matches) sempre
+# produz score=0 e modelo=manter-atual independentemente do somatorio
+# (defensivo: se MATCHED esta vazio, score nao pode ser >0).
 # -----------------------------------------------------------------------
-# Saida intermediaria (substituida em 2.4/2.5 pelo output markdown
-# definitivo com score/justificativa). Aqui exibimos contadores e
-# faixa vencedora para permitir smoke test da task 2.3.
+
+MATCH_TOTAL=$((COUNT_RASA + COUNT_MEDIA + COUNT_PROFUNDA))
+
+if [ "$MATCH_TOTAL" -le 0 ]; then
+    SCORE=0
+elif [ "$MATCH_TOTAL" -eq 1 ]; then
+    SCORE=1
+else
+    SCORE=2
+fi
+
+# -----------------------------------------------------------------------
+# Subtarefa 2.4.2: assercao defensiva — score NUNCA pode escapar [0..2].
+# -----------------------------------------------------------------------
+# Esta e a ultima linha de defesa. Se alguma futura mudanca quebrar a
+# regra acima (ex: alguem reintroduzir score=3 por engano), o script
+# falha LOUD com exit 3 (erro interno) — preferimos crash a emitir
+# sugestao falsa para o operador.
+if [ "$SCORE" -lt 0 ] || [ "$SCORE" -gt 2 ]; then
+    printf '%s: erro interno — score fora da faixa [0..2] (obtido %s)\n' \
+        "$PROG_NAME" "$SCORE" >&2
+    exit 3
+fi
+
+# -----------------------------------------------------------------------
+# Subtarefa 2.4.4: mapa faixa -> modelo (rotulo ABSTRATO — dec-005)
+# Subtarefa 2.4.5: mapa modelo -> alternativa de fallback (Decision 9)
+# -----------------------------------------------------------------------
+# Tier-mapping fixo (rotulos abstratos; nunca strings versionadas
+# como `claude-haiku-4-*` — invariante CHK044, validado por
+# test_model_selector_no_concrete_version.sh em 2.5.3).
+#
+# Defensivo extra: se SCORE=0 OU FAIXA_VENCEDORA="indeterminado", o
+# resultado e SEMPRE manter-atual (independente do mapa) — operador
+# nao deve trocar modelo sem sinal estatistico.
+if [ "$SCORE" -eq 0 ] || [ "$FAIXA_VENCEDORA" = "indeterminado" ]; then
+    MODELO="manter-atual"
+else
+    case "$FAIXA_VENCEDORA" in
+        rasa)     MODELO="haiku" ;;
+        media)    MODELO="sonnet" ;;
+        profunda) MODELO="opus" ;;
+        *)        MODELO="manter-atual" ;;  # safety net
+    esac
+fi
+
+case "$MODELO" in
+    haiku)        ALTERNATIVA="sonnet" ;;
+    sonnet)       ALTERNATIVA="haiku" ;;
+    opus)         ALTERNATIVA="sonnet" ;;
+    manter-atual) ALTERNATIVA="none" ;;
+    *)            ALTERNATIVA="none" ;;
+esac
+
+# -----------------------------------------------------------------------
+# Subtarefa 2.4.3: justificativa em texto livre
+# -----------------------------------------------------------------------
+# Cita literalmente:
+#   - cada sinal detectado (termo + faixa)
+#   - contagens por faixa
+#   - regra aplicada (FR-005 quando empate cross-faixa; teto 2 quando >2)
+#
+# Formato: prosa curta de 1-3 linhas, sem placeholders, sem TODO.
+# Tarefa 2.5 ira embrulhar essa string na secao "## Justificativa" do
+# output markdown final — aqui construimos o texto puro.
+
+if [ "$MATCH_TOTAL" -eq 0 ]; then
+    JUSTIFICATIVA="nenhum sinal do catalogo detectado nos $TOKEN_COUNT tokens validos do input; sem evidencia para sugerir troca de modelo (rasa=0 media=0 profunda=0)."
+else
+    # Monta lista "termo (faixa)" separada por virgula a partir de MATCHED
+    # (formato "termo|faixa|peso" por linha). awk POSIX-safe.
+    _SINAIS_TEXTO=$(printf '%s\n' "$MATCHED" \
+        | awk -F'|' 'NF>=2 {
+            if (out != "") out = out ", "
+            out = out $1 " (" $2 ")"
+          }
+          END { print out }')
+
+    # Sufixo explicativo da regra aplicada — distingue caso conservador
+    # (cross-faixa) do caso uni-faixa, e cita teto quando aplicavel.
+    _NAO_ZERO=0
+    [ "$COUNT_RASA" -gt 0 ]     && _NAO_ZERO=$((_NAO_ZERO + 1))
+    [ "$COUNT_MEDIA" -gt 0 ]    && _NAO_ZERO=$((_NAO_ZERO + 1))
+    [ "$COUNT_PROFUNDA" -gt 0 ] && _NAO_ZERO=$((_NAO_ZERO + 1))
+
+    if [ "$_NAO_ZERO" -ge 2 ]; then
+        _REGRA="regra FR-005 aplicada (sinais em faixas distintas -> vence a mais profunda: $FAIXA_VENCEDORA)"
+    else
+        _REGRA="sinais consistentes em faixa unica ($FAIXA_VENCEDORA)"
+    fi
+
+    if [ "$MATCH_TOTAL" -gt 2 ]; then
+        _REGRA="$_REGRA; TETO 2 aplicado (score teto, dec-006)"
+    fi
+
+    JUSTIFICATIVA="sinais detectados: $_SINAIS_TEXTO; contagens rasa=$COUNT_RASA media=$COUNT_MEDIA profunda=$COUNT_PROFUNDA; $_REGRA."
+fi
+
+# Exportar para task 2.5 (output markdown final).
+export SCORE MODELO ALTERNATIVA JUSTIFICATIVA MATCH_TOTAL
+
+# -----------------------------------------------------------------------
+# Saida intermediaria (substituida em 2.5 pelo output markdown definitivo
+# com 4 secoes fixas). Esta saida atual:
+#   - PRESERVA a linha `rasa=N media=N profunda=N faixa=X` para que os
+#     testes de 2.3 continuem passando.
+#   - ADICIONA linhas grep-able `score=N`, `modelo=X`, `alternativa=Y`
+#     para o teste novo de 2.4 inspecionar sem precisar parsear markdown.
+#   - Mostra a JUSTIFICATIVA literal na secao homonima.
 # -----------------------------------------------------------------------
 cat <<EOF
 ## Sugestao
 
-**modelo**: manter-atual
-**score**: 0
-**alternativa**: none
+**modelo**: $MODELO
+**score**: $SCORE
+**alternativa**: $ALTERNATIVA
 
 ## Sinais detectados
 
-tokens=$TOKEN_COUNT; matches=$(if [ -z "$MATCHED" ]; then echo 0; else printf '%s\n' "$MATCHED" | wc -l | tr -d ' '; fi)
+tokens=$TOKEN_COUNT; matches=$MATCH_TOTAL
 rasa=$COUNT_RASA media=$COUNT_MEDIA profunda=$COUNT_PROFUNDA faixa=$FAIXA_VENCEDORA
+score=$SCORE modelo=$MODELO alternativa=$ALTERNATIVA
 
 ## Justificativa
 
-task 2.3 implementada (match+contadores+FR-005); score/justificativa
-final entram em 2.4; output markdown definitivo em 2.5.
+$JUSTIFICATIVA
 
 ## Acao sugerida (operador humano)
 
-\`(nenhuma troca sugerida — manter modelo atual)\`
 EOF
+
+if [ "$MODELO" = "manter-atual" ]; then
+    # Backticks LITERAIS no markdown — proposital, nao e expansao shell.
+    # shellcheck disable=SC2016
+    printf '%s\n' '`(nenhuma troca sugerida — manter modelo atual)`'
+else
+    # Backticks LITERAIS no markdown — escape `\`` proposital.
+    # shellcheck disable=SC2016
+    printf 'trocar para \`%s\` (fallback: \`%s\`)\n' "$MODELO" "$ALTERNATIVA"
+fi
+
+# -----------------------------------------------------------------------
+# Re-checagem defensiva final (2.4.2): garante que NADA neste arquivo
+# poderia ter mutado SCORE acima de 2 depois do calculo.
+# -----------------------------------------------------------------------
+if [ "$SCORE" -lt 0 ] || [ "$SCORE" -gt 2 ]; then
+    printf '%s: erro interno pos-output — score=%s fora de [0..2]\n' \
+        "$PROG_NAME" "$SCORE" >&2
+    exit 3
+fi
 
 exit 0
