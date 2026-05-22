@@ -204,10 +204,12 @@ equivalencia.
 
 Ref: FR-012, FR-010a, Decision 5 do research
 
-- [ ] 4.1.1 Criar `scripts/report.sh` com shebang `#!/bin/sh` + `set -eu`
-- [ ] 4.1.2 Implementar deteccao de `jq` via `command -v jq >/dev/null 2>&1` (POSIX puro)
-- [ ] 4.1.3 Implementar leitura read-only do(s) state.json passado(s) como arg(s) — ZERO operacoes de escrita (`>`, `>>`, `tee`, `cp -f`, `mv`)
-- [ ] 4.1.4 Documentar exit codes (0=sucesso, 2=arg invalido, 3=arquivo nao legivel)
+- [x] 4.1.1 Criar `scripts/report.sh` com shebang `#!/bin/sh` + `set -eu` <!-- onda-017: criado em global/skills/model-selector/scripts/report.sh; shellcheck -s sh PASS clean (zero warnings) -->
+- [x] 4.1.2 Implementar deteccao de `jq` via `command -v jq >/dev/null 2>&1` (POSIX puro) <!-- onda-017: variavel HAS_JQ exportada como tag inline `jq_detectado=<0|1>` no header markdown para auditoria; scenario_4_1_2_jq_flag_inline PASS -->
+- [x] 4.1.3 Implementar leitura read-only do(s) state.json passado(s) como arg(s) — ZERO operacoes de escrita (`>`, `>>`, `tee`, `cp -f`, `mv`) <!-- onda-017: sonda `cat -- "$path" > /dev/null` confirma legibilidade sem abrir para escrita; validado empiricamente via sha256 imutavel pre/pos invocacao (scenario_4_1_3_read_only_sha256_imutavel) + invocacao a partir de cwd com chmod 555 ainda exit=0 (scenario_4_1_3_cwd_read_only_exit_0) -->
+- [x] 4.1.4 Documentar exit codes (0=sucesso, 2=arg invalido, 3=arquivo nao legivel) <!-- onda-017: header do script documenta os 3 codigos; 4 cenarios cobrindo sem-args/inexistente/legivel/perm-negada em tests/cstk/test_model_selector_report_skeleton.sh; 7/7 PASS -->
+
+> **Onda-017 (execute-task):** esqueleto de `scripts/report.sh` (62 linhas de codigo + 56 de header docs). Conformidade: POSIX puro (shellcheck -s sh clean); read-only enforcement validado empiricamente via sha256 + cwd ro; jq detection inline auditavel; exit codes 0/2/3 testados. Tasks 4.2 (jq happy-path) e 4.3 (awk fallback) plugam onde o esqueleto deixa `HAS_JQ` exposto. Teste novo: `tests/cstk/test_model_selector_report_skeleton.sh` (7 cenarios). Regressao zero — nenhum outro script da skill foi tocado.
 
 ### 4.2 Caminho `jq` (happy path) `[A]`
 
