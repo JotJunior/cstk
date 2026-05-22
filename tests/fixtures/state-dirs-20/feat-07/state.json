@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0.0",
+  "execucao": {
+    "short_name": "golf-feat",
+    "projeto_alvo_path": "/Users/mock/projects/golf-feat",
+    "iniciada_em": "2026-05-19T08:00:00Z",
+    "terminada_em": null,
+    "status": "em_andamento"
+  },
+  "metricas_acumuladas": {
+    "ondas_total": 18,
+    "decisoes_total": 72,
+    "tool_calls_total": 4200,
+    "tempo_wallclock_total_segundos": 23150,
+    "model_selector": {
+      "sugestoes_total": 6,
+      "por_modelo_sugerido": {
+        "haiku": 3,
+        "sonnet": 3,
+        "opus": 0,
+        "manter-atual": 0
+      },
+      "por_resultado": {
+        "aceitas": 5,
+        "rejeitadas": 1,
+        "no_op_ja_no_modelo": 0
+      },
+      "ultima_invocacao_iso": "2026-05-21T10:00:00Z"
+    }
+  },
+  "ondas": [],
+  "decisoes": [
+    { "id": "dec-001", "agente": "agente-00c-feature-orchestrator",
+      "etapa": "specify", "score": 2,
+      "contexto": "Inicio da execucao para feature golf-feat apos briefing+constitution ratificados; escopo: MVP do model-selector com 15 sinais.",
+      "opcoes": ["iniciar","abortar"], "escolha": "iniciar",
+      "justificativa": "Briefing+constitution disponiveis; aspectos-chave alinhados.",
+      "timestamp": "2026-05-20T10:00:00Z" },
+    { "id": "dec-002", "agente": "agente-00c-feature-orchestrator",
+      "etapa": "clarify", "score": 2,
+      "contexto": "Ambiguidade em FR-002 sobre rotulos de modelo — abstratos vs concretos.",
+      "opcoes": ["abstratos","concretos","ambos"], "escolha": "abstratos",
+      "justificativa": "Decision 5 do research suporta rotulos abstratos por hedge a evolucao de versoes.",
+      "timestamp": "2026-05-20T11:15:30Z" },
+    { "id": "dec-003", "agente": "agente-00c-feature-orchestrator",
+      "etapa": "plan", "score": 3,
+      "contexto": "Carve-out 1.1.0 para jq opcional apenas em report.sh — confirmado por grep no codigo.",
+      "opcoes": ["jq-banido","carve-out-1.1.0","jq-em-tudo"], "escolha": "carve-out-1.1.0",
+      "justificativa": "grep -rn jq global/skills/model-selector/scripts/ retornou 1 arquivo apenas (report.sh) confirmando confinamento",
+      "evidencia": "grep -rn jq scripts/: scripts/report.sh:38 if command -v jq",
+      "timestamp": "2026-05-20T14:00:00Z" },
+    { "id": "dec-004", "agente": "agente-00c-feature-orchestrator",
+      "etapa": "create-tasks", "score": 2,
+      "contexto": "Decomposicao em 6 fases canonicas com 4-5 sub-tasks por fase.",
+      "opcoes": ["6-fases","8-fases","tudo-linear"], "escolha": "6-fases",
+      "justificativa": "Fases acompanham pipeline SDD do agente-00c (specify->execute-task).",
+      "timestamp": "2026-05-20T15:42:10Z" },
+    { "id": "dec-005", "agente": "agente-00c-feature-orchestrator",
+      "etapa": "execute-task", "score": 2,
+      "contexto": "Tarefa 4.5 — fixture state-dirs-20 para teste de performance.",
+      "opcoes": ["gerar-via-script","mockar-a-mao","fork-de-outra-fixture"], "escolha": "gerar-via-script",
+      "justificativa": "Script idempotente reduz drift e facilita regeneracao apos schema changes futuros.",
+      "timestamp": "2026-05-21T09:30:00Z" }
+  ],
+  "bloqueios": []
+}
