@@ -175,10 +175,12 @@ e adiciona um teste de compat retroativa do validador de schema.
 
 Ref: FR-011, data-model.md, Decision 6 do research
 
-- [ ] 3.1.1 Validar que `contracts/skill-io.md` ja descreve formato `metricas_acumuladas.model_selector` (sugestoes_total, por_modelo_sugerido, por_resultado, ultima_invocacao_iso)
-- [ ] 3.1.2 Confirmar empiricamente que `state-validate.sh` aceita campo novo sob `metricas_acumuladas.*` sem mudanca: rodar `state-validate.sh` contra um state.json mockado com o campo presente — Ref: Plan §Project Structure observacao "NENHUMA mudanca exigida"
-- [ ] 3.1.3 Se 3.1.2 falhar, registrar Decisao auditavel propondo extensao do schema E criar tarefa nova; senao, marcar `[x]` com nota "validado empiricamente onda-NNN"
-- [ ] 3.1.4 Documentar comportamento de `report.sh` em caso de state.json corrompido: exit 1 + stderr citando linha corrompida (alinhado com `state-rw.sh sha256-verify` do runtime; resolve CHK066)
+- [x] 3.1.1 Validar que `contracts/skill-io.md` ja descreve formato `metricas_acumuladas.model_selector` (sugestoes_total, por_modelo_sugerido, por_resultado, ultima_invocacao_iso) <!-- onda-015: skill-io.md L194-195 cita compat MINOR + esquema completo agora documentado em contracts/state-extension.md (novo arquivo dedicado, fronteira distinta da invocacao da skill) -->
+- [x] 3.1.2 Confirmar empiricamente que `state-validate.sh` aceita campo novo sob `metricas_acumuladas.*` sem mudanca: rodar `state-validate.sh` contra um state.json mockado com o campo presente — Ref: Plan §Project Structure observacao "NENHUMA mudanca exigida" <!-- onda-015: state-validate.sh --state-dir <tmpdir-mockado> => exit 0 (sem violacoes); inspecao do codigo L113-144 confirma que validador nao introspeciona sub-chaves de metricas_acumuladas, compat retroativa por construcao -->
+- [x] 3.1.3 Se 3.1.2 falhar, registrar Decisao auditavel propondo extensao do schema E criar tarefa nova; senao, marcar `[x]` com nota "validado empiricamente onda-NNN" <!-- onda-015: 3.1.2 PASS empiricamente, nenhuma decisao de extensao necessaria; documentado em contracts/state-extension.md §Validacao pelo runtime -->
+- [x] 3.1.4 Documentar comportamento de `report.sh` em caso de state.json corrompido: exit 1 + stderr citando linha corrompida (alinhado com `state-rw.sh sha256-verify` do runtime; resolve CHK066) <!-- onda-015: tabela de cenarios degenerados (state.json ausente, JSON malformado, campo ausente, sub-campo invalido) em contracts/state-extension.md §Tolerancia a corrupcao do state.json (CHK066) -->
+
+> **Onda-015 (execute-task):** criado `contracts/state-extension.md` (251 linhas) cobrindo schema canonico + invariantes + exemplos JSON antes/depois + validacao empirica do runtime + tabela de degradacao do report.sh (CHK066) + politica de compat reversa. Validacao empirica: `state-validate.sh --state-dir <tmpdir-com-model_selector-populado>` retorna exit 0 — premissa do plan.md §Project Structure ("NENHUMA mudanca exigida") confirmada.
 
 ### 3.2 Documentar handshake skill ↔ orquestrador `[M]`
 
