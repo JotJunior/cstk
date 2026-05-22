@@ -234,26 +234,32 @@ if [ "$FAIL_SAFE" = "1" ]; then
     # Atende tambem 2.4: score=0, modelo=manter-atual, alternativa=none
     # — invariantes garantidas neste branch sem precisar atravessar a
     # logica de score abaixo.
+    #
+    # Output segue subtarefa 2.5.1: 4 secoes markdown FIXAS na ordem
+    # `## Modelo Sugerido` -> `## Score` -> `## Justificativa` ->
+    # `## Alternativa`. Linhas grep-able (`^rasa=`, `^score=`) ficam
+    # dentro da secao `## Score` para preservar compat com testes
+    # 2.3/2.4 que usam `grep -E '^rasa='` / `grep -E '^score='`.
     cat <<EOF
-## Sugestao
+## Modelo Sugerido
 
-**modelo**: manter-atual
-**score**: 0
-**alternativa**: none
+manter-atual
 
-## Sinais detectados
+## Score
 
-(nenhum sinal detectado — fail-safe ativado: $FAIL_SAFE_REASON)
+0
+
+rasa=0 media=0 profunda=0 faixa=indeterminado
 score=0 modelo=manter-atual alternativa=none
 
 ## Justificativa
 
 $FAIL_SAFE_REASON; classificador requer >=3 tokens validos para emitir
-sugestao com score >=1.
+sugestao com score >=1. Nenhum sinal detectado.
 
-## Acao sugerida (operador humano)
+## Alternativa
 
-\`(nenhuma troca sugerida — manter modelo atual)\`
+none
 EOF
     exit 0
 fi
@@ -435,8 +441,8 @@ fi
 # Subtarefa 2.4.5: mapa modelo -> alternativa de fallback (Decision 9)
 # -----------------------------------------------------------------------
 # Tier-mapping fixo (rotulos abstratos; nunca strings versionadas
-# como `claude-haiku-4-*` — invariante CHK044, validado por
-# test_model_selector_no_concrete_version.sh em 2.5.3).
+# da forma `claude-<familia>-<N>-<M>` — invariante CHK044, validado
+# por test_model_selector_no_concrete_version.sh em 2.5.3).
 #
 # Defensivo extra: se SCORE=0 OU FAIXA_VENCEDORA="indeterminado", o
 # resultado e SEMPRE manter-atual (independente do mapa) — operador
@@ -508,24 +514,36 @@ fi
 export SCORE MODELO ALTERNATIVA JUSTIFICATIVA MATCH_TOTAL
 
 # -----------------------------------------------------------------------
-# Saida intermediaria (substituida em 2.5 pelo output markdown definitivo
-# com 4 secoes fixas). Esta saida atual:
-#   - PRESERVA a linha `rasa=N media=N profunda=N faixa=X` para que os
-#     testes de 2.3 continuem passando.
-#   - ADICIONA linhas grep-able `score=N`, `modelo=X`, `alternativa=Y`
-#     para o teste novo de 2.4 inspecionar sem precisar parsear markdown.
-#   - Mostra a JUSTIFICATIVA literal na secao homonima.
+# Subtarefa 2.5.1: output markdown definitivo com 4 secoes FIXAS.
+# -----------------------------------------------------------------------
+# Estrutura obrigatoria do bloco (na ordem exata):
+#   ## Modelo Sugerido    -> rotulo abstrato (haiku|sonnet|opus|manter-atual)
+#   ## Score              -> int 0..2 + linhas grep-able preservadas
+#   ## Justificativa      -> prosa construida em 2.4.3
+#   ## Alternativa        -> rotulo abstrato (sonnet|haiku|none)
+#
+# Subtarefa 2.5.2: rotulos no output SAO sempre abstratos. O mapa
+# faixa->modelo (2.4.4) e modelo->alternativa (2.4.5) emite apenas as
+# strings literais haiku/sonnet/opus/manter-atual/none — nunca uma
+# versao concreta da forma `claude-<familia>-<N>-<M>`. Validado por
+# test_model_selector_no_concrete_version.sh (subtarefa 2.5.3).
+#
+# As linhas `rasa=N media=N profunda=N faixa=X` e
+# `score=N modelo=X alternativa=Y` ficam DENTRO da secao `## Score`
+# para preservar compat com:
+#   - tests/cstk/test_model_selector_match.sh   (grep -E '^rasa=')
+#   - tests/cstk/test_model_selector_score.sh   (grep -E '^score=')
+# Ambos os greps usam line-anchor; basta que comecem em coluna 0.
 # -----------------------------------------------------------------------
 cat <<EOF
-## Sugestao
+## Modelo Sugerido
 
-**modelo**: $MODELO
-**score**: $SCORE
-**alternativa**: $ALTERNATIVA
+$MODELO
 
-## Sinais detectados
+## Score
 
-tokens=$TOKEN_COUNT; matches=$MATCH_TOTAL
+$SCORE
+
 rasa=$COUNT_RASA media=$COUNT_MEDIA profunda=$COUNT_PROFUNDA faixa=$FAIXA_VENCEDORA
 score=$SCORE modelo=$MODELO alternativa=$ALTERNATIVA
 
@@ -533,19 +551,10 @@ score=$SCORE modelo=$MODELO alternativa=$ALTERNATIVA
 
 $JUSTIFICATIVA
 
-## Acao sugerida (operador humano)
+## Alternativa
 
+$ALTERNATIVA
 EOF
-
-if [ "$MODELO" = "manter-atual" ]; then
-    # Backticks LITERAIS no markdown — proposital, nao e expansao shell.
-    # shellcheck disable=SC2016
-    printf '%s\n' '`(nenhuma troca sugerida — manter modelo atual)`'
-else
-    # Backticks LITERAIS no markdown — escape `\`` proposital.
-    # shellcheck disable=SC2016
-    printf 'trocar para \`%s\` (fallback: \`%s\`)\n' "$MODELO" "$ALTERNATIVA"
-fi
 
 # -----------------------------------------------------------------------
 # Re-checagem defensiva final (2.4.2): garante que NADA neste arquivo

@@ -144,9 +144,11 @@ Ref: FR-002, FR-005, dec-006, CHK067, CHK068
 
 Ref: FR-002, Decision 4 do research, contracts/skill-io.md
 
-- [ ] 2.5.1 Imprimir bloco markdown com 4 secoes fixas: `## Modelo Sugerido`, `## Score`, `## Justificativa`, `## Alternativa`
-- [ ] 2.5.2 Garantir rotulo ABSTRATO no output (`haiku|sonnet|opus|manter-atual`) — nunca string tipo `claude-haiku-4-*`
-- [ ] 2.5.3 Escrever teste `tests/cstk/test_model_selector_no_concrete_version.sh` que faz `grep -E 'claude-[a-z]+-[0-9]' SKILL.md scripts/ references/` e exige zero hits (Ref: CHK044, FR-002a, dec-005)
+- [x] 2.5.1 Imprimir bloco markdown com 4 secoes fixas: `## Modelo Sugerido`, `## Score`, `## Justificativa`, `## Alternativa` <!-- onda-013 (recovery): heredoc `cat <<EOF` em classify.sh L538-557 emite as 4 secoes na ordem fixa; linhas grep-able `rasa=N` e `score=N` preservadas dentro de `## Score` para compat com test_model_selector_match/score. Smoke test scenario_smoke_input_normal_ainda_funciona atualizado para `grep '## Modelo Sugerido'`. -->
+- [x] 2.5.2 Garantir rotulo ABSTRATO no output (`haiku|sonnet|opus|manter-atual`) — nunca string versionada da forma `claude-<familia>-<N>-<M>` <!-- onda-013 (recovery): mapa faixa->modelo em classify.sh L450-459 emite apenas rotulos abstratos; nenhum branch atribui string versionada a MODELO. Comentarios anti-pattern em classify.sh L444 e L528 e SKILL.md L146 reescritos para nao conter literal `claude-haiku-4-*` (era apenas citacao do que NAO fazer, mas o teste 2.5.3 e grep-bruto). -->
+- [x] 2.5.3 Escrever teste `tests/cstk/test_model_selector_no_concrete_version.sh` que faz `grep -E 'claude-[a-z]+-[0-9]' SKILL.md scripts/ references/` e exige zero hits (Ref: CHK044, FR-002a, dec-005) <!-- onda-013 (recovery): 8 cenarios criados: 3 de grep recursivo em SKILL.md/scripts/references + 5 de output do classify.sh cobrindo faixas rasa, media, profunda, indeterminado e edge fail-safe. 8/8 passando. -->
+
+**Status 2.5**: concluida em onda-013 (recovery apos socket-error duplo na invocacao anterior). Suite model-selector agora soma 43 cenarios passing (8 tokenization + 10 match + 11 score + 6 skill_lines + 8 no_concrete_version), 0 falhas.
 
 ### 2.6 Testes shell por faixa `[C]`
 

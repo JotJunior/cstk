@@ -143,7 +143,8 @@ mutex, scheduler ou token persistente proprio.
 ## Mapeamento de rotulo → versao concreta (fora do escopo da skill)
 
 A skill emite rotulo ABSTRATO (`haiku` | `sonnet` | `opus` |
-`manter-atual`) — nunca string como `claude-haiku-4-5`. Mapeamento
-abstrato → versao concreta e responsabilidade do harness Claude Code
-(dec-005). Versao concreta no output violaria Principio V (Adocao >
-Profundidade) e exigiria update da skill a cada release Anthropic.
+`manter-atual`) — nunca uma string versionada da forma
+`claude-<familia>-<N>-<M>`. Mapeamento abstrato → versao concreta e
+responsabilidade do harness Claude Code (dec-005). Versao concreta no
+output violaria Principio V (Adocao > Profundidade) e exigiria update
+da skill a cada release Anthropic.
