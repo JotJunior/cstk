@@ -207,17 +207,171 @@ if [ "$HAS_JQ" = "1" ]; then
 fi
 
 # =======================================================================
-# FASE 4.3 — Fallback `awk` puro (HAS_JQ=0) — IMPLEMENTADO EM TASK 4.3
+# FASE 4.3 — Fallback `awk` puro (HAS_JQ=0) — CAMINHO EQUIVALENTE
 # =======================================================================
-# Quando jq nao esta disponivel no PATH, este bloco PRECISA emitir output
-# BYTE-IDENTICAL ao caminho jq acima (mesmas 5 colunas, mesma ordem de
-# linhas, mesma derivacao de mode com tie-break alfabetico, mesmo rotulo
-# `(sem dados)` para totais zero / lazy null). Sera implementado em task
-# 4.3 via parsing awk linha-a-linha. Por enquanto, este esqueleto sai
-# com exit 0 + tabela vazia + comentario inline para que o esqueleto
-# do report continue valido (FR-010a (a)).
+# Quando `jq` nao esta disponivel no PATH, este bloco emite output
+# BYTE-IDENTICAL ao caminho jq acima a partir da linha de cabecalho da
+# tabela markdown (o comentario `<!-- jq_detectado=N ... -->` muda
+# legitimamente entre os dois caminhos — e o tag de auditoria que
+# documenta qual ramo foi tomado, ver subtarefa 4.1.2; o contrato byte-
+# identical da subtarefa 4.3.2 refere-se a tabela em si, nao ao tag).
+#
+# Subtarefa 4.3.1 — estrategia de parsing:
+#   - 1 invocacao de `awk` POR arquivo de input (loop shell), espelhando
+#     a estrategia do caminho jq (4.2). Cada awk roda uma vez sobre o
+#     state.json correspondente e imprime EXATAMENTE 1 linha markdown.
+#   - Normalizacao previa: `tr -d '\n'` colapsa state.json multi-linha
+#     (formato jq-pretty) para uma unica linha antes do awk. Razao:
+#     simplifica os regex match (campos `"chave": valor` ficam todos no
+#     mesmo registro lido por awk) e mantem o awk-script confinado a
+#     uma logica de extracao simples, sem maquina de estados que
+#     atravessa multiplas linhas.
+#   - O parser e CONFIRMADAMENTE LIMITADO: ver bloco 4.3.3 abaixo.
+#
+# Subtarefa 4.3.2 — paridade byte-identical:
+#   - Mesmo cabecalho markdown (`| feature | ... |` + `|---|---:|...|`)
+#   - Mesma ordem de colunas: feature, sugestoes_total, aceitas,
+#     rejeitadas, modelo_final_predominante
+#   - Mesmos rotulos numericos (inteiros sem casas decimais — `printf
+#     "%d"` em awk e equivalente ao output `\(integer)` do jq -r)
+#   - Mesmo rotulo especial `(sem dados)` quando:
+#       (a) `metricas_acumuladas.model_selector` ausente/null  -> "(sem dados)"
+#           em modelo_final_predominante e zeros em todas as metricas
+#       (b) `por_modelo_sugerido` tem todas as 4 chaves em zero -> mode
+#           "(sem dados)" mesmo que `sugestoes_total > 0` (alinha com
+#           jq: `if .value == 0 then "(sem dados)" else .key end`)
+#   - Mesma derivacao de mode com tie-break alfabetico crescente
+#     (haiku < manter-atual < opus < sonnet). Implementacao:
+#     varre as 4 chaves do enum em ordem alfabetica e troca o mode
+#     SOMENTE quando encontra valor estritamente maior — empate
+#     preserva o primeiro encontrado (= menor alfabetico).
+#   - Mesmo fallback de feature: prefere `execucao.short_name`; se
+#     ausente, usa `basename "$path" .json` (passado via -v fb=...).
+#
+# Subtarefa 4.3.3 — limitacoes conhecidas do fallback awk:
+#   (L1) `tr -d '\n'` cola TUDO em uma linha. Strings JSON contendo
+#        `\n` literal (sequencia de 2 chars) sobrevivem corretamente;
+#        STRINGS JSON com newlines reais (raro mas RFC-permitido em
+#        algumas codificacoes) seriam mal-formatadas — o state.json do
+#        toolkit nunca emite isso porque `jq` escapa newlines como `\n`.
+#   (L2) Aspas escapadas (`\"`) dentro de string values podem confundir
+#        match de regex de proxima chave. Mitigacao: as chaves
+#        consultadas (sugestoes_total, por_modelo_sugerido.{haiku,...},
+#        por_resultado.{aceitas,rejeitadas}) tem TIPO numerico em
+#        state-extension.md (FR-007) — nao ha string em meio aos
+#        valores parseados. Strings adjacentes (short_name,
+#        ultima_invocacao_iso) sao consultadas com regex isolado e nao
+#        atravessam a regiao numerica.
+#   (L3) Chaves duplicadas em JSON: o awk usa a PRIMEIRA ocorrencia
+#        encontrada. JSON estritamente proibe duplicatas e o jq do
+#        toolkit nunca emite — alinha com a semantica do caminho jq.
+#   (L4) Caracteres Unicode em short_name: o regex `[A-Za-z0-9_.-]+`
+#        captura ASCII alfanumerico mais `_`, `.` e `-`. Short_names
+#        que contem outros chars (espacos, acentos) cairao no fallback
+#        basename — caminho ja exercitado em scenario_4_2_1_fallback_*.
+# -----------------------------------------------------------------------
+# Cabecalho da tabela markdown (5 colunas fixas) — bytes IDENTICOS ao
+# caminho jq.
 printf '| feature | sugestoes_total | aceitas | rejeitadas | modelo_final_predominante |\n'
 printf '|---|---:|---:|---:|---|\n'
-printf '<!-- fallback awk pendente: task 4.3 -->\n'
+
+for _path in "$@"; do
+    _basename=$(basename -- "$_path" .json)
+    # Normalizacao: colapsa multi-linhas (state.json formatado por jq
+    # via `jq .` fica indentado com `\n`+spaces — sem normalizar, awk le
+    # registro por registro e perde o contexto de "estamos dentro do
+    # objeto `model_selector`"). `tr -d '\n'` e POSIX puro e suficiente
+    # — ver limitacoes L1-L4 acima.
+    tr -d '\n' < "$_path" | awk -v fb="$_basename" '
+        # Funcao auxiliar: extrai inteiro associado a chave dentro de um
+        # escopo opcional. Retorna 0 se a chave nao for encontrada.
+        # Estrategia: usa match() com regex que casa "key" + opcional
+        # espacos + ":" + opcional espacos + capturado em numero.
+        # Como `tr -d "\n"` removeu newlines, espacos entre chave e valor
+        # podem ainda aparecer (jq -indent usa 2 espacos por nivel).
+        function extract_int(haystack, key,    _re, _val) {
+            _re = "\"" key "\"[[:space:]]*:[[:space:]]*(-?[0-9]+)"
+            if (match(haystack, _re)) {
+                _val = substr(haystack, RSTART, RLENGTH)
+                # Re-aplica regex apenas para isolar o numero (POSIX awk
+                # nao tem submatch capture; refazemos via gsub).
+                gsub("^\"" key "\"[[:space:]]*:[[:space:]]*", "", _val)
+                return _val + 0
+            }
+            return 0
+        }
+        # Extrai string associada a chave (sem aspas internas — limitacao L2).
+        function extract_string(haystack, key,    _re, _val) {
+            _re = "\"" key "\"[[:space:]]*:[[:space:]]*\"[^\"]*\""
+            if (match(haystack, _re)) {
+                _val = substr(haystack, RSTART, RLENGTH)
+                gsub("^\"" key "\"[[:space:]]*:[[:space:]]*\"", "", _val)
+                gsub("\"$", "", _val)
+                return _val
+            }
+            return ""
+        }
+        # Isola substring entre "model_selector": { ... } com balanceamento
+        # de chaves. Retorna "" se nao encontrar o bloco.
+        function extract_ms_block(s,    _i, _start, _depth, _ch, _len) {
+            _i = index(s, "\"model_selector\"")
+            if (_i == 0) return ""
+            # Avanca ate o "{" que abre o objeto.
+            _len = length(s)
+            while (_i <= _len && substr(s, _i, 1) != "{") _i++
+            if (_i > _len) return ""
+            _start = _i
+            _depth = 0
+            while (_i <= _len) {
+                _ch = substr(s, _i, 1)
+                if (_ch == "{") _depth++
+                else if (_ch == "}") {
+                    _depth--
+                    if (_depth == 0) return substr(s, _start, _i - _start + 1)
+                }
+                _i++
+            }
+            return ""
+        }
+        {
+            feat = extract_string($0, "short_name")
+            if (feat == "") feat = fb
+
+            ms = extract_ms_block($0)
+            if (ms == "") {
+                # Sem dados: emite linha com zeros + rotulo especial.
+                printf("| %s | 0 | 0 | 0 | (sem dados) |\n", feat)
+                next
+            }
+
+            sugestoes_total = extract_int(ms, "sugestoes_total")
+            aceitas         = extract_int(ms, "aceitas")
+            rejeitadas      = extract_int(ms, "rejeitadas")
+
+            # Mode: percorre as 4 chaves do enum em ORDEM ALFABETICA.
+            # Troca o mode SOMENTE em > (estrito), de modo que empates
+            # preservem o primeiro encontrado (menor alfabetico) — replica
+            # exatamente `sort_by(-.value, .key)` do caminho jq.
+            split("haiku manter-atual opus sonnet", keys, " ")
+            best_val = -1
+            best_key = ""
+            for (i = 1; i <= 4; i++) {
+                v = extract_int(ms, keys[i])
+                if (v > best_val) {
+                    best_val = v
+                    best_key = keys[i]
+                }
+            }
+            if (best_val <= 0) {
+                mode = "(sem dados)"
+            } else {
+                mode = best_key
+            }
+
+            printf("| %s | %d | %d | %d | %s |\n", \
+                feat, sugestoes_total, aceitas, rejeitadas, mode)
+        }
+    '
+done
 
 exit 0
