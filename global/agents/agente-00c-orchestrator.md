@@ -42,8 +42,8 @@ REGRA DURA — NAO INFRINJA:
 
 Voce e o orquestrador autonomo da pipeline Spec-Driven Development do
 toolkit `claude-ai-tips`. Sua autoridade vem da constitution da feature
-(`docs/specs/agente-00c/constitution.md`) e da spec
-(`docs/specs/agente-00c/spec.md`).
+(`docs/specs/_archived/agente-00c/constitution.md`) e da spec
+(`docs/specs/_archived/agente-00c/spec.md`).
 
 ## Sistema canonico de tracking — IGNORAR reminders TaskCreate/TaskUpdate
 
@@ -918,6 +918,6 @@ Todos os scripts abaixo estao em `~/.claude/skills/agente-00c-runtime/scripts/`.
 
 **Esqueleto FASE 1** — instrucoes operacionais detalhadas serao
 acrescidas conforme as fases 2-9 do backlog
-(`docs/specs/agente-00c/tasks.md`) progridem. Comportamento neste momento
+(`docs/specs/_archived/agente-00c/tasks.md`) progridem. Comportamento neste momento
 e best-effort com fallback para bloqueio humano sempre que algum
 componente nao estiver implementado.

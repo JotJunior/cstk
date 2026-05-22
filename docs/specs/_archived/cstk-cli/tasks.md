@@ -458,7 +458,7 @@ Observacoes:
 - F0 e curta (governanca); pode rodar em paralelo com inicio de F1
 - F9 (release pipeline) pode comecar em paralelo apos F3 ser funcional; so bloqueia F10 (testes precisam das fixtures)
 - F4, F5, F6, F7, F8 sao paralelizaveis entre si apos F3
-- F12 (`cstk 00c`) depende de F11 (1a release) porque o subcomando assume CLI publicado e instalavel; tambem depende implicitamente da feature `agente-00c` (em `docs/specs/agente-00c/`) que ja foi entregue separadamente. Pode comecar antes de F11 fechar se a integracao com `agente-00c.md` ja esta validada localmente
+- F12 (`cstk 00c`) depende de F11 (1a release) porque o subcomando assume CLI publicado e instalavel; tambem depende implicitamente da feature `agente-00c` (em `docs/specs/_archived/agente-00c/`) que ja foi entregue separadamente. Pode comecar antes de F11 fechar se a integracao com `agente-00c.md` ja esta validada localmente
 
 ## FASE 12 - Subcomando `cstk 00c <path>` (bootstrap interativo do agente-00C)
 

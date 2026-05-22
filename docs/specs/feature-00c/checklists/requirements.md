@@ -23,7 +23,7 @@ dependencias/premissas e ambiguidades remanescentes.
 - [ ] CHK008 - "Conteudo substantivo" em FR-PRE-003 e definido com criterio objetivo verificavel? [Ambiguity, Spec §FR-PRE-003]
 - [ ] CHK009 - A lista de placeholders detectaveis em FR-PRE-003 (`[TBD]`, `[A definir]`, `[FILL]`, `TODO`, `...`) e exaustiva ou exemplar — qual a regra para extensao? [Ambiguity, Spec §FR-PRE-003]
 - [x] CHK010 - "Progresso mensuravel" em FR-022.a refere-se a FR-027 do agente-00c, mas a definicao completa precisa estar IN-SPEC ou referencia cruzada e aceitavel? [Spec §FR-022 atualizado — cross-reference explicita ao agente-00c aceita conscientemente]
-- [x] CHK011 - "Aspectos-chave normalizados" em FR-029 (herdado do FR-027 do agente-00c, drift detection) — qual e a regra de extracao especifica? [Spec §FR-029 atualizado — pointer auditavel para `docs/specs/agente-00c/spec.md` §FR-027]
+- [x] CHK011 - "Aspectos-chave normalizados" em FR-029 (herdado do FR-027 do agente-00c, drift detection) — qual e a regra de extracao especifica? [Spec §FR-029 atualizado — pointer auditavel para `docs/specs/_archived/agente-00c/spec.md` §FR-027]
 
 ## Consistencia de Requisitos
 

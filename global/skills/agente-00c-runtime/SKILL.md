@@ -53,7 +53,7 @@ mecanismo de `cstk install` so distribui artefatos sob `global/skills/`,
 
 ## Estado atual
 
-**FASE 2 do backlog em `docs/specs/agente-00c/tasks.md`.** Implementacao
+**FASE 2 do backlog em `docs/specs/_archived/agente-00c/tasks.md`.** Implementacao
 operacional dos 3 scripts entregue como esqueleto + cobertura de testes
 em `tests/test_state-*.sh`.
 

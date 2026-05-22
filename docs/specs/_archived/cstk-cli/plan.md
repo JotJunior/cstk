@@ -1,6 +1,6 @@
 # Implementation Plan: cstk CLI
 
-**Feature**: `cstk-cli` | **Date**: 2026-04-22 | **Spec**: [spec.md](./spec.md)
+**Feature**: `cstk-cli` | **Date**: 2026-04-22 | **Spec**: [spec.md](spec.md)
 
 ## Summary
 
@@ -175,8 +175,8 @@ cumulativas sao satisfeitas. Abaixo, demonstracao ponto-a-ponto de conformidade:
   do CLI (manifest TSV, profiles, install, update, self-update, doctor, list,
   UI interativa, lock, tarball, hash) referencia `jq`.
 - **(c) Declaracao explicita**: esta subsecao do plan.md (primaria), somada a
-  FR-009d da [spec.md](./spec.md) e a citacao recíproca na
-  [constitution](../../constitution.md) §Principio II subsecao "Optional
+  FR-009d da [spec.md](spec.md) e a citacao recíproca na
+  [constitution](../../../constitution.md) §Principio II subsecao "Optional
   dependencies with graceful fallback" que cita este caso como primeiro concreto.
 
 **Por que o merge JSON exige `jq` quando disponivel**:

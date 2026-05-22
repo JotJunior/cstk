@@ -2,7 +2,7 @@
 
 Define o conteudo detalhado das 6 secoes obrigatorias do
 `feature-00c-report.md` (FR-018). Espelha o contrato do agente-00c
-(`docs/specs/agente-00c/contracts/report-format.md`) com adaptacoes ao
+(`docs/specs/_archived/agente-00c/contracts/report-format.md`) com adaptacoes ao
 escopo de feature individual.
 
 **Localizacao do arquivo gerado**:

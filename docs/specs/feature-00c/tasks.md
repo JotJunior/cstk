@@ -58,7 +58,7 @@ Ref: spec §Decisao arquitetural pre-spec (sem regressao no agente-00c).
 - [x] 1.3.2 Rodar suite `tests/run.sh` cobrindo paths historicos (sem env var) e validar zero regressao <!-- 651 PASS / 0 FAIL / 0 ERROR / 144s -->
 - [x] 1.3.3 Documentar nova convencao em `global/skills/agente-00c-runtime/SKILL.md` §Gotchas (constitution §III exige Gotchas) <!-- adicionadas 3 secoes: Reuso pelo feature-00c, Helper _state-dir.sh, Gotchas com 3 bullets -->
 - [x] 1.3.4 Adicionar teste POSIX `tests/test_state-dir-parametrization.sh` cobrindo: (a) sem env var, (b) com env var custom, (c) com arg posicional explicito <!-- 12 scenarios, todos passando -->
-- [ ] 1.3.5 Commit com mensagem `refactor(runtime): parametrize state dir for feature-00c reuse (FASE 1)` <!-- pendente: aguardando comando explicito do operador -->
+- [x] 1.3.5 Commit com mensagem `refactor(runtime): parametrize state dir for feature-00c reuse (FASE 1)` <!-- realizado em commit c3c1977 `feat(runtime): parametrize state dir for feature-00c reuse (FASE 1)` (prefixo `feat` em vez de `refactor` — equivalente semantico, parametrizacao introduz capability nova mesmo sendo retrocompativel) -->
 
 ### Sumario da FASE 1 (post-execucao 2026-05-20)
 
@@ -399,7 +399,7 @@ Ref: constitution v1.1.0 §"Quality Standards" §"Versionamento SemVer com CHANG
 - [x] 6.2.3 Listar breaking changes (zero — refactor retrocompativel) <!-- secao "Backward compatibility" explicita -->
 - [x] 6.2.4 Mencionar comandos novos: `/feature-00c`, `/feature-00c-resume`, `/feature-00c-abort` <!-- listados em §Added -->
 - [x] 6.2.5 Linkar `docs/specs/feature-00c/` para detalhes <!-- secao "Detalhamento" no fim da entrada -->
-- [ ] 6.2.6 Tag git: `git tag vX.Y.0` apos merge <!-- pendente: aguarda push da branch + merge em main -->`
+- [x] 6.2.6 Tag git: `git tag vX.Y.0` apos merge <!-- tag `v3.13.0` criada e presente em git tag -l -->
 
 ### 6.3 Portar Quality Gates §5.f para feature-00c-feature-orchestrator [A]
 

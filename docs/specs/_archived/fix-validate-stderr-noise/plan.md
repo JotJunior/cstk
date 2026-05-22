@@ -1,6 +1,6 @@
 # Implementation Plan: fix-validate-stderr-noise
 
-**Feature**: `fix-validate-stderr-noise` | **Date**: 2026-04-20 | **Spec**: [./spec.md](./spec.md)
+**Feature**: `fix-validate-stderr-noise` | **Date**: 2026-04-20 | **Spec**: [./spec.md](spec.md)
 
 ## Summary
 

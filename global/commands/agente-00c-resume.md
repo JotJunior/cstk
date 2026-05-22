@@ -12,7 +12,7 @@ allowed-tools:
 # /agente-00c-resume
 
 Retomada de execucao 00C conforme contrato em
-`docs/specs/agente-00c/contracts/cli-invocation.md`.
+`docs/specs/_archived/agente-00c/contracts/cli-invocation.md`.
 
 ## Argumentos recebidos
 

@@ -143,7 +143,7 @@ a) **Endereçar gaps criticos** (CHK043, CHK045-046, CHK049, CHK053-054,
 b) **Aceitar gaps de baixa prioridade como conscientes** (CHK072 race
    theorica, CHK078 docker provenance, CHK076 versoes minimas) e mover
    para "Items a Definir" do plan.md.
-c) **Documentar threat model resumido** em `docs/specs/agente-00c/threat-model.md`
+c) **Documentar threat model resumido** em `docs/specs/_archived/agente-00c/threat-model.md`
    com os ataques considerados (prompt injection, blast radius escape,
    tampering de estado, secrets exfiltration via issue) e o residual
    aceito. Util pra revisao futura.

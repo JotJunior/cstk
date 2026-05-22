@@ -225,7 +225,7 @@ em 134 sessões. Projetado para eliminar ciclos de "corrige-revela-corrige" em a
 
 > **Status: experimental — esqueleto FASE 1 instalado.** Implementação
 > operacional em andamento. Acompanhe o backlog em
-> [`docs/specs/agente-00c/tasks.md`](./docs/specs/agente-00c/) (44 tarefas,
+> [`docs/specs/_archived/agente-00c/tasks.md`](./docs/specs/_archived/agente-00c/) (44 tarefas,
 > 9 fases).
 
 O `agente-00C` é um **orquestrador autônomo** da pipeline SDD do toolkit:
@@ -250,7 +250,7 @@ intervenção humana entre etapas, gerando como entregável-mor um
 > TTY interativo (não automatizável via pipe) e só opera em paths novos
 > ou vazios — para retomar execução existente, use `/agente-00c-resume`
 > diretamente no claude. Ver detalhes em
-> [`docs/specs/cstk-cli/contracts/cstk-00c.md`](./docs/specs/cstk-cli/contracts/cstk-00c.md).
+> [`docs/specs/cstk-cli/contracts/cstk-00c.md`](docs/specs/_archived/cstk-cli/contracts/cstk-00c.md).
 
 ### Pré-requisitos
 
@@ -279,7 +279,7 @@ intervenção humana entre etapas, gerando como entregável-mor um
   feature, blast radius é confinado ao `--projeto-alvo-path`. Tentativas
   são bloqueadas com aborto explícito.
 - **Suíte de testes automatizada**: validação ocorre via execuções reais
-  com cenários manuais (`docs/specs/agente-00c/quickstart.md`). Não há
+  com cenários manuais (`docs/specs/_archived/agente-00c/quickstart.md`). Não há
   unit tests dos agentes custom (decisão consciente do briefing —
   experimento pessoal).
 - **Schema de estado v1.0.0 sem migração**: se o schema evoluir, será
@@ -288,7 +288,7 @@ intervenção humana entre etapas, gerando como entregável-mor um
 
 Detalhamento completo (briefing, constitution, spec com 31 FRs, plan,
 research, threat-model, contracts, quickstart) em
-[`docs/specs/agente-00c/`](./docs/specs/agente-00c/).
+[`docs/specs/_archived/agente-00c/`](./docs/specs/_archived/agente-00c/).
 
 ### Feature-00C — Variante de escopo de feature individual
 
@@ -484,7 +484,7 @@ seu-projeto/
 ### Documentação completa do cstk
 
 - [`cli/README.md`](./cli/README.md) — visão técnica, convenções, processo de release
-- [`docs/specs/cstk-cli/`](./docs/specs/cstk-cli/) — spec, plan, contracts, quickstart
+- [`docs/specs/cstk-cli/`](docs/specs/_archived/cstk-cli/) — spec, plan, contracts, quickstart
 <!-- --8<-- [end:install-section] -->
 
 <!-- --8<-- [start:profiles-section] -->
@@ -543,8 +543,8 @@ cstk session end iniciacao-membro --force
 **Requisitos**: `git >= 2.36`, `gh` (obrigatório só para `pr`; opcional em `end`).
 
 **Documentação completa**:
-- [`docs/specs/cstk-session/spec.md`](./docs/specs/cstk-session/spec.md) — user stories, FRs, success criteria
-- [`docs/specs/cstk-session/contracts/cli-session.md`](./docs/specs/cstk-session/contracts/cli-session.md) — exit codes (5-15), flags, output formats
+- [`docs/specs/cstk-session/spec.md`](docs/specs/_archived/cstk-session/spec.md) — user stories, FRs, success criteria
+- [`docs/specs/cstk-session/contracts/cli-session.md`](docs/specs/_archived/cstk-session/contracts/cli-session.md) — exit codes (5-15), flags, output formats
 
 ## Convenções de Nomenclatura
 

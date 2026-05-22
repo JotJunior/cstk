@@ -2,7 +2,7 @@
 Sync Impact Report
 - Version: (none) -> 1.0.0  [initial ratification, feature-scoped]
 - Bump rationale: constituicao feature-scoped inexistente antes; criacao inicial
-  versao 1.0.0 derivada do briefing em docs/specs/agente-00c/briefing.md.
+  versao 1.0.0 derivada do briefing em docs/specs/_archived/agente-00c/briefing.md.
 - Escopo: principios operacionais do orquestrador autonomo agente-00C. SUBORDINADA
   a docs/constitution.md (toolkit constitution v1.1.0). Em qualquer conflito entre
   esta constitution e a do toolkit, prevalece a do toolkit.
@@ -23,7 +23,7 @@ Sync Impact Report
 
 Principios imutaveis que governam o desenho e a execucao do agente-00C —
 orquestrador autonomo da pipeline SDD. Derivados do briefing em
-`docs/specs/agente-00c/briefing.md`. Esta constituicao e
+`docs/specs/_archived/agente-00c/briefing.md`. Esta constituicao e
 **feature-scoped**: complementa a [constituicao do toolkit](../../constitution.md)
 v1.1.0 com regras especificas de orquestracao autonoma. **Em qualquer conflito,
 a constituicao do toolkit prevalece.** Violacoes desta constituicao sao
@@ -280,7 +280,7 @@ Quando principios entram em tensao, a ordem de desempate e:
 **Amendment process:**
 
 - Mudancas nesta constitution sao propostas como amendments dentro da propria
-  feature 00C (commit no `docs/specs/agente-00c/constitution.md` com Sync
+  feature 00C (commit no `docs/specs/_archived/agente-00c/constitution.md` com Sync
   Impact Report atualizado).
 - Amendment que remove ou redefine principio incompativelmente = MAJOR bump.
 - Amendment que adiciona novo principio ou expande materialmente uma secao =

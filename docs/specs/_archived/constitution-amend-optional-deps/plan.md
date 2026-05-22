@@ -1,6 +1,6 @@
 # Implementation Plan: Constitution Amendment — Optional Dependencies
 
-**Feature**: `constitution-amend-optional-deps` | **Date**: 2026-04-24 | **Spec**: [spec.md](./spec.md)
+**Feature**: `constitution-amend-optional-deps` | **Date**: 2026-04-24 | **Spec**: [spec.md](spec.md)
 
 ## Summary
 

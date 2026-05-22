@@ -56,7 +56,7 @@ ha feature em estado **PRIORIZAR** (criticidade C com < 50% feito).
 
 - **`agente-00c`** — 98% concluida, 3 subtasks pendentes (criticidade A).
   Provavelmente itens residuais de polish/observabilidade. Acao sugerida:
-  `/review-task` no `docs/specs/agente-00c/tasks.md` para identificar
+  `/review-task` no `docs/specs/_archived/agente-00c/tasks.md` para identificar
   exatamente quais 3 itens faltam e decidir se vale fechar ou se sao
   "deixa pra proxima evolucao".
 
@@ -146,7 +146,7 @@ runbook-deploy.md cobre o handoff.
    `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips-github-pages/docs/specs/github-pages-cstk-manual/runbook-deploy.md`
 
 2. **Validar `agente-00c` (98%)** — rodar
-   `/review-task docs/specs/agente-00c/tasks.md` para inspecionar as 3
+   `/review-task docs/specs/_archived/agente-00c/tasks.md` para inspecionar as 3
    subtasks pendentes (criticidade A) e decidir se fechar nesta sprint
    ou consolidar com proxima feature de evolucao.
 

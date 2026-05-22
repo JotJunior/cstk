@@ -11,7 +11,7 @@ allowed-tools:
 # /agente-00c-abort
 
 Aborto manual de execucao 00C conforme contrato em
-`docs/specs/agente-00c/contracts/cli-invocation.md`.
+`docs/specs/_archived/agente-00c/contracts/cli-invocation.md`.
 
 ## Argumentos recebidos
 
@@ -177,4 +177,4 @@ exclui concorrencia).
 
 **FASE 7.4 — operacional.** Relatorio final e stub minimal — FASE 8
 expandira para 6 secoes auditaveis conforme
-`docs/specs/agente-00c/contracts/report-format.md`.
+`docs/specs/_archived/agente-00c/contracts/report-format.md`.

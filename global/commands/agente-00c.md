@@ -13,7 +13,7 @@ allowed-tools:
 # /agente-00c
 
 Voce vai iniciar uma nova execucao do orquestrador autonomo agente-00C
-conforme contrato em `docs/specs/agente-00c/contracts/cli-invocation.md`.
+conforme contrato em `docs/specs/_archived/agente-00c/contracts/cli-invocation.md`.
 
 ## Argumentos recebidos
 

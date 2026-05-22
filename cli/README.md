@@ -2,7 +2,7 @@
 
 CLI em POSIX sh para instalar, atualizar e auditar skills do toolkit. Este
 diretorio contem o codigo fonte do CLI; a documentacao de design completa
-vive em [`../docs/specs/cstk-cli/`](../docs/specs/cstk-cli/).
+vive em [`../docs/specs/cstk-cli/`](../docs/specs/_archived/cstk-cli/).
 
 **Status atual**: FASES 0-9.2 do backlog concluidas — todos os subcomandos
 (`install`, `update`, `self-update`, `list`, `doctor`) implementados e
@@ -88,7 +88,7 @@ a tag (ou usar uma nova tag, preferencial).
 
 ## Desenvolvimento
 
-Veja [`../docs/specs/cstk-cli/tasks.md`](../docs/specs/cstk-cli/tasks.md) para
+Veja [`../docs/specs/cstk-cli/tasks.md`](../docs/specs/_archived/cstk-cli/tasks.md) para
 o backlog. Rodar testes:
 
 ```sh

@@ -46,7 +46,7 @@ Toda onda comeca lendo + validando este arquivo. Schema-version invalido = bloqu
       "escolha": "Operador unico",
       "justificativa": "Briefing do 00C marca uso pessoal sem stakeholders externos; projeto-alvo herda esse padrao por default. Sem indicacao em descricao curta de outros stakeholders.",
       "score_justificativa": null,
-      "referencias": ["docs/specs/agente-00c/briefing.md#2-usuarios-e-stakeholders"],
+      "referencias": ["docs/specs/_archived/agente-00c/briefing.md#2-usuarios-e-stakeholders"],
       "artefato_originador": "briefing.md"
     }
   ],

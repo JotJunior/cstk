@@ -103,7 +103,7 @@ custom + (opcionalmente) configuracao de skills.
 | IV. Zero coleta remota (NON-NEGOTIABLE) | PASS com excecao documentada | `gh issue create` em `JotJunior/claude-ai-tips` e excecao explicitamente autorizada pelo usuario no briefing. **Nao e telemetria/analytics/feature-flag/Sentry.** Conteudo enviado e bug report manualmente curado, nao log/relatorio. Relatorio e estado **permanecem locais**. Filtro de privacidade automatico aplicado antes de envio. |
 | V. Profundidade sobre adocao (SHOULD) | PASS | 00C e ferramenta para o autor — nenhum esforco de marketing. Refinamentos visam reducao de retrabalho, nao visibilidade. |
 
-### Feature Constitution v1.0.0 (`docs/specs/agente-00c/constitution.md`)
+### Feature Constitution v1.0.0 (`docs/specs/_archived/agente-00c/constitution.md`)
 
 | Principio | Status | Notas |
 |-----------|--------|-------|
@@ -120,7 +120,7 @@ custom + (opcionalmente) configuracao de skills.
 ### Documentation (this feature)
 
 ```
-docs/specs/agente-00c/
+docs/specs/_archived/agente-00c/
 ├── briefing.md          # ratificado (Phase prior)
 ├── constitution.md      # ratificado (Phase prior)
 ├── spec.md              # ratificado (Phase prior, atualizado em FR-009 pela Decision 2)

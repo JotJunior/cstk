@@ -1,6 +1,6 @@
 # Implementation Plan: shell-scripts-tests
 
-**Feature**: `shell-scripts-tests` | **Date**: 2026-04-19 | **Spec**: [./spec.md](./spec.md)
+**Feature**: `shell-scripts-tests` | **Date**: 2026-04-19 | **Spec**: [./spec.md](spec.md)
 
 ## Summary
 

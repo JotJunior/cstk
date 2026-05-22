@@ -217,7 +217,7 @@ processo foi morto com `kill -9` (que nao dispara traps). Limpe com
 
 ## Referencias
 
-- Spec: [`docs/specs/shell-scripts-tests/spec.md`](../docs/specs/shell-scripts-tests/spec.md)
-- Plano: [`docs/specs/shell-scripts-tests/plan.md`](../docs/specs/shell-scripts-tests/plan.md)
-- Contrato do runner: [`docs/specs/shell-scripts-tests/contracts/runner-cli.md`](../docs/specs/shell-scripts-tests/contracts/runner-cli.md)
-- Decisoes tecnicas: [`docs/specs/shell-scripts-tests/research.md`](../docs/specs/shell-scripts-tests/research.md)
+- Spec: [`docs/specs/shell-scripts-tests/spec.md`](../docs/specs/_archived/shell-scripts-tests/spec.md)
+- Plano: [`docs/specs/shell-scripts-tests/plan.md`](../docs/specs/_archived/shell-scripts-tests/plan.md)
+- Contrato do runner: [`docs/specs/shell-scripts-tests/contracts/runner-cli.md`](../docs/specs/_archived/shell-scripts-tests/contracts/runner-cli.md)
+- Decisoes tecnicas: [`docs/specs/shell-scripts-tests/research.md`](../docs/specs/_archived/shell-scripts-tests/research.md)

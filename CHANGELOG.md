@@ -963,13 +963,13 @@ exec-2026-05-11T19-59-58Z). Backlog completo em
     regressao quando um script deixa de compor com outros (gate
     complementar a `tests/run.sh` que testa cada script isoladamente).
 
-  - **`docs/specs/agente-00c/validation-runs/`** (novo diretorio): registro
+  - **`docs/specs/_archived/agente-00c/validation-runs/`** (novo diretorio): registro
     de execucoes do agente-00C. README com template + tipos
     (shell-simulation vs end-to-end-real). Primeiro registro:
     `2026-05-06-end-to-end-shell-simulation.md` (10/10 PASS, SCs
     validaveis em shell-level: SC-001, SC-002, SC-007, SC-008).
 
-  - **`docs/specs/agente-00c/lessons-from-implementation.md`**: 5 licoes
+  - **`docs/specs/_archived/agente-00c/lessons-from-implementation.md`**: 5 licoes
     concretas da implementacao das 8 fases — bug jq em pipe (drift.sh),
     dupla resolucao de symlinks no macOS (path-guard.sh), "skills
     internas" como padrao (`agente-00c-runtime`), cobertura forçada
@@ -1337,7 +1337,7 @@ exec-2026-05-11T19-59-58Z). Backlog completo em
   `global/agents/` (3 agentes custom: orchestrator, clarify-asker,
   clarify-answerer). Esqueleto apenas — implementacao operacional ocorre
   ao longo das Fases 2-9 do backlog em
-  `docs/specs/agente-00c/tasks.md`.
+  `docs/specs/_archived/agente-00c/tasks.md`.
 
 ### Changed
 
@@ -1490,7 +1490,7 @@ exec-2026-05-11T19-59-58Z). Backlog completo em
   falhas. Gap real único (Scenario 13 SC-003 byte-a-byte) coberto por
   `tests/cstk/test_quickstart-e2e.sh`.
 
-  Spec completa em [`docs/specs/cstk-cli/`](./docs/specs/cstk-cli/);
+  Spec completa em [`docs/specs/cstk-cli/`](docs/specs/_archived/cstk-cli/);
   documentação user-facing em [`README.md`](./README.md) §Instalação.
 
 ### Governance

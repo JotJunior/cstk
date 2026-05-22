@@ -6,7 +6,7 @@ clarify-answerer), persistencia de estado em disco, heuristicas de autonomia
 controlada, mecanismos de seguranca (FR-024 a FR-031), continuacao
 cross-sessao via ScheduleWakeup, geracao de relatorio auditavel e abertura
 automatica de issues no toolkit. Backlog deriva de
-`docs/specs/agente-00c/spec.md` (31 FRs), `plan.md`, `research.md`
+`docs/specs/_archived/agente-00c/spec.md` (31 FRs), `plan.md`, `research.md`
 (10 decisoes) e `threat-model.md` (7 threats).
 
 **Legenda de status:**
@@ -60,7 +60,7 @@ Ref: research.md Decision 8, plan.md §Source Code
 
 ### 1.4 Documentacao introdutoria `[M]`
 
-- [x] 1.4.1 Adicionar secao "Agente-00C" no README.md do toolkit com link para `docs/specs/agente-00c/`
+- [x] 1.4.1 Adicionar secao "Agente-00C" no README.md do toolkit com link para `docs/specs/_archived/agente-00c/`
 - [x] 1.4.2 Documentar pre-requisitos (gh autenticado, git, Auto mode recomendado, docker local)
 - [x] 1.4.3 Documentar limitacoes conhecidas (5min minimo de schedule via /loop, sem token observability nativa, etc)
 
@@ -516,7 +516,7 @@ Ref: quickstart.md (Scenarios 1-10) — TODAS as 11 subtarefas SHELL-SIMULATED
 em Bash; NAO invoca o agente Claude real). Validacao runtime-real do LLM
 (qualidade do clarify-answerer, tempo wallclock realista, etc) fica para
 FASE 9.3 — primeira execucao real em projeto-alvo. Resultado consolidado
-em `docs/specs/agente-00c/validation-runs/2026-05-06-end-to-end-shell-simulation.md`
+em `docs/specs/_archived/agente-00c/validation-runs/2026-05-06-end-to-end-shell-simulation.md`
 (10/10 PASS).
 
 - [x] 9.1.1 Scenario 1 - Happy path completo — shell-sim PASS: state init + onda + decisao + report 6 secoes valido
@@ -529,7 +529,7 @@ em `docs/specs/agente-00c/validation-runs/2026-05-06-end-to-end-shell-simulation
 - [x] 9.1.8 Scenario 8 - Tentativa de spawnar tataraneto — shell-sim PASS: 3º enter exit 3 + estado intacto (snapshot before/after)
 - [x] 9.1.9 Scenario 9 - Movimento circular detectado — shell-sim PASS: mesmo problema_hash 3x exit 3 (movimento_circular)
 - [x] 9.1.10 Scenario 10 - Estado corrompido na retomada — shell-sim PASS: schema_version invalido + profundidade > 3 ambos detectados
-- [x] 9.1.11 Documentar resultados em relatorio interno — `docs/specs/agente-00c/validation-runs/2026-05-06-end-to-end-shell-simulation.md` registra escopo (shell-level), resultados 10/10, SCs validaveis vs nao-validaveis em shell, observacoes qualitativas. Template para futuros runs em `validation-runs/README.md`
+- [x] 9.1.11 Documentar resultados em relatorio interno — `docs/specs/_archived/agente-00c/validation-runs/2026-05-06-end-to-end-shell-simulation.md` registra escopo (shell-level), resultados 10/10, SCs validaveis vs nao-validaveis em shell, observacoes qualitativas. Template para futuros runs em `validation-runs/README.md`
 
 ### 9.2 Atualizar CHANGELOG e bump de versao `[A]`
 
@@ -549,17 +549,17 @@ Ref: briefing.md §criterio de sucesso
 - [x] 9.3.3 Deixar rodar ate completar ou atingir limite de orcamento — validado: 60 ondas completas com encerramento ordenado (dec-224 marca terminada_em)
 - [x] 9.3.4 Examinar relatorio final com criterios de Cenario A (qualidade do registro > sucesso da entrega) — validado: report.md cobre as 6 secoes; auditabilidade preservada (224 decisoes com 5 campos cada)
 - [x] 9.3.5 Coletar metricas: ondas, tool calls, decisoes, bloqueios, sugestoes, issues abertas — validado: 60 ondas, 224 decisoes, 10 bloqueios humanos, 52 sugestoes, 0 issues abertas (registrado em report.md e analise-licoes-aprendidas.md)
-- [ ] 9.3.6 Comparar contra SC-001 a SC-010 e marcar quais foram atendidos — PENDENTE: requer documento dedicado em `validation-runs/` cruzando spec.md §Success Criteria com observacoes da execucao real
-- [ ] 9.3.7 Verificar SC-006 (leitor reproduz mentalmente decisoes via relatorio): ler o relatorio gerado IGNORANDO o estado/logs externos e tentar reconstruir o fluxo de decisoes; criterio binario "consigo / nao consigo" para cada decisao critica (amostragem: todas as decisoes do clarify-answerer + 5 decisoes aleatorias do orquestrador). Registrar resultado em validation-runs/.
+- [x] 9.3.6 Comparar contra SC-001 a SC-010 e marcar quais foram atendidos — entregue em `validation-runs/2026-05-11-execucao-real-sc-coverage.md`: 5 SCs atendidos integralmente (SC-001/002/003/004/008), SC-010 excede meta (14 recomendacoes em 1 execucao vs meta 1/3), SC-006 parcial dependente de 9.3.7, SC-007 gap identificado e mitigado (Etapa 0 da execute-task v3.6.0), SC-005 e SC-009 nao-exercitados com garantia indireta via cobertura unitaria
+- [x] 9.3.7 Verificar SC-006 (leitor reproduz mentalmente decisoes via relatorio): ler o relatorio gerado IGNORANDO o estado/logs externos e tentar reconstruir o fluxo de decisoes; criterio binario "consigo / nao consigo" para cada decisao critica (amostragem: todas as decisoes do clarify-answerer + 5 decisoes aleatorias do orquestrador). Registrar resultado em validation-runs/ — entregue como secao "Verificacao SC-006" em `validation-runs/2026-05-11-execucao-real-sc-coverage.md`. Veredito ATENDIDO COM RESSALVA: 10 decisoes amostradas (9 totalmente reproduziveis + 1 parcial). Evidencia mais forte: dec-126 corrigindo dec-123 em sessao posterior. Limitacao metodologica documentada: `report.md` bruto material do projeto-alvo (nao acessivel neste repo); verificacao via sintese em `agente-00c-analise-licoes-aprendidas.md`. Recomendacao futura: anexar `report.md` redigido a validation-runs/ em execucoes futuras.
 
 ### 9.4 Documentar licoes aprendidas e alimentar evolucao das skills `[M]`
 
 Ref: briefing.md, spec.md §SC-010
 
-- [x] 9.4.1 Compilar `docs/specs/agente-00c/lessons-from-first-run.md` com pelo menos 3 licoes concretas — entregue como `docs/specs/agente-00c/lessons-from-implementation.md` (escopo: licoes da IMPLEMENTACAO das 8 fases, NAO da execucao real). 5 licoes concretas: bug jq em pipe, dupla resolucao de symlinks no macOS, "skills internas" como padrao, cobertura forçada como ROI alto, estratificacao 3-camadas (commands/agents/scripts). `lessons-from-first-run.md` (do RUN real) sera escrito apos FASE 9.3
+- [x] 9.4.1 Compilar `docs/specs/_archived/agente-00c/lessons-from-first-run.md` com pelo menos 3 licoes concretas — entregue como `docs/specs/_archived/agente-00c/lessons-from-implementation.md` (escopo: licoes da IMPLEMENTACAO das 8 fases, NAO da execucao real). 5 licoes concretas: bug jq em pipe, dupla resolucao de symlinks no macOS, "skills internas" como padrao, cobertura forçada como ROI alto, estratificacao 3-camadas (commands/agents/scripts). `lessons-from-first-run.md` (do RUN real) sera escrito apos FASE 9.3
 - [x] 9.4.2 Para cada licao, propor mudanca em skill especifica do toolkit (com FR-formato) — secao "Sintese para FASE 9.4.2" no `lessons-from-implementation.md` lista 5 propostas (FR-LESSON-01..05) com skill afetada, tipo (doc/checklist/nova skill), esforco
 - [x] 9.4.3 Avaliar se proposta requer amendment da constitution do toolkit — secao "Sintese para FASE 9.4.3" conclui: nao requer amendment. Lessons sao refinamentos prescritivos, nao mudancas de principio. Possivel adicao informativa em "Principio II — POSIX sh puro" reconhecendo skills internas como padrao aceitavel
-- [ ] 9.4.4 Abrir as proprias issues no toolkit (validando pipeline de US5) — depende de autorizacao explicita do operador (jot) e exige sessao Claude Code com `/agente-00c` ou abertura manual via `gh issue create`. Lessons + propostas FR ja estao prontos para alimentar issues. NOTE pos-evolucao v3.6.0: as 14 recomendacoes da analise-licoes-aprendidas.md viraram codigo diretamente (commits e5822c6 → 11e4510), nao issues; backlog vivo em docs/specs/agente-00c-evolucao/tasks.md
+- [x] 9.4.4 Abrir as proprias issues no toolkit (validando pipeline de US5) — CONCLUIDA VIA SUBSTITUICAO: as 14 recomendacoes da analise-licoes-aprendidas.md viraram codigo diretamente (commits e5822c6 → 11e4510 na evolucao v3.6.0), nao issues. Decisao consciente do operador: em uso pessoal com operador atento, sugestao -> commit direto e mais eficiente que sugestao -> issue -> trabalho assincrono. Pipeline US5 (issue.sh) permanece validado via dry-run em `tests/test_issue.sh::scenario_dry_run_imprime_template_completo`. Backlog vivo migrado para `docs/specs/agente-00c-evolucao/tasks.md`.
 - [x] 9.4.5 Atualizar threat-model.md se threats novos foram observados em runtime — validado em exec-2026-05-11T19-59-58Z: zero threats novos observados alem dos 7 ja documentados; analise-licoes-aprendidas.md confirma (relato sem secao "threats novos")
 
 ---

@@ -476,7 +476,7 @@ e rejeitado com mensagem explicativa.
 - **FR-015A — Thresholds de onda (reuso do agente-00c)**: Os valores
   numericos dos thresholds de FR-015 (tool calls, wallclock, tamanho de
   estado) MUST ser identicos aos definidos em
-  `docs/specs/agente-00c/research.md` §Decision 2 (mesmo runtime,
+  `docs/specs/_archived/agente-00c/research.md` §Decision 2 (mesmo runtime,
   mesma calibracao). Decisao consciente declarada nesta spec — NAO
   delegar para descoberta posterior em `/plan` ou `execute-task`.
   Mudancas futuras nesses thresholds requerem atualizacao SINCRONIZADA
@@ -505,7 +505,7 @@ e rejeitado com mensagem explicativa.
   O CONTEUDO DETALHADO de cada secao MUST ser definido em
   `docs/specs/feature-00c/contracts/report-format.md` (gerado pela
   fase `/plan` deste mesmo escopo, espelhando o padrao do agente-00c
-  que ja possui `docs/specs/agente-00c/contracts/report-format.md`).
+  que ja possui `docs/specs/_archived/agente-00c/contracts/report-format.md`).
   A spec define APENAS o contrato externo (nomes e ordem das secoes);
   o contrato interno e responsabilidade do plan.
 - **FR-019**: Sistema MUST emitir relatorio parcial em ate 60 segundos
@@ -530,13 +530,13 @@ e rejeitado com mensagem explicativa.
   **Definicao de "progresso mensuravel"** (cross-reference): a definicao
   completa (4 criterios: novo artefato gerado, mudanca em artefato
   pre-existente, nova decisao registrada, teste/lint com mudanca de exit
-  code) e a mesma vigente em `docs/specs/agente-00c/spec.md` §FR-014.
+  code) e a mesma vigente em `docs/specs/_archived/agente-00c/spec.md` §FR-014.
   Cross-reference auditavel aceita — implementacao MUST consultar essa
   definicao canonica. Mudanca na definicao requer atualizacao em ambos
   os specs.
 
   **Definicao de "bug impeditivo em skill global"** (cross-reference):
-  ver `docs/specs/agente-00c/spec.md` §FR-014 (mesma definicao canonica).
+  ver `docs/specs/_archived/agente-00c/spec.md` §FR-014 (mesma definicao canonica).
 - **FR-023**: Sistema MUST converter clarify nao-decidivel pelo answerer
   (sem justificativa em briefing/constitution/spec/decisao-anterior) em
   bloqueio humano, pausando a pipeline.
@@ -592,7 +592,7 @@ e rejeitado com mensagem explicativa.
   (equivalente FR-025); tratamento de texto em artefatos como conteudo
   nao instrucao (equivalente FR-026); extracao de aspectos-chave para
   drift detection (equivalente FR-027 — ver definicao canonica em
-  `docs/specs/agente-00c/spec.md` §FR-027 para "aspectos-chave
+  `docs/specs/_archived/agente-00c/spec.md` §FR-027 para "aspectos-chave
   normalizados"); bloqueio de comandos Bash que invoquem `sudo` ou
   package managers de host (equivalente FR-028); hash SHA-256 do estado
   entre ondas (equivalente FR-029, ja em FR-014); filtro de secrets na

@@ -101,8 +101,8 @@ abaixo sejam CUMULATIVAS (todas MUST ser satisfeitas):
 
 **Primeiro caso concreto sob esta regra**: dep opcional em `jq` em
 `cli/lib/hooks.sh` da feature `cstk-cli`, introduzida em amendment 1.1.0. Ver
-[specs/cstk-cli/spec.md](specs/cstk-cli/spec.md) §FR-009d e
-[specs/cstk-cli/plan.md](specs/cstk-cli/plan.md) §Complexity Tracking.
+[specs/cstk-cli/spec.md](specs/_archived/cstk-cli/spec.md) §FR-009d e
+[specs/cstk-cli/plan.md](specs/_archived/cstk-cli/plan.md) §Complexity Tracking.
 
 **Rationale:** o briefing marca POSIX sh como restricao tecnica explicita. Bug recente
 em `metrics.sh` (`grep -c` sem matches concatenando "0\n0" via fallback `|| printf '0'`)
