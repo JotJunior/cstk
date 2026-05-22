@@ -154,12 +154,14 @@ Ref: FR-002, Decision 4 do research, contracts/skill-io.md
 
 Ref: SC-001, FR-017, Plan §Project Structure
 
-- [ ] 2.6.1 Criar `tests/cstk/test_model_selector_faixa_rasa.sh` (input com verbo raso → output `haiku`; assercao explicita `score <=2`, Ref: SC-001, CHK069)
-- [ ] 2.6.2 Criar `tests/cstk/test_model_selector_faixa_media.sh` (input com verbo medio → output `sonnet`; assercao explicita `score <=2`, Ref: SC-001, CHK069)
-- [ ] 2.6.3 Criar `tests/cstk/test_model_selector_faixa_profunda.sh` (input com verbo profundo → output `opus`; assercao explicita `score <=2`, Ref: SC-001, SC-006, CHK069)
-- [ ] 2.6.4 Criar `tests/cstk/test_model_selector_ambiguo.sh` (sinais contraditorios → vence conservador, Ref: FR-005)
-- [ ] 2.6.5 Criar `tests/cstk/test_model_selector_input_vazio.sh` (input <3 tokens → `manter-atual` score 0, Ref: Decision 7, CHK019)
-- [ ] 2.6.6 Criar `tests/cstk/test_model_selector_falsos_positivos_design.sh` que **itera sobre os 4 verbos de design** (`refatore`, `projete`, `arquitete`, `escolha`) em loop interno, exigindo que nenhum produza `haiku` (Ref: SC-006, CHK070 criterio cravado)
+- [x] 2.6.1 Criar `tests/cstk/test_model_selector_faixa_rasa.sh` (input com verbo raso → output `haiku`; assercao explicita `score <=2`, Ref: SC-001, CHK069) <!-- onda-014: 5 scenarios (2/3/5 verbos rasos puros + assercao defensiva CHK069 + bloco markdown 4 secoes); valida modelo=haiku, alternativa=sonnet, faixa=rasa, score teto 2; 5/5 PASS -->
+- [x] 2.6.2 Criar `tests/cstk/test_model_selector_faixa_media.sh` (input com verbo medio → output `sonnet`; assercao explicita `score <=2`, Ref: SC-001, CHK069) <!-- onda-014: 5 scenarios analogos a 2.6.1 sobre faixa media (explique/documente/resuma/traduza/compare); valida modelo=sonnet alternativa=haiku faixa=media; 5/5 PASS -->
+- [x] 2.6.3 Criar `tests/cstk/test_model_selector_faixa_profunda.sh` (input com verbo profundo → output `opus`; assercao explicita `score <=2`, Ref: SC-001, SC-006, CHK069) <!-- onda-014: 6 scenarios cobrindo 2/3/5 verbos profundos + SC-006 (cada verbo design isolado eleva a opus, nunca haiku) + CHK069 defensivo + bloco markdown alternativa=sonnet; 6/6 PASS -->
+- [x] 2.6.4 Criar `tests/cstk/test_model_selector_ambiguo.sh` (sinais contraditorios → vence conservador, Ref: FR-005) <!-- onda-014: 8 scenarios cobrindo raso+medio, raso+profundo, medio+profundo, 3-faixas, 5r+1m, 5r+1p, justificativa cita FR-005, tabela cross-faixa loop; 8/8 PASS -->
+- [x] 2.6.5 Criar `tests/cstk/test_model_selector_input_vazio.sh` (input <3 tokens → `manter-atual` score 0, Ref: Decision 7, CHK019) <!-- onda-014: 8 scenarios cobrindo input vazio (aborta com 'input vazio' em stderr), 1 token, 2 tokens, whitespace, 3+ tokens zero-match (indeterminado), justificativa cita limite minimo, bloco markdown emitido tambem no fail-safe, varredura CHK019 nunca sugere modelo concreto; 8/8 PASS -->
+- [x] 2.6.6 Criar `tests/cstk/test_model_selector_falsos_positivos_design.sh` que **itera sobre os 4 verbos de design** (`refatore`, `projete`, `arquitete`, `escolha`) em loop interno, exigindo que nenhum produza `haiku` (Ref: SC-006, CHK070 criterio cravado) <!-- onda-014: 7 scenarios com loop sobre _VERBOS_DESIGN cobrindo verbo isolado, +1 raso, +5 rasos (5:1 dramatico), +1 medio, em frase longa com ruido, cross-produto 4x6=24 inputs, contraprova (input puro raso ainda gera haiku — guarda contra falsos-negativos do teste); 7/7 PASS -->
+
+> **Onda-014 (execute-task):** 6 arquivos criados em `tests/cstk/`, 39 novos cenarios passando (5+5+6+8+8+7). Suite model_selector consolidada: 11 arquivos × 82 cenarios = 82/82 PASS. Regressao zero. Shellcheck POSIX limpo (apenas SC1091 info convencional ao sourcing dinamico de `lib/harness.sh`).
 
 ---
 
