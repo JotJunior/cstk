@@ -7,15 +7,45 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.14.0] - 2026-05-22
+
+Tres entregas principais: (1) skill `model-selector` completa via
+pipeline SDD autonoma, (2) Fases 1+2 da feature `artifact-cache`
+(primitiva `state-cache.sh` + protocolo de leitura nas 4 skills SDD
+principais), (3) otimizacoes de tokens/boot via trim de descriptions
+em skills, commands e custom agents. Sem breaking changes.
+
 ### Added
 
-- **[MINOR] Add model-selector skill** (FR-010a invokes optional-deps
-  carve-out for jq in scripts/report.sh). Esqueleto canonico criado em
-  `global/skills/model-selector/` com subdirs `references/`, `scripts/`,
-  `examples/` (FASE 1 da feature SDD `model-selector` — tarefa 1.1 do
-  backlog). Implementacao da heuristica de selecao (catalogo MVP 15
-  sinais, classificador POSIX puro, report agregado) deferida para
-  FASES 2-4 do mesmo backlog.
+- **Skill `model-selector`** (PR #17): sugestor de modelo
+  (`haiku`/`sonnet`/`opus`) por heuristica POSIX pura.
+  `scripts/classify.sh` (560+ linhas) classifica o input do operador em
+  rasa/media/profunda e emite output markdown em 4 secoes fixas, com
+  fallback `manter-atual` quando indeterminado (input <3 tokens ou
+  empate de pesos). `scripts/report.sh` (118 linhas) agrega varias
+  classificacoes via branch jq happy-path + fallback awk
+  **byte-identical** (FR-010a — carve-out de optional-deps).
+  Catalogo de sinais extensivel sem patch em `references/sinais.md`
+  (15 verbos MVP, peso=1). Rotulos sempre abstratos — nunca versao
+  concreta de modelo. 22 testes shell (~127 cenarios PASS),
+  `shellcheck -s sh` limpo, `SKILL.md` <200 linhas. Entregue via
+  pipeline SDD autonoma `/feature-00c` em 23 ondas com 100 decisoes
+  auditaveis.
+- **Protocolo de leitura cache em skills SDD (Fase 2 de
+  artifact-cache)** (PR #16): `specify`, `clarify`, `plan` e
+  `execute-task` agora consultam `state-cache.sh read` antes de ler
+  briefing/constitution do disco, com fallback transparente. Reduz
+  ~5-10k tokens/onda em pipelines longos do `agente-00c`/
+  `feature-00c`. Hash-validation TOCTOU-safe via `_hash.sh`; skills
+  standalone (sem state.json) preservam comportamento original.
+- **Primitiva `state-cache.sh` + `_hash.sh` (Fase 1 de
+  artifact-cache)** (PR #15): novo helper POSIX em
+  `global/skills/agente-00c-runtime/scripts/state-cache.sh` com 6
+  subcomandos (`init`, `read`, `write`, `invalidate`, `status`,
+  `gc`) operando sobre namespace `artifact_cache` em `state.json`.
+  Extensao `state-validate` aceita o novo schema. Helper sourceable
+  `_hash.sh` centraliza calculo de SHA-256 com fallback
+  `sha256sum`/`shasum`/`openssl`/awk.
 
 ### Added (drafts SDD — sem implementacao)
 
