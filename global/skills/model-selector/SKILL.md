@@ -83,6 +83,44 @@ A skill carrega o catalogo de sinais em
 faixa). Operadores estendem editando esse arquivo (FR-004) — sem patch
 necessario.
 
+## Integracao com orquestradores autonomos
+
+Handshake skill ↔ orquestrador (`agente-00c`, `feature-00c`) — Refs:
+FR-007/008/009, research Decision 3.
+
+A skill emite stdout markdown (4 secoes — ver [`skill-io.md`](../../../docs/specs/model-selector/contracts/skill-io.md));
+o orquestrador parseia `modelo`/`score`/`alternativa`/`Sinais` e
+constroi uma `DecisaoDeAceite` via `state-decisions.sh register`. A
+skill NAO escreve no state (Gotcha (e) + Principio IV).
+
+**Regras de score do runtime** (validadas empiricamente — resolve CHK064):
+
+- `--justificativa` SEMPRE obrigatoria, `>=20 chars` em QUALQUER
+  score (`< 20` → exit 1, "violacao Principio I").
+- **Score 2** (`decide_com_suporte_de_contexto`): so exige
+  justificativa; NAO exige `--evidencia`. Apropriado para registrar
+  aceite/rejeicao apoiado em briefing/constitution.
+- **Score 3** (`decide_sem_clarificar`): EXIGE `--evidencia >=20 chars`
+  contendo COMANDO + FRAGMENTO LITERAL do output. Sem evidencia →
+  exit 1 ("score=3 EXIGE --evidencia"). Match de verbo no input da
+  skill NAO satisfaz FR-EVI-001 (ver Gotcha (d)).
+- **Score 0/1**: pause/clarificar — input ambiguo (Gotcha (c)) ou
+  sugestao em conflito com briefing/constitution.
+
+**Campo `artefato_originador`** (data-model.md §Entidade 3 — resolve
+CHK065): orquestrador escolhe UMA forma, ambas aceitas:
+
+- `sha256:<64-hex>` — hash do stdout literal (rastreio sem persistir).
+- Path relativo ao projeto-alvo — ex:
+  `docs/specs/<feature>/audit/sug-NNN.md` — quando o stdout e salvo
+  como artefato auditavel.
+
+Contadores agregados (`sugestoes_total`, `por_modelo_sugerido.*`,
+`por_resultado.*`, `ultima_invocacao_iso`) em
+`metricas_acumuladas.model_selector` — schema canonico em
+[`state-extension.md`](../../../docs/specs/model-selector/contracts/state-extension.md)
+(FR-011); skill nao toca.
+
 ## Gotchas
 
 Cinco invariantes que parecem obvias mas viraram bugs em outras
@@ -126,13 +164,18 @@ satisfaz FR-EVI-001.
 (FR-013e). A skill nao spawna subagente, nao chama outra skill, nao
 faz I/O alem do diretorio do projeto-alvo (le `references/sinais.md`,
 escreve stdout/stderr). Operacao stateless por invocacao — nada de
-mutex, scheduler ou token persistente proprio.
+mutex, scheduler ou token persistente proprio. Quem spawna subagentes
+e/ou escreve `state.json` e o ORQUESTRADOR (ver
+[`contracts/state-extension.md`](../../../docs/specs/model-selector/contracts/state-extension.md)
+§Escopo — "a skill `model-selector` em si NAO escreve no state.json"
++ secao "## Integracao com orquestradores autonomos" acima).
 
 ## Referencias progressivas
 
 | Topico | Arquivo |
 |--------|---------|
 | Contrato canonico de I/O (input, output, exit codes, invariantes) | [`../../../docs/specs/model-selector/contracts/skill-io.md`](../../../docs/specs/model-selector/contracts/skill-io.md) |
+| Contrato de extensao do `state.json` (`metricas_acumuladas.model_selector`) | [`../../../docs/specs/model-selector/contracts/state-extension.md`](../../../docs/specs/model-selector/contracts/state-extension.md) |
 | Catalogo de sinais (15 MVP, extensivel) | [`references/sinais.md`](references/sinais.md) |
 | Spec funcional + FRs + Success Criteria | [`../../../docs/specs/model-selector/spec.md`](../../../docs/specs/model-selector/spec.md) |
 | Plan tecnico + Project Structure + Constitution Check | [`../../../docs/specs/model-selector/plan.md`](../../../docs/specs/model-selector/plan.md) |

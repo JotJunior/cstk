@@ -186,9 +186,11 @@ Ref: FR-011, data-model.md, Decision 6 do research
 
 Ref: FR-007, FR-008, FR-009, Decision 3 do research
 
-- [ ] 3.2.1 Documentar em `SKILL.md` (secao "Integracao com orquestradores autonomos") que a skill emite stdout markdown e o orquestrador parseia para construir Decisao. Nota: `state-decisions.sh register` aceita score 2 com `--justificativa` qualquer >=1 char; rejeita score 3 sem `--evidencia >=20 chars` (resolve CHK064). Campo `artefato_originador` (data-model.md) pode receber hash sha256 da sugestao OU path para artefato salvo — orquestrador escolhe (resolve CHK065)
-- [ ] 3.2.2 Reforcar via Gotcha FR-013e: "skill nao spawna subagente — sem blast radius alem do diretorio do projeto-alvo"
-- [ ] 3.2.3 Linkar para `contracts/skill-io.md` no SKILL.md (progressive disclosure)
+- [x] 3.2.1 Documentar em `SKILL.md` (secao "Integracao com orquestradores autonomos") que a skill emite stdout markdown e o orquestrador parseia para construir Decisao. Nota: `state-decisions.sh register` aceita score 2 com `--justificativa` qualquer >=1 char; rejeita score 3 sem `--evidencia >=20 chars` (resolve CHK064). Campo `artefato_originador` (data-model.md) pode receber hash sha256 da sugestao OU path para artefato salvo — orquestrador escolhe (resolve CHK065) <!-- onda-016: nova secao "## Integracao com orquestradores autonomos" em SKILL.md (linhas 86-124); CHK064 documentado com regra EMPIRICAMENTE CORRIGIDA do brief — codigo de state-decisions.sh (L168) exige justificativa>=20 chars em QUALQUER score (nao apenas score 3), e score 3 EXIGE adicionalmente evidencia>=20 chars; CHK065 documentado com 2 formas aceitas (sha256:<64-hex> OU path relativo) -->
+- [x] 3.2.2 Reforcar via Gotcha FR-013e: "skill nao spawna subagente — sem blast radius alem do diretorio do projeto-alvo" <!-- onda-016: Gotcha (e) reforcado com cross-link explicito a contracts/state-extension.md §Escopo (reafirma "skill em si NAO escreve no state.json") + ponteiro inverso para nova secao "## Integracao com orquestradores autonomos" — duplo-bind documental -->
+- [x] 3.2.3 Linkar para `contracts/skill-io.md` no SKILL.md (progressive disclosure) <!-- onda-016: tabela "Referencias progressivas" estendida com linha state-extension.md (alem do skill-io.md ja presente); nova secao "## Integracao com orquestradores autonomos" tambem linka inline para AMBOS os contracts (skill-io.md no §Forma e state-extension.md no §contadores agregados) -->
+
+> **Onda-016 (execute-task):** SKILL.md atualizado para 193 linhas (cap CHK001/FR-014 <200 OK). Validacao: `validate-docs-rendered` PASS (0 ERROs, 0 AVISOs); `test_model_selector_skill_lines.sh` PASS (6/6); `test_model_selector_no_concrete_version.sh` PASS (8/8); regressao zero em faixa_rasa/media/profunda/ambiguo/score (33 cenarios). CHK064 e CHK065 resolvidos com regras VALIDADAS EMPIRICAMENTE no codigo do runtime (grep em state-decisions.sh L168/L189/L192).
 
 ---
 
