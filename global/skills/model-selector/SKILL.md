@@ -181,7 +181,9 @@ e/ou escreve `state.json` e o ORQUESTRADOR (ver
 | Plan tecnico + Project Structure + Constitution Check | [`../../../docs/specs/model-selector/plan.md`](../../../docs/specs/model-selector/plan.md) |
 | Decisoes de research (9 decisoes tecnicas-chave) | [`../../../docs/specs/model-selector/research.md`](../../../docs/specs/model-selector/research.md) |
 | Cenarios E2E (quickstart) | [`../../../docs/specs/model-selector/quickstart.md`](../../../docs/specs/model-selector/quickstart.md) |
-| Exemplos de input → output | [`examples/`](examples/) |
+| Exemplo good-case — faixa rasa → `haiku` | [`examples/good-haiku.md`](examples/good-haiku.md) |
+| Exemplo good-case — faixa media → `sonnet` | [`examples/good-sonnet.md`](examples/good-sonnet.md) |
+| Exemplo good-case — faixa profunda → `opus` | [`examples/good-opus.md`](examples/good-opus.md) |
 
 ## Mapeamento de rotulo → versao concreta (fora do escopo da skill)
 

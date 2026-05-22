@@ -302,17 +302,19 @@ inflar SKILL.md.
 
 Ref: Plan §Project Structure ("NOVO (opcional MVP)"), CHK037, CHK038
 
-- [ ] 6.1.1 Criar `examples/good-haiku.md` com input + output esperado para faixa rasa
-- [ ] 6.1.2 Criar `examples/good-sonnet.md` com input + output esperado para faixa media
-- [ ] 6.1.3 Criar `examples/good-opus.md` com input + output esperado para faixa profunda
-- [ ] 6.1.4 Linkar de SKILL.md (secao "Exemplos") para os 3 arquivos via progressive disclosure
+- [x] 6.1.1 Criar `examples/good-haiku.md` com input + output esperado para faixa rasa <!-- onda-022: 61 linhas; input "rode o grep e formate a saida" + tabela de 3 sinais (rasa) + regra (TETO 2 dec-006) + output literal de classify.sh em fence markdown + reproducao em fence sh; validate-docs-rendered ERRO=0 AVISO=0 -->
+- [x] 6.1.2 Criar `examples/good-sonnet.md` com input + output esperado para faixa media <!-- onda-022: 61 linhas; input "explique o codigo e documente as funcoes resumindo o comportamento" + tabela de 2 sinais (media) + nota didatica explicando que "resumindo" NAO casa "resuma" (grep -Fxq exact line) + output literal + reproducao; validate-docs-rendered ERRO=0 AVISO=0 -->
+- [x] 6.1.3 Criar `examples/good-opus.md` com input + output esperado para faixa profunda <!-- onda-022: 63 linhas; input "projete a api e refatore o modulo arquitetando o novo componente" + tabela de 2 sinais (profunda) + nota "arquitetando NAO casa arquitete" + cross-link ao Gotcha (b) para o caso de mistura; output literal de classify.sh; validate-docs-rendered ERRO=0 AVISO=0 -->
+- [x] 6.1.4 Linkar de SKILL.md (secao "Exemplos") para os 3 arquivos via progressive disclosure <!-- onda-022: substituida linha generica "Exemplos de input → output" da tabela "Referencias progressivas" por 3 linhas explicitas (good-haiku.md / good-sonnet.md / good-opus.md) — delta liquido +2 linhas. SKILL.md final = 195 linhas (cap CHK001/FR-014 <200 OK, margem 5). -->
+
 
 ### 6.2 Documentacao de extensibilidade do catalogo `[M]`
 
 Ref: FR-004, CHK041
 
-- [ ] 6.2.1 Adicionar secao em `references/sinais.md` (ou README adjacente) explicando como adicionar sinais locais sem patch. Mecanismo cravado: **edicao direta de `references/sinais.md`** (sem overlay nem env-var — resolve CHK041)
-- [ ] 6.2.2 Documentar comportamento esperado em colisao de sinais (mesma palavra em duas faixas) — referenciar regra conservadora FR-005
+- [x] 6.2.1 Adicionar secao em `references/sinais.md` (ou README adjacente) explicando como adicionar sinais locais sem patch. Mecanismo cravado: **edicao direta de `references/sinais.md`** (sem overlay nem env-var — resolve CHK041) <!-- onda-022: nova subsecao "### Como estender (passo a passo)" + "### Catalogo lido dinamicamente — zero rebuild" + "### Faixas validas e peso no MVP" sob "## Extensibilidade (FR-004)" — 5 passos numerados (editor texto → localizar tabela → acrescentar linha formato literal → salvar e rodar classify.sh → sanity awk) + explicacao de path relativo via `${0%/*}/../references/sinais.md` (sem hardcode/cache/snapshot) + enum literal de faixas validas com peso=1 default no MVP. -->
+- [x] 6.2.2 Documentar comportamento esperado em colisao de sinais (mesma palavra em duas faixas) — referenciar regra conservadora FR-005 <!-- onda-022: pre-existente em sinais.md (linhas "Termo unico globalmente" + "Colisao de sinais"). Onda-022 acrescentou bullet sobre "comportamento indefinido" no item 1 da nova secao de passos + reforco do invariante "exatamente UMA tabela markdown" na subsecao "Faixas validas" (motivado por self-fix do classifier-sanity awk apos a primeira tentativa de incluir uma segunda tabela). -->
+
 
 ---
 

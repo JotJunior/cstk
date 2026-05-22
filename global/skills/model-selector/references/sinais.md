@@ -84,6 +84,69 @@ formato `| termo | faixa | peso |`. Mecanismo cravado em CHK041: nao
 ha overlay, env-var de busca extra, nem mecanismo de patch
 hierarquico — a fonte unica e este arquivo.
 
+### Como estender (passo a passo)
+
+1. Abra `global/skills/model-selector/references/sinais.md` em
+   qualquer editor de texto. NAO ha rebuild, recompilacao, restart
+   do harness, regeneracao de indice ou cache invalidation — o
+   classificador (`scripts/classify.sh`) le este arquivo a cada
+   invocacao via `awk` streaming (Decision 1 do `research.md`).
+2. Localize a tabela `## Catalogo` (linhas que comecam com `|`).
+3. Acrescente UMA linha de dados imediatamente apos a ultima linha
+   existente, no formato literal:
+   ```
+   | <verbo-lowercase> | <faixa> | <peso> |
+   ```
+   - `<verbo-lowercase>` — string ASCII unica (case-insensitive) no
+     catalogo, sem espacos internos.
+   - `<faixa>` — UM literal de `{rasa, media, profunda}`. Faixas
+     fora desse enum quebram o parser (`awk` filtra silenciosamente
+     linhas com faixa invalida).
+   - `<peso>` — inteiro `>=1`. No MVP, **peso=1 e o unico valor
+     observado** em todos os 15 sinais shipados. Pesos `>1`
+     funcionam (o classificador soma), mas alteram o tie-break
+     ponderado por contagem e nao por presenca; documentacao de
+     edge cases para pesos heterogeneos ficou fora do MVP — use
+     `peso=1` salvo justificativa empirica.
+4. Salve. Rode `sh global/skills/model-selector/scripts/classify.sh
+   "<input que cite o verbo novo>"` para validar que o sinal e
+   detectado. Output deve listar o termo novo na linha `sinais
+   detectados:` da `## Justificativa`.
+5. Opcional: rode tambem o sanity-check do catalogo:
+   ```sh
+   awk '/^\|/ && !/-+/ {c++} END {print c}' \
+     global/skills/model-selector/references/sinais.md
+   # Esperado: 17 (1 header + 16 data rows = 15 originais + 1 novo)
+   ```
+
+### Catalogo lido dinamicamente — zero rebuild
+
+- O classificador resolve o path do catalogo via
+  `${0%/*}/../references/sinais.md` (relativo ao proprio script —
+  ver `tasks.md` 2.1.4). NAO ha hardcode absoluto, NAO ha cache
+  persistido em disco, NAO ha snapshot binario.
+- Cada invocacao re-le o arquivo do disco. Edicao + invocacao
+  imediata reflete o sinal novo sem nenhum passo intermediario.
+- Por consequencia: rollback de uma extensao = `git checkout
+  references/sinais.md` (ou desfazer a edicao manualmente). Nao ha
+  estado a invalidar.
+
+### Faixas validas e peso no MVP
+
+Faixas aceitas (enum literal, case-sensitive) — outras quebram o
+parser silenciosamente (linhas com faixa fora desse conjunto sao
+filtradas pelo `awk` de validacao em `tasks.md` 2.3.1):
+
+- `rasa` — peso aceito no MVP: `1`.
+- `media` — peso aceito no MVP: `1`.
+- `profunda` — peso aceito no MVP: `1`.
+
+Pesos fracionarios sao explicitamente proibidos (regra 3 da secao
+"Regras ao customizar" abaixo) — o classificador e POSIX puro,
+inteiro, deterministico. Tabelas markdown adicionais nesta secao
+sao PROIBIDAS por invariante de parsing — o arquivo deve conter
+**exatamente UMA** tabela `|`-pipe (a do `## Catalogo`).
+
 Regras ao customizar:
 
 1. **Termo unico** globalmente (case-insensitive). Dois registros
