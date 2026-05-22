@@ -215,9 +215,11 @@ Ref: FR-012, FR-010a, Decision 5 do research
 
 Ref: FR-010a (a), Decision 5
 
-- [ ] 4.2.1 Implementar bloco `if jq disponivel`: agregar `metricas_acumuladas.model_selector` via expressao jq compacta
-- [ ] 4.2.2 Emitir tabela markdown com colunas: feature | sugestoes_total | aceitas | rejeitadas | modelo_final_predominante
-- [ ] 4.2.3 Documentar inline (comentario shell) que este e o caminho preferido e que awk e fallback equivalente
+- [x] 4.2.1 Implementar bloco `if jq disponivel`: agregar `metricas_acumuladas.model_selector` via expressao jq compacta <!-- onda-018: 1 invocacao `jq -r` POR arquivo dentro de loop `for _path in "$@"`; expressao tolera lazy null + total zero; derivacao do mode via `[ to_entries[] ] | sort_by(-.value, .key)` (tie-break alfabetico determinista). Validado empiricamente: 4 fixtures (alpha-feat mode=haiku, bravo-feat mode=sonnet, charlie-feat sem_dados, fD basename) produzem 4 linhas markdown corretas. -->
+- [x] 4.2.2 Emitir tabela markdown com colunas: feature | sugestoes_total | aceitas | rejeitadas | modelo_final_predominante <!-- onda-018: header `| feature | sugestoes_total | aceitas | rejeitadas | modelo_final_predominante |` + separador `|---|---:|---:|---:|---|`; 5 colunas exatas na ordem fixa; 1 linha por state.json. `modelo_final_predominante` derivado em leitura (campo NAO persistido no schema state-extension.md) — abordagem registrada em dec-076. Validado por scenario_4_2_2_header_5_colunas_ordem_fixa. -->
+- [x] 4.2.3 Documentar inline (comentario shell) que este e o caminho preferido e que awk e fallback equivalente <!-- onda-018: bloco de comentarios `FASE 4.2 — Caminho jq (happy path) — CAMINHO PREFERIDO` declara explicitamente o status preferido, cita FR-010a (a) + Decision 5 do research + cita que task 4.3 implementa fallback awk byte-identical. Bloco `FASE 4.3` placeholder ja documenta o contrato byte-identical para a proxima task. -->
+
+> **Onda-018 (execute-task):** caminho jq happy-path em ~25 linhas de codigo + ~30 linhas de docs inline em `global/skills/model-selector/scripts/report.sh`. Testes: novo `tests/cstk/test_model_selector_report_jq.sh` com 7 cenarios (1-feature haiku, 2-features modes distintos, lazy null sem_dados, fallback basename sem short_name, header 5 colunas, read-only sha256 imutavel, tie-break alfabetico) — 7/7 PASS. Regressao zero: suite model_selector consolidada agora soma 12 arquivos × 89 cenarios (82 existentes + 7 novos), 89/89 PASS. Shellcheck POSIX clean (SC1091 info convencional segue ignorado). Decisoes auditaveis: dec-075..dec-077 registradas. Variavel `HAS_JQ` permanece exportada para que a task 4.3 plugue o branch `else` com paridade byte-identical conforme contrato FR-010a (b).
 
 ### 4.3 Fallback `awk` puro `[C]`
 

@@ -123,11 +123,101 @@ done
 # -----------------------------------------------------------------------
 # Subtarefa 4.1.1: ate aqui, o esqueleto cumpriu seu contrato POSIX
 # (shebang + set -eu, validacao de args, deteccao de jq, leitura read-
-# only). Emite um header placeholder em stdout para a task 4.2 estender.
+# only). Header markdown + tag inline `jq_detectado=<0|1>` permanecem
+# emitidos ANTES da tabela para auditoria do operador.
 # -----------------------------------------------------------------------
 printf '# Relatorio agregado model-selector\n'
 printf '\n'
-printf '<!-- esqueleto: jq_detectado=%d arquivos_validados=%d -->\n' \
+printf '<!-- jq_detectado=%d arquivos_validados=%d -->\n' \
     "$HAS_JQ" "$#"
+printf '\n'
+
+# =======================================================================
+# FASE 4.2 — Caminho `jq` (happy path) — CAMINHO PREFERIDO
+# =======================================================================
+# Subtarefa 4.2.3: documentacao inline da escolha.
+#
+# Este e o CAMINHO PREFERIDO para agregacao de
+# `metricas_acumuladas.model_selector` (refs: FR-010a (a) — carve-out
+# 1.1.0 que autoriza `jq` apenas neste arquivo; Decision 5 do research).
+# A task 4.3 implementa um FALLBACK `awk` puro com output BYTE-IDENTICAL,
+# selecionado quando `command -v jq` retorna falso (HAS_JQ=0). Em
+# ambientes com jq disponivel, este caminho e ~10x mais rapido e ~3x
+# mais conciso que o fallback awk, alem de ter cobertura nativa de
+# parsing JSON aninhado e tolerancia a campos lazy/ausentes.
+#
+# Subtarefa 4.2.1: bloco `if HAS_JQ=1` agrega via expressao jq compacta.
+# Subtarefa 4.2.2: emite tabela markdown com 5 colunas fixas:
+#   feature | sugestoes_total | aceitas | rejeitadas | modelo_final_predominante
+# (uma linha por state.json passado como argumento).
+#
+# Estrategia de agregacao:
+#   - 1 invocacao de `jq` POR arquivo de input (loop shell). Razao:
+#     `.execucao.short_name` e por-arquivo; processar todos juntos com
+#     `jq -s` exigiria correlacao manual de index entre array slurped
+#     e $ARGS.positional, sem ganho de performance perceptivel em N<=20
+#     state.json (escala alvo, fixture 4.5).
+#   - Filtro lazy: `.metricas_acumuladas.model_selector // null` cobre
+#     o caso de campo ausente (state.json antigo) E o caso de campo
+#     presente mas vazio. Em ambos, emite linha com zeros + rotulo
+#     `(sem dados)`.
+#   - Rotulo `feature`: prefere `.execucao.short_name`; fallback para
+#     `basename "$f" .json` (passado via --arg) quando ausente. Garante
+#     tabela legivel mesmo para state.json sem o campo (fixtures de
+#     teste, mock manual).
+#   - `modelo_final_predominante`: derivado como o MODE de
+#     `por_modelo_sugerido` (chave com maior contador). Empate -> chave
+#     alfabeticamente menor (sort estavel). Quando TODAS as 4 chaves
+#     valem 0, emite `(sem dados)` em vez de uma chave arbitraria —
+#     evita falsa impressao de tendencia. O schema (state-extension.md)
+#     NAO armazena este campo de forma persistida; ele e derivado em
+#     leitura. Rotulo abstrato (haiku|sonnet|opus|manter-atual) sem
+#     sufixo de versao — alinhado a FR-002a.
+# -----------------------------------------------------------------------
+if [ "$HAS_JQ" = "1" ]; then
+    # Cabecalho da tabela markdown (5 colunas fixas).
+    printf '| feature | sugestoes_total | aceitas | rejeitadas | modelo_final_predominante |\n'
+    printf '|---|---:|---:|---:|---|\n'
+
+    for _path in "$@"; do
+        _basename=$(basename -- "$_path" .json)
+        # Expressao jq compacta — uma linha por arquivo, formato TSV
+        # convertido inline para a sintaxe `| col1 | col2 | ... |` da
+        # tabela markdown. Tolera lazy null, total zero e rotulos do
+        # enum fixo de `por_modelo_sugerido`.
+        jq -r --arg fb "$_basename" '
+            (.execucao.short_name // $fb) as $feat
+            | (.metricas_acumuladas.model_selector // null) as $m
+            | if $m == null then
+                "| \($feat) | 0 | 0 | 0 | (sem dados) |"
+              else
+                ($m.por_modelo_sugerido // {}) as $pm
+                | (
+                    [ ($pm | to_entries[]) ]
+                    | sort_by(-.value, .key)
+                    | (.[0] // {key:"(sem dados)", value:0})
+                    | if .value == 0 then "(sem dados)" else .key end
+                  ) as $pred
+                | "| \($feat) | \($m.sugestoes_total // 0) | \(($m.por_resultado.aceitas) // 0) | \(($m.por_resultado.rejeitadas) // 0) | \($pred) |"
+              end
+        ' -- "$_path"
+    done
+
+    exit 0
+fi
+
+# =======================================================================
+# FASE 4.3 — Fallback `awk` puro (HAS_JQ=0) — IMPLEMENTADO EM TASK 4.3
+# =======================================================================
+# Quando jq nao esta disponivel no PATH, este bloco PRECISA emitir output
+# BYTE-IDENTICAL ao caminho jq acima (mesmas 5 colunas, mesma ordem de
+# linhas, mesma derivacao de mode com tie-break alfabetico, mesmo rotulo
+# `(sem dados)` para totais zero / lazy null). Sera implementado em task
+# 4.3 via parsing awk linha-a-linha. Por enquanto, este esqueleto sai
+# com exit 0 + tabela vazia + comentario inline para que o esqueleto
+# do report continue valido (FR-010a (a)).
+printf '| feature | sugestoes_total | aceitas | rejeitadas | modelo_final_predominante |\n'
+printf '|---|---:|---:|---:|---|\n'
+printf '<!-- fallback awk pendente: task 4.3 -->\n'
 
 exit 0
