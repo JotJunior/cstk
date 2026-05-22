@@ -260,36 +260,36 @@ secao Gotchas conforme FR-013.
 
 Ref: FR-016, SC-005, CHK046, CHK047
 
-- [ ] 5.1.1 Criar `tests/cstk/test_model_selector_zero_rede.sh` que faz `grep -rn 'curl\|wget\|http\|nc \|/dev/tcp\|ssh \|getent hosts\|dig \|host ' global/skills/model-selector/ | grep -v '^[[:space:]]*#'` e exige zero hits (Ref: CHK046 estende as primitivas alem do trio basico; CHK049 — mecanismo = grep estatico, sem sandbox/unshare overkill para MVP)
-- [ ] 5.1.2 Documentar no header do teste que falsos positivos em comentarios sao filtrados via `grep -v '^[[:space:]]*#'` (resolve CHK047)
+- [x] 5.1.1 Criar `tests/cstk/test_model_selector_zero_rede.sh` que faz `grep -rn 'curl\|wget\|http\|nc \|/dev/tcp\|ssh \|getent hosts\|dig \|host ' global/skills/model-selector/ | grep -v '^[[:space:]]*#'` e exige zero hits (Ref: CHK046 estende as primitivas alem do trio basico; CHK049 — mecanismo = grep estatico, sem sandbox/unshare overkill para MVP) — onda-021: 2 scenarios PASS (`scenario_5_1_1_skill_dir_sem_primitiva_de_rede`, `scenario_5_1_1_scripts_executavel_sem_primitiva_de_rede`).
+- [x] 5.1.2 Documentar no header do teste que falsos positivos em comentarios sao filtrados via `grep -v '^[[:space:]]*#'` (resolve CHK047) — onda-021: header explica filtro de comentarios shell que iniciam com `#` apos whitespace; limitacoes L1 (heredocs) e L2 (in-line `cmd # foo`) tambem documentadas.
 
 ### 5.2 Teste de sem-spawn (CHK054) `[C]`
 
 Ref: FR-013e, CHK054, Edge Case "loop"
 
-- [ ] 5.2.1 Criar `tests/cstk/test_model_selector_no_spawn.sh` que faz `grep -rn 'Task\|Agent\|claude-code\|subagent' global/skills/model-selector/scripts/` e exige zero hits (excluindo comentarios)
-- [ ] 5.2.2 Adicionar ao mesmo teste verificacao de que SKILL.md cita literalmente o Gotcha "skill nao spawna subagente" (Ref: FR-013e)
+- [x] 5.2.1 Criar `tests/cstk/test_model_selector_no_spawn.sh` que faz `grep -rn 'Task\|Agent\|claude-code\|subagent' global/skills/model-selector/scripts/` e exige zero hits (excluindo comentarios) — onda-021: scenario `scenario_5_2_1_scripts_sem_token_de_spawn` PASS.
+- [x] 5.2.2 Adicionar ao mesmo teste verificacao de que SKILL.md cita literalmente o Gotcha "skill nao spawna subagente" (Ref: FR-013e) — onda-021: scenario `scenario_5_2_2_skill_md_cita_gotcha_sem_spawn` PASS (grep -F 'nao spawna subagente' SKILL.md hit no Gotcha (e) linha 161).
 
 ### 5.3 Teste de read-only do report.sh (CHK056) `[C]`
 
 Ref: FR-012, CHK056
 
-- [ ] 5.3.1 Criar `tests/cstk/test_report_read_only.sh` que faz `grep -nE '(>|>>|\btee\b|\bmv\b|\bcp -f\b|\brm\b)' global/skills/model-selector/scripts/report.sh | grep -v '^[[:space:]]*#'` e exige zero hits (Ref: CHK056)
+- [x] 5.3.1 Criar `tests/cstk/test_report_read_only.sh` que faz `grep -nE '(>|>>|\btee\b|\bmv\b|\bcp -f\b|\brm\b)' global/skills/model-selector/scripts/report.sh | grep -v '^[[:space:]]*#'` e exige zero hits (Ref: CHK056) — onda-021: 3 scenarios PASS (`comando_mutacao`, `redirecionamento_escrita`, `append_arquivo`). Regex decomposto em 3 padroes ortogonais + whitelist inventariada (`/dev/null`, string `[<state.json>` de uso, 2 comparacoes `>` em awk source); defesa em profundidade complementa o teste de sha256 ja existente em `test_model_selector_report_skeleton.sh` (estatico + runtime).
 
 ### 5.4 Gotchas obrigatorios na SKILL.md (CHK033) `[C]`
 
 Ref: FR-013 (a-e), CHK032, CHK033, CHK035
 
-- [ ] 5.4.1 Adicionar secao `## Gotchas` ao `SKILL.md` com 5 sub-headings (a-e) conforme FR-013
-- [ ] 5.4.2 Cada gotcha cita: sintoma observavel + acao corretiva (Ref: CHK035). Gotcha (d) MUST citar explicitamente "teto 2 na auto-invocacao" (resolve CHK045 — score 3 reservado para evolucao futura)
-- [ ] 5.4.3 Estender `test_model_selector_skill_lines.sh` (ou criar `test_model_selector_gotchas.sh`) para validar que existem exatamente 5 sub-headings sob `## Gotchas` via `awk '/^## Gotchas/,/^## /{print}' SKILL.md | grep -c '^### '` >= 5 (Ref: CHK033)
+- [x] 5.4.1 Adicionar secao `## Gotchas` ao `SKILL.md` com 5 sub-headings (a-e) conforme FR-013 — ja entregue em onda anterior; onda-021 confirmou via grep que SKILL.md L124-171 contem 5 sub-headings `### (a)`..`### (e)`.
+- [x] 5.4.2 Cada gotcha cita: sintoma observavel + acao corretiva (Ref: CHK035). Gotcha (d) MUST citar explicitamente "teto 2 na auto-invocacao" (resolve CHK045 — score 3 reservado para evolucao futura) — ja entregue: Gotcha (d) L151-159 cita literalmente "teto pratico de score 2 (dec-006)".
+- [x] 5.4.3 Estender `test_model_selector_skill_lines.sh` (ou criar `test_model_selector_gotchas.sh`) para validar que existem exatamente 5 sub-headings sob `## Gotchas` via `awk '/^## Gotchas/,/^## /{print}' SKILL.md | grep -c '^### '` >= 5 (Ref: CHK033) — onda-021: criado `test_model_selector_gotchas.sh` com 2 scenarios PASS (`gotchas_tem_pelo_menos_5_subheadings` e `gotcha_d_cita_teto_2_na_auto_invocacao`).
 
 ### 5.5 Teste de no-eval e no-find-sobre-input (CHK022, CHK060) `[A]`
 
 Ref: CHK022, CHK060 (resolvidos via onda-006 /analyze, dec-029)
 
-- [ ] 5.5.1 Criar `tests/cstk/test_model_selector_no_eval_no_find_user_input.sh` que faz `grep -nE '\beval\b|\bfind\b' global/skills/model-selector/scripts/ | grep -v '^[[:space:]]*#'` e exige zero hits (regra: nenhum `find <var>` onde `<var>` deriva direta ou indiretamente de `$1`/stdin; nenhum `eval` em qualquer caminho)
-- [ ] 5.5.2 Documentar no header do teste que a regra cobre concatenacao indireta via variavel intermediaria + expansao de glob
+- [x] 5.5.1 Criar `tests/cstk/test_model_selector_no_eval_no_find_user_input.sh` que faz `grep -nE '\beval\b|\bfind\b' global/skills/model-selector/scripts/ | grep -v '^[[:space:]]*#'` e exige zero hits (regra: nenhum `find <var>` onde `<var>` deriva direta ou indiretamente de `$1`/stdin; nenhum `eval` em qualquer caminho) — onda-021: scenario `scenario_5_5_1_scripts_sem_eval_nem_find` PASS. classify.sh L165 (unica ocorrencia) e comentario explicativo `# SEM eval, SEM sh -c "$INPUT"` — filtrado corretamente.
+- [x] 5.5.2 Documentar no header do teste que a regra cobre concatenacao indireta via variavel intermediaria + expansao de glob — onda-021: header documenta regra dura ("nenhum find em scripts/ da skill") + exemplo proibido com variavel intermediaria + limitacao intencional (find sobre path fixo `references/` tambem proibido para maior rigor).
 
 ---
 
