@@ -336,7 +336,7 @@ Contrato **suggest-only**: skill nunca decide sozinha — apenas sugere
 com evidencia. Operador SEMPRE pode override via Decisao manual.
 Fallback `manter-atual` quando score < 2 (input ambiguo ou empate).
 Spec completa em
-[`docs/specs/agente-00c-model-routing/`](./docs/specs/agente-00c-model-routing/)
+[`docs/specs/_archived/agente-00c-model-routing/`](./docs/specs/_archived/agente-00c-model-routing/)
 (20 FRs, 6 invariantes INV-1..INV-6, 4 load-bearing CHKs).
 
 ## Insights de Uso
