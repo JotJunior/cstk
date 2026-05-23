@@ -614,8 +614,8 @@ aviso. O índice fica isolado em `~/.claude/cstk/`, separado do estado
 transacional por projeto.
 
 **Documentação completa**:
-- [`docs/specs/cstk-knowledge-db/spec.md`](docs/specs/cstk-knowledge-db/spec.md) — user stories, FRs, success criteria
-- [`docs/specs/cstk-knowledge-db/contracts/cstk-recall.md`](docs/specs/cstk-knowledge-db/contracts/cstk-recall.md) — modos, flags, exit codes, esquema FTS5
+- [`docs/specs/_archived/cstk-knowledge-db/spec.md`](docs/specs/_archived/cstk-knowledge-db/spec.md) — user stories, FRs, success criteria
+- [`docs/specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md`](docs/specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md) — modos, flags, exit codes, esquema FTS5
 
 ## Convenções de Nomenclatura
 

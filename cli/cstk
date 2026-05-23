@@ -165,7 +165,7 @@ HELP
       exit "$CSTK_EXIT_OK"
       ;;
     recall)
-      printf 'cstk help recall: consulte docs/specs/cstk-knowledge-db/contracts/cstk-recall.md\n'
+      printf 'cstk help recall: consulte docs/specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md\n'
       printf 'Para help inline, rode: cstk recall --help\n'
       exit "$CSTK_EXIT_OK"
       ;;

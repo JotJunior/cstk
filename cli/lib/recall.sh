@@ -97,7 +97,7 @@ MODO RECONSTRUCAO (--reindex):
 
 Indice derivado e reconstruivel via --reindex. Read-only sobre o state
 transacional. Degradacao graciosa: ausencia de sqlite3/jq nunca aborta.
-Documentacao: docs/specs/cstk-knowledge-db/contracts/cstk-recall.md
+Documentacao: docs/specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md
 USAGE
 }
 
