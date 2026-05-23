@@ -139,6 +139,8 @@ COMANDOS:
   list          Lista skills instaladas
   doctor        Verifica integridade da instalacao e manifests
   session       Sessoes paralelas via git worktree (start/list/end/pr)
+  recall        Busca cross-feature na memoria de conhecimento (SQLite+FTS5);
+                tambem --ingest (pos-onda) e --reindex (reconstrucao)
   00c <path>    Bootstrap interativo de projeto-alvo do agente-00C
                 (cria diretorio, coleta parametros e invoca claude)
 
@@ -162,6 +164,11 @@ HELP
         "$_sub" "$_sub"
       exit "$CSTK_EXIT_OK"
       ;;
+    recall)
+      printf 'cstk help recall: consulte docs/specs/cstk-knowledge-db/contracts/cstk-recall.md\n'
+      printf 'Para help inline, rode: cstk recall --help\n'
+      exit "$CSTK_EXIT_OK"
+      ;;
     00c)
       printf 'cstk help 00c: consulte docs/specs/cstk-cli/contracts/cstk-00c.md\n'
       printf 'Para help inline, rode: cstk 00c --help\n'
@@ -172,7 +179,7 @@ HELP
       ;;
     *)
       printf 'cstk: comando desconhecido para help: %s\n' "$_sub" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, 00c\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, 00c\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac
@@ -194,7 +201,7 @@ _dispatch() {
     -V|--version|version)
       _cmd_version
       ;;
-    install|update|self-update|list|doctor|session)
+    install|update|self-update|list|doctor|session|recall)
       # Boot-check para todos exceto self-update (que e o caminho de recovery
       # da janela transiente — bloquea-lo aqui causaria deadlock).
       case "$_cmd" in
@@ -243,7 +250,7 @@ _dispatch() {
       ;;
     *)
       printf 'cstk: comando desconhecido: %s\n' "$_cmd" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, 00c, help, --version\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, 00c, help, --version\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac

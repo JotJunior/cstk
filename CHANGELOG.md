@@ -7,6 +7,46 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.17.0] - 2026-05-23
+
+Adiciona a camada aditiva de memória de conhecimento cross-feature: um índice
+SQLite global (`~/.claude/cstk/knowledge.db`, FTS5) alimentado por um hook
+best-effort no fim de cada onda dos orquestradores `agente-00c`/`feature-00c`,
+e o novo comando `cstk recall` para busca cross-projeto/feature com
+proveniência. O índice é puramente derivado — o `state.json` transacional
+permanece a fonte de verdade, intacto, fora do caminho crítico. Sem breaking
+changes.
+
+### Added
+
+- **Comando `cstk recall`** em `cli/lib/recall.sh` (POSIX sh + `jq` +
+  `sqlite3`), com três modos:
+  - **busca** (default): `cstk recall <query> [--project P] [--type T]
+    [--limit N] [--db PATH]` — full-text via FTS5/bm25 sobre decisões,
+    bloqueios, retro-execuções e skills invocadas, ordenado por relevância e
+    exibindo proveniência (projeto / feature / onda / data). `--type` aceita
+    `decision|bloqueio|retro|skill`; `--limit` exige inteiro positivo (default
+    20).
+  - **ingestão** (`--ingest --state-dir DIR`): extrai os registros de um
+    `state.json` e faz upsert idempotente no índice (filtrado por
+    `secrets-filter` antes da escrita). É o hook chamado no fim de onda.
+  - **reconstrução** (`--reindex [--states-root DIR]`): reconstrói o índice a
+    partir dos `state.json`/`state-history` existentes, tornando a base
+    totalmente descartável e regenerável.
+- **Hook de fim de onda** documentado em ambos os orquestradores
+  (`agente-00c-orchestrator` e `agente-00c-feature-orchestrator`): após o
+  backup filtrado da onda, invoca `cstk recall --ingest` em modo best-effort.
+- **Segurança de entrada** em `recall.sh`: escaping em duas camadas (literais
+  SQL via duplicação de aspas simples + tokens FTS5 via duplicação de aspas
+  duplas), validação de `--limit` como inteiro, e rejeição/strip de bytes NUL.
+- **Degradação graciosa**: a ausência de `sqlite3` ou `jq` nunca aborta uma
+  onda — o hook e o `recall` saem com status 0 emitindo um aviso. O índice é
+  isolado em `~/.claude/cstk/`, separado do estado transacional por projeto.
+- **Cobertura**: 20 cenários em `tests/cstk/test_recall.sh` (quickstart 1-14,
+  detector/strip de NUL, degradação sem `sqlite3`/`jq`, índice corrompido,
+  reindex, adversariais e concorrência), `shellcheck -s sh` limpo. Spec em
+  `docs/specs/cstk-knowledge-db/`.
+
 ## [3.16.0] - 2026-05-23
 
 Adiciona a skill `decision-tree`, que gera um relatório HTML interativo em

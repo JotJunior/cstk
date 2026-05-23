@@ -185,6 +185,17 @@ Sequencia da onda corrente. Cada iteracao:
 9. recomputar hash:
    state-rw.sh sha256-update --state-dir $STATE_DIR
 10. state-ondas.sh end (com motivo: threshold|concluido|bloqueio|aborto)
+10.bis (best-effort, ADITIVO — FASE 7 cstk-knowledge-db, FR-006/FR-018):
+    ingerir o conhecimento da onda na memoria cross-feature APOS o end:
+      cstk recall --ingest --state-dir $STATE_DIR 2>/dev/null || \
+        log_out "knowledge-db: ingestao pulada (cstk/sqlite3/jq ausentes)"
+    REGRA DURA: esta chamada NUNCA gateia a onda. Se `cstk` ausente no
+    PATH, ou exit != 0, ou qualquer falha da camada de conhecimento,
+    apenas logue e SIGA (SC-003). A ingestao e read-only sobre o
+    state.json (so jq de leitura) e escreve apenas em ~/.claude/cstk/
+    knowledge.db (indice derivado/reconstruivel, isolado do state
+    transacional). Pular este passo jamais altera o fluxo de
+    fechamento/Schedule da onda.
 11. emitir relatorio final (se status terminal) via
     report.sh emit --flavor feature-00c --short-name <name>
 12. liberar lock (state-lock.sh release)

@@ -572,6 +572,51 @@ cstk session end iniciacao-membro --force
 - [`docs/specs/cstk-session/spec.md`](docs/specs/_archived/cstk-session/spec.md) — user stories, FRs, success criteria
 - [`docs/specs/cstk-session/contracts/cli-session.md`](docs/specs/_archived/cstk-session/contracts/cli-session.md) — exit codes (5-15), flags, output formats
 
+## Memória de conhecimento (`cstk recall`)
+
+Camada **aditiva** de memória cross-feature: um índice SQLite global
+(`~/.claude/cstk/knowledge.db`, full-text via FTS5) alimentado automaticamente
+no fim de cada onda dos orquestradores `agente-00c`/`feature-00c`. Permite
+buscar decisões, bloqueios, retro-execuções e skills invocadas de **qualquer
+projeto ou feature já executados**, com proveniência (projeto / feature / onda
+/ data).
+
+O índice é puramente **derivado** — o `state.json` transacional permanece a
+fonte de verdade, intacto e fora do caminho crítico. A base inteira é
+descartável: pode ser reconstruída a qualquer momento via `--reindex` a partir
+dos `state.json`/`state-history` existentes.
+
+```bash
+# Buscar (full-text, ordenado por relevância bm25)
+cstk recall "lock contention"
+
+# Filtrar por projeto, tipo de registro e limitar resultados
+cstk recall "secrets-filter" --project claude-ai-tips --type decision --limit 5
+
+# Reconstruir o índice do zero a partir dos states existentes
+cstk recall --reindex
+
+# Ingestão manual de uma feature específica (normalmente o hook faz isto)
+cstk recall --ingest --state-dir .claude/feature-00c-state/<short-name>
+```
+
+**Flags do modo busca**:
+
+- `--project P` — filtra pelo projeto de origem
+- `--type T` — `decision` | `bloqueio` | `retro` | `skill`
+- `--limit N` — máximo de resultados (inteiro positivo; default 20)
+- `--db PATH` — índice alternativo (default `$CSTK_KNOWLEDGE_DB` ou
+  `~/.claude/cstk/knowledge.db`)
+
+**Degradação graciosa**: a ausência de `sqlite3` ou `jq` **nunca** aborta uma
+onda — o hook de ingestão e o `recall` saem com status 0 emitindo apenas um
+aviso. O índice fica isolado em `~/.claude/cstk/`, separado do estado
+transacional por projeto.
+
+**Documentação completa**:
+- [`docs/specs/cstk-knowledge-db/spec.md`](docs/specs/cstk-knowledge-db/spec.md) — user stories, FRs, success criteria
+- [`docs/specs/cstk-knowledge-db/contracts/cstk-recall.md`](docs/specs/cstk-knowledge-db/contracts/cstk-recall.md) — modos, flags, exit codes, esquema FTS5
+
 ## Convenções de Nomenclatura
 
 | Tipo | Padrão | Exemplo |

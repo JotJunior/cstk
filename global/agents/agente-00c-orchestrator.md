@@ -971,6 +971,22 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    Motivos validos: `etapa_concluida_avancando`, `threshold_proxy_atingido`,
    `bloqueio_humano`, `aborto`, `concluido`.
 
+9.bis. **Ingestao na memoria de conhecimento (best-effort, ADITIVO —
+   FASE 7 cstk-knowledge-db, FR-006/FR-018)**: apos o `end`, ingerir o
+   conhecimento da onda na memoria cross-feature:
+
+   ```bash
+   cstk recall --ingest --state-dir <SD> 2>/dev/null || \
+     log_out "knowledge-db: ingestao pulada (cstk/sqlite3/jq ausentes)"
+   ```
+
+   REGRA DURA: esta chamada NUNCA gateia a onda. `cstk` ausente no PATH,
+   exit != 0, ou qualquer falha da camada de conhecimento → apenas logue
+   e SIGA (SC-003). A ingestao e read-only sobre o `state.json` (so `jq`
+   de leitura) e escreve apenas em `~/.claude/cstk/knowledge.db` (indice
+   derivado/reconstruivel, isolado do state transacional). Pular este
+   passo jamais altera o fluxo de fechamento/commit/Schedule da onda.
+
 10. **Persistencia + commit local**:
     `state-rw.sh sha256-update` (idempotente; ja chamado por write/set);
     `state-ondas.sh git-commit --state-dir <SD>
