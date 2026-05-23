@@ -7,6 +7,73 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.15.0] - 2026-05-23
+
+Entrega da feature `agente-00c-model-routing` via pipeline SDD
+autonoma `/feature-00c` em 21 ondas com 42+ decisoes auditaveis.
+Integra a skill standalone `model-selector` (v3.14.0) aos
+orquestradores autonomos `agente-00c` e `feature-00c` no spawn de
+subagentes via tool Agent (clarify-asker + clarify-answerer),
+registrando Decisao auditavel + entrada em
+`.ondas[N].skills_invoked[]` por spawn. Sem breaking changes.
+
+### Added
+
+- **Helper POSIX `model-routing.sh`** em
+  `global/skills/agente-00c-runtime/scripts/`: 3 subcomandos
+  (`template`, `invoke`, `idempotent-check`) implementando
+  invariantes INV-1..INV-6 do contract. `template` emite payload
+  determinista para input do `model-selector`; `invoke` orquestra
+  classify+register+skill-invoked em uma transacao atomica via
+  state-lock; `idempotent-check` rejeita re-spawn com mesmo input
+  (mesmo `decisao-id` + mesmo input-hash). Cobertura: 94 cenarios
+  shell em `tests/test_model-routing.sh`, `shellcheck -s sh` limpo.
+- **Reconciliador `state-decisions-reconcile.sh`** em
+  `global/skills/agente-00c-runtime/scripts/`: 2 subcomandos
+  (`detect`, `repair`). Resolve **half-records** (decisao sem
+  entrada em `skills_invoked[]` ou vice-versa) detectados em
+  retomadas pos-crash. `--dry-run` lista divergencias sem mutar;
+  `--apply` reescreve mantendo append-only via merge auditavel.
+  Cobertura: 11 cenarios em `tests/test_state-decisions-reconcile.sh`.
+- **Agregador `model-routing-report.sh aggregate`** em
+  `global/skills/agente-00c-runtime/scripts/`: consome state.json e
+  emite tabela markdown (total de roteamentos, distribuicao por
+  modelo `haiku|sonnet|opus|manter-atual`, taxa de fallback,
+  half-records pendentes — deve ser 0). Consumido pelo
+  `review-task` para auditoria de cobertura de model-routing.
+  Cobertura: 17 cenarios em `tests/test_model-routing-report.sh`.
+- **Integracao em `agente-00c-orchestrator.md` §5.e.bis**: nova
+  secao "Roteamento de modelos pre-spawn" com sequencia 8-step e
+  invariantes I1 (toda decisao gera skill_invoked match), I2 (toda
+  retomada checa half-records), I3 (idempotencia por input-hash).
+  Analogo em `agente-00c-feature-orchestrator.md`.
+- **Auditoria em `review-task/SKILL.md` §4.5**: nova subsecao
+  "Model-routing coverage" — review-task agora chama
+  `model-routing-report.sh aggregate` e reporta saude do roteamento
+  (cobertura de spawns, taxa de fallback, half-records).
+- **Spec SDD completa** em
+  `docs/specs/agente-00c-model-routing/`: spec.md (20 FRs),
+  plan.md, research.md, data-model.md, quickstart.md, tasks.md
+  (~100 tarefas em 7 fases), contracts/
+  (`model-routing-helper.md` com 6 invariantes,
+  `orchestrator-integration.md`), checklists/requirements.md
+  (50 items, 4 load-bearing CHK032/CHK047/CHK048/CHK050).
+
+### Fixed
+
+- **Performance: watcher subshell leak** (descoberto durante
+  execucao da feature): scripts internos do agente-00c-runtime
+  spawnavam subshells de watcher em loop sem cleanup, causando
+  ~16.8x overhead em ondas longas. Corrigido com trap EXIT
+  explicito + PID tracking. Impacto: ondas de execute-task longas
+  (>10min) agora finalizam ~17x mais rapido.
+
+### Changed
+
+- `review-task/SKILL.md` ganhou §4.5 (model-routing audit). Demais
+  secoes inalteradas — comportamento backwards-compatible quando
+  state.json nao tem `skills_invoked[]` com entries do model-selector.
+
 ## [3.14.0] - 2026-05-22
 
 Tres entregas principais: (1) skill `model-selector` completa via

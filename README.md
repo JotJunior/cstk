@@ -313,6 +313,32 @@ compartilhado (`agente-00c-runtime`). Detalhamento em
 [`docs/specs/feature-00c/`](./docs/specs/feature-00c/) (37 FRs, 14
 SCs, 11 cenarios de validacao + roundtrip empirico de secrets).
 
+### Roteamento de modelos no spawn (model-routing)
+
+A partir de v3.15.0, ambos os orquestradores (`agente-00c` +
+`feature-00c`) integram a skill standalone **model-selector** no
+spawn de subagentes via tool Agent: antes de cada spawn (clarify-asker,
+clarify-answerer), o orquestrador invoca `model-selector`, captura
+sugestao (`haiku`/`sonnet`/`opus`/`manter-atual`) com score e duas
+evidencias, registra **Decisao auditavel** (`state-decisions.sh`) e
+append em `.ondas[N].skills_invoked[]` para auditoria via `review-task`.
+
+| Componente | Localizacao |
+|------------|-------------|
+| Skill standalone (sugestor) | `global/skills/model-selector/` (entregue em v3.14.0) |
+| Helper POSIX (3 subcomandos) | `global/skills/agente-00c-runtime/scripts/model-routing.sh` |
+| Reconciliador half-record | `global/skills/agente-00c-runtime/scripts/state-decisions-reconcile.sh` |
+| Agregador para review-task | `global/skills/agente-00c-runtime/scripts/model-routing-report.sh` |
+| Integracao §5.e.bis | `global/agents/agente-00c-orchestrator.md` + `global/agents/agente-00c-feature-orchestrator.md` |
+| Auditoria §4.5 | `global/skills/review-task/SKILL.md` |
+
+Contrato **suggest-only**: skill nunca decide sozinha — apenas sugere
+com evidencia. Operador SEMPRE pode override via Decisao manual.
+Fallback `manter-atual` quando score < 2 (input ambiguo ou empate).
+Spec completa em
+[`docs/specs/agente-00c-model-routing/`](./docs/specs/agente-00c-model-routing/)
+(20 FRs, 6 invariantes INV-1..INV-6, 4 load-bearing CHKs).
+
 ## Insights de Uso
 
 A skill `apply-insights` aplica insights de uso ao projeto. Ela lê de
