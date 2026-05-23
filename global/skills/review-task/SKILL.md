@@ -130,6 +130,55 @@ Essas skills produzem relatorios complementares ao review-task e ajudam
 a flagar tarefas marcadas como concluidas que ainda tem violacoes de
 convencao do projeto.
 
+### 4.5 Agregacao de selecao de modelo (model-routing)
+
+Quando a feature em revisao tem um `state.json` da execucao
+`feature-00c` em `<projeto>/.claude/feature-00c-state/<feature>/`,
+agregue as Decisoes de selecao de modelo emitidas pelo
+`agente-00c-feature-orchestrator` (FR-018 da feature
+`agente-00c-model-routing`) e inclua a secao canonica no relatorio.
+
+**Como invocar** o helper read-only:
+
+```bash
+STATE_DIR="<projeto>/.claude/feature-00c-state/<feature>"
+~/.claude/skills/agente-00c-runtime/scripts/model-routing-report.sh \
+  aggregate --state-dir "$STATE_DIR"
+```
+
+O helper imprime em stdout um bloco Markdown pronto para colar no
+relatorio — cabecalho `## Selecao de modelo por subagente
+(model-routing)` + tabela GFM (`subagent_type | etapa | onda | modelo |
+score | fallback`) + bloco `**Sumario**:` com contagens por rotulo +
+percentual de fallback. NAO reformate o output: passe verbatim.
+
+**Quando incluir a secao** (regra binaria):
+
+- **Incluir** quando o helper retorna exit 0 e o stdout contem >=1
+  linha de tabela (i.e. ha Decisoes de selecao no state).
+- **Omitir** quando exit 0 com tabela vazia (`Total: 0`) — nao emita
+  cabecalho sozinho; isso evita ruido em features pure-doc.
+- **Skip auditavel** quando exit !=0: nao inclua a secao, mas adicione
+  nota em "Recomendacoes" com formato definido em
+  `docs/specs/agente-00c-model-routing/contracts/review-task-aggregate.md`
+  §4.
+
+**Posicionamento**: insira a secao **apos** "Progresso por Fase" e
+**antes** de "Recomendacoes" no template (vide §"Formato do Relatorio"
+abaixo).
+
+**Path canonico do relatorio**: salvar em
+`docs/specs/<feature>/review-<onda-id>.md` (onde `<onda-id>` e a string
+opaca da onda corrente — convencao atual do toolkit e `onda-NNN`
+zero-padded, extraida de `.ondas[-1].onda_id` do state). Path canonico
+ratificado em
+`docs/specs/agente-00c-model-routing/contracts/review-task-aggregate.md`
+§1.
+
+**Defesa em profundidade**: se o helper esta ausente (ex: skill
+`agente-00c-runtime` nao instalada), pule a agregacao silenciosamente
+— nao bloqueie o restante do review-task.
+
 ### 5. Acoes Automaticas
 
 Ao identificar inconsistencias:
@@ -212,6 +261,23 @@ Ordene tarefas pendentes por:
 
 ---
 
+<!-- INSERIR AQUI quando aplicavel — vide §4.5 (Agregacao de selecao de modelo) -->
+## Selecao de modelo por subagente (model-routing)
+
+| subagent_type | etapa | onda | modelo | score | fallback |
+|---------------|-------|------|--------|-------|----------|
+| ...           | ...   | ...  | ...    | ...   | ...      |
+
+**Sumario**:
+- Total: N
+- haiku: n
+- sonnet: n
+- opus: n
+- manter-atual: n
+- fallback-default: n (pct%)
+
+---
+
 ## Recomendacoes
 
 ### Acoes Imediatas
@@ -272,3 +338,7 @@ Quando tasks.md cobre 5+ modulos/servicos, auditar sequencialmente multiplica o 
 ### Nao confundir com execute-task
 
 Esta skill LE e RELATA; nao executa trabalho pendente. Se o usuario pergunta "status" e recomenda uma tarefa, nao emenda `/execute-task` no mesmo turno — pergunte se quer prosseguir.
+
+### Agregado model-routing nao deve ser reformatado
+
+O `model-routing-report.sh aggregate` retorna Markdown ja canonicalizado (cabecalho, colunas, sumario com chaves fixas). Reformatar (mudar header, reordenar colunas, esconder rotulos com zero) quebra o INV-RT-1 do contrato `docs/specs/agente-00c-model-routing/contracts/review-task-aggregate.md` e invalida testes de integracao. Copie verbatim ou nao inclua.

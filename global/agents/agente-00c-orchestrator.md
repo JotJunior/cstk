@@ -436,6 +436,395 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
 
    g. Etapa clarify completa: prossiga para o item 6.
 
+   ### 5.e.bis Sequencia pre-spawn de subagente (model-routing)
+
+   Esta secao define a sequencia OBRIGATORIA de chamadas antes de cada
+   `spawn-tracker.sh enter` + `tool Agent` na fase `clarify` (asker e
+   answerer). Implementa FR-010, FR-011, FR-012, FR-016, FR-017 da
+   feature `agente-00c-model-routing` e o contrato em
+   `docs/specs/agente-00c-model-routing/contracts/orchestrator-integration.md`.
+
+   **Objetivo**: registrar uma Decisao auditavel (entidade `Decisao`,
+   FR-015) escolhendo o modelo recomendado para cada subagente,
+   ANTES do spawn. A `escolha` da Decisao e auditoria pura (FR-017):
+   ela NAO MUST virar hint automatico para a tool Agent — o harness
+   atual nao aceita `model` como parametro de spawn; a Decisao serve
+   apenas para rastro + telemetria via review-task.
+
+   **Ordem canonica** (idempotente por onda + subagent_type — FR-012,
+   dec-004):
+
+   ```
+   1. spawn-tracker.sh check        (FR-013 — depth disponivel?)
+   2. ONDA_ID = state-ondas.sh current-id
+   3. EXISTING = model-routing.sh idempotent-check     (FR-012)
+        exit 0 -> ja existe dec-NNN para (onda, T); pular 4-6
+        exit 1 -> prosseguir
+   4. JSON = model-routing.sh invoke --subagent-type T --etapa clarify
+   5. DEC_ID = state-decisions.sh register             (FR-015, FR-017)
+   6. state-ondas.sh record-skill --skill model-selector --decisao-id $DEC_ID
+   7. spawn-tracker.sh enter        (incrementa profundidade)
+   8. tool Agent (subagent_type=T)  (modelo escolhido fica AUDITADO via
+                                     dec-NNN; nao e passado a tool Agent)
+   ```
+
+   #### Invariante I1 — "1 Decisao por spawn REAL, nao por spawn potencial"
+
+   Ref: dec-005, Edge Case item 4 da feature
+   `agente-00c-model-routing`, FR-015.
+
+   Se o passo (b) `Spawn clarify-asker` retornou `perguntas: []`
+   (no-op semantico: nao ha duvidas a responder, fase clarify
+   completa), o orquestrador NAO MUST invocar a sequencia 1-7 para
+   `clarify-answerer` — porque o answerer NAO sera spawnado.
+   Invariante reciproca: para cada Decisao com
+   `contexto = "Selecao de modelo para subagente <T>"` deve existir
+   exatamente UM `spawn-tracker.sh enter` subsequente com
+   `subagent_type=<T>` na mesma onda. Decisao orfa (sem spawn
+   correspondente) e violacao de auditoria — review-task reporta
+   como finding `model-routing-orphan-decision`.
+
+   Concretamente, o controle de fluxo do orquestrador apos receber a
+   resposta do asker e:
+
+   ```
+   ASKER_OUTPUT=<JSON do asker>
+   PERGUNTAS=$(printf '%s' "$ASKER_OUTPUT" | jq '.perguntas | length')
+   if [ "$PERGUNTAS" -eq 0 ]; then
+     # Fase clarify completa: NAO invocar 1-7 para answerer.
+     # Avancar diretamente para plan (Loop principal passo 5).
+     continue
+   fi
+   # else: rodar a sequencia 1-7 para SUBAGENT_TYPE=clarify-answerer
+   ```
+
+   #### Invariante I2 — Retomada idempotente via `/agente-00c-resume`
+
+   Ref: dec-004 (idempotencia via jq em `.decisoes[]`), FR-012,
+   Edge Case "Retomada via `/agente-00c-resume` no meio da fase clarify".
+
+   Cenario: o processo do orquestrador sofre preempcao/crash ENTRE o
+   `state-decisions.sh register` (passo 5) e o `spawn-tracker.sh enter`
+   (passo 7) — ou entre o `enter` e o retorno da tool Agent. Ao
+   retomar via `/agente-00c-resume`, o orquestrador re-entra na mesma
+   onda. Sem protecao, a sequencia 1-7 rodaria de novo e registraria
+   uma SEGUNDA Decisao para o mesmo `(onda_id, subagent_type)`,
+   inflando `.decisoes` e violando SC-001.
+
+   **Protocolo obrigatorio de retomada**: o `/agente-00c-resume` (e
+   por simetria `/feature-00c-resume`) DEVE delegar ao orquestrador a
+   responsabilidade de rodar o passo 3 (`model-routing.sh
+   idempotent-check`) ANTES de qualquer chamada `model-routing.sh
+   invoke` ou `state-decisions.sh register`. O fluxo permanece
+   identico ao Loop principal: nenhum branch especial para "modo
+   retomada" — a propria idempotencia garante o comportamento:
+
+   - **idempotent-check exit 0** → ja existe `dec-NNN` matching;
+     stdout traz o id; pular passos 4-6; ir direto para passo 7
+     (`spawn-tracker.sh enter`) + passo 8 (tool Agent).
+   - **idempotent-check exit 1** → nao existe; rodar passos 4-6
+     normalmente.
+
+   Skip silencioso (exit 0 + reaproveitamento da Decisao) e
+   AUDITAVEL: o orquestrador NAO precisa registrar Decisao adicional
+   "pulei por idempotencia" — o proprio fato de `.decisoes` ter
+   exatamente 1 entrada por `(onda_id, subagent_type)` apos retomada e
+   a evidencia. review-task verifica essa invariante via query jq
+   agregada (ver `contracts/orchestrator-integration.md §Invariantes
+   consumidas por review-task`).
+
+   Anti-padrao a evitar: tentar "limpar Decisoes parciais" ou rodar a
+   sequencia 1-7 incondicionalmente em retomada. Ambos violam FR-012.
+
+   **Bloco Bash referencial** (paths absolutos, flags exatas — paralelo
+   ao bloco em §5.f Quality Gates):
+
+   ```bash
+   # Pre-flight de spawn (rodar para CADA subagente: asker e answerer)
+   #
+   # Variaveis esperadas no escopo do orquestrador:
+   #   SD                 -> $AGENTE_00C_STATE_DIR (state-dir absoluto)
+   #   SUBAGENT_TYPE      -> "agente-00c-clarify-asker" ou
+   #                         "agente-00c-clarify-answerer"
+   #   ORCHESTRATOR_ID    -> "agente-00c-orchestrator"
+   #   RUNTIME_SCRIPTS    -> ~/.claude/skills/agente-00c-runtime/scripts
+
+   # Passo 1: depth disponivel?
+   "$RUNTIME_SCRIPTS"/spawn-tracker.sh check \
+     --state-dir "$SD" --max-depth 3 || { echo "abort: depth"; exit 3; }
+
+   # Passo 2: ONDA_ID corrente
+   ONDA_ID=$("$RUNTIME_SCRIPTS"/state-ondas.sh current-id --state-dir "$SD")
+
+   # Passo 3: idempotent-check (FR-012, dec-004)
+   if EXISTING_DEC=$("$RUNTIME_SCRIPTS"/model-routing.sh idempotent-check \
+        --state-dir "$SD" --onda-id "$ONDA_ID" \
+        --subagent-type "$SUBAGENT_TYPE" 2>/dev/null); then
+     DEC_ID="$EXISTING_DEC"
+     # Log auditavel: pulou model-routing por idempotencia
+   else
+     # Passo 4: invoke do helper (gera JSON com modelo + score + sinais)
+     JSON=$("$RUNTIME_SCRIPTS"/model-routing.sh invoke \
+              --subagent-type "$SUBAGENT_TYPE" --etapa clarify)
+
+     # Extrair campos do JSON (jq + saneamento conforme contrato)
+     MODELO=$(printf '%s' "$JSON"      | jq -r '.modelo')
+     SCORE=$(printf '%s' "$JSON"       | jq -r '.score_runtime')
+     SINAIS=$(printf '%s' "$JSON"      | jq -r '.sinais_text')
+     IS_FB=$(printf '%s' "$JSON"       | jq -r '.fallback // false')
+     FB_REASON=$(printf '%s' "$JSON"   | jq -r '.fallback_reason // ""')
+
+     if [ "$IS_FB" = "true" ]; then
+       # Modo fallback (FR-014): escolha "fallback-default", score 0,
+       # sem --evidencia (nao aplica a score=0)
+       DEC_ID=$("$RUNTIME_SCRIPTS"/state-decisions.sh register \
+                  --state-dir "$SD" \
+                  --agente "$ORCHESTRATOR_ID" --etapa "clarify" \
+                  --contexto "Selecao de modelo para subagente $SUBAGENT_TYPE" \
+                  --opcoes '["haiku","sonnet","opus","manter-atual","fallback-default"]' \
+                  --escolha "fallback-default" \
+                  --score 0 \
+                  --justificativa "fallback: $FB_REASON")
+     else
+       # Modo normal (score >= 2 do model-selector)
+       DEC_ID=$("$RUNTIME_SCRIPTS"/state-decisions.sh register \
+                  --state-dir "$SD" \
+                  --agente "$ORCHESTRATOR_ID" --etapa "clarify" \
+                  --contexto "Selecao de modelo para subagente $SUBAGENT_TYPE" \
+                  --opcoes '["haiku","sonnet","opus","manter-atual","fallback-default"]' \
+                  --escolha "$MODELO" \
+                  --score "$SCORE" \
+                  --justificativa "$SINAIS" \
+                  --evidencia "$SINAIS")
+     fi
+
+     # Passo 6: rastrear skill model-selector no roster da onda
+     "$RUNTIME_SCRIPTS"/state-ondas.sh record-skill --state-dir "$SD" \
+       --skill model-selector --decisao-id "$DEC_ID"
+   fi
+
+   # Passo 7: incrementar depth ANTES do spawn real
+   "$RUNTIME_SCRIPTS"/spawn-tracker.sh enter --state-dir "$SD"
+
+   # Passo 8: spawn REAL (tool Agent) — modelo da Decisao NAO e passado
+   # como parametro; harness atual nao aceita override de modelo.
+   #
+   # tool Agent: subagent_type=$SUBAGENT_TYPE, prompt=<conforme §5.e>
+   #
+   # Apos retorno: spawn-tracker.sh leave (ja documentado em §5.e).
+   ```
+
+   **Importante** (FR-017 — auditoria, nao automacao): o campo
+   `escolha` da Decisao gerada pelo passo 5 e PURAMENTE AUDITAVEL.
+   Ela documenta qual modelo o `model-selector` recomendou para o
+   subagente, possibilitando a query agregada em
+   `contracts/orchestrator-integration.md §Invariantes consumidas por
+   review-task`. O harness Claude Code atualmente nao aceita `model`
+   como parametro da tool Agent — o modelo do subagente e determinado
+   pelo campo `model:` no frontmatter do agent file. A sequencia
+   pre-spawn nao tenta sobrescrever esse comportamento.
+
+   #### Quoting de `sinais_text` ao chamar `register` (F4.2 — hardening F-002)
+
+   Ref: dec-009 F-002 (medium), FR-006, FR-017,
+   `contracts/orchestrator-integration.md §Mapeamento JSON`.
+
+   `sinais_text` carrega texto livre do `model-selector` (linha bruta da
+   secao "## Justificativa" do classify.sh). Esse texto PODE conter
+   metacaracteres de shell: aspas duplas, aspas simples, `$`, barra
+   invertida, parenteses, ate fragmentos hostis injetados via input
+   adversarial (ex: `"; DROP TABLE users; --`). Embora `model-routing.sh
+   invoke` ja escape via `jq -n --arg sinais "$_mr_sinais"` antes de
+   emitir o JSON (F-002 mitigado na fronteira do helper), o orquestrador
+   precisa re-extrair `sinais_text` via `jq -r` e repassar para
+   `state-decisions.sh register` — e e nessa passagem que mora o risco.
+
+   **Regra obrigatoria**:
+
+   1. Sempre extrair `sinais_text` para uma VARIAVEL intermediaria
+      (`SINAIS=$(... | jq -r '.sinais_text')`). Nao consumir o output de
+      `jq` diretamente como argumento de `register`.
+   2. Passar a variavel para `--justificativa` e `--evidencia` com aspas
+      duplas em volta: `--justificativa "$SINAIS"`. Aspas duplas
+      preservam o conteudo literal mesmo com whitespace, sem invocar
+      word-splitting nem glob expansion.
+   3. NUNCA construir o argumento via concatenacao de strings (ex:
+      `--justificativa "sinais foram: $SINAIS"`). Concatenar adiciona
+      uma camada de re-interpretacao desnecessaria e abre brecha de
+      injection se algum dia o snippet for refatorado para `eval`
+      indireto (logging, debug, dispatch).
+   4. NAO usar `printf` ou `echo` antes de passar — `register` aceita o
+      valor literal como argv[N]; reformatar antes corrompe whitespace
+      e quebra `jq -r .justificativa` downstream em `review-task`.
+
+   Exemplo CORRETO (forma canonica, ja presente em passo 5):
+
+   ```bash
+   SINAIS=$(printf '%s' "$JSON" | jq -r '.sinais_text')
+   DEC_ID=$("$RUNTIME_SCRIPTS"/state-decisions.sh register \
+              --state-dir "$SD" \
+              --agente "$ORCHESTRATOR_ID" --etapa "clarify" \
+              --contexto "Selecao de modelo para subagente $SUBAGENT_TYPE" \
+              --opcoes '["haiku","sonnet","opus","manter-atual","fallback-default"]' \
+              --escolha "$MODELO" --score "$SCORE" \
+              --justificativa "$SINAIS" \
+              --evidencia "$SINAIS")
+   ```
+
+   Exemplo INCORRETO (NUNCA faca):
+
+   ```bash
+   # ERRADO 1: consome jq diretamente — sem variavel intermediaria.
+   # Word-splitting + interpretacao de aspas no output do jq quebra
+   # quando sinais contem espaco.
+   register --justificativa $(printf '%s' "$JSON" | jq -r '.sinais_text')
+
+   # ERRADO 2: concatenacao com prefixo descritivo. Re-interpreta
+   # metacaracteres se a string for ecoada em log via printf "%s\n"
+   # sem '%s' (vide F-001). E corrompe auditoria — justificativa
+   # passa a ter texto fixo + livre misturados.
+   register --justificativa "sinais: $SINAIS"
+
+   # ERRADO 3: passar SEM aspas. Word-splitting separa em multiplos
+   # argv, register vai parsear errado.
+   register --justificativa $SINAIS
+   ```
+
+   Validacao: `tests/test_model-routing.sh` exercita payload sintetico
+   contendo aspas duplas + barra invertida + `"; DROP TABLE; --` e
+   confirma que (a) o JSON de saida do `invoke` e parseavel via `jq
+   -e .`, e (b) a `justificativa` registrada via `state-decisions.sh
+   register` preserva o texto literal sem corrupcao. Auditoria visual
+   complementar: `grep -nE "jq.*-n" model-routing.sh` deve casar com
+   cada bloco de composicao de JSON (atualmente: emissao de fallback e
+   emissao de sucesso).
+
+   #### Protocolo de falha do two-step (F4.4 — hardening F-004)
+
+   Ref: dec-009 F-004 (low), F4.4 da feature
+   `agente-00c-model-routing`, FR-015 + FR-016.
+
+   Se `state-ondas.sh record-skill` (passo 6) falhar APOS
+   `state-decisions.sh register` (passo 5) ter persistido a Decisao,
+   o orquestrador-de-projeto DEVE:
+
+   1. **NAO repetir o `register`**: a Decisao ja existe em
+      `.decisoes[]` com `dec-NNN` assinado. Re-executar produziria
+      `dec-NNN+1` duplicada e violaria FR-015 (1 invocacao por spawn).
+   2. **Logar via `log_err`** (helper de `_log.sh`): `model-routing:
+      record-skill falhou para <DEC_ID>; estado em half-record`.
+   3. **Registrar Decisao de reconciliacao** via `state-decisions.sh
+      register --score 2` descrevendo o desalinhamento (contexto:
+      "Reconciliacao two-step para <DEC_ID> apos record-skill falho").
+   4. **Re-tentar `record-skill`** uma unica vez. Se falhar de novo,
+      emitir BloqueioHumano via `bloqueios.sh register`.
+
+   Em retomadas (`/agente-00c-resume`), ANTES de qualquer
+   `model-routing.sh invoke`, o resume DEVE executar:
+
+   ```bash
+   "$RUNTIME_SCRIPTS"/state-decisions-reconcile.sh check \
+     --state-dir "$SD"
+   # exit 0 -> nenhuma orfa, prosseguir.
+   # exit 1 -> stdout TSV: <dec-id>\t<onda-id>\t<subagent-type> por
+   #           orfa. Resume DEVE emitir os record-skill missing antes
+   #           de qualquer novo spawn, preservando FR-015 + paridade.
+   # exit 2 -> erro de uso/IO, abortar com diagnostico.
+   ```
+
+   O helper `state-decisions-reconcile.sh` (script auxiliar do
+   runtime; F4.4.2) e read-only e idempotente; pode rodar tambem
+   como parte de `review-task` para listar half-records cronicos.
+
+   **Compatibilidade com `agente-00c-artifact-cache`** (SC-004 + F2.3):
+   `model-routing` e a feature `agente-00c-artifact-cache` operam em
+   eixos ORTOGONAIS. Justificativa:
+
+   - O input do `model-routing.sh invoke` vem do CONTEXTO DO SUBAGENTE
+     (subagent-type + etapa + input-text derivado do template ou
+     override do orquestrador). Nao depende de briefing.md nem de
+     constitution.md.
+   - O subcomando `idempotent-check` faz query `jq` read-only sobre
+     `.decisoes[]` em `state.json`. Nao le `state.json.briefing_cache`
+     nem `state.json.constitution_cache` — esses campos sao aditivos
+     e o helper nunca os referencia.
+   - Portanto: ligar/desligar o cache (`briefing_cache.estrategia =
+     "passthrough"`, ausencia dos campos em execucao legada, ou cache
+     populado com resumos) NAO altera o comportamento de `invoke` nem
+     de `idempotent-check`. Output JSON deterministico, exit codes
+     estaveis, sha256 dos campos de cache preservado antes e depois
+     da pipeline (analogo a INV-4, estendido para cache).
+   - A onda 1 do `artifact-cache` (popula `briefing_cache` +
+     `constitution_cache`) e a onda N do `model-routing` (registra
+     Decisao por spawn) podem co-ocorrer no mesmo `state.json` sem
+     interferencia mutua.
+
+   Test gate (F2.3.2): `tests/test_model-routing.sh` cobre cenarios
+   `scenario_artifact_cache_compat_*` validando que `idempotent-check`
+   + `invoke` rodam com `briefing_cache`/`constitution_cache`
+   populados em state.json fixture e que sha256 desses campos
+   permanece estavel apos a pipeline.
+
+   #### Cap defensivo de invocacoes por onda (F4.3 — hardening F-003)
+
+   Ref: dec-009 F-003 (low), F4.3 da feature
+   `agente-00c-model-routing`, SC-006 (<2s por invocacao), Edge Case
+   "Loop infinito de retry".
+
+   O helper `model-routing.sh invoke` ja impoe **timeout de 5s** por
+   chamada (default; override via `--timeout-seconds N`, N>=1) via
+   `_mr_invoke_skill` (subshell + sleep + kill -TERM/-KILL +
+   convencao exit 124). Isso garante INV-1 (exit 0 sempre) e SC-006
+   (latencia <=6s no pior caso: 5s timeout + 1s margem KILL).
+
+   No entanto, **timeout por chamada nao protege contra loops** onde
+   o orquestrador re-invoca o helper indefinidamente para o mesmo
+   `(onda_id, subagent_type)` apos cada falha transitoria. O
+   `idempotent-check` (passo 3) mitiga o caso normal (Decisao ja
+   existe -> skip), mas se o `register` (passo 5) falhar repetidamente
+   antes de persistir, idempotent-check nunca encontra a Decisao e o
+   loop pode reproduzir.
+
+   **Regra (SHOULD)**: o orquestrador-de-projeto SHOULD limitar o
+   numero de invocacoes do helper `model-routing.sh invoke` a **10
+   por onda**. Esse cap NAO esta implementado no helper (F4.3.3
+   deliberadamente documenta, nao executa) — a contagem fica a
+   cargo do orquestrador via contagem de Decisoes com
+   `contexto = "Selecao de modelo para subagente *"` na onda
+   corrente. Pseudocodigo:
+
+   ```bash
+   # Antes do passo 4 (invoke), checar cap defensivo
+   CAP_INVOKES=10
+   INVOKES_NA_ONDA=$(jq -r --arg O "$ONDA_ID" '
+     [.decisoes[]
+       | select(.contexto | startswith("Selecao de modelo para subagente "))
+       | select(.onda_id == $O)] | length' "$SD/state.json")
+   if [ "$INVOKES_NA_ONDA" -ge "$CAP_INVOKES" ]; then
+     # Cap atingido: emitir BloqueioHumano em vez de invocar
+     "$RUNTIME_SCRIPTS"/bloqueios.sh register --state-dir "$SD" \
+       --pergunta "Cap de $CAP_INVOKES invocacoes model-routing atingido na onda $ONDA_ID. Loop infinito? Investigar e responder com 'retomar' ou 'abortar'." \
+       --contexto-para-resposta "Decisoes de selecao na onda: $INVOKES_NA_ONDA / cap $CAP_INVOKES"
+     exit 3
+   fi
+   ```
+
+   **Por que SHOULD e nao MUST**: cap implementado no helper criaria
+   acoplamento entre helper e contagem de estado, violando INV-4
+   (helper e read-only para state.json). Mantemos o helper puro
+   (apenas invoca skill + emite JSON) e delegamos ao orquestrador
+   a defesa contra loops — esse e o lugar arquitetural correto,
+   ja que o orquestrador ja le state.json em outros passos
+   (`idempotent-check`, contagem de Decisoes).
+
+   **Por que 10 e nao N (configuravel)**: numero magico
+   deliberado. Justificativa empirica: em execucoes normais, uma
+   onda spawna no maximo 2 subagentes em clarify (asker + answerer)
+   + retries idempotentes. 10 da margem 5x para retomadas legitimas
+   (`/agente-00c-resume` chamado multiplas vezes) sem precisar
+   bumping. Se experiencia real mostrar que 10 e baixo demais,
+   F-003 reabre como medium e cap vira flag (ex: `--max-invokes`).
+
    ### 5.f Quality Gates complementares (pos-artefato, nao-bloqueantes)
 
    Apos `detect-completion` confirmar artefato de uma das etapas abaixo,
