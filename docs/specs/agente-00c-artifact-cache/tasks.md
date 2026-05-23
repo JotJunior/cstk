@@ -49,6 +49,9 @@
 
 ### T0.1 [C] ✅ Resolver Open Questions Q1-Q5 da spec via `/clarify`
 
+- [x] Resolver Open Questions Q1-Q5 da spec via `/clarify`
+
+
 **Concluida em**: 2026-05-21 (Session de clarify).
 **Decisoes registradas** (ver `spec.md` §Clarifications + `plan.md` §Research):
 - Q1 → Heuristica extractiva deterministica (sem LLM).
@@ -69,6 +72,9 @@ algoritmo deterministico.
 
 ### T1.1 [C] ✅ Implementar `state-cache.sh` subcomando `ensure`
 
+- [x] Implementar `state-cache.sh` subcomando `ensure`
+
+
 **Path**: `global/skills/agente-00c-runtime/scripts/state-cache.sh`
 **Spec ref**: FR-CACHE-004, FR-CACHE-005, FR-CACHE-006, FR-CACHE-007.
 **Detalhes**:
@@ -83,6 +89,9 @@ algoritmo deterministico.
 
 ### T1.2 [C] ✅ Implementar gerador de resumo (heuristica extractiva v1)
 
+- [x] Implementar gerador de resumo (heuristica extractiva v1)
+
+
 **Path**: funcao interna em `state-cache.sh` OU script separado em
 `scripts/_summarize.sh`.
 **Detalhes**:
@@ -94,6 +103,9 @@ algoritmo deterministico.
 
 ### T1.3 [C] ✅ Implementar subcomandos `get-resumo`, `check-drift`, `invalidate`
 
+- [x] Implementar subcomandos `get-resumo`, `check-drift`, `invalidate`
+
+
 **Spec ref**: FR-CACHE-008, FR-CACHE-009, FR-CACHE-010, FR-CACHE-015.
 **Detalhes**:
 - `get-resumo`: le `state.json`, valida `estrategia == "resumo"`, double-check sha256.
@@ -102,12 +114,18 @@ algoritmo deterministico.
 
 ### T1.4 [A] ✅ Implementar subcomandos `metrics-bump` e `status`
 
+- [x] Implementar subcomandos `metrics-bump` e `status`
+
+
 **Spec ref**: FR-CACHE-012.
 **Detalhes**:
 - `metrics-bump`: incrementa contador em `metricas.cache.*` (atomico).
 - `status`: imprime JSON com estado completo do cache (debug/audit).
 
 ### T1.5 [C] ✅ Suite de testes `tests/test_state-cache.sh`
+
+- [x] Suite de testes `tests/test_state-cache.sh`
+
 
 **Spec ref**: SC-005 (>= 15 cenarios).
 **Entregue**: 23 cenarios em `tests/test_state-cache.sh` + 6 cenarios em
@@ -123,6 +141,9 @@ Cenario `scenario_ensure_registra_decisao_auditavel` ficou como **best-effort**
 inline). Sera reforcado em Fase 3 quando orquestrador invoca primitiva.
 
 ### T1.6 [A] ⚠️ Estender `state-validate.sh` — FR-CACHE-017 ✅, FR-CACHE-017A ❌ DEFERIDO
+
+- [!] Estender `state-validate.sh` — FR-CACHE-017 ✅, FR-CACHE-017A ❌ DEFERIDO
+
 
 **Path**: `global/skills/agente-00c-runtime/scripts/state-validate.sh`
 **Entregue (FR-CACHE-017)**: 5 invariantes validadas quando campos
@@ -142,6 +163,9 @@ agora sem o bump nao detecta nada (campos sao opcionais, state.json
 
 ### T1.7 [A] ✅ Wrapper `_hash.sh` cross-platform (FR-CACHE-016A)
 
+- [x] Wrapper `_hash.sh` cross-platform (FR-CACHE-016A)
+
+
 **Path**: `global/skills/agente-00c-runtime/scripts/_hash.sh`
 **Entregue**: `_hash_sha256_file` + `_hash_sha256_stdin` detectam OS via
 `uname -s` e despacham para `sha256sum` (Linux) ou `shasum -a 256`
@@ -154,6 +178,9 @@ em Fase 4 (T4.1) junto com o test E2E. Por ora, suite roda em macos
 local + ubuntu via release workflow existente.
 
 ### T1.7 [A] Wrapper `_cache_sha256()` cross-platform (FR-CACHE-016A)
+
+- [ ] Wrapper `_cache_sha256()` cross-platform (FR-CACHE-016A)
+
 
 **Path**: `global/skills/agente-00c-runtime/scripts/_state-dir.sh`
 ou novo `_hash.sh`.
@@ -176,9 +203,21 @@ em paralelo (`.github/workflows/release.yml` ou novo workflow).
 ## Fase 2 — Skills modificadas ✅ CONCLUIDA
 
 ### T2.1 [C] ✅ Adicionar bloco em `specify/SKILL.md`
+
+- [x] Adicionar bloco em `specify/SKILL.md`
+
 ### T2.2 [C] ✅ Idem para `clarify/SKILL.md`
+
+- [x] Idem para `clarify/SKILL.md`
+
 ### T2.3 [C] ✅ Idem para `plan/SKILL.md` (com nota sobre dependencia hard)
+
+- [x] Idem para `plan/SKILL.md` (com nota sobre dependencia hard)
+
 ### T2.4 [C] ✅ Idem para `execute-task/SKILL.md`
+
+- [x] Idem para `execute-task/SKILL.md`
+
 
 **Spec ref**: FR-CACHE-008.
 **Entregue**: bloco `## Leitura de artefatos foundational (briefing + constitution)`
@@ -197,6 +236,9 @@ Bloco do `plan` inclui nota adicional sobre dependencia hard em
 diretamente em todas as etapas, so quando tarefa especifica precisa).
 
 ### T2.5 [C] ✅ Suite de validacao estrutural de SKILL.md
+
+- [x] Suite de validacao estrutural de SKILL.md
+
 
 **Spec ref**: FR-CACHE-014, FR-CACHE-008A, SC-002.
 **Entregue**: `tests/test_skills-cache-protocol.sh` (7 cenarios).
@@ -235,6 +277,9 @@ estruturais** que validam invariantes verificaveis offline:
 
 ### T3.1 [C] Integrar `state-cache.sh ensure` no `agente-00c-orchestrator.md`
 
+- [ ] Integrar `state-cache.sh ensure` no `agente-00c-orchestrator.md`
+
+
 **Path**: `global/agents/agente-00c-orchestrator.md`
 **Spec ref**: FR-CACHE-004.
 **Detalhes**:
@@ -246,6 +291,9 @@ estruturais** que validam invariantes verificaveis offline:
 
 ### T3.2 [C] Pre-flight drift check no inicio de cada onda N>1
 
+- [ ] Pre-flight drift check no inicio de cada onda N>1
+
+
 **Path**: `agente-00c-orchestrator.md` (Loop principal step 1.5)
 **Spec ref**: FR-CACHE-009, FR-CACHE-010.
 **Detalhes**:
@@ -256,10 +304,16 @@ estruturais** que validam invariantes verificaveis offline:
 
 ### T3.3 [C] Espelhar T3.1 e T3.2 em `agente-00c-feature-orchestrator.md`
 
+- [ ] Espelhar T3.1 e T3.2 em `agente-00c-feature-orchestrator.md`
+
+
 **Path**: `global/agents/agente-00c-feature-orchestrator.md`
 **Spec ref**: cobertura da feature-00c (mesma primitiva, mesmo state.json).
 
 ### T3.4 [A] Secao `### Cache de Artefatos` em `report.sh generate`
+
+- [ ] Secao `### Cache de Artefatos` em `report.sh generate`
+
 
 **Path**: `global/skills/agente-00c-runtime/scripts/report.sh`
 **Spec ref**: FR-CACHE-013.
@@ -275,6 +329,9 @@ estruturais** que validam invariantes verificaveis offline:
 
 ### T4.1 [C] Test E2E em projeto fixture
 
+- [ ] Test E2E em projeto fixture
+
+
 **Path**: `tests/cstk/test_cache-pipeline-e2e.sh` (NOVO).
 **Detalhes**:
 - Criar fixture mini-projeto com briefing+constitution conhecidos
@@ -286,6 +343,9 @@ estruturais** que validam invariantes verificaveis offline:
 
 ### T4.2 [A] Medicao real de SC-001 em projeto piloto
 
+- [ ] Medicao real de SC-001 em projeto piloto
+
+
 **Detalhes**:
 - Selecionar 1 projeto real (ex: `cstk-cli` ou um existente).
 - Rodar `/agente-00c` BASELINE (sem cache) — capturar baseline de tokens.
@@ -296,6 +356,9 @@ estruturais** que validam invariantes verificaveis offline:
 
 ### T4.3 [M] Atualizar CHANGELOG.md + bump de versao MINOR
 
+- [ ] Atualizar CHANGELOG.md + bump de versao MINOR
+
+
 **Path**: `CHANGELOG.md`
 **Detalhes**:
 - Entrada nova em `[Unreleased]` descrevendo Added/Changed.
@@ -303,6 +366,9 @@ estruturais** que validam invariantes verificaveis offline:
 - Bump da versao do toolkit (MINOR — feature nova, nao breaking).
 
 ### T4.4 [A] Atualizar doc em CLAUDE.md (per-user) com nota sobre o cache
+
+- [ ] Atualizar doc em CLAUDE.md (per-user) com nota sobre o cache
+
 
 **Detalhes**: nao versionado, mas Joao adiciona uma linha em
 `CLAUDE.md` local explicando que o cache existe + como inspecionar
