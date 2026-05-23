@@ -24,3 +24,6 @@ docs-site/site/
 # Python bytecode (gerado pelos hooks do mkdocs-gen-files)
 __pycache__/
 *.pyc
+
+# Engram memory tool local state (per-user, not versioned)
+.engram/
