@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "execucao": {
+    "id": "fixture-aggregate-selecao",
+    "status": "em_andamento",
+    "projeto_alvo_path": "/tmp/fixture-agg",
+    "descricao_curta": "fixture: agregacao de Decisoes de selecao de modelo (F5.1.3)"
+  },
+  "ondas": [
+    {
+      "id": "onda-001",
+      "inicio": "2026-05-22T10:00:00Z",
+      "fim": "2026-05-22T10:30:00Z",
+      "motivo_termino": "etapa_concluida_avancando",
+      "etapas_executadas": ["clarify"],
+      "tool_calls": 12,
+      "skills_invoked": []
+    },
+    {
+      "id": "onda-002",
+      "inicio": "2026-05-22T11:00:00Z",
+      "etapas_executadas": ["clarify"],
+      "tool_calls": 8,
+      "skills_invoked": []
+    }
+  ],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-22T10:05:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-asker",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "haiku",
+      "justificativa": "Asker enumerativo de baixa complexidade",
+      "score_justificativa": 3
+    },
+    {
+      "id": "dec-002",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-22T10:06:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-asker",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "haiku",
+      "justificativa": "Asker enumerativo de baixa complexidade",
+      "score_justificativa": 3
+    },
+    {
+      "id": "dec-003",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-22T10:07:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-asker",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "haiku",
+      "justificativa": "Asker enumerativo de baixa complexidade",
+      "score_justificativa": 2
+    },
+    {
+      "id": "dec-004",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-22T10:08:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-asker",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "haiku",
+      "justificativa": "Asker enumerativo de baixa complexidade",
+      "score_justificativa": 3
+    },
+    {
+      "id": "dec-005",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-22T10:10:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-answerer",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "sonnet",
+      "justificativa": "Answerer com pause-or-decide; complexidade media",
+      "score_justificativa": 3
+    },
+    {
+      "id": "dec-006",
+      "onda_id": "onda-002",
+      "timestamp": "2026-05-22T11:05:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-answerer",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "sonnet",
+      "justificativa": "Answerer com pause-or-decide; complexidade media",
+      "score_justificativa": 3
+    },
+    {
+      "id": "dec-007",
+      "onda_id": "onda-002",
+      "timestamp": "2026-05-22T11:06:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-answerer",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "sonnet",
+      "justificativa": "Answerer com pause-or-decide; complexidade media",
+      "score_justificativa": 2
+    },
+    {
+      "id": "dec-008",
+      "onda_id": "onda-002",
+      "timestamp": "2026-05-22T11:10:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-answerer",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "fallback-default",
+      "justificativa": "Skill model-selector retornou rotulo desconhecido; fallback FR-008",
+      "score_justificativa": 2
+    },
+    {
+      "id": "dec-999-noise",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-22T10:15:00Z",
+      "etapa": "specify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Decisao NAO relacionada a selecao de modelo — deve ser ignorada pelo filtro",
+      "opcoes_consideradas": ["a","b"],
+      "escolha": "a",
+      "justificativa": "noise para validar filtro do agregador",
+      "score_justificativa": 3
+    }
+  ],
+  "bloqueios": [],
+  "orcamentos": {
+    "tool_calls_onda_corrente": 8,
+    "inicio_onda_corrente": "2026-05-22T11:00:00Z"
+  }
+}

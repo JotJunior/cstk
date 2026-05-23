@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "execucao": {
+    "id": "fixture-resume-onda-002",
+    "status": "em_andamento",
+    "projeto_alvo_path": "/tmp/fixture",
+    "descricao_curta": "fixture: retomada idempotente apos crash entre register e enter"
+  },
+  "ondas": [
+    {
+      "id": "onda-001",
+      "inicio": "2026-05-22T10:00:00Z",
+      "fim": "2026-05-22T10:30:00Z",
+      "motivo_termino": "etapa_concluida_avancando",
+      "etapas_executadas": ["specify"],
+      "tool_calls": 12,
+      "skills_invoked": []
+    },
+    {
+      "id": "onda-002",
+      "inicio": "2026-05-22T10:30:00Z",
+      "etapas_executadas": ["clarify"],
+      "tool_calls": 4,
+      "skills_invoked": [
+        {
+          "skill": "model-selector",
+          "timestamp": "2026-05-22T10:35:00Z",
+          "decisao_id": "dec-019"
+        }
+      ]
+    }
+  ],
+  "decisoes": [
+    {
+      "id": "dec-019",
+      "onda_id": "onda-002",
+      "agente": "agente-00c-orchestrator",
+      "etapa": "clarify",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-asker",
+      "opcoes": ["haiku", "sonnet", "opus", "manter-atual", "fallback-default"],
+      "escolha": "sonnet",
+      "justificativa": "Subagente clarify-asker; complexidade media; uso da skill model-selector",
+      "score": 2,
+      "timestamp": "2026-05-22T10:35:00Z"
+    }
+  ],
+  "bloqueios": [],
+  "orcamentos": {
+    "tool_calls_onda_corrente": 4,
+    "inicio_onda_corrente": "2026-05-22T10:30:00Z"
+  }
+}

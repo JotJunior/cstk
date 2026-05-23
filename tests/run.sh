@@ -159,6 +159,13 @@ _is_internal_test() {
       # Cobre interacao install.sh + manifest.sh + doctor.sh para os kinds
       # commands/agents (nao mapeia 1:1 para um unico script sob a convencao).
       return 0 ;;
+    test_e2e_model_routing.sh)
+      # Cobre fluxo end-to-end model-routing.sh + model-routing-report.sh +
+      # state-rw.sh + state-decisions.sh + state-ondas.sh (composicao de
+      # 5 scripts da agente-00c-runtime — nao mapeia 1:1 para um unico
+      # script sob a convencao de FASE 9.3). Equivalente ao
+      # test_quickstart-e2e.sh para o pipeline do agente-00c.
+      return 0 ;;
     *) return 1 ;;
   esac
 }
