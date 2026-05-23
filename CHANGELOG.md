@@ -7,6 +7,46 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [3.16.0] - 2026-05-23
+
+Adiciona a skill `decision-tree`, que gera um relatório HTML interativo em
+forma de árvore de decisão a partir do `state.json` de uma execução
+`agente-00c`/`feature-00c`. Inclui correção de conformidade (Princípio I e III
+da constitution) e habilita a skill no profile `complementary`. Sem breaking
+changes.
+
+### Added
+
+- **Skill `decision-tree`** em `global/skills/decision-tree/`: o script POSIX
+  `render-decision-tree.sh` (subcomando `render --state PATH [--output FILE]
+  [--title STR]`) extrai `.decisoes[]` via `jq` e injeta num template HTML
+  autocontido (SVG + painel de detalhe + zoom, abre offline sem CDN). O tronco
+  verde liga cronologicamente a `escolha` de cada Decisão à seguinte, de
+  `dec-001` até um nó de conclusão. Invariantes IDT-1 (read-only), IDT-2
+  (determinístico byte-a-byte), IDT-3 (POSIX puro), IDT-4 (render no cliente).
+  Cobertura: 18 cenários em `tests/test_render-decision-tree.sh`,
+  `shellcheck -s sh` limpo.
+- **`complementary:decision-tree`** em `scripts/profiles.txt.in`: a skill agora
+  é instalada por `cstk install --profile complementary` (e por `--profile
+  all`). Antes só aparecia no profile auto-gerado `all`.
+- **Spec retroativa** em `docs/specs/decision-tree/` (`spec.md` + `tasks.md`):
+  ratifica o contrato já implementado para conformidade com o Princípio I (SDD
+  recursivo) da constitution.
+
+### Fixed
+
+- **Seção `## Gotchas` ausente** em `global/skills/decision-tree/SKILL.md`
+  (violava o Princípio III — "um SKILL.md sem Gotchas é incompleto" — e o
+  quality gate `grep -L '## Gotchas'`). Adicionadas armadilhas reais: `jq`
+  mandatório sem fallback, escape obrigatório de `</`, `escolha` fora das
+  opções, proibição de timestamp no payload (IDT-2) e de CDN externo.
+- **`model-selector` órfã de profile**: a skill (v3.14.0), consumida pelos
+  orquestradores no passo 1 do model-routing, só estava no profile
+  auto-gerado `all`. `cstk install` (default `sdd`) instalava os orquestradores
+  mas deixava o fluxo de model-routing sem a skill que ele invoca. Adicionada a
+  `sdd:model-selector` e `complementary:model-selector` em
+  `scripts/profiles.txt.in` (mesma razão de `agente-00c-runtime`).
+
 ## [3.15.0] - 2026-05-23
 
 Entrega da feature `agente-00c-model-routing` via pipeline SDD

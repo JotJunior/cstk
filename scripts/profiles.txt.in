@@ -27,6 +27,11 @@ sdd:review-task
 # excluida do sdd default. Incluir aqui evita que `cstk install` deixe
 # o usuario com /agente-00c orfa de scripts (state-rw.sh, etc.).
 sdd:agente-00c-runtime
+# Skill standalone consumida pelos orquestradores no passo 1 do model-routing
+# (agente-00c/feature-00c invocam `model-selector` no spawn de subagentes,
+# v3.15.0). Mesma razao do agente-00c-runtime: sem ela no sdd default, o
+# `cstk install` deixaria o fluxo de model-routing orfao da skill que ele chama.
+sdd:model-selector
 
 # Skills complementares (uso pontual, sem sequencia)
 complementary:advisor
@@ -38,5 +43,9 @@ complementary:owasp-security
 complementary:validate-documentation
 complementary:validate-docs-rendered
 complementary:initialize-docs
-# Mesma razao do sdd:agente-00c-runtime acima.
+# Visualizador on-demand do state.json do agente-00c/feature-00c
+# (arvore de decisoes em HTML). Uso pontual, sem sequencia.
+complementary:decision-tree
+# Mesma razao do sdd:agente-00c-runtime / sdd:model-selector acima.
 complementary:agente-00c-runtime
+complementary:model-selector

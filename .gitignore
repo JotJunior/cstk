@@ -25,5 +25,6 @@ docs-site/site/
 __pycache__/
 *.pyc
 
-# Engram memory tool local state (per-user, not versioned)
-.engram/
+# Saidas HTML geradas pela skill decision-tree (arvore/fluxograma de decisoes)
+arvore-decisoes*.html
+fluxograma-decisoes*.html
