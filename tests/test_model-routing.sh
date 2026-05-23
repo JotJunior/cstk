@@ -1817,7 +1817,7 @@ _mr_make_emoji_payload() {
   _written=0
   while [ "$_written" -lt "$_target_bytes" ]; do
     printf 'ABCDEFGH' >> "$_out"
-    printf '\xf0\x9f\x98\x80' >> "$_out"
+    printf '\360\237\230\200' >> "$_out"
     _written=$((_written + 12))
   done
   # Truncar EXATAMENTE em $_target_bytes (sem se importar se cai em
@@ -1870,7 +1870,7 @@ scenario_f005_utf8_head_backoff_descarta_lead_incompleto() {
   # dispatch. Para evitar isso, usamos `MR_SOURCE_ONLY=1` se suportado,
   # OU testamos via shell-subprocess.
   _head_file="$TMPDIR_TEST/head_incomplete.bin"
-  printf 'ABCDEFGH\xF0' > "$_head_file"   # 8 ASCII + 1 lead 4-byte
+  printf 'ABCDEFGH\360' > "$_head_file"   # 8 ASCII + 1 lead 4-byte (octal portavel POSIX)
 
   # Roda via shell que faz source + chama funcao em subprocess.
   _drop=$(MR_SOURCE_ONLY=1 sh -c '
@@ -1890,8 +1890,8 @@ scenario_f005_utf8_head_backoff_descarta_lead_3byte_parcial() {
   mktemp_test || return 2
 
   _head_file="$TMPDIR_TEST/head_partial3.bin"
-  # 8 ASCII + lead-3 (E2) + continuation (82) — falta 1 continuation.
-  printf 'ABCDEFGH\xE2\x82' > "$_head_file"
+  # 8 ASCII + lead-3 (E2 = \342) + continuation (82 = \202) — falta 1 continuation.
+  printf 'ABCDEFGH\342\202' > "$_head_file"
 
   _drop=$(MR_SOURCE_ONLY=1 sh -c '
     . "$1"
@@ -1909,7 +1909,7 @@ scenario_f005_utf8_head_backoff_sequencia_completa_nao_descarta() {
   mktemp_test || return 2
 
   _head_file="$TMPDIR_TEST/head_complete.bin"
-  printf 'ABCD\xF0\x9F\x98\x80' > "$_head_file"
+  printf 'ABCD\360\237\230\200' > "$_head_file"
 
   _drop=$(MR_SOURCE_ONLY=1 sh -c '
     . "$1"
@@ -1928,8 +1928,8 @@ scenario_f005_utf8_tail_backoff_descarta_continuation_orfa() {
   mktemp_test || return 2
 
   _tail_file="$TMPDIR_TEST/tail_orphan.bin"
-  # 2 continuations orfas + ASCII normal.
-  printf '\x98\x80ABCDEFGH' > "$_tail_file"
+  # 2 continuations orfas (98 = \230, 80 = \200) + ASCII normal.
+  printf '\230\200ABCDEFGH' > "$_tail_file"
 
   _drop=$(MR_SOURCE_ONLY=1 sh -c '
     . "$1"

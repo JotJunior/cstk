@@ -450,7 +450,7 @@ EOF
 scenario_integracao_review_task_contrato_documentado_existe() {
   # Sanity: o contrato review-task-aggregate.md deve existir e ter as
   # secoes esperadas. Falha cedo se docs foram apagadas/movidas.
-  _contract="$REPO_ROOT/docs/specs/agente-00c-model-routing/contracts/review-task-aggregate.md"
+  _contract="$REPO_ROOT/docs/specs/_archived/agente-00c-model-routing/contracts/review-task-aggregate.md"
   [ -f "$_contract" ] || { _fail "contrato ausente" "$_contract"; return 1; }
   for _anchor in \
     "Path canonico do relatorio" \
