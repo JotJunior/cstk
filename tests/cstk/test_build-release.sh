@@ -6,7 +6,7 @@
 #   - Estrutura: tarball contem cli/cstk, cli/lib/*.sh, catalog/{VERSION,
 #     profiles.txt,skills,language}, CHANGELOG.md
 #   - Checksum file e gerado com sha256sum/shasum format
-#   - profiles.txt parseavel pela lib (resolve_profile sdd retorna 10 skills)
+#   - profiles.txt parseavel pela lib (resolve_profile sdd retorna 12 skills)
 #   - Layout consumivel por bootstrap/self-update (cli/cstk + cli/lib/ em paths
 #     que find ... -path '*/cli/cstk' encontra)
 #   - Errors de uso: sem version exit 2, version invalida exit 2
@@ -154,17 +154,24 @@ scenario_build_release_profiles_parseavel() {
     _fail "resolve sdd" "$_CAPTURED_STDERR"
     return 1
   fi
-  # SDD profile tem 11 skills (10 da pipeline + agente-00c-runtime infra
-  # do /agente-00c, per scripts/profiles.txt.in)
+  # SDD profile tem 12 skills (10 da pipeline + agente-00c-runtime infra
+  # do /agente-00c + model-selector, per scripts/profiles.txt.in).
+  # model-selector entrou no profile em 7eecdb7 (corrige conformidade); este
+  # count foi atualizado de 11 -> 12 junto.
   _count=$(printf '%s\n' "$_CAPTURED_STDOUT" | awk 'NF>0' | wc -l | awk '{print $1}')
-  if [ "$_count" != 11 ]; then
-    _fail "sdd count" "esperado 11, obtido $_count: $_CAPTURED_STDOUT"
+  if [ "$_count" != 12 ]; then
+    _fail "sdd count" "esperado 12, obtido $_count: $_CAPTURED_STDOUT"
     return 1
   fi
   # Regressao: agente-00c-runtime DEVE estar em sdd (causa principal do
   # bug "runtime nao instalada com cstk install default").
   if ! printf '%s\n' "$_CAPTURED_STDOUT" | grep -qx "agente-00c-runtime"; then
     _fail "sdd sem agente-00c-runtime" "$_CAPTURED_STDOUT"
+    return 1
+  fi
+  # Regressao: model-selector DEVE estar em sdd (conformidade, 7eecdb7).
+  if ! printf '%s\n' "$_CAPTURED_STDOUT" | grep -qx "model-selector"; then
+    _fail "sdd sem model-selector" "$_CAPTURED_STDOUT"
     return 1
   fi
 

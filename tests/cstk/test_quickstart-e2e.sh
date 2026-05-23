@@ -211,14 +211,15 @@ scenario_e2e_install_list_doctor_composition() {
   _run_cstk "$_h" install --from "file://$V1_TARBALL" --profile sdd
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install" "$_CAPTURED_STDERR"; return 1; }
 
-  # list deve enumerar as 11 skills do profile sdd (10 pipeline +
-  # agente-00c-runtime infra; clean status). Count atrelado ao
-  # profile sdd em scripts/profiles.txt.in.
+  # list deve enumerar as 12 skills do profile sdd (10 pipeline +
+  # agente-00c-runtime infra + model-selector; clean status). Count
+  # atrelado ao profile sdd em scripts/profiles.txt.in — model-selector
+  # entrou em 7eecdb7 (corrige conformidade), 11 -> 12.
   _run_cstk "$_h" list --format tsv
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list" "$_CAPTURED_STDERR"; return 1; }
   _count=$(printf '%s\n' "$_CAPTURED_STDOUT" | awk 'NF>0' | wc -l | awk '{print $1}')
-  if [ "$_count" != 11 ]; then
-    _fail "list count" "esperado 11, obtido $_count: $_CAPTURED_STDOUT"
+  if [ "$_count" != 12 ]; then
+    _fail "list count" "esperado 12, obtido $_count: $_CAPTURED_STDOUT"
     return 1
   fi
   # Todas devem estar clean
