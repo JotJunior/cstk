@@ -452,6 +452,36 @@ CREATE TABLE IF NOT EXISTS alert_signals (
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  wave TEXT NOT NULL,
+  execucao_id TEXT NOT NULL,
+  source_ts TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  outcome TEXT,
+  testes_rodados INTEGER,
+  testes_passados INTEGER,
+  lint_ok INTEGER,
+  arquivos_tocados INTEGER,
+  ingested_at TEXT NOT NULL,
+  UNIQUE(project, feature, wave, source_id)
+);
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  wave TEXT NOT NULL,
+  execucao_id TEXT NOT NULL,
+  source_ts TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  timestamp TEXT NOT NULL,
+  descricao TEXT,
+  ingested_at TEXT NOT NULL,
+  UNIQUE(project, feature, wave, source_id)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5 (
   body,
   type UNINDEXED,
@@ -1034,6 +1064,89 @@ VALUES('$(sql_escape "$_f_skn")','skill','$(sql_escape "$_isj_project")','$(sql_
     IFS="$_isj_OLDIFS"
   fi
 
+  # ---- tasks (camada B; grao = task por execucao) ----
+  # Campos NOVOS do state.json: task_id, wave_id, outcome, testes_rodados,
+  # testes_passados, lint_ok (bool -> 0/1), arquivos_tocados (array -> length).
+  # Chave natural: wave=<wave_id da task>, source_id=task_id. Sem texto livre
+  # (FR-006: todos os campos estruturados/numericos; nada passa por scrub).
+  # Tasks NAO alimentam knowledge_fts (metrica, nao corpo pesquisavel).
+  # Retro-compat (FR-022/SC-009): .tasks ausente -> .tasks[]? // empty -> 0 linhas.
+  _isj_n_task=0
+  _isj_task_lines=$(jq -r '
+    (.tasks[]? // empty)
+    | [(.task_id // ""),
+       (.wave_id // ""),
+       (.outcome // ""),
+       ((.testes_rodados // "")|tostring),
+       ((.testes_passados // "")|tostring),
+       (if (.lint_ok == true) then "1"
+        elif (.lint_ok == false) then "0"
+        else "" end),
+       (((.arquivos_tocados // []) | length)|tostring)]
+    | @base64' "$_isj_state" 2>/dev/null) || _isj_task_lines=""
+  if [ -n "$_isj_task_lines" ]; then
+    _isj_OLDIFS="$IFS"; IFS='
+'
+    for _isj_row in $_isj_task_lines; do
+      _isj_decoded=$(printf '%s' "$_isj_row" | base64 -d 2>/dev/null) || continue
+      _f_tid=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
+      _f_twid=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      _f_toc=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
+      _f_tr=$(printf '%s' "$_isj_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
+      _f_tp=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
+      _f_tlo=$(printf '%s' "$_isj_decoded" | jq -r '.[5]' 2>/dev/null | strip_nul)
+      _f_tat=$(printf '%s' "$_isj_decoded" | jq -r '.[6]' 2>/dev/null | strip_nul)
+      # task_id e a chave natural; sem id -> pula (FR-019).
+      [ -n "$_f_tid" ] || continue
+      _isj_tr_sql=$(recall_int_or_null "$_f_tr")
+      _isj_tp_sql=$(recall_int_or_null "$_f_tp")
+      _isj_tlo_sql=$(recall_int_or_null "$_f_tlo")
+      _isj_tat_sql=$(recall_int_or_null "$_f_tat")
+      _isj_sql="$_isj_sql
+INSERT INTO tasks(project,feature,wave,execucao_id,source_ts,source_id,outcome,testes_rodados,testes_passados,lint_ok,arquivos_tocados,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_twid")','$(sql_escape "$_isj_exec_id")','','$(sql_escape "$_f_tid")','$(sql_escape "$_f_toc")',$_isj_tr_sql,$_isj_tp_sql,$_isj_tlo_sql,$_isj_tat_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,outcome=excluded.outcome,testes_rodados=excluded.testes_rodados,testes_passados=excluded.testes_passados,lint_ok=excluded.lint_ok,arquivos_tocados=excluded.arquivos_tocados,ingested_at=excluded.ingested_at;"
+      _isj_n_task=$((_isj_n_task + 1))
+    done
+    IFS="$_isj_OLDIFS"
+  fi
+
+  # ---- events (camada B; grao = evento; timeline cronologica) ----
+  # Campos NOVOS: event_type (conjunto MVP fechado), timestamp (ISO),
+  # descricao (texto livre OPCIONAL -> scrubbed FR-006). wave='-' (timeline
+  # e grao de execucao), source_id=<event_type>:<timestamp> (chave natural),
+  # source_ts=timestamp (ordem cronologica consultavel via ORDER BY source_ts).
+  # Events NAO alimentam knowledge_fts. Retro-compat: .eventos[]? // empty.
+  _isj_n_event=0
+  _isj_event_lines=$(jq -r '
+    (.eventos[]? // empty)
+    | [(.event_type // ""),
+       (.timestamp // ""),
+       (.descricao // "")]
+    | @base64' "$_isj_state" 2>/dev/null) || _isj_event_lines=""
+  if [ -n "$_isj_event_lines" ]; then
+    _isj_OLDIFS="$IFS"; IFS='
+'
+    for _isj_row in $_isj_event_lines; do
+      _isj_decoded=$(printf '%s' "$_isj_row" | base64 -d 2>/dev/null) || continue
+      _f_evt=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
+      _f_ets=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      _f_edsc=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
+      # event_type + timestamp formam a chave natural; sem ambos -> pula.
+      [ -n "$_f_evt" ] && [ -n "$_f_ets" ] || continue
+      # descricao e texto livre -> filtro de segredo (FR-006); event_type e
+      # timestamp sao estruturados e NAO passam pelo filtro.
+      _f_edsc=$(recall_scrub "$_f_edsc")
+      _f_esid="$_f_evt:$_f_ets"
+      _isj_sql="$_isj_sql
+INSERT INTO events(project,feature,wave,execucao_id,source_ts,source_id,event_type,timestamp,descricao,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ets")','$(sql_escape "$_f_esid")','$(sql_escape "$_f_evt")','$(sql_escape "$_f_ets")','$(sql_escape "$_f_edsc")','$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,event_type=excluded.event_type,timestamp=excluded.timestamp,descricao=excluded.descricao,ingested_at=excluded.ingested_at;"
+      _isj_n_event=$((_isj_n_event + 1))
+    done
+    IFS="$_isj_OLDIFS"
+  fi
+
   _isj_sql="$_isj_sql
 COMMIT;"
 
@@ -1051,6 +1164,8 @@ COMMIT;"
   RECALL_TOTAL_EXEC=$((${RECALL_TOTAL_EXEC:-0} + _isj_n_exec))
   RECALL_TOTAL_WAVE=$((${RECALL_TOTAL_WAVE:-0} + _isj_n_wave))
   RECALL_TOTAL_ALERT=$((${RECALL_TOTAL_ALERT:-0} + _isj_n_alert))
+  RECALL_TOTAL_TASK=$((${RECALL_TOTAL_TASK:-0} + _isj_n_task))
+  RECALL_TOTAL_EVENT=$((${RECALL_TOTAL_EVENT:-0} + _isj_n_event))
   return "$RECALL_EXIT_OK"
 }
 
@@ -1135,11 +1250,13 @@ recall_mode_ingest() {
 
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
+  RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0
   recall_ingest_state_json "$_ing_state_dir/state.json" "$_ing_db"
 
-  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts\n' \
+  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events\n' \
     "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
-    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}"
+    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
+    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}"
   return "$RECALL_EXIT_OK"
 }
 
@@ -1518,6 +1635,7 @@ recall_mode_reindex() {
 
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
+  RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0
   _rx_count=0
   # Varre feature-00c-state/*/state.json e agente-00c-state/state.json.
   # find e portavel; -path com globs simples.
@@ -1536,8 +1654,9 @@ recall_mode_reindex() {
     IFS="$_rx_OLDIFS"
   fi
 
-  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts)\n' \
+  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events)\n' \
     "$_rx_count" "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
-    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}"
+    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
+    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}"
   return "$RECALL_EXIT_OK"
 }

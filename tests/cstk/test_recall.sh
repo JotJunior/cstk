@@ -1558,4 +1558,150 @@ scenario_ctx_regressao_modos_existentes() {
   assert_stdout_contains "dec-001" || return 1
 }
 
+# =========================================================================
+# knowledge-db-metrics — FASE 5 (camada B): ingestao tasks + events (US3)
+# =========================================================================
+
+# _write_layerb_state DIR PROJECT_PATH FEATURE -> state.json instrumentado
+# com .tasks[] (2 tasks: 1 pass + 1 fail) e .eventos[] (4 tipos MVP, ordem
+# cronologica + 1 descricao com segredo plantado para checar scrub).
+_write_layerb_state() {
+  _wb_dir="$1"; _wb_proj="$2"; _wb_feat="$3"
+  mkdir -p "$_wb_dir"
+  cat > "$_wb_dir/state.json" <<JSON
+{
+  "short_name": "$_wb_feat",
+  "etapa_corrente": "execute-task",
+  "execucao": { "id": "exec-$_wb_feat", "projeto_alvo_path": "$_wb_proj", "status": "concluido" },
+  "metricas_acumuladas": {},
+  "decisoes": [], "bloqueios_humanos": [], "ondas": [],
+  "tasks": [
+    { "task_id": "T001", "wave_id": "onda-003", "outcome": "pass",
+      "testes_rodados": 12, "testes_passados": 12, "lint_ok": true,
+      "arquivos_tocados": ["cli/lib/recall.sh", "tests/cstk/test_recall.sh"] },
+    { "task_id": "T002", "wave_id": "onda-004", "outcome": "fail",
+      "testes_rodados": 5, "testes_passados": 3, "lint_ok": false,
+      "arquivos_tocados": [] }
+  ],
+  "eventos": [
+    { "event_type": "lock_contention", "timestamp": "2026-05-24T02:31:00Z", "descricao": "lock ocupado token=ghp_DEADBEEFDEADBEEFDEADBEEFDEADBEEF1234 retry" },
+    { "event_type": "wave_retry", "timestamp": "2026-05-24T02:35:10Z" },
+    { "event_type": "validation_failed", "timestamp": "2026-05-24T02:40:00Z" },
+    { "event_type": "schedule_wait", "timestamp": "2026-05-24T02:42:00Z" }
+  ]
+}
+JSON
+}
+
+# Cenario B1.1 — DDL: tasks + events criadas no schema (Acceptance US3.1/3.2).
+scenario_b11_ddl_tasks_events() {
+  _have_deps || return 0
+  _write_layerb_state "$TMPDIR_TEST/featB" "/home/u/projB" "featB"
+  assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" || return 1
+  _has=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('tasks','events')")
+  [ "$_has" = "2" ] || { _fail "DDL tasks/events" "esperado 2 tabelas, obtido $_has"; return 1; }
+  # schema_version permanece 2 (tasks/events no MESMO bump v2).
+  _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
+  [ "$_sv" = "2" ] || { _fail "schema_version" "esperado 2, obtido $_sv"; return 1; }
+}
+
+# Cenario B1.2 — ingestao Task: 1 linha por task, campos corretos, contagem
+# de arquivos_tocados, lint_ok 0/1 (task 5.1.5, Acceptance US3.1).
+scenario_b12_ingest_tasks() {
+  _have_deps || return 0
+  _write_layerb_state "$TMPDIR_TEST/featB" "/home/u/projB" "featB"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "2 tasks" || return 1
+  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM tasks WHERE feature='featB'")
+  [ "$_n" = "2" ] || { _fail "tasks count" "esperado 2, obtido $_n"; return 1; }
+  # T001: pass, 12/12, lint 1, 2 arquivos; wave=onda-003, source_id=T001.
+  _r1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT project||'|'||wave||'|'||source_id||'|'||outcome||'|'||testes_rodados||'|'||testes_passados||'|'||lint_ok||'|'||arquivos_tocados FROM tasks WHERE feature='featB' AND source_id='T001'")
+  [ "$_r1" = "projB|onda-003|T001|pass|12|12|1|2" ] || { _fail "task T001" "obtido $_r1"; return 1; }
+  # T002: fail, 5/3, lint 0, 0 arquivos; wave=onda-004.
+  _r2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT wave||'|'||outcome||'|'||testes_rodados||'|'||testes_passados||'|'||lint_ok||'|'||arquivos_tocados FROM tasks WHERE feature='featB' AND source_id='T002'")
+  [ "$_r2" = "onda-004|fail|5|3|0|0" ] || { _fail "task T002" "obtido $_r2"; return 1; }
+}
+
+# Cenario B2.1 — ingestao Evento: 4 tipos MVP, ordem cronologica, source_id
+# = event_type:timestamp, wave='-' (task 5.2.5, Acceptance US3.2).
+scenario_b21_ingest_events() {
+  _have_deps || return 0
+  _write_layerb_state "$TMPDIR_TEST/featB" "/home/u/projB" "featB"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "4 events" || return 1
+  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM events WHERE feature='featB'")
+  [ "$_n" = "4" ] || { _fail "events count" "esperado 4, obtido $_n"; return 1; }
+  # Ordem cronologica consultavel via ORDER BY source_ts.
+  _seq=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT group_concat(event_type, ',') FROM (SELECT event_type FROM events WHERE feature='featB' ORDER BY source_ts)")
+  [ "$_seq" = "lock_contention,wave_retry,validation_failed,schedule_wait" ] || { _fail "events ordem" "obtido $_seq"; return 1; }
+  # source_id = event_type:timestamp; wave='-'.
+  _sid=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT wave||'|'||source_id FROM events WHERE feature='featB' AND event_type='wave_retry'")
+  [ "$_sid" = "-|wave_retry:2026-05-24T02:35:10Z" ] || { _fail "event source_id" "obtido $_sid"; return 1; }
+}
+
+# Cenario B2.2 — secrets-filter na descricao do evento (texto livre); tipo e
+# timestamp estruturados NAO filtrados (task 5.2.3, FR-006, SC-007).
+scenario_b22_event_descricao_filtrada() {
+  _have_deps || return 0
+  _write_layerb_state "$TMPDIR_TEST/featB" "/home/u/projB" "featB"
+  _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _desc=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT descricao FROM events WHERE feature='featB' AND event_type='lock_contention'")
+  case "$_desc" in
+    *ghp_*) _fail "event scrub" "segredo nao filtrado na descricao: $_desc"; return 1 ;;
+  esac
+  # event_type/timestamp intactos (estruturado, sem filtro).
+  _et=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT event_type||'|'||timestamp FROM events WHERE feature='featB' AND event_type='lock_contention'")
+  [ "$_et" = "lock_contention|2026-05-24T02:31:00Z" ] || { _fail "event estruturado" "obtido $_et"; return 1; }
+}
+
+# Cenario B3.1 — retro-compat: state SEM .tasks/.eventos -> 0 linhas, 0 erro,
+# exit 0 (task 5.3.2, SC-009, Acceptance US3.3).
+scenario_b31_retrocompat_sem_tasks_eventos() {
+  _have_deps || return 0
+  # _write_metrics_state nao tem .tasks nem .eventos (pre-instrumentacao).
+  _write_metrics_state "$TMPDIR_TEST/featOld" "/home/u/projOld" "featOld"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featOld" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "retro-compat exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "0 tasks, 0 events" || return 1
+  _t=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM tasks WHERE feature='featOld'")
+  _e=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM events WHERE feature='featOld'")
+  [ "$_t" = "0" ] && [ "$_e" = "0" ] || { _fail "retro-compat linhas" "tasks=$_t events=$_e (esperado 0 0)"; return 1; }
+}
+
+# Cenario B3.2 — re-ingestao N vezes: delta de linhas tasks/events = 0
+# (SC-004 estendido a camada B, idempotencia da chave natural).
+scenario_b32_reingest_delta_zero() {
+  _have_deps || return 0
+  _write_layerb_state "$TMPDIR_TEST/featB" "/home/u/projB" "featB"
+  _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _t1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM tasks")
+  _e1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM events")
+  _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _t2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM tasks")
+  _e2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM events")
+  [ "$_t1" = "$_t2" ] && [ "$_e1" = "$_e2" ] || { _fail "delta zero B" "tasks $_t1->$_t2, events $_e1->$_e2"; return 1; }
+  [ "$_t2" = "2" ] && [ "$_e2" = "4" ] || { _fail "contagem esperada B" "tasks=$_t2 events=$_e2 (esperado 2 4)"; return 1; }
+}
+
+# Cenario B3.3 — convergencia --ingest vs --reindex para camada B
+# (task 5.3.3, FR-001/SC-002 estendido: reindex recria tasks/events identicos).
+scenario_b33_ingest_vs_reindex_convergencia() {
+  _have_deps || return 0
+  # Caminho A: --ingest direto.
+  _write_layerb_state "$TMPDIR_TEST/ing/featB" "/home/u/projB" "featB"
+  _rc --ingest --state-dir "$TMPDIR_TEST/ing/featB" --db "$TMPDIR_TEST/a.db" >/dev/null 2>&1
+  _ta=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT count(*) FROM tasks")
+  _ea=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT count(*) FROM events")
+  _dumpa=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT project,feature,wave,source_id,outcome,arquivos_tocados FROM tasks UNION ALL SELECT project,feature,wave,source_id,event_type,timestamp FROM events ORDER BY 1,2,3,4")
+  # Caminho B: --reindex (descoberta padrao).
+  _write_layerb_state "$TMPDIR_TEST/rx/p/.claude/feature-00c-state/featB" "/home/u/projB" "featB"
+  _rc --reindex --states-root "$TMPDIR_TEST/rx" --db "$TMPDIR_TEST/b.db" >/dev/null 2>&1
+  _tb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT count(*) FROM tasks")
+  _eb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT count(*) FROM events")
+  _dumpb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT project,feature,wave,source_id,outcome,arquivos_tocados FROM tasks UNION ALL SELECT project,feature,wave,source_id,event_type,timestamp FROM events ORDER BY 1,2,3,4")
+  [ "$_ta" = "$_tb" ] && [ "$_ea" = "$_eb" ] || { _fail "contagem ingest vs reindex B" "tasks $_ta/$_tb events $_ea/$_eb"; return 1; }
+  [ "$_dumpa" = "$_dumpb" ] || { _fail "divergencia ingest vs reindex B" "dumps diferem"; return 1; }
+}
+
 run_all_scenarios

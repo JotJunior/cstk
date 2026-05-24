@@ -334,17 +334,17 @@ Ref: FR-019 (ingerir Task), FR-022 (retro-compat); data-model.md §Entity Task;
 contracts/recall-ingest-schema.md §2 (tasks: source_id=task_id, wave=wave_id
 da task).
 
-- [ ] 5.1.1 Adicionar `CREATE TABLE IF NOT EXISTS tasks (...)` em
+- [x] 5.1.1 Adicionar `CREATE TABLE IF NOT EXISTS tasks (...)` em
   `recall_schema_ddl()` conforme DDL de data-model.md (outcome, testes_rodados,
   testes_passados, lint_ok 0/1, arquivos_tocados contagem), com UNIQUE(project,
   feature,wave,source_id)
-- [ ] 5.1.2 Em `recall_ingest_state_json()`, parsear `.tasks[]? // empty` (jq
+- [x] 5.1.2 Em `recall_ingest_state_json()`, parsear `.tasks[]? // empty` (jq
   com fallback para retro-compat) e derivar uma linha por task; `arquivos_tocados`
   = contagem (`length`) do array
-- [ ] 5.1.3 Escrever via `INSERT INTO tasks ... ON CONFLICT DO UPDATE` com
+- [x] 5.1.3 Escrever via `INSERT INTO tasks ... ON CONFLICT DO UPDATE` com
   `wave=<wave_id da task>`, `source_id=task_id` (research.md D2, contract §2)
-- [ ] 5.1.4 Estender contador `RECALL_TOTAL_TASK` para o sumario (contract §3)
-- [ ] 5.1.5 Teste: fixture instrumentado com `.tasks[]` -> 1 linha de Task por
+- [x] 5.1.4 Estender contador `RECALL_TOTAL_TASK` para o sumario (contract §3)
+- [x] 5.1.5 Teste: fixture instrumentado com `.tasks[]` -> 1 linha de Task por
   task com outcome/testes/lint/arquivos corretos (Acceptance US3.1)
 
 ### 5.2 DDL e ingestao da entidade Evento `[A]`
@@ -353,16 +353,16 @@ Ref: FR-020 (ingerir Evento), FR-022 (retro-compat); data-model.md §Entity
 Evento; contracts/recall-ingest-schema.md §2 (events: source_id=
 `<event_type>:<timestamp>`).
 
-- [ ] 5.2.1 Adicionar `CREATE TABLE IF NOT EXISTS events (...)` em
+- [x] 5.2.1 Adicionar `CREATE TABLE IF NOT EXISTS events (...)` em
   `recall_schema_ddl()` conforme DDL de data-model.md (event_type, timestamp,
   descricao), com UNIQUE(project,feature,wave,source_id)
-- [ ] 5.2.2 Em `recall_ingest_state_json()`, parsear `.eventos[]? // empty` e
+- [x] 5.2.2 Em `recall_ingest_state_json()`, parsear `.eventos[]? // empty` e
   derivar uma linha por evento, ordem cronologica preservada; `source_id` =
   `<event_type>:<timestamp>`
-- [ ] 5.2.3 Aplicar `secrets-filter.sh` em `descricao` (texto livre); event_type
+- [x] 5.2.3 Aplicar `secrets-filter.sh` em `descricao` (texto livre); event_type
   e timestamp sem filtro (FR-006)
-- [ ] 5.2.4 Estender contador `RECALL_TOTAL_EVENT` para o sumario (contract §3)
-- [ ] 5.2.5 Teste: fixture com eventos dos 4 tipos MVP -> 1 linha de Evento por
+- [x] 5.2.4 Estender contador `RECALL_TOTAL_EVENT` para o sumario (contract §3)
+- [x] 5.2.5 Teste: fixture com eventos dos 4 tipos MVP -> 1 linha de Evento por
   ocorrencia com tipo/timestamp/proveniencia, consultavel em ordem cronologica
   (Acceptance US3.2)
 
@@ -371,12 +371,12 @@ Evento; contracts/recall-ingest-schema.md §2 (events: source_id=
 Ref: FR-022 (state nao-instrumentado), SC-009 (0 linhas + 0 erro);
 contracts/layer-b-instrumentation.md §4; research.md D9.
 
-- [ ] 5.3.1 Confirmar que `.tasks[]? // empty` e `.eventos[]? // empty`
+- [x] 5.3.1 Confirmar que `.tasks[]? // empty` e `.eventos[]? // empty`
   produzem 0 linhas (sem erro) quando os campos estao ausentes (execucao antiga)
-- [ ] 5.3.2 Teste: fixture `state.json` SEM `.tasks`/`.eventos` (pre-
+- [x] 5.3.2 Teste: fixture `state.json` SEM `.tasks`/`.eventos` (pre-
   instrumentacao) -> 0 linhas em tasks/events, 0 erro, 0 abort (SC-009,
   Acceptance US3.3)
-- [ ] 5.3.3 Teste: reindex do zero recria tasks/events identicamente
+- [x] 5.3.3 Teste: reindex do zero recria tasks/events identicamente
   (convergencia ingest/reindex, FR-001/SC-002 estendido a camada B)
 
 ---
