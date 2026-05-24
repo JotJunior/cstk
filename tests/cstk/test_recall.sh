@@ -790,6 +790,324 @@ JSON
 }
 
 # =========================================================================
+# Cenario M5.2 — SinalDeAlerta budget_breach: cruza .orcamentos com consumo
+# per-onda (tool_calls/wallclock) e per-execucao (ciclos/profundidade/
+# estado_size); 1 linha por threshold excedido com consumido vs threshold
+# corretos (task 2.2.4; FR-014, SC-005, Acceptance US2.1)
+# =========================================================================
+scenario_m52_alert_budget_breach() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featBB"
+  mkdir -p "$_mdir"
+  # estado_size_threshold_bytes=100 garante breach de estado_size (state.json
+  # > 100 bytes por construcao). tool_calls 90>80, wallclock 6000>5400 (em
+  # ondas distintas), ciclos 7>5, profundidade 3>=3.
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featBB",
+  "etapa_corrente": "execute-task",
+  "execucao": { "id": "exec-featBB", "projeto_alvo_path": "/home/u/projBB", "status": "em_andamento", "iniciada_em": "2026-01-01T00:00:00Z" },
+  "metricas_acumuladas": {},
+  "orcamentos": {
+    "tool_calls_threshold_onda": 80,
+    "wallclock_threshold_segundos": 5400,
+    "estado_size_threshold_bytes": 100,
+    "ciclos_max_por_etapa": 5,
+    "ciclos_consumidos_etapa_corrente": 7,
+    "recursividade_max": 3,
+    "profundidade_corrente_subagentes": 3
+  },
+  "ondas": [
+    { "id": "onda-001", "tool_calls": 90, "wallclock_seconds": 100, "etapas_executadas": ["specify"] },
+    { "id": "onda-002", "tool_calls": 10, "wallclock_seconds": 6000, "etapas_executadas": ["plan"] }
+  ],
+  "decisoes": [], "bloqueios_humanos": [], "historico_movimento_circular": []
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/kbb.db" || return 1
+  # 5 breaches: tool_calls(onda-001), wallclock(onda-002), ciclos, profundidade,
+  # estado_size (3 ultimos com wave='-').
+  _n=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT count(*) FROM alert_signals WHERE tipo='budget_breach' AND feature='featBB'")
+  [ "$_n" = "5" ] || { _fail "breach count" "esperado 5, obtido $_n"; return 1; }
+  # subtipo per-onda + valores consumido/threshold corretos.
+  _tc=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||valor_consumido||'|'||valor_threshold FROM alert_signals WHERE feature='featBB' AND subtipo='tool_calls'")
+  [ "$_tc" = "onda-001|90|80" ] || { _fail "breach tool_calls" "esperado onda-001|90|80, obtido $_tc"; return 1; }
+  _wc=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||valor_consumido||'|'||valor_threshold FROM alert_signals WHERE feature='featBB' AND subtipo='wallclock'")
+  [ "$_wc" = "onda-002|6000|5400" ] || { _fail "breach wallclock" "esperado onda-002|6000|5400, obtido $_wc"; return 1; }
+  # subtipo per-execucao -> wave='-'.
+  _ci=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||valor_consumido||'|'||valor_threshold FROM alert_signals WHERE feature='featBB' AND subtipo='ciclos'")
+  [ "$_ci" = "-|7|5" ] || { _fail "breach ciclos" "esperado -|7|5, obtido $_ci"; return 1; }
+  _pf=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||valor_consumido||'|'||valor_threshold FROM alert_signals WHERE feature='featBB' AND subtipo='profundidade'")
+  [ "$_pf" = "-|3|3" ] || { _fail "breach profundidade" "esperado -|3|3 (>=), obtido $_pf"; return 1; }
+  _es=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT (valor_consumido > valor_threshold) FROM alert_signals WHERE feature='featBB' AND subtipo='estado_size'")
+  [ "$_es" = "1" ] || { _fail "breach estado_size" "esperado consumido>threshold, obtido $_es"; return 1; }
+  # source_id segue padrao budget_breach:<wave>:<ordinal>; descricao NULL.
+  _sid=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT source_id FROM alert_signals WHERE feature='featBB' AND subtipo='tool_calls'")
+  [ "$_sid" = "budget_breach:onda-001:0" ] || { _fail "breach source_id" "esperado budget_breach:onda-001:0, obtido $_sid"; return 1; }
+  _dn=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT (count(*) = sum(CASE WHEN descricao IS NULL THEN 1 ELSE 0 END)) FROM alert_signals WHERE feature='featBB' AND tipo='budget_breach'")
+  [ "$_dn" = "1" ] || { _fail "breach descricao" "esperado descricao NULL em todos os breach"; return 1; }
+}
+
+# =========================================================================
+# Cenario M5.3 — budget_breach: nenhum threshold excedido -> 0 sinais; e
+# idempotencia (re-ingest N vezes -> delta 0). (task 2.2.4; SC-004, SC-005)
+# =========================================================================
+scenario_m53_budget_breach_negativo_e_idempotente() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featBN"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featBN",
+  "etapa_corrente": "plan",
+  "execucao": { "id": "exec-featBN", "projeto_alvo_path": "/home/u/projBN", "status": "em_andamento", "iniciada_em": "2026-01-01T00:00:00Z" },
+  "metricas_acumuladas": {},
+  "orcamentos": {
+    "tool_calls_threshold_onda": 80,
+    "wallclock_threshold_segundos": 5400,
+    "estado_size_threshold_bytes": 1048576,
+    "ciclos_max_por_etapa": 5,
+    "ciclos_consumidos_etapa_corrente": 1,
+    "recursividade_max": 3,
+    "profundidade_corrente_subagentes": 1
+  },
+  "ondas": [ { "id": "onda-001", "tool_calls": 10, "wallclock_seconds": 100, "etapas_executadas": ["specify"] } ],
+  "decisoes": [], "bloqueios_humanos": [], "historico_movimento_circular": []
+}
+JSON
+  # (a) Negativo: nada excedido -> 0 budget_breach.
+  assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/kbn.db" || return 1
+  assert_stdout_contains "0 alerts" || return 1
+  _n=$(sqlite3 "$TMPDIR_TEST/kbn.db" "SELECT count(*) FROM alert_signals WHERE tipo='budget_breach' AND feature='featBN'")
+  [ "$_n" = "0" ] || { _fail "negativo" "esperado 0 budget_breach, obtido $_n"; return 1; }
+  # (b) Idempotencia: reusar fixture de breach M5.2 e ingerir 3x -> delta 0.
+  _bdir="$TMPDIR_TEST/featBBidem"
+  mkdir -p "$_bdir"
+  cat > "$_bdir/state.json" <<'JSON'
+{
+  "short_name": "featBBidem",
+  "etapa_corrente": "execute-task",
+  "execucao": { "id": "exec-featBBidem", "projeto_alvo_path": "/home/u/projBBi", "status": "em_andamento", "iniciada_em": "2026-01-01T00:00:00Z" },
+  "metricas_acumuladas": {},
+  "orcamentos": { "tool_calls_threshold_onda": 80, "wallclock_threshold_segundos": 5400, "estado_size_threshold_bytes": 100, "ciclos_max_por_etapa": 5, "ciclos_consumidos_etapa_corrente": 7, "recursividade_max": 3, "profundidade_corrente_subagentes": 3 },
+  "ondas": [ { "id": "onda-001", "tool_calls": 90, "wallclock_seconds": 100, "etapas_executadas": ["specify"] } ],
+  "decisoes": [], "bloqueios_humanos": [], "historico_movimento_circular": []
+}
+JSON
+  _rc --ingest --state-dir "$_bdir" --db "$TMPDIR_TEST/kbi.db" >/dev/null 2>&1
+  _c1=$(sqlite3 "$TMPDIR_TEST/kbi.db" "SELECT count(*) FROM alert_signals WHERE feature='featBBidem'")
+  _rc --ingest --state-dir "$_bdir" --db "$TMPDIR_TEST/kbi.db" >/dev/null 2>&1
+  _rc --ingest --state-dir "$_bdir" --db "$TMPDIR_TEST/kbi.db" >/dev/null 2>&1
+  _c2=$(sqlite3 "$TMPDIR_TEST/kbi.db" "SELECT count(*) FROM alert_signals WHERE feature='featBBidem'")
+  [ "$_c1" = "$_c2" ] || { _fail "idempotencia breach" "delta != 0: $_c1 -> $_c2"; return 1; }
+  # tool_calls + ciclos + profundidade + estado_size = 4 (sem wallclock: 100<5400).
+  [ "$_c2" = "4" ] || { _fail "contagem breach idem" "esperado 4 estavel, obtido $_c2"; return 1; }
+}
+
+# =========================================================================
+# Cenario M6.1 — MetricaDerivada: latencia humana por bloqueio
+# (respondido_em - disparado_em); bloqueio sem resposta = NULL/pendente.
+# disparado_em/respondido_em/latencia_segundos preservados em bloqueios
+# (task 2.3.3; FR-015, Acceptance US2.3)
+# =========================================================================
+scenario_m61_latencia_humana_derivavel() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featLAT"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featLAT",
+  "etapa_corrente": "clarify",
+  "execucao": { "id": "exec-featLAT", "projeto_alvo_path": "/home/u/projLAT", "status": "em_andamento", "iniciada_em": "2026-01-01T00:00:00Z" },
+  "metricas_acumuladas": {}, "orcamentos": {}, "ondas": [], "decisoes": [],
+  "historico_movimento_circular": [],
+  "bloqueios_humanos": [
+    { "id": "bloq-001", "decisao_id": "dec-010", "status": "respondido", "pergunta": "qual rumo seguir aqui?", "disparado_em": "2026-01-01T00:00:00Z", "respondido_em": "2026-01-01T00:10:00Z", "resposta_humana": "ok" },
+    { "id": "bloq-002", "decisao_id": "dec-011", "status": "aguardando", "pergunta": "outra pergunta pendente?", "disparado_em": "2026-01-01T00:05:00Z", "respondido_em": null }
+  ]
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/klat.db" || return 1
+  # Bloqueio respondido -> latencia = 600s (10 min). Timestamps separados.
+  _r1=$(sqlite3 "$TMPDIR_TEST/klat.db" "SELECT latencia_segundos||'|'||disparado_em||'|'||respondido_em FROM bloqueios WHERE feature='featLAT' AND source_id='bloq-001'")
+  [ "$_r1" = "600|2026-01-01T00:00:00Z|2026-01-01T00:10:00Z" ] || { _fail "latencia respondido" "esperado 600|..., obtido $_r1"; return 1; }
+  # Bloqueio sem resposta -> latencia NULL (pendente), respondido_em vazio.
+  _r2=$(sqlite3 "$TMPDIR_TEST/klat.db" "SELECT (latencia_segundos IS NULL) AND (respondido_em IS NULL OR respondido_em='') FROM bloqueios WHERE feature='featLAT' AND source_id='bloq-002'")
+  [ "$_r2" = "1" ] || { _fail "latencia pendente" "esperado NULL/pendente para bloq-002, obtido $_r2"; return 1; }
+  # decisao_id preservado para JOIN posterior (FR-016).
+  _r3=$(sqlite3 "$TMPDIR_TEST/klat.db" "SELECT decisao_id FROM bloqueios WHERE feature='featLAT' AND source_id='bloq-001'")
+  [ "$_r3" = "dec-010" ] || { _fail "decisao_id preservado" "esperado dec-010, obtido $_r3"; return 1; }
+}
+
+# =========================================================================
+# Cenario M6.2 — MetricaDerivada: clarify auto-resolution rate derivavel
+# da relacao decisoes score>=2 etapa=clarify (autonomas) vs bloqueios
+# fase clarify (escalas via JOIN decisao_id->decisions.etapa), sem nova
+# tabela (task 2.3.4; FR-016, Acceptance US2.4)
+# =========================================================================
+scenario_m62_clarify_rate_derivavel() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featCR"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featCR",
+  "etapa_corrente": "clarify",
+  "execucao": { "id": "exec-featCR", "projeto_alvo_path": "/home/u/projCR", "status": "em_andamento", "iniciada_em": "2026-01-01T00:00:00Z" },
+  "metricas_acumuladas": {}, "orcamentos": {}, "ondas": [],
+  "historico_movimento_circular": [],
+  "decisoes": [
+    { "id": "dec-001", "onda_id": "onda-001", "etapa": "clarify", "escolha": "auto-a", "score": 2, "timestamp": "2026-01-01T00:01:00Z" },
+    { "id": "dec-002", "onda_id": "onda-001", "etapa": "clarify", "escolha": "auto-b", "score": 3, "timestamp": "2026-01-01T00:02:00Z" },
+    { "id": "dec-050", "onda_id": "onda-001", "etapa": "clarify", "escolha": "escalar", "score": 1, "timestamp": "2026-01-01T00:03:00Z" },
+    { "id": "dec-090", "onda_id": "onda-001", "etapa": "plan", "escolha": "fora-clarify", "score": 2, "timestamp": "2026-01-01T00:04:00Z" }
+  ],
+  "bloqueios_humanos": [
+    { "id": "bloq-001", "decisao_id": "dec-050", "status": "aguardando", "pergunta": "ambiguo demais, escalar?", "disparado_em": "2026-01-01T00:03:00Z", "respondido_em": null }
+  ]
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/kcr.db" || return 1
+  # Autonomas: decisoes score>=2 na fase clarify (dec-001, dec-002) = 2;
+  # dec-050 (score 1) e dec-090 (plan) NAO contam.
+  _a=$(sqlite3 "$TMPDIR_TEST/kcr.db" "SELECT count(*) FROM decisions WHERE feature='featCR' AND etapa='clarify' AND score>=2")
+  [ "$_a" = "2" ] || { _fail "clarify autonomas" "esperado 2, obtido $_a"; return 1; }
+  # Escalas: bloqueios cuja decisao_id aponta para decisao de etapa clarify = 1.
+  _e=$(sqlite3 "$TMPDIR_TEST/kcr.db" "SELECT count(*) FROM bloqueios b JOIN decisions d ON d.feature=b.feature AND d.source_id=b.decisao_id WHERE b.feature='featCR' AND d.etapa='clarify'")
+  [ "$_e" = "1" ] || { _fail "clarify escalas" "esperado 1, obtido $_e"; return 1; }
+  # Taxa de auto-resolucao derivavel = auto/(auto+escala) = 2/3.
+  _rate=$(sqlite3 "$TMPDIR_TEST/kcr.db" "SELECT printf('%d/%d', $_a, $_a + $_e)")
+  [ "$_rate" = "2/3" ] || { _fail "clarify rate" "esperado 2/3, obtido $_rate"; return 1; }
+}
+
+# Resolve model-routing-report.sh via CSTK_LIB (repo) ou ~/.claude (instalado).
+_mrr_path() {
+  _mrr_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/model-routing-report.sh"
+  if [ -f "$_mrr_repo" ]; then printf '%s\n' "$_mrr_repo"; return 0; fi
+  _mrr_inst="${HOME:-/tmp}/.claude/skills/agente-00c-runtime/scripts/model-routing-report.sh"
+  if [ -f "$_mrr_inst" ]; then printf '%s\n' "$_mrr_inst"; return 0; fi
+  return 1
+}
+
+# =========================================================================
+# Cenario M6.3 — Mix de modelos: reuso (FR-017). (a) recall.sh NAO contem
+# logica de agregacao de modelos em linha de CODIGO (so comentario-ancora);
+# (b) o mix e a saida canonica de model-routing-report.sh aggregate --json
+# sobre o mesmo fixture -> 0 divergencias (a fonte unica, recall nao duplica).
+# (task 2.4.2/2.4.3; FR-017, SC-006, Acceptance US2.5)
+# =========================================================================
+scenario_m63_model_mix_delegado() {
+  _have_deps || return 0
+  # (a) Auditoria FR-017: nenhuma LINHA DE CODIGO (nao-comentario) de recall.sh
+  # referencia nomes de modelo ou chaves de agregacao do mix. Exclui linhas
+  # cujo primeiro caractere nao-branco e '#'.
+  _rsh="$CSTK_LIB/recall.sh"
+  [ -f "$_rsh" ] || { _fail "recall.sh path" "nao encontrado em $_rsh"; return 1; }
+  _hits=$(grep -nE "por_modelo|chosen_model|fallback-default|Selecao de modelo" "$_rsh" \
+            | grep -vE "^[0-9]+:[[:space:]]*#" || true)
+  [ -z "$_hits" ] || { _fail "FR-017 duplicacao" "logica de mix em codigo de recall.sh: $_hits"; return 1; }
+  # (b) Delegacao a aggregate --json = fonte unica. Skip se runtime ausente.
+  _MRR=$(_mrr_path) || return 0
+  _mdir="$TMPDIR_TEST/featMIX"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featMIX",
+  "etapa_corrente": "clarify",
+  "execucao": { "id": "exec-featMIX", "projeto_alvo_path": "/home/u/projMIX", "status": "em_andamento", "iniciada_em": "2026-01-01T00:00:00Z" },
+  "metricas_acumuladas": {}, "orcamentos": {}, "ondas": [],
+  "bloqueios_humanos": [], "historico_movimento_circular": [],
+  "decisoes": [
+    { "id": "dec-001", "onda_id": "onda-001", "etapa": "clarify", "contexto": "Selecao de modelo para subagente feature-00c-clarify-asker", "escolha": "haiku", "score": 2, "timestamp": "2026-01-01T00:01:00Z" },
+    { "id": "dec-002", "onda_id": "onda-001", "etapa": "clarify", "contexto": "Selecao de modelo para subagente feature-00c-clarify-answerer", "escolha": "sonnet", "score": 2, "timestamp": "2026-01-01T00:02:00Z" }
+  ]
+}
+JSON
+  # O mix delegado e exatamente a saida de aggregate --json (fonte unica).
+  _json=$("$_MRR" aggregate --state-dir "$_mdir" --json 2>/dev/null) \
+    || { _fail "aggregate --json" "invocacao falhou"; return 1; }
+  # Parseavel e numeros canonicos: total=2, haiku=1, sonnet=1 (0 divergencia
+  # porque recall.sh nao produz mix proprio para divergir — delega 100%).
+  _t=$(printf '%s' "$_json" | jq -r '.total')
+  _h=$(printf '%s' "$_json" | jq -r '.por_modelo.haiku')
+  _s=$(printf '%s' "$_json" | jq -r '.por_modelo.sonnet')
+  [ "$_t|$_h|$_s" = "2|1|1" ] || { _fail "mix delegado" "esperado total=2 haiku=1 sonnet=1, obtido $_t|$_h|$_s"; return 1; }
+}
+
+# =========================================================================
+# Cenario M7.1 — Filtro de segredos end-to-end da camada A: planta segredos
+# (token=ghp_/api_key=sk-) em TODOS os campos de texto livre das entidades A
+# (executions.motivo_termino, waves.motivo_termino, alert_signals circular
+# descricao, bloqueios pergunta/contexto/resposta) e assegura que nenhum
+# padrao conhecido sobrevive ao indice; campos estruturados/numericos ficam
+# intactos. (task 2.5.3; FR-006, SC-007, Independent Test US2)
+# =========================================================================
+scenario_m71_filtro_segredos_e2e_camada_a() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featSEC"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featSEC",
+  "etapa_corrente": "review-task",
+  "execucao": {
+    "id": "exec-featSEC",
+    "projeto_alvo_path": "/home/u/projSEC",
+    "status": "abortada",
+    "motivo_termino": "abortado com token=ghp_ExecLeak1234567890ABCDEF presente",
+    "iniciada_em": "2026-01-01T00:00:00Z",
+    "terminada_em": "2026-01-01T00:30:00Z"
+  },
+  "metricas_acumuladas": { "ondas_total": 1, "tool_calls_total": 42 },
+  "orcamentos": {},
+  "ondas": [
+    { "id": "onda-001", "tool_calls": 10, "wallclock_seconds": 100, "etapas_executadas": ["specify"], "fim": "2026-01-01T00:10:00Z", "motivo_termino": "encerrou com api_key=sk-WaveLeak0987654321zyxw aqui" }
+  ],
+  "historico_movimento_circular": [
+    { "problema_hash": "phash token=ghp_CircLeakAAAA1111BBBB2222", "solucao_hash": "shash", "timestamp": "2026-01-01T00:05:00Z" }
+  ],
+  "decisoes": [],
+  "bloqueios_humanos": [
+    {
+      "id": "bloq-001",
+      "decisao_id": "dec-010",
+      "status": "respondido",
+      "pergunta": "como tratar token=ghp_BloqPergLeak33334444 aqui?",
+      "contexto_para_resposta": "ver api_key=sk-BloqCtxLeak55556666 no log",
+      "resposta_humana": "use token=ghp_BloqRespLeak77778888 manual",
+      "disparado_em": "2026-01-01T00:00:00Z",
+      "respondido_em": "2026-01-01T00:15:00Z"
+    }
+  ]
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/ksec.db" || return 1
+  # (a) Nenhum padrao de segredo conhecido em QUALQUER coluna de texto das
+  # tabelas da camada A + knowledge_fts. Dump amplo e grep por marcadores.
+  _dump=$(sqlite3 "$TMPDIR_TEST/ksec.db" "
+    SELECT motivo_termino FROM executions WHERE feature='featSEC'
+    UNION ALL SELECT motivo_termino FROM waves WHERE feature='featSEC'
+    UNION ALL SELECT descricao FROM alert_signals WHERE feature='featSEC'
+    UNION ALL SELECT pergunta||' '||contexto_para_resposta||' '||resposta FROM bloqueios WHERE feature='featSEC'
+    UNION ALL SELECT body FROM knowledge_fts WHERE feature='featSEC'")
+  case "$_dump" in
+    *ghp_*|*"sk-"[A-Za-z0-9]*) _fail "segredo vazou camada A" "padrao de segredo no indice: $_dump"; return 1 ;;
+  esac
+  # Sanidade: o redactor de fato agiu (marcador [REDACTED] presente em ao
+  # menos um campo de texto livre que continha segredo).
+  case "$_dump" in
+    *REDACTED*) : ;;
+    *) _fail "redactor inativo" "esperado [REDACTED] em algum campo, dump: $_dump"; return 1 ;;
+  esac
+  # (b) Campos estruturados/numericos INTACTOS (nao passaram por filtro):
+  # timestamps, latencia, decisao_id, contagens.
+  _struct=$(sqlite3 "$TMPDIR_TEST/ksec.db" "SELECT decisao_id||'|'||disparado_em||'|'||respondido_em||'|'||latencia_segundos FROM bloqueios WHERE feature='featSEC' AND source_id='bloq-001'")
+  [ "$_struct" = "dec-010|2026-01-01T00:00:00Z|2026-01-01T00:15:00Z|900" ] || { _fail "estruturado intacto" "esperado dec-010|...|900, obtido $_struct"; return 1; }
+  _tc=$(sqlite3 "$TMPDIR_TEST/ksec.db" "SELECT tool_calls_total FROM executions WHERE feature='featSEC'")
+  [ "$_tc" = "42" ] || { _fail "numerico intacto" "esperado tool_calls_total=42, obtido $_tc"; return 1; }
+}
+
+# =========================================================================
 # recall-autoconsume — Infra comum do modo --context (FASE 4.1)
 # =========================================================================
 

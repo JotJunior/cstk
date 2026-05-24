@@ -172,17 +172,17 @@ SinalDeAlerta (tipo `circular`); contracts/recall-ingest-schema.md §2
 Ref: FR-014 (breach de orcamento); data-model.md §SinalDeAlerta (derivacao
 budget_breach); research.md D7; spec.md SC-005.
 
-- [ ] 2.2.1 Em `recall_ingest_state_json()`, cruzar `.orcamentos`
+- [x] 2.2.1 Em `recall_ingest_state_json()`, cruzar `.orcamentos`
   (tool_calls_threshold_onda, wallclock_threshold_segundos,
   estado_size_threshold_bytes, ciclos_max_por_etapa, recursividade_max) com
   consumo por onda (`.ondas[].tool_calls`, `.ondas[].wallclock_seconds`) e por
   execucao
-- [ ] 2.2.2 Para cada threshold excedido, gerar linha `budget_breach` com
+- [x] 2.2.2 Para cada threshold excedido, gerar linha `budget_breach` com
   `subtipo` (tool_calls|wallclock|ciclos|profundidade|estado_size),
   `valor_consumido`, `valor_threshold`, `source_id` =
   `budget_breach:<wave_id>:<ordinal>`
-- [ ] 2.2.3 Estender contador `RECALL_TOTAL_ALERT` para o sumario (contract §3)
-- [ ] 2.2.4 Teste: fixture com onda excedendo `tool_calls_threshold_onda` (e
+- [x] 2.2.3 Estender contador `RECALL_TOTAL_ALERT` para o sumario (contract §3)
+- [x] 2.2.4 Teste: fixture com onda excedendo `tool_calls_threshold_onda` (e
   variantes wallclock/ciclos/profundidade) -> ao menos 1 SinalDeAlerta de
   breach por threshold excedido, com consumido vs threshold corretos (SC-005,
   Acceptance US2.1)
@@ -194,18 +194,18 @@ Ref: FR-015 (latencia humana), FR-016 (clarify rate); data-model.md
 tabela obrigatoria); research.md (decisao de design: computavel sem
 materializar).
 
-- [ ] 2.3.1 Tornar derivavel a latencia humana por bloqueio: `respondido_em -
+- [x] 2.3.1 Tornar derivavel a latencia humana por bloqueio: `respondido_em -
   disparado_em` em `.bloqueios_humanos[]`; bloqueio sem resposta = latencia
   aberta/pendente (FR-015, Acceptance US2.3) — via query sobre tabela
   `bloqueios` existente ou subtipo `human_latency` em alert_signals
-- [ ] 2.3.2 Tornar derivavel a taxa de auto-resolucao de clarify: relacao entre
+- [x] 2.3.2 Tornar derivavel a taxa de auto-resolucao de clarify: relacao entre
   decisoes `score >= 2` na fase clarify (autonomas) e bloqueios humanos na fase
   clarify (escalas), computavel sobre tabelas `decisions` + `bloqueios`
   existentes sem nova tabela (FR-016, Acceptance US2.4)
-- [ ] 2.3.3 Teste: fixture com bloqueios contendo disparado_em/respondido_em
+- [x] 2.3.3 Teste: fixture com bloqueios contendo disparado_em/respondido_em
   (e um sem resposta) -> latencia correta por bloqueio + pendente para o sem
   resposta (Acceptance US2.3)
-- [ ] 2.3.4 Teste: fixture com X bloqueios e Y decisoes score>=2 na fase
+- [x] 2.3.4 Teste: fixture com X bloqueios e Y decisoes score>=2 na fase
   clarify -> taxa de auto-resolucao derivavel da relacao (Acceptance US2.4)
 
 ### 2.4 Mix de roteamento de modelos: reuso de model-routing-report.sh `[A]`
@@ -213,13 +213,13 @@ materializar).
 Ref: FR-017 (reuso, MUST NOT duplicar); contracts/recall-ingest-schema.md §6;
 research.md D6; spec.md SC-006.
 
-- [ ] 2.4.1 Expor o mix de roteamento de modelos delegando a
+- [x] 2.4.1 Expor o mix de roteamento de modelos delegando a
   `global/skills/agente-00c-runtime/scripts/model-routing-report.sh aggregate
   --state-dir DIR --json` (invocar/referenciar, NAO reimplementar a agregacao)
-- [ ] 2.4.2 Garantir que nenhum programa `jq`/SQL de agregacao de modelos e
+- [x] 2.4.2 Garantir que nenhum programa `jq`/SQL de agregacao de modelos e
   duplicado em `recall.sh` (auditavel: `grep` por logica de agregacao de
   modelos deve apontar so para model-routing-report.sh) (FR-017)
-- [ ] 2.4.3 Teste: comparar o mix consultado a partir do indice/derivacao com a
+- [x] 2.4.3 Teste: comparar o mix consultado a partir do indice/derivacao com a
   saida de `model-routing-report.sh aggregate --json` sobre o mesmo fixture ->
   0 divergencias (SC-006, Acceptance US2.5)
 
@@ -228,12 +228,12 @@ research.md D6; spec.md SC-006.
 Ref: FR-006 (filtro de texto livre), SC-007 (nenhum segredo no indice);
 contracts/recall-ingest-schema.md §5; checklists/security.md.
 
-- [ ] 2.5.1 Confirmar que TODO campo de texto livre das entidades A
+- [x] 2.5.1 Confirmar que TODO campo de texto livre das entidades A
   (`motivo_termino` em executions/waves, `descricao` em alert_signals) passa
   por `secrets-filter.sh` antes do INSERT (FR-006)
-- [ ] 2.5.2 Confirmar que campos estruturados/numericos NAO passam pelo filtro
+- [x] 2.5.2 Confirmar que campos estruturados/numericos NAO passam pelo filtro
   (timestamps/ids/contagens intactos)
-- [ ] 2.5.3 Teste: fixture com segredos plantados (token/api-key/senha) em
+- [x] 2.5.3 Teste: fixture com segredos plantados (token/api-key/senha) em
   campos de texto livre -> consultar o indice apos ingestao e assertar que
   nenhum padrao de segredo conhecido esta presente (SC-007, Independent Test
   US2)

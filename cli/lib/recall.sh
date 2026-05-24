@@ -50,6 +50,20 @@ fi
 RECALL_EXIT_OK=0
 RECALL_EXIT_USAGE=2
 
+# ==== Mix de roteamento de modelos: delegacao, NUNCA reimplementacao ====
+#
+# (knowledge-db-metrics, task 2.4 / FR-017 / contract §6) A MetricaDerivada
+# "mix de roteamento de modelos" NAO e ingerida nesta knowledge.db nem
+# agregada aqui. Fonte UNICA e canonica e o agregador ja existente do runtime
+# (model-routing-report.sh, subcomando aggregate, flag --json). O painel/
+# consumidor o invoca diretamente. recall.sh deliberadamente NAO contem
+# nenhum programa jq/SQL que agregue escolhas de modelo por subagente. Isto
+# garante SC-006 (0 divergencias com a ferramenta existente): so ha 0
+# divergencia se a MESMA logica for a unica fonte. Duplicar a agregacao aqui
+# violaria FR-017. Auditoria: nenhuma LINHA DE CODIGO (nao-comentario) de
+# recall.sh referencia os nomes de modelo ou as chaves de agregacao do mix —
+# ver scenario_m63_model_mix_delegado em tests/cstk/test_recall.sh.
+
 # ==== Constantes de schema/DB ====
 # v2 (knowledge-db-metrics): + tabelas relacionais executions, waves,
 # alert_signals (camada A) e tasks, events (camada B). Bump idempotente:
@@ -344,6 +358,10 @@ CREATE TABLE IF NOT EXISTS bloqueios (
   pergunta TEXT,
   contexto_para_resposta TEXT,
   resposta TEXT,
+  decisao_id TEXT,
+  disparado_em TEXT,
+  respondido_em TEXT,
+  latencia_segundos INTEGER,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -738,6 +756,90 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
     IFS="$_isj_OLDIFS"
   fi
 
+  # ---- alert_signals: breach de orcamento (tipo='budget_breach') ----
+  # Cruza .orcamentos (top-level) com consumo (FR-014, data-model §SinalDeAlerta
+  # L139-144). Per-onda: tool_calls > tool_calls_threshold_onda, wallclock_seconds
+  # > wallclock_threshold_segundos. Per-execucao (wave='-'):
+  # ciclos_consumidos_etapa_corrente > ciclos_max_por_etapa,
+  # profundidade_corrente_subagentes >= recursividade_max, tamanho do state.json
+  # > estado_size_threshold_bytes. Cada cruzamento excedido gera 1 sinal.
+  # source_id = budget_breach:<wave_id|->:<ordinal> (ordinal = indice do breach
+  # DENTRO do seu grupo de fonte, estavel por construcao do jq). Sem texto livre
+  # (FR-006: subtipo/valores sao estruturados, descricao NULL para breach).
+  # Tamanho do state.json (estado_size) e medido em shell (jq nao faz stat) e
+  # injetado via --argjson. Best-effort: falha de wc -> -1 (nunca dispara breach).
+  _isj_state_size=$(wc -c < "$_isj_state" 2>/dev/null | tr -d ' ') || _isj_state_size=-1
+  case "$_isj_state_size" in ''|*[!0-9-]*) _isj_state_size=-1 ;; esac
+  _isj_breach_lines=$(jq -r --argjson sz "$_isj_state_size" '
+    (.orcamentos // {}) as $o
+    # Per-onda: linhas {wave, sub, consumido, threshold} para cada excedido.
+    | [ (.ondas // [])
+        | to_entries[]
+        | .value as $w
+        | ($w.id // "onda-\(.key)") as $wid
+        | (
+            (if (($o.tool_calls_threshold_onda // null) != null
+                 and ($w.tool_calls // null) != null
+                 and ($w.tool_calls > $o.tool_calls_threshold_onda))
+             then [{wave:$wid, sub:"tool_calls", c:$w.tool_calls, t:$o.tool_calls_threshold_onda}]
+             else [] end)
+          + (if (($o.wallclock_threshold_segundos // null) != null
+                 and ($w.wallclock_seconds // null) != null
+                 and ($w.wallclock_seconds > $o.wallclock_threshold_segundos))
+             then [{wave:$wid, sub:"wallclock", c:$w.wallclock_seconds, t:$o.wallclock_threshold_segundos}]
+             else [] end)
+          )
+        | .[]
+      ]
+    # Per-execucao (wave="-"): ciclos, profundidade, estado_size.
+    + (
+        (if (($o.ciclos_max_por_etapa // null) != null
+             and ($o.ciclos_consumidos_etapa_corrente // null) != null
+             and ($o.ciclos_consumidos_etapa_corrente > $o.ciclos_max_por_etapa))
+         then [{wave:"-", sub:"ciclos", c:$o.ciclos_consumidos_etapa_corrente, t:$o.ciclos_max_por_etapa}]
+         else [] end)
+      + (if (($o.recursividade_max // null) != null
+             and ($o.profundidade_corrente_subagentes // null) != null
+             and ($o.profundidade_corrente_subagentes >= $o.recursividade_max))
+         then [{wave:"-", sub:"profundidade", c:$o.profundidade_corrente_subagentes, t:$o.recursividade_max}]
+         else [] end)
+      + (if (($o.estado_size_threshold_bytes // null) != null
+             and ($sz != null) and ($sz >= 0)
+             and ($sz > $o.estado_size_threshold_bytes))
+         then [{wave:"-", sub:"estado_size", c:$sz, t:$o.estado_size_threshold_bytes}]
+         else [] end)
+      )
+    # Ordinal estavel POR grupo de fonte (wave): group_by preserva ordem de
+    # entrada; enumera dentro de cada grupo. Emite tupla codificada b64.
+    | group_by(.wave)
+    | map(to_entries | map(.value + {ord: .key}))
+    | flatten
+    | .[]
+    | [.wave, .sub, (.c|tostring), (.t|tostring), (.ord|tostring)]
+    | @base64' "$_isj_state" 2>/dev/null) || _isj_breach_lines=""
+  if [ -n "$_isj_breach_lines" ]; then
+    _isj_OLDIFS="$IFS"; IFS='
+'
+    for _isj_row in $_isj_breach_lines; do
+      _isj_decoded=$(printf '%s' "$_isj_row" | base64 -d 2>/dev/null) || continue
+      _f_bw=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
+      _f_bsub=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      _f_bc=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
+      _f_bt=$(printf '%s' "$_isj_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
+      _f_bord=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
+      [ -n "$_f_bsub" ] || continue
+      _isj_bc_sql=$(recall_int_or_null "$_f_bc")
+      _isj_bt_sql=$(recall_int_or_null "$_f_bt")
+      _f_bsid="budget_breach:$_f_bw:$_f_bord"
+      _isj_sql="$_isj_sql
+INSERT INTO alert_signals(project,feature,wave,execucao_id,source_ts,source_id,tipo,subtipo,valor_consumido,valor_threshold,descricao,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_bw")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_isj_now")','$(sql_escape "$_f_bsid")','budget_breach','$(sql_escape "$_f_bsub")',$_isj_bc_sql,$_isj_bt_sql,NULL,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,tipo=excluded.tipo,subtipo=excluded.subtipo,valor_consumido=excluded.valor_consumido,valor_threshold=excluded.valor_threshold,descricao=excluded.descricao,ingested_at=excluded.ingested_at;"
+      _isj_n_alert=$((_isj_n_alert + 1))
+    done
+    IFS="$_isj_OLDIFS"
+  fi
+
   # ---- decisions ----
   # Campos reais do state.json: id, onda_id (wave), timestamp, etapa, agente,
   # escolha, score_justificativa (score), contexto, justificativa, evidencia.
@@ -795,21 +897,35 @@ VALUES('$(sql_escape "$_f_esc $_f_ctx $_f_just $_f_ev")','decision','$(sql_escap
   fi
 
   # ---- bloqueios ----
-  # Campos reais: id, status, pergunta, contexto_para_resposta,
-  # resposta_humana (resposta), respondido_em/disparado_em (timestamp),
-  # onda_id (quando presente). Bloqueios sao feature-level; wave default 'bloq'
-  # se onda_id ausente, garantindo chave de upsert estavel.
+  # Campos reais: id, decisao_id, status, pergunta, contexto_para_resposta,
+  # resposta_humana (resposta), disparado_em, respondido_em, onda_id (quando
+  # presente). Bloqueios sao feature-level; wave default 'bloq' se onda_id
+  # ausente, garantindo chave de upsert estavel.
+  # source_ts mantem o coalesce historico (respondido_em||disparado_em). As
+  # colunas disparado_em/respondido_em sao preservadas SEPARADAS (FR-015) para
+  # derivar latencia humana = respondido_em - disparado_em (NULL para bloqueio
+  # aberto). decisao_id permite JOIN com decisions.etapa para a taxa de
+  # auto-resolucao de clarify (FR-016). latencia_segundos materializada no
+  # ingest (computavel sem nova tabela; data-model L175-186).
   _isj_n_bloq=0
   _isj_bloq_lines=$(jq -r '
     (.bloqueios_humanos // [])
     | to_entries[]
-    | [(.value.id // "bloq-\(.key)"),
-       (.value.onda_id // "bloq"),
-       (.value.respondido_em // .value.disparado_em // .value.timestamp // ""),
-       (.value.status // ""),
-       (.value.pergunta // ""),
-       (.value.contexto_para_resposta // ""),
-       (.value.resposta_humana // .value.resposta // "")]
+    | .value as $b
+    | (if (($b.disparado_em // "") != "" and ($b.respondido_em // "") != "")
+       then (($b.respondido_em|fromdateiso8601) - ($b.disparado_em|fromdateiso8601) | tostring)
+       else "" end) as $lat
+    | [($b.id // "bloq-\(.key)"),
+       ($b.onda_id // "bloq"),
+       ($b.respondido_em // $b.disparado_em // $b.timestamp // ""),
+       ($b.status // ""),
+       ($b.pergunta // ""),
+       ($b.contexto_para_resposta // ""),
+       ($b.resposta_humana // $b.resposta // ""),
+       ($b.decisao_id // ""),
+       ($b.disparado_em // ""),
+       ($b.respondido_em // ""),
+       $lat]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_bloq_lines=""
   if [ -n "$_isj_bloq_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -823,13 +939,19 @@ VALUES('$(sql_escape "$_f_esc $_f_ctx $_f_just $_f_ev")','decision','$(sql_escap
       _f_perg=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
       _f_cpr=$(printf '%s' "$_isj_decoded" | jq -r '.[5]' 2>/dev/null | strip_nul)
       _f_resp=$(printf '%s' "$_isj_decoded" | jq -r '.[6]' 2>/dev/null | strip_nul)
+      _f_decid=$(printf '%s' "$_isj_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
+      _f_disp=$(printf '%s' "$_isj_decoded" | jq -r '.[8]' 2>/dev/null | strip_nul)
+      _f_respat=$(printf '%s' "$_isj_decoded" | jq -r '.[9]' 2>/dev/null | strip_nul)
+      _f_lat=$(printf '%s' "$_isj_decoded" | jq -r '.[10]' 2>/dev/null | strip_nul)
       _f_perg=$(recall_scrub "$_f_perg")
       _f_cpr=$(recall_scrub "$_f_cpr")
       _f_resp=$(recall_scrub "$_f_resp")
+      # decisao_id / timestamps sao estruturados (sem filtro). latencia numerica.
+      _isj_lat_sql=$(recall_int_or_null "$_f_lat")
       _isj_sql="$_isj_sql
-INSERT INTO bloqueios(project,feature,wave,execucao_id,source_ts,source_id,status,pergunta,contexto_para_resposta,resposta,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_perg")','$(sql_escape "$_f_cpr")','$(sql_escape "$_f_resp")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,pergunta=excluded.pergunta,contexto_para_resposta=excluded.contexto_para_resposta,resposta=excluded.resposta,ingested_at=excluded.ingested_at;
+INSERT INTO bloqueios(project,feature,wave,execucao_id,source_ts,source_id,status,pergunta,contexto_para_resposta,resposta,decisao_id,disparado_em,respondido_em,latencia_segundos,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_perg")','$(sql_escape "$_f_cpr")','$(sql_escape "$_f_resp")','$(sql_escape "$_f_decid")','$(sql_escape "$_f_disp")','$(sql_escape "$_f_respat")',$_isj_lat_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,pergunta=excluded.pergunta,contexto_para_resposta=excluded.contexto_para_resposta,resposta=excluded.resposta,decisao_id=excluded.decisao_id,disparado_em=excluded.disparado_em,respondido_em=excluded.respondido_em,latencia_segundos=excluded.latencia_segundos,ingested_at=excluded.ingested_at;
 DELETE FROM knowledge_fts WHERE type='bloqueio' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='$(sql_escape "$_f_wave")' AND source_id='$(sql_escape "$_f_sid")';
 INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
 VALUES('$(sql_escape "$_f_perg $_f_cpr $_f_resp")','bloqueio','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
@@ -1015,9 +1137,9 @@ recall_mode_ingest() {
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
   recall_ingest_state_json "$_ing_state_dir/state.json" "$_ing_db"
 
-  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves\n' \
+  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts\n' \
     "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
-    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}"
+    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}"
   return "$RECALL_EXIT_OK"
 }
 
@@ -1414,8 +1536,8 @@ recall_mode_reindex() {
     IFS="$_rx_OLDIFS"
   fi
 
-  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves)\n' \
+  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts)\n' \
     "$_rx_count" "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
-    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}"
+    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}"
   return "$RECALL_EXIT_OK"
 }
