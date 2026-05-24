@@ -105,11 +105,35 @@ fi
      - registrar Decisao resultante via state-decisions.sh register
      - mudar status para em_andamento
 
-7. delegar ao orquestrador
-   Agent {
-     subagent_type: "agente-00c-feature-orchestrator",
-     prompt: <contexto com short_name, state_dir, projeto, instrucao "continue de proxima_instrucao">
-   }
+7. selecionar modelo da onda + delegar ao orquestrador
+
+   Antes de spawnar, compute o modelo a aplicar na onda de continuacao
+   via `wave-select` (mapa fase→modelo + refino + override — FR-002,
+   FR-009). Idempotente por onda (re-entrada apos retomada nao duplica
+   Decisao). Este passo apenas INSERE a selecao antes do spawn — NAO
+   altera o fluxo TOCTOU-safe (lock + sha256-verify + bloqueios) dos
+   passos 1-6:
+
+     MODEL=$(model-routing.sh wave-select --state-dir "$AGENTE_00C_STATE_DIR")
+
+   `wave-select` SEMPRE emite `haiku` | `sonnet` | `opus` | `manter-atual`
+   em stdout (nunca aborta — fallback gracioso). A escolha ja foi
+   registrada como DecisaoDeRoteamentoPorOnda auditavel.
+
+   Aplicar o param `model` SOMENTE quando `MODEL != manter-atual`
+   (FR-006, quickstart C8 — `manter-atual` herda o modelo da sessao);
+   bidirecionalidade FR-009 (pode subir ou descer entre ondas):
+   - Se MODEL = manter-atual: spawnar SEM o param `model`.
+       Agent {
+         subagent_type: "agente-00c-feature-orchestrator",
+         prompt: <contexto com short_name, state_dir, projeto, instrucao "continue de proxima_instrucao">
+       }
+   - Senao (MODEL ∈ {haiku, sonnet, opus}): spawnar COM `model=<MODEL>`.
+       Agent {
+         subagent_type: "agente-00c-feature-orchestrator",
+         model: <MODEL>,
+         prompt: <contexto com short_name, state_dir, projeto, instrucao "continue de proxima_instrucao">
+       }
 ```
 
 ### 4. Pos-orquestrador: capturar Schedule intent (idem `/feature-00c`)

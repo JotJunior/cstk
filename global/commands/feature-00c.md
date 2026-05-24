@@ -157,14 +157,44 @@ state-rw.sh init --state-dir "$AGENTE_00C_STATE_DIR" \
   --aspectos-chave "$_aspectos"
 ```
 
-### 4. Delegar ao orquestrador via Agent
+### 4. Selecionar modelo da onda + delegar ao orquestrador via Agent
 
+Antes de spawnar, compute o modelo a aplicar nesta onda via `wave-select`
+(mapa fase→modelo + refino model-selector + override do operador — FR-002,
+FR-009). A seleção é idempotente por onda (re-entrada não duplica Decisão):
+
+```bash
+MODEL=$(model-routing.sh wave-select --state-dir "$AGENTE_00C_STATE_DIR")
 ```
-Agent {
-  subagent_type: "agente-00c-feature-orchestrator",
-  prompt: <contexto com short_name, projeto, state_dir, briefing_path, constitution_path>
-}
-```
+
+`wave-select` SEMPRE emite uma linha em stdout: `haiku` | `sonnet` |
+`opus` | `manter-atual` (nunca aborta — fallback gracioso para
+`manter-atual`). A escolha já foi registrada como `DecisãoDeRoteamentoPorOnda`
+auditável dentro do próprio `wave-select`.
+
+Spawne aplicando o param `model` SOMENTE quando `MODEL != manter-atual`
+(FR-006, quickstart C8 — `manter-atual` herda o modelo da sessão):
+
+- Se `MODEL = manter-atual`: spawnar SEM o param `model`.
+  ```
+  Agent {
+    subagent_type: "agente-00c-feature-orchestrator",
+    prompt: <contexto com short_name, projeto, state_dir, briefing_path, constitution_path>
+  }
+  ```
+- Senão (`MODEL ∈ {haiku, sonnet, opus}`): spawnar COM `model=<MODEL>`.
+  ```
+  Agent {
+    subagent_type: "agente-00c-feature-orchestrator",
+    model: <MODEL>,
+    prompt: <contexto com short_name, projeto, state_dir, briefing_path, constitution_path>
+  }
+  ```
+
+> Bidirecionalidade (FR-009): `wave-select` pode subir (sonnet→opus em
+> fases profundas) ou descer (opus→haiku em fases rasas) o modelo entre
+> ondas. O prompt do orquestrador NÃO muda — só o invólucro do spawn
+> ganha o param `model`.
 
 ### 5. Pos-orquestrador: capturar Schedule intent
 

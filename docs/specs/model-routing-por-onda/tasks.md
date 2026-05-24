@@ -75,16 +75,16 @@ Ref: FR-015 · quickstart C9
 ### 3.1 Inserir `wave-select` + aplicar `model` nos spawns `[A]`
 Ref: FR-002, FR-009 · contracts §Integração de command
 
-- [ ] 3.1.1 Em `agente-00c.md` e `feature-00c.md`: rodar `wave-select` antes do bloco Agent inicial; spawnar com `model=<chosen>`
-- [ ] 3.1.2 Em `agente-00c-resume.md` e `feature-00c-resume.md`: idem antes do spawn de continuação (step 6)
-- [ ] 3.1.3 Garantir bidirecionalidade (pode subir sonnet→opus e descer opus→haiku — FR-009)
-- [ ] 3.1.4 Teste: smoke de cada command instruindo o param model corretamente (assert textual no .md / harness de comando)
+- [x] 3.1.1 Em `agente-00c.md` e `feature-00c.md`: rodar `wave-select` antes do bloco Agent inicial; spawnar com `model=<chosen>`
+- [x] 3.1.2 Em `agente-00c-resume.md` e `feature-00c-resume.md`: idem antes do spawn de continuação (step 6/7), preservando o fluxo TOCTOU-safe (lock/sha-verify/bloqueios) — apenas INSERIR o passo wave-select
+- [x] 3.1.3 Garantir bidirecionalidade (pode subir sonnet→opus e descer opus→haiku — FR-009)
+- [x] 3.1.4 Teste: smoke de cada command instruindo o param model corretamente (assert textual no .md) — `tests/test_command-spawn-model-routing.sh` (21 scenarios; registrado como interno no orphan-check, existence-guarded)
 
 ### 3.2 `manter-atual` omite o param model `[A]`
 Ref: FR-006 · quickstart C8
 
-- [ ] 3.2.1 Quando `wave-select` retorna `manter-atual`, o command spawna SEM o param `model` (herda sessão)
-- [ ] 3.2.2 Teste: cenário C8 (omissão do param)
+- [x] 3.2.1 Quando `wave-select` retorna `manter-atual`, o command spawna SEM o param `model` (herda sessão)
+- [x] 3.2.2 Teste: cenário C8 (omissão do param) — 4 scenarios `*_manter_atual_omite_model` em `tests/test_command-spawn-model-routing.sh`
 
 ---
 

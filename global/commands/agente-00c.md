@@ -159,7 +159,20 @@ ja preparado fora do script), apenas defensivo.
   Status inicial: `em_andamento`, etapa `briefing`, `proxima_instrucao`
   apontando para inicio do briefing.
 
-### 4. Delegacao ao orquestrador
+### 4. Selecao de modelo da onda + delegacao ao orquestrador
+
+Antes de spawnar, compute o modelo a aplicar nesta onda via `wave-select`
+(mapa fase→modelo + refino model-selector + override do operador — FR-002,
+FR-009). A selecao e idempotente por onda (re-entrada nao duplica Decisao):
+
+```bash
+MODEL=$(model-routing.sh wave-select --state-dir <SD>)
+```
+
+`wave-select` SEMPRE emite uma linha em stdout: `haiku` | `sonnet` |
+`opus` | `manter-atual` (nunca aborta — fallback gracioso para
+`manter-atual`). A escolha ja foi registrada como `DecisaoDeRoteamentoPorOnda`
+auditavel dentro do proprio `wave-select`.
 
 Spawnar agente custom `agente-00c-orchestrator` via tool Agent, passando
 no prompt:
@@ -168,6 +181,16 @@ no prompt:
 - `feature-dir`: `<PAP>/docs/specs/<feature>/`
 - `whitelist`: path do whitelist file
 - `tipo_invocacao`: "primeira_invocacao"
+
+Aplique o param `model` no spawn SOMENTE quando `MODEL != manter-atual`
+(FR-006, quickstart C8 — `manter-atual` herda o modelo da sessao):
+- Se `MODEL = manter-atual`: spawnar via tool Agent SEM o param `model`.
+- Senao (`MODEL ∈ {haiku, sonnet, opus}`): spawnar com `model=<MODEL>`.
+
+> Bidirecionalidade (FR-009): `wave-select` pode subir (sonnet→opus em
+> fases profundas) ou descer (opus→haiku em fases rasas) o modelo entre
+> ondas. O prompt do orquestrador NAO muda — so o involucro do spawn
+> ganha o param `model`.
 
 Aguarde retorno do orquestrador (uma mensagem de sumario contendo, entre
 outras linhas, um campo `Schedule intent: ...`).

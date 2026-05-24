@@ -167,6 +167,13 @@ _is_internal_test() {
       # Cobre interacao install.sh + manifest.sh + doctor.sh para os kinds
       # commands/agents (nao mapeia 1:1 para um unico script sob a convencao).
       return 0 ;;
+    test_command-spawn-model-routing.sh)
+      # Smoke textual sobre os 4 commands de spawn/resume (model-routing
+      # por onda, FASE 3 de model-routing-por-onda). Assert no .md, nao em
+      # um unico script — existence-guarded ao command portador da instrucao
+      # wave-select. Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/global/commands/feature-00c.md" ] && return 0
+      return 1 ;;
     test_e2e_model_routing.sh)
       # Cobre fluxo end-to-end model-routing.sh + model-routing-report.sh +
       # state-rw.sh + state-decisions.sh + state-ondas.sh (composicao de

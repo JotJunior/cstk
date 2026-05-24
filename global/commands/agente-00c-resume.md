@@ -162,6 +162,31 @@ explicita do operador).
 
 ### 6. Spawnar agente-orquestrador (continuacao da pipeline)
 
+Antes de spawnar, compute o modelo a aplicar na onda de continuacao via
+`wave-select` (mapa fase→modelo + refino + override — FR-002, FR-009).
+Idempotente por onda (re-entrada apos retomada nao duplica Decisao):
+
+```bash
+MODEL=$(model-routing.sh wave-select --state-dir <SD>)
+```
+
+`wave-select` SEMPRE emite uma linha em stdout: `haiku` | `sonnet` |
+`opus` | `manter-atual` (nunca aborta). A escolha ja foi registrada como
+`DecisaoDeRoteamentoPorOnda` auditavel dentro do proprio `wave-select`.
+
+> Este passo apenas INSERE a selecao de modelo antes do spawn — nao
+> altera o fluxo TOCTOU-safe (lock + sha256-verify + bloqueios) ja
+> executado nos passos 1-5.
+
+Aplique o param `model` SOMENTE quando `MODEL != manter-atual` (FR-006,
+quickstart C8 — `manter-atual` herda o modelo da sessao):
+- Se `MODEL = manter-atual`: usar o bloco `Agent(...)` abaixo SEM o param `model`.
+- Senao (`MODEL ∈ {haiku, sonnet, opus}`): adicionar `model: <MODEL>` ao
+  bloco `Agent(...)` (logo apos `subagent_type`).
+
+Bidirecionalidade (FR-009): a onda de continuacao pode subir ou descer
+o modelo conforme a fase corrente — o prompt do orquestrador nao muda.
+
 Use a tool Agent:
 
 ```
