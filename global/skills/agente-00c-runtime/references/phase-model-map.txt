@@ -1,0 +1,38 @@
+# phase-model-map v1
+#
+# Mapa fase->modelo: mecanismo PRIMARIO de model-routing por onda (FR-014).
+# Define o modelo-piso por fase do pipeline SDD. Consumido por
+# `model-routing.sh phase-model-lookup --fase <f>` (POSIX-puro, sem jq).
+#
+# Formato de cada linha de dados (3 campos, separador '|'):
+#   fase|faixa|modelo
+#     fase   : nome da fase do pipeline (ver enum abaixo)
+#     faixa  : rasa | media | profunda  (rotulo de complexidade)
+#     modelo : haiku | sonnet | opus | manter-atual
+#
+# Regras de lookup (FR-020 — tolera evolucao do mapa, nunca erro):
+#   - Linhas iniciadas por '#' e linhas vazias sao ignoradas.
+#   - Fase NAO listada (ou linha desconhecida) -> resultado '|manter-atual'
+#     (exit 0). Adicionar/remover fases nunca quebra execucoes nem o
+#     agregador de auditoria.
+#   - Versionamento: a primeira linha declara a versao do mapa ('v1').
+#
+# Recorte default "3 faixas balanceado" (FR-014). 'execute-task' parte de
+# sonnet como piso, mas e a fase onde o refino por model-selector pode
+# elevar para opus (tarefa profunda) ou baixar para haiku (tarefa trivial)
+# conforme a descricao da tarefa.
+#
+# Enum de fases cobertas (11): specify, clarify, plan, checklist,
+# create-tasks, analyze, execute-task, validate-docs, review-task,
+# briefing, constitution.
+plan|profunda|opus
+analyze|profunda|opus
+constitution|profunda|opus
+specify|media|sonnet
+clarify|media|sonnet
+checklist|media|sonnet
+create-tasks|media|sonnet
+briefing|media|sonnet
+execute-task|rasa|sonnet
+validate-docs|rasa|haiku
+review-task|rasa|haiku

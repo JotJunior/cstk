@@ -35,6 +35,13 @@
 #         + exit 0 (existe); vazio + exit 1 (nao existe); exit 2 (uso). NUNCA
 #         escreve state.json. Cumpre FR-012 + dec-004.
 #
+#   model-routing.sh phase-model-lookup --fase FASE
+#       — (feature model-routing-por-onda) Lookup POSIX-puro (sem jq) no
+#         mapa versionado references/phase-model-map.txt. Stdout: 'faixa|
+#         modelo'; fase desconhecida -> '|manter-atual' (exit 0, nunca
+#         erro — FR-020). Path do mapa confinado ao diretorio do runtime
+#         (FR-024). Mecanismo PRIMARIO de routing por onda (FR-014).
+#
 # Exit codes globais:
 #   0 sucesso (incluindo fallback graceful do invoke)
 #   1 erro generico (state.json ausente em idempotent-check, etc)
@@ -966,6 +973,112 @@ _mr_cmd_idempotent_check() {
   return 1
 }
 
+# ---------- phase-model-lookup (feature model-routing-por-onda, FASE 1) ----------
+#
+# Lookup POSIX-puro (sem jq) no mapa versionado de fase->modelo
+# (references/phase-model-map.txt). Mecanismo PRIMARIO do model-routing
+# por onda (FR-014).
+#
+# Uso:
+#   model-routing.sh phase-model-lookup --fase <fase>
+#
+# Saida (stdout): uma linha 'faixa|modelo' (ex.: 'profunda|opus').
+#   Fase desconhecida (ou ausente do mapa) -> '|manter-atual' (FR-020 —
+#   tolera evolucao do mapa, nunca erro). Exit 0 sempre que --fase valida.
+#
+# Seguranca (FR-024): o path do mapa e CONFINADO ao diretorio do runtime,
+# derivado do diretorio do proprio script ($0 -> dirname -> ../references).
+# Nenhum path externo, nenhum input do usuario compoe o path -> traversal
+# impossivel por construcao. A flag --fase NUNCA e usada para montar path;
+# so e comparada como dado (match exato de campo via case POSIX).
+#
+# Ref: docs/specs/model-routing-por-onda/contracts/wave-select.md
+#        §phase-model-lookup
+#      docs/specs/model-routing-por-onda/data-model.md §MapaFaseModelo
+#      docs/specs/model-routing-por-onda/spec.md FR-014, FR-020, FR-024
+#      docs/specs/model-routing-por-onda/tasks.md 1.2.1..1.2.4
+
+# Resolve o diretorio canonico do mapa, confinado ao runtime (FR-024).
+# Deriva de $0 (dirname) -> sobe a scripts/ -> entra em references/.
+# Canonicaliza via `cd ... && pwd` (resolve '..' e symlinks de dir sem
+# depender de readlink -f, indisponivel no BSD/macOS base). Stdout: path
+# absoluto do arquivo de mapa. NAO falha aqui se o arquivo nao existir —
+# a checagem -f e feita no consumidor (graceful degradation, FR-020).
+_mr_phase_map_path() {
+  # Diretorio do script (scripts/). cd+pwd canonicaliza componentes.
+  _mr_pm_scriptdir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) \
+    || _mr_pm_scriptdir=""
+  [ -n "$_mr_pm_scriptdir" ] || return 1
+  # references/ e irmao de scripts/ dentro da skill agente-00c-runtime.
+  printf '%s/../references/phase-model-map.txt\n' "$_mr_pm_scriptdir"
+}
+
+_mr_cmd_phase_model_lookup() {
+  _mr_pml_fase=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --fase)
+        [ "$#" -ge 2 ] || _mr_die_usage "phase-model-lookup: --fase requer valor"
+        _mr_pml_fase=$2; shift 2 ;;
+      --fase=*)
+        _mr_pml_fase=${1#--fase=}; shift ;;
+      *)
+        _mr_die_usage "phase-model-lookup: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_mr_pml_fase" ] || _mr_die_usage "phase-model-lookup: --fase ausente"
+
+  _mr_pml_map=$(_mr_phase_map_path) || {
+    # Nao foi possivel resolver o diretorio do runtime: degrada para
+    # manter-atual (FR-020), nunca erro.
+    printf '|manter-atual\n'
+    return 0
+  }
+
+  # Mapa ausente/ilegivel -> manter-atual (FR-020 — tolera evolucao).
+  [ -f "$_mr_pml_map" ] && [ -r "$_mr_pml_map" ] || {
+    printf '|manter-atual\n'
+    return 0
+  }
+
+  # Parsing POSIX-puro (sem jq). Le linha a linha; ignora comentarios
+  # ('#...') e linhas vazias; split por '|' via IFS local no subshell de
+  # command-substitution (nao vaza IFS ao caller). Match exato do campo
+  # fase.
+  #
+  # NOTA DE PORTABILIDADE: NAO usar `case ... esac` dentro deste
+  # `$( ... )`. Varios `sh` (inclusive bash em modo POSIX no macOS)
+  # falham no parse de `case` aninhado em command-substitution
+  # ("syntax error near `;;'"). Skip de comentario/branco e feito via
+  # expansao de parametro (extracao do 1o caractere), 100% POSIX e sem
+  # esse bug.
+  #
+  # F-001/FR-024: --fase so e COMPARADA como dado (=), nunca interpolada
+  # em path nem em comando; sem eval. Usamos read -r para nao interpretar
+  # barras invertidas no arquivo de mapa.
+  _mr_pml_result=$(
+    while IFS='|' read -r _f _fa _mo _rest; do
+      # Pular linhas em branco.
+      [ -z "$_f" ] && continue
+      # Pular comentarios: 1o caractere == '#' (via expansao de parametro).
+      _mr_pml_first=${_f%"${_f#?}"}
+      [ "$_mr_pml_first" = "#" ] && continue
+      if [ "$_f" = "$_mr_pml_fase" ]; then
+        printf '%s|%s\n' "$_fa" "$_mo"
+        break
+      fi
+    done < "$_mr_pml_map"
+  )
+
+  if [ -n "$_mr_pml_result" ]; then
+    printf '%s\n' "$_mr_pml_result"
+  else
+    # Fase nao encontrada no mapa (FR-020).
+    printf '|manter-atual\n'
+  fi
+  return 0
+}
+
 # ---------- Dispatch ----------
 #
 # F4.5 — sourcing guard: testes unitarios do `tests/test_model-routing.sh`
@@ -991,6 +1104,7 @@ USO:
                                      [--timeout-seconds N]
   model-routing.sh idempotent-check  --state-dir DIR --onda-id ID
                                      --subagent-type TYPE
+  model-routing.sh phase-model-lookup --fase FASE
 
 Enum --subagent-type:
   agente-00c-clarify-asker | agente-00c-clarify-answerer |
@@ -1021,6 +1135,9 @@ case "$_MR_SUBCMD" in
     ;;
   idempotent-check)
     _mr_cmd_idempotent_check "$@"
+    ;;
+  phase-model-lookup)
+    _mr_cmd_phase_model_lookup "$@"
     ;;
   -h|--help|help)
     # Reusa o bloco HELP do dispatch acima.

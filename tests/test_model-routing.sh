@@ -2022,4 +2022,143 @@ EOF
   }
 }
 
+# ============================================================================
+# Feature model-routing-por-onda — FASE 1 (mapa fase->modelo + lookup)
+# Ref: docs/specs/model-routing-por-onda/tasks.md 1.1.3, 1.2.4
+#      docs/specs/model-routing-por-onda/contracts/wave-select.md
+#        §phase-model-lookup
+#      docs/specs/model-routing-por-onda/data-model.md §MapaFaseModelo
+#      FR-014 (mapa primario), FR-020 (fase desconhecida -> manter-atual),
+#      FR-024 (path confinado, sem traversal)
+# ============================================================================
+
+PHASE_MAP="$REPO_ROOT/global/skills/agente-00c-runtime/references/phase-model-map.txt"
+
+# Recorte default "3 faixas balanceado" — as 11 fases do enum (data-model).
+# Mantido como fonte de verdade do teste; se o mapa evoluir, atualizar aqui.
+_PML_EXPECTED='plan|profunda|opus
+analyze|profunda|opus
+constitution|profunda|opus
+specify|media|sonnet
+clarify|media|sonnet
+checklist|media|sonnet
+create-tasks|media|sonnet
+briefing|media|sonnet
+execute-task|rasa|sonnet
+validate-docs|rasa|haiku
+review-task|rasa|haiku'
+
+# ---- 1.1.3: arquivo de mapa existe, tem header de versao e parseia ----
+
+scenario_fase1_map_existe_e_tem_header_versao() {
+  [ -f "$PHASE_MAP" ] || {
+    _fail "phase-model-map.txt existe" "ausente: $PHASE_MAP"
+    return 1
+  }
+  # Header de versao na 1a linha (FR-020).
+  _hdr=$(head -n 1 "$PHASE_MAP")
+  case "$_hdr" in
+    "# phase-model-map v"*) : ;;
+    *)
+      _fail "1a linha e header de versao" "obtido: '$_hdr'"
+      return 1 ;;
+  esac
+}
+
+scenario_fase1_map_cobre_as_11_fases_do_recorte() {
+  [ -f "$PHASE_MAP" ] || { _error "map ausente"; return 2; }
+  # Para cada fase esperada, o lookup deve devolver faixa|modelo exatos.
+  _ok=1
+  printf '%s\n' "$_PML_EXPECTED" | while IFS='|' read -r _f _fa _mo; do
+    _got=$(sh "$SCRIPT" phase-model-lookup --fase "$_f")
+    if [ "$_got" != "$_fa|$_mo" ]; then
+      printf 'MISMATCH fase=%s esperado=%s|%s obtido=%s\n' \
+        "$_f" "$_fa" "$_mo" "$_got"
+    fi
+  done > "$TMPDIR_TEST/pml_mismatch.txt" 2>/dev/null || true
+  if [ -s "$TMPDIR_TEST/pml_mismatch.txt" ]; then
+    _fail "11 fases parseiam com faixa|modelo corretos" \
+      "$(cat "$TMPDIR_TEST/pml_mismatch.txt")"
+    return 1
+  fi
+}
+
+scenario_fase1_map_so_tem_linhas_validas_ou_comentario() {
+  [ -f "$PHASE_MAP" ] || { _error "map ausente"; return 2; }
+  # Toda linha de dados (nao-comentario, nao-vazia) tem exatamente 3 campos
+  # e modelo no enum {haiku,sonnet,opus,manter-atual}, faixa no enum
+  # {rasa,media,profunda}.
+  _bad=$(awk -F'|' '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    {
+      if (NF != 3) { print "NF="NF": "$0; next }
+      fa=$2; mo=$3
+      if (fa != "rasa" && fa != "media" && fa != "profunda")
+        { print "faixa invalida: "$0; next }
+      if (mo != "haiku" && mo != "sonnet" && mo != "opus" && mo != "manter-atual")
+        { print "modelo invalido: "$0 }
+    }
+  ' "$PHASE_MAP")
+  [ -z "$_bad" ] || {
+    _fail "linhas de dados validas (3 campos + enums)" "$_bad"
+    return 1
+  }
+}
+
+# ---- 1.2.4: lookup conhecida/desconhecida + traversal rejeitado ----
+
+scenario_fase1_lookup_fase_conhecida() {
+  capture sh "$SCRIPT" phase-model-lookup --fase plan
+  assert_exit 0 sh "$SCRIPT" phase-model-lookup --fase plan || return 1
+  assert_stdout_match '^profunda\|opus$' || return 1
+}
+
+scenario_fase1_lookup_fase_desconhecida_manter_atual() {
+  # FR-020: fase fora do mapa -> '|manter-atual', exit 0 (nunca erro).
+  capture sh "$SCRIPT" phase-model-lookup --fase fase-que-nao-existe
+  assert_exit 0 sh "$SCRIPT" phase-model-lookup --fase fase-que-nao-existe || return 1
+  assert_stdout_match '^\|manter-atual$' || return 1
+}
+
+scenario_fase1_lookup_flag_igual_form() {
+  # Forma --fase=VALOR equivalente a --fase VALOR.
+  capture sh "$SCRIPT" phase-model-lookup --fase=execute-task
+  assert_exit 0 sh "$SCRIPT" phase-model-lookup --fase=execute-task || return 1
+  assert_stdout_match '^rasa\|sonnet$' || return 1
+}
+
+scenario_fase1_lookup_fase_ausente_exit_2() {
+  # Sem --fase -> uso incorreto (exit 2), mensagem em stderr.
+  assert_exit 2 sh "$SCRIPT" phase-model-lookup || return 1
+  capture sh "$SCRIPT" phase-model-lookup
+  assert_stderr_contains "--fase ausente" || return 1
+}
+
+scenario_fase1_lookup_traversal_rejeitado_como_dado() {
+  # FR-024: --fase NUNCA compoe path. Valores de traversal sao tratados
+  # como dado de comparacao -> nao casam nenhuma fase -> manter-atual,
+  # exit 0, sem ler/expor arquivo externo.
+  for _evil in '../../../../etc/passwd' '/etc/passwd' '..' './plan'; do
+    capture sh "$SCRIPT" phase-model-lookup --fase "$_evil"
+    [ "$_CAPTURED_EXIT" = 0 ] || {
+      _fail "traversal nao erra" "fase='$_evil' exit=$_CAPTURED_EXIT"
+      return 1
+    }
+    case "$_CAPTURED_STDOUT" in
+      '|manter-atual') : ;;
+      *)
+        _fail "traversal -> manter-atual" "fase='$_evil' out='$_CAPTURED_STDOUT'"
+        return 1 ;;
+    esac
+  done
+}
+
+scenario_fase1_lookup_read_only_sem_side_effect() {
+  # Lookup nunca escreve nada no working tree do repo.
+  mktemp_test || return 2
+  capture sh "$SCRIPT" phase-model-lookup --fase plan
+  assert_no_side_effect || return 1
+}
+
 run_all_scenarios "$0"
