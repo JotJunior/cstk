@@ -20,6 +20,14 @@
 #   test_hooks-integration.sh                — integration test (nao 1:1)
 #   test_quickstart-e2e.sh                   — e2e quickstart (composicao das libs)
 #
+# Alem desses, ha cobertura real sob nome NAO-1:1 (tests granulares por aspecto
+# de uma skill/script): tests model-selector + report (cobrem classify.sh/
+# report.sh), e tests de aspecto (runtime-log-redaction->_log.sh,
+# state-dir-parametrization->_state-dir.sh, secrets-filter-backup->secrets-filter.sh,
+# skills-cache-protocol->state-cache.sh, update-extra-kinds->update.sh). Esses
+# sao isentados nos DOIS lados (_is_internal_test p/ tests, _is_covered_by_named_test
+# p/ scripts), sempre com guarda de existencia do cobridor (anti-ponto-cego).
+#
 # POSIX sh puro. Sem Bash-isms. Deps: find, grep, sort, basename, dirname,
 # mktemp, date, sh, printf.
 
@@ -166,6 +174,39 @@ _is_internal_test() {
       # script sob a convencao de FASE 9.3). Equivalente ao
       # test_quickstart-e2e.sh para o pipeline do agente-00c.
       return 0 ;;
+    # ---- Cobertura real sob nome NAO-1:1 (existence-guarded) ----
+    # Estes tests exercitam um script real, mas com nome descritivo que nao
+    # casa test_<base>.sh. Cada ramo so isenta se o script cobridor EXISTE —
+    # se ele sumir, o test volta a ser orfao real (anti-ponto-cego). Espelha
+    # _is_covered_by_named_test, do lado dos tests.
+    test_model_selector_*.sh)
+      # tests granulares da skill model-selector (classify.sh + report.sh)
+      [ -f "$REPO_ROOT/global/skills/model-selector/scripts/classify.sh" ] && return 0
+      return 1 ;;
+    test_report_jq_confinement.sh|test_report_performance.sh|test_report_read_only.sh|test_report_without_jq.sh)
+      # cobrem model-selector/scripts/report.sh (geracao do relatorio)
+      [ -f "$REPO_ROOT/global/skills/model-selector/scripts/report.sh" ] && return 0
+      return 1 ;;
+    test_update-extra-kinds.sh)
+      # aspecto extra de cli/lib/update.sh (primario: tests/cstk/test_update.sh)
+      [ -f "$REPO_ROOT/cli/lib/update.sh" ] && return 0
+      return 1 ;;
+    test_runtime-log-redaction.sh)
+      # cobre agente-00c-runtime/scripts/_log.sh (redacao de log)
+      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_log.sh" ] && return 0
+      return 1 ;;
+    test_secrets-filter-backup.sh)
+      # aspecto backup de secrets-filter.sh (primario: tests/test_secrets-filter.sh)
+      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/secrets-filter.sh" ] && return 0
+      return 1 ;;
+    test_skills-cache-protocol.sh)
+      # cobre state-cache.sh (protocolo de cache; primario: tests/test_state-cache.sh)
+      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-cache.sh" ] && return 0
+      return 1 ;;
+    test_state-dir-parametrization.sh)
+      # cobre agente-00c-runtime/scripts/_state-dir.sh (parametrizacao do state dir)
+      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_state-dir.sh" ] && return 0
+      return 1 ;;
     *) return 1 ;;
   esac
 }
@@ -203,6 +244,30 @@ mode_list() {
 
 # ==== 5. Modo: --check-coverage (e computacao de orfaos no modo run) ====
 
+# _is_covered_by_named_test SCRIPT_PATH -> exit 0 se o script TEM cobertura,
+# porem sob um teste cujo nome NAO segue a convencao 1:1 test_<base>.sh. Espelha
+# _is_internal_test, do lado dos SCRIPTS: sem isto, scripts cobertos por tests
+# de nome divergente viram falsos-positivos no orphan-check.
+#
+# Anti-ponto-cego: cada entrada exige que o teste cobridor EXISTA em disco. Se
+# ele for removido/renomeado, o script volta a ser flagado como orfao — a
+# isencao nunca mascara lacuna de cobertura real.
+_is_covered_by_named_test() {
+  _icbnt_base=$(_script_basename "$1")
+  case "$_icbnt_base" in
+    # _log.sh (helper de log/redacao, sourced) -> redacao testada aqui.
+    _log)       _icbnt_cover="$TESTS_ROOT/test_runtime-log-redaction.sh" ;;
+    # _state-dir.sh (resolucao de state dir, sourced) -> parametrizacao testada aqui.
+    _state-dir) _icbnt_cover="$TESTS_ROOT/test_state-dir-parametrization.sh" ;;
+    # classify.sh (core do model-selector) -> tests/cstk/test_model_selector_*.sh
+    # (faixas rasa/media/profunda, input vazio, falsos-positivos, etc.).
+    classify)   _icbnt_cover="$TESTS_ROOT/cstk/test_model_selector_faixa_rasa.sh" ;;
+    *) return 1 ;;
+  esac
+  [ -f "$_icbnt_cover" ] && return 0
+  return 1
+}
+
 # _compute_orphans
 # Imprime duas listas em stdout, separadas por linha '---':
 #   scripts sem teste correspondente
@@ -223,6 +288,8 @@ _compute_orphans() {
   # categoria (global/skills/.../scripts/ -> tests/, cli/lib/ -> tests/cstk/).
   for _script in $_scripts; do
     [ -z "$_script" ] && continue
+    # Isencao: script coberto por teste de nome nao-1:1 (verifica existencia).
+    _is_covered_by_named_test "$_script" && continue
     _expected=$(_expected_test_for_script "$_script")
     if [ -z "$_expected" ] || [ ! -f "$_expected" ]; then
       _orphan_scripts="$_orphan_scripts
