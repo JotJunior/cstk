@@ -439,6 +439,126 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    composicao OR, score 2, rotulo de seguranca, no-op K=0) e IDENTICO
    entre os dois orquestradores — evita drift.
 
+   ### 5.d.ter Instrumentacao da camada B — `.tasks[]` e `.eventos[]` (FR-018/FR-020/FR-021/FR-022)
+
+   > **Origem**: feature `knowledge-db-metrics`, US3 (camada B). Estes
+   > campos sao puramente ADITIVOS ao `state.json`: nenhum campo existente
+   > muda de semantica. A ingestao da camada A (executions/waves/
+   > alert_signals) ja esta verde; estes campos novos alimentam as
+   > entidades `tasks` e `events` da knowledge.db (ingeridas em
+   > `cli/lib/recall.sh`, FASE 5). Gravar via o MESMO caminho de runtime
+   > auditado dos demais writes — NUNCA introduzir caminho de escrita novo
+   > (contract layer-b §5). **Paridade EXATA** (mesma ordem de campos,
+   > mesmo enum, mesmo snippet) com `agente-00c-feature-orchestrator.md`
+   > §"Instrumentacao da camada B".
+
+   #### Campo `.tasks[]` — outcome de task (FR-018, FR-019)
+
+   Gravado durante a etapa `execute-task`/`review-task` (passo 5/6 do Loop
+   principal), UMA entrada por task por execucao. Apos cada task concluir
+   (seja pass ou fail), o orquestrador anexa a entrada de outcome ANTES do
+   fim de onda (passo 9) e do `sha256-update` (passo 10).
+
+   Schema EXATO (paridade com `agente-00c-feature-orchestrator.md` — mesma
+   ordem, mesmo enum):
+
+   | Campo | Tipo | Obrigatorio | Notas |
+   |-------|------|-------------|-------|
+   | `task_id` | string | sim | identificador da task (ex: `4.1`) |
+   | `wave_id` | string | sim | onda em que a task rodou (proveniencia) |
+   | `outcome` | enum `pass`\|`fail` | sim | conjunto fechado |
+   | `testes_rodados` | int | sim | 0 se nao aplicavel |
+   | `testes_passados` | int | sim | `<= testes_rodados` |
+   | `lint_ok` | bool | sim | gate de lint passou? |
+   | `arquivos_tocados` | string[] | sim | paths relativos; contagem derivada na ingestao |
+
+   **Chave natural** (clarify Q2 / dec-006): `(project, feature, execucao_id, task_id)`.
+
+   Escrita via runtime ja auditado (contract layer-b §5) — NAO inventar
+   novo mecanismo:
+
+   ```bash
+   # Compor a entrada da task com jq (arquivos_tocados via git diff da onda).
+   # WAVE_ID = state-ondas.sh current-id; TASK_ID = task corrente.
+   ARQUIVOS=$(git -C "$PAP" diff --name-only HEAD~1..HEAD 2>/dev/null \
+               | jq -R . | jq -s . 2>/dev/null || echo '[]')
+   ENTRY=$(jq -nc \
+     --arg tid "$TASK_ID" --arg wid "$WAVE_ID" --arg oc "$OUTCOME" \
+     --argjson tr "$TESTES_RODADOS" --argjson tp "$TESTES_PASSADOS" \
+     --argjson lk "$LINT_OK" --argjson af "$ARQUIVOS" \
+     '{task_id:$tid, wave_id:$wid, outcome:$oc,
+       testes_rodados:$tr, testes_passados:$tp, lint_ok:$lk,
+       arquivos_tocados:$af}')
+
+   # Anexar via state-rw.sh set (caminho atomico + backup automatico em
+   # state-history/; sha256 recomputado pelo proprio set). NUNCA cp/echo
+   # direto no state.json.
+   CUR=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" --field '.tasks // []')
+   NEW=$(printf '%s' "$CUR" | jq -c --argjson e "$ENTRY" '. + [$e]')
+   "$RUNTIME_SCRIPTS"/state-rw.sh set --state-dir "$SD" \
+     --field '.tasks' --value "$NEW"
+   ```
+
+   REGRA DURA: `arquivos_tocados` carrega paths (potencial texto livre) —
+   o backup da onda ja passa por `secrets-filter.sh for-backup`, e a
+   ingestao da camada B deriva apenas a CONTAGEM (`length`) do array,
+   nunca expondo paths brutos na knowledge.db.
+
+   #### Campo `.eventos[]` — timeline cronologica (FR-020)
+
+   Conjunto MVP FECHADO de 4 tipos (clarify Q3 / dec-007), extensivel sem
+   mudanca de schema (event_type e texto livre restrito por convencao).
+   Cada evento: `event_type` (do conjunto), `timestamp` (ISO 8601),
+   `descricao` (texto livre opcional → scrubbed na ingestao).
+
+   | `event_type` (MVP) | Quando gravar (ponto exato do Loop principal) |
+   |--------------------|------------------------------------------------|
+   | `lock_contention` | passo 1: `state-lock.sh acquire` retornou ocupado |
+   | `validation_failed` | passo 1: `state-validate.sh` OU `sha256-verify` reprovou |
+   | `wave_retry` | falha de onda seguida de retry (nova tentativa da mesma etapa) |
+   | `schedule_wait` | fim de onda emitindo `Schedule intent` aguardando wakeup |
+
+   Escrita (mesmo caminho auditado; gravar no ponto exato do Loop acima):
+
+   ```bash
+   # event_type ∈ {lock_contention, validation_failed, wave_retry, schedule_wait}
+   TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   EV=$(jq -nc --arg t "$EVENT_TYPE" --arg ts "$TS" --arg d "$DESCRICAO" \
+          '{event_type:$t, timestamp:$ts} + (if $d == "" then {} else {descricao:$d} end)')
+   CUR=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" --field '.eventos // []')
+   NEW=$(printf '%s' "$CUR" | jq -c --argjson e "$EV" '. + [$e]')
+   "$RUNTIME_SCRIPTS"/state-rw.sh set --state-dir "$SD" \
+     --field '.eventos' --value "$NEW"
+   ```
+
+   A `descricao` e OPCIONAL e passa por `secrets-filter.sh` na ingestao
+   (FR-006); `event_type` e `timestamp` nao sao filtrados. Ordem
+   cronologica e preservada por append (a ingestao mantem a ordem do array).
+
+   #### Custo em tokens — NAO inventar (FR-021, SC-010)
+
+   DECISAO REGISTRADA (clarify Q1 / dec-005, score 3 empirico): a harness
+   do Claude Code **NAO expoe** contabilidade de tokens a scripts/env.
+   Portanto:
+
+   - O sistema **NAO** grava nem ingere custo em tokens/$.
+   - `tool_calls` (`.metricas_acumuladas.tool_calls_total`,
+     `.ondas[].tool_calls`) permanece como **proxy de custo documentado**.
+   - Em NENHUM caso ha valor de custo inventado/estimado.
+
+   Se uma versao futura da harness expuser tokens, o campo SHOULD ser
+   adicionado a `.metricas_acumuladas` e ingerido — fora do escopo desta
+   feature (contract layer-b §6, research.md D8).
+
+   #### Retro-compatibilidade (FR-022, SC-009)
+
+   Execucoes ANTIGAS (pre-instrumentacao) nao tem `.tasks`/`.eventos`. A
+   ingestao da camada B usa `jq '.tasks[]? // empty'` / `jq '.eventos[]?
+   // empty'` → produz 0 linhas, 0 erro, 0 abort para state
+   nao-instrumentado. A instrumentacao acima nunca falha a onda se os
+   campos ainda nao existem (o `get --field '.tasks // []'` retorna `[]`
+   por construcao).
+
    ### 5.e Padrao de dois atores (clarify)
 
    Em `clarify`, aplique o **padrao de dois atores** (FASE 4):

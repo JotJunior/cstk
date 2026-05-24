@@ -280,20 +280,20 @@ Ref: FR-018 (gravar outcome de task), clarify Q2/dec-006 (grao + campos
 minimos); contracts/layer-b-instrumentation.md §2 (schema `.tasks[]`) + §5
 (escrita via runtime ja auditado).
 
-- [ ] 4.1.1 Em `global/agents/agente-00c-orchestrator.md`, especificar a
+- [x] 4.1.1 Em `global/agents/agente-00c-orchestrator.md`, especificar a
   gravacao de `.tasks[]` durante execute-task/review-task com campos task_id,
   wave_id, outcome (pass|fail), testes_rodados, testes_passados, lint_ok (bool),
   arquivos_tocados (string[]) conforme contract §2
-- [ ] 4.1.2 Replicar a mesma instrumentacao em
+- [x] 4.1.2 Replicar a mesma instrumentacao em
   `global/agents/agente-00c-feature-orchestrator.md` (paridade entre os dois
   orquestradores)
-- [ ] 4.1.3 Garantir que a escrita usa o caminho de runtime ja auditado
+- [x] 4.1.3 Garantir que a escrita usa o caminho de runtime ja auditado
   (`state-rw.sh` para mutacao + `sha256-update` + backup filtrado via
   `secrets-filter.sh for-backup`); NAO introduzir novo caminho de escrita
   (contract §5)
-- [ ] 4.1.4 Verificar paridade EXATA dos campos `.tasks[]` documentados entre
+- [x] 4.1.4 Verificar paridade EXATA dos campos `.tasks[]` documentados entre
   os dois agent files (mesma ordem, mesmo enum outcome) — evitar drift de schema
-- [ ] 4.1.5 Documentar explicitamente a decisao de custo em tokens (FR-021/
+- [x] 4.1.5 Documentar explicitamente a decisao de custo em tokens (FR-021/
   SC-010): harness nao expoe tokens (dec-005, score 3 empirico) -> NAO inventar
   custo; `tool_calls` permanece proxy documentado (contract §6, research.md D8)
 
@@ -303,18 +303,18 @@ Ref: FR-020 (timeline de eventos), clarify Q3/dec-007 (conjunto MVP fechado);
 contracts/layer-b-instrumentation.md §3 (schema `.eventos[]` + tabela de
 quando gravar cada tipo).
 
-- [ ] 4.2.1 Em ambos os agent files, especificar a gravacao de `.eventos[]` com
+- [x] 4.2.1 Em ambos os agent files, especificar a gravacao de `.eventos[]` com
   os 4 tipos MVP: `wave_retry` (falha+retry de onda), `lock_contention`
   (lock ocupado), `validation_failed` (validate/hash reprovado), `schedule_wait`
   (onda encerrada aguardando wakeup); cada evento com event_type, timestamp ISO,
   descricao opcional (contract §3)
-- [ ] 4.2.2 Mapear cada tipo ao ponto exato do Loop principal onde e gravado
+- [x] 4.2.2 Mapear cada tipo ao ponto exato do Loop principal onde e gravado
   (ex: lock_contention no acquire ocupado; schedule_wait ao emitir Schedule
   intent; validation_failed no hash-verify/state-validate reprovado;
   wave_retry na falha+retry de onda)
-- [ ] 4.2.3 Garantir conjunto fechado por convencao (event_type textual
+- [x] 4.2.3 Garantir conjunto fechado por convencao (event_type textual
   restrito), extensivel sem mudanca de schema
-- [ ] 4.2.4 Verificar paridade dos tipos de evento entre os dois agent files
+- [x] 4.2.4 Verificar paridade dos tipos de evento entre os dois agent files
 
 ---
 
