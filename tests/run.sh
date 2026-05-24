@@ -39,6 +39,7 @@ set -eu
 MODE="run"
 PATTERN=""
 VERBOSE=0
+SPEED="all"   # all | fast | slow (selecao por velocidade; --fast/--slow)
 
 for arg in "$@"; do
   case "$arg" in
@@ -52,8 +53,14 @@ OPCOES:
   -h, --help          Imprime esta mensagem e sai 0.
   -v, --verbose       Imprime output verboso (reservado; no-op hoje).
   --list              Lista scenarios disponiveis e sai 0 (sem executar).
+  --stats             Agrega contagem de scenarios por arquivo (desc) + total
+                      e sai 0. Respeita PATTERN e --fast/--slow.
   --check-coverage    Detecta scripts sem teste e testes sem script;
                       exit 1 se houver qualquer orfao, 0 caso contrario.
+  --fast              Seleciona apenas os tests rapidos (exclui a allowlist
+                      lenta: integration/e2e/binario). Compoe com PATTERN.
+  --slow              Seleciona apenas os tests lentos (so a allowlist).
+                      Mutuamente exclusivo com --fast (exit 2 se ambos).
 
 ARGUMENTOS:
   PATTERN             Substring aplicada sobre o caminho dos test cases.
@@ -69,7 +76,20 @@ USAGE
       ;;
     -v|--verbose) VERBOSE=1 ;;
     --list) MODE="list" ;;
+    --stats) MODE="stats" ;;
     --check-coverage) MODE="check-coverage" ;;
+    --fast)
+      if [ "$SPEED" = "slow" ]; then
+        printf 'run.sh: --fast e --slow sao mutuamente exclusivos.\n' >&2
+        exit 2
+      fi
+      SPEED="fast" ;;
+    --slow)
+      if [ "$SPEED" = "fast" ]; then
+        printf 'run.sh: --fast e --slow sao mutuamente exclusivos.\n' >&2
+        exit 2
+      fi
+      SPEED="slow" ;;
     -*)
       printf 'run.sh: flag desconhecida: %s\n' "$arg" >&2
       printf 'Tente --help para ver opcoes disponiveis.\n' >&2
@@ -162,6 +182,10 @@ _is_internal_test() {
   _name=$(basename "$1")
   case "$_name" in
     test_smoke.sh|test_harness.sh) return 0 ;;
+    test_run-modes.sh)
+      # Exercita o proprio runner (modos --fast/--slow/--stats) — nao mapeia
+      # 1:1 para um script sob a convencao de FASE 9.3.
+      return 0 ;;
     test_cstk-main.sh|test_bootstrap.sh|test_build-release.sh|test_hooks-integration.sh|test_quickstart-e2e.sh)
       return 0 ;;
     test_doc-counts.sh)
@@ -231,11 +255,58 @@ _is_internal_test() {
   esac
 }
 
-# ==== 4. Modo: --list ====
+# _is_slow_test PATH -> exit 0 se o test e "lento", 1 caso contrario.
+# "Lento" = tempo de parede medido > ~5s (corte limpo no perfil). Allowlist
+# DERIVADA DE MEDICAO (nao de categoria): rodada `for f in tests/**/test_*.sh;
+# do time sh "$f"; done` em 2026-05-24. Os 11 abaixo somam ~177s dos ~260s da
+# suite — `--fast` os pula e roda em ~1/3 do tempo. Reavaliar se o perfil mudar
+# (ver tests/README.md "Suite rapida vs completa"). Mesmo estilo de
+# _is_internal_test; consumida por _select_tests p/ servir --fast/--slow.
+_is_slow_test() {
+  _slow_name=$(basename "$1")
+  case "$_slow_name" in
+    test_recall.sh|test_session.sh)              return 0 ;;  # ~82s, ~18s (sqlite/worktree)
+    test_model-routing.sh|test_drift.sh)         return 0 ;;  # ~16s, ~13s (muitos scenarios)
+    test_self-update.sh|test_00c-bootstrap.sh)   return 0 ;;  # ~11s, ~8s (binario/tarball)
+    test_quickstart-e2e.sh|test_e2e_model_routing.sh) return 0 ;;  # ~9s, ~5s (e2e)
+    test_update.sh|test_update-extra-kinds.sh)   return 0 ;;  # ~5s, ~6s (manifest/doctor)
+    test_model_selector_corpus.sh)               return 0 ;;  # ~5s (corpus 45 entradas)
+    *) return 1 ;;
+  esac
+}
 
-mode_list() {
-  _tests=$(_find_test_files "$PATTERN")
-  if [ -z "$_tests" ]; then
+# _select_tests -> lista de test files apos aplicar PATTERN e o filtro de
+# velocidade (SPEED). all=todos; fast=exclui lentos; slow=so lentos. Substitui
+# _find_test_files "$PATTERN" nos modos que respeitam --fast/--slow (list, stats,
+# run). check-coverage NAO usa isto (cobertura precisa enxergar todos).
+_select_tests() {
+  _st_all=$(_find_test_files "$PATTERN")
+  if [ "$SPEED" = "all" ]; then
+    printf '%s\n' "$_st_all"
+    return 0
+  fi
+  _OLD_IFS="$IFS"
+  IFS='
+'
+  for _st_t in $_st_all; do
+    [ -z "$_st_t" ] && continue
+    if _is_slow_test "$_st_t"; then
+      [ "$SPEED" = "slow" ] && printf '%s\n' "$_st_t"
+    else
+      [ "$SPEED" = "fast" ] && printf '%s\n' "$_st_t"
+    fi
+  done
+  IFS="$_OLD_IFS"
+}
+
+# ==== 4. Modos: --list e --stats ====
+
+# _emit_scenarios -> emite uma linha 'arquivo.sh :: scenario_nome' por scenario,
+# sobre os tests selecionados por _select_tests (PATTERN + SPEED). Base comum de
+# --list e --stats. Retorna 2 se PATTERN nao casa nenhum test.
+_emit_scenarios() {
+  _es_tests=$(_select_tests)
+  if [ -z "$_es_tests" ]; then
     if [ -n "$PATTERN" ]; then
       printf 'run.sh: nenhum test case casa o padrao: %s\n' "$PATTERN" >&2
       return 2
@@ -247,7 +318,8 @@ mode_list() {
   _OLD_IFS="$IFS"
   IFS='
 '
-  for _test in $_tests; do
+  for _test in $_es_tests; do
+    [ -z "$_test" ] && continue
     _test_name=$(basename "$_test")
     # Grep scenarios definidos no arquivo. Mesmo padrao do _list_scenarios
     # do harness: procura definicoes 'scenario_NAME() {' ou 'scenario_NAME () {'.
@@ -259,6 +331,33 @@ mode_list() {
         done
   done
   IFS="$_OLD_IFS"
+  return 0
+}
+
+mode_list() {
+  _emit_scenarios
+}
+
+# mode_stats — agrega contagem de scenarios por arquivo (desc) + total. Util
+# para enxergar a distribuicao de cobertura por script (alem do binario
+# tem/nao-tem de --check-coverage). Nota: conta apenas scenarios DEFINIDOS
+# estaticamente como funcoes scenario_*(); scenarios gerados dinamicamente
+# (ex: corpus via _SCENARIOS) nao aparecem aqui.
+mode_stats() {
+  _stats_out=$(_emit_scenarios) || return $?
+  if [ -z "$_stats_out" ]; then
+    printf '# nenhum scenario encontrado.\n'
+    return 0
+  fi
+  # Contagem por arquivo, ordenada desc.
+  printf '%s\n' "$_stats_out" \
+    | awk -F ' :: ' 'NF==2 { c[$1]++ } END { for (f in c) printf "%5d  %s\n", c[f], f }' \
+    | sort -rn
+  # Totais (computados a parte para nao colidir com o sort -rn acima).
+  _total=$(printf '%s\n' "$_stats_out" | grep -c ' :: ') || _total=0
+  _nfiles=$(printf '%s\n' "$_stats_out" | awk -F ' :: ' 'NF==2 { print $1 }' | sort -u | grep -c .) || _nfiles=0
+  printf '%s\n' '-----'
+  printf 'TOTAL: %d scenarios em %d arquivo(s)\n' "$_total" "$_nfiles"
   return 0
 }
 
@@ -382,7 +481,7 @@ mode_check_coverage() {
 # ==== 6. Modo: run (default) ====
 
 mode_run() {
-  _tests=$(_find_test_files "$PATTERN")
+  _tests=$(_select_tests)
   if [ -z "$_tests" ]; then
     if [ -n "$PATTERN" ]; then
       printf 'run.sh: nenhum test case casa o padrao: %s\n' "$PATTERN" >&2
@@ -469,6 +568,7 @@ mode_run() {
 
 case "$MODE" in
   list) mode_list ;;
+  stats) mode_stats ;;
   check-coverage) mode_check_coverage ;;
   run) mode_run ;;
 esac

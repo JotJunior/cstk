@@ -5,6 +5,27 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.1.0] - 2026-05-24
+
+Melhorias de tooling de desenvolvimento (não afetam o tarball de release nem
+o usuário instalado — apenas `tests/`, `.github/` e `.shellcheckrc`). O tarball
+de catálogo é idêntico em conteúdo ao da v4.0.0; esta release é um marco de
+repo (sincroniza CHANGELOG/tag) e gate de CI.
+
+### Added
+
+- **`tests/run.sh --fast` / `--slow`**: split da suite por velocidade. `--fast`
+  pula a allowlist de tests lentos (`_is_slow_test`, derivada de medição — 11
+  tests > ~5s somando ~177s de ~260s) e roda em ~1/3 do tempo; `--slow` roda só
+  os lentos. Mutuamente exclusivos; compõem com PATTERN e `--list`/`--stats`.
+- **`tests/run.sh --stats`**: agrega contagem de scenarios por arquivo (desc) +
+  total. Respeita PATTERN e o filtro de velocidade.
+- **`tests/test_run-modes.sh`**: cobertura dos novos modos (registrado como
+  teste interno em `_is_internal_test`).
+- **CI shellcheck advisory** (`.github/workflows/shellcheck.yml`): lint estático
+  dos `.sh` em PR + push main, **não-gateante** (`continue-on-error`). Config de
+  ruído sistêmico em `.shellcheckrc` (disable SC1091/SC2016/SC2148).
+
 ## [4.0.0] - 2026-05-24
 
 **BREAKING** — feature `model-routing-por-onda`. O model-routing dos

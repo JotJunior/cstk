@@ -14,8 +14,17 @@ segue o principio de "nao commita sem teste para script novo".
 ./tests/run.sh metrics
 ./tests/run.sh next
 
-# Listar scenarios sem executar
+# Suite rapida (pula a allowlist de tests lentos — ~1/3 do tempo)
+./tests/run.sh --fast
+
+# So os tests lentos (integration/e2e/binario/muitos-scenarios)
+./tests/run.sh --slow
+
+# Listar scenarios sem executar (respeita PATTERN e --fast/--slow)
 ./tests/run.sh --list
+
+# Distribuicao de scenarios por arquivo (desc) + total
+./tests/run.sh --stats
 
 # Verificar cobertura (scripts sem teste, tests sem script)
 ./tests/run.sh --check-coverage
@@ -24,11 +33,43 @@ segue o principio de "nao commita sem teste para script novo".
 ./tests/run.sh --help
 ```
 
-**Tempo tipico**: alguns minutos para a suite completa (~1090 scenarios; o
+**Tempo tipico**: alguns minutos para a suite completa (~1100 scenarios; o
 numero exato e nao-deterministico porque alguns tests sao gerados sob demanda
-— rode `./tests/run.sh --list | grep -c "::"` para o total atual). A contagem
-de **skills** (e a listagem delas no README) e guardada contra drift por
+— rode `./tests/run.sh --list | grep -c "::"` para o total atual, ou
+`./tests/run.sh --stats` para a quebra por arquivo). A contagem de **skills**
+(e a listagem delas no README) e guardada contra drift por
 `tests/test_doc-counts.sh`.
+
+## Suite rapida vs completa (`--fast` / `--slow`)
+
+No dev-loop, `--fast` pula a **allowlist de tests lentos** e roda em ~1/3 do
+tempo. A allowlist vive em `run.sh::_is_slow_test` e foi **derivada de medicao**
+(nao de categoria): cada `test_*.sh` foi cronometrado e os com tempo de parede
+> ~5s entraram. Em 2026-05-24 eram 11 (somando ~177s de ~260s da suite):
+
+| Test | ~Tempo | Por que e lento |
+|------|--------|-----------------|
+| `test_recall.sh` | ~82s | sqlite/FTS, 66 scenarios |
+| `test_session.sh` | ~18s | worktree/git, 60 scenarios |
+| `test_model-routing.sh` | ~16s | 99 scenarios |
+| `test_drift.sh` | ~13s | manifest/hash diffing |
+| `test_self-update.sh` | ~11s | tarballs + binario cstk |
+| `test_quickstart-e2e.sh` | ~9s | e2e lifecycle da CLI |
+| `test_00c-bootstrap.sh` | ~8s | bootstrap do orquestrador |
+| `test_update-extra-kinds.sh` | ~6s | install+manifest+doctor |
+| `test_e2e_model_routing.sh` | ~5s | e2e do pipeline agente-00c |
+| `test_update.sh` | ~5s | update.sh + doctor |
+| `test_model_selector_corpus.sh` | ~5s | corpus de 45 entradas |
+
+> **Importante**: `--fast` e atalho de dev-loop, NAO substitui a suite completa.
+> O gate de release (`.github/workflows/release.yml`) roda `./tests/run.sh`
+> inteiro. Reavalie a allowlist se o perfil de tempo mudar:
+> `for f in tests/test_*.sh tests/cstk/test_*.sh; do \`
+> `  s=$(date +%s); sh "$f" >/dev/null 2>&1; printf '%5ds  %s\n' "$(($(date +%s)-s))" "$f"; done | sort -rn`
+
+`--fast` e `--slow` sao mutuamente exclusivos (exit 2) e compoem com PATTERN e
+com `--list`/`--stats`/run. `--check-coverage` ignora o filtro de velocidade
+(cobertura sempre enxerga todos os tests).
 
 ## Arquitetura
 

@@ -1,0 +1,71 @@
+# shellcheck.yml — lint estatico (advisory) dos scripts shell do toolkit.
+#
+# Proposito: capturar quebras de POSIX/sh cedo, em PR e push para main, SEM
+# bloquear merge ou release. O step roda com `continue-on-error: true` — os
+# achados aparecem no log e no Step Summary, mas o job nunca falha (gate fica
+# por conta de `tests/run.sh` no release.yml).
+#
+# Config de severidade/ruido vem do .shellcheckrc na raiz (compartilhado com o
+# dev local). shellcheck ja vem instalado na imagem ubuntu-latest.
+#
+# Ref: melhoria de tooling (shellcheck CI + fast/slow + stats).
+
+name: shellcheck
+
+on:
+  pull_request:
+    paths:
+      - '**/*.sh'
+      - '.shellcheckrc'
+      - '.github/workflows/shellcheck.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.sh'
+      - '.shellcheckrc'
+      - '.github/workflows/shellcheck.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: Lint shell scripts (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run shellcheck (non-gating)
+        continue-on-error: true
+        run: |
+          set -u
+          shellcheck --version
+          # Coleta todos os .sh do repo, exceto .git e fixtures (bytes crus /
+          # scripts intencionalmente invalidos para os testes).
+          files=$(find . -type f -name '*.sh' \
+            -not -path './.git/*' \
+            -not -path './tests/fixtures/*' \
+            -not -path './tests/cstk/fixtures/*')
+          count=$(printf '%s\n' "$files" | grep -c .)
+          echo "Analisando $count script(s) .sh..."
+          # -f gcc: uma linha por achado (file:line:col: severity: msg [SCxxxx]).
+          # Nunca propaga exit !=0 (advisory); continue-on-error e o cinto extra.
+          printf '%s\n' "$files" | xargs shellcheck -f gcc | tee shellcheck.out || true
+          findings=$(grep -c . shellcheck.out || true)
+          {
+            echo "# shellcheck (advisory)"
+            echo ""
+            echo "- scripts analisados: **$count**"
+            echo "- achados: **${findings:-0}**"
+            echo ""
+            if [ "${findings:-0}" -gt 0 ]; then
+              echo '```'
+              cat shellcheck.out
+              echo '```'
+            else
+              echo "Sem achados. ✅"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

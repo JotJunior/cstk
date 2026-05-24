@@ -1,0 +1,19 @@
+# .shellcheckrc — config compartilhada (CI + dev local) para os scripts shell
+# do toolkit. Todos sao POSIX `sh` (#!/bin/sh), exceto scripts/smoke-site.sh
+# (#!/bin/bash); o shellcheck auto-detecta o dialeto pelo shebang.
+#
+# Os codigos abaixo sao falsos-positivos SISTEMICOS deste codebase (medido:
+# 161 ~SC1091, 68 ~SC2016, 18 ~SC2148 — juntos, ~90% do ruido). Desabilita-los
+# deixa visivel a faixa acionavel (SC2086 unquoted, SC2115, SC2012, ...).
+#
+#   SC1091  "Not following: ... was not specified as input"
+#           Helpers sourced (harness.sh, _log.sh, _state-dir.sh, cli/lib/*)
+#           sao resolvidos em runtime; nao ha como o shellcheck segui-los
+#           estaticamente sem -x e um sourcepath fragil.
+#   SC2016  "Expressions don't expand in single quotes"
+#           Uso deliberado em format strings de awk/printf espalhado por toda
+#           a suite — nao e bug.
+#   SC2148  "Tip: Add a shebang or shell directive"
+#           Libs sourced (sem shebang por design) sao carregadas por scripts
+#           que ja declaram `#!/bin/sh`.
+disable=SC1091,SC2016,SC2148
