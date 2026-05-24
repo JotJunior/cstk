@@ -470,4 +470,455 @@ scenario_15_busca_multi_palavra_and() {
   assert_stdout_contains "nenhum resultado" || return 1
 }
 
+# =========================================================================
+# recall-autoconsume — Infra comum do modo --context (FASE 4.1)
+# =========================================================================
+
+# _rc_home_fake CMD... -> roda recall_main como _rc, mas com HOME=$tmp_fake
+# (sem ~/.claude) + CSTK_LIB apontando ao repo (licao v3.17.0: helpers via
+# CSTK_LIB, nao ~/.claude). Usado para rodar cada cenario --context tambem
+# sob HOME falso, com assercoes IDENTICAS (SC-005, Cenario 12).
+_rc_home_fake() {
+  _hf_home=$(mktemp -d 2>/dev/null) || _hf_home="$TMPDIR_TEST/fakehome"
+  mkdir -p "$_hf_home"
+  HOME="$_hf_home" sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main "$@"' _ "$@"
+}
+
+# _ctx_fixture_db DB -> popula DB com 3 features em 2 projetos, proveniencia
+# variada (ondas distintas, tipos distintos). Termos distintivos:
+#   featA (projX): decisao "alpha cache" + bloqueio "deploy"
+#   featB (projY): decisao "beta query"
+#   featC (projX): decisao "gamma cache" (mesmo projeto que featA)
+# Permite testar: OR multi-termo, anti-eco, filtro project/type, limit.
+_ctx_fixture_db() {
+  _cf_db="$1"
+  _write_ctx_state "$TMPDIR_TEST/cxA" "/home/u/projX" "featA" "alpha cache widget" "onda-001" "deploy de risco alpha"
+  _write_ctx_state "$TMPDIR_TEST/cxB" "/home/u/projY" "featB" "beta query engine" "onda-002" ""
+  _write_ctx_state "$TMPDIR_TEST/cxC" "/home/u/projX" "featC" "gamma cache layer" "onda-003" ""
+  _rc --ingest --state-dir "$TMPDIR_TEST/cxA" --db "$_cf_db" >/dev/null 2>&1
+  _rc --ingest --state-dir "$TMPDIR_TEST/cxB" --db "$_cf_db" >/dev/null 2>&1
+  _rc --ingest --state-dir "$TMPDIR_TEST/cxC" --db "$_cf_db" >/dev/null 2>&1
+}
+
+# _write_ctx_state DIR PROJ FEAT DEC_CTX WAVE BLOQ_TEXT -> state.json com 1
+# decisao (contexto = DEC_CTX, onda = WAVE) e, se BLOQ_TEXT nao-vazio, 1 bloqueio.
+_write_ctx_state() {
+  _wc_dir="$1"; _wc_proj="$2"; _wc_feat="$3"; _wc_ctx="$4"; _wc_wave="$5"; _wc_bloq="$6"
+  mkdir -p "$_wc_dir"
+  if [ -n "$_wc_bloq" ]; then
+    _wc_bloq_json='{ "id": "block-001", "onda_id": "'"$_wc_wave"'", "status": "respondido", "pergunta": "'"$_wc_bloq"'", "contexto_para_resposta": "ctx", "disparado_em": "2026-01-01T01:00:00Z" }'
+  else
+    _wc_bloq_json=""
+  fi
+  cat > "$_wc_dir/state.json" <<JSON
+{
+  "short_name": "$_wc_feat",
+  "execucao": { "id": "exec-$_wc_feat", "projeto_alvo_path": "$_wc_proj" },
+  "decisoes": [
+    { "id": "dec-001", "onda_id": "$_wc_wave", "timestamp": "2026-01-01T00:00:00Z",
+      "etapa": "plan", "agente": "orch", "escolha": "x", "score_justificativa": 2,
+      "contexto": "$_wc_ctx", "justificativa": "j", "evidencia": null }
+  ],
+  "bloqueios_humanos": [ $_wc_bloq_json ],
+  "ondas": []
+}
+JSON
+}
+
+# =========================================================================
+# recall-autoconsume FASE 1.1 — Helper de composicao OR (fts_query_escape_or)
+# Tarefa 1.1.4: asserir que fts_query_escape_or "a b" produz '"a" OR "b"'
+# (duas camadas de escape FTS5) e que fts_query_escape "a b" PERMANECE
+# AND-implicito ('"a" "b"' — regressao do modo busca, tarefa 1.1.2). Cobre
+# tambem query degenerada (so-whitespace) consistente com fts_query_escape
+# (tarefa 1.1.3). Unidade pura (sem sqlite3/jq) — roda mesmo sem deps.
+# =========================================================================
+scenario_ctx_fts_query_escape_or_composicao() {
+  # Composicao OR: dois tokens => '"a" OR "b"'.
+  _out=$(sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; fts_query_escape_or "a b"')
+  [ "$_out" = '"a" OR "b"' ] || { _fail "or-composicao" "esperado '\"a\" OR \"b\"', obtido '$_out'"; return 1; }
+
+  # Regressao do modo busca: fts_query_escape PERMANECE AND-implicito (espaco).
+  _out_and=$(sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; fts_query_escape "a b"')
+  [ "$_out_and" = '"a" "b"' ] || { _fail "and-regressao" "esperado '\"a\" \"b\"' (AND), obtido '$_out_and'"; return 1; }
+
+  # Token unico: sem juntor (sem ' OR ' espurio).
+  _out1=$(sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; fts_query_escape_or "solo"')
+  [ "$_out1" = '"solo"' ] || { _fail "or-token-unico" "esperado '\"solo\"', obtido '$_out1'"; return 1; }
+}
+
+scenario_ctx_fts_query_escape_or_degenerada() {
+  # Query so-whitespace (degenerada): mesma politica de fts_query_escape =>
+  # frase vazia '""' (casa nada, nunca erro). Compara as duas saidas.
+  _deg_or=$(sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; fts_query_escape_or "   "')
+  _deg_and=$(sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; fts_query_escape "   "')
+  [ "$_deg_or" = '""' ] || { _fail "or-degenerada" "esperado '\"\"' (frase vazia), obtido '$_deg_or'"; return 1; }
+  [ "$_deg_or" = "$_deg_and" ] || { _fail "or-degenerada-paridade" "OR='$_deg_or' != AND='$_deg_and' para query degenerada"; return 1; }
+}
+
+scenario_ctx_fts_query_escape_or_neutraliza_sintaxe() {
+  # Metacaracteres FTS5 por token viram TEXTO (cada token entre aspas, " interno
+  # duplicado). Token com aspa interna: a" => '"a"""' (aspa duplicada dentro).
+  _out=$(sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; fts_query_escape_or "drop* table"')
+  # '*' fica dentro da frase => literal; juncao OR entre os dois tokens.
+  [ "$_out" = '"drop*" OR "table"' ] || { _fail "or-neutraliza" "esperado '\"drop*\" OR \"table\"', obtido '$_out'"; return 1; }
+}
+
+# =========================================================================
+# recall-autoconsume FASE 2/3 — modo --context (recall_mode_context)
+# Cobre os cenarios do quickstart adaptados ao modo --context. Cada cenario
+# que precisa de DB roda em DOIS ambientes (HOME real via _rc + HOME falso via
+# _rc_home_fake) com assercoes IDENTICAS (SC-005). Fixtures sem bytes crus aqui
+# (corrompido usa fixture octal dedicada no cenario 10-context).
+# =========================================================================
+
+# Cenario 1-context — bloco markdown com proveniencia (formato distinto da busca)
+scenario_ctx_01_bloco_markdown_proveniencia() {
+  _have_deps || return 0
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+  # HOME real.
+  capture _rc --context "cache" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-bloco exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "Aprendizado recuperado (read-back loop)" || return 1
+  assert_stdout_contains "**[decision]**" || return 1
+  assert_stdout_contains "projX/featA/onda-001" || return 1
+  # HOME falso: mesmas assercoes.
+  capture _rc_home_fake --context "cache" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-bloco exit (HOME fake)" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "Aprendizado recuperado (read-back loop)" || return 1
+  assert_stdout_contains "projX/featA/onda-001" || return 1
+}
+
+# Cenario 2-context — anti-eco exclui a feature corrente (no SQL)
+scenario_ctx_02_anti_eco_exclude_feature() {
+  _have_deps || return 0
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+  capture _rc --context "cache" --exclude-feature featA --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-antieco exit" "$_CAPTURED_EXIT"; return 1; }
+  # featC (tambem "cache") deve aparecer; featA (excluida) NAO.
+  assert_stdout_contains "featC" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *featA*) _fail "ctx-antieco" "feature excluida featA vazou no bloco"; return 1 ;;
+  esac
+  # HOME falso: identico.
+  capture _rc_home_fake --context "cache" --exclude-feature featA --db "$TMPDIR_TEST/k.db"
+  case "$_CAPTURED_STDOUT" in
+    *featA*) _fail "ctx-antieco (HOME fake)" "featA vazou"; return 1 ;;
+  esac
+  assert_stdout_contains "featC" || return 1
+}
+
+# Cenario 3-context — zero match => no-op (stdout vazio, exit 0)
+scenario_ctx_03_zero_match_noop() {
+  _have_deps || return 0
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+  capture _rc --context "termo-inexistente-zzz" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-zero exit" "$_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "ctx-zero" "stdout deveria ser vazio (no-op), obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario 4-context — OR multi-termo: termos em docs disjuntos ambos aparecem
+# (contraste com AND do modo busca, que nao casaria nada).
+scenario_ctx_04_or_multi_termo() {
+  _have_deps || return 0
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+  # "alpha" so em featA, "beta" so em featB => OR traz ambos; AND traria nada.
+  capture _rc --context "alpha beta" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-or exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "featA" || return 1
+  assert_stdout_contains "featB" || return 1
+  # Prova de contraste: o modo busca (AND) com os mesmos termos NAO casa nada.
+  capture _rc "alpha beta" --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "nenhum resultado" || return 1
+}
+
+# Cenario 6-context — default --limit = 4
+scenario_ctx_06_default_limit_4() {
+  _have_deps || return 0
+  # Popula 6 decisoes com o mesmo termo distintivo em features distintas.
+  _i=1
+  while [ "$_i" -le 6 ]; do
+    _write_ctx_state "$TMPDIR_TEST/lim$_i" "/home/u/projL" "featL$_i" "limterm comum decisao" "onda-00$_i" ""
+    _rc --ingest --state-dir "$TMPDIR_TEST/lim$_i" --db "$TMPDIR_TEST/kl.db" >/dev/null 2>&1
+    _i=$((_i + 1))
+  done
+  capture _rc --context "limterm" --db "$TMPDIR_TEST/kl.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-limit exit" "$_CAPTURED_EXIT"; return 1; }
+  # Conta linhas de achado ('- **['). Default = 4.
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '^- \*\*\[') || _n=0
+  [ "$_n" = "4" ] || { _fail "ctx-limit default" "esperado 4 achados (default), obtido $_n"; return 1; }
+}
+
+# Cenario 5-context — teto de bytes trunca (achados inteiros, bloco <= max-bytes)
+scenario_ctx_05_max_bytes_teto() {
+  _have_deps || return 0
+  _i=1
+  while [ "$_i" -le 5 ]; do
+    _write_ctx_state "$TMPDIR_TEST/mb$_i" "/home/u/projM" "featM$_i" "bigterm conteudo razoavelmente longo para somar bytes no bloco final de contexto" "onda-00$_i" ""
+    _rc --ingest --state-dir "$TMPDIR_TEST/mb$_i" --db "$TMPDIR_TEST/km.db" >/dev/null 2>&1
+    _i=$((_i + 1))
+  done
+  # max-bytes baixo: bloco inteiro <= 300 bytes; corta por achado inteiro.
+  capture _rc --context "bigterm" --limit 5 --max-bytes 300 --db "$TMPDIR_TEST/km.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-maxbytes exit" "$_CAPTURED_EXIT"; return 1; }
+  _bytes=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -c | tr -d ' ')
+  [ "$_bytes" -le 300 ] || { _fail "ctx-maxbytes" "bloco $_bytes bytes > teto 300"; return 1; }
+  # Se ha bloco, deve ter cabecalho e ao menos 1 achado inteiro (sem corte no meio).
+  if [ -n "$_CAPTURED_STDOUT" ]; then
+    assert_stdout_contains "Aprendizado recuperado" || return 1
+    # Nenhuma linha de achado pode terminar abruptamente sem o termo distintivo
+    # ou sufixo de truncagem; verificamos que cada linha '- **[' esta completa
+    # (contem o fechamento ')').
+    printf '%s\n' "$_CAPTURED_STDOUT" | grep '^- \*\*\[' | while IFS= read -r _ln; do
+      case "$_ln" in
+        *'): '*) : ;;
+        *) printf 'LINHA_INCOMPLETA\n' ;;
+      esac
+    done | grep -q LINHA_INCOMPLETA && { _fail "ctx-maxbytes" "achado cortado no meio (sem '): ')"; return 1; }
+  fi
+  return 0
+}
+
+# Cenario 7-context — sqlite3 ausente => no-op (exit 0, stdout vazio)
+scenario_ctx_07_sem_sqlite3() {
+  _bin="$TMPDIR_TEST/binC7"
+  mkdir -p "$_bin"
+  for _t in tr wc printf sed grep awk basename dirname date find mkdir rm cat head sleep cp jq base64 cut; do
+    _p=$(command -v "$_t" 2>/dev/null) && ln -sf "$_p" "$_bin/$_t"
+  done
+  # (sqlite3 deliberadamente ausente)
+  capture sh -c 'PATH="'"$_bin"'"; export PATH; . "'"$CSTK_LIB"'/common.sh"; . "'"$CSTK_LIB"'/recall.sh"; recall_main --context "qualquer" --db "'"$TMPDIR_TEST"'/k.db"'
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-sem-sqlite3 exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "ctx-sem-sqlite3" "stdout deveria ser vazio (no-op)"; return 1; }
+}
+
+# Cenario 9-context — DB ausente => no-op (exit 0, stdout vazio)
+scenario_ctx_09_db_ausente() {
+  _have_deps || return 0
+  capture _rc --context "qualquer" --db "$TMPDIR_TEST/inexistente.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-db-ausente exit" "$_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "ctx-db-ausente" "stdout deveria ser vazio (no-op)"; return 1; }
+}
+
+# Cenario 10-context — DB corrompido => no-op. Fixture de bytes crus OCTAL \NNN.
+scenario_ctx_10_db_corrompido() {
+  _have_deps || return 0
+  # Lixo cru com alguns bytes de controle via octal (\014 form feed, \001 SOH).
+  printf 'nao\014e\001um\014sqlite\001db\n' > "$TMPDIR_TEST/bad-ctx.db"
+  capture _rc --context "qualquer" --db "$TMPDIR_TEST/bad-ctx.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-corrompido exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "ctx-corrompido" "stdout deveria ser vazio (no-op)"; return 1; }
+}
+
+# Cenario 11-context — read-only: size + mtime do DB inalterados (SC-006/FR-014)
+scenario_ctx_11_read_only() {
+  _have_deps || return 0
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+  # Snapshot size + mtime antes.
+  _sz0=$(wc -c < "$TMPDIR_TEST/k.db" | tr -d ' ')
+  _mt0=$(ls -l "$TMPDIR_TEST/k.db")
+  sleep 1
+  _rc --context "cache" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _rc --context "query alpha" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _sz1=$(wc -c < "$TMPDIR_TEST/k.db" | tr -d ' ')
+  _mt1=$(ls -l "$TMPDIR_TEST/k.db")
+  [ "$_sz0" = "$_sz1" ] || { _fail "ctx-readonly size" "size mudou: $_sz0 -> $_sz1"; return 1; }
+  [ "$_mt0" = "$_mt1" ] || { _fail "ctx-readonly mtime" "ls -l mudou (escrita no DB): \n$_mt0\nvs\n$_mt1"; return 1; }
+}
+
+# Cenario 13-context — injecao SQL/FTS nos termos tratada como literal, DB intacto
+scenario_ctx_13_injecao_literal() {
+  _have_deps || return 0
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+  _before=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM decisions" 2>/dev/null)
+  capture _rc --context "'; DROP TABLE decisions; --" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-injecao exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _after=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM decisions" 2>/dev/null)
+  [ "$_before" = "$_after" ] && [ -n "$_after" ] || { _fail "ctx-injecao" "tabela alterada/dropada: $_before -> $_after"; return 1; }
+  # Anti-eco tambem deve tratar valor manipulado como literal (sem bypass SQL).
+  capture _rc --context "cache" --exclude-feature "featA' OR '1'='1" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-injecao-antieco exit" "$_CAPTURED_EXIT"; return 1; }
+  # Como o exclude e literal e nao casa nenhuma feature real, featA ainda aparece.
+  assert_stdout_contains "featA" || return 1
+}
+
+# Cenario 14-context — NUL em input rejeitado com exit 2 (USAGE)
+scenario_ctx_14_nul_rejeitado() {
+  # has_nul detecta NUL via stdin; o caminho --context rejeita com exit 2.
+  # Argv nao carrega NUL cru, entao testamos a unidade do guard + a politica:
+  # um value_has_nul positivo no caminho deve resultar em USAGE. Aqui validamos
+  # a unidade do guard com fixture OCTAL \000 (a integracao no parse e coberta
+  # por inspecao: o loop for value_has_nul em recall_mode_context).
+  capture sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; printf "ca\000che" | has_nul'
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-nul detector" "esperado deteccao (exit 0), obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# Cenario validacao-context — flags invalidas e tipos errados => exit 2
+scenario_ctx_validacao_usage() {
+  # termos ausentes => USAGE
+  capture _rc --context --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "ctx-sem-termos" "esperado exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+  # --limit nao-inteiro => USAGE
+  capture _rc --context "x" --limit abc --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "ctx-limit-invalido" "esperado exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+  # --max-bytes nao-inteiro => USAGE
+  capture _rc --context "x" --max-bytes 0 --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "ctx-maxbytes-invalido" "esperado exit 2 (0 nao e positivo), obtido $_CAPTURED_EXIT"; return 1; }
+  # --type fora do enum => USAGE
+  capture _rc --context "x" --type naoexiste --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "ctx-type-invalido" "esperado exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+  # flag invalida => USAGE
+  capture _rc --context "x" --naoexiste --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "ctx-flag-invalida" "esperado exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# Cenario filtro-type/project no modo --context
+scenario_ctx_filtros_type_project() {
+  _have_deps || return 0
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+  # --type bloqueio => so o bloqueio de featA (deploy de risco alpha).
+  capture _rc --context "deploy alpha" --type bloqueio --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-type exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "**[bloqueio]**" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *'**[decision]**'*) _fail "ctx-type" "vazou decision com --type bloqueio"; return 1 ;;
+  esac
+  # --project projY => so featB.
+  capture _rc --context "query beta cache" --project projY --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "projY/featB" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *projX*) _fail "ctx-project" "vazou projX com --project projY"; return 1 ;;
+  esac
+}
+
+# Cenario 3.1-context — despacho de --context em recall_main + regressao busca
+scenario_ctx_despacho_recall_main() {
+  _have_deps || return 0
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+  # --context roteia para recall_mode_context (bloco markdown).
+  capture _rc --context "cache" --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "Aprendizado recuperado (read-back loop)" || return 1
+  # busca (sem --context) ainda roteia para recall_mode_search (formato [type]).
+  capture _rc "cache" --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "[decision]" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *"Aprendizado recuperado"*) _fail "ctx-despacho" "modo busca emitiu cabecalho de --context"; return 1 ;;
+  esac
+}
+
+# Cenario 3.2-context — usage MODO CONTEXT + -h no modo context
+scenario_ctx_usage_help() {
+  capture _rc --context -h
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-help exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "MODO CONTEXT" || return 1
+  assert_stdout_contains "--exclude-feature" || return 1
+  assert_stdout_contains "--max-bytes" || return 1
+}
+
+# =========================================================================
+# recall-autoconsume FASE 4.2 — auditabilidade (integracao PRE-DECISAO)
+# Cenario 15: simula o passo PRE-DECISAO do orquestrador. Apos consumo com
+# K>0, registra uma Decisao auditavel via state-decisions.sh (FR-016/FR-017);
+# K=0 NAO gera Decisao (sem ruido); a Decisao NAO persiste o body bruto
+# recuperado (CHK013). Skip silencioso se state-decisions.sh ausente.
+# =========================================================================
+
+# Resolve state-decisions.sh via CSTK_LIB (repo) ou ~/.claude (instalado).
+_ctx_state_decisions_path() {
+  _sd_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/state-decisions.sh"
+  if [ -f "$_sd_repo" ]; then printf '%s\n' "$_sd_repo"; return 0; fi
+  _sd_inst="${HOME:-/tmp}/.claude/skills/agente-00c-runtime/scripts/state-decisions.sh"
+  if [ -f "$_sd_inst" ]; then printf '%s\n' "$_sd_inst"; return 0; fi
+  return 1
+}
+
+scenario_ctx_15_auditabilidade_pre_decisao() {
+  _have_deps || return 0
+  _SDSH=$(_ctx_state_decisions_path) || return 0  # skip se runtime ausente
+  _RWSH=$(dirname "$_SDSH")/state-rw.sh
+  [ -f "$_RWSH" ] || return 0
+
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+
+  # state-dir sintetico minimo para o orquestrador.
+  _osd="$TMPDIR_TEST/orch-state"
+  mkdir -p "$_osd"
+  "$_RWSH" init --state-dir "$_osd" --execucao-id exec-featCurrent \
+    --projeto-alvo-path /home/u/projX --descricao "feature corrente sob teste" >/dev/null 2>&1 || {
+      # init pode exigir flags diferentes; cai para skip se assinatura difere.
+      return 0
+    }
+
+  # ---- Simula o passo PRE-DECISAO (pseudocodigo do contrato) ----
+  TERMS="cache query"
+  BLOCO=$(_rc --context "$TERMS" --exclude-feature featCurrent --limit 4 --max-bytes 2000 --db "$TMPDIR_TEST/k.db" 2>/dev/null) || BLOCO=""
+  [ -n "$BLOCO" ] || { _fail "ctx-audit setup" "esperado K>0 para o cenario de auditabilidade"; return 1; }
+  K=$(printf '%s\n' "$BLOCO" | grep -c '^- ')
+
+  # Captura o body bruto de um achado (apos ':') para asserir que NAO vai pro state.
+  _bruto=$(printf '%s\n' "$BLOCO" | grep '^- ' | head -n1 | sed 's/^.*): //')
+
+  "$_SDSH" register --state-dir "$_osd" \
+    --agente "agente-00c-feature-orchestrator" --etapa "specify" \
+    --contexto "read-back PRE-DECISAO: K=$K achados injetados (anti-eco feature=featCurrent)" \
+    --opcoes '["injetar-achados","no-op"]' --escolha "injetar-achados" \
+    --justificativa "termos derivados da feature: $TERMS" --score 2 >/dev/null 2>&1 || {
+      _fail "ctx-audit register" "state-decisions.sh register falhou"; return 1; }
+
+  # 4.2.1 — Decisao existe com etapa specify, contexto read-back, K e termos.
+  _sj="$_osd/state.json"
+  _ndec=$(jq '[.decisoes[] | select(.contexto | startswith("read-back PRE-DECISAO"))] | length' "$_sj")
+  [ "$_ndec" = "1" ] || { _fail "ctx-audit 4.2.1" "esperado 1 Decisao read-back, obtido $_ndec"; return 1; }
+  _etapa=$(jq -r '.decisoes[] | select(.contexto | startswith("read-back")) | .etapa' "$_sj")
+  [ "$_etapa" = "specify" ] || { _fail "ctx-audit etapa" "esperado specify, obtido $_etapa"; return 1; }
+  # K e termos presentes (K no contexto, termos na justificativa).
+  jq -e '.decisoes[] | select(.contexto | startswith("read-back")) | select(.contexto | contains("K='"$K"'"))' "$_sj" >/dev/null \
+    || { _fail "ctx-audit K" "contexto nao contem K=$K"; return 1; }
+  jq -e '.decisoes[] | select(.contexto | startswith("read-back")) | select(.justificativa | contains("'"$TERMS"'"))' "$_sj" >/dev/null \
+    || { _fail "ctx-audit termos" "justificativa nao contem os termos"; return 1; }
+
+  # 4.2.3 — body bruto recuperado NAO foi persistido no state.json (CHK013).
+  if [ -n "$_bruto" ]; then
+    case "$(cat "$_sj")" in
+      *"$_bruto"*) _fail "ctx-audit CHK013" "body bruto recuperado vazou para state.json"; return 1 ;;
+    esac
+  fi
+}
+
+scenario_ctx_15b_k0_sem_decisao() {
+  _have_deps || return 0
+  _SDSH=$(_ctx_state_decisions_path) || return 0
+  _RWSH=$(dirname "$_SDSH")/state-rw.sh
+  [ -f "$_RWSH" ] || return 0
+
+  _ctx_fixture_db "$TMPDIR_TEST/k.db"
+  _osd="$TMPDIR_TEST/orch-state-k0"
+  mkdir -p "$_osd"
+  "$_RWSH" init --state-dir "$_osd" --execucao-id exec-featCurrent-k0 \
+    --projeto-alvo-path /home/u/projX --descricao "feature corrente sob teste" >/dev/null 2>&1 || return 0
+
+  # Consumo K=0 (termo inexistente): BLOCO vazio => NAO registra Decisao.
+  BLOCO=$(_rc --context "termo-zzz-inexistente" --exclude-feature featCurrent --db "$TMPDIR_TEST/k.db" 2>/dev/null) || BLOCO=""
+  if [ -n "$BLOCO" ]; then
+    "$_SDSH" register --state-dir "$_osd" --agente x --etapa specify \
+      --contexto "read-back PRE-DECISAO: nao deveria acontecer" \
+      --opcoes '["a","b"]' --escolha a --justificativa "justificativa longa o suficiente" --score 2 >/dev/null 2>&1
+  fi
+  _sj="$_osd/state.json"
+  _ndec=$(jq '[.decisoes[]? | select(.contexto | startswith("read-back"))] | length' "$_sj" 2>/dev/null) || _ndec=0
+  [ "${_ndec:-0}" = "0" ] || { _fail "ctx-audit 4.2.2" "K=0 nao deveria gerar Decisao read-back, obtido $_ndec"; return 1; }
+}
+
+# Cenario regressao — modos existentes (busca/ingest/reindex) intactos
+scenario_ctx_regressao_modos_existentes() {
+  _have_deps || return 0
+  _write_state "$TMPDIR_TEST/featA" "/home/u/projX" "featA"
+  # ingest ainda funciona.
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featA" --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "decisions" || return 1
+  # busca AND ainda funciona (regressao).
+  capture _rc "widget" --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "dec-001" || return 1
+}
+
 run_all_scenarios

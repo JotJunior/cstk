@@ -77,6 +77,8 @@ cstk recall — memoria de conhecimento cross-feature (SQLite + FTS5)
 
 USO:
   cstk recall <query> [--project P] [--type T] [--limit N] [--db PATH]
+  cstk recall --context "<termos>" [--limit N] [--exclude-feature NAME]
+              [--type T] [--project P] [--max-bytes N] [--db PATH]
   cstk recall --ingest --state-dir DIR [--db PATH]
   cstk recall --reindex [--states-root DIR] [--db PATH]
 
@@ -86,6 +88,20 @@ MODO BUSCA (default):
   --type T           decision|bloqueio|retro|skill
   --limit N          maximo de resultados (default 20; inteiro positivo)
   --db PATH          indice (default $CSTK_KNOWLEDGE_DB ou ~/.claude/cstk/knowledge.db)
+
+MODO CONTEXT (--context): leitura-para-contexto (read-back loop). Retorna um
+  bloco markdown enxuto pronto para injecao em prompt. Read-only, best-effort:
+  toda degradacao = no-op (stdout vazio + exit 0). Composicao OR entre termos.
+  "<termos>"            termos de consulta (obrigatorio; OR entre tokens)
+  --limit N            maximo de achados (default 4; faixa recomendada 3-5)
+  --exclude-feature N   anti-eco: omite achados da feature N (no SQL)
+  --type T             decision|bloqueio|retro|skill
+  --project P          filtra por projeto de origem
+  --max-bytes N        teto de bytes do bloco (default 2000; corta por achado inteiro)
+  --db PATH            indice
+  Exemplo:
+    cstk recall --context "cache fts query" --limit 4 \
+      --exclude-feature recall-autoconsume --max-bytes 2000
 
 MODO INGESTAO (--ingest):
   --state-dir DIR    diretorio de state da feature (contem state.json)
@@ -150,6 +166,36 @@ fts_query_escape() {
     # Query so-whitespace (degenerada): frase vazia casa nada (exit 0, sem erro).
     [ -n "$_ftq_out" ] || _ftq_out=$(fts_phrase_escape "")
     printf '%s' "$_ftq_out"
+  )
+}
+
+# fts_query_escape_or QUERY -> identico a fts_query_escape, mas junta os tokens
+# escapados com ` OR ` em vez do AND-implicito (espaco). Usado SOMENTE pelo modo
+# --context (recall_mode_context): keywords kebab da feature corrente raramente
+# coocorrem todas no mesmo documento (AND => 0 matches), entao OR maximiza o
+# recall do read-back loop (research Decision 1: AND 0 -> OR 43). Helper NOVO e
+# separado (em vez de parametro de juncao em fts_query_escape) para isolar o
+# blast radius: o caminho de busca testado NAO e tocado. Cada token continua
+# escapado por fts_phrase_escape (neutraliza sintaxe FTS5 *,(,),:,^,-,booleanos)
+# e o resultado AINDA precisa passar por sql_escape() (camada SQL cumulativa).
+# Subshell isola `set -f` (sem glob de tokens *,?,[) e `unset IFS` (split por
+# whitespace POSIX). Query degenerada (so-whitespace) => frase vazia => zero
+# match (mesma politica de fts_query_escape; nunca erro).
+fts_query_escape_or() {
+  (
+    set -f
+    unset IFS
+    _ftqo_out=''
+    for _ftqo_tok in $1; do
+      _ftqo_p=$(fts_phrase_escape "$_ftqo_tok")
+      if [ -z "$_ftqo_out" ]; then
+        _ftqo_out=$_ftqo_p
+      else
+        _ftqo_out="$_ftqo_out OR $_ftqo_p"
+      fi
+    done
+    [ -n "$_ftqo_out" ] || _ftqo_out=$(fts_phrase_escape "")
+    printf '%s' "$_ftqo_out"
   )
 }
 
@@ -391,17 +437,22 @@ recall_main() {
   esac
 
   # Detecta o modo varrendo argv (sem consumir — cada modo reparseia).
+  # Precedencia explicita (--ingest/--reindex/--context sao mutuamente
+  # exclusivos por uso): a ULTIMA flag de modo encontrada na varredura vence.
+  # Em uso normal so uma aparece; default permanece search.
   _mode="search"
   for _arg in "$@"; do
     case "$_arg" in
       --ingest) _mode="ingest" ;;
       --reindex) _mode="reindex" ;;
+      --context) _mode="context" ;;
     esac
   done
 
   case "$_mode" in
     ingest)  recall_mode_ingest "$@" ;;
     reindex) recall_mode_reindex "$@" ;;
+    context) recall_mode_context "$@" ;;
     search)  recall_mode_search "$@" ;;
   esac
 }
@@ -849,6 +900,207 @@ $_se_sql") || _se_out=""
       "$_r_type" "$_r_proj" "$_r_feat" "$_r_wave" "$_r_ts" "$_r_sid"
     printf '  %s\n\n' "$_r_body"
   done
+  return "$RECALL_EXIT_OK"
+}
+
+# ==========================================================================
+# FASE 4.bis — Leitura-para-contexto (cstk recall --context)
+# Modo NOVO (recall-autoconsume), distinto de busca/--ingest/--reindex. Retorna
+# achados do indice como bloco markdown enxuto, pronto para injecao em prompt
+# (read-back loop). Read-only, best-effort: toda degradacao = no-op (stdout
+# vazio + exit 0). Difere do modo busca em: (a) composicao OR (fts_query_escape_or)
+# em vez de AND; (b) anti-eco --exclude-feature no SQL; (c) --max-bytes (teto duro
+# de bytes); (d) render markdown 1-linha/achado; (e) defaults --limit 4.
+# Contrato: docs/specs/recall-autoconsume/contracts/cstk-recall-context.md
+# ==========================================================================
+
+recall_mode_context() {
+  _cx_query=""
+  _cx_project=""
+  _cx_type=""
+  _cx_exclude=""
+  _cx_limit="4"
+  _cx_max_bytes="2000"
+  _cx_db_flag=""
+  _cx_have_query=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --context) ;;
+      --project) shift; _cx_project="${1:-}" ;;
+      --type) shift; _cx_type="${1:-}" ;;
+      --exclude-feature) shift; _cx_exclude="${1:-}" ;;
+      --limit) shift; _cx_limit="${1:-}" ;;
+      --max-bytes) shift; _cx_max_bytes="${1:-}" ;;
+      --db) shift; _cx_db_flag="${1:-}" ;;
+      -h|--help) recall_usage; return "$RECALL_EXIT_OK" ;;
+      --*) log_error "recall --context: flag invalida: $1"; return "$RECALL_EXIT_USAGE" ;;
+      *)
+        if [ "$_cx_have_query" -eq 0 ]; then
+          _cx_query="$1"; _cx_have_query=1
+        else
+          log_error "recall --context: termos extras inesperados: $1"
+          return "$RECALL_EXIT_USAGE"
+        fi
+        ;;
+    esac
+    shift || break
+  done
+
+  # Termos ausentes => USAGE (alinhado a tabela de exit codes do contrato).
+  if [ "$_cx_have_query" -eq 0 ]; then
+    log_error "recall --context: termos obrigatorios"
+    return "$RECALL_EXIT_USAGE"
+  fi
+
+  # Rejeicao de NUL em TODOS os inputs do usuario ANTES de qualquer
+  # escaping/validacao/interpolacao (consistente com modo busca; CHK009).
+  for _cx_in in "$_cx_query" "$_cx_project" "$_cx_type" "$_cx_exclude" "$_cx_db_flag"; do
+    if value_has_nul "$_cx_in"; then
+      log_error "recall --context: byte NUL em input rejeitado"
+      return "$RECALL_EXIT_USAGE"
+    fi
+  done
+
+  # --limit e --max-bytes integer-validados (nao escaping); rejeita com exit 2.
+  if ! validate_limit "$_cx_limit"; then
+    log_error "recall --context: --limit deve ser inteiro positivo (recebido: '$_cx_limit')"
+    return "$RECALL_EXIT_USAGE"
+  fi
+  if ! validate_limit "$_cx_max_bytes"; then
+    log_error "recall --context: --max-bytes deve ser inteiro positivo (recebido: '$_cx_max_bytes')"
+    return "$RECALL_EXIT_USAGE"
+  fi
+
+  # --type validado contra enum (se fornecido).
+  if [ -n "$_cx_type" ] && ! validate_type "$_cx_type"; then
+    log_error "recall --context: --type fora do enum (decision|bloqueio|retro|skill): '$_cx_type'"
+    return "$RECALL_EXIT_USAGE"
+  fi
+
+  # ---- Gates de degradacao graciosa (no-op silencioso, exit 0) ----
+  # FR-012: NENHUM caminho de degradacao retorna codigo != 0; stdout fica vazio.
+
+  # Gate sqlite3 ausente => no-op. log_warn em stderr (diagnostico, sem vazar
+  # conteudo do indice — CHK012).
+  if ! recall_have_sqlite3; then
+    log_warn "recall --context: sqlite3 indisponivel; no-op (read-back pulado)"
+    return "$RECALL_EXIT_OK"
+  fi
+
+  _cx_db=$(recall_resolve_db "$_cx_db_flag")
+
+  # Gate DB ausente => no-op (stdout vazio).
+  if [ ! -f "$_cx_db" ]; then
+    log_warn "recall --context: indice ausente ($_cx_db); no-op"
+    return "$RECALL_EXIT_OK"
+  fi
+
+  # Gate DB corrompido => no-op. quick_check via leitura (read-only).
+  _cx_ok=$(printf 'PRAGMA quick_check;\n' | sqlite3 -- "$_cx_db" 2>/dev/null | head -n 1) || _cx_ok=""
+  if [ "$_cx_ok" != "ok" ]; then
+    log_warn "recall --context: indice ilegivel/corrompido ($_cx_db); no-op"
+    return "$RECALL_EXIT_OK"
+  fi
+
+  # ---- Montagem da query (OR + anti-eco + filtros), read-only ----
+  # Duas camadas de escape (FTS5 por-token via fts_query_escape_or + SQL via
+  # sql_escape), identico ao modo busca mas com composicao OR.
+  _cx_match=$(sql_escape "$(fts_query_escape_or "$_cx_query")")
+  _cx_where="WHERE knowledge_fts MATCH '$_cx_match'"
+  # Anti-eco (FR-005): omite a feature corrente NO SQL (nao pos-filtro textual
+  # fragil) usando sql_escape — valores manipulados de feature nao contornam.
+  if [ -n "$_cx_exclude" ]; then
+    _cx_where="$_cx_where AND feature != '$(sql_escape "$_cx_exclude")'"
+  fi
+  if [ -n "$_cx_type" ]; then
+    _cx_where="$_cx_where AND type = '$(sql_escape "$_cx_type")'"
+  fi
+  if [ -n "$_cx_project" ]; then
+    _cx_where="$_cx_where AND project = '$(sql_escape "$_cx_project")'"
+  fi
+  # SEM piso de bm25 (FR-007). bm25 ASC (mais relevante primeiro), LIMIT N.
+  _cx_sql="SELECT type, project, feature, wave, source_ts, source_id, body
+FROM knowledge_fts $_cx_where
+ORDER BY bm25(knowledge_fts) LIMIT $_cx_limit;"
+
+  # Executa SOMENTE via recall_query_sql (leitura). NUNCA recall_run_sql /
+  # recall_apply_schema (escrita) — read-only (FR-014). database is locked
+  # durante ingestao concorrente => .timeout 5000 (em recall_query_sql); se
+  # ainda falhar, resultado vazio => no-op (nunca propaga erro).
+  _cx_out=$(recall_query_sql "$_cx_db" ".mode list
+.separator |@|
+$_cx_sql") || _cx_out=""
+
+  # ---- Render do ContextBlock (markdown enxuto, teto duro de bytes) ----
+  # K=0 (zero rows apos anti-eco/filtros) => stdout VAZIO (FR-017 distingue
+  # K=0 de K>0; sem cabecalho, sem erro).
+  if [ -z "$_cx_out" ]; then
+    return "$RECALL_EXIT_OK"
+  fi
+
+  # Monta as linhas de achado primeiro (cada uma <=280 chars no body), depois
+  # aplica o teto de bytes cortando pelo ULTIMO achado inteiro que cabe. O
+  # cabecalho blockquote (2 linhas) entra no orcamento de bytes.
+  _cx_header="> Aprendizado recuperado (read-back loop) — K achados de execucoes passadas."
+  _cx_body_acc=""
+  _cx_k=0
+  # Tamanho corrente do bloco = header + linha em branco + linhas acumuladas.
+  # Recomputado a cada achado candidato antes de aceitar.
+  _cx_lines_tmp=$(printf '%s' "$_cx_out")
+  _cx_OLDIFS="$IFS"
+  IFS='
+'
+  for _cx_line in $_cx_lines_tmp; do
+    [ -n "$_cx_line" ] || continue
+    _r_type=$(printf '%s' "$_cx_line" | awk -F '\\|@\\|' '{print $1}')
+    _r_proj=$(printf '%s' "$_cx_line" | awk -F '\\|@\\|' '{print $2}')
+    _r_feat=$(printf '%s' "$_cx_line" | awk -F '\\|@\\|' '{print $3}')
+    _r_wave=$(printf '%s' "$_cx_line" | awk -F '\\|@\\|' '{print $4}')
+    _r_ts=$(printf '%s' "$_cx_line" | awk -F '\\|@\\|' '{print $5}')
+    _r_body=$(printf '%s' "$_cx_line" | awk -F '\\|@\\|' '{print $7}')
+    # Trunca body por achado (280 chars + sufixo "..." quando cortado) para um
+    # achado gigante nao estourar sozinho o orcamento.
+    _r_body_short=$(printf '%s' "$_r_body" | cut -c1-280)
+    if [ "$(printf '%s' "$_r_body" | wc -c | tr -d ' ')" -gt 280 ]; then
+      _r_body_short="$_r_body_short..."
+    fi
+    _cx_entry="- **[$_r_type]** $_r_proj/$_r_feat/$_r_wave ($_r_ts): $_r_body_short"
+    # Candidato a bloco com este achado adicionado.
+    if [ -z "$_cx_body_acc" ]; then
+      _cx_cand="$_cx_header
+
+$_cx_entry"
+    else
+      _cx_cand="$_cx_header
+
+$_cx_body_acc
+$_cx_entry"
+    fi
+    # Teto duro: se este achado estoura --max-bytes, para (nunca corta no meio).
+    _cx_cand_bytes=$(printf '%s\n' "$_cx_cand" | wc -c | tr -d ' ')
+    if [ "$_cx_cand_bytes" -gt "$_cx_max_bytes" ]; then
+      # Se nem o PRIMEIRO achado cabe, emite no-op (bloco vazio): preferir
+      # silencio a um cabecalho orfao sem achados.
+      break
+    fi
+    if [ -z "$_cx_body_acc" ]; then
+      _cx_body_acc="$_cx_entry"
+    else
+      _cx_body_acc="$_cx_body_acc
+$_cx_entry"
+    fi
+    _cx_k=$((_cx_k + 1))
+  done
+  IFS="$_cx_OLDIFS"
+
+  # Se nenhum achado coube (primeiro ja estourava o teto) => no-op.
+  if [ "$_cx_k" -eq 0 ]; then
+    return "$RECALL_EXIT_OK"
+  fi
+
+  # Emite o bloco final. K>=1 garantido aqui.
+  printf '%s\n\n%s\n' "$_cx_header" "$_cx_body_acc"
   return "$RECALL_EXIT_OK"
 }
 

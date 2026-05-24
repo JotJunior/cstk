@@ -598,6 +598,10 @@ cstk recall --reindex
 
 # Ingestão manual de uma feature específica (normalmente o hook faz isto)
 cstk recall --ingest --state-dir .claude/feature-00c-state/<short-name>
+
+# Leitura-para-contexto (read-back loop): bloco markdown pronto para injeção
+cstk recall --context "cache fts query" --limit 4 \
+  --exclude-feature minha-feature-corrente --max-bytes 2000
 ```
 
 **Flags do modo busca**:
@@ -607,6 +611,27 @@ cstk recall --ingest --state-dir .claude/feature-00c-state/<short-name>
 - `--limit N` — máximo de resultados (inteiro positivo; default 20)
 - `--db PATH` — índice alternativo (default `$CSTK_KNOWLEDGE_DB` ou
   `~/.claude/cstk/knowledge.db`)
+
+**Modo `--context` (read-back loop)**: fecha o ciclo da memória — em vez de
+exibir resultados para leitura humana, retorna um **bloco markdown enxuto**
+pronto para injeção no contexto de um prompt. Os orquestradores `agente-00c`/
+`feature-00c` o invocam automaticamente no início das fases `specify` e `plan`
+(passo PRE-DECISAO), injetando aprendizado de execuções passadas **antes** de
+decidir. Diferenças face ao modo busca: composição **OR** entre termos (maior
+recall sobre keywords kebab da feature), anti-eco `--exclude-feature` (omite a
+feature corrente para não ecoar suas próprias escritas), e teto duro de bytes.
+
+- `--exclude-feature NAME` — anti-eco: omite achados da feature `NAME` (no SQL)
+- `--limit N` — máximo de achados (default **4**; faixa recomendada 3-5)
+- `--max-bytes N` — teto de bytes do bloco (default **2000**; corta por achado
+  inteiro, nunca no meio)
+- `--type T` / `--project P` / `--db PATH` — iguais ao modo busca
+
+É **read-only** e **best-effort**: toda degradação (sem `sqlite3`, índice
+ausente/corrompido, zero achados) resulta em **no-op silencioso** (stdout vazio,
+exit 0) — nunca gateia uma onda. O conteúdo recuperado já foi *scrubbed* na
+ingestão e é injetado com rótulo **UNTRUSTED / não-autoritativo** (defesa
+prompt-injection ASI09/LLM01).
 
 **Degradação graciosa**: a ausência de `sqlite3` ou `jq` **nunca** aborta uma
 onda — o hook de ingestão e o `recall` saem com status 0 emitindo apenas um

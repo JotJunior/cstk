@@ -5,7 +5,54 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
-## [Unreleased]
+## [3.18.0] - 2026-05-23
+
+Fecha o **read-back loop** da memória de conhecimento cross-feature: até
+v3.17.0 os orquestradores apenas ESCREVIAM no índice (`cstk recall --ingest`);
+agora também LEEM de volta. Um novo modo `cstk recall --context` consulta o
+índice (FTS5/bm25) com os termos da feature corrente e devolve um bloco
+markdown enxuto pronto para injeção em prompt; os orquestradores `agente-00c`/
+`feature-00c` o invocam num passo PRE-DECISAO no início das fases `specify` e
+`plan`, injetando aprendizado de execuções passadas antes de decidir. Camada
+estritamente aditiva, best-effort, read-only — nenhum breaking change nos modos
+existentes (`search`/`--ingest`/`--reindex`).
+
+### Added
+
+- **Modo `cstk recall --context "<termos>"`** em `cli/lib/recall.sh`
+  (`recall_mode_context`): retorna um ContextBlock markdown (`> Aprendizado
+  recuperado (read-back loop) — K achados...` + uma linha por achado com
+  proveniência `project/feature/wave (ts): body`). Flags: `--limit N`
+  (default **4**), `--exclude-feature NAME` (anti-eco no SQL), `--max-bytes N`
+  (default **2000**, corte por achado inteiro), `--type`/`--project`/`--db`
+  (iguais ao modo busca). Composição **OR** entre termos (novo helper
+  `fts_query_escape_or`, reusa `fts_phrase_escape`) — o modo busca permanece
+  AND-implícito.
+- **Passo PRE-DECISAO (read-back loop)** nos dois orquestradores
+  (`global/agents/agente-00c-feature-orchestrator.md` e
+  `agente-00c-orchestrator.md`): dispara somente em `specify`+`plan`, deriva
+  termos de `aspectos_chave_iniciais` (≤8, fallback `projeto_alvo_descricao`),
+  injeta o bloco com rótulo **UNTRUSTED / não-autoritativo** (defesa
+  prompt-injection ASI09/LLM01) e registra Decisão auditável quando K>0
+  (sem persistir o body bruto recuperado).
+
+### Security
+
+- Conteúdo recuperado pelo modo `--context` já foi *scrubbed* na ingestão
+  (`secrets-filter.sh`) — o consumo não re-scrub (seguro por construção). NUL
+  rejeitado em qualquer input; anti-eco aplicado no SQL via `sql_escape` (sem
+  bypass por valor manipulado); injeção SQL/FTS tratada como literal.
+
+### Notes
+
+- `cstk recall --context` é **read-only** e **best-effort**: toda degradação
+  (sem `sqlite3`, índice ausente/corrompido, zero achados, query degenerada)
+  resulta em no-op silencioso (stdout vazio, exit 0) — nunca gateia uma onda.
+  O teto de tempo (US3-3) é satisfeito pelo `.timeout 5000` do SQLite + a
+  natureza best-effort, sem `timeout` wrapper dedicado (POSIX sh puro).
+- Cobertura: 22 cenários novos em `tests/cstk/test_recall.sh` (modo `--context`
+  faz parte de `recall.sh`, sem arquivo de teste órfão), rodados sob HOME real
+  e HOME falso.
 
 ## [3.17.0] - 2026-05-23
 
