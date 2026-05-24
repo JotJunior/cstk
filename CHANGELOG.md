@@ -5,6 +5,31 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [3.19.1] - 2026-05-24
+
+Correções de coerência pós-`3.19.0`, sem mudança de comportamento do produto
+(documentação + tooling de testes). Não altera o conteúdo funcional do tarball.
+
+### Fixed
+
+- **CHANGELOG — footer-links da série 3.x**: o rodapé de links de versão só
+  cobria `1.0.0`/`1.1.0`/`2.0.0`; toda a série 3.x (28 versões, incluindo a
+  própria `3.19.0`) estava sem link. Bloco regenerado a partir dos headings
+  (formato `releases/tag/vX.Y.Z`, ordem descendente) — agora **31 headings =
+  31 links**, consistente com a convenção Keep a Changelog.
+- **`tests/run.sh --check-coverage` — falsos órfãos**: o check saía com
+  exit 1 por 3 órfãos-de-script (`_log.sh`, `_state-dir.sh`, `classify.sh`) +
+  27 órfãos-de-test que, na verdade, **possuem cobertura** — apenas sob tests
+  de nome descritivo que não casa a convenção 1:1 `test_<base>.sh` (tests
+  granulares de `model-selector` e tests de aspecto como
+  `runtime-log-redaction`, `secrets-filter-backup`, `skills-cache-protocol`,
+  `update-extra-kinds`, `state-dir-parametrization`). Adicionada allowlist
+  coerente nos dois lados (`_is_internal_test` para tests +
+  `_is_covered_by_named_test` para scripts), **cada isenção exigindo que o
+  cobridor exista em disco** (anti-ponto-cego: se o script/test sumir, volta a
+  ser órfão real). Resultado: `./tests/run.sh` → `ORPHANS: 0` (sem falso WARN) e
+  `--check-coverage` → exit 0. Suíte completa 1043/0/0, sem regressão.
+
 ## [3.19.0] - 2026-05-24
 
 Expande a **ingestão da memória de conhecimento** (`cstk recall`) para derivar
@@ -2129,6 +2154,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[3.19.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.19.1
 [3.19.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.19.0
 [3.18.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.18.0
 [3.17.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.17.0
