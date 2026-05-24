@@ -1388,7 +1388,7 @@ $_se_sql") || _se_out=""
 # vazio + exit 0). Difere do modo busca em: (a) composicao OR (fts_query_escape_or)
 # em vez de AND; (b) anti-eco --exclude-feature no SQL; (c) --max-bytes (teto duro
 # de bytes); (d) render markdown 1-linha/achado; (e) defaults --limit 4.
-# Contrato: docs/specs/recall-autoconsume/contracts/cstk-recall-context.md
+# Contrato: docs/specs/_archived/recall-autoconsume/contracts/cstk-recall-context.md
 # ==========================================================================
 
 recall_mode_context() {
