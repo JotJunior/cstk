@@ -1,7 +1,7 @@
 # Claude Code Toolkit
 
 [![Latest Release](https://img.shields.io/github/v/release/JotJunior/claude-ai-tips?label=latest%20release&color=blue)](https://github.com/JotJunior/claude-ai-tips/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](#licença)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![SemVer](https://img.shields.io/badge/SemVer-3.x-orange.svg)](./CHANGELOG.md)
 [![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/claude--ai--tips-blue?logo=readthedocs)](https://jotjunior.github.io/claude-ai-tips/)
 [![Publish Site](https://github.com/JotJunior/claude-ai-tips/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/claude-ai-tips/actions/workflows/publish-site.yml)
@@ -16,12 +16,46 @@ para tarefas de documentação, desenvolvimento, segurança e qualidade de códi
 > para baixar o tarball ou acompanhar mudanças no [CHANGELOG.md](./CHANGELOG.md).
 > A instalação recomendada é via `cstk` CLI (ver [seção Instalação](#instalação)).
 
+## Comece aqui
+
+Duas trilhas, dependendo do que você procura:
+
+| Trilha | Para quem | Onde ir |
+|--------|-----------|---------|
+| 🟢 **Básico** | Quer produtividade no dia a dia — especificar, revisar, corrigir, documentar com algumas skills | Esta seção + [Skills Globais](#skills-globais) |
+| 🔧 **Avançado** | Quer o orquestrador autônomo rodando o pipeline SDD inteiro sozinho | Seções **Agente-00C**, **Sessões paralelas** e **Memória de conhecimento** mais abaixo (marcadas com 🔧) |
+
+### Trilha básica em 3 passos
+
+```bash
+# 1. Instale (uma vez por máquina)
+curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/install.sh | sh
+```
+
+```text
+# 2. Abra o Claude Code no seu projeto e invoque uma skill pelo gatilho:
+#    "especifica essa feature: ..."   → specify  (ideia → spec)
+#    "revisa a segurança desse código" → owasp-security
+#    "corrige esse bug: ..."          → bugfix   (investigação multi-camada)
+#    "me aconselhe sobre esse plano"  → advisor  (crítica estratégica)
+```
+
+```text
+# 3. Pronto. As skills são auto-invocadas por contexto — você descreve a
+#    intenção em linguagem natural e o gatilho dispara a skill certa.
+```
+
+> Não precisa do orquestrador autônomo para começar. Ele é a trilha 🔧 avançada
+> — adote quando quiser que o pipeline SDD rode de ponta a ponta sem você
+> conduzir cada etapa.
+
 ## Estrutura
 
 ```
 ├── global/                     # Skills globais (independentes de linguagem)
-│   └── skills/                 # 20 skills globais (cada skill é uma pasta)
+│   └── skills/                 # 23 skills globais (cada skill é uma pasta)
 │       ├── advisor/
+│       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
 │       ├── analyze/
 │       ├── apply-insights/
 │       ├── briefing/
@@ -31,9 +65,11 @@ para tarefas de documentação, desenvolvimento, segurança e qualidade de códi
 │       ├── constitution/
 │       ├── create-tasks/
 │       ├── create-use-case/    # ⚠ deprecated v3.12.0 — usar `specify`
+│       ├── decision-tree/      # HTML interativo da árvore de decisões do state.json
 │       ├── execute-task/
 │       ├── image-generation/
 │       ├── initialize-docs/
+│       ├── model-selector/     # heurística de roteamento de modelo (sugestor)
 │       ├── owasp-security/
 │       ├── plan/
 │       ├── review-features/
@@ -222,6 +258,11 @@ em 134 sessões. Projetado para eliminar ciclos de "corrige-revela-corrige" em a
 - Implementa correções em todas as camadas afetadas de uma vez
 
 ## Agente-00C (orquestrador autônomo da pipeline SDD)
+
+> 🔧 **Trilha avançada.** Não é necessário para o uso básico (ver
+> [Comece aqui](#comece-aqui)). Esta seção e as duas seguintes
+> (**Sessões paralelas** e **Memória de conhecimento**) cobrem o orquestrador
+> autônomo e seus subsistemas.
 
 > **Status: experimental — esqueleto FASE 1 instalado.** Implementação
 > operacional em andamento. Acompanhe o backlog em
@@ -423,7 +464,7 @@ Depois disso, comandos típicos:
 ```bash
 cstk --version                       # confirma instalação
 cstk install                         # instala perfil 'sdd' em ~/.claude/skills/
-cstk install --profile all           # instala TODAS as 35 skills (inclui language-*)
+cstk install --profile all           # instala TODAS as 38 skills (inclui language-*)
 cstk install advisor bugfix          # cherry-pick por nome
 cstk update                          # aplica novas releases preservando edits locais
 cstk update --force                  # sobrescreve skills com edição local
@@ -437,8 +478,8 @@ cstk self-update                     # atualiza o próprio binário cstk
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 10 skills do pipeline Spec-Driven Development (briefing → review-task) | Instalação global default |
-| `complementary` | 9 skills independentes (advisor, bugfix, owasp-security, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 35 skills (sdd + complementary + language-*) | Instalação completa |
+| `complementary` | 10 skills independentes (advisor, bugfix, owasp-security, decision-tree, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 38 skills (sdd + complementary + language-*) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 | `language-dotnet` | Skills específicos para .NET | Apenas em projetos .NET |
 
@@ -519,8 +560,8 @@ seu-projeto/
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 10 skills do pipeline Spec-Driven Development (briefing → review-task) | Instalação global default |
-| `complementary` | 9 skills independentes (advisor, bugfix, owasp-security, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 35 skills (sdd + complementary + language-*) | Instalação completa |
+| `complementary` | 10 skills independentes (advisor, bugfix, owasp-security, decision-tree, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 38 skills (sdd + complementary + language-*) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 | `language-dotnet` | Skills específicos para .NET | Apenas em projetos .NET |
 
@@ -528,6 +569,8 @@ Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --hel
 <!-- --8<-- [end:profiles-section] -->
 
 ## Sessões paralelas (`cstk session`)
+
+> 🔧 **Trilha avançada** — suporte ao orquestrador autônomo.
 
 Permite trabalhar em múltiplas features simultaneamente no mesmo repositório sem
 colisão de working tree, branch HEAD ou `.claude/agente-00c-state/`. Isola cada
@@ -573,6 +616,8 @@ cstk session end iniciacao-membro --force
 - [`docs/specs/cstk-session/contracts/cli-session.md`](docs/specs/_archived/cstk-session/contracts/cli-session.md) — exit codes (5-15), flags, output formats
 
 ## Memória de conhecimento (`cstk recall`)
+
+> 🔧 **Trilha avançada** — subsistema do orquestrador autônomo.
 
 Camada **aditiva** de memória cross-feature: um índice SQLite global
 (`~/.claude/cstk/knowledge.db`, full-text via FTS5) alimentado automaticamente
@@ -652,8 +697,8 @@ transacional por projeto.
 **Documentação completa**:
 - [`docs/specs/_archived/cstk-knowledge-db/spec.md`](docs/specs/_archived/cstk-knowledge-db/spec.md) — user stories, FRs, success criteria
 - [`docs/specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md`](docs/specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md) — modos, flags, exit codes, esquema FTS5
-- [`docs/specs/knowledge-db-metrics/spec.md`](docs/specs/knowledge-db-metrics/spec.md) — ingestão de métricas (schema v2): tabelas `executions`/`waves`/`alert_signals`/`tasks`/`events`
-- [`docs/specs/knowledge-db-metrics/data-model.md`](docs/specs/knowledge-db-metrics/data-model.md) — DDL das novas tabelas e chaves naturais
+- [`docs/specs/_archived/knowledge-db-metrics/spec.md`](docs/specs/_archived/knowledge-db-metrics/spec.md) — ingestão de métricas (schema v2): tabelas `executions`/`waves`/`alert_signals`/`tasks`/`events`
+- [`docs/specs/_archived/knowledge-db-metrics/data-model.md`](docs/specs/_archived/knowledge-db-metrics/data-model.md) — DDL das novas tabelas e chaves naturais
 
 ## Convenções de Nomenclatura
 
@@ -697,7 +742,9 @@ docs/
 
 ## Contribuindo
 
-Contribuições são bem-vindas. Para adicionar novos skills ou hooks:
+Contribuições são bem-vindas. O guia completo — modelo mental do sistema, fluxo
+de desenvolvimento e política de versionamento — está em
+[CONTRIBUTING.md](./CONTRIBUTING.md). Resumo para adicionar skills ou hooks:
 
 > **Princípio fundamental — escopo do toolkit global (v3.12.0+):**
 >
@@ -736,4 +783,5 @@ Este projeto segue [Semantic Versioning](https://semver.org/) e mantém um
 
 ## Licença
 
-MIT
+Distribuído sob a licença MIT. Veja o arquivo [LICENSE](./LICENSE) para o
+texto completo.

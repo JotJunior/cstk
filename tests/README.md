@@ -24,7 +24,11 @@ segue o principio de "nao commita sem teste para script novo".
 ./tests/run.sh --help
 ```
 
-**Tempo tipico**: 3-4 segundos para 44 scenarios em 7 test files.
+**Tempo tipico**: alguns minutos para a suite completa (~1090 scenarios; o
+numero exato e nao-deterministico porque alguns tests sao gerados sob demanda
+— rode `./tests/run.sh --list | grep -c "::"` para o total atual). A contagem
+de **skills** (e a listagem delas no README) e guardada contra drift por
+`tests/test_doc-counts.sh`.
 
 ## Arquitetura
 
