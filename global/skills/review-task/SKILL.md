@@ -149,11 +149,13 @@ STATE_DIR="<projeto>/.claude/feature-00c-state/<feature>"
 O helper imprime em stdout ate DUAS secoes Markdown prontas para colar
 verbatim no relatorio (NAO reformate):
 
-1. **Selecao por subagente** (legado audit-only — feature
-   `agente-00c-model-routing`): cabecalho `## Selecao de modelo por
-   subagente (model-routing)` + tabela GFM (`subagent_type | etapa |
-   onda | modelo | score | fallback`) + `**Sumario**:` com contagens
-   por rotulo + percentual de fallback.
+1. **Selecao por subagente** (mecanismo legado da feature
+   `agente-00c-model-routing` — Decisoes de selecao por spawn de
+   clarify; o audit-only do FR-017 foi revogado em v4.0.0, o modelo
+   agora e aplicado no spawn quando acionavel): cabecalho `## Selecao de
+   modelo por subagente (model-routing)` + tabela GFM (`subagent_type |
+   etapa | onda | modelo | score | fallback`) + `**Sumario**:` com
+   contagens por rotulo + percentual de fallback.
 
 2. **Selecao por onda — sugerido vs aplicado** (feature
    `model-routing-por-onda`, FASE 6 — FR-012/SC-006): cabecalho

@@ -5,6 +5,86 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.0.0] - 2026-05-24
+
+**BREAKING** — feature `model-routing-por-onda`. O model-routing dos
+orquestradores autônomos (`agente-00c`/`feature-00c`) **deixa de ser
+audit-only**: o modelo escolhido agora **É APLICADO** à execução. Isto
+**revoga a cláusula FR-017** da feature original `agente-00c-model-routing`
+(v3.15.0), cuja premissa de que "o harness não aceita `model` no spawn,
+logo a escolha é apenas auditoria" ficou **obsoleta** — o harness atual
+aceita `model` no spawn de subagente (precedência sobre o frontmatter).
+O gatilho do routing deixa de ser o caminho raro do spawn de clarify e
+passa a ser **toda onda** do pipeline.
+
+Por que MAJOR: muda o **contrato de comportamento** do orquestrador
+(antes: sugere e audita, nunca aplica; depois: aplica por onda). Para
+ativar o comportamento novo é preciso **build + install** da fonte
+(`global/...`) — passo manual do operador; o tarball publicado é que
+carrega o efeito. Camada de telemetria/auditoria permanece
+retro-compatível (execuções antigas sem Decisão por-onda continuam
+legíveis pelo agregador).
+
+### Changed (BREAKING)
+
+- **Mecanismo PRIMÁRIO — mapa fase→modelo por onda** (FR-014): novo
+  `model-routing.sh wave-select --state-dir <SD>` resolve a fase (via
+  `--etapa` ou `.etapa_corrente`) e retorna o modelo a **aplicar** na
+  onda, com base no mapa versionado e determinístico
+  `global/skills/agente-00c-runtime/references/phase-model-map.txt`
+  (POSIX-puro, sem `jq`). Recorte default "3 faixas balanceado":
+  `plan`/`analyze`/`constitution`→**opus**;
+  `specify`/`clarify`/`checklist`/`create-tasks`/`briefing`→**sonnet**;
+  `execute-task`→**sonnet** (piso refinável); `validate-docs`/`review-task`→**haiku**;
+  fase não listada → `manter-atual` (FR-020 — nunca erro, evolução tolerada).
+- **Aplicação no spawn de clarify** (US2, FR-003): o passo 8 da sequência
+  pré-spawn passa `model=<escolha>` à tool Agent quando acionável
+  (`escolha` ∈ {haiku,sonnet,opus} e `score >= 2`); em fallback/
+  `manter-atual`/`score<2` o `model` é omitido e o subagente herda o
+  `model:` do frontmatter. O par Decisão⟷spawn permanece 1-para-1
+  (Invariante I1): a aplicação **não** cria 2a Decisão.
+- **Documentação revogando o audit-only** (FR-017): banner de
+  **supersessão** na spec arquivada `docs/specs/_archived/agente-00c-model-routing/spec.md`
+  (Status + FR-017 + Princípio V + Out-of-Scope anotados); seção
+  model-routing do `CLAUDE.md` reescrita (aplicação por onda + tabela
+  fase→modelo + ordem de precedência); blocos pré-spawn dos dois agent
+  files (`agente-00c-orchestrator.md`, `agente-00c-feature-orchestrator.md`)
+  corrigidos para refletir aplicação (eliminadas as contradições internas
+  com a nota FASE 5); `review-task/SKILL.md` ajustado.
+
+### Added
+
+- **`model-selector` como camada de REFINO** (FR-001/FR-019, US4): roda
+  **só em `execute-task` com `--task-text`**, sobre o piso do mapa
+  (sonnet), podendo **elevar→opus** (tarefa profunda) ou **rebaixar→haiku**
+  (tarefa trivial). Catálogo de sinais (`global/skills/model-selector/references/sinais.md`)
+  expandido além do MVP com vocabulário de fase/complexidade, coberto por
+  corpus de teste (`tests/fixtures/model-selector-corpus/corpus.tsv`).
+- **Precedência de resolução do modelo da onda**:
+  `override manual (FR-016) > escalada mid-onda→opus (FR-015) > refino model-selector > mapa fase→modelo`.
+  Override do operador via Decisão manual pré-onda lida pelo resume;
+  escalada mid-onda via `.escalada_modelo_pendente=true` gravado pela onda
+  anterior (sinaliza subestimação).
+- **Idempotência por onda** (FR-008): `wave-select` ecoa o modelo já
+  aplicado e **não** registra 2a Decisão quando já existe
+  `DecisaoDeRoteamentoPorOnda` para a onda corrente (seguro em resume).
+- **Auditoria sugerido-vs-aplicado** (US3, FR-012/SC-006):
+  `model-routing-report.sh aggregate` ganha 2a seção "Seleção por onda —
+  sugerido vs aplicado" (distribuição do modelo aplicado, por origem
+  mapa/refino/override/fallback, taxas de fallback e override, contagem de
+  divergências sugerido≠aplicado com `rotuladas`/`sem rotulo`). `sem rotulo`
+  DEVE ser 0 (`review-task` escala finding `model-routing-divergencia-sem-rotulo`).
+- **Integração nos commands** (FASE 3): `agente-00c`/`feature-00c` +
+  respectivos `*-resume` aplicam o `wave-select` no início de cada onda e
+  leem override manual pré-onda.
+- **Cobertura de teste**: `tests/test_model-routing.sh`,
+  `tests/test_model-routing-report.sh`,
+  `tests/test_command-spawn-model-routing.sh`,
+  `tests/test_orchestrator-spawn-model-apply.sh`,
+  `tests/test_state-decisions-reconcile.sh`,
+  `tests/cstk/test_model_selector_corpus.sh`, fixtures de state com routing
+  por onda (mixed + unlabeled-divergence).
+
 ## [3.19.1] - 2026-05-24
 
 Correções de coerência pós-`3.19.0`, sem mudança de comportamento do produto
@@ -2154,6 +2234,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.0.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.0.0
 [3.19.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.19.1
 [3.19.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.19.0
 [3.18.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.18.0

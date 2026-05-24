@@ -2,8 +2,23 @@
 
 **Feature**: `agente-00c-model-routing`
 **Created**: 2026-05-22
-**Status**: Draft (clarified)
+**Status**: Draft (clarified) — **FR-017 SUPERSEDIDO** (ver banner abaixo)
 **Parent feature**: [model-selector](../model-selector/spec.md) (skill standalone, concluida) — esta feature completa a entrega ao integrar a skill aos orquestradores.
+
+> **⚠️ SUPERSESSÃO (2026-05-24, feature `model-routing-por-onda` v4.0.0 — BREAKING)**
+>
+> A cláusula **FR-017 audit-only** desta spec foi **REVOGADA**. A premissa
+> de que "o harness não aceita `model` como parâmetro de spawn" está
+> **obsoleta** — o harness atual aceita `model` no spawn de subagente (com
+> precedência sobre o frontmatter). O model-routing **deixou de ser
+> auditoria pura**: o modelo agora É APLICADO, por onda (mecanismo primário
+> via mapa fase→modelo) e no spawn de `clarify-asker`/`clarify-answerer`. A
+> Decisão auditável permanece, mas como rastro da APLICAÇÃO, não como
+> substituto dela. O `model-selector` passa a ser camada de REFINO (suggest
+> sobre o mapa), e o operador pode dar override via Decisão manual pré-onda.
+> Detalhes em [`../../model-routing-por-onda/spec.md`](../../model-routing-por-onda/spec.md)
+> (FR-017 da nova feature). Esta spec arquivada permanece como registro
+> histórico do contrato anterior.
 
 ## Clarifications
 
@@ -275,11 +290,16 @@ escolha pertence ao plan.
   atualizada para descrever a sequencia de pre-spawn (`spawn-tracker
   check` → `model-selector invoke` → `register Decisao` →
   `record-skill` → `spawn-tracker enter` → tool Agent).
-- **FR-017**: A escolha registrada na Decisao MUST permanecer
-  SUGESTAO — o orquestrador NAO MUST passar hint de modelo automatico
-  para a tool Agent (preserva contrato "suggest-only" da skill).
-  Aplicacao automatica fica fora do escopo desta feature (vide
-  Out-of-Scope).
+- **FR-017** ~~(audit-only)~~ **[REVOGADO em v4.0.0 — ver banner no topo]**:
+  ~~A escolha registrada na Decisao MUST permanecer SUGESTAO — o
+  orquestrador NAO MUST passar hint de modelo automatico para a tool
+  Agent (preserva contrato "suggest-only" da skill). Aplicacao
+  automatica fica fora do escopo desta feature.~~ A feature
+  `model-routing-por-onda` revogou esta cláusula: o modelo agora É
+  aplicado (por onda e no spawn de clarify), porque a premissa "harness
+  não aceita model no spawn" ficou obsoleta. O `model-selector` vira
+  camada de refino sobre o mapa fase→modelo; o operador pode override
+  via Decisão manual pré-onda.
 - **FR-018**: `review-task` MUST conseguir agregar as Decisoes de
   `Selecao de modelo` por `subagent_type` e por `etapa`, produzindo
   pelo menos: (a) contagem por rotulo (`haiku` / `sonnet` / `opus` /
@@ -352,7 +372,10 @@ escolha pertence ao plan.
 - **Principio V (profundidade sobre adocao)**: feature prefere
   registro auditavel + fallback robusto ao inves de "automacao magica"
   que tornaria a integracao opaca. FR-017 protege esse principio ao
-  manter a sugestao como sugestao.
+  manter a sugestao como sugestao. **[NOTA v4.0.0: FR-017 audit-only
+  revogado — ver banner no topo. O Princípio V continua honrado porque
+  a aplicação por onda é determinística (mapa fase→modelo) + refino
+  auditável + override manual, não "automação mágica opaca".]**
 
 ## Success Criteria
 
@@ -388,10 +411,13 @@ escolha pertence ao plan.
 
 Este escopo NAO inclui:
 
-1. Aplicacao automatica do modelo sugerido (passar hint para tool
+1. ~~Aplicacao automatica do modelo sugerido (passar hint para tool
    Agent). DIA-1 do briefing original — decidida explicitamente em
    favor de NAO aplicar (FR-017), respeitando contrato suggest-only
-   da skill. Mudanca de politica futura requer nova feature.
+   da skill.~~ **Mudanca de politica futura requer nova feature.**
+   **[v4.0.0: a "nova feature" prevista aconteceu — `model-routing-por-onda`
+   trouxe a aplicação para dentro do escopo. Este item de Out-of-Scope
+   ficou obsoleto.]**
 2. Cache persistente de classificacoes entre features ou entre
    execucoes (DIA-2 do briefing). Reinvocacao a cada spawn dentro
    da onda; cache cross-onda fica para spec futura se houver

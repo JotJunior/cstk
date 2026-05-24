@@ -668,10 +668,14 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
 
    **Objetivo**: registrar uma Decisao auditavel (entidade `Decisao`,
    FR-015) escolhendo o modelo recomendado para cada subagente,
-   ANTES do spawn. A `escolha` da Decisao e auditoria pura (FR-017):
-   ela NAO MUST virar hint automatico para a tool Agent — o harness
-   atual nao aceita `model` como parametro de spawn; a Decisao serve
-   apenas para rastro + telemetria via review-task.
+   ANTES do spawn. A partir da feature `model-routing-por-onda`
+   (v4.0.0), a `escolha` da Decisao **e aplicada** no spawn quando
+   acionavel (`escolha` ∈ {haiku,sonnet,opus} e `score >= 2`) — vide
+   passo 8 e a nota "FR-003 — sugerido vira aplicado" abaixo. Isso
+   **revoga** o comportamento audit-only do FR-017 da feature
+   original: a premissa "harness nao aceita `model` no spawn" ficou
+   obsoleta. A Decisao permanece como rastro auditavel da aplicacao +
+   telemetria via review-task.
 
    **Ordem canonica** (idempotente por onda + subagent_type — FR-012,
    dec-004):
@@ -686,8 +690,9 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    5. DEC_ID = state-decisions.sh register             (FR-015, FR-017)
    6. state-ondas.sh record-skill --skill model-selector --decisao-id $DEC_ID
    7. spawn-tracker.sh enter        (incrementa profundidade)
-   8. tool Agent (subagent_type=T)  (modelo escolhido fica AUDITADO via
-                                     dec-NNN; nao e passado a tool Agent)
+   8. tool Agent (subagent_type=T)  (modelo da dec-NNN APLICADO via
+                                     model= quando acionavel; senao herda
+                                     frontmatter — vide nota FR-003 abaixo)
    ```
 
    #### Invariante I1 — "1 Decisao por spawn REAL, nao por spawn potencial"

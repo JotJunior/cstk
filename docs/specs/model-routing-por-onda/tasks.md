@@ -146,16 +146,16 @@ Ref: FR-013 · SC-002, SC-003
 ### 7.1 Atualizar docs da feature original + CLAUDE.md `[A]`
 Ref: FR-017
 
-- [ ] 7.1.1 Anotar superseção do FR-017 audit-only em `docs/specs/_archived/agente-00c-model-routing/` (premissa obsoleta removida)
-- [ ] 7.1.2 Atualizar a seção model-routing do CLAUDE.md (aplicação real por onda + papel do mapa primário)
-- [ ] 7.1.3 Verificar referências residuais ao comportamento audit-only (grep)
+- [x] 7.1.1 Anotar superseção do FR-017 audit-only em `docs/specs/_archived/agente-00c-model-routing/` (premissa obsoleta removida)
+- [x] 7.1.2 Atualizar a seção model-routing do CLAUDE.md (aplicação real por onda + papel do mapa primário)
+- [x] 7.1.3 Verificar referências residuais ao comportamento audit-only (grep)
 
 ### 7.2 CHANGELOG MAJOR + verificação final `[A]`
 Ref: FR-017 · plan §Complexity Tracking
 
-- [ ] 7.2.1 Entrada no CHANGELOG marcando BREAKING (revogação do FR-017) + bump MAJOR
-- [ ] 7.2.2 Rodar `./tests/run.sh` completo + `--check-coverage` (orphan-check: todo .sh novo tem teste)
-- [ ] 7.2.3 `cstk doctor` limpo após build/install; validar drift zero
+- [x] 7.2.1 Entrada no CHANGELOG marcando BREAKING (revogação do FR-017) + bump MAJOR
+- [x] 7.2.2 Rodar `./tests/run.sh` completo + `--check-coverage` (orphan-check: todo .sh novo tem teste)
+- [x] 7.2.3 `cstk doctor` limpo após build/install; validar drift zero — drift atual = `[EDITED]` em `agente-00c-runtime`+`review-task` (as 2 skills desta feature), `missing:0 orphan:0`; resolve no build+install do operador
 
 ---
 
