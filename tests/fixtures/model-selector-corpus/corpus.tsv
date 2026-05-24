@@ -1,0 +1,55 @@
+# Corpus rotulado para model-selector (SC-008 / FR-018)
+#
+# Descricoes realistas de tarefa/onda, uma por linha, formato TSV:
+#   <faixa-esperada><TAB><descricao>
+#
+# faixa-esperada ∈ {rasa, media, profunda}. Usado por
+# tests/cstk/test_model_selector_corpus.sh para medir:
+#   (a) taxa de `indeterminado` <= 25% (SC-008)
+#   (b) acerto rasa-vs-profunda (rasa nao classifica profunda e vice-versa)
+#
+# Linhas iniciadas por '#' e linhas em branco sao ignoradas pelo teste.
+# NAO usar TAB dentro da descricao (so o separador). Conteudo em pt-br,
+# refletindo descricoes reais de onda/tarefa do toolkit.
+#
+# --- RASA (operacoes deterministicas, output curto, zero ambiguidade) ---
+rasa	rodar a suite de testes do projeto inteiro
+rasa	listar os arquivos do diretorio de scripts
+rasa	formatar o trecho de codigo selecionado
+rasa	renomear o arquivo de configuracao antigo
+rasa	mova os fixtures para a pasta nova de testes
+rasa	copie o template de migration para o servico
+rasa	exiba as ultimas linhas do log de erro
+rasa	ajustar o valor do timeout no arquivo de config
+rasa	conte quantas linhas tem o catalogo de sinais
+rasa	rode o grep nos arquivos markdown da pasta docs
+rasa	listar as branches remotas do repositorio
+rasa	formatar a tabela markdown do readme
+
+# --- MEDIA (raciocinio simples, narrativo, sem decisao arquitetural) ---
+media	explicar como funciona o fluxo de autenticacao atual
+media	documentar a funcao de parsing do catalogo
+media	resuma o conteudo do relatorio de auditoria
+media	traduza a secao de instalacao para ingles
+media	compare os dois arquivos de configuracao do servico
+media	validar os requisitos do checklist de seguranca
+media	testar o handler de criacao de usuario com casos de borda
+media	implementar a rotina de retry no consumer de eventos
+media	corrigir o bug de off-by-one na paginacao
+media	documentar o contrato da api de pagamentos
+media	explicar a diferenca entre os dois modos do hook
+media	validar o schema do state contra o exemplo
+
+# --- PROFUNDA (design/decisao, multi-arquivo, breaking/migracao) ---
+profunda	projetar a nova api de roteamento de modelo por onda
+profunda	refatorar o modulo de orquestracao para separar fases
+profunda	arquitetar o componente de memoria cross-feature
+profunda	planejar a migracao do monolito para microservicos
+profunda	migrar o schema do banco para a nova versao
+profunda	analisar os trade-offs entre cache local e remoto
+profunda	escolha a estrategia de particionamento da tabela de eventos
+profunda	debater as abordagens de versionamento do mapa de fases
+profunda	projetar a reescrita do pipeline de ingestao de conhecimento
+profunda	refatoracao ampla do classificador de complexidade
+profunda	analisar o impacto de revogar o comportamento audit-only
+profunda	arquitetar o isolamento entre sessoes paralelas do agente

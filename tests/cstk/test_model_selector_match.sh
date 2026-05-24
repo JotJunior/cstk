@@ -170,13 +170,14 @@ scenario_2_3_3_token_repetido_conta_uma_vez() {
 }
 
 # ----------------------------------------------------------------------
-# 2.3.1: estresse de parsing — todos os 15 sinais do catalogo
-# reconhecidos como linhas validas
+# 2.3.1: estresse de parsing — todos os sinais do catalogo reconhecidos
+# como linhas validas. O catalogo foi expandido de 15 (MVP) para 45
+# (15 por faixa) pela feature model-routing-por-onda (FR-018); este
+# teste guarda contra regressao do formato do catalogo.
 # ----------------------------------------------------------------------
-scenario_2_3_1_parsing_catalogo_extrai_15_sinais() {
+scenario_2_3_1_parsing_catalogo_extrai_45_sinais() {
   # Esta nao usa o classify.sh diretamente, mas valida que o awk de
-  # parsing (mesma logica) extrai 15 sinais — guarda contra regressao
-  # do formato do catalogo.
+  # parsing (mesma logica) extrai 45 sinais.
   _count=$(awk -F'|' '
     /^\|---/ { next }
     /^\|/ {
@@ -189,8 +190,31 @@ scenario_2_3_1_parsing_catalogo_extrai_15_sinais() {
     }
     END { print c+0 }
   ' "$REPO_ROOT/global/skills/model-selector/references/sinais.md")
-  if [ "$_count" != "15" ]; then
-    _fail "scenario_2_3_1_parsing" "esperado 15 sinais, parser extraiu: $_count"
+  if [ "$_count" != "45" ]; then
+    _fail "scenario_2_3_1_parsing" "esperado 45 sinais, parser extraiu: $_count"
+    return 1
+  fi
+}
+
+# ----------------------------------------------------------------------
+# 2.3.1.b: distribuicao balanceada — 15 sinais por faixa apos a
+# expansao FR-018. Guarda contra desbalanceamento acidental do catalogo.
+# ----------------------------------------------------------------------
+scenario_2_3_1_distribuicao_15_por_faixa() {
+  _dist=$(awk -F'|' '
+    /^\|---/ { next }
+    /^\|/ {
+      t = $2; f = $3
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", f)
+      if (t == "termo" || t == "") next
+      if (f != "rasa" && f != "media" && f != "profunda") next
+      cnt[f]++
+    }
+    END { printf "%d|%d|%d", cnt["rasa"]+0, cnt["media"]+0, cnt["profunda"]+0 }
+  ' "$REPO_ROOT/global/skills/model-selector/references/sinais.md")
+  if [ "$_dist" != "15|15|15" ]; then
+    _fail "scenario_2_3_1_dist" "esperado 15|15|15 (rasa|media|profunda), obtido: $_dist"
     return 1
   fi
 }

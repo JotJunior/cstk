@@ -1,12 +1,22 @@
-# Catalogo MVP de sinais — `model-selector`
+# Catalogo de sinais — `model-selector`
 
-Catalogo de **15 sinais** (5 por faixa) usado pelo classificador
+Catalogo de **45 sinais** (15 por faixa) usado pelo classificador
 `scripts/classify.sh` para mapear input textual em faixa de
 complexidade (`rasa` | `media` | `profunda`) e sugerir um rotulo
 abstrato de modelo (`haiku` | `sonnet` | `opus` | `manter-atual`).
 
 Referencias: FR-003, FR-004, FR-005, dec-004 (`spec.md`); Decision 1
 (`research.md`); Entity `SinalDeClassificacao` (`data-model.md`).
+
+> **Expansao FR-018 (feature `model-routing-por-onda`)**: o MVP original
+> tinha 15 sinais (5 por faixa). Foi expandido para 45 (15 por faixa)
+> com vocabulario de **fase** (projetar, migrar, validar, documentar,
+> testar, implementar...) e de **complexidade**, incluindo **flexoes
+> comuns** (imperativo + infinitivo + substantivo: projete/projetar/
+> projeto, refatore/refatorar/refatoracao, analise/analisar, migrar/
+> migracao...). O motor de match (`grep -Fxq` por token exato) e
+> inalterado — cada flexao e uma linha propria; NAO ha stemming nem
+> fuzzy (rejeitado em research D6, preserva Principio II POSIX-puro).
 
 ---
 
@@ -43,27 +53,57 @@ tabela inflaria a contagem).
 | conte | rasa | 1 |
 | grep | rasa | 1 |
 | formate | rasa | 1 |
+| rodar | rasa | 1 |
+| listar | rasa | 1 |
+| formatar | rasa | 1 |
+| renomeie | rasa | 1 |
+| renomear | rasa | 1 |
+| mova | rasa | 1 |
+| copie | rasa | 1 |
+| exiba | rasa | 1 |
+| ajuste | rasa | 1 |
+| ajustar | rasa | 1 |
 | explique | media | 1 |
 | documente | media | 1 |
 | resuma | media | 1 |
 | traduza | media | 1 |
 | compare | media | 1 |
+| documentar | media | 1 |
+| explicar | media | 1 |
+| valide | media | 1 |
+| validar | media | 1 |
+| teste | media | 1 |
+| testar | media | 1 |
+| implemente | media | 1 |
+| implementar | media | 1 |
+| corrija | media | 1 |
+| corrigir | media | 1 |
 | projete | profunda | 1 |
 | refatore | profunda | 1 |
 | arquitete | profunda | 1 |
 | debate | profunda | 1 |
 | escolha | profunda | 1 |
+| projetar | profunda | 1 |
+| refatorar | profunda | 1 |
+| refatoracao | profunda | 1 |
+| arquitetar | profunda | 1 |
+| analise | profunda | 1 |
+| analisar | profunda | 1 |
+| debater | profunda | 1 |
+| migrar | profunda | 1 |
+| migracao | profunda | 1 |
+| planeje | profunda | 1 |
 
 ---
 
 ## Validacao do catalogo
 
 ```sh
-# Esperado: 16 (1 header + 15 data rows; separator excluido pelo filtro -+)
+# Esperado: 46 (1 header + 45 data rows; separator excluido pelo filtro -+)
 awk '/^\|/ && !/-+/ {c++} END {print c}' references/sinais.md
 ```
 
-Se o output for diferente de 16, o catalogo esta corrompido (linhas
+Se o output for diferente de 46, o catalogo esta corrompido (linhas
 faltando, separator removido, ou data row excluida).
 
 Conferencia rapida por faixa:
@@ -71,7 +111,7 @@ Conferencia rapida por faixa:
 ```sh
 awk -F'|' '/^\|/ && !/-+/ && NR>1 {gsub(/ /,"",$3); print $3}' \
   references/sinais.md | sort | uniq -c
-# Esperado: 5 rasa, 5 media, 5 profunda
+# Esperado: 15 rasa, 15 media, 15 profunda
 ```
 
 ---
@@ -102,11 +142,11 @@ hierarquico — a fonte unica e este arquivo.
    - `<faixa>` — UM literal de `{rasa, media, profunda}`. Faixas
      fora desse enum quebram o parser (`awk` filtra silenciosamente
      linhas com faixa invalida).
-   - `<peso>` — inteiro `>=1`. No MVP, **peso=1 e o unico valor
-     observado** em todos os 15 sinais shipados. Pesos `>1`
+   - `<peso>` — inteiro `>=1`. **peso=1 e o unico valor observado**
+     em todos os 45 sinais shipados. Pesos `>1`
      funcionam (o classificador soma), mas alteram o tie-break
      ponderado por contagem e nao por presenca; documentacao de
-     edge cases para pesos heterogeneos ficou fora do MVP — use
+     edge cases para pesos heterogeneos ficou fora do escopo — use
      `peso=1` salvo justificativa empirica.
 4. Salve. Rode `sh global/skills/model-selector/scripts/classify.sh
    "<input que cite o verbo novo>"` para validar que o sinal e
@@ -116,7 +156,7 @@ hierarquico — a fonte unica e este arquivo.
    ```sh
    awk '/^\|/ && !/-+/ {c++} END {print c}' \
      global/skills/model-selector/references/sinais.md
-   # Esperado: 17 (1 header + 16 data rows = 15 originais + 1 novo)
+   # Esperado: 47 (1 header + 46 data rows = 45 do catalogo + 1 novo)
    ```
 
 ### Catalogo lido dinamicamente — zero rebuild
@@ -131,15 +171,15 @@ hierarquico — a fonte unica e este arquivo.
   references/sinais.md` (ou desfazer a edicao manualmente). Nao ha
   estado a invalidar.
 
-### Faixas validas e peso no MVP
+### Faixas validas e peso
 
 Faixas aceitas (enum literal, case-sensitive) — outras quebram o
 parser silenciosamente (linhas com faixa fora desse conjunto sao
 filtradas pelo `awk` de validacao em `tasks.md` 2.3.1):
 
-- `rasa` — peso aceito no MVP: `1`.
-- `media` — peso aceito no MVP: `1`.
-- `profunda` — peso aceito no MVP: `1`.
+- `rasa` — peso aceito: `1`.
+- `media` — peso aceito: `1`.
+- `profunda` — peso aceito: `1`.
 
 Pesos fracionarios sao explicitamente proibidos (regra 3 da secao
 "Regras ao customizar" abaixo) — o classificador e POSIX puro,
@@ -184,19 +224,28 @@ co-ocorrem no input.
 
 ---
 
-## Origem dos 15 sinais MVP
+## Origem dos sinais
 
 Os verbos abaixo foram escolhidos por refletirem o eixo "esforco
-cognitivo + ambiguidade detectada" descrito em FR-003. Decisao
-cravada em dec-004 (clarify) — 15 sinais MVP / 5 por faixa.
+cognitivo + ambiguidade detectada" descrito em FR-003. O MVP original
+(dec-004 do clarify) cravou 15 sinais / 5 por faixa; a feature
+`model-routing-por-onda` (FR-018) expandiu para 45 sinais / 15 por
+faixa, adicionando vocabulario de **fase** (planejar, projetar,
+migrar, validar, documentar, testar, implementar, corrigir...) e
+**flexoes comuns** (imperativo + infinitivo + substantivo) para que
+o refinamento do `wave-select` valha na pratica sobre descricoes
+reais de tarefa/onda.
 
 - **Rasa** — verbos deterministicos, output curto, contexto pequeno,
   ZERO ambiguidade. Ex: rodar comando, listar arquivos, contar
-  linhas, fazer grep, formatar trecho.
+  linhas, fazer grep, formatar trecho, renomear/mover/copiar arquivo,
+  ajustar valor pontual.
 - **Media** — raciocinio simples, contexto medio, output narrativo
   curto, SEM decisao arquitetural. Ex: explicar codigo, documentar
-  funcao, resumir texto, traduzir snippet, comparar dois arquivos.
+  funcao, resumir texto, traduzir snippet, comparar dois arquivos,
+  validar/testar/implementar/corrigir item de escopo conhecido.
 - **Profunda** — verbo de design ou decisao, multi-arquivo provavel,
   consequencia em contrato/security/breaking change, ambiguidade nao
-  resolvida no input. Ex: projetar API, refatorar modulo, arquitetar
-  componente, debater abordagens, escolher entre alternativas.
+  resolvida no input. Ex: projetar/planejar API, refatorar modulo,
+  arquitetar componente, analisar trade-offs, migrar dados/schema,
+  debater abordagens, escolher entre alternativas.

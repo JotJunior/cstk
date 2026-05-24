@@ -93,15 +93,15 @@ Ref: FR-006 · quickstart C8
 ### 4.1 Expandir `sinais.md` + atualizar validação `[M]`
 Ref: FR-018 · research D6
 
-- [ ] 4.1.1 Adicionar termos de fase/complexidade e flexões comuns (projetar/projete/projeto, refatorar/refatore, analisar/analise, migrar/migracao...) mantendo formato de tabela e match por token
-- [ ] 4.1.2 Atualizar o snippet de validação do catálogo no `sinais.md` ("Esperado: 16" → nova contagem) e o bloco por-faixa
-- [ ] 4.1.3 Teste: atualizar `tests/test_model_selector_*.sh` que assertam contagem 15/16
+- [x] 4.1.1 Adicionar termos de fase/complexidade e flexões comuns (projetar/projete, refatorar/refatore/refatoracao, analisar/analise, migrar/migracao, arquitetar/debater, validar/testar/implementar/corrigir, renomear/mover/copiar/ajustar...) mantendo formato de tabela e match por token. Catálogo 15→45 (15 por faixa). Nota: `projeto`/`arquitetura` (substantivos) deliberadamente NÃO incluídos — geram falso-positivo profunda em frases como "rodar a suite do projeto"; preferimos os infinitivos inequívocos (projetar/arquitetar)
+- [x] 4.1.2 Atualizar o snippet de validação do catálogo no `sinais.md` (total 16→46; per-faixa 5→15; sanity de extensão 17→47) e a prosa de origem/MVP
+- [x] 4.1.3 Teste: `tests/cstk/test_model_selector_match.sh::scenario_2_3_1_parsing_catalogo_extrai_45_sinais` (renomeado de _15_) + novo `scenario_2_3_1_distribuicao_15_por_faixa`. TETO scenario de `test_model_selector_score.sh` permanece verde (os 15 termos originais seguem no catálogo)
 
 ### 4.2 Corpus de teste + métrica SC-008 `[M]`
 Ref: FR-018, SC-008 · quickstart C10
 
-- [ ] 4.2.1 Criar `tests/fixtures/` com corpus rotulado de descrições realistas (rasas/médias/profundas)
-- [ ] 4.2.2 Teste mede taxa de `indeterminado` ≤ 25% e acerto rasa-vs-profunda (C10)
+- [x] 4.2.1 Criar `tests/fixtures/model-selector-corpus/corpus.tsv` com corpus rotulado de 36 descrições realistas pt-br (12 rasas / 12 médias / 12 profundas), formato `<faixa><TAB><descrição>`
+- [x] 4.2.2 Teste `tests/cstk/test_model_selector_corpus.sh` mede taxa de `indeterminado` ≤ 25% (real: 0%) e discriminação rasa-vs-profunda com tolerância 0 a cruzamentos (C10). Isento de orphan-check via ramo `test_model_selector_*` existente (existence-guarded a classify.sh)
 
 ---
 
