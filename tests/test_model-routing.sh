@@ -2260,11 +2260,14 @@ scenario_ws_c3_refino_eleva_opus() {
     --state-dir "$TMPDIR_TEST/c3" --task-text "refatore e arquitete o modulo"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "C3 exit=0" "$_CAPTURED_EXIT"; return 1; }
   [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C3 stdout=opus" "$_CAPTURED_STDOUT"; return 1; }
-  # origem=refino, sugerido=sonnet, aplicado=opus, score 2, record-skill presente.
+  # origem=refino: o refino integra a SUGESTAO (data-model L57), logo
+  # sugerido segue o refino (sugerido=opus aplicado=opus). Divergencia
+  # sugerido!=aplicado fica reservada a override-operador/fallback
+  # (invariante L63-64 / SC-006 — dec-022). score 2, record-skill presente.
   jq -e '
     .decisoes[-1]
     | (.escolha == "model:opus")
-      and (.justificativa | test("sugerido=sonnet aplicado=opus origem=refino"))
+      and (.justificativa | test("sugerido=opus aplicado=opus origem=refino"))
       and (.score_justificativa == 2)
   ' "$TMPDIR_TEST/c3/state.json" >/dev/null 2>&1 \
     || { _fail "C3 Decisao refino" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c3/state.json")"; return 1; }

@@ -246,6 +246,115 @@ scenario_sdr_check_read_only_inv4() {
   }
 }
 
+# ==== FASE 6.2.3 (feature model-routing-por-onda): reuso FR-013 ====
+#
+# Confirma que o reconciliador EXISTENTE (sem extensao) coexiste com a
+# nova geracao DecisaoDeRoteamentoPorOnda. As Decisoes por-onda usam o
+# lead "Selecao de modelo para onda <N>" (fora do filtro do detector, que
+# casa apenas o lead legado "...subagente <T>"). O detector NAO produz
+# falso-positivo sobre a geracao por-onda; um half-record LEGADO no mesmo
+# state continua sendo detectado. Resultado p/ a geracao por-onda:
+# half-records pendentes == 0 (FR-013 — reuso do mesmo mecanismo).
+
+# Fixture: 2 Decisoes por-onda (1 refino com record-skill pareado,
+# 1 mapa sem record-skill — o que e CORRETO: mapa puro nao invoca
+# model-selector) + 1 half-record LEGADO (orfa subagente).
+_sdr_fixture_onda_plus_legacy_orphan() {
+  cat > "$1/state.json" <<'JSON'
+{
+  "schema_version": "1.0.0",
+  "ondas": [
+    {
+      "id": "onda-001",
+      "skills_invoked": [
+        {"skill": "model-selector", "decisao_id": "dec-w-refino", "timestamp": "2026-05-24T10:00:00Z"}
+      ]
+    }
+  ],
+  "decisoes": [
+    {"id": "dec-w-mapa", "onda_id": "onda-002", "etapa": "model-routing",
+     "contexto": "Selecao de modelo para onda 2 (fase plan)",
+     "escolha": "model:opus",
+     "justificativa": "sugerido=opus aplicado=opus origem=mapa | mapa primario"},
+    {"id": "dec-w-refino", "onda_id": "onda-003", "etapa": "model-routing",
+     "contexto": "Selecao de modelo para onda 3 (fase execute-task)",
+     "escolha": "model:sonnet",
+     "justificativa": "sugerido=sonnet aplicado=sonnet origem=refino | refino: sinais"},
+    {"id": "dec-legado-orfa", "onda_id": "onda-001",
+     "contexto": "Selecao de modelo para subagente feature-00c-clarify-answerer"}
+  ]
+}
+JSON
+}
+
+scenario_sdr_check_onda_decisions_nao_falso_positivo() {
+  _sdr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _sdr_fixture_onda_plus_legacy_orphan "$TMPDIR_TEST"
+
+  capture sh "$SCRIPT" check --state-dir "$TMPDIR_TEST"
+  # Ha 1 half-record LEGADO (dec-legado-orfa) -> exit 1.
+  [ "$_CAPTURED_EXIT" = 1 ] || {
+    _fail "exit=1 (1 orfa legada)" "obtido $_CAPTURED_EXIT (stdout=$_CAPTURED_STDOUT)"
+    return 1
+  }
+  # A orfa detectada e SOMENTE a legada.
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q "^dec-legado-orfa	onda-001	feature-00c-clarify-answerer$" || {
+    _fail "TSV deve conter a orfa legada" "stdout='$_CAPTURED_STDOUT'"
+    return 1
+  }
+  # As Decisoes por-onda NAO devem aparecer como orfas (fora do filtro do
+  # detector -> half-records pendentes para a geracao por-onda == 0).
+  if printf '%s' "$_CAPTURED_STDOUT" | grep -q "dec-w-mapa\|dec-w-refino"; then
+    _fail "Decisoes por-onda NAO devem ser flagged" "stdout='$_CAPTURED_STDOUT'"
+    return 1
+  fi
+  # Exatamente 1 linha de orfa.
+  _nlines=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	' || :)
+  [ "$_nlines" = "1" ] || { _fail "exatamente 1 orfa" "obtido $_nlines linhas"; return 1; }
+}
+
+# Geracao por-onda PURA (sem legado): half-records pendentes == 0 (exit 0).
+_sdr_fixture_onda_pura() {
+  cat > "$1/state.json" <<'JSON'
+{
+  "schema_version": "1.0.0",
+  "ondas": [
+    {
+      "id": "onda-001",
+      "skills_invoked": [
+        {"skill": "model-selector", "decisao_id": "dec-w-refino", "timestamp": "2026-05-24T10:00:00Z"}
+      ]
+    }
+  ],
+  "decisoes": [
+    {"id": "dec-w-mapa", "onda_id": "onda-002", "etapa": "model-routing",
+     "contexto": "Selecao de modelo para onda 2 (fase plan)",
+     "escolha": "model:opus",
+     "justificativa": "sugerido=opus aplicado=opus origem=mapa"},
+    {"id": "dec-w-refino", "onda_id": "onda-003", "etapa": "model-routing",
+     "contexto": "Selecao de modelo para onda 3 (fase execute-task)",
+     "escolha": "model:sonnet",
+     "justificativa": "sugerido=sonnet aplicado=sonnet origem=refino"}
+  ]
+}
+JSON
+}
+
+scenario_sdr_check_onda_pura_pendentes_zero() {
+  _sdr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _sdr_fixture_onda_pura "$TMPDIR_TEST"
+
+  capture sh "$SCRIPT" check --state-dir "$TMPDIR_TEST"
+  [ "$_CAPTURED_EXIT" = 0 ] || {
+    _fail "exit=0 (geracao por-onda pura, pendentes=0)" "obtido $_CAPTURED_EXIT (stdout=$_CAPTURED_STDOUT)"
+    return 1
+  }
+  _stdout_trim=$(printf '%s' "$_CAPTURED_STDOUT" | tr -d '\n')
+  [ -z "$_stdout_trim" ] || { _fail "stdout vazio (pendentes=0)" "obtido '$_stdout_trim'"; return 1; }
+}
+
 # ==== INV-6 parcial: shebang #!/bin/sh + set -eu + sem bash-isms ====
 
 scenario_sdr_inv6_shebang_set_eu() {

@@ -127,17 +127,17 @@ Ref: FR-004
 ### 6.1 Estender `model-routing-report.sh aggregate` `[M]`
 Ref: FR-012, FR-021 · contracts §agregador
 
-- [ ] 6.1.1 Reportar distribuição do `modelo_aplicado`, taxa de fallback e de override-operador
-- [ ] 6.1.2 Contar divergências sugerido≠aplicado com origem rotulada (0 sem rótulo — SC-006)
-- [ ] 6.1.3 Coexistência com Decisões legadas audit-only (`fallback-default`) sem quebrar agregação (FR-021)
-- [ ] 6.1.4 Teste: agregação sobre state misto (novo + legado) + assert de rótulos
+- [x] 6.1.1 Reportar distribuição do `modelo_aplicado`, taxa de fallback e de override-operador
+- [x] 6.1.2 Contar divergências sugerido≠aplicado com origem rotulada (0 sem rótulo — SC-006)
+- [x] 6.1.3 Coexistência com Decisões legadas audit-only (`fallback-default`) sem quebrar agregação (FR-021)
+- [x] 6.1.4 Teste: agregação sobre state misto (novo + legado) + assert de rótulos
 
 ### 6.2 review-task §4.5 + reconciliador half-record `[M]`
 Ref: FR-013 · SC-002, SC-003
 
-- [ ] 6.2.1 Atualizar `review-task` §4.5 para exibir sugerido-vs-aplicado e taxa de aplicação
-- [ ] 6.2.2 Confirmar reuso do `state-decisions-reconcile.sh` para half-records (pendentes = 0)
-- [ ] 6.2.3 Teste: half-record detectado e reconciliado na retomada
+- [x] 6.2.1 Atualizar `review-task` §4.5 para exibir sugerido-vs-aplicado e taxa de aplicação
+- [x] 6.2.2 Confirmar reuso do `state-decisions-reconcile.sh` para half-records (pendentes = 0)
+- [x] 6.2.3 Teste: half-record detectado e reconciliado na retomada
 
 ---
 

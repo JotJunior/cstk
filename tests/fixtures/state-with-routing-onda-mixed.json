@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "execucao": {
+    "id": "fixture-aggregate-onda-mixed",
+    "status": "em_andamento",
+    "projeto_alvo_path": "/tmp/fixture-agg-onda",
+    "descricao_curta": "fixture: agregacao mista legado + DecisoesDeRoteamentoPorOnda (FASE 6.1.4)"
+  },
+  "ondas": [
+    { "id": "onda-001", "inicio": "2026-05-24T10:00:00Z", "etapas_executadas": ["clarify"], "tool_calls": 6, "skills_invoked": [] },
+    { "id": "onda-002", "inicio": "2026-05-24T11:00:00Z", "etapas_executadas": ["plan"], "tool_calls": 9, "skills_invoked": [] }
+  ],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-24T10:05:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-asker",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "haiku",
+      "justificativa": "legado audit-only: asker enumerativo",
+      "score_justificativa": 3
+    },
+    {
+      "id": "dec-002",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-24T10:06:00Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-answerer",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual","fallback-default"],
+      "escolha": "fallback-default",
+      "justificativa": "legado audit-only: model-selector retornou rotulo desconhecido",
+      "score_justificativa": 2
+    },
+    {
+      "id": "dec-w1",
+      "onda_id": "onda-003",
+      "timestamp": "2026-05-24T12:00:00Z",
+      "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda 3 (fase plan)",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual"],
+      "escolha": "model:opus",
+      "justificativa": "sugerido=opus aplicado=opus origem=mapa | faixa=profunda fase=plan (mapa primario)",
+      "score_justificativa": 0
+    },
+    {
+      "id": "dec-w2",
+      "onda_id": "onda-004",
+      "timestamp": "2026-05-24T12:30:00Z",
+      "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda 4 (fase execute-task)",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual"],
+      "escolha": "model:sonnet",
+      "justificativa": "sugerido=sonnet aplicado=sonnet origem=refino | refino: sinais de complexidade media",
+      "score_justificativa": 2
+    },
+    {
+      "id": "dec-w3",
+      "onda_id": "onda-005",
+      "timestamp": "2026-05-24T13:00:00Z",
+      "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda 5 (fase execute-task)",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual"],
+      "escolha": "model:opus",
+      "justificativa": "sugerido=haiku aplicado=opus origem=override-operador | operador forcou opus (escopo onda 5)",
+      "score_justificativa": 2
+    },
+    {
+      "id": "dec-w4",
+      "onda_id": "onda-006",
+      "timestamp": "2026-05-24T13:30:00Z",
+      "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda 6 (fase create-tasks)",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual"],
+      "escolha": "manter-atual",
+      "justificativa": "sugerido=sonnet aplicado=manter-atual origem=fallback | model-selector indisponivel",
+      "score_justificativa": 0
+    },
+    {
+      "id": "dec-999-noise",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-24T10:15:00Z",
+      "etapa": "specify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Decisao NAO relacionada a selecao de modelo — deve ser ignorada pelo filtro",
+      "opcoes_consideradas": ["a","b"],
+      "escolha": "a",
+      "justificativa": "noise para validar que o filtro de ambas geracoes nao casa",
+      "score_justificativa": 3
+    }
+  ],
+  "bloqueios": [],
+  "orcamentos": { "tool_calls_onda_corrente": 9, "inicio_onda_corrente": "2026-05-24T11:00:00Z" }
+}

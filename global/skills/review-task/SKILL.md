@@ -146,26 +146,75 @@ STATE_DIR="<projeto>/.claude/feature-00c-state/<feature>"
   aggregate --state-dir "$STATE_DIR"
 ```
 
-O helper imprime em stdout um bloco Markdown pronto para colar no
-relatorio — cabecalho `## Selecao de modelo por subagente
-(model-routing)` + tabela GFM (`subagent_type | etapa | onda | modelo |
-score | fallback`) + bloco `**Sumario**:` com contagens por rotulo +
-percentual de fallback. NAO reformate o output: passe verbatim.
+O helper imprime em stdout ate DUAS secoes Markdown prontas para colar
+verbatim no relatorio (NAO reformate):
+
+1. **Selecao por subagente** (legado audit-only — feature
+   `agente-00c-model-routing`): cabecalho `## Selecao de modelo por
+   subagente (model-routing)` + tabela GFM (`subagent_type | etapa |
+   onda | modelo | score | fallback`) + `**Sumario**:` com contagens
+   por rotulo + percentual de fallback.
+
+2. **Selecao por onda — sugerido vs aplicado** (feature
+   `model-routing-por-onda`, FASE 6 — FR-012/SC-006): cabecalho
+   `## Selecao de modelo por onda (sugerido vs aplicado)` + tabela GFM
+   (`onda | etapa | sugerido | aplicado | origem | divergente`) +
+   `**Sumario por onda**:` com: total de ondas roteadas, distribuicao
+   do modelo **aplicado** (haiku/sonnet/opus/manter-atual), distribuicao
+   por **origem** (mapa/refino/override-operador/fallback), **taxa de
+   fallback** (manter-atual), **taxa de override do operador**, e a
+   contagem de **divergencias sugerido!=aplicado** com o detalhe
+   `(rotuladas: <n>, sem rotulo: <n>)`. Esta segunda secao so e emitida
+   pelo helper quando ha >=1 DecisaoDeRoteamentoPorOnda (`ondas.total >
+   0`); caso contrario o output e identico ao legado.
+
+**Leitura de auditoria** (o que o revisor MUST checar na secao 2):
+
+- **`sem rotulo` DEVE ser 0** (SC-006): toda divergencia sugerido!=
+  aplicado tem de ter `origem ∈ {override-operador, fallback}`. Se
+  `divergencias_sem_rotulo > 0`, o relatorio MUST escalar como finding
+  `model-routing-divergencia-sem-rotulo` em "Recomendacoes" — sinaliza
+  Decisao por-onda corrompida ou bug no wave-select.
+- **Taxa de aplicacao** = ondas com `origem ∈ {mapa, refino}` /
+  `ondas.total`: quanto o roteamento PRIMARIO (mapa+refino) prevaleceu
+  sem intervencao. Alta taxa de `override-operador` sugere mapa
+  desalinhado com a realidade da feature (candidato a ajuste do
+  `references/phase-model-map.txt`); alta taxa de `fallback` sugere
+  model-selector indisponivel/instavel.
 
 **Quando incluir a secao** (regra binaria):
 
 - **Incluir** quando o helper retorna exit 0 e o stdout contem >=1
-  linha de tabela (i.e. ha Decisoes de selecao no state).
-- **Omitir** quando exit 0 com tabela vazia (`Total: 0`) — nao emita
-  cabecalho sozinho; isso evita ruido em features pure-doc.
+  linha de tabela (legado OU por-onda).
+- **Omitir** quando exit 0 com ambos totais zerados (`Total: 0` e sem
+  secao por-onda) — nao emita cabecalho sozinho; evita ruido em
+  features pure-doc.
 - **Skip auditavel** quando exit !=0: nao inclua a secao, mas adicione
   nota em "Recomendacoes" com formato definido em
   `docs/specs/agente-00c-model-routing/contracts/review-task-aggregate.md`
   §4.
 
-**Posicionamento**: insira a secao **apos** "Progresso por Fase" e
+**Posicionamento**: insira as secoes **apos** "Progresso por Fase" e
 **antes** de "Recomendacoes" no template (vide §"Formato do Relatorio"
 abaixo).
+
+**Half-records pendentes (FR-013 — reuso do reconciliador)**: a
+auditoria de meia-gravacao (Decisao de model-routing sem `record-skill`
+correspondente, ou vice-versa) NAO ganhou mecanismo novo nesta feature —
+reusa o `state-decisions-reconcile.sh` ja existente. Para auditar:
+
+```bash
+~/.claude/skills/agente-00c-runtime/scripts/state-decisions-reconcile.sh \
+  detect --state-dir "$STATE_DIR"
+# exit 0 + stdout vazio -> 0 half-records pendentes (estado saudavel).
+# exit 1 + TSV (dec-id, onda-id, subagent-type) -> half-records a sanar.
+```
+
+O numero de half-records pendentes DEVE ser **0**. Se `detect` lista
+entradas, reporte finding `model-routing-half-record` em "Recomendacoes"
+e instrua a rodar `state-decisions-reconcile.sh repair --dry-run` (depois
+`--apply`) na retomada via `/feature-00c-resume`. Read-only e idempotente
+— seguro de rodar dentro do review-task.
 
 **Path canonico do relatorio**: salvar em
 `docs/specs/<feature>/review-<onda-id>.md` (onde `<onda-id>` e a string

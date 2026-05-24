@@ -1345,6 +1345,13 @@ _mr_cmd_wave_select() {
       case "$_mr_ws_inv_score" in
         2|3)
           if [ "$_mr_ws_inv_fb" = "false" ] && [ -n "$_mr_ws_refined" ]; then
+            # O refino integra a SUGESTAO (data-model L57: modelo_sugerido =
+            # 'modelo do mapa/refino antes do override'). Logo sugerido segue
+            # o refino — divergencia sugerido!=aplicado fica reservada a
+            # override-operador/fallback (invariante L63-64 / SC-006). Sem
+            # isto, o agregador FASE 6 contaria todo refino como
+            # divergencia_sem_rotulo (dec-022).
+            _mr_ws_sugerido="$_mr_ws_refined"
             _mr_ws_aplicado="$_mr_ws_refined"
             _mr_ws_origem="refino"
             # CAP em 2 (dec-007): o score_runtime do model-selector pode

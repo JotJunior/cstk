@@ -54,6 +54,15 @@ _mrr_load_selecao_fixture() {
   return 0
 }
 
+# Copia um fixture nomeado de tests/fixtures para $TMPDIR_TEST/state.json.
+# Usado pelos cenarios FASE 6 (DecisoesDeRoteamentoPorOnda).
+_mrr_load_named_fixture() {
+  _src="$TESTS_ROOT/fixtures/$1"
+  [ -f "$_src" ] || { _error "fixture_missing" "fixture $1 nao encontrada"; return 2; }
+  cp "$_src" "$TMPDIR_TEST/state.json" || { _error "fixture_copy_fail" "falha ao copiar fixture $1"; return 2; }
+  return 0
+}
+
 # ==== Dispatch ====
 
 scenario_sem_args_exit_2_e_usage_em_stderr() {
@@ -473,6 +482,167 @@ scenario_integracao_review_task_skill_md_referencia_helper() {
     || { _fail "SKILL.md nao referencia model-routing-report.sh" ""; return 1; }
   grep -qF 'Agregacao de selecao de modelo (model-routing)' "$_skill" \
     || { _fail "secao §4.5 ausente em SKILL.md" ""; return 1; }
+}
+
+# ==== FASE 6.1.4 (feature model-routing-por-onda): agregacao mista ====
+#
+# Cobertura:
+#   6.1.1 distribuicao do modelo_aplicado, taxa de fallback, taxa de override
+#   6.1.2 divergencias sugerido!=aplicado com origem rotulada; 0 sem rotulo
+#   6.1.3 coexistencia legado (fallback-default) + novo SEM quebrar agregacao
+#   FR-021/SC-006
+
+# Backward-compat: o bloco LEGADO deve permanecer intacto sobre a fixture
+# antiga (que so tem Decisoes "...subagente <T>"), e ondas.total deve ser 0.
+scenario_fase6_legado_intacto_ondas_zero() {
+  _mrr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _mrr_load_selecao_fixture || return $?
+
+  capture sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST" --json
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  # Bloco legado preservado (total=8, fallback 12.5%).
+  _total=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.total')
+  [ "$_total" = "8" ] || { _fail "legado total=8" "obtido $_total"; return 1; }
+  _pct=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.fallback_pct')
+  [ "$_pct" = "12.5%" ] || { _fail "legado fallback_pct=12.5%" "obtido $_pct"; return 1; }
+
+  # Bloco novo zerado (a fixture nao tem Decisoes por-onda).
+  _wt=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.total')
+  [ "$_wt" = "0" ] || { _fail "ondas.total=0 (fixture legada)" "obtido $_wt"; return 1; }
+  _wsem=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias_sem_rotulo')
+  [ "$_wsem" = "0" ] || { _fail "ondas.divergencias_sem_rotulo=0" "obtido $_wsem"; return 1; }
+
+  # Markdown legado NAO inclui a secao por-onda quando ondas.total=0.
+  capture sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST"
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -qF 'Selecao de modelo por onda' \
+    && { _fail "secao por-onda NAO deve aparecer com ondas.total=0" ""; return 1; }
+  return 0
+}
+
+# Fixture mista: 2 legadas (haiku + fallback-default) + 4 por-onda
+# (mapa/refino/override/fallback) + 1 noise. Assert dos rotulos novos.
+scenario_fase6_mista_json_contagens_e_rotulos() {
+  _mrr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _mrr_load_named_fixture "state-with-routing-onda-mixed.json" || return $?
+
+  capture sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST" --json
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  # --- Bloco legado: 2 Decisoes "subagente", noise ignorada (FR-021) ---
+  _ltot=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.total')
+  [ "$_ltot" = "2" ] || { _fail "legado total=2" "obtido $_ltot"; return 1; }
+  _lh=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.por_modelo.haiku')
+  _lf=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.por_modelo["fallback-default"]')
+  [ "$_lh" = "1" ] || { _fail "legado haiku=1" "obtido $_lh"; return 1; }
+  [ "$_lf" = "1" ] || { _fail "legado fallback-default=1" "obtido $_lf"; return 1; }
+
+  # --- Bloco novo por-onda: 4 Decisoes (6.1.1) ---
+  _wt=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.total')
+  [ "$_wt" = "4" ] || { _fail "ondas.total=4" "obtido $_wt"; return 1; }
+
+  # Distribuicao do modelo APLICADO: opus=1(mapa)+1(override)=2, sonnet=1,
+  # manter-atual=1, haiku=0.
+  _ao=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_modelo_aplicado.opus')
+  _as=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_modelo_aplicado.sonnet')
+  _am=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_modelo_aplicado["manter-atual"]')
+  _ah=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_modelo_aplicado.haiku')
+  [ "$_ao" = "2" ] || { _fail "aplicado opus=2" "obtido $_ao"; return 1; }
+  [ "$_as" = "1" ] || { _fail "aplicado sonnet=1" "obtido $_as"; return 1; }
+  [ "$_am" = "1" ] || { _fail "aplicado manter-atual=1" "obtido $_am"; return 1; }
+  [ "$_ah" = "0" ] || { _fail "aplicado haiku=0" "obtido $_ah"; return 1; }
+
+  # Por origem: mapa/refino/override-operador/fallback = 1/1/1/1.
+  _om=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_origem.mapa')
+  _orf=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_origem.refino')
+  _oov=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_origem["override-operador"]')
+  _ofb=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_origem.fallback')
+  [ "$_om" = "1" ]  || { _fail "origem mapa=1" "obtido $_om"; return 1; }
+  [ "$_orf" = "1" ] || { _fail "origem refino=1" "obtido $_orf"; return 1; }
+  [ "$_oov" = "1" ] || { _fail "origem override-operador=1" "obtido $_oov"; return 1; }
+  [ "$_ofb" = "1" ] || { _fail "origem fallback=1" "obtido $_ofb"; return 1; }
+
+  # Taxa de fallback (manter-atual) e override: 1/4 = 25% cada.
+  _fbpct=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.fallback_pct')
+  _ovpct=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.override_pct')
+  [ "$_fbpct" = "25%" ] || { _fail "ondas.fallback_pct=25%" "obtido $_fbpct"; return 1; }
+  [ "$_ovpct" = "25%" ] || { _fail "ondas.override_pct=25%" "obtido $_ovpct"; return 1; }
+
+  # --- Divergencias (6.1.2 / SC-006): override + fallback divergem,
+  # ambas ROTULADAS; 0 sem rotulo. ---
+  _div=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias')
+  _drot=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias_rotuladas')
+  _dsem=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias_sem_rotulo')
+  [ "$_div" = "2" ]  || { _fail "divergencias=2 (override+fallback)" "obtido $_div"; return 1; }
+  [ "$_drot" = "2" ] || { _fail "divergencias_rotuladas=2" "obtido $_drot"; return 1; }
+  [ "$_dsem" = "0" ] || { _fail "divergencias_sem_rotulo=0 (SC-006)" "obtido $_dsem"; return 1; }
+}
+
+# Markdown da fixture mista: a secao por-onda DEVE aparecer com cabecalho
+# canonico + sumario por onda; o cabecalho legado tambem permanece.
+scenario_fase6_mista_markdown_secao_por_onda() {
+  _mrr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _mrr_load_named_fixture "state-with-routing-onda-mixed.json" || return $?
+
+  capture sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  # Cabecalho legado preservado.
+  assert_stdout_contains "## Selecao de modelo por subagente (model-routing)" || return 1
+  # Cabecalho da nova secao por-onda.
+  assert_stdout_contains "## Selecao de modelo por onda (sugerido vs aplicado)" || return 1
+  assert_stdout_contains "| onda | etapa | sugerido | aplicado | origem | divergente |" || return 1
+  # Sumario por onda com taxas.
+  assert_stdout_contains "**Sumario por onda**:" || return 1
+  assert_stdout_contains "- Total de ondas roteadas: 4" || return 1
+  assert_stdout_contains "- fallback (manter-atual): 1 (25%)" || return 1
+  assert_stdout_contains "- override do operador: 1 (25%)" || return 1
+  assert_stdout_contains "- divergencias sugerido!=aplicado: 2 (rotuladas: 2, sem rotulo: 0)" || return 1
+  # Linha override (haiku->opus, divergente=yes) e linha fallback
+  # (sonnet->manter-atual, divergente=yes; origem=fallback).
+  assert_stdout_contains "| onda-005 | execute-task | haiku | opus | override-operador | yes |" || return 1
+  assert_stdout_contains "| onda-006 | create-tasks | sonnet | manter-atual | fallback | yes |" || return 1
+  # Linha mapa (opus->opus) e refino (sonnet->sonnet): nao divergentes.
+  assert_stdout_contains "| onda-003 | plan | opus | opus | mapa | no |" || return 1
+  assert_stdout_contains "| onda-004 | execute-task | sonnet | sonnet | refino | no |" || return 1
+}
+
+# SC-006 DETECTOR: divergencia com origem NAO-rotulada (origem=mapa) DEVE
+# aparecer em divergencias_sem_rotulo > 0. Garante que o agregador e um
+# detector fiel (nao mascara violacoes).
+scenario_fase6_detector_divergencia_sem_rotulo() {
+  _mrr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _mrr_load_named_fixture "state-with-routing-onda-unlabeled-diverg.json" || return $?
+
+  capture sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST" --json
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  _wt=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.total')
+  [ "$_wt" = "1" ] || { _fail "ondas.total=1" "obtido $_wt"; return 1; }
+  _div=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias')
+  _drot=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias_rotuladas')
+  _dsem=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias_sem_rotulo')
+  [ "$_div" = "1" ]  || { _fail "divergencias=1" "obtido $_div"; return 1; }
+  [ "$_drot" = "0" ] || { _fail "divergencias_rotuladas=0 (origem=mapa nao autoriza)" "obtido $_drot"; return 1; }
+  [ "$_dsem" = "1" ] || { _fail "divergencias_sem_rotulo=1 (DETECTOR SC-006)" "obtido $_dsem"; return 1; }
+}
+
+# Idempotencia do bloco novo: 3 invocacoes -> stdout identico (IR-2).
+scenario_fase6_idempotente_bloco_novo() {
+  _mrr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _mrr_load_named_fixture "state-with-routing-onda-mixed.json" || return $?
+
+  _o1=$(sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST" --json)
+  _o2=$(sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST" --json)
+  _o3=$(sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST")
+  _o3b=$(sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST")
+  [ "$_o1" = "$_o2" ] || { _fail "JSON 1 e 2 identicos" "diferem"; return 1; }
+  [ "$_o3" = "$_o3b" ] || { _fail "Markdown identico" "diferem"; return 1; }
 }
 
 run_all_scenarios "$0"

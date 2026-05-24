@@ -24,10 +24,27 @@
 #   model-routing-report.sh -h | --help
 #       — Imprime USO em stderr e exit 2 (padrao do dispatch do runtime).
 #
+# Duas geracoes de Decisao de model-routing sao agregadas SEM colisao
+# (feature model-routing-por-onda, FASE 6 — FR-012, FR-021, SC-006):
+#
+#   (L) LEGADO audit-only (feature agente-00c-model-routing):
+#       contexto = "Selecao de modelo para subagente <TYPE>"
+#       escolha  ∈ {haiku,sonnet,opus,manter-atual,fallback-default}
+#       NAO carrega modelo_aplicado/origem -> contabilizado como
+#       origem=fallback (nao aplicado), distinto na agregacao por onda.
+#
+#   (N) NOVO por-onda (DecisaoDeRoteamentoPorOnda):
+#       contexto = "Selecao de modelo para onda <N> (fase <f>)"
+#       escolha  = "model:<aplicado>" | "manter-atual"
+#       justificativa codifica tokens parseaveis no PREFIXO (dec-006):
+#         "sugerido=<m> aplicado=<m> origem=<o> | <texto livre>"
+#       origem   ∈ {mapa, refino, override-operador, fallback}
+#
 # Output JSON (--json):
 #   {
-#     "total": <int>,                    # total de Decisoes de selecao
-#     "por_modelo": {                    # contagem por escolha
+#     # ---- Bloco LEGADO (compat F5.1.3 — inalterado) ----
+#     "total": <int>,                    # total de Decisoes de selecao LEGADAS
+#     "por_modelo": {                    # contagem por escolha (sugerido)
 #       "haiku":            <int>,
 #       "sonnet":           <int>,
 #       "opus":             <int>,
@@ -39,7 +56,31 @@
 #     "por_subagent_type": {             # breakdown subagent_type -> modelo -> count
 #       "<TYPE>": { "haiku": <int>, "sonnet": <int>, ... },
 #       ...
-#     }
+#     },
+#
+#     # ---- Bloco NOVO por-onda (FASE 6 — FR-012/021/SC-006) ----
+#     "ondas": {
+#       "total": <int>,                  # total de DecisoesDeRoteamentoPorOnda
+#       "por_modelo_aplicado": {         # distribuicao do modelo APLICADO
+#         "haiku": <int>, "sonnet": <int>, "opus": <int>, "manter-atual": <int>
+#       },
+#       "por_origem": {                  # contagem por origem rotulada
+#         "mapa": <int>, "refino": <int>,
+#         "override-operador": <int>, "fallback": <int>
+#       },
+#       "fallback_count": <int>,         # origem=fallback (== manter-atual aplicado)
+#       "fallback_pct": "<f>%",          # sobre ondas.total
+#       "override_count": <int>,         # origem=override-operador
+#       "override_pct": "<f>%",          # sobre ondas.total
+#       "divergencias": <int>,           # sugerido != aplicado (todas)
+#       "divergencias_rotuladas": <int>, # divergencias com origem ∈
+#                                        # {override-operador,fallback}
+#       "divergencias_sem_rotulo": <int> # SC-006 DEVE ser 0
+#     },
+#     "linhas_onda": [                   # uma linha por DecisaoDeRoteamentoPorOnda
+#       { "onda": "<id>", "etapa": "<f>", "sugerido": "<m>",
+#         "aplicado": "<m>", "origem": "<o>", "divergente": <bool> }, ...
+#     ]
 #   }
 #
 # Output Markdown (default — formato canonico para review-task — F5.2):
@@ -56,6 +97,22 @@
 #   - opus: <n>
 #   - manter-atual: <n>
 #   - fallback-default: <n> (<pct>%)
+#
+#   <quando ha DecisoesDeRoteamentoPorOnda, segue a secao por-onda:>
+#
+#   ## Selecao de modelo por onda (sugerido vs aplicado)
+#
+#   | onda | etapa | sugerido | aplicado | origem | divergente |
+#   |------|-------|----------|----------|--------|------------|
+#   | ...  | ...   | ...      | ...      | ...    | ...        |
+#
+#   **Sumario por onda**:
+#   - Total de ondas roteadas: <N>
+#   - aplicado haiku/sonnet/opus/manter-atual: <n>/<n>/<n>/<n>
+#   - origem mapa/refino/override-operador/fallback: <n>/<n>/<n>/<n>
+#   - fallback (manter-atual): <n> (<pct>%)
+#   - override do operador: <n> (<pct>%)
+#   - divergencias sugerido!=aplicado: <n> (rotuladas: <n>, sem rotulo: <n>)
 #
 # Exit codes:
 #   0 sucesso
@@ -116,20 +173,34 @@ _mrr_jq_program() {
   cat <<'JQ'
 def labels: ["haiku","sonnet","opus","manter-atual","fallback-default"];
 
-# Filtra apenas Decisoes de selecao de modelo (FR-018 + dec-004).
-def selecoes:
-  (.decisoes // [])
-  | map(select(.contexto | test("^Selecao de modelo para subagente ")));
+# Modelos VALIDOS para o campo aplicado por onda (sem fallback-default —
+# o legado audit-only; a geracao por-onda usa manter-atual como fallback).
+def applied_labels: ["haiku","sonnet","opus","manter-atual"];
 
-# Extrai subagent_type do contexto (tudo apos o prefixo fixo de 41 chars).
+# Origens rotuladas da DecisaoDeRoteamentoPorOnda (data-model §origem).
+def origem_labels: ["mapa","refino","override-operador","fallback"];
+
+# Origens nas quais sugerido != aplicado e LEGITIMO (SC-006 / data-model
+# invariante linha 63-64). Divergencia fora destas = "sem rotulo".
+def origem_diverg_ok: ["override-operador","fallback"];
+
+# pct com 1 casa decimal sobre um total (string "<f>%"; "0.0%" se total=0).
+def pct1($n; $tot):
+  if $tot == 0 then "0.0%"
+  else (((($n * 1000) / $tot) | floor) / 10 | tostring) + "%"
+  end;
+
+# ---- Geracao LEGADA: contexto "...para subagente <T>" ----
+def selecoes_legado:
+  (.decisoes // [])
+  | map(select((.contexto // "") | test("^Selecao de modelo para subagente ")));
+
 def subagent_of:
   .contexto | sub("^Selecao de modelo para subagente "; "");
 
-# Counter inicializado com todos os labels em 0 (garante chaves estaveis).
 def zero_counts:
   labels | map({(.): 0}) | add;
 
-# Conta ocorrencias de cada label em uma lista de strings.
 def count_labels(xs):
   reduce (xs[]) as $e (
     zero_counts;
@@ -139,14 +210,58 @@ def count_labels(xs):
     end
   );
 
-selecoes as $s
+# ---- Geracao NOVA por-onda: contexto "...para onda <N> (fase <f>)" ----
+def selecoes_onda:
+  (.decisoes // [])
+  | map(select((.contexto // "") | test("^Selecao de modelo para onda ")));
+
+# Extrai etapa do contexto "...para onda <N> (fase <f>)". Defesa: "" se
+# o padrao nao casar (tolera evolucao do formato — FR-021).
+def etapa_of_onda:
+  ((.contexto // "") | capture("\\(fase (?<f>[^)]*)\\)").f) // "";
+
+# Sugerido: token sugerido=<m> da justificativa; defesa "" se ausente.
+def sugerido_of:
+  ((.justificativa // "") | capture("sugerido=(?<m>[a-z-]+)").m) // "";
+
+# Aplicado: token aplicado=<m> da justificativa; fallback p/ escolha
+# (model:<m> -> <m>; manter-atual). Defesa "manter-atual".
+def aplicado_of:
+  ((.justificativa // "") | capture("aplicado=(?<m>[a-z-]+)").m)
+  // ((.escolha // "manter-atual") | sub("^model:"; ""));
+
+# Origem: token origem=<o> da justificativa; defesa "fallback" (a
+# Decisao legada sem token cai aqui via selecoes_onda? Nao — legada
+# nunca casa selecoes_onda. Mas Decisao por-onda sem token e tratada
+# como fallback conservador).
+def origem_of:
+  ((.justificativa // "") | capture("origem=(?<o>[a-z-]+)").o) // "fallback";
+
+def zero_applied:
+  applied_labels | map({(.): 0}) | add;
+
+def zero_origem:
+  origem_labels | map({(.): 0}) | add;
+
+def count_applied(xs):
+  reduce (xs[]) as $e (
+    zero_applied;
+    if (applied_labels | index($e)) != null then .[$e] += 1 else . end
+  );
+
+def count_origem(xs):
+  reduce (xs[]) as $e (
+    zero_origem;
+    if (origem_labels | index($e)) != null then .[$e] += 1 else . end
+  );
+
+# ===== Agregacao LEGADA (bloco compat F5.1.3) =====
+selecoes_legado as $s
 | ($s | length) as $total
 | ($s | map(.escolha)) as $escolhas
 | (count_labels($escolhas)) as $por_modelo
 | ($por_modelo["fallback-default"]) as $fb
-| (if $total == 0 then "0.0%"
-   else ((($fb * 1000) / $total | floor) / 10 | tostring) + "%"
-   end) as $pct
+| pct1($fb; $total) as $pct
 | ($s
    | group_by(subagent_of)
    | map({
@@ -162,13 +277,51 @@ selecoes as $s
     score:         (.score_justificativa // 0),
     fallback:      (.escolha == "fallback-default")
   })) as $linhas
+
+# ===== Agregacao NOVA por-onda (FR-012/021/SC-006) =====
+| selecoes_onda as $w
+| ($w | length) as $wtotal
+| ($w | map({
+    onda:       (.onda_id // ""),
+    etapa:      etapa_of_onda,
+    sugerido:   sugerido_of,
+    aplicado:   aplicado_of,
+    origem:     origem_of
+  })
+  | map(. + { divergente: (.sugerido != .aplicado and .sugerido != "") })
+ ) as $linhas_onda
+| (count_applied($linhas_onda | map(.aplicado))) as $por_aplicado
+| (count_origem($linhas_onda | map(.origem))) as $por_origem
+| ($por_origem["fallback"]) as $wfb
+| ($por_origem["override-operador"]) as $wovr
+| ([$linhas_onda[] | select(.divergente)]) as $diverg
+| ($diverg | length) as $ndiverg
+| ([$diverg[]
+    | .origem as $o
+    | select((origem_diverg_ok | index($o)) != null)]
+   | length) as $ndiverg_rot
+| ($ndiverg - $ndiverg_rot) as $ndiverg_sem
+
 | {
     total:             $total,
     por_modelo:        $por_modelo,
     fallback_count:    $fb,
     fallback_pct:      $pct,
     por_subagent_type: $por_st,
-    linhas:            $linhas
+    linhas:            $linhas,
+    ondas: {
+      total:                   $wtotal,
+      por_modelo_aplicado:     $por_aplicado,
+      por_origem:              $por_origem,
+      fallback_count:          $wfb,
+      fallback_pct:            pct1($wfb; $wtotal),
+      override_count:          $wovr,
+      override_pct:            pct1($wovr; $wtotal),
+      divergencias:            $ndiverg,
+      divergencias_rotuladas:  $ndiverg_rot,
+      divergencias_sem_rotulo: $ndiverg_sem
+    },
+    linhas_onda:       $linhas_onda
   }
 JQ
 }
@@ -191,7 +344,32 @@ _mrr_render_md() {
     "- sonnet: \(.por_modelo.sonnet)",
     "- opus: \(.por_modelo.opus)",
     "- manter-atual: \(.por_modelo["manter-atual"])",
-    "- fallback-default: \(.por_modelo["fallback-default"]) (\(.fallback_pct))"
+    "- fallback-default: \(.por_modelo["fallback-default"]) (\(.fallback_pct))",
+
+    # Secao por-onda (sugerido vs aplicado) — emitida APENAS quando ha
+    # DecisoesDeRoteamentoPorOnda (ondas.total > 0). Mantem o relatorio
+    # legado byte-identico quando nao ha geracao nova (compat F5.1.3).
+    ( if (.ondas.total // 0) > 0 then
+        (
+          "",
+          "## Selecao de modelo por onda (sugerido vs aplicado)",
+          "",
+          "| onda | etapa | sugerido | aplicado | origem | divergente |",
+          "|------|-------|----------|----------|--------|------------|",
+          ( .linhas_onda[]
+            | "| \(.onda) | \(.etapa) | \(.sugerido) | \(.aplicado) | \(.origem) | \(if .divergente then "yes" else "no" end) |"
+          ),
+          "",
+          "**Sumario por onda**:",
+          "- Total de ondas roteadas: \(.ondas.total)",
+          "- aplicado haiku/sonnet/opus/manter-atual: \(.ondas.por_modelo_aplicado.haiku)/\(.ondas.por_modelo_aplicado.sonnet)/\(.ondas.por_modelo_aplicado.opus)/\(.ondas.por_modelo_aplicado["manter-atual"])",
+          "- origem mapa/refino/override-operador/fallback: \(.ondas.por_origem.mapa)/\(.ondas.por_origem.refino)/\(.ondas.por_origem["override-operador"])/\(.ondas.por_origem.fallback)",
+          "- fallback (manter-atual): \(.ondas.fallback_count) (\(.ondas.fallback_pct))",
+          "- override do operador: \(.ondas.override_count) (\(.ondas.override_pct))",
+          "- divergencias sugerido!=aplicado: \(.ondas.divergencias) (rotuladas: \(.ondas.divergencias_rotuladas), sem rotulo: \(.ondas.divergencias_sem_rotulo))"
+        )
+      else empty end
+    )
   '
 }
 

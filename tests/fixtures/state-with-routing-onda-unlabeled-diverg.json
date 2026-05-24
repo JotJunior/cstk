@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "execucao": {
+    "id": "fixture-aggregate-onda-unlabeled",
+    "status": "em_andamento",
+    "projeto_alvo_path": "/tmp/fixture-agg-onda-bad",
+    "descricao_curta": "fixture NEGATIVA: divergencia sugerido!=aplicado com origem NAO-rotulada (deve disparar SC-006)"
+  },
+  "ondas": [
+    { "id": "onda-001", "inicio": "2026-05-24T10:00:00Z", "etapas_executadas": ["plan"], "tool_calls": 4, "skills_invoked": [] }
+  ],
+  "decisoes": [
+    {
+      "id": "dec-bad",
+      "onda_id": "onda-002",
+      "timestamp": "2026-05-24T12:00:00Z",
+      "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda 2 (fase execute-task)",
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual"],
+      "escolha": "model:opus",
+      "justificativa": "sugerido=haiku aplicado=opus origem=mapa | divergencia ilegitima: origem=mapa NAO autoriza divergir (SC-006)",
+      "score_justificativa": 0
+    }
+  ],
+  "bloqueios": [],
+  "orcamentos": { "tool_calls_onda_corrente": 4, "inicio_onda_corrente": "2026-05-24T10:00:00Z" }
+}
