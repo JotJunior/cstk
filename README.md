@@ -581,10 +581,21 @@ buscar decisões, bloqueios, retro-execuções e skills invocadas de **qualquer
 projeto ou feature já executados**, com proveniência (projeto / feature / onda
 / data).
 
+Desde o **schema v2** (índice retro-compatível, migração aditiva e silenciosa),
+a ingestão também deriva **métricas de dashboard** do `state.json` em tabelas
+dedicadas: `executions` (status / motivo / duração por execução), `waves`
+(ciclo de vida, `tool_calls`, `wallclock` por onda), `alert_signals` (sinais de
+circular / budget breach), `tasks` (outcome pass|fail, testes, lint,
+arquivos tocados) e `events`. Métricas como latência humana, clarify-rate e mix
+de modelos são **deriváveis** dessas tabelas — preparando o terreno para um
+futuro `cstk-panel` (dashboard read-only). As 4 tabelas textuais originais
+(`decisions`/`bloqueios`/`retros`/`skills`) seguem inalteradas.
+
 O índice é puramente **derivado** — o `state.json` transacional permanece a
-fonte de verdade, intacto e fora do caminho crítico. A base inteira é
-descartável: pode ser reconstruída a qualquer momento via `--reindex` a partir
-dos `state.json`/`state-history` existentes.
+fonte de verdade, intacto e fora do caminho crítico (a ingestão o lê em modo
+**somente leitura**, nunca escreve). A base inteira é descartável: pode ser
+reconstruída a qualquer momento via `--reindex` a partir dos
+`state.json`/`state-history` existentes.
 
 ```bash
 # Buscar (full-text, ordenado por relevância bm25)
@@ -641,6 +652,8 @@ transacional por projeto.
 **Documentação completa**:
 - [`docs/specs/_archived/cstk-knowledge-db/spec.md`](docs/specs/_archived/cstk-knowledge-db/spec.md) — user stories, FRs, success criteria
 - [`docs/specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md`](docs/specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md) — modos, flags, exit codes, esquema FTS5
+- [`docs/specs/knowledge-db-metrics/spec.md`](docs/specs/knowledge-db-metrics/spec.md) — ingestão de métricas (schema v2): tabelas `executions`/`waves`/`alert_signals`/`tasks`/`events`
+- [`docs/specs/knowledge-db-metrics/data-model.md`](docs/specs/knowledge-db-metrics/data-model.md) — DDL das novas tabelas e chaves naturais
 
 ## Convenções de Nomenclatura
 

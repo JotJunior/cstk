@@ -253,13 +253,13 @@ automatizado de que a camada A esta verde antes de tocar os orquestradores.
 
 Ref: SC-001, SC-002, SC-003, SC-004, SC-005, SC-006, SC-007; FR-010/SC-008.
 
-- [ ] 3.1.1 Rodar `./tests/run.sh test_recall` e confirmar 100% verde para os
+- [x] 3.1.1 Rodar `./tests/run.sh test_recall` e confirmar 100% verde para os
   cenarios das FASES 1 e 2
-- [ ] 3.1.2 Rodar `./tests/run.sh --check-coverage` e confirmar 0 script orfao
+- [x] 3.1.2 Rodar `./tests/run.sh --check-coverage` e confirmar 0 script orfao
   (recall.sh editado coberto por test_recall.sh, convencao do repo / FR-009)
-- [ ] 3.1.3 Registrar Decisao auditavel "camada A verde, liberando camada B"
+- [x] 3.1.3 Registrar Decisao auditavel "camada A verde, liberando camada B"
   (gate FR-010/SC-008) — pre-condicao explicita do contract layer-b §1
-- [ ] 3.1.4 Confirmar que nenhum arquivo fora de `cli/lib/recall.sh` +
+- [x] 3.1.4 Confirmar que nenhum arquivo fora de `cli/lib/recall.sh` +
   `tests/cstk/test_recall.sh` foi tocado na camada A (confinamento FR-004,
   baixo risco)
 
@@ -390,12 +390,12 @@ checklists/security.md, api.md, performance.md.
 
 Ref: FR-009 (--check-coverage), todos os SC.
 
-- [ ] 6.1.1 Rodar `./tests/run.sh test_recall` -> 100% verde (camadas A + B)
-- [ ] 6.1.2 Rodar `./tests/run.sh --check-coverage` -> 0 orfao (recall.sh
+- [x] 6.1.1 Rodar `./tests/run.sh test_recall` -> 100% verde (camadas A + B)
+- [x] 6.1.2 Rodar `./tests/run.sh --check-coverage` -> 0 orfao (recall.sh
   coberto; nenhum .sh novo sem test_<nome>.sh)
-- [ ] 6.1.3 Rodar a suite completa `./tests/run.sh` -> sem regressao nas demais
+- [x] 6.1.3 Rodar a suite completa `./tests/run.sh` -> sem regressao nas demais
   categorias
-- [ ] 6.1.4 Confirmar SC-008 (ordem de conclusao do backlog comprova camada A
+- [x] 6.1.4 Confirmar SC-008 (ordem de conclusao do backlog comprova camada A
   antes de B) via historico de commits/decisoes
 
 ### 6.2 Auditoria de invariantes e fechamento `[A]`
@@ -403,13 +403,13 @@ Ref: FR-009 (--check-coverage), todos os SC.
 Ref: FR-001 (indice derivado), FR-002 (somente leitura), FR-004 (confinamento
 de deps), SC-002, SC-007, SC-010.
 
-- [ ] 6.2.1 Auditar confinamento de deps: `grep -rln 'sqlite3' cli/` aponta
+- [x] 6.2.1 Auditar confinamento de deps: `grep -rln 'sqlite3' cli/` aponta
   somente `cli/lib/recall.sh` (FR-004) — nenhuma dep espalhada
-- [ ] 6.2.2 Auditar somente-leitura: nenhuma escrita em `state.json` no caminho
+- [x] 6.2.2 Auditar somente-leitura: nenhuma escrita em `state.json` no caminho
   de ingestao (so `jq` de leitura) (FR-002)
-- [ ] 6.2.3 Confirmar bump de `CHANGELOG.md`/versao do toolkit conforme
+- [x] 6.2.3 Confirmar bump de `CHANGELOG.md`/versao do toolkit conforme
   convencao (schema_version 2; feature aditiva)
-- [ ] 6.2.4 Sincronizar `tasks.md` (marcar `[x]` o que foi entregue) e rodar
+- [x] 6.2.4 Sincronizar `tasks.md` (marcar `[x]` o que foi entregue) e rodar
   `/review-task` para relatorio de progresso
 
 ---

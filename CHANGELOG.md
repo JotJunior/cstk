@@ -5,6 +5,68 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [3.19.0] - 2026-05-24
+
+Expande a **ingestão da memória de conhecimento** (`cstk recall`) para derivar
+métricas de dashboard a partir do `state.json` transacional, **sem nunca
+tocá-lo** (somente leitura) e **sem quebrar a propriedade de índice derivado**
+(tudo reconstruível via `cstk recall --reindex`). O índice
+(`~/.claude/cstk/knowledge.db`) sobe de **schema v1 → v2** de forma **aditiva e
+retro-compatível** (`CREATE TABLE IF NOT EXISTS`): nenhuma das 4 tabelas
+textuais existentes (`decisions`/`bloqueios`/`retros`/`skills`) muda de
+semântica, e bases v1 instaladas migram em silêncio na primeira ingestão. Esta
+feature prepara o terreno para um futuro `cstk-panel` (dashboard read-only,
+**fora de escopo**): este repositório passa a ser a fonte da verdade das
+métricas que o painel consumirá. Camada estritamente aditiva, best-effort,
+read-only — nenhum breaking change nos modos existentes
+(`search`/`--ingest`/`--reindex`/`--context`).
+
+### Added
+
+- **Camada A — métricas derivadas** em `cli/lib/recall.sh`: 3 novas tabelas
+  ingeridas a partir de `.execucao`, `.ondas[]`, `.metricas_acumuladas`,
+  `.orcamentos` e `.historico_movimento_circular` do `state.json`:
+  - `executions` — uma linha por execução (proveniência project/feature/id,
+    status, motivo de término filtrado, duração derivada; `NULL` quando
+    `em_andamento`).
+  - `waves` — uma linha por onda (ciclo de vida, `tool_calls`,
+    `wallclock_seconds`, motivo de término).
+  - `alert_signals` — uma linha por sinal de alerta (circular, budget breach),
+    idempotente e tolerante a negativos.
+  Métricas adicionais (latência humana de bloqueios, clarify-rate, mix de
+  roteamento de modelos) ficam **deriváveis** a partir das tabelas — o mix de
+  modelos permanece delegado ao agregador `model-routing-report.sh`.
+- **Camada B — instrumentação** em `cli/lib/recall.sh` + nos dois
+  orquestradores (`global/agents/agente-00c-feature-orchestrator.md` e
+  `agente-00c-orchestrator.md`): 2 novas tabelas alimentadas por campos
+  **aditivos** do `state.json`:
+  - `tasks` — outcome por task (`outcome` pass|fail, testes rodados/passados,
+    `lint_ok`, `arquivos_tocados`), chave natural
+    `(project, feature, execucao_id, task_id)`.
+  - `events` — eventos do ciclo de execução. Campos `.tasks[]`/`.eventos[]`
+    gravados pelo **mesmo caminho de runtime auditado** dos demais writes —
+    nenhum mecanismo de escrita novo (contract layer-b §5).
+- **`schema_version` do índice 1 → 2** (registrado em `schema_meta`); migração
+  aditiva e idempotente.
+
+### Notes
+
+- **Índice puramente derivado (FR-001/FR-002)**: a ingestão lê o `state.json`
+  somente em modo leitura (`jq -r` + `wc -c`); auditoria empírica confirma zero
+  write-back ao `state.json` e confinamento de `sqlite3` exclusivamente em
+  `cli/lib/recall.sh` (FR-004). Base inteira reconstruível via `--reindex`.
+- **Degradação graciosa (FR-003)**: ausência de `sqlite3`/`jq` nunca aborta a
+  ingestão nem a onda — sai com status 0 emitindo aviso.
+- **Idempotência (FR-008)**: toda escrita de entidade nova é idempotente por
+  chave natural; re-ingerir a mesma execução não altera o índice.
+- **Segredos (FR-006)**: todo texto livre persistido passa pelo filtro de
+  segredos antes do `INSERT`.
+- Spec: [`docs/specs/knowledge-db-metrics/`](docs/specs/knowledge-db-metrics/);
+  contratos em
+  [`contracts/recall-ingest-schema.md`](docs/specs/knowledge-db-metrics/contracts/recall-ingest-schema.md)
+  e
+  [`contracts/layer-b-instrumentation.md`](docs/specs/knowledge-db-metrics/contracts/layer-b-instrumentation.md).
+
 ## [3.18.0] - 2026-05-23
 
 Fecha o **read-back loop** da memória de conhecimento cross-feature: até
