@@ -110,15 +110,15 @@ Ref: FR-018, SC-008 · quickstart C10
 ### 5.1 Editar passo 8 dos orquestradores `[M]`
 Ref: FR-003 · contracts §Integração clarify
 
-- [ ] 5.1.1 Em `agente-00c-orchestrator.md` §5.e.bis passo 8: passar `model=<MODELO>` (do JSON do invoke, se score≥2 e não-fallback) ao tool Agent do clarify
-- [ ] 5.1.2 Mesma edição na seção model-routing de `agente-00c-feature-orchestrator.md`
-- [ ] 5.1.3 `manter-atual`/fallback → omitir param (FR-003/FR-006)
+- [x] 5.1.1 Em `agente-00c-orchestrator.md` §5.e.bis passo 8: passar `model=<MODELO>` (do JSON do invoke, se score≥2 e não-fallback) ao tool Agent do clarify
+- [x] 5.1.2 Mesma edição na seção model-routing de `agente-00c-feature-orchestrator.md`
+- [x] 5.1.3 `manter-atual`/fallback → omitir param (FR-003/FR-006)
 
 ### 5.2 Preservar degradação inline `[A]`
 Ref: FR-004
 
-- [ ] 5.2.1 Confirmar que no caminho degradado (mediação inline) nenhum override é tentado e nenhuma Decisão órfã é gerada
-- [ ] 5.2.2 Teste: assert de que degradação inline não cria Decisão de modelo órfã
+- [x] 5.2.1 Confirmar que no caminho degradado (mediação inline) nenhum override é tentado e nenhuma Decisão órfã é gerada
+- [x] 5.2.2 Teste: assert de que degradação inline não cria Decisão de modelo órfã
 
 ---
 

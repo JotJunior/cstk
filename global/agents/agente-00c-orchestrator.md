@@ -586,6 +586,21 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
       Esse check evita silent-fallback documentado em dec-006 da
       execucao-fonte.
 
+      **Preservacao FR-004 (model-routing-por-onda, FASE 5.2):** no
+      caminho degradado (`in-process-degraded`), o clarify roda
+      in-process — NAO ha spawn real de subagente via tool Agent,
+      logo NAO ha onde aplicar `model=<MODELO>` (o orquestrador atua
+      como answerer no proprio modelo corrente). Portanto a sequencia
+      pre-spawn de model-routing (§5.e.bis passos 1-8) NAO roda nesse
+      caminho: nem `model-routing.sh invoke`, nem
+      `state-decisions.sh register` de "Selecao de modelo para
+      subagente". Consequencia: NENHUMA Decisao de model-routing orfa
+      e gerada (Invariante I1 preservada — Decisao de modelo so existe
+      quando ha spawn real). A unica Decisao do caminho degradado e a
+      de downgrade acima (`escolha=in-process-degraded`), cujo
+      `contexto` NAO casa com `startswith("Selecao de modelo")` e
+      portanto e ignorada pelo orphan-check de model-routing.
+
    b. **Spawn clarify-asker**:
       - `spawn-tracker.sh enter --state-dir <SD>` (incrementa profundidade).
       - Invoque via tool Agent com `subagent_type: agente-00c-clarify-asker`,
@@ -813,23 +828,56 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    # Passo 7: incrementar depth ANTES do spawn real
    "$RUNTIME_SCRIPTS"/spawn-tracker.sh enter --state-dir "$SD"
 
-   # Passo 8: spawn REAL (tool Agent) — modelo da Decisao NAO e passado
-   # como parametro; harness atual nao aceita override de modelo.
+   # Passo 7.bis: derivar MODEL_APLICAR da Decisao DEC_ID (FR-003).
+   # NAO reusar as vars MODELO/SCORE/IS_FB do passo 4: elas so existem
+   # no branch `else`; no caminho idempotente (passo 3) apenas DEC_ID
+   # foi setado. Derivar de .decisoes[] cobre AMBOS os caminhos sem
+   # gerar Decisao orfa. Aplicar o modelo SOMENTE se a Decisao tem
+   # escolha ∈ {haiku,sonnet,opus} E score >= 2 (nao-fallback). A
+   # escolha "fallback-default" (ou "manter-atual") => OMITIR o param
+   # model (herda o frontmatter do agent file) — FR-006.
+   ESCOLHA_DEC=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" \
+     --field ".decisoes[] | select(.id == \"$DEC_ID\") | .escolha")
+   # NB: o campo de score no schema da Decisao e `score_justificativa`
+   # (state-decisions.sh mapeia --score -> .score_justificativa).
+   SCORE_DEC=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" \
+     --field ".decisoes[] | select(.id == \"$DEC_ID\") | .score_justificativa")
+   MODEL_APLICAR=""
+   if [ "$SCORE_DEC" -ge 2 ] 2>/dev/null; then
+     if [ "$ESCOLHA_DEC" = "haiku" ] || [ "$ESCOLHA_DEC" = "sonnet" ] \
+        || [ "$ESCOLHA_DEC" = "opus" ]; then
+       MODEL_APLICAR="$ESCOLHA_DEC"
+     fi
+   fi
+
+   # Passo 8: spawn REAL (tool Agent). FR-003 — aplicar o modelo:
+   #   - Se MODEL_APLICAR nao-vazio (escolha ∈ {haiku,sonnet,opus} e
+   #     score>=2): invocar a tool Agent COM `model: $MODEL_APLICAR`.
+   #   - Senao (fallback-default / manter-atual / score<2): invocar a
+   #     tool Agent SEM o param model — herda o `model:` do frontmatter
+   #     do agent file (FR-006).
    #
-   # tool Agent: subagent_type=$SUBAGENT_TYPE, prompt=<conforme §5.e>
+   # if [ -n "$MODEL_APLICAR" ]; then
+   #   tool Agent: subagent_type=$SUBAGENT_TYPE, model=$MODEL_APLICAR,
+   #               prompt=<conforme §5.e>
+   # else
+   #   tool Agent: subagent_type=$SUBAGENT_TYPE, prompt=<conforme §5.e>
+   # fi
    #
    # Apos retorno: spawn-tracker.sh leave (ja documentado em §5.e).
    ```
 
-   **Importante** (FR-017 — auditoria, nao automacao): o campo
-   `escolha` da Decisao gerada pelo passo 5 e PURAMENTE AUDITAVEL.
-   Ela documenta qual modelo o `model-selector` recomendou para o
-   subagente, possibilitando a query agregada em
-   `contracts/orchestrator-integration.md §Invariantes consumidas por
-   review-task`. O harness Claude Code atualmente nao aceita `model`
-   como parametro da tool Agent — o modelo do subagente e determinado
-   pelo campo `model:` no frontmatter do agent file. A sequencia
-   pre-spawn nao tenta sobrescrever esse comportamento.
+   **Importante** (FR-003 — sugerido vira aplicado): a partir desta
+   feature (`model-routing-por-onda`, FASE 5), o passo 8 APLICA o
+   modelo sugerido no passo 5 quando ele e acionavel — `escolha` ∈
+   {haiku,sonnet,opus} e `score >= 2`. Isso revoga o comportamento
+   audit-only anterior (a Decisao deixou de ser PURAMENTE auditavel
+   para o spawn de clarify). O par Decisao⟷spawn permanece 1-para-1
+   (Invariante I1): a aplicacao NAO cria nova Decisao, apenas le a ja
+   registrada via `DEC_ID`. Em fallback (`escolha=fallback-default`)
+   ou `manter-atual` ou score<2, o param `model` e OMITIDO e o
+   subagente herda o `model:` do frontmatter do agent file (FR-006) —
+   sem Decisao adicional, sem spawn orfo.
 
    #### Quoting de `sinais_text` ao chamar `register` (F4.2 — hardening F-002)
 

@@ -19,6 +19,7 @@
 #   test_build-release.sh                    — cobre scripts/build-release.sh
 #   test_hooks-integration.sh                — integration test (nao 1:1)
 #   test_quickstart-e2e.sh                   — e2e quickstart (composicao das libs)
+#   test_doc-counts.sh                       — invariante de doc (skills/scenarios)
 #
 # Alem desses, ha cobertura real sob nome NAO-1:1 (tests granulares por aspecto
 # de uma skill/script): tests model-selector + report (cobrem classify.sh/
@@ -163,6 +164,10 @@ _is_internal_test() {
     test_smoke.sh|test_harness.sh) return 0 ;;
     test_cstk-main.sh|test_bootstrap.sh|test_build-release.sh|test_hooks-integration.sh|test_quickstart-e2e.sh)
       return 0 ;;
+    test_doc-counts.sh)
+      # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
+      # Teste de invariante do repositorio — nao mapeia 1:1 para um script.
+      return 0 ;;
     test_install-extra-kinds.sh)
       # Cobre interacao install.sh + manifest.sh + doctor.sh para os kinds
       # commands/agents (nao mapeia 1:1 para um unico script sob a convencao).
@@ -173,6 +178,14 @@ _is_internal_test() {
       # um unico script — existence-guarded ao command portador da instrucao
       # wave-select. Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/global/commands/feature-00c.md" ] && return 0
+      return 1 ;;
+    test_orchestrator-spawn-model-apply.sh)
+      # Smoke textual sobre os 2 orquestradores (model-routing por onda,
+      # FASE 5 de model-routing-por-onda). Assert no .md (passo 8 da
+      # §5.e.bis / secao model-routing), nao em um unico script —
+      # existence-guarded ao orquestrador portador da instrucao de aplicar
+      # model no spawn de clarify. Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
       return 1 ;;
     test_e2e_model_routing.sh)
       # Cobre fluxo end-to-end model-routing.sh + model-routing-report.sh +
