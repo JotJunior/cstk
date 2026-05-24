@@ -2129,6 +2129,34 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[3.19.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.19.0
+[3.18.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.18.0
+[3.17.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.17.0
+[3.16.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.16.0
+[3.15.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.15.0
+[3.14.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.14.0
+[3.13.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.13.0
+[3.12.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.12.0
+[3.11.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.11.0
+[3.10.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.10.0
+[3.9.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.9.1
+[3.9.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.9.0
+[3.8.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.8.0
+[3.7.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.7.0
+[3.6.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.6.0
+[3.5.3]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.5.3
+[3.5.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.5.2
+[3.5.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.5.1
+[3.5.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.5.0
+[3.4.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.4.0
+[3.3.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.3.0
+[3.2.3]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.2.3
+[3.2.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.2.2
+[3.2.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.2.1
+[3.2.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.2.0
+[3.1.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.1.1
+[3.1.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.1.0
+[3.0.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.0.0
 [2.0.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v2.0.0
 [1.1.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v1.1.0
 [1.0.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v1.0.0
