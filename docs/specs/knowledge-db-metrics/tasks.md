@@ -50,21 +50,21 @@ executions/waves; contracts/recall-ingest-schema.md §1 (RECALL_SCHEMA_VERSION
 linha ~54) e §2 (chave natural UNIQUE(project,feature,wave,source_id));
 research.md D1.
 
-- [ ] 1.1.1 Alterar `RECALL_SCHEMA_VERSION` de `1` para `2` em
+- [x] 1.1.1 Alterar `RECALL_SCHEMA_VERSION` de `1` para `2` em
   `cli/lib/recall.sh` (linha ~54)
-- [ ] 1.1.2 Adicionar `CREATE TABLE IF NOT EXISTS executions (...)` em
+- [x] 1.1.2 Adicionar `CREATE TABLE IF NOT EXISTS executions (...)` em
   `recall_schema_ddl()` (~linha 311) conforme DDL de data-model.md, com
   `UNIQUE(project, feature, wave, source_id)`
-- [ ] 1.1.3 Adicionar `CREATE TABLE IF NOT EXISTS waves (...)` em
+- [x] 1.1.3 Adicionar `CREATE TABLE IF NOT EXISTS waves (...)` em
   `recall_schema_ddl()` conforme DDL de data-model.md, com mesma constraint
   UNIQUE
-- [ ] 1.1.4 Garantir que o `INSERT ... ON CONFLICT DO UPDATE` no `schema_meta`
+- [x] 1.1.4 Garantir que o `INSERT ... ON CONFLICT DO UPDATE` no `schema_meta`
   reflete `schema_version = 2` (idempotente, sem perda de dado ao encontrar v1)
-- [ ] 1.1.5 Teste em `tests/cstk/test_recall.sh`: aplicar schema sobre DB v1
+- [x] 1.1.5 Teste em `tests/cstk/test_recall.sh`: aplicar schema sobre DB v1
   pre-existente e assertar que (a) `schema_version` virou `2`, (b) tabelas
   `executions`/`waves` existem, (c) tabelas v1 (decisions/bloqueios/retros/
   skills) preservam dado (Edge Case "schema antigo")
-- [ ] 1.1.6 Teste: aplicar schema 2x (idempotencia do DDL) -> 0 erro, schema
+- [x] 1.1.6 Teste: aplicar schema 2x (idempotencia do DDL) -> 0 erro, schema
   estavel
 
 ### 1.2 Ingestao da entidade Execucao em recall_ingest_state_json `[A]`
@@ -74,26 +74,26 @@ Execucao); data-model.md §Entity Execucao (mapeamento jq path -> coluna);
 contracts/recall-ingest-schema.md §3 (ponto unico de ingestao) + §5 (filtro
 de segredo so em motivo_termino); research.md D2, D3.
 
-- [ ] 1.2.1 Em `recall_ingest_state_json()` (~linha 480), parsear `.execucao`
+- [x] 1.2.1 Em `recall_ingest_state_json()` (~linha 480), parsear `.execucao`
   + `.metricas_acumuladas` + `.etapa_corrente` via `jq` de LEITURA e derivar
   os campos da tabela `executions` (status, motivo_termino, etapa_corrente,
   iniciada_em, terminada_em, duracao derivada, stack_sugerida, e as 9 contagens
   de metricas_acumuladas)
-- [ ] 1.2.2 Derivar `duracao_segundos` (terminada_em - iniciada_em); manter
+- [x] 1.2.2 Derivar `duracao_segundos` (terminada_em - iniciada_em); manter
   NULL quando `terminada_em` ausente (execucao em andamento) sem erro
   (Acceptance Scenario US1.3)
-- [ ] 1.2.3 Escrever via `INSERT INTO executions ... ON CONFLICT(project,
+- [x] 1.2.3 Escrever via `INSERT INTO executions ... ON CONFLICT(project,
   feature, wave, source_id) DO UPDATE SET ...` com `wave='-'`,
   `source_id=execucao_id` (chave natural; research.md D2)
-- [ ] 1.2.4 Aplicar `secrets-filter.sh` (via `recall_secrets_filter_path`)
+- [x] 1.2.4 Aplicar `secrets-filter.sh` (via `recall_secrets_filter_path`)
   APENAS em `motivo_termino`; campos numericos/timestamps/ids sem filtro
   (FR-006, contract §5)
-- [ ] 1.2.5 Estender contador `RECALL_TOTAL_EXEC` para o sumario impresso
+- [x] 1.2.5 Estender contador `RECALL_TOTAL_EXEC` para o sumario impresso
   (contract §3)
-- [ ] 1.2.6 Teste: fixture `state.json` de execucao concluida com
+- [x] 1.2.6 Teste: fixture `state.json` de execucao concluida com
   `metricas_acumuladas` populadas -> assertar exatamente 1 linha em
   `executions` com 100% dos campos corretos (SC-001, Acceptance US1.1)
-- [ ] 1.2.7 Teste: fixture de execucao `em_andamento` (sem terminada_em) ->
+- [x] 1.2.7 Teste: fixture de execucao `em_andamento` (sem terminada_em) ->
   1 linha com `duracao_segundos` NULL, 0 erro (Acceptance US1.3)
 
 ### 1.3 Ingestao da entidade Onda em recall_ingest_state_json `[A]`
@@ -102,17 +102,17 @@ Ref: FR-008, FR-012 (campos da Onda); data-model.md §Entity Onda;
 contracts/recall-ingest-schema.md §2 (waves: wave=source_id=wave_id) + §5;
 research.md D2, D3.
 
-- [ ] 1.3.1 Em `recall_ingest_state_json()`, iterar `.ondas[]` via `jq` e
+- [x] 1.3.1 Em `recall_ingest_state_json()`, iterar `.ondas[]` via `jq` e
   derivar por onda: wave_id, etapas (join ","), inicio, fim, wallclock_seconds,
   tool_calls, motivo_termino, n_etapas (length), n_skills
   (skills_invoked|length)
-- [ ] 1.3.2 Escrever via `INSERT INTO waves ... ON CONFLICT DO UPDATE` com
+- [x] 1.3.2 Escrever via `INSERT INTO waves ... ON CONFLICT DO UPDATE` com
   `wave=source_id=wave_id` (research.md D2)
-- [ ] 1.3.3 Aplicar `secrets-filter.sh` apenas em `motivo_termino` da onda;
+- [x] 1.3.3 Aplicar `secrets-filter.sh` apenas em `motivo_termino` da onda;
   demais campos sem filtro (FR-006)
-- [ ] 1.3.4 Estender contador `RECALL_TOTAL_WAVE` para o sumario (contract §3)
-- [ ] 1.3.5 Tratar onda aberta (`fim` NULL) sem erro
-- [ ] 1.3.6 Teste: fixture com 3 ondas em `.ondas[]` -> assertar exatamente 3
+- [x] 1.3.4 Estender contador `RECALL_TOTAL_WAVE` para o sumario (contract §3)
+- [x] 1.3.5 Tratar onda aberta (`fim` NULL) sem erro
+- [x] 1.3.6 Teste: fixture com 3 ondas em `.ondas[]` -> assertar exatamente 3
   linhas em `waves`, cada uma com wallclock/tool_calls/etapas/n_skills corretos
   (SC-001, Acceptance US1.2)
 
@@ -122,16 +122,16 @@ Ref: FR-001 (indice derivado), FR-008 (idempotencia), SC-002 (0 divergencias
 ingest vs reindex), SC-004 (re-ingestao delta=0); contracts/recall-ingest-
 schema.md §3; research.md D3 (ponto unico).
 
-- [ ] 1.4.1 Confirmar que `recall_mode_reindex` (~linha 1165) chama a MESMA
+- [x] 1.4.1 Confirmar que `recall_mode_reindex` (~linha 1165) chama a MESMA
   `recall_ingest_state_json` (nenhuma funcao paralela por modo) -> executions/
   waves saem identicos em ingest e reindex
-- [ ] 1.4.2 Teste: ingerir mesma execucao N vezes -> contagem de linhas de
+- [x] 1.4.2 Teste: ingerir mesma execucao N vezes -> contagem de linhas de
   `executions` e `waves` nao muda (SC-004, Acceptance US1.4); valores refletem
   estado mais recente
-- [ ] 1.4.3 Teste: rodar `cstk recall --ingest` e depois `cstk recall
+- [x] 1.4.3 Teste: rodar `cstk recall --ingest` e depois `cstk recall
   --reindex` do zero -> conjunto de linhas de executions/waves identico, 0
   divergencias (SC-002, Independent Test US1)
-- [ ] 1.4.4 Teste best-effort: sem `sqlite3` -> exit 0 + aviso, onda nao aborta;
+- [x] 1.4.4 Teste best-effort: sem `sqlite3` -> exit 0 + aviso, onda nao aborta;
   sem `jq` -> exit 0 + aviso; `state.json` corrompido -> pula com aviso, 0
   abort (SC-003, FR-003, contract §4)
 
@@ -153,17 +153,17 @@ Ref: FR-013 (historico_movimento_circular como sinal); data-model.md §Entity
 SinalDeAlerta (tipo `circular`); contracts/recall-ingest-schema.md §2
 (source_id `<tipo>:<wave_id>:<ordinal>`); research.md D7.
 
-- [ ] 2.1.1 Adicionar `CREATE TABLE IF NOT EXISTS alert_signals (...)` em
+- [x] 2.1.1 Adicionar `CREATE TABLE IF NOT EXISTS alert_signals (...)` em
   `recall_schema_ddl()` conforme DDL de data-model.md (colunas tipo, subtipo,
   valor_consumido, valor_threshold, descricao), com UNIQUE(project,feature,
   wave,source_id)
-- [ ] 2.1.2 Em `recall_ingest_state_json()`, iterar
+- [x] 2.1.2 Em `recall_ingest_state_json()`, iterar
   `.historico_movimento_circular[]` e gerar uma linha tipo `circular` por
   entrada, com proveniencia (execucao/onda/data) e `source_id` =
   `circular:<wave_id>:<ordinal>`
-- [ ] 2.1.3 Aplicar `secrets-filter.sh` em `descricao` (texto livre do
+- [x] 2.1.3 Aplicar `secrets-filter.sh` em `descricao` (texto livre do
   historico); campos numericos sem filtro (FR-006)
-- [ ] 2.1.4 Teste: fixture com `historico_movimento_circular[]` populado ->
+- [x] 2.1.4 Teste: fixture com `historico_movimento_circular[]` populado ->
   cada entrada vira 1 linha consultavel em `alert_signals` tipo `circular`
   (Acceptance US2.2)
 

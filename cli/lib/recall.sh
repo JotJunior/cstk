@@ -51,7 +51,11 @@ RECALL_EXIT_OK=0
 RECALL_EXIT_USAGE=2
 
 # ==== Constantes de schema/DB ====
-RECALL_SCHEMA_VERSION=1
+# v2 (knowledge-db-metrics): + tabelas relacionais executions, waves,
+# alert_signals (camada A) e tasks, events (camada B). Bump idempotente:
+# CREATE TABLE IF NOT EXISTS + INSERT ... ON CONFLICT no schema_meta — DB v1
+# pre-existente ganha as tabelas novas sem perda de dado (FR-007).
+RECALL_SCHEMA_VERSION=2
 RECALL_TYPE_ENUM="decision bloqueio retro skill"
 
 # ==== Resolucao do caminho do DB ====
@@ -368,6 +372,68 @@ CREATE TABLE IF NOT EXISTS skills (
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
+CREATE TABLE IF NOT EXISTS executions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  wave TEXT NOT NULL,
+  execucao_id TEXT NOT NULL,
+  source_ts TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  status TEXT,
+  motivo_termino TEXT,
+  etapa_corrente TEXT,
+  iniciada_em TEXT,
+  terminada_em TEXT,
+  duracao_segundos INTEGER,
+  stack_sugerida TEXT,
+  ondas_total INTEGER,
+  tool_calls_total INTEGER,
+  wallclock_total_segundos INTEGER,
+  subagentes_spawned INTEGER,
+  profundidade_max INTEGER,
+  decisoes_total INTEGER,
+  bloqueios_humanos_total INTEGER,
+  sugestoes_skills_total INTEGER,
+  issues_toolkit_abertas INTEGER,
+  ingested_at TEXT NOT NULL,
+  UNIQUE(project, feature, wave, source_id)
+);
+CREATE TABLE IF NOT EXISTS waves (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  wave TEXT NOT NULL,
+  execucao_id TEXT NOT NULL,
+  source_ts TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  etapas TEXT,
+  inicio TEXT,
+  fim TEXT,
+  wallclock_seconds INTEGER,
+  tool_calls INTEGER,
+  motivo_termino TEXT,
+  n_etapas INTEGER,
+  n_skills INTEGER,
+  ingested_at TEXT NOT NULL,
+  UNIQUE(project, feature, wave, source_id)
+);
+CREATE TABLE IF NOT EXISTS alert_signals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  wave TEXT NOT NULL,
+  execucao_id TEXT NOT NULL,
+  source_ts TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  subtipo TEXT,
+  valor_consumido INTEGER,
+  valor_threshold INTEGER,
+  descricao TEXT,
+  ingested_at TEXT NOT NULL,
+  UNIQUE(project, feature, wave, source_id)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5 (
   body,
   type UNINDEXED,
@@ -473,6 +539,19 @@ recall_scrub() {
   printf '%s' "$1" | "$RECALL_SF" scrub 2>/dev/null
 }
 
+# recall_int_or_null VALUE -> imprime o literal SQL para uma coluna INTEGER:
+# o proprio inteiro se VALUE for digitos (com sinal opcional), senao 'NULL'.
+# Cobre "" (campo ausente), "null" textual do jq tostring e qualquer nao-numero
+# — evita injetar texto cru numa coluna numerica (FR-006: estruturado sem
+# filtro, mas validado). Espelha o case inline usado em decisions.score.
+recall_int_or_null() {
+  case "$1" in
+    ''|*[!0-9-]*) printf 'NULL' ;;
+    -|-*[!0-9]*)  printf 'NULL' ;;
+    *)            printf '%s' "$1" ;;
+  esac
+}
+
 # recall_ingest_state_json STATE_JSON DB -> ingere um unico state.json no DB.
 # Best-effort: qualquer falha de extracao degrada gracioso (aviso + exit 0).
 # Reusado por --ingest (1 arquivo) e --reindex (N arquivos).
@@ -504,6 +583,160 @@ recall_ingest_state_json() {
 
   # Acumula SQL num heredoc-string e aplica numa unica transacao por arquivo.
   _isj_sql="BEGIN;"
+
+  # ---- executions (grao = execucao; 1 linha; wave='-' source_id=execucao_id) ----
+  # Deriva de .execucao + .metricas_acumuladas + .etapa_corrente. duracao_segundos
+  # computada via fromdateiso8601 quando iniciada_em E terminada_em presentes
+  # (NULL para execucao aberta — Acceptance US1.3). So motivo_termino e texto
+  # livre (filtrado); demais campos estruturados/numericos sem filtro (FR-006).
+  _isj_n_exec=0
+  _isj_exec_b64=$(jq -r '
+    (.execucao // {}) as $e
+    | (.metricas_acumuladas // {}) as $m
+    | (if (($e.iniciada_em // "") != "" and ($e.terminada_em // "") != "")
+       then (($e.terminada_em|fromdateiso8601) - ($e.iniciada_em|fromdateiso8601) | tostring)
+       else "" end) as $dur
+    | [($e.id // ""),
+       ($e.status // ""),
+       ($e.motivo_termino // ""),
+       (.etapa_corrente // ""),
+       ($e.iniciada_em // ""),
+       ($e.terminada_em // ""),
+       $dur,
+       ($e.stack_sugerida // ""),
+       (($m.ondas_total // "")|tostring),
+       (($m.tool_calls_total // "")|tostring),
+       (($m.tempo_wallclock_total_segundos // "")|tostring),
+       (($m.subagentes_spawned // "")|tostring),
+       (($m.profundidade_max_atingida // "")|tostring),
+       (($m.decisoes_total // "")|tostring),
+       (($m.bloqueios_humanos_total // "")|tostring),
+       (($m.sugestoes_skills_globais_total // "")|tostring),
+       (($m.issues_toolkit_abertas // "")|tostring)]
+    | @base64' "$_isj_state" 2>/dev/null) || _isj_exec_b64=""
+  # Ingere somente se houver execucao_id (chave natural estavel).
+  if [ -n "$_isj_exec_b64" ] && [ -n "$_isj_exec_id" ]; then
+    _isj_decoded=$(printf '%s' "$_isj_exec_b64" | base64 -d 2>/dev/null) || _isj_decoded=""
+    if [ -n "$_isj_decoded" ]; then
+      _f_eid=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
+      _f_st=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      _f_mt=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
+      _f_ec=$(printf '%s' "$_isj_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
+      _f_ini=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
+      _f_ter=$(printf '%s' "$_isj_decoded" | jq -r '.[5]' 2>/dev/null | strip_nul)
+      _f_dur=$(printf '%s' "$_isj_decoded" | jq -r '.[6]' 2>/dev/null | strip_nul)
+      _f_stk=$(printf '%s' "$_isj_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
+      _f_ot=$(printf '%s' "$_isj_decoded" | jq -r '.[8]' 2>/dev/null | strip_nul)
+      _f_tc=$(printf '%s' "$_isj_decoded" | jq -r '.[9]' 2>/dev/null | strip_nul)
+      _f_wt=$(printf '%s' "$_isj_decoded" | jq -r '.[10]' 2>/dev/null | strip_nul)
+      _f_ss=$(printf '%s' "$_isj_decoded" | jq -r '.[11]' 2>/dev/null | strip_nul)
+      _f_pm=$(printf '%s' "$_isj_decoded" | jq -r '.[12]' 2>/dev/null | strip_nul)
+      _f_dt=$(printf '%s' "$_isj_decoded" | jq -r '.[13]' 2>/dev/null | strip_nul)
+      _f_bt=$(printf '%s' "$_isj_decoded" | jq -r '.[14]' 2>/dev/null | strip_nul)
+      _f_sg=$(printf '%s' "$_isj_decoded" | jq -r '.[15]' 2>/dev/null | strip_nul)
+      _f_it=$(printf '%s' "$_isj_decoded" | jq -r '.[16]' 2>/dev/null | strip_nul)
+      # Texto livre filtrado; demais estruturados.
+      _f_mt=$(recall_scrub "$_f_mt")
+      # Inteiros: valor valido ou NULL (cobre "" e "null" textual).
+      _isj_dur_sql=$(recall_int_or_null "$_f_dur")
+      _isj_ot_sql=$(recall_int_or_null "$_f_ot")
+      _isj_tc_sql=$(recall_int_or_null "$_f_tc")
+      _isj_wt_sql=$(recall_int_or_null "$_f_wt")
+      _isj_ss_sql=$(recall_int_or_null "$_f_ss")
+      _isj_pm_sql=$(recall_int_or_null "$_f_pm")
+      _isj_dt_sql=$(recall_int_or_null "$_f_dt")
+      _isj_bt_sql=$(recall_int_or_null "$_f_bt")
+      _isj_sg_sql=$(recall_int_or_null "$_f_sg")
+      _isj_it_sql=$(recall_int_or_null "$_f_it")
+      _isj_sql="$_isj_sql
+INSERT INTO executions(project,feature,wave,execucao_id,source_ts,source_id,status,motivo_termino,etapa_corrente,iniciada_em,terminada_em,duracao_segundos,stack_sugerida,ondas_total,tool_calls_total,wallclock_total_segundos,subagentes_spawned,profundidade_max,decisoes_total,bloqueios_humanos_total,sugestoes_skills_total,issues_toolkit_abertas,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,motivo_termino=excluded.motivo_termino,etapa_corrente=excluded.etapa_corrente,iniciada_em=excluded.iniciada_em,terminada_em=excluded.terminada_em,duracao_segundos=excluded.duracao_segundos,stack_sugerida=excluded.stack_sugerida,ondas_total=excluded.ondas_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_segundos=excluded.wallclock_total_segundos,subagentes_spawned=excluded.subagentes_spawned,profundidade_max=excluded.profundidade_max,decisoes_total=excluded.decisoes_total,bloqueios_humanos_total=excluded.bloqueios_humanos_total,sugestoes_skills_total=excluded.sugestoes_skills_total,issues_toolkit_abertas=excluded.issues_toolkit_abertas,ingested_at=excluded.ingested_at;"
+      _isj_n_exec=1
+    fi
+  fi
+
+  # ---- waves (grao = onda; 1 linha por .ondas[]; wave=source_id=wave_id) ----
+  # Deriva etapas (join ","), inicio/fim, wallclock_seconds, tool_calls,
+  # motivo_termino (texto livre filtrado), n_etapas, n_skills (derivados via
+  # length). Onda aberta (fim null) -> fim vazio, sem erro (1.3.5).
+  _isj_n_wave=0
+  _isj_wave_lines=$(jq -r '
+    (.ondas // [])
+    | to_entries[]
+    | .key as $wi
+    | .value as $w
+    | [($w.id // "onda-\($wi)"),
+       (($w.etapas_executadas // []) | join(",")),
+       ($w.inicio // ""),
+       ($w.fim // ""),
+       (($w.wallclock_seconds // "")|tostring),
+       (($w.tool_calls // "")|tostring),
+       ($w.motivo_termino // ""),
+       (($w.etapas_executadas // []) | length | tostring),
+       (($w.skills_invoked // []) | length | tostring)]
+    | @base64' "$_isj_state" 2>/dev/null) || _isj_wave_lines=""
+  if [ -n "$_isj_wave_lines" ]; then
+    _isj_OLDIFS="$IFS"; IFS='
+'
+    for _isj_row in $_isj_wave_lines; do
+      _isj_decoded=$(printf '%s' "$_isj_row" | base64 -d 2>/dev/null) || continue
+      _f_wid=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
+      _f_etp=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      _f_ini=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
+      _f_fim=$(printf '%s' "$_isj_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
+      _f_wc=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
+      _f_tc=$(printf '%s' "$_isj_decoded" | jq -r '.[5]' 2>/dev/null | strip_nul)
+      _f_mt=$(printf '%s' "$_isj_decoded" | jq -r '.[6]' 2>/dev/null | strip_nul)
+      _f_ne=$(printf '%s' "$_isj_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
+      _f_ns=$(printf '%s' "$_isj_decoded" | jq -r '.[8]' 2>/dev/null | strip_nul)
+      [ -n "$_f_wid" ] || continue
+      _f_mt=$(recall_scrub "$_f_mt")
+      _isj_wc_sql=$(recall_int_or_null "$_f_wc")
+      _isj_tc_sql=$(recall_int_or_null "$_f_tc")
+      _isj_ne_sql=$(recall_int_or_null "$_f_ne")
+      _isj_ns_sql=$(recall_int_or_null "$_f_ns")
+      _isj_sql="$_isj_sql
+INSERT INTO waves(project,feature,wave,execucao_id,source_ts,source_id,etapas,inicio,fim,wallclock_seconds,tool_calls,motivo_termino,n_etapas,n_skills,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_wid")','$(sql_escape "$_f_etp")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_fim")',$_isj_wc_sql,$_isj_tc_sql,'$(sql_escape "$_f_mt")',$_isj_ne_sql,$_isj_ns_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,etapas=excluded.etapas,inicio=excluded.inicio,fim=excluded.fim,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,motivo_termino=excluded.motivo_termino,n_etapas=excluded.n_etapas,n_skills=excluded.n_skills,ingested_at=excluded.ingested_at;"
+      _isj_n_wave=$((_isj_n_wave + 1))
+    done
+    IFS="$_isj_OLDIFS"
+  fi
+
+  # ---- alert_signals: movimento circular (tipo='circular') ----
+  # 1 linha por entrada de .historico_movimento_circular[]. As entradas sao
+  # hashes (problema_hash/solucao_hash/timestamp) — descricao sintetizada e
+  # ainda filtrada (FR-006, campo marcado como texto livre no data-model).
+  # source_id = circular:<wave_id|->:<ordinal>; circular nao tem wave_id,
+  # usa-se '-' como wave (grao = execucao). valor_consumido/threshold NULL.
+  _isj_n_alert=0
+  _isj_circ_lines=$(jq -r '
+    (.historico_movimento_circular // [])
+    | to_entries[]
+    | [(.key|tostring),
+       (.value.timestamp // ""),
+       ("repeticao problema=\(.value.problema_hash // "?") solucao=\(.value.solucao_hash // "?")")]
+    | @base64' "$_isj_state" 2>/dev/null) || _isj_circ_lines=""
+  if [ -n "$_isj_circ_lines" ]; then
+    _isj_OLDIFS="$IFS"; IFS='
+'
+    for _isj_row in $_isj_circ_lines; do
+      _isj_decoded=$(printf '%s' "$_isj_row" | base64 -d 2>/dev/null) || continue
+      _f_ord=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
+      _f_ts=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      _f_desc=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
+      _f_desc=$(recall_scrub "$_f_desc")
+      _f_sid="circular:-:$_f_ord"
+      _isj_sql="$_isj_sql
+INSERT INTO alert_signals(project,feature,wave,execucao_id,source_ts,source_id,tipo,subtipo,valor_consumido,valor_threshold,descricao,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','circular',NULL,NULL,NULL,'$(sql_escape "$_f_desc")','$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,tipo=excluded.tipo,subtipo=excluded.subtipo,valor_consumido=excluded.valor_consumido,valor_threshold=excluded.valor_threshold,descricao=excluded.descricao,ingested_at=excluded.ingested_at;"
+      _isj_n_alert=$((_isj_n_alert + 1))
+    done
+    IFS="$_isj_OLDIFS"
+  fi
 
   # ---- decisions ----
   # Campos reais do state.json: id, onda_id (wave), timestamp, etapa, agente,
@@ -693,6 +926,9 @@ COMMIT;"
   RECALL_TOTAL_BLOQ=$((${RECALL_TOTAL_BLOQ:-0} + _isj_n_bloq))
   RECALL_TOTAL_RETRO=$((${RECALL_TOTAL_RETRO:-0} + _isj_n_retro))
   RECALL_TOTAL_SKILL=$((${RECALL_TOTAL_SKILL:-0} + _isj_n_skill))
+  RECALL_TOTAL_EXEC=$((${RECALL_TOTAL_EXEC:-0} + _isj_n_exec))
+  RECALL_TOTAL_WAVE=$((${RECALL_TOTAL_WAVE:-0} + _isj_n_wave))
+  RECALL_TOTAL_ALERT=$((${RECALL_TOTAL_ALERT:-0} + _isj_n_alert))
   return "$RECALL_EXIT_OK"
 }
 
@@ -776,10 +1012,12 @@ recall_mode_ingest() {
   }
 
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
+  RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
   recall_ingest_state_json "$_ing_state_dir/state.json" "$_ing_db"
 
-  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills\n' \
-    "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}"
+  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves\n' \
+    "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
+    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}"
   return "$RECALL_EXIT_OK"
 }
 
@@ -1157,6 +1395,7 @@ recall_mode_reindex() {
   fi
 
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
+  RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
   _rx_count=0
   # Varre feature-00c-state/*/state.json e agente-00c-state/state.json.
   # find e portavel; -path com globs simples.
@@ -1175,7 +1414,8 @@ recall_mode_reindex() {
     IFS="$_rx_OLDIFS"
   fi
 
-  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills)\n' \
-    "$_rx_count" "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}"
+  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves)\n' \
+    "$_rx_count" "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
+    "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}"
   return "$RECALL_EXIT_OK"
 }

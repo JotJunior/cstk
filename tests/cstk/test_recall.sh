@@ -471,6 +471,325 @@ scenario_15_busca_multi_palavra_and() {
 }
 
 # =========================================================================
+# knowledge-db-metrics — FASE 1 (camada A.1): executions + waves
+# =========================================================================
+
+# _write_metrics_state DIR PROJECT_PATH FEATURE -> state.json com
+# .execucao + .metricas_acumuladas + .etapa_corrente + 2 ondas. Execucao
+# CONCLUIDA (terminada_em presente) para exercitar duracao_segundos derivada.
+# motivo_termino contem segredo plantado (validacao de filtro nas fases 2/5).
+_write_metrics_state() {
+  _wm_dir="$1"; _wm_proj="$2"; _wm_feat="$3"
+  mkdir -p "$_wm_dir"
+  cat > "$_wm_dir/state.json" <<JSON
+{
+  "short_name": "$_wm_feat",
+  "etapa_corrente": "review-task",
+  "execucao": {
+    "id": "exec-$_wm_feat",
+    "projeto_alvo_path": "$_wm_proj",
+    "status": "concluido",
+    "motivo_termino": "fluxo normal concluido",
+    "iniciada_em": "2026-01-01T00:00:00Z",
+    "terminada_em": "2026-01-01T01:00:00Z",
+    "stack_sugerida": null
+  },
+  "metricas_acumuladas": {
+    "ondas_total": 2,
+    "tool_calls_total": 42,
+    "tempo_wallclock_total_segundos": 3600,
+    "profundidade_max_atingida": 2,
+    "subagentes_spawned": 3,
+    "decisoes_total": 5,
+    "bloqueios_humanos_total": 1,
+    "sugestoes_skills_globais_total": 0,
+    "issues_toolkit_abertas": 0
+  },
+  "decisoes": [],
+  "bloqueios_humanos": [],
+  "ondas": [
+    { "id": "onda-001", "inicio": "2026-01-01T00:00:00Z", "fim": "2026-01-01T00:30:00Z",
+      "etapas_executadas": ["specify", "clarify"], "wallclock_seconds": 1800, "tool_calls": 20,
+      "motivo_termino": "etapa_concluida_avancando",
+      "skills_invoked": [
+        { "skill": "specify", "timestamp": "2026-01-01T00:05:00Z", "decisao_id": "dec-001" },
+        { "skill": "clarify", "timestamp": "2026-01-01T00:20:00Z", "decisao_id": "dec-002" } ] },
+    { "id": "onda-002", "inicio": "2026-01-01T00:30:00Z", "fim": "2026-01-01T01:00:00Z",
+      "etapas_executadas": ["plan"], "wallclock_seconds": 1800, "tool_calls": 22,
+      "motivo_termino": "threshold_atingido",
+      "skills_invoked": [
+        { "skill": "plan", "timestamp": "2026-01-01T00:45:00Z", "decisao_id": "dec-003" } ] }
+  ]
+}
+JSON
+}
+
+# =========================================================================
+# Cenario M1.1 — bump v1 -> v2 preserva dado v1 + cria executions/waves
+# (task 1.1.5; FR-007, Edge Case "schema antigo")
+# =========================================================================
+scenario_m11_bump_v1_para_v2_preserva_dado() {
+  _have_deps || return 0
+  _mdb="$TMPDIR_TEST/v1.db"
+  # DB v1 sintetico: 1 decision + schema_version=1, SEM tabelas novas.
+  sqlite3 "$_mdb" <<'SQL'
+CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execucao_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, agente TEXT, etapa TEXT, escolha TEXT, score INTEGER, contexto TEXT, justificativa TEXT, evidencia TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+INSERT INTO schema_meta(key,value) VALUES('schema_version','1');
+INSERT INTO decisions(project,feature,wave,execucao_id,source_ts,source_id,ingested_at) VALUES('p','f','w','e','t','dec-legacy','now');
+SQL
+  # Aplica schema v2 via funcao real (caminho de recall_apply_schema).
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
+    _fail "apply schema v2" "recall_apply_schema falhou"; return 1; }
+  # (a) schema_version virou 2
+  _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
+  [ "$_sv" = "2" ] || { _fail "schema_version" "esperado 2, obtido $_sv"; return 1; }
+  # (b) tabelas executions + waves existem
+  _has=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('executions','waves')")
+  [ "$_has" = "2" ] || { _fail "tabelas novas" "esperado 2 (executions+waves), obtido $_has"; return 1; }
+  # (c) dado v1 preservado
+  _leg=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-legacy'")
+  [ "$_leg" = "1" ] || { _fail "preservacao v1" "decisao legacy perdida ($_leg)"; return 1; }
+}
+
+# =========================================================================
+# Cenario M1.2 — idempotencia do DDL: aplicar 2x sem erro, schema estavel
+# (task 1.1.6)
+# =========================================================================
+scenario_m12_ddl_idempotente() {
+  _have_deps || return 0
+  _mdb="$TMPDIR_TEST/idem.db"
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
+    _fail "apply 1" "primeira aplicacao falhou"; return 1; }
+  assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
+  _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
+  [ "$_sv" = "2" ] || { _fail "schema estavel" "esperado 2 apos 2x, obtido $_sv"; return 1; }
+}
+
+# =========================================================================
+# Cenario M2.1 — ingestao de Execucao concluida: 1 linha, 100% dos campos
+# (task 1.2.6; SC-001, Acceptance US1.1)
+# =========================================================================
+scenario_m21_execucao_concluida_campos() {
+  _have_deps || return 0
+  _write_metrics_state "$TMPDIR_TEST/featM" "/home/u/projM" "featM"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featM" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "1 executions" || return 1
+  # Exatamente 1 linha.
+  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM executions")
+  [ "$_n" = "1" ] || { _fail "exec count" "esperado 1, obtido $_n"; return 1; }
+  # Campos derivados/estruturais (chave natural wave='-', source_id=execucao_id).
+  _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT project||'|'||feature||'|'||wave||'|'||source_id||'|'||status||'|'||etapa_corrente||'|'||duracao_segundos||'|'||ondas_total||'|'||tool_calls_total||'|'||wallclock_total_segundos||'|'||subagentes_spawned||'|'||profundidade_max||'|'||decisoes_total||'|'||bloqueios_humanos_total FROM executions")
+  _exp="projM|featM|-|exec-featM|concluido|review-task|3600|2|42|3600|3|2|5|1"
+  [ "$_row" = "$_exp" ] || { _fail "exec campos" "esperado [$_exp], obtido [$_row]"; return 1; }
+}
+
+# =========================================================================
+# Cenario M2.2 — execucao em andamento: duracao_segundos NULL, 0 erro
+# (task 1.2.7; Acceptance US1.3)
+# =========================================================================
+scenario_m22_execucao_em_andamento_duracao_null() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featO"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featO",
+  "etapa_corrente": "plan",
+  "execucao": { "id": "exec-featO", "projeto_alvo_path": "/home/u/projO", "status": "em_andamento", "iniciada_em": "2026-01-01T00:00:00Z" },
+  "metricas_acumuladas": { "ondas_total": 1, "tool_calls_total": 5 },
+  "decisoes": [], "bloqueios_humanos": [], "ondas": []
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db" || return 1
+  _dn=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT duracao_segundos IS NULL FROM executions WHERE source_id='exec-featO'")
+  [ "$_dn" = "1" ] || { _fail "duracao aberta" "esperado NULL, obtido nao-null"; return 1; }
+  # Metricas ausentes viram NULL sem erro.
+  _sn=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT subagentes_spawned IS NULL FROM executions WHERE source_id='exec-featO'")
+  [ "$_sn" = "1" ] || { _fail "metrica ausente" "esperado NULL para subagentes_spawned"; return 1; }
+}
+
+# =========================================================================
+# Cenario M2.3 — filtro de segredo em motivo_termino da execucao (FR-006)
+# =========================================================================
+scenario_m23_execucao_motivo_filtrado() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featS"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featS",
+  "etapa_corrente": "review-task",
+  "execucao": { "id": "exec-featS", "projeto_alvo_path": "/home/u/projS", "status": "abortada",
+    "motivo_termino": "abortado com token=ghp_AbCdEf1234567890SecretLeak presente",
+    "iniciada_em": "2026-01-01T00:00:00Z", "terminada_em": "2026-01-01T00:10:00Z" },
+  "metricas_acumuladas": { "ondas_total": 1 },
+  "decisoes": [], "bloqueios_humanos": [], "ondas": []
+}
+JSON
+  _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _mt=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT motivo_termino FROM executions WHERE source_id='exec-featS'")
+  case "$_mt" in
+    *ghp_AbCdEf*) _fail "filtro segredo exec" "token vazou em motivo_termino: $_mt"; return 1 ;;
+  esac
+}
+
+# =========================================================================
+# Cenario M3.1 — ingestao de Ondas: 3 linhas, campos derivados corretos
+# (task 1.3.6; SC-001, Acceptance US1.2). Inclui onda aberta (fim null) e
+# segredo plantado em motivo_termino de uma onda (FR-006).
+# =========================================================================
+scenario_m31_ondas_campos() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featW"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featW",
+  "etapa_corrente": "review-task",
+  "execucao": { "id": "exec-featW", "projeto_alvo_path": "/home/u/projW", "status": "concluido", "iniciada_em": "2026-01-01T00:00:00Z", "terminada_em": "2026-01-01T01:00:00Z" },
+  "metricas_acumuladas": { "ondas_total": 3 },
+  "decisoes": [], "bloqueios_humanos": [],
+  "ondas": [
+    { "id": "onda-001", "inicio": "2026-01-01T00:00:00Z", "fim": "2026-01-01T00:30:00Z", "etapas_executadas": ["specify","clarify"], "wallclock_seconds": 1800, "tool_calls": 20, "motivo_termino": "etapa_concluida", "skills_invoked": [ {"skill":"specify"},{"skill":"clarify"} ] },
+    { "id": "onda-002", "inicio": "2026-01-01T00:30:00Z", "fim": "2026-01-01T01:00:00Z", "etapas_executadas": ["plan"], "wallclock_seconds": 1800, "tool_calls": 22, "motivo_termino": "threshold token=ghp_LeakInWave1234567890ab", "skills_invoked": [ {"skill":"plan"} ] },
+    { "id": "onda-003", "inicio": "2026-01-01T01:00:00Z", "fim": null, "etapas_executadas": [], "wallclock_seconds": 0, "tool_calls": 0, "motivo_termino": null, "skills_invoked": [] }
+  ]
+}
+JSON
+  capture _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "3 waves" || return 1
+  # Exatamente 3 linhas.
+  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM waves WHERE feature='featW'")
+  [ "$_n" = "3" ] || { _fail "wave count" "esperado 3, obtido $_n"; return 1; }
+  # onda-001: etapas CSV + n_etapas + n_skills.
+  _r1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT etapas||'|'||wallclock_seconds||'|'||tool_calls||'|'||n_etapas||'|'||n_skills FROM waves WHERE wave='onda-001'")
+  [ "$_r1" = "specify,clarify|1800|20|2|2" ] || { _fail "onda-001 campos" "obtido [$_r1]"; return 1; }
+  # onda-003 aberta: fim vazio, contagens 0, sem erro.
+  _fe=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT (fim IS NULL OR fim='') FROM waves WHERE wave='onda-003'")
+  [ "$_fe" = "1" ] || { _fail "onda aberta" "fim deveria ser vazio"; return 1; }
+  # onda-002 motivo_termino scrubbed.
+  _mt=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT motivo_termino FROM waves WHERE wave='onda-002'")
+  case "$_mt" in
+    *ghp_LeakInWave*) _fail "filtro segredo onda" "token vazou: $_mt"; return 1 ;;
+  esac
+}
+
+# =========================================================================
+# Cenario M4.1 — re-ingestao N vezes: delta de linhas executions/waves = 0
+# (task 1.4.2; SC-004, Acceptance US1.4). Valor reflete estado mais recente.
+# =========================================================================
+scenario_m41_reingest_delta_zero() {
+  _have_deps || return 0
+  _write_metrics_state "$TMPDIR_TEST/featM" "/home/u/projM" "featM"
+  _rc --ingest --state-dir "$TMPDIR_TEST/featM" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _e1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM executions")
+  _w1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM waves")
+  # Re-ingere 3x.
+  _rc --ingest --state-dir "$TMPDIR_TEST/featM" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _rc --ingest --state-dir "$TMPDIR_TEST/featM" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _rc --ingest --state-dir "$TMPDIR_TEST/featM" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _e2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM executions")
+  _w2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM waves")
+  [ "$_e1" = "$_e2" ] && [ "$_w1" = "$_w2" ] || {
+    _fail "delta zero" "executions $_e1->$_e2, waves $_w1->$_w2 (esperado estavel)"; return 1; }
+  [ "$_e2" = "1" ] && [ "$_w2" = "2" ] || {
+    _fail "contagem esperada" "esperado 1 exec + 2 waves, obtido $_e2 + $_w2"; return 1; }
+  # Upsert reflete estado mais recente: muta tool_calls da onda e re-ingere.
+  sed 's/"tool_calls": 20/"tool_calls": 99/' "$TMPDIR_TEST/featM/state.json" > "$TMPDIR_TEST/featM/state.json.new"
+  mv "$TMPDIR_TEST/featM/state.json.new" "$TMPDIR_TEST/featM/state.json"
+  _rc --ingest --state-dir "$TMPDIR_TEST/featM" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _tc=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT tool_calls FROM waves WHERE wave='onda-001' AND feature='featM'")
+  [ "$_tc" = "99" ] || { _fail "upsert recente" "esperado tool_calls=99, obtido $_tc"; return 1; }
+}
+
+# =========================================================================
+# Cenario M4.2 — convergencia ingest vs reindex: 0 divergencias
+# (task 1.4.3; SC-002, Independent Test US1). executions/waves identicos.
+# =========================================================================
+scenario_m42_ingest_vs_reindex_convergencia() {
+  _have_deps || return 0
+  # Caminho A: --ingest direto.
+  _write_metrics_state "$TMPDIR_TEST/ing/featM" "/home/u/projM" "featM"
+  _rc --ingest --state-dir "$TMPDIR_TEST/ing/featM" --db "$TMPDIR_TEST/a.db" >/dev/null 2>&1
+  _ea=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT count(*) FROM executions")
+  _wa=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT count(*) FROM waves")
+  # dump comparavel (sem ingested_at, que e timestamp de processamento).
+  _dumpa=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT project,feature,wave,source_id,status,duracao_segundos,tool_calls_total FROM executions UNION ALL SELECT project,feature,wave,source_id,etapas,n_etapas,tool_calls FROM waves ORDER BY 1,2,3,4")
+  # Caminho B: --reindex (descoberta padrao).
+  _write_metrics_state "$TMPDIR_TEST/rx/p/.claude/feature-00c-state/featM" "/home/u/projM" "featM"
+  _rc --reindex --states-root "$TMPDIR_TEST/rx" --db "$TMPDIR_TEST/b.db" >/dev/null 2>&1
+  _eb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT count(*) FROM executions")
+  _wb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT count(*) FROM waves")
+  _dumpb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT project,feature,wave,source_id,status,duracao_segundos,tool_calls_total FROM executions UNION ALL SELECT project,feature,wave,source_id,etapas,n_etapas,tool_calls FROM waves ORDER BY 1,2,3,4")
+  [ "$_ea" = "$_eb" ] && [ "$_wa" = "$_wb" ] || {
+    _fail "contagem ingest vs reindex" "exec $_ea/$_eb waves $_wa/$_wb"; return 1; }
+  [ "$_dumpa" = "$_dumpb" ] || {
+    _fail "divergencia ingest vs reindex" "dumps diferem"; return 1; }
+}
+
+# =========================================================================
+# Cenario M4.3 — best-effort camada A: sem sqlite3 (fixture de metricas) +
+# state.json corrompido -> exit 0, sem abort, sem DB (task 1.4.4; SC-003,
+# FR-003). Complementa cenarios 9/10/11 com o grao de execucao/onda.
+# =========================================================================
+scenario_m43_best_effort_metrics() {
+  _have_deps || return 0
+  _write_metrics_state "$TMPDIR_TEST/featM" "/home/u/projM" "featM"
+  # PATH com coreutils+jq, SEM sqlite3 (mesmo padrao do cenario 9).
+  _bin="$TMPDIR_TEST/binM43"
+  mkdir -p "$_bin"
+  for _t in tr wc printf sed grep awk basename dirname date find mkdir rm cat head sleep cp jq base64; do
+    _p=$(command -v "$_t" 2>/dev/null) && ln -sf "$_p" "$_bin/$_t"
+  done
+  capture sh -c 'PATH="'"$_bin"'"; export PATH; . "'"$CSTK_LIB"'/common.sh"; . "'"$CSTK_LIB"'/recall.sh"; recall_main --ingest --state-dir "'"$TMPDIR_TEST"'/featM" --db "'"$TMPDIR_TEST"'/beM.db"'
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "sem-sqlite3 metrics exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -f "$TMPDIR_TEST/beM.db" ] && { _fail "sem-sqlite3 metrics" "DB criado apesar de sqlite3 ausente"; return 1; }
+  # state.json corrompido -> pula com aviso, exit 0, executions/waves vazios.
+  printf '{ corrompido nao-json' > "$TMPDIR_TEST/featM/state.json"
+  assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featM" --db "$TMPDIR_TEST/be2.db" || return 1
+  _e=$(sqlite3 "$TMPDIR_TEST/be2.db" "SELECT count(*) FROM executions" 2>/dev/null) || _e=0
+  [ "${_e:-0}" = "0" ] || { _fail "corrompido metrics" "esperado 0 executions, obtido $_e"; return 1; }
+}
+
+# =========================================================================
+# Cenario M5.1 — SinalDeAlerta circular: 1 linha por entrada do
+# historico_movimento_circular[] (task 2.1.4; FR-013, Acceptance US2.2)
+# =========================================================================
+scenario_m51_alert_circular() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featC"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featC",
+  "etapa_corrente": "plan",
+  "execucao": { "id": "exec-featC", "projeto_alvo_path": "/home/u/projC", "status": "em_andamento", "iniciada_em": "2026-01-01T00:00:00Z" },
+  "metricas_acumuladas": {},
+  "historico_movimento_circular": [
+    { "problema_hash": "abc123", "solucao_hash": "def456", "timestamp": "2026-01-01T00:05:00Z" },
+    { "problema_hash": "abc123", "solucao_hash": "ghi789", "timestamp": "2026-01-01T00:10:00Z" }
+  ],
+  "decisoes": [], "bloqueios_humanos": [], "ondas": []
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db" || return 1
+  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM alert_signals WHERE tipo='circular' AND feature='featC'")
+  [ "$_n" = "2" ] || { _fail "circular count" "esperado 2, obtido $_n"; return 1; }
+  # source_id segue padrao circular:<wave>:<ordinal>; valores numericos NULL.
+  _vc=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT valor_consumido IS NULL AND valor_threshold IS NULL FROM alert_signals WHERE source_id='circular:-:0' AND feature='featC'")
+  [ "$_vc" = "1" ] || { _fail "circular valores" "esperado NULL/NULL para consumido/threshold"; return 1; }
+  # descricao consultavel.
+  _d=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT descricao FROM alert_signals WHERE source_id='circular:-:1' AND feature='featC'")
+  case "$_d" in
+    *abc123*ghi789*) : ;;
+    *) _fail "circular descricao" "esperado hashes, obtido [$_d]"; return 1 ;;
+  esac
+}
+
+# =========================================================================
 # recall-autoconsume — Infra comum do modo --context (FASE 4.1)
 # =========================================================================
 
