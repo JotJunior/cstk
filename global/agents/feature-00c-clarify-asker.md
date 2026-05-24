@@ -1,6 +1,7 @@
 ---
 name: feature-00c-clarify-asker
 description: 'Subagente: gera 1-5 perguntas estruturadas para etapa clarify do SDD no escopo feature-00c. Nao toma decisoes — orquestrador-pai (agente-00c-feature-orchestrator) media comunicacao com answerer.'
+model: sonnet
 allowed-tools:
   - Skill
   - Read

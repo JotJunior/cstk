@@ -1,6 +1,7 @@
 ---
 name: feature-00c-clarify-answerer
 description: 'Subagente: aplica heuristica score 0..3 sobre 3 fontes (briefing, constitution_projeto, spec_corrente) para responder perguntas do feature-00c-clarify-asker autonomamente. Score >=2 decide; score 0 pausa humano.'
+model: sonnet
 allowed-tools:
   - Read
   - Bash
