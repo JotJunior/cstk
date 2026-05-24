@@ -38,35 +38,35 @@ Ref: FR-014, FR-020, FR-024 · contracts §phase-model-lookup
 ### 2.1 Núcleo: mapa + Decisão auditável `[A]`
 Ref: FR-001, FR-002, FR-007, FR-008 · contracts §wave-select · data-model §DecisãoDeRoteamentoPorOnda
 
-- [ ] 2.1.1 Implementar `model-routing.sh wave-select --state-dir <SD> [--etapa] [--task-text]`; resolver fase via flag ou `.etapa_corrente`
-- [ ] 2.1.2 Aplicar mapa (origem=mapa) como base e emitir o modelo em stdout
-- [ ] 2.1.3 Registrar DecisãoDeRoteamentoPorOnda (sugerido, aplicado, origem, score) via `state-decisions.sh register` + `state-ondas.sh record-skill` (par I3)
-- [ ] 2.1.4 Idempotência por onda: reusar `idempotent-check`; re-entrada não registra 2ª Decisão (FR-008)
-- [ ] 2.1.5 Teste: cenários quickstart C1, C2, C7 (mapa rasa/profunda + idempotência)
+- [x] 2.1.1 Implementar `model-routing.sh wave-select --state-dir <SD> [--etapa] [--task-text]`; resolver fase via flag ou `.etapa_corrente`
+- [x] 2.1.2 Aplicar mapa (origem=mapa) como base e emitir o modelo em stdout
+- [x] 2.1.3 Registrar DecisãoDeRoteamentoPorOnda (sugerido, aplicado, origem, score) via `state-decisions.sh register` + `state-ondas.sh record-skill` (par I3)
+- [x] 2.1.4 Idempotência por onda: re-entrada não registra 2ª Decisão (FR-008). Nota: a `idempotent-check` legada filtra contexto `^Selecao de modelo para subagente ` (geração clarify); a DecisãoDeRoteamentoPorOnda usa lead `^Selecao de modelo para onda ` — a idempotência por onda é feita por jq sobre esse lead distinto (mesmo padrão read-only, sem colisão entre gerações, FR-021)
+- [x] 2.1.5 Teste: cenários quickstart C1, C2, C7 (mapa rasa/profunda + idempotência)
 
 ### 2.2 Override do operador + validação `[C]`
 Ref: FR-016, FR-023 · quickstart C5, C11
 
-- [ ] 2.2.1 Ler DecisãoDeOverride não-consumida para a onda (`escolha=model-override:<x>`) e dar precedência
-- [ ] 2.2.2 Validar valor do override contra enum `{haiku,sonnet,opus}`; inválido → fallback (mapa/manter-atual) com nota auditável, nunca propagar ao spawn (FR-023)
-- [ ] 2.2.3 Escopo de uma única onda; marcar override consumido na Decisão de roteamento
-- [ ] 2.2.4 Teste: override válido vence (C5); override inválido cai em fallback (C11)
+- [x] 2.2.1 Ler DecisãoDeOverride não-consumida para a onda (`escolha=model-override:<x>`) e dar precedência
+- [x] 2.2.2 Validar valor do override contra enum `{haiku,sonnet,opus}`; inválido → fallback (mapa/manter-atual) com nota auditável, nunca propagar ao spawn (FR-023)
+- [x] 2.2.3 Escopo de uma única onda; marcar override consumido na Decisão de roteamento (match por `onda_id` da onda corrente OU contexto que referencia o número da onda; override de onda anterior não vaza)
+- [x] 2.2.4 Teste: override válido vence (C5); override inválido cai em fallback (C11)
 
 ### 2.3 Refino via model-selector + input untrusted `[A]`
 Ref: FR-001, FR-005, FR-006, FR-019, FR-022, FR-025 · quickstart C3, C4, C6, C12
 
-- [ ] 2.3.1 Quando fase=execute-task e há `--task-text`, chamar `invoke --input-text <desc>`; ajustar faixa só se `score≥2` e não-fallback (origem=refino)
-- [ ] 2.3.2 Sanitizar `--task-text` UNTRUSTED: remover NUL, truncar ao teto de bytes, sem expansão/eval (reuso F-001/F-002 — FR-022)
-- [ ] 2.3.3 Fallback gracioso: model-selector ausente/score<2/modelo inválido → mapa/manter-atual, exit 0, nunca aborta (FR-006, FR-019)
-- [ ] 2.3.4 Scrub de texto livre gravado em `justificativa`/`sinais_text` (FR-025)
-- [ ] 2.3.5 Teste: refino eleva (C3), refino sem sinal mantém mapa (C4), fallback (C6), task-text hostil sanitizado (C12)
+- [x] 2.3.1 Quando fase=execute-task e há `--task-text`, chamar `invoke --input-text <desc>`; ajustar faixa só se `score≥2` e não-fallback (origem=refino). Nota: parsing de `.fallback` via if-then-else explícito (jq `// ` trata `false` como vazio — bug capturado, dec-007)
+- [x] 2.3.2 Sanitizar `--task-text` UNTRUSTED: remover NUL, truncar ao teto de bytes (4096), sem expansão/eval (reuso F-001/F-002 — FR-022)
+- [x] 2.3.3 Fallback gracioso: model-selector ausente/score<2/modelo inválido → mapa/manter-atual, exit 0, nunca aborta (FR-006, FR-019)
+- [x] 2.3.4 Scrub de texto livre gravado em `justificativa`/`sinais_text` via `secrets-filter.sh scrub` (FR-025); score do refino capado em 2 (sinais heurísticos não são evidência empírica de score 3 — dec-008)
+- [x] 2.3.5 Teste: refino eleva (C3), refino sem sinal mantém mapa (C4), fallback (C6), task-text hostil sanitizado (C12)
 
 ### 2.4 Escalonamento mid-onda `[M]`
 Ref: FR-015 · quickstart C9
 
-- [ ] 2.4.1 Definir sinal de subestimação no state (campo/flag) gravado pelo orquestrador ao detectar onda além da complexidade prevista
-- [ ] 2.4.2 `wave-select` lê o sinal e força opus na próxima onda (origem=mapa com nota de escalada), sem trocar modelo mid-run
-- [ ] 2.4.3 Teste: cenário C9 (escalada para opus na onda seguinte)
+- [x] 2.4.1 Definir sinal de subestimação no state: campo `.escalada_modelo_pendente` (bool) gravado pelo orquestrador ao detectar onda além da complexidade prevista
+- [x] 2.4.2 `wave-select` lê o sinal e força opus na próxima onda (origem=mapa com nota de escalada), sem trocar modelo mid-run; precedência sobre o mapa-base, mas abaixo do override do operador
+- [x] 2.4.3 Teste: cenário C9 (escalada para opus na onda seguinte)
 
 ---
 

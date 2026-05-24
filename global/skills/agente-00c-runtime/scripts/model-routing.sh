@@ -42,6 +42,16 @@
 #         erro — FR-020). Path do mapa confinado ao diretorio do runtime
 #         (FR-024). Mecanismo PRIMARIO de routing por onda (FR-014).
 #
+#   model-routing.sh wave-select --state-dir DIR [--etapa FASE] [--task-text DESC]
+#       — (feature model-routing-por-onda, FASE 2) Computa o modelo a
+#         aplicar na proxima onda em camadas: mapa primario (FR-014) ->
+#         refino opcional via invoke (FR-001/019, so execute-task +
+#         --task-text) -> override do operador com precedencia (FR-016/
+#         023). Idempotente por onda (FR-008). Registra
+#         DecisaoDeRoteamentoPorOnda (+ record-skill se refinou, par I3).
+#         Stdout: haiku|sonnet|opus|manter-atual. NUNCA aborta (FR-006).
+#         --task-text e UNTRUSTED (FR-022); texto livre scrubbed (FR-025).
+#
 # Exit codes globais:
 #   0 sucesso (incluindo fallback graceful do invoke)
 #   1 erro generico (state.json ausente em idempotent-check, etc)
@@ -1079,6 +1089,361 @@ _mr_cmd_phase_model_lookup() {
   return 0
 }
 
+# ---------- wave-select (feature model-routing-por-onda, FASE 2) ----------
+#
+# Computa o modelo a aplicar na PROXIMA onda do orquestrador e registra a
+# DecisaoDeRoteamentoPorOnda auditavel. Mecanismo de selecao em camadas
+# (FR-005): mapa primario (FR-014) -> refino opcional (FR-001/019) ->
+# override do operador com precedencia (FR-016). Idempotente por onda
+# (FR-008). Nunca aborta por indisponibilidade do model-selector (FR-006).
+#
+# Uso:
+#   model-routing.sh wave-select --state-dir <SD> [--etapa <fase>] [--task-text <desc>]
+#
+# Saida (stdout): UMA linha com o modelo aplicado:
+#   haiku | sonnet | opus | manter-atual
+#
+# Efeito colateral: registra UMA DecisaoDeRoteamentoPorOnda via
+# state-decisions.sh register (+ state-ondas.sh record-skill quando o
+# refino invocou model-selector — par atomico-logico I3 reusado).
+#
+# Encoding (dec-006): register tem schema FIXO. Os campos conceituais
+# modelo_sugerido / modelo_aplicado / origem sao encodados como tokens
+# parseaveis no PREFIXO da justificativa, no formato exato:
+#   "sugerido=<m> aplicado=<m> origem=<o> | <texto livre scrubbed>"
+# O contexto usa o lead "Selecao de modelo para onda <N> (fase <f>)",
+# distinto do lead legado "Selecao de modelo para subagente <T>", para
+# o agregador da FASE 6 distinguir as duas geracoes sem colisao (FR-021).
+#
+# Exit codes: 0 sucesso (inclui fallback graceful); 2 uso incorreto.
+#   NUNCA aborta por model-selector ausente/erro.
+#
+# Ref: docs/specs/model-routing-por-onda/contracts/wave-select.md
+#      docs/specs/model-routing-por-onda/data-model.md §DecisaoDeRoteamentoPorOnda
+#      docs/specs/model-routing-por-onda/spec.md FR-001/002/005/006/007/008/
+#        015/016/019/022/023/025
+#      docs/specs/model-routing-por-onda/tasks.md 2.1..2.4
+
+# Valida modelo contra enum {haiku,sonnet,opus,manter-atual} (SC-007).
+# Stdout: o proprio modelo se valido; vazio se invalido. Exit sempre 0.
+_mr_ws_valid_model() {
+  case "$1" in
+    haiku|sonnet|opus|manter-atual) printf '%s' "$1" ;;
+    *) printf '%s' "" ;;
+  esac
+}
+
+# Valida modelo de OVERRIDE contra enum {haiku,sonnet,opus} (FR-023 —
+# 'manter-atual' NAO e override valido; override sempre forca um modelo
+# concreto). Stdout: o modelo se valido; vazio se invalido. Exit 0.
+_mr_ws_valid_override_model() {
+  case "$1" in
+    haiku|sonnet|opus) printf '%s' "$1" ;;
+    *) printf '%s' "" ;;
+  esac
+}
+
+# Mapeia faixa (rasa|media|profunda) -> modelo. Usado pelo refino para
+# ajustar a faixa derivada do mapa. Pura expansao de case (POSIX).
+_mr_ws_faixa_to_model() {
+  case "$1" in
+    rasa)     printf '%s' "haiku" ;;
+    media)    printf '%s' "sonnet" ;;
+    profunda) printf '%s' "opus" ;;
+    *)        printf '%s' "" ;;
+  esac
+}
+
+# Sanitiza --task-text UNTRUSTED (FR-022): remove NUL, trunca ao teto de
+# bytes documentado (_MR_WS_TASKTEXT_MAX). Sem eval/expansao — apenas
+# tr+head sobre o valor passado por aspas. Stdout: texto sanitizado.
+# Reuso conceitual de F-001/F-002: nada e interpolado em comando/path.
+_MR_WS_TASKTEXT_MAX=4096
+_mr_ws_sanitize_tasktext() {
+  # printf '%s' preserva literal; tr -d remove NUL; head -c trunca ao teto.
+  # Pipeline POSIX puro; nenhum metacaractere e interpretado.
+  printf '%s' "$1" | tr -d '\000' | head -c "$_MR_WS_TASKTEXT_MAX"
+}
+
+# Scrub de texto livre antes de gravar em justificativa (FR-025). Reusa
+# secrets-filter.sh scrub (mesmo tratamento da ingestao do recall). Se o
+# helper estiver ausente, degrada para no-op (texto bruto) — nunca aborta.
+# Stdout: texto scrubbed (ou identico se helper ausente). Exit 0 sempre.
+_mr_ws_scrub() {
+  _mr_ws_sc_dir=${0%/*}
+  _mr_ws_sc_helper="$_mr_ws_sc_dir/secrets-filter.sh"
+  if [ -f "$_mr_ws_sc_helper" ]; then
+    # secrets-filter le stdin, escreve stdout. Em falha: no-op.
+    printf '%s' "$1" | sh "$_mr_ws_sc_helper" scrub 2>/dev/null || printf '%s' "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
+# Le o primeiro DecisaoDeOverride NAO-consumido para a onda alvo (FR-016).
+# Override = Decisao com etapa=model-routing e escolha que comeca com
+# "model-override:". "Nao-consumido" = nao existe nenhuma
+# DecisaoDeRoteamentoPorOnda posterior cujo contexto referencia a mesma
+# onda (a Decisao de roteamento marca o override consumido ao aplica-lo;
+# como register e append-only, a presenca de uma Decisao de roteamento
+# para a onda ja foi tratada pela idempotencia no passo anterior).
+#
+# Escopo de UMA onda (FR-023): so casa override cujo contexto referencia
+# explicitamente a onda alvo ("... para onda <N>"). Override de onda
+# anterior nao vaza.
+#
+# Args: $1=state_file $2=onda_id
+# Stdout: o valor do override (parte apos "model-override:") ou vazio.
+# Exit 0 sempre (read-only).
+_mr_ws_read_override() {
+  _mr_ws_ro_sf=$1
+  _mr_ws_ro_onda=$2
+  jq -r \
+    --arg onda "$_mr_ws_ro_onda" \
+    '[.decisoes[]?
+       | select(.etapa == "model-routing")
+       | select(.escolha | type == "string" and startswith("model-override:"))
+       | select((.onda_id == $onda)
+                or ((.contexto // "") | test("[Oo]nda " + ($onda | sub("^onda-0*"; "")) + "([^0-9]|$)")))
+     ][0].escolha // empty' \
+    "$_mr_ws_ro_sf" 2>/dev/null | sed -n 's/^model-override://p'
+}
+
+_mr_cmd_wave_select() {
+  _mr_require_jq
+
+  _mr_ws_sdir=""
+  _mr_ws_etapa=""
+  _mr_ws_tasktext=""
+  _mr_ws_tasktext_set=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)
+        [ "$#" -ge 2 ] || _mr_die_usage "wave-select: --state-dir requer valor"
+        _mr_ws_sdir=$2; shift 2 ;;
+      --state-dir=*)
+        _mr_ws_sdir=${1#--state-dir=}; shift ;;
+      --etapa)
+        [ "$#" -ge 2 ] || _mr_die_usage "wave-select: --etapa requer valor"
+        _mr_ws_etapa=$2; shift 2 ;;
+      --etapa=*)
+        _mr_ws_etapa=${1#--etapa=}; shift ;;
+      --task-text)
+        [ "$#" -ge 2 ] || _mr_die_usage "wave-select: --task-text requer valor"
+        _mr_ws_tasktext=$2; _mr_ws_tasktext_set=1; shift 2 ;;
+      --task-text=*)
+        _mr_ws_tasktext=${1#--task-text=}; _mr_ws_tasktext_set=1; shift ;;
+      *)
+        _mr_die_usage "wave-select: flag desconhecida: $1" ;;
+    esac
+  done
+
+  [ -n "$_mr_ws_sdir" ] || _mr_die_usage "wave-select: --state-dir ausente"
+  _mr_ws_sf=$(_mr_state_file "$_mr_ws_sdir")
+  [ -f "$_mr_ws_sf" ] || _mr_die_usage "wave-select: state.json ausente em '$_mr_ws_sdir'"
+  [ -r "$_mr_ws_sf" ] || _mr_die_usage "wave-select: state.json sem leitura em '$_mr_ws_sdir'"
+
+  # ---- Passo 1: resolver fase (flag ou .etapa_corrente) ----
+  if [ -z "$_mr_ws_etapa" ]; then
+    _mr_ws_etapa=$(jq -r '.etapa_corrente // ""' "$_mr_ws_sf" 2>/dev/null) || _mr_ws_etapa=""
+  fi
+  # Fase vazia e tolerada -> lookup retorna manter-atual (FR-020).
+
+  # ---- Onda corrente (proveniencia da Decisao) ----
+  _mr_ws_onda=$(jq -r '(.ondas // []) | if length > 0 then .[-1].id else "init" end' \
+    "$_mr_ws_sf" 2>/dev/null) || _mr_ws_onda="init"
+  [ -n "$_mr_ws_onda" ] || _mr_ws_onda="init"
+  # Numero da onda para o contexto humano-legivel ("onda N").
+  _mr_ws_onda_n=$(printf '%s' "$_mr_ws_onda" | sed -n 's/^onda-0*\([0-9][0-9]*\)$/\1/p')
+  [ -n "$_mr_ws_onda_n" ] || _mr_ws_onda_n="$_mr_ws_onda"
+
+  # ---- Passo 2: idempotencia por onda (FR-008) ----
+  # Se ja existe DecisaoDeRoteamentoPorOnda para esta onda, ecoa o modelo
+  # ja aplicado e sai SEM registrar 2a Decisao. Lead distinto do legado.
+  _mr_ws_existing=$(
+    jq -r \
+      --arg onda "$_mr_ws_onda" \
+      '[.decisoes[]?
+         | select(.etapa == "model-routing")
+         | select((.contexto // "") | startswith("Selecao de modelo para onda "))
+         | select(.onda_id == $onda)
+       ][-1] // empty
+       | if . == null then empty
+         else ((.justificativa // "") | capture("aplicado=(?<m>[a-z-]+)").m // (.escolha | sub("^model:"; "")))
+         end' \
+      "$_mr_ws_sf" 2>/dev/null
+  ) || _mr_ws_existing=""
+  if [ -n "$_mr_ws_existing" ]; then
+    # Re-entrada (resume): ecoa o modelo ja decidido, nenhuma 2a Decisao.
+    _mr_ws_echo=$(_mr_ws_valid_model "$_mr_ws_existing")
+    [ -n "$_mr_ws_echo" ] || _mr_ws_echo="manter-atual"
+    printf '%s\n' "$_mr_ws_echo"
+    return 0
+  fi
+
+  # ---- Passo 2.4: escalonamento mid-onda (FR-015) ----
+  # Sinal de subestimacao gravado pelo orquestrador na onda anterior:
+  # campo .escalada_modelo_pendente == true. Se presente, a proxima onda
+  # parte de opus, independentemente do mapa-base da fase seguinte.
+  _mr_ws_escalada=$(jq -r '.escalada_modelo_pendente // false' "$_mr_ws_sf" 2>/dev/null) \
+    || _mr_ws_escalada="false"
+
+  # ---- Passo 4: mapa primario (FR-014) — base de TODA onda ----
+  _mr_ws_map_out=$(_mr_cmd_phase_model_lookup --fase "$_mr_ws_etapa" 2>/dev/null) \
+    || _mr_ws_map_out="|manter-atual"
+  _mr_ws_faixa=${_mr_ws_map_out%%|*}
+  _mr_ws_map_model=${_mr_ws_map_out#*|}
+  [ -n "$_mr_ws_map_model" ] || _mr_ws_map_model="manter-atual"
+
+  # Base inicial: modelo do mapa. Sugerido parte do mapa.
+  _mr_ws_sugerido="$_mr_ws_map_model"
+  _mr_ws_aplicado="$_mr_ws_map_model"
+  _mr_ws_origem="mapa"
+  _mr_ws_score=0
+  _mr_ws_nota=""
+  _mr_ws_refinou=0
+
+  # Escalada mid-onda tem precedencia sobre o mapa-base (FR-015), mas NAO
+  # sobre override do operador (que vem depois e vence tudo).
+  if [ "$_mr_ws_escalada" = "true" ]; then
+    _mr_ws_sugerido="opus"
+    _mr_ws_aplicado="opus"
+    _mr_ws_origem="mapa"
+    _mr_ws_nota="escalada-mid-onda: subestimacao sinalizada na onda anterior"
+  fi
+
+  # ---- Passo 5: refino (so execute-task + task-text) (FR-001/019) ----
+  # So roda quando NAO ha escalada pendente (escalada forca opus, refino
+  # nao deve rebaixar) e fase==execute-task e ha task-text.
+  if [ "$_mr_ws_escalada" != "true" ] \
+     && [ "$_mr_ws_etapa" = "execute-task" ] \
+     && [ "$_mr_ws_tasktext_set" = 1 ]; then
+    # FR-022: sanitizar UNTRUSTED antes de alimentar o classificador.
+    _mr_ws_clean=$(_mr_ws_sanitize_tasktext "$_mr_ws_tasktext")
+    # invoke roda em subshell isolada; nunca aborta (INV-1). Captura JSON.
+    _mr_ws_invoke_json=$(
+      "$0" invoke --subagent-type feature-00c-clarify-asker \
+        --etapa clarify --input-text "$_mr_ws_clean" 2>/dev/null
+    ) || _mr_ws_invoke_json=""
+    if [ -n "$_mr_ws_invoke_json" ]; then
+      # NOTA: NAO usar `.fallback // true` — jq trata `false` como
+      # "vazio" no operador //, devolvendo true para fallback=false.
+      # Usar if-then-else explicito sobre o valor booleano.
+      _mr_ws_inv_fb=$(printf '%s' "$_mr_ws_invoke_json" \
+        | jq -r 'if (.fallback == false) then "false" else "true" end' 2>/dev/null) \
+        || _mr_ws_inv_fb="true"
+      _mr_ws_inv_score=$(printf '%s' "$_mr_ws_invoke_json" | jq -r '.score_runtime // 0' 2>/dev/null) \
+        || _mr_ws_inv_score=0
+      _mr_ws_inv_model=$(printf '%s' "$_mr_ws_invoke_json" | jq -r '.modelo // ""' 2>/dev/null) \
+        || _mr_ws_inv_model=""
+      _mr_ws_inv_sinais=$(printf '%s' "$_mr_ws_invoke_json" | jq -r '.sinais_text // ""' 2>/dev/null) \
+        || _mr_ws_inv_sinais=""
+      # FR-019: so ajusta a faixa se score>=2 E nao-fallback E modelo
+      # sugerido pelo refino e valido no enum {haiku,sonnet,opus}.
+      _mr_ws_refined=$(_mr_ws_valid_override_model "$_mr_ws_inv_model")
+      case "$_mr_ws_inv_score" in
+        2|3)
+          if [ "$_mr_ws_inv_fb" = "false" ] && [ -n "$_mr_ws_refined" ]; then
+            _mr_ws_aplicado="$_mr_ws_refined"
+            _mr_ws_origem="refino"
+            # CAP em 2 (dec-007): o score_runtime do model-selector pode
+            # ser 3, mas a trava do state-decisions.sh register EXIGE
+            # --evidencia (>=20 chars, comando+output empirico) para
+            # score=3. Os sinais do classify.sh sao heuristica de
+            # token-matching, NAO sonda empirica (tsc/grep/test) — logo
+            # nao satisfazem o contrato de evidencia do score 3. O score
+            # registrado e capado em 2 ("evidencia razoavel"), que e o
+            # significado correto de um refino por catalogo de sinais.
+            _mr_ws_score=2
+            _mr_ws_refinou=1
+            # Sinais sao texto livre derivado de input UNTRUSTED -> scrub
+            # (FR-025) antes de virar nota auditavel.
+            _mr_ws_nota="refino: $(_mr_ws_scrub "$_mr_ws_inv_sinais")"
+          fi
+          ;;
+        *) : ;;  # score<2 -> mantem mapa (FR-019)
+      esac
+    fi
+    # Refino ausente/fallback/score<2 -> mapa prevalece (FR-006/019). No-op.
+  fi
+
+  # ---- Passo 3: override do operador (precedencia maxima) (FR-016/023) ----
+  _mr_ws_ovr_raw=$(_mr_ws_read_override "$_mr_ws_sf" "$_mr_ws_onda")
+  if [ -n "$_mr_ws_ovr_raw" ]; then
+    _mr_ws_ovr_valid=$(_mr_ws_valid_override_model "$_mr_ws_ovr_raw")
+    if [ -n "$_mr_ws_ovr_valid" ]; then
+      # Override valido vence mapa e refino (FR-016).
+      _mr_ws_aplicado="$_mr_ws_ovr_valid"
+      _mr_ws_origem="override-operador"
+      _mr_ws_nota="override-operador consumido (escopo: onda $_mr_ws_onda_n)"
+      _mr_ws_refinou=0  # override nao usa model-selector; sem record-skill
+    else
+      # FR-023: override invalido NUNCA propaga ao spawn. Cai em fallback
+      # para o modelo ja computado (mapa/refino) com nota auditavel. O
+      # modelo aplicado permanece o que veio do mapa/refino.
+      _mr_ws_origem="fallback"
+      _mr_ws_nota="override invalido rejeitado (fora do enum {haiku,sonnet,opus}): nao propagado ao spawn"
+    fi
+  fi
+
+  # ---- Passo 6: validar modelo aplicado contra enum (SC-007) ----
+  _mr_ws_final=$(_mr_ws_valid_model "$_mr_ws_aplicado")
+  if [ -z "$_mr_ws_final" ]; then
+    # Modelo invalido/desconhecido -> manter-atual (origem=fallback).
+    _mr_ws_final="manter-atual"
+    _mr_ws_aplicado="manter-atual"
+    _mr_ws_origem="fallback"
+    [ -n "$_mr_ws_nota" ] || _mr_ws_nota="modelo invalido -> manter-atual"
+  fi
+
+  # ---- Passo 7: registrar DecisaoDeRoteamentoPorOnda (FR-007) ----
+  # escolha = model:<aplicado> no sucesso; manter-atual no fallback puro.
+  if [ "$_mr_ws_final" = "manter-atual" ]; then
+    _mr_ws_escolha="manter-atual"
+  else
+    _mr_ws_escolha="model:$_mr_ws_final"
+  fi
+
+  # justificativa com tokens parseaveis (dec-006) + nota scrubbed.
+  # Formato fixo: "sugerido=<m> aplicado=<m> origem=<o> | <nota>".
+  _mr_ws_just_prefix="sugerido=$_mr_ws_sugerido aplicado=$_mr_ws_aplicado origem=$_mr_ws_origem"
+  if [ -n "$_mr_ws_nota" ]; then
+    _mr_ws_just="$_mr_ws_just_prefix | $_mr_ws_nota"
+  else
+    _mr_ws_just="$_mr_ws_just_prefix | faixa=$_mr_ws_faixa fase=$_mr_ws_etapa (mapa primario)"
+  fi
+  # Garantia de >=20 chars (validacao do register) — o prefixo ja excede.
+
+  _mr_ws_ctx="Selecao de modelo para onda $_mr_ws_onda_n (fase $_mr_ws_etapa)"
+
+  _mr_ws_decscript="${0%/*}/state-decisions.sh"
+  _mr_ws_ondascript="${0%/*}/state-ondas.sh"
+
+  # Registrar. score 3 exigiria evidencia; usamos 0 ou 2 (refino) -> ok.
+  _mr_ws_dec_id=$(
+    sh "$_mr_ws_decscript" register --state-dir "$_mr_ws_sdir" \
+      --agente "agente-00c-feature-orchestrator" --etapa "model-routing" \
+      --contexto "$_mr_ws_ctx" \
+      --opcoes '["haiku","sonnet","opus","manter-atual"]' \
+      --escolha "$_mr_ws_escolha" \
+      --justificativa "$_mr_ws_just" \
+      --score "$_mr_ws_score" 2>/dev/null
+  ) || _mr_ws_dec_id=""
+
+  # ---- record-skill (par I3) somente quando o refino invocou model-selector ----
+  # record-skill emite uma contagem em stdout; suprimimos (>/dev/null) para
+  # nao poluir o stdout do wave-select, que DEVE conter apenas o modelo.
+  if [ "$_mr_ws_refinou" = "1" ] && [ -n "$_mr_ws_dec_id" ]; then
+    sh "$_mr_ws_ondascript" record-skill --state-dir "$_mr_ws_sdir" \
+      --skill model-selector --decisao-id "$_mr_ws_dec_id" >/dev/null 2>&1 || :
+  fi
+
+  # ---- Passo 8: emitir modelo aplicado ----
+  printf '%s\n' "$_mr_ws_final"
+  return 0
+}
+
 # ---------- Dispatch ----------
 #
 # F4.5 — sourcing guard: testes unitarios do `tests/test_model-routing.sh`
@@ -1105,6 +1470,8 @@ USO:
   model-routing.sh idempotent-check  --state-dir DIR --onda-id ID
                                      --subagent-type TYPE
   model-routing.sh phase-model-lookup --fase FASE
+  model-routing.sh wave-select       --state-dir DIR [--etapa FASE]
+                                     [--task-text DESC]
 
 Enum --subagent-type:
   agente-00c-clarify-asker | agente-00c-clarify-answerer |
@@ -1138,6 +1505,9 @@ case "$_MR_SUBCMD" in
     ;;
   phase-model-lookup)
     _mr_cmd_phase_model_lookup "$@"
+    ;;
+  wave-select)
+    _mr_cmd_wave_select "$@"
     ;;
   -h|--help|help)
     # Reusa o bloco HELP do dispatch acima.

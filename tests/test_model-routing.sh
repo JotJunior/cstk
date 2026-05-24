@@ -2161,4 +2161,289 @@ scenario_fase1_lookup_read_only_sem_side_effect() {
   assert_no_side_effect || return 1
 }
 
+# ============================================================================
+# Feature model-routing-por-onda — FASE 2 (wave-select: selecao por onda)
+# Ref: docs/specs/model-routing-por-onda/contracts/wave-select.md §wave-select
+#      docs/specs/model-routing-por-onda/data-model.md §DecisaoDeRoteamentoPorOnda
+#      docs/specs/model-routing-por-onda/quickstart.md (cenarios C1..C12)
+#      docs/specs/model-routing-por-onda/spec.md FR-001/002/005/006/007/008/
+#        015/016/019/022/023/025
+#      docs/specs/model-routing-por-onda/tasks.md 2.1.5, 2.2.4, 2.3.5, 2.4.3
+# ============================================================================
+
+# Cria um state.json minimo para wave-select. $1=dir, $2=etapa,
+# (resto via jq direto nos cenarios que precisam de override/escalada).
+_ws_state() {
+  _ws_dir=$1
+  _ws_etapa=$2
+  mkdir -p "$_ws_dir" || return 2
+  jq -n --arg e "$_ws_etapa" '{
+    etapa_corrente: $e,
+    ondas: [{ id: "onda-007", skills_invoked: [] }],
+    metricas_acumuladas: {},
+    decisoes: []
+  }' > "$_ws_dir/state.json"
+}
+
+# Stub classify.sh com modelo/score parametrizados. $1=arquivo, $2=modelo,
+# $3=score(0..2), $4=faixa.
+_ws_make_stub() {
+  _ws_sf=$1; _ws_sm=$2; _ws_ss=$3; _ws_sfa=$4
+  cat > "$_ws_sf" <<EOF
+#!/bin/sh
+cat <<OUT
+## Modelo Sugerido
+
+$_ws_sm
+
+## Score
+
+$_ws_ss
+
+${_ws_sfa}=3 faixa=$_ws_sfa
+score=$_ws_ss modelo=$_ws_sm alternativa=sonnet
+
+## Justificativa
+
+sinais detectados: stub $_ws_sfa.
+
+## Alternativa
+
+sonnet
+OUT
+EOF
+  chmod +x "$_ws_sf"
+}
+
+# ---- C1: mapa primario decide onda mecanica (review-task -> haiku) ----
+scenario_ws_c1_mapa_review_task_haiku() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c1" review-task || return 2
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c1"
+  assert_exit 0 sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c1" || return 1
+  # Apos 2 invocacoes idempotentes, stdout permanece haiku.
+  [ "$_CAPTURED_STDOUT" = "haiku" ] || { _fail "C1 stdout=haiku" "$_CAPTURED_STDOUT"; return 1; }
+  # Decisao com origem=mapa, sugerido=aplicado=haiku.
+  jq -e '
+    [.decisoes[] | select(.contexto | startswith("Selecao de modelo para onda "))][0]
+    | (.escolha == "model:haiku")
+      and (.justificativa | test("sugerido=haiku aplicado=haiku origem=mapa"))
+      and (.score_justificativa == 0)
+  ' "$TMPDIR_TEST/c1/state.json" >/dev/null 2>&1 \
+    || { _fail "C1 Decisao mapa haiku" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c1/state.json")"; return 1; }
+}
+
+# ---- C2: onda de raciocinio mantem opus (plan -> opus) ----
+scenario_ws_c2_mapa_plan_opus() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c2" plan || return 2
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c2"
+  [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C2 stdout=opus" "$_CAPTURED_STDOUT"; return 1; }
+  jq -e '
+    .decisoes[-1]
+    | (.escolha == "model:opus")
+      and (.justificativa | test("aplicado=opus origem=mapa"))
+  ' "$TMPDIR_TEST/c2/state.json" >/dev/null 2>&1 \
+    || { _fail "C2 Decisao mapa opus" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c2/state.json")"; return 1; }
+}
+
+# ---- C3: refino eleva execute-task profundo (sonnet -> opus, origem=refino) ----
+scenario_ws_c3_refino_eleva_opus() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c3" execute-task || return 2
+  _ws_stub="$TMPDIR_TEST/stub_opus.sh"
+  _ws_make_stub "$_ws_stub" opus 2 profunda
+  MODEL_SELECTOR_SCRIPT="$_ws_stub" capture sh "$SCRIPT" wave-select \
+    --state-dir "$TMPDIR_TEST/c3" --task-text "refatore e arquitete o modulo"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "C3 exit=0" "$_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C3 stdout=opus" "$_CAPTURED_STDOUT"; return 1; }
+  # origem=refino, sugerido=sonnet, aplicado=opus, score 2, record-skill presente.
+  jq -e '
+    .decisoes[-1]
+    | (.escolha == "model:opus")
+      and (.justificativa | test("sugerido=sonnet aplicado=opus origem=refino"))
+      and (.score_justificativa == 2)
+  ' "$TMPDIR_TEST/c3/state.json" >/dev/null 2>&1 \
+    || { _fail "C3 Decisao refino" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c3/state.json")"; return 1; }
+  jq -e '
+    [.ondas[].skills_invoked[]? | select(.skill == "model-selector")] | length == 1
+  ' "$TMPDIR_TEST/c3/state.json" >/dev/null 2>&1 \
+    || { _fail "C3 record-skill model-selector (par I3)" "$(jq -c '.ondas[-1].skills_invoked' "$TMPDIR_TEST/c3/state.json")"; return 1; }
+}
+
+# ---- C4: refino sem sinal mantem o mapa (score 0 -> sonnet) ----
+scenario_ws_c4_refino_sem_sinal_mantem_mapa() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c4" execute-task || return 2
+  _ws_stub="$TMPDIR_TEST/stub_zero.sh"
+  _ws_make_stub "$_ws_stub" manter-atual 0 indeterminado
+  MODEL_SELECTOR_SCRIPT="$_ws_stub" capture sh "$SCRIPT" wave-select \
+    --state-dir "$TMPDIR_TEST/c4" --task-text "ajustar texto neutro"
+  [ "$_CAPTURED_STDOUT" = "sonnet" ] || { _fail "C4 stdout=sonnet (mapa)" "$_CAPTURED_STDOUT"; return 1; }
+  jq -e '
+    .decisoes[-1] | (.justificativa | test("aplicado=sonnet origem=mapa"))
+  ' "$TMPDIR_TEST/c4/state.json" >/dev/null 2>&1 \
+    || { _fail "C4 origem=mapa (refino nao alterou)" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c4/state.json")"; return 1; }
+  # Sem record-skill quando refino nao alterou (score<2).
+  jq -e '
+    [.ondas[].skills_invoked[]? | select(.skill == "model-selector")] | length == 0
+  ' "$TMPDIR_TEST/c4/state.json" >/dev/null 2>&1 \
+    || { _fail "C4 sem record-skill (refino no-op)" "$(jq -c '.ondas[-1].skills_invoked' "$TMPDIR_TEST/c4/state.json")"; return 1; }
+}
+
+# ---- C5: override do operador vence (FR-016) ----
+scenario_ws_c5_override_vence() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  mkdir -p "$TMPDIR_TEST/c5"
+  jq -n '{
+    etapa_corrente: "plan",
+    ondas: [{ id: "onda-007", skills_invoked: [] }],
+    metricas_acumuladas: {},
+    decisoes: [{
+      id: "dec-001", onda_id: "onda-007", etapa: "model-routing",
+      contexto: "Override de modelo para onda 7", escolha: "model-override:haiku"
+    }]
+  }' > "$TMPDIR_TEST/c5/state.json"
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c5"
+  [ "$_CAPTURED_STDOUT" = "haiku" ] || { _fail "C5 stdout=haiku (override vence opus)" "$_CAPTURED_STDOUT"; return 1; }
+  jq -e '
+    .decisoes[-1]
+    | (.escolha == "model:haiku")
+      and (.justificativa | test("sugerido=opus aplicado=haiku origem=override-operador"))
+  ' "$TMPDIR_TEST/c5/state.json" >/dev/null 2>&1 \
+    || { _fail "C5 Decisao override" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c5/state.json")"; return 1; }
+}
+
+# ---- C6: fallback gracioso (model-selector ausente) ----
+scenario_ws_c6_fallback_gracioso() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c6" execute-task || return 2
+  # MODEL_SELECTOR_DISABLED forca tool-skill-unavailable no invoke.
+  MODEL_SELECTOR_DISABLED=1 capture sh "$SCRIPT" wave-select \
+    --state-dir "$TMPDIR_TEST/c6" --task-text "qualquer descricao"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "C6 exit=0 (nunca aborta)" "$_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "sonnet" ] || { _fail "C6 stdout=sonnet (piso mapa)" "$_CAPTURED_STDOUT"; return 1; }
+  # Sem record-skill orfao (refino nao rodou de fato).
+  jq -e '
+    [.ondas[].skills_invoked[]? | select(.skill == "model-selector")] | length == 0
+  ' "$TMPDIR_TEST/c6/state.json" >/dev/null 2>&1 \
+    || { _fail "C6 sem record-skill orfao" "$(jq -c '.ondas[-1].skills_invoked' "$TMPDIR_TEST/c6/state.json")"; return 1; }
+}
+
+# ---- C7: idempotencia na retomada (FR-008) ----
+scenario_ws_c7_idempotencia() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c7" plan || return 2
+  # 1a invocacao registra a Decisao.
+  _out1=$(sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c7")
+  _n1=$(jq '.decisoes | length' "$TMPDIR_TEST/c7/state.json")
+  # 2a invocacao (simula resume): NENHUMA 2a Decisao.
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c7"
+  _n2=$(jq '.decisoes | length' "$TMPDIR_TEST/c7/state.json")
+  [ "$_CAPTURED_STDOUT" = "$_out1" ] || { _fail "C7 stdout estavel" "1a=$_out1 2a=$_CAPTURED_STDOUT"; return 1; }
+  [ "$_n1" = "$_n2" ] || { _fail "C7 nenhuma 2a Decisao" "n1=$_n1 n2=$_n2"; return 1; }
+}
+
+# ---- C8: manter-atual (fase nao-mapeada) ----
+scenario_ws_c8_manter_atual_fase_nao_mapeada() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c8" fase-inexistente-xyz || return 2
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c8"
+  [ "$_CAPTURED_STDOUT" = "manter-atual" ] || { _fail "C8 stdout=manter-atual" "$_CAPTURED_STDOUT"; return 1; }
+  jq -e '
+    .decisoes[-1] | (.escolha == "manter-atual")
+  ' "$TMPDIR_TEST/c8/state.json" >/dev/null 2>&1 \
+    || { _fail "C8 escolha=manter-atual" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c8/state.json")"; return 1; }
+}
+
+# ---- C9: escalonamento mid-onda (FR-015) ----
+scenario_ws_c9_escalada_mid_onda_opus() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  mkdir -p "$TMPDIR_TEST/c9"
+  # Fase barata (review-task -> haiku no mapa), MAS escalada pendente -> opus.
+  jq -n '{
+    etapa_corrente: "review-task",
+    escalada_modelo_pendente: true,
+    ondas: [{ id: "onda-007", skills_invoked: [] }],
+    metricas_acumuladas: {},
+    decisoes: []
+  }' > "$TMPDIR_TEST/c9/state.json"
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c9"
+  [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C9 stdout=opus (escalada vence mapa)" "$_CAPTURED_STDOUT"; return 1; }
+  jq -e '
+    .decisoes[-1] | (.justificativa | test("escalada-mid-onda"))
+  ' "$TMPDIR_TEST/c9/state.json" >/dev/null 2>&1 \
+    || { _fail "C9 nota de escalada" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c9/state.json")"; return 1; }
+}
+
+# ---- C11: override invalido cai em fallback (FR-023) ----
+scenario_ws_c11_override_invalido_fallback() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  mkdir -p "$TMPDIR_TEST/c11"
+  jq -n '{
+    etapa_corrente: "plan",
+    ondas: [{ id: "onda-007", skills_invoked: [] }],
+    metricas_acumuladas: {},
+    decisoes: [{
+      id: "dec-001", onda_id: "onda-007", etapa: "model-routing",
+      contexto: "Override de modelo para onda 7", escolha: "model-override:gpt4"
+    }]
+  }' > "$TMPDIR_TEST/c11/state.json"
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c11"
+  # Override 'gpt4' fora do enum -> rejeitado, cai no mapa (plan -> opus).
+  [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C11 stdout=opus (override invalido -> mapa)" "$_CAPTURED_STDOUT"; return 1; }
+  jq -e '
+    .decisoes[-1]
+    | (.justificativa | test("origem=fallback"))
+      and (.justificativa | test("override invalido"))
+  ' "$TMPDIR_TEST/c11/state.json" >/dev/null 2>&1 \
+    || { _fail "C11 origem=fallback + nota override invalido" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c11/state.json")"; return 1; }
+  # 'gpt4' NUNCA propagado ao stdout (nada invalido vaza ao spawn).
+  case "$_CAPTURED_STDOUT" in
+    haiku|sonnet|opus|manter-atual) : ;;
+    *) _fail "C11 stdout no enum" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+# ---- C12: task-text untrusted sanitizado (FR-022) ----
+scenario_ws_c12_tasktext_untrusted_sanitizado() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c12" execute-task || return 2
+  # Payload hostil: metacaractere shell + NUL (octal \000) + 10KB de texto.
+  # Marker de injecao: se algum eval/expansao rodar, /tmp seria tocado.
+  _ws_pad=$(head -c 10000 /dev/zero | tr '\000' 'A')
+  _ws_payload=$(printf '"; touch %s/PWNED_c12 ; echo \000%s' "$TMPDIR_TEST" "$_ws_pad")
+  MODEL_SELECTOR_DISABLED=1 capture sh "$SCRIPT" wave-select \
+    --state-dir "$TMPDIR_TEST/c12" --task-text "$_ws_payload"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "C12 exit=0 (nunca aborta)" "$_CAPTURED_EXIT"; return 1; }
+  # Nenhuma injecao: marker NAO criado.
+  [ ! -f "$TMPDIR_TEST/PWNED_c12" ] || { _fail "C12 sem injecao de comando" "marker PWNED_c12 foi criado!"; return 1; }
+  # Degradou para o mapa (model-selector disabled) -> sonnet, sem abortar.
+  [ "$_CAPTURED_STDOUT" = "sonnet" ] || { _fail "C12 stdout=sonnet (degradacao mapa)" "$_CAPTURED_STDOUT"; return 1; }
+}
+
+# ---- wave-select: uso incorreto (sem --state-dir) -> exit 2 ----
+scenario_ws_sem_state_dir_exit_2() {
+  assert_exit 2 sh "$SCRIPT" wave-select || return 1
+  capture sh "$SCRIPT" wave-select
+  assert_stderr_contains "--state-dir ausente" || return 1
+}
+
+# ---- wave-select: state.json ausente -> exit 2 ----
+scenario_ws_state_ausente_exit_2() {
+  mktemp_test || return 2
+  assert_exit 2 sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST" || return 1
+}
+
 run_all_scenarios "$0"
