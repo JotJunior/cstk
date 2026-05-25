@@ -198,11 +198,19 @@ Grao = task por execucao. Depende de instrumentacao previa dos orquestradores
 | Campo | Tipo | Origem (campo NOVO no state.json) | Filtro segredo | Notas |
 |-------|------|-----------------------------------|----------------|-------|
 | task_id | TEXT NOT NULL | `.tasks[].task_id` | nao | = source_id |
+| titulo | TEXT | `.tasks[].titulo` | **sim** | adicionado em schema v3; UX do painel; unico texto livre da camada B |
 | outcome | TEXT | `.tasks[].outcome` | nao | `pass` \| `fail` |
 | testes_rodados | INTEGER | `.tasks[].testes_rodados` | nao | |
 | testes_passados | INTEGER | `.tasks[].testes_passados` | nao | |
 | lint_ok | INTEGER | `.tasks[].lint_ok` | nao | booleano 0/1 |
 | arquivos_tocados | INTEGER | `.tasks[].arquivos_tocados | length` | nao | contagem |
+
+> **Adendo schema v3** (pos-arquivamento): a coluna `titulo` foi acrescentada
+> para melhorar a visualizacao no painel (`cstk-panel`). Migracao idempotente
+> via `ALTER TABLE tasks ADD COLUMN titulo TEXT` em `recall_apply_schema`
+> (indices v2 ganham a coluna sem reindex; DBs frescos ja nascem com ela).
+> `titulo` e texto livre → passa por `secrets-filter.sh` na ingestao (FR-017).
+> Retro-compat: `.tasks[].titulo` ausente → `""`.
 
 **Chave natural**: `(project, feature, execucao_id, task_id)` mapeada para
 `UNIQUE(project, feature, wave, source_id)` com `wave = <wave_id da task>`,
@@ -219,6 +227,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   execucao_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
+  titulo TEXT,                 -- schema v3 (pos-arquivamento)
   outcome TEXT,
   testes_rodados INTEGER,
   testes_passados INTEGER,
@@ -233,10 +242,28 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 ## Entity: Evento (camada B — US3)
 
-Timeline cronologica. Conjunto minimo fechado de tipos definido em clarify Q3
+Timeline cronologica. Conjunto minimo de tipos definido em clarify Q3
 (dec-007): `wave_retry`, `lock_contention`, `validation_failed`, `schedule_wait`.
 Extensivel sem mudanca de schema (event_type e coluna textual restrita por
-convencao).
+convencao; a ingestao NAO valida allowlist).
+
+> **Adendo pos-arquivamento — `recall_consulted`**: tipo adicionado para
+> instrumentar o read-back loop (`cstk recall --context`). Os orquestradores
+> gravam um evento `recall_consulted` a CADA consulta ao historico no inicio
+> de specify/plan — inclusive quando nada e retornado (`hits=0`), caso que a
+> Decisao `read-back PRE-DECISAO` NAO cobre (so registrada com K>0, FR-017).
+> Metrica "quantas vezes o historico foi consultado pelo orquestrador":
+>
+> ```sql
+> -- total por projeto/feature/execucao
+> SELECT project, feature, execucao_id, count(*) AS consultas
+> FROM events WHERE event_type='recall_consulted'
+> GROUP BY project, feature, execucao_id;
+> -- produtivas vs vazias (descricao carrega "etapa=... hits=N")
+> SELECT count(*) FILTER (WHERE descricao LIKE '%hits=0') AS vazias,
+>        count(*) FILTER (WHERE descricao NOT LIKE '%hits=0') AS produtivas
+> FROM events WHERE event_type='recall_consulted';
+> ```
 
 | Campo | Tipo | Origem (campo NOVO no state.json) | Filtro segredo | Notas |
 |-------|------|-----------------------------------|----------------|-------|

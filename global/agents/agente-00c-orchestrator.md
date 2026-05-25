@@ -392,10 +392,29 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
              --exclude-feature "$EXCLUDE_FEATURE" --max-bytes 2000 2>/dev/null) \
      || BLOCO=""
 
-   # 4. Se K>0: injetar BLOCO no contexto + registrar Decisao (FR-016).
-   #    K=0 => no-op, SEM Decisao dedicada (FR-017 — sem ruido).
+   # 4. Computar K (achados injetados) SEMPRE — K=0 quando BLOCO vazio.
    if [ -n "$BLOCO" ]; then
      K=$(printf '%s\n' "$BLOCO" | grep -c '^- ')
+   else
+     K=0
+   fi
+
+   # 4.bis. Registrar a CONSULTA ao historico como evento `recall_consulted`
+   #    (camada B, .eventos[]) — SEMPRE que o read-back roda, inclusive K=0.
+   #    Metrica "quantas vezes o historico foi consultado pelo orquestrador" =
+   #    COUNT(*) FROM events WHERE event_type='recall_consulted'. `hits=$K`
+   #    permite separar consultas produtivas (K>0) de vazias (K=0).
+   #    Best-effort (|| :): o read-back loop NUNCA gateia/aborta/atrasa a onda.
+   TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   EV=$(jq -nc --arg ts "$TS" --arg d "etapa=<specify|plan> hits=$K" \
+          '{event_type:"recall_consulted", timestamp:$ts, descricao:$d}')
+   CUR=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" --field '.eventos // []' 2>/dev/null || echo '[]')
+   NEW=$(printf '%s' "$CUR" | jq -c --argjson e "$EV" '. + [$e]')
+   "$RUNTIME_SCRIPTS"/state-rw.sh set --state-dir "$SD" --field '.eventos' --value "$NEW" 2>/dev/null || :
+
+   # 5. Se K>0: injetar BLOCO no contexto + registrar Decisao (FR-016).
+   #    K=0 => no-op de injecao, SEM Decisao dedicada (FR-017 — sem ruido).
+   if [ "$K" -gt 0 ]; then
      "$RUNTIME_SCRIPTS"/state-decisions.sh register --state-dir "$SD" \
        --agente "agente-00c-orchestrator" --etapa "<specify|plan>" \
        --contexto "read-back PRE-DECISAO: K=$K achados injetados (anti-eco feature=$EXCLUDE_FEATURE)" \
@@ -465,6 +484,7 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    | Campo | Tipo | Obrigatorio | Notas |
    |-------|------|-------------|-------|
    | `task_id` | string | sim | identificador da task (ex: `4.1`) |
+   | `titulo` | string | sim | titulo descritivo da task (do heading em `tasks.md`); UX do painel |
    | `wave_id` | string | sim | onda em que a task rodou (proveniencia) |
    | `outcome` | enum `pass`\|`fail` | sim | conjunto fechado |
    | `testes_rodados` | int | sim | 0 se nao aplicavel |
@@ -473,20 +493,24 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    | `arquivos_tocados` | string[] | sim | paths relativos; contagem derivada na ingestao |
 
    **Chave natural** (clarify Q2 / dec-006): `(project, feature, execucao_id, task_id)`.
+   `titulo` e o texto descritivo do heading `### {N}.{M} {Titulo} [crit]` da
+   task em `tasks.md`; e o UNICO campo de texto livre da camada B e passa por
+   `secrets-filter.sh` na ingestao (recall.sh). Se indisponivel, gravar `""`.
 
    Escrita via runtime ja auditado (contract layer-b §5) — NAO inventar
    novo mecanismo:
 
    ```bash
    # Compor a entrada da task com jq (arquivos_tocados via git diff da onda).
-   # WAVE_ID = state-ondas.sh current-id; TASK_ID = task corrente.
+   # WAVE_ID = state-ondas.sh current-id; TASK_ID = task corrente;
+   # TASK_TITULO = titulo do heading da task em tasks.md ("" se nao resolvido).
    ARQUIVOS=$(git -C "$PAP" diff --name-only HEAD~1..HEAD 2>/dev/null \
                | jq -R . | jq -s . 2>/dev/null || echo '[]')
    ENTRY=$(jq -nc \
-     --arg tid "$TASK_ID" --arg wid "$WAVE_ID" --arg oc "$OUTCOME" \
+     --arg tid "$TASK_ID" --arg ttl "$TASK_TITULO" --arg wid "$WAVE_ID" --arg oc "$OUTCOME" \
      --argjson tr "$TESTES_RODADOS" --argjson tp "$TESTES_PASSADOS" \
      --argjson lk "$LINT_OK" --argjson af "$ARQUIVOS" \
-     '{task_id:$tid, wave_id:$wid, outcome:$oc,
+     '{task_id:$tid, titulo:$ttl, wave_id:$wid, outcome:$oc,
        testes_rodados:$tr, testes_passados:$tp, lint_ok:$lk,
        arquivos_tocados:$af}')
 
@@ -506,10 +530,11 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
 
    #### Campo `.eventos[]` — timeline cronologica (FR-020)
 
-   Conjunto MVP FECHADO de 4 tipos (clarify Q3 / dec-007), extensivel sem
-   mudanca de schema (event_type e texto livre restrito por convencao).
-   Cada evento: `event_type` (do conjunto), `timestamp` (ISO 8601),
-   `descricao` (texto livre opcional → scrubbed na ingestao).
+   Conjunto MVP de 4 tipos (clarify Q3 / dec-007) + `recall_consulted`
+   (adicionado depois), extensivel sem mudanca de schema (event_type e texto
+   livre restrito por convencao; a ingestao NAO valida allowlist). Cada
+   evento: `event_type` (do conjunto), `timestamp` (ISO 8601), `descricao`
+   (texto livre opcional → scrubbed na ingestao).
 
    | `event_type` (MVP) | Quando gravar (ponto exato do Loop principal) |
    |--------------------|------------------------------------------------|
@@ -517,11 +542,12 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    | `validation_failed` | passo 1: `state-validate.sh` OU `sha256-verify` reprovou |
    | `wave_retry` | falha de onda seguida de retry (nova tentativa da mesma etapa) |
    | `schedule_wait` | fim de onda emitindo `Schedule intent` aguardando wakeup |
+   | `recall_consulted` | passo 5.d.bis (read-back loop): toda consulta a `cstk recall --context` em specify/plan, inclusive K=0 |
 
    Escrita (mesmo caminho auditado; gravar no ponto exato do Loop acima):
 
    ```bash
-   # event_type ∈ {lock_contention, validation_failed, wave_retry, schedule_wait}
+   # event_type ∈ {lock_contention, validation_failed, wave_retry, schedule_wait, recall_consulted}
    TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
    EV=$(jq -nc --arg t "$EVENT_TYPE" --arg ts "$TS" --arg d "$DESCRICAO" \
           '{event_type:$t, timestamp:$ts} + (if $d == "" then {} else {descricao:$d} end)')

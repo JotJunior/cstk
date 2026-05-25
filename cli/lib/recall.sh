@@ -69,7 +69,7 @@ RECALL_EXIT_USAGE=2
 # alert_signals (camada A) e tasks, events (camada B). Bump idempotente:
 # CREATE TABLE IF NOT EXISTS + INSERT ... ON CONFLICT no schema_meta — DB v1
 # pre-existente ganha as tabelas novas sem perda de dado (FR-007).
-RECALL_SCHEMA_VERSION=2
+RECALL_SCHEMA_VERSION=3
 RECALL_TYPE_ENUM="decision bloqueio retro skill"
 
 # ==== Resolucao do caminho do DB ====
@@ -460,6 +460,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   execucao_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
+  titulo TEXT,
   outcome TEXT,
   testes_rodados INTEGER,
   testes_passados INTEGER,
@@ -517,7 +518,23 @@ recall_ensure_db_dir() {
 # escritas e podem contender com outra ingestao concorrente no mesmo DB
 # fresco. Retorna 0 em sucesso, 1 se esgotou retries (caller degrada).
 recall_apply_schema() {
-  recall_apply_sql_with_retry "$1" "$(recall_schema_ddl)"
+  # Migracao idempotente v2->v3: tasks.titulo. CREATE TABLE IF NOT EXISTS NAO
+  # altera uma tabela ja criada, entao indices v2 pre-existentes nao ganhariam
+  # a coluna pelo DDL — o INSERT seguinte falharia ("no such column"). Em db
+  # fresco (reindex faz rm -f antes) o arquivo nem existe aqui: o DDL ja cria
+  # tasks com titulo e o check pula. SQLite nao tem ADD COLUMN IF NOT EXISTS,
+  # logo inspecionamos PRAGMA table_info e so emitimos o ALTER quando a coluna
+  # falta. Vai no mesmo SQL do DDL para herdar o retry/backoff (FR-016).
+  _as_extra=""
+  if [ -f "$1" ]; then
+    _as_cols=$(printf 'PRAGMA table_info(tasks);\n' | sqlite3 -- "$1" 2>/dev/null) || _as_cols=""
+    case "$_as_cols" in
+      ''|*'|titulo|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
+      *) _as_extra='
+ALTER TABLE tasks ADD COLUMN titulo TEXT;' ;;
+    esac
+  fi
+  recall_apply_sql_with_retry "$1" "$(recall_schema_ddl)$_as_extra"
 }
 
 # recall_run_sql DB_PATH SQL_TEXT -> aplica pragmas + SQL via sqlite3 (escrita).
@@ -1084,12 +1101,14 @@ VALUES('$(sql_escape "$_f_skn")','skill','$(sql_escape "$_isj_project")','$(sql_
   fi
 
   # ---- tasks (camada B; grao = task por execucao) ----
-  # Campos NOVOS do state.json: task_id, wave_id, outcome, testes_rodados,
+  # Campos do state.json: task_id, wave_id, titulo, outcome, testes_rodados,
   # testes_passados, lint_ok (bool -> 0/1), arquivos_tocados (array -> length).
-  # Chave natural: wave=<wave_id da task>, source_id=task_id. Sem texto livre
-  # (FR-006: todos os campos estruturados/numericos; nada passa por scrub).
-  # Tasks NAO alimentam knowledge_fts (metrica, nao corpo pesquisavel).
-  # Retro-compat (FR-022/SC-009): .tasks ausente -> .tasks[]? // empty -> 0 linhas.
+  # Chave natural: wave=<wave_id da task>, source_id=task_id. So `titulo` e
+  # texto livre (UX do painel) e passa por secrets-filter (FR-017); os demais
+  # campos sao estruturados/numericos. Tasks NAO alimentam knowledge_fts
+  # (metrica, nao corpo pesquisavel).
+  # Retro-compat (FR-022/SC-009): .tasks ausente -> .tasks[]? // empty -> 0 linhas;
+  # .titulo ausente -> "" (indices v2 e states antigos seguem ingeridos).
   _isj_n_task=0
   _isj_task_lines=$(jq -r '
     (.tasks[]? // empty)
@@ -1101,7 +1120,8 @@ VALUES('$(sql_escape "$_f_skn")','skill','$(sql_escape "$_isj_project")','$(sql_
        (if (.lint_ok == true) then "1"
         elif (.lint_ok == false) then "0"
         else "" end),
-       (((.arquivos_tocados // []) | length)|tostring)]
+       (((.arquivos_tocados // []) | length)|tostring),
+       (.titulo // "")]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_task_lines=""
   if [ -n "$_isj_task_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -1115,23 +1135,27 @@ VALUES('$(sql_escape "$_f_skn")','skill','$(sql_escape "$_isj_project")','$(sql_
       _f_tp=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
       _f_tlo=$(printf '%s' "$_isj_decoded" | jq -r '.[5]' 2>/dev/null | strip_nul)
       _f_tat=$(printf '%s' "$_isj_decoded" | jq -r '.[6]' 2>/dev/null | strip_nul)
+      _f_ttit=$(printf '%s' "$_isj_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
       # task_id e a chave natural; sem id -> pula (FR-019).
       [ -n "$_f_tid" ] || continue
+      _f_ttit=$(recall_scrub "$_f_ttit")  # unico campo texto livre (FR-017)
       _isj_tr_sql=$(recall_int_or_null "$_f_tr")
       _isj_tp_sql=$(recall_int_or_null "$_f_tp")
       _isj_tlo_sql=$(recall_int_or_null "$_f_tlo")
       _isj_tat_sql=$(recall_int_or_null "$_f_tat")
       _isj_sql="$_isj_sql
-INSERT INTO tasks(project,feature,wave,execucao_id,source_ts,source_id,outcome,testes_rodados,testes_passados,lint_ok,arquivos_tocados,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_twid")','$(sql_escape "$_isj_exec_id")','','$(sql_escape "$_f_tid")','$(sql_escape "$_f_toc")',$_isj_tr_sql,$_isj_tp_sql,$_isj_tlo_sql,$_isj_tat_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,outcome=excluded.outcome,testes_rodados=excluded.testes_rodados,testes_passados=excluded.testes_passados,lint_ok=excluded.lint_ok,arquivos_tocados=excluded.arquivos_tocados,ingested_at=excluded.ingested_at;"
+INSERT INTO tasks(project,feature,wave,execucao_id,source_ts,source_id,titulo,outcome,testes_rodados,testes_passados,lint_ok,arquivos_tocados,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_twid")','$(sql_escape "$_isj_exec_id")','','$(sql_escape "$_f_tid")','$(sql_escape "$_f_ttit")','$(sql_escape "$_f_toc")',$_isj_tr_sql,$_isj_tp_sql,$_isj_tlo_sql,$_isj_tat_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,titulo=excluded.titulo,outcome=excluded.outcome,testes_rodados=excluded.testes_rodados,testes_passados=excluded.testes_passados,lint_ok=excluded.lint_ok,arquivos_tocados=excluded.arquivos_tocados,ingested_at=excluded.ingested_at;"
       _isj_n_task=$((_isj_n_task + 1))
     done
     IFS="$_isj_OLDIFS"
   fi
 
   # ---- events (camada B; grao = evento; timeline cronologica) ----
-  # Campos NOVOS: event_type (conjunto MVP fechado), timestamp (ISO),
+  # Campos NOVOS: event_type (texto livre por convencao — SEM allowlist aqui;
+  # MVP {lock_contention,validation_failed,wave_retry,schedule_wait} +
+  # recall_consulted do read-back loop), timestamp (ISO),
   # descricao (texto livre OPCIONAL -> scrubbed FR-006). wave='-' (timeline
   # e grao de execucao), source_id=<event_type>:<timestamp> (chave natural),
   # source_ts=timestamp (ordem cronologica consultavel via ORDER BY source_ts).

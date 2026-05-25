@@ -541,9 +541,9 @@ SQL
   # Aplica schema v2 via funcao real (caminho de recall_apply_schema).
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
     _fail "apply schema v2" "recall_apply_schema falhou"; return 1; }
-  # (a) schema_version virou 2
+  # (a) schema_version virou 3 (atual)
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "2" ] || { _fail "schema_version" "esperado 2, obtido $_sv"; return 1; }
+  [ "$_sv" = "3" ] || { _fail "schema_version" "esperado 3, obtido $_sv"; return 1; }
   # (b) tabelas executions + waves existem
   _has=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('executions','waves')")
   [ "$_has" = "2" ] || { _fail "tabelas novas" "esperado 2 (executions+waves), obtido $_has"; return 1; }
@@ -563,7 +563,38 @@ scenario_m12_ddl_idempotente() {
     _fail "apply 1" "primeira aplicacao falhou"; return 1; }
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "2" ] || { _fail "schema estavel" "esperado 2 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "3" ] || { _fail "schema estavel" "esperado 3 apos 2x, obtido $_sv"; return 1; }
+}
+
+# =========================================================================
+# Cenario M1.3 — migracao v2 -> v3: tasks pre-existente SEM titulo ganha a
+# coluna via ALTER idempotente, preservando linhas; INSERT com titulo passa.
+# (CREATE TABLE IF NOT EXISTS nao altera tabela ja criada — o ALTER cobre.)
+# =========================================================================
+scenario_m13_migra_tasks_titulo_alter() {
+  _have_deps || return 0
+  _mdb="$TMPDIR_TEST/v2tasks.db"
+  # DB v2 sintetico: tabela tasks no schema ANTIGO (sem titulo) + 1 linha.
+  sqlite3 "$_mdb" <<'SQL'
+CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execucao_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, outcome TEXT, testes_rodados INTEGER, testes_passados INTEGER, lint_ok INTEGER, arquivos_tocados INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+INSERT INTO schema_meta(key,value) VALUES('schema_version','2');
+INSERT INTO tasks(project,feature,wave,execucao_id,source_ts,source_id,outcome,ingested_at) VALUES('p','f','w','e','t','task-legacy','pass','now');
+SQL
+  # Aplica schema atual (v3) via funcao real — deve ALTERar tasks, nao recriar.
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
+    _fail "apply schema v3" "recall_apply_schema falhou"; return 1; }
+  # (a) coluna titulo agora existe
+  _hascol=$(sqlite3 "$_mdb" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='titulo'")
+  [ "$_hascol" = "1" ] || { _fail "ALTER titulo" "coluna nao adicionada ($_hascol)"; return 1; }
+  # (b) linha legacy preservada, titulo NULL
+  _leg=$(sqlite3 "$_mdb" "SELECT count(*) FROM tasks WHERE source_id='task-legacy' AND titulo IS NULL")
+  [ "$_leg" = "1" ] || { _fail "preservacao v2" "linha legacy perdida/alterada ($_leg)"; return 1; }
+  # (c) INSERT com titulo funciona (coluna utilizavel)
+  sqlite3 "$_mdb" "INSERT INTO tasks(project,feature,wave,execucao_id,source_ts,source_id,titulo,ingested_at) VALUES('p','f','w2','e','t','t-new','com titulo','now')" || {
+    _fail "insert titulo" "INSERT com coluna nova falhou"; return 1; }
+  # (d) re-aplicar e idempotente (ALTER nao dispara 2x -> sem erro)
+  assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
 }
 
 # =========================================================================
@@ -1576,7 +1607,7 @@ _write_layerb_state() {
   "metricas_acumuladas": {},
   "decisoes": [], "bloqueios_humanos": [], "ondas": [],
   "tasks": [
-    { "task_id": "T001", "wave_id": "onda-003", "outcome": "pass",
+    { "task_id": "T001", "wave_id": "onda-003", "titulo": "Indexar tasks token=ghp_DEADBEEFDEADBEEFDEADBEEFDEADBEEF1234", "outcome": "pass",
       "testes_rodados": 12, "testes_passados": 12, "lint_ok": true,
       "arquivos_tocados": ["cli/lib/recall.sh", "tests/cstk/test_recall.sh"] },
     { "task_id": "T002", "wave_id": "onda-004", "outcome": "fail",
@@ -1600,9 +1631,12 @@ scenario_b11_ddl_tasks_events() {
   assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" || return 1
   _has=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('tasks','events')")
   [ "$_has" = "2" ] || { _fail "DDL tasks/events" "esperado 2 tabelas, obtido $_has"; return 1; }
-  # schema_version permanece 2 (tasks/events no MESMO bump v2).
+  # schema_version = 3 (tasks.titulo bumpou v2 -> v3).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "2" ] || { _fail "schema_version" "esperado 2, obtido $_sv"; return 1; }
+  [ "$_sv" = "3" ] || { _fail "schema_version" "esperado 3, obtido $_sv"; return 1; }
+  # tasks tem a coluna titulo (DDL fresco).
+  _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='titulo'")
+  [ "$_hascol" = "1" ] || { _fail "coluna titulo" "esperado 1, obtido $_hascol"; return 1; }
 }
 
 # Cenario B1.2 — ingestao Task: 1 linha por task, campos corretos, contagem
@@ -1620,6 +1654,15 @@ scenario_b12_ingest_tasks() {
   # T002: fail, 5/3, lint 0, 0 arquivos; wave=onda-004.
   _r2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT wave||'|'||outcome||'|'||testes_rodados||'|'||testes_passados||'|'||lint_ok||'|'||arquivos_tocados FROM tasks WHERE feature='featB' AND source_id='T002'")
   [ "$_r2" = "onda-004|fail|5|3|0|0" ] || { _fail "task T002" "obtido $_r2"; return 1; }
+  # titulo: T001 gravado (texto livre) com segredo SCRUBBED (FR-017); T002 sem
+  # titulo no state -> "" (retro-compat .titulo // "").
+  _tit1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT titulo FROM tasks WHERE feature='featB' AND source_id='T001'")
+  case "$_tit1" in
+    "") _fail "titulo T001" "esperado titulo nao-vazio"; return 1 ;;
+    *ghp_*) _fail "titulo scrub" "segredo nao filtrado no titulo: $_tit1"; return 1 ;;
+  esac
+  _tit2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT titulo FROM tasks WHERE feature='featB' AND source_id='T002'")
+  [ "$_tit2" = "" ] || { _fail "titulo T002 retro-compat" "esperado vazio, obtido '$_tit2'"; return 1; }
 }
 
 # Cenario B2.1 — ingestao Evento: 4 tipos MVP, ordem cronologica, source_id
@@ -1652,6 +1695,36 @@ scenario_b22_event_descricao_filtrada() {
   # event_type/timestamp intactos (estruturado, sem filtro).
   _et=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT event_type||'|'||timestamp FROM events WHERE feature='featB' AND event_type='lock_contention'")
   [ "$_et" = "lock_contention|2026-05-24T02:31:00Z" ] || { _fail "event estruturado" "obtido $_et"; return 1; }
+}
+
+# Cenario B2.3 — evento `recall_consulted` (read-back loop): a metrica "quantas
+# vezes o historico foi consultado" = COUNT(*); inclui consultas com hits=0
+# (que a Decisao read-back NAO cobre). event_type fora do MVP original ingere
+# normalmente (sem allowlist). descricao "etapa=... hits=N" separa produtivas.
+scenario_b23_recall_consulted_metric() {
+  _have_deps || return 0
+  _sd="$TMPDIR_TEST/featRC"
+  mkdir -p "$_sd"
+  cat > "$_sd/state.json" <<'JSON'
+{
+  "short_name": "featRC",
+  "etapa_corrente": "plan",
+  "execucao": { "id": "exec-featRC", "projeto_alvo_path": "/home/u/projRC", "status": "concluido" },
+  "metricas_acumuladas": {},
+  "decisoes": [], "bloqueios_humanos": [], "retros": [], "ondas": [], "tasks": [],
+  "eventos": [
+    { "event_type": "recall_consulted", "timestamp": "2026-05-25T10:00:00Z", "descricao": "etapa=specify hits=3" },
+    { "event_type": "recall_consulted", "timestamp": "2026-05-25T11:00:00Z", "descricao": "etapa=plan hits=0" }
+  ]
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_sd" --db "$TMPDIR_TEST/krc.db" || return 1
+  # metrica: total de consultas ao historico
+  _tot=$(sqlite3 "$TMPDIR_TEST/krc.db" "SELECT count(*) FROM events WHERE event_type='recall_consulted'")
+  [ "$_tot" = "2" ] || { _fail "consultas total" "esperado 2, obtido $_tot"; return 1; }
+  # split produtivas (hits>0) vs vazias (hits=0) via descricao (CASE, sem FILTER)
+  _split=$(sqlite3 "$TMPDIR_TEST/krc.db" "SELECT SUM(CASE WHEN descricao LIKE '%hits=0' THEN 1 ELSE 0 END)||'/'||SUM(CASE WHEN descricao NOT LIKE '%hits=0' THEN 1 ELSE 0 END) FROM events WHERE event_type='recall_consulted'")
+  [ "$_split" = "1/1" ] || { _fail "split vazias/produtivas" "esperado 1/1, obtido $_split"; return 1; }
 }
 
 # Cenario B3.1 — retro-compat: state SEM .tasks/.eventos -> 0 linhas, 0 erro,

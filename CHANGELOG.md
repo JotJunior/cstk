@@ -5,6 +5,48 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.2.0] - 2026-05-25
+
+Enriquecimento da camada B do índice de conhecimento (`knowledge.db`) para
+melhor observabilidade no futuro `cstk-panel`. Mudanças **aditivas e
+retro-compatíveis**: o índice é derivado e reconstruível via
+`cstk recall --reindex`; states e índices antigos seguem funcionando.
+
+### Added
+
+- **Coluna `tasks.titulo` (schema v3)**: a tabela `tasks` passa a guardar o
+  título descritivo de cada task (do heading em `tasks.md`). Os orquestradores
+  (`agente-00c` e `feature-00c`) gravam `.tasks[].titulo` ao registrar o
+  outcome da task; a ingestão grava a coluna passando o valor por
+  `secrets-filter.sh` (FR-017 — é o único campo de texto livre da camada B).
+  Migração idempotente via `ALTER TABLE tasks ADD COLUMN titulo TEXT` em
+  `recall_apply_schema`: índices v2 ganham a coluna **sem** precisar de
+  `--reindex`; DBs novos já nascem com ela. Retro-compat: `.tasks[].titulo`
+  ausente → `""`.
+- **Evento `recall_consulted` + métrica de consultas ao histórico**: os
+  orquestradores gravam um evento `recall_consulted` em `.eventos[]` a **cada**
+  consulta do read-back loop (`cstk recall --context`) no início de
+  `specify`/`plan` — **inclusive quando nada é retornado** (`hits=0`), caso que
+  a Decisão `read-back PRE-DECISAO` não cobria (só registrada com `K>0`,
+  FR-017). A métrica "quantas vezes o histórico foi consultado pelo
+  orquestrador" = `COUNT(*) FROM events WHERE event_type='recall_consulted'`; a
+  `descricao` carrega `etapa=… hits=N` para separar consultas produtivas das
+  vazias. Sem mudança de schema (a ingestão de `events` aceita o tipo por
+  convenção, sem allowlist). Best-effort: nunca gateia/aborta/atrasa a onda.
+
+### Changed
+
+- **`RECALL_SCHEMA_VERSION` 2 → 3** (apenas pela coluna `titulo`; o evento
+  `recall_consulted` não altera schema).
+
+### Tests
+
+- `tests/cstk/test_recall.sh`: cobertura de `titulo` (scrub do segredo +
+  retro-compat `""`), cenário `m13` da migração ALTER v2→v3 (coluna adicionada,
+  linhas pré-existentes preservadas, idempotente) e `b23` da métrica
+  `recall_consulted` (total + split produtivas/vazias). Asserts de
+  `schema_version` atualizados para `3`.
+
 ## [4.1.1] - 2026-05-25
 
 Correções na camada de memória cross-feature (`cstk recall`). Afetam apenas
@@ -2287,6 +2329,9 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.2.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.2.0
+[4.1.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.1.1
+[4.1.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.1.0
 [4.0.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.0.0
 [3.19.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.19.1
 [3.19.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.19.0
