@@ -88,7 +88,7 @@ conforme comportamento padrao (FR-CACHE-014).
 4. **Standalone** (sem state.json): leia direto do disco. Comportamento
    identico a versao pre-cache.
 
-Spec: `docs/specs/agente-00c-artifact-cache/spec.md` FR-CACHE-008.
+Spec: `docs/specs/_archived/agente-00c-artifact-cache/spec.md` FR-CACHE-008.
 
 ---
 

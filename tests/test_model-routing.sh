@@ -1013,7 +1013,7 @@ scenario_resume_idempotent_check_readonly_em_retomadas_repetidas() {
 # Helper: cria state.json fixture com (a) Decisao matching para HIT em
 # idempotent-check, (b) briefing_cache + constitution_cache populados
 # como em onda 1 do artifact-cache. Estrutura dos campos de cache
-# segue o schema descrito em docs/specs/agente-00c-artifact-cache/spec.md.
+# segue o schema descrito em docs/specs/_archived/agente-00c-artifact-cache/spec.md.
 _mr_artifact_cache_fixture() {
   _mr_have_jq || return 2
   _dir=$1

@@ -1,8 +1,8 @@
 #!/bin/sh
 # test_state-cache.sh — cobre global/skills/agente-00c-runtime/scripts/state-cache.sh.
 #
-# Ref: docs/specs/agente-00c-artifact-cache/tasks.md T1.5
-#      docs/specs/agente-00c-artifact-cache/spec.md SC-005 (>= 15 cenarios)
+# Ref: docs/specs/_archived/agente-00c-artifact-cache/tasks.md T1.5
+#      docs/specs/_archived/agente-00c-artifact-cache/spec.md SC-005 (>= 15 cenarios)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"

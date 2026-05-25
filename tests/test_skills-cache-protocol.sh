@@ -7,7 +7,7 @@
 # teste valida estrutural: YAML frontmatter parse OK, secoes pre-existentes
 # preservadas, bloco novo inserido na posicao correta.
 #
-# Ref: docs/specs/agente-00c-artifact-cache/tasks.md T2.5
+# Ref: docs/specs/_archived/agente-00c-artifact-cache/tasks.md T2.5
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
