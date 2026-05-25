@@ -618,7 +618,26 @@ recall_ingest_state_json() {
   _isj_proj_path=$(jq -r '.execucao.projeto_alvo_path // ""' "$_isj_state" 2>/dev/null) || _isj_proj_path=""
   _isj_project=$(basename -- "$_isj_proj_path" 2>/dev/null) || _isj_project=""
   [ -n "$_isj_project" ] || _isj_project="unknown"
-  _isj_feature=$(jq -r '.short_name // ""' "$_isj_state" 2>/dev/null) || _isj_feature=""
+  # Feature: prefere .short_name (top-level, layout corrente no disco);
+  # tolera .execucao.short_name (local canonico do data-model). Leitura dupla
+  # cobre a divergencia historica de onde o campo foi gravado.
+  _isj_feature=$(jq -r '.short_name // .execucao.short_name // ""' "$_isj_state" 2>/dev/null) || _isj_feature=""
+  # Fallback de proveniencia: o layout feature-00c-state codifica o short-name
+  # no diretorio-pai (.../.claude/feature-00c-state/<short-name>/state.json).
+  # Deriva dali quando o campo JSON esta ausente (states legados gravados antes
+  # de o init versionar short_name). NAO aplica ao layout agente-00c-state/ —
+  # ali feature='unknown' e by-design (projeto nao grava short_name; anti-eco
+  # FR-011).
+  if [ -z "$_isj_feature" ]; then
+    # Checagem por componente (nao por glob): o AVO do state.json deve ser
+    # exatamente "feature-00c-state". Robusto p/ caminhos relativos E absolutos
+    # (glob `*/.claude/...` falharia em path relativo iniciado por `.claude/`).
+    _isj_parent=$(dirname -- "$_isj_state" 2>/dev/null) || _isj_parent=""
+    _isj_grandp=$(dirname -- "$_isj_parent" 2>/dev/null) || _isj_grandp=""
+    if [ "$(basename -- "$_isj_grandp" 2>/dev/null)" = "feature-00c-state" ]; then
+      _isj_feature=$(basename -- "$_isj_parent" 2>/dev/null) || _isj_feature=""
+    fi
+  fi
   [ -n "$_isj_feature" ] || _isj_feature="unknown"
   _isj_exec_id=$(jq -r '.execucao.id // ""' "$_isj_state" 2>/dev/null) || _isj_exec_id=""
   _isj_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _isj_now="1970-01-01T00:00:00Z"
@@ -1639,11 +1658,16 @@ recall_mode_reindex() {
   _rx_count=0
   # Varre feature-00c-state/*/state.json e agente-00c-state/state.json.
   # find e portavel; -path com globs simples.
+  # IMPORTANTE: `find` sobre uma raiz ampla (ex: HOME default) sai com status
+  # !=0 ao bater em diretorios sem permissao, MESMO tendo impresso matches
+  # validos no stdout. Usar `|| _rx_states=""` aqui descartava esses matches —
+  # e como o reindex apaga o db ANTES de repopular, o indice terminava VAZIO
+  # (perda de dados). `|| :` preserva o stdout ja capturado pela command-subst.
   _rx_states=$(find "$_rx_states_root" \
       -type f -name 'state.json' \
       \( -path '*/.claude/feature-00c-state/*/state.json' \
          -o -path '*/.claude/agente-00c-state/state.json' \) \
-      2>/dev/null) || _rx_states=""
+      2>/dev/null) || :
   if [ -n "$_rx_states" ]; then
     _rx_OLDIFS="$IFS"; IFS='
 '

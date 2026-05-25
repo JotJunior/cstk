@@ -5,6 +5,38 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.1.1] - 2026-05-25
+
+Correções na camada de memória cross-feature (`cstk recall`). Afetam apenas
+`cli/lib/recall.sh` — o índice (`~/.claude/cstk/knowledge.db`) é derivado e
+reconstruível via `cstk recall --reindex`. Sem mudança de schema.
+
+### Fixed
+
+- **Feature gravada como `unknown` no índice quando `state.json` não tem
+  `short_name`**: a ingestão derivava o nome da feature apenas de
+  `.short_name`. States legados sem o campo (gravados antes de o `init`
+  versioná-lo) caíam no fallback `"unknown"`. Agora a resolução: (1) tolera
+  `.execucao.short_name` além de `.short_name`; (2) quando ausente, deriva o
+  short-name do diretório-pai no layout `feature-00c-state/<short-name>/`
+  (checagem por componente — robusta para caminhos relativos e absolutos).
+  O layout `agente-00c-state/` continua `unknown` por design (o orquestrador
+  de projeto não grava `short_name` — anti-eco FR-011).
+- **`--reindex` podia ESVAZIAR o índice (perda de dados)**: o `find` de
+  descoberta de states, ao varrer uma raiz ampla (ex.: `$HOME` default), sai
+  com status ≠0 ao tocar diretórios sem permissão — **mesmo tendo impresso
+  matches válidos**. O idioma `find ... || _rx_states=""` descartava esses
+  matches; como o reindex apaga o DB antes de repopular, o índice terminava
+  vazio. Trocado por `|| :`, que preserva o stdout já capturado pela
+  command-substitution.
+
+### Tests
+
+- `tests/cstk/test_recall.sh`: `scenario_16` (resolução de feature com
+  `short_name` ausente — fallback por diretório, `.execucao.short_name`,
+  caminho relativo, e `agente-00c-state` → `unknown`) e `scenario_17`
+  (reindex preserva matches quando `find` sai ≠0).
+
 ## [4.1.0] - 2026-05-24
 
 Melhorias de tooling de desenvolvimento (não afetam o tarball de release nem

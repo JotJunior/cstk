@@ -1704,4 +1704,99 @@ scenario_b33_ingest_vs_reindex_convergencia() {
   [ "$_dumpa" = "$_dumpb" ] || { _fail "divergencia ingest vs reindex B" "dumps diferem"; return 1; }
 }
 
+# =========================================================================
+# Cenario 16 — Resolucao de feature quando short_name ausente (BUGFIX)
+# =========================================================================
+# Regressao: states legados sem .short_name eram ingeridos como feature=
+# 'unknown'. O fix deriva o short-name do diretorio-pai no layout
+# feature-00c-state/<short-name>/ e tolera .execucao.short_name. O layout
+# agente-00c-state/ continua 'unknown' (by-design, anti-eco FR-011).
+scenario_16_feature_fallback_por_diretorio() {
+  _have_deps || return 0
+
+  # (a) SEM short_name, layout feature-00c-state -> feature = basename do dir.
+  _sd_feat="$TMPDIR_TEST/projA/.claude/feature-00c-state/minha-feat"
+  mkdir -p "$_sd_feat"
+  cat > "$_sd_feat/state.json" <<'JSON'
+{
+  "execucao": { "id": "exec-noshort", "projeto_alvo_path": "/home/u/projZ" },
+  "decisoes": [
+    { "id": "dec-001", "onda_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "etapa": "specify", "agente": "orch", "escolha": "iniciar", "score_justificativa": 2,
+      "contexto": "decisao sem short_name", "justificativa": "fallback dir", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "retros": [], "ondas": []
+}
+JSON
+  _rc --ingest --state-dir "$_sd_feat" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  _feat=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT DISTINCT feature FROM decisions" 2>/dev/null)
+  [ "$_feat" = "minha-feat" ] || { _fail "fallback feature-00c" "esperado 'minha-feat', obtido '$_feat'"; return 1; }
+
+  # (b) SEM short_name, layout agente-00c-state -> feature='unknown' (by-design).
+  _sd_proj="$TMPDIR_TEST/projB/.claude/agente-00c-state"
+  mkdir -p "$_sd_proj"
+  cat > "$_sd_proj/state.json" <<'JSON'
+{
+  "execucao": { "id": "exec-proj", "projeto_alvo_path": "/home/u/projW" },
+  "decisoes": [
+    { "id": "dec-002", "onda_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "etapa": "briefing", "agente": "orch", "escolha": "x", "score_justificativa": 1,
+      "contexto": "decisao de projeto", "justificativa": "anti-eco", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "retros": [], "ondas": []
+}
+JSON
+  _rc --ingest --state-dir "$_sd_proj" --db "$TMPDIR_TEST/k2.db" >/dev/null 2>&1
+  _featp=$(sqlite3 "$TMPDIR_TEST/k2.db" "SELECT DISTINCT feature FROM decisions" 2>/dev/null)
+  [ "$_featp" = "unknown" ] || { _fail "agente-00c by-design" "esperado 'unknown', obtido '$_featp'"; return 1; }
+
+  # (c) short_name canonico em .execucao.short_name tambem resolve (read tolerante).
+  _sd_exec="$TMPDIR_TEST/projC/.claude/feature-00c-state/exec-feat"
+  mkdir -p "$_sd_exec"
+  cat > "$_sd_exec/state.json" <<'JSON'
+{
+  "execucao": { "id": "exec-e", "short_name": "canon-feat", "projeto_alvo_path": "/home/u/projE" },
+  "decisoes": [
+    { "id": "dec-003", "onda_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "etapa": "plan", "agente": "orch", "escolha": "y", "score_justificativa": 2,
+      "contexto": "short_name em execucao", "justificativa": "tolerancia", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "retros": [], "ondas": []
+}
+JSON
+  _rc --ingest --state-dir "$_sd_exec" --db "$TMPDIR_TEST/k3.db" >/dev/null 2>&1
+  _feate=$(sqlite3 "$TMPDIR_TEST/k3.db" "SELECT DISTINCT feature FROM decisions" 2>/dev/null)
+  [ "$_feate" = "canon-feat" ] || { _fail "leitura .execucao.short_name" "esperado 'canon-feat', obtido '$_feate'"; return 1; }
+
+  # (d) Caminho RELATIVO ao layout feature-00c-state tambem resolve. Regressao:
+  # a 1a tentativa usava glob `*/.claude/...` que falhava em path relativo
+  # iniciado por `.claude/` (avo-component check corrige). Reusa o state de (a).
+  ( cd "$TMPDIR_TEST/projA" && \
+    _rc --ingest --state-dir ".claude/feature-00c-state/minha-feat" --db "$TMPDIR_TEST/k4.db" >/dev/null 2>&1 )
+  _featr=$(sqlite3 "$TMPDIR_TEST/k4.db" "SELECT DISTINCT feature FROM decisions" 2>/dev/null)
+  [ "$_featr" = "minha-feat" ] || { _fail "fallback path relativo" "esperado 'minha-feat', obtido '$_featr'"; return 1; }
+}
+
+# =========================================================================
+# Cenario 17 — reindex preserva matches quando find sai !=0 (BUGFIX Bug B)
+# =========================================================================
+# Regressao: `find ... || _rx_states=""` zerava os matches quando o find batia
+# num diretorio sem permissao (exit 1) numa raiz ampla. Como o reindex apaga o
+# db ANTES de repopular, o indice terminava VAZIO (perda de dados). Reproduz com
+# um subdir chmod 000 que forca find exit 1; o estado valido deve ser ingerido.
+# (Sob root o chmod nao bloqueia — o assert >=1 passa de qualquer forma.)
+scenario_17_reindex_tolera_find_exit_nonzero() {
+  _have_deps || return 0
+  _rootB="$TMPDIR_TEST/rootB"
+  _write_state "$_rootB/p/.claude/feature-00c-state/featX" "/home/u/projX" "featX"
+  mkdir -p "$_rootB/locked/sub"
+  chmod 000 "$_rootB/locked" 2>/dev/null
+  _rc --reindex --states-root "$_rootB" --db "$TMPDIR_TEST/kb.db" >/dev/null 2>&1
+  chmod 755 "$_rootB/locked" 2>/dev/null   # restaura p/ cleanup do harness
+  _nB=$(sqlite3 "$TMPDIR_TEST/kb.db" "SELECT count(*) FROM decisions" 2>/dev/null)
+  [ "${_nB:-0}" -ge 1 ] || { _fail "Bug B: indice zerado por find exit!=0" "esperado >=1 decisao, obtido '$_nB'"; return 1; }
+  _fB=$(sqlite3 "$TMPDIR_TEST/kb.db" "SELECT DISTINCT feature FROM decisions" 2>/dev/null)
+  [ "$_fB" = "featX" ] || { _fail "Bug B: feature errada" "esperado 'featX', obtido '$_fB'"; return 1; }
+}
+
 run_all_scenarios
