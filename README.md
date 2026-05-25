@@ -351,7 +351,7 @@ Co-existencia com `/agente-00c`: namespaces isolados
 paralelas no mesmo projeto sao permitidas; concorrencia com agente-00c
 ativo e bloqueada (FR-026). Reuso integral do runtime POSIX
 compartilhado (`agente-00c-runtime`). Detalhamento em
-[`docs/specs/feature-00c/`](./docs/specs/feature-00c/) (37 FRs, 14
+[`docs/specs/_archived/feature-00c/`](./docs/specs/_archived/feature-00c/) (37 FRs, 14
 SCs, 11 cenarios de validacao + roundtrip empirico de secrets).
 
 ### Roteamento de modelos no spawn (model-routing)

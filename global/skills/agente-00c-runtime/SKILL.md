@@ -57,7 +57,7 @@ mecanismo de `cstk install` so distribui artefatos sob `global/skills/`,
 operacional dos 3 scripts entregue como esqueleto + cobertura de testes
 em `tests/test_state-*.sh`.
 
-## Reuso pelo feature-00c (FASE 1 de `docs/specs/feature-00c/tasks.md`)
+## Reuso pelo feature-00c (FASE 1 de `docs/specs/_archived/feature-00c/tasks.md`)
 
 Este runtime e compartilhado entre `/agente-00c` (orquestracao de
 projeto inteiro) e `/feature-00c` (orquestracao de feature individual).

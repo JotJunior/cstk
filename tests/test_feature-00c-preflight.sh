@@ -2,7 +2,7 @@
 # test_feature-00c-preflight.sh — cobre feature-00c-preflight.sh
 # (FR-010A, FR-PRE-004).
 #
-# Ref: docs/specs/feature-00c/tasks.md FASE 2 task 2.1.6
+# Ref: docs/specs/_archived/feature-00c/tasks.md FASE 2 task 2.1.6
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"

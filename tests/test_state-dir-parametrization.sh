@@ -3,9 +3,9 @@
 # runtime, validando os tres modos: (a) --state-dir explicito,
 # (b) env var AGENTE_00C_STATE_DIR, (c) sem ambos = erro.
 #
-# Ref: docs/specs/feature-00c/spec.md FR-008, FR-011
-#      docs/specs/feature-00c/research.md Decision 1
-#      docs/specs/feature-00c/tasks.md FASE 1 task 1.3.4
+# Ref: docs/specs/_archived/feature-00c/spec.md FR-008, FR-011
+#      docs/specs/_archived/feature-00c/research.md Decision 1
+#      docs/specs/_archived/feature-00c/tasks.md FASE 1 task 1.3.4
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"

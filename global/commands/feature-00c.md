@@ -13,7 +13,7 @@ allowed-tools:
 # /feature-00c
 
 Voce vai iniciar uma execucao do orquestrador autonomo feature-00c
-conforme contrato em `docs/specs/feature-00c/contracts/cli-invocation.md`.
+conforme contrato em `docs/specs/_archived/feature-00c/contracts/cli-invocation.md`.
 
 ## Argumentos recebidos
 

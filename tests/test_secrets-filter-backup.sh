@@ -2,7 +2,7 @@
 # test_secrets-filter-backup.sh — cobre o subcomando for-backup do
 # secrets-filter.sh (FR-029 extensao + FR-034).
 #
-# Ref: docs/specs/feature-00c/tasks.md FASE 2 task 2.2.4
+# Ref: docs/specs/_archived/feature-00c/tasks.md FASE 2 task 2.2.4
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"

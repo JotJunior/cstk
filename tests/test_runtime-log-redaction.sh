@@ -1,8 +1,8 @@
 #!/bin/sh
 # test_runtime-log-redaction.sh — cobre _log.sh (FR-036).
 #
-# Ref: docs/specs/feature-00c/tasks.md FASE 2 task 2.3.4
-#      docs/specs/feature-00c/spec.md FR-036
+# Ref: docs/specs/_archived/feature-00c/tasks.md FASE 2 task 2.3.4
+#      docs/specs/_archived/feature-00c/spec.md FR-036
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"

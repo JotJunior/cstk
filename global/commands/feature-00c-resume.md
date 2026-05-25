@@ -12,7 +12,7 @@ allowed-tools:
 # /feature-00c-resume
 
 Voce vai retomar uma execucao pausada do feature-00c conforme contrato
-em `docs/specs/feature-00c/contracts/cli-invocation.md`.
+em `docs/specs/_archived/feature-00c/contracts/cli-invocation.md`.
 
 ## Argumentos recebidos
 

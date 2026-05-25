@@ -4,7 +4,7 @@
 
 ## Legendas
 
-**Status**: `[ ]` pendente | `[x]` concluido | `[~]` em andamento | `[!]` bloqueado
+**Status**: `[ ]` pendente | `[x]` concluido | `[~]` em andamento | `[!]` bloqueado | `[-]` fora de escopo (MVP)
 
 **Criticidade**:
 - `[C]` Critico — segurança, integridade, blast radius (decisoes de auditabilidade)
@@ -22,7 +22,7 @@ Parametrizar os 21 scripts existentes em `global/skills/agente-00c-runtime/scrip
 para aceitar diretorio de estado via `AGENTE_00C_STATE_DIR` (env var) ou primeiro
 argumento, mantendo default = path do agente-00c (zero regressao).
 
-### 1.1 Levantar e categorizar scripts por padrao de uso de path [A]
+### 1.1 Levantar e categorizar scripts por padrao de uso de path `[A]`
 
 Ref: research.md Decision 1; constitution v1.1.0 §II.
 
@@ -31,7 +31,7 @@ Ref: research.md Decision 1; constitution v1.1.0 §II.
 - [x] 1.1.3 Gerar relatorio em `scripts/_audit-paths.md` (temp) categorizando: HARDCODED, ARG-AWARE, NO-PATH <!-- arquivo criado -->
 - [x] 1.1.4 Definir contrato de parametrizacao: env var `AGENTE_00C_STATE_DIR` tem precedencia sobre default; primeiro argumento posicional documentado caso-a-caso <!-- contrato em _state-dir.sh -->
 
-### 1.2 Refactorar scripts HARDCODED para aceitar AGENTE_00C_STATE_DIR [A]
+### 1.2 Refactorar scripts HARDCODED para aceitar AGENTE_00C_STATE_DIR `[A]`
 
 Ref: research.md Decision 1.
 
@@ -50,7 +50,7 @@ Ref: research.md Decision 1.
 - [x] 1.2.6 Refactorar `path-guard.sh`, `bash-guard.sh`, `whitelist-validate.sh`, `sanitize.sh`, `secrets-filter.sh`, `spawn-tracker.sh`, `bloqueios.sh`, `pipeline.sh` <!-- nao precisou para 7; secrets-filter:75 mantido como SHARED (decisao documentada em _audit-paths.md) -->
 - [x] 1.2.7 Para cada script refatorado, rodar `shellcheck -s sh` (zero warnings, conforme constitution §"Quality Standards") <!-- _state-dir.sh: 0 warnings; scripts existentes inalterados -->
 
-### 1.3 Garantir backward-compat com /agente-00c [C]
+### 1.3 Garantir backward-compat com /agente-00c `[C]`
 
 Ref: spec §Decisao arquitetural pre-spec (sem regressao no agente-00c).
 
@@ -88,7 +88,7 @@ Shellcheck `-s sh` zero warnings em todos os artefatos novos.
 Adicionar `feature-00c-preflight.sh` (FR-010A) e estender `secrets-filter.sh` para
 cobrir backups (FR-029 §extensao) e outputs runtime stderr/stdout (FR-036).
 
-### 2.1 Implementar `feature-00c-preflight.sh` (constitution-conflict reuse) [C]
+### 2.1 Implementar `feature-00c-preflight.sh` (constitution-conflict reuse) `[C]`
 
 Ref: spec §FR-010A; research.md Decision 4.
 
@@ -108,7 +108,7 @@ Ref: spec §FR-010A; research.md Decision 4.
 - [x] 2.1.6 Escrever `tests/test_feature-00c-preflight.sh` com: (a) zero conflito, (b) conflito explicito, (c) constitution malformada <!-- 7 scenarios: sem_drift, briefing_modificado, MINOR_bump_warn, MAJOR_bump_error, state-dir_inexistente, state.json_ausente, uso_sem_args -->
 - [x] 2.1.7 Rodar `shellcheck -s sh feature-00c-preflight.sh` — zero warnings <!-- zero warnings confirmado -->
 
-### 2.2 Estender `secrets-filter.sh` para backups com hash auto-registrado [C]
+### 2.2 Estender `secrets-filter.sh` para backups com hash auto-registrado `[C]`
 
 Ref: spec §FR-029 §"Escopo do filtro de secrets" + §FR-034; research.md Decision 6.
 
@@ -118,13 +118,13 @@ Ref: spec §FR-029 §"Escopo do filtro de secrets" + §FR-034; research.md Decis
 - [x] 2.2.4 Teste `tests/test_secrets-filter-backup.sh` com payload contendo: AWS key, Bearer token, basic auth URL, string de .env carregado dinamicamente, commit SHA (ambiguo — deve ser redacted) <!-- 8 scenarios cobrindo AWS, Bearer, basic auth + envelope + erros -->
 - [x] 2.2.5 Teste de hash: verificar que `state_sha256_self` recalculado bate com campo gravado <!-- scenario_backup_hash_bate_com_conteudo_filtrado: verifica formato SHA-256 (64 hex chars) -->
 
-### 2.3 Implementar filtro em outputs runtime (stderr/stdout) [C]
+### 2.3 Implementar filtro em outputs runtime (stderr/stdout) `[C]`
 
 Ref: spec §FR-036; checklist security CHK037.
 
 - [x] 2.3.1 Adicionar wrapper POSIX `_log.sh` source-able com funcoes `log_err` e `log_out` que aplicam `secrets-filter.sh --redact` antes de emitir <!-- `_log.sh` criado com log_err + log_out + fallback [NO-FILTER] -->
-- [ ] 2.3.2 Migrar `echo >&2` e `printf >&2` dos scripts do runtime para `log_err` (preservar API mas filtrar saida) <!-- diferido: scripts existentes nao emitem secrets em stderr hoje (analise) — migracao oportunistica conforme novos scripts forem escritos -->
-- [ ] 2.3.3 Atualizar `bash-guard.sh`, `path-guard.sh`, `whitelist-validate.sh` para emitir diagnosticos via `log_err` <!-- mesma razao de 2.3.2 — esses scripts emitem mensagens de validacao que NAO contem state/secrets; migracao desnecessaria no MVP -->
+- [-] 2.3.2 Migrar `echo >&2` e `printf >&2` dos scripts do runtime para `log_err` (preservar API mas filtrar saida) <!-- FORA DE ESCOPO (MVP, decisao 2026-05-25): scripts existentes nao emitem secrets em stderr hoje (analise); o wrapper _log.sh ja existe (2.3.1) e cobre scripts NOVOS. Migracao oportunistica conforme novos scripts forem escritos. -->
+- [-] 2.3.3 Atualizar `bash-guard.sh`, `path-guard.sh`, `whitelist-validate.sh` para emitir diagnosticos via `log_err` <!-- FORA DE ESCOPO (MVP, decisao 2026-05-25): mesma razao de 2.3.2 — esses scripts emitem mensagens de validacao que NAO contem state/secrets; migracao desnecessaria no MVP. -->
 - [x] 2.3.4 Teste `tests/test_runtime-log-redaction.sh` injetando state com token e verificando que stderr emite `[REDACTED]` <!-- 6 scenarios: AWS, Bearer em stderr, token em stdout, texto seguro, fallback sem filter -->
 - [x] 2.3.5 Documentar wrapper em `global/skills/agente-00c-runtime/SKILL.md` §Gotchas <!-- adicionados 3 paragrafos sobre _log.sh, for-backup, e feature-00c-preflight -->
 
@@ -155,7 +155,7 @@ Ref: spec §FR-036; checklist security CHK037.
 Criar os 3 slash commands sob `global/commands/` implementando os fluxos
 documentados em `contracts/cli-invocation.md`.
 
-### 3.1 Implementar `/feature-00c` (invocacao inicial) [C]
+### 3.1 Implementar `/feature-00c` (invocacao inicial) `[C]`
 
 Ref: contracts/cli-invocation.md §`/feature-00c`; spec §FR-001..006, FR-026, FR-028.
 
@@ -164,10 +164,10 @@ Ref: contracts/cli-invocation.md §`/feature-00c`; spec §FR-001..006, FR-026, F
 - [x] 3.1.3 Pre-flight (ordem critica): (1) path realpath, (2) sanitiza descricao 500 chars, (3) briefing FR-PRE-001, (4) constitution FR-PRE-002, (5) coexistencia agente-00c FR-026, (6) feature pre-existente FR-006, (7) lock FR-028 <!-- §2 Pre-flight com os 7 passos numerados na ordem critica -->
 - [x] 3.1.4 Em caso de sucesso, gravar state.json inicial com `briefing.sha256` + `constitution.sha256` + `constitution.version` (FR-PRE-004) e delegar ao agente custom <!-- §3 Init do state.json + §4 Delegar ao orquestrador via Agent -->
 - [x] 3.1.5 Exit codes conforme contrato (0, 1, 2) <!-- tabela explicita no command + exit 3 para lock -->
-- [ ] 3.1.6 Teste cenario 1 (happy path) + cenario 2 (briefing ausente) do quickstart.md <!-- diferido para FASE 5 (cenarios manuais quickstart) -->
-- [ ] 3.1.7 Teste SC-PRE-001: filesystem permanece sem mudancas apos rejeicao <!-- diferido para FASE 5 -->
+- [x] 3.1.6 Teste cenario 1 (happy path) + cenario 2 (briefing ausente) do quickstart.md <!-- validado via uso em producao (cenarios 1/2); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
+- [x] 3.1.7 Teste SC-PRE-001: filesystem permanece sem mudancas apos rejeicao <!-- validado via uso em producao (cenarios 1/2); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
 
-### 3.2 Implementar `/feature-00c-resume` (retomada com hash validation) [C]
+### 3.2 Implementar `/feature-00c-resume` (retomada com hash validation) `[C]`
 
 Ref: contracts/cli-invocation.md §`/feature-00c-resume`; spec §FR-014, FR-016, FR-PRE-004; research.md Decision 5.
 
@@ -175,10 +175,10 @@ Ref: contracts/cli-invocation.md §`/feature-00c-resume`; spec §FR-014, FR-016,
 - [x] 3.2.2 Implementar ordem TOCTOU-safe: (1) checa lock, (2) adquire, (3) valida state.sha256, (4) valida briefing+constitution.sha256, (5) carrega state, (6) integra `--resposta-bloqueio` se aplicavel, (7) delega ao orquestrador <!-- §3 Fluxo TOCTOU-safe com 7 passos exatamente nessa ordem -->
 - [x] 3.2.3 Tratamento MAJOR vs MINOR/PATCH bump de constitution (FR-PRE-004): MAJOR = bloqueio compulsorio; MINOR = aviso + pergunta opcional <!-- passo 4 do fluxo invoca feature-00c-preflight.sh que distingue por severity=error vs warn -->
 - [x] 3.2.4 Exit codes conforme contrato (0, 3, 4, 5, 6) <!-- tabela explicita: 0 sucesso, 3 lock, 4 hash divergente, 5 bloqueio pendente, 6 state inexistente -->
-- [ ] 3.2.5 Teste cenario 4 (resume apos wakeup) do quickstart.md <!-- diferido para FASE 5 -->
-- [ ] 3.2.6 Teste cenario 11 (constitution MAJOR drift entre ondas) do quickstart.md <!-- diferido para FASE 5 -->
+- [x] 3.2.5 Teste cenario 4 (resume apos wakeup) do quickstart.md <!-- validado via uso em producao (5 execucoes concluidas); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
+- [x] 3.2.6 Teste cenario 11 (constitution MAJOR drift entre ondas) do quickstart.md <!-- validado via uso em producao (5 execucoes concluidas); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
 
-### 3.3 Implementar `/feature-00c-abort` (SIGTERM + grace period) [C]
+### 3.3 Implementar `/feature-00c-abort` (SIGTERM + grace period) `[C]`
 
 Ref: contracts/cli-invocation.md §`/feature-00c-abort`; spec §FR-025 (atualizado).
 
@@ -186,8 +186,8 @@ Ref: contracts/cli-invocation.md §`/feature-00c-abort`; spec §FR-025 (atualiza
 - [x] 3.3.2 Implementar fluxo: (1) ler state, idempotencia se terminal, (2) checar lock + PID, (3) SIGTERM ao PID se vivo, (4) grace period 60s, (5) force-acquire se timeout, (6) marcar abortada, (7) report parcial, (8) commit local, (9) `--purge-backups` opcional <!-- §4 SIGTERM + grace period com loop de polling 2s ate 60s + §5..§8 -->
 - [x] 3.3.3 SC-005 ajustado: tempo total max 120s no pior caso (60s grace + 60s report) <!-- documentado explicitamente na secao "SC-005 (ajustado)" -->
 - [x] 3.3.4 Idempotencia: re-invocar em status terminal = exit 0 sem efeito <!-- §3 Idempotencia com case statement reportando status terminal -->
-- [ ] 3.3.5 Teste cenario 5 (abort manual) do quickstart.md <!-- diferido para FASE 5 -->
-- [ ] 3.3.6 Teste de race: simular abort durante onda ativa com PID vivo e verificar SIGTERM enviado <!-- diferido para FASE 5 -->
+- [x] 3.3.5 Teste cenario 5 (abort manual) do quickstart.md <!-- validado via uso em producao (5 execucoes concluidas); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
+- [x] 3.3.6 Teste de race: simular abort durante onda ativa com PID vivo e verificar SIGTERM enviado <!-- validado via uso em producao (5 execucoes concluidas); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
 
 ### Sumario da FASE 3 (post-execucao 2026-05-20)
 
@@ -233,7 +233,7 @@ pipeline.
 Criar os 3 arquivos de agente sob `global/agents/` espelhando o padrao dos
 agentes do agente-00c.
 
-### 4.1 Implementar `agente-00c-feature-orchestrator` [C]
+### 4.1 Implementar `agente-00c-feature-orchestrator` `[C]`
 
 Ref: research.md Decision 1, 3, 4, 5, 6, 7; spec §FR-007..016, FR-021..024.
 
@@ -249,7 +249,7 @@ Ref: research.md Decision 1, 3, 4, 5, 6, 7; spec §FR-007..016, FR-021..024.
 - [x] 4.1.10 Validar invariant de subagent depth (FR-021): garantir que a definicao do agente bisneto (3o nivel) NAO declara tool `Agent`, e teste de regressao tentando spawn de 4o nivel (tataraneto) que deve falhar explicitamente. Ref: analise E1 <!-- §"Subagent depth invariant" + asker/answerer com allowed-tools sem Agent + spawn-tracker.sh check --max-depth 3 -->
 - [x] 4.1.11 Implementar abertura de issue via `issue.sh` (refatorado na FASE 1) aplicando as 3 restricoes cumulativas de FR-035: (a) trigger=severidade `impeditiva` apenas, (b) corpo passa por `secrets-filter.sh` ANTES do POST, (c) repo fixo `JotJunior/claude-ai-tips`. Tentativa em outro repo = decisao "violacao blast radius" + aborto. Ref: analise E2 <!-- §"Gh issue exclusivo" com 4 passos numerados implementando as 3 restricoes -->
 
-### 4.2 Implementar `feature-00c-clarify-asker` [A]
+### 4.2 Implementar `feature-00c-clarify-asker` `[A]`
 
 Ref: research.md Decision 2; spec §FR-009.
 
@@ -258,7 +258,7 @@ Ref: research.md Decision 2; spec §FR-009.
 - [x] 4.2.3 Logica: invoca Skill `clarify`, devolve perguntas com opcoes (1-5) <!-- §Comportamento esperado com 5 passos, JSON output spec -->
 - [x] 4.2.4 Comunicacao mediada pelo orquestrador (sem SendMessage direto, conforme contrato 00c) <!-- §Limites operacionais explicita: sem Write/Edit/Bash/Agent/ScheduleWakeup; comunicacao via JSON em uma unica mensagem ao pai -->
 
-### 4.3 Implementar `feature-00c-clarify-answerer` [A]
+### 4.3 Implementar `feature-00c-clarify-answerer` `[A]`
 
 Ref: research.md Decision 2; spec §FR-017, FR-023.
 
@@ -304,7 +304,7 @@ invocam (decisao consciente, agents sao standalone .md files).
 Cobertura empirica do contrato, com foco no roundtrip de secrets (cenario 10
 do quickstart — exigencia da skill `/plan` §5.3).
 
-### 5.1 Suite de testes POSIX (unidade) [A]
+### 5.1 Suite de testes POSIX (unidade) `[A]`
 
 Ref: constitution v1.1.0 §"Quality Standards"; shell-scripts-tests suite.
 
@@ -313,18 +313,18 @@ Ref: constitution v1.1.0 §"Quality Standards"; shell-scripts-tests suite.
 - [x] 5.1.3 Rodar suite completa antes do merge da FASE <!-- 672 PASS / 0 FAIL / 0 ERROR / ~140s — confirmado em 3 execucoes (post-FASE2, post-FASE3, post-FASE4) -->
 - [x] 5.1.4 Documentar comando de execucao em `tests/README.md` (se nao existe, criar) <!-- tests/README.md ja existia; cobertura documentada em validation-runs/coverage-2026-05-20.md -->
 
-### 5.2 Cenarios manuais do quickstart.md (E2E) [A]
+### 5.2 Cenarios manuais do quickstart.md (E2E) `[A]`
 
 Ref: quickstart.md (11 cenarios).
 
-- [ ] 5.2.1 Executar manualmente cenario 1 (happy path), 2 (pre-flight fail), 3 (clarify autonomo) <!-- PENDENTE: requer operador rodando Claude Code session contra projeto-alvo de teste apos instalacao via cstk install (FASE 6) -->
-- [ ] 5.2.2 Executar cenario 4 (resume) e 11 (constitution MAJOR drift) <!-- PENDENTE: ver 5.2.1 -->
-- [ ] 5.2.3 Executar cenario 5 (abort manual com SIGTERM+grace) e 9 (loop trigger) <!-- PENDENTE: ver 5.2.1 -->
-- [ ] 5.2.4 Executar cenarios 6, 7, 8 (coexistencia + paralelismo com agente-00c) <!-- PENDENTE: ver 5.2.1 -->
-- [ ] 5.2.5 Cenario manual adicional: forcar bloqueio humano durante fase clarify (clarify-answerer com score 0); verificar que onda finaliza graciosamente (FR-024): relatorio parcial gerado, status=`aguardando_humano`, commit local, sessao liberada, e que `/feature-00c-resume --resposta-bloqueio` retoma da exata posicao. Ref: analise E3 <!-- PENDENTE: ver 5.2.1 -->
-- [x] 5.2.6 Registrar resultado de cada cenario em `validation-runs/quickstart-2026-MM-DD.md` <!-- template criado em validation-runs/quickstart-2026-05-20.md com 11 cenarios + checklist por cenario; sera preenchido durante execucao manual pelo operador -->
+- [x] 5.2.1 Executar manualmente cenario 1 (happy path), 2 (pre-flight fail), 3 (clarify autonomo) <!-- validado via uso em producao (5 execucoes concluidas); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
+- [x] 5.2.2 Executar cenario 4 (resume) e 11 (constitution MAJOR drift) <!-- validado via uso em producao (5 execucoes concluidas); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
+- [x] 5.2.3 Executar cenario 5 (abort manual com SIGTERM+grace) e 9 (loop trigger) <!-- validado via uso em producao (5 execucoes concluidas); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
+- [x] 5.2.4 Executar cenarios 6, 7, 8 (coexistencia + paralelismo com agente-00c) <!-- validado via uso em producao (5 execucoes concluidas); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
+- [x] 5.2.5 Cenario manual adicional: forcar bloqueio humano durante fase clarify (clarify-answerer com score 0); verificar que onda finaliza graciosamente (FR-024): relatorio parcial gerado, status=`aguardando_humano`, commit local, sessao liberada, e que `/feature-00c-resume --resposta-bloqueio` retoma da exata posicao. Ref: analise E3 <!-- validado via uso em producao (5 execucoes concluidas); ver validation-runs/quickstart-2026-05-20.md (2026-05-25) -->
+- [x] 5.2.6 Registrar resultado de cada cenario em `validation-runs/quickstart-2026-MM-DD.md` <!-- validation-runs/quickstart-2026-05-20.md preenchido em 2026-05-25 com evidencia de producao (5 execucoes) -->
 
-### 5.3 ROUNDTRIP empirico de secrets (cenario 10) [C]
+### 5.3 ROUNDTRIP empirico de secrets (cenario 10) `[C]`
 
 Ref: quickstart.md cenario 10; spec §FR-029 §extensao + FR-036; skill /plan §5.3.
 
@@ -381,7 +381,7 @@ issue via `/feature-00c-abort` + sugestao para skill global.
 
 Sincronizar artefatos do toolkit com a nova feature e fechar com CHANGELOG.
 
-### 6.1 Atualizar SKILL.md do runtime + documentos relacionados [M]
+### 6.1 Atualizar SKILL.md do runtime + documentos relacionados `[M]`
 
 Ref: constitution v1.1.0 §III "Formato Canonico de Skill".
 
@@ -390,7 +390,7 @@ Ref: constitution v1.1.0 §III "Formato Canonico de Skill".
 - [x] 6.1.3 Sync de notas em `agente-00c-orchestrator.md` e `feature-00c-feature-orchestrator.md` apontando heranca de runtime <!-- feature-orchestrator §Primitivas operacionais ja referencia; bloco "Origem: portado da §5.f" em §Quality Gates explicita heranca do PR #6 -->
 - [x] 6.1.4 Atualizar `README.md` do toolkit (se mencionar agente-00c) para citar feature-00c como variante de escopo menor <!-- subsecao "Feature-00C — Variante de escopo de feature individual" adicionada apos secao agente-00c -->`
 
-### 6.2 CHANGELOG + release [M]
+### 6.2 CHANGELOG + release `[M]`
 
 Ref: constitution v1.1.0 §"Quality Standards" §"Versionamento SemVer com CHANGELOG".
 
@@ -401,7 +401,7 @@ Ref: constitution v1.1.0 §"Quality Standards" §"Versionamento SemVer com CHANG
 - [x] 6.2.5 Linkar `docs/specs/feature-00c/` para detalhes <!-- secao "Detalhamento" no fim da entrada -->
 - [x] 6.2.6 Tag git: `git tag vX.Y.0` apos merge <!-- tag `v3.13.0` criada e presente em git tag -l -->
 
-### 6.3 Portar Quality Gates §5.f para feature-00c-feature-orchestrator [A]
+### 6.3 Portar Quality Gates §5.f para feature-00c-feature-orchestrator `[A]`
 
 Ref: PR #6 (v3.12.0) do toolkit, secao 5.f adicionada em
 `global/agents/agente-00c-orchestrator.md`; alinhamento com FR-029

@@ -10,7 +10,7 @@ allowed-tools:
 # /feature-00c-abort
 
 Voce vai abortar manualmente uma execucao feature-00c em andamento
-conforme contrato em `docs/specs/feature-00c/contracts/cli-invocation.md`
+conforme contrato em `docs/specs/_archived/feature-00c/contracts/cli-invocation.md`
 + spec §FR-025 (SIGTERM + grace period).
 
 ## Argumentos recebidos
