@@ -234,4 +234,228 @@ scenario_start_inclui_skills_invoked_vazio() {
   assert_stdout_contains "[]" || return 1
 }
 
+# ==== record-task (.tasks[] auditavel — rede contra perda de tasks) ====
+scenario_record_task_append_basico() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 \
+    --titulo "Setup" --outcome pass --testes-rodados 3 --testes-passados 3 \
+    --lint-ok true --arquivos '["a.go"]' --origem execute-task
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "record-task" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].task_id'
+  assert_stdout_contains "1.1" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].wave_id'
+  assert_stdout_contains "onda-001" || return 1
+}
+
+scenario_record_task_nao_exige_onda() {
+  # .tasks[] e top-level; record-task funciona sem onda em andamento
+  # (diferente de record-skill). Garante back-fill em review-task.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 9.9 --outcome pass
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "record-task sem onda" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_record_task_upsert_idempotente() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --titulo "v1" --outcome pass
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --titulo "v2" --outcome fail
+  assert_stdout_contains "1" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks | length'
+  assert_stdout_contains "1" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].titulo'
+  assert_stdout_contains "v2" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].outcome'
+  assert_stdout_contains "fail" || return 1
+}
+
+scenario_record_task_if_absent_nao_clobbera() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --titulo "real" --outcome pass --origem execute-task
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --titulo "derivada" --outcome pass --origem reconcile --if-absent
+  assert_stdout_contains "1" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].titulo'
+  assert_stdout_contains "real" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].origem'
+  assert_stdout_contains "execute-task" || return 1
+}
+
+scenario_record_task_multiplas_acumulam() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --outcome pass
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.2 --outcome pass
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.3 --outcome fail
+  assert_stdout_contains "3" || return 1
+}
+
+scenario_record_task_valida_outcome() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  assert_exit 2 "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --outcome talvez || return 1
+}
+
+scenario_record_task_valida_testes_passados_le_rodados() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  assert_exit 2 "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --outcome pass \
+    --testes-rodados 1 --testes-passados 5 || return 1
+}
+
+scenario_record_task_valida_arquivos_array() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  assert_exit 2 "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --outcome pass \
+    --arquivos 'naoarray' || return 1
+}
+
+scenario_record_task_obriga_flags() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  assert_exit 2 "$SCRIPT" record-task --state-dir "$_sd" --outcome pass || return 1
+  assert_exit 2 "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 || return 1
+}
+
+# ==== reconcile-tasks (rede deterministica contra perda — fonte: tasks.md) ====
+_write_tasks_md() {
+  # backlog com mix de estados: 1.1 e 1.3 concluidas; 1.2 parcial; 2.1 bloqueada;
+  # 2.1.1-bis (emergente) concluida.
+  cat > "$1" <<'TASKS'
+# Tarefas Projeto X
+
+## FASE 1 - Fundacao
+
+### 1.1 Setup do Projeto `[A]`
+
+- [x] 1.1.1 Criar repo
+- [x] 1.1.2 CI
+
+### 1.2 Dominio `[C]`
+
+- [x] 1.2.1 Entidades
+- [ ] 1.2.2 Regras
+
+### 1.3 Persistencia `[A]`
+
+- [x] 1.3.1 Migrations
+- [x] 1.3.2 Repo
+
+## FASE 2 - Backend
+
+### 2.1 Handlers `[A]`
+
+- [!] 2.1.1 Bloqueada
+- [x] 2.1.2 Outra
+
+### 2.1.1-bis Hotfix emergente `[C]`
+
+- [x] 2.1.1-bis.1 patch
+
+## Resumo Quantitativo
+
+| Fase | Tarefas |
+|------|---------|
+TASKS
+}
+
+scenario_reconcile_tasks_dry_run_lista_concluidas_ausentes() {
+  _sd="$TMPDIR_TEST/state"
+  _md="$TMPDIR_TEST/tasks.md"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  _write_tasks_md "$_md"
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile dry-run" "$_CAPTURED_STDERR"; return 1; }
+  # concluidas e ausentes: 1.1, 1.3, 2.1.1-bis
+  assert_stdout_contains "1.1" || return 1
+  assert_stdout_contains "1.3" || return 1
+  assert_stdout_contains "2.1.1-bis" || return 1
+}
+
+scenario_reconcile_tasks_ignora_pendentes_e_bloqueadas() {
+  _sd="$TMPDIR_TEST/state"
+  _md="$TMPDIR_TEST/tasks.md"
+  _init_state "$_sd"
+  _write_tasks_md "$_md"
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile apply" "$_CAPTURED_STDERR"; return 1; }
+  # 3 concluidas back-filled (1.1, 1.3, 2.1.1-bis). 1.2 (parcial) e 2.1 ([!]) fora.
+  assert_stdout_contains "3" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks | length'
+  assert_stdout_contains "3" || return 1
+  # equidade exata (NAO contains, que faz match de substring: "2.1.1-bis" ~ "2.1")
+  capture "$RW" get --state-dir "$_sd" --field '[.tasks[].task_id] | any(. == "1.2")'
+  assert_stdout_contains "false" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '[.tasks[].task_id] | any(. == "2.1")'
+  assert_stdout_contains "false" || return 1
+  # mas a emergente 2.1.1-bis (concluida) DEVE estar presente
+  capture "$RW" get --state-dir "$_sd" --field '[.tasks[].task_id] | any(. == "2.1.1-bis")'
+  assert_stdout_contains "true" || return 1
+}
+
+scenario_reconcile_tasks_extrai_titulo_sem_criticidade() {
+  _sd="$TMPDIR_TEST/state"
+  _md="$TMPDIR_TEST/tasks.md"
+  _init_state "$_sd"
+  _write_tasks_md "$_md"
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .titulo'
+  assert_stdout_contains "Setup do Projeto" || return 1
+  # nao deve carregar a tag de criticidade [A]
+  if printf '%s' "$_CAPTURED_STDOUT" | grep -q '\['; then
+    _fail "titulo" "titulo carregou tag de criticidade: $_CAPTURED_STDOUT"; return 1
+  fi
+}
+
+scenario_reconcile_tasks_nao_clobbera_entrada_real() {
+  _sd="$TMPDIR_TEST/state"
+  _md="$TMPDIR_TEST/tasks.md"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  # entrada real previa para 1.1 (execute-task)
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --titulo "REAL" \
+    --outcome pass --origem execute-task
+  _write_tasks_md "$_md"
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
+  # so 1.3 e 2.1.1-bis sao novas (1.1 ja existe)
+  assert_stdout_contains "2" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .titulo'
+  assert_stdout_contains "REAL" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .origem'
+  assert_stdout_contains "execute-task" || return 1
+}
+
+scenario_reconcile_tasks_idempotente() {
+  _sd="$TMPDIR_TEST/state"
+  _md="$TMPDIR_TEST/tasks.md"
+  _init_state "$_sd"
+  _write_tasks_md "$_md"
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
+  assert_stdout_contains "3" || return 1
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
+  assert_stdout_contains "0" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.tasks | length'
+  assert_stdout_contains "3" || return 1
+}
+
+scenario_reconcile_tasks_md_ausente_falha() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  assert_exit 1 "$SCRIPT" reconcile-tasks --state-dir "$_sd" \
+    --tasks-md "$TMPDIR_TEST/nao-existe.md" || return 1
+}
+
+scenario_reconcile_tasks_obriga_flags() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  assert_exit 2 "$SCRIPT" reconcile-tasks --state-dir "$_sd" || return 1
+}
+
 run_all_scenarios

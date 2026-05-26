@@ -5,6 +5,61 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.4.0] - 2026-05-26
+
+Fecha um buraco de perda de dados na trilha de tasks: uma feature com 21 tasks
+gravava apenas 2 no `state.json`/`knowledge.db`. A causa raiz não estava na
+ingestão (`recall.sh` espelha `.tasks[]` fielmente e **não** lê `tasks.md`),
+mas em como `.tasks[]` era escrito — um snippet `jq` hand-rolled na **prosa**
+dos orquestradores (`§5.d.ter`), append **não-idempotente** que só rodava se o
+LLM lembrasse de executá-lo a cada task. Quando o orquestrador comprimia a fase
+`execute-task` em poucas ondas e pulava o append, as tasks sumiam em silêncio.
+A correção introduz um caminho de escrita **auditado e idempotente**
+(`record-task`) e, sobretudo, uma **rede de segurança determinística**
+(`reconcile-tasks`) que deriva `.tasks[]` do `tasks.md` — o artefato que de fato
+contém todas as tasks via checkboxes — em vez de depender da disciplina do LLM.
+Mudança aditiva e retro-compatível (catálogo + runtime helper).
+
+### Added
+
+- **`global/skills/agente-00c-runtime/scripts/state-ondas.sh`** ganha dois
+  subcomandos: **`record-task`** (upsert idempotente de uma entrada em
+  `.tasks[]` por `task_id`; caminho atômico auditado com backup em
+  `state-history/` + `sha256`; `--if-absent` não sobrescreve entrada real) e
+  **`reconcile-tasks --tasks-md <path>`** (backstop determinístico: parseia o
+  `tasks.md`, identifica toda task **concluída** — heading `### N.M` com TODAS
+  as subtarefas-checkbox `[x]` — e back-filla via `record-task --if-absent`
+  qualquer uma ausente de `.tasks[]`; tasks pendentes/bloqueadas/parciais ficam
+  de fora para não fabricar `pass`/`fail`; `--dry-run` lista os faltantes).
+  Campos `origem`/`recorded_at` são aditivos — a ingestão seleciona só os 8
+  campos do contrato e ignora o resto.
+- **`global/skills/review-task/SKILL.md` §4.6**: gate de completude
+  `.tasks[] ↔ tasks.md`. Roda `reconcile-tasks --dry-run` (detecta divergência),
+  depois apply (sana, idempotente), e reporta o finding
+  `task-outcome-nao-gravado` quando o caminho ao vivo falhou. Read-only no
+  passo 1, idempotente no passo 2 — seguro a cada review.
+
+### Changed
+
+- **`global/agents/agente-00c-orchestrator.md` e
+  `agente-00c-feature-orchestrator.md`** (`§5.d.ter`): o snippet `jq`
+  hand-rolled (`get` → `. + [$e]` → `set`) que escrevia `.tasks[]` foi
+  substituído por uma chamada a `state-ondas.sh record-task` — idempotente por
+  `task_id` (sem duplicatas mesmo se chamado repetidamente) e auditado. Cada
+  bloco passa a documentar a rede de segurança `reconcile-tasks` como o backstop
+  que garante completude. Comportamento backward-compatible.
+
+### Tests
+
+- **`tests/test_state-ondas.sh`** (+18 cenários): `record-task` (append,
+  upsert idempotente, `--if-absent` sem clobber, acúmulo, sem onda em
+  andamento, validações de `outcome`/`testes_passados ≤ rodados`/array de
+  arquivos/flags obrigatórias) e `reconcile-tasks` (dry-run lista concluídas
+  ausentes, ignora pendentes/bloqueadas, extração de título sem a tag de
+  criticidade, não clobbera entrada real, idempotência, `tasks.md` ausente,
+  flags obrigatórias). Cobre o pitfall `awk FNR==NR` com primeiro arquivo
+  vazio (`.tasks[]` sem entradas) — corrigido com comparação por `FILENAME`.
+
 ## [4.3.4] - 2026-05-26
 
 Corrige drift de contrato nos briefs do `cstk-panel`: o `event_type` da tabela
@@ -2470,6 +2525,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.4.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.4.0
 [4.3.4]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.4
 [4.3.3]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.3
 [4.3.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.2

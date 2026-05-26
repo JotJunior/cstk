@@ -235,6 +235,61 @@ ratificado em
 `agente-00c-runtime` nao instalada), pule a agregacao silenciosamente
 — nao bloqueie o restante do review-task.
 
+### 4.6 Reconciliacao + completude de tasks (.tasks[] ↔ tasks.md)
+
+Quando a feature tem `state.json` da execucao em
+`<projeto>/.claude/feature-00c-state/<feature>/`, garanta que TODA task
+concluida no `tasks.md` tenha entrada em `.tasks[]` (e, por consequencia,
+na `knowledge.db`). Sem este gate, tasks concluidas pelo `execute-task`
+mas cujo append de outcome o orquestrador pulou somem silenciosamente —
+o `.tasks[]` e a fonte que a ingestao (`recall.sh`) espelha; ele NAO le o
+`tasks.md`. Historicamente uma feature com 21 tasks gravou so 2.
+
+**Por que aqui**: `tasks.md` (checkboxes mantidos pelo `execute-task`
+ETAPA 9) e deterministico; `.tasks[]` (append em prosa do orquestrador) e
+fragil. O `review-task` e o ponto natural de fim de fase para harvestar o
+primeiro no segundo.
+
+**1. Detectar divergencia (read-only)** — quais tasks concluidas
+(`### N.M` com TODAS as subtarefas-checkbox `[x]`) faltam em `.tasks[]`:
+
+```bash
+STATE_DIR="<projeto>/.claude/feature-00c-state/<feature>"
+TASKS_MD="<path resolvido na secao 2>"   # docs/specs/<feature>/tasks.md etc.
+~/.claude/skills/agente-00c-runtime/scripts/state-ondas.sh \
+  reconcile-tasks --state-dir "$STATE_DIR" --tasks-md "$TASKS_MD" --dry-run
+# stdout vazio  -> 0 divergencias (estado saudavel)
+# stdout = task_ids (1 por linha) -> tasks concluidas ausentes de .tasks[]
+```
+
+**2. Sanar (back-fill deterministico)** — idempotente; NUNCA sobrescreve
+entrada real ja gravada pelo `execute-task` (usa `--if-absent`); so grava
+tasks CONCLUIDAS (pendentes/bloqueadas ficam de fora — sem outcome final):
+
+```bash
+~/.claude/skills/agente-00c-runtime/scripts/state-ondas.sh \
+  reconcile-tasks --state-dir "$STATE_DIR" --tasks-md "$TASKS_MD"
+# stdout: nº de tasks back-filled nesta passada
+```
+
+**3. Reportar no relatorio** (secao "Recomendacoes" / "Resumo Executivo"):
+
+- **Divergencia**: nº de tasks concluidas no `tasks.md` que NAO estavam em
+  `.tasks[]` antes do back-fill (saida do passo 1). Se `> 0`, reporte
+  finding `task-outcome-nao-gravado` — sinaliza que o orquestrador pulou o
+  `record-task` durante o `execute-task`. O back-fill ja sanou para a
+  ingestao, mas a recorrencia indica fluxo de onda interrompido cedo.
+- **Completude pos-reconcile**: `count(.tasks[])` (entradas reais +
+  back-filled) vs total de tasks concluidas no `tasks.md`. Devem bater.
+- **Origem das entradas**: quantas `origem == "reconcile"` (back-filled)
+  vs `origem == "execute-task"` (gravadas ao vivo). Alta proporcao de
+  `reconcile` confirma que o caminho ao vivo esta falhando.
+
+**Defesa em profundidade**: helper ausente (skill `agente-00c-runtime`
+nao instalada) ou `tasks.md`/`state.json` nao resolvidos → pule o passo
+silenciosamente, sem bloquear o resto do review-task. Read-only no passo
+1, idempotente no passo 2 — seguro rodar a cada review.
+
 ### 5. Acoes Automaticas
 
 Ao identificar inconsistencias:

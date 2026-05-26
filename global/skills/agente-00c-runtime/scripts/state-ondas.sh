@@ -46,6 +46,23 @@
 #         onda) — re-registro nao duplica entrada.
 #         Stdout: numero total de skills invocadas nesta onda.
 #
+#   state-ondas.sh record-task --state-dir DIR --task-id ID --outcome pass|fail
+#                              [--titulo T] [--wave-id ID] [--testes-rodados N]
+#                              [--testes-passados N] [--lint-ok true|false]
+#                              [--arquivos JSON] [--origem TAG] [--if-absent]
+#       — Upsert idempotente de UMA entrada em .tasks[] (chave = task_id).
+#         Caminho de escrita auditado (substitui o jq hand-rolled que vivia
+#         na prosa dos orquestradores). Default sobrescreve; --if-absent so
+#         insere se ausente. Stdout: total de entradas em .tasks[].
+#
+#   state-ondas.sh reconcile-tasks --state-dir DIR --tasks-md PATH
+#                                  [--wave-id ID] [--dry-run]
+#       — Rede de seguranca deterministica: le tasks.md e back-filla em
+#         .tasks[] (via record-task --if-absent) toda task CONCLUIDA (heading
+#         `### N.M` com todas as subtarefas-checkbox `[x]`) que esteja
+#         faltando. NAO grava tasks pendentes/bloqueadas (sem outcome final).
+#         Idempotente. Stdout: nº back-filled; --dry-run lista os faltantes.
+#
 #   state-ondas.sh git-commit --state-dir DIR --projeto-alvo-path PATH
 #                             --motivo MOTIVO [--onda-id ID]
 #       — Faz `git add .` + `git commit -m 'chore(agente-00c): onda <ID> - <MOTIVO>'`
@@ -330,6 +347,198 @@ _so_cmd_record_skill() {
   printf '%s\n' "$_count"
 }
 
+# record-task: upsert idempotente de UMA entrada em .tasks[] (top-level).
+# Chave natural dentro de um state.json (= uma execucao) = task_id. Substitui
+# o snippet jq hand-rolled que vivia SO na prosa dos orquestradores (§5.d.ter):
+# caminho de escrita auditado, atomico (state-history backup + sha256),
+# idempotente. Diferente de record-skill, NAO exige onda em andamento —
+# .tasks[] e top-level e pode ser gravado tambem na fase review-task.
+#
+# Default = UPSERT (sobrescreve a entrada existente com dados frescos — usado
+# pelo execute-task, que conhece o outcome real). --if-absent = so insere se
+# AUSENTE (no-op se ja existe; usado pelo back-fill reconcile-tasks, para nao
+# clobberar uma entrada real com uma derivada).
+#
+# Campos `recorded_at`/`origem` sao ADITIVOS — a ingestao knowledge.db
+# (recall.sh) seleciona apenas os 8 campos do contrato layer-b e ignora o
+# resto; servem para o review-task distinguir entradas reais de back-filled.
+# Stdout: total de entradas em .tasks[] apos a operacao.
+_so_cmd_record_task() {
+  _sdir=""; _tid=""; _ttl=""; _wid=""; _oc=""
+  _tr="0"; _tp="0"; _lk=""; _af="[]"; _origem=""; _ifabsent="no"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)       _sdir=$2; shift 2 ;;
+      --task-id)         _tid=$2;  shift 2 ;;
+      --titulo)          _ttl=$2;  shift 2 ;;
+      --wave-id)         _wid=$2;  shift 2 ;;
+      --outcome)         _oc=$2;   shift 2 ;;
+      --testes-rodados)  _tr=$2;   shift 2 ;;
+      --testes-passados) _tp=$2;   shift 2 ;;
+      --lint-ok)         _lk=$2;   shift 2 ;;
+      --arquivos)        _af=$2;   shift 2 ;;
+      --origem)          _origem=$2; shift 2 ;;
+      --if-absent)       _ifabsent="yes"; shift ;;
+      *) _so_die_usage "record-task: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_sdir" ] || _so_die_usage "record-task: --state-dir obrigatorio"
+  [ -n "$_tid" ]  || _so_die_usage "record-task: --task-id obrigatorio"
+  [ -n "$_oc" ]   || _so_die_usage "record-task: --outcome obrigatorio"
+  case "$_oc" in pass|fail) : ;; *) _so_die_usage "record-task: --outcome deve ser pass|fail" ;; esac
+  case "$_tr" in ''|*[!0-9]*) _so_die_usage "record-task: --testes-rodados deve ser inteiro >= 0" ;; esac
+  case "$_tp" in ''|*[!0-9]*) _so_die_usage "record-task: --testes-passados deve ser inteiro >= 0" ;; esac
+  [ "$_tp" -le "$_tr" ] || _so_die_usage "record-task: --testes-passados ($_tp) > --testes-rodados ($_tr)"
+  case "$_lk" in
+    true|1)  _lk_json=true ;;
+    false|0) _lk_json=false ;;
+    '')      _lk_json=null ;;
+    *) _so_die_usage "record-task: --lint-ok deve ser true|false (ou vazio)" ;;
+  esac
+  _so_require_jq
+  _sf=$(_so_state_file "$_sdir")
+  [ -f "$_sf" ] || _so_die "record-task: state.json ausente em $_sdir" 1
+  printf '%s' "$_af" | jq -e 'type == "array"' >/dev/null 2>&1 \
+    || _so_die_usage "record-task: --arquivos deve ser um array JSON (ex: '[]')"
+
+  # wave-id default = onda corrente (proveniencia best-effort)
+  if [ -z "$_wid" ]; then
+    _wid=$(jq -r 'if (.ondas // []) | length > 0 then (.ondas[-1].id // "") else "" end' "$_sf" 2>/dev/null) || _wid=""
+  fi
+
+  _now=$(_so_iso_now)
+  _origem_json=null
+  [ -n "$_origem" ] && _origem_json=$(printf '%s' "$_origem" | jq -R .)
+
+  _new=$(mktemp) || _so_die "mktemp falhou" 1
+  jq \
+    --arg tid "$_tid" --arg ttl "$_ttl" --arg wid "$_wid" --arg oc "$_oc" \
+    --argjson tr "$_tr" --argjson tp "$_tp" --argjson lk "$_lk_json" \
+    --argjson af "$_af" --arg ts "$_now" --argjson origem "$_origem_json" \
+    --arg ifabsent "$_ifabsent" '
+    (.tasks //= [])
+    | {task_id:$tid, titulo:$ttl, wave_id:$wid, outcome:$oc,
+       testes_rodados:$tr, testes_passados:$tp, lint_ok:$lk,
+       arquivos_tocados:$af, recorded_at:$ts, origem:$origem} as $e
+    | if any(.tasks[]; .task_id == $tid)
+      then (if $ifabsent == "yes" then .
+            else .tasks |= map(if .task_id == $tid then $e else . end) end)
+      else .tasks += [$e]
+      end
+  ' "$_sf" > "$_new" || { rm -f -- "$_new"; _so_die "record-task: jq update falhou" 1; }
+
+  _so_atomic_write "$_sf" "$_new"
+  rm -f -- "$_new" 2>/dev/null || :
+  _so_update_sha "$_sdir"
+  jq -r '(.tasks // []) | length' "$_sf"
+}
+
+# reconcile-tasks: rede de seguranca DETERMINISTICA contra perda de tasks.
+# Le tasks.md (fonte de verdade do backlog) e garante que toda TASK CONCLUIDA
+# tenha entrada em .tasks[]. Uma task = heading `### N.M {Titulo}`; esta
+# CONCLUIDA quando tem >=1 subtarefa-checkbox e TODAS marcadas `[x]`. Tasks
+# pendentes/em-andamento/bloqueadas NAO sao gravadas (nao ha outcome final —
+# evita fabricar pass/fail). Back-fill via record-task --if-absent: NUNCA
+# clobbera entrada real ja gravada pelo execute-task. Idempotente.
+#
+# Stdout (default): numero de tasks back-filled nesta chamada.
+# --dry-run: NAO escreve; imprime os task_id que SERIAM back-filled (um por
+#   linha) — usado pelo gate de completude do review-task.
+_so_cmd_reconcile_tasks() {
+  _rc_sdir=""; _rc_md=""; _rc_wid=""; _rc_dry="no"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir) _rc_sdir=$2; shift 2 ;;
+      --tasks-md)  _rc_md=$2;   shift 2 ;;
+      --wave-id)   _rc_wid=$2;  shift 2 ;;
+      --dry-run)   _rc_dry="yes"; shift ;;
+      *) _so_die_usage "reconcile-tasks: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_rc_sdir" ] || _so_die_usage "reconcile-tasks: --state-dir obrigatorio"
+  [ -n "$_rc_md" ]   || _so_die_usage "reconcile-tasks: --tasks-md obrigatorio"
+  _so_require_jq
+  _rc_sf=$(_so_state_file "$_rc_sdir")
+  [ -f "$_rc_sf" ] || _so_die "reconcile-tasks: state.json ausente em $_rc_sdir" 1
+  [ -f "$_rc_md" ] || _so_die "reconcile-tasks: tasks.md ausente: $_rc_md" 1
+
+  if [ -z "$_rc_wid" ]; then
+    _rc_wid=$(jq -r 'if (.ondas // []) | length > 0 then (.ondas[-1].id // "") else "" end' "$_rc_sf" 2>/dev/null) || _rc_wid=""
+  fi
+
+  # task_ids ja presentes em .tasks[] (snapshot)
+  _rc_exfile=$(mktemp) || _so_die "mktemp falhou" 1
+  jq -r '(.tasks // [])[].task_id // empty' "$_rc_sf" > "$_rc_exfile" 2>/dev/null || :
+
+  # awk: parseia tasks.md -> emite "id<TAB>titulo" para cada task CONCLUIDA
+  # ainda AUSENTE de .tasks[]. O seen-set vem do primeiro arquivo (_rc_exfile);
+  # comparamos por FILENAME (nao FNR==NR) porque o exfile pode estar VAZIO
+  # (.tasks[] ainda sem entradas) — FNR==NR falharia consumindo o tasks.md
+  # inteiro como seen-set.
+  _rc_missing=$(awk -v exf="$_rc_exfile" '
+    { sub(/\r$/, "") }
+    FILENAME == exf { seen[$0] = 1; next }
+    function flush() {
+      if (cur != "" && nsub > 0 && ndone == nsub && !(cur in seen)) {
+        print cur "\t" titulo
+      }
+      cur = ""; titulo = ""; nsub = 0; ndone = 0
+    }
+    /^#/ {
+      flush()
+      if ($0 ~ /^### /) {
+        line = $0; sub(/^### +/, "", line)
+        split(line, a, /[ \t]+/); id = a[1]
+        if (id ~ /^[0-9]+(\.[0-9]+)+(-bis(\.[0-9]+)*)?$/) {
+          cur = id
+          t = line; sub(/^[^ \t]+[ \t]+/, "", t)
+          gsub(/`/, "", t); sub(/[ \t]*\[[CAM]\][ \t]*$/, "", t)
+          gsub(/\t/, " ", t)
+          titulo = t
+        }
+      }
+      next
+    }
+    /^- \[.\] / {
+      if (cur != "") {
+        st = substr($0, 4, 1)
+        nsub++
+        if (st == "x" || st == "X") ndone++
+      }
+      next
+    }
+    END { flush() }
+  ' "$_rc_exfile" "$_rc_md")
+  rm -f -- "$_rc_exfile" 2>/dev/null || :
+
+  if [ -z "$_rc_missing" ]; then
+    [ "$_rc_dry" = "yes" ] || printf '0\n'
+    return 0
+  fi
+
+  if [ "$_rc_dry" = "yes" ]; then
+    printf '%s\n' "$_rc_missing" | cut -f1
+    return 0
+  fi
+
+  # Loop via here-doc (roda no shell corrente, nao em subshell — contador
+  # persiste). record-task usa vars sem prefixo _rc_, entao nao colide com
+  # _rc_id/_rc_ttl/_rc_count/_rc_missing do loop.
+  _rc_count=0
+  while IFS="$(printf '\t')" read -r _rc_id _rc_ttl; do
+    [ -n "$_rc_id" ] || continue
+    _so_cmd_record_task --state-dir "$_rc_sdir" --task-id "$_rc_id" \
+      --titulo "$_rc_ttl" --wave-id "$_rc_wid" --outcome pass \
+      --testes-rodados 0 --testes-passados 0 \
+      --arquivos '[]' --origem reconcile --if-absent >/dev/null \
+      || _so_die "reconcile-tasks: record-task falhou para $_rc_id" 1
+    _rc_count=$((_rc_count + 1))
+  done <<EOF
+$_rc_missing
+EOF
+  printf '%s\n' "$_rc_count"
+}
+
 _so_cmd_current_id() {
   _sdir=""
   while [ "$#" -gt 0 ]; do
@@ -403,6 +612,12 @@ USO:
   state-ondas.sh tool-call-tick --state-dir DIR
   state-ondas.sh record-skill   --state-dir DIR --skill NAME
                                 [--decisao-id DEC-NNN]
+  state-ondas.sh record-task    --state-dir DIR --task-id ID --outcome pass|fail
+                                [--titulo T] [--wave-id ID] [--testes-rodados N]
+                                [--testes-passados N] [--lint-ok true|false]
+                                [--arquivos JSON-ARRAY] [--origem TAG] [--if-absent]
+  state-ondas.sh reconcile-tasks --state-dir DIR --tasks-md PATH
+                                [--wave-id ID] [--dry-run]
   state-ondas.sh current-id     --state-dir DIR
   state-ondas.sh git-commit     --state-dir DIR --projeto-alvo-path PATH
                                 --motivo MOTIVO [--onda-id ID]
@@ -429,6 +644,8 @@ case "$_SO_SUBCMD" in
   end)              _so_cmd_end "$@" ;;
   tool-call-tick)   _so_cmd_tool_call_tick "$@" ;;
   record-skill)     _so_cmd_record_skill "$@" ;;
+  record-task)      _so_cmd_record_task "$@" ;;
+  reconcile-tasks)  _so_cmd_reconcile_tasks "$@" ;;
   current-id)       _so_cmd_current_id "$@" ;;
   git-commit)       _so_cmd_git_commit "$@" ;;
   -h|--help|help)   exit 0 ;;

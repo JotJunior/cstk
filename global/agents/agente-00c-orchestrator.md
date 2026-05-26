@@ -528,32 +528,38 @@ devolva controle ao pai sem essa linha.
    novo mecanismo:
 
    ```bash
-   # Compor a entrada da task com jq (arquivos_tocados via git diff da onda).
-   # WAVE_ID = state-ondas.sh current-id; TASK_ID = task corrente;
-   # TASK_TITULO = titulo do heading da task em tasks.md ("" se nao resolvido).
+   # arquivos_tocados via git diff da onda; WAVE_ID = state-ondas.sh current-id;
+   # TASK_ID = task corrente; TASK_TITULO = titulo do heading em tasks.md ("" se
+   # nao resolvido); OUTCOME = pass|fail.
    ARQUIVOS=$(git -C "$PAP" diff --name-only HEAD~1..HEAD 2>/dev/null \
                | jq -R . | jq -s . 2>/dev/null || echo '[]')
-   ENTRY=$(jq -nc \
-     --arg tid "$TASK_ID" --arg ttl "$TASK_TITULO" --arg wid "$WAVE_ID" --arg oc "$OUTCOME" \
-     --argjson tr "$TESTES_RODADOS" --argjson tp "$TESTES_PASSADOS" \
-     --argjson lk "$LINT_OK" --argjson af "$ARQUIVOS" \
-     '{task_id:$tid, titulo:$ttl, wave_id:$wid, outcome:$oc,
-       testes_rodados:$tr, testes_passados:$tp, lint_ok:$lk,
-       arquivos_tocados:$af}')
 
-   # Anexar via state-rw.sh set (caminho atomico + backup automatico em
-   # state-history/; sha256 recomputado pelo proprio set). NUNCA cp/echo
-   # direto no state.json.
-   CUR=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" --field '.tasks // []')
-   NEW=$(printf '%s' "$CUR" | jq -c --argjson e "$ENTRY" '. + [$e]')
-   "$RUNTIME_SCRIPTS"/state-rw.sh set --state-dir "$SD" \
-     --field '.tasks' --value "$NEW"
+   # Gravar via state-ondas.sh record-task: upsert idempotente por task_id,
+   # caminho atomico auditado (state-history backup + sha256). Substitui o
+   # antigo snippet jq hand-rolled (get / . + [$e] / set), que era
+   # nao-idempotente e so rodava se o LLM lembrasse de anexar cada task — a
+   # causa raiz de tasks perdidas (a ingestao espelha .tasks[] tal-e-qual).
+   # NUNCA cp/echo direto no state.json.
+   "$RUNTIME_SCRIPTS"/state-ondas.sh record-task --state-dir "$SD" \
+     --task-id "$TASK_ID" --titulo "$TASK_TITULO" --wave-id "$WAVE_ID" \
+     --outcome "$OUTCOME" --testes-rodados "$TESTES_RODADOS" \
+     --testes-passados "$TESTES_PASSADOS" --lint-ok "$LINT_OK" \
+     --arquivos "$ARQUIVOS" --origem execute-task
    ```
 
    REGRA DURA: `arquivos_tocados` carrega paths (potencial texto livre) —
    o backup da onda ja passa por `secrets-filter.sh for-backup`, e a
    ingestao da camada B deriva apenas a CONTAGEM (`length`) do array,
    nunca expondo paths brutos na knowledge.db.
+
+   **Rede de seguranca (determinismo)**: o `record-task` acima e o caminho AO
+   VIVO, mas ainda depende de o orquestrador chama-lo a cada task. O backstop
+   deterministico que GARANTE completude e `state-ondas.sh reconcile-tasks
+   --tasks-md <tasks.md>`, invocado pelo `review-task` (SKILL §4.6): le os
+   checkboxes concluidos do `tasks.md` e back-filla (`--if-absent`, sem
+   clobberar entradas reais) qualquer task concluida ausente de `.tasks[]`.
+   Os campos `origem`/`recorded_at` gravados sao ADITIVOS — a ingestao
+   seleciona so os 8 campos do contrato e ignora o resto.
 
    #### Campo `.eventos[]` — timeline cronologica (FR-020)
 
