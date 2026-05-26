@@ -3,7 +3,6 @@ name: review-task
 description: 'Task status / backlog progress report; identifies tasks ready to start. Triggers: "revisar tarefas", "status das tarefas", "progresso do projeto", "review tasks". Skip for executing (execute-task) or creating tasks (create-tasks).'
 allowed-tools:
   - Read
-  - Edit
   - Glob
   - Grep
   - Bash
@@ -13,6 +12,12 @@ allowed-tools:
 # Skill: Revisar Status das Tarefas
 
 Analise o arquivo de tarefas do projeto e gere um relatorio de status.
+
+> **Contrato de saida (invariante)**: esta skill e READ-ONLY de relatorio —
+> emite o status **na conversa (stdout)** e **nunca cria nem escreve arquivo
+> de relatorio** (`.md`, `report.*`, etc.). So persista quando o usuario pedir
+> explicitamente. Marcar tarefa como concluida (editar `tasks.md`) e trabalho
+> do `/execute-task`, nao do review-task.
 
 ## Pre-requisitos
 

@@ -5,6 +5,31 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.3.1] - 2026-05-26
+
+Correção de contrato da skill `review-task`. Ela é um relatório de status
+READ-ONLY, mas a implementação ainda carregava a capacidade de escrever
+arquivos e, ocasionalmente, criava um arquivo de relatório — fricção recorrente
+nos dados de uso do `/insights` (o usuário precisava interromper para corrigir).
+Esta versão alinha a implementação ao contrato sempre pretendido. Sem impacto
+para quem usa a skill como relatório: o comportamento removido nunca foi
+intencional.
+
+### Fixed
+
+- **`global/skills/review-task/SKILL.md`**: removido `Edit` de `allowed-tools`,
+  de modo que a skill não tem mais capacidade de escrever ou criar arquivos
+  (a criação de arquivo de relatório era comportamento não-intencional). Marcar
+  tarefa como concluída em `tasks.md` permanece responsabilidade do
+  `/execute-task`.
+
+### Changed
+
+- **`review-task/SKILL.md`**: adicionado invariante explícito de **contrato de
+  saída** logo após a introdução — a skill emite o status na conversa (stdout) e
+  nunca cria nem escreve arquivo de relatório, persistindo apenas quando o
+  usuário pedir explicitamente.
+
 ## [4.3.0] - 2026-05-26
 
 A skill `apply-insights` passa a consumir os dados do `/insights` nativo como
