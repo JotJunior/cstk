@@ -5,6 +5,32 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.3.2] - 2026-05-26
+
+Correção de robustez na memória de conhecimento cross-feature (`knowledge.db`).
+A ingestão pós-onda vivia num único lugar — o passo `10.bis` do loop do
+orquestrador, dentro do subagente. Quando o orquestrador retornava sem
+completar o loop (parando cedo, antes de fechar a onda e emitir o `Schedule
+intent`), o comando-pai recuperava o bookkeeping da onda mas não re-ingeria, e
+a `knowledge.db` ficava vazia mesmo com o `state.json` sendo atualizado
+normalmente. Esta versão adiciona uma rede de segurança de ingestão nos quatro
+comandos-pai. Mudança aditiva e retrocompatível, restrita ao catálogo
+(`global/commands/*.md`) — propaga via `cstk update`. Para backfill de uma
+execução já rodada: `cstk recall --ingest --state-dir <state-dir>`.
+
+### Fixed
+
+- **`global/commands/feature-00c.md` (§5.bis), `feature-00c-resume.md`
+  (§4.bis), `agente-00c.md` (§5.bis), `agente-00c-resume.md` (§8.bis)**: cada
+  comando-pai agora executa `cstk recall --ingest` como rede de segurança logo
+  após tratar o `Schedule intent`, garantindo que o conhecimento da onda chegue
+  à `knowledge.db` mesmo quando o orquestrador retorna sem alcançar o passo
+  `10.bis`. A chamada é idempotente (upsert por chave natural — re-ingestão
+  após o `10.bis` é inofensiva), read-only sobre o `state.json` e degrada para
+  no-op em qualquer falha (cstk fora do PATH, `sqlite3`/`jq` ausentes); nunca
+  bloqueia o fechamento ou o agendamento da onda. Defesa-em-profundidade sobre
+  o `10.bis` existente — não altera a causa raiz (orquestrador parar cedo).
+
 ## [4.3.1] - 2026-05-26
 
 Correção de contrato da skill `review-task`. Ela é um relatório de status
@@ -2388,6 +2414,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.3.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.2
 [4.3.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.1
 [4.3.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.0
 [4.2.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.2.0

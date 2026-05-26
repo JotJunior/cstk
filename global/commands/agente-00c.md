@@ -221,6 +221,23 @@ state-rw.sh set --state-dir <SD> \
 E inclua no sumario final `Proxima onda agendada: nenhuma (ScheduleWakeup
 falhou — operador retoma via /agente-00c-resume)`.
 
+### 5.bis Ingestao da onda na knowledge.db (rede de seguranca, best-effort)
+
+A ingestao canonica e o passo **10.bis** do loop do orquestrador
+(`agente-00c-orchestrator.md`). Este eco no pai e uma REDE DE SEGURANCA
+para o caso de o orquestrador retornar SEM completar o loop (onda fechada/
+recuperada sem ter chegado ao 10.bis). Sem ele, a `knowledge.db` fica sem
+o conhecimento da onda.
+
+```bash
+# <SD> = <projeto-alvo>/.claude/agente-00c-state. Idempotente (upsert por
+# chave natural): re-ingerir apos o 10.bis e inofensivo. Read-only sobre o
+# state.json; escreve so em ~/.claude/cstk/knowledge.db. NUNCA gateia —
+# toda falha (cstk fora do PATH, sqlite3/jq ausentes) degrada para no-op.
+cstk recall --ingest --state-dir <SD> 2>/dev/null \
+  || echo "knowledge-db: ingestao (rede de seguranca) pulada — cstk/sqlite3/jq ausentes" >&2
+```
+
 ### 6. Apresentacao do resultado
 
 Imprima o sumario final no formato:

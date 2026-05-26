@@ -222,6 +222,25 @@ ScheduleWakeup(
 Se `Schedule intent: none`, NAO invocar ScheduleWakeup. Apenas liberar
 lock e exit 0.
 
+### 5.bis Ingestao da onda na knowledge.db (rede de seguranca, best-effort)
+
+A ingestao canonica e o passo **10.bis** do loop do orquestrador
+(`agente-00c-feature-orchestrator.md`). Este eco no pai e uma REDE DE
+SEGURANCA para o caso de o orquestrador retornar SEM completar o loop —
+onda fechada/recuperada manualmente por este comando, sem ter chegado ao
+10.bis. Sem ele, a `knowledge.db` fica sem o conhecimento da onda (sintoma
+observado: state.json atualizado, knowledge.db vazia).
+
+```bash
+# Idempotente (upsert por chave natural (project,feature,wave,source_id)):
+# se o orquestrador JA ingeriu no 10.bis, re-ingerir e inofensivo. Read-only
+# sobre o state.json; escreve apenas em ~/.claude/cstk/knowledge.db (indice
+# derivado/reconstruivel). NUNCA gateia — toda falha (cstk fora do PATH,
+# sqlite3/jq ausentes, dir nao-gravavel) degrada para no-op.
+cstk recall --ingest --state-dir "$AGENTE_00C_STATE_DIR" 2>/dev/null \
+  || echo "knowledge-db: ingestao (rede de seguranca) pulada — cstk/sqlite3/jq ausentes" >&2
+```
+
 ### 6. Cleanup
 
 - `state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"` SEMPRE
