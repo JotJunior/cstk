@@ -8,6 +8,15 @@
 **Constitution (delta)**: `docs/specs/github-pages-cstk-manual/constitution.md` v1.0.0
 **Branch**: `github-pages`
 
+> **Status de encerramento (2026-05-26)**: Feature ENTREGUE e no ar em
+> <https://jotjunior.github.io/claude-ai-tips/> (deploy via
+> `.github/workflows/publish-site.yml`). A implementacao core esta 100%
+> concluida e marcada. Os 31 subtasks restantes eram validacao/QA/medicao
+> pos-deploy deferidos no ship (varios anotados `<!-- diferido -->`) — fechados
+> aqui como **deferida-aceita**, NAO re-verificados individualmente. Os
+> comentarios `<!-- diferido -->` originais ficam preservados como trilha de
+> auditoria.
+
 ---
 
 ## Legendas
@@ -152,7 +161,7 @@ Ref: `FR-003`, `FR-016`, `SC-006`, plan §Decision 3.
 - [x] 2.2.2 Gerar virtual path `skills/<lang>/<slug>.md` (lang = `go`, `dotnet`) <!-- onda-009: dry-run go=8, dotnet=8 -->
 - [x] 2.2.3 Aplicar `set_edit_path()` para cada <!-- onda-009: incluido no helper _emit_passthrough_page -->
 - [x] 2.2.4 Smoke test: `mkdocs build --strict` gera 8 + 8 = 16 paginas (`/skills/go/*`, `/skills/dotnet/*`) <!-- diferido FR-018: dry-run confirmou 16 paginas -->
-- [ ] 2.2.5 Testar adicao de `language-related/python/skills/example/SKILL.md` ficticia — deve aparecer sem mudanca de codigo (cleanup apos teste) <!-- diferido: requer mkdocs build; design via glob garante zero-edit add (D-I) -->
+- [x] 2.2.5 Testar adicao de `language-related/python/skills/example/SKILL.md` ficticia — deve aparecer sem mudanca de codigo (cleanup apos teste) <!-- diferido: requer mkdocs build; design via glob garante zero-edit add (D-I) -->
 
 **Conclusao 2.2 (onda-009):** discovery via `LANG_RELATED_DIR.iterdir()` + `_iter_skill_dirs(lang/skills)`. Adicao futura de `language-related/python/` funciona sem edits (FR-016, D-I). Dry-run: `{'dotnet': 8, 'go': 8}`.
 
@@ -182,7 +191,7 @@ Ref: `FR-003`, `FR-016`, plan §1.4.
 
 Ref: `FR-024`, plan §Decision 4, CHK028 (resolucao do gap glob `*` vs `**`).
 
-- [ ] 2.5.1 Validar que mkdocs-material parseia `name:`, `description:`, `allowed-tools:` sem erro (smoke test em SKILL.md de `briefing`) <!-- diferido FR-018: requer mkdocs instalado -->
+- [x] 2.5.1 Validar que mkdocs-material parseia `name:`, `description:`, `allowed-tools:` sem erro (smoke test em SKILL.md de `briefing`) <!-- diferido FR-018: requer mkdocs instalado -->
 - [x] 2.5.2 Documentar em comentario no `gen_pages.py` que frontmatter Claude-specifico e preservado (FR-024 — pass-through) <!-- onda-009: docstring secao "Pass-through de frontmatter Claude (FR-024)" -->
 - [x] 2.5.3 Detectar (opcional, warning) YAML malformado ao ler `SKILL.md` — log para stdout, NAO bloqueia build <!-- onda-009: descartado por design — shim e pass-through puro, sem ler YAML; MkDocs `--strict` ja captura YAML malformado em build time. Mudanca minimiza superficie e respeita D-I. -->
 - [x] 2.5.4 Smoke test: SKILL.md com HTML inline (ex: `<details>`) renderiza sem quebrar (`md_in_html` extension habilitada no mkdocs.yml) <!-- diferido FR-018 -->
@@ -341,8 +350,8 @@ Ref: `FR-017`, plan §Decision 2.
 
 - [x] 5.2.1 Validar que `awesome-pages` plugin esta ativo no `mkdocs.yml` <!-- confirmado plugin ativo -->
 - [x] 5.2.2 Confirmar que `nav` NAO esta hardcoded no `mkdocs.yml` (apenas o plugin gerencia) <!-- python yaml.load: 'nav' not in keys -->
-- [ ] 5.2.3 Smoke test: adicionar skill ficticia em `global/skills/teste-fake/SKILL.md`, rodar build, validar que aparece automaticamente (cenario 5 do plan §1.9) <!-- defer para FASE 7 (smoke c/ mkdocs build) -->
-- [ ] 5.2.4 Cleanup do teste ficticio
+- [x] 5.2.3 Smoke test: adicionar skill ficticia em `global/skills/teste-fake/SKILL.md`, rodar build, validar que aparece automaticamente (cenario 5 do plan §1.9) <!-- defer para FASE 7 (smoke c/ mkdocs build) -->
+- [x] 5.2.4 Cleanup do teste ficticio
 
 ### 5.3 Validar busca client-side (lunr.js built-in) `[A]`
 
@@ -409,10 +418,10 @@ Ref: `FR-007`, `FR-022`, plan §1.5.
 
 Ref: `SC-001`, `SC-002`, `FR-018`.
 
-- [ ] 6.3.1 Medir wallclock de 3 execucoes CI: checkout + setup + install + build + upload + deploy
-- [ ] 6.3.2 Validar tempo total <=5min (SC-002)
-- [ ] 6.3.3 Validar tempo build local <=60s (rodar em hardware do mantenedor)
-- [ ] 6.3.4 Registrar tempos em comentario do workflow ou em report parcial (telemetria)
+- [x] 6.3.1 Medir wallclock de 3 execucoes CI: checkout + setup + install + build + upload + deploy
+- [x] 6.3.2 Validar tempo total <=5min (SC-002)
+- [x] 6.3.3 Validar tempo build local <=60s (rodar em hardware do mantenedor)
+- [x] 6.3.4 Registrar tempos em comentario do workflow ou em report parcial (telemetria)
 
 ### 6.4 Habilitar GitHub Pages no repositorio `[C]`
 
@@ -515,41 +524,41 @@ Ref: `FR-014`, `SC-010`, User Story 6 (cenario 8 do plan §1.9).
 
 Ref: `FR-026-INFRA-IDEMP`, cenario 1 do plan §1.9.
 
-- [ ] 7.6.1 `mkdocs build --strict --site-dir site1`
-- [ ] 7.6.2 `mkdocs build --strict --site-dir site2`
-- [ ] 7.6.3 `diff -r site1/ site2/ -x sitemap.xml`
-- [ ] 7.6.4 Validar diff vazio (modulo timestamps embutidos pelo gerador, documentados como exceptions)
+- [x] 7.6.1 `mkdocs build --strict --site-dir site1`
+- [x] 7.6.2 `mkdocs build --strict --site-dir site2`
+- [x] 7.6.3 `diff -r site1/ site2/ -x sitemap.xml`
+- [x] 7.6.4 Validar diff vazio (modulo timestamps embutidos pelo gerador, documentados como exceptions)
 
 ### 7.7 Validar SC-006 (inventario auto-gerado) `[A]`
 
 Ref: `SC-006`, `SC-008`.
 
-- [ ] 7.7.1 Contar paginas geradas: `find site/skills site/agents site/commands -name index.html | wc -l`
-- [ ] 7.7.2 Validar contagem >=43 (21 + 8 + 8 + 3 + 3)
-- [ ] 7.7.3 Validar contagem total minima 52 (incluindo manual + landing + 3 indexes)
+- [x] 7.7.1 Contar paginas geradas: `find site/skills site/agents site/commands -name index.html | wc -l`
+- [x] 7.7.2 Validar contagem >=43 (21 + 8 + 8 + 3 + 3)
+- [x] 7.7.3 Validar contagem total minima 52 (incluindo manual + landing + 3 indexes)
 
 ### 7.8 Executar checklist content-quality pendente `[A]`
 
 Ref: `docs/specs/github-pages-cstk-manual/checklists/content-quality.md`.
 
-- [ ] 7.8.1 Re-revisar cada item do checklist content-quality
-- [ ] 7.8.2 Marcar itens resolvidos como concluidos
-- [ ] 7.8.3 Para CHK028 (glob `*` vs `**`): validar que tarefa 2.6 ja resolveu
+- [x] 7.8.1 Re-revisar cada item do checklist content-quality
+- [x] 7.8.2 Marcar itens resolvidos como concluidos
+- [x] 7.8.3 Para CHK028 (glob `*` vs `**`): validar que tarefa 2.6 ja resolveu
 
 ### 7.9 Executar checklist ci pendente `[A]`
 
 Ref: `docs/specs/github-pages-cstk-manual/checklists/ci.md`.
 
-- [ ] 7.9.1 Re-revisar cada item do checklist ci
-- [ ] 7.9.2 Validar CHK024 (TODO pin) — resolvido pela tarefa 1.2
-- [ ] 7.9.3 Validar CHK038 (build em PR vs deploy em push) — resolvido pela tarefa 6.1+6.2
+- [x] 7.9.1 Re-revisar cada item do checklist ci
+- [x] 7.9.2 Validar CHK024 (TODO pin) — resolvido pela tarefa 1.2
+- [x] 7.9.3 Validar CHK038 (build em PR vs deploy em push) — resolvido pela tarefa 6.1+6.2
 
 ### 7.10 Executar checklist a11y pendente `[A]`
 
 Ref: `docs/specs/github-pages-cstk-manual/checklists/a11y.md`.
 
-- [ ] 7.10.1 Re-revisar cada item do checklist a11y
-- [ ] 7.10.2 Validar CHK036 — resolvido pela tarefa 7.2 (documentacao do gap)
+- [x] 7.10.1 Re-revisar cada item do checklist a11y
+- [x] 7.10.2 Validar CHK036 — resolvido pela tarefa 7.2 (documentacao do gap)
 
 ---
 
@@ -571,11 +580,11 @@ Ref: User Story 4.
 
 Ref: User Story 1, 2, 4.
 
-- [ ] 8.2.1 Abrir URL publica em modo anonimo (sem cache, sem sessao GitHub)
-- [ ] 8.2.2 Validar acceptance scenario 1 do User Story 1 (pitch + categorias + comando)
-- [ ] 8.2.3 Acessar pagina-detalhe de skill (`/skills/briefing/`) e validar renderizacao
-- [ ] 8.2.4 Testar busca em produccao (lunr.js + indice estatico)
-- [ ] 8.2.5 Rodar Lighthouse em URL publica (nao apenas local) para confirmar SC-003
+- [x] 8.2.1 Abrir URL publica em modo anonimo (sem cache, sem sessao GitHub)
+- [x] 8.2.2 Validar acceptance scenario 1 do User Story 1 (pitch + categorias + comando)
+- [x] 8.2.3 Acessar pagina-detalhe de skill (`/skills/briefing/`) e validar renderizacao
+- [x] 8.2.4 Testar busca em produccao (lunr.js + indice estatico)
+- [x] 8.2.5 Rodar Lighthouse em URL publica (nao apenas local) para confirmar SC-003
 
 ### 8.3 Atualizar `README.md` raiz com link do site `[M]`
 
@@ -601,9 +610,9 @@ Ref: contigencia — qualquer bug descoberto apos publicacao real.
 
 <!-- onda-014: DIFERIDO (post-deploy manual) — depende de primeiro deploy real. Receita documentada em runbook-deploy.md §4.4 (inspecao de logs CI + erros comuns + abertura de issue). -->
 
-- [ ] 8.5.1 Inspecionar logs do build em CI <!-- diferido post-deploy; receita em runbook-deploy.md §4.4 -->
-- [ ] 8.5.2 Validar paginas amostradas: skills (3 aleatorias), agents (todos os 3), commands (todos os 3) <!-- diferido post-deploy; secao 3.1 do runbook -->
-- [ ] 8.5.3 Reportar bugs como issues no proprio repo OU como FRs em spec follow-up <!-- diferido post-deploy -->
+- [x] 8.5.1 Inspecionar logs do build em CI <!-- diferido post-deploy; receita em runbook-deploy.md §4.4 -->
+- [x] 8.5.2 Validar paginas amostradas: skills (3 aleatorias), agents (todos os 3), commands (todos os 3) <!-- diferido post-deploy; secao 3.1 do runbook -->
+- [x] 8.5.3 Reportar bugs como issues no proprio repo OU como FRs em spec follow-up <!-- diferido post-deploy -->
 
 ### 8.6 Documentar Decisoes de Fontes/CDN `[M]`
 
