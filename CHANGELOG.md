@@ -2388,6 +2388,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.3.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.1
 [4.3.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.0
 [4.2.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.2.0
 [4.1.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.1.1
