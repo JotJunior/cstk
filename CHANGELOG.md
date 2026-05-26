@@ -5,6 +5,40 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.3.0] - 2026-05-26
+
+A skill `apply-insights` passa a consumir os dados do `/insights` nativo como
+fonte PRIMÁRIA, em vez de depender de um resumo curado à mão (que ficava
+desatualizado e podia ser de outro projeto). Mudança aditiva e retro-compatível
+(degrada para o `.md` curado e depois para best-practices genéricas).
+
+### Added
+
+- **`global/skills/apply-insights/scripts/digest-facets.sh`**: agrega os facets
+  per-sessão do `/insights` nativo (`~/.claude/usage-data/facets/*.json`) num
+  digest markdown data-driven — distribuição de `goal_categories` e `outcome`,
+  **`friction_counts` ranqueado** (sinal-chave para recomendações),
+  `claude_helpfulness`, satisfação e **amostras de `friction_detail`** por tipo
+  de fricção. Flags `--facets-dir`, `--samples N` (default 3) e `--top N`
+  (default 15, corta a cauda longa de alta cardinalidade como `goal_categories`).
+  `find -exec cat + | jq -s` evita ARG_MAX. **Degradação graciosa** (sem `jq`,
+  diretório ausente, sem `*.json` ou `jq` falhando → exit 0 com stdout vazio).
+
+### Changed
+
+- **`apply-insights/SKILL.md`**: Step 1 reescrito com cadeia de fontes
+  **facets digest → `~/.claude/insights/usage-insights.md` curado → genérico**,
+  sempre preferindo o digest (atual, do projeto corrente) e informando ao
+  usuário qual fonte foi usada. `description` e gotchas atualizados.
+
+### Tests
+
+- **`tests/test_digest-facets.sh`** (14 cenários): agregação, ranking
+  descendente de fricção, cap `--top` da cauda longa, amostras de
+  `friction_detail`, caso sem fricção, degradação (dir ausente/vazio, `jq`
+  ausente via PATH shadow) e validação de argumentos (`--samples`/`--top`
+  inválidos, arg desconhecido, `--help`).
+
 ## [4.2.0] - 2026-05-25
 
 Enriquecimento da camada B do índice de conhecimento (`knowledge.db`) para
@@ -2329,6 +2363,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.3.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.0
 [4.2.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.2.0
 [4.1.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.1.1
 [4.1.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.1.0

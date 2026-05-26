@@ -1,6 +1,6 @@
 ---
 name: apply-insights
-description: 'Apply Claude Code usage insights to current project — improve CLAUDE.md, hooks, workflows. Triggers: "aplicar insights", "otimizar fluxo", "melhorar claude.md". Requires ~/.claude/insights/usage-insights.md. Not the native /insights command.'
+description: 'Apply Claude Code usage insights to current project — improve CLAUDE.md, hooks, workflows. Triggers: "aplicar insights", "otimizar fluxo", "melhorar claude.md". Consumes the native /insights output (~/.claude/usage-data/facets/*.json) as PRIMARY data source via scripts/digest-facets.sh; falls back to curated ~/.claude/insights/usage-insights.md. This is the APPLY step, not the native /insights command.'
 argument-hint: "[area especifica: bugfix | migrations | conventions | hooks | all]"
 allowed-tools:
   - Read
@@ -25,16 +25,43 @@ $ARGUMENTS should optionally specify a focus area:
 - **hooks** — Suggest hooks for automated quality gates
 - **all** — Full analysis and recommendations (default)
 
-## Step 1: Load Insights
+## Step 1: Load Insights (data-driven first)
 
-Read the insights file (search dynamically):
+There are TWO possible sources. **Prefer the facets digest** — it reflects the
+user's ACTUAL recent sessions (current, structured, project-specific), whereas
+the curated `.md` is hand-written and often stale / from a different project.
+
+### Primary: facets digest (native `/insights` output)
+
+The native `/insights` command writes per-session analyses to
+`~/.claude/usage-data/facets/*.json` (fields: `goal_categories`, `outcome`,
+`friction_counts`, `friction_detail`, `claude_helpfulness`,
+`user_satisfaction_counts`, …). Aggregate them into a digest:
+
 ```bash
-# Find insights file in user's .claude directory
-ls ~/.claude/insights/
+# Resolve the skill dir: installed copy first, repo source when developing.
+DIGEST="$HOME/.claude/skills/apply-insights/scripts/digest-facets.sh"
+[ -x "$DIGEST" ] || DIGEST="$(git rev-parse --show-toplevel 2>/dev/null)/global/skills/apply-insights/scripts/digest-facets.sh"
+"$DIGEST"            # markdown digest on stdout; optional: --top N --samples N
 ```
 
-If the file is at `~/.claude/insights/usage-insights.md`, read it.
-If not found, inform user and proceed with built-in best practices.
+If it prints a digest (non-empty stdout), use it as the **primary, data-driven
+input**. The ranked `friction_counts` + concrete `friction_detail` samples are
+the key signal for recommendations (which friction recurs, with examples).
+
+### Fallback chain (graceful)
+
+`digest-facets.sh` exits 0 with **empty stdout** when `jq` or the facets dir are
+absent — so branch on emptiness:
+
+1. **Facets digest** non-empty → use it (preferred).
+2. Else read `~/.claude/insights/usage-insights.md` (curated; may be stale) — and
+   say so to the user.
+3. Else neither exists → general best practices, **explicitly labeled as generic
+   / not data-driven**.
+
+When both exist, prefer the digest (current data); you may cross-check the
+curated `.md` for narrative context. Tell the user WHICH source you used.
 
 ## Step 2: Analyze Current Project
 
@@ -81,7 +108,8 @@ global skills. Suggest gaps based on the project's workflow — not a fixed list
 - [ ] Project-specific generators (migration scaffolds, component scaffolds, test scaffolds)
 
 **Do not recommend skills by fixed name.** Look at the project's actual workflow
-and propose skills that would remove friction the insights file documents.
+and propose skills that would remove friction the insights data documents
+(ranked `friction_counts` + `friction_detail` samples in the facets digest).
 
 ### 3.4 Memory Gaps
 Check if `~/.claude/projects/*/memory/` has relevant memories:
@@ -177,10 +205,16 @@ Duplicating existing CLAUDE.md sections or re-adding hooks the project has is ru
 
 Not every project needs recommendations. A project with comprehensive CLAUDE.md, relevant hooks, and appropriate skills should hear "your setup looks solid — nothing to add" instead of forced suggestions. Honesty > output volume.
 
-### Insights file is required — without it, fall back to best practices explicitly
+### Data source: facets digest first, curated .md fallback, then generic
 
-If `~/.claude/insights/usage-insights.md` (or the path in args) is missing, inform the user and use general best practices — but label clearly that recommendations are generic, not data-driven. Don't pretend insights exist when they don't.
+Prefer `scripts/digest-facets.sh` (aggregates the native `/insights` facets —
+current and project-specific). Only when its stdout is empty (no `jq`, no facets
+dir) fall back to the curated `~/.claude/insights/usage-insights.md`; when that
+too is missing, use general best practices but **label them clearly as generic /
+not data-driven**. Don't pretend insights exist when they don't, and don't lean
+on a stale curated `.md` when fresh facets are available — that was the original
+bug (April-era summary applied to a different stack).
 
 ### Skill gaps must be derived from actual friction, not a fixed list
 
-Do not assume every project needs `/bugfix`, `/review-pr`, etc. Look at the insights file: which tasks keep getting re-explained? Which workflows have friction logged? THOSE are the skill candidates — not a checklist copied from another project.
+Do not assume every project needs `/bugfix`, `/review-pr`, etc. Look at the insights data (the facets digest's `friction_counts` / `friction_detail`, or the curated file): which tasks keep getting re-explained? Which workflows have friction logged? THOSE are the skill candidates — not a checklist copied from another project.
