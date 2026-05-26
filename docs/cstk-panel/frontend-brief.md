@@ -76,8 +76,9 @@ Projeto  (ex: claude-ai-tips)
 `fail`), `testes_rodados`, `testes_passados`, `lint_ok` (0/1),
 `arquivos_tocados` (contagem).
 
-**`events`** — timeline de incidentes: `event_type` (conjunto fechado:
-`lock_contention`, `validation_failed`, `wave_retry`, `schedule_wait`),
+**`events`** — timeline de incidentes: `event_type` (**texto livre**, sem
+allowlist na ingestão; conjunto conhecido: `lock_contention`,
+`validation_failed`, `wave_retry`, `schedule_wait`, `recall_consulted`),
 `timestamp`, `descricao`.
 
 **`alert_signals`** — sinais de alerta: `tipo` (**`circular`** |
@@ -304,7 +305,9 @@ Cada gráfico com seletor de período (topbar) e filtro por projeto/feature.
 **Propósito**: timeline operacional de incidentes.
 
 - Timeline global de `events`, ícone/cor por `event_type`:
-  `lock_contention`, `validation_failed`, `wave_retry`, `schedule_wait`.
+  `lock_contention`, `validation_failed`, `wave_retry`, `schedule_wait`,
+  `recall_consulted`. `event_type` é texto livre: tipos fora dessa lista
+  renderizam o valor cru com ícone genérico (ver EventIcon §6).
 - Agrupar por dia; filtro por tipo/projeto. KPI: contagem por tipo (7d).
 - Item → execução/onda de origem.
 
@@ -345,7 +348,11 @@ Cada gráfico com seletor de período (topbar) e filtro por projeto/feature.
 - **WavesTimeline / Gantt**: faixas por onda (ver §5.4).
 - **BudgetGauge**: `valor_consumido` / `valor_threshold` com zona de estouro.
 - **OutcomePill**: pass/fail.
-- **EventIcon**: ícone+cor por `event_type`.
+- **EventIcon**: ícone+cor por `event_type`. Mapa conhecido: `lock_contention`,
+  `validation_failed`, `wave_retry`, `schedule_wait`, `recall_consulted`.
+  **Fallback obrigatório**: `event_type` desconhecido → ícone genérico +
+  rótulo = valor cru recebido. **Nunca** usar um tipo conhecido como default
+  (foi a causa de `recall_consulted` aparecer como `schedule_wait`).
 - **ProvenanceCrumb**: `projeto / feature / execução / onda`.
 - **DataTable**: ordenável, filtrável, denso, com row-expand.
 - **Charts**: Donut, BarH, BarV, Line/Area, Histogram, Gauge, Sparkline, Funnel.
@@ -444,7 +451,7 @@ Todo breadcrumb é navegável; todo ID (`execucao_id`, `onda-NNN`) é clicável.
   travada).
 
 **Eventos**: `schedule_wait` (entre ondas), `wave_retry`, `validation_failed`,
-`lock_contention`.
+`lock_contention`, `recall_consulted` (read-back loop em specify/plan).
 
 **Mix de modelos**: ex. haiku 40% / sonnet 35% / opus 15% / manter-atual 10%
 (fallback 10%).

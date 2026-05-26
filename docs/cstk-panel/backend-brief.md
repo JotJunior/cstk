@@ -309,7 +309,12 @@ GET /api/v1/events?event_type=&project=&period=
   → [ { event_type, timestamp, descricao, project, feature, wave, execucao_id } ]
 ```
 
-`event_type` ∈ conjunto fechado `{lock_contention, validation_failed, wave_retry, schedule_wait}`.
+`event_type` é **texto livre** — a ingestão em `recall.sh` não aplica allowlist.
+Conjunto conhecido (MVP): `{lock_contention, validation_failed, wave_retry,
+schedule_wait, recall_consulted}`. O cliente **NÃO** deve assumir conjunto
+fechado: ao receber um `event_type` fora dessa lista, renderizar o valor cru
+com ícone genérico — **nunca** recategorizar para um tipo conhecido (foi a
+causa de `recall_consulted` aparecer rotulado como `schedule_wait`).
 
 ### 5.10 Busca de Conhecimento (FTS5) — frontend §5.9
 

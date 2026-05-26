@@ -5,6 +5,30 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.3.4] - 2026-05-26
+
+Corrige drift de contrato nos briefs do `cstk-panel`: o `event_type` da tabela
+`events` era documentado como **conjunto fechado de 4 valores**
+(`lock_contention`, `validation_failed`, `wave_retry`, `schedule_wait`),
+omitindo `recall_consulted` (emitido pelo read-back loop em specify/plan desde
+a v3.18.0). A ingestão em `recall.sh` trata `event_type` como **texto livre,
+sem allowlist**, então o painel — construído sobre o contrato fechado — não
+reconhecia `recall_consulted` e o exibia rotulado como `schedule_wait`. Fix
+restrito à documentação de contrato (`docs/cstk-panel/*.md`); a fonte de verdade
+(`state.json`) e a `knowledge.db` sempre armazenaram o valor fielmente.
+
+### Fixed
+
+- **`docs/cstk-panel/backend-brief.md`,
+  `docs/cstk-panel/frontend-brief.md`**: contrato de `event_type` deixa de
+  declarar "conjunto fechado de 4" e passa a documentá-lo como **texto livre**
+  com conjunto conhecido de 5 (`+recall_consulted`). O contrato do `EventIcon`
+  agora **exige fallback** para tipos desconhecidos (ícone genérico + rótulo =
+  valor cru recebido), nunca recategorizando para um tipo conhecido. Fix
+  recurrence-proof: como a ingestão não aplica allowlist, um 6º tipo futuro
+  re-disparava o mesmo bug. Ação de deploy fica no repo do `cstk-panel` (remover
+  qualquer ramo `default → schedule_wait` no `EventIcon`).
+
 ## [4.3.3] - 2026-05-26
 
 Mitiga, na origem, o defeito que motivou a rede de segurança da v4.3.2: o
@@ -2446,6 +2470,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.3.4]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.4
 [4.3.3]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.3
 [4.3.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.2
 [4.3.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.1
