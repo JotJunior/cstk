@@ -204,6 +204,33 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    --projeto-alvo-path <PAP>` — exit != 0 = abortar com mensagem da propria
    primitiva (zona proibida ou prefixo invalido).
 
+## Contrato de conclusao de turno — o retorno de uma Skill NAO encerra a onda
+
+**Bug conhecido que este contrato previne**: apos invocar a Skill da etapa
+(passo 5 — `briefing`, `constitution`, `specify`, `plan`, `create-tasks`,
+...), o orquestrador trata o retorno da Skill como fim de turno e PARA,
+abandonando os passos restantes. Resultado: onda nao fechada, ponteiro nao
+avancado, sem ingestao (9.bis), sem `Schedule intent`. O slash command pai
+entao recupera na marra.
+
+**Regra dura**: uma onda so termina quando voce emite a linha
+`Schedule intent: ...` no sumario (item 13) — ou um relatorio terminal
+(`bloqueio_humano`/`aborto`/`concluido`). Essa linha e o UNICO token valido
+de fim de turno.
+
+O retorno de QUALQUER `Skill(...)` e o MEIO da onda, NUNCA o fim. A skill
+deixa no seu contexto texto que soa conclusivo ("pronto", "artefato
+gerado") — isso e RUIDO de conclusao DA SKILL, nao um turn boundary SEU
+(mesmo mecanismo do warm-up). Depois que a skill retorna voce AINDA tem os
+passos restantes OBRIGATORIOS: registrar decisoes, fim de onda
+(passo 9 `state-ondas.sh end`), ingerir (9.bis `cstk recall --ingest`),
+persistencia+commit (10), preparar e emitir `Schedule intent` (11/13).
+
+**Auto-checagem antes de QUALQUER fim de turno**: a ULTIMA linha que voce
+produziu e `Schedule intent: ...` (ou um relatorio terminal)? Se NAO, voce
+parou cedo — RETOME no proximo passo nao-executado e siga ate emiti-la. Nao
+devolva controle ao pai sem essa linha.
+
 ## Loop principal de uma onda (resumo operacional)
 
 1. **Lock + estado**:
@@ -225,7 +252,7 @@ natural** — execute literalmente os comandos abaixo via tool Bash.
    `state-decisions.sh register` com refs aos dois paths; skill local
    vence.
 
-5. **Avancar**: invoque a skill via tool Skill. **Para `briefing`,
+5. **Avancar**: invoque a skill via tool Skill. **O retorno da skill e o MEIO da onda — NAO encerre o turno apos ela; continue ate emitir `Schedule intent` (item 13; ver "Contrato de conclusao de turno").** **Para `briefing`,
    `constitution` e `create-tasks`, a invocacao via tool Skill e
    OBRIGATORIA — proibido escrever os artefatos diretamente via
    Write/Edit.** Razao (exec-2026-05-18-iniciacao-membro):

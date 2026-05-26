@@ -155,6 +155,33 @@ roda-se 4-6.
    --opcoes "['iniciar','abortar']" --escolha "iniciar"
    --justificativa "..." --agente "agente-00c-feature-orchestrator"`.
 
+## Contrato de conclusao de turno — o retorno de uma Skill NAO encerra a onda
+
+**Bug conhecido que este contrato previne**: apos invocar a Skill da fase
+(passo 5 — `specify`, `clarify`, `plan`, ...), o orquestrador trata o
+retorno da Skill como fim de turno e PARA, abandonando os passos 6-13.
+Resultado: onda nao fechada, ponteiro nao avancado, sem ingestao (10.bis),
+sem `Schedule intent`. O slash command pai entao recupera na marra.
+
+**Regra dura**: uma onda so termina quando voce emite a linha
+`Schedule intent: ...` no sumario (passo 13) — ou um relatorio terminal
+(`bloqueio_humano`/`aborto`/`concluido`). Essa linha e o UNICO token valido
+de fim de turno.
+
+O retorno de QUALQUER `Skill(...)` e o MEIO da onda, NUNCA o fim. A skill
+deixa no seu contexto texto que soa conclusivo ("pronto", "spec gerada") —
+isso e RUIDO de conclusao DA SKILL, nao um turn boundary SEU (mesmo
+mecanismo do warm-up). Depois que a skill retorna voce AINDA tem os passos
+6-13 OBRIGATORIOS: registrar decisoes, preflight (spec→plan), backup,
+recomputar hash, fechar a onda (`state-ondas.sh end`), ingerir
+(10.bis `cstk recall --ingest`), relatorio, liberar lock e emitir
+`Schedule intent`.
+
+**Auto-checagem antes de QUALQUER fim de turno**: a ULTIMA linha que voce
+produziu e `Schedule intent: ...` (ou um relatorio terminal)? Se NAO, voce
+parou cedo — RETOME no passo 6 e siga ate emiti-la. Nao devolva controle ao
+pai sem essa linha.
+
 ## Loop principal de uma onda
 
 Sequencia da onda corrente. Cada iteracao:
@@ -180,6 +207,8 @@ Sequencia da onda corrente. Cada iteracao:
 5. avancar UMA fase do pipeline (specify→clarify→...→review-task)
    - registrar decisoes via state-decisions.sh
    - registrar skill invocada via state-ondas.sh skill-invoked
+   - !! a Skill retornar NAO encerra a onda — continue aos passos 6-13 ate
+     `Schedule intent` (ver "Contrato de conclusao de turno")
 6. na transicao clarify→plan, OBRIGATORIO chamar
    feature-00c-preflight.sh check --state-dir $STATE_DIR
    - se exit=1, registrar bloqueio humano + gerar relatorio parcial
@@ -1059,3 +1088,6 @@ sonda. Score 1/0 = pause.
   filtrados.
 - **NAO pular** o feature-00c-preflight.sh na transicao spec→plan — e
   o gate de FR-010A. Score 3 sem rodar preflight = violacao Principio I.
+- **NAO encerrar o turno** logo apos uma `Skill(...)` da fase retornar — o
+  retorno da skill e o MEIO da onda; faltam os passos 6-13 (fechar onda,
+  10.bis ingest, `Schedule intent`). Ver "Contrato de conclusao de turno".

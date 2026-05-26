@@ -211,6 +211,13 @@ _is_internal_test() {
       # model no spawn de clarify. Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
       return 1 ;;
+    test_orchestrator-turn-completion.sh)
+      # Smoke textual sobre os 2 orquestradores (trava do "Contrato de
+      # conclusao de turno" — anti-parada-cedo apos Skill retornar). Assert
+      # no .md, nao em um unico script — existence-guarded ao orquestrador
+      # portador do contrato. Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
+      return 1 ;;
     test_e2e_model_routing.sh)
       # Cobre fluxo end-to-end model-routing.sh + model-routing-report.sh +
       # state-rw.sh + state-decisions.sh + state-ondas.sh (composicao de

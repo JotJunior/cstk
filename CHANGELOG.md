@@ -5,6 +5,38 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.3.3] - 2026-05-26
+
+Mitiga, na origem, o defeito que motivou a rede de segurança da v4.3.2: o
+orquestrador (subagente) tratava o retorno de uma `Skill(...)` da fase como
+fim de turno e parava cedo, abandonando o fechamento da onda, a ingestão na
+`knowledge.db` e a emissão do `Schedule intent`. A v4.3.2 garantiu que a
+ingestão acontecesse mesmo assim (camada determinística no comando-pai); esta
+versão ataca a causa raiz no prompt dos orquestradores (camada que reduz a
+frequência). Mudança aditiva, restrita ao catálogo (`global/agents/*.md`) —
+propaga via `cstk update`. Fix de prompt é probabilístico e NÃO substitui a
+rede de segurança da v4.3.2; as duas camadas coexistem.
+
+### Fixed
+
+- **`global/agents/agente-00c-orchestrator.md`,
+  `agente-00c-feature-orchestrator.md`**: adicionada a seção "Contrato de
+  conclusão de turno" antes do Loop principal, mais anotação no passo 5 (onde
+  a Skill é invocada) e bullet anti-padrão. O contrato reframa o retorno de
+  QUALQUER `Skill(...)` como o MEIO da onda (nunca o fim), define a linha
+  `Schedule intent: ...` como o único token válido de fim de turno e prescreve
+  uma auto-checagem ("a última linha que emiti é `Schedule intent:`?") antes
+  de devolver controle ao comando-pai. Reduz a recorrência da parada precoce
+  que deixava a onda sem fechar e a `knowledge.db` sem ingestão.
+
+### Added
+
+- **`tests/test_orchestrator-turn-completion.sh`**: trava de regressão (7
+  cenários) que assegura a presença dos marcadores do contrato ("Contrato de
+  conclusão de turno", "MEIO da onda", auto-checagem, reforço no passo 5) nos
+  dois orquestradores. Registrada como interna em `tests/run.sh`
+  (existence-guarded, não mapeia 1:1 a um script).
+
 ## [4.3.2] - 2026-05-26
 
 Correção de robustez na memória de conhecimento cross-feature (`knowledge.db`).
@@ -2414,6 +2446,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.3.3]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.3
 [4.3.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.2
 [4.3.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.1
 [4.3.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.0
