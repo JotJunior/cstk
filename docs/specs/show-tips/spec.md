@@ -4,6 +4,14 @@
 **Created**: 2026-05-27
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-05-26
+
+- Q: Qual o formato exato do catalogo em disco? (FR-007 era ambiguo: "texto plano ou Markdown estruturado") → A: Markdown com frontmatter YAML. Cada entrada e um documento Markdown com bloco YAML delimitado por `---` contendo `skill`, `category`, `text`; exemplos no corpo. Arquivo unico `tips/catalog.md` com entradas separadas por `---`. Legivel por humanos sem ferramenta especial; parseavel por `awk`/`grep` em shell POSIX.
+- Q: Como o mecanismo de variacao entre execucoes funciona sem estado persistente? (tensao FR-003 vs Edge Case) → A: Selecao pseudoaleatoria via `$RANDOM % N` (N = numero de dicas para a skill/catalogo). Sem historico persistido entre sessoes. Unicidade absoluta nao e garantida — aceita repeticao eventual.
+- Q: Onde no filesystem do toolkit vive o script POSIX de exibicao? (FR-005 nao especificava path) → A: `cli/lib/show-tip.sh`, paralelo a `cli/lib/recall.sh`. Invocavel pelos orquestradores via caminho absoluto ou via wrapper `cstk show-tip`.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Tip Displayed at Wave Start (Priority: P1)
@@ -147,22 +155,25 @@ para exibir, sem precisar conhecer a estrutura interna do catalogo.
   `gotcha`.
 
 - **FR-003**: O mecanismo de exibicao DEVE selecionar uma dica usando variacao entre
-  execucoes (nao a mesma dica sequencialmente para a mesma skill, quando houver mais
-  de uma disponivel).
+  execucoes via selecao pseudoaleatoria (`$RANDOM % N`). Unicidade absoluta entre
+  sessoes NAO e garantida (sem estado persistente). Repeticao eventual e aceita.
 
 - **FR-004**: O bloco de exibicao DEVE ser visualmente destacado em relacao ao texto
   corrente da onda (delimitadores visuais claros, por exemplo caixas ou separadores
   em Markdown).
 
-- **FR-005**: O mecanismo de exibicao DEVE ser invocavel por script POSIX com no
-  minimo dois parametros: `skill-alvo` (opcional) e `fase-corrente` (opcional).
+- **FR-005**: O mecanismo de exibicao DEVE ser invocavel por script POSIX localizado
+  em `cli/lib/show-tip.sh`, com no minimo dois parametros: `skill-alvo` (opcional)
+  e `fase-corrente` (opcional). Disponivel tambem via wrapper `cstk show-tip`.
 
 - **FR-006**: A invocacao do mecanismo de dicas NUNCA deve bloquear, lancer erro
   fatal ou interromper a execucao da onda — qualquer falha de leitura do catalogo
   resulta em saida silenciosa (string vazia).
 
-- **FR-007**: O formato do catalogo DEVE ser legivel e editavel por humanos sem
-  ferramenta especial (texto plano ou Markdown estruturado).
+- **FR-007**: O formato do catalogo DEVE ser Markdown com frontmatter YAML: arquivo
+  unico `tips/catalog.md` onde cada entrada e delimitada por `---`, com campos YAML
+  `skill`, `category`, `text` no bloco frontmatter e exemplos no corpo Markdown.
+  Parseavel por `awk`/`grep` em shell POSIX sem dependencias adicionais.
 
 - **FR-008**: O catalogo DEVE ser extensivel: adicionar uma nova skill ou nova dica
   a uma skill existente nao deve exigir modificacao do mecanismo de exibicao.
@@ -181,8 +192,9 @@ para exibir, sem precisar conhecer a estrutura interna do catalogo.
   opcional).
 
 - **Tip Catalog**: colecao de todas as dicas do projeto. Organizada por skill.
-  Formato em disco: texto plano estruturado (Markdown ou similar). Unica fonte de
-  verdade para o mecanismo de exibicao.
+  Formato em disco: arquivo unico `tips/catalog.md` com entradas em Markdown +
+  frontmatter YAML (campos: `skill`, `category`, `text`; corpo: exemplos Markdown).
+  Entradas separadas por `---`. Unica fonte de verdade para o mecanismo de exibicao.
 
 - **Tip Block**: representacao formatada de uma dica para exibicao. Contem o
   bloco visual com destaque, skill referenciada, texto e exemplos. Saida do
