@@ -80,76 +80,76 @@ Ref: spec §SC-001, §SC-004; contracts/cli-show-tip.md §Modo audit
 
 Ref: plan §Project Structure; contracts/cli-show-tip.md §Convencoes herdadas
 
-- [ ] 2.1.1 Criar `cli/lib/show-tip.sh` com shebang `#!/bin/sh`, `set -eu`, bloco de comentario descritivo
-- [ ] 2.1.2 Implementar resolucao do diretorio de lib e path do catalogo (padrao `tips/catalog.md` relativo a raiz; override por `--catalog PATH`)
-- [ ] 2.1.3 Implementar parsing de argumentos: `[SKILL]` posicional, `--phase FASE`, `--audit`, `--catalog PATH`, `-h`/`--help`
-- [ ] 2.1.4 Garantir que todo output de erro/diagnostico vai para stderr; dados (Tip Block, relatorio) vao para stdout
-- [ ] 2.1.5 Executar `shellcheck -s sh cli/lib/show-tip.sh` e confirmar zero warnings
+- [x] 2.1.1 Criar `cli/lib/show-tip.sh` com shebang `#!/bin/sh`, `set -eu`, bloco de comentario descritivo
+- [x] 2.1.2 Implementar resolucao do diretorio de lib e path do catalogo (padrao `tips/catalog.md` relativo a raiz; override por `--catalog PATH`)
+- [x] 2.1.3 Implementar parsing de argumentos: `[SKILL]` posicional, `--phase FASE`, `--audit`, `--catalog PATH`, `-h`/`--help`
+- [x] 2.1.4 Garantir que todo output de erro/diagnostico vai para stderr; dados (Tip Block, relatorio) vao para stdout
+- [x] 2.1.5 Executar `shellcheck -s sh cli/lib/show-tip.sh` e confirmar zero warnings
 
 ### 2.2 Parser POSIX do catalogo (maquina de estados awk) [A]
 
 Ref: research.md Decision 2; contracts/cli-show-tip.md §Seguranca (A05)
 
-- [ ] 2.2.1 Implementar funcao `_parse_catalog` em `awk` com maquina de estados: estados `out` / `frontmatter` / `body`; transicao em linha `---` isolada
-- [ ] 2.2.2 Extrair campos `skill`, `category`, `text` do frontmatter via regex `^skill: `, `^category: `, `^text: ` — valores passados como variavel `-v skill="$SKILL"` (NUNCA interpolados no programa awk — OWASP A05)
-- [ ] 2.2.3 Acumular corpo (exemplos) ate o proximo `---`; tratar linhas de fence (```) como corpo opaco
-- [ ] 2.2.4 Implementar filtro por `skill` (quando SKILL fornecido) usando `-v` para prevenir injecao de codigo awk; usar `grep -F` para match literal de nome de skill
-- [ ] 2.2.5 Retornar lista de entradas candidatas (indices 0..N-1) para o mecanismo de selecao
+- [x] 2.2.1 Implementar funcao `_parse_catalog` em `awk` com maquina de estados: estados `out` / `frontmatter` / `body`; transicao em linha `---` isolada
+- [x] 2.2.2 Extrair campos `skill`, `category`, `text` do frontmatter via regex `^skill: `, `^category: `, `^text: ` — valores passados como variavel `-v skill="$SKILL"` (NUNCA interpolados no programa awk — OWASP A05)
+- [x] 2.2.3 Acumular corpo (exemplos) ate o proximo `---`; tratar linhas de fence (```) como corpo opaco
+- [x] 2.2.4 Implementar filtro por `skill` (quando SKILL fornecido) usando `-v` para prevenir injecao de codigo awk; usar `grep -F` para match literal de nome de skill
+- [x] 2.2.5 Retornar lista de entradas candidatas (indices 0..N-1) para o mecanismo de selecao
 
 ### 2.3 Selecao pseudoaleatoria POSIX [A]
 
 Ref: research.md Decision 1; spec §FR-003; contracts/cli-show-tip.md §Selecao da dica
 DECISAO DEFERIDA CHK031 — fallback sem /dev/urandom: usar `date +%s | awk` como fallback POSIX
 
-- [ ] 2.3.1 Implementar `_rng_pick N`: leia 4 bytes de `/dev/urandom` via `od -An -N4 -tu4 /dev/urandom` e use como seed para `awk 'BEGIN{srand(SEED); print int(rand()*N)}'`
-- [ ] 2.3.2 Implementar fallback: quando `/dev/urandom` indisponivel (test -r falhar), usar `date +%s` como seed: `awk -v n="$N" 'BEGIN{srand(); print int(rand()*n)}'`
-- [ ] 2.3.3 Garantir que `_rng_pick N` com N=0 retorna vazio (sem divisao por zero — catalogo vazio)
-- [ ] 2.3.4 Garantir que `_rng_pick N` com N=1 retorna 0 (unica entrada disponivel, sem operacao RNG desnecessaria)
-- [ ] 2.3.5 Testar empiricamente: 5 invocacoes consecutivas produzem indices variados (nao todos iguais)
+- [x] 2.3.1 Implementar `_rng_pick N`: leia 4 bytes de `/dev/urandom` via `od -An -N4 -tu4 /dev/urandom` e use como seed para `awk 'BEGIN{srand(SEED); print int(rand()*N)}'`
+- [x] 2.3.2 Implementar fallback: quando `/dev/urandom` indisponivel (test -r falhar), usar `date +%s` como seed: `awk -v n="$N" 'BEGIN{srand(); print int(rand()*n)}'`
+- [x] 2.3.3 Garantir que `_rng_pick N` com N=0 retorna vazio (sem divisao por zero — catalogo vazio)
+- [x] 2.3.4 Garantir que `_rng_pick N` com N=1 retorna 0 (unica entrada disponivel, sem operacao RNG desnecessaria)
+- [x] 2.3.5 Testar empiricamente: 5 invocacoes consecutivas produzem indices variados (nao todos iguais)
 
 ### 2.4 Mapeamento fase→skill (`--phase`) [M]
 
 Ref: contracts/cli-show-tip.md §Argumentos; data-model.md §Entity:Display Trigger
 
-- [ ] 2.4.1 Implementar tabela de mapeamento `fase → skill` (case list POSIX): specify→specify, clarify→clarify, plan→plan, create-tasks→create-tasks, execute-task→execute-task, review-task→review-task, checklist→checklist
-- [ ] 2.4.2 Implementar fallback aleatorio global quando fase nao mapeada ou SKILL nao encontrada no catalogo (FR-010)
-- [ ] 2.4.3 Garantir que `--phase` e `SKILL` posicional sao mutuamente complementares (SKILL prevalece se ambos presentes)
+- [x] 2.4.1 Implementar tabela de mapeamento `fase → skill` (case list POSIX): specify→specify, clarify→clarify, plan→plan, create-tasks→create-tasks, execute-task→execute-task, review-task→review-task, checklist→checklist
+- [x] 2.4.2 Implementar fallback aleatorio global quando fase nao mapeada ou SKILL nao encontrada no catalogo (FR-010)
+- [x] 2.4.3 Garantir que `--phase` e `SKILL` posicional sao mutuamente complementares (SKILL prevalece se ambos presentes)
 
 ### 2.5 Formatacao do Tip Block (FR-004) [A]
 
 Ref: contracts/cli-show-tip.md §Saida de sucesso; spec §FR-004
 DECISAO DEFERIDA CHK032 — delimitadores ASCII apenas, sem ANSI: linhas `========` e `--------`
 
-- [ ] 2.5.1 Implementar `_format_tip`: linha superior `========...`, cabecalho ` Dica: skill \`SKILL\`  [CATEGORY]`, separador `--------...`, corpo com texto e exemplos identados, linha inferior `========...`
-- [ ] 2.5.2 Garantir largura fixa de 56 caracteres para os separadores (largura portavel em terminais 80 colunas)
-- [ ] 2.5.3 Garantir que caracteres especiais Markdown (backtick, asterisco) no corpo nao corrompem a saida de terminal
-- [ ] 2.5.4 Garantir que saida e identica em TTY e pipe (sem deteccao de TTY nesta fase — CHK032 resolvido: sem ANSI)
+- [x] 2.5.1 Implementar `_format_tip`: linha superior `========...`, cabecalho ` Dica: skill \`SKILL\`  [CATEGORY]`, separador `--------...`, corpo com texto e exemplos identados, linha inferior `========...`
+- [x] 2.5.2 Garantir largura fixa de 56 caracteres para os separadores (largura portavel em terminais 80 colunas)
+- [x] 2.5.3 Garantir que caracteres especiais Markdown (backtick, asterisco) no corpo nao corrompem a saida de terminal
+- [x] 2.5.4 Garantir que saida e identica em TTY e pipe (sem deteccao de TTY nesta fase — CHK032 resolvido: sem ANSI)
 
 ### 2.6 Fail-silent e tratamento de erros (FR-006) [C]
 
 Ref: spec §FR-006, §SC-003; contracts/cli-show-tip.md §Exit codes
 
-- [ ] 2.6.1 Envolver toda logica de leitura de catalogo em `|| true` ou subshell com redirect `2>/dev/null`: catalogo ausente = stdout vazio, exit 0
-- [ ] 2.6.2 Implementar comportamento diferenciado para skill sem dicas: modo automatico (`--phase` ou sem args) → stdout vazio, exit 0; modo explicito (SKILL fornecido pelo usuario) → mensagem amigavel em stdout + lista de skills disponiveis, exit 0
-- [ ] 2.6.3 Garantir que nenhum `exit N` com N != 0 existe no caminho de exibicao (modo nao-audit)
-- [ ] 2.6.4 Testar cenario de catalogo ausente: `show-tip.sh --catalog /nao/existe` deve retornar exit 0 e stdout vazio
+- [x] 2.6.1 Envolver toda logica de leitura de catalogo em `|| true` ou subshell com redirect `2>/dev/null`: catalogo ausente = stdout vazio, exit 0
+- [x] 2.6.2 Implementar comportamento diferenciado para skill sem dicas: modo automatico (`--phase` ou sem args) → stdout vazio, exit 0; modo explicito (SKILL fornecido pelo usuario) → mensagem amigavel em stdout + lista de skills disponiveis, exit 0
+- [x] 2.6.3 Garantir que nenhum `exit N` com N != 0 existe no caminho de exibicao (modo nao-audit)
+- [x] 2.6.4 Testar cenario de catalogo ausente: `show-tip.sh --catalog /nao/existe` deve retornar exit 0 e stdout vazio
 
 ### 2.7 Modo `--audit` (SC-004) [A]
 
 Ref: spec §SC-004; contracts/cli-show-tip.md §Modo audit; research.md Decision 4
 
-- [ ] 2.7.1 Implementar descoberta dinamica do universo de skills: `find global/skills -maxdepth 1 -mindepth 1 -type d | xargs -I{} basename {}` + `find language-related -name SKILL.md -exec dirname {} \; | xargs -I{} basename {}`
-- [ ] 2.7.2 Implementar contagem de entradas por skill no catalogo via `awk` (agrupar por valor de `skill:`)
-- [ ] 2.7.3 Implementar cross-check universo vs catalogo: listar skills com < 2 entradas ou sem categorias `uso`+`gotcha`
-- [ ] 2.7.4 Retornar exit 0 quando cobertura completa; exit 1 com lista de gaps em stdout quando incompleta; exit 2 para uso incorreto
+- [x] 2.7.1 Implementar descoberta dinamica do universo de skills: `find global/skills -maxdepth 1 -mindepth 1 -type d | xargs -I{} basename {}` + `find language-related -name SKILL.md -exec dirname {} \; | xargs -I{} basename {}`
+- [x] 2.7.2 Implementar contagem de entradas por skill no catalogo via `awk` (agrupar por valor de `skill:`)
+- [x] 2.7.3 Implementar cross-check universo vs catalogo: listar skills com < 2 entradas ou sem categorias `uso`+`gotcha`
+- [x] 2.7.4 Retornar exit 0 quando cobertura completa; exit 1 com lista de gaps em stdout quando incompleta; exit 2 para uso incorreto
 
 ### 2.8 Funcao `show_tip_main` (entry point) [A]
 
 Ref: contracts/cli-show-tip.md §Despacho; plan §Project Structure
 
-- [ ] 2.8.1 Implementar `show_tip_main "$@"` como funcao de entrada; script pode ser tanto sourced (por cstk) quanto invocado diretamente
-- [ ] 2.8.2 Garantir idempotencia de sourcing: guard `_SHOW_TIP_LOADED` analogamente a `recall.sh`
-- [ ] 2.8.3 Testar invocacao direta `sh cli/lib/show-tip.sh --help` e sourced via `cli/cstk show-tip --help`
+- [x] 2.8.1 Implementar `show_tip_main "$@"` como funcao de entrada; script pode ser tanto sourced (por cstk) quanto invocado diretamente
+- [x] 2.8.2 Garantir idempotencia de sourcing: guard `_SHOW_TIP_LOADED` analogamente a `recall.sh`
+- [x] 2.8.3 Testar invocacao direta `sh cli/lib/show-tip.sh --help` e sourced via `cli/cstk show-tip --help`
 
 ---
 
