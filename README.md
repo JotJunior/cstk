@@ -2,7 +2,7 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/JotJunior/claude-ai-tips?label=latest%20release&color=blue)](https://github.com/JotJunior/claude-ai-tips/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![SemVer](https://img.shields.io/badge/SemVer-3.x-orange.svg)](./CHANGELOG.md)
+[![SemVer](https://img.shields.io/badge/SemVer-4.x-orange.svg)](./CHANGELOG.md)
 [![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/claude--ai--tips-blue?logo=readthedocs)](https://jotjunior.github.io/claude-ai-tips/)
 [![Publish Site](https://github.com/JotJunior/claude-ai-tips/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/claude-ai-tips/actions/workflows/publish-site.yml)
 
@@ -22,8 +22,8 @@ Duas trilhas, dependendo do que você procura:
 
 | Trilha | Para quem | Onde ir |
 |--------|-----------|---------|
-| 🟢 **Básico** | Quer produtividade no dia a dia — especificar, revisar, corrigir, documentar com algumas skills | Esta seção + [Skills Globais](#skills-globais) |
-| 🔧 **Avançado** | Quer o orquestrador autônomo rodando o pipeline SDD inteiro sozinho | Seções **Agente-00C**, **Sessões paralelas** e **Memória de conhecimento** mais abaixo (marcadas com 🔧) |
+| **Básico** | Quer produtividade no dia a dia — especificar, revisar, corrigir, documentar com algumas skills | Esta seção + [Skills Globais](#skills-globais) |
+| **Avançado** | Quer o orquestrador autônomo rodando o pipeline SDD inteiro sozinho | Seções **Agente-00C**, **Sessões paralelas** e **Memória de conhecimento** mais abaixo (marcadas como avançadas) |
 
 ### Trilha básica em 3 passos
 
@@ -45,7 +45,7 @@ curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/
 #    intenção em linguagem natural e o gatilho dispara a skill certa.
 ```
 
-> Não precisa do orquestrador autônomo para começar. Ele é a trilha 🔧 avançada
+> Não precisa do orquestrador autônomo para começar. Ele é a trilha avançada
 > — adote quando quiser que o pipeline SDD rode de ponta a ponta sem você
 > conduzir cada etapa.
 
@@ -64,7 +64,7 @@ curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/
 │       ├── clarify/
 │       ├── constitution/
 │       ├── create-tasks/
-│       ├── create-use-case/    # ⚠ deprecated v3.12.0 — usar `specify`
+│       ├── create-use-case/    # deprecated v3.12.0 — usar `specify`
 │       ├── decision-tree/      # HTML interativo da árvore de decisões do state.json
 │       ├── execute-task/
 │       ├── image-generation/
@@ -82,7 +82,7 @@ curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/
 │   │   ├── skills/             # Skills para projetos Go
 │   │   ├── hooks/              # Hooks de validação para Go
 │   │   └── settings.json       # Configuração de hooks
-│   └── dotnet/                 # .NET (⚠ deprecated v3.12.0 — remoção em v4.0.0)
+│   └── dotnet/                 # .NET (deprecated v3.12.0 — remoção em v4.0.0)
 │       └── skills/             # 8 skills .NET marcadas como deprecated
 ```
 
@@ -135,7 +135,7 @@ Skills independentes que podem ser usados em qualquer momento:
 |-------|---------|-----------|
 | **advisor** | "me aconselhe", "analise estratégica" | Conselheiro brutalmente honesto que disseca raciocínio e gera planos de ação |
 | **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
-| ~~**create-use-case**~~ ⚠ | "criar caso de uso", "gerar UC" | **Deprecated v3.12.0** — usar `specify` (formato SDD). Remoção planejada para v4.0.0 |
+| ~~**create-use-case**~~ | "criar caso de uso", "gerar UC" | **Deprecated v3.12.0** — usar `specify` (formato SDD). Remoção planejada para v4.0.0 |
 | **image-generation** | Ao gerar imagens | Aprimora prompts de geração de imagens usando estrutura Subject-Context-Style |
 | **initialize-docs** | "inicializar docs", "setup documentação" | Cria hierarquia padrão de documentação com 9 níveis |
 | **apply-insights** | "aplicar insights", "aplicar playbook", "melhorar claude.md" | Analisa o projeto e aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows. Renomeada de `insights` na 2.0.0 para evitar colisão com o `/insights` nativo do Claude Code (que tem função diferente — analisa suas sessões) |
@@ -259,7 +259,7 @@ em 134 sessões. Projetado para eliminar ciclos de "corrige-revela-corrige" em a
 
 ## Agente-00C (orquestrador autônomo da pipeline SDD)
 
-> 🔧 **Trilha avançada.** Não é necessário para o uso básico (ver
+> **Trilha avançada.** Não é necessário para o uso básico (ver
 > [Comece aqui](#comece-aqui)). Esta seção e as duas seguintes
 > (**Sessões paralelas** e **Memória de conhecimento**) cobrem o orquestrador
 > autônomo e seus subsistemas.
@@ -423,7 +423,7 @@ Hooks em `language-related/go/hooks/` para validações automáticas:
 | **check-schema-prefix.sh** | Valida prefixo de schema nas migrations |
 | **check-route-order.sh** | Verifica ordenação de rotas no router |
 
-## Skills para .NET (⚠ Deprecated em v3.12.0)
+## Skills para .NET (Deprecated em v3.12.0)
 
 > **Aviso de depreciação:** todas as 8 skills `dotnet-*` foram marcadas
 > como `deprecated: true` na v3.12.0 e serão **removidas em v4.0.0**.
@@ -570,7 +570,7 @@ Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --hel
 
 ## Sessões paralelas (`cstk session`)
 
-> 🔧 **Trilha avançada** — suporte ao orquestrador autônomo.
+> **Trilha avançada** — suporte ao orquestrador autônomo.
 
 Permite trabalhar em múltiplas features simultaneamente no mesmo repositório sem
 colisão de working tree, branch HEAD ou `.claude/agente-00c-state/`. Isola cada
@@ -617,7 +617,7 @@ cstk session end iniciacao-membro --force
 
 ## Memória de conhecimento (`cstk recall`)
 
-> 🔧 **Trilha avançada** — subsistema do orquestrador autônomo.
+> **Trilha avançada** — subsistema do orquestrador autônomo.
 
 Camada **aditiva** de memória cross-feature: um índice SQLite global
 (`~/.claude/cstk/knowledge.db`, full-text via FTS5) alimentado automaticamente
@@ -708,22 +708,31 @@ automaticamente a release mais recente de
 `~/.local/share/cstk/panel`. Execuções subsequentes reutilizam a instalação em
 cache.
 
-**Dependências**: `curl` e `npm` (Node.js) disponíveis no PATH.
+O painel roda em **modo dev**: o `cstk serve` compila os workspaces
+(`npm run build` — necessário para que o Vite resolva o pacote interno
+`@cstk-panel/shared-types`) e então sobe, em paralelo, a **API** (Fastify,
+porta 3001) e o **frontend** (Vite, porta 5173), com o Vite servindo o SPA e
+proxiando `/api` para a API. Abra **http://127.0.0.1:5173** no navegador.
+(O painel não tem serving estático de produção, por isso o modo dev é o que
+exibe a interface completa.)
+
+**Dependências**: `curl`, `npm` e `node` (Node.js) disponíveis no PATH — o
+`npm install` traz as devDependencies necessárias ao build do painel.
 
 ```bash
-cstk serve                      # inicia na porta padrão 5173
-cstk serve --port 8080          # porta customizada
-cstk serve --reinstall          # força reinstalação da versão mais recente
-PORT=4000 cstk serve            # porta via variável de ambiente
+cstk serve                      # compila e inicia API + frontend (UI em http://127.0.0.1:5173)
+cstk serve --update             # atualiza o painel se houver release nova, depois inicia
+cstk serve --reinstall          # remove e reinstala do zero, depois inicia
 ```
 
 **Opções**:
 
 | Flag | Padrão | Descrição |
 |------|--------|-----------|
-| `--port PORT` | `5173` | Porta de escuta (1024–65535). Também lê `$PORT`. |
+| `--update` | — | Consulta o GitHub e reinstala o painel **somente** se houver release mais nova (best-effort: falha de rede/API mantém a versão instalada e o painel inicia normalmente). |
+| `--reinstall` | — | Remove a instalação existente e reinstala do GitHub (incondicional; ignora `--update`). |
+| `--port PORT` | `5173` | Validado (1024–65535) por compatibilidade; em modo dev a UI é servida pelo Vite na 5173 e o flag não altera essa porta (aviso se ≠ 5173). |
 | `--host HOST` | `127.0.0.1` | Host de bind (apenas loopback tem suporte completo). |
-| `--reinstall` | — | Remove a instalação existente e reinstala do GitHub. |
 | `--help`, `-h` | — | Exibe ajuda e sai. |
 
 **Variáveis de ambiente**:
@@ -732,12 +741,14 @@ PORT=4000 cstk serve            # porta via variável de ambiente
   `~/.local/share/cstk/panel`).
 - `PORT` — Porta padrão quando `--port` não é informado.
 
-**Exit codes**: `0` sucesso · `1` erro geral (prereq ausente, download falhou)
-· `2` erro de uso (porta inválida, flag desconhecida).
+**Exit codes**: `0` sucesso · `1` erro geral (prereq ausente, download/build
+falhou, instalação corrompida) · `2` erro de uso (porta inválida, flag
+desconhecida).
 
-**Segurança**: apenas URLs de `github.com`, `codeload.github.com` e
-`objects.githubusercontent.com` são autorizadas no download (SSRF allowlist).
-Host `127.0.0.1` é o único com suporte completo — outras interfaces emitem aviso.
+**Segurança**: apenas URLs de `api.github.com`, `github.com`,
+`codeload.github.com` e `objects.githubusercontent.com` são autorizadas no
+download (SSRF allowlist). Host `127.0.0.1` é o único com suporte completo —
+outras interfaces emitem aviso.
 
 ## Convenções de Nomenclatura
 
