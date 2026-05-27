@@ -5,7 +5,7 @@ diretorio contem o codigo fonte do CLI; a documentacao de design completa
 vive em [`../docs/specs/cstk-cli/`](../docs/specs/_archived/cstk-cli/).
 
 **Status atual**: FASES 0-9.2 do backlog concluidas — todos os subcomandos
-(`install`, `update`, `self-update`, `list`, `doctor`) implementados e
+(`install`, `update`, `self-update`, `list`, `doctor`, `serve`) implementados e
 testados, com pipeline de release automatizado. Pendentes: FASES 9.3
 (coverage check), 10 (testes de integracao end-to-end) e 11 (docs +
 primeira release publica).
@@ -77,6 +77,36 @@ Release notes sao geradas automaticamente pelo `gh release create
 **Re-rodar uma release ja publicada falha** — `gh release create` nao
 sobrescreve. Para corrigir, deletar o release no GitHub UI e re-empurrar
 a tag (ou usar uma nova tag, preferencial).
+
+## Subcomandos
+
+| Subcomando | Descricao | Lib |
+|------------|-----------|-----|
+| `install` | Instala perfis/skills em `~/.claude/` | `lib/install.sh` |
+| `update` | Aplica novas releases preservando edits locais | `lib/install.sh` |
+| `self-update` | Atualiza o binario `cstk` + `cli/lib/` | `lib/self-update.sh` |
+| `list` | Lista skills instaladas + status | `lib/list.sh` |
+| `doctor` | Detecta drift entre manifest e disco | `lib/doctor.sh` |
+| `session` | Cria/lista/encerra sessoes com worktree isolado | `lib/session.sh` |
+| `recall` | Memoria cross-feature: busca/ingestao/reindex | `lib/recall.sh` |
+| `serve` | Inicia o painel web local (lazy-install + npm start) | `lib/serve.sh` |
+
+### `cstk serve`
+
+Baixa e executa a interface web do cstk panel. Na primeira execucao, consulta
+a GitHub Releases API, baixa o tarball mais recente de
+`JotJunior/cstk-panel`, extrai e roda `npm install`. Execucoes subsequentes
+reutilizam o cache (sem download).
+
+```sh
+cstk serve                   # inicia na porta padrao 5173
+cstk serve --port 8080       # porta customizada
+cstk serve --reinstall       # forcca reinstalacao
+PORT=4000 cstk serve         # porta via variavel de ambiente
+```
+
+Opcoes: `--port PORT` (1024-65535), `--host HOST` (default: 127.0.0.1),
+`--reinstall`, `--help`. Override do diretorio via `$CSTK_PANEL_DIR`.
 
 ## Convencoes
 

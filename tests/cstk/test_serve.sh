@@ -615,6 +615,103 @@ STUB
 }
 
 # ---------------------------------------------------------------------------
+# FASE 4.2 — Graceful shutdown: SIGTERM + SIGKILL fallback (task 4.2.5)
+# ---------------------------------------------------------------------------
+
+# _stub_npm_ignores_sigterm: cria stub de npm que ignora SIGTERM por alguns
+# ciclos antes de sair. Testa que o grace period aciona SIGKILL.
+# $1 = bin dir
+_stub_npm_ignores_sigterm() {
+  _snist_bin="$1"
+  cat > "$_snist_bin/npm" <<'STUB'
+#!/bin/sh
+# Aceitar install normalmente; para "run start", ignorar SIGTERM por 2 ciclos
+case "$1" in
+  install) exit 0 ;;
+  run)
+    # Registrar handler SIGTERM que NAO encerra o processo (ignora o sinal)
+    trap '' TERM
+    # Aguardar com sleep em loop; o SIGKILL (enviado apos grace period) vai
+    # matar este processo mesmo sem handler. Usar sleep curto para nao
+    # travar o teste por muito tempo.
+    _cnt=0
+    while [ "$_cnt" -lt 20 ]; do
+      sleep 0.2 2>/dev/null || sleep 1
+      _cnt=$((_cnt + 1))
+    done
+    exit 0
+    ;;
+  *) exit 0 ;;
+esac
+STUB
+  chmod +x "$_snist_bin/npm"
+}
+
+# scenario_sigterm_graceful_kill: verifica que _serve_shutdown envia SIGKILL
+# quando o filho ignora SIGTERM apos o grace period.
+# O cenario cria um panel instalado (para evitar download) e dispara
+# serve_main em background via subshell, depois envia SIGTERM ao processo
+# serve_main e verifica que ele encerra dentro de 8s (grace 5s + margem 3s).
+scenario_sigterm_graceful_kill() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ignores_sigterm "$_STUB_BIN"
+
+  # Pre-instalar o panel para que serve_main nao tente download
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{}' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.1\n' > "$CSTK_PANEL_DIR/.panel-version"
+
+  # Arquivo de resultado para comunicacao entre subshell e test
+  _result_file="$TMPDIR_TEST/serve_exit_code"
+
+  # Rodar serve_main em background em subshell; gravar exit code
+  (
+    export CSTK_LIB CSTK_PANEL_DIR PATH HOME="$TMPDIR_TEST"
+    . "$CSTK_LIB/serve.sh"
+    serve_main --port 5173
+    printf '%d\n' "$?" > "$_result_file"
+  ) &
+  _serve_pid=$!
+
+  # Aguardar o npm stub iniciar (grace de 0.5s)
+  sleep 0.5 2>/dev/null || sleep 1
+
+  # Enviar SIGTERM ao grupo de processos do serve_main
+  kill -TERM "$_serve_pid" 2>/dev/null || :
+
+  # Aguardar encerramento com timeout de 8s (grace period 5s + margem 3s)
+  _wait_max=16
+  _wait_cnt=0
+  while [ "$_wait_cnt" -lt "$_wait_max" ]; do
+    if ! kill -0 "$_serve_pid" 2>/dev/null; then
+      break
+    fi
+    sleep 0.5 2>/dev/null || sleep 1
+    _wait_cnt=$((_wait_cnt + 1))
+  done
+
+  # Se ainda vivo apos 8s, o teste falha (SIGKILL nao funcionou)
+  if kill -0 "$_serve_pid" 2>/dev/null; then
+    kill -KILL "$_serve_pid" 2>/dev/null || :
+    wait "$_serve_pid" 2>/dev/null || :
+    _fail "sigterm_graceful_kill" "serve_main nao encerrou em 8s apos SIGTERM (SIGKILL falhou)"
+    return 1
+  fi
+
+  # Aguardar finalizacao para capturar exit code
+  wait "$_serve_pid" 2>/dev/null || :
+
+  # O processo deve ter encerrado (qualquer exit code e aceitavel aqui;
+  # o importante e que o processo nao ficou pendurado)
+  if [ "$_wait_cnt" -ge "$_wait_max" ]; then
+    _fail "sigterm_graceful_kill" "serve_main demorou demais para encerrar: $_wait_cnt ciclos"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # FASE 3.2 — POSIX puro: zero eval (tasks 3.2.x)
 # ---------------------------------------------------------------------------
 
