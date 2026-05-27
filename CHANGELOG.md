@@ -5,6 +5,38 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.9.0] - 2026-05-27
+
+Rodada de robustez de processo inspirada no benchmark
+[obra/superpowers](https://github.com/obra/superpowers): descriptions
+orientadas a gatilho, gates à prova de racionalização e checklists de
+requisitos com dono e follow-up — para deixarem de ser write-only.
+
+### Added
+
+- **Checklist com dono por item (`{auto}`/`{humano}`)**: a skill `checklist`
+  marca cada item com seu resolvedor — `{auto}` (o agente resolve lendo a spec
+  e citando evidência) ou `{humano}` (julgamento de valor/risco que cabe ao
+  dono do produto). Nova auto-resolução (§3.7) marca os `{auto}` com `[x]` +
+  citação, ou `[Gap]` quando a spec não satisfaz.
+- **Loop gap → ação**: itens abertos ganham destino explícito (§4.4) —
+  `[Ambiguity]`/`[Conflict]` para `/clarify`, `[Gap]` para `/create-tasks`,
+  `{humano}` para o dono. A skill `create-tasks` passa a consumir
+  `checklists/*.md` da spec e converter `[Gap]`/`[Conflict]` abertos em tarefas
+  de requisito — fechando o ciclo sem reordenar o pipeline.
+
+### Changed
+
+- **`description` das skills = quando usar, não o que a skill faz**: removido o
+  resumo de workflow dos descriptions de `execute-task` (enumerava os 9
+  passos), `decision-tree` (mecanismo interno) e `apply-insights` (caminho de
+  implementação). Evita que o Claude siga o resumo sem abrir o corpo da skill.
+- **Gates à prova de racionalização**: `execute-task` ganha gate de evidência
+  (§8.2 — cada `[x]` exige output literal; o sumário não é prova) e fecha a
+  brecha do "(se aplicável)" em testes (§5). Os orquestradores `agente-00c` e
+  `feature-00c` ganham 2ª auto-checagem: fechar a onda não promove
+  `.execucao.status` — ler o `state.json` real, nunca o sumário do subagente.
+
 ## [4.8.0] - 2026-05-27
 
 `cstk serve` volta ao modo de produção de porta única. A partir do
@@ -2759,6 +2791,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.9.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.9.0
 [4.8.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.8.0
 [4.7.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.2
 [4.7.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.1
