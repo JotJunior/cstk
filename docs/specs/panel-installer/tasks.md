@@ -36,20 +36,20 @@
 > Ref: CLAUDE.md regra-de-ouro (--check-coverage falha sem test_serve.sh),
 > contracts/serve-sh.md §Testabilidade.
 
-- [ ] 1.1.1 Criar `tests/cstk/test_serve.sh` com cabecalho padrao do harness
+- [x] 1.1.1 Criar `tests/cstk/test_serve.sh` com cabecalho padrao do harness
       (`#!/bin/sh`, `set -eu`, sourcing de `tests/helpers.sh` ou equivalente)
-- [ ] 1.1.2 Adicionar stub `_setup_serve_env`: cria `CSTK_PANEL_DIR` em tmpdir
+- [x] 1.1.2 Adicionar stub `_setup_serve_env`: cria `CSTK_PANEL_DIR` em tmpdir
       privado e define `CSTK_LIB` apontando para `cli/lib/`
-- [ ] 1.1.3 Adicionar stub `_stub_curl_ok`: coloca no PATH um script `curl` que
+- [x] 1.1.3 Adicionar stub `_stub_curl_ok`: coloca no PATH um script `curl` que
       retorna fixture JSON da GitHub API (tag + tarball_url) sem tocar a rede
-- [ ] 1.1.4 Adicionar stub `_stub_npm_ok`: coloca no PATH um `npm` que ignora
+- [x] 1.1.4 Adicionar stub `_stub_npm_ok`: coloca no PATH um `npm` que ignora
       `install`/`run start` e sai com exit 0 (dummy sem execucao real)
-- [ ] 1.1.5 Adicionar stub `_stub_curl_absent` / `_stub_npm_absent`: remove as
+- [x] 1.1.5 Adicionar stub `_stub_curl_absent` / `_stub_npm_absent`: remove as
       ferramentas do PATH para testar prereq-check
-- [ ] 1.1.6 Criar fixture de tarball minimo (`tests/cstk/fixtures/serve/`):
+- [x] 1.1.6 Criar fixture de tarball minimo (`tests/cstk/fixtures/serve/`):
       tarball `.tar.gz` com `package.json` minimo (1 nivel de strip) para testar
       extracao sem baixar o cstk-panel real
-- [ ] 1.1.7 Verificar que `./tests/run.sh --check-coverage` passa apos criacao
+- [x] 1.1.7 Verificar que `./tests/run.sh --check-coverage` passa apos criacao
       do arquivo (sem scenarios ainda; so a existencia conta)
 
 ---
@@ -58,15 +58,15 @@
 
 > Ref: plan.md §Primary Dependencies, contracts/serve-sh.md §Helpers internos.
 
-- [ ] 1.2.1 Ler `cli/lib/http.sh`: documentar assinatura exata de `http_download`
+- [x] 1.2.1 Ler `cli/lib/http.sh`: documentar assinatura exata de `http_download`
       e `http_check_url` (args, exit codes, stderr/stdout) em comentario no topo
       de `serve.sh` (futuro)
-- [ ] 1.2.2 Ler `cli/lib/compat.sh`: documentar assinatura de `sha256_file`
+- [x] 1.2.2 Ler `cli/lib/compat.sh`: documentar assinatura de `sha256_file`
       (arg path, stdout hash, exit code)
-- [ ] 1.2.3 Confirmar que `cli/lib/tarball.sh::download_and_verify` NAO sera
+- [x] 1.2.3 Confirmar que `cli/lib/tarball.sh::download_and_verify` NAO sera
       reutilizado (exige `sha256_url`; registrar decisao inline como comentario
       no `serve.sh` — research.md D2)
-- [ ] 1.2.4 Ler dispatch em `cli/cstk`: identificar o padrao exato de sourcear
+- [x] 1.2.4 Ler dispatch em `cli/cstk`: identificar o padrao exato de sourcear
       lib e chamar `<cmd>_main` para replicar em `serve`
 
 ---
@@ -82,20 +82,20 @@
 
 > Ref: spec.md FR-004 e FR-011, contracts/cli-serve.md §Flags e §Exit codes.
 
-- [ ] 2.1.1 Criar `cli/lib/serve.sh` com shebang comentado e bloco source-guard
+- [x] 2.1.1 Criar `cli/lib/serve.sh` com shebang comentado e bloco source-guard
       POSIX (`[ "${_SERVE_LOADED:-}" = "1" ] && return 0; _SERVE_LOADED=1`)
-- [ ] 2.1.2 Implementar parser de flags POSIX (`while`/`case`/`shift`): `--port`,
+- [x] 2.1.2 Implementar parser de flags POSIX (`while`/`case`/`shift`): `--port`,
       `--host`, `--reinstall`, `--help`, flag desconhecida → exit 2
-- [ ] 2.1.3 Implementar validacao de porta: inteiro 1-65535 com regex POSIX
+- [x] 2.1.3 Implementar validacao de porta: inteiro 1-65535 com regex POSIX
       (`expr "$port" : '^[0-9]*$'`); porta invalida → mensagem stderr + exit 2
       (CSTK_EXIT_USAGE; FR-004)
-- [ ] 2.1.4 Implementar logica de aviso para `--host != 127.0.0.1` (FR-004):
+- [x] 2.1.4 Implementar logica de aviso para `--host != 127.0.0.1` (FR-004):
       imprimir mensagem de aviso em stdout; prosseguir normalmente
-- [ ] 2.1.5 Implementar `--help`: imprimir sinopse (conforme contracts/cli-serve.md)
+- [x] 2.1.5 Implementar `--help`: imprimir sinopse (conforme contracts/cli-serve.md)
       e sair com exit 0
-- [ ] 2.1.6 Implementar resolucao de `panel_dir`:
+- [x] 2.1.6 Implementar resolucao de `panel_dir`:
       `${CSTK_PANEL_DIR:-$HOME/.local/share/cstk/panel}` (FR-007)
-- [ ] 2.1.7 Escrever cenarios de teste em `test_serve.sh`:
+- [x] 2.1.7 Escrever cenarios de teste em `test_serve.sh`:
       porta invalida → exit 2; flag desconhecida → exit 2; `--help` → exit 0 +
       texto; `--host 0.0.0.0` → aviso no stdout + prossegue
 
@@ -105,13 +105,13 @@
 
 > Ref: spec.md FR-006, contracts/cli-serve.md §Erros, research.md D5.
 
-- [ ] 2.2.1 Implementar pre-req check com `command -v curl` → ausente: mensagem
+- [x] 2.2.1 Implementar pre-req check com `command -v curl` → ausente: mensagem
       stderr padrao + exit 1 (CSTK_EXIT_ERROR)
-- [ ] 2.2.2 Implementar pre-req check com `command -v npm` → ausente: mensagem
+- [x] 2.2.2 Implementar pre-req check com `command -v npm` → ausente: mensagem
       stderr com URL nodejs.org + exit 1
-- [ ] 2.2.3 Garantir que prereq check ocorre ANTES de qualquer consulta de rede
+- [x] 2.2.3 Garantir que prereq check ocorre ANTES de qualquer consulta de rede
       ou operacao de filesystem (ordem: parse flags → prereq → detect-install)
-- [ ] 2.2.4 Escrever cenarios de teste: `curl` ausente → exit 1 + mensagem
+- [x] 2.2.4 Escrever cenarios de teste: `curl` ausente → exit 1 + mensagem
       esperada; `npm` ausente → exit 1 + mensagem esperada (stubs de PATH)
 
 ---
@@ -120,15 +120,15 @@
 
 > Ref: spec.md FR-002, data-model.md §PainelInstalado State transitions, research.md D4.
 
-- [ ] 2.3.1 Implementar funcao `_serve_is_installed`: retorna 0 se
+- [x] 2.3.1 Implementar funcao `_serve_is_installed`: retorna 0 se
       `"$panel_dir/package.json"` existe e legivel, 1 caso contrario
-- [ ] 2.3.2 Implementar deteccao de instalacao corrompida: `[ -d "$panel_dir" ]`
+- [x] 2.3.2 Implementar deteccao de instalacao corrompida: `[ -d "$panel_dir" ]`
       mas `package.json` ausente → mensagem + exit 1 com sugestao `--reinstall`
-- [ ] 2.3.3 Implementar tratamento de `--reinstall`: `rm -rf -- "$panel_dir"`
+- [x] 2.3.3 Implementar tratamento de `--reinstall`: `rm -rf -- "$panel_dir"`
       antes do check, entao prosseguir como primeira execucao (FR-005)
-- [ ] 2.3.4 Garantir que invocacao subsequente (panel_dir valido, sem `--reinstall`)
+- [x] 2.3.4 Garantir que invocacao subsequente (panel_dir valido, sem `--reinstall`)
       NAO faz nenhuma chamada de rede (pula totalmente a logica de download)
-- [ ] 2.3.5 Escrever cenarios de teste: panel valido → sem curl chamado;
+- [x] 2.3.5 Escrever cenarios de teste: panel valido → sem curl chamado;
       panel corrompido → exit 1 + mensagem; `--reinstall` → rm + reinstala
 
 ---
@@ -138,33 +138,33 @@
 > Ref: spec.md FR-001/FR-008, contracts/serve-sh.md §serve_main passos 6-9,
 > research.md D1/D2, data-model.md §ReleaseGitHub.
 
-- [ ] 2.4.1 Implementar consulta a GitHub API: `http_check_url` (HEAD) + request
+- [x] 2.4.1 Implementar consulta a GitHub API: `http_check_url` (HEAD) + request
       GET para `https://api.github.com/repos/JotJunior/cstk-panel/releases/latest`;
       erro HTTP (4xx/5xx) → mensagem + exit 1 (CHK-R26)
-- [ ] 2.4.2 Implementar extracao de `tag_name` e `tarball_url` da resposta via
+- [x] 2.4.2 Implementar extracao de `tag_name` e `tarball_url` da resposta via
       `grep`/`sed` POSIX (sem jq); campos ausentes → exit 1 com mensagem acionavel
-- [ ] 2.4.3 Implementar pre-check de prerelease/draft: se a resposta JSON indicar
+- [x] 2.4.3 Implementar pre-check de prerelease/draft: se a resposta JSON indicar
       `"prerelease":true` ou `"draft":true`, exibir mensagem e sair com exit 1
       (CHK-R02 — so usar full releases)
-- [ ] 2.4.4 Implementar pre-check de timeout: todas as chamadas de curl via
+- [x] 2.4.4 Implementar pre-check de timeout: todas as chamadas de curl via
       `http_download` usam `--connect-timeout 30 --max-time 120` (CHK-R03);
       confirmar que `http.sh` repassa esses flags ou adicionar em `serve.sh`
-- [ ] 2.4.5 Implementar download do tarball via `http_download "$tarball_url"
+- [x] 2.4.5 Implementar download do tarball via `http_download "$tarball_url"
       "$tmp/archive.tar.gz"` (tmpdir privado via `mktemp -d`); falha → exit 1
-- [ ] 2.4.6 Implementar integridade best-effort: tentar localizar asset `.sha256`;
+- [x] 2.4.6 Implementar integridade best-effort: tentar localizar asset `.sha256`;
       se presente → verificar via `sha256_file`; mismatch → exit 1; ausente →
       AVISO em stdout e prosseguir (FR-008 — NAO bloquear)
-- [ ] 2.4.7 Verificar tamanho minimo do tarball antes de extrair (ex: `wc -c`
+- [x] 2.4.7 Verificar tamanho minimo do tarball antes de extrair (ex: `wc -c`
       vs threshold ~1KB); tarball vazio/truncado → exit 1 com mensagem (CHK-R23)
-- [ ] 2.4.8 Implementar extracao: `tar -xzf "$tmp/archive.tar.gz"
+- [x] 2.4.8 Implementar extracao: `tar -xzf "$tmp/archive.tar.gz"
       --strip-components 1 -C "$tmp/extracted"`; falha → exit 1 com mensagem
       de disco (spec P1 edge case)
-- [ ] 2.4.9 Implementar `npm install` no diretorio extraido; falha → exit 1;
+- [x] 2.4.9 Implementar `npm install` no diretorio extraido; falha → exit 1;
       exibir mensagem de progresso em stdout
-- [ ] 2.4.10 Implementar move atomico: `mv "$tmp/extracted" "$panel_dir"` apos
+- [x] 2.4.10 Implementar move atomico: `mv "$tmp/extracted" "$panel_dir"` apos
       extracao + npm install bem-sucedidos; gravar `.panel-version` com `tag_name`
-- [ ] 2.4.11 Garantir cleanup do tmpdir em caso de falha (via `trap '...' EXIT`)
-- [ ] 2.4.12 Escrever cenarios de teste: fixture de tarball local + stub curl;
+- [x] 2.4.11 Garantir cleanup do tmpdir em caso de falha (via `trap '...' EXIT`)
+- [x] 2.4.12 Escrever cenarios de teste: fixture de tarball local + stub curl;
       extracao bem-sucedida → `package.json` presente + `.panel-version` gravado;
       tarball corrompido → exit 1; npm install falha → exit 1; `package.json`
       ausente apos extracao → exit 1
@@ -182,15 +182,15 @@
 
 > Ref: plan.md §S2, spec.md FR-001/FR-012, research.md D1.
 
-- [ ] 3.1.1 Implementar validacao de host de `tarball_url` via `case` glob POSIX:
+- [x] 3.1.1 Implementar validacao de host de `tarball_url` via `case` glob POSIX:
       permitidos `github.com`, `codeload.github.com`, `objects.githubusercontent.com`,
       `api.github.com`; fora da allowlist → exit 1 com mensagem descrevendo o host
       rejeitado (FR-012 / S2)
-- [ ] 3.1.2 Implementar validacao de schema HTTPS-only: checar que `tarball_url`
+- [x] 3.1.2 Implementar validacao de schema HTTPS-only: checar que `tarball_url`
       comeca com `https://`; schema `http://` → exit 1 (CHK-S04)
-- [ ] 3.1.3 Posicionar o host-allowlist check ANTES de qualquer chamada a
+- [x] 3.1.3 Posicionar o host-allowlist check ANTES de qualquer chamada a
       `http_download` (fail-fast: nao baixar URL nao-autorizada)
-- [ ] 3.1.4 Escrever cenarios de teste: URL com host fora da allowlist → exit 1;
+- [x] 3.1.4 Escrever cenarios de teste: URL com host fora da allowlist → exit 1;
       URL com schema `http://` → exit 1; URL valida (github.com) → prossegue
 
 ---
@@ -199,20 +199,20 @@
 
 > Ref: spec.md FR-011, plan.md §S5, contracts/serve-sh.md §Requisitos de conformidade.
 
-- [ ] 3.2.1 Auditar todo o `serve.sh` procurando Bash-isms: arrays, `[[ ]]`,
+- [x] 3.2.1 Auditar todo o `serve.sh` procurando Bash-isms: arrays, `[[ ]]`,
       `$((...))` fora de `expr`, `local` sem `set -e`, `source` (usar `.`),
       herestrings `<<<`; corrigir todos os encontrados
-- [ ] 3.2.2 Garantir que `PORT` e exportada com valor ja validado (inteiro puro,
+- [x] 3.2.2 Garantir que `PORT` e exportada com valor ja validado (inteiro puro,
       sem interpolacao de input do usuario no comando `npm run start`); verificar
       que `npm run start` usa args FIXOS sem expansao de variavel no comando base
-- [ ] 3.2.3 Verificar que ZERO `eval` existe no arquivo (grep como verificacao
+- [x] 3.2.3 Verificar que ZERO `eval` existe no arquivo (grep como verificacao
       automatizada no proprio teste)
-- [ ] 3.2.4 Auditar quoting de todas as variaveis de path e URL com aspas duplas:
+- [x] 3.2.4 Auditar quoting de todas as variaveis de path e URL com aspas duplas:
       `"$panel_dir"`, `"$tarball_url"`, `"$tmp"`, etc.
-- [ ] 3.2.5 Executar `shellcheck --shell=sh cli/lib/serve.sh` (advisory; zero
+- [x] 3.2.5 Executar `shellcheck --shell=sh cli/lib/serve.sh` (advisory; zero
       findings em SC2006/SC2039/SC2148) — se shellcheck disponivel; anotar
       resultado no comentario da PR
-- [ ] 3.2.6 Escrever cenario de teste: `grep -c 'eval' cli/lib/serve.sh` deve
+- [x] 3.2.6 Escrever cenario de teste: `grep -c 'eval' cli/lib/serve.sh` deve
       retornar 0 (assertion no proprio `test_serve.sh`)
 
 ---
@@ -221,15 +221,15 @@
 
 > Ref: spec.md FR-004 §Edge Cases, contracts/cli-serve.md §Exit codes.
 
-- [ ] 3.3.1 Implementar deteccao de porta < 1024: se `port < 1024`, exibir
+- [x] 3.3.1 Implementar deteccao de porta < 1024: se `port < 1024`, exibir
       mensagem informativa em stderr ("porta <N> requer privilegio de root no
       Linux; tente --port 5173 ou porta acima de 1024") e sair com exit 1
       (decisao do orquestrador: exit 1 com aviso, NAO exit 2 — erro de ambiente,
       nao de uso incorreto)
-- [ ] 3.3.2 Garantir que validacao de porta ocorre na seguinte ordem:
+- [x] 3.3.2 Garantir que validacao de porta ocorre na seguinte ordem:
       (1) inteiro? nao → exit 2; (2) 1-65535? nao → exit 2; (3) < 1024? → exit 1
       com aviso
-- [ ] 3.3.3 Escrever cenarios de teste: porta 80 → exit 1 + mensagem de privilegio;
+- [x] 3.3.3 Escrever cenarios de teste: porta 80 → exit 1 + mensagem de privilegio;
       porta 0 → exit 2; porta 65536 → exit 2; porta 65535 → aceita; porta 5173 → aceita
 
 ---
@@ -244,16 +244,16 @@
 
 > Ref: spec.md FR-003/FR-004/FR-013-INFRA-PROC, research.md D6.
 
-- [ ] 4.1.1 Implementar exportacao de `PORT`: `export PORT="$port"` (valor
+- [x] 4.1.1 Implementar exportacao de `PORT`: `export PORT="$port"` (valor
       resolvido e validado); confirmar que SEMPRE e exportado (nunca omitido)
-- [ ] 4.1.2 Implementar `cd "$panel_dir"` seguido de `npm run start` em
+- [x] 4.1.2 Implementar `cd "$panel_dir"` seguido de `npm run start` em
       foreground; exibir mensagem com URL antes de subir
       (`"cstk serve: iniciando painel em http://127.0.0.1:$port  (Ctrl+C para encerrar)"`)
-- [ ] 4.1.3 Garantir que o `npm run start` e invocado com args FIXOS (sem
+- [x] 4.1.3 Garantir que o `npm run start` e invocado com args FIXOS (sem
       interpolacao de input do usuario no nome do comando ou nos args — S5)
-- [ ] 4.1.4 Exibir mensagem de versao instalada quando `.panel-version` presente:
+- [x] 4.1.4 Exibir mensagem de versao instalada quando `.panel-version` presente:
       `"cstk serve: usando painel ja instalado (<tag>)."` (contracts/cli-serve.md)
-- [ ] 4.1.5 Escrever cenario de teste: stub de `npm` que imprime stdout esperado e
+- [x] 4.1.5 Escrever cenario de teste: stub de `npm` que imprime stdout esperado e
       sai com 0; verificar mensagem de URL e exit 0 de `serve_main`
 
 ---
@@ -262,15 +262,15 @@
 
 > Ref: spec.md FR-009, contracts/cli-serve.md §Encerramento, CHK-R06.
 
-- [ ] 4.2.1 Implementar `trap '_serve_shutdown' INT TERM` antes de executar `npm
+- [x] 4.2.1 Implementar `trap '_serve_shutdown' INT TERM` antes de executar `npm
       run start`; capturar o PID do filho (`npm run start & _npm_pid=$!`)
-- [ ] 4.2.2 Implementar `_serve_shutdown`: (1) imprimir mensagem de encerramento;
+- [x] 4.2.2 Implementar `_serve_shutdown`: (1) imprimir mensagem de encerramento;
       (2) `kill -TERM "$_npm_pid"` 2>/dev/null; (3) aguardar ate 5 segundos; (4)
       se filho ainda vivo → `kill -KILL "$_npm_pid"` 2>/dev/null (CHK-R06 grace
       period SIGKILL)
-- [ ] 4.2.3 Implementar `wait "$_npm_pid"` em foreground apos registrar trap;
+- [x] 4.2.3 Implementar `wait "$_npm_pid"` em foreground apos registrar trap;
       capturar exit code do filho e propagar via `exit $?`
-- [ ] 4.2.4 Escrever cenario de teste: stub de `npm` que sai espontaneamente com
+- [x] 4.2.4 Escrever cenario de teste: stub de `npm` que sai espontaneamente com
       exit 2; verificar que `serve_main` propaga exit 2 (CHK-R07)
 - [ ] 4.2.5 Escrever cenario de teste (simulado): `npm` que ignora SIGTERM;
       verificar que apos 5s o processo recebe SIGKILL e o wrapper sai com exit 0
@@ -282,11 +282,11 @@
 
 > Ref: spec.md FR-009 §Edge Cases implicitly, CHK-R07.
 
-- [ ] 4.3.1 Garantir que `wait "$_npm_pid"` captura o exit code correto quando o
+- [x] 4.3.1 Garantir que `wait "$_npm_pid"` captura o exit code correto quando o
       filho sai espontaneamente (sem SIGINT do operador)
-- [ ] 4.3.2 Implementar mensagem ao detectar saida espontanea com exit != 0:
+- [x] 4.3.2 Implementar mensagem ao detectar saida espontanea com exit != 0:
       `"cstk serve: painel encerrou inesperadamente (exit $exit_code)."` em stderr
-- [ ] 4.3.3 Escrever cenario de teste: stub de `npm` que sai com exit 1 imediatamente;
+- [x] 4.3.3 Escrever cenario de teste: stub de `npm` que sai com exit 1 imediatamente;
       verificar mensagem de encerramento inesperado + propagacao de exit 1
 
 ---
@@ -301,17 +301,17 @@
 
 > Ref: plan.md §Project Structure §Source Code, research.md D3 (convencao dispatch).
 
-- [ ] 5.1.1 Ler o `cli/cstk` atual e identificar o `case "$_cmd" in ... esac`
+- [x] 5.1.1 Ler o `cli/cstk` atual e identificar o `case "$_cmd" in ... esac`
       de dispatch de subcomandos
-- [ ] 5.1.2 Adicionar case `serve)`:
+- [x] 5.1.2 Adicionar case `serve)`:
       `. "$CSTK_LIB/serve.sh"; serve_main "$@"` seguindo o padrao exato dos
       outros subcomandos
-- [ ] 5.1.3 Garantir que o bloco `serve)` e adicionado ANTES do `*)` (default/
+- [x] 5.1.3 Garantir que o bloco `serve)` e adicionado ANTES do `*)` (default/
       unknown command) e DEPOIS dos subcomandos existentes (sem quebrar ordem
       lexicografica dos demais)
-- [ ] 5.1.4 Verificar que `cstk --help` (ou ajuda global) menciona `serve` na
+- [x] 5.1.4 Verificar que `cstk --help` (ou ajuda global) menciona `serve` na
       lista de subcomandos disponivel; adicionar linha se ausente
-- [ ] 5.1.5 Escrever cenario de teste de smoke: `cstk serve --help` → exit 0 +
+- [x] 5.1.5 Escrever cenario de teste de smoke: `cstk serve --help` → exit 0 +
       texto de ajuda esperado (usando o harness existente de `test_cstk-main.sh`
       ou analogo)
 
@@ -321,12 +321,12 @@
 
 > Ref: contracts/cli-serve.md §Sinopse, CLAUDE.md §Architecture.
 
-- [ ] 5.2.1 Implementar texto de ajuda dentro de `serve_main --help`: sinopse,
+- [x] 5.2.1 Implementar texto de ajuda dentro de `serve_main --help`: sinopse,
       flags com defaults, exit codes, exemplos de uso (ao menos 3)
-- [ ] 5.2.2 Garantir que a ajuda esta em ingles (CLAUDE.md — identificadores e
+- [x] 5.2.2 Garantir que a ajuda esta em ingles (CLAUDE.md — identificadores e
       mensagens de ajuda em ingles; mensagens de erro em portugues sao aceitaveis
       para UX mas help text segue o padrao do repo)
-- [ ] 5.2.3 Escrever cenario de teste: `serve_main --help` imprime as flags
+- [x] 5.2.3 Escrever cenario de teste: `serve_main --help` imprime as flags
       `--port`, `--host`, `--reinstall` no stdout
 
 ---
@@ -374,13 +374,13 @@
 
 > Ref: CLAUDE.md regra-de-ouro, contracts/serve-sh.md §Testabilidade.
 
-- [ ] 7.1.1 Executar `./tests/run.sh tests/cstk/test_serve.sh` e garantir que todos
+- [x] 7.1.1 Executar `./tests/run.sh tests/cstk/test_serve.sh` e garantir que todos
       os cenarios passam
-- [ ] 7.1.2 Executar `./tests/run.sh --check-coverage` e verificar que
+- [x] 7.1.2 Executar `./tests/run.sh --check-coverage` e verificar que
       `cli/lib/serve.sh` tem correspondente `tests/cstk/test_serve.sh` (sem orphan)
-- [ ] 7.1.3 Executar a suite completa `./tests/run.sh` para garantir que nenhum
+- [x] 7.1.3 Executar a suite completa `./tests/run.sh` para garantir que nenhum
       teste existente foi quebrado (regressao zero)
-- [ ] 7.1.4 Verificar cobertura minima de cenarios do `test_serve.sh` contra a
+- [x] 7.1.4 Verificar cobertura minima de cenarios do `test_serve.sh` contra a
       lista de contratos: parse-flags, prereq-curl, prereq-npm, porta-invalida,
       porta-privilegiada, primeira-exec-ok, primeira-exec-tarball-corrompido,
       exec-subsequente-sem-rede, host-allowlist-reject, https-only-reject,
@@ -392,17 +392,17 @@
 
 > Ref: spec.md FR-011/FR-012, plan.md §Constitution Check.
 
-- [ ] 7.2.1 Executar `grep -rn 'npm\|node\|npm run start'
+- [x] 7.2.1 Executar `grep -rn 'npm\|node\|npm run start'
       cli/ tests/ --include="*.sh" | grep -v 'serve.sh\|test_serve.sh\|#'`
       e verificar que nenhuma referencia a `npm`/`node` existe fora de
       `cli/lib/serve.sh` e seus testes (confinamento do carve-out Principio II)
-- [ ] 7.2.2 Verificar que `cli/lib/serve.sh` e `#!/bin/sh` (nao `#!/bin/bash`):
+- [x] 7.2.2 Verificar que `cli/lib/serve.sh` e `#!/bin/sh` (nao `#!/bin/bash`):
       `head -1 cli/lib/serve.sh | grep -q '/sh'`
-- [ ] 7.2.3 Verificar que o `cstk serve` nao introduz nenhuma URL externa alem
+- [x] 7.2.3 Verificar que o `cstk serve` nao introduz nenhuma URL externa alem
       das ja na whitelist do state (`api.github.com`, `objects.githubusercontent.com`,
       `github.com`, `codeload.github.com`): `grep -n 'https://' cli/lib/serve.sh`
       e revisar manualmente
-- [ ] 7.2.4 Executar `./tests/run.sh tests/cstk/test_cstk-main.sh` (ou analogo)
+- [x] 7.2.4 Executar `./tests/run.sh tests/cstk/test_cstk-main.sh` (ou analogo)
       para verificar que o dispatch `serve` nao quebrou nenhum subcomando existente
 
 ---

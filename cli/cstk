@@ -141,6 +141,7 @@ COMANDOS:
   session       Sessoes paralelas via git worktree (start/list/end/pr)
   recall        Busca cross-feature na memoria de conhecimento (SQLite+FTS5);
                 tambem --ingest (pos-onda) e --reindex (reconstrucao)
+  serve         Inicia o painel web cstk; baixa e instala na primeira execucao
   00c <path>    Bootstrap interativo de projeto-alvo do agente-00C
                 (cria diretorio, coleta parametros e invoca claude)
 
@@ -159,7 +160,7 @@ HELP
     exit "$CSTK_EXIT_OK"
   fi
   case "$_sub" in
-    install|update|self-update|list|doctor|session)
+    install|update|self-update|list|doctor|session|serve)
       printf 'cstk help %s: consulte docs/specs/cstk-cli/contracts/cli-commands.md §%s\n' \
         "$_sub" "$_sub"
       exit "$CSTK_EXIT_OK"
@@ -179,7 +180,7 @@ HELP
       ;;
     *)
       printf 'cstk: comando desconhecido para help: %s\n' "$_sub" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, 00c\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, serve, 00c\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac
@@ -200,6 +201,17 @@ _dispatch() {
       ;;
     -V|--version|version)
       _cmd_version
+      ;;
+    serve)
+      _check_bin_lib_match
+      _lib_file="$CSTK_LIB/serve.sh"
+      if [ ! -f "$_lib_file" ]; then
+        printf 'cstk serve: nao implementado ainda (cli/lib/serve.sh ausente)\n' >&2
+        exit "$CSTK_EXIT_ERROR"
+      fi
+      # shellcheck source=/dev/null
+      . "$_lib_file"
+      serve_main "$@"
       ;;
     install|update|self-update|list|doctor|session|recall)
       # Boot-check para todos exceto self-update (que e o caminho de recovery
@@ -250,7 +262,7 @@ _dispatch() {
       ;;
     *)
       printf 'cstk: comando desconhecido: %s\n' "$_cmd" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, 00c, help, --version\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, serve, 00c, help, --version\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac
