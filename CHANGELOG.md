@@ -5,6 +5,47 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.6.0] - 2026-05-27
+
+Adiciona o subcomando `cstk show-tip` — mecanismo de dicas contextuais para skills
+do toolkit. Em cada onda do orquestrador, uma dica e exibida automaticamente para
+a fase corrente (ex: `--phase execute-task`), mantendo o operador informado sobre
+boas praticas sem bloquear o fluxo. O catalogo `tips/catalog.md` cobre 38 skills
+(81 entradas: uso, gotcha, avancado) e e extensivel em < 5 minutos por skill.
+Inclui correcao de bug no parser awk que impedia a emissao de entradas alternadas.
+
+### Added
+
+- **`cstk show-tip [SKILL] [--phase FASE] [--audit] [--catalog PATH]`**: novo
+  subcomando de exibicao de dicas. Modo exibicao: fail-silent absoluto (FR-006),
+  sempre exit 0. Modo `--audit`: valida cobertura do catalogo por skill (categorias
+  uso + gotcha obrigatorias, >= 2 entradas), exit 0 ok / exit 1 gaps.
+- **`tips/catalog.md`**: catalogo com 81 entradas cobrindo 38 skills (23 globais +
+  7 Go + 8 .NET). Cada entrada tem frontmatter YAML (`skill`, `category`, `text`)
+  + corpo com exemplos concretos em fence de codigo. Formato parseavel por awk POSIX.
+- **`cli/lib/show-tip.sh`**: implementacao POSIX sh pura, sem deps externas. Parser
+  com maquina de estados awk (OWASP A05: valores de usuario via `-v`, nunca
+  interpolados). RNG via `/dev/urandom` + fallback `date +%s`. Fail-silent em todos
+  os caminhos de erro. Sourced por `cli/cstk` via dispatch.
+- **`tests/cstk/test_show-tip.sh`**: 17 cenarios cobrindo exibicao (5.2), audit
+  (5.3), seguranca A05 (5.4) e lint/performance (5.5-5.6). Integrado ao runner
+  `tests/run.sh` via convencao `cli/lib/<n>.sh -> tests/cstk/test_<n>.sh`.
+- Integracao nos dois orquestradores: `agente-00c-orchestrator.md` e
+  `agente-00c-feature-orchestrator.md` exibem dica fail-silent no inicio de cada
+  onda via `TIP=$(cstk show-tip --phase "$FASE" 2>/dev/null) || TIP=""`.
+
+### Fixed
+
+- **Parser awk de `_st_parse_catalog`**: correcao de bug onde a transicao
+  `body -> "---"` mudava para `state=out` em vez de `state=frontmatter`, fazendo
+  com que o frontmatter de cada segunda entrada fosse ignorado. O parser agora
+  transita `body -> frontmatter` diretamente, permitindo que todas as entradas
+  sequenciais do catalogo sejam emitidas corretamente (antes: 27 de 81 entries;
+  depois: 81 de 81). Backward-compatible: catalogo sem terminador final continua
+  sem emissao espuria.
+- **`tips/catalog.md`**: adicionado terminador `---` apos a ultima entrada
+  (`dotnet-testing gotcha`) para que ela seja emitida pelo parser corrigido.
+  Sem o terminador, a ultima entrada do catalogo era sempre perdida.
 ## [4.5.0] - 2026-05-26
 
 Adiciona o subcomando `cstk serve` — interface web local do cstk panel.
