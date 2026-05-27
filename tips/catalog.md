@@ -5,8 +5,10 @@
 #
 # == INSTRUCOES PARA MANTENEDORES ==
 #
-# Cada entrada e delimitada por uma linha contendo EXATAMENTE "---" (tres
-# hifens, sem espacos antes ou depois). O arquivo comeca e termina com "---".
+# Cada entrada e delimitada por linhas contendo EXATAMENTE "---" (tres
+# hifens, sem espacos antes ou depois). O arquivo DEVE terminar com "---"
+# apos o corpo da ultima entrada — sem esse terminador final, a ultima
+# entrada nao sera emitida pelo parser.
 #
 # ESTRUTURA DE UMA ENTRADA:
 #
@@ -1294,3 +1296,5 @@ text: O /dotnet-testing gera testes para um modulo inteiro — para um handler e
 
 /dotnet-testing e mais abrangente mas mais lento — use /dotnet-create-test
 para adicionar testes pontuais durante o desenvolvimento.
+
+---

@@ -200,8 +200,11 @@ _st_parse_catalog() {
       if (state == "body") {
         # Fim de entrada: emitir se passa no filtro
         _emit_if_match()
-        # Reset para proxima entrada
-        state     = "out"
+        # Transicao direta para frontmatter da proxima entrada (nao para "out"),
+        # para que as linhas skill:/category:/text: que vem a seguir sejam capturadas.
+        # Se nao houver proxima entrada, state fica em frontmatter sem campos e sem body
+        # e nenhuma emissao espuria ocorre (campos obrigatorios estarao vazios).
+        state     = "frontmatter"
         cur_skill = ""
         cur_cat   = ""
         cur_text  = ""

@@ -205,53 +205,53 @@ Ref: spec §US4; contracts/cli-show-tip.md §Contrato de integracao
 
 Ref: plan §Testing; convencao `tests/cstk/test_<nome>.sh`
 
-- [ ] 5.1.1 Criar `tests/cstk/test_show-tip.sh` com shebang `#!/bin/sh`, imports de helpers de teste (padrão do projeto) e estrutura de `it_<scenario>` / `assert_*`
-- [ ] 5.1.2 Verificar que o arquivo e descoberto automaticamente por `tests/run.sh` (ou adicionar entry explícita no run.sh, seguindo o padrao de `test_recall.sh`)
-- [ ] 5.1.3 Adicionar `test_show-tip.sh` a qualquer lista de exclusao de CI slow se aplicavel (verificar convencao em `tests/run.sh`)
+- [x] 5.1.1 Criar `tests/cstk/test_show-tip.sh` com shebang `#!/bin/sh`, imports de helpers de teste (padrão do projeto) e estrutura de `it_<scenario>` / `assert_*`
+- [x] 5.1.2 Verificar que o arquivo e descoberto automaticamente por `tests/run.sh` (ou adicionar entry explícita no run.sh, seguindo o padrao de `test_recall.sh`)
+- [x] 5.1.3 Adicionar `test_show-tip.sh` a qualquer lista de exclusao de CI slow se aplicavel (verificar convencao em `tests/run.sh`)
 
 ### 5.2 Testes do mecanismo de exibicao [A]
 
 Ref: spec §US1, §US3; contracts/cli-show-tip.md; quickstart.md
 
-- [ ] 5.2.1 Teste: invocacao sem args com catalogo de fixture retorna exit 0 e stdout nao-vazio (dica selecionada)
-- [ ] 5.2.2 Teste: invocacao com `--catalog /nao/existe` retorna exit 0 e stdout vazio (fail-silent FR-006)
-- [ ] 5.2.3 Teste: invocacao com SKILL presente no catalogo retorna dica daquela skill
-- [ ] 5.2.4 Teste: invocacao com SKILL ausente do catalogo (modo automatico `--phase`) retorna exit 0 e stdout vazio
-- [ ] 5.2.5 Teste: invocacao com SKILL ausente do catalogo (modo explicito) retorna mensagem amigavel em stdout e exit 0
-- [ ] 5.2.6 Teste: invocacao com `--phase specify` retorna dica da skill `specify` (mapeamento fase→skill)
-- [ ] 5.2.7 Teste: invocacao com `--phase fase-inexistente` retorna exit 0 (fallback aleatorio, nao erro)
-- [ ] 5.2.8 Teste: 3 invocacoes consecutivas com catalogo de N>1 entradas nao retornam todas a mesma dica (variacao RNG)
+- [x] 5.2.1 Teste: invocacao sem args com catalogo de fixture retorna exit 0 e stdout nao-vazio (dica selecionada)
+- [x] 5.2.2 Teste: invocacao com `--catalog /nao/existe` retorna exit 0 e stdout vazio (fail-silent FR-006)
+- [x] 5.2.3 Teste: invocacao com SKILL presente no catalogo retorna dica daquela skill
+- [x] 5.2.4 Teste: invocacao com SKILL ausente do catalogo (modo automatico `--phase`) retorna exit 0 e stdout vazio
+- [x] 5.2.5 Teste: invocacao com SKILL ausente do catalogo (modo explicito) retorna mensagem amigavel em stdout e exit 0
+- [x] 5.2.6 Teste: invocacao com `--phase specify` retorna dica da skill `specify` (mapeamento fase→skill)
+- [x] 5.2.7 Teste: invocacao com `--phase fase-inexistente` retorna exit 0 (fallback aleatorio, nao erro)
+- [x] 5.2.8 Teste: 3 invocacoes consecutivas com catalogo de N>1 entradas nao retornam todas a mesma dica (variacao RNG)
 
 ### 5.3 Testes do modo `--audit` [A]
 
 Ref: spec §SC-004; contracts/cli-show-tip.md §Modo audit
 
-- [ ] 5.3.1 Teste: `--audit` com catalogo completo (fixture cobrindo todas as skills de teste) retorna exit 0
-- [ ] 5.3.2 Teste: `--audit` com catalogo incompleto (skill sem 2 dicas) retorna exit 1 e stdout lista a skill faltante
-- [ ] 5.3.3 Teste: `--audit` com catalogo ausente retorna exit 1 (catalogo ausente = cobertura 0%)
+- [x] 5.3.1 Teste: `--audit` com catalogo completo (fixture cobrindo todas as skills de teste) retorna exit 0
+- [x] 5.3.2 Teste: `--audit` com catalogo incompleto (skill sem 2 dicas) retorna exit 1 e stdout lista a skill faltante
+- [x] 5.3.3 Teste: `--audit` com catalogo ausente retorna exit 1 (catalogo ausente = cobertura 0%)
 
 ### 5.4 Testes de seguranca POSIX (prevencao de injecao A05) [C]
 
 Ref: contracts/cli-show-tip.md §Seguranca (A05)
 
-- [ ] 5.4.1 Teste: SKILL com metacaracteres awk (`; print "INJECTED"`) nao injeta codigo — saida nao contem "INJECTED"
-- [ ] 5.4.2 Teste: SKILL com metacaracteres shell (`;`, `$(...)`, backtick) e passado literalmente sem execucao
-- [ ] 5.4.3 Teste: `--catalog` com path contendo espacos e caracteres especiais e tratado com aspas corretas
+- [x] 5.4.1 Teste: SKILL com metacaracteres awk (`; print "INJECTED"`) nao injeta codigo — saida nao contem "INJECTED"
+- [x] 5.4.2 Teste: SKILL com metacaracteres shell (`;`, `$(...)`, backtick) e passado literalmente sem execucao
+- [x] 5.4.3 Teste: `--catalog` com path contendo espacos e caracteres especiais e tratado com aspas corretas
 
 ### 5.5 Lint estatico [C]
 
 Ref: plan §Testing; constitution §Quality Standards
 
-- [ ] 5.5.1 Executar `shellcheck -s sh cli/lib/show-tip.sh` e confirmar zero warnings ou errors
-- [ ] 5.5.2 Verificar que `show-tip.sh` passa no workflow `.github/workflows/shellcheck.yml` existente
-- [ ] 5.5.3 Executar `shellcheck -s sh tests/cstk/test_show-tip.sh` e confirmar zero warnings
+- [x] 5.5.1 Executar `shellcheck -s sh cli/lib/show-tip.sh` e confirmar zero warnings ou errors
+- [x] 5.5.2 Verificar que `show-tip.sh` passa no workflow `.github/workflows/shellcheck.yml` existente
+- [x] 5.5.3 Executar `shellcheck -s sh tests/cstk/test_show-tip.sh` e confirmar zero warnings
 
 ### 5.6 Teste de performance (SC-002) [M]
 
 Ref: spec §SC-002 (<1s por invocacao)
 
-- [ ] 5.6.1 Medir tempo de `cstk show-tip` com catalogo completo (76+ entradas) em macOS e ubuntu CI: `time cstk show-tip`
-- [ ] 5.6.2 Confirmar que tempo wall-clock e < 1s em ambos os ambientes (dado empirico para SC-002)
+- [x] 5.6.1 Medir tempo de `cstk show-tip` com catalogo completo (76+ entradas) em macOS e ubuntu CI: `time cstk show-tip`
+- [x] 5.6.2 Confirmar que tempo wall-clock e < 1s em ambos os ambientes (dado empirico para SC-002)
 
 ---
 
@@ -264,23 +264,23 @@ Ref: spec §SC-002 (<1s por invocacao)
 
 Ref: constitution §Quality: SemVer + CHANGELOG; CHANGELOG.md (formato Keep a Changelog)
 
-- [ ] 6.1.1 Determinar proximo numero de versao MINOR (atual: `0.0.0-dev` em dev, ultima release `4.4.0` → proxima: `4.5.0`)
-- [ ] 6.1.2 Adicionar secao `## [4.5.0] - YYYY-MM-DD` no `CHANGELOG.md` com entradas `### Added` descrevendo: `cstk show-tip` subcomando, `tips/catalog.md`, `cli/lib/show-tip.sh`, integracao nos orquestradores
-- [ ] 6.1.3 Verificar que a entrada do CHANGELOG segue o formato Keep a Changelog do projeto (nao emojis, texto em portugues, bullets concisos)
+- [x] 6.1.1 Determinar proximo numero de versao MINOR (atual: `0.0.0-dev` em dev, ultima release `4.4.0` → proxima: `4.5.0`)
+- [x] 6.1.2 Adicionar secao `## [4.5.0] - YYYY-MM-DD` no `CHANGELOG.md` com entradas `### Added` descrevendo: `cstk show-tip` subcomando, `tips/catalog.md`, `cli/lib/show-tip.sh`, integracao nos orquestradores
+- [x] 6.1.3 Verificar que a entrada do CHANGELOG segue o formato Keep a Changelog do projeto (nao emojis, texto em portugues, bullets concisos)
 
 ### 6.2 Atualizacao do `VERSION` [M]
 
 Ref: CHANGELOG.md; contracts/cli-show-tip.md §Summary
 
-- [ ] 6.2.1 Atualizar `cli/VERSION` de `0.0.0-dev` para o numero da release (quando no branch de release) — nao alterar em branch de feature
-- [ ] 6.2.2 Verificar que `CSTK_EMBEDDED_VERSION` em `cli/cstk` esta sincronizado com `cli/VERSION` (boot-check da FR-006c)
+- [x] 6.2.1 Atualizar `cli/VERSION` de `0.0.0-dev` para o numero da release (quando no branch de release) — nao alterar em branch de feature
+- [x] 6.2.2 Verificar que `CSTK_EMBEDDED_VERSION` em `cli/cstk` esta sincronizado com `cli/VERSION` (boot-check da FR-006c)
 
 ### 6.3 Documentacao para mantenedor [M]
 
 Ref: spec §SC-005 (< 5 min para adicionar dica); spec §FR-008
 
-- [ ] 6.3.1 Adicionar secao "Como adicionar dicas" em `tips/catalog.md` (cabecalho explicando o formato, campos obrigatorios e exemplo completo)
-- [ ] 6.3.2 Verificar que `docs/specs/show-tips/quickstart.md` esta atualizado com o fluxo de uso de `cstk show-tip` (ja criado na onda-003; apenas revisar se reflete a implementacao final)
+- [x] 6.3.1 Adicionar secao "Como adicionar dicas" em `tips/catalog.md` (cabecalho explicando o formato, campos obrigatorios e exemplo completo)
+- [x] 6.3.2 Verificar que `docs/specs/show-tips/quickstart.md` esta atualizado com o fluxo de uso de `cstk show-tip` (ja criado na onda-003; apenas revisar se reflete a implementacao final)
 
 ---
 
