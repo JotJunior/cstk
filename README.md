@@ -700,6 +700,45 @@ transacional por projeto.
 - [`docs/specs/_archived/knowledge-db-metrics/spec.md`](docs/specs/_archived/knowledge-db-metrics/spec.md) — ingestão de métricas (schema v2): tabelas `executions`/`waves`/`alert_signals`/`tasks`/`events`
 - [`docs/specs/_archived/knowledge-db-metrics/data-model.md`](docs/specs/_archived/knowledge-db-metrics/data-model.md) — DDL das novas tabelas e chaves naturais
 
+## Painel Web (`cstk serve`)
+
+Inicia a interface web do cstk panel localmente. Na primeira execução, baixa
+automaticamente a release mais recente de
+[JotJunior/cstk-panel](https://github.com/JotJunior/cstk-panel) e instala em
+`~/.local/share/cstk/panel`. Execuções subsequentes reutilizam a instalação em
+cache.
+
+**Dependências**: `curl` e `npm` (Node.js) disponíveis no PATH.
+
+```bash
+cstk serve                      # inicia na porta padrão 5173
+cstk serve --port 8080          # porta customizada
+cstk serve --reinstall          # força reinstalação da versão mais recente
+PORT=4000 cstk serve            # porta via variável de ambiente
+```
+
+**Opções**:
+
+| Flag | Padrão | Descrição |
+|------|--------|-----------|
+| `--port PORT` | `5173` | Porta de escuta (1024–65535). Também lê `$PORT`. |
+| `--host HOST` | `127.0.0.1` | Host de bind (apenas loopback tem suporte completo). |
+| `--reinstall` | — | Remove a instalação existente e reinstala do GitHub. |
+| `--help`, `-h` | — | Exibe ajuda e sai. |
+
+**Variáveis de ambiente**:
+
+- `CSTK_PANEL_DIR` — Substitui o diretório de instalação (padrão:
+  `~/.local/share/cstk/panel`).
+- `PORT` — Porta padrão quando `--port` não é informado.
+
+**Exit codes**: `0` sucesso · `1` erro geral (prereq ausente, download falhou)
+· `2` erro de uso (porta inválida, flag desconhecida).
+
+**Segurança**: apenas URLs de `github.com`, `codeload.github.com` e
+`objects.githubusercontent.com` são autorizadas no download (SSRF allowlist).
+Host `127.0.0.1` é o único com suporte completo — outras interfaces emitem aviso.
+
 ## Convenções de Nomenclatura
 
 | Tipo | Padrão | Exemplo |

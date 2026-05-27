@@ -38,7 +38,7 @@ Feature **100% implementada**. Todos os criterios de aceite atendidos; testes pa
 | FASE 3 | Dispatcher cstk show-tip | 100% (1 task) |
 | FASE 4 | Integracao orquestradores (agente-00c + feature-00c) | 100% (2 tasks) |
 | FASE 5 | Testes automatizados | 100% (6 tasks) |
-| FASE 6 | Documentacao e release (CHANGELOG 4.5.0) | 100% (3 tasks) |
+| FASE 6 | Documentacao e release (CHANGELOG 4.6.0) | 100% (3 tasks) |
 
 ## Selecao de modelo por onda (sugerido vs aplicado)
 
@@ -76,7 +76,7 @@ Feature **100% implementada**. Todos os criterios de aceite atendidos; testes pa
 | `cli/cstk` | subcomando `show-tip` operacional (show-tip <skill> / sem-args / --audit / --help) |
 | Integracao orquestradores | `global/agents/agente-00c-orchestrator.md` (passo 2.bis) + `agente-00c-feature-orchestrator.md` (passo 4.ter), fail-silent |
 | `tests/cstk/test_show-tip.sh` | 17 cenarios; `tests/run.sh --fast` = 855 PASS / 0 FAIL; performance 51ms (< SC-002 1s) |
-| `CHANGELOG.md` | entrada 4.5.0 (Added + Fixed) |
+| `CHANGELOG.md` | entrada 4.6.0 (Added + Fixed) |
 
 ## Bugs corrigidos durante a execucao
 
@@ -93,5 +93,5 @@ Feature **100% implementada**. Todos os criterios de aceite atendidos; testes pa
 ## Recomendacoes
 
 ### Acoes Imediatas
-- Nenhuma tarefa pendente. Feature pronta para release (CHANGELOG 4.5.0).
+- Nenhuma tarefa pendente. Feature pronta para release (CHANGELOG 4.6.0).
 - Sugestao pos-merge: validar a exibicao real da dica no inicio de uma onda do agente-00c/feature-00c em uso normal (smoke manual).

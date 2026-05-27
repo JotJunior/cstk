@@ -5,7 +5,7 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
-## [4.5.0] - 2026-05-26
+## [4.6.0] - 2026-05-27
 
 Adiciona o subcomando `cstk show-tip` — mecanismo de dicas contextuais para skills
 do toolkit. Em cada onda do orquestrador, uma dica e exibida automaticamente para
@@ -46,6 +46,43 @@ Inclui correcao de bug no parser awk que impedia a emissao de entradas alternada
 - **`tips/catalog.md`**: adicionado terminador `---` apos a ultima entrada
   (`dotnet-testing gotcha`) para que ela seja emitida pelo parser corrigido.
   Sem o terminador, a ultima entrada do catalogo era sempre perdida.
+## [4.5.0] - 2026-05-26
+
+Adiciona o subcomando `cstk serve` — interface web local do cstk panel.
+Na primeira execução, baixa automaticamente a release mais recente do
+[JotJunior/cstk-panel](https://github.com/JotJunior/cstk-panel) e instala em
+`~/.local/share/cstk/panel`; execuções subsequentes reutilizam o cache (sem
+download). Encerramento gracioso com grace period de 5s (SIGTERM → SIGKILL).
+POSIX sh puro; SSRF allowlist para `github.com` e `objects.githubusercontent.com`.
+
+### Added
+
+- **`cli/lib/serve.sh`**: biblioteca POSIX sh que implementa o fluxo completo do
+  `cstk serve` — parse de flags (`--port`, `--host`, `--reinstall`, `--help`),
+  validação de porta (1024–65535), prereq check de `curl`/`npm`, SSRF allowlist
+  (`github.com`, `codeload.github.com`, `objects.githubusercontent.com`,
+  `api.github.com`), lazy-install via GitHub Releases API, integridade
+  best-effort (`.sha256`), `npm install`, foreground start com
+  `trap SIGTERM/SIGINT`, grace period 5s + SIGKILL.
+- **`cli/cstk` (dispatch)**: novo `case serve)` que sourca `cli/lib/serve.sh` e
+  chama `serve_main "$@"`.
+- **`tests/cstk/test_serve.sh`** (29 cenários): cobre flags/porta/host, prereq
+  check, SSRF allowlist, lazy-install, tarball corrompido, `npm install` falho,
+  saída espontânea do filho, zero `eval`, SIGTERM + SIGKILL (grace period), entre
+  outros. Todos os stubs de `curl`/`npm` são locais (sem rede real).
+- **`tests/cstk/fixtures/serve/panel-fixture.tar.gz`**: fixture de tarball mínimo
+  (`package.json` + `.panel-version`) para testes de download sem rede.
+
+### Changed
+
+- **`README.md`**: nova seção **Painel Web (`cstk serve`)** documentando uso,
+  opções, variáveis de ambiente e notas de segurança.
+- **`cli/README.md`**: seção de subcomandos atualizada para incluir `serve`.
+
+### Tests
+
+- **`tests/cstk/test_serve.sh`**: 29 cenários PASS, cobertura via
+  `--check-coverage` sem órfãos.
 
 ## [4.4.0] - 2026-05-26
 
