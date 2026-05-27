@@ -5,6 +5,29 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.6.1] - 2026-05-27
+
+Corrige `cstk serve`: o painel agora exibe a interface web. Antes, o subcomando
+rodava `npm run start` — que sobe **apenas a API** (Fastify) — e ainda forcava
+`PORT=5173` sobre ela, de modo que `http://127.0.0.1:5173` devolvia o envelope
+JSON `{"error":"Not found"}` em vez da UI. O painel `cstk-panel` nao possui
+serving estatico em producao (o server nao registra `@fastify/static`), e o SPA
+depende do proxy `/api` que so existe no modo dev do Vite.
+
+### Fixed
+
+- **`cstk serve` agora lanca o painel via `npm run dev`** (concurrently): a API
+  Fastify sobe em `:3001` e o frontend Vite em `:5173`, com o Vite servindo o SPA
+  e proxiando `/api -> :3001`. Abrir `http://127.0.0.1:5173` exibe a interface.
+- **Removido o `export PORT`**: forcar a porta movia a API para fora de `:3001` e
+  quebrava o proxy do Vite. A porta voltada ao usuario passa a ser a do Vite.
+- **`--port`**: continua validado (inteiro 1024-65535) por compatibilidade, mas em
+  modo dev a UI e servida pelo Vite na `:5173`; um aviso e emitido se `!= 5173`.
+
+> Nota: o modo dev roda um dev server (HMR/watch da fonte). Um serve de producao
+> de porta unica exigiria adicionar `@fastify/static` ao server do `cstk-panel`
+> (outro repositorio).
+
 ## [4.6.0] - 2026-05-27
 
 Adiciona o subcomando `cstk show-tip` — mecanismo de dicas contextuais para skills

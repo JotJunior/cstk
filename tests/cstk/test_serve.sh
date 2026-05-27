@@ -129,15 +129,15 @@ STUB
   chmod +x "$_sno_bin/npm"
 }
 
-# _stub_npm_exit_code: npm que sai com exit code especificado para "run start",
-# mas aceita "install" com exit 0 (para permitir que a instalacao ocorra).
-# $1 = bin dir, $2 = exit code para "run start"
+# _stub_npm_exit_code: npm que sai com o exit code especificado para `run
+# <script>` (ex.: `run dev`), aceitando `install` com 0 — simula saida
+# espontanea do painel.
+# $1 = bin dir, $2 = exit code para `run`
 _stub_npm_exit_code() {
   _snec_bin="$1"
   _snec_exit="$2"
   cat > "$_snec_bin/npm" <<STUB
 #!/bin/sh
-# Aceitar install; falhar run start com o exit code configurado
 case "\$1" in
   install) exit 0 ;;
   run) exit ${_snec_exit} ;;
@@ -145,6 +145,21 @@ case "\$1" in
 esac
 STUB
   chmod +x "$_snec_bin/npm"
+}
+
+# _stub_npm_logging: npm que LOGA cada chamada (args + PORT herdado do env) em
+# $TMPDIR_TEST/npm-calls.log e sai 0. Permite assertar QUE comando foi invocado
+# (ex.: `run dev`) e SE o caller exportou PORT. O caminho do log e baked
+# (expansao no shell de teste) para sobreviver ao env isolado de _run_serve.
+# $1 = dir de stubs
+_stub_npm_logging() {
+  _snl_bin="$1"
+  cat > "$_snl_bin/npm" <<STUB
+#!/bin/sh
+printf 'cmd=[%s] PORT=[%s]\n' "\$*" "\${PORT:-}" >> "$TMPDIR_TEST/npm-calls.log"
+exit 0
+STUB
+  chmod +x "$_snl_bin/npm"
 }
 
 # _run_serve: executa serve_main em subshell com env isolado
@@ -569,6 +584,55 @@ scenario_primeira_exec_grava_panel_version() {
   _v=$(cat "$CSTK_PANEL_DIR/.panel-version")
   if [ -z "$_v" ]; then
     _fail "version_file_vazio" ".panel-version esta vazio"
+    return 1
+  fi
+}
+
+# --- Modo dev: serve sobe API + frontend via `npm run dev`, sem forcar PORT ---
+# Regressao: `npm run start` subia so a API (Fastify), devolvendo o envelope
+# JSON 404 em / sem exibir a UI; e `export PORT=5173` movia a API para a porta
+# do Vite, escrambando o proxy /api -> :3001.
+
+scenario_serve_lanca_modo_dev() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_logging "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "modo_dev_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  # O painel deve ser lancado via `npm run dev` (API + web), nunca `run start`.
+  if ! grep -q 'cmd=\[run dev' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
+    _fail "modo_dev_cmd" "serve nao invocou 'npm run dev'"
+    return 1
+  fi
+  if grep -q 'cmd=\[run start' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
+    _fail "modo_dev_nao_start" "serve ainda invoca 'npm run start' (so a API)"
+    return 1
+  fi
+}
+
+scenario_serve_nao_forca_port_na_api() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_logging "$_STUB_BIN"
+  # Porta != 5173: serve NAO deve exportar PORT (moveria a API para fora de
+  # :3001 e quebraria o proxy do Vite). O stub loga o PORT herdado do env.
+  _run_serve --port 8080
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "nao_forca_port_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if grep -q 'PORT=\[8080\]' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
+    _fail "nao_forca_port" "serve exportou PORT=8080 para o painel (nao deveria em modo dev)"
+    return 1
+  fi
+  # E deve avisar que --port != 5173 sera ignorado em modo dev.
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'ignorad\|5173\|vite'; then
+    _fail "nao_forca_port_aviso" "stderr nao avisa sobre --port ignorado em modo dev"
     return 1
   fi
 }
