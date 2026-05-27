@@ -148,12 +148,17 @@ STUB
 }
 
 # _run_serve: executa serve_main em subshell com env isolado
-# Precisa de _setup_serve_env chamado antes
+# Precisa de _setup_serve_env chamado antes.
+# O PATH que serve_main enxerga vem de _SERVE_INNER_PATH quando definido
+# (cenarios de prereq ausente), senao do PATH do shell de teste. Desacoplar
+# o PATH interno do PATH do harness evita ter de clobberar o PATH global so
+# para "esconder" curl/npm — clobber que nunca funcionou para curl, pois ele
+# mora em /usr/bin tanto no Linux quanto no macOS.
 _run_serve() {
   capture env \
     CSTK_LIB="$CSTK_LIB" \
     CSTK_PANEL_DIR="$CSTK_PANEL_DIR" \
-    PATH="$PATH" \
+    PATH="${_SERVE_INNER_PATH:-$PATH}" \
     HOME="$TMPDIR_TEST" \
     sh -c ". \$CSTK_LIB/serve.sh && serve_main \"\$@\"" serve_test "$@"
 }
@@ -275,28 +280,40 @@ scenario_host_nao_loopback_aviso_stdout() {
 # FASE 2.2 — Pre-requisitos (tasks 2.2.x)
 # ---------------------------------------------------------------------------
 
-# _stub_curl_present_npm_absent: PATH minimo com curl-stub mas sem npm,
-# para testar prereq-check de npm ausente sem usar real npm do sistema.
+# _isolated_sh_dir: cria (idempotente, por scenario) um dir contendo APENAS um
+# symlink para o `sh` real e ecoa seu caminho. Serve para compor o PATH interno
+# de serve_main (env precisa achar `sh` para lancar o inner shell) SEM arrastar
+# /usr/bin nem /bin — onde mora curl (no Ubuntu com usrmerge /bin -> /usr/bin,
+# logo /bin/curl tambem existe). Resolvido enquanto o PATH global ainda e completo.
+_isolated_sh_dir() {
+  _ish_dir="$TMPDIR_TEST/shbin"
+  if [ ! -e "$_ish_dir/sh" ]; then
+    mkdir -p "$_ish_dir"
+    _ish_sh=$(command -v sh)
+    ln -sf "$_ish_sh" "$_ish_dir/sh"
+  fi
+  printf '%s' "$_ish_dir"
+}
+
+# _stub_curl_present_npm_absent: curl-stub presente, npm ausente,
+# para testar prereq-check de npm sem usar npm real do sistema.
 _stub_curl_present_npm_absent() {
   _stub_curl_ok "$_STUB_BIN"
-  # Criar "false-npm" que retorna exit 1 para simular ausencia no PATH.
-  # command -v so verifica se existe no PATH; como o stub existe, o
-  # prereq check vai encontra-lo. Precisamos de outra abordagem:
-  # usar PATH MINIMO que nao inclua diretorios com npm real.
-  #
-  # Estrategia: sobrescrever PATH para incluir APENAS $STUB_BIN + dirs basicos
-  # (sh, tar, etc) mas sem diretorios que contenham npm (homebrew, usr/local).
-  _ISOLATED_PATH="$_STUB_BIN:/usr/bin:/bin"
-  PATH="$_ISOLATED_PATH"
-  export PATH
+  # npm ausente de forma OS-independente: o PATH que serve_main enxerga
+  # (_SERVE_INNER_PATH) contem APENAS o stub-bin (curl presente) + o shbin
+  # isolado (so `sh`, para o env lancar o inner shell). npm fica fora.
+  # Nao clobberamos o PATH global do harness (capture/grep usam o completo).
+  _SERVE_INNER_PATH="$_STUB_BIN:$(_isolated_sh_dir)"
 }
 
 _stub_npm_present_curl_absent() {
   _stub_npm_ok "$_STUB_BIN"
-  # Igual: PATH minimo sem curl real
-  _ISOLATED_PATH="$_STUB_BIN:/usr/bin:/bin"
-  PATH="$_ISOLATED_PATH"
-  export PATH
+  # curl ausente de forma OS-independente: o PATH interno tem o stub-bin
+  # (npm presente) + o shbin isolado (so `sh`); curl fica fora. O bug anterior
+  # usava "PATH=stub:/usr/bin:/bin" achando que removia curl, mas curl mora em
+  # /usr/bin (e /bin->/usr/bin no Ubuntu), entao o prereq check sempre o
+  # encontrava e o teste falhava em CI.
+  _SERVE_INNER_PATH="$_STUB_BIN:$(_isolated_sh_dir)"
 }
 
 scenario_prereq_curl_ausente_exit1() {
