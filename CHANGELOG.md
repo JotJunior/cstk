@@ -5,6 +5,31 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.9.1] - 2026-05-27
+
+Corrige um falso positivo no painel (`cstk-panel`): execuções **finalizadas com
+sucesso** apareciam nas métricas ainda "em andamento" na última fase real (ex.
+`review-task`), porque `etapa_corrente` nunca era promovida quando
+`execucao.status` virava `concluida`. A normalização é feita na **camada
+derivada** (ingestão da `knowledge.db`), mantendo o `state.json` fonte intacto.
+
+### Fixed
+
+- **`cstk recall --ingest` (tabela `executions`)**: quando `.execucao.status` é
+  terminal de sucesso (`concluida` — canônico do `state-validate` — ou
+  `concluido`, variante histórica), a coluna derivada `etapa_corrente` passa a
+  ser `"concluido"`. `abortada`/`em_andamento` preservam a fase real (aborto não
+  é conclusão). Só o valor **derivado** muda; o `state.json` transacional fica
+  inalterado.
+
+### Notes
+
+- Registros já ingeridos mantêm a `etapa_corrente` antiga até um
+  `cstk recall --reindex` (re-lê os `state.json` pela mesma normalização). A
+  correção é prospectiva para novas ingestões.
+- Entrega: o `recall.sh` é runtime — chega à cópia instalada via
+  `cstk self-update`, nunca por `cstk install`/`update`.
+
 ## [4.9.0] - 2026-05-27
 
 Rodada de robustez de processo inspirada no benchmark
@@ -2791,6 +2816,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.9.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.9.1
 [4.9.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.9.0
 [4.8.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.8.0
 [4.7.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.2
