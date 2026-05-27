@@ -51,6 +51,11 @@ fi
 
 ### 3. Fluxo TOCTOU-safe (ordem CRITICA — research.md Decision 5)
 
+> **Fronteira command↔orquestrador**: o lock e deste command PAI (acquire
+> abaixo, release SEMPRE no Cleanup). O orquestrador NAO adquire/libera
+> lock — ver "Fronteira command↔orquestrador" em
+> `agente-00c-feature-orchestrator.md`.
+
 ```
 1. checar lock — se ocupado (PID vivo), abortar
    if state-lock.sh check --state-dir "$AGENTE_00C_STATE_DIR"; then

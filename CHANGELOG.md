@@ -5,6 +5,40 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.6.2] - 2026-05-27
+
+Unifica a fronteira **command↔orquestrador** para aquisição de lock e
+inicialização de estado no agente-00c/feature-00c. Antes, a divisão de
+responsabilidades era inconsistente entre as duas famílias e contraditória
+internamente: `/agente-00c` (command) não adquiria o lock (o orquestrador
+adquiria no loop), enquanto `/feature-00c` (command) **e** seu orquestrador
+adquiriam — um double-acquire de um lock não-reentrante (`mkdir`) somado a um
+double-init de `state.json`. Resultado: ao iniciar uma feature/projeto, o
+agente gastava ciclos lendo 3+ arquivos para (mal-)resolver quem detém o lock,
+sem um contrato canônico contra o qual decidir.
+
+### Fixed
+
+- **Modelo único de lock/init**: o slash command PAI (`/agente-00c` |
+  `/feature-00c` no início; `*-resume` entre ondas) **adquire** o lock antes
+  do spawn e o **libera SEMPRE** após o orquestrador retornar, e cria o
+  `state.json`. O orquestrador (subagente) faz **zero** chamadas a
+  `state-lock.sh acquire/release` e não re-inicializa estado — sempre continua
+  de `.proxima_instrucao`. Idêntico em primeira-invocação e resume.
+- **`/agente-00c` (command)** passou a adquirir o lock (passo 3) e a liberá-lo
+  SEMPRE (novo passo 5.ter) — antes não fazia nenhum dos dois.
+- **Orquestradores** (`agente-00c-orchestrator`, `agente-00c-feature-orchestrator`):
+  removidas as chamadas de `acquire`/`release`; o loop apenas valida estado +
+  `sha256-verify` dentro do lock já detido pelo pai.
+- **Double-init neutralizado** no `feature-00c-orchestrator`: re-inicializar o
+  `state.json` clobraria a Decisão de wave-select gravada pelo command pai.
+
+### Added
+
+- Bloco **"Fronteira command↔orquestrador (lock + init) — CONTRATO CANÔNICO"**
+  presente nos 6 arquivos do pipeline (2 commands de início, 2 de resume, 2
+  orquestradores), para que nenhum agente precise re-investigar a fronteira.
+
 ## [4.6.1] - 2026-05-27
 
 Corrige `cstk serve`: o painel agora exibe a interface web. Antes, o subcomando

@@ -42,6 +42,10 @@ Defina `<SD> = <PAP>/.claude/agente-00c-state` para os comandos abaixo.
 
 ### 2. Adquirir lock
 
+> **Fronteira command↔orquestrador**: o lock e deste command PAI (acquire
+> aqui, release SEMPRE no passo 7). O orquestrador NAO adquire/libera lock
+> — ver "Fronteira command↔orquestrador" em `agente-00c-orchestrator.md`.
+
 ```bash
 state-lock.sh acquire --state-dir <SD>
 ```

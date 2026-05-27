@@ -100,7 +100,7 @@ cada chamada).
 | Script | Uso principal |
 |--------|---------------|
 | `state-rw.sh init\|read\|write\|get\|set\|sha256-update\|sha256-verify` | CRUD do state.json |
-| `state-lock.sh acquire\|release\|check` | mutex anti-concorrencia (FR-028) |
+| `state-lock.sh acquire\|release\|check` | mutex anti-concorrencia (FR-028). **acquire/release sao do command PAI** (ver "Fronteira command↔orquestrador") — o orquestrador NAO os chama |
 | `state-validate.sh` | schema check (FR-013) |
 | `state-ondas.sh start\|end\|skill-invoked` | ciclo de vida da onda + skills_invoked (FR-012, FR-020) |
 | `state-decisions.sh register --score N --evidencia "..."` | Decisao auditavel (FR-017) |
@@ -122,11 +122,36 @@ cada chamada).
 | `sanitize.sh` | sanitizar descricao_curta (FR-029 herdado FR-025) |
 | `spawn-tracker.sh increment\|check` | rastrear profundidade de subagente (FR-021) |
 
+## Fronteira command↔orquestrador (lock + init) — CONTRATO CANONICO
+
+Resolve de uma vez quem detem o lock e quem inicializa o estado, para
+nenhum agente precisar re-investigar a cada inicio de feature. A divisao e
+FIXA e identica em primeira-invocacao E resume:
+
+- **LOCK — sempre do command PAI.** O slash command pai (`/feature-00c` no
+  inicio; `/feature-00c-resume` entre ondas) ADQUIRE o lock antes de
+  spawnar voce e LIBERA SEMPRE apos voce retornar (inclusive em paths de
+  erro). Voce, orquestrador (subagente), faz ZERO chamadas a
+  `state-lock.sh acquire`/`release` — roda inteiramente DENTRO do lock ja
+  detido pelo pai. (Mesmo motivo de o `ScheduleWakeup` viver no pai: seu
+  thread e efemero. Alem disso o lock e nao-reentrante — `mkdir` — logo um
+  2o acquire so retornaria `lock_contention`.)
+- **INIT — sempre do command PAI.** O pai cria/garante o `state.json` no
+  inicio (nao no resume). Voce NAO re-inicializa estado (re-init clobbaria
+  a Decisao de wave-select que o pai gravou); sempre continua de
+  `.proxima_instrucao`. Primeira-invocacao e resume seguem o MESMO caminho
+  (entram no Loop principal).
+- **CONTENTION** e detectado pelo pai ANTES do spawn (exit 3). Voce nunca
+  trata `lock_contention` na aquisicao.
+
 ## Pre-flight da execucao (antes da PRIMEIRA onda)
 
-Estes passos rodam UMA vez na primeira invocacao, ANTES do Loop
-principal. Em retomadas (resume), pulam-se 1-3 (state ja existe) e
-roda-se 4-6.
+LOCK e INIT (passos 1-3) sao do command PAI (ver "Fronteira
+command↔orquestrador") — o orquestrador NAO adquire lock nem inicializa
+estado. Como o pai cria o `state.json` em TODA invocacao, o estado sempre
+existe quando voce comeca; os passos 1-3 sao defesa em profundidade. Os
+passos 4-6 (ciclo da onda) rodam normalmente na primeira invocacao; em
+retomadas (resume), pulam-se 1-3 e continua-se de `.proxima_instrucao`.
 
 1. **Validar coexistencia com agente-00c** (FR-026): checar
    `<projeto-alvo>/.claude/agente-00c-state/state.json`. Se status =
@@ -135,10 +160,12 @@ roda-se 4-6.
    (Esta checagem normalmente acontece no slash command pai antes de
    invocar voce — re-validar aqui como defesa em profundidade.)
 
-2. **Adquirir lock** via `state-lock.sh acquire --state-dir
-   $AGENTE_00C_STATE_DIR`. Se ocupado, abortar com exit 3.
+2. **Lock**: NAO adquirir — o command pai ja detem o lock (ver Fronteira).
+   Voce roda inteiramente dentro do lock do pai.
 
-3. **Init de state.json** via `state-rw.sh init` com:
+3. **Init de state.json**: o command pai ja criou o `state.json`. NAO
+   re-inicializar. Apenas como fallback defensivo, SE o estado estiver
+   AUSENTE, criar via `state-rw.sh init` com:
    - `short_name`, `projeto_alvo_path`, `descricao_curta`
    - `briefing.path` + `briefing.sha256` (FR-PRE-004)
    - `constitution.path` + `constitution.sha256` + `constitution.version` (FR-PRE-004)
@@ -174,8 +201,8 @@ isso e RUIDO de conclusao DA SKILL, nao um turn boundary SEU (mesmo
 mecanismo do warm-up). Depois que a skill retorna voce AINDA tem os passos
 6-13 OBRIGATORIOS: registrar decisoes, preflight (spec→plan), backup,
 recomputar hash, fechar a onda (`state-ondas.sh end`), ingerir
-(10.bis `cstk recall --ingest`), relatorio, liberar lock e emitir
-`Schedule intent`.
+(10.bis `cstk recall --ingest`), relatorio e emitir `Schedule intent`
+(o lock e liberado pelo command pai, nao por voce — ver Fronteira).
 
 **Auto-checagem antes de QUALQUER fim de turno**: a ULTIMA linha que voce
 produziu e `Schedule intent: ...` (ou um relatorio terminal)? Se NAO, voce
@@ -244,7 +271,7 @@ Sequencia da onda corrente. Cada iteracao:
     fechamento/Schedule da onda.
 11. emitir relatorio final (se status terminal) via
     report.sh emit --flavor feature-00c --short-name <name>
-12. liberar lock (state-lock.sh release)
+12. (o lock e liberado pelo command pai apos voce retornar — NAO chame state-lock.sh release; ver Fronteira)
 13. SUMARIO + Schedule intent (ver bloco de instrucao no topo)
 ```
 
@@ -330,7 +357,7 @@ opcional → scrubbed na ingestao).
 
 | `event_type` (MVP) | Quando gravar (ponto exato do Loop principal) |
 |--------------------|------------------------------------------------|
-| `lock_contention` | passo 1 / pre-flight: `state-lock.sh acquire` retornou ocupado |
+| `lock_contention` | aquisicao de lock pelo command pai retornou ocupado (detectado ANTES do spawn; o orquestrador nao adquire lock) |
 | `validation_failed` | passo 1: `state-validate.sh` OU `sha256-verify` reprovou |
 | `wave_retry` | falha de onda seguida de retry (nova tentativa da mesma fase) |
 | `schedule_wait` | passo 13: onda encerrada emitindo `Schedule intent` aguardando wakeup |

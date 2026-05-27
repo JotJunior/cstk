@@ -15,6 +15,13 @@ allowed-tools:
 Voce vai iniciar uma execucao do orquestrador autonomo feature-00c
 conforme contrato em `docs/specs/_archived/feature-00c/contracts/cli-invocation.md`.
 
+> **Fronteira command↔orquestrador (lock + init)**: este command PAI detem
+> o lock (acquire no passo 7, release SEMPRE no Cleanup) e inicializa o
+> `state.json` (passo 3). O orquestrador NAO adquire lock nem re-inicializa
+> estado — contrato canonico em "Fronteira command↔orquestrador" de
+> `agente-00c-feature-orchestrator.md`. Identico no resume
+> (`/feature-00c-resume`).
+
 ## Argumentos recebidos
 
 ```
@@ -132,7 +139,8 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
      - aguardar resposta antes de prosseguir
    fi
 
-7. lock por short-name (FR-028):
+7. lock por short-name (FR-028) — o command PAI detem o lock; o
+   orquestrador NAO o re-adquire (ver Fronteira):
    _lock="$AGENTE_00C_STATE_DIR/.lock"
    state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR"
    - se ocupado, stderr "outra sessao ativa para $SHORT"; exit 3

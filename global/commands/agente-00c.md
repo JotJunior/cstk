@@ -15,6 +15,12 @@ allowed-tools:
 Voce vai iniciar uma nova execucao do orquestrador autonomo agente-00C
 conforme contrato em `docs/specs/_archived/agente-00c/contracts/cli-invocation.md`.
 
+> **Fronteira command↔orquestrador (lock + init)**: este command PAI detem
+> o lock (acquire no passo 3, release SEMPRE no passo 5.ter) e inicializa o
+> `state.json`. O orquestrador NAO adquire lock nem re-inicializa estado —
+> contrato canonico em "Fronteira command↔orquestrador" de
+> `agente-00c-orchestrator.md`. Identico no resume (`/agente-00c-resume`).
+
 ## Argumentos recebidos
 
 ```
@@ -142,7 +148,18 @@ ja preparado fora do script), apenas defensivo.
   `/agente-00c-resume` ou `/agente-00c-abort`. Use
   `state-lock.sh check-execution-busy --state-dir <SD>`.
 
-### 3. Inicializacao de estado
+### 3. Aquisicao do lock + inicializacao de estado
+
+Adquirir o lock ANTES de inicializar o estado (o orquestrador NAO adquire
+lock — ver Fronteira). `acquire` cria o `state-dir` se ausente e e
+nao-reentrante; liberacao e SEMPRE no passo 5.ter (mesmo em erro):
+
+```bash
+state-lock.sh acquire --state-dir <SD> || {
+  echo "Lock ocupado em <SD>. Ja ha sessao 00C ativa? Use /agente-00c-resume ou /agente-00c-abort." >&2
+  exit 3
+}
+```
 
 - Criar `<projeto-alvo>/.claude/agente-00c-state/` se ausente.
 - Ler `<projeto-alvo>/.env` se presente, extrair URLs como base da
@@ -236,6 +253,16 @@ o conhecimento da onda.
 # toda falha (cstk fora do PATH, sqlite3/jq ausentes) degrada para no-op.
 cstk recall --ingest --state-dir <SD> 2>/dev/null \
   || echo "knowledge-db: ingestao (rede de seguranca) pulada — cstk/sqlite3/jq ausentes" >&2
+```
+
+### 5.ter Liberacao do lock (SEMPRE — inclusive em paths de erro)
+
+O lock e do command pai (ver Fronteira). Libere-o apos o orquestrador
+retornar — antes de apresentar o resultado. Em QUALQUER caminho de saida
+(sucesso, aborto, ScheduleWakeup falho), o release deve rodar:
+
+```bash
+state-lock.sh release --state-dir <SD>
 ```
 
 ### 6. Apresentacao do resultado
