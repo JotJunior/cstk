@@ -166,7 +166,7 @@ STUB
 
 # _stub_npm_build_fails: npm que aceita install e falha em `run build` (exit 2,
 # mensagem em stderr) — cobre o caminho de erro do build no launch (serve deve
-# sair 1 sem chegar ao `run dev`).
+# sair 1 sem chegar ao `run start`).
 # $1 = dir de stubs
 _stub_npm_build_fails() {
   _snbf_bin="$1"
@@ -622,33 +622,31 @@ scenario_primeira_exec_grava_panel_version() {
   fi
 }
 
-# --- Modo dev: serve sobe API + frontend via `npm run dev`, sem forcar PORT ---
-# Regressao: `npm run start` subia so a API (Fastify), devolvendo o envelope
-# JSON 404 em / sem exibir a UI; e `export PORT=5173` movia a API para a porta
-# do Vite, escrambando o proxy /api -> :3001.
+# --- Launch: serve compila e sobe o painel via `npm run build && npm run start`
+# (cstk-panel >= 0.2.0: Fastify serve API + SPA na mesma porta). Exporta PORT.
 
-scenario_serve_lanca_modo_dev() {
+scenario_serve_lanca_build_e_start() {
   _setup_serve_env
   _make_bin_dir
   _stub_curl_ok "$_STUB_BIN"
   _stub_npm_logging "$_STUB_BIN"
   _run_serve
   if [ "$_CAPTURED_EXIT" != "0" ]; then
-    _fail "modo_dev_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    _fail "launch_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
     return 1
   fi
-  # O painel deve ser lancado via `npm run dev` (API + web), nunca `run start`.
-  if ! grep -q 'cmd=\[run dev' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
-    _fail "modo_dev_cmd" "serve nao invocou 'npm run dev'"
-    return 1
-  fi
-  if grep -q 'cmd=\[run start' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
-    _fail "modo_dev_nao_start" "serve ainda invoca 'npm run start' (so a API)"
-    return 1
-  fi
-  # E deve compilar (npm run build) ANTES do dev (resolve @cstk-panel/shared-types).
+  # Deve compilar (npm run build) ANTES de subir...
   if ! grep -q 'cmd=\[run build' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
-    _fail "modo_dev_build" "serve nao invocou 'npm run build' antes do dev"
+    _fail "launch_build" "serve nao invocou 'npm run build'"
+    return 1
+  fi
+  # ...e subir via `npm run start` (processo unico Fastify), nunca `run dev`.
+  if ! grep -q 'cmd=\[run start' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
+    _fail "launch_start" "serve nao invocou 'npm run start'"
+    return 1
+  fi
+  if grep -q 'cmd=\[run dev' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
+    _fail "launch_nao_dev" "serve ainda invoca 'npm run dev' (modo dev removido)"
     return 1
   fi
 }
@@ -659,7 +657,7 @@ scenario_serve_build_falha_exit1() {
   _stub_curl_ok "$_STUB_BIN"
   _stub_npm_build_fails "$_STUB_BIN"
   _run_serve
-  # Build falho no launch -> exit 1, sem chegar ao dev.
+  # Build falho no launch -> exit 1, sem chegar ao start.
   if [ "$_CAPTURED_EXIT" != "1" ]; then
     _fail "build_falha_exit" "esperado exit 1, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
     return 1
@@ -670,25 +668,25 @@ scenario_serve_build_falha_exit1() {
   fi
 }
 
-scenario_serve_nao_forca_port_na_api() {
+scenario_serve_exporta_port() {
   _setup_serve_env
   _make_bin_dir
   _stub_curl_ok "$_STUB_BIN"
   _stub_npm_logging "$_STUB_BIN"
-  # Porta != 5173: serve NAO deve exportar PORT (moveria a API para fora de
-  # :3001 e quebraria o proxy do Vite). O stub loga o PORT herdado do env.
+  # --port deve ser exportado como PORT para o painel (servidor unico Fastify
+  # le process.env.PORT e binda essa porta). O stub loga o PORT herdado do env.
   _run_serve --port 8080
   if [ "$_CAPTURED_EXIT" != "0" ]; then
-    _fail "nao_forca_port_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    _fail "exporta_port_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
     return 1
   fi
-  if grep -q 'PORT=\[8080\]' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
-    _fail "nao_forca_port" "serve exportou PORT=8080 para o painel (nao deveria em modo dev)"
+  if ! grep -q 'PORT=\[8080\]' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
+    _fail "exporta_port" "serve nao exportou PORT=8080 para o painel"
     return 1
   fi
-  # E deve avisar que --port != 5173 sera ignorado em modo dev.
-  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'ignorad\|5173\|vite'; then
-    _fail "nao_forca_port_aviso" "stderr nao avisa sobre --port ignorado em modo dev"
+  # NAO deve haver mais o aviso de "porta ignorada" (era do modo dev).
+  if printf '%s' "$_CAPTURED_STDERR" | grep -qi 'ignorad'; then
+    _fail "exporta_port_sem_aviso" "stderr ainda avisa que --port sera ignorado"
     return 1
   fi
 }
@@ -844,7 +842,7 @@ _stub_npm_ignores_sigterm() {
   _snist_bin="$1"
   cat > "$_snist_bin/npm" <<'STUB'
 #!/bin/sh
-# install e `run build` saem 0 (o serve builda antes do dev); so `run dev`/
+# install e `run build` saem 0 (o serve builda antes de subir); so `run dev`/
 # `run start` (o filho de longa duracao) ignora SIGTERM por alguns ciclos.
 case "$1 $2" in
   "run build") exit 0 ;;

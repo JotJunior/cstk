@@ -5,6 +5,32 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.8.0] - 2026-05-27
+
+`cstk serve` volta ao modo de produção de porta única. A partir do
+[cstk-panel](https://github.com/JotJunior/cstk-panel) **v0.2.0**, o servidor
+Fastify registra `@fastify/static` e serve a API e o SPA buildado no mesmo
+processo e porta — não é mais necessário o modo dev (Vite + proxy). O comando
+passa a rodar `npm run build && npm run start` e a flag `--port` volta a
+controlar a porta de fato.
+
+### Changed
+
+- **`cstk serve` agora usa `npm run build && npm run start`** (em vez de
+  `npm run dev`): um único processo Fastify serve API + SPA na mesma porta. O
+  `npm run build` continua obrigatório (o tarball é a árvore-fonte; o `start`
+  serve `apps/web/dist`).
+- **`PORT` volta a ser exportado**: o servidor lê `process.env.PORT` e binda a
+  porta resolvida. **`--port` voltou a funcionar** (1024–65535; também lê
+  `$PORT`) — removido o aviso de "porta ignorada em modo dev".
+
+### Requires
+
+- **cstk-panel >= 0.2.0** (com serving estático via `@fastify/static`). Painéis
+  em cache de versões anteriores devem ser atualizados com
+  `cstk serve --update` (ou `--reinstall`); do contrário o `npm run start` antigo
+  sobe apenas a API e devolve JSON 404 em `/`.
+
 ## [4.7.2] - 2026-05-27
 
 Corrige a proveniência do `knowledge.db` para execuções do **agente-00c**
@@ -2733,6 +2759,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.8.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.8.0
 [4.7.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.2
 [4.7.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.1
 [4.7.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.0

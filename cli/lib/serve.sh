@@ -295,16 +295,14 @@ Start the cstk panel web interface. On first run, downloads the latest
 release from GitHub and installs it locally. Subsequent runs reuse the
 cached installation.
 
-The panel runs in dev mode: it first compiles the workspace packages
-(npm run build — required so Vite can resolve @cstk-panel/shared-types),
-then starts the API (Fastify, port 3001) and the web frontend (Vite,
-port 5173) together, with Vite proxying /api to the API. Open
-http://127.0.0.1:5173 in your browser.
+The panel compiles the workspace packages (npm run build) and then runs
+`npm run start`: a single Fastify process (requires cstk-panel >= 0.2.0)
+that serves both the API and the built SPA on one port. Open
+http://127.0.0.1:5173 (or --port) in your browser.
 
 Options:
-  --port PORT     Validated (integer 1024-65535) for compatibility, but in
-                  dev mode the UI is served by Vite on port 5173 and this
-                  flag does not change it (a notice is printed if != 5173).
+  --port PORT     Port to listen on (integer 1024-65535; also reads $PORT).
+                  The panel server binds this port directly.
   --host HOST     Hostname/IP to bind to (default: 127.0.0.1).
                   Note: only 127.0.0.1 is fully supported; other values
                   are accepted but may not affect the panel binding.
@@ -322,7 +320,8 @@ Exit codes:
   2   Usage error (invalid port, unknown flag).
 
 Examples:
-  cstk serve                         # start API + web (UI on http://127.0.0.1:5173)
+  cstk serve                         # build + start (UI on http://127.0.0.1:5173)
+  cstk serve --port 8080             # listen on port 8080
   cstk serve --update                # update panel if a newer release exists, then start
   cstk serve --reinstall             # force reinstall then start
   cstk serve --help                  # show this help
@@ -446,39 +445,32 @@ HELP
     fi
   fi
 
-  # Modo dev: sobe a API (Fastify, :3001) e o frontend (Vite, :5173) em paralelo
-  # via o script `dev` do painel (concurrently). O Vite serve o SPA e proxia
-  # /api -> :3001. O painel NAO possui serving estatico em producao (o server
-  # Fastify nao registra @fastify/static), por isso `npm run start` — que sobe
-  # apenas a API — devolve o envelope JSON 404 em / e nao exibe a interface.
-  # NAO exportamos PORT: isso moveria a API para fora de :3001 e quebraria o
-  # proxy do Vite. A porta voltada ao usuario e a do Vite (5173).
-  if [ "$_serve_port" != "5173" ]; then
-    printf 'cstk serve: aviso: em modo dev a UI e servida pelo Vite na porta 5173; --port %s sera ignorado\n' \
-      "$_serve_port" >&2
-  fi
+  # A partir do cstk-panel >= 0.2.0 o servidor Fastify registra @fastify/static
+  # e serve a API + o SPA buildado (apps/web/dist) no MESMO processo e porta —
+  # `npm run start` (node apps/server/dist/index.js) sobe tudo, sem modo dev nem
+  # proxy do Vite. Exportamos PORT (o servidor le process.env.PORT, default
+  # 3001) para que ele binde a porta voltada ao usuario.
+  export PORT="$_serve_port"
 
-  # `npm run build` ANTES do dev (a dica: build && dev). O tarball e a
-  # arvore-fonte; o frontend Vite resolve o workspace lib @cstk-panel/shared-types
-  # via o package.json dele (main -> dist/index.js). Sem o build esse dist/ nao
-  # existe e o Vite aborta com "Failed to resolve entry for package
-  # @cstk-panel/shared-types". O build compila os workspaces (shared-types/server/
-  # web) e e idempotente; roda a cada start para cobrir instalacoes sem build.
+  # `npm run build` ANTES do start: o tarball baixado e a ARVORE-FONTE (sem
+  # dist/). `npm run start` roda o JS compilado e serve `apps/web/dist`; o build
+  # compila os workspaces (shared-types + server + web). Sem ele, faltam dist/ do
+  # servidor e do SPA. Idempotente; roda a cada start para cobrir instalacoes
+  # sem build.
   printf 'cstk serve: compilando painel (npm run build)...\n'
   if ! (cd "$_serve_panel_dir" && npm run build); then
     printf 'cstk serve: erro: npm run build falhou; tente --reinstall\n' >&2
     return 1
   fi
 
-  printf 'cstk serve: iniciando painel (API + frontend) em http://127.0.0.1:5173  (Ctrl+C para encerrar)\n'
+  printf 'cstk serve: iniciando painel em http://127.0.0.1:%s  (Ctrl+C para encerrar)\n' "$_serve_port"
 
   # Registrar handler de sinal ANTES de iniciar o filho
   trap '_serve_shutdown' INT TERM
 
-  # `npm run dev` (concurrently: API + web) em background para capturar o PID e
-  # aguardar; o _serve_shutdown propaga SIGTERM ao grupo (concurrently encerra
-  # ambos os filhos).
-  (cd "$_serve_panel_dir" && npm run dev) &
+  # `npm run start` (processo Fastify unico: API + SPA na mesma porta) em
+  # background para capturar o PID e aguardar; _serve_shutdown propaga SIGTERM.
+  (cd "$_serve_panel_dir" && npm run start) &
   _SERVE_NPM_PID=$!
 
   # Aguardar filho; propagar exit code
