@@ -612,7 +612,9 @@ scenario_m21_execucao_concluida_campos() {
   [ "$_n" = "1" ] || { _fail "exec count" "esperado 1, obtido $_n"; return 1; }
   # Campos derivados/estruturais (chave natural wave='-', source_id=execucao_id).
   _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT project||'|'||feature||'|'||wave||'|'||source_id||'|'||status||'|'||etapa_corrente||'|'||duracao_segundos||'|'||ondas_total||'|'||tool_calls_total||'|'||wallclock_total_segundos||'|'||subagentes_spawned||'|'||profundidade_max||'|'||decisoes_total||'|'||bloqueios_humanos_total FROM executions")
-  _exp="projM|featM|-|exec-featM|concluido|review-task|3600|2|42|3600|3|2|5|1"
+  # status terminal (concluido) normaliza etapa_corrente review-task -> concluido
+  # (evita falso positivo no dashboard). Ver scenario_m24_etapa_normaliza_terminal.
+  _exp="projM|featM|-|exec-featM|concluido|concluido|3600|2|42|3600|3|2|5|1"
   [ "$_row" = "$_exp" ] || { _fail "exec campos" "esperado [$_exp], obtido [$_row]"; return 1; }
 }
 
@@ -664,6 +666,36 @@ JSON
   case "$_mt" in
     *ghp_AbCdEf*) _fail "filtro segredo exec" "token vazou em motivo_termino: $_mt"; return 1 ;;
   esac
+  # Aborto NAO e conclusao: etapa_corrente preserva a fase real (review-task),
+  # nunca vira "concluido" (so concluida/concluido normalizam).
+  _ec=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT etapa_corrente FROM executions WHERE source_id='exec-featS'")
+  [ "$_ec" = "review-task" ] || { _fail "aborto preserva etapa" "esperado review-task, obtido $_ec"; return 1; }
+}
+
+# =========================================================================
+# Cenario M2.4 — normalizacao etapa_corrente em status terminal de sucesso
+# (knowledge-db; fix do falso positivo no dashboard). Cobre o valor CANONICO
+# do state-validate ("concluida" feminino), complementando M2.1 (variante
+# historica "concluido") e M2.3 (abortada nao normaliza).
+# =========================================================================
+scenario_m24_etapa_normaliza_terminal() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featN"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featN",
+  "etapa_corrente": "execute-task",
+  "execucao": { "id": "exec-featN", "projeto_alvo_path": "/home/u/projN", "status": "concluida", "iniciada_em": "2026-01-01T00:00:00Z", "terminada_em": "2026-01-01T01:00:00Z" },
+  "metricas_acumuladas": { "ondas_total": 4 },
+  "decisoes": [], "bloqueios_humanos": [], "ondas": []
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db" || return 1
+  # status concluida (canonico) -> etapa_corrente derivada vira "concluido"
+  # mesmo o state.json tendo "execute-task" (fonte intacta, derivado normaliza).
+  _ec=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT etapa_corrente FROM executions WHERE source_id='exec-featN'")
+  [ "$_ec" = "concluido" ] || { _fail "normaliza concluida" "esperado concluido, obtido $_ec"; return 1; }
 }
 
 # =========================================================================

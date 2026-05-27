@@ -679,6 +679,12 @@ recall_ingest_state_json() {
   # computada via fromdateiso8601 quando iniciada_em E terminada_em presentes
   # (NULL para execucao aberta — Acceptance US1.3). So motivo_termino e texto
   # livre (filtrado); demais campos estruturados/numericos sem filtro (FR-006).
+  # NORMALIZACAO: quando .execucao.status e terminal de sucesso
+  # (concluida — canonico do state-validate; concluido — variante historica),
+  # etapa_corrente derivada vira "concluido". Sem isso o dashboard mostra falso
+  # positivo (status concluida mas etapa parada na ultima fase real, ex.
+  # review-task). NAO normaliza abortada/em_andamento (preservam a etapa real).
+  # So o valor DERIVADO (knowledge.db) muda; o state.json fonte fica intacto.
   _isj_n_exec=0
   _isj_exec_b64=$(jq -r '
     (.execucao // {}) as $e
@@ -689,7 +695,8 @@ recall_ingest_state_json() {
     | [($e.id // ""),
        ($e.status // ""),
        ($e.motivo_termino // ""),
-       (.etapa_corrente // ""),
+       (if (($e.status // "") == "concluida" or ($e.status // "") == "concluido")
+        then "concluido" else (.etapa_corrente // "") end),
        ($e.iniciada_em // ""),
        ($e.terminada_em // ""),
        $dur,
