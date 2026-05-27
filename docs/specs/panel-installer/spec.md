@@ -65,12 +65,13 @@ interface especifica,
 **para que** o painel suba sem conflito e atenda ao ambiente de trabalho.
 
 **Acceptance Criteria:**
-- `cstk serve --port 3000` sobe o painel na porta 3000.
-- `cstk serve --host 0.0.0.0` expoe em todas as interfaces.
-- Combinacao de flags funciona: `cstk serve --port 8080 --host 0.0.0.0`.
-- Valores invalidos (porta fora de 1-65535, host malformado) geram mensagem de erro
-  + exit 2 (uso incorreto).
-- O terminal confirma a URL com porta e host efetivos.
+- `cstk serve --port 3000` sobe o painel na porta 3000 (backend Fastify via `PORT=3000`).
+- `cstk serve --host 0.0.0.0` aceita a flag sem erro; exibe aviso de que o backend
+  esta fixo em 127.0.0.1 (limitacao do cstk-panel atual).
+- Combinacao de flags funciona sem erro: `cstk serve --port 8080 --host 0.0.0.0`.
+- Valores invalidos (porta fora de 1-65535) geram mensagem de erro + exit 2
+  (uso incorreto).
+- O terminal confirma a URL com porta efetiva (host sempre 127.0.0.1).
 
 **Edge Cases:**
 - Porta ja em uso: mensagem clara + sugestao de usar `--port`.
@@ -107,16 +108,26 @@ reconhecivel), o sistema NAO DEVE fazer requisicoes de rede e DEVE iniciar o pai
 diretamente da instalacao local.
 
 **FR-003 — Execucao via npm start**
-Apos instalacao, o painel e iniciado via `npm run start` (ou equivalente definido
-no `package.json` do painel). O processo npm DEVE herdar as flags `--port` e
-`--host` como variaveis de ambiente ou argumentos conforme o contrato do painel.
-[NEEDS CLARIFICATION: o cstk-panel aceita PORT/HOST como env vars ou como args de CLI para npm run start?]
+Apos instalacao, o painel e iniciado via `npm run start` na raiz do repositorio,
+que executa `node apps/server/dist/index.js` (backend Fastify).
+A configuracao de porta/host segue o contrato do cstk-panel:
+- **Porta**: passada via variavel de ambiente `PORT` (ex: `PORT=3001 npm run start`).
+  O backend le `process.env['PORT']` com default `3001`.
+- **Host**: hardcoded como `127.0.0.1` no config.ts do cstk-panel (FR-017 do painel,
+  por design de seguranca). O parametro `--host` do `cstk serve` e aceito na
+  interface CLI e reservado para compatibilidade futura, mas NAO tem efeito no
+  binding atual do backend. O operador deve ser informado via aviso no terminal.
 
 **FR-004 — Flags --port e --host**
 O subcomando `cstk serve` DEVE aceitar:
-- `--port N` (default: 5173) — porta TCP onde o painel escuta
-- `--host H` (default: 127.0.0.1) — interface de rede onde o painel escuta
-Valores invalidos DEVEM ser rejeitados com mensagem de erro e exit 2.
+- `--port N` (default: 3001) — porta TCP onde o backend do painel escuta.
+  Passada ao processo filho via env var `PORT`.
+- `--host H` (default: 127.0.0.1) — interface de rede declarada. Aceita na
+  interface CLI para compatibilidade futura; o backend atual ignora este valor
+  (host hardcoded em 127.0.0.1 pelo cstk-panel). O terminal DEVE exibir aviso
+  quando `--host` difere de 127.0.0.1.
+Valores invalidos (porta fora de 1-65535) DEVEM ser rejeitados com mensagem de
+erro e exit 2.
 
 **FR-005 — Flag --reinstall**
 O subcomando `cstk serve` DEVE aceitar `--reinstall` para forcar remocao da
@@ -134,11 +145,13 @@ usada pelo runtime do cstk para dados locais). O caminho DEVE ser sobreponivel
 via variavel de ambiente `CSTK_PANEL_DIR` para testes e ambientes alternativos.
 
 **FR-008 — Integridade do download**
-O download do tarball DEVE ser verificado contra o checksum SHA-256 publicado
-junto ao release do `cstk-panel` (se disponivel). Se o arquivo `.sha256` nao
-estiver presente no release, o download prossegue sem verificacao e o operador
-e informado via aviso no terminal.
-[NEEDS CLARIFICATION: o release de cstk-panel publica arquivo .sha256? Se nao, aceitar sem verificacao ou bloquear?]
+O release do `cstk-panel` nao publica arquivo `.sha256` — o download e via
+`tarball_url` GitHub nativo (source tarball) sem asset de checksum associado
+(confirmado: release v0.1.0 tem `assets: []`).
+O sistema DEVE prosseguir sem verificacao de integridade e DEVE exibir aviso
+no terminal informando que a verificacao nao esta disponivel. NAO deve bloquear
+a instalacao por ausencia de `.sha256`. Se em releases futuros o asset `.sha256`
+for publicado, o sistema DEVE utilizá-lo automaticamente (verificacao best-effort).
 
 **FR-009 — Sinal de interrupcao (Ctrl+C)**
 Ao receber SIGINT/SIGTERM, o processo npm filho DEVE ser encerrado graciosamente
@@ -218,10 +231,16 @@ manual e independente.
 
 ## Clarifications
 
-> Secao reservada para resolucao das ambiguidades marcadas acima.
+### Session 2026-05-26 (mediacao inline, score 3 via investigacao empirica)
 
-- **NC-1** (FR-003): Como o cstk-panel aceita configuracao de porta/host — env vars
-  (`PORT`, `HOST`) ou args de CLI para `npm run start`?
-- **NC-2** (FR-008): O release do cstk-panel publica arquivo `.sha256` junto ao
-  tarball? Se nao, o comportamento deve ser: (a) prosseguir sem verificacao com aviso,
-  (b) bloquear com erro?
+- Q: Como o cstk-panel aceita configuracao de porta/host — env vars (`PORT`, `HOST`)
+  ou args de CLI para `npm run start`?
+  → A: Porta via env var `PORT` (lida em `config.ts` como `process.env['PORT'] ?? '3001'`).
+  Host hardcoded `127.0.0.1` no backend (FR-017 do cstk-panel); `--host` aceito na CLI
+  do cstk serve mas sem efeito atual. Default de porta corrigido para 3001 (backend real).
+
+- Q: O release do cstk-panel publica arquivo `.sha256` junto ao tarball? Se nao, o
+  comportamento deve ser prosseguir com aviso ou bloquear com erro?
+  → A: Nao publica (release v0.1.0 tem `assets: []`). Comportamento: prosseguir sem
+  verificacao com aviso no terminal. Verificacao best-effort se asset `.sha256` for
+  publicado em releases futuros.
