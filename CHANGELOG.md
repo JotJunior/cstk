@@ -5,6 +5,35 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.7.2] - 2026-05-27
+
+Corrige a proveniência do `knowledge.db` para execuções do **agente-00c**
+(orquestrador de projeto): seus registros eram ingeridos com `feature='unknown'`
+(o agente-00c não grava `short_name` como o feature-00c). Agora usam o **nome do
+diretório do projeto** (basename de `projeto_alvo_path`), tornando os registros
+identificáveis no índice e no painel. O `project` já era correto — a correção é
+na coluna `feature`.
+
+### Fixed
+
+- **`cstk recall --ingest` (layout `agente-00c-state/`)**: deriva `feature` do
+  nome do dir do projeto em vez de `'unknown'`. Sem `projeto_alvo_path`, degrada
+  para `'unknown'` (igual ao `project`). O layout `feature-00c-state/<short>/`
+  segue inalterado.
+- **`agente-00c-orchestrator` (anti-eco FR-011)**: `--exclude-feature` do
+  read-back passa de `"unknown"` para `basename(projeto_alvo_path)`, mantendo a
+  paridade com o valor ingerido (do contrário o orquestrador ecoaria as próprias
+  escritas de volta no read-back de specify/plan).
+
+### Notes
+
+- Registros já gravados como `feature='unknown'` permanecem assim até um
+  `cstk recall --reindex` (e apenas para os `state.json` ainda presentes em
+  disco). A correção é prospectiva.
+- Entrega: o `recall.sh` (runtime) chega via `cstk self-update`; o
+  `agente-00c-orchestrator` (catálogo) via `cstk update` — rode ambos para
+  manter ingestão e anti-eco consistentes.
+
 ## [4.7.1] - 2026-05-27
 
 Corrige `cstk serve`: o frontend (Vite) abortava com `Failed to resolve entry
@@ -2704,6 +2733,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[4.7.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.2
 [4.7.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.1
 [4.7.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.0
 [4.6.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.6.2

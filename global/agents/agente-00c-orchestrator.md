@@ -440,12 +440,14 @@ devolva controle ao pai sem essa linha.
      TERMS=$(jq -r '.execucao.projeto_alvo_descricao // ""' "$SD/state.json")
    fi
 
-   # 2. Anti-eco (FR-011): o agente-00c (projeto) NAO grava `.short_name`,
-   #    entao seus registros sao ingeridos com feature="unknown". Logo o
-   #    anti-eco do orquestrador de PROJETO exclui a feature "unknown"
-   #    (suas proprias escritas de projeto). DIVERGENCIA INTENCIONAL face
-   #    ao feature-00c (que exclui $SHORT_NAME) — ver nota de paridade 5.2.4.
-   EXCLUDE_FEATURE="unknown"
+   # 2. Anti-eco (FR-011): o agente-00c (projeto) NAO grava `.short_name`;
+   #    seus registros sao ingeridos com feature = NOME DO DIR DO PROJETO
+   #    (basename de projeto_alvo_path — paridade exata com recall.sh). Logo o
+   #    anti-eco do orquestrador de PROJETO exclui essa mesma feature (suas
+   #    proprias escritas). DIVERGENCIA INTENCIONAL face ao feature-00c (que
+   #    exclui $SHORT_NAME) — ver nota de paridade 5.2.4.
+   EXCLUDE_FEATURE=$(basename -- "$(jq -r '.execucao.projeto_alvo_path // ""' "$SD/state.json" 2>/dev/null)" 2>/dev/null)
+   [ -n "$EXCLUDE_FEATURE" ] || EXCLUDE_FEATURE="unknown"
 
    # 3. Consumir (best-effort). 2>/dev/null + || BLOCO="" => no-op total se
    #    vazio/sem deps (FR-012). NUNCA propaga erro para a onda.
@@ -509,7 +511,7 @@ devolva controle ao pai sem essa linha.
    | Aspecto | feature-00c | agente-00c (projeto) |
    |---------|-------------|----------------------|
    | state-dir | `feature-00c-state/<short>/` | `agente-00c-state/` |
-   | anti-eco (`--exclude-feature`) | `$SHORT_NAME` da feature | `"unknown"` (projeto nao grava short_name) |
+   | anti-eco (`--exclude-feature`) | `$SHORT_NAME` da feature | `basename` de `projeto_alvo_path` (nome do dir do projeto; projeto nao grava short_name) |
    | `--agente` na Decisao | `agente-00c-feature-orchestrator` | `agente-00c-orchestrator` |
    | termos (primario/fallback) | aspectos / descricao | aspectos / descricao (IDENTICO) |
    | fases que disparam | specify, plan | specify, plan (IDENTICO) |

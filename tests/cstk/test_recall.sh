@@ -1783,7 +1783,9 @@ scenario_b33_ingest_vs_reindex_convergencia() {
 # Regressao: states legados sem .short_name eram ingeridos como feature=
 # 'unknown'. O fix deriva o short-name do diretorio-pai no layout
 # feature-00c-state/<short-name>/ e tolera .execucao.short_name. O layout
-# agente-00c-state/ continua 'unknown' (by-design, anti-eco FR-011).
+# agente-00c-state/ (sem short_name) usa o NOME DO DIR DO PROJETO como feature
+# (basename de projeto_alvo_path), nao mais 'unknown' — paridade com o anti-eco
+# EXCLUDE_FEATURE do agente-00c-orchestrator (FR-011).
 scenario_16_feature_fallback_por_diretorio() {
   _have_deps || return 0
 
@@ -1805,7 +1807,8 @@ JSON
   _feat=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT DISTINCT feature FROM decisions" 2>/dev/null)
   [ "$_feat" = "minha-feat" ] || { _fail "fallback feature-00c" "esperado 'minha-feat', obtido '$_feat'"; return 1; }
 
-  # (b) SEM short_name, layout agente-00c-state -> feature='unknown' (by-design).
+  # (b) SEM short_name, layout agente-00c-state -> feature = nome do dir do
+  #     projeto (basename de projeto_alvo_path = "projW"), nao mais 'unknown'.
   _sd_proj="$TMPDIR_TEST/projB/.claude/agente-00c-state"
   mkdir -p "$_sd_proj"
   cat > "$_sd_proj/state.json" <<'JSON'
@@ -1821,7 +1824,25 @@ JSON
 JSON
   _rc --ingest --state-dir "$_sd_proj" --db "$TMPDIR_TEST/k2.db" >/dev/null 2>&1
   _featp=$(sqlite3 "$TMPDIR_TEST/k2.db" "SELECT DISTINCT feature FROM decisions" 2>/dev/null)
-  [ "$_featp" = "unknown" ] || { _fail "agente-00c by-design" "esperado 'unknown', obtido '$_featp'"; return 1; }
+  [ "$_featp" = "projW" ] || { _fail "agente-00c usa dir do projeto" "esperado 'projW', obtido '$_featp'"; return 1; }
+
+  # (b2) agente-00c SEM projeto_alvo_path -> degrada para 'unknown' (project tb).
+  _sd_pn="$TMPDIR_TEST/projBn/.claude/agente-00c-state"
+  mkdir -p "$_sd_pn"
+  cat > "$_sd_pn/state.json" <<'JSON'
+{
+  "execucao": { "id": "exec-proj-nopap" },
+  "decisoes": [
+    { "id": "dec-002b", "onda_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "etapa": "briefing", "agente": "orch", "escolha": "x", "score_justificativa": 1,
+      "contexto": "sem projeto_alvo_path", "justificativa": "degrada", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "retros": [], "ondas": []
+}
+JSON
+  _rc --ingest --state-dir "$_sd_pn" --db "$TMPDIR_TEST/k2b.db" >/dev/null 2>&1
+  _featpn=$(sqlite3 "$TMPDIR_TEST/k2b.db" "SELECT DISTINCT feature FROM decisions" 2>/dev/null)
+  [ "$_featpn" = "unknown" ] || { _fail "agente-00c sem pap -> unknown" "esperado 'unknown', obtido '$_featpn'"; return 1; }
 
   # (c) short_name canonico em .execucao.short_name tambem resolve (read tolerante).
   _sd_exec="$TMPDIR_TEST/projC/.claude/feature-00c-state/exec-feat"

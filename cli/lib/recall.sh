@@ -639,20 +639,26 @@ recall_ingest_state_json() {
   # tolera .execucao.short_name (local canonico do data-model). Leitura dupla
   # cobre a divergencia historica de onde o campo foi gravado.
   _isj_feature=$(jq -r '.short_name // .execucao.short_name // ""' "$_isj_state" 2>/dev/null) || _isj_feature=""
-  # Fallback de proveniencia: o layout feature-00c-state codifica o short-name
-  # no diretorio-pai (.../.claude/feature-00c-state/<short-name>/state.json).
-  # Deriva dali quando o campo JSON esta ausente (states legados gravados antes
-  # de o init versionar short_name). NAO aplica ao layout agente-00c-state/ —
-  # ali feature='unknown' e by-design (projeto nao grava short_name; anti-eco
-  # FR-011).
+  # Fallback de proveniencia quando .short_name esta ausente, por layout:
+  #  - feature-00c-state/<short-name>/: short-name vem do diretorio-pai (states
+  #    legados gravados antes de o init versionar short_name).
+  #  - agente-00c-state/ (orquestrador de PROJETO, que NAO grava short_name):
+  #    usa o NOME DO DIR DO PROJETO (= _isj_project) como feature, em vez de
+  #    'unknown'. O anti-eco do agente-00c (FR-011) exclui essa mesma feature —
+  #    ver paridade em agente-00c-orchestrator (EXCLUDE_FEATURE = basename do
+  #    projeto_alvo_path).
   if [ -z "$_isj_feature" ]; then
-    # Checagem por componente (nao por glob): o AVO do state.json deve ser
-    # exatamente "feature-00c-state". Robusto p/ caminhos relativos E absolutos
-    # (glob `*/.claude/...` falharia em path relativo iniciado por `.claude/`).
+    # Checagem por componente (nao por glob): robusta p/ caminhos relativos E
+    # absolutos (glob `*/.claude/...` falharia em path relativo iniciado por
+    # `.claude/`).
     _isj_parent=$(dirname -- "$_isj_state" 2>/dev/null) || _isj_parent=""
     _isj_grandp=$(dirname -- "$_isj_parent" 2>/dev/null) || _isj_grandp=""
     if [ "$(basename -- "$_isj_grandp" 2>/dev/null)" = "feature-00c-state" ]; then
+      # feature-00c: short-name = diretorio-pai do state.json.
       _isj_feature=$(basename -- "$_isj_parent" 2>/dev/null) || _isj_feature=""
+    elif [ "$(basename -- "$_isj_parent" 2>/dev/null)" = "agente-00c-state" ]; then
+      # agente-00c (projeto): feature = nome do dir do projeto.
+      _isj_feature="$_isj_project"
     fi
   fi
   [ -n "$_isj_feature" ] || _isj_feature="unknown"
