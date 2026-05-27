@@ -111,8 +111,10 @@ diretamente da instalacao local.
 Apos instalacao, o painel e iniciado via `npm run start` na raiz do repositorio,
 que executa `node apps/server/dist/index.js` (backend Fastify).
 A configuracao de porta/host segue o contrato do cstk-panel:
-- **Porta**: passada via variavel de ambiente `PORT` (ex: `PORT=3001 npm run start`).
-  O backend le `process.env['PORT']` com default `3001`.
+- **Porta**: passada via variavel de ambiente `PORT` (ex: `PORT=5173 npm run start`,
+  onde 5173 e o default da flag `--port` do `cstk serve`). O backend le
+  `process.env['PORT']` e so cai no proprio fallback interno `3001` quando `PORT`
+  nao e setado — o que nunca ocorre no caminho do `cstk serve`.
 - **Host**: hardcoded como `127.0.0.1` no config.ts do cstk-panel (FR-017 do painel,
   por design de seguranca). O parametro `--host` do `cstk serve` e aceito na
   interface CLI e reservado para compatibilidade futura, mas NAO tem efeito no
@@ -120,8 +122,11 @@ A configuracao de porta/host segue o contrato do cstk-panel:
 
 **FR-004 — Flags --port e --host**
 O subcomando `cstk serve` DEVE aceitar:
-- `--port N` (default: 3001) — porta TCP onde o backend do painel escuta.
-  Passada ao processo filho via env var `PORT`.
+- `--port N` (default: **5173**) — porta TCP onde o backend do painel escuta.
+  Passada ao processo filho via env var `PORT` (`cstk serve` SEMPRE exporta
+  `PORT=<valor resolvido>`, nunca deixando o painel cair no proprio fallback
+  interno `3001`). Ver RECONCILIACAO na secao Clarifications: o `3001` e fallback
+  do painel, nao o default da flag.
 - `--host H` (default: 127.0.0.1) — interface de rede declarada. Aceita na
   interface CLI para compatibilidade futura; o backend atual ignora este valor
   (host hardcoded em 127.0.0.1 pelo cstk-panel). O terminal DEVE exibir aviso
@@ -237,7 +242,18 @@ manual e independente.
   ou args de CLI para `npm run start`?
   → A: Porta via env var `PORT` (lida em `config.ts` como `process.env['PORT'] ?? '3001'`).
   Host hardcoded `127.0.0.1` no backend (FR-017 do cstk-panel); `--host` aceito na CLI
-  do cstk serve mas sem efeito atual. Default de porta corrigido para 3001 (backend real).
+  do cstk serve mas sem efeito atual.
+
+  **RECONCILIACAO (operador, 2026-05-26 — reconcilia clarify onda-002):** o default
+  da flag `--port` do `cstk serve` e **5173** (intencao explicita do usuario na
+  formulacao da feature), NAO 3001. O `3001` e apenas o fallback INTERNO do cstk-panel
+  (`process.env['PORT'] ?? '3001'`) e e irrelevante no caminho do `cstk serve`, porque
+  o `cstk serve` SEMPRE exporta `PORT=<valor resolvido>` ao subir o painel — entao o
+  fallback do painel nunca e atingido quando o painel sobe via `cstk serve`. Toda
+  referencia a "default 3001" nesta spec deve ser lida como "fallback do painel quando
+  `PORT` nao e setado", e o default da flag `--port` permanece 5173 (ver FR-004
+  reconciliado abaixo). Decisao auditada no state.json da execucao feature-00c
+  (etapa plan).
 
 - Q: O release do cstk-panel publica arquivo `.sha256` junto ao tarball? Se nao, o
   comportamento deve ser prosseguir com aviso ou bloquear com erro?
