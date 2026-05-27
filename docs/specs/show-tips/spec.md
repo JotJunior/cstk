@@ -9,7 +9,7 @@
 ### Session 2026-05-26
 
 - Q: Qual o formato exato do catalogo em disco? (FR-007 era ambiguo: "texto plano ou Markdown estruturado") → A: Markdown com frontmatter YAML. Cada entrada e um documento Markdown com bloco YAML delimitado por `---` contendo `skill`, `category`, `text`; exemplos no corpo. Arquivo unico `tips/catalog.md` com entradas separadas por `---`. Legivel por humanos sem ferramenta especial; parseavel por `awk`/`grep` em shell POSIX.
-- Q: Como o mecanismo de variacao entre execucoes funciona sem estado persistente? (tensao FR-003 vs Edge Case) → A: Selecao pseudoaleatoria via `$RANDOM % N` (N = numero de dicas para a skill/catalogo). Sem historico persistido entre sessoes. Unicidade absoluta nao e garantida — aceita repeticao eventual.
+- Q: Como o mecanismo de variacao entre execucoes funciona sem estado persistente? (tensao FR-003 vs Edge Case) → A: Selecao pseudoaleatoria via `/dev/urandom` + `awk srand` (POSIX puro — substituicao de `$RANDOM % N` ratificada no plan dec-012 para conformidade com Principio II da constitution). Sem historico persistido entre sessoes. Unicidade absoluta nao e garantida — aceita repeticao eventual.
 - Q: Onde no filesystem do toolkit vive o script POSIX de exibicao? (FR-005 nao especificava path) → A: `cli/lib/show-tip.sh`, paralelo a `cli/lib/recall.sh`. Invocavel pelos orquestradores via caminho absoluto ou via wrapper `cstk show-tip`.
 
 ## User Scenarios & Testing
@@ -155,8 +155,13 @@ para exibir, sem precisar conhecer a estrutura interna do catalogo.
   `gotcha`.
 
 - **FR-003**: O mecanismo de exibicao DEVE selecionar uma dica usando variacao entre
-  execucoes via selecao pseudoaleatoria (`$RANDOM % N`). Unicidade absoluta entre
-  sessoes NAO e garantida (sem estado persistente). Repeticao eventual e aceita.
+  execucoes via selecao pseudoaleatoria POSIX (`/dev/urandom` + `awk srand` — sem
+  bash-isms). Unicidade absoluta entre sessoes NAO e garantida (sem estado
+  persistente). Repeticao eventual e aceita.
+  > Nota: a Clarification Session 2026-05-26 (Q2) registrou `$RANDOM % N` como
+  > resposta provisoria. O plan.md (dec-012, research.md Decision 1) substituiu
+  > por `/dev/urandom + awk srand` para conformidade com o Principio II da
+  > constitution (POSIX sh puro, zero bash-isms). Esta versao e a fonte de verdade.
 
 - **FR-004**: O bloco de exibicao DEVE ser visualmente destacado em relacao ao texto
   corrente da onda (delimitadores visuais claros, por exemplo caixas ou separadores
