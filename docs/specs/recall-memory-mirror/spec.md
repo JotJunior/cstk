@@ -274,20 +274,58 @@ slug + descricao de cada entrada de `memories` do projeto, sem body.
 
 ## Clarifications
 
-Nenhuma ambiguidade critica identificada — os invariantes da feature foram definidos
-explicitamente no briefing da demanda.
+Fase clarify executada em 2026-05-27. Duas decisoes de design resolvidas autonomamente
+com score 3 (evidencia empirica). Nenhum bloqueio humano necessario.
 
-Duas decisoes de design adotadas por default que DEVEM ser confirmadas em `/clarify`:
+### CQ1 — Derivacao do campo `project` para a tabela `memories` (dec-006, score 3)
 
-1. **Encoding do project path**: o `<encoded-path>` em `~/.claude/projects/` usa
-   `-` como separador de componentes de path (conforme comportamento observado do
-   harness). A derivacao do campo `project` (nome legivel) sera o `basename` do
-   `projeto_alvo_path` original. Confirmar se esta convencao e suficiente ou se
-   precisa de logica de decodificacao mais robusta.
+**Decisao**: usar `basename(projeto_alvo_path)` como campo `project`, identico a
+convencao ja adotada na telemetria (`decisions`, `waves`, etc.).
 
-2. **Escopo do `--ingest` existente**: o `cstk recall --ingest --state-dir DIR`
-   hoje ingere o `state.json` do DIR. A ingestao de memorias sera um passo
-   ADITIVO dentro do mesmo `--ingest` (detecta e indexa `memory/` do projeto
-   correspondente ao `state-dir`), ou sera um subcomando separado
-   (`--ingest-memories --project-path PATH`)? Default adotado: passo ADITIVO
-   dentro do `--ingest` existente (menos surface de API, menos fricao para adocao).
+**Como localizar o diretorio `memory/`**: aplicar a formula forward-encoding
+`sed 's|^/||; s|[/_]|-|g; s|^|-|'` sobre o `projeto_alvo_path` para obter o
+`<encoded-path>`, entao ler `~/.claude/projects/<encoded-path>/memory/`.
+
+**Evidencia empirica**: formula verificada contra 4 projetos reais com resultado
+correto em todos:
+- `/Users/jot` → `-Users-jot`
+- `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips` → `-Users-jot-Projects--lab-Jot-misc-claude-ai-tips`
+- `/Users/jot/Projects/_lab/Jot/misc/cstk-panel` → `-Users-jot-Projects--lab-Jot-misc-cstk-panel`
+- `/Users/jot/Projects/_arquivo/CodexCode/troncodigital` → `-Users-jot-Projects--arquivo-CodexCode-troncodigital`
+
+**Contexto de `--ingest --state-dir`**: `state.json` contem `projeto_alvo_path` →
+`project = basename(projeto_alvo_path)` (paridade com telemetria, sem ambiguidade).
+
+**Contexto de `--reindex`**: sem `state.json` disponivel para cada `<encoded-path>`,
+o `project` e derivado do proprio `<encoded-path>` usando o mesmo `basename`
+calculado como `basename(sed 's|^-||; s|.*-||' <<< encoded)`. Limitacao conhecida e
+documentada: projetos cujo basename original continha underscore (ex: `my_project`)
+terao `project = my-project` no reindex (inconsistente com o ingest normal).
+Esta limitacao e aceitavel porque: (a) o `--ingest --state-dir` e o caminho principal
+(orquestradores), e (b) o reindex e operacao de reconstrucao corretiva, nao operacao
+critica de producao.
+
+**Impacto em FR-004**: o FR-004 e atualizado para especificar explicitamente a formula
+forward-encoding como mecanismo canonico de localizacao do `memory/` dir.
+
+### CQ2 — Escopo do `--ingest`: aditivo dentro do existente (dec-007, score 3)
+
+**Decisao**: a ingestao de memories e um passo ADITIVO dentro do `recall_mode_ingest`
+existente. Nenhum subcomando separado (`--ingest-memories`) e criado.
+
+**Mecanismo**: ao final de `recall_mode_ingest`, apos ingerir o `state.json`, chamar
+`recall_ingest_memories "$_ing_state_dir" "$_ing_db"`. Esta funcao:
+1. Le `projeto_alvo_path` do `state.json` (ja lido no contexto do ingest).
+2. Calcula o `encoded-path` via forward-encoding.
+3. Varre `~/.claude/projects/<encoded-path>/memory/*.md`.
+4. Para cada `.md`: scrub + upsert na tabela `memories` por chave `(project, slug)`.
+
+**Justificativa**: zero breaking change para os orquestradores que ja invocam
+`cstk recall --ingest --state-dir`. Surface de API menor. O `projeto_alvo_path` ja
+esta disponivel em `_ing_state_dir/state.json` no contexto do ingest, tornando a
+adicao natural. Evidencia: `recall_mode_ingest` em `cli/lib/recall.sh` L1263-1315 ja
+le `state.json`; adicionar a chamada a `recall_ingest_memories` ao final da funcao e
+o unico ponto de modificacao necessario.
+
+**Impacto**: o output do `--ingest` sera acrescido de `N memories` na linha de status
+(ex: `ingested: 3 decisions, ... 5 memories`). Sem mudanca nos campos existentes.
