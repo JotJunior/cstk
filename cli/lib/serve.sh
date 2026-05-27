@@ -69,6 +69,32 @@ _serve_is_installed() {
   [ -f "$_sii_dir/package.json" ]
 }
 
+# _serve_latest_tag
+# Ecoa a tag_name da release mais recente do painel (via API GitHub) e retorna 0.
+# Retorna 1 (silenciosamente) se a rede/API falhar, o JSON nao tiver tag, ou a
+# release for prerelease/draft. Best-effort: usado por --update para decidir se
+# reinstala — qualquer falha mantem a versao instalada (nunca aborta o serve).
+_serve_latest_tag() {
+  # shellcheck source=/dev/null
+  . "${CSTK_LIB}/http.sh"
+  _slt_tmp=$(mktemp -d 2>/dev/null) || return 1
+  if ! http_download "$_SERVE_GITHUB_API" "$_slt_tmp/release.json" 2>/dev/null; then
+    rm -rf -- "$_slt_tmp"
+    return 1
+  fi
+  _slt_tag=$(grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' "$_slt_tmp/release.json" \
+    | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+  _slt_pre=$(grep -o '"prerelease"[[:space:]]*:[[:space:]]*[a-z]*' "$_slt_tmp/release.json" \
+    | sed 's/.*:[[:space:]]*//' | head -1)
+  _slt_draft=$(grep -o '"draft"[[:space:]]*:[[:space:]]*[a-z]*' "$_slt_tmp/release.json" \
+    | sed 's/.*:[[:space:]]*//' | head -1)
+  rm -rf -- "$_slt_tmp"
+  [ "$_slt_pre" = "true" ] && return 1
+  [ "$_slt_draft" = "true" ] && return 1
+  [ -n "$_slt_tag" ] || return 1
+  printf '%s\n' "$_slt_tag"
+}
+
 # _serve_shutdown: handler de sinal para SIGINT/SIGTERM.
 # Envia SIGTERM ao filho, aguarda ate 5s, entao SIGKILL se necessario.
 _serve_shutdown() {
@@ -236,6 +262,7 @@ serve_main() {
   _serve_port="${PORT:-5173}"
   _serve_host="127.0.0.1"
   _serve_reinstall=0
+  _serve_update=0
 
   # Parse de flags POSIX (while/case/shift)
   while [ "$#" -gt 0 ]; do
@@ -257,9 +284,12 @@ serve_main() {
       --reinstall)
         _serve_reinstall=1
         ;;
+      --update)
+        _serve_update=1
+        ;;
       --help|-h)
         cat <<'HELP'
-Usage: cstk serve [--port PORT] [--host HOST] [--reinstall]
+Usage: cstk serve [--port PORT] [--host HOST] [--update] [--reinstall]
 
 Start the cstk panel web interface. On first run, downloads the latest
 release from GitHub and installs it locally. Subsequent runs reuse the
@@ -276,8 +306,12 @@ Options:
   --host HOST     Hostname/IP to bind to (default: 127.0.0.1).
                   Note: only 127.0.0.1 is fully supported; other values
                   are accepted but may not affect the panel binding.
+  --update        Check GitHub for a newer panel release and reinstall only
+                  if one exists (otherwise reuse the cached version). The
+                  check is best-effort: if it fails (offline/API error), the
+                  installed version is kept and the panel still starts.
   --reinstall     Remove the existing installation and reinstall from
-                  the latest GitHub release.
+                  the latest GitHub release (unconditional; ignores --update).
   --help, -h      Show this help and exit.
 
 Exit codes:
@@ -287,6 +321,7 @@ Exit codes:
 
 Examples:
   cstk serve                         # start API + web (UI on http://127.0.0.1:5173)
+  cstk serve --update                # update panel if a newer release exists, then start
   cstk serve --reinstall             # force reinstall then start
   cstk serve --help                  # show this help
 
@@ -363,6 +398,27 @@ HELP
   # --reinstall: remover instalacao existente antes de qualquer check
   if [ "$_serve_reinstall" = "1" ]; then
     rm -rf -- "$_serve_panel_dir"
+  fi
+
+  # --update: se ja instalado, consultar a release mais recente e reinstalar SO
+  # se houver versao nova (comparando com .panel-version). Best-effort: se a
+  # checagem falhar (offline/API), mantem a versao instalada. Sem efeito quando
+  # combinado com --reinstall (o dir ja foi removido acima -> instala a latest).
+  if [ "$_serve_update" = "1" ] && _serve_is_installed "$_serve_panel_dir"; then
+    printf 'cstk serve: verificando atualizacoes do painel...\n'
+    _serve_latest=$(_serve_latest_tag)
+    if [ -n "$_serve_latest" ]; then
+      _serve_current=$(cat "$_serve_panel_dir/.panel-version" 2>/dev/null | tr -d ' \n')
+      if [ "$_serve_latest" != "$_serve_current" ]; then
+        printf 'cstk serve: atualizando painel: %s -> %s\n' \
+          "${_serve_current:-desconhecida}" "$_serve_latest"
+        rm -rf -- "$_serve_panel_dir"
+      else
+        printf 'cstk serve: painel ja esta na versao mais recente (%s)\n' "$_serve_current"
+      fi
+    else
+      printf 'cstk serve: aviso: nao foi possivel verificar atualizacoes; usando a versao instalada\n' >&2
+    fi
   fi
 
   # Deteccao de instalacao corrompida: dir existe mas sem package.json

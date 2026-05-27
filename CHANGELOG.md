@@ -5,6 +5,29 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.7.0] - 2026-05-27
+
+Adiciona a flag `cstk serve --update`: atualiza o painel `cstk-panel` para a
+release mais recente sob demanda, reinstalando **apenas se** houver versao nova
+(senao reusa o cache). O start normal continua offline-safe e instantaneo — a
+checagem de rede so ocorre com `--update`.
+
+### Added
+
+- **`cstk serve --update`**: consulta a release mais recente via API do GitHub e
+  compara com `.panel-version`. Se houver versao nova, reinstala (download +
+  `npm install` + `.panel-version` atualizada); se ja estiver na latest, apenas
+  informa e reusa. A checagem e best-effort: falha de rede/API **nao aborta** o
+  comando — a versao instalada e mantida e o painel inicia normalmente.
+- Helper interno `_serve_latest_tag` (POSIX, sem jq): extrai `tag_name` da release
+  mais recente, rejeitando prerelease/draft; falha silenciosa (return 1) em
+  qualquer erro de rede/parse.
+
+### Notes
+
+- `--reinstall` continua reinstalando incondicionalmente (ignora `--update`).
+- Em modo dev, `--update` nao altera a porta da UI (servida pelo Vite na 5173).
+
 ## [4.6.2] - 2026-05-27
 
 Unifica a fronteira **command↔orquestrador** para aquisição de lock e

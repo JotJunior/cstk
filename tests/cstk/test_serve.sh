@@ -118,6 +118,20 @@ STUB
   chmod +x "$_scno_bin/curl"
 }
 
+# _stub_curl_unreachable: curl que falha em qualquer chamada (rede indisponivel).
+# Usado para exercitar o caminho best-effort de --update quando a API do GitHub
+# nao responde — a versao instalada deve ser mantida e o painel ainda iniciar.
+# $1 = dir de stubs
+_stub_curl_unreachable() {
+  _scu_bin="$1"
+  cat > "$_scu_bin/curl" <<'STUB'
+#!/bin/sh
+printf 'curl: (7) Failed to connect\n' >&2
+exit 7
+STUB
+  chmod +x "$_scu_bin/curl"
+}
+
 # _stub_npm_ok: npm que ignora install/run start e sai com 0
 _stub_npm_ok() {
   _sno_bin="$1"
@@ -633,6 +647,88 @@ scenario_serve_nao_forca_port_na_api() {
   # E deve avisar que --port != 5173 sera ignorado em modo dev.
   if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'ignorad\|5173\|vite'; then
     _fail "nao_forca_port_aviso" "stderr nao avisa sobre --port ignorado em modo dev"
+    return 1
+  fi
+}
+
+# --- --update: reinstala o painel SO se houver versao mais recente -----------
+# O stub _stub_curl_ok reporta a latest como v0.0.1.
+
+scenario_update_versao_nova_reinstala() {
+  _setup_serve_env
+  _make_bin_dir
+  # Instalado v0.0.0 (mais antigo que a latest v0.0.1) + sentinela.
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.0"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.0\n' > "$CSTK_PANEL_DIR/.panel-version"
+  : > "$CSTK_PANEL_DIR/SENTINELA"
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve --update
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "update_novo_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  # Reinstalou: a sentinela do dir antigo sumiu (dir recriado a partir do tarball).
+  if [ -f "$CSTK_PANEL_DIR/SENTINELA" ]; then
+    _fail "update_novo_reinstalou" "painel nao foi reinstalado (SENTINELA antiga persiste)"
+    return 1
+  fi
+  # .panel-version atualizada para a latest.
+  if [ "$(cat "$CSTK_PANEL_DIR/.panel-version" 2>/dev/null | tr -d ' \n')" != "v0.0.1" ]; then
+    _fail "update_novo_versao" ".panel-version nao foi atualizada para v0.0.1"
+    return 1
+  fi
+}
+
+scenario_update_ja_atualizado_nao_reinstala() {
+  _setup_serve_env
+  _make_bin_dir
+  # Instalado ja na latest (v0.0.1) + sentinela.
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.1"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.1\n' > "$CSTK_PANEL_DIR/.panel-version"
+  : > "$CSTK_PANEL_DIR/SENTINELA"
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve --update
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "update_atual_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  # NAO reinstalou: a sentinela permanece.
+  if [ ! -f "$CSTK_PANEL_DIR/SENTINELA" ]; then
+    _fail "update_atual_nao_reinstala" "painel foi reinstalado mesmo ja estando na latest"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -qi 'mais recente\|ja esta'; then
+    _fail "update_atual_msg" "stdout nao informa que ja esta na versao mais recente"
+    return 1
+  fi
+}
+
+scenario_update_check_falha_mantem_instalado() {
+  _setup_serve_env
+  _make_bin_dir
+  # Instalado v0.0.0 + sentinela; a checagem de update falha (rede off).
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.0"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.0\n' > "$CSTK_PANEL_DIR/.panel-version"
+  : > "$CSTK_PANEL_DIR/SENTINELA"
+  _stub_curl_unreachable "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve --update
+  # Best-effort: falha na checagem NAO aborta; painel inicia com a versao atual.
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "update_falha_exit" "esperado exit 0 (best-effort), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ ! -f "$CSTK_PANEL_DIR/SENTINELA" ]; then
+    _fail "update_falha_mantem" "painel foi removido/reinstalado apesar da checagem ter falhado"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'nao foi possivel verificar\|atualiza'; then
+    _fail "update_falha_aviso" "stderr nao avisa que a verificacao de update falhou"
     return 1
   fi
 }
