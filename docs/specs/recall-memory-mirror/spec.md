@@ -329,3 +329,62 @@ o unico ponto de modificacao necessario.
 
 **Impacto**: o output do `--ingest` sera acrescido de `N memories` na linha de status
 (ex: `ingested: 3 decisions, ... 5 memories`). Sem mudanca nos campos existentes.
+
+## Security & Performance Decisions
+
+As decisoes abaixo fecham os gaps identificados pelo checklist (CHK020, CHK025, CHK026).
+
+### CHK020 — Ausencia de auth no `knowledge.db` local (security)
+
+**Decisao consciente de escopo (single-user dev local)**
+
+O `knowledge.db` e um arquivo SQLite em `~/.claude/cstk/knowledge.db` — escopo
+estritamente local, per-usuario, single-machine. Nenhuma rede, sem multi-tenant,
+sem acesso remoto. A ausencia de autenticacao/ACL e uma decisao de escopo, nao
+uma lacuna de seguranca ignorada:
+
+- O arquivo e protegido pelas permissoes normais do SO (`~/.claude/` pertence ao usuario).
+- O modelo de ameaca relevante e acesso fisico/root — fora do escopo de ferramenta CLI dev.
+- Adicionar auth adicionaria dependencia (ex: libsqlcipher) sem beneficio para o caso de uso.
+- Mesma politica de todos os indices SQLite locais de ferramentas dev (ex: SQLite browsers, npm cache).
+
+**Esta decisao esta documentada aqui e e considerada encerrada. Nao requer acao futura
+dentro desta feature.**
+
+### CHK025 — SLA de duracao do `--reindex` (performance)
+
+**Decisao: SLA de duracao nao e requisito para ferramenta dev local**
+
+O `cstk recall --reindex` e uma operacao administrativa/corretiva, nao um hot path.
+O contexto de uso e "reconstruir o indice apos corrompimento ou mudanca de maquina" —
+executado raramente, sem expectativa de SLA. "Trivial" (alguns segundos para N tipico
+de projetos de um usuario) e suficiente como criteiro operacional.
+
+- Um SLA numerico (ex: "< 30s para 100 state files") criaria trabalho de benchmark e
+  manutencao sem valor para o usuario final.
+- O limite pratico e o numero de projetos do usuario local — tipicamente < 20.
+- Se performance virar problema, o `--reindex` pode usar transacao unica (ja usa) e
+  batch inserts — a arquitetura nao impede otimizacao futura.
+
+**Esta decisao esta documentada aqui e e considerada encerrada. Nao requer acao futura
+dentro desta feature.**
+
+### CHK026 — `body_scrubbed` sem ceiling de tamanho (performance/storage)
+
+**Decisao: body sem ceiling aceito para o escopo atual**
+
+O FTS5 do SQLite nao tem limite pratico de tamanho de texto por linha. Os arquivos
+`.md` de auto-memoria do Claude Code tipicamente tem < 5 KB (notas de feedback,
+decisoes de projeto). Arquivos de 100 KB seriam atipicos e ainda assim manuseados
+corretamente pelo SQLite.
+
+- Impacto de storage: cada `body_scrubbed` ocupa espaco proporcional ao `.md` original.
+  Para o escopo dev-local (dezenas de arquivos, tipicamente < 100 KB total), isso e
+  irrelevante.
+- Um ceiling (ex: 50 KB) seria arbitrario e poderia truncar memorias legitimas
+  sem nenhum beneficio concreto para o usuario atual.
+- Se o escopo mudar para multi-usuario ou sync remoto, um ceiling SHOULD ser adicionado
+  como requisito de nova feature.
+
+**Esta decisao esta documentada aqui e e considerada encerrada. Nao requer acao futura
+dentro desta feature.**

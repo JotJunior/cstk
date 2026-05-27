@@ -69,8 +69,10 @@ RECALL_EXIT_USAGE=2
 # alert_signals (camada A) e tasks, events (camada B). Bump idempotente:
 # CREATE TABLE IF NOT EXISTS + INSERT ... ON CONFLICT no schema_meta — DB v1
 # pre-existente ganha as tabelas novas sem perda de dado (FR-007).
-RECALL_SCHEMA_VERSION=3
-RECALL_TYPE_ENUM="decision bloqueio retro skill"
+# v4 (recall-memory-mirror): + tabela memories (espelho de arquivos .md de
+# auto-memoria) + enum memory. Aditivo: zero breaking change de surface CLI.
+RECALL_SCHEMA_VERSION=4
+RECALL_TYPE_ENUM="decision bloqueio retro skill memory"
 
 # ==== Resolucao do caminho do DB ====
 #
@@ -99,11 +101,12 @@ USO:
               [--type T] [--project P] [--max-bytes N] [--db PATH]
   cstk recall --ingest --state-dir DIR [--db PATH]
   cstk recall --reindex [--states-root DIR] [--db PATH]
+  cstk recall --list-memories [--project P] [--db PATH]
 
 MODO BUSCA (default):
   <query>            termo(s) de busca full-text (obrigatorio)
   --project P        filtra por projeto de origem
-  --type T           decision|bloqueio|retro|skill
+  --type T           decision|bloqueio|retro|skill|memory
   --limit N          maximo de resultados (default 20; inteiro positivo)
   --db PATH          indice (default $CSTK_KNOWLEDGE_DB ou ~/.claude/cstk/knowledge.db)
 
@@ -113,7 +116,7 @@ MODO CONTEXT (--context): leitura-para-contexto (read-back loop). Retorna um
   "<termos>"            termos de consulta (obrigatorio; OR entre tokens)
   --limit N            maximo de achados (default 4; faixa recomendada 3-5)
   --exclude-feature N   anti-eco: omite achados da feature N (no SQL)
-  --type T             decision|bloqueio|retro|skill
+  --type T             decision|bloqueio|retro|skill|memory
   --project P          filtra por projeto de origem
   --max-bytes N        teto de bytes do bloco (default 2000; corta por achado inteiro)
   --db PATH            indice
@@ -128,6 +131,12 @@ MODO INGESTAO (--ingest):
 MODO RECONSTRUCAO (--reindex):
   --states-root DIR  raiz para varrer state.json/state-history (default: descoberta)
   --db PATH          indice destino
+
+MODO LISTAGEM DE MEMORIAS (--list-memories):
+  Lista slug + description de memorias indexadas; sem body completo.
+  Use --type memory na busca normal para incluir memorias nos resultados FTS.
+  --project P        filtra por projeto
+  --db PATH          indice
 
 Indice derivado e reconstruivel via --reindex. Read-only sobre o state
 transacional. Degradacao graciosa: ausencia de sqlite3/jq nunca aborta.
@@ -483,6 +492,16 @@ CREATE TABLE IF NOT EXISTS events (
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
+CREATE TABLE IF NOT EXISTS memories (
+  project       TEXT NOT NULL,
+  slug          TEXT NOT NULL,
+  type          TEXT NOT NULL,
+  description   TEXT,
+  body_scrubbed TEXT,
+  path          TEXT,
+  indexed_at    TEXT,
+  PRIMARY KEY (project, slug)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5 (
   body,
   type UNINDEXED,
@@ -568,23 +587,25 @@ recall_main() {
   esac
 
   # Detecta o modo varrendo argv (sem consumir — cada modo reparseia).
-  # Precedencia explicita (--ingest/--reindex/--context sao mutuamente
-  # exclusivos por uso): a ULTIMA flag de modo encontrada na varredura vence.
+  # Precedencia explicita (--ingest/--reindex/--context/--list-memories sao
+  # mutuamente exclusivos por uso): a ULTIMA flag de modo encontrada vence.
   # Em uso normal so uma aparece; default permanece search.
   _mode="search"
   for _arg in "$@"; do
     case "$_arg" in
-      --ingest) _mode="ingest" ;;
-      --reindex) _mode="reindex" ;;
-      --context) _mode="context" ;;
+      --ingest)        _mode="ingest" ;;
+      --reindex)       _mode="reindex" ;;
+      --context)       _mode="context" ;;
+      --list-memories) _mode="list-memories" ;;
     esac
   done
 
   case "$_mode" in
-    ingest)  recall_mode_ingest "$@" ;;
-    reindex) recall_mode_reindex "$@" ;;
-    context) recall_mode_context "$@" ;;
-    search)  recall_mode_search "$@" ;;
+    ingest)         recall_mode_ingest "$@" ;;
+    reindex)        recall_mode_reindex "$@" ;;
+    context)        recall_mode_context "$@" ;;
+    list-memories)  recall_mode_list_memories "$@" ;;
+    search)         recall_mode_search "$@" ;;
   esac
 }
 
@@ -1260,6 +1281,185 @@ recall_apply_sql_with_retry() {
   return 1
 }
 
+# ==========================================================================
+# FASE memories — Ingestao de arquivos .md de auto-memoria (recall-memory-mirror)
+# Aditivo ao recall_mode_ingest existente (CQ2). Lê arquivos .md do diretório
+# ~/.claude/projects/<encoded-path>/memory/ e os insere/atualiza na tabela
+# `memories`. Zero breaking change: nenhuma funcao existente e modificada.
+# ==========================================================================
+
+# recall_encode_path PATH -> imprime o encoded-path do harness para PATH.
+# Formula canonicada: strip leading /, substitui / e _ por -, prepend -.
+# Ref: spec CQ1; data-model.md §Entity: Project Memory Directory.
+recall_encode_path() {
+  printf '%s' "$1" | sed 's|^/||; s|[/_]|-|g; s|^|-|'
+}
+
+# recall_memory_type BASENAME -> imprime o tipo derivado do prefixo do arquivo.
+# Ref: data-model.md §Derivacao de type (FR-007).
+recall_memory_type() {
+  case "$1" in
+    MEMORY.md)    printf 'index' ;;
+    feedback_*)   printf 'feedback' ;;
+    project_*)    printf 'project' ;;
+    reference_*)  printf 'reference' ;;
+    *)            printf 'user' ;;
+  esac
+}
+
+# recall_memory_description BODY SLUG -> deriva a descricao da memoria.
+# Primeira linha nao-vazia do body (apos strip de # e whitespace), passada
+# por recall_scrub. Fallback: slug humanizado (tr '_-' '  ').
+# Ref: data-model.md §Derivacao de description.
+# Chamador garante que RECALL_SF ja esta setado.
+recall_memory_description() {
+  _rmd_body="$1"
+  _rmd_slug="$2"
+  # Primeira linha nao-vazia: remove linhas com so whitespace/hashes, pega a 1a.
+  _rmd_first=$(printf '%s' "$_rmd_body" | \
+    sed 's/^[[:space:]]*#*[[:space:]]*//' | \
+    grep -v '^[[:space:]]*$' | head -n 1 2>/dev/null) || _rmd_first=""
+  if [ -n "$_rmd_first" ]; then
+    # Aplica scrub e strip_nul (defensivo).
+    # NOTA: recall_scrub recebe $1 (nao stdin) — capturar em variavel antes.
+    _rmd_first_clean=$(printf '%s' "$_rmd_first" | strip_nul)
+    _rmd_desc=$(recall_scrub "$_rmd_first_clean")
+  else
+    # Fallback: slug humanizado.
+    _rmd_desc=$(printf '%s' "$_rmd_slug" | tr '_-' '  ')
+  fi
+  printf '%s' "$_rmd_desc"
+}
+
+# recall_ingest_memories STATE_DIR DB -> ingere os arquivos .md de memoria
+# do projeto referenciado por STATE_DIR/state.json. Best-effort: diretorio
+# inexistente = no-op (edge case M17). Chamador garante que sqlite3, jq e
+# RECALL_SF estao disponiveis (os gates ja rodaram em recall_mode_ingest).
+# Acumula RECALL_TOTAL_MEMORY (inicializado pelo chamador).
+recall_ingest_memories() {
+  _rim_state_dir="$1"
+  _rim_db="$2"
+
+  # Le projeto_alvo_path do state.json (read-only via jq). Sem path = no-op.
+  _rim_proj_path=$(jq -r '.execucao.projeto_alvo_path // ""' \
+    "$_rim_state_dir/state.json" 2>/dev/null) || _rim_proj_path=""
+  [ -n "$_rim_proj_path" ] || return "$RECALL_EXIT_OK"
+
+  # project = basename(projeto_alvo_path), paridade com telemetria.
+  _rim_project=$(basename -- "$_rim_proj_path" 2>/dev/null) || _rim_project=""
+  [ -n "$_rim_project" ] || return "$RECALL_EXIT_OK"
+
+  # Localiza o diretorio de memoria via forward-encoding (CQ1).
+  _rim_encoded=$(recall_encode_path "$_rim_proj_path")
+  _rim_memdir="${HOME:-/tmp}/.claude/projects/$_rim_encoded/memory"
+
+  # Diretorio ausente = no-op gracioso (M17: HOME sem .claude/projects/).
+  [ -d "$_rim_memdir" ] || return "$RECALL_EXIT_OK"
+
+  # Varre *.md no diretorio (maxdepth 1, so arquivos regulares).
+  # `find ... || :` preserva matches quando find sai !=0 (parity com reindex).
+  _rim_mds=$(find "$_rim_memdir" -maxdepth 1 -type f -name '*.md' 2>/dev/null) || :
+  [ -n "$_rim_mds" ] || return "$RECALL_EXIT_OK"
+
+  _rim_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _rim_now="1970-01-01T00:00:00Z"
+  _rim_sql="BEGIN;"
+
+  _rim_OLDIFS="$IFS"; IFS='
+'
+  for _rim_md in $_rim_mds; do
+    [ -r "$_rim_md" ] || continue
+    _rim_base=$(basename -- "$_rim_md") || continue
+    _rim_slug=$(printf '%s' "$_rim_base" | sed 's/\.md$//')
+    _rim_type=$(recall_memory_type "$_rim_base")
+
+    # Lê o body completo, strip_nul, depois recall_scrub (FR-005).
+    # NOTA: recall_scrub recebe $1 (nao stdin) — capturar em variavel antes.
+    _rim_body_raw=$(cat -- "$_rim_md" 2>/dev/null | strip_nul) || _rim_body_raw=""
+    _rim_body=$(recall_scrub "$_rim_body_raw")
+
+    # Deriva description do body scrubbed (para economizar reads; fallback = slug).
+    _rim_desc=$(recall_memory_description "$_rim_body" "$_rim_slug")
+
+    # FTS body = description + ' ' + body_scrubbed (data-model.md §Relacao com knowledge_fts).
+    _rim_fts_body="$_rim_desc $_rim_body"
+
+    _rim_sql="$_rim_sql
+INSERT OR REPLACE INTO memories(project,slug,type,description,body_scrubbed,path,indexed_at)
+VALUES('$(sql_escape "$_rim_project")','$(sql_escape "$_rim_slug")','$(sql_escape "$_rim_type")','$(sql_escape "$_rim_desc")','$(sql_escape "$_rim_body")','$(sql_escape "$_rim_md")','$(sql_escape "$_rim_now")');
+DELETE FROM knowledge_fts WHERE type='memory' AND project='$(sql_escape "$_rim_project")' AND feature='memory' AND wave='-' AND source_id='$(sql_escape "$_rim_slug")';
+INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
+VALUES('$(sql_escape "$_rim_fts_body")','memory','$(sql_escape "$_rim_project")','memory','-','$(sql_escape "$_rim_slug")','$(sql_escape "$_rim_now")');"
+    RECALL_TOTAL_MEMORY=$((${RECALL_TOTAL_MEMORY:-0} + 1))
+  done
+  IFS="$_rim_OLDIFS"
+
+  _rim_sql="$_rim_sql
+COMMIT;"
+
+  recall_apply_sql_with_retry "$_rim_db" "$_rim_sql" || {
+    log_warn "recall: ingestao de memories de $_rim_memdir degradou; pulada"
+    return "$RECALL_EXIT_OK"
+  }
+  return "$RECALL_EXIT_OK"
+}
+
+# recall_ingest_memories_dir ENCODED_PATH DB -> ingere memorias usando apenas
+# o encoded-path (para uso no --reindex onde nao ha state.json disponivel).
+# Deriva project via reverse-derivation (basename do ultimo segmento do encoded).
+# Limitacao CQ1 documentada: basename com underscores pode divergir do ingest normal.
+# Ref: data-model.md §Reverse-derivation no reindex.
+recall_ingest_memories_dir() {
+  _rimd_encoded="$1"
+  _rimd_db="$2"
+
+  # Reverse-derivation: project = basename do ultimo segmento do encoded-path.
+  # encoded-path e da forma "-A-B-C-proj" (liderando "-"); extrair ultimo segmento.
+  # Limitacao CQ1: "-" pode ser de "_" ou "/", entao "my_proj" fica "my-proj".
+  _rimd_project=$(printf '%s' "$_rimd_encoded" | sed 's|.*-||')
+  [ -n "$_rimd_project" ] || return "$RECALL_EXIT_OK"
+
+  _rimd_memdir="${HOME:-/tmp}/.claude/projects/$_rimd_encoded/memory"
+  [ -d "$_rimd_memdir" ] || return "$RECALL_EXIT_OK"
+
+  _rimd_mds=$(find "$_rimd_memdir" -maxdepth 1 -type f -name '*.md' 2>/dev/null) || :
+  [ -n "$_rimd_mds" ] || return "$RECALL_EXIT_OK"
+
+  _rimd_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _rimd_now="1970-01-01T00:00:00Z"
+  _rimd_sql="BEGIN;"
+
+  _rimd_OLDIFS="$IFS"; IFS='
+'
+  for _rimd_md in $_rimd_mds; do
+    [ -r "$_rimd_md" ] || continue
+    _rimd_base=$(basename -- "$_rimd_md") || continue
+    _rimd_slug=$(printf '%s' "$_rimd_base" | sed 's/\.md$//')
+    _rimd_type=$(recall_memory_type "$_rimd_base")
+    # NOTA: recall_scrub recebe $1 (nao stdin) — capturar em variavel antes.
+    _rimd_body_raw=$(cat -- "$_rimd_md" 2>/dev/null | strip_nul) || _rimd_body_raw=""
+    _rimd_body=$(recall_scrub "$_rimd_body_raw")
+    _rimd_desc=$(recall_memory_description "$_rimd_body" "$_rimd_slug")
+    _rimd_fts_body="$_rimd_desc $_rimd_body"
+
+    _rimd_sql="$_rimd_sql
+INSERT OR REPLACE INTO memories(project,slug,type,description,body_scrubbed,path,indexed_at)
+VALUES('$(sql_escape "$_rimd_project")','$(sql_escape "$_rimd_slug")','$(sql_escape "$_rimd_type")','$(sql_escape "$_rimd_desc")','$(sql_escape "$_rimd_body")','$(sql_escape "$_rimd_md")','$(sql_escape "$_rimd_now")');
+DELETE FROM knowledge_fts WHERE type='memory' AND project='$(sql_escape "$_rimd_project")' AND feature='memory' AND wave='-' AND source_id='$(sql_escape "$_rimd_slug")';
+INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
+VALUES('$(sql_escape "$_rimd_fts_body")','memory','$(sql_escape "$_rimd_project")','memory','-','$(sql_escape "$_rimd_slug")','$(sql_escape "$_rimd_now")');"
+    RECALL_TOTAL_MEMORY=$((${RECALL_TOTAL_MEMORY:-0} + 1))
+  done
+  IFS="$_rimd_OLDIFS"
+
+  _rimd_sql="$_rimd_sql
+COMMIT;"
+
+  recall_apply_sql_with_retry "$_rimd_db" "$_rimd_sql" || {
+    log_warn "recall: reindex de memories de $_rimd_memdir degradou; pulada"
+    return "$RECALL_EXIT_OK"
+  }
+  return "$RECALL_EXIT_OK"
+}
+
 # recall_mode_ingest: porta de CLI do modo ingestao.
 recall_mode_ingest() {
   _ing_state_dir=""
@@ -1306,13 +1506,15 @@ recall_mode_ingest() {
 
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
-  RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0
+  RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0; RECALL_TOTAL_MEMORY=0
   recall_ingest_state_json "$_ing_state_dir/state.json" "$_ing_db"
+  # Passo aditivo (CQ2): ingerir memorias do projeto apos state.json.
+  recall_ingest_memories "$_ing_state_dir" "$_ing_db"
 
-  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events\n' \
+  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories\n' \
     "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
     "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
-    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}"
+    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}"
   return "$RECALL_EXIT_OK"
 }
 
@@ -1372,7 +1574,7 @@ recall_mode_search() {
 
   # --type validado contra enum (se fornecido).
   if [ -n "$_se_type" ] && ! validate_type "$_se_type"; then
-    log_error "recall: --type fora do enum (decision|bloqueio|retro|skill): '$_se_type'"
+    log_error "recall: --type fora do enum (decision|bloqueio|retro|skill|memory): '$_se_type'"
     return "$RECALL_EXIT_USAGE"
   fi
 
@@ -1507,7 +1709,7 @@ recall_mode_context() {
 
   # --type validado contra enum (se fornecido).
   if [ -n "$_cx_type" ] && ! validate_type "$_cx_type"; then
-    log_error "recall --context: --type fora do enum (decision|bloqueio|retro|skill): '$_cx_type'"
+    log_error "recall --context: --type fora do enum (decision|bloqueio|retro|skill|memory): '$_cx_type'"
     return "$RECALL_EXIT_USAGE"
   fi
 
@@ -1691,7 +1893,7 @@ recall_mode_reindex() {
 
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
-  RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0
+  RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0; RECALL_TOTAL_MEMORY=0
   _rx_count=0
   # Varre feature-00c-state/*/state.json e agente-00c-state/state.json.
   # find e portavel; -path com globs simples.
@@ -1715,9 +1917,90 @@ recall_mode_reindex() {
     IFS="$_rx_OLDIFS"
   fi
 
-  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events)\n' \
+  # Reindex de memorias (C-004): reconstruir memories dos .md, NUNCA do state.json.
+  # Varre ~/.claude/projects/*/memory/ como fonte canonica (spec FR-009/FR-010).
+  # `find ... || :` preserva matches mesmo quando find sai !=0 (parity reindex state).
+  _rx_membase="${HOME:-/tmp}/.claude/projects"
+  if [ -d "$_rx_membase" ]; then
+    _rx_encodeds=$(find "$_rx_membase" -maxdepth 1 -mindepth 1 -type d 2>/dev/null) || :
+    if [ -n "$_rx_encodeds" ]; then
+      _rx_OLDIFS2="$IFS"; IFS='
+'
+      for _rx_enc_dir in $_rx_encodeds; do
+        _rx_enc=$(basename -- "$_rx_enc_dir")
+        recall_ingest_memories_dir "$_rx_enc" "$_rx_db"
+      done
+      IFS="$_rx_OLDIFS2"
+    fi
+  fi
+
+  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories)\n' \
     "$_rx_count" "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
     "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
-    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}"
+    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}"
+  return "$RECALL_EXIT_OK"
+}
+
+# ==========================================================================
+# FASE list-memories — Listagem de memorias (--list-memories)
+# Modo proprio (SELECT direto em memories, sem FTS). Exibe slug + description
+# por projeto. Ref: spec FR-013/US4; contracts §Cmd 5.
+# ==========================================================================
+
+recall_mode_list_memories() {
+  _lm_project=""
+  _lm_db_flag=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --list-memories) ;;
+      --project) shift; _lm_project="${1:-}" ;;
+      --db) shift; _lm_db_flag="${1:-}" ;;
+      -h|--help) recall_usage; return "$RECALL_EXIT_OK" ;;
+      *) log_error "recall --list-memories: flag invalida: $1"; return "$RECALL_EXIT_USAGE" ;;
+    esac
+    shift || break
+  done
+
+  # Degradacao graciosa: sqlite3 ausente.
+  if ! recall_have_sqlite3; then
+    log_warn "recall --list-memories: sqlite3 nao instalado; operacao pulada"
+    return "$RECALL_EXIT_OK"
+  fi
+
+  _lm_db=$(recall_resolve_db "$_lm_db_flag")
+  if [ ! -f "$_lm_db" ]; then
+    log_warn "recall --list-memories: indice ausente ($_lm_db); rode \`cstk recall --reindex\` para popular"
+    return "$RECALL_EXIT_OK"
+  fi
+
+  # Monta a query: SELECT project, type, slug, description FROM memories
+  # ordenado por slug; filtro opcional por project.
+  if [ -n "$_lm_project" ]; then
+    _lm_sql="SELECT project, type, slug, description FROM memories
+WHERE project = '$(sql_escape "$_lm_project")'
+ORDER BY slug;"
+  else
+    _lm_sql="SELECT project, type, slug, description FROM memories
+ORDER BY slug;"
+  fi
+
+  _lm_out=$(recall_query_sql "$_lm_db" ".mode list
+.separator |@|
+$_lm_sql") || _lm_out=""
+
+  # DB sem tabela memories (banco pre-v4 nao reindexado) => aviso + exit 0.
+  if [ -z "$_lm_out" ]; then
+    return "$RECALL_EXIT_OK"
+  fi
+
+  # Renderiza: <project> / <type> / <slug> — <description>
+  printf '%s\n' "$_lm_out" | while IFS= read -r _lm_line; do
+    [ -n "$_lm_line" ] || continue
+    _lm_proj=$(printf '%s' "$_lm_line" | awk -F '\\|@\\|' '{print $1}')
+    _lm_type=$(printf '%s' "$_lm_line" | awk -F '\\|@\\|' '{print $2}')
+    _lm_slug=$(printf '%s' "$_lm_line" | awk -F '\\|@\\|' '{print $3}')
+    _lm_desc=$(printf '%s' "$_lm_line" | awk -F '\\|@\\|' '{print $4}')
+    printf '%s / %s / %s — %s\n' "$_lm_proj" "$_lm_type" "$_lm_slug" "$_lm_desc"
+  done
   return "$RECALL_EXIT_OK"
 }

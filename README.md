@@ -622,9 +622,9 @@ cstk session end iniciacao-membro --force
 Camada **aditiva** de memória cross-feature: um índice SQLite global
 (`~/.claude/cstk/knowledge.db`, full-text via FTS5) alimentado automaticamente
 no fim de cada onda dos orquestradores `agente-00c`/`feature-00c`. Permite
-buscar decisões, bloqueios, retro-execuções e skills invocadas de **qualquer
-projeto ou feature já executados**, com proveniência (projeto / feature / onda
-/ data).
+buscar decisões, bloqueios, retro-execuções, skills invocadas e **memorias**
+(arquivos `.md` do Claude Code) de **qualquer projeto ou feature já executados**,
+com proveniência (projeto / feature / onda / data).
 
 Desde o **schema v2** (índice retro-compatível, migração aditiva e silenciosa),
 a ingestão também deriva **métricas de dashboard** do `state.json` em tabelas
@@ -649,21 +649,27 @@ cstk recall "lock contention"
 # Filtrar por projeto, tipo de registro e limitar resultados
 cstk recall "secrets-filter" --project claude-ai-tips --type decision --limit 5
 
-# Reconstruir o índice do zero a partir dos states existentes
+# Filtrar só memorias (.md do Claude Code)
+cstk recall "setup" --type memory
+
+# Reconstruir o índice do zero a partir dos states existentes (inclui memorias)
 cstk recall --reindex
 
-# Ingestão manual de uma feature específica (normalmente o hook faz isto)
+# Ingestão manual de uma feature específica (normalmente o hook faz isto; inclui memorias)
 cstk recall --ingest --state-dir .claude/feature-00c-state/<short-name>
 
 # Leitura-para-contexto (read-back loop): bloco markdown pronto para injeção
 cstk recall --context "cache fts query" --limit 4 \
   --exclude-feature minha-feature-corrente --max-bytes 2000
+
+# Listar memorias indexadas (slug + description, sem body)
+cstk recall --list-memories [--project P]
 ```
 
 **Flags do modo busca**:
 
 - `--project P` — filtra pelo projeto de origem
-- `--type T` — `decision` | `bloqueio` | `retro` | `skill`
+- `--type T` — `decision` | `bloqueio` | `retro` | `skill` | `memory`
 - `--limit N` — máximo de resultados (inteiro positivo; default 20)
 - `--db PATH` — índice alternativo (default `$CSTK_KNOWLEDGE_DB` ou
   `~/.claude/cstk/knowledge.db`)

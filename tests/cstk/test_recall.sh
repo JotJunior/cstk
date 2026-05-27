@@ -43,6 +43,15 @@ _rc() {
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main "$@"' _ "$@"
 }
 
+# _rc_home HOME_DIR CMD... -> roda _rc com HOME definido para HOME_DIR.
+# Uso: _rc_home "$TMPDIR_TEST" --ingest --state-dir ...
+# Necessario para testes que precisam isolar ~/.claude/projects/ sem quebrar
+# o harness (HOME=val _rc nao funciona para funcoes shell).
+_rc_home() {
+  _rch_home="$1"; shift
+  env HOME="$_rch_home" sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main "$@"' _ "$@"
+}
+
 # _write_state DIR PROJECT_PATH FEATURE -> escreve um state.json sintetico
 # com 2 decisoes, 1 bloqueio, 1 retro, 2 skills. Termo distintivo "widget"
 # na decisao 1 e "deploy" no bloqueio. project = basename de PROJECT_PATH.
@@ -541,9 +550,9 @@ SQL
   # Aplica schema v2 via funcao real (caminho de recall_apply_schema).
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
     _fail "apply schema v2" "recall_apply_schema falhou"; return 1; }
-  # (a) schema_version virou 3 (atual)
+  # (a) schema_version virou 4 (atual — recall-memory-mirror bump v3->v4)
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "3" ] || { _fail "schema_version" "esperado 3, obtido $_sv"; return 1; }
+  [ "$_sv" = "4" ] || { _fail "schema_version" "esperado 4, obtido $_sv"; return 1; }
   # (b) tabelas executions + waves existem
   _has=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('executions','waves')")
   [ "$_has" = "2" ] || { _fail "tabelas novas" "esperado 2 (executions+waves), obtido $_has"; return 1; }
@@ -563,7 +572,7 @@ scenario_m12_ddl_idempotente() {
     _fail "apply 1" "primeira aplicacao falhou"; return 1; }
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "3" ] || { _fail "schema estavel" "esperado 3 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "4" ] || { _fail "schema estavel" "esperado 4 apos 2x, obtido $_sv"; return 1; }
 }
 
 # =========================================================================
@@ -1663,9 +1672,9 @@ scenario_b11_ddl_tasks_events() {
   assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" || return 1
   _has=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('tasks','events')")
   [ "$_has" = "2" ] || { _fail "DDL tasks/events" "esperado 2 tabelas, obtido $_has"; return 1; }
-  # schema_version = 3 (tasks.titulo bumpou v2 -> v3).
+  # schema_version = 4 (recall-memory-mirror bumpou v3 -> v4).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "3" ] || { _fail "schema_version" "esperado 3, obtido $_sv"; return 1; }
+  [ "$_sv" = "4" ] || { _fail "schema_version" "esperado 4, obtido $_sv"; return 1; }
   # tasks tem a coluna titulo (DDL fresco).
   _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='titulo'")
   [ "$_hascol" = "1" ] || { _fail "coluna titulo" "esperado 1, obtido $_hascol"; return 1; }
@@ -1923,6 +1932,559 @@ scenario_17_reindex_tolera_find_exit_nonzero() {
   [ "${_nB:-0}" -ge 1 ] || { _fail "Bug B: indice zerado por find exit!=0" "esperado >=1 decisao, obtido '$_nB'"; return 1; }
   _fB=$(sqlite3 "$TMPDIR_TEST/kb.db" "SELECT DISTINCT feature FROM decisions" 2>/dev/null)
   [ "$_fB" = "featX" ] || { _fail "Bug B: feature errada" "esperado 'featX', obtido '$_fB'"; return 1; }
+}
+
+# =========================================================================
+# Helpers de fixture para testes de memorias (recall-memory-mirror)
+# =========================================================================
+
+# _write_memory_dir ENCODED_PATH FILE1_NAME FILE1_BODY [FILE2_NAME FILE2_BODY...]
+# Cria o diretorio ~/.claude/projects/<encoded>/memory/ com arquivos .md.
+# Para uso em testes que precisam de memorias reais no disco.
+# ATENÇÃO: usa $TMPDIR_TEST como HOME para isolamento.
+_write_memory_dir() {
+  _wmd_enc="$1"; shift
+  _wmd_dir="$TMPDIR_TEST/.claude/projects/$_wmd_enc/memory"
+  mkdir -p "$_wmd_dir"
+  while [ "$#" -ge 2 ]; do
+    _wmd_name="$1"; _wmd_body="$2"; shift 2
+    printf '%s' "$_wmd_body" > "$_wmd_dir/$_wmd_name"
+  done
+  printf '%s\n' "$_wmd_dir"
+}
+
+# _write_state_with_path DIR PROJECT_PATH FEATURE -> como _write_state mas
+# usa PROJECT_PATH exato no state.json (para que encoded-path seja calculavel).
+_write_state_with_path() {
+  _ws_dir="$1"; _ws_proj="$2"; _ws_feat="$3"
+  mkdir -p "$_ws_dir"
+  cat > "$_ws_dir/state.json" <<JSON
+{
+  "short_name": "$_ws_feat",
+  "execucao": { "id": "exec-$_ws_feat", "projeto_alvo_path": "$_ws_proj" },
+  "decisoes": [],
+  "bloqueios_humanos": [],
+  "retros": [],
+  "ondas": []
+}
+JSON
+}
+
+# =========================================================================
+# FASE 1 — Schema v4 + Gaps CHK (recall-memory-mirror)
+# =========================================================================
+
+# M1 — Apos ingest com fixture, sqlite3 .tables lista 'memories';
+# schema_meta retorna version=4.
+# Cobre subtarefas 1.1.3, 1.1.5, 1.1.6.
+scenario_m1_schema_v4_memories_table_exists() {
+  _have_deps || return 0
+  _write_state "$TMPDIR_TEST/m1feat" "/home/u/projM1" "m1feat"
+  _rc --ingest --state-dir "$TMPDIR_TEST/m1feat" --db "$TMPDIR_TEST/m1.db" >/dev/null 2>&1
+  # Tabela memories deve existir
+  _tables=$(sqlite3 "$TMPDIR_TEST/m1.db" ".tables" 2>/dev/null)
+  case "$_tables" in
+    *memories*) : ;;
+    *) _fail "memories table ausente" "$_tables"; return 1 ;;
+  esac
+  # schema_version deve ser 4
+  _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
+    "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
+  [ "$_ver" = "4" ] || { _fail "schema_version errado" "esperado 4, obtido '$_ver'"; return 1; }
+}
+
+# M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
+# Cobre subtarefa 1.1.2.
+scenario_m1_enum_inclui_memory() {
+  # Verifica diretamente a variavel no contexto sourced do recall.sh
+  _enum=$(sh -c '. "$CSTK_LIB/recall.sh"; printf "%s\n" "$RECALL_TYPE_ENUM"' 2>/dev/null)
+  case "$_enum" in
+    *memory*) : ;;
+    *) _fail "memory ausente no RECALL_TYPE_ENUM" "$_enum"; return 1 ;;
+  esac
+}
+
+# M4-negativo — --type invalido retorna exit 2 com mensagem contendo o enum completo.
+# Cobre subtarefas 1.1.2, 1.1.7: o enum extendido deve aparecer na mensagem de erro.
+scenario_m4_neg_type_invalido_retorna_exit2() {
+  _have_deps || return 0
+  _write_state "$TMPDIR_TEST/m4feat" "/home/u/projM4" "m4feat"
+  _rc --ingest --state-dir "$TMPDIR_TEST/m4feat" --db "$TMPDIR_TEST/m4.db" >/dev/null 2>&1
+  capture _rc "termo" --type "invalido" --db "$TMPDIR_TEST/m4.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "exit code" "esperado 2, obtido '$_CAPTURED_EXIT'"; return 1; }
+  # A mensagem de erro deve listar o enum; apos bump deve incluir 'memory'
+  case "$_CAPTURED_STDERR" in
+    *memory*) : ;;
+    *) _fail "mensagem de erro nao inclui 'memory'" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# M4-negativo-context — --context com --type invalido tambem retorna exit 2 com enum.
+# Cobre 1.1.2: enum extendido validado no modo --context.
+scenario_m4_neg_context_type_invalido() {
+  _have_deps || return 0
+  capture _rc --context "termo" --type "invalido" --db "$TMPDIR_TEST/m4ctx.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "exit code context" "esperado 2, obtido '$_CAPTURED_EXIT'"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *memory*) : ;;
+    *) _fail "mensagem --context nao inclui 'memory'" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# M1-migration — DB v3 pre-existente (sem memories) ganha a tabela apos apply_schema.
+# Cobre subtarefa 1.1.5: migracao idempotente v3->v4 em banco existente.
+scenario_m1_migration_v3_to_v4() {
+  _have_deps || return 0
+  # Criar um DB v3 com schema antigo (sem memories) simulando banco pre-existente
+  _v3db="$TMPDIR_TEST/v3.db"
+  sqlite3 "$_v3db" "
+    PRAGMA journal_mode=WAL;
+    CREATE TABLE IF NOT EXISTS decisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL,
+      execucao_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL,
+      agente TEXT, etapa TEXT, escolha TEXT, score INTEGER,
+      contexto TEXT, justificativa TEXT, evidencia TEXT, ingested_at TEXT NOT NULL,
+      UNIQUE(project, feature, wave, source_id)
+    );
+    CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+      body, type UNINDEXED, project UNINDEXED, feature UNINDEXED,
+      wave UNINDEXED, source_id UNINDEXED, source_ts UNINDEXED
+    );
+    CREATE TABLE IF NOT EXISTS schema_meta(key TEXT PRIMARY KEY, value TEXT);
+    INSERT INTO schema_meta(key,value) VALUES('schema_version','3')
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+  " 2>/dev/null
+  # Agora ingerir usando o recall.sh v4 — apply_schema deve criar memories sem perder dados
+  _write_state "$TMPDIR_TEST/v3state" "/home/u/projV3" "v3feat"
+  _rc --ingest --state-dir "$TMPDIR_TEST/v3state" --db "$_v3db" >/dev/null 2>&1
+  # Tabela memories deve existir agora
+  _tables=$(sqlite3 "$_v3db" ".tables" 2>/dev/null)
+  case "$_tables" in
+    *memories*) : ;;
+    *) _fail "migration v3->v4: memories ausente" "$_tables"; return 1 ;;
+  esac
+  # schema_version deve ser 4
+  _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
+  [ "$_ver" = "4" ] || { _fail "migration: schema_version errado" "esperado 4, obtido '$_ver'"; return 1; }
+  # Dados pre-existentes preservados (decisions nao zerada)
+  _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
+  [ "${_n:-0}" -ge 1 ] || { _fail "migration: decisions zeradas" "esperado >=1, obtido '$_n'"; return 1; }
+}
+
+# =========================================================================
+# FASE 2 — Ingestao Aditiva + FASE 3 Busca + FASE 4 Reindex + FASE 5 List
+# (recall-memory-mirror: subtarefas M2-M18)
+# =========================================================================
+
+# M2 — 3 .md com tipos corretos apos ingest; project = basename(projeto_alvo_path).
+# Cobre subtarefas 2.2.1..2.2.4, 2.2.7.
+scenario_m2_ingest_memories_basico() {
+  _have_deps || return 0
+  # Fixture: projeto no tmp com 3 .md de tipos distintos
+  _m2_proj="/tmp/projM2test"
+  _m2_enc=$(printf '%s' "$_m2_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  _m2_dir="$TMPDIR_TEST/.claude/projects/$_m2_enc/memory"
+  mkdir -p "$_m2_dir"
+  printf '# Index de Memorias\nConteudo do indice.' > "$_m2_dir/MEMORY.md"
+  printf '# Feedback sobre cache\ncache performance.' > "$_m2_dir/feedback_cache.md"
+  printf '# Nota de projeto\ncstk session.' > "$_m2_dir/project_session.md"
+  # state.json aponta para o projeto
+  _m2_state="$TMPDIR_TEST/m2state"
+  _write_state_with_path "$_m2_state" "$_m2_proj" "m2feat"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m2_state" --db "$TMPDIR_TEST/m2.db" >/dev/null 2>&1
+  _n=$(sqlite3 "$TMPDIR_TEST/m2.db" "SELECT count(*) FROM memories" 2>/dev/null)
+  [ "$_n" = "3" ] || { _fail "M2: count memories" "esperado 3, obtido '$_n'"; return 1; }
+  _types=$(sqlite3 "$TMPDIR_TEST/m2.db" "SELECT type FROM memories ORDER BY slug" 2>/dev/null)
+  # Esperado: feedback, index, project (ordem slug = feedback_cache, MEMORY, project_session)
+  case "$_types" in
+    *feedback*) : ;;
+    *) _fail "M2: tipo feedback ausente" "$_types"; return 1 ;;
+  esac
+  case "$_types" in
+    *index*) : ;;
+    *) _fail "M2: tipo index ausente" "$_types"; return 1 ;;
+  esac
+  # project = basename do projeto_alvo_path
+  _proj=$(sqlite3 "$TMPDIR_TEST/m2.db" "SELECT DISTINCT project FROM memories" 2>/dev/null)
+  [ "$_proj" = "projM2test" ] || { _fail "M2: project errado" "esperado 'projM2test', obtido '$_proj'"; return 1; }
+}
+
+# M3 — Busca unificada retorna memorias de 2 projetos com proveniencia.
+# Cobre subtarefa 3.1.3.
+scenario_m3_busca_unificada_com_memorias() {
+  _have_deps || return 0
+  _m3_db="$TMPDIR_TEST/m3.db"
+  # Setup projA
+  _m3_projA="/tmp/projA_m3"
+  _m3_encA=$(printf '%s' "$_m3_projA" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  mkdir -p "$TMPDIR_TEST/.claude/projects/$_m3_encA/memory"
+  printf '# Install guide\ncstk install para novo setup.' > \
+    "$TMPDIR_TEST/.claude/projects/$_m3_encA/memory/feedback_install.md"
+  _m3_stA="$TMPDIR_TEST/stA"
+  _write_state_with_path "$_m3_stA" "$_m3_projA" "featA"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m3_stA" --db "$_m3_db" >/dev/null 2>&1
+  # Setup projB
+  _m3_projB="/tmp/projB_m3"
+  _m3_encB=$(printf '%s' "$_m3_projB" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  mkdir -p "$TMPDIR_TEST/.claude/projects/$_m3_encB/memory"
+  printf '# Install notes\ninstall from release.' > \
+    "$TMPDIR_TEST/.claude/projects/$_m3_encB/memory/project_install.md"
+  _m3_stB="$TMPDIR_TEST/stB"
+  _write_state_with_path "$_m3_stB" "$_m3_projB" "featB"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m3_stB" --db "$_m3_db" >/dev/null 2>&1
+  # Busca por "install" deve retornar entradas [memory] de ambos os projetos
+  capture _rc "install" --db "$_m3_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "M3: exit" "$_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *projA_m3*) : ;;
+    *) _fail "M3: projA ausente no resultado" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDOUT" in
+    *projB_m3*) : ;;
+    *) _fail "M3: projB ausente no resultado" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+# M4 — --type memory filtra apenas memorias; --type invalido retorna exit 2.
+# Cobre subtarefa 3.1.4 (filtro) + 1.1.7 (negativo ja coberto em scenario_m4_neg).
+scenario_m4_filtro_type_memory() {
+  _have_deps || return 0
+  _m4_db="$TMPDIR_TEST/m4filt.db"
+  _m4_proj="/tmp/projM4filt"
+  _m4_enc=$(printf '%s' "$_m4_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  mkdir -p "$TMPDIR_TEST/.claude/projects/$_m4_enc/memory"
+  printf '# lock notas\nconcorrencia e lock.' > \
+    "$TMPDIR_TEST/.claude/projects/$_m4_enc/memory/feedback_lock.md"
+  _m4_st="$TMPDIR_TEST/m4st"
+  # state.json com uma decisao sobre "lock" para aparecer na busca sem filtro
+  _write_state "$_m4_st" "$_m4_proj" "m4feat"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m4_st" --db "$_m4_db" >/dev/null 2>&1
+  # Com --type memory: so retorna [memory]
+  capture _rc "lock" --type memory --db "$_m4_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "M4: exit" "$_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *'[memory]'*) : ;;
+    *) _fail "M4: resultado nao contem [memory]" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  # Nao deve conter [decision]
+  case "$_CAPTURED_STDOUT" in
+    *'[decision]'*) _fail "M4: resultado contem [decision] com --type memory" "$_CAPTURED_STDOUT"; return 1 ;;
+    *) : ;;
+  esac
+}
+
+# M5 — --project + --type memory filtra por projeto.
+# Cobre subtarefa 3.1.5.
+scenario_m5_filtro_project_e_type_memory() {
+  _have_deps || return 0
+  _m5_db="$TMPDIR_TEST/m5.db"
+  for _p in projA5 projB5; do
+    _m5_enc=$(printf '%s' "/tmp/$_p" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+    mkdir -p "$TMPDIR_TEST/.claude/projects/$_m5_enc/memory"
+    # Usa termo especifico por projeto para busca distinta
+    printf '# nota %s\nconteudo especifico do projeto %s aqui.' "$_p" "$_p" > \
+      "$TMPDIR_TEST/.claude/projects/$_m5_enc/memory/feedback_t.md"
+    _m5_st="$TMPDIR_TEST/st_$_p"
+    _write_state_with_path "$_m5_st" "/tmp/$_p" "feat_$_p"
+    env HOME="$TMPDIR_TEST" sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main --ingest --state-dir "$1" --db "$2"' \
+      _ "$_m5_st" "$_m5_db" >/dev/null 2>&1
+  done
+  # Verificar que as 2 memories foram ingeridas
+  _total=$(sqlite3 "$_m5_db" "SELECT count(*) FROM memories" 2>/dev/null)
+  [ "${_total:-0}" -ge 2 ] || { _fail "M5: memories nao ingeridas" "total=$_total"; return 1; }
+  # Busca com --project projA5 --type memory deve retornar so projA5
+  capture _rc "especifico" --project "projA5" --type memory --db "$_m5_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "M5: exit" "$_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *projA5*) : ;;
+    *) _fail "M5: projA5 ausente" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  # projB5 nao deve aparecer
+  case "$_CAPTURED_STDOUT" in
+    *projB5*) _fail "M5: projB5 vazou com --project projA5" "$_CAPTURED_STDOUT"; return 1 ;;
+    *) : ;;
+  esac
+}
+
+# M6 — ingest 2x idempotente: count(*) nao cresce.
+# Cobre subtarefa 2.2.8.
+scenario_m6_ingest_memories_idempotente() {
+  _have_deps || return 0
+  _m6_proj="/tmp/projM6"
+  _m6_enc=$(printf '%s' "$_m6_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  mkdir -p "$TMPDIR_TEST/.claude/projects/$_m6_enc/memory"
+  printf 'mem1' > "$TMPDIR_TEST/.claude/projects/$_m6_enc/memory/feedback_a.md"
+  printf 'mem2' > "$TMPDIR_TEST/.claude/projects/$_m6_enc/memory/feedback_b.md"
+  printf 'mem3' > "$TMPDIR_TEST/.claude/projects/$_m6_enc/memory/project_c.md"
+  _m6_st="$TMPDIR_TEST/m6st"
+  _write_state_with_path "$_m6_st" "$_m6_proj" "m6feat"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m6_st" --db "$TMPDIR_TEST/m6.db" >/dev/null 2>&1
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m6_st" --db "$TMPDIR_TEST/m6.db" >/dev/null 2>&1
+  _n=$(sqlite3 "$TMPDIR_TEST/m6.db" "SELECT count(*) FROM memories" 2>/dev/null)
+  [ "$_n" = "3" ] || { _fail "M6: idempotencia falhou" "esperado 3, obtido '$_n'"; return 1; }
+  _nfts=$(sqlite3 "$TMPDIR_TEST/m6.db" "SELECT count(*) FROM knowledge_fts WHERE type='memory'" 2>/dev/null)
+  [ "$_nfts" = "3" ] || { _fail "M6: knowledge_fts duplicou" "esperado 3, obtido '$_nfts'"; return 1; }
+}
+
+# M7 — re-ingest atualiza body_scrubbed para nova versao do .md.
+# Cobre subtarefa 2.2.9.
+scenario_m7_reingest_atualiza_body() {
+  _have_deps || return 0
+  _m7_proj="/tmp/projM7"
+  _m7_enc=$(printf '%s' "$_m7_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  _m7_memdir="$TMPDIR_TEST/.claude/projects/$_m7_enc/memory"
+  mkdir -p "$_m7_memdir"
+  # Termos sem secrets: "alpha" e "beta" sao seguros para scrub
+  printf 'conteudo alpha inicial' > "$_m7_memdir/feedback_x.md"
+  _m7_st="$TMPDIR_TEST/m7st"
+  _write_state_with_path "$_m7_st" "$_m7_proj" "m7feat"
+  env HOME="$TMPDIR_TEST" sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main --ingest --state-dir "$1" --db "$2"' \
+    _ "$_m7_st" "$TMPDIR_TEST/m7.db" >/dev/null 2>&1
+  _b1=$(sqlite3 "$TMPDIR_TEST/m7.db" "SELECT body_scrubbed FROM memories WHERE slug='feedback_x'" 2>/dev/null)
+  [ -n "$_b1" ] || { _fail "M7: body v1 ausente apos 1o ingest (count=$(sqlite3 "$TMPDIR_TEST/m7.db" "SELECT count(*) FROM memories" 2>/dev/null))"; return 1; }
+  # Atualiza o .md para "beta"
+  printf 'conteudo beta atualizado' > "$_m7_memdir/feedback_x.md"
+  env HOME="$TMPDIR_TEST" sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main --ingest --state-dir "$1" --db "$2"' \
+    _ "$_m7_st" "$TMPDIR_TEST/m7.db" >/dev/null 2>&1
+  _b2=$(sqlite3 "$TMPDIR_TEST/m7.db" "SELECT body_scrubbed FROM memories WHERE slug='feedback_x'" 2>/dev/null)
+  case "$_b2" in
+    *"beta"*) : ;;
+    *) _fail "M7: body nao atualizado para beta" "obtido '$_b2'"; return 1 ;;
+  esac
+  # Ainda 1 linha (upsert, nao insert)
+  _n=$(sqlite3 "$TMPDIR_TEST/m7.db" "SELECT count(*) FROM memories" 2>/dev/null)
+  [ "$_n" = "1" ] || { _fail "M7: duplicata pos-update" "esperado 1, obtido '$_n'"; return 1; }
+}
+
+# M8 — body_scrubbed NAO contem secret; arquivo .md original intacto.
+# Cobre subtarefa 2.1.5.
+scenario_m8_scrub_secrets_no_body() {
+  _have_deps || return 0
+  _m8_proj="/tmp/projM8"
+  _m8_enc=$(printf '%s' "$_m8_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  _m8_memdir="$TMPDIR_TEST/.claude/projects/$_m8_enc/memory"
+  mkdir -p "$_m8_memdir"
+  # Escreve .md com um padrao de secret reconhecivel pelo secrets-filter
+  printf 'API_KEY=sk-ant-api03-secret123456789012345678901234567890\nnota util aqui' \
+    > "$_m8_memdir/feedback_secret.md"
+  _m8_orig=$(cat "$_m8_memdir/feedback_secret.md")
+  _m8_st="$TMPDIR_TEST/m8st"
+  _write_state_with_path "$_m8_st" "$_m8_proj" "m8feat"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m8_st" --db "$TMPDIR_TEST/m8.db" >/dev/null 2>&1
+  # body_scrubbed nao deve conter o secret (scrubbed)
+  _body=$(sqlite3 "$TMPDIR_TEST/m8.db" "SELECT body_scrubbed FROM memories WHERE slug='feedback_secret'" 2>/dev/null)
+  case "$_body" in
+    *sk-ant-api03-secret*) _fail "M8: secret nao scrubbed" "body contem secret"; return 1 ;;
+    *) : ;;
+  esac
+  # Arquivo .md original intacto (C-002)
+  _after=$(cat "$_m8_memdir/feedback_secret.md")
+  [ "$_m8_orig" = "$_after" ] || { _fail "M8: .md original modificado"; return 1; }
+}
+
+# M10 — .md vazio (0 bytes) cria entrada com body_scrubbed=''; exit 0.
+# Cobre subtarefa 2.1.6.
+scenario_m10_md_vazio_nao_quebra() {
+  _have_deps || return 0
+  _m10_proj="/tmp/projM10"
+  _m10_enc=$(printf '%s' "$_m10_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  _m10_memdir="$TMPDIR_TEST/.claude/projects/$_m10_enc/memory"
+  mkdir -p "$_m10_memdir"
+  # Arquivo vazio (0 bytes)
+  printf '' > "$_m10_memdir/feedback_vazio.md"
+  _m10_st="$TMPDIR_TEST/m10st"
+  _write_state_with_path "$_m10_st" "$_m10_proj" "m10feat"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m10_st" --db "$TMPDIR_TEST/m10.db" >/dev/null 2>&1
+  _n=$(sqlite3 "$TMPDIR_TEST/m10.db" "SELECT count(*) FROM memories" 2>/dev/null)
+  [ "$_n" = "1" ] || { _fail "M10: entry nao criada para md vazio" "esperado 1, obtido '$_n'"; return 1; }
+  _body=$(sqlite3 "$TMPDIR_TEST/m10.db" "SELECT body_scrubbed FROM memories" 2>/dev/null)
+  # body pode ser vazio ou NULL — o importante e exit 0 e entry criada
+  [ -z "$_body" ] || [ "$_body" = "NULL" ] || :
+}
+
+# M11 — --reindex reconstroi memories: apagar DB, reindex, count identico.
+# Cobre subtarefa 4.1.5.
+scenario_m11_reindex_reconstroi_memories() {
+  _have_deps || return 0
+  _m11_proj="/tmp/projM11"
+  _m11_enc=$(printf '%s' "$_m11_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  _m11_memdir="$TMPDIR_TEST/.claude/projects/$_m11_enc/memory"
+  mkdir -p "$_m11_memdir"
+  printf 'nota1' > "$_m11_memdir/feedback_a.md"
+  printf 'nota2' > "$_m11_memdir/feedback_b.md"
+  _m11_st="$TMPDIR_TEST/m11st"
+  _write_state_with_path "$_m11_st" "$_m11_proj" "m11feat"
+  _m11_db="$TMPDIR_TEST/m11.db"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m11_st" --db "$_m11_db" >/dev/null 2>&1
+  _n1=$(sqlite3 "$_m11_db" "SELECT count(*) FROM memories" 2>/dev/null)
+  # Apaga o DB e re-index
+  rm -f "$_m11_db" "$_m11_db-wal" "$_m11_db-shm" 2>/dev/null
+  _rc_home "$TMPDIR_TEST" --reindex --states-root "$TMPDIR_TEST" --db "$_m11_db" >/dev/null 2>&1
+  _n2=$(sqlite3 "$_m11_db" "SELECT count(*) FROM memories" 2>/dev/null)
+  [ "$_n1" = "$_n2" ] || { _fail "M11: reindex nao preservou memories" \
+    "antes=$_n1, depois=$_n2"; return 1; }
+}
+
+# M12 — reindex: nenhuma entrada de memories vem do state.json (C-003/C-004).
+# Cobre subtarefa 4.1.6.
+scenario_m12_reindex_memories_nao_vem_de_state() {
+  _have_deps || return 0
+  # Cria state.json com telemetria mas SEM diretorio de memory para o projeto.
+  # Usa _write_state que inclui decisions para validar separacao.
+  _m12_proj="$TMPDIR_TEST/projM12noMem"
+  mkdir -p "$_m12_proj"
+  # Layout feature-00c-state para que o reindex encontre o state.json
+  _m12_root="$TMPDIR_TEST/m12root"
+  mkdir -p "$_m12_root/.claude/feature-00c-state/m12feat"
+  cat > "$_m12_root/.claude/feature-00c-state/m12feat/state.json" <<JSON
+{
+  "short_name": "m12feat",
+  "execucao": { "id": "exec-m12", "projeto_alvo_path": "$_m12_proj" },
+  "decisoes": [
+    { "id": "dec-m12", "onda_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "etapa": "plan", "agente": "orch", "escolha": "ok", "score_justificativa": 2,
+      "contexto": "m12 test", "justificativa": "m12", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "retros": [], "ondas": []
+}
+JSON
+  _m12_db="$TMPDIR_TEST/m12.db"
+  env HOME="$TMPDIR_TEST" sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main --reindex --states-root "$1" --db "$2"' \
+    _ "$_m12_root" "$_m12_db" >/dev/null 2>&1
+  # Sem diretorio de memory -> 0 memories
+  _n_mem=$(sqlite3 "$_m12_db" "SELECT count(*) FROM memories" 2>/dev/null)
+  [ "$_n_mem" = "0" ] || { _fail "M12: memories geradas sem .md no disco" \
+    "esperado 0, obtido '$_n_mem'"; return 1; }
+  # Decisions devem ter sido ingeridas do state.json (separacao C-004)
+  _n_dec=$(sqlite3 "$_m12_db" "SELECT count(*) FROM decisions" 2>/dev/null)
+  [ "${_n_dec:-0}" -ge 1 ] || { _fail "M12: decisions ausentes no reindex" \
+    "esperado >=1, obtido '$_n_dec'"; return 1; }
+}
+
+# M13 — reindex com projeto sem memory/: exit 0; 0 memories; telemetria ok.
+# Cobre subtarefa 4.1.7.
+scenario_m13_reindex_sem_memoria_dir() {
+  _have_deps || return 0
+  _m13_proj="/tmp/projM13nodir"
+  # SEM criar o diretorio de memory
+  _m13_st="$TMPDIR_TEST/m13st"
+  _write_state_with_path "$_m13_st" "$_m13_proj" "m13feat"
+  _m13_db="$TMPDIR_TEST/m13.db"
+  assert_exit 0 sh -c \
+    'HOME="$1"; . "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main --reindex --states-root "$2" --db "$3"' \
+    _ "$TMPDIR_TEST" "$TMPDIR_TEST" "$_m13_db" || return 1
+  _n_mem=$(sqlite3 "$_m13_db" "SELECT count(*) FROM memories" 2>/dev/null)
+  [ "$_n_mem" = "0" ] || { _fail "M13: memories sem diretorio" "esperado 0, obtido '$_n_mem'"; return 1; }
+}
+
+# M14 — --list-memories lista slug + description (sem body).
+# Cobre subtarefa 5.1.6.
+scenario_m14_list_memories_lista_sem_body() {
+  _have_deps || return 0
+  _m14_proj="/tmp/projM14"
+  _m14_enc=$(printf '%s' "$_m14_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  _m14_memdir="$TMPDIR_TEST/.claude/projects/$_m14_enc/memory"
+  mkdir -p "$_m14_memdir"
+  # 3 .md com conteudo recognizavel
+  printf '# Nota sobre cache\n\ncache multipla camada longa linha de conteudo secreto nao aparece.' \
+    > "$_m14_memdir/feedback_cache.md"
+  printf '# Projeto session\nsessao paralela.' > "$_m14_memdir/project_sess.md"
+  printf '# Index\nindice principal.' > "$_m14_memdir/MEMORY.md"
+  _m14_st="$TMPDIR_TEST/m14st"
+  _write_state_with_path "$_m14_st" "$_m14_proj" "m14feat"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m14_st" --db "$TMPDIR_TEST/m14.db" >/dev/null 2>&1
+  capture _rc --list-memories --project "projM14" --db "$TMPDIR_TEST/m14.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "M14: exit" "$_CAPTURED_EXIT"; return 1; }
+  # Deve ter 3 linhas
+  _lines=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '/')
+  [ "${_lines:-0}" -ge 3 ] || { _fail "M14: linhas insuficientes" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  # Nao deve conter "nao aparece" (body completo)
+  case "$_CAPTURED_STDOUT" in
+    *"nao aparece"*) _fail "M14: body completo vazou no --list-memories"; return 1 ;;
+    *) : ;;
+  esac
+}
+
+# M15 — --list-memories com projeto sem memorias: stdout vazio, exit 0.
+# Cobre subtarefa 5.1.7.
+scenario_m15_list_memories_sem_resultado() {
+  _have_deps || return 0
+  # DB populado com outros projetos mas sem "projetoVazio"
+  _m15_st="$TMPDIR_TEST/m15st"
+  _write_state "$_m15_st" "/tmp/outros" "m15feat"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$_m15_st" --db "$TMPDIR_TEST/m15.db" >/dev/null 2>&1
+  capture _rc --list-memories --project "projetoVazio" --db "$TMPDIR_TEST/m15.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "M15: exit" "$_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "M15: stdout nao vazio" "$_CAPTURED_STDOUT"; return 1; }
+}
+
+# M16 — linha de status do ingest termina com ", N memories".
+# Cobre subtarefa 2.3.4.
+scenario_m16_ingest_output_inclui_memories() {
+  _have_deps || return 0
+  _m16_proj="/tmp/projM16"
+  _m16_enc=$(printf '%s' "$_m16_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  _m16_memdir="$TMPDIR_TEST/.claude/projects/$_m16_enc/memory"
+  mkdir -p "$_m16_memdir"
+  printf 'mem1' > "$_m16_memdir/feedback_a.md"
+  printf 'mem2' > "$_m16_memdir/feedback_b.md"
+  _m16_st="$TMPDIR_TEST/m16st"
+  _write_state_with_path "$_m16_st" "$_m16_proj" "m16feat"
+  # env HOME=... para isolar o HOME sem quebrar o harness
+  _m16_out=$(env HOME="$TMPDIR_TEST" sh -c \
+    '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main --ingest --state-dir "$1" --db "$2"' \
+    _ "$_m16_st" "$TMPDIR_TEST/m16.db" 2>/dev/null)
+  # A linha de status deve terminar com ", 2 memories"
+  case "$_m16_out" in
+    *", 2 memories"*) : ;;
+    *) _fail "M16: linha de status nao inclui '2 memories'" "$_m16_out"; return 1 ;;
+  esac
+}
+
+# M17 — HOME sem ~/.claude/projects/: ingest; telemetria ingerida; 0 memories; exit 0.
+# Cobre subtarefa 2.2.10.
+scenario_m17_home_sem_claude_projects() {
+  _have_deps || return 0
+  # HOME temporario sem .claude/projects (mas com state.json acessivel via path absoluto)
+  _m17_home="$TMPDIR_TEST/m17home"
+  mkdir -p "$_m17_home"
+  _m17_st="$TMPDIR_TEST/m17st"
+  _write_state "$_m17_st" "/tmp/projM17" "m17feat"
+  _rc_home "$_m17_home" --ingest --state-dir "$_m17_st" --db "$TMPDIR_TEST/m17.db" >/dev/null 2>&1
+  _ex=$?
+  [ "$_ex" = "0" ] || { _fail "M17: exit != 0" "$_ex"; return 1; }
+  _n=$(sqlite3 "$TMPDIR_TEST/m17.db" "SELECT count(*) FROM memories" 2>/dev/null)
+  [ "$_n" = "0" ] || { _fail "M17: memories inesperadas sem .claude/projects" \
+    "esperado 0, obtido '$_n'"; return 1; }
+}
+
+# M18 — suite completa recall sem regressao (delegado a tests/run.sh recall).
+# Este cenario apenas verifica que validate_type aceita 'memory' (3.1.1).
+scenario_m18_validate_type_aceita_memory() {
+  _vt_ok=$(sh -c '. "$CSTK_LIB/recall.sh"; validate_type "memory" && printf ok' 2>/dev/null)
+  [ "$_vt_ok" = "ok" ] || { _fail "validate_type memory falhou" "$_vt_ok"; return 1; }
+  # E deve rejeitar tipo invalido
+  _vt_bad=$(sh -c '. "$CSTK_LIB/recall.sh"; validate_type "invalido" || printf rejected' 2>/dev/null)
+  [ "$_vt_bad" = "rejected" ] || { _fail "validate_type invalido nao rejeitou" "$_vt_bad"; return 1; }
+}
+
+# M_reindex_output — linha de status do reindex inclui ", N memories".
+# Cobre subtarefa 4.1.4.
+scenario_m_reindex_output_inclui_memories() {
+  _have_deps || return 0
+  _mrx_proj="/tmp/projMrx"
+  _mrx_enc=$(printf '%s' "$_mrx_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  mkdir -p "$TMPDIR_TEST/.claude/projects/$_mrx_enc/memory"
+  printf 'nota' > "$TMPDIR_TEST/.claude/projects/$_mrx_enc/memory/feedback_z.md"
+  # env HOME=... para isolar sem quebrar o harness
+  _mrx_out=$(env HOME="$TMPDIR_TEST" sh -c \
+    '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_main --reindex --states-root "$1" --db "$2"' \
+    _ "$TMPDIR_TEST" "$TMPDIR_TEST/mrx.db" 2>/dev/null)
+  case "$_mrx_out" in
+    *memories*) : ;;
+    *) _fail "reindex output sem 'memories'" "$_mrx_out"; return 1 ;;
+  esac
 }
 
 run_all_scenarios

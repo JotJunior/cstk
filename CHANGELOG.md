@@ -5,6 +5,46 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.10.0] - 2026-05-27
+
+Feature `recall-memory-mirror`: o `cstk recall` agora indexa e busca os
+arquivos `.md` de auto-memoria do Claude Code (`~/.claude/projects/<encoded>/memory/`),
+integrando-os na FTS unificada do `knowledge.db`. Schema v4.
+
+### Added
+
+- **`cli/lib/recall.sh` — schema v4**: nova tabela `memories (project, slug,
+  type, description, body_scrubbed, path, indexed_at)` com chave primaria
+  `(project, slug)`. `RECALL_SCHEMA_VERSION` bumped de `3` para `4`.
+  `RECALL_TYPE_ENUM` extendido com `memory`.
+- **`cstk recall --ingest` (aditivo)**: apos ingerir telemetria do `state.json`,
+  indexa os `.md` em `~/.claude/projects/<encoded>/memory/` do projeto alvo.
+  Cada `.md` vira uma entrada em `memories` e uma linha em `knowledge_fts`
+  (`type='memory'`, `feature='memory'`, `wave='-'`). Body e description passam
+  por `secrets-filter.sh scrub`. Linha de status extendida com `, N memories`.
+- **`cstk recall --reindex` (aditivo)**: reconstroi `memories` varrendo
+  `~/.claude/projects/*/memory/` no disco via reverse-derivation. Invariante
+  C-004: NUNCA le do `state.json` para reconstruir memorias.
+- **`cstk recall --type memory`**: filtra busca FTS retornando so memorias; ex:
+  `cstk recall "setup" --type memory`.
+- **`cstk recall --list-memories [--project P]`**: lista slug + description de
+  todas as memorias indexadas (sem body), util para auditoria. Formato:
+  `<project> / <type> / <slug> — <description>`.
+- **Degradacao graciosa**: todos os novos caminhos (ingest/reindex/list-memories
+  de memories) degradam graciosamente quando `sqlite3`, `jq` ou `secrets-filter`
+  estao ausentes — exit 0 com aviso; nunca abortam o fluxo de ingestao.
+
+### Notes
+
+- A tabela `memories` e puramente derivada (indice); o `state.json` transacional
+  nao e tocado. Base inteira reconstruivel via `cstk recall --reindex`.
+- Projetos com underscore no basename podem apresentar `project` inconsistente
+  entre ingest e reindex (limitacao CQ1 documentada em `data-model.md`).
+- `--ingest` inclui memories so se o `state.json` contem `projeto_alvo_path`;
+  `--reindex` inclui todos os projetos com diretorio `memory/` no HOME.
+- Entrega: `recall.sh` e runtime — chega a copia instalada via
+  `cstk self-update --from <tarball>` (nao via `cstk install/update`).
+
 ## [4.9.1] - 2026-05-27
 
 Corrige um falso positivo no painel (`cstk-panel`): execuções **finalizadas com
