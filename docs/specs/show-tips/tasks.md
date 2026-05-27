@@ -162,11 +162,11 @@ Ref: contracts/cli-show-tip.md §Despacho; plan §Project Structure
 
 Ref: plan §Project Structure; contratos herdados de `cstk recall`
 
-- [ ] 3.1.1 Adicionar `show-tip)` ao `case` do `_dispatch` em `cli/cstk`, seguindo o padrao exato de `recall)` (resolve `cli/lib/show-tip.sh`, source, chama `show_tip_main "$@"`)
-- [ ] 3.1.2 Adicionar `show-tip` a lista de comandos validos na mensagem de erro de comando desconhecido (`printf 'Comandos validos: ...'`)
-- [ ] 3.1.3 Adicionar entrada de help em `_cmd_help` para `show-tip` (uma linha descritiva, referencia ao contrato)
-- [ ] 3.1.4 Testar `cstk show-tip --help` retorna descricao e sai com exit 0
-- [ ] 3.1.5 Testar `cstk show-tip` (sem args) retorna um Tip Block ou string vazia, exit 0
+- [x] 3.1.1 Adicionar `show-tip)` ao `case` do `_dispatch` em `cli/cstk`, seguindo o padrao exato de `recall)` (resolve `cli/lib/show-tip.sh`, source, chama `show_tip_main "$@"`)
+- [x] 3.1.2 Adicionar `show-tip` a lista de comandos validos na mensagem de erro de comando desconhecido (`printf 'Comandos validos: ...'`)
+- [x] 3.1.3 Adicionar entrada de help em `_cmd_help` para `show-tip` (uma linha descritiva, referencia ao contrato)
+- [x] 3.1.4 Testar `cstk show-tip --help` retorna descricao e sai com exit 0
+- [x] 3.1.5 Testar `cstk show-tip` (sem args) retorna um Tip Block ou string vazia, exit 0
 
 ---
 
@@ -181,18 +181,18 @@ Ref: plan §Project Structure; contratos herdados de `cstk recall`
 
 Ref: spec §US4; contracts/cli-show-tip.md §Contrato de integracao
 
-- [ ] 4.1.1 Identificar o ponto exato no Loop principal do `agente-00c-orchestrator.md` onde a dica deve ser exibida (apos `state-ondas.sh start`, antes do primeiro Skill())
-- [ ] 4.1.2 Adicionar invocacao fail-silent ao orchestrator: `TIP=$(cstk show-tip --phase "$FASE" 2>/dev/null) || TIP=""; [ -n "$TIP" ] && printf '%s\n' "$TIP"`
-- [ ] 4.1.3 Verificar que a invocacao nao bloqueia nem introduz dependency de `show-tip.sh` como MUST — deve ser `|| TIP=""` sempre
-- [ ] 4.1.4 Testar que uma onda completa com `cstk show-tip` ausente/inacessivel nao falha (SC-003)
+- [x] 4.1.1 Identificar o ponto exato no Loop principal do `agente-00c-orchestrator.md` onde a dica deve ser exibida (apos `state-ondas.sh start`, antes do primeiro Skill())
+- [x] 4.1.2 Adicionar invocacao fail-silent ao orchestrator: `TIP=$(cstk show-tip --phase "$FASE" 2>/dev/null) || TIP=""; [ -n "$TIP" ] && printf '%s\n' "$TIP"`
+- [x] 4.1.3 Verificar que a invocacao nao bloqueia nem introduz dependency de `show-tip.sh` como MUST — deve ser `|| TIP=""` sempre
+- [x] 4.1.4 Testar que uma onda completa com `cstk show-tip` ausente/inacessivel nao falha (SC-003)
 
 ### 4.2 Integracao no `feature-00c-orchestrator` [M]
 
 Ref: spec §US4; contracts/cli-show-tip.md §Contrato de integracao
 
-- [ ] 4.2.1 Identificar o ponto equivalente no `agente-00c-feature-orchestrator.md` (Loop principal, apos start da onda)
-- [ ] 4.2.2 Adicionar invocacao fail-silent identica ao padrao de 4.1.2
-- [ ] 4.2.3 Verificar que a invocacao respeita FR-006 (nao interrompe onda)
+- [x] 4.2.1 Identificar o ponto equivalente no `agente-00c-feature-orchestrator.md` (Loop principal, apos start da onda)
+- [x] 4.2.2 Adicionar invocacao fail-silent identica ao padrao de 4.1.2
+- [x] 4.2.3 Verificar que a invocacao respeita FR-006 (nao interrompe onda)
 
 ---
 

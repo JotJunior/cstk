@@ -66,10 +66,21 @@ _st_resolve_repo_root() {
     printf '%s\n' "$CSTK_REPO_ROOT"
     return 0
   fi
-  # Layout de dev: este script esta em cli/lib/; raiz = dois niveis acima.
+  # Quando sourced via cstk, CSTK_LIB aponta para cli/lib/; raiz = dois niveis acima.
+  if [ -n "${CSTK_LIB:-}" ]; then
+    _st_root=$(unset CDPATH; cd -- "$CSTK_LIB/../.." && pwd 2>/dev/null) || _st_root=""
+    if [ -n "$_st_root" ]; then
+      printf '%s\n' "$_st_root"
+      return 0
+    fi
+  fi
+  # Layout de dev / invocacao direta: este script esta em cli/lib/; raiz = dois niveis acima.
+  # Nota: quando sourced, $0 e o script que fez o source (nao este arquivo);
+  # CSTK_LIB deve estar definido nesse caso para a resolucao funcionar.
   _st_script_dir=$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd 2>/dev/null) \
     || { printf '' ; return 0; }
-  # Sobe dois niveis: cli/lib/ -> cli/ -> raiz
+  # Sobe dois niveis: cli/lib/ -> cli/ -> raiz (so funciona corretamente se
+  # $0 e este proprio script, i.e. invocacao direta, nao via source)
   _st_root=$(cd -- "$_st_script_dir/../.." && pwd 2>/dev/null) || _st_root=""
   printf '%s\n' "$_st_root"
 }

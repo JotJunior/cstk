@@ -197,6 +197,16 @@ Sequencia da onda corrente. Cada iteracao:
    d. retro.sh check        → 3a retro? bloqueio humano (FR-010)
 4. budget.sh check
    - se threshold atingido → encerrar onda + Schedule intent
+4.ter (best-effort, ADITIVO — dica de onda, US4 — FR-006):
+    Exibir dica da skill correspondente a fase corrente. Fail-silent absoluto:
+    nao bloqueia nem falha se cstk/show-tip.sh ausentes ou catalogo indisponivel.
+    ```sh
+    FASE=$(state-rw.sh get --state-dir "$SD" --field '.etapa_corrente' 2>/dev/null) || FASE=""
+    TIP=$(cstk show-tip --phase "$FASE" 2>/dev/null) || TIP=""
+    [ -n "$TIP" ] && printf '%s\n' "$TIP"
+    ```
+    REGRA DURA: este passo NUNCA gateia a onda. Qualquer erro (cstk ausente,
+    catalogo nao encontrado, fase sem mapeamento) resulta em no-op silencioso.
 4.bis (best-effort, ADITIVO — read-back loop, FR-008/010/011/016):
     SOMENTE no inicio das fases `specify` e `plan` (NUNCA clarify/
     execute-task/gate/review — FR-010), executar o passo PRE-DECISAO

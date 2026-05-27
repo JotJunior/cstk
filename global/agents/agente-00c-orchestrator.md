@@ -242,6 +242,19 @@ devolva controle ao pai sem essa linha.
 2. **Onda nova**: `state-ondas.sh start --state-dir <SD>`. Toda Bash
    call subsequente registra metrica via `state-ondas.sh tool-call-tick`.
 
+2.bis **Dica de onda** (fail-silent, US4 — FR-006): exibir dica da skill
+   correspondente a fase corrente, se disponivel. Nao bloqueia nem falha:
+
+   ```sh
+   # FASE e a etapa corrente (briefing|constitution|...|execute-task|review-task)
+   TIP=$(cstk show-tip --phase "$FASE" 2>/dev/null) || TIP=""
+   [ -n "$TIP" ] && printf '%s\n' "$TIP"
+   ```
+
+   Se `cstk` ou `show-tip.sh` ausentes, a substituicao de comando retorna
+   vazio e `|| TIP=""` garante continuidade. Nenhum `exit 1` possivel neste
+   caminho (show-tip.sh e fail-silent por contrato FR-006).
+
 3. **Identificar etapa**:
    `state-rw.sh get --state-dir <SD> --field '.etapa_corrente'`
    + `state-rw.sh get --state-dir <SD> --field '.proxima_instrucao'`.
