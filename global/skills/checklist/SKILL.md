@@ -60,9 +60,9 @@ completude dos requisitos escritos em linguagem natural.
      |
 2. CLARIFICACAO    Perguntas de escopo (max 3)
      |
-3. GERACAO         Criar checklist por dimensoes de qualidade
+3. GERACAO         Criar items (com dono {auto}/{humano}) e auto-resolver {auto}
      |
-4. SALVAMENTO      Salvar e reportar
+4. SALVAMENTO      Salvar, consolidar follow-up dos gaps e reportar
 ```
 
 ---
@@ -131,15 +131,15 @@ Organizar items por dimensao:
 
 ### 3.2 Como Escrever Items
 
-**PADRAO CORRETO** — Testar QUALIDADE do requisito:
+**PADRAO CORRETO** — Testar QUALIDADE do requisito (cada item termina com o dono `{auto}`/`{humano}` — ver 3.2.1):
 
 ```markdown
-- [ ] CHK001 - Sao os requisitos de [tipo] definidos/especificados para [cenario]? [Completude]
-- [ ] CHK002 - E '[termo vago]' quantificado com criterios especificos? [Clareza, Spec §FR-2]
-- [ ] CHK003 - Sao requisitos consistentes entre [secao A] e [secao B]? [Consistencia]
-- [ ] CHK004 - Pode [requisito] ser objetivamente medido/verificado? [Mensurabilidade]
-- [ ] CHK005 - Sao [edge cases/cenarios] cobertos nos requisitos? [Cobertura]
-- [ ] CHK006 - A spec define [aspecto ausente]? [Gap]
+- [ ] CHK001 - Sao os requisitos de [tipo] definidos/especificados para [cenario]? [Completude] {auto}
+- [ ] CHK002 - E '[termo vago]' quantificado com criterios especificos? [Clareza, Spec §FR-2] {auto}
+- [ ] CHK003 - Sao requisitos consistentes entre [secao A] e [secao B]? [Consistencia] {auto}
+- [ ] CHK004 - Pode [requisito] ser objetivamente medido/verificado? [Mensurabilidade] {auto}
+- [ ] CHK005 - Sao [edge cases/cenarios] cobertos nos requisitos? [Cobertura] {auto}
+- [ ] CHK006 - A priorizacao de risco entre [X] e [Y] reflete o apetite do produto? [Risco] {humano}
 ```
 
 **PROIBIDO** — Testar implementacao:
@@ -149,6 +149,22 @@ Organizar items por dimensao:
 - Testar se hover states funcionam no desktop (ERRADO — testa comportamento)
 - Confirmar que o logo clica para home (ERRADO — testa funcionalidade)
 ```
+
+### 3.2.1 Dono de cada item — quem resolve o `[x]`
+
+Todo item termina com um rotulo de dono:
+
+- `{auto}` — **verificavel contra a spec/plan**: o agente resolve lendo o
+  artefato e citando a evidencia (ex: "a spec define X?", "'proeminente' esta
+  quantificado?"). O conflito de interesse do auto-review e baixo porque a
+  evidencia e citavel e auditavel.
+- `{humano}` — **julgamento de valor/risco/negocio**: depende de contexto que
+  o agente nao tem (apetite de risco, prioridade comercial, profundidade
+  adequada para release). Fica `[ ]` aguardando o dono do produto.
+
+Criterio: se da para responder SO com os artefatos + evidencia citavel, e
+`{auto}`; se depende de preferencia ou trade-off de negocio, e `{humano}`. Na
+duvida, `{humano}` — nunca finja decidir o que cabe ao dono do produto.
 
 ### 3.3 Exemplos por Dominio
 
@@ -185,19 +201,33 @@ Esses sao ponto de partida — nao copiar sem adaptar ao contexto da feature.
 
 ## [Categoria 1]
 
-- [ ] CHK001 - [Item de checklist com referencia] [Dimensao, Ref]
-- [ ] CHK002 - [Item] [Dimensao, Ref]
+- [ ] CHK001 - [Item de checklist com referencia] [Dimensao, Ref] {auto|humano}
+- [ ] CHK002 - [Item] [Dimensao, Ref] {auto|humano}
 
 ## [Categoria 2]
 
-- [ ] CHK003 - [Item] [Dimensao, Ref]
-- [ ] CHK004 - [Item] [Dimensao, Ref]
+- [ ] CHK003 - [Item] [Dimensao, Ref] {auto|humano}
+- [ ] CHK004 - [Item] [Dimensao, Ref] {auto|humano}
 
 ## Notes
 
+- Items `{auto}` ja vem resolvidos pelo agente (`[x]` com citacao, ou marcador `[Gap]`)
+- Items `{humano}` ficam `[ ]` aguardando decisao do dono do produto
 - Marcar items concluidos com `[x]`
 - Items numerados sequencialmente para referencia
 ```
+
+### 3.7 Auto-resolucao dos items `{auto}`
+
+Antes de salvar, percorra cada item `{auto}` e resolva-o contra a spec/plan:
+
+- **Satisfeito** → `[x]` com a citacao que prova: `- [x] CHK001 - ... [Completude, Spec §4.2] {auto}`.
+- **Nao satisfeito** → mantenha `[ ]` e marque `[Gap]`, `[Ambiguity]` ou `[Conflict]`, citando o que falta.
+- **Sem evidencia para decidir** → reclassifique como `{humano}` e deixe `[ ]`.
+
+No mesmo espirito da ETAPA 0 do `execute-task` (evidence over claims): marcar
+`[x]` sem citar a secao que sustenta NAO vale — e alegacao, nao verificacao.
+Items `{humano}` nunca sao auto-marcados.
 
 ---
 
@@ -229,12 +259,34 @@ Criar diretorio `checklists/` se nao existir.
 - [Area 1]
 - [Area 2]
 
+### Resolucao
+
+- **{auto} resolvidos**: [X] (`[x]` com evidencia citada)
+- **{humano} aguardando decisao**: [Y]
+- **Gaps abertos** (`[Gap]`/`[Ambiguity]`/`[Conflict]`): [Z]
+
 ### Proximos Passos
 
-- Revisar e marcar items como `[x]`
-- `/checklist [outro-dominio]` — Gerar checklist para outro dominio
-- `/plan` ou `/create-tasks` — Prosseguir com o fluxo SDD
+- Decidir os [Y] items `{humano}` em aberto (dono do produto)
+- `/clarify` — resolver os `[Ambiguity]`/`[Conflict]`
+- `/create-tasks` — os `[Gap]` viram tarefas de requisito (consumo automatico)
+- `/checklist [outro-dominio]` — outro dominio
 ```
+
+### 4.4 Follow-up obrigatorio — gaps viram acao, nao ficam no checklist
+
+O valor do checklist esta em revelar gaps que viram ACAO — nao em ficar verde.
+De a cada item aberto um destino explicito:
+
+| Marcador | Destino |
+|----------|---------|
+| `[Ambiguity]`, `[Conflict]` | `/clarify` — re-resolver na spec |
+| `[Gap]` (requisito ausente) | `/create-tasks` — vira tarefa "definir/especificar X" |
+| `{humano}` em aberto | decisao do dono do produto antes de `/execute-task` |
+
+Um `[Gap]` varrido para baixo do tapete e a UNICA forma de o checklist falhar
+de verdade: um checklist meio-marcado cujos gaps viraram acao cumpriu o papel;
+um 100% verde cujos gaps foram ignorados, nao.
 
 ---
 

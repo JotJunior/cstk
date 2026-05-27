@@ -55,6 +55,20 @@ Analise o argumento fornecido. Ele pode ser:
 **Se chamado de forma isolada** (sem spec associada):
 - Manter o comportamento padrao: `docs/tasks-{nome-escopo}.md`
 
+### Consumir gaps abertos do checklist (origem SDD)
+
+Se a origem e uma spec, ANTES de decompor leia
+`docs/specs/{name}/checklists/*.md` e colete os items ainda abertos marcados
+`[Gap]` ou `[Conflict]` (e `{humano}` pendentes que impliquem trabalho). Cada um
+vira uma tarefa de resolucao de requisito no backlog — tipicamente numa FASE
+inicial de fundacao/requisitos — com `Ref: checklists/{dominio}.md CHK0NN`.
+
+Razao: o `checklist` roda depois do `clarify` no pipeline, entao os gaps que ele
+revela nao tem outra fase natural para serem fechados a nao ser esta. Sem este
+consumo, o gap morre no checklist (write-only) e a feature e implementada sobre
+um requisito que ninguem fechou. Fecha o loop checklist -> backlog sem reordenar
+o pipeline.
+
 ### Fluxo de Criacao
 
 ```
