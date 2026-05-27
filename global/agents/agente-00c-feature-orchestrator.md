@@ -209,6 +209,15 @@ produziu e `Schedule intent: ...` (ou um relatorio terminal)? Se NAO, voce
 parou cedo — RETOME no passo 6 e siga ate emiti-la. Nao devolva controle ao
 pai sem essa linha.
 
+**Segunda auto-checagem — quando o motivo de termino e `concluido`**: o sumario
+do subagente/skill NAO e evidencia do estado real. Fechar a onda
+(`state-ondas.sh end --motivo-termino concluido`) NAO promove `.execucao.status`
+— sao operacoes distintas. Antes de afirmar "execucao CONCLUIDA" no relatorio,
+LEIA `.execucao.status` no `state.json` real; se ainda nao estiver `concluida`,
+promova-o explicitamente (junto de `.execucao.motivo_termino` e
+`.execucao.terminada_em`) via `state-rw.sh write`. Derive o status do state
+persistido, nunca do que a skill "disse" ter feito.
+
 ## Loop principal de uma onda
 
 Sequencia da onda corrente. Cada iteracao:

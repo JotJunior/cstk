@@ -373,6 +373,13 @@ guiada pelos principios desta secao 4.2.
 
 ## ETAPA 5: TESTES
 
+**"Nao aplicavel" exige justificativa — nao e o default.** Pular testes porque
+a tarefa "e pequena/trivial/so-doc" e a racionalizacao #1 de regressao (ver
+Gotcha "Nao pular etapa de testes/lint"). Se voce NAO vai rodar testes, declare
+explicitamente o porque (ex: "tarefa puramente de documentacao, sem codigo
+executavel") — silencio nao conta como decisao. Havendo codigo executavel
+tocado, rodar e obrigatorio.
+
 ### 5.1 Para Projetos de Codigo
 
 ```bash
@@ -479,6 +486,19 @@ esses — nao inventar comandos fora da convencao do projeto.
 - [x] Consistencia verificada
 - [x] Lint executado
 ```
+
+### 8.2 Gate de evidencia — o relatorio NAO e a prova
+
+Cada `[x]` acima exige evidencia REAL, no mesmo espirito da ETAPA 0: marcar
+"Testes executados: X passaram" sem ter rodado, ou "Lint executado" sem ver o
+output, e alegacao — nao conclusao. Antes de declarar a tarefa concluida, cite
+o fragmento literal que sustenta cada `[x]` (linha de sumario do runner, exit
+code do build). Se nao rodou, escreva "nao executado: <motivo>" — nunca um
+`[x]` otimista.
+
+> **Violar a letra do gate e violar o espirito do gate.** "Provavelmente passa"
+> nao e evidencia; o sumario que voce escreve nao prova nada — o output do
+> comando prova.
 
 ---
 
