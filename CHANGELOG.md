@@ -5,6 +5,26 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [4.7.1] - 2026-05-27
+
+Corrige `cstk serve`: o frontend (Vite) abortava com `Failed to resolve entry
+for package "@cstk-panel/shared-types"`. O painel e uma arvore-fonte e o web
+importa o workspace lib `@cstk-panel/shared-types`, cujo `package.json` aponta
+`main` para `dist/index.js` — que nao existe ate o `npm run build`. O `cstk serve`
+rodava `npm run dev` sem buildar, entao o Vite nao resolvia o pacote.
+
+### Fixed
+
+- **`cstk serve` agora roda `npm run build` antes de `npm run dev`**: compila os
+  workspaces (gera `packages/shared-types/dist`, etc.) para que o Vite resolva
+  `@cstk-panel/shared-types`. O build e idempotente e roda a cada start, cobrindo
+  tambem instalacoes feitas sem build. Se o build falhar, o comando sai com erro
+  (sugerindo `--reinstall`) e nao tenta iniciar o painel.
+
+> Contexto: a validacao anterior do modo dev (4.6.1) passou por acaso porque o
+> painel havia sido buildado manualmente durante a investigacao; numa instalacao
+> limpa (`npm install` apenas) o `dist/` do shared-types nao existia.
+
 ## [4.7.0] - 2026-05-27
 
 Adiciona a flag `cstk serve --update`: atualiza o painel `cstk-panel` para a

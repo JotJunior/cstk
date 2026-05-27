@@ -295,9 +295,11 @@ Start the cstk panel web interface. On first run, downloads the latest
 release from GitHub and installs it locally. Subsequent runs reuse the
 cached installation.
 
-The panel runs in dev mode: the API (Fastify, port 3001) and the web
-frontend (Vite, port 5173) are started together, with Vite proxying
-/api to the API. Open http://127.0.0.1:5173 in your browser.
+The panel runs in dev mode: it first compiles the workspace packages
+(npm run build — required so Vite can resolve @cstk-panel/shared-types),
+then starts the API (Fastify, port 3001) and the web frontend (Vite,
+port 5173) together, with Vite proxying /api to the API. Open
+http://127.0.0.1:5173 in your browser.
 
 Options:
   --port PORT     Validated (integer 1024-65535) for compatibility, but in
@@ -454,6 +456,18 @@ HELP
   if [ "$_serve_port" != "5173" ]; then
     printf 'cstk serve: aviso: em modo dev a UI e servida pelo Vite na porta 5173; --port %s sera ignorado\n' \
       "$_serve_port" >&2
+  fi
+
+  # `npm run build` ANTES do dev (a dica: build && dev). O tarball e a
+  # arvore-fonte; o frontend Vite resolve o workspace lib @cstk-panel/shared-types
+  # via o package.json dele (main -> dist/index.js). Sem o build esse dist/ nao
+  # existe e o Vite aborta com "Failed to resolve entry for package
+  # @cstk-panel/shared-types". O build compila os workspaces (shared-types/server/
+  # web) e e idempotente; roda a cada start para cobrir instalacoes sem build.
+  printf 'cstk serve: compilando painel (npm run build)...\n'
+  if ! (cd "$_serve_panel_dir" && npm run build); then
+    printf 'cstk serve: erro: npm run build falhou; tente --reinstall\n' >&2
+    return 1
   fi
 
   printf 'cstk serve: iniciando painel (API + frontend) em http://127.0.0.1:5173  (Ctrl+C para encerrar)\n'

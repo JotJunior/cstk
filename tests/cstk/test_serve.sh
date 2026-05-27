@@ -152,13 +152,33 @@ _stub_npm_exit_code() {
   _snec_exit="$2"
   cat > "$_snec_bin/npm" <<STUB
 #!/bin/sh
-case "\$1" in
-  install) exit 0 ;;
-  run) exit ${_snec_exit} ;;
+# install e \`run build\` saem 0 (o serve builda antes do dev); apenas
+# \`run dev\`/\`run start\` falha com o exit code configurado — simula saida
+# espontanea do painel sem que o build do launch intercepte o caminho.
+case "\$1 \$2" in
+  "run build") exit 0 ;;
+  "run dev"|"run start") exit ${_snec_exit} ;;
   *) exit 0 ;;
 esac
 STUB
   chmod +x "$_snec_bin/npm"
+}
+
+# _stub_npm_build_fails: npm que aceita install e falha em `run build` (exit 2,
+# mensagem em stderr) — cobre o caminho de erro do build no launch (serve deve
+# sair 1 sem chegar ao `run dev`).
+# $1 = dir de stubs
+_stub_npm_build_fails() {
+  _snbf_bin="$1"
+  cat > "$_snbf_bin/npm" <<'STUB'
+#!/bin/sh
+if [ "$1" = "run" ] && [ "$2" = "build" ]; then
+  printf 'tsc: erro de compilacao simulado\n' >&2
+  exit 2
+fi
+exit 0
+STUB
+  chmod +x "$_snbf_bin/npm"
 }
 
 # _stub_npm_logging: npm que LOGA cada chamada (args + PORT herdado do env) em
@@ -626,6 +646,28 @@ scenario_serve_lanca_modo_dev() {
     _fail "modo_dev_nao_start" "serve ainda invoca 'npm run start' (so a API)"
     return 1
   fi
+  # E deve compilar (npm run build) ANTES do dev (resolve @cstk-panel/shared-types).
+  if ! grep -q 'cmd=\[run build' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null; then
+    _fail "modo_dev_build" "serve nao invocou 'npm run build' antes do dev"
+    return 1
+  fi
+}
+
+scenario_serve_build_falha_exit1() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_build_fails "$_STUB_BIN"
+  _run_serve
+  # Build falho no launch -> exit 1, sem chegar ao dev.
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "build_falha_exit" "esperado exit 1, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'build'; then
+    _fail "build_falha_msg" "stderr nao menciona falha de build"
+    return 1
+  fi
 }
 
 scenario_serve_nao_forca_port_na_api() {
@@ -802,10 +844,11 @@ _stub_npm_ignores_sigterm() {
   _snist_bin="$1"
   cat > "$_snist_bin/npm" <<'STUB'
 #!/bin/sh
-# Aceitar install normalmente; para "run start", ignorar SIGTERM por 2 ciclos
-case "$1" in
-  install) exit 0 ;;
-  run)
+# install e `run build` saem 0 (o serve builda antes do dev); so `run dev`/
+# `run start` (o filho de longa duracao) ignora SIGTERM por alguns ciclos.
+case "$1 $2" in
+  "run build") exit 0 ;;
+  "run dev"|"run start")
     # Registrar handler SIGTERM que NAO encerra o processo (ignora o sinal)
     trap '' TERM
     # Aguardar com sleep em loop; o SIGKILL (enviado apos grace period) vai
