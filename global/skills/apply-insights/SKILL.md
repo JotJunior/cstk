@@ -1,6 +1,6 @@
 ---
 name: apply-insights
-description: 'Apply Claude Code usage insights to current project — improve CLAUDE.md, hooks, workflows. Triggers: "aplicar insights", "otimizar fluxo", "melhorar claude.md". Consumes the native /insights output (~/.claude/usage-data/facets/*.json) as PRIMARY data source via scripts/digest-facets.sh; falls back to curated ~/.claude/insights/usage-insights.md. This is the APPLY step, not the native /insights command.'
+description: 'Apply Claude Code usage insights to current project — improve CLAUDE.md, hooks, workflows. Triggers: "aplicar insights", "otimizar fluxo", "melhorar claude.md". This is the APPLY step that consumes /insights output, not the native /insights command itself.'
 argument-hint: "[area especifica: bugfix | migrations | conventions | hooks | all]"
 allowed-tools:
   - Read

@@ -1,6 +1,6 @@
 ---
 name: execute-task
-description: 'Execute a backlog task following 9-step workflow (analysis, localization, planning, implementation, tests, validation, lint, conclusion, update). Triggers: "executar tarefa", "execute task", "implementar tarefa". Skip for create-tasks/plan/bugfix.'
+description: 'Execute one backlog task end-to-end following the project mandatory step-by-step workflow with hard gates. Triggers: "executar tarefa", "execute task <id>", "implementar tarefa". Skip for building the backlog (create-tasks), technical planning (plan), or bug investigation (bugfix).'
 argument-hint: "[ID ou descricao da tarefa a executar]"
 allowed-tools:
   - Read

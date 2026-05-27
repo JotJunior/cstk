@@ -1,6 +1,6 @@
 ---
 name: decision-tree
-description: 'Gera um relatorio HTML interativo em forma de ARVORE DE DECISAO a partir do state.json de uma execucao do orquestrador agente-00c/feature-00c. Cada Decisao de .decisoes[] vira um no; os galhos sao as opcoes_consideradas e o galho da escolha (tronco) conecta cronologicamente a Decisao seguinte. Use quando o operador pedir para "visualizar/desenhar a arvore de decisoes", "fluxograma das decisoes da IA", "relatorio das decisoes do state.json", "como a IA decidiu", ou similar. NAO use para gerar metricas agregadas de selecao de modelo (use model-routing-report.sh) nem para auditar status de tarefas (use review-task).'
+description: 'Gera um relatorio HTML interativo em arvore de decisao a partir do state.json de uma execucao agente-00c/feature-00c. Use quando o operador pedir para "visualizar/desenhar a arvore de decisoes", "fluxograma das decisoes da IA", "relatorio das decisoes do state.json", "como a IA decidiu", ou similar. NAO use para metricas agregadas de selecao de modelo (use model-routing-report.sh) nem para auditar status de tarefas (use review-task).'
 argument-hint: "[caminho para o state.json] [arquivo .html de saida opcional]"
 allowed-tools:
   - Read
