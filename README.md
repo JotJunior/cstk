@@ -706,19 +706,17 @@ automaticamente a release mais recente de
 `~/.local/share/cstk/panel`. Execuções subsequentes reutilizam a instalação em
 cache.
 
-O painel roda em **modo dev**: o `cstk serve` compila os workspaces
-(`npm run build` — necessário para que o Vite resolva o pacote interno
-`@cstk-panel/shared-types`) e então sobe, em paralelo, a **API** (Fastify,
-porta 3001) e o **frontend** (Vite, porta 5173), com o Vite servindo o SPA e
-proxiando `/api` para a API. Abra **http://127.0.0.1:5173** no navegador.
-(O painel não tem serving estático de produção, por isso o modo dev é o que
-exibe a interface completa.)
+O `cstk serve` compila os workspaces (`npm run build` — shared-types, server e
+web) e então sobe um **único processo Fastify** (`npm run start`) que serve a
+**API e o SPA buildado** (`apps/web/dist`) na **mesma porta**. Não há mais modo
+dev nem proxy do Vite. Abra **http://127.0.0.1:5173** (ou a porta de `--port`)
+no navegador. Requer `cstk-panel >= 0.2.0`.
 
 **Dependências**: `curl`, `npm` e `node` (Node.js) disponíveis no PATH — o
 `npm install` traz as devDependencies necessárias ao build do painel.
 
 ```bash
-cstk serve                      # compila e inicia API + frontend (UI em http://127.0.0.1:5173)
+cstk serve                      # compila e inicia o painel (API + SPA na mesma porta, http://127.0.0.1:5173)
 cstk serve --update             # atualiza o painel se houver release nova, depois inicia
 cstk serve --reinstall          # remove e reinstala do zero, depois inicia
 ```
@@ -729,7 +727,7 @@ cstk serve --reinstall          # remove e reinstala do zero, depois inicia
 |------|--------|-----------|
 | `--update` | — | Consulta o GitHub e reinstala o painel **somente** se houver release mais nova (best-effort: falha de rede/API mantém a versão instalada e o painel inicia normalmente). |
 | `--reinstall` | — | Remove a instalação existente e reinstala do GitHub (incondicional; ignora `--update`). |
-| `--port PORT` | `5173` | Validado (1024–65535) por compatibilidade; em modo dev a UI é servida pelo Vite na 5173 e o flag não altera essa porta (aviso se ≠ 5173). |
+| `--port PORT` | `5173` | Porta onde o servidor Fastify escuta (inteiro 1024–65535; também lê `$PORT`). O painel binda essa porta diretamente. |
 | `--host HOST` | `127.0.0.1` | Host de bind (apenas loopback tem suporte completo). |
 | `--help`, `-h` | — | Exibe ajuda e sai. |
 
