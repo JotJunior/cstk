@@ -5,6 +5,25 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.2.0] - 2026-05-28
+
+Correção de perda de informação na ingestão de decisões do `knowledge.db`.
+Descoberta: ao gravar uma decisão, só a opção escolhida (`escolha`) era
+indexada — todas as outras opções avaliadas (`opcoes_consideradas` no
+`state.json`) eram descartadas, perdendo o contexto de *quais alternativas
+foram consideradas e rejeitadas*. Schema v6 (aditivo).
+
+### Added
+
+- **`cli/lib/recall.sh` — schema v6**: nova coluna `decisions.opcoes (TEXT)`,
+  alimentada por `.decisoes[].opcoes_consideradas` do `state.json` (array JSON
+  serializado via `tojson` — todas as opções avaliadas, não só a escolhida).
+  Entra também no corpo pesquisável da FTS (`type='decision'`), então buscar
+  por uma opção *não escolhida* recupera a decisão. `RECALL_SCHEMA_VERSION`
+  5 → 6. Migração idempotente `ALTER TABLE decisions ADD COLUMN opcoes` para
+  DBs v<6 (checada via `PRAGMA table_info`, espelhando `tasks.titulo`);
+  `--reindex` retro-alimenta o histórico já indexado.
+
 ## [5.1.0] - 2026-05-28
 
 Feature `recall-suggestions` + correção de robustez na ingestão do `knowledge.db`.

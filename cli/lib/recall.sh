@@ -75,7 +75,12 @@ RECALL_EXIT_USAGE=2
 # state.json — diagnostico/proposta/referencias) + enum suggestion + corpo na
 # FTS (type='suggestion'). Aditivo: CREATE TABLE IF NOT EXISTS cria a tabela
 # nova em DBs v<5 sem perda; --reindex retro-alimenta o historico.
-RECALL_SCHEMA_VERSION=5
+# v6 (decisions.opcoes): + coluna decisions.opcoes (JSON array de
+# .decisoes[].opcoes_consideradas — todas as opcoes avaliadas, nao so a
+# escolhida) + corpo na FTS. Aditivo: ALTER TABLE ADD COLUMN idempotente em
+# DBs v<6 (SQLite nao tem ADD COLUMN IF NOT EXISTS — checado via PRAGMA);
+# --reindex retro-alimenta o historico.
+RECALL_SCHEMA_VERSION=6
 RECALL_TYPE_ENUM="decision bloqueio retro skill memory suggestion"
 
 # ==== Resolucao do caminho do DB ====
@@ -335,7 +340,7 @@ recall_pragmas() {
 # Todo CREATE e IF NOT EXISTS — aplicavel em qualquer abertura do DB.
 #
 # body por tipo (concatenacao textual pesquisavel):
-#   decision   = escolha + contexto + justificativa + evidencia
+#   decision   = escolha + opcoes + contexto + justificativa + evidencia
 #   bloqueio   = pergunta + contexto_para_resposta + resposta
 #   retro      = texto
 #   skill      = skill_name
@@ -353,6 +358,7 @@ CREATE TABLE IF NOT EXISTS decisions (
   agente TEXT,
   etapa TEXT,
   escolha TEXT,
+  opcoes TEXT,
   score INTEGER,
   contexto TEXT,
   justificativa TEXT,
@@ -573,6 +579,15 @@ recall_apply_schema() {
       ''|*'|titulo|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
       *) _as_extra='
 ALTER TABLE tasks ADD COLUMN titulo TEXT;' ;;
+    esac
+    # Migracao idempotente v5->v6: decisions.opcoes (mesma logica de tasks.titulo
+    # acima — DDL nao altera tabela ja criada, entao indices pre-v6 nao ganhariam
+    # a coluna e o INSERT seguinte falharia com "no such column").
+    _as_dcols=$(printf 'PRAGMA table_info(decisions);\n' | sqlite3 -- "$1" 2>/dev/null) || _as_dcols=""
+    case "$_as_dcols" in
+      ''|*'|opcoes|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
+      *) _as_extra="$_as_extra
+ALTER TABLE decisions ADD COLUMN opcoes TEXT;" ;;
     esac
   fi
   recall_apply_sql_with_retry "$1" "$(recall_schema_ddl)$_as_extra"
@@ -971,7 +986,9 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
 
   # ---- decisions ----
   # Campos reais do state.json: id, onda_id (wave), timestamp, etapa, agente,
-  # escolha, score_justificativa (score), contexto, justificativa, evidencia.
+  # escolha, score_justificativa (score), contexto, justificativa, evidencia,
+  # opcoes_consideradas (array de todas as opcoes avaliadas — serializado como
+  # texto JSON via tojson para caber numa coluna TEXT).
   _isj_n_dec=0
   _isj_dec_lines=$(jq -r '
     (.decisoes // [])
@@ -985,7 +1002,8 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
        ((.value.score // .value.score_justificativa // "")|tostring),
        (.value.contexto // ""),
        (.value.justificativa // ""),
-       (.value.evidencia // "")]
+       (.value.evidencia // ""),
+       ((.value.opcoes_consideradas // []) | tojson)]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_dec_lines=""
   if [ -n "$_isj_dec_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -1003,6 +1021,10 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _f_ctx=$(printf '%s' "$_isj_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
       _f_just=$(printf '%s' "$_isj_decoded" | jq -r '.[8]' 2>/dev/null | strip_nul)
       _f_ev=$(printf '%s' "$_isj_decoded" | jq -r '.[9]' 2>/dev/null | strip_nul)
+      # opcoes_consideradas chega ja como texto JSON (tojson na extracao).
+      # Estruturado (espelha .escolha, que tambem nao passa por scrub) — guarda
+      # o array integro; scrub poderia mutilar a sintaxe JSON.
+      _f_opt=$(printf '%s' "$_isj_decoded" | jq -r '.[10]' 2>/dev/null | strip_nul)
       # Texto livre passa por secrets-filter (FR-017); estruturado nao.
       _f_ctx=$(recall_scrub "$_f_ctx")
       _f_just=$(recall_scrub "$_f_just")
@@ -1014,12 +1036,12 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
         *) _isj_score_sql="$_f_sc" ;;
       esac
       _isj_sql="$_isj_sql
-INSERT INTO decisions(project,feature,wave,execucao_id,source_ts,source_id,agente,etapa,escolha,score,contexto,justificativa,evidencia,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ag")','$(sql_escape "$_f_et")','$(sql_escape "$_f_esc")',$_isj_score_sql,'$(sql_escape "$_f_ctx")','$(sql_escape "$_f_just")','$(sql_escape "$_f_ev")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agente=excluded.agente,etapa=excluded.etapa,escolha=excluded.escolha,score=excluded.score,contexto=excluded.contexto,justificativa=excluded.justificativa,evidencia=excluded.evidencia,ingested_at=excluded.ingested_at;
+INSERT INTO decisions(project,feature,wave,execucao_id,source_ts,source_id,agente,etapa,escolha,opcoes,score,contexto,justificativa,evidencia,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ag")','$(sql_escape "$_f_et")','$(sql_escape "$_f_esc")','$(sql_escape "$_f_opt")',$_isj_score_sql,'$(sql_escape "$_f_ctx")','$(sql_escape "$_f_just")','$(sql_escape "$_f_ev")','$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agente=excluded.agente,etapa=excluded.etapa,escolha=excluded.escolha,opcoes=excluded.opcoes,score=excluded.score,contexto=excluded.contexto,justificativa=excluded.justificativa,evidencia=excluded.evidencia,ingested_at=excluded.ingested_at;
 DELETE FROM knowledge_fts WHERE type='decision' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='$(sql_escape "$_f_wave")' AND source_id='$(sql_escape "$_f_sid")';
 INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
-VALUES('$(sql_escape "$_f_esc $_f_ctx $_f_just $_f_ev")','decision','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
+VALUES('$(sql_escape "$_f_esc $_f_opt $_f_ctx $_f_just $_f_ev")','decision','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
       _isj_n_dec=$((_isj_n_dec + 1))
     done
     IFS="$_isj_OLDIFS"

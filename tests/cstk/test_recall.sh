@@ -65,9 +65,11 @@ _write_state() {
   "decisoes": [
     { "id": "dec-001", "onda_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
       "etapa": "specify", "agente": "orch", "escolha": "iniciar", "score_justificativa": 2,
+      "opcoes_consideradas": ["iniciar", "adiar", "descartarproposta"],
       "contexto": "decisao sobre widget azul", "justificativa": "porque widget", "evidencia": null },
     { "id": "dec-002", "onda_id": "onda-002", "timestamp": "2026-01-02T00:00:00Z",
       "etapa": "plan", "agente": "orch", "escolha": "cache", "score_justificativa": 3,
+      "opcoes_consideradas": ["cache", "sem-cache"],
       "contexto": "estrategia de cache em camadas", "justificativa": "cache cache cache cache cache", "evidencia": "sonda cache" }
   ],
   "bloqueios_humanos": [
@@ -550,9 +552,9 @@ SQL
   # Aplica schema v2 via funcao real (caminho de recall_apply_schema).
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
     _fail "apply schema v2" "recall_apply_schema falhou"; return 1; }
-  # (a) schema_version virou 5 (atual — recall-suggestions bump v4->v5)
+  # (a) schema_version virou 6 (atual — decisions.opcoes bump v5->v6)
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "5" ] || { _fail "schema_version" "esperado 5, obtido $_sv"; return 1; }
+  [ "$_sv" = "6" ] || { _fail "schema_version" "esperado 6, obtido $_sv"; return 1; }
   # (b) tabelas executions + waves existem
   _has=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('executions','waves')")
   [ "$_has" = "2" ] || { _fail "tabelas novas" "esperado 2 (executions+waves), obtido $_has"; return 1; }
@@ -572,7 +574,7 @@ scenario_m12_ddl_idempotente() {
     _fail "apply 1" "primeira aplicacao falhou"; return 1; }
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "5" ] || { _fail "schema estavel" "esperado 5 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "6" ] || { _fail "schema estavel" "esperado 6 apos 2x, obtido $_sv"; return 1; }
 }
 
 # =========================================================================
@@ -602,6 +604,55 @@ SQL
   # (c) INSERT com titulo funciona (coluna utilizavel)
   sqlite3 "$_mdb" "INSERT INTO tasks(project,feature,wave,execucao_id,source_ts,source_id,titulo,ingested_at) VALUES('p','f','w2','e','t','t-new','com titulo','now')" || {
     _fail "insert titulo" "INSERT com coluna nova falhou"; return 1; }
+  # (d) re-aplicar e idempotente (ALTER nao dispara 2x -> sem erro)
+  assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
+}
+
+# =========================================================================
+# Cenario M1.4 — ingestao grava decisions.opcoes com TODAS as opcoes avaliadas
+# (nao so a escolhida) como JSON, e o corpo entra na FTS (busca por opcao nao
+# escolhida recupera a decisao). (v6 decisions.opcoes)
+# =========================================================================
+scenario_m14_decisions_opcoes_captura_todas() {
+  _have_deps || return 0
+  _write_state "$TMPDIR_TEST/featOpt" "/home/u/projOpt" "featOpt"
+  assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featOpt" --db "$TMPDIR_TEST/k.db" || return 1
+  # (a) opcoes de dec-001 = JSON com as 3 opcoes (escolhida + nao escolhidas).
+  _opt=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT opcoes FROM decisions WHERE source_id='dec-001'")
+  _exp='["iniciar","adiar","descartarproposta"]'
+  [ "$_opt" = "$_exp" ] || { _fail "opcoes capturadas" "esperado [$_exp], obtido [$_opt]"; return 1; }
+  # (b) busca FTS por uma opcao NAO escolhida ("descartarproposta") recupera dec-001.
+  capture _rc "descartarproposta" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "busca opcao exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "dec-001" || return 1
+}
+
+# =========================================================================
+# Cenario M1.5 — migracao v5 -> v6: decisions pre-existente SEM opcoes ganha a
+# coluna via ALTER idempotente, preservando linhas; INSERT com opcoes passa.
+# =========================================================================
+scenario_m15_migra_decisions_opcoes_alter() {
+  _have_deps || return 0
+  _mdb="$TMPDIR_TEST/v5dec.db"
+  # DB v5 sintetico: tabela decisions no schema ANTIGO (sem opcoes) + 1 linha.
+  sqlite3 "$_mdb" <<'SQL'
+CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execucao_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, agente TEXT, etapa TEXT, escolha TEXT, score INTEGER, contexto TEXT, justificativa TEXT, evidencia TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+INSERT INTO schema_meta(key,value) VALUES('schema_version','5');
+INSERT INTO decisions(project,feature,wave,execucao_id,source_ts,source_id,escolha,ingested_at) VALUES('p','f','w','e','t','dec-legacy','iniciar','now');
+SQL
+  # Aplica schema atual (v6) via funcao real — deve ALTERar decisions, nao recriar.
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
+    _fail "apply schema v6" "recall_apply_schema falhou"; return 1; }
+  # (a) coluna opcoes agora existe
+  _hascol=$(sqlite3 "$_mdb" "SELECT count(*) FROM pragma_table_info('decisions') WHERE name='opcoes'")
+  [ "$_hascol" = "1" ] || { _fail "ALTER opcoes" "coluna nao adicionada ($_hascol)"; return 1; }
+  # (b) linha legacy preservada, opcoes NULL, escolha intacta
+  _leg=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-legacy' AND opcoes IS NULL AND escolha='iniciar'")
+  [ "$_leg" = "1" ] || { _fail "preservacao v5" "linha legacy perdida/alterada ($_leg)"; return 1; }
+  # (c) INSERT com opcoes funciona (coluna utilizavel)
+  sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execucao_id,source_ts,source_id,opcoes,ingested_at) VALUES('p','f','w2','e','t','d-new','[\"a\",\"b\"]','now')" || {
+    _fail "insert opcoes" "INSERT com coluna nova falhou"; return 1; }
   # (d) re-aplicar e idempotente (ALTER nao dispara 2x -> sem erro)
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
 }
@@ -1672,9 +1723,9 @@ scenario_b11_ddl_tasks_events() {
   assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" || return 1
   _has=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('tasks','events')")
   [ "$_has" = "2" ] || { _fail "DDL tasks/events" "esperado 2 tabelas, obtido $_has"; return 1; }
-  # schema_version = 5 (recall-suggestions bumpou v4 -> v5).
+  # schema_version = 6 (decisions.opcoes bumpou v5 -> v6).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "5" ] || { _fail "schema_version" "esperado 5, obtido $_sv"; return 1; }
+  [ "$_sv" = "6" ] || { _fail "schema_version" "esperado 6, obtido $_sv"; return 1; }
   # tasks tem a coluna titulo (DDL fresco).
   _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='titulo'")
   [ "$_hascol" = "1" ] || { _fail "coluna titulo" "esperado 1, obtido $_hascol"; return 1; }
@@ -1987,10 +2038,10 @@ scenario_m1_schema_memories_table_exists() {
     *memories*) : ;;
     *) _fail "memories table ausente" "$_tables"; return 1 ;;
   esac
-  # schema_version deve ser 5
+  # schema_version deve ser 6
   _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
     "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "5" ] || { _fail "schema_version errado" "esperado 5, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "6" ] || { _fail "schema_version errado" "esperado 6, obtido '$_ver'"; return 1; }
 }
 
 # M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
@@ -2070,9 +2121,9 @@ scenario_m1_migration_v3_to_current() {
     *suggestions*) : ;;
     *) _fail "migration: suggestions ausente" "$_tables"; return 1 ;;
   esac
-  # schema_version deve ser 5
+  # schema_version deve ser 6
   _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "5" ] || { _fail "migration: schema_version errado" "esperado 5, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "6" ] || { _fail "migration: schema_version errado" "esperado 6, obtido '$_ver'"; return 1; }
   # Dados pre-existentes preservados (decisions nao zerada)
   _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
   [ "${_n:-0}" -ge 1 ] || { _fail "migration: decisions zeradas" "esperado >=1, obtido '$_n'"; return 1; }
