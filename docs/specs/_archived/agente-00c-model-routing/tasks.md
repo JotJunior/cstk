@@ -16,11 +16,11 @@ suggest-only da skill (FR-017) e respeitando POSIX puro + zero coleta
 remota (FR-019 + FR-020).
 
 **Feature**: `agente-00c-model-routing`
-**Spec**: [/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/docs/specs/agente-00c-model-routing/spec.md](./spec.md)
-**Plan**: [/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/docs/specs/agente-00c-model-routing/plan.md](./plan.md)
-**Research**: [/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/docs/specs/agente-00c-model-routing/research.md](./research.md)
-**Data Model**: [/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/docs/specs/agente-00c-model-routing/data-model.md](./data-model.md)
-**Quickstart**: [/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/docs/specs/agente-00c-model-routing/quickstart.md](./quickstart.md)
+**Spec**: [/Users/jot/Projects/_lab/Jot/misc/cstk/docs/specs/agente-00c-model-routing/spec.md](./spec.md)
+**Plan**: [/Users/jot/Projects/_lab/Jot/misc/cstk/docs/specs/agente-00c-model-routing/plan.md](./plan.md)
+**Research**: [/Users/jot/Projects/_lab/Jot/misc/cstk/docs/specs/agente-00c-model-routing/research.md](./research.md)
+**Data Model**: [/Users/jot/Projects/_lab/Jot/misc/cstk/docs/specs/agente-00c-model-routing/data-model.md](./data-model.md)
+**Quickstart**: [/Users/jot/Projects/_lab/Jot/misc/cstk/docs/specs/agente-00c-model-routing/quickstart.md](./quickstart.md)
 **Contracts**:
 [helper](./contracts/model-routing-helper.md) (3 subcomandos, 6
 invariantes INV-1..INV-6),
@@ -52,7 +52,7 @@ dec-007 (truncagem). Implementa INV-1..INV-6 do contract do helper.
 
 Ref: contracts/model-routing-helper.md §Subcommand, FR-019, plan.md §Project Structure (paths absolutos do destino)
 
-- [x] 1.1.1 Criar arquivo `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/global/skills/agente-00c-runtime/scripts/model-routing.sh` com shebang `#!/bin/sh` + `set -eu` + helpers privados `_mr_die`, `_mr_die_usage`, `_mr_log` (padrao alinhado a `state-decisions.sh`, `state-ondas.sh`)
+- [x] 1.1.1 Criar arquivo `/Users/jot/Projects/_lab/Jot/misc/cstk/global/skills/agente-00c-runtime/scripts/model-routing.sh` com shebang `#!/bin/sh` + `set -eu` + helpers privados `_mr_die`, `_mr_die_usage`, `_mr_log` (padrao alinhado a `state-decisions.sh`, `state-ondas.sh`)
 - [x] 1.1.2 Implementar dispatch case statement com 3 subcomandos validos (`template`, `invoke`, `idempotent-check`) + `-h|--help|help` + erro exit 2 para subcomando desconhecido
 - [x] 1.1.3 Adicionar `_mr_require_jq` (gate quando subcomando exige) e `_mr_state_file` helper (igual padrao do runtime)
 - [x] 1.1.4 Subtarefa de teste: rodar `sh global/skills/agente-00c-runtime/scripts/model-routing.sh` sem argumento e validar exit 2 + mensagem de uso em stderr (alinhado ao padrao de `state-ondas.sh` linha 394)
@@ -103,10 +103,10 @@ FR-017. Documenta sequencia pre-spawn no agente.md.
 
 Ref: FR-016, contracts/orchestrator-integration.md §Sequencia pre-spawn, plan.md §Source Code
 
-- [x] 2.1.1 Editar `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/global/agents/agente-00c-orchestrator.md` adicionando secao "## Sequencia pre-spawn de subagente" descrevendo ordem obrigatoria: `spawn-tracker.sh check` → `model-routing.sh idempotent-check` (skip se ja existe) → `model-routing.sh invoke` → `state-decisions.sh register` → `state-ondas.sh record-skill` → `spawn-tracker.sh enter` → tool Agent (FR-010 + FR-011 + FR-016)
+- [x] 2.1.1 Editar `/Users/jot/Projects/_lab/Jot/misc/cstk/global/agents/agente-00c-orchestrator.md` adicionando secao "## Sequencia pre-spawn de subagente" descrevendo ordem obrigatoria: `spawn-tracker.sh check` → `model-routing.sh idempotent-check` (skip se ja existe) → `model-routing.sh invoke` → `state-decisions.sh register` → `state-ondas.sh record-skill` → `spawn-tracker.sh enter` → tool Agent (FR-010 + FR-011 + FR-016)
 - [x] 2.1.2 Incluir bloco Bash referencial com as 6 chamadas em ordem, com paths absolutos e flags exatas (paralelo ao bloco "Quality Gates complementares" ja existente)
 - [x] 2.1.3 Adicionar nota explicita: a `escolha` da Decisao NAO MUST virar hint automatico para tool Agent (FR-017); apenas auditoria
-- [x] 2.1.4 Subtarefa de teste: `grep -n "model-routing.sh invoke" /Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/global/agents/agente-00c-orchestrator.md` deve retornar >=1 match; `grep -n "spawn-tracker.sh enter" agente-00c-orchestrator.md` deve aparecer APOS o match anterior (validar ordem)
+- [x] 2.1.4 Subtarefa de teste: `grep -n "model-routing.sh invoke" /Users/jot/Projects/_lab/Jot/misc/cstk/global/agents/agente-00c-orchestrator.md` deve retornar >=1 match; `grep -n "spawn-tracker.sh enter" agente-00c-orchestrator.md` deve aparecer APOS o match anterior (validar ordem)
 
 ### 2.2 Idempotencia + retomada `[C]`
 
@@ -135,7 +135,7 @@ subagent_types alvo.
 
 Ref: FR-016, contracts/orchestrator-integration.md, Spec §Clarifications dec-005 (1 invocacao por spawn)
 
-- [x] 3.1.1 Editar `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/global/agents/agente-00c-feature-orchestrator.md` na secao "## Mediacao clarify" adicionando a sequencia pre-spawn antes de cada invocacao Agent (asker e answerer)
+- [x] 3.1.1 Editar `/Users/jot/Projects/_lab/Jot/misc/cstk/global/agents/agente-00c-feature-orchestrator.md` na secao "## Mediacao clarify" adicionando a sequencia pre-spawn antes de cada invocacao Agent (asker e answerer)
 - [x] 3.1.2 Incluir bloco Bash igual ao do task 2.1.2, mas com subagent_types `feature-00c-clarify-asker` e `feature-00c-clarify-answerer`
 - [x] 3.1.3 Documentar explicitamente "1 invocacao do `model-routing.sh invoke` por spawn" (dec-005, FR-015) — asker tem 1 Decisao + 1 record-skill; answerer (se spawnado) tem outras
 - [x] 3.1.4 Subtarefa de teste: igual ao 2.1.4 mas no arquivo `agente-00c-feature-orchestrator.md`
@@ -223,7 +223,7 @@ load-bearing: path concreto do agregado e formato exato. US-3
 
 Ref: FR-018, dec-006, contracts/orchestrator-integration.md §Invariantes review-task
 
-- [x] 5.1.1 Criar `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/global/skills/agente-00c-runtime/scripts/model-routing-report.sh aggregate --state-dir DIR` que aplica query jq base: `.decisoes[] | select(.contexto | test("^Selecao de modelo para subagente "))` e produz JSON com (a) contagem por rotulo (`haiku`/`sonnet`/`opus`/`manter-atual`/`fallback-default`), (b) percentual de fallbacks, (c) breakdown por `subagent_type` extraido de regex sobre `.contexto` — implementado em `global/skills/agente-00c-runtime/scripts/model-routing-report.sh` (subcomando `aggregate --state-dir DIR [--json]`); jq program usa `sub("^Selecao de modelo para subagente "; "")` para extrair subagent_type; `zero_counts` garante chaves estaveis para todos 5 labels do enum; output JSON contem `total`, `por_modelo`, `fallback_count`, `fallback_pct` (ex `12.5%`), `por_subagent_type` (breakdown subagent_type->modelo->count), `linhas` (lista de registros tabulares); Markdown default renderiza tabela canonica F5.2.2 + Sumario
+- [x] 5.1.1 Criar `/Users/jot/Projects/_lab/Jot/misc/cstk/global/skills/agente-00c-runtime/scripts/model-routing-report.sh aggregate --state-dir DIR` que aplica query jq base: `.decisoes[] | select(.contexto | test("^Selecao de modelo para subagente "))` e produz JSON com (a) contagem por rotulo (`haiku`/`sonnet`/`opus`/`manter-atual`/`fallback-default`), (b) percentual de fallbacks, (c) breakdown por `subagent_type` extraido de regex sobre `.contexto` — implementado em `global/skills/agente-00c-runtime/scripts/model-routing-report.sh` (subcomando `aggregate --state-dir DIR [--json]`); jq program usa `sub("^Selecao de modelo para subagente "; "")` para extrair subagent_type; `zero_counts` garante chaves estaveis para todos 5 labels do enum; output JSON contem `total`, `por_modelo`, `fallback_count`, `fallback_pct` (ex `12.5%`), `por_subagent_type` (breakdown subagent_type->modelo->count), `linhas` (lista de registros tabulares); Markdown default renderiza tabela canonica F5.2.2 + Sumario
 - [x] 5.1.2 Validar invariante: helper e read-only (NUNCA escreve state.json); idempotente (mesmo input -> mesmo output) — IR-1 documentada e auditada pelo `scenario_ir1_read_only_audit_estatico` (grep contra `jq -i` + redirect ao state.json) + `scenario_ir1_read_only_sha256_state_estavel` (sha256 do state.json identico antes/depois de 2 invocacoes); IR-2 (idempotencia) coberta por `scenario_ir2_idempotente_3_invocacoes_stdout_identico` (3 invocacoes consecutivas com stdout byte-a-byte identico — payload sem timestamps); IR-3 (Principio II POSIX) coberta por `scenario_ir3_shebang_set_eu_no_bashisms`
 - [x] 5.1.3 Subtarefa de teste: fixture com 8 Decisoes (4 haiku, 3 sonnet, 1 fallback-default) em 2 ondas + 2 subagent_types -> confirmar agregado retorna `haiku=4`, `sonnet=3`, `fallback-default=1`, `fallback_pct="12.5%"`, breakdown 4 por subagent_type — fixture criada em `tests/fixtures/state-with-selecao-decisoes.json` (8 selecoes + 1 dec-999-noise para validar filtro); `scenario_aggregate_fixture_json_contagens_corretas` valida `total=8` (noise filtrado), `haiku=4`, `sonnet=3`, `opus=0`, `manter-atual=0`, `fallback-default=1`, `fallback_pct="12.5%"`, `por_subagent_type` com 2 entradas (asker.haiku=4, answerer.sonnet=3, answerer.fallback-default=1); `scenario_aggregate_fixture_markdown_formato_canonico` valida cabecalho exato + linhas + Sumario; 12/12 scenarios PASS em `tests/test_model-routing-report.sh`
 
@@ -233,7 +233,7 @@ Ref: CHK032, CHK047, SC-003
 
 - [x] 5.2.1 Resolver CHK032: definir path concreto `docs/specs/<feature>/review-<onda-id>.md` (mesmo padrao do `report.sh emit`). Atualizar spec.md SC-003 removendo "(ou onde quer que `review-task` salve)" — implementado: spec.md SC-003 atualizado para apontar path canonico `docs/specs/<feature>/review-<onda-id>.md` com `<onda-id>` seguindo convencao `onda-NNN` zero-padded; path ratificado em `contracts/review-task-aggregate.md` §1 com tabela de campos (path canonico, convencao onda-id, diretorio pai, modo de escrita, encoding)
 - [x] 5.2.2 Resolver CHK047: definir formato exato do agregado dentro do relatorio — secao Markdown "## Selecao de modelo por subagente" contendo (a) tabela com colunas `subagent_type | etapa | onda | modelo | score | fallback`, (b) sumario com contagens por rotulo, (c) percentual de fallback. Documentar em `contracts/review-task-aggregate.md` (novo arquivo) — implementado: criado `docs/specs/agente-00c-model-routing/contracts/review-task-aggregate.md` com 7 secoes (Path canonico §1, Trigger de inclusao §2, Formato exato §3 com 4 subsecoes §3.1-§3.4 incluindo exemplo canonico byte-identico ao stdout do helper para a fixture de 8 selecoes, Posicionamento §4, 5 Invariantes INV-RT-1..INV-RT-5 §5, Compatibilidade report.sh §6 documentando decisao F5.3 nao-implementada, Versionamento §7); helper rodado contra fixture confirma byte-identidade com exemplo do contrato
-- [x] 5.2.3 Editar SKILL.md de `review-task` (em `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/global/skills/review-task/SKILL.md`) adicionando secao "## Agregacao de selecao de modelo (model-routing)" instruindo a chamar `model-routing-report.sh aggregate` e renderizar a tabela — implementado: SKILL.md ganhou §4.5 "Agregacao de selecao de modelo (model-routing)" (entre §4 e §5) com sub-blocos "Como invocar", "Quando incluir a secao" (regra binaria), "Posicionamento", "Path canonico do relatorio", "Defesa em profundidade"; template "Formato do Relatorio" tambem ganhou bloco placeholder entre "Progresso por Fase" e "Recomendacoes"; gotcha "Agregado model-routing nao deve ser reformatado" adicionada citando INV-RT-1
+- [x] 5.2.3 Editar SKILL.md de `review-task` (em `/Users/jot/Projects/_lab/Jot/misc/cstk/global/skills/review-task/SKILL.md`) adicionando secao "## Agregacao de selecao de modelo (model-routing)" instruindo a chamar `model-routing-report.sh aggregate` e renderizar a tabela — implementado: SKILL.md ganhou §4.5 "Agregacao de selecao de modelo (model-routing)" (entre §4 e §5) com sub-blocos "Como invocar", "Quando incluir a secao" (regra binaria), "Posicionamento", "Path canonico do relatorio", "Defesa em profundidade"; template "Formato do Relatorio" tambem ganhou bloco placeholder entre "Progresso por Fase" e "Recomendacoes"; gotcha "Agregado model-routing nao deve ser reformatado" adicionada citando INV-RT-1
 - [x] 5.2.4 Subtarefa de teste: invocar `review-task` em fixture com Decisoes de selecao → confirmar relatorio gerado contem secao "## Selecao de modelo por subagente" + tabela com colunas exatas + sumario — implementado em `tests/test_model-routing-report.sh` com 5 cenarios novos: `scenario_integracao_review_task_template_recebe_secao_canonica` (simula review-task injetando stdout do helper em template Markdown, valida §3.1 cabecalho + §3.2 tabela + §3.3 sumario completo + INV-RT-1 byte-identidade), `scenario_integracao_review_task_posicionamento_apos_progresso_antes_recomendacoes` (valida §4 posicionamento via numero de linha), `scenario_integracao_review_task_state_sem_selecoes_omite_secao` (valida §2 trigger binario com fixture `.decisoes: []`), `scenario_integracao_review_task_contrato_documentado_existe` (sanity check do contrato), `scenario_integracao_review_task_skill_md_referencia_helper` (sanity check da §4.5 em SKILL.md); 17/17 scenarios PASS em test_model-routing-report.sh; baseline 948/948 PASS no full suite
 
 ### 5.3 Integracao com `report.sh emit --flavor feature-00c` `[M]`
@@ -254,7 +254,7 @@ Cobre todas as 7 cenarios do quickstart.md + edge cases adicionais
 
 Ref: CLAUDE.md §Como testar scripts shell, plan.md §Testing
 
-- [x] 6.1.1 Criar `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/tests/test_model-routing.sh` seguindo convencao do harness `tests/run.sh` (formato igual a `tests/test_state-ondas.sh` ou similar) — arquivo existe (2020 LOC, 77 cenarios) cobrindo F1.1..F1.4, F2.2, F2.3.2, F3.2 (doc), F4.1, F4.2, F4.5; cross-table em `docs/specs/agente-00c-model-routing/test-coverage.md`
+- [x] 6.1.1 Criar `/Users/jot/Projects/_lab/Jot/misc/cstk/tests/test_model-routing.sh` seguindo convencao do harness `tests/run.sh` (formato igual a `tests/test_state-ondas.sh` ou similar) — arquivo existe (2020 LOC, 77 cenarios) cobrindo F1.1..F1.4, F2.2, F2.3.2, F3.2 (doc), F4.1, F4.2, F4.5; cross-table em `docs/specs/agente-00c-model-routing/test-coverage.md`
 - [x] 6.1.2 Cobrir 3 subcomandos do helper (template, invoke, idempotent-check) com cenarios happy-path + edge cases (skill ausente, output mal-formado, input >4096 bytes, retomada idempotente) — template: 9 cenarios; invoke: 26 cenarios (happy + 4 fallbacks + truncagem + null-byte + score-mapping); idempotent-check: 17 cenarios (hit/miss/discrimina/paralelo INV-4); total 94/94 PASS na onda 15 (test_model-routing-report.sh adiciona 17)
 - [x] 6.1.3 Adicionar assertions para INV-1..INV-6 (1 por invariante) — INV-1: 6 primarios (4 fallback + timeout + adversarial); INV-2: 3 primarios (happy + fuzz-50 + cache-compat); INV-3: 3 primarios (8000 bytes + 4096 boundary + marker); INV-4: 4 primarios (paralelo + retomadas + report-readonly + sha-estavel); INV-5: 4 primarios (determinismo asker + answerer + 4-tipos-distintos + report-idempotente); INV-6: 2 primarios (helper + report). Cobertura 6/6 (100%), maioria redundante (defesa em profundidade)
 - [x] 6.1.4 Validar via `./tests/run.sh test_model-routing` → todos os scenarios PASS — confirmado em onda 15: `PASS: 94 FAIL: 0 ERROR: 0 TIME: 269s` (77 helper + 17 report)
@@ -293,16 +293,16 @@ commit final. Fase de finalizacao e propagacao.
 
 Ref: FR-016, CLAUDE.md §Skills, README.md
 
-- [x] 7.1.1 Atualizar `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/CLAUDE.md` se necessario (secao "## Skills" / "Skills Complementares") para mencionar a integracao model-routing nos agentes 00c
-- [x] 7.1.2 Atualizar `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/README.md` na lista de features entregues, citando esta feature como ratificada
+- [x] 7.1.1 Atualizar `/Users/jot/Projects/_lab/Jot/misc/cstk/CLAUDE.md` se necessario (secao "## Skills" / "Skills Complementares") para mencionar a integracao model-routing nos agentes 00c
+- [x] 7.1.2 Atualizar `/Users/jot/Projects/_lab/Jot/misc/cstk/README.md` na lista de features entregues, citando esta feature como ratificada
 - [x] 7.1.3 Adicionar entrada em CHANGELOG.md (formato Keep a Changelog) sob `## [Unreleased]` em `### Added`: "agente-00c-model-routing — integracao da skill model-selector aos orquestradores autonomos com Decisao auditavel + skills_invoked por spawn"
-- [x] 7.1.4 Subtarefa de teste: `grep -l "model-routing" /Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/{CLAUDE.md,README.md,CHANGELOG.md}` retorna 3 paths
+- [x] 7.1.4 Subtarefa de teste: `grep -l "model-routing" /Users/jot/Projects/_lab/Jot/misc/cstk/{CLAUDE.md,README.md,CHANGELOG.md}` retorna 3 paths
 
 ### 7.2 Gate validate-docs-rendered `[M]`
 
 Ref: skill validate-docs-rendered, agente-00c-feature-orchestrator.md §Quality Gates
 
-- [x] 7.2.1 Rodar skill `validate-docs-rendered` sobre `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/docs/specs/agente-00c-model-routing/` (spec.md, plan.md, research.md, data-model.md, quickstart.md, tasks.md, contracts/, checklists/)
+- [x] 7.2.1 Rodar skill `validate-docs-rendered` sobre `/Users/jot/Projects/_lab/Jot/misc/cstk/docs/specs/agente-00c-model-routing/` (spec.md, plan.md, research.md, data-model.md, quickstart.md, tasks.md, contracts/, checklists/)
 - [x] 7.2.2 Corrigir todos findings critical (Mermaid invalido, link 404) — Decisao auditavel para cada (0 ERRO encontrado — nada para corrigir)
 - [x] 7.2.3 Findings non-critical viram Decisao informativa registrada via `state-decisions.sh register --score 2` (dec-043 cobre 12 AVISOs agregados)
 - [x] 7.2.4 Subtarefa de teste: re-rodar `validate-docs-rendered` ate retornar 0 findings critical (atendido na primeira rodada: 0 ERRO)

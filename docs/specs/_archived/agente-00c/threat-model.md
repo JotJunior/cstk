@@ -112,7 +112,7 @@ chave do operador — overkill para experimento pessoal. Premissa 1 atenua.
 ou em `agente-00c-suggestions.md` que acidentalmente capturam token, senha,
 ou conteudo do `.env` (ex: stack trace que inclui DATABASE_URL com credencial).
 Esses conteudos viram corpo de issue publicada em
-`JotJunior/claude-ai-tips`.
+`JotJunior/cstk`.
 
 **Impacto potencial**: leak permanente de credencial em issue publica do
 GitHub. Revogacao manual + rotacao do segredo.

@@ -289,7 +289,7 @@ convencao ja adotada na telemetria (`decisions`, `waves`, etc.).
 **Evidencia empirica**: formula verificada contra 4 projetos reais com resultado
 correto em todos:
 - `/Users/jot` → `-Users-jot`
-- `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips` → `-Users-jot-Projects--lab-Jot-misc-claude-ai-tips`
+- `/Users/jot/Projects/_lab/Jot/misc/cstk` → `-Users-jot-Projects--lab-Jot-misc-cstk`
 - `/Users/jot/Projects/_lab/Jot/misc/cstk-panel` → `-Users-jot-Projects--lab-Jot-misc-cstk-panel`
 - `/Users/jot/Projects/_arquivo/CodexCode/troncodigital` → `-Users-jot-Projects--arquivo-CodexCode-troncodigital`
 

@@ -1,7 +1,7 @@
 # Relatorio de Status das Tarefas — show-tips
 
 **Data:** 2026-05-27
-**Projeto:** claude-ai-tips (cstk toolkit)
+**Projeto:** cstk (cstk toolkit)
 **Feature:** show-tips (sistema de dicas das skills)
 **Tipo:** Misto (CLI POSIX + conteudo + integracao)
 **Arquivo de Tarefas:** docs/specs/show-tips/tasks.md

@@ -70,7 +70,7 @@ Artefatos omitidos por nao aplicarem:
 Arquivos impactados pela feature:
 
 ```
-claude-ai-tips/
+cstk/
 ├── global/
 │   └── skills/
 │       └── validate-docs-rendered/

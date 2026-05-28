@@ -10,7 +10,7 @@ critico identificado nas user stories da spec.
 
 **Pre-condicoes**:
 
-- Toolkit `claude-ai-tips` instalado, comandos e agentes registrados.
+- Toolkit `cstk` instalado, comandos e agentes registrados.
 - Diretorio de trabalho `/tmp/test-poc-foo` existe e esta vazio.
 - Sessao Claude Code com Auto mode ativo.
 
@@ -162,7 +162,7 @@ critico identificado nas user stories da spec.
 
 - Skill global instalada com bug intencional (ex: clarify retorna perguntas
   contraditorias).
-- Repo `JotJunior/claude-ai-tips` acessivel via `gh` autenticado localmente.
+- Repo `JotJunior/cstk` acessivel via `gh` autenticado localmente.
 
 **Passos**:
 
@@ -176,7 +176,7 @@ critico identificado nas user stories da spec.
 - Sugestao registrada em
   `/tmp/test-skill-bug-foo/.claude/agente-00c-suggestions.md` com
   `severidade: impeditiva`.
-- Issue aberta automaticamente em `JotJunior/claude-ai-tips` com:
+- Issue aberta automaticamente em `JotJunior/cstk` com:
   - Titulo no formato `[agente-00C] Bug em clarify: <resumo>`.
   - Corpo seguindo `contracts/issue-template.md`.
   - Labels: `agente-00c`, `bug`, `skill-global`.

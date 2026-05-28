@@ -13,7 +13,7 @@
 
 Site estatico publicado via GitHub Pages que serve como (a) manual do
 `cstk` e (b) catalogo navegavel das skills/agents/commands distribuidos
-pelo toolkit `claude-ai-tips`. Conteudo derivado dos arquivos `.md`
+pelo toolkit `cstk`. Conteudo derivado dos arquivos `.md`
 canonicos do repositorio (D-I: Documentation-as-Source-of-Truth) — sem
 segunda fonte de verdade.
 
@@ -349,7 +349,7 @@ auto-suficiente.
 ### 1.1 Project Structure (a ser criada)
 
 ```
-claude-ai-tips/                       # repo raiz
+cstk/                       # repo raiz
 |
 +-- mkdocs.yml                        # config MkDocs (raiz, docs_dir: docs-site/)
 +-- requirements-docs.txt             # deps Python pinadas
@@ -416,10 +416,10 @@ pymdown-extensions>=10.7.0,<11.0.0
 
 ```yaml
 site_name: cstk — Claude Stack Toolkit
-site_url: https://jotjunior.github.io/claude-ai-tips/
-site_description: Manual do cstk e catalogo de skills, agents e commands do toolkit claude-ai-tips
-repo_url: https://github.com/JotJunior/claude-ai-tips
-repo_name: JotJunior/claude-ai-tips
+site_url: https://jotjunior.github.io/cstk/
+site_description: Manual do cstk e catalogo de skills, agents e commands do toolkit cstk
+repo_url: https://github.com/JotJunior/cstk
+repo_name: JotJunior/cstk
 edit_uri: edit/main/
 
 docs_dir: docs-site

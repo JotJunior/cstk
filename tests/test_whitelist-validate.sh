@@ -22,8 +22,8 @@ scenario_check_arquivo_inexistente_exit_2() {
 }
 
 scenario_check_so_validas_exit_0() {
-  _wl=$(_make_wl 'https://api.github.com/repos/JotJunior/claude-ai-tips/**
-https://github.com/JotJunior/claude-ai-tips
+  _wl=$(_make_wl 'https://api.github.com/repos/JotJunior/cstk/**
+https://github.com/JotJunior/cstk
 https://pkg.go.dev/**
 https://*.npmjs.org/foo
 http://localhost:8080/api/*')

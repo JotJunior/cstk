@@ -9,7 +9,7 @@
 **Branch**: `github-pages`
 
 > **Status de encerramento (2026-05-26)**: Feature ENTREGUE e no ar em
-> <https://jotjunior.github.io/claude-ai-tips/> (deploy via
+> <https://jotjunior.github.io/cstk/> (deploy via
 > `.github/workflows/publish-site.yml`). A implementacao core esta 100%
 > concluida e marcada. Os 31 subtasks restantes eram validacao/QA/medicao
 > pos-deploy deferidos no ship (varios anotados `<!-- diferido -->`) — fechados
@@ -110,7 +110,7 @@ Ref: `FR-023`, plan §1.1.
 Ref: `FR-006`, `FR-011`, `FR-021`, `FR-023`, plan §1.3.
 
 - [x] 1.4.1 Criar `mkdocs.yml` na raiz com `docs_dir: docs-site` <!-- onda-008 -->
-- [x] 1.4.2 Configurar `site_name`, `site_url`, `site_description`, `repo_url`, `repo_name`, `edit_uri` <!-- onda-008: site_url=jotjunior.github.io/claude-ai-tips/ -->
+- [x] 1.4.2 Configurar `site_name`, `site_url`, `site_description`, `repo_url`, `repo_name`, `edit_uri` <!-- onda-008: site_url=jotjunior.github.io/cstk/ -->
 - [x] 1.4.3 Habilitar `use_directory_urls: true` e `strict: true` (link-check bloqueante — FR-011) <!-- onda-008 -->
 - [x] 1.4.4 Configurar `theme.name: material` + `language: pt-BR` <!-- onda-008 -->
 - [x] 1.4.5 Configurar features de navegacao (`navigation.tabs`, `sections`, `indexes`, `top`) <!-- onda-008: +tabs.sticky, +tracking, +toc.follow, +footer -->
@@ -121,7 +121,7 @@ Ref: `FR-006`, `FR-011`, `FR-021`, `FR-023`, plan §1.3.
 - [x] 1.4.10 Adicionar `extra_css: [assets/extra.css]` <!-- onda-008 -->
 - [x] 1.4.11 `mkdocs build --strict` passa (smoke inicial — pode falhar por falta de paginas; aceita ate 1.6 estar concluida) <!-- diferido: mkdocs nao instalado localmente (FR-018), smoke build sera validado por CI em FASE 6 ou apos operador rodar bootstrap-docs.sh -->
 
-**Conclusao 1.4 (onda-008):** `mkdocs.yml` (~130 linhas) criado com config completa: site metadata (URL para `jotjunior.github.io/claude-ai-tips/`), tema Material + palette dual indigo, busca lunr.js multilingual (pt+en), 13 markdown_extensions com snippets+superfences+mermaid, 4 plugins (search, awesome-pages, gen-files, macros). YAML estrutura validada por parse parcial (falha apenas em tags `!!python/name:` que sao MkDocs-specific — esperado). 1.4.11 diferido ate operador instalar deps ou ate CI rodar (FASE 6).
+**Conclusao 1.4 (onda-008):** `mkdocs.yml` (~130 linhas) criado com config completa: site metadata (URL para `jotjunior.github.io/cstk/`), tema Material + palette dual indigo, busca lunr.js multilingual (pt+en), 13 markdown_extensions com snippets+superfences+mermaid, 4 plugins (search, awesome-pages, gen-files, macros). YAML estrutura validada por parse parcial (falha apenas em tags `!!python/name:` que sao MkDocs-specific — esperado). 1.4.11 diferido ate operador instalar deps ou ate CI rodar (FASE 6).
 
 ### 1.5 Criar `docs-site/assets/extra.css` vazio `[M]`
 
@@ -268,7 +268,7 @@ Ref: `FR-002`, User Story 1, `SC-007`.
 - [x] 4.1.3 Adicionar 3 cards/links de categoria (Skills / Agents / Commands) com contagem
 - [x] 4.1.4 Adicionar link para "Manual" (secao guiada)
 - [x] 4.1.5 Frontmatter com `hide: [navigation]` se quiser layout limpo de landing
-- [x] 4.1.6 Smoke test: abrir `/` e validar acceptance scenario 1 (pitch + comando + 3 links) <!-- validado 2026-05-21: site live em https://jotjunior.github.io/claude-ai-tips/ (HTTP 200) -->
+- [x] 4.1.6 Smoke test: abrir `/` e validar acceptance scenario 1 (pitch + comando + 3 links) <!-- validado 2026-05-21: site live em https://jotjunior.github.io/cstk/ (HTTP 200) -->
 
 ### 4.2 Adicionar ancoras de snippet ao `README.md` `[A]`
 
@@ -428,7 +428,7 @@ Ref: `SC-001`, `SC-002`, `FR-018`.
 Ref: `FR-022`, plan §1.5.
 
 - [x] 6.4.1 Settings -> Pages -> Source = "GitHub Actions" <!-- acao manual do operador: ver `github-pages-setup.md` -->
-- [x] 6.4.2 Validar URL publica gerada (`https://jotjunior.github.io/claude-ai-tips/`) <!-- acao manual do operador pos-deploy -->
+- [x] 6.4.2 Validar URL publica gerada (`https://jotjunior.github.io/cstk/`) <!-- acao manual do operador pos-deploy -->
 - [x] 6.4.3 Validar deploy de teste (commit minimo) chega ao site <!-- acao manual do operador pos-deploy -->
 - [x] 6.4.4 Documentar URL no `README.md` da raiz (linha de "Demo" ou "Site") <!-- onda-012: 2 badges adicionados (docs-site + workflow status) -->
 
@@ -573,7 +573,7 @@ Ref: User Story 4.
 - [x] 8.1.1 Merge da branch `github-pages` para `main` (ou push direto se single-dev) <!-- validado 2026-05-21: merge em commit 4fea36c -->
 - [x] 8.1.2 Monitorar Actions tab — workflow `publish-site.yml` dispara <!-- validado 2026-05-21: pushes em main atualizam site com sucesso -->
 - [x] 8.1.3 Validar deploy job verde <!-- validado 2026-05-21: site responde HTTP 200 -->
-- [x] 8.1.4 Validar URL publica acessivel <!-- validado 2026-05-21: https://jotjunior.github.io/claude-ai-tips/ HTTP 200, last-modified=Thu, 21 May 2026 -->
+- [x] 8.1.4 Validar URL publica acessivel <!-- validado 2026-05-21: https://jotjunior.github.io/cstk/ HTTP 200, last-modified=Thu, 21 May 2026 -->
 - [x] 8.1.5 Tempo push -> site publicado <=10 minutos (SC-001) <!-- validado 2026-05-21 (operador confirma "atualiza com sucesso"); tempo exato nao medido empiricamente — diferir telemetria para 6.3 -->
 
 ### 8.2 Verificacao pos-deploy `[C]`
@@ -590,9 +590,9 @@ Ref: User Story 1, 2, 4.
 
 Ref: descoberta organica.
 
-<!-- onda-014: CONCLUIDO — README.md raiz ja contem badge "Docs Site" linha 6 apontando para https://jotjunior.github.io/claude-ai-tips/ (commitado anteriormente). Auto-sync via publish-site.yml ao push. -->
+<!-- onda-014: CONCLUIDO — README.md raiz ja contem badge "Docs Site" linha 6 apontando para https://jotjunior.github.io/cstk/ (commitado anteriormente). Auto-sync via publish-site.yml ao push. -->
 
-- [x] 8.3.1 Adicionar badge/link no header do `README.md`: "Documentation: https://jotjunior.github.io/claude-ai-tips/" <!-- ja existe (validado empiricamente onda 014) -->
+- [x] 8.3.1 Adicionar badge/link no header do `README.md`: "Documentation: https://jotjunior.github.io/cstk/" <!-- ja existe (validado empiricamente onda 014) -->
 - [x] 8.3.2 Validar que o proximo build do site reflete a mudanca (auto-sync) <!-- workflow publish-site.yml dispara em push para main, gen_pages.py re-emite, deploy <=10min -->
 
 ### 8.4 Documentar runbook de rebuild manual `[M]`

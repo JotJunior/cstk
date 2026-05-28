@@ -83,7 +83,7 @@ docs/specs/constitution-amend-optional-deps/
 Nao ha codigo a produzir. Apenas arquivos documentais afetados:
 
 ```
-/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/
+/Users/jot/Projects/_lab/Jot/misc/cstk/
 ├── docs/
 │   ├── constitution.md                          # EDITADO — Insertion Points 1-4
 │   └── specs/

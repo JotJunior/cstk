@@ -77,7 +77,7 @@ docs/specs/show-tips/
 ### Source Code (repository root — arvore REAL verificada)
 
 ```
-claude-ai-tips/
+cstk/
 ├── cli/
 │   ├── cstk                 # dispatcher (ADICIONAR case `show-tip` + help)
 │   └── lib/

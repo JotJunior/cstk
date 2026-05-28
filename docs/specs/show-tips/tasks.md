@@ -36,13 +36,13 @@ Ref: spec §FR-007, data-model.md §Entity:Tip, research.md Decision 2
 - [x] 1.1.4 Incluir uma entrada de exemplo comentada mostrando frontmatter + corpo com fence de codigo
 - [x] 1.1.5 Verificar que o arquivo e parseavel por `awk` POSIX (testar leitura manual com script de prova de conceito)
 
-### 1.2 Dicas para skills globais (23 skills) [A]
+### 1.2 Dicas para skills globais (22 skills) [A]
 
-Ref: spec §FR-002, §SC-001; plan §Technical Context (23 skills em `global/skills/`)
-Skills: advisor, agente-00c-runtime, analyze, apply-insights, briefing, bugfix, checklist, clarify, constitution, create-tasks, create-use-case, decision-tree, execute-task, image-generation, initialize-docs, model-selector, owasp-security, plan, review-features, review-task, specify, validate-docs-rendered, validate-documentation
+Ref: spec §FR-002, §SC-001; plan §Technical Context (22 skills em `global/skills/`)
+Skills: advisor, agente-00c-runtime, analyze, apply-insights, briefing, bugfix, checklist, clarify, constitution, create-tasks, decision-tree, execute-task, image-generation, initialize-docs, model-selector, owasp-security, plan, review-features, review-task, specify, validate-docs-rendered, validate-documentation
 
-- [x] 1.2.1 Adicionar >= 2 dicas (categorias `uso` + `gotcha`) para cada uma das 23 skills globais — cada dica com >= 1 exemplo concreto
-- [x] 1.2.2 Verificar que nenhuma skill global ficou sem entrada (contagem manual: 23 skills × 2 = 46 entradas minimas)
+- [x] 1.2.1 Adicionar >= 2 dicas (categorias `uso` + `gotcha`) para cada uma das 22 skills globais — cada dica com >= 1 exemplo concreto
+- [x] 1.2.2 Verificar que nenhuma skill global ficou sem entrada (contagem manual: 22 skills × 2 = 44 entradas minimas)
 - [x] 1.2.3 Adicionar pelo menos 1 dica categoria `avancado` para as 5 skills de maior uso (review-task, execute-task, specify, plan, bugfix)
 
 ### 1.3 Dicas para skills Go (7 skills) [A]
@@ -53,19 +53,11 @@ Skills: commit, go-add-consumer, go-add-entity, go-add-migration, go-add-test, g
 - [x] 1.3.1 Adicionar >= 2 dicas (categorias `uso` + `gotcha`) para cada uma das 7 skills Go — cada dica com >= 1 exemplo concreto
 - [x] 1.3.2 Verificar cobertura: 7 skills × 2 = 14 entradas minimas
 
-### 1.4 Dicas para skills .NET (8 skills) [A]
-
-Ref: spec §FR-002, §SC-001; plan §Technical Context (8 skills em `language-related/dotnet/skills/`)
-Skills: dotnet-create-entity, dotnet-create-feature, dotnet-create-project, dotnet-create-test, dotnet-hexagonal-architecture, dotnet-infrastructure, dotnet-review-code, dotnet-testing
-
-- [x] 1.4.1 Adicionar >= 2 dicas (categorias `uso` + `gotcha`) para cada uma das 8 skills .NET — cada dica com >= 1 exemplo concreto
-- [x] 1.4.2 Verificar cobertura: 8 skills × 2 = 16 entradas minimas
-
 ### 1.5 Validacao inicial do catalogo [C]
 
 Ref: spec §SC-001, §SC-004; contracts/cli-show-tip.md §Modo audit
 
-- [x] 1.5.1 Executar `grep -c "^skill:" tips/catalog.md` e confirmar >= 76 entradas (23+7+8 × 2 minimo)
+- [x] 1.5.1 Executar `grep -c "^skill:" tips/catalog.md` e confirmar >= 58 entradas (22+7 × 2 minimo)
 - [x] 1.5.2 Verificar que nenhuma entrada tem `category:` fora do enum (grep para valores != uso|gotcha|avancado)
 - [x] 1.5.3 Verificar que nenhuma entrada tem corpo vazio (sem linha de exemplo apos o frontmatter)
 

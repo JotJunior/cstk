@@ -1,6 +1,6 @@
 # Contract: Template de Issue no Toolkit GitHub
 
-Issues abertas automaticamente em `JotJunior/claude-ai-tips` quando o 00C
+Issues abertas automaticamente em `JotJunior/cstk` quando o 00C
 identifica bug **impeditivo** em skill global durante uma execucao
 (FR-021, User Story 5).
 
@@ -14,7 +14,7 @@ local (`agente-00c-suggestions.md`) — complementam.
 
 ```
 gh issue create \
-  --repo JotJunior/claude-ai-tips \
+  --repo JotJunior/cstk \
   --title "[agente-00C] Bug em <skill>: <resumo-de-uma-linha>" \
   --label "agente-00c,bug,skill-global" \
   --body "$(cat <<'EOF'

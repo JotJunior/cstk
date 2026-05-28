@@ -209,7 +209,7 @@ incluidas via leitura no inicio da execucao.
 # Padroes simples com * e ** suportados.
 
 https://pkg.go.dev/**
-https://api.github.com/repos/JotJunior/claude-ai-tips/**
+https://api.github.com/repos/JotJunior/cstk/**
 https://hub.docker.com/_/**
 ```
 
@@ -286,7 +286,7 @@ chamada acontecer — defesa em profundidade.
 
 ## Decision 8: Forma do 00C no harness
 
-**Decision**: combinacao de tres artefatos no toolkit `claude-ai-tips`:
+**Decision**: combinacao de tres artefatos no toolkit `cstk`:
 
 1. **Slash command** em `global/commands/agente-00c.md` — ponto de entrada
    manual `/agente-00c <args>`. Carrega instrucoes resumidas + spawna o

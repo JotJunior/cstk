@@ -237,8 +237,8 @@ scenario_7() {
   _sd=$(_setup_state 7)
   _wl="$TMP/scenario-7/wl"
   cat > "$_wl" <<EOF
-https://api.github.com/repos/JotJunior/claude-ai-tips/**
-https://github.com/JotJunior/claude-ai-tips
+https://api.github.com/repos/JotJunior/cstk/**
+https://github.com/JotJunior/cstk
 EOF
   set +e
   "$S/bash-guard.sh" check-whitelist \
@@ -246,7 +246,7 @@ EOF
     --whitelist-file "$_wl" >/dev/null 2>&1
   _rc1=$?
   "$S/bash-guard.sh" check-whitelist \
-    --command "curl https://api.github.com/repos/JotJunior/claude-ai-tips/issues" \
+    --command "curl https://api.github.com/repos/JotJunior/cstk/issues" \
     --whitelist-file "$_wl" >/dev/null 2>&1
   _rc2=$?
   set -e

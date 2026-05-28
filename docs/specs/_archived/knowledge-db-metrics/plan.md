@@ -87,7 +87,7 @@ docs/specs/knowledge-db-metrics/
 ### Source Code (repository root)
 
 ```
-claude-ai-tips/
+cstk/
 ├── cli/
 │   ├── cstk                       # Dispatch CLI — wiring de `recall` (sem mudanca
 │   │                              #   de contrato CLI; entidades novas sao

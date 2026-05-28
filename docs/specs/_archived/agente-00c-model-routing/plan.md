@@ -114,10 +114,10 @@ docs/specs/agente-00c-model-routing/
 
 ### Source Code (repository root)
 
-Arvore real do projeto-alvo (`/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/`):
+Arvore real do projeto-alvo (`/Users/jot/Projects/_lab/Jot/misc/cstk/`):
 
 ```
-claude-ai-tips/
+cstk/
 ├── global/
 │   ├── agents/
 │   │   ├── agente-00c-orchestrator.md           # PATCH documental (FR-016)

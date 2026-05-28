@@ -90,7 +90,7 @@ docs/specs/cstk-cli/
 Estrutura-alvo apos implementacao. Paths marcados (NEW) nao existem hoje.
 
 ```
-/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/
+/Users/jot/Projects/_lab/Jot/misc/cstk/
 ├── CHANGELOG.md
 ├── CLAUDE.md
 ├── README.md

@@ -2,7 +2,7 @@
 # install.sh — bootstrap one-liner installer para `cstk`.
 #
 # Uso esperado:
-#   curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh | sh
 #
 # Comportamento:
 #   1. Descobre tag da ultima release via API do GitHub (ou usa $CSTK_RELEASE_URL
@@ -18,7 +18,7 @@
 #
 # Variaveis de ambiente honradas (todas opcionais):
 #   CSTK_RELEASE_URL  — URL exata do tarball (skipa GitHub API). Sha vem de URL+".sha256".
-#   CSTK_REPO         — owner/repo no GitHub. Default: JotJunior/claude-ai-tips.
+#   CSTK_REPO         — owner/repo no GitHub. Default: JotJunior/cstk.
 #   INSTALL_BIN       — onde colocar o binario `cstk`. Default: ~/.local/bin.
 #   INSTALL_LIB       — onde colocar lib/+VERSION. Default: ~/.local/share/cstk.
 #
@@ -31,7 +31,7 @@ set -eu
 
 # ==== Configuracao ====
 
-CSTK_REPO="${CSTK_REPO:-JotJunior/claude-ai-tips}"
+CSTK_REPO="${CSTK_REPO:-JotJunior/cstk}"
 INSTALL_BIN="${INSTALL_BIN:-${HOME:?HOME nao setado}/.local/bin}"
 INSTALL_LIB="${INSTALL_LIB:-${HOME}/.local/share/cstk}"
 

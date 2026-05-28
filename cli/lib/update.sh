@@ -335,7 +335,7 @@ _update_resolve_urls() {
   fi
 
   if [ -z "$_update_from" ]; then
-    _update_repo=${CSTK_REPO:-JotJunior/claude-ai-tips}
+    _update_repo=${CSTK_REPO:-JotJunior/cstk}
     _update_api="https://api.github.com/repos/$_update_repo/releases/latest"
     log_info "update: consultando ultima release de $_update_repo via API GitHub..."
     _update_api_resp=$(curl -fsSL --connect-timeout 10 --max-time 60 \

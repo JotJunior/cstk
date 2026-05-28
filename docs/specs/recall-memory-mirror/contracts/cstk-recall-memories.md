@@ -24,7 +24,7 @@ linhas de memoria).
 
 Mesma renderizacao de busca existente, agora com linhas `[memory]`:
 ```
-[memory] claude-ai-tips / memory / - / 2026-05-27T18:00:00Z (feedback_code_in_english)
+[memory] cstk / memory / - / 2026-05-27T18:00:00Z (feedback_code_in_english)
   Codigo em ingles obrigatorio — identificadores em ingles; comentarios podem ser pt
 ```
 
@@ -156,8 +156,8 @@ do projeto `P`. Modo proprio (`recall_mode_list_memories`), nao busca FTS.
 
 Uma linha por memoria: `<project> / <type> / <slug> — <description>`
 ```
-claude-ai-tips / feedback / feedback_code_in_english — Codigo em ingles obrigatorio
-claude-ai-tips / index / MEMORY — Indice de memorias do projeto
+cstk / feedback / feedback_code_in_english — Codigo em ingles obrigatorio
+cstk / index / MEMORY — Indice de memorias do projeto
 ```
 
 ### Exit codes

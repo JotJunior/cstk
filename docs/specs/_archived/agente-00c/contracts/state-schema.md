@@ -77,7 +77,7 @@ Toda onda comeca lendo + validando este arquivo. Schema-version invalido = bloqu
   },
   "whitelist_urls_externas": [
     "https://pkg.go.dev/**",
-    "https://api.github.com/repos/JotJunior/claude-ai-tips/**"
+    "https://api.github.com/repos/JotJunior/cstk/**"
   ],
   "historico_movimento_circular": []
 }

@@ -101,7 +101,7 @@ scenario_mark_issue_atualiza_url_e_metric() {
   _register_default "$_sd" "$_md" clarify impeditiva
   capture "$SCRIPT" mark-issue --state-dir "$_sd" --suggestions-file "$_md" \
     --suggestion-id "sug-001" \
-    --issue "https://github.com/JotJunior/claude-ai-tips/issues/42"
+    --issue "https://github.com/JotJunior/cstk/issues/42"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "mark-issue" "$_CAPTURED_STDERR"; return 1; }
   capture "$RW" get --state-dir "$_sd" --field '.sugestoes[0].issue_aberta'
   assert_stdout_contains "issues/42" || return 1

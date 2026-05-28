@@ -167,7 +167,7 @@ clara.
    nenhuma situacao continua sem orcamento.
 4. **Given** o orquestrador encontrou bug impeditivo em skill global, **When**
    confirma o bug, **Then** abre issue no GitHub do toolkit
-   `JotJunior/claude-ai-tips` com template estruturado, registra a issue
+   `JotJunior/cstk` com template estruturado, registra a issue
    no relatorio e aborta com motivo "bug em skill global, decisao humana
    necessaria".
 
@@ -380,7 +380,7 @@ classificada como impeditiva.
 - **FR-020**: Sistema MUST registrar sugestoes para skills globais em
   `<projeto-alvo>/.claude/agente-00c-suggestions.md` durante a execucao.
 - **FR-021**: Sistema MUST abrir issue automatica no GitHub do toolkit
-  `JotJunior/claude-ai-tips` quando confirmar bug impeditivo em skill
+  `JotJunior/cstk` quando confirmar bug impeditivo em skill
   global, com template estruturado (skill afetada, diagnostico, proposta,
   link para relatorio).
 

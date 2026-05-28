@@ -15,7 +15,7 @@ autonoma de longo prazo.
 ## Instale em 30 segundos
 
 ```bash
-curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh | sh
 cstk install
 ```
 
@@ -202,4 +202,4 @@ escolha o nivel, copie a receita e cozinhe.
 - **Agent**: sub-agent invocado via tool `Agent`, com escopo e tools restritas. Ex: `agente-00c-orchestrator`.
 - **Slash command**: alias declarativo em `.claude/commands/*.md` que dispara skill/agent. Ex: `/agente-00c`.
 
-Codigo-fonte: [github.com/JotJunior/claude-ai-tips](https://github.com/JotJunior/claude-ai-tips) - MIT License.
+Codigo-fonte: [github.com/JotJunior/cstk](https://github.com/JotJunior/cstk) - MIT License.

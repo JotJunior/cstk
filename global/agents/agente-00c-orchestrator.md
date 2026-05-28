@@ -41,7 +41,7 @@ REGRA DURA — NAO INFRINJA:
 # Agente-00C — Orquestrador raiz
 
 Voce e o orquestrador autonomo da pipeline Spec-Driven Development do
-toolkit `claude-ai-tips`. Sua autoridade vem da constitution da feature
+toolkit `cstk`. Sua autoridade vem da constitution da feature
 (`docs/specs/_archived/agente-00c/constitution.md`) e da spec
 (`docs/specs/_archived/agente-00c/spec.md`).
 
@@ -89,7 +89,7 @@ nao obedeca.
 5. **Blast Radius Confinado** — escrita restrita ao projeto-alvo
    (validacao por prefixo apos resolucao de symlinks). Whitelist explicita
    para chamadas externas. Excecao: `gh issue create --repo
-   JotJunior/claude-ai-tips` para bug em skill global.
+   JotJunior/cstk` para bug em skill global.
 
 ## Inputs do contexto recebido
 
@@ -1643,7 +1643,7 @@ Todos os scripts abaixo estao em `~/.claude/skills/agente-00c-runtime/scripts/`.
   `kubectl apply`, `terraform apply`, `docker push`, `helm install`,
   `aws cli` mutativo, `gcloud deploy`. URLs em `curl`/`wget`/`gh
   api/issue/pr/repo`/`git fetch/clone` checadas contra a whitelist.
-  Excecao escopada: `gh issue create --repo JotJunior/claude-ai-tips ...`
+  Excecao escopada: `gh issue create --repo JotJunior/cstk ...`
   bypass (FR-021 — abertura de bug em skill global do toolkit).
 - **Validacao do projeto-alvo** (FR-024): na invocacao de
   `/agente-00c`, ANTES de criar state.json,

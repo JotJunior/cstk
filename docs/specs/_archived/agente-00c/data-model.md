@@ -191,7 +191,7 @@ Subset materializado de Sugestao. Aberta automaticamente quando severidade=imped
 |-------|------|-------------|-------|
 | id | string | PK, formato `issue-NNN` | |
 | sugestao_id | string | FK -> Sugestao.id | |
-| repo | string | NOT NULL, default "JotJunior/claude-ai-tips" | |
+| repo | string | NOT NULL, default "JotJunior/cstk" | |
 | numero_remoto | int \| null | Preenchido apos `gh issue create` retornar | |
 | url_remoto | string \| null | URL completa | |
 | titulo | string | NOT NULL, formato "[agente-00C] Bug em <skill>: <resumo>" | |

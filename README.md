@@ -1,10 +1,10 @@
 # Claude Code Toolkit
 
-[![Latest Release](https://img.shields.io/github/v/release/JotJunior/claude-ai-tips?label=latest%20release&color=blue)](https://github.com/JotJunior/claude-ai-tips/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/JotJunior/cstk?label=latest%20release&color=blue)](https://github.com/JotJunior/cstk/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![SemVer](https://img.shields.io/badge/SemVer-4.x-orange.svg)](./CHANGELOG.md)
-[![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/claude--ai--tips-blue?logo=readthedocs)](https://jotjunior.github.io/claude-ai-tips/)
-[![Publish Site](https://github.com/JotJunior/claude-ai-tips/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/claude-ai-tips/actions/workflows/publish-site.yml)
+[![SemVer](https://img.shields.io/badge/SemVer-5.x-orange.svg)](./CHANGELOG.md)
+[![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/cstk-blue?logo=readthedocs)](https://jotjunior.github.io/cstk/)
+[![Publish Site](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml)
 
 Conjunto de ferramentas para aumentar a produtividade no desenvolvimento do dia a dia com
 o [Claude Code](https://claude.ai/code).
@@ -12,7 +12,13 @@ o [Claude Code](https://claude.ai/code).
 Este repositorio contém **skills** e **hooks** que estendem as capacidades do Claude Code
 para tarefas de documentação, desenvolvimento, segurança e qualidade de código.
 
-> **Versão atual:** consulte a [release mais recente no GitHub](https://github.com/JotJunior/claude-ai-tips/releases/latest)
+> **Quem mantém / para quem é.** Mantido por uma pessoa, otimizado primeiro
+> para o fluxo do mantenedor (microserviços em Go). As partes concretas —
+> skills, hooks, CLI — são de uso geral; a **trilha avançada** (orquestrador
+> autônomo) é mais experimental. Veja [Comece aqui](#comece-aqui) para a
+> separação entre o básico e o avançado.
+
+> **Versão atual:** consulte a [release mais recente no GitHub](https://github.com/JotJunior/cstk/releases/latest)
 > para baixar o tarball ou acompanhar mudanças no [CHANGELOG.md](./CHANGELOG.md).
 > A instalação recomendada é via `cstk` CLI (ver [seção Instalação](#instalação)).
 
@@ -29,7 +35,7 @@ Duas trilhas, dependendo do que você procura:
 
 ```bash
 # 1. Instale (uma vez por máquina)
-curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh | sh
 ```
 
 ```text
@@ -53,7 +59,7 @@ curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/
 
 ```
 ├── global/                     # Skills globais (independentes de linguagem)
-│   └── skills/                 # 23 skills globais (cada skill é uma pasta)
+│   └── skills/                 # 22 skills globais (cada skill é uma pasta)
 │       ├── advisor/
 │       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
 │       ├── analyze/
@@ -64,7 +70,6 @@ curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/
 │       ├── clarify/
 │       ├── constitution/
 │       ├── create-tasks/
-│       ├── create-use-case/    # deprecated v3.12.0 — usar `specify`
 │       ├── decision-tree/      # HTML interativo da árvore de decisões do state.json
 │       ├── execute-task/
 │       ├── image-generation/
@@ -78,12 +83,10 @@ curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/
 │       ├── validate-docs-rendered/
 │       └── validate-documentation/
 ├── language-related/           # Skills e hooks específicos por linguagem
-│   ├── go/                     # Go
-│   │   ├── skills/             # Skills para projetos Go
-│   │   ├── hooks/              # Hooks de validação para Go
-│   │   └── settings.json       # Configuração de hooks
-│   └── dotnet/                 # .NET (deprecated v3.12.0 — remoção em v4.0.0)
-│       └── skills/             # 8 skills .NET marcadas como deprecated
+│   └── go/                     # Go
+│       ├── skills/             # Skills para projetos Go
+│       ├── hooks/              # Hooks de validação para Go
+│       └── settings.json       # Configuração de hooks
 ```
 
 ### Anatomia de uma skill
@@ -135,11 +138,10 @@ Skills independentes que podem ser usados em qualquer momento:
 |-------|---------|-----------|
 | **advisor** | "me aconselhe", "analise estratégica" | Conselheiro brutalmente honesto que disseca raciocínio e gera planos de ação |
 | **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
-| ~~**create-use-case**~~ | "criar caso de uso", "gerar UC" | **Deprecated v3.12.0** — usar `specify` (formato SDD). Remoção planejada para v4.0.0 |
 | **image-generation** | Ao gerar imagens | Aprimora prompts de geração de imagens usando estrutura Subject-Context-Style |
 | **initialize-docs** | "inicializar docs", "setup documentação" | Cria hierarquia padrão de documentação com 9 níveis |
 | **apply-insights** | "aplicar insights", "aplicar playbook", "melhorar claude.md" | Analisa o projeto e aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows. Renomeada de `insights` na 2.0.0 para evitar colisão com o `/insights` nativo do Claude Code (que tem função diferente — analisa suas sessões) |
-| **owasp-security** | Ao revisar segurança | Revisão de segurança cobrindo OWASP Top 10:2025, API Security Top 10:2023, CI/CD Top 10, ASVS 5.0, LLM Top 10:2025, Agentic AI 2026, CWE Top 25:2025, NIST SP 800-63B-4, WebAuthn/Passkeys, OAuth 2.1, FAPI 2.0 e Post-Quantum Cryptography |
+| **owasp-security** | Ao revisar segurança | Revisão **guiada por checklist** sobre um catálogo de padrões modernos (OWASP Top 10:2025, API/CI-CD, ASVS 5.0, LLM/Agentic, CWE Top 25:2025, NIST 800-63B-4, WebAuthn, OAuth 2.1, FAPI 2.0, pós-quântica). Assistente de revisão — **não** substitui auditoria/pentest. Profundidade sob demanda em `references/` |
 | **review-features** | "review features", "status global", "comparar features", "quais features priorizar" | Relatório comparativo de TODAS as features (cross-feature) com tabela agregada e sugestão de arquivar/abandonar/priorizar/continuar por feature |
 | **validate-documentation** | "validar documentação", "verificar UC" | Valida documentos individuais contra padrões de qualidade estrutural |
 | **validate-docs-rendered** | "validar renderização", "verificar diagramas" | Valida que a documentação Markdown renderiza corretamente (Mermaid, links internos, frontmatter, tabelas) |
@@ -249,8 +251,8 @@ O skill `execute-task` impõe um workflow completo de 9 etapas:
 
 ### Protocolo: bugfix
 
-O skill `bugfix` implementa um protocolo de 8 etapas derivado da análise de 71 correções de bugs
-em 134 sessões. Projetado para eliminar ciclos de "corrige-revela-corrige" em arquiteturas multi-serviço:
+O skill `bugfix` implementa um protocolo de 8 etapas destilado da prática de corrigir bugs em
+arquiteturas multi-serviço, com foco em eliminar ciclos de "corrige-revela-corrige":
 
 - Classifica complexidade (simples vs. multi-camada)
 - Rastreia o fluxo de dados completo antes de qualquer alteração
@@ -264,17 +266,24 @@ em 134 sessões. Projetado para eliminar ciclos de "corrige-revela-corrige" em a
 > (**Sessões paralelas** e **Memória de conhecimento**) cobrem o orquestrador
 > autônomo e seus subsistemas.
 
-> **Status: experimental — esqueleto FASE 1 instalado.** Implementação
-> operacional em andamento. Acompanhe o backlog em
-> [`docs/specs/_archived/agente-00c/tasks.md`](./docs/specs/_archived/agente-00c/) (44 tarefas,
-> 9 fases).
+> **Status: funcional e em uso pelo mantenedor** — porém **sem suíte de
+> testes automatizada dos agentes custom** (validação por execuções reais,
+> decisão consciente do briefing). Para adoção externa, trate como
+> **experimental**: é um experimento pessoal de orquestração autônoma, não
+> um produto com garantias de suporte. O backlog original (já concluído) está
+> em [`docs/specs/_archived/agente-00c/tasks.md`](./docs/specs/_archived/agente-00c/)
+> (44 tarefas, 9 fases); a feature evoluiu muito desde então — ver feature-00c,
+> model-routing e a memória de conhecimento, abaixo.
 
 O `agente-00C` é um **orquestrador autônomo** da pipeline SDD do toolkit:
 você invoca `/agente-00c` com uma descrição curta de POC/MVP e ele conduz
 `briefing → constitution → specify → clarify → plan → checklist →
-create-tasks → execute-task → review-task → review-features` sem
-intervenção humana entre etapas, gerando como entregável-mor um
-**relatório auditável** rico em decisões, bloqueios e lições aprendidas.
+create-tasks → execute-task → review-task → review-features`, **pausando
+apenas em bloqueios reais** (decisões que exigem um humano) e entre ondas
+agendadas — **não** é "dispare-e-esqueça". O entregável-mor é um **relatório
+auditável** rico em decisões, bloqueios e lições aprendidas: ele existe
+justamente para você revisar a rota, em vez de confiar cegamente na cadeia
+de etapas.
 
 ### Comandos expostos
 
@@ -423,27 +432,6 @@ Hooks em `language-related/go/hooks/` para validações automáticas:
 | **check-schema-prefix.sh** | Valida prefixo de schema nas migrations |
 | **check-route-order.sh** | Verifica ordenação de rotas no router |
 
-## Skills para .NET (Deprecated em v3.12.0)
-
-> **Aviso de depreciação:** todas as 8 skills `dotnet-*` foram marcadas
-> como `deprecated: true` na v3.12.0 e serão **removidas em v4.0.0**.
-> Motivo: stack .NET descontinuada pelo mantenedor. Não há substituto
-> no toolkit global. Se você ainda usa .NET, copie as skills relevantes
-> para `<projeto>/.claude/skills/` antes da remoção.
-
-Skills em `language-related/dotnet/skills/`:
-
-| Skill | Descrição |
-|-------|-----------|
-| ~~**dotnet-create-entity**~~ | Cria entidade com mapeamento EF Core |
-| ~~**dotnet-create-feature**~~ | Gera feature completa (handler, validator, etc.) |
-| ~~**dotnet-create-project**~~ | Scaffolding de novo projeto .NET |
-| ~~**dotnet-create-test**~~ | Gera testes unitários e de integração |
-| ~~**dotnet-hexagonal-architecture**~~ | Aplica arquitetura hexagonal |
-| ~~**dotnet-infrastructure**~~ | Configura infraestrutura (DB, cache, messaging) |
-| ~~**dotnet-review-code**~~ | Revisa qualidade de código .NET |
-| ~~**dotnet-testing**~~ | Estratégias e padrões de teste |
-
 <!-- --8<-- [start:install-section] -->
 ## Instalação
 
@@ -456,7 +444,7 @@ exigir clone do repositório.
 **One-liner de bootstrap** (instala `cstk` em `~/.local/bin/`):
 
 ```bash
-curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh | sh
 ```
 
 Depois disso, comandos típicos:
@@ -464,7 +452,7 @@ Depois disso, comandos típicos:
 ```bash
 cstk --version                       # confirma instalação
 cstk install                         # instala perfil 'sdd' em ~/.claude/skills/
-cstk install --profile all           # instala TODAS as 38 skills (inclui language-*)
+cstk install --profile all           # instala TODAS as 29 skills (inclui language-go)
 cstk install advisor bugfix          # cherry-pick por nome
 cstk update                          # aplica novas releases preservando edits locais
 cstk update --force                  # sobrescreve skills com edição local
@@ -478,10 +466,9 @@ cstk self-update                     # atualiza o próprio binário cstk
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 10 skills do pipeline Spec-Driven Development (briefing → review-task) | Instalação global default |
-| `complementary` | 10 skills independentes (advisor, bugfix, owasp-security, decision-tree, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 38 skills (sdd + complementary + language-*) | Instalação completa |
+| `complementary` | 9 skills independentes (advisor, bugfix, owasp-security, decision-tree, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
-| `language-dotnet` | Skills específicos para .NET | Apenas em projetos .NET |
 
 Profile padrão quando nada é informado: `sdd`.
 
@@ -493,7 +480,7 @@ cd ~/projetos/meu-app-go
 cstk install --scope project --profile language-go
 
 # Cherry-pick em escopo de projeto
-cstk install --scope project create-use-case advisor
+cstk install --scope project advisor owasp-security
 
 # Hooks de language-* SÃO instalados apenas em --scope project
 # (em --scope global, hooks são omitidos com aviso no summary — FR-009c)
@@ -560,10 +547,9 @@ seu-projeto/
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 10 skills do pipeline Spec-Driven Development (briefing → review-task) | Instalação global default |
-| `complementary` | 10 skills independentes (advisor, bugfix, owasp-security, decision-tree, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 38 skills (sdd + complementary + language-*) | Instalação completa |
+| `complementary` | 9 skills independentes (advisor, bugfix, owasp-security, decision-tree, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
-| `language-dotnet` | Skills específicos para .NET | Apenas em projetos .NET |
 
 Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --help`.
 <!-- --8<-- [end:profiles-section] -->
@@ -647,7 +633,7 @@ reconstruída a qualquer momento via `--reindex` a partir dos
 cstk recall "lock contention"
 
 # Filtrar por projeto, tipo de registro e limitar resultados
-cstk recall "secrets-filter" --project claude-ai-tips --type decision --limit 5
+cstk recall "secrets-filter" --project cstk --type decision --limit 5
 
 # Filtrar só memorias (.md do Claude Code)
 cstk recall "setup" --type memory
@@ -691,9 +677,12 @@ feature corrente para não ecoar suas próprias escritas), e teto duro de bytes.
 
 É **read-only** e **best-effort**: toda degradação (sem `sqlite3`, índice
 ausente/corrompido, zero achados) resulta em **no-op silencioso** (stdout vazio,
-exit 0) — nunca gateia uma onda. O conteúdo recuperado já foi *scrubbed* na
-ingestão e é injetado com rótulo **UNTRUSTED / não-autoritativo** (defesa
-prompt-injection ASI09/LLM01).
+exit 0) — nunca gateia uma onda. Contra prompt-injection via memória recuperada
+há **duas camadas** (ASI09/LLM01): (1) *scrubbing* de segredos na **ingestão**
+(controle técnico real) e (2) injeção com rótulo **UNTRUSTED / não-autoritativo**
+— uma **mitigação** defense-in-depth, **não uma garantia**. O risco residual de
+um registro antigo *instruir* o modelo permanece; por isso o conteúdo nunca é
+tratado como instrução.
 
 **Degradação graciosa**: a ausência de `sqlite3` ou `jq` **nunca** aborta uma
 onda — o hook de ingestão e o `recall` saem com status 0 emitindo apenas um
@@ -777,7 +766,7 @@ de 1.1.0, as skills consultam os domínios reais via:
 
 Exemplos comuns em projetos de negócio: `AUTH` (autenticação), `CAD`
 (cadastros), `PED` (pedidos), `FIN` (financeiro). Use o que faz sentido no
-seu domínio — a skill `create-use-case` não assume mais uma lista fixa.
+seu domínio.
 
 ## Hierarquia de Documentação
 

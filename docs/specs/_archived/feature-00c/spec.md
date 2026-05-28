@@ -210,7 +210,7 @@ parcial e gerado em <60s, e o motivo aparece claro.
    libera a sessao em <60s.
 4. **Given** o orquestrador encontrou bug impeditivo em skill global,
    **When** confirma o bug pelos mesmos criterios do agente-00c, **Then**
-   abre issue no GitHub do toolkit `JotJunior/claude-ai-tips` com template
+   abre issue no GitHub do toolkit `JotJunior/cstk` com template
    estruturado, registra a issue no relatorio e aborta.
 
 ---
@@ -625,7 +625,7 @@ e rejeitado com mensagem explicativa.
   externo, ou comunicacao com URLs nao-whitelisted. Package managers
   somente dentro de container docker do projeto-alvo.
 - **FR-035 — `gh issue create` como unica excecao externa**: Sistema
-  MUST tratar `gh issue create` em `JotJunior/claude-ai-tips` como a
+  MUST tratar `gh issue create` em `JotJunior/cstk` como a
   **UNICA** excecao a FR-031 ("zero comunicacao externa"). A excecao
   e disciplinada por TRES restricoes cumulativas:
   1. **Trigger**: apenas quando uma sugestao para skill global e
@@ -637,7 +637,7 @@ e rejeitado com mensagem explicativa.
      arquivo do projeto-alvo. Apenas o template estruturado
      (skill afetada, diagnostico filtrado, proposta filtrada, link
      LOCAL ao relatorio — nao upload).
-  3. **Repositorio fixo**: apenas `JotJunior/claude-ai-tips`. Tentar
+  3. **Repositorio fixo**: apenas `JotJunior/cstk`. Tentar
      abrir issue em qualquer outro repo = violacao de blast radius
      e bloqueio.
 

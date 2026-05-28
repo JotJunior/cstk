@@ -189,7 +189,7 @@ operacional inaceitavel.
 - **`curl` / fetches**: somente para URLs declaradas no `.env` do projeto-alvo
   ou em whitelist apresentada no inicio da execucao.
 - **`gh`**: operacoes locais (commit, repo info) + **excecao explicita**: pode
-  abrir issues no GitHub do toolkit `JotJunior/claude-ai-tips` para reportar
+  abrir issues no GitHub do toolkit `JotJunior/cstk` para reportar
   bugs/sugestoes em skills globais. Sem push de codigo, sem PR externo, sem
   outras operacoes remotas.
 - **Credenciais**: o 00C pode usar livremente apenas o que esta no `.env` do

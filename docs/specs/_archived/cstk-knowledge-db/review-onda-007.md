@@ -1,7 +1,7 @@
 # Relatorio de Status das Tarefas
 
 **Data:** 2026-05-23
-**Projeto:** claude-ai-tips (toolkit) — feature `cstk-knowledge-db`
+**Projeto:** cstk (toolkit) — feature `cstk-knowledge-db`
 **Tipo:** Misto (codigo POSIX sh + documentacao SDD)
 **Arquivo de Tarefas:** `docs/specs/cstk-knowledge-db/tasks.md`
 **Onda:** onda-007 (execute-task FASE 8.3 + review-task)

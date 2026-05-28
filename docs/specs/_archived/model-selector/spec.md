@@ -4,7 +4,7 @@
 **Created**: 2026-05-21
 **Status**: Clarified
 
-> **Contexto**: este toolkit (claude-ai-tips) hospeda orquestradores autonomos
+> **Contexto**: este toolkit (cstk) hospeda orquestradores autonomos
 > (agente-00c e feature-00c) que gastam contexto e custo em CADA chamada de
 > ferramenta e CADA invocacao de subagente. Muitas dessas chamadas sao
 > mecanicas — concatenar JSON, registrar uma decisao trivial, formatar

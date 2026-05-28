@@ -3,7 +3,7 @@
 **Data:** 2026-05-27
 **Feature:** panel-installer
 **Onda de revisao:** onda-007
-**Projeto:** claude-ai-tips (toolkit cstk)
+**Projeto:** cstk (toolkit cstk)
 **Tipo:** Codigo (POSIX sh + testes shell)
 
 ---

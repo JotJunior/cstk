@@ -5,7 +5,7 @@
 ## Summary
 
 Feature-00C e um orquestrador autonomo da pipeline SDD do toolkit
-`claude-ai-tips`, focado em **uma feature individual** dentro de um
+`cstk`, focado em **uma feature individual** dentro de um
 projeto que ja possui briefing + constitution ratificados. Paralelo
 ao `agente-00c` (escopo de projeto inteiro), reusa o mesmo runtime
 POSIX e o mesmo padrao asker/answerer mediado, mas opera sobre a
@@ -77,7 +77,7 @@ de secrets**, constitution drift). Testes automatizados POSIX em
 Continuacao via wakeup (curtas) ou `/schedule` Routines (longas,
 fallback — mesmo padrao do agente-00c research.md Decision 1).
 
-**Project Type**: meta-tool dentro do toolkit `claude-ai-tips`. Nao
+**Project Type**: meta-tool dentro do toolkit `cstk`. Nao
 e biblioteca nem servico. Colecao de slash commands + agentes custom
 + scripts POSIX no skill compartilhado `agente-00c-runtime`.
 
@@ -150,7 +150,7 @@ docs/specs/feature-00c/
 ### Source Code (repository root)
 
 ```
-claude-ai-tips/
+cstk/
 ├── global/
 │   ├── agents/
 │   │   ├── agente-00c-clarify-answerer.md           # existe

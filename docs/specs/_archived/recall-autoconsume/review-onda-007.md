@@ -1,7 +1,7 @@
 # Relatorio de Status das Tarefas
 
 **Data:** 2026-05-24
-**Projeto:** claude-ai-tips (toolkit) — feature `recall-autoconsume`
+**Projeto:** cstk (toolkit) — feature `recall-autoconsume`
 **Tipo:** Misto (scripts POSIX + documentacao SDD)
 **Arquivo de Tarefas:** `docs/specs/recall-autoconsume/tasks.md`
 **Onda:** onda-007 (review-task / fechamento)

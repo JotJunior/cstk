@@ -1,6 +1,6 @@
 """
 gen_pages.py — Hook MkDocs (mkdocs-gen-files) que enumera fontes canonicas
-do toolkit `claude-ai-tips` e gera shims virtuais "--8<--" para cada
+do toolkit `cstk` e gera shims virtuais "--8<--" para cada
 skill/agent/command, SEM duplicar conteudo (alinhado com Principio D-I:
 Zero Duplicacao).
 

@@ -9,7 +9,7 @@
 
 ## Sumario executivo
 
-O portfolio do toolkit `claude-ai-tips` (este repositorio) esta em estado
+O portfolio do toolkit `cstk` (este repositorio) esta em estado
 saudavel: **7 de 8 features estao 100% concluidas** e prontas para arquivar;
 a unica feature ativa e exatamente o alvo desta execucao 00C
 (`github-pages-cstk-manual`), em 68% com criticidade C pendente — todas
@@ -143,7 +143,7 @@ runbook-deploy.md cobre o handoff.
 1. **Executar `runbook-deploy.md` (operador, ~30 min)** — passos manuais
    para criar repo, ativar GitHub Pages e fazer o primeiro deploy do
    site `cstk-manual`. Path:
-   `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips-github-pages/docs/specs/github-pages-cstk-manual/runbook-deploy.md`
+   `/Users/jot/Projects/_lab/Jot/misc/cstk-github-pages/docs/specs/github-pages-cstk-manual/runbook-deploy.md`
 
 2. **Validar `agente-00c` (98%)** — rodar
    `/review-task docs/specs/_archived/agente-00c/tasks.md` para inspecionar as 3

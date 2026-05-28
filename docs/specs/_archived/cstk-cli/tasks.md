@@ -543,7 +543,7 @@ Ref: `spec.md` FR-016f, FR-016g, SC-008.
   → Resolvido: workflows v3.4.0 (49s) e v3.5.0 (49s) ambos `success`.
     Assets publicados: cstk-3.5.0.tar.gz (290,319 bytes), .sha256 (84 bytes),
     install.sh (7,608 bytes). v3.4.0: 280,909 bytes. URLs publicas via
-    https://github.com/JotJunior/claude-ai-tips/releases/download/v3.5.0/.
+    https://github.com/JotJunior/cstk/releases/download/v3.5.0/.
 - [x] 12.7.3 Smoke manual em maquina limpa: `curl ... | sh` -> `cstk install` -> `cstk 00c ./test-poc` -> verificar que claude inicia com slash command montada (SC-008)
   → Resolvido via `tests/docker/` em container Ubuntu 24.04 limpo
     (`tests/docker/run-smoke.sh 3.5.0`): 24/24 assertions PASS cobrindo

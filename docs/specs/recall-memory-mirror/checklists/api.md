@@ -27,7 +27,7 @@ modos (busca unificada com memories, `--type memory`, `--ingest` aditivo, `--rei
   > Evidencia: Contrato Cmd 5: `exit 2` para "flag invalida combinada". [Ambiguity] leve: quais combinacoes exatas disparam exit 2 nao esta enumerada — nao impede implementacao, mas o teste pode precisar de especificacao adicional.
 
 - [x] CHK007 - O campo `project` e visivel na renderizacao de busca (proveniencia cross-projeto)? [Completude, Spec §US1 cenario 1] {auto}
-  > Evidencia: Contrato Cmd 1 Output: `[memory] claude-ai-tips / memory / - / 2026-05-27T18:00:00Z (slug)` — projeto visivel.
+  > Evidencia: Contrato Cmd 1 Output: `[memory] cstk / memory / - / 2026-05-27T18:00:00Z (slug)` — projeto visivel.
 
 - [x] CHK008 - `--list-memories` com projeto sem memorias indexadas retorna stdout vazio, exit 0? [Cobertura, Spec §US4 cenario 2] {auto}
   > Evidencia: Spec US4 cenario 2 + Contrato Cmd 5 exit codes: "stdout vazio, exit 0".

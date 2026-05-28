@@ -5,7 +5,7 @@ description: Como contribuir com mudancas de conteudo do site (regra de ouro D-I
 
 # Contribuindo com a documentacao do site
 
-Este site (`https://jotjunior.github.io/claude-ai-tips/`) e gerado a
+Este site (`https://jotjunior.github.io/cstk/`) e gerado a
 partir dos **arquivos fonte canonicos** do toolkit. **Nao edite paginas
 diretamente neste diretorio (`docs-site/`)** se a pagina e auto-gerada
 — a proxima execucao do hook `gen_pages.py` sobrescreve sua mudanca

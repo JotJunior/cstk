@@ -14,7 +14,7 @@
 
 ## Contexto
 
-O toolkit `claude-ai-tips` mantem uma **memoria de conhecimento cross-feature**:
+O toolkit `cstk` mantem uma **memoria de conhecimento cross-feature**:
 um indice SQLite global (`~/.claude/cstk/knowledge.db`, FTS5) alimentado por um
 hook best-effort no fim de cada onda dos orquestradores autonomos `agente-00c` e
 `feature-00c`. Hoje o indice tem **4 tabelas textuais** (`decisions`,

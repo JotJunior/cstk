@@ -7,7 +7,7 @@
 #      docs/specs/agente-00c/tasks.md FASE 8.4
 #
 # Excecao escopada ao Principio V (blast radius confinado): apenas
-# `gh issue create --repo JotJunior/claude-ai-tips`. Nao sobe relatorio
+# `gh issue create --repo JotJunior/cstk`. Nao sobe relatorio
 # nem estado — somente bug report curado.
 #
 # Subcomandos:
@@ -34,7 +34,7 @@
 #       — Imprime hash 8-chars do diagnostico normalizado (debug).
 #
 # Excessao do toolkit-repo hardcoded:
-#   _ISH_REPO=JotJunior/claude-ai-tips
+#   _ISH_REPO=JotJunior/cstk
 #
 # Exit codes:
 #   0 sucesso (issue criada OU duplicata encontrada)
@@ -46,7 +46,7 @@
 set -eu
 
 _ISH_NAME="issue"
-_ISH_REPO="JotJunior/claude-ai-tips"
+_ISH_REPO="JotJunior/cstk"
 
 _ish_die_usage() { printf '%s: %s\n' "$_ISH_NAME" "$1" >&2; exit 2; }
 _ish_die()       { printf '%s: %s\n' "$_ISH_NAME" "$1" >&2; exit "${2:-1}"; }
@@ -348,7 +348,7 @@ USO:
   issue.sh check-duplicate --skill SKILL --diagnostico TEXT
   issue.sh hash --diagnostico TEXT
 
-Toolkit-repo hardcoded: JotJunior/claude-ai-tips (excecao escopada ao
+Toolkit-repo hardcoded: JotJunior/cstk (excecao escopada ao
 Principio V — bug report curado, sem upload de relatorio/estado).
 
 EXIT:

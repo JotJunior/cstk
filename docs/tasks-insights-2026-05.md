@@ -32,7 +32,7 @@ Antes de tagear `vX.Y.Z` e empurrar:
    tageado (`git log --oneline <commit> -- .github/workflows/release.yml`).
    Tag em commit anterior ao workflow → release nao publica e exige patch
 3. Validar `install.sh` localmente contra a release anterior:
-   `curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/install.sh | sh`
+   `curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh | sh`
 4. Apos tagear: `gh run watch` na pipeline antes de anunciar
 
 Historico: v3.2.0→3.2.1→3.2.2 foi cascata de 3 patches em sequencia por

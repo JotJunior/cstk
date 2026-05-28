@@ -1,7 +1,7 @@
 # Relatorio de Status das Tarefas — github-pages-cstk-manual
 
 **Data:** 2026-05-19
-**Projeto:** claude-ai-tips — feature `github-pages-cstk-manual`
+**Projeto:** cstk — feature `github-pages-cstk-manual`
 **Tipo:** Misto (documentacao + scripts + CI/CD)
 **Arquivo de Tarefas:** `docs/specs/github-pages-cstk-manual/tasks.md`
 **Auditor:** skill `review-task` invocada pelo agente-00C (onda-015)
@@ -200,7 +200,7 @@ Priorizadas por criticidade `[C]` > `[A]` > `[M]` + independencia.
 - **Justificativa:** valida pipeline end-to-end + ativa o site
 - **Esforco:** ~10 minutos + tempo do workflow (~3-5 min)
 - **Acao:** `git push origin main` + observar Actions tab
-- **Pos-condicao:** site publico em `https://jotjunior.github.io/claude-ai-tips-github-pages/`
+- **Pos-condicao:** site publico em `https://jotjunior.github.io/cstk-github-pages/`
 
 ### 3. Tarefa 7.2 — Validar Lighthouse Accessibility >=90 `[C]`
 

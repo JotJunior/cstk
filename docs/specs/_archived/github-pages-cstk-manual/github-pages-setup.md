@@ -1,7 +1,7 @@
 # GitHub Pages — Ativacao do site
 
 Documento operacional para habilitar a publicacao do site MkDocs no
-GitHub Pages do repositorio `JotJunior/claude-ai-tips`. Refere-se a
+GitHub Pages do repositorio `JotJunior/cstk`. Refere-se a
 FR-022 da spec e §6.4 do `tasks.md`.
 
 ## Pre-requisitos
@@ -12,13 +12,13 @@ FR-022 da spec e §6.4 do `tasks.md`.
 
 ## Passo a passo (UI do GitHub)
 
-1. Abra `https://github.com/JotJunior/claude-ai-tips/settings/pages`.
+1. Abra `https://github.com/JotJunior/cstk/settings/pages`.
 2. Em **Build and deployment**:
    - **Source**: selecione **GitHub Actions** (NAO "Deploy from a branch").
    - O GitHub detecta automaticamente o workflow `publish-site.yml` —
      nao e necessario configurar o branch nem o path.
 3. Salve. A URL publica gerada sera:
-   `https://jotjunior.github.io/claude-ai-tips/`
+   `https://jotjunior.github.io/cstk/`
 4. Faca um push minimo em `main` (ex: editar README.md trivial) e
    acompanhe a aba **Actions** ate o job `deploy` finalizar com sucesso.
 5. Abra a URL publica e valide que o site renderiza.
@@ -27,13 +27,13 @@ FR-022 da spec e §6.4 do `tasks.md`.
 
 ```bash
 # Listar workflows
-gh workflow list --repo JotJunior/claude-ai-tips
+gh workflow list --repo JotJunior/cstk
 
 # Disparar manualmente apos configurar o Pages
-gh workflow run publish-site.yml --repo JotJunior/claude-ai-tips
+gh workflow run publish-site.yml --repo JotJunior/cstk
 
 # Acompanhar a execucao mais recente
-gh run watch --repo JotJunior/claude-ai-tips
+gh run watch --repo JotJunior/cstk
 ```
 
 ## Branch protection (opcional — §6.5)
@@ -63,4 +63,4 @@ Se um deploy quebrar o site:
 2. Push — o workflow re-roda automaticamente com a versao anterior.
 3. O environment `github-pages` no GitHub mostra historico de deploys
    e permite re-deploy de um deploy anterior via UI:
-   `https://github.com/JotJunior/claude-ai-tips/deployments`.
+   `https://github.com/JotJunior/cstk/deployments`.

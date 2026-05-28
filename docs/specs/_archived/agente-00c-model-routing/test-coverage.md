@@ -22,7 +22,7 @@ F6.1.4/F6.1.5 (validacao via `./tests/run.sh test_model-routing`).
 ## Convencoes
 
 - **Test file paths** sao relativos a raiz do repo
-  (`/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/`).
+  (`/Users/jot/Projects/_lab/Jot/misc/cstk/`).
 - **Scenario names** matcham `^scenario_*` em cada arquivo de teste.
 - **Tipo de cobertura**:
   - `direct` — scenario assertiona o requisito como obrigacao primaria.

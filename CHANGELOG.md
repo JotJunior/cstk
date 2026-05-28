@@ -5,6 +5,41 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.0.0] - 2026-05-27
+
+**BREAKING.** O projeto foi renomeado para `cstk` (repositório
+`JotJunior/claude-ai-tips` → `JotJunior/cstk`), alinhando repositório, produto e
+binário sob o mesmo nome. Removidas as skills marcadas como *deprecated* desde a
+v3.12.0 (remoção originalmente prevista para a v4.0.0). Documentação recalibrada
+para descrever o que o toolkit realmente faz.
+
+### Removed
+
+- **`create-use-case`** — use `specify` (formato SDD). Removidos a skill, o
+  script `next-uc-id.sh` + teste, as fixtures `tests/fixtures/ucs/`, a entrada
+  em `profiles.txt.in` e as referências no catálogo de tips e em `specify`.
+- **8 skills `dotnet-*`** — stack .NET descontinuada, sem substituto no toolkit
+  global. Removida a árvore `language-related/dotnet/`; o profile
+  `language-dotnet` deixa de existir (era auto-derivado da pasta). Quem usa .NET
+  deve copiar as skills de uma release ≤ 4.10.0 para `<projeto>/.claude/skills/`.
+
+### Changed
+
+- **Rename `claude-ai-tips` → `cstk`** em URLs, badges, GitHub Pages e scripts de
+  install/release. URLs antigas seguem vivas via redirect do GitHub.
+- **Honestidade na documentação**: status do `agente-00c` atualizado (funcional,
+  porém sem suíte de testes automatizada dos agentes — não mais "esqueleto FASE
+  1"); autonomia recalibrada (pausa em bloqueios reais, não é "dispare-e-
+  esqueça"); recall descrito como *mitigação* defense-in-depth contra
+  prompt-injection (não "defesa"); `owasp-security` reposicionada como revisão
+  guiada por checklist (não auditoria/pentest); removido o número não
+  verificável "71 bugs / 134 sessões" do `bugfix`.
+
+### Notes
+
+- Profile `all` e contagem caem de **38 → 29 skills**. Quem instalou via `cstk`:
+  rode `cstk update`; `cstk doctor` detecta o drift das skills removidas.
+
 ## [4.10.0] - 2026-05-27
 
 Feature `recall-memory-mirror`: o `cstk recall` agora indexa e busca os
@@ -2039,7 +2074,7 @@ exec-2026-05-11T19-59-58Z). Backlog completo em
 
   - `issue.sh` (FR-021): subcomandos `create`, `check-duplicate`,
     `hash`. Excecao escopada ao Principio V — apenas `gh issue
-    create --repo JotJunior/claude-ai-tips`. Hash de 8 chars do
+    create --repo JotJunior/cstk`. Hash de 8 chars do
     diagnostico normalizado (lowercase + collapse whitespace + sha256
     + cut) para dedup via `gh issue list --search`. Template do
     `contracts/issue-template.md` aplicado via heredoc (Skill afetada,
@@ -2134,7 +2169,7 @@ exec-2026-05-11T19-59-58Z). Backlog completo em
     extrai URL (incluindo via `--repo OWNER/NAME` para gh) e checa
     contra whitelist; converte glob simples (`**` -> `.*`, `*` ->
     `[^/]*`) em regex. Excecao escopada: `gh issue create --repo
-    JotJunior/claude-ai-tips` bypass (FR-021).
+    JotJunior/cstk` bypass (FR-021).
 
   - `secrets-filter.sh` (FR-030): subcomandos `scrub`, `check`. Filtros
     em ordem (especificos primeiro para preservar tipo): AWS keys
@@ -2427,7 +2462,7 @@ exec-2026-05-11T19-59-58Z). Backlog completo em
   - `$CSTK_RELEASE_URL` (env)           → usa a URL do env
   - **(novo)** sem nada acima           → GitHub API /releases/latest
 
-  Honra `$CSTK_REPO` para forks (default `JotJunior/claude-ai-tips`).
+  Honra `$CSTK_REPO` para forks (default `JotJunior/cstk`).
   Mesmo padrao ja em uso por `cstk self-update` desde FASE 5.
 
   Reportado por usuario: `cstk install` apos bootstrap retornava
@@ -2856,55 +2891,55 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
-[4.9.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.9.1
-[4.9.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.9.0
-[4.8.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.8.0
-[4.7.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.2
-[4.7.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.1
-[4.7.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.7.0
-[4.6.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.6.2
-[4.6.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.6.1
-[4.6.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.6.0
-[4.5.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.6.0
-[4.4.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.4.0
-[4.3.4]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.4
-[4.3.3]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.3
-[4.3.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.2
-[4.3.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.1
-[4.3.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.3.0
-[4.2.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.2.0
-[4.1.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.1.1
-[4.1.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.1.0
-[4.0.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v4.0.0
-[3.19.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.19.1
-[3.19.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.19.0
-[3.18.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.18.0
-[3.17.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.17.0
-[3.16.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.16.0
-[3.15.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.15.0
-[3.14.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.14.0
-[3.13.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.13.0
-[3.12.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.12.0
-[3.11.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.11.0
-[3.10.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.10.0
-[3.9.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.9.1
-[3.9.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.9.0
-[3.8.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.8.0
-[3.7.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.7.0
-[3.6.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.6.0
-[3.5.3]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.5.3
-[3.5.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.5.2
-[3.5.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.5.1
-[3.5.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.5.0
-[3.4.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.4.0
-[3.3.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.3.0
-[3.2.3]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.2.3
-[3.2.2]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.2.2
-[3.2.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.2.1
-[3.2.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.2.0
-[3.1.1]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.1.1
-[3.1.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.1.0
-[3.0.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v3.0.0
-[2.0.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v2.0.0
-[1.1.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v1.1.0
-[1.0.0]: https://github.com/JotJunior/claude-ai-tips/releases/tag/v1.0.0
+[4.9.1]: https://github.com/JotJunior/cstk/releases/tag/v4.9.1
+[4.9.0]: https://github.com/JotJunior/cstk/releases/tag/v4.9.0
+[4.8.0]: https://github.com/JotJunior/cstk/releases/tag/v4.8.0
+[4.7.2]: https://github.com/JotJunior/cstk/releases/tag/v4.7.2
+[4.7.1]: https://github.com/JotJunior/cstk/releases/tag/v4.7.1
+[4.7.0]: https://github.com/JotJunior/cstk/releases/tag/v4.7.0
+[4.6.2]: https://github.com/JotJunior/cstk/releases/tag/v4.6.2
+[4.6.1]: https://github.com/JotJunior/cstk/releases/tag/v4.6.1
+[4.6.0]: https://github.com/JotJunior/cstk/releases/tag/v4.6.0
+[4.5.0]: https://github.com/JotJunior/cstk/releases/tag/v4.6.0
+[4.4.0]: https://github.com/JotJunior/cstk/releases/tag/v4.4.0
+[4.3.4]: https://github.com/JotJunior/cstk/releases/tag/v4.3.4
+[4.3.3]: https://github.com/JotJunior/cstk/releases/tag/v4.3.3
+[4.3.2]: https://github.com/JotJunior/cstk/releases/tag/v4.3.2
+[4.3.1]: https://github.com/JotJunior/cstk/releases/tag/v4.3.1
+[4.3.0]: https://github.com/JotJunior/cstk/releases/tag/v4.3.0
+[4.2.0]: https://github.com/JotJunior/cstk/releases/tag/v4.2.0
+[4.1.1]: https://github.com/JotJunior/cstk/releases/tag/v4.1.1
+[4.1.0]: https://github.com/JotJunior/cstk/releases/tag/v4.1.0
+[4.0.0]: https://github.com/JotJunior/cstk/releases/tag/v4.0.0
+[3.19.1]: https://github.com/JotJunior/cstk/releases/tag/v3.19.1
+[3.19.0]: https://github.com/JotJunior/cstk/releases/tag/v3.19.0
+[3.18.0]: https://github.com/JotJunior/cstk/releases/tag/v3.18.0
+[3.17.0]: https://github.com/JotJunior/cstk/releases/tag/v3.17.0
+[3.16.0]: https://github.com/JotJunior/cstk/releases/tag/v3.16.0
+[3.15.0]: https://github.com/JotJunior/cstk/releases/tag/v3.15.0
+[3.14.0]: https://github.com/JotJunior/cstk/releases/tag/v3.14.0
+[3.13.0]: https://github.com/JotJunior/cstk/releases/tag/v3.13.0
+[3.12.0]: https://github.com/JotJunior/cstk/releases/tag/v3.12.0
+[3.11.0]: https://github.com/JotJunior/cstk/releases/tag/v3.11.0
+[3.10.0]: https://github.com/JotJunior/cstk/releases/tag/v3.10.0
+[3.9.1]: https://github.com/JotJunior/cstk/releases/tag/v3.9.1
+[3.9.0]: https://github.com/JotJunior/cstk/releases/tag/v3.9.0
+[3.8.0]: https://github.com/JotJunior/cstk/releases/tag/v3.8.0
+[3.7.0]: https://github.com/JotJunior/cstk/releases/tag/v3.7.0
+[3.6.0]: https://github.com/JotJunior/cstk/releases/tag/v3.6.0
+[3.5.3]: https://github.com/JotJunior/cstk/releases/tag/v3.5.3
+[3.5.2]: https://github.com/JotJunior/cstk/releases/tag/v3.5.2
+[3.5.1]: https://github.com/JotJunior/cstk/releases/tag/v3.5.1
+[3.5.0]: https://github.com/JotJunior/cstk/releases/tag/v3.5.0
+[3.4.0]: https://github.com/JotJunior/cstk/releases/tag/v3.4.0
+[3.3.0]: https://github.com/JotJunior/cstk/releases/tag/v3.3.0
+[3.2.3]: https://github.com/JotJunior/cstk/releases/tag/v3.2.3
+[3.2.2]: https://github.com/JotJunior/cstk/releases/tag/v3.2.2
+[3.2.1]: https://github.com/JotJunior/cstk/releases/tag/v3.2.1
+[3.2.0]: https://github.com/JotJunior/cstk/releases/tag/v3.2.0
+[3.1.1]: https://github.com/JotJunior/cstk/releases/tag/v3.1.1
+[3.1.0]: https://github.com/JotJunior/cstk/releases/tag/v3.1.0
+[3.0.0]: https://github.com/JotJunior/cstk/releases/tag/v3.0.0
+[2.0.0]: https://github.com/JotJunior/cstk/releases/tag/v2.0.0
+[1.1.0]: https://github.com/JotJunior/cstk/releases/tag/v1.1.0
+[1.0.0]: https://github.com/JotJunior/cstk/releases/tag/v1.0.0

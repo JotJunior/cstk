@@ -74,7 +74,7 @@ scenario_dry_run_imprime_template_completo() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run exit" "$_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "DRY-RUN" || return 1
   assert_stdout_contains "Title: [agente-00C] Bug em clarify" || return 1
-  assert_stdout_contains "Repo: JotJunior/claude-ai-tips" || return 1
+  assert_stdout_contains "Repo: JotJunior/cstk" || return 1
   assert_stdout_contains "Labels: agente-00c,bug,skill-global" || return 1
   assert_stdout_contains "## Skill afetada" || return 1
   assert_stdout_contains "## Diagnostico" || return 1

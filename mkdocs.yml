@@ -5,14 +5,14 @@
 # Ref: plan.md §1.3, spec.md FR-006/FR-011/FR-021/FR-023.
 
 site_name: cstk — Manual e Catalogo
-site_url: https://jotjunior.github.io/claude-ai-tips/
+site_url: https://jotjunior.github.io/cstk/
 site_description: >-
   Manual de uso do CLI cstk e catalogo navegavel das skills, agents e
-  slash commands distribuidos pelo toolkit claude-ai-tips.
+  slash commands distribuidos pelo toolkit cstk.
 site_author: JotJunior
 
-repo_url: https://github.com/JotJunior/claude-ai-tips
-repo_name: JotJunior/claude-ai-tips
+repo_url: https://github.com/JotJunior/cstk
+repo_name: JotJunior/cstk
 edit_uri: edit/main/docs-site/
 
 docs_dir: docs-site
@@ -154,6 +154,6 @@ extra_css:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/JotJunior/claude-ai-tips
-      name: claude-ai-tips no GitHub
+      link: https://github.com/JotJunior/cstk
+      name: cstk no GitHub
   generator: false  # remove rodape "Made with Material for MkDocs"

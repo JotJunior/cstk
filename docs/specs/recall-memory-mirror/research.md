@@ -76,9 +76,9 @@ telemetria existente, que ja usa `basename` em recall.sh L636).
 **Evidencia empirica** (re-verificada nesta onda de plan):
 ```
 /Users/jot                                          -> -Users-jot
-/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips    -> -Users-jot-Projects--lab-Jot-misc-claude-ai-tips
+/Users/jot/Projects/_lab/Jot/misc/cstk    -> -Users-jot-Projects--lab-Jot-misc-cstk
 ```
-E o dir real `~/.claude/projects/-Users-jot-Projects--lab-Jot-misc-claude-ai-tips/memory/`
+E o dir real `~/.claude/projects/-Users-jot-Projects--lab-Jot-misc-cstk/memory/`
 existe e contem 31 arquivos `.md` (verificado via `ls`).
 
 **Limitacao conhecida e aceita** (CQ1): no `--reindex`, sem `state.json` para mapear o

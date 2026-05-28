@@ -7,6 +7,13 @@ description: 'Security review: OWASP Top 10:2025, ASVS 5.0, Agentic AI 2026, LLM
 
 Apply these security standards when writing or reviewing code.
 
+> **Scope & limits.** This skill is a **checklist-guided review assistant** over
+> the standards below — useful for sweeping a diff or PR and surfacing
+> high-signal findings. It is **not**, and does not replace, a formal audit,
+> pentest, or certification: the breadth of the catalog (10+ frameworks) means
+> *checklist* coverage, not exhaustive verification. Use it to raise the security
+> floor and to prioritize; treat findings as starting points, not verdicts.
+
 ## Deep references
 
 This file is the **operational entry point** — quick checklists and code patterns. For deep coverage of any topic below, open the matching file in [`references/`](./references/):

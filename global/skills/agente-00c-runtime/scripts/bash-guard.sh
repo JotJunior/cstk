@@ -13,7 +13,7 @@
 #   2. whitelist enforcement — comandos de rede (curl, wget, gh api/repo,
 #      git fetch/clone) tem URL/dominio extraido e checado contra
 #      whitelist_urls_externas. Excecao escopada: `gh issue create
-#      --repo JotJunior/claude-ai-tips ...` bypass (ver briefing).
+#      --repo JotJunior/cstk ...` bypass (ver briefing).
 #
 # Subcomandos:
 #   bash-guard.sh check-blocklist --command "CMD"
@@ -42,7 +42,7 @@ set -eu
 
 _BG_NAME="bash-guard"
 # Toolkit repo onde gh issue create e excecao escopada (briefing FR-021)
-_BG_TOOLKIT_REPO="JotJunior/claude-ai-tips"
+_BG_TOOLKIT_REPO="JotJunior/cstk"
 
 _bg_die_usage() { printf '%s: %s\n' "$_BG_NAME" "$1" >&2; exit 2; }
 
@@ -190,7 +190,7 @@ _bg_check_whitelist_cmd() {
   _cmd=$1
   _wl=$2
 
-  # Excecao escopada: gh issue create --repo JotJunior/claude-ai-tips passa
+  # Excecao escopada: gh issue create --repo JotJunior/cstk passa
   if _bg_is_gh_toolkit_issue "$_cmd"; then
     return 0
   fi
@@ -316,7 +316,7 @@ kubectl apply, terraform apply/destroy, docker push, helm install/upgrade,
 aws cli mutativo, gcloud deploy.
 
 Whitelist: comandos de rede (curl/wget/gh/git fetch/clone) checados contra
-whitelist; excecao escopada: gh issue create --repo JotJunior/claude-ai-tips.
+whitelist; excecao escopada: gh issue create --repo JotJunior/cstk.
 
 EXIT:
   0 OK

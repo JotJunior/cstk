@@ -77,7 +77,7 @@ OPCOES:
                  Default: global.
   --from URL     URL do tarball (.tar.gz). Default: $CSTK_RELEASE_URL ou,
                  se ausente, consulta GitHub API /releases/latest. $CSTK_REPO
-                 override aponta para um fork (default JotJunior/claude-ai-tips).
+                 override aponta para um fork (default JotJunior/cstk).
   --dry-run      Mostra plano sem escrever nada.
   --yes          Pula confirmacoes interativas.
   --interactive  Seletor numerado em TTY (FASE 8 — nao implementado ainda).
@@ -88,9 +88,9 @@ PROFILES DISPONIVEIS:
                  briefing, constitution, specify, clarify, plan, checklist,
                  create-tasks, analyze, execute-task, review-task.
   complementary  Skills de uso pontual (sem sequencia): advisor, bugfix,
-                 create-use-case, image-generation, apply-insights,
-                 owasp-security, validate-documentation,
-                 validate-docs-rendered, initialize-docs.
+                 image-generation, apply-insights, owasp-security,
+                 validate-documentation, validate-docs-rendered,
+                 initialize-docs.
   all            Todas as skills do catalog (uniao de sdd + complementary
                  + qualquer skill nova em global/skills/).
 
@@ -399,7 +399,7 @@ _install_resolve_urls() {
 
   # Caso 3: nada explicito -> consulta API
   if [ -z "$_install_from" ]; then
-    _install_repo=${CSTK_REPO:-JotJunior/claude-ai-tips}
+    _install_repo=${CSTK_REPO:-JotJunior/cstk}
     _install_api="https://api.github.com/repos/$_install_repo/releases/latest"
     log_info "install: consultando ultima release de $_install_repo via API GitHub..."
     _install_api_resp=$(curl -fsSL --connect-timeout 10 --max-time 60 \

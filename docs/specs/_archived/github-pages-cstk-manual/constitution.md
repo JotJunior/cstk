@@ -41,7 +41,7 @@ Sync Impact Report
 # github-pages-cstk-manual Constitution (feature-delta)
 
 Principios especializados desta feature para publicacao do manual do
-toolkit `claude-ai-tips` como site estatico em GitHub Pages. Esta
+toolkit `cstk` como site estatico em GitHub Pages. Esta
 constitution e **delta** da constituicao global do toolkit
 (`docs/constitution.md` v1.1.0): herda os 5 principios da raiz e
 adiciona 6 principios proprios do dominio de documentacao publicada.

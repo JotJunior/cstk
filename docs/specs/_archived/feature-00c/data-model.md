@@ -264,7 +264,7 @@ Severidade `impeditiva` dispara abertura automatica de issue no toolkit
 
 ## Entity: Issue no Toolkit
 
-Criada via `gh issue create` em `JotJunior/claude-ai-tips` quando
+Criada via `gh issue create` em `JotJunior/cstk` quando
 severidade da sugestao = `impeditiva`. Template estruturado herdado
 do agente-00c.
 

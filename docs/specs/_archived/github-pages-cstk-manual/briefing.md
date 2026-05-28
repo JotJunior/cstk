@@ -4,13 +4,13 @@
 **Status**: Draft
 **Versao**: 1.0
 **Feature**: github-pages-cstk-manual
-**Projeto-Pai**: claude-ai-tips (worktree na branch `github-pages`)
+**Projeto-Pai**: cstk (worktree na branch `github-pages`)
 
 ---
 
 ## 1. Visao e Proposito
 
-**O que e**: Site estatico publicado via GitHub Pages que serve como manual oficial do `cstk` (Claude Stack Toolkit) e catalogo navegavel de todas as skills, agents e commands distribuidos pelo toolkit `claude-ai-tips`.
+**O que e**: Site estatico publicado via GitHub Pages que serve como manual oficial do `cstk` (Claude Stack Toolkit) e catalogo navegavel de todas as skills, agents e commands distribuidos pelo toolkit `cstk`.
 
 **Problema que resolve**: hoje a documentacao do cstk e dos artefatos do toolkit vive espalhada em arquivos `.md` dentro do repositorio (README.md raiz, CHANGELOG.md, global/skills/*/SKILL.md, global/agents/*.md, global/commands/*.md, language-related/<lang>/skills/*/SKILL.md, docs/specs/*/...). Para um desenvolvedor que quer (a) instalar e usar o `cstk` ou (b) descobrir quais skills/agents/commands estao disponiveis, e preciso navegar a arvore do repo no GitHub — UX ruim, sem indice, sem busca, sem agrupamento por categoria.
 
@@ -77,7 +77,7 @@
 
 | Restricao | Valor | Notas |
 |-----------|-------|-------|
-| Prazo | Sem prazo externo rigido | Subprojeto do `claude-ai-tips`, ritmo do autor |
+| Prazo | Sem prazo externo rigido | Subprojeto do `cstk`, ritmo do autor |
 | Equipe | Autor solo | Joao Zanon |
 | Budget | Zero | GitHub Pages gratuito, GitHub Actions dentro do free tier |
 | Tecnica | Site estatico publicavel em GitHub Pages | Sem backend, sem DB, sem servidor |

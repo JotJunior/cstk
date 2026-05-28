@@ -36,7 +36,6 @@ sdd:model-selector
 # Skills complementares (uso pontual, sem sequencia)
 complementary:advisor
 complementary:bugfix
-complementary:create-use-case
 complementary:image-generation
 complementary:apply-insights
 complementary:owasp-security

@@ -12,7 +12,7 @@
 - `[M]` Medio — necessario mas adiavel sem impacto imediato
 
 **Escopo**: implementar a feature-00c (orquestrador autonomo de feature individual)
-no toolkit `claude-ai-tips`, reusando integralmente o runtime POSIX do agente-00c.
+no toolkit `cstk`, reusando integralmente o runtime POSIX do agente-00c.
 
 ---
 
@@ -247,7 +247,7 @@ Ref: research.md Decision 1, 3, 4, 5, 6, 7; spec §FR-007..016, FR-021..024.
 - [x] 4.1.8 Decisoes registradas com 5 campos obrigatorios (FR-017) + skills_invoked no .ondas[N] (FR-020) <!-- §Primitivas operacionais inclui state-decisions.sh + state-ondas.sh skill-invoked -->
 - [x] 4.1.9 Hash state.json apos cada onda (FR-014) + backup wave-NNN.json filtrado (FR-034 + FR-029 estendido) <!-- passos 8 e 9 do loop -->
 - [x] 4.1.10 Validar invariant de subagent depth (FR-021): garantir que a definicao do agente bisneto (3o nivel) NAO declara tool `Agent`, e teste de regressao tentando spawn de 4o nivel (tataraneto) que deve falhar explicitamente. Ref: analise E1 <!-- §"Subagent depth invariant" + asker/answerer com allowed-tools sem Agent + spawn-tracker.sh check --max-depth 3 -->
-- [x] 4.1.11 Implementar abertura de issue via `issue.sh` (refatorado na FASE 1) aplicando as 3 restricoes cumulativas de FR-035: (a) trigger=severidade `impeditiva` apenas, (b) corpo passa por `secrets-filter.sh` ANTES do POST, (c) repo fixo `JotJunior/claude-ai-tips`. Tentativa em outro repo = decisao "violacao blast radius" + aborto. Ref: analise E2 <!-- §"Gh issue exclusivo" com 4 passos numerados implementando as 3 restricoes -->
+- [x] 4.1.11 Implementar abertura de issue via `issue.sh` (refatorado na FASE 1) aplicando as 3 restricoes cumulativas de FR-035: (a) trigger=severidade `impeditiva` apenas, (b) corpo passa por `secrets-filter.sh` ANTES do POST, (c) repo fixo `JotJunior/cstk`. Tentativa em outro repo = decisao "violacao blast radius" + aborto. Ref: analise E2 <!-- §"Gh issue exclusivo" com 4 passos numerados implementando as 3 restricoes -->
 
 ### 4.2 Implementar `feature-00c-clarify-asker` `[A]`
 

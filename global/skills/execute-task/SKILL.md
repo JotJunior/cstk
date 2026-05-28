@@ -354,12 +354,8 @@ A skill cuida do scaffold completo. Depois disso, voce ajusta os pontos
 especificos da tarefa (regras de negocio, validacoes, etc.) — nao re-cria
 a estrutura.
 
-**Stack .NET:** as skills `dotnet-*` foram marcadas como `deprecated: true`
-em v3.12.0 (remocao em v4.0.0) — implementacao manual seguindo convencoes
-do projeto e o caminho atual.
-
-**Outros stacks:** sem skills especializadas; siga implementacao manual
-guiada pelos principios desta secao 4.2.
+**Outros stacks (.NET, etc.):** sem skills especializadas no toolkit; siga
+implementacao manual guiada pelos principios desta secao 4.2.
 
 ### 4.3 Checklist da Implementacao
 

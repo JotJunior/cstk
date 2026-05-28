@@ -402,7 +402,7 @@ follow-up, sem bloquear FASE 4. Plano:
 
 1. Pos-merge de FASE 7 (docs+release), abrir issue
    `tool-call-accounting-instrumentation` no toolkit
-   (JotJunior/claude-ai-tips) referenciando esta secao.
+   (JotJunior/cstk) referenciando esta secao.
 2. A issue propoe adicionar `tool-call-tick` ao runtime
    (incrementa `state.json.metricas_acumuladas.tool_calls_total`
    sob convencao manual ou hook do harness, conforme suporte do

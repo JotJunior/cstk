@@ -27,7 +27,7 @@
 Site estatico publicado via GitHub Pages que serve como (a) manual oficial
 do `cstk` (Claude Stack Toolkit) e (b) catalogo navegavel com busca de
 todas as skills, agents e commands distribuidos pelo toolkit
-`claude-ai-tips`. Conteudo derivado dos arquivos `.md` ja existentes no
+`cstk`. Conteudo derivado dos arquivos `.md` ja existentes no
 repositorio — sem segunda fonte de verdade. Publicacao automatica via
 GitHub Actions a cada push na branch principal.
 
@@ -266,7 +266,7 @@ todos os usuarios, nao opcional.
 ### Functional Requirements
 
 - **FR-001**: Sistema MUST publicar site estatico acessivel via URL
-  publica do GitHub Pages do repositorio `claude-ai-tips`.
+  publica do GitHub Pages do repositorio `cstk`.
 - **FR-002**: Sistema MUST gerar landing page com pitch do toolkit,
   one-liner de instalacao copiavel, e indice navegavel para 3
   categorias (Skills, Agents, Commands) com contagem atualizada.

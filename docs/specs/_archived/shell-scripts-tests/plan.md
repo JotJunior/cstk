@@ -64,7 +64,7 @@ docs/specs/shell-scripts-tests/
 Estrutura atual relevante:
 
 ```
-/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips/
+/Users/jot/Projects/_lab/Jot/misc/cstk/
 ├── CLAUDE.md
 ├── README.md
 ├── CHANGELOG.md

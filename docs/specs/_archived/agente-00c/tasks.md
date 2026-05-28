@@ -395,7 +395,7 @@ implementado em `global/skills/agente-00c-runtime/scripts/bash-guard.sh`
 - [x] 6.9.2 Extrair URL/dominio alvo do comando (parsing simples de argumentos) — `_bg_extract_urls` extrai URLs explicitas; fallback para `--repo OWNER/NAME` (gh issue/pr/repo create) e posicional (gh repo clone, gh api repos/...) construindo `https://github.com/owner/repo`
 - [x] 6.9.3 Comparar URL contra `whitelist_urls_externas` do estado — `_bg_url_in_whitelist` itera linhas do arquivo de whitelist; converte glob simples (`**` -> `.*`, `*` -> `[^/]*`) em regex via sed e aplica grep -E
 - [x] 6.9.4 Match negativo = decisao "url_fora_whitelist" + bloqueio humano — exit 1 com mensagem `BLOQUEADO — URL fora da whitelist: X`; orquestrador converte em BloqueioHumano via `bloqueios.sh register` perguntando "adicionar a whitelist e prosseguir, ou abortar?" (Edge Case spec)
-- [x] 6.9.5 Excecao explicita: `gh issue create --repo JotJunior/claude-ai-tips ...` bypass o check — `_bg_is_gh_toolkit_issue` matcha exatamente o pattern `gh issue create.*--repo JotJunior/claude-ai-tips`; bypass aplicado ANTES do network check
+- [x] 6.9.5 Excecao explicita: `gh issue create --repo JotJunior/cstk ...` bypass o check — `_bg_is_gh_toolkit_issue` matcha exatamente o pattern `gh issue create.*--repo JotJunior/cstk`; bypass aplicado ANTES do network check
 - [x] 6.9.6 Testar Scenario 7 do quickstart (URL fora da whitelist) — cobertura unitaria em `scenario_whitelist_url_fora_bloqueia`; end-to-end na FASE 9.1.7
 - [x] 6.9.7 Testar que excecao do gh issue funciona apenas para o repo do toolkit — `scenario_whitelist_gh_issue_outro_repo_bloqueia` (gh issue em outro repo bloqueia) + `scenario_whitelist_excecao_gh_issue_toolkit_passa` (toolkit passa mesmo com whitelist VAZIA)
 

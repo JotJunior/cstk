@@ -5,7 +5,7 @@
 ## Summary
 
 O agente-00C e um orquestrador autonomo da pipeline Spec-Driven Development do
-toolkit `claude-ai-tips`, invocavel via slash command `/agente-00c`. Ele recebe
+toolkit `cstk`, invocavel via slash command `/agente-00c`. Ele recebe
 uma descricao curta de POC/MVP e (opcionalmente) uma stack-sugerida, e executa
 a pipeline `briefing → constitution → specify → clarify → plan → checklist →
 create-tasks → execute-task → review-task → review-features` sem intervencao
@@ -33,7 +33,7 @@ A abordagem tecnica derivada da pesquisa (Phase 0):
 - **Movimento circular**: buffer deslizante de 6 pares (problema, solucao)
   hashed.
 - **Excecao de blast radius**: `gh issue create` em
-  `JotJunior/claude-ai-tips` apenas para bugs impeditivos em skills globais,
+  `JotJunior/cstk` apenas para bugs impeditivos em skills globais,
   sem upload de relatorio/estado.
 
 ## Technical Context
@@ -64,7 +64,7 @@ metrica longitudinal.
 darwin 25.x). Continuacao de longa duracao usa `/schedule` Routines (cloud
 Anthropic).
 
-**Project Type**: meta-tool dentro do toolkit `claude-ai-tips` — nao e
+**Project Type**: meta-tool dentro do toolkit `cstk` — nao e
 biblioteca, nao e servico, e uma colecao de slash commands + agentes
 custom + (opcionalmente) configuracao de skills.
 
@@ -100,7 +100,7 @@ custom + (opcionalmente) configuracao de skills.
 | I. SDD recursivo (NON-NEGOTIABLE) | PASS | Esta feature segue SDD a si propria — briefing, constitution, specify, plan completos. Pipeline gera as proximas etapas. |
 | II. POSIX sh puro em scripts (NON-NEGOTIABLE) | PASS (N/A na maior parte) | 00C nao introduz scripts `.sh` em `global/skills/*/scripts/`. Onde houver invocacao via tool Bash dentro de agente custom, manter compatibilidade POSIX (sem bashismos como `[[ ]]`, arrays, etc) por disciplina. Nao ha dependencia em `jq`/`ripgrep`/`fd`/`bats`. |
 | III. Formato canonico de skill (NON-NEGOTIABLE) | PASS (N/A) | 00C nao e skill — e command + agents. Principio cobre apenas `global/skills/*`. Se uma skill for adicionada futuramente para 00C, devera respeitar formato. |
-| IV. Zero coleta remota (NON-NEGOTIABLE) | PASS com excecao documentada | `gh issue create` em `JotJunior/claude-ai-tips` e excecao explicitamente autorizada pelo usuario no briefing. **Nao e telemetria/analytics/feature-flag/Sentry.** Conteudo enviado e bug report manualmente curado, nao log/relatorio. Relatorio e estado **permanecem locais**. Filtro de privacidade automatico aplicado antes de envio. |
+| IV. Zero coleta remota (NON-NEGOTIABLE) | PASS com excecao documentada | `gh issue create` em `JotJunior/cstk` e excecao explicitamente autorizada pelo usuario no briefing. **Nao e telemetria/analytics/feature-flag/Sentry.** Conteudo enviado e bug report manualmente curado, nao log/relatorio. Relatorio e estado **permanecem locais**. Filtro de privacidade automatico aplicado antes de envio. |
 | V. Profundidade sobre adocao (SHOULD) | PASS | 00C e ferramenta para o autor — nenhum esforco de marketing. Refinamentos visam reducao de retrabalho, nao visibilidade. |
 
 ### Feature Constitution v1.0.0 (`docs/specs/_archived/agente-00c/constitution.md`)
@@ -137,7 +137,7 @@ docs/specs/_archived/agente-00c/
 
 ### Source Code (repository root)
 
-Estrutura existente do toolkit `claude-ai-tips`:
+Estrutura existente do toolkit `cstk`:
 
 ```
 .

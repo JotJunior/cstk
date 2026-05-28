@@ -78,7 +78,7 @@ ENV (overrides para testes/forks):
   CSTK_INSTALL_LIB      dir pai da lib (default: ~/.local/share/cstk)
   CSTK_LIB              dir da lib (default: $CSTK_INSTALL_LIB/lib)
   CSTK_RELEASE_URL      URL exata do tarball (skipa GitHub API)
-  CSTK_REPO             owner/repo (default: JotJunior/claude-ai-tips)
+  CSTK_REPO             owner/repo (default: JotJunior/cstk)
 HELP
 }
 
@@ -371,7 +371,7 @@ _su_resolve_latest() {
     fi
     return 0
   fi
-  _su_repo=${CSTK_REPO:-JotJunior/claude-ai-tips}
+  _su_repo=${CSTK_REPO:-JotJunior/cstk}
   _api="https://api.github.com/repos/$_su_repo/releases/latest"
   _resp=$(curl -fsSL --connect-timeout 10 --max-time 60 "$_api" 2>/dev/null) || {
     log_error "self-update: falha ao consultar $_api (offline?)"

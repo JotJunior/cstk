@@ -536,5 +536,5 @@ Mesmo sendo read-only e (provavelmente) local, aplicar:
 *Brief derivado do schema v2 real do `knowledge.db` (`cli/lib/recall.sh`,
 `RECALL_SCHEMA_VERSION=2`) e do contrato de proveniência do ecossistema cstk.
 Pareia com [`frontend-brief.md`](./frontend-brief.md) — este repositório
-(`claude-ai-tips`) é a fonte da verdade dos dados; o back-end do `cstk-panel` é
+(`cstk`) é a fonte da verdade dos dados; o back-end do `cstk-panel` é
 um consumidor read-only, exatamente como o `cstk recall`.*

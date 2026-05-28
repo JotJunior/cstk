@@ -1,6 +1,6 @@
 ---
 name: specify
-description: 'Convert a natural-language feature description into SDD spec (user stories, FRs, success criteria). Triggers: "specify", "criar spec", "nova feature", "feature spec". Skip for classic UC (create-use-case) or refining existing spec (clarify).'
+description: 'Convert a natural-language feature description into SDD spec (user stories, FRs, success criteria). Triggers: "specify", "criar spec", "nova feature", "feature spec". Skip for refining an existing spec (clarify).'
 argument-hint: "[descricao da feature em linguagem natural]"
 allowed-tools:
   - Read
@@ -367,12 +367,6 @@ Salvar em `docs/specs/{short-name}/spec.md`.
 - Escrito para stakeholders de negocio, nao desenvolvedores
 - Quando secao nao se aplica: remover inteiramente (nao deixar como "N/A")
 - Pensar como tester: todo requisito vago deve falhar no checklist de qualidade
-
-### Diferenca do create-use-case
-
-- `create-use-case`: Formato UC classico (fluxos, atores, RNs, CTs) para documentacao formal
-- `specify`: Feature spec SDD (user stories, acceptance criteria, success criteria) para workflow de desenvolvimento
-- Ambos coexistem — UC para documentacao, specify para SDD
 
 ---
 

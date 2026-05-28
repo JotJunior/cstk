@@ -43,7 +43,7 @@ read-only e best-effort (pode estar ausente/parcial → ver estados degradados).
 ### Hierarquia de proveniência (o "eixo" de navegação)
 
 ```
-Projeto  (ex: claude-ai-tips)
+Projeto  (ex: cstk)
   └─ Feature  (ex: knowledge-db-metrics)
        └─ Execução  (execucao_id, ex: feat-knowledge-db-metrics-20260524-022752)
             └─ Onda / Wave  (onda-001 … onda-010)
@@ -150,7 +150,7 @@ seleção de modelo por subagente — `haiku` / `sonnet` / `opus` / `manter-atua
   - rodapé da sidebar: indicador de **frescor dos dados** ("índice atualizado há
     Xm") + estado do banco (ok/degradado) + toggle de tema.
 
-- **Topbar**: breadcrumb contextual (`Projetos / claude-ai-tips /
+- **Topbar**: breadcrumb contextual (`Projetos / cstk /
   knowledge-db-metrics / onda-007`), seletor global de período (24h / 7d / 30d /
   tudo), busca rápida (atalho `/`), e filtro global de projeto.
 
@@ -432,7 +432,7 @@ Todo breadcrumb é navegável; todo ID (`execucao_id`, `onda-NNN`) é clicável.
 
 ## 11. Dados de exemplo (popule o protótipo com isto)
 
-**Projeto**: `claude-ai-tips` (fonte da verdade do ecossistema cstk).
+**Projeto**: `cstk` (fonte da verdade do ecossistema cstk).
 
 **Features** (status / ondas / decisões / bloqueios / custo aproximado):
 - `knowledge-db-metrics` — **concluida** · 10 ondas · 43 decisões · 0 bloqueios ·
@@ -493,4 +493,4 @@ Todo breadcrumb é navegável; todo ID (`execucao_id`, `onda-NNN`) é clicável.
 
 *Brief gerado a partir do schema v2 real do `knowledge.db` (feature
 `knowledge-db-metrics`, cstk v3.19.x). O `cstk-panel` é consumidor read-only;
-este repositório (`claude-ai-tips`) é a fonte da verdade dos dados.*
+este repositório (`cstk`) é a fonte da verdade dos dados.*

@@ -94,13 +94,9 @@ scenario_build_release_estrutura_layout() {
     return 1
   fi
 
-  # catalog/language/{go,dotnet}/skills/ devem existir como subdirs
+  # catalog/language/go/skills/ deve existir como subdir
   if ! printf '%s\n' "$_list" | grep -q '^cstk-0\.1\.0/catalog/language/go/skills/'; then
     _fail "language/go/skills ausente" ""
-    return 1
-  fi
-  if ! printf '%s\n' "$_list" | grep -q '^cstk-0\.1\.0/catalog/language/dotnet/skills/'; then
-    _fail "language/dotnet/skills ausente" ""
     return 1
   fi
 }

@@ -5,7 +5,7 @@
 **Versao**: 1.0
 
 > **Nota de escopo**: este briefing descreve um *experimento meta* dentro do
-> toolkit `claude-ai-tips` — uma feature chamada agente-00C, nao um projeto
+> toolkit `cstk` — uma feature chamada agente-00C, nao um projeto
 > independente. Por isso varias secoes do template padrao foram adaptadas
 > para o contexto de "ferramenta de orquestracao autonoma" em vez de "produto
 > com usuarios finais".
@@ -79,7 +79,7 @@ quantidade de projetos entregues.
    humanos, sugestoes para skills globais, metricas (tokens, ondas, tempo,
    profundidade max de subagentes) e licoes aprendidas.
 10. **Entregavel paralelo**: quando 00C identificar bug impeditivo em skill
-    global, abre issue no GitHub do toolkit (`JotJunior/claude-ai-tips`) com
+    global, abre issue no GitHub do toolkit (`JotJunior/cstk`) com
     diagnostico, e PARA pedindo decisao humana.
 11. **Acesso a skills**: orquestrador e subagentes enxergam skills globais
     (`~/.claude/skills/`) e skills locais do projeto-alvo (`.claude/skills/`).
@@ -142,7 +142,7 @@ pipeline > Entrega de projeto rodando**
 | Skills globais | Read-only | Sugestoes em arquivo dedicado + issue no toolkit |
 | `.env` (read-only) vs `.env.claude` (write) | Separacao explicita | 00C pode escrever no `.env.claude`; le mas nunca escreve no `.env` original |
 | Sudo | Vetado no host | Inferido — combinacao "restrito ao projeto + nunca no host" implica sem sudo |
-| `gh` | Local + excecao para issues no toolkit | Sem push; sem PR externo; pode abrir issues em `JotJunior/claude-ai-tips` |
+| `gh` | Local + excecao para issues no toolkit | Sem push; sem PR externo; pode abrir issues em `JotJunior/cstk` |
 | Package managers | Permitidos so dentro do docker | `npm`, `go mod`, `pip` etc — nunca executados no host |
 | Recursividade de subagentes | Maximo 3 niveis | Filho, neto, bisneto. Acima disso falha explicita ou volta ao orquestrador raiz. |
 | Retro-execucao | Maximo 2 por feature | Registradas no estado |

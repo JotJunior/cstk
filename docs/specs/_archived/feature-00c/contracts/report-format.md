@@ -225,7 +225,7 @@ Sugestao `impeditiva` aponta para issue:
 - **Severidade**: impeditiva
 - **Diagnostico**: ...
 - **Proposta**: ...
-- **Issue aberta**: https://github.com/JotJunior/claude-ai-tips/issues/123
+- **Issue aberta**: https://github.com/JotJunior/cstk/issues/123
 - **Link**: sug-005 em suggestions.md
 ```
 

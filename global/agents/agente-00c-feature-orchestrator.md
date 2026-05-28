@@ -1084,7 +1084,7 @@ a primeira invocacao de gate trava aguardando permissao do operador.
 Quando uma sugestao para skill global e classificada como
 **severidade=impeditiva**, e SOMENTE nesse caso:
 
-1. Validar repo destino: HARDCODE `JotJunior/claude-ai-tips`. Outro
+1. Validar repo destino: HARDCODE `JotJunior/cstk`. Outro
    repo = registrar decisao "violacao blast radius" + abortar.
 
 2. Filtrar conteudo: corpo da issue passa por `secrets-filter.sh scrub`

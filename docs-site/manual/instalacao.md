@@ -5,7 +5,7 @@ title: Instalacao
 # Instalacao
 
 Esta pagina e a fonte unica de instrucoes de instalacao. O conteudo abaixo
-e includido literalmente do [`README.md`](https://github.com/JotJunior/claude-ai-tips/blob/main/README.md)
+e includido literalmente do [`README.md`](https://github.com/JotJunior/cstk/blob/main/README.md)
 da raiz do repositorio — qualquer atualizacao no README aparece aqui no
 proximo build CI (FR-005).
 

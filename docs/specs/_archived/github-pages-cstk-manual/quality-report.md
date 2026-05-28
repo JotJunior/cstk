@@ -72,7 +72,7 @@ Script criado: `scripts/check-links.py` (~250 linhas, Python stdlib).
 
 ```
 $ python3 scripts/check-links.py
-check-links.py — root: /.../claude-ai-tips-github-pages
+check-links.py — root: /.../cstk-github-pages
   -> 6 arquivo(s) escaneados, 4 diretiva(s) snippet, 20 link(s) interno(s)
 Resumo: 0 erro(s), 0 warning(s)
 EXIT=0

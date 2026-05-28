@@ -11,7 +11,7 @@
 | Campo | Valor |
 |-------|-------|
 | ID Execucao | feat-show-tips-20260526211813 |
-| Projeto-Alvo | /Users/jot/Projects/_lab/Jot/misc/claude-ai-tips-show-tips |
+| Projeto-Alvo | /Users/jot/Projects/_lab/Jot/misc/cstk-show-tips |
 | Descricao | vamos criar um sistema para exibição de dicas com explicações e exemplos curtos de todos as skills deste projeto. A idéia é no início de cada onda ou em alguns momentos específicos seja exibido em de forma destacada uma dica de como usar uma determinada skill. Ex: Quer saber como está o andamento da sua feature? use o comando `/review-task` nome-da-skill para um relatório completo. Vamos criar uma biblioteca rica com mais de uma dica e exemplo por skill. |
 | Stack final | nao aplicavel — execucao abortada antes de definir |
 | Status | concluida |
@@ -628,9 +628,9 @@ Nenhuma sugestao para skills globais nesta execucao.
 
 **Apendice A — Caminhos relevantes**
 
-- Estado: `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips-show-tips/.claude/agente-00c-state/state.json`
-- Backups de estado: `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips-show-tips/.claude/agente-00c-state/state-history/`
-- Sugestoes detalhadas: `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips-show-tips/.claude/agente-00c-suggestions.md`
-- Whitelist: `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips-show-tips/.claude/agente-00c-whitelist`
-- Artefatos da pipeline: `/Users/jot/Projects/_lab/Jot/misc/claude-ai-tips-show-tips/docs/specs/<feature>/`
+- Estado: `/Users/jot/Projects/_lab/Jot/misc/cstk-show-tips/.claude/agente-00c-state/state.json`
+- Backups de estado: `/Users/jot/Projects/_lab/Jot/misc/cstk-show-tips/.claude/agente-00c-state/state-history/`
+- Sugestoes detalhadas: `/Users/jot/Projects/_lab/Jot/misc/cstk-show-tips/.claude/agente-00c-suggestions.md`
+- Whitelist: `/Users/jot/Projects/_lab/Jot/misc/cstk-show-tips/.claude/agente-00c-whitelist`
+- Artefatos da pipeline: `/Users/jot/Projects/_lab/Jot/misc/cstk-show-tips/docs/specs/<feature>/`
 

@@ -114,9 +114,10 @@ faseadas de baixo custo que resolvem o acoplamento residual real:
 - Qualquer das duas é **MAJOR** se mudar nomes/contratos públicos (ver política
   de versionamento).
 
-### Fase 3 — Reavaliar .NET na v4.0.0
-- As 8 skills `dotnet-*` já estão marcadas para remoção em v4.0.0. A remoção
-  resolve metade da superfície "stack-specific" sem trabalho extra de separação.
+### Fase 3 — .NET removido na v5.0.0
+- As 8 skills `dotnet-*` foram removidas na v5.0.0 (estavam marcadas para remoção
+  desde a v3.12.0). Isso resolveu metade da superfície "stack-specific" sem
+  trabalho extra de separação.
 
 ## 5. Decisão pendente do mantenedor
 

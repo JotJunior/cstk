@@ -132,7 +132,7 @@ Total: N sugestoes.
 
 **Diagnostico**: ...
 **Proposta**: ...
-**Issue**: https://github.com/JotJunior/claude-ai-tips/issues/42
+**Issue**: https://github.com/JotJunior/cstk/issues/42
 
 ### 5.2 Severidade aviso
 

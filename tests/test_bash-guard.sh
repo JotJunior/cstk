@@ -10,8 +10,8 @@ SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/bash-guard.sh"
 _make_wl() {
   _f="$TMPDIR_TEST/wl"
   cat > "$_f" <<EOF
-https://api.github.com/repos/JotJunior/claude-ai-tips/**
-https://github.com/JotJunior/claude-ai-tips
+https://api.github.com/repos/JotJunior/cstk/**
+https://github.com/JotJunior/cstk
 https://pkg.go.dev/**
 EOF
   printf '%s\n' "$_f"
@@ -127,7 +127,7 @@ scenario_blocklist_helm_install_bloqueado() {
 scenario_whitelist_url_permitida_passa() {
   _wl=$(_make_wl)
   capture "$SCRIPT" check-whitelist \
-    --command "curl https://api.github.com/repos/JotJunior/claude-ai-tips/issues" \
+    --command "curl https://api.github.com/repos/JotJunior/cstk/issues" \
     --whitelist-file "$_wl"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "wl OK" "$_CAPTURED_STDERR"; return 1; }
 }
@@ -154,7 +154,7 @@ scenario_whitelist_excecao_gh_issue_toolkit_passa() {
   : > "$_wl"
   # Mesmo com whitelist VAZIA, gh issue create no toolkit passa pela excecao
   capture "$SCRIPT" check-whitelist \
-    --command "gh issue create --repo JotJunior/claude-ai-tips --title 'x' --body 'y'" \
+    --command "gh issue create --repo JotJunior/cstk --title 'x' --body 'y'" \
     --whitelist-file "$_wl"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gh issue toolkit" "$_CAPTURED_STDERR"; return 1; }
 }
@@ -184,7 +184,7 @@ scenario_whitelist_gh_pr_create_outro_bloqueia() {
 scenario_whitelist_gh_repo_clone_toolkit_passa() {
   _wl=$(_make_wl)
   capture "$SCRIPT" check-whitelist \
-    --command "gh repo clone JotJunior/claude-ai-tips" \
+    --command "gh repo clone JotJunior/cstk" \
     --whitelist-file "$_wl"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gh repo clone" "$_CAPTURED_STDERR"; return 1; }
 }
@@ -195,7 +195,7 @@ scenario_check_combined_blocklist_falha_primeiro() {
   _wl=$(_make_wl)
   # sudo bloqueia em blocklist mesmo com URL valida
   capture "$SCRIPT" check \
-    --command "sudo curl https://api.github.com/repos/JotJunior/claude-ai-tips/foo" \
+    --command "sudo curl https://api.github.com/repos/JotJunior/cstk/foo" \
     --whitelist-file "$_wl"
   if [ "$_CAPTURED_EXIT" != 1 ]; then
     _fail "combined sudo" "esperado 1"

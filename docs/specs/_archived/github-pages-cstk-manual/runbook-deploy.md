@@ -1,7 +1,7 @@
 # Runbook — Primeiro Deploy + Operacao Continua do Site
 
 **Feature:** `github-pages-cstk-manual`
-**Audiencia:** operador/mantenedor do repositorio `claude-ai-tips`
+**Audiencia:** operador/mantenedor do repositorio `cstk`
 **Pre-requisito:** branch `github-pages` (ou `main`, conforme `publish-site.yml`)
 com todos os artefatos das FASES 1-8 commitados.
 
@@ -81,19 +81,19 @@ git push origin <branch>
 
 ### 2.3 Monitorar o build
 
-1. Abrir `https://github.com/JotJunior/claude-ai-tips/actions`
+1. Abrir `https://github.com/JotJunior/cstk/actions`
 2. Localizar a run mais recente do workflow `publish-site.yml`
 3. Aguardar jobs `build` e `deploy` ficarem verdes
 4. SLA esperado: push -> site publicado <= 10 minutos (SC-001 da spec)
 
 ### 2.4 Validar URL publica
 
-URL canonica: **`https://jotjunior.github.io/claude-ai-tips/`**
+URL canonica: **`https://jotjunior.github.io/cstk/`**
 
 ```sh
 # Smoke remoto rapido (sem login)
-curl -sI https://jotjunior.github.io/claude-ai-tips/ | head -3
-curl -sI https://jotjunior.github.io/claude-ai-tips/skills/briefing/ | head -3
+curl -sI https://jotjunior.github.io/cstk/ | head -3
+curl -sI https://jotjunior.github.io/cstk/skills/briefing/ | head -3
 ```
 
 Esperado: HTTP/2 200 em ambas.
@@ -108,7 +108,7 @@ checklist pos-primeiro-deploy.
 
 ### 3.1 Validacao em modo anonimo (T-8.2)
 
-1. Abrir `https://jotjunior.github.io/claude-ai-tips/` em janela
+1. Abrir `https://jotjunior.github.io/cstk/` em janela
    privada/anonima (sem cache, sem sessao GitHub).
 2. Validar **acceptance scenario 1** da spec User Story 1:
    - Pitch "Conjunto de ferramentas para aumentar a produtividade"
@@ -118,7 +118,7 @@ checklist pos-primeiro-deploy.
 3. Acessar `/skills/briefing/` e validar:
    - Renderiza `SKILL.md` integralmente
    - Botao "Edit this page" aponta para
-     `https://github.com/JotJunior/claude-ai-tips/edit/main/global/skills/briefing/SKILL.md`
+     `https://github.com/JotJunior/cstk/edit/main/global/skills/briefing/SKILL.md`
 4. Testar busca: digitar "briefing" no header search — autocompletar
    deve mostrar a pagina e o snippet.
 
@@ -128,11 +128,11 @@ Rodar via DevTools Chrome ou CLI:
 
 ```sh
 # Via CLI (requer Node + lighthouse global):
-npx lighthouse https://jotjunior.github.io/claude-ai-tips/ \
+npx lighthouse https://jotjunior.github.io/cstk/ \
   --only-categories=performance,accessibility \
   --preset=desktop --view
 
-npx lighthouse https://jotjunior.github.io/claude-ai-tips/skills/briefing/ \
+npx lighthouse https://jotjunior.github.io/cstk/skills/briefing/ \
   --only-categories=performance,accessibility \
   --preset=desktop --view
 ```
@@ -266,7 +266,7 @@ isso em main sem confirmacao explicita do mantenedor.
    - **Deploy job falha com "Pages site not found":** Settings -> Pages
      nao tem `Source: GitHub Actions` (ver secao 2.1).
 3. Bugs estruturais (nao apenas conteudo): abrir issue em
-   `https://github.com/JotJunior/claude-ai-tips/issues` com label
+   `https://github.com/JotJunior/cstk/issues` com label
    `docs-site` + reproducao + log relevante.
 
 ---

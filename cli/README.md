@@ -35,7 +35,7 @@ Apos uma release publica estar disponivel, instalar o `cstk` em uma maquina
 nova com:
 
 ```sh
-curl -fsSL https://github.com/JotJunior/claude-ai-tips/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh | sh
 ```
 
 O bootstrap baixa o tarball da ultima release, valida o SHA-256 (FR-010a),

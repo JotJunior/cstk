@@ -34,7 +34,7 @@ e safety da coexistencia com agente-00c.
 - [x] CHK013 - Sao os requisitos de bloqueio de `sudo` definidos para detectar tanto `sudo X` quanto ` sudo ` em posicao qualquer? [Spec §FR-031 + §FR-029 herda FR-028 do 00c com regra explicita]
 - [x] CHK014 - Sao os requisitos de bloqueio de package managers de host (npm/pip/go install/cargo/gem/brew install) com precedencia de `docker exec`/`docker run` definidos? [Spec §FR-031 + §FR-029 herda FR-028 do 00c com lista de gerenciadores]
 - [ ] CHK015 - A lista de comandos proibidos (`git push`, deploy externo) e explicita ou exemplar — qual a regra para extensao? [Ambiguity, Spec §FR-031 — "deploy externo" e generico]
-- [x] CHK016 - A excecao do `gh issue create` (unico canal externo permitido) e enumerada com restricoes (apenas para impeditivos, com filtro de secrets aplicado antes)? [Spec §FR-035 adicionado com 3 restricoes cumulativas: trigger=impeditiva, conteudo filtrado pre-POST, repo fixo `JotJunior/claude-ai-tips`]
+- [x] CHK016 - A excecao do `gh issue create` (unico canal externo permitido) e enumerada com restricoes (apenas para impeditivos, com filtro de secrets aplicado antes)? [Spec §FR-035 adicionado com 3 restricoes cumulativas: trigger=impeditiva, conteudo filtrado pre-POST, repo fixo `JotJunior/cstk`]
 - [x] CHK017 - O limite de profundidade de subagentes (3 niveis, tataraneto = invariante violada) tem falha explicita declarada? [Spec §FR-021 + §Edge Cases "Tentativa de spawnar tataraneto: falha explicita"]
 
 ## Integrity & Anti-Tampering
@@ -63,7 +63,7 @@ e safety da coexistencia com agente-00c.
 
 ## External Communication
 
-- [x] CHK033 - O `gh issue create` em `JotJunior/claude-ai-tips` e a UNICA excecao a "zero comunicacao externa" e isso esta explicitamente documentado como excecao consciente? [Spec §FR-035 adicionado — resolvido em conjunto com CHK016]
+- [x] CHK033 - O `gh issue create` em `JotJunior/cstk` e a UNICA excecao a "zero comunicacao externa" e isso esta explicitamente documentado como excecao consciente? [Spec §FR-035 adicionado — resolvido em conjunto com CHK016]
 - [x] CHK034 - Corpo da issue criada via `gh` passa por filtro de secrets antes do POST (FR-021 do 00c herdado)? [Spec §FR-029 + Data-model §Issue §"Filtros de secrets aplicados em diagnostico + proposta antes da chamada ao gh"]
 - [ ] CHK035 - Sao os requisitos de precedencia entre `.env` whitelist e `--whitelist` parameter definidos (uniao, override, ou merge com prioridade)? [Gap, Spec §FR-002, FR-031 — sem regra explicita]
 - [x] CHK036 - Tentativa de comunicacao com URL fora da whitelist tem fluxo de bloqueio + pergunta humana ("adicionar?") definido com default seguro (NAO adicionar)? [Spec §Edge Cases + §FR-029 herda agente-00c spec §Edge Cases "Por default, NAO adiciona automaticamente"]
