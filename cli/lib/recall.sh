@@ -71,8 +71,12 @@ RECALL_EXIT_USAGE=2
 # pre-existente ganha as tabelas novas sem perda de dado (FR-007).
 # v4 (recall-memory-mirror): + tabela memories (espelho de arquivos .md de
 # auto-memoria) + enum memory. Aditivo: zero breaking change de surface CLI.
-RECALL_SCHEMA_VERSION=4
-RECALL_TYPE_ENUM="decision bloqueio retro skill memory"
+# v5 (recall-suggestions): + tabela suggestions (espelho de .sugestoes[] do
+# state.json — diagnostico/proposta/referencias) + enum suggestion + corpo na
+# FTS (type='suggestion'). Aditivo: CREATE TABLE IF NOT EXISTS cria a tabela
+# nova em DBs v<5 sem perda; --reindex retro-alimenta o historico.
+RECALL_SCHEMA_VERSION=5
+RECALL_TYPE_ENUM="decision bloqueio retro skill memory suggestion"
 
 # ==== Resolucao do caminho do DB ====
 #
@@ -106,7 +110,7 @@ USO:
 MODO BUSCA (default):
   <query>            termo(s) de busca full-text (obrigatorio)
   --project P        filtra por projeto de origem
-  --type T           decision|bloqueio|retro|skill|memory
+  --type T           decision|bloqueio|retro|skill|memory|suggestion
   --limit N          maximo de resultados (default 20; inteiro positivo)
   --db PATH          indice (default $CSTK_KNOWLEDGE_DB ou ~/.claude/cstk/knowledge.db)
 
@@ -116,7 +120,7 @@ MODO CONTEXT (--context): leitura-para-contexto (read-back loop). Retorna um
   "<termos>"            termos de consulta (obrigatorio; OR entre tokens)
   --limit N            maximo de achados (default 4; faixa recomendada 3-5)
   --exclude-feature N   anti-eco: omite achados da feature N (no SQL)
-  --type T             decision|bloqueio|retro|skill|memory
+  --type T             decision|bloqueio|retro|skill|memory|suggestion
   --project P          filtra por projeto de origem
   --max-bytes N        teto de bytes do bloco (default 2000; corta por achado inteiro)
   --db PATH            indice
@@ -331,10 +335,11 @@ recall_pragmas() {
 # Todo CREATE e IF NOT EXISTS — aplicavel em qualquer abertura do DB.
 #
 # body por tipo (concatenacao textual pesquisavel):
-#   decision = escolha + contexto + justificativa + evidencia
-#   bloqueio = pergunta + contexto_para_resposta + resposta
-#   retro    = texto
-#   skill    = skill_name
+#   decision   = escolha + contexto + justificativa + evidencia
+#   bloqueio   = pergunta + contexto_para_resposta + resposta
+#   retro      = texto
+#   skill      = skill_name
+#   suggestion = diagnostico + proposta
 recall_schema_ddl() {
   cat <<DDL
 CREATE TABLE IF NOT EXISTS decisions (
@@ -501,6 +506,23 @@ CREATE TABLE IF NOT EXISTS memories (
   path          TEXT,
   indexed_at    TEXT,
   PRIMARY KEY (project, slug)
+);
+CREATE TABLE IF NOT EXISTS suggestions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  wave TEXT NOT NULL,
+  execucao_id TEXT NOT NULL,
+  source_ts TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  skill_afetada TEXT,
+  severidade TEXT,
+  diagnostico TEXT,
+  proposta TEXT,
+  referencias TEXT,
+  issue_aberta TEXT,
+  ingested_at TEXT NOT NULL,
+  UNIQUE(project, feature, wave, source_id)
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5 (
   body,
@@ -698,7 +720,12 @@ recall_ingest_state_json() {
   # ---- executions (grao = execucao; 1 linha; wave='-' source_id=execucao_id) ----
   # Deriva de .execucao + .metricas_acumuladas + .etapa_corrente. duracao_segundos
   # computada via fromdateiso8601 quando iniciada_em E terminada_em presentes
-  # (NULL para execucao aberta — Acceptance US1.3). So motivo_termino e texto
+  # (NULL para execucao aberta — Acceptance US1.3). O `try ... catch ""` em
+  # volta do parse e LOAD-BEARING: fromdateiso8601 LANCA em data nao-canonica
+  # (ex. terminada_em="2026-05-25" date-only, gravado por orquestrador antigo).
+  # Sem o try, o throw mata o jq INTEIRO -> _isj_exec_b64="" -> a linha de
+  # execucao some silenciosa (waves sobrevivem por nao parsear data). Com ele,
+  # so duracao_segundos vira NULL; a execucao e preservada. So motivo_termino e texto
   # livre (filtrado); demais campos estruturados/numericos sem filtro (FR-006).
   # NORMALIZACAO: quando .execucao.status e terminal de sucesso
   # (concluida — canonico do state-validate; concluido — variante historica),
@@ -710,9 +737,11 @@ recall_ingest_state_json() {
   _isj_exec_b64=$(jq -r '
     (.execucao // {}) as $e
     | (.metricas_acumuladas // {}) as $m
-    | (if (($e.iniciada_em // "") != "" and ($e.terminada_em // "") != "")
-       then (($e.terminada_em|fromdateiso8601) - ($e.iniciada_em|fromdateiso8601) | tostring)
-       else "" end) as $dur
+    | ((try
+        (if (($e.iniciada_em // "") != "" and ($e.terminada_em // "") != "")
+         then (($e.terminada_em|fromdateiso8601) - ($e.iniciada_em|fromdateiso8601) | tostring)
+         else "" end)
+        catch "") // "") as $dur
     | [($e.id // ""),
        ($e.status // ""),
        ($e.motivo_termino // ""),
@@ -1224,6 +1253,60 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
     IFS="$_isj_OLDIFS"
   fi
 
+  # ---- suggestions (espelho de .sugestoes[]; corpo retrospectivo pesquisavel) --
+  # As sugestoes sao o aprendizado de meta-padrao que o orquestrador produz
+  # (diagnostico + proposta + referencias). Grao = sugestao por execucao;
+  # wave='-' (top-level, como executions/events); source_id=<id da sugestao>
+  # (chave natural estavel, ex. sug-001); source_ts=criada_em.
+  # diagnostico+proposta sao texto livre -> filtro de segredo (FR-006) e formam
+  # o body da FTS (type='suggestion'). skill_afetada/severidade/issue_aberta sao
+  # estruturados (sem filtro). referencias (array de paths) -> join "," + scrub
+  # (paths podem embutir segredo). Retro-compat: .sugestoes[]? // empty -> 0.
+  _isj_n_suggestion=0
+  _isj_sug_lines=$(jq -r '
+    (.sugestoes[]? // empty)
+    | [(.id // ""),
+       (.skill_afetada // ""),
+       (.severidade // ""),
+       (.diagnostico // ""),
+       (.proposta // ""),
+       ((.referencias // []) | join(",")),
+       ((.issue_aberta // "") | tostring),
+       (.criada_em // "")]
+    | @base64' "$_isj_state" 2>/dev/null) || _isj_sug_lines=""
+  if [ -n "$_isj_sug_lines" ]; then
+    _isj_OLDIFS="$IFS"; IFS='
+'
+    for _isj_row in $_isj_sug_lines; do
+      _isj_decoded=$(printf '%s' "$_isj_row" | base64 -d 2>/dev/null) || continue
+      _f_sgid=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
+      _f_sgsk=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      _f_sgsv=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
+      _f_sgdg=$(printf '%s' "$_isj_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
+      _f_sgpr=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
+      _f_sgrf=$(printf '%s' "$_isj_decoded" | jq -r '.[5]' 2>/dev/null | strip_nul)
+      _f_sgia=$(printf '%s' "$_isj_decoded" | jq -r '.[6]' 2>/dev/null | strip_nul)
+      _f_sgts=$(printf '%s' "$_isj_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
+      # id e a chave natural; sem ele -> pula (nao ha como deduplicar).
+      [ -n "$_f_sgid" ] || continue
+      # Texto livre -> filtro de segredo; estruturados (sk/sv/issue) sem filtro.
+      _f_sgdg=$(recall_scrub "$_f_sgdg")
+      _f_sgpr=$(recall_scrub "$_f_sgpr")
+      _f_sgrf=$(recall_scrub "$_f_sgrf")
+      # Body da FTS: diagnostico + proposta (ja scrubbed).
+      _f_sgbody=$(printf '%s %s' "$_f_sgdg" "$_f_sgpr")
+      _isj_sql="$_isj_sql
+INSERT INTO suggestions(project,feature,wave,execucao_id,source_ts,source_id,skill_afetada,severidade,diagnostico,proposta,referencias,issue_aberta,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_sgts")','$(sql_escape "$_f_sgid")','$(sql_escape "$_f_sgsk")','$(sql_escape "$_f_sgsv")','$(sql_escape "$_f_sgdg")','$(sql_escape "$_f_sgpr")','$(sql_escape "$_f_sgrf")','$(sql_escape "$_f_sgia")','$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,skill_afetada=excluded.skill_afetada,severidade=excluded.severidade,diagnostico=excluded.diagnostico,proposta=excluded.proposta,referencias=excluded.referencias,issue_aberta=excluded.issue_aberta,ingested_at=excluded.ingested_at;
+DELETE FROM knowledge_fts WHERE type='suggestion' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='-' AND source_id='$(sql_escape "$_f_sgid")';
+INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
+VALUES('$(sql_escape "$_f_sgbody")','suggestion','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_sgid")','$(sql_escape "$_f_sgts")');"
+      _isj_n_suggestion=$((_isj_n_suggestion + 1))
+    done
+    IFS="$_isj_OLDIFS"
+  fi
+
   _isj_sql="$_isj_sql
 COMMIT;"
 
@@ -1243,6 +1326,7 @@ COMMIT;"
   RECALL_TOTAL_ALERT=$((${RECALL_TOTAL_ALERT:-0} + _isj_n_alert))
   RECALL_TOTAL_TASK=$((${RECALL_TOTAL_TASK:-0} + _isj_n_task))
   RECALL_TOTAL_EVENT=$((${RECALL_TOTAL_EVENT:-0} + _isj_n_event))
+  RECALL_TOTAL_SUGGESTION=$((${RECALL_TOTAL_SUGGESTION:-0} + _isj_n_suggestion))
   return "$RECALL_EXIT_OK"
 }
 
@@ -1507,14 +1591,16 @@ recall_mode_ingest() {
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
   RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0; RECALL_TOTAL_MEMORY=0
+  RECALL_TOTAL_SUGGESTION=0
   recall_ingest_state_json "$_ing_state_dir/state.json" "$_ing_db"
   # Passo aditivo (CQ2): ingerir memorias do projeto apos state.json.
   recall_ingest_memories "$_ing_state_dir" "$_ing_db"
 
-  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories\n' \
+  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions\n' \
     "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
     "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
-    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}"
+    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}" \
+    "${RECALL_TOTAL_SUGGESTION:-0}"
   return "$RECALL_EXIT_OK"
 }
 
@@ -1574,7 +1660,7 @@ recall_mode_search() {
 
   # --type validado contra enum (se fornecido).
   if [ -n "$_se_type" ] && ! validate_type "$_se_type"; then
-    log_error "recall: --type fora do enum (decision|bloqueio|retro|skill|memory): '$_se_type'"
+    log_error "recall: --type fora do enum (decision|bloqueio|retro|skill|memory|suggestion): '$_se_type'"
     return "$RECALL_EXIT_USAGE"
   fi
 
@@ -1709,7 +1795,7 @@ recall_mode_context() {
 
   # --type validado contra enum (se fornecido).
   if [ -n "$_cx_type" ] && ! validate_type "$_cx_type"; then
-    log_error "recall --context: --type fora do enum (decision|bloqueio|retro|skill|memory): '$_cx_type'"
+    log_error "recall --context: --type fora do enum (decision|bloqueio|retro|skill|memory|suggestion): '$_cx_type'"
     return "$RECALL_EXIT_USAGE"
   fi
 
@@ -1894,6 +1980,7 @@ recall_mode_reindex() {
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
   RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0; RECALL_TOTAL_MEMORY=0
+  RECALL_TOTAL_SUGGESTION=0
   _rx_count=0
   # Varre feature-00c-state/*/state.json e agente-00c-state/state.json.
   # find e portavel; -path com globs simples.
@@ -1934,10 +2021,11 @@ recall_mode_reindex() {
     fi
   fi
 
-  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories)\n' \
+  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions)\n' \
     "$_rx_count" "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
     "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
-    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}"
+    "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}" \
+    "${RECALL_TOTAL_SUGGESTION:-0}"
   return "$RECALL_EXIT_OK"
 }
 

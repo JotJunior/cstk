@@ -638,6 +638,9 @@ cstk recall "secrets-filter" --project cstk --type decision --limit 5
 # Filtrar só memorias (.md do Claude Code)
 cstk recall "setup" --type memory
 
+# Filtrar só sugestões (aprendizado de meta-padrão: diagnóstico + proposta)
+cstk recall "websocket auth" --type suggestion
+
 # Reconstruir o índice do zero a partir dos states existentes (inclui memorias)
 cstk recall --reindex
 
@@ -655,7 +658,7 @@ cstk recall --list-memories [--project P]
 **Flags do modo busca**:
 
 - `--project P` — filtra pelo projeto de origem
-- `--type T` — `decision` | `bloqueio` | `retro` | `skill` | `memory`
+- `--type T` — `decision` | `bloqueio` | `retro` | `skill` | `memory` | `suggestion`
 - `--limit N` — máximo de resultados (inteiro positivo; default 20)
 - `--db PATH` — índice alternativo (default `$CSTK_KNOWLEDGE_DB` ou
   `~/.claude/cstk/knowledge.db`)

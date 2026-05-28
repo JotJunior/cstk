@@ -550,9 +550,9 @@ SQL
   # Aplica schema v2 via funcao real (caminho de recall_apply_schema).
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
     _fail "apply schema v2" "recall_apply_schema falhou"; return 1; }
-  # (a) schema_version virou 4 (atual — recall-memory-mirror bump v3->v4)
+  # (a) schema_version virou 5 (atual — recall-suggestions bump v4->v5)
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "4" ] || { _fail "schema_version" "esperado 4, obtido $_sv"; return 1; }
+  [ "$_sv" = "5" ] || { _fail "schema_version" "esperado 5, obtido $_sv"; return 1; }
   # (b) tabelas executions + waves existem
   _has=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('executions','waves')")
   [ "$_has" = "2" ] || { _fail "tabelas novas" "esperado 2 (executions+waves), obtido $_has"; return 1; }
@@ -572,7 +572,7 @@ scenario_m12_ddl_idempotente() {
     _fail "apply 1" "primeira aplicacao falhou"; return 1; }
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "4" ] || { _fail "schema estavel" "esperado 4 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "5" ] || { _fail "schema estavel" "esperado 5 apos 2x, obtido $_sv"; return 1; }
 }
 
 # =========================================================================
@@ -1672,9 +1672,9 @@ scenario_b11_ddl_tasks_events() {
   assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" || return 1
   _has=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('tasks','events')")
   [ "$_has" = "2" ] || { _fail "DDL tasks/events" "esperado 2 tabelas, obtido $_has"; return 1; }
-  # schema_version = 4 (recall-memory-mirror bumpou v3 -> v4).
+  # schema_version = 5 (recall-suggestions bumpou v4 -> v5).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "4" ] || { _fail "schema_version" "esperado 4, obtido $_sv"; return 1; }
+  [ "$_sv" = "5" ] || { _fail "schema_version" "esperado 5, obtido $_sv"; return 1; }
   # tasks tem a coluna titulo (DDL fresco).
   _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='titulo'")
   [ "$_hascol" = "1" ] || { _fail "coluna titulo" "esperado 1, obtido $_hascol"; return 1; }
@@ -1975,9 +1975,9 @@ JSON
 # =========================================================================
 
 # M1 — Apos ingest com fixture, sqlite3 .tables lista 'memories';
-# schema_meta retorna version=4.
+# schema_meta retorna a versao corrente.
 # Cobre subtarefas 1.1.3, 1.1.5, 1.1.6.
-scenario_m1_schema_v4_memories_table_exists() {
+scenario_m1_schema_memories_table_exists() {
   _have_deps || return 0
   _write_state "$TMPDIR_TEST/m1feat" "/home/u/projM1" "m1feat"
   _rc --ingest --state-dir "$TMPDIR_TEST/m1feat" --db "$TMPDIR_TEST/m1.db" >/dev/null 2>&1
@@ -1987,10 +1987,10 @@ scenario_m1_schema_v4_memories_table_exists() {
     *memories*) : ;;
     *) _fail "memories table ausente" "$_tables"; return 1 ;;
   esac
-  # schema_version deve ser 4
+  # schema_version deve ser 5
   _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
     "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "4" ] || { _fail "schema_version errado" "esperado 4, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "5" ] || { _fail "schema_version errado" "esperado 5, obtido '$_ver'"; return 1; }
 }
 
 # M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
@@ -2031,9 +2031,10 @@ scenario_m4_neg_context_type_invalido() {
   esac
 }
 
-# M1-migration — DB v3 pre-existente (sem memories) ganha a tabela apos apply_schema.
-# Cobre subtarefa 1.1.5: migracao idempotente v3->v4 em banco existente.
-scenario_m1_migration_v3_to_v4() {
+# M1-migration — DB v3 pre-existente (sem memories) ganha as tabelas novas
+# (memories, suggestions) apos apply_schema, sem perder dados.
+# Cobre subtarefa 1.1.5: migracao idempotente de banco existente para a versao corrente.
+scenario_m1_migration_v3_to_current() {
   _have_deps || return 0
   # Criar um DB v3 com schema antigo (sem memories) simulando banco pre-existente
   _v3db="$TMPDIR_TEST/v3.db"
@@ -2055,18 +2056,23 @@ scenario_m1_migration_v3_to_v4() {
     INSERT INTO schema_meta(key,value) VALUES('schema_version','3')
       ON CONFLICT(key) DO UPDATE SET value=excluded.value;
   " 2>/dev/null
-  # Agora ingerir usando o recall.sh v4 — apply_schema deve criar memories sem perder dados
+  # Agora ingerir usando o recall.sh corrente — apply_schema deve criar as
+  # tabelas novas (memories, suggestions) sem perder dados pre-existentes.
   _write_state "$TMPDIR_TEST/v3state" "/home/u/projV3" "v3feat"
   _rc --ingest --state-dir "$TMPDIR_TEST/v3state" --db "$_v3db" >/dev/null 2>&1
-  # Tabela memories deve existir agora
+  # Tabelas novas devem existir agora (memories + suggestions)
   _tables=$(sqlite3 "$_v3db" ".tables" 2>/dev/null)
   case "$_tables" in
     *memories*) : ;;
-    *) _fail "migration v3->v4: memories ausente" "$_tables"; return 1 ;;
+    *) _fail "migration: memories ausente" "$_tables"; return 1 ;;
   esac
-  # schema_version deve ser 4
+  case "$_tables" in
+    *suggestions*) : ;;
+    *) _fail "migration: suggestions ausente" "$_tables"; return 1 ;;
+  esac
+  # schema_version deve ser 5
   _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "4" ] || { _fail "migration: schema_version errado" "esperado 4, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "5" ] || { _fail "migration: schema_version errado" "esperado 5, obtido '$_ver'"; return 1; }
   # Dados pre-existentes preservados (decisions nao zerada)
   _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
   [ "${_n:-0}" -ge 1 ] || { _fail "migration: decisions zeradas" "esperado >=1, obtido '$_n'"; return 1; }
@@ -2484,6 +2490,101 @@ scenario_m_reindex_output_inclui_memories() {
   case "$_mrx_out" in
     *memories*) : ;;
     *) _fail "reindex output sem 'memories'" "$_mrx_out"; return 1 ;;
+  esac
+}
+
+# =========================================================================
+# Cenario S1 — data NAO-canonica (date-only) NAO derruba a linha de execucao
+# (recall-suggestions). Regressao: terminada_em="2026-05-25" fazia
+# fromdateiso8601 lancar e matar o jq inteiro -> executions=0 silencioso.
+# Com o `try ... catch`, a execucao e preservada e so duracao_segundos vira NULL.
+# =========================================================================
+scenario_s1_data_date_only_preserva_execucao() {
+  _have_deps || return 0
+  _sdir="$TMPDIR_TEST/featDateOnly"
+  mkdir -p "$_sdir"
+  cat > "$_sdir/state.json" <<'JSON'
+{
+  "short_name": "featDateOnly",
+  "etapa_corrente": "review-task",
+  "execucao": { "id": "exec-dateonly", "projeto_alvo_path": "/home/u/projDO",
+    "status": "concluida",
+    "iniciada_em": "2026-05-22T19:29:34Z", "terminada_em": "2026-05-25" },
+  "metricas_acumuladas": { "ondas_total": 3 },
+  "decisoes": [], "bloqueios_humanos": [], "ondas": []
+}
+JSON
+  capture _rc --ingest --state-dir "$_sdir" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "S1: ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  # A linha de execucao DEVE existir apesar da data date-only.
+  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM executions WHERE source_id='exec-dateonly'")
+  [ "$_n" = "1" ] || { _fail "S1: execucao derrubada por data date-only" "esperado 1, obtido $_n"; return 1; }
+  # status preservado; duracao_segundos NULL (parse falhou graciosamente).
+  _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT status||'|'||(duracao_segundos IS NULL)||'|'||ondas_total FROM executions WHERE source_id='exec-dateonly'")
+  [ "$_row" = "concluida|1|3" ] || { _fail "S1: campos" "esperado [concluida|1|3], obtido [$_row]"; return 1; }
+}
+
+# =========================================================================
+# Cenario S2 — ingestao de .sugestoes[] (recall-suggestions): tabela
+# suggestions populada, campos estruturados, corpo na FTS (type='suggestion'),
+# texto livre scrubbed. Fecha o loop de "retro" sem produtor (.retros[] orfao).
+# =========================================================================
+_write_suggestions_state() {
+  _wss_dir="$1"; _wss_proj="$2"; _wss_feat="$3"
+  mkdir -p "$_wss_dir"
+  cat > "$_wss_dir/state.json" <<JSON
+{
+  "short_name": "$_wss_feat",
+  "execucao": { "id": "exec-$_wss_feat", "projeto_alvo_path": "$_wss_proj" },
+  "decisoes": [], "bloqueios_humanos": [], "ondas": [],
+  "sugestoes": [
+    { "id": "sug-001", "skill_afetada": "notification-service", "severidade": "aviso",
+      "diagnostico": "endpoint /ws exige JWT mas frontend publico precisa subscribe sem auth",
+      "proposta": "adicionar handler /public/ws sem token=ghp_AbCdEf1234567890SecretLeak",
+      "referencias": ["ws.go:67-145", "spec.md FR-033"], "issue_aberta": null,
+      "criada_em": "2026-05-12T05:51:07Z" },
+    { "id": "sug-002", "skill_afetada": "auth-service", "severidade": "impeditiva",
+      "diagnostico": "auth-service nao tem integracao SMTP para password reset",
+      "proposta": "adicionar MailSender interface com provider real",
+      "referencias": [], "issue_aberta": "ISSUE-42", "criada_em": "2026-05-12T08:06:42Z" }
+  ]
+}
+JSON
+}
+scenario_s2_ingest_sugestoes() {
+  _have_deps || return 0
+  _write_suggestions_state "$TMPDIR_TEST/featSug" "/home/u/projSug" "featSug"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featSug" --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "S2: ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "2 suggestions" || return 1
+  # 2 linhas na tabela; chave natural source_id = id da sugestao.
+  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM suggestions")
+  [ "$_n" = "2" ] || { _fail "S2: count suggestions" "esperado 2, obtido $_n"; return 1; }
+  # Campos estruturados de sug-002 (sem filtro): skill/severidade/issue/referencias.
+  _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT skill_afetada||'|'||severidade||'|'||issue_aberta||'|'||referencias FROM suggestions WHERE source_id='sug-002'")
+  [ "$_row" = "auth-service|impeditiva|ISSUE-42|" ] || { _fail "S2: campos estruturados" "obtido [$_row]"; return 1; }
+  # Texto livre scrubbed: o token NAO pode vazar na proposta nem na FTS.
+  _pr=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT proposta FROM suggestions WHERE source_id='sug-001'")
+  case "$_pr" in *ghp_AbCdEf*) _fail "S2: segredo vazou em proposta" "$_pr"; return 1 ;; esac
+  # Corpo pesquisavel via FTS por type=suggestion (termo de diagnostico).
+  capture _rc "SMTP" --type suggestion --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "sug-002" || return 1
+}
+
+# S3 — validate_type aceita 'suggestion' e rejeita invalido (paridade m18).
+scenario_s3_validate_type_aceita_suggestion() {
+  _vt_ok=$(sh -c '. "$CSTK_LIB/recall.sh"; validate_type "suggestion" && printf ok' 2>/dev/null)
+  [ "$_vt_ok" = "ok" ] || { _fail "S3: validate_type suggestion falhou" "$_vt_ok"; return 1; }
+}
+
+# S4 — linha de status do --ingest e do --reindex inclui ", N suggestions".
+scenario_s4_status_inclui_suggestions() {
+  _have_deps || return 0
+  _write_suggestions_state "$TMPDIR_TEST/featS4" "/tmp/projS4" "featS4"
+  _s4_out=$(_rc --ingest --state-dir "$TMPDIR_TEST/featS4" --db "$TMPDIR_TEST/s4.db" 2>/dev/null)
+  case "$_s4_out" in
+    *"suggestions"*) : ;;
+    *) _fail "S4: linha de ingest sem 'suggestions'" "$_s4_out"; return 1 ;;
   esac
 }
 

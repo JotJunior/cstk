@@ -5,6 +5,47 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.1.0] - 2026-05-28
+
+Feature `recall-suggestions` + correção de robustez na ingestão do `knowledge.db`.
+Descoberta ao auditar o índice real: a tabela `retros` estava vazia em todas as
+14 execuções porque nenhum produtor escreve `.retros[]` — mas o conteúdo
+retrospectivo de verdade (diagnóstico + proposta de meta-padrão) já existia em
+`.sugestoes[]` e nunca era indexado. E execuções com data não-canônica sumiam
+silenciosamente da tabela `executions`. Schema v5 (aditivo).
+
+### Added
+
+- **`cli/lib/recall.sh` — schema v5**: nova tabela `suggestions (project,
+  feature, wave, execucao_id, source_ts, source_id, skill_afetada, severidade,
+  diagnostico, proposta, referencias, issue_aberta, ingested_at)`, alimentada
+  por `.sugestoes[]` do `state.json`. `diagnostico`+`proposta` formam o corpo
+  pesquisável na FTS unificada (`type='suggestion'`) e passam pelo
+  `secrets-filter` (FR-006); `referencias` é `join(",")` também filtrado.
+  `RECALL_SCHEMA_VERSION` 4 → 5; `RECALL_TYPE_ENUM` estendido com `suggestion`.
+  `cstk recall <termo> --type suggestion` e `--reindex` retro-alimentam todo o
+  histórico de execuções já indexadas.
+
+### Fixed
+
+- **Linha de execução sumindo silenciosamente** em `recall_ingest_state_json`:
+  o cálculo de duração via `fromdateiso8601` **lançava** em `terminada_em`
+  date-only (ex. `"2026-05-25"`, gravada por orquestrador antigo), e como o
+  parse vivia dentro do mesmo programa `jq` que monta a linha inteira, o throw
+  derrubava a execução toda (`executions=0`) sem aviso — enquanto `waves`,
+  `decisions` e `bloqueios` da mesma execução eram ingeridos normalmente. Agora
+  o parse é isolado em `try … catch ""`: a execução é preservada e só
+  `duracao_segundos` vira NULL. Recupera execuções concluídas que estavam
+  invisíveis no índice (ex. `flow-assistant-streaming`).
+
+### Notes
+
+- Aditivo: `CREATE TABLE IF NOT EXISTS` cria `suggestions` em DBs v<5 sem perda;
+  rode `cstk recall --reindex` para popular as sugestões e recuperar execuções
+  que tinham sido derrubadas pela data não-canônica. Zero mudança de surface CLI
+  (apenas um valor novo no enum `--type`). Cobertura: 4 cenários novos em
+  `tests/cstk/test_recall.sh` (S1–S4); suíte recall 97/97.
+
 ## [5.0.0] - 2026-05-27
 
 **BREAKING.** O projeto foi renomeado para `cstk` (repositório
