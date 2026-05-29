@@ -36,7 +36,7 @@ flowchart TD
     end
     BR[scripts/build-release.sh] -->|tarball + SHA-256| REL[(GitHub Release)]
     Fonte --> BR
-    REL -->|curl \| sh / cstk update| INST[~/.claude/skills, commands, agents]
+    REL -->|"curl | sh / cstk update"| INST["~/.claude/skills, commands, agents"]
     INST -->|consumido por| CC[Claude Code]
     CC -.->|cstk doctor detecta drift| INST
 ```
