@@ -192,6 +192,10 @@ _is_internal_test() {
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
       # Teste de invariante do repositorio — nao mapeia 1:1 para um script.
       return 0 ;;
+    test_doc-subcommands.sh)
+      # Lint: refs `<helper>.sh <subcomando>` nos docs apontam p/ subcomando
+      # real (case-label no dispatch). Invariante do repo — nao mapeia 1:1.
+      return 0 ;;
     test_install-extra-kinds.sh)
       # Cobre interacao install.sh + manifest.sh + doctor.sh para os kinds
       # commands/agents (nao mapeia 1:1 para um unico script sob a convencao).
@@ -216,6 +220,13 @@ _is_internal_test() {
       # conclusao de turno" — anti-parada-cedo apos Skill retornar). Assert
       # no .md, nao em um unico script — existence-guarded ao orquestrador
       # portador do contrato. Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
+      return 1 ;;
+    test_orchestrator-evidence-grounding.sh)
+      # Smoke textual sobre os 2 orquestradores + 2 resume (regra "aterramento
+      # de evidencia em escalada de seguranca" — anti-confabulacao). Assert no
+      # .md/.command, nao em um unico script — existence-guarded. Se a regra
+      # sumir do prompt, o bug (escalar ameaca fabricada) volta silenciosamente.
       [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
       return 1 ;;
     test_e2e_model_routing.sh)

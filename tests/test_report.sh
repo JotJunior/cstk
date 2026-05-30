@@ -239,4 +239,100 @@ JSON
   assert_stdout_contains "Proposta legada em portugues" || return 1
 }
 
+# ---------- emit (FR-018): resolve caminho por flavor + secrets-filter interno ----------
+
+scenario_emit_feature00c_grava_arquivo_filtrado() {
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" emit --flavor feature-00c --short-name demo --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "emit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "feature-00c-report.md" || return 1   # imprime o caminho gravado
+  _out="$_sd/feature-00c-report.md"
+  [ -f "$_out" ] || { _fail "emit" "arquivo nao gravado: $_out"; return 1; }
+  capture cat "$_out"
+  assert_stdout_contains "## 1. Resumo Executivo" || return 1
+  assert_stdout_contains "## 5. Sugestoes para Skills Globais" || return 1
+  assert_stdout_contains "## 6. Licoes Aprendidas" || return 1
+  assert_stdout_contains "Apendice A" || return 1
+}
+
+scenario_emit_agente00c_resolve_caminho_pai() {
+  # flavor agente-00c grava em <state-dir>/../agente-00c-report.md
+  _sd="$TMPDIR_TEST/proj/.claude/agente-00c-state"
+  mkdir -p "$_sd"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" emit --flavor agente-00c --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "emit agente" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$TMPDIR_TEST/proj/.claude/agente-00c-report.md" ] \
+    || { _fail "emit agente" "relatorio nao gravado no diretorio pai"; return 1; }
+}
+
+scenario_emit_exige_flavor() {
+  _sd="$TMPDIR_TEST/state"; _init "$_sd"
+  assert_exit 2 "$SCRIPT" emit --state-dir "$_sd" || return 1
+}
+
+scenario_emit_exige_state_dir() {
+  assert_exit 2 "$SCRIPT" emit --flavor feature-00c || return 1
+}
+
+scenario_emit_flavor_invalido_rejeitado() {
+  _sd="$TMPDIR_TEST/state"; _init "$_sd"
+  assert_exit 2 "$SCRIPT" emit --flavor xpto --state-dir "$_sd" || return 1
+}
+
+scenario_emit_parcial_sem_licoes_final_com() {
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  _out="$_sd/feature-00c-report.md"
+  capture "$SCRIPT" emit --flavor feature-00c --state-dir "$_sd" --final \
+    --licoes-aprendidas "LICAO_EMIT_FINAL_XYZ"
+  capture cat "$_out"
+  assert_stdout_contains "LICAO_EMIT_FINAL_XYZ" || return 1
+  # parcial (default): NAO repete a licao
+  capture "$SCRIPT" emit --flavor feature-00c --state-dir "$_sd"
+  capture cat "$_out"
+  case "$_CAPTURED_STDOUT" in
+    *LICAO_EMIT_FINAL_XYZ*) _fail "emit parcial" "licao apareceu em relatorio parcial"; return 1 ;;
+  esac
+}
+
+scenario_emit_aplica_secrets_filter_sempre() {
+  _sd="$TMPDIR_TEST/state"
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-emit-sec" \
+    --projeto-alvo-path "/tmp/p" --descricao "emit secret scrub"
+  capture "$ON" start --state-dir "$_sd"
+  capture "$DEC" register --state-dir "$_sd" --agente "orquestrador-00c" --etapa "briefing" \
+    --contexto "valor sensivel gho_aB3xK9mZ1qP7rT2vW5yU8nL4jH6dF0sC embutido no contexto da decisao" \
+    --opcoes '["A","B"]' --escolha "A" \
+    --justificativa "justificativa longa o suficiente para passar o gate de score"
+  capture "$ON" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  printf 'CRED=gho_aB3xK9mZ1qP7rT2vW5yU8nL4jH6dF0sC\n' > "$TMPDIR_TEST/.env"
+  capture "$SCRIPT" emit --flavor feature-00c --state-dir "$_sd" --env-file "$TMPDIR_TEST/.env"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "emit secret" "$_CAPTURED_STDERR"; return 1; }
+  capture cat "$_sd/feature-00c-report.md"
+  case "$_CAPTURED_STDOUT" in
+    *gho_aB3xK9mZ1qP7rT2vW5yU8nL4jH6dF0sC*) _fail "emit secret" "secret vazou no relatorio gravado"; return 1 ;;
+  esac
+}
+
+scenario_emit_aborta_sem_secrets_filter() {
+  # report.sh e self-contained: isolando-o num dir SEM secrets-filter.sh ao lado,
+  # emit deve ABORTAR (nunca gravar relatorio nao-filtrado — vazamento persistente).
+  _iso="$TMPDIR_TEST/iso"
+  mkdir -p "$_iso"
+  cp "$SCRIPT" "$_iso/report.sh"
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  _out="$_sd/feature-00c-report.md"
+  capture "$_iso/report.sh" emit --flavor feature-00c --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "emit safety" "deveria abortar sem secrets-filter"; return 1; }
+  [ -f "$_out" ] && { _fail "emit safety" "gravou relatorio nao-filtrado"; return 1; }
+  assert_stderr_contains "secrets-filter" || return 1
+}
+
 run_all_scenarios

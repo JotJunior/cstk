@@ -17,6 +17,17 @@
 #         externamente: `report.sh generate ... | secrets-filter.sh scrub
 #         --env-file <PAP>/.env > <PAP>/.claude/agente-00c-report.md`
 #
+#   report.sh emit --flavor feature-00c|agente-00c --state-dir DIR
+#                  [--short-name NAME] [--parcial|--final]
+#                  [--paragrafo-resumo TEXT] [--licoes-aprendidas TEXT]
+#                  [--env-file FILE] [--ignore-file FILE]
+#       — Como generate, mas resolve o caminho de saida pelo flavor
+#         (feature-00c -> <state-dir>/feature-00c-report.md; agente-00c ->
+#         <state-dir>/../agente-00c-report.md), aplica secrets-filter
+#         INTERNAMENTE e SEMPRE, e grava o arquivo (imprime o caminho em
+#         stdout). secrets-filter ausente = erro (nunca grava nao-filtrado).
+#         --parcial (default) = sem licoes; --final = secao 6 preenchida.
+#
 #   report.sh validate --report-file FILE
 #       — Verifica presenca das 6 secoes obrigatorias via regex de headings.
 #       — Exit 0 se completo, 1 se faltando alguma secao + nome em stderr.
@@ -393,6 +404,94 @@ _rp_cmd_validate() {
   exit 1
 }
 
+# _rp_emit_do_scrub RAW OUT ENV IGNORE — aplica secrets-filter (usa $_sf_script).
+# Variantes de flags sem concatenacao de strings (paths podem ter espaco).
+_rp_emit_do_scrub() {
+  if [ -n "$3" ] && [ -n "$4" ]; then
+    "$_sf_script" scrub --env-file "$3" --ignore-file "$4" < "$1" > "$2"
+  elif [ -n "$3" ]; then
+    "$_sf_script" scrub --env-file "$3" < "$1" > "$2"
+  elif [ -n "$4" ]; then
+    "$_sf_script" scrub --ignore-file "$4" < "$1" > "$2"
+  else
+    "$_sf_script" scrub < "$1" > "$2"
+  fi
+}
+
+# _rp_cmd_emit — gera + filtra (secrets) + grava o relatorio, resolvendo o
+# caminho pelo flavor (FR-018). Diferente de `generate` (que escreve em stdout
+# para o caller filtrar), `emit` aplica secrets-filter INTERNAMENTE e SEMPRE e
+# grava o arquivo. Centraliza o concern de relatorio do feature-00c: resume/
+# abort/orquestrador nao repetem o pipeline nem podem esquecer o scrub — o
+# relatorio e persistido (e tipicamente commitado), entao um vazamento seria
+# permanente. Por isso secrets-filter ausente = erro, nunca passthrough.
+_rp_cmd_emit() {
+  _flavor=""
+  _sd=""
+  _final=0
+  _para=""
+  _licoes=""
+  _env=""
+  _ignore=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --flavor)             _flavor=$2; shift 2 ;;
+      --short-name)         shift 2 ;;   # aceito p/ compat de doc; titulo vem do state.json
+      --state-dir)          _sd=$2;     shift 2 ;;
+      --final)              _final=1;   shift ;;
+      --parcial)            _final=0;   shift ;;
+      --paragrafo-resumo)   _para=$2;   shift 2 ;;
+      --licoes-aprendidas)  _licoes=$2; shift 2 ;;
+      --env-file)           _env=$2;    shift 2 ;;
+      --ignore-file)        _ignore=$2; shift 2 ;;
+      *) _rp_die_usage "emit: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_flavor" ] || _rp_die_usage "emit: --flavor obrigatorio (feature-00c|agente-00c)"
+  [ -n "$_sd" ]     || _rp_die_usage "emit: --state-dir obrigatorio"
+
+  case "$_flavor" in
+    feature-00c) _out="$_sd/feature-00c-report.md" ;;
+    agente-00c)  _out="$_sd/../agente-00c-report.md" ;;
+    *) _rp_die_usage "emit: --flavor invalido: $_flavor (esperado feature-00c|agente-00c)" ;;
+  esac
+
+  _rp_require_jq
+  _sf=$(_rp_state_file "$_sd")
+  [ -f "$_sf" ] || _rp_die "emit: state.json ausente em $_sd" 1
+
+  # secrets-filter OBRIGATORIO (ver doc da funcao): ausencia/inacessibilidade
+  # = erro, NUNCA grava relatorio nao-filtrado.
+  _sf_script="$(dirname -- "$0")/secrets-filter.sh"
+  [ -x "$_sf_script" ] \
+    || _rp_die "emit: secrets-filter.sh ausente/nao-executavel em $(dirname -- "$0") — abortando para nao gravar relatorio nao-filtrado" 1
+
+  _raw=$(mktemp) || _rp_die "emit: mktemp falhou" 1
+  _scrubbed=$(mktemp) || { rm -f -- "$_raw"; _rp_die "emit: mktemp falhou" 1; }
+
+  _now=$(_rp_iso_now)
+  {
+    _rp_render_header "$_sf" "$_now"
+    _rp_render_secao_1 "$_sf" "$_para"
+    _rp_render_secao_2 "$_sf"
+    _rp_render_secao_3 "$_sf"
+    _rp_render_secao_4 "$_sf"
+    _rp_render_secao_5 "$_sf"
+    _rp_render_secao_6 "$_licoes" "$_final"
+    _rp_render_apendice "$_sf"
+  } > "$_raw"
+
+  if ! _rp_emit_do_scrub "$_raw" "$_scrubbed" "$_env" "$_ignore"; then
+    rm -f -- "$_raw" "$_scrubbed"
+    _rp_die "emit: secrets-filter scrub falhou — relatorio NAO gravado" 1
+  fi
+  rm -f -- "$_raw"
+
+  mv -- "$_scrubbed" "$_out" \
+    || { rm -f -- "$_scrubbed"; _rp_die "emit: falha ao gravar $_out" 1; }
+  printf '%s\n' "$_out"
+}
+
 # ---------- Dispatch ----------
 
 if [ "$#" -lt 1 ]; then
@@ -402,14 +501,19 @@ report.sh — gera relatorio do agente-00C com 6 secoes (FR-011, SC-001).
 USO:
   report.sh generate --state-dir DIR [--final] [--paragrafo-resumo TEXT]
                                       [--licoes-aprendidas TEXT]
+  report.sh emit --flavor feature-00c|agente-00c --state-dir DIR
+                 [--short-name NAME] [--parcial|--final]
+                 [--paragrafo-resumo TEXT] [--licoes-aprendidas TEXT]
+                 [--env-file FILE] [--ignore-file FILE]
   report.sh validate --report-file FILE
 
-IMPORTANTE: caller deve aplicar secrets-filter externamente:
-
+generate: escreve o relatorio em stdout — o CALLER aplica secrets-filter:
   report.sh generate --state-dir <SD> [...] \
     | secrets-filter.sh scrub --env-file <PAP>/.env \
     > <PAP>/.claude/agente-00c-report.md
-  report.sh validate --report-file <PAP>/.claude/agente-00c-report.md
+
+emit: resolve o caminho pelo flavor, aplica secrets-filter INTERNAMENTE
+(sempre) e grava o arquivo; imprime o caminho gravado em stdout.
 
 EXIT (validate):
   0 todas as 6 secoes presentes
@@ -423,6 +527,7 @@ shift
 
 case "$_RP_SUBCMD" in
   generate)        _rp_cmd_generate "$@" ;;
+  emit)            _rp_cmd_emit "$@" ;;
   validate)        _rp_cmd_validate "$@" ;;
   -h|--help|help)  exit 0 ;;
   *) _rp_die_usage "subcomando desconhecido: $_RP_SUBCMD" ;;

@@ -5,6 +5,76 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.4.0] - 2026-05-30
+
+Restaura no `feature-00c` a paridade de duas capacidades que só o
+`agente-00c` (orquestrador de projeto) exercia: o registro de **Sugestões
+para skills globais** (FR-020) e a **retrospectiva proativa por marco** (a
+cada 25 ondas). Diagnóstico: as sugestões sumiram dos relatórios das features
+recentes não por maturidade, mas porque o orquestrador `feature-00c` nunca
+teve o gatilho ativo — só mencionava o mecanismo na tabela de capacidades e
+ainda apontava para um subcomando fantasma (`suggestions.sh append`, que não
+existe; o real é `register`). Mesmo padrão de bug-fantasma da 5.3.0. Empírico:
+toda execução `feature-00c` (inclusive runs de 31 e 38 ondas) fechava com 0
+sugestões, enquanto runs `agente-00c` produziam 2–9.
+
+### Added
+
+- **`feature-00c`: gatilho ativo de Sugestão para skill global** (passo
+  `10.qua` do loop + seção "Sugestões para skills globais (FR-020)"): porta o
+  checkpoint que o `agente-00c` já tinha, registrando via `suggestions.sh
+  register` com `--suggestions-file` em
+  `<projeto>/.claude/agente-00c-suggestions.md`. A §5 do relatório passa a
+  popular-se em features (validado end-to-end: register → state → §5).
+- **`feature-00c`: retrospectiva proativa por marco** (passo `10.ter` + seção
+  dedicada): a cada 25 ondas emite bloqueio LEVE propondo revisão dos padrões
+  acumulados e atualiza `.next_retrospective_milestone` — paridade com o
+  `agente-00c`.
+- **`report.sh emit --flavor feature-00c|agente-00c`** (FR-018): novo subcomando
+  que resolve o caminho do relatório pelo flavor, aplica `secrets-filter`
+  INTERNAMENTE e SEMPRE, e grava o arquivo. Constrói a capacidade que os docs
+  do `feature-00c` (orquestrador, resume, abort) já invocavam como fantasma —
+  mesma estratégia da 5.3.0 (construir o que a doc descrevia). secrets-filter
+  ausente/inacessível = erro (nunca grava relatório não-filtrado). Cobertura:
+  8 cenários novos em `tests/test_report.sh`.
+- **`tests/test_doc-subcommands.sh`** (lint de invariante do repo): varre os
+  docs de orquestrador/command e falha se uma referência `<helper>.sh
+  <subcomando>` apontar para um subcomando inexistente no dispatch do script.
+  Pega a classe "subcomando-fantasma" (`append`, `emit`, `check-cmd`,
+  `skill-invoked`, `increment`, flags de `init`) em CI, não em runtime.
+
+### Fixed
+
+- **Subcomando fantasma `suggestions.sh append`** na doc do
+  `agente-00c-feature-orchestrator` (tabela de capacidades + seção de issue):
+  corrigido para `suggestions.sh register` (o único subcomando de escrita que
+  existe no runtime). Era o motivo de o mecanismo nunca disparar mesmo quando
+  o orquestrador tentava usá-lo.
+- **Mais subcomandos-fantasma no `agente-00c-feature-orchestrator`** (achados
+  pelo novo lint): `bash-guard.sh check-cmd` → `check`; `spawn-tracker.sh
+  increment` → `enter`; `state-ondas.sh skill-invoked` → `record-skill` (4
+  ocorrências, incl. uma invocação real no passo de gate). Todos já tinham a
+  forma correta em OUTROS pontos do mesmo doc ou no `agente-00c` — eram
+  inconsistências que só falhariam em runtime.
+- **Referências a `report.sh emit` no `feature-00c`** (orquestrador, resume,
+  abort) deixam de ser fantasma agora que o subcomando existe; os 2 sites do
+  orquestrador ganham o `--state-dir` que faltava.
+
+### Security
+
+- **Guard anti-confabulação em escalada de segurança** (regra de *aterramento de
+  evidência* nos 2 orquestradores + 2 comandos de resume): a evidência citada
+  para um evento de segurança (prompt-injection/canary/tampering/output hostil)
+  DEVE ser substring **literal** de um tool result observado; sem aterramento →
+  `--score 0 --escolha ameaca-nao-verificada` (pause), nunca escalar ameaça
+  fabricada. Originou da auditoria de uma execução real (`security-hardening-
+  owasp`) onde um resume (PAI) **confabulou** uma string de prompt-injection num
+  output SSH limpo, gravou Decisão score-3 com evidência fabricada e escalou ao
+  operador (`dec-122`, depois retratada): a trava de score-3 confere que a
+  evidência *existe*, não que é *real*. Move o flagra do momento-da-ação para o
+  momento-do-registro. Trava de regressão textual em
+  `tests/test_orchestrator-evidence-grounding.sh`.
+
 ## [5.3.0] - 2026-05-30
 
 Normalização das chaves do `state.json` (runtime agente-00c/feature-00c) e das
@@ -3008,6 +3078,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.4.0]: https://github.com/JotJunior/cstk/releases/tag/v5.4.0
 [5.3.0]: https://github.com/JotJunior/cstk/releases/tag/v5.3.0
 [5.2.0]: https://github.com/JotJunior/cstk/releases/tag/v5.2.0
 [5.1.0]: https://github.com/JotJunior/cstk/releases/tag/v5.1.0

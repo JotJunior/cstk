@@ -108,6 +108,14 @@ fi
    - senao: bloqueios.sh respond --state-dir "$AGENTE_00C_STATE_DIR" \
        --block-id <auto> --resposta "$RESPOSTA"
      - registrar Decisao resultante via state-decisions.sh register
+       ATERRAMENTO anti-confabulacao: se a Decisao escala/age sobre um evento de
+       SEGURANCA (prompt-injection/canary/tampering/output hostil), a
+       `--evidencia` DEVE ser substring LITERAL de um tool result de fato
+       observado nesta sessao. Nao consegue apontar a linha exata do output?
+       Entao a ameaca NAO existe: registre `--score 0 --escolha
+       ameaca-nao-verificada` (pause), NUNCA trate ameaca fabricada como real.
+       (Caso dec-122: um resume confabulou prompt-injection num SSH limpo e
+       escalou ao operador antes de a verificacao pegar.)
      - mudar status para em_andamento
 
 7. selecionar modelo da onda + delegar ao orquestrador
