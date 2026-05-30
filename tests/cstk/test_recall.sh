@@ -129,8 +129,8 @@ scenario_03_filtro_type() {
   _have_deps || return 0
   _write_state "$TMPDIR_TEST/featA" "/home/u/projX" "featA"
   _rc --ingest --state-dir "$TMPDIR_TEST/featA" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
-  capture _rc "deploy" --type bloqueio --db "$TMPDIR_TEST/k.db"
-  assert_stdout_contains "[bloqueio]" || return 1
+  capture _rc "deploy" --type block --db "$TMPDIR_TEST/k.db"
+  assert_stdout_contains "[block]" || return 1
   case "$_CAPTURED_STDOUT" in
     *"[decision]"*|*"[retro]"*|*"[skill]"*) _fail "filtro type" "vazou outro tipo"; return 1 ;;
   esac
@@ -205,9 +205,9 @@ scenario_07_upsert_versao_mais_recente() {
 }
 JSON
   _rc --ingest --state-dir "$TMPDIR_TEST/featA" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
-  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM bloqueios" 2>/dev/null)
+  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM blocks" 2>/dev/null)
   [ "$_n" = "1" ] || { _fail "upsert" "esperado 1 linha de bloqueio, obtido $_n"; return 1; }
-  _st=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT status FROM bloqueios" 2>/dev/null)
+  _st=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT status FROM blocks" 2>/dev/null)
   [ "$_st" = "respondido" ] || { _fail "upsert status" "esperado respondido, obtido $_st"; return 1; }
 }
 
@@ -536,91 +536,156 @@ JSON
 }
 
 # =========================================================================
-# Cenario M1.1 — bump v1 -> v2 preserva dado v1 + cria executions/waves
-# (task 1.1.5; FR-007, Edge Case "schema antigo")
+# Cenario M1.1 — migracao v7 (schema-en-migration): DB pre-v7 (colunas pt-BR)
+# tem TODAS as tabelas renomeadas dropadas + recriadas em EN no apply_schema.
+# Rename de coluna NAO passa por CREATE TABLE IF NOT EXISTS -> drop one-time.
+# Dado e DERIVADO (fonte = state.json): a linha legacy E DESCARTADA (repopulada
+# por --reindex). Substitui o antigo teste de "bump v1->v2 preserva dado": a
+# preservacao aditiva foi SUPERSEDIDA pelo drop v7 (decisao do operador §3.11).
 # =========================================================================
-scenario_m11_bump_v1_para_v2_preserva_dado() {
+scenario_m11_migracao_v7_dropa_e_recria_en() {
   _have_deps || return 0
   _mdb="$TMPDIR_TEST/v1.db"
-  # DB v1 sintetico: 1 decision + schema_version=1, SEM tabelas novas.
+  # DB pre-v7 sintetico (schema pt-BR, v1): 1 decision + bloqueios + execucao_id.
   sqlite3 "$_mdb" <<'SQL'
 CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execucao_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, agente TEXT, etapa TEXT, escolha TEXT, score INTEGER, contexto TEXT, justificativa TEXT, evidencia TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE bloqueios (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT, feature TEXT, wave TEXT, execucao_id TEXT, source_ts TEXT, source_id TEXT, status TEXT, pergunta TEXT, decisao_id TEXT, ingested_at TEXT, UNIQUE(project, feature, wave, source_id));
 CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
 INSERT INTO schema_meta(key,value) VALUES('schema_version','1');
 INSERT INTO decisions(project,feature,wave,execucao_id,source_ts,source_id,ingested_at) VALUES('p','f','w','e','t','dec-legacy','now');
+INSERT INTO bloqueios(project,feature,wave,execucao_id,source_ts,source_id,status,ingested_at) VALUES('p','f','w','e','t','blk-legacy','pendente','now');
 SQL
-  # Aplica schema v2 via funcao real (caminho de recall_apply_schema).
+  # Aplica schema v7 via funcao real (caminho de recall_apply_schema).
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
-    _fail "apply schema v2" "recall_apply_schema falhou"; return 1; }
-  # (a) schema_version virou 6 (atual — decisions.opcoes bump v5->v6)
+    _fail "apply schema v7" "recall_apply_schema falhou"; return 1; }
+  # (a) schema_version virou 7.
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "6" ] || { _fail "schema_version" "esperado 6, obtido $_sv"; return 1; }
-  # (b) tabelas executions + waves existem
-  _has=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('executions','waves')")
-  [ "$_has" = "2" ] || { _fail "tabelas novas" "esperado 2 (executions+waves), obtido $_has"; return 1; }
-  # (c) dado v1 preservado
+  [ "$_sv" = "7" ] || { _fail "schema_version" "esperado 7, obtido $_sv"; return 1; }
+  # (b) tabela bloqueios DROPADA; blocks (EN) criada no lugar.
+  _hasbloq=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='bloqueios'")
+  [ "$_hasbloq" = "0" ] || { _fail "bloqueios dropada" "tabela pt-BR bloqueios sobreviveu"; return 1; }
+  _hasblk=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='blocks'")
+  [ "$_hasblk" = "1" ] || { _fail "blocks criada" "tabela EN blocks ausente"; return 1; }
+  # (c) decisions agora tem colunas EN e NENHUMA coluna pt-BR.
+  _decols=$(sqlite3 "$_mdb" "SELECT group_concat(name,',') FROM pragma_table_info('decisions')")
+  case ",$_decols," in
+    *,execution_id,*) : ;;
+    *) _fail "decisions EN" "coluna execution_id ausente: $_decols"; return 1 ;;
+  esac
+  case ",$_decols," in
+    *,execucao_id,*|*,agente,*|*,etapa,*|*,escolha,*|*,contexto,*|*,justificativa,*|*,evidencia,*)
+      _fail "decisions pt-BR leak" "coluna pt-BR remanescente: $_decols"; return 1 ;;
+  esac
+  # (d) blocks tem colunas EN (question/decision_id), sem pt-BR.
+  _blkcols=$(sqlite3 "$_mdb" "SELECT group_concat(name,',') FROM pragma_table_info('blocks')")
+  case ",$_blkcols," in
+    *,question,*) : ;;
+    *) _fail "blocks EN" "coluna question ausente: $_blkcols"; return 1 ;;
+  esac
+  case ",$_blkcols," in
+    *,pergunta,*|*,decisao_id,*|*,execucao_id,*)
+      _fail "blocks pt-BR leak" "coluna pt-BR remanescente: $_blkcols"; return 1 ;;
+  esac
+  # (e) dado DERIVADO legacy descartado pelo drop (sera repopulado por reindex).
   _leg=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-legacy'")
-  [ "$_leg" = "1" ] || { _fail "preservacao v1" "decisao legacy perdida ($_leg)"; return 1; }
+  [ "$_leg" = "0" ] || { _fail "drop v7 descarta derivado" "linha legacy sobreviveu ($_leg); drop nao rodou"; return 1; }
+}
+
+# =========================================================================
+# Cenario M1.1b — migracao v7 + reindex repopula em EN: o drop descarta o
+# derivado, mas o proximo --reindex a partir do state.json reconstroi tudo
+# (rede de seguranca: indice descartavel). Prova end-to-end da invariante.
+# =========================================================================
+scenario_m11b_v7_reindex_repopula() {
+  _have_deps || return 0
+  # state.json (pt-BR legado) num layout descoberta-padrao.
+  _write_state "$TMPDIR_TEST/rxv7/p/.claude/feature-00c-state/featV7" "/home/u/projV7" "featV7"
+  # DB pre-v7 com schema pt-BR (sera dropado no apply do reindex? reindex faz
+  # rm -f antes — mas validamos que o resultado final e EN e populado).
+  _v7db="$TMPDIR_TEST/v7.db"
+  _rc --reindex --states-root "$TMPDIR_TEST/rxv7" --db "$_v7db" >/dev/null 2>&1
+  _sv=$(sqlite3 "$_v7db" "SELECT value FROM schema_meta WHERE key='schema_version'")
+  [ "$_sv" = "7" ] || { _fail "reindex v7" "esperado schema_version 7, obtido $_sv"; return 1; }
+  # decisions repopuladas em EN (2 decisoes do _write_state).
+  _n=$(sqlite3 "$_v7db" "SELECT count(*) FROM decisions WHERE feature='featV7'")
+  [ "$_n" = "2" ] || { _fail "reindex repopula" "esperado 2 decisoes, obtido $_n"; return 1; }
+  # coluna EN consultavel (choice).
+  _c=$(sqlite3 "$_v7db" "SELECT choice FROM decisions WHERE source_id='dec-001' AND feature='featV7'")
+  [ "$_c" = "iniciar" ] || { _fail "reindex EN choice" "esperado iniciar, obtido $_c"; return 1; }
 }
 
 # =========================================================================
 # Cenario M1.2 — idempotencia do DDL: aplicar 2x sem erro, schema estavel
-# (task 1.1.6)
+# (task 1.1.6). Apos o 1o apply (v7), o 2o NAO re-dropa (versao ja 7).
 # =========================================================================
 scenario_m12_ddl_idempotente() {
   _have_deps || return 0
   _mdb="$TMPDIR_TEST/idem.db"
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
     _fail "apply 1" "primeira aplicacao falhou"; return 1; }
+  # Insere uma linha derivada; o 2o apply NAO pode dropa-la (versao ja 7).
+  sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p','f','w','e','t','dec-keep','keep','now')"
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "6" ] || { _fail "schema estavel" "esperado 6 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "7" ] || { _fail "schema estavel" "esperado 7 apos 2x, obtido $_sv"; return 1; }
+  _keep=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-keep'")
+  [ "$_keep" = "1" ] || { _fail "idempotente sem re-drop" "linha sumiu: 2o apply re-dropou ($_keep)"; return 1; }
 }
 
 # =========================================================================
-# Cenario M1.3 — migracao v2 -> v3: tasks pre-existente SEM titulo ganha a
-# coluna via ALTER idempotente, preservando linhas; INSERT com titulo passa.
-# (CREATE TABLE IF NOT EXISTS nao altera tabela ja criada — o ALTER cobre.)
+# Cenario M1.3 — migracao v7: tasks pre-v7 (schema pt-BR com titulo/
+# testes_rodados/arquivos_tocados) e DROPADA + recriada em EN (title/
+# tests_run/touched_files). Substitui o antigo ALTER aditivo v2->v3 (agora
+# superseded pelo drop v7). INSERT com colunas EN passa.
 # =========================================================================
-scenario_m13_migra_tasks_titulo_alter() {
+scenario_m13_migra_v7_tasks_en() {
   _have_deps || return 0
   _mdb="$TMPDIR_TEST/v2tasks.db"
-  # DB v2 sintetico: tabela tasks no schema ANTIGO (sem titulo) + 1 linha.
+  # DB pre-v7 sintetico: tabela tasks no schema pt-BR + 1 linha.
   sqlite3 "$_mdb" <<'SQL'
-CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execucao_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, outcome TEXT, testes_rodados INTEGER, testes_passados INTEGER, lint_ok INTEGER, arquivos_tocados INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execucao_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, titulo TEXT, outcome TEXT, testes_rodados INTEGER, testes_passados INTEGER, lint_ok INTEGER, arquivos_tocados INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
 CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
 INSERT INTO schema_meta(key,value) VALUES('schema_version','2');
 INSERT INTO tasks(project,feature,wave,execucao_id,source_ts,source_id,outcome,ingested_at) VALUES('p','f','w','e','t','task-legacy','pass','now');
 SQL
-  # Aplica schema atual (v3) via funcao real — deve ALTERar tasks, nao recriar.
+  # Aplica schema v7 via funcao real — deve DROPAR tasks e recriar EN.
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
-    _fail "apply schema v3" "recall_apply_schema falhou"; return 1; }
-  # (a) coluna titulo agora existe
-  _hascol=$(sqlite3 "$_mdb" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='titulo'")
-  [ "$_hascol" = "1" ] || { _fail "ALTER titulo" "coluna nao adicionada ($_hascol)"; return 1; }
-  # (b) linha legacy preservada, titulo NULL
-  _leg=$(sqlite3 "$_mdb" "SELECT count(*) FROM tasks WHERE source_id='task-legacy' AND titulo IS NULL")
-  [ "$_leg" = "1" ] || { _fail "preservacao v2" "linha legacy perdida/alterada ($_leg)"; return 1; }
-  # (c) INSERT com titulo funciona (coluna utilizavel)
-  sqlite3 "$_mdb" "INSERT INTO tasks(project,feature,wave,execucao_id,source_ts,source_id,titulo,ingested_at) VALUES('p','f','w2','e','t','t-new','com titulo','now')" || {
-    _fail "insert titulo" "INSERT com coluna nova falhou"; return 1; }
-  # (d) re-aplicar e idempotente (ALTER nao dispara 2x -> sem erro)
+    _fail "apply schema v7" "recall_apply_schema falhou"; return 1; }
+  # (a) colunas EN presentes (title/tests_run/touched_files), pt-BR ausentes.
+  _cols=$(sqlite3 "$_mdb" "SELECT group_concat(name,',') FROM pragma_table_info('tasks')")
+  case ",$_cols," in
+    *,title,*) : ;;
+    *) _fail "tasks EN" "coluna title ausente: $_cols"; return 1 ;;
+  esac
+  case ",$_cols," in
+    *,titulo,*|*,testes_rodados,*|*,testes_passados,*|*,arquivos_tocados,*|*,execucao_id,*)
+      _fail "tasks pt-BR leak" "coluna pt-BR remanescente: $_cols"; return 1 ;;
+  esac
+  # (b) linha legacy DESCARTADA (derivado; drop v7).
+  _leg=$(sqlite3 "$_mdb" "SELECT count(*) FROM tasks WHERE source_id='task-legacy'")
+  [ "$_leg" = "0" ] || { _fail "drop v7 tasks" "linha legacy sobreviveu ($_leg)"; return 1; }
+  # (c) INSERT com colunas EN funciona (coluna utilizavel).
+  sqlite3 "$_mdb" "INSERT INTO tasks(project,feature,wave,execution_id,source_ts,source_id,title,tests_run,touched_files,ingested_at) VALUES('p','f','w2','e','t','t-new','com title',3,2,'now')" || {
+    _fail "insert EN" "INSERT com colunas EN falhou"; return 1; }
+  # (d) re-aplicar e idempotente (versao ja 7 -> sem re-drop).
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
+  _keep=$(sqlite3 "$_mdb" "SELECT count(*) FROM tasks WHERE source_id='t-new'")
+  [ "$_keep" = "1" ] || { _fail "idempotente sem re-drop" "linha t-new sumiu ($_keep)"; return 1; }
 }
 
 # =========================================================================
-# Cenario M1.4 — ingestao grava decisions.opcoes com TODAS as opcoes avaliadas
+# Cenario M1.4 — ingestao grava decisions.options com TODAS as opcoes avaliadas
 # (nao so a escolhida) como JSON, e o corpo entra na FTS (busca por opcao nao
-# escolhida recupera a decisao). (v6 decisions.opcoes)
+# escolhida recupera a decisao). (coluna EN 'options' apos v7)
 # =========================================================================
-scenario_m14_decisions_opcoes_captura_todas() {
+scenario_m14_decisions_options_captura_todas() {
   _have_deps || return 0
   _write_state "$TMPDIR_TEST/featOpt" "/home/u/projOpt" "featOpt"
   assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featOpt" --db "$TMPDIR_TEST/k.db" || return 1
-  # (a) opcoes de dec-001 = JSON com as 3 opcoes (escolhida + nao escolhidas).
-  _opt=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT opcoes FROM decisions WHERE source_id='dec-001'")
+  # (a) options de dec-001 = JSON com as 3 opcoes (escolhida + nao escolhidas).
+  _opt=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT options FROM decisions WHERE source_id='dec-001'")
   _exp='["iniciar","adiar","descartarproposta"]'
-  [ "$_opt" = "$_exp" ] || { _fail "opcoes capturadas" "esperado [$_exp], obtido [$_opt]"; return 1; }
+  [ "$_opt" = "$_exp" ] || { _fail "options capturadas" "esperado [$_exp], obtido [$_opt]"; return 1; }
   # (b) busca FTS por uma opcao NAO escolhida ("descartarproposta") recupera dec-001.
   capture _rc "descartarproposta" --db "$TMPDIR_TEST/k.db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "busca opcao exit" "$_CAPTURED_EXIT"; return 1; }
@@ -628,32 +693,40 @@ scenario_m14_decisions_opcoes_captura_todas() {
 }
 
 # =========================================================================
-# Cenario M1.5 — migracao v5 -> v6: decisions pre-existente SEM opcoes ganha a
-# coluna via ALTER idempotente, preservando linhas; INSERT com opcoes passa.
+# Cenario M1.5 — ALTER aditivo EN defensivo (decisions.options / tasks.title):
+# rede de seguranca mantida apos o drop v7. Quando um DB JA esta em v7 mas a
+# tabela decisions/tasks (por algum motivo) NAO tem a coluna options/title, o
+# apply_schema a adiciona via ALTER (nao re-dropa: versao ja 7). Prova que os
+# ALTERs renomeados para EN (title/options) ainda funcionam e sao idempotentes.
 # =========================================================================
-scenario_m15_migra_decisions_opcoes_alter() {
+scenario_m15_alter_aditivo_en_defensivo() {
   _have_deps || return 0
-  _mdb="$TMPDIR_TEST/v5dec.db"
-  # DB v5 sintetico: tabela decisions no schema ANTIGO (sem opcoes) + 1 linha.
+  _mdb="$TMPDIR_TEST/v7partial.db"
+  # DB v7 com decisions SEM 'options' e tasks SEM 'title' (schema EN parcial) +
+  # schema_version=7 (para NAO disparar o drop v7) + 1 linha em cada.
   sqlite3 "$_mdb" <<'SQL'
-CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execucao_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, agente TEXT, etapa TEXT, escolha TEXT, score INTEGER, contexto TEXT, justificativa TEXT, evidencia TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, agent TEXT, stage TEXT, choice TEXT, score INTEGER, context TEXT, rationale TEXT, evidence TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, outcome TEXT, tests_run INTEGER, tests_passed INTEGER, lint_ok INTEGER, touched_files INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
 CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
-INSERT INTO schema_meta(key,value) VALUES('schema_version','5');
-INSERT INTO decisions(project,feature,wave,execucao_id,source_ts,source_id,escolha,ingested_at) VALUES('p','f','w','e','t','dec-legacy','iniciar','now');
+INSERT INTO schema_meta(key,value) VALUES('schema_version','7');
+INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p','f','w','e','t','dec-keep','iniciar','now');
+INSERT INTO tasks(project,feature,wave,execution_id,source_ts,source_id,outcome,ingested_at) VALUES('p','f','w','e','t','task-keep','pass','now');
 SQL
-  # Aplica schema atual (v6) via funcao real — deve ALTERar decisions, nao recriar.
+  # Aplica schema — versao ja 7 (sem drop); ALTER adiciona options/title.
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
-    _fail "apply schema v6" "recall_apply_schema falhou"; return 1; }
-  # (a) coluna opcoes agora existe
-  _hascol=$(sqlite3 "$_mdb" "SELECT count(*) FROM pragma_table_info('decisions') WHERE name='opcoes'")
-  [ "$_hascol" = "1" ] || { _fail "ALTER opcoes" "coluna nao adicionada ($_hascol)"; return 1; }
-  # (b) linha legacy preservada, opcoes NULL, escolha intacta
-  _leg=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-legacy' AND opcoes IS NULL AND escolha='iniciar'")
-  [ "$_leg" = "1" ] || { _fail "preservacao v5" "linha legacy perdida/alterada ($_leg)"; return 1; }
-  # (c) INSERT com opcoes funciona (coluna utilizavel)
-  sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execucao_id,source_ts,source_id,opcoes,ingested_at) VALUES('p','f','w2','e','t','d-new','[\"a\",\"b\"]','now')" || {
-    _fail "insert opcoes" "INSERT com coluna nova falhou"; return 1; }
-  # (d) re-aplicar e idempotente (ALTER nao dispara 2x -> sem erro)
+    _fail "apply schema" "recall_apply_schema falhou"; return 1; }
+  # (a) coluna options (decisions) e title (tasks) agora existem (EN).
+  _hasopt=$(sqlite3 "$_mdb" "SELECT count(*) FROM pragma_table_info('decisions') WHERE name='options'")
+  [ "$_hasopt" = "1" ] || { _fail "ALTER options" "coluna options nao adicionada ($_hasopt)"; return 1; }
+  _hastit=$(sqlite3 "$_mdb" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='title'")
+  [ "$_hastit" = "1" ] || { _fail "ALTER title" "coluna title nao adicionada ($_hastit)"; return 1; }
+  # (b) linhas preservadas (versao 7 -> sem drop), novas colunas NULL.
+  _leg=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-keep' AND options IS NULL AND choice='iniciar'")
+  [ "$_leg" = "1" ] || { _fail "preservacao v7" "linha legacy perdida/alterada ($_leg)"; return 1; }
+  # (c) INSERT com options funciona (coluna utilizavel).
+  sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,options,ingested_at) VALUES('p','f','w2','e','t','d-new','[\"a\",\"b\"]','now')" || {
+    _fail "insert options" "INSERT com coluna nova falhou"; return 1; }
+  # (d) re-aplicar e idempotente (ALTER nao dispara 2x; sem re-drop).
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
 }
 
@@ -670,9 +743,9 @@ scenario_m21_execucao_concluida_campos() {
   # Exatamente 1 linha.
   _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM executions")
   [ "$_n" = "1" ] || { _fail "exec count" "esperado 1, obtido $_n"; return 1; }
-  # Campos derivados/estruturais (chave natural wave='-', source_id=execucao_id).
-  _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT project||'|'||feature||'|'||wave||'|'||source_id||'|'||status||'|'||etapa_corrente||'|'||duracao_segundos||'|'||ondas_total||'|'||tool_calls_total||'|'||wallclock_total_segundos||'|'||subagentes_spawned||'|'||profundidade_max||'|'||decisoes_total||'|'||bloqueios_humanos_total FROM executions")
-  # status terminal (concluido) normaliza etapa_corrente review-task -> concluido
+  # Campos derivados/estruturais (chave natural wave='-', source_id=execution_id).
+  _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT project||'|'||feature||'|'||wave||'|'||source_id||'|'||status||'|'||current_stage||'|'||duration_seconds||'|'||waves_total||'|'||tool_calls_total||'|'||wallclock_total_seconds||'|'||subagents_spawned||'|'||max_depth||'|'||decisions_total||'|'||human_blocks_total FROM executions")
+  # status terminal (concluido) normaliza current_stage review-task -> concluido
   # (evita falso positivo no dashboard). Ver scenario_m24_etapa_normaliza_terminal.
   _exp="projM|featM|-|exec-featM|concluido|concluido|3600|2|42|3600|3|2|5|1"
   [ "$_row" = "$_exp" ] || { _fail "exec campos" "esperado [$_exp], obtido [$_row]"; return 1; }
@@ -696,11 +769,11 @@ scenario_m22_execucao_em_andamento_duracao_null() {
 }
 JSON
   assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db" || return 1
-  _dn=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT duracao_segundos IS NULL FROM executions WHERE source_id='exec-featO'")
+  _dn=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT duration_seconds IS NULL FROM executions WHERE source_id='exec-featO'")
   [ "$_dn" = "1" ] || { _fail "duracao aberta" "esperado NULL, obtido nao-null"; return 1; }
   # Metricas ausentes viram NULL sem erro.
-  _sn=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT subagentes_spawned IS NULL FROM executions WHERE source_id='exec-featO'")
-  [ "$_sn" = "1" ] || { _fail "metrica ausente" "esperado NULL para subagentes_spawned"; return 1; }
+  _sn=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT subagents_spawned IS NULL FROM executions WHERE source_id='exec-featO'")
+  [ "$_sn" = "1" ] || { _fail "metrica ausente" "esperado NULL para subagents_spawned"; return 1; }
 }
 
 # =========================================================================
@@ -722,13 +795,13 @@ scenario_m23_execucao_motivo_filtrado() {
 }
 JSON
   _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
-  _mt=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT motivo_termino FROM executions WHERE source_id='exec-featS'")
+  _mt=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT termination_reason FROM executions WHERE source_id='exec-featS'")
   case "$_mt" in
-    *ghp_AbCdEf*) _fail "filtro segredo exec" "token vazou em motivo_termino: $_mt"; return 1 ;;
+    *ghp_AbCdEf*) _fail "filtro segredo exec" "token vazou em termination_reason: $_mt"; return 1 ;;
   esac
-  # Aborto NAO e conclusao: etapa_corrente preserva a fase real (review-task),
+  # Aborto NAO e conclusao: current_stage preserva a fase real (review-task),
   # nunca vira "concluido" (so concluida/concluido normalizam).
-  _ec=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT etapa_corrente FROM executions WHERE source_id='exec-featS'")
+  _ec=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT current_stage FROM executions WHERE source_id='exec-featS'")
   [ "$_ec" = "review-task" ] || { _fail "aborto preserva etapa" "esperado review-task, obtido $_ec"; return 1; }
 }
 
@@ -754,7 +827,7 @@ JSON
   assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db" || return 1
   # status concluida (canonico) -> etapa_corrente derivada vira "concluido"
   # mesmo o state.json tendo "execute-task" (fonte intacta, derivado normaliza).
-  _ec=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT etapa_corrente FROM executions WHERE source_id='exec-featN'")
+  _ec=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT current_stage FROM executions WHERE source_id='exec-featN'")
   [ "$_ec" = "concluido" ] || { _fail "normaliza concluida" "esperado concluido, obtido $_ec"; return 1; }
 }
 
@@ -787,14 +860,14 @@ JSON
   # Exatamente 3 linhas.
   _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM waves WHERE feature='featW'")
   [ "$_n" = "3" ] || { _fail "wave count" "esperado 3, obtido $_n"; return 1; }
-  # onda-001: etapas CSV + n_etapas + n_skills.
-  _r1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT etapas||'|'||wallclock_seconds||'|'||tool_calls||'|'||n_etapas||'|'||n_skills FROM waves WHERE wave='onda-001'")
+  # onda-001: stages CSV + n_stages + n_skills.
+  _r1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT stages||'|'||wallclock_seconds||'|'||tool_calls||'|'||n_stages||'|'||n_skills FROM waves WHERE wave='onda-001'")
   [ "$_r1" = "specify,clarify|1800|20|2|2" ] || { _fail "onda-001 campos" "obtido [$_r1]"; return 1; }
-  # onda-003 aberta: fim vazio, contagens 0, sem erro.
-  _fe=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT (fim IS NULL OR fim='') FROM waves WHERE wave='onda-003'")
-  [ "$_fe" = "1" ] || { _fail "onda aberta" "fim deveria ser vazio"; return 1; }
-  # onda-002 motivo_termino scrubbed.
-  _mt=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT motivo_termino FROM waves WHERE wave='onda-002'")
+  # onda-003 aberta: finished_at vazio, contagens 0, sem erro.
+  _fe=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT (finished_at IS NULL OR finished_at='') FROM waves WHERE wave='onda-003'")
+  [ "$_fe" = "1" ] || { _fail "onda aberta" "finished_at deveria ser vazio"; return 1; }
+  # onda-002 termination_reason scrubbed.
+  _mt=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT termination_reason FROM waves WHERE wave='onda-002'")
   case "$_mt" in
     *ghp_LeakInWave*) _fail "filtro segredo onda" "token vazou: $_mt"; return 1 ;;
   esac
@@ -840,13 +913,13 @@ scenario_m42_ingest_vs_reindex_convergencia() {
   _ea=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT count(*) FROM executions")
   _wa=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT count(*) FROM waves")
   # dump comparavel (sem ingested_at, que e timestamp de processamento).
-  _dumpa=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT project,feature,wave,source_id,status,duracao_segundos,tool_calls_total FROM executions UNION ALL SELECT project,feature,wave,source_id,etapas,n_etapas,tool_calls FROM waves ORDER BY 1,2,3,4")
+  _dumpa=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT project,feature,wave,source_id,status,duration_seconds,tool_calls_total FROM executions UNION ALL SELECT project,feature,wave,source_id,stages,n_stages,tool_calls FROM waves ORDER BY 1,2,3,4")
   # Caminho B: --reindex (descoberta padrao).
   _write_metrics_state "$TMPDIR_TEST/rx/p/.claude/feature-00c-state/featM" "/home/u/projM" "featM"
   _rc --reindex --states-root "$TMPDIR_TEST/rx" --db "$TMPDIR_TEST/b.db" >/dev/null 2>&1
   _eb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT count(*) FROM executions")
   _wb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT count(*) FROM waves")
-  _dumpb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT project,feature,wave,source_id,status,duracao_segundos,tool_calls_total FROM executions UNION ALL SELECT project,feature,wave,source_id,etapas,n_etapas,tool_calls FROM waves ORDER BY 1,2,3,4")
+  _dumpb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT project,feature,wave,source_id,status,duration_seconds,tool_calls_total FROM executions UNION ALL SELECT project,feature,wave,source_id,stages,n_stages,tool_calls FROM waves ORDER BY 1,2,3,4")
   [ "$_ea" = "$_eb" ] && [ "$_wa" = "$_wb" ] || {
     _fail "contagem ingest vs reindex" "exec $_ea/$_eb waves $_wa/$_wb"; return 1; }
   [ "$_dumpa" = "$_dumpb" ] || {
@@ -899,13 +972,13 @@ scenario_m51_alert_circular() {
 }
 JSON
   assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db" || return 1
-  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM alert_signals WHERE tipo='circular' AND feature='featC'")
+  _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM alert_signals WHERE type='circular' AND feature='featC'")
   [ "$_n" = "2" ] || { _fail "circular count" "esperado 2, obtido $_n"; return 1; }
   # source_id segue padrao circular:<wave>:<ordinal>; valores numericos NULL.
-  _vc=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT valor_consumido IS NULL AND valor_threshold IS NULL FROM alert_signals WHERE source_id='circular:-:0' AND feature='featC'")
+  _vc=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT consumed_value IS NULL AND threshold_value IS NULL FROM alert_signals WHERE source_id='circular:-:0' AND feature='featC'")
   [ "$_vc" = "1" ] || { _fail "circular valores" "esperado NULL/NULL para consumido/threshold"; return 1; }
-  # descricao consultavel.
-  _d=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT descricao FROM alert_signals WHERE source_id='circular:-:1' AND feature='featC'")
+  # description consultavel.
+  _d=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT description FROM alert_signals WHERE source_id='circular:-:1' AND feature='featC'")
   case "$_d" in
     *abc123*ghi789*) : ;;
     *) _fail "circular descricao" "esperado hashes, obtido [$_d]"; return 1 ;;
@@ -950,25 +1023,25 @@ JSON
   assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/kbb.db" || return 1
   # 5 breaches: tool_calls(onda-001), wallclock(onda-002), ciclos, profundidade,
   # estado_size (3 ultimos com wave='-').
-  _n=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT count(*) FROM alert_signals WHERE tipo='budget_breach' AND feature='featBB'")
+  _n=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT count(*) FROM alert_signals WHERE type='budget_breach' AND feature='featBB'")
   [ "$_n" = "5" ] || { _fail "breach count" "esperado 5, obtido $_n"; return 1; }
-  # subtipo per-onda + valores consumido/threshold corretos.
-  _tc=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||valor_consumido||'|'||valor_threshold FROM alert_signals WHERE feature='featBB' AND subtipo='tool_calls'")
+  # subtype per-onda + valores consumido/threshold corretos.
+  _tc=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||consumed_value||'|'||threshold_value FROM alert_signals WHERE feature='featBB' AND subtype='tool_calls'")
   [ "$_tc" = "onda-001|90|80" ] || { _fail "breach tool_calls" "esperado onda-001|90|80, obtido $_tc"; return 1; }
-  _wc=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||valor_consumido||'|'||valor_threshold FROM alert_signals WHERE feature='featBB' AND subtipo='wallclock'")
+  _wc=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||consumed_value||'|'||threshold_value FROM alert_signals WHERE feature='featBB' AND subtype='wallclock'")
   [ "$_wc" = "onda-002|6000|5400" ] || { _fail "breach wallclock" "esperado onda-002|6000|5400, obtido $_wc"; return 1; }
-  # subtipo per-execucao -> wave='-'.
-  _ci=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||valor_consumido||'|'||valor_threshold FROM alert_signals WHERE feature='featBB' AND subtipo='ciclos'")
+  # subtype per-execucao -> wave='-'.
+  _ci=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||consumed_value||'|'||threshold_value FROM alert_signals WHERE feature='featBB' AND subtype='ciclos'")
   [ "$_ci" = "-|7|5" ] || { _fail "breach ciclos" "esperado -|7|5, obtido $_ci"; return 1; }
-  _pf=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||valor_consumido||'|'||valor_threshold FROM alert_signals WHERE feature='featBB' AND subtipo='profundidade'")
+  _pf=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT wave||'|'||consumed_value||'|'||threshold_value FROM alert_signals WHERE feature='featBB' AND subtype='profundidade'")
   [ "$_pf" = "-|3|3" ] || { _fail "breach profundidade" "esperado -|3|3 (>=), obtido $_pf"; return 1; }
-  _es=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT (valor_consumido > valor_threshold) FROM alert_signals WHERE feature='featBB' AND subtipo='estado_size'")
+  _es=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT (consumed_value > threshold_value) FROM alert_signals WHERE feature='featBB' AND subtype='estado_size'")
   [ "$_es" = "1" ] || { _fail "breach estado_size" "esperado consumido>threshold, obtido $_es"; return 1; }
-  # source_id segue padrao budget_breach:<wave>:<ordinal>; descricao NULL.
-  _sid=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT source_id FROM alert_signals WHERE feature='featBB' AND subtipo='tool_calls'")
+  # source_id segue padrao budget_breach:<wave>:<ordinal>; description NULL.
+  _sid=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT source_id FROM alert_signals WHERE feature='featBB' AND subtype='tool_calls'")
   [ "$_sid" = "budget_breach:onda-001:0" ] || { _fail "breach source_id" "esperado budget_breach:onda-001:0, obtido $_sid"; return 1; }
-  _dn=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT (count(*) = sum(CASE WHEN descricao IS NULL THEN 1 ELSE 0 END)) FROM alert_signals WHERE feature='featBB' AND tipo='budget_breach'")
-  [ "$_dn" = "1" ] || { _fail "breach descricao" "esperado descricao NULL em todos os breach"; return 1; }
+  _dn=$(sqlite3 "$TMPDIR_TEST/kbb.db" "SELECT (count(*) = sum(CASE WHEN description IS NULL THEN 1 ELSE 0 END)) FROM alert_signals WHERE feature='featBB' AND type='budget_breach'")
+  [ "$_dn" = "1" ] || { _fail "breach description" "esperado description NULL em todos os breach"; return 1; }
 }
 
 # =========================================================================
@@ -1001,7 +1074,7 @@ JSON
   # (a) Negativo: nada excedido -> 0 budget_breach.
   assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/kbn.db" || return 1
   assert_stdout_contains "0 alerts" || return 1
-  _n=$(sqlite3 "$TMPDIR_TEST/kbn.db" "SELECT count(*) FROM alert_signals WHERE tipo='budget_breach' AND feature='featBN'")
+  _n=$(sqlite3 "$TMPDIR_TEST/kbn.db" "SELECT count(*) FROM alert_signals WHERE type='budget_breach' AND feature='featBN'")
   [ "$_n" = "0" ] || { _fail "negativo" "esperado 0 budget_breach, obtido $_n"; return 1; }
   # (b) Idempotencia: reusar fixture de breach M5.2 e ingerir 3x -> delta 0.
   _bdir="$TMPDIR_TEST/featBBidem"
@@ -1052,14 +1125,14 @@ scenario_m61_latencia_humana_derivavel() {
 JSON
   assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/klat.db" || return 1
   # Bloqueio respondido -> latencia = 600s (10 min). Timestamps separados.
-  _r1=$(sqlite3 "$TMPDIR_TEST/klat.db" "SELECT latencia_segundos||'|'||disparado_em||'|'||respondido_em FROM bloqueios WHERE feature='featLAT' AND source_id='bloq-001'")
+  _r1=$(sqlite3 "$TMPDIR_TEST/klat.db" "SELECT latency_seconds||'|'||triggered_at||'|'||answered_at FROM blocks WHERE feature='featLAT' AND source_id='bloq-001'")
   [ "$_r1" = "600|2026-01-01T00:00:00Z|2026-01-01T00:10:00Z" ] || { _fail "latencia respondido" "esperado 600|..., obtido $_r1"; return 1; }
-  # Bloqueio sem resposta -> latencia NULL (pendente), respondido_em vazio.
-  _r2=$(sqlite3 "$TMPDIR_TEST/klat.db" "SELECT (latencia_segundos IS NULL) AND (respondido_em IS NULL OR respondido_em='') FROM bloqueios WHERE feature='featLAT' AND source_id='bloq-002'")
+  # Bloqueio sem resposta -> latencia NULL (pendente), answered_at vazio.
+  _r2=$(sqlite3 "$TMPDIR_TEST/klat.db" "SELECT (latency_seconds IS NULL) AND (answered_at IS NULL OR answered_at='') FROM blocks WHERE feature='featLAT' AND source_id='bloq-002'")
   [ "$_r2" = "1" ] || { _fail "latencia pendente" "esperado NULL/pendente para bloq-002, obtido $_r2"; return 1; }
-  # decisao_id preservado para JOIN posterior (FR-016).
-  _r3=$(sqlite3 "$TMPDIR_TEST/klat.db" "SELECT decisao_id FROM bloqueios WHERE feature='featLAT' AND source_id='bloq-001'")
-  [ "$_r3" = "dec-010" ] || { _fail "decisao_id preservado" "esperado dec-010, obtido $_r3"; return 1; }
+  # decision_id preservado para JOIN posterior (FR-016).
+  _r3=$(sqlite3 "$TMPDIR_TEST/klat.db" "SELECT decision_id FROM blocks WHERE feature='featLAT' AND source_id='bloq-001'")
+  [ "$_r3" = "dec-010" ] || { _fail "decision_id preservado" "esperado dec-010, obtido $_r3"; return 1; }
 }
 
 # =========================================================================
@@ -1093,10 +1166,10 @@ JSON
   assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/kcr.db" || return 1
   # Autonomas: decisoes score>=2 na fase clarify (dec-001, dec-002) = 2;
   # dec-050 (score 1) e dec-090 (plan) NAO contam.
-  _a=$(sqlite3 "$TMPDIR_TEST/kcr.db" "SELECT count(*) FROM decisions WHERE feature='featCR' AND etapa='clarify' AND score>=2")
+  _a=$(sqlite3 "$TMPDIR_TEST/kcr.db" "SELECT count(*) FROM decisions WHERE feature='featCR' AND stage='clarify' AND score>=2")
   [ "$_a" = "2" ] || { _fail "clarify autonomas" "esperado 2, obtido $_a"; return 1; }
-  # Escalas: bloqueios cuja decisao_id aponta para decisao de etapa clarify = 1.
-  _e=$(sqlite3 "$TMPDIR_TEST/kcr.db" "SELECT count(*) FROM bloqueios b JOIN decisions d ON d.feature=b.feature AND d.source_id=b.decisao_id WHERE b.feature='featCR' AND d.etapa='clarify'")
+  # Escalas: blocks cujo decision_id aponta para decisao de stage clarify = 1.
+  _e=$(sqlite3 "$TMPDIR_TEST/kcr.db" "SELECT count(*) FROM blocks b JOIN decisions d ON d.feature=b.feature AND d.source_id=b.decision_id WHERE b.feature='featCR' AND d.stage='clarify'")
   [ "$_e" = "1" ] || { _fail "clarify escalas" "esperado 1, obtido $_e"; return 1; }
   # Taxa de auto-resolucao derivavel = auto/(auto+escala) = 2/3.
   _rate=$(sqlite3 "$TMPDIR_TEST/kcr.db" "SELECT printf('%d/%d', $_a, $_a + $_e)")
@@ -1208,10 +1281,10 @@ JSON
   # (a) Nenhum padrao de segredo conhecido em QUALQUER coluna de texto das
   # tabelas da camada A + knowledge_fts. Dump amplo e grep por marcadores.
   _dump=$(sqlite3 "$TMPDIR_TEST/ksec.db" "
-    SELECT motivo_termino FROM executions WHERE feature='featSEC'
-    UNION ALL SELECT motivo_termino FROM waves WHERE feature='featSEC'
-    UNION ALL SELECT descricao FROM alert_signals WHERE feature='featSEC'
-    UNION ALL SELECT pergunta||' '||contexto_para_resposta||' '||resposta FROM bloqueios WHERE feature='featSEC'
+    SELECT termination_reason FROM executions WHERE feature='featSEC'
+    UNION ALL SELECT termination_reason FROM waves WHERE feature='featSEC'
+    UNION ALL SELECT description FROM alert_signals WHERE feature='featSEC'
+    UNION ALL SELECT question||' '||context_for_answer||' '||answer FROM blocks WHERE feature='featSEC'
     UNION ALL SELECT body FROM knowledge_fts WHERE feature='featSEC'")
   case "$_dump" in
     *ghp_*|*"sk-"[A-Za-z0-9]*) _fail "segredo vazou camada A" "padrao de segredo no indice: $_dump"; return 1 ;;
@@ -1223,8 +1296,8 @@ JSON
     *) _fail "redactor inativo" "esperado [REDACTED] em algum campo, dump: $_dump"; return 1 ;;
   esac
   # (b) Campos estruturados/numericos INTACTOS (nao passaram por filtro):
-  # timestamps, latencia, decisao_id, contagens.
-  _struct=$(sqlite3 "$TMPDIR_TEST/ksec.db" "SELECT decisao_id||'|'||disparado_em||'|'||respondido_em||'|'||latencia_segundos FROM bloqueios WHERE feature='featSEC' AND source_id='bloq-001'")
+  # timestamps, latencia, decision_id, contagens.
+  _struct=$(sqlite3 "$TMPDIR_TEST/ksec.db" "SELECT decision_id||'|'||triggered_at||'|'||answered_at||'|'||latency_seconds FROM blocks WHERE feature='featSEC' AND source_id='bloq-001'")
   [ "$_struct" = "dec-010|2026-01-01T00:00:00Z|2026-01-01T00:15:00Z|900" ] || { _fail "estruturado intacto" "esperado dec-010|...|900, obtido $_struct"; return 1; }
   _tc=$(sqlite3 "$TMPDIR_TEST/ksec.db" "SELECT tool_calls_total FROM executions WHERE feature='featSEC'")
   [ "$_tc" = "42" ] || { _fail "numerico intacto" "esperado tool_calls_total=42, obtido $_tc"; return 1; }
@@ -1536,12 +1609,12 @@ scenario_ctx_validacao_usage() {
 scenario_ctx_filtros_type_project() {
   _have_deps || return 0
   _ctx_fixture_db "$TMPDIR_TEST/k.db"
-  # --type bloqueio => so o bloqueio de featA (deploy de risco alpha).
-  capture _rc --context "deploy alpha" --type bloqueio --db "$TMPDIR_TEST/k.db"
+  # --type block => so o bloqueio de featA (deploy de risco alpha).
+  capture _rc --context "deploy alpha" --type block --db "$TMPDIR_TEST/k.db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ctx-type exit" "$_CAPTURED_EXIT"; return 1; }
-  assert_stdout_contains "**[bloqueio]**" || return 1
+  assert_stdout_contains "**[block]**" || return 1
   case "$_CAPTURED_STDOUT" in
-    *'**[decision]**'*) _fail "ctx-type" "vazou decision com --type bloqueio"; return 1 ;;
+    *'**[decision]**'*) _fail "ctx-type" "vazou decision com --type block"; return 1 ;;
   esac
   # --project projY => so featB.
   capture _rc --context "query beta cache" --project projY --db "$TMPDIR_TEST/k.db"
@@ -1549,6 +1622,33 @@ scenario_ctx_filtros_type_project() {
   case "$_CAPTURED_STDOUT" in
     *projX*) _fail "ctx-project" "vazou projX com --project projY"; return 1 ;;
   esac
+}
+
+# Cenario alias-deprecado — --type 'bloqueio' aceito (back-compat) mas
+# normalizado para 'block' com aviso de depreciacao em stderr. Cobre tanto a
+# busca quanto o --context (schema-en-migration §3.11).
+scenario_type_bloqueio_alias_deprecado() {
+  _have_deps || return 0
+  _write_state "$TMPDIR_TEST/featA" "/home/u/projX" "featA"
+  _rc --ingest --state-dir "$TMPDIR_TEST/featA" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
+  # (a) busca: --type bloqueio retorna os mesmos resultados que --type block,
+  # rendereiza [block] (valor canonico), e emite aviso de depreciacao.
+  capture _rc "deploy" --type bloqueio --db "$TMPDIR_TEST/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "alias busca exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "[block]" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *'[bloqueio]'*) _fail "alias render" "renderizou [bloqueio] em vez de [block]"; return 1 ;;
+  esac
+  assert_stderr_contains "DEPRECADO" || return 1
+  # (b) --context: idem (aceita alias, normaliza, avisa).
+  _ctx_fixture_db "$TMPDIR_TEST/kc.db"
+  capture _rc --context "deploy alpha" --type bloqueio --db "$TMPDIR_TEST/kc.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "alias ctx exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "**[block]**" || return 1
+  assert_stderr_contains "DEPRECADO" || return 1
+  # (c) validate_type aceita 'bloqueio' (paridade com a normalizacao).
+  _vt=$(sh -c '. "$CSTK_LIB/recall.sh"; validate_type "bloqueio" && printf ok' 2>/dev/null)
+  [ "$_vt" = "ok" ] || { _fail "validate_type bloqueio" "alias rejeitado"; return 1; }
 }
 
 # Cenario 3.1-context — despacho de --context em recall_main + regressao busca
@@ -1625,17 +1725,18 @@ scenario_ctx_15_auditabilidade_pre_decisao() {
     --justificativa "termos derivados da feature: $TERMS" --score 2 >/dev/null 2>&1 || {
       _fail "ctx-audit register" "state-decisions.sh register falhou"; return 1; }
 
-  # 4.2.1 — Decisao existe com etapa specify, contexto read-back, K e termos.
+  # 4.2.1 — Decisao existe com stage specify, context read-back, K e termos.
+  # Leitura EN + fallback pt (state-decisions.sh escreve .decisions/.context/...).
   _sj="$_osd/state.json"
-  _ndec=$(jq '[.decisoes[] | select(.contexto | startswith("read-back PRE-DECISAO"))] | length' "$_sj")
+  _ndec=$(jq '[((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back PRE-DECISAO"))] | length' "$_sj")
   [ "$_ndec" = "1" ] || { _fail "ctx-audit 4.2.1" "esperado 1 Decisao read-back, obtido $_ndec"; return 1; }
-  _etapa=$(jq -r '.decisoes[] | select(.contexto | startswith("read-back")) | .etapa' "$_sj")
-  [ "$_etapa" = "specify" ] || { _fail "ctx-audit etapa" "esperado specify, obtido $_etapa"; return 1; }
-  # K e termos presentes (K no contexto, termos na justificativa).
-  jq -e '.decisoes[] | select(.contexto | startswith("read-back")) | select(.contexto | contains("K='"$K"'"))' "$_sj" >/dev/null \
-    || { _fail "ctx-audit K" "contexto nao contem K=$K"; return 1; }
-  jq -e '.decisoes[] | select(.contexto | startswith("read-back")) | select(.justificativa | contains("'"$TERMS"'"))' "$_sj" >/dev/null \
-    || { _fail "ctx-audit termos" "justificativa nao contem os termos"; return 1; }
+  _etapa=$(jq -r '((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back")) | (.stage // .etapa)' "$_sj")
+  [ "$_etapa" = "specify" ] || { _fail "ctx-audit stage" "esperado specify, obtido $_etapa"; return 1; }
+  # K e termos presentes (K no context, termos na rationale).
+  jq -e '((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back")) | select((.context // .contexto) | contains("K='"$K"'"))' "$_sj" >/dev/null \
+    || { _fail "ctx-audit K" "context nao contem K=$K"; return 1; }
+  jq -e '((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back")) | select((.rationale // .justificativa) | contains("'"$TERMS"'"))' "$_sj" >/dev/null \
+    || { _fail "ctx-audit termos" "rationale nao contem os termos"; return 1; }
 
   # 4.2.3 — body bruto recuperado NAO foi persistido no state.json (CHK013).
   if [ -n "$_bruto" ]; then
@@ -1665,7 +1766,7 @@ scenario_ctx_15b_k0_sem_decisao() {
       --opcoes '["a","b"]' --escolha a --justificativa "justificativa longa o suficiente" --score 2 >/dev/null 2>&1
   fi
   _sj="$_osd/state.json"
-  _ndec=$(jq '[.decisoes[]? | select(.contexto | startswith("read-back"))] | length' "$_sj" 2>/dev/null) || _ndec=0
+  _ndec=$(jq '[((.decisions // .decisoes) // [])[]? | select((.context // .contexto) | startswith("read-back"))] | length' "$_sj" 2>/dev/null) || _ndec=0
   [ "${_ndec:-0}" = "0" ] || { _fail "ctx-audit 4.2.2" "K=0 nao deveria gerar Decisao read-back, obtido $_ndec"; return 1; }
 }
 
@@ -1723,12 +1824,12 @@ scenario_b11_ddl_tasks_events() {
   assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" || return 1
   _has=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('tasks','events')")
   [ "$_has" = "2" ] || { _fail "DDL tasks/events" "esperado 2 tabelas, obtido $_has"; return 1; }
-  # schema_version = 6 (decisions.opcoes bumpou v5 -> v6).
+  # schema_version = 7 (schema-en-migration: rename pt-BR -> EN).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "6" ] || { _fail "schema_version" "esperado 6, obtido $_sv"; return 1; }
-  # tasks tem a coluna titulo (DDL fresco).
-  _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='titulo'")
-  [ "$_hascol" = "1" ] || { _fail "coluna titulo" "esperado 1, obtido $_hascol"; return 1; }
+  [ "$_sv" = "7" ] || { _fail "schema_version" "esperado 7, obtido $_sv"; return 1; }
+  # tasks tem a coluna title (EN, DDL fresco).
+  _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='title'")
+  [ "$_hascol" = "1" ] || { _fail "coluna title" "esperado 1, obtido $_hascol"; return 1; }
 }
 
 # Cenario B1.2 — ingestao Task: 1 linha por task, campos corretos, contagem
@@ -1741,20 +1842,20 @@ scenario_b12_ingest_tasks() {
   _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM tasks WHERE feature='featB'")
   [ "$_n" = "2" ] || { _fail "tasks count" "esperado 2, obtido $_n"; return 1; }
   # T001: pass, 12/12, lint 1, 2 arquivos; wave=onda-003, source_id=T001.
-  _r1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT project||'|'||wave||'|'||source_id||'|'||outcome||'|'||testes_rodados||'|'||testes_passados||'|'||lint_ok||'|'||arquivos_tocados FROM tasks WHERE feature='featB' AND source_id='T001'")
+  _r1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT project||'|'||wave||'|'||source_id||'|'||outcome||'|'||tests_run||'|'||tests_passed||'|'||lint_ok||'|'||touched_files FROM tasks WHERE feature='featB' AND source_id='T001'")
   [ "$_r1" = "projB|onda-003|T001|pass|12|12|1|2" ] || { _fail "task T001" "obtido $_r1"; return 1; }
   # T002: fail, 5/3, lint 0, 0 arquivos; wave=onda-004.
-  _r2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT wave||'|'||outcome||'|'||testes_rodados||'|'||testes_passados||'|'||lint_ok||'|'||arquivos_tocados FROM tasks WHERE feature='featB' AND source_id='T002'")
+  _r2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT wave||'|'||outcome||'|'||tests_run||'|'||tests_passed||'|'||lint_ok||'|'||touched_files FROM tasks WHERE feature='featB' AND source_id='T002'")
   [ "$_r2" = "onda-004|fail|5|3|0|0" ] || { _fail "task T002" "obtido $_r2"; return 1; }
-  # titulo: T001 gravado (texto livre) com segredo SCRUBBED (FR-017); T002 sem
-  # titulo no state -> "" (retro-compat .titulo // "").
-  _tit1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT titulo FROM tasks WHERE feature='featB' AND source_id='T001'")
+  # title: T001 gravado (texto livre) com segredo SCRUBBED (FR-017); T002 sem
+  # title no state -> "" (retro-compat .title // .titulo // "").
+  _tit1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT title FROM tasks WHERE feature='featB' AND source_id='T001'")
   case "$_tit1" in
-    "") _fail "titulo T001" "esperado titulo nao-vazio"; return 1 ;;
-    *ghp_*) _fail "titulo scrub" "segredo nao filtrado no titulo: $_tit1"; return 1 ;;
+    "") _fail "title T001" "esperado title nao-vazio"; return 1 ;;
+    *ghp_*) _fail "title scrub" "segredo nao filtrado no title: $_tit1"; return 1 ;;
   esac
-  _tit2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT titulo FROM tasks WHERE feature='featB' AND source_id='T002'")
-  [ "$_tit2" = "" ] || { _fail "titulo T002 retro-compat" "esperado vazio, obtido '$_tit2'"; return 1; }
+  _tit2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT title FROM tasks WHERE feature='featB' AND source_id='T002'")
+  [ "$_tit2" = "" ] || { _fail "title T002 retro-compat" "esperado vazio, obtido '$_tit2'"; return 1; }
 }
 
 # Cenario B2.1 — ingestao Evento: 4 tipos MVP, ordem cronologica, source_id
@@ -1780,7 +1881,7 @@ scenario_b22_event_descricao_filtrada() {
   _have_deps || return 0
   _write_layerb_state "$TMPDIR_TEST/featB" "/home/u/projB" "featB"
   _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" >/dev/null 2>&1
-  _desc=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT descricao FROM events WHERE feature='featB' AND event_type='lock_contention'")
+  _desc=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT description FROM events WHERE feature='featB' AND event_type='lock_contention'")
   case "$_desc" in
     *ghp_*) _fail "event scrub" "segredo nao filtrado na descricao: $_desc"; return 1 ;;
   esac
@@ -1815,7 +1916,7 @@ JSON
   _tot=$(sqlite3 "$TMPDIR_TEST/krc.db" "SELECT count(*) FROM events WHERE event_type='recall_consulted'")
   [ "$_tot" = "2" ] || { _fail "consultas total" "esperado 2, obtido $_tot"; return 1; }
   # split produtivas (hits>0) vs vazias (hits=0) via descricao (CASE, sem FILTER)
-  _split=$(sqlite3 "$TMPDIR_TEST/krc.db" "SELECT SUM(CASE WHEN descricao LIKE '%hits=0' THEN 1 ELSE 0 END)||'/'||SUM(CASE WHEN descricao NOT LIKE '%hits=0' THEN 1 ELSE 0 END) FROM events WHERE event_type='recall_consulted'")
+  _split=$(sqlite3 "$TMPDIR_TEST/krc.db" "SELECT SUM(CASE WHEN description LIKE '%hits=0' THEN 1 ELSE 0 END)||'/'||SUM(CASE WHEN description NOT LIKE '%hits=0' THEN 1 ELSE 0 END) FROM events WHERE event_type='recall_consulted'")
   [ "$_split" = "1/1" ] || { _fail "split vazias/produtivas" "esperado 1/1, obtido $_split"; return 1; }
 }
 
@@ -1858,13 +1959,13 @@ scenario_b33_ingest_vs_reindex_convergencia() {
   _rc --ingest --state-dir "$TMPDIR_TEST/ing/featB" --db "$TMPDIR_TEST/a.db" >/dev/null 2>&1
   _ta=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT count(*) FROM tasks")
   _ea=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT count(*) FROM events")
-  _dumpa=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT project,feature,wave,source_id,outcome,arquivos_tocados FROM tasks UNION ALL SELECT project,feature,wave,source_id,event_type,timestamp FROM events ORDER BY 1,2,3,4")
+  _dumpa=$(sqlite3 "$TMPDIR_TEST/a.db" "SELECT project,feature,wave,source_id,outcome,touched_files FROM tasks UNION ALL SELECT project,feature,wave,source_id,event_type,timestamp FROM events ORDER BY 1,2,3,4")
   # Caminho B: --reindex (descoberta padrao).
   _write_layerb_state "$TMPDIR_TEST/rx/p/.claude/feature-00c-state/featB" "/home/u/projB" "featB"
   _rc --reindex --states-root "$TMPDIR_TEST/rx" --db "$TMPDIR_TEST/b.db" >/dev/null 2>&1
   _tb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT count(*) FROM tasks")
   _eb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT count(*) FROM events")
-  _dumpb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT project,feature,wave,source_id,outcome,arquivos_tocados FROM tasks UNION ALL SELECT project,feature,wave,source_id,event_type,timestamp FROM events ORDER BY 1,2,3,4")
+  _dumpb=$(sqlite3 "$TMPDIR_TEST/b.db" "SELECT project,feature,wave,source_id,outcome,touched_files FROM tasks UNION ALL SELECT project,feature,wave,source_id,event_type,timestamp FROM events ORDER BY 1,2,3,4")
   [ "$_ta" = "$_tb" ] && [ "$_ea" = "$_eb" ] || { _fail "contagem ingest vs reindex B" "tasks $_ta/$_tb events $_ea/$_eb"; return 1; }
   [ "$_dumpa" = "$_dumpb" ] || { _fail "divergencia ingest vs reindex B" "dumps diferem"; return 1; }
 }
@@ -2038,10 +2139,10 @@ scenario_m1_schema_memories_table_exists() {
     *memories*) : ;;
     *) _fail "memories table ausente" "$_tables"; return 1 ;;
   esac
-  # schema_version deve ser 6
+  # schema_version deve ser 7 (schema-en-migration)
   _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
     "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "6" ] || { _fail "schema_version errado" "esperado 6, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "7" ] || { _fail "schema_version errado" "esperado 7, obtido '$_ver'"; return 1; }
 }
 
 # M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
@@ -2082,12 +2183,13 @@ scenario_m4_neg_context_type_invalido() {
   esac
 }
 
-# M1-migration — DB v3 pre-existente (sem memories) ganha as tabelas novas
-# (memories, suggestions) apos apply_schema, sem perder dados.
-# Cobre subtarefa 1.1.5: migracao idempotente de banco existente para a versao corrente.
+# M1-migration — DB v3 pre-existente (pt-BR) e migrado para v7: tabelas
+# renomeadas dropadas+recriadas EN, memories/suggestions criadas, e o ingest
+# subsequente repopula decisions em EN (o derivado legacy do v3 e descartado
+# pelo drop v7, mas o ingest do state.json o reconstroi). schema_version=7.
 scenario_m1_migration_v3_to_current() {
   _have_deps || return 0
-  # Criar um DB v3 com schema antigo (sem memories) simulando banco pre-existente
+  # Criar um DB v3 com schema pt-BR antigo (sem memories) simulando pre-existente
   _v3db="$TMPDIR_TEST/v3.db"
   sqlite3 "$_v3db" "
     PRAGMA journal_mode=WAL;
@@ -2107,8 +2209,8 @@ scenario_m1_migration_v3_to_current() {
     INSERT INTO schema_meta(key,value) VALUES('schema_version','3')
       ON CONFLICT(key) DO UPDATE SET value=excluded.value;
   " 2>/dev/null
-  # Agora ingerir usando o recall.sh corrente — apply_schema deve criar as
-  # tabelas novas (memories, suggestions) sem perder dados pre-existentes.
+  # Agora ingerir usando o recall.sh corrente — apply_schema dropa+recria EN
+  # (v3<7) e cria memories/suggestions; o ingest popula decisions EN do state.
   _write_state "$TMPDIR_TEST/v3state" "/home/u/projV3" "v3feat"
   _rc --ingest --state-dir "$TMPDIR_TEST/v3state" --db "$_v3db" >/dev/null 2>&1
   # Tabelas novas devem existir agora (memories + suggestions)
@@ -2121,12 +2223,17 @@ scenario_m1_migration_v3_to_current() {
     *suggestions*) : ;;
     *) _fail "migration: suggestions ausente" "$_tables"; return 1 ;;
   esac
-  # schema_version deve ser 6
+  # decisions agora em EN (coluna choice presente, pt-BR escolha ausente)
+  _dcols=$(sqlite3 "$_v3db" "SELECT group_concat(name,',') FROM pragma_table_info('decisions')")
+  case ",$_dcols," in *,choice,*) : ;; *) _fail "migration: decisions nao-EN" "$_dcols"; return 1 ;; esac
+  case ",$_dcols," in *,escolha,*|*,execucao_id,*) _fail "migration: decisions pt-BR leak" "$_dcols"; return 1 ;; esac
+  # schema_version deve ser 7
   _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "6" ] || { _fail "migration: schema_version errado" "esperado 6, obtido '$_ver'"; return 1; }
-  # Dados pre-existentes preservados (decisions nao zerada)
+  [ "$_ver" = "7" ] || { _fail "migration: schema_version errado" "esperado 7, obtido '$_ver'"; return 1; }
+  # decisions repopuladas pelo ingest (>=1; o derivado v3 foi descartado, o
+  # state.json o reconstroi em EN).
   _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
-  [ "${_n:-0}" -ge 1 ] || { _fail "migration: decisions zeradas" "esperado >=1, obtido '$_n'"; return 1; }
+  [ "${_n:-0}" -ge 1 ] || { _fail "migration: decisions nao repopuladas" "esperado >=1, obtido '$_n'"; return 1; }
 }
 
 # =========================================================================
@@ -2571,7 +2678,7 @@ JSON
   _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM executions WHERE source_id='exec-dateonly'")
   [ "$_n" = "1" ] || { _fail "S1: execucao derrubada por data date-only" "esperado 1, obtido $_n"; return 1; }
   # status preservado; duracao_segundos NULL (parse falhou graciosamente).
-  _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT status||'|'||(duracao_segundos IS NULL)||'|'||ondas_total FROM executions WHERE source_id='exec-dateonly'")
+  _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT status||'|'||(duration_seconds IS NULL)||'|'||waves_total FROM executions WHERE source_id='exec-dateonly'")
   [ "$_row" = "concluida|1|3" ] || { _fail "S1: campos" "esperado [concluida|1|3], obtido [$_row]"; return 1; }
 }
 
@@ -2611,11 +2718,11 @@ scenario_s2_ingest_sugestoes() {
   # 2 linhas na tabela; chave natural source_id = id da sugestao.
   _n=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM suggestions")
   [ "$_n" = "2" ] || { _fail "S2: count suggestions" "esperado 2, obtido $_n"; return 1; }
-  # Campos estruturados de sug-002 (sem filtro): skill/severidade/issue/referencias.
-  _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT skill_afetada||'|'||severidade||'|'||issue_aberta||'|'||referencias FROM suggestions WHERE source_id='sug-002'")
+  # Campos estruturados de sug-002 (sem filtro): skill/severity/issue/references.
+  _row=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT affected_skill||'|'||severity||'|'||issue_opened||'|'||\"references\" FROM suggestions WHERE source_id='sug-002'")
   [ "$_row" = "auth-service|impeditiva|ISSUE-42|" ] || { _fail "S2: campos estruturados" "obtido [$_row]"; return 1; }
-  # Texto livre scrubbed: o token NAO pode vazar na proposta nem na FTS.
-  _pr=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT proposta FROM suggestions WHERE source_id='sug-001'")
+  # Texto livre scrubbed: o token NAO pode vazar na proposal nem na FTS.
+  _pr=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT proposal FROM suggestions WHERE source_id='sug-001'")
   case "$_pr" in *ghp_AbCdEf*) _fail "S2: segredo vazou em proposta" "$_pr"; return 1 ;; esac
   # Corpo pesquisavel via FTS por type=suggestion (termo de diagnostico).
   capture _rc "SMTP" --type suggestion --db "$TMPDIR_TEST/k.db"

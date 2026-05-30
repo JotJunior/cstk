@@ -46,7 +46,7 @@ scenario_tool_call_tick_incrementa() {
   assert_stdout_contains "1" || return 1
   capture "$SCRIPT" tool-call-tick --state-dir "$_sd"
   assert_stdout_contains "2" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.orcamentos.tool_calls_onda_corrente'
+  capture "$RW" get --state-dir "$_sd" --field '.budgets.tool_calls_current_wave'
   assert_stdout_contains "2" || return 1
 }
 
@@ -59,15 +59,15 @@ scenario_end_atualiza_onda_e_acumulados() {
   capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino bloqueio_humano \
     --add-etapa briefing
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
-  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].motivo_termino'
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].termination_reason'
   assert_stdout_contains "bloqueio_humano" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].tool_calls'
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].tool_calls'
   assert_stdout_contains "2" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.metricas_acumuladas.ondas_total'
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.waves_total'
   assert_stdout_contains "1" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.metricas_acumuladas.tool_calls_total'
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.tool_calls_total'
   assert_stdout_contains "2" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].etapas_executadas'
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].executed_stages'
   assert_stdout_contains "briefing" || return 1
 }
 
@@ -98,7 +98,7 @@ scenario_proxima_agendada_para_persiste() {
   capture "$SCRIPT" start --state-dir "$_sd"
   capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando \
     --proxima-agendada-para "2026-05-05T15:30:00Z"
-  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].proxima_onda_agendada_para'
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].next_wave_scheduled_for'
   assert_stdout_contains "2026-05-05T15:30:00Z" || return 1
 }
 
@@ -164,7 +164,7 @@ scenario_record_skill_append_basico() {
   capture "$SCRIPT" record-skill --state-dir "$_sd" --skill briefing --decisao-id dec-001
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "1" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].skills_invoked[0].skill'
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].skills_invoked[0].skill'
   assert_stdout_contains "briefing" || return 1
 }
 
@@ -175,7 +175,7 @@ scenario_record_skill_idempotente_mesma_skill_e_decisao() {
   capture "$SCRIPT" record-skill --state-dir "$_sd" --skill constitution --decisao-id dec-004
   capture "$SCRIPT" record-skill --state-dir "$_sd" --skill constitution --decisao-id dec-004
   assert_stdout_contains "1" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].skills_invoked | length'
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].skills_invoked | length'
   assert_stdout_contains "1" || return 1
 }
 
@@ -196,7 +196,7 @@ scenario_record_skill_sem_decisao_id_funciona() {
   capture "$SCRIPT" record-skill --state-dir "$_sd" --skill briefing
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "1" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].skills_invoked[0].decisao_id'
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].skills_invoked[0].decision_id'
   assert_stdout_contains "null" || return 1
 }
 
@@ -229,7 +229,7 @@ scenario_start_inclui_skills_invoked_vazio() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
   capture "$SCRIPT" start --state-dir "$_sd"
-  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].skills_invoked'
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].skills_invoked'
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "[]" || return 1
 }
@@ -269,7 +269,7 @@ scenario_record_task_upsert_idempotente() {
   assert_stdout_contains "1" || return 1
   capture "$RW" get --state-dir "$_sd" --field '.tasks | length'
   assert_stdout_contains "1" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].titulo'
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].title'
   assert_stdout_contains "v2" || return 1
   capture "$RW" get --state-dir "$_sd" --field '.tasks[0].outcome'
   assert_stdout_contains "fail" || return 1
@@ -281,9 +281,9 @@ scenario_record_task_if_absent_nao_clobbera() {
   capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --titulo "real" --outcome pass --origem execute-task
   capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --titulo "derivada" --outcome pass --origem reconcile --if-absent
   assert_stdout_contains "1" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].titulo'
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].title'
   assert_stdout_contains "real" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].origem'
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[0].source'
   assert_stdout_contains "execute-task" || return 1
 }
 
@@ -406,7 +406,7 @@ scenario_reconcile_tasks_extrai_titulo_sem_criticidade() {
   _init_state "$_sd"
   _write_tasks_md "$_md"
   capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
-  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .titulo'
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .title'
   assert_stdout_contains "Setup do Projeto" || return 1
   # nao deve carregar a tag de criticidade [A]
   if printf '%s' "$_CAPTURED_STDOUT" | grep -q '\['; then
@@ -426,9 +426,9 @@ scenario_reconcile_tasks_nao_clobbera_entrada_real() {
   capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
   # so 1.3 e 2.1.1-bis sao novas (1.1 ja existe)
   assert_stdout_contains "2" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .titulo'
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .title'
   assert_stdout_contains "REAL" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .origem'
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .source'
   assert_stdout_contains "execute-task" || return 1
 }
 
@@ -456,6 +456,113 @@ scenario_reconcile_tasks_obriga_flags() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
   assert_exit 2 "$SCRIPT" reconcile-tasks --state-dir "$_sd" || return 1
+}
+
+# ==== back-compat pt-BR (schema-en-migration §6: readers leem state legado) ====
+# Os writers do state-ondas assumem EN-on-disk (garantido pelo migrate
+# defensivo do command-pai), igual ao exemplar drift.sh mark-touched. O que
+# DEVE continuar funcionando em state legado/misto sao os READERS, via fallback
+# (.en // .pt). Estes cenarios montam state.json com chaves pt-BR direto no
+# disco (SEM passar por state-rw.sh init, que ja produz EN) e provam que os
+# readers ainda leem os valores pt.
+
+# state legado puro pt-BR com 1 onda + orcamentos pt (sem nenhuma chave EN).
+_write_legacy_ptbr_state() {
+  jq -n '{
+    schema_version: 6,
+    ondas: [
+      { id: "onda-007", inicio: "2026-05-01T10:00:00Z", fim: null,
+        etapas_executadas: ["briefing"], tool_calls: 0, wallclock_seconds: 0,
+        motivo_termino: null, proxima_onda_agendada_para: null,
+        skills_invoked: [] }
+    ],
+    orcamentos: { tool_calls_onda_corrente: 4, inicio_onda_corrente: "2026-05-01T10:00:00Z" },
+    metricas_acumuladas: { ondas_total: 6, tool_calls_total: 50 }
+  }' > "$1/state.json"
+}
+
+scenario_ptbr_legacy_current_id_le_via_fallback() {
+  # current-id le .ondas[-1].id de um state pt-BR puro.
+  _sd="$TMPDIR_TEST/state"
+  mkdir -p "$_sd"
+  _write_legacy_ptbr_state "$_sd"
+  capture "$SCRIPT" current-id --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ptbr current-id" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-007" || return 1
+}
+
+scenario_ptbr_legacy_tool_call_tick_le_e_converge() {
+  # tool-call-tick le o contador pt (.orcamentos.tool_calls_onda_corrente=4),
+  # incrementa para 5 e ESCREVE em chave EN (.budgets.tool_calls_current_wave).
+  _sd="$TMPDIR_TEST/state"
+  mkdir -p "$_sd"
+  _write_legacy_ptbr_state "$_sd"
+  capture "$SCRIPT" tool-call-tick --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ptbr tick" "$_CAPTURED_STDERR"; return 1; }
+  # leu 4 (pt) -> 5
+  assert_stdout_contains "5" || return 1
+  # convergencia EN-on-disk: o writer grava a chave EN
+  capture "$RW" get --state-dir "$_sd" --field '.budgets.tool_calls_current_wave'
+  assert_stdout_contains "5" || return 1
+}
+
+scenario_ptbr_legacy_start_next_num_le_via_fallback() {
+  # start deriva o proximo numero de onda lendo .ondas (pt, max=onda-007 => 008)
+  # e grava a nova onda em chave EN (.waves).
+  _sd="$TMPDIR_TEST/state"
+  mkdir -p "$_sd"
+  _write_legacy_ptbr_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ptbr start" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-008" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].id'
+  assert_stdout_contains "onda-008" || return 1
+}
+
+scenario_ptbr_legacy_end_le_tool_calls_via_fallback() {
+  # end consolida tool_calls da onda lendo o contador pt
+  # (.orcamentos.tool_calls_onda_corrente). Onda em EN (.waves) ja existe — o
+  # cenario que o migrate defensivo produz: container EN + orcamentos legado pt.
+  _sd="$TMPDIR_TEST/state"
+  mkdir -p "$_sd"
+  jq -n '{
+    schema_version: 6,
+    waves: [
+      { id: "onda-003", started_at: "2026-05-01T10:00:00Z", finished_at: null,
+        executed_stages: [], tool_calls: 0, wallclock_seconds: 0,
+        termination_reason: null, next_wave_scheduled_for: null, skills_invoked: [] }
+    ],
+    orcamentos: { tool_calls_onda_corrente: 9, inicio_onda_corrente: "2026-05-01T10:00:00Z" }
+  }' > "$_sd/state.json"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino concluido
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ptbr end" "$_CAPTURED_STDERR"; return 1; }
+  # leu 9 do contador pt e gravou em waves[-1].tool_calls (chave EN)
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].tool_calls'
+  assert_stdout_contains "9" || return 1
+}
+
+scenario_ptbr_legacy_record_skill_idempotencia_le_decisao_id() {
+  # A idempotencia do record-skill compara decisao_id da entrada existente.
+  # Entrada legada usa a chave pt `decisao_id`; o reader le via fallback
+  # (.decision_id // .decisao_id), entao re-registrar a mesma skill+decisao
+  # NAO duplica.
+  _sd="$TMPDIR_TEST/state"
+  mkdir -p "$_sd"
+  jq -n '{
+    schema_version: 6,
+    waves: [
+      { id: "onda-001", started_at: "2026-05-01T10:00:00Z", finished_at: null,
+        executed_stages: [], tool_calls: 0, wallclock_seconds: 0,
+        termination_reason: null, next_wave_scheduled_for: null,
+        skills_invoked: [ { skill: "briefing", timestamp: "t", decisao_id: "dec-001" } ] }
+    ]
+  }' > "$_sd/state.json"
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill briefing --decisao-id dec-001
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ptbr record-skill" "$_CAPTURED_STDERR"; return 1; }
+  # idempotente: continua 1 (a entrada pt foi reconhecida via fallback)
+  assert_stdout_contains "1" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].skills_invoked | length'
+  assert_stdout_contains "1" || return 1
 }
 
 run_all_scenarios

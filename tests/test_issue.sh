@@ -132,4 +132,59 @@ scenario_create_sem_state_falha() {
   fi
 }
 
+# --- Back-compat: fixture pt-BR legada lida via reader-fallback (.en // .pt) ---
+# schema-en-migration: _ish_get_state / _ish_build_body leem o state.json com
+# paths EN + fallback pt-BR. Prova que um state.json legado (escrito antes da
+# migracao, com chaves .execucao/.etapa_corrente/.ondas/.decisoes/.contexto)
+# continua sendo lido sem migrate previo — os valores legados afloram no body
+# do dry-run. (As fixtures default via state-rw.sh init ja produzem EN no disco,
+# entao exercitam o lado EN do fallback.)
+_write_legacy_ptbr_state() {
+  # $1 = state-dir. Escreve um state.json minimo com chaves pt-BR legadas.
+  mkdir -p "$1"
+  cat > "$1/state.json" <<'PTBR'
+{
+  "schema_version": 1,
+  "execucao": {
+    "id": "exec-legado-ptbr",
+    "projeto_alvo_path": "/tmp/legado",
+    "projeto_alvo_descricao": "Projeto legado pt-BR back-compat"
+  },
+  "etapa_corrente": "clarify",
+  "ondas": [{ "id": "onda-042" }],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "contexto": "Decisao legada que evidencia bug via fallback pt-BR"
+    }
+  ]
+}
+PTBR
+}
+
+scenario_ptbr_legado_reader_fallback() {
+  # _ish_get_state le execucao.id / projeto_alvo_descricao / etapa_corrente /
+  # ondas[-1].id via fallback; _ish_build_body le decisoes[].contexto via
+  # fallback. Todos afloram no body do dry-run.
+  _sd="$TMPDIR_TEST/legacy"
+  _write_legacy_ptbr_state "$_sd"
+  capture "$SCRIPT" create --state-dir "$_sd" --suggestion-id "sug-001" \
+    --skill "clarify" \
+    --diagnostico "Skill clarify falhou em estado legado pt-BR para validar fallback" \
+    --proposta "fix proposta detalhada" \
+    --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run pt-BR" "$_CAPTURED_STDERR"; return 1; }
+  # execucao.id (fallback) aparece no cabecalho do body
+  assert_stdout_contains "exec-legado-ptbr" || return 1
+  # projeto_alvo_descricao (fallback) aparece em Projeto-alvo
+  assert_stdout_contains "Projeto legado pt-BR back-compat" || return 1
+  # etapa_corrente (fallback) aparece em Etapa
+  assert_stdout_contains "Etapa: \`clarify\`" || return 1
+  # ondas[-1].id (fallback) aparece em Onda
+  assert_stdout_contains "Onda: \`onda-042\`" || return 1
+  # decisoes[].id + contexto (fallback) afloram nas decisoes relevantes
+  assert_stdout_contains "Decisao \`dec-001\`" || return 1
+  assert_stdout_contains "Decisao legada que evidencia bug via fallback pt-BR" || return 1
+}
+
 run_all_scenarios

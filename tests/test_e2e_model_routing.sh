@@ -224,7 +224,7 @@ _e2e_pre_spawn_sequence() {
   _E2E_DEC_ID=$(printf '%s' "$_dec_out" | grep -Eo 'dec-[0-9]+' | head -1)
   [ -n "$_E2E_DEC_ID" ] || return 1
 
-  # Passo 5: record-skill (popula .ondas[N].skills_invoked).
+  # Passo 5: record-skill (popula .waves[N].skills_invoked).
   sh "$SO_SCRIPT" record-skill \
     --state-dir "$_sdir" \
     --skill "model-selector" \
@@ -260,12 +260,12 @@ scenario_happy_path_asker_haiku_decisao_e_skill_invoked() {
   # score>=2 (mapeado de score_runtime=3 -> score=2).
   # Schema do state.json usa `score_justificativa` (nao `score`) por
   # convencao do state-decisions.sh register.
-  _last_dec=$(jq -r '.decisoes[-1]' "$_sdir/state.json")
+  _last_dec=$(jq -r '.decisions[-1]' "$_sdir/state.json")
   printf '%s' "$_last_dec" | jq -e '
-    .contexto == "Selecao de modelo para subagente agente-00c-clarify-asker"
-    and .escolha == "haiku"
-    and (.score_justificativa | type == "number")
-    and (.score_justificativa >= 2)
+    .context == "Selecao de modelo para subagente agente-00c-clarify-asker"
+    and .choice == "haiku"
+    and (.justification_score | type == "number")
+    and (.justification_score >= 2)
   ' >/dev/null 2>&1 || {
     _fail "decisao_canonical_shape" "ultima decisao nao casa: $_last_dec"
     return 1
@@ -274,7 +274,7 @@ scenario_happy_path_asker_haiku_decisao_e_skill_invoked() {
   # Validacao SC-001 (segunda metade): skills_invoked na onda corrente
   # contem 1 entrada apontando para o dec-id.
   _skill_entry=$(jq -r --arg did "$_E2E_DEC_ID" \
-    '.ondas[-1].skills_invoked[] | select(.decisao_id == $did)' \
+    '.waves[-1].skills_invoked[] | select(.decision_id == $did)' \
     "$_sdir/state.json")
   [ -n "$_skill_entry" ] || {
     _fail "skill_invoked_referencia_dec_id" \
@@ -324,8 +324,8 @@ scenario_asker_e_answerer_geram_decisoes_separadas() {
   }
 
   # Validacao: contextos distintos, modelos distintos.
-  _count_asker=$(jq -r '[.decisoes[] | select(.contexto | endswith("agente-00c-clarify-asker"))] | length' "$_sdir/state.json")
-  _count_answerer=$(jq -r '[.decisoes[] | select(.contexto | endswith("agente-00c-clarify-answerer"))] | length' "$_sdir/state.json")
+  _count_asker=$(jq -r '[.decisions[] | select(.context | endswith("agente-00c-clarify-asker"))] | length' "$_sdir/state.json")
+  _count_answerer=$(jq -r '[.decisions[] | select(.context | endswith("agente-00c-clarify-answerer"))] | length' "$_sdir/state.json")
   [ "$_count_asker" = 1 ] || {
     _fail "1_decisao_asker" "esperado 1, obtido $_count_asker"; return 1
   }
@@ -334,14 +334,14 @@ scenario_asker_e_answerer_geram_decisoes_separadas() {
   }
 
   # Skills_invoked deve ter 2 entradas na mesma onda (asker + answerer).
-  _skills_count=$(jq -r '.ondas[-1].skills_invoked | length' "$_sdir/state.json")
+  _skills_count=$(jq -r '.waves[-1].skills_invoked | length' "$_sdir/state.json")
   [ "$_skills_count" = 2 ] || {
     _fail "skills_invoked_2_entries" "esperado 2, obtido $_skills_count"; return 1
   }
 }
 
 # ==== F6.2.3: jq query agregada cronologica (US-1 AS3) ====
-# Quickstart SC-001 — query exemplo `.decisoes[] | select(.contexto |
+# Quickstart SC-001 — query exemplo `.decisions[] | select(.context |
 # test("Selecao de modelo"))` retorna lista cronologica completa.
 
 scenario_query_agregada_cronologica_lista_completa() {
@@ -371,13 +371,13 @@ scenario_query_agregada_cronologica_lista_completa() {
   _dec3=$_E2E_DEC_ID
 
   # Query do quickstart: retorna lista cronologica.
-  _all=$(jq -r '[.decisoes[] | select(.contexto | test("Selecao de modelo"))] | length' "$_sdir/state.json")
+  _all=$(jq -r '[.decisions[] | select(.context | test("Selecao de modelo"))] | length' "$_sdir/state.json")
   [ "$_all" = 3 ] || {
     _fail "3_selecoes_no_state" "esperado 3, obtido $_all"; return 1
   }
 
   # Ordem cronologica preservada (ids ascendentes).
-  _ids=$(jq -r '[.decisoes[] | select(.contexto | test("Selecao de modelo")) | .id] | join(",")' "$_sdir/state.json")
+  _ids=$(jq -r '[.decisions[] | select(.context | test("Selecao de modelo")) | .id] | join(",")' "$_sdir/state.json")
   case "$_ids" in
     "$_dec1,$_dec2,$_dec3") ;;
     *) _fail "ordem_cronologica" "esperado $_dec1,$_dec2,$_dec3 obtido $_ids"; return 1 ;;
@@ -441,13 +441,13 @@ scenario_skill_ausente_fallback_zero_bloqueios() {
   }
 
   # SC-005: zero bloqueios humanos abertos.
-  _bloq_count=$(jq -r '.bloqueios_humanos | length' "$_sdir/state.json")
+  _bloq_count=$(jq -r '.human_blocks | length' "$_sdir/state.json")
   [ "$_bloq_count" = 0 ] || {
     _fail "zero_bloqueios" "obtido $_bloq_count"; return 1
   }
 
   # Decisao fallback persistida.
-  _fb_count=$(jq -r '[.decisoes[] | select(.escolha == "fallback-default")] | length' "$_sdir/state.json")
+  _fb_count=$(jq -r '[.decisions[] | select(.choice == "fallback-default")] | length' "$_sdir/state.json")
   [ "$_fb_count" = 1 ] || {
     _fail "1_decisao_fallback" "esperado 1, obtido $_fb_count"; return 1
   }
@@ -578,7 +578,7 @@ scenario_idempotencia_abort_resume_nao_duplica_decisao() {
 
   # Validacao FR-012: exatamente 1 Decisao para asker na onda corrente.
   _count=$(jq -r '
-    [.decisoes[] | select(.contexto == "Selecao de modelo para subagente agente-00c-clarify-asker")] | length
+    [.decisions[] | select(.context == "Selecao de modelo para subagente agente-00c-clarify-asker")] | length
   ' "$_sdir/state.json")
   [ "$_count" = 1 ] || {
     _fail "sem_duplicacao" "esperado 1, obtido $_count"; return 1
@@ -593,7 +593,7 @@ scenario_idempotencia_abort_resume_nao_duplica_decisao() {
 
   # Final: ainda exatamente 1 Decisao.
   _count_final=$(jq -r '
-    [.decisoes[] | select(.contexto == "Selecao de modelo para subagente agente-00c-clarify-asker")] | length
+    [.decisions[] | select(.context == "Selecao de modelo para subagente agente-00c-clarify-asker")] | length
   ' "$_sdir/state.json")
   [ "$_count_final" = 1 ] || {
     _fail "1_decisao_apos_3_invocacoes" "esperado 1, obtido $_count_final"; return 1
@@ -603,7 +603,7 @@ scenario_idempotencia_abort_resume_nao_duplica_decisao() {
 # ==== F6.2.7 / SC-004: Compatibilidade artifact-cache ====
 # Quickstart Scenario 7 — pipeline com cache ON e OFF produz mesmo agregado.
 # Aqui simulamos cache ON injetando campos briefing_cache/constitution_cache
-# em state.json e verificando que aggregate ignora (read-only sobre .decisoes[]).
+# em state.json e verificando que aggregate ignora (read-only sobre .decisions[]).
 
 scenario_compatibilidade_artifact_cache_aggregate_idempotente() {
   _e2e_have_jq || return 2
@@ -737,7 +737,7 @@ scenario_sc006_overhead_pre_spawn_menor_que_2s() {
   }
 
   # Confirma que sequencia realmente executou (defesa contra short-circuit).
-  _decisoes_count=$(jq -r '.decisoes | length' "$_sdir/state.json")
+  _decisoes_count=$(jq -r '.decisions | length' "$_sdir/state.json")
   [ "$_decisoes_count" -ge 1 ] || {
     _fail "decisao_persistida_apos_medicao" "decisoes=$_decisoes_count"; return 1
   }

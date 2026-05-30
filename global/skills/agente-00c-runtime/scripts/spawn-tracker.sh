@@ -12,20 +12,20 @@
 #
 # Subcomandos:
 #   spawn-tracker.sh check --state-dir DIR
-#       — Exit 0 se profundidade_corrente_subagentes < 3 (pode spawnar +1).
+#       — Exit 0 se current_subagent_depth < 3 (pode spawnar +1).
 #       — Exit 3 se >= 3 (limite atingido). NAO modifica estado.
 #
 #   spawn-tracker.sh enter --state-dir DIR
-#       — Valida (current+1 <= 3); se OK incrementa profundidade_corrente,
-#         atualiza profundidade_max_atingida e subagentes_spawned.
+#       — Valida (current+1 <= 3); se OK incrementa current_subagent_depth,
+#         atualiza max_depth_reached e subagents_spawned.
 #       — Falha = exit 3 SEM modificar estado.
 #
 #   spawn-tracker.sh leave --state-dir DIR
-#       — Decrementa profundidade_corrente_subagentes (min 1, igual ao
+#       — Decrementa current_subagent_depth (min 1, igual ao
 #         orquestrador raiz). Idempotente (decremento abaixo de 1 = no-op).
 #
 #   spawn-tracker.sh current --state-dir DIR
-#       — Imprime profundidade_corrente_subagentes em stdout.
+#       — Imprime current_subagent_depth em stdout.
 #
 # Exit codes:
 #   0 sucesso (ou profundidade ok p/ spawn)
@@ -82,7 +82,8 @@ _st_backup_current() {
   _hd="$1/state-history"
   mkdir -p -- "$_hd" 2>/dev/null || _st_die "mkdir state-history falhou" 1
   _curr=$(jq -r '
-    if (.ondas // []) | length > 0 then (.ondas[-1].id // "init") else "init" end
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) > 0 then ($w[-1].id // "init") else "init" end
   ' "$_sf" 2>/dev/null) || _curr="init"
   _ts=$(date -u +%Y%m%dT%H%M%SZ)
   _bk="$_hd/${_curr}-${_ts}.json"
@@ -91,7 +92,7 @@ _st_backup_current() {
 
 _st_get_current() {
   _sf=$(_st_state_file "$1")
-  jq -r '.orcamentos.profundidade_corrente_subagentes // 1' "$_sf" 2>/dev/null
+  jq -r '((.budgets.current_subagent_depth // .orcamentos.profundidade_corrente_subagentes)) // 1' "$_sf" 2>/dev/null
 }
 
 _st_cmd_check() {
@@ -138,15 +139,16 @@ _st_cmd_enter() {
     exit 3
   fi
 
-  # Aplicacao
+  # Aplicacao. Writer (schema-en-migration): chaves EN, sem fallback.
+  # Confia em EN-on-disk (migrate defensivo do command-pai no inicio da onda).
   _new_state=$(mktemp) || _st_die "mktemp falhou" 1
   jq --argjson n "$_next" '
-    .orcamentos.profundidade_corrente_subagentes = $n
-    | .metricas_acumuladas.profundidade_max_atingida =
-        (if ($n > (.metricas_acumuladas.profundidade_max_atingida // 0))
-         then $n else .metricas_acumuladas.profundidade_max_atingida end)
-    | .metricas_acumuladas.subagentes_spawned =
-        ((.metricas_acumuladas.subagentes_spawned // 0) + 1)
+    .budgets.current_subagent_depth = $n
+    | .accumulated_metrics.max_depth_reached =
+        (if ($n > (.accumulated_metrics.max_depth_reached // 0))
+         then $n else .accumulated_metrics.max_depth_reached end)
+    | .accumulated_metrics.subagents_spawned =
+        ((.accumulated_metrics.subagents_spawned // 0) + 1)
   ' "$_sf" > "$_new_state" || { rm -f -- "$_new_state"; _st_die "jq update falhou" 1; }
 
   _st_backup_current "$_sdir"
@@ -177,8 +179,9 @@ _st_cmd_leave() {
   fi
   _next=$((_curr - 1))
 
+  # Writer (schema-en-migration): chave EN, sem fallback (EN-on-disk).
   _new_state=$(mktemp) || _st_die "mktemp falhou" 1
-  jq --argjson n "$_next" '.orcamentos.profundidade_corrente_subagentes = $n' \
+  jq --argjson n "$_next" '.budgets.current_subagent_depth = $n' \
     "$_sf" > "$_new_state" || { rm -f -- "$_new_state"; _st_die "jq update falhou" 1; }
 
   _st_backup_current "$_sdir"

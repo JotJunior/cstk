@@ -28,6 +28,12 @@
 #       (byte-a-byte) — payload sem timestamps
 #   IR-3 (Principio II POSIX):
 #     - shebang #!/bin/sh + set -eu + sem bash-isms obvios
+#   schema-en-migration (idiom §6):
+#     - reader canonico em chaves EN (.decisions/.context/.choice/.rationale/
+#       .wave_id/.stage/.justification_score) — fixture inline 100% EN
+#     - back-compat: fixture pt-BR equivalente -> mesmo agregado (fallback
+#       .en // .pt). Keys de OUTPUT (por_modelo/ondas.*/linhas) ficam pt-BR
+#       (FOLLOW-UP D) e sao aseridas como tal.
 #
 # Convencao de exit code de scenario (interpretada pelo runner):
 #   0 PASS, 1 FAIL, 2 ERROR (pre-req faltando — jq ausente, mktemp falhou)
@@ -47,6 +53,14 @@ _mrr_have_jq() {
 
 # Copia o fixture canonico de selecoes (8 decisoes + 1 noise) para
 # $TMPDIR_TEST/state.json. Retorna 0 ou 2 (ERROR se faltou pre-req).
+#
+# BACK-COMPAT (schema-en-migration, idiom §6): os fixtures compartilhados
+# (state-with-selecao-decisoes.json, state-with-routing-onda-*.json) usam
+# chaves pt-BR (.decisoes/.contexto/.escolha/.justificativa/.onda_id/
+# .score_justificativa/.etapa). Mante-los em pt-BR exercita o READER-FALLBACK
+# (.en // .pt) do helper a cada cenario que os carrega — prova de regressao
+# de back-compat. O caminho EN-canonico e exercitado por
+# scenario_aggregate_en_keys_reader_canonico (fixture inline em EN).
 _mrr_load_selecao_fixture() {
   _src="$TESTS_ROOT/fixtures/state-with-selecao-decisoes.json"
   [ -f "$_src" ] || { _error "fixture_missing" "fixture state-with-selecao-decisoes.json nao encontrada"; return 2; }
@@ -111,9 +125,9 @@ scenario_aggregate_state_dir_inexistente_exit_1() {
 scenario_aggregate_state_vazio_total_0() {
   _mrr_have_jq || { _error "jq ausente"; return 2; }
   mktemp_test || return 2
-  # state.json minimo sem nenhuma Decisao.
+  # state.json minimo sem nenhuma Decisao (schema EN canonico).
   cat > "$TMPDIR_TEST/state.json" <<'JSON'
-{ "schema_version": 1, "decisoes": [] }
+{ "schema_version": 1, "decisions": [] }
 JSON
   capture sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST" --json
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0" "obtido $_CAPTURED_EXIT"; return 1; }
@@ -165,6 +179,144 @@ scenario_aggregate_fixture_json_contagens_corretas() {
   [ "$_ah" = "4" ] || { _fail "asker.haiku=4" "obtido $_ah"; return 1; }
   [ "$_ws" = "3" ] || { _fail "answerer.sonnet=3" "obtido $_ws"; return 1; }
   [ "$_wf" = "1" ] || { _fail "answerer.fallback-default=1" "obtido $_wf"; return 1; }
+}
+
+# ==== schema-en-migration: READER canonico em chaves EN ====
+#
+# Espelho minimo da agregacao (legado + por-onda) sobre um state.json com
+# chaves EN-canonicas (.decisions/.context/.choice/.rationale/.wave_id/
+# .justification_score/.stage). Prova que o helper LE o schema migrado sem
+# depender do fallback pt-BR. Complementa os fixtures pt-BR compartilhados
+# (que exercitam o fallback). As keys de OUTPUT do agregado (por_modelo,
+# ondas.*, linhas) permanecem pt-BR (FOLLOW-UP D) — asseridas como tal.
+scenario_aggregate_en_keys_reader_canonico() {
+  _mrr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  # Fixture inline 100% EN: 1 legada (haiku) + 2 por-onda (mapa/override) +
+  # 1 noise. Sem nenhuma chave pt-BR -> exercita exclusivamente o path EN.
+  cat > "$TMPDIR_TEST/state.json" <<'JSON'
+{
+  "schema_version": 1,
+  "execution": { "id": "fx-en", "status": "em_andamento" },
+  "waves": [],
+  "decisions": [
+    { "id": "dec-001", "wave_id": "onda-001", "stage": "clarify",
+      "agent": "agente-00c-orchestrator",
+      "context": "Selecao de modelo para subagente agente-00c-clarify-asker",
+      "choice": "haiku", "rationale": "asker enumerativo", "justification_score": 3 },
+    { "id": "dec-w1", "wave_id": "onda-003", "stage": "model-routing",
+      "agent": "agente-00c-feature-orchestrator",
+      "context": "Selecao de modelo para onda 3 (fase plan)",
+      "choice": "model:opus",
+      "rationale": "sugerido=opus aplicado=opus origem=mapa | faixa profunda",
+      "justification_score": 0 },
+    { "id": "dec-w2", "wave_id": "onda-005", "stage": "model-routing",
+      "agent": "agente-00c-feature-orchestrator",
+      "context": "Selecao de modelo para onda 5 (fase execute-task)",
+      "choice": "model:opus",
+      "rationale": "sugerido=haiku aplicado=opus origem=override-operador | forcado",
+      "justification_score": 2 },
+    { "id": "dec-999-noise", "wave_id": "onda-001", "stage": "specify",
+      "agent": "agente-00c-orchestrator",
+      "context": "Decisao NAO relacionada a selecao — deve ser ignorada",
+      "choice": "a", "rationale": "noise", "justification_score": 3 }
+  ]
+}
+JSON
+
+  capture sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST" --json
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  # Bloco legado: 1 Decisao "subagente" (haiku); noise ignorada.
+  _total=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.total')
+  [ "$_total" = "1" ] || { _fail "legado total=1 (EN reader)" "obtido $_total"; return 1; }
+  _haiku=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.por_modelo.haiku')
+  [ "$_haiku" = "1" ] || { _fail "legado haiku=1 (EN reader)" "obtido $_haiku"; return 1; }
+
+  # A linha legada deve refletir os VALORES lidos das chaves EN
+  # (.stage/.wave_id/.choice/.justification_score). Output keys = pt-BR.
+  _l_etapa=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.linhas[0].etapa')
+  _l_onda=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.linhas[0].onda')
+  _l_modelo=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.linhas[0].modelo')
+  _l_score=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.linhas[0].score')
+  [ "$_l_etapa" = "clarify" ]   || { _fail "linha.etapa=clarify (lido de .stage EN)" "obtido $_l_etapa"; return 1; }
+  [ "$_l_onda" = "onda-001" ]   || { _fail "linha.onda=onda-001 (lido de .wave_id EN)" "obtido $_l_onda"; return 1; }
+  [ "$_l_modelo" = "haiku" ]    || { _fail "linha.modelo=haiku (lido de .choice EN)" "obtido $_l_modelo"; return 1; }
+  [ "$_l_score" = "3" ]         || { _fail "linha.score=3 (lido de .justification_score EN)" "obtido $_l_score"; return 1; }
+
+  # Bloco por-onda: 2 Decisoes; aplicado opus=2; mapa=1, override=1.
+  _wt=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.total')
+  [ "$_wt" = "2" ] || { _fail "ondas.total=2 (EN reader)" "obtido $_wt"; return 1; }
+  _ao=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_modelo_aplicado.opus')
+  [ "$_ao" = "2" ] || { _fail "aplicado opus=2 (EN reader)" "obtido $_ao"; return 1; }
+  _om=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_origem.mapa')
+  _oov=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_origem["override-operador"]')
+  [ "$_om" = "1" ]  || { _fail "origem mapa=1 (EN reader)" "obtido $_om"; return 1; }
+  [ "$_oov" = "1" ] || { _fail "origem override-operador=1 (EN reader)" "obtido $_oov"; return 1; }
+
+  # override (haiku->opus) diverge e e ROTULADA; mapa (opus->opus) nao diverge.
+  _div=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias')
+  _drot=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias_rotuladas')
+  _dsem=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias_sem_rotulo')
+  [ "$_div" = "1" ]  || { _fail "divergencias=1 (EN reader)" "obtido $_div"; return 1; }
+  [ "$_drot" = "1" ] || { _fail "divergencias_rotuladas=1 (EN reader)" "obtido $_drot"; return 1; }
+  [ "$_dsem" = "0" ] || { _fail "divergencias_sem_rotulo=0 (EN reader)" "obtido $_dsem"; return 1; }
+}
+
+# ==== schema-en-migration: BACK-COMPAT explicito (fixture pt-BR) ====
+#
+# Prova direta do reader-fallback (.en // .pt): um state.json com chaves
+# 100% pt-BR (.decisoes/.contexto/.choice... em pt) deve produzir o MESMO
+# agregado. Espelha o fixture EN acima para garantir paridade pt<->en.
+scenario_aggregate_pt_keys_reader_fallback() {
+  _mrr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  cat > "$TMPDIR_TEST/state.json" <<'JSON'
+{
+  "schema_version": 1,
+  "execucao": { "id": "fx-pt", "status": "em_andamento" },
+  "ondas": [],
+  "decisoes": [
+    { "id": "dec-001", "onda_id": "onda-001", "etapa": "clarify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Selecao de modelo para subagente agente-00c-clarify-asker",
+      "escolha": "haiku", "justificativa": "asker enumerativo", "score_justificativa": 3 },
+    { "id": "dec-w1", "onda_id": "onda-003", "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda 3 (fase plan)",
+      "escolha": "model:opus",
+      "justificativa": "sugerido=opus aplicado=opus origem=mapa | faixa profunda",
+      "score_justificativa": 0 },
+    { "id": "dec-w2", "onda_id": "onda-005", "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda 5 (fase execute-task)",
+      "escolha": "model:opus",
+      "justificativa": "sugerido=haiku aplicado=opus origem=override-operador | forcado",
+      "score_justificativa": 2 },
+    { "id": "dec-999-noise", "onda_id": "onda-001", "etapa": "specify",
+      "agente": "agente-00c-orchestrator",
+      "contexto": "Decisao NAO relacionada a selecao — deve ser ignorada",
+      "escolha": "a", "justificativa": "noise", "score_justificativa": 3 }
+  ]
+}
+JSON
+
+  capture sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST" --json
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  # Paridade com o cenario EN: mesmos numeros via fallback pt-BR.
+  _total=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.total')
+  [ "$_total" = "1" ] || { _fail "legado total=1 (pt fallback)" "obtido $_total"; return 1; }
+  _l_onda=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.linhas[0].onda')
+  [ "$_l_onda" = "onda-001" ] || { _fail "linha.onda=onda-001 (fallback .onda_id)" "obtido $_l_onda"; return 1; }
+  _l_score=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.linhas[0].score')
+  [ "$_l_score" = "3" ] || { _fail "linha.score=3 (fallback .score_justificativa)" "obtido $_l_score"; return 1; }
+  _wt=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.total')
+  [ "$_wt" = "2" ] || { _fail "ondas.total=2 (pt fallback)" "obtido $_wt"; return 1; }
+  _ao=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.por_modelo_aplicado.opus')
+  [ "$_ao" = "2" ] || { _fail "aplicado opus=2 (pt fallback)" "obtido $_ao"; return 1; }
+  _drot=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.ondas.divergencias_rotuladas')
+  [ "$_drot" = "1" ] || { _fail "divergencias_rotuladas=1 (pt fallback)" "obtido $_drot"; return 1; }
 }
 
 scenario_aggregate_fixture_markdown_formato_canonico() {
@@ -426,13 +578,13 @@ scenario_integracao_review_task_state_sem_selecoes_omite_secao() {
   _mrr_have_jq || { _error "jq ausente"; return 2; }
   mktemp_test || return 2
 
-  # Cria state minimo SEM selecoes (apenas .decisoes vazio).
+  # Cria state minimo SEM selecoes (apenas .decisions vazio; schema EN).
   cat > "$TMPDIR_TEST/state.json" <<'EOF'
 {
   "schema_version": "0.1.0",
-  "execucao": { "status": "em_andamento" },
-  "ondas": [],
-  "decisoes": []
+  "execution": { "status": "em_andamento" },
+  "waves": [],
+  "decisions": []
 }
 EOF
 

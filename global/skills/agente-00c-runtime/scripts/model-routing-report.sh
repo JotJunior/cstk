@@ -2,8 +2,8 @@
 # model-routing-report.sh — agregador read-only para Decisoes de selecao
 # de modelo emitidas por `model-routing.sh invoke` + persistidas via
 # `state-decisions.sh register`. Cumpre FR-018 (US-3, dec-006) da feature
-# agente-00c-model-routing: agregacao real-time derivada de `.decisoes[]`
-# (sem campo agregado em `.ondas`).
+# agente-00c-model-routing: agregacao real-time derivada de `.decisions[]`
+# (sem campo agregado em `.waves`).
 #
 # Ref: docs/specs/agente-00c-model-routing/spec.md FR-018, SC-003, US-3
 #      docs/specs/agente-00c-model-routing/tasks.md F5.1 (5.1.1..5.1.3)
@@ -13,7 +13,7 @@
 # Subcomandos:
 #   model-routing-report.sh aggregate --state-dir DIR [--json]
 #       — Le state.json em <DIR>/state.json e produz agregado das Decisoes
-#         cujo `.contexto` casa com `^Selecao de modelo para subagente `.
+#         cujo `.context` casa com `^Selecao de modelo para subagente `.
 #         Default: tabela Markdown (renderizada por review-task).
 #         Com `--json`: JSON canonico com counts, fallback_pct e breakdown
 #         por subagent_type.
@@ -28,15 +28,15 @@
 # (feature model-routing-por-onda, FASE 6 — FR-012, FR-021, SC-006):
 #
 #   (L) LEGADO audit-only (feature agente-00c-model-routing):
-#       contexto = "Selecao de modelo para subagente <TYPE>"
-#       escolha  ∈ {haiku,sonnet,opus,manter-atual,fallback-default}
+#       context = "Selecao de modelo para subagente <TYPE>"
+#       choice  ∈ {haiku,sonnet,opus,manter-atual,fallback-default}
 #       NAO carrega modelo_aplicado/origem -> contabilizado como
 #       origem=fallback (nao aplicado), distinto na agregacao por onda.
 #
 #   (N) NOVO por-onda (DecisaoDeRoteamentoPorOnda):
-#       contexto = "Selecao de modelo para onda <N> (fase <f>)"
-#       escolha  = "model:<aplicado>" | "manter-atual"
-#       justificativa codifica tokens parseaveis no PREFIXO (dec-006):
+#       context = "Selecao de modelo para onda <N> (fase <f>)"
+#       choice  = "model:<aplicado>" | "manter-atual"
+#       rationale codifica tokens parseaveis no PREFIXO (dec-006):
 #         "sugerido=<m> aplicado=<m> origem=<o> | <texto livre>"
 #       origem   ∈ {mapa, refino, override-operador, fallback}
 #
@@ -167,7 +167,7 @@ _mrr_require_jq() {
 # onde `linhas` e um array de registros (subagent_type, etapa, onda, modelo,
 # score, fallback) para a tabela Markdown.
 #
-# Lead pattern do contexto: "Selecao de modelo para subagente <TYPE>"
+# Lead pattern do .context: "Selecao de modelo para subagente <TYPE>"
 # subagent_type e extraido via sub() — tudo apos o prefixo fixo.
 _mrr_jq_program() {
   cat <<'JQ'
@@ -191,12 +191,13 @@ def pct1($n; $tot):
   end;
 
 # ---- Geracao LEGADA: contexto "...para subagente <T>" ----
+# Reader de state.json: chave EN canonica com fallback pt-BR (.en // .pt).
 def selecoes_legado:
-  (.decisoes // [])
-  | map(select((.contexto // "") | test("^Selecao de modelo para subagente ")));
+  ((.decisions // .decisoes) // [])
+  | map(select(((.context // .contexto) // "") | test("^Selecao de modelo para subagente ")));
 
 def subagent_of:
-  .contexto | sub("^Selecao de modelo para subagente "; "");
+  (.context // .contexto) | sub("^Selecao de modelo para subagente "; "");
 
 def zero_counts:
   labels | map({(.): 0}) | add;
@@ -211,31 +212,32 @@ def count_labels(xs):
   );
 
 # ---- Geracao NOVA por-onda: contexto "...para onda <N> (fase <f>)" ----
+# Readers de state.json: chave EN canonica com fallback pt-BR (.en // .pt).
 def selecoes_onda:
-  (.decisoes // [])
-  | map(select((.contexto // "") | test("^Selecao de modelo para onda ")));
+  ((.decisions // .decisoes) // [])
+  | map(select(((.context // .contexto) // "") | test("^Selecao de modelo para onda ")));
 
 # Extrai etapa do contexto "...para onda <N> (fase <f>)". Defesa: "" se
 # o padrao nao casar (tolera evolucao do formato — FR-021).
 def etapa_of_onda:
-  ((.contexto // "") | capture("\\(fase (?<f>[^)]*)\\)").f) // "";
+  (((.context // .contexto) // "") | capture("\\(fase (?<f>[^)]*)\\)").f) // "";
 
-# Sugerido: token sugerido=<m> da justificativa; defesa "" se ausente.
+# Sugerido: token sugerido=<m> do rationale; defesa "" se ausente.
 def sugerido_of:
-  ((.justificativa // "") | capture("sugerido=(?<m>[a-z-]+)").m) // "";
+  (((.rationale // .justificativa) // "") | capture("sugerido=(?<m>[a-z-]+)").m) // "";
 
-# Aplicado: token aplicado=<m> da justificativa; fallback p/ escolha
+# Aplicado: token aplicado=<m> do rationale; fallback p/ choice
 # (model:<m> -> <m>; manter-atual). Defesa "manter-atual".
 def aplicado_of:
-  ((.justificativa // "") | capture("aplicado=(?<m>[a-z-]+)").m)
-  // ((.escolha // "manter-atual") | sub("^model:"; ""));
+  (((.rationale // .justificativa) // "") | capture("aplicado=(?<m>[a-z-]+)").m)
+  // (((.choice // .escolha) // "manter-atual") | sub("^model:"; ""));
 
-# Origem: token origem=<o> da justificativa; defesa "fallback" (a
+# Origem: token origem=<o> do rationale; defesa "fallback" (a
 # Decisao legada sem token cai aqui via selecoes_onda? Nao — legada
 # nunca casa selecoes_onda. Mas Decisao por-onda sem token e tratada
 # como fallback conservador).
 def origem_of:
-  ((.justificativa // "") | capture("origem=(?<o>[a-z-]+)").o) // "fallback";
+  (((.rationale // .justificativa) // "") | capture("origem=(?<o>[a-z-]+)").o) // "fallback";
 
 def zero_applied:
   applied_labels | map({(.): 0}) | add;
@@ -256,9 +258,14 @@ def count_origem(xs):
   );
 
 # ===== Agregacao LEGADA (bloco compat F5.1.3) =====
+# NOTA migracao EN: as CHAVES dos objetos construidos abaixo (subagent_type,
+# etapa, onda, modelo, score, fallback) sao keys de OUTPUT (relatorio em
+# stdout) — FOLLOW-UP D, permanecem pt-BR. Ja os VALORES lidos a direita
+# (.choice, .stage, .wave_id, .justification_score) vem de state.json:
+# chave EN canonica + fallback pt-BR (.en // .pt).
 selecoes_legado as $s
 | ($s | length) as $total
-| ($s | map(.escolha)) as $escolhas
+| ($s | map(.choice // .escolha)) as $escolhas
 | (count_labels($escolhas)) as $por_modelo
 | ($por_modelo["fallback-default"]) as $fb
 | pct1($fb; $total) as $pct
@@ -266,23 +273,23 @@ selecoes_legado as $s
    | group_by(subagent_of)
    | map({
        key: (.[0] | subagent_of),
-       value: count_labels(map(.escolha))
+       value: count_labels(map(.choice // .escolha))
      })
    | from_entries) as $por_st
 | ($s | map({
     subagent_type: subagent_of,
-    etapa:         (.etapa // ""),
-    onda:          (.onda_id // ""),
-    modelo:        .escolha,
-    score:         (.score_justificativa // 0),
-    fallback:      (.escolha == "fallback-default")
+    etapa:         ((.stage // .etapa) // ""),
+    onda:          ((.wave_id // .onda_id) // ""),
+    modelo:        (.choice // .escolha),
+    score:         ((.justification_score // .score_justificativa) // 0),
+    fallback:      ((.choice // .escolha) == "fallback-default")
   })) as $linhas
 
 # ===== Agregacao NOVA por-onda (FR-012/021/SC-006) =====
 | selecoes_onda as $w
 | ($w | length) as $wtotal
 | ($w | map({
-    onda:       (.onda_id // ""),
+    onda:       ((.wave_id // .onda_id) // ""),
     etapa:      etapa_of_onda,
     sugerido:   sugerido_of,
     aplicado:   aplicado_of,

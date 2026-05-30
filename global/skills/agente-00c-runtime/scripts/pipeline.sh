@@ -66,7 +66,7 @@
 #         Identifica decisao pre-flight pela presenca das 3 opcoes
 #         canonicas (atualizar-global-via-bump-SemVer /
 #         criar-feature-delta-com-sync-impact-report /
-#         abortar-feature-sem-principios-proprios) em opcoes_consideradas.
+#         abortar-feature-sem-principios-proprios) em options_considered.
 #         exit 0 = bloqueio resolvido com resposta valida — skill pode ser
 #                  invocada
 #         exit 1 = ausencia de decisao pre-flight OU bloqueio nao registrado
@@ -515,9 +515,9 @@ _pl_cmd_require_blockade_resolved() {
   # Localiza decisao pre-flight: filtra por opcoes contendo as 3 strings
   # canonicas do BloqueioHumano exigido em orchestrator.md secao 5.b.
   _dec_id=$(jq -r '
-    [.decisoes // [] | .[]
+    [((.decisions // .decisoes) // []) | .[]
       | select(
-          (.opcoes_consideradas // []) as $op
+          ((.options_considered // .opcoes_consideradas) // []) as $op
           | ($op | index("atualizar-global-via-bump-SemVer") != null)
             and ($op | index("criar-feature-delta-com-sync-impact-report") != null)
             and ($op | index("abortar-feature-sem-principios-proprios") != null)
@@ -546,8 +546,8 @@ INFO
 
   # Localiza bloqueio FK-linkado a essa decisao.
   _block_json=$(jq --arg id "$_dec_id" '
-    .bloqueios_humanos // []
-    | map(select(.decisao_id == $id))
+    ((.human_blocks // .bloqueios_humanos) // [])
+    | map(select((.decision_id // .decisao_id) == $id))
     | last // null
   ' "$_sf")
 
@@ -568,7 +568,7 @@ INFO
   fi
 
   _bl_status=$(printf '%s' "$_block_json" | jq -r '.status')
-  _bl_resp=$(printf '%s' "$_block_json" | jq -r '.resposta_humana // ""')
+  _bl_resp=$(printf '%s' "$_block_json" | jq -r '(.human_answer // .resposta_humana) // ""')
   _bl_id=$(printf '%s' "$_block_json" | jq -r '.id')
 
   if [ "$_bl_status" != "respondido" ]; then

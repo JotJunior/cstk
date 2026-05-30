@@ -44,12 +44,14 @@ _rp_iso_now() { date -u +%FT%TZ; }
 _rp_state_file() { printf '%s/state.json\n' "$1"; }
 
 # _rp_render_header STATE_FILE GERADO_EM
+# READER de state.json: paths EN + fallback (.en // .pt) (schema-en-migration).
 _rp_render_header() {
   jq -r --arg now "$2" '
-    "# Relatorio do Agente-00C — \(.execucao.id)",
+    (.execution // .execucao) as $exec
+    | "# Relatorio do Agente-00C — \($exec.id)",
     "",
     "**Gerado em**: \($now)",
-    "**Status no momento**: \(.execucao.status)",
+    "**Status no momento**: \($exec.status)",
     "**Versao do schema**: \(.schema_version)",
     "",
     "---",
@@ -62,25 +64,27 @@ _rp_render_secao_1() {
   _para=$2
   [ -n "$_para" ] || _para="(Paragrafo de resumo nao fornecido — orquestrador deve gerar via --paragrafo-resumo na invocacao final.)"
   jq -r --arg para "$_para" '
-    "## 1. Resumo Executivo",
+    (.execution // .execucao) as $exec
+    | (.accumulated_metrics // .metricas_acumuladas) as $met
+    | "## 1. Resumo Executivo",
     "",
     "| Campo | Valor |",
     "|-------|-------|",
-    "| ID Execucao | \(.execucao.id) |",
-    "| Projeto-Alvo | \(.execucao.projeto_alvo_path) |",
-    "| Descricao | \(.execucao.projeto_alvo_descricao) |",
-    "| Stack final | \(.execucao.stack_sugerida // "nao aplicavel — execucao abortada antes de definir") |",
-    "| Status | \(.execucao.status) |",
-    "| Motivo termino | \(.execucao.motivo_termino // "(em andamento)") |",
-    "| Iniciada em | \(.execucao.iniciada_em) |",
-    "| Terminada em | \(.execucao.terminada_em // "ainda em andamento") |",
-    "| Ondas executadas | \(.metricas_acumuladas.ondas_total // 0) |",
-    "| Tool calls totais | \(.metricas_acumuladas.tool_calls_total // 0) |",
-    "| Decisoes registradas | \(.metricas_acumuladas.decisoes_total // ((.decisoes // []) | length)) |",
-    "| Bloqueios humanos | \(.metricas_acumuladas.bloqueios_humanos_total // ((.bloqueios_humanos // []) | length)) |",
-    "| Sugestoes para skills globais | \(.metricas_acumuladas.sugestoes_skills_globais_total // ((.sugestoes // []) | length)) |",
-    "| Issues abertas no toolkit | \(.metricas_acumuladas.issues_toolkit_abertas // 0) |",
-    "| Profundidade max de subagentes | \(.metricas_acumuladas.profundidade_max_atingida // 1) |",
+    "| ID Execucao | \($exec.id) |",
+    "| Projeto-Alvo | \($exec.target_project_path // $exec.projeto_alvo_path) |",
+    "| Descricao | \($exec.target_project_description // $exec.projeto_alvo_descricao) |",
+    "| Stack final | \(($exec.suggested_stack // $exec.stack_sugerida) // "nao aplicavel — execucao abortada antes de definir") |",
+    "| Status | \($exec.status) |",
+    "| Motivo termino | \(($exec.termination_reason // $exec.motivo_termino) // "(em andamento)") |",
+    "| Iniciada em | \($exec.started_at // $exec.iniciada_em) |",
+    "| Terminada em | \(($exec.finished_at // $exec.terminada_em) // "ainda em andamento") |",
+    "| Ondas executadas | \(($met.waves_total // $met.ondas_total) // 0) |",
+    "| Tool calls totais | \($met.tool_calls_total // 0) |",
+    "| Decisoes registradas | \(($met.decisions_total // $met.decisoes_total) // (((.decisions // .decisoes) // []) | length)) |",
+    "| Bloqueios humanos | \(($met.human_blocks_total // $met.bloqueios_humanos_total) // (((.human_blocks // .bloqueios_humanos) // []) | length)) |",
+    "| Sugestoes para skills globais | \(($met.global_skill_suggestions_total // $met.sugestoes_skills_globais_total) // (((.suggestions // .sugestoes) // []) | length)) |",
+    "| Issues abertas no toolkit | \(($met.toolkit_issues_opened // $met.issues_toolkit_abertas) // 0) |",
+    "| Profundidade max de subagentes | \(($met.max_depth_reached // $met.profundidade_max_atingida) // 1) |",
     "",
     $para,
     ""
@@ -90,16 +94,17 @@ _rp_render_secao_1() {
 # _rp_render_secao_2 STATE_FILE
 _rp_render_secao_2() {
   jq -r '
-    "## 2. Linha do Tempo",
+    ((.waves // .ondas) // []) as $waves
+    | "## 2. Linha do Tempo",
     "",
     "| Onda | Inicio | Fim | Etapas | Tool calls | Wallclock | Termino |",
     "|------|--------|-----|--------|------------|-----------|---------|",
     (
-      if (.ondas // []) | length == 0 then
+      if $waves | length == 0 then
         "| - | - | - | (nenhuma onda completa ainda) | - | - | - |"
       else
-        (.ondas[] |
-          "| \(.id) | \(.inicio) | \(.fim // "-") | \((.etapas_executadas // []) | join(", ")) | \(.tool_calls // 0) | \(.wallclock_seconds // 0)s | \(.motivo_termino // "(em andamento)") |"
+        ($waves[] |
+          "| \(.id) | \(.started_at // .inicio) | \((.finished_at // .fim) // "-") | \(((.executed_stages // .etapas_executadas) // []) | join(", ")) | \(.tool_calls // 0) | \(.wallclock_seconds // 0)s | \((.termination_reason // .motivo_termino) // "(em andamento)") |"
         )
       end
     ),
@@ -110,7 +115,7 @@ _rp_render_secao_2() {
 # _rp_render_secao_3 STATE_FILE
 _rp_render_secao_3() {
   jq -r '
-    (.decisoes // []) as $decs
+    ((.decisions // .decisoes) // []) as $decs
     | "## 3. Decisoes",
       "",
       "Total: \($decs | length) decisoes registradas.",
@@ -124,7 +129,7 @@ _rp_render_secao_3() {
         if ($decs | length) == 0 then
           "| (nenhuma) | 0 |"
         else
-          ($decs | group_by(.agente) | map({agente: .[0].agente, n: length}) |
+          ($decs | map(.agent // .agente) | group_by(.) | map({agente: .[0], n: length}) |
             .[] | "| \(.agente) | \(.n) |")
         end
       ),
@@ -136,21 +141,21 @@ _rp_render_secao_3() {
           "(Nenhuma decisao registrada nesta execucao.)"
         else
           ($decs[] |
-            "#### \(.id) — \(.etapa) — \(.agente) — \(.timestamp)",
+            "#### \(.id) — \(.stage // .etapa) — \(.agent // .agente) — \(.timestamp)",
             "",
-            "**Contexto**: \(.contexto)",
+            "**Contexto**: \(.context // .contexto)",
             "",
-            "**Opcoes consideradas**: \((.opcoes_consideradas // []) | join(" / "))",
+            "**Opcoes consideradas**: \(((.options_considered // .opcoes_consideradas) // []) | join(" / "))",
             "",
-            "**Escolha**: \(.escolha)",
+            "**Escolha**: \(.choice // .escolha)",
             "",
-            "**Justificativa**: \(.justificativa)",
+            "**Justificativa**: \(.rationale // .justificativa)",
             "",
-            "**Score**: \(if .score_justificativa == null then "(n/a — decisao do orquestrador)" else (.score_justificativa | tostring) end)",
+            "**Score**: \((.justification_score // .score_justificativa) as $sc | if $sc == null then "(n/a — decisao do orquestrador)" else ($sc | tostring) end)",
             "",
-            "**Referencias**: \((.referencias // []) | if length == 0 then "(nenhuma)" else join(", ") end)",
+            "**Referencias**: \(((.references // .referencias) // []) | if length == 0 then "(nenhuma)" else join(", ") end)",
             "",
-            "**Artefato originador**: \(.artefato_originador // "(nenhum)")",
+            "**Artefato originador**: \((.originating_artifact // .artefato_originador) // "(nenhum)")",
             ""
           )
         end
@@ -162,7 +167,7 @@ _rp_render_secao_3() {
 # _rp_render_secao_4 STATE_FILE
 _rp_render_secao_4() {
   jq -r '
-    (.bloqueios_humanos // []) as $blocks
+    ((.human_blocks // .bloqueios_humanos) // []) as $blocks
     | "## 4. Bloqueios Humanos",
       "",
       "Total: \($blocks | length) bloqueios.",
@@ -175,14 +180,14 @@ _rp_render_secao_4() {
             "(Nenhum bloqueio pendente neste momento.)"
           else
             ($pending[] |
-              "#### \(.id) — disparado em \(.disparado_em)",
+              "#### \(.id) — disparado em \(.triggered_at // .disparado_em)",
               "",
-              "**Pergunta**: \(.pergunta)",
+              "**Pergunta**: \(.question // .pergunta)",
               "",
-              "**Contexto para resposta**: \(.contexto_para_resposta)",
+              "**Contexto para resposta**: \(.context_for_answer // .contexto_para_resposta)",
               "",
               "**Opcoes recomendadas**:",
-              ((.opcoes_recomendadas // [])
+              (((.recommended_options // .opcoes_recomendadas) // [])
                | if length == 0 then "- (sem opcoes especificas)"
                  else (map("- " + .) | join("\n")) end),
               "",
@@ -200,13 +205,13 @@ _rp_render_secao_4() {
             "(Nenhum bloqueio respondido nesta execucao.)"
           else
             ($resp[] |
-              "#### \(.id) — disparado em \(.disparado_em)",
+              "#### \(.id) — disparado em \(.triggered_at // .disparado_em)",
               "",
-              "**Pergunta**: \(.pergunta)",
+              "**Pergunta**: \(.question // .pergunta)",
               "",
-              "**Resposta humana**: \(.resposta_humana // "?")",
+              "**Resposta humana**: \((.human_answer // .resposta_humana) // "?")",
               "",
-              "**Respondido em**: \(.respondido_em // "?")",
+              "**Respondido em**: \((.answered_at // .respondido_em) // "?")",
               ""
             )
           end
@@ -226,7 +231,7 @@ _rp_render_secao_4() {
 # _rp_render_secao_5 STATE_FILE
 _rp_render_secao_5() {
   jq -r '
-    (.sugestoes // []) as $sugs
+    ((.suggestions // .sugestoes) // []) as $sugs
     | "## 5. Sugestoes para Skills Globais",
       "",
       "Total: \($sugs | length) sugestoes.",
@@ -234,16 +239,16 @@ _rp_render_secao_5() {
       "### 5.1 Severidade impeditiva (viraram issues)",
       "",
       (
-        ($sugs | map(select(.severidade == "impeditiva"))) as $imp
+        ($sugs | map(select((.severity // .severidade) == "impeditiva"))) as $imp
         | if ($imp | length) == 0 then
             "(Nenhuma sugestao impeditiva nesta execucao.)"
           else
             ($imp[] |
-              "#### \(.id) — skill `\(.skill_afetada)` — issue \(.issue_aberta // "(nao aberta)")",
+              "#### \(.id) — skill `\(.affected_skill // .skill_afetada)` — issue \((.issue_opened // .issue_aberta) // "(nao aberta)")",
               "",
-              "**Diagnostico**: \(.diagnostico)",
+              "**Diagnostico**: \(.diagnosis // .diagnostico)",
               "",
-              "**Proposta**: \(.proposta)",
+              "**Proposta**: \(.proposal // .proposta)",
               ""
             )
           end
@@ -252,16 +257,16 @@ _rp_render_secao_5() {
       "### 5.2 Severidade aviso",
       "",
       (
-        ($sugs | map(select(.severidade == "aviso"))) as $av
+        ($sugs | map(select((.severity // .severidade) == "aviso"))) as $av
         | if ($av | length) == 0 then
             "(Nenhuma sugestao com severidade aviso.)"
           else
             ($av[] |
-              "#### \(.id) — skill `\(.skill_afetada)`",
+              "#### \(.id) — skill `\(.affected_skill // .skill_afetada)`",
               "",
-              "**Diagnostico**: \(.diagnostico)",
+              "**Diagnostico**: \(.diagnosis // .diagnostico)",
               "",
-              "**Proposta**: \(.proposta)",
+              "**Proposta**: \(.proposal // .proposta)",
               ""
             )
           end
@@ -270,16 +275,16 @@ _rp_render_secao_5() {
       "### 5.3 Severidade informativa",
       "",
       (
-        ($sugs | map(select(.severidade == "informativa"))) as $inf
+        ($sugs | map(select((.severity // .severidade) == "informativa"))) as $inf
         | if ($inf | length) == 0 then
             "(Nenhuma sugestao informativa.)"
           else
             ($inf[] |
-              "#### \(.id) — skill `\(.skill_afetada)`",
+              "#### \(.id) — skill `\(.affected_skill // .skill_afetada)`",
               "",
-              "**Diagnostico**: \(.diagnostico)",
+              "**Diagnostico**: \(.diagnosis // .diagnostico)",
               "",
-              "**Proposta**: \(.proposta)",
+              "**Proposta**: \(.proposal // .proposta)",
               ""
             )
           end
@@ -311,15 +316,17 @@ _rp_render_secao_6() {
 # _rp_render_apendice STATE_FILE
 _rp_render_apendice() {
   jq -r '
-    "---",
+    ((.execution // .execucao).target_project_path
+     // (.execution // .execucao).projeto_alvo_path) as $pap
+    | "---",
     "",
     "**Apendice A — Caminhos relevantes**",
     "",
-    "- Estado: `\(.execucao.projeto_alvo_path)/.claude/agente-00c-state/state.json`",
-    "- Backups de estado: `\(.execucao.projeto_alvo_path)/.claude/agente-00c-state/state-history/`",
-    "- Sugestoes detalhadas: `\(.execucao.projeto_alvo_path)/.claude/agente-00c-suggestions.md`",
-    "- Whitelist: `\(.execucao.projeto_alvo_path)/.claude/agente-00c-whitelist`",
-    "- Artefatos da pipeline: `\(.execucao.projeto_alvo_path)/docs/specs/<feature>/`",
+    "- Estado: `\($pap)/.claude/agente-00c-state/state.json`",
+    "- Backups de estado: `\($pap)/.claude/agente-00c-state/state-history/`",
+    "- Sugestoes detalhadas: `\($pap)/.claude/agente-00c-suggestions.md`",
+    "- Whitelist: `\($pap)/.claude/agente-00c-whitelist`",
+    "- Artefatos da pipeline: `\($pap)/docs/specs/<feature>/`",
     ""
   ' "$1"
 }

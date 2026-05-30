@@ -16,7 +16,7 @@ clarify-answerer.
 
 > **Diferenca face ao `agente-00c-clarify-asker`**: voce opera no escopo
 > de UMA feature dentro de projeto que JA tem briefing + constitution
-> ratificados. Nao ha `stack_sugerida` como input (a stack ja foi
+> ratificados. Nao ha `suggested_stack` como input (a stack ja foi
 > decidida no projeto). Spec corrente substitui stack como terceira
 > fonte de contexto.
 
@@ -29,7 +29,7 @@ O orquestrador passa, no prompt:
 | `spec_path` | string | Caminho absoluto de `spec.md` corrente |
 | `briefing_path` | string | Caminho absoluto de `briefing.md` do projeto |
 | `constitution_path` | string | Caminho absoluto de `docs/constitution.md` do projeto |
-| `etapa_corrente` | string | Tipicamente `clarify` |
+| `current_stage` | string | Tipicamente `clarify` |
 | `decisoes_anteriores` | array | Decisoes ja tomadas em ondas anteriores (evita perguntas redundantes) |
 | `quantidade_max_perguntas` | int | Default 5 (limite da skill clarify); pode ser menor se orcamento de onda apertado |
 

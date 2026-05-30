@@ -32,7 +32,7 @@ Extrair:
 - `--projeto-alvo-path` (default = `cwd`)
 - `--resposta-bloqueio` opcional, formato `<block-id>:<resposta>`
 - `--init-aspectos` opcional, JSON array de 3..7 strings — usado para
-  re-inicializar `aspectos_chave_iniciais` em execucoes legadas (criadas
+  re-inicializar `initial_key_aspects` em execucoes legadas (criadas
   antes da FASE 3 da evolucao, com aspectos=null). Forca overwrite via
   `drift.sh init --force`.
 - `--init-aspectos-tecnicos` opcional, JSON array 0..7 strings
@@ -73,7 +73,7 @@ Em ambos os casos, emit aviso na saida e termine sem invocar orquestrador.
 ### 4. Verificar status atual
 
 ```bash
-status=$(state-rw.sh get --state-dir <SD> --field '.execucao.status')
+status=$(state-rw.sh get --state-dir <SD> --field '.execution.status')
 ```
 
 Casos:
@@ -128,14 +128,14 @@ Erros:
   via outro respond).
 
 Apos `respond`, se `bloqueios.sh count --pending-only` retornar 0,
-`.execucao.status` ja esta de volta para `em_andamento` automaticamente.
+`.execution.status` ja esta de volta para `em_andamento` automaticamente.
 Caso contrario, ainda ha pendentes — liste-os e instrua o operador a
 chamar `/agente-00c-resume` novamente com mais respostas.
 
 ### 5.c. Re-inicializar aspectos-chave (apenas se --init-aspectos passado)
 
 Aplicavel a execucoes legadas (anteriores a FASE 3 da evolucao) que
-nao tem `.aspectos_chave_iniciais` populado. Sem aspectos, `drift.sh
+nao tem `.initial_key_aspects` populado. Sem aspectos, `drift.sh
 check` fica permanentemente em modo `desabilitado` — re-inicializacao
 manual relaxa a idempotencia normal do `drift.sh init`.
 
@@ -160,11 +160,20 @@ state-decisions.sh register --state-dir <SD> \
   serem gravados; operador autorizou re-init explicitamente"
 ```
 
-Se `--init-aspectos` foi passado mas `.aspectos_chave_iniciais` ja
+Se `--init-aspectos` foi passado mas `.initial_key_aspects` ja
 existe, exibir aviso de overwrite e prosseguir (assume-se intencao
 explicita do operador).
 
 ### 6. Spawnar agente-orquestrador (continuacao da pipeline)
+
+Antes de qualquer leitor/escritor de estado rodar, canonicalize o
+`state.json` para EN no disco (migrate defensivo — schema-en-migration,
+arquitetura B+). Idempotente/no-op em states ja EN; best-effort (falha
+nao gateia a retomada):
+
+```bash
+state-rw.sh migrate --state-dir <SD>
+```
 
 Antes de spawnar, compute o modelo a aplicar na onda de continuacao via
 `wave-select` (mapa fase→modelo + refino + override — FR-002, FR-009).
@@ -205,7 +214,7 @@ Agent(
     - state-dir: <SD>
     - projeto-alvo-path: <PAP>
     - feature-dir: <PAP>/docs/specs/<feature> (deduzir de
-      .etapa_corrente e estrutura existente)
+      .current_stage e estrutura existente)
     - whitelist: <PAP>/.claude/agente-00c-whitelist
     - retomada_motivo: "<resume_after_block|resume_after_schedule>"
 
@@ -247,7 +256,7 @@ Se `ScheduleWakeup` falhar, limpe o estado:
 
 ```bash
 state-rw.sh set --state-dir <SD> \
-  --field '.ondas[-1].proxima_onda_agendada_para' --value 'null'
+  --field '.waves[-1].next_wave_scheduled_for' --value 'null'
 ```
 
 ### 8.bis Ingestao da onda na knowledge.db (rede de seguranca, best-effort)

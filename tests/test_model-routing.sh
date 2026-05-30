@@ -38,7 +38,7 @@
 #
 #   F2.3.2 (Compatibilidade com agente-00c-artifact-cache — SC-004):
 #     - idempotent-check em state.json com briefing_cache + constitution_cache
-#       populados: ignora campos de cache (read-only sobre .decisoes[])
+#       populados: ignora campos de cache (read-only sobre .decisions[])
 #     - invoke roda em CWD sem briefing/constitution em disco: helper opera
 #       puramente sobre template estatico, sem dependencia de FS
 #     - pipeline mini (idempotent-check + invoke) preserva sha256 dos campos
@@ -592,7 +592,7 @@ EOF
 #
 # Cobertura completa por subtarefa (1.4.1 - 1.4.5):
 #   1.4.1 validacao de flags (state-dir/onda-id/subagent-type + enums)
-#   1.4.2 query jq read-only sobre .decisoes[] com contexto canonico
+#   1.4.2 query jq read-only sobre .decisions[] com contexto canonico
 #   1.4.3 contrato de exit: 0 (existe), 1 (nao existe), 2 (uso)
 #   1.4.4 paralelismo: 100x via xargs/seq -> sha256 state.json antes/depois
 #   1.4.5 F-001 defesa: --arg em jq, NUNCA interpolacao shell em expressao
@@ -612,23 +612,54 @@ _mr_idc_fixture() {
       --arg ctx "Selecao de modelo para subagente $_subagent" \
       --arg onda "$_onda" \
       '{
-        decisoes: [
+        decisions: [
           {
             id: "dec-042",
-            onda_id: $onda,
-            agente: "agente-00c-orchestrator",
-            etapa: "clarify",
-            contexto: $ctx,
-            opcoes: ["a","b"],
-            escolha: "a",
-            justificativa: "matching fixture for idempotent-check",
-            score: 3
+            wave_id: $onda,
+            agent: "agente-00c-orchestrator",
+            stage: "clarify",
+            context: $ctx,
+            options_considered: ["a","b"],
+            choice: "a",
+            rationale: "matching fixture for idempotent-check",
+            justification_score: 3
           }
         ]
       }' > "$_dir/state.json"
   else
-    jq -n '{ decisoes: [] }' > "$_dir/state.json"
+    jq -n '{ decisions: [] }' > "$_dir/state.json"
   fi
+}
+
+# Fixture pt-BR (schema-en-migration §6): prova que o reader-fallback
+# do idempotent-check ainda le um state.json legado (chaves .decisoes/
+# .contexto/.onda_id). idempotent-check le o arquivo DIRETO (sem passar
+# pelo canonicalizer do state-rw), entao a regressao de back-compat exige
+# uma fixture pt-BR explicita. $1=dir, $2=subagent-type, $3=onda-id.
+_mr_idc_fixture_ptbr() {
+  _mr_have_jq || return 2
+  _dir=$1
+  _subagent=$2
+  _onda=$3
+  mkdir -p "$_dir" || return 2
+  jq -n \
+    --arg ctx "Selecao de modelo para subagente $_subagent" \
+    --arg onda "$_onda" \
+    '{
+      decisoes: [
+        {
+          id: "dec-042",
+          onda_id: $onda,
+          agente: "agente-00c-orchestrator",
+          etapa: "clarify",
+          contexto: $ctx,
+          opcoes: ["a","b"],
+          escolha: "a",
+          justificativa: "matching fixture pt-BR for idempotent-check fallback",
+          score: 3
+        }
+      ]
+    }' > "$_dir/state.json"
 }
 
 # Hash auxiliar portavel (macOS shasum / Linux sha256sum).
@@ -714,6 +745,22 @@ scenario_idempotent_check_hit_emite_dec_id_e_exit_0() {
   # Stdout deve ser exatamente "dec-042" (mais newline trailing).
   _stdout_trim=$(printf '%s' "$_CAPTURED_STDOUT" | tr -d '\n')
   [ "$_stdout_trim" = "dec-042" ] || { _fail "stdout=dec-042" "obtido '$_stdout_trim'"; return 1; }
+}
+
+# ---- 1.4.2 (back-compat): HIT sobre fixture pt-BR legada (reader-fallback) ----
+# schema-en-migration §6: idempotent-check le state.json DIRETO; deve casar
+# a Decisao mesmo num state legado com chaves .decisoes/.contexto/.onda_id.
+scenario_idempotent_check_hit_fixture_ptbr_fallback() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _mr_idc_fixture_ptbr "$TMPDIR_TEST" "agente-00c-clarify-asker" "onda-005" || return 2
+  capture sh "$SCRIPT" idempotent-check \
+    --state-dir "$TMPDIR_TEST" \
+    --onda-id onda-005 \
+    --subagent-type agente-00c-clarify-asker
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0 (HIT pt-BR fallback)" "obtido $_CAPTURED_EXIT (stderr=$_CAPTURED_STDERR)"; return 1; }
+  _stdout_trim=$(printf '%s' "$_CAPTURED_STDOUT" | tr -d '\n')
+  [ "$_stdout_trim" = "dec-042" ] || { _fail "stdout=dec-042 (pt-BR fallback)" "obtido '$_stdout_trim'"; return 1; }
 }
 
 # ---- 1.4.2 + 1.4.3: query MISS (nao existe Decisao matching) ----
@@ -1002,7 +1049,7 @@ scenario_resume_idempotent_check_readonly_em_retomadas_repetidas() {
 #
 # Cobertura:
 #   1. idempotent-check ignora completamente briefing_cache/constitution_cache
-#      (read-only sobre .decisoes[]; nao referencia campos de cache).
+#      (read-only sobre .decisions[]; nao referencia campos de cache).
 #   2. invoke nao tenta ler briefing/constitution do FS (helper opera sobre
 #      template estatico + override --input-text; nenhuma leitura de
 #      docs/ esperada).
@@ -1020,17 +1067,17 @@ _mr_artifact_cache_fixture() {
   mkdir -p "$_dir" || return 2
   jq -n '{
     schema_version: "1.6.0",
-    decisoes: [
+    decisions: [
       {
         id: "dec-091",
-        onda_id: "onda-005",
-        agente: "agente-00c-orchestrator",
-        etapa: "clarify",
-        contexto: "Selecao de modelo para subagente agente-00c-clarify-asker",
-        opcoes: ["a","b"],
-        escolha: "a",
-        justificativa: "fixture artifact-cache compat",
-        score: 3
+        wave_id: "onda-005",
+        agent: "agente-00c-orchestrator",
+        stage: "clarify",
+        context: "Selecao de modelo para subagente agente-00c-clarify-asker",
+        options_considered: ["a","b"],
+        choice: "a",
+        rationale: "fixture artifact-cache compat",
+        justification_score: 3
       }
     ],
     briefing_cache: {
@@ -1244,8 +1291,8 @@ scenario_doc_feature_orchestrator_sequencia_pre_spawn() {
 # Documenta a query jq de auditoria (Invariante I3 em
 # agente-00c-feature-orchestrator.md "## Sequencia pre-spawn de subagente"):
 #
-#   N_DEC = count de .decisoes[] com contexto "Selecao de modelo para subagente <T>"
-#   N_REC = count de .ondas[].skills_invoked[] com skill == "model-selector"
+#   N_DEC = count de .decisions[] com context "Selecao de modelo para subagente <T>"
+#   N_REC = count de .waves[].skills_invoked[] com skill == "model-selector"
 #
 # Invariante: N_DEC == N_REC (1-para-1). Quebra dessa paridade indica
 # half-record (crash entre passo 5 e passo 6 da sequencia pre-spawn) e
@@ -1263,39 +1310,39 @@ scenario_doc_two_step_register_record_skill_paridade() {
 {
   "schema_version": "1.0.0",
   "status": "em_andamento",
-  "ondas": [
+  "waves": [
     {
       "id": "onda-001",
       "skills_invoked": [
-        { "skill": "model-selector", "decisao_id": "dec-001", "timestamp": "2026-05-22T10:00:00Z" },
-        { "skill": "model-selector", "decisao_id": "dec-002", "timestamp": "2026-05-22T10:05:00Z" }
+        { "skill": "model-selector", "decision_id": "dec-001", "timestamp": "2026-05-22T10:00:00Z" },
+        { "skill": "model-selector", "decision_id": "dec-002", "timestamp": "2026-05-22T10:05:00Z" }
       ]
     }
   ],
-  "decisoes": [
+  "decisions": [
     {
       "id": "dec-001",
-      "contexto": "Selecao de modelo para subagente feature-00c-clarify-asker",
-      "agente": "agente-00c-feature-orchestrator",
-      "etapa": "clarify",
-      "escolha": "haiku",
-      "score": 3
+      "context": "Selecao de modelo para subagente feature-00c-clarify-asker",
+      "agent": "agente-00c-feature-orchestrator",
+      "stage": "clarify",
+      "choice": "haiku",
+      "justification_score": 3
     },
     {
       "id": "dec-002",
-      "contexto": "Selecao de modelo para subagente feature-00c-clarify-answerer",
-      "agente": "agente-00c-feature-orchestrator",
-      "etapa": "clarify",
-      "escolha": "sonnet",
-      "score": 3
+      "context": "Selecao de modelo para subagente feature-00c-clarify-answerer",
+      "agent": "agente-00c-feature-orchestrator",
+      "stage": "clarify",
+      "choice": "sonnet",
+      "justification_score": 3
     }
   ]
 }
 JSON
 
   # Query canonica da Invariante I3 (documentada no feature-orchestrator.md).
-  _n_dec=$(jq '[.decisoes[] | select(.contexto | startswith("Selecao de modelo"))] | length' "$TMPDIR_TEST/state.json")
-  _n_rec=$(jq '[.ondas[].skills_invoked[]? | select(.skill == "model-selector")] | length' "$TMPDIR_TEST/state.json")
+  _n_dec=$(jq '[.decisions[] | select(.context | startswith("Selecao de modelo"))] | length' "$TMPDIR_TEST/state.json")
+  _n_rec=$(jq '[.waves[].skills_invoked[]? | select(.skill == "model-selector")] | length' "$TMPDIR_TEST/state.json")
 
   [ "$_n_dec" = "2" ] || { _fail "N_DEC == 2" "obtido $_n_dec"; return 1; }
   [ "$_n_rec" = "2" ] || { _fail "N_REC == 2" "obtido $_n_rec"; return 1; }
@@ -1316,37 +1363,37 @@ scenario_doc_two_step_half_record_detectavel() {
 {
   "schema_version": "1.0.0",
   "status": "em_andamento",
-  "ondas": [
+  "waves": [
     {
       "id": "onda-001",
       "skills_invoked": [
-        { "skill": "model-selector", "decisao_id": "dec-001", "timestamp": "2026-05-22T10:00:00Z" }
+        { "skill": "model-selector", "decision_id": "dec-001", "timestamp": "2026-05-22T10:00:00Z" }
       ]
     }
   ],
-  "decisoes": [
+  "decisions": [
     {
       "id": "dec-001",
-      "contexto": "Selecao de modelo para subagente feature-00c-clarify-asker",
-      "agente": "agente-00c-feature-orchestrator",
-      "etapa": "clarify",
-      "escolha": "haiku",
-      "score": 3
+      "context": "Selecao de modelo para subagente feature-00c-clarify-asker",
+      "agent": "agente-00c-feature-orchestrator",
+      "stage": "clarify",
+      "choice": "haiku",
+      "justification_score": 3
     },
     {
       "id": "dec-002",
-      "contexto": "Selecao de modelo para subagente feature-00c-clarify-answerer",
-      "agente": "agente-00c-feature-orchestrator",
-      "etapa": "clarify",
-      "escolha": "sonnet",
-      "score": 3
+      "context": "Selecao de modelo para subagente feature-00c-clarify-answerer",
+      "agent": "agente-00c-feature-orchestrator",
+      "stage": "clarify",
+      "choice": "sonnet",
+      "justification_score": 3
     }
   ]
 }
 JSON
 
-  _n_dec=$(jq '[.decisoes[] | select(.contexto | startswith("Selecao de modelo"))] | length' "$TMPDIR_TEST/state.json")
-  _n_rec=$(jq '[.ondas[].skills_invoked[]? | select(.skill == "model-selector")] | length' "$TMPDIR_TEST/state.json")
+  _n_dec=$(jq '[.decisions[] | select(.context | startswith("Selecao de modelo"))] | length' "$TMPDIR_TEST/state.json")
+  _n_rec=$(jq '[.waves[].skills_invoked[]? | select(.skill == "model-selector")] | length' "$TMPDIR_TEST/state.json")
 
   # Paridade DEVE quebrar (2 != 1)
   [ "$_n_dec" = "2" ] || { _fail "N_DEC == 2" "obtido $_n_dec"; return 1; }
@@ -1761,11 +1808,13 @@ scenario_f002_jq_arg_roundtrip_via_state_decisions_register() {
   }
 
   # 5) Re-extrair justificativa e evidencia do state.json e comparar literal.
+  # Reader (schema-en-migration): state-decisions.sh register grava chaves EN
+  # (.decisions[].rationale/.evidence); fallback pt-BR para state legado.
   _STATE_JSON="$_SD/state.json"
   _JUST_BACK=$(jq -r --arg id "$_DEC" \
-    '.decisoes[] | select(.id == $id) | .justificativa' "$_STATE_JSON")
+    '(.decisions // .decisoes // [])[] | select(.id == $id) | (.rationale // .justificativa)' "$_STATE_JSON")
   _EVID_BACK=$(jq -r --arg id "$_DEC" \
-    '.decisoes[] | select(.id == $id) | .evidencia' "$_STATE_JSON")
+    '(.decisions // .decisoes // [])[] | select(.id == $id) | (.evidence // .evidencia)' "$_STATE_JSON")
 
   [ "$_JUST_BACK" = "$_SINAIS" ] || {
     _fail "roundtrip justificativa literal preservada" \
@@ -2178,10 +2227,10 @@ _ws_state() {
   _ws_etapa=$2
   mkdir -p "$_ws_dir" || return 2
   jq -n --arg e "$_ws_etapa" '{
-    etapa_corrente: $e,
-    ondas: [{ id: "onda-007", skills_invoked: [] }],
-    metricas_acumuladas: {},
-    decisoes: []
+    current_stage: $e,
+    waves: [{ id: "onda-007", skills_invoked: [] }],
+    accumulated_metrics: {},
+    decisions: []
   }' > "$_ws_dir/state.json"
 }
 
@@ -2225,13 +2274,14 @@ scenario_ws_c1_mapa_review_task_haiku() {
   # Apos 2 invocacoes idempotentes, stdout permanece haiku.
   [ "$_CAPTURED_STDOUT" = "haiku" ] || { _fail "C1 stdout=haiku" "$_CAPTURED_STDOUT"; return 1; }
   # Decisao com origem=mapa, sugerido=aplicado=haiku.
+  # Assertions leem state pos-canonicalizacao (state-rw write) -> chaves EN.
   jq -e '
-    [.decisoes[] | select(.contexto | startswith("Selecao de modelo para onda "))][0]
-    | (.escolha == "model:haiku")
-      and (.justificativa | test("sugerido=haiku aplicado=haiku origem=mapa"))
-      and (.score_justificativa == 0)
+    [.decisions[] | select(.context | startswith("Selecao de modelo para onda "))][0]
+    | (.choice == "model:haiku")
+      and (.rationale | test("sugerido=haiku aplicado=haiku origem=mapa"))
+      and (.justification_score == 0)
   ' "$TMPDIR_TEST/c1/state.json" >/dev/null 2>&1 \
-    || { _fail "C1 Decisao mapa haiku" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c1/state.json")"; return 1; }
+    || { _fail "C1 Decisao mapa haiku" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c1/state.json")"; return 1; }
 }
 
 # ---- C2: onda de raciocinio mantem opus (plan -> opus) ----
@@ -2242,11 +2292,11 @@ scenario_ws_c2_mapa_plan_opus() {
   capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c2"
   [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C2 stdout=opus" "$_CAPTURED_STDOUT"; return 1; }
   jq -e '
-    .decisoes[-1]
-    | (.escolha == "model:opus")
-      and (.justificativa | test("aplicado=opus origem=mapa"))
+    .decisions[-1]
+    | (.choice == "model:opus")
+      and (.rationale | test("aplicado=opus origem=mapa"))
   ' "$TMPDIR_TEST/c2/state.json" >/dev/null 2>&1 \
-    || { _fail "C2 Decisao mapa opus" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c2/state.json")"; return 1; }
+    || { _fail "C2 Decisao mapa opus" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c2/state.json")"; return 1; }
 }
 
 # ---- C3: refino eleva execute-task profundo (sonnet -> opus, origem=refino) ----
@@ -2265,16 +2315,16 @@ scenario_ws_c3_refino_eleva_opus() {
   # sugerido!=aplicado fica reservada a override-operador/fallback
   # (invariante L63-64 / SC-006 — dec-022). score 2, record-skill presente.
   jq -e '
-    .decisoes[-1]
-    | (.escolha == "model:opus")
-      and (.justificativa | test("sugerido=opus aplicado=opus origem=refino"))
-      and (.score_justificativa == 2)
+    .decisions[-1]
+    | (.choice == "model:opus")
+      and (.rationale | test("sugerido=opus aplicado=opus origem=refino"))
+      and (.justification_score == 2)
   ' "$TMPDIR_TEST/c3/state.json" >/dev/null 2>&1 \
-    || { _fail "C3 Decisao refino" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c3/state.json")"; return 1; }
+    || { _fail "C3 Decisao refino" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c3/state.json")"; return 1; }
   jq -e '
-    [.ondas[].skills_invoked[]? | select(.skill == "model-selector")] | length == 1
+    [.waves[].skills_invoked[]? | select(.skill == "model-selector")] | length == 1
   ' "$TMPDIR_TEST/c3/state.json" >/dev/null 2>&1 \
-    || { _fail "C3 record-skill model-selector (par I3)" "$(jq -c '.ondas[-1].skills_invoked' "$TMPDIR_TEST/c3/state.json")"; return 1; }
+    || { _fail "C3 record-skill model-selector (par I3)" "$(jq -c '.waves[-1].skills_invoked' "$TMPDIR_TEST/c3/state.json")"; return 1; }
 }
 
 # ---- C4: refino sem sinal mantem o mapa (score 0 -> sonnet) ----
@@ -2288,14 +2338,14 @@ scenario_ws_c4_refino_sem_sinal_mantem_mapa() {
     --state-dir "$TMPDIR_TEST/c4" --task-text "ajustar texto neutro"
   [ "$_CAPTURED_STDOUT" = "sonnet" ] || { _fail "C4 stdout=sonnet (mapa)" "$_CAPTURED_STDOUT"; return 1; }
   jq -e '
-    .decisoes[-1] | (.justificativa | test("aplicado=sonnet origem=mapa"))
+    .decisions[-1] | (.rationale | test("aplicado=sonnet origem=mapa"))
   ' "$TMPDIR_TEST/c4/state.json" >/dev/null 2>&1 \
-    || { _fail "C4 origem=mapa (refino nao alterou)" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c4/state.json")"; return 1; }
+    || { _fail "C4 origem=mapa (refino nao alterou)" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c4/state.json")"; return 1; }
   # Sem record-skill quando refino nao alterou (score<2).
   jq -e '
-    [.ondas[].skills_invoked[]? | select(.skill == "model-selector")] | length == 0
+    [.waves[].skills_invoked[]? | select(.skill == "model-selector")] | length == 0
   ' "$TMPDIR_TEST/c4/state.json" >/dev/null 2>&1 \
-    || { _fail "C4 sem record-skill (refino no-op)" "$(jq -c '.ondas[-1].skills_invoked' "$TMPDIR_TEST/c4/state.json")"; return 1; }
+    || { _fail "C4 sem record-skill (refino no-op)" "$(jq -c '.waves[-1].skills_invoked' "$TMPDIR_TEST/c4/state.json")"; return 1; }
 }
 
 # ---- C5: override do operador vence (FR-016) ----
@@ -2304,22 +2354,22 @@ scenario_ws_c5_override_vence() {
   mktemp_test || return 2
   mkdir -p "$TMPDIR_TEST/c5"
   jq -n '{
-    etapa_corrente: "plan",
-    ondas: [{ id: "onda-007", skills_invoked: [] }],
-    metricas_acumuladas: {},
-    decisoes: [{
-      id: "dec-001", onda_id: "onda-007", etapa: "model-routing",
-      contexto: "Override de modelo para onda 7", escolha: "model-override:haiku"
+    current_stage: "plan",
+    waves: [{ id: "onda-007", skills_invoked: [] }],
+    accumulated_metrics: {},
+    decisions: [{
+      id: "dec-001", wave_id: "onda-007", stage: "model-routing",
+      context: "Override de modelo para onda 7", choice: "model-override:haiku"
     }]
   }' > "$TMPDIR_TEST/c5/state.json"
   capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c5"
   [ "$_CAPTURED_STDOUT" = "haiku" ] || { _fail "C5 stdout=haiku (override vence opus)" "$_CAPTURED_STDOUT"; return 1; }
   jq -e '
-    .decisoes[-1]
-    | (.escolha == "model:haiku")
-      and (.justificativa | test("sugerido=opus aplicado=haiku origem=override-operador"))
+    .decisions[-1]
+    | (.choice == "model:haiku")
+      and (.rationale | test("sugerido=opus aplicado=haiku origem=override-operador"))
   ' "$TMPDIR_TEST/c5/state.json" >/dev/null 2>&1 \
-    || { _fail "C5 Decisao override" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c5/state.json")"; return 1; }
+    || { _fail "C5 Decisao override" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c5/state.json")"; return 1; }
 }
 
 # ---- C6: fallback gracioso (model-selector ausente) ----
@@ -2334,9 +2384,9 @@ scenario_ws_c6_fallback_gracioso() {
   [ "$_CAPTURED_STDOUT" = "sonnet" ] || { _fail "C6 stdout=sonnet (piso mapa)" "$_CAPTURED_STDOUT"; return 1; }
   # Sem record-skill orfao (refino nao rodou de fato).
   jq -e '
-    [.ondas[].skills_invoked[]? | select(.skill == "model-selector")] | length == 0
+    [.waves[].skills_invoked[]? | select(.skill == "model-selector")] | length == 0
   ' "$TMPDIR_TEST/c6/state.json" >/dev/null 2>&1 \
-    || { _fail "C6 sem record-skill orfao" "$(jq -c '.ondas[-1].skills_invoked' "$TMPDIR_TEST/c6/state.json")"; return 1; }
+    || { _fail "C6 sem record-skill orfao" "$(jq -c '.waves[-1].skills_invoked' "$TMPDIR_TEST/c6/state.json")"; return 1; }
 }
 
 # ---- C7: idempotencia na retomada (FR-008) ----
@@ -2346,10 +2396,10 @@ scenario_ws_c7_idempotencia() {
   _ws_state "$TMPDIR_TEST/c7" plan || return 2
   # 1a invocacao registra a Decisao.
   _out1=$(sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c7")
-  _n1=$(jq '.decisoes | length' "$TMPDIR_TEST/c7/state.json")
+  _n1=$(jq '.decisions | length' "$TMPDIR_TEST/c7/state.json")
   # 2a invocacao (simula resume): NENHUMA 2a Decisao.
   capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c7"
-  _n2=$(jq '.decisoes | length' "$TMPDIR_TEST/c7/state.json")
+  _n2=$(jq '.decisions | length' "$TMPDIR_TEST/c7/state.json")
   [ "$_CAPTURED_STDOUT" = "$_out1" ] || { _fail "C7 stdout estavel" "1a=$_out1 2a=$_CAPTURED_STDOUT"; return 1; }
   [ "$_n1" = "$_n2" ] || { _fail "C7 nenhuma 2a Decisao" "n1=$_n1 n2=$_n2"; return 1; }
 }
@@ -2362,9 +2412,9 @@ scenario_ws_c8_manter_atual_fase_nao_mapeada() {
   capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c8"
   [ "$_CAPTURED_STDOUT" = "manter-atual" ] || { _fail "C8 stdout=manter-atual" "$_CAPTURED_STDOUT"; return 1; }
   jq -e '
-    .decisoes[-1] | (.escolha == "manter-atual")
+    .decisions[-1] | (.choice == "manter-atual")
   ' "$TMPDIR_TEST/c8/state.json" >/dev/null 2>&1 \
-    || { _fail "C8 escolha=manter-atual" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c8/state.json")"; return 1; }
+    || { _fail "C8 escolha=manter-atual" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c8/state.json")"; return 1; }
 }
 
 # ---- C9: escalonamento mid-onda (FR-015) ----
@@ -2373,19 +2423,44 @@ scenario_ws_c9_escalada_mid_onda_opus() {
   mktemp_test || return 2
   mkdir -p "$TMPDIR_TEST/c9"
   # Fase barata (review-task -> haiku no mapa), MAS escalada pendente -> opus.
+  # MAP-GAP schema-en-migration: .pending_model_escalation (proposto; a chave
+  # NAO esta no mapa congelado §3 nem no canonicalizer do state-rw).
+  jq -n '{
+    current_stage: "review-task",
+    pending_model_escalation: true,
+    waves: [{ id: "onda-007", skills_invoked: [] }],
+    accumulated_metrics: {},
+    decisions: []
+  }' > "$TMPDIR_TEST/c9/state.json"
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c9"
+  [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C9 stdout=opus (escalada vence mapa)" "$_CAPTURED_STDOUT"; return 1; }
+  jq -e '
+    .decisions[-1] | (.rationale | test("escalada-mid-onda"))
+  ' "$TMPDIR_TEST/c9/state.json" >/dev/null 2>&1 \
+    || { _fail "C9 nota de escalada" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c9/state.json")"; return 1; }
+}
+
+# ---- C9b: escalonamento mid-onda via chave LEGADA pt-BR (reader-fallback) ----
+# schema-en-migration §6: .escalada_modelo_pendente NAO esta no canonicalizer
+# (MAP-GAP), entao um state legado preserva a chave pt-BR; o reader-fallback
+# (.pending_model_escalation // .escalada_modelo_pendente) ainda deve elevar.
+scenario_ws_c9b_escalada_chave_legada_ptbr() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  mkdir -p "$TMPDIR_TEST/c9b"
   jq -n '{
     etapa_corrente: "review-task",
     escalada_modelo_pendente: true,
     ondas: [{ id: "onda-007", skills_invoked: [] }],
     metricas_acumuladas: {},
     decisoes: []
-  }' > "$TMPDIR_TEST/c9/state.json"
-  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c9"
-  [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C9 stdout=opus (escalada vence mapa)" "$_CAPTURED_STDOUT"; return 1; }
+  }' > "$TMPDIR_TEST/c9b/state.json"
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c9b"
+  [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C9b stdout=opus (fallback pt-BR escalada)" "$_CAPTURED_STDOUT"; return 1; }
   jq -e '
-    .decisoes[-1] | (.justificativa | test("escalada-mid-onda"))
-  ' "$TMPDIR_TEST/c9/state.json" >/dev/null 2>&1 \
-    || { _fail "C9 nota de escalada" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c9/state.json")"; return 1; }
+    .decisions[-1] | (.rationale | test("escalada-mid-onda"))
+  ' "$TMPDIR_TEST/c9b/state.json" >/dev/null 2>&1 \
+    || { _fail "C9b nota de escalada (fallback)" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c9b/state.json")"; return 1; }
 }
 
 # ---- C11: override invalido cai em fallback (FR-023) ----
@@ -2394,23 +2469,23 @@ scenario_ws_c11_override_invalido_fallback() {
   mktemp_test || return 2
   mkdir -p "$TMPDIR_TEST/c11"
   jq -n '{
-    etapa_corrente: "plan",
-    ondas: [{ id: "onda-007", skills_invoked: [] }],
-    metricas_acumuladas: {},
-    decisoes: [{
-      id: "dec-001", onda_id: "onda-007", etapa: "model-routing",
-      contexto: "Override de modelo para onda 7", escolha: "model-override:gpt4"
+    current_stage: "plan",
+    waves: [{ id: "onda-007", skills_invoked: [] }],
+    accumulated_metrics: {},
+    decisions: [{
+      id: "dec-001", wave_id: "onda-007", stage: "model-routing",
+      context: "Override de modelo para onda 7", choice: "model-override:gpt4"
     }]
   }' > "$TMPDIR_TEST/c11/state.json"
   capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c11"
   # Override 'gpt4' fora do enum -> rejeitado, cai no mapa (plan -> opus).
   [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C11 stdout=opus (override invalido -> mapa)" "$_CAPTURED_STDOUT"; return 1; }
   jq -e '
-    .decisoes[-1]
-    | (.justificativa | test("origem=fallback"))
-      and (.justificativa | test("override invalido"))
+    .decisions[-1]
+    | (.rationale | test("origem=fallback"))
+      and (.rationale | test("override invalido"))
   ' "$TMPDIR_TEST/c11/state.json" >/dev/null 2>&1 \
-    || { _fail "C11 origem=fallback + nota override invalido" "$(jq -c '.decisoes[-1]' "$TMPDIR_TEST/c11/state.json")"; return 1; }
+    || { _fail "C11 origem=fallback + nota override invalido" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c11/state.json")"; return 1; }
   # 'gpt4' NUNCA propagado ao stdout (nada invalido vaza ao spawn).
   case "$_CAPTURED_STDOUT" in
     haiku|sonnet|opus|manter-atual) : ;;

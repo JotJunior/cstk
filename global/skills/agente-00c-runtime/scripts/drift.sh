@@ -9,9 +9,9 @@
 # Modelo: na primeira onda o orquestrador extrai aspectos-chave do
 # projeto-alvo e grava em 3 camadas:
 #
-#   .aspectos_chave_iniciais     — UCs / objetivos de produto (obrigatorio)
-#   .aspectos_chave_tecnicos     — backbone tecnico (auth, sessao, db, infra)
-#   .aspectos_chave_operacionais — fases operacionais (runbooks, CI/CD)
+#   .initial_key_aspects     — UCs / objetivos de produto (obrigatorio)
+#   .technical_key_aspects   — backbone tecnico (auth, sessao, db, infra)
+#   .operational_key_aspects — fases operacionais (runbooks, CI/CD)
 #
 # A cada onda, `drift.sh check` decide se a execucao esta desviada
 # olhando uma JANELA MOVEL das ultimas 12 ondas (configuravel via
@@ -19,7 +19,7 @@
 #   a) Qualquer decisao da onda menciona qualquer aspecto (qualquer
 #      camada), via match bidirecional (texto contem aspecto OU aspecto
 #      contem token do texto, ambos case-insensitive, tokens >=3 chars).
-#   b) OU `.ondas[i].aspectos_chave_tocados` foi populado explicitamente
+#   b) OU `.waves[i].touched_key_aspects` foi populado explicitamente
 #      (via `drift.sh mark-touched` quando inferencia falha).
 #
 # Thresholds default (sobre untouched na janela):
@@ -44,8 +44,14 @@
 #       — Avalia janela movel de ondas. Stdout: numero de ondas SEM
 #         aspecto na janela. Exit 0 (ok/warn), exit 3 (abort).
 #
-#   drift.sh aspectos --state-dir DIR [--camada iniciais|tecnicos|operacionais|all]
+#   drift.sh key-aspects --state-dir DIR [--camada iniciais|tecnicos|operacionais|all]
 #       — Lista aspectos em stdout (um por linha). Default: all.
+#         (alias deprecado: `aspectos` — schema-en-migration.)
+#
+#   drift.sh extract --text TEXT [--max N]
+#       — Extrai 1..N keywords (default 7) de texto cru. NAO le state.json.
+#         Deterministico (lowercase + split + stopwords pt/en + dedupe + top-N).
+#         Stdout: JSON array. Usado pelo command-pai p/ derivar --key-aspects.
 #
 #   drift.sh mark-touched --state-dir DIR --aspecto X
 #       — Registra que a onda corrente tocou aspecto X explicitamente.
@@ -141,20 +147,22 @@ _dr_cmd_init() {
 
   # Verifica se ja foi inicializado. Com --force, sobrescreve; sem,
   # falha (congelado pos-primeira-onda como antes).
-  _existing=$(jq -r '.aspectos_chave_iniciais // [] | length' "$_sf")
+  _existing=$(jq -r '(.initial_key_aspects // .aspectos_chave_iniciais) // [] | length' "$_sf")
   if [ "$_existing" -gt 0 ] && [ "$_force" -eq 0 ]; then
-    _dr_die "init: aspectos_chave_iniciais ja foi gravado ($_existing aspectos). Use --force para sobrescrever (relaxado para retomada de execucoes legadas com aspectos=null)." 1
+    _dr_die "init: initial_key_aspects ja foi gravado ($_existing aspectos). Use --force para sobrescrever (relaxado para retomada de execucoes legadas com aspectos=null)." 1
   fi
 
+  # Writer (schema-en-migration): grava chaves EN. Confia em EN-on-disk
+  # (migrate defensivo do command-pai no inicio da onda).
   _new_state=$(mktemp) || _dr_die "mktemp falhou" 1
   jq \
     --argjson a "$_asp" \
     --argjson t "$_tec" \
     --argjson o "$_ope" \
     '
-    .aspectos_chave_iniciais     = $a
-    | .aspectos_chave_tecnicos     = $t
-    | .aspectos_chave_operacionais = $o
+    .initial_key_aspects     = $a
+    | .technical_key_aspects   = $t
+    | .operational_key_aspects = $o
     ' "$_sf" > "$_new_state" \
     || { rm -f -- "$_new_state"; _dr_die "jq update falhou" 1; }
   _dr_atomic_write "$_sf" "$_new_state"
@@ -168,9 +176,9 @@ _dr_cmd_init() {
 _dr_jq_lib() {
   cat <<'JQ'
 def all_aspectos:
-  ((.aspectos_chave_iniciais     // []) +
-   (.aspectos_chave_tecnicos     // []) +
-   (.aspectos_chave_operacionais // []))
+  (((.initial_key_aspects     // .aspectos_chave_iniciais)     // []) +
+   ((.technical_key_aspects   // .aspectos_chave_tecnicos)     // []) +
+   ((.operational_key_aspects // .aspectos_chave_operacionais) // []))
   | unique;
 
 # Tokeniza string em palavras alfanumericas >= 3 chars, lowercase.
@@ -200,15 +208,15 @@ def matches_aspecto($txt; $aspecto):
 def aspectos_hit_in_dec($dec; $aspectos):
   $aspectos
   | map(. as $a
-        | select(matches_aspecto($dec.contexto; $a)
-                 or matches_aspecto($dec.escolha; $a)
-                 or matches_aspecto($dec.justificativa; $a)));
+        | select(matches_aspecto($dec.context // $dec.contexto; $a)
+                 or matches_aspecto($dec.choice // $dec.escolha; $a)
+                 or matches_aspecto($dec.rationale // $dec.justificativa; $a)));
 
 # Para uma onda, retorna { hits_decisao: [...], hits_marcado: [...] }.
 def aspectos_hit_in_onda($onda; $decs; $aspectos):
-  ($decs | map(select(.onda_id == $onda.id))) as $wave_decs
+  ($decs | map(select((.wave_id // .onda_id) == $onda.id))) as $wave_decs
   | ($wave_decs | map(aspectos_hit_in_dec(.; $aspectos)) | flatten | unique) as $hd
-  | (($onda.aspectos_chave_tocados // []) | unique) as $hm
+  | ((($onda.touched_key_aspects // $onda.aspectos_chave_tocados) // []) | unique) as $hm
   | { hits_decisao: $hd, hits_marcado: $hm };
 
 # Onda esta "tocada" se hits_decisao OR hits_marcado tem ao menos 1 item.
@@ -227,8 +235,8 @@ _dr_count_untouched_in_window() {
     $_lib
 
     all_aspectos as \$aspectos
-    | (.ondas // []) as \$ondas
-    | (.decisoes // []) as \$decs
+    | ((.waves // .ondas) // []) as \$ondas
+    | ((.decisions // .decisoes) // []) as \$decs
     | if (\$aspectos | length) == 0 then 0
       else
         (\$ondas | length) as \$total
@@ -254,9 +262,9 @@ _dr_cmd_check() {
   [ -f "$_sf" ] || _dr_die "check: state.json ausente" 1
 
   _aspectos_count=$(jq -r '
-    ((.aspectos_chave_iniciais // []) +
-     (.aspectos_chave_tecnicos // []) +
-     (.aspectos_chave_operacionais // []))
+    (((.initial_key_aspects // .aspectos_chave_iniciais) // []) +
+     ((.technical_key_aspects // .aspectos_chave_tecnicos) // []) +
+     ((.operational_key_aspects // .aspectos_chave_operacionais) // []))
     | unique | length
   ' "$_sf")
   if [ "$_aspectos_count" = 0 ]; then
@@ -295,19 +303,21 @@ _dr_cmd_aspectos() {
   _sf=$(_dr_state_file "$_sd")
   [ -f "$_sf" ] || _dr_die "aspectos: state.json ausente" 1
 
+  # --camada VALUES (iniciais/tecnicos/operacionais) sao valores de flag (nao
+  # migrados; follow-up B). Apenas as CHAVES JSON lidas viram EN (+fallback).
   case "$_cam" in
-    iniciais)     jq -r '.aspectos_chave_iniciais     // [] | .[]' "$_sf" ;;
-    tecnicos)     jq -r '.aspectos_chave_tecnicos     // [] | .[]' "$_sf" ;;
-    operacionais) jq -r '.aspectos_chave_operacionais // [] | .[]' "$_sf" ;;
+    iniciais)     jq -r '(.initial_key_aspects     // .aspectos_chave_iniciais)     // [] | .[]' "$_sf" ;;
+    tecnicos)     jq -r '(.technical_key_aspects   // .aspectos_chave_tecnicos)     // [] | .[]' "$_sf" ;;
+    operacionais) jq -r '(.operational_key_aspects // .aspectos_chave_operacionais) // [] | .[]' "$_sf" ;;
     all)
       jq -r '
-        ((.aspectos_chave_iniciais     // []) +
-         (.aspectos_chave_tecnicos     // []) +
-         (.aspectos_chave_operacionais // []))
+        (((.initial_key_aspects     // .aspectos_chave_iniciais)     // []) +
+         ((.technical_key_aspects   // .aspectos_chave_tecnicos)     // []) +
+         ((.operational_key_aspects // .aspectos_chave_operacionais) // []))
         | unique | .[]
       ' "$_sf"
       ;;
-    *) _dr_die_usage "aspectos: --camada deve ser iniciais|tecnicos|operacionais|all" ;;
+    *) _dr_die_usage "key-aspects: --camada deve ser iniciais|tecnicos|operacionais|all" ;;
   esac
 }
 
@@ -328,15 +338,17 @@ _dr_cmd_mark_touched() {
   _sf=$(_dr_state_file "$_sd")
   [ -f "$_sf" ] || _dr_die "mark-touched: state.json ausente" 1
 
-  _has_onda=$(jq -r '(.ondas // []) | length' "$_sf")
+  _has_onda=$(jq -r '((.waves // .ondas) // []) | length' "$_sf")
   if [ "$_has_onda" -eq 0 ]; then
     _dr_die "mark-touched: nenhuma onda existe em state.json (chame state-ondas.sh start primeiro)" 1
   fi
 
+  # Writer (schema-en-migration): grava chave EN (.waves[-1].touched_key_aspects).
+  # Confia em EN-on-disk (migrate defensivo do command-pai).
   _new_state=$(mktemp) || _dr_die "mktemp falhou" 1
   jq --arg a "$_aspecto" '
-    .ondas[-1].aspectos_chave_tocados =
-      ((.ondas[-1].aspectos_chave_tocados // []) + [$a] | unique)
+    .waves[-1].touched_key_aspects =
+      ((.waves[-1].touched_key_aspects // []) + [$a] | unique)
   ' "$_sf" > "$_new_state" \
     || { rm -f -- "$_new_state"; _dr_die "jq update falhou" 1; }
   _dr_atomic_write "$_sf" "$_new_state"
@@ -364,15 +376,15 @@ _dr_cmd_debug() {
     $_lib
 
     \"=== aspectos_chave (por camada) ===\",
-    \"iniciais: \"     + ((.aspectos_chave_iniciais     // []) | join(\", \")),
-    \"tecnicos: \"     + ((.aspectos_chave_tecnicos     // []) | join(\", \")),
-    \"operacionais: \" + ((.aspectos_chave_operacionais // []) | join(\", \")),
+    \"iniciais: \"     + (((.initial_key_aspects     // .aspectos_chave_iniciais)     // []) | join(\", \")),
+    \"tecnicos: \"     + (((.technical_key_aspects   // .aspectos_chave_tecnicos)     // []) | join(\", \")),
+    \"operacionais: \" + (((.operational_key_aspects // .aspectos_chave_operacionais) // []) | join(\", \")),
     \"\",
     \"=== ondas (janela=$_DR_WINDOW_SIZE, warn>=$_DR_WARN_THRESHOLD untouched, abort>=$_DR_ABORT_THRESHOLD untouched) ===\",
     (
       all_aspectos as \$aspectos
-      | (.decisoes // []) as \$decs
-      | (.ondas // [])
+      | ((.decisions // .decisoes) // []) as \$decs
+      | ((.waves // .ondas) // [])
         | map(select(\$only == \"\" or .id == \$only))
         | .[]
         | . as \$o
@@ -386,6 +398,41 @@ _dr_cmd_debug() {
   " "$_sf"
 }
 
+# _dr_cmd_extract: extrai keywords de texto cru (NAO le state.json).
+# Substitui o `drift.sh extract` fantasma que os docs do command-pai chamavam
+# sem implementacao. Deterministico: lowercase, split em nao-alfanumerico,
+# tokens >= 3 chars, remove stopwords (pt+en), dedupe preservando ordem,
+# top-N (default 7). Stdout: JSON array (pode ser vazio). Usado pelo
+# command-pai feature-00c para derivar --key-aspects do state-rw.sh init.
+_dr_cmd_extract() {
+  _text=""
+  _text_set=0
+  _max=7
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --text) _text=$2; _text_set=1; shift 2 ;;
+      --max)  _max=$2;  shift 2 ;;
+      *) _dr_die_usage "extract: flag desconhecida: $1" ;;
+    esac
+  done
+  [ "$_text_set" = 1 ] || _dr_die_usage "extract: --text obrigatorio"
+  case "$_max" in ''|*[!0-9]*) _dr_die_usage "extract: --max deve ser inteiro positivo" ;; esac
+  [ "$_max" -ge 1 ] || _dr_die_usage "extract: --max deve ser >= 1"
+  _dr_require_jq
+  printf '%s' "$_text" | jq -R -s --argjson max "$_max" '
+    ["a","o","os","as","e","de","da","do","das","dos","em","no","na","nos",
+     "nas","um","uma","uns","umas","para","por","com","sem","que","se","ao",
+     "aos","ou","the","of","and","to","in","on","for","with","without",
+     "that","this","is","are","be","or","an","at","by","as"] as $stop
+    | ascii_downcase
+    | gsub("[^a-z0-9]+"; " ")
+    | split(" ")
+    | map(select(length >= 3 and (. as $w | ($stop | index($w)) | not)))
+    | reduce .[] as $w ([]; if index($w) then . else . + [$w] end)
+    | .[0:$max]
+  '
+}
+
 # ---------- Dispatch ----------
 
 if [ "$#" -lt 1 ]; then
@@ -397,7 +444,9 @@ USO:
                         [--tecnicos JSON-ARRAY] [--operacionais JSON-ARRAY]
                         [--force]
   drift.sh check        --state-dir DIR
-  drift.sh aspectos     --state-dir DIR [--camada iniciais|tecnicos|operacionais|all]
+  drift.sh key-aspects  --state-dir DIR [--camada iniciais|tecnicos|operacionais|all]
+                        (alias deprecado: "aspectos")
+  drift.sh extract      --text TEXT [--max N]   (keywords de texto cru; nao le state)
   drift.sh mark-touched --state-dir DIR --aspecto X
   drift.sh debug        --state-dir DIR [--onda ID]
 
@@ -417,7 +466,10 @@ shift
 case "$_DR_SUBCMD" in
   init)            _dr_cmd_init "$@" ;;
   check)           _dr_cmd_check "$@" ;;
-  aspectos)        _dr_cmd_aspectos "$@" ;;
+  key-aspects)     _dr_cmd_aspectos "$@" ;;
+  aspectos)        printf '%s: subcomando "aspectos" deprecado — use "key-aspects" (schema-en-migration; removido na proxima major).\n' "$_DR_NAME" >&2
+                   _dr_cmd_aspectos "$@" ;;
+  extract)         _dr_cmd_extract "$@" ;;
   mark-touched)    _dr_cmd_mark_touched "$@" ;;
   debug)           _dr_cmd_debug "$@" ;;
   -h|--help|help)  exit 0 ;;

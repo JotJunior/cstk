@@ -9,26 +9,26 @@
 # passando (problema, solucao). O script normaliza ambos (lowercase,
 # remove pontuacao, primeiras ~20 palavras semanticas), hashea via SHA-256
 # e mantem buffer deslizante FIFO de capacidade 6 em
-# .historico_movimento_circular.
+# .circular_movement_history.
 #
-# Definicao operacional de "movimento circular": o mesmo problema_hash
+# Definicao operacional de "movimento circular": o mesmo problem_hash
 # aparece >=3 vezes no buffer (significa que o orquestrador esta voltando
 # repetidamente ao mesmo problema com solucoes diferentes — ou variantes
 # da mesma solucao — sem progresso real).
 #
 # Subcomandos:
 #   circular.sh push --state-dir DIR --problema TEXT --solucao TEXT
-#       — Normaliza, hashea, append em historico_movimento_circular (FIFO 6).
+#       — Normaliza, hashea, append em circular_movement_history (FIFO 6).
 #       — Atualiza state.json (com backup).
-#       — Stdout: TSV problema_hash\tsolucao_hash\tbuffer_size_apos
+#       — Stdout: TSV problem_hash\tsolution_hash\tbuffer_size_apos
 #
 #   circular.sh detect --state-dir DIR
-#       — Exit 3 se algum problema_hash aparece >= 3 vezes no buffer.
+#       — Exit 3 se algum problem_hash aparece >= 3 vezes no buffer.
 #       — Exit 0 caso contrario.
 #       — Stdout (em caso de exit 3): hash repetido + contagem.
 #
 #   circular.sh list --state-dir DIR
-#       — TSV: index\tproblema_hash\tsolucao_hash\ttimestamp
+#       — TSV: index\tproblem_hash\tsolution_hash\ttimestamp
 #
 #   circular.sh clear --state-dir DIR
 #       — Esvazia o buffer (caso o orquestrador queira "esquecer" historico
@@ -46,7 +46,7 @@ set -eu
 
 _CC_NAME="circular"
 _CC_BUFFER_MAX=6
-_CC_REPEAT_THRESHOLD=3   # mesmo problema_hash >=3 vezes = circular
+_CC_REPEAT_THRESHOLD=3   # mesmo problem_hash >=3 vezes = circular
 
 _cc_die_usage() { printf '%s: %s\n' "$_CC_NAME" "$1" >&2; exit 2; }
 _cc_die()       { printf '%s: %s\n' "$_CC_NAME" "$1" >&2; exit "${2:-1}"; }
@@ -126,17 +126,21 @@ _cc_cmd_push() {
   _sh=$(_cc_sha256_text "$(_cc_normalize "$_sol")")
   _now=$(_cc_iso_now)
 
+  # Writer (schema-en-migration): grava chave EN do container
+  # (.circular_movement_history) e folhas EN (problem_hash/solution_hash).
+  # Reader do append com fallback (.en // .pt) p/ acumular sobre states pt-BR
+  # vivos antes do migrate convergir o disco para EN.
   _new_state=$(mktemp) || _cc_die "mktemp falhou" 1
   jq \
     --arg ph "$_ph" \
     --arg sh "$_sh" \
     --arg ts "$_now" \
     --argjson max "$_CC_BUFFER_MAX" '
-    .historico_movimento_circular =
+    .circular_movement_history =
       (
-        ((.historico_movimento_circular // []) + [{
-          problema_hash: $ph,
-          solucao_hash: $sh,
+        (((.circular_movement_history // .historico_movimento_circular) // []) + [{
+          problem_hash: $ph,
+          solution_hash: $sh,
           timestamp: $ts
         }])
         | (if length > $max then .[length - $max:] else . end)
@@ -146,7 +150,7 @@ _cc_cmd_push() {
   rm -f -- "$_new_state" 2>/dev/null || :
   _cc_update_sha "$_sd"
 
-  _bsize=$(jq '.historico_movimento_circular | length' "$_sf")
+  _bsize=$(jq '(.circular_movement_history // .historico_movimento_circular) | length' "$_sf")
   printf '%s\t%s\t%s\n' "$_ph" "$_sh" "$_bsize"
 }
 
@@ -163,12 +167,13 @@ _cc_cmd_detect() {
   _sf=$(_cc_state_file "$_sd")
   [ -f "$_sf" ] || _cc_die "detect: state.json ausente" 1
 
-  # Encontra problema_hash com count >= threshold
+  # Reader (schema-en-migration): container EN + fallback (.en // .pt); folha
+  # problem_hash com fallback p/ problema_hash. Encontra hash com count >= threshold.
   _result=$(jq -r --argjson t "$_CC_REPEAT_THRESHOLD" '
-    (.historico_movimento_circular // [])
-    | group_by(.problema_hash)
+    ((.circular_movement_history // .historico_movimento_circular) // [])
+    | group_by(.problem_hash // .problema_hash)
     | map(select(length >= $t))
-    | map({hash: .[0].problema_hash, count: length})
+    | map({hash: (.[0].problem_hash // .[0].problema_hash), count: length})
     | .[]
     | "\(.hash)\t\(.count)"
   ' "$_sf")
@@ -177,7 +182,7 @@ _cc_cmd_detect() {
     exit 0
   fi
   printf '%s\n' "$_result"
-  printf '%s: movimento circular detectado (problema_hash repetido >=%s vezes)\n' \
+  printf '%s: movimento circular detectado (problem_hash repetido >=%s vezes)\n' \
     "$_CC_NAME" "$_CC_REPEAT_THRESHOLD" >&2
   exit 3
 }
@@ -194,11 +199,13 @@ _cc_cmd_list() {
   _cc_require_jq
   _sf=$(_cc_state_file "$_sd")
   [ -f "$_sf" ] || _cc_die "list: state.json ausente" 1
+  # Reader (schema-en-migration): container EN + fallback; folhas problem_hash/
+  # solution_hash com fallback p/ problema_hash/solucao_hash.
   jq -r '
-    (.historico_movimento_circular // [])
+    ((.circular_movement_history // .historico_movimento_circular) // [])
     | to_entries
     | .[]
-    | "\(.key)\t\(.value.problema_hash)\t\(.value.solucao_hash)\t\(.value.timestamp)"
+    | "\(.key)\t\(.value.problem_hash // .value.problema_hash)\t\(.value.solution_hash // .value.solucao_hash)\t\(.value.timestamp)"
   ' "$_sf"
 }
 
@@ -214,8 +221,10 @@ _cc_cmd_clear() {
   _cc_require_jq
   _sf=$(_cc_state_file "$_sd")
   [ -f "$_sf" ] || _cc_die "clear: state.json ausente" 1
+  # Writer (schema-en-migration): zera container EN e remove eventual chave pt-BR
+  # residual (clear = "esquecer historico", precisa valer mesmo pre-migrate).
   _new_state=$(mktemp) || _cc_die "mktemp falhou" 1
-  jq '.historico_movimento_circular = []' "$_sf" > "$_new_state" \
+  jq '.circular_movement_history = [] | del(.historico_movimento_circular)' "$_sf" > "$_new_state" \
     || { rm -f -- "$_new_state"; _cc_die "jq update falhou" 1; }
   _cc_atomic_write "$_sf" "$_new_state"
   rm -f -- "$_new_state" 2>/dev/null || :
@@ -234,7 +243,7 @@ USO:
   circular.sh list   --state-dir DIR
   circular.sh clear  --state-dir DIR
 
-Buffer FIFO capacidade 6. Detect = mesmo problema_hash >= 3 vezes.
+Buffer FIFO capacidade 6. Detect = mesmo problem_hash >= 3 vezes.
 
 EXIT (detect):
   0 sem movimento circular

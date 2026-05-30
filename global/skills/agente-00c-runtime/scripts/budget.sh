@@ -5,10 +5,10 @@
 #      docs/specs/agente-00c/research.md Decision 2
 #      docs/specs/agente-00c/tasks.md FASE 5.1
 #
-# Os proxies cobrem 3 dimensoes:
-#   1. tool_calls_onda_corrente >= tool_calls_threshold_onda (default 80)
-#   2. wallclock (now - inicio_onda_corrente) >= wallclock_threshold_segundos (5400 = 90min)
-#   3. file size de state.json >= estado_size_threshold_bytes (1MB)
+# Os proxies cobrem 3 dimensoes (chaves EN do schema; fallback pt-BR no read):
+#   1. tool_calls_current_wave >= tool_calls_threshold_wave (default 80)
+#   2. wallclock (now - current_wave_start) >= wallclock_threshold_seconds (5400 = 90min)
+#   3. file size de state.json >= state_size_threshold_bytes (1MB)
 #
 # Sem signal nativo de tokens consumidos no Claude Code (Decision 2);
 # por isso usa proxies indiretos.
@@ -79,11 +79,14 @@ _bd_collect() {
   _sf=$(_bd_state_file "$1")
   [ -f "$_sf" ] || _bd_die "state.json ausente em $1" 1
   _bd_require_jq
-  _bd_tc=$(jq -r '.orcamentos.tool_calls_onda_corrente // 0' "$_sf")
-  _bd_tc_max=$(jq -r '.orcamentos.tool_calls_threshold_onda // 80' "$_sf")
-  _bd_wc_max=$(jq -r '.orcamentos.wallclock_threshold_segundos // 5400' "$_sf")
-  _bd_sz_max=$(jq -r '.orcamentos.estado_size_threshold_bytes // 1048576' "$_sf")
-  _bd_inicio=$(jq -r '.orcamentos.inicio_onda_corrente // ""' "$_sf")
+  # Readers diretos sobre o arquivo (schema-en-migration): path EN + fallback
+  # (.en // .pt) para back-compat com states pt-BR vivos e com direct-writers
+  # ainda nao migrados (ex: state-ondas.sh grava .orcamentos.inicio_onda_corrente).
+  _bd_tc=$(jq -r '(.budgets.tool_calls_current_wave // .orcamentos.tool_calls_onda_corrente) // 0' "$_sf")
+  _bd_tc_max=$(jq -r '(.budgets.tool_calls_threshold_wave // .orcamentos.tool_calls_threshold_onda) // 80' "$_sf")
+  _bd_wc_max=$(jq -r '(.budgets.wallclock_threshold_seconds // .orcamentos.wallclock_threshold_segundos) // 5400' "$_sf")
+  _bd_sz_max=$(jq -r '(.budgets.state_size_threshold_bytes // .orcamentos.estado_size_threshold_bytes) // 1048576' "$_sf")
+  _bd_inicio=$(jq -r '(.budgets.current_wave_start // .orcamentos.inicio_onda_corrente) // ""' "$_sf")
   if [ -n "$_bd_inicio" ]; then
     _bd_inicio_e=$(_bd_iso_to_epoch "$_bd_inicio") || _bd_inicio_e=0
     if [ "$_bd_inicio_e" -gt 0 ]; then

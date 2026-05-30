@@ -70,7 +70,7 @@ Operador deve inspecionar manualmente <SD>/state.json apos abort.
 ### 3. Verificar idempotencia
 
 ```bash
-status=$(state-rw.sh get --state-dir <SD> --field '.execucao.status')
+status=$(state-rw.sh get --state-dir <SD> --field '.execution.status')
 ```
 
 Se `status` ja e terminal (`abortada` ou `concluida`):
@@ -90,15 +90,15 @@ Em ordem:
 now=$(date -u +%FT%TZ)
 
 # Se ha onda em andamento (sem fim), feche-a primeiro com motivo aborto
-if [ -n "$(state-rw.sh get --state-dir <SD> --field '.ondas[-1].fim // empty')" ]; then
+if [ -n "$(state-rw.sh get --state-dir <SD> --field '.waves[-1].finished_at // empty')" ]; then
   : # ultima onda ja fechada
 else
   state-ondas.sh end --state-dir <SD> --motivo-termino aborto
 fi
 
-state-rw.sh set --state-dir <SD> --field '.execucao.status' --value '"abortada"'
-state-rw.sh set --state-dir <SD> --field '.execucao.motivo_termino' --value '"aborto_manual"'
-state-rw.sh set --state-dir <SD> --field '.execucao.terminada_em' --value "\"$now\""
+state-rw.sh set --state-dir <SD> --field '.execution.status' --value '"abortada"'
+state-rw.sh set --state-dir <SD> --field '.execution.termination_reason' --value '"aborto_manual"'
+state-rw.sh set --state-dir <SD> --field '.execution.finished_at' --value "\"$now\""
 ```
 
 Cada `set` ja faz backup automatico em `state-history/`.
@@ -113,9 +113,9 @@ contendo apenas:
 # Relatorio de Execucao Agente-00C
 
 **Status**: ABORTADA (manual)
-**ID**: <execucao.id>
-**Iniciada em**: <iniciada_em>
-**Terminada em**: <terminada_em>
+**ID**: <execution.id>
+**Iniciada em**: <started_at>
+**Terminada em**: <finished_at>
 
 ## Resumo
 
@@ -140,7 +140,7 @@ gerar_stub | secrets-filter.sh scrub --env-file <PAP>/.env > <PAP>/.claude/agent
 
 ```bash
 state-ondas.sh git-commit --state-dir <SD> --projeto-alvo-path <PAP> \
-  --motivo "aborto manual da execucao $(state-rw.sh get --state-dir <SD> --field '.execucao.id')"
+  --motivo "aborto manual da execucao $(state-rw.sh get --state-dir <SD> --field '.execution.id')"
 ```
 
 NUNCA `git push` — Principio V (Blast Radius Confinado). Se `<PAP>` nao

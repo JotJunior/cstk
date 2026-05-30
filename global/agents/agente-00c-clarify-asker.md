@@ -22,7 +22,7 @@ O orquestrador passa, no prompt:
 |-------|------|----------|
 | `spec_path` | string | Caminho absoluto de `spec.md` corrente |
 | `briefing_path` | string | Caminho absoluto de `briefing.md` |
-| `etapa_corrente` | string | Tipicamente `clarify`; pode ser outra se asker for reaproveitado |
+| `current_stage` | string | Tipicamente `clarify`; pode ser outra se asker for reaproveitado |
 | `decisoes_anteriores` | array | Decisoes ja tomadas em ondas anteriores (para evitar perguntas redundantes) |
 | `quantidade_max_perguntas` | int | Default 5 (limite da skill clarify); pode ser menor se orcamento de onda apertado |
 

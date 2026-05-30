@@ -136,4 +136,107 @@ scenario_validate_arquivo_inexistente_falha() {
   fi
 }
 
+# schema-en-migration: prova que o reader-fallback (.en // .pt) ainda
+# renderiza um state.json LEGADO escrito 100% com chaves pt-BR (back-compat).
+# As fixtures EN sao cobertas pelos cenarios acima (state-ondas/state-decisions
+# ja escrevem EN). Aqui montamos um state pt-BR cru a mao.
+scenario_generate_legado_pt_br_via_fallback() {
+  _sd="$TMPDIR_TEST/legacy"
+  mkdir -p "$_sd"
+  cat > "$_sd/state.json" <<'JSON'
+{
+  "schema_version": 6,
+  "execucao": {
+    "id": "exec-legado-pt",
+    "projeto_alvo_path": "/tmp/legado",
+    "projeto_alvo_descricao": "Execucao legada pt-BR",
+    "stack_sugerida": "Go + Postgres",
+    "status": "concluida",
+    "motivo_termino": "pipeline_completa",
+    "iniciada_em": "2025-01-01T00:00:00Z",
+    "terminada_em": "2025-01-02T00:00:00Z"
+  },
+  "metricas_acumuladas": {
+    "ondas_total": 1,
+    "tool_calls_total": 7,
+    "decisoes_total": 1,
+    "bloqueios_humanos_total": 1,
+    "sugestoes_skills_globais_total": 1,
+    "issues_toolkit_abertas": 0,
+    "profundidade_max_atingida": 1
+  },
+  "ondas": [
+    {
+      "id": "onda-001",
+      "inicio": "2025-01-01T00:00:00Z",
+      "fim": "2025-01-01T01:00:00Z",
+      "etapas_executadas": ["briefing"],
+      "tool_calls": 7,
+      "wallclock_seconds": 3600,
+      "motivo_termino": "etapa_concluida_avancando"
+    }
+  ],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "onda_id": "onda-001",
+      "timestamp": "2025-01-01T00:30:00Z",
+      "etapa": "briefing",
+      "agente": "orquestrador-00c",
+      "contexto": "Contexto legado em portugues para a decisao",
+      "opcoes_consideradas": ["X", "Y"],
+      "escolha": "X",
+      "justificativa": "Justificativa legada em portugues aqui",
+      "score_justificativa": 3,
+      "referencias": ["docs/spec.md"],
+      "artefato_originador": "spec.md"
+    }
+  ],
+  "bloqueios_humanos": [
+    {
+      "id": "blk-001",
+      "status": "respondido",
+      "disparado_em": "2025-01-01T00:10:00Z",
+      "pergunta": "Pergunta legada em portugues?",
+      "contexto_para_resposta": "Contexto pt para a resposta",
+      "opcoes_recomendadas": ["op1"],
+      "resposta_humana": "Resposta humana legada",
+      "respondido_em": "2025-01-01T00:20:00Z"
+    }
+  ],
+  "sugestoes": [
+    {
+      "id": "sug-001",
+      "skill_afetada": "briefing",
+      "severidade": "impeditiva",
+      "diagnostico": "Diagnostico legado em portugues",
+      "proposta": "Proposta legada em portugues",
+      "issue_aberta": "https://example/issues/1"
+    }
+  ]
+}
+JSON
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate legado pt" "$_CAPTURED_STDERR"; return 1; }
+  # Cabecalho + secao 1 (execucao.*)
+  assert_stdout_contains "exec-legado-pt" || return 1
+  assert_stdout_contains "/tmp/legado" || return 1
+  assert_stdout_contains "Go + Postgres" || return 1
+  assert_stdout_contains "pipeline_completa" || return 1
+  # Secao 2 (ondas[].*)
+  assert_stdout_contains "onda-001" || return 1
+  assert_stdout_contains "etapa_concluida_avancando" || return 1
+  # Secao 3 (decisoes[].*)
+  assert_stdout_contains "Contexto legado em portugues para a decisao" || return 1
+  assert_stdout_contains "**Escolha**: X" || return 1
+  assert_stdout_contains "Justificativa legada em portugues aqui" || return 1
+  assert_stdout_contains "spec.md" || return 1
+  # Secao 4 (bloqueios_humanos[].*)
+  assert_stdout_contains "Pergunta legada em portugues?" || return 1
+  assert_stdout_contains "Resposta humana legada" || return 1
+  # Secao 5 (sugestoes[].*)
+  assert_stdout_contains "Diagnostico legado em portugues" || return 1
+  assert_stdout_contains "Proposta legada em portugues" || return 1
+}
+
 run_all_scenarios

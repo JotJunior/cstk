@@ -5,11 +5,27 @@
 #      docs/specs/agente-00c/data-model.md
 #      docs/specs/agente-00c/spec.md FR-008/FR-017/FR-024/FR-029
 #
+# Chaves do state.json sao EN (schema-en-migration). Toda leitura/escrita passa
+# por _sr_canonicalize_file (rename pt-BR -> EN); states pt-BR vivos sao aceitos
+# na entrada e convergem para EN a cada write. Ver
+# docs/specs/schema-en-migration/migration-map.md.
+#
 # Subcomandos:
 #   state-rw.sh init  --state-dir DIR --execucao-id ID
 #                     --projeto-alvo-path PATH --descricao TEXT
 #                     [--stack-json TEXT] [--whitelist-urls JSON-ARRAY]
-#                     — cria state.json + state.json.sha256 + state-history/
+#                     — modo PROJETO (agente-00c): cria state.json
+#                       (current_stage="briefing") + sha256 + state-history/
+#   state-rw.sh init  --state-dir DIR --short-name NAME
+#                     --projeto-alvo-path PATH --descricao TEXT
+#                     --briefing-path P --briefing-sha256 S
+#                     --constitution-path P --constitution-sha256 S
+#                     --constitution-version V [--key-aspects JSON-ARRAY]
+#                     [--execucao-id ID] [--stack-json TEXT] [--whitelist-urls JSON]
+#                     — modo FEATURE (feature-00c): emite schema de feature
+#                       (short_name + prerequisites + current_stage="specify")
+#                       numa unica chamada deterministica. execucao-id
+#                       auto-derivado (feat-<short>-<ts>) se omitido.
 #   state-rw.sh read  --state-dir DIR
 #                     — imprime conteudo atual de state.json em stdout
 #   state-rw.sh write --state-dir DIR
@@ -89,6 +105,89 @@ _sr_require_jq() {
   fi
 }
 
+# ---------- Canonicalizacao de chaves (schema-en-migration) ----------
+#
+# Migracao pt-BR -> EN das chaves do state.json. Mecanismo: rename plano
+# context-free aplicado recursivamente em TODA leitura/escrita do state.
+# pt-BR e aceito na entrada (states vivos), EN e canonico na saida; o arquivo
+# converge para EN a cada write. Remover este mapa + os fallbacks na proxima
+# MAJOR torna o schema EN-only.
+# Spec: docs/specs/schema-en-migration/migration-map.md
+#
+# Invariante: nenhum par pt->en colide entre containers (verificado no freeze).
+_SR_RENAME_MAP='{
+  "execucao":"execution","etapa_corrente":"current_stage",
+  "proxima_instrucao":"next_instruction","ondas":"waves","decisoes":"decisions",
+  "bloqueios_humanos":"human_blocks","orcamentos":"budgets",
+  "metricas_acumuladas":"accumulated_metrics",
+  "whitelist_urls_externas":"external_urls_whitelist",
+  "historico_movimento_circular":"circular_movement_history",
+  "aspectos_chave_iniciais":"initial_key_aspects",
+  "aspectos_chave_tecnicos":"technical_key_aspects",
+  "aspectos_chave_operacionais":"operational_key_aspects",
+  "aspectos_chave_tocados":"touched_key_aspects",
+  "pre_requisitos":"prerequisites",
+  "projeto_alvo_path":"target_project_path",
+  "projeto_alvo_descricao":"target_project_description",
+  "stack_sugerida":"suggested_stack","motivo_termino":"termination_reason",
+  "iniciada_em":"started_at","terminada_em":"finished_at",
+  "inicio":"started_at","fim":"finished_at",
+  "etapas_executadas":"executed_stages",
+  "proxima_onda_agendada_para":"next_wave_scheduled_for",
+  "decisao_id":"decision_id","titulo":"title",
+  "testes_rodados":"tests_run","testes_passados":"tests_passed",
+  "arquivos":"files","arquivos_tocados":"touched_files","origem":"source",
+  "score_justificativa":"justification_score",
+  "problema_hash":"problem_hash","solucao_hash":"solution_hash",
+  "sugestoes":"suggestions","skill_afetada":"affected_skill",
+  "diagnostico":"diagnosis","severidade":"severity","proposta":"proposal",
+  "criada_em":"created_at","issue_aberta":"issue_opened",
+  "escalada_modelo_pendente":"pending_model_escalation",
+  "resumo":"summary","resumo_chars":"summary_chars","resumo_max_chars":"summary_max_chars",
+  "estrategia":"strategy","gerado_em":"generated_at","gerado_na_onda":"generated_in_wave",
+  "tokens_economizados_estimados":"estimated_tokens_saved",
+  "eventos":"events","descricao":"description","tipo_invocacao":"invocation_type",
+  "proximo_marco_retrospectiva":"next_retrospective_milestone",
+  "onda_id":"wave_id",
+  "etapa":"stage","agente":"agent","contexto":"context",
+  "opcoes_consideradas":"options_considered","escolha":"choice",
+  "justificativa":"rationale","evidencia":"evidence",
+  "referencias":"references","artefato_originador":"originating_artifact",
+  "pergunta":"question","contexto_para_resposta":"context_for_answer",
+  "opcoes_recomendadas":"recommended_options","resposta_humana":"human_answer",
+  "respondido_em":"answered_at","disparado_em":"triggered_at",
+  "recursividade_max":"max_recursion",
+  "profundidade_corrente_subagentes":"current_subagent_depth",
+  "retro_execucoes_max_por_feature":"max_retro_executions_per_feature",
+  "retro_execucoes_consumidas":"retro_executions_consumed",
+  "ciclos_max_por_etapa":"max_cycles_per_stage",
+  "ciclos_consumidos_etapa_corrente":"cycles_consumed_current_stage",
+  "tool_calls_threshold_onda":"tool_calls_threshold_wave",
+  "wallclock_threshold_segundos":"wallclock_threshold_seconds",
+  "estado_size_threshold_bytes":"state_size_threshold_bytes",
+  "tool_calls_onda_corrente":"tool_calls_current_wave",
+  "inicio_onda_corrente":"current_wave_start","ondas_total":"waves_total",
+  "tempo_wallclock_total_segundos":"wallclock_total_seconds",
+  "profundidade_max_atingida":"max_depth_reached",
+  "subagentes_spawned":"subagents_spawned","decisoes_total":"decisions_total",
+  "bloqueios_humanos_total":"human_blocks_total",
+  "sugestoes_skills_globais_total":"global_skill_suggestions_total",
+  "issues_toolkit_abertas":"toolkit_issues_opened","ratificados_em":"ratified_at"
+}'
+
+# _sr_canonicalize_file FILE -> emite JSON com chaves EN em stdout.
+# Renomeia chaves pt-BR -> EN recursivamente. Idempotente sobre docs ja EN.
+# `map_values`/`with_entries` (jq >= 1.5) — nao depende de `walk` builtin.
+_sr_canonicalize_file() {
+  jq --argjson m "$_SR_RENAME_MAP" '
+    def _ren:
+      if   type == "object" then with_entries(.key |= ($m[.] // .)) | map_values(_ren)
+      elif type == "array"  then map(_ren)
+      else . end;
+    _ren
+  ' -- "$1"
+}
+
 # ---------- Layout do state-dir ----------
 
 _sr_state_file() { printf '%s/state.json\n' "$1"; }
@@ -144,11 +243,13 @@ _sr_next_onda_id() {
     printf '001\n'
     return 0
   fi
-  # Extrai max(.ondas[].id) numerico. id tem formato "onda-NNN".
+  # Extrai max(waves[].id) numerico. id tem formato "onda-NNN" (valor nao
+  # migrado). Fallback (.waves // .ondas) para states pt-BR vivos.
   _sr_max=$(jq -r '
-    if (.ondas // []) | length == 0 then 0
-    else ([.ondas[].id // ""] | map(sub("^onda-0*"; "") | tonumber? // 0) | max)
-    end' -- "$_sr_sf" 2>/dev/null) || _sr_max=0
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) == 0 then 0
+      else ([$w[].id // ""] | map(sub("^onda-0*"; "") | tonumber? // 0) | max)
+      end' -- "$_sr_sf" 2>/dev/null) || _sr_max=0
   _sr_next=$((_sr_max + 1))
   printf 'onda-%03d\n' "$_sr_next" | sed 's/onda-//'
 }
@@ -164,7 +265,8 @@ _sr_backup_current() {
   _sr_curr_onda="init"
   if command -v jq >/dev/null 2>&1; then
     _sr_curr_onda=$(jq -r '
-      if (.ondas // []) | length > 0 then (.ondas[-1].id // "init") else "init" end
+      ((.waves // .ondas) // []) as $w
+      | if ($w | length) > 0 then ($w[-1].id // "init") else "init" end
     ' -- "$_sr_sf" 2>/dev/null) || _sr_curr_onda="init"
   fi
   _sr_ts=$(_sr_ts_for_filename)
@@ -183,23 +285,56 @@ _sr_cmd_init() {
   _desc=""
   _stack="null"
   _whitelist="[]"
+  # Modo-feature (schema-en-migration): init deterministico de feature — fim do
+  # recipe multi-passo (init base + N x set) que produzia states inconsistentes.
+  _short=""
+  _br_path=""
+  _br_sha=""
+  _ct_path=""
+  _ct_sha=""
+  _ct_ver=""
+  _key_aspects="[]"
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --state-dir)         _sd=$2;        shift 2 ;;
-      --execucao-id)       _ei=$2;        shift 2 ;;
-      --projeto-alvo-path) _pap=$2;       shift 2 ;;
-      --descricao)         _desc=$2;      shift 2 ;;
-      --stack-json)        _stack=$2;     shift 2 ;;
-      --whitelist-urls)    _whitelist=$2; shift 2 ;;
+      --state-dir)            _sd=$2;          shift 2 ;;
+      --execucao-id)          _ei=$2;          shift 2 ;;
+      --projeto-alvo-path)    _pap=$2;         shift 2 ;;
+      --descricao)            _desc=$2;        shift 2 ;;
+      --stack-json)           _stack=$2;       shift 2 ;;
+      --whitelist-urls)       _whitelist=$2;   shift 2 ;;
+      --short-name)           _short=$2;       shift 2 ;;
+      --briefing-path)        _br_path=$2;     shift 2 ;;
+      --briefing-sha256)      _br_sha=$2;      shift 2 ;;
+      --constitution-path)    _ct_path=$2;     shift 2 ;;
+      --constitution-sha256)  _ct_sha=$2;      shift 2 ;;
+      --constitution-version) _ct_ver=$2;      shift 2 ;;
+      --key-aspects)          _key_aspects=$2; shift 2 ;;
       *) _sr_die "init: flag desconhecida: $1" 2 ;;
     esac
   done
   [ -n "$_sd" ]   || _sr_die "init: --state-dir obrigatorio" 2
-  [ -n "$_ei" ]   || _sr_die "init: --execucao-id obrigatorio" 2
   [ -n "$_pap" ]  || _sr_die "init: --projeto-alvo-path obrigatorio" 2
   [ -n "$_desc" ] || _sr_die "init: --descricao obrigatorio" 2
 
   _sr_require_jq
+
+  # Modo-feature ativa com --short-name. Exige pre-requisitos completos
+  # (feature-00c-preflight.sh MORRE sem prerequisites). execucao-id e
+  # auto-derivado (feat-<short>-<ts>) se omitido.
+  if [ -n "$_short" ]; then
+    [ -n "$_br_path" ] || _sr_die "init: modo-feature exige --briefing-path" 2
+    [ -n "$_br_sha" ]  || _sr_die "init: modo-feature exige --briefing-sha256" 2
+    [ -n "$_ct_path" ] || _sr_die "init: modo-feature exige --constitution-path" 2
+    [ -n "$_ct_sha" ]  || _sr_die "init: modo-feature exige --constitution-sha256" 2
+    [ -n "$_ct_ver" ]  || _sr_die "init: modo-feature exige --constitution-version" 2
+    if ! printf '%s' "$_key_aspects" | jq -e 'type == "array"' >/dev/null 2>&1; then
+      _sr_die "init: --key-aspects precisa ser JSON array (ou omitido)" 2
+    fi
+    [ -n "$_ei" ] || _ei="feat-${_short}-$(_sr_ts_for_filename)"
+  else
+    [ -n "$_ei" ] || _sr_die "init: --execucao-id obrigatorio (modo projeto)" 2
+  fi
+
   _sr_ensure_state_dir "$_sd"
 
   _sr_sf=$(_sr_state_file "$_sd")
@@ -208,59 +343,80 @@ _sr_cmd_init() {
   fi
 
   _now=$(_sr_iso_now)
-  # Templating do esqueleto via jq (escape automatico de strings).
+  # Templating via jq (escape automatico). Chaves EN (schema-en-migration);
+  # VALORES (status etc.) permanecem pt-BR (escopo: so chaves; enum = follow-up
+  # B). $short vazio => modo projeto (current_stage="briefing"); senao feature
+  # (short_name + prerequisites + current_stage="specify").
   _tmp=$(mktemp -- "${_sr_sf}.XXXXXX") || _sr_die "mktemp falhou" 1
   jq -n \
     --arg id "$_ei" \
     --arg pap "$_pap" \
     --arg desc "$_desc" \
     --arg now "$_now" \
+    --arg short "$_short" \
+    --arg brp "$_br_path" \
+    --arg brs "$_br_sha" \
+    --arg ctp "$_ct_path" \
+    --arg cts "$_ct_sha" \
+    --arg ctv "$_ct_ver" \
     --argjson stack "$_stack" \
     --argjson wl "$_whitelist" \
-    '{
-      schema_version: "1.0.0",
-      execucao: {
+    --argjson ka "$_key_aspects" \
+    '{ schema_version: "1.0.0" }
+    + (if $short != "" then { short_name: $short } else {} end)
+    + {
+      execution: {
         id: $id,
-        projeto_alvo_path: $pap,
-        projeto_alvo_descricao: $desc,
-        stack_sugerida: $stack,
+        target_project_path: $pap,
+        target_project_description: $desc,
+        suggested_stack: $stack,
         status: "em_andamento",
-        motivo_termino: null,
-        iniciada_em: $now,
-        terminada_em: null
+        termination_reason: null,
+        started_at: $now,
+        finished_at: null
+      }
+    }
+    + (if $short != ""
+       then { prerequisites: {
+                briefing: { path: $brp, sha256: $brs },
+                constitution: { path: $ctp, sha256: $cts, version: $ctv }
+              } }
+       else {} end)
+    + {
+      current_stage: (if $short != "" then "specify" else "briefing" end),
+      next_instruction: (if $short != ""
+        then "Iniciar etapa specify — invocar skill specify com a descricao da feature."
+        else "Iniciar etapa briefing — invocar skill briefing do toolkit com a descricao curta do projeto-alvo." end),
+      waves: [],
+      decisions: [],
+      human_blocks: [],
+      budgets: {
+        max_recursion: 3,
+        current_subagent_depth: 1,
+        max_retro_executions_per_feature: 2,
+        retro_executions_consumed: 0,
+        max_cycles_per_stage: 5,
+        cycles_consumed_current_stage: 0,
+        tool_calls_threshold_wave: 80,
+        wallclock_threshold_seconds: 5400,
+        state_size_threshold_bytes: 1048576,
+        tool_calls_current_wave: 0,
+        current_wave_start: null
       },
-      etapa_corrente: "briefing",
-      proxima_instrucao: "Iniciar etapa briefing — invocar skill briefing do toolkit com a descricao curta do projeto-alvo.",
-      ondas: [],
-      decisoes: [],
-      bloqueios_humanos: [],
-      orcamentos: {
-        recursividade_max: 3,
-        profundidade_corrente_subagentes: 1,
-        retro_execucoes_max_por_feature: 2,
-        retro_execucoes_consumidas: 0,
-        ciclos_max_por_etapa: 5,
-        ciclos_consumidos_etapa_corrente: 0,
-        tool_calls_threshold_onda: 80,
-        wallclock_threshold_segundos: 5400,
-        estado_size_threshold_bytes: 1048576,
-        tool_calls_onda_corrente: 0,
-        inicio_onda_corrente: null
-      },
-      metricas_acumuladas: {
-        ondas_total: 0,
+      accumulated_metrics: {
+        waves_total: 0,
         tool_calls_total: 0,
-        tempo_wallclock_total_segundos: 0,
-        profundidade_max_atingida: 1,
-        subagentes_spawned: 0,
-        decisoes_total: 0,
-        bloqueios_humanos_total: 0,
-        sugestoes_skills_globais_total: 0,
-        issues_toolkit_abertas: 0
+        wallclock_total_seconds: 0,
+        max_depth_reached: 1,
+        subagents_spawned: 0,
+        decisions_total: 0,
+        human_blocks_total: 0,
+        global_skill_suggestions_total: 0,
+        toolkit_issues_opened: 0
       },
-      whitelist_urls_externas: $wl,
-      historico_movimento_circular: [],
-      aspectos_chave_iniciais: []
+      external_urls_whitelist: $wl,
+      circular_movement_history: [],
+      initial_key_aspects: $ka
     }' > "$_tmp" || { rm -f -- "$_tmp"; _sr_die "jq init falhou" 1; }
   _sr_atomic_write "$_sr_sf" "$_tmp"
   rm -f -- "$_tmp" 2>/dev/null || :
@@ -279,7 +435,13 @@ _sr_cmd_read() {
   [ -n "$_sd" ] || _sr_die "read: --state-dir obrigatorio" 2
   _sr_sf=$(_sr_state_file "$_sd")
   [ -f "$_sr_sf" ] || _sr_die "read: state.json nao existe em $_sd" 1
-  cat -- "$_sr_sf"
+  # Canonicaliza chaves pt-BR -> EN (schema-en-migration). Degrada para raw se
+  # jq ausente ou JSON corrompido (preserva o contrato "imprime o que ha").
+  if _sr_canon=$(_sr_canonicalize_file "$_sr_sf" 2>/dev/null); then
+    printf '%s\n' "$_sr_canon"
+  else
+    cat -- "$_sr_sf"
+  fi
 }
 
 _sr_cmd_write() {
@@ -302,6 +464,15 @@ _sr_cmd_write() {
   fi
   if ! jq -e . "$_new" >/dev/null 2>&1; then
     rm -f -- "$_new"; _sr_die "write: stdin nao e JSON valido (jq falhou)" 1
+  fi
+  # Canonicaliza chaves pt-BR -> EN antes de persistir (schema-en-migration):
+  # o arquivo converge para EN a cada write. Degrada para o conteudo original
+  # se a canonicalizacao falhar.
+  _canon=$(mktemp -- "${_sr_sf}.canon.XXXXXX") || { rm -f -- "$_new"; _sr_die "mktemp falhou" 1; }
+  if _sr_canonicalize_file "$_new" > "$_canon" 2>/dev/null; then
+    mv -f -- "$_canon" "$_new"
+  else
+    rm -f -- "$_canon" 2>/dev/null || :
   fi
   # Backup do anterior (se existir) ANTES de sobrescrever (2.3.1).
   _sr_backup_current "$_sd"
@@ -326,7 +497,9 @@ _sr_cmd_get() {
   _sr_require_jq
   _sr_sf=$(_sr_state_file "$_sd")
   [ -f "$_sr_sf" ] || _sr_die "get: state.json ausente em $_sd" 1
-  jq -r "$_f" -- "$_sr_sf"
+  # Canonicaliza (EN) antes de extrair: callers usam paths EN mesmo sobre
+  # states pt-BR vivos (schema-en-migration).
+  _sr_canonicalize_file "$_sr_sf" | jq -r "$_f"
 }
 
 _sr_cmd_set() {
@@ -354,7 +527,9 @@ _sr_cmd_set() {
     _sr_die "set: --value nao e JSON valido. Strings precisam de aspas: '\"foo\"'." 1
   fi
   _new=$(mktemp -- "${_sr_sf}.new.XXXXXX") || _sr_die "mktemp falhou" 1
-  if ! jq --argjson v "$_v" "$_f = \$v" -- "$_sr_sf" > "$_new"; then
+  # Canonicaliza o doc inteiro (EN) ANTES de aplicar o set: evita doc misto
+  # (set EN sobre arquivo pt-BR criaria container duplicado). --field e EN.
+  if ! _sr_canonicalize_file "$_sr_sf" | jq --argjson v "$_v" "$_f = \$v" > "$_new"; then
     rm -f -- "$_new"; _sr_die "set: jq update falhou" 1
   fi
   _sr_backup_current "$_sd"
@@ -452,9 +627,10 @@ _sr_cmd_infer_aspectos() {
   _sf="$_sd/state.json"
   [ -f "$_sf" ] || _sr_die "infer-aspectos: state.json ausente em $_sd" 1
 
-  # Resolver projeto-alvo: flag explicita > .execucao.projeto_alvo_path
+  # Resolver projeto-alvo: flag explicita > execution.target_project_path
+  # (canonicaliza para ler tanto states EN quanto pt-BR vivos).
   if [ -z "$_pap" ]; then
-    _pap=$(jq -r '.execucao.projeto_alvo_path // ""' "$_sf")
+    _pap=$(_sr_canonicalize_file "$_sf" 2>/dev/null | jq -r '.execution.target_project_path // ""')
   fi
   [ -n "$_pap" ] || _sr_die "infer-aspectos: nao consegui resolver projeto-alvo-path" 1
   [ -d "$_pap" ] || _sr_die "infer-aspectos: projeto-alvo nao e diretorio: $_pap" 1
@@ -475,7 +651,12 @@ _sr_cmd_infer_aspectos() {
 
   # Aplicar matcher fuzzy: aspecto detectado se token-overlap com paths.
   # Reusa logica do drift.sh (matcher bidirecional + tokens >=3 chars).
-  printf '%s\n' "$_diff" | jq -R -s --slurpfile state "$_sf" '
+  # Le o state canonicalizado (EN) — fallback raw se jq/JSON falhar.
+  _sr_canon_state=$(mktemp) || _sr_die "infer-aspectos: mktemp falhou" 1
+  if ! _sr_canonicalize_file "$_sf" > "$_sr_canon_state" 2>/dev/null; then
+    cp -- "$_sf" "$_sr_canon_state" 2>/dev/null || :
+  fi
+  printf '%s\n' "$_diff" | jq -R -s --slurpfile state "$_sr_canon_state" '
     def tokenize($s):
       ($s // "")
       | ascii_downcase
@@ -494,14 +675,50 @@ _sr_cmd_infer_aspectos() {
         );
 
     ($state[0]) as $st
-    | (($st.aspectos_chave_iniciais     // []) +
-       ($st.aspectos_chave_tecnicos     // []) +
-       ($st.aspectos_chave_operacionais // []) | unique) as $aspectos
+    | (($st.initial_key_aspects     // []) +
+       ($st.technical_key_aspects   // []) +
+       ($st.operational_key_aspects // []) | unique) as $aspectos
     | . as $diff
     | $aspectos
       | map(. as $a | select(matches_aspecto($diff; $a)))
       | unique
   '
+  rm -f -- "$_sr_canon_state" 2>/dev/null || :
+}
+
+# _sr_cmd_migrate: canonicaliza um state.json pt-BR -> EN no lugar
+# (schema-en-migration). Idempotente: no-op se ja canonico. Faz backup do
+# pt-BR em state-history/ + recalcula sha256. Usado no rollout (migrar os
+# states vivos) e como defesa no inicio de cada onda (command-pai) ANTES de
+# qualquer direct-writer tocar o estado.
+_sr_cmd_migrate() {
+  _sd=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir) _sd=$2; shift 2 ;;
+      *) _sr_die "migrate: flag desconhecida: $1" 2 ;;
+    esac
+  done
+  [ -n "$_sd" ] || _sr_die "migrate: --state-dir obrigatorio" 2
+  _sr_require_jq
+  _sr_sf=$(_sr_state_file "$_sd")
+  [ -f "$_sr_sf" ] || _sr_die "migrate: state.json ausente em $_sd" 1
+  _sr_mig=$(mktemp -- "${_sr_sf}.mig.XXXXXX") || _sr_die "mktemp falhou" 1
+  if ! _sr_canonicalize_file "$_sr_sf" > "$_sr_mig" 2>/dev/null; then
+    rm -f -- "$_sr_mig"; _sr_die "migrate: canonicalizacao falhou (JSON invalido?)" 1
+  fi
+  # Idempotencia: se a forma normalizada (jq -S) ja bate, nada renomeou -> no-op
+  # (evita churn de backup/sha em states ja EN).
+  if [ "$(jq -S . -- "$_sr_sf" 2>/dev/null)" = "$(jq -S . -- "$_sr_mig" 2>/dev/null)" ]; then
+    rm -f -- "$_sr_mig"
+    _sr_log "migrate: ja canonico (EN) em $_sr_sf — no-op"
+    return 0
+  fi
+  _sr_backup_current "$_sd"   # preserva snapshot pt-BR em state-history/
+  _sr_atomic_write "$_sr_sf" "$_sr_mig"
+  rm -f -- "$_sr_mig" 2>/dev/null || :
+  _sr_update_sha "$_sd"
+  _sr_log "migrate: state canonicalizado para EN (backup pt-BR em state-history/)"
 }
 
 # ---------- Dispatch ----------
@@ -523,6 +740,7 @@ SUBCOMANDOS:
   sha256-verify  Compara hash atual com state.json.sha256 (FR-029)
   path-check     Valida --projeto-alvo-path (existe/cria/gravavel)
   infer-aspectos Infere aspectos tocados via git diff + matcher fuzzy
+  migrate        Canonicaliza chaves pt-BR -> EN no lugar (idempotente)
 
 Flags variam por subcomando — consulte cabecalho do script para detalhes.
 
@@ -548,6 +766,7 @@ case "$_sr_subcmd" in
   sha256-verify)   _sr_cmd_sha256_verify "$@" ;;
   path-check)      _sr_cmd_path_check "$@" ;;
   infer-aspectos)  _sr_cmd_infer_aspectos "$@" ;;
+  migrate)         _sr_cmd_migrate "$@" ;;
   -h|--help|help)  _sr_print_help; exit 0 ;;
   *) _sr_die "subcomando desconhecido: $_sr_subcmd (use --help)" 2 ;;
 esac

@@ -64,7 +64,7 @@ scenario_buffer_fifo_max_6() {
   for i in 1 2 3 4 5 6 7 8; do
     _push "$_sd" "Problema $i" "Solucao $i"
   done
-  _size=$(jq '.historico_movimento_circular | length' "$_sd/state.json")
+  _size=$(jq '.circular_movement_history | length' "$_sd/state.json")
   if [ "$_size" != 6 ]; then
     _fail "buffer FIFO" "esperado 6, obtido $_size"
     return 1
@@ -101,7 +101,7 @@ scenario_detect_3_repeticoes_exit_3() {
     return 1
   fi
   assert_stderr_contains "movimento circular detectado" || return 1
-  assert_stdout_contains "	3" || return 1   # contagem de problema_hash A
+  assert_stdout_contains "	3" || return 1   # contagem de problem_hash A
 }
 
 scenario_clear_esvazia_buffer() {
@@ -113,7 +113,7 @@ scenario_clear_esvazia_buffer() {
   capture "$SCRIPT" clear --state-dir "$_sd"
   capture "$SCRIPT" detect --state-dir "$_sd"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apos clear" "$_CAPTURED_EXIT"; return 1; }
-  _size=$(jq '.historico_movimento_circular | length' "$_sd/state.json")
+  _size=$(jq '.circular_movement_history | length' "$_sd/state.json")
   [ "$_size" = 0 ] || { _fail "buffer nao zerado" "size=$_size"; return 1; }
 }
 
@@ -125,6 +125,69 @@ scenario_state_ausente_falha() {
     _fail "state ausente" "esperado 1"
     return 1
   fi
+}
+
+# Back-compat (schema-en-migration): readers (.en // .pt). Um state pt-BR
+# legado (container historico_movimento_circular + folhas problema_hash/
+# solucao_hash) precisa continuar sendo lido por detect/list via fallback,
+# antes do migrate do command-pai convergir o disco para EN.
+_write_legacy_pt_state() {
+  # $1 = state-dir. Escreve um state.json minimo no schema pt-BR antigo, com
+  # 3 repeticoes do mesmo problema_hash (dispara detect exit 3).
+  _sd="$1"
+  mkdir -p "$_sd"
+  cat > "$_sd/state.json" <<'JSON'
+{
+  "schema_version": 1,
+  "historico_movimento_circular": [
+    { "problema_hash": "aaa111", "solucao_hash": "sol1", "timestamp": "2026-01-01T00:01:00Z" },
+    { "problema_hash": "bbb222", "solucao_hash": "sol2", "timestamp": "2026-01-01T00:02:00Z" },
+    { "problema_hash": "aaa111", "solucao_hash": "sol3", "timestamp": "2026-01-01T00:03:00Z" },
+    { "problema_hash": "aaa111", "solucao_hash": "sol4", "timestamp": "2026-01-01T00:04:00Z" }
+  ]
+}
+JSON
+}
+
+scenario_backcompat_pt_detect_le_via_fallback() {
+  _sd="$TMPDIR_TEST/legacy"
+  _write_legacy_pt_state "$_sd"
+  capture "$SCRIPT" detect --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 3 ]; then
+    _fail "back-compat pt detect" "esperado exit 3 lendo schema pt-BR, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "movimento circular detectado" || return 1
+  # problema_hash aaa111 aparece 3x -> reader-fallback (.problem_hash // .problema_hash)
+  assert_stdout_contains "aaa111	3" || return 1
+}
+
+scenario_backcompat_pt_list_le_via_fallback() {
+  _sd="$TMPDIR_TEST/legacy"
+  _write_legacy_pt_state "$_sd"
+  capture "$SCRIPT" list --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "back-compat pt list" "$_CAPTURED_STDERR"; return 1; }
+  # Folhas pt (problema_hash/solucao_hash) emergem via fallback do reader.
+  assert_stdout_contains "aaa111" || return 1
+  assert_stdout_contains "sol1" || return 1
+}
+
+scenario_backcompat_pt_push_converge_para_en() {
+  # push sobre state pt-BR vivo: acumula via fallback e grava container EN.
+  _sd="$TMPDIR_TEST/legacy"
+  _write_legacy_pt_state "$_sd"
+  _push "$_sd" "Novo problema apos legado" "nova solucao"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "push sobre legado" "$_CAPTURED_STDERR"; return 1; }
+  # Writer emite EN: container .circular_movement_history passa a existir e
+  # contem os 4 itens legados + 1 novo = 5.
+  _size_en=$(jq '.circular_movement_history | length' "$_sd/state.json")
+  if [ "$_size_en" != 5 ]; then
+    _fail "push converge EN" "esperado 5 em circular_movement_history, obtido $_size_en"
+    return 1
+  fi
+  # A nova entrada usa folhas EN (problem_hash/solution_hash).
+  _last_en=$(jq -r '.circular_movement_history[-1] | has("problem_hash") and has("solution_hash")' "$_sd/state.json")
+  [ "$_last_en" = "true" ] || { _fail "push folha EN" "ultima entrada sem problem_hash/solution_hash"; return 1; }
 }
 
 run_all_scenarios

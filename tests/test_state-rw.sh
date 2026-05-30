@@ -70,7 +70,7 @@ scenario_get_extrai_campo() {
   _sd="$TMPDIR_TEST/state"
   _init_default "$_sd"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
-  capture "$SCRIPT" get --state-dir "$_sd" --field '.execucao.status'
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution.status'
   if [ "$_CAPTURED_EXIT" != 0 ]; then
     _fail "get exit" "$_CAPTURED_EXIT"
     return 1
@@ -85,7 +85,7 @@ scenario_set_atualiza_campo_e_faz_backup() {
   # Antes do set: state-history vazio
   _hist_count=$(find "$_sd/state-history" -name '*.json' | wc -l | tr -d ' ')
   [ "$_hist_count" = 0 ] || { _fail "history nao vazio" "antes do set"; return 1; }
-  capture "$SCRIPT" set --state-dir "$_sd" --field '.etapa_corrente' --value '"specify"'
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.current_stage' --value '"specify"'
   if [ "$_CAPTURED_EXIT" != 0 ]; then
     _fail "set exit" "$_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
     return 1
@@ -94,7 +94,7 @@ scenario_set_atualiza_campo_e_faz_backup() {
   _hist_count=$(find "$_sd/state-history" -name '*.json' | wc -l | tr -d ' ')
   [ "$_hist_count" = 1 ] || { _fail "backup nao criado" "esperado 1, obtido $_hist_count"; return 1; }
   # Campo atualizado
-  capture "$SCRIPT" get --state-dir "$_sd" --field '.etapa_corrente'
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
   assert_stdout_contains "specify" || return 1
 }
 
@@ -194,10 +194,15 @@ scenario_round_trip_serializa_le_compara() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" ""; return 1; }
   # Le, modifica via jq, escreve, le de novo, compara campo
   _content=$("$SCRIPT" read --state-dir "$_sd")
+  # Escreve chave pt-BR de proposito: o write canonicaliza -> disco fica EN
+  # (schema-en-migration). O get le via path EN.
   _new=$(printf '%s' "$_content" | jq '.etapa_corrente = "plan"')
   printf '%s' "$_new" | "$SCRIPT" write --state-dir "$_sd" 2>/dev/null
-  capture "$SCRIPT" get --state-dir "$_sd" --field '.etapa_corrente'
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
   assert_stdout_contains "plan" || return 1
+  # prova convergencia: no disco e current_stage, nao etapa_corrente
+  grep -q '"current_stage"' "$_sd/state.json" || { _fail "write nao canonicalizou" ""; return 1; }
+  grep -q '"etapa_corrente"' "$_sd/state.json" && { _fail "chave pt-BR residual no disco" ""; return 1; }
   # state-history tem 1 backup do pre-write
   _hist_count=$(find "$_sd/state-history" -name '*.json' | wc -l | tr -d ' ')
   [ "$_hist_count" = 1 ] || { _fail "backup esperado" "obtido $_hist_count"; return 1; }
@@ -245,7 +250,7 @@ scenario_infer_aspectos_diff_com_aspecto_iniciais() {
     --descricao "POC com aspectos"
   # Grava aspectos manualmente
   capture "$SCRIPT" set --state-dir "$_sd" \
-    --field '.aspectos_chave_iniciais' \
+    --field '.initial_key_aspects' \
     --value '["slack","bot","threads"]'
   # Cria repo com arquivos relacionados
   _setup_pap_with_diff "$_pap" "README.md" "src/slack-handler.ts src/threads.ts"
@@ -263,7 +268,7 @@ scenario_infer_aspectos_diff_sem_aspecto_retorna_vazio() {
     --projeto-alvo-path "$_pap" \
     --descricao "POC com aspectos"
   capture "$SCRIPT" set --state-dir "$_sd" \
-    --field '.aspectos_chave_iniciais' \
+    --field '.initial_key_aspects' \
     --value '["slack","bot","threads"]'
   _setup_pap_with_diff "$_pap" "README.md" "src/logger.ts src/cache.ts"
   capture "$SCRIPT" infer-aspectos --state-dir "$_sd" --projeto-alvo-path "$_pap"
@@ -283,9 +288,9 @@ scenario_infer_aspectos_considera_camada_tecnica() {
     --projeto-alvo-path "$_pap" \
     --descricao "POC com 3 camadas"
   capture "$SCRIPT" set --state-dir "$_sd" \
-    --field '.aspectos_chave_iniciais' --value '["produto-a","produto-b","produto-c"]'
+    --field '.initial_key_aspects' --value '["produto-a","produto-b","produto-c"]'
   capture "$SCRIPT" set --state-dir "$_sd" \
-    --field '.aspectos_chave_tecnicos' --value '["auth","sessao","db"]'
+    --field '.technical_key_aspects' --value '["auth","sessao","db"]'
   _setup_pap_with_diff "$_pap" "README.md" "src/auth/middleware.ts src/sessao-store.ts"
   capture "$SCRIPT" infer-aspectos --state-dir "$_sd" --projeto-alvo-path "$_pap"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "camada tec" "$_CAPTURED_STDERR"; return 1; }
@@ -303,7 +308,7 @@ scenario_infer_aspectos_matcher_fuzzy_token() {
     --projeto-alvo-path "$_pap" \
     --descricao "POC fuzzy"
   capture "$SCRIPT" set --state-dir "$_sd" \
-    --field '.aspectos_chave_iniciais' \
+    --field '.initial_key_aspects' \
     --value '["integracao-bidirecional-mcp-jira","triagem","priorizacao"]'
   _setup_pap_with_diff "$_pap" "README.md" "src/jira-webhook.ts"
   capture "$SCRIPT" infer-aspectos --state-dir "$_sd" --projeto-alvo-path "$_pap"
@@ -320,7 +325,7 @@ scenario_infer_aspectos_resolve_pap_de_state_se_nao_passado() {
     --projeto-alvo-path "$_pap" \
     --descricao "POC pap auto"
   capture "$SCRIPT" set --state-dir "$_sd" \
-    --field '.aspectos_chave_iniciais' --value '["slack","bot","threads"]'
+    --field '.initial_key_aspects' --value '["slack","bot","threads"]'
   _setup_pap_with_diff "$_pap" "README.md" "src/slack-bot.ts"
   # Sem --projeto-alvo-path explicito; resolve via state
   capture "$SCRIPT" infer-aspectos --state-dir "$_sd"
@@ -336,6 +341,86 @@ scenario_infer_aspectos_state_ausente_falha() {
     _fail "state ausente" "esperado 1, obtido $_CAPTURED_EXIT"
     return 1
   fi
+}
+
+# ===== schema-en-migration: chaves EN, init feature-mode, migrate, canonicalize =====
+
+scenario_init_projeto_emite_chaves_en() {
+  _sd="$TMPDIR_TEST/state"
+  _init_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" read --state-dir "$_sd"
+  assert_stdout_contains '"execution"' || return 1
+  assert_stdout_contains '"current_stage"' || return 1
+  assert_stdout_contains '"budgets"' || return 1
+  assert_stdout_contains '"accumulated_metrics"' || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "briefing" || return 1
+}
+
+scenario_init_feature_mode() {
+  _sd="$TMPDIR_TEST/feat"
+  capture "$SCRIPT" init --state-dir "$_sd" --short-name "minha-feature" \
+    --projeto-alvo-path "/tmp/p" --descricao "feature de teste" \
+    --briefing-path "docs/briefing.md" --briefing-sha256 "abc123" \
+    --constitution-path "docs/constitution.md" --constitution-sha256 "def456" \
+    --constitution-version "1.2.0" --key-aspects '["asp-um","asp-dois"]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init feature" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.short_name'
+  assert_stdout_contains "minha-feature" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "specify" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.prerequisites.constitution.version'
+  assert_stdout_contains "1.2.0" || return 1
+  # execucao-id auto-derivado feat-<short>-<ts> quando omitido
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution.id'
+  assert_stdout_contains "feat-minha-feature-" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.initial_key_aspects | join(",")'
+  assert_stdout_contains "asp-um" || return 1
+}
+
+scenario_init_feature_mode_exige_prereqs() {
+  _sd="$TMPDIR_TEST/feat2"
+  capture "$SCRIPT" init --state-dir "$_sd" --short-name "x" \
+    --projeto-alvo-path "/tmp/p" --descricao "sem prereqs"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "feature sem prereq" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "briefing" || return 1
+}
+
+scenario_migrate_ptbr_para_en_idempotente() {
+  _sd="$TMPDIR_TEST/legacy"
+  mkdir -p "$_sd/state-history"
+  cat > "$_sd/state.json" <<'JSON'
+{ "schema_version":"1.0.0", "execucao":{"id":"x","status":"em_andamento","motivo_termino":null},
+  "etapa_corrente":"plan", "ondas":[{"id":"onda-002","inicio":"t"}], "decisoes":[],
+  "orcamentos":{"tool_calls_onda_corrente":3} }
+JSON
+  capture "$SCRIPT" migrate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "migrate" "$_CAPTURED_STDERR"; return 1; }
+  grep -q '"current_stage"' "$_sd/state.json" || { _fail "migrate nao gerou EN" ""; return 1; }
+  grep -q '"etapa_corrente"' "$_sd/state.json" && { _fail "pt-BR residual pos-migrate" ""; return 1; }
+  _hist=$(find "$_sd/state-history" -name '*.json' | wc -l | tr -d ' ')
+  [ "$_hist" = 1 ] || { _fail "backup pt-BR nao preservado" "esperado 1, obtido $_hist"; return 1; }
+  # 2o migrate = no-op idempotente (sem novo backup)
+  capture "$SCRIPT" migrate --state-dir "$_sd"
+  _hist2=$(find "$_sd/state-history" -name '*.json' | wc -l | tr -d ' ')
+  [ "$_hist2" = 1 ] || { _fail "migrate nao-idempotente" "obtido $_hist2 backups"; return 1; }
+}
+
+scenario_get_legacy_ptbr_via_canonicalize() {
+  _sd="$TMPDIR_TEST/legacy2"
+  mkdir -p "$_sd/state-history"
+  cat > "$_sd/state.json" <<'JSON'
+{ "schema_version":"1.0.0", "execucao":{"id":"old","status":"em_andamento"},
+  "etapa_corrente":"clarify", "ondas":[{"id":"onda-001","inicio":"t"}], "decisoes":[] }
+JSON
+  # path EN sobre arquivo pt-BR legado (canonicalize-on-read)
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "clarify" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.waves[0].id'
+  assert_stdout_contains "onda-001" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "em_andamento" || return 1
 }
 
 run_all_scenarios

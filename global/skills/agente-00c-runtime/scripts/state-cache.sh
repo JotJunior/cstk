@@ -27,7 +27,7 @@
 #
 #   state-cache.sh metrics-bump --state-dir DIR --tipo hit|miss-drift|miss-disabled
 #       [--chars-economizados N]
-#     — Incrementa contador em .metricas_acumuladas.cache.<tipo>.
+#     — Incrementa contador em .accumulated_metrics.cache.<tipo>.
 #
 #   state-cache.sh status --state-dir DIR --artifact briefing|constitution
 #     — Imprime JSON com estado completo do cache. Exit 0 sempre que
@@ -194,10 +194,14 @@ _sc_cmd_ensure() {
   _sha=$(_hash_sha256_file "$_src")
   _chars=$(wc -c <"$_src" | awk '{print $1}')
   _threshold=$(_sc_config "$_sd" passthrough_threshold_chars "$_SC_PASSTHROUGH_DEFAULT")
-  _resumo_max=$(_sc_config "$_sd" resumo_max_chars "$_SC_RESUMO_MAX_DEFAULT")
+  # Config key (schema-en-migration §3.9d): summary_max_chars (EN) com fallback
+  # ao pt-BR resumo_max_chars. Pega o EN; se vazio, tenta o pt-BR legado.
+  _resumo_max=$(_sc_config "$_sd" summary_max_chars "")
+  [ -n "$_resumo_max" ] || _resumo_max=$(_sc_config "$_sd" resumo_max_chars "$_SC_RESUMO_MAX_DEFAULT")
   _now=$(_sc_iso_now)
   _onda=$(jq -r '
-    if (.ondas // []) | length > 0 then ((.ondas | length))
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) > 0 then ($w | length)
     else 1
     end' "$_sf")
 
@@ -222,6 +226,10 @@ _sc_cmd_ensure() {
   _resumo_json=$(printf '%s' "$_resumo" | jq -Rs .)
   _sf=$(_sc_state_file "$_sd")
   _tmp=$(mktemp -- "${_sf}.XXXXXX") || _sc_die "mktemp falhou" 2
+  # WRITER (schema-en-migration §3.9d + idiom §4.1): chaves EN no state.json.
+  # resumo->summary, resumo_chars->summary_chars, estrategia->strategy,
+  # gerado_em->generated_at, gerado_na_onda->generated_in_wave.
+  # Containers/folhas source_* = KEEP (ja EN). VALOR de strategy = KEEP.
   jq --arg src "$_src" \
      --arg sha "$_sha" \
      --argjson chars "$_chars" \
@@ -234,11 +242,11 @@ _sc_cmd_ensure() {
         source_path: \$src,
         source_sha256: \$sha,
         source_chars: \$chars,
-        resumo: \$resumo,
-        resumo_chars: \$resumo_chars,
-        estrategia: \$estrategia,
-        gerado_em: \$now,
-        gerado_na_onda: \$onda
+        summary: \$resumo,
+        summary_chars: \$resumo_chars,
+        strategy: \$estrategia,
+        generated_at: \$now,
+        generated_in_wave: \$onda
       }" "$_sf" >"$_tmp" || { rm -f -- "$_tmp"; _sc_die "ensure: jq filter falhou" 2; }
   mv -f -- "$_tmp" "$_sf" || { rm -f -- "$_tmp"; _sc_die "ensure: mv atomico falhou" 2; }
 
@@ -265,8 +273,10 @@ _sc_cmd_get_resumo() {
   _sf=$(_sc_state_file "$_sd")
   [ -f "$_sf" ] || { printf '%s: state.json ausente\n' "$_SC_NAME" >&2; return 2; }
 
+  # READER (schema-en-migration §4.3): path EN + fallback (.en // .pt).
+  # VALOR "resumo" da strategy = KEEP (follow-up B).
   _field=$(_sc_cache_field "$_art")
-  _estrat=$(jq -r ".${_field}.estrategia // \"\"" "$_sf")
+  _estrat=$(jq -r "(.${_field}.strategy // .${_field}.estrategia) // \"\"" "$_sf")
   if [ "$_estrat" != "resumo" ]; then
     return 1
   fi
@@ -283,7 +293,7 @@ _sc_cmd_get_resumo() {
   if [ "$_current_sha" != "$_registered_sha" ]; then
     return 1  # drift entre check inicial e consumo (TOCTOU-safe double-check)
   fi
-  jq -r ".${_field}.resumo // \"\"" "$_sf"
+  jq -r "(.${_field}.summary // .${_field}.resumo) // \"\"" "$_sf"
   return 0
 }
 
@@ -405,20 +415,24 @@ _sc_cmd_metrics_bump() {
   case "$_tipo" in
     hit)
       _tokens=$(awk -v c="$_chars" -v r="$_ratio" 'BEGIN { printf "%d", c * r }')
+      # WRITER (schema-en-migration §3.9d): grava EN estimated_tokens_saved.
+      # READ-MODIFY-WRITE: o seed do contador cai no fallback pt-BR
+      # (tokens_economizados_estimados) p/ nao zerar metrica de state legado.
+      # tokens_cache_hits = KEEP (folha tokens_cache_*). VALOR nunca tocado.
       _sc_atomic_set "$_sd" "
-        .metricas_acumuladas.cache.tokens_cache_hits =
-          ((.metricas_acumuladas.cache.tokens_cache_hits // 0) + 1)
-        | .metricas_acumuladas.cache.tokens_economizados_estimados =
-          ((.metricas_acumuladas.cache.tokens_economizados_estimados // 0) + $_tokens)
+        .accumulated_metrics.cache.tokens_cache_hits =
+          ((.accumulated_metrics.cache.tokens_cache_hits // 0) + 1)
+        | .accumulated_metrics.cache.estimated_tokens_saved =
+          (((.accumulated_metrics.cache.estimated_tokens_saved // .accumulated_metrics.cache.tokens_economizados_estimados) // 0) + $_tokens)
       "
       ;;
     miss-drift)
-      _sc_atomic_set "$_sd" ".metricas_acumuladas.cache.tokens_cache_misses_drift =
-        ((.metricas_acumuladas.cache.tokens_cache_misses_drift // 0) + 1)"
+      _sc_atomic_set "$_sd" ".accumulated_metrics.cache.tokens_cache_misses_drift =
+        ((.accumulated_metrics.cache.tokens_cache_misses_drift // 0) + 1)"
       ;;
     miss-disabled)
-      _sc_atomic_set "$_sd" ".metricas_acumuladas.cache.tokens_cache_misses_disabled =
-        ((.metricas_acumuladas.cache.tokens_cache_misses_disabled // 0) + 1)"
+      _sc_atomic_set "$_sd" ".accumulated_metrics.cache.tokens_cache_misses_disabled =
+        ((.accumulated_metrics.cache.tokens_cache_misses_disabled // 0) + 1)"
       ;;
     *)
       _sc_die_usage "metrics-bump: --tipo invalido: '$_tipo' (esperado: hit|miss-drift|miss-disabled)"

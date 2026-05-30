@@ -5,6 +5,63 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.3.0] - 2026-05-30
+
+Normalização das chaves do `state.json` (runtime agente-00c/feature-00c) e das
+colunas da `knowledge.db` de português para inglês. Originou de um bugfix: o
+`/feature-00c` documentava um init via one-liner (`state-rw.sh init --short-name
+… --briefing-* …` + `drift.sh extract`) que NÃO existia nos scripts — as flags
+eram fantasma. A correção exigiu construir as capacidades faltantes, o que abriu
+a oportunidade de uniformizar o schema inteiro. **Não-breaking**: pt-BR é aceito
+na entrada via aliases; EN é canônico na saída. Remoção do suporte pt-BR = próxima
+MAJOR. Mapa congelado em `docs/specs/schema-en-migration/migration-map.md`.
+
+### Added
+
+- **`state-rw.sh` — canonicalizador de chaves** (`_sr_canonicalize_file`):
+  rename plano pt-BR → EN em toda leitura/escrita do `state.json`. O arquivo
+  converge para EN a cada escrita; states pt-BR legados são lidos
+  transparentemente. Subcomando novo `state-rw.sh migrate` canonicaliza um
+  state in-place (idempotente; backup pt-BR em `state-history/`).
+- **`state-rw.sh init` — modo-feature determinístico**: `--short-name` +
+  `--briefing-path/sha256` + `--constitution-path/sha256/version` +
+  `--key-aspects` emitem o schema de feature completo (`short_name`,
+  `prerequisites`, `current_stage="specify"`) numa única chamada atômica.
+  Encerra o recipe multi-passo (init base + N×set) que produzia states
+  inconsistentes — **corrige o bug que originou esta release**.
+- **`drift.sh extract --text`**: extrator real de keywords (determinístico:
+  lowercase + tokenização + stopwords pt/en + dedupe + top-N). Substitui a
+  referência fantasma `drift.sh extract --texto` dos docs do `/feature-00c`.
+
+### Changed
+
+- **Chaves do `state.json` → EN** em todo o runtime (~30 scripts +
+  orquestradores/commands): `execucao→execution`, `etapa_corrente→current_stage`,
+  `ondas→waves`, `decisoes→decisions`, `bloqueios_humanos→human_blocks`,
+  `orcamentos→budgets`, `metricas_acumuladas→accumulated_metrics`,
+  `sugestoes→suggestions`, + todas as folhas (`contexto→context`,
+  `escolha→choice`, `justificativa→rationale`,
+  `score_justificativa→justification_score`, etc.).
+- **`drift.sh aspectos` → `key-aspects`** (alias `aspectos` mantido com aviso de
+  deprecação).
+- **`cli/lib/recall.sh` — schema v7**: colunas e tabelas da `knowledge.db`
+  normalizadas para EN (tabela `bloqueios→blocks`; `execucao_id→execution_id` em
+  todas; etc. — ver `migration-map.md §3.11`). Índice é DERIVADO: o bump
+  `RECALL_SCHEMA_VERSION` 6→7 dropa+recria as tabelas renomeadas no 1º acesso de
+  um DB pré-v7; `--reindex`/próximo ingest repopula a partir do `state.json` (sem
+  perda). `cstk recall --type` aceita `block` (canônico) e `bloqueio` (alias
+  deprecado). Ingestão lê chaves EN do `state.json` com fallback pt-BR.
+
+### Notas
+
+- **SemVer MINOR**: nada quebra para usuários do cstk (aliases pt-BR + EN; DB
+  reconstrói sozinho). Remoção dos aliases = próxima MAJOR.
+- **Fora de escopo** (follow-ups, mesma estratégia de alias): nomes de flag CLI
+  (A); valores de enum como `em_andamento` (B); keys de output de relatório
+  `model-routing-report`/`report` (D).
+- **Consumidores da knowledge.db** (ex.: cstk-panel) precisam adequar-se aos
+  nomes de coluna EN — painel é repo à parte.
+
 ## [5.2.0] - 2026-05-28
 
 Correção de perda de informação na ingestão de decisões do `knowledge.db`.

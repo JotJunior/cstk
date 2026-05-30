@@ -121,7 +121,7 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
 5. coexistencia agente-00c (FR-026):
    _agstate="$_proj/.claude/agente-00c-state/state.json"
    if [ -f "$_agstate" ]; then
-     _status=$(jq -r '.execucao.status // "unknown"' "$_agstate" 2>/dev/null)
+     _status=$(jq -r '(.execution.status // .execucao.status) // "unknown"' "$_agstate" 2>/dev/null)
      case "$_status" in
        em_andamento|aguardando_humano)
          stderr "agente-00c esta ativo (status=$_status). Resolva via /agente-00c-abort ou /agente-00c-resume."
@@ -153,7 +153,7 @@ mkdir -p "$AGENTE_00C_STATE_DIR/backups"
 _br_sha=$(sha256sum "$_br" | awk '{print $1}')
 _ct_sha=$(sha256sum "$_ct" | awk '{print $1}')
 _ct_ver=$(grep -E '^\*\*Version\*\*:' "$_ct" | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
-_aspectos=$(drift.sh extract --texto "$_desc")  # 3-7 keywords
+_aspectos=$(drift.sh extract --text "$_desc")  # 3-7 keywords
 
 state-rw.sh init --state-dir "$AGENTE_00C_STATE_DIR" \
   --short-name "$SHORT" \
@@ -162,10 +162,19 @@ state-rw.sh init --state-dir "$AGENTE_00C_STATE_DIR" \
   --briefing-path "$_br" --briefing-sha256 "$_br_sha" \
   --constitution-path "$_ct" --constitution-sha256 "$_ct_sha" \
   --constitution-version "$_ct_ver" \
-  --aspectos-chave "$_aspectos"
+  --key-aspects "$_aspectos"
 ```
 
 ### 4. Selecionar modelo da onda + delegar ao orquestrador via Agent
+
+Migrate defensivo (best-effort): canonicaliza um `state.json` pt-BR legado
+para EN no lugar ANTES de qualquer direct-writer (orquestrador, `wave-select`)
+tocar o arquivo (schema-en-migration, arquitetura B+). Idempotente/no-op em
+states ja EN; degrada graciosamente (falha nao gateia):
+
+```bash
+state-rw.sh migrate --state-dir "$AGENTE_00C_STATE_DIR"
+```
 
 Antes de spawnar, compute o modelo a aplicar nesta onda via `wave-select`
 (mapa fase→modelo + refino model-selector + override do operador — FR-002,

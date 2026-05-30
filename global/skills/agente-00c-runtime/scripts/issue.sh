@@ -85,11 +85,11 @@ _ish_hash() {
 _ish_get_state() {
   _sf=$(_ish_state_file "$1")
   [ -f "$_sf" ] || _ish_die "state.json ausente em $1" 1
-  _ISH_EXEC_ID=$(jq -r '.execucao.id' "$_sf")
-  _ISH_PAP=$(jq -r '.execucao.projeto_alvo_path' "$_sf")
-  _ISH_PROJ_DESC=$(jq -r '.execucao.projeto_alvo_descricao' "$_sf")
-  _ISH_ETAPA=$(jq -r '.etapa_corrente' "$_sf")
-  _ISH_ONDA=$(jq -r 'if (.ondas // []) | length > 0 then (.ondas[-1].id // "init") else "init" end' "$_sf")
+  _ISH_EXEC_ID=$(jq -r '(.execution // .execucao).id' "$_sf")
+  _ISH_PAP=$(jq -r '(.execution // .execucao) | (.target_project_path // .projeto_alvo_path)' "$_sf")
+  _ISH_PROJ_DESC=$(jq -r '(.execution // .execucao) | (.target_project_description // .projeto_alvo_descricao)' "$_sf")
+  _ISH_ETAPA=$(jq -r '(.current_stage // .etapa_corrente)' "$_sf")
+  _ISH_ONDA=$(jq -r '((.waves // .ondas) // []) as $w | if ($w | length) > 0 then ($w[-1].id // "init") else "init" end' "$_sf")
 }
 
 # _ish_apply_secrets STDIN env_file -> filtra secrets via secrets-filter.sh
@@ -118,8 +118,8 @@ _ish_build_body() {
 
   # Sumario das decisoes recentes que evidenciam o bug (max 5)
   _rel_decs=$(jq -r '
-    (.decisoes // []) | reverse | .[0:5]
-    | map("- Decisao `\(.id)`: \(.contexto | .[0:100])")
+    ((.decisions // .decisoes) // []) | reverse | .[0:5]
+    | map("- Decisao `\(.id)`: \((.context // .contexto) | .[0:100])")
     | join("\n")
   ' "$(_ish_state_file "$_sd")")
   [ -z "$_rel_decs" ] && _rel_decs="- (nenhuma decisao registrada ainda)"

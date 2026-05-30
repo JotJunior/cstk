@@ -197,14 +197,14 @@ scenario_metrics_bump_hit_incrementa_contador() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd" || { _error "init falhou"; return 2; }
   assert_exit 0 "$SCRIPT" metrics-bump --state-dir "$_sd" --tipo hit --chars-economizados 2000 || return 1
-  _val=$(jq -r '.metricas_acumuladas.cache.tokens_cache_hits // 0' "$_sd/state.json")
+  _val=$(jq -r '.accumulated_metrics.cache.tokens_cache_hits // 0' "$_sd/state.json")
   if [ "$_val" != "1" ]; then
     _fail "tokens_cache_hits esperado 1, got $_val"
     return 1
   fi
-  _tok=$(jq -r '.metricas_acumuladas.cache.tokens_economizados_estimados // 0' "$_sd/state.json")
+  _tok=$(jq -r '.accumulated_metrics.cache.estimated_tokens_saved // 0' "$_sd/state.json")
   if [ "$_tok" != "500" ]; then
-    _fail "tokens_economizados esperado 500, got $_tok"
+    _fail "estimated_tokens_saved esperado 500, got $_tok"
     return 1
   fi
 }
@@ -213,7 +213,7 @@ scenario_metrics_bump_miss_drift() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd" || { _error "init falhou"; return 2; }
   assert_exit 0 "$SCRIPT" metrics-bump --state-dir "$_sd" --tipo miss-drift || return 1
-  _val=$(jq -r '.metricas_acumuladas.cache.tokens_cache_misses_drift // 0' "$_sd/state.json")
+  _val=$(jq -r '.accumulated_metrics.cache.tokens_cache_misses_drift // 0' "$_sd/state.json")
   if [ "$_val" != "1" ]; then
     _fail "miss-drift esperado 1, got $_val"
     return 1
@@ -239,10 +239,114 @@ scenario_ensure_resumo_chars_menor_que_source() {
   _init_state "$_sd" || { _error "init falhou"; return 2; }
   _make_big_source "$_src"
   _ensure "$_sd" "$_src" || return 1
+  # WRITER agora emite chaves EN (schema-en-migration §3.9d): summary_chars.
   _src_chars=$(jq -r '.briefing_cache.source_chars' "$_sd/state.json")
-  _res_chars=$(jq -r '.briefing_cache.resumo_chars' "$_sd/state.json")
+  _res_chars=$(jq -r '.briefing_cache.summary_chars' "$_sd/state.json")
   if [ "$_res_chars" -ge "$_src_chars" ]; then
-    _fail "FR-CACHE-017: resumo_chars ($_res_chars) deve ser < source_chars ($_src_chars)"
+    _fail "FR-CACHE-017: summary_chars ($_res_chars) deve ser < source_chars ($_src_chars)"
+    return 1
+  fi
+}
+
+# Back-compat (schema-en-migration): state.json legado pt-BR com `.ondas`
+# (em vez de `.waves`). O reader de `ensure` que conta ondas deve cair no
+# fallback `(.waves // .ondas)` e contar 2 ondas legadas. O WRITER, porem,
+# grava a folha EN `generated_in_wave` (state-en-migration §3.9d). Prova de
+# regressao: le container pt legado, escreve folha EN.
+scenario_ensure_le_ondas_pt_legado_fallback() {
+  _sd="$TMPDIR_TEST/state-pt"
+  _src="$TMPDIR_TEST/briefing.md"
+  mkdir -p "$_sd"
+  cat >"$_sd/state.json" <<'EOF'
+{
+  "schema_version": 7,
+  "ondas": [{"id": "onda-001"}, {"id": "onda-002"}],
+  "metricas_acumuladas": {}
+}
+EOF
+  _make_big_source "$_src"
+  assert_exit 0 "$SCRIPT" ensure --state-dir "$_sd" --artifact briefing --source-path "$_src" || return 1
+  _gon=$(jq -r '.briefing_cache.generated_in_wave' "$_sd/state.json")
+  if [ "$_gon" != "2" ]; then
+    _fail "fallback .ondas: generated_in_wave (EN) esperado 2 (contagem de ondas legadas pt), got $_gon"
+    return 1
+  fi
+}
+
+# WRITER contract (schema-en-migration §3.9d): `ensure` deve emitir AS folhas
+# EN (summary, summary_chars, strategy, generated_at, generated_in_wave) e NAO
+# as pt-BR. Source_* permanecem (keep). Trava o lado escritor do par.
+scenario_ensure_grava_chaves_en() {
+  _sd="$TMPDIR_TEST/state"
+  _src="$TMPDIR_TEST/briefing.md"
+  _init_state "$_sd" || { _error "init falhou"; return 2; }
+  _make_big_source "$_src"
+  _ensure "$_sd" "$_src" || return 1
+  # Folhas EN presentes
+  for _k in summary summary_chars strategy generated_at generated_in_wave \
+            source_path source_sha256 source_chars; do
+    _has=$(jq -r --arg k "$_k" 'if (.briefing_cache | has($k)) then "yes" else "no" end' "$_sd/state.json")
+    if [ "$_has" != "yes" ]; then
+      _fail "WRITER §3.9d: briefing_cache.$_k (EN) ausente apos ensure"
+      return 1
+    fi
+  done
+  # Folhas pt-BR NAO devem existir no output do writer
+  for _k in resumo resumo_chars estrategia gerado_em gerado_na_onda; do
+    _has=$(jq -r --arg k "$_k" 'if (.briefing_cache | has($k)) then "yes" else "no" end' "$_sd/state.json")
+    if [ "$_has" != "no" ]; then
+      _fail "WRITER §3.9d: briefing_cache.$_k (pt-BR) NAO deveria ser escrito"
+      return 1
+    fi
+  done
+  # VALOR de strategy permanece pt-BR (follow-up B): "resumo"
+  _str=$(jq -r '.briefing_cache.strategy' "$_sd/state.json")
+  if [ "$_str" != "resumo" ]; then
+    _fail "VALOR de strategy deve permanecer 'resumo' (follow-up B), got $_str"
+    return 1
+  fi
+}
+
+# READER fallback (schema-en-migration §4.3): get-resumo deve LER um cache
+# legado pt-BR (estrategia/resumo). Construimos via ensure (EN) e renomeamos
+# as folhas de volta para pt-BR p/ simular state legado; o reader cai no
+# fallback (.strategy // .estrategia) e (.summary // .resumo). Prova de
+# regressao do lado leitor do par coordenado.
+scenario_get_resumo_le_cache_pt_legado_fallback() {
+  _sd="$TMPDIR_TEST/state"
+  _src="$TMPDIR_TEST/briefing.md"
+  _init_state "$_sd" || { _error "init falhou"; return 2; }
+  _make_big_source "$_src"
+  _ensure "$_sd" "$_src" || return 1
+  # Renomeia folhas EN -> pt-BR no briefing_cache (simula state legado)
+  _tmp="$_sd/state.json.tmp"
+  jq '.briefing_cache |= (
+        .estrategia = .strategy | del(.strategy)
+      | .resumo = .summary | del(.summary)
+      | .resumo_chars = .summary_chars | del(.summary_chars)
+      | .gerado_em = .generated_at | del(.generated_at)
+      | .gerado_na_onda = .generated_in_wave | del(.generated_in_wave)
+      )' "$_sd/state.json" >"$_tmp" && mv -f "$_tmp" "$_sd/state.json"
+  # get-resumo deve dar hit (le estrategia/resumo via fallback)
+  assert_exit 0 "$SCRIPT" get-resumo --state-dir "$_sd" --artifact briefing || return 1
+  assert_stdout_contains "## Secao" || return 1
+}
+
+# READ-MODIFY-WRITE fallback (schema-en-migration §3.9d): metrics-bump hit
+# deve SEED o acumulador a partir do pt-BR tokens_economizados_estimados (state
+# legado) e escrever no EN estimated_tokens_saved. Prova: contador legado=1000
+# + 500 (deste hit) = 1500, gravado sob a chave EN.
+scenario_metrics_bump_hit_seed_pt_legado_fallback() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd" || { _error "init falhou"; return 2; }
+  # Injeta contador legado pt-BR
+  _tmp="$_sd/state.json.tmp"
+  jq '.accumulated_metrics.cache.tokens_economizados_estimados = 1000' \
+    "$_sd/state.json" >"$_tmp" && mv -f "$_tmp" "$_sd/state.json"
+  assert_exit 0 "$SCRIPT" metrics-bump --state-dir "$_sd" --tipo hit --chars-economizados 2000 || return 1
+  _tok=$(jq -r '.accumulated_metrics.cache.estimated_tokens_saved // 0' "$_sd/state.json")
+  if [ "$_tok" != "1500" ]; then
+    _fail "fallback seed: estimated_tokens_saved esperado 1500 (1000 legado + 500), got $_tok"
     return 1
   fi
 }

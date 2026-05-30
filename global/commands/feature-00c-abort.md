@@ -46,7 +46,7 @@ fi
 ### 3. Idempotencia — status terminal ja?
 
 ```
-_status=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.execucao.status')
+_status=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.execution.status')
 
 case "$_status" in
   abortada|concluida)
@@ -91,18 +91,18 @@ fi
 state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" --force
 ```
 
-### 5. Marcar status=abortada + terminada_em + motivo
+### 5. Marcar status=abortada + finished_at + motivo
 
 ```
 _ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 _motivo="${MOTIVO:-aborto manual}"
 
 state-rw.sh set --state-dir "$AGENTE_00C_STATE_DIR" \
-  --field '.execucao.status' --value '"abortada"'
+  --field '.execution.status' --value '"abortada"'
 state-rw.sh set --state-dir "$AGENTE_00C_STATE_DIR" \
-  --field '.execucao.terminada_em' --value "\"$_ts\""
+  --field '.execution.finished_at' --value "\"$_ts\""
 state-rw.sh set --state-dir "$AGENTE_00C_STATE_DIR" \
-  --field '.execucao.motivo_termino' --value "\"$_motivo\""
+  --field '.execution.termination_reason' --value "\"$_motivo\""
 
 # Recomputar hash
 state-rw.sh sha256-update --state-dir "$AGENTE_00C_STATE_DIR"
@@ -111,7 +111,7 @@ state-rw.sh sha256-update --state-dir "$AGENTE_00C_STATE_DIR"
 ### 6. Gerar backup final + relatorio parcial (FR-019: <60s)
 
 ```
-_wave=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.ondas | length')
+_wave=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.waves | length')
 cat "$AGENTE_00C_STATE_DIR/state.json" | secrets-filter.sh for-backup \
   --wave-number "$_wave" > "$AGENTE_00C_STATE_DIR/backups/wave-$(printf '%03d' "$_wave").json"
 

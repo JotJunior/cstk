@@ -15,7 +15,7 @@
 #   A sequencia pre-spawn de subagente roda:
 #     5) state-decisions.sh register      -> persiste Decisao "dec-NNN"
 #     6) state-ondas.sh record-skill      -> adiciona entrada em
-#                                            .ondas[N].skills_invoked[]
+#                                            .waves[N].skills_invoked[]
 #                                            referenciando dec-NNN
 #   Se um crash ocorre ENTRE 5 e 6, o estado fica com Decisao registrada
 #   sem record-skill correspondente. Em retomadas (`/feature-00c-resume`)
@@ -25,11 +25,11 @@
 #
 # Subcomandos:
 #   state-decisions-reconcile.sh check --state-dir DIR
-#       — Varre `.decisoes[]` procurando entradas com contexto matchando
+#       — Varre `.decisions[]` procurando entradas com context matchando
 #         o prefixo "Selecao de modelo para subagente " e verifica que
-#         existe entrada em `.ondas[].skills_invoked[]` com
-#         `decisao_id == .id` E `skill == "model-selector"`.
-#       — Stdout: TSV `dec-id<TAB>onda_id<TAB>subagent_type` por orfa.
+#         existe entrada em `.waves[].skills_invoked[]` com
+#         `decision_id == .id` E `skill == "model-selector"`.
+#       — Stdout: TSV `dec-id<TAB>wave_id<TAB>subagent_type` por orfa.
 #       — Exit 0 se todas as Decisoes "Selecao de modelo" tem record-skill.
 #       — Exit 1 se >=1 orfa detectada.
 #       — Exit 2 se uso invalido ou state.json ausente.
@@ -96,36 +96,37 @@ _sdr_cmd_check() {
   [ -f "$_sdr_sf" ] || _sdr_die_usage "check: state.json ausente em '$_sdr_sd'"
   [ -r "$_sdr_sf" ] || _sdr_die_usage "check: state.json sem permissao de leitura em '$_sdr_sd'"
 
-  # Query jq read-only: para cada Decisao com contexto matchando
+  # Query jq read-only: para cada Decisao com context matchando
   # "Selecao de modelo para subagente <T>", verifica que existe entrada
-  # em .ondas[].skills_invoked[] com decisao_id == dec.id AND
-  # skill == "model-selector". Emite TSV das orfas (dec-id, onda_id,
-  # subagent_type extraido do contexto).
+  # em .waves[].skills_invoked[] com decision_id == dec.id AND
+  # skill == "model-selector". Emite TSV das orfas (dec-id, wave_id,
+  # subagent_type extraido do context). Reader-fallback EN-com-pt
+  # (.en // .pt) preserva back-compat com states legados pt-BR.
   #
   # Notas POSIX:
   #   - tostream/$paths/etc nao sao usados aqui; query simples basta.
-  #   - `?` em .decisoes[]? tolera arrays ausentes.
+  #   - `?` em (.decisions // .decisoes)[]? tolera arrays ausentes.
   #   - `[...] | unique` impede duplicacao caso uma Decisao apareca em
   #     mais de uma onda (defesa contra fixture estranha).
   _sdr_orphans=$(
     jq -r '
       . as $root
       | [
-          .decisoes[]?
-          | select(.contexto // "" | startswith("Selecao de modelo para subagente "))
+          (.decisions // .decisoes // [])[]?
+          | select((.context // .contexto // "") | startswith("Selecao de modelo para subagente "))
           | . as $d
           | {
               id: ($d.id // ""),
-              onda_id: ($d.onda_id // ""),
-              subagent: (($d.contexto // "")
+              wave_id: ($d.wave_id // $d.onda_id // ""),
+              subagent: (($d.context // $d.contexto // "")
                 | sub("^Selecao de modelo para subagente "; ""))
             }
           | select(
-              [$root.ondas[]?.skills_invoked[]?
-               | select(.skill == "model-selector" and .decisao_id == $d.id)
+              [(($root.waves // $root.ondas // [])[]?.skills_invoked // [])[]?
+               | select(.skill == "model-selector" and (.decision_id // .decisao_id) == $d.id)
               ] | length == 0
             )
-          | [.id, .onda_id, .subagent] | @tsv
+          | [.id, .wave_id, .subagent] | @tsv
         ]
       | .[]
     ' "$_sdr_sf" 2>/dev/null

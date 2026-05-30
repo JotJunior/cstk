@@ -22,7 +22,13 @@
 #   F4.4.3 (cenario negativo orfo cobrindo TSV):
 #     - state.json com 1 Decisao orfa + 1 par balanceado -> exit 1 + TSV
 #       contendo o dec-id orfo (e nao o balanceado)
-#     - validar formato TSV: 3 colunas <dec-id>\t<onda-id>\t<subagent-type>
+#     - validar formato TSV: 3 colunas <dec-id>\t<wave-id>\t<subagent-type>
+#
+#   schema-en-migration (reader-fallback EN-com-pt):
+#     - fixtures primarias em chaves EN (decisions/waves/context/...)
+#     - half-record EN-nativo -> exit 1 + TSV (reader EN)
+#     - >=1 fixture pt-BR legada (_sdr_fixture_half_record) provando que o
+#       fallback (.en // .pt) ainda detecta orfas em states antigos
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -35,31 +41,34 @@ _sdr_have_jq() {
   command -v jq >/dev/null 2>&1
 }
 
-# Fixture: state.json balanceado (paridade 2-para-2).
+# Fixture: state.json balanceado (paridade 2-para-2) — chaves EN.
 _sdr_fixture_balanced() {
   cat > "$1/state.json" <<'JSON'
 {
   "schema_version": "1.0.0",
-  "ondas": [
+  "waves": [
     {
       "id": "onda-001",
       "skills_invoked": [
-        {"skill": "model-selector", "decisao_id": "dec-001", "timestamp": "2026-05-22T10:00:00Z"},
-        {"skill": "model-selector", "decisao_id": "dec-002", "timestamp": "2026-05-22T10:05:00Z"}
+        {"skill": "model-selector", "decision_id": "dec-001", "timestamp": "2026-05-22T10:00:00Z"},
+        {"skill": "model-selector", "decision_id": "dec-002", "timestamp": "2026-05-22T10:05:00Z"}
       ]
     }
   ],
-  "decisoes": [
-    {"id": "dec-001", "onda_id": "onda-001",
-     "contexto": "Selecao de modelo para subagente feature-00c-clarify-asker"},
-    {"id": "dec-002", "onda_id": "onda-001",
-     "contexto": "Selecao de modelo para subagente feature-00c-clarify-answerer"}
+  "decisions": [
+    {"id": "dec-001", "wave_id": "onda-001",
+     "context": "Selecao de modelo para subagente feature-00c-clarify-asker"},
+    {"id": "dec-002", "wave_id": "onda-001",
+     "context": "Selecao de modelo para subagente feature-00c-clarify-answerer"}
   ]
 }
 JSON
 }
 
 # Fixture: state.json com 1 orfa (dec-002 sem record-skill).
+# BACK-COMPAT (schema-en-migration §6): mantida em chaves pt-BR de proposito
+# para provar que o reader-fallback (.en // .pt) ainda detecta orfas em states
+# legados (decisoes/ondas/onda_id/contexto/decisao_id).
 _sdr_fixture_half_record() {
   cat > "$1/state.json" <<'JSON'
 {
@@ -82,30 +91,54 @@ _sdr_fixture_half_record() {
 JSON
 }
 
-# Fixture: state.json sem Decisoes "Selecao de modelo" (paridade trivial 0-0).
-_sdr_fixture_no_model_decisions() {
+# Fixture: state.json com 1 orfa (dec-002 sem record-skill) — chaves EN.
+# Espelho EN do fixture pt-BR para provar paridade do reader EN-nativo.
+_sdr_fixture_half_record_en() {
   cat > "$1/state.json" <<'JSON'
 {
   "schema_version": "1.0.0",
-  "ondas": [
-    {"id": "onda-001", "skills_invoked": []}
+  "waves": [
+    {
+      "id": "onda-001",
+      "skills_invoked": [
+        {"skill": "model-selector", "decision_id": "dec-001", "timestamp": "2026-05-22T10:00:00Z"}
+      ]
+    }
   ],
-  "decisoes": [
-    {"id": "dec-001", "onda_id": "onda-001",
-     "contexto": "Inicio de execucao"},
-    {"id": "dec-002", "onda_id": "onda-001",
-     "contexto": "Gate validate-documentation reportou: tudo ok"}
+  "decisions": [
+    {"id": "dec-001", "wave_id": "onda-001",
+     "context": "Selecao de modelo para subagente feature-00c-clarify-asker"},
+    {"id": "dec-002", "wave_id": "onda-001",
+     "context": "Selecao de modelo para subagente feature-00c-clarify-answerer"}
   ]
 }
 JSON
 }
 
-# Fixture: state.json LEGADO (sem campo .decisoes).
+# Fixture: state.json sem Decisoes "Selecao de modelo" (paridade trivial 0-0).
+_sdr_fixture_no_model_decisions() {
+  cat > "$1/state.json" <<'JSON'
+{
+  "schema_version": "1.0.0",
+  "waves": [
+    {"id": "onda-001", "skills_invoked": []}
+  ],
+  "decisions": [
+    {"id": "dec-001", "wave_id": "onda-001",
+     "context": "Inicio de execucao"},
+    {"id": "dec-002", "wave_id": "onda-001",
+     "context": "Gate validate-documentation reportou: tudo ok"}
+  ]
+}
+JSON
+}
+
+# Fixture: state.json sem campo .decisions (nem .decisoes) — array ausente.
 _sdr_fixture_legacy_no_decisoes() {
   cat > "$1/state.json" <<'JSON'
 {
   "schema_version": "1.0.0",
-  "ondas": [{"id": "onda-001", "skills_invoked": []}]
+  "waves": [{"id": "onda-001", "skills_invoked": []}]
 }
 JSON
 }
@@ -194,6 +227,33 @@ scenario_sdr_check_half_record_exit_1_e_tsv() {
   }
 }
 
+# ==== schema-en-migration: half-record EN-nativo -> exit 1 + TSV ====
+#
+# Espelho EN do cenario pt-BR acima. Prova que o reader EN-nativo
+# (.decisions/.waves/.context/.decision_id/.wave_id) detecta a mesma orfa.
+# O cenario pt-BR (scenario_sdr_check_half_record_exit_1_e_tsv) permanece
+# exercitando o fallback (.en // .pt) sobre o fixture legado.
+
+scenario_sdr_check_half_record_en_exit_1_e_tsv() {
+  _sdr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _sdr_fixture_half_record_en "$TMPDIR_TEST"
+
+  capture sh "$SCRIPT" check --state-dir "$TMPDIR_TEST"
+  [ "$_CAPTURED_EXIT" = 1 ] || {
+    _fail "exit=1 (half-record EN)" "obtido $_CAPTURED_EXIT (stdout=$_CAPTURED_STDOUT stderr=$_CAPTURED_STDERR)"
+    return 1
+  }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q "^dec-002	onda-001	feature-00c-clarify-answerer$" || {
+    _fail "TSV orfa (EN)" "stdout='$_CAPTURED_STDOUT'"
+    return 1
+  }
+  if printf '%s' "$_CAPTURED_STDOUT" | grep -q "^dec-001	"; then
+    _fail "dec-001 nao deve aparecer (balanceada, EN)" "stdout='$_CAPTURED_STDOUT'"
+    return 1
+  fi
+}
+
 # ==== Paridade trivial: 0 Decisoes "Selecao de modelo" -> exit 0 ====
 
 scenario_sdr_check_zero_model_decisions_exit_0() {
@@ -263,25 +323,25 @@ _sdr_fixture_onda_plus_legacy_orphan() {
   cat > "$1/state.json" <<'JSON'
 {
   "schema_version": "1.0.0",
-  "ondas": [
+  "waves": [
     {
       "id": "onda-001",
       "skills_invoked": [
-        {"skill": "model-selector", "decisao_id": "dec-w-refino", "timestamp": "2026-05-24T10:00:00Z"}
+        {"skill": "model-selector", "decision_id": "dec-w-refino", "timestamp": "2026-05-24T10:00:00Z"}
       ]
     }
   ],
-  "decisoes": [
-    {"id": "dec-w-mapa", "onda_id": "onda-002", "etapa": "model-routing",
-     "contexto": "Selecao de modelo para onda 2 (fase plan)",
-     "escolha": "model:opus",
-     "justificativa": "sugerido=opus aplicado=opus origem=mapa | mapa primario"},
-    {"id": "dec-w-refino", "onda_id": "onda-003", "etapa": "model-routing",
-     "contexto": "Selecao de modelo para onda 3 (fase execute-task)",
-     "escolha": "model:sonnet",
-     "justificativa": "sugerido=sonnet aplicado=sonnet origem=refino | refino: sinais"},
-    {"id": "dec-legado-orfa", "onda_id": "onda-001",
-     "contexto": "Selecao de modelo para subagente feature-00c-clarify-answerer"}
+  "decisions": [
+    {"id": "dec-w-mapa", "wave_id": "onda-002", "stage": "model-routing",
+     "context": "Selecao de modelo para onda 2 (fase plan)",
+     "choice": "model:opus",
+     "rationale": "sugerido=opus aplicado=opus origem=mapa | mapa primario"},
+    {"id": "dec-w-refino", "wave_id": "onda-003", "stage": "model-routing",
+     "context": "Selecao de modelo para onda 3 (fase execute-task)",
+     "choice": "model:sonnet",
+     "rationale": "sugerido=sonnet aplicado=sonnet origem=refino | refino: sinais"},
+    {"id": "dec-legado-orfa", "wave_id": "onda-001",
+     "context": "Selecao de modelo para subagente feature-00c-clarify-answerer"}
   ]
 }
 JSON
@@ -319,23 +379,23 @@ _sdr_fixture_onda_pura() {
   cat > "$1/state.json" <<'JSON'
 {
   "schema_version": "1.0.0",
-  "ondas": [
+  "waves": [
     {
       "id": "onda-001",
       "skills_invoked": [
-        {"skill": "model-selector", "decisao_id": "dec-w-refino", "timestamp": "2026-05-24T10:00:00Z"}
+        {"skill": "model-selector", "decision_id": "dec-w-refino", "timestamp": "2026-05-24T10:00:00Z"}
       ]
     }
   ],
-  "decisoes": [
-    {"id": "dec-w-mapa", "onda_id": "onda-002", "etapa": "model-routing",
-     "contexto": "Selecao de modelo para onda 2 (fase plan)",
-     "escolha": "model:opus",
-     "justificativa": "sugerido=opus aplicado=opus origem=mapa"},
-    {"id": "dec-w-refino", "onda_id": "onda-003", "etapa": "model-routing",
-     "contexto": "Selecao de modelo para onda 3 (fase execute-task)",
-     "escolha": "model:sonnet",
-     "justificativa": "sugerido=sonnet aplicado=sonnet origem=refino"}
+  "decisions": [
+    {"id": "dec-w-mapa", "wave_id": "onda-002", "stage": "model-routing",
+     "context": "Selecao de modelo para onda 2 (fase plan)",
+     "choice": "model:opus",
+     "rationale": "sugerido=opus aplicado=opus origem=mapa"},
+    {"id": "dec-w-refino", "wave_id": "onda-003", "stage": "model-routing",
+     "context": "Selecao de modelo para onda 3 (fase execute-task)",
+     "choice": "model:sonnet",
+     "rationale": "sugerido=sonnet aplicado=sonnet origem=refino"}
   ]
 }
 JSON
