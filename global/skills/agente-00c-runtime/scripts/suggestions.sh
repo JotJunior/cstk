@@ -10,7 +10,7 @@
 # Apenas impeditivas viram Issue no toolkit (FASE 8.4 — issue.sh).
 #
 # Sugestoes vivem em DOIS lugares:
-#   1. state.json `.sugestoes[]` (ground truth, JSON estruturado)
+#   1. state.json `.suggestions[]` (ground truth, JSON estruturado)
 #   2. agente-00c-suggestions.md (export human-readable, regerado a cada
 #      register a partir do estado).
 #
@@ -18,13 +18,13 @@
 #   suggestions.sh register --state-dir DIR --suggestions-file FILE
 #       --skill SKILL --diagnostico TEXT --severidade SEV --proposta TEXT
 #       [--referencias JSON-ARR]
-#       — Append em .sugestoes; gera id `sug-NNN`; atualiza
-#         metricas_acumuladas.sugestoes_skills_globais_total; aplica
+#       — Append em .suggestions; gera id `sug-NNN`; atualiza
+#         accumulated_metrics.global_skill_suggestions_total; aplica
 #         secrets-filter ao gravar suggestions.md.
 #       — Stdout: id da sugestao registrada.
 #
 #   suggestions.sh list --state-dir DIR [--severidade SEV]
-#       — TSV: id\tskill\tseveridade\tissue_aberta\tdiagnostico_short
+#       — TSV: id\tskill\tseverity\tissue_opened\tdiagnosis_short
 #
 #   suggestions.sh count --state-dir DIR [--severidade SEV]
 #       — Imprime total (filtrado por severidade se passado).
@@ -33,11 +33,11 @@
 #       — Imprime proximo sug-NNN sem registrar.
 #
 #   suggestions.sh mark-issue --state-dir DIR --suggestion-id SUG --issue URL
-#       — Atualiza .sugestoes[i].issue_aberta com URL/numero retornado por
+#       — Atualiza .suggestions[i].issue_opened com URL/numero retornado por
 #         issue.sh create.
 #
 #   suggestions.sh render-md --state-dir DIR > stdout
-#       — Renderiza state.json `.sugestoes[]` em markdown estruturado para
+#       — Renderiza state.json `.suggestions[]` em markdown estruturado para
 #         agente-00c-suggestions.md. Aplique secrets-filter externamente.
 #
 # Severidades validas: informativa | aviso | impeditiva
@@ -88,7 +88,8 @@ _sg_backup_current() {
   _hd="$1/state-history"
   mkdir -p -- "$_hd" 2>/dev/null || _sg_die "mkdir state-history falhou" 1
   _curr=$(jq -r '
-    if (.ondas // []) | length > 0 then (.ondas[-1].id // "init") else "init" end
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) > 0 then ($w[-1].id // "init") else "init" end
   ' "$_sf" 2>/dev/null) || _curr="init"
   _ts=$(date -u +%Y%m%dT%H%M%SZ)
   mv -- "$_sf" "$_hd/${_curr}-${_ts}.json" || _sg_die "backup falhou" 1
@@ -97,9 +98,10 @@ _sg_backup_current() {
 _sg_next_sug_id() {
   _sf=$(_sg_state_file "$1")
   jq -r '
-    if (.sugestoes // []) | length == 0 then "sug-001"
+    ((.suggestions // .sugestoes) // []) as $s
+    | if ($s | length) == 0 then "sug-001"
     else
-      ([.sugestoes[].id // ""] | map(sub("^sug-0*"; "") | tonumber? // 0) | max + 1)
+      ([$s[].id // ""] | map(sub("^sug-0*"; "") | tonumber? // 0) | max + 1)
       | tostring | "sug-" + (if length == 1 then "00" + . elif length == 2 then "0" + . else . end)
     end' "$_sf" 2>/dev/null
 }
@@ -169,18 +171,18 @@ _sg_cmd_register() {
     --arg prop "$_prop" \
     --arg now "$_now" \
     --argjson refs "$_refs" '
-    .sugestoes = ((.sugestoes // []) + [{
+    .suggestions = ((.suggestions // []) + [{
       id: $id,
-      skill_afetada: $skill,
-      diagnostico: $diag,
-      severidade: $sev,
-      proposta: $prop,
-      referencias: $refs,
-      issue_aberta: null,
-      criada_em: $now
+      affected_skill: $skill,
+      diagnosis: $diag,
+      severity: $sev,
+      proposal: $prop,
+      references: $refs,
+      issue_opened: null,
+      created_at: $now
     }])
-    | .metricas_acumuladas.sugestoes_skills_globais_total =
-        ((.metricas_acumuladas.sugestoes_skills_globais_total // 0) + 1)
+    | .accumulated_metrics.global_skill_suggestions_total =
+        ((.accumulated_metrics.global_skill_suggestions_total // 0) + 1)
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _sg_die "jq update falhou" 1; }
 
   _sg_backup_current "$_sd"
@@ -215,9 +217,9 @@ _sg_cmd_count() {
   if [ -n "$_sev" ]; then
     _sg_validate_severidade "$_sev" \
       || _sg_die "count: --severidade invalida: $_sev" 2
-    jq --arg s "$_sev" '.sugestoes // [] | map(select(.severidade == $s)) | length' "$_sf"
+    jq --arg s "$_sev" '(.suggestions // .sugestoes) // [] | map(select((.severity // .severidade) == $s)) | length' "$_sf"
   else
-    jq '.sugestoes // [] | length' "$_sf"
+    jq '(.suggestions // .sugestoes) // [] | length' "$_sf"
   fi
 }
 
@@ -236,11 +238,12 @@ _sg_cmd_list() {
   _sf=$(_sg_state_file "$_sd")
   [ -f "$_sf" ] || _sg_die "list: state.json ausente" 1
   jq -r --arg s "$_sev" '
-    .sugestoes // []
-    | map(select($s == "" or .severidade == $s))
+    (.suggestions // .sugestoes) // []
+    | map(select($s == "" or (.severity // .severidade) == $s))
     | .[]
-    | [.id, .skill_afetada, .severidade, (.issue_aberta // "-"),
-       (.diagnostico | .[0:60])] | @tsv
+    | [.id, (.affected_skill // .skill_afetada), (.severity // .severidade),
+       ((.issue_opened // .issue_aberta) // "-"),
+       ((.diagnosis // .diagnostico) | .[0:60])] | @tsv
   ' "$_sf"
 }
 
@@ -281,17 +284,17 @@ _sg_cmd_mark_issue() {
   [ -f "$_sf" ] || _sg_die "mark-issue: state.json ausente" 1
   # Valida que sug existe
   _exists=$(jq --arg id "$_sug" '
-    .sugestoes // [] | map(select(.id == $id)) | length
+    (.suggestions // .sugestoes) // [] | map(select(.id == $id)) | length
   ' "$_sf")
   [ "$_exists" -gt 0 ] || _sg_die "mark-issue: $_sug nao encontrada" 1
 
   _new=$(mktemp) || _sg_die "mktemp falhou" 1
   jq --arg id "$_sug" --arg url "$_issue" '
-    .sugestoes = (.sugestoes // [] | map(
-      if .id == $id then .issue_aberta = $url else . end
+    .suggestions = (.suggestions // [] | map(
+      if .id == $id then .issue_opened = $url else . end
     ))
-    | .metricas_acumuladas.issues_toolkit_abertas =
-        ((.metricas_acumuladas.issues_toolkit_abertas // 0) + 1)
+    | .accumulated_metrics.toolkit_issues_opened =
+        ((.accumulated_metrics.toolkit_issues_opened // 0) + 1)
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _sg_die "jq update falhou" 1; }
   _sg_backup_current "$_sd"
   _sg_atomic_write "$_sf" "$_new"
@@ -314,33 +317,35 @@ _sg_cmd_mark_issue() {
 _sg_render_md() {
   _sf=$(_sg_state_file "$1")
   jq -r '
-    "# Sugestoes do Agente-00C — \(.execucao.id)",
+    ((.suggestions // .sugestoes) // []) as $sugs
+    | "# Sugestoes do Agente-00C — \((.execution.id // .execucao.id))",
     "",
-    "Total: \((.sugestoes // []) | length) sugestoes registradas.",
+    "Total: \($sugs | length) sugestoes registradas.",
     "",
     (
-      if (.sugestoes // []) | length == 0 then
+      if ($sugs | length) == 0 then
         "Nenhuma sugestao registrada nesta execucao."
       else
-        (.sugestoes // [])[] |
-          "## \(.id) — skill `\(.skill_afetada)` — severidade: \(.severidade)",
+        $sugs[] |
+          "## \(.id) — skill `\(.affected_skill // .skill_afetada)` — severidade: \(.severity // .severidade)",
           "",
-          "**Criada em**: \(.criada_em // "?")",
+          "**Criada em**: \((.created_at // .criada_em) // "?")",
           "",
-          "**Issue aberta**: \(.issue_aberta // "(nenhuma)")",
+          "**Issue aberta**: \((.issue_opened // .issue_aberta) // "(nenhuma)")",
           "",
           "**Diagnostico**:",
           "",
-          "\(.diagnostico)",
+          "\(.diagnosis // .diagnostico)",
           "",
           "**Proposta**:",
           "",
-          "\(.proposta)",
+          "\(.proposal // .proposta)",
           "",
           "**Referencias**:",
           "",
-          (if (.referencias | length) == 0 then "- (sem referencias)"
-           else (.referencias | map("- " + .) | join("\n")) end),
+          ((.references // .referencias) as $refs
+           | if ($refs | length) == 0 then "- (sem referencias)"
+             else ($refs | map("- " + .) | join("\n")) end),
           "",
           "---",
           ""

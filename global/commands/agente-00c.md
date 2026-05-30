@@ -173,10 +173,18 @@ state-lock.sh acquire --state-dir <SD> || {
   - `--stack-json <stack ou "null">`
   - `--whitelist-urls <JSON-arr>`
 
-  Status inicial: `em_andamento`, etapa `briefing`, `proxima_instrucao`
+  Status inicial: `em_andamento`, etapa `briefing`, `next_instruction`
   apontando para inicio do briefing.
 
 ### 4. Selecao de modelo da onda + delegacao ao orquestrador
+
+Migrate defensivo (best-effort): canonicaliza um `state.json` pt-BR legado
+para EN no lugar ANTES de qualquer direct-writer (orquestrador, `wave-select`)
+tocar o arquivo. Idempotente/no-op em states ja EN; degrada graciosamente:
+
+```bash
+state-rw.sh migrate --state-dir <SD>
+```
 
 Antes de spawnar, compute o modelo a aplicar nesta onda via `wave-select`
 (mapa fase→modelo + refino model-selector + override do operador — FR-002,
@@ -232,7 +240,7 @@ refletir a falha:
 
 ```bash
 state-rw.sh set --state-dir <SD> \
-  --field '.ondas[-1].proxima_onda_agendada_para' --value 'null'
+  --field '.waves[-1].next_wave_scheduled_for' --value 'null'
 ```
 
 E inclua no sumario final `Proxima onda agendada: nenhuma (ScheduleWakeup

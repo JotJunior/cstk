@@ -575,4 +575,47 @@ scenario_require_blockade_resposta_invalida_falha() {
   assert_stderr_contains "blockade-invalid-response" || return 1
 }
 
+# --- back-compat: state.json LEGADO em pt-BR (reader-fallback EN // pt) ------
+# Prova que require-blockade-resolved ainda LE um state.json escrito no schema
+# antigo (pre-migracao: .decisoes/.opcoes_consideradas/.bloqueios_humanos/
+# .decisao_id/.resposta_humana). Os helpers ja escrevem EN, entao montamos o
+# fixture pt-BR na mao.
+scenario_require_blockade_legacy_pt_state_fallback() {
+  _sd="$TMPDIR_TEST/legacy-state"
+  mkdir -p "$_sd"
+  cat > "$_sd/state.json" <<'EOF'
+{
+  "schema_version": 6,
+  "execucao": { "id": "exec-legacy", "status": "em_andamento" },
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "etapa": "constitution",
+      "opcoes_consideradas": [
+        "atualizar-global-via-bump-SemVer",
+        "criar-feature-delta-com-sync-impact-report",
+        "abortar-feature-sem-principios-proprios"
+      ],
+      "escolha": "pause-humano"
+    }
+  ],
+  "bloqueios_humanos": [
+    {
+      "id": "blk-001",
+      "decisao_id": "dec-001",
+      "status": "respondido",
+      "resposta_humana": "criar-feature-delta-com-sync-impact-report"
+    }
+  ]
+}
+EOF
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  [ "$_CAPTURED_EXIT" = 0 ] || {
+    _fail "legacy pt-BR state" "esperado exit 0 (reader-fallback), obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  }
+  assert_stdout_contains "status: resolved" || return 1
+  assert_stdout_contains "criar-feature-delta-com-sync-impact-report" || return 1
+}
+
 run_all_scenarios

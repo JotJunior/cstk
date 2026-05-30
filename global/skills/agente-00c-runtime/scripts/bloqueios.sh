@@ -10,18 +10,18 @@
 #       --pergunta TEXT --contexto-para-resposta TEXT
 #       [--opcoes-recomendadas JSON-ARR]
 #       — Cria BloqueioHumano com id `block-NNN` sequencial.
-#       — Atualiza .execucao.status = "aguardando_humano" (FR-016).
-#       — Incrementa .metricas_acumuladas.bloqueios_humanos_total.
+#       — Atualiza .execution.status = "aguardando_humano" (FR-016).
+#       — Incrementa .accumulated_metrics.human_blocks_total.
 #       — Stdout: id do bloqueio criado.
 #
 #   bloqueios.sh respond --state-dir DIR --block-id ID --resposta TEXT
-#       — Marca bloqueio como `respondido`, registra resposta_humana e
-#         respondido_em.
+#       — Marca bloqueio como `respondido`, registra human_answer e
+#         answered_at.
 #       — Se NAO restar nenhum bloqueio com status=aguardando, atualiza
-#         .execucao.status para "em_andamento".
+#         .execution.status para "em_andamento".
 #
 #   bloqueios.sh list --state-dir DIR [--status STATUS]
-#       — TSV: id\tdecisao_id\tstatus\tdisparado_em\tpergunta
+#       — TSV: id\tdecision_id\tstatus\ttriggered_at\tpergunta
 #
 #   bloqueios.sh count --state-dir DIR [--pending-only]
 #       — Imprime total (ou total pendente).
@@ -78,7 +78,8 @@ _bl_backup_current() {
   _hd="$1/state-history"
   mkdir -p -- "$_hd" 2>/dev/null || _bl_die "mkdir state-history falhou" 1
   _curr=$(jq -r '
-    if (.ondas // []) | length > 0 then (.ondas[-1].id // "init") else "init" end
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) > 0 then ($w[-1].id // "init") else "init" end
   ' "$_sf" 2>/dev/null) || _curr="init"
   _ts=$(date -u +%Y%m%dT%H%M%SZ)
   _bk="$_hd/${_curr}-${_ts}.json"
@@ -88,8 +89,9 @@ _bl_backup_current() {
 _bl_next_block_id() {
   _sf=$(_bl_state_file "$1")
   jq -r '
-    if (.bloqueios_humanos // []) | length == 0 then 0
-    else ([.bloqueios_humanos[].id // ""] | map(sub("^block-0*"; "") | tonumber? // 0) | max)
+    ((.human_blocks // .bloqueios_humanos) // []) as $hb
+    | if ($hb | length) == 0 then 0
+    else ([$hb[].id // ""] | map(sub("^block-0*"; "") | tonumber? // 0) | max)
     end' "$_sf" 2>/dev/null \
     | { read -r _max; printf 'block-%03d\n' "$((_max + 1))"; }
 }
@@ -98,7 +100,7 @@ _bl_next_block_id() {
 _bl_decisao_exists() {
   _sf=$(_bl_state_file "$1")
   jq -e --arg id "$2" '
-    .decisoes // [] | map(.id) | index($id) != null
+    ((.decisions // .decisoes) // []) | map(.id) | index($id) != null
   ' "$_sf" >/dev/null 2>&1
 }
 
@@ -162,20 +164,20 @@ _bl_cmd_register() {
     --arg ctx "$_ctx" \
     --arg now "$_now" \
     --argjson opcoes "$_opcoes" '
-    .bloqueios_humanos += [{
+    .human_blocks += [{
       id: $id,
-      decisao_id: $dec,
-      pergunta: $perg,
-      contexto_para_resposta: $ctx,
-      opcoes_recomendadas: $opcoes,
+      decision_id: $dec,
+      question: $perg,
+      context_for_answer: $ctx,
+      recommended_options: $opcoes,
       status: "aguardando",
-      resposta_humana: null,
-      respondido_em: null,
-      disparado_em: $now
+      human_answer: null,
+      answered_at: null,
+      triggered_at: $now
     }]
-    | .execucao.status = "aguardando_humano"
-    | .metricas_acumuladas.bloqueios_humanos_total =
-        ((.metricas_acumuladas.bloqueios_humanos_total // 0) + 1)
+    | .execution.status = "aguardando_humano"
+    | .accumulated_metrics.human_blocks_total =
+        ((.accumulated_metrics.human_blocks_total // 0) + 1)
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _bl_die "jq update falhou" 1; }
 
   _bl_backup_current "$_sd"
@@ -208,7 +210,7 @@ _bl_cmd_respond() {
 
   # Verifica que bloqueio existe e esta aguardando
   _status=$(jq -r --arg id "$_bid" '
-    .bloqueios_humanos // [] | map(select(.id == $id)) | .[0].status // "ausente"
+    ((.human_blocks // .bloqueios_humanos) // []) | map(select(.id == $id)) | .[0].status // "ausente"
   ' "$_sf")
   case "$_status" in
     aguardando) ;;
@@ -223,13 +225,13 @@ _bl_cmd_respond() {
     --arg id "$_bid" \
     --arg resp "$_resp" \
     --arg now "$_now" '
-    .bloqueios_humanos = (.bloqueios_humanos // [] | map(
+    .human_blocks = (.human_blocks // [] | map(
       if .id == $id then
-        . + { status: "respondido", resposta_humana: $resp, respondido_em: $now }
+        . + { status: "respondido", human_answer: $resp, answered_at: $now }
       else . end
     ))
-    | (if (.bloqueios_humanos | map(select(.status == "aguardando")) | length) == 0
-       then .execucao.status = "em_andamento"
+    | (if (.human_blocks | map(select(.status == "aguardando")) | length) == 0
+       then .execution.status = "em_andamento"
        else . end)
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _bl_die "jq update falhou" 1; }
 
@@ -254,10 +256,10 @@ _bl_cmd_list() {
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "list: state.json ausente" 1
   jq -r --arg s "$_st" '
-    .bloqueios_humanos // []
+    ((.human_blocks // .bloqueios_humanos) // [])
     | map(select($s == "" or .status == $s))
     | .[]
-    | [.id, .decisao_id, .status, .disparado_em, .pergunta] | @tsv
+    | [.id, (.decision_id // .decisao_id), .status, (.triggered_at // .disparado_em), (.question // .pergunta)] | @tsv
   ' "$_sf"
 }
 
@@ -276,9 +278,9 @@ _bl_cmd_count() {
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "count: state.json ausente" 1
   if [ "$_pending" = 1 ]; then
-    jq '.bloqueios_humanos // [] | map(select(.status == "aguardando")) | length' "$_sf"
+    jq '((.human_blocks // .bloqueios_humanos) // []) | map(select(.status == "aguardando")) | length' "$_sf"
   else
-    jq '.bloqueios_humanos // [] | length' "$_sf"
+    jq '((.human_blocks // .bloqueios_humanos) // []) | length' "$_sf"
   fi
 }
 
@@ -313,7 +315,7 @@ _bl_cmd_get() {
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "get: state.json ausente" 1
   _out=$(jq --arg id "$_bid" '
-    .bloqueios_humanos // [] | map(select(.id == $id)) | .[0] // null
+    ((.human_blocks // .bloqueios_humanos) // []) | map(select(.id == $id)) | .[0] // null
   ' "$_sf")
   if [ "$_out" = "null" ]; then
     _bl_die "get: bloqueio nao encontrado: $_bid" 1

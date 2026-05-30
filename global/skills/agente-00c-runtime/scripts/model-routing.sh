@@ -9,7 +9,7 @@
 #      docs/specs/agente-00c-model-routing/data-model.md
 #      docs/specs/agente-00c-model-routing/plan.md (Phase 1)
 #      Decisoes do clarify: dec-003 (score map 0->0, 1->2, 2->3),
-#                           dec-004 (idempotencia via jq sobre .decisoes[]),
+#                           dec-004 (idempotencia via jq sobre .decisions[]),
 #                           dec-005 (1 invocacao por spawn real),
 #                           dec-007 (truncagem 2000+marker+2000 = 4016 bytes)
 #
@@ -886,8 +886,8 @@ _mr_cmd_invoke() {
 # Algoritmo:
 #   1. Compor contexto canonico:
 #        "Selecao de modelo para subagente <SUBAGENT>"
-#   2. Query jq read-only: primeiro .decisoes[] cujo .contexto == ctx
-#      AND .onda_id == ONDA -> emitir .id ou string vazia.
+#   2. Query jq read-only: primeiro .decisions[] cujo .context == ctx
+#      AND .wave_id == ONDA -> emitir .id ou string vazia (reader-fallback pt-BR).
 #   3. Stdout=dec-NNN + exit 0 (existe); stdout vazio + exit 1 (nao
 #      existe); exit 2 (erro de uso ou state.json ausente).
 #
@@ -965,11 +965,13 @@ _mr_cmd_idempotent_check() {
   # (NUNCA interpolacao shell na expressao jq). Contexto canonico
   # alinhado com dec-004 e o que sera registrado em F2/F3.
   # INV-4: leitura pura; nenhum redirect/escrita.
+  # Reader (schema-en-migration): chaves EN com fallback pt-BR
+  # ((.decisions // .decisoes), (.context // .contexto), (.wave_id // .onda_id)).
   _mr_idc_result=$(
     jq -r \
       --arg ctx "Selecao de modelo para subagente $_mr_idc_subagent" \
       --arg onda "$_mr_idc_onda" \
-      '[.decisoes[]? | select(.contexto == $ctx and .onda_id == $onda)][0].id // empty' \
+      '[(.decisions // .decisoes // [])[]? | select((.context // .contexto) == $ctx and (.wave_id // .onda_id) == $onda)][0].id // empty' \
       "$_mr_idc_sf" 2>/dev/null
   ) || _mr_die "idempotent-check: jq query falhou" 1
 
@@ -1198,14 +1200,17 @@ _mr_ws_scrub() {
 _mr_ws_read_override() {
   _mr_ws_ro_sf=$1
   _mr_ws_ro_onda=$2
+  # Reader (schema-en-migration): chaves EN com fallback pt-BR
+  # ((.decisions // .decisoes), (.stage // .etapa), (.choice // .escolha),
+  #  (.wave_id // .onda_id), (.context // .contexto)).
   jq -r \
     --arg onda "$_mr_ws_ro_onda" \
-    '[.decisoes[]?
-       | select(.etapa == "model-routing")
-       | select(.escolha | type == "string" and startswith("model-override:"))
-       | select((.onda_id == $onda)
-                or ((.contexto // "") | test("[Oo]nda " + ($onda | sub("^onda-0*"; "")) + "([^0-9]|$)")))
-     ][0].escolha // empty' \
+    '[(.decisions // .decisoes // [])[]?
+       | select((.stage // .etapa) == "model-routing")
+       | select((.choice // .escolha) | type == "string" and startswith("model-override:"))
+       | select(((.wave_id // .onda_id) == $onda)
+                or (((.context // .contexto) // "") | test("[Oo]nda " + ($onda | sub("^onda-0*"; "")) + "([^0-9]|$)")))
+     ][0] | (.choice // .escolha) // empty' \
     "$_mr_ws_ro_sf" 2>/dev/null | sed -n 's/^model-override://p'
 }
 
@@ -1244,14 +1249,16 @@ _mr_cmd_wave_select() {
   [ -f "$_mr_ws_sf" ] || _mr_die_usage "wave-select: state.json ausente em '$_mr_ws_sdir'"
   [ -r "$_mr_ws_sf" ] || _mr_die_usage "wave-select: state.json sem leitura em '$_mr_ws_sdir'"
 
-  # ---- Passo 1: resolver fase (flag ou .etapa_corrente) ----
+  # ---- Passo 1: resolver fase (flag ou .current_stage) ----
+  # Reader (schema-en-migration): EN com fallback pt-BR (.current_stage // .etapa_corrente).
   if [ -z "$_mr_ws_etapa" ]; then
-    _mr_ws_etapa=$(jq -r '.etapa_corrente // ""' "$_mr_ws_sf" 2>/dev/null) || _mr_ws_etapa=""
+    _mr_ws_etapa=$(jq -r '(.current_stage // .etapa_corrente) // ""' "$_mr_ws_sf" 2>/dev/null) || _mr_ws_etapa=""
   fi
   # Fase vazia e tolerada -> lookup retorna manter-atual (FR-020).
 
   # ---- Onda corrente (proveniencia da Decisao) ----
-  _mr_ws_onda=$(jq -r '(.ondas // []) | if length > 0 then .[-1].id else "init" end' \
+  # Reader (schema-en-migration): EN com fallback pt-BR (.waves // .ondas).
+  _mr_ws_onda=$(jq -r '((.waves // .ondas) // []) | if length > 0 then .[-1].id else "init" end' \
     "$_mr_ws_sf" 2>/dev/null) || _mr_ws_onda="init"
   [ -n "$_mr_ws_onda" ] || _mr_ws_onda="init"
   # Numero da onda para o contexto humano-legivel ("onda N").
@@ -1261,16 +1268,19 @@ _mr_cmd_wave_select() {
   # ---- Passo 2: idempotencia por onda (FR-008) ----
   # Se ja existe DecisaoDeRoteamentoPorOnda para esta onda, ecoa o modelo
   # ja aplicado e sai SEM registrar 2a Decisao. Lead distinto do legado.
+  # Reader (schema-en-migration): chaves EN com fallback pt-BR
+  # ((.decisions // .decisoes), (.stage // .etapa), (.context // .contexto),
+  #  (.wave_id // .onda_id), (.rationale // .justificativa), (.choice // .escolha)).
   _mr_ws_existing=$(
     jq -r \
       --arg onda "$_mr_ws_onda" \
-      '[.decisoes[]?
-         | select(.etapa == "model-routing")
-         | select((.contexto // "") | startswith("Selecao de modelo para onda "))
-         | select(.onda_id == $onda)
+      '[(.decisions // .decisoes // [])[]?
+         | select((.stage // .etapa) == "model-routing")
+         | select(((.context // .contexto) // "") | startswith("Selecao de modelo para onda "))
+         | select((.wave_id // .onda_id) == $onda)
        ][-1] // empty
        | if . == null then empty
-         else ((.justificativa // "") | capture("aplicado=(?<m>[a-z-]+)").m // (.escolha | sub("^model:"; "")))
+         else (((.rationale // .justificativa) // "") | capture("aplicado=(?<m>[a-z-]+)").m // ((.choice // .escolha) | sub("^model:"; "")))
          end' \
       "$_mr_ws_sf" 2>/dev/null
   ) || _mr_ws_existing=""
@@ -1284,9 +1294,12 @@ _mr_cmd_wave_select() {
 
   # ---- Passo 2.4: escalonamento mid-onda (FR-015) ----
   # Sinal de subestimacao gravado pelo orquestrador na onda anterior:
-  # campo .escalada_modelo_pendente == true. Se presente, a proxima onda
+  # campo .pending_model_escalation == true. Se presente, a proxima onda
   # parte de opus, independentemente do mapa-base da fase seguinte.
-  _mr_ws_escalada=$(jq -r '.escalada_modelo_pendente // false' "$_mr_ws_sf" 2>/dev/null) \
+  # Reader (schema-en-migration): EN com fallback pt-BR
+  # (.pending_model_escalation // .escalada_modelo_pendente). MAP-GAP: a
+  # chave nao esta no mapa congelado §3 — proposta pending_model_escalation.
+  _mr_ws_escalada=$(jq -r '(.pending_model_escalation // .escalada_modelo_pendente) // false' "$_mr_ws_sf" 2>/dev/null) \
     || _mr_ws_escalada="false"
 
   # ---- Passo 4: mapa primario (FR-014) — base de TODA onda ----

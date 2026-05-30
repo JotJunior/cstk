@@ -77,14 +77,14 @@ scenario_orch_agente_deriva_da_decisao() {
   # state-rw.sh get, nao das vars MODELO/SCORE locais (so existem no else).
   assert_exit 0 grep -Eq 'select\(\.id ==' "$ORCH_AGENTE" || return 1
   assert_exit 0 grep -Eq 'ESCOLHA_DEC=' "$ORCH_AGENTE" || return 1
-  # NB: campo de score e score_justificativa no schema da Decisao.
-  assert_exit 0 grep -Eq 'score_justificativa' "$ORCH_AGENTE" || return 1
+  # NB: campo de score e justification_score no schema da Decisao.
+  assert_exit 0 grep -Eq 'justification_score' "$ORCH_AGENTE" || return 1
 }
 
 scenario_orch_feat_deriva_da_decisao() {
   assert_exit 0 grep -Eq 'select\(\.id ==' "$ORCH_FEAT" || return 1
   assert_exit 0 grep -Eq 'ESCOLHA_DEC=' "$ORCH_FEAT" || return 1
-  assert_exit 0 grep -Eq 'score_justificativa' "$ORCH_FEAT" || return 1
+  assert_exit 0 grep -Eq 'justification_score' "$ORCH_FEAT" || return 1
 }
 
 # ==== 5.2.1/5.2.2 / FR-004: degradacao inline NAO gera Decisao orfa ====

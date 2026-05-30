@@ -8,35 +8,35 @@
 #
 # Subcomandos:
 #   state-ondas.sh start --state-dir DIR
-#       — Append nova Onda em .ondas com:
+#       — Append nova Onda em .waves com:
 #           id = onda-NNN sequencial
-#           inicio = ISO now
-#           etapas_executadas = []
+#           started_at = ISO now
+#           executed_stages = []
 #           tool_calls = 0
-#         Reseta .orcamentos.tool_calls_onda_corrente = 0 e
-#         .orcamentos.inicio_onda_corrente = inicio.
+#         Reseta .budgets.tool_calls_current_wave = 0 e
+#         .budgets.current_wave_start = started_at.
 #         Stdout: id da nova onda.
 #
 #   state-ondas.sh end --state-dir DIR --motivo-termino MOTIVO
 #                      [--proxima-agendada-para ISO]
 #                      [--add-etapa STAGE]
-#       — Atualiza ultima Onda (.ondas[-1]) com fim/wallclock_seconds/
-#         tool_calls/motivo_termino/proxima_onda_agendada_para. Atualiza
-#         metricas_acumuladas (ondas_total += 1, tool_calls_total +=
-#         tool_calls da onda, tempo_wallclock_total_segundos += wallclock).
-#         --add-etapa pode ser passada N vezes para append em etapas_executadas.
+#       — Atualiza ultima Onda (.waves[-1]) com finished_at/wallclock_seconds/
+#         tool_calls/termination_reason/next_wave_scheduled_for. Atualiza
+#         accumulated_metrics (waves_total += 1, tool_calls_total +=
+#         tool_calls da onda, wallclock_total_seconds += wallclock).
+#         --add-etapa pode ser passada N vezes para append em executed_stages.
 #
 #   state-ondas.sh tool-call-tick --state-dir DIR
-#       — Incrementa .orcamentos.tool_calls_onda_corrente (1 unidade).
+#       — Incrementa .budgets.tool_calls_current_wave (1 unidade).
 #         Stdout: novo total da onda.
 #
 #   state-ondas.sh current-id --state-dir DIR
-#       — Imprime .ondas[-1].id (ou "init" se nao ha onda).
+#       — Imprime .waves[-1].id (ou "init" se nao ha onda).
 #
 #   state-ondas.sh record-skill --state-dir DIR --skill NAME
 #                               [--decisao-id DEC-NNN]
 #       — Registra invocacao da skill na onda corrente. Append em
-#         .ondas[-1].skills_invoked = [..., { skill, timestamp, decisao_id }].
+#         .waves[-1].skills_invoked = [..., { skill, timestamp, decision_id }].
 #         Permite review-task auditar "etapa X foi marcada completa mas a
 #         skill Y nunca foi invocada via tool Skill" — defesa contra o
 #         padrao da execucao-fonte onde orquestrador gerou artefatos
@@ -117,7 +117,8 @@ _so_backup_current() {
   _hd="$1/state-history"
   mkdir -p -- "$_hd" 2>/dev/null || _so_die "mkdir state-history falhou" 1
   _curr=$(jq -r '
-    if (.ondas // []) | length > 0 then (.ondas[-1].id // "init") else "init" end
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) > 0 then ($w[-1].id // "init") else "init" end
   ' "$_sf" 2>/dev/null) || _curr="init"
   _ts=$(date -u +%Y%m%dT%H%M%SZ)
   _bk="$_hd/${_curr}-${_ts}.json"
@@ -127,8 +128,9 @@ _so_backup_current() {
 _so_next_onda_num() {
   _sf=$(_so_state_file "$1")
   jq -r '
-    if (.ondas // []) | length == 0 then 1
-    else (([.ondas[].id // ""] | map(sub("^onda-0*"; "") | tonumber? // 0) | max) + 1)
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) == 0 then 1
+    else (([$w[].id // ""] | map(sub("^onda-0*"; "") | tonumber? // 0) | max) + 1)
     end' "$_sf" 2>/dev/null
 }
 
@@ -153,19 +155,19 @@ _so_cmd_start() {
 
   _new=$(mktemp) || _so_die "mktemp falhou" 1
   jq --arg id "$_id" --arg ts "$_now" '
-    .ondas += [{
+    .waves += [{
       id: $id,
-      inicio: $ts,
-      fim: null,
-      etapas_executadas: [],
+      started_at: $ts,
+      finished_at: null,
+      executed_stages: [],
       tool_calls: 0,
       wallclock_seconds: 0,
-      motivo_termino: null,
-      proxima_onda_agendada_para: null,
+      termination_reason: null,
+      next_wave_scheduled_for: null,
       skills_invoked: []
     }]
-    | .orcamentos.tool_calls_onda_corrente = 0
-    | .orcamentos.inicio_onda_corrente = $ts
+    | .budgets.tool_calls_current_wave = 0
+    | .budgets.current_wave_start = $ts
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _so_die "jq update falhou" 1; }
 
   _so_backup_current "$_sdir"
@@ -219,10 +221,13 @@ $2"; shift 2 ;;
   [ -f "$_sf" ] || _so_die "end: state.json ausente em $_sdir" 1
 
   _now=$(_so_iso_now)
-  _start=$(jq -r 'if (.ondas // []) | length > 0 then (.ondas[-1].inicio // "") else "" end' "$_sf")
+  _start=$(jq -r '
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) > 0 then (($w[-1].started_at // $w[-1].inicio) // "") else "" end
+  ' "$_sf")
   [ -n "$_start" ] || _so_die "end: nao ha onda em andamento" 1
   _wc=$(_so_wallclock "$_start" "$_now") || true
-  _tc=$(jq -r '.orcamentos.tool_calls_onda_corrente // 0' "$_sf")
+  _tc=$(jq -r '(.budgets.tool_calls_current_wave // .orcamentos.tool_calls_onda_corrente) // 0' "$_sf")
 
   # Monta JSON array das etapas adicionais (uma por linha, ignora linhas vazias).
   _etapas_json=$(printf '%s\n' "$_etapas" \
@@ -243,18 +248,18 @@ $2"; shift 2 ;;
     --argjson tc "$_tc" \
     --argjson etapas "$_etapas_json" \
     --argjson prox "$_proxima_json" '
-    (.ondas[-1] |= (
-      .fim = $now
+    (.waves[-1] |= (
+      .finished_at = $now
       | .wallclock_seconds = $wc
       | .tool_calls = $tc
-      | .motivo_termino = $motivo
-      | .proxima_onda_agendada_para = $prox
-      | .etapas_executadas += $etapas
+      | .termination_reason = $motivo
+      | .next_wave_scheduled_for = $prox
+      | .executed_stages += $etapas
     ))
-    | .metricas_acumuladas.ondas_total = ((.metricas_acumuladas.ondas_total // 0) + 1)
-    | .metricas_acumuladas.tool_calls_total = ((.metricas_acumuladas.tool_calls_total // 0) + $tc)
-    | .metricas_acumuladas.tempo_wallclock_total_segundos =
-        ((.metricas_acumuladas.tempo_wallclock_total_segundos // 0) + $wc)
+    | .accumulated_metrics.waves_total = ((.accumulated_metrics.waves_total // 0) + 1)
+    | .accumulated_metrics.tool_calls_total = ((.accumulated_metrics.tool_calls_total // 0) + $tc)
+    | .accumulated_metrics.wallclock_total_seconds =
+        ((.accumulated_metrics.wallclock_total_seconds // 0) + $wc)
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _so_die "jq update falhou" 1; }
 
   _so_backup_current "$_sdir"
@@ -277,11 +282,11 @@ _so_cmd_tool_call_tick() {
   _sf=$(_so_state_file "$_sdir")
   [ -f "$_sf" ] || _so_die "tool-call-tick: state.json ausente" 1
 
-  _curr=$(jq -r '.orcamentos.tool_calls_onda_corrente // 0' "$_sf")
+  _curr=$(jq -r '(.budgets.tool_calls_current_wave // .orcamentos.tool_calls_onda_corrente) // 0' "$_sf")
   _next=$((_curr + 1))
 
   _new=$(mktemp) || _so_die "mktemp falhou" 1
-  jq --argjson n "$_next" '.orcamentos.tool_calls_onda_corrente = $n' "$_sf" > "$_new" \
+  jq --argjson n "$_next" '.budgets.tool_calls_current_wave = $n' "$_sf" > "$_new" \
     || { rm -f -- "$_new"; _so_die "jq update falhou" 1; }
   # tool-call-tick e operacao de alta frequencia; backup so a cada 10 ticks
   # para nao explodir state-history/. Em ticks intermediarios o atomic_write
@@ -314,7 +319,7 @@ _so_cmd_record_skill() {
   [ -f "$_sf" ] || _so_die "record-skill: state.json ausente em $_sdir" 1
 
   # Verifica que existe onda em andamento
-  _has_onda=$(jq -r 'if (.ondas // []) | length > 0 then "yes" else "no" end' "$_sf")
+  _has_onda=$(jq -r 'if ((.waves // .ondas) // []) | length > 0 then "yes" else "no" end' "$_sf")
   [ "$_has_onda" = "yes" ] || _so_die "record-skill: nenhuma onda em andamento (rode state-ondas.sh start primeiro)" 1
 
   _now=$(_so_iso_now)
@@ -328,14 +333,14 @@ _so_cmd_record_skill() {
     --arg skill "$_skill" \
     --arg ts "$_now" \
     --argjson dec "$_dec_json" '
-    (.ondas[-1].skills_invoked //= [])
-    | (.ondas[-1].skills_invoked |=
-        (if (any(.[]; .skill == $skill and (.decisao_id // null) == $dec))
+    (.waves[-1].skills_invoked //= [])
+    | (.waves[-1].skills_invoked |=
+        (if (any(.[]; .skill == $skill and ((.decision_id // .decisao_id) // null) == $dec))
          then .
          else . + [{
            skill: $skill,
            timestamp: $ts,
-           decisao_id: $dec
+           decision_id: $dec
          }]
          end))
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _so_die "jq update falhou" 1; }
@@ -343,7 +348,7 @@ _so_cmd_record_skill() {
   _so_atomic_write "$_sf" "$_new"
   rm -f -- "$_new" 2>/dev/null || :
   _so_update_sha "$_sdir"
-  _count=$(jq -r '.ondas[-1].skills_invoked | length' "$_sf")
+  _count=$(jq -r '((.waves // .ondas)[-1].skills_invoked) | length' "$_sf")
   printf '%s\n' "$_count"
 }
 
@@ -359,7 +364,7 @@ _so_cmd_record_skill() {
 # AUSENTE (no-op se ja existe; usado pelo back-fill reconcile-tasks, para nao
 # clobberar uma entrada real com uma derivada).
 #
-# Campos `recorded_at`/`origem` sao ADITIVOS — a ingestao knowledge.db
+# Campos `recorded_at`/`source` sao ADITIVOS — a ingestao knowledge.db
 # (recall.sh) seleciona apenas os 8 campos do contrato layer-b e ignora o
 # resto; servem para o review-task distinguir entradas reais de back-filled.
 # Stdout: total de entradas em .tasks[] apos a operacao.
@@ -403,7 +408,7 @@ _so_cmd_record_task() {
 
   # wave-id default = onda corrente (proveniencia best-effort)
   if [ -z "$_wid" ]; then
-    _wid=$(jq -r 'if (.ondas // []) | length > 0 then (.ondas[-1].id // "") else "" end' "$_sf" 2>/dev/null) || _wid=""
+    _wid=$(jq -r '((.waves // .ondas) // []) as $w | if ($w | length) > 0 then ($w[-1].id // "") else "" end' "$_sf" 2>/dev/null) || _wid=""
   fi
 
   _now=$(_so_iso_now)
@@ -417,9 +422,9 @@ _so_cmd_record_task() {
     --argjson af "$_af" --arg ts "$_now" --argjson origem "$_origem_json" \
     --arg ifabsent "$_ifabsent" '
     (.tasks //= [])
-    | {task_id:$tid, titulo:$ttl, wave_id:$wid, outcome:$oc,
-       testes_rodados:$tr, testes_passados:$tp, lint_ok:$lk,
-       arquivos_tocados:$af, recorded_at:$ts, origem:$origem} as $e
+    | {task_id:$tid, title:$ttl, wave_id:$wid, outcome:$oc,
+       tests_run:$tr, tests_passed:$tp, lint_ok:$lk,
+       touched_files:$af, recorded_at:$ts, source:$origem} as $e
     | if any(.tasks[]; .task_id == $tid)
       then (if $ifabsent == "yes" then .
             else .tasks |= map(if .task_id == $tid then $e else . end) end)
@@ -463,7 +468,7 @@ _so_cmd_reconcile_tasks() {
   [ -f "$_rc_md" ] || _so_die "reconcile-tasks: tasks.md ausente: $_rc_md" 1
 
   if [ -z "$_rc_wid" ]; then
-    _rc_wid=$(jq -r 'if (.ondas // []) | length > 0 then (.ondas[-1].id // "") else "" end' "$_rc_sf" 2>/dev/null) || _rc_wid=""
+    _rc_wid=$(jq -r '((.waves // .ondas) // []) as $w | if ($w | length) > 0 then ($w[-1].id // "") else "" end' "$_rc_sf" 2>/dev/null) || _rc_wid=""
   fi
 
   # task_ids ja presentes em .tasks[] (snapshot)
@@ -552,7 +557,8 @@ _so_cmd_current_id() {
   _sf=$(_so_state_file "$_sdir")
   [ -f "$_sf" ] || _so_die "current-id: state.json ausente" 1
   jq -r '
-    if (.ondas // []) | length > 0 then (.ondas[-1].id // "init") else "init" end
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) > 0 then ($w[-1].id // "init") else "init" end
   ' "$_sf"
 }
 

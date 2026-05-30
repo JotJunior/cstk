@@ -80,8 +80,18 @@ RECALL_EXIT_USAGE=2
 # escolhida) + corpo na FTS. Aditivo: ALTER TABLE ADD COLUMN idempotente em
 # DBs v<6 (SQLite nao tem ADD COLUMN IF NOT EXISTS — checado via PRAGMA);
 # --reindex retro-alimenta o historico.
-RECALL_SCHEMA_VERSION=6
-RECALL_TYPE_ENUM="decision bloqueio retro skill memory suggestion"
+# v7 (schema-en-migration): rename pt-BR -> EN de TODAS as colunas/tabelas
+# (tabela bloqueios -> blocks; execucao_id -> execution_id em todas; ver
+# migration-map.md §3.11). Rename de coluna NAO passa por CREATE TABLE IF NOT
+# EXISTS, entao o boot do schema faz um DROP one-time das tabelas renomeadas
+# (+ knowledge_fts) quando schema_meta.schema_version < 7 ANTES dos CREATEs.
+# DB fresco (sem schema_meta) cria as tabelas EN direto (sem drop). Dado e
+# derivado: --reindex / proximo ingest repopula. enum: bloqueio -> block
+# (alias deprecado bloqueio ainda aceito na busca, com aviso em stderr).
+RECALL_SCHEMA_VERSION=7
+# Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
+# DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
+RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
 
 # ==== Resolucao do caminho do DB ====
 #
@@ -115,7 +125,8 @@ USO:
 MODO BUSCA (default):
   <query>            termo(s) de busca full-text (obrigatorio)
   --project P        filtra por projeto de origem
-  --type T           decision|bloqueio|retro|skill|memory|suggestion
+  --type T           decision|block|retro|skill|memory|suggestion
+                     ('bloqueio' aceito como alias DEPRECADO de 'block')
   --limit N          maximo de resultados (default 20; inteiro positivo)
   --db PATH          indice (default $CSTK_KNOWLEDGE_DB ou ~/.claude/cstk/knowledge.db)
 
@@ -125,7 +136,8 @@ MODO CONTEXT (--context): leitura-para-contexto (read-back loop). Retorna um
   "<termos>"            termos de consulta (obrigatorio; OR entre tokens)
   --limit N            maximo de achados (default 4; faixa recomendada 3-5)
   --exclude-feature N   anti-eco: omite achados da feature N (no SQL)
-  --type T             decision|bloqueio|retro|skill|memory|suggestion
+  --type T             decision|block|retro|skill|memory|suggestion
+                       ('bloqueio' aceito como alias DEPRECADO de 'block')
   --project P          filtra por projeto de origem
   --max-bytes N        teto de bytes do bloco (default 2000; corta por achado inteiro)
   --db PATH            indice
@@ -251,11 +263,27 @@ validate_limit() {
 }
 
 # validate_type VALUE -> exit 0 se VALUE pertence ao enum, 1 caso contrario.
+# Aceita TAMBEM o alias deprecado 'bloqueio' (normalizado para 'block' a
+# jusante por recall_normalize_type), para nao quebrar invocacoes legadas.
 validate_type() {
+  [ "$1" = "bloqueio" ] && return 0   # alias deprecado de 'block'
   for _vt in $RECALL_TYPE_ENUM; do
     [ "$1" = "$_vt" ] && return 0
   done
   return 1
+}
+
+# recall_normalize_type VALUE -> imprime o valor canonico do enum. Mapeia o
+# alias DEPRECADO 'bloqueio' -> 'block', emitindo um aviso de depreciacao em
+# stderr (uma linha). Qualquer outro valor passa inalterado. Aplicado APOS
+# validate_type, no ponto em que o --type alimenta o WHERE type=... do SQL.
+recall_normalize_type() {
+  if [ "$1" = "bloqueio" ]; then
+    log_warn "recall: --type 'bloqueio' e um alias DEPRECADO; use 'block' (tratado como block)"
+    printf 'block'
+    return 0
+  fi
+  printf '%s' "$1"
 }
 
 # has_nul reads stdin -> exit 0 se detectar byte NUL, 1 caso contrario.
@@ -335,16 +363,18 @@ recall_pragmas() {
   printf 'PRAGMA foreign_keys=OFF;\n'
 }
 
-# recall_schema_ddl -> imprime o DDL idempotente completo do indice.
+# recall_schema_ddl -> imprime o DDL idempotente completo do indice (EN, v7).
 # 4 tabelas-fonte + knowledge_fts (FTS5 standalone) + schema_meta.
-# Todo CREATE e IF NOT EXISTS — aplicavel em qualquer abertura do DB.
+# Todo CREATE e IF NOT EXISTS — aplicavel em qualquer abertura do DB. O rename
+# pt->en (v7) nao passa por IF NOT EXISTS, entao recall_apply_schema dropa as
+# tabelas renomeadas (one-time, schema_version<7) ANTES de invocar este DDL.
 #
 # body por tipo (concatenacao textual pesquisavel):
-#   decision   = escolha + opcoes + contexto + justificativa + evidencia
-#   bloqueio   = pergunta + contexto_para_resposta + resposta
-#   retro      = texto
+#   decision   = choice + options + context + rationale + evidence
+#   block      = question + context_for_answer + answer
+#   retro      = text
 #   skill      = skill_name
-#   suggestion = diagnostico + proposta
+#   suggestion = diagnosis + proposal
 recall_schema_ddl() {
   cat <<DDL
 CREATE TABLE IF NOT EXISTS decisions (
@@ -352,36 +382,36 @@ CREATE TABLE IF NOT EXISTS decisions (
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
-  agente TEXT,
-  etapa TEXT,
-  escolha TEXT,
-  opcoes TEXT,
+  agent TEXT,
+  stage TEXT,
+  choice TEXT,
+  options TEXT,
   score INTEGER,
-  contexto TEXT,
-  justificativa TEXT,
-  evidencia TEXT,
+  context TEXT,
+  rationale TEXT,
+  evidence TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
-CREATE TABLE IF NOT EXISTS bloqueios (
+CREATE TABLE IF NOT EXISTS blocks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
   status TEXT,
-  pergunta TEXT,
-  contexto_para_resposta TEXT,
-  resposta TEXT,
-  decisao_id TEXT,
-  disparado_em TEXT,
-  respondido_em TEXT,
-  latencia_segundos INTEGER,
+  question TEXT,
+  context_for_answer TEXT,
+  answer TEXT,
+  decision_id TEXT,
+  triggered_at TEXT,
+  answered_at TEXT,
+  latency_seconds INTEGER,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -390,10 +420,10 @@ CREATE TABLE IF NOT EXISTS retros (
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
-  texto TEXT,
+  text TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -402,11 +432,11 @@ CREATE TABLE IF NOT EXISTS skills (
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
   skill_name TEXT NOT NULL,
-  decisao_id TEXT,
+  decision_id TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -415,25 +445,25 @@ CREATE TABLE IF NOT EXISTS executions (
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
   status TEXT,
-  motivo_termino TEXT,
-  etapa_corrente TEXT,
-  iniciada_em TEXT,
-  terminada_em TEXT,
-  duracao_segundos INTEGER,
-  stack_sugerida TEXT,
-  ondas_total INTEGER,
+  termination_reason TEXT,
+  current_stage TEXT,
+  started_at TEXT,
+  finished_at TEXT,
+  duration_seconds INTEGER,
+  suggested_stack TEXT,
+  waves_total INTEGER,
   tool_calls_total INTEGER,
-  wallclock_total_segundos INTEGER,
-  subagentes_spawned INTEGER,
-  profundidade_max INTEGER,
-  decisoes_total INTEGER,
-  bloqueios_humanos_total INTEGER,
-  sugestoes_skills_total INTEGER,
-  issues_toolkit_abertas INTEGER,
+  wallclock_total_seconds INTEGER,
+  subagents_spawned INTEGER,
+  max_depth INTEGER,
+  decisions_total INTEGER,
+  human_blocks_total INTEGER,
+  skill_suggestions_total INTEGER,
+  toolkit_issues_opened INTEGER,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -442,16 +472,16 @@ CREATE TABLE IF NOT EXISTS waves (
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
-  etapas TEXT,
-  inicio TEXT,
-  fim TEXT,
+  stages TEXT,
+  started_at TEXT,
+  finished_at TEXT,
   wallclock_seconds INTEGER,
   tool_calls INTEGER,
-  motivo_termino TEXT,
-  n_etapas INTEGER,
+  termination_reason TEXT,
+  n_stages INTEGER,
   n_skills INTEGER,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
@@ -461,14 +491,14 @@ CREATE TABLE IF NOT EXISTS alert_signals (
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
-  tipo TEXT NOT NULL,
-  subtipo TEXT,
-  valor_consumido INTEGER,
-  valor_threshold INTEGER,
-  descricao TEXT,
+  type TEXT NOT NULL,
+  subtype TEXT,
+  consumed_value INTEGER,
+  threshold_value INTEGER,
+  description TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -477,15 +507,15 @@ CREATE TABLE IF NOT EXISTS tasks (
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
-  titulo TEXT,
+  title TEXT,
   outcome TEXT,
-  testes_rodados INTEGER,
-  testes_passados INTEGER,
+  tests_run INTEGER,
+  tests_passed INTEGER,
   lint_ok INTEGER,
-  arquivos_tocados INTEGER,
+  touched_files INTEGER,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -494,12 +524,12 @@ CREATE TABLE IF NOT EXISTS events (
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
   event_type TEXT NOT NULL,
   timestamp TEXT NOT NULL,
-  descricao TEXT,
+  description TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -518,15 +548,15 @@ CREATE TABLE IF NOT EXISTS suggestions (
   project TEXT NOT NULL,
   feature TEXT NOT NULL,
   wave TEXT NOT NULL,
-  execucao_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
   source_ts TEXT NOT NULL,
   source_id TEXT NOT NULL,
-  skill_afetada TEXT,
-  severidade TEXT,
-  diagnostico TEXT,
-  proposta TEXT,
-  referencias TEXT,
-  issue_aberta TEXT,
+  affected_skill TEXT,
+  severity TEXT,
+  diagnosis TEXT,
+  proposal TEXT,
+  "references" TEXT,
+  issue_opened TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -560,37 +590,66 @@ recall_ensure_db_dir() {
   return 0
 }
 
-# recall_apply_schema DB_PATH -> aplica pragmas + DDL idempotente.
+# recall_apply_schema DB_PATH -> aplica pragmas + (migracao v7 one-time) + DDL.
 # Roteado pelo retry/backoff (FR-016) porque CREATE TABLE/VIRTUAL TABLE sao
 # escritas e podem contender com outra ingestao concorrente no mesmo DB
 # fresco. Retorna 0 em sucesso, 1 se esgotou retries (caller degrada).
 recall_apply_schema() {
-  # Migracao idempotente v2->v3: tasks.titulo. CREATE TABLE IF NOT EXISTS NAO
-  # altera uma tabela ja criada, entao indices v2 pre-existentes nao ganhariam
-  # a coluna pelo DDL — o INSERT seguinte falharia ("no such column"). Em db
-  # fresco (reindex faz rm -f antes) o arquivo nem existe aqui: o DDL ja cria
-  # tasks com titulo e o check pula. SQLite nao tem ADD COLUMN IF NOT EXISTS,
-  # logo inspecionamos PRAGMA table_info e so emitimos o ALTER quando a coluna
-  # falta. Vai no mesmo SQL do DDL para herdar o retry/backoff (FR-016).
+  _as_pre=""
   _as_extra=""
   if [ -f "$1" ]; then
-    _as_cols=$(printf 'PRAGMA table_info(tasks);\n' | sqlite3 -- "$1" 2>/dev/null) || _as_cols=""
-    case "$_as_cols" in
-      ''|*'|titulo|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
-      *) _as_extra='
-ALTER TABLE tasks ADD COLUMN titulo TEXT;' ;;
+    # ---- Migracao v7 (schema-en-migration): DROP one-time das tabelas com
+    # colunas renomeadas pt->en. Rename de coluna NAO passa por CREATE TABLE IF
+    # NOT EXISTS, entao um DB pre-v7 (colunas pt-BR) precisa dropar as tabelas
+    # ANTES dos CREATEs, que entao as recriam em EN. Le a versao gravada; so
+    # dropa se NAO-VAZIA E < 7 (DB fresco sem schema_meta -> sem drop, o DDL ja
+    # cria EN direto; versao >= 7 -> sem drop, idempotente). Dado e DERIVADO
+    # (fonte = state.json): --reindex / proximo ingest repopula sem perda.
+    # memories NAO e dropada (ja EN; colunas inalteradas — preserva o cache).
+    _as_ver=$(printf "SELECT value FROM schema_meta WHERE key='schema_version';\n" \
+      | sqlite3 -- "$1" 2>/dev/null) || _as_ver=""
+    case "$_as_ver" in
+      ''|*[!0-9]*) : ;;  # sem schema_meta / nao-numerico -> sem drop (fresco)
+      *)
+        if [ "$_as_ver" -lt 7 ]; then
+          _as_pre='DROP TABLE IF EXISTS decisions;
+DROP TABLE IF EXISTS blocks;
+DROP TABLE IF EXISTS bloqueios;
+DROP TABLE IF EXISTS retros;
+DROP TABLE IF EXISTS skills;
+DROP TABLE IF EXISTS executions;
+DROP TABLE IF EXISTS waves;
+DROP TABLE IF EXISTS alert_signals;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS suggestions;
+DROP TABLE IF EXISTS knowledge_fts;'
+        fi
+        ;;
     esac
-    # Migracao idempotente v5->v6: decisions.opcoes (mesma logica de tasks.titulo
-    # acima — DDL nao altera tabela ja criada, entao indices pre-v6 nao ganhariam
-    # a coluna e o INSERT seguinte falharia com "no such column").
-    _as_dcols=$(printf 'PRAGMA table_info(decisions);\n' | sqlite3 -- "$1" 2>/dev/null) || _as_dcols=""
-    case "$_as_dcols" in
-      ''|*'|opcoes|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
-      *) _as_extra="$_as_extra
-ALTER TABLE decisions ADD COLUMN opcoes TEXT;" ;;
-    esac
+
+    # ---- ALTERs aditivos legados (tasks.title v2->v3, decisions.options
+    # v5->v6). Apos o DROP v7 acima, sao REDUNDANTES (o DDL recria as tabelas
+    # ja com as colunas EN). Mantidos como rede defensiva idempotente, agora
+    # em EN: so disparam se a tabela existir SEM a coluna (nunca apos um CREATE
+    # fresco). SQLite nao tem ADD COLUMN IF NOT EXISTS -> checa via PRAGMA.
+    # Pulam de vez quando o drop v7 ja rodou (tabela inexistente -> case '').
+    if [ -z "$_as_pre" ]; then
+      _as_cols=$(printf 'PRAGMA table_info(tasks);\n' | sqlite3 -- "$1" 2>/dev/null) || _as_cols=""
+      case "$_as_cols" in
+        ''|*'|title|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
+        *) _as_extra='
+ALTER TABLE tasks ADD COLUMN title TEXT;' ;;
+      esac
+      _as_dcols=$(printf 'PRAGMA table_info(decisions);\n' | sqlite3 -- "$1" 2>/dev/null) || _as_dcols=""
+      case "$_as_dcols" in
+        ''|*'|options|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
+        *) _as_extra="$_as_extra
+ALTER TABLE decisions ADD COLUMN options TEXT;" ;;
+      esac
+    fi
   fi
-  recall_apply_sql_with_retry "$1" "$(recall_schema_ddl)$_as_extra"
+  recall_apply_sql_with_retry "$1" "$_as_pre$(recall_schema_ddl)$_as_extra"
 }
 
 # recall_run_sql DB_PATH SQL_TEXT -> aplica pragmas + SQL via sqlite3 (escrita).
@@ -689,14 +748,16 @@ recall_ingest_state_json() {
   fi
 
   # Proveniencia comum (read-only via jq). project = BASENAME do
-  # projeto_alvo_path (mitigacao S2/A02 — reduz captura de segredo em path).
-  _isj_proj_path=$(jq -r '.execucao.projeto_alvo_path // ""' "$_isj_state" 2>/dev/null) || _isj_proj_path=""
+  # target_project_path (mitigacao S2/A02 — reduz captura de segredo em path).
+  # Leitura EN + fallback pt-BR (.en // .pt) — ingere state EN (escrito pelo
+  # toolkit pos-migracao) E states legados pt-BR (back-compat).
+  _isj_proj_path=$(jq -r '(.execution.target_project_path // .execucao.projeto_alvo_path) // ""' "$_isj_state" 2>/dev/null) || _isj_proj_path=""
   _isj_project=$(basename -- "$_isj_proj_path" 2>/dev/null) || _isj_project=""
   [ -n "$_isj_project" ] || _isj_project="unknown"
   # Feature: prefere .short_name (top-level, layout corrente no disco);
   # tolera .execucao.short_name (local canonico do data-model). Leitura dupla
   # cobre a divergencia historica de onde o campo foi gravado.
-  _isj_feature=$(jq -r '.short_name // .execucao.short_name // ""' "$_isj_state" 2>/dev/null) || _isj_feature=""
+  _isj_feature=$(jq -r '.short_name // .execution.short_name // .execucao.short_name // ""' "$_isj_state" 2>/dev/null) || _isj_feature=""
   # Fallback de proveniencia quando .short_name esta ausente, por layout:
   #  - feature-00c-state/<short-name>/: short-name vem do diretorio-pai (states
   #    legados gravados antes de o init versionar short_name).
@@ -720,7 +781,7 @@ recall_ingest_state_json() {
     fi
   fi
   [ -n "$_isj_feature" ] || _isj_feature="unknown"
-  _isj_exec_id=$(jq -r '.execucao.id // ""' "$_isj_state" 2>/dev/null) || _isj_exec_id=""
+  _isj_exec_id=$(jq -r '(.execution.id // .execucao.id) // ""' "$_isj_state" 2>/dev/null) || _isj_exec_id=""
   _isj_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _isj_now="1970-01-01T00:00:00Z"
 
   # NUL strip aplicado a proveniencia (best-effort). Argumentos de shell nao
@@ -750,31 +811,34 @@ recall_ingest_state_json() {
   # So o valor DERIVADO (knowledge.db) muda; o state.json fonte fica intacto.
   _isj_n_exec=0
   _isj_exec_b64=$(jq -r '
-    (.execucao // {}) as $e
-    | (.metricas_acumuladas // {}) as $m
+    (.execution // .execucao // {}) as $e
+    | (.accumulated_metrics // .metricas_acumuladas // {}) as $m
+    | ($e.started_at // $e.iniciada_em // "") as $started
+    | ($e.finished_at // $e.terminada_em // "") as $finished
     | ((try
-        (if (($e.iniciada_em // "") != "" and ($e.terminada_em // "") != "")
-         then (($e.terminada_em|fromdateiso8601) - ($e.iniciada_em|fromdateiso8601) | tostring)
+        (if ($started != "" and $finished != "")
+         then (($finished|fromdateiso8601) - ($started|fromdateiso8601) | tostring)
          else "" end)
         catch "") // "") as $dur
+    | (($e.status // "")) as $status
     | [($e.id // ""),
-       ($e.status // ""),
-       ($e.motivo_termino // ""),
-       (if (($e.status // "") == "concluida" or ($e.status // "") == "concluido")
-        then "concluido" else (.etapa_corrente // "") end),
-       ($e.iniciada_em // ""),
-       ($e.terminada_em // ""),
+       $status,
+       ($e.termination_reason // $e.motivo_termino // ""),
+       (if ($status == "concluida" or $status == "concluido")
+        then "concluido" else ((.current_stage // .etapa_corrente) // "") end),
+       $started,
+       $finished,
        $dur,
-       ($e.stack_sugerida // ""),
-       (($m.ondas_total // "")|tostring),
+       ($e.suggested_stack // $e.stack_sugerida // ""),
+       (($m.waves_total // $m.ondas_total // "")|tostring),
        (($m.tool_calls_total // "")|tostring),
-       (($m.tempo_wallclock_total_segundos // "")|tostring),
-       (($m.subagentes_spawned // "")|tostring),
-       (($m.profundidade_max_atingida // "")|tostring),
-       (($m.decisoes_total // "")|tostring),
-       (($m.bloqueios_humanos_total // "")|tostring),
-       (($m.sugestoes_skills_globais_total // "")|tostring),
-       (($m.issues_toolkit_abertas // "")|tostring)]
+       (($m.wallclock_total_seconds // $m.tempo_wallclock_total_segundos // "")|tostring),
+       (($m.subagents_spawned // $m.subagentes_spawned // "")|tostring),
+       (($m.max_depth_reached // $m.profundidade_max_atingida // "")|tostring),
+       (($m.decisions_total // $m.decisoes_total // "")|tostring),
+       (($m.human_blocks_total // $m.bloqueios_humanos_total // "")|tostring),
+       (($m.global_skill_suggestions_total // $m.sugestoes_skills_globais_total // "")|tostring),
+       (($m.toolkit_issues_opened // $m.issues_toolkit_abertas // "")|tostring)]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_exec_b64=""
   # Ingere somente se houver execucao_id (chave natural estavel).
   if [ -n "$_isj_exec_b64" ] && [ -n "$_isj_exec_id" ]; then
@@ -811,9 +875,9 @@ recall_ingest_state_json() {
       _isj_sg_sql=$(recall_int_or_null "$_f_sg")
       _isj_it_sql=$(recall_int_or_null "$_f_it")
       _isj_sql="$_isj_sql
-INSERT INTO executions(project,feature,wave,execucao_id,source_ts,source_id,status,motivo_termino,etapa_corrente,iniciada_em,terminada_em,duracao_segundos,stack_sugerida,ondas_total,tool_calls_total,wallclock_total_segundos,subagentes_spawned,profundidade_max,decisoes_total,bloqueios_humanos_total,sugestoes_skills_total,issues_toolkit_abertas,ingested_at)
+INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,motivo_termino=excluded.motivo_termino,etapa_corrente=excluded.etapa_corrente,iniciada_em=excluded.iniciada_em,terminada_em=excluded.terminada_em,duracao_segundos=excluded.duracao_segundos,stack_sugerida=excluded.stack_sugerida,ondas_total=excluded.ondas_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_segundos=excluded.wallclock_total_segundos,subagentes_spawned=excluded.subagentes_spawned,profundidade_max=excluded.profundidade_max,decisoes_total=excluded.decisoes_total,bloqueios_humanos_total=excluded.bloqueios_humanos_total,sugestoes_skills_total=excluded.sugestoes_skills_total,issues_toolkit_abertas=excluded.issues_toolkit_abertas,ingested_at=excluded.ingested_at;"
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,ingested_at=excluded.ingested_at;"
       _isj_n_exec=1
     fi
   fi
@@ -824,18 +888,19 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
   # length). Onda aberta (fim null) -> fim vazio, sem erro (1.3.5).
   _isj_n_wave=0
   _isj_wave_lines=$(jq -r '
-    (.ondas // [])
+    ((.waves // .ondas) // [])
     | to_entries[]
     | .key as $wi
     | .value as $w
+    | (($w.executed_stages // $w.etapas_executadas) // []) as $stages
     | [($w.id // "onda-\($wi)"),
-       (($w.etapas_executadas // []) | join(",")),
-       ($w.inicio // ""),
-       ($w.fim // ""),
+       ($stages | join(",")),
+       ($w.started_at // $w.inicio // ""),
+       ($w.finished_at // $w.fim // ""),
        (($w.wallclock_seconds // "")|tostring),
        (($w.tool_calls // "")|tostring),
-       ($w.motivo_termino // ""),
-       (($w.etapas_executadas // []) | length | tostring),
+       ($w.termination_reason // $w.motivo_termino // ""),
+       ($stages | length | tostring),
        (($w.skills_invoked // []) | length | tostring)]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_wave_lines=""
   if [ -n "$_isj_wave_lines" ]; then
@@ -859,27 +924,27 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _isj_ne_sql=$(recall_int_or_null "$_f_ne")
       _isj_ns_sql=$(recall_int_or_null "$_f_ns")
       _isj_sql="$_isj_sql
-INSERT INTO waves(project,feature,wave,execucao_id,source_ts,source_id,etapas,inicio,fim,wallclock_seconds,tool_calls,motivo_termino,n_etapas,n_skills,ingested_at)
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_wid")','$(sql_escape "$_f_etp")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_fim")',$_isj_wc_sql,$_isj_tc_sql,'$(sql_escape "$_f_mt")',$_isj_ne_sql,$_isj_ns_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,etapas=excluded.etapas,inicio=excluded.inicio,fim=excluded.fim,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,motivo_termino=excluded.motivo_termino,n_etapas=excluded.n_etapas,n_skills=excluded.n_skills,ingested_at=excluded.ingested_at;"
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,ingested_at=excluded.ingested_at;"
       _isj_n_wave=$((_isj_n_wave + 1))
     done
     IFS="$_isj_OLDIFS"
   fi
 
-  # ---- alert_signals: movimento circular (tipo='circular') ----
-  # 1 linha por entrada de .historico_movimento_circular[]. As entradas sao
-  # hashes (problema_hash/solucao_hash/timestamp) — descricao sintetizada e
-  # ainda filtrada (FR-006, campo marcado como texto livre no data-model).
+  # ---- alert_signals: movimento circular (type='circular') ----
+  # 1 linha por entrada de .circular_movement_history[] (EN, fallback pt). As
+  # entradas sao hashes (problem_hash/solution_hash/timestamp) — description
+  # sintetizada e ainda filtrada (FR-006, campo de texto livre no data-model).
   # source_id = circular:<wave_id|->:<ordinal>; circular nao tem wave_id,
-  # usa-se '-' como wave (grao = execucao). valor_consumido/threshold NULL.
+  # usa-se '-' como wave (grao = execucao). consumed_value/threshold_value NULL.
   _isj_n_alert=0
   _isj_circ_lines=$(jq -r '
-    (.historico_movimento_circular // [])
+    ((.circular_movement_history // .historico_movimento_circular) // [])
     | to_entries[]
     | [(.key|tostring),
        (.value.timestamp // ""),
-       ("repeticao problema=\(.value.problema_hash // "?") solucao=\(.value.solucao_hash // "?")")]
+       ("repeticao problema=\((.value.problem_hash // .value.problema_hash) // "?") solucao=\((.value.solution_hash // .value.solucao_hash) // "?")")]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_circ_lines=""
   if [ -n "$_isj_circ_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -892,65 +957,69 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _f_desc=$(recall_scrub "$_f_desc")
       _f_sid="circular:-:$_f_ord"
       _isj_sql="$_isj_sql
-INSERT INTO alert_signals(project,feature,wave,execucao_id,source_ts,source_id,tipo,subtipo,valor_consumido,valor_threshold,descricao,ingested_at)
+INSERT INTO alert_signals(project,feature,wave,execution_id,source_ts,source_id,type,subtype,consumed_value,threshold_value,description,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','circular',NULL,NULL,NULL,'$(sql_escape "$_f_desc")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,tipo=excluded.tipo,subtipo=excluded.subtipo,valor_consumido=excluded.valor_consumido,valor_threshold=excluded.valor_threshold,descricao=excluded.descricao,ingested_at=excluded.ingested_at;"
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,type=excluded.type,subtype=excluded.subtype,consumed_value=excluded.consumed_value,threshold_value=excluded.threshold_value,description=excluded.description,ingested_at=excluded.ingested_at;"
       _isj_n_alert=$((_isj_n_alert + 1))
     done
     IFS="$_isj_OLDIFS"
   fi
 
-  # ---- alert_signals: breach de orcamento (tipo='budget_breach') ----
-  # Cruza .orcamentos (top-level) com consumo (FR-014, data-model §SinalDeAlerta
-  # L139-144). Per-onda: tool_calls > tool_calls_threshold_onda, wallclock_seconds
-  # > wallclock_threshold_segundos. Per-execucao (wave='-'):
-  # ciclos_consumidos_etapa_corrente > ciclos_max_por_etapa,
-  # profundidade_corrente_subagentes >= recursividade_max, tamanho do state.json
-  # > estado_size_threshold_bytes. Cada cruzamento excedido gera 1 sinal.
+  # ---- alert_signals: breach de orcamento (type='budget_breach') ----
+  # Cruza .budgets (top-level, EN + fallback .orcamentos) com consumo (FR-014,
+  # data-model §SinalDeAlerta L139-144). Per-onda: tool_calls >
+  # tool_calls_threshold_wave, wallclock_seconds > wallclock_threshold_seconds.
+  # Per-execucao (wave='-'): cycles_consumed_current_stage > max_cycles_per_stage,
+  # current_subagent_depth >= max_recursion, tamanho do state.json >
+  # state_size_threshold_bytes. Cada cruzamento excedido gera 1 sinal.
   # source_id = budget_breach:<wave_id|->:<ordinal> (ordinal = indice do breach
   # DENTRO do seu grupo de fonte, estavel por construcao do jq). Sem texto livre
-  # (FR-006: subtipo/valores sao estruturados, descricao NULL para breach).
+  # (FR-006: subtype/valores sao estruturados, description NULL para breach).
   # Tamanho do state.json (estado_size) e medido em shell (jq nao faz stat) e
   # injetado via --argjson. Best-effort: falha de wc -> -1 (nunca dispara breach).
   _isj_state_size=$(wc -c < "$_isj_state" 2>/dev/null | tr -d ' ') || _isj_state_size=-1
   case "$_isj_state_size" in ''|*[!0-9-]*) _isj_state_size=-1 ;; esac
   _isj_breach_lines=$(jq -r --argjson sz "$_isj_state_size" '
-    (.orcamentos // {}) as $o
+    ((.budgets // .orcamentos) // {}) as $o
+    # Thresholds com leitura EN + fallback pt-BR (.en // .pt) por campo.
+    | ($o.tool_calls_threshold_wave // $o.tool_calls_threshold_onda) as $tc_thr
+    | ($o.wallclock_threshold_seconds // $o.wallclock_threshold_segundos) as $wc_thr
+    | ($o.max_cycles_per_stage // $o.ciclos_max_por_etapa) as $cyc_max
+    | ($o.cycles_consumed_current_stage // $o.ciclos_consumidos_etapa_corrente) as $cyc_cur
+    | ($o.max_recursion // $o.recursividade_max) as $rec_max
+    | ($o.current_subagent_depth // $o.profundidade_corrente_subagentes) as $depth_cur
+    | ($o.state_size_threshold_bytes // $o.estado_size_threshold_bytes) as $size_thr
     # Per-onda: linhas {wave, sub, consumido, threshold} para cada excedido.
-    | [ (.ondas // [])
+    | [ ((.waves // .ondas) // [])
         | to_entries[]
         | .value as $w
         | ($w.id // "onda-\(.key)") as $wid
         | (
-            (if (($o.tool_calls_threshold_onda // null) != null
+            (if ($tc_thr != null
                  and ($w.tool_calls // null) != null
-                 and ($w.tool_calls > $o.tool_calls_threshold_onda))
-             then [{wave:$wid, sub:"tool_calls", c:$w.tool_calls, t:$o.tool_calls_threshold_onda}]
+                 and ($w.tool_calls > $tc_thr))
+             then [{wave:$wid, sub:"tool_calls", c:$w.tool_calls, t:$tc_thr}]
              else [] end)
-          + (if (($o.wallclock_threshold_segundos // null) != null
+          + (if ($wc_thr != null
                  and ($w.wallclock_seconds // null) != null
-                 and ($w.wallclock_seconds > $o.wallclock_threshold_segundos))
-             then [{wave:$wid, sub:"wallclock", c:$w.wallclock_seconds, t:$o.wallclock_threshold_segundos}]
+                 and ($w.wallclock_seconds > $wc_thr))
+             then [{wave:$wid, sub:"wallclock", c:$w.wallclock_seconds, t:$wc_thr}]
              else [] end)
           )
         | .[]
       ]
     # Per-execucao (wave="-"): ciclos, profundidade, estado_size.
     + (
-        (if (($o.ciclos_max_por_etapa // null) != null
-             and ($o.ciclos_consumidos_etapa_corrente // null) != null
-             and ($o.ciclos_consumidos_etapa_corrente > $o.ciclos_max_por_etapa))
-         then [{wave:"-", sub:"ciclos", c:$o.ciclos_consumidos_etapa_corrente, t:$o.ciclos_max_por_etapa}]
+        (if ($cyc_max != null and $cyc_cur != null and ($cyc_cur > $cyc_max))
+         then [{wave:"-", sub:"ciclos", c:$cyc_cur, t:$cyc_max}]
          else [] end)
-      + (if (($o.recursividade_max // null) != null
-             and ($o.profundidade_corrente_subagentes // null) != null
-             and ($o.profundidade_corrente_subagentes >= $o.recursividade_max))
-         then [{wave:"-", sub:"profundidade", c:$o.profundidade_corrente_subagentes, t:$o.recursividade_max}]
+      + (if ($rec_max != null and $depth_cur != null and ($depth_cur >= $rec_max))
+         then [{wave:"-", sub:"profundidade", c:$depth_cur, t:$rec_max}]
          else [] end)
-      + (if (($o.estado_size_threshold_bytes // null) != null
+      + (if ($size_thr != null
              and ($sz != null) and ($sz >= 0)
-             and ($sz > $o.estado_size_threshold_bytes))
-         then [{wave:"-", sub:"estado_size", c:$sz, t:$o.estado_size_threshold_bytes}]
+             and ($sz > $size_thr))
+         then [{wave:"-", sub:"estado_size", c:$sz, t:$size_thr}]
          else [] end)
       )
     # Ordinal estavel POR grupo de fonte (wave): group_by preserva ordem de
@@ -976,34 +1045,35 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _isj_bt_sql=$(recall_int_or_null "$_f_bt")
       _f_bsid="budget_breach:$_f_bw:$_f_bord"
       _isj_sql="$_isj_sql
-INSERT INTO alert_signals(project,feature,wave,execucao_id,source_ts,source_id,tipo,subtipo,valor_consumido,valor_threshold,descricao,ingested_at)
+INSERT INTO alert_signals(project,feature,wave,execution_id,source_ts,source_id,type,subtype,consumed_value,threshold_value,description,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_bw")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_isj_now")','$(sql_escape "$_f_bsid")','budget_breach','$(sql_escape "$_f_bsub")',$_isj_bc_sql,$_isj_bt_sql,NULL,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,tipo=excluded.tipo,subtipo=excluded.subtipo,valor_consumido=excluded.valor_consumido,valor_threshold=excluded.valor_threshold,descricao=excluded.descricao,ingested_at=excluded.ingested_at;"
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,type=excluded.type,subtype=excluded.subtype,consumed_value=excluded.consumed_value,threshold_value=excluded.threshold_value,description=excluded.description,ingested_at=excluded.ingested_at;"
       _isj_n_alert=$((_isj_n_alert + 1))
     done
     IFS="$_isj_OLDIFS"
   fi
 
   # ---- decisions ----
-  # Campos reais do state.json: id, onda_id (wave), timestamp, etapa, agente,
-  # escolha, score_justificativa (score), contexto, justificativa, evidencia,
-  # opcoes_consideradas (array de todas as opcoes avaliadas — serializado como
-  # texto JSON via tojson para caber numa coluna TEXT).
+  # Campos do state.json (EN com fallback pt): id, wave_id (wave), timestamp,
+  # stage, agent, choice, justification_score (score), context, rationale,
+  # evidence, options_considered (array de todas as opcoes avaliadas —
+  # serializado como texto JSON via tojson para caber na coluna TEXT 'options').
   _isj_n_dec=0
   _isj_dec_lines=$(jq -r '
-    (.decisoes // [])
+    ((.decisions // .decisoes) // [])
     | to_entries[]
-    | [(.value.id // "dec-\(.key)"),
-       (.value.onda_id // "onda"),
-       (.value.timestamp // .value.data // ""),
-       (.value.agente // ""),
-       (.value.etapa // ""),
-       (.value.escolha // ""),
-       ((.value.score // .value.score_justificativa // "")|tostring),
-       (.value.contexto // ""),
-       (.value.justificativa // ""),
-       (.value.evidencia // ""),
-       ((.value.opcoes_consideradas // []) | tojson)]
+    | .value as $d
+    | [($d.id // "dec-\(.key)"),
+       (($d.wave_id // $d.onda_id) // "onda"),
+       ($d.timestamp // $d.data // ""),
+       (($d.agent // $d.agente) // ""),
+       (($d.stage // $d.etapa) // ""),
+       (($d.choice // $d.escolha) // ""),
+       (($d.score // $d.justification_score // $d.score_justificativa // "")|tostring),
+       (($d.context // $d.contexto) // ""),
+       (($d.rationale // $d.justificativa) // ""),
+       (($d.evidence // $d.evidencia) // ""),
+       ((($d.options_considered // $d.opcoes_consideradas) // []) | tojson)]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_dec_lines=""
   if [ -n "$_isj_dec_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -1021,8 +1091,8 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _f_ctx=$(printf '%s' "$_isj_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
       _f_just=$(printf '%s' "$_isj_decoded" | jq -r '.[8]' 2>/dev/null | strip_nul)
       _f_ev=$(printf '%s' "$_isj_decoded" | jq -r '.[9]' 2>/dev/null | strip_nul)
-      # opcoes_consideradas chega ja como texto JSON (tojson na extracao).
-      # Estruturado (espelha .escolha, que tambem nao passa por scrub) — guarda
+      # options_considered chega ja como texto JSON (tojson na extracao).
+      # Estruturado (espelha choice, que tambem nao passa por scrub) — guarda
       # o array integro; scrub poderia mutilar a sintaxe JSON.
       _f_opt=$(printf '%s' "$_isj_decoded" | jq -r '.[10]' 2>/dev/null | strip_nul)
       # Texto livre passa por secrets-filter (FR-017); estruturado nao.
@@ -1036,9 +1106,9 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
         *) _isj_score_sql="$_f_sc" ;;
       esac
       _isj_sql="$_isj_sql
-INSERT INTO decisions(project,feature,wave,execucao_id,source_ts,source_id,agente,etapa,escolha,opcoes,score,contexto,justificativa,evidencia,ingested_at)
+INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,agent,stage,choice,options,score,context,rationale,evidence,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ag")','$(sql_escape "$_f_et")','$(sql_escape "$_f_esc")','$(sql_escape "$_f_opt")',$_isj_score_sql,'$(sql_escape "$_f_ctx")','$(sql_escape "$_f_just")','$(sql_escape "$_f_ev")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agente=excluded.agente,etapa=excluded.etapa,escolha=excluded.escolha,opcoes=excluded.opcoes,score=excluded.score,contexto=excluded.contexto,justificativa=excluded.justificativa,evidencia=excluded.evidencia,ingested_at=excluded.ingested_at;
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agent=excluded.agent,stage=excluded.stage,choice=excluded.choice,options=excluded.options,score=excluded.score,context=excluded.context,rationale=excluded.rationale,evidence=excluded.evidence,ingested_at=excluded.ingested_at;
 DELETE FROM knowledge_fts WHERE type='decision' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='$(sql_escape "$_f_wave")' AND source_id='$(sql_escape "$_f_sid")';
 INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
 VALUES('$(sql_escape "$_f_esc $_f_opt $_f_ctx $_f_just $_f_ev")','decision','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
@@ -1047,35 +1117,37 @@ VALUES('$(sql_escape "$_f_esc $_f_opt $_f_ctx $_f_just $_f_ev")','decision','$(s
     IFS="$_isj_OLDIFS"
   fi
 
-  # ---- bloqueios ----
-  # Campos reais: id, decisao_id, status, pergunta, contexto_para_resposta,
-  # resposta_humana (resposta), disparado_em, respondido_em, onda_id (quando
-  # presente). Bloqueios sao feature-level; wave default 'bloq' se onda_id
-  # ausente, garantindo chave de upsert estavel.
-  # source_ts mantem o coalesce historico (respondido_em||disparado_em). As
-  # colunas disparado_em/respondido_em sao preservadas SEPARADAS (FR-015) para
-  # derivar latencia humana = respondido_em - disparado_em (NULL para bloqueio
-  # aberto). decisao_id permite JOIN com decisions.etapa para a taxa de
-  # auto-resolucao de clarify (FR-016). latencia_segundos materializada no
+  # ---- blocks (tabela renomeada de bloqueios em v7; FTS type='block') ----
+  # Campos reais do state.json (EN com fallback pt): id, decision_id, status,
+  # question, context_for_answer, human_answer (answer), triggered_at,
+  # answered_at, wave_id (quando presente). Bloqueios sao feature-level; wave
+  # default 'bloq' se wave_id ausente, garantindo chave de upsert estavel.
+  # source_ts mantem o coalesce historico (answered_at||triggered_at). As
+  # colunas triggered_at/answered_at sao preservadas SEPARADAS (FR-015) para
+  # derivar latencia humana = answered_at - triggered_at (NULL para bloqueio
+  # aberto). decision_id permite JOIN com decisions.stage para a taxa de
+  # auto-resolucao de clarify (FR-016). latency_seconds materializada no
   # ingest (computavel sem nova tabela; data-model L175-186).
   _isj_n_bloq=0
   _isj_bloq_lines=$(jq -r '
-    (.bloqueios_humanos // [])
+    ((.human_blocks // .bloqueios_humanos) // [])
     | to_entries[]
     | .value as $b
-    | (if (($b.disparado_em // "") != "" and ($b.respondido_em // "") != "")
-       then (($b.respondido_em|fromdateiso8601) - ($b.disparado_em|fromdateiso8601) | tostring)
+    | ($b.triggered_at // $b.disparado_em // "") as $triggered
+    | ($b.answered_at // $b.respondido_em // "") as $answered
+    | (if ($triggered != "" and $answered != "")
+       then (($answered|fromdateiso8601) - ($triggered|fromdateiso8601) | tostring)
        else "" end) as $lat
     | [($b.id // "bloq-\(.key)"),
-       ($b.onda_id // "bloq"),
-       ($b.respondido_em // $b.disparado_em // $b.timestamp // ""),
+       (($b.wave_id // $b.onda_id) // "bloq"),
+       ($answered // $triggered // $b.timestamp // ""),
        ($b.status // ""),
-       ($b.pergunta // ""),
-       ($b.contexto_para_resposta // ""),
-       ($b.resposta_humana // $b.resposta // ""),
-       ($b.decisao_id // ""),
-       ($b.disparado_em // ""),
-       ($b.respondido_em // ""),
+       (($b.question // $b.pergunta) // ""),
+       (($b.context_for_answer // $b.contexto_para_resposta) // ""),
+       (($b.human_answer // $b.resposta_humana // $b.resposta) // ""),
+       (($b.decision_id // $b.decisao_id) // ""),
+       $triggered,
+       $answered,
        $lat]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_bloq_lines=""
   if [ -n "$_isj_bloq_lines" ]; then
@@ -1097,15 +1169,15 @@ VALUES('$(sql_escape "$_f_esc $_f_opt $_f_ctx $_f_just $_f_ev")','decision','$(s
       _f_perg=$(recall_scrub "$_f_perg")
       _f_cpr=$(recall_scrub "$_f_cpr")
       _f_resp=$(recall_scrub "$_f_resp")
-      # decisao_id / timestamps sao estruturados (sem filtro). latencia numerica.
+      # decision_id / timestamps sao estruturados (sem filtro). latencia numerica.
       _isj_lat_sql=$(recall_int_or_null "$_f_lat")
       _isj_sql="$_isj_sql
-INSERT INTO bloqueios(project,feature,wave,execucao_id,source_ts,source_id,status,pergunta,contexto_para_resposta,resposta,decisao_id,disparado_em,respondido_em,latencia_segundos,ingested_at)
+INSERT INTO blocks(project,feature,wave,execution_id,source_ts,source_id,status,question,context_for_answer,answer,decision_id,triggered_at,answered_at,latency_seconds,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_perg")','$(sql_escape "$_f_cpr")','$(sql_escape "$_f_resp")','$(sql_escape "$_f_decid")','$(sql_escape "$_f_disp")','$(sql_escape "$_f_respat")',$_isj_lat_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,pergunta=excluded.pergunta,contexto_para_resposta=excluded.contexto_para_resposta,resposta=excluded.resposta,decisao_id=excluded.decisao_id,disparado_em=excluded.disparado_em,respondido_em=excluded.respondido_em,latencia_segundos=excluded.latencia_segundos,ingested_at=excluded.ingested_at;
-DELETE FROM knowledge_fts WHERE type='bloqueio' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='$(sql_escape "$_f_wave")' AND source_id='$(sql_escape "$_f_sid")';
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,question=excluded.question,context_for_answer=excluded.context_for_answer,answer=excluded.answer,decision_id=excluded.decision_id,triggered_at=excluded.triggered_at,answered_at=excluded.answered_at,latency_seconds=excluded.latency_seconds,ingested_at=excluded.ingested_at;
+DELETE FROM knowledge_fts WHERE type='block' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='$(sql_escape "$_f_wave")' AND source_id='$(sql_escape "$_f_sid")';
 INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
-VALUES('$(sql_escape "$_f_perg $_f_cpr $_f_resp")','bloqueio','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
+VALUES('$(sql_escape "$_f_perg $_f_cpr $_f_resp")','block','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
       _isj_n_bloq=$((_isj_n_bloq + 1))
     done
     IFS="$_isj_OLDIFS"
@@ -1119,7 +1191,7 @@ VALUES('$(sql_escape "$_f_perg $_f_cpr $_f_resp")','bloqueio','$(sql_escape "$_i
     ((.retros // .retro // []) | (if type=="array" then . else [.] end))
     | to_entries[]
     | [(.key|tostring),
-       ((.value.texto // .value.text // (if (.value|type)=="string" then .value else "" end)) // ""),
+       ((.value.text // .value.texto // (if (.value|type)=="string" then .value else "" end)) // ""),
        ((.value.timestamp // .value.data // "") // "")]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_retro_lines=""
   if [ -n "$_isj_retro_lines" ]; then
@@ -1135,9 +1207,9 @@ VALUES('$(sql_escape "$_f_perg $_f_cpr $_f_resp")','bloqueio','$(sql_escape "$_i
       _f_txt=$(recall_scrub "$_f_txt")
       _f_sid="retro-onda-$_f_idx"
       _isj_sql="$_isj_sql
-INSERT INTO retros(project,feature,wave,execucao_id,source_ts,source_id,texto,ingested_at)
+INSERT INTO retros(project,feature,wave,execution_id,source_ts,source_id,text,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','onda','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_txt")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,texto=excluded.texto,ingested_at=excluded.ingested_at;
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,text=excluded.text,ingested_at=excluded.ingested_at;
 DELETE FROM knowledge_fts WHERE type='retro' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='onda' AND source_id='$(sql_escape "$_f_sid")';
 INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
 VALUES('$(sql_escape "$_f_txt")','retro','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','onda','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
@@ -1150,7 +1222,7 @@ VALUES('$(sql_escape "$_f_txt")','retro','$(sql_escape "$_isj_project")','$(sql_
   # skill_name NAO passa pelo filtro (estruturado, FR-017/INV-DM-3).
   _isj_n_skill=0
   _isj_skill_lines=$(jq -r '
-    (.ondas // [])
+    ((.waves // .ondas) // [])
     | to_entries[]
     | .key as $wi
     | (.value.id // "onda-\($wi)") as $wid
@@ -1158,7 +1230,7 @@ VALUES('$(sql_escape "$_f_txt")','retro','$(sql_escape "$_isj_project")','$(sql_
        | [$wid,
           (.key|tostring),
           (.value.skill // .value.skill_name // ""),
-          (.value.decisao_id // ""),
+          ((.value.decision_id // .value.decisao_id) // ""),
           (.value.timestamp // "")])
     | @base64' "$_isj_state" 2>/dev/null) || _isj_skill_lines=""
   if [ -n "$_isj_skill_lines" ]; then
@@ -1174,9 +1246,9 @@ VALUES('$(sql_escape "$_f_txt")','retro','$(sql_escape "$_isj_project")','$(sql_
       [ -n "$_f_skn" ] || continue
       _f_sid="skill-$_f_wid-$_f_sidx"
       _isj_sql="$_isj_sql
-INSERT INTO skills(project,feature,wave,execucao_id,source_ts,source_id,skill_name,decisao_id,ingested_at)
+INSERT INTO skills(project,feature,wave,execution_id,source_ts,source_id,skill_name,decision_id,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_skn")','$(sql_escape "$_f_did")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,skill_name=excluded.skill_name,decisao_id=excluded.decisao_id,ingested_at=excluded.ingested_at;
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,skill_name=excluded.skill_name,decision_id=excluded.decision_id,ingested_at=excluded.ingested_at;
 DELETE FROM knowledge_fts WHERE type='skill' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='$(sql_escape "$_f_wid")' AND source_id='$(sql_escape "$_f_sid")';
 INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
 VALUES('$(sql_escape "$_f_skn")','skill','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
@@ -1186,9 +1258,9 @@ VALUES('$(sql_escape "$_f_skn")','skill','$(sql_escape "$_isj_project")','$(sql_
   fi
 
   # ---- tasks (camada B; grao = task por execucao) ----
-  # Campos do state.json: task_id, wave_id, titulo, outcome, testes_rodados,
-  # testes_passados, lint_ok (bool -> 0/1), arquivos_tocados (array -> length).
-  # Chave natural: wave=<wave_id da task>, source_id=task_id. So `titulo` e
+  # Campos do state.json (EN com fallback pt): task_id, wave_id, title, outcome,
+  # tests_run, tests_passed, lint_ok (bool -> 0/1), touched_files (array -> length).
+  # Chave natural: wave=<wave_id da task>, source_id=task_id. So `title` e
   # texto livre (UX do painel) e passa por secrets-filter (FR-017); os demais
   # campos sao estruturados/numericos. Tasks NAO alimentam knowledge_fts
   # (metrica, nao corpo pesquisavel).
@@ -1200,13 +1272,13 @@ VALUES('$(sql_escape "$_f_skn")','skill','$(sql_escape "$_isj_project")','$(sql_
     | [(.task_id // ""),
        (.wave_id // ""),
        (.outcome // ""),
-       ((.testes_rodados // "")|tostring),
-       ((.testes_passados // "")|tostring),
+       ((.tests_run // .testes_rodados // "")|tostring),
+       ((.tests_passed // .testes_passados // "")|tostring),
        (if (.lint_ok == true) then "1"
         elif (.lint_ok == false) then "0"
         else "" end),
-       (((.arquivos_tocados // []) | length)|tostring),
-       (.titulo // "")]
+       ((((.touched_files // .arquivos_tocados) // []) | length)|tostring),
+       ((.title // .titulo) // "")]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_task_lines=""
   if [ -n "$_isj_task_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -1229,9 +1301,9 @@ VALUES('$(sql_escape "$_f_skn")','skill','$(sql_escape "$_isj_project")','$(sql_
       _isj_tlo_sql=$(recall_int_or_null "$_f_tlo")
       _isj_tat_sql=$(recall_int_or_null "$_f_tat")
       _isj_sql="$_isj_sql
-INSERT INTO tasks(project,feature,wave,execucao_id,source_ts,source_id,titulo,outcome,testes_rodados,testes_passados,lint_ok,arquivos_tocados,ingested_at)
+INSERT INTO tasks(project,feature,wave,execution_id,source_ts,source_id,title,outcome,tests_run,tests_passed,lint_ok,touched_files,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_twid")','$(sql_escape "$_isj_exec_id")','','$(sql_escape "$_f_tid")','$(sql_escape "$_f_ttit")','$(sql_escape "$_f_toc")',$_isj_tr_sql,$_isj_tp_sql,$_isj_tlo_sql,$_isj_tat_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,titulo=excluded.titulo,outcome=excluded.outcome,testes_rodados=excluded.testes_rodados,testes_passados=excluded.testes_passados,lint_ok=excluded.lint_ok,arquivos_tocados=excluded.arquivos_tocados,ingested_at=excluded.ingested_at;"
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,title=excluded.title,outcome=excluded.outcome,tests_run=excluded.tests_run,tests_passed=excluded.tests_passed,lint_ok=excluded.lint_ok,touched_files=excluded.touched_files,ingested_at=excluded.ingested_at;"
       _isj_n_task=$((_isj_n_task + 1))
     done
     IFS="$_isj_OLDIFS"
@@ -1247,10 +1319,10 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
   # Events NAO alimentam knowledge_fts. Retro-compat: .eventos[]? // empty.
   _isj_n_event=0
   _isj_event_lines=$(jq -r '
-    (.eventos[]? // empty)
+    ((.events // .eventos) // [] | .[]? // empty)
     | [(.event_type // ""),
        (.timestamp // ""),
-       (.descricao // "")]
+       ((.description // .descricao) // "")]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_event_lines=""
   if [ -n "$_isj_event_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -1267,9 +1339,9 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _f_edsc=$(recall_scrub "$_f_edsc")
       _f_esid="$_f_evt:$_f_ets"
       _isj_sql="$_isj_sql
-INSERT INTO events(project,feature,wave,execucao_id,source_ts,source_id,event_type,timestamp,descricao,ingested_at)
+INSERT INTO events(project,feature,wave,execution_id,source_ts,source_id,event_type,timestamp,description,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ets")','$(sql_escape "$_f_esid")','$(sql_escape "$_f_evt")','$(sql_escape "$_f_ets")','$(sql_escape "$_f_edsc")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,event_type=excluded.event_type,timestamp=excluded.timestamp,descricao=excluded.descricao,ingested_at=excluded.ingested_at;"
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,event_type=excluded.event_type,timestamp=excluded.timestamp,description=excluded.description,ingested_at=excluded.ingested_at;"
       _isj_n_event=$((_isj_n_event + 1))
     done
     IFS="$_isj_OLDIFS"
@@ -1280,21 +1352,21 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
   # (diagnostico + proposta + referencias). Grao = sugestao por execucao;
   # wave='-' (top-level, como executions/events); source_id=<id da sugestao>
   # (chave natural estavel, ex. sug-001); source_ts=criada_em.
-  # diagnostico+proposta sao texto livre -> filtro de segredo (FR-006) e formam
-  # o body da FTS (type='suggestion'). skill_afetada/severidade/issue_aberta sao
-  # estruturados (sem filtro). referencias (array de paths) -> join "," + scrub
+  # diagnosis+proposal sao texto livre -> filtro de segredo (FR-006) e formam
+  # o body da FTS (type='suggestion'). affected_skill/severity/issue_opened sao
+  # estruturados (sem filtro). references (array de paths) -> join "," + scrub
   # (paths podem embutir segredo). Retro-compat: .sugestoes[]? // empty -> 0.
   _isj_n_suggestion=0
   _isj_sug_lines=$(jq -r '
-    (.sugestoes[]? // empty)
+    ((.suggestions // .sugestoes) // [] | .[]? // empty)
     | [(.id // ""),
-       (.skill_afetada // ""),
-       (.severidade // ""),
-       (.diagnostico // ""),
-       (.proposta // ""),
-       ((.referencias // []) | join(",")),
-       ((.issue_aberta // "") | tostring),
-       (.criada_em // "")]
+       ((.affected_skill // .skill_afetada) // ""),
+       ((.severity // .severidade) // ""),
+       ((.diagnosis // .diagnostico) // ""),
+       ((.proposal // .proposta) // ""),
+       (((.references // .referencias) // []) | join(",")),
+       (((.issue_opened // .issue_aberta) // "") | tostring),
+       ((.created_at // .criada_em) // "")]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_sug_lines=""
   if [ -n "$_isj_sug_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -1318,9 +1390,9 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       # Body da FTS: diagnostico + proposta (ja scrubbed).
       _f_sgbody=$(printf '%s %s' "$_f_sgdg" "$_f_sgpr")
       _isj_sql="$_isj_sql
-INSERT INTO suggestions(project,feature,wave,execucao_id,source_ts,source_id,skill_afetada,severidade,diagnostico,proposta,referencias,issue_aberta,ingested_at)
+INSERT INTO suggestions(project,feature,wave,execution_id,source_ts,source_id,affected_skill,severity,diagnosis,proposal,\"references\",issue_opened,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_sgts")','$(sql_escape "$_f_sgid")','$(sql_escape "$_f_sgsk")','$(sql_escape "$_f_sgsv")','$(sql_escape "$_f_sgdg")','$(sql_escape "$_f_sgpr")','$(sql_escape "$_f_sgrf")','$(sql_escape "$_f_sgia")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,skill_afetada=excluded.skill_afetada,severidade=excluded.severidade,diagnostico=excluded.diagnostico,proposta=excluded.proposta,referencias=excluded.referencias,issue_aberta=excluded.issue_aberta,ingested_at=excluded.ingested_at;
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,affected_skill=excluded.affected_skill,severity=excluded.severity,diagnosis=excluded.diagnosis,proposal=excluded.proposal,\"references\"=excluded.\"references\",issue_opened=excluded.issue_opened,ingested_at=excluded.ingested_at;
 DELETE FROM knowledge_fts WHERE type='suggestion' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='-' AND source_id='$(sql_escape "$_f_sgid")';
 INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
 VALUES('$(sql_escape "$_f_sgbody")','suggestion','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_sgid")','$(sql_escape "$_f_sgts")');"
@@ -1446,8 +1518,9 @@ recall_ingest_memories() {
   _rim_state_dir="$1"
   _rim_db="$2"
 
-  # Le projeto_alvo_path do state.json (read-only via jq). Sem path = no-op.
-  _rim_proj_path=$(jq -r '.execucao.projeto_alvo_path // ""' \
+  # Le target_project_path do state.json (read-only via jq, EN + fallback pt).
+  # Sem path = no-op.
+  _rim_proj_path=$(jq -r '(.execution.target_project_path // .execucao.projeto_alvo_path) // ""' \
     "$_rim_state_dir/state.json" 2>/dev/null) || _rim_proj_path=""
   [ -n "$_rim_proj_path" ] || return "$RECALL_EXIT_OK"
 
@@ -1618,7 +1691,7 @@ recall_mode_ingest() {
   # Passo aditivo (CQ2): ingerir memorias do projeto apos state.json.
   recall_ingest_memories "$_ing_state_dir" "$_ing_db"
 
-  printf 'ingested: %d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions\n' \
+  printf 'ingested: %d decisions, %d blocks, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions\n' \
     "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
     "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
     "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}" \
@@ -1680,11 +1753,13 @@ recall_mode_search() {
     return "$RECALL_EXIT_USAGE"
   fi
 
-  # --type validado contra enum (se fornecido).
+  # --type validado contra enum (se fornecido). 'bloqueio' aceito como alias
+  # deprecado e normalizado para 'block' (aviso em stderr) ANTES de virar SQL.
   if [ -n "$_se_type" ] && ! validate_type "$_se_type"; then
-    log_error "recall: --type fora do enum (decision|bloqueio|retro|skill|memory|suggestion): '$_se_type'"
+    log_error "recall: --type fora do enum (decision|block|retro|skill|memory|suggestion): '$_se_type'"
     return "$RECALL_EXIT_USAGE"
   fi
+  [ -n "$_se_type" ] && _se_type=$(recall_normalize_type "$_se_type")
 
   # Degradacao graciosa: sqlite3 ausente.
   if ! recall_have_sqlite3; then
@@ -1815,11 +1890,13 @@ recall_mode_context() {
     return "$RECALL_EXIT_USAGE"
   fi
 
-  # --type validado contra enum (se fornecido).
+  # --type validado contra enum (se fornecido). 'bloqueio' = alias deprecado
+  # de 'block' (normalizado com aviso em stderr antes de virar SQL).
   if [ -n "$_cx_type" ] && ! validate_type "$_cx_type"; then
-    log_error "recall --context: --type fora do enum (decision|bloqueio|retro|skill|memory|suggestion): '$_cx_type'"
+    log_error "recall --context: --type fora do enum (decision|block|retro|skill|memory|suggestion): '$_cx_type'"
     return "$RECALL_EXIT_USAGE"
   fi
+  [ -n "$_cx_type" ] && _cx_type=$(recall_normalize_type "$_cx_type")
 
   # ---- Gates de degradacao graciosa (no-op silencioso, exit 0) ----
   # FR-012: NENHUM caminho de degradacao retorna codigo != 0; stdout fica vazio.
@@ -2043,7 +2120,7 @@ recall_mode_reindex() {
     fi
   fi
 
-  printf 'reindexed: %d state files (%d decisions, %d bloqueios, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions)\n' \
+  printf 'reindexed: %d state files (%d decisions, %d blocks, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions)\n' \
     "$_rx_count" "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
     "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
     "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}" \

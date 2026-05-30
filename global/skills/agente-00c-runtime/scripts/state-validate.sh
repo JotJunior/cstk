@@ -12,12 +12,21 @@
 #   1. Le state.json. Se nao parseavel = exit 1 com diagnostico.
 #   2. Verifica presenca + tipo de cada campo obrigatorio.
 #   3. Aplica invariantes (profundidade <= 3, ciclos <= 5, retros <= 2).
-#   4. Verifica consistencia de status x terminada_em.
+#   4. Verifica consistencia de status x finished_at.
 #   5. Verifica que cada Decisao tem 5 campos preenchidos (Principio I).
 #   6. Verifica que cada BloqueioHumano referencia uma Decisao existente.
-#   7. Verifica que whitelist_urls_externas e array de strings nao vazias.
+#   7. Verifica que external_urls_whitelist e array de strings nao vazias.
 #
 # IMPORTANTE: NAO faz auto-correcao. Falha = bloqueio puro (Principio III).
+#
+# Schema EN (schema-en-migration): READ-ONLY sobre state.json — todas as
+# leituras usam chaves EN com fallback pt-BR (.en // .pt) para aceitar states
+# pt-BR vivos. NAO escreve state.json. Ver docs/specs/schema-en-migration/.
+# VALORES de enum (status, etapa, strategy) permanecem pt-BR (follow-up B). As
+# folhas do subsistema de cache (§3.9d: estrategia->strategy, resumo_chars->
+# summary_chars, gerado_em->generated_at, gerado_na_onda->generated_in_wave)
+# sao lidas EN-first + fallback pt-BR — par coordenado com state-cache.sh. O
+# cache nao entra no canonicalizer de state-rw (leitura direta com fallback).
 #
 # Exit codes:
 #   0 valido
@@ -67,16 +76,18 @@ EXIT:
 Lista de checagens:
   1. Arquivo existe e e JSON parseavel.
   2. schema_version = "1.0.0".
-  3. Campos obrigatorios presentes (execucao.*, etapa_corrente, proxima_instrucao,
-     ondas, decisoes, bloqueios_humanos, orcamentos.*, whitelist_urls_externas).
-  4. status x terminada_em consistentes (terminal => terminada_em != null).
-  5. profundidade_corrente_subagentes <= 3.
-  6. ciclos_consumidos_etapa_corrente <= 5.
-  7. retro_execucoes_consumidas <= 2.
-  8. Cada Decisao tem 5 campos: contexto, opcoes_consideradas (>=1),
-     escolha, justificativa, agente.
-  9. Cada BloqueioHumano referencia uma Decisao existente (decisao_id).
- 10. whitelist_urls_externas e array de strings nao-vazias.
+  3. Campos obrigatorios presentes (execution.*, current_stage, next_instruction,
+     waves, decisions, human_blocks, budgets.*, external_urls_whitelist).
+  4. status x finished_at consistentes (terminal => finished_at != null).
+  5. current_subagent_depth <= 3.
+  6. cycles_consumed_current_stage <= 5.
+  7. retro_executions_consumed <= 2.
+  8. Cada Decisao tem 5 campos: context, options_considered (>=1),
+     choice, rationale, agent.
+  9. Cada BloqueioHumano referencia uma Decisao existente (decision_id).
+ 10. external_urls_whitelist e array de strings nao-vazias.
+
+Schema EN com fallback pt-BR (.en // .pt): states pt-BR vivos ainda validam.
 HELP
       exit 0
       ;;
@@ -111,10 +122,21 @@ if [ "$_v" != "1.0.0" ]; then
 fi
 
 # 3. Campos obrigatorios estruturais
+# READER (schema-en-migration): path EN + fallback pt-BR. Assinatura:
+#   _check_field EN-PATH KIND [PT-PATH]
+# Quando PT-PATH e omitido, a chave ja e neutra/EN (ex: .schema_version) ou o
+# fallback se faz no nivel do container (.execution // .execucao) — para folhas
+# de containers renomeados passamos o path pt-BR equivalente explicitamente.
 _check_field() {
   _path=$1
   _kind=$2  # string|object|array|number
-  _t=$(jq -r "($_path) | type" "$_SV_FILE" 2>/dev/null) || _t="null"
+  _fallback=${3:-}
+  if [ -n "$_fallback" ]; then
+    _expr="($_path) // ($_fallback)"
+  else
+    _expr="($_path)"
+  fi
+  _t=$(jq -r "($_expr) | type" "$_SV_FILE" 2>/dev/null) || _t="null"
   case "$_kind:$_t" in
     string:string) ;;
     object:object) ;;
@@ -126,51 +148,59 @@ _check_field() {
   esac
 }
 
-_check_field '.execucao'                          object
-_check_field '.execucao.id'                       string
-_check_field '.execucao.projeto_alvo_path'        string
-_check_field '.execucao.projeto_alvo_descricao'   string
-_check_field '.execucao.status'                   string
-_check_field '.execucao.iniciada_em'              string
-_check_field '.etapa_corrente'                    string
-_check_field '.proxima_instrucao'                 string
-_check_field '.ondas'                             array
-_check_field '.decisoes'                          array
-_check_field '.bloqueios_humanos'                 array
-_check_field '.orcamentos'                        object
-_check_field '.orcamentos.profundidade_corrente_subagentes' number
-_check_field '.orcamentos.ciclos_consumidos_etapa_corrente' number
-_check_field '.orcamentos.retro_execucoes_consumidas'       number
-_check_field '.whitelist_urls_externas'           array
+_check_field '.execution'                          object '.execucao'
+_check_field '.execution.id'                       string '.execucao.id'
+_check_field '.execution.target_project_path'      string '.execucao.projeto_alvo_path'
+_check_field '.execution.target_project_description' string '.execucao.projeto_alvo_descricao'
+_check_field '.execution.status'                   string '.execucao.status'
+_check_field '.execution.started_at'               string '.execucao.iniciada_em'
+_check_field '.current_stage'                       string '.etapa_corrente'
+_check_field '.next_instruction'                    string '.proxima_instrucao'
+_check_field '.waves'                               array '.ondas'
+_check_field '.decisions'                           array '.decisoes'
+_check_field '.human_blocks'                        array '.bloqueios_humanos'
+_check_field '.budgets'                             object '.orcamentos'
+_check_field '.budgets.current_subagent_depth'      number '.orcamentos.profundidade_corrente_subagentes'
+_check_field '.budgets.cycles_consumed_current_stage' number '.orcamentos.ciclos_consumidos_etapa_corrente'
+_check_field '.budgets.retro_executions_consumed'   number '.orcamentos.retro_execucoes_consumidas'
+_check_field '.external_urls_whitelist'             array '.whitelist_urls_externas'
 
-# 4. status x terminada_em
-_st=$(jq -r '.execucao.status // ""' "$_SV_FILE")
-_te=$(jq -r '.execucao.terminada_em // null' "$_SV_FILE")
+# 4. status x finished_at
+# READER: chaves EN + fallback pt-BR. VALORES de status (enum) permanecem pt-BR.
+_st=$(jq -r '(.execution.status // .execucao.status) // ""' "$_SV_FILE")
+_te=$(jq -r '(.execution.finished_at // .execucao.terminada_em) // null' "$_SV_FILE")
 case "$_st" in
   abortada|concluida)
     if [ "$_te" = "null" ]; then
-      _sv_add "status terminal (\"$_st\") mas execucao.terminada_em e null"
+      _sv_add "status terminal (\"$_st\") mas execution.finished_at e null"
     fi
     ;;
   em_andamento|aguardando_humano)
     if [ "$_te" != "null" ]; then
-      _sv_add "status nao-terminal (\"$_st\") mas execucao.terminada_em preenchido (\"$_te\")"
+      _sv_add "status nao-terminal (\"$_st\") mas execution.finished_at preenchido (\"$_te\")"
     fi
     ;;
   "")
     : # ja reportado pelo _check_field acima
     ;;
   *)
-    _sv_add "execucao.status invalido: \"$_st\" (esperado em_andamento|aguardando_humano|abortada|concluida)"
+    _sv_add "execution.status invalido: \"$_st\" (esperado em_andamento|aguardando_humano|abortada|concluida)"
     ;;
 esac
 
 # 5/6/7. Invariantes numericas
+# READER: path EN + fallback pt-BR (4o arg opcional).
 _check_max() {
   _path=$1
   _max=$2
   _label=$3
-  _val=$(jq -r "($_path) // 0" "$_SV_FILE" 2>/dev/null) || _val=0
+  _fallback=${4:-}
+  if [ -n "$_fallback" ]; then
+    _expr="($_path) // ($_fallback) // 0"
+  else
+    _expr="($_path) // 0"
+  fi
+  _val=$(jq -r "$_expr" "$_SV_FILE" 2>/dev/null) || _val=0
   # Garante numerico
   case "$_val" in
     ''|*[!0-9-]*) return 0 ;;  # ja reportado por _check_field
@@ -180,20 +210,21 @@ _check_max() {
   fi
 }
 
-_check_max '.orcamentos.profundidade_corrente_subagentes' 3 "Invariante FR-013 (max 3 niveis de subagentes)"
-_check_max '.orcamentos.ciclos_consumidos_etapa_corrente' 5 "Invariante FR-014.a (max 5 ciclos sem progresso)"
-_check_max '.orcamentos.retro_execucoes_consumidas'       2 "Invariante FR-006 (max 2 retro-execucoes)"
+_check_max '.budgets.current_subagent_depth'        3 "Invariante FR-013 (max 3 niveis de subagentes)" '.orcamentos.profundidade_corrente_subagentes'
+_check_max '.budgets.cycles_consumed_current_stage' 5 "Invariante FR-014.a (max 5 ciclos sem progresso)" '.orcamentos.ciclos_consumidos_etapa_corrente'
+_check_max '.budgets.retro_executions_consumed'     2 "Invariante FR-006 (max 2 retro-execucoes)" '.orcamentos.retro_execucoes_consumidas'
 
 # 8. Decisoes: 5 campos preenchidos
-_dec_total=$(jq '.decisoes | length' "$_SV_FILE" 2>/dev/null) || _dec_total=0
+# READER: container + folhas EN com fallback pt-BR (.en // .pt).
+_dec_total=$(jq '((.decisions // .decisoes) // []) | length' "$_SV_FILE" 2>/dev/null) || _dec_total=0
 if [ "$_dec_total" -gt 0 ]; then
   _missing=$(jq -r '
-    .decisoes[]? | select(
-      (.contexto | type) != "string" or (.contexto | length) == 0 or
-      (.opcoes_consideradas | type) != "array" or (.opcoes_consideradas | length) == 0 or
-      (.escolha | type) != "string" or (.escolha | length) == 0 or
-      (.justificativa | type) != "string" or (.justificativa | length) == 0 or
-      (.agente | type) != "string" or (.agente | length) == 0
+    ((.decisions // .decisoes) // [])[]? | select(
+      ((.context // .contexto) | type) != "string" or ((.context // .contexto) | length) == 0 or
+      ((.options_considered // .opcoes_consideradas) | type) != "array" or ((.options_considered // .opcoes_consideradas) | length) == 0 or
+      ((.choice // .escolha) | type) != "string" or ((.choice // .escolha) | length) == 0 or
+      ((.rationale // .justificativa) | type) != "string" or ((.rationale // .justificativa) | length) == 0 or
+      ((.agent // .agente) | type) != "string" or ((.agent // .agente) | length) == 0
     ) | .id // "<sem-id>"
   ' "$_SV_FILE" 2>/dev/null) || _missing=""
   if [ -n "$_missing" ]; then
@@ -203,7 +234,7 @@ if [ "$_dec_total" -gt 0 ]; then
 '
     for _id in $_missing; do
       IFS=$_OLD_IFS
-      _sv_add "Decisao $_id viola Principio I (algum dos 5 campos vazio: contexto, opcoes_consideradas, escolha, justificativa, agente)"
+      _sv_add "Decisao $_id viola Principio I (algum dos 5 campos vazio: context, options_considered, choice, rationale, agent)"
       IFS='
 '
     done
@@ -212,13 +243,15 @@ if [ "$_dec_total" -gt 0 ]; then
 fi
 
 # 9. BloqueioHumano: cada um referencia Decisao existente
-_block_total=$(jq '.bloqueios_humanos | length' "$_SV_FILE" 2>/dev/null) || _block_total=0
+# READER: containers e folhas EN com fallback pt-BR.
+_block_total=$(jq '((.human_blocks // .bloqueios_humanos) // []) | length' "$_SV_FILE" 2>/dev/null) || _block_total=0
 if [ "$_block_total" -gt 0 ]; then
   _orphan=$(jq -r '
-    (.decisoes // []) as $D
-    | (.decisoes // [] | map(.id) ) as $ids
-    | .bloqueios_humanos[]?
-      | select((.decisao_id | type) != "string" or ((.decisao_id) as $d | $ids | index($d) == null))
+    ((.decisions // .decisoes) // []) as $D
+    | ($D | map(.id)) as $ids
+    | ((.human_blocks // .bloqueios_humanos) // [])[]?
+      | (.decision_id // .decisao_id) as $d
+      | select(($d | type) != "string" or ($ids | index($d) == null))
       | .id // "<sem-id>"
   ' "$_SV_FILE" 2>/dev/null) || _orphan=""
   if [ -n "$_orphan" ]; then
@@ -227,7 +260,7 @@ if [ "$_block_total" -gt 0 ]; then
 '
     for _bid in $_orphan; do
       IFS=$_OLD_IFS
-      _sv_add "BloqueioHumano $_bid referencia decisao_id inexistente"
+      _sv_add "BloqueioHumano $_bid referencia decision_id inexistente"
       IFS='
 '
     done
@@ -235,18 +268,28 @@ if [ "$_block_total" -gt 0 ]; then
   fi
 fi
 
-# 10. whitelist_urls_externas: array de strings nao-vazias
+# 10. external_urls_whitelist: array de strings nao-vazias
+# READER: chave EN + fallback pt-BR.
 _wl_bad=$(jq -r '
-  .whitelist_urls_externas // [] | to_entries[]?
+  ((.external_urls_whitelist // .whitelist_urls_externas) // []) | to_entries[]?
   | select((.value | type) != "string" or (.value | length) == 0)
   | .key
 ' "$_SV_FILE" 2>/dev/null) || _wl_bad=""
 if [ -n "$_wl_bad" ]; then
-  _sv_add "whitelist_urls_externas contem entrada(s) invalida(s) (nao-string ou string vazia) em indice(s): $(printf '%s' "$_wl_bad" | tr '\n' ' ')"
+  _sv_add "external_urls_whitelist contem entrada(s) invalida(s) (nao-string ou string vazia) em indice(s): $(printf '%s' "$_wl_bad" | tr '\n' ' ')"
 fi
 
 # 11. Cache de artefatos (FR-CACHE-017) — valida invariantes quando os
 #     campos briefing_cache / constitution_cache estao presentes (nao-null).
+# READER (schema-en-migration §3.9d): folhas de cache migradas para EN com
+# fallback pt-BR (.en // .pt) — par coordenado com state-cache.sh (writer):
+#   estrategia->strategy, resumo_chars->summary_chars, gerado_em->generated_at,
+#   gerado_na_onda->generated_in_wave (resumo->summary, resumo_max_chars->
+#   summary_max_chars, tokens_economizados_estimados->estimated_tokens_saved
+#   nao sao lidas aqui). Containers *_cache + source_path/source_sha256/
+#   source_chars ja eram EN (keep). VALORES de strategy
+#   (resumo|passthrough|desabilitado) permanecem pt-BR (follow-up B). O
+#   container de ondas (.waves) tambem tem fallback abaixo.
 _validate_cache_field() {
   _cf=$1  # ex: briefing_cache | constitution_cache
   _present=$(jq -r "if .${_cf} == null then \"absent\" else \"present\" end" "$_SV_FILE" 2>/dev/null) || _present="absent"
@@ -265,41 +308,47 @@ _validate_cache_field() {
     esac
   fi
 
-  # estrategia: enum {resumo, passthrough, desabilitado}
-  _est=$(jq -r ".${_cf}.estrategia // \"\"" "$_SV_FILE" 2>/dev/null) || _est=""
+  # strategy: enum {resumo, passthrough, desabilitado}
+  # READER: chave EN (strategy) + fallback pt-BR (estrategia). VALORES do enum
+  # permanecem pt-BR (follow-up B).
+  _est=$(jq -r "(.${_cf}.strategy // .${_cf}.estrategia) // \"\"" "$_SV_FILE" 2>/dev/null) || _est=""
   case "$_est" in
     resumo|passthrough|desabilitado) : ;;
-    *) _sv_add "FR-CACHE-017: ${_cf}.estrategia invalido: \"$_est\" (esperado: resumo|passthrough|desabilitado)" ;;
+    *) _sv_add "FR-CACHE-017: ${_cf}.strategy invalido: \"$_est\" (esperado: resumo|passthrough|desabilitado)" ;;
   esac
 
-  # resumo_chars <= source_chars
+  # summary_chars <= source_chars
+  # READER: source_chars ja EN (keep); summary_chars (EN) + fallback resumo_chars.
   _src_c=$(jq -r ".${_cf}.source_chars // 0" "$_SV_FILE" 2>/dev/null) || _src_c=0
-  _res_c=$(jq -r ".${_cf}.resumo_chars // 0" "$_SV_FILE" 2>/dev/null) || _res_c=0
+  _res_c=$(jq -r "(.${_cf}.summary_chars // .${_cf}.resumo_chars) // 0" "$_SV_FILE" 2>/dev/null) || _res_c=0
   case "$_src_c" in ''|*[!0-9]*) _src_c=0 ;; esac
   case "$_res_c" in ''|*[!0-9]*) _res_c=0 ;; esac
   if [ "$_res_c" -gt "$_src_c" ]; then
-    _sv_add "FR-CACHE-017: ${_cf}.resumo_chars ($_res_c) > source_chars ($_src_c)"
+    _sv_add "FR-CACHE-017: ${_cf}.summary_chars ($_res_c) > source_chars ($_src_c)"
   fi
 
-  # gerado_em: ISO-8601 (formato YYYY-MM-DDTHH:MM:SSZ)
-  _ger=$(jq -r ".${_cf}.gerado_em // \"\"" "$_SV_FILE" 2>/dev/null) || _ger=""
+  # generated_at: ISO-8601 (formato YYYY-MM-DDTHH:MM:SSZ)
+  # READER: chave EN (generated_at) + fallback pt-BR (gerado_em).
+  _ger=$(jq -r "(.${_cf}.generated_at // .${_cf}.gerado_em) // \"\"" "$_SV_FILE" 2>/dev/null) || _ger=""
   case "$_ger" in
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) : ;;
-    *) _sv_add "FR-CACHE-017: ${_cf}.gerado_em nao eh ISO-8601 (got \"$_ger\")" ;;
+    *) _sv_add "FR-CACHE-017: ${_cf}.generated_at nao eh ISO-8601 (got \"$_ger\")" ;;
   esac
 
-  # gerado_na_onda: >= 1 e <= numero da onda corrente (ou >=1 se sem ondas)
-  _gon=$(jq -r ".${_cf}.gerado_na_onda // 0" "$_SV_FILE" 2>/dev/null) || _gon=0
-  _ondas_total=$(jq -r '(.ondas // []) | length' "$_SV_FILE" 2>/dev/null) || _ondas_total=0
+  # generated_in_wave: >= 1 e <= numero da onda corrente (ou >=1 se sem ondas)
+  # READER: chave EN (generated_in_wave) + fallback pt-BR (gerado_na_onda);
+  # .waves tambem com fallback (.ondas).
+  _gon=$(jq -r "(.${_cf}.generated_in_wave // .${_cf}.gerado_na_onda) // 0" "$_SV_FILE" 2>/dev/null) || _gon=0
+  _ondas_total=$(jq -r '((.waves // .ondas) // []) | length' "$_SV_FILE" 2>/dev/null) || _ondas_total=0
   case "$_gon" in ''|*[!0-9]*) _gon=0 ;; esac
   case "$_ondas_total" in ''|*[!0-9]*) _ondas_total=0 ;; esac
   if [ "$_gon" -lt 1 ]; then
-    _sv_add "FR-CACHE-017: ${_cf}.gerado_na_onda ($_gon) deve ser >= 1"
+    _sv_add "FR-CACHE-017: ${_cf}.generated_in_wave ($_gon) deve ser >= 1"
   fi
-  # gerado_na_onda pode ser ate ondas_total+1 (cache populado antes do start da onda atual)
+  # generated_in_wave pode ser ate ondas_total+1 (cache populado antes do start da onda atual)
   _max_onda=$((_ondas_total + 1))
   if [ "$_gon" -gt "$_max_onda" ]; then
-    _sv_add "FR-CACHE-017: ${_cf}.gerado_na_onda ($_gon) > ondas_total+1 ($_max_onda)"
+    _sv_add "FR-CACHE-017: ${_cf}.generated_in_wave ($_gon) > ondas_total+1 ($_max_onda)"
   fi
 }
 

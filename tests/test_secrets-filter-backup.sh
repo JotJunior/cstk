@@ -11,7 +11,8 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/secrets-filter.sh"
 
 scenario_backup_envelope_tem_campos_obrigatorios() {
-  _input='{"execucao":{"id":"01HX","status":"em_andamento"},"decisoes":[]}'
+  # Snapshot em EN (schema canonico). status VALUE permanece pt (follow-up B).
+  _input='{"execution":{"id":"01HX","status":"em_andamento"},"decisions":[]}'
   capture sh -c "printf '%s' '$_input' | '$SCRIPT' for-backup --wave-number 7"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains '"wave_number": 7' || return 1
@@ -103,7 +104,9 @@ scenario_backup_wave_number_invalido_falha() {
 }
 
 scenario_backup_preserva_estrutura_segura() {
-  # Conteudo seguro deve passar inalterado dentro do envelope
+  # BACK-COMPAT: snapshot legado em pt-BR (execucao) deve passar inalterado
+  # dentro do envelope. O for-backup trata o state como blob opaco (nao
+  # canonicaliza chaves), entao um state.json pt-BR antigo e preservado tal qual.
   _input='{"execucao":{"id":"01HX","status":"concluida"},"meta":"safe text"}'
   capture sh -c "printf '%s' '$_input' | '$SCRIPT' for-backup --wave-number 10"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }

@@ -128,7 +128,7 @@ case "$_SL_SUBCMD" in
       printf '%s: jq nao encontrado no PATH (necessario para check-execution-busy).\n' "$_SL_NAME" >&2
       exit 1
     fi
-    _status=$(jq -r '.execucao.status // ""' "$_SL_STATE" 2>/dev/null) || _status=""
+    _status=$(jq -r '(.execution.status // .execucao.status) // ""' "$_SL_STATE" 2>/dev/null) || _status=""
     case "$_status" in
       em_andamento|aguardando_humano)
         printf '%s: ja existe execucao em status "%s" em %s.\n' "$_SL_NAME" "$_status" "$_SL_STATE" >&2

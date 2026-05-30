@@ -101,7 +101,7 @@ fi
    fi
 
 5. ler status do state
-   _status=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.execucao.status')
+   _status=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.execution.status')
 
 6. se status == aguardando_humano:
    - se --resposta-bloqueio NAO fornecido, listar bloqueios pendentes e exit 5
@@ -111,6 +111,14 @@ fi
      - mudar status para em_andamento
 
 7. selecionar modelo da onda + delegar ao orquestrador
+
+   Migrate defensivo (best-effort): canonicaliza um `state.json` pt-BR
+   legado para EN no lugar ANTES de qualquer direct-writer (orquestrador,
+   `wave-select`) tocar o arquivo (schema-en-migration, arquitetura B+).
+   Idempotente/no-op em states ja EN; degrada graciosamente (falha nao
+   gateia a retomada):
+
+     state-rw.sh migrate --state-dir "$AGENTE_00C_STATE_DIR"
 
    Antes de spawnar, compute o modelo a aplicar na onda de continuacao
    via `wave-select` (mapa fase→modelo + refino + override — FR-002,
@@ -189,7 +197,7 @@ cstk recall --ingest --state-dir "$AGENTE_00C_STATE_DIR" 2>/dev/null \
 ## Listar bloqueios pendentes (exit 5)
 
 ```
-bloqueios.sh list --state-dir "$AGENTE_00C_STATE_DIR" --status aguardando | jq -r '.[] | "\(.id): \(.pergunta)\n  contexto: \(.contexto)"' >&2
+bloqueios.sh list --state-dir "$AGENTE_00C_STATE_DIR" --status aguardando | jq -r '.[] | "\(.id): \(.question)\n  contexto: \(.context_for_answer)"' >&2
 stderr ""
 stderr "Para responder, re-invoque:"
 stderr "  /feature-00c-resume $SHORT --resposta-bloqueio \"<sua resposta>\""

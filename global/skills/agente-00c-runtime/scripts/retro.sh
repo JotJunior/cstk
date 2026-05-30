@@ -7,7 +7,7 @@
 #
 # Semantica:
 #   - Toda vez que o orquestrador volta para a etapa anterior (retro), ele
-#     consome 1 unidade do orcamento `retro_execucoes_consumidas`.
+#     consome 1 unidade do orcamento `budgets.retro_executions_consumed`.
 #   - Limite default: 2 retros por feature.
 #   - 3a tentativa = bloqueio humano (delegado ao orquestrador via
 #     `bloqueios.sh register`).
@@ -17,7 +17,7 @@
 #       — Exit 0 se pode consumir mais 1 retro (consumed < max).
 #       — Exit 3 se ja no limite (consumed == max).
 #   retro.sh consume --state-dir DIR
-#       — Incrementa retro_execucoes_consumidas.
+#       — Incrementa budgets.retro_executions_consumed.
 #       — Exit 3 SEM modificar estado se incremento excederia max.
 #       — Stdout: novo valor consumido.
 #   retro.sh count --state-dir DIR
@@ -69,8 +69,17 @@ _rt_update_sha() {
 _rt_get_state() {
   _sf=$(_rt_state_file "$1")
   [ -f "$_sf" ] || _rt_die "state.json ausente em $1" 1
-  _RT_CONSUMED=$(jq -r '.orcamentos.retro_execucoes_consumidas // 0' "$_sf")
-  _RT_MAX=$(jq -r '.orcamentos.retro_execucoes_max_por_feature // 2' "$_sf")
+  # Readers (schema-en-migration): chaves EN com fallback pt-BR (.en // .pt).
+  # Fallback no container (budgets // orcamentos) E na folha para ler states
+  # legados (back-compat). Ver migration-map.md §3.1, §3.7.
+  _RT_CONSUMED=$(jq -r '
+    ((.budgets // .orcamentos) // {})
+    | .retro_executions_consumed // .retro_execucoes_consumidas // 0
+  ' "$_sf")
+  _RT_MAX=$(jq -r '
+    ((.budgets // .orcamentos) // {})
+    | .max_retro_executions_per_feature // .retro_execucoes_max_por_feature // 2
+  ' "$_sf")
 }
 
 _rt_cmd_check() {
@@ -112,7 +121,9 @@ _rt_cmd_consume() {
 
   _sf=$(_rt_state_file "$_sd")
   _new_state=$(mktemp) || _rt_die "mktemp falhou" 1
-  jq --argjson n "$_new" '.orcamentos.retro_execucoes_consumidas = $n' "$_sf" > "$_new_state" \
+  # Writer (schema-en-migration): chave EN, sem fallback (EN-on-disk garantido
+  # pelo migrate defensivo do command-pai no inicio da onda).
+  jq --argjson n "$_new" '.budgets.retro_executions_consumed = $n' "$_sf" > "$_new_state" \
     || { rm -f -- "$_new_state"; _rt_die "jq update falhou" 1; }
   _rt_atomic_write "$_sf" "$_new_state"
   rm -f -- "$_new_state" 2>/dev/null || :
@@ -147,7 +158,9 @@ _rt_cmd_reset() {
   _sf=$(_rt_state_file "$_sd")
   [ -f "$_sf" ] || _rt_die "reset: state.json ausente" 1
   _new_state=$(mktemp) || _rt_die "mktemp falhou" 1
-  jq '.orcamentos.retro_execucoes_consumidas = 0' "$_sf" > "$_new_state" \
+  # Writer (schema-en-migration): chave EN, sem fallback (EN-on-disk garantido
+  # pelo migrate defensivo do command-pai no inicio da onda).
+  jq '.budgets.retro_executions_consumed = 0' "$_sf" > "$_new_state" \
     || { rm -f -- "$_new_state"; _rt_die "jq update falhou" 1; }
   _rt_atomic_write "$_sf" "$_new_state"
   rm -f -- "$_new_state" 2>/dev/null || :

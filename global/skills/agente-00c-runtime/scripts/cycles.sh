@@ -8,7 +8,7 @@
 # `cycles.sh tick`. Quando a etapa muda, o contador reseta. Se houver
 # "progresso mensuravel" (4 indicadores em FR-014), o tick e chamado com
 # `--progress-made` e o contador e zerado. Sem progresso por mais de
-# `ciclos_max_por_etapa` (default 5) ticks consecutivos = aborto
+# `max_cycles_per_stage` (default 5) ticks consecutivos = aborto
 # `loop_em_etapa`.
 #
 # "Progresso mensuravel" (FR-014, decisao do orquestrador):
@@ -19,7 +19,7 @@
 #
 # Subcomandos:
 #   cycles.sh tick --state-dir DIR [--progress-made]
-#       — incrementa .orcamentos.ciclos_consumidos_etapa_corrente.
+#       — incrementa .budgets.cycles_consumed_current_stage.
 #       — Se --progress-made: zera o contador (progresso = sem loop).
 #       — Stdout: novo valor do contador.
 #       — Exit 3 se contador resultante > max (orquestrador deve abortar).
@@ -28,7 +28,7 @@
 #         de etapa — opera sobre contador unico.
 #
 #   cycles.sh check --state-dir DIR
-#       — Exit 3 se ciclos_consumidos_etapa_corrente > ciclos_max_por_etapa.
+#       — Exit 3 se cycles_consumed_current_stage > max_cycles_per_stage.
 #       — Exit 0 caso contrario.
 #
 #   cycles.sh count --state-dir DIR
@@ -92,8 +92,8 @@ _cy_cmd_tick() {
   _sf=$(_cy_state_file "$_sd")
   [ -f "$_sf" ] || _cy_die "tick: state.json ausente em $_sd" 1
 
-  _curr_count=$(jq -r '.orcamentos.ciclos_consumidos_etapa_corrente // 0' "$_sf")
-  _max=$(jq -r '.orcamentos.ciclos_max_por_etapa // 5' "$_sf")
+  _curr_count=$(jq -r '((.budgets.cycles_consumed_current_stage // .orcamentos.ciclos_consumidos_etapa_corrente) // 0)' "$_sf")
+  _max=$(jq -r '((.budgets.max_cycles_per_stage // .orcamentos.ciclos_max_por_etapa) // 5)' "$_sf")
 
   if [ "$_prog" = 1 ]; then
     _new=0
@@ -103,7 +103,7 @@ _cy_cmd_tick() {
 
   # Aplica
   _new_state=$(mktemp) || _cy_die "mktemp falhou" 1
-  jq --argjson n "$_new" '.orcamentos.ciclos_consumidos_etapa_corrente = $n' "$_sf" > "$_new_state" \
+  jq --argjson n "$_new" '.budgets.cycles_consumed_current_stage = $n' "$_sf" > "$_new_state" \
     || { rm -f -- "$_new_state"; _cy_die "jq update falhou" 1; }
   _cy_atomic_write "$_sf" "$_new_state"
   rm -f -- "$_new_state" 2>/dev/null || :
@@ -129,8 +129,8 @@ _cy_cmd_check() {
   _cy_require_jq
   _sf=$(_cy_state_file "$_sd")
   [ -f "$_sf" ] || _cy_die "check: state.json ausente" 1
-  _curr=$(jq -r '.orcamentos.ciclos_consumidos_etapa_corrente // 0' "$_sf")
-  _max=$(jq -r '.orcamentos.ciclos_max_por_etapa // 5' "$_sf")
+  _curr=$(jq -r '((.budgets.cycles_consumed_current_stage // .orcamentos.ciclos_consumidos_etapa_corrente) // 0)' "$_sf")
+  _max=$(jq -r '((.budgets.max_cycles_per_stage // .orcamentos.ciclos_max_por_etapa) // 5)' "$_sf")
   if [ "$_curr" -gt "$_max" ]; then
     printf '%s: loop_em_etapa (%s > %s)\n' "$_CY_NAME" "$_curr" "$_max" >&2
     exit 3
@@ -150,7 +150,7 @@ _cy_cmd_count() {
   _cy_require_jq
   _sf=$(_cy_state_file "$_sd")
   [ -f "$_sf" ] || _cy_die "count: state.json ausente" 1
-  jq -r '.orcamentos.ciclos_consumidos_etapa_corrente // 0' "$_sf"
+  jq -r '((.budgets.cycles_consumed_current_stage // .orcamentos.ciclos_consumidos_etapa_corrente) // 0)' "$_sf"
 }
 
 _cy_cmd_reset() {
@@ -166,7 +166,7 @@ _cy_cmd_reset() {
   _sf=$(_cy_state_file "$_sd")
   [ -f "$_sf" ] || _cy_die "reset: state.json ausente" 1
   _new_state=$(mktemp) || _cy_die "mktemp falhou" 1
-  jq '.orcamentos.ciclos_consumidos_etapa_corrente = 0' "$_sf" > "$_new_state" \
+  jq '.budgets.cycles_consumed_current_stage = 0' "$_sf" > "$_new_state" \
     || { rm -f -- "$_new_state"; _cy_die "jq update falhou" 1; }
   _cy_atomic_write "$_sf" "$_new_state"
   rm -f -- "$_new_state" 2>/dev/null || :

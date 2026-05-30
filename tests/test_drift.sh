@@ -268,7 +268,8 @@ scenario_mark_touched_registra_aspecto_na_onda() {
   capture "$ON" start --state-dir "$_sd"
   capture "$SCRIPT" mark-touched --state-dir "$_sd" --aspecto "slack"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "mark-touched" "$_CAPTURED_STDERR"; return 1; }
-  capture "$RW" get --state-dir "$_sd" --field '.ondas[-1].aspectos_chave_tocados'
+  # get canonicaliza disco->EN, entao o path e EN (schema-en-migration)
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].touched_key_aspects'
   assert_stdout_contains "slack" || return 1
 }
 
@@ -327,6 +328,76 @@ scenario_debug_lista_camadas_e_ondas() {
   assert_stdout_contains "auth" || return 1
   assert_stdout_contains "TOUCHED" || return 1
   assert_stdout_contains "untouched" || return 1
+}
+
+# ===== extract (novo subcomando — schema-en-migration) =====
+
+scenario_extract_keywords() {
+  capture "$SCRIPT" extract --text "OAuth Redis cache" --max 4
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "extract" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "oauth" || return 1
+  assert_stdout_contains "redis" || return 1
+}
+
+scenario_extract_respeita_max() {
+  # --max limita o numero de keywords retornadas
+  capture "$SCRIPT" extract --text "alfa beta gama delta epsilon zeta" --max 2
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "extract max" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "alfa" || return 1
+  assert_stdout_contains "beta" || return 1
+  case "$_CAPTURED_STDOUT" in *gama*) _fail "extract nao respeitou --max 2" ""; return 1 ;; esac
+}
+
+scenario_extract_so_stopwords_vazio() {
+  capture "$SCRIPT" extract --text "de a o e que para com"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "extract vazio" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "[]" || return 1
+}
+
+scenario_extract_sem_text_falha() {
+  capture "$SCRIPT" extract --max 5
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "extract sem --text" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ===== key-aspects (rename EN) + alias 'aspectos' deprecado =====
+
+scenario_key_aspects_subcomando_en() {
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  capture "$SCRIPT" init --state-dir "$_sd" --aspectos '["slack","bot","threads"]'
+  capture "$SCRIPT" key-aspects --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "key-aspects" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "slack" || return 1
+}
+
+scenario_aspectos_alias_deprecado_avisa() {
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  capture "$SCRIPT" init --state-dir "$_sd" --aspectos '["slack","bot","threads"]'
+  capture "$SCRIPT" aspectos --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "alias aspectos" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "slack" || return 1
+  assert_stderr_contains "deprecado" || return 1
+}
+
+# ===== back-compat: drift le state.json pt-BR legado via fallback (idiom §6) =====
+
+scenario_legacy_ptbr_state_via_fallback() {
+  _sd="$TMPDIR_TEST/state"
+  mkdir -p "$_sd/state-history"
+  # state.json pt-BR legado (schema antigo), construido direto no disco
+  cat > "$_sd/state.json" <<'JSON'
+{ "schema_version":"1.0.0", "execucao":{"id":"x","status":"em_andamento"}, "etapa_corrente":"plan",
+  "ondas":[{"id":"onda-001","inicio":"t"}],
+  "decisoes":[{"id":"d1","onda_id":"onda-001","contexto":"trabalho em slack-bot agora","escolha":"usar slack","justificativa":"j"}],
+  "aspectos_chave_iniciais":["slack-bot","cache-redis"] }
+JSON
+  # key-aspects le via (.initial_key_aspects // .aspectos_chave_iniciais)
+  capture "$SCRIPT" key-aspects --state-dir "$_sd" --camada iniciais
+  assert_stdout_contains "slack-bot" || return 1
+  # check le .ondas/.decisoes/.contexto via fallback e detecta touched (exit 0)
+  capture "$SCRIPT" check --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "check legacy ptbr" "$_CAPTURED_STDERR"; return 1; }
 }
 
 run_all_scenarios

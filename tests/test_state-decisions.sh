@@ -141,7 +141,7 @@ scenario_score_valido_persiste() {
     --score 3 \
     --evidencia "grep -r 'go.mod' . | head: ./services/auth/go.mod confirma Go"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register" "$_CAPTURED_STDERR"; return 1; }
-  capture "$RW" get --state-dir "$_sd" --field '.decisoes[-1].score_justificativa'
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[-1].justification_score'
   assert_stdout_contains "3" || return 1
 }
 
@@ -290,17 +290,17 @@ scenario_score_3_persiste_evidencia_no_estado() {
     --justificativa "Output de tsc indica incompatibilidade real" \
     --score 3 --evidencia "$_evi"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register" "$_CAPTURED_STDERR"; return 1; }
-  capture "$RW" get --state-dir "$_sd" --field '.decisoes[-1].evidencia'
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[-1].evidence'
   assert_stdout_contains "tsc" || return 1
   assert_stdout_contains "TS2322" || return 1
 }
 
 scenario_score_baixo_evidencia_null_no_estado() {
-  # Score 0/1/2/null sem --evidencia -> campo evidencia=null no objeto.
+  # Score 0/1/2/null sem --evidencia -> campo evidence=null no objeto.
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
   _register_default "$_sd"
-  capture "$RW" get --state-dir "$_sd" --field '.decisoes[-1].evidencia'
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[-1].evidence'
   assert_stdout_contains "null" || return 1
 }
 
@@ -333,10 +333,10 @@ scenario_metricas_acumuladas_decisoes_total_incrementa() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
   _register_default "$_sd"
-  capture "$RW" get --state-dir "$_sd" --field '.metricas_acumuladas.decisoes_total'
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.decisions_total'
   assert_stdout_contains "1" || return 1
   _register_default "$_sd"
-  capture "$RW" get --state-dir "$_sd" --field '.metricas_acumuladas.decisoes_total'
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.decisions_total'
   assert_stdout_contains "2" || return 1
 }
 
@@ -348,6 +348,86 @@ scenario_register_state_ausente_falha() {
     _fail "state ausente" "esperado 1, obtido $_CAPTURED_EXIT"
     return 1
   fi
+}
+
+# --- Back-compat: fixture pt-BR legada lida via reader-fallback (.en // .pt) ---
+# schema-en-migration: os readers (count/list/next-id) usam paths EN com
+# fallback pt-BR, e register faz append EN sobre o doc pt-BR vivo. Prova que
+# um state.json legado (escrito antes da migracao, com chaves .decisoes/.ondas/
+# .agente/.escolha/.metricas_acumuladas) continua legivel sem migrate previo.
+_write_legacy_ptbr_state() {
+  # $1 = state-dir. Escreve um state.json minimo com chaves pt-BR legadas.
+  mkdir -p "$1"
+  cat > "$1/state.json" <<'PTBR'
+{
+  "schema_version": 1,
+  "ondas": [{ "id": "onda-001" }],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "onda_id": "onda-001",
+      "timestamp": "2024-01-01T00:00:00Z",
+      "etapa": "briefing",
+      "agente": "orquestrador-00c",
+      "contexto": "Decisao legada pt-BR para back-compat",
+      "opcoes_consideradas": ["A", "B"],
+      "escolha": "Opcao legada A",
+      "justificativa": "Registro pre-migracao em chaves pt-BR",
+      "score_justificativa": 2
+    }
+  ],
+  "metricas_acumuladas": { "decisoes_total": 1 }
+}
+PTBR
+}
+
+scenario_ptbr_legado_readers_via_fallback() {
+  # count/list/next-id leem o doc pt-BR via fallback (.decisoes // ...),
+  # (.agente // ...), (.escolha // ...), .decisoes[].id.
+  _sd="$TMPDIR_TEST/legacy"
+  _write_legacy_ptbr_state "$_sd"
+
+  capture "$SCRIPT" count --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "count pt-BR" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" || return 1
+
+  capture "$SCRIPT" count --state-dir "$_sd" --agente "orquestrador-00c"
+  assert_stdout_contains "1" || return 1
+
+  # next-id deriva de max(.decisoes[].id) = dec-001 -> dec-002.
+  capture "$SCRIPT" next-id --state-dir "$_sd"
+  assert_stdout_contains "dec-002" || return 1
+
+  # list emite a escolha legada via (.choice // .escolha).
+  capture "$SCRIPT" list --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list pt-BR" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "dec-001	" || return 1
+  assert_stdout_contains "	onda-001	" || return 1
+  assert_stdout_contains "	Opcao legada A" || return 1
+}
+
+scenario_ptbr_legado_register_helpers_via_fallback() {
+  # Os helpers internos do register (_sd_next_dec_id, _sd_current_onda_id) leem
+  # as chaves pt-BR legadas via fallback ANTES de construir a decisao EN:
+  #   - next-id deriva de max(.decisoes[].id) = dec-001 -> dec-002;
+  #   - wave_id da decisao nova liga a (.waves // .ondas)[-1].id = onda-001.
+  # O writer em si grava chaves EN sem fallback (contrato: confia em EN-on-disk;
+  # o command-pai roda `state-rw.sh migrate` antes dos direct-writers). Logo este
+  # cenario prova so o lado READER do register sobre um doc pt-BR.
+  _sd="$TMPDIR_TEST/legacy2"
+  _write_legacy_ptbr_state "$_sd"
+
+  _register_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register sobre pt-BR" "$_CAPTURED_STDERR"; return 1; }
+  # id sequencial computado sobre as decisoes pt-BR legadas (.decisoes[].id).
+  assert_stdout_contains "dec-002" || return 1
+
+  # A decisao nova foi gravada com chave EN (.wave_id) ligada a onda legada.
+  # Lemos via state-rw get (canonicaliza o doc misto -> EN antes do jq).
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[-1].wave_id'
+  assert_stdout_contains "onda-001" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[-1].id'
+  assert_stdout_contains "dec-002" || return 1
 }
 
 run_all_scenarios

@@ -103,9 +103,9 @@ scenario_mark_issue_atualiza_url_e_metric() {
     --suggestion-id "sug-001" \
     --issue "https://github.com/JotJunior/cstk/issues/42"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "mark-issue" "$_CAPTURED_STDERR"; return 1; }
-  capture "$RW" get --state-dir "$_sd" --field '.sugestoes[0].issue_aberta'
+  capture "$RW" get --state-dir "$_sd" --field '.suggestions[0].issue_opened'
   assert_stdout_contains "issues/42" || return 1
-  capture "$RW" get --state-dir "$_sd" --field '.metricas_acumuladas.issues_toolkit_abertas'
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.toolkit_issues_opened'
   assert_stdout_contains "1" || return 1
   # MD foi regenerada com a issue
   grep -q "issues/42" "$_md" || { _fail "md nao regenerada" ""; return 1; }
@@ -138,6 +138,77 @@ scenario_render_md_sem_sugestoes() {
   _init "$_sd"
   capture "$SCRIPT" render-md --state-dir "$_sd"
   assert_stdout_contains "Nenhuma sugestao" || return 1
+}
+
+# --- Back-compat: fixture pt-BR legada lida via reader-fallback (.en // .pt) ---
+# schema-en-migration §6: os readers (count/list/next-id/render-md) usam paths EN
+# com fallback pt-BR. Prova que um state.json legado (escrito antes da migracao,
+# com chaves .sugestoes/.ondas/.execucao/.skill_afetada/.severidade/.diagnostico
+# /.proposta/.issue_aberta/.criada_em/.metricas_acumuladas) continua legivel sem
+# migrate previo. O WRITER grava chaves EN sem fallback (confia em EN-on-disk;
+# o command-pai roda `state-rw.sh migrate` antes dos direct-writers), logo estes
+# cenarios provam so o lado READER sobre um doc pt-BR.
+_write_legacy_ptbr_state() {
+  # $1 = state-dir. Escreve um state.json minimo com chaves pt-BR legadas.
+  mkdir -p "$1"
+  cat > "$1/state.json" <<'PTBR'
+{
+  "schema_version": 1,
+  "execucao": { "id": "exec-legacy" },
+  "ondas": [{ "id": "onda-001" }],
+  "sugestoes": [
+    {
+      "id": "sug-001",
+      "skill_afetada": "clarify",
+      "diagnostico": "Diagnostico legado pt-BR longo o suficiente para passar a validacao minima de chars",
+      "severidade": "impeditiva",
+      "proposta": "Proposta legada pre-migracao em chaves pt-BR",
+      "referencias": ["docs/legado.md"],
+      "issue_aberta": null,
+      "criada_em": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "metricas_acumuladas": { "sugestoes_skills_globais_total": 1 }
+}
+PTBR
+}
+
+scenario_ptbr_legado_readers_via_fallback() {
+  # count/list/next-id leem o doc pt-BR via fallback (.suggestions // .sugestoes),
+  # (.severity // .severidade), (.affected_skill // .skill_afetada), etc.
+  _sd="$TMPDIR_TEST/legacy"
+  _write_legacy_ptbr_state "$_sd"
+
+  capture "$SCRIPT" count --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "count pt-BR" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" || return 1
+
+  # count filtrado por severidade le (.severity // .severidade).
+  capture "$SCRIPT" count --state-dir "$_sd" --severidade impeditiva
+  assert_stdout_contains "1" || return 1
+
+  # next-id deriva de max(.sugestoes[].id) = sug-001 -> sug-002.
+  capture "$SCRIPT" next-id --state-dir "$_sd"
+  assert_stdout_contains "sug-002" || return 1
+
+  # list emite skill/severidade/diagnostico legados via fallback.
+  capture "$SCRIPT" list --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list pt-BR" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "sug-001	clarify	impeditiva" || return 1
+}
+
+scenario_ptbr_legado_render_md_via_fallback() {
+  # render-md le .execucao.id, .sugestoes[] e todas as folhas via fallback,
+  # produzindo o markdown a partir de um state legado puro pt-BR.
+  _sd="$TMPDIR_TEST/legacy-md"
+  _write_legacy_ptbr_state "$_sd"
+  capture "$SCRIPT" render-md --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "render-md pt-BR" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "exec-legacy" || return 1
+  assert_stdout_contains "sug-001" || return 1
+  assert_stdout_contains "skill \`clarify\`" || return 1
+  assert_stdout_contains "Proposta legada" || return 1
+  assert_stdout_contains "docs/legado.md" || return 1
 }
 
 run_all_scenarios

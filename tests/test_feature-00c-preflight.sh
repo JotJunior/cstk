@@ -37,7 +37,55 @@ Corpo.
 CT
   _ct_sha=$(sha256sum "$_proj/docs/constitution.md" | awk '{print $1}')
 
-  # State.json
+  # State.json (chaves EN — schema-en-migration)
+  cat > "$_sdir/state.json" <<JSON
+{
+  "schema_version": "1.0.0",
+  "execution": {
+    "short_name": "test-feature",
+    "target_project_path": "$_proj"
+  },
+  "prerequisites": {
+    "briefing": {
+      "path": "docs/01-briefing-discovery/briefing.md",
+      "sha256": "$_br_sha"
+    },
+    "constitution": {
+      "path": "docs/constitution.md",
+      "sha256": "$_ct_sha",
+      "version": "1.2.0"
+    }
+  }
+}
+JSON
+  printf '%s' "$_sdir"
+}
+
+# Variante pt-BR do mesmo fixture: prova o reader-fallback (.en // .pt).
+# Mantida apos a migracao schema-en (back-compat de states vivos pt-BR).
+_setup_fixture_pt() {
+  _proj="$TMPDIR_TEST/proj-pt"
+  _sdir="$_proj/.claude/feature-00c-state/test-feature"
+  mkdir -p "$_proj/docs/01-briefing-discovery" "$_proj/docs" "$_sdir"
+
+  cat > "$_proj/docs/01-briefing-discovery/briefing.md" <<'BR'
+# Briefing
+## Visao
+Conteudo.
+## Usuarios
+Conteudo.
+BR
+  _br_sha=$(sha256sum "$_proj/docs/01-briefing-discovery/briefing.md" | awk '{print $1}')
+
+  cat > "$_proj/docs/constitution.md" <<'CT'
+# Constitution
+## Core Principles
+### I. Principio Um
+Corpo.
+**Version**: 1.2.0
+CT
+  _ct_sha=$(sha256sum "$_proj/docs/constitution.md" | awk '{print $1}')
+
   cat > "$_sdir/state.json" <<JSON
 {
   "schema_version": "1.0.0",
@@ -63,6 +111,14 @@ JSON
 
 scenario_check_sem_drift_passa() {
   _sdir=$(_setup_fixture)
+  capture "$SCRIPT" check --state-dir "$_sdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains '"ok": true' || return 1
+}
+
+# Reader-fallback: state.json com chaves pt-BR (state vivo legado) ainda valida.
+scenario_check_state_pt_br_fallback_passa() {
+  _sdir=$(_setup_fixture_pt)
   capture "$SCRIPT" check --state-dir "$_sdir"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains '"ok": true' || return 1

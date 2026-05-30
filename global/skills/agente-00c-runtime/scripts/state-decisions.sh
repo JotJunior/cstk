@@ -21,9 +21,9 @@
 #         "tenho certeza" — apenas com `tsc --noEmit`, `vitest -t`,
 #         `grep -r`, inspecao de `package.json` ou similar registrado.
 #       — Gera id `dec-NNN` sequencial dentro da execucao.
-#       — Linka a `onda_id` da onda corrente (.ondas[-1].id; init = "init").
-#       — Append em .decisoes; persiste via state-rw write (com backup).
-#       — Atualiza metricas_acumuladas.decisoes_total.
+#       — Linka a `wave_id` da onda corrente (.waves[-1].id; init = "init").
+#       — Append em .decisions; persiste via state-rw write (com backup).
+#       — Atualiza accumulated_metrics.decisions_total.
 #
 #   state-decisions.sh count --state-dir DIR [--agente A]
 #       — Imprime total de decisoes (filtrado por agente, opcional).
@@ -32,7 +32,7 @@
 #       — Imprime proximo dec-NNN sem registrar.
 #
 #   state-decisions.sh list --state-dir DIR [--agente A] [--etapa S]
-#       — Lista TSV: id\tonda_id\tagente\tetapa\tescolha
+#       — Lista TSV: id\twave_id\tagent\tstage\tchoice
 #
 # Exit codes:
 #   0 sucesso
@@ -65,25 +65,27 @@ _sd_iso_now() { date -u +%FT%TZ; }
 
 _sd_state_file() { printf '%s/state.json\n' "$1"; }
 
-# _sd_next_dec_id STATE_DIR -> proximo dec-NNN baseado em max(.decisoes[].id)
+# _sd_next_dec_id STATE_DIR -> proximo dec-NNN baseado em max(.decisions[].id)
 _sd_next_dec_id() {
   _sf=$(_sd_state_file "$1")
   [ -f "$_sf" ] || _sd_die "next-id: state.json ausente em $1" 1
   _max=$(jq -r '
-    if (.decisoes // []) | length == 0 then 0
-    else ([.decisoes[].id // ""] | map(sub("^dec-0*"; "") | tonumber? // 0) | max)
-    end' "$_sf" 2>/dev/null) || _max=0
+    ((.decisions // .decisoes) // []) as $d
+    | if ($d | length) == 0 then 0
+      else ([$d[].id // ""] | map(sub("^dec-0*"; "") | tonumber? // 0) | max)
+      end' "$_sf" 2>/dev/null) || _max=0
   _next=$((_max + 1))
   printf 'dec-%03d\n' "$_next"
 }
 
-# _sd_current_onda_id STATE_DIR -> id da onda corrente (.ondas[-1].id) ou "init"
+# _sd_current_onda_id STATE_DIR -> id da onda corrente (.waves[-1].id) ou "init"
 _sd_current_onda_id() {
   _sf=$(_sd_state_file "$1")
   jq -r '
-    if (.ondas // []) | length > 0 then (.ondas[-1].id // "init")
-    else "init"
-    end' "$_sf" 2>/dev/null
+    ((.waves // .ondas) // []) as $w
+    | if ($w | length) > 0 then ($w[-1].id // "init")
+      else "init"
+      end' "$_sf" 2>/dev/null
 }
 
 # _sd_atomic_write DST CONTENT_FILE
@@ -237,22 +239,22 @@ _sd_cmd_register() {
     --arg arto "$_arto" \
     --arg evi "$_evi" \
     '
-    .decisoes += [{
+    .decisions += [{
       id: $id,
-      onda_id: $onda,
+      wave_id: $onda,
       timestamp: $ts,
-      etapa: $etapa,
-      agente: $agente,
-      contexto: $ctx,
-      opcoes_consideradas: $opcoes,
-      escolha: $esc,
-      justificativa: $just,
-      score_justificativa: $score,
-      evidencia: (if $evi == "" then null else $evi end),
-      referencias: $refs,
-      artefato_originador: (if $arto == "null" then null else $arto end)
+      stage: $etapa,
+      agent: $agente,
+      context: $ctx,
+      options_considered: $opcoes,
+      choice: $esc,
+      rationale: $just,
+      justification_score: $score,
+      evidence: (if $evi == "" then null else $evi end),
+      references: $refs,
+      originating_artifact: (if $arto == "null" then null else $arto end)
     }]
-    | .metricas_acumuladas.decisoes_total = ((.metricas_acumuladas.decisoes_total // 0) + 1)
+    | .accumulated_metrics.decisions_total = ((.accumulated_metrics.decisions_total // 0) + 1)
     ' "$_sf" > "$_new_state" || { rm -f -- "$_new_state"; _sd_die "jq update falhou" 1; }
 
   _sd_backup_current "$_sdir"
@@ -277,9 +279,9 @@ _sd_cmd_count() {
   _sf=$(_sd_state_file "$_sdir")
   [ -f "$_sf" ] || _sd_die "count: state.json ausente" 1
   if [ -n "$_ag" ]; then
-    jq --arg a "$_ag" '.decisoes // [] | map(select(.agente == $a)) | length' "$_sf"
+    jq --arg a "$_ag" '((.decisions // .decisoes) // []) | map(select((.agent // .agente) == $a)) | length' "$_sf"
   else
-    jq '.decisoes // [] | length' "$_sf"
+    jq '((.decisions // .decisoes) // []) | length' "$_sf"
   fi
 }
 
@@ -313,10 +315,10 @@ _sd_cmd_list() {
   _sf=$(_sd_state_file "$_sdir")
   [ -f "$_sf" ] || _sd_die "list: state.json ausente" 1
   jq -r --arg a "$_ag" --arg e "$_et" '
-    .decisoes // []
-    | map(select((($a == "") or (.agente == $a)) and (($e == "") or (.etapa == $e))))
+    ((.decisions // .decisoes) // [])
+    | map(select((($a == "") or ((.agent // .agente) == $a)) and (($e == "") or ((.stage // .etapa) == $e))))
     | .[]
-    | [.id, .onda_id, .agente, .etapa, .escolha] | @tsv
+    | [.id, (.wave_id // .onda_id), (.agent // .agente), (.stage // .etapa), (.choice // .escolha)] | @tsv
   ' "$_sf"
 }
 

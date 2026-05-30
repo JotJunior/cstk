@@ -71,18 +71,18 @@ _fp_cmd_check() {
   _state_file="$_state_dir/state.json"
   [ -f "$_state_file" ] || _fp_die_io "check: state.json ausente em $_state_dir"
 
-  # Extrair campos de pre-requisitos (FR-PRE-004)
-  _br_path=$(jq -r '.pre_requisitos.briefing.path // empty' "$_state_file" 2>/dev/null)
-  _br_sha=$(jq  -r '.pre_requisitos.briefing.sha256 // empty' "$_state_file" 2>/dev/null)
-  _ct_path=$(jq -r '.pre_requisitos.constitution.path // empty' "$_state_file" 2>/dev/null)
-  _ct_sha=$(jq  -r '.pre_requisitos.constitution.sha256 // empty' "$_state_file" 2>/dev/null)
-  _ct_ver=$(jq  -r '.pre_requisitos.constitution.version // empty' "$_state_file" 2>/dev/null)
-  _projeto=$(jq -r '.execucao.projeto_alvo_path // empty' "$_state_file" 2>/dev/null)
+  # Extrair campos de prerequisites (FR-PRE-004). Reader-fallback EN->pt (schema-en-migration).
+  _br_path=$(jq -r '(.prerequisites.briefing.path // .pre_requisitos.briefing.path) // empty' "$_state_file" 2>/dev/null)
+  _br_sha=$(jq  -r '(.prerequisites.briefing.sha256 // .pre_requisitos.briefing.sha256) // empty' "$_state_file" 2>/dev/null)
+  _ct_path=$(jq -r '(.prerequisites.constitution.path // .pre_requisitos.constitution.path) // empty' "$_state_file" 2>/dev/null)
+  _ct_sha=$(jq  -r '(.prerequisites.constitution.sha256 // .pre_requisitos.constitution.sha256) // empty' "$_state_file" 2>/dev/null)
+  _ct_ver=$(jq  -r '(.prerequisites.constitution.version // .pre_requisitos.constitution.version) // empty' "$_state_file" 2>/dev/null)
+  _projeto=$(jq -r '(.execution.target_project_path // .execucao.projeto_alvo_path) // empty' "$_state_file" 2>/dev/null)
 
   if [ -z "$_br_path" ] || [ -z "$_br_sha" ] || [ -z "$_ct_path" ] || [ -z "$_ct_sha" ]; then
-    _fp_die_io "check: state.json sem campos pre_requisitos completos (FR-PRE-004)"
+    _fp_die_io "check: state.json sem campos prerequisites completos (FR-PRE-004)"
   fi
-  [ -n "$_projeto" ] || _fp_die_io "check: state.json sem execucao.projeto_alvo_path"
+  [ -n "$_projeto" ] || _fp_die_io "check: state.json sem execution.target_project_path"
 
   # Resolver paths absolutos relativos ao projeto-alvo
   case "$_br_path" in /*) _br_abs="$_br_path" ;; *) _br_abs="$_projeto/$_br_path" ;; esac
@@ -129,7 +129,7 @@ _fp_cmd_check() {
   _pl="$(dirname -- "$0")/pipeline.sh"
   if [ -x "$_pl" ] || [ -f "$_pl" ]; then
     # feature-dir do feature-00c = docs/specs/<short>/ no projeto-alvo
-    _short=$(jq -r '.execucao.short_name // empty' "$_state_file" 2>/dev/null)
+    _short=$(jq -r '(.execution.short_name // .execucao.short_name) // empty' "$_state_file" 2>/dev/null)
     _fdir="$_projeto/docs/specs/$_short"
     if [ -n "$_short" ] && [ -d "$_fdir" ]; then
       if ! sh "$_pl" constitution-conflict --feature-dir "$_fdir" --projeto-alvo-path "$_projeto" >/dev/null 2>&1; then

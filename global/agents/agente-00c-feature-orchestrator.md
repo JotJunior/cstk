@@ -139,7 +139,7 @@ FIXA e identica em primeira-invocacao E resume:
 - **INIT — sempre do command PAI.** O pai cria/garante o `state.json` no
   inicio (nao no resume). Voce NAO re-inicializa estado (re-init clobbaria
   a Decisao de wave-select que o pai gravou); sempre continua de
-  `.proxima_instrucao`. Primeira-invocacao e resume seguem o MESMO caminho
+  `.next_instruction`. Primeira-invocacao e resume seguem o MESMO caminho
   (entram no Loop principal).
 - **CONTENTION** e detectado pelo pai ANTES do spawn (exit 3). Voce nunca
   trata `lock_contention` na aquisicao.
@@ -151,7 +151,7 @@ command↔orquestrador") — o orquestrador NAO adquire lock nem inicializa
 estado. Como o pai cria o `state.json` em TODA invocacao, o estado sempre
 existe quando voce comeca; os passos 1-3 sao defesa em profundidade. Os
 passos 4-6 (ciclo da onda) rodam normalmente na primeira invocacao; em
-retomadas (resume), pulam-se 1-3 e continua-se de `.proxima_instrucao`.
+retomadas (resume), pulam-se 1-3 e continua-se de `.next_instruction`.
 
 1. **Validar coexistencia com agente-00c** (FR-026): checar
    `<projeto-alvo>/.claude/agente-00c-state/state.json`. Se status =
@@ -166,11 +166,12 @@ retomadas (resume), pulam-se 1-3 e continua-se de `.proxima_instrucao`.
 3. **Init de state.json**: o command pai ja criou o `state.json`. NAO
    re-inicializar. Apenas como fallback defensivo, SE o estado estiver
    AUSENTE, criar via `state-rw.sh init` com:
-   - `short_name`, `projeto_alvo_path`, `descricao_curta`
+   - `short_name`, `target_project_path`, `descricao_curta`
    - `briefing.path` + `briefing.sha256` (FR-PRE-004)
    - `constitution.path` + `constitution.sha256` + `constitution.version` (FR-PRE-004)
-   - `descricao_aspectos_chave`: usar `drift.sh extract` para obter 3-7
-     keywords semanticas da descricao (FR-027 herdado).
+   - `initial_key_aspects` (via `--key-aspects` do init): usar `drift.sh
+     extract --text` para obter 3-7 keywords semanticas da descricao
+     (FR-027 herdado).
 
 4. **Iniciar onda** via `state-ondas.sh start --fase specify`.
 
@@ -211,11 +212,11 @@ pai sem essa linha.
 
 **Segunda auto-checagem — quando o motivo de termino e `concluido`**: o sumario
 do subagente/skill NAO e evidencia do estado real. Fechar a onda
-(`state-ondas.sh end --motivo-termino concluido`) NAO promove `.execucao.status`
+(`state-ondas.sh end --motivo-termino concluido`) NAO promove `.execution.status`
 — sao operacoes distintas. Antes de afirmar "execucao CONCLUIDA" no relatorio,
-LEIA `.execucao.status` no `state.json` real; se ainda nao estiver `concluida`,
-promova-o explicitamente (junto de `.execucao.motivo_termino` e
-`.execucao.terminada_em`) via `state-rw.sh write`. Derive o status do state
+LEIA `.execution.status` no `state.json` real; se ainda nao estiver `concluida`,
+promova-o explicitamente (junto de `.execution.termination_reason` e
+`.execution.finished_at`) via `state-rw.sh write`. Derive o status do state
 persistido, nunca do que a skill "disse" ter feito.
 
 ## Loop principal de uma onda
@@ -237,7 +238,7 @@ Sequencia da onda corrente. Cada iteracao:
     Exibir dica da skill correspondente a fase corrente. Fail-silent absoluto:
     nao bloqueia nem falha se cstk/show-tip.sh ausentes ou catalogo indisponivel.
     ```sh
-    FASE=$(state-rw.sh get --state-dir "$SD" --field '.etapa_corrente' 2>/dev/null) || FASE=""
+    FASE=$(state-rw.sh get --state-dir "$SD" --field '.current_stage' 2>/dev/null) || FASE=""
     TIP=$(cstk show-tip --phase "$FASE" 2>/dev/null) || TIP=""
     [ -n "$TIP" ] && printf '%s\n' "$TIP"
     ```
@@ -284,7 +285,7 @@ Sequencia da onda corrente. Cada iteracao:
 13. SUMARIO + Schedule intent (ver bloco de instrucao no topo)
 ```
 
-## Instrumentacao da camada B — `.tasks[]` e `.eventos[]` (FR-018/FR-020/FR-021/FR-022)
+## Instrumentacao da camada B — `.tasks[]` e `.events[]` (FR-018/FR-020/FR-021/FR-022)
 
 > **Origem**: feature `knowledge-db-metrics`, US3 (camada B). Estes campos
 > sao puramente ADITIVOS ao `state.json`: nenhum campo existente muda de
@@ -307,16 +308,16 @@ mesmo enum):
 | Campo | Tipo | Obrigatorio | Notas |
 |-------|------|-------------|-------|
 | `task_id` | string | sim | identificador da task (ex: `4.1`) |
-| `titulo` | string | sim | titulo descritivo da task (do heading em `tasks.md`); UX do painel |
+| `title` | string | sim | titulo descritivo da task (do heading em `tasks.md`); UX do painel |
 | `wave_id` | string | sim | onda em que a task rodou (proveniencia) |
 | `outcome` | enum `pass`\|`fail` | sim | conjunto fechado |
-| `testes_rodados` | int | sim | 0 se nao aplicavel |
-| `testes_passados` | int | sim | `<= testes_rodados` |
+| `tests_run` | int | sim | 0 se nao aplicavel |
+| `tests_passed` | int | sim | `<= tests_run` |
 | `lint_ok` | bool | sim | gate de lint passou? |
-| `arquivos_tocados` | string[] | sim | paths relativos; contagem derivada na ingestao |
+| `touched_files` | string[] | sim | paths relativos; contagem derivada na ingestao |
 
-**Chave natural** (clarify Q2 / dec-006): `(project, feature, execucao_id, task_id)`.
-`titulo` e o texto descritivo do heading `### {N}.{M} {Titulo} [crit]` da task
+**Chave natural** (clarify Q2 / dec-006): `(project, feature, execution_id, task_id)`.
+`title` e o texto descritivo do heading `### {N}.{M} {Titulo} [crit]` da task
 em `tasks.md`; e o UNICO campo de texto livre da camada B e passa por
 `secrets-filter.sh` na ingestao (recall.sh). Se indisponivel, gravar `""`.
 
@@ -324,7 +325,7 @@ Escrita via runtime ja auditado (contract layer-b §5) — NAO inventar
 novo mecanismo:
 
 ```bash
-# arquivos_tocados via git diff da onda; WAVE_ID = state-ondas.sh current-id;
+# touched_files via git diff da onda; WAVE_ID = state-ondas.sh current-id;
 # TASK_ID = task corrente; TASK_TITULO = titulo do heading em tasks.md ("" se
 # nao resolvido); OUTCOME = pass|fail.
 ARQUIVOS=$(git -C "$PAP" diff --name-only HEAD~1..HEAD 2>/dev/null \
@@ -342,7 +343,7 @@ ARQUIVOS=$(git -C "$PAP" diff --name-only HEAD~1..HEAD 2>/dev/null \
   --arquivos "$ARQUIVOS" --origem execute-task
 ```
 
-REGRA DURA: `arquivos_tocados` carrega paths (potencial texto livre) —
+REGRA DURA: `touched_files` carrega paths (potencial texto livre) —
 o backup da onda (passo 8) ja passa por `secrets-filter.sh for-backup`,
 e a ingestao da camada B deriva apenas a CONTAGEM (`length`) do array,
 nunca expondo paths brutos na knowledge.db.
@@ -356,7 +357,7 @@ clobberar entradas reais) qualquer task concluida ausente de `.tasks[]`. Os
 campos `origem`/`recorded_at` gravados pelo `record-task` sao ADITIVOS — a
 ingestao seleciona so os 8 campos do contrato e ignora o resto.
 
-### Campo `.eventos[]` — timeline cronologica (FR-020)
+### Campo `.events[]` — timeline cronologica (FR-020)
 
 Conjunto MVP de 4 tipos (clarify Q3 / dec-007) + `recall_consulted`
 (adicionado depois), extensivel sem mudanca de schema (event_type e texto
@@ -378,14 +379,14 @@ Escrita (mesmo caminho auditado; gravar no ponto exato do Loop acima):
 # event_type ∈ {lock_contention, validation_failed, wave_retry, schedule_wait, recall_consulted}
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EV=$(jq -nc --arg t "$EVENT_TYPE" --arg ts "$TS" --arg d "$DESCRICAO" \
-       '{event_type:$t, timestamp:$ts} + (if $d == "" then {} else {descricao:$d} end)')
-CUR=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" --field '.eventos // []')
+       '{event_type:$t, timestamp:$ts} + (if $d == "" then {} else {description:$d} end)')
+CUR=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" --field '.events // []')
 NEW=$(printf '%s' "$CUR" | jq -c --argjson e "$EV" '. + [$e]')
 "$RUNTIME_SCRIPTS"/state-rw.sh set --state-dir "$SD" \
-  --field '.eventos' --value "$NEW"
+  --field '.events' --value "$NEW"
 ```
 
-A `descricao` e OPCIONAL e passa por `secrets-filter.sh` na ingestao
+A `description` e OPCIONAL e passa por `secrets-filter.sh` na ingestao
 (FR-006); `event_type` e `timestamp` nao sao filtrados. Ordem cronologica
 e preservada por append (a ingestao mantem a ordem do array).
 
@@ -395,18 +396,18 @@ DECISAO REGISTRADA (clarify Q1 / dec-005, score 3 empirico): a harness do
 Claude Code **NAO expoe** contabilidade de tokens a scripts/env. Portanto:
 
 - O sistema **NAO** grava nem ingere custo em tokens/$.
-- `tool_calls` (`.metricas_acumuladas.tool_calls_total`,
-  `.ondas[].tool_calls`) permanece como **proxy de custo documentado**.
+- `tool_calls` (`.accumulated_metrics.tool_calls_total`,
+  `.waves[].tool_calls`) permanece como **proxy de custo documentado**.
 - Em NENHUM caso ha valor de custo inventado/estimado.
 
 Se uma versao futura da harness expuser tokens, o campo SHOULD ser
-adicionado a `.metricas_acumuladas` e ingerido — fora do escopo desta
+adicionado a `.accumulated_metrics` e ingerido — fora do escopo desta
 feature (contract layer-b §6, research.md D8).
 
 ### Retro-compatibilidade (FR-022, SC-009)
 
-Execucoes ANTIGAS (pre-instrumentacao) nao tem `.tasks`/`.eventos`. A
-ingestao da camada B usa `jq '.tasks[]? // empty'` / `jq '.eventos[]? //
+Execucoes ANTIGAS (pre-instrumentacao) nao tem `.tasks`/`.events`. A
+ingestao da camada B usa `jq '.tasks[]? // empty'` / `jq '.events[]? //
 empty'` → produz 0 linhas, 0 erro, 0 abort para state nao-instrumentado.
 A instrumentacao acima nunca falha a onda se os campos ainda nao existem
 (o `get --field '.tasks // []'` retorna `[]` por construcao).
@@ -428,13 +429,13 @@ Custo: <=2 invocacoes de leitura por feature (SC-006).
 **Sequencia** (passo 4.bis do Loop principal):
 
 ```sh
-# 1. Derivar termos (teto <=8): aspectos_chave_iniciais e PRIMARIO,
-#    projeto_alvo_descricao/descricao_curta sao FALLBACK. Normalizar
+# 1. Derivar termos (teto <=8): initial_key_aspects e PRIMARIO,
+#    target_project_description/descricao_curta sao FALLBACK. Normalizar
 #    kebab-case para palavras (tr '-' ' ').
-TERMS=$(jq -r '(.aspectos_chave_iniciais // []) | .[0:8] | join(" ")' \
+TERMS=$(jq -r '(.initial_key_aspects // []) | .[0:8] | join(" ")' \
           "$SD/state.json" | tr '-' ' ')
 if [ -z "$(printf '%s' "$TERMS" | tr -d ' ')" ]; then
-  TERMS=$(jq -r '.execucao.projeto_alvo_descricao // ""' "$SD/state.json")
+  TERMS=$(jq -r '.execution.target_project_description // ""' "$SD/state.json")
 fi
 
 # 2. Consumir (best-effort; --exclude-feature = anti-eco com a feature
@@ -452,17 +453,17 @@ else
 fi
 
 # 3.bis. Registrar a CONSULTA ao historico como evento `recall_consulted`
-#    (camada B, .eventos[]) — SEMPRE que o read-back roda, inclusive K=0.
+#    (camada B, .events[]) — SEMPRE que o read-back roda, inclusive K=0.
 #    Metrica "quantas vezes o historico foi consultado pelo orquestrador" =
 #    COUNT(*) FROM events WHERE event_type='recall_consulted'. `hits=$K`
 #    separa consultas produtivas (K>0) de vazias (K=0).
 #    Best-effort (|| :): o read-back loop NUNCA gateia/aborta/atrasa a onda.
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EV=$(jq -nc --arg ts "$TS" --arg d "etapa=<specify|plan> hits=$K" \
-       '{event_type:"recall_consulted", timestamp:$ts, descricao:$d}')
-CUR=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" --field '.eventos // []' 2>/dev/null || echo '[]')
+       '{event_type:"recall_consulted", timestamp:$ts, description:$d}')
+CUR=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" --field '.events // []' 2>/dev/null || echo '[]')
 NEW=$(printf '%s' "$CUR" | jq -c --argjson e "$EV" '. + [$e]')
-"$RUNTIME_SCRIPTS"/state-rw.sh set --state-dir "$SD" --field '.eventos' --value "$NEW" 2>/dev/null || :
+"$RUNTIME_SCRIPTS"/state-rw.sh set --state-dir "$SD" --field '.events' --value "$NEW" 2>/dev/null || :
 
 # 4. Se K>0: injetar BLOCO no contexto da onda E registrar Decisao
 #    auditavel (FR-016). K=0 => no-op de injecao, SEM Decisao dedicada
@@ -624,7 +625,7 @@ fi
 
 ### Invariante I2 — Retomada idempotente via `/feature-00c-resume`
 
-Ref: dec-004 (idempotencia via jq em `.decisoes[]`), FR-012, Edge
+Ref: dec-004 (idempotencia via jq em `.decisions[]`), FR-012, Edge
 Case "Retomada via `/feature-00c-resume` no meio da fase clarify".
 
 Cenario: o processo do orquestrador-de-feature sofre preempcao/
@@ -633,7 +634,7 @@ crash ENTRE o `state-decisions.sh register` (passo 5) e o
 da tool Agent. Ao retomar via `/feature-00c-resume`, o orquestrador
 re-entra na mesma onda. Sem protecao, a sequencia 1-7 rodaria de
 novo e registraria uma SEGUNDA Decisao para o mesmo
-`(onda_id, subagent_type)`, inflando `.decisoes` e violando SC-001.
+`(wave_id, subagent_type)`, inflando `.decisions` e violando SC-001.
 
 **Protocolo obrigatorio de retomada**: `/feature-00c-resume` (em
 simetria com `/agente-00c-resume`) DEVE delegar ao orquestrador-de-
@@ -668,13 +669,13 @@ indivisivel.
 query agregada que review-task usa para detectar orfas e drift de
 modelo. Se um crash interromper a execucao APOS o passo 5 e ANTES
 do passo 6, ao retomar (`/feature-00c-resume`), a Decisao ja existe
-mas nao tem entrada correspondente em `.ondas[N].skills_invoked` —
+mas nao tem entrada correspondente em `.waves[N].skills_invoked` —
 gerando finding `model-routing-half-record`. F4.4 documenta o
 mecanismo de reconciliacao (hardening) que detecta e cura esse
 estado parcial.
 
 **Cross-link F4.4**: a tarefa F4.4 (hardening de F-004) define o
-mecanismo de reconciliacao no resume — varre `.decisoes[]` da onda
+mecanismo de reconciliacao no resume — varre `.decisions[]` da onda
 corrente procurando registros sem record-skill correspondente e
 emite o record-skill missing antes de prosseguir.
 
@@ -683,10 +684,10 @@ review-task e test_model-routing.sh):
 
 ```bash
 # Contagem de Decisoes "Selecao de modelo" na onda corrente
-N_DEC=$(jq '[.decisoes[] | select(.contexto | startswith("Selecao de modelo"))] | length' state.json)
+N_DEC=$(jq '[.decisions[] | select(.context | startswith("Selecao de modelo"))] | length' state.json)
 
 # Contagem de record-skill model-selector em TODAS as ondas
-N_REC=$(jq '[.ondas[].skills_invoked[]? | select(.skill == "model-selector")] | length' state.json)
+N_REC=$(jq '[.waves[].skills_invoked[]? | select(.skill == "model-selector")] | length' state.json)
 
 # Invariante: contagens DEVEM ser iguais (1-para-1)
 [ "$N_DEC" = "$N_REC" ] || finding model-routing-half-record
@@ -699,7 +700,7 @@ Se `state-ondas.sh record-skill` (passo 6) falhar APOS
 orquestrador-de-feature DEVE:
 
 1. **NAO repetir o `register`**: a Decisao ja existe em
-   `.decisoes[]` com `dec-NNN` assinado. Re-executar produziria
+   `.decisions[]` com `dec-NNN` assinado. Re-executar produziria
    `dec-NNN+1` duplicada e violaria FR-015 (1 invocacao por spawn).
 2. **Logar via `log_err`** (helper de `_log.sh`): `model-routing:
    record-skill falhou para <DEC_ID>; estado em half-record`.
@@ -801,17 +802,17 @@ fi
 # Passo 7.bis: derivar MODEL_APLICAR da Decisao DEC_ID (FR-003).
 # NAO reusar as vars MODELO/SCORE/IS_FB do passo 4: elas so existem
 # no branch `else`; no caminho idempotente (passo 3) apenas DEC_ID
-# foi setado. Derivar de .decisoes[] cobre AMBOS os caminhos sem
+# foi setado. Derivar de .decisions[] cobre AMBOS os caminhos sem
 # gerar Decisao orfa. Aplicar o modelo SOMENTE se a Decisao tem
 # escolha ∈ {haiku,sonnet,opus} E score >= 2 (nao-fallback). A
 # escolha "fallback-default" (ou "manter-atual") => OMITIR o param
 # model (herda o frontmatter do agent file) — FR-006.
 ESCOLHA_DEC=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" \
-  --field ".decisoes[] | select(.id == \"$DEC_ID\") | .escolha")
-# NB: o campo de score no schema da Decisao e `score_justificativa`
-# (state-decisions.sh mapeia --score -> .score_justificativa).
+  --field ".decisions[] | select(.id == \"$DEC_ID\") | .choice")
+# NB: o campo de score no schema da Decisao e `justification_score`
+# (state-decisions.sh mapeia --score -> .justification_score).
 SCORE_DEC=$("$RUNTIME_SCRIPTS"/state-rw.sh get --state-dir "$SD" \
-  --field ".decisoes[] | select(.id == \"$DEC_ID\") | .score_justificativa")
+  --field ".decisions[] | select(.id == \"$DEC_ID\") | .justification_score")
 MODEL_APLICAR=""
 if [ "$SCORE_DEC" -ge 2 ] 2>/dev/null; then
   if [ "$ESCOLHA_DEC" = "haiku" ] || [ "$ESCOLHA_DEC" = "sonnet" ] \
@@ -882,7 +883,7 @@ mora o risco.
    debug, dispatch).
 4. NAO usar `printf` ou `echo` antes de passar — `register` aceita o
    valor literal como argv[N]; reformatar antes corrompe whitespace e
-   quebra `jq -r .justificativa` downstream em `review-task`.
+   quebra `jq -r .rationale` downstream em `review-task`.
 
 Exemplo CORRETO (forma canonica, ja presente em passo 5):
 
@@ -953,7 +954,7 @@ exit 124). Isso garante INV-1 (exit 0 sempre) e SC-006 (latencia
 
 No entanto, **timeout por chamada nao protege contra loops** onde
 o orquestrador re-invoca o helper indefinidamente para o mesmo
-`(onda_id, subagent_type)` apos cada falha transitoria. O
+`(wave_id, subagent_type)` apos cada falha transitoria. O
 `idempotent-check` (passo 3) mitiga o caso normal (Decisao ja
 existe -> skip), mas se o `register` (passo 5) falhar repetidamente
 antes de persistir, idempotent-check nunca encontra a Decisao e o
@@ -964,16 +965,16 @@ numero de invocacoes do helper de model-routing a **10
 por onda**. Esse cap NAO esta implementado no helper (F4.3.3
 deliberadamente documenta, nao executa) — a contagem fica a cargo
 do orquestrador via contagem de Decisoes com
-`contexto = "Selecao de modelo para subagente *"` na onda corrente.
+`context = "Selecao de modelo para subagente *"` na onda corrente.
 Pseudocodigo:
 
 ```bash
 # Antes do passo 4 (invoke), checar cap defensivo
 CAP_INVOKES=10
 INVOKES_NA_ONDA=$(jq -r --arg O "$ONDA_ID" '
-  [.decisoes[]
-    | select(.contexto | startswith("Selecao de modelo para subagente "))
-    | select(.onda_id == $O)] | length' "$SD/state.json")
+  [.decisions[]
+    | select(.context | startswith("Selecao de modelo para subagente "))
+    | select(.wave_id == $O)] | length' "$SD/state.json")
 if [ "$INVOKES_NA_ONDA" -ge "$CAP_INVOKES" ]; then
   # Cap atingido: emitir BloqueioHumano em vez de invocar
   "$RUNTIME_SCRIPTS"/bloqueios.sh register --state-dir "$SD" \
@@ -1132,7 +1133,7 @@ sonda. Score 1/0 = pause.
 - **NAO criar** constitution.md por feature — feature-00c reusa a
   constitution do projeto (`docs/constitution.md`). Spec, plan, tasks
   da feature vivem em `docs/specs/<short-name>/`.
-- **NAO usar** `stack_sugerida` como conceito — feature-00c herda
+- **NAO usar** `suggested_stack` como conceito — feature-00c herda
   stack do projeto (briefing). Diferenca face ao agente-00c.
 - **NAO emitir** prosa fora dos artefatos persistidos — toda decisao
   registrada via state-decisions.sh; toda mensagem via log_err/log_out

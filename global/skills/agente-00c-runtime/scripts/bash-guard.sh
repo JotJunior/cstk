@@ -12,7 +12,7 @@
 #      push, helm install, etc).
 #   2. whitelist enforcement — comandos de rede (curl, wget, gh api/repo,
 #      git fetch/clone) tem URL/dominio extraido e checado contra
-#      whitelist_urls_externas. Excecao escopada: `gh issue create
+#      external_urls_whitelist. Excecao escopada: `gh issue create
 #      --repo JotJunior/cstk ...` bypass (ver briefing).
 #
 # Subcomandos:
