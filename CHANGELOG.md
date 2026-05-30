@@ -3008,6 +3008,11 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.3.0]: https://github.com/JotJunior/cstk/releases/tag/v5.3.0
+[5.2.0]: https://github.com/JotJunior/cstk/releases/tag/v5.2.0
+[5.1.0]: https://github.com/JotJunior/cstk/releases/tag/v5.1.0
+[5.0.0]: https://github.com/JotJunior/cstk/releases/tag/v5.0.0
+[4.10.0]: https://github.com/JotJunior/cstk/releases/tag/v4.10.0
 [4.9.1]: https://github.com/JotJunior/cstk/releases/tag/v4.9.1
 [4.9.0]: https://github.com/JotJunior/cstk/releases/tag/v4.9.0
 [4.8.0]: https://github.com/JotJunior/cstk/releases/tag/v4.8.0
@@ -3017,7 +3022,7 @@ Primeira versão publicada do toolkit.
 [4.6.2]: https://github.com/JotJunior/cstk/releases/tag/v4.6.2
 [4.6.1]: https://github.com/JotJunior/cstk/releases/tag/v4.6.1
 [4.6.0]: https://github.com/JotJunior/cstk/releases/tag/v4.6.0
-[4.5.0]: https://github.com/JotJunior/cstk/releases/tag/v4.6.0
+[4.5.0]: https://github.com/JotJunior/cstk/releases/tag/v4.5.0
 [4.4.0]: https://github.com/JotJunior/cstk/releases/tag/v4.4.0
 [4.3.4]: https://github.com/JotJunior/cstk/releases/tag/v4.3.4
 [4.3.3]: https://github.com/JotJunior/cstk/releases/tag/v4.3.3
