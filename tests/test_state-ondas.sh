@@ -565,4 +565,152 @@ scenario_ptbr_legacy_record_skill_idempotencia_le_decisao_id() {
   assert_stdout_contains "1" || return 1
 }
 
+# ---------------------------------------------------------------------------
+# wave-status + reconcile-wave (rede de seguranca anti "onda nao fechada")
+# ---------------------------------------------------------------------------
+
+scenario_wave_status_none_quando_sem_onda() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "wave-status" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "none" || return 1
+}
+
+scenario_wave_status_open_apos_start() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+}
+
+scenario_wave_status_closed_apos_end() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "closed" || return 1
+}
+
+scenario_reconcile_wave_noop_quando_fechada() {
+  # Onda ja fechada -> NO-OP (exit 0, stdout "noop (closed)"). E a guarda que
+  # torna seguro o pai chamar reconcile-wave a CADA onda.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile noop" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "noop" || return 1
+}
+
+scenario_reconcile_wave_noop_quando_sem_onda() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile noop none" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "noop (none)" || return 1
+}
+
+scenario_reconcile_wave_fecha_e_avanca_ponteiro() {
+  # Onda aberta na fase specify -> fecha (etapa_concluida_avancando) e avanca
+  # current_stage para clarify. E a recuperacao deterministica do bug
+  # "orquestrador parou cedo sem fechar a onda".
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"specify"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile open" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "reconciled" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "clarify" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].termination_reason'
+  assert_stdout_contains "etapa_concluida_avancando" || return 1
+  # skill da fase registrada (audit)
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].skills_invoked | length'
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_reconcile_wave_idempotente_nao_double_conta() {
+  # Re-chamada apos reconciliar NAO incrementa accumulated_metrics.waves_total
+  # nem re-avanca o ponteiro (guarda de idempotencia). Protege contra o pai
+  # chamar reconcile-wave em onda que o orquestrador JA fechou corretamente.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"specify"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd"
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.waves_total'
+  assert_stdout_contains "1" || return 1
+  # segunda chamada: noop
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd"
+  assert_stdout_contains "noop" || return 1
+  # waves_total continua 1 (sem double-count)
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.waves_total'
+  assert_stdout_contains "1" || return 1
+  # current_stage continua clarify (sem over-advance)
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "clarify" || return 1
+}
+
+scenario_reconcile_wave_terminal_promove_status_feature00c() {
+  # feature-00c: review-task e terminal. --terminal-phase review-task evita
+  # que pipeline.sh avance erroneamente para review-features. Deve promover
+  # .execution.status para concluida.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"review-task"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd" --terminal-phase review-task
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile terminal" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "terminal" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "concluida" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.execution.termination_reason'
+  assert_stdout_contains "concluido" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].termination_reason'
+  assert_stdout_contains "concluido" || return 1
+}
+
+scenario_reconcile_wave_sha256_consistente() {
+  # Apos reconciliar, o sha256 do state.json deve bater (state-rw.sh set
+  # recomputa). Senao o resume seguinte falha o gate de integridade.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"plan"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd"
+  assert_exit 0 "$RW" sha256-verify --state-dir "$_sd" || return 1
+}
+
+scenario_reconcile_wave_dry_run_nao_escreve() {
+  # --dry-run descreve a acao sem fechar a onda nem mexer no ponteiro.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"specify"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "would reconcile" || return 1
+  # onda continua aberta
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+  # ponteiro intacto
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "specify" || return 1
+}
+
+scenario_reconcile_wave_phase_override() {
+  # --phase fixa a fase explicitamente (pai pode pinar), ignorando current_stage.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"specify"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd" --phase plan
+  assert_stdout_contains "next=checklist" || return 1
+}
+
 run_all_scenarios

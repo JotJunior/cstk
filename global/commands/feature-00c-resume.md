@@ -157,9 +157,40 @@ fi
        }
 ```
 
-### 4. Pos-orquestrador: capturar Schedule intent (idem `/feature-00c`)
+### 4. Pos-orquestrador: rede de seguranca de fechamento de onda (OBRIGATORIO)
 
-Se `Schedule intent: delaySeconds=N; reason=...; prompt="/feature-00c-resume $SHORT"`:
+> **Bug recorrente** (ver "Contrato de conclusao de turno" no
+> `agente-00c-feature-orchestrator.md`): o orquestrador frequentemente
+> RETORNA sem fechar a onda nem emitir `Schedule intent` — comprovadamente
+> em qualquer fase, mesmo com instrucao passo-a-passo. Reforco de prompt
+> nao resolve. Por isso o PAI trata o fechamento como rede de seguranca
+> OBRIGATORIA a CADA retorno, nao condicional a `Schedule intent`.
+
+Chame `reconcile-wave` SEMPRE, antes de qualquer outra coisa. E
+idempotente: se o orquestrador JA fechou a onda corretamente, e no-op
+(nao double-conta `accumulated_metrics`); se a deixou aberta, fecha
+deterministicamente (record-skill + end + avanca `current_stage`/
+`next_instruction`, ou promove `.execution.status=concluida` na fase
+terminal). `--terminal-phase review-task` (feature-00c termina em
+review-task — sem isso o ponteiro avancaria erroneamente para
+review-features). Best-effort: falha nao gateia o cleanup.
+
+```bash
+# Se a fase corrente for execute-task, localize o tasks.md (ex.:
+# docs/specs/<short>/tasks.md) e passe --tasks-md para back-fill de .tasks[].
+state-ondas.sh reconcile-wave --state-dir "$AGENTE_00C_STATE_DIR" \
+  --terminal-phase review-task \
+  2>/dev/null || echo "reconcile-wave: rede de seguranca pulada" >&2
+```
+
+Depois de reconciliar, LEIA o `.execution.status` real (nao confie no
+sumario do orquestrador — ver caso review-task na memoria
+`project_feature00c_execute_task_stops_early`).
+
+### 4.ter Capturar/derivar Schedule intent
+
+Se o orquestrador emitiu `Schedule intent: delaySeconds=N; reason=...;
+prompt="/feature-00c-resume $SHORT"`, use-o:
 ```
 ScheduleWakeup(
   delaySeconds: <N>,
@@ -167,6 +198,13 @@ ScheduleWakeup(
   prompt: "/feature-00c-resume $SHORT"
 )
 ```
+
+Se o orquestrador parou cedo (SEM linha `Schedule intent:`) e a
+reconciliacao acima fechou a onda, DERIVE do state real:
+- `.execution.status == concluida` (ou `abortada`/`aguardando_humano`):
+  NAO invocar ScheduleWakeup (terminal).
+- `.execution.status == em_andamento`: agendar a proxima onda —
+  `ScheduleWakeup(delaySeconds: 270, reason: "proxima onda (recuperada pela rede de seguranca)", prompt: "/feature-00c-resume $SHORT")`.
 
 Se `Schedule intent: none`, NAO invocar ScheduleWakeup.
 

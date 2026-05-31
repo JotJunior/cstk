@@ -5,6 +5,54 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.5.0] - 2026-05-30
+
+Encerra um bug recorrente (3 ocorrências seguidas, em features distintas) em
+que o orquestrador `feature-00c`/`agente-00c` **retorna sem fechar a onda nem
+emitir `Schedule intent`** — deixando a onda aberta, o ponteiro
+(`current_stage`/`next_instruction`) parado e a `knowledge.db` sem o
+conhecimento da onda. Diagnóstico: são DUAS camadas. (1) O orquestrador (LLM)
+trata o retorno da Skill da fase como fim de turno e para antes dos passos
+6-13 — comportamento que o "Contrato de conclusão de turno" já tenta evitar
+por reforço de prompt e que, empiricamente, **reforço de prompt não resolve**.
+(2) A recuperação determinística estava documentada mas **não encodada em
+nenhum dos 4 commands pai** — vinha sendo feita à mão a cada ocorrência. A
+correção move o fechamento para uma rede de segurança **idempotente e
+obrigatória a cada retorno** no PAI.
+
+### Added
+
+- **`state-ondas.sh reconcile-wave`** — rede de segurança determinística e
+  idempotente para o caso "onda aberta". Guarda de idempotência via
+  `wave-status`: se a onda já está fechada/ausente → NO-OP (não double-conta
+  `accumulated_metrics`); se aberta → fecha deterministicamente (back-fill de
+  `.tasks[]` em execute-task → `record-skill` → `end` com motivo derivado →
+  avança `current_stage`/`next_instruction`, ou promove
+  `.execution.status=concluida` na fase terminal). Flag `--terminal-phase`
+  para terminalidade dependente de flavor (feature-00c=review-task,
+  agente-00c=review-features). 13 cenários novos em `tests/test_state-ondas.sh`.
+- **`state-ondas.sh wave-status`** — primitiva `open|closed|none` da última
+  onda (`.waves[-1].termination_reason`), base da guarda de idempotência.
+
+### Changed
+
+- **4 commands pai chamam `reconcile-wave` INCONDICIONALMENTE** a cada retorno
+  do orquestrador, antes do ingest na `knowledge.db` (e, no
+  `/agente-00c-resume`, ainda com o lock ativo). Quando o orquestrador parou
+  cedo sem emitir `Schedule intent:`, o pai passa a **derivar o agendamento do
+  `.execution.status` real** (terminal → não agenda; `em_andamento` → agenda a
+  próxima onda) em vez de depender da linha que o orquestrador não emitiu.
+
+### Fixed
+
+- **Ordem ingest-vs-fechamento**: o eco de ingest no pai rodava mesmo com a
+  onda aberta (ingerindo onda incompleta); agora o `reconcile-wave` fecha
+  antes.
+- **Over-advance do ponteiro na fase terminal do `feature-00c`**:
+  `pipeline.sh next-stage` usa a lista COMPLETA (agente-00c, termina em
+  review-features), o que avançaria `review-task → review-features`
+  erroneamente numa feature; `--terminal-phase review-task` corrige.
+
 ## [5.4.0] - 2026-05-30
 
 Restaura no `feature-00c` a paridade de duas capacidades que só o
@@ -3078,6 +3126,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.5.0]: https://github.com/JotJunior/cstk/releases/tag/v5.5.0
 [5.4.0]: https://github.com/JotJunior/cstk/releases/tag/v5.4.0
 [5.3.0]: https://github.com/JotJunior/cstk/releases/tag/v5.3.0
 [5.2.0]: https://github.com/JotJunior/cstk/releases/tag/v5.2.0

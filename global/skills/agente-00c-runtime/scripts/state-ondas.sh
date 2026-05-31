@@ -63,6 +63,43 @@
 #         faltando. NAO grava tasks pendentes/bloqueadas (sem outcome final).
 #         Idempotente. Stdout: nº back-filled; --dry-run lista os faltantes.
 #
+#   state-ondas.sh wave-status --state-dir DIR
+#       — Imprime o estado da ULTIMA onda (.waves[-1]):
+#           "open"   se termination_reason == null (onda nao fechada)
+#           "closed" se termination_reason != null
+#           "none"   se nao ha onda
+#         Primitiva idempotente que distingue "orquestrador fechou a onda"
+#         de "orquestrador parou cedo e deixou a onda aberta" — sem ela, a
+#         rede de seguranca do command pai (reconcile-wave) nao pode evitar
+#         double-count em `end`.
+#
+#   state-ondas.sh reconcile-wave --state-dir DIR
+#                                 [--phase PHASE] [--tasks-md PATH]
+#                                 [--terminal-phase PHASE] [--dry-run]
+#       — REDE DE SEGURANCA do command pai contra o bug recorrente "o
+#         orquestrador retorna SEM fechar a onda nem emitir Schedule intent"
+#         (ver "Contrato de conclusao de turno" no orchestrator .md). Faz a
+#         recuperacao deterministica de UMA onda aberta, IDEMPOTENTE:
+#           - se wave-status != "open" -> NO-OP (stdout "noop (<status>)",
+#             exit 0). Esta guarda e o que torna seguro o pai chamar
+#             reconcile-wave A CADA onda sem double-count em accumulated_metrics.
+#           - se "open":
+#               1. resolve a fase (--phase ou .current_stage)
+#               2. fase == execute-task + --tasks-md -> reconcile-tasks
+#                  (back-fill .tasks[] best-effort)
+#               3. record-skill --skill <fase> (idempotente)
+#               4. deriva proxima fase via pipeline.sh next-stage (ou
+#                  --terminal-phase: feature-00c=review-task,
+#                  agente-00c=review-features — sem isso pipeline.sh
+#                  avancaria review-task->review-features erroneamente):
+#                  - ha proxima  -> end(etapa_concluida_avancando) +
+#                                   avanca current_stage/next_instruction
+#                  - terminal    -> end(concluido) + promove
+#                                   .execution.status=concluida (+ reason/
+#                                   finished_at) + current_stage=concluida
+#         --dry-run descreve a acao sem escrever. Stdout em recuperacao:
+#         "reconciled (phase=... motivo=... [next=...|terminal])".
+#
 #   state-ondas.sh git-commit --state-dir DIR --projeto-alvo-path PATH
 #                             --motivo MOTIVO [--onda-id ID]
 #       — Faz `git add .` + `git commit -m 'chore(agente-00c): onda <ID> - <MOTIVO>'`
@@ -92,6 +129,12 @@ _so_require_jq() {
 
 _so_iso_now() { date -u +%FT%TZ; }
 _so_state_file() { printf '%s/state.json\n' "$1"; }
+
+# Diretorio do proprio script — resolve scripts irmaos (pipeline.sh, state-rw.sh)
+# usados por reconcile-wave. Deriva de $0 (mesmo padrao de model-routing.sh).
+_so_self_dir() {
+  CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P
+}
 
 _so_atomic_write() {
   _dst=$1; _src=$2
@@ -642,6 +685,131 @@ HELP
   exit 2
 fi
 
+_so_cmd_wave_status() {
+  _ws_sdir=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir) _ws_sdir=$2; shift 2 ;;
+      *) _so_die_usage "wave-status: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_ws_sdir" ] || _so_die_usage "wave-status: --state-dir obrigatorio"
+  _so_require_jq
+  _ws_sf=$(_so_state_file "$_ws_sdir")
+  [ -f "$_ws_sf" ] || _so_die "wave-status: state.json ausente em $_ws_sdir" 1
+  jq -r '
+    ((.waves // .ondas) // []) as $w
+    | if   ($w | length) == 0                  then "none"
+      elif ($w[-1].termination_reason // null) == null then "open"
+      else "closed" end
+  ' "$_ws_sf"
+}
+
+_so_cmd_reconcile_wave() {
+  _rcw_sdir=""; _rcw_phase=""; _rcw_md=""; _rcw_dry="no"; _rcw_terminal=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)      _rcw_sdir=$2; shift 2 ;;
+      --phase)          _rcw_phase=$2; shift 2 ;;
+      --tasks-md)       _rcw_md=$2; shift 2 ;;
+      --terminal-phase) _rcw_terminal=$2; shift 2 ;;
+      --dry-run)        _rcw_dry="yes"; shift ;;
+      *) _so_die_usage "reconcile-wave: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_rcw_sdir" ] || _so_die_usage "reconcile-wave: --state-dir obrigatorio"
+  _so_require_jq
+  _rcw_sf=$(_so_state_file "$_rcw_sdir")
+  [ -f "$_rcw_sf" ] || _so_die "reconcile-wave: state.json ausente em $_rcw_sdir" 1
+
+  # Guarda de idempotencia: so recupera onda ABERTA. Onda fechada/inexistente
+  # = no-op (exit 0). E o que torna seguro o pai chamar a CADA onda sem
+  # double-count em accumulated_metrics (que `end` incrementa por chamada).
+  _rcw_status=$(jq -r '
+    ((.waves // .ondas) // []) as $w
+    | if   ($w | length) == 0                  then "none"
+      elif ($w[-1].termination_reason // null) == null then "open"
+      else "closed" end
+  ' "$_rcw_sf")
+  if [ "$_rcw_status" != "open" ]; then
+    printf 'noop (%s)\n' "$_rcw_status"
+    return 0
+  fi
+
+  # Resolve a fase que a onda rodou. current_stage == fase corrente ate o
+  # fechamento (init grava current_stage = fase a rodar; o avanco do ponteiro
+  # so ocorre ao fechar a onda). --phase permite ao pai fixar explicitamente.
+  if [ -z "$_rcw_phase" ]; then
+    _rcw_phase=$(jq -r '(.current_stage // .etapa_corrente) // ""' "$_rcw_sf")
+  fi
+  [ -n "$_rcw_phase" ] || _so_die "reconcile-wave: nao foi possivel resolver a fase (--phase ou .current_stage)" 1
+
+  # Proxima fase do pipeline (vazio = fase terminal). A terminalidade depende
+  # do FLAVOR: feature-00c termina em review-task; agente-00c em review-features.
+  # pipeline.sh next-stage usa a lista COMPLETA (agente-00c), entao para
+  # feature-00c o pai passa --terminal-phase review-task — quando a fase
+  # corrente == terminal-phase, tratamos como terminal (next vazio) sem
+  # consultar pipeline.sh (que avancaria erroneamente para review-features).
+  _rcw_selfdir=$(_so_self_dir) || _rcw_selfdir="."
+  _rcw_pipeline="$_rcw_selfdir/pipeline.sh"
+  _rcw_rw="$_rcw_selfdir/state-rw.sh"
+  if [ -n "$_rcw_terminal" ] && [ "$_rcw_phase" = "$_rcw_terminal" ]; then
+    _rcw_next=""
+  elif [ -f "$_rcw_pipeline" ]; then
+    _rcw_next=$(sh "$_rcw_pipeline" next-stage --current "$_rcw_phase" 2>/dev/null) || _rcw_next=""
+  else
+    _rcw_next=""
+  fi
+
+  if [ "$_rcw_dry" = "yes" ]; then
+    if [ -n "$_rcw_next" ]; then
+      printf 'would reconcile: phase=%s -> next=%s motivo=etapa_concluida_avancando\n' "$_rcw_phase" "$_rcw_next"
+    else
+      printf 'would reconcile: phase=%s (terminal) -> status=concluida motivo=concluido\n' "$_rcw_phase"
+    fi
+    return 0
+  fi
+
+  # 1. execute-task: back-fill .tasks[] (senao recall ingere 0 tasks). Best-effort.
+  if [ "$_rcw_phase" = "execute-task" ] && [ -n "$_rcw_md" ]; then
+    _so_cmd_reconcile_tasks --state-dir "$_rcw_sdir" --tasks-md "$_rcw_md" >/dev/null 2>&1 || :
+  fi
+
+  # 2. registrar a skill da fase (idempotente) — senao some do audit.
+  _so_cmd_record_skill --state-dir "$_rcw_sdir" --skill "$_rcw_phase" >/dev/null 2>&1 || :
+
+  # 3. fechar a onda com motivo derivado (fail-loud: end usa _so_die/exit).
+  if [ -n "$_rcw_next" ]; then
+    _rcw_motivo="etapa_concluida_avancando"
+  else
+    _rcw_motivo="concluido"
+  fi
+  _so_cmd_end --state-dir "$_rcw_sdir" --motivo-termino "$_rcw_motivo" >/dev/null
+
+  # 4. avancar ponteiro (ou promover status terminal). end NAO faz isto.
+  [ -f "$_rcw_rw" ] || _so_die "reconcile-wave: state-rw.sh nao encontrado em $_rcw_selfdir" 1
+  if [ -n "$_rcw_next" ]; then
+    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" \
+      --field '.current_stage' --value "\"$_rcw_next\"" >/dev/null
+    _rcw_instr=$(printf 'Iniciar etapa %s — retomada pela rede de seguranca do command pai (onda anterior fechada sem Schedule intent).' "$_rcw_next" | jq -R .)
+    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" \
+      --field '.next_instruction' --value "$_rcw_instr" >/dev/null
+  else
+    _rcw_now=$(_so_iso_now)
+    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.execution.status' --value '"concluida"' >/dev/null
+    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.execution.termination_reason' --value '"concluido"' >/dev/null
+    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.execution.finished_at' --value "\"$_rcw_now\"" >/dev/null
+    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.current_stage' --value '"concluida"' >/dev/null
+    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.next_instruction' --value '"Execucao concluida — nenhuma proxima etapa."' >/dev/null
+  fi
+
+  if [ -n "$_rcw_next" ]; then
+    printf 'reconciled (phase=%s motivo=%s next=%s)\n' "$_rcw_phase" "$_rcw_motivo" "$_rcw_next"
+  else
+    printf 'reconciled (phase=%s motivo=%s terminal)\n' "$_rcw_phase" "$_rcw_motivo"
+  fi
+}
+
 _SO_SUBCMD=$1
 shift
 
@@ -652,6 +820,8 @@ case "$_SO_SUBCMD" in
   record-skill)     _so_cmd_record_skill "$@" ;;
   record-task)      _so_cmd_record_task "$@" ;;
   reconcile-tasks)  _so_cmd_reconcile_tasks "$@" ;;
+  wave-status)      _so_cmd_wave_status "$@" ;;
+  reconcile-wave)   _so_cmd_reconcile_wave "$@" ;;
   current-id)       _so_cmd_current_id "$@" ;;
   git-commit)       _so_cmd_git_commit "$@" ;;
   -h|--help|help)   exit 0 ;;

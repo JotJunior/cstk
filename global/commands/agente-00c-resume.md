@@ -240,6 +240,32 @@ Agent(
 Aguarde retorno do orquestrador (uma mensagem de sumario contendo um
 campo `Schedule intent: ...`).
 
+### 6.bis Rede de seguranca de fechamento de onda (OBRIGATORIO — com lock ainda ativo)
+
+> **Bug recorrente**: o orquestrador frequentemente RETORNA sem fechar a
+> onda nem emitir `Schedule intent` (ver "Contrato de conclusao de turno"
+> no `agente-00c-orchestrator.md`). Reforco de prompt nao resolve; o PAI
+> trata o fechamento como rede de seguranca OBRIGATORIA a CADA retorno.
+
+Chame `reconcile-wave` SEMPRE, AINDA com o lock ativo (antes do §7), pois
+ele escreve no state.json. E idempotente: no-op se o orquestrador JA
+fechou a onda (sem double-count); se a deixou aberta, fecha
+deterministicamente (record-skill + end + avanca `current_stage`/
+`next_instruction`, ou promove `.execution.status=concluida` na fase
+terminal). `--terminal-phase review-features` (agente-00c termina em
+review-features). Best-effort.
+
+```bash
+# Se a fase corrente for execute-task, localize tasks.md e passe --tasks-md.
+state-ondas.sh reconcile-wave --state-dir <SD> \
+  --terminal-phase review-features \
+  2>/dev/null || echo "reconcile-wave: rede de seguranca pulada" >&2
+```
+
+Quando o orquestrador NAO emitiu `Schedule intent` (parou cedo) e a
+reconciliacao fechou a onda, o §8 deve DERIVAR do `.execution.status`
+real: terminal NAO agenda; `em_andamento` agenda a proxima onda.
+
 ### 7. Liberar lock
 
 ```bash

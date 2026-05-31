@@ -213,9 +213,30 @@ Spawne aplicando o param `model` SOMENTE quando `MODEL != manter-atual`
 > ondas. O prompt do orquestrador NÃO muda — só o invólucro do spawn
 > ganha o param `model`.
 
-### 5. Pos-orquestrador: capturar Schedule intent
+### 5. Pos-orquestrador: rede de seguranca de fechamento de onda (OBRIGATORIO)
 
-O orquestrador retorna no sumario uma linha tipo:
+> **Bug recorrente**: o orquestrador frequentemente RETORNA sem fechar a
+> onda nem emitir `Schedule intent` (ver "Contrato de conclusao de turno"
+> no `agente-00c-feature-orchestrator.md`). Reforco de prompt nao resolve;
+> o PAI trata o fechamento como rede de seguranca OBRIGATORIA a CADA
+> retorno, nao condicional a `Schedule intent`.
+
+Chame `reconcile-wave` SEMPRE, antes de capturar o Schedule intent. E
+idempotente: no-op se o orquestrador JA fechou a onda (sem double-count);
+se a deixou aberta, fecha deterministicamente (record-skill + end +
+avanca `current_stage`/`next_instruction`, ou promove
+`.execution.status=concluida` na fase terminal). `--terminal-phase
+review-task` (feature-00c termina em review-task). Best-effort.
+
+```bash
+# Se a fase corrente for execute-task, localize tasks.md e passe --tasks-md.
+state-ondas.sh reconcile-wave --state-dir "$AGENTE_00C_STATE_DIR" \
+  --terminal-phase review-task \
+  2>/dev/null || echo "reconcile-wave: rede de seguranca pulada" >&2
+```
+
+Depois, capture/derive o Schedule intent. O orquestrador retorna no
+sumario uma linha tipo:
 
 ```
 Schedule intent: delaySeconds=270; reason="<...>"; prompt="/feature-00c-resume <short>"
@@ -235,6 +256,11 @@ ScheduleWakeup(
   prompt: "/feature-00c-resume <short>"
 )
 ```
+
+Se o orquestrador parou cedo (SEM linha `Schedule intent:`) e a
+reconciliacao fechou a onda, DERIVE do `.execution.status` real:
+- terminal (`concluida`/`abortada`/`aguardando_humano`): NAO agendar.
+- `em_andamento`: `ScheduleWakeup(delaySeconds: 270, reason: "proxima onda (recuperada pela rede de seguranca)", prompt: "/feature-00c-resume <short>")`.
 
 Se `Schedule intent: none`, NAO invocar ScheduleWakeup. Apenas liberar
 lock e exit 0.

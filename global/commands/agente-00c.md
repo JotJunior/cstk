@@ -220,6 +220,33 @@ Aplique o param `model` no spawn SOMENTE quando `MODEL != manter-atual`
 Aguarde retorno do orquestrador (uma mensagem de sumario contendo, entre
 outras linhas, um campo `Schedule intent: ...`).
 
+### 5.pre Rede de seguranca de fechamento de onda (OBRIGATORIO — antes do schedule)
+
+> **Bug recorrente**: o orquestrador frequentemente RETORNA sem fechar a
+> onda nem emitir `Schedule intent` (ver "Contrato de conclusao de turno"
+> no `agente-00c-orchestrator.md`). Reforco de prompt nao resolve; o PAI
+> trata o fechamento como rede de seguranca OBRIGATORIA a CADA retorno,
+> nao condicional a `Schedule intent`.
+
+Chame `reconcile-wave` SEMPRE, antes de processar o Schedule intent. E
+idempotente: no-op se o orquestrador JA fechou a onda (sem double-count
+em `accumulated_metrics`); se a deixou aberta, fecha deterministicamente
+(record-skill + end + avanca `current_stage`/`next_instruction`, ou
+promove `.execution.status=concluida` na fase terminal). `--terminal-phase
+review-features` (agente-00c termina em review-features). Best-effort.
+
+```bash
+# Se a fase corrente for execute-task, localize tasks.md e passe --tasks-md.
+state-ondas.sh reconcile-wave --state-dir "$STATE_DIR" \
+  --terminal-phase review-features \
+  2>/dev/null || echo "reconcile-wave: rede de seguranca pulada" >&2
+```
+
+Apos reconciliar, derive o Schedule a partir do `.execution.status` real
+quando o orquestrador NAO emitiu `Schedule intent` (parou cedo): terminal
+(`concluida`/`abortada`/`aguardando_humano`) NAO agenda; `em_andamento`
+agenda a proxima onda via `ScheduleWakeup` com `prompt: "/agente-00c-resume <projeto>"`.
+
 ### 5. Schedule da proxima onda (CRITICO — ver nota no orchestrator)
 
 Sub-agentes nao podem invocar `ScheduleWakeup` de forma sobrevivente: o
