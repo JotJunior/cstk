@@ -285,6 +285,15 @@ auditável** rico em decisões, bloqueios e lições aprendidas: ele existe
 justamente para você revisar a rota, em vez de confiar cegamente na cadeia
 de etapas.
 
+> **Dica — prompt ideal para o briefing**: quanto mais completa a descrição
+> inicial, menos perguntas o agente faz na etapa `briefing` (ele registra
+> várias dimensões de uma vez e vai direto à síntese). Use o template
+> preenchível em
+> [`docs/templates/briefing-prompt-ideal.md`](./docs/templates/briefing-prompt-ideal.md)
+> — mapeado 1:1 com as seções do briefing e com blocos extras para
+> arquiteturas complexas (decomposição em serviços, integrações, NFRs), com
+> guia de poda para entregas simples.
+
 ### Comandos expostos
 
 | Comando | Função |
