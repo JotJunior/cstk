@@ -1036,7 +1036,26 @@ Cada invocacao registra `state-ondas.sh record-skill` para que
 | `specify` | doc-quality | `validate-documentation` | spec.md estruturada, sem TBD, sem ambiguidades obvias | findings `critical` → BloqueioHumano; demais → Decisao informativa |
 | `plan` | doc-quality | `validate-documentation` | plan.md + research.md + data-model.md coerentes | findings `critical` → BloqueioHumano; demais → Decisao informativa |
 | `plan` | security | `owasp-security` | superficie de ataque OWASP/ASVS na arquitetura proposta | findings `critical`/`high` → BloqueioHumano OBRIGATORIO (constitution exige seguranca como principio MUST) |
+| `create-tasks` | template-fidelity | `validate-tasks-template.sh` (Bash, **deterministico**) | tasks.md conforma ao template canonico: prefixo FASE, checkboxes `- [ ]`, tag de criticidade, legendas, Matriz de Dependencias, Resumo, Escopo Coberto/Excluido | findings `critical` (sem FASE / sem checkbox / sem criticidade) → Decisao + tentativa de Edit (re-normalizar ao template); `warning` → Decisao informativa |
 | `create-tasks` | docs-render | `validate-docs-rendered` | Mermaid parseavel, links internos, frontmatter, code blocks com linguagem | findings `critical` (link 404, Mermaid invalido) → Decisao + tentativa de Edit; demais → Decisao informativa |
+
+**Pre-gate deterministico do `create-tasks` (template-fidelity):** roda ANTES
+do gate `docs-render` (skeleton antes de render). Motivacao: o `docs-render`
+so checa render, nunca conformidade estrutural — quando o backlog e gerado
+inline e "esquece" o template (sem checkbox, sem FASE, sem legendas/Escopo/
+Matriz), o drift passava silencioso ate um humano notar. Por ser uma checagem
+por Bash (e nao uma skill LLM, sujeita ao mesmo modo de falha que gerou o
+drift), e determinístico e nao pode ser "esquecido":
+
+```bash
+# FD = feature-dir; TASKS = "$FD/tasks.md"
+OUT=$(bash "$HOME/.claude/skills/create-tasks/scripts/validate-tasks-template.sh" \
+  "$TASKS" --config "$HOME/.claude/skills/create-tasks/config.json" 2>&1) || true
+# Exit 1 = drift; cada "FINDING|critical|..." -> Decisao + tentativa de Edit
+# re-normalizando ao template (templates/tasks.md), preservando todo o
+# conteudo/progresso [x]; "FINDING|warning|..." -> Decisao informativa.
+# Exit 0 = conformante. Registrar record-skill como nos demais gates.
+```
 
 Sequencia padrao por gate:
 

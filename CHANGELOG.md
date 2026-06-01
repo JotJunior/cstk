@@ -5,6 +5,45 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.7.0] - 2026-06-01
+
+Fecha um drift silencioso na etapa `create-tasks` do pipeline SDD: o backlog
+gerado inline (sub agente que registra a skill mas escreve o conteúdo "de
+cabeça") podia omitir o skeleton do template canônico — checkboxes `- [ ]`,
+prefixo `FASE`, legendas de status/criticidade, Matriz de Dependências, Resumo
+Quantitativo e seções Escopo Coberto/Excluído. O único gate da etapa
+(`validate-docs-rendered`) só valida **render** (Mermaid, links, frontmatter),
+nunca **conformidade estrutural**, então o drift passava silencioso até um
+humano notar. Reforço de prompt na SKILL ("aplique o template fielmente") já
+existia e foi ignorado — por isso a correção é uma checagem **determinística
+por Bash**, imune ao mesmo modo de falha (LLM) que gerou o problema.
+
+### Added
+
+- **`create-tasks/scripts/validate-tasks-template.sh`** — gate determinístico
+  de fidelidade ao template. Emite `FINDING|<severity>|<code>|<msg>` +
+  `RESULT`. Severidade **`critical`** (sem heading `FASE`, sem checkbox, sem
+  tag de criticidade) = drift que quebra downstream (`execute-task` /
+  contagem de métricas do `review-task`); **`warning`** = seção de metadados
+  ausente (legendas, Matriz, Resumo, Escopo Coberto/Excluído). Honra
+  `phase_prefix` do `config.json` sem `jq` (POSIX puro) ou via
+  `--phase-prefix`. Exit `0` conformante, `1` drift, `2` uso/arquivo.
+  Read-only. Cobertura em `tests/test_validate-tasks-template.sh` (10 cenários)
+  + fixture `tests/fixtures/tasks-md/conformant.md`.
+- **`assert_stdout_not_contains`** no harness de testes (`tests/lib/harness.sh`)
+  — assertion negativa que faltava, espelhando `assert_stdout_contains`.
+
+### Changed
+
+- **Orquestradores `agente-00c` + `feature-00c`**: adicionado o pre-gate
+  `template-fidelity` na etapa `create-tasks`, rodando **antes** do gate
+  `docs-render` (skeleton antes de render). `critical` → Decisão + tentativa
+  de Edit re-normalizando ao `templates/tasks.md` (preservando todo o conteúdo
+  e o progresso `[x]`); `warning` → Decisão informativa. `record-skill` como
+  nos demais gates.
+- **SKILL `create-tasks`**: documenta o novo script em "Scripts auxiliares" +
+  gotcha sobre o drift silencioso do backlog gerado inline.
+
 ## [5.6.0] - 2026-05-31
 
 ### Deprecated
@@ -3139,6 +3178,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.7.0]: https://github.com/JotJunior/cstk/releases/tag/v5.7.0
 [5.6.0]: https://github.com/JotJunior/cstk/releases/tag/v5.6.0
 [5.5.0]: https://github.com/JotJunior/cstk/releases/tag/v5.5.0
 [5.4.0]: https://github.com/JotJunior/cstk/releases/tag/v5.4.0

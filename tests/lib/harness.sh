@@ -159,6 +159,19 @@ assert_stdout_contains() {
   return "$_STATUS_FAIL"
 }
 
+# assert_stdout_not_contains SUBSTRING
+# Inverso de assert_stdout_contains. Requer captura previa.
+assert_stdout_not_contains() {
+  _needle="$1"
+  case "${_CAPTURED_STDOUT:-}" in
+    *"$_needle"*)
+      _fail "assert_stdout_not_contains" "stdout contem (nao deveria): $_needle"
+      return "$_STATUS_FAIL"
+      ;;
+  esac
+  return "$_STATUS_PASS"
+}
+
 # assert_stderr_contains SUBSTRING
 assert_stderr_contains() {
   _needle="$1"

@@ -66,6 +66,24 @@ scenario_stdout_contains_absent_detects_miss() {
   return 0
 }
 
+scenario_stdout_not_contains_absent_passes() {
+  capture sh -c 'printf "hello world\n"'
+  assert_stdout_not_contains "missing_substring_xyz" || return 1
+}
+
+scenario_stdout_not_contains_present_detects_miss() {
+  capture sh -c 'printf "hello world\n"'
+  (
+    assert_stdout_not_contains "hello" >/dev/null 2>&1
+  )
+  _inner_status=$?
+  if [ "$_inner_status" -ne 1 ]; then
+    printf 'expected assert_stdout_not_contains to FAIL when substring present, got %d\n' "$_inner_status" >&2
+    return 1
+  fi
+  return 0
+}
+
 # ==== 1.3.5 trap de cleanup ====
 
 scenario_tmpdir_cleanup_on_normal_exit() {

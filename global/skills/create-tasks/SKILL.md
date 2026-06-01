@@ -328,6 +328,23 @@ Se config.json ausente, usar defaults documentados no template.
   bash skills/create-tasks/scripts/next-task-id.sh 1.2 tasks.md   # → 1.2.4
   ```
 
+- `scripts/validate-tasks-template.sh` — gate **deterministico** de
+  fidelidade ao template. Verifica se um tasks.md gerado conforma a
+  `templates/tasks.md`: prefixo de fase (`phase_prefix`), checkboxes
+  `- [ ]`, tag de criticidade nas tarefas, legendas, Matriz de
+  Dependencias, Resumo Quantitativo, Escopo Coberto/Excluido. Emite
+  `FINDING|<severity>|<code>|<msg>` (`critical` quebra downstream;
+  `warning` e drift de metadados) e um `RESULT`. Exit 0 conformante,
+  1 drift, 2 uso/arquivo:
+  ```bash
+  bash skills/create-tasks/scripts/validate-tasks-template.sh \
+    docs/specs/foo/tasks.md --config skills/create-tasks/config.json
+  ```
+  Os orquestradores `agente-00c`/`feature-00c` o rodam como pre-gate
+  apos a etapa `create-tasks` (antes do `validate-docs-rendered`):
+  `critical` vira Decisao + tentativa de Edit re-normalizando ao
+  template; `warning` vira Decisao informativa.
+
 ---
 
 ## Gotchas
@@ -359,3 +376,15 @@ Diagrama Mermaid desenhado "como deveria ser" mas que contradiz a ordem das fase
 ### Nao confundir "escopo excluido" com "fora do MVP"
 
 Escopo excluido = explicitamente NAO faz parte deste backlog (documentar porque). Fora do MVP = pode fazer parte no futuro mas fora desta rodada. Sao colunas diferentes do relatorio final.
+
+### Gerar o backlog inline "esquecendo" o template e um drift silencioso
+
+Quando o backlog e produzido inline (sub agente que registra a skill mas gera
+o conteudo de cabeca), e facil omitir o skeleton: checkboxes `- [ ]`, o
+prefixo `FASE`, as legendas, a Matriz de Dependencias, o Resumo Quantitativo e
+as secoes Escopo Coberto/Excluido. O gate `validate-docs-rendered` NAO pega
+isso — ele so checa render (Mermaid, links, frontmatter). Quem pega e o gate
+deterministico `validate-tasks-template.sh` (ver Scripts auxiliares). Rode-o
+sempre que gerar um tasks.md fora do fluxo interativo da skill; sem ele o
+backlog malformado segue para `execute-task`/`review-task` e quebra a contagem
+de metricas (subtarefas sem checkbox contam 0).
