@@ -70,7 +70,7 @@ curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh
 │       ├── clarify/
 │       ├── constitution/
 │       ├── create-tasks/
-│       ├── decision-tree/      # HTML interativo da árvore de decisões do state.json
+│       ├── decision-tree/      # ⚠️ DEPRECATED (remove_in 6.0.0) — use cstk-panel (cstk serve)
 │       ├── execute-task/
 │       ├── image-generation/
 │       ├── initialize-docs/

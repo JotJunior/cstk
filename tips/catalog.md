@@ -369,22 +369,23 @@ progresso marcado — verifique antes.
 ---
 skill: decision-tree
 category: uso
-text: Use /decision-tree para gerar um relatorio HTML interativo da arvore de decisoes de uma execucao do agente-00c — visualiza como a IA decidiu em cada onda.
+text: DEPRECATED (remove_in 6.0.0). /decision-tree gera um HTML da arvore de decisoes do state.json, mas o cstk-panel (cstk serve) ja faz isso de forma mais eficiente — prefira o painel.
 ---
-Apos uma execucao do agente-00c ou feature-00c:
+A skill `/decision-tree` esta **deprecated desde a v5.6.0** (remocao em v6.0.0).
+O **cstk-panel** trouxe uma solucao mais eficiente para visualizar as decisoes:
 
 ```
-/decision-tree
+cstk serve   # interface web interativa, sempre atualizada
 ```
 
-Gera um HTML com arvore navegavel: cada no e uma Decisao do state.json,
-galhos sao as opcoes consideradas, tronco e a escolha feita. Util para
-auditoria e debug de comportamento do orquestrador.
+A skill ainda funciona ate a remocao (gera HTML autocontido a partir do
+state.json), mas nenhum substituto sera portado para o toolkit — a
+visualizacao vive no painel.
 
 ---
 skill: decision-tree
 category: gotcha
-text: O /decision-tree visualiza decisoes de state.json — nao use para metricas de selecao de modelo (use model-routing-report.sh) nem para status de tarefas (use /review-task).
+text: /decision-tree esta deprecated (remove_in 6.0.0) — prefira o cstk-panel (cstk serve). Em qualquer caso, nao use para metricas de selecao de modelo (use model-routing-report.sh) nem para status de tarefas (use /review-task).
 ---
 ```
 # Para arvore de decisoes do orquestrador:

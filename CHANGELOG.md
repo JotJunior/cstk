@@ -5,6 +5,19 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.6.0] - 2026-05-31
+
+### Deprecated
+
+- **Skill `decision-tree`**: marcada como deprecated (`deprecated: true`,
+  `deprecated_since: 5.6.0`, `remove_in: 6.0.0`). O **cstk-panel**
+  (`cstk serve`) passou a visualizar as decisões do `state.json` de forma
+  mais eficiente — interface web interativa, sempre atualizada, sem gerar
+  arquivos HTML avulsos. A skill continua funcionando até a remoção em
+  v6.0.0; nenhum substituto será portado para dentro do toolkit (a
+  visualização vive no painel). Frontmatter do `SKILL.md` recebeu os campos
+  de depreciação e um banner; README marca a entrada como deprecated.
+
 ## [5.5.0] - 2026-05-30
 
 Encerra um bug recorrente (3 ocorrências seguidas, em features distintas) em
@@ -3126,6 +3139,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.6.0]: https://github.com/JotJunior/cstk/releases/tag/v5.6.0
 [5.5.0]: https://github.com/JotJunior/cstk/releases/tag/v5.5.0
 [5.4.0]: https://github.com/JotJunior/cstk/releases/tag/v5.4.0
 [5.3.0]: https://github.com/JotJunior/cstk/releases/tag/v5.3.0

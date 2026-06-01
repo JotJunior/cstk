@@ -1,13 +1,23 @@
 ---
 name: decision-tree
-description: 'Gera um relatorio HTML interativo em arvore de decisao a partir do state.json de uma execucao agente-00c/feature-00c. Use quando o operador pedir para "visualizar/desenhar a arvore de decisoes", "fluxograma das decisoes da IA", "relatorio das decisoes do state.json", "como a IA decidiu", ou similar. NAO use para metricas agregadas de selecao de modelo (use model-routing-report.sh) nem para auditar status de tarefas (use review-task).'
+description: 'DEPRECATED (deprecated_since 5.6.0, remove_in 6.0.0 — use o cstk-panel via `cstk serve`, que ja visualiza as decisoes do state.json de forma mais eficiente). Gera um relatorio HTML interativo em arvore de decisao a partir do state.json de uma execucao agente-00c/feature-00c. Use quando o operador pedir para "visualizar/desenhar a arvore de decisoes", "fluxograma das decisoes da IA", "relatorio das decisoes do state.json", "como a IA decidiu", ou similar. NAO use para metricas agregadas de selecao de modelo (use model-routing-report.sh) nem para auditar status de tarefas (use review-task).'
 argument-hint: "[caminho para o state.json] [arquivo .html de saida opcional]"
+deprecated: true
+deprecated_since: 5.6.0
+remove_in: 6.0.0
 allowed-tools:
   - Read
   - Bash
 ---
 
 # Skill: Decision Tree
+
+> **⚠️ DEPRECATED desde v5.6.0 — remoção agendada para v6.0.0.**
+> O **cstk-panel** (`cstk serve`) trouxe uma solução mais eficiente para
+> visualizar as decisões do `state.json` — interface web interativa,
+> sempre atualizada, sem gerar arquivos HTML avulsos. Prefira o painel.
+> Esta skill continua funcionando até a remoção; nenhum substituto será
+> portado para dentro do toolkit (a visualização vive no painel).
 
 Transforma o histórico de decisões de uma execução do orquestrador
 (`agente-00c` / `feature-00c`) num diagrama navegável em forma de árvore.
