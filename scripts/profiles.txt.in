@@ -39,6 +39,7 @@ complementary:bugfix
 complementary:image-generation
 complementary:apply-insights
 complementary:owasp-security
+complementary:e2e-integration-flow
 complementary:validate-documentation
 complementary:validate-docs-rendered
 complementary:initialize-docs

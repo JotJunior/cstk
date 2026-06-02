@@ -5,6 +5,37 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.8.0] - 2026-06-02
+
+Adiciona a skill complementar **`e2e-integration-flow`**: autoria e execução de
+testes E2E de integração full-stack com Playwright. A premissa central é que a
+UI é apenas o **gatilho**, não a prova — cada ação que muda estado ganha uma
+asserção na camada de trás (rede/API → banco → fila/RabbitMQ → efeitos
+colaterais), via um "contrato de fluxo" (tabela ação→consequência por camada)
+montado antes do código. Cobre a matriz de casos (happy path, validações de
+campo, bordas, erros, authz, idempotência/async), incluindo a asserção do
+**espaço negativo** (input inválido não pode gerar write nem evento). Anti-flake
+por princípio: nada de `sleep`, só web-first assertions e polling com timeout;
+dados isolados + teardown para repetibilidade.
+
+### Added
+
+- **`global/skills/e2e-integration-flow/SKILL.md`** — protocolo em 8 passos
+  (contexto/prereqs → contrato de fluxo → matriz de casos → harness → passos UI
+  → verificação backend/async → run+triagem por camada → relatório de
+  cobertura) + golden rules e fronteiras com `verify`/`bugfix`/`owasp-security`.
+- **`references/playwright-patterns.md`** — config (trace/retries/projects),
+  reuso de `storageState` (auth uma vez), locators semânticos, web-first
+  assertions, asserção de rede (positiva e negativa), isolamento de dados,
+  fixtures injetando `db`/`queue`, wiring de CI.
+- **`references/backend-async-verification.md`** — asserções diretas no banco +
+  cleanup; verificação de RabbitMQ em 3 estratégias (efeito-colateral do
+  consumer, bind de fila temporária, management API) com o cuidado de **bindar o
+  listener antes da ação**; helper de polling para consistência eventual;
+  checklist de verificação por passo mutante.
+- **`scripts/profiles.txt.in`**: `complementary:e2e-integration-flow` (entra no
+  profile `complementary` e no `all`; não afeta o `sdd`).
+
 ## [5.7.0] - 2026-06-01
 
 Fecha um drift silencioso na etapa `create-tasks` do pipeline SDD: o backlog
@@ -3178,6 +3209,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.8.0]: https://github.com/JotJunior/cstk/releases/tag/v5.8.0
 [5.7.0]: https://github.com/JotJunior/cstk/releases/tag/v5.7.0
 [5.6.0]: https://github.com/JotJunior/cstk/releases/tag/v5.6.0
 [5.5.0]: https://github.com/JotJunior/cstk/releases/tag/v5.5.0

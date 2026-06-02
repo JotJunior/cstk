@@ -71,6 +71,7 @@ curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh
 │       ├── constitution/
 │       ├── create-tasks/
 │       ├── decision-tree/      # ⚠️ DEPRECATED (remove_in 6.0.0) — use cstk-panel (cstk serve)
+│       ├── e2e-integration-flow/ # testes E2E de integração full-stack (Playwright)
 │       ├── execute-task/
 │       ├── image-generation/
 │       ├── initialize-docs/
@@ -138,6 +139,7 @@ Skills independentes que podem ser usados em qualquer momento:
 |-------|---------|-----------|
 | **advisor** | "me aconselhe", "analise estratégica" | Conselheiro brutalmente honesto que disseca raciocínio e gera planos de ação |
 | **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
+| **e2e-integration-flow** | "e2e", "teste e2e", "playwright", "validar fluxo completo" | Cria e roda testes E2E de integração com Playwright que validam o fluxo completo de uma feature em TODAS as camadas (UI → rede/API → banco → fila/RabbitMQ → efeitos colaterais), não só o clique na UI. Profundidade sob demanda em `references/` |
 | **image-generation** | Ao gerar imagens | Aprimora prompts de geração de imagens usando estrutura Subject-Context-Style |
 | **initialize-docs** | "inicializar docs", "setup documentação" | Cria hierarquia padrão de documentação com 9 níveis |
 | **apply-insights** | "aplicar insights", "aplicar playbook", "melhorar claude.md" | Analisa o projeto e aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows. Renomeada de `insights` na 2.0.0 para evitar colisão com o `/insights` nativo do Claude Code (que tem função diferente — analisa suas sessões) |
