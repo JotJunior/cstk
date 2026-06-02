@@ -59,7 +59,7 @@ curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh
 
 ```
 ├── global/                     # Skills globais (independentes de linguagem)
-│   └── skills/                 # 22 skills globais (cada skill é uma pasta)
+│   └── skills/                 # 23 skills globais (cada skill é uma pasta)
 │       ├── advisor/
 │       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
 │       ├── analyze/
