@@ -1,0 +1,12 @@
+{"query": "qual e a capital da Franca?", "expect": "none"}
+{"query": "explica o que esse trecho de codigo faz", "expect": "none"}
+{"query": "commita as mudancas e abre um PR", "expect": "none"}
+{"query": "registra a decisao arquitetural de usar Postgres em vez de Mongo num ADR", "expect": "none"}
+{"query": "renomeia a variavel foo pra bar nesse arquivo", "expect": "none"}
+{"query": "roda a suite de testes e me diz se passou", "expect": "none", "tier": "hard"}
+{"query":"renomeia a variavel `state_dir` para `stateDir` no arquivo cli/lib/recall.sh","expect":"none","tier":"gen"}
+{"query":"roda os testes do recall pra ver se ainda passam depois da minha ultima mudanca","expect":"none","tier":"gen"}
+{"query":"o que esse bloco faz exatamente?\n\n```bash\nfts_query=$(printf '%s' \"$@\" | tr -s ' ' '\\n' | awk '{print $1 \"*\"}' | paste -sd' ')\n```","expect":"none","tier":"gen"}
+{"query":"faz um commit so com o recall.sh e o test_recall.sh, mensagem algo tipo 'fix recall fts query escaping'","expect":"none","tier":"gen"}
+{"query":"formata o arquivo phase-model-map.txt com colunas alinhadas, tipo tabela, sem mudar o conteudo","expect":"none","tier":"gen"}
+{"query":"quantas skills globais tem listadas no README agora?","expect":"none","tier":"gen"}

@@ -1,0 +1,4 @@
+{"query": "quebra esse escopo num backlog de tarefas com fases e dependencias", "expect": "create-tasks"}
+{"query": "decompoe a implementacao dessa feature numa lista de tarefas", "expect": "create-tasks"}
+{"query": "essa feature ainda nao tem nenhum item planejado; preciso transformar o escopo em pedacos executaveis com a ordem certa e o que depende do que", "expect": "create-tasks", "tier": "hard"}
+{"query":"baseado no que a gente ja escreveu sobre a feature de onboarding, queria quebrar isso em pedacos menores para o time conseguir trabalhar em paralelo — com fases e prioridades","expect":"create-tasks","tier":"gen"}

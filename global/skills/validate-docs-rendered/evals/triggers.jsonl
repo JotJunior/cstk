@@ -1,0 +1,4 @@
+{"query": "confere se os diagramas mermaid desse doc renderizam e se os links internos resolvem", "expect": "validate-docs-rendered"}
+{"query": "sera que esse markdown vai renderizar certo? checa frontmatter e blocos de codigo sem linguagem", "expect": "validate-docs-rendered"}
+{"query":"meus diagramas de sequencia no docs/02-requisitos estao abrindo brancos no GitHub, quero checar se o Mermaid ta correto antes de mandar o PR","expect":"validate-docs-rendered","tier":"gen"}
+{"query":"os links internos do nosso README de arquitetura nao estao resolvendo, e acho que tem um code block sem linguagem la tambem — da pra validar isso?","expect":"validate-docs-rendered","tier":"gen"}

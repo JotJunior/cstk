@@ -1,0 +1,6 @@
+{"query": "implementa a tarefa T-014 seguindo o workflow de execucao", "expect": "execute-task"}
+{"query": "executa a proxima tarefa do backlog", "expect": "execute-task"}
+{"query":"a spec esta aprovada, o plano tecnico esta fechado — agora so falta colocar a mao na massa na tarefa NOTIF-003 que e adicionar o handler de webhook","expect":"execute-task","tier":"gen"}
+{"query":"o backlog esta montado e a proxima tarefa e criar a migracao do banco para adicionar a coluna de status — como eu executo isso dentro do fluxo do projeto?","expect":"execute-task","tier":"gen"}
+{"query":"implementar a tarefa TASK-042 do backlog: persistir o evento de pagamento aprovado no banco depois que o webhook do gateway chega","expect":"execute-task","tier":"gen"}
+{"query":"executar a task de integracao com o servico de notificacoes: precisa disparar o push quando o pedido mudar de status, salvar o log no postgres e marcar como enviado na tabela","expect":"execute-task","tier":"gen"}

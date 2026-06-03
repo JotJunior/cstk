@@ -1,0 +1,3 @@
+{"query":"Acabei de rodar /insights e ele mostrou vários padrões de uso. Como eu aplico isso no projeto pra melhorar o fluxo?","expect":"apply-insights","tier":"gen"}
+{"query":"Tenho percebido que o Claude repete as mesmas perguntas de permissão toda hora e perde contexto entre sessões. Tem alguma forma de ajustar o projeto pra corrigir isso com base no que ele mesmo usa?","expect":"apply-insights","tier":"gen"}
+{"query":"Vi que nos últimos sprints o agente sempre pede as mesmas coisas antes de começar. Quero incorporar isso no CLAUDE.md pra não precisar repetir","expect":"apply-insights","tier":"gen"}

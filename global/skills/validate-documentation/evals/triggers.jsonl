@@ -1,0 +1,4 @@
+{"query": "audita a qualidade e completude do UC-CAD-001.md contra o padrao estrutural", "expect": "validate-documentation"}
+{"query": "esse documento de caso de uso esta bem estruturado e completo?", "expect": "validate-documentation"}
+{"query":"o nosso UC-CAD-003 tem todos os campos que precisa? quero saber se ta faltando alguma seção obrigatoria no documento","expect":"validate-documentation","tier":"gen"}
+{"query":"antes de apresentar a spec pro time eu quero garantir que ela ta bem escrita e completa, sem secoes faltando ou mal preenchidas","expect":"validate-documentation","tier":"gen"}

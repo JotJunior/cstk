@@ -1,0 +1,4 @@
+{"query": "qual o status das tarefas? o que esta pronto pra comecar?", "expect": "review-task"}
+{"query": "o que falta pra fechar essa entrega e o que eu ja posso pegar agora?", "expect": "review-task", "tier": "hard"}
+{"query":"o backlog ta uma bagunica, quero saber o que ja foi feito, o que ta em aberto e o que depende de quem antes de continuarmos","expect":"review-task","tier":"gen"}
+{"query":"me fala quais tarefas ja posso comecar a implementar agora, quais ainda tem prerequisito em aberto e quantas foram concluidas ate agora","expect":"review-task","tier":"gen"}

@@ -1,0 +1,3 @@
+{"query": "vamos iniciar um projeto novo do zero, faz o discovery de visao, usuarios e stack", "expect": "briefing"}
+{"query":"quero construir um sistema de agendamento de consultas medicas. nao sei por onde comecar, tenho algumas ideias mas preciso organizar tudo — quem vai usar, quais as restricoes tecnicas, o que e obrigatorio na versao 1","expect":"briefing","tier":"gen"}
+{"query":"to come cando um projeto novo do zero pra um cliente. ainda nao escrevi nada, nao sei nem qual stack usar, quero fazer as perguntas certas primeiro pra entender o negocio dele","expect":"briefing","tier":"gen"}

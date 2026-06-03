@@ -1,0 +1,5 @@
+{"query": "a spec dessa feature tem ambiguidades, me ajuda a resolver com perguntas estruturadas", "expect": "clarify"}
+{"query": "a feature ja esta especificada mas faltou detalhar o formato de saida; refina a spec existente", "expect": "clarify"}
+{"query": "a spec dessa feature ja existe, mas o time nao concorda no que significa 'pedido concluido'; alinha isso comigo", "expect": "clarify", "tier": "hard"}
+{"query":"o documento de spec que temos ja tem os requisitos funcionais, mas ficou vago na parte de autenticacao — precisamos resolver essas ambiguidades antes de partir pra implementacao","expect":"clarify","tier":"gen"}
+{"query":"nossa spec de pagamentos ficou pronta mas o time ta com duvida se o fluxo de reembolso cobre o caso de estorno parcial — da pra passar por ela e fechar esses pontos abertos antes de planejar?","expect":"clarify","tier":"gen"}
