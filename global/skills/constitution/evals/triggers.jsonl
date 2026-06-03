@@ -1,0 +1,3 @@
+{"query": "define os principios de governanca imutaveis do projeto", "expect": "constitution"}
+{"query":"quero documentar que nesse projeto TDD e inegociavel, sem cobertura de teste nao mergeia, e que qualidade vem antes de velocidade — como registro isso de forma oficial?","expect":"constitution","tier":"gen"}
+{"query":"o projeto cresceu e o time novo nao sabe o que e intocavel: quais sao as regras que nao podem mudar, quem pode mudar o que, e como a gente faz amendment quando precisar","expect":"constitution","tier":"gen"}

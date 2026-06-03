@@ -1,0 +1,4 @@
+{"query": "critica meu plano de migracao pra microsservicos, quero feedback estrategico honesto", "expect": "advisor"}
+{"query": "avalia se minha ideia de cache distribuido faz sentido", "expect": "advisor"}
+{"query": "vale a pena reescrever esse modulo em Rust ou e over-engineering? quero um parecer franco", "expect": "advisor", "tier": "hard"}
+{"query":"o cache de sessão tá expirando antes do esperado e eu suspeito que é culpa do design atual — TTL configurado no lugar errado. você acha que vale mudar a arquitetura ou é melhor corrigir o TTL pontualmente?","expect":"advisor","tier":"gen"}

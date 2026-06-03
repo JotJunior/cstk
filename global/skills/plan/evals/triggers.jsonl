@@ -1,0 +1,5 @@
+{"query": "monta o plano tecnico de implementacao dessa spec: arquitetura, contratos de API e modelo de dados", "expect": "plan"}
+{"query": "como construir isso na pratica? quero o desenho tecnico — camadas, contratos, dados — antes de codar", "expect": "plan", "tier": "hard"}
+{"query":"ja tenho a spec da feature de pagamentos pronta, agora quero entender como isso vai ser estruturado tecnicamente — arquitetura, tabelas do banco, contratos de API","expect":"plan","tier":"gen"}
+{"query":"me ajuda a pensar no design da solucao para a feature de exportacao de relatorios — quero entender as opcoes de armazenamento, como a API vai funcionar e o que precisa ser testado","expect":"plan","tier":"gen"}
+{"query":"preciso estruturar como o serviço de notificações vai conversar com o de pedidos. tem race condition hoje que a gente resolve com retry, mas quero definir os contratos e o modelo de dados antes de continuar remendando","expect":"plan","tier":"gen"}

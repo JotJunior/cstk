@@ -1,0 +1,8 @@
+{"query": "tem um bug: o calculo de frete retorna negativo as vezes, investiga e corrige", "expect": "bugfix"}
+{"query": "o fluxo de checkout esta quebrando em producao, investiga a causa", "expect": "bugfix"}
+{"query": "as vezes o saldo fica negativo sem motivo e nao consigo reproduzir; rastreia de onde vem", "expect": "bugfix", "tier": "hard"}
+{"query":"o fluxo de checkout ta quebrando quando o usuario clica em confirmar pedido — o botao some e a tela trava, mas nao sei se e no frontend ou na api. preciso rastrear de onde vem o problema","expect":"bugfix","tier":"gen"}
+{"query":"quando o usuario completa o cadastro, o email de boas-vindas nao esta chegando — ja vi que a fila RabbitMQ parece estar recebendo a mensagem, mas o consumer nao processa","expect":"bugfix","tier":"gen"}
+{"query":"o endpoint de login tá retornando 500 quando mando a senha com caracteres especiais tipo & e <, parece que tem algo escapando errado lá no handler de autenticação","expect":"bugfix","tier":"gen"}
+{"query":"tô vendo no log que às vezes o refresh token não é invalidado quando o usuário faz logout — como eu rastreio de onde vem esse comportamento?","expect":"bugfix","tier":"gen"}
+{"query":"nosso fluxo de pagamento as vezes falha silenciosamente — a transacao some do banco mas a confirmacao nunca chega pro usuario. ja olhei os logs e o erro nao aparece em lugar nenhum obvio. preciso entender de onde isso pode estar vindo","expect":"bugfix","tier":"gen"}

@@ -1,6 +1,6 @@
 ---
 name: plan
-description: 'Technical implementation plan from a spec — architecture, data model, API contracts, research, test scenarios. Triggers: "plan", "criar plano", "planejar implementacao", "implementation plan". Skip for spec creation (specify) or task decomposition (create-tasks).'
+description: 'Technical implementation plan — the technical HOW: architecture, data model, API contracts, research, test scenarios. Use when the user wants the technical design of a feature (how to structure/build it, define contracts/schema), whether or not a formal spec.md exists yet. Triggers: "plan", "criar plano", "planejar implementacao", "desenho tecnico", "definir arquitetura/contratos/modelo de dados". Skip when defining WHAT/for-whom in natural language (use specify) or breaking work into tasks (create-tasks).'
 argument-hint: "[caminho para spec ou descricao da feature]"
 allowed-tools:
   - Read

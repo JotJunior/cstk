@@ -1,0 +1,3 @@
+{"query": "me da um dashboard comparando o progresso de todas as features do portfolio", "expect": "review-features"}
+{"query":"quero entender onde cada feature ta agora — qual ta mais adiantada, qual ta parada faz tempo, se tem alguma que nao vale mais a pena continuar","expect":"review-features","tier":"gen"}
+{"query":"tem tres features rodando em paralelo e preciso decidir qual priorizar no proximo sprint — me da um quadro geral de cada uma","expect":"review-features","tier":"gen"}

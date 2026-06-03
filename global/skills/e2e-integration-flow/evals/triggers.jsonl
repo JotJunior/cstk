@@ -1,0 +1,3 @@
+{"query": "escreve um teste e2e com playwright validando o fluxo de checkout em todas as camadas", "expect": "e2e-integration-flow"}
+{"query":"quero rodar um fluxo completo de cadastro de usuário e verificar se o token JWT salvo no banco bate com o que chega no header das requisições seguintes","expect":"e2e-integration-flow","tier":"gen"}
+{"query":"preciso validar o fluxo de pagamento inteiro: usuário adiciona cartão, aprova compra, e quero checar se o webhook de confirmação realmente atualiza o status do pedido no banco sem deixar janela de inconsistência","expect":"e2e-integration-flow","tier":"gen"}

@@ -1,0 +1,8 @@
+{"query": "verifica se a spec, o plan e as tasks dessa feature estao consistentes entre si", "expect": "analyze"}
+{"query": "faz um cross-check dos artefatos SDD: a spec promete coisas que o backlog nao cobre?", "expect": "analyze"}
+{"query": "audita a coerencia entre o plano tecnico e a constituicao do projeto", "expect": "analyze"}
+{"query": "sera que o que a gente prometeu na spec realmente aparece no plano e nas tarefas?", "expect": "analyze", "tier": "hard"}
+{"query":"tenho a spec.md, o plano tecnico e o backlog de tarefas — quero saber se os tres estao contando a mesma historia ou se tem coisa desencontrada entre eles","expect":"analyze","tier":"gen"}
+{"query":"a constituicao do projeto diz uma coisa e as tarefas que criamos dizem outra — quero entender onde os dois divergem","expect":"analyze","tier":"gen"}
+{"query":"o plano de implementacao que gerei bate com o que esta na spec? ou ficou coisa sobrando sem cobertura nos dois lados?","expect":"analyze","tier":"gen"}
+{"query":"consegue olhar se as tarefas que criei estao alinhadas com a spec e com o plano? quero saber se tem gap ou contradicao entre eles","expect":"analyze","tier":"gen"}

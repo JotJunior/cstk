@@ -1,0 +1,7 @@
+{"query": "quero comecar uma feature nova de exportacao de relatorios em CSV, cria a spec", "expect": "specify"}
+{"query": "transforma essa descricao em linguagem natural numa spec SDD com user stories e FRs", "expect": "specify"}
+{"query": "ainda nao tem nada escrito sobre a funcionalidade de cupons; bota no papel o que ela precisa fazer e pra quem", "expect": "specify", "tier": "hard"}
+{"query":"tenho uma ideia de feature de exportacao de relatorios em PDF, mas ela ainda nao ta escrita em nenhum lugar — preciso transformar isso num documento formal com user stories e criterios de aceite","expect":"specify","tier":"gen"}
+{"query":"quero documentar essa nova feature de notificacoes push que o PO descreveu numa call hoje — ele falou os cenarios principais mas nao existe nada escrito ainda","expect":"specify","tier":"gen"}
+{"query":"vou adicionar uma feature de multi-tenant no sistema — ainda nao tem spec nenhuma, mas sei os atores, os fluxos e as restricoes principais. como transformo isso num artefato utilizavel pelo time?","expect":"specify","tier":"gen"}
+{"query":"tenho uma ideia de feature: quando o usuario finalizar o checkout, ele recebe um email de confirmacao com PDF do pedido anexado. como eu converto isso numa spec formal com criterios de aceite?","expect":"specify","tier":"gen"}

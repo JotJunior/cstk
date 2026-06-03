@@ -1,0 +1,2 @@
+{"query": "faz um security review desse endpoint de login seguindo OWASP", "expect": "owasp-security"}
+{"query": "acho que da pra burlar o login mandando um header forjado; confere se isso e exploravel", "expect": "owasp-security", "tier": "hard"}
