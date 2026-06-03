@@ -838,6 +838,15 @@ de desenvolvimento e política de versionamento — está em
 Este projeto segue [Semantic Versioning](https://semver.org/) e mantém um
 [CHANGELOG.md](./CHANGELOG.md) com o histórico de mudanças.
 
+## Créditos & Atribuições
+
+Parte do pipeline SDD deste toolkit é adaptada do [GitHub Spec Kit](https://github.com/github/spec-kit)
+(MIT) — em especial o vocabulário de etapas e o template de constituição. Outras
+skills tiveram inspiração conceitual de [obra/superpowers](https://github.com/obra/superpowers)
+e das convenções do Claude Code. Padrões públicos (OWASP, NIST, IETF, W3C, MITRE)
+são citados como referência. Detalhes e avisos de licença em
+[THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).
+
 ## Licença
 
 Distribuído sob a licença MIT. Veja o arquivo [LICENSE](./LICENSE) para o
