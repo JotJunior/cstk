@@ -204,6 +204,12 @@ for _langdir in "$REPO_ROOT/language-related/"*/; do
   cp -R -- "${_langdir%/}" "$STAGE_ROOT/catalog/language/$_lang"
 done
 
+# ==== 3b. Remover fixtures dev-only (evals/) do catalogo distribuido ====
+# As evals/ vivem junto das skills (espelhando a convencao test_<n>.sh) mas sao
+# tooling de trigger-eval (tests/trigger-eval/) — nao devem ir pro tarball que os
+# usuarios instalam. Prune defensivo sob todo o catalog/.
+find "$STAGE_ROOT/catalog" -type d -name evals -prune -exec rm -rf -- {} +
+
 # ==== 4. catalog/VERSION ====
 printf '%s\n' "$VERSION_BARE" > "$STAGE_ROOT/catalog/VERSION"
 

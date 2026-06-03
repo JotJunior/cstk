@@ -5,6 +5,29 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.10.0] - 2026-06-03
+
+### Added
+
+- **Harness de trigger-eval** (`tests/trigger-eval/`): mede se a `description` de
+  cada skill dispara na hora certa — e qual skill é confundida com qual — via juiz
+  LLM que vê **só as descriptions**. Absorve o loop de disparo do `skill-creator`
+  da Anthropic. Seed de 92 queries em `global/skills/<n>/evals/triggers.jsonl`
+  (tiers `base`/`hard`/`gen`) + `negatives.jsonl`. Runners (tool Workflow): `run`,
+  `harden` (gera→ground-check→julga), `sweep` (multi-modelo) e `ab` (A/B causal de
+  uma description); coletor POSIX+jq `collect.sh`. Periódico / **não-CI**
+  (`tests/run.sh` segue sendo o gate determinístico). Anti-confabulação: escolha do
+  juiz fora do catálogo é marcada como `OUT:<x>`, nunca aceita como skill real.
+
+### Changed
+
+- **`plan` (description)**: removido o gate implícito "from a spec" que desviava
+  pedidos de design técnico (arquitetura/contratos/modelo de dados) para `specify`
+  ou `advisor` quando nenhuma spec formal era mencionada; reforçado o *HOW*.
+  Validado por A/B causal (desc antiga vs nova, mesmas queries/modelos): Sonnet
+  12→14/14, Haiku 13→14/14, **zero regressões** nos controles. Sweep de robustez
+  (92 queries × 2 modelos): Sonnet 98,9% / Haiku 97,8%.
+
 ## [5.9.0] - 2026-06-03
 
 ### Added
@@ -3226,6 +3249,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.10.0]: https://github.com/JotJunior/cstk/releases/tag/v5.10.0
 [5.9.0]: https://github.com/JotJunior/cstk/releases/tag/v5.9.0
 [5.8.0]: https://github.com/JotJunior/cstk/releases/tag/v5.8.0
 [5.7.0]: https://github.com/JotJunior/cstk/releases/tag/v5.7.0

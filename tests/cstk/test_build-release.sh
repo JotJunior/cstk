@@ -290,4 +290,38 @@ scenario_build_release_filtra_ds_store() {
   fi
 }
 
+# ==== Exclui fixtures dev-only (evals/) do tarball ====
+
+scenario_build_release_exclui_evals() {
+  # evals/ vive junto das skills (espelha test_<n>.sh) mas e tooling de
+  # trigger-eval — nao deve ir pro tarball distribuido. Fake-repo com evals/,
+  # confirma que a SKILL.md fica e a evals/ some.
+  _fake_repo="$TMPDIR_TEST/fake-evals"
+  mkdir -p "$_fake_repo/cli/lib" \
+           "$_fake_repo/global/skills/foo/evals" \
+           "$_fake_repo/language-related/go/skills/bar"
+  cp "$REPO_ROOT/cli/cstk" "$_fake_repo/cli/cstk"
+  cp "$REPO_ROOT/cli/lib/"*.sh "$_fake_repo/cli/lib/"
+  printf '# foo\n' > "$_fake_repo/global/skills/foo/SKILL.md"
+  printf '{"query":"x","expect":"foo"}\n' > "$_fake_repo/global/skills/foo/evals/triggers.jsonl"
+  printf '# bar\n' > "$_fake_repo/language-related/go/skills/bar/SKILL.md"
+
+  _o="$TMPDIR_TEST/out"
+  mkdir -p "$_o"
+  capture env REPO_ROOT="$_fake_repo" sh "$BUILD_SCRIPT" v0.6.0 --out "$_o"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "build" "$_CAPTURED_STDERR"
+    return 1
+  fi
+  _list=$(tar -tzf "$_o/cstk-0.6.0.tar.gz")
+  if ! printf '%s\n' "$_list" | grep -qx 'cstk-0.6.0/catalog/skills/foo/SKILL.md'; then
+    _fail "foo/SKILL.md ausente" "$_list"
+    return 1
+  fi
+  if printf '%s\n' "$_list" | grep -q '/evals/'; then
+    _fail "evals/ vazou pro tarball" "$(printf '%s\n' "$_list" | grep '/evals/' | head -3)"
+    return 1
+  fi
+}
+
 run_all_scenarios
