@@ -5,6 +5,23 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.9.0] - 2026-06-03
+
+### Added
+
+- **Atribuição de terceiros**: novo `THIRD-PARTY-NOTICES.md` reconhecendo o
+  [GitHub Spec Kit](https://github.com/github/spec-kit) (MIT), do qual o pipeline
+  SDD e o template de constituição são adaptados, além de inspirações de cortesia
+  (obra/superpowers, convenções do Claude Code) e os padrões de referência
+  (OWASP/MITRE/NIST/IETF/W3C/OpenID/CSA). Seção "Créditos & Atribuições" no README.
+
+### Changed
+
+- **`build-release.sh`** agora empacota `LICENSE` e `THIRD-PARTY-NOTICES.md` no
+  tarball. O artefato distribuía o template de constituição adaptado do spec-kit
+  sem nenhum aviso de copyright (e nunca carregou sequer a própria licença MIT do
+  cstk); o MIT exige preservar o aviso nas porções distribuídas.
+
 ## [5.8.0] - 2026-06-02
 
 Adiciona a skill complementar **`e2e-integration-flow`**: autoria e execução de
@@ -3209,6 +3226,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.9.0]: https://github.com/JotJunior/cstk/releases/tag/v5.9.0
 [5.8.0]: https://github.com/JotJunior/cstk/releases/tag/v5.8.0
 [5.7.0]: https://github.com/JotJunior/cstk/releases/tag/v5.7.0
 [5.6.0]: https://github.com/JotJunior/cstk/releases/tag/v5.6.0

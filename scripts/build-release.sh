@@ -235,9 +235,18 @@ printf '%s\n' "$VERSION_BARE" > "$STAGE_ROOT/catalog/VERSION"
   } | LC_ALL=C sort
 } > "$STAGE_ROOT/catalog/profiles.txt"
 
-# ==== 6. CHANGELOG.md ====
+# ==== 6. CHANGELOG.md + avisos legais (LICENSE, THIRD-PARTY-NOTICES) ====
 if [ -f "$REPO_ROOT/CHANGELOG.md" ]; then
   cp -- "$REPO_ROOT/CHANGELOG.md" "$STAGE_ROOT/CHANGELOG.md"
+fi
+# O tarball carrega o template de constituição adaptado do github/spec-kit
+# (MIT); o MIT exige preservar o aviso de copyright nas porções distribuidas.
+# Empacotamos LICENSE (do proprio cstk) e THIRD-PARTY-NOTICES junto.
+if [ -f "$REPO_ROOT/LICENSE" ]; then
+  cp -- "$REPO_ROOT/LICENSE" "$STAGE_ROOT/LICENSE"
+fi
+if [ -f "$REPO_ROOT/THIRD-PARTY-NOTICES.md" ]; then
+  cp -- "$REPO_ROOT/THIRD-PARTY-NOTICES.md" "$STAGE_ROOT/THIRD-PARTY-NOTICES.md"
 fi
 
 # ==== 7. Sanitizar artefatos do macOS ====

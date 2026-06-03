@@ -4,7 +4,7 @@
 # Cenarios chave:
 #   - Determinismo: rodar 2x consecutivamente produz tarballs com SHA-256 identico
 #   - Estrutura: tarball contem cli/cstk, cli/lib/*.sh, catalog/{VERSION,
-#     profiles.txt,skills,language}, CHANGELOG.md
+#     profiles.txt,skills,language}, CHANGELOG.md, LICENSE, THIRD-PARTY-NOTICES.md
 #   - Checksum file e gerado com sha256sum/shasum format
 #   - profiles.txt parseavel pela lib (resolve_profile sdd retorna 12 skills)
 #   - Layout consumivel por bootstrap/self-update (cli/cstk + cli/lib/ em paths
@@ -80,7 +80,9 @@ scenario_build_release_estrutura_layout() {
     'cstk-0.1.0/cli/lib/ui.sh' \
     'cstk-0.1.0/catalog/VERSION' \
     'cstk-0.1.0/catalog/profiles.txt' \
-    'cstk-0.1.0/CHANGELOG.md'
+    'cstk-0.1.0/CHANGELOG.md' \
+    'cstk-0.1.0/LICENSE' \
+    'cstk-0.1.0/THIRD-PARTY-NOTICES.md'
   do
     if ! printf '%s\n' "$_list" | grep -qx -- "$_expected"; then
       _fail "entry ausente" "$_expected"
