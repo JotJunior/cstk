@@ -29,7 +29,7 @@ e "Sync Impact Report") — são **adaptados** do projeto **GitHub Spec Kit**.
 ```
 MIT License
 
-Copyright (c) GitHub, Inc.
+Copyright GitHub, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -50,9 +50,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-> **Nota de manutenção:** o bloco acima é o texto MIT padrão com o titular
-> ("GitHub, Inc.") — confirme o ano e o texto exato no arquivo `LICENSE` do
-> repositório upstream e cole-o aqui literalmente se divergir.
+> Reproduzido verbatim do `LICENSE` upstream
+> (<https://github.com/github/spec-kit/blob/main/LICENSE>), que não declara ano.
 
 ---
 
