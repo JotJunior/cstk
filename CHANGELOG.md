@@ -5,6 +5,22 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.10.1] - 2026-06-04
+
+### Fixed
+
+- **`secrets-filter.sh scrub --env-file`** (issue #21): o scrub de valores do
+  `.env` abortava com `sed: RE error: repetition-operator operand invalid`
+  quando um valor começava por metacaractere de regex (ex.: número E.164 do
+  Twilio `TWILIO_WHATSAPP_NUMBER=+5527...`). O valor era interpolado num
+  `sed -E` (ERE), mas o escape só cobria metacaracteres BRE (`] \ / $ * . ^ [`),
+  deixando `+ ? ( ) { } |` crus — um valor iniciado por `+` virava operador de
+  repetição sem operando, o filtro saía com exit 1 e stdout vazio, bloqueando a
+  etapa obrigatória de defesa em profundidade (FR-030) antes de gravar
+  report/suggestions/issue. Corrigido trocando a substituição para BRE (`sed`
+  sem `-E`), onde `+`/`?` são literais e o escape existente passa a ser
+  suficiente. Cobertura de regressão para valores iniciados em `+` (E.164) e `*`.
+
 ## [5.10.0] - 2026-06-03
 
 ### Added
@@ -3249,6 +3265,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.10.1]: https://github.com/JotJunior/cstk/releases/tag/v5.10.1
 [5.10.0]: https://github.com/JotJunior/cstk/releases/tag/v5.10.0
 [5.9.0]: https://github.com/JotJunior/cstk/releases/tag/v5.9.0
 [5.8.0]: https://github.com/JotJunior/cstk/releases/tag/v5.8.0

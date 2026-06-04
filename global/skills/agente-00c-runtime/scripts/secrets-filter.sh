@@ -194,9 +194,15 @@ _sf_apply_filters() {
       if _sf_value_looks_public "$_val"; then
         continue
       fi
-      # Escape de caracteres especiais para sed (path delimiter usado: ESC do RS)
+      # Escape de metacaracteres BRE + delimitador `/` para casar o valor
+      # como literal. Usa BRE (sed sem -E) de proposito: em ERE, `+ ? ( ) { } |`
+      # tambem sao metacaracteres e NAO sao cobertos por este escape — um valor
+      # iniciado por `+` (ex.: numero E.164 +5527...) viraria operador de
+      # repeticao invalido e abortaria com "repetition-operator operand invalid".
+      # Em BRE esses chars sao literais, entao o escape de `] \ / $ * . ^ [`
+      # e suficiente.
       _esc=$(printf '%s' "$_val" | sed 's/[]\/$*.^[]/\\&/g')
-      sed -E "s/${_esc}/[REDACTED-ENV]/g" "$_t1" > "$_t2"
+      sed "s/${_esc}/[REDACTED-ENV]/g" "$_t1" > "$_t2"
       mv "$_t2" "$_t1"; _t2=$(mktemp)
     done < "$_env"
   fi

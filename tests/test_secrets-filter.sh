@@ -174,4 +174,31 @@ scenario_heuristica_slug_valor_com_caractere_especial_redatado() {
   assert_stdout_contains "[REDACTED-ENV]" || return 1
 }
 
+scenario_scrub_env_valor_inicia_metachar_ere_e164() {
+  # Regressao issue #21: valor do .env iniciando por `+` (numero E.164 Twilio)
+  # abortava com 'sed: RE error: repetition-operator operand invalid' porque
+  # o valor era interpolado cru num `sed -E` (ERE) e `+` virava operador de
+  # repeticao sem operando. Deve redatar sem abortar.
+  _env="$TMPDIR_TEST/.env"
+  printf 'TWILIO_WHATSAPP_NUMBER=+552724640808\n' > "$_env"
+  capture sh -c "printf '%s' 'whatsapp +552724640808 vazou aqui' | '$SCRIPT' scrub --env-file '$_env'"
+  [ "$_CAPTURED_EXIT" -eq 0 ] || { _fail "scrub abortou" "exit=$_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "[REDACTED-ENV]" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *552724640808*) _fail "numero E.164 nao redacted" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+scenario_scrub_env_valor_inicia_asterisco() {
+  # Mesma classe do bug: valor iniciando por `*` (metachar de repeticao).
+  _env="$TMPDIR_TEST/.env"
+  printf 'GLOB_SECRET=*supersecretvalue\n' > "$_env"
+  capture sh -c "printf '%s' 'config has *supersecretvalue inside' | '$SCRIPT' scrub --env-file '$_env'"
+  [ "$_CAPTURED_EXIT" -eq 0 ] || { _fail "scrub abortou" "exit=$_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "[REDACTED-ENV]" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *supersecretvalue*) _fail "valor com * nao redacted" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
 run_all_scenarios
