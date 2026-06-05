@@ -89,6 +89,48 @@ _dl_scan_doc() {
       done
 }
 
+# _dl_scan_bare DOC -> imprime "doc<TAB>script" para cada INVOCACAO bare:
+# `... | <script>.sh` seguido imediatamente de fim-de-comando (`)`, `|`, `;`,
+# `>`, `&` ou EOL), i.e. SEM subcomando. Pega a classe-irma do fantasma:
+# `printf ... | sanitize.sh)` (issue: orquestrador, exit 2). So vale para
+# scripts do runtime 00c COM dispatch (subcomando obrigatorio); libs sourcadas
+# (sem case-labels) sao puladas.
+_dl_scan_bare() {
+  _doc=$1
+  _dl_code_spans "$_doc" \
+    | grep -oE '\|[[:space:]]*[a-z][a-z0-9_-]*\.sh[[:space:]]*([)|;>&]|$)' \
+    | sort -u \
+    | while IFS= read -r _ref; do
+        # Extrai o token <nome>.sh do match (`| nome.sh)` etc).
+        _script_name=$(printf '%s' "$_ref" | grep -oE '[a-z][a-z0-9_-]*\.sh')
+        _script_path="$SCRIPTS_DIR/$_script_name"
+        [ -f "$_script_path" ] || continue                 # so runtime 00c
+        _valid=$(_dl_valid_subcommands "$_script_path")
+        [ -z "$_valid" ] && continue                        # script sem dispatch (lib)
+        printf '%s\t%s\n' "$(basename "$_doc")" "$_script_name"
+      done
+}
+
+scenario_no_bare_runtime_invocation() {
+  : > "$TMPDIR_TEST/bare.tsv"
+  for _dir in $DOC_DIRS; do
+    [ -d "$_dir" ] || continue
+    for _doc in "$_dir"/*.md; do
+      [ -f "$_doc" ] || continue
+      _dl_scan_bare "$_doc" >> "$TMPDIR_TEST/bare.tsv"
+    done
+  done
+
+  if [ -s "$TMPDIR_TEST/bare.tsv" ]; then
+    _msg=$(awk -F'\t' '{printf "  %s -> %s (invocado sem subcomando obrigatorio)\n", $1, $2}' \
+      "$TMPDIR_TEST/bare.tsv" | sort -u)
+    _fail "bare-invocation" "doc invoca script de dispatch sem subcomando (sai exit 2):
+$_msg"
+    return 1
+  fi
+  return 0
+}
+
 scenario_no_phantom_subcommands() {
   : > "$TMPDIR_TEST/violations.tsv"
   for _dir in $DOC_DIRS; do
@@ -136,6 +178,25 @@ scenario_detector_self_check() {
   case ",$_hits," in
     *,soprosa,*) _fail "meta" "acusou prosa de comentario 'soprosa' (hits=$_hits)"; return 1 ;;
   esac
+  return 0
+}
+
+# Meta-teste do detector de invocacao bare: precisa pegar `| <script>.sh)` sem
+# subcomando, e NAO acusar a mesma chamada COM subcomando nem a mencao do nome
+# em span inline (capability table).
+scenario_bare_detector_self_check() {
+  # Usa um script real do runtime com dispatch (sanitize.sh) p/ ancorar.
+  [ -f "$SCRIPTS_DIR/sanitize.sh" ] || { return 0; }  # skip se ausente
+  _fakedoc="$TMPDIR_TEST/fake-bare.md"
+  {
+    printf '```sh\n'
+    printf '_d=$(printf %%s "$X" | sanitize.sh)\n'                 # bare -> deve acusar
+    printf '_ok=$(printf %%s "$X" | sanitize.sh limit-length)\n'   # com subcmd -> nao
+    printf '```\n'
+    printf 'Mencao em prosa de `sanitize.sh` na tabela.\n'         # span inline -> nao
+  } > "$_fakedoc"
+  _hits=$(_dl_scan_bare "$_fakedoc" | wc -l | tr -d ' ')
+  [ "$_hits" -eq 1 ] || { _fail "meta-bare" "esperado 1 hit bare, obtido $_hits"; return 1; }
   return 0
 }
 

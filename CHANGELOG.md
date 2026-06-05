@@ -5,6 +5,28 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.10.2] - 2026-06-04
+
+### Fixed
+
+- **`feature-00c.md` pre-flight (sanitize descricao)**: o passo 2 do pre-flight
+  invocava `sanitize.sh` **sem subcomando** (`printf … | sanitize.sh`), o que cai
+  no branch de uso incorreto do script (subcomando obrigatório, por design) →
+  `exit 2` com stdout vazio. O orquestrador capturava o resultado vazio em `_desc`
+  e o exit não-zero abortava o pre-flight de `/feature-00c` antes de tocar o disco.
+  Corrigido para `sanitize.sh limit-length --max 500` (emite a descrição truncada
+  em stdout, conforme a intenção documentada "truncar"). Era a única invocação
+  bare entre todos os callers (`agente-00c.md`, `agente-00c-resume.md` e os
+  orquestradores já passavam subcomando válido).
+
+### Changed
+
+- **`test_doc-subcommands.sh`** (lint de invariante): além de validar subcomandos-
+  fantasma, agora também pega a **classe-irmã** "script de dispatch invocado sem
+  subcomando" (`… | <script>.sh)` / `| <script>.sh` em fim-de-linha) nos docs de
+  command/agent. Fecha a lacuna que deixou o bug acima passar (nenhum teste
+  exercita o bash dentro dos `.md` de command). Meta-self-check cobre o detector.
+
 ## [5.10.1] - 2026-06-04
 
 ### Fixed
@@ -3265,6 +3287,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.10.2]: https://github.com/JotJunior/cstk/releases/tag/v5.10.2
 [5.10.1]: https://github.com/JotJunior/cstk/releases/tag/v5.10.1
 [5.10.0]: https://github.com/JotJunior/cstk/releases/tag/v5.10.0
 [5.9.0]: https://github.com/JotJunior/cstk/releases/tag/v5.9.0

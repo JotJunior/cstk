@@ -102,8 +102,8 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
    - rejeitar zonas proibidas via path-guard.sh validate-target
 
 2. sanitizar descricao_curta:
-   _desc=$(printf '%s' "$DESC" | sanitize.sh)
-   - se >500 chars, truncar + warning
+   _desc=$(printf '%s' "$DESC" | sanitize.sh limit-length --max 500)
+   - se >500 chars, truncar + warning (limit-length trunca e adiciona "...")
 
 3. validar briefing (FR-PRE-001):
    _br="$_proj/docs/01-briefing-discovery/briefing.md"
