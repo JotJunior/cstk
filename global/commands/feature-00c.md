@@ -155,6 +155,31 @@ _ct_sha=$(sha256sum "$_ct" | awk '{print $1}')
 _ct_ver=$(grep -E '^\*\*Version\*\*:' "$_ct" | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
 _aspectos=$(drift.sh extract --text "$_desc")  # 3-7 keywords
 
+# Worktree detection (recall-worktree-identity — FR-001/FR-002/FR-008)
+# Toda falha = fallback silencioso; flags omitidas ao init (US3 AC3).
+# Deteccao: .git ARQUIVO (worktree) vs .git DIRETORIO (projeto raiz — omitir flags; CHK011).
+_canonical="" ; _session=""
+if [ -f "$_proj/.git" ]; then
+  # Passo a: obter common-dir (git plumbing, read-only)
+  _common=$(git -C "$_proj" rev-parse --git-common-dir 2>/dev/null) || _common=""
+  if [ -n "$_common" ]; then
+    # Passo b: normalizar para absoluto (git antigo pode retornar path relativo)
+    case "$_common" in
+      /*) : ;;  # ja absoluto
+      *)  _common="$_proj/$_common" ;;
+    esac
+    # Passo c: canonical = basename do parent do common-dir
+    _canonical=$(basename "$(dirname "$_common")")
+    # Passo d: session = sufixo apos "<canonical>-" no basename do PAP
+    _wtbase=$(basename "$_proj")
+    case "$_wtbase" in
+      "${_canonical}-"*) _session="${_wtbase#"${_canonical}-"}" ;;
+      *)                 _session="" ;;
+    esac
+  fi
+fi
+# .git diretorio (projeto raiz): _canonical e _session permanecem vazios (flags omitidas).
+
 state-rw.sh init --state-dir "$AGENTE_00C_STATE_DIR" \
   --short-name "$SHORT" \
   --projeto-alvo-path "$_proj" \
@@ -162,7 +187,9 @@ state-rw.sh init --state-dir "$AGENTE_00C_STATE_DIR" \
   --briefing-path "$_br" --briefing-sha256 "$_br_sha" \
   --constitution-path "$_ct" --constitution-sha256 "$_ct_sha" \
   --constitution-version "$_ct_ver" \
-  --key-aspects "$_aspectos"
+  --key-aspects "$_aspectos" \
+  ${_canonical:+--canonical-project "$_canonical"} \
+  ${_session:+--session-name "$_session"}
 ```
 
 ### 4. Selecionar modelo da onda + delegar ao orquestrador via Agent

@@ -102,19 +102,19 @@ Ref: contracts/state-rw-init.md §Compatibilidade
 
 Ref: contracts/state-rw-init.md §Contrato do chamador, spec.md §FR-001/FR-002/FR-008
 
-- [ ] 3.1.1 Ler `global/commands/feature-00c.md` — localizar o bloco de init do state.json (invocacao de `state-rw.sh init`)
-- [ ] 3.1.2 Inserir a sequencia de deteccao POSIX ANTES do init (passos 1-4 do contrato): `test -f "$PAP/.git"` → `git -C "$PAP" rev-parse --git-common-dir` → normalizar para absoluto → extrair `CANONICAL` e `SESSION`; toda falha = fallback silencioso (FR-008)
-- [ ] 3.1.3 Passar `--canonical-project "$CANONICAL"` e `--session-name "$SESSION"` ao `state-rw.sh init` somente quando nao-vazios
-- [ ] 3.1.4 Garantir que o bloco nao altera o fluxo em projetos normais (`.git` diretorio) — zero overhead visivel (US3 AC3)
+- [x] 3.1.1 Ler `global/commands/feature-00c.md` — localizar o bloco de init do state.json (invocacao de `state-rw.sh init`)
+- [x] 3.1.2 Inserir a sequencia de deteccao POSIX ANTES do init (passos 1-4 do contrato): `test -f "$PAP/.git"` → `git -C "$PAP" rev-parse --git-common-dir` → normalizar para absoluto → extrair `CANONICAL` e `SESSION`; toda falha = fallback silencioso (FR-008)
+- [x] 3.1.3 Passar `--canonical-project "$CANONICAL"` e `--session-name "$SESSION"` ao `state-rw.sh init` somente quando nao-vazios
+- [x] 3.1.4 Garantir que o bloco nao altera o fluxo em projetos normais (`.git` diretorio) — zero overhead visivel (US3 AC3)
 
 ### 3.2 Adicionar deteccao de worktree ao `/agente-00c` `[C]`
 
 Ref: mesmos contratos que 3.1; paridade entre os dois commands
 
-- [ ] 3.2.1 Ler `global/commands/agente-00c.md` — localizar o bloco de init do state.json
-- [ ] 3.2.2 Inserir a mesma sequencia de deteccao POSIX do passo 3.1.2 (copiar e ajustar para o contexto agente-00c)
-- [ ] 3.2.3 Passar `--canonical-project`/`--session-name` ao init quando nao-vazios
-- [ ] 3.2.4 Verificar que a sequencia e identica entre os dois commands (diff do bloco novo — paridade e invariante da feature)
+- [x] 3.2.1 Ler `global/commands/agente-00c.md` — localizar o bloco de init do state.json
+- [x] 3.2.2 Inserir a mesma sequencia de deteccao POSIX do passo 3.1.2 (copiar e ajustar para o contexto agente-00c)
+- [x] 3.2.3 Passar `--canonical-project`/`--session-name` ao init quando nao-vazios
+- [x] 3.2.4 Verificar que a sequencia e identica entre os dois commands (diff do bloco novo — paridade e invariante da feature)
 
 ---
 

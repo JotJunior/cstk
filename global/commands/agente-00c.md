@@ -166,12 +166,43 @@ state-lock.sh acquire --state-dir <SD> || {
   whitelist inicial.
 - Mesclar com `--whitelist` (se passado).
 - Validar whitelist via `whitelist-validate.sh check --whitelist-file <WL>`.
+- Worktree detection (recall-worktree-identity — FR-001/FR-002/FR-008).
+  Toda falha = fallback silencioso; flags omitidas ao init (US3 AC3).
+  Deteccao: .git ARQUIVO (worktree) vs .git DIRETORIO (projeto raiz — omitir flags; CHK011).
+
+  ```sh
+  # Worktree detection (recall-worktree-identity — FR-001/FR-002/FR-008)
+  _canonical="" ; _session=""
+  if [ -f "$PAP/.git" ]; then
+    # Passo a: obter common-dir (git plumbing, read-only)
+    _common=$(git -C "$PAP" rev-parse --git-common-dir 2>/dev/null) || _common=""
+    if [ -n "$_common" ]; then
+      # Passo b: normalizar para absoluto (git antigo pode retornar path relativo)
+      case "$_common" in
+        /*) : ;;  # ja absoluto
+        *)  _common="$PAP/$_common" ;;
+      esac
+      # Passo c: canonical = basename do parent do common-dir
+      _canonical=$(basename "$(dirname "$_common")")
+      # Passo d: session = sufixo apos "<canonical>-" no basename do PAP
+      _wtbase=$(basename "$PAP")
+      case "$_wtbase" in
+        "${_canonical}-"*) _session="${_wtbase#"${_canonical}-"}" ;;
+        *)                 _session="" ;;
+      esac
+    fi
+  fi
+  # .git diretorio (projeto raiz): _canonical e _session permanecem vazios (flags omitidas).
+  ```
+
 - Inicializar `state.json` v1.0.0 via `state-rw.sh init`:
   - `--execucao-id "exec-$(date -u +%FT%H-%M-%SZ)-agente-00c-<slug>"`
   - `--projeto-alvo-path <PAP>` (resolvido)
   - `--descricao "<sanitized>"`
   - `--stack-json <stack ou "null">`
   - `--whitelist-urls <JSON-arr>`
+  - `${_canonical:+--canonical-project "$_canonical"}` (quando nao-vazio)
+  - `${_session:+--session-name "$_session"}` (quando nao-vazio)
 
   Status inicial: `em_andamento`, etapa `briefing`, `next_instruction`
   apontando para inicio do briefing.
