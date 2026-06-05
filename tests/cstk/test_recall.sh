@@ -558,9 +558,9 @@ SQL
   # Aplica schema v7 via funcao real (caminho de recall_apply_schema).
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
     _fail "apply schema v7" "recall_apply_schema falhou"; return 1; }
-  # (a) schema_version virou 7.
+  # (a) schema_version virou a corrente (8 — v8 recall-worktree-identity).
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "7" ] || { _fail "schema_version" "esperado 7, obtido $_sv"; return 1; }
+  [ "$_sv" = "8" ] || { _fail "schema_version" "esperado 8, obtido $_sv"; return 1; }
   # (b) tabela bloqueios DROPADA; blocks (EN) criada no lugar.
   _hasbloq=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='bloqueios'")
   [ "$_hasbloq" = "0" ] || { _fail "bloqueios dropada" "tabela pt-BR bloqueios sobreviveu"; return 1; }
@@ -605,7 +605,7 @@ scenario_m11b_v7_reindex_repopula() {
   _v7db="$TMPDIR_TEST/v7.db"
   _rc --reindex --states-root "$TMPDIR_TEST/rxv7" --db "$_v7db" >/dev/null 2>&1
   _sv=$(sqlite3 "$_v7db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "7" ] || { _fail "reindex v7" "esperado schema_version 7, obtido $_sv"; return 1; }
+  [ "$_sv" = "8" ] || { _fail "reindex schema corrente" "esperado schema_version 8, obtido $_sv"; return 1; }
   # decisions repopuladas em EN (2 decisoes do _write_state).
   _n=$(sqlite3 "$_v7db" "SELECT count(*) FROM decisions WHERE feature='featV7'")
   [ "$_n" = "2" ] || { _fail "reindex repopula" "esperado 2 decisoes, obtido $_n"; return 1; }
@@ -627,7 +627,7 @@ scenario_m12_ddl_idempotente() {
   sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p','f','w','e','t','dec-keep','keep','now')"
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "7" ] || { _fail "schema estavel" "esperado 7 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "8" ] || { _fail "schema estavel" "esperado 8 apos 2x, obtido $_sv"; return 1; }
   _keep=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-keep'")
   [ "$_keep" = "1" ] || { _fail "idempotente sem re-drop" "linha sumiu: 2o apply re-dropou ($_keep)"; return 1; }
 }
@@ -1824,9 +1824,10 @@ scenario_b11_ddl_tasks_events() {
   assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" || return 1
   _has=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('tasks','events')")
   [ "$_has" = "2" ] || { _fail "DDL tasks/events" "esperado 2 tabelas, obtido $_has"; return 1; }
-  # schema_version = 7 (schema-en-migration: rename pt-BR -> EN).
+  # schema_version = 8 (recall-worktree-identity: coluna session em
+  # executions/waves; data-model.md "schema_meta.schema_version passa a '8'").
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "7" ] || { _fail "schema_version" "esperado 7, obtido $_sv"; return 1; }
+  [ "$_sv" = "8" ] || { _fail "schema_version" "esperado 8, obtido $_sv"; return 1; }
   # tasks tem a coluna title (EN, DDL fresco).
   _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='title'")
   [ "$_hascol" = "1" ] || { _fail "coluna title" "esperado 1, obtido $_hascol"; return 1; }
@@ -2139,10 +2140,10 @@ scenario_m1_schema_memories_table_exists() {
     *memories*) : ;;
     *) _fail "memories table ausente" "$_tables"; return 1 ;;
   esac
-  # schema_version deve ser 7 (schema-en-migration)
+  # schema_version deve ser 8 (recall-worktree-identity: coluna session)
   _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
     "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "7" ] || { _fail "schema_version errado" "esperado 7, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "8" ] || { _fail "schema_version errado" "esperado 8, obtido '$_ver'"; return 1; }
 }
 
 # M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
@@ -2183,10 +2184,11 @@ scenario_m4_neg_context_type_invalido() {
   esac
 }
 
-# M1-migration — DB v3 pre-existente (pt-BR) e migrado para v7: tabelas
-# renomeadas dropadas+recriadas EN, memories/suggestions criadas, e o ingest
-# subsequente repopula decisions em EN (o derivado legacy do v3 e descartado
-# pelo drop v7, mas o ingest do state.json o reconstroi). schema_version=7.
+# M1-migration — DB v3 pre-existente (pt-BR) e migrado pela cadeia completa
+# v3 -> ... -> v8: tabelas renomeadas dropadas+recriadas EN (drop v7),
+# memories/suggestions criadas, e o ingest subsequente repopula decisions em
+# EN (o derivado legacy do v3 e descartado pelo drop v7, mas o ingest do
+# state.json o reconstroi). schema_version final = 8.
 scenario_m1_migration_v3_to_current() {
   _have_deps || return 0
   # Criar um DB v3 com schema pt-BR antigo (sem memories) simulando pre-existente
@@ -2227,9 +2229,10 @@ scenario_m1_migration_v3_to_current() {
   _dcols=$(sqlite3 "$_v3db" "SELECT group_concat(name,',') FROM pragma_table_info('decisions')")
   case ",$_dcols," in *,choice,*) : ;; *) _fail "migration: decisions nao-EN" "$_dcols"; return 1 ;; esac
   case ",$_dcols," in *,escolha,*|*,execucao_id,*) _fail "migration: decisions pt-BR leak" "$_dcols"; return 1 ;; esac
-  # schema_version deve ser 7
+  # schema_version deve ser 8 (cadeia completa v3 -> ... -> v8; a coluna
+  # session de executions/waves vem do DDL fresco pos-drop v7)
   _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "7" ] || { _fail "migration: schema_version errado" "esperado 7, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "8" ] || { _fail "migration: schema_version errado" "esperado 8, obtido '$_ver'"; return 1; }
   # decisions repopuladas pelo ingest (>=1; o derivado v3 foi descartado, o
   # state.json o reconstroi em EN).
   _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
@@ -2785,8 +2788,10 @@ scenario_w1_common_dir_relativo_normalizado() {
 }
 JSON
 
-  # (a) Camada 1: campo congelado -> usa diretamente
-  _proj_a=$(sh -c '. "$CSTK_LIB/recall.sh"; recall_derive_canonical "$_wt_dir/state.json" "$_wt_dir"' 2>/dev/null)
+  # (a) Camada 1: campo congelado -> usa diretamente.
+  # NB: _wt_dir vai como ARG POSICIONAL ($1) — dentro de sh -c aspas-simples
+  # so variaveis EXPORTADAS (CSTK_LIB) expandem; "$_wt_dir" expandiria vazio.
+  _proj_a=$(sh -c '. "$CSTK_LIB/recall.sh"; recall_derive_canonical "$1/state.json" "$1"' _ "$_wt_dir" 2>/dev/null)
   [ "$_proj_a" = "main-repo" ] || { _fail "W1a: camada 1 canonical_project" "esperado 'main-repo', obtido '$_proj_a'"; return 1; }
 
   # (b) Camada 2: sem canonical_project, path relativo simulado via PAP
@@ -2808,7 +2813,7 @@ JSON
 JSON
   # Invocar derivacao (camada 2: git ao vivo; git pode nao resolver aqui sem
   # repo real, mas o path de normalizacao relativo deve ser acionado)
-  _proj_b=$(sh -c '. "$CSTK_LIB/recall.sh"; recall_derive_canonical "$_wt2/state.json" "$_wt2"' 2>/dev/null)
+  _proj_b=$(sh -c '. "$CSTK_LIB/recall.sh"; recall_derive_canonical "$1/state.json" "$1"' _ "$_wt2" 2>/dev/null)
   # Expected: basename do repo principal (via camada 2) OU basename do path
   # (camada 3 gracioso) — nenhum dos dois deve ser o nome fantasma da worktree
   case "$_proj_b" in
@@ -2834,6 +2839,197 @@ JSON
     printf "%s" "$COMMON"
   ')
   [ "$_norm_abs" = "/absolute/path/.git" ] || { _fail "W1d: abs nao alterado" "esperado '/absolute/path/.git', obtido '$_norm_abs'"; return 1; }
+}
+
+# =========================================================================
+# Cenarios W2-W7 — recall-worktree-identity FASE 4 (quickstart 1, 2a-2d, 4,
+# 5, 7; SC-001/SC-003/SC-006). Derivacao canonica 3 camadas + schema v8.
+# =========================================================================
+
+# _write_state_en DIR PROJ_PATH SHORT CANONICAL SESSION -> state.json EN
+# minimo (1 decision com termo "widgetcanon", 1 wave). CANONICAL/SESSION
+# vazios = campos omitidos (state pre-feature).
+_write_state_en() {
+  _wse_dir="$1"; _wse_proj="$2"; _wse_short="$3"; _wse_canon="$4"; _wse_sess="$5"
+  mkdir -p "$_wse_dir"
+  _wse_extra=""
+  [ -n "$_wse_canon" ] && _wse_extra=", \"canonical_project\": \"$_wse_canon\""
+  [ -n "$_wse_sess" ] && _wse_extra="$_wse_extra, \"session_name\": \"$_wse_sess\""
+  cat > "$_wse_dir/state.json" <<JSON
+{
+  "short_name": "$_wse_short",
+  "execution": { "id": "exec-$_wse_short", "target_project_path": "$_wse_proj"$_wse_extra },
+  "decisions": [
+    { "id": "dec-001", "wave_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "stage": "specify", "agent": "orch", "choice": "iniciar", "justification_score": 2,
+      "context": "decisao sobre widgetcanon", "rationale": "pq widgetcanon", "evidence": null }
+  ],
+  "waves": [
+    { "id": "onda-001", "started_at": "2026-01-01T00:00:00Z", "finished_at": "2026-01-01T01:00:00Z",
+      "executed_stages": ["specify"], "tool_calls": 3, "wallclock_seconds": 60,
+      "termination_reason": "ok" }
+  ]
+}
+JSON
+}
+
+# Cenario W2 — roundtrip real com campos congelados (quickstart 1, SC-001):
+# state com canonical_project + session_name -> ingest -> project canonico,
+# feature = short_name, session populada em executions E waves; PRAGMA
+# confirma a coluna `session` no shape v8.
+scenario_w2_roundtrip_canonical_session() {
+  _have_deps || return 0
+  _w2_pap="$TMPDIR_TEST/w2/cstk-minha-feature"
+  mkdir -p "$_w2_pap"
+  printf 'gitdir: /tmp/nonexistent/.git/worktrees/x\n' > "$_w2_pap/.git"
+  _write_state_en "$TMPDIR_TEST/w2/sd" "$_w2_pap" "demo-feat" "cstk" "minha-feature"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/w2/sd" --db "$TMPDIR_TEST/w2/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W2 ingest exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _w2_exec=$(sqlite3 "$TMPDIR_TEST/w2/k.db" "SELECT project||'|'||feature||'|'||session FROM executions;")
+  [ "$_w2_exec" = "cstk|demo-feat|minha-feature" ] || { _fail "W2 executions" "esperado 'cstk|demo-feat|minha-feature', obtido '$_w2_exec'"; return 1; }
+  _w2_wave=$(sqlite3 "$TMPDIR_TEST/w2/k.db" "SELECT project||'|'||session FROM waves;")
+  [ "$_w2_wave" = "cstk|minha-feature" ] || { _fail "W2 waves.session" "esperado 'cstk|minha-feature', obtido '$_w2_wave'"; return 1; }
+  _w2_shape=$(sqlite3 "$TMPDIR_TEST/w2/k.db" "PRAGMA table_info(executions);")
+  case "$_w2_shape" in
+    *'|session|'*) : ;;
+    *) _fail "W2 shape v8" "coluna session ausente em executions"; return 1 ;;
+  esac
+}
+
+# Cenario W3 — fallback 3 camadas no ingest e2e (quickstart 2a/2b/2c):
+# 2a worktree REAL (git worktree add) sem campo congelado -> camada 2;
+# 2b path inexistente -> camada 3 (basename, sem erro);
+# 2c projeto normal (.git dir) -> identico ao pre-feature, session NULL.
+scenario_w3_fallback_camadas() {
+  _have_deps || return 0
+  command -v git >/dev/null 2>&1 || return 0
+  # (2a) repo real + worktree real
+  _w3_main="$TMPDIR_TEST/w3/mainrepo"
+  mkdir -p "$_w3_main"
+  git -C "$_w3_main" init -q . 2>/dev/null || return 0
+  git -C "$_w3_main" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init 2>/dev/null || return 0
+  git -C "$_w3_main" worktree add -q "$TMPDIR_TEST/w3/mainrepo-sess" 2>/dev/null || return 0
+  _write_state_en "$TMPDIR_TEST/w3/sd-a" "$TMPDIR_TEST/w3/mainrepo-sess" "feat-a" "" ""
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/w3/sd-a" --db "$TMPDIR_TEST/w3/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W3a exit" "$_CAPTURED_EXIT"; return 1; }
+  _w3a=$(sqlite3 "$TMPDIR_TEST/w3/k.db" "SELECT project FROM executions WHERE feature='feat-a';")
+  [ "$_w3a" = "mainrepo" ] || { _fail "W3a camada 2 (worktree viva)" "esperado 'mainrepo', obtido '$_w3a'"; return 1; }
+  # (2b) path inexistente -> camada 3
+  _write_state_en "$TMPDIR_TEST/w3/sd-b" "/nonexistent/gone-cstk-x" "feat-b" "" ""
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/w3/sd-b" --db "$TMPDIR_TEST/w3/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W3b exit" "$_CAPTURED_EXIT"; return 1; }
+  _w3b=$(sqlite3 "$TMPDIR_TEST/w3/k.db" "SELECT project FROM executions WHERE feature='feat-b';")
+  [ "$_w3b" = "gone-cstk-x" ] || { _fail "W3b camada 3 (gone)" "esperado 'gone-cstk-x', obtido '$_w3b'"; return 1; }
+  # (2c) projeto normal (.git DIRETORIO) -> basename + session NULL (FR-010)
+  _w3_norm="$TMPDIR_TEST/w3/normalproj"
+  mkdir -p "$_w3_norm/.git"
+  _write_state_en "$TMPDIR_TEST/w3/sd-c" "$_w3_norm" "feat-c" "" ""
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/w3/sd-c" --db "$TMPDIR_TEST/w3/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W3c exit" "$_CAPTURED_EXIT"; return 1; }
+  _w3c=$(sqlite3 "$TMPDIR_TEST/w3/k.db" "SELECT project||'|'||COALESCE(session,'NULL') FROM executions WHERE feature='feat-c';")
+  [ "$_w3c" = "normalproj|NULL" ] || { _fail "W3c sem regressao" "esperado 'normalproj|NULL', obtido '$_w3c'"; return 1; }
+}
+
+# Cenario W4 — git ausente do PATH (quickstart 2d, FR-008): worktree fake
+# (.git ARQUIVO) + PATH sem git -> degrada camada 3 silenciosa, exit 0.
+# PATH de symlinks seletivos (padrao dos cenarios 9/10); o SUT resolve git
+# via `command -v` no PATH do subprocesso — sem stub por cima de /usr/bin
+# (memoria feedback_test_path_stub_cannot_hide_usrbin).
+scenario_w4_git_ausente_camada3() {
+  _have_deps || return 0
+  _bin="$TMPDIR_TEST/binw4"
+  mkdir -p "$_bin"
+  for _t in tr wc printf sed grep awk basename dirname date find mkdir rm cat head sleep cp jq base64 sqlite3; do
+    _p=$(command -v "$_t" 2>/dev/null) && ln -sf "$_p" "$_bin/$_t"
+  done
+  # (git deliberadamente ausente)
+  _w4_pap="$TMPDIR_TEST/w4/cstk-sess"
+  mkdir -p "$_w4_pap"
+  printf 'gitdir: /tmp/nonexistent/.git/worktrees/sess\n' > "$_w4_pap/.git"
+  _write_state_en "$TMPDIR_TEST/w4/sd" "$_w4_pap" "feat-w4" "" ""
+  capture sh -c 'PATH="'"$_bin"'"; export PATH; . "'"$CSTK_LIB"'/common.sh"; . "'"$CSTK_LIB"'/recall.sh"; recall_main --ingest --state-dir "'"$TMPDIR_TEST"'/w4/sd" --db "'"$TMPDIR_TEST"'/w4/k.db"'
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W4 exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _w4=$(sqlite3 "$TMPDIR_TEST/w4/k.db" "SELECT project FROM executions WHERE feature='feat-w4';")
+  [ "$_w4" = "cstk-sess" ] || { _fail "W4 camada 3 sem git" "esperado 'cstk-sess', obtido '$_w4'"; return 1; }
+}
+
+# Cenario W5 — migracao v7->v8 idempotente (quickstart 4, FR-009/SC-006):
+# fixture DB v7 (executions/waves SEM session + schema_version=7 + 1 linha
+# cada) -> ingest v8 adiciona a coluna via ALTER guardado por PRAGMA, linhas
+# pre-existentes INTACTAS (session NULL nelas); 2a rodada sem erro de coluna
+# duplicada.
+scenario_w5_migracao_v7_v8_idempotente() {
+  _have_deps || return 0
+  _w5_db="$TMPDIR_TEST/w5/k7.db"
+  mkdir -p "$TMPDIR_TEST/w5"
+  sqlite3 "$_w5_db" "
+CREATE TABLE executions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, status TEXT, termination_reason TEXT, current_stage TEXT, started_at TEXT, finished_at TEXT, duration_seconds INTEGER, suggested_stack TEXT, waves_total INTEGER, tool_calls_total INTEGER, wallclock_total_seconds INTEGER, subagents_spawned INTEGER, max_depth INTEGER, decisions_total INTEGER, human_blocks_total INTEGER, skill_suggestions_total INTEGER, toolkit_issues_opened INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE waves (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, stages TEXT, started_at TEXT, finished_at TEXT, wallclock_seconds INTEGER, tool_calls INTEGER, termination_reason TEXT, n_stages INTEGER, n_skills INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+INSERT INTO schema_meta VALUES('schema_version','7');
+INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,ingested_at) VALUES('legacyp','legacyf','-','e-legacy','t','e-legacy','concluida','t');
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,ingested_at) VALUES('legacyp','legacyf','onda-001','e-legacy','t','onda-001','plan','t');
+" || { _fail "W5 fixture" "criacao do DB v7 falhou"; return 1; }
+  _write_state_en "$TMPDIR_TEST/w5/sd" "/nonexistent/w5proj" "feat-w5" "" ""
+  # 1a rodada: migra v7->v8
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/w5/sd" --db "$_w5_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W5 ingest#1 exit" "$_CAPTURED_EXIT"; return 1; }
+  _w5_legacy=$(sqlite3 "$_w5_db" "SELECT COUNT(*)||'|'||SUM(session IS NULL) FROM executions WHERE project='legacyp';")
+  [ "$_w5_legacy" = "1|1" ] || { _fail "W5 linhas v7 intactas" "esperado '1|1', obtido '$_w5_legacy'"; return 1; }
+  _w5_wcol=$(sqlite3 "$_w5_db" "PRAGMA table_info(waves);")
+  case "$_w5_wcol" in
+    *'|session|'*) : ;;
+    *) _fail "W5 waves.session" "coluna session ausente em waves pos-migracao"; return 1 ;;
+  esac
+  _w5_ver=$(sqlite3 "$_w5_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
+  [ "$_w5_ver" = "8" ] || { _fail "W5 schema_version" "esperado '8', obtido '$_w5_ver'"; return 1; }
+  # 2a rodada: idempotente (sem erro de coluna duplicada)
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/w5/sd" --db "$_w5_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W5 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
+  _w5_cnt=$(sqlite3 "$_w5_db" "SELECT COUNT(*) FROM executions;")
+  [ "$_w5_cnt" = "2" ] || { _fail "W5 count pos-2a-rodada" "esperado '2', obtido '$_w5_cnt'"; return 1; }
+}
+
+# Cenario W6 — anti-eco com nome canonico (quickstart 5, US4/FR-007):
+# layout agente-00c (sem short_name) com canonical_project congelado ->
+# feature = nome CANONICO ('cstk'); --exclude-feature cstk EXCLUI;
+# --exclude-feature cstk-minha-feature (nome fantasma) NAO exclui.
+scenario_w6_anti_eco_canonico() {
+  _have_deps || return 0
+  _w6_sd="$TMPDIR_TEST/w6/proj/.claude/agente-00c-state"
+  _write_state_en "$_w6_sd" "/nonexistent/cstk-minha-feature" "" "cstk" "minha-feature"
+  # remover short_name (layout agente-00c nao grava; fallback de feature)
+  jq 'del(.short_name)' "$_w6_sd/state.json" > "$_w6_sd/state.json.tmp" \
+    && mv "$_w6_sd/state.json.tmp" "$_w6_sd/state.json"
+  capture _rc --ingest --state-dir "$_w6_sd" --db "$TMPDIR_TEST/w6/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W6 ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  _w6_feat=$(sqlite3 "$TMPDIR_TEST/w6/k.db" "SELECT feature FROM executions;")
+  [ "$_w6_feat" = "cstk" ] || { _fail "W6 feature canonica" "esperado 'cstk', obtido '$_w6_feat'"; return 1; }
+  # anti-eco com nome canonico: exclui
+  capture _rc --context "widgetcanon" --exclude-feature cstk --db "$TMPDIR_TEST/w6/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W6 ctx exit" "$_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *widgetcanon*) _fail "W6 anti-eco canonico" "achado da feature excluida 'cstk' vazou"; return 1 ;;
+  esac
+  # nome fantasma NAO exclui: achados retornam
+  capture _rc --context "widgetcanon" --exclude-feature cstk-minha-feature --db "$TMPDIR_TEST/w6/k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W6 ctx fantasma exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "widgetcanon" || return 1
+}
+
+# Cenario W7 — --reindex com state congelado e worktree REMOVIDA
+# (quickstart 7, FR-006/SC-003): o campo congelado garante project='cstk'
+# identico ao ingest ao vivo, independente do disco.
+scenario_w7_reindex_state_congelado() {
+  _have_deps || return 0
+  _w7_root="$TMPDIR_TEST/w7root"
+  _w7_sd="$_w7_root/p/.claude/feature-00c-state/demo-feat"
+  # target_project_path NAO existe no disco (worktree removida)
+  _write_state_en "$_w7_sd" "$_w7_root/gone/cstk-minha-feature" "demo-feat" "cstk" "minha-feature"
+  capture _rc --reindex --states-root "$_w7_root" --db "$TMPDIR_TEST/w7-k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W7 reindex exit" "$_CAPTURED_EXIT"; return 1; }
+  _w7=$(sqlite3 "$TMPDIR_TEST/w7-k.db" "SELECT project||'|'||feature||'|'||session FROM executions;")
+  [ "$_w7" = "cstk|demo-feat|minha-feature" ] || { _fail "W7 reindex congelado" "esperado 'cstk|demo-feat|minha-feature', obtido '$_w7'"; return 1; }
 }
 
 run_all_scenarios

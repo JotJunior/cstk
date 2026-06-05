@@ -88,7 +88,13 @@ RECALL_EXIT_USAGE=2
 # DB fresco (sem schema_meta) cria as tabelas EN direto (sem drop). Dado e
 # derivado: --reindex / proximo ingest repopula. enum: bloqueio -> block
 # (alias deprecado bloqueio ainda aceito na busca, com aviso em stderr).
-RECALL_SCHEMA_VERSION=7
+# v8 (recall-worktree-identity): coluna aditiva `session TEXT` em executions
+# e waves (origem: .execution.session_name do state.json; NULL sem sessao).
+# Migracao v7->v8 = ALTER TABLE ADD COLUMN idempotente guardado por PRAGMA
+# table_info (padrao v2/v5); SEM drop, dados intactos (FR-009/SC-006).
+# knowledge_fts INTOCADA (FTS5 nao suporta ADD COLUMN; drop perderia
+# conhecimento de worktrees removidas — research Decision 6 / dec-014).
+RECALL_SCHEMA_VERSION=8
 # Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
 # DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
 RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
@@ -464,6 +470,7 @@ CREATE TABLE IF NOT EXISTS executions (
   human_blocks_total INTEGER,
   skill_suggestions_total INTEGER,
   toolkit_issues_opened INTEGER,
+  session TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -483,6 +490,7 @@ CREATE TABLE IF NOT EXISTS waves (
   termination_reason TEXT,
   n_stages INTEGER,
   n_skills INTEGER,
+  session TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -647,6 +655,23 @@ ALTER TABLE tasks ADD COLUMN title TEXT;' ;;
         *) _as_extra="$_as_extra
 ALTER TABLE decisions ADD COLUMN options TEXT;" ;;
       esac
+      # ---- Migracao v7->v8 (recall-worktree-identity): coluna aditiva
+      # `session` em executions e waves. Mesmo padrao idempotente dos ALTERs
+      # acima (PRAGMA table_info guarda contra coluna duplicada; SQLite nao
+      # tem ADD COLUMN IF NOT EXISTS). SEM drop — dados v7 intactos (FR-009/
+      # SC-006). knowledge_fts intocada (dec-014).
+      _as_ecols=$(printf 'PRAGMA table_info(executions);\n' | sqlite3 -- "$1" 2>/dev/null) || _as_ecols=""
+      case "$_as_ecols" in
+        ''|*'|session|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
+        *) _as_extra="$_as_extra
+ALTER TABLE executions ADD COLUMN session TEXT;" ;;
+      esac
+      _as_wcols=$(printf 'PRAGMA table_info(waves);\n' | sqlite3 -- "$1" 2>/dev/null) || _as_wcols=""
+      case "$_as_wcols" in
+        ''|*'|session|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
+        *) _as_extra="$_as_extra
+ALTER TABLE waves ADD COLUMN session TEXT;" ;;
+      esac
     fi
   fi
   recall_apply_sql_with_retry "$1" "$_as_pre$(recall_schema_ddl)$_as_extra"
@@ -734,6 +759,56 @@ recall_int_or_null() {
   esac
 }
 
+# recall_derive_canonical STATE_JSON_PATH TARGET_PROJECT_PATH -> stdout: nome
+# canonico do projeto, derivado em 3 camadas (recall-worktree-identity,
+# contracts/ingest-derivation.md §1; FR-003/FR-004/FR-008):
+#   1. campo congelado `.execution.canonical_project` do state.json (FR-003);
+#   2. resolucao git ao vivo: `.git` e ARQUIVO (worktree indicator) +
+#      `git -C <path> rev-parse --git-common-dir` -> basename(dirname(common
+#      absoluto)). Common-dir RELATIVO (ex: `.git` — sonda git 2.50.1 no
+#      projeto raiz) e normalizado para absoluto prefixando o proprio
+#      TARGET_PROJECT_PATH (CHK026; case POSIX, sem dep de --path-format);
+#   3. fallback: basename(TARGET_PROJECT_PATH) — comportamento pre-feature.
+# Garantias: NUNCA falha (toda subchamada com 2>/dev/null; exit sempre 0);
+# stdout nao-vazio quando TARGET_PROJECT_PATH nao-vazio; read-only sobre o
+# state.json (apenas jq de leitura); git e plumbing read-only invocado por
+# vetor de argumentos com variaveis quotadas, NUNCA via eval (A05 — o
+# resultado AINDA passa por sql_escape() no caller antes de entrar em SQL).
+recall_derive_canonical() {
+  _rdc_state="$1"
+  _rdc_pap="$2"
+  # Camada 1: campo congelado no init (proveniencia write-once).
+  _rdc_name=$(jq -r '(.execution.canonical_project // .execucao.canonical_project) // ""' \
+    "$_rdc_state" 2>/dev/null) || _rdc_name=""
+  if [ -n "$_rdc_name" ]; then
+    printf '%s' "$_rdc_name" | strip_nul
+    return 0
+  fi
+  # Camada 2: git ao vivo — somente quando `.git` e ARQUIVO (worktree).
+  if [ -n "$_rdc_pap" ] && [ -f "$_rdc_pap/.git" ] \
+     && command -v git >/dev/null 2>&1; then
+    _rdc_common=$(git -C "$_rdc_pap" rev-parse --git-common-dir 2>/dev/null) \
+      || _rdc_common=""
+    if [ -n "$_rdc_common" ]; then
+      # Normalizacao relativo->absoluto (CHK026): git pode retornar `.git`
+      # relativo; prefixar o proprio path-alvo antes do dirname.
+      case "$_rdc_common" in
+        /*) : ;;
+        *)  _rdc_common="$_rdc_pap/$_rdc_common" ;;
+      esac
+      _rdc_name=$(basename -- "$(dirname -- "$_rdc_common" 2>/dev/null)" 2>/dev/null) \
+        || _rdc_name=""
+      if [ -n "$_rdc_name" ] && [ "$_rdc_name" != "/" ] && [ "$_rdc_name" != "." ]; then
+        printf '%s' "$_rdc_name" | strip_nul
+        return 0
+      fi
+    fi
+  fi
+  # Camada 3: fallback final = basename do path-alvo (comportamento atual).
+  basename -- "$_rdc_pap" 2>/dev/null | strip_nul
+  return 0
+}
+
 # recall_ingest_state_json STATE_JSON DB -> ingere um unico state.json no DB.
 # Best-effort: qualquer falha de extracao degrada gracioso (aviso + exit 0).
 # Reusado por --ingest (1 arquivo) e --reindex (N arquivos).
@@ -747,12 +822,16 @@ recall_ingest_state_json() {
     return "$RECALL_EXIT_OK"
   fi
 
-  # Proveniencia comum (read-only via jq). project = BASENAME do
-  # target_project_path (mitigacao S2/A02 — reduz captura de segredo em path).
+  # Proveniencia comum (read-only via jq). project = derivacao CANONICA em 3
+  # camadas (recall_derive_canonical: campo congelado -> git ao vivo ->
+  # basename), em vez do basename bruto pre-feature — corrige identidade de
+  # worktrees (`cstk-minha-feature` -> `cstk`; recall-worktree-identity
+  # FR-003/FR-004). Continua nome curto, nunca path completo (mitigacao
+  # S2/A02 — reduz captura de segredo em path).
   # Leitura EN + fallback pt-BR (.en // .pt) — ingere state EN (escrito pelo
   # toolkit pos-migracao) E states legados pt-BR (back-compat).
   _isj_proj_path=$(jq -r '(.execution.target_project_path // .execucao.projeto_alvo_path) // ""' "$_isj_state" 2>/dev/null) || _isj_proj_path=""
-  _isj_project=$(basename -- "$_isj_proj_path" 2>/dev/null) || _isj_project=""
+  _isj_project=$(recall_derive_canonical "$_isj_state" "$_isj_proj_path") || _isj_project=""
   [ -n "$_isj_project" ] || _isj_project="unknown"
   # Feature: prefere .short_name (top-level, layout corrente no disco);
   # tolera .execucao.short_name (local canonico do data-model). Leitura dupla
@@ -762,10 +841,11 @@ recall_ingest_state_json() {
   #  - feature-00c-state/<short-name>/: short-name vem do diretorio-pai (states
   #    legados gravados antes de o init versionar short_name).
   #  - agente-00c-state/ (orquestrador de PROJETO, que NAO grava short_name):
-  #    usa o NOME DO DIR DO PROJETO (= _isj_project) como feature, em vez de
-  #    'unknown'. O anti-eco do agente-00c (FR-011) exclui essa mesma feature —
-  #    ver paridade em agente-00c-orchestrator (EXCLUDE_FEATURE = basename do
-  #    projeto_alvo_path).
+  #    usa o NOME CANONICO DO PROJETO (= _isj_project, ja derivado via
+  #    recall_derive_canonical) como feature, em vez de 'unknown'. O anti-eco
+  #    do agente-00c (FR-011) exclui essa mesma feature — ver paridade em
+  #    agente-00c-orchestrator (EXCLUDE_FEATURE = .execution.canonical_project
+  #    // basename do target_project_path; recall-worktree-identity dec-015).
   if [ -z "$_isj_feature" ]; then
     # Checagem por componente (nao por glob): robusta p/ caminhos relativos E
     # absolutos (glob `*/.claude/...` falharia em path relativo iniciado por
@@ -782,6 +862,10 @@ recall_ingest_state_json() {
   fi
   [ -n "$_isj_feature" ] || _isj_feature="unknown"
   _isj_exec_id=$(jq -r '(.execution.id // .execucao.id) // ""' "$_isj_state" 2>/dev/null) || _isj_exec_id=""
+  # session: campo congelado .execution.session_name (recall-worktree-identity
+  # FR-005). Vazio/ausente -> literal SQL NULL (US2 AC2). Valor e UNTRUSTED:
+  # passa por strip_nul + sql_escape antes de entrar no SQL (A05).
+  _isj_session=$(jq -r '(.execution.session_name // .execucao.session_name) // ""' "$_isj_state" 2>/dev/null) || _isj_session=""
   _isj_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _isj_now="1970-01-01T00:00:00Z"
 
   # NUL strip aplicado a proveniencia (best-effort). Argumentos de shell nao
@@ -789,6 +873,12 @@ recall_ingest_state_json() {
   _isj_project=$(printf '%s' "$_isj_project" | strip_nul)
   _isj_feature=$(printf '%s' "$_isj_feature" | strip_nul)
   _isj_exec_id=$(printf '%s' "$_isj_exec_id" | strip_nul)
+  _isj_session=$(printf '%s' "$_isj_session" | strip_nul)
+  if [ -n "$_isj_session" ]; then
+    _isj_session_sql="'$(sql_escape "$_isj_session")'"
+  else
+    _isj_session_sql="NULL"
+  fi
 
   # Acumula SQL num heredoc-string e aplica numa unica transacao por arquivo.
   _isj_sql="BEGIN;"
@@ -875,9 +965,9 @@ recall_ingest_state_json() {
       _isj_sg_sql=$(recall_int_or_null "$_f_sg")
       _isj_it_sql=$(recall_int_or_null "$_f_it")
       _isj_sql="$_isj_sql
-INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,ingested_at=excluded.ingested_at;"
+INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,$_isj_session_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,session=excluded.session,ingested_at=excluded.ingested_at;"
       _isj_n_exec=1
     fi
   fi
@@ -924,9 +1014,9 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _isj_ne_sql=$(recall_int_or_null "$_f_ne")
       _isj_ns_sql=$(recall_int_or_null "$_f_ns")
       _isj_sql="$_isj_sql
-INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_wid")','$(sql_escape "$_f_etp")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_fim")',$_isj_wc_sql,$_isj_tc_sql,'$(sql_escape "$_f_mt")',$_isj_ne_sql,$_isj_ns_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,ingested_at=excluded.ingested_at;"
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,session,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_wid")','$(sql_escape "$_f_etp")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_fim")',$_isj_wc_sql,$_isj_tc_sql,'$(sql_escape "$_f_mt")',$_isj_ne_sql,$_isj_ns_sql,$_isj_session_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,session=excluded.session,ingested_at=excluded.ingested_at;"
       _isj_n_wave=$((_isj_n_wave + 1))
     done
     IFS="$_isj_OLDIFS"
@@ -1524,8 +1614,11 @@ recall_ingest_memories() {
     "$_rim_state_dir/state.json" 2>/dev/null) || _rim_proj_path=""
   [ -n "$_rim_proj_path" ] || return "$RECALL_EXIT_OK"
 
-  # project = basename(projeto_alvo_path), paridade com telemetria.
-  _rim_project=$(basename -- "$_rim_proj_path" 2>/dev/null) || _rim_project=""
+  # project = derivacao CANONICA (recall_derive_canonical: campo congelado ->
+  # git ao vivo -> basename), paridade com a telemetria do state.json
+  # (recall-worktree-identity research Decision 8 — memoria de worktree
+  # atribuida ao projeto canonico).
+  _rim_project=$(recall_derive_canonical "$_rim_state_dir/state.json" "$_rim_proj_path") || _rim_project=""
   [ -n "$_rim_project" ] || return "$RECALL_EXIT_OK"
 
   # Localiza o diretorio de memoria via forward-encoding (CQ1).

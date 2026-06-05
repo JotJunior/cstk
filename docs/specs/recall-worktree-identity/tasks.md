@@ -127,44 +127,44 @@ Ref: mesmos contratos que 3.1; paridade entre os dois commands
 
 Ref: spec.md §FR-005/FR-009, contracts/ingest-derivation.md §3, data-model.md §coluna session
 
-- [ ] 4.1.1 Ler `cli/lib/recall.sh` — localizar `RECALL_SCHEMA_VERSION`, `recall_schema_ddl` e o bloco de migracao (`recall_apply_schema` + ALTERs `:638-648`)
-- [ ] 4.1.2 Incrementar `RECALL_SCHEMA_VERSION` de `7` para `8`
-- [ ] 4.1.3 Adicionar coluna `session TEXT` ao DDL fresco de `executions` e `waves` em `recall_schema_ddl`
-- [ ] 4.1.4 Adicionar ao bloco de migracao: para cada tabela `executions`/`waves`, checar via `PRAGMA table_info` se coluna `session` existe; se ausente, executar `ALTER TABLE <t> ADD COLUMN session TEXT` — idempotente, sem DROP (FR-009)
-- [ ] 4.1.5 Adicionar `session=excluded.session` ao `ON CONFLICT ... DO UPDATE SET` das duas tabelas nos upserts existentes
-- [ ] 4.1.6 Escrever teste em `tests/cstk/test_recall.sh`: fixture DB v7 → aplicar schema v8 → checar coluna presente, linhas pre-existentes intactas (cenario 4 do quickstart); re-executar schema → exit 0 sem erro de coluna duplicada
+- [x] 4.1.1 Ler `cli/lib/recall.sh` — localizar `RECALL_SCHEMA_VERSION`, `recall_schema_ddl` e o bloco de migracao (`recall_apply_schema` + ALTERs `:638-648`)
+- [x] 4.1.2 Incrementar `RECALL_SCHEMA_VERSION` de `7` para `8`
+- [x] 4.1.3 Adicionar coluna `session TEXT` ao DDL fresco de `executions` e `waves` em `recall_schema_ddl`
+- [x] 4.1.4 Adicionar ao bloco de migracao: para cada tabela `executions`/`waves`, checar via `PRAGMA table_info` se coluna `session` existe; se ausente, executar `ALTER TABLE <t> ADD COLUMN session TEXT` — idempotente, sem DROP (FR-009)
+- [x] 4.1.5 Adicionar `session=excluded.session` ao `ON CONFLICT ... DO UPDATE SET` das duas tabelas nos upserts existentes
+- [x] 4.1.6 Escrever teste em `tests/cstk/test_recall.sh`: fixture DB v7 → aplicar schema v8 → checar coluna presente, linhas pre-existentes intactas (cenario 4 do quickstart); re-executar schema → exit 0 sem erro de coluna duplicada
 
 ### 4.2 Implementar `recall_derive_canonical` — funcao de derivacao 3 camadas `[C]`
 
 Ref: contracts/ingest-derivation.md §1, spec.md §FR-003/FR-004/FR-008
 
-- [ ] 4.2.1 Criar funcao POSIX `recall_derive_canonical STATE_JSON_PATH TARGET_PROJECT_PATH` em `recall.sh`: camada 1 = `.execution.canonical_project` via jq; camada 2 = `test -f "$TARGET_PROJECT_PATH/.git"` + `git -C "$TARGET_PROJECT_PATH" rev-parse --git-common-dir 2>/dev/null` + normalizar common-dir relativo para absoluto + `basename dirname`; camada 3 = `basename "$TARGET_PROJECT_PATH"`
-- [ ] 4.2.2 Garantir que a funcao NUNCA falha (toda subchamada com `2>/dev/null`; exit sempre 0; stdout sempre nao-vazio quando TARGET nao-vazio — FR-008)
-- [ ] 4.2.3 Implementar normalizacao de common-dir relativo para absoluto (CHK026 resolvido): se `COMMON` nao comecar com `/`, prefixar `"$TARGET_PROJECT_PATH/$COMMON"` antes do `dirname`
-- [ ] 4.2.4 Garantir que a invocacao de `git` segue o contrato de seguranca: `git -C "$PATH" rev-parse --git-common-dir` com variaveis quotadas, plumbing read-only, NUNCA via `eval` (contracts/ingest-derivation.md §2 — A05 Injection)
-- [ ] 4.2.5 Escrever testes em `tests/cstk/test_recall.sh` cobrindo: camada 1 (campo congelado), camada 2 (worktree fake com `.git` arquivo e common-dir relativo), camada 2 com git ausente no PATH (desacoplar via PATH stub sem esconder `/usr/bin/git` — memoria `feedback_test_path_stub_cannot_hide_usrbin`), camada 3 (fallback final), projeto normal sem regressao (FR-010)
+- [x] 4.2.1 Criar funcao POSIX `recall_derive_canonical STATE_JSON_PATH TARGET_PROJECT_PATH` em `recall.sh`: camada 1 = `.execution.canonical_project` via jq; camada 2 = `test -f "$TARGET_PROJECT_PATH/.git"` + `git -C "$TARGET_PROJECT_PATH" rev-parse --git-common-dir 2>/dev/null` + normalizar common-dir relativo para absoluto + `basename dirname`; camada 3 = `basename "$TARGET_PROJECT_PATH"`
+- [x] 4.2.2 Garantir que a funcao NUNCA falha (toda subchamada com `2>/dev/null`; exit sempre 0; stdout sempre nao-vazio quando TARGET nao-vazio — FR-008)
+- [x] 4.2.3 Implementar normalizacao de common-dir relativo para absoluto (CHK026 resolvido): se `COMMON` nao comecar com `/`, prefixar `"$TARGET_PROJECT_PATH/$COMMON"` antes do `dirname`
+- [x] 4.2.4 Garantir que a invocacao de `git` segue o contrato de seguranca: `git -C "$PATH" rev-parse --git-common-dir` com variaveis quotadas, plumbing read-only, NUNCA via `eval` (contracts/ingest-derivation.md §2 — A05 Injection)
+- [x] 4.2.5 Escrever testes em `tests/cstk/test_recall.sh` cobrindo: camada 1 (campo congelado), camada 2 (worktree fake com `.git` arquivo e common-dir relativo), camada 2 com git ausente no PATH (desacoplar via PATH stub sem esconder `/usr/bin/git` — memoria `feedback_test_path_stub_cannot_hide_usrbin`), camada 3 (fallback final), projeto normal sem regressao (FR-010)
 
 ### 4.3 Integrar `recall_derive_canonical` nos pontos de ingestao `[C]`
 
 Ref: contracts/ingest-derivation.md §2, spec.md §FR-003/FR-004/FR-007
 
-- [ ] 4.3.1 Substituir a derivacao de `project` em `recall_ingest_state_json` pela chamada a `recall_derive_canonical`
-- [ ] 4.3.2 Para layout agente-00c: substituir a derivacao de `feature` (baseline `:775-778` — basename bruto) por `recall_derive_canonical` (paridade anti-eco — research Decision 7)
-- [ ] 4.3.3 Para layout feature-00c: `feature` permanece `short_name` (inalterado) — confirmar que nao e tocado
-- [ ] 4.3.4 Adicionar derivacao de `session`: `jq -r '.execution.session_name // empty'` do state.json; passar NULL ao SQL quando vazio
-- [ ] 4.3.5 Garantir que os tres valores novos passam por `sql_escape()` antes de entrar em literais SQL (mesmo padrao existente `:879`/`:928`) — A05 Injection
-- [ ] 4.3.6 Aplicar a mesma integracao em `recall_ingest_memories` (para o `project` das memorias — research Decision 8)
-- [ ] 4.3.7 Aplicar em `recall_mode_reindex` — garantir que `--reindex` usa `recall_derive_canonical` e produz resultado identico ao ingest ao vivo para states com campo congelado (FR-006/SC-003)
+- [x] 4.3.1 Substituir a derivacao de `project` em `recall_ingest_state_json` pela chamada a `recall_derive_canonical`
+- [x] 4.3.2 Para layout agente-00c: substituir a derivacao de `feature` (baseline `:775-778` — basename bruto) por `recall_derive_canonical` (paridade anti-eco — research Decision 7)
+- [x] 4.3.3 Para layout feature-00c: `feature` permanece `short_name` (inalterado) — confirmar que nao e tocado
+- [x] 4.3.4 Adicionar derivacao de `session`: `jq -r '.execution.session_name // empty'` do state.json; passar NULL ao SQL quando vazio
+- [x] 4.3.5 Garantir que os tres valores novos passam por `sql_escape()` antes de entrar em literais SQL (mesmo padrao existente `:879`/`:928`) — A05 Injection
+- [x] 4.3.6 Aplicar a mesma integracao em `recall_ingest_memories` (para o `project` das memorias — research Decision 8)
+- [x] 4.3.7 Aplicar em `recall_mode_reindex` — garantir que `--reindex` usa `recall_derive_canonical` e produz resultado identico ao ingest ao vivo para states com campo congelado (FR-006/SC-003)
 
 ### 4.4 Testes de integracao de ingestao `[A]`
 
 Ref: spec.md §SC-001/SC-002/SC-004/SC-005, quickstart.md cenarios 1-5/7
 
-- [ ] 4.4.1 Adicionar cenario 1 ao `tests/cstk/test_recall.sh`: roundtrip real — state com `canonical_project="cstk"` e `session_name="minha-feature"` → ingerir → checar `project='cstk'`, `feature='demo-feat'`, `session='minha-feature'` em `executions` e `waves` (SC-001)
-- [ ] 4.4.2 Adicionar cenario 2a/2b/2c/2d (fallback 3 camadas): state sem campo congelado + worktree viva → camada 2; state sem campo + path inexistente → camada 3; projeto normal → identico ao pre-feature; git ausente → camada 3 silenciosa (FR-008)
-- [ ] 4.4.3 Adicionar cenario 5 (anti-eco): execucao ingerida com `project='cstk'` → `--exclude-feature cstk` exclui; `--exclude-feature cstk-minha-feature` nao exclui (US4 AC1/AC2, FR-007)
-- [ ] 4.4.4 Adicionar cenario 7 (--reindex): state congelado, worktree removida, --reindex → `project='cstk'` identico ao ingest ao vivo (SC-003)
-- [ ] 4.4.5 Rodar `./tests/run.sh test_recall` e confirmar zero regressoes nos cenarios pre-existentes
+- [x] 4.4.1 Adicionar cenario 1 ao `tests/cstk/test_recall.sh`: roundtrip real — state com `canonical_project="cstk"` e `session_name="minha-feature"` → ingerir → checar `project='cstk'`, `feature='demo-feat'`, `session='minha-feature'` em `executions` e `waves` (SC-001)
+- [x] 4.4.2 Adicionar cenario 2a/2b/2c/2d (fallback 3 camadas): state sem campo congelado + worktree viva → camada 2; state sem campo + path inexistente → camada 3; projeto normal → identico ao pre-feature; git ausente → camada 3 silenciosa (FR-008)
+- [x] 4.4.3 Adicionar cenario 5 (anti-eco): execucao ingerida com `project='cstk'` → `--exclude-feature cstk` exclui; `--exclude-feature cstk-minha-feature` nao exclui (US4 AC1/AC2, FR-007)
+- [x] 4.4.4 Adicionar cenario 7 (--reindex): state congelado, worktree removida, --reindex → `project='cstk'` identico ao ingest ao vivo (SC-003)
+- [x] 4.4.5 Rodar `./tests/run.sh test_recall` e confirmar zero regressoes nos cenarios pre-existentes
 
 ---
 
