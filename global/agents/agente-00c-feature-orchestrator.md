@@ -453,6 +453,15 @@ fi
 # 2. Consumir (best-effort; --exclude-feature = anti-eco com a feature
 #    corrente, FR-011). 2>/dev/null + || BLOCO="" => no-op total se vazio
 #    ou sem deps (FR-012). NUNCA propaga erro para a onda.
+#
+#    PARIDADE (contrato ingest-derivation.md §4): $SHORT_NAME e o valor correto
+#    para feature-00c porque recall.sh grava `feature = short_name` para o layout
+#    `feature-00c-state/<short>/` (coluna `feature` na knowledge.db). NAO usar
+#    `.execution.canonical_project` aqui — esse campo e o `project` (nome do
+#    repositorio), nao o `feature`, para este layout. A derivacao canonical_project
+#    so entra no EXCLUDE_FEATURE do agente-00c-orchestrator.md (layout agente-00c),
+#    onde `feature = recall_derive_canonical(state, PAP)`. Ver nota de paridade
+#    5.2.4 em agente-00c-orchestrator.md e historico bug v4.7.2.
 BLOCO=$(cstk recall --context "$TERMS" --limit 4 \
           --exclude-feature "$SHORT_NAME" --max-bytes 2000 2>/dev/null) \
   || BLOCO=""

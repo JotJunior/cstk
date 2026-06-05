@@ -179,17 +179,17 @@ Ref: spec.md §SC-001/SC-002/SC-004/SC-005, quickstart.md cenarios 1-5/7
 
 Ref: contracts/ingest-derivation.md §4, spec.md §FR-007, US4
 
-- [ ] 5.1.1 Ler `global/agents/agente-00c-orchestrator.md` — localizar o bloco do read-back loop §4.bis que define `EXCLUDE_FEATURE` (ou `--exclude-feature`)
-- [ ] 5.1.2 Atualizar a derivacao de `EXCLUDE_FEATURE` para: `jq -r '.execution.canonical_project // empty' "$SD/state.json"` com fallback para `basename "$PAP"` quando vazio — paridade com o que a ingestao produz para o layout agente-00c
-- [ ] 5.1.3 Adicionar nota inline explicando a paridade e o bug v4.7.2 como historico de motivacao
+- [x] 5.1.1 Ler `global/agents/agente-00c-orchestrator.md` — localizar o bloco do read-back loop §4.bis que define `EXCLUDE_FEATURE` (ou `--exclude-feature`)
+- [x] 5.1.2 Atualizar a derivacao de `EXCLUDE_FEATURE` para: `jq -r '.execution.canonical_project // empty' "$SD/state.json"` com fallback para `basename "$PAP"` quando vazio — paridade com o que a ingestao produz para o layout agente-00c
+- [x] 5.1.3 Adicionar nota inline explicando a paridade e o bug v4.7.2 como historico de motivacao
 
 ### 5.2 Atualizar agente-00c-feature-orchestrator.md — nota de paridade `[M]`
 
 Ref: contracts/ingest-derivation.md §4, plan.md §Project Structure
 
-- [ ] 5.2.1 Ler `global/agents/agente-00c-feature-orchestrator.md` — localizar o §4.bis e a linha que define `--exclude-feature`
-- [ ] 5.2.2 Confirmar que `--exclude-feature <short_name>` permanece inalterado (feature-00c usa `short_name` como `feature` no ingest — paridade correta)
-- [ ] 5.2.3 Adicionar nota de paridade: "O `short_name` esta alinhado com o campo `feature` na knowledge.db para execucoes feature-00c; nao usar `canonical_project` aqui (esse valor e `project`, nao `feature`, para este layout)"
+- [x] 5.2.1 Ler `global/agents/agente-00c-feature-orchestrator.md` — localizar o §4.bis e a linha que define `--exclude-feature`
+- [x] 5.2.2 Confirmar que `--exclude-feature <short_name>` permanece inalterado (feature-00c usa `short_name` como `feature` no ingest — paridade correta)
+- [x] 5.2.3 Adicionar nota de paridade: "O `short_name` esta alinhado com o campo `feature` na knowledge.db para execucoes feature-00c; nao usar `canonical_project` aqui (esse valor e `project`, nao `feature`, para este layout)"
 
 ---
 

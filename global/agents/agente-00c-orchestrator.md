@@ -450,12 +450,26 @@ persistido, nunca do que a skill "disse" ter feito.
    fi
 
    # 2. Anti-eco (FR-011): o agente-00c (projeto) NAO grava `.short_name`;
-   #    seus registros sao ingeridos com feature = NOME DO DIR DO PROJETO
-   #    (basename de target_project_path — paridade exata com recall.sh). Logo o
-   #    anti-eco do orquestrador de PROJETO exclui essa mesma feature (suas
-   #    proprias escritas). DIVERGENCIA INTENCIONAL face ao feature-00c (que
-   #    exclui $SHORT_NAME) — ver nota de paridade 5.2.4.
-   EXCLUDE_FEATURE=$(basename -- "$(jq -r '.execution.target_project_path // ""' "$SD/state.json" 2>/dev/null)" 2>/dev/null)
+   #    seus registros sao ingeridos com feature = recall_derive_canonical(state, PAP),
+   #    que por sua vez usa camada 1 = .execution.canonical_project (quando presente
+   #    — gravado pelo command pai em worktrees via feature recall-worktree-identity);
+   #    fallback camada 3 = basename(target_project_path) — comportamento pre-feature.
+   #
+   #    PARIDADE (contrato ingest-derivation.md §4): EXCLUDE_FEATURE DEVE casar com o
+   #    que recall.sh grava na coluna `feature` para este layout (agente-00c-state/).
+   #    Historico: bug v4.7.2 — agente-00c usava basename bruto enquanto recall.sh
+   #    usava basename(dirname(common-dir)) em worktrees, causando eco do proprio
+   #    conhecimento no read-back. Corrigido: preferir canonical_project quando
+   #    presente (gravado pelo command pai na deteccao de worktree).
+   #
+   #    DIVERGENCIA INTENCIONAL face ao feature-00c (que exclui $SHORT_NAME, que e o
+   #    campo `feature` para aquele layout) — ver nota de paridade 5.2.4.
+   _cp=$(jq -r '.execution.canonical_project // empty' "$SD/state.json" 2>/dev/null)
+   if [ -n "$_cp" ]; then
+     EXCLUDE_FEATURE="$_cp"
+   else
+     EXCLUDE_FEATURE=$(basename -- "$(jq -r '.execution.target_project_path // ""' "$SD/state.json" 2>/dev/null)" 2>/dev/null)
+   fi
    [ -n "$EXCLUDE_FEATURE" ] || EXCLUDE_FEATURE="unknown"
 
    # 3. Consumir (best-effort). 2>/dev/null + || BLOCO="" => no-op total se
@@ -520,7 +534,7 @@ persistido, nunca do que a skill "disse" ter feito.
    | Aspecto | feature-00c | agente-00c (projeto) |
    |---------|-------------|----------------------|
    | state-dir | `feature-00c-state/<short>/` | `agente-00c-state/` |
-   | anti-eco (`--exclude-feature`) | `$SHORT_NAME` da feature | `basename` de `target_project_path` (nome do dir do projeto; projeto nao grava short_name) |
+   | anti-eco (`--exclude-feature`) | `$SHORT_NAME` da feature | `.execution.canonical_project` (quando presente) `//` `basename` de `target_project_path`; paridade com `recall_derive_canonical` — ver contrato `ingest-derivation.md §4` e historico bug v4.7.2 |
    | `--agente` na Decisao | `agente-00c-feature-orchestrator` | `agente-00c-orchestrator` |
    | termos (primario/fallback) | aspectos / descricao | aspectos / descricao (IDENTICO) |
    | fases que disparam | specify, plan | specify, plan (IDENTICO) |
