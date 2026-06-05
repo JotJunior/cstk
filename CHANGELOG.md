@@ -5,6 +5,43 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.11.0] - 2026-06-05
+
+### Added
+
+- **Feature `recall-worktree-identity`**: identificação canônica de projeto real vs worktree de sessão no knowledge.db (schema v8). Resolve bug v4.7.2 onde ingestão de execuções em worktrees criadas por `cstk session start` registrava projeto fantasma na knowledge.db, quebrando anti-eco em `cstk recall --exclude-feature` e causando retorno de resultados de features diferentes no mesmo projeto.
+
+  **Componentes entregues**:
+  
+  - **Schema v8 (knowledge.db)**: coluna `session TEXT` adicionada em `executions` e `waves` via migração idempotente `ALTER TABLE`. FTS (`knowledge_fts`) intocada (não suporta ALTER). Campos congelados no state.json (`canonical_project`, `session_name`) ingeridos conforme layout (agente-00c vs feature-00c).
+  
+  - **Derivação 3 camadas** (`recall_derive_canonical`): resolve o nome canônico do projeto com fallback robusto:
+    1. Camada 1 (congelada): `.execution.canonical_project` do state.json (via `--canonical-project` flag do command pai, preenchida no init se worktree detectada)
+    2. Camada 2 (git ao vivo): worktree real — `git -C $PAP rev-parse --git-common-dir`, normalizar relativo→absoluto, extrair basename do dirname
+    3. Camada 3 (fallback): `basename "$TARGET_PROJECT_PATH"` (nome de fallback final)
+  
+  - **Bootstrap com detecção de worktree** (commands pai): `/feature-00c` e `/agente-00c` agora detectam se rodam numa worktree via sequência POSIX determinística **antes** de `state-rw.sh init`. Detecção congelada no state.json para garantir imutabilidade após sessão removida (FR-008).
+  
+  - **Paridade anti-eco**: both agent docs (`agente-00c-orchestrator.md` e `agente-00c-feature-orchestrator.md`) agora derivam `EXCLUDE_FEATURE` do campo `canonical_project` com fallback para basename bruto, garantindo consistência de filtragem entre ingestão (recall.sh) e consumo (read-back loop).
+  
+  - **State-rw.sh flags novas**: `--canonical-project NAME` e `--session-name NAME` opcionais no init; campos ausentes quando flags omitidas (FR-010, retro-compat).
+
+  - **Cobertura de teste**: 7 cenários novos em `tests/cstk/test_recall.sh` (roundtrip v8, fallback 3 camadas, anti-eco, --reindex), 4 testes em `test_state-rw.sh` (flags novas + validação).
+
+  **Requisitos entregues**: FR-001 até FR-010, SC-001 até SC-006 da feature spec.
+
+### Changed
+
+- **`cli/lib/recall.sh`**: `RECALL_SCHEMA_VERSION` bumped de 7 para 8; campos `session`, `canonical_project` agora ingeridos em `executions` e `waves`; derivação de `project` (agente-00c layout) e `feature` (feature-00c layout) centralizada em função `recall_derive_canonical` com fallback 3-camadas robusto; `--reindex` usa mesma derivação que ingest ao vivo (SC-003/SC-004).
+
+- **`global/skills/agente-00c-runtime/scripts/state-rw.sh` e `state-validate.sh`**: flags `--canonical-project`, `--session-name` adicionadas ao init; validação aceita campos como opcionais (retrocompat FR-010); jq merge condicional garante estado minimalista.
+
+- **Agent orchestrators**: `agente-00c-orchestrator.md` e `agente-00c-feature-orchestrator.md` atualizados para derivar `EXCLUDE_FEATURE` com fallback canônico, resolvendo paridade anti-eco após congelamento do projeto em state.json (contrato ingest-derivation.md §4).
+
+### Fixed
+
+- **Bug v4.7.2 revisitado**: filtragem de anti-eco `--exclude-feature` (para impedir retorno de resultados da própria execução ingerida) agora usa coluna SQL `project` derivada por 3 camadas em vez de basename bruto, eliminando falsos-positivos de worktrees removidas cujo nome coincida com o nome da feature de outra execução real.
+
 ## [5.10.2] - 2026-06-04
 
 ### Fixed
@@ -3287,6 +3324,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.11.0]: https://github.com/JotJunior/cstk/releases/tag/v5.11.0
 [5.10.2]: https://github.com/JotJunior/cstk/releases/tag/v5.10.2
 [5.10.1]: https://github.com/JotJunior/cstk/releases/tag/v5.10.1
 [5.10.0]: https://github.com/JotJunior/cstk/releases/tag/v5.10.0
