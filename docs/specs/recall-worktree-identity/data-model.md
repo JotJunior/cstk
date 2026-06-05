@@ -75,7 +75,7 @@ de migracao v7 existente (DROP one-time) e ja renascem com o DDL v8.
 Funcao unica de derivacao (uma fonte de verdade, reutilizada por
 `recall_ingest_state_json`, `recall_ingest_memories` e `--reindex`):
 
-```
+```text
 derive_canonical(state.json, target_project_path):
   1. .execution.canonical_project (presente e nao-vazio)  → usa  [FR-003]
   2. senao, se <target_project_path>/.git e ARQUIVO

@@ -50,7 +50,7 @@ liquida reduzida. PASS mantido em todos os principios.
 
 ### Documentation (this feature)
 
-```
+```text
 docs/specs/recall-worktree-identity/
 ├── spec.md              # Spec + Clarifications C1-C5 (C5 com erratum — ver research Decision 4)
 ├── plan.md              # Este arquivo
@@ -64,7 +64,7 @@ docs/specs/recall-worktree-identity/
 
 ### Source Code (repository root — paths reais conferidos)
 
-```
+```text
 cli/lib/recall.sh                                  # (A) derivacao 3 camadas, coluna session, v8
 global/skills/agente-00c-runtime/scripts/
 ├── state-rw.sh                                    # (B) flags --canonical-project/--session-name no init

@@ -6,7 +6,7 @@
 
 ## Assinatura estendida
 
-```
+```text
 state-rw.sh init --state-dir DIR --projeto-alvo-path PATH --descricao TEXT
                  [--execucao-id ID] [--stack-json JSON] [--whitelist-urls JSON]
                  [--short-name NAME --briefing-path P --briefing-sha256 H
@@ -38,7 +38,7 @@ Validacao:
 Sequencia POSIX no `/feature-00c` e `/agente-00c` ANTES do init (toda falha =
 fallback silencioso, flags omitidas — FR-008):
 
-```
+```sh
 1. PAP ja realpath-resolvido (fluxo existente).
 2. Se [ -f "$PAP/.git" ]   (worktree: .git e ARQUIVO):
    a. COMMON=$(git -C "$PAP" rev-parse --git-common-dir 2>/dev/null) || COMMON=""

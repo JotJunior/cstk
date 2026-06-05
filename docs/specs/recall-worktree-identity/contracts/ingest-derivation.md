@@ -9,7 +9,7 @@ confinamento de deps preservado; entrega via `cstk self-update`)
 
 ## 1. Funcao de derivacao canonica (nova, unica fonte de verdade)
 
-```
+```text
 recall_derive_canonical STATE_JSON_PATH TARGET_PROJECT_PATH -> stdout: nome
 ```
 
