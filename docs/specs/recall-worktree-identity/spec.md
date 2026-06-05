@@ -187,3 +187,25 @@ os cenarios principais de correcao de atribuicao de projeto.
 ## Clarifications
 
 > Nenhum item `[NEEDS CLARIFICATION]` — todos os pontos criticos foram definidos pelo operador na descricao da feature. Abordagem B+A fallback, esquema da coluna `session`, requisitos de anti-eco e compatibilidade retroativa estao especificados acima.
+
+### Session 2026-06-05
+
+**C1 — SC-002: semantica de `--project` pos-feature (confirmacao)**
+
+A flag `--project` em `cstk recall` filtra pela coluna `project` na knowledge.db. Pos-feature, `project` sera sempre o valor canonico (`canonical_project`). O criterio de SC-002 e coerente: `cstk recall "query" --project cstk` retornara execucoes de worktrees `cstk-*` porque todas terao `project='cstk'` apos a correcao de proveniencia. Nenhuma mudanca na spec.
+
+**C2 — US5: Independent Test precisado (documentacao-only intencional)**
+
+O critério de US5 Independent Test é verificar que existe decisao explicitamente documentada no spec/plan sobre o tratamento de memorias de worktree — nao um teste automatizado de comportamento. US5 tem prioridade P4 e o operador deixou o escopo minimo como "documentar o comportamento". O teste aceitavel e: "spec/plan contém secao explicita descrevendo se memorias sao atribuidas ao projeto canonico OU mantidas por path de sessao, sem silencio sobre o comportamento". Testes de regressao automatizados para memorias de worktree sao opcionais e podem ser adicionados ao plan se a implementacao os justificar.
+
+**C3 — FR-002: mecanismo de derivacao de `session_name` no bootstrap**
+
+O `cstk session start` NAO injeta `session_name` no state.json dos orquestradores (campo inexistente pre-feature). A derivacao de `session_name` ocorre no **command pai** (`/feature-00c` ou `/agente-00c`) no momento do init: o command detecta se `target_project_path` é worktree (`.git` e arquivo), resolve o projeto canonico via `git rev-parse --git-common-dir`, e extrai o nome da sessao como sufixo apos `<repo>-` no basename do path. Esses valores sao passados como flags opcionais `--canonical-project` e `--session-name` ao `state-rw.sh init` (que os grava em `execution.canonical_project` e `execution.session_name`). FR-002 deve ser lido como: "o command pai DEVE passar esses campos ao init quando detectar worktree".
+
+**C4 — Versao atual do schema confirmada como v7**
+
+`cli/lib/recall.sh` define `RECALL_SCHEMA_VERSION=7` (schema EN, feature `schema-en-migration`). O bump desta feature sera v7→v8, adicionando coluna `session` via `ALTER TABLE ADD COLUMN` idempotente. Nenhuma mudanca na spec.
+
+**C5 — state.json sobrevive apos `cstk session end`**
+
+`cstk session end` executa `git worktree remove` sobre o path da worktree. O `.claude/agente-00c-state/` e `.claude/feature-00c-state/` estao listados em `_CSTK_SESSION_CLAUDE_EXCLUDES` e NAO sao copiados para a worktree no `session start` — o state.json reside no projeto principal (`.claude/` do repo raiz) e persiste apos a remocao da worktree. Isso confirma que `--reindex` sobre o state.json congelado com `canonical_project` funciona corretamente mesmo pos-`session end`. Nenhuma mudanca na spec.
