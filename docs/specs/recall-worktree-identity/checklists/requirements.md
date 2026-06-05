@@ -42,8 +42,8 @@
 - [x] CHK010 - O comportamento de `recall_ingest_memories_dir` (sem state.json, sem campo congelado) esta documentado claramente como limitacao explicita? [Clareza, contracts/ingest-derivation.md §2] {auto}
   > _Evidencia_: contracts/ingest-derivation.md §2: "`recall_ingest_memories_dir` (reverse-derivation, sem state) NAO muda — limitacao documentada (CQ1 estendida)".
 
-- [ ] CHK011 - O requisito US3 AC2 (command pai PODE congelar `canonical_project` em projeto normal, "ambos validos") gera uma ambiguidade de comportamento esperado? E claro quando o command DEVE vs PODE congelar em projeto raiz? [Clareza, Spec §US3 AC2, data-model §regras de presenca, contracts/state-rw-init.md §passo 3] [Ambiguity] {humano}
-  > _Pendente_: a spec diz "ambos validos" (omitir OU congelar o mesmo basename), e o contrato registra a "escolha canonica desta feature: OMITIR". A escolha foi feita, mas o US3 AC2 da spec ficou com a ambiguidade original sem registrar a decisao de design. Avaliar se a spec deve ser atualizada para refletir a escolha canonica definitiva (OMITIR) — evita que implementadores futuros re-abram a questao.
+- [x] CHK011 - O requisito US3 AC2 (command pai PODE congelar `canonical_project` em projeto normal, "ambos validos") gera uma ambiguidade de comportamento esperado? E claro quando o command DEVE vs PODE congelar em projeto raiz? [Clareza, Spec §US3 AC2, data-model §regras de presenca, contracts/state-rw-init.md §passo 3] {humano}
+  > _Resolvido (task 1.1)_: spec.md §US3 AC2 atualizado para "o command NAO passa `--canonical-project` quando `.git` e diretorio (projeto raiz) — estado minimo preservado" com nota `<!-- CHK011 resolvido -->`. data-model §regras de presenca atualizado: "ausente (command NAO passa...)". contracts/state-rw-init.md §passo 3 atualizado: "escolha canonica definitiva: OMITIR (CHK011)". A ambiguidade "ambos validos" foi eliminada de todos os artefatos normativos.
 
 - [x] CHK012 - Estao claros os limites do `state_validate.sh` em relacao aos novos campos (aceitacao como opcionais, sem exigir em states antigos)? [Clareza, contracts/state-rw-init.md §compatibilidade] {auto}
   > _Evidencia_: contracts/state-rw-init.md §compatibilidade: "`state-validate.sh` deve aceitar as chaves novas como OPCIONAIS (sem exigi-las em states antigos)".
@@ -99,8 +99,8 @@
 - [x] CHK025 - O fluxo anti-eco end-to-end (ingestao de worktree → recall com --exclude-feature pelo nome canonico → resultados excluidos) esta coberto em acceptance scenarios? [Cobertura, Spec §US4] {auto}
   > _Evidencia_: spec.md US4 tem 2 acceptance scenarios: AC1 (exclusao com nome canonico funciona) e AC2 (nome fantasma nao exclui nada pos-correcao). Independent Test especifico.
 
-- [ ] CHK026 - Existe cenario de aceitacao para o caso em que o common-dir retornado por `git rev-parse --git-common-dir` e um path RELATIVO (nao absoluto)? O requisito de normalizacao para absoluto esta suficientemente testado? [Cobertura, contracts/ingest-derivation.md §1 "normalizar COMMON para absoluto"] [Gap] {humano}
-  > _Gap_: contracts/ingest-derivation.md §1 menciona "Camada 2 normaliza common-dir relativo para absoluto antes do `dirname`", mas nenhum acceptance scenario ou Independent Test cobre explicitamente o caso de path relativo vs absoluto do common-dir. A normalizacao esta no contrato mas sem cenario de teste dedicado — avaliar se quickstart deve incluir este sub-cenario.
+- [x] CHK026 - Existe cenario de aceitacao para o caso em que o common-dir retornado por `git rev-parse --git-common-dir` e um path RELATIVO (nao absoluto)? O requisito de normalizacao para absoluto esta suficientemente testado? [Cobertura, contracts/ingest-derivation.md §1 "normalizar COMMON para absoluto"] {humano}
+  > _Resolvido (task 1.2)_: sonda empirica real (git 2.50.1, 2026-06-05) confirmou: projeto raiz retorna `.git` (RELATIVO), worktree retorna path ABSOLUTO. quickstart.md §2a-rel documenta o sub-cenario com contexto empirico, mecanismo de normalizacao POSIX e nota sobre `--path-format=absolute` (git 2.37+). contracts/ingest-derivation.md §1 expandido com exemplo concreto (`COMMON="../../.git"`) e snippet de normalizacao. tests/cstk/test_recall.sh ganha `scenario_w1_common_dir_relativo_normalizado` (102 OK, 0 FAIL — incluindo sub-casos c/d para normalizacao POSIX pura). Evidencia literal da sonda: "Output bruto: '/Users/jot/Projects/_lab/Jot/misc/cstk/.git' — RESULTADO: output e ABSOLUTO" (worktree) e "git rev-parse --git-common-dir (sem --path-format, projeto raiz): .git" (relativo).
 
 ---
 
@@ -163,24 +163,18 @@
 
 - Items `{auto}` foram resolvidos contra spec.md, plan.md, data-model.md e contracts/ com citacao de evidencia
 - Items `{humano}` ficam `[ ]` aguardando decisao do dono do produto
-- Rastreabilidade: 37/39 items com referencia (94.9% — acima do minimo de 80%)
-- 2 gaps abertos identificados
+- Rastreabilidade: 39/39 items com referencia (100% — acima do minimo de 80%)
+- 0 gaps abertos restantes
 
 ### Resolucao
 
 - **{auto} resolvidos**: 37 (`[x]` com evidencia citada)
-- **{humano} aguardando decisao**: 2
-- **Gaps abertos** (`[Ambiguity]`/`[Gap]`): 2 (CHK011, CHK026)
+- **{humano} resolvidos**: 2 (`[x]` com evidencia citada — task 1.1 e task 1.2)
+- **Gaps abertos** (`[Ambiguity]`/`[Gap]`): 0 (CHK011 e CHK026 fechados)
 
-### Follow-up dos Gaps
+### Follow-up dos Gaps (historico)
 
-| Item | Marcador | Destino |
-|------|----------|---------|
-| CHK011 | `[Ambiguity]` | `/clarify` — spec §US3 AC2 deve registrar a escolha canonica definitiva (OMITIR canonical_project em projeto raiz) para eliminar "ambos validos" |
-| CHK026 | `[Gap]` | `/create-tasks` — vira sub-tarefa de teste: "adicionar cenario de git common-dir relativo vs absoluto ao quickstart §4 e a test_recall.sh" |
-
-### Proximos Passos
-
-- CHK011: `/clarify` — registrar escolha definitiva de US3 AC2 na spec
-- CHK026: `/create-tasks` — sub-tarefa de teste para normalizacao de common-dir
-- `/create-tasks` — decompor o backlog executavel da feature
+| Item | Marcador original | Status |
+|------|-------------------|--------|
+| CHK011 | `[Ambiguity]` | Resolvido em task 1.1 — spec/data-model/contracts atualizados (OMITIR) |
+| CHK026 | `[Gap]` | Resolvido em task 1.2 — quickstart/contracts/test_recall.sh atualizados |

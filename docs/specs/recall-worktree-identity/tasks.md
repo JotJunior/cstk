@@ -44,10 +44,10 @@ em projeto raiz), mas o contrato `state-rw-init.md §passo 3` ja registrou a
 escolha definitiva: OMITIR. A spec precisa refletir essa decisao para evitar
 que implementadores futuros reabram a questao.
 
-- [ ] 1.1.1 Ler US3 AC2 em spec.md e o §passo 3 de contracts/state-rw-init.md para confirmar a escolha canonica (OMITIR)
-- [ ] 1.1.2 Editar spec.md §US3 AC2: substituir "ambos validos" pela frase definitiva — "o command NAO deve passar `--canonical-project` quando `.git` e diretorio (projeto raiz); estado minimo preservado" — com nota inline `<!-- CHK011 resolvido -->`
-- [ ] 1.1.3 Editar data-model.md §Regras de presenca (linha "Projeto raiz normal"): alinhar ao mesmo texto definitivo
-- [ ] 1.1.4 Verificar que nenhuma outra occorrencia de "ambos validos" permanece nos artefatos (`grep -r "ambos validos" docs/specs/recall-worktree-identity/`)
+- [x] 1.1.1 Ler US3 AC2 em spec.md e o §passo 3 de contracts/state-rw-init.md para confirmar a escolha canonica (OMITIR)
+- [x] 1.1.2 Editar spec.md §US3 AC2: substituir "ambos validos" pela frase definitiva — "o command NAO deve passar `--canonical-project` quando `.git` e diretorio (projeto raiz); estado minimo preservado" — com nota inline `<!-- CHK011 resolvido -->`
+- [x] 1.1.3 Editar data-model.md §Regras de presenca (linha "Projeto raiz normal"): alinhar ao mesmo texto definitivo
+- [x] 1.1.4 Verificar que nenhuma outra occorrencia de "ambos validos" permanece nos artefatos (`grep -r "ambos validos" docs/specs/recall-worktree-identity/`)
 
 ### 1.2 Resolver CHK026 — Cenario git common-dir relativo vs absoluto `[A]`
 
@@ -58,10 +58,10 @@ relativo para absoluto antes do `dirname`", mas nenhum cenario de teste cobre
 explicitamente esse sub-caso. Tarefa: adicionar o sub-cenario ao quickstart
 e garantir que `tests/cstk/test_recall.sh` o cubra.
 
-- [ ] 1.2.1 Editar quickstart.md §Cenario 2a: adicionar sub-cenario "2a-rel — common-dir retornado como path RELATIVO" (ex: `../../../.git`) e documentar a normalizacao esperada para absoluto antes do `dirname`
-- [ ] 1.2.2 Documentar a normalizacao em contracts/ingest-derivation.md §1 com exemplo concreto: `COMMON=../../.git → PAP/$COMMON → realpath → dirname`
-- [ ] 1.2.3 Adicionar cenario de teste em `tests/cstk/test_recall.sh` cobrindo o sub-caso de common-dir relativo (fixture com `.git` arquivo cujo conteudo aponta para path relativo)
-- [ ] 1.2.4 Verificar que o cenario passa com exit 0 e `project` canonico correto (`./tests/run.sh test_recall`)
+- [x] 1.2.1 Editar quickstart.md §Cenario 2a: adicionar sub-cenario "2a-rel — common-dir retornado como path RELATIVO" (ex: `../../../.git`) e documentar a normalizacao esperada para absoluto antes do `dirname`
+- [x] 1.2.2 Documentar a normalizacao em contracts/ingest-derivation.md §1 com exemplo concreto: `COMMON=../../.git → PAP/$COMMON → realpath → dirname`
+- [x] 1.2.3 Adicionar cenario de teste em `tests/cstk/test_recall.sh` cobrindo o sub-caso de common-dir relativo (fixture com `.git` arquivo cujo conteudo aponta para path relativo)
+- [x] 1.2.4 Verificar que o cenario passa com exit 0 e `project` canonico correto (`./tests/run.sh test_recall`)
 
 ---
 

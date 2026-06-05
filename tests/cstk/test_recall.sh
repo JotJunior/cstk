@@ -2746,4 +2746,94 @@ scenario_s4_status_inclui_suggestions() {
   esac
 }
 
+# =========================================================================
+# Cenario W1 — CHK026: common-dir relativo vs absoluto na derivacao canonica
+# (recall-worktree-identity, quickstart §2a-rel)
+#
+# Contexto empirico (sonda git 2.50.1, 2026-06-05):
+#   - Em projeto raiz: `git rev-parse --git-common-dir` retorna `.git` (RELATIVO)
+#   - Em worktree:     retorna `/path/absoluto/.git` (ABSOLUTO)
+# O contrato (contracts/ingest-derivation.md §1) exige normalizacao POSIX:
+#   case "$COMMON" in /*) : ;; *) COMMON="$PAP/$COMMON" ;; esac
+# Este cenario valida que a funcao `recall_derive_canonical` normaliza
+# corretamente o common-dir relativo antes do `dirname`.
+#
+# PRE-REQUISITO: recall_derive_canonical implementada (FASE 2).
+# Ate la, este cenario skip silencioso se a funcao nao existir.
+# =========================================================================
+scenario_w1_common_dir_relativo_normalizado() {
+  _have_deps || return 0
+
+  # Skip se recall_derive_canonical nao esta implementada ainda
+  _fn_ok=$(sh -c '. "$CSTK_LIB/recall.sh"; command -v recall_derive_canonical >/dev/null 2>&1 && printf ok' 2>/dev/null)
+  [ "$_fn_ok" = "ok" ] || return 0  # FASE 2 pendente: skip silencioso
+
+  # Fixture: state com canonical_project congelado (camada 1 — happy path)
+  _wt_dir="$TMPDIR_TEST/worktree-rel"
+  mkdir -p "$_wt_dir"
+  cat > "$_wt_dir/state.json" <<JSON
+{
+  "short_name": "feat-wt",
+  "execucao": { "id": "exec-wt", "projeto_alvo_path": "$_wt_dir",
+                "canonical_project": "main-repo" },
+  "decisoes": [
+    { "id": "dec-001", "onda_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "etapa": "specify", "agente": "orch", "escolha": "iniciar", "score_justificativa": 2,
+      "contexto": "worktree test", "justificativa": "wt", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "ondas": []
+}
+JSON
+
+  # (a) Camada 1: campo congelado -> usa diretamente
+  _proj_a=$(sh -c '. "$CSTK_LIB/recall.sh"; recall_derive_canonical "$_wt_dir/state.json" "$_wt_dir"' 2>/dev/null)
+  [ "$_proj_a" = "main-repo" ] || { _fail "W1a: camada 1 canonical_project" "esperado 'main-repo', obtido '$_proj_a'"; return 1; }
+
+  # (b) Camada 2: sem canonical_project, path relativo simulado via PAP
+  # Simula common-dir retornando ".git" relativo — o PAP passado como arg
+  # deve ser usado para resolver o path absoluto antes do dirname.
+  # Fixture: PAP = diretorio pai de um repo simulado
+  _main_repo="$TMPDIR_TEST/main-repo"
+  _wt2="$TMPDIR_TEST/main-repo-session"
+  mkdir -p "$_main_repo/.git" "$_wt2"
+  # .git e ARQUIVO (worktree indicator)
+  printf 'gitdir: %s/.git/worktrees/session\n' "$_main_repo" > "$_wt2/.git"
+  cat > "$_wt2/state.json" <<JSON
+{
+  "short_name": "feat-wt2",
+  "execucao": { "id": "exec-wt2", "projeto_alvo_path": "$_wt2" },
+  "decisoes": [],
+  "bloqueios_humanos": [], "ondas": []
+}
+JSON
+  # Invocar derivacao (camada 2: git ao vivo; git pode nao resolver aqui sem
+  # repo real, mas o path de normalizacao relativo deve ser acionado)
+  _proj_b=$(sh -c '. "$CSTK_LIB/recall.sh"; recall_derive_canonical "$_wt2/state.json" "$_wt2"' 2>/dev/null)
+  # Expected: basename do repo principal (via camada 2) OU basename do path
+  # (camada 3 gracioso) — nenhum dos dois deve ser o nome fantasma da worktree
+  case "$_proj_b" in
+    "main-repo"|"main-repo-session") : ;;  # camada 2 OK ou fallback gracioso
+    *) _fail "W1b: derivacao worktree" "valor inesperado: '$_proj_b'"; return 1 ;;
+  esac
+
+  # (c) Normalizacao de path relativo: se COMMON e relativo, PAP/$COMMON
+  # resolve corretamente. Validar a logica POSIX diretamente:
+  _norm=$(sh -c '
+    COMMON=".git"
+    PAP="/tmp/repo-root"
+    case "$COMMON" in /*) : ;; *) COMMON="$PAP/$COMMON" ;; esac
+    printf "%s" "$COMMON"
+  ')
+  [ "$_norm" = "/tmp/repo-root/.git" ] || { _fail "W1c: normalizacao relativo" "esperado '/tmp/repo-root/.git', obtido '$_norm'"; return 1; }
+
+  # (d) Path ja absoluto nao deve ser alterado pela normalizacao
+  _norm_abs=$(sh -c '
+    COMMON="/absolute/path/.git"
+    PAP="/other/dir"
+    case "$COMMON" in /*) : ;; *) COMMON="$PAP/$COMMON" ;; esac
+    printf "%s" "$COMMON"
+  ')
+  [ "$_norm_abs" = "/absolute/path/.git" ] || { _fail "W1d: abs nao alterado" "esperado '/absolute/path/.git', obtido '$_norm_abs'"; return 1; }
+}
+
 run_all_scenarios

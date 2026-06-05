@@ -85,7 +85,7 @@ verificar presenca dos campos `execution.canonical_project` e `execution.session
 
 1. **Given** o comando `feature-00c` (ou `agente-00c`) rodando em path de worktree `<parent>/<repo>-<sessao>`, **When** o init do state.json executa, **Then** `execution.canonical_project` contem o basename do repo raiz (ex: `cstk`) e `execution.session_name` contem o nome da sessao (ex: `minha-feature`).
 
-2. **Given** o init rodando em projeto nao-worktree, **When** o init executa, **Then** `execution.canonical_project` contem o mesmo valor que `basename(target_project_path)` e `execution.session_name` fica ausente ou vazio.
+2. **Given** o init rodando em projeto nao-worktree (`.git` e diretorio), **When** o init executa, **Then** o command NAO passa `--canonical-project` ao `state-rw.sh init` — estado minimo preservado; `execution.canonical_project` fica **ausente** no state.json. <!-- CHK011 resolvido: escolha canonica = OMITIR em projeto raiz; congelar o mesmo basename seria redundante e cria chave desnecessaria -->
 
 3. **Given** `.git` sendo diretorio (projeto raiz), **When** o bootstrap detecta que nao e worktree, **Then** nenhum overhead de deteccao e visivel para o operador — deteccao e silenciosa e nao-bloqueante.
 

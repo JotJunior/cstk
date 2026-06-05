@@ -47,9 +47,9 @@ fallback silencioso, flags omitidas — FR-008):
    d. WTBASE=$(basename "$PAP")
       se WTBASE comeca com "${CANONICAL}-": SESSION="${WTBASE#"${CANONICAL}"-}"
       senao: SESSION=""
-3. Se [ -d "$PAP/.git" ] (projeto raiz): flags omitidas (ou
-   --canonical-project "$(basename "$PAP")" — ambos validos por US3 AC2;
-   escolha canonica desta feature: OMITIR, mantendo o state minimo).
+3. Se [ -d "$PAP/.git" ] (projeto raiz): flags omitidas — escolha canonica
+   definitiva desta feature: OMITIR (state minimo preservado; CHK011). Nao
+   passar `--canonical-project` mesmo que o valor seria identico ao basename.
 4. Passar --canonical-project/--session-name ao init somente quando nao-vazios.
 ```
 

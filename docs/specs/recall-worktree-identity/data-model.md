@@ -45,7 +45,7 @@ da convencao de naming gera `canonical_project` sem `session_name`.
 
 | Cenario | `canonical_project` | `session_name` |
 |---------|--------------------|----------------|
-| Projeto raiz normal (`.git` dir) | ausente OU igual ao basename (command decide; ambos validos por US3 AC2) | ausente |
+| Projeto raiz normal (`.git` dir) | ausente (command NAO passa `--canonical-project`; escolha canonica desta feature = OMITIR — CHK011) | ausente |
 | Worktree `cstk session` (`<repo>-<name>`) | basename do repo raiz (ex: `cstk`) | `<name>` (ex: `minha-feature`) |
 | Worktree fora da convencao de naming | basename do repo raiz | ausente |
 | git indisponivel/falha na deteccao (FR-008) | ausente (fallback silencioso) | ausente |

@@ -34,6 +34,32 @@ em `waves` retorna `session='minha-feature'` (SC-001).
 1. State SEM `canonical_project`, `target_project_path` apontando para worktree fake com `.git` ARQUIVO valido apontando para repo real criado com `git worktree add`.
 2. Ingerir. **Expected**: `project` = basename do repo principal (resolucao git ao vivo).
 
+**2a-rel. Sub-cenario: common-dir retornado como path RELATIVO** (CHK026):
+
+> **Contexto empirico** (sonda git 2.50.1 em 2026-06-05): `git rev-parse --git-common-dir`
+> retorna `.git` (RELATIVO) quando chamado NO projeto raiz, e um path ABSOLUTO quando
+> chamado de uma worktree. Portanto o sub-caso de common-dir relativo ocorre quando
+> a camada 2 e invocada com `target_project_path` sendo o proprio projeto raiz (nao
+> deveria chegar aqui, mas o contrato garante o fallback). Na pratica, worktrees reais
+> sempre retornam absoluto — mas a normalizacao defensiva e necessaria para versoes
+> antigas de git ou caminhos inesperados.
+
+Normalizacao esperada: `COMMON="../../.git"` → `"$PAP/$COMMON"` → `realpath` → `dirname`
+
+1. State SEM `canonical_project`, `target_project_path=/tmp/rwi/wt-rel`, com `.git` sendo
+   ARQUIVO contendo `gitdir: ../../main-repo/.git/worktrees/wt-rel` (path relativo
+   simulando old git behavior).
+2. Criar `/tmp/rwi/main-repo/.git/worktrees/wt-rel/gitdir` e `/tmp/rwi/main-repo/.git`
+   como diretorio (fixture de repo raiz simulado).
+3. Invocar a funcao `recall_derive_canonical` com `COMMON` = path relativo.
+   Normalizacao deve prefixar `"$PAP/"` e resolver antes do `dirname`.
+4. **Expected**: `project='main-repo'` (basename do diretorio pai do `.git` COMUM, resolvido
+   via normalizacao absoluta). Exit 0.
+
+Nota: `--path-format=absolute` (git 2.37+) pode ser usado em vez da normalizacao manual
+quando disponivel, mas o contrato usa a normalizacao POSIX (`"$PAP/$COMMON"`) como via
+portatil — nao depende de versao minima de git (FR-008).
+
 **2b. Camada 3 (state antigo + worktree removida)**:
 1. State SEM `canonical_project`, `target_project_path=/tmp/rwi/gone-cstk-x` (inexistente).
 2. Ingerir. **Expected**: `project='gone-cstk-x'` (basename — comportamento anterior, sem erro, exit 0).

@@ -27,7 +27,25 @@ Garantias:
   (amendment 1.1.0 — condicoes (a)(b)(c) documentadas em research Decision 9).
 - **Read-only sobre o state.json** (apenas jq de leitura — invariante da
   feature cstk-knowledge-db preservada).
-- Camada 2 normaliza common-dir relativo para absoluto antes do `dirname`.
+- **Camada 2 normaliza common-dir relativo para absoluto antes do `dirname`**
+  (CHK026): `git rev-parse --git-common-dir` pode retornar path RELATIVO (ex:
+  `.git`) quando chamado no projeto raiz, ou ABSOLUTO quando chamado em
+  worktree — depende da versao do git e do cwd. A normalizacao obrigatoria e:
+  ```sh
+  COMMON=$(git -C "$PAP" rev-parse --git-common-dir 2>/dev/null) || COMMON=""
+  # Se relativo, prefixar com $PAP para obter absoluto (POSIX portatil)
+  case "$COMMON" in
+    /*) : ;;  # ja absoluto
+    *)  COMMON="$PAP/$COMMON" ;;  # relativo → prefixar
+  esac
+  CANONICAL=$(basename "$(dirname "$COMMON")")
+  ```
+  Exemplo concreto: `COMMON="../../.git"` com `PAP="/tmp/wt-dir"` →
+  `COMMON="/tmp/wt-dir/../../.git"` → `dirname` → `/tmp` → `basename` = `tmp`
+  (nao ideal, mas determinístico; na pratica git-em-worktree retorna absoluto
+  — sonda empirica git 2.50.1: worktree → absoluto, projeto-raiz → relativo).
+  Alternativa: `--path-format=absolute` (git 2.37+) normaliza direto, mas cria
+  dep de versao minima; a normalizacao manual POSIX acima e a via portatil.
 
 ## 2. Aplicacao por coluna e layout
 
