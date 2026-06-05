@@ -74,21 +74,21 @@ e garantir que `tests/cstk/test_recall.sh` o cubra.
 
 Ref: spec.md §FR-001/FR-002, contracts/state-rw-init.md §Assinatura estendida
 
-- [ ] 2.1.1 Ler `global/skills/agente-00c-runtime/scripts/state-rw.sh` — localizar a funcao `_sr_cmd_init` e o parser de flags (`--projeto-alvo-path`, `--execucao-id`, etc.)
-- [ ] 2.1.2 Adicionar tratamento de `--canonical-project NAME` ao parser: gravar em variavel local; quando nao-vazio, incluir `.execution.canonical_project` no JSON de init via `jq`
-- [ ] 2.1.3 Adicionar tratamento de `--session-name NAME` ao parser: gravar em variavel local; incluir `.execution.session_name` no JSON quando nao-vazio
-- [ ] 2.1.4 Implementar validacao: `--session-name` SEM `--canonical-project` → exit 2 com mensagem de uso em stderr (contrato §error case)
-- [ ] 2.1.5 Garantir que chamadas existentes (sem as flags) permanecem 100% identicas — nenhuma chave nova aparece no JSON quando flags omitidas (FR-010)
-- [ ] 2.1.6 Escrever testes em `tests/test_state-rw.sh` cobrindo os 4 cenarios do contrato (tabela §Comportamento): init com ambas as flags, sem flags, session-sem-canonical, git-ausente/fallback (ver memoria `feedback_test_printf_octal` para bytes crus em fixtures)
-- [ ] 2.1.7 Rodar `./tests/run.sh test_state-rw` e confirmar zero regressoes
+- [x] 2.1.1 Ler `global/skills/agente-00c-runtime/scripts/state-rw.sh` — localizar a funcao `_sr_cmd_init` e o parser de flags (`--projeto-alvo-path`, `--execucao-id`, etc.)
+- [x] 2.1.2 Adicionar tratamento de `--canonical-project NAME` ao parser: gravar em variavel local; quando nao-vazio, incluir `.execution.canonical_project` no JSON de init via `jq`
+- [x] 2.1.3 Adicionar tratamento de `--session-name NAME` ao parser: gravar em variavel local; incluir `.execution.session_name` no JSON quando nao-vazio
+- [x] 2.1.4 Implementar validacao: `--session-name` SEM `--canonical-project` → exit 2 com mensagem de uso em stderr (contrato §error case)
+- [x] 2.1.5 Garantir que chamadas existentes (sem as flags) permanecem 100% identicas — nenhuma chave nova aparece no JSON quando flags omitidas (FR-010)
+- [x] 2.1.6 Escrever testes em `tests/test_state-rw.sh` cobrindo os 4 cenarios do contrato (tabela §Comportamento): init com ambas as flags, sem flags, session-sem-canonical, git-ausente/fallback (ver memoria `feedback_test_printf_octal` para bytes crus em fixtures)
+- [x] 2.1.7 Rodar `./tests/run.sh test_state-rw` e confirmar zero regressoes
 
 ### 2.2 Atualizar `state-validate.sh` para aceitar campos novos como opcionais `[A]`
 
 Ref: contracts/state-rw-init.md §Compatibilidade
 
-- [ ] 2.2.1 Ler `global/skills/agente-00c-runtime/scripts/state-validate.sh` e identificar onde valida a schema do `execution`
-- [ ] 2.2.2 Garantir que `canonical_project` e `session_name` sao aceitos mas nao exigidos (opcionais) — states pre-feature continuam validos
-- [ ] 2.2.3 Adicionar teste em `tests/test_state-rw.sh` ou equivalente: state com campos novos passa a validacao; state sem eles tambem passa
+- [x] 2.2.1 Ler `global/skills/agente-00c-runtime/scripts/state-validate.sh` e identificar onde valida a schema do `execution`
+- [x] 2.2.2 Garantir que `canonical_project` e `session_name` sao aceitos mas nao exigidos (opcionais) — states pre-feature continuam validos
+- [x] 2.2.3 Adicionar teste em `tests/test_state-rw.sh` ou equivalente: state com campos novos passa a validacao; state sem eles tambem passa
 
 ---
 

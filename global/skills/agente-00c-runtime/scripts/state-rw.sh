@@ -14,6 +14,7 @@
 #   state-rw.sh init  --state-dir DIR --execucao-id ID
 #                     --projeto-alvo-path PATH --descricao TEXT
 #                     [--stack-json TEXT] [--whitelist-urls JSON-ARRAY]
+#                     [--canonical-project NAME] [--session-name NAME]
 #                     — modo PROJETO (agente-00c): cria state.json
 #                       (current_stage="briefing") + sha256 + state-history/
 #   state-rw.sh init  --state-dir DIR --short-name NAME
@@ -22,10 +23,17 @@
 #                     --constitution-path P --constitution-sha256 S
 #                     --constitution-version V [--key-aspects JSON-ARRAY]
 #                     [--execucao-id ID] [--stack-json TEXT] [--whitelist-urls JSON]
+#                     [--canonical-project NAME] [--session-name NAME]
 #                     — modo FEATURE (feature-00c): emite schema de feature
 #                       (short_name + prerequisites + current_stage="specify")
 #                       numa unica chamada deterministica. execucao-id
 #                       auto-derivado (feat-<short>-<ts>) se omitido.
+#                     Flags de proveniencia canonica (feature recall-worktree-identity):
+#                       --canonical-project NAME  — quando nao-vazio, grava
+#                         .execution.canonical_project no JSON. Omitido = chave ausente.
+#                       --session-name NAME — quando nao-vazio, grava
+#                         .execution.session_name no JSON. Omitido = chave ausente.
+#                         Requer --canonical-project (exit 2 se omitido).
 #   state-rw.sh read  --state-dir DIR
 #                     — imprime conteudo atual de state.json em stdout
 #   state-rw.sh write --state-dir DIR
@@ -294,27 +302,39 @@ _sr_cmd_init() {
   _ct_sha=""
   _ct_ver=""
   _key_aspects="[]"
+  # Flags de proveniencia canonica (feature recall-worktree-identity, FR-001/FR-002).
+  # Quando nao-vazias, gravam .execution.canonical_project / .execution.session_name.
+  # Quando omitidas, as chaves ficam AUSENTES (sem null) — FR-010.
+  _canonical_project=""
+  _session_name=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --state-dir)            _sd=$2;          shift 2 ;;
-      --execucao-id)          _ei=$2;          shift 2 ;;
-      --projeto-alvo-path)    _pap=$2;         shift 2 ;;
-      --descricao)            _desc=$2;        shift 2 ;;
-      --stack-json)           _stack=$2;       shift 2 ;;
-      --whitelist-urls)       _whitelist=$2;   shift 2 ;;
-      --short-name)           _short=$2;       shift 2 ;;
-      --briefing-path)        _br_path=$2;     shift 2 ;;
-      --briefing-sha256)      _br_sha=$2;      shift 2 ;;
-      --constitution-path)    _ct_path=$2;     shift 2 ;;
-      --constitution-sha256)  _ct_sha=$2;      shift 2 ;;
-      --constitution-version) _ct_ver=$2;      shift 2 ;;
-      --key-aspects)          _key_aspects=$2; shift 2 ;;
+      --state-dir)            _sd=$2;                   shift 2 ;;
+      --execucao-id)          _ei=$2;                   shift 2 ;;
+      --projeto-alvo-path)    _pap=$2;                  shift 2 ;;
+      --descricao)            _desc=$2;                 shift 2 ;;
+      --stack-json)           _stack=$2;                shift 2 ;;
+      --whitelist-urls)       _whitelist=$2;            shift 2 ;;
+      --short-name)           _short=$2;                shift 2 ;;
+      --briefing-path)        _br_path=$2;              shift 2 ;;
+      --briefing-sha256)      _br_sha=$2;               shift 2 ;;
+      --constitution-path)    _ct_path=$2;              shift 2 ;;
+      --constitution-sha256)  _ct_sha=$2;               shift 2 ;;
+      --constitution-version) _ct_ver=$2;               shift 2 ;;
+      --key-aspects)          _key_aspects=$2;          shift 2 ;;
+      --canonical-project)    _canonical_project=$2;   shift 2 ;;
+      --session-name)         _session_name=$2;         shift 2 ;;
       *) _sr_die "init: flag desconhecida: $1" 2 ;;
     esac
   done
   [ -n "$_sd" ]   || _sr_die "init: --state-dir obrigatorio" 2
   [ -n "$_pap" ]  || _sr_die "init: --projeto-alvo-path obrigatorio" 2
   [ -n "$_desc" ] || _sr_die "init: --descricao obrigatorio" 2
+
+  # Validacao: --session-name requer --canonical-project (data-model §regras de presenca)
+  if [ -n "$_session_name" ] && [ -z "$_canonical_project" ]; then
+    _sr_die "init: --session-name requer --canonical-project (sessao sem canonico nao tem semantica)" 2
+  fi
 
   _sr_require_jq
 
@@ -362,19 +382,25 @@ _sr_cmd_init() {
     --argjson stack "$_stack" \
     --argjson wl "$_whitelist" \
     --argjson ka "$_key_aspects" \
+    --arg canonical_project "$_canonical_project" \
+    --arg session_name "$_session_name" \
     '{ schema_version: "1.0.0" }
     + (if $short != "" then { short_name: $short } else {} end)
     + {
-      execution: {
-        id: $id,
-        target_project_path: $pap,
-        target_project_description: $desc,
-        suggested_stack: $stack,
-        status: "em_andamento",
-        termination_reason: null,
-        started_at: $now,
-        finished_at: null
-      }
+      execution: (
+        {
+          id: $id,
+          target_project_path: $pap,
+          target_project_description: $desc,
+          suggested_stack: $stack,
+          status: "em_andamento",
+          termination_reason: null,
+          started_at: $now,
+          finished_at: null
+        }
+        + (if $canonical_project != "" then { canonical_project: $canonical_project } else {} end)
+        + (if $session_name != "" then { session_name: $session_name } else {} end)
+      )
     }
     + (if $short != ""
        then { prerequisites: {

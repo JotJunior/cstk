@@ -165,6 +165,23 @@ _check_field '.budgets.cycles_consumed_current_stage' number '.orcamentos.ciclos
 _check_field '.budgets.retro_executions_consumed'   number '.orcamentos.retro_execucoes_consumidas'
 _check_field '.external_urls_whitelist'             array '.whitelist_urls_externas'
 
+# 3b. Campos opcionais de proveniencia canonica (feature recall-worktree-identity).
+# Presentes SOMENTE em execucoes em worktrees cstk-session; ausentes em projetos
+# normais. Estados pre-feature permanecem validos (retro-compat — FR-010).
+# Validar APENAS quando presentes: devem ser string se existirem.
+_check_optional_string() {
+  _path=$1
+  _t=$(jq -r "($_path) | type" "$_SV_FILE" 2>/dev/null) || _t="null"
+  case "$_t" in
+    string|null) ;;  # null = ausente = ok
+    *)
+      _sv_add "campo opcional com tipo inesperado: $_path (esperado string ou ausente, obtido $_t)"
+      ;;
+  esac
+}
+_check_optional_string '.execution.canonical_project'
+_check_optional_string '.execution.session_name'
+
 # 4. status x finished_at
 # READER: chaves EN + fallback pt-BR. VALORES de status (enum) permanecem pt-BR.
 _st=$(jq -r '(.execution.status // .execucao.status) // ""' "$_SV_FILE")

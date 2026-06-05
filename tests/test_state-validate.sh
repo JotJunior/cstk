@@ -504,4 +504,36 @@ scenario_pt_fallback_bloqueio_orfao_pega() {
   assert_stderr_contains "BloqueioHumano block-pt-001 referencia decision_id inexistente" || return 1
 }
 
+# ===== recall-worktree-identity: canonical_project / session_name opcionais =====
+
+# State com canonical_project + session_name passa validacao (campos opcionais aceitos)
+scenario_canonical_project_session_name_opcionais_passam() {
+  _sd="$TMPDIR_TEST/wt-valid"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _patch_state "$_sd" '.execution.canonical_project = "cstk" | .execution.session_name = "minha-feature"'
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "validate com campos opcionais" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+# State sem canonical_project / session_name (pre-feature) tambem passa (retro-compat)
+scenario_state_pre_feature_sem_campos_novos_passa() {
+  _sd="$TMPDIR_TEST/wt-legacy"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  # Garantir que os campos nao existem (estado padrao do init sem flags)
+  _has_cp=$(jq '.execution | has("canonical_project")' "$_sd/state.json")
+  _has_sn=$(jq '.execution | has("session_name")' "$_sd/state.json")
+  [ "$_has_cp" = "false" ] || { _fail "canonical_project presente no estado pre-feature" ""; return 1; }
+  [ "$_has_sn" = "false" ] || { _fail "session_name presente no estado pre-feature" ""; return 1; }
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "validate estado pre-feature" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
 run_all_scenarios

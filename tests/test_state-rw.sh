@@ -423,4 +423,71 @@ JSON
   assert_stdout_contains "em_andamento" || return 1
 }
 
+# ===== recall-worktree-identity: --canonical-project / --session-name =====
+
+# Cenario 1: init com ambas as flags grava os campos no JSON (US3 AC1)
+scenario_init_canonical_project_e_session_name() {
+  _sd="$TMPDIR_TEST/wt-both"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --execucao-id "exec-wt-001" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "worktree test" \
+    --canonical-project "cstk" \
+    --session-name "minha-feature"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution.canonical_project'
+  assert_stdout_contains "cstk" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution.session_name'
+  assert_stdout_contains "minha-feature" || return 1
+}
+
+# Cenario 2: init sem as flags NAO inclui as chaves no JSON (US3 AC2/AC3, FR-010)
+scenario_init_sem_flags_worktree_ausencia_de_chaves() {
+  _sd="$TMPDIR_TEST/wt-none"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --execucao-id "exec-wt-002" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "projeto normal"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  # Chaves canonical_project e session_name devem estar AUSENTES (nao null, ausentes)
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution | has("canonical_project")'
+  assert_stdout_contains "false" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution | has("session_name")'
+  assert_stdout_contains "false" || return 1
+}
+
+# Cenario 3: --session-name sem --canonical-project => exit 2 (erro de uso)
+scenario_init_session_sem_canonical_falha() {
+  _sd="$TMPDIR_TEST/wt-err"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --execucao-id "exec-wt-003" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "session orphan" \
+    --session-name "orphan-session"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "canonical-project" || return 1
+}
+
+# Cenario 4: feature mode com canonical flags (regressao — flags valem nos dois modos)
+scenario_init_feature_mode_com_canonical_flags() {
+  _sd="$TMPDIR_TEST/wt-feat"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --short-name "wt-feat" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "feature em worktree" \
+    --briefing-path "docs/briefing.md" --briefing-sha256 "abc123" \
+    --constitution-path "docs/constitution.md" --constitution-sha256 "def456" \
+    --constitution-version "1.0.0" \
+    --canonical-project "cstk" \
+    --session-name "wt-feat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init feature exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution.canonical_project'
+  assert_stdout_contains "cstk" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution.session_name'
+  assert_stdout_contains "wt-feat" || return 1
+  # current_stage deve ser specify (feature mode intacto)
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "specify" || return 1
+}
+
 run_all_scenarios
