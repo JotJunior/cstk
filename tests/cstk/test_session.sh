@@ -325,6 +325,29 @@ scenario_start_claude_excludes_validate_all_8() {
   done
 }
 
+scenario_start_claude_tracked_no_nesting() {
+  # Regressao (bug .claude/.claude): repo que VERSIONA arquivos de .claude/
+  # no git — o checkout do worktree materializa <wt>/.claude ANTES da copia,
+  # e `cp -R src dst` com dst existente copiava src PARA DENTRO, criando
+  # <wt>/.claude/.claude/ com os artefatos runtime fora do alcance da
+  # blocklist. _make_repo_with_claude ja commita .claude/ (cenario exato).
+  _src="$TMPDIR_TEST/repo-nest"
+  _make_repo_with_claude "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session start nest-feat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
+  _wt="$_phys/repo-nest-nest-feat"
+  if [ -e "$_wt/.claude/.claude" ]; then
+    _fail "aninhamento" ".claude/.claude espurio criado em $_wt/.claude/"
+    return 1
+  fi
+  # Copia de CONTEUDO preserva os compartilhados e a blocklist segue efetiva
+  [ -f "$_wt/.claude/skills/foo.md" ] || { _fail "skills/foo.md" "perdido"; return 1; }
+  if [ -e "$_wt/.claude/agente-00c-state" ]; then
+    _fail "exclusao" "agente-00c-state deveria estar excluido"; return 1
+  fi
+}
+
 scenario_start_blocklist_main_exit_5() {
   _src="$TMPDIR_TEST/repo-block"
   _make_repo "$_src"

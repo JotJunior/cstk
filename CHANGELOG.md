@@ -5,6 +5,12 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.11.1] - 2026-06-05
+
+### Fixed
+
+- **`cstk session start`: diretório espúrio `.claude/.claude/` aninhado na worktree** quando o repo alvo versiona arquivos de `.claude/` no git. O checkout do `git worktree add` materializa `<wt>/.claude/` antes da cópia, e `cp -R src dst` com destino existente copia a origem PARA DENTRO dele (semântica POSIX) — criando `<wt>/.claude/.claude/` com os artefatos runtime (`agente-00c-state/`, `agente-00c-report.md`, `scheduled_tasks.lock`...) fora do alcance da blocklist FR-002. Fix em `_session_copy_claude_filtered` (`cli/lib/session.sh`): `mkdir -p` + cópia de CONTEÚDO (`cp -R "$src/." "$dst"`), merge idempotente que nunca aninha, exista ou não o destino. Cenário de regressão `scenario_start_claude_tracked_no_nesting` em `tests/cstk/test_session.sh` (provado falhar no código pré-fix). Runtime instalado requer `cstk self-update` para receber o fix.
+
 ## [5.11.0] - 2026-06-05
 
 ### Added
@@ -3324,6 +3330,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.11.1]: https://github.com/JotJunior/cstk/releases/tag/v5.11.1
 [5.11.0]: https://github.com/JotJunior/cstk/releases/tag/v5.11.0
 [5.10.2]: https://github.com/JotJunior/cstk/releases/tag/v5.10.2
 [5.10.1]: https://github.com/JotJunior/cstk/releases/tag/v5.10.1

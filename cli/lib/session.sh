@@ -347,6 +347,13 @@ _session_prompt_yn() {
 # Estrategia: `cp -R` (POSIX) seguido de `rm -rf` da blocklist. Custo de
 # copiar arquivos que serao removidos e baixo (.claude/ tipicamente <50MB).
 # Sem rsync (nao POSIX em macOS antigo).
+#
+# BUGFIX (aninhamento .claude/.claude): quando o repo VERSIONA arquivos de
+# .claude/ no git, o `git worktree add` ja materializa <dst> no checkout;
+# `cp -R src dst` com dst existente copia src PARA DENTRO de dst (semantica
+# POSIX), criando <wt>/.claude/.claude/ — fora do alcance da blocklist.
+# Fix: mkdir -p + copia de CONTEUDO (`src/.`), merge idempotente que nunca
+# aninha, exista ou nao o destino.
 _session_copy_claude_filtered() {
   _src=${1:?_session_copy_claude_filtered: --src required}
   _dst=${2:?_session_copy_claude_filtered: --dst required}
@@ -354,7 +361,8 @@ _session_copy_claude_filtered() {
     # Sem .claude/ na origem: nada a copiar (no-op silencioso)
     return 0
   fi
-  cp -R -- "$_src" "$_dst" || return 1
+  mkdir -p -- "$_dst" || return 1
+  cp -R -- "$_src/." "$_dst" || return 1
   # Defesa contra rm -rf // se $_dst expandir vazio.
   for _pattern in $_CSTK_SESSION_CLAUDE_EXCLUDES; do
     rm -rf -- "${_dst:?}/$_pattern" 2>/dev/null
