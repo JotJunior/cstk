@@ -54,6 +54,31 @@ scenario_init_cria_estrutura_base() {
   return 0
 }
 
+scenario_init_semeia_gitignore_no_state_dir() {
+  # Estado e runtime/transacional: o state-dir nasce com .gitignore "*" para
+  # nunca ser versionavel (repo trackeando state.json foi o gatilho do bug
+  # .claude/.claude corrigido em v5.11.1).
+  _sd="$TMPDIR_TEST/state"
+  _init_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/.gitignore" ] || { _fail ".gitignore ausente" "state-dir deveria nascer com .gitignore"; return 1; }
+  _gi=$(cat "$_sd/.gitignore")
+  [ "$_gi" = "*" ] || { _fail ".gitignore conteudo" "esperado '*', obtido '$_gi'"; return 1; }
+  return 0
+}
+
+scenario_init_preserva_gitignore_customizado() {
+  # Idempotencia: .gitignore pre-existente do operador NUNCA e sobrescrito.
+  _sd="$TMPDIR_TEST/state"
+  mkdir -p "$_sd"
+  printf 'state-history/\n' > "$_sd/.gitignore"
+  _init_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _gi=$(cat "$_sd/.gitignore")
+  [ "$_gi" = "state-history/" ] || { _fail ".gitignore sobrescrito" "esperado 'state-history/', obtido '$_gi'"; return 1; }
+  return 0
+}
+
 scenario_init_recusa_se_state_existe() {
   _sd="$TMPDIR_TEST/state"
   _init_default "$_sd"

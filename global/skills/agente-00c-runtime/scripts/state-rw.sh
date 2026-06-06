@@ -216,6 +216,14 @@ _sr_ensure_state_dir() {
     _sr_die "permissao de escrita negada em $1" 1
   fi
   rm -f -- "$_sr_touchprobe" 2>/dev/null || :
+  # Semeia .gitignore "*" no state-dir: estado e runtime/transacional e NUNCA
+  # deve ser versionado (repo trackeando state.json foi o gatilho do bug
+  # .claude/.claude em v5.11.1). Best-effort + idempotente: nao sobrescreve
+  # .gitignore existente (respeita customizacao do operador) nem aborta o
+  # init se a escrita falhar.
+  if [ ! -e "$1/.gitignore" ]; then
+    printf '*\n' > "$1/.gitignore" 2>/dev/null || :
+  fi
 }
 
 # _sr_atomic_write DST CONTENT_FILE -> mv atomico de tmp para DST

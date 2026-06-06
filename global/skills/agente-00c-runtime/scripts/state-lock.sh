@@ -95,6 +95,13 @@ case "$_SL_SUBCMD" in
       mkdir -p -- "$_SL_STATE_DIR" 2>/dev/null \
         || { printf '%s: nao consegui criar %s\n' "$_SL_NAME" "$_SL_STATE_DIR" >&2; exit 1; }
     fi
+    # Semeia .gitignore "*" no state-dir desde o PRIMEIRO toque (acquire roda
+    # antes do state-rw init no fluxo do command pai). Estado e runtime e
+    # nunca deve ser versionado. Best-effort + idempotente (paridade com
+    # _sr_ensure_state_dir em state-rw.sh).
+    if [ ! -e "$_SL_STATE_DIR/.gitignore" ]; then
+      printf '*\n' > "$_SL_STATE_DIR/.gitignore" 2>/dev/null || :
+    fi
     if mkdir -- "$_SL_LOCK" 2>/dev/null; then
       exit 0
     fi

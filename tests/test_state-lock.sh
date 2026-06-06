@@ -31,6 +31,21 @@ scenario_acquire_release_basico() {
   return 0
 }
 
+scenario_acquire_semeia_gitignore_no_state_dir() {
+  # acquire roda ANTES do state-rw init no fluxo do command pai e pode criar
+  # o state-dir: deve semear .gitignore "*" desde o primeiro toque (paridade
+  # com _sr_ensure_state_dir). Lock release (rmdir .lock) segue intacto.
+  _sd="$TMPDIR_TEST/state-gi"
+  capture "$SCRIPT" acquire --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "acquire" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/.gitignore" ] || { _fail ".gitignore ausente" "acquire criou state-dir sem .gitignore"; return 1; }
+  _gi=$(cat "$_sd/.gitignore")
+  [ "$_gi" = "*" ] || { _fail ".gitignore conteudo" "esperado '*', obtido '$_gi'"; return 1; }
+  capture "$SCRIPT" release --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "release" "$_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
 scenario_acquire_duplicado_exit_3() {
   _sd="$TMPDIR_TEST/state"
   capture "$SCRIPT" acquire --state-dir "$_sd"

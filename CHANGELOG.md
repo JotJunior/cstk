@@ -5,6 +5,12 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.12.0] - 2026-06-05
+
+### Added
+
+- **State-dirs nascem com `.gitignore` (`*`) semeado na criação**: o estado dos orquestradores é runtime/transacional e nunca deve ser versionado — um repo trackeando `state.json` foi o gatilho do bug `.claude/.claude/` corrigido em 5.11.1. Semeadura nos DOIS pontos de criação: `state-rw.sh::_sr_ensure_state_dir` (init e writes) e `state-lock.sh acquire` (que cria o state-dir ANTES do init no fluxo do command pai). Best-effort e idempotente: `.gitignore` pré-existente do operador nunca é sobrescrito; falha de escrita não aborta o fluxo. Cobre `agente-00c-state/` e `feature-00c-state/<short>/` (incluindo `state-history/`, `backups/`, `whitelist.txt`). NÃO cobre artefatos na raiz de `.claude/` (`agente-00c-report.md`, `agente-00c-suggestions.md`) — gitignore desses fica a cargo do repo alvo. Repos que JÁ trackeiam state precisam de `git rm -r --cached` manual (gitignore não destrackeia).
+
 ## [5.11.1] - 2026-06-05
 
 ### Fixed
@@ -3330,6 +3336,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.12.0]: https://github.com/JotJunior/cstk/releases/tag/v5.12.0
 [5.11.1]: https://github.com/JotJunior/cstk/releases/tag/v5.11.1
 [5.11.0]: https://github.com/JotJunior/cstk/releases/tag/v5.11.0
 [5.10.2]: https://github.com/JotJunior/cstk/releases/tag/v5.10.2
