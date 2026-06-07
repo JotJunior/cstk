@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Checklist"
+  short_description: "Run CSTK Checklist workflow"
+  default_prompt: "Use $cstk-checklist to run the checklist workflow for this project."

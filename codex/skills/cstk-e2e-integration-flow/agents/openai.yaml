@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK E2E Integration Flow"
+  short_description: "Run CSTK E2E Integration Flow workflow"
+  default_prompt: "Use $cstk-e2e-integration-flow to run the e2e integration flow workflow for this project."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Briefing"
+  short_description: "Run CSTK Briefing workflow"
+  default_prompt: "Use $cstk-briefing to run the briefing workflow for this project."

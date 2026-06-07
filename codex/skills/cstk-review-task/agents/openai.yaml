@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Review Task"
+  short_description: "Run CSTK Review Task workflow"
+  default_prompt: "Use $cstk-review-task to run the review task workflow for this project."

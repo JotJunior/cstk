@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Agente 00c Runtime"
+  short_description: "Run CSTK Agente 00c Runtime workflow"
+  default_prompt: "Use $cstk-agente-00c-runtime to run the agente 00c runtime workflow for this project."

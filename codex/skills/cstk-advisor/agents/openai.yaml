@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Advisor"
+  short_description: "Strategic critique of an idea/plan/decision"
+  default_prompt: "Use $cstk-advisor to run the advisor workflow for this project."

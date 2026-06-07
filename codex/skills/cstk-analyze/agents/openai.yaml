@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Analyze"
+  short_description: "Run CSTK Analyze workflow"
+  default_prompt: "Use $cstk-analyze to run the analyze workflow for this project."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Model Selector"
+  short_description: "Run CSTK Model Selector workflow"
+  default_prompt: "Use $cstk-model-selector to run the model selector workflow for this project."

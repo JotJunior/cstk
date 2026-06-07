@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Validate Documentation"
+  short_description: "Run CSTK Validate Documentation workflow"
+  default_prompt: "Use $cstk-validate-documentation to run the validate documentation workflow for this project."

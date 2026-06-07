@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Image Generation"
+  short_description: "Run CSTK Image Generation workflow"
+  default_prompt: "Use $cstk-image-generation to run the image generation workflow for this project."

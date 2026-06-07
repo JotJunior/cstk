@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Initialize Docs"
+  short_description: "Run CSTK Initialize Docs workflow"
+  default_prompt: "Use $cstk-initialize-docs to run the initialize docs workflow for this project."

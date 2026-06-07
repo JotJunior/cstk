@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Specify"
+  short_description: "Run CSTK Specify workflow"
+  default_prompt: "Use $cstk-specify to run the specify workflow for this project."

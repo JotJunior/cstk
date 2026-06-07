@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Validate Docs Rendered"
+  short_description: "Run CSTK Validate Docs Rendered workflow"
+  default_prompt: "Use $cstk-validate-docs-rendered to run the validate docs rendered workflow for this project."

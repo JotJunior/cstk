@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Owasp Security"
+  short_description: "Security review: OWASP Top 10:2025, ASVS 5"
+  default_prompt: "Use $cstk-owasp-security to run the owasp security workflow for this project."

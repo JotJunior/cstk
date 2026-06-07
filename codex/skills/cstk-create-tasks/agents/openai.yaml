@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Create Tasks"
+  short_description: "Run CSTK Create Tasks workflow"
+  default_prompt: "Use $cstk-create-tasks to run the create tasks workflow for this project."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Execute Task"
+  short_description: "Run CSTK Execute Task workflow"
+  default_prompt: "Use $cstk-execute-task to run the execute task workflow for this project."

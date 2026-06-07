@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Apply Insights"
+  short_description: "Run CSTK Apply Insights workflow"
+  default_prompt: "Use $cstk-apply-insights to run the apply insights workflow for this project."

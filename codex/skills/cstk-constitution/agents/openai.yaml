@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Constitution"
+  short_description: "Create/update immutable project governance principles"
+  default_prompt: "Use $cstk-constitution to run the constitution workflow for this project."

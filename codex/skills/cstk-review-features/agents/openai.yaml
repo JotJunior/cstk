@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Review Features"
+  short_description: "Run CSTK Review Features workflow"
+  default_prompt: "Use $cstk-review-features to run the review features workflow for this project."

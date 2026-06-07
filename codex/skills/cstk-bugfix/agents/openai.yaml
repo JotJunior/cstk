@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Bugfix"
+  short_description: "Run CSTK Bugfix workflow with Codex"
+  default_prompt: "Use $cstk-bugfix to run the bugfix workflow for this project."

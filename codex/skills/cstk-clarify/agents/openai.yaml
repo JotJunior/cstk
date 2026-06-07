@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Clarify"
+  short_description: "Refine an existing spec via structured Q&A (max 5)"
+  default_prompt: "Use $cstk-clarify to run the clarify workflow for this project."

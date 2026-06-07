@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK GO Add Entity"
+  short_description: "Run CSTK GO Add Entity workflow"
+  default_prompt: "Use $cstk-go-add-entity to run the go add entity workflow for this project."

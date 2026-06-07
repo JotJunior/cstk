@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Plan"
+  short_description: "Run CSTK Plan workflow with Codex"
+  default_prompt: "Use $cstk-plan to run the plan workflow for this project."

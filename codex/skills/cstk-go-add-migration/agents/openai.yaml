@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK GO Add Migration"
+  short_description: "Run CSTK GO Add Migration workflow"
+  default_prompt: "Use $cstk-go-add-migration to run the go add migration workflow for this project."

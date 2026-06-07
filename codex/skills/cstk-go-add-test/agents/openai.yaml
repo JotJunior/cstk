@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK GO Add Test"
+  short_description: "Run CSTK GO Add Test workflow"
+  default_prompt: "Use $cstk-go-add-test to run the go add test workflow for this project."

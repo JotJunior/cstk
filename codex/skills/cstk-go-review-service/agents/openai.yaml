@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK GO Review Service"
+  short_description: "Run CSTK GO Review Service workflow"
+  default_prompt: "Use $cstk-go-review-service to run the go review service workflow for this project."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK Commit"
+  short_description: "Run CSTK Commit workflow with Codex"
+  default_prompt: "Use $cstk-commit to run the commit workflow for this project."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CSTK GO Add Consumer"
+  short_description: "Add a RabbitMQ event consumer to an existing GOB Go microservice"
+  default_prompt: "Use $cstk-go-add-consumer to run the go add consumer workflow for this project."
