@@ -1,0 +1,8 @@
+{
+  "name": "test-plugin",
+  "version": "1.0.0",
+  "type": "llm",
+  "schema_version": 1,
+  "sha256": "2ea9e1878d601c5a45c6cbf059107ba4425231d10a2c1acb812c1f69bc6cb361",
+  "skills": ["example-skill"]
+}

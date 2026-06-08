@@ -45,7 +45,7 @@ implementacoes divergem.
 - [x] 1.2.1 Decidir e documentar em `spec.md` FR-009: quando stdin nao e TTY e `--force` ausente, o comportamento MUST ser "abort com exit 1 e mensagem clara pedindo `--force` para uso nao-interativo" (safer default — nao instala silenciosamente)
 - [x] 1.2.2 Adicionar cenario de teste ao `quickstart.md`: "Scenario 1b: re-install sem TTY sem --force → exit 1; com --force → instala"
 - [x] 1.2.3 Verificar que `contracts/cli-commands.md` §plugin-add Behavior passo 3 reflita a decisao (adicionar nota de TTY-check)
-- [ ] 1.2.4 Teste unitario: `test_plugin-add.sh` deve cobrir o caso "ja instalado + stdin nao-TTY + sem --force → exit 1"
+- [x] 1.2.4 Teste unitario: `test_plugin-add.sh` deve cobrir o caso "ja instalado + stdin nao-TTY + sem --force → exit 1"
 
 ### 1.3 Clarificar SC-001 — separar tempo de toolkit vs tempo de rede `[M]`
 
@@ -56,7 +56,7 @@ com tempo de download incontrolavel. A ambiguidade dificulta a criacao de testes
 de performance reproduziveis.
 
 - [x] 1.3.1 Editar `spec.md` SC-001: adicionar nota "(o budget de 60s inclui o tempo de download; o toolkit em si — validacao, extracao, checksum, escrita — deve completar em <5s excluindo download)"
-- [ ] 1.3.2 Adicionar subtarefa de teste de performance no `test_plugin-add.sh`: medir tempo de extracao + checksum + escrita com bundle fixture local e verificar <5s
+- [x] 1.3.2 Adicionar subtarefa de teste de performance no `test_plugin-add.sh`: medir tempo de extracao + checksum + escrita com bundle fixture local e verificar <5s
 
 ### 1.4 Especificar contrato de remocao parcial `[A]`
 
@@ -69,7 +69,7 @@ rodando" esta coberto; mid-remove crash nao esta.
 - [x] 1.4.1 Editar `contracts/cli-commands.md` §plugin-remove Behavior: adicionar passo de tratamento de falha parcial — "se `rm -rf` parcial ou registry write falha: tentar atomic cleanup (re-checar diretorio e registry), reportar estado inconsistente com exit 1; nao silenciar; usuario deve re-tentar ou remover manualmente"
 - [x] 1.4.2 Editar `spec.md` FR-012: adicionar clausula de falha parcial alinhada ao contrato acima
 - [x] 1.4.3 Adicionar Scenario 7b ao `quickstart.md`: "remove com falha de IO → exit 1, mensagem de estado inconsistente, store em estado indeterminado documentado"
-- [ ] 1.4.4 Teste: `test_plugin-remove.sh` cobre cenario de falha de IO durante remocao (via mock de `rm`)
+- [x] 1.4.4 Teste: `test_plugin-remove.sh` cobre cenario de falha de IO durante remocao (via mock de `rm`)
 
 ### 1.5 Adicionar requisito de aviso TOFU em documentacao de usuario `[M]`
 
@@ -161,41 +161,41 @@ Ref: spec.md FR-014; contracts/pipeline-integration.md §Skill resolution; resea
 
 Ref: spec.md FR-001..FR-009; contracts/cli-commands.md §plugin-add; quickstart.md Scenario 1/2/3/3b/8
 
-- [ ] 3.1.1 Criar `cli/lib/plugin-add.sh` com cabecalho `#!/bin/sh` + `set -eu` + source de `plugin-common.sh`/`tarball.sh`/`http.sh`
-- [ ] 3.1.2 Implementar `plugin_add_main`: parse de args (`<name>`, `--force`); delegacao sequencial aos passos 1-9 do contrato
-- [ ] 3.1.3 Passo 1: chamar `plugin_validate_name` (FR-002 — rejeitar ANTES de fs/rede)
-- [ ] 3.1.4 Passo 2: chamar `plugin_resolve_url` e derivar URL do tarball de release (`/archive/refs/tags/latest.tar.gz` ou release asset — research D3)
-- [ ] 3.1.5 Passo 3: verificar se ja instalado via `plugin_is_installed`; sem `--force` pedir confirmacao interativa; checar TTY (`[ -t 0 ]`); sem TTY + sem `--force` → exit 1 com mensagem clara (CHK009 / tarefa 1.2)
-- [ ] 3.1.6 Passo 4: baixar bundle para tmp via `http_download` (FR-006; mapeamento de exit codes de curl para mensagens claras)
-- [ ] 3.1.7 Passo 5: criar staging com `mktemp -d`; extrair tarball
-- [ ] 3.1.8 Passo 5.bis: **Tar-slip guard (OBRIGATORIO)** — listar entradas do tarball (`tar -tf`) ANTES de extrair; rejeitar qualquer entrada com path absoluto, componente `..`, ou symlink fora do staging; exit 1, limpar tmp (A05/A08, contracts §5.bis)
-- [ ] 3.1.9 Passo 6: chamar `plugin_verify_manifest` + `plugin_verify_bundle_checksum`; mismatch → limpar tmp, exit 1 (FR-004/FR-008)
-- [ ] 3.1.10 Passo 7: mover staging atomicamente para `plugin_store_dir <name>` somente apos checksum OK (FR-008)
-- [ ] 3.1.11 Passo 8: chamar `plugin_registry_upsert` com campos do manifest verificado
-- [ ] 3.1.12 Passo 9: imprimir mensagem de sucesso com versao instalada; exit 0
+- [x] 3.1.1 Criar `cli/lib/plugin-add.sh` com cabecalho `#!/bin/sh` + `set -eu` + source de `plugin-common.sh`/`tarball.sh`/`http.sh`
+- [x] 3.1.2 Implementar `plugin_add_main`: parse de args (`<name>`, `--force`); delegacao sequencial aos passos 1-9 do contrato
+- [x] 3.1.3 Passo 1: chamar `plugin_validate_name` (FR-002 — rejeitar ANTES de fs/rede)
+- [x] 3.1.4 Passo 2: chamar `plugin_resolve_url` e derivar URL do tarball de release (`/archive/refs/tags/latest.tar.gz` ou release asset — research D3)
+- [x] 3.1.5 Passo 3: verificar se ja instalado via `plugin_is_installed`; sem `--force` pedir confirmacao interativa; checar TTY (`[ -t 0 ]`); sem TTY + sem `--force` → exit 1 com mensagem clara (CHK009 / tarefa 1.2)
+- [x] 3.1.6 Passo 4: baixar bundle para tmp via `http_download` (FR-006; mapeamento de exit codes de curl para mensagens claras)
+- [x] 3.1.7 Passo 5: criar staging com `mktemp -d`; extrair tarball
+- [x] 3.1.8 Passo 5.bis: **Tar-slip guard (OBRIGATORIO)** — listar entradas do tarball (`tar -tf`) ANTES de extrair; rejeitar qualquer entrada com path absoluto, componente `..`, ou symlink fora do staging; exit 1, limpar tmp (A05/A08, contracts §5.bis)
+- [x] 3.1.9 Passo 6: chamar `plugin_verify_manifest` + `plugin_verify_bundle_checksum`; mismatch → limpar tmp, exit 1 (FR-004/FR-008)
+- [x] 3.1.10 Passo 7: mover staging atomicamente para `plugin_store_dir <name>` somente apos checksum OK (FR-008)
+- [x] 3.1.11 Passo 8: chamar `plugin_registry_upsert` com campos do manifest verificado
+- [x] 3.1.12 Passo 9: imprimir mensagem de sucesso com versao instalada; exit 0
 
 ### 3.2 Tratamento de erros e cleanup `[C]`
 
 Ref: spec.md FR-004, FR-008; contracts/cli-commands.md §Exit codes; quickstart.md Scenario 2/3b
 
-- [ ] 3.2.1 Implementar trap de cleanup: ao exit (EXIT signal), verificar se tmp/staging existe e remover; garantir que falha em qualquer passo nao deixa estado parcial no store (FR-008)
-- [ ] 3.2.2 Verificar que todos os exit codes seguem o contrato: 0 (ok/no-op), 1 (erro de integridade/rede/manifest), 2 (uso incorreto)
-- [ ] 3.2.3 Verificar que mensagens de erro seguem o contrato (stderr; texto padrao de contracts §Error contracts)
-- [ ] 3.2.4 Teste de cleanup: matar o processo no meio do download/extracao e verificar que store e registry permanecem intactos
+- [x] 3.2.1 Implementar trap de cleanup: ao exit (EXIT signal), verificar se tmp/staging existe e remover; garantir que falha em qualquer passo nao deixa estado parcial no store (FR-008)
+- [x] 3.2.2 Verificar que todos os exit codes seguem o contrato: 0 (ok/no-op), 1 (erro de integridade/rede/manifest), 2 (uso incorreto)
+- [x] 3.2.3 Verificar que mensagens de erro seguem o contrato (stderr; texto padrao de contracts §Error contracts)
+- [x] 3.2.4 Teste de cleanup: matar o processo no meio do download/extracao e verificar que store e registry permanecem intactos
 
 ### 3.3 Testes automatizados de `plugin-add` `[C]`
 
 Ref: spec.md SC-002; quickstart.md Scenarios 1/2/3/3b/8
 
-- [ ] 3.3.1 Criar `tests/cstk/test_plugin-add.sh` com scaffolding (tmpdir, mock de `http_download`, fixtures de bundle)
-- [ ] 3.3.2 Criar `tests/cstk/fixtures/` com: bundle fixture valido + manifest correto; bundle com manifest cujo sha256 foi alterado (mismatch); tarball com entrada `../../evil` (tar-slip)
-- [ ] 3.3.3 Teste Scenario 1: install de plugin novo → exit 0, store populado, registry atualizado
-- [ ] 3.3.4 Teste Scenario 2: checksum mismatch → exit 1, store intacto, registry intacto (SC-002 100%)
-- [ ] 3.3.5 Teste Scenario 3: nome com `../evil` → exit 2, ZERO fs/rede
-- [ ] 3.3.6 Teste Scenario 3b: tar-slip → exit 1, NENHUM arquivo fora de staging
-- [ ] 3.3.7 Teste Scenario 8: degradacao sem sha256sum/shasum → exit 1 graceful com mensagem clara
-- [ ] 3.3.8 Teste re-install sem TTY sem `--force` → exit 1 (CHK009)
-- [ ] 3.3.9 Teste re-install com `--force` → exit 0, overwrite
+- [x] 3.3.1 Criar `tests/cstk/test_plugin-add.sh` com scaffolding (tmpdir, mock de `http_download`, fixtures de bundle)
+- [x] 3.3.2 Criar `tests/cstk/fixtures/` com: bundle fixture valido + manifest correto; bundle com manifest cujo sha256 foi alterado (mismatch); tarball com entrada `../../evil` (tar-slip)
+- [x] 3.3.3 Teste Scenario 1: install de plugin novo → exit 0, store populado, registry atualizado
+- [x] 3.3.4 Teste Scenario 2: checksum mismatch → exit 1, store intacto, registry intacto (SC-002 100%)
+- [x] 3.3.5 Teste Scenario 3: nome com `../evil` → exit 2, ZERO fs/rede
+- [x] 3.3.6 Teste Scenario 3b: tar-slip → exit 1, NENHUM arquivo fora de staging
+- [x] 3.3.7 Teste Scenario 8: degradacao sem sha256sum/shasum → exit 1 graceful com mensagem clara
+- [x] 3.3.8 Teste re-install sem TTY sem `--force` → exit 1 (CHK009)
+- [x] 3.3.9 Teste re-install com `--force` → exit 0, overwrite
 
 ---
 
@@ -205,27 +205,27 @@ Ref: spec.md SC-002; quickstart.md Scenarios 1/2/3/3b/8
 
 Ref: spec.md FR-011, FR-018, SC-004, SC-006; contracts/cli-commands.md §plugin-list; quickstart.md Scenarios 3/6/7
 
-- [ ] 4.1.1 Criar `cli/lib/plugin-list.sh` com `plugin_list_main`
-- [ ] 4.1.2 Ler registry via `plugin_registry_list`; se vazio → exit 0 + "Nenhum plugin instalado." (US3-AS4)
-- [ ] 4.1.3 Para cada plugin: exibir linha `NAME  VERSION  TYPE  STATUS` (FR-011)
-- [ ] 4.1.4 Status sem `--verify`: `ok` do cache `bundle_sha256` do registry (SC-004 <2s; sem rede — SC-006)
-- [ ] 4.1.5 Status com `--verify`: chamar `plugin_verify_bundle_checksum`; diverge → `tampered` (US3-AS2, FR-005)
-- [ ] 4.1.6 Status `unknown` quando diretorio existe mas sem entrada no registry (ou vice-versa)
-- [ ] 4.1.7 Garantir que NENHUMA chamada de rede ocorre em nenhum path (FR-018)
-- [ ] 4.1.8 Testes: `test_plugin-list.sh` — lista vazia, lista com 1/N plugins, status ok/tampered/unknown, sem rede (Scenario 7), <2s com bundle fixture
+- [x] 4.1.1 Criar `cli/lib/plugin-list.sh` com `plugin_list_main`
+- [x] 4.1.2 Ler registry via `plugin_registry_list`; se vazio → exit 0 + "Nenhum plugin instalado." (US3-AS4)
+- [x] 4.1.3 Para cada plugin: exibir linha `NAME  VERSION  TYPE  STATUS` (FR-011)
+- [x] 4.1.4 Status sem `--verify`: `ok` do cache `bundle_sha256` do registry (SC-004 <2s; sem rede — SC-006)
+- [x] 4.1.5 Status com `--verify`: chamar `plugin_verify_bundle_checksum`; diverge → `tampered` (US3-AS2, FR-005)
+- [x] 4.1.6 Status `unknown` quando diretorio existe mas sem entrada no registry (ou vice-versa)
+- [x] 4.1.7 Garantir que NENHUMA chamada de rede ocorre em nenhum path (FR-018)
+- [x] 4.1.8 Testes: `test_plugin-list.sh` — lista vazia, lista com 1/N plugins, status ok/tampered/unknown, sem rede (Scenario 7), <2s com bundle fixture
 
 ### 4.2 Implementacao de `plugin-remove` `[A]`
 
 Ref: spec.md FR-012; contracts/cli-commands.md §plugin-remove; tasks 1.4 (contrato de remocao parcial)
 
-- [ ] 4.2.1 Criar `cli/lib/plugin-remove.sh` com `plugin_remove_main`
-- [ ] 4.2.2 Passo 1: `plugin_validate_name` (FR-002)
-- [ ] 4.2.3 Passo 2: `plugin_is_installed`; se nao → exit 1 com mensagem clara (FR-012)
-- [ ] 4.2.4 Passo 3: `rm -rf "$(plugin_store_dir "$name")"`; tratar falha parcial conforme contrato de tarefa 1.4
-- [ ] 4.2.5 Passo 4: `plugin_registry_remove`; se falha → reportar estado inconsistente, exit 1
-- [ ] 4.2.6 Passo 5: confirmar remocao (US3-AS3); exit 0
-- [ ] 4.2.7 Garantir que NENHUMA chamada de rede ocorre (FR-018)
-- [ ] 4.2.8 Testes: `test_plugin-remove.sh` — remove existente, remove ausente (exit 1), offline OK (Scenario 7), falha de IO parcial (tarefa 1.4)
+- [x] 4.2.1 Criar `cli/lib/plugin-remove.sh` com `plugin_remove_main`
+- [x] 4.2.2 Passo 1: `plugin_validate_name` (FR-002)
+- [x] 4.2.3 Passo 2: `plugin_is_installed`; se nao → exit 1 com mensagem clara (FR-012)
+- [x] 4.2.4 Passo 3: `rm -rf "$(plugin_store_dir "$name")"`; tratar falha parcial conforme contrato de tarefa 1.4
+- [x] 4.2.5 Passo 4: `plugin_registry_remove`; se falha → reportar estado inconsistente, exit 1
+- [x] 4.2.6 Passo 5: confirmar remocao (US3-AS3); exit 0
+- [x] 4.2.7 Garantir que NENHUMA chamada de rede ocorre (FR-018)
+- [x] 4.2.8 Testes: `test_plugin-remove.sh` — remove existente, remove ausente (exit 1), offline OK (Scenario 7), falha de IO parcial (tarefa 1.4)
 
 ---
 
