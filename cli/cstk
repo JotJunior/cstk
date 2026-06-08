@@ -146,6 +146,11 @@ COMANDOS:
   00c <path>    Bootstrap interativo de projeto-alvo do agente-00C
                 (cria diretorio, coleta parametros e invoca claude)
 
+PLUGINS:
+  plugin-add <name>     Instala um plugin LLM do store de plugins cstk
+  plugin-list           Lista plugins instalados (status, versao, integridade)
+  plugin-remove <name>  Remove um plugin instalado
+
 UTILITARIOS:
   help [CMD]    Ajuda geral ou de um comando especifico
   --version     Imprime versao instalada
@@ -163,6 +168,11 @@ HELP
   case "$_sub" in
     install|update|self-update|list|doctor|session|serve)
       printf 'cstk help %s: consulte docs/specs/cstk-cli/contracts/cli-commands.md §%s\n' \
+        "$_sub" "$_sub"
+      exit "$CSTK_EXIT_OK"
+      ;;
+    plugin-add|plugin-list|plugin-remove)
+      printf 'cstk help %s: consulte docs/specs/cstk-plugins/contracts/cli-commands.md §%s\n' \
         "$_sub" "$_sub"
       exit "$CSTK_EXIT_OK"
       ;;
@@ -186,7 +196,7 @@ HELP
       ;;
     *)
       printf 'cstk: comando desconhecido para help: %s\n' "$_sub" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, 00c\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, 00c, plugin-add, plugin-list, plugin-remove\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac
@@ -218,6 +228,33 @@ _dispatch() {
       # shellcheck source=/dev/null
       . "$_lib_file"
       serve_main "$@"
+      ;;
+    plugin-add|plugin-list|plugin-remove)
+      # Subcomandos do sistema de plugins (cstk-plugins feature).
+      # Convencao: plugin-common.sh e carregado primeiro (deps compartilhadas);
+      # depois o arquivo especifico do subcomando; hifens viram underscores.
+      _check_bin_lib_match
+      _plugin_common="$CSTK_LIB/plugin-common.sh"
+      if [ ! -f "$_plugin_common" ]; then
+        printf 'cstk %s: plugin-common.sh ausente em %s\n' "$_cmd" "$CSTK_LIB" >&2
+        exit "$CSTK_EXIT_ERROR"
+      fi
+      # shellcheck source=/dev/null
+      . "$_plugin_common"
+      _lib_file="$CSTK_LIB/${_cmd}.sh"
+      if [ ! -f "$_lib_file" ]; then
+        printf 'cstk %s: nao implementado ainda (cli/lib/%s.sh ausente)\n' \
+          "$_cmd" "$_cmd" >&2
+        exit "$CSTK_EXIT_ERROR"
+      fi
+      # shellcheck source=/dev/null
+      . "$_lib_file"
+      _main_fn="$(printf '%s' "$_cmd" | sed 's/-/_/g')_main"
+      if ! command -v "$_main_fn" >/dev/null 2>&1; then
+        printf 'cstk: %s nao define funcao %s\n' "$_lib_file" "$_main_fn" >&2
+        exit "$CSTK_EXIT_ERROR"
+      fi
+      "$_main_fn" "$@"
       ;;
     install|update|self-update|list|doctor|session|recall|show-tip)
       # Boot-check para todos exceto self-update (que e o caminho de recovery
@@ -268,7 +305,7 @@ _dispatch() {
       ;;
     *)
       printf 'cstk: comando desconhecido: %s\n' "$_cmd" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, 00c, help, --version\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, 00c, plugin-add, plugin-list, plugin-remove, help, --version\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac

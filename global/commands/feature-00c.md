@@ -1,6 +1,6 @@
 ---
 description: 'Inicia execucao feature-00c sobre UMA feature individual em projeto com briefing+constitution ratificados. Cria state em .claude/feature-00c-state/<short-name>/ e delega pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→review-task) ao agente-00c-feature-orchestrator.'
-argument-hint: '"<descricao-curta>" [<short-name>] [--projeto <path>] [--whitelist <urls>]'
+argument-hint: '"<descricao-curta>" [<short-name>] [--projeto <path>] [--whitelist <urls>] [--llm <nome>]'
 allowed-tools:
   - Agent
   - Read
@@ -86,6 +86,7 @@ short_name       = segundo argumento posicional opcional (kebab-case);
                    se omitido, derivar via specify
 --projeto PATH   = default = cwd
 --whitelist CSV  = URLs externas adicionais ao .env (opcional)
+--llm <nome>     = plugin LLM a usar (default: "claude" — catalogo core; SC-003 zero regressao)
 ```
 
 Validar:
@@ -190,6 +191,13 @@ state-rw.sh init --state-dir "$AGENTE_00C_STATE_DIR" \
   --key-aspects "$_aspectos" \
   ${_canonical:+--canonical-project "$_canonical"} \
   ${_session:+--session-name "$_session"}
+
+# Gravar execution.llm_plugin (FR-016 cstk-plugins): so quando != "claude" (SC-003).
+if [ "${_llm_plugin:-claude}" != "claude" ]; then
+  state-rw.sh set --state-dir "$AGENTE_00C_STATE_DIR" \
+    --field '.execution.llm_plugin' \
+    --value "\"$_llm_plugin\""
+fi
 ```
 
 ### 4. Selecionar modelo da onda + delegar ao orquestrador via Agent

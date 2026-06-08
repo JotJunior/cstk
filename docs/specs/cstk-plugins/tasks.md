@@ -80,7 +80,7 @@ mas nenhum FR captura esse requisito como deliverable rastreavel.
 
 - [x] 1.5.1 Adicionar FR-019 ao `spec.md`: "A documentacao de usuario do sistema de plugins (README, quickstart) MUST incluir aviso explicito sobre o modelo de confianca TOFU: instalar um plugin equivale a executar codigo arbitrario com a mesma confianca do catalogo core; instalar somente de autores confiaveis."
 - [x] 1.5.2 Adicionar aviso TOFU ao `quickstart.md` (bloco de atencao no topo antes dos cenarios)
-- [ ] 1.5.3 Verificar que CHANGELOG.md inclui nota de seguranca na entrada da feature
+- [x] 1.5.3 Verificar que CHANGELOG.md inclui nota de seguranca na entrada da feature
 
 ### 1.6 Documentar postura de runtime blast-radius de skills de plugin `[A]`
 
@@ -235,37 +235,37 @@ Ref: spec.md FR-012; contracts/cli-commands.md §plugin-remove; tasks 1.4 (contr
 
 Ref: spec.md FR-010; plan.md §Project Structure; contracts/cli-commands.md
 
-- [ ] 5.1.1 Editar `cli/cstk` dispatcher: adicionar cases para `plugin-add`, `plugin-remove`, `plugin-list` no bloco `case "$_cmd"` (segue convencao `<cmd>_main` via `sed 's/-/_/g'`)
-- [ ] 5.1.2 Verificar que o source correto e feito antes de chamar a main fn (source de `plugin-add.sh`, `plugin-list.sh`, `plugin-remove.sh`)
-- [ ] 5.1.3 Teste de smoke: `cstk plugin-list` (sem plugin instalado) retorna exit 0 + mensagem
+- [x] 5.1.1 Editar `cli/cstk` dispatcher: adicionar cases para `plugin-add`, `plugin-remove`, `plugin-list` no bloco `case "$_cmd"` (segue convencao `<cmd>_main` via `sed 's/-/_/g'`)
+- [x] 5.1.2 Verificar que o source correto e feito antes de chamar a main fn (source de `plugin-add.sh`, `plugin-list.sh`, `plugin-remove.sh`)
+- [x] 5.1.3 Teste de smoke: `cstk plugin-list` (sem plugin instalado) retorna exit 0 + mensagem
 
 ### 5.2 Flag `--llm` em `00c-bootstrap.sh` `[A]`
 
 Ref: spec.md FR-013..FR-016; contracts/pipeline-integration.md §Pre-start gate; data-model.md §--llm em state.json
 
-- [ ] 5.2.1 Editar `cli/lib/00c-bootstrap.sh`: adicionar `--llm <name>` ao parser de flags `while ... case` (default `claude`)
-- [ ] 5.2.2 Implementar pre-start gate (FR-015) ANTES de `state-rw.sh init`: se `llm != "claude"`, chamar `plugin_common_is_installed`; nao instalado → stderr + exit 1; instalado → re-verificar checksum (FR-005); falha → stderr + exit 1
-- [ ] 5.2.3 Apos gate OK: gravar `execution.llm_plugin = "$llm"` no state via path de escrita existente (FR-016)
-- [ ] 5.2.4 Quando `llm != "claude"` e ativo: substituir resolucao de skill path por `plugin_resolve_skill_dir` (FR-014; path-prepending)
-- [ ] 5.2.5 Quando `llm == "claude"`: ZERO mudanca no comportamento atual (SC-003)
-- [ ] 5.2.6 Testes: Scenario 4 (plugin nao instalado → exit 1 antes de criar state); Scenario 5 (sem --llm → comportamento identico); Scenario 6 (plugin tampered → exit 1 na ativacao)
+- [x] 5.2.1 Editar `cli/lib/00c-bootstrap.sh`: adicionar `--llm <name>` ao parser de flags `while ... case` (default `claude`)
+- [x] 5.2.2 Implementar pre-start gate (FR-015) ANTES de `state-rw.sh init`: se `llm != "claude"`, chamar `plugin_common_is_installed`; nao instalado → stderr + exit 1; instalado → re-verificar checksum (FR-005); falha → stderr + exit 1
+- [x] 5.2.3 Apos gate OK: gravar `execution.llm_plugin = "$llm"` no state via path de escrita existente (FR-016)
+- [x] 5.2.4 Quando `llm != "claude"` e ativo: substituir resolucao de skill path por `plugin_resolve_skill_dir` (FR-014; path-prepending)
+- [x] 5.2.5 Quando `llm == "claude"`: ZERO mudanca no comportamento atual (SC-003)
+- [x] 5.2.6 Testes: Scenario 4 (plugin nao instalado → exit 1 antes de criar state); Scenario 5 (sem --llm → comportamento identico); Scenario 6 (plugin tampered → exit 1 na ativacao)
 
 ### 5.3 Flag `--llm` nos slash commands `[A]`
 
 Ref: spec.md FR-013; contracts/pipeline-integration.md; plan.md §Project Structure
 
-- [ ] 5.3.1 Editar `global/commands/feature-00c.md`: aceitar e encaminhar `--llm <name>` para o bootstrap
-- [ ] 5.3.2 Editar `global/commands/agente-00c.md`: idem
-- [ ] 5.3.3 Editar `global/commands/feature-00c-resume.md`: implementar resume gate FR-016 (ler `execution.llm_plugin`; se nao `claude`: plugin nao instalado → bloqueio humano; tampered → bloqueio humano; ok → re-ativar path-prepending)
-- [ ] 5.3.4 Editar `global/commands/agente-00c-resume.md`: idem resume gate
+- [x] 5.3.1 Editar `global/commands/feature-00c.md`: aceitar e encaminhar `--llm <name>` para o bootstrap
+- [x] 5.3.2 Editar `global/commands/agente-00c.md`: idem
+- [x] 5.3.3 Editar `global/commands/feature-00c-resume.md`: implementar resume gate FR-016 (ler `execution.llm_plugin`; se nao `claude`: plugin nao instalado → bloqueio humano; tampered → bloqueio humano; ok → re-ativar path-prepending)
+- [x] 5.3.4 Editar `global/commands/agente-00c-resume.md`: idem resume gate
 
 ### 5.4 Resume gate no runtime (FR-016) `[A]`
 
 Ref: spec.md FR-016; contracts/pipeline-integration.md §Resume contract
 
-- [ ] 5.4.1 Verificar que `state-rw.sh` tem o campo `execution.llm_plugin` no schema e o grava corretamente em `init`
-- [ ] 5.4.2 Adicionar logica de resume gate: ao inicio de cada onda pos-primeira, se `execution.llm_plugin != "claude"` verificar instalacao + integridade; falha → `bloqueios.sh register` com mensagem padrao do contrato
-- [ ] 5.4.3 Testes: resume com plugin removido entre ondas → bloqueio humano; resume com plugin tampered → bloqueio humano; resume com plugin ok → continua
+- [x] 5.4.1 Verificar que `state-rw.sh` tem o campo `execution.llm_plugin` no schema e o grava corretamente em `init`
+- [x] 5.4.2 Adicionar logica de resume gate: ao inicio de cada onda pos-primeira, se `execution.llm_plugin != "claude"` verificar instalacao + integridade; falha → `bloqueios.sh register` com mensagem padrao do contrato
+- [x] 5.4.3 Testes: resume com plugin removido entre ondas → bloqueio humano; resume com plugin tampered → bloqueio humano; resume com plugin ok → continua
 
 ---
 
@@ -275,29 +275,29 @@ Ref: spec.md FR-016; contracts/pipeline-integration.md §Resume contract
 
 Ref: spec.md SC-005; constitution.md Principio II NON-NEGOTIABLE
 
-- [ ] 6.1.1 Rodar `shellcheck -s sh cli/lib/plugin-common.sh` → zero warnings; corrigir cada finding com comentario inline de excecao se necessario
-- [ ] 6.1.2 Rodar `shellcheck -s sh cli/lib/plugin-add.sh` → zero warnings
-- [ ] 6.1.3 Rodar `shellcheck -s sh cli/lib/plugin-list.sh` → zero warnings
-- [ ] 6.1.4 Rodar `shellcheck -s sh cli/lib/plugin-remove.sh` → zero warnings
-- [ ] 6.1.5 Adicionar chamada `shellcheck -s sh` ao CI/suite existente para os 4 arquivos novos (evitar regressao futura)
+- [x] 6.1.1 Rodar `shellcheck -s sh cli/lib/plugin-common.sh` → zero warnings; corrigir cada finding com comentario inline de excecao se necessario
+- [x] 6.1.2 Rodar `shellcheck -s sh cli/lib/plugin-add.sh` → zero warnings
+- [x] 6.1.3 Rodar `shellcheck -s sh cli/lib/plugin-list.sh` → zero warnings
+- [x] 6.1.4 Rodar `shellcheck -s sh cli/lib/plugin-remove.sh` → zero warnings
+- [x] 6.1.5 Adicionar chamada `shellcheck -s sh` ao CI/suite existente para os 4 arquivos novos (evitar regressao futura)
 
 ### 6.2 Suite de testes integrada `[C]`
 
 Ref: spec.md SC-001..SC-006; plan.md §Testing; quickstart.md Scenarios 1-8
 
-- [ ] 6.2.1 Rodar suite completa `tests/run.sh` ou equivalente e garantir 0 falhas introducidas pelos novos arquivos
-- [ ] 6.2.2 Verificar que todos os 8 Scenarios do `quickstart.md` tem cobertura em pelo menos 1 teste automatizado (mapeamento explicito nos testes)
-- [ ] 6.2.3 Teste de performance: `plugin-list` com 5 plugins fixture → <2s (SC-004); medir com `time`
-- [ ] 6.2.4 Teste SC-003 (zero regressao): rodar suite existente com e sem `--llm`; nenhum teste novo pode quebrar
-- [ ] 6.2.5 Teste offline completo: desabilitar rede (mock de `http_download`) e verificar que list/remove/activate funcionam (SC-006)
+- [x] 6.2.1 Rodar suite completa `tests/run.sh` ou equivalente e garantir 0 falhas introducidas pelos novos arquivos
+- [x] 6.2.2 Verificar que todos os 8 Scenarios do `quickstart.md` tem cobertura em pelo menos 1 teste automatizado (mapeamento explicito nos testes)
+- [x] 6.2.3 Teste de performance: `plugin-list` com 5 plugins fixture → <2s (SC-004); medir com `time`
+- [x] 6.2.4 Teste SC-003 (zero regressao): rodar suite existente com e sem `--llm`; nenhum teste novo pode quebrar
+- [x] 6.2.5 Teste offline completo: desabilitar rede (mock de `http_download`) e verificar que list/remove/activate funcionam (SC-006)
 
 ### 6.3 Validacao de template e render do tasks.md `[M]`
 
 Ref: agente-00c-feature-orchestrator.md §Quality Gates; create-tasks/scripts/validate-tasks-template.sh
 
-- [ ] 6.3.1 Rodar `validate-tasks-template.sh docs/specs/cstk-plugins/tasks.md` → exit 0 ou corrigir findings `critical`
-- [ ] 6.3.2 Rodar `validate-docs-rendered` sobre `docs/specs/cstk-plugins/tasks.md` → links, Mermaid parseavel
-- [ ] 6.3.3 Verificar que todos os artefatos da feature (`spec.md`, `plan.md`, `tasks.md`, contratos) passam no `validate-documentation`
+- [x] 6.3.1 Rodar `validate-tasks-template.sh docs/specs/cstk-plugins/tasks.md` → exit 0 ou corrigir findings `critical`
+- [x] 6.3.2 Rodar `validate-docs-rendered` sobre `docs/specs/cstk-plugins/tasks.md` → links, Mermaid parseavel
+- [x] 6.3.3 Verificar que todos os artefatos da feature (`spec.md`, `plan.md`, `tasks.md`, contratos) passam no `validate-documentation`
 
 ---
 
@@ -307,17 +307,17 @@ Ref: agente-00c-feature-orchestrator.md §Quality Gates; create-tasks/scripts/va
 
 Ref: tasks 1.5; spec.md FR-019 (novo); quickstart.md
 
-- [ ] 7.1.1 Adicionar secao "Plugin System" ao README do cstk com: instalacao, uso (`plugin-add`/`plugin-list`/`plugin-remove`, `--llm`), aviso TOFU obrigatorio (CHK009/FR-019)
-- [ ] 7.1.2 Revisar `quickstart.md` para confirmar que aviso de confianca TOFU e blast-radius esta visivel antes dos cenarios
-- [ ] 7.1.3 Adicionar nota de MVP scope (no version-pinning, no detached signature, no JSON output) na documentacao de usuario (CHK023)
+- [x] 7.1.1 Adicionar secao "Plugin System" ao README do cstk com: instalacao, uso (`plugin-add`/`plugin-list`/`plugin-remove`, `--llm`), aviso TOFU obrigatorio (CHK009/FR-019)
+- [x] 7.1.2 Revisar `quickstart.md` para confirmar que aviso de confianca TOFU e blast-radius esta visivel antes dos cenarios
+- [x] 7.1.3 Adicionar nota de MVP scope (no version-pinning, no detached signature, no JSON output) na documentacao de usuario (CHK023)
 
 ### 7.2 CHANGELOG e bump de versao `[M]`
 
 Ref: plan.md §Project Structure; constitution.md Principio I
 
-- [ ] 7.2.1 Adicionar entrada no `CHANGELOG.md` para a feature `cstk-plugins`: descricao, FRs implementados, breaking changes (nenhum — additivo), notas de seguranca
-- [ ] 7.2.2 Bump de versao em `cli/VERSION` (SemVer minor: feature nova sem quebra de compatibilidade)
-- [ ] 7.2.3 Verificar que o bump de versao nao quebra nenhum teste existente que compare string de versao
+- [x] 7.2.1 Adicionar entrada no `CHANGELOG.md` para a feature `cstk-plugins`: descricao, FRs implementados, breaking changes (nenhum — additivo), notas de seguranca
+- [x] 7.2.2 Bump de versao em `cli/VERSION` (SemVer minor: feature nova sem quebra de compatibilidade)
+- [x] 7.2.3 Verificar que o bump de versao nao quebra nenhum teste existente que compare string de versao
 
 ---
 

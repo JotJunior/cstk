@@ -70,6 +70,45 @@ ultima Decisao da execucao + diagnostico tecnico:
 
 Em ambos os casos, emit aviso na saida e termine sem invocar orquestrador.
 
+### 3.bis. Resume gate de plugin LLM (FR-016)
+
+Apos validar hash e estado, e ANTES de delegar ao orquestrador, re-verificar
+o plugin LLM (se houver) para garantir que continua instalado e integro entre
+ondas (plugin pode ser removido ou adulterado enquanto o agente dorme).
+
+```bash
+_llm=$(state-rw.sh get --state-dir <SD> \
+         --field '.execution.llm_plugin // "claude"' 2>/dev/null) || _llm="claude"
+if [ -n "$_llm" ] && [ "$_llm" != "claude" ] && [ "$_llm" != "null" ]; then
+  # Requer CSTK_LIB no ambiente para source plugin-common.sh.
+  _pc="${CSTK_LIB:-$HOME/.local/share/cstk/lib}/plugin-common.sh"
+  [ -f "$_pc" ] && . "$_pc" || {
+    bloqueios.sh register --state-dir <SD> \
+      --pergunta "plugin-common.sh ausente; nao e possivel verificar plugin LLM '$_llm'. Reinstale cstk e retome." \
+      --contexto-para-resposta "CSTK_LIB=$CSTK_LIB; plugin-common.sh nao encontrado."
+    state-lock.sh release --state-dir <SD>
+    exit 4
+  }
+  if ! plugin_is_installed "$_llm" 2>/dev/null; then
+    bloqueios.sh register --state-dir <SD> \
+      --pergunta "Plugin LLM '$_llm' removido entre ondas. Reinstale via 'cstk plugin-add $_llm' e retome." \
+      --contexto-para-resposta "execution.llm_plugin=$_llm; plugin_is_installed retornou false."
+    state-lock.sh release --state-dir <SD>
+    exit 4
+  fi
+  _llm_store=$(plugin_store_dir "$_llm")
+  _llm_sha=$(grep '"bundle_sha256"' "$_llm_store/plugin-manifest.json" 2>/dev/null \
+               | sed 's/.*"bundle_sha256"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+  if ! plugin_verify_bundle_checksum "$_llm_store" "$_llm_sha" 2>/dev/null; then
+    bloqueios.sh register --state-dir <SD> \
+      --pergunta "Plugin LLM '$_llm' adulterado entre ondas (checksum divergiu). Reinstale e retome." \
+      --contexto-para-resposta "execution.llm_plugin=$_llm; plugin_verify_bundle_checksum falhou."
+    state-lock.sh release --state-dir <SD>
+    exit 4
+  fi
+fi
+```
+
 ### 4. Verificar status atual
 
 ```bash

@@ -5,6 +5,45 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.13.0] - 2026-06-08
+
+### Added
+
+- **Feature `cstk-plugins`**: sistema de plugins de LLM para o pipeline SDD (agente-00c / feature-00c). Permite instalar provedores alternativos de modelo mantendo zero regressao no caminho default `--claude` (SC-003).
+
+  **Subcomandos entregues**:
+
+  - `cstk plugin-add <nome>`: instala um plugin LLM do store de plugins cstk (download, tar-slip guard, verificacao de checksum SHA-256, upsert no registry). Exit codes: 0 (sucesso), 1 (erro de integridade/rede), 2 (uso incorreto). FR-001..FR-008, FR-012.
+  - `cstk plugin-list [--verify]`: lista plugins instalados com status (`ok`/`tampered`/`unknown`) em <2s sem rede. Com `--verify`, re-verifica checksum de cada bundle. FR-011, FR-018, SC-004.
+  - `cstk plugin-remove <nome>`: remove plugin do store e do registry com tratamento de falha parcial. FR-012.
+
+  **Integracao com pipeline SDD**:
+
+  - Flag `--llm <nome>` em `cstk 00c`, `/agente-00c`, `/feature-00c` e commandos de resume. Default `claude` (catalogo core) e no-op completo (SC-003). Plugin nao-default passa por gate pre-state-init: verificacao de instalacao + checksum antes de qualquer escrita de estado (FR-015, FR-016).
+  - Path-prepending: skills de plugin consultadas ANTES do catalogo core sem copia nem symlink (FR-007, FR-014).
+  - Resume gate: ao retomar qualquer onda, se `execution.llm_plugin != "claude"`, re-verifica instalacao e integridade; falha → bloqueio humano (FR-016).
+  - Campo `execution.llm_plugin` gravado no state.json apos init (apenas quando diferente de `claude`).
+
+  **Seguranca**:
+
+  - Tar-slip guard obrigatorio (A05/A08): lista entradas ANTES de extrair; rejeita paths absolutos, componentes `..`, symlinks fora do staging.
+  - Verificacao de checksum SHA-256 do bundle pos-download e na ativacao (TOFU model).
+  - Validacao de nome via regex `^[a-z][a-z0-9-]{0,63}$` (FR-002).
+  - Aviso TOFU obrigatorio em README e quickstart (FR-019, CHK009).
+  - Guards de blast-radius (bash-guard.sh, path-guard.sh) aplicam-se igualmente a skills de plugin.
+
+  **Artefatos**:
+
+  - `cli/lib/plugin-common.sh`, `plugin-add.sh`, `plugin-list.sh`, `plugin-remove.sh`.
+  - `tests/cstk/test_plugin-common.sh`, `test_plugin-add.sh`, `test_plugin-list.sh`, `test_plugin-remove.sh`, `test_plugin-dispatcher.sh`.
+  - `docs/specs/cstk-plugins/spec.md`, `plan.md`, `tasks.md`, `contracts/cli-commands.md`, `contracts/pipeline-integration.md`, `quickstart.md`.
+
+  **Escopo excluido (MVP, CHK023)**: sem version-pinning, sem assinatura destacada (PGP/Sigstore), sem saida JSON estruturada.
+
+  **Breaking changes**: nenhum — feature inteiramente aditiva.
+
+  > **Nota de seguranca:** instalar um plugin equivale a executar codigo arbitrario. Use somente plugins de autores confiaveis (modelo TOFU — Trust On First Use).
+
 ## [5.12.0] - 2026-06-05
 
 ### Added

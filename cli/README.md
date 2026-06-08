@@ -90,6 +90,56 @@ a tag (ou usar uma nova tag, preferencial).
 | `session` | Cria/lista/encerra sessoes com worktree isolado | `lib/session.sh` |
 | `recall` | Memoria cross-feature: busca/ingestao/reindex | `lib/recall.sh` |
 | `serve` | Inicia o painel web local (lazy-install + npm start) | `lib/serve.sh` |
+| `plugin-add` | Instala um plugin LLM do store de plugins | `lib/plugin-add.sh` |
+| `plugin-list` | Lista plugins instalados (status, versao, integridade) | `lib/plugin-list.sh` |
+| `plugin-remove` | Remove um plugin instalado | `lib/plugin-remove.sh` |
+
+## Sistema de Plugins
+
+O cstk suporta plugins de LLM que permitem reutilizar diferentes provedores
+de modelo com o pipeline SDD (agente-00c / feature-00c).
+
+> **AVISO DE CONFIANCA (TOFU — Trust On First Use):** instalar um plugin
+> equivale a executar codigo arbitrario com a mesma confianca do catalogo
+> core. Instale somente de autores confiaveis. Os guards de blast-radius do
+> runtime (bash-guard.sh, path-guard.sh) aplicam-se igualmente a skills de
+> plugin e ao catalogo core — nenhuma restricao adicional e imposta por design
+> de MVP (aceito como residual — veja FR-020 da spec cstk-plugins).
+
+### Instalacao e uso
+
+```sh
+# Instalar um plugin
+cstk plugin-add <nome>              # ex: cstk plugin-add gemini
+
+# Listar plugins instalados
+cstk plugin-list                    # listagem rapida (<2s, sem rede)
+cstk plugin-list --verify           # re-verifica checksum de cada plugin
+
+# Remover um plugin
+cstk plugin-remove <nome>
+```
+
+### Usando um plugin com o pipeline SDD
+
+```sh
+# Bootstrap de novo projeto com plugin LLM
+cstk 00c /caminho/projeto --llm gemini
+
+# Slash commands do Claude Code
+/agente-00c "descricao do projeto" --llm gemini
+/feature-00c "descricao da feature" --llm gemini
+
+# Resume verifica automaticamente que o plugin continua instalado e integro
+/agente-00c-resume --projeto-alvo-path /caminho/projeto
+```
+
+### Notas de escopo MVP (CHK023)
+
+- Sem version-pinning: `plugin-add` instala sempre a versao `latest`.
+- Sem assinatura destacada: autenticidade garantida apenas por checksum
+  SHA-256 do bundle (TOFU model).
+- Sem saida JSON estruturada: `plugin-list` retorna texto human-readable.
 
 ### `cstk serve`
 

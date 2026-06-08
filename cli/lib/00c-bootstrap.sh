@@ -50,6 +50,7 @@ _00C_EXIT_INTERRUPT=130
 # State global (POSIX sh sem locals). Inicializado em bootstrap_00c_main.
 _00c_arg_path=""
 _00c_arg_yes=0
+_00c_arg_llm="claude"    # default: catalogo core (SC-003 zero regressao)
 _00c_resolved_path=""
 _00c_lock_dir=""
 _00c_descricao=""
@@ -71,6 +72,11 @@ bootstrap_00c_main() {
 
   _00c_check_dir_empty || return $?
   _00c_check_deps || return $?
+
+  # Gate de plugin LLM (FR-015): se --llm != "claude", validar antes de
+  # qualquer operacao de estado (state-rw.sh init ainda nao ocorreu aqui;
+  # o init acontece dentro do /agente-00c slash command no claude).
+  _00c_check_llm_plugin || return $?
 
   _00c_read_descricao || return $?
   _00c_read_stack || return $?
@@ -95,6 +101,7 @@ bootstrap_00c_main() {
 _00c_reset_state() {
   _00c_arg_path=""
   _00c_arg_yes=0
+  _00c_arg_llm="claude"
   _00c_resolved_path=""
   _00c_lock_dir=""
   _00c_descricao=""
@@ -111,6 +118,14 @@ _00c_parse_args() {
     case "$1" in
       --yes)
         _00c_arg_yes=1
+        ;;
+      --llm)
+        if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then
+          log_error "00c: --llm requer um argumento <nome>"
+          return "$_00C_EXIT_USAGE"
+        fi
+        shift
+        _00c_arg_llm=$1
         ;;
       --help|-h)
         _00c_print_help
@@ -155,7 +170,7 @@ _00c_print_help() {
 cstk 00c — Bootstrap interativo de projeto-alvo do agente-00C
 
 USO:
-  cstk 00c <path> [--yes]
+  cstk 00c <path> [--yes] [--llm <nome>]
 
 ARGUMENTOS:
   <path>    Path para o novo projeto-alvo (absoluto ou relativo ao CWD).
@@ -164,9 +179,13 @@ ARGUMENTOS:
             diretamente no claude.
 
 FLAGS:
-  --yes     Pula apenas o prompt final de confirmacao e o prompt de
-            auto-install. NAO pula validacoes de path/TTY/deps.
-  --help    Imprime esta ajuda e sai.
+  --yes       Pula apenas o prompt final de confirmacao e o prompt de
+              auto-install. NAO pula validacoes de path/TTY/deps.
+  --llm <n>   Plugin LLM a usar (default: "claude" — catalogo core; zero
+              regressao). Se nao "claude", o plugin deve estar instalado
+              (`cstk plugin-add <nome>`) e integro (checksum verificado
+              antes de qualquer operacao de estado).
+  --help      Imprime esta ajuda e sai.
 
 PRE-REQUISITOS:
   - TTY interativo (fluxo NAO automatizavel via pipe; aborta com exit 2)
@@ -709,6 +728,72 @@ $_rw_line"
   return 0
 }
 
+# ==== _00c_check_llm_plugin (FR-015 — gate pre-state-init) ====
+#
+# Se --llm == "claude" (default): no-op — zero mudanca no comportamento atual (SC-003).
+# Se --llm != "claude": validar que o plugin esta instalado E com checksum OK
+# antes de criar qualquer estado. Falha antes de `state-rw.sh init`.
+#
+# Requer que plugin-common.sh ja tenha sido sourced quando chamado com llm != claude.
+# Como bootstrap e invocado via dispatcher (cli/cstk), e dispatcher faz source de
+# plugin-common.sh apenas para plugin-add|list|remove; para 00c precisamos fazer
+# source direto aqui se necessario.
+_00c_check_llm_plugin() {
+  # SC-003: default claude — zero regressao.
+  if [ "$_00c_arg_llm" = "claude" ]; then
+    return 0
+  fi
+
+  # Validar nome do LLM plugin (mesma regra FR-002).
+  _clp_name=$_00c_arg_llm
+
+  # Source plugin-common.sh se ainda nao carregado.
+  if [ -z "${_CSTK_PLUGIN_COMMON_LOADED:-}" ]; then
+    _clp_common="${CSTK_LIB}/plugin-common.sh"
+    if [ ! -f "$_clp_common" ]; then
+      log_error "00c: --llm requer plugin-common.sh em $CSTK_LIB (ausente)"
+      return "$_00C_EXIT_ERROR"
+    fi
+    # shellcheck source=/dev/null
+    . "$_clp_common"
+  fi
+
+  # Validar nome via plugin_validate_name (FR-002).
+  if ! plugin_validate_name "$_clp_name" 2>/dev/null; then
+    log_error "00c: --llm '$_clp_name' nao e um nome de plugin valido (^[a-z][a-z0-9-]{0,63}\$)"
+    return "$_00C_EXIT_USAGE"
+  fi
+
+  # Verificar instalacao (registry + diretorio).
+  if ! plugin_is_installed "$_clp_name" 2>/dev/null; then
+    log_error "00c: plugin LLM '$_clp_name' nao esta instalado."
+    log_error "Instale primeiro: cstk plugin-add $_clp_name"
+    return "$_00C_EXIT_ERROR"
+  fi
+
+  # Re-verificar checksum (FR-005 — integridade na ativacao).
+  _clp_store=$(plugin_store_dir "$_clp_name")
+  _clp_manifest="$_clp_store/plugin-manifest.json"
+  if [ ! -f "$_clp_manifest" ]; then
+    log_error "00c: plugin '$_clp_name' sem plugin-manifest.json em $_clp_store"
+    return "$_00C_EXIT_ERROR"
+  fi
+  _clp_expected=$(grep '"bundle_sha256"' "$_clp_manifest" 2>/dev/null \
+                   | sed 's/.*"bundle_sha256"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+  if [ -z "$_clp_expected" ]; then
+    log_error "00c: plugin '$_clp_name' manifest sem campo bundle_sha256"
+    return "$_00C_EXIT_ERROR"
+  fi
+  if ! plugin_verify_bundle_checksum "$_clp_store" "$_clp_expected" 2>/dev/null; then
+    log_error "00c: plugin '$_clp_name' falhou na verificacao de checksum (tampered?)"
+    log_error "Reinstale: cstk plugin-add --force $_clp_name"
+    return "$_00C_EXIT_ERROR"
+  fi
+
+  log_info "00c: plugin LLM '$_clp_name' verificado OK; path-prepending ativo."
+  return 0
+}
+
 # ==== _00c_escape_sq (FR-016g) ====
 #
 # Escape canonico shell single-quote: cada `'` -> `'\''`.
@@ -757,6 +842,7 @@ _00c_dry_run_preview() {
     printf '=== cstk 00c — Resumo da invocacao ===\n'
     printf 'Path:        %s\n' "$_00c_resolved_path"
     printf 'Descricao:   %s\n' "$_00c_descricao"
+    printf 'LLM Plugin:  %s\n' "${_00c_arg_llm:-claude}"
     if [ -n "$_00c_stack" ]; then
       printf 'Stack:       %s\n' "$_00c_stack"
     else
@@ -796,6 +882,11 @@ _00c_build_slash_command() {
 
   if [ -n "$_00c_whitelist_file" ]; then
     _bsc_cmd="$_bsc_cmd --whitelist $_00c_whitelist_file"
+  fi
+
+  # Encaminhar --llm apenas quando nao for o default "claude" (SC-003).
+  if [ "${_00c_arg_llm:-claude}" != "claude" ]; then
+    _bsc_cmd="$_bsc_cmd --llm '$_00c_arg_llm'"
   fi
 
   _bsc_path_esc=$(_00c_escape_sq "$_00c_resolved_path")

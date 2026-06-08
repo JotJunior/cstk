@@ -100,7 +100,32 @@ fi
      fi
    fi
 
-5. ler status do state
+5. resume gate de plugin LLM (FR-016):
+   _llm=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" \
+            --field '.execution.llm_plugin // "claude"' 2>/dev/null) || _llm="claude"
+   if [ -n "$_llm" ] && [ "$_llm" != "claude" ] && [ "$_llm" != "null" ]; then
+     # Plugin nao-default: re-verificar instalacao + checksum entre ondas.
+     # source plugin-common.sh (CSTK_LIB deve estar no ambiente).
+     if ! plugin_is_installed "$_llm" 2>/dev/null; then
+       bloqueios.sh register --state-dir "$AGENTE_00C_STATE_DIR" \
+         --pergunta "Plugin LLM '$_llm' nao encontrado. Reinstale via 'cstk plugin-add $_llm' e retome." \
+         --contexto-para-resposta "execution.llm_plugin=$_llm; plugin ausente ou registry corrompido."
+       state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"
+       exit 4
+     fi
+     _llm_store=$(plugin_store_dir "$_llm")
+     _llm_sha=$(grep '"bundle_sha256"' "$_llm_store/plugin-manifest.json" 2>/dev/null \
+                 | sed 's/.*"bundle_sha256"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+     if ! plugin_verify_bundle_checksum "$_llm_store" "$_llm_sha" 2>/dev/null; then
+       bloqueios.sh register --state-dir "$AGENTE_00C_STATE_DIR" \
+         --pergunta "Plugin LLM '$_llm' falhou na verificacao de checksum (tampered?). Reinstale e retome." \
+         --contexto-para-resposta "execution.llm_plugin=$_llm; checksum divergiu entre ondas."
+       state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"
+       exit 4
+     fi
+   fi
+
+5.bis ler status do state
    _status=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.execution.status')
 
 6. se status == aguardando_humano:

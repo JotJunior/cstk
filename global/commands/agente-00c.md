@@ -1,6 +1,6 @@
 ---
 description: 'Inicia execucao do orquestrador autonomo agente-00C sobre um projeto-alvo. Cria state em <projeto-alvo>/.claude/agente-00c-state/ e delega pipeline SDD ao agente-00c-orchestrator.'
-argument-hint: "<descricao-curta> [--stack <stack-json>] [--whitelist <path>] [--projeto-alvo-path <path>]"
+argument-hint: "<descricao-curta> [--stack <stack-json>] [--whitelist <path>] [--projeto-alvo-path <path>] [--llm <nome>]"
 allowed-tools:
   - Agent
   - Read
@@ -100,7 +100,8 @@ puder confirmar o warm-up no inicio.
 ### 1. Parse de argumentos
 
 Extrair `descricao-curta` (primeiro posicional, minimo 10 chars),
-`--stack`, `--whitelist`, `--projeto-alvo-path` (default = cwd).
+`--stack`, `--whitelist`, `--projeto-alvo-path` (default = cwd),
+`--llm <nome>` (default `claude` — catalogo core; SC-003 zero regressao).
 
 #### Checklist pre-execucao (multi-workspace)
 
@@ -206,6 +207,18 @@ state-lock.sh acquire --state-dir <SD> || {
 
   Status inicial: `em_andamento`, etapa `briefing`, `next_instruction`
   apontando para inicio do briefing.
+
+- Gravar `execution.llm_plugin` (FR-016 cstk-plugins): logo apos o init,
+  gravar o plugin LLM via `state-rw.sh set`. Default `claude` NAO e gravado
+  (SC-003 zero ruido em state de execucoes sem plugin). Apenas quando
+  `--llm` for diferente de `claude`:
+  ```bash
+  if [ "${_llm_plugin:-claude}" != "claude" ]; then
+    state-rw.sh set --state-dir <SD> \
+      --field '.execution.llm_plugin' \
+      --value "\"$_llm_plugin\""
+  fi
+  ```
 
 ### 4. Selecao de modelo da onda + delegacao ao orquestrador
 

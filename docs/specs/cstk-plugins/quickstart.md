@@ -7,6 +7,16 @@
 > assina pacotes com chave separada (MVP — ver Escopo Excluido na spec).
 > (FR-019)
 
+> **Escopo de MVP (CHK023):** As seguintes funcionalidades estao fora do
+> escopo desta versao inicial:
+> - **Sem version-pinning:** `plugin-add` instala sempre `latest`; nao e
+>   possivel fixar uma versao especifica (ex: `plugin-add codex@1.2.3`).
+> - **Sem assinatura destacada:** a autenticidade e verificada apenas por
+>   checksum SHA-256 do bundle (modelo TOFU); nao ha assinatura PGP/Sigstore
+>   separada da release.
+> - **Sem saida JSON estruturada:** `plugin-list` retorna texto human-readable;
+>   nao ha flag `--json` para integracao com ferramentas externas.
+
 Cenarios de teste end-to-end. O alvo e CLI POSIX sh (single-layer) — NAO ha
 borda backend↔frontend, entao o cenario "Roundtrip End-to-End" do template
 e **N/A** (vide nota ao final). O equivalente para esta feature e o cenario
