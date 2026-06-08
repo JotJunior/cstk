@@ -182,11 +182,14 @@ installs and `cstk plugin-list` shows type `lang` for it.
 **Plugin discovery and naming**
 
 - **FR-001**: The toolkit MUST derive the canonical repository URL for a plugin
-  named `<name>` from the pattern `cstk-plugin-<name>` using a well-known
-  hosting base (e.g., `github.com/JotJunior/cstk-plugin-<name>` or a
-  configurable base URL). [NEEDS CLARIFICATION: What is the canonical hosting
-  base and who controls it? Is it the maintainer's GitHub namespace only, or
-  can a user configure an alternative registry?]
+  named `<name>` from the pattern `cstk-plugin-<name>` using a configurable
+  hosting base. The default base is `https://github.com/JotJunior/` (maintainer's
+  namespace). Users MAY override the base via the environment variable
+  `CSTK_PLUGIN_REGISTRY` (e.g., `CSTK_PLUGIN_REGISTRY=https://github.com/myorg/`)
+  or via a local config file (`~/.cstk/config`, POSIX sh key=value format).
+  When the override is set, the toolkit fetches from
+  `<base>/cstk-plugin-<name>` instead of the default. The default base is
+  always used when neither override is present.
 
 - **FR-002**: Plugin names MUST match the pattern `^[a-z][a-z0-9-]{0,63}$`.
   Any `plugin-add` or `plugin-remove` invocation with a name that fails this
@@ -220,11 +223,12 @@ installs and `cstk plugin-list` shows type `lang` for it.
   files into the core catalog (`~/.claude/skills/`) to avoid conflating plugin
   content with toolkit-shipped content.
 
-  [NEEDS CLARIFICATION: When `--llm <name>` activates a plugin's skill
-  overrides, are the plugin skills loaded by inserting the plugin's skills
-  directory into the resolution path, or by symlinking/copying into
-  `~/.claude/skills/`? The former keeps core catalog clean; the latter may be
-  simpler for the harness. Which model is acceptable?]
+  When `--llm <name>` activates a plugin, skill resolution uses **path-prepending**:
+  the pipeline dispatcher consults the plugin's skills directory
+  (`~/.claude/plugins/<name>/skills/`) first for each skill lookup, falling
+  back to the core catalog (`~/.claude/skills/`) for skills the plugin does
+  not provide. No files are copied or symlinked into `~/.claude/skills/`; the
+  core catalog remains immutable during plugin activation.
 
 - **FR-008**: The installation MUST be atomic: files are staged in a temporary
   directory and moved to the final location only after checksum verification
@@ -340,15 +344,22 @@ installs and `cstk plugin-list` shows type `lang` for it.
 
 ## Clarifications
 
-_To be resolved in the `/clarify` phase._
+_Resolved in the `/clarify` phase (2026-06-08). Decision IDs: dec-005 (FR-001), dec-006 (FR-007)._
 
-1. **FR-001** — Canonical hosting base: Is the plugin repository always under
-   the maintainer's GitHub namespace (`github.com/JotJunior/cstk-plugin-<name>`)
-   or can users configure a custom registry base URL? A configurable base URL
-   would enable community-hosted plugins but requires more trust-surface design.
+1. **FR-001** — Canonical hosting base: **RESOLVED** — Configurable with a
+   sensible default. Default base is `https://github.com/JotJunior/`
+   (maintainer's namespace, same trust model as the toolkit itself). Users MAY
+   override via `CSTK_PLUGIN_REGISTRY` env var or `~/.cstk/config`
+   (POSIX key=value). This keeps the default secure (points to the same GitHub
+   org as the toolkit) while allowing community registries without hardcoding
+   the namespace forever. A fully fixed URL would couple FR-001 to the
+   maintainer's GitHub account permanently; full config-only would add
+   over-engineering for MVP. (dec-005, score 2)
 
-2. **FR-007** — Skill resolution model: Does `--llm <name>` load plugin skills
-   via path-prepending (plugin dir consulted first, core catalog as fallback) or
-   via copy/symlink into `~/.claude/skills/`? Path-prepending keeps the core
-   catalog immutable; copy/symlink may be simpler for how the harness discovers
-   skills today.
+2. **FR-007** — Skill resolution model: **RESOLVED** — Path-prepending only.
+   The pipeline dispatcher consults `~/.claude/plugins/<name>/skills/` first,
+   then falls back to the core catalog. No files are written to or symlinked
+   into `~/.claude/skills/`. This is the only model consistent with FR-007's
+   explicit prohibition ("MUST NOT write plugin files into the core catalog").
+   Copy/symlink was eliminated because it directly violates FR-007. (dec-006,
+   score 3)
