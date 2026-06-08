@@ -34,8 +34,11 @@ resolucao de nome→URL (FR-001), validacao de nome (FR-002), checksum via
 2. Resolver URL: `<base>/cstk-plugin-<name>` onde `base` = `CSTK_PLUGIN_REGISTRY`
    env, senao `~/.cstk/config` key `registry`, senao default
    `https://github.com/JotJunior/` (FR-001).
-3. Se ja instalado (registry tem `<name>`): mostrar versao instalada; sem
-   `--force`, pedir confirmacao interativa (FR-009). Recusa → exit 0 (no-op).
+3. Se ja instalado (registry tem `<name>`): mostrar versao instalada. Sem
+   `--force`: verificar `[ -t 0 ]` (stdin e TTY?). Se TTY: pedir confirmacao
+   interativa; recusa → exit 0 (no-op). Se NAO TTY: abortar com exit 1 e
+   mensagem clara pedindo `--force` para uso nao-interativo (FR-009, CHK009
+   — safer default: nunca sobrescreve silenciosamente em CI/pipe).
 4. Baixar bundle (tarball) para tmp via `http_download` (FR-006).
 5. Extrair em staging tmp (`mktemp -d`); ler `plugin-manifest.json`; validar
    shape (data-model §Plugin Manifest, ordem 1-5).
@@ -117,8 +120,16 @@ lang-dotnet 0.3.1   lang   tampered
 
 1. Validar `<name>` (FR-002).
 2. Se nao instalado (sem entrada no registry) → exit 1, erro claro (FR-012).
-3. `rm -rf ~/.claude/cstk/plugins/<name>/`.
-4. Remover entrada `<name>` do `registry.json`.
+3. `rm -rf ~/.claude/cstk/plugins/<name>/`. Se `rm -rf` falhar ou for parcial
+   (ex: permissao negada em algum arquivo): tentar atomic cleanup (re-verificar
+   se o diretorio ainda existe e se a remocao foi completa); se nao-completa,
+   reportar estado inconsistente em stderr com exit 1 ("remove parcial: store
+   pode estar em estado indeterminado — remova manualmente e re-tente"); NAO
+   silenciar o erro.
+4. Remover entrada `<name>` do `registry.json`. Se a escrita no registry falhar
+   apos o `rm -rf` ter removido o diretorio: reportar estado inconsistente com
+   exit 1 ("registry nao atualizado apos rm do diretorio — re-tente plugin-remove
+   para limpar o registry"); o plugin store esta limpo mas o registry diverge.
 5. Confirmar (US3-AS3).
 
 ### Exit codes

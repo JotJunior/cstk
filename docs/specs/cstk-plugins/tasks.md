@@ -28,11 +28,11 @@ O wording literal de FR-007 diz `~/.claude/plugins/<name>/` mas o plan decidiu
 evitar colisao com o sistema nativo de plugins do Claude Code. A intencao e
 consistente; so o wording da spec esta defasado.
 
-- [ ] 1.1.1 Editar `spec.md` FR-007: substituir o default path `~/.claude/plugins/<name>/` por `~/.claude/cstk/plugins/<name>/` e adicionar nota "(namespace dedicado cstk; evita colisao com plugins nativos do Claude Code — research Decision 1)"
-- [ ] 1.1.2 Editar `spec.md` FR-012: atualizar referencia a `~/.claude/plugins/<name>/` → `~/.claude/cstk/plugins/<name>/`
-- [ ] 1.1.3 Editar `spec.md` §Key Entities "Plugin Store": atualizar path e adicionar nota de namespace
-- [ ] 1.1.4 Verificar que `data-model.md`, `contracts/cli-commands.md` e `contracts/pipeline-integration.md` ja usam o path correto `~/.claude/cstk/plugins/` (leitura de confirmacao)
-- [ ] 1.1.5 Teste de regressao de wording: `grep -r "~/.claude/plugins/" docs/specs/cstk-plugins/` deve retornar zero ocorrencias apos as edicoes (exceto em comentarios historicos explicitos)
+- [x] 1.1.1 Editar `spec.md` FR-007: substituir o default path `~/.claude/plugins/<name>/` por `~/.claude/cstk/plugins/<name>/` e adicionar nota "(namespace dedicado cstk; evita colisao com plugins nativos do Claude Code — research Decision 1)"
+- [x] 1.1.2 Editar `spec.md` FR-012: atualizar referencia a `~/.claude/plugins/<name>/` → `~/.claude/cstk/plugins/<name>/`
+- [x] 1.1.3 Editar `spec.md` §Key Entities "Plugin Store": atualizar path e adicionar nota de namespace
+- [x] 1.1.4 Verificar que `data-model.md`, `contracts/cli-commands.md` e `contracts/pipeline-integration.md` ja usam o path correto `~/.claude/cstk/plugins/` (leitura de confirmacao)
+- [x] 1.1.5 Teste de regressao de wording: `grep -r "~/.claude/plugins/" docs/specs/cstk-plugins/` deve retornar zero ocorrencias apos as edicoes (exceto em comentarios historicos explicitos)
 
 ### 1.2 Fechar ambiguidade FR-009 — comportamento sem TTY (CI/piped) `[A]`
 
@@ -42,9 +42,9 @@ FR-009 diz "interactive prompt OR --force" mas nao define o comportamento quando
 stdin nao e um TTY e `--force` esta ausente (ex: CI, pipe). Sem definicao explicita,
 implementacoes divergem.
 
-- [ ] 1.2.1 Decidir e documentar em `spec.md` FR-009: quando stdin nao e TTY e `--force` ausente, o comportamento MUST ser "abort com exit 1 e mensagem clara pedindo `--force` para uso nao-interativo" (safer default — nao instala silenciosamente)
-- [ ] 1.2.2 Adicionar cenario de teste ao `quickstart.md`: "Scenario 1b: re-install sem TTY sem --force → exit 1; com --force → instala"
-- [ ] 1.2.3 Verificar que `contracts/cli-commands.md` §plugin-add Behavior passo 3 reflita a decisao (adicionar nota de TTY-check)
+- [x] 1.2.1 Decidir e documentar em `spec.md` FR-009: quando stdin nao e TTY e `--force` ausente, o comportamento MUST ser "abort com exit 1 e mensagem clara pedindo `--force` para uso nao-interativo" (safer default — nao instala silenciosamente)
+- [x] 1.2.2 Adicionar cenario de teste ao `quickstart.md`: "Scenario 1b: re-install sem TTY sem --force → exit 1; com --force → instala"
+- [x] 1.2.3 Verificar que `contracts/cli-commands.md` §plugin-add Behavior passo 3 reflita a decisao (adicionar nota de TTY-check)
 - [ ] 1.2.4 Teste unitario: `test_plugin-add.sh` deve cobrir o caso "ja instalado + stdin nao-TTY + sem --force → exit 1"
 
 ### 1.3 Clarificar SC-001 — separar tempo de toolkit vs tempo de rede `[M]`
@@ -55,7 +55,7 @@ SC-001 define "<60s numa conexao broadband normal" mas mistura tempo do toolkit
 com tempo de download incontrolavel. A ambiguidade dificulta a criacao de testes
 de performance reproduziveis.
 
-- [ ] 1.3.1 Editar `spec.md` SC-001: adicionar nota "(o budget de 60s inclui o tempo de download; o toolkit em si — validacao, extracao, checksum, escrita — deve completar em <5s excluindo download)"
+- [x] 1.3.1 Editar `spec.md` SC-001: adicionar nota "(o budget de 60s inclui o tempo de download; o toolkit em si — validacao, extracao, checksum, escrita — deve completar em <5s excluindo download)"
 - [ ] 1.3.2 Adicionar subtarefa de teste de performance no `test_plugin-add.sh`: medir tempo de extracao + checksum + escrita com bundle fixture local e verificar <5s
 
 ### 1.4 Especificar contrato de remocao parcial `[A]`
@@ -66,9 +66,9 @@ FR-012 nao especifica o comportamento em falha de remocao parcial (ex: alguns
 arquivos deletados, registry write falha). Edge case "remove durante pipeline
 rodando" esta coberto; mid-remove crash nao esta.
 
-- [ ] 1.4.1 Editar `contracts/cli-commands.md` §plugin-remove Behavior: adicionar passo de tratamento de falha parcial — "se `rm -rf` parcial ou registry write falha: tentar atomic cleanup (re-checar diretorio e registry), reportar estado inconsistente com exit 1; nao silenciar; usuario deve re-tentar ou remover manualmente"
-- [ ] 1.4.2 Editar `spec.md` FR-012: adicionar clausula de falha parcial alinhada ao contrato acima
-- [ ] 1.4.3 Adicionar Scenario 7b ao `quickstart.md`: "remove com falha de IO → exit 1, mensagem de estado inconsistente, store em estado indeterminado documentado"
+- [x] 1.4.1 Editar `contracts/cli-commands.md` §plugin-remove Behavior: adicionar passo de tratamento de falha parcial — "se `rm -rf` parcial ou registry write falha: tentar atomic cleanup (re-checar diretorio e registry), reportar estado inconsistente com exit 1; nao silenciar; usuario deve re-tentar ou remover manualmente"
+- [x] 1.4.2 Editar `spec.md` FR-012: adicionar clausula de falha parcial alinhada ao contrato acima
+- [x] 1.4.3 Adicionar Scenario 7b ao `quickstart.md`: "remove com falha de IO → exit 1, mensagem de estado inconsistente, store em estado indeterminado documentado"
 - [ ] 1.4.4 Teste: `test_plugin-remove.sh` cobre cenario de falha de IO durante remocao (via mock de `rm`)
 
 ### 1.5 Adicionar requisito de aviso TOFU em documentacao de usuario `[M]`
@@ -78,8 +78,8 @@ Ref: checklists/security.md CHK009 [Gap]; plan.md §Security Threat Model row AS
 O plan diz "documentation MUST warn to only install plugins from trusted authors"
 mas nenhum FR captura esse requisito como deliverable rastreavel.
 
-- [ ] 1.5.1 Adicionar FR-019 ao `spec.md`: "A documentacao de usuario do sistema de plugins (README, quickstart) MUST incluir aviso explicito sobre o modelo de confianca TOFU: instalar um plugin equivale a executar codigo arbitrario com a mesma confianca do catalogo core; instalar somente de autores confiaveis."
-- [ ] 1.5.2 Adicionar aviso TOFU ao `quickstart.md` (bloco de atencao no topo antes dos cenarios)
+- [x] 1.5.1 Adicionar FR-019 ao `spec.md`: "A documentacao de usuario do sistema de plugins (README, quickstart) MUST incluir aviso explicito sobre o modelo de confianca TOFU: instalar um plugin equivale a executar codigo arbitrario com a mesma confianca do catalogo core; instalar somente de autores confiaveis."
+- [x] 1.5.2 Adicionar aviso TOFU ao `quickstart.md` (bloco de atencao no topo antes dos cenarios)
 - [ ] 1.5.3 Verificar que CHANGELOG.md inclui nota de seguranca na entrada da feature
 
 ### 1.6 Documentar postura de runtime blast-radius de skills de plugin `[A]`
@@ -89,10 +89,10 @@ Ref: checklists/security.md CHK015 [Gap]; plan.md §Security Threat Model
 Nenhum requisito especifica se skills de plugin herdam os guards do orquestrador
 (`bash-guard`, `path-guard`) ou rodam sem restricao de blast-radius.
 
-- [ ] 1.6.1 Investigar empiricamente: `bash-guard.sh` e `path-guard.sh` sao aplicados por `cli/lib/00c-bootstrap.sh` ou pelo skill dispatcher? (leitura de `cli/lib/00c-bootstrap.sh` e do dispatcher)
-- [ ] 1.6.2 Documentar a resposta em `plan.md` §Security Threat Model (novo paragrafo "Runtime blast-radius de skills de plugin"): confirmar se os guards se aplicam e, se nao, declarar explicitamente que e residual aceito com justificativa
-- [ ] 1.6.3 Se os guards NAO se aplicam a skills de plugin: adicionar FR-020 ao `spec.md` declarando a postura como "aceita por design MVP — mesmos guards que o catalogo core (nenhum adicional)" com nota de risco
-- [ ] 1.6.4 Teste de documentacao: verificar que o aviso de blast-radius consta no `quickstart.md` e/ou README de usuario
+- [x] 1.6.1 Investigar empiricamente: `bash-guard.sh` e `path-guard.sh` sao aplicados por `cli/lib/00c-bootstrap.sh` ou pelo skill dispatcher? (leitura de `cli/lib/00c-bootstrap.sh` e do dispatcher)
+- [x] 1.6.2 Documentar a resposta em `plan.md` §Security Threat Model (novo paragrafo "Runtime blast-radius de skills de plugin"): confirmar se os guards se aplicam e, se nao, declarar explicitamente que e residual aceito com justificativa
+- [x] 1.6.3 Se os guards NAO se aplicam a skills de plugin: adicionar FR-020 ao `spec.md` declarando a postura como "aceita por design MVP — mesmos guards que o catalogo core (nenhum adicional)" com nota de risco
+- [x] 1.6.4 Teste de documentacao: verificar que o aviso de blast-radius consta no `quickstart.md` e/ou README de usuario
 
 ### 1.7 Escopo de logging de eventos de integridade `[M]`
 
@@ -102,8 +102,8 @@ FR-016 registra `execution.llm_plugin` no state.json para auditabilidade de
 ativacao, mas nao ha requisito para log de eventos de integridade (install
 verificado, tampered detectado) em audit trail persistente.
 
-- [ ] 1.7.1 Decidir e documentar em `spec.md`: logging de integridade e OUT OF SCOPE para MVP (apenas `plugin-list --verify` mostra status on-demand; sem audit trail persistente) — adicionar nota explicita em FR-016 e em SC (escopo excluido)
-- [ ] 1.7.2 Atualizar `quickstart.md` Scenario 6 para referenciar explicitamente que a deteccao e on-demand (sem log automatico)
+- [x] 1.7.1 Decidir e documentar em `spec.md`: logging de integridade e OUT OF SCOPE para MVP (apenas `plugin-list --verify` mostra status on-demand; sem audit trail persistente) — adicionar nota explicita em FR-016 e em SC (escopo excluido)
+- [x] 1.7.2 Atualizar `quickstart.md` Scenario 6 para referenciar explicitamente que a deteccao e on-demand (sem log automatico)
 
 ---
 
@@ -115,41 +115,41 @@ verificado, tampered detectado) em audit trail persistente.
 
 Ref: spec.md FR-001, FR-002; contracts/cli-commands.md §Helper; data-model.md
 
-- [ ] 2.1.1 Criar `cli/lib/plugin-common.sh` com cabecalho `#!/bin/sh` + `set -eu` + source de `common.sh`/`compat.sh`
-- [ ] 2.1.2 Implementar `plugin_validate_name <name>`: regex `^[a-z][a-z0-9-]{0,63}$`; exit 2 com mensagem padrao se invalido (FR-002)
-- [ ] 2.1.3 Implementar `plugin_resolve_url <name>`: ler `CSTK_PLUGIN_REGISTRY` env; fallback `~/.cstk/config` key `registry`; fallback hardcoded `https://github.com/JotJunior/`; montar URL `<base>/cstk-plugin-<name>` (FR-001)
-- [ ] 2.1.4 Implementar `plugin_store_dir <name>`: retorna `~/.claude/cstk/plugins/<name>` (research D1)
-- [ ] 2.1.5 Testes: `tests/cstk/test_plugin-common.sh` — nome valido/invalido, resolucao de URL com cada override, store_dir
+- [x] 2.1.1 Criar `cli/lib/plugin-common.sh` com cabecalho `#!/bin/sh` + `set -eu` + source de `common.sh`/`compat.sh`
+- [x] 2.1.2 Implementar `plugin_validate_name <name>`: regex `^[a-z][a-z0-9-]{0,63}$`; exit 2 com mensagem padrao se invalido (FR-002)
+- [x] 2.1.3 Implementar `plugin_resolve_url <name>`: ler `CSTK_PLUGIN_REGISTRY` env; fallback `~/.cstk/config` key `registry`; fallback hardcoded `https://github.com/JotJunior/`; montar URL `<base>/cstk-plugin-<name>` (FR-001)
+- [x] 2.1.4 Implementar `plugin_store_dir <name>`: retorna `~/.claude/cstk/plugins/<name>` (research D1)
+- [x] 2.1.5 Testes: `tests/cstk/test_plugin-common.sh` — nome valido/invalido, resolucao de URL com cada override, store_dir
 
 ### 2.2 Registry CRUD `[A]`
 
 Ref: data-model.md §Plugin Registry; research.md Decision 5; contracts/cli-commands.md
 
-- [ ] 2.2.1 Implementar `plugin_registry_path`: retorna `~/.claude/cstk/plugins/registry.json`
-- [ ] 2.2.2 Implementar `plugin_registry_init`: cria registry vazio `{"schema_version":1,"plugins":[]}` se nao existe; idempotente
-- [ ] 2.2.3 Implementar `plugin_registry_upsert <name> <version> <type> <bundle_sha256>`: upsert atomico (jq quando disponivel; fallback POSIX `grep`/`sed` para campos flat) (research D5 carve-out)
-- [ ] 2.2.4 Implementar `plugin_registry_remove <name>`: remove entrada pelo nome
-- [ ] 2.2.5 Implementar `plugin_registry_get <name>`: retorna linha TSV com campos do plugin ou exit 1 se ausente
-- [ ] 2.2.6 Implementar `plugin_registry_list`: lista todos os plugins (campos para plugin-list)
-- [ ] 2.2.7 Testes: `test_plugin-common.sh` — init idempotente, upsert, remove, get ausente/presente, list vazia/multiplos, fallback sem jq (PATH sem jq)
+- [x] 2.2.1 Implementar `plugin_registry_path`: retorna `~/.claude/cstk/plugins/registry.json`
+- [x] 2.2.2 Implementar `plugin_registry_init`: cria registry vazio `{"schema_version":1,"plugins":[]}` se nao existe; idempotente
+- [x] 2.2.3 Implementar `plugin_registry_upsert <name> <version> <type> <bundle_sha256>`: upsert atomico (jq quando disponivel; fallback POSIX `grep`/`sed` para campos flat) (research D5 carve-out)
+- [x] 2.2.4 Implementar `plugin_registry_remove <name>`: remove entrada pelo nome
+- [x] 2.2.5 Implementar `plugin_registry_get <name>`: retorna linha TSV com campos do plugin ou exit 1 se ausente
+- [x] 2.2.6 Implementar `plugin_registry_list`: lista todos os plugins (campos para plugin-list)
+- [x] 2.2.7 Testes: `test_plugin-common.sh` — init idempotente, upsert, remove, get ausente/presente, list vazia/multiplos, fallback sem jq (PATH sem jq)
 
 ### 2.3 Checksum e integridade `[C]`
 
 Ref: spec.md FR-003..FR-005, FR-017; research.md Decision 2; data-model.md §Manifest; plan.md §Optional-dep registry
 
-- [ ] 2.3.1 Implementar `plugin_compute_bundle_checksum <dir>`: delega a `hash_dir` de `hash.sh` excluindo `plugin-manifest.json`; retorna hex sha256 (research D2)
-- [ ] 2.3.2 Implementar `plugin_verify_manifest <staging_dir>`: le `plugin-manifest.json`; valida shape (6 campos obrigatorios em ordem do data-model); retorna campos verificados ou exit 1 com mensagem
-- [ ] 2.3.3 Implementar `plugin_verify_bundle_checksum <dir> <expected_sha256>`: recomputa e compara; exit 1 com mensagem `checksum mismatch — esperado <a>, obtido <b>` (FR-004, US1-AS2)
-- [ ] 2.3.4 Implementar `plugin_is_installed <name>`: verifica registry + existencia do diretorio; exit 0 se instalado, 1 se nao
-- [ ] 2.3.5 Testes: checksum match/mismatch com bundle fixture real; degradacao graceful sem sha256sum/shasum (Scenario 8); manifest shape invalido
+- [x] 2.3.1 Implementar `plugin_compute_bundle_checksum <dir>`: delega a `hash_dir` de `hash.sh` excluindo `plugin-manifest.json`; retorna hex sha256 (research D2)
+- [x] 2.3.2 Implementar `plugin_verify_manifest <staging_dir>`: le `plugin-manifest.json`; valida shape (6 campos obrigatorios em ordem do data-model); retorna campos verificados ou exit 1 com mensagem
+- [x] 2.3.3 Implementar `plugin_verify_bundle_checksum <dir> <expected_sha256>`: recomputa e compara; exit 1 com mensagem `checksum mismatch — esperado <a>, obtido <b>` (FR-004, US1-AS2)
+- [x] 2.3.4 Implementar `plugin_is_installed <name>`: verifica registry + existencia do diretorio; exit 0 se instalado, 1 se nao
+- [x] 2.3.5 Testes: checksum match/mismatch com bundle fixture real; degradacao graceful sem sha256sum/shasum (Scenario 8); manifest shape invalido
 
 ### 2.4 Resolucao de skill (path-prepending) `[A]`
 
 Ref: spec.md FR-014; contracts/pipeline-integration.md §Skill resolution; research.md Decision 4
 
-- [ ] 2.4.1 Implementar `plugin_resolve_skill_dir <plugin_name> <skill>`: consulta `~/.claude/cstk/plugins/<plugin_name>/skills/<skill>/`; retorna esse path se existe, senao retorna `~/.claude/skills/<skill>/` (dec-006)
-- [ ] 2.4.2 Caso `llm_plugin == "claude"`: retornar sempre o path do core sem consultar store (SC-003 zero regressao)
-- [ ] 2.4.3 Testes: plugin presente com skill/sem skill, llm=claude bypass, dois plugins instalados mas so um ativo (Edge Case)
+- [x] 2.4.1 Implementar `plugin_resolve_skill_dir <plugin_name> <skill>`: consulta `~/.claude/cstk/plugins/<plugin_name>/skills/<skill>/`; retorna esse path se existe, senao retorna `~/.claude/skills/<skill>/` (dec-006)
+- [x] 2.4.2 Caso `llm_plugin == "claude"`: retornar sempre o path do core sem consultar store (SC-003 zero regressao)
+- [x] 2.4.3 Testes: plugin presente com skill/sem skill, llm=claude bypass, dois plugins instalados mas so um ativo (Edge Case)
 
 ---
 

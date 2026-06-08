@@ -151,6 +151,24 @@ staging atomico (A08, FR-004/FR-008); re-verificacao na ativacao (FR-005);
 rede SO em `plugin-add` explicito, demais ops offline (A03/Princ. IV,
 FR-006/FR-018).
 
+### Runtime blast-radius de skills de plugin
+
+Skills de plugin (arquivos `SKILL.md` e `scripts/*.sh` em
+`~/.claude/cstk/plugins/<name>/skills/`) sao invocadas pelo mesmo mecanismo
+que as skills do catalogo core: o harness do Claude Code resolve o path da
+skill e delega ao LLM ou executa scripts POSIX via shell. Os guards do
+orquestrador (`bash-guard.sh`, `path-guard.sh` em
+`cli/lib/00c-bootstrap.sh`) aplicam-se ao BOOTSTRAP da pipeline (antes da
+criacao do state.json), nao ao dispatcher de skill em si — porque o
+dispatcher e o proprio harness Claude Code, nao um shell script.
+
+**Conclusao**: skills de plugin NAO recebem guards adicionais alem dos que
+o catalogo core ja tem. Isso e **aceito por design para o MVP** — a postura
+e a mesma dos skills do catalogo: nenhum sandbox POSIX (incompativel com
+Constituicao Principio II zero-dep). O controle e o trust model: instalar
+um plugin equivale a dar ao codigo do plugin a mesma confianca do toolkit.
+A documentacao do usuario MUST reforcar isso (FR-019).
+
 ## Complexity Tracking
 
 > Sem violacoes de constitution que exijam justificativa de complexidade. O

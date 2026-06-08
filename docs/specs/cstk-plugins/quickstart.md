@@ -1,5 +1,12 @@
 # Quickstart: cstk-plugins
 
+> **ATENCAO — Modelo de confianca TOFU (Trust On First Use):** Instalar um
+> plugin equivale a executar codigo arbitrario com a mesma confianca do
+> catalogo core. Instale apenas plugins de autores confiaveis. O sistema
+> verifica integridade (checksum), mas NAO verifica identidade do autor nem
+> assina pacotes com chave separada (MVP — ver Escopo Excluido na spec).
+> (FR-019)
+
 Cenarios de teste end-to-end. O alvo e CLI POSIX sh (single-layer) — NAO ha
 borda backend↔frontend, entao o cenario "Roundtrip End-to-End" do template
 e **N/A** (vide nota ao final). O equivalente para esta feature e o cenario
@@ -19,6 +26,16 @@ de integridade (Scenario 2), que exercita o gate de checksum com bytes reais.
 6. **Expected**: para skills que `codex` sobrescreve, a pipeline resolve de
    `~/.claude/cstk/plugins/codex/skills/<skill>/`; para as demais, do core
    `~/.claude/skills/`. `state.json` tem `execution.llm_plugin == "codex"`.
+
+## Scenario 1b: Re-install sem TTY sem --force → exit 1 (FR-009, CHK009)
+
+1. Instalar `codex` (Scenario 1) para que ja exista no store.
+2. `echo '' | cstk plugin-add codex` (stdin piped, nao e TTY, `--force` ausente).
+3. **Expected**: exit 1; mensagem em stderr indicando que o plugin ja esta
+   instalado e que `--force` e necessario para uso nao-interativo; ZERO escrita
+   no store; `registry.json` inalterado.
+4. `cstk plugin-add codex --force` (stdin piped, `--force` presente).
+5. **Expected**: exit 0; plugin reinstalado sem prompt interativo.
 
 ## Scenario 2: Checksum mismatch aborta install (US1-AS2, SC-002)
 
@@ -64,6 +81,10 @@ de integridade (Scenario 2), que exercita o gate de checksum com bytes reais.
 
 ## Scenario 6: Tampering detectado em list e na ativacao (US3-AS2, FR-005)
 
+Nota: a deteccao de tampering e **on-demand** — o toolkit nao gera audit trail
+automatico de eventos de integridade (OUT OF SCOPE MVP, FR-016). O status e
+visivel via `plugin-list --verify` ou bloqueado na ativacao.
+
 1. Instalar `codex` (Scenario 1).
 2. Editar 1 byte de um arquivo em `~/.claude/cstk/plugins/codex/skills/...`.
 3. `cstk plugin-list --verify`
@@ -76,6 +97,17 @@ de integridade (Scenario 2), que exercita o gate de checksum com bytes reais.
 1. Desconectar rede (ou bloquear `curl`).
 2. `cstk plugin-list` e `cstk plugin-remove codex`
 3. **Expected**: ambos funcionam normalmente; nenhuma chamada de rede; exit 0.
+
+## Scenario 7b: Remove com falha de IO (FR-012, contrato de remocao parcial)
+
+1. Instalar `codex` (Scenario 1).
+2. Simular falha de IO durante `plugin-remove`: (a) tornar o diretorio
+   `~/.claude/cstk/plugins/codex/` somente-leitura antes de chamar o remove
+   (via `chmod -w`), OU (b) usar um mock que faz `rm -rf` falhar.
+3. `cstk plugin-remove codex`
+4. **Expected**: exit 1; mensagem de estado inconsistente em stderr; o store
+   permanece no estado em que estava (nao silencia a falha); usuario pode
+   remover manualmente e re-tentar.
 
 ## Scenario 8: Degradacao sem `sha256sum`/`shasum` (FR-017, carve-out 1.1.0)
 

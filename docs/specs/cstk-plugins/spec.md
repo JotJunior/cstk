@@ -33,8 +33,8 @@ this story nothing else in the plugin system has value.
 
 **Independent Test**: With internet access (or a local mirror), run
 `cstk plugin-add codex`; verify that
-`~/.claude/plugins/codex/manifest.json` exists, checksum matches, and skills
-are installed under `~/.claude/skills/` (or equivalent plugin directory).
+`~/.claude/cstk/plugins/codex/plugin-manifest.json` exists, checksum matches,
+and skills are installed under `~/.claude/cstk/plugins/codex/skills/`.
 
 **Acceptance Scenarios**:
 
@@ -219,13 +219,14 @@ installs and `cstk plugin-list` shows type `lang` for it.
 **Installation**
 
 - **FR-007**: Installed plugins MUST be stored under a user-local directory
-  (default: `~/.claude/plugins/<name>/`). The toolkit MUST NOT write plugin
-  files into the core catalog (`~/.claude/skills/`) to avoid conflating plugin
-  content with toolkit-shipped content.
+  (default: `~/.claude/cstk/plugins/<name>/`; namespace dedicado cstk; evita
+  colisao com plugins nativos do Claude Code — research Decision 1). The toolkit
+  MUST NOT write plugin files into the core catalog (`~/.claude/skills/`) to
+  avoid conflating plugin content with toolkit-shipped content.
 
   When `--llm <name>` activates a plugin, skill resolution uses **path-prepending**:
   the pipeline dispatcher consults the plugin's skills directory
-  (`~/.claude/plugins/<name>/skills/`) first for each skill lookup, falling
+  (`~/.claude/cstk/plugins/<name>/skills/`) first for each skill lookup, falling
   back to the core catalog (`~/.claude/skills/`) for skills the plugin does
   not provide. No files are copied or symlinked into `~/.claude/skills/`; the
   core catalog remains immutable during plugin activation.
@@ -237,7 +238,10 @@ installs and `cstk plugin-list` shows type `lang` for it.
 
 - **FR-009**: If a plugin with the same name is already installed, `plugin-add`
   MUST inform the user and require explicit confirmation (interactive prompt or
-  `--force` flag) before overwriting.
+  `--force` flag) before overwriting. When stdin is not a TTY and `--force` is
+  absent, the behavior MUST be: abort with exit 1 and a clear message asking the
+  user to pass `--force` for non-interactive use (safer default — never silently
+  overwrites in CI/piped contexts).
 
 **CLI subcommands**
 
@@ -252,8 +256,12 @@ installs and `cstk plugin-list` shows type `lang` for it.
   out of scope for this feature.
 
 - **FR-012**: `plugin-remove <name>` MUST remove all files under
-  `~/.claude/plugins/<name>/` and update the local plugin registry. It MUST
-  exit non-zero if the named plugin is not found, with a clear error.
+  `~/.claude/cstk/plugins/<name>/` and update the local plugin registry. It MUST
+  exit non-zero if the named plugin is not found, with a clear error. On partial
+  failure (filesystem removal fails or registry write fails mid-operation), the
+  toolkit MUST NOT silently ignore the error: it MUST report the inconsistent
+  state to stderr and exit 1 so the user can take manual corrective action
+  (see contracts/cli-commands.md §plugin-remove Behavior for detail).
 
 **Pipeline integration (`--llm` flag)**
 
@@ -273,7 +281,10 @@ installs and `cstk plugin-list` shows type `lang` for it.
 - **FR-016**: The `--llm` flag value MUST be recorded in the pipeline's
   `state.json` (field `execution.llm_plugin`) for auditability and resumability.
   On resume, if the recorded plugin is no longer installed or fails integrity
-  check, the pipeline MUST surface a human block.
+  check, the pipeline MUST surface a human block. Note: integrity event logging
+  (install verified, tampered detected) is OUT OF SCOPE for MVP — integrity
+  status is available on-demand via `plugin-list --verify`; there is no persistent
+  audit trail of integrity events (see §Out-of-Scope below).
 
 **Constitution compliance**
 
@@ -288,6 +299,12 @@ installs and `cstk plugin-list` shows type `lang` for it.
   make any network request other than the explicit user-triggered `plugin-add`
   download. In particular, `plugin-list` and activation MUST work fully offline.
 
+- **FR-019**: User-facing documentation (README, quickstart) MUST include an
+  explicit warning about the TOFU (Trust On First Use) trust model: installing a
+  plugin is equivalent to executing arbitrary code with the same trust level as
+  the core catalog; users MUST only install plugins from trusted authors.
+  (Ref: plan.md §Security Threat Model row ASI04; CHK009 security.)
+
 ### Key Entities
 
 - **Plugin Manifest** (`plugin-manifest.json`): Declares identity and integrity
@@ -296,13 +313,15 @@ installs and `cstk plugin-list` shows type `lang` for it.
   (hex digest of the bundle), `skills` (list of skill names provided/overridden
   by the plugin).
 
-- **Plugin Store**: User-local directory (`~/.claude/plugins/`) holding one
-  subdirectory per installed plugin. Each subdirectory contains the plugin's
-  files and a copy of the verified manifest.
+- **Plugin Store**: User-local directory (`~/.claude/cstk/plugins/`) holding one
+  subdirectory per installed plugin (namespace dedicado cstk; evita colisao com
+  plugins nativos do Claude Code — research Decision 1). Each subdirectory
+  contains the plugin's files and a copy of the verified manifest.
 
-- **Plugin Registry**: A lightweight index file (`~/.claude/plugins/registry.json`
-  or equivalent) recording installed plugins and their verified state, used by
-  `plugin-list` and activation-time lookups without re-scanning directories.
+- **Plugin Registry**: A lightweight index file
+  (`~/.claude/cstk/plugins/registry.json`) recording installed plugins and their
+  verified state, used by `plugin-list` and activation-time lookups without
+  re-scanning directories.
 
 - **Plugin Type**: Enum `llm | lang`. LLM plugins adapt skills for a different
   AI model (e.g., Codex). Language plugins provide language-specific skill
@@ -320,7 +339,10 @@ installs and `cstk plugin-list` shows type `lang` for it.
 
 - **SC-001**: A developer can complete a full `cstk plugin-add <name>` →
   integrity-verified install → `cstk --llm <name>` pipeline invocation in under
-  60 seconds on a normal broadband connection.
+  60 seconds on a normal broadband connection. (The 60s budget includes download
+  time; the toolkit itself — validation, extraction, checksum, write — MUST
+  complete in under 5 seconds excluding download. This allows reproducible
+  performance tests against a local fixture bundle.)
 
 - **SC-002**: A checksum mismatch during `plugin-add` is detected 100% of the
   time (deterministic: the verification is always executed before any file is
@@ -357,9 +379,9 @@ _Resolved in the `/clarify` phase (2026-06-08). Decision IDs: dec-005 (FR-001), 
    over-engineering for MVP. (dec-005, score 2)
 
 2. **FR-007** — Skill resolution model: **RESOLVED** — Path-prepending only.
-   The pipeline dispatcher consults `~/.claude/plugins/<name>/skills/` first,
-   then falls back to the core catalog. No files are written to or symlinked
-   into `~/.claude/skills/`. This is the only model consistent with FR-007's
-   explicit prohibition ("MUST NOT write plugin files into the core catalog").
-   Copy/symlink was eliminated because it directly violates FR-007. (dec-006,
-   score 3)
+   The pipeline dispatcher consults `~/.claude/cstk/plugins/<name>/skills/`
+   first, then falls back to the core catalog. No files are written to or
+   symlinked into `~/.claude/skills/`. This is the only model consistent with
+   FR-007's explicit prohibition ("MUST NOT write plugin files into the core
+   catalog"). Copy/symlink was eliminated because it directly violates FR-007.
+   (dec-006, score 3)
