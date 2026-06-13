@@ -195,6 +195,27 @@ state-lock.sh acquire --state-dir <SD> || {
   # .git diretorio (projeto raiz): _canonical e _session permanecem vazios (flags omitidas).
   ```
 
+#### Prompt opt-in de commit atomico (FR-001/FR-002 — atomic-commit-pr)
+
+Antes de inicializar o `state.json`, pergunte ao operador se deseja
+habilitar o modo de commit atomico (opt-in, default "nao"):
+
+```
+Modo atomic-commit (opcional):
+Quando habilitado, a pipeline cria um commit git a cada etapa concluida
+(specify, plan, checklist, create-tasks) e um commit agrupado ao final
+de cada onda de execute-task. Ao final da pipeline, faz push+PR
+automaticamente se houver branch nao-default.
+
+Habilitar o modo atomic-commit? [s/N]
+```
+
+- Respostas afirmativas (`s`, `S`, `y`, `Y`, `sim`, `yes`): `_atomic=true`
+- Qualquer outra resposta (inclusive Enter): `_atomic=false` (default seguro)
+
+> **Os commands de resume NAO re-promptam**: `/agente-00c-resume` le
+> `.atomic_commit_enabled` diretamente do `state.json` sem interacao.
+
 - Inicializar `state.json` v1.0.0 via `state-rw.sh init`:
   - `--execucao-id "exec-$(date -u +%FT%H-%M-%SZ)-agente-00c-<slug>"`
   - `--projeto-alvo-path <PAP>` (resolvido)
@@ -203,6 +224,7 @@ state-lock.sh acquire --state-dir <SD> || {
   - `--whitelist-urls <JSON-arr>`
   - `${_canonical:+--canonical-project "$_canonical"}` (quando nao-vazio)
   - `${_session:+--session-name "$_session"}` (quando nao-vazio)
+  - `--atomic-commit "$_atomic"` (valor capturado acima; `false` = comportamento atual intacto)
 
   Status inicial: `em_andamento`, etapa `briefing`, `next_instruction`
   apontando para inicio do briefing.

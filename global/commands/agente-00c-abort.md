@@ -147,6 +147,13 @@ NUNCA `git push` — Principio V (Blast Radius Confinado). Se `<PAP>` nao
 e repo git, o commit falha silenciosamente (state-ondas.sh emit warning,
 nao bloqueia o abort).
 
+> **Modo atomic-commit (FR-011 — atomic-commit-pr)**: commits atomicos ja
+> criados por ondas anteriores PERMANECEM intactos no historico local apos
+> o abort. Push e PR NAO ocorrem em caminho de abort, independentemente do
+> valor de `.atomic_commit_enabled`. O `commit-mode.sh finalize` (push+PR
+> terminal) e exclusivamente chamado no caminho de sucesso pela fase
+> `review-features`.
+
 ### 7. Liberar lock
 
 ```bash

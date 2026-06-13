@@ -103,6 +103,18 @@ fi
 5. ler status do state
    _status=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.execution.status')
 
+5.d. Modo atomic-commit — leitura do state (NAO re-prompta)
+   O /feature-00c-resume NAO apresenta o prompt de opt-in de commit
+   atomico ao operador. O valor e lido diretamente do state.json
+   persistido pelo /feature-00c inicial (FR-002/US1-AC3 — atomic-commit-pr).
+
+     _atomic=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" \
+               --field '.atomic_commit_enabled // false')
+
+   O valor _atomic e repassado ao orquestrador via contexto do prompt
+   (campo atomic_commit_enabled). Ausencia do campo (state legado) equivale
+   a false — comportamento atual preservado sem modificacao.
+
 6. se status == aguardando_humano:
    - se --resposta-bloqueio NAO fornecido, listar bloqueios pendentes e exit 5
    - senao: bloqueios.sh respond --state-dir "$AGENTE_00C_STATE_DIR" \

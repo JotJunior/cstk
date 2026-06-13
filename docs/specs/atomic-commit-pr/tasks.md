@@ -161,35 +161,35 @@ Ref: spec.md §FR-001/FR-002; research.md D3; plan.md §agente-00c.md e §featur
 
 Ref: plan.md §agente-00c.md (~line 32); spec.md §US1/FR-001; research.md D3
 
-- [ ] 3.1.1 Ler `global/commands/agente-00c.md` e localizar o ponto exato apos §0 warm-up e antes de `state-rw.sh init`
-- [ ] 3.1.2 Inserir bloco de prompt opt-in: pergunta com default "no" (Enter => desabilitado); capturar resposta; mapear para `--atomic-commit true|false` na chamada a `state-rw.sh init`
-- [ ] 3.1.3 Garantir que respostas afirmativas (y/Y/yes/sim) habilitam; qualquer outra coisa desabilita (default seguro)
-- [ ] 3.1.4 Garantir que a pergunta nao e exibida em resumes (`/agente-00c-resume`) — o estado e lido do state.json
+- [x] 3.1.1 Ler `global/commands/agente-00c.md` e localizar o ponto exato apos §0 warm-up e antes de `state-rw.sh init`
+- [x] 3.1.2 Inserir bloco de prompt opt-in: pergunta com default "no" (Enter => desabilitado); capturar resposta; mapear para `--atomic-commit true|false` na chamada a `state-rw.sh init`
+- [x] 3.1.3 Garantir que respostas afirmativas (y/Y/yes/sim) habilitam; qualquer outra coisa desabilita (default seguro)
+- [x] 3.1.4 Garantir que a pergunta nao e exibida em resumes (`/agente-00c-resume`) — o estado e lido do state.json
 
 ### 3.2 Adicionar prompt opt-in ao `/feature-00c` `[C]`
 
 Ref: plan.md §feature-00c.md (~line 33); spec.md §FR-001/FR-013; research.md D3
 
-- [ ] 3.2.1 Ler `global/commands/feature-00c.md` e localizar o ponto apos §0 warm-up e antes de `state-rw.sh init` (~lines 183-192)
-- [ ] 3.2.2 Inserir bloco de prompt opt-in identico ao de `agente-00c.md` (paridade FR-013)
-- [ ] 3.2.3 Garantir mapping para `--atomic-commit true|false` no `state-rw.sh init` da feature
-- [ ] 3.2.4 Verificar paridade textual com o prompt do `/agente-00c` (mesma pergunta, mesmo default)
+- [x] 3.2.1 Ler `global/commands/feature-00c.md` e localizar o ponto apos §0 warm-up e antes de `state-rw.sh init` (~lines 183-192)
+- [x] 3.2.2 Inserir bloco de prompt opt-in identico ao de `agente-00c.md` (paridade FR-013)
+- [x] 3.2.3 Garantir mapping para `--atomic-commit true|false` no `state-rw.sh init` da feature
+- [x] 3.2.4 Verificar paridade textual com o prompt do `/agente-00c` (mesma pergunta, mesmo default)
 
 ### 3.3 Garantir que os commands de resume NAO re-promptam `[A]`
 
 Ref: spec.md §FR-002/US1-AC3; plan.md §agente-00c-resume.md / §feature-00c-resume.md
 
-- [ ] 3.3.1 Ler `global/commands/agente-00c-resume.md` e confirmar que nao ha ponto de opt-in; adicionar comentario/documentacao explicitando que `.atomic_commit_enabled` e lido do state.json sem re-prompt
-- [ ] 3.3.2 Ler `global/commands/feature-00c-resume.md` e aplicar a mesma verificacao e documentacao (paridade FR-013)
-- [ ] 3.3.3 Adicionar linha de leitura de `.atomic_commit_enabled` no ponto de startup dos resumes, antes de qualquer onda, para o orquestrador ter o valor disponivel
+- [x] 3.3.1 Ler `global/commands/agente-00c-resume.md` e confirmar que nao ha ponto de opt-in; adicionar comentario/documentacao explicitando que `.atomic_commit_enabled` e lido do state.json sem re-prompt
+- [x] 3.3.2 Ler `global/commands/feature-00c-resume.md` e aplicar a mesma verificacao e documentacao (paridade FR-013)
+- [x] 3.3.3 Adicionar linha de leitura de `.atomic_commit_enabled` no ponto de startup dos resumes, antes de qualquer onda, para o orquestrador ter o valor disponivel
 
 ### 3.4 Atualizar commands de abort para documentar comportamento de commits `[M]`
 
 Ref: spec.md §FR-011/FR-012; plan.md §agente-00c-abort.md / §feature-00c-abort.md
 
-- [ ] 3.4.1 Ler `global/commands/agente-00c-abort.md` (~lines 139-146) e atualizar texto "NUNCA git push": adicionar clausula de que commits atomicos ja criados PERMANECEM no historico local apos abort; push/PR NAO ocorre em abort
-- [ ] 3.4.2 Aplicar a mesma atualizacao em `global/commands/feature-00c-abort.md` (~line 122) — paridade
-- [ ] 3.4.3 Verificar que nenhum dos dois commands invoca `commit-mode.sh finalize` (abort NAO deve acionar push+PR)
+- [x] 3.4.1 Ler `global/commands/agente-00c-abort.md` (~lines 139-146) e atualizar texto "NUNCA git push": adicionar clausula de que commits atomicos ja criados PERMANECEM no historico local apos abort; push/PR NAO ocorre em abort
+- [x] 3.4.2 Aplicar a mesma atualizacao em `global/commands/feature-00c-abort.md` (~line 122) — paridade
+- [x] 3.4.3 Verificar que nenhum dos dois commands invoca `commit-mode.sh finalize` (abort NAO deve acionar push+PR)
 
 ---
 
@@ -201,29 +201,29 @@ Ref: spec.md §FR-003/FR-013; research.md D4; plan.md §agente-00c-orchestrator.
 
 Ref: plan.md §agente-00c-orchestrator.md (~lines 1388-1391); spec.md §FR-003
 
-- [ ] 4.1.1 Ler `global/agents/agente-00c-orchestrator.md` e localizar o ponto exato entre "advance phase" e "backup" (apos gates de qualidade, antes de `state-ondas.sh end`)
-- [ ] 4.1.2 Inserir bloco: "Se `commit-mode.sh is-enabled` => true: (1) chamar `commit-mode.sh guard-branch`; se exit 3 => skip com warn; (2) obter intent via `commit-mode.sh stage-message --feature <name> --stage <current_stage>`; (3) invocar Skill(commit) com o intent; (4) registrar Decisao auditavel do commit"
-- [ ] 4.1.3 Atualizar a tabela de helpers (~line 117) para incluir `commit-mode.sh` e seus subcomandos
-- [ ] 4.1.4 Garantir que o bloco de commit e NO-OP quando `is-enabled` retorna `false` (SC-006 zero latencia no path de opt-out)
-- [ ] 4.1.5 Adicionar instrucao de finalize terminal: apos review-task verde e antes do relatorio final, se `is-enabled` => chamar `commit-mode.sh finalize --session NAME` onde NAME = basename do target_project_path
+- [x] 4.1.1 Ler `global/agents/agente-00c-orchestrator.md` e localizar o ponto exato entre "advance phase" e "backup" (apos gates de qualidade, antes de `state-ondas.sh end`)
+- [x] 4.1.2 Inserir bloco: "Se `commit-mode.sh is-enabled` => true: (1) chamar `commit-mode.sh guard-branch`; se exit 3 => skip com warn; (2) obter intent via `commit-mode.sh stage-message --feature <name> --stage <current_stage>`; (3) invocar git commit direto com o msg; (4) registrar Decisao auditavel do commit"
+- [x] 4.1.3 Atualizar a tabela de helpers (~line 117) para incluir `commit-mode.sh` e seus subcomandos
+- [x] 4.1.4 Garantir que o bloco de commit e NO-OP quando `is-enabled` retorna `false` (SC-006 zero latencia no path de opt-out)
+- [x] 4.1.5 Adicionar instrucao de finalize terminal: apos review-features verde, se `is-enabled` => chamar `commit-mode.sh finalize --session NAME` onde NAME = basename do target_project_path
 
 ### 4.2 Integrar hook de commit por etapa no `agente-00c-feature-orchestrator.md` `[C]`
 
 Ref: plan.md §agente-00c-feature-orchestrator.md; spec.md §FR-013
 
-- [ ] 4.2.1 Ler `global/agents/agente-00c-feature-orchestrator.md` e localizar o passo entre step 7 (advance phase) e step 8 (backup)
-- [ ] 4.2.2 Inserir bloco identico ao do 4.1.2 (paridade FR-013), com `--feature <short_name>` e `--session <short_name>`
-- [ ] 4.2.3 Atualizar a tabela de primitivas operacionais para incluir `commit-mode.sh`
-- [ ] 4.2.4 Garantir que o finalize terminal usa `--session "$SHORT_NAME"` (resolucao definida em 0.4.2)
+- [x] 4.2.1 Ler `global/agents/agente-00c-feature-orchestrator.md` e localizar o passo entre step 7 (advance phase) e step 8 (backup)
+- [x] 4.2.2 Inserir bloco identico ao do 4.1.2 (paridade FR-013), com `--feature <short_name>` e `--session <short_name>`
+- [x] 4.2.3 Atualizar a tabela de primitivas operacionais para incluir `commit-mode.sh`
+- [x] 4.2.4 Garantir que o finalize terminal usa `--session "$SHORT_NAME"` (resolucao definida em 0.4.2)
 
 ### 4.3 Grep anti-fantasma — verificar paridade nos 6 arquivos afetados `[A]`
 
 Ref: CLAUDE.md §Renomeando uma skill (principio de zero referencias residuais); spec.md §FR-013
 
-- [ ] 4.3.1 Rodar `grep -rn "NUNCA git push" global/` e confirmar que todas as ocorrencias foram atualizadas com a clausula de excecao (atomic mode + terminal success + non-default branch)
-- [ ] 4.3.2 Rodar `grep -rn "atomic_commit_enabled\|commit-mode" global/ cli/` e confirmar que TODOS os 6 arquivos afetados (agente-00c.md, feature-00c.md, agente-00c-resume.md, feature-00c-resume.md, agente-00c-orchestrator.md, agente-00c-feature-orchestrator.md) mencionam o campo ou o helper
-- [ ] 4.3.3 Rodar `grep -rn "commit-mode" global/agents/ global/commands/` e confirmar que nao ha arquivo listado no plan.md §Project Structure que esteja ausente
-- [ ] 4.3.4 Registrar Decisao "paridade verificada" com evidencia do output dos greps
+- [x] 4.3.1 Rodar `grep -rn "NUNCA git push" global/` e confirmar que todas as ocorrencias foram atualizadas com a clausula de excecao (atomic mode + terminal success + non-default branch)
+- [x] 4.3.2 Rodar `grep -rn "atomic_commit_enabled\|commit-mode" global/ cli/` e confirmar que TODOS os 6 arquivos afetados (agente-00c.md, feature-00c.md, agente-00c-resume.md, feature-00c-resume.md, agente-00c-orchestrator.md, agente-00c-feature-orchestrator.md) mencionam o campo ou o helper
+- [x] 4.3.3 Rodar `grep -rn "commit-mode" global/agents/ global/commands/` e confirmar que nao ha arquivo listado no plan.md §Project Structure que esteja ausente
+- [x] 4.3.4 Registrar Decisao "paridade verificada" com evidencia do output dos greps
 
 ---
 
