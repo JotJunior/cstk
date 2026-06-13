@@ -171,17 +171,28 @@ _cm_cmd_guard_branch() {
     return 1
   }
 
-  # Resolver branch default: mesmo algoritmo de _session_default_branch
-  # (remote HEAD => fallback "main")
+  # Resolver branch default: origin/HEAD e autoritativo quando ha remote.
+  # Sem remote (repo local / origin/HEAD nao setado), o nome do branch
+  # default de `git init` VARIA por ambiente (macOS default "main", muitos
+  # Linux/CI default "master"), entao tratamos AMBOS como default — bloquear
+  # commit/push tanto em "main" quanto em "master".
   _default=$(git -C "$_pap" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
     | sed 's@^refs/remotes/origin/@@') || _default=""
-  [ -n "$_default" ] || _default="main"
 
   printf '%s\n' "$_head"
 
-  if [ "$_head" = "$_default" ]; then
-    _cm_err "guard-branch: HEAD esta na branch default '$_default' — commit/push bloqueado (FR-005)"
-    return 3
+  if [ -n "$_default" ]; then
+    # Remote resolvel: o default e unico e autoritativo.
+    if [ "$_head" = "$_default" ]; then
+      _cm_err "guard-branch: HEAD esta na branch default '$_default' — commit/push bloqueado (FR-005)"
+      return 3
+    fi
+  else
+    # Sem remote: bloquear a convencao default (main OU master).
+    if [ "$_head" = "main" ] || [ "$_head" = "master" ]; then
+      _cm_err "guard-branch: HEAD esta na branch default '$_head' — commit/push bloqueado (FR-005)"
+      return 3
+    fi
   fi
 
   return 0
