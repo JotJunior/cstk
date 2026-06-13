@@ -315,6 +315,9 @@ _sr_cmd_init() {
   # Quando omitidas, as chaves ficam AUSENTES (sem null) — FR-010.
   _canonical_project=""
   _session_name=""
+  # Modo atomic-commit (feature atomic-commit-pr): opt-in para commit por etapa/task.
+  # Omitido => false (retro-compativel). Valor deve ser "true" ou "false".
+  _atomic_commit="false"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)            _sd=$2;                   shift 2 ;;
@@ -332,6 +335,12 @@ _sr_cmd_init() {
       --key-aspects)          _key_aspects=$2;          shift 2 ;;
       --canonical-project)    _canonical_project=$2;   shift 2 ;;
       --session-name)         _session_name=$2;         shift 2 ;;
+      --atomic-commit)
+        case "$2" in
+          true|false) _atomic_commit=$2; shift 2 ;;
+          *) _sr_die "init: --atomic-commit aceita apenas 'true' ou 'false'" 2 ;;
+        esac
+        ;;
       *) _sr_die "init: flag desconhecida: $1" 2 ;;
     esac
   done
@@ -392,6 +401,7 @@ _sr_cmd_init() {
     --argjson ka "$_key_aspects" \
     --arg canonical_project "$_canonical_project" \
     --arg session_name "$_session_name" \
+    --argjson atomic_commit "$_atomic_commit" \
     '{ schema_version: "1.0.0" }
     + (if $short != "" then { short_name: $short } else {} end)
     + {
@@ -450,7 +460,8 @@ _sr_cmd_init() {
       },
       external_urls_whitelist: $wl,
       circular_movement_history: [],
-      initial_key_aspects: $ka
+      initial_key_aspects: $ka,
+      atomic_commit_enabled: $atomic_commit
     }' > "$_tmp" || { rm -f -- "$_tmp"; _sr_die "jq init falhou" 1; }
   _sr_atomic_write "$_sr_sf" "$_tmp"
   rm -f -- "$_tmp" 2>/dev/null || :

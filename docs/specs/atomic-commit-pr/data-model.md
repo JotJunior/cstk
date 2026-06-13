@@ -54,7 +54,7 @@ top-level array.
 | `ref` | string | yes | stage name (`specify`,`plan`,…) or task id(s) (`3.1` or `3.1-3.2`) |
 | `wave_id` | string | yes | wave in which the commit was made (provenance) |
 | `feature` | string | yes | feature/project short name (message subject) |
-| `message` | string | yes | Conventional-Commit message (built by helper, finalized by `commit` skill) |
+| `message` | string | yes | Conventional-Commit message built by `commit-mode.sh stage-message`/`task-message`; committed directly via `git commit -m` (pipeline non-interactive mode) |
 | `outcome` | enum `committed` \| `noop-empty` \| `skipped-default-branch` | yes | result of the attempt |
 
 **Message format (FR-007)**:
@@ -67,9 +67,16 @@ top-level array.
 - Task (grouped): `<type>: tasks <id-range> <brief>` — e.g.
   `feat: tasks 3.1-3.2 add helper + wire orchestrators`.
 
-The `<type>`/`<scope>` and final wording are produced by the installed `commit`
-skill from the intent string supplied by `commit-mode.sh stage-message` /
-`task-message`.
+The `<type>`/`<scope>` and final wording are produced by `commit-mode.sh
+stage-message` / `task-message` and committed directly via `git commit -m`
+(pipeline non-interactive mode). The `commit` skill is NOT used in automated
+pipeline mode (interactive prompts incompatible with autonomous execution).
+
+**Task grouping (always-on per wave)**: tasks completed with outcome=pass in
+the same wave are ALWAYS grouped into a single commit. No separate `group_tasks`
+flag. Single-task waves receive an individual commit. Grouping uses the
+range/list format of `task-message` (contiguous ids → range; non-contiguous →
+list).
 
 **State transitions**:
 

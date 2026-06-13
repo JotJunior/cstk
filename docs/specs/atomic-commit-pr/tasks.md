@@ -30,48 +30,48 @@ qualquer implementacao; as decisoes persistem em state.json via
 
 Ref: checklists/requirements.md CHK017, CHK045; spec.md §FR-004; data-model.md §StagedCommit
 
-- [ ] 0.1.1 Ler FR-004 ("when grouping is in effect") e US3 ("can optionally be grouped") e identificar as duas opcoes: (a) sempre agrupar tasks da mesma onda, (b) flag separada `group_tasks` no state.json
-- [ ] 0.1.2 Registrar decisao via `state-decisions.sh register`: escolha "sempre-agrupar-por-onda" (sem flag adicional; toda onda que conclui >= 2 tasks passa/fail=pass agrupa num commit range); justificativa: minimiza state schema e e consistente com o conceito de "onda" ja existente; score 3 com evidencia de que nenhuma US exige controle manual de agrupamento
-- [ ] 0.1.3 Atualizar spec.md §FR-004 para substituir "when grouping is in effect" por "tasks completed with outcome=pass in the same wave are grouped into a single ranged commit"
-- [ ] 0.1.4 Atualizar data-model.md §StagedCommit para refletir a semantica sempre-on de agrupamento por onda
-- [ ] 0.1.5 Teste: verificar que a decisao ficou gravada no state.json com score >= 2
+- [x] 0.1.1 Ler FR-004 ("when grouping is in effect") e US3 ("can optionally be grouped") e identificar as duas opcoes: (a) sempre agrupar tasks da mesma onda, (b) flag separada `group_tasks` no state.json
+- [x] 0.1.2 Registrar decisao via `state-decisions.sh register`: escolha "sempre-agrupar-por-onda" (sem flag adicional; toda onda que conclui >= 2 tasks passa/fail=pass agrupa num commit range); justificativa: minimiza state schema e e consistente com o conceito de "onda" ja existente; score 3 com evidencia de que nenhuma US exige controle manual de agrupamento
+- [x] 0.1.3 Atualizar spec.md §FR-004 para substituir "when grouping is in effect" por "tasks completed with outcome=pass in the same wave are grouped into a single ranged commit"
+- [x] 0.1.4 Atualizar data-model.md §StagedCommit para refletir a semantica sempre-on de agrupamento por onda
+- [x] 0.1.5 Teste: verificar que a decisao ficou gravada no state.json com score >= 2
 
 ### 0.2 Clarificar escopo do `finalize` (qualquer branch nao-default vs so cstk session) (CHK032) `[C]`
 
 Ref: checklists/requirements.md CHK032; spec.md §FR-005/FR-008; contracts/commit-mode.md §finalize
 
-- [ ] 0.2.1 Verificar o contrato de `_session_pr` em `cli/lib/session.sh`: leva `--name NAME` ou simplesmente o branch corrente? Confirmar se exige que o branch tenha sido criado por `cstk session start`
-- [ ] 0.2.2 Registrar decisao: `finalize` funciona em QUALQUER branch nao-default; o parametro `--session NAME` e opcional e derivado do short_name (feature-00c) ou do basename do projeto-alvo (agente-00c); se o branch nao for uma sessao cstk, push ocorre normalmente via `git push -u origin HEAD` e PR via `gh pr create` diretamente (fallback documentado)
-- [ ] 0.2.3 Atualizar contracts/commit-mode.md §finalize para documentar: (a) `--session NAME` e opcional; (b) fallback para branches sem sessao cstk; (c) de onde `NAME` e derivado para cada orquestrador
-- [ ] 0.2.4 Atualizar data-model.md §PushPRResult e spec.md §FR-008 para refletir o escopo ampliado
-- [ ] 0.2.5 Teste: verificar que a decisao ficou gravada no state.json
+- [x] 0.2.1 Verificar o contrato de `_session_pr` em `cli/lib/session.sh`: leva `--name NAME` ou simplesmente o branch corrente? Confirmar se exige que o branch tenha sido criado por `cstk session start`
+- [x] 0.2.2 Registrar decisao: `finalize` funciona em QUALQUER branch nao-default; o parametro `--session NAME` e opcional e derivado do short_name (feature-00c) ou do basename do projeto-alvo (agente-00c); se o branch nao for uma sessao cstk, push ocorre normalmente via `git push -u origin HEAD` e PR via `gh pr create` diretamente (fallback documentado)
+- [x] 0.2.3 Atualizar contracts/commit-mode.md §finalize para documentar: (a) `--session NAME` e opcional; (b) fallback para branches sem sessao cstk; (c) de onde `NAME` e derivado para cada orquestrador
+- [x] 0.2.4 Atualizar data-model.md §PushPRResult e spec.md §FR-008 para refletir o escopo ampliado
+- [x] 0.2.5 Teste: verificar que a decisao ficou gravada no state.json
 
 ### 0.3 Documentar fallback para `commit` skill ausente (CHK043) `[A]`
 
 Ref: checklists/requirements.md CHK043; spec.md §FR-007; contracts/commit-mode.md §Reused contracts
 
-- [ ] 0.3.1 Verificar em `global/skills/agente-00c-runtime/scripts/` como outros helpers detectam skills instaladas ausentes (ex: `path-guard.sh`, `bash-guard.sh`)
-- [ ] 0.3.2 Registrar decisao: se a skill `commit` estiver ausente, `commit-mode.sh` faz commit direto via `git commit -m "<msg>"` com a mensagem gerada por `stage-message`/`task-message` (sem secret-file warnings); logar aviso via `log_err`; comportamento documentado como fallback degradado (nao aborta)
-- [ ] 0.3.3 Atualizar contracts/commit-mode.md §Dependencies e §Global conventions com o fallback documentado
-- [ ] 0.3.4 Teste: verificar que a decisao ficou gravada no state.json
+- [x] 0.3.1 Verificar em `global/skills/agente-00c-runtime/scripts/` como outros helpers detectam skills instaladas ausentes (ex: `path-guard.sh`, `bash-guard.sh`)
+- [x] 0.3.2 Registrar decisao: se a skill `commit` estiver ausente, `commit-mode.sh` faz commit direto via `git commit -m "<msg>"` com a mensagem gerada por `stage-message`/`task-message` (sem secret-file warnings); logar aviso via `log_err`; comportamento documentado como fallback degradado (nao aborta)
+- [x] 0.3.3 Atualizar contracts/commit-mode.md §Dependencies e §Global conventions com o fallback documentado
+- [x] 0.3.4 Teste: verificar que a decisao ficou gravada no state.json
 
 ### 0.4 Resolver fonte do `--session NAME` no `finalize` (CHK046) `[C]`
 
 Ref: checklists/requirements.md CHK046; contracts/commit-mode.md §finalize
 
-- [ ] 0.4.1 Inspecionar state.json schema (state-rw.sh init) e verificar se `short_name` (feature-00c) e `execution.target_project_path` (agente-00c) sao os campos canonicos para derivar o NAME
-- [ ] 0.4.2 Registrar decisao: para feature-00c `NAME = .short_name`; para agente-00c `NAME = basename(.execution.target_project_path)`; `finalize` recebe o NAME como parametro `--session NAME` passado pelo orquestrador (nao autoderivar internamente — maior clareza)
-- [ ] 0.4.3 Documentar a convencao em contracts/commit-mode.md §finalize e em cada orquestrador afetado (agente-00c-orchestrator.md §terminal finalize, agente-00c-feature-orchestrator.md idem)
-- [ ] 0.4.4 Teste: verificar que a decisao ficou gravada no state.json
+- [x] 0.4.1 Inspecionar state.json schema (state-rw.sh init) e verificar se `short_name` (feature-00c) e `execution.target_project_path` (agente-00c) sao os campos canonicos para derivar o NAME
+- [x] 0.4.2 Registrar decisao: para feature-00c `NAME = .short_name`; para agente-00c `NAME = basename(.execution.target_project_path)`; `finalize` recebe o NAME como parametro `--session NAME` passado pelo orquestrador (nao autoderivar internamente — maior clareza)
+- [x] 0.4.3 Documentar a convencao em contracts/commit-mode.md §finalize e em cada orquestrador afetado (agente-00c-orchestrator.md §terminal finalize, agente-00c-feature-orchestrator.md idem)
+- [x] 0.4.4 Teste: verificar que a decisao ficou gravada no state.json
 
 ### 0.5 Confirmar modo nao-interativo da skill `commit` (CHK047) `[C]`
 
 Ref: checklists/requirements.md CHK047; spec.md §FR-003/FR-007; global/skills/commit/SKILL.md
 
-- [ ] 0.5.1 Ler `global/skills/commit/SKILL.md` (ou o instalado em `~/.claude/skills/commit/SKILL.md`) e verificar se ha prompt interativo de confirmacao ou se a skill e sempre nao-bloqueante em pipeline
-- [ ] 0.5.2 Registrar decisao: se a skill for nao-interativa, documentar; se for interativa, a invocacao deve passar `--no-prompt` ou equivalente, OU `commit-mode.sh` usa `git commit -m` direto para o modo pipeline (preferencia documentada em contracts/commit-mode.md)
-- [ ] 0.5.3 Atualizar contracts/commit-mode.md §Reused contracts com a flag exata ou o caminho de invocacao nao-interativa
-- [ ] 0.5.4 Teste: verificar que a decisao ficou gravada no state.json
+- [x] 0.5.1 Ler `global/skills/commit/SKILL.md` (ou o instalado em `~/.claude/skills/commit/SKILL.md`) e verificar se ha prompt interativo de confirmacao ou se a skill e sempre nao-bloqueante em pipeline
+- [x] 0.5.2 Registrar decisao: se a skill for nao-interativa, documentar; se for interativa, a invocacao deve passar `--no-prompt` ou equivalente, OU `commit-mode.sh` usa `git commit -m` direto para o modo pipeline (preferencia documentada em contracts/commit-mode.md)
+- [x] 0.5.3 Atualizar contracts/commit-mode.md §Reused contracts com a flag exata ou o caminho de invocacao nao-interativa
+- [x] 0.5.4 Teste: verificar que a decisao ficou gravada no state.json
 
 ---
 
@@ -83,30 +83,30 @@ Ref: spec.md §FR-002; data-model.md §AtomicCommitConfig; contracts/commit-mode
 
 Ref: spec.md §FR-002; data-model.md §AtomicCommitConfig; plan.md §state-rw.sh
 
-- [ ] 1.1.1 Ler `global/skills/agente-00c-runtime/scripts/state-rw.sh` secao `init` (modo-feature e modo-agente) para identificar o ponto de insercao da nova flag
-- [ ] 1.1.2 Adicionar `--atomic-commit <true|false>` ao subcomando `init` de `state-rw.sh`; omitido => `false` (retro-compativel); escreve `.atomic_commit_enabled` no JSON inicial via `jq`
-- [ ] 1.1.3 Garantir que `.push_pr_result` seja aceito como campo opcional (nao falhar na ausencia)
-- [ ] 1.1.4 Executar `tests/run.sh test_state-rw` e confirmar que todos os cenarios existentes passam
-- [ ] 1.1.5 Adicionar cenarios a `tests/test_state-rw.sh`: (a) `init --atomic-commit true` => `.atomic_commit_enabled = true`; (b) `init --atomic-commit false` => `false`; (c) `init` sem flag => `false`; (d) estado legado sem campo => lido como `false`
+- [x] 1.1.1 Ler `global/skills/agente-00c-runtime/scripts/state-rw.sh` secao `init` (modo-feature e modo-agente) para identificar o ponto de insercao da nova flag
+- [x] 1.1.2 Adicionar `--atomic-commit <true|false>` ao subcomando `init` de `state-rw.sh`; omitido => `false` (retro-compativel); escreve `.atomic_commit_enabled` no JSON inicial via `jq`
+- [x] 1.1.3 Garantir que `.push_pr_result` seja aceito como campo opcional (nao falhar na ausencia)
+- [x] 1.1.4 Executar `tests/run.sh test_state-rw` e confirmar que todos os cenarios existentes passam
+- [x] 1.1.5 Adicionar cenarios a `tests/test_state-rw.sh`: (a) `init --atomic-commit true` => `.atomic_commit_enabled = true`; (b) `init --atomic-commit false` => `false`; (c) `init` sem flag => `false`; (d) estado legado sem campo => lido como `false`
 
 ### 1.2 Atualizar `state-validate.sh` para aceitar novos campos `[A]`
 
 Ref: plan.md §state-validate.sh; data-model.md §Retro-compatibility
 
-- [ ] 1.2.1 Ler `global/skills/agente-00c-runtime/scripts/state-validate.sh` e identificar onde tipos de campos sao validados
-- [ ] 1.2.2 Adicionar validacao: `.atomic_commit_enabled` deve ser `true`, `false`, ou ausente (nao outro tipo); `.push_pr_result` e objeto ou ausente
-- [ ] 1.2.3 Executar `tests/run.sh test_state-validate` e confirmar zero regressoes
-- [ ] 1.2.4 Adicionar cenarios a testes existentes (ou criar teste inline): (a) `atomic_commit_enabled: true` => valido; (b) `atomic_commit_enabled: "yes"` => invalido; (c) campo ausente => valido
+- [x] 1.2.1 Ler `global/skills/agente-00c-runtime/scripts/state-validate.sh` e identificar onde tipos de campos sao validados
+- [x] 1.2.2 Adicionar validacao: `.atomic_commit_enabled` deve ser `true`, `false`, ou ausente (nao outro tipo); `.push_pr_result` e objeto ou ausente
+- [x] 1.2.3 Executar `tests/run.sh test_state-validate` e confirmar zero regressoes
+- [x] 1.2.4 Adicionar cenarios a testes existentes (ou criar teste inline): (a) `atomic_commit_enabled: true` => valido; (b) `atomic_commit_enabled: "yes"` => invalido; (c) campo ausente => valido
 
 ### 1.3 Criar `commit-mode.sh` — subcomandos `is-enabled` e `set-enabled` `[C]`
 
 Ref: contracts/commit-mode.md §is-enabled e §set-enabled; spec.md §FR-002; plan.md §commit-mode.sh
 
-- [ ] 1.3.1 Criar arquivo `global/skills/agente-00c-runtime/scripts/commit-mode.sh` com header POSIX (`#!/bin/sh`), source de `_log.sh`, e dispatch de subcomandos
-- [ ] 1.3.2 Implementar `is-enabled --state-dir DIR`: le `.atomic_commit_enabled` via `state-rw.sh get`; ausente => `false`; stdout exatamente `true` ou `false`; exit 0 sempre
-- [ ] 1.3.3 Implementar `set-enabled --state-dir DIR --value <true|false>`: valida `--value`; escreve via `state-rw.sh set`; exit 0/1/2 conforme contrato
-- [ ] 1.3.4 Verificar que o helper faz source de `_log.sh` e usa `log_err`/`log_out` (nunca `printf >&2` diretamente)
-- [ ] 1.3.5 Criar `tests/test_commit-mode.sh` com cenarios para INV-1 (`is-enabled` sem campo => false), INV-8 (nenhuma escrita via echo/cp direto no state.json)
+- [x] 1.3.1 Criar arquivo `global/skills/agente-00c-runtime/scripts/commit-mode.sh` com header POSIX (`#!/bin/sh`), source de `_log.sh`, e dispatch de subcomandos
+- [x] 1.3.2 Implementar `is-enabled --state-dir DIR`: le `.atomic_commit_enabled` via `state-rw.sh get`; ausente => `false`; stdout exatamente `true` ou `false`; exit 0 sempre
+- [x] 1.3.3 Implementar `set-enabled --state-dir DIR --value <true|false>`: valida `--value`; escreve via `state-rw.sh set`; exit 0/1/2 conforme contrato
+- [x] 1.3.4 Verificar que o helper faz source de `_log.sh` e usa `log_err`/`log_out` (nunca `printf >&2` diretamente)
+- [x] 1.3.5 Criar `tests/test_commit-mode.sh` com cenarios para INV-1 (`is-enabled` sem campo => false), INV-8 (nenhuma escrita via echo/cp direto no state.json)
 
 ---
 
@@ -118,38 +118,38 @@ Ref: contracts/commit-mode.md; spec.md §FR-003/004/005/006/007/008/009/010; pla
 
 Ref: contracts/commit-mode.md §guard-branch; spec.md §FR-005/SC-004; research.md D5
 
-- [ ] 2.1.1 Implementar `guard-branch --state-dir DIR --projeto-alvo-path PATH`: resolver branch default via logica identica a `_session_default_branch` (remote HEAD => fallback `main`/`master`); comparar com HEAD atual
-- [ ] 2.1.2 Implementar saidas: exit 0 (nao-default, seguro); exit 3 (default, pular); exit 1 (nao-git ou git ausente)
-- [ ] 2.1.3 Garantir POSIX puro (sem bashisms); testar com `sh -n commit-mode.sh`
-- [ ] 2.1.4 Adicionar cenarios a `tests/test_commit-mode.sh` para INV-2: `guard-branch` em branch default => exit 3; em branch nao-default => exit 0
+- [x] 2.1.1 Implementar `guard-branch --state-dir DIR --projeto-alvo-path PATH`: resolver branch default via logica identica a `_session_default_branch` (remote HEAD => fallback `main`/`master`); comparar com HEAD atual
+- [x] 2.1.2 Implementar saidas: exit 0 (nao-default, seguro); exit 3 (default, pular); exit 1 (nao-git ou git ausente)
+- [x] 2.1.3 Garantir POSIX puro (sem bashisms); testar com `sh -n commit-mode.sh`
+- [x] 2.1.4 Adicionar cenarios a `tests/test_commit-mode.sh` para INV-2: `guard-branch` em branch default => exit 3; em branch nao-default => exit 0
 
 ### 2.2 Implementar `stage-message` e `task-message` `[A]`
 
 Ref: contracts/commit-mode.md §stage-message e §task-message; spec.md §FR-007; data-model.md §StagedCommit §Message format
 
-- [ ] 2.2.1 Implementar `stage-message --feature NAME --stage STAGE`: mapeamento de stage para scope (specify=>spec, plan=>plan, clarify=>spec, checklist=>checklist, create-tasks=>tasks); stdout em formato Conventional Commits; exit 0/2
-- [ ] 2.2.2 Implementar `task-message --feature NAME --task-ids "ID[,ID...]" [--brief TEXT]`: ID unico => `feat: task ID brief`; IDs contiguos => range `tasks A-B`; IDs nao-contiguos => lista `tasks A, C`; exit 0/2
-- [ ] 2.2.3 Verificar que nenhum dos dois subcomandos faz qualquer write (read-only helpers)
-- [ ] 2.2.4 Adicionar cenarios a `tests/test_commit-mode.sh` para INV-6 (mensagens em Conventional Commits), INV-7 (range vs lista)
+- [x] 2.2.1 Implementar `stage-message --feature NAME --stage STAGE`: mapeamento de stage para scope (specify=>spec, plan=>plan, clarify=>spec, checklist=>checklist, create-tasks=>tasks); stdout em formato Conventional Commits; exit 0/2
+- [x] 2.2.2 Implementar `task-message --feature NAME --task-ids "ID[,ID...]" [--brief TEXT]`: ID unico => `feat: task ID brief`; IDs contiguos => range `tasks A-B`; IDs nao-contiguos => lista `tasks A, C`; exit 0/2
+- [x] 2.2.3 Verificar que nenhum dos dois subcomandos faz qualquer write (read-only helpers)
+- [x] 2.2.4 Adicionar cenarios a `tests/test_commit-mode.sh` para INV-6 (mensagens em Conventional Commits), INV-7 (range vs lista)
 
 ### 2.3 Implementar `finalize` `[C]`
 
 Ref: contracts/commit-mode.md §finalize; spec.md §FR-008/009/010/011; data-model.md §PushPRResult; research.md D6/D7
 
-- [ ] 2.3.1 Implementar `finalize --state-dir DIR --projeto-alvo-path PATH --session NAME [--title T] [--body B]`: passo 1 (is-enabled check); passo 2 (guard-branch); passo 3 (delegar a `cstk session pr`); passo 4 (mapear exit code para PushPRResult); passo 5 (nao-fatal)
-- [ ] 2.3.2 Persistir `.push_pr_result` via `state-rw.sh set` (nunca echo/cp direto); incluir `recorded_at` com timestamp ISO 8601
-- [ ] 2.3.3 Garantir que todos os paths de erro (gh-missing, gh-unauth, default-branch, disabled) retornam exit 0 (nao fatal) com status gravado
-- [ ] 2.3.4 Garantir que stdout e um objeto JSON conforme o contrato
-- [ ] 2.3.5 Adicionar cenarios a `tests/test_commit-mode.sh` para INV-3 (disabled => skipped-disabled), INV-4 (gh missing => skipped-gh-missing), INV-5 (PR ja existe => pr-exists, sem duplicata)
+- [x] 2.3.1 Implementar `finalize --state-dir DIR --projeto-alvo-path PATH --session NAME [--title T] [--body B]`: passo 1 (is-enabled check); passo 2 (guard-branch); passo 3 (delegar a `cstk session pr`); passo 4 (mapear exit code para PushPRResult); passo 5 (nao-fatal)
+- [x] 2.3.2 Persistir `.push_pr_result` via `state-rw.sh set` (nunca echo/cp direto); incluir `recorded_at` com timestamp ISO 8601
+- [x] 2.3.3 Garantir que todos os paths de erro (gh-missing, gh-unauth, default-branch, disabled) retornam exit 0 (nao fatal) com status gravado
+- [x] 2.3.4 Garantir que stdout e um objeto JSON conforme o contrato
+- [x] 2.3.5 Adicionar cenarios a `tests/test_commit-mode.sh` para INV-3 (disabled => skipped-disabled), INV-4 (gh missing => skipped-gh-missing), INV-5 (PR ja existe => pr-exists, sem duplicata)
 
 ### 2.4 Verificacao de cobertura e conformidade POSIX `[A]`
 
 Ref: spec.md §FR-014/FR-015; CLAUDE.md §Como testar scripts shell
 
-- [ ] 2.4.1 Rodar `shellcheck -s sh global/skills/agente-00c-runtime/scripts/commit-mode.sh` e corrigir todos os findings (ou documentar excecoes com `# shellcheck disable=SCXXX` justificado)
-- [ ] 2.4.2 Rodar `tests/run.sh --check-coverage` e confirmar que `commit-mode.sh` tem cobertura em `tests/test_commit-mode.sh` (sem orfao)
-- [ ] 2.4.3 Rodar `tests/run.sh test_commit-mode` — todos os cenarios INV-1..8 DEVEM passar antes de avancar
-- [ ] 2.4.4 Verificar com `sh -n commit-mode.sh` que o script e POSIX sintaticamente valido
+- [x] 2.4.1 Rodar `shellcheck -s sh global/skills/agente-00c-runtime/scripts/commit-mode.sh` e corrigir todos os findings (ou documentar excecoes com `# shellcheck disable=SCXXX` justificado)
+- [x] 2.4.2 Rodar `tests/run.sh --check-coverage` e confirmar que `commit-mode.sh` tem cobertura em `tests/test_commit-mode.sh` (sem orfao)
+- [x] 2.4.3 Rodar `tests/run.sh test_commit-mode` — todos os cenarios INV-1..8 DEVEM passar antes de avancar
+- [x] 2.4.4 Verificar com `sh -n commit-mode.sh` que o script e POSIX sintaticamente valido
 
 ---
 

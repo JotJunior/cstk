@@ -71,9 +71,9 @@ Refuse if HEAD is the default branch (FR-005, SC-004).
 
 ## `commit-mode.sh stage-message --feature NAME --stage STAGE`
 
-Build the *intent string* for a per-stage commit (FR-003/FR-007). The helper
-does NOT commit — it returns the structured intent the orchestrator hands to
-the installed `commit` skill.
+Build the commit message for a per-stage commit (FR-003/FR-007). The helper
+does NOT commit — it returns the message string the orchestrator uses directly
+with `git commit -m` (pipeline non-interactive mode).
 
 - **stdout**: a single line, e.g.
   `docs(spec): generate spec.md for atomic-commit-pr`.
@@ -91,13 +91,16 @@ Build the intent string for a per-task or grouped-task commit (FR-004/FR-007).
 - **Multiple ids** (`--task-ids 3.1,3.2`): collapse contiguous ids into a range
   ⇒ `feat: tasks 3.1-3.2 <brief>`; non-contiguous ⇒ list form
   `feat: tasks 3.1, 3.4 <brief>`.
-- `<brief>` defaults to empty (the `commit` skill fills detail from the diff).
+- `<brief>` defaults to empty.
 - **stdout**: single line.
 - **Exit**: `0`; `2` on missing args.
 
-> The `commit` skill produces the FINAL message and performs staging
-> (`git add` by name, never `-A`/`.`, with secret-file warnings). This helper
-> only supplies the canonical subject so format stays consistent.
+> In pipeline mode, the orchestrator uses the output of this helper directly
+> with `git commit -m "<output>"` (non-interactive). Grouping is always-on per
+> wave: if multiple tasks pass in the same wave, the orchestrator collects all
+> their IDs and calls `task-message --task-ids ID1,ID2,...` once, producing a
+> single grouped commit. The `commit` skill is NOT used in pipeline mode (it
+> has interactive prompts; see CHK047/dec-026).
 
 ---
 
@@ -111,9 +114,17 @@ when `is-enabled` is true and HEAD is non-default.
 1. If `is-enabled` == false ⇒ record `PushPRResult.status=skipped-disabled`,
    exit `0` (no-op).
 2. `guard-branch`; if exit `3` ⇒ record `skipped-default-branch`, exit `0`.
-3. Delegate to `cstk session pr "$NAME" [--title …] [--body …]`
-   (`cli/lib/session.sh::_session_pr`), which is idempotent (PR-exists reuse,
-   push no-op when in sync) and resolves the default branch and gh status.
+3. Determine push+PR strategy based on whether `--session NAME` is a valid
+   `cstk session` (worktree exists via `cstk session list`):
+   - **cstk session branch**: delegate to `cstk session pr "$NAME" [--title …]
+     [--body …]` (`cli/lib/session.sh::_session_pr`), which is idempotent
+     (PR-exists reuse, push no-op when in sync).
+   - **other non-default branch** (fallback): `git -C PATH push -u origin HEAD`
+     followed by `gh pr create --base <default> --head <branch>` with
+     idempotency check (`gh pr view` before creating). Log which path was taken.
+   - `NAME` is derived by the CALLER (orchestrator), not autodiscovered:
+     feature-00c passes `--session "$SHORT_NAME"`; agente-00c passes
+     `--session "$(basename "$TARGET_PROJECT_PATH")"` (CHK046/dec-024).
 4. Map the `_session_pr` exit code to `PushPRResult.status` (see
    `data-model.md` mapping table) and persist `.push_pr_result` via the audited
    `state-rw.sh set` path (status/branch/pr_url/reason/recorded_at).
@@ -142,12 +153,40 @@ when `is-enabled` is true and HEAD is non-default.
 
 ---
 
+## Dependencies and fallbacks (dec-022/dec-023/dec-024/dec-025/dec-026)
+
+### Commit in pipeline mode (CHK047/dec-026)
+The orchestrator commits directly via `git commit -m "<message>"`. The
+installed `commit` skill is NOT invoked in pipeline mode — it has interactive
+prompts ("ask the user which files to include") incompatible with autonomous
+execution. Commit message is supplied by `stage-message` or `task-message`.
+Staging: the orchestrator runs `git add` by explicit file paths (never `-A`
+or `.`) before calling `commit-mode.sh` for the message.
+
+### commit skill fallback (CHK043/dec-023)
+If `commit-mode.sh` is invoked in a context where `git` is absent, log via
+`log_err` and return exit `1`. `git` is a hard requirement for commit; absence
+is non-fatal to the WAVE (caller skips with warn) but cannot be silently
+no-oped (no git = no commit = record `noop-no-git`).
+
+### finalize: session vs. fallback (CHK032/dec-022)
+`finalize` works on ANY non-default branch. The `--session NAME` parameter is
+OPTIONAL. If `NAME` is provided and a matching cstk session worktree exists,
+delegate to `cstk session pr`. If NAME is absent or no worktree found, use
+the fallback path (`git push` + `gh pr create` directly).
+
+### --session NAME derivation (CHK046/dec-024)
+The caller (orchestrator) derives NAME externally and passes it:
+- feature-00c: `NAME = .short_name` from `state.json`
+- agente-00c: `NAME = $(basename "$TARGET_PROJECT_PATH")` from `state.json`
+`finalize` does NOT autodiscover NAME internally.
+
 ## Reused contracts (NOT re-implemented)
 
 | Concern | Reused from |
 |---------|-------------|
-| push + PR (idempotent, default-branch resolve, gh status) | `cli/lib/session.sh::_session_pr` |
-| commit message + staging + secret-file warnings | installed `commit` skill |
+| push + PR (cstk-session path) | `cli/lib/session.sh::_session_pr` |
+| push + PR (fallback path) | `git push` + `gh pr create` directly |
 | state read/write (audited, hashed) | `state-rw.sh get` / `set` / `init` |
 | secrets-filtered logging | `_log.sh` (`log_err` / `log_out`) |
 | default-branch resolution | `_session_default_branch` (same logic) |
