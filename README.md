@@ -400,6 +400,20 @@ Spec completa em
 [`docs/specs/_archived/agente-00c-model-routing/`](./docs/specs/_archived/agente-00c-model-routing/)
 (20 FRs, 6 invariantes INV-1..INV-6, 4 load-bearing CHKs).
 
+### Modo atomic-commit (opt-in)
+
+A partir de v5.12.0, os orquestradores `agente-00c` e `feature-00c` oferecem
+modo **atomic-commit** opt-in: cada etapa de artefato gera um commit Conventional
+Commits automatico, e cada grupo de tasks `execute-task` com `outcome=pass` gera
+um commit ranged ao final da onda. O finalize terminal dispara push + PR via
+`cstk session pr` (push direto permanece bloqueado pelo `bash-guard.sh`).
+
+| Componente | Localizacao |
+|------------|-------------|
+| Helper POSIX (`is-enabled`, `set-enabled`, `guard-branch`, `stage-message`, `task-message`, `finalize`) | `global/skills/agente-00c-runtime/scripts/commit-mode.sh` |
+| Testes | `tests/test_commit-mode.sh` |
+| Spec | `docs/specs/atomic-commit-pr/` |
+
 ## Insights de Uso
 
 A skill `apply-insights` aplica insights de uso ao projeto. Ela lê de

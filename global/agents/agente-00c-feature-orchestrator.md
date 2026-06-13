@@ -121,6 +121,7 @@ cada chamada).
 | `whitelist-validate.sh` | rejeitar padroes amplos em whitelist (FR-029 herdado FR-031) |
 | `sanitize.sh` | sanitizar descricao_curta (FR-029 herdado FR-025) |
 | `spawn-tracker.sh enter\|check` | rastrear profundidade de subagente (FR-021) |
+| `commit-mode.sh is-enabled\|guard-branch\|stage-message\|task-message\|finalize` | modo atomic-commit opt-in: commit por etapa, commit por task, push+PR terminal (FR-003/004/008 — atomic-commit-pr) |
 
 ## Fronteira command↔orquestrador (lock + init) — CONTRATO CANONICO
 
@@ -262,6 +263,47 @@ Sequencia da onda corrente. Cada iteracao:
 7. na fase execute-task, registrar tasks_concluidas + task_corrente
    no state.json (FR-012). Loop ate todas as tasks completas, depois
    transitar para review-task.
+7.bis (ADITIVO — hook de commit por task, opt-in — atomic-commit-pr, FR-004):
+    SOMENTE se `commit-mode.sh is-enabled --state-dir $STATE_DIR` retornar `true`
+    E a fase corrente for `execute-task`. NAO-OP quando `is-enabled` retorna `false`
+    (SC-006 — zero latencia no path de opt-out). Agrupamento always-on por onda
+    (decisao 0.1.2 / FR-004): todas as tasks com `outcome=pass` da onda sao
+    agrupadas num unico commit ranged ao final. Tasks `outcome=fail` sao excluidas.
+    Lista `_tasks_passadas` e resetada a cada onda (nao acumula cross-wave).
+
+    Sequencia ao concluir TODAS as tasks de uma onda com `execute-task`:
+
+    ```bash
+    _enabled=$(commit-mode.sh is-enabled --state-dir "$STATE_DIR")
+    if [ "$_enabled" = "true" ] && [ -n "$_tasks_passadas" ]; then
+      PAP=$(state-rw.sh get --state-dir "$STATE_DIR" \
+            --field '.execution.target_project_path')
+      # 1. Checar branch — skip silencioso se default (exit 3) ou erro (exit 1)
+      commit-mode.sh guard-branch --state-dir "$STATE_DIR" \
+        --projeto-alvo-path "$PAP"
+      _guard_exit=$?
+      if [ "$_guard_exit" = "0" ]; then
+        # 2. Gerar mensagem para o grupo de tasks (range ou individual)
+        _ids=$(printf '%s' "$_tasks_passadas" | tr '\n' ',' | sed 's/,$//') # "1.1,1.2"
+        _msg=$(commit-mode.sh task-message --feature "$SHORT_NAME" --task-ids "$_ids")
+        # 3. Stage + commit direto (pipeline non-interactive — CHK047/dec-026)
+        git -C "$PAP" add -A 2>/dev/null || true
+        git -C "$PAP" commit -m "$_msg" 2>/dev/null || true
+        # 4. Registrar Decisao auditavel
+        state-decisions.sh register --state-dir "$STATE_DIR" \
+          --agente "agente-00c-feature-orchestrator" --etapa "execute-task" \
+          --contexto "Commit atomico por task (onda): $_msg" \
+          --opcoes '["commit","skip"]' --escolha "commit" \
+          --justificativa "atomic_commit_enabled=true; tasks passadas: $_ids" \
+          --score 2
+      else
+        log_out "commit-mode: guard-branch exit $_guard_exit — commit por task pulado nesta onda"
+      fi
+    fi
+    ```
+
+    REGRA DURA: qualquer falha no bloco acima e NO-OP silencioso (best-effort).
+    O commit por task e ADITIVO ao record-task/backup/end — nunca os substitui.
 8. gerar backup da onda:
    cat state.json | secrets-filter.sh for-backup --wave-number N \
      > <state_dir>/backups/wave-NNN.json
@@ -290,6 +332,57 @@ Sequencia da onda corrente. Cada iteracao:
     registre Sugestao via `suggestions.sh register` ANTES do passo 11,
     para a §5 do relatorio incluí-la. Ver "## Sugestoes para skills
     globais (FR-020)" abaixo. Best-effort: nunca gateia a onda.
+10.qui (ADITIVO — hook de commit atomico por etapa, opt-in — atomic-commit-pr,
+    FR-003/FR-013): SOMENTE se `commit-mode.sh is-enabled --state-dir $STATE_DIR`
+    retornar `true`. Roda APOS passo 10.qua e ANTES do passo 11. NAO-OP quando
+    `is-enabled` retorna `false` (SC-006 — zero latencia no path de opt-out;
+    comportamento atual preservado). Aplicavel apenas em etapas de artefato:
+    `specify`, `plan`, `clarify`, `checklist`, `create-tasks`. NAO aplicar em
+    `execute-task`, `review-task` (tasks tem hook proprio — passo 7 + FASE 5).
+
+    ```bash
+    _enabled=$(commit-mode.sh is-enabled --state-dir "$STATE_DIR")
+    if [ "$_enabled" = "true" ]; then
+      PAP=$(state-rw.sh get --state-dir "$STATE_DIR" \
+            --field '.execution.target_project_path')
+      # 1. Checar branch — skip silencioso se default (exit 3) ou erro (exit 1)
+      commit-mode.sh guard-branch --state-dir "$STATE_DIR" \
+        --projeto-alvo-path "$PAP"
+      _guard_exit=$?
+      if [ "$_guard_exit" = "0" ]; then
+        # 2. Gerar mensagem Conventional Commits para a etapa atual
+        _stage=$(state-rw.sh get --state-dir "$STATE_DIR" --field '.current_stage')
+        _msg=$(commit-mode.sh stage-message \
+               --feature "$SHORT_NAME" --stage "$_stage")
+        # 3. Commit direto via git (pipeline non-interactive — CHK047/dec-026)
+        git -C "$PAP" add -A 2>/dev/null || true
+        git -C "$PAP" commit -m "$_msg" 2>/dev/null || true
+        # 4. Registrar Decisao auditavel do commit
+        state-decisions.sh register --state-dir "$STATE_DIR" \
+          --agente "agente-00c-feature-orchestrator" --etapa "$_stage" \
+          --contexto "Commit atomico por etapa ($_stage): $_msg" \
+          --opcoes '["commit","skip"]' --escolha "commit" \
+          --justificativa "atomic_commit_enabled=true; guard-branch exit 0" \
+          --score 2
+      else
+        log_out "commit-mode: guard-branch exit $_guard_exit — commit atomico pulado nesta onda"
+      fi
+    fi
+    ```
+
+    **Finalize terminal (FR-008)**: ao concluir `review-task` com sucesso,
+    se `is-enabled` retornar `true`, invocar apos o passo 11 (relatorio final):
+
+    ```bash
+    PAP=$(state-rw.sh get --state-dir "$STATE_DIR" \
+          --field '.execution.target_project_path')
+    commit-mode.sh finalize --state-dir "$STATE_DIR" \
+      --projeto-alvo-path "$PAP" --session "$SHORT_NAME"
+    ```
+
+    (Nao fatal: `finalize` e sempre exit 0; falhas de push/PR sao
+    registradas em `.push_pr_result` sem bloquear a conclusao.)
+
 11. emitir relatorio final (se status terminal) via
     report.sh emit --flavor feature-00c --short-name <name> \
       --state-dir $STATE_DIR --final

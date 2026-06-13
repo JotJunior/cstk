@@ -128,6 +128,12 @@ report.sh emit --flavor feature-00c --short-name "$SHORT" \
 
 (Falha silenciosa se nao for repo git ou nada para commitar.)
 
+> **Modo atomic-commit (FR-011 — atomic-commit-pr)**: commits atomicos ja
+> criados por ondas anteriores PERMANECEM intactos no historico local apos
+> o abort. Push e PR NAO ocorrem em caminho de abort, independentemente do
+> valor de `.atomic_commit_enabled`. O `commit-mode.sh finalize` (push+PR
+> terminal) e exclusivamente chamado no caminho de sucesso pelo review-task.
+
 ### 8. Purge opcional de backups
 
 ```

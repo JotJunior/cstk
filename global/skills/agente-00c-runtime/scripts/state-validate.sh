@@ -182,6 +182,25 @@ _check_optional_string() {
 _check_optional_string '.execution.canonical_project'
 _check_optional_string '.execution.session_name'
 
+# 3c. Campos opcionais da feature atomic-commit-pr.
+# .atomic_commit_enabled: boolean (true/false) ou ausente. States pre-feature
+# nao tem o campo — retro-compativel por ausencia.
+# .push_pr_result: objeto ou ausente. Nao valida sub-campos (too volatile).
+_ac=$(jq -r '.atomic_commit_enabled | type' "$_SV_FILE" 2>/dev/null) || _ac="null"
+case "$_ac" in
+  boolean|null) ;;  # null = ausente = ok
+  *)
+    _sv_add "atomic_commit_enabled com tipo invalido: esperado boolean ou ausente, obtido $_ac"
+    ;;
+esac
+_ppr=$(jq -r '.push_pr_result | type' "$_SV_FILE" 2>/dev/null) || _ppr="null"
+case "$_ppr" in
+  object|null) ;;  # null = ausente = ok
+  *)
+    _sv_add "push_pr_result com tipo invalido: esperado object ou ausente, obtido $_ppr"
+    ;;
+esac
+
 # 4. status x finished_at
 # READER: chaves EN + fallback pt-BR. VALORES de status (enum) permanecem pt-BR.
 _st=$(jq -r '(.execution.status // .execucao.status) // ""' "$_SV_FILE")

@@ -114,7 +114,8 @@ infraestrutura interna deste agente.
 | `pipeline.sh` | stages/next-stage/prev-stage/detect-completion/skill-conflict | State machine canonica das 10 etapas SDD |
 | `state-decisions.sh` | register/count/next-id/list | Registro auditavel (Principio I — 5 campos obrigatorios) |
 | `spawn-tracker.sh` | check/enter/leave/current | Tracker de profundidade de subagentes (FR-013, MAX 3) |
-| `state-ondas.sh` | start/end/tool-call-tick/current-id/git-commit | Ciclo de vida de Ondas + commit local (NUNCA push) |
+| `state-ondas.sh` | start/end/tool-call-tick/current-id/git-commit | Ciclo de vida de Ondas + commit local (NUNCA push direto — push via commit-mode.sh finalize no terminal) |
+| `commit-mode.sh` | is-enabled/set-enabled/guard-branch/stage-message/task-message/finalize | Modo atomic-commit opt-in: commit por etapa, commit por task, push+PR terminal (FR-003/004/008 — atomic-commit-pr) |
 | `bloqueios.sh` | register/respond/list/count/next-id/get | Ciclo de vida de BloqueioHumano (FR-015/FR-016) |
 | `budget.sh` | check/status | Proxies de orcamento de sessao (FR-009: tool calls, wallclock, state size) |
 | `cycles.sh` | tick/check/count/reset | Limite de ciclos por etapa (FR-014.a — `loop_em_etapa`) |
@@ -619,6 +620,59 @@ persistido, nunca do que a skill "disse" ter feito.
    clobberar entradas reais) qualquer task concluida ausente de `.tasks[]`.
    Os campos `origem`/`recorded_at` gravados sao ADITIVOS — a ingestao
    seleciona so os 8 campos do contrato e ignora o resto.
+
+   #### Hook de commit por task (opt-in — atomic-commit-pr, FR-004)
+
+   > **Posicao**: APOS `state-ondas.sh record-task` (acima) e ANTES de
+   > avancar para a proxima task da onda. Roda SOMENTE na etapa
+   > `execute-task`. NAO-OP quando `atomic_commit_enabled = false` (SC-006 —
+   > zero latencia no path de opt-out).
+
+   O agrupamento e **always-on por onda** (decisao 0.1.2 / FR-004): todas as
+   tasks com `outcome=pass` concluidas na mesma onda sao agrupadas num unico
+   commit ranged ao final da onda. Tasks com `outcome=fail` NAO entram na
+   lista (US3-AC3). A lista de tasks passadas e resetada a cada onda (nunca
+   acumula cross-wave).
+
+   **Sequencia ao concluir TODAS as tasks de uma onda com `execute-task`**:
+
+   ```bash
+   # _tasks_passadas = lista de task_ids com outcome=pass acumulada durante a onda
+   # Construida incrementalmente: ao registrar record-task com --outcome pass,
+   # append o TASK_ID nessa lista.
+   #
+   # Ao fechar a onda (antes do passo 9 / state-ondas.sh end):
+   _enabled=$(commit-mode.sh is-enabled --state-dir <SD>)
+   if [ "$_enabled" = "true" ] && [ -n "$_tasks_passadas" ]; then
+     # 1. Checar branch — skip silencioso se default (exit 3) ou erro (exit 1)
+     commit-mode.sh guard-branch --state-dir <SD> --projeto-alvo-path <PAP>
+     _guard_exit=$?
+     if [ "$_guard_exit" = "0" ]; then
+       # 2. Gerar mensagem para o grupo de tasks (range ou individual)
+       _name=$(state-rw.sh get --state-dir <SD> --field \
+               '.execution.target_project_description // "unnamed"' | \
+               head -c 40 | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+       _ids=$(printf '%s' "$_tasks_passadas" | tr '\n' ',' | sed 's/,$//') # "1.1,1.2,1.3"
+       _msg=$(commit-mode.sh task-message --feature "$_name" --task-ids "$_ids")
+       # 3. Stage + commit direto (pipeline non-interactive — CHK047/dec-026)
+       git -C <PAP> add -A 2>/dev/null || true
+       git -C <PAP> commit -m "$_msg" 2>/dev/null || true
+       # 4. Registrar Decisao auditavel
+       state-decisions.sh register --state-dir <SD> \
+         --agente "orquestrador-00c" --etapa "execute-task" \
+         --contexto "Commit atomico por task (onda): $_msg" \
+         --opcoes '["commit","skip"]' --escolha "commit" \
+         --justificativa "atomic_commit_enabled=true; tasks passadas: $_ids" \
+         --score 2
+     else
+       log_out "commit-mode: guard-branch exit $_guard_exit — commit por task pulado nesta onda"
+     fi
+   fi
+   ```
+
+   REGRA DURA: qualquer falha no bloco acima e NO-OP silencioso (best-effort).
+   O commit por task e ADITIVO ao record-task/backup/end — nunca os substitui.
+   Tasks com `outcome=fail` sao excluidas da lista `_tasks_passadas`.
 
    #### Campo `.events[]` — timeline cronologica (FR-020)
 
@@ -1385,10 +1439,64 @@ persistido, nunca do que a skill "disse" ter feito.
    derivado/reconstruivel, isolado do state transacional). Pular este
    passo jamais altera o fluxo de fechamento/commit/Schedule da onda.
 
+9.ter. **Hook de commit atomico por etapa (opt-in — atomic-commit-pr,
+    FR-003)**: SOMENTE se `commit-mode.sh is-enabled --state-dir <SD>`
+    retornar `true`. Roda APOS passo 9.bis (ingestao) e ANTES do passo
+    10 (commit local do state). NAO-OP quando `is-enabled` retorna `false`
+    (SC-006 — zero latencia no path de opt-out; comportamento atual
+    preservado). Aplicavel apenas em etapas de artefato:
+    `specify`, `plan`, `clarify`, `checklist`, `create-tasks`.
+    NAO aplicar em `briefing`, `constitution`, `execute-task`,
+    `review-task`, `review-features` (sem artefato spec-driven).
+
+    ```bash
+    _enabled=$(commit-mode.sh is-enabled --state-dir <SD>)
+    if [ "$_enabled" = "true" ]; then
+      # 1. Checar branch — skip silencioso se default (exit 3) ou erro (exit 1)
+      commit-mode.sh guard-branch --state-dir <SD> --projeto-alvo-path <PAP>
+      _guard_exit=$?
+      if [ "$_guard_exit" = "0" ]; then
+        # 2. Gerar mensagem Conventional Commits para a etapa atual
+        _stage=$(state-rw.sh get --state-dir <SD> --field '.current_stage')
+        _name=$(state-rw.sh get --state-dir <SD> --field \
+                '.execution.target_project_description // "unnamed"' | \
+                head -c 40 | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+        _msg=$(commit-mode.sh stage-message --feature "$_name" --stage "$_stage")
+        # 3. Commit direto via git (pipeline non-interactive — CHK047/dec-026)
+        git -C <PAP> add -A 2>/dev/null || true
+        git -C <PAP> commit -m "$_msg" 2>/dev/null || true
+        # 4. Registrar Decisao auditavel do commit
+        state-decisions.sh register --state-dir <SD> \
+          --agente "orquestrador-00c" --etapa "$_stage" \
+          --contexto "Commit atomico por etapa ($stage): $msg" \
+          --opcoes '["commit","skip"]' --escolha "commit" \
+          --justificativa "atomic_commit_enabled=true; guard-branch exit 0" \
+          --score 2
+      else
+        log_out "commit-mode: guard-branch exit $_guard_exit — commit atomico pulado nesta onda"
+      fi
+    fi
+    ```
+
+    **Finalize terminal (FR-008)**: ao concluir `review-features` com sucesso,
+    se `is-enabled` retornar `true`, invocar apos o passo 10 (commit local):
+
+    ```bash
+    _name_base=$(basename <PAP>)
+    commit-mode.sh finalize --state-dir <SD> --projeto-alvo-path <PAP> \
+      --session "$_name_base"
+    ```
+
+    (Nao fatal: `finalize` e sempre exit 0; falhas de push/PR sao
+    registradas em `.push_pr_result` sem bloquear a conclusao.)
+
 10. **Persistencia + commit local**:
     `state-rw.sh sha256-update` (idempotente; ja chamado por write/set);
     `state-ondas.sh git-commit --state-dir <SD>
-    --projeto-alvo-path <PAP> --motivo "<motivo>"`. NUNCA `git push`.
+    --projeto-alvo-path <PAP> --motivo "<motivo>"`. NUNCA `git push`
+    diretamente — quando atomic-commit habilitado, o push ocorre via
+    `commit-mode.sh finalize` no caminho de sucesso terminal (passo 9.ter
+    acima). Modo desabilitado (default): comportamento atual intacto.
 
     **Hook marco-aware (a cada 25 ondas):** apos o commit, calcular
     `next_retrospective_milestone = (waves.length // 25 + 1) * 25`. Se

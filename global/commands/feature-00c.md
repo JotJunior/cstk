@@ -180,6 +180,25 @@ if [ -f "$_proj/.git" ]; then
 fi
 # .git diretorio (projeto raiz): _canonical e _session permanecem vazios (flags omitidas).
 
+# Prompt opt-in de commit atomico (FR-001/FR-002 — atomic-commit-pr)
+# Antes de inicializar o state.json, perguntar ao operador se deseja
+# habilitar o modo de commit atomico (opt-in, default "nao"):
+#
+# Apresente ao operador:
+# ---
+# Modo atomic-commit (opcional):
+# Quando habilitado, a pipeline cria um commit git a cada etapa concluida
+# (specify, plan, checklist, create-tasks) e um commit agrupado ao final
+# de cada onda de execute-task. Ao final da pipeline, faz push+PR
+# automaticamente se houver branch nao-default.
+#
+# Habilitar o modo atomic-commit? [s/N]
+# ---
+# - Respostas afirmativas (s/S/y/Y/sim/yes): _atomic=true
+# - Qualquer outra resposta (inclusive Enter): _atomic=false (default seguro)
+# Os commands de resume NAO re-promptam: /feature-00c-resume le
+# .atomic_commit_enabled diretamente do state.json sem interacao.
+
 state-rw.sh init --state-dir "$AGENTE_00C_STATE_DIR" \
   --short-name "$SHORT" \
   --projeto-alvo-path "$_proj" \
@@ -189,7 +208,8 @@ state-rw.sh init --state-dir "$AGENTE_00C_STATE_DIR" \
   --constitution-version "$_ct_ver" \
   --key-aspects "$_aspectos" \
   ${_canonical:+--canonical-project "$_canonical"} \
-  ${_session:+--session-name "$_session"}
+  ${_session:+--session-name "$_session"} \
+  --atomic-commit "$_atomic"
 ```
 
 ### 4. Selecionar modelo da onda + delegar ao orquestrador via Agent

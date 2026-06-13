@@ -515,4 +515,73 @@ scenario_init_feature_mode_com_canonical_flags() {
   assert_stdout_contains "specify" || return 1
 }
 
+# ==== Cenarios: --atomic-commit flag (feature atomic-commit-pr) ====
+
+# Cenario: init --atomic-commit true persiste atomic_commit_enabled=true
+scenario_init_atomic_commit_true() {
+  _sd="$TMPDIR_TEST/atomic-true"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test atomic true" \
+    --execucao-id "exec-atomic-true-001" \
+    --atomic-commit true
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.atomic_commit_enabled'
+  [ "$_CAPTURED_STDOUT" = "true" ] || { _fail "atomic_commit_enabled esperado true" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario: init --atomic-commit false persiste atomic_commit_enabled=false
+scenario_init_atomic_commit_false() {
+  _sd="$TMPDIR_TEST/atomic-false"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test atomic false" \
+    --execucao-id "exec-atomic-false-001" \
+    --atomic-commit false
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.atomic_commit_enabled'
+  [ "$_CAPTURED_STDOUT" = "false" ] || { _fail "atomic_commit_enabled esperado false" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario: init sem --atomic-commit => atomic_commit_enabled=false (default seguro)
+scenario_init_atomic_commit_default_false() {
+  _sd="$TMPDIR_TEST/atomic-default"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test atomic default" \
+    --execucao-id "exec-atomic-default-001"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.atomic_commit_enabled'
+  [ "$_CAPTURED_STDOUT" = "false" ] || { _fail "atomic_commit_enabled esperado false (default)" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario: init --atomic-commit valor invalido => exit 2
+scenario_init_atomic_commit_invalid_value() {
+  _sd="$TMPDIR_TEST/atomic-invalid"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test atomic invalid" \
+    --execucao-id "exec-atomic-invalid-001" \
+    --atomic-commit yes
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 para valor invalido" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# Cenario: retro-compat — state legado sem atomic_commit_enabled lido como false
+scenario_init_atomic_commit_retro_compat() {
+  _sd="$TMPDIR_TEST/atomic-retro"
+  # Criar state sem o campo
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test retro" \
+    --execucao-id "exec-retro-001"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  # Remover campo via jq (simula state legado)
+  _sf="$_sd/state.json"
+  _tmp=$(mktemp)
+  jq 'del(.atomic_commit_enabled)' "$_sf" > "$_tmp" && mv "$_tmp" "$_sf"
+  # Campo ausente deve retornar null/vazio (nao erro)
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.atomic_commit_enabled // false'
+  [ "$_CAPTURED_STDOUT" = "false" ] || { _fail "legado sem campo: esperado false via jq fallback" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
 run_all_scenarios

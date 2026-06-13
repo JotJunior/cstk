@@ -5,6 +5,16 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.13.0] - 2026-06-13
+
+### Added
+
+- **Modo atomic-commit opt-in para agente-00c e feature-00c**: quando ativado no inicio da execucao (`y/Y/yes/sim`; default desabilitado), os orquestradores geram commits automaticos Conventional Commits apos cada etapa de artefato (`specify`, `plan`, `clarify`, `checklist`, `create-tasks`) e um commit ranged por grupo de tasks `execute-task` com `outcome=pass` na mesma onda. Tasks com `outcome=fail` sao excluidas. O campo `.atomic_commit_enabled` e persistido no `state.json` e relido em resumes sem re-prompt. No finalize terminal (`review-features` / `review-task`), push + PR e disparado via `cstk session pr` (path confinado — `git push` cru permanece bloqueado pelo `bash-guard.sh`). Spec: `docs/specs/atomic-commit-pr/`.
+- **Helper `commit-mode.sh`** em `global/skills/agente-00c-runtime/scripts/`: subcomandos `is-enabled`, `set-enabled`, `guard-branch`, `stage-message`, `task-message`, `finalize`. Guard de branch default (exit 3 se HEAD = main/master via remote HEAD ou fallback) impede commits/push acidentais na branch default. Cobertura em `tests/test_commit-mode.sh` (23 cenarios, INV-1..8 + FR-015(b)/(c)).
+- **Flag `--atomic-commit <true|false>` no `state-rw.sh init`**: persiste `.atomic_commit_enabled` no schema; omitida => `false` (retro-compativel). Validacao em `state-validate.sh` (aceita `true`, `false` ou ausente). Cenarios em `tests/test_state-rw.sh`.
+- **Prompt opt-in nos 4 commands de entrada** (`/agente-00c`, `/feature-00c`, `/agente-00c-resume` e `/feature-00c-resume`): pergunta com default "no" nos commands de inicio; resumes omitem o prompt e leem o estado do `state.json`.
+- **Nota documental em `bash-guard.sh`**: esclarece que `git push` continua bloqueado mesmo no modo atomic; o push aprovado ocorre exclusivamente via `cstk session pr` (caminho confinado, FR-028 / Constitution §V intactos).
+
 ## [5.12.0] - 2026-06-05
 
 ### Added
@@ -3336,6 +3346,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.13.0]: https://github.com/JotJunior/cstk/releases/tag/v5.13.0
 [5.12.0]: https://github.com/JotJunior/cstk/releases/tag/v5.12.0
 [5.11.1]: https://github.com/JotJunior/cstk/releases/tag/v5.11.1
 [5.11.0]: https://github.com/JotJunior/cstk/releases/tag/v5.11.0

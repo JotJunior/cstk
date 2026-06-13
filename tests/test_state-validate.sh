@@ -536,4 +536,70 @@ scenario_state_pre_feature_sem_campos_novos_passa() {
   fi
 }
 
+# ==== Cenarios: atomic_commit_enabled e push_pr_result (feature atomic-commit-pr) ====
+
+# Cenario: atomic_commit_enabled=true e valido
+scenario_atomic_commit_enabled_true_valido() {
+  _sd="$TMPDIR_TEST/ac-true"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _patch_state "$_sd" '.atomic_commit_enabled = true'
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate atomic true" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+# Cenario: atomic_commit_enabled=false e valido
+scenario_atomic_commit_enabled_false_valido() {
+  _sd="$TMPDIR_TEST/ac-false"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _patch_state "$_sd" '.atomic_commit_enabled = false'
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate atomic false" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+# Cenario: atomic_commit_enabled="yes" (string) e invalido
+scenario_atomic_commit_enabled_string_invalido() {
+  _sd="$TMPDIR_TEST/ac-string"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _patch_state "$_sd" '.atomic_commit_enabled = "yes"'
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "validate atomic string" "esperado 1 (invalido), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "atomic_commit_enabled" || return 1
+}
+
+# Cenario: atomic_commit_enabled ausente e valido (retro-compat)
+scenario_atomic_commit_enabled_ausente_valido() {
+  _sd="$TMPDIR_TEST/ac-absent"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  # Garantir que campo nao existe (init sem --atomic-commit deixa campo como false,
+  # forcamos remocao para simular state pre-feature sem o campo)
+  _sf="$_sd/state.json"
+  _tmp=$(mktemp)
+  jq 'del(.atomic_commit_enabled)' "$_sf" > "$_tmp" && mv "$_tmp" "$_sf"
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate sem atomic_commit_enabled" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+# Cenario: push_pr_result ausente e valido
+scenario_push_pr_result_ausente_valido() {
+  _sd="$TMPDIR_TEST/ppr-absent"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate sem push_pr_result" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+# Cenario: push_pr_result como objeto e valido
+scenario_push_pr_result_objeto_valido() {
+  _sd="$TMPDIR_TEST/ppr-obj"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _patch_state "$_sd" '.push_pr_result = {status:"pr-opened", branch:"feat/x", recorded_at:"2026-06-13T00:00:00Z"}'
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate push_pr_result obj" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
 run_all_scenarios

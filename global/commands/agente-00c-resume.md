@@ -173,6 +173,20 @@ sessao. Nao consegue apontar a linha exata? A ameaca NAO existe: registre
 fabricada como real. Detalhe + caso `dec-122` na secao "Score-de-decisao" do
 `agente-00c-orchestrator`.
 
+### 5.d. Modo atomic-commit — leitura do state (NAO re-prompta)
+
+> O `/agente-00c-resume` NAO apresenta o prompt de opt-in de commit
+> atomico ao operador. O valor e lido diretamente do `state.json`
+> persistido pelo `/agente-00c` inicial (FR-002/US1-AC3 — atomic-commit-pr).
+
+```bash
+_atomic=$(state-rw.sh get --state-dir <SD> --field '.atomic_commit_enabled // false')
+```
+
+O valor `_atomic` e repassado ao orquestrador via contexto do prompt
+(campo `atomic_commit_enabled`). Ausencia do campo (state legado) equivale
+a `false` — comportamento atual preservado sem modificacao.
+
 ### 6. Spawnar agente-orquestrador (continuacao da pipeline)
 
 Antes de qualquer leitor/escritor de estado rodar, canonicalize o

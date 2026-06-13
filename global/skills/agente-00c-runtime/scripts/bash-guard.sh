@@ -82,6 +82,11 @@ _bg_check_blocklist_cmd() {
   fi
 
   # 3. git push (FR-028 — Constitution §V)
+  # NOTA (atomic-commit-pr): raw `git push` permanece BLOQUEADO aqui, inclusive
+  # no modo atomic-commit. O push confinado do modo atomic ocorre EXCLUSIVAMENTE
+  # via `cstk session pr` (invocado por `commit-mode.sh finalize`), que nao
+  # passa por este guard — e o unico caminho aprovado para push/PR automatizado.
+  # NAO altere a regex abaixo sem revisao de seguranca (FR-028 / Constitution §V).
   if _bg_match '(^|[[:space:];|&])git[[:space:]]+push\b'; then
     _bg_emit_block "git-push" "git push bloqueado em qualquer remote (Principio V)"
     return 1
@@ -314,6 +319,10 @@ USO:
 Blocklist: sudo, npm/pip/cargo/go/brew install (sem docker prefix), git push,
 kubectl apply, terraform apply/destroy, docker push, helm install/upgrade,
 aws cli mutativo, gcloud deploy.
+
+Nota atomic-commit: raw `git push` permanece bloqueado mesmo no modo atomic-commit.
+O push confinado ocorre SOMENTE via `cstk session pr` (commit-mode.sh finalize),
+que nao passa por este guard — caminho aprovado e isolado (FR-028 / Constitution §V).
 
 Whitelist: comandos de rede (curl/wget/gh/git fetch/clone) checados contra
 whitelist; excecao escopada: gh issue create --repo JotJunior/cstk.
