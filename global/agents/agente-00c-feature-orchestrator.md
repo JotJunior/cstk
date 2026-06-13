@@ -263,6 +263,47 @@ Sequencia da onda corrente. Cada iteracao:
 7. na fase execute-task, registrar tasks_concluidas + task_corrente
    no state.json (FR-012). Loop ate todas as tasks completas, depois
    transitar para review-task.
+7.bis (ADITIVO — hook de commit por task, opt-in — atomic-commit-pr, FR-004):
+    SOMENTE se `commit-mode.sh is-enabled --state-dir $STATE_DIR` retornar `true`
+    E a fase corrente for `execute-task`. NAO-OP quando `is-enabled` retorna `false`
+    (SC-006 — zero latencia no path de opt-out). Agrupamento always-on por onda
+    (decisao 0.1.2 / FR-004): todas as tasks com `outcome=pass` da onda sao
+    agrupadas num unico commit ranged ao final. Tasks `outcome=fail` sao excluidas.
+    Lista `_tasks_passadas` e resetada a cada onda (nao acumula cross-wave).
+
+    Sequencia ao concluir TODAS as tasks de uma onda com `execute-task`:
+
+    ```bash
+    _enabled=$(commit-mode.sh is-enabled --state-dir "$STATE_DIR")
+    if [ "$_enabled" = "true" ] && [ -n "$_tasks_passadas" ]; then
+      PAP=$(state-rw.sh get --state-dir "$STATE_DIR" \
+            --field '.execution.target_project_path')
+      # 1. Checar branch — skip silencioso se default (exit 3) ou erro (exit 1)
+      commit-mode.sh guard-branch --state-dir "$STATE_DIR" \
+        --projeto-alvo-path "$PAP"
+      _guard_exit=$?
+      if [ "$_guard_exit" = "0" ]; then
+        # 2. Gerar mensagem para o grupo de tasks (range ou individual)
+        _ids=$(printf '%s' "$_tasks_passadas" | tr '\n' ',' | sed 's/,$//') # "1.1,1.2"
+        _msg=$(commit-mode.sh task-message --feature "$SHORT_NAME" --task-ids "$_ids")
+        # 3. Stage + commit direto (pipeline non-interactive — CHK047/dec-026)
+        git -C "$PAP" add -A 2>/dev/null || true
+        git -C "$PAP" commit -m "$_msg" 2>/dev/null || true
+        # 4. Registrar Decisao auditavel
+        state-decisions.sh register --state-dir "$STATE_DIR" \
+          --agente "agente-00c-feature-orchestrator" --etapa "execute-task" \
+          --contexto "Commit atomico por task (onda): $_msg" \
+          --opcoes '["commit","skip"]' --escolha "commit" \
+          --justificativa "atomic_commit_enabled=true; tasks passadas: $_ids" \
+          --score 2
+      else
+        log_out "commit-mode: guard-branch exit $_guard_exit — commit por task pulado nesta onda"
+      fi
+    fi
+    ```
+
+    REGRA DURA: qualquer falha no bloco acima e NO-OP silencioso (best-effort).
+    O commit por task e ADITIVO ao record-task/backup/end — nunca os substitui.
 8. gerar backup da onda:
    cat state.json | secrets-filter.sh for-backup --wave-number N \
      > <state_dir>/backups/wave-NNN.json

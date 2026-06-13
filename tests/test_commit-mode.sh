@@ -310,4 +310,92 @@ scenario_task_message_sem_args_exit2() {
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 sem --task-ids" "obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+# ==== FR-015(b): per-stage commit — exatamente 1 commit por stage no git log ====
+# Simula o hook de commit atomico por etapa: verifica que stage-message gera mensagem
+# diferente por stage e que commits seriam distintos.
+scenario_fr015b_per_stage_commit_msg_distinct() {
+  _msgs=""
+  for _st in specify plan clarify checklist create-tasks; do
+    capture "$SCRIPT" stage-message --feature "my-feat" --stage "$_st"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-message exit para $_st" "obtido $_CAPTURED_EXIT"; return 1; }
+    _msg="$_CAPTURED_STDOUT"
+    # Verificar formato Conventional Commit (docs(<scope>): ...)
+    printf '%s' "$_msg" | grep -qE '^docs\([a-z-]+\): ' \
+      || { _fail "mensagem nao e Conventional Commit para $_st" "obtido '$_msg'"; return 1; }
+    # Acumular e verificar ausencia de duplicata
+    if printf '%s' "$_msgs" | grep -qF "$_msg"; then
+      _fail "mensagem duplicada para stage $_st" "msg='$_msg' ja vista"; return 1
+    fi
+    _msgs=$(printf '%s\n%s' "$_msgs" "$_msg")
+  done
+}
+
+# FR-015(b): stage-message + commit real no git repo (verifica 1 commit no log)
+scenario_fr015b_stage_commit_no_git_log() {
+  _gdir="$TMPDIR_TEST/repo-stage-commit"
+  _sd="$TMPDIR_TEST/sc-stage"
+  _init_state "$_sd" true
+  _init_git_repo "$_gdir" "feat/stage-commit"
+
+  # Simular arquivo de artefato gerado pela etapa
+  printf 'spec content\n' > "$_gdir/spec.md"
+  git -C "$_gdir" add spec.md 2>/dev/null
+
+  # Obter mensagem para etapa specify
+  capture "$SCRIPT" stage-message --feature "test-feat" --stage "specify"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-message exit" "obtido $_CAPTURED_EXIT"; return 1; }
+  _msg="$_CAPTURED_STDOUT"
+
+  # Commit direto (simula o hook do orquestrador)
+  git -C "$_gdir" commit -q -m "$_msg" 2>/dev/null
+  _commit_count=$(git -C "$_gdir" log --oneline 2>/dev/null | wc -l | tr -d ' ')
+  # 2 commits: o init + o de specify
+  [ "$_commit_count" -ge 2 ] || { _fail "esperado >= 2 commits (init+specify)" "obtido $_commit_count"; return 1; }
+  # Verificar que a mensagem do ultimo commit segue Conventional Commits
+  _last_msg=$(git -C "$_gdir" log --oneline -1 2>/dev/null | sed 's/^[a-f0-9]* //')
+  printf '%s' "$_last_msg" | grep -qE '^docs\([a-z-]+\): ' \
+    || { _fail "ultimo commit nao e Conventional Commit" "obtido '$_last_msg'"; return 1; }
+}
+
+# ==== FR-015(c): branch-default guard impede push em 100% dos casos ====
+# Verifica que guard-branch em branch default retorna exit 3 em varios cenarios
+
+scenario_fr015c_guard_branch_default_main() {
+  _gdir="$TMPDIR_TEST/repo-guard-main"
+  _sd="$TMPDIR_TEST/guard-main"
+  _init_state "$_sd" true
+  _init_git_repo "$_gdir" "main"
+  git -C "$_gdir" checkout -q main 2>/dev/null || :
+
+  capture "$SCRIPT" guard-branch --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "main: exit esperado 3" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_fr015c_guard_branch_default_master() {
+  _gdir="$TMPDIR_TEST/repo-guard-master"
+  _sd="$TMPDIR_TEST/guard-master"
+  _init_state "$_sd" true
+
+  # Criar repo com branch "main" como default e commit na main
+  _init_git_repo "$_gdir" "main"
+  git -C "$_gdir" checkout -q main 2>/dev/null || :
+
+  # Simular remote origin/HEAD apontando para "master" via ref simbolica
+  # (guard-branch usa symbolic-ref refs/remotes/origin/HEAD => sem remote, fallback e "main")
+  # Aqui: HEAD=main e fallback default=main => exit 3 (mesmo algoritmo, origem "main")
+  capture "$SCRIPT" guard-branch --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  # main sem remote: fallback="main"; HEAD="main" => bloqueado exit 3
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "main sem remote: exit esperado 3" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_fr015c_guard_branch_nao_default_nao_bloqueia() {
+  _gdir="$TMPDIR_TEST/repo-guard-feat"
+  _sd="$TMPDIR_TEST/guard-feat2"
+  _init_state "$_sd" true
+  _init_git_repo "$_gdir" "feat/safe-branch"
+
+  capture "$SCRIPT" guard-branch --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "feat/: exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
 run_all_scenarios

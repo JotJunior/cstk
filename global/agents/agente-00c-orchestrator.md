@@ -621,6 +621,59 @@ persistido, nunca do que a skill "disse" ter feito.
    Os campos `origem`/`recorded_at` gravados sao ADITIVOS — a ingestao
    seleciona so os 8 campos do contrato e ignora o resto.
 
+   #### Hook de commit por task (opt-in — atomic-commit-pr, FR-004)
+
+   > **Posicao**: APOS `state-ondas.sh record-task` (acima) e ANTES de
+   > avancar para a proxima task da onda. Roda SOMENTE na etapa
+   > `execute-task`. NAO-OP quando `atomic_commit_enabled = false` (SC-006 —
+   > zero latencia no path de opt-out).
+
+   O agrupamento e **always-on por onda** (decisao 0.1.2 / FR-004): todas as
+   tasks com `outcome=pass` concluidas na mesma onda sao agrupadas num unico
+   commit ranged ao final da onda. Tasks com `outcome=fail` NAO entram na
+   lista (US3-AC3). A lista de tasks passadas e resetada a cada onda (nunca
+   acumula cross-wave).
+
+   **Sequencia ao concluir TODAS as tasks de uma onda com `execute-task`**:
+
+   ```bash
+   # _tasks_passadas = lista de task_ids com outcome=pass acumulada durante a onda
+   # Construida incrementalmente: ao registrar record-task com --outcome pass,
+   # append o TASK_ID nessa lista.
+   #
+   # Ao fechar a onda (antes do passo 9 / state-ondas.sh end):
+   _enabled=$(commit-mode.sh is-enabled --state-dir <SD>)
+   if [ "$_enabled" = "true" ] && [ -n "$_tasks_passadas" ]; then
+     # 1. Checar branch — skip silencioso se default (exit 3) ou erro (exit 1)
+     commit-mode.sh guard-branch --state-dir <SD> --projeto-alvo-path <PAP>
+     _guard_exit=$?
+     if [ "$_guard_exit" = "0" ]; then
+       # 2. Gerar mensagem para o grupo de tasks (range ou individual)
+       _name=$(state-rw.sh get --state-dir <SD> --field \
+               '.execution.target_project_description // "unnamed"' | \
+               head -c 40 | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+       _ids=$(printf '%s' "$_tasks_passadas" | tr '\n' ',' | sed 's/,$//') # "1.1,1.2,1.3"
+       _msg=$(commit-mode.sh task-message --feature "$_name" --task-ids "$_ids")
+       # 3. Stage + commit direto (pipeline non-interactive — CHK047/dec-026)
+       git -C <PAP> add -A 2>/dev/null || true
+       git -C <PAP> commit -m "$_msg" 2>/dev/null || true
+       # 4. Registrar Decisao auditavel
+       state-decisions.sh register --state-dir <SD> \
+         --agente "orquestrador-00c" --etapa "execute-task" \
+         --contexto "Commit atomico por task (onda): $_msg" \
+         --opcoes '["commit","skip"]' --escolha "commit" \
+         --justificativa "atomic_commit_enabled=true; tasks passadas: $_ids" \
+         --score 2
+     else
+       log_out "commit-mode: guard-branch exit $_guard_exit — commit por task pulado nesta onda"
+     fi
+   fi
+   ```
+
+   REGRA DURA: qualquer falha no bloco acima e NO-OP silencioso (best-effort).
+   O commit por task e ADITIVO ao record-task/backup/end — nunca os substitui.
+   Tasks com `outcome=fail` sao excluidas da lista `_tasks_passadas`.
+
    #### Campo `.events[]` — timeline cronologica (FR-020)
 
    Conjunto MVP de 4 tipos (clarify Q3 / dec-007) + `recall_consulted`

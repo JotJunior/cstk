@@ -235,18 +235,18 @@ Ref: spec.md §FR-004; research.md D4; plan.md §execute-task; data-model.md §S
 
 Ref: spec.md §FR-004/US3; research.md D4 (trigger point: apos outcome=pass)
 
-- [ ] 5.1.1 Localizar em `global/agents/agente-00c-orchestrator.md` o ponto apos cada task concluir com outcome=pass (o mesmo ponto onde `.tasks[]` e appendado)
-- [ ] 5.1.2 Inserir bloco: "Se `commit-mode.sh is-enabled` => true e outcome=pass: (1) guardar task_id em lista de tasks_passadas_na_onda; (2) apos todas as tasks da onda, se grouping (sempre-on por onda, conforme 0.1.2): `task-message --feature NAME --task-ids IDs_PASSADAS`; invocar Skill(commit); se onda com task unica passada: mensagem de task unica"
-- [ ] 5.1.3 Garantir que tasks com outcome=fail NAO entram na lista de commit (spec §US3-AC3)
-- [ ] 5.1.4 Garantir NO-OP quando `is-enabled` retorna `false`
+- [x] 5.1.1 Localizar em `global/agents/agente-00c-orchestrator.md` o ponto apos cada task concluir com outcome=pass (o mesmo ponto onde `.tasks[]` e appendado)
+- [x] 5.1.2 Inserir bloco: "Se `commit-mode.sh is-enabled` => true e outcome=pass: (1) guardar task_id em lista de tasks_passadas_na_onda; (2) apos todas as tasks da onda, se grouping (sempre-on por onda, conforme 0.1.2): `task-message --feature NAME --task-ids IDS_PASSADAS`; invocar Skill(commit); se onda com task unica passada: mensagem de task unica"
+- [x] 5.1.3 Garantir que tasks com outcome=fail NAO entram na lista de commit (spec §US3-AC3)
+- [x] 5.1.4 Garantir NO-OP quando `is-enabled` retorna `false`
 
 ### 5.2 Integrar hook de commit por task no agente-00c-feature-orchestrator.md `[C]`
 
 Ref: spec.md §FR-013
 
-- [ ] 5.2.1 Aplicar o bloco identico ao 5.1.2 no `agente-00c-feature-orchestrator.md`, no passo 7 (execute-task, apos outcome=pass)
-- [ ] 5.2.2 Verificar paridade com 5.1 (mesma logica, mesmo ponto do loop)
-- [ ] 5.2.3 Confirmar que a lista de tasks_passadas_na_onda e resetada a cada onda (nao acumula cross-wave)
+- [x] 5.2.1 Aplicar o bloco identico ao 5.1.2 no `agente-00c-feature-orchestrator.md`, no passo 7 (execute-task, apos outcome=pass)
+- [x] 5.2.2 Verificar paridade com 5.1 (mesma logica, mesmo ponto do loop)
+- [x] 5.2.3 Confirmar que a lista de tasks_passadas_na_onda e resetada a cada onda (nao acumula cross-wave)
 
 ---
 
@@ -258,10 +258,10 @@ Ref: spec.md §FR-012; research.md D2; plan.md §bash-guard.sh; plan.md §Consti
 
 Ref: plan.md §bash-guard.sh ("doc/help text note only — NO regex change required")
 
-- [ ] 6.1.1 Ler `global/skills/agente-00c-runtime/scripts/bash-guard.sh` e localizar linhas 314-315 (help/doc text)
-- [ ] 6.1.2 Adicionar comentario/nota: "raw `git push` continua bloqueado; o terminal push de atomic mode usa exclusivamente `cstk session pr` (path confiavel), que nao passa por este guard"
-- [ ] 6.1.3 Confirmar que NENHUM regex foi alterado (a mudanca e SOMENTE documental — nao abrir novo vetor)
-- [ ] 6.1.4 Rodar `tests/run.sh test_bash-guard` e confirmar zero regressoes
+- [x] 6.1.1 Ler `global/skills/agente-00c-runtime/scripts/bash-guard.sh` e localizar linhas 314-315 (help/doc text)
+- [x] 6.1.2 Adicionar comentario/nota: "raw `git push` continua bloqueado; o terminal push de atomic mode usa exclusivamente `cstk session pr` (path confiavel), que nao passa por este guard"
+- [x] 6.1.3 Confirmar que NENHUM regex foi alterado (a mudanca e SOMENTE documental — nao abrir novo vetor)
+- [x] 6.1.4 Rodar `tests/run.sh test_bash-guard` e confirmar zero regressoes
 
 ---
 
@@ -273,32 +273,32 @@ Ref: spec.md §FR-015; CLAUDE.md §Como testar scripts shell; plan.md §tests/te
 
 Ref: contracts/commit-mode.md §Default-safe invariants INV-1..8; spec.md §FR-015(a)(b)(c)(d)
 
-- [ ] 7.1.1 INV-1: `is-enabled` com state.json sem campo `atomic_commit_enabled` => stdout `false`, exit 0
-- [ ] 7.1.2 INV-2: `guard-branch` em repositorio com HEAD = branch default => exit 3, stdout = nome do branch, nenhum commit criado
-- [ ] 7.1.3 INV-3: `finalize` quando `atomic_commit_enabled = false` => `PushPRResult.status = "skipped-disabled"`, exit 0, sem invocar `gh` ou `git push`
-- [ ] 7.1.4 INV-4: `finalize` com `gh` ausente no PATH => `PushPRResult.status = "skipped-gh-missing"`, exit 0
-- [ ] 7.1.5 INV-5: `finalize` idempotente — segunda chamada com PR ja existente => `PushPRResult.status = "pr-exists"`, sem PR duplicado
-- [ ] 7.1.6 INV-6: `stage-message` para cada stage mapeado => saida em formato Conventional Commits valido (regex check)
-- [ ] 7.1.7 INV-7: `task-message` com IDs contiguos => range `A-B`; com IDs nao-contiguos => lista `A, C`; com ID unico => `task ID`
-- [ ] 7.1.8 INV-8: `set-enabled` grava via `state-rw.sh set` (verificar que state-history backup existe e sha256 e atualizado)
-- [ ] 7.1.9 Adicionar cenarios de FR-015(b): per-stage commit em onda com artefatos => exatamente 1 commit por stage no git log
-- [ ] 7.1.10 Adicionar cenarios de FR-015(c): branch-default guard impede push em 100% dos casos de teste
+- [x] 7.1.1 INV-1: `is-enabled` com state.json sem campo `atomic_commit_enabled` => stdout `false`, exit 0
+- [x] 7.1.2 INV-2: `guard-branch` em repositorio com HEAD = branch default => exit 3, stdout = nome do branch, nenhum commit criado
+- [x] 7.1.3 INV-3: `finalize` quando `atomic_commit_enabled = false` => `PushPRResult.status = "skipped-disabled"`, exit 0, sem invocar `gh` ou `git push`
+- [x] 7.1.4 INV-4: `finalize` com `gh` ausente no PATH => `PushPRResult.status = "skipped-gh-missing"`, exit 0
+- [x] 7.1.5 INV-5: `finalize` idempotente — segunda chamada com PR ja existente => `PushPRResult.status = "pr-exists"`, sem PR duplicado
+- [x] 7.1.6 INV-6: `stage-message` para cada stage mapeado => saida em formato Conventional Commits valido (regex check)
+- [x] 7.1.7 INV-7: `task-message` com IDs contiguos => range `A-B`; com IDs nao-contiguos => lista `A, C`; com ID unico => `task ID`
+- [x] 7.1.8 INV-8: `set-enabled` grava via `state-rw.sh set` (verificar que state-history backup existe e sha256 e atualizado)
+- [x] 7.1.9 Adicionar cenarios de FR-015(b): per-stage commit em onda com artefatos => exatamente 1 commit por stage no git log
+- [x] 7.1.10 Adicionar cenarios de FR-015(c): branch-default guard impede push em 100% dos casos de teste
 
 ### 7.2 Estender `tests/test_state-rw.sh` `[A]`
 
 Ref: spec.md §FR-002; plan.md §state-rw.sh; FASE 1.1 desta tarefa
 
-- [ ] 7.2.1 Confirmar que os cenarios adicionados em 1.1.5 estao presentes e passando
-- [ ] 7.2.2 Adicionar cenario de retro-compatibilidade: state.json legado (sem `atomic_commit_enabled`) lido pelo `is-enabled` => `false` sem erro
-- [ ] 7.2.3 Rodar `tests/run.sh test_state-rw` — zero falhas antes de avancar
+- [x] 7.2.1 Confirmar que os cenarios adicionados em 1.1.5 estao presentes e passando
+- [x] 7.2.2 Adicionar cenario de retro-compatibilidade: state.json legado (sem `atomic_commit_enabled`) lido pelo `is-enabled` => `false` sem erro
+- [x] 7.2.3 Rodar `tests/run.sh test_state-rw` — zero falhas antes de avancar
 
 ### 7.3 Rodar suite completa e confirmar zero regressoes `[C]`
 
 Ref: spec.md §SC-005; CLAUDE.md §Antes de commitar
 
-- [ ] 7.3.1 Rodar `tests/run.sh` (suite completa) e confirmar que contagem de cenarios nao caiu (zero regressoes — SC-005)
-- [ ] 7.3.2 Rodar `tests/run.sh --check-coverage` e confirmar que `commit-mode.sh` tem cobertura e nenhum script novo e orfao
-- [ ] 7.3.3 Se houver falhas, corrigir antes de avancar para FASE 8
+- [x] 7.3.1 Rodar `tests/run.sh` (suite completa) e confirmar que contagem de cenarios nao caiu (zero regressoes — SC-005)
+- [x] 7.3.2 Rodar `tests/run.sh --check-coverage` e confirmar que `commit-mode.sh` tem cobertura e nenhum script novo e orfao
+- [x] 7.3.3 Se houver falhas, corrigir antes de avancar para FASE 8
 
 ---
 
@@ -310,25 +310,25 @@ Ref: spec.md §FR-012; plan.md §Project Structure; CLAUDE.md §CHANGELOG
 
 Ref: CLAUDE.md §Roteamento de modelos / §Sessoes paralelas (modelo a seguir)
 
-- [ ] 8.1.1 Ler a secao de `cstk session` e `agente-00c` no CLAUDE.md do projeto para identificar onde documentar o modo atomic-commit
-- [ ] 8.1.2 Adicionar subsecao "Modo atomic-commit (agente-00c / feature-00c)": descricao de uma linha do opt-in, campo persistido, comportamento no resume, e nota sobre finalize terminal
-- [ ] 8.1.3 Documentar que `commit-mode.sh` vive em `global/skills/agente-00c-runtime/scripts/` e que o teste fica em `tests/test_commit-mode.sh`
+- [x] 8.1.1 Ler a secao de `cstk session` e `agente-00c` no CLAUDE.md do projeto para identificar onde documentar o modo atomic-commit
+- [x] 8.1.2 Adicionar subsecao "Modo atomic-commit (agente-00c / feature-00c)": descricao de uma linha do opt-in, campo persistido, comportamento no resume, e nota sobre finalize terminal
+- [x] 8.1.3 Documentar que `commit-mode.sh` vive em `global/skills/agente-00c-runtime/scripts/` e que o teste fica em `tests/test_commit-mode.sh`
 
 ### 8.2 Atualizar `README.md` `[M]`
 
 Ref: CLAUDE.md §Adicionar skill bumpa "N skills globais" no README (nota: commit-mode.sh nao e uma skill, e um helper de runtime — verificar se README precisa update)
 
-- [ ] 8.2.1 Verificar se o README lista helpers de runtime agente-00c; se sim, adicionar `commit-mode.sh`
-- [ ] 8.2.2 Verificar e atualizar qualquer contagem de "N scripts" se houver
+- [x] 8.2.1 Verificar se o README lista helpers de runtime agente-00c; se sim, adicionar `commit-mode.sh`
+- [x] 8.2.2 Verificar e atualizar qualquer contagem de "N scripts" se houver
 
 ### 8.3 Adicionar entrada no `CHANGELOG.md` `[A]`
 
 Ref: CLAUDE.md §CHANGELOG: link de referencia por versao; spec.md §SC-001..006
 
-- [ ] 8.3.1 Determinar o proximo SemVer: a feature adiciona commit per-stage e push+PR (novo comportamento opt-in) — bump MINOR (ex: 5.12.0)
-- [ ] 8.3.2 Adicionar header `## [X.Y.0] — YYYY-MM-DD` com secao `### Added` descrevendo: modo atomic-commit; helper `commit-mode.sh`; flag `--atomic-commit` em `state-rw.sh init`; prompt opt-in nos 4 commands; push+PR terminal via `cstk session pr`
-- [ ] 8.3.3 Adicionar link de referencia no rodape do CHANGELOG: `[X.Y.0]: https://github.com/JotJunior/cstk/releases/tag/vX.Y.0`
-- [ ] 8.3.4 Rodar checagem de headers sem ref: `comm -23 <(grep -oE '^## \[[0-9.]+\]' CHANGELOG.md | grep -oE '[0-9.]+' | sort -u) <(grep -oE '^\[[0-9.]+\]:' CHANGELOG.md | grep -oE '[0-9.]+' | sort -u)` => resultado DEVE ser vazio
+- [x] 8.3.1 Determinar o proximo SemVer: a feature adiciona commit per-stage e push+PR (novo comportamento opt-in) — bump MINOR (ex: 5.12.0)
+- [x] 8.3.2 Adicionar header `## [X.Y.0] — YYYY-MM-DD` com secao `### Added` descrevendo: modo atomic-commit; helper `commit-mode.sh`; flag `--atomic-commit` em `state-rw.sh init`; prompt opt-in nos 4 commands; push+PR terminal via `cstk session pr`
+- [x] 8.3.3 Adicionar link de referencia no rodape do CHANGELOG: `[X.Y.0]: https://github.com/JotJunior/cstk/releases/tag/vX.Y.0`
+- [x] 8.3.4 Rodar checagem de headers sem ref: `comm -23 <(grep -oE '^## \[[0-9.]+\]' CHANGELOG.md | grep -oE '[0-9.]+' | sort -u) <(grep -oE '^\[[0-9.]+\]:' CHANGELOG.md | grep -oE '[0-9.]+' | sort -u)` => resultado DEVE ser vazio
 
 ---
 
