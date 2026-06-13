@@ -63,8 +63,12 @@ _init_git_repo() {
   printf 'init\n' > "$_gdir/README.md"
   git -C "$_gdir" add README.md 2>/dev/null
   git -C "$_gdir" commit -q -m "init" 2>/dev/null
-  # Criar branch nao-default
-  if [ "$_branch" != "main" ] && [ "$_branch" != "master" ]; then
+  # Branch determinista, independente do default do `git init` (que varia:
+  # macOS default "main", Linux/CI default "master"). Renomeia o branch
+  # inicial para o nome pedido em vez de assumir o default do ambiente.
+  if [ "$_branch" = "main" ] || [ "$_branch" = "master" ]; then
+    git -C "$_gdir" branch -m "$_branch" 2>/dev/null || :
+  else
     git -C "$_gdir" checkout -q -b "$_branch" 2>/dev/null
   fi
 }
@@ -376,16 +380,14 @@ scenario_fr015c_guard_branch_default_master() {
   _sd="$TMPDIR_TEST/guard-master"
   _init_state "$_sd" true
 
-  # Criar repo com branch "main" como default e commit na main
-  _init_git_repo "$_gdir" "main"
-  git -C "$_gdir" checkout -q main 2>/dev/null || :
+  # Repo na branch "master" SEM remote. guard-branch sem origin/HEAD trata
+  # tanto "main" quanto "master" como default => bloqueado exit 3. Cobre o
+  # ambiente CI/Linux onde `git init` default e "master".
+  _init_git_repo "$_gdir" "master"
+  git -C "$_gdir" checkout -q master 2>/dev/null || :
 
-  # Simular remote origin/HEAD apontando para "master" via ref simbolica
-  # (guard-branch usa symbolic-ref refs/remotes/origin/HEAD => sem remote, fallback e "main")
-  # Aqui: HEAD=main e fallback default=main => exit 3 (mesmo algoritmo, origem "main")
   capture "$SCRIPT" guard-branch --state-dir "$_sd" --projeto-alvo-path "$_gdir"
-  # main sem remote: fallback="main"; HEAD="main" => bloqueado exit 3
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "main sem remote: exit esperado 3" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "master sem remote: exit esperado 3" "obtido $_CAPTURED_EXIT"; return 1; }
 }
 
 scenario_fr015c_guard_branch_nao_default_nao_bloqueia() {
