@@ -2,18 +2,28 @@
 Sync Impact Report
 - Version: (none) → 1.0.0  [initial ratification]
 - Version: 1.0.0 → 1.1.0  [MINOR: optional-deps carve-out]
+- Version: 1.1.0 → 1.2.0  [MINOR: novo Principio VI — Veracidade de Dados / Zero Fabricacao]
 - Bump rationale: constituicao inexistente antes; criacao inicial versao 1.0.0.
   Amendment 1.1.0 adiciona subsecao no Principio II disciplinando "deps opcionais
   com fallback graceful" em tres condicoes cumulativas; nota complementar no
   Decision Framework item 4 reconhece subsecoes de carve-out como mecanismo valido
   de conformidade quando precedidas por amendment MINOR.
+  Amendment 1.2.0 adiciona Principio VI (NON-NEGOTIABLE): nenhum artefato pode
+  conter dado factual inventado (assinaturas de request/response, URLs/endpoints,
+  valores concretos) sem fonte rastreavel — esgotadas as fontes, bloqueio humano.
+  Generaliza o aterramento de evidencia de seguranca dos orquestradores
+  (anti-confabulacao) para qualquer dado factual produzido pelo toolkit.
 - Principios criados (1.0.0):
   I.   SDD como regra recursiva (NON-NEGOTIABLE)
   II.  POSIX sh puro para scripts (NON-NEGOTIABLE)
   III. Formato canonico de skill: progressive disclosure + gotchas + description-como-trigger
   IV.  Zero coleta remota (NON-NEGOTIABLE)
   V.   Profundidade sobre adocao
+- Principio criado (1.2.0):
+  VI.  Veracidade de Dados — Zero Fabricacao (NON-NEGOTIABLE)
 - Principios afetados por 1.1.0: II expandido (nao alterado); I/III/IV/V inalterados.
+- Principios afetados por 1.2.0: VI novo; I-V inalterados. Decision Framework itens
+  1 e 4 atualizados para incluir VI no conjunto NON-NEGOTIABLE.
 - Secoes adicionadas (1.0.0): Quality Standards, Decision Framework, Governance
 - Secoes modificadas (1.1.0): Principio II recebe subsecao "Optional dependencies
   with graceful fallback"; Decision Framework item 4 recebe nota clarificadora.
@@ -175,6 +185,41 @@ como ambicao de 12 meses sobre adocao (A), alcance (C) ou uso pessoal puro (D). 
 metrica "reducao de retrabalho" esta marcada como Item a Definir — e ok nao ter a
 metrica ainda; **nao** e ok deixar a prioridade se inverter silenciosamente.
 
+### VI. Veracidade de Dados — Zero Fabricacao (NON-NEGOTIABLE)
+
+Nenhum artefato gerado pelo toolkit (spec, plan, contrato de API, caso de uso,
+payload de exemplo, relatorio, dado em state) pode conter dado factual inventado.
+Afirmacao concreta sem fonte rastreavel e defeito bloqueante, nao estilo. Aplica-se
+a todo gerador automatico — skills, orquestradores autonomos e o proprio operador
+agindo via toolkit.
+
+**MUST:**
+
+- **Assinaturas de request/response** (nomes de propriedades, tipos, estrutura de
+  payload) so entram num artefato se vierem do contrato real: codigo-fonte,
+  OpenAPI/Swagger, doc oficial, ou resposta de uma chamada de fato observada. Sem
+  fonte, o gerador PARA e exige decisao humana — nunca supoe nomes de campos nem
+  formato de payload.
+- **URLs, endpoints, querystrings, hosts e paths** so aparecem se existirem nas
+  fontes disponiveis. Sem fonte e sem de onde extrair: bloqueio humano, jamais rota
+  inventada.
+- **Valores concretos** (financeiros, quantidades, status de registros, IDs, datas,
+  resultados de API) exigem fonte observavel e citavel. Sem fonte, o valor nao e
+  escrito.
+- Quando a informacao nao esta disponivel, a resposta correta e **tentar busca-la na
+  fonte real primeiro** (ler codigo, consultar API/doc, perguntar) e, esgotadas as
+  fontes, **registrar bloqueio humano** — nunca preencher com suposicao plausivel.
+  "Defaults razoaveis" valem para POLITICAS de design nao especificadas (retencao,
+  performance, tratamento de erro), NUNCA para dado factual de um sistema externo.
+
+**Rationale:** um agente autonomo que fabrica dados produz informacao falsa em escala
+— em um caso real, nomes de propriedades, valores financeiros e status inexistentes
+numa API que sequer foi consultada. O custo de parar e perguntar e trivial perto do
+custo de uma massa de dados falsos passando por verdadeira. Plausibilidade nao e
+veracidade; a unica defesa e a rastreabilidade ate a fonte. Este principio generaliza
+o aterramento de evidencia de seguranca ja presente nos orquestradores
+(anti-confabulacao) de eventos de seguranca para QUALQUER dado factual.
+
 ## Quality Standards
 
 Estes padroes operacionais implementam os principios acima. Sao verificaveis e
@@ -201,9 +246,10 @@ formam o quality gate em `/plan` (Constitution Check) e `/analyze`.
 
 Quando principios entram em tensao, a ordem de desempate e:
 
-1. **NON-NEGOTIABLE vence SHOULD.** Principios I, II e IV sao MUST — nao cedem a
-   Principio V. Se um refinamento de profundidade exigiria telemetria (IV) ou Bash
-   (II), o refinamento e rejeitado ou redesenhado.
+1. **NON-NEGOTIABLE vence SHOULD.** Principios I, II, IV e VI sao MUST — nao cedem a
+   Principio V. Se um refinamento de profundidade exigiria telemetria (IV), Bash (II)
+   ou dado factual inventado para "entregar mais rapido" (VI), o refinamento e
+   rejeitado ou redesenhado.
 
 2. **Entre MUST e MUST, cita o briefing.** Se dois MUST aparentemente conflitam (ex:
    adicionar novo formato de skill conflita com formato canonico existente), o
@@ -218,7 +264,7 @@ Quando principios entram em tensao, a ordem de desempate e:
 4. **Excecao requer documentacao explicita.** Se um caso genuinamente precisa violar
    SHOULD (Principio V), registrar no `plan.md` da feature com secao `Constitution
    Exception` explicando o trade-off e o sunset da excecao. Excecao a MUST
-   (Principios I, II, IV) exige amendment da constitution — nao ha opt-out tacito.
+   (Principios I, II, IV, VI) exige amendment da constitution — nao ha opt-out tacito.
    Subsecoes de carve-out dentro de um Principio (como a subsecao "Optional
    dependencies with graceful fallback" sob Principio II, introduzida em amendment
    1.1.0) sao mecanismo valido de conformidade quando precedidas por amendment com
@@ -251,4 +297,4 @@ Quando principios entram em tensao, a ordem de desempate e:
 - Datas em ISO YYYY-MM-DD.
 - Versao inicial 1.0.0 — qualquer amendment futuro muda este rodape.
 
-**Version**: 1.1.0 | **Ratified**: 2026-04-20 | **Last Amended**: 2026-04-24
+**Version**: 1.2.0 | **Ratified**: 2026-04-20 | **Last Amended**: 2026-06-18

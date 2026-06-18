@@ -231,6 +231,16 @@ Pular se projeto e puramente interno (build scripts, one-off tools).
 
 **Output**: `docs/specs/{feature}/contracts/*.md`
 
+> **INEGOCIAVEL — contrato de interface EXISTENTE nao se inventa (Constitution VI).**
+> Ao documentar uma API/evento que JA EXISTE, as assinaturas de request/response
+> (nomes de campos, tipos, estrutura), URLs, endpoints e querystrings DEVEM ser
+> extraidos da fonte real: codigo-fonte do servico, OpenAPI/Swagger, doc oficial, ou
+> uma chamada de fato observada. Se voce nao tem o contrato e nao tem de onde busca-lo,
+> **PARE e registre bloqueio humano** — nunca suponha nomes de propriedades nem rotas.
+> (Projetar do zero um contrato AINDA inexistente e legitimo — marque-o explicitamente
+> como `[PROPOSTA — a validar na implementacao]`, distinto de um contrato afirmado como
+> real. O perigo e afirmar como real algo que voce inventou.)
+
 ### 5.3 Quickstart / Cenarios de Teste
 
 Base: `templates/quickstart.md`. Um cenario por fluxo critico (happy path +

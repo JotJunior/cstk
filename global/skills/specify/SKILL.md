@@ -231,6 +231,14 @@ Para ver exemplos de spec bem escrita vs mal escrita:
 - **MAXIMO 3 marcadores [NEEDS CLARIFICATION]** no total
 - Prioridade de clarificacao: escopo > seguranca > UX > detalhes tecnicos
 
+> **INEGOCIAVEL — defaults NAO valem para dado factual (Constitution VI).** A regra
+> "usar defaults razoaveis" acima cobre POLITICAS de design nao especificadas (retencao,
+> performance, tratamento de erro, auth). Ela **NUNCA** autoriza inventar dado factual de
+> um sistema externo: nomes de propriedades de payload, assinaturas de request/response,
+> URLs/endpoints/querystrings, valores concretos (financeiros, status, IDs, datas). Esses
+> so entram na spec se vierem de fonte rastreavel (codigo, OpenAPI, doc, resposta real).
+> Sem fonte → `[NEEDS CLARIFICATION]`; nunca um nome de campo ou endpoint suposto.
+
 **Decisoes de Infraestrutura Auditaveis (obrigatorio para features
 com runtime de longo prazo):**
 

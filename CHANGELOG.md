@@ -5,6 +5,22 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.14.0] - 2026-06-18
+
+### Added
+
+- **Princípio VI da constituição — Veracidade de Dados / Zero Fabricação (NON-NEGOTIABLE)**: nenhum artefato gerado pelo toolkit pode conter dado factual inventado. Assinaturas de request/response (nomes de propriedades, tipos, shape de payload), URLs/endpoints/querystrings e valores concretos (financeiros, status de registro, IDs, datas, resultados de API) só podem ser escritos se vierem de fonte rastreável: código-fonte, OpenAPI/Swagger, doc oficial, ou resposta de uma chamada de fato observada. Sem fonte e sem de onde extrair → bloqueio humano, nunca suposição plausível. Generaliza o aterramento de evidência de segurança (anti-confabulação) dos orquestradores para qualquer dado factual. Constituição bumpada `1.1.0 → 1.2.0` (MINOR); Decision Framework itens 1 e 4 incluem VI no conjunto NON-NEGOTIABLE. Ver `docs/constitution.md`.
+- **Aterramento de dados factuais nos orquestradores autônomos** (`agente-00c-orchestrator`, `agente-00c-feature-orchestrator`): novo bloco "Aterramento de DADOS FACTUAIS (anti-fabricação)" que roteia falta-de-fonte para `bloqueios.sh register` (score 0) + encerramento gracioso da onda (`Schedule intent: none; motivo=bloqueio_humano`), em vez de inventar. Inclui diretiva de **double-check de veracidade** ao fechar `specify`/`plan`, delegada ao novo subagente `data-veracity-verifier` (com fallback inline quando o spawn está indisponível); item sem fonte vira bloqueio humano.
+- **Subagente `data-veracity-verifier`** (`global/agents/data-veracity-verifier.md`): auditor READ-ONLY que recebe `artifact_paths` + `allowed_sources` e classifica cada dado factual concreto (assinaturas request/response, URLs/endpoints/querystrings, valores) como `SOURCED` / `PROPOSAL` / `UNSOURCED`, devolvendo veredito `clean | has_unsourced` + ação `proceed | human_block`. Não corrige nada — só reporta; default cético (na dúvida → `UNSOURCED`) e auto-aterramento (não pode alegar fonte sem citar a substring literal). Cobertura em `tests/test_data-veracity-verifier.sh` (8 cenários, incluindo trava de read-only no `allowed-tools` e fiação nos 2 orquestradores).
+- **Princípio-base obrigatório no gerador de constituição** (skill `constitution`): toda constituição de projeto gerada passa a incluir, mesmo sem o usuário pedir, um princípio NON-NEGOTIABLE de Veracidade de Dados — Zero Fabricação (com texto-semente), espelhando o Princípio VI deste toolkit.
+
+### Changed
+
+- **Guardrails anti-invenção nas skills produtoras de conteúdo factual**:
+  - `specify` (§3.2): a regra "usar defaults razoáveis" passa a explicitar que defaults valem para *políticas de design* (retenção, performance, auth) e **nunca** para dado factual de sistema externo (nomes de campos de payload, assinaturas, endpoints, valores) — sem fonte → `[NEEDS CLARIFICATION]`.
+  - `plan` (§5.2 Contratos de Interface): contrato de interface **existente** não se inventa — assinaturas/URLs/endpoints devem vir da fonte real; sem fonte → bloqueio humano. Distingue contrato afirmado-como-real de contrato `[PROPOSTA — a validar na implementação]`.
+- **Regra inviolável no `CLAUDE.md` do projeto**: nova seção no topo apontando para o Princípio VI e o mecanismo de bloqueio dos orquestradores.
+
 ## [5.13.0] - 2026-06-13
 
 ### Added
@@ -3346,6 +3362,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.14.0]: https://github.com/JotJunior/cstk/releases/tag/v5.14.0
 [5.13.0]: https://github.com/JotJunior/cstk/releases/tag/v5.13.0
 [5.12.0]: https://github.com/JotJunior/cstk/releases/tag/v5.12.0
 [5.11.1]: https://github.com/JotJunior/cstk/releases/tag/v5.11.1

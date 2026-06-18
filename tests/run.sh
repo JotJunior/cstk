@@ -229,6 +229,13 @@ _is_internal_test() {
       # sumir do prompt, o bug (escalar ameaca fabricada) volta silenciosamente.
       [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
       return 1 ;;
+    test_data-veracity-verifier.sh)
+      # Smoke textual sobre o agente data-veracity-verifier + a fiacao nos 2
+      # orquestradores (Principio VI — Veracidade de Dados / Zero Fabricacao).
+      # Assert no .md do agente, nao em um unico script — existence-guarded. Se
+      # o contrato sumir, o "double check" anti-fabricacao some silenciosamente.
+      [ -f "$REPO_ROOT/global/agents/data-veracity-verifier.md" ] && return 0
+      return 1 ;;
     test_e2e_model_routing.sh)
       # Cobre fluxo end-to-end model-routing.sh + model-routing-report.sh +
       # state-rw.sh + state-decisions.sh + state-ondas.sh (composicao de

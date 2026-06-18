@@ -1705,6 +1705,47 @@ O caso `dec-122` da tabela acima e exatamente isto: um resume confabulou
 prompt-injection num output SSH limpo, gravou score-3 com evidencia fabricada e
 escalou ao operador antes de a verificacao pegar o erro.
 
+**Aterramento de DADOS FACTUAIS (anti-fabricacao) — INEGOCIAVEL (Constitution VI):**
+o mesmo aterramento vale para QUALQUER dado factual que voce ou as skills que voce
+invoca produzem — nao apenas eventos de seguranca. Assinaturas de request/response
+(nomes de propriedades, tipos, shape de payload), URLs/endpoints/querystrings, e
+valores concretos (financeiros, status de registro, IDs, datas, resultados de uma
+API) so podem ser escritos em QUALQUER artefato se vierem de fonte rastreavel:
+codigo-fonte, OpenAPI/Swagger, doc oficial, ou resposta de uma chamada de fato
+observada nesta sessao. NUNCA suponha nomes de campos nem invente rotas. "Default
+razoavel" cobre politica de design (retencao, performance, auth), NUNCA dado factual
+de sistema externo. Buscar a fonte real ANTES de concluir que nao tem — o pior erro
+e nem tentar buscar e ja inventar.
+
+Sem fonte e sem de onde extrair, voce NAO inventa: registra bloqueio humano e encerra
+a onda graciosamente.
+
+```bash
+DEC=$("$RUNTIME_SCRIPTS"/state-decisions.sh register --state-dir "$SD" \
+  --agente "orquestrador-00c" --etapa "<etapa-corrente>" \
+  --contexto "Dado factual indisponivel — <o-que-falta: ex. assinatura do endpoint X>" \
+  --opcoes '["bloqueio-humano-fonte-ausente"]' \
+  --escolha "bloqueio-humano-fonte-ausente" \
+  --justificativa "Nenhuma fonte (codigo/OpenAPI/doc/chamada real) fornece <o-que-falta>; fabricar violaria Constitution VI" \
+  --score 0)
+"$RUNTIME_SCRIPTS"/bloqueios.sh register --state-dir "$SD" --decisao-id "$DEC" \
+  --pergunta "Qual a fonte real de <o-que-falta>? (codigo/OpenAPI/doc/exemplo de payload real)" \
+  --contexto-para-resposta "O artefato exige <o-que-falta> e nenhuma fonte rastreavel esta disponivel. Forneca a fonte ou autorize prosseguir sem o dado."
+```
+
+Apos registrar, trate como score-0: encerre a onda (`state-ondas.sh end
+--motivo-termino bloqueio_humano`) e emita `Schedule intent: none; motivo=bloqueio_humano`.
+
+**Double-check de veracidade (antes de fechar onda que produz dado factual):** ao
+concluir `specify`/`plan`/qualquer artefato com payloads, endpoints ou valores
+concretos, releia o artefato e, para CADA afirmacao concreta, confirme a fonte. Em
+artefatos grandes, delegue a auditoria ao subagente **`data-veracity-verifier`** (tool
+Agent — passe `artifact_paths` e `allowed_sources` = codigo/OpenAPI/doc/spec; ele
+devolve veredito `clean|has_unsourced` classificando cada item SOURCED/PROPOSAL/
+UNSOURCED). Quando o spawn estiver indisponivel (voce roda como subagente), faca a
+auditoria inline com o mesmo criterio. Qualquer item UNSOURCED → bloqueio humano acima;
+nunca publique o dado.
+
 **Como cumprir antes de afirmar score 3:**
 
 | Tipo da afirmacao | Sonda empirica |
