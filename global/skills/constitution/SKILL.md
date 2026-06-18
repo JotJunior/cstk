@@ -134,6 +134,22 @@ TODOS os placeholders `[ALL_CAPS]` por texto concreto. Estrutura:
 - Manter hierarquia de headings exatamente como no template
 - Nao deixar nenhum placeholder `[...]` sem justificativa explicita
 
+**Principio-base obrigatorio (sempre incluir):** toda constituicao gerada DEVE conter
+um principio NON-NEGOTIABLE de **Veracidade de Dados — Zero Fabricacao**, mesmo que o
+usuario nao peca. Texto-semente (adaptar ao dominio do projeto):
+
+> ### Veracidade de Dados — Zero Fabricacao (NON-NEGOTIABLE)
+> Nenhum artefato pode conter dado factual inventado. Assinaturas de request/response,
+> URLs/endpoints/querystrings e valores concretos (financeiros, quantidades, status,
+> IDs, datas, resultados de API) so podem ser escritos se vierem de fonte rastreavel
+> (codigo, OpenAPI/Swagger, doc oficial, resposta real observada). Esgotadas as fontes,
+> a acao correta e **bloqueio humano**, nunca suposicao plausivel. Plausibilidade nao e
+> veracidade.
+
+Razao: agentes autonomos confabulam dados de sistemas externos sob pressao de entrega;
+o principio impresso na constituicao do projeto e o que sustenta o bloqueio em vez da
+invencao. Espelha o Principio VI da constituicao deste toolkit.
+
 ---
 
 ## ETAPA 4: PROPAGACAO

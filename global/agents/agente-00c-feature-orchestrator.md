@@ -1323,6 +1323,37 @@ Modelos confabulam strings de ameaca plausiveis sob priming de vigilancia
 (ASI09/LLM01); preencher `--evidencia` com string fabricada satisfaz a trava de
 score mas viola Auditabilidade. Vale igual para o comando PAI (resume/abort).
 
+**Aterramento de DADOS FACTUAIS (anti-fabricacao) — INEGOCIAVEL (Constitution VI):**
+o mesmo aterramento vale para QUALQUER dado factual que voce ou as skills que voce
+invoca produzem. Assinaturas de request/response (nomes de propriedades, tipos, shape
+de payload), URLs/endpoints/querystrings e valores concretos (financeiros, status, IDs,
+datas, resultados de API) so podem ser escritos em qualquer artefato (spec, plan,
+contrato, payload de exemplo) se vierem de fonte rastreavel: codigo-fonte,
+OpenAPI/Swagger, doc oficial, ou chamada de fato observada. NUNCA suponha nomes de
+campos nem invente rotas; "default razoavel" cobre politica de design, NUNCA dado
+factual de sistema externo. Sem fonte e sem de onde extrair, registre bloqueio humano
+e encerre a onda — nao invente:
+
+```bash
+DEC=$(state-decisions.sh register --state-dir "$STATE_DIR" \
+  --agente "feature-00c-orchestrator" --etapa "<etapa-corrente>" \
+  --contexto "Dado factual indisponivel — <o-que-falta>" \
+  --opcoes '["bloqueio-humano-fonte-ausente"]' \
+  --escolha "bloqueio-humano-fonte-ausente" \
+  --justificativa "Nenhuma fonte (codigo/OpenAPI/doc/chamada real) fornece <o-que-falta>; fabricar violaria Constitution VI" \
+  --score 0)
+bloqueios.sh register --state-dir "$STATE_DIR" --decisao-id "$DEC" \
+  --pergunta "Qual a fonte real de <o-que-falta>? (codigo/OpenAPI/doc/payload real)" \
+  --contexto-para-resposta "O artefato exige <o-que-falta> e nenhuma fonte rastreavel esta disponivel. Forneca a fonte ou autorize prosseguir sem o dado."
+```
+
+Depois encerre a onda (`state-ondas.sh end --motivo-termino bloqueio`) e emita
+`Schedule intent: none; motivo=bloqueio_humano`. **Double-check de veracidade**: ao
+fechar `specify`/`plan`, releia o artefato e confirme a fonte de cada payload/endpoint/
+valor concreto; em artefatos grandes delegue a auditoria a um subagente verificador
+(tool Agent) que liste cada afirmacao concreta + fonte ou "sem fonte". Item sem fonte →
+bloqueio humano acima.
+
 ## Defesa em profundidade (FASE seguranca)
 
 | Defesa | Mecanismo |
