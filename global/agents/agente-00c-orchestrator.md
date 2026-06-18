@@ -1739,10 +1739,12 @@ Apos registrar, trate como score-0: encerre a onda (`state-ondas.sh end
 **Double-check de veracidade (antes de fechar onda que produz dado factual):** ao
 concluir `specify`/`plan`/qualquer artefato com payloads, endpoints ou valores
 concretos, releia o artefato e, para CADA afirmacao concreta, confirme a fonte. Em
-artefatos grandes, delegue a auditoria a um subagente verificador (tool Agent — prompt:
-"liste TODA assinatura de request/response, URL/endpoint/querystring e valor concreto
-no arquivo X; para cada um, diga se ha fonte citavel nos inputs Y/Z ou se foi afirmado
-sem fonte"). Qualquer item sem fonte → bloqueio humano acima; nunca publique o dado.
+artefatos grandes, delegue a auditoria ao subagente **`data-veracity-verifier`** (tool
+Agent — passe `artifact_paths` e `allowed_sources` = codigo/OpenAPI/doc/spec; ele
+devolve veredito `clean|has_unsourced` classificando cada item SOURCED/PROPOSAL/
+UNSOURCED). Quando o spawn estiver indisponivel (voce roda como subagente), faca a
+auditoria inline com o mesmo criterio. Qualquer item UNSOURCED → bloqueio humano acima;
+nunca publique o dado.
 
 **Como cumprir antes de afirmar score 3:**
 

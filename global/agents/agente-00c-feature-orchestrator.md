@@ -1350,9 +1350,10 @@ bloqueios.sh register --state-dir "$STATE_DIR" --decisao-id "$DEC" \
 Depois encerre a onda (`state-ondas.sh end --motivo-termino bloqueio`) e emita
 `Schedule intent: none; motivo=bloqueio_humano`. **Double-check de veracidade**: ao
 fechar `specify`/`plan`, releia o artefato e confirme a fonte de cada payload/endpoint/
-valor concreto; em artefatos grandes delegue a auditoria a um subagente verificador
-(tool Agent) que liste cada afirmacao concreta + fonte ou "sem fonte". Item sem fonte →
-bloqueio humano acima.
+valor concreto; em artefatos grandes delegue a auditoria ao subagente
+**`data-veracity-verifier`** (tool Agent — `artifact_paths` + `allowed_sources`; veredito
+`clean|has_unsourced`), ou faca-a inline com o mesmo criterio quando o spawn estiver
+indisponivel. Item UNSOURCED → bloqueio humano acima.
 
 ## Defesa em profundidade (FASE seguranca)
 
