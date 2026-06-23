@@ -5,6 +5,12 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.14.1] - 2026-06-23
+
+### Fixed
+
+- **`reconcile-tasks` cura títulos vazios em `.tasks[]`** (`state-ondas.sh`): ondas `execute-task` longas que gravavam `record-task` em lote sem `--titulo` deixavam entradas com `title=""` (sintoma: N tasks "sem título" com a mesma contagem de testes da suíte da onda, p.ex. 18× `39/39`). O `reconcile-tasks` agora, além do back-fill de tasks ausentes, **cura** entradas já presentes com título vazio, buscando o título no `tasks.md` em duas granularidades — heading (`### N.M Título`) e checkbox (`- [x] N.M.K texto`), com precedência do heading. A fonte é sempre o backlog (rastreável, nunca inventada — Princípio VI); `tests_run`/`tests_passed` **não** são tocados (sem fonte por task → não fabrica). Só fora de `--dry-run`; a contagem de stdout (tasks back-filled) é preservada. Como `review-task` §4.6 chama `reconcile-tasks`, estados afetados se auto-curam no próximo review. Cobertura: 4 cenários novos em `tests/test_state-ondas.sh`.
+
 ## [5.14.0] - 2026-06-18
 
 ### Added
@@ -3362,6 +3368,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.14.1]: https://github.com/JotJunior/cstk/releases/tag/v5.14.1
 [5.14.0]: https://github.com/JotJunior/cstk/releases/tag/v5.14.0
 [5.13.0]: https://github.com/JotJunior/cstk/releases/tag/v5.13.0
 [5.12.0]: https://github.com/JotJunior/cstk/releases/tag/v5.12.0
