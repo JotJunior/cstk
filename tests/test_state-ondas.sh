@@ -458,6 +458,75 @@ scenario_reconcile_tasks_obriga_flags() {
   assert_exit 2 "$SCRIPT" reconcile-tasks --state-dir "$_sd" || return 1
 }
 
+# ---- cura de titulos vazios (onda execute-task longa gravada em lote) ----
+scenario_reconcile_tasks_cura_titulo_vazio() {
+  _sd="$TMPDIR_TEST/state"
+  _md="$TMPDIR_TEST/tasks.md"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  # entrada real previa SEM --titulo (title="") com tests 39/39 — replica o
+  # sintoma do lote de onda-009.
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 \
+    --outcome pass --testes-rodados 39 --testes-passados 39 --origem execute-task
+  _write_tasks_md "$_md"
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile cura" "$_CAPTURED_STDERR"; return 1; }
+  # titulo curado a partir do heading em tasks.md
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .title'
+  assert_stdout_contains "Setup do Projeto" || return 1
+  # NAO carrega a tag de criticidade
+  if printf '%s' "$_CAPTURED_STDOUT" | grep -q '\['; then
+    _fail "cura titulo" "titulo curado carregou tag: $_CAPTURED_STDOUT"; return 1
+  fi
+  # tests_run/passed PRESERVADOS (39/39) — cura nunca fabrica/zera contagem
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .tests_run'
+  assert_stdout_contains "39" || return 1
+}
+
+scenario_reconcile_tasks_cura_titulo_nivel_checkbox() {
+  # onda execute-task longa grava no nivel do CHECKBOX (N.M.K), nao do heading;
+  # o titulo deve ser curado a partir do texto do checkbox em tasks.md.
+  _sd="$TMPDIR_TEST/state"
+  _md="$TMPDIR_TEST/tasks.md"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1.1 \
+    --outcome pass --testes-rodados 39 --testes-passados 39 --origem execute-task
+  _write_tasks_md "$_md"
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1.1") | .title'
+  assert_stdout_contains "Criar repo" || return 1
+}
+
+scenario_reconcile_tasks_cura_nao_clobbera_titulo_existente() {
+  _sd="$TMPDIR_TEST/state"
+  _md="$TMPDIR_TEST/tasks.md"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 --titulo "REAL" \
+    --outcome pass --origem execute-task
+  _write_tasks_md "$_md"
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md"
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .title'
+  assert_stdout_contains "REAL" || return 1
+}
+
+scenario_reconcile_tasks_dry_run_nao_cura() {
+  _sd="$TMPDIR_TEST/state"
+  _md="$TMPDIR_TEST/tasks.md"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id 1.1 \
+    --outcome pass --origem execute-task
+  _write_tasks_md "$_md"
+  capture "$SCRIPT" reconcile-tasks --state-dir "$_sd" --tasks-md "$_md" --dry-run
+  # dry-run nao escreve: title de 1.1 permanece vazio
+  capture "$RW" get --state-dir "$_sd" --field '.tasks[] | select(.task_id=="1.1") | .title'
+  if [ -n "$_CAPTURED_STDOUT" ] && [ "$_CAPTURED_STDOUT" != "" ]; then
+    _fail "dry-run cura" "dry-run alterou o titulo: [$_CAPTURED_STDOUT]"; return 1
+  fi
+}
+
 # ==== back-compat pt-BR (schema-en-migration §6: readers leem state legado) ====
 # Os writers do state-ondas assumem EN-on-disk (garantido pelo migrate
 # defensivo do command-pai), igual ao exemplar drift.sh mark-touched. O que

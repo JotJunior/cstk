@@ -489,6 +489,12 @@ _so_cmd_record_task() {
 # evita fabricar pass/fail). Back-fill via record-task --if-absent: NUNCA
 # clobbera entrada real ja gravada pelo execute-task. Idempotente.
 #
+# Tambem CURA titulos vazios: entradas ja presentes em .tasks[] com
+# title=="" (sintoma de onda execute-task longa gravada em lote sem
+# --titulo) recebem o titulo do heading em tasks.md (fonte rastreavel,
+# nunca inventada). Nao toca tests_run/tests_passed (sem fonte por task ->
+# nao fabrica). So fora de --dry-run; nao afeta a contagem de stdout.
+#
 # Stdout (default): numero de tasks back-filled nesta chamada.
 # --dry-run: NAO escreve; imprime os task_id que SERIAM back-filled (um por
 #   linha) — usado pelo gate de completude do review-task.
@@ -512,6 +518,70 @@ _so_cmd_reconcile_tasks() {
 
   if [ -z "$_rc_wid" ]; then
     _rc_wid=$(jq -r '((.waves // .ondas) // []) as $w | if ($w | length) > 0 then ($w[-1].id // "") else "" end' "$_rc_sf" 2>/dev/null) || _rc_wid=""
+  fi
+
+  # --- Cura de titulos vazios -------------------------------------------
+  # Entradas ja presentes em .tasks[] com title vazio/null (sintoma de onda
+  # execute-task longa que gravou record-task em lote sem --titulo) recebem
+  # o titulo do heading correspondente em tasks.md. A FONTE e rastreavel
+  # (heading do backlog) — nunca inventada (Principio VI). Roda so fora de
+  # --dry-run e NAO altera a contagem de back-fill (contrato de stdout
+  # preservado: continua sendo o nº de tasks AUSENTES back-filled abaixo).
+  if [ "$_rc_dry" != "yes" ]; then
+    # Mapa id->titulo a partir de tasks.md em DUAS granularidades, porque
+    # as ondas gravam tasks ora no nivel do heading (### N.M Titulo), ora no
+    # nivel do checkbox (- [x] N.M.K texto). Heading tem precedencia sobre
+    # checkbox para o mesmo id (na pratica nao colidem: heading e N.M,
+    # checkbox e N.M.K). Em ambos os casos a FONTE e o backlog — rastreavel,
+    # nunca inventado (Principio VI).
+    _rc_titlemap=$(awk '
+      { sub(/\r$/, "") }
+      /^### / {
+        line = $0; sub(/^### +/, "", line)
+        split(line, a, /[ \t]+/); id = a[1]
+        if (id ~ /^[0-9]+(\.[0-9]+)+(-bis(\.[0-9]+)*)?$/) {
+          t = line; sub(/^[^ \t]+[ \t]+/, "", t)
+          gsub(/`/, "", t); sub(/[ \t]*\[[CAM]\][ \t]*$/, "", t)
+          gsub(/\t/, " ", t); gsub(/  +/, " ", t)
+          sub(/^ +/, "", t); sub(/ +$/, "", t)
+          if (t != "") heading[id] = t
+        }
+        next
+      }
+      /^- \[.\] / {
+        line = $0; sub(/^- \[.\][ \t]+/, "", line)
+        split(line, a, /[ \t]+/); id = a[1]
+        if (id ~ /^[0-9]+(\.[0-9]+)+(-bis(\.[0-9]+)*)?$/) {
+          t = line; sub(/^[^ \t]+[ \t]+/, "", t)
+          gsub(/`/, "", t); gsub(/\t/, " ", t); gsub(/  +/, " ", t)
+          sub(/^ +/, "", t); sub(/ +$/, "", t)
+          if (t != "" && !(id in checkbox)) checkbox[id] = t
+        }
+        next
+      }
+      END {
+        for (k in checkbox) if (!(k in heading)) print k "\t" checkbox[k]
+        for (k in heading) print k "\t" heading[k]
+      }
+    ' "$_rc_md")
+    if [ -n "$_rc_titlemap" ]; then
+      _rc_mapjson=$(printf '%s\n' "$_rc_titlemap" \
+        | jq -R 'split("\t") | {(.[0]): .[1]}' 2>/dev/null \
+        | jq -s 'add' 2>/dev/null) || _rc_mapjson=""
+      if [ -n "$_rc_mapjson" ]; then
+        _rc_heal=$(mktemp) || _so_die "mktemp falhou" 1
+        if jq --argjson m "$_rc_mapjson" '
+              .tasks = ((.tasks // []) | map(
+                if ((.title // "") == "") and (($m[.task_id] // null) != null)
+                then .title = $m[.task_id] else . end))
+            ' "$_rc_sf" > "$_rc_heal" 2>/dev/null \
+            && ! cmp -s "$_rc_heal" "$_rc_sf"; then
+          _so_atomic_write "$_rc_sf" "$_rc_heal"
+          _so_update_sha "$_rc_sdir"
+        fi
+        rm -f -- "$_rc_heal" 2>/dev/null || :
+      fi
+    fi
   fi
 
   # task_ids ja presentes em .tasks[] (snapshot)
