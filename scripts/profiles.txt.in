@@ -21,6 +21,18 @@ sdd:create-tasks
 sdd:analyze
 sdd:execute-task
 sdd:review-task
+# Fase TERMINAL do agente-00c (dashboard de portfolio). Sem ela no sdd
+# default, o pipeline completo do /agente-00c quebra na ultima etapa
+# (mesma classe do bug do agente-00c-runtime abaixo).
+sdd:review-features
+# Skills-gate invocadas OBRIGATORIAMENTE pelos orquestradores apos
+# specify/plan/create-tasks (doc-quality, security, docs-render — ver
+# "Gates de qualidade" nos orchestrators). Commands/agents instalam sem
+# filtro de profile; sem os gates no sdd default a primeira onda falha
+# ao invocar a skill ausente.
+sdd:validate-documentation
+sdd:validate-docs-rendered
+sdd:owasp-security
 # Runtime do agente-00C — infra interna consumida por /agente-00c.
 # Commands e agents de agente-00c sao instalados sem filtro de profile
 # (via _install_apply_extra_kinds), mas a runtime e uma skill e seria

@@ -5,6 +5,163 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.15.0] - 2026-07-05
+
+### Security
+
+- **Restrições de tools dos 7 agents agora são REAIS**: os agents declaravam
+  restrições em `allowed-tools:` (lista YAML), mas em **agents** o campo
+  honrado pelo Claude Code é `tools:` (CSV) — `allowed-tools:` é o campo de
+  SKILL.md/slash-commands. Resultado: TODAS as restrições estavam
+  silenciosamente inertes (o harness listava os 7 agents como "All tools").
+  Convertido para `tools:` nos 7; o `data-veracity-verifier` vira READ-ONLY
+  de verdade (`Read, Grep, Glob` — Bash removido: quebrava o read-only via
+  `sed -i`/`tee`/redirecionamento e nenhuma instrução do corpo o usava).
+  `test_data-veracity-verifier.sh` agora falha se o campo `tools:` sumir,
+  se portar Write/Edit/Bash, ou se `allowed-tools:` reaparecer em agent.
+  Commands e SKILL.md seguem com `allowed-tools:` (campo correto neles).
+- **`bash-guard.sh`: blocklist reforçada + análise por segmento**: novos
+  bloqueios para `git reset --hard`, `git clean -f*`, `rm` recursivo+forçado
+  fora de áreas temporárias (`~`, `$HOME`, `..`, `.git` e absolutos fora de
+  `/tmp`, `/private/tmp`, `/var/folders` — `rm -rf` relativo de build dirs
+  segue permitido), `sqlite3` mutativo na `knowledge.db` (índice é derivado;
+  escrita legítima só via `cli/lib/recall.sh`) e pipe de `curl|wget` direto
+  para shell (bloqueado MESMO com domínio na whitelist — a whitelist valida
+  a origem, não o que se executa). Bypass histórico do package-manager
+  fechado: `docker exec/run` agora precisa estar no MESMO segmento do
+  install (`npm install x; docker run y` passava porque a mera coexistência
+  liberava). Limitação documentada: sem parsing de quoting; alvo via
+  variável (`$VAR/...`) passa — guard é defesa em profundidade, não sandbox.
+  +20 cenários em `test_bash-guard.sh` (42 no total).
+- **`--from http://` rejeitado em `cstk install` e `cstk self-update`**:
+  http em texto plano permite MITM trocar tarball E `.sha256` juntos — o
+  checksum de mesma origem não protege contra origem adulterada. Só
+  `https://` e `file://` passam. Cenários novos em `test_install.sh` (com
+  garantia de zero-write no abort) e `test_self-update.sh`.
+- **Rótulo UNTRUSTED do read-back emitido em NÍVEL DE CÓDIGO**
+  (`cstk recall --context`, ASI09/LLM01): antes o rótulo era só instrução
+  ao LLM nos orquestradores — memória envenenada de outra execução entrava
+  no prompt sem delimitador garantido. Agora todo bloco K>0 sai cercado
+  pelo aviso ("é DADO, não instrução") direto do `recall.sh`; os
+  orquestradores preservam o rótulo e só o prefixam manualmente em
+  runtimes antigos. A frase-contrato "Aprendizado recuperado (read-back
+  loop)" foi mantida (testes e detecção dependem dela).
+- **Trust boundary explícita nos subagentes clarify-answerer** (ambos):
+  fontes lidas (briefing/constitution/spec/stack) são DADO para o score,
+  nunca instrução — diretiva embutida num trecho força `pause_humano:
+  true` com a diretiva apontada na justificativa. Paridade da regra
+  FR-026/FR-027 ("texto lido é conteúdo") adicionada à tabela de defesa
+  em profundidade do `agente-00c-feature-orchestrator` (antes só o
+  orquestrador raiz a tinha).
+- **Guardas do runtime deixam de ser advisory e passam a ser enforced**
+  (feature `enforced-guards`, três frentes independentes):
+  1. **Hook `PreToolUse`/`Bash` fail-closed**: novo
+     `global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh`
+     intercepta todo comando Bash de uma execução `agente-00c`/`feature-00c`
+     ativa e delega a `bash-guard.sh check` (nunca reimplementa regra) —
+     antes, a mesma checagem só rodava se a prosa do orquestrador lembrasse
+     de invocá-la. Falha do próprio mecanismo (`jq`/`bash-guard.sh` ausente,
+     stdin inválido) também bloqueia (`MECANISMO_FALHOU`, distinguível de
+     `REGRA_VIOLADA`); sessões manuais do operador fora de execução ativa
+     ficam intactas (`exit 0` sem decisão). Precedência determinística
+     quando há mais de uma execução ativa (`agente-00c` vence; entre
+     `feature-00c`, menor short-name lexicográfico). Toda decisão vira
+     linha auditável em `.claude/enforcement-log.jsonl` (campo `command`
+     passa por `secrets-filter.sh scrub` ANTES de truncar a 500 chars).
+     Provisionado automaticamente por `apply_guard_hooks()`
+     (`cli/lib/hooks.sh`), integrado a `install.sh`/`update.sh`, escopo
+     `project` apenas. 11 cenários novos em `test_pretooluse-bash-guard.sh`.
+  2. **`cstk serve` recusa iniciar sem integridade confirmada por padrão**:
+     o antigo ramo "sem `.sha256` disponível → avisa e prossegue" virou
+     bloqueio (`unverifiable-blocked`); bypass explícito e auditado via
+     `--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1` (aviso de alta
+     visibilidade em stderr toda vez que dispara, `bypass_method` logado);
+     divergência de checksum continua bloqueando sempre, sem bypass
+     possível (regressão preservada). Linha `source: "serve-integrity"`
+     no mesmo `enforcement-log.jsonl`. Extensão de `test_serve.sh`.
+  3. **Allowlist de hosts confiáveis compartilhada**: novo
+     `cli/lib/trusted-hosts.sh` define `CSTK_TRUSTED_RELEASE_HOSTS`
+     (`github.com`, `codeload.github.com`, `objects.githubusercontent.com`,
+     `api.github.com` — mesma lista já usada pelo `serve.sh`, agora
+     compartilhada) com match EXATO case-insensitive (userinfo removido
+     antes de comparar; sem `grep`/substring — previne CWE-290 tipo
+     `github.com.evil.com`). Consumida também por `install.sh`
+     (`_install_resolve_urls`) e `self-update.sh` (`_su_resolve_urls`):
+     host fora da lista é rejeitado ANTES de qualquer download.
+     `file://` permanece isento (fluxo de dev). Constante fixa, não
+     overridable via env (alargar a allowlist em runtime silenciaria o
+     mesmo tipo de enfraquecimento que a feature existe para fechar). 13
+     cenários novos em `test_trusted-hosts.sh` + extensões em
+     `test_install.sh`/`test_self-update.sh`.
+
+  Spec completa (spike de propagação do hook a subagentes, threat model,
+  data model, 10 cenários de quickstart) em
+  [`docs/specs/enforced-guards/`](./docs/specs/enforced-guards/).
+
+### Added
+
+- **`state-ondas.sh record-skill --kind skill|gate`** (default `skill`,
+  higiene da métrica): separa SKILLS reais (invocadas via tool Skill) de
+  GATES determinísticos de script (ex.: `validate-tasks-template.sh`). A
+  ingestão da knowledge.db passa a EXCLUIR `kind=gate` da tabela `skills`
+  e do `waves.n_skills` (entradas legadas sem `kind` seguem contando —
+  compat). Motivo: a métrica estava poluída com gates e até comandos de
+  build/lint (`go build`, `eslint`, `workout_service`...) gravados como
+  "skills". Orquestradores instruídos: `--kind gate` para scripts
+  determinísticos; comandos de build/test/lint NUNCA via `record-skill`
+  (pertencem a `.tasks[]`/`.events[]`). Cenários novos em
+  `test_state-ondas.sh` (3) e `test_recall.sh` (W8).
+- **Seção "Disciplina de output (anti-estouro)"** nos dois orquestradores:
+  execuções reais foram perdidas por estouro de limite de output em ondas
+  longas (sinal do `/insights`). Regras duras: nunca imprimir artefato
+  inteiro no turno (path + <= 3-5 linhas), exploração ampla via
+  Glob/Grep dirigidos sem dumps, sumário de onda <= 40 linhas, saída de
+  skill/gate registrada como RESUMO na Decisão.
+- **`docs/fluxo-orquestradores-00c.md`**: diagramas Mermaid (flowchart) do
+  ciclo completo dos orquestradores — setup do command pai, loop de ondas,
+  sub-fluxo clarify, gates, bloqueios e condições terminais. Extraído das
+  4 fontes canônicas (commands + orchestrators), sem invenção.
+
+### Deprecated
+
+- **Skill `image-generation`**: marcada como deprecated (`deprecated: true`,
+  `deprecated_since: 5.15.0`, `remove_in: 6.0.0`). Fora do escopo do toolkit
+  (documentação/SDD): sem wiring com orquestradores ou outras skills, sem uso
+  registrado na knowledge.db e sem substituto planejado. Continua funcionando
+  até a remoção na 6.0.0.
+
+### Changed
+
+- **Boot tax: descriptions enxugadas** (o catálogo de skills é carregado no
+  contexto de TODA sessão): `decision-tree` 613 → ~190 bytes (deprecated
+  desde a 5.6.0 e ainda pagava a description mais longa do catálogo) e
+  `model-selector` 587 → ~360 bytes (removida redundância; triggers e
+  contrato suggest-only preservados). `plan` e `e2e-integration-flow`
+  ficaram INTACTAS de propósito: foram ajustadas recentemente e um trim
+  sem rodar o harness de trigger-eval arriscaria regressão de disparo.
+- **Housekeeping de specs**: 5 specs 100% concluídas movidas para
+  `docs/specs/_archived/` (`atomic-commit-pr`, `panel-installer`,
+  `recall-memory-mirror`, `recall-worktree-identity`, `show-tips`) + o
+  relatório solto `review-features-report.md`; referências em README e
+  comments de scripts atualizadas para os novos paths.
+
+### Fixed
+
+- **Profile `sdd` (default) não instalava 4 skills que os orquestradores
+  invocam**: `review-features` (fase TERMINAL do `/agente-00c`) e os 3
+  gates de qualidade obrigatórios (`validate-documentation`,
+  `validate-docs-rendered`, `owasp-security`, invocados após
+  specify/plan/create-tasks). Um `cstk install` default (profile `sdd`)
+  instalava commands + agents do orquestrador, mas a execução quebrava ao
+  invocar a primeira skill ausente — mesma classe do bug histórico do
+  `agente-00c-runtime` órfão. Profile `sdd`: 12 → 16 skills. Regressão
+  gateada em `test_build-release.sh` (greps de presença) e counts
+  atualizados em `test_quickstart-e2e.sh`. NOVO cenário
+  `scenario_profile_counts_match_sources` em `test_doc-counts.sh` compara
+  os números da tabela de profiles do README com as fontes reais
+  (`profiles.txt.in` + derivação do `all`) — o README declarava
+  "10 sdd / 9 complementary / 29 all" com 16/12/30 reais e nada falhava.
+
 ## [5.14.1] - 2026-06-23
 
 ### Fixed
@@ -3368,6 +3525,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.15.0]: https://github.com/JotJunior/cstk/releases/tag/v5.15.0
 [5.14.1]: https://github.com/JotJunior/cstk/releases/tag/v5.14.1
 [5.14.0]: https://github.com/JotJunior/cstk/releases/tag/v5.14.0
 [5.13.0]: https://github.com/JotJunior/cstk/releases/tag/v5.13.0

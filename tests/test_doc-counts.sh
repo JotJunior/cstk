@@ -68,4 +68,43 @@ scenario_all_skills_referenced_in_readme() {
   return 0
 }
 
+# Os numeros da tabela de profiles do README ("N skills ...") batem com as
+# fontes reais: sdd/complementary contados de scripts/profiles.txt.in; `all`
+# derivado como pastas de global/skills/ + language-related/*/skills/*
+# (mesma derivacao do build-release.sh). Gap historico: README declarou
+# "10 sdd / 9 complementary / 29 all" com 16/12/30 reais e nada falhou.
+scenario_profile_counts_match_sources() {
+  [ -f "$README" ] || { _error missing "README.md ausente"; return 2; }
+  _profiles_in="$REPO_ROOT/scripts/profiles.txt.in"
+  [ -f "$_profiles_in" ] || { _error missing "profiles.txt.in ausente"; return 2; }
+
+  _sdd_real=$(grep -c '^sdd:' "$_profiles_in")
+  _comp_real=$(grep -c '^complementary:' "$_profiles_in")
+  _lang_real=$(find "$REPO_ROOT/language-related" -mindepth 3 -maxdepth 3 \
+    -type d -path '*/skills/*' | wc -l | tr -d ' ')
+  _all_real=$(( $(_count_skills) + _lang_real ))
+
+  _rc=0
+  for _row in "sdd $_sdd_real" "complementary $_comp_real" "all $_all_real"; do
+    _name=${_row% *}
+    _real=${_row#* }
+    # Primeira ocorrencia de numero na(s) linha(s) da tabela do profile.
+    _docs=$(grep -E "^\| \`$_name\` \|" "$README" \
+      | sed 's/^| `[a-z-]*` | //' | grep -oE '^[^0-9]*[0-9]+' | grep -oE '[0-9]+')
+    if [ -z "$_docs" ]; then
+      printf 'README sem linha de tabela para profile `%s`\n' "$_name" >&2
+      _rc=1
+      continue
+    fi
+    for _doc in $_docs; do
+      if [ "$_doc" != "$_real" ]; then
+        printf 'drift: README declara %s skills no profile `%s`, fonte tem %s\n' \
+          "$_doc" "$_name" "$_real" >&2
+        _rc=1
+      fi
+    done
+  done
+  return $_rc
+}
+
 run_all_scenarios

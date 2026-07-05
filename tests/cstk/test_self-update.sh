@@ -156,6 +156,26 @@ scenario_self_update_scope_rejected() {
   assert_stderr_contains "scope" || return 1
 }
 
+# ==== http:// texto plano rejeitado (revisao 5.15.0) ====
+# MITM pode trocar tarball E .sha256 juntos; checksum de mesma origem nao
+# protege origem adulterada. So https:// e file:// passam.
+
+scenario_self_update_from_http_plano_aborta() {
+  _h="$TMPDIR_TEST/h-http"
+  _make_release_pair || { _error "fixture" ""; return 2; }
+  _install_v1 "$_h" || { _fail "install" ""; return 1; }
+  capture env HOME="$_h" \
+    CSTK_BIN="$_h/.local/bin/cstk" \
+    CSTK_LIB="$_h/.local/share/cstk/lib" \
+    PATH="$PATH" \
+    "$_h/.local/bin/cstk" self-update --from "http://example.com/cstk-9.9.9.tar.gz"
+  if [ "$_CAPTURED_EXIT" = 0 ]; then
+    _fail "http --from exit" "esperado nao-zero, obtido 0"
+    return 1
+  fi
+  assert_stderr_contains "http:// rejeitado" || return 1
+}
+
 # ==== Lock detido => exit 3 ====
 
 scenario_self_update_lock_held() {
@@ -359,6 +379,67 @@ scenario_self_update_help() {
   _run_su "$_h" v2.0 --help
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "help exit" "$_CAPTURED_EXIT"; return 1; }
   assert_stderr_contains "self-update" || return 1
+}
+
+# ==== US3: allowlist de hosts confiaveis (enforced-guards FASE 4) ====
+# Ref: spec.md FR-012/FR-013/FR-014; contracts/trusted-hosts.md;
+#      quickstart.md Scenarios 8/9/10.
+
+# Scenario 8: host https valido mas fora da allowlist -> rejeitado ANTES de
+# qualquer download (mesmo padrao de scenario_self_update_from_http_plano_aborta).
+scenario_self_update_host_nao_confiavel_rejeitado() {
+  _h="$TMPDIR_TEST/h-evil"
+  _make_release_pair || { _error "fixture" ""; return 2; }
+  _install_v1 "$_h" || { _fail "install" ""; return 1; }
+  capture env HOME="$_h" \
+    CSTK_BIN="$_h/.local/bin/cstk" \
+    CSTK_LIB="$_h/.local/share/cstk/lib" \
+    PATH="$PATH" \
+    "$_h/.local/bin/cstk" self-update --from "https://evil.example.com/cstk-9.9.9.tar.gz"
+  if [ "$_CAPTURED_EXIT" = 0 ]; then
+    _fail "host nao confiavel exit" "esperado nao-zero, obtido 0"
+    return 1
+  fi
+  assert_stderr_contains "evil.example.com" || return 1
+}
+
+# Scenario 9: host confiavel (github.com real) continua funcionando sem
+# passo manual novo. Testado direto sobre _su_resolve_urls (funcao pura,
+# sem I/O de rede) para nao depender de acesso real a internet no harness —
+# o download em si ja e coberto pelos scenarios file:// existentes (happy
+# path v1->v2); o que esta feature MUDA e exclusivamente a checagem de host
+# dentro de _su_resolve_urls.
+scenario_self_update_host_confiavel_github_resolve_urls_ok() {
+  capture sh -c '. "$CSTK_LIB/self-update.sh"
+    _su_from="https://github.com/JotJunior/cstk/releases/download/v1.0.0/cstk-1.0.0.tar.gz"
+    _su_resolve_urls
+    _rc=$?
+    printf "tarball_url=%s\n" "$_su_tarball_url"
+    printf "sha256_url=%s\n" "$_su_sha256_url"
+    exit "$_rc"'
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "host confiavel resolve_urls exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  case "$_CAPTURED_STDOUT" in
+    *'tarball_url=https://github.com/JotJunior/cstk/releases/download/v1.0.0/cstk-1.0.0.tar.gz'*) ;;
+    *) _fail "host confiavel tarball_url" "stdout inesperado: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+# Scenario 10 (regressao FR-014): file:// segue isento de allowlist de host.
+# Traco explicito alem da cobertura incidental ja fornecida pelo resto da
+# suite (happy path e baseado em file:// via _install_v1/_run_su).
+scenario_self_update_host_file_scheme_regressao() {
+  _h="$TMPDIR_TEST/h-file10"
+  _make_release_pair || { _error "fixture" ""; return 2; }
+  _install_v1 "$_h" || { _fail "install" ""; return 1; }
+  _run_su "$_h" v2.0
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "file scheme regressao exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  [ "$(_installed_version "$_h")" = "v2.0" ] || { _fail "file scheme regressao versao" ""; return 1; }
 }
 
 run_all_scenarios

@@ -1,6 +1,6 @@
 ---
 name: model-selector
-description: 'Heuristica auditavel que classifica uma tarefa em faixa de complexidade (rasa/media/profunda) e sugere modelo barato (haiku/sonnet) ou manter atual. Use quando o orquestrador (agente-00c, feature-00c) ou operador humano quiser uma sugestao deterministica baseada em catalogo de sinais ANTES de invocar uma skill ou subagente caro. NAO use quando: o input nao e textual (binario/imagem), a decisao precisa de contexto externo (precos, billing API, modelo corrente do harness), ou voce quer troca AUTOMATICA — esta skill apenas SUGERE, nunca troca modelo silenciosamente.'
+description: 'Heuristica deterministica que classifica uma tarefa por complexidade (rasa/media/profunda) e SUGERE modelo (haiku/sonnet/manter-atual). Use ANTES de invocar skill/subagente caro — os orquestradores a consomem via model-routing wave-select. Apenas sugere, nunca troca modelo. Skip: input nao-textual ou decisao que exige contexto externo (precos, billing, modelo corrente).'
 argument-hint: "[input textual descrevendo a tarefa proxima a executar]"
 allowed-tools:
   - Read

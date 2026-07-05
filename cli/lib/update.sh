@@ -51,6 +51,8 @@ _CSTK_UPDATE_LOADED=1
 . "${CSTK_LIB}/manifest.sh"
 # shellcheck source=/dev/null
 . "${CSTK_LIB}/ui.sh"
+# shellcheck source=/dev/null
+. "${CSTK_LIB}/hooks.sh"
 
 _update_print_help() {
   cat >&2 <<'HELP'
@@ -177,6 +179,12 @@ update_main() {
   done
   IFS=$_update_old_ifs
 
+  # enforced-guards task 2.5.2 (Decision 9): update.sh hoje nao tocava hooks
+  # em nenhum caso (achado da research.md) — reprovisiona o guard-hook de
+  # US1 quando a skill agente-00c-runtime esta entre os alvos desta
+  # atualizacao, para que "atualizar o toolkit" tambem cubra FR-004/SC-006.
+  _update_apply_guard_hooks_if_needed
+
   if [ "$_update_prune" = 1 ]; then
     _update_do_prune || return 1
   fi
@@ -217,6 +225,7 @@ _update_reset_state() {
   _update_targets=""
   _update_now=""
   _update_orphans=""
+  _update_guard_hook_state=""
   _update_skipped_list=""
   _update_count_updated=0
   _update_count_uptodate=0
@@ -545,6 +554,36 @@ _update_apply() {
   return 0
 }
 
+# _update_apply_guard_hooks_if_needed: reprovisiona o hook PreToolUse/Bash
+# de enforced-guards (US1) quando a skill agente-00c-runtime esta entre os
+# alvos desta atualizacao (Decision 9 — update.sh historicamente nao tocava
+# hooks; achado da research.md. FR-004/SC-006 exige que "atualizar" tambem
+# (re)provisione, nao so a instalacao inicial).
+#
+# Escopo project apenas — --scope global pula (mesma regra de
+# _install_apply_hooks_if_needed/FR-009c/Decision 9).
+#
+# Delega inteiramente a apply_guard_hooks() (cli/lib/hooks.sh), nenhum
+# mecanismo de merge/paste proprio.
+_update_apply_guard_hooks_if_needed() {
+  _update_guard_hook_state=""
+
+  if [ "$_update_scope" = global ]; then
+    if printf '%s\n' "$_update_targets" | grep -Fxq -- "agente-00c-runtime"; then
+      log_warn "update: guard-hooks (enforced-guards) omitidos em scope=global (FR-009c)"
+      _update_guard_hook_state="omitted"
+    fi
+    return 0
+  fi
+
+  printf '%s\n' "$_update_targets" | grep -Fxq -- "agente-00c-runtime" || return 0
+
+  _ugh_claude_root="${_update_scope_dir%/skills}"
+  _ugh_src_dir="$_update_catalog_dir/skills/agente-00c-runtime/hooks"
+  _update_guard_hook_state=$(apply_guard_hooks "$_ugh_src_dir" "$_ugh_claude_root" "$_update_dry_run")
+  return 0
+}
+
 _update_do_prune() {
   if [ -z "$_update_orphans" ]; then
     return 0
@@ -766,6 +805,9 @@ _update_emit_summary() {
     printf '  orphan (in manifest, not in catalog): %d\n' "$_update_count_orphan"
     printf '  scope: %s\n' "$_update_scope"
     printf '  toolkit version: %s\n' "${_update_release_version:-?}"
+    if [ -n "$_update_guard_hook_state" ]; then
+      printf '  guard-hooks: %s\n' "$_update_guard_hook_state"
+    fi
     _ues_cmd_total=$((_update_count_commands_installed + _update_count_commands_updated + _update_count_commands_uptodate + _update_count_commands_kept + _update_count_commands_skipped_edits + _update_count_commands_preserved))
     if [ "$_ues_cmd_total" -gt 0 ]; then
       printf '  commands: installed=%d updated=%d uptodate=%d kept=%d skipped=%d preserved=%d\n' \

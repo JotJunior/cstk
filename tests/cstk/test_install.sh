@@ -253,6 +253,22 @@ scenario_install_from_nao_url_aborta() {
   assert_stderr_contains "precisa ser URL" || return 1
 }
 
+# http:// texto plano e rejeitado (revisao 5.15.0): MITM pode trocar
+# tarball E .sha256 juntos — o checksum de mesma origem nao protege.
+scenario_install_from_http_plano_aborta() {
+  _run_install "$TMPDIR_TEST/h-http" --from "http://example.com/cstk-0.1.0.tar.gz"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "http --from exit" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "http:// rejeitado" || return 1
+  # Zero escrita: home de destino nao pode ter sido criada/populada
+  if [ -d "$TMPDIR_TEST/h-http/.claude/skills" ]; then
+    _fail "http --from escreveu" "diretorio de skills criado apesar do abort"
+    return 1
+  fi
+}
+
 # ==== Escopo project ====
 
 scenario_install_project_sem_indicadores_aborta() {
@@ -330,6 +346,72 @@ scenario_install_checksum_mismatch_zero_writes() {
   # Nada criado em $_h
   [ -d "$_h/.claude" ] && { _fail "checksum mismatch criou diretorios" ""; return 1; }
   return 0
+}
+
+# ==== US3: allowlist de hosts confiaveis (enforced-guards FASE 4) ====
+# Ref: spec.md FR-012/FR-013/FR-014; contracts/trusted-hosts.md;
+#      quickstart.md Scenarios 8/9/10.
+
+# Scenario 8: host https valido mas fora da allowlist -> rejeitado ANTES de
+# qualquer download/transferencia (mesmo padrao de zero-writes ja usado por
+# scenario_install_from_http_plano_aborta/scenario_install_checksum_mismatch_zero_writes).
+scenario_install_host_nao_confiavel_zero_bytes() {
+  _run_install "$TMPDIR_TEST/h-evil" --from "https://evil.example.com/cstk-9.9.9.tar.gz"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "host nao confiavel exit" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "evil.example.com" || return 1
+  assert_stderr_contains "confiaveis" || return 1
+  # Zero escrita: nem staging nem instalacao devem ter tocado o destino.
+  if [ -d "$TMPDIR_TEST/h-evil/.claude/skills" ]; then
+    _fail "host nao confiavel escreveu" "diretorio de skills criado apesar do abort"
+    return 1
+  fi
+}
+
+# Scenario 9: host confiavel (github.com real) continua funcionando sem
+# passo manual novo. Testado direto sobre _install_resolve_urls (funcao
+# pura, sem I/O de rede) para nao depender de acesso real a internet no
+# harness de teste — o download em si ja e coberto pelas dezenas de
+# scenarios file:// existentes; o que esta feature MUDA e exclusivamente a
+# checagem de host dentro de _install_resolve_urls.
+scenario_install_host_confiavel_github_resolve_urls_ok() {
+  capture sh -c '. "$CSTK_LIB/install.sh"
+    _install_from="https://github.com/JotJunior/cstk/releases/download/v1.0.0/cstk-1.0.0.tar.gz"
+    _install_resolve_urls
+    _rc=$?
+    printf "tarball_url=%s\n" "$_install_tarball_url"
+    printf "sha256_url=%s\n" "$_install_sha256_url"
+    exit "$_rc"'
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "host confiavel resolve_urls exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  case "$_CAPTURED_STDOUT" in
+    *'tarball_url=https://github.com/JotJunior/cstk/releases/download/v1.0.0/cstk-1.0.0.tar.gz'*) ;;
+    *) _fail "host confiavel tarball_url" "stdout inesperado: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDOUT" in
+    *'sha256_url=https://github.com/JotJunior/cstk/releases/download/v1.0.0/cstk-1.0.0.tar.gz.sha256'*) ;;
+    *) _fail "host confiavel sha256_url" "stdout inesperado: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+# Scenario 10 (regressao FR-014): file:// segue isento de allowlist de host
+# — mesmo comportamento de sempre. Traco explicito alem da cobertura
+# incidental ja fornecida por praticamente todo o resto da suite (que usa
+# file:// para os fixtures).
+scenario_install_host_file_scheme_regressao() {
+  _h="$TMPDIR_TEST/home-file10"
+  _r="$TMPDIR_TEST/release-file10"
+  _make_fixture_release "$_r" || { _error "fixture" "tarball build falhou"; return 2; }
+  _run_install "$_h" --from "file://$_r/cstk-test-v0.1.0.tar.gz"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "file scheme regressao exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  [ -f "$_h/.claude/skills/foo/SKILL.md" ] || { _fail "file scheme regressao instalacao" ""; return 1; }
 }
 
 run_all_scenarios

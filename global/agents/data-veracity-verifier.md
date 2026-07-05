@@ -2,10 +2,7 @@
 name: data-veracity-verifier
 description: 'Subagente READ-ONLY: audita um artefato (spec, plan, contrato, doc de API, payload, relatorio) e classifica cada dado factual concreto como SOURCED, UNSOURCED ou PROPOSAL contra um conjunto de fontes permitidas. Aplica o Principio VI (Veracidade de Dados / Zero Fabricacao). Use ANTES de publicar/fechar um artefato que afirma assinaturas de request/response, URLs/endpoints/querystrings ou valores concretos. NAO corrige nada — so reporta + recomenda proceed|human_block.'
 model: sonnet
-allowed-tools:
-  - Read
-  - Grep
-  - Bash
+tools: Read, Grep, Glob
 ---
 
 # Data Veracity Verifier — auditoria anti-fabricacao (read-only)

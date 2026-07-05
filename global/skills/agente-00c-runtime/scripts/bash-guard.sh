@@ -9,11 +9,20 @@
 # Defesa em duas camadas:
 #   1. blocklist regex — comandos que NUNCA podem rodar (sudo, package
 #      managers no host, git push, kubectl apply, terraform apply, docker
-#      push, helm install, etc).
+#      push, helm install, git reset --hard, git clean -f, rm -rf fora de
+#      areas temporarias, sqlite3 mutativo na knowledge.db, pipe de
+#      curl/wget para shell, etc).
 #   2. whitelist enforcement — comandos de rede (curl, wget, gh api/repo,
 #      git fetch/clone) tem URL/dominio extraido e checado contra
 #      external_urls_whitelist. Excecao escopada: `gh issue create
 #      --repo JotJunior/cstk ...` bypass (ver briefing).
+#
+# Analise por SEGMENTO (split em `;|&`): o bypass historico de package
+# manager ("basta 'docker run' coexistir em qualquer trecho") foi fechado —
+# o prefixo docker exec/run precisa estar no MESMO segmento do install.
+# Limitacao documentada: extracao de alvos de `rm` nao parseia quoting;
+# caminhos via variavel ($VAR/...) passam — o guard e defesa em
+# profundidade, nao sandbox.
 #
 # Subcomandos:
 #   bash-guard.sh check-blocklist --command "CMD"
@@ -65,20 +74,18 @@ _bg_check_blocklist_cmd() {
     return 1
   fi
 
-  # 2. Package managers no host — bloqueia a menos que prefixado por docker exec/run
-  # (`docker exec foo npm install` deve passar)
-  if _bg_match '(^|[[:space:];|&])(npm|pnpm|yarn|pip|pip3|gem|brew)[[:space:]]+(install|i|add|update|upgrade)\b'; then
-    if ! printf '%s' "$_cmd" | grep -E '\bdocker[[:space:]]+(exec|run)\b' >/dev/null 2>&1; then
-      _bg_emit_block "package-manager" "package install no host bloqueado (use 'docker exec/run' como wrapper)"
-      return 1
-    fi
+  # 2. Package managers no host — bloqueia a menos que o PROPRIO segmento
+  # comece com docker exec/run (`docker exec foo npm install` passa).
+  # Segment-aware: fecha o bypass em que a mera coexistencia de
+  # "docker run" liberava o comando inteiro (`npm install x; docker run y`).
+  if _bg_pkg_violation '(^|[[:space:]])(npm|pnpm|yarn|pip|pip3|gem|brew)[[:space:]]+(install|i|add|update|upgrade)\b'; then
+    _bg_emit_block "package-manager" "package install no host bloqueado (use 'docker exec/run' como wrapper no MESMO segmento)"
+    return 1
   fi
   # `go install` / `cargo install`
-  if _bg_match '(^|[[:space:];|&])(go|cargo)[[:space:]]+install\b'; then
-    if ! printf '%s' "$_cmd" | grep -E '\bdocker[[:space:]]+(exec|run)\b' >/dev/null 2>&1; then
-      _bg_emit_block "package-manager" "go/cargo install no host bloqueado"
-      return 1
-    fi
+  if _bg_pkg_violation '(^|[[:space:]])(go|cargo)[[:space:]]+install\b'; then
+    _bg_emit_block "package-manager" "go/cargo install no host bloqueado"
+    return 1
   fi
 
   # 3. git push (FR-028 — Constitution §V)
@@ -122,6 +129,111 @@ _bg_check_blocklist_cmd() {
     return 1
   fi
 
+  # 5. Destrutivos de working tree / historico local (revisao 5.15.0 —
+  # Constitution §V, Blast Radius Confinado: destroem trabalho
+  # nao-commitado sem caminho de reversao).
+  if _bg_match '(^|[[:space:];|&])git[[:space:]]+reset[[:space:]][^;|&]*--hard'; then
+    _bg_emit_block "git-reset-hard" "git reset --hard bloqueado (destroi trabalho nao-commitado; use git stash)"
+    return 1
+  fi
+  if _bg_match '(^|[[:space:];|&])git[[:space:]]+clean[[:space:]][^;|&]*-[A-Za-z]*f'; then
+    _bg_emit_block "git-clean" "git clean com -f bloqueado (destroi untracked; inspecione com git clean -n)"
+    return 1
+  fi
+
+  # 6. rm recursivo+forcado fora de areas temporarias (segment-aware).
+  if ! _bg_check_rm_segments; then
+    return 1
+  fi
+
+  # 7. Mutacao crua da knowledge.db via sqlite3. O indice e DERIVADO
+  # (reconstituivel via cstk recall --reindex); escrita legitima ocorre
+  # apenas dentro de cli/lib/recall.sh — nunca via sqlite3 avulso.
+  if _bg_match '(^|[[:space:];|&])sqlite3[[:space:]][^;|&]*knowledge\.db'; then
+    if printf '%s' "$_cmd" | grep -Ei '((^|[^A-Za-z])(insert|update|delete|drop|alter|replace|vacuum)([^A-Za-z]|$)|\.(restore|import)([^A-Za-z]|$))' >/dev/null 2>&1; then
+      _bg_emit_block "sqlite3-knowledge-db" "sqlite3 mutativo na knowledge.db bloqueado (indice derivado; use cstk recall --ingest/--reindex)"
+      return 1
+    fi
+  fi
+
+  # 8. Pipe de downloader direto para shell — bloqueado mesmo com dominio
+  # na whitelist (a whitelist valida a ORIGEM, nao o que se executa).
+  if _bg_match '(^|[[:space:];|&])(curl|wget)[^;&]*\|[[:space:]]*(sudo[[:space:]]+)?(sh|bash|zsh|dash)([[:space:]]|$)'; then
+    _bg_emit_block "pipe-to-shell" "pipe de curl/wget para shell bloqueado (baixe, inspecione e execute em passos separados)"
+    return 1
+  fi
+
+  return 0
+}
+
+# ---------- Helpers segment-aware (revisao 5.15.0) ----------
+
+# _bg_segments: divide $_cmd em segmentos (split em ; | &), um por linha.
+_bg_segments() {
+  printf '%s' "$_cmd" | tr ';|&' '\n\n\n'
+}
+
+# _bg_pkg_violation ERE -> 0 (violacao) se ALGUM segmento casa o padrao de
+# install SEM comecar com docker exec/run.
+_bg_pkg_violation() {
+  _bg_segments \
+    | grep -E "$1" 2>/dev/null \
+    | grep -Ev '^[[:space:]]*docker[[:space:]]+(exec|run)[[:space:]]' \
+    >/dev/null 2>&1
+}
+
+# _bg_rm_seg_check SEGMENTO -> 1 (bloqueio, ja emitido) quando o segmento e
+# um `rm` com flags recursiva E forcada apontando para fora de areas
+# temporarias. Alvos proibidos: `~`, `$HOME`, `..`, `.git` e caminho
+# absoluto fora de /tmp//private/tmp//var/folders//private/var/folders/.
+# rm -rf RELATIVO (build dirs) segue permitido. Sem parsing de quoting —
+# caminho via variavel passa (limitacao documentada no cabecalho).
+_bg_rm_seg_check() {
+  _seg=$1
+  printf '%s' "$_seg" | grep -E '(^|[[:space:]])rm[[:space:]]' >/dev/null 2>&1 || return 0
+  printf '%s' "$_seg" | grep -E '(^|[[:space:]])(-[A-Za-z]*[rR][A-Za-z]*|--recursive)([[:space:]]|$)' >/dev/null 2>&1 || return 0
+  printf '%s' "$_seg" | grep -E '(^|[[:space:]])(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)' >/dev/null 2>&1 || return 0
+
+  if printf '%s' "$_seg" | grep -E '(^|[[:space:]])(~($|/)|\$HOME)' >/dev/null 2>&1 \
+     || printf '%s' "$_seg" | grep -E '(^|[[:space:]/])\.\.(/|[[:space:]]|$)' >/dev/null 2>&1 \
+     || printf '%s' "$_seg" | grep -E '(^|[[:space:]/])\.git(/|[[:space:]]|$)' >/dev/null 2>&1; then
+    _bg_emit_block "rm-rf" "rm recursivo+forcado em ~, \$HOME, .. ou .git bloqueado (Constitution §V)"
+    return 1
+  fi
+  _rm_toks=$(printf '%s' "$_seg" | grep -oE '(^|[[:space:]])/[^[:space:]]*' 2>/dev/null | sed 's/^[[:space:]]*//')
+  [ -n "$_rm_toks" ] || return 0
+  _rm_old_ifs=$IFS
+  IFS='
+'
+  for _tok in $_rm_toks; do
+    case "$_tok" in
+      /tmp/*|/private/tmp/*|/var/folders/*|/private/var/folders/*) : ;;
+      *)
+        IFS=$_rm_old_ifs
+        _bg_emit_block "rm-rf" "rm recursivo+forcado em caminho absoluto fora de areas temporarias bloqueado: $_tok"
+        return 1
+        ;;
+    esac
+  done
+  IFS=$_rm_old_ifs
+  return 0
+}
+
+# _bg_check_rm_segments -> aplica _bg_rm_seg_check a cada segmento de $_cmd.
+_bg_check_rm_segments() {
+  _rm_segs=$(_bg_segments)
+  _rm_loop_ifs=$IFS
+  IFS='
+'
+  for _rm_seg in $_rm_segs; do
+    IFS=$_rm_loop_ifs
+    if ! _bg_rm_seg_check "$_rm_seg"; then
+      return 1
+    fi
+    IFS='
+'
+  done
+  IFS=$_rm_loop_ifs
   return 0
 }
 
@@ -316,9 +428,11 @@ USO:
   bash-guard.sh check-whitelist --command "CMD" --whitelist-file FILE
   bash-guard.sh check           --command "CMD" --whitelist-file FILE
 
-Blocklist: sudo, npm/pip/cargo/go/brew install (sem docker prefix), git push,
-kubectl apply, terraform apply/destroy, docker push, helm install/upgrade,
-aws cli mutativo, gcloud deploy.
+Blocklist: sudo, npm/pip/cargo/go/brew install (sem docker exec/run no MESMO
+segmento), git push, kubectl apply, terraform apply/destroy, docker push,
+helm install/upgrade, aws cli mutativo, gcloud deploy, git reset --hard,
+git clean -f, rm -rf fora de areas temporarias (~, $HOME, .., .git, absoluto
+fora de /tmp e afins), sqlite3 mutativo na knowledge.db, pipe curl/wget->shell.
 
 Nota atomic-commit: raw `git push` permanece bloqueado mesmo no modo atomic-commit.
 O push confinado ocorre SOMENTE via `cstk session pr` (commit-mode.sh finalize),

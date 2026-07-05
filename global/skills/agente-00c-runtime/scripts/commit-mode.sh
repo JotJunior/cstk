@@ -2,8 +2,8 @@
 # commit-mode.sh — helper POSIX para o modo opt-in atomic-commit.
 #
 # Feature: atomic-commit-pr
-# Ref:     docs/specs/atomic-commit-pr/contracts/commit-mode.md
-#          docs/specs/atomic-commit-pr/spec.md §FR-002..011
+# Ref:     docs/specs/_archived/atomic-commit-pr/contracts/commit-mode.md
+#          docs/specs/_archived/atomic-commit-pr/spec.md §FR-002..011
 #
 # Subcomandos:
 #   is-enabled   --state-dir DIR

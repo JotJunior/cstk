@@ -1,9 +1,17 @@
 ---
 name: image-generation
-description: 'Image prompt enhancement (Subject-Context-Style) for illustrations, photos, visual assets, edits. Triggers: "image prompt", "illustration", "mockup image", "generate a picture". Skip for technical diagrams (Mermaid/PlantUML/drawio).'
+description: 'DEPRECATED (deprecated_since 5.15.0, remove_in 6.0.0 — fora do escopo do toolkit de documentacao/SDD; sem substituto no cstk). Image prompt enhancement (Subject-Context-Style) for illustrations, photos, visual assets, edits. Skip for technical diagrams (Mermaid/PlantUML/drawio).'
+deprecated: true
+deprecated_since: 5.15.0
+remove_in: 6.0.0
 ---
 
 # Image Generation Prompt Best Practices
+
+> **⚠️ DEPRECATED desde v5.15.0 — remoção agendada para v6.0.0.**
+> Fora do escopo do toolkit (documentação/SDD): nenhum fluxo do cstk gera
+> imagens, a skill não tem wiring com orquestradores/outras skills e não há
+> substituto planejado. Continua funcionando até a remoção.
 
 ## Prompt Structure
 

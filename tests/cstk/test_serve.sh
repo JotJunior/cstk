@@ -43,13 +43,31 @@ _make_bin_dir() {
   export PATH
 }
 
+# _serve_fixture_sha256 FILE -> imprime o sha256 real do FILE (sha256sum no
+# Linux, shasum -a 256 no macOS — mesmo fallback de compat.sh::sha256_file e
+# de todos os demais tests/cstk/test_*.sh que geram fixtures .sha256).
+# Computado a partir do arquivo de fato em disco (Constitution VI) — nunca
+# hardcoded, para acompanhar o fixture se ele um dia mudar.
+_serve_fixture_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 # _stub_curl_ok: cria stub de curl que retorna JSON da GitHub API simulada
 # com tarball_url apontando para https://github.com (para passar a allowlist),
-# e ao receber a URL do tarball, copia o fixture local.
+# e ao receber a URL do tarball, copia o fixture local. O asset `.sha256`
+# CONFERE com o fixture (outcome verified) — este stub e o caminho FELIZ,
+# usado pela maioria dos scenarios que nao testam integridade especificamente
+# (US2/enforced-guards: fail-closed exige que o default nao-relacionado a
+# integridade continue instalando sem exigir --allow-unverified).
 # $1 = diretorio de stubs
 _stub_curl_ok() {
   _sco_bin="$1"
   _sco_tarball="$SERVE_FIXTURE_DIR/panel-fixture.tar.gz"
+  _sco_sha256=$(_serve_fixture_sha256 "$_sco_tarball")
   # A tarball_url usa https://github.com para passar a SSRF allowlist.
   # O stub intercepta o download e copia o fixture local.
   cat > "$_sco_bin/curl" <<STUB
@@ -77,8 +95,12 @@ case "\$_url" in
     fi
     ;;
   *github.com*.sha256*)
-    # Nao disponivel: best-effort integridade falha silenciosamente
-    exit 1
+    # .sha256 disponivel e CONFERE com o fixture -> outcome "verified".
+    if [ -n "\$_output" ]; then
+      printf '%s  archive.tar.gz\n' "${_sco_sha256}" > "\$_output"
+    else
+      printf '%s  archive.tar.gz\n' "${_sco_sha256}"
+    fi
     ;;
   *github.com*tar.gz*)
     # Tarball download: copiar fixture local em vez de baixar da rede
@@ -95,6 +117,114 @@ case "\$_url" in
 esac
 STUB
   chmod +x "$_sco_bin/curl"
+}
+
+# _stub_curl_no_sha256: como _stub_curl_ok, mas o asset `.sha256` do release
+# NAO esta disponivel (404) — reproduz o estado real documentado do
+# cstk-panel hoje (Dependencies & Assumptions da spec: nao publica .sha256 de
+# forma confiavel). Outcome esperado: unverifiable-blocked (default) ou
+# unverifiable-bypassed (--allow-unverified/CSTK_SERVE_ALLOW_UNVERIFIED=1).
+# $1 = diretorio de stubs
+_stub_curl_no_sha256() {
+  _scns_bin="$1"
+  _scns_tarball="$SERVE_FIXTURE_DIR/panel-fixture.tar.gz"
+  cat > "$_scns_bin/curl" <<STUB
+#!/bin/sh
+_url=""
+_output=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    -o) shift; _output="\$1" ;;
+    --) shift; _url="\$1" ;;
+    https://*|http://*) _url="\$1" ;;
+    *) ;;
+  esac
+  shift
+done
+case "\$_url" in
+  *releases/latest*)
+    _resp='{"tag_name":"v0.0.1","tarball_url":"https://github.com/JotJunior/cstk-panel/archive/v0.0.1.tar.gz","prerelease":false,"draft":false}'
+    if [ -n "\$_output" ]; then
+      printf '%s\n' "\$_resp" > "\$_output"
+    else
+      printf '%s\n' "\$_resp"
+    fi
+    ;;
+  *github.com*.sha256*)
+    # Simula ausencia do asset .sha256 no release.
+    exit 1
+    ;;
+  *github.com*tar.gz*)
+    if [ -n "\$_output" ]; then
+      cp "${_scns_tarball}" "\$_output"
+    else
+      cat "${_scns_tarball}"
+    fi
+    ;;
+  *)
+    printf 'stub-curl: URL inesperada: %s\n' "\$_url" >&2
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "$_scns_bin/curl"
+}
+
+# _stub_curl_bad_sha256: como _stub_curl_ok, mas o asset `.sha256` ESTA
+# disponivel porem NAO confere com o tarball real (adulterado/corrompido em
+# transito) — exercita a regressao mismatch-blocked (FR-010, task 3.4), que
+# MUST permanecer bloqueando mesmo com --allow-unverified (bypass NUNCA se
+# aplica a mismatch, so a "nao-verificavel").
+# $1 = diretorio de stubs
+_stub_curl_bad_sha256() {
+  _scbs_bin="$1"
+  _scbs_tarball="$SERVE_FIXTURE_DIR/panel-fixture.tar.gz"
+  # 64 zeros hex: garantidamente diferente do sha256 real de qualquer
+  # arquivo nao-vazio (fixture tem varios KB — CHK-R23 exige >= 1024 bytes).
+  _scbs_wrong_sha=$(printf '0%.0s' $(seq 1 64))
+  cat > "$_scbs_bin/curl" <<STUB
+#!/bin/sh
+_url=""
+_output=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    -o) shift; _output="\$1" ;;
+    --) shift; _url="\$1" ;;
+    https://*|http://*) _url="\$1" ;;
+    *) ;;
+  esac
+  shift
+done
+case "\$_url" in
+  *releases/latest*)
+    _resp='{"tag_name":"v0.0.1","tarball_url":"https://github.com/JotJunior/cstk-panel/archive/v0.0.1.tar.gz","prerelease":false,"draft":false}'
+    if [ -n "\$_output" ]; then
+      printf '%s\n' "\$_resp" > "\$_output"
+    else
+      printf '%s\n' "\$_resp"
+    fi
+    ;;
+  *github.com*.sha256*)
+    if [ -n "\$_output" ]; then
+      printf '%s  archive.tar.gz\n' "${_scbs_wrong_sha}" > "\$_output"
+    else
+      printf '%s  archive.tar.gz\n' "${_scbs_wrong_sha}"
+    fi
+    ;;
+  *github.com*tar.gz*)
+    if [ -n "\$_output" ]; then
+      cp "${_scbs_tarball}" "\$_output"
+    else
+      cat "${_scbs_tarball}"
+    fi
+    ;;
+  *)
+    printf 'stub-curl: URL inesperada: %s\n' "\$_url" >&2
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "$_scbs_bin/curl"
 }
 
 # _stub_curl_must_not_be_called: stub que falha com mensagem se curl for chamado.
@@ -203,13 +333,55 @@ STUB
 # o PATH interno do PATH do harness evita ter de clobberar o PATH global so
 # para "esconder" curl/npm — clobber que nunca funcionou para curl, pois ele
 # mora em /usr/bin tanto no Linux quanto no macOS.
+#
+# cd para $TMPDIR_TEST/cwd ANTES de sourcear serve.sh (US2/task 3.3): a
+# partir de enforced-guards, serve.sh grava <cwd>/.claude/enforcement-log.jsonl
+# via `pwd` no momento da chamada. Sem este isolamento, o processo herdaria o
+# cwd do PROPRIO test runner (tipicamente a raiz do repo) e poluiria o
+# .claude/ real do cstk com artefatos de teste — precisamente o tipo de
+# vazamento que assert_no_side_effect existe para pegar. $TMPDIR_TEST/cwd e
+# limpo automaticamente pelo trap de mktemp_test (harness.sh).
 _run_serve() {
+  _rs_cwd="$TMPDIR_TEST/cwd"
+  mkdir -p "$_rs_cwd"
   capture env \
     CSTK_LIB="$CSTK_LIB" \
     CSTK_PANEL_DIR="$CSTK_PANEL_DIR" \
     PATH="${_SERVE_INNER_PATH:-$PATH}" \
     HOME="$TMPDIR_TEST" \
-    sh -c ". \$CSTK_LIB/serve.sh && serve_main \"\$@\"" serve_test "$@"
+    sh -c "cd \"$_rs_cwd\" && . \$CSTK_LIB/serve.sh && serve_main \"\$@\"" serve_test "$@"
+}
+
+# _serve_enforcement_log: imprime conteudo de $TMPDIR_TEST/cwd/.claude/
+# enforcement-log.jsonl (vazio se ausente). Espelha
+# tests/test_pretooluse-bash-guard.sh::_enforcement_log para o mesmo arquivo
+# (US1 e US2 escrevem no mesmo enforcement-log.jsonl — contract
+# enforcement-log.md). So valido apos pelo menos uma chamada a _run_serve
+# (que cria $TMPDIR_TEST/cwd).
+_serve_enforcement_log() {
+  cat "$TMPDIR_TEST/cwd/.claude/enforcement-log.jsonl" 2>/dev/null || :
+}
+
+# _snapshot_repo_root_log / _assert_no_repo_root_leak: rede de seguranca
+# contra _run_serve escrever enforcement-log.jsonl na raiz do REPO real
+# (fora do cwd isolado $TMPDIR_TEST/cwd) — o que poluiria o .claude/ real do
+# operador. NAO assume que o arquivo esta ausente no REPO_ROOT (uma sessao
+# real do Claude Code com o hook PreToolUse de US1 ativo PODE legitimamente
+# ja ter esse arquivo por motivos nao relacionados a este teste) — compara
+# conteudo ANTES/DEPOIS, so falha se _run_serve tiver MUDADO o arquivo real.
+_snapshot_repo_root_log() {
+  cat "$REPO_ROOT/.claude/enforcement-log.jsonl" 2>/dev/null > "$TMPDIR_TEST/.repo_log_baseline" || \
+    : > "$TMPDIR_TEST/.repo_log_baseline"
+}
+
+_assert_no_repo_root_leak() {
+  _anrl_current=$(cat "$REPO_ROOT/.claude/enforcement-log.jsonl" 2>/dev/null || :)
+  _anrl_baseline=$(cat "$TMPDIR_TEST/.repo_log_baseline" 2>/dev/null || :)
+  if [ "$_anrl_current" != "$_anrl_baseline" ]; then
+    _fail "leak_repo_root" "enforcement-log.jsonl em $REPO_ROOT/.claude/ mudou durante o teste (vazamento de _run_serve para fora do cwd isolado \$TMPDIR_TEST/cwd)"
+    return 1
+  fi
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -975,6 +1147,261 @@ scenario_saida_espontanea_mensagem_stderr() {
   # Deve emitir mensagem de encerramento inesperado no stderr
   if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'encerrou\|inesperado\|exit'; then
     _fail "saida_espontanea_msg" "stderr nao menciona encerramento inesperado"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# enforced-guards US2 — Integridade fail-closed no cstk serve (tasks 3.1-3.5)
+#
+# Ref: docs/specs/enforced-guards/{spec.md FR-008/009/010/011,
+#      data-model.md::IntegrityVerificationOutcome,
+#      contracts/enforcement-log.md, quickstart.md Scenarios 5-7}.
+# ---------------------------------------------------------------------------
+
+# Scenario 5 (quickstart) / task 3.1.4: sem .sha256 disponivel e sem
+# bypass -> bloqueia por padrao (fail-closed), sem instalacao parcial, com
+# mensagem apontando os dois caminhos conscientes de bypass, e linha
+# auditavel unverifiable-blocked no enforcement-log (task 3.3.1/3.3.2).
+scenario_integridade_sem_sha256_bloqueia_por_padrao() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_no_sha256 "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "integridade_sem_sha256_exit" "esperado exit 1 (fail-closed default), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ -f "$CSTK_PANEL_DIR/package.json" ]; then
+    _fail "integridade_sem_sha256_sem_instalacao_parcial" "package.json NAO deveria existir apos bloqueio de integridade"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'integridade'; then
+    _fail "integridade_sem_sha256_msg" "stderr nao menciona integridade nao confirmada: $_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -q -- '--allow-unverified'; then
+    _fail "integridade_sem_sha256_aponta_flag" "stderr nao aponta --allow-unverified como caminho consciente"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -q 'CSTK_SERVE_ALLOW_UNVERIFIED'; then
+    _fail "integridade_sem_sha256_aponta_env" "stderr nao aponta CSTK_SERVE_ALLOW_UNVERIFIED como caminho consciente"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"source":"serve-integrity"'*) : ;;
+    *) _fail "integridade_sem_sha256_log_source" "enforcement-log sem source=serve-integrity; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'"outcome":"unverifiable-blocked"'*) : ;;
+    *) _fail "integridade_sem_sha256_log_outcome" "esperado outcome=unverifiable-blocked; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'"expected_sha256":null'*) : ;;
+    *) _fail "integridade_sem_sha256_log_expected_null" "esperado expected_sha256=null; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'"bypass_method":null'*) : ;;
+    *) _fail "integridade_sem_sha256_log_bypass_null" "esperado bypass_method=null (sem bypass); log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# Scenario 6 (quickstart) / task 3.2.4, variante --allow-unverified: bypass
+# explicito via flag prossegue, com aviso de ALTA VISIBILIDADE em stderr
+# (research.md Decision 6 adendo/owasp-security) e outcome
+# unverifiable-bypassed + bypass_method=flag no log.
+scenario_integridade_allow_unverified_flag_prossegue() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_no_sha256 "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve --allow-unverified
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "integridade_flag_exit" "esperado exit 0 (bypass explicito), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ ! -f "$CSTK_PANEL_DIR/package.json" ]; then
+    _fail "integridade_flag_instalou" "package.json esperado apos bypass explicito"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'AVISO'; then
+    _fail "integridade_flag_aviso" "stderr nao contem aviso de alta visibilidade (AVISO); stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"unverifiable-bypassed"'*) : ;;
+    *) _fail "integridade_flag_log_outcome" "esperado outcome=unverifiable-bypassed; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'"bypass_method":"flag"'*) : ;;
+    *) _fail "integridade_flag_log_bypass_method" "esperado bypass_method=flag; log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# Scenario 6 (quickstart) / task 3.2.4, variante CSTK_SERVE_ALLOW_UNVERIFIED=1
+# (uso nao-interativo/scripts/CI): mesmo bypass, mesmo aviso obrigatorio,
+# bypass_method=env no log.
+scenario_integridade_allow_unverified_env_prossegue() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_no_sha256 "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  CSTK_SERVE_ALLOW_UNVERIFIED=1
+  export CSTK_SERVE_ALLOW_UNVERIFIED
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "integridade_env_exit" "esperado exit 0 (bypass via env), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'AVISO'; then
+    _fail "integridade_env_aviso" "stderr nao contem aviso de alta visibilidade; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"unverifiable-bypassed"'*) : ;;
+    *) _fail "integridade_env_log_outcome" "esperado outcome=unverifiable-bypassed; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'"bypass_method":"env"'*) : ;;
+    *) _fail "integridade_env_log_bypass_method" "esperado bypass_method=env; log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# Extra (nao numerado no quickstart, mas protege a regra de precedencia
+# documentada no proprio serve.sh): com flag E env presentes, a flag
+# explicita vence — bypass_method registrado reflete a origem que
+# efetivamente decidiu.
+scenario_integridade_flag_tem_precedencia_sobre_env() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_no_sha256 "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  CSTK_SERVE_ALLOW_UNVERIFIED=1
+  export CSTK_SERVE_ALLOW_UNVERIFIED
+  _run_serve --allow-unverified
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "integridade_precedencia_exit" "esperado exit 0, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"bypass_method":"flag"'*) : ;;
+    *) _fail "integridade_precedencia_bypass_method" "com flag+env ambos presentes, esperado bypass_method=flag (flag vence); log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# Task 3.3.3/3.5.3: caminho feliz (verified) nao grava NENHUMA linha no
+# enforcement-log — regressao de ruido, ja coberto pelo printf informativo
+# existente.
+scenario_integridade_verified_nao_grava_log() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "integridade_verified_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -qi 'integridade verificada'; then
+    _fail "integridade_verified_msg" "stdout nao confirma integridade verificada; stdout=$_CAPTURED_STDOUT"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  if [ -n "$_log" ]; then
+    _fail "integridade_verified_sem_log" "outcome verified NAO deve gravar linha no enforcement-log (task 3.3.3); log=$_log"
+    return 1
+  fi
+  _assert_no_repo_root_leak || return 1
+}
+
+# Scenario 7 (quickstart) / task 3.4.1/3.4.3/3.4.4, baseline sem flag:
+# .sha256 disponivel mas adulterado -> bloqueia como hoje (regressao
+# FR-010), com outcome mismatch-blocked e ambos os hashes registrados.
+scenario_integridade_mismatch_bloqueia_sem_flag() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_bad_sha256 "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "integridade_mismatch_exit" "esperado exit 1 (checksum nao confere), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if [ -f "$CSTK_PANEL_DIR/package.json" ]; then
+    _fail "integridade_mismatch_sem_instalacao" "package.json NAO deveria existir apos mismatch"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'nao confere\|checksum'; then
+    _fail "integridade_mismatch_msg" "stderr nao menciona checksum/divergencia; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"mismatch-blocked"'*) : ;;
+    *) _fail "integridade_mismatch_log_outcome" "esperado outcome=mismatch-blocked; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'"bypass_method":null'*) : ;;
+    *) _fail "integridade_mismatch_log_bypass_null" "esperado bypass_method=null; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'"expected_sha256":null'*) _fail "integridade_mismatch_log_expected_nao_deveria_ser_null" "log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'"actual_sha256":null'*) _fail "integridade_mismatch_log_actual_nao_deveria_ser_null" "log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# Task 3.4.2/3.4.4, regressao critica: --allow-unverified NUNCA pode
+# bypassar uma divergencia de checksum (so se aplica a "nao-verificavel").
+scenario_integridade_mismatch_bloqueia_mesmo_com_allow_unverified() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_bad_sha256 "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve --allow-unverified
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "integridade_mismatch_flag_exit" "regressao FR-010: --allow-unverified NUNCA deve bypassar mismatch; esperado exit 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"mismatch-blocked"'*) : ;;
+    *) _fail "integridade_mismatch_flag_log_outcome" "esperado outcome=mismatch-blocked mesmo com --allow-unverified; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'"outcome":"unverifiable-bypassed"'*) _fail "integridade_mismatch_flag_nao_deveria_bypassar" "--allow-unverified NAO pode transformar mismatch em bypass; log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# Cobertura de --help (mesmo padrao de scenario_help_menciona_flags).
+scenario_help_menciona_allow_unverified() {
+  _setup_serve_env
+  _run_serve --help
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q -- '--allow-unverified'; then
+    _fail "help_allow_unverified" "help nao menciona --allow-unverified"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q 'CSTK_SERVE_ALLOW_UNVERIFIED'; then
+    _fail "help_env_allow_unverified" "help nao menciona CSTK_SERVE_ALLOW_UNVERIFIED"
     return 1
   fi
 }

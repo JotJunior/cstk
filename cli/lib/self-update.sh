@@ -53,6 +53,8 @@ _CSTK_SU_LOADED=1
 # shellcheck source=/dev/null
 . "${CSTK_LIB}/http.sh"
 # shellcheck source=/dev/null
+. "${CSTK_LIB}/trusted-hosts.sh"
+# shellcheck source=/dev/null
 . "${CSTK_LIB}/lock.sh"
 # shellcheck source=/dev/null
 . "${CSTK_LIB}/tarball.sh"
@@ -345,10 +347,21 @@ _su_resolve_urls() {
   fi
   if [ -n "$_su_from" ]; then
     case "$_su_from" in
-      http://*|https://*|file://*)
+      https://*|file://*)
+        # US3/enforced-guards FR-012/FR-013: host confiavel checado ANTES de
+        # qualquer download. file:// e isento (FR-014); trusted_host_check
+        # cuida da distincao internamente.
+        if ! trusted_host_check "$_su_from"; then
+          return 1
+        fi
         _su_tarball_url=$_su_from
         _su_sha256_url="${_su_from}.sha256"
         return 0
+        ;;
+      http://*)
+        # http em texto plano permite MITM trocar tarball E .sha256 juntos.
+        log_error "self-update: --from http:// rejeitado (MITM anula o checksum de mesma origem); use https:// ou file://"
+        return 1
         ;;
       *)
         log_error "self-update: --from precisa ser URL: $_su_from"

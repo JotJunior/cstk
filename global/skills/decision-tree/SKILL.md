@@ -1,6 +1,6 @@
 ---
 name: decision-tree
-description: 'DEPRECATED (deprecated_since 5.6.0, remove_in 6.0.0 — use o cstk-panel via `cstk serve`, que ja visualiza as decisoes do state.json de forma mais eficiente). Gera um relatorio HTML interativo em arvore de decisao a partir do state.json de uma execucao agente-00c/feature-00c. Use quando o operador pedir para "visualizar/desenhar a arvore de decisoes", "fluxograma das decisoes da IA", "relatorio das decisoes do state.json", "como a IA decidiu", ou similar. NAO use para metricas agregadas de selecao de modelo (use model-routing-report.sh) nem para auditar status de tarefas (use review-task).'
+description: 'DEPRECATED (deprecated_since 5.6.0, remove_in 6.0.0 — use o cstk-panel via `cstk serve`). Gera relatorio HTML em arvore de decisao a partir do state.json de execucoes agente-00c/feature-00c.'
 argument-hint: "[caminho para o state.json] [arquivo .html de saida opcional]"
 deprecated: true
 deprecated_since: 5.6.0

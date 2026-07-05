@@ -12,8 +12,9 @@
 #                [--from URL] [--dry-run] [--yes] [--interactive] [--help]
 #
 # Resolucao de URL (--from):
-#   - URL absoluta (http://, https://, file://) -> usada como tarball_url;
-#     sha256_url e tarball_url + ".sha256"
+#   - URL absoluta (https:// ou file://) -> usada como tarball_url;
+#     sha256_url e tarball_url + ".sha256". http:// e REJEITADO (MITM
+#     anularia o checksum de mesma origem).
 #   - Sem --from: cai em $CSTK_RELEASE_URL (escape hatch para fixtures de teste);
 #     se ausente, consulta GitHub API /releases/latest e monta a URL do asset
 #     conforme convencao de naming do build (cstk-<bare-version>.tar.gz).
@@ -45,6 +46,8 @@ _CSTK_INSTALL_LOADED=1
 . "${CSTK_LIB}/compat.sh"
 # shellcheck source=/dev/null
 . "${CSTK_LIB}/http.sh"
+# shellcheck source=/dev/null
+. "${CSTK_LIB}/trusted-hosts.sh"
 # shellcheck source=/dev/null
 . "${CSTK_LIB}/lock.sh"
 # shellcheck source=/dev/null
@@ -236,6 +239,7 @@ _install_reset_state() {
   _install_manifest_path=""
   _install_now=""
   _install_hook_state=""
+  _install_guard_hook_state=""
   _install_count_installed=0
   _install_count_updated=0
   _install_count_preserved=0
@@ -426,12 +430,24 @@ _install_resolve_urls() {
 
   # Casos 1 + 2: URL explicita
   case "$_install_from" in
-    http://*|https://*|file://*)
+    https://*|file://*)
+      # US3/enforced-guards FR-012/FR-013: host confiavel checado ANTES de
+      # qualquer download. file:// e isento (FR-014); trusted_host_check
+      # cuida da distincao internamente.
+      if ! trusted_host_check "$_install_from"; then
+        return 1
+      fi
       _install_tarball_url=$_install_from
       _install_sha256_url="${_install_from}.sha256"
       ;;
+    http://*)
+      # http em texto plano permite MITM trocar tarball E .sha256 juntos
+      # (checksum de mesma origem nao protege contra origem adulterada).
+      log_error "install: --from http:// rejeitado (MITM anula o checksum de mesma origem); use https:// ou file://"
+      return 1
+      ;;
     *)
-      log_error "install: --from precisa ser URL (http:// https:// file://); recebido: $_install_from"
+      log_error "install: --from precisa ser URL (https:// file://); recebido: $_install_from"
       log_error "         para baixar a ultima release automaticamente, omita --from"
       return 1
       ;;
@@ -597,31 +613,64 @@ _install_apply() {
   return 0
 }
 
-# _install_apply_hooks_if_needed: integra hooks de language-* (FR-009b/c/d).
+# _install_apply_hooks_if_needed: integra hooks de language-* (FR-009b/c/d)
+# E o guard-hook de enforced-guards (task 2.5.1 — US1, independente do
+# profile escolhido).
 #
-# Decisao por scope:
-#   --scope=project + profile=language-X  -> instala hooks/ + merge settings
-#   --scope=global  + profile=language-X  -> skip hooks (FR-009c) + warn omitted
-#   profile != language-*                  -> nada a fazer (hook_state vazio)
+# Decisao por scope (ambos os ramos abaixo, mesma regra FR-009c/Decision 9):
+#   --scope=project + profile=language-X          -> instala hooks/ + merge settings
+#   --scope=project + skill agente-00c-runtime    -> apply_guard_hooks()
+#   --scope=global   (qualquer caso acima)          -> skip hooks + warn omitted
 #
-# Sub-passos quando aplicavel:
+# Sub-passos do ramo language-* (inalterado desta feature):
 #   1. Localiza catalog/language/<lang>/{hooks/,settings.json}
 #   2. Copia hooks/ para $scope_dir/../hooks/  (i.e. ./.claude/hooks/)
 #   3. Settings: merge_settings se jq disponivel, senao print_paste_block
 #
+# Ramo novo (guard-hook): delega inteiramente a apply_guard_hooks() em
+# hooks.sh — reusa a MESMA mecanica de merge/paste, nenhum mecanismo de
+# distribuicao novo (FR-017). Estado proprio (_install_guard_hook_state)
+# para nao colidir com _install_hook_state (ramo language-*, independente).
+#
 # Em --dry-run: reporta plano via log_info, nao escreve.
 _install_apply_hooks_if_needed() {
-  case "$_install_profile" in
-    language-*) ;;
-    *) return 0 ;;
-  esac
-
   if [ "$_install_scope" = global ]; then
-    log_warn "install: hooks de $_install_profile omitidos em scope=global (FR-009c)"
-    _install_hook_state="omitted"
+    # _install_hook_state so e setado quando o profile e language-* (paridade
+    # EXATA com o comportamento pre-enforced-guards — regressao encontrada
+    # empiricamente via scenario_install_profile_nao_language_sem_hooks_no_summary:
+    # setar incondicionalmente aqui vazava "hooks: omitted" no summary de
+    # QUALQUER profile em scope=global, nao so language-*).
+    case "$_install_profile" in
+      language-*)
+        log_warn "install: hooks de $_install_profile omitidos em scope=global (FR-009c)"
+        _install_hook_state="omitted"
+        ;;
+    esac
+    if printf '%s\n' "$_install_selection" | grep -Fxq -- "agente-00c-runtime"; then
+      log_warn "install: guard-hooks (enforced-guards) omitidos em scope=global (FR-009c)"
+      _install_guard_hook_state="omitted"
+    fi
     return 0
   fi
 
+  case "$_install_profile" in
+    language-*) _install_apply_language_hooks ;;
+  esac
+
+  if printf '%s\n' "$_install_selection" | grep -Fxq -- "agente-00c-runtime"; then
+    _agh_claude_root="${_install_scope_dir%/skills}"
+    _agh_src_dir="$_install_catalog_dir/skills/agente-00c-runtime/hooks"
+    _install_guard_hook_state=$(apply_guard_hooks "$_agh_src_dir" "$_agh_claude_root" "$_install_dry_run")
+  fi
+
+  return 0
+}
+
+# _install_apply_language_hooks: corpo original do ramo language-* de
+# _install_apply_hooks_if_needed, extraido para funcao propria para que o
+# guard-hook (acima) possa rodar independentemente do profile. Comportamento
+# 100% inalterado desta feature.
+_install_apply_language_hooks() {
   _ahin_lang=${_install_profile#language-}
   _ahin_lang_dir="$_install_catalog_dir/language/$_ahin_lang"
   if [ ! -d "$_ahin_lang_dir" ]; then
@@ -817,6 +866,9 @@ _install_emit_summary() {
     printf '  toolkit version: %s\n' "${_install_release_version:-?}"
     if [ -n "$_install_hook_state" ]; then
       printf '  hooks: %s\n' "$_install_hook_state"
+    fi
+    if [ -n "$_install_guard_hook_state" ]; then
+      printf '  guard-hooks: %s\n' "$_install_guard_hook_state"
     fi
     _ies_cmd_total=$((_install_count_commands_installed + _install_count_commands_updated + _install_count_commands_preserved))
     if [ "$_ies_cmd_total" -gt 0 ]; then
