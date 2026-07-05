@@ -191,4 +191,103 @@ scenario_merge_source_ausente() {
   assert_stderr_contains "nao encontrado" || return 1
 }
 
+# ==== apply_guard_hooks (enforced-guards US1, task 2.4.4) ====
+
+# _guard_src_fixture: monta um src_dir minimo com pretooluse-bash-guard.sh
+# (conteudo trivial, so precisa existir p/ cp) + settings.snippet.json.
+_guard_src_fixture() {
+  _gsf_dir="$TMPDIR_TEST/guard-src"
+  mkdir -p "$_gsf_dir"
+  printf '#!/bin/sh\nexit 0\n' > "$_gsf_dir/pretooluse-bash-guard.sh"
+  chmod +x "$_gsf_dir/pretooluse-bash-guard.sh"
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x","timeout":5}]}]}}\n' \
+    > "$_gsf_dir/settings.snippet.json"
+  printf '%s' "$_gsf_dir"
+}
+
+scenario_apply_guard_hooks_merged_com_jq() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _src=$(_guard_src_fixture)
+  _dest="$TMPDIR_TEST/claude-root"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "merged" || return 1
+  [ -x "$_dest/hooks/pretooluse-bash-guard.sh" ] || { _fail "hook nao copiado/executavel" ""; return 1; }
+  jq -e '.hooks.PreToolUse[0].matcher == "Bash"' "$_dest/settings.json" >/dev/null \
+    || { _fail "settings.json nao mesclado" "$(cat "$_dest/settings.json" 2>/dev/null)"; return 1; }
+}
+
+scenario_apply_guard_hooks_sem_jq_paste_instructed() {
+  _src=$(_guard_src_fixture)
+  _dest="$TMPDIR_TEST/claude-root"
+  _path_clean=$(_make_shim_path)
+  capture env -i PATH="$_path_clean" CSTK_LIB="$CSTK_LIB" sh -c '
+    . "$CSTK_LIB/hooks.sh"
+    apply_guard_hooks "$1" "$2" 0
+  ' guard_test "$_src" "$_dest"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "paste-instructed" || return 1
+  assert_stderr_contains "BEGIN PAYLOAD" || return 1
+  [ -x "$_dest/hooks/pretooluse-bash-guard.sh" ] || { _fail "hook nao copiado sem jq" ""; return 1; }
+  [ -f "$_dest/settings.json" ] && { _fail "settings.json nao deveria existir sem jq" ""; return 1; }
+  return 0
+}
+
+scenario_apply_guard_hooks_dry_run_nao_escreve() {
+  _src=$(_guard_src_fixture)
+  _dest="$TMPDIR_TEST/claude-root"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 1"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT"; return 1; }
+  [ -e "$_dest" ] && { _fail "dry-run escreveu em disco" "$(find "$_dest" 2>/dev/null)"; return 1; }
+  return 0
+}
+
+scenario_apply_guard_hooks_src_ausente_not_applicable() {
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$TMPDIR_TEST/nao-existe' '$TMPDIR_TEST/dest' 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "not-applicable" || return 1
+}
+
+scenario_apply_guard_hooks_script_ausente_not_applicable() {
+  _src="$TMPDIR_TEST/guard-src-empty"
+  mkdir -p "$_src"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$TMPDIR_TEST/dest' 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "not-applicable" || return 1
+}
+
+scenario_apply_guard_hooks_sem_snippet_hooks_only() {
+  _src="$TMPDIR_TEST/guard-src-nosnippet"
+  mkdir -p "$_src"
+  printf '#!/bin/sh\nexit 0\n' > "$_src/pretooluse-bash-guard.sh"
+  chmod +x "$_src/pretooluse-bash-guard.sh"
+  _dest="$TMPDIR_TEST/claude-root"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "hooks-only" || return 1
+  [ -x "$_dest/hooks/pretooluse-bash-guard.sh" ] || { _fail "hook nao copiado" ""; return 1; }
+}
+
+scenario_apply_guard_hooks_idempotente() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _src=$(_guard_src_fixture)
+  _dest="$TMPDIR_TEST/claude-root"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "1a chamada exit" "$_CAPTURED_EXIT"; return 1; }
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "2a chamada (resume) exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "merged" || return 1
+  jq -e '.hooks.PreToolUse[0].matcher == "Bash"' "$_dest/settings.json" >/dev/null \
+    || { _fail "settings.json corrompido apos 2a chamada" "$(cat "$_dest/settings.json")"; return 1; }
+}
+
+scenario_apply_guard_hooks_args_invalidos() {
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks only-one-arg"
+  if [ "$_CAPTURED_EXIT" != 2 ]; then
+    _fail "args invalidos exit" "esperado 2, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stdout_contains "error" || return 1
+}
+
 run_all_scenarios

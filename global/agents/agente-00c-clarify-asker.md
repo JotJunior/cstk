@@ -2,9 +2,7 @@
 name: agente-00c-clarify-asker
 description: 'Subagente: gera 1-5 perguntas estruturadas para etapa clarify do SDD via skill clarify. Nao toma decisoes — orquestrador-pai (agente-00c-orchestrator) media comunicacao com answerer.'
 model: sonnet
-allowed-tools:
-  - Skill
-  - Read
+tools: Skill, Read
 ---
 
 # Agente-00C — Clarify Asker

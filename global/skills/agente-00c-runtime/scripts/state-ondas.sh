@@ -34,9 +34,15 @@
 #       — Imprime .waves[-1].id (ou "init" se nao ha onda).
 #
 #   state-ondas.sh record-skill --state-dir DIR --skill NAME
-#                               [--decisao-id DEC-NNN]
+#                               [--decisao-id DEC-NNN] [--kind skill|gate]
 #       — Registra invocacao da skill na onda corrente. Append em
-#         .waves[-1].skills_invoked = [..., { skill, timestamp, decision_id }].
+#         .waves[-1].skills_invoked = [..., { skill, timestamp, decision_id,
+#         kind }]. --kind (default: skill) separa SKILLS reais (invocadas
+#         via tool Skill) de GATES deterministicos de script
+#         (validate-tasks-template.sh etc.); entradas kind=gate sao
+#         auditaveis no state.json mas NAO entram na metrica de skills da
+#         knowledge.db (a ingestao filtra) — antes, gates e ate comandos de
+#         build/lint poluiam a tabela `skills` como se fossem skills.
 #         Permite review-task auditar "etapa X foi marcada completa mas a
 #         skill Y nunca foi invocada via tool Skill" — defesa contra o
 #         padrao da execucao-fonte onde orquestrador gerou artefatos
@@ -347,16 +353,22 @@ _so_cmd_record_skill() {
   _sdir=""
   _skill=""
   _dec=""
+  _kind="skill"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)  _sdir=$2;  shift 2 ;;
       --skill)      _skill=$2; shift 2 ;;
       --decisao-id) _dec=$2;   shift 2 ;;
+      --kind)       _kind=$2;  shift 2 ;;
       *) _so_die_usage "record-skill: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_sdir" ]  || _so_die_usage "record-skill: --state-dir obrigatorio"
   [ -n "$_skill" ] || _so_die_usage "record-skill: --skill obrigatorio"
+  case "$_kind" in
+    skill|gate) ;;
+    *) _so_die_usage "record-skill: --kind deve ser skill|gate (recebido: $_kind)" ;;
+  esac
   _so_require_jq
   _sf=$(_so_state_file "$_sdir")
   [ -f "$_sf" ] || _so_die "record-skill: state.json ausente em $_sdir" 1
@@ -375,6 +387,7 @@ _so_cmd_record_skill() {
   jq \
     --arg skill "$_skill" \
     --arg ts "$_now" \
+    --arg kind "$_kind" \
     --argjson dec "$_dec_json" '
     (.waves[-1].skills_invoked //= [])
     | (.waves[-1].skills_invoked |=
@@ -383,7 +396,8 @@ _so_cmd_record_skill() {
          else . + [{
            skill: $skill,
            timestamp: $ts,
-           decision_id: $dec
+           decision_id: $dec,
+           kind: $kind
          }]
          end))
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _so_die "jq update falhou" 1; }

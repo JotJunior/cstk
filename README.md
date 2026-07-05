@@ -73,7 +73,7 @@ curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh
 │       ├── decision-tree/      # ⚠️ DEPRECATED (remove_in 6.0.0) — use cstk-panel (cstk serve)
 │       ├── e2e-integration-flow/ # testes E2E de integração full-stack (Playwright)
 │       ├── execute-task/
-│       ├── image-generation/
+│       ├── image-generation/   # ⚠️ DEPRECATED (remove_in 6.0.0) — fora do escopo do toolkit
 │       ├── initialize-docs/
 │       ├── model-selector/     # heurística de roteamento de modelo (sugestor)
 │       ├── owasp-security/
@@ -140,7 +140,7 @@ Skills independentes que podem ser usados em qualquer momento:
 | **advisor** | "me aconselhe", "analise estratégica" | Conselheiro brutalmente honesto que disseca raciocínio e gera planos de ação |
 | **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
 | **e2e-integration-flow** | "e2e", "teste e2e", "playwright", "validar fluxo completo" | Cria e roda testes E2E de integração com Playwright que validam o fluxo completo de uma feature em TODAS as camadas (UI → rede/API → banco → fila/RabbitMQ → efeitos colaterais), não só o clique na UI. Profundidade sob demanda em `references/` |
-| **image-generation** | Ao gerar imagens | Aprimora prompts de geração de imagens usando estrutura Subject-Context-Style |
+| **image-generation** | Ao gerar imagens | ⚠️ **DEPRECATED** (remove_in 6.0.0 — fora do escopo do toolkit, sem substituto). Aprimora prompts de geração de imagens usando estrutura Subject-Context-Style |
 | **initialize-docs** | "inicializar docs", "setup documentação" | Cria hierarquia padrão de documentação com 9 níveis |
 | **apply-insights** | "aplicar insights", "aplicar playbook", "melhorar claude.md" | Analisa o projeto e aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows. Renomeada de `insights` na 2.0.0 para evitar colisão com o `/insights` nativo do Claude Code (que tem função diferente — analisa suas sessões) |
 | **owasp-security** | Ao revisar segurança | Revisão **guiada por checklist** sobre um catálogo de padrões modernos (OWASP Top 10:2025, API/CI-CD, ASVS 5.0, LLM/Agentic, CWE Top 25:2025, NIST 800-63B-4, WebAuthn, OAuth 2.1, FAPI 2.0, pós-quântica). Assistente de revisão — **não** substitui auditoria/pentest. Profundidade sob demanda em `references/` |
@@ -412,7 +412,41 @@ um commit ranged ao final da onda. O finalize terminal dispara push + PR via
 |------------|-------------|
 | Helper POSIX (`is-enabled`, `set-enabled`, `guard-branch`, `stage-message`, `task-message`, `finalize`) | `global/skills/agente-00c-runtime/scripts/commit-mode.sh` |
 | Testes | `tests/test_commit-mode.sh` |
-| Spec | `docs/specs/atomic-commit-pr/` |
+| Spec | `docs/specs/_archived/atomic-commit-pr/` |
+
+### Guardas enforced (hook PreToolUse + integridade + allowlist de hosts)
+
+As guardas de segurança do runtime (`bash-guard.sh`, checksum do painel,
+esquema de URL) eram **advisory**: só produziam efeito se a prosa do
+orquestrador lembrasse de invocá-las. A partir desta feature, três frentes
+passam a ser **enforced** (não dependem mais do orquestrador lembrar):
+
+1. **Hook `PreToolUse`/`Bash` fail-closed**: intercepta todo comando Bash
+   de uma execução `agente-00c`/`feature-00c` ativa (detectada via
+   `.claude/agente-00c-state/state.json` ou `.claude/feature-00c-state/*/state.json`
+   com `status: em_andamento`) e delega a `bash-guard.sh check` — nunca
+   reimplementa a regra. Falha do próprio mecanismo (`jq`/`bash-guard.sh`
+   ausente) também bloqueia (`MECANISMO_FALHOU`, distinguível de
+   `REGRA_VIOLADA`). Sessões manuais do operador (fora de execução ativa)
+   ficam intactas. Cada decisão é auditável em `.claude/enforcement-log.jsonl`
+   (campo `command` passa por `secrets-filter.sh scrub` antes de truncar).
+2. **`cstk serve` recusa iniciar sem integridade confirmada por padrão**:
+   ausência de `.sha256` do pacote baixado bloqueia (`unverifiable-blocked`);
+   bypass explícito via `--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1`
+   com aviso de alta visibilidade; divergência de checksum continua
+   bloqueando sempre (sem bypass possível).
+3. **Allowlist de hosts confiáveis** (`CSTK_TRUSTED_RELEASE_HOSTS`, match
+   exato case-insensitive, `file://` isento) aplicada em `cstk serve`,
+   `cstk install --from` e `cstk self-update --from` — rejeita host fora
+   da lista antes de qualquer download.
+
+| Componente | Localizacao |
+|------------|-------------|
+| Hook + snippet de settings | `global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh` + `settings.snippet.json` |
+| Provisionamento automático | `apply_guard_hooks()` em `cli/lib/hooks.sh` (integrado a `install.sh`/`update.sh`, escopo `project`) |
+| Allowlist de hosts compartilhada | `cli/lib/trusted-hosts.sh` (`CSTK_TRUSTED_RELEASE_HOSTS`) |
+| Log auditável | `.claude/enforcement-log.jsonl` (por projeto-alvo) |
+| Spec | `docs/specs/enforced-guards/` |
 
 ## Insights de Uso
 
@@ -490,9 +524,9 @@ cstk self-update                     # atualiza o próprio binário cstk
 
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
-| `sdd` | 10 skills do pipeline Spec-Driven Development (briefing → review-task) | Instalação global default |
-| `complementary` | 9 skills independentes (advisor, bugfix, owasp-security, decision-tree, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
+| `sdd` | 16 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 3 gates de qualidade dos orquestradores | Instalação global default |
+| `complementary` | 12 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 30 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`.
@@ -571,9 +605,9 @@ seu-projeto/
 
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
-| `sdd` | 10 skills do pipeline Spec-Driven Development (briefing → review-task) | Instalação global default |
-| `complementary` | 9 skills independentes (advisor, bugfix, owasp-security, decision-tree, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
+| `sdd` | 16 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 3 gates de qualidade dos orquestradores | Instalação global default |
+| `complementary` | 12 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 30 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --help`.

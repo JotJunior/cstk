@@ -6,7 +6,7 @@
 #   - Estrutura: tarball contem cli/cstk, cli/lib/*.sh, catalog/{VERSION,
 #     profiles.txt,skills,language}, CHANGELOG.md, LICENSE, THIRD-PARTY-NOTICES.md
 #   - Checksum file e gerado com sha256sum/shasum format
-#   - profiles.txt parseavel pela lib (resolve_profile sdd retorna 12 skills)
+#   - profiles.txt parseavel pela lib (resolve_profile sdd retorna 16 skills)
 #   - Layout consumivel por bootstrap/self-update (cli/cstk + cli/lib/ em paths
 #     que find ... -path '*/cli/cstk' encontra)
 #   - Errors de uso: sem version exit 2, version invalida exit 2
@@ -152,13 +152,17 @@ scenario_build_release_profiles_parseavel() {
     _fail "resolve sdd" "$_CAPTURED_STDERR"
     return 1
   fi
-  # SDD profile tem 12 skills (10 da pipeline + agente-00c-runtime infra
-  # do /agente-00c + model-selector, per scripts/profiles.txt.in).
-  # model-selector entrou no profile em 7eecdb7 (corrige conformidade); este
-  # count foi atualizado de 11 -> 12 junto.
+  # SDD profile tem 16 skills (10 da pipeline + agente-00c-runtime infra
+  # do /agente-00c + model-selector + review-features + 3 skills-gate,
+  # per scripts/profiles.txt.in). Historico: model-selector entrou em
+  # 7eecdb7 (11 -> 12); review-features (fase terminal do agente-00c) +
+  # validate-documentation/validate-docs-rendered/owasp-security (gates
+  # obrigatorios dos orquestradores) entraram na revisao 5.15.0
+  # (12 -> 16): todos eram invocados pelo orquestrador mas ausentes do
+  # profile default — pipeline quebrava ao invocar skill nao instalada.
   _count=$(printf '%s\n' "$_CAPTURED_STDOUT" | awk 'NF>0' | wc -l | awk '{print $1}')
-  if [ "$_count" != 12 ]; then
-    _fail "sdd count" "esperado 12, obtido $_count: $_CAPTURED_STDOUT"
+  if [ "$_count" != 16 ]; then
+    _fail "sdd count" "esperado 16, obtido $_count: $_CAPTURED_STDOUT"
     return 1
   fi
   # Regressao: agente-00c-runtime DEVE estar em sdd (causa principal do
@@ -172,6 +176,15 @@ scenario_build_release_profiles_parseavel() {
     _fail "sdd sem model-selector" "$_CAPTURED_STDOUT"
     return 1
   fi
+  # Regressao: dependencias duras dos orquestradores DEVEM estar em sdd —
+  # review-features (fase terminal do agente-00c) e os 3 gates de
+  # qualidade invocados apos specify/plan/create-tasks.
+  for _must in review-features validate-documentation validate-docs-rendered owasp-security; do
+    if ! printf '%s\n' "$_CAPTURED_STDOUT" | grep -qx "$_must"; then
+      _fail "sdd sem $_must" "$_CAPTURED_STDOUT"
+      return 1
+    fi
+  done
 
   # language-go nao deve ser vazio
   capture env CSTK_LIB="$REPO_ROOT/cli/lib" sh -c '

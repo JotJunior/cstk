@@ -3032,4 +3032,31 @@ scenario_w7_reindex_state_congelado() {
   [ "$_w7" = "cstk|demo-feat|minha-feature" ] || { _fail "W7 reindex congelado" "esperado 'cstk|demo-feat|minha-feature', obtido '$_w7'"; return 1; }
 }
 
+# Cenario W8 — entradas kind=gate ficam FORA da metrica de skills (revisao
+# 5.15.0): a tabela `skills` e o `waves.n_skills` excluem kind=gate;
+# entradas legadas SEM kind continuam contando como skill (compat).
+scenario_w8_ingest_exclui_kind_gate() {
+  _have_deps || return 0
+  _w8_sd="$TMPDIR_TEST/w8-feat"
+  _write_state "$_w8_sd" "/home/u/projW8" "featW8"
+  jq '.ondas[0].skills_invoked += [{"skill":"validate-tasks-template","timestamp":"2026-01-01T00:20:00Z","decisao_id":"dec-009","kind":"gate"}]
+      | .ondas[1].skills_invoked += [{"skill":"checklist","timestamp":"2026-01-02T00:20:00Z","decisao_id":"dec-010","kind":"skill"}]' \
+    "$_w8_sd/state.json" > "$_w8_sd/state.json.tmp" \
+    && mv "$_w8_sd/state.json.tmp" "$_w8_sd/state.json"
+  capture _rc --ingest --state-dir "$_w8_sd" --db "$TMPDIR_TEST/w8-k.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W8 ingest exit" "$_CAPTURED_EXIT $_CAPTURED_STDERR"; return 1; }
+  # Tabela skills: specify (legada, sem kind) + plan (legada) + checklist
+  # (kind=skill) = 3; o gate NAO entra.
+  _w8_n=$(sqlite3 "$TMPDIR_TEST/w8-k.db" "SELECT COUNT(*) FROM skills;")
+  [ "$_w8_n" = "3" ] || { _fail "W8 skills count" "esperado 3 (sem gate), obtido $_w8_n"; return 1; }
+  _w8_gate=$(sqlite3 "$TMPDIR_TEST/w8-k.db" "SELECT COUNT(*) FROM skills WHERE skill_name='validate-tasks-template';")
+  [ "$_w8_gate" = "0" ] || { _fail "W8 gate vazou" "gate presente na tabela skills"; return 1; }
+  # waves.n_skills tambem exclui o gate: onda-001 = specify(+gate) = 1;
+  # onda-002 = plan + checklist = 2.
+  _w8_w1=$(sqlite3 "$TMPDIR_TEST/w8-k.db" "SELECT n_skills FROM waves WHERE wave='onda-001';")
+  [ "$_w8_w1" = "1" ] || { _fail "W8 n_skills onda-001" "esperado 1, obtido $_w8_w1"; return 1; }
+  _w8_w2=$(sqlite3 "$TMPDIR_TEST/w8-k.db" "SELECT n_skills FROM waves WHERE wave='onda-002';")
+  [ "$_w8_w2" = "2" ] || { _fail "W8 n_skills onda-002" "esperado 2, obtido $_w8_w2"; return 1; }
+}
+
 run_all_scenarios

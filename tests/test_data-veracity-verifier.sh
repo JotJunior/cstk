@@ -33,15 +33,29 @@ scenario_frontmatter_name() {
   assert_exit 0 grep -Eq '^name: data-veracity-verifier$' "$AGENT" || return 1
 }
 
-# ==== Read-only: NAO pode portar Write/Edit no allowed-tools ====
+# ==== Read-only: NAO pode portar Write/Edit/Bash no campo tools ====
 # A garantia central: o verificador relata, nunca conserta. Se Write/Edit
-# vazarem para o allowed-tools, ele deixa de ser auditor e vira mais um gerador
-# que pode fabricar.
+# vazarem para o tools, ele deixa de ser auditor e vira mais um gerador
+# que pode fabricar. Bash tambem fica fora: quebra o read-only por vias
+# indiretas (sed -i, tee, redirecionamento).
+# NOTA: agents usam o campo `tools:` (CSV) — `allowed-tools:` e o campo de
+# SKILL.md/commands e era IGNORADO pelo harness em agents (restricao inerte
+# ate a revisao 5.15.0).
 
 scenario_readonly_sem_write_edit() {
-  _tools=$(awk '/^allowed-tools:/{f=1;next} /^[^ -]/{f=0} f' "$AGENT")
-  if printf '%s\n' "$_tools" | grep -Eq '(^|[^a-zA-Z])(Write|Edit)([^a-zA-Z]|$)'; then
-    _fail "allowed-tools contem Write/Edit (verificador deve ser read-only)" "$_tools"
+  _tools=$(awk -F': *' '/^tools:/{print $2; exit}' "$AGENT")
+  if [ -z "$_tools" ]; then
+    _fail "agent sem campo tools: no frontmatter (restricao read-only ausente)" ""
+    return 1
+  fi
+  if printf '%s\n' "$_tools" | grep -Eq '(^|[^a-zA-Z])(Write|Edit|Bash)([^a-zA-Z]|$)'; then
+    _fail "tools contem Write/Edit/Bash (verificador deve ser read-only)" "$_tools"
+    return 1
+  fi
+  # Campo legado nao pode reaparecer (seria ignorado pelo harness e
+  # daria falsa sensacao de restricao).
+  if grep -q '^allowed-tools:' "$AGENT"; then
+    _fail "agent ainda declara allowed-tools: (campo ignorado em agents)" ""
     return 1
   fi
 }

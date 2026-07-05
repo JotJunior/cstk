@@ -1,5 +1,6 @@
 #!/bin/sh
-# test_hooks-integration.sh — cobre integracao hooks <-> install (FASE 7.2).
+# test_hooks-integration.sh — cobre integracao hooks <-> install/update
+# (FASE 7.2 + enforced-guards US1 task 2.5.4).
 #
 # Cobre:
 #   Scenario 4: --scope=project + --profile=language-go + jq presente
@@ -10,6 +11,19 @@
 #                  reporta "paste-instructed"
 #   FR-009c:    --scope=global + --profile=language-* => hooks omitidos com
 #               warning, summary reporta "omitted"
+#
+# enforced-guards (task 2.5.4 — guard-hook PreToolUse/Bash de US1, extensao
+# de install.sh/update.sh independente do profile language-*):
+#   - install --scope project + skill agente-00c-runtime => guard-hook
+#     provisionado em .claude/hooks/, settings.json mesclado, summary
+#     reporta "guard-hooks: merged"
+#   - install --scope global => guard-hook omitido (Decision 9/FR-009c)
+#   - install profile=language-go + skill agente-00c-runtime juntos =>
+#     coexistencia sem clobber (ambos os hooks provisionados, settings.json
+#     com ambas as chaves)
+#   - update: reprovisiona o guard-hook quando agente-00c-runtime esta entre
+#     os alvos (achado da research.md — update.sh historicamente nao tocava
+#     hooks em nenhum caso; FR-004/SC-006 exige cobertura tambem no update)
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -238,6 +252,171 @@ scenario_install_profile_nao_language_sem_hooks_no_summary() {
       return 1
       ;;
   esac
+}
+
+# ==== enforced-guards (task 2.5.4): fixtures + helpers ====
+
+# _make_guard_release: catalog com language-go (regressao/coexistencia) +
+# agente-00c-runtime com hooks/ (pretooluse-bash-guard.sh + settings.snippet.json)
+# — espelha o que scripts/build-release.sh produz de fato (cp -R da skill
+# inteira, hooks/ incluido, ver CLAUDE.md §Installed vs Source Drift).
+_make_guard_release() {
+  _r=$1
+  _root="$_r/cstk-v1"
+  mkdir -p "$_root/catalog/skills/agente-00c-runtime/hooks" \
+           "$_root/catalog/skills/agente-00c-runtime/scripts" \
+           "$_root/catalog/language/go/skills/golang-helper" \
+           "$_root/catalog/language/go/hooks" || return 1
+  printf 'v1\n' > "$_root/catalog/VERSION"
+  {
+    printf 'sdd:agente-00c-runtime\n'
+    printf 'language-go:golang-helper\n'
+  } > "$_root/catalog/profiles.txt"
+  printf '# agente-00c-runtime\n' > "$_root/catalog/skills/agente-00c-runtime/SKILL.md"
+  printf '#!/bin/sh\nexit 0\n' > "$_root/catalog/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh"
+  chmod +x "$_root/catalog/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh"
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"guard","timeout":5}]}]}}\n' \
+    > "$_root/catalog/skills/agente-00c-runtime/hooks/settings.snippet.json"
+  printf '#!/bin/sh\nexit 0\n' > "$_root/catalog/skills/agente-00c-runtime/scripts/bash-guard.sh"
+  printf '# golang helper\n' > "$_root/catalog/language/go/skills/golang-helper/SKILL.md"
+  printf '#!/bin/sh\necho pre-commit\n' > "$_root/catalog/language/go/hooks/pre-commit.sh"
+  printf '{"hooks":{"go":{"vet":"go vet ./..."}}}\n' > "$_root/catalog/language/go/settings.json"
+  (cd "$_r" && tar -czf cstk-v1.tar.gz cstk-v1) || return 1
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$_r" && sha256sum cstk-v1.tar.gz > cstk-v1.tar.gz.sha256) || return 1
+  else
+    (cd "$_r" && shasum -a 256 cstk-v1.tar.gz > cstk-v1.tar.gz.sha256) || return 1
+  fi
+  return 0
+}
+
+# _run_update_in: roda update_main com CWD = $1, HOME = $2, args restantes.
+_run_update_in() {
+  _ru_cwd=$1; _ru_home=$2; shift 2
+  capture env HOME="$_ru_home" CSTK_LIB="$CSTK_LIB" CWD="$_ru_cwd" sh -c '
+    cd "$CWD" || exit 1
+    . "$CSTK_LIB/update.sh"
+    update_main "$@"
+  ' update_test "$@"
+}
+
+# ==== install --scope project + skill agente-00c-runtime => guard-hook merged ====
+
+scenario_install_project_guard_hook_merged() {
+  if ! _has_jq; then _error "no_jq" "jq necessario"; return 2; fi
+  _r="$TMPDIR_TEST/r"
+  _proj="$TMPDIR_TEST/proj"
+  _make_guard_release "$_r" || { _error "fixture" ""; return 2; }
+  mkdir -p "$_proj"
+  : > "$_proj/package.json"
+
+  _run_install_in "$_proj" "$TMPDIR_TEST/h" \
+    --scope project agente-00c-runtime \
+    --from "file://$_r/cstk-v1.tar.gz"
+
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ -f "$_proj/.claude/skills/agente-00c-runtime/SKILL.md" ] \
+    || { _fail "skill agente-00c-runtime ausente" ""; return 1; }
+  [ -x "$_proj/.claude/hooks/pretooluse-bash-guard.sh" ] \
+    || { _fail "guard-hook nao provisionado em .claude/hooks/" ""; return 1; }
+  jq -e '.hooks.PreToolUse[0].matcher == "Bash"' "$_proj/.claude/settings.json" >/dev/null \
+    || { _fail "settings.json sem guard-hook mesclado" "$(cat "$_proj/.claude/settings.json" 2>/dev/null)"; return 1; }
+  assert_stderr_contains "guard-hooks: merged" || return 1
+}
+
+# ==== install --scope global => guard-hook omitido (Decision 9/FR-009c) ====
+
+scenario_install_global_guard_hook_omitido() {
+  _r="$TMPDIR_TEST/r"
+  _h="$TMPDIR_TEST/h"
+  _make_guard_release "$_r" || { _error "fixture" ""; return 2; }
+
+  _run_install_in "$TMPDIR_TEST" "$_h" \
+    --scope global agente-00c-runtime \
+    --from "file://$_r/cstk-v1.tar.gz"
+
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install global exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ -f "$_h/.claude/skills/agente-00c-runtime/SKILL.md" ] \
+    || { _fail "skill nao instalada" ""; return 1; }
+  [ -e "$_h/.claude/hooks/pretooluse-bash-guard.sh" ] \
+    && { _fail "guard-hook criado em global (FR-009c/Decision 9 violado)" ""; return 1; }
+  assert_stderr_contains "guard-hooks (enforced-guards) omitidos em scope=global" || return 1
+  return 0
+}
+
+# ==== Coexistencia: profile=language-go + skill agente-00c-runtime juntos ====
+
+scenario_install_coexistencia_language_e_guard_hook() {
+  if ! _has_jq; then _error "no_jq" "jq necessario"; return 2; fi
+  _r="$TMPDIR_TEST/r"
+  _proj="$TMPDIR_TEST/proj"
+  _make_guard_release "$_r" || { _error "fixture" ""; return 2; }
+  mkdir -p "$_proj"
+  : > "$_proj/package.json"
+
+  _run_install_in "$_proj" "$TMPDIR_TEST/h" \
+    --scope project --profile language-go agente-00c-runtime \
+    --from "file://$_r/cstk-v1.tar.gz"
+
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ -f "$_proj/.claude/hooks/pre-commit.sh" ] \
+    || { _fail "hook de language-go ausente (regressao)" ""; return 1; }
+  [ -x "$_proj/.claude/hooks/pretooluse-bash-guard.sh" ] \
+    || { _fail "guard-hook ausente (coexistencia quebrada)" ""; return 1; }
+  jq -e '.hooks.go.vet == "go vet ./..."' "$_proj/.claude/settings.json" >/dev/null \
+    || { _fail "settings.json perdeu hooks.go (merge language)" "$(cat "$_proj/.claude/settings.json")"; return 1; }
+  jq -e '.hooks.PreToolUse[0].matcher == "Bash"' "$_proj/.claude/settings.json" >/dev/null \
+    || { _fail "settings.json perdeu hooks.PreToolUse (merge guard)" "$(cat "$_proj/.claude/settings.json")"; return 1; }
+  assert_stderr_contains "hooks: merged" || return 1
+  assert_stderr_contains "guard-hooks: merged" || return 1
+}
+
+# ==== update: reprovisiona guard-hook quando agente-00c-runtime e alvo ====
+
+scenario_update_project_guard_hook_reprovisionado() {
+  if ! _has_jq; then _error "no_jq" "jq necessario"; return 2; fi
+  _r="$TMPDIR_TEST/r"
+  _proj="$TMPDIR_TEST/proj"
+  _make_guard_release "$_r" || { _error "fixture" ""; return 2; }
+  mkdir -p "$_proj"
+  : > "$_proj/package.json"
+
+  _run_install_in "$_proj" "$TMPDIR_TEST/h" \
+    --scope project agente-00c-runtime \
+    --from "file://$_r/cstk-v1.tar.gz"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install previo exit" "$_CAPTURED_STDERR"; return 1; }
+
+  # Simula drift: hook provisionado e apagado do disco (ex: usuario limpou
+  # .claude/hooks/ manualmente); update deve REPROVISIONAR.
+  rm -f "$_proj/.claude/hooks/pretooluse-bash-guard.sh"
+
+  _run_update_in "$_proj" "$TMPDIR_TEST/h" --scope project \
+    --from "file://$_r/cstk-v1.tar.gz"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "update exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ -x "$_proj/.claude/hooks/pretooluse-bash-guard.sh" ] \
+    || { _fail "update nao reprovisionou o guard-hook (achado da research.md)" ""; return 1; }
+  assert_stderr_contains "guard-hooks: merged" || return 1
+}
+
+# ==== update --scope global => guard-hook omitido (mesma regra do install) ====
+
+scenario_update_global_guard_hook_omitido() {
+  _r="$TMPDIR_TEST/r"
+  _h="$TMPDIR_TEST/h"
+  _make_guard_release "$_r" || { _error "fixture" ""; return 2; }
+
+  _run_install_in "$TMPDIR_TEST" "$_h" \
+    --scope global agente-00c-runtime \
+    --from "file://$_r/cstk-v1.tar.gz"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install previo exit" "$_CAPTURED_STDERR"; return 1; }
+
+  _run_update_in "$TMPDIR_TEST" "$_h" --scope global \
+    --from "file://$_r/cstk-v1.tar.gz"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "update exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ -e "$_h/.claude/hooks/pretooluse-bash-guard.sh" ] \
+    && { _fail "guard-hook criado em global via update (Decision 9 violado)" ""; return 1; }
+  assert_stderr_contains "guard-hooks (enforced-guards) omitidos em scope=global" || return 1
+  return 0
 }
 
 # ==== Dry-run: nada e escrito mas plano e reportado ====

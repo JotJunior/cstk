@@ -12,7 +12,7 @@
 #
 # FR-006 — fail-silent absoluto: em modo exibicao, SEMPRE exit 0.
 # OWASP A05 — injecao: valores de usuario passados via -v awk (NUNCA interpolados).
-# Ref: docs/specs/show-tips/contracts/cli-show-tip.md
+# Ref: docs/specs/_archived/show-tips/contracts/cli-show-tip.md
 
 set -eu
 

@@ -53,8 +53,12 @@ _extract_frontmatter() {
 }
 
 scenario_frontmatter_description_trigger_e_antitrigger() {
-  # CHK029, CHK030: regex `Use quando.*NAO use` no frontmatter (1+
-  # trigger + 1+ anti-trigger). DOTALL via tr para colapsar newlines.
+  # CHK029, CHK030: description precisa de 1+ trigger E 1+ anti-trigger.
+  # O INVARIANTE e a presenca das duas clausulas, nao a frase literal:
+  # aceita a forma original ("Use quando ... NAO use") e a convencao
+  # enxuta do catalogo pos-5.15.0 ("Use ANTES ... Skip:") — o trim de
+  # boot-tax da description manteve trigger+anti-trigger.
+  # DOTALL via tr para colapsar newlines.
   _fm=$(_extract_frontmatter)
   if [ -z "$_fm" ]; then
     _fail "frontmatter vazio" "esperado bloco YAML entre '---' no topo"
@@ -62,9 +66,14 @@ scenario_frontmatter_description_trigger_e_antitrigger() {
   fi
   # Colapsa newlines para 1 linha e aplica regex.
   _flat=$(printf '%s' "$_fm" | tr '\n' ' ')
-  if ! printf '%s' "$_flat" | grep -Eq 'Use quando.*NAO use'; then
-    _fail "frontmatter sem trigger+anti-trigger" \
-      "regex 'Use quando.*NAO use' nao casou no frontmatter"
+  if ! printf '%s' "$_flat" | grep -Eq 'Use (quando|ANTES)'; then
+    _fail "frontmatter sem clausula de trigger" \
+      "regex 'Use (quando|ANTES)' nao casou no frontmatter"
+    return 1
+  fi
+  if ! printf '%s' "$_flat" | grep -Eq '(NAO use|Skip:)'; then
+    _fail "frontmatter sem clausula de anti-trigger" \
+      "regex '(NAO use|Skip:)' nao casou no frontmatter"
     return 1
   fi
 }

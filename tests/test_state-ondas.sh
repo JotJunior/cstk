@@ -200,6 +200,41 @@ scenario_record_skill_sem_decisao_id_funciona() {
   assert_stdout_contains "null" || return 1
 }
 
+# ==== record-skill --kind (higiene da metrica de skills, revisao 5.15.0) ====
+
+scenario_record_skill_kind_default_e_skill() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill specify --decisao-id dec-001
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].skills_invoked[0].kind'
+  assert_stdout_contains "skill" || return 1
+}
+
+scenario_record_skill_kind_gate_gravado() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-skill --state-dir "$_sd" \
+    --skill validate-tasks-template --decisao-id dec-002 --kind gate
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].skills_invoked[0].kind'
+  assert_stdout_contains "gate" || return 1
+}
+
+scenario_record_skill_kind_invalido_usage() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-skill --state-dir "$_sd" --skill x --kind tool
+  if [ "$_CAPTURED_EXIT" != 2 ]; then
+    _fail "kind invalido exit" "esperado 2, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "kind" || return 1
+}
+
 scenario_record_skill_sem_onda_falha() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"

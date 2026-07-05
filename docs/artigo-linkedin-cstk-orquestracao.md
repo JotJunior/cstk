@@ -10,7 +10,7 @@ Este artigo não é um pitch. É um relato técnico, com os números reais que o
 
 O **cstk** entrega três camadas que funcionam de forma independente:
 
-- **Skills** — capacidades auto-invocadas por contexto (`specify`, `plan`, `bugfix`, `owasp-security`, `advisor`, `create-use-case`, entre outras). Você descreve a intenção em linguagem natural e a skill certa dispara.
+- **Skills** — capacidades auto-invocadas por contexto (`specify`, `plan`, `bugfix`, `owasp-security`, `advisor`, `create-tasks`, entre outras). Você descreve a intenção em linguagem natural e a skill certa dispara.
 - **CLI** — um binário `cstk` com subcomandos para sessões paralelas (`session`), memória de conhecimento (`recall`), painel web (`serve`) e diagnóstico de drift (`doctor`).
 - **Orquestradores** — a trilha avançada (e admitidamente mais experimental): `agente-00c` conduz um projeto inteiro e `feature-00c` conduz uma feature individual, ambos rodando o pipeline SDD sozinhos.
 

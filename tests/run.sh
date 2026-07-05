@@ -276,6 +276,16 @@ _is_internal_test() {
       # cobre agente-00c-runtime/scripts/_state-dir.sh (parametrizacao do state dir)
       [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_state-dir.sh" ] && return 0
       return 1 ;;
+    test_pretooluse-bash-guard.sh)
+      # cobre global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh
+      # (US1, enforced-guards). _find_scripts so escaneia */scripts/*.sh e
+      # cli/lib/*.sh por convencao (FASE 9.3) — hooks/ e um diretorio novo
+      # (harness-invoked, nao skill/cli-invoked, ver plan.md §Project
+      # Structure de enforced-guards) fora desse escopo, entao o mapeamento
+      # 1:1 nao enxerga o script mesmo com nome de teste identico. Existence-
+      # guarded: se o hook sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh" ] && return 0
+      return 1 ;;
     *) return 1 ;;
   esac
 }

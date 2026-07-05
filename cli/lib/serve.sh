@@ -3,9 +3,11 @@
 # Uso: sourced por cli/cstk, entao chamado via serve_main "$@".
 #
 # Contrato publico:
-#   serve_main [--port P] [--host H] [--reinstall] [--help]
+#   serve_main [--port P] [--host H] [--reinstall] [--update]
+#              [--allow-unverified] [--help]
 #     exit 0  sucesso (painel rodando ou --help)
-#     exit 1  erro geral (prereq ausente, download falhou, instalacao corrompida)
+#     exit 1  erro geral (prereq ausente, download falhou, instalacao
+#             corrompida, integridade nao confirmada sem bypass explicito)
 #     exit 2  uso incorreto (porta invalida, flag desconhecida)
 #
 # Dependencias internas (sourced via $CSTK_LIB):
@@ -15,50 +17,53 @@
 # Decisao de design (research.md D2):
 #   cli/lib/tarball.sh::download_and_verify NAO e reutilizado porque exige
 #   sha256_url e aborta na ausencia. cstk-panel nao publica .sha256 de forma
-#   confiavel; serve.sh implementa fluxo proprio com integridade best-effort.
+#   confiavel; serve.sh implementa fluxo proprio de integridade FAIL-CLOSED
+#   (enforced-guards US2, research.md Decision 6, FR-008/009/010/011): sem
+#   `.sha256` verificavel, BLOQUEIA por padrao (outcome unverifiable-blocked).
+#   Bypass explicito via `--allow-unverified` ou `CSTK_SERVE_ALLOW_UNVERIFIED=1`
+#   e o UNICO caminho para prosseguir (outcome unverifiable-bypassed), sempre
+#   com aviso de alta visibilidade em stderr + linha auditavel em
+#   `<cwd>/.claude/enforcement-log.jsonl` (mesmo arquivo do hook US1,
+#   `source:"serve-integrity"` — contract enforcement-log.md). Divergencia de
+#   checksum (`.sha256` presente mas nao confere) permanece bloqueio absoluto
+#   (outcome mismatch-blocked) — o bypass NUNCA se aplica a esse caso.
 #
 # POSIX sh puro — sem Bash-isms (nao usa [[ ]], arrays, local, source, <<<).
 # Deps opcionais confinadas: npm, node (runtime do painel, nao do cstk).
-# curl e usado via http.sh (nao diretamente).
+# curl e usado via http.sh (nao diretamente). SEM jq (Principio II — jq e um
+# carve-out confinado a pretooluse-bash-guard.sh, research.md Decision 2, nao
+# uma dependencia livre para todo o runtime); a linha JSONL de
+# `enforcement-log.jsonl` e composta via printf + escaping manual
+# (`_serve_json_escape`, mesmo padrao de global/skills/review-features/
+# scripts/aggregate.sh::json_escape).
 
 if [ "${_SERVE_LOADED:-}" = "1" ]; then
   return 0
 fi
 _SERVE_LOADED=1
 
-# Hosts autorizados para download do tarball do painel (S2/CHK-S03/FR-012).
-# Qualquer tarball_url de host fora desta lista e rejeitada antes do download.
-_SERVE_ALLOWED_HOSTS="github.com codeload.github.com objects.githubusercontent.com api.github.com"
+# Allowlist de hosts confiaveis para download do tarball do painel
+# (S2/CHK-S03/FR-012) agora vive em cli/lib/trusted-hosts.sh, compartilhada
+# com install.sh/self-update.sh (enforced-guards US3, Decision 7 — reuso, nao
+# 3 constantes divergentes). Sourced aqui em vez de function-local porque e
+# so uma constante + funcao pura (sem I/O), consumida pelos 2 call sites de
+# _serve_check_host_allowlist dentro de _serve_install.
+# shellcheck source=/dev/null
+. "${CSTK_LIB:?CSTK_LIB must be set}/trusted-hosts.sh"
 
 # URL da API do GitHub para consultar o release mais recente.
 _SERVE_GITHUB_API="https://api.github.com/repos/JotJunior/cstk-panel/releases/latest"
 
 # _serve_check_host_allowlist URL
-# Verifica que URL usa schema https:// e host autorizado.
+# Wrapper fino sobre trusted_host_check (cli/lib/trusted-hosts.sh). Mantido
+# com o mesmo nome/assinatura para nao alterar os pontos de chamada
+# existentes dentro de _serve_install nem o comportamento observavel (US3
+# task 4.2 — a allowlist e a logica de comparacao agora vem da fonte
+# compartilhada, mas o exit code e o formato geral da mensagem permanecem
+# equivalentes em qualidade).
 # exit 0 = ok; exit 1 = rejeitado (mensagem em stderr).
 _serve_check_host_allowlist() {
-  _sca_url="$1"
-  # CHK-S04: schema deve ser https://
-  case "$_sca_url" in
-    https://*) ;;
-    *)
-      printf 'cstk serve: erro: URL rejeita schema nao-HTTPS: %s\n' "$_sca_url" >&2
-      return 1
-      ;;
-  esac
-  # Extrair host: remover https:// e pegar ate a primeira /
-  _sca_host=$(printf '%s' "$_sca_url" | sed 's|^https://||' | sed 's|/.*||')
-  # S2/FR-012: verificar contra allowlist via case glob
-  case "$_sca_host" in
-    github.com|codeload.github.com|objects.githubusercontent.com|api.github.com)
-      return 0
-      ;;
-    *)
-      printf 'cstk serve: erro: host nao autorizado na allowlist: %s\n' "$_sca_host" >&2
-      printf 'cstk serve: hosts permitidos: %s\n' "$_SERVE_ALLOWED_HOSTS" >&2
-      return 1
-      ;;
-  esac
+  trusted_host_check "$1"
 }
 
 # _serve_is_installed PANEL_DIR
@@ -117,12 +122,79 @@ _serve_shutdown() {
   fi
 }
 
-# _serve_install PANEL_DIR
+# _serve_json_escape STRING -> imprime STRING com \ e " escapados (sem jq —
+# serve.sh permanece POSIX puro sem dependencia nova, Principio II). Mesmo
+# padrao de global/skills/review-features/scripts/aggregate.sh::json_escape.
+_serve_json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+# _serve_write_integrity_log OUTCOME PACKAGE_URL EXPECTED ACTUAL BYPASS_METHOD
+# Append best-effort de uma linha "serve-integrity" no MESMO
+# <cwd>/.claude/enforcement-log.jsonl usado por pretooluse-bash-guard.sh
+# (contract enforcement-log.md; data-model.md::IntegrityVerificationOutcome).
+# OUTCOME esperado: unverifiable-blocked | unverifiable-bypassed |
+# mismatch-blocked. NUNCA chamar para "verified" (task 3.3.3 — sucesso
+# silencioso, sem linha; o caso feliz ja e coberto pelo printf informativo).
+# EXPECTED/ACTUAL/BYPASS_METHOD: "" quando nao aplicavel -> vira `null` no
+# JSON emitido (data-model.md: expected_sha256/actual_sha256/bypass_method
+# sao nullable). <cwd> = diretorio de trabalho no momento da chamada — mesma
+# convencao de <projeto-alvo>/.claude usada em todo o resto do contrato
+# (dec-034: nao usar CSTK_PANEL_DIR, que e cache fixo COMPARTILHADO entre
+# projetos, nao um "projeto-alvo").
+# Falha de escrita NUNCA aborta o fluxo de serve — so aviso em stderr (mesma
+# semantica best-effort do escritor US1 em pretooluse-bash-guard.sh).
+_serve_write_integrity_log() {
+  _swl_outcome="$1"
+  _swl_pkg_url="$2"
+  _swl_expected="$3"
+  _swl_actual="$4"
+  _swl_bypass="$5"
+
+  _swl_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _swl_ts=""
+  _swl_dir="$(pwd)/.claude"
+
+  _swl_url_j=$(_serve_json_escape "$_swl_pkg_url")
+
+  if [ -n "$_swl_expected" ]; then
+    _swl_expected_j="\"$(_serve_json_escape "$_swl_expected")\""
+  else
+    _swl_expected_j="null"
+  fi
+  if [ -n "$_swl_actual" ]; then
+    _swl_actual_j="\"$(_serve_json_escape "$_swl_actual")\""
+  else
+    _swl_actual_j="null"
+  fi
+  if [ -n "$_swl_bypass" ]; then
+    _swl_bypass_j="\"$(_serve_json_escape "$_swl_bypass")\""
+  else
+    _swl_bypass_j="null"
+  fi
+
+  _swl_line=$(printf '{"source":"serve-integrity","timestamp":"%s","outcome":"%s","package_url":"%s","expected_sha256":%s,"actual_sha256":%s,"bypass_method":%s}' \
+    "$_swl_ts" "$_swl_outcome" "$_swl_url_j" "$_swl_expected_j" "$_swl_actual_j" "$_swl_bypass_j")
+
+  mkdir -p "$_swl_dir" 2>/dev/null || :
+  printf '%s\n' "$_swl_line" >>"$_swl_dir/enforcement-log.jsonl" 2>/dev/null \
+    || printf 'cstk serve: aviso: falha ao gravar enforcement-log.jsonl\n' >&2
+  return 0
+}
+
+# _serve_install PANEL_DIR [ALLOW_UNVERIFIED] [BYPASS_METHOD]
 # Realiza o download e instalacao do painel em PANEL_DIR.
 # Usa tmpdir privado; move atomicamente para PANEL_DIR apos sucesso.
-# exit 0 = ok; exit 1 = falha (PANEL_DIR inalterado).
+# ALLOW_UNVERIFIED: "1" bypassa o bloqueio fail-closed quando a integridade
+#   nao pode ser confirmada (default "0" — bloqueia). NUNCA bypassa
+#   divergencia de checksum (mismatch — regressao FR-010, task 3.4).
+# BYPASS_METHOD: "flag" | "env" | "" — origem do bypass, registrada no log
+#   quando ALLOW_UNVERIFIED=1 (data-model.md::bypass_method).
+# exit 0 = ok; exit 1 = falha (PANEL_DIR inalterado, inclusive por integridade
+#   nao confirmada/divergente).
 _serve_install() {
   _si_panel_dir="$1"
+  _si_allow_unverified="${2:-0}"
+  _si_bypass_method="${3:-}"
 
   # Sourcear helpers de rede e checksum
   # shellcheck source=/dev/null
@@ -195,23 +267,49 @@ _serve_install() {
     return 1
   fi
 
-  # Integridade best-effort (FR-008): tentar .sha256 asset
+  # Integridade FAIL-CLOSED (enforced-guards US2 — FR-008/009/010/011):
+  # por padrao, cstk serve MUST NOT iniciar a partir de um pacote cuja
+  # integridade nao foi confirmada (task 3.1). Bypass explicito via
+  # --allow-unverified/CSTK_SERVE_ALLOW_UNVERIFIED=1 e o UNICO caminho para
+  # prosseguir sem .sha256 (task 3.2) — NUNCA aplicavel quando o .sha256
+  # EXISTE mas diverge (mismatch permanece bloqueio absoluto, regressao
+  # FR-010/task 3.4).
   _si_sha256_url="${_si_tarball}.sha256"
   _si_sha256_file="$_si_tmp/archive.tar.gz.sha256"
+  _si_expected=""
+  _si_actual=""
+
   if _serve_check_host_allowlist "$_si_sha256_url" 2>/dev/null && \
      http_download "$_si_sha256_url" "$_si_sha256_file" 2>/dev/null; then
     _si_expected=$(awk '{print $1}' "$_si_sha256_file" 2>/dev/null)
     _si_actual=$(sha256_file "$_si_archive" 2>/dev/null)
-    if [ -n "$_si_expected" ] && [ -n "$_si_actual" ]; then
-      if [ "$_si_expected" != "$_si_actual" ]; then
-        printf 'cstk serve: erro: checksum SHA-256 nao confere (integridade comprometida)\n' >&2
-        rm -rf -- "$_si_tmp"
-        return 1
-      fi
-      printf 'cstk serve: integridade verificada (SHA-256 ok)\n'
+  fi
+
+  if [ -n "$_si_expected" ] && [ -n "$_si_actual" ]; then
+    # .sha256 obtido e ambos os hashes sao calculaveis -> comparacao definitiva.
+    if [ "$_si_expected" != "$_si_actual" ]; then
+      printf 'cstk serve: erro: checksum SHA-256 nao confere (integridade comprometida)\n' >&2
+      _serve_write_integrity_log "mismatch-blocked" "$_si_tarball" "$_si_expected" "$_si_actual" ""
+      rm -rf -- "$_si_tmp"
+      return 1
     fi
+    printf 'cstk serve: integridade verificada (SHA-256 ok)\n'
+    # outcome=verified: sucesso silencioso, SEM linha no enforcement-log
+    # (task 3.3.3 — caso feliz ja coberto pelo printf acima).
   else
-    printf 'cstk serve: aviso: arquivo .sha256 nao disponivel; continuando sem verificacao de integridade\n'
+    # Nao-verificavel: .sha256 ausente, host fora da allowlist, download
+    # falhou, ou conteudo ilegivel/vazio. Fail-closed por padrao.
+    if [ "$_si_allow_unverified" = "1" ]; then
+      printf 'cstk serve: AVISO -- prosseguindo SEM verificacao de integridade (bypass=%s); o pacote baixado NAO foi confirmado\n' \
+        "${_si_bypass_method:-desconhecido}" >&2
+      _serve_write_integrity_log "unverifiable-bypassed" "$_si_tarball" "" "" "$_si_bypass_method"
+    else
+      printf 'cstk serve: erro: integridade do pacote nao pode ser confirmada (.sha256 indisponivel)\n' >&2
+      printf 'cstk serve: use --allow-unverified ou defina CSTK_SERVE_ALLOW_UNVERIFIED=1 para prosseguir conscientemente (risco: pacote nao verificado)\n' >&2
+      _serve_write_integrity_log "unverifiable-blocked" "$_si_tarball" "" "" ""
+      rm -rf -- "$_si_tmp"
+      return 1
+    fi
   fi
 
   # Extracao com strip-components=1
@@ -263,6 +361,8 @@ serve_main() {
   _serve_host="127.0.0.1"
   _serve_reinstall=0
   _serve_update=0
+  _serve_allow_unverified=0
+  _serve_bypass_method=""
 
   # Parse de flags POSIX (while/case/shift)
   while [ "$#" -gt 0 ]; do
@@ -287,9 +387,14 @@ serve_main() {
       --update)
         _serve_update=1
         ;;
+      --allow-unverified)
+        _serve_allow_unverified=1
+        _serve_bypass_method="flag"
+        ;;
       --help|-h)
         cat <<'HELP'
 Usage: cstk serve [--port PORT] [--host HOST] [--update] [--reinstall]
+                  [--allow-unverified]
 
 Start the cstk panel web interface. On first run, downloads the latest
 release from GitHub and installs it locally. Subsequent runs reuse the
@@ -301,22 +406,35 @@ that serves both the API and the built SPA on one port. Open
 http://127.0.0.1:5173 (or --port) in your browser.
 
 Options:
-  --port PORT     Port to listen on (integer 1024-65535; also reads $PORT).
-                  The panel server binds this port directly.
-  --host HOST     Hostname/IP to bind to (default: 127.0.0.1).
-                  Note: only 127.0.0.1 is fully supported; other values
-                  are accepted but may not affect the panel binding.
-  --update        Check GitHub for a newer panel release and reinstall only
-                  if one exists (otherwise reuse the cached version). The
-                  check is best-effort: if it fails (offline/API error), the
-                  installed version is kept and the panel still starts.
-  --reinstall     Remove the existing installation and reinstall from
-                  the latest GitHub release (unconditional; ignores --update).
-  --help, -h      Show this help and exit.
+  --port PORT           Port to listen on (integer 1024-65535; also reads
+                        $PORT). The panel server binds this port directly.
+  --host HOST           Hostname/IP to bind to (default: 127.0.0.1).
+                        Note: only 127.0.0.1 is fully supported; other
+                        values are accepted but may not affect the binding.
+  --update              Check GitHub for a newer panel release and
+                        reinstall only if one exists (otherwise reuse the
+                        cached version). Best-effort: if it fails
+                        (offline/API error), the installed version is kept
+                        and the panel still starts.
+  --reinstall           Remove the existing installation and reinstall
+                        from the latest GitHub release (unconditional;
+                        ignores --update).
+  --allow-unverified    Start even when the downloaded package's integrity
+                        cannot be confirmed (no .sha256 published). Without
+                        this flag (or the env var below), cstk serve
+                        refuses to start from an unverified package. A
+                        high-visibility warning is always printed to
+                        stderr when this bypass is used, and the decision
+                        is logged to .claude/enforcement-log.jsonl. Never
+                        bypasses a checksum MISMATCH (a published .sha256
+                        that does not match the download) -- that always
+                        blocks.
+  --help, -h            Show this help and exit.
 
 Exit codes:
   0   Panel started (or --help shown).
-  1   General error (prereq missing, download failed, install corrupt).
+  1   General error (prereq missing, download failed, install corrupt,
+      integrity unverified/mismatched without --allow-unverified).
   2   Usage error (invalid port, unknown flag).
 
 Examples:
@@ -324,11 +442,17 @@ Examples:
   cstk serve --port 8080             # listen on port 8080
   cstk serve --update                # update panel if a newer release exists, then start
   cstk serve --reinstall             # force reinstall then start
+  cstk serve --allow-unverified      # proceed even without a confirmed checksum
   cstk serve --help                  # show this help
 
 Environment:
-  CSTK_PANEL_DIR   Override install directory (default: ~/.local/share/cstk/panel)
-  PORT             Default port if --port is not given (default: 5173)
+  CSTK_PANEL_DIR                Override install directory
+                                (default: ~/.local/share/cstk/panel)
+  PORT                          Default port if --port is not given
+                                (default: 5173)
+  CSTK_SERVE_ALLOW_UNVERIFIED   Set to 1 as a non-interactive equivalent
+                                of --allow-unverified (scripts/CI). Same
+                                high-visibility warning + audit log applies.
 HELP
         return 0
         ;;
@@ -349,6 +473,15 @@ HELP
     esac
     shift
   done
+
+  # CSTK_SERVE_ALLOW_UNVERIFIED=1 (env) e um bypass equivalente a
+  # --allow-unverified, para uso nao-interativo/scripts/CI (task 3.2.1). A
+  # flag explicita tem precedencia se ambos estiverem presentes (o
+  # bypass_method registrado reflete a origem que efetivamente decidiu).
+  if [ "$_serve_allow_unverified" != "1" ] && [ "${CSTK_SERVE_ALLOW_UNVERIFIED:-}" = "1" ]; then
+    _serve_allow_unverified=1
+    _serve_bypass_method="env"
+  fi
 
   # Validar porta: deve ser inteiro puro (CHK 2.1.3)
   # Passo 1: inteiro?
@@ -432,7 +565,7 @@ HELP
 
   # Lazy-install: so instalar se nao instalado
   if ! _serve_is_installed "$_serve_panel_dir"; then
-    if ! _serve_install "$_serve_panel_dir"; then
+    if ! _serve_install "$_serve_panel_dir" "$_serve_allow_unverified" "$_serve_bypass_method"; then
       return 1
     fi
   fi
