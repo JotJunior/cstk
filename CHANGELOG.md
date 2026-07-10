@@ -5,6 +5,48 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.16.0] - 2026-07-10
+
+Origem: 4 sugestões geradas por IA em outra máquina, validadas contra o código
+antes de implementar (Princípio VI). Duas features via pipeline SDD `feature-00c`.
+A sugestão que apontava `cycles.sh check --fase` era confabulação (a flag não
+existe em nenhum agent file) e foi descartada.
+
+### Added
+
+- **`validate-documentation`: perfil de validação de artefatos SDD**
+  (sug-001/sug-003). Novo motor POSIX
+  `global/skills/validate-documentation/scripts/validate-sdd.sh` com dois
+  perfis: `spec-profile` (sem termos de stack/implementação, FR/SC sem ID
+  duplicado, success criteria mensuráveis e technology-agnostic, seções
+  obrigatórias, `[NEEDS CLARIFICATION]` ≤ 3) e `plan-profile` (rótulo
+  `[EXISTENTE]`/`[PROPOSTA]` em claims de contrato, FR/SC citados existem na
+  spec, zero placeholder de template não-substituído). Acionamento por flag
+  `--sdd-spec`/`--sdd-plan` ou auto-detecção por path `docs/specs/*/`. Formato
+  `FINDING|<severity>|<code>|<msg>`, exit 0 (ok/avisos), 1 (erro), 2 (uso). A
+  skill antes só tinha os perfis UC (default) e `--runbook`. `SKILL.md` ganhou
+  as seções dos dois perfis + tabela de fronteira de não-duplicação com
+  `analyze` (cross-artifact) e `validate-docs-rendered` (render/links).
+  Cobertura em `tests/test_validate-sdd.sh` (19 cenários).
+
+### Fixed
+
+- **feature-00c: falso breach de wallclock na retomada** (sug-004). Na
+  retomada (`/feature-00c-resume`), o Loop de `agente-00c-feature-orchestrator.md`
+  media `budget.sh check` antes de iniciar a onda, medindo o wallclock desde
+  `.budgets.current_wave_start` da onda anterior já fechada (`state-ondas.sh end`
+  não reseta o campo) → estouro de orçamento falso. Corrigido inserindo o passo
+  `3.bis` (`state-ondas.sh start` antes do 1º `budget.sh check`), com guarda
+  anti-duplicação via subcomando `wave-status` (só inicia se a onda não estiver
+  `open`). O comportamento correto do `agente-00c-orchestrator.md` (que já
+  inicia a onda antes do budget check) não foi alterado. Não silencia o check —
+  breach legítimo dentro de onda aberta continua disparando.
+- **Drift doc↔runtime nos agent files 00c** (sug-002). `state-ondas.sh start`
+  não aceita `--fase` (etapas via `end --add-etapa`); `spawn-tracker.sh check`
+  não tem flag `--max-depth` (o teto é a constante interna `_ST_MAX=3`); o enum
+  de `--motivo-termino` usa `bloqueio_humano`, não `bloqueio`. Os exemplos
+  divergentes em `agente-00c-feature-orchestrator.md` custavam 1 retry por onda.
+
 ## [5.15.0] - 2026-07-05
 
 ### Security
@@ -3525,6 +3567,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.16.0]: https://github.com/JotJunior/cstk/releases/tag/v5.16.0
 [5.15.0]: https://github.com/JotJunior/cstk/releases/tag/v5.15.0
 [5.14.1]: https://github.com/JotJunior/cstk/releases/tag/v5.14.1
 [5.14.0]: https://github.com/JotJunior/cstk/releases/tag/v5.14.0
