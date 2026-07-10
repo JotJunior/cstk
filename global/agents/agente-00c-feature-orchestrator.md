@@ -144,7 +144,12 @@ command↔orquestrador") — o orquestrador NAO adquire lock nem inicializa
 estado. Como o pai cria o `state.json` em TODA invocacao, o estado sempre
 existe quando voce comeca; os passos 1-3 sao defesa em profundidade. Os
 passos 4-6 (ciclo da onda) rodam normalmente na primeira invocacao; em
-retomadas (resume), pulam-se 1-3 e continua-se de `.next_instruction`.
+retomadas (resume), pulam-se 1-3 e continua-se de `.next_instruction`,
+entrando direto no "Loop principal de uma onda" (abaixo). O passo 3.bis
+desse Loop garante que `state-ondas.sh start` rode ANTES do primeiro
+`budget.sh check` (passo 4) tambem na retomada — mesmo quando ela nao
+passa por este pre-flight (que so roda na 1a onda) — ver "Invariante:
+retomada sempre segue onda fechada" apos o Loop.
 
 1. **Validar coexistencia com agente-00c** (FR-026): checar
    `<projeto-alvo>/.claude/agente-00c-state/state.json`. Se status =
@@ -166,7 +171,9 @@ retomadas (resume), pulam-se 1-3 e continua-se de `.next_instruction`.
      extract --text` para obter 3-7 keywords semanticas da descricao
      (FR-027 herdado).
 
-4. **Iniciar onda** via `state-ondas.sh start --fase specify`.
+4. **Iniciar onda** via `state-ondas.sh start --state-dir <SD>` (o `start`
+   NAO aceita `--fase`; a etapa `specify` e registrada no fechamento via
+   `state-ondas.sh end --add-etapa specify`).
 
 5. **Skill(specify)** via tool `Skill` (FR-008). Aguardar geracao de
    `<projeto>/docs/specs/<short-name>/spec.md`.
@@ -243,6 +250,26 @@ Sequencia da onda corrente. Cada iteracao:
    b. circular.sh detect    → padrao circular? aborto FR-022.b
    c. drift.sh check        → 5 ondas sem aspectos-chave? aborto FR-022.d
    d. retro.sh check        → 3a retro? bloqueio humano (FR-010)
+3.bis (GUARDA ANTI-DUPLICACAO — iniciar a onda ANTES do budget check,
+    budget-resume-wallclock FR-001/FR-002/FR-003): checar
+    `state-ondas.sh wave-status --state-dir $STATE_DIR`:
+      - "open"          → NAO chamar `start` (a onda corrente ja foi
+        iniciada — pelo passo 4 do "Pre-flight da execucao" na 1a onda, ou
+        por uma iteracao anterior deste mesmo Loop). Prosseguir direto ao
+        passo 4 abaixo.
+      - "closed"/"none" → chamar `state-ondas.sh start --state-dir
+        $STATE_DIR` ANTES do passo 4. Cobre os DOIS caminhos de retomada
+        (pos-agendamento e pos-bloqueio-humano) uniformemente — ver
+        "Invariante: retomada sempre segue onda fechada" logo apos o Loop.
+    REGRA DURA: `state-ondas.sh start` NAO e idempotente — cada chamada faz
+    `append` em `.waves[]` (`_so_cmd_start`, `state-ondas.sh` ~linha
+    188-224). Chama-lo quando `wave-status` == "open" duplicaria a onda.
+    Sem esta guarda condicionando a chamada, `budget.sh check` (passo 4)
+    mediria `wallclock = now - .budgets.current_wave_start` contra o
+    timestamp da onda ANTERIOR ja encerrada (`_so_cmd_end` NAO reseta
+    `.budgets.current_wave_start` — por desenho, ver plan.md
+    budget-resume-wallclock §Causa raiz), disparando breach falso antes do
+    inicio real da onda corrente.
 4. budget.sh check
    - se threshold atingido → encerrar onda + Schedule intent
 4.ter (best-effort, ADITIVO — dica de onda, US4 — FR-006):
@@ -319,7 +346,7 @@ Sequencia da onda corrente. Cada iteracao:
      > <state_dir>/backups/wave-NNN.json
 9. recomputar hash:
    state-rw.sh sha256-update --state-dir $STATE_DIR
-10. state-ondas.sh end (com motivo: threshold|concluido|bloqueio|aborto)
+10. state-ondas.sh end (com --motivo-termino: etapa_concluida_avancando|threshold_proxy_atingido|bloqueio_humano|aborto|concluido)
 10.bis (best-effort, ADITIVO — FASE 7 cstk-knowledge-db, FR-006/FR-018):
     ingerir o conhecimento da onda na memoria cross-feature APOS o end:
       cstk recall --ingest --state-dir $STATE_DIR 2>/dev/null || \
@@ -399,6 +426,32 @@ Sequencia da onda corrente. Cada iteracao:
 12. (o lock e liberado pelo command pai apos voce retornar — NAO chame state-lock.sh release; ver Fronteira)
 13. SUMARIO + Schedule intent (ver bloco de instrucao no topo)
 ```
+
+## Invariante: retomada sempre segue onda fechada (budget-resume-wallclock)
+
+Toda retomada de `feature-00c` (`/feature-00c-resume`, pos-agendamento OU
+pos-bloqueio-humano) ocorre com a onda anterior JA FECHADA
+(`termination_reason != null`), por um destes dois caminhos:
+
+- `state-ondas.sh end --motivo-termino bloqueio_humano` (passo 10 do Loop,
+  obrigatorio) — a "Contrato de conclusao de turno" acima exige que os
+  passos 6-13 (incluindo o passo 10, `state-ondas.sh end`) rodem ANTES de
+  qualquer relatorio terminal, `bloqueio_humano` incluido: "uma onda so
+  termina quando voce emite `Schedule intent: ...` — ou um relatorio
+  terminal (`bloqueio_humano`/`aborto`/`concluido`)". Exemplo concreto
+  desse fechamento no guard de veracidade de dados (linha ~1422: "Depois
+  encerre a onda (`state-ondas.sh end --motivo-termino bloqueio_humano`) e
+  emita `Schedule intent: none; motivo=bloqueio_humano`"); OU
+- `reconcile-wave` do command pai — rede de seguranca que fecha qualquer
+  onda deixada ABERTA antes de qualquer resume (checa `wave-status`; no-op
+  se ja "closed"/"none" — ver cabecalho de `state-ondas.sh`).
+
+Consequencia: os dois caminhos de retomada citados na spec
+`docs/specs/budget-resume-wallclock/spec.md` (User Story 1) reduzem ao
+MESMO caso — onda anterior fechada + wallclock acumulado desde o fim
+daquela onda — e o passo 3.bis do Loop principal ("checar `wave-status`,
+chamar `start` se != open") cobre ambos uniformemente, sem tratamento
+especial por caminho de retomada.
 
 ## Instrumentacao da camada B — `.tasks[]` e `.events[]` (FR-018/FR-020/FR-021/FR-022)
 
@@ -871,7 +924,7 @@ Paths absolutos, flags exatas — paralelo ao bloco de §5.e.bis de
 
 # Passo 1: depth disponivel?
 "$RUNTIME_SCRIPTS"/spawn-tracker.sh check \
-  --state-dir "$SD" --max-depth 3 || { echo "abort: depth"; exit 3; }
+  --state-dir "$SD" || { echo "abort: depth"; exit 3; }   # teto = const _ST_MAX=3 no script, nao ha flag
 
 # Passo 2: ONDA_ID corrente
 ONDA_ID=$("$RUNTIME_SCRIPTS"/state-ondas.sh current-id --state-dir "$SD")
@@ -1065,7 +1118,8 @@ de profundidade atingido" e bloqueio humano.
 
 **Validacao de regressao**: o spawn-tracker.sh existe para auditar
 profundidade. Em retomadas, checar `spawn-tracker.sh check
---max-depth 3` antes de qualquer spawn.
+--state-dir <SD>` antes de qualquer spawn (o teto de profundidade e a
+constante interna `_ST_MAX=3` do script, nao um flag).
 
 ### Cap defensivo de invocacoes por onda (F4.3 — hardening F-003)
 
@@ -1371,7 +1425,7 @@ bloqueios.sh register --state-dir "$STATE_DIR" --decisao-id "$DEC" \
   --contexto-para-resposta "O artefato exige <o-que-falta> e nenhuma fonte rastreavel esta disponivel. Forneca a fonte ou autorize prosseguir sem o dado."
 ```
 
-Depois encerre a onda (`state-ondas.sh end --motivo-termino bloqueio`) e emita
+Depois encerre a onda (`state-ondas.sh end --motivo-termino bloqueio_humano`) e emita
 `Schedule intent: none; motivo=bloqueio_humano`. **Double-check de veracidade**: ao
 fechar `specify`/`plan`, releia o artefato e confirme a fonte de cada payload/endpoint/
 valor concreto; em artefatos grandes delegue a auditoria ao subagente

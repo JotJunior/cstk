@@ -963,7 +963,7 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
 
    # Passo 1: depth disponivel?
    "$RUNTIME_SCRIPTS"/spawn-tracker.sh check \
-     --state-dir "$SD" --max-depth 3 || { echo "abort: depth"; exit 3; }
+     --state-dir "$SD" || { echo "abort: depth"; exit 3; }   # teto = const _ST_MAX=3 no script, nao ha flag
 
    # Passo 2: ONDA_ID corrente
    ONDA_ID=$("$RUNTIME_SCRIPTS"/state-ondas.sh current-id --state-dir "$SD")

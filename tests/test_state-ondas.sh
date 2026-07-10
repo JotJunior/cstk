@@ -38,6 +38,33 @@ scenario_start_sequencial_gera_onda_002() {
   assert_stdout_contains "onda-002" || return 1
 }
 
+
+# budget-resume-wallclock (FR-004/SC-001/SC-003): `start` reseta
+# .budgets.current_wave_start mesmo quando a onda ANTERIOR foi fechada com
+# um current_wave_start herdado ja no passado (o cenario real de uma
+# retomada: `end` NAO reseta o campo — ver comentario acima de
+# `_so_cmd_start`). O state "onda encerrada + current_wave_start antigo"
+# preparado aqui representa uniformemente AMBOS os caminhos de retomada do
+# feature-00c (pos-agendamento e pos-bloqueio-humano) — ver invariante
+# "resume sempre segue onda fechada" em agente-00c-feature-orchestrator.md.
+scenario_start_apos_onda_fechada_reseta_wallclock() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  # Simula o campo herdado da onda ja fechada apontando bem no passado.
+  capture "$RW" set --state-dir "$_sd" \
+    --field '.budgets.current_wave_start' --value '"2020-01-01T00:00:00Z"'
+  capture "$RW" get --state-dir "$_sd" --field '.budgets.current_wave_start'
+  assert_stdout_contains "2020-01-01" || return 1
+  # Retomada: state-ondas.sh start (passo 3.bis) DEVE regravar current_wave_start.
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start pos-retomada" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-002" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.budgets.current_wave_start'
+  assert_stdout_not_contains "2020-01-01" || return 1
+}
+
 scenario_tool_call_tick_incrementa() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
