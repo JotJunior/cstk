@@ -180,6 +180,16 @@ Valide e corrija os problemas encontrados em UC-CAD-001.md
 Valide o runbook RB-001-restore-drill.md com perfil --runbook
 ```
 
+**Validar spec.md de uma feature SDD (perfil spec-profile):**
+```
+global/skills/validate-documentation/scripts/validate-sdd.sh docs/specs/minha-feature/spec.md
+```
+
+**Validar plan.md de uma feature SDD (perfil plan-profile, com referencia cruzada de IDs):**
+```
+global/skills/validate-documentation/scripts/validate-sdd.sh docs/specs/minha-feature/plan.md --spec docs/specs/minha-feature/spec.md
+```
+
 ---
 
 ## Perfil `--runbook` (RB-NNN)
@@ -254,6 +264,121 @@ sob pressao. Placeholder = pessoa errada lendo o passo errado em
 
 ---
 
+## Perfil `spec-profile` (SDD)
+
+Valida `spec.md` de uma feature SDD (`docs/specs/<feature>/spec.md`)
+contra os criterios ja documentados na skill `specify`. Motor
+deterministico: `global/skills/validate-documentation/scripts/validate-sdd.sh`
+(POSIX sh, mesmo padrao de `create-tasks/scripts/validate-tasks-template.sh`
+e `validate-docs-rendered/scripts/validate.sh`).
+
+**Quando usar**: apos `specify` (ou apos `clarify`), antes de avancar para
+`plan` — gate de qualidade da spec antes de investir em desenho tecnico.
+
+**Acionamento**: flag `--sdd-spec` (forca o perfil, ignora deteccao por
+path) OU deteccao automatica quando `FILE` casa a convencao
+`docs/specs/<feature>/spec.md`.
+
+### Catalogo de findings (spec-profile)
+
+| code | severidade | Condicao |
+|------|------------|----------|
+| `missing-section` | Erro | Falta uma das 3 secoes obrigatorias (`User Scenarios & Testing`, `Requirements`, `Success Criteria`). |
+| `impl-detail-in-spec` | Erro | Termo de stack/linguagem/framework/lib especifica no corpo da spec (ex.: `bcrypt`, `PostgreSQL`, `React`). |
+| `sc-not-measurable` | Erro | Success Criterion sem metrica quantificavel OU com jargao tecnico (ex.: `API`, `TPS`, `paint time`). |
+| `too-many-clarifications` | Erro | Mais de 3 marcadores `[NEEDS CLARIFICATION]` no total. |
+| `duplicate-id` | Erro | ID `FR-`/`SC-` repetido no mesmo documento (reusa a convencao do Gotcha abaixo). |
+| `na-placeholder-section` | Aviso | Secao deixada com placeholder `N/A` em vez de removida. |
+| `vague-adjective` | Aviso | Adjetivo vago sem quantificacao em Requirements/Success Criteria (ex.: "MUST be fast", "deve ser robusto"). |
+| `coupled-user-story` | Aviso | User story que depende de outra para ser testada isoladamente. |
+
+Wordlists/regex de `impl-detail-in-spec`/`sc-not-measurable`/`vague-adjective`
+sao calibradas contra os 6 anti-padroes de `specify/examples/spec-bad.md`
+(deliberadamente restritas a termos concretos de stack — nao termos
+genericos de dominio como "API"/"CLI"/"JSON" que aparecem legitimamente em
+specs de ferramentas de dev, o que geraria falso-positivo).
+
+## Perfil `plan-profile` (SDD)
+
+Valida os artefatos de `/plan` de uma feature SDD — `plan.md`,
+`research.md`, `data-model.md`, `quickstart.md`, `contracts/*.md` — contra
+os criterios ja documentados na skill `plan`. Mesmo motor
+`scripts/validate-sdd.sh`.
+
+**Quando usar**: apos `plan`, antes de `checklist`/`create-tasks` — gate de
+qualidade do desenho tecnico.
+
+**Acionamento**: flag `--sdd-plan` OU deteccao automatica quando `FILE`
+casa `docs/specs/<feature>/{plan,research,data-model,quickstart}.md` ou
+`docs/specs/<feature>/contracts/*.md`.
+
+**Flag `--spec SPEC_MD`**: caminho explicito da `spec.md` correspondente,
+usado pelo check `dangling-fr-sc-ref`. Default: `<dir-de-FILE>/spec.md`
+resolvido pela convencao `docs/specs/<feature>/` — **so quando `FILE`
+segue essa convencao**. A flag explicita `--spec` aceita QUALQUER path
+(inclusive fixtures de teste fora de `docs/specs/`); a restricao de
+convencao se aplica somente ao default automatico.
+
+### Catalogo de findings (plan-profile)
+
+| code | severidade | Escopo | Condicao |
+|------|------------|--------|----------|
+| `missing-section` | Erro | `plan.md` | Falta uma das 4 secoes obrigatorias (`Summary`, `Technical Context`, `Constitution Check`, `Project Structure`). |
+| `template-placeholder` | Erro | qualquer artefato `/plan` | Token de template nao preenchido (`[FEATURE]`, `[DATE]`, `[short-name]`, `[Topico]`, `[Endpoint/Command/Event]`). |
+| `unlabeled-contract` | Erro | `contracts/*.md` | Entrada que documenta um Command/Endpoint/Event sem rotulo inequivoco real-vs-proposto (`[PROPOSTA — a validar na implementacao]` ou `[EXISTENTE]`). |
+| `residual-clarification` | Erro | `plan.md` | `[NEEDS CLARIFICATION]` remanescente. |
+| `dangling-fr-sc-ref` | Erro | `plan.md` | ID `FR-`/`SC-` citado que NAO existe na `spec.md` correspondente — checagem SEMANTICA apenas, nunca resolucao de link/anchor no disco. |
+
+### Precedencia de selecao de perfil
+
+1. **Flag explicita** (`--sdd-spec`/`--sdd-plan`/`--runbook`) vence tudo.
+2. **Deteccao automatica por path**: `UC-*.md` → perfil UC; `RB-\d{3}-*.md`
+   → `--runbook`; `docs/specs/<feature>/spec.md` → spec-profile;
+   `docs/specs/<feature>/{plan,research,data-model,quickstart}.md` ou
+   `docs/specs/<feature>/contracts/*.md` → plan-profile.
+3. **Nem flag nem convencao reconhecida** → perfil indeterminado, mensagem
+   clara em stderr, exit 2 — NUNCA aplica um perfil por engano.
+
+Exemplos (espelham `contracts/validate-sdd-cli.md` §Exemplos de saida):
+
+```console
+$ validate-sdd.sh docs/specs/enforced-guards/spec.md
+RESULT|docs/specs/enforced-guards/spec.md|profile=spec|errors=0|warnings=0
+# exit 0
+
+$ validate-sdd.sh docs/specs/x/plan.md
+FINDING|error|template-placeholder|Token de template nao preenchido: [FEATURE]
+FINDING|error|dangling-fr-sc-ref|plan.md cita FR-099, ausente na spec.md correspondente
+RESULT|docs/specs/x/plan.md|profile=plan|errors=2|warnings=0
+# exit 1
+
+$ validate-sdd.sh /tmp/qualquer/spec.md
+Perfil nao determinado para '/tmp/qualquer/spec.md': path fora da convencao docs/specs/<feature>/ e nenhuma flag informada. Use --sdd-spec ou --sdd-plan.
+# exit 2
+```
+
+## Fronteira de nao-duplicacao (`spec-profile`/`plan-profile` vs `analyze` vs `validate-docs-rendered`)
+
+Tres skills tocam artefatos SDD; cada categoria de check tem UM dono, sem
+sobreposicao (SC-005 da feature `validate-docs-sdd-profile`):
+
+| Categoria de check | Dono | spec/plan-profile faz? |
+|--------------------|------|------------------------|
+| Secoes obrigatorias presentes num UNICO artefato | `validate-documentation` (spec/plan-profile) | SIM |
+| Anti-padroes de conteudo da spec (impl. vazando, SC nao-mensuravel, `[NEEDS CLARIFICATION]` > 3, stories acopladas, adjetivos vagos, N/A residual) | `validate-documentation` (spec-profile) | SIM |
+| Placeholder de template residual / rotulo real-vs-proposto / `[NEEDS CLARIFICATION]` residual no plan | `validate-documentation` (plan-profile) | SIM |
+| ID `FR-`/`SC-` citado em `plan.md` EXISTE na `spec.md` (checagem SEMANTICA) | `validate-documentation` (plan-profile) | SIM |
+| Link/anchor entre arquivos RESOLVE no disco (arquivo existe, header casa) | `validate-docs-rendered` | NAO |
+| Sintaxe Mermaid, frontmatter YAML, code-block sem linguagem | `validate-docs-rendered` | NAO |
+| Cobertura cross-artifact (tasks vs requisitos, duplicacao, gaps, drift de terminologia, alinhamento com constitution) | `analyze` | NAO |
+| Drift de case-convention entre camadas (snake vs camel) | `analyze` (Pass G) | NAO |
+
+A linha mais sutil e a de referencia cruzada de IDs: `plan-profile` faz
+APENAS a checagem semantica (o ID existe na spec?), NUNCA a resolucao de
+path/anchor no disco — essa fica 100% com `validate-docs-rendered`.
+
+---
+
 ## Gotchas
 
 ### Valida DOCUMENTO INDIVIDUAL, nao relacionamento entre artefatos
@@ -267,6 +392,15 @@ Um `sequenceDiagram` sem `participant` declarado, ou setas fora do padrao (`-->`
 ### IDs duplicados dentro do mesmo documento sao erro, nao aviso
 
 RN01 aparecendo duas vezes, ou CT03 com dois cenarios distintos, quebra rastreabilidade. Detectar e reportar como Erro, nao Aviso.
+
+### `duplicate-id` do spec-profile reusa esta convencao, nao inventa criterio novo
+
+O check `duplicate-id` de `spec-profile` (perfil SDD, acima) aplica a MESMA
+regra deste Gotcha a `FR-`/`SC-` em `spec.md` — nao ha FR proprio na spec
+da feature `validate-docs-sdd-profile` cobrindo esse check porque ele reusa
+uma convencao ja estabelecida aqui, e nao introduz criterio novo. Fecha
+CHK004/CHK013 (checklist da feature): a citacao a este Gotcha, e nao a um
+FR-NNN inexistente, e a rastreabilidade correta.
 
 ### Minimo 5 casos de teste (sucesso + erro + edge) — abaixo disso reprova
 
