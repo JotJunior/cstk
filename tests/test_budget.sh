@@ -67,6 +67,12 @@ scenario_state_size_threshold_dispara_exit_1() {
 }
 
 scenario_wallclock_threshold_dispara_exit_1() {
+  # Onda ABERTA (start sem end — via _init_with_onda) com threshold forcado
+  # a 0: qualquer wallclock >= 0 dispara. Distinto do cenario de onda
+  # FECHADA em scenario_check_apos_start_pos_retomada_sem_falso_breach
+  # (budget-resume-wallclock FASE 2.1): aqui a onda em avaliacao esta de
+  # fato aberta (breach GENUINO); la a onda foi fechada e o `start` da
+  # retomada precede o check (sem breach). Nao regredir esta distincao.
   _sd="$TMPDIR_TEST/state"
   _init_with_onda "$_sd"
   # Reduz threshold p/ 0 -> qualquer wallclock dispara (campo EN — schema-en-migration)
@@ -78,6 +84,76 @@ scenario_wallclock_threshold_dispara_exit_1() {
     return 1
   fi
   assert_stdout_contains "wallclock	" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# budget-resume-wallclock (spec.md FR-004/SC-001/SC-002/SC-003) — retomada:
+# `state-ondas.sh start` DEVE preceder `budget.sh check` para nao medir
+# wallclock contra o current_wave_start de uma onda JA fechada (ver
+# invariante "resume sempre segue onda fechada" em
+# agente-00c-feature-orchestrator.md).
+# ---------------------------------------------------------------------------
+
+# Prepara o state "onda FECHADA com current_wave_start herdado no passado" —
+# representa uniformemente os dois caminhos de retomada do feature-00c
+# (pos-agendamento e pos-bloqueio-humano): ambos garantem onda anterior
+# fechada antes do resume (CHK007/CHK023).
+_prep_onda_fechada_wallclock_antigo() {
+  _init_with_onda "$1"
+  capture "$ON" end --state-dir "$1" --motivo-termino etapa_concluida_avancando
+  capture "$RW" set --state-dir "$1" \
+    --field '.budgets.current_wave_start' --value '"2020-01-01T00:00:00Z"'
+}
+
+# 2.1.2 — BUG CORRIGIDO: apos `state-ondas.sh start` (ordem corrigida do
+# Loop, passo 3.bis), o check NAO deve disparar breach falso mesmo com o
+# current_wave_start antigo herdado da onda anterior ja fechada.
+scenario_check_apos_start_pos_retomada_sem_falso_breach() {
+  _sd="$TMPDIR_TEST/state"
+  _prep_onda_fechada_wallclock_antigo "$_sd"
+  capture "$ON" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start pos-retomada" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" check --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "check pos-start nao deveria disparar breach" \
+      "esperado exit 0, obtido $_CAPTURED_EXIT — stdout: $_CAPTURED_STDOUT"
+    return 1
+  fi
+}
+
+# 2.1.3 — GUARD DE NAO-REGRESSAO: no MESMO state preparado, mas SEM o
+# `state-ondas.sh start` antes (ordem ANTIGA do Loop, o defeito em si),
+# o check DEVE disparar breach — prova que a diferenca de comportamento
+# esta na ORDEM das chamadas, nao numa mudanca de semantica dos helpers
+# (nenhum dos dois scripts foi alterado por esta feature).
+scenario_check_sem_start_pos_retomada_dispara_breach_antigo() {
+  _sd="$TMPDIR_TEST/state"
+  _prep_onda_fechada_wallclock_antigo "$_sd"
+  capture "$SCRIPT" check --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "check sem start deveria disparar breach (ordem antiga)" \
+      "esperado exit 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stdout_contains "wallclock	" || return 1
+}
+
+# 2.2.2 — EDGE CASE (delta ~0, quickstart.md Scenario 3): onda fechada ha
+# poucos segundos (sem timestamp forcado no passado) seguida da ordem
+# corrigida (start -> check) NAO deve disparar breach — mesma ausencia de
+# falso-positivo de uma retomada tardia (2.1.2), agora numa retomada quase
+# imediata.
+scenario_check_apos_start_retomada_imediata_delta_zero_sem_breach() {
+  _sd="$TMPDIR_TEST/state"
+  _init_with_onda "$_sd"
+  capture "$ON" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  capture "$ON" start --state-dir "$_sd"
+  capture "$SCRIPT" check --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "check retomada imediata nao deveria disparar breach" \
+      "esperado exit 0, obtido $_CAPTURED_EXIT — stdout: $_CAPTURED_STDOUT"
+    return 1
+  fi
 }
 
 scenario_check_state_ausente_falha() {
