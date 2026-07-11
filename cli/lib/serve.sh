@@ -181,6 +181,192 @@ _serve_write_integrity_log() {
   return 0
 }
 
+# _serve_download_verify_extract DEST_DIR [ALLOW_UNVERIFIED] [BYPASS_METHOD]
+# Baixa a release mais recente do painel via API GitHub, aplica a mesma
+# allowlist de hosts confiaveis + integridade FAIL-CLOSED ja em producao
+# (enforced-guards US2 — FR-008/009/010/011), e extrai o tarball em
+# DEST_DIR (sempre recriado do zero — qualquer conteudo pre-existente em
+# DEST_DIR e removido ANTES da extracao, garantindo arvore limpa
+# independente do estado anterior do caller). Grava DEST_DIR/.panel-version
+# com a tag instalada. NAO roda `npm install` nem move nada para fora de
+# DEST_DIR — e responsabilidade exclusiva do caller.
+#
+# Extraido de _serve_install (ate a extracao) para ser reusado por DOIS
+# callers sem duplicar o mecanismo de download/verificacao (FR-007):
+#   (a) _serve_install (modo nativo, abaixo): apos extrair, roda `npm
+#       install` dentro de DEST_DIR e move atomicamente para PANEL_DIR.
+#   (b) o ponto de entrada do modo alternativo baseado em container (vive
+#       no arquivo confinado pelo carve-out do Principio II condicao b,
+#       FASE 2 do backlog correspondente): apos extrair, usa DEST_DIR
+#       diretamente como contexto de build da imagem local, SEM rodar npm
+#       no host (FR-006/host_npm_used=false).
+# Nenhum segundo mecanismo de download/allowlist/integridade — MESMO code
+# path para os dois modos.
+#
+# Janela de sinal (Ctrl+C/SIGTERM durante rede/extracao): esta funcao arma
+# e desarma seu PROPRIO trap EXIT/INT/TERM sobre o tmpdir efemero de
+# download (nao o DEST_DIR do caller), limpo em qualquer saida com erro.
+# Em sucesso, o trap e desarmado ANTES de retornar — o caller fica livre
+# para armar o proprio trap para a janela seguinte (ex.: npm install) sem
+# risco de um trap sobrescrever o outro (nenhuma sobreposicao de posse).
+#
+# ALLOW_UNVERIFIED: "1" bypassa o bloqueio fail-closed quando a integridade
+#   nao pode ser confirmada (default "0" — bloqueia). NUNCA bypassa
+#   divergencia de checksum (mismatch — regressao FR-010, task 3.4).
+# BYPASS_METHOD: "flag" | "env" | "" — origem do bypass, registrada no log
+#   quando ALLOW_UNVERIFIED=1 (data-model.md::bypass_method).
+# exit 0 = ok (DEST_DIR populado + .panel-version); exit 1 = falha (DEST_DIR
+#   pode ter sido removido/recriado vazio, nunca deixado pela metade).
+_serve_download_verify_extract() {
+  _sdve_dest="$1"
+  _sdve_allow_unverified="${2:-0}"
+  _sdve_bypass_method="${3:-}"
+
+  # Sourcear helpers de rede e checksum
+  # shellcheck source=/dev/null
+  . "${CSTK_LIB}/http.sh"
+  # shellcheck source=/dev/null
+  . "${CSTK_LIB}/compat.sh"
+
+  # Tmpdir privado (SOMENTE para release.json/archive.tar.gz -- nunca
+  # DEST_DIR, que e o caminho persistente escolhido pelo caller) com
+  # cleanup garantido via trap durante toda a janela de rede.
+  _sdve_tmp=$(mktemp -d 2>/dev/null) || {
+    printf 'cstk serve: erro: nao foi possivel criar tmpdir\n' >&2
+    return 1
+  }
+  trap 'rm -rf -- "$_sdve_tmp"' EXIT INT TERM
+
+  printf 'cstk serve: consultando GitHub para release mais recente...\n'
+
+  # Consulta API GitHub (CHK-R26: falha HTTP -> exit 1)
+  _sdve_api_file="$_sdve_tmp/release.json"
+  if ! http_download "$_SERVE_GITHUB_API" "$_sdve_api_file"; then
+    printf 'cstk serve: erro: falha ao consultar API do GitHub\n' >&2
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  fi
+
+  # Extrair tag_name e tarball_url via grep/sed POSIX (sem jq)
+  _sdve_tag=$(grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' "$_sdve_api_file" \
+    | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+  _sdve_tarball=$(grep -o '"tarball_url"[[:space:]]*:[[:space:]]*"[^"]*"' "$_sdve_api_file" \
+    | sed 's/.*"tarball_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+
+  if [ -z "$_sdve_tag" ] || [ -z "$_sdve_tarball" ]; then
+    printf 'cstk serve: erro: API nao retornou tag_name ou tarball_url\n' >&2
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  fi
+
+  # CHK-R02: rejeitar prerelease ou draft
+  _sdve_prerelease=$(grep -o '"prerelease"[[:space:]]*:[[:space:]]*[a-z]*' "$_sdve_api_file" \
+    | sed 's/.*:[[:space:]]*//' | head -1)
+  _sdve_draft=$(grep -o '"draft"[[:space:]]*:[[:space:]]*[a-z]*' "$_sdve_api_file" \
+    | sed 's/.*:[[:space:]]*//' | head -1)
+  if [ "$_sdve_prerelease" = "true" ] || [ "$_sdve_draft" = "true" ]; then
+    printf 'cstk serve: erro: release mais recente eh prerelease ou draft; nao instalando\n' >&2
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  fi
+
+  printf 'cstk serve: instalando versao %s...\n' "$_sdve_tag"
+
+  # S2/CHK-S03/CHK-S04: validar host e schema da tarball_url
+  if ! _serve_check_host_allowlist "$_sdve_tarball"; then
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  fi
+
+  # Download do tarball (CHK-R03: timeouts via http.sh)
+  _sdve_archive="$_sdve_tmp/archive.tar.gz"
+  if ! http_download "$_sdve_tarball" "$_sdve_archive"; then
+    printf 'cstk serve: erro: falha ao baixar tarball do painel\n' >&2
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  fi
+
+  # CHK-R23: verificar tamanho minimo do tarball (>= 1024 bytes)
+  _sdve_size=$(wc -c < "$_sdve_archive" 2>/dev/null | tr -d ' ')
+  if [ "${_sdve_size:-0}" -lt 1024 ] 2>/dev/null; then
+    printf 'cstk serve: erro: tarball baixado parece vazio ou truncado (%s bytes)\n' \
+      "${_sdve_size:-0}" >&2
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  fi
+
+  # Integridade FAIL-CLOSED (enforced-guards US2 — FR-008/009/010/011):
+  # por padrao, cstk serve MUST NOT iniciar a partir de um pacote cuja
+  # integridade nao foi confirmada (task 3.1). Bypass explicito via
+  # --allow-unverified/CSTK_SERVE_ALLOW_UNVERIFIED=1 e o UNICO caminho para
+  # prosseguir sem .sha256 (task 3.2) — NUNCA aplicavel quando o .sha256
+  # EXISTE mas diverge (mismatch permanece bloqueio absoluto, regressao
+  # FR-010/task 3.4). Mesma semantica no modo alternativo (FR-007).
+  _sdve_sha256_url="${_sdve_tarball}.sha256"
+  _sdve_sha256_file="$_sdve_tmp/archive.tar.gz.sha256"
+  _sdve_expected=""
+  _sdve_actual=""
+
+  if _serve_check_host_allowlist "$_sdve_sha256_url" 2>/dev/null && \
+     http_download "$_sdve_sha256_url" "$_sdve_sha256_file" 2>/dev/null; then
+    _sdve_expected=$(awk '{print $1}' "$_sdve_sha256_file" 2>/dev/null)
+    _sdve_actual=$(sha256_file "$_sdve_archive" 2>/dev/null)
+  fi
+
+  if [ -n "$_sdve_expected" ] && [ -n "$_sdve_actual" ]; then
+    # .sha256 obtido e ambos os hashes sao calculaveis -> comparacao definitiva.
+    if [ "$_sdve_expected" != "$_sdve_actual" ]; then
+      printf 'cstk serve: erro: checksum SHA-256 nao confere (integridade comprometida)\n' >&2
+      _serve_write_integrity_log "mismatch-blocked" "$_sdve_tarball" "$_sdve_expected" "$_sdve_actual" ""
+      rm -rf -- "$_sdve_tmp"
+      return 1
+    fi
+    printf 'cstk serve: integridade verificada (SHA-256 ok)\n'
+    # outcome=verified: sucesso silencioso, SEM linha no enforcement-log
+    # (task 3.3.3 — caso feliz ja coberto pelo printf acima).
+  else
+    # Nao-verificavel: .sha256 ausente, host fora da allowlist, download
+    # falhou, ou conteudo ilegivel/vazio. Fail-closed por padrao.
+    if [ "$_sdve_allow_unverified" = "1" ]; then
+      printf 'cstk serve: AVISO -- prosseguindo SEM verificacao de integridade (bypass=%s); o pacote baixado NAO foi confirmado\n' \
+        "${_sdve_bypass_method:-desconhecido}" >&2
+      _serve_write_integrity_log "unverifiable-bypassed" "$_sdve_tarball" "" "" "$_sdve_bypass_method"
+    else
+      printf 'cstk serve: erro: integridade do pacote nao pode ser confirmada (.sha256 indisponivel)\n' >&2
+      printf 'cstk serve: use --allow-unverified ou defina CSTK_SERVE_ALLOW_UNVERIFIED=1 para prosseguir conscientemente (risco: pacote nao verificado)\n' >&2
+      _serve_write_integrity_log "unverifiable-blocked" "$_sdve_tarball" "" "" ""
+      rm -rf -- "$_sdve_tmp"
+      return 1
+    fi
+  fi
+
+  # Extracao com strip-components=1 -- direto em DEST_DIR (do caller), SEMPRE
+  # limpo antes (garante arvore fresca mesmo se DEST_DIR ja existia de uma
+  # execucao anterior, ex.: cache do modo alternativo entre invocacoes).
+  rm -rf -- "$_sdve_dest"
+  mkdir -p "$_sdve_dest"
+  if ! tar -xzf "$_sdve_archive" --strip-components 1 -C "$_sdve_dest" 2>/dev/null; then
+    printf 'cstk serve: erro: falha ao extrair tarball (arquivo corrompido ou sem espaco em disco)\n' >&2
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  fi
+
+  # Verificar que package.json existe apos extracao
+  if [ ! -f "$_sdve_dest/package.json" ]; then
+    printf 'cstk serve: erro: package.json ausente apos extracao (estrutura de tarball inesperada)\n' >&2
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  fi
+
+  # Gravar .panel-version com tag_name (viaja com DEST_DIR para onde quer
+  # que o caller o mova/use em seguida).
+  printf '%s\n' "$_sdve_tag" > "$_sdve_dest/.panel-version"
+
+  rm -rf -- "$_sdve_tmp"
+  trap - EXIT INT TERM
+  return 0
+}
+
 # _serve_install PANEL_DIR [ALLOW_UNVERIFIED] [BYPASS_METHOD]
 # Realiza o download e instalacao do painel em PANEL_DIR.
 # Usa tmpdir privado; move atomicamente para PANEL_DIR apos sucesso.
@@ -196,143 +382,31 @@ _serve_install() {
   _si_allow_unverified="${2:-0}"
   _si_bypass_method="${3:-}"
 
-  # Sourcear helpers de rede e checksum
-  # shellcheck source=/dev/null
-  . "${CSTK_LIB}/http.sh"
-  # shellcheck source=/dev/null
-  . "${CSTK_LIB}/compat.sh"
-
-  # Tmpdir privado com cleanup garantido via trap
-  _si_tmp=$(mktemp -d 2>/dev/null) || {
+  _si_wrapper_tmp=$(mktemp -d 2>/dev/null) || {
     printf 'cstk serve: erro: nao foi possivel criar tmpdir\n' >&2
     return 1
   }
-  trap 'rm -rf -- "$_si_tmp"' EXIT INT TERM
+  _si_extract="$_si_wrapper_tmp/extracted"
 
-  printf 'cstk serve: consultando GitHub para release mais recente...\n'
-
-  # Consulta API GitHub (CHK-R26: falha HTTP -> exit 1)
-  _si_api_file="$_si_tmp/release.json"
-  if ! http_download "$_SERVE_GITHUB_API" "$_si_api_file"; then
-    printf 'cstk serve: erro: falha ao consultar API do GitHub\n' >&2
-    rm -rf -- "$_si_tmp"
+  # Download+allowlist+integridade+extracao (mesmo mecanismo do modo
+  # alternativo — FR-007): gerencia seu PROPRIO trap durante a janela de
+  # rede, ja desarmado quando retorna (ver cabecalho de _serve_download_verify_extract).
+  if ! _serve_download_verify_extract "$_si_extract" "$_si_allow_unverified" "$_si_bypass_method"; then
+    rm -rf -- "$_si_wrapper_tmp"
     return 1
   fi
 
-  # Extrair tag_name e tarball_url via grep/sed POSIX (sem jq)
-  _si_tag=$(grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' "$_si_api_file" \
-    | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
-  _si_tarball=$(grep -o '"tarball_url"[[:space:]]*:[[:space:]]*"[^"]*"' "$_si_api_file" \
-    | sed 's/.*"tarball_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
-
-  if [ -z "$_si_tag" ] || [ -z "$_si_tarball" ]; then
-    printf 'cstk serve: erro: API nao retornou tag_name ou tarball_url\n' >&2
-    rm -rf -- "$_si_tmp"
-    return 1
-  fi
-
-  # CHK-R02: rejeitar prerelease ou draft
-  _si_prerelease=$(grep -o '"prerelease"[[:space:]]*:[[:space:]]*[a-z]*' "$_si_api_file" \
-    | sed 's/.*:[[:space:]]*//' | head -1)
-  _si_draft=$(grep -o '"draft"[[:space:]]*:[[:space:]]*[a-z]*' "$_si_api_file" \
-    | sed 's/.*:[[:space:]]*//' | head -1)
-  if [ "$_si_prerelease" = "true" ] || [ "$_si_draft" = "true" ]; then
-    printf 'cstk serve: erro: release mais recente eh prerelease ou draft; nao instalando\n' >&2
-    rm -rf -- "$_si_tmp"
-    return 1
-  fi
-
-  printf 'cstk serve: instalando versao %s...\n' "$_si_tag"
-
-  # S2/CHK-S03/CHK-S04: validar host e schema da tarball_url
-  if ! _serve_check_host_allowlist "$_si_tarball"; then
-    rm -rf -- "$_si_tmp"
-    return 1
-  fi
-
-  # Download do tarball (CHK-R03: timeouts via http.sh)
-  _si_archive="$_si_tmp/archive.tar.gz"
-  if ! http_download "$_si_tarball" "$_si_archive"; then
-    printf 'cstk serve: erro: falha ao baixar tarball do painel\n' >&2
-    rm -rf -- "$_si_tmp"
-    return 1
-  fi
-
-  # CHK-R23: verificar tamanho minimo do tarball (>= 1024 bytes)
-  _si_size=$(wc -c < "$_si_archive" 2>/dev/null | tr -d ' ')
-  if [ "${_si_size:-0}" -lt 1024 ] 2>/dev/null; then
-    printf 'cstk serve: erro: tarball baixado parece vazio ou truncado (%s bytes)\n' \
-      "${_si_size:-0}" >&2
-    rm -rf -- "$_si_tmp"
-    return 1
-  fi
-
-  # Integridade FAIL-CLOSED (enforced-guards US2 — FR-008/009/010/011):
-  # por padrao, cstk serve MUST NOT iniciar a partir de um pacote cuja
-  # integridade nao foi confirmada (task 3.1). Bypass explicito via
-  # --allow-unverified/CSTK_SERVE_ALLOW_UNVERIFIED=1 e o UNICO caminho para
-  # prosseguir sem .sha256 (task 3.2) — NUNCA aplicavel quando o .sha256
-  # EXISTE mas diverge (mismatch permanece bloqueio absoluto, regressao
-  # FR-010/task 3.4).
-  _si_sha256_url="${_si_tarball}.sha256"
-  _si_sha256_file="$_si_tmp/archive.tar.gz.sha256"
-  _si_expected=""
-  _si_actual=""
-
-  if _serve_check_host_allowlist "$_si_sha256_url" 2>/dev/null && \
-     http_download "$_si_sha256_url" "$_si_sha256_file" 2>/dev/null; then
-    _si_expected=$(awk '{print $1}' "$_si_sha256_file" 2>/dev/null)
-    _si_actual=$(sha256_file "$_si_archive" 2>/dev/null)
-  fi
-
-  if [ -n "$_si_expected" ] && [ -n "$_si_actual" ]; then
-    # .sha256 obtido e ambos os hashes sao calculaveis -> comparacao definitiva.
-    if [ "$_si_expected" != "$_si_actual" ]; then
-      printf 'cstk serve: erro: checksum SHA-256 nao confere (integridade comprometida)\n' >&2
-      _serve_write_integrity_log "mismatch-blocked" "$_si_tarball" "$_si_expected" "$_si_actual" ""
-      rm -rf -- "$_si_tmp"
-      return 1
-    fi
-    printf 'cstk serve: integridade verificada (SHA-256 ok)\n'
-    # outcome=verified: sucesso silencioso, SEM linha no enforcement-log
-    # (task 3.3.3 — caso feliz ja coberto pelo printf acima).
-  else
-    # Nao-verificavel: .sha256 ausente, host fora da allowlist, download
-    # falhou, ou conteudo ilegivel/vazio. Fail-closed por padrao.
-    if [ "$_si_allow_unverified" = "1" ]; then
-      printf 'cstk serve: AVISO -- prosseguindo SEM verificacao de integridade (bypass=%s); o pacote baixado NAO foi confirmado\n' \
-        "${_si_bypass_method:-desconhecido}" >&2
-      _serve_write_integrity_log "unverifiable-bypassed" "$_si_tarball" "" "" "$_si_bypass_method"
-    else
-      printf 'cstk serve: erro: integridade do pacote nao pode ser confirmada (.sha256 indisponivel)\n' >&2
-      printf 'cstk serve: use --allow-unverified ou defina CSTK_SERVE_ALLOW_UNVERIFIED=1 para prosseguir conscientemente (risco: pacote nao verificado)\n' >&2
-      _serve_write_integrity_log "unverifiable-blocked" "$_si_tarball" "" "" ""
-      rm -rf -- "$_si_tmp"
-      return 1
-    fi
-  fi
-
-  # Extracao com strip-components=1
-  _si_extract="$_si_tmp/extracted"
-  mkdir -p "$_si_extract"
-  if ! tar -xzf "$_si_archive" --strip-components 1 -C "$_si_extract" 2>/dev/null; then
-    printf 'cstk serve: erro: falha ao extrair tarball (arquivo corrompido ou sem espaco em disco)\n' >&2
-    rm -rf -- "$_si_tmp"
-    return 1
-  fi
-
-  # Verificar que package.json existe apos extracao
-  if [ ! -f "$_si_extract/package.json" ]; then
-    printf 'cstk serve: erro: package.json ausente apos extracao (estrutura de tarball inesperada)\n' >&2
-    rm -rf -- "$_si_tmp"
-    return 1
-  fi
+  # A partir daqui armamos NOSSO trap para a janela de npm install + mv
+  # (a janela anterior ja foi coberta e desarmada pela funcao acima —
+  # nenhuma sobreposicao de posse do trap).
+  trap 'rm -rf -- "$_si_wrapper_tmp"' EXIT INT TERM
 
   # npm install (CHK: falha -> exit 1)
   printf 'cstk serve: executando npm install...\n'
   if ! (cd "$_si_extract" && npm install) 2>&1; then
     printf 'cstk serve: erro: npm install falhou\n' >&2
-    rm -rf -- "$_si_tmp"
+    rm -rf -- "$_si_wrapper_tmp"
+    trap - EXIT INT TERM
     return 1
   fi
 
@@ -340,15 +414,16 @@ _serve_install() {
   mkdir -p "$(dirname -- "$_si_panel_dir")"
   if ! mv -- "$_si_extract" "$_si_panel_dir"; then
     printf 'cstk serve: erro: nao foi possivel mover painel para %s\n' "$_si_panel_dir" >&2
-    rm -rf -- "$_si_tmp"
+    rm -rf -- "$_si_wrapper_tmp"
+    trap - EXIT INT TERM
     return 1
   fi
 
-  # Gravar .panel-version com tag_name
-  printf '%s\n' "$_si_tag" > "$_si_panel_dir/.panel-version"
+  # .panel-version ja foi escrito por _serve_download_verify_extract dentro
+  # de _si_extract, que agora VIVE em _si_panel_dir (o mv leva o arquivo).
 
   # Limpar tmpdir (trap cuida de EXIT mas chamamos explicitamente aqui)
-  rm -rf -- "$_si_tmp"
+  rm -rf -- "$_si_wrapper_tmp"
   trap - EXIT INT TERM
   return 0
 }
@@ -363,6 +438,7 @@ serve_main() {
   _serve_update=0
   _serve_allow_unverified=0
   _serve_bypass_method=""
+  _serve_container_mode=0
 
   # Parse de flags POSIX (while/case/shift)
   while [ "$#" -gt 0 ]; do
@@ -391,10 +467,13 @@ serve_main() {
         _serve_allow_unverified=1
         _serve_bypass_method="flag"
         ;;
+      --docker)
+        _serve_container_mode=1
+        ;;
       --help|-h)
         cat <<'HELP'
 Usage: cstk serve [--port PORT] [--host HOST] [--update] [--reinstall]
-                  [--allow-unverified]
+                  [--allow-unverified] [--docker]
 
 Start the cstk panel web interface. On first run, downloads the latest
 release from GitHub and installs it locally. Subsequent runs reuse the
@@ -416,9 +495,15 @@ Options:
                         cached version). Best-effort: if it fails
                         (offline/API error), the installed version is kept
                         and the panel still starts.
+                        With --docker, rebuilds the local image instead of
+                        the install directory (same "only if newer"
+                        semantics).
   --reinstall           Remove the existing installation and reinstall
                         from the latest GitHub release (unconditional;
                         ignores --update).
+                        With --docker, removes the local image and
+                        rebuilds it from scratch instead (still always
+                        wins over --update, regardless of flag order).
   --allow-unverified    Start even when the downloaded package's integrity
                         cannot be confirmed (no .sha256 published). Without
                         this flag (or the env var below), cstk serve
@@ -429,12 +514,33 @@ Options:
                         bypasses a checksum MISMATCH (a published .sha256
                         that does not match the download) -- that always
                         blocks.
+  --docker              Run the panel inside a local Docker container
+                        instead of natively on the host (opt-in; default
+                        behavior is unchanged when this flag is absent).
+                        Requires Docker Engine/Desktop installed AND the
+                        daemon running, checked before any network access
+                        (distinct errors for "not installed" vs "daemon
+                        not reachable"). npm/node are never required on
+                        the host: a local image is built from the same
+                        verified source tree used natively and is never
+                        pushed to a registry. Publishes on --host:--port
+                        like above (same 127.0.0.1-only-supported caveat).
+                        Mounts the knowledge.db directory read-only
+                        (~/.claude/cstk, or the directory of
+                        $CSTK_KNOWLEDGE_DB) so the panel reflects live
+                        index writes without a restart. Runs hardened
+                        (non-root, capabilities dropped, read-only rootfs)
+                        as a container named "cstk-panel"; a stale one is
+                        auto-replaced on each run. Ctrl+C stops it
+                        gracefully.
   --help, -h            Show this help and exit.
 
 Exit codes:
   0   Panel started (or --help shown).
   1   General error (prereq missing, download failed, install corrupt,
-      integrity unverified/mismatched without --allow-unverified).
+      integrity unverified/mismatched without --allow-unverified; with
+      --docker also: Docker not installed/daemon unreachable, image build
+      failed, or a stale container could not be reconciled).
   2   Usage error (invalid port, unknown flag).
 
 Examples:
@@ -443,6 +549,8 @@ Examples:
   cstk serve --update                # update panel if a newer release exists, then start
   cstk serve --reinstall             # force reinstall then start
   cstk serve --allow-unverified      # proceed even without a confirmed checksum
+  cstk serve --docker                # run the panel in a local Docker container
+  cstk serve --docker --update       # rebuild the image if a newer release exists
   cstk serve --help                  # show this help
 
 Environment:
@@ -453,6 +561,10 @@ Environment:
   CSTK_SERVE_ALLOW_UNVERIFIED   Set to 1 as a non-interactive equivalent
                                 of --allow-unverified (scripts/CI). Same
                                 high-visibility warning + audit log applies.
+  CSTK_KNOWLEDGE_DB             Path to knowledge.db; with --docker, its
+                                directory is what gets mounted read-only into
+                                the container (default:
+                                ~/.claude/cstk/knowledge.db).
 HELP
         return 0
         ;;
@@ -516,11 +628,29 @@ HELP
       ;;
   esac
 
-  # Pre-req check (ANTES de qualquer rede ou filesystem — FR-006/2.2.3)
+  # Pre-req check (ANTES de qualquer rede ou filesystem — FR-006/2.2.3).
+  # curl e exigido em AMBOS os modos (download+verificacao do painel); npm
+  # so no modo nativo, abaixo (FR-006 -- o modo alternativo NUNCA precisa
+  # de npm no host).
   if ! command -v curl >/dev/null 2>&1; then
     printf 'cstk serve: erro: curl nao encontrado no PATH; instale curl para usar este comando\n' >&2
     return 1
   fi
+
+  # Despacho para o modo alternativo de execucao (flag parseada acima no
+  # case): delega 100% da orquestracao ao arquivo confinado pelo carve-out
+  # do Principio II condicao b — ver o cabecalho daquele arquivo para o
+  # contrato completo, incluindo por que este encaminhamento nao conta como
+  # violacao do confinamento. O caminho padrao (flag ausente) abaixo segue
+  # 100% inalterado (FR-002); nada aqui e avaliado quando a flag nao foi
+  # informada.
+  if [ "$_serve_container_mode" = "1" ]; then
+    # shellcheck source=/dev/null
+    . "${CSTK_LIB}/serve-docker.sh"
+    _serve_docker_main "$_serve_port" "$_serve_host" "$_serve_update" "$_serve_reinstall" "$_serve_allow_unverified" "$_serve_bypass_method"
+    return $?
+  fi
+
   if ! command -v npm >/dev/null 2>&1; then
     printf 'cstk serve: erro: npm nao encontrado no PATH; instale Node.js em https://nodejs.org\n' >&2
     return 1

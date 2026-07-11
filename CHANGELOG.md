@@ -5,6 +5,61 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.17.0] - 2026-07-11
+
+Feature `panel-docker`, via pipeline SDD `feature-00c`. Aditiva/não-breaking:
+o modo nativo do `cstk serve` permanece 100% inalterado quando `--docker`
+está ausente.
+
+### Added
+
+- **`cstk serve --docker`: modo opt-in de container para o painel web**.
+  Roda o `cstk-panel` dentro de um container Docker local em vez de
+  nativamente no host — útil quando `npm`/`node` não estão disponíveis na
+  máquina. Pré-flight fail-closed checa `docker` no PATH e o daemon
+  acessível (`docker info`) ANTES de qualquer rede, com mensagens
+  distintas e acionáveis para cada causa. Reusa o MESMO mecanismo de
+  download/allowlist/integridade fail-closed já em produção no modo
+  nativo (`--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED` aplicam-se
+  igualmente) — sem segunda fonte de instalação.
+  - Imagem local multi-stage (`node:22-alpine`, fixada por digest nos dois
+    estágios; `better-sqlite3` compilado do fonte para musl no estágio de
+    build) construída a partir da mesma árvore-fonte verificada usada no
+    modo nativo; **nunca** publicada em registry remoto. Um encaminhador
+    `socat` (`0.0.0.0:8080 -> 127.0.0.1:3001` dentro do container) resolve
+    o bind hardcoded do painel em `127.0.0.1`.
+  - `--update`/`--reinstall` compõem com `--docker`: reconstroem a
+    **imagem** (em vez do diretório de instalação nativo) — `--update`
+    só reconstrói se houver release nova (best-effort); `--reinstall`
+    sempre vence sobre `--update`, em qualquer ordem dos flags.
+  - `docker run` hardened por padrão: usuário não-root, `--cap-drop ALL`,
+    `--security-opt no-new-privileges`, rootfs `--read-only` + `tmpfs`
+    para `/tmp`, `--init` (tini) + `--rm`. Container de nome
+    determinístico (`cstk-panel`) auto-reconciliado a cada execução
+    (remanescente de uma execução anterior é removido antes de subir).
+  - Monta o diretório do `~/.claude/cstk/` (ou o diretório de
+    `$CSTK_KNOWLEDGE_DB`, se definida) **somente leitura** dentro do
+    container. Verificado empiricamente contra o índice de produção
+    (WAL, 13.5 MB): leitura read-only sobre o mount `:ro` funciona sem
+    `immutable=1` (RISCO #1 tecnicamente fechado) com paridade EXATA nas
+    12 tabelas de `/api/v1/health` vs `sqlite3` nativo; gravações
+    concorrentes no host (nova onda de `agente-00c`/`feature-00c`, ou
+    `cstk recall --ingest`) ficam visíveis na PRÓXIMA requisição do
+    painel containerizado sem reiniciar o container; e um índice ausente
+    degrada graciosamente (HTTP 200, `dbReachable:false`), em paridade
+    com o modo nativo.
+  - Encerramento gracioso (`Ctrl+C` → `docker stop` com o mesmo grace
+    period de 5s do modo nativo).
+  - `--help` do `cstk serve` documenta `--docker` e a semântica
+    docker-specific de `--update`/`--reinstall`.
+  - Nova suíte opt-in `tests/docker/run-panel-docker-smoke.sh` (Docker
+    real, fora de `./tests/run.sh`) automatiza os 3 comportamentos acima
+    como regressão contínua. Cobertura hermética (sem daemon) em
+    `tests/cstk/test_serve-docker.sh` (53 cenários) + extensão de
+    `tests/cstk/test_serve.sh` (regressão do modo nativo intacto).
+  - Documentação: [`docs/specs/panel-docker/`](docs/specs/panel-docker/spec.md)
+    (spec, plan, research, data-model, contracts, quickstart, checklists).
+
 ## [5.16.1] - 2026-07-10
 
 Bugfixes derivados de uma varredura da `knowledge.db` (sugestões acumuladas por
@@ -3599,6 +3654,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.17.0]: https://github.com/JotJunior/cstk/releases/tag/v5.17.0
 [5.16.1]: https://github.com/JotJunior/cstk/releases/tag/v5.16.1
 [5.16.0]: https://github.com/JotJunior/cstk/releases/tag/v5.16.0
 [5.15.0]: https://github.com/JotJunior/cstk/releases/tag/v5.15.0
