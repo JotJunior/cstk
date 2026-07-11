@@ -212,16 +212,19 @@ reusa o `state-decisions-reconcile.sh` ja existente. Para auditar:
 
 ```bash
 ~/.claude/skills/agente-00c-runtime/scripts/state-decisions-reconcile.sh \
-  detect --state-dir "$STATE_DIR"
+  check --state-dir "$STATE_DIR"
 # exit 0 + stdout vazio -> 0 half-records pendentes (estado saudavel).
 # exit 1 + TSV (dec-id, onda-id, subagent-type) -> half-records a sanar.
 ```
 
-O numero de half-records pendentes DEVE ser **0**. Se `detect` lista
-entradas, reporte finding `model-routing-half-record` em "Recomendacoes"
-e instrua a rodar `state-decisions-reconcile.sh repair --dry-run` (depois
-`--apply`) na retomada via `/feature-00c-resume`. Read-only e idempotente
-— seguro de rodar dentro do review-task.
+O numero de half-records pendentes DEVE ser **0**. O subcomando real e
+`check` (DETECT-ONLY — o script apenas audita; NAO existe subcomando
+`repair`/`detect`). Se `check` lista entradas, reporte finding
+`model-routing-half-record` em "Recomendacoes" e sinalize a meia-gravacao
+para resolucao manual na retomada (`/feature-00c-resume`): inspecionar o
+`state.json` e completar o `record-skill` faltante ou remover a Decisao
+orfa correspondente. Read-only e idempotente — seguro de rodar dentro do
+review-task.
 
 **Path canonico do relatorio**: salvar em
 `docs/specs/<feature>/review-<onda-id>.md` (onde `<onda-id>` e a string

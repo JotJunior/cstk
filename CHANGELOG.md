@@ -5,6 +5,38 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.16.1] - 2026-07-10
+
+Bugfixes derivados de uma varredura da `knowledge.db` (sugestões acumuladas por
+execuções 00c passadas), validados contra o código atual antes de aplicar.
+
+### Fixed
+
+- **`state-ondas.sh git-commit` quebrava em git worktree** (afeta `cstk session`):
+  o check de repositório usava `[ -d "$_pap/.git" ]`, mas em worktree o `.git` é
+  um ARQUIVO (`gitdir: ...`), não diretório → falso-negativo "não é repositório
+  git". Trocado por `git -C "$_pap" rev-parse --is-inside-work-tree` (worktree/
+  submódulo-safe, alinhado ao `commit-mode.sh`). Regressão coberta por
+  `scenario_git_commit_worktree`.
+- **`report.sh` afirmava "execução abortada" em feature-00c concluída**: o campo
+  "Stack final" do Resumo Executivo imprimia *"não aplicável — execução abortada
+  antes de definir"* sempre que `suggested_stack` era null (sempre, em feature-00c,
+  que herda a stack do projeto), contradizendo o `Status=concluida` na mesma
+  tabela. O fallback agora é condicional ao status: mensagem de "abortada" só para
+  `status=abortada`; caso contrário, *"não aplicável (herdada do projeto / não
+  definida)"*. Regressão coberta por `scenario_stack_final_condicional_ao_status`.
+- **`review-task/SKILL.md` referenciava subcomandos inexistentes**: a §4.5
+  (half-records) mandava `state-decisions-reconcile.sh detect` e `repair
+  --dry-run/--apply`, mas o script só expõe `check` (detect-only) — rodar `detect`
+  saía com exit 2. Corrigido para `check` e reescrito para refletir que não há
+  subcomando de repair (resolução de half-record é manual na retomada).
+- **`validate-documentation` (perfil `--runbook`): falso-positivo de placeholder
+  em corpus pt-br**. O check de placeholder residual casava o token solto `TODO`,
+  colidindo com "TODO/TODA" em ênfase CAIXA-ALTA (ex.: "para TODO comando"),
+  legítimo em prosa pt-br. Passa a exigir o marcador delimitado (`TODO:` ou
+  `TODO(`). (O motor `validate-sdd.sh` introduzido em 5.16.0 já era imune — usa
+  delimitadores `[...]`.)
+
 ## [5.16.0] - 2026-07-10
 
 Origem: 4 sugestões geradas por IA em outra máquina, validadas contra o código
@@ -3567,6 +3599,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.16.1]: https://github.com/JotJunior/cstk/releases/tag/v5.16.1
 [5.16.0]: https://github.com/JotJunior/cstk/releases/tag/v5.16.0
 [5.15.0]: https://github.com/JotJunior/cstk/releases/tag/v5.15.0
 [5.14.1]: https://github.com/JotJunior/cstk/releases/tag/v5.14.1
