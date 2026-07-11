@@ -41,11 +41,15 @@ contra push a registry — antes de decompor em tarefas.
   de design que ela elimina (encaminhador via `iptables`/DNAT)? [Clareza/Consistencia,
   research.md §Decision 2 "Alternatives considered" linha 100-101; §Decision 7 linha
   277] {auto}
-- [ ] CHK009 - O requisito de hardening se mantem explicitamente apos um rebuild de
+- [x] CHK009 - O requisito de hardening se mantem explicitamente apos um rebuild de
   imagem via `--update`/`--reinstall` (nao so na primeira construcao), ou o plano e
   omisso sobre se o conjunto de flags de `docker run` e reafirmado apos cada gatilho de
   rebuild? [Consistencia, contracts/cli-docker-mode.md §Sequencia passo 5 vs
-  §Invariantes de seguranca; research.md §Decision 5 tabela de flags] **[Gap]** {auto}
+  §Invariantes de seguranca; research.md §Decision 5 tabela de flags] **[Gap resolvido —
+  tasks.md 3.1.3/3.1.5, dec-049: `docker run` e uma UNICA invocacao incondicional em
+  `_serve_docker_main` (mesmo conjunto de flags independente do gatilho), agora coberto
+  por `_assert_hardening_flags_in_run_line` nos 3 gatilhos (imagem ausente/--update
+  rebuild/--reinstall) + reuso sem rebuild em tests/cstk/test_serve-docker.sh]** {auto}
 - [x] CHK010 - O resultado do gate `owasp-security` (contagem de findings por
   severidade, decisao de aceite) esta registrado de forma auditavel, permitindo
   confirmar que o gate nao foi pulado silenciosamente? [Rastreabilidade/Auditabilidade,
@@ -65,18 +69,25 @@ contra push a registry — antes de decompor em tarefas.
 
 ## Supply Chain da Imagem
 
-- [ ] CHK013 - A fixacao da imagem base por digest (`@sha256:...`, nao tag flutuante)
+- [x] CHK013 - A fixacao da imagem base por digest (`@sha256:...`, nao tag flutuante)
   tem um mecanismo de verificacao objetivo definido (ex.: teste/lint), analogo ao ja
   exigido para a ausencia de `docker push`? [Mensurabilidade, research.md §Decision 7
   linha 281-285 (MUST fixar por digest, sem teste associado) vs linha 293-296 (teste
-  exigido para no-push)] **[Gap]** {auto}
-- [ ] CHK014 - O uso de `npm ci` (vs `npm install`) no build da imagem tem um
+  exigido para no-push)] **[Gap resolvido — tasks.md 3.2.2/3.2.3:
+  `scenario_dockerfile_pins_base_by_digest_not_floating_tag` (regex `@sha256:` 64-hex
+  nos dois estagios, tests/cstk/test_serve-docker.sh) + processo de atualizacao do
+  digest documentado em cli/lib/serve-docker.sh junto a `_SD_BASE_IMAGE`]** {auto}
+- [x] CHK014 - O uso de `npm ci` (vs `npm install`) no build da imagem tem um
   comportamento definido para o caso em que `package-lock.json` esteja ausente em uma
   release futura do painel, ou o requisito assume incondicionalmente que o lockfile
   sempre existira? [Consistencia/Edge Case, research.md §Decision 1 linha 67 ("decidir
   conforme a presenca de package-lock.json" — condicional) **contradiz** §Decision 7
   linha 283-285 ("MUST usar npm ci... em vez de npm install" — incondicional, aterrado
-  apenas na v0.12.1 atual)] **[Conflict]** {auto}
+  apenas na v0.12.1 atual)] **[Conflict resolvido — tasks.md 3.3, dec-050: fail-closed
+  explicito (`RUN test -f package-lock.json || { mensagem acionavel; exit 1; }` antes de
+  `RUN npm ci` em `_serve_docker_write_dockerfile`), nunca degrada para `npm install`;
+  guard extraido e exercitado hermeticamente (sem/com lockfile) em
+  tests/cstk/test_serve-docker.sh]** {auto}
 - [x] CHK015 - O download+verificacao de integridade do painel no modo Docker reusa o
   MESMO code path do modo nativo (sem segundo mecanismo de download/verificacao)?
   [Consistencia, Spec §FR-007; research.md §Decision 1 linha 39-43, §Decision 7 linha

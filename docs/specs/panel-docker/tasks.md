@@ -387,52 +387,79 @@ Ref: contracts/cli-docker-mode.md "Erros"; checklists/infra.md CHK009
 Ref: research.md Decision 7; contracts/cli-docker-mode.md "Invariantes de seguranca";
 checklists/security.md CHK006 (ja PASS) e CHK009 `[Gap]`
 
-- [ ] 3.1.1 Aplicar por default em TODO `docker run`: `USER node` (non-root, ja herdado da
+- [x] 3.1.1 Aplicar por default em TODO `docker run`: `USER node` (non-root, ja herdado da
   imagem oficial), `--cap-drop ALL`, `--security-opt no-new-privileges`, `--read-only` no
-  rootfs + `tmpfs` para escrita efemera
-- [ ] 3.1.2 Validar empiricamente que o painel (Fastify) + o encaminhador (socat) continuam
+  rootfs + `tmpfs` para escrita efemera — ja implementado em 2.5 (onda-008); reafirmado nesta
+  FASE 3 (unica invocacao incondicional de `docker run` em `_serve_docker_main`, CHK009).
+- [x] 3.1.2 Validar empiricamente que o painel (Fastify) + o encaminhador (socat) continuam
   funcionais sob o conjunto completo de hardening (research.md Decision 7 marca "[detalhe de
-  execute-task]") — ajustar `tmpfs`/paths graváveis conforme necessario, sem afrouxar
-  cap-drop/no-new-privileges/read-only
-- [ ] 3.1.3 CHK009 (security, `[Gap]`): garantir que o MESMO conjunto de flags de hardening e
-  aplicado nos 3 gatilhos de (re)build (imagem ausente / `--update` com rebuild / `--reinstall`)
-  — nao apenas na primeira construcao
-- [ ] 3.1.4 Confirmar ausencia de `--privileged` e de `CAP_NET_ADMIN` (research.md Decision 2
-  "Alternatives considered" rejeita DNAT/iptables por exigir esse cap; Decision 7)
-- [ ] 3.1.5 Teste: invocar os 3 gatilhos de build/run (2.4.1-2.4.3) e assert que a invocacao
-  `docker run` resultante contem o MESMO conjunto de flags de hardening em todos eles
+  execute-task]") — VALIDADO (dec-049): build real via `docker build --network=host` +
+  Dockerfile gerado pela funcao real; `docker run` com o argv COMPLETO real (`--cap-drop ALL
+  --security-opt no-new-privileges --read-only --tmpfs /tmp:... --init --rm`) contra o
+  knowledge.db REAL (`~/.claude/cstk/`, WAL, 13MB) montado `:ro`. Container ficou estavel
+  (sem crash/restart); `GET /api/v1/health` e `GET /api/v1/overview` retornaram HTTP 200 com
+  dados NAO-vazios (executions=54/waves=693/decisions=2960, conferidos byte-a-byte contra
+  `sqlite3` no host). `touch` dentro do container falhou em `/app` E no mount `:ro` do
+  knowledge.db (hardening genuinamente enforced); `/tmp` aceitou escrita (tmpfs ok); uid=1000
+  (node, nao-root). ZERO ajuste de `tmpfs`/paths adicionais foi necessario. RISCO #1
+  (research.md Decision 3) empiricamente DISPROVEN sob este hardening — forte evidencia
+  confirmatoria para a verificacao formal da FASE 5 (5.1).
+- [x] 3.1.3 CHK009 (security, `[Gap]` -> resolvido): garantir que o MESMO conjunto de flags de
+  hardening e aplicado nos 3 gatilhos de (re)build (imagem ausente / `--update` com rebuild /
+  `--reinstall`) — nao apenas na primeira construcao. Estruturalmente garantido (UNICA
+  invocacao incondicional de `docker run` em `_serve_docker_main`); coberto por teste (3.1.5).
+- [x] 3.1.4 Confirmar ausencia de `--privileged` e de `CAP_NET_ADMIN` (research.md Decision 2
+  "Alternatives considered" rejeita DNAT/iptables por exigir esse cap; Decision 7) — verificacao
+  estatica extendida (`scenario_serve_docker_never_emits_push_or_host_network_or_privileged`
+  agora tambem grepa `CAP_NET_ADMIN`, alem de `docker push`/`--network host`/`--privileged`).
+- [x] 3.1.5 Teste: invocar os 3 gatilhos de build/run (2.4.1-2.4.3) e assert que a invocacao
+  `docker run` resultante contem o MESMO conjunto de flags de hardening em todos eles —
+  `_assert_hardening_flags_in_run_line` (helper compartilhado) chamado nos 3 gatilhos +
+  no caminho de reuso sem rebuild, em tests/cstk/test_serve-docker.sh.
 
 ### 3.2 Pin de digest da imagem base com verificacao objetiva `[C]`
 
 Ref: research.md Decision 1 e Decision 7; checklists/security.md CHK013 `[Gap]`
 
-- [ ] 3.2.1 Resolver e fixar o digest exato da base `node:22-alpine@sha256:...` (nao tag
+- [x] 3.2.1 Resolver e fixar o digest exato da base `node:22-alpine@sha256:...` (nao tag
   flutuante) — validar que a versao resolvida satisfaz `engines.node >=20.0.0` (package.json L28).
   Ja fixado nesta FASE 1 (dec-037): `node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2`;
   resta o hardening formal de FASE 3 (lint CHK013 em 3.2.2 + processo de atualizacao em 3.2.3).
-- [ ] 3.2.2 CHK013 (security, `[Gap]`): escrever teste/lint que falha se o Dockerfile
-  referenciar a base SEM `@sha256:` (tag flutuante), espelhando o teste ja exigido para
-  ausencia de `docker push` (2.5.6) — mesmo padrao de verificacao objetiva
-- [ ] 3.2.3 Documentar o processo de atualizacao do digest (quando a base precisar de patch de
-  seguranca) para nao virar divida tecnica silenciosa
+- [x] 3.2.2 CHK013 (security, `[Gap]` -> resolvido): escrever teste/lint que falha se o
+  Dockerfile referenciar a base SEM `@sha256:` (tag flutuante), espelhando o teste ja exigido
+  para ausencia de `docker push` (2.5.6) — JA EXISTIA desde a task 1.1 (onda-006):
+  `scenario_dockerfile_pins_base_by_digest_not_floating_tag` (regex `@sha256:` 64-hex nos dois
+  estagios); confirmado ainda verde apos dec-037 (mudanca de base glibc->alpine) e apos esta
+  FASE 3.
+- [x] 3.2.3 Documentar o processo de atualizacao do digest (quando a base precisar de patch de
+  seguranca) para nao virar divida tecnica silenciosa — documentado em cli/lib/serve-docker.sh
+  junto a `_SD_BASE_IMAGE` (processo de 7 passos: pull, inspect, revalidar engines.node se
+  major/minor mudar, substituir a linha-fonte unica, rebuildar + revalidar hardening
+  empiricamente, rerodar test_serve-docker, registrar no CHANGELOG).
 
 ### 3.3 `npm ci` fail-closed quando lockfile ausente `[C]`
 
 Ref: research.md Decision 1 vs Decision 7; checklists/security.md CHK014 `[Conflict]`
 
-- [ ] 3.3.1 CHK014 (security, `[Conflict]`): resolver a contradicao entre research.md Decision 1
-  ("decidir conforme presenca de package-lock.json") e Decision 7 ("MUST usar npm ci
-  incondicional") — decisao adotada: o build da imagem MUST falhar fail-closed com mensagem
-  acionavel se `package-lock.json` estiver ausente na arvore extraida, em vez de degradar
-  silenciosamente para `npm install` (preserva a garantia de reprodutibilidade sem presumir
-  lockfile eterno)
-- [ ] 3.3.2 Implementar a checagem no Dockerfile/build script: `test -f package-lock.json` antes
-  do `RUN npm ci`, abortando o build com mensagem clara se ausente
-- [ ] 3.3.3 Teste: fixture de arvore extraida SEM `package-lock.json` -> build falha com a
-  mensagem esperada (nunca degrada para `npm install` silenciosamente)
-- [ ] 3.3.4 Registrar a decisao de roteamento (nao reabrir `/clarify`, resolvido em
+- [x] 3.3.1 CHK014 (security, `[Conflict]` -> resolvido): resolver a contradicao entre
+  research.md Decision 1 ("decidir conforme presenca de package-lock.json") e Decision 7 ("MUST
+  usar npm ci incondicional") — decisao adotada: o build da imagem MUST falhar fail-closed com
+  mensagem acionavel se `package-lock.json` estiver ausente na arvore extraida, em vez de
+  degradar silenciosamente para `npm install` (preserva a garantia de reprodutibilidade sem
+  presumir lockfile eterno). Decisao auditavel: dec-050.
+- [x] 3.3.2 Implementar a checagem no Dockerfile/build script: `test -f package-lock.json` antes
+  do `RUN npm ci`, abortando o build com mensagem clara se ausente — implementado em
+  `_serve_docker_write_dockerfile` (`RUN test -f package-lock.json || { printf '...'; exit 1; }`
+  imediatamente antes de `RUN npm ci`).
+- [x] 3.3.3 Teste: fixture de arvore extraida SEM `package-lock.json` -> build falha com a
+  mensagem esperada (nunca degrada para `npm install` silenciosamente) — hermetico: o guard
+  REAL e extraido do Dockerfile GERADO (zero hand-copy) e executado via `sh -c` contra fixtures
+  com/sem lockfile (`scenario_npm_ci_guard_fails_closed_when_lockfile_absent` +
+  `scenario_npm_ci_guard_passes_through_when_lockfile_present` +
+  `scenario_npm_ci_guard_precedes_npm_ci_in_dockerfile`).
+- [x] 3.3.4 Registrar a decisao de roteamento (nao reabrir `/clarify`, resolvido em
   `/create-tasks` conforme checklists/security.md tabela "Follow-up obrigatorio") como Decisao
-  auditavel do orquestrador
+  auditavel do orquestrador — dec-050.
 
 ---
 

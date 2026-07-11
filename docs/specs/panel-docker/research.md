@@ -331,11 +331,11 @@ empiricamente para nao quebrar o runtime do painel; pin de digest da base; `npm 
 
 | # | Item | Estado | Onde resolver |
 |---|------|--------|---------------|
-| 1 | Leitura de WAL db read-only sem `immutable=1` sobre mount `:ro` (FR-008/US2) | **RISCO ABERTO — verificar empiricamente** | execute-task (Decision 3) |
+| 1 | Leitura de WAL db read-only sem `immutable=1` sobre mount `:ro` (FR-008/US2) | **FORTE EVIDENCIA EMPIRICA (dec-049, task 3.1, onda-009)** — container com hardening COMPLETO + knowledge.db REAL (nao fixture) montado `:ro` respondeu HTTP 200 com dados nao-vazios em `/api/v1/health` e `/api/v1/overview`, conferidos byte-a-byte contra `sqlite3` no host; opcao 1 da lista de preferencia (mount do diretorio inteiro) confirmada suficiente, sem necessidade de checkpoint/`immutable=1`. Fechamento FORMAL de FR-008/US2 + campo `wal_readonly_verified` do data-model permanecem para a FASE 5 (task 5.1) — este achado e evidencia confirmatoria forte, nao substitui aquele gate | execute-task (Decision 3) -> confirmar formalmente em FASE 5 (5.1) |
 | 2 | Invocacao exata do `socat` (ou proxy Node) + presenca do pacote na base | detalhe de implementacao | execute-task (Decision 2) |
 | 3 | Tag/digest exatos da base node + compilacao musl do `better-sqlite3` | **RESOLVIDO (dec-037)** — `node:22-alpine` multi-stage (digest em Decision 1), compilado do fonte no estagio de build | execute-task (Decision 1) |
-| 4 | Comando exato da sonda de daemon (`docker info`/`version`) + SC-006 <5s | detalhe de implementacao | execute-task (Decision 5) |
-| 5 | Flags exatas de hardening (`--cap-drop`/`--read-only`/`tmpfs`) | detalhe de implementacao | execute-task (Decision 7) |
+| 4 | Comando exato da sonda de daemon (`docker info`/`version`) + SC-006 <5s | **RESOLVIDO (dec-042)** — `docker info` | execute-task (Decision 5) |
+| 5 | Flags exatas de hardening (`--cap-drop`/`--read-only`/`tmpfs`) | **RESOLVIDO (dec-046 fixou as flags; dec-049 validou empiricamente sem necessidade de ajuste, task 3.1)** | execute-task (Decision 7) |
 
 Nenhum item acima e um dado factual inventado: todos sao decisoes de implementacao a
 FIXAR e TESTAR na fase execute-task, ou (item 1) um risco real explicitamente

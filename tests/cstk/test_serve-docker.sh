@@ -393,6 +393,40 @@ _run_serve_docker_main() {
     sh -c '. "$CSTK_LIB/serve.sh" && . "$CSTK_LIB/serve-docker.sh" && _serve_docker_main "$@"' serve_docker_main_test "$@"
 }
 
+# _assert_hardening_flags_in_run_line RUN_LINE LABEL
+# Confere que RUN_LINE (uma linha 'run -d ...' ja capturada de
+# _docker_calls_log) contem o conjunto INTEIRO de flags de hardening
+# (research.md Decision 7; contracts/cli-docker-mode.md "Invariantes de
+# seguranca"; checklists/security.md CHK006/CHK009). Extraido como helper
+# compartilhado (tasks.md 3.1.3/3.1.5, CHK009 [Gap]) para que o MESMO
+# conjunto seja verificado nos 3 gatilhos de (re)build (imagem ausente /
+# --update rebuild / --reinstall) e no caminho de reuso sem rebuild —
+# CHK009 exige que o hardening nao seja so "da primeira construcao". LABEL
+# identifica o gatilho no nome da falha (mensagem acionavel de teste).
+_assert_hardening_flags_in_run_line() {
+  _ahf_line="$1"
+  _ahf_label="$2"
+  if [ -z "$_ahf_line" ]; then
+    _fail "hardening_flags_${_ahf_label}" "nenhuma linha 'docker run -d' capturada para o gatilho $_ahf_label"
+    return 1
+  fi
+  for _ahf_needle in \
+    '--cap-drop ALL' \
+    '--security-opt no-new-privileges' \
+    '--read-only' \
+    '--tmpfs /tmp:rw,noexec,nosuid,size=64m' \
+  ; do
+    case "$_ahf_line" in
+      *"$_ahf_needle"*) : ;;
+      *)
+        _fail "hardening_flags_${_ahf_label}" "docker run ($_ahf_label) nao contem '$_ahf_needle': $_ahf_line"
+        return 1
+        ;;
+    esac
+  done
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # 1.1.1/1.1.2 — scaffold: lib sourceavel, interface de _serve_docker_main
 # ---------------------------------------------------------------------------
@@ -509,6 +543,94 @@ scenario_dockerfile_pins_base_by_digest_not_floating_tag() {
   # Estagio de runtime fixado pela MESMA base alpine por digest (sem AS).
   if ! grep -q '^FROM node:22-alpine@sha256:[0-9a-f]\{64\}$' "$_out"; then
     _fail "dockerfile_digest_pin_runtime" "FROM do estagio de runtime nao fixa alpine por digest sha256 de 64 hex: $(grep '^FROM' "$_out")"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# 3.3 — npm ci fail-closed quando lockfile ausente (CHK014)
+# ---------------------------------------------------------------------------
+
+# _extract_npm_ci_guard_shell_cmd DOCKERFILE
+# Extrai do Dockerfile GERADO (real, nao hand-copiado) a linha `RUN test -f
+# package-lock.json || { ... }` sem o prefixo `RUN `, devolvendo um comando
+# sh executavel isoladamente. Permite exercitar a MESMA logica que roda
+# dentro do `docker build` sem precisar de daemon Docker (hermetico, task
+# 3.3.3) -- zero risco de drift entre o que o teste afirma e o que o
+# gerador realmente escreve, porque o comando vem do arquivo gerado, nao de
+# uma copia mantida a mao no teste.
+_extract_npm_ci_guard_shell_cmd() {
+  grep '^RUN test -f package-lock\.json' "$1" | sed 's/^RUN //'
+}
+
+scenario_npm_ci_guard_precedes_npm_ci_in_dockerfile() {
+  _out="$TMPDIR_TEST/Dockerfile"
+  _run_serve_docker_fn _serve_docker_write_dockerfile "$_out"
+  _assert_captured_exit 0 || return 1
+
+  _guard_line_no=$(grep -n '^RUN test -f package-lock\.json' "$_out" | head -1 | cut -d: -f1)
+  _npmci_line_no=$(grep -n '^RUN npm ci$' "$_out" | head -1 | cut -d: -f1)
+  if [ -z "$_guard_line_no" ] || [ -z "$_npmci_line_no" ]; then
+    _fail "npm_ci_guard_order_missing" "guard 'test -f package-lock.json' ou 'RUN npm ci' ausente no Dockerfile gerado"
+    return 1
+  fi
+  if [ "$_guard_line_no" -ge "$_npmci_line_no" ]; then
+    _fail "npm_ci_guard_order" "guard (linha $_guard_line_no) deve vir ANTES de 'RUN npm ci' (linha $_npmci_line_no) -- 3.3.2"
+    return 1
+  fi
+}
+
+scenario_npm_ci_guard_fails_closed_when_lockfile_absent() {
+  _out="$TMPDIR_TEST/Dockerfile"
+  _run_serve_docker_fn _serve_docker_write_dockerfile "$_out"
+  _assert_captured_exit 0 || return 1
+
+  _guard_cmd=$(_extract_npm_ci_guard_shell_cmd "$_out")
+  if [ -z "$_guard_cmd" ]; then
+    _fail "npm_ci_guard_missing" "Dockerfile gerado nao contem o guard fail-closed (task 3.3.2/CHK014)"
+    return 1
+  fi
+
+  # Fixture de arvore extraida SEM package-lock.json (3.3.3): a MESMA linha
+  # de shell do Dockerfile, executada de verdade contra um cwd sem o
+  # lockfile, MUST falhar (exit != 0) com a mensagem acionavel -- nunca
+  # degradar silenciosamente para npm install (nao ha npm install em
+  # nenhum lugar deste comando; a falha e a UNICA saida possivel).
+  _missing_dir="$TMPDIR_TEST/ctx-missing-lockfile"
+  mkdir -p "$_missing_dir"
+  _guard_out=$(cd "$_missing_dir" && sh -c "$_guard_cmd" 2>&1)
+  _guard_exit=$?
+  if [ "$_guard_exit" -eq 0 ]; then
+    _fail "npm_ci_guard_should_fail" "guard nao falhou com lockfile ausente (exit 0): $_guard_out"
+    return 1
+  fi
+  case "$_guard_out" in
+    *"package-lock.json ausente"*"nunca degrada"*"npm install"*) : ;;
+    *) _fail "npm_ci_guard_message" "mensagem do guard nao e a esperada/acionavel: $_guard_out"; return 1 ;;
+  esac
+}
+
+scenario_npm_ci_guard_passes_through_when_lockfile_present() {
+  _out="$TMPDIR_TEST/Dockerfile"
+  _run_serve_docker_fn _serve_docker_write_dockerfile "$_out"
+  _assert_captured_exit 0 || return 1
+
+  _guard_cmd=$(_extract_npm_ci_guard_shell_cmd "$_out")
+  if [ -z "$_guard_cmd" ]; then
+    _fail "npm_ci_guard_missing" "Dockerfile gerado nao contem o guard fail-closed (task 3.3.2/CHK014)"
+    return 1
+  fi
+
+  # Fixture de arvore extraida SAUDAVEL (lockfile presente): o guard MUST
+  # sair 0 silenciosamente (sem stdout/stderr) e nunca bloquear o npm ci
+  # real que viria a seguir no Dockerfile de verdade.
+  _present_dir="$TMPDIR_TEST/ctx-with-lockfile"
+  mkdir -p "$_present_dir"
+  : > "$_present_dir/package-lock.json"
+  _guard_out=$(cd "$_present_dir" && sh -c "$_guard_cmd" 2>&1)
+  _guard_exit=$?
+  if [ "$_guard_exit" -ne 0 ] || [ -n "$_guard_out" ]; then
+    _fail "npm_ci_guard_should_passthrough" "guard nao deveria falhar/emitir saida com lockfile presente (exit=$_guard_exit saida=$_guard_out)"
     return 1
   fi
 }
@@ -871,6 +993,9 @@ scenario_build_trigger_absent_fetches_and_builds() {
     *"build -f"*) : ;;
     *) _fail "build_trigger_absent" "docker build nao foi chamado com imagem ausente"; return 1 ;;
   esac
+  # CHK009/3.1.3/3.1.5: o hardening nao e so da "primeira construcao" em
+  # tese -- confere-se aqui, no gatilho REAL de primeira construcao.
+  _assert_hardening_flags_in_run_line "$(_docker_calls_log | grep '^run -d')" "absent_first_build" || return 1
 }
 
 scenario_build_trigger_update_new_version_rebuilds() {
@@ -887,6 +1012,8 @@ scenario_build_trigger_update_new_version_rebuilds() {
     *"build -f"*) : ;;
     *) _fail "build_trigger_update_new" "docker build nao foi chamado apos nova versao"; return 1 ;;
   esac
+  # CHK009/3.1.3/3.1.5: mesmo conjunto de flags apos rebuild via --update.
+  _assert_hardening_flags_in_run_line "$(_docker_calls_log | grep '^run -d')" "update_rebuild" || return 1
 }
 
 scenario_build_trigger_update_no_new_version_reuses() {
@@ -946,6 +1073,8 @@ scenario_build_trigger_reinstall_always_rebuilds_unconditionally() {
     *"build -f"*) : ;;
     *) _fail "reinstall_rebuild" "docker build nao foi chamado no --reinstall"; return 1 ;;
   esac
+  # CHK009/3.1.3/3.1.5: mesmo conjunto de flags apos rebuild via --reinstall.
+  _assert_hardening_flags_in_run_line "$(_docker_calls_log | grep '^run -d')" "reinstall_rebuild" || return 1
 }
 
 scenario_reinstall_wins_over_update_chk012() {
@@ -995,10 +1124,6 @@ scenario_docker_run_argv_contains_expected_flags() {
     '-p 127.0.0.1:5173:8080' \
     "-v $TMPDIR_TEST/cstkdata:/data/knowledge-db:ro" \
     '-e CSTK_KNOWLEDGE_DB=/data/knowledge-db/knowledge.db' \
-    '--cap-drop ALL' \
-    '--security-opt no-new-privileges' \
-    '--read-only' \
-    '--tmpfs /tmp:rw,noexec,nosuid,size=64m' \
     'cstk-panel:v0.0.1' \
   ; do
     case "$_run_line" in
@@ -1006,6 +1131,10 @@ scenario_docker_run_argv_contains_expected_flags() {
       *) _fail "docker_run_argv" "docker run nao contem '$_needle': $_run_line"; return 1 ;;
     esac
   done
+
+  # Subconjunto de hardening (CHK006) via helper compartilhado — mesma
+  # assercao reusada pelos 3 gatilhos de build em 3.1.3/3.1.5 abaixo.
+  _assert_hardening_flags_in_run_line "$_run_line" "reuse_cached" || return 1
 }
 
 scenario_docker_run_port_and_host_reflect_arguments() {
@@ -1042,13 +1171,17 @@ scenario_serve_docker_never_emits_push_or_host_network_or_privileged() {
   # ja coberto por scenario_dockerfile_never_contains_push): a MONTAGEM do
   # `docker run`/`docker build` em si tambem nunca deve conter esses
   # padroes (FR-013 / research.md Decision 2 rejeita --network host).
-  # Linhas de comentario puro (explicando a AUSENCIA -- ex.: "Nunca
-  # `docker push`") sao excluidas: so codigo real conta como violacao.
+  # CAP_NET_ADMIN incluido aqui por 3.1.4/CHK008: e a alternativa de design
+  # que a escolha do encaminhador via socat elimina (vs. iptables/DNAT no
+  # container, que exigiria essa capability) -- research.md Decision 2
+  # "Alternatives considered". Linhas de comentario puro (explicando a
+  # AUSENCIA -- ex.: "Nunca `docker push`", "sem CAP_NET_ADMIN") sao
+  # excluidas: so codigo real conta como violacao.
   _hits=$(grep -vE '^[[:space:]]*#' "$REPO_ROOT/cli/lib/serve-docker.sh" \
-            | grep -iE 'docker[[:space:]]+push|--network[[:space:]=]host|--privileged' \
+            | grep -iE 'docker[[:space:]]+push|--network[[:space:]=]host|--privileged|CAP_NET_ADMIN' \
           || :)
   if [ -n "$_hits" ]; then
-    _fail "no_push_no_host_network" "serve-docker.sh contem push/--network host/--privileged em codigo (nao-comentario): $_hits"
+    _fail "no_push_no_host_network" "serve-docker.sh contem push/--network host/--privileged/CAP_NET_ADMIN em codigo (nao-comentario): $_hits"
     return 1
   fi
 }

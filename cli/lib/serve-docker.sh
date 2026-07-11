@@ -94,6 +94,36 @@
 # (node:20-bookworm-slim, dec-011) o daemon deste ambiente pendurava no pull
 # da base; a mudanca p/ alpine (bases ja cacheadas) + remocao da diretiva
 # `# syntax` (que forcava pull do frontend) tornou o build possivel aqui.
+#
+# FASE 3 (task 3.1.2 — validacao empirica do hardening completo, RISCO #1):
+# nesta wave o container rodou com o CONJUNTO INTEIRO de flags de hardening
+# de producao (`--cap-drop ALL --security-opt no-new-privileges --read-only
+# --tmpfs /tmp:rw,noexec,nosuid,size=64m --init --rm`) e o KNOWLEDGE.DB REAL
+# (`~/.claude/cstk/`, WAL, com sidecars `-shm`/`-wal` pre-existentes) montado
+# `:ro` — nao um fixture. Resultado: o painel + Fastify subiram e
+# permaneceram estaveis (sem crash/restart) SEM nenhum ajuste adicional de
+# `--tmpfs`/path gravavel alem do `/tmp` ja presente no codigo — nao havia
+# nada mais para descobrir empiricamente aqui (Fastify usa pino->stdout,
+# sem arquivo de log; nenhuma outra escrita em runtime). `GET /api/v1/health`
+# e `GET /api/v1/overview` (ambos batem em `openDb({readonly:true})` sobre o
+# mount `:ro`, ver apps/server/src/db/open.ts) retornaram HTTP 200 com
+# `dbReachable:true`/`quickCheck:true`/dados NAO-vazios (executions=54,
+# waves=693, decisions=2960 — conferidos byte-a-byte contra `sqlite3
+# knowledge.db "SELECT count(*)..."` rodado no HOST, mesmos numeros). Ou
+# seja: leitura WAL read-only sobre bind mount `:ro` SEM `immutable=1`
+# (confirmado inalcancavel via better-sqlite3 — ver comentario em
+# apps/server/src/db/open.ts) FUNCIONA na pratica, sem torn read/
+# SQLITE_CANTOPEN — RISCO #1 EMPIRICAMENTE DISPROVEN sob este hardening.
+# `--read-only` confirmado REAL (nao so declarado): `touch` dentro do
+# container falhou com "Read-only file system" tanto no rootfs (/app) quanto
+# no MESMO mount `:ro` do knowledge.db; `/tmp` (tmpfs) aceitou escrita
+# normalmente; `id`/`whoami` confirmaram uid=1000(node), nao-root. Container
+# encerrado via `docker stop` (exit 0, sem residuo — `--rm`). Evidencia
+# completa registrada como Decisao pelo orquestrador desta wave (task 3.1).
+# Contribui adiante para a verificacao formal de RISCO #1 na FASE 5 (tasks.md
+# 5.1) — este achado e forte evidencia confirmatoria, nao substitui aquela
+# tarefa (escopo formal + campo `wal_readonly_verified` do data-model ficam
+# para a FASE 5).
 
 if [ "${_SERVE_DOCKER_LOADED:-}" = "1" ]; then
   return 0
@@ -115,8 +145,34 @@ _SD_PANEL_INTERNAL_PORT="3001"
 # local (`docker inspect node:22-alpine --format '{{index .RepoDigests 0}}'`
 # — fonte rastreavel, nunca inventado; Constitution VI) e resolvido a partir
 # do cache SEM pull (probe real desta wave: `#N ... CACHED`, sem contato com
-# registry). Reavaliar/atualizar conforme o processo descrito na task 3.2.3
-# quando a base precisar de patch de seguranca.
+# registry).
+#
+# Processo de atualizacao do digest (task 3.2.3 — quando a base precisar de
+# patch de seguranca; NUNCA copiar um digest de outra fonte que nao seja
+# resolvido ao vivo, Constitution VI):
+#   1. `docker pull node:22-alpine` (ou a tag major/minor vigente) para
+#      trazer a imagem mais recente da mesma linha `node:22-alpine`.
+#   2. `docker inspect node:22-alpine --format '{{index .RepoDigests 0}}'`
+#      para ler o NOVO digest resolvido de verdade (mesmo comando usado para
+#      fixar o valor atual acima — fonte rastreavel).
+#   3. Se a atualizacao trocar a linha MAJOR/MINOR da tag (ex.: 22 -> 24),
+#      revalidar contra `engines.node >=20.0.0` (package.json da arvore do
+#      painel) antes de prosseguir — nao presumir compatibilidade.
+#   4. Substituir o valor de `_SD_BASE_IMAGE` abaixo (UNICA linha-fonte; os
+#      dois estagios do Dockerfile gerado a referenciam via variavel, entao
+#      um digest desatualizado nunca fica divergente entre build/runtime).
+#   5. Rebuildar localmente (`_serve_docker_build_image` ou
+#      `cstk serve --docker --reinstall`) e reexecutar a validacao empirica
+#      de hardening (tasks.md 3.1.2 — subir com o conjunto completo de
+#      `--cap-drop`/`--read-only`/etc. e confirmar que o painel + o
+#      encaminhador socat continuam funcionais; uma base nova pode mudar
+#      paths graváveis assumidos pelo runtime).
+#   6. `./tests/run.sh test_serve-docker` — o teste de pin
+#      (`scenario_dockerfile_pins_base_by_digest_not_floating_tag`) so
+#      confirma o FORMATO (`@sha256:` de 64 hex), nao a atualidade; a
+#      atualidade e responsabilidade deste processo manual.
+#   7. Registrar a troca no CHANGELOG.md (motivo — ex.: CVE/patch de
+#      seguranca — e o novo digest) para nao virar divida tecnica silenciosa.
 _SD_BASE_IMAGE="node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2"
 
 # Nome/label deterministicos do container (data-model.md "Containerized
@@ -211,11 +267,14 @@ CSTK_SERVE_DOCKER_ENTRYPOINT_EOF
 #                                                better-sqlite3 (sem prebuild
 #                                                musl) — SO no build
 #     WORKDIR /app + COPY . .                   contexto = arvore verificada
-#     RUN npm ci                                lockfile (nao npm install);
-#                                                ja falha fail-closed se
-#                                                package-lock.json ausente —
-#                                                mensagem customizada fica
-#                                                para a task 3.3
+#     RUN test -f package-lock.json || ...      fail-closed explicito (task
+#                                                3.3, CHK014): aborta com
+#                                                mensagem cstk acionavel ANTES
+#                                                de `npm ci` se o lockfile
+#                                                estiver ausente -- nunca
+#                                                degrada para `npm install`
+#     RUN npm ci                                lockfile (nao npm install) —
+#                                                reprodutibilidade (Decision 7)
 #     RUN npm run build                         compila shared-types+server+web
 #                                                (gera apps/server/dist/ e
 #                                                apps/web/dist/, consumidos em
@@ -241,6 +300,21 @@ _serve_docker_write_dockerfile() {
   }
   _serve_docker_write_entrypoint "$_sdwd_entrypoint_tmp"
 
+  # ATENCAO -- ARMADILHA REAL (encontrada empiricamente na wave da task 3.3):
+  # o heredoc abaixo e DELIBERADAMENTE nao-quotado (\`<<CSTK_..._HEAD\`, sem
+  # aspas no delimitador) para permitir a expansao de ${_SD_BASE_IMAGE}/
+  # ${_SD_FORWARDER_PORT}. ISSO TAMBEM significa que QUALQUER crase (`) no
+  # texto do heredoc dispara SUBSTITUICAO DE COMANDO DE VERDADE -- executada
+  # AGORA, no HOST, durante a GERACAO do Dockerfile (nao dentro do container,
+  # nao em build-time do Docker). Um bug real desta classe (crases sem
+  # escapar num comentario novo) fez este gerador executar `npm install`/
+  # `npm ci`/`cstk serve --docker` de verdade no host repetidas vezes,
+  # causando explosao de processos. Toda crase dentro deste heredoc (HEAD e
+  # TAIL, ate a linha ~389) MUST vir escapada (\` -- barra invertida antes da
+  # crase) para virar texto literal no Dockerfile gerado. Ao editar/adicionar
+  # comentarios aqui, gerar o Dockerfile e grep por crase NAO-escapada antes
+  # de commitar: grep -n '`' cli/lib/serve-docker.sh | awk -F: '$1>=304 && $1<=389' —
+  # qualquer ocorrencia sem \\ imediatamente antes e um risco de execucao real.
   {
     cat <<CSTK_SERVE_DOCKER_DOCKERFILE_HEAD
 # Dockerfile gerado por cli/lib/serve-docker.sh::_serve_docker_write_dockerfile
@@ -252,7 +326,7 @@ _serve_docker_write_dockerfile() {
 # (dec-037, supersede dec-011): o estagio de build compila o modulo nativo
 # better-sqlite3 p/ musl; o runtime fica slim (so o necessario p/ rodar).
 # Heredocs em COPY usam o frontend BUILTIN do BuildKit (Docker >= 23) -- sem
-# diretiva `# syntax` (evita o pull do frontend externo; ver cabecalho).
+# diretiva \`# syntax\` (evita o pull do frontend externo; ver cabecalho).
 
 # ---- Estagio de build: compila better-sqlite3 (musl) + workspaces ----
 FROM ${_SD_BASE_IMAGE} AS build
@@ -269,10 +343,21 @@ WORKDIR /app
 # false (FR-006) -- todo o npm roda aqui dentro, nunca no host.
 COPY . .
 
+# Fail-closed EXPLICITO (task 3.3.1/3.3.2, checklists/security.md CHK014):
+# resolve a contradicao entre research.md Decision 1 ("condicionar a
+# presenca de package-lock.json") e Decision 7 ("MUST usar npm ci
+# incondicional") SEM presumir que o lockfile sera eterno em releases
+# futuras do painel -- se ausente, o build MUST abortar com mensagem
+# acionavel, e NUNCA degradar silenciosamente para \`npm install\` (que
+# quebraria a garantia de reprodutibilidade de \`npm ci\`). \`npm ci\` sozinho
+# ja falharia neste caso, mas com a mensagem generica do npm; este guard
+# antecipa a checagem com uma mensagem no mesmo padrao das demais mensagens
+# acionaveis de \`cstk serve --docker\` (CHK009 tabela de causa-raiz).
+RUN test -f package-lock.json || { printf 'cstk serve --docker: erro fail-closed no build da imagem: package-lock.json ausente na arvore extraida do painel; o build nunca degrada silenciosamente para npm install (reprodutibilidade); reinstale com --reinstall ou verifique se esta release do cstk-panel publica o lockfile\n' >&2; exit 1; }
+
 # npm ci (nao npm install) a partir do package-lock.json da arvore extraida
-# -- reprodutibilidade (research.md Decision 7). Ja falha fail-closed se o
-# lockfile estiver ausente (mensagem customizada acionavel: task 3.3,
-# checklists/security.md CHK014).
+# -- reprodutibilidade (research.md Decision 7). O guard acima ja garante
+# fail-closed com mensagem acionavel antes deste passo.
 RUN npm ci
 
 # Compila os workspaces (shared-types + server + web) -- gera
