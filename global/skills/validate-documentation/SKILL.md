@@ -238,9 +238,13 @@ Ausencia de qualquer secao acima e Erro (nao Aviso). Para
 ### Checks adicionais
 
 - **Sem placeholders residuais**: rejeitar se conteudo contem
-  `TODO`, `XXX`, `FIXME`, `<placeholder>`, `lorem ipsum`,
-  `TBD`, `[FILL ME]`. Runbook e operacional — placeholder e
-  dividida tecnica que vira incidente.
+  `TODO:`/`TODO(`, `XXX`, `FIXME`, `<placeholder>`, `lorem ipsum`,
+  `TBD`, `[FILL ME]`. Runbook e operacional — placeholder e divida
+  tecnica que vira incidente. NOTA (corpus pt-br): exigir o marcador
+  DELIMITADO — `TODO:` (dois-pontos) ou `TODO(` (estilo comentario de
+  codigo) — e NAO o token solto `TODO`. Em prosa pt-br, "TODO/TODA" em
+  enfase CAIXA-ALTA (ex: "para TODO comando") e legitimo e NAO deve
+  disparar falso-positivo.
 - **Cross-refs validos**: paths relativos em links Markdown
   (`[texto](../path)`) devem existir no disco. Reportar
   link quebrado como Erro.

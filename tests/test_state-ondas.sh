@@ -844,4 +844,29 @@ scenario_reconcile_wave_phase_override() {
   assert_stdout_contains "next=checklist" || return 1
 }
 
+scenario_git_commit_worktree() {
+  # Regressao: em git worktree o `.git` e ARQUIVO (`gitdir: ...`), nao diretorio.
+  # O check antigo `[ -d "$_pap/.git" ]` dava falso-negativo e quebrava commit
+  # dentro de `cstk session` (que usa worktrees).
+  _sd="$TMPDIR_TEST/state"
+  _main="$TMPDIR_TEST/mainrepo"
+  _wt="$TMPDIR_TEST/wt"
+  _init_state "$_sd"
+  mkdir -p "$_main"
+  ( cd "$_main" && git init -q -b main \
+    && git config user.email t@t && git config user.name t \
+    && touch base.txt && git add . && git commit -q -m initial \
+    && git worktree add -b feat "$_wt" ) >/dev/null 2>&1
+  [ -f "$_wt/.git" ] || { _fail "worktree setup" ".git deveria ser ARQUIVO em $_wt"; return 1; }
+  ( cd "$_wt" && touch novo.txt )
+  capture "$SCRIPT" git-commit --state-dir "$_sd" --projeto-alvo-path "$_wt" \
+    --motivo "commit em worktree"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "worktree commit" "exit=$_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"; return 1; }
+  _msg=$(git -C "$_wt" log -1 --pretty=%s)
+  case "$_msg" in
+    *"chore(agente-00c):"*"commit em worktree"*) ;;
+    *) _fail "worktree commit msg" "obtido: $_msg"; return 1 ;;
+  esac
+}
+
 run_all_scenarios

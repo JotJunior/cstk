@@ -709,7 +709,11 @@ _so_cmd_git_commit() {
   [ -n "$_motivo" ] || _so_die_usage "git-commit: --motivo obrigatorio"
   command -v git >/dev/null 2>&1 || _so_die "git-commit: git nao encontrado no PATH" 1
   [ -d "$_pap" ] || _so_die "git-commit: projeto-alvo-path nao existe: $_pap" 1
-  if [ ! -d "$_pap/.git" ]; then
+  # Worktree-safe: em git worktree o `.git` e um ARQUIVO (`gitdir: ...`), nao
+  # diretorio — `[ -d .git ]` daria falso-negativo e quebraria `cstk session`.
+  # `rev-parse` cobre repo normal, worktree e submodulo (mesma checagem de
+  # commit-mode.sh).
+  if ! git -C "$_pap" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     _so_die "git-commit: $_pap nao e repositorio git (init manual antes)" 1
   fi
   if [ -z "$_onda" ]; then

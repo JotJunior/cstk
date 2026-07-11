@@ -335,4 +335,17 @@ scenario_emit_aborta_sem_secrets_filter() {
   assert_stderr_contains "secrets-filter" || return 1
 }
 
+scenario_stack_final_condicional_ao_status() {
+  # Regressao: 'Stack final' nao pode afirmar 'abortada' numa execucao
+  # concluida sem suggested_stack (caso feature-00c, herda stack do projeto).
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.execution.status' --value '"concluida"'
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_not_contains "abortada antes de definir" || return 1
+  assert_stdout_contains "herdada do projeto" || return 1
+}
+
 run_all_scenarios

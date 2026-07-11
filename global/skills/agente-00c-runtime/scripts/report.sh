@@ -84,7 +84,7 @@ _rp_render_secao_1() {
     "| ID Execucao | \($exec.id) |",
     "| Projeto-Alvo | \($exec.target_project_path // $exec.projeto_alvo_path) |",
     "| Descricao | \($exec.target_project_description // $exec.projeto_alvo_descricao) |",
-    "| Stack final | \(($exec.suggested_stack // $exec.stack_sugerida) // "nao aplicavel — execucao abortada antes de definir") |",
+    "| Stack final | \(($exec.suggested_stack // $exec.stack_sugerida) // (if (($exec.status // "") == "abortada") then "nao aplicavel — execucao abortada antes de definir" else "nao aplicavel (herdada do projeto / nao definida)" end)) |",
     "| Status | \($exec.status) |",
     "| Motivo termino | \(($exec.termination_reason // $exec.motivo_termino) // "(em andamento)") |",
     "| Iniciada em | \($exec.started_at // $exec.iniciada_em) |",
