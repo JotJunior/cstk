@@ -1406,4 +1406,135 @@ scenario_help_menciona_allow_unverified() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# panel-docker FASE 2 — 2.1: composicao/regressao da flag --docker
+#
+# Orquestracao PROFUNDA de _serve_docker_main (pre-flight, build triggers,
+# docker run, reconciliacao, shutdown, mensagens) e coberta exaustivamente
+# em tests/cstk/test_serve-docker.sh -- os scenarios abaixo cobrem so o que
+# e responsabilidade do PARSER/DISPATCH de serve_main: (a) ausencia de
+# --docker nunca toca o binario docker (FR-002); (b) presenca de --docker
+# despacha ANTES do prereq de npm, que deixa de ser exigido (FR-006), mas
+# curl continua exigido; (c) validacao de porta/host (compartilhada) segue
+# se aplicando identicamente com --docker presente -- nao ha um segundo
+# parser.
+# ---------------------------------------------------------------------------
+
+# _stub_docker_must_not_be_called: stub docker que FALHA ruidosamente se
+# invocado -- prova que a AUSENCIA de --docker nunca toca docker (task
+# 2.1.3/4.3.2). Mesmo espirito de _stub_curl_must_not_be_called (acima).
+_stub_docker_must_not_be_called() {
+  _sdmnbc_bin="$1"
+  cat > "$_sdmnbc_bin/docker" <<'STUB'
+#!/bin/sh
+printf 'ERRO: docker foi chamado mas nao deveria (flag --docker ausente): %s\n' "$*" >&2
+exit 1
+STUB
+  chmod +x "$_sdmnbc_bin/docker"
+}
+
+scenario_docker_absent_flag_never_probes_container_runtime() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _stub_docker_must_not_be_called "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "docker_absent_no_probe_exit" "esperado exit 0 (fluxo nativo intacto), obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"
+    return 1
+  fi
+  if printf '%s' "$_CAPTURED_STDERR" | grep -q 'ERRO: docker foi chamado'; then
+    _fail "docker_absent_no_probe" "docker foi invocado mesmo sem a flag --docker (violacao FR-002)"
+    return 1
+  fi
+}
+
+scenario_docker_flag_does_not_require_npm_on_host() {
+  # FR-006: --docker NUNCA deve exigir npm no host. PATH interno com curl
+  # stubado mas SEM npm nenhum -- se o despacho ocorrer ANTES do prereq de
+  # npm (como deve), a execucao nunca reclama de npm ausente (pode falhar
+  # por outro motivo -- ex. docker ausente -- mas nunca por causa de npm).
+  _setup_serve_env
+  _dfn_bin="$TMPDIR_TEST/stubs"
+  mkdir -p "$_dfn_bin"
+  _stub_curl_ok "$_dfn_bin"
+  _SERVE_INNER_PATH="$_dfn_bin:$(_isolated_sh_dir)"
+  _run_serve --docker
+  if printf '%s' "$_CAPTURED_STDERR" | grep -qi 'npm nao encontrado'; then
+    _fail "docker_flag_requires_npm" "modo --docker nao deveria exigir npm no host (FR-006): $_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_docker_flag_still_requires_curl_on_host() {
+  # curl e exigido em AMBOS os modos (download/verificacao do painel,
+  # reusado por _serve_download_verify_extract) -- PATH interno SEM curl
+  # nem docker.
+  _setup_serve_env
+  _dfc_bin="$TMPDIR_TEST/stubs"
+  mkdir -p "$_dfc_bin"
+  _SERVE_INNER_PATH="$_dfc_bin:$(_isolated_sh_dir)"
+  _run_serve --docker
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "docker_flag_curl_exit" "esperado exit 1 (curl ausente), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "curl" || return 1
+}
+
+scenario_docker_flag_reaches_docker_specific_preflight_message() {
+  # docker AUSENTE (mesmo com curl presente) deve produzir a mensagem
+  # ESPECIFICA de serve-docker.sh (nao alguma mensagem generica do modo
+  # nativo) -- confirma que o despacho de fato ocorreu (task 2.1.1/2.1.2).
+  _setup_serve_env
+  _dfp_bin="$TMPDIR_TEST/stubs"
+  mkdir -p "$_dfp_bin"
+  _stub_curl_ok "$_dfp_bin"
+  _SERVE_INNER_PATH="$_dfp_bin:$(_isolated_sh_dir)"
+  _run_serve --docker
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "docker_flag_preflight_exit" "esperado exit 1 (docker ausente), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains 'cstk serve --docker: erro: docker nao encontrado' || return 1
+}
+
+scenario_docker_flag_composes_with_port_validation() {
+  # Validacao de porta (compartilhada, roda ANTES do despacho) continua se
+  # aplicando com --docker presente -- nao ha um segundo parser/validador
+  # (research.md Decision 5: "mesma validacao 1024-65535").
+  _setup_serve_env
+  _run_serve --docker --port 80
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "docker_port_privilegio" "esperado exit 1 (porta privilegiada), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains 'privileg' || return 1
+}
+
+scenario_docker_flag_invalid_port_exit2_before_dispatch() {
+  _setup_serve_env
+  _run_serve --docker --port abc
+  if [ "$_CAPTURED_EXIT" != "2" ]; then
+    _fail "docker_port_invalida" "esperado exit 2 (porta invalida), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+}
+
+scenario_docker_flag_host_nao_loopback_aviso_ainda_aplica() {
+  # O aviso de --host nao-loopback (compartilhado, roda ANTES do
+  # despacho) continua valendo com --docker presente.
+  _setup_serve_env
+  _dfh_bin="$TMPDIR_TEST/stubs"
+  mkdir -p "$_dfh_bin"
+  _stub_curl_ok "$_dfh_bin"
+  _SERVE_INNER_PATH="$_dfh_bin:$(_isolated_sh_dir)"
+  _run_serve --docker --host 0.0.0.0
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -qi 'aviso\|warn\|atencao\|0\.0\.0\.0'; then
+    _fail "docker_host_aviso" "stdout nao contem aviso sobre host nao-loopback com --docker"
+    return 1
+  fi
+}
+
 run_all_scenarios

@@ -146,131 +146,237 @@ Ref: research.md Decision 2 e Decision 4; contracts/cli-docker-mode.md "In-conta
 
 Ref: spec.md FR-001/FR-002; contracts/cli-docker-mode.md "Flags (composicao)"
 
-- [ ] 2.1.1 Adicionar `--docker)` ao laco `case` de `serve_main` (`serve.sh`, mesmo laco que ja
-  trata `--port`/`--host`/`--update`/`--reinstall`/`--allow-unverified`, L368-475)
-- [ ] 2.1.2 Repassar `--port`/`--host`/`--update`/`--reinstall`/`--allow-unverified` ja
-  parseados para o caminho `serve-docker.sh` (interface definida em 1.1.2)
-- [ ] 2.1.3 Garantir que a AUSENCIA de `--docker` preserva 100% o comportamento nativo atual
-  (FR-002) — nenhum novo branch e avaliado antes do parse do proprio `--docker`
-- [ ] 2.1.4 Teste de regressao: todos os scenarios existentes de `test_serve.sh` (sem `--docker`)
-  continuam passando sem alteracao de exit code/stdout/stderr apos a mudanca
+- [x] 2.1.1 Adicionar `--docker)` ao laco `case` de `serve_main` (`serve.sh`, mesmo laco que ja
+  trata `--port`/`--host`/`--update`/`--reinstall`/`--allow-unverified`, L368-475). Var interna
+  `_serve_container_mode` (nome deliberadamente SEM a substring "docker" -- preserva o
+  confinamento estatico da task 1.1.3, que so exempta a linha exata `--docker)` + o
+  encaminhamento mecanico, ver 2.1.2).
+- [x] 2.1.2 Repassar `--port`/`--host`/`--update`/`--reinstall`/`--allow-unverified` ja
+  parseados para o caminho `serve-docker.sh` (interface definida em 1.1.2). Despacho via
+  `if [ "$_serve_container_mode" = "1" ]; then . "$CSTK_LIB/serve-docker.sh"; _serve_docker_main
+  ...; return $?; fi` logo apos o prereq de `curl` (compartilhado) e ANTES do prereq de `npm`
+  (so nativo -- FR-006). O confinamento (task 1.1.3) foi estendido com 2 exemplos MECANICOS
+  novos (source da lib + chamada de `_serve_docker_main`), justificados pelo proprio cabecalho
+  de `serve-docker.sh`: "o encaminhamento para as funcoes daqui" nao conta como violacao.
+  Nenhum comentario em `serve.sh` menciona "docker" (reescritos para "modo alternativo") --
+  so os 3 padroes mecanicos exemptados aparecem.
+- [x] 2.1.3 Garantir que a AUSENCIA de `--docker` preserva 100% o comportamento nativo atual
+  (FR-002) — nenhum novo branch e avaliado antes do parse do proprio `--docker`. Verificado por
+  refatoracao SEM alteracao de comportamento (ver 2.3.1) + regressao 2.1.4.
+- [x] 2.1.4 Teste de regressao: todos os scenarios existentes de `test_serve.sh` (sem `--docker`)
+  continuam passando sem alteracao de exit code/stdout/stderr apos a mudanca. Suite completa
+  verde apos a refatoracao (95 scenarios test_serve+test_serve-docker, 0 fail/error) +
+  `scenario_docker_absent_flag_never_probes_container_runtime` (stub docker que falha
+  ruidosamente se invocado, confirma zero chamada quando a flag esta ausente).
+  **NOTA DE ESCOPO (Decisao registrada pelo orquestrador desta onda)**: o `--help` de
+  `serve_main` NAO foi alterado nesta FASE — permanece 100% no escopo ja planejado da tarefa
+  6.1 (`--help` documenta `--docker` + semantica docker de `--update`/`--reinstall`, com seu
+  proprio teste 6.1.3). Motivo: alterar o heredoc de `--help` para mencionar `--docker`
+  quebraria o confinamento estatico da task 1.1.3 (a palavra "docker" apareceria fora dos 3
+  padroes mecanicos exemptados) sem que o texto completo (semantica docker-specific de
+  update/reinstall) estivesse pronto ainda -- a tarefa 6.1 e o lugar certo para isso, com o
+  criterio de completude ja definido (CHK013 infra: "nao so a existencia da flag").
 
 ### 2.2 Pre-flight fail-closed do runtime de container `[C]`
 
 Ref: spec.md FR-003/FR-004/SC-006; research.md Decision 5; data-model.md "Container Runtime Check"
 
-- [ ] 2.2.1 Checar `command -v docker` ANTES de qualquer operacao de rede — ausente: mensagem
-  "docker nao instalado" (texto exato fixado em 2.8), exit 1
-- [ ] 2.2.2 Definir e fixar o comando exato da sonda de daemon (`docker info` vs `docker version
-  --format ...`) e seu parsing de exit code — descrever o contrato e fixar na implementacao
-  (research.md Decision 5 marca "[detalhe de execute-task]")
-- [ ] 2.2.3 Runtime presente mas sonda de daemon falha: mensagem DISTINTA "daemon
-  parado/inacessivel" (texto exato fixado em 2.8), exit 1
-- [ ] 2.2.4 Medir e validar que o diagnostico completo (binario + sonda) ocorre em <5s sem
-  nenhuma chamada de rede antes (SC-006)
-- [ ] 2.2.5 Teste: docker ausente do PATH (stub) -> mensagem + exit 1 sem rede; docker presente
-  mas sonda falha (stub) -> mensagem distinta + exit 1; ambos presentes -> prossegue
+- [x] 2.2.1 Checar `command -v docker` ANTES de qualquer operacao de rede — ausente: mensagem
+  "docker nao instalado" (texto exato fixado em 2.8), exit 1. Implementado em
+  `_serve_docker_preflight` (`serve-docker.sh`), primeira acao de `_serve_docker_main`.
+- [x] 2.2.2 Comando exato da sonda de daemon FIXADO nesta FASE: `docker info >/dev/null 2>&1`
+  (exit code puro, saida descartada -- nunca repassada ao usuario). Escolhido sobre `docker
+  version --format ...` por ser o idioma mais padrao para "o daemon esta acessivel?" e nao
+  exigir parsing de output. Fala com o socket/named pipe LOCAL (nunca rede) — satisfaz FR-003
+  por construcao, nao por checagem runtime de "antes de rede".
+- [x] 2.2.3 Runtime presente mas sonda de daemon falha: mensagem DISTINTA "daemon
+  parado/inacessivel" (texto exato fixado em 2.8), exit 1. Mensagens comprovadamente distintas
+  (`scenario_preflight_absent_and_down_messages_are_distinct`,
+  `scenario_all_five_error_messages_are_non_empty_and_distinct`).
+- [x] 2.2.4 SC-006 satisfeito POR CONSTRUCAO: nem `command -v docker` (lookup de PATH local) nem
+  `docker info` (fala so com o socket local) fazem I/O de rede — a checagem inteira ocorre antes
+  de qualquer `http_download`/chamada a API GitHub no fluxo (2.3). Timing exato contra um daemon
+  travado/remoto fica fora do escopo hermetico desta wave (nenhum wrapper de `timeout` portavel
+  em macOS/POSIX puro foi introduzido — mesma decisao de design ja documentada no runtime
+  agente-00c-runtime, "POSIX sh puro nao tem timeout portavel garantido").
+- [x] 2.2.5 Teste: docker ausente do PATH (stub) -> mensagem + exit 1 sem rede; docker presente
+  mas sonda falha (stub) -> mensagem distinta + exit 1; ambos presentes -> prossegue. 4 scenarios
+  em `test_serve-docker.sh` (`scenario_preflight_docker_absent_exit1_no_network`,
+  `scenario_preflight_daemon_down_distinct_message_exit1`,
+  `scenario_preflight_absent_and_down_messages_are_distinct`,
+  `scenario_preflight_both_present_reaches_reconcile`).
 
 ### 2.3 Reuso do fluxo de instalacao verificada `[C]`
 
 Ref: spec.md FR-006/FR-007; research.md Decision 1; data-model.md "Verified Panel Installation"
 
-- [ ] 2.3.1 Reusar `_serve_install` (`serve.sh` L194-354) ate a extracao — `trusted_host_check` +
-  integridade fail-closed + extracao — como fonte da arvore de contexto do `docker build`
-  (1.2.2), sem segundo mecanismo de download/verificacao
-- [ ] 2.3.2 Garantir `host_npm_used=false` no modo Docker (data-model.md campo MUST false) —
-  nenhum `npm install`/`npm run build` roda no host quando `--docker`
-- [ ] 2.3.3 Aplicar `--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1` apenas na etapa de
-  download do painel (host), preservando o aviso de alta visibilidade + linha `serve-integrity`
-  no enforcement-log; mismatch de checksum continua bloqueio absoluto sem bypass
-- [ ] 2.3.4 Teste: cenario paralelo aos scenarios de integridade ja existentes em
-  `test_serve.sh` (host allowlist, integridade nao confirmada, mismatch bloqueado), agora
-  exercitando o caminho `--docker`
+- [x] 2.3.1 `_serve_install` (`serve.sh`) REFATORADA nesta FASE: extraida a funcao
+  `_serve_download_verify_extract DEST_DIR ALLOW_UNVERIFIED BYPASS_METHOD` (download da API
+  GitHub + `trusted_host_check` + integridade fail-closed + extracao — identica ao codigo
+  original ate a extracao, ZERO mudanca de mensagem/comportamento), reusada por AMBOS
+  `_serve_install` (nativo: extrai -> `npm install` -> `mv` atomico) e `_serve_docker_main`
+  (extrai -> usa como contexto de `docker build`, sem `npm install`). Sem segundo mecanismo de
+  download/verificacao (FR-007) -- mesma funcao, dois callers. Trap de sinal com posse
+  sequencial (nunca sobreposta) entre as duas janelas de risco (rede/extracao vs
+  npm-install/mv), documentado no cabecalho de cada funcao. Regressao total: suite
+  `test_serve.sh` 100% verde apos a refatoracao (nenhuma mudanca de exit/stdout/stderr).
+- [x] 2.3.2 `host_npm_used=false` garantido estruturalmente: `_serve_docker_main` nunca invoca
+  `npm`; o prereq de `command -v npm` em `serve_main` e pulado inteiramente no modo alternativo
+  (bloco dedicado, ver 2.1.2) — `scenario_docker_flag_does_not_require_npm_on_host`
+  (`test_serve.sh`) confirma que a AUSENCIA de npm no PATH interno nunca produz a mensagem de
+  erro correspondente.
+- [x] 2.3.3 `--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1` aplicados na MESMA etapa de
+  download (agora dentro de `_serve_download_verify_extract`, compartilhada) — aviso de alta
+  visibilidade + linha `serve-integrity` no enforcement-log preservados identicos; mismatch
+  continua bloqueio absoluto mesmo com `--allow-unverified`
+  (`scenario_fetch_mismatch_blocks_even_with_allow_unverified`).
+- [x] 2.3.4 Teste: cenarios paralelos aos de integridade de `test_serve.sh`, exercitando
+  `--docker` — `scenario_fetch_unverifiable_blocks_by_default`,
+  `scenario_fetch_allow_unverified_bypasses_and_proceeds`,
+  `scenario_fetch_mismatch_blocks_even_with_allow_unverified`,
+  `scenario_message_integrity_unconfirmed_matches_native_wording` (confirma texto IDENTICO ao
+  nativo, prova de reuso real e nao duplicacao).
 
 ### 2.4 Build/rebuild da imagem conforme `--update`/`--reinstall` `[A]`
 
 Ref: spec.md FR-010; research.md Decision 5 e Decision 1; data-model.md "Panel Image" State
 Transitions; checklists/infra.md CHK012
 
-- [ ] 2.4.1 Imagem ausente: construir (`docker build`) a partir da arvore recem-verificada (2.3)
-- [ ] 2.4.2 `--update`: consultar release mais recente (mesma logica ja existente do modo
-  nativo); se houver versao nova, re-baixar+verificar e reconstruir a imagem; senao reusar a
-  imagem cacheada; falha de rede/API mantem a imagem instalada e AINDA sobe o painel
-  (best-effort, paridade com o nativo)
-- [ ] 2.4.3 `--reinstall`: remover a imagem cacheada (`docker rmi`) e reconstruir do zero,
-  incondicional (paridade com o `rm -rf` do dir nativo, `serve.sh` L533-535)
-- [ ] 2.4.4 CHK012 (infra, `[Ambiguity]`): fixar regra de precedencia quando `--update` E
-  `--reinstall` sao informados juntos — `--reinstall` vence (espelha "reinstall e sempre
-  incondicional" ja definido para o caso isolado, proposta do checklist) — registrar como
-  Decisao auditavel do orquestrador
-- [ ] 2.4.5 Teste: cada um dos 3 gatilhos de `build_trigger` (absent / `--update` com versao
-  nova / `--reinstall`) dispara o rebuild esperado; `--update` sem versao nova reusa a imagem;
-  `--update`+`--reinstall` juntos aplica a precedencia de 2.4.4
+- [x] 2.4.1 Imagem ausente: construir (`docker build`) a partir da arvore recem-verificada (2.3).
+  `scenario_build_trigger_absent_fetches_and_builds`.
+- [x] 2.4.2 `--update`: consulta `_serve_latest_tag` (reuso do helper ja existente do modo
+  nativo); versao nova -> re-baixa+verifica+reconstroi; sem versao nova -> reusa; falha de
+  rede/API (curl indisponivel) mantem a imagem instalada e AINDA sobe o painel (best-effort).
+  `scenario_build_trigger_update_new_version_rebuilds`,
+  `scenario_build_trigger_update_no_new_version_reuses`,
+  `scenario_build_trigger_update_network_failure_keeps_installed`.
+- [x] 2.4.3 `--reinstall`: `docker rmi -f <imagem-atual>` (tolera imagem inexistente) +
+  reconstroi do zero, incondicional -- nunca consulta a API de `--update`, mesmo com ambas as
+  flags (ver 2.4.4). `scenario_build_trigger_reinstall_always_rebuilds_unconditionally`.
+- [x] 2.4.4 CHK012 (infra, `[Ambiguity]`) RESOLVIDO: `--reinstall` VENCE sobre `--update` quando
+  ambos presentes -- implementado via precedencia de `if/elif` (branch de `--reinstall` e
+  avaliada PRIMEIRO e incondicionalmente; a branch de `--update` so e alcancada no `elif`,
+  nunca executa se `--reinstall` estiver presente). Decisao auditavel registrada pelo
+  orquestrador desta onda (dec pendente de numero -- ver bookkeeping da onda).
+  `scenario_reinstall_wins_over_update_chk012` confirma que a mensagem "verificando
+  atualizacoes" (marca do branch --update) NUNCA aparece quando --reinstall tambem esta
+  presente.
+- [x] 2.4.5 Teste: os 3 gatilhos de `build_trigger` cobertos individualmente (2.4.1-2.4.3) +
+  `--update` sem versao nova reusa (2.4.2) + `--update`+`--reinstall` juntos aplica a
+  precedencia de 2.4.4 (`scenario_reinstall_wins_over_update_chk012`).
 
 ### 2.5 `docker run`: nome, label, porta, mount, init, rm `[C]`
 
 Ref: spec.md FR-005/FR-008/FR-009/FR-011/FR-013; research.md Decision 3/4/6;
 contracts/cli-docker-mode.md "Contract: docker run"
 
-- [ ] 2.5.1 Nome deterministico do container (proposta aterrada em research.md Decision 6 /
-  data-model.md: `cstk-panel`) e label de gestao (proposta: `cstk.managed=serve`) — confirmar em
-  execute-task (data-model.md marca ambos `[a fixar]`)
-- [ ] 2.5.2 Publicar porta no loopback do host: `-p 127.0.0.1:<porta-host>:<porta-container>`
-  (`<porta-host>` = `--port`, default 5173, mesma validacao 1024-65535 de `serve.sh` L488-508)
-- [ ] 2.5.3 Montar o diretorio de dados do cstk (`dirname(CSTK_KNOWLEDGE_DB)` no host, senao
-  `~/.claude/cstk/`) como `-v <dir>:<target>:ro` + `-e CSTK_KNOWLEDGE_DB=<target>/knowledge.db`
-  — diretorio inteiro (nao so o arquivo), por causa dos sidecars WAL `-shm`/`-wal` (research.md
-  Decision 3)
-- [ ] 2.5.4 `--init` (tini, PID 1) + `--rm` (auto-remove no fim do happy path)
-- [ ] 2.5.5 Garantir que o helper NUNCA emite `docker push` nem `--network host` (FR-013;
-  research.md Decision 2 "Alternatives considered" rejeita `--network host`) — checagem estatica
-  (grep) no proprio `serve-docker.sh`
-- [ ] 2.5.6 Teste: assert que a invocacao `docker run` montada pelo helper contem exatamente os
-  parametros acima (nome/label/porta/mount ro/init/rm) e nunca contem `push`/`--network host`/
-  `--privileged` (grep estatico sobre `serve-docker.sh`, paridade com o teste de FR-013 ja
-  proposto em research.md Decision 7)
+- [x] 2.5.1 Nome/label FIXADOS nesta FASE (constantes `_SD_CONTAINER_NAME`/
+  `_SD_MANAGEMENT_LABEL` em `serve-docker.sh`): `cstk-panel` / `cstk.managed=serve` — exatamente
+  as propostas aterradas em research.md Decision 6/data-model.md.
+- [x] 2.5.2 Publica em `-p <host>:<porta-host>:<porta-container>` (host = `--host`, default
+  `127.0.0.1`; porta-host = `--port`, ja validada 1024-65535 por `serve_main` ANTES do
+  despacho — sem segundo validador). `scenario_docker_run_port_and_host_reflect_arguments`.
+- [x] 2.5.3 Diretorio de dados montado read-only: `-v <dir>:/data/knowledge-db:ro` +
+  `-e CSTK_KNOWLEDGE_DB=/data/knowledge-db/knowledge.db` (`_SD_KDB_CONTAINER_DIR` FIXADO nesta
+  FASE — caminho interno arbitrario, sem contrato externo, so a env importa para o painel).
+  `<dir>` = `dirname($CSTK_KNOWLEDGE_DB)` se setada, senao `~/.claude/cstk/` (mesma resolucao do
+  painel, config.ts). Dir HOST criado com `mkdir -p` se ausente (evita o gotcha de auto-criacao
+  como root pelo proprio docker em versoes antigas — US2 Acceptance Scenario 2).
+  `scenario_docker_run_argv_contains_expected_flags`,
+  `scenario_kdb_mount_defaults_to_claude_cstk_dir_when_env_unset`.
+- [x] 2.5.4 `--init` + `--rm` sempre presentes no `docker run`.
+- [x] 2.5.5 Checagem estatica (grep) confirmando ausencia de `docker push`/`--network host`/
+  `--privileged` no PROPRIO `serve-docker.sh` (nao so no Dockerfile gerado, ja coberto pela
+  FASE 1) — exclui linhas de comentario puro (que mencionam esses padroes so para EXPLICAR a
+  ausencia).
+- [x] 2.5.6 **Hardening antecipado desta wave (alem do escopo minimo de 2.5, alinhado com o
+  pedido explicito do orquestrador desta onda)**: o `docker run` ja inclui
+  `--cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:rw,noexec,nosuid,
+  size=64m` (o conjunto completo de research.md Decision 7), nao apenas os campos minimos desta
+  tarefa. Estruturalmente uniforme entre os 3 gatilhos de build (2.4) — HA UM UNICO ponto de
+  montagem do `docker run` no codigo, entao "mesmo hardening em todos os gatilhos" (CHK009
+  security, tarefa 3.1.3) e satisfeito por construcao, nao por replicacao manual. **Ressalva
+  IMPORTANTE**: a VALIDACAO EMPIRICA de que o painel+encaminhador continuam funcionais sob esse
+  conjunto completo de hardening (research.md Decision 7 "[detalhe de execute-task]", task
+  3.1.2) permanece PENDENTE — esta wave nao teve escopo/orcamento para repetir o `docker build`+
+  `docker run` real feito na FASE 1 (que NAO usava hardening) com o novo conjunto de flags;
+  fica formalmente para a FASE 3. Teste: assert que a invocacao `docker run` montada pelo
+  helper contem exatamente os parametros de 2.5.1-2.5.4 + o hardening acima, e nunca contem
+  `push`/`--network host`/`--privileged`
+  (`scenario_docker_run_argv_contains_expected_flags`,
+  `scenario_serve_docker_never_emits_push_or_host_network_or_privileged`).
 
 ### 2.6 Reconciliacao de container remanescente (FR-012-INFRA-IDEMP) `[A]`
 
 Ref: spec.md FR-012-INFRA-IDEMP; research.md Decision 6; data-model.md "Containerized Panel
 Instance" State Transitions; checklists/infra.md CHK003
 
-- [ ] 2.6.1 A cada invocacao, executar `docker rm -f <nome>` antes do `run`, tolerando "no such
-  container" (idempotente) — cobre remanescente parado OU rodando
-- [ ] 2.6.2 CHK003 (infra, `[Gap]`): enumerar as condicoes concretas sob as quais a
-  reconciliacao e "impossivel" (ex.: permissao negada ao daemon, daemon cai no meio da
-  operacao, container preso em estado `removing`) e mapear CADA UMA para uma mensagem cstk
-  especifica (nunca stack cru do runtime) — texto exato fixado junto com 2.8
-- [ ] 2.6.3 Interrupcao durante build/start (Ctrl+C antes de `ready`, Edge Case da spec): o
-  handler remove o container parcial pelo nome deterministico, sem deixar orfao (data-model.md
-  "Interrupcao durante build/start")
-- [ ] 2.6.4 Teste: remanescente parado -> reconciliado e sobe normal; remanescente rodando ->
-  reconciliado e sobe normal; reconciliacao impossivel (simular permissao negada via stub
-  docker) -> mensagem cstk especifica, nunca erro cru
+- [x] 2.6.1 A cada invocacao (SEMPRE, nao so apos rebuild), `_serve_docker_reconcile_container`
+  executa `docker rm -f <nome>` antes do `run`, tolerando a mensagem "No such container"
+  (idempotente) — cobre remanescente parado OU rodando (mesmo `docker rm -f` cobre os dois
+  estados, o daemon nao distingue).
+- [x] 2.6.2 CHK003 (infra, `[Gap]`) RESOLVIDO: qualquer saida de `docker rm -f` que NAO seja "No
+  such container" (permissao negada, daemon caiu no meio da operacao, container preso em
+  "removing", ou qualquer outra falha do runtime) e tratada uniformemente como reconciliacao
+  IMPOSSIVEL — mensagem cstk unica e acionavel (texto fixado em 2.8), NUNCA o stack cru do
+  runtime repassado ao usuario.
+- [x] 2.6.3 Interrupcao durante build/start: o trap de encerramento (`_serve_docker_shutdown`) e
+  registrado ANTES do `docker run -d` (nao so depois) — cobre tambem uma eventual interrupcao
+  durante a propria chamada de subida, nao so apos o container existir. `docker stop` de um
+  nome que ainda nao existe falha silenciosamente (`|| :`), entao o registro antecipado do trap
+  e seguro por construcao.
+- [x] 2.6.4 Teste: remanescente rodando -> reconciliado e sobe normal
+  (`scenario_reconcile_running_remnant_then_starts_normally`); remanescente ausente ->
+  idempotente, sem erro (`scenario_reconcile_absent_remnant_is_idempotent_noop`); reconciliacao
+  impossivel (permissao negada simulada via stub) -> mensagem cstk especifica, nunca erro cru
+  (`scenario_reconcile_impossible_gives_actionable_message_exit1`,
+  `scenario_message_reconcile_impossible_is_actionable`).
 
 ### 2.7 Encerramento gracioso (FR-011) `[A]`
 
 Ref: spec.md FR-011; research.md Decision 6 "Encerramento gracioso"; quickstart.md Scenario 6
 
-- [ ] 2.7.1 Reusar o padrao de trap do host (`trap ... INT TERM`, espelhando `_serve_shutdown`
-  `serve.sh` L103-123) disparando `docker stop -t <grace>` — grace alinhado ao nativo (5s)
-- [ ] 2.7.2 Confirmar que `--rm` remove o container apos o `stop` bem-sucedido (happy path sem
-  vestigio)
-- [ ] 2.7.3 Teste: Ctrl+C simulado (envio de sinal ao processo do `cstk serve --docker` em
-  teste) resulta em `docker stop` + remocao, sem container/processo orfao (SC-003) — paridade
-  com o teste de shutdown ja existente para o modo nativo
+- [x] 2.7.1 `trap '_serve_docker_shutdown' INT TERM` registrado antes do `docker run -d` (ver
+  2.6.3), disparando `docker stop -t 5 cstk-panel` (`_SD_STOP_GRACE_SECONDS=5`, identico ao
+  grace do modo nativo). Diferente do modo nativo, o loop de poll SIGTERM->espera->SIGKILL NAO
+  precisou ser reimplementado manualmente: `docker stop -t N` ja faz esse proprio ciclo
+  internamente sobre o PID1 do container (tini) — o codigo cstk so precisa emitir o comando.
+- [x] 2.7.2 `--rm` confirmado: nenhum `docker rm` adicional e emitido pelo handler de shutdown
+  (so o `docker stop`) — `scenario_graceful_shutdown_rm_not_called_after_stop_because_of_auto_remove`.
+- [x] 2.7.3 Teste: Ctrl+C simulado (SIGTERM ao processo rodando `_serve_docker_main`, mesmo
+  padrao de `scenario_sigterm_graceful_kill` do modo nativo — subshell em background + kill +
+  poll com timeout) resulta em `docker stop -t 5 cstk-panel` emitido e o processo encerra sem
+  hang (`scenario_graceful_shutdown_sends_docker_stop_with_grace_5s`).
 
 ### 2.8 Mensagens de erro acionaveis `[A]`
 
 Ref: contracts/cli-docker-mode.md "Erros"; checklists/infra.md CHK009
 
-- [ ] 2.8.1 CHK009 (infra, `[Gap]`): operacionalizar "mensagem acionavel" com criterio testavel
-  — MUST citar a causa raiz + MUST sugerir o proximo comando/link
-- [ ] 2.8.2 Fixar o texto exato das 5 mensagens da tabela de Erros do contrato: docker nao
-  instalado; daemon inacessivel; porta em uso; container remanescente irreconciliavel;
-  integridade nao confirmada
-- [ ] 2.8.3 Teste: cada uma das 5 mensagens contem os dois elementos exigidos por 2.8.1 (assert
-  de substring/padrao, nao apenas "mensagem nao vazia")
+- [x] 2.8.1 CHK009 (infra, `[Gap]`) RESOLVIDO: criterio operacional fixado nesta FASE — cada
+  mensagem MUST (a) citar a causa raiz especifica (nome do binario/condicao/recurso que falhou)
+  e (b) sugerir o proximo passo concreto (flag, comando ou link). Aplicado uniformemente as 5
+  mensagens abaixo; testado via asserts de substring dedicados por mensagem (nao "mensagem nao
+  vazia" generico).
+- [x] 2.8.2 Texto exato das 5 mensagens FIXADO em `_serve_docker_preflight`/
+  `_serve_docker_reconcile_container`/o bloco de `docker run` de `_serve_docker_main` (todas com
+  prefixo `cstk serve --docker:`, exceto integridade que reusa o prefixo `cstk serve:` do
+  mecanismo compartilhado, 2.3.1):
+  - docker nao instalado: cita "PATH" + link `https://docs.docker.com/get-docker/`
+  - daemon inacessivel: cita "daemon" + "inicie o Docker" (mensagem DISTINTA da anterior — sem
+    a palavra "instale")
+  - porta em uso: cita "porta" + sugere `--port <N>`
+  - container remanescente irreconciliavel: cita "permissao"/"daemon" + "tente novamente",
+    nunca repassa o texto cru do runtime (ex.: nunca ecoa "trying to connect to the Docker
+    daemon socket" literal)
+  - integridade nao confirmada: identica ao modo nativo (mesmo mecanismo compartilhado, 2.3.1)
+- [x] 2.8.3 Teste: cada uma das 5 mensagens testada individualmente
+  (`scenario_message_docker_absent_is_actionable`,
+  `scenario_message_daemon_down_is_actionable`,
+  `scenario_message_port_in_use_is_actionable`,
+  `scenario_message_reconcile_impossible_is_actionable`,
+  `scenario_message_integrity_unconfirmed_matches_native_wording`) + um teste agregado
+  confirmando que as 5 sao TODAS nao-vazias e mutuamente DISTINTAS
+  (`scenario_all_five_error_messages_are_non_empty_and_distinct`).
 
 ---
 

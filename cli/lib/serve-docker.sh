@@ -119,6 +119,27 @@ _SD_PANEL_INTERNAL_PORT="3001"
 # quando a base precisar de patch de seguranca.
 _SD_BASE_IMAGE="node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2"
 
+# Nome/label deterministicos do container (data-model.md "Containerized
+# Panel Instance" [a fixar], FIXADOS nesta FASE 2 — dec pendente de registro
+# pelo orquestrador): chave de idempotencia = uma instancia do modo
+# alternativo por host (FR-012-INFRA-IDEMP), sem TTL. `docker rm -f
+# $_SD_CONTAINER_NAME` a cada invocacao (idempotente) reconcilia qualquer
+# remanescente antes de subir um novo.
+_SD_CONTAINER_NAME="cstk-panel"
+_SD_MANAGEMENT_LABEL="cstk.managed=serve"
+
+# Diretorio ONDE o mount read-only do indice de conhecimento e montado
+# DENTRO do container (data-model.md "Knowledge DB Mount" container_target
+# [a fixar]). Caminho interno arbitrario (nao ha contrato externo sobre
+# ele — o painel resolve o arquivo exclusivamente via a env
+# CSTK_KNOWLEDGE_DB, nunca por convencao de path fixo).
+_SD_KDB_CONTAINER_DIR="/data/knowledge-db"
+
+# Grace period (segundos) do `docker stop -t` no encerramento gracioso —
+# alinhado ao grace de 5s ja em producao no modo nativo
+# (_serve_shutdown, serve.sh L103-123, research.md Decision 6).
+_SD_STOP_GRACE_SECONDS="5"
+
 # _serve_docker_image_tag PANEL_VERSION
 # Imprime a tag local deterministica da imagem do painel. Nunca aponta a
 # registry remoto (FR-013) — so o nome:tag local usado por `docker build -t`
@@ -343,6 +364,111 @@ _serve_docker_build_image() {
   return 0
 }
 
+# _serve_docker_source_dir PANEL_DIR
+# Imprime o diretorio onde a arvore-fonte VERIFICADA do painel (extraida,
+# SEM npm/node_modules -- FR-006/host_npm_used=false) fica cacheada entre
+# invocacoes do modo alternativo, e que serve de contexto ao `docker
+# build` (data-model.md "Verified Panel Installation" extracted_tree_path).
+# Sibling do diretorio de instalacao NATIVO (PANEL_DIR) -- NUNCA o MESMO
+# caminho: uma instalacao nativa ja em cache MUST permanecer intocada
+# quando o modo alternativo roda pela primeira vez (US1 Acceptance
+# Scenario 2).
+_serve_docker_source_dir() {
+  printf '%s/panel-docker-src\n' "$(dirname -- "$1")"
+}
+
+# _serve_docker_preflight
+# Pre-flight fail-closed do runtime de container (FR-003/FR-004/SC-006):
+# ANTES de qualquer operacao de rede, verifica (a) o binario esta no PATH
+# e (b) o daemon esta acessivel. Nenhum dos dois passos faz I/O de rede
+# (binario: lookup de PATH local; daemon: sonda contra o socket/named
+# pipe local do proprio host) -- satisfaz SC-006 por construcao, nao por
+# temporizador externo. Mensagens DISTINTAS e acionaveis para cada causa
+# (CHK008/CHK009 -- citam a causa raiz e sugerem o proximo passo).
+# exit 0 = runtime pronto para uso; exit 1 = bloqueado (mensagem ja
+# emitida em stderr; NUNCA repassa stack cru do runtime ao usuario).
+_serve_docker_preflight() {
+  if ! command -v docker >/dev/null 2>&1; then
+    printf 'cstk serve --docker: erro: docker nao encontrado no PATH; instale o Docker Engine ou o Docker Desktop (https://docs.docker.com/get-docker/) e rode novamente\n' >&2
+    return 1
+  fi
+
+  # Sonda de daemon: `docker info` fala com o daemon LOCAL (socket/named
+  # pipe, nunca rede) e retorna rapido com exit != 0 se ele estiver
+  # parado, inacessivel por permissao, ou com contexto invalido
+  # (research.md Decision 5 -- comando fixado nesta FASE 2). A saida
+  # bruta e descartada -- so o exit code importa aqui.
+  if ! docker info >/dev/null 2>&1; then
+    printf 'cstk serve --docker: erro: docker esta instalado mas o daemon nao esta acessivel (parado, sem permissao, ou contexto invalido); inicie o Docker (Docker Desktop, ou "systemctl start docker" no Linux), confirme que seu usuario tem permissao (grupo "docker" no Linux) e tente novamente\n' >&2
+    return 1
+  fi
+
+  return 0
+}
+
+# _serve_docker_kdb_host_dir
+# Imprime o diretorio HOST que contem o knowledge.db a montar read-only
+# (FR-008/FR-009): dirname de $CSTK_KNOWLEDGE_DB se setada (mesma
+# resolucao do painel, config.ts L49), senao ~/.claude/cstk/ (config.ts
+# L53, default do painel). Monta-se o DIRETORIO inteiro (nunca so o
+# arquivo) por causa dos sidecars WAL -shm/-wal (research.md Decision 3)
+# -- granularidade fixada em 2.5.3.
+_serve_docker_kdb_host_dir() {
+  if [ -n "${CSTK_KNOWLEDGE_DB:-}" ]; then
+    dirname -- "$CSTK_KNOWLEDGE_DB"
+  else
+    printf '%s/.claude/cstk\n' "$HOME"
+  fi
+}
+
+# _serve_docker_reconcile_container NAME
+# Reconciliacao automatica de um container remanescente de mesmo nome
+# (FR-012-INFRA-IDEMP, data-model.md "Reconcile pre-run"): `docker rm -f`
+# tolerando "No such container" (idempotente -- cobre remanescente parado
+# OU rodando, CHK002). Qualquer OUTRA falha (permissao negada ao daemon,
+# daemon caiu no meio da operacao, container preso em estado "removing")
+# e reportada como reconciliacao IMPOSSIVEL (checklists/infra.md CHK003):
+# mensagem cstk acionavel, NUNCA o stack cru do runtime (US4 Acceptance
+# Scenario 2). exit 0 = reconciliado (ou nada a reconciliar); exit 1 =
+# impossivel (mensagem ja emitida em stderr).
+_serve_docker_reconcile_container() {
+  _sdrc_name="$1"
+
+  _sdrc_out=$(docker rm -f "$_sdrc_name" 2>&1)
+  _sdrc_exit=$?
+
+  if [ "$_sdrc_exit" -eq 0 ]; then
+    return 0
+  fi
+
+  case "$_sdrc_out" in
+    *"No such container"*)
+      # Idempotente: nada remanescente para reconciliar.
+      return 0
+      ;;
+    *)
+      printf 'cstk serve --docker: erro: nao foi possivel reconciliar (remover) o container remanescente "%s"; verifique se seu usuario tem permissao para acessar o daemon Docker (grupo "docker" no Linux) e se o daemon nao caiu no meio da operacao, depois tente novamente\n' \
+        "$_sdrc_name" >&2
+      return 1
+      ;;
+  esac
+}
+
+# _serve_docker_shutdown: handler de sinal para SIGINT/SIGTERM (FR-011,
+# paridade com _serve_shutdown em serve.sh). Emite `docker stop` com
+# grace period alinhado ao nativo (5s, $_SD_STOP_GRACE_SECONDS) -- SIGTERM
+# ao PID1 (tini) do container, que o entrypoint propaga a painel +
+# encaminhador (_serve_docker_write_entrypoint), com SIGKILL de ultima
+# instancia gerenciado pelo PROPRIO `docker stop -t` (nao precisamos
+# reimplementar o loop de poll manual do modo nativo -- o daemon ja faz
+# isso). `--rm` remove o container apos o stop bem-sucedido -- nenhum
+# `docker rm` adicional aqui (task 2.7.2). Best-effort (`|| :`): nunca
+# deixa o handler falhar de forma ruidosa durante um encerramento.
+_serve_docker_shutdown() {
+  printf '\ncstk serve --docker: encerrando painel...\n'
+  docker stop -t "$_SD_STOP_GRACE_SECONDS" "$_SD_CONTAINER_NAME" >/dev/null 2>&1 || :
+}
+
 # _serve_docker_main PORT HOST UPDATE REINSTALL ALLOW_UNVERIFIED BYPASS_METHOD
 #   PORT              porta host publicada (--port, ja validada 1024-65535)
 #   HOST              lado host do publish (--host, default 127.0.0.1)
@@ -351,22 +477,29 @@ _serve_docker_build_image() {
 #   ALLOW_UNVERIFIED  "1"|"0" (--allow-unverified / CSTK_SERVE_ALLOW_UNVERIFIED)
 #   BYPASS_METHOD     "flag"|"env"|"" (origem do bypass, p/ o enforcement-log)
 #
-# Ponto de entrada do modo `cstk serve --docker`, chamado por serve_main
-# quando --docker esta presente (FASE 2 -- o wiring em serve.sh ainda nao
-# existe nesta FASE 1, task 2.1.1). Ira orquestrar: pre-flight fail-closed
-# do runtime de container (2.2), reuso do fluxo de instalacao verificada
-# ate a extracao (2.3), build/rebuild condicional da imagem via
-# _serve_docker_build_image conforme --update/--reinstall (2.4), `docker
-# run` com hardening (3.1) + mount read-only do knowledge.db (2.5),
-# reconciliacao de remanescente (2.6) e encerramento gracioso (2.7).
+# Ponto de entrada do modo `cstk serve --docker` (FASE 2 -- orquestracao
+# completa). PORT/HOST ja chegam validados pelo caller (serve_main roda a
+# mesma validacao 1024-65535 + aviso de host nao-loopback ANTES do
+# despacho -- research.md Decision 4/5, evita duplicar a logica aqui).
 #
-# Nesta FASE 1 e um esqueleto honesto (task 1.1.2 -- define a interface de
-# entrada): NAO orquestra nada ainda, apenas documenta o contrato de
-# parametros e falha de forma informativa. As funcoes internas acima
-# (_serve_docker_write_dockerfile/_serve_docker_write_entrypoint/
-# _serve_docker_build_image) ja sao reais e validadas empiricamente (ver
-# Decisao registrada pelo orquestrador desta onda) -- a orquestracao
-# completa que as invoca chega na FASE 2.
+# Sequencia (contracts/cli-docker-mode.md "Sequencia"):
+#   1. pre-flight fail-closed do runtime (2.2) -- ANTES de qualquer rede.
+#   2. resolver arvore-fonte cacheada + imagem correspondente; decidir se
+#      precisa (re)buscar/(re)construir conforme --update/--reinstall
+#      (2.4, CHK012: --reinstall SEMPRE vence sobre --update).
+#   3. reusar o fluxo de instalacao verificada ATE a extracao quando
+#      precisar buscar (2.3, FR-007 -- mesmo mecanismo do modo nativo).
+#   4. (re)construir a imagem local quando precisar (2.4).
+#   5. reconciliar container remanescente pelo nome deterministico (2.6).
+#   6. `docker run` com hardening + mount read-only do knowledge.db (2.5).
+#   7. bloquear ate o container encerrar; trap host INT/TERM -> `docker
+#      stop` gracioso (2.7).
+#
+# exit 0 = painel subiu e encerrou de forma limpa (ou o proprio processo
+#   containerizado saiu 0); exit 1 = qualquer falha (pre-flight, download/
+#   integridade, build, reconciliacao impossivel, `docker run` falhou) ou
+#   o processo containerizado encerrou com exit != 0 (paridade com o modo
+#   nativo, serve.sh L616-619).
 _serve_docker_main() {
   _sdm_port="$1"
   _sdm_host="$2"
@@ -375,7 +508,182 @@ _serve_docker_main() {
   _sdm_allow_unverified="${5:-0}"
   _sdm_bypass_method="${6:-}"
 
-  printf 'cstk serve --docker: ainda nao implementado (FASE 2 do backlog em andamento)\n' >&2
-  printf 'cstk serve --docker: os assets (Dockerfile/entrypoint/confinamento) da FASE 1 ja estao prontos e testados\n' >&2
-  return 1
+  # 2.2 -- pre-flight fail-closed ANTES de qualquer operacao de rede
+  # (FR-003/FR-004). Mensagem ja emitida por _serve_docker_preflight.
+  if ! _serve_docker_preflight; then
+    return 1
+  fi
+
+  # 2.3/2.4 -- resolver a arvore-fonte cacheada (se houver) e a imagem
+  # correspondente. _sdm_panel_dir e o MESMO calculo que serve_main usa
+  # para o modo nativo (CSTK_PANEL_DIR ou default) -- usado SOMENTE para
+  # derivar o diretorio SIBLING do modo alternativo (nunca lido/escrito
+  # diretamente, US1 Acceptance Scenario 2).
+  _sdm_panel_dir="${CSTK_PANEL_DIR:-${HOME}/.local/share/cstk/panel}"
+  _sdm_src_dir=$(_serve_docker_source_dir "$_sdm_panel_dir")
+
+  _sdm_tag=""
+  if [ -f "$_sdm_src_dir/.panel-version" ]; then
+    _sdm_tag=$(cat "$_sdm_src_dir/.panel-version" 2>/dev/null | tr -d ' \n')
+  fi
+  _sdm_image=""
+  if [ -n "$_sdm_tag" ]; then
+    _sdm_image=$(_serve_docker_image_tag "$_sdm_tag")
+  fi
+
+  _sdm_need_fetch=0
+  _sdm_need_build=0
+
+  if [ "$_sdm_reinstall" = "1" ]; then
+    # 2.4.3/2.4.4 (CHK012): --reinstall e SEMPRE incondicional e VENCE
+    # sobre --update quando ambos presentes -- nem consultamos a rede de
+    # --update aqui (paridade com o "ignores --update" ja documentado no
+    # --help do modo nativo). Decisao de precedencia registrada pelo
+    # orquestrador desta onda.
+    printf 'cstk serve --docker: removendo instalacao containerizada existente (--reinstall)...\n'
+    if [ -n "$_sdm_image" ]; then
+      docker rmi -f "$_sdm_image" >/dev/null 2>&1 || :
+    fi
+    _sdm_need_fetch=1
+    _sdm_need_build=1
+  elif [ -z "$_sdm_tag" ] || [ -z "$_sdm_image" ] || ! docker image inspect "$_sdm_image" >/dev/null 2>&1; then
+    # 2.4.1: imagem ausente (nunca instalada, ou removida por fora) ->
+    # construir, independente de --update.
+    _sdm_need_fetch=1
+    _sdm_need_build=1
+  elif [ "$_sdm_update" = "1" ]; then
+    # 2.4.2: ja instalado -- checar release mais nova (best-effort; falha
+    # de rede/API mantem a imagem instalada e AINDA sobe o painel,
+    # paridade com o modo nativo, serve.sh L541-556).
+    printf 'cstk serve --docker: verificando atualizacoes do painel...\n'
+    _sdm_latest=$(_serve_latest_tag) || _sdm_latest=""
+    if [ -n "$_sdm_latest" ] && [ "$_sdm_latest" != "$_sdm_tag" ]; then
+      printf 'cstk serve --docker: atualizando painel: %s -> %s\n' "$_sdm_tag" "$_sdm_latest"
+      _sdm_need_fetch=1
+      _sdm_need_build=1
+    else
+      printf 'cstk serve --docker: painel ja esta na versao mais recente (%s)\n' "$_sdm_tag"
+    fi
+  fi
+
+  # 2.3 -- reusar o MESMO mecanismo de download+allowlist+integridade
+  # fail-closed do modo nativo, ate a extracao (FR-007). Sem npm no host
+  # (FR-006/host_npm_used=false) -- _serve_download_verify_extract nunca
+  # roda `npm install`. _sdm_src_dir e sempre recriado do zero por ela.
+  if [ "$_sdm_need_fetch" = "1" ]; then
+    if ! _serve_download_verify_extract "$_sdm_src_dir" "$_sdm_allow_unverified" "$_sdm_bypass_method"; then
+      return 1
+    fi
+    _sdm_tag=$(cat "$_sdm_src_dir/.panel-version" 2>/dev/null | tr -d ' \n')
+    _sdm_image=$(_serve_docker_image_tag "$_sdm_tag")
+  fi
+
+  if [ "$_sdm_need_build" = "1" ]; then
+    printf 'cstk serve --docker: construindo imagem local (%s)...\n' "$_sdm_image"
+    if ! _serve_docker_build_image "$_sdm_src_dir" "$_sdm_image"; then
+      return 1
+    fi
+  else
+    printf 'cstk serve --docker: usando imagem containerizada ja construida (%s)\n' "$_sdm_image"
+  fi
+
+  # 2.6 -- reconciliar remanescente ANTES de subir (idempotente, roda
+  # SEMPRE -- nao so apos build/--reinstall).
+  if ! _serve_docker_reconcile_container "$_SD_CONTAINER_NAME"; then
+    return 1
+  fi
+
+  # 2.5.3 -- diretorio de dados do cstk no host, criado se ausente (US2
+  # Acceptance Scenario 2: indice inexistente NUNCA pode falhar a
+  # inicializacao; sem mkdir, `docker run -v` criaria o dir como root em
+  # versoes antigas do daemon -- gotcha conhecido evitado aqui).
+  _sdm_kdb_host_dir=$(_serve_docker_kdb_host_dir)
+  mkdir -p "$_sdm_kdb_host_dir" 2>/dev/null || :
+
+  printf 'cstk serve --docker: iniciando painel em http://%s:%s  (Ctrl+C para encerrar)\n' \
+    "$_sdm_host" "$_sdm_port"
+
+  # 2.7 -- trap registrado ANTES de subir o container: cobre tambem uma
+  # eventual interrupcao durante o proprio `docker run -d` (data-model.md
+  # "Interrupcao durante build/start") -- seguro mesmo se nada existe
+  # ainda (docker stop de um nome inexistente falha silenciosamente,
+  # `|| :` dentro de _serve_docker_shutdown).
+  trap '_serve_docker_shutdown' INT TERM
+
+  _sdm_run_out=$(mktemp 2>/dev/null) || {
+    printf 'cstk serve --docker: erro: nao foi possivel criar arquivo temporario\n' >&2
+    trap - INT TERM
+    return 1
+  }
+
+  # 2.5/3.1 -- docker run: nome/label deterministicos (FR-012-INFRA-IDEMP),
+  # publish no HOST informado (loopback por default, Decision 4), mount
+  # RO do diretorio de dados (FR-008/FR-009), --init (tini PID1 -- Decision
+  # 6) + --rm (happy-path sem vestigio), hardening por default (non-root
+  # ja herdado da imagem -- USER node -- + cap-drop ALL/no-new-privileges/
+  # rootfs read-only com tmpfs efemero para /tmp -- research.md Decision
+  # 7). FR-013: nunca --network host, --privileged, nem push (checagem
+  # estatica em tests/cstk/test_serve-docker.sh).
+  if ! docker run -d \
+        --init \
+        --rm \
+        --name "$_SD_CONTAINER_NAME" \
+        --label "$_SD_MANAGEMENT_LABEL" \
+        -p "${_sdm_host}:${_sdm_port}:${_SD_FORWARDER_PORT}" \
+        -v "${_sdm_kdb_host_dir}:${_SD_KDB_CONTAINER_DIR}:ro" \
+        -e "CSTK_KNOWLEDGE_DB=${_SD_KDB_CONTAINER_DIR}/knowledge.db" \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
+        --read-only \
+        --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+        "$_sdm_image" >"$_sdm_run_out" 2>&1
+  then
+    _sdm_run_err=$(cat "$_sdm_run_out" 2>/dev/null)
+    rm -f "$_sdm_run_out"
+    case "$_sdm_run_err" in
+      *"port is already allocated"*|*"address already in use"*|*"Bind for"*)
+        printf 'cstk serve --docker: erro: a porta %s ja esta em uso (por outro processo ou container); escolha outra com --port <N> ou libere a porta em uso e tente novamente\n' \
+          "$_sdm_port" >&2
+        ;;
+      *)
+        printf 'cstk serve --docker: erro: docker run falhou ao iniciar o painel containerizado; verifique o daemon Docker (espaco em disco, permissoes) e tente novamente\n' >&2
+        ;;
+    esac
+    trap - INT TERM
+    return 1
+  fi
+  rm -f "$_sdm_run_out"
+
+  # Bloquear ate o container encerrar. `docker wait` roda em BACKGROUND
+  # para o trap poder interromper o bloqueio via `docker stop` -- que faz
+  # o `docker wait` retornar naturalmente (o evento que ele observa
+  # aconteceu), sem race nem necessidade de matar o processo `docker
+  # wait` diretamente. Mesma filosofia de _SERVE_NPM_PID/wait em
+  # serve.sh, adaptada para o container.
+  _sdm_wait_out=$(mktemp 2>/dev/null) || {
+    printf 'cstk serve --docker: erro: nao foi possivel criar arquivo temporario\n' >&2
+    docker stop -t "$_SD_STOP_GRACE_SECONDS" "$_SD_CONTAINER_NAME" >/dev/null 2>&1 || :
+    trap - INT TERM
+    return 1
+  }
+
+  docker wait "$_SD_CONTAINER_NAME" >"$_sdm_wait_out" 2>&1 &
+  _SERVE_DOCKER_WAIT_PID=$!
+
+  wait "$_SERVE_DOCKER_WAIT_PID"
+
+  trap - INT TERM
+
+  _sdm_container_exit=$(cat "$_sdm_wait_out" 2>/dev/null | tr -d ' \n')
+  rm -f "$_sdm_wait_out"
+  case "$_sdm_container_exit" in
+    ''|*[!0-9]*) _sdm_container_exit=0 ;;
+  esac
+
+  # Mensagem de encerramento inesperado (paridade com serve.sh L616-619).
+  if [ "$_sdm_container_exit" -ne 0 ]; then
+    printf 'cstk serve --docker: painel encerrou inesperadamente (exit %d)\n' "$_sdm_container_exit" >&2
+  fi
+
+  return "$_sdm_container_exit"
 }
