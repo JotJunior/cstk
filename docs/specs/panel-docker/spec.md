@@ -33,6 +33,30 @@ opt-in.
 > nao-autenticada) e mutex multi-pod (execucao local single-host, sem
 > replica compartilhando estado).
 
+## Clarifications
+
+### Session 2026-07-11
+
+- Q: A alcancabilidade do painel dentro do container (FR-005) depende de
+  coordenar uma mudanca no repositorio externo `cstk-panel` antes do
+  lancamento, ou pode ser resolvida inteiramente do lado cstk/Docker? → A:
+  Resolvida inteiramente do lado cstk/Docker, sem depender de nenhuma
+  mudanca no `cstk-panel`. Bind em loopback (`127.0.0.1`) dentro de um
+  container so aceita conexoes originadas do proprio namespace de rede —
+  publicar a porta do container nao e suficiente para torna-lo alcancavel a
+  partir do host. A resolucao adotada roda um processo leve de
+  encaminhamento de rede dentro do proprio container, escutando em todas as
+  interfaces e repassando para o processo do painel no endereco de loopback
+  interno (mesmo namespace) — pratica padrao de containerizacao para
+  processos que nao suportam bind configuravel. Modo de rede compartilhado
+  com o host foi considerado e descartado por nao ter suporte uniforme
+  entre sistemas operacionais de desktop, o que quebraria a promessa de
+  "mesma convencao local" da FR-005 em parte das maquinas dos usuarios.
+  Patchear o `cstk-panel` para aceitar o endereco de bind via configuracao
+  nativamente fica registrado como melhoria futura opcional — simplificaria
+  a imagem removendo a necessidade do encaminhamento — mas NAO e
+  pre-requisito desta feature nem bloqueia o lancamento.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Rodar o painel sem instalar npm no host (Priority: P1)
@@ -232,12 +256,11 @@ erro tecnico de baixo nivel do runtime de container.
   que o usuario entenda conceitos de rede de container. O processo do
   painel (mantido no repositorio externo `cstk-panel`) hoje faz bind fixo
   em `127.0.0.1` dentro do proprio processo, sem opcao de configuracao via
-  variavel de ambiente ou flag — uma restricao conhecida que pode impedir
-  o container de ficar alcancavel a partir do host uma vez publicada a
-  porta. [NEEDS CLARIFICATION: resolver essa alcancabilidade depende de
-  coordenar uma mudanca no repositorio externo cstk-panel (dependencia
-  cross-repo antes do lancamento) ou pode ser resolvida inteiramente do
-  lado cstk/Docker, sem depender de mudanca externa?]
+  variavel de ambiente ou flag — uma restricao que, isoladamente, impediria
+  conexoes originadas fora do container mesmo com a porta publicada. System
+  MUST resolver essa alcancabilidade inteiramente do lado cstk/Docker (ver
+  Clarifications), sem depender de nenhuma mudanca no repositorio externo
+  `cstk-panel`.
 - **FR-006**: System MUST NOT exigir `npm` instalado no host quando o modo
   Docker for usado — o ambiente containerizado fornece seu proprio runtime
   de linguagem, embutido na imagem.
