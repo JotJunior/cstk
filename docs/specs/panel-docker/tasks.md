@@ -62,41 +62,42 @@ Ref: plan.md Structure Decision (carve-out Principio II condicao b); Complexity 
 
 Ref: research.md Decision 1; data-model.md "Panel Image"; spec.md FR-006/FR-013
 
-- [x] 1.2.1 Escrever Dockerfile com `FROM node:20-bookworm-slim` (glibc, `engines.node
-  >=20.0.0` — package.json L28) pinado por digest — resolver e fixar o `@sha256:...` exato em
-  execute-task (NAO inventar aqui; research.md Decision 1 marca "[detalhe de execute-task]").
-  Digest `sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0` resolvido via
-  chamada REAL a Registry HTTP API v2 do Docker Hub (dec-032) — `docker pull` nao completa neste
-  ambiente sandboxed (ver nota 1.2.7).
+- [x] 1.2.1 Escrever Dockerfile MULTI-STAGE `FROM node:22-alpine` (musl — supersede dec-011 via
+  dec-037; `engines.node >=20.0.0`, package.json L28, satisfeito por node 22) pinado por digest
+  nos DOIS estagios. Digest `sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2`
+  lido do cache local (`docker inspect node:22-alpine --format '{{index .RepoDigests 0}}'` — fonte
+  rastreavel, NAO inventado; Constitution VI) e resolvido do cache SEM pull (probe real:
+  `#N ... CACHED`). Sem diretiva `# syntax` (frontend builtin do BuildKit suporta heredoc, evita
+  o pull do frontend que penduraria neste ambiente).
 - [x] 1.2.2 `WORKDIR` + `COPY` da arvore-fonte ja verificada por `_serve_install`
   (`extracted_tree_path`, data-model.md "Verified Panel Installation") como contexto de build —
   sem segunda fonte de download (FR-007)
-- [!] 1.2.3 `RUN npm ci` (nao `npm install`) a partir do `package-lock.json` da arvore extraida —
-  validar empiricamente que o prebuild do `better-sqlite3` (modulo nativo, server package.json)
-  resolve sem toolchain de compilacao extra na base glibc escolhida. **Bloqueado**: a linha `RUN
-  npm ci` (+ `RUN npm run build`, gap-fill grounded em research.md Decision 1/plan.md Summary —
-  dec-033) esta escrita e sintaticamente valida, mas a validacao EMPIRICA do prebuild
-  better-sqlite3 na base glibc nao pode ser executada nesta sessao (ver 1.2.7/dec-032). Nao
-  presumir sucesso — pendente de ambiente com daemon Docker irrestrito.
-- [x] 1.2.4 Instalar `socat` na imagem (pacote do gerenciador da base debian escolhida) para o
-  encaminhador da tarefa 1.3
+- [x] 1.2.3 `RUN npm ci` (nao `npm install`) a partir do `package-lock.json` da arvore extraida.
+  Na base **alpine/musl** (dec-037) o `better-sqlite3 ^9.6.0` (modulo nativo, server package.json)
+  NAO tem prebuild musl publicado, entao e **compilado do fonte no estagio de build** (que instala
+  o toolchain `apk add python3 make g++`). **VERIFICADO empiricamente nesta wave** (dec-037): o
+  `docker build --network=host` completou (`BUILD_DONE_EXIT=0`, `npm ci added 336 packages in
+  44s`); o binding `node_modules/better-sqlite3/build/Release/better_sqlite3.node` (~2.1 MB) linka
+  musl (`ldd` -> `libc.musl-aarch64.so.1`) e `node -e require('better-sqlite3')` + create/insert/
+  select retornou `OK -> 42`.
+- [x] 1.2.4 Instalar `socat` no estagio de RUNTIME via `apk add --no-cache socat` (gerenciador de
+  pacotes da base alpine, dec-037) para o encaminhador da tarefa 1.3
 - [x] 1.2.5 `USER node` (non-root) + `EXPOSE` da porta do encaminhador + `ENTRYPOINT` apontando
-  para o script da tarefa 1.3 (ordem USER-apos-apt-get coberta por regressao dedicada)
+  para o script da tarefa 1.3 (ordem USER-apos-`apk add socat` coberta por regressao dedicada —
+  `scenario_dockerfile_user_node_after_root_only_steps`)
 - [x] 1.2.6 Definir `image_tag` local deterministico (proposta aterrada em data-model.md "Panel
   Image": `cstk-panel:<panel_version>`) — nunca registry remoto (FR-013)
-- [!] 1.2.7 Teste: `docker build` da imagem local sucede a partir do fixture de arvore verificada
-  ja usado por `test_serve.sh` (`SERVE_FIXTURE_DIR`); se a suite POSIX nao tiver acesso a um
-  daemon Docker real no ambiente de CI, documentar a estrategia de skip/stub adotada. **Bloqueado
-  (dec-032/dec-035)**: o daemon Docker deste ambiente sandboxed nao completa `docker pull`/`docker
-  build` que dependem de rede (3 tentativas reais — `node:20-bookworm-slim`, `hello-world` 5.2kB,
-  e um build completo com base ja cacheada `node:20-alpine` — ficaram penduradas indefinidamente;
-  em contraste, uma requisicao HTTPS de DENTRO de um container ja rodando respondeu normal,
-  isolando o bloqueio ao proxy de pull/build do daemon, nao a rede em geral). Estrategia adotada
-  (documentada no cabecalho de `tests/cstk/test_serve-docker.sh`): cobertura FAST/hermetica via
-  assercoes de conteudo sobre o Dockerfile/entrypoint gerados (sem daemon real, mesma filosofia
-  de stub ja usada por `test_serve.sh` para curl/npm, e a mesma que a propria task 4.1.1 ja
-  planeja para o Scenario 1 do quickstart). O `docker build` real da imagem de PRODUCAO permanece
-  PENDENTE — proximo passo recomendado: repetir com daemon Docker sem essa restricao de rede.
+- [x] 1.2.7 Teste: `docker build` da imagem local sucede. **VERIFICADO empiricamente nesta wave**
+  (dec-037) com a base **alpine** (as bases `node:22-alpine`/`node:20-alpine` ja estao cacheadas,
+  entao o `FROM` nao puxa nada; a base glibc anterior penduraria no pull): `docker build
+  --network=host` (a flag roteia a rede dos passos RUN pelo host, que alcanca o registry npm) da
+  imagem alpine multi-stage a partir de um contexto = arvore-fonte do painel (sem node_modules,
+  espelhando a arvore extraida verificada) completou com `BUILD_DONE_EXIT=0` (estagios: `apk add
+  python3 make g++` DONE, `npm ci` 336 pkgs 44s, `npm run build` gerou apps/web/dist + apps/server/
+  dist, `apk add socat`, `COPY --from=build`, entrypoint, imagem `cstk-panel:0.12.1` escrita).
+  Cobertura automatizada permanece FAST/hermetica (assercoes de conteudo sobre o Dockerfile/
+  entrypoint gerados em `tests/cstk/test_serve-docker.sh` — sem daemon no CI, mesma filosofia de
+  stub de `test_serve.sh`); o build REAL desta wave fecha a validacao empirica.
 
 ### 1.3 Entrypoint e encaminhador in-container (FR-005) `[C]`
 
@@ -113,21 +114,29 @@ Ref: research.md Decision 2 e Decision 4; contracts/cli-docker-mode.md "In-conta
   instalar na base escolhida) em foreground. Porta interna fixada em `8080` (nunca exposta ao
   usuario — `data-model.md container_listen_port`); ordem painel-em-background-antes-do-forwarder
   coberta por regressao dedicada.
-- [!] 1.3.3 Propagar sinais corretamente com `docker run --init` (tini como PID 1, Decision 6) —
-  validar que `TERM` chega aos dois processos (painel + encaminhador) sem deixar zumbi.
-  **Bloqueado (dec-032)**: o handler `_cstk_term_handler` (mata NODE_PID + SOCAT_PID, aguarda
-  ambos) esta escrito e a LOGICA e coberta por teste estatico
-  (`scenario_entrypoint_term_handler_kills_both_processes`), mas a validacao DINAMICA (container
-  real rodando, sinal enviado de fato, `ps` confirmando ausencia de zumbi) nao pode ser executada
-  nesta sessao — mesmo bloqueio de rede do daemon que impede 1.2.7.
+- [x] 1.3.3 Propagar sinais corretamente com `docker run --init` (tini como PID 1, Decision 6) —
+  `TERM` chega aos dois processos (painel + encaminhador) sem deixar zumbi. **VERIFICADO
+  dinamicamente nesta wave** (dec-037): com o container real rodando, `ps` mostrou a arvore
+  `docker-init (PID 1) -> entrypoint sh (7) -> node (8) + socat (9)`, todos em estado `S`/`R`
+  (zero em `Z`); os filhos-por-conexao do `socat ...,fork` gerados pelos `curl` de teste ja tinham
+  sido reapeados pelo tini. `docker stop -t 10` encerrou em **~0s** com `exitcode=0` — o trap
+  `_cstk_term_handler` propagou TERM a node+socat e saiu limpo, sem cair no fallback de SIGKILL.
+  Logica tambem coberta por teste estatico (`scenario_entrypoint_term_handler_kills_both_processes`).
 - [x] 1.3.4 Registrar a decisao tomada (socat vs proxy Node) como Decisao auditavel do
-  orquestrador, citando o resultado empirico dos testes 1.2.7/1.3.5. Registrado dec-034, citando
-  honestamente o resultado PARCIAL (geracao validada; build/run reais pendentes — dec-032).
-- [!] 1.3.5 Teste: com a imagem construida (1.2), validar que uma requisicao HTTP a
-  `0.0.0.0:<porta-container>` de dentro do netns do container e respondida pelo painel em
-  `127.0.0.1:<porta-interna>` (quickstart Scenario 1, passos 3-4). **Bloqueado (dec-032)**:
-  depende de uma imagem construida de fato (1.2.7, tambem bloqueado) — sem imagem, nao ha
-  container para exercitar a requisicao HTTP real. Pendente do mesmo follow-up.
+  orquestrador, citando o resultado empirico dos testes 1.2.7/1.3.5. Registrado dec-034 (escolha
+  socat); a validacao empirica de build/run — parcial na origem (dec-032) — foi CONCLUIDA nesta
+  wave com daemon Docker apto (dec-037): build alpine multi-stage OK + `socat` alcancavel por HTTP
+  200 na porta publicada.
+- [x] 1.3.5 Teste: com a imagem construida (1.2), uma requisicao HTTP a porta publicada do host
+  (mapeada p/ `0.0.0.0:8080` no container) e respondida pelo painel em `127.0.0.1:3001` via o
+  encaminhador socat. **VERIFICADO empiricamente nesta wave** (dec-037): `docker run --init -d -p
+  127.0.0.1:18080:8080 cstk-panel:0.12.1`; o painel subiu (log `Server listening on 127.0.0.1:3001`,
+  `Web UI served from /app/apps/web/dist`); `curl http://127.0.0.1:18080/` -> `HTTP_STATUS=200`
+  `text/html` servindo o SPA (`<title>cstk-panel — Observabilidade</title>`, `<div id="root">`), e
+  `curl .../assets/index-CBMUmw0r.js` -> `HTTP_STATUS=200 SIZE=464120` `application/javascript`
+  (bate com o output do vite build, 463.72 kB). O encaminhador `0.0.0.0:8080 -> 127.0.0.1:3001`
+  torna o painel (bind localhost) alcancavel pela porta publicada. Container/imagem de teste
+  removidos ao final (sem recurso orfao).
 
 ---
 
@@ -291,8 +300,10 @@ checklists/security.md CHK006 (ja PASS) e CHK009 `[Gap]`
 
 Ref: research.md Decision 1 e Decision 7; checklists/security.md CHK013 `[Gap]`
 
-- [ ] 3.2.1 Resolver e fixar o digest exato da base `node:20-bookworm-slim@sha256:...` (nao tag
-  flutuante) — validar que a versao resolvida satisfaz `engines.node >=20.0.0` (package.json L28)
+- [ ] 3.2.1 Resolver e fixar o digest exato da base `node:22-alpine@sha256:...` (nao tag
+  flutuante) — validar que a versao resolvida satisfaz `engines.node >=20.0.0` (package.json L28).
+  Ja fixado nesta FASE 1 (dec-037): `node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2`;
+  resta o hardening formal de FASE 3 (lint CHK013 em 3.2.2 + processo de atualizacao em 3.2.3).
 - [ ] 3.2.2 CHK013 (security, `[Gap]`): escrever teste/lint que falha se o Dockerfile
   referenciar a base SEM `@sha256:` (tag flutuante), espelhando o teste ja exigido para
   ausencia de `docker push` (2.5.6) — mesmo padrao de verificacao objetiva

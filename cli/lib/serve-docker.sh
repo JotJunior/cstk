@@ -27,9 +27,10 @@
 #     2/3 do backlog (docs/specs/panel-docker/tasks.md).
 #
 # Funcoes internas ja funcionais nesta FASE 1 (cobertas por
-# tests/cstk/test_serve-docker.sh via assercoes de conteudo — sem daemon
-# Docker real; ver nota mais abaixo sobre o estado da validacao empirica de
-# build/run reais, tasks 1.2.7/1.3.5, ainda PENDENTE):
+# tests/cstk/test_serve-docker.sh via assercoes de conteudo — hermeticas, sem
+# daemon Docker real no harness; a validacao empirica de build/run reais
+# (tasks 1.2.7/1.3.5) foi EXECUTADA e CONFIRMADA nesta wave — ver nota mais
+# abaixo e dec-037):
 #   _serve_docker_image_tag PANEL_VERSION
 #     Imprime a tag local deterministica da imagem (data-model.md "Panel
 #     Image" image_tag). SEMPRE local — nunca registry remoto (FR-013).
@@ -39,11 +40,12 @@
 #     _serve_docker_write_dockerfile (heredoc BuildKit `COPY <<EOF`), para
 #     nao duplicar o script em dois lugares.
 #   _serve_docker_write_dockerfile DEST_PATH
-#     Escreve o Dockerfile completo (research.md Decision 1) em DEST_PATH.
-#     Base `node:20-bookworm-slim` fixada por digest (glibc — prebuilds do
-#     modulo nativo better-sqlite3, Decision 1 "Rationale"); nunca versionado
-#     como arquivo solto no repositorio — gerado sob demanda, confinado
-#     aqui.
+#     Escreve o Dockerfile MULTI-STAGE completo (dec-037, supersede dec-011)
+#     em DEST_PATH. Base `node:22-alpine` (musl) fixada por digest nos DOIS
+#     estagios; o modulo nativo better-sqlite3 (sem prebuild musl) e compilado
+#     do fonte no estagio de build (apk python3/make/g++) e o binding viaja
+#     para o runtime via COPY --from=build; nunca versionado como arquivo
+#     solto no repositorio — gerado sob demanda, confinado aqui.
 #   _serve_docker_build_image BUILD_CONTEXT_DIR IMAGE_TAG
 #     Constroi a imagem local via `docker build -f <Dockerfile gerado>
 #     BUILD_CONTEXT_DIR`. BUILD_CONTEXT_DIR MUST ser a arvore verificada do
@@ -61,32 +63,37 @@
 #                                  ausente; fixado aqui explicitamente)
 #
 # POSIX sh puro (Principio II) para ESTE arquivo — o conteudo do Dockerfile
-# gerado usa a sintaxe estendida `# syntax=docker/dockerfile:1` do BuildKit
-# (heredocs em COPY), necessaria para embutir o entrypoint sem depender de
-# um segundo arquivo dentro do contexto de build (mantem o contexto
-# intocado — extracted_tree_path permanece exatamente a arvore verificada,
-# sem mutacao).
+# gerado usa heredocs em COPY (`COPY <<'EOF' ... EOF`) para embutir o
+# entrypoint sem depender de um segundo arquivo no contexto de build (mantem
+# o contexto intocado — extracted_tree_path permanece exatamente a arvore
+# verificada, sem mutacao). NAO emitimos a diretiva `# syntax=docker/
+# dockerfile:1`: o frontend BUILTIN do BuildKit (Docker >= 23) ja suporta
+# heredocs nativamente, e o `# syntax` forcaria o daemon a PUXAR a imagem de
+# frontend `docker/dockerfile:1` do registry ANTES de qualquer RUN — um pull
+# que o `--network=host` do build NAO cobre (roda no caminho de pull do
+# daemon, nao na rede de build). Omitir a diretiva remove essa dependencia
+# de rede e torna o build mais hermetico (verificado empiricamente nesta
+# wave: com a diretiva o build pendura em "resolve image config for docker/
+# dockerfile:1"; sem ela, o frontend builtin constroi o heredoc e o build
+# completa — dec-037).
 #
-# Estado da validacao empirica nesta FASE 1 (Constitution VI — nao mascarar
-# o que nao foi confirmado): o MECANISMO de geracao foi validado de fato —
-# _serve_docker_write_dockerfile/_serve_docker_write_entrypoint foram
-# invocadas de verdade, o Dockerfile/entrypoint resultantes foram
-# inspecionados byte-a-byte (heredocs aninhados escapam `` ` ``/`$`
-# corretamente, sem interpolacao indevida) e o entrypoint passou em `sh -n`
-# + `dash -n` + shellcheck. O digest da base (abaixo) veio de uma chamada
-# REAL a Registry HTTP API v2 do Docker Hub. O que NAO foi possivel
-# confirmar nesta sessao: um `docker build`/`docker run` completo e real
-# contra a imagem de PRODUCAO (node:20-bookworm-slim) — o daemon Docker
-# deste ambiente sandboxed nao completa pulls de imagens novas nem RUN
-# steps que dependem de rede de build (`docker pull node:20-bookworm-slim`,
-# `docker pull hello-world` e um `docker build` completo com base
-# alternativa ja cacheada node:20-alpine ficaram pendurados
-# indefinidamente, enquanto uma requisicao HTTPS de DENTRO de um container
-# ja em execucao — sem pull/build novo — respondeu normalmente; ver Decisao
-# registrada pelo orquestrador para o diagnostico completo). Portanto as
-# tasks 1.2.7 (docker build local sucede) e 1.3.5 (encaminhador alcancavel
-# via HTTP real) permanecem PENDENTES de verificacao com daemon Docker
-# irrestrito — nao presumir sucesso.
+# Estado da validacao empirica (Constitution VI — nao mascarar o que nao foi
+# confirmado; agora CONFIRMADO): nesta wave (dec-037) o `docker build
+# --network=host` da imagem alpine multi-stage foi executado de VERDADE e
+# completou (exit 0) — better-sqlite3 compilou p/ musl no estagio de build
+# (ldd do `better_sqlite3.node` aponta `libc.musl-aarch64.so.1`; `node -e
+# require('better-sqlite3')` + create/insert/select retornou OK) e `npm run
+# build` gerou apps/web/dist + apps/server/dist. O container rodou com
+# `docker run --init`: o painel subiu (bind 127.0.0.1:3001) e um `curl` na
+# porta publicada do host retornou HTTP 200 servindo o SPA (o encaminhador
+# socat 0.0.0.0:8080 -> 127.0.0.1:3001 funciona). `docker stop` encerrou em
+# ~0s com exit 0 (o trap `_cstk_term_handler` propagou TERM a node+socat;
+# nao houve fallback de SIGKILL nem processo zumbi — tini como PID 1 via
+# --init). Ou seja, as tasks 1.2.3/1.2.7/1.3.3/1.3.5 estao VERIFICADAS com
+# evidencia real (ver dec-037). Nota historica: com a base glibc anterior
+# (node:20-bookworm-slim, dec-011) o daemon deste ambiente pendurava no pull
+# da base; a mudanca p/ alpine (bases ja cacheadas) + remocao da diretiva
+# `# syntax` (que forcava pull do frontend) tornou o build possivel aqui.
 
 if [ "${_SERVE_DOCKER_LOADED:-}" = "1" ]; then
   return 0
@@ -98,16 +105,19 @@ _SD_FORWARDER_PORT="8080"
 # Porta fixa do painel dentro do container (config.ts L80 default).
 _SD_PANEL_INTERNAL_PORT="3001"
 
-# Base da imagem: node:20-bookworm-slim (glibc — Decision 1), fixada por
-# digest do INDEX multi-arch (nao tag flutuante — CHK013/security). Digest
-# resolvido empiricamente via a Registry HTTP API v2 (GET manifest com
-# Bearer token de auth.docker.io, header `Docker-Content-Digest` da
-# resposta — mesmo mecanismo que `docker pull` usaria) nesta execute-task
-# wave, ja que o daemon Docker deste ambiente sandboxed nao completa pulls
-# de imagens novas (ver Decisao registrada pelo orquestrador para o
-# diagnostico completo). Reavaliar/atualizar conforme o processo descrito
-# na task 3.2.3 quando a base precisar de patch de seguranca.
-_SD_BASE_IMAGE="node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0"
+# Base da imagem (build E runtime): node:22-alpine (musl — dec-037, supersede
+# dec-011), fixada por digest (nao tag flutuante — CHK013/security). A base
+# alpine casa `engines.node >=20.0.0` (package.json L28; node 22 satisfaz) e
+# mantem a imagem final slim; better-sqlite3 (modulo nativo, sem prebuild
+# musl) e COMPILADO do fonte no estagio de build (apk add python3/make/g++)
+# e o binding resultante viaja para o runtime via COPY --from=build (mesmo
+# ABI: os dois estagios usam ESTA mesma base). Digest lido do proprio cache
+# local (`docker inspect node:22-alpine --format '{{index .RepoDigests 0}}'`
+# — fonte rastreavel, nunca inventado; Constitution VI) e resolvido a partir
+# do cache SEM pull (probe real desta wave: `#N ... CACHED`, sem contato com
+# registry). Reavaliar/atualizar conforme o processo descrito na task 3.2.3
+# quando a base precisar de patch de seguranca.
+_SD_BASE_IMAGE="node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2"
 
 # _serve_docker_image_tag PANEL_VERSION
 # Imprime a tag local deterministica da imagem do painel. Nunca aponta a
@@ -165,33 +175,42 @@ CSTK_SERVE_DOCKER_ENTRYPOINT_EOF
 }
 
 # _serve_docker_write_dockerfile DEST_PATH
-# Escreve em DEST_PATH o Dockerfile completo do modo `cstk serve --docker`
-# (research.md Decision 1, data-model.md "Panel Image"). O entrypoint e
-# embutido via heredoc BuildKit (`COPY <<'EOF' ... EOF`), reusando o MESMO
-# conteudo de _serve_docker_write_entrypoint — nao ha COPY relativo ao
-# contexto de build, entao extracted_tree_path (a arvore verificada) nunca
-# e mutada por este processo.
+# Escreve em DEST_PATH o Dockerfile MULTI-STAGE alpine do modo `cstk serve
+# --docker` (dec-037, supersede dec-011; data-model.md "Panel Image"). O
+# entrypoint e embutido via heredoc BuildKit (`COPY <<'EOF' ... EOF`),
+# reusando o MESMO conteudo de _serve_docker_write_entrypoint — nao ha COPY
+# relativo ao contexto de build para o entrypoint, entao extracted_tree_path
+# (a arvore verificada) nunca e mutada por este processo.
 #
 # Contrato do Dockerfile (todas as linhas aterradas — ver cabecalho do
 # arquivo e research.md Decision 1/2/7):
-#   FROM node:20-bookworm-slim@sha256:...   glibc, digest fixo (nao tag)
-#   WORKDIR /app + COPY .                    contexto = arvore verificada
-#   RUN npm ci                               lockfile (nao npm install);
-#                                             ja falha fail-closed se
-#                                             package-lock.json ausente —
-#                                             mensagem customizada fica
-#                                             para a task 3.3
-#   RUN npm run build                        compila shared-types+server+web
-#                                             (gera apps/server/dist/ e
-#                                             apps/web/dist/, consumidos em
-#                                             runtime pelo entrypoint/painel)
-#   RUN apt-get install socat                encaminhador (Decision 2);
-#                                             roda ANTES de USER node (apt
-#                                             exige root)
-#   COPY heredoc entrypoint + chmod +x
-#   USER node                                non-root (Decision 7)
-#   EXPOSE 8080                              porta fixa do encaminhador
-#   ENTRYPOINT [entrypoint script]
+#   ESTAGIO build (AS build):
+#     FROM node:22-alpine@sha256:... AS build   musl, digest fixo (nao tag)
+#     RUN apk add python3 make g++              toolchain p/ compilar
+#                                                better-sqlite3 (sem prebuild
+#                                                musl) — SO no build
+#     WORKDIR /app + COPY . .                   contexto = arvore verificada
+#     RUN npm ci                                lockfile (nao npm install);
+#                                                ja falha fail-closed se
+#                                                package-lock.json ausente —
+#                                                mensagem customizada fica
+#                                                para a task 3.3
+#     RUN npm run build                         compila shared-types+server+web
+#                                                (gera apps/server/dist/ e
+#                                                apps/web/dist/, consumidos em
+#                                                runtime pelo entrypoint/painel)
+#   ESTAGIO runtime (slim — sem toolchain de build):
+#     FROM node:22-alpine@sha256:...            mesma base/ABI musl
+#     RUN apk add socat                         encaminhador (Decision 2);
+#                                                roda ANTES de USER node (apk
+#                                                exige root)
+#     COPY --from=build /app /app               arvore construida (node_modules
+#                                                com better-sqlite3 ja compilado
+#                                                p/ musl + dist dos workspaces)
+#     COPY heredoc entrypoint + chmod +x
+#     USER node                                 non-root (Decision 7)
+#     EXPOSE 8080                               porta fixa do encaminhador
+#     ENTRYPOINT [entrypoint script]
 _serve_docker_write_dockerfile() {
   _sdwd_dest="$1"
 
@@ -203,22 +222,31 @@ _serve_docker_write_dockerfile() {
 
   {
     cat <<CSTK_SERVE_DOCKER_DOCKERFILE_HEAD
-# syntax=docker/dockerfile:1
 # Dockerfile gerado por cli/lib/serve-docker.sh::_serve_docker_write_dockerfile
 # (cstk serve --docker). Nao versionado como arquivo solto -- fonte
 # confinada em serve-docker.sh (Principio II, carve-out condicao b). Build
 # LOCAL a partir da arvore-fonte JA verificada pelo fluxo de integridade
 # existente (_serve_install ate a extracao) -- sem segunda fonte de
-# download (research.md Decision 1, FR-006/FR-007).
+# download (research.md Decision 1, FR-006/FR-007). Multi-stage alpine
+# (dec-037, supersede dec-011): o estagio de build compila o modulo nativo
+# better-sqlite3 p/ musl; o runtime fica slim (so o necessario p/ rodar).
+# Heredocs em COPY usam o frontend BUILTIN do BuildKit (Docker >= 23) -- sem
+# diretiva `# syntax` (evita o pull do frontend externo; ver cabecalho).
 
-FROM ${_SD_BASE_IMAGE}
+# ---- Estagio de build: compila better-sqlite3 (musl) + workspaces ----
+FROM ${_SD_BASE_IMAGE} AS build
+
+# better-sqlite3 ^9.6.0 (dep de @cstk-panel/server) e modulo nativo e nao tem
+# prebuild musl publicado -> compila do fonte. O toolchain (python3/make/g++)
+# vive SO neste estagio; o runtime nao o carrega (imagem final slim).
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
 # Contexto de build = arvore verificada do painel (extracted_tree_path,
 # data-model.md "Verified Panel Installation"). host_npm_used MUST ser
 # false (FR-006) -- todo o npm roda aqui dentro, nunca no host.
-COPY --chown=node:node . .
+COPY . .
 
 # npm ci (nao npm install) a partir do package-lock.json da arvore extraida
 # -- reprodutibilidade (research.md Decision 7). Ja falha fail-closed se o
@@ -234,11 +262,20 @@ RUN npm ci
 # --update/--reinstall, FASE 2).
 RUN npm run build
 
+# ---- Estagio de runtime: slim, sem toolchain de build ----
+FROM ${_SD_BASE_IMAGE}
+
 # socat: encaminhador in-container 0.0.0.0 -> 127.0.0.1 (FR-005,
-# research.md Decision 2). Roda como root (apt-get) -- ANTES de USER node.
-RUN apt-get update \\
-    && apt-get install -y --no-install-recommends socat \\
-    && rm -rf /var/lib/apt/lists/*
+# research.md Decision 2). Roda como root (apk add) -- ANTES de USER node.
+RUN apk add --no-cache socat
+
+WORKDIR /app
+
+# Arvore ja construida vinda do estagio de build: node_modules com o binding
+# better-sqlite3 compilado p/ musl + dist dos workspaces. Runtime nao carrega
+# o toolchain de compilacao -> imagem final slim. --chown=node:node porque o
+# processo roda como 'node' (non-root) mais abaixo.
+COPY --from=build --chown=node:node /app /app
 
 COPY <<'CSTK_PANEL_ENTRYPOINT_EOF' /usr/local/bin/cstk-panel-entrypoint.sh
 CSTK_SERVE_DOCKER_DOCKERFILE_HEAD

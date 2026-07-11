@@ -17,7 +17,7 @@ NAO e uma fonte de download nem verificacao separadas (spec Key Entities).
 | panel_version | string | ex. `v0.12.1` | grava/le `.panel-version` (serve.sh L348) |
 | integrity_outcome | enum | `verified` \| `unverifiable-bypassed` \| `unverifiable-blocked` \| `mismatch-blocked` | serve.sh L288-313; blocked = aborta |
 | extracted_tree_path | path | dir temporario no host | contexto do `docker build` (Decision 1) |
-| host_npm_used | bool | **MUST ser false** no modo Docker | FR-006 — `npm install` vai para o build da imagem |
+| host_npm_used | bool | **MUST ser false** no modo Docker | FR-006 — o `npm ci` roda no build da imagem (estagio de build), nunca no host |
 
 **Diferenca face ao nativo**: no modo nativo, esta arvore recebe `npm install` no host
 e vira `~/.local/share/cstk/panel`. No modo Docker, para em `extracted_tree_path`
@@ -30,7 +30,7 @@ Imagem Docker local construida a partir da Verified Panel Installation.
 | Field | Type | Constraints | Notes |
 |-------|------|-------------|-------|
 | image_tag | string | local, deterministico | ex. `cstk-panel:<panel_version>` `[a fixar]`; nunca registry remoto (FR-013) |
-| base_image | string | `node >=20.0.0`, glibc | Decision 1; digest exato `[a fixar em execute-task]` |
+| base_image | string | `node:22-alpine`, musl (multi-stage) | Decision 1; digest fixado (dec-037) `sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2` |
 | contains_npm_node | bool | true | fornece runtime de linguagem (FR-006) |
 | contains_forwarder | bool | true | `socat` ou proxy Node (Decision 2) |
 | contains_knowledge_db | bool | **MUST ser false** | db e montado em runtime, nunca baked (Decision 7) |

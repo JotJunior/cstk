@@ -161,8 +161,14 @@ scenario_dockerfile_pins_base_by_digest_not_floating_tag() {
   _out="$TMPDIR_TEST/Dockerfile"
   _run_serve_docker_fn _serve_docker_write_dockerfile "$_out"
   _assert_captured_exit 0 || return 1
-  if ! grep -q '^FROM node:20-bookworm-slim@sha256:[0-9a-f]\{64\}$' "$_out"; then
-    _fail "dockerfile_digest_pin" "FROM nao fixa a base por digest sha256 de 64 hex: $(grep '^FROM' "$_out")"
+  # Multi-stage alpine (dec-037): estagio de build fixado por digest + AS build.
+  if ! grep -q '^FROM node:22-alpine@sha256:[0-9a-f]\{64\} AS build$' "$_out"; then
+    _fail "dockerfile_digest_pin_build" "FROM do estagio de build nao fixa alpine por digest sha256 de 64 hex + AS build: $(grep '^FROM' "$_out")"
+    return 1
+  fi
+  # Estagio de runtime fixado pela MESMA base alpine por digest (sem AS).
+  if ! grep -q '^FROM node:22-alpine@sha256:[0-9a-f]\{64\}$' "$_out"; then
+    _fail "dockerfile_digest_pin_runtime" "FROM do estagio de runtime nao fixa alpine por digest sha256 de 64 hex: $(grep '^FROM' "$_out")"
     return 1
   fi
 }
@@ -171,12 +177,18 @@ scenario_dockerfile_matches_contract_shape() {
   _out="$TMPDIR_TEST/Dockerfile"
   _run_serve_docker_fn _serve_docker_write_dockerfile "$_out"
   _assert_captured_exit 0 || return 1
+  # Multi-stage alpine (dec-037): estagio de build compila better-sqlite3 p/
+  # musl (toolchain apk) + workspaces; runtime slim copia --from=build e
+  # instala so o socat do encaminhador. Ordem/presenca das linhas-chave.
   for _needle in \
+    'FROM node:22-alpine@sha256:[0-9a-f]{64} AS build' \
+    'RUN apk add --no-cache python3 make g\+\+' \
     'WORKDIR /app' \
-    'COPY --chown=node:node . .' \
+    'COPY \. \.' \
     'RUN npm ci' \
     'RUN npm run build' \
-    'apt-get install -y --no-install-recommends socat' \
+    'RUN apk add --no-cache socat' \
+    'COPY --from=build --chown=node:node /app /app' \
     'USER node' \
     'EXPOSE 8080' \
     'ENTRYPOINT \["/usr/local/bin/cstk-panel-entrypoint.sh"\]' \
@@ -188,20 +200,22 @@ scenario_dockerfile_matches_contract_shape() {
   done
 }
 
-# 1.2.5: USER node MUST vir DEPOIS do apt-get (que exige root) -- ordem
-# importa, nao so presenca.
+# 1.2.5: USER node MUST vir DEPOIS do `apk add socat` do runtime (que exige
+# root) -- ordem importa, nao so presenca. (Multi-stage dec-037: o outro
+# `apk add` — toolchain python3/make/g++ — vive no estagio de build, antes
+# do FROM de runtime; o passo root-only que precede USER node e o do socat.)
 scenario_dockerfile_user_node_after_root_only_steps() {
   _out="$TMPDIR_TEST/Dockerfile"
   _run_serve_docker_fn _serve_docker_write_dockerfile "$_out"
   _assert_captured_exit 0 || return 1
-  _apt_line=$(grep -n 'apt-get install' "$_out" | head -1 | cut -d: -f1)
+  _apk_line=$(grep -n 'apk add --no-cache socat' "$_out" | head -1 | cut -d: -f1)
   _user_line=$(grep -n '^USER node$' "$_out" | head -1 | cut -d: -f1)
-  if [ -z "$_apt_line" ] || [ -z "$_user_line" ]; then
-    _fail "dockerfile_user_order_missing" "nao encontrei as linhas apt-get/USER node no Dockerfile gerado"
+  if [ -z "$_apk_line" ] || [ -z "$_user_line" ]; then
+    _fail "dockerfile_user_order_missing" "nao encontrei as linhas apk-add-socat/USER node no Dockerfile gerado"
     return 1
   fi
-  if [ "$_user_line" -le "$_apt_line" ]; then
-    _fail "dockerfile_user_order" "USER node (linha $_user_line) deve vir DEPOIS do apt-get install (linha $_apt_line)"
+  if [ "$_user_line" -le "$_apk_line" ]; then
+    _fail "dockerfile_user_order" "USER node (linha $_user_line) deve vir DEPOIS do apk add socat (linha $_apk_line)"
     return 1
   fi
 }
@@ -288,8 +302,8 @@ scenario_entrypoint_term_handler_kills_both_processes() {
 }
 
 # O script gerado precisa ser POSIX sh valido -- roda dentro de uma base
-# debian-slim cujo /bin/sh e dash (nao bash); sh -n/dash -n bastam para
-# pegar erro de sintaxe sem precisar executar (nem precisa de Docker).
+# alpine cujo /bin/sh e o ash do BusyBox (nao bash); sh -n/dash -n bastam
+# para pegar erro de sintaxe sem precisar executar (nem precisa de Docker).
 scenario_entrypoint_is_valid_posix_sh() {
   _out="$TMPDIR_TEST/entrypoint.sh"
   _run_serve_docker_fn _serve_docker_write_entrypoint "$_out"

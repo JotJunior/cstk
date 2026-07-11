@@ -24,28 +24,36 @@ com fonte esta marcado `[NEEDS CLARIFICATION]` ou `[detalhe de execute-task]`.
 
 ## Decision 1: Estrategia de imagem — build local a partir da arvore verificada
 
-**Decision**: Construir uma imagem Docker **local** a partir da arvore-fonte do
-painel JA baixada e verificada pelo fluxo de integridade existente. O `npm
-install` e o `npm run build` do painel rodam **DENTRO do build da imagem**
-(`RUN` no Dockerfile), nunca no host. A imagem parte de uma base oficial `node`
-que satisfaca `engines.node ">=20.0.0"` (package.json L28), preferindo uma
-variante **glibc** (ex.: `node:20-bookworm-slim`) e NAO alpine/musl.
+**Decision** (revisada por **dec-037**, supersede **dec-011**): Construir uma imagem
+Docker **local multi-stage** a partir da arvore-fonte do painel JA baixada e verificada
+pelo fluxo de integridade existente. O `npm ci` e o `npm run build` do painel rodam
+**DENTRO do estagio de build da imagem** (`RUN` no Dockerfile), nunca no host. Ambos os
+estagios (build e runtime) partem da base oficial **`node:22-alpine`** (musl), que
+satisfaz `engines.node ">=20.0.0"` (package.json L28). O `better-sqlite3` **e compilado
+do fonte** no estagio de build (nao ha prebuild musl); o estagio de runtime slim so
+recebe o painel ja buildado.
 
 **Rationale**:
 - **FR-006** exige que o modo Docker NAO precise de `npm` no host. Como `node`+`npm`
-  vivem na imagem, o `npm install`/`npm run build` do painel MUST ocorrer no build
-  da imagem. O host so precisa de `docker` + `curl` (download/verificacao) + `tar`
+  vivem na imagem, o `npm ci`/`npm run build` do painel MUST ocorrer no estagio de
+  build da imagem. O host so precisa de `docker` + `curl` (download/verificacao) + `tar`
   (extracao) — nunca `npm`/`node`.
 - **Reuso da "Instalacao Verificada do Painel"** (spec Key Entities): o download +
   `trusted_host_check` + integridade fail-closed + extracao ja existem em
   `_serve_install` (serve.sh L194-354). O modo Docker reaproveita ESSE fluxo ate a
   extracao e alimenta a arvore verificada como contexto de `docker build` — sem
   segunda fonte de download nem segundo mecanismo de verificacao (FR-007).
-- **Base glibc por causa do `better-sqlite3`**: `better-sqlite3 ^9.6.0` (server
-  package.json) e um **modulo nativo** (binding C++ do SQLite). Em bases musl
-  (alpine) os prebuilds frequentemente inexistem e exigem toolchain de compilacao;
-  em bases glibc (debian slim) o prebuild costuma resolver sem compilador. Escolher
-  glibc reduz o risco de o `npm install` do painel exigir `build-essential`/`python3`.
+- **Alpine/musl com compilacao do `better-sqlite3` no estagio de build**: `better-sqlite3
+  ^9.6.0` (server package.json) e um **modulo nativo** (binding C++ do SQLite) e NAO tem
+  prebuild musl, entao e **compilado do fonte** no estagio de build — que para isso
+  instala o toolchain com `apk add --no-cache python3 make g++`. O `better_sqlite3.node`
+  resultante linka musl (`libc.musl-aarch64.so.1`) e `require()` + create/insert/select
+  funcionam (verificado empiricamente). O estagio de runtime nao carrega o toolchain
+  (imagem slim). HISTORICO: a escolha original (**dec-011**) era base glibc
+  (`node:20-bookworm-slim`) para aproveitar o prebuild sem compilador; **dec-037
+  supersede dec-011** e adota alpine multi-stage por dois motivos — (a) o daemon do
+  sandbox nao conseguia puxar a base glibc, e (b) alpine multi-stage com compilacao
+  nativa no estagio de build e padrao de producao e as bases ja estavam em cache.
 
 **Alternatives considered**:
 - **Bind-mount do painel instalado no host dentro de uma imagem node generica**
@@ -53,19 +61,25 @@ variante **glibc** (ex.: `node:20-bookworm-slim`) e NAO alpine/musl.
   (com `npm`), violando FR-006 para hosts sem `npm`; e acopla o runtime do container
   a uma `node_modules` construida para a plataforma do host (nao necessariamente
   linux/container).
-- **Alpine/musl como base**: REJEITADA como default por causa do risco de prebuild
-  do `better-sqlite3` (acima). Pode ser reavaliada se medido empiricamente que o
-  prebuild musl existe para a versao fixada.
+- **Base glibc com prebuild (ex.: `node:20-bookworm-slim`)**: era a escolha original
+  (dec-011), agora REVERTIDA por **dec-037** (ver HISTORICO acima). O prebuild musl
+  inexistente do `better-sqlite3` e resolvido de forma padrao compilando do fonte no
+  estagio de build; mantida aqui apenas como registro historico.
 
-**`[detalhe de execute-task]`** (NAO inventado aqui):
-- Tag/digest EXATOS da base (`node:20-bookworm-slim@sha256:...`) — fixar por digest
-  para reprodutibilidade; verificar empiricamente que o `npm install` do painel
-  resolve o prebuild do `better-sqlite3` sem toolchain extra.
-- Conteudo exato do Dockerfile. Estagios exigidos (contrato, nao codigo): `FROM
-  node:20-<glibc>`; `WORKDIR`; `COPY` arvore verificada; `RUN npm install && npm run
-  build`; prover o encaminhador (Decision 2); `COPY` entrypoint; `EXPOSE`;
-  `ENTRYPOINT`. Se `npm ci` vs `npm install` — decidir na implementacao conforme a
-  presenca de `package-lock.json` na arvore extraida.
+**Fixado em execute-task (dec-037, verificado empiricamente):**
+- Base fixada por digest, **ambos os estagios**:
+  `node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2`
+  (digest lido de `docker inspect node:22-alpine` RepoDigests no host).
+- Dockerfile **multi-stage**. Estagio `AS build`: `RUN apk add --no-cache python3 make
+  g++` (toolchain) -> `COPY . .` -> `RUN npm ci` -> `RUN npm run build` (compila
+  `better-sqlite3` do fonte + workspaces). Estagio de runtime: `RUN apk add --no-cache
+  socat` -> `COPY --from=build --chown=node:node /app /app` -> entrypoint embutido via
+  heredoc `COPY <<'EOF'` + `chmod +x` -> `USER node` -> `EXPOSE 8080` -> `ENTRYPOINT`.
+  Usa `npm ci` (nao instalacao sem lockfile) a partir do `package-lock.json`.
+- A diretiva `# syntax=docker/dockerfile:1` NAO e emitida: o frontend BuildKit builtin
+  (Docker >= 23) suporta heredocs `COPY` nativamente, e emitir `# syntax` forcava um
+  pull de imagem-frontend que travava no sandbox — omitir remove essa dependencia de
+  rede.
 
 ---
 
@@ -88,7 +102,7 @@ spec: resolvido 100% do lado cstk/Docker).
 - `socat` e o utilitario padrao para este relay; a forma canonica
   `socat TCP-LISTEN:<pub>,fork,reuseaddr TCP:127.0.0.1:<painel>` e amplamente usada
   para este proposito. NAO esta no `node` oficial por default -> MUST ser adicionado
-  no Dockerfile (base debian: via gerenciador de pacotes da imagem).
+  no Dockerfile (base alpine: `apk add --no-cache socat` no estagio de runtime).
 
 **Alternatives considered**:
 - **Forwarder em Node** (`net.createServer` ~10 linhas de proxy TCP): evita adicionar
@@ -279,9 +293,9 @@ na implementacao.
   nao-loopback (ex.: `0.0.0.0`) expoe o painel na rede — mesmo caveat do modo nativo
   (serve.sh L510-517, so avisa); documentar e manter default loopback (owasp LOW).
 - **Supply chain reproducivel** (owasp MEDIUM, A03/A08/CICD-SEC-9): a base `node` MUST ser
-  fixada por **digest** (`node:20-<glibc>@sha256:...`), nao tag flutuante; e o install do
-  painel na imagem MUST usar `npm ci` (lockfile) — a arvore extraida traz
-  `package-lock.json` (~201KB na v0.12.1) — em vez de `npm install`, para build
+  fixada por **digest** (`node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2`,
+  ambos os estagios), nao tag flutuante; e o install do painel na imagem MUST usar
+  `npm ci` (lockfile `package-lock.json`, ~201KB na v0.12.1), para build
   reproduzivel/travado.
 - **Integridade + trusted-hosts preservados**: o download do painel continua no code
   path de host com `trusted_host_check` (trusted-hosts.sh L52-88) + integridade
@@ -319,7 +333,7 @@ empiricamente para nao quebrar o runtime do painel; pin de digest da base; `npm 
 |---|------|--------|---------------|
 | 1 | Leitura de WAL db read-only sem `immutable=1` sobre mount `:ro` (FR-008/US2) | **RISCO ABERTO — verificar empiricamente** | execute-task (Decision 3) |
 | 2 | Invocacao exata do `socat` (ou proxy Node) + presenca do pacote na base | detalhe de implementacao | execute-task (Decision 2) |
-| 3 | Tag/digest exatos da base node + prebuild `better-sqlite3` glibc | detalhe de implementacao | execute-task (Decision 1) |
+| 3 | Tag/digest exatos da base node + compilacao musl do `better-sqlite3` | **RESOLVIDO (dec-037)** — `node:22-alpine` multi-stage (digest em Decision 1), compilado do fonte no estagio de build | execute-task (Decision 1) |
 | 4 | Comando exato da sonda de daemon (`docker info`/`version`) + SC-006 <5s | detalhe de implementacao | execute-task (Decision 5) |
 | 5 | Flags exatas de hardening (`--cap-drop`/`--read-only`/`tmpfs`) | detalhe de implementacao | execute-task (Decision 7) |
 

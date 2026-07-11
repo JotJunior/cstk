@@ -10,8 +10,10 @@ sem alterar o comportamento nativo (default) nem o repositorio externo `cstk-pan
 
 Abordagem tecnica (aterrada em `research.md`): reaproveitar o fluxo de download +
 integridade fail-closed + trusted-hosts JA existente (`_serve_install`, serve.sh) para
-obter a arvore-fonte VERIFICADA do painel; construir uma **imagem Docker local** (base
-`node >=20` glibc) cujo `RUN` faz `npm install && npm run build` — assim `npm` fica na
+obter a arvore-fonte VERIFICADA do painel; construir uma **imagem Docker local
+multi-stage** (base `node:22-alpine`, musl) cujo estagio de build faz `npm ci && npm run
+build` — compilando o modulo nativo `better-sqlite3` do fonte (sem prebuild musl) — e
+cujo estagio de runtime slim carrega apenas o painel ja buildado; assim `npm` fica na
 imagem, nao no host (FR-006). O painel faz bind hardcoded em `127.0.0.1` (config.ts
 L81), entao um **encaminhador in-container** (`socat` recomendado) escuta em
 `0.0.0.0:<porta>` e repassa ao loopback interno (FR-005, resolvido 100% do lado
@@ -23,7 +25,8 @@ reconciliacao de remanescentes e `docker stop` gracioso espelhando `_serve_shutd
 ## Technical Context
 
 **Language/Version**: POSIX sh (Constituicao II) para o codigo cstk; a imagem usa Node
-`>=20.0.0` (painel `engines.node`, package.json L28). Base glibc (Decision 1).
+`22` (satisfaz `engines.node >=20.0.0`, package.json L28). Base `node:22-alpine` (musl),
+multi-stage (Decision 1).
 **Primary Dependencies**: runtime de container (`docker`, opt-in — carve-out II, ver
 Constitution Check); `curl` + `tar` (host, download/extracao — ja usados); painel traz
 `fastify ^5`, `@fastify/static ^8`, `better-sqlite3 ^9.6.0` (nativo); encaminhador
@@ -31,7 +34,7 @@ Constitution Check); `curl` + `tar` (host, download/extracao — ja usados); pai
 **Storage**: nenhum novo. Le `~/.claude/cstk/knowledge.db` (WAL) read-only.
 **Testing**: harness POSIX do toolkit — `tests/cstk/test_serve.sh` (estender) + testes
 do novo helper docker; `./tests/run.sh`.
-**Target Platform**: host de desktop (macOS/Linux) com Docker; container linux glibc.
+**Target Platform**: host de desktop (macOS/Linux) com Docker; container linux musl (alpine).
 **Project Type**: CLI (extensao de `cstk serve`), orquestracao de container.
 **Performance Goals**: SC-006 — diagnostico de runtime ausente/inacessivel <5s, sem
 rede antes da checagem.
