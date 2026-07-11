@@ -470,53 +470,109 @@ Ref: research.md Decision 1 vs Decision 7; checklists/security.md CHK014 `[Confl
 Ref: tests/cstk/test_serve.sh (convencao CLAUDE.md "Como testar scripts shell"); quickstart.md
 Scenarios 1-3, 6-10
 
-- [ ] 4.1.1 `tests/cstk/test_serve-docker.sh` (scaffold criado em 1.1.4): cobrir quickstart
+- [x] 4.1.1 `tests/cstk/test_serve-docker.sh` (scaffold criado em 1.1.4): cobrir quickstart
   Scenario 1 (subir sem npm no host) — stub docker, sem stub de npm/node no PATH, assert que
-  nenhum comando npm/node e invocado no host
-- [ ] 4.1.2 Cobrir quickstart Scenario 2 (docker ausente) e Scenario 3 (daemon parado) — reusar
-  os stubs de 2.2.5
-- [ ] 4.1.3 Cobrir quickstart Scenario 8 (porta customizada) e Scenario 9 (`--update`/
-  `--reinstall` no modo docker) — reusar os stubs de 2.4.5
-- [ ] 4.1.4 Cobrir quickstart Scenario 10 (integridade nao confirmada com `--docker`) — paridade
-  com os scenarios de integridade ja existentes em `test_serve.sh` (2.3.4)
-- [ ] 4.1.5 Cobrir quickstart Scenario 6 (encerramento gracioso) e Scenario 7 (reexecucao com
-  remanescente) — reusar os testes de 2.6.4/2.7.3
-- [ ] 4.1.6 Rodar `./tests/run.sh --check-coverage` e confirmar zero orfaos entre
-  `cli/lib/serve-docker.sh` e `tests/cstk/test_serve-docker.sh`
+  nenhum comando npm/node e invocado no host. `scenario_docker_mode_full_happy_path_never_invokes_npm_or_node_on_host`
+  percorre o happy path COMPLETO (fetch+build+run, nao so ate o preflight — paridade parcial ja
+  existia em `test_serve.sh::scenario_docker_flag_does_not_require_npm_on_host`, que parava no
+  preflight) com um stub npm/node que falha ruidosamente se invocado (`_stub_npm_node_must_not_be_called`).
+- [x] 4.1.2 Cobrir quickstart Scenario 2 (docker ausente) e Scenario 3 (daemon parado) — reusar
+  os stubs de 2.2.5. Ja coberto desde a FASE 2 (`scenario_preflight_docker_absent_exit1_no_network`,
+  `scenario_message_docker_absent_is_actionable`, `scenario_preflight_daemon_down_distinct_message_exit1`,
+  `scenario_message_daemon_down_is_actionable`, `scenario_preflight_absent_and_down_messages_are_distinct`);
+  formalizado nesta FASE via matriz de cobertura por Quickstart Scenario (comentario no topo da
+  secao FASE 4 de `test_serve-docker.sh`).
+- [x] 4.1.3 Cobrir quickstart Scenario 8 (porta customizada) e Scenario 9 (`--update`/
+  `--reinstall` no modo docker) — reusar os stubs de 2.4.5. Ja coberto desde a FASE 2
+  (`scenario_docker_run_port_and_host_reflect_arguments`,
+  `scenario_build_trigger_update_new_version_rebuilds` e irmaos,
+  `scenario_build_trigger_reinstall_always_rebuilds_unconditionally`); formalizado via matriz.
+- [x] 4.1.4 Cobrir quickstart Scenario 10 (integridade nao confirmada com `--docker`) — paridade
+  com os scenarios de integridade ja existentes em `test_serve.sh` (2.3.4). Ja coberto desde a
+  FASE 2 (`scenario_fetch_unverifiable_blocks_by_default`,
+  `scenario_fetch_allow_unverified_bypasses_and_proceeds`,
+  `scenario_fetch_mismatch_blocks_even_with_allow_unverified`,
+  `scenario_message_integrity_unconfirmed_matches_native_wording`); formalizado via matriz.
+- [x] 4.1.5 Cobrir quickstart Scenario 6 (encerramento gracioso) e Scenario 7 (reexecucao com
+  remanescente) — reusar os testes de 2.6.4/2.7.3. Ja coberto desde a FASE 2
+  (`scenario_graceful_shutdown_sends_docker_stop_with_grace_5s` e irmao;
+  `scenario_reconcile_running_remnant_then_starts_normally` e irmaos). GAP real preenchido nesta
+  FASE: interrupcao ANTES do container existir (durante o build) — investigado empiricamente
+  (dec-055: sinal real durante `docker build` sincrono em primeiro plano e deferred pelo bash ate
+  o comando terminar, nao prova "container orfao" porque nenhum container existe nessa janela;
+  um teste assim seria flaky/lento sem ganho). Cobertura adicionada via proxy determinístico:
+  `scenario_build_failure_never_reaches_docker_run_no_hang` (usa o marcador `build-fails` do
+  stub, existente desde a FASE 2 mas nunca antes exercitado por nenhum scenario) +
+  `scenario_shutdown_trap_registered_after_build_before_run` (regressao estrutural que trava a
+  ordem build < trap < run documentada em data-model.md "Interrupcao durante build/start").
+- [x] 4.1.6 Rodar `./tests/run.sh --check-coverage` e confirmar zero orfaos entre
+  `cli/lib/serve-docker.sh` e `tests/cstk/test_serve-docker.sh`. CONFIRMADO: "Cobertura completa:
+  zero orfaos."
 
 ### 4.2 Cenario de composicao `--update` + `--reinstall` `[A]`
 
 Ref: checklists/infra.md CHK012
 
-- [ ] 4.2.1 Teste explicito: `cstk serve --docker --update --reinstall` aplica a precedencia
-  fixada em 2.4.4 (`--reinstall` vence)
-- [ ] 4.2.2 Teste explicito da ordem inversa dos flags (`--reinstall --update`) para confirmar
-  que a precedencia independe da ordem de digitacao
-- [ ] 4.2.3 Registrar a Decisao de precedencia (2.4.4) como referenciada por este teste,
-  fechando o loop checklist -> tasks -> teste
+- [x] 4.2.1 Teste explicito: `cstk serve --docker --update --reinstall` aplica a precedencia
+  fixada em 2.4.4 (`--reinstall` vence). Precedencia no nivel `_serve_docker_main` (booleans ja
+  resolvidos) ja coberta desde a FASE 2 (`scenario_reinstall_wins_over_update_chk012`). Nesta
+  FASE, fechado tambem no nivel do PARSER de argv real via novo helper
+  `_run_serve_docker_via_cli` (soureia `serve.sh` e chama `serve_main "$@"` com argv de verdade):
+  `scenario_cli_docker_update_then_reinstall_reinstall_wins` (`--docker --update --reinstall`).
+- [x] 4.2.2 Teste explicito da ordem inversa dos flags (`--reinstall --update`) para confirmar
+  que a precedencia independe da ordem de digitacao.
+  `scenario_cli_docker_reinstall_then_update_reinstall_wins` — MESMO resultado
+  (docker rmi -f chamado, sem a mensagem "verificando atualizacoes") com a ordem invertida no argv.
+- [x] 4.2.3 Registrar a Decisao de precedencia (2.4.4) como referenciada por este teste,
+  fechando o loop checklist -> tasks -> teste. Decisao dec-056 registrada pelo orquestrador desta
+  onda, referenciando CHK012 + a Decisao original de 2.4.4 + os 3 scenarios (nivel
+  `_serve_docker_main` e nivel CLI, ambas ordens) que agora validam a precedencia.
 
 ### 4.3 Regressao do modo nativo intacto (FR-002) `[C]`
 
 Ref: spec.md FR-002; tests/cstk/test_serve.sh (suite existente)
 
-- [ ] 4.3.1 Rodar a suite existente de `tests/cstk/test_serve.sh` (todos os scenarios sem
-  `--docker`) apos as mudancas e confirmar zero divergencia de exit code/stdout/stderr
-- [ ] 4.3.2 Assert adicional: nenhuma chamada a `docker`/`command -v docker` ocorre quando
+- [x] 4.3.1 Rodar a suite existente de `tests/cstk/test_serve.sh` (todos os scenarios sem
+  `--docker`) apos as mudancas e confirmar zero divergencia de exit code/stdout/stderr.
+  CONFIRMADO: `./tests/run.sh test_serve` (ambos os arquivos) 103/103 PASS 0 FAIL 0 ERROR
+  (98 antes desta onda -- os 50 de `test_serve.sh` continuam 50/50 identicos; +5 novos em
+  `test_serve-docker.sh`, 48 -> 53).
+- [x] 4.3.2 Assert adicional: nenhuma chamada a `docker`/`command -v docker` ocorre quando
   `--docker` esta ausente (grep/instrumentacao do stub, garantindo que o novo caminho nunca e
-  avaliado silenciosamente)
-- [ ] 4.3.3 Documentar, no commit/PR da tarefa, a evidencia (output do teste) de que FR-002
-  (zero mudanca de default) se mantem
+  avaliado silenciosamente). Ja coberto desde a FASE 2 em `test_serve.sh` via
+  `scenario_docker_absent_flag_never_probes_container_runtime` (stub `docker` que falha
+  ruidosamente se invocado, `_stub_docker_must_not_be_called`) — confirmado ainda verde nesta
+  onda, nenhuma regressao introduzida pelas mudancas de FASE 3/4.
+- [x] 4.3.3 Documentar, no commit/PR da tarefa, a evidencia (output do teste) de que FR-002
+  (zero mudanca de default) se mantem. Evidencia: `./tests/run.sh test_serve` 103/103 PASS (ver
+  4.3.1); suite completa 1561/1561 PASS 0 FAIL 0 ERROR 0 ORPHANS (ver 4.4.1) — documentado no
+  commit desta onda.
 
 ### 4.4 Suite completa e lint `[M]`
 
 Ref: CLAUDE.md "Como testar scripts shell"; .shellcheckrc
 
-- [ ] 4.4.1 Rodar `./tests/run.sh` completo (suite inteira) e confirmar 100% verde
-- [ ] 4.4.2 Rodar shellcheck (advisory, nao-gateante) sobre `cli/lib/serve-docker.sh` e o
-  entrypoint gerado; corrigir achados razoaveis
-- [ ] 4.4.3 Rodar `./tests/run.sh --check-coverage` uma segunda vez apos toda a FASE 4 para
+- [x] 4.4.1 Rodar `./tests/run.sh` completo (suite inteira) e confirmar 100% verde. CONFIRMADO:
+  1561/1561 PASS 0 FAIL 0 ERROR 0 ORPHANS (1556 antes desta onda + 5 scenarios novos).
+- [x] 4.4.2 Rodar shellcheck (advisory, nao-gateante) sobre `cli/lib/serve-docker.sh` e o
+  entrypoint gerado; corrigir achados razoaveis. `cli/lib/serve-docker.sh`: 0 findings (ja
+  confirmado na FASE 3, reconfirmado nesta onda). Entrypoint GERADO (nao existe como arquivo no
+  repo — materializado via `_serve_docker_write_entrypoint` para um tmpfile e checado com
+  `shellcheck --shell=sh`, verificacao que nao tinha sido feita explicitamente ate agora): 0
+  findings. `tests/cstk/test_serve-docker.sh`: apenas os 2 infos SC2030/SC2031 ja
+  esperados/documentados na FASE 3 (linhas dos scenarios de shutdown pre-existentes, nao
+  tocados nesta onda) — nenhum finding novo introduzido pelos 5 scenarios adicionados.
+- [x] 4.4.3 Rodar `./tests/run.sh --check-coverage` uma segunda vez apos toda a FASE 4 para
   confirmar que nenhum script novo (Dockerfile helper, entrypoint script, `serve-docker.sh`)
-  ficou sem teste mapeado
+  ficou sem teste mapeado. CONFIRMADO: "Cobertura completa: zero orfaos." (reconfirmado apos
+  todas as adicoes desta onda).
+
+**FASE 4 COMPLETA: 6/6 tasks (4.1-4.4).** Nota FR-006/FR-018 (Sugestao para skill global): o
+finding sobre defasagem de sinal durante `docker build` sincrono (dec-055) e um comportamento
+POSIX/bash pre-existente (nao um bug introduzido por esta feature) e permanece documentado como
+candidato a hardening futuro fora do escopo desta FASE — ver dec-055 para o raciocinio completo
+(2 probes empiricos reais) e recomendacao de nao alterar `cli/lib/serve-docker.sh` nesta onda
+(FASE 4 = Testes, nao Hardening).
 
 ---
 

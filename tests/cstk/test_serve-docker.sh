@@ -370,6 +370,31 @@ _seed_cached_install() {
   _mark_image_built "cstk-panel:${_sci_tag}"
 }
 
+# _stub_npm_node_must_not_be_called BIN_DIR (task 4.1.1, Quickstart
+# Scenario 1): paridade com test_serve.sh::_stub_docker_must_not_be_called
+# (mesma filosofia, invertida para o par npm/node) -- qualquer invocacao
+# FALHA e fica registrada em npm-node-calls.log (path resolvido em runtime
+# via $TMPDIR_TEST, ja exportado por _run_serve_docker_main), provando que
+# o modo --docker jamais precisa desses binarios no HOST. Heredoc COM aspas
+# ('STUB'): nenhuma expansao em tempo de escrita, $TMPDIR_TEST/$* so
+# resolvem quando o stub roda de verdade -- mesmo padrao ja usado por
+# _stub_docker_must_not_be_called em test_serve.sh.
+_stub_npm_node_must_not_be_called() {
+  _snnmbc_bin="$1"
+  cat > "$_snnmbc_bin/npm" <<'STUB'
+#!/bin/sh
+printf 'ERRO: npm foi chamado mas nao deveria (modo --docker nunca usa npm no host): %s\n' "$*" >> "$TMPDIR_TEST/npm-node-calls.log"
+exit 1
+STUB
+  chmod +x "$_snnmbc_bin/npm"
+  cat > "$_snnmbc_bin/node" <<'STUB'
+#!/bin/sh
+printf 'ERRO: node foi chamado mas nao deveria (modo --docker nunca usa node no host): %s\n' "$*" >> "$TMPDIR_TEST/npm-node-calls.log"
+exit 1
+STUB
+  chmod +x "$_snnmbc_bin/node"
+}
+
 # _docker_calls_log: imprime o conteudo de docker-calls.log (vazio se
 # ausente -- nenhuma chamada ao stub ainda).
 _docker_calls_log() {
@@ -391,6 +416,26 @@ _run_serve_docker_main() {
     TMPDIR_TEST="$TMPDIR_TEST" \
     PATH="${_SDM_INNER_PATH:-$PATH}" \
     sh -c '. "$CSTK_LIB/serve.sh" && . "$CSTK_LIB/serve-docker.sh" && _serve_docker_main "$@"' serve_docker_main_test "$@"
+}
+
+# _run_serve_docker_via_cli ARGS...
+# Variante de _run_serve_docker_main que passa por CIMA do parser de argv
+# REAL (serve_main, serve.sh -- while/case) em vez de receber parametros
+# posicionais ja resolvidos. Usado pelos scenarios da FASE 4 (task
+# 4.2.1/4.2.2, CHK012) que precisam provar que a precedencia
+# --reinstall > --update independe da ORDEM em que as flags aparecem no
+# argv -- algo que _run_serve_docker_main estruturalmente nao exercita,
+# porque UPDATE/REINSTALL ja chegam como booleans resolvidos, sem nocao de
+# "ordem de digitacao". serve_main sourceia serve-docker.sh internamente
+# quando --docker esta presente (serve.sh ~L616-617) -- nao precisa
+# sourcear aqui de novo. Mesma composicao de env de _run_serve_docker_main.
+_run_serve_docker_via_cli() {
+  capture env CSTK_LIB="$CSTK_LIB" HOME="$TMPDIR_TEST" \
+    CSTK_PANEL_DIR="${CSTK_PANEL_DIR:-$TMPDIR_TEST/panel}" \
+    CSTK_KNOWLEDGE_DB="${CSTK_KNOWLEDGE_DB:-}" \
+    TMPDIR_TEST="$TMPDIR_TEST" \
+    PATH="${_SDM_INNER_PATH:-$PATH}" \
+    sh -c '. "$CSTK_LIB/serve.sh" && serve_main "$@"' serve_docker_cli_test "$@"
 }
 
 # _assert_hardening_flags_in_run_line RUN_LINE LABEL
@@ -1470,6 +1515,187 @@ scenario_all_five_error_messages_are_non_empty_and_distinct() {
     _fail "five_messages_distinct" "duas ou mais das 5 mensagens canonicas sao identicas (CHK008/CHK009 exigem mensagens distintas por causa)"
     return 1
   fi
+}
+
+# ===========================================================================
+# FASE 4 — Testes: formaliza a cobertura por Quickstart Scenario e preenche
+# os gaps reais deixados pela FASE 1-3 (tasks.md 4.1-4.4).
+# ===========================================================================
+#
+# Matriz de cobertura por Quickstart Scenario (task 4.1 -- boa parte JA
+# estava coberta desde a FASE 2/3; esta matriz so torna isso auditavel sem
+# precisar reler cada scenario individualmente; os 5 scenarios novos abaixo
+# preenchem gaps reais, nao redundantes):
+#
+#   Scenario 1  (sem npm no host, happy path COMPLETO)     4.1.1 -- NOVO
+#     -> scenario_docker_mode_full_happy_path_never_invokes_npm_or_node_on_host
+#     (test_serve.sh::scenario_docker_flag_does_not_require_npm_on_host ja
+#     cobria a composicao da flag, mas parava no preflight -- docker ausente
+#     do PATH; este scenario percorre fetch+build+run ate o fim)
+#   Scenario 2  (docker ausente)                            4.1.2 -- ja coberto
+#     -> scenario_preflight_docker_absent_exit1_no_network,
+#        scenario_message_docker_absent_is_actionable
+#   Scenario 3  (daemon parado)                             4.1.2 -- ja coberto
+#     -> scenario_preflight_daemon_down_distinct_message_exit1,
+#        scenario_message_daemon_down_is_actionable,
+#        scenario_preflight_absent_and_down_messages_are_distinct
+#   Scenario 6  (encerramento gracioso)                     4.1.5 -- ja coberto
+#     -> scenario_graceful_shutdown_sends_docker_stop_with_grace_5s,
+#        scenario_graceful_shutdown_rm_not_called_after_stop_because_of_auto_remove
+#   Scenario 7  (reexecucao com remanescente)                4.1.5 -- ja coberto
+#     -> scenario_reconcile_running_remnant_then_starts_normally,
+#        scenario_reconcile_absent_remnant_is_idempotent_noop,
+#        scenario_reconcile_impossible_gives_actionable_message_exit1,
+#        scenario_message_reconcile_impossible_is_actionable
+#     GAP preenchido nesta FASE (interrupcao ANTES do container existir --
+#     ver dec-055 sobre por que um teste de sinal real durante build seria
+#     flaky sem provar mais nada, ja que nenhum container existe nessa
+#     janela): scenario_build_failure_never_reaches_docker_run_no_hang +
+#     scenario_shutdown_trap_registered_after_build_before_run
+#   Scenario 8  (porta customizada)                         4.1.3 -- ja coberto
+#     -> scenario_docker_run_port_and_host_reflect_arguments
+#   Scenario 9  (--update/--reinstall no modo docker)   4.1.3/4.2 -- parcial+NOVO
+#     -> scenario_build_trigger_update_new_version_rebuilds,
+#        scenario_build_trigger_update_no_new_version_reuses,
+#        scenario_build_trigger_update_network_failure_keeps_installed,
+#        scenario_build_trigger_reinstall_always_rebuilds_unconditionally,
+#        scenario_reinstall_wins_over_update_chk012 (precedencia, nivel
+#        _serve_docker_main -- booleans ja resolvidos)
+#     NOVO (4.2.1/4.2.2, CHK012 -- precedencia via ARGV real, ordem direta E
+#     invertida, provando independencia da ordem de digitacao):
+#     scenario_cli_docker_update_then_reinstall_reinstall_wins,
+#     scenario_cli_docker_reinstall_then_update_reinstall_wins
+#   Scenario 10 (integridade nao confirmada)                4.1.4 -- ja coberto
+#     -> scenario_fetch_unverifiable_blocks_by_default,
+#        scenario_fetch_allow_unverified_bypasses_and_proceeds,
+#        scenario_fetch_mismatch_blocks_even_with_allow_unverified,
+#        scenario_message_integrity_unconfirmed_matches_native_wording
+#
+#   Scenario 4 (paridade WAL real), Scenario 5 (indice ausente) e Scenario 11
+#   (escrita concorrente, CHK017) ficam para a FASE 5 (tasks 5.1-5.3) --
+#   dependem de docker/knowledge.db REAIS (nao hermetico) e a propria
+#   Scenario 11 depende de 5.1 (WAL populado) ja ter rodado. Fora do escopo
+#   desta onda por desenho de fases (ver dec-054) -- NAO e omissao.
+
+# ---------------------------------------------------------------------------
+# 4.1.1 — Quickstart Scenario 1: happy path COMPLETO (fetch+build+run) sem
+# npm/node no host em nenhum momento (FR-006/SC-001)
+# ---------------------------------------------------------------------------
+
+scenario_docker_mode_full_happy_path_never_invokes_npm_or_node_on_host() {
+  CSTK_PANEL_DIR="$TMPDIR_TEST/panel"
+  export CSTK_PANEL_DIR
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_node_must_not_be_called "$_STUB_BIN"
+  # Imagem ausente (sem _seed_cached_install) -- forca o happy path INTEIRO:
+  # fetch+verify+extract (2.3), build (2.4.1), reconcile (2.6), run (2.5).
+  _run_serve_docker_main "5173" "127.0.0.1" "0" "0" "0" ""
+  _assert_captured_exit 0 || return 1
+  case "$(_docker_calls_log)" in
+    *"build -f"*) : ;;
+    *) _fail "happy_path_build_missing" "docker build nao ocorreu no happy path completo"; return 1 ;;
+  esac
+  case "$(_docker_calls_log)" in
+    *"run -d"*) : ;;
+    *) _fail "happy_path_run_missing" "docker run nao ocorreu no happy path completo"; return 1 ;;
+  esac
+  if [ -f "$TMPDIR_TEST/npm-node-calls.log" ]; then
+    _fail "happy_path_npm_node_invoked" "npm/node foi invocado no HOST durante o modo --docker (FR-006/SC-001): $(cat "$TMPDIR_TEST/npm-node-calls.log")"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# 4.1.5 (extensao) — build que nao completa nunca alcanca `docker run`, sem
+# hang (proxy seguro/deterministico para "Ctrl+C durante o build" -- ver
+# dec-055 para a justificativa completa de por que um teste com sinal real
+# nessa janela seria flaky sem provar mais nada sobre "container orfao":
+# nenhum container existe ate `docker run` acontecer).
+# ---------------------------------------------------------------------------
+
+scenario_build_failure_never_reaches_docker_run_no_hang() {
+  CSTK_PANEL_DIR="$TMPDIR_TEST/panel"
+  export CSTK_PANEL_DIR
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  _stub_curl_ok "$_STUB_BIN"
+  mkdir -p "$TMPDIR_TEST/docker-stub"
+  : > "$TMPDIR_TEST/docker-stub/build-fails"
+  # Imagem ausente -- forca o gatilho de build (2.4.1).
+  _run_serve_docker_main "5173" "127.0.0.1" "0" "0" "0" ""
+  _assert_captured_exit 1 || return 1
+  assert_stderr_contains "docker build falhou" || return 1
+  case "$(_docker_calls_log)" in
+    *"run -d"*) _fail "build_failure_no_run" "docker run NAO deveria ter ocorrido apos build que nao completou"; return 1 ;;
+  esac
+}
+
+# Regressao ESTRUTURAL (grep de linhas, nao dinamica): trava o contrato
+# documentado em data-model.md "Interrupcao durante build/start" e no
+# comentario de 2.6.3/2.7.1 em serve-docker.sh -- o trap de encerramento
+# so e registrado DEPOIS do fetch/build (2.3/2.4) e ANTES do `docker run -d`
+# (2.5). Se uma edicao futura mover o trap para antes do build (mudaria o
+# comportamento na janela discutida em dec-055) ou para depois do run
+# (deixaria uma janela SEM handler enquanto o container ja existe), este
+# scenario denuncia o drift.
+scenario_shutdown_trap_registered_after_build_before_run() {
+  _sttr_file="$REPO_ROOT/cli/lib/serve-docker.sh"
+  _sttr_build_line=$(grep -n '_serve_docker_build_image "\$_sdm_src_dir"' "$_sttr_file" | head -1 | cut -d: -f1)
+  _sttr_trap_line=$(grep -n "trap '_serve_docker_shutdown' INT TERM" "$_sttr_file" | head -1 | cut -d: -f1)
+  _sttr_run_line=$(grep -n '^[[:space:]]*if ! docker run -d' "$_sttr_file" | head -1 | cut -d: -f1)
+  if [ -z "$_sttr_build_line" ] || [ -z "$_sttr_trap_line" ] || [ -z "$_sttr_run_line" ]; then
+    _fail "shutdown_trap_order_missing" "nao encontrei uma das 3 linhas-ancora (build=$_sttr_build_line trap=$_sttr_trap_line run=$_sttr_run_line)"
+    return 1
+  fi
+  if [ "$_sttr_trap_line" -le "$_sttr_build_line" ] || [ "$_sttr_run_line" -le "$_sttr_trap_line" ]; then
+    _fail "shutdown_trap_order" "ordem esperada build($_sttr_build_line) < trap($_sttr_trap_line) < run($_sttr_run_line) violada"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# 4.2 — Composicao --update + --reinstall via ARGV REAL (CHK012: precedencia
+# independe da ORDEM de digitacao). scenario_reinstall_wins_over_update_chk012
+# (FASE 2) ja cobre a precedencia no nivel de _serve_docker_main (booleans
+# ja resolvidos); os 2 scenarios abaixo fecham o loop no nivel do PARSER de
+# argv real (serve_main), nas DUAS ordens possiveis.
+# ---------------------------------------------------------------------------
+
+# 4.2.1: ordem "--update --reinstall" (update digitado primeiro).
+scenario_cli_docker_update_then_reinstall_reinstall_wins() {
+  CSTK_PANEL_DIR="$TMPDIR_TEST/panel"
+  export CSTK_PANEL_DIR
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  _stub_curl_ok "$_STUB_BIN"
+  _seed_cached_install "$CSTK_PANEL_DIR" "v0.0.1"
+  _run_serve_docker_via_cli --docker --port 5173 --update --reinstall
+  _assert_captured_exit 0 || return 1
+  assert_stdout_not_contains "verificando atualizacoes" || return 1
+  case "$(_docker_calls_log)" in
+    *"rmi -f cstk-panel:v0.0.1"*) : ;;
+    *) _fail "cli_order_update_reinstall" "docker rmi -f nao foi chamado (--reinstall deveria vencer; ordem digitada: --update --reinstall)"; return 1 ;;
+  esac
+}
+
+# 4.2.2: ordem INVERTIDA "--reinstall --update" -- MESMO resultado, provando
+# que a precedencia independe da ordem de digitacao (CHK012).
+scenario_cli_docker_reinstall_then_update_reinstall_wins() {
+  CSTK_PANEL_DIR="$TMPDIR_TEST/panel"
+  export CSTK_PANEL_DIR
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  _stub_curl_ok "$_STUB_BIN"
+  _seed_cached_install "$CSTK_PANEL_DIR" "v0.0.1"
+  _run_serve_docker_via_cli --docker --port 5173 --reinstall --update
+  _assert_captured_exit 0 || return 1
+  assert_stdout_not_contains "verificando atualizacoes" || return 1
+  case "$(_docker_calls_log)" in
+    *"rmi -f cstk-panel:v0.0.1"*) : ;;
+    *) _fail "cli_order_reinstall_update" "docker rmi -f nao foi chamado (--reinstall deveria vencer; ordem digitada: --reinstall --update)"; return 1 ;;
+  esac
 }
 
 run_all_scenarios
