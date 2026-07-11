@@ -411,7 +411,7 @@ scenario_help_exit0() {
 scenario_help_menciona_flags() {
   _setup_serve_env
   _run_serve --help
-  for _flag in '--port' '--host' '--reinstall'; do
+  for _flag in '--port' '--host' '--reinstall' '--docker'; do
     if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q -- "$_flag"; then
       _fail "serve --help flag ausente" "nao encontrou $_flag no stdout"
       return 1
@@ -1402,6 +1402,43 @@ scenario_help_menciona_allow_unverified() {
   fi
   if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q 'CSTK_SERVE_ALLOW_UNVERIFIED'; then
     _fail "help_env_allow_unverified" "help nao menciona CSTK_SERVE_ALLOW_UNVERIFIED"
+    return 1
+  fi
+}
+
+# Cobertura de --help para --docker (task 6.1, FR-014): nao so a existencia
+# da flag (ja coberta por scenario_help_menciona_flags), mas a semantica
+# docker-specific de --update/--reinstall (rebuild de imagem vs
+# reinstalacao de dir) exigida pelo criterio de completude do backlog.
+scenario_help_menciona_docker_composition() {
+  _setup_serve_env
+  _run_serve --help
+  # --docker documentado nas 3 secoes esperadas: Usage, Options, Examples.
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q -- '\[--docker\]'; then
+    _fail "help_docker_usage" "help nao lista [--docker] na linha de Usage"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q -- 'cstk serve --docker'; then
+    _fail "help_docker_example" "help nao tem exemplo de uso com --docker"
+    return 1
+  fi
+  # Semantica docker-specific de --update/--reinstall (nao so a flag) —
+  # ambas devem mencionar explicitamente o comportamento de imagem.
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q 'rebuilds the local image'; then
+    _fail "help_docker_update_semantics" "help nao explica que --docker+--update reconstroi a imagem local"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q 'removes the local image'; then
+    _fail "help_docker_reinstall_semantics" "help nao explica que --docker+--reinstall remove a imagem local"
+    return 1
+  fi
+  # Pre-requisitos e paridade de dados citados na descricao da flag.
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q 'daemon running'; then
+    _fail "help_docker_daemon_prereq" "help nao menciona o pre-requisito de daemon Docker rodando"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -q 'CSTK_KNOWLEDGE_DB'; then
+    _fail "help_docker_kdb_env" "help nao menciona CSTK_KNOWLEDGE_DB no contexto do mount --docker"
     return 1
   fi
 }

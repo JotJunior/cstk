@@ -473,7 +473,7 @@ serve_main() {
       --help|-h)
         cat <<'HELP'
 Usage: cstk serve [--port PORT] [--host HOST] [--update] [--reinstall]
-                  [--allow-unverified]
+                  [--allow-unverified] [--docker]
 
 Start the cstk panel web interface. On first run, downloads the latest
 release from GitHub and installs it locally. Subsequent runs reuse the
@@ -495,9 +495,15 @@ Options:
                         cached version). Best-effort: if it fails
                         (offline/API error), the installed version is kept
                         and the panel still starts.
+                        With --docker, rebuilds the local image instead of
+                        the install directory (same "only if newer"
+                        semantics).
   --reinstall           Remove the existing installation and reinstall
                         from the latest GitHub release (unconditional;
                         ignores --update).
+                        With --docker, removes the local image and
+                        rebuilds it from scratch instead (still always
+                        wins over --update, regardless of flag order).
   --allow-unverified    Start even when the downloaded package's integrity
                         cannot be confirmed (no .sha256 published). Without
                         this flag (or the env var below), cstk serve
@@ -508,12 +514,33 @@ Options:
                         bypasses a checksum MISMATCH (a published .sha256
                         that does not match the download) -- that always
                         blocks.
+  --docker              Run the panel inside a local Docker container
+                        instead of natively on the host (opt-in; default
+                        behavior is unchanged when this flag is absent).
+                        Requires Docker Engine/Desktop installed AND the
+                        daemon running, checked before any network access
+                        (distinct errors for "not installed" vs "daemon
+                        not reachable"). npm/node are never required on
+                        the host: a local image is built from the same
+                        verified source tree used natively and is never
+                        pushed to a registry. Publishes on --host:--port
+                        like above (same 127.0.0.1-only-supported caveat).
+                        Mounts the knowledge.db directory read-only
+                        (~/.claude/cstk, or the directory of
+                        $CSTK_KNOWLEDGE_DB) so the panel reflects live
+                        index writes without a restart. Runs hardened
+                        (non-root, capabilities dropped, read-only rootfs)
+                        as a container named "cstk-panel"; a stale one is
+                        auto-replaced on each run. Ctrl+C stops it
+                        gracefully.
   --help, -h            Show this help and exit.
 
 Exit codes:
   0   Panel started (or --help shown).
   1   General error (prereq missing, download failed, install corrupt,
-      integrity unverified/mismatched without --allow-unverified).
+      integrity unverified/mismatched without --allow-unverified; with
+      --docker also: Docker not installed/daemon unreachable, image build
+      failed, or a stale container could not be reconciled).
   2   Usage error (invalid port, unknown flag).
 
 Examples:
@@ -522,6 +549,8 @@ Examples:
   cstk serve --update                # update panel if a newer release exists, then start
   cstk serve --reinstall             # force reinstall then start
   cstk serve --allow-unverified      # proceed even without a confirmed checksum
+  cstk serve --docker                # run the panel in a local Docker container
+  cstk serve --docker --update       # rebuild the image if a newer release exists
   cstk serve --help                  # show this help
 
 Environment:
@@ -532,6 +561,10 @@ Environment:
   CSTK_SERVE_ALLOW_UNVERIFIED   Set to 1 as a non-interactive equivalent
                                 of --allow-unverified (scripts/CI). Same
                                 high-visibility warning + audit log applies.
+  CSTK_KNOWLEDGE_DB             Path to knowledge.db; with --docker, its
+                                directory is what gets mounted read-only into
+                                the container (default:
+                                ~/.claude/cstk/knowledge.db).
 HELP
         return 0
         ;;

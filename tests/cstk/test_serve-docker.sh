@@ -531,14 +531,17 @@ scenario_main_function_is_defined_after_phase2_implementation() {
 
 # ---------------------------------------------------------------------------
 # 1.1.3 — confinamento: "docker" so aparece em serve-docker.sh (carve-out
-# Principio II condicao b), exceto (a) o parse da flag --docker em serve.sh
-# e (b) o encaminhamento mecanico para serve-docker.sh (source + chamada de
-# _serve_docker_main) que a flag decidida dispara — FASE 2. O cabecalho de
-# serve-docker.sh documenta explicitamente que "o nome da flag em si nao
-# conta como dependencia, so o encaminhamento para as funcoes daqui" —
-# ambas exceções abaixo espelham essa frase; qualquer OUTRA mencao a
-# "docker" em serve.sh (comentario, mensagem, etc.) continua proibida e
-# cai fora dos 3 padroes exemptados.
+# Principio II condicao b), exceto (a) o parse da flag --docker em serve.sh,
+# (b) o encaminhamento mecanico para serve-docker.sh (source + chamada de
+# _serve_docker_main) que a flag decidida dispara — FASE 2, e (c) o texto
+# de --help de serve_main (heredoc `<<'HELP'`), que MUST documentar
+# --docker (FR-014, task 6.1) sem que isso conte como dependencia de
+# codigo — e prosa de ajuda user-facing, nao uma chamada/referencia ao
+# runtime docker. O cabecalho de serve-docker.sh documenta explicitamente
+# que "o nome da flag em si nao conta como dependencia, so o encaminhamento
+# para as funcoes daqui" — as excecoes abaixo espelham essa frase; qualquer
+# OUTRA mencao a "docker" em serve.sh (comentario, mensagem de erro em
+# runtime, etc.) continua proibida e cai fora dos 4 padroes exemptados.
 # ---------------------------------------------------------------------------
 
 scenario_docker_mentions_confined_to_serve_docker_lib() {
@@ -546,14 +549,38 @@ scenario_docker_mentions_confined_to_serve_docker_lib() {
   # aplica). global/ (skills/commands/agents), tests/, docs/, scripts/ e
   # CLAUDE.md/CHANGELOG.md ficam DE FORA de proposito -- mencionam "docker"
   # em prosa/testes sem violar o confinamento de DEPENDENCIA de codigo.
+  #
+  # 4o padrao exempto (task 6.1, FR-014): o range do heredoc de --help e
+  # calculado DINAMICAMENTE a partir dos delimitadores reais `cat <<'HELP'`
+  # / `HELP` em serve.sh (nunca numero de linha hardcoded) -- edicoes
+  # futuras ao texto de ajuda nao quebram este teste por drift de linha, e
+  # qualquer mencao a "docker" FORA desse range (ou em qualquer outro
+  # arquivo de cli/) continua pega pelo grep abaixo.
+  _serve_sh="$REPO_ROOT/cli/lib/serve.sh"
+  _help_range=$(awk '
+    /cat <<.HELP.$/ { start=NR }
+    start && /^HELP$/ { print start","NR; exit }
+  ' "$_serve_sh")
+  _help_start=${_help_range%,*}
+  _help_end=${_help_range#*,}
+
+  if [ -z "$_help_start" ] || [ -z "$_help_end" ] || [ "$_help_start" = "$_help_range" ]; then
+    _fail "docker_confinement_range" "nao foi possivel localizar o heredoc --help (delimitador <<'HELP'/HELP ausente ou alterado) em $_serve_sh -- confinamento nao verificavel"
+    return 1
+  fi
+
   _hits=$(grep -rniE 'docker' "$REPO_ROOT/cli" 2>/dev/null \
             | grep -v '/cli/lib/serve-docker\.sh:' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *-*-docker\)[[:space:]]*$' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *\. "\$\{CSTK_LIB\}/serve-docker\.sh"$' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *_serve_docker_main ' \
+            | awk -F: -v s="$_help_start" -v e="$_help_end" '
+                $0 ~ /\/cli\/lib\/serve\.sh:/ { n = $2 + 0; if (n >= s && n <= e) next }
+                { print }
+              ' \
           || :)
   if [ -n "$_hits" ]; then
-    _fail "docker_confinement" "mencoes a 'docker' fora de serve-docker.sh (ou dos 3 padroes exemptados do encaminhamento em serve.sh): $_hits"
+    _fail "docker_confinement" "mencoes a 'docker' fora de serve-docker.sh (ou dos 4 padroes exemptados do encaminhamento/help-text em serve.sh): $_hits"
     return 1
   fi
 }

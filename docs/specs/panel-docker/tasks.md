@@ -683,36 +683,93 @@ Docker de teste (containers, o dir sintetico de knowledge.db) foram removidos ao
 
 Ref: spec.md FR-014; serve.sh L395-456; contracts/cli-docker-mode.md
 
-- [ ] 6.1.1 Adicionar `--docker` ao heredoc de `--help` (`serve.sh`), incluindo a semantica
-  docker-specific de `--update`/`--reinstall` (rebuild de imagem vs reinstalacao de dir)
-- [ ] 6.1.2 Adicionar exemplo de uso (`cstk serve --docker`) ao bloco "Examples" do help
-- [ ] 6.1.3 Estender `scenario_help_menciona_flags` (`test_serve.sh`) para assert que `--docker`
-  aparece no output de `--help`
+- [x] 6.1.1 Adicionar `--docker` ao heredoc de `--help` (`serve.sh`), incluindo a semantica
+  docker-specific de `--update`/`--reinstall` (rebuild de imagem vs reinstalacao de dir).
+  CONFIRMADO: `--docker` adicionado a Usage/Options/Exit codes/Examples/Environment; `--update`
+  e `--reinstall` ganharam paragrafo de continuacao explicando o comportamento docker-specific
+  (rebuild de imagem vs dir); nova entrada `CSTK_KNOWLEDGE_DB` em Environment (mount `:ro`). O
+  4o padrao exempto do confinamento estatico da task 1.1.3
+  (`scenario_docker_mentions_confined_to_serve_docker_lib`) foi adicionado com range calculado
+  DINAMICAMENTE a partir dos delimitadores reais `cat <<'HELP'`/`HELP` (nunca linha hardcoded) —
+  validado com teste negativo (mencao "docker" injetada fora do heredoc/dos 3 padroes antigos
+  falha o scenario; apos reverter, volta a passar).
+- [x] 6.1.2 Adicionar exemplo de uso (`cstk serve --docker`) ao bloco "Examples" do help.
+  CONFIRMADO: 2 exemplos adicionados (`cstk serve --docker` e `cstk serve --docker --update`).
+- [x] 6.1.3 Estender `scenario_help_menciona_flags` (`test_serve.sh`) para assert que `--docker`
+  aparece no output de `--help`. CONFIRMADO: `--docker` adicionado ao loop de flags existente +
+  novo scenario dedicado `scenario_help_menciona_docker_composition` (mesmo padrao de
+  `scenario_help_menciona_allow_unverified`) cobrindo NAO SO a existencia da flag mas a
+  semantica docker-specific de `--update`/`--reinstall`, o pre-requisito de daemon rodando e a
+  mencao a `CSTK_KNOWLEDGE_DB` — 5 asserts de substring dedicados, nao "help nao vazio"
+  generico. `./tests/run.sh test_serve`: 104/104 PASS 0 FAIL 0 ERROR (103 antes desta onda + 1
+  scenario novo).
+
+**FASE 6.1 COMPLETA: 3/3 tasks.**
 
 ### 6.2 CLAUDE.md / README - modo Docker documentado `[M]`
 
 Ref: CLAUDE.md secao "Painel Web (cstk serve)"; tests/test_doc-counts.sh
 
-- [ ] 6.2.1 Adicionar secao "Modo Docker (cstk serve --docker)" ao CLAUDE.md, seguindo o padrao
+- [x] 6.2.1 Adicionar secao "Modo Docker (cstk serve --docker)" ao CLAUDE.md, seguindo o padrao
   das secoes existentes (ex.: "Painel Web") — descrever opt-in, pre-requisitos (docker
-  instalado+rodando), paridade com o modo nativo
-- [ ] 6.2.2 Confirmar (nao presumir) que `tests/test_doc-counts.sh` permanece verde sem edicao —
+  instalado+rodando), paridade com o modo nativo.
+  **NOTA DE ESCOPO (Decisao registrada pelo orquestrador desta onda)**: `CLAUDE.md` esta listado
+  em `.gitignore` deste repositorio (`.claude` + `CLAUDE.md`, raiz) e **nao existe** neste
+  worktree (confirmado: `ls CLAUDE.md` -> "No such file or directory") — nao e artefato
+  versionado/shippable via PR (CLAUDE.md do toolkit e per-usuario, ver memoria
+  `project_claudemd_gitignored`). Criar um `CLAUDE.md` do zero neste worktree fabricaria um
+  arquivo que nunca chegaria ao release. Decisao: a secao "Modo Docker" foi escrita no canal
+  shippable equivalente e user-facing — README.md (nova subsecao "### Modo Docker (`cstk serve
+  --docker`)" dentro de "## Painel Web", 6.2.3 abaixo) + `--help` (6.1) — cobrindo o MESMO
+  conteudo pedido (opt-in, pre-requisitos, paridade de dados com o nativo, hardening,
+  encerramento gracioso) sem criar um arquivo que nao ship.
+- [x] 6.2.2 Confirmar (nao presumir) que `tests/test_doc-counts.sh` permanece verde sem edicao —
   esta feature nao adiciona skill nova, apenas uma flag de CLI, entao a contagem "<N> skills
-  globais" do README nao deveria mudar; rodar o teste antes/depois para validar
-- [ ] 6.2.3 Atualizar o README se houver secao propria de `cstk serve` que liste flags
-  (verificar antes de editar; nao duplicar conteudo do CLAUDE.md)
+  globais" do README nao deveria mudar; rodar o teste antes/depois para validar. CONFIRMADO:
+  `./tests/run.sh test_doc-counts` 3/3 PASS 0 FAIL 0 ERROR apos as edicoes desta onda (README
+  editado so na secao "Painel Web"; nenhuma linha de contagem de skills tocada).
+- [x] 6.2.3 Atualizar o README se houver secao propria de `cstk serve` que liste flags
+  (verificar antes de editar; nao duplicar conteudo do CLAUDE.md). CONFIRMADO: README.md tem
+  secao propria "## Painel Web (`cstk serve`)" (ja existia, com tabela "Opcoes" e bloco de
+  exemplos) — estendida com: linha `--docker` na tabela de Opcoes, notas docker-specific nas
+  linhas `--update`/`--reinstall`/`--port`/`--host`, entrada `CSTK_KNOWLEDGE_DB` em "Variaveis
+  de ambiente", exit codes docker-specific, paragrafo de "Dependencias" corrigido (curl sempre;
+  npm/node so no modo nativo — antes afirmava incondicionalmente, o que ficou impreciso com
+  `--docker`), exemplo `cstk serve --docker` no bloco bash, e nova subsecao "### Modo Docker"
+  com pre-requisitos/o-que-acontece/paridade-de-dados/encerramento, linkando
+  `docs/specs/panel-docker/spec.md`. Sem duplicacao com CLAUDE.md (que nao existe neste
+  worktree — 6.2.1).
+
+**FASE 6.2 COMPLETA: 3/3 tasks.**
 
 ### 6.3 CHANGELOG.md - entrada da feature `[M]`
 
 Ref: CLAUDE.md "CHANGELOG: link de referencia por versao"
 
-- [ ] 6.3.1 Adicionar entrada de versao para a feature `panel-docker` seguindo Keep a Changelog
+- [x] 6.3.1 Adicionar entrada de versao para a feature `panel-docker` seguindo Keep a Changelog
   + SemVer (numero exato de versao a fixar no momento do release, minor por ser aditiva/
-  nao-breaking)
-- [ ] 6.3.2 Adicionar a linha de link de referencia correspondente no rodape do CHANGELOG.md
-  (topo do bloco, ordem decrescente)
-- [ ] 6.3.3 Rodar o snippet `comm -23` do CLAUDE.md para confirmar que a nova versao tem ref
-  presente (sem numero de versao orfao)
+  nao-breaking). CONFIRMADO: `git tag --sort=-v:refname | head -1` -> `v5.16.1` (tip real no
+  momento desta onda) -> proxima MINOR = **5.17.0** (feature aditiva/nao-breaking: modo nativo
+  100% preservado quando `--docker` ausente, FR-002). Entrada `## [5.17.0] - 2026-07-11`
+  adicionada no topo do corpo do CHANGELOG.md (apos o cabecalho, antes de `## [5.16.1]`),
+  resumindo a feature completa (imagem multi-stage alpine, encaminhador socat, pre-flight
+  fail-closed, reuso do mecanismo de integridade, composicao `--update`/`--reinstall`,
+  hardening do `docker run`, mount `:ro` do knowledge.db com os 3 achados empiricos da FASE 5,
+  encerramento gracioso, `--help`, suite de testes).
+- [x] 6.3.2 Adicionar a linha de link de referencia correspondente no rodape do CHANGELOG.md
+  (topo do bloco, ordem decrescente). CONFIRMADO:
+  `[5.17.0]: https://github.com/JotJunior/cstk/releases/tag/v5.17.0` inserida imediatamente
+  acima de `[5.16.1]: .../v5.16.1` (ordem decrescente preservada); tag do link confere com o
+  numero da versao (sem o typo historico ja visto em versoes antigas, CLAUDE.md
+  "CHANGELOG: link de referencia por versao").
+- [x] 6.3.3 Rodar o snippet `comm -23` do CLAUDE.md para confirmar que a nova versao tem ref
+  presente (sem numero de versao orfao). CONFIRMADO: `comm -23 <(headers) <(refs)` retornou
+  saida VAZIA (zero headers sem ref correspondente) apos a edicao.
+
+**FASE 6.3 COMPLETA: 3/3 tasks.**
+
+**FASE 6 COMPLETA: 9/9 tasks. Backlog panel-docker 100% concluido (24/24 tasks de topo,
+99/99 subtasks) — proximo passo: `review-task`.**
 
 ---
 
