@@ -92,14 +92,17 @@ de decompor em tarefas. Dominio customizado (sem `references/infra.md` pronto na
   dedicado para o modo Docker, e nao e apenas assumido por analogia ao nativo?
   [Cobertura de Cenarios, Spec §User Story 2 Acceptance Scenario 2 linha 124-128;
   quickstart.md §Scenario 5] {auto}
-- [ ] CHK017 - Existe cenario de teste que verifica a atualizacao AO VIVO do indice de
+- [x] CHK017 - Existe cenario de teste que verifica a atualizacao AO VIVO do indice de
   conhecimento (nova onda de orquestrador grava enquanto o painel Docker ja esta
   rodando, sem restart) tornando-se visivel no painel containerizado — ou o
   quickstart cobre somente uma comparacao estatica (snapshot) entre os dois modos,
   deixando a Acceptance Scenario 3 de US2 sem cenario de validacao correspondente?
   [Cobertura de Cenarios, Spec §User Story 2 Acceptance Scenario 3 linha 129-132;
   quickstart.md — nenhum dos 10 Scenarios exercita escrita concorrente durante
-  execucao] **[Gap]** {auto}
+  execucao] **[Gap resolvido — tasks.md 5.2, dec-061: quickstart.md Scenario 11
+  adicionado + validado 2x (producao real: INSERT/DELETE do host 54<->55 refletido
+  na proxima requisicao sem restart; automatizado em
+  tests/docker/run-panel-docker-smoke.sh::scenario_concurrent_write_visible_without_restart)]** {auto}
 - [x] CHK018 - A garantia de que o painel NUNCA falha a inicializacao por causa do
   indice de conhecimento ausente esta redigida como comportamento MUST, e nao como
   expectativa informal? [Clareza/Mensurabilidade, Spec §User Story 2 Acceptance

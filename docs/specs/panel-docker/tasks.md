@@ -584,44 +584,96 @@ Ref: research.md Decision 3 "NEEDS CLARIFICATION / risco #1"; plan.md "Risco tec
 rastreado"; quickstart.md Scenario 4; checklists/security.md CHK001-CHK005; data-model.md campo
 `wal_readonly_verified`
 
-- [ ] 5.1.1 Popular (ou reusar) um `~/.claude/cstk/knowledge.db` REAL com `journal_mode=wal` e
-  sidecars `-shm`/`-wal` presentes (nao mock/fixture — quickstart Scenario 4 exige dado real)
-- [ ] 5.1.2 Subir o painel em modo Docker com o mount `:ro` do diretorio de dados (2.5.3) e
-  `CSTK_KNOWLEDGE_DB` apontado
-- [ ] 5.1.3 Coletar contadores/listas/detalhes via API/telas do painel containerizado e comparar
-  com o modo nativo para o MESMO indice — validar paridade EXATA (SC-002)
-- [ ] 5.1.4 Confirmar que a conexao readonly better-sqlite3 (sem `immutable=1` — open.ts
-  L15-19/L100-102/L121) abre o WAL db sobre o mount `:ro` SEM erro (`SQLITE_CANTOPEN`/torn read)
-- [ ] 5.1.5 Se a verificacao FALHAR: nao mascarar — registrar bloqueio humano explicito e
+- [x] 5.1.1 Popular (ou reusar) um `~/.claude/cstk/knowledge.db` REAL com `journal_mode=wal` e
+  sidecars `-shm`/`-wal` presentes (nao mock/fixture — quickstart Scenario 4 exige dado real).
+  CONFIRMADO: reusada a `~/.claude/cstk/knowledge.db` REAL de producao (13.5MB,
+  `journal_mode=wal`, `-shm`/`-wal` presentes, schema_version=8, 54 execucoes acumuladas).
+- [x] 5.1.2 Subir o painel em modo Docker com o mount `:ro` do diretorio de dados (2.5.3) e
+  `CSTK_KNOWLEDGE_DB` apontado. CONFIRMADO: imagem `cstk-panel:v0.12.1` construida a partir de
+  fetch real+verificado do release, container subido com o hardening EXATO de producao
+  (`--cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:... --init --rm`)
+  + `-v ~/.claude/cstk:/data/knowledge-db:ro`.
+- [x] 5.1.3 Coletar contadores/listas/detalhes via API/telas do painel containerizado e comparar
+  com o modo nativo para o MESMO indice — validar paridade EXATA (SC-002). CONFIRMADO (dec-060):
+  paridade EXATA em TODAS as 12 tabelas de `/api/v1/health` vs `sqlite3` nativo no host
+  (executions=54, waves=695, decisions=2971, tasks=2046, events=271, alertSignals=30, skills=738,
+  retros=0, memories=236 — identico dos dois lados). Amplia dec-049 (onda-009), que so comparara
+  3 tabelas.
+- [x] 5.1.4 Confirmar que a conexao readonly better-sqlite3 (sem `immutable=1` — open.ts
+  L15-19/L100-102/L121) abre o WAL db sobre o mount `:ro` SEM erro (`SQLITE_CANTOPEN`/torn read).
+  CONFIRMADO: `dbReachable:true quickCheck:true`, zero erro; `docker exec` confirmou `--read-only`
+  real (`touch` em `/data/knowledge-db` e `/app` -> "Read-only file system"), uid=1000(node)
+  nao-root, `/tmp` (tmpfs) gravavel.
+- [x] 5.1.5 Se a verificacao FALHAR: nao mascarar — registrar bloqueio humano explicito e
   reabrir a dependencia do patch `immutable=1` no `cstk-panel` (research.md Decision 3, opcao 3)
-  como pre-requisito antes de fechar FR-008/US2; nunca presumir sucesso
-- [ ] 5.1.6 Marcar `wal_readonly_verified=true` (data-model.md) somente apos 5.1.4 confirmado
-  empiricamente — nunca antes
-- [ ] 5.1.7 Teste automatizado que reproduz o roundtrip (nao apenas verificacao manual pontual)
-  para virar regressao continua
+  como pre-requisito antes de fechar FR-008/US2; nunca presumir sucesso. N/A — verificacao NAO
+  falhou (5.1.3/5.1.4 confirmados empiricamente); dependencia `immutable=1` permanece descartada.
+- [x] 5.1.6 Marcar `wal_readonly_verified=true` (data-model.md) somente apos 5.1.4 confirmado
+  empiricamente — nunca antes. CONFIRMADO: `wal_readonly_verified=true` gravado em data-model.md
+  citando dec-060.
+- [x] 5.1.7 Teste automatizado que reproduz o roundtrip (nao apenas verificacao manual pontual)
+  para virar regressao continua. CONFIRMADO (dec-063): `tests/docker/run-panel-docker-smoke.sh`
+  (opt-in, real Docker, fora de `./tests/run.sh` — mesma convencao de `tests/docker/run-smoke.sh`)
+  com `scenario_data_parity_wal_readonly` — knowledge.db sintetico REAL (sqlite3, WAL, sidecars)
+  isolado por execucao; `PASS=10 FAIL=0` na suite inteira (cobre tambem 5.2.2/5.3.3 abaixo).
+
+**FASE 5.1 COMPLETA: 7/7 tasks. RISCO #1 formalmente fechado (dec-060) — FR-008/US2 confirmados.**
 
 ### 5.2 Scenario 11: escrita concorrente no knowledge.db `[A]`
 
 Ref: checklists/infra.md CHK017 `[Gap]`; spec.md User Story 2 Acceptance Scenario 3
 
-- [ ] 5.2.1 Adicionar "Scenario 11: Atualizacao ao vivo do indice (US2 Acceptance Scenario 3)"
+- [x] 5.2.1 Adicionar "Scenario 11: Atualizacao ao vivo do indice (US2 Acceptance Scenario 3)"
   ao quickstart.md, documentando os passos: painel Docker rodando -> nova onda de orquestrador
-  grava no knowledge.db do host -> atualizacao visivel no painel sem restart
-- [ ] 5.2.2 Teste: com o painel Docker `running` (5.1.2), simular uma escrita no `knowledge.db`
+  grava no knowledge.db do host -> atualizacao visivel no painel sem restart. CONFIRMADO:
+  Scenario 11 adicionado a quickstart.md com os passos reais executados + resultado observado.
+- [x] 5.2.2 Teste: com o painel Docker `running` (5.1.2), simular uma escrita no `knowledge.db`
   do host (ex.: `cstk recall --ingest` de um state-dir de teste) e validar que a mudanca fica
-  visivel via API/tela do painel containerizado sem reiniciar o container
-- [ ] 5.2.3 Atualizar data-model.md/research.md com o resultado observado (confirma ou refuta a
-  premissa de visibilidade em tempo real sem restart)
+  visivel via API/tela do painel containerizado sem reiniciar o container. CONFIRMADO (dec-061):
+  validado 2x — (a) manualmente contra a knowledge.db REAL de producao (INSERT via `sqlite3` com
+  o container `cstk-panel` ja `running`: `executions` 54->55 na PROXIMA requisicao, sem restart;
+  DELETE de limpeza 55->54 idem, tambem sem restart); (b) automatizado via
+  `scenario_concurrent_write_visible_without_restart` em
+  `tests/docker/run-panel-docker-smoke.sh` (INSERT 1->2 visivel, DELETE 2->1 visivel).
+- [x] 5.2.3 Atualizar data-model.md/research.md com o resultado observado (confirma ou refuta a
+  premissa de visibilidade em tempo real sem restart). CONFIRMADO: campo `live_write_visibility`
+  adicionado a data-model.md ("Knowledge DB Mount") + nota em research.md Decision 3 — premissa
+  CONFIRMADA (nao refutada): visibilidade e imediata (proxima requisicao), nao apenas no
+  ultimo checkpoint, porque `openDb()`/`db.close()` roda por-requisicao (open.ts), nunca uma
+  conexao cacheada no boot.
+
+**FASE 5.2 COMPLETA: 3/3 tasks. CHK017 fechado (dec-061) — semantica observada: LIVE, sem
+restart, tanto para INSERT quanto DELETE.**
 
 ### 5.3 Scenario 5: indice inexistente nao falha, no modo Docker `[A]`
 
 Ref: spec.md User Story 2 Acceptance Scenario 2; quickstart.md Scenario 5
 
-- [ ] 5.3.1 Simular instalacao nova (`knowledge.db` ausente) e subir o painel em modo Docker
-- [ ] 5.3.2 Confirmar que o painel inicia normalmente e apresenta o mesmo estado "sem dados" do
-  modo nativo — nunca falha de inicializacao
-- [ ] 5.3.3 Teste dedicado no harness (nao apenas por analogia ao modo nativo, conforme
-  checklists/infra.md CHK016)
+- [x] 5.3.1 Simular instalacao nova (`knowledge.db` ausente) e subir o painel em modo Docker.
+  CONFIRMADO: mount `:ro` de um diretorio REAL vazio (sem `knowledge.db`) — container subiu
+  normalmente com o mesmo hardening de producao.
+- [x] 5.3.2 Confirmar que o painel inicia normalmente e apresenta o mesmo estado "sem dados" do
+  modo nativo — nunca falha de inicializacao. CONFIRMADO (dec-062): Fastify bootou normalmente
+  (`Server listening`), `GET /api/v1/health` retornou HTTP 200 com `dbReachable:false` e
+  `reason:"db-missing"` — mesma degradacao de 1a classe de `open.ts::openDb()` (ENOENT ->
+  `db-missing`, nunca throw) que o modo nativo ja produz para o mesmo cenario.
+- [x] 5.3.3 Teste dedicado no harness (nao apenas por analogia ao modo nativo, conforme
+  checklists/infra.md CHK016). CONFIRMADO: `scenario_missing_index_graceful` em
+  `tests/docker/run-panel-docker-smoke.sh` — asserta HTTP 200 + `dbReachable=false` +
+  `reason=db-missing` com o dir de dados vazio.
+
+**FASE 5.3 COMPLETA: 3/3 tasks (dec-062).**
+
+**FASE 5 COMPLETA: 13/13 tasks.** As 3 perguntas empiricas da FASE 5 foram resolvidas com
+evidencia real (Constitution VI): RISCO #1 formalmente fechado (dec-060, ampliando dec-049),
+escrita concorrente e visivel AO VIVO sem restart tanto para INSERT quanto DELETE (dec-061,
+achado genuinamente novo desta fase) e indice ausente degrada graciosamente em paridade com o
+nativo (dec-062). Os 3 achados viraram regressao automatizada opt-in
+(`tests/docker/run-panel-docker-smoke.sh`, dec-063, `PASS=10 FAIL=0`), fora do gate hermetico
+default de `./tests/run.sh` (confirmado via `--check-coverage`: zero orfaos). Todos os recursos
+Docker de teste (containers, o dir sintetico de knowledge.db) foram removidos ao final; a imagem
+`cstk-panel:v0.12.1` foi mantida localmente (reusavel por `run-panel-docker-smoke.sh` e por
+`cstk serve --docker`, mesmo cache que a instalacao real deixaria).
 
 ---
 

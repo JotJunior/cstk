@@ -153,26 +153,41 @@ read-only estrito (open.ts L100-102 `{ readonly: true }` + L121 `PRAGMA query_on
   read-only e mais robusto e mantem o escopo restrito ao dir de dados do cstk (nao
   ao home inteiro), atendendo FR-009 (read-only + escopo estreito).
 
-**`[NEEDS CLARIFICATION / risco #1 — verificar empiricamente em execute-task]`**:
+**`[RESOLVIDO — FASE 5 task 5.1, dec-060]`** (era `NEEDS CLARIFICATION / risco #1`):
 Abrir um WAL db em conexao **readonly sem `immutable=1` sobre um mount read-only** e
 um modo de falha conhecido do SQLite: se for necessaria recuperacao de WAL ou escrita
 no `-shm`, uma conexao read-only pode falhar (`SQLITE_CANTOPEN`/torn read). O painel
 JA le este db em modo nativo no host (onde o FS e read-write), entao pode depender de
-o `-shm` existente estar acessivel. **Antes de fechar FR-008/US2**, execute-task MUST
-verificar empiricamente que o painel containerizado le o db WAL sobre mount `:ro` com
-paridade de dados. Se falhar, opcoes (em ordem de preferencia, todas a validar; NAO
-presumir sucesso):
-  1. mount read-only do diretorio incluindo `-shm`/`-wal` (default proposto acima);
-  2. checkpoint do WAL no host antes do mount — REJEITADO por exigir escrita no db do
-     host e por o db poder estar sendo escrito por um orquestrador ativo;
-  3. suporte a `immutable=1` no painel (cross-repo, **adiado** pela Clarification) —
-     registrar como dependencia caso 1 se mostre insuficiente, nunca implementar aqui.
+o `-shm` existente estar acessivel. Verificado empiricamente (FASE 5, dec-060,
+reforcando dec-049/onda-009): opcao 1 (mount read-only do diretorio incluindo
+`-shm`/`-wal`) e **suficiente** — container com o hardening COMPLETO de producao
+(`--cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp --init --rm`)
++ knowledge.db REAL de producao (nao fixture) montado `:ro` respondeu
+`dbReachable:true quickCheck:true`, zero erro, com paridade EXATA vs `sqlite3` nativo
+do host em TODAS as 12 tabelas de `/api/v1/health`. As opcoes 2 (checkpoint no host
+antes do mount) e 3 (`immutable=1` no painel, cross-repo) permanecem REJEITADAS/adiadas
+— nao foram necessarias.
 
 **Alternatives considered**:
 - Montar apenas `knowledge.db` (arquivo unico) `:ro`: escopo minimo mas quebra com o
   WAL sidecar gotcha (acima). Rejeitado como default.
 - Copiar o db para dentro da imagem: REJEITADO — quebraria US2 cenario 3 (atualizacao
   ao vivo do indice deve refletir no painel) e assaria dado no artefato de imagem.
+
+**Visibilidade de escrita concorrente (`[RESOLVIDO — FASE 5 task 5.2, dec-061]`, CHK017/US2
+Acceptance Scenario 3)**: com o container `running`, uma escrita do HOST (INSERT/DELETE via
+`sqlite3` direto na `knowledge.db` de producao) fica visivel na **PROXIMA requisicao** do
+painel containerizado, **sem restart**. Mecanismo aterrado no codigo-fonte do painel:
+`apps/server/src/db/open.ts::openDb()` e chamado (com `db.close()` em `finally`) A CADA
+requisicao HTTP em toda rota (`overview.ts` L54/L191 e as ~11 rotas irmas) — nunca uma
+conexao cacheada/long-lived aberta no boot do container. Cada requisicao portanto abre uma
+conexao readonly fresca, que observa o estado WAL committed no momento da leitura. Confirmado
+empiricamente 2x: (a) manualmente contra a `knowledge.db` REAL de producao, `executions`
+54->55 apos INSERT do host (container ja rodando, sem restart), 55->54 apos DELETE de limpeza
+(idem); (b) automatizado em `tests/docker/run-panel-docker-smoke.sh::scenario_concurrent_write_visible_without_restart`.
+Implicacao para o usuario: **nao ha necessidade de reiniciar o painel Docker** apos uma nova
+onda de orquestrador gravar no indice — a premissa original de US2 Acceptance Scenario 3
+(visibilidade em tempo real) esta CONFIRMADA, nao refutada.
 
 ---
 
@@ -331,11 +346,13 @@ empiricamente para nao quebrar o runtime do painel; pin de digest da base; `npm 
 
 | # | Item | Estado | Onde resolver |
 |---|------|--------|---------------|
-| 1 | Leitura de WAL db read-only sem `immutable=1` sobre mount `:ro` (FR-008/US2) | **FORTE EVIDENCIA EMPIRICA (dec-049, task 3.1, onda-009)** — container com hardening COMPLETO + knowledge.db REAL (nao fixture) montado `:ro` respondeu HTTP 200 com dados nao-vazios em `/api/v1/health` e `/api/v1/overview`, conferidos byte-a-byte contra `sqlite3` no host; opcao 1 da lista de preferencia (mount do diretorio inteiro) confirmada suficiente, sem necessidade de checkpoint/`immutable=1`. Fechamento FORMAL de FR-008/US2 + campo `wal_readonly_verified` do data-model permanecem para a FASE 5 (task 5.1) — este achado e evidencia confirmatoria forte, nao substitui aquele gate | execute-task (Decision 3) -> confirmar formalmente em FASE 5 (5.1) |
+| 1 | Leitura de WAL db read-only sem `immutable=1` sobre mount `:ro` (FR-008/US2) | **RESOLVIDO (dec-060, task 5.1, onda-011)** — FECHAMENTO FORMAL: re-run limpo confirmou `dbReachable:true quickCheck:true` + paridade EXATA em TODAS as 12 tabelas vs `sqlite3` nativo (amplia dec-049/onda-009, que comparara so 3); `wal_readonly_verified=true` gravado em data-model.md; regressao automatizada em `tests/docker/run-panel-docker-smoke.sh` | FECHADO (FASE 5, 5.1) |
 | 2 | Invocacao exata do `socat` (ou proxy Node) + presenca do pacote na base | detalhe de implementacao | execute-task (Decision 2) |
 | 3 | Tag/digest exatos da base node + compilacao musl do `better-sqlite3` | **RESOLVIDO (dec-037)** — `node:22-alpine` multi-stage (digest em Decision 1), compilado do fonte no estagio de build | execute-task (Decision 1) |
 | 4 | Comando exato da sonda de daemon (`docker info`/`version`) + SC-006 <5s | **RESOLVIDO (dec-042)** — `docker info` | execute-task (Decision 5) |
 | 5 | Flags exatas de hardening (`--cap-drop`/`--read-only`/`tmpfs`) | **RESOLVIDO (dec-046 fixou as flags; dec-049 validou empiricamente sem necessidade de ajuste, task 3.1)** | execute-task (Decision 7) |
+| 6 | Visibilidade de escrita concorrente sem restart (CHK017/US2 Acceptance Scenario 3) | **RESOLVIDO (dec-061, task 5.2, onda-011)** — CONFIRMADA (nao refutada): `openDb()` roda por-requisicao (open.ts), nunca cacheia conexao; INSERT/DELETE do host 54<->55 refletido na PROXIMA requisicao do painel containerizado, sem restart (producao real + `tests/docker/run-panel-docker-smoke.sh::scenario_concurrent_write_visible_without_restart`) | FECHADO (FASE 5, 5.2) |
+| 7 | Indice ausente no modo Docker nao falha a inicializacao (US2 Acceptance Scenario 2) | **RESOLVIDO (dec-062, task 5.3, onda-011)** — painel inicia normalmente, `GET /api/v1/health` retorna `dbReachable:false reason:"db-missing"` (mesma degradacao de 1a classe do modo nativo); teste dedicado em `tests/docker/run-panel-docker-smoke.sh::scenario_missing_index_graceful` | FECHADO (FASE 5, 5.3) |
 
 Nenhum item acima e um dado factual inventado: todos sao decisoes de implementacao a
 FIXAR e TESTAR na fase execute-task, ou (item 1) um risco real explicitamente

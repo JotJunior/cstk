@@ -91,7 +91,8 @@ Exposicao read-only do knowledge.db do host ao container (FR-008/FR-009).
 | container_target | path | dir montado no container | `[a fixar]` |
 | env_pointer | string | `CSTK_KNOWLEDGE_DB=<target>/knowledge.db` | resolucao do painel (config.ts L49) |
 | journal_mode | enum | `wal` (fato empirico) | requer `-shm`/`-wal` visiveis -> montar diretorio (Decision 3) |
-| wal_readonly_verified | bool | **MUST ser verificado** | RISCO #1 — read-only WAL sem `immutable=1` (research.md Decision 3) |
+| wal_readonly_verified | bool | **`true`** (verificado empiricamente, FASE 5 task 5.1, dec-060) | RISCO #1 FECHADO — better-sqlite3 readonly sem `immutable=1` abre o WAL db sobre mount `:ro` sem erro (zero `SQLITE_CANTOPEN`/torn read); paridade EXATA vs `sqlite3` nativo em todas as 12 tabelas de `/api/v1/health` para o MESMO indice real de producao (research.md Decision 3) |
+| live_write_visibility | enum | **`immediate`** (verificado empiricamente, FASE 5 task 5.2, dec-061) | escrita concorrente do host (INSERT/DELETE) fica visivel na PROXIMA requisicao do painel containerizado, SEM restart — `openDb()`/`db.close()` roda por-requisicao (open.ts), nunca cacheia conexao no boot; CHK017/US2 Acceptance Scenario 3 |
 
 ## Entity: Container Runtime Check (Checagem do Runtime de Container)
 

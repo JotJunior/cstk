@@ -87,3 +87,31 @@ paridade face ao nativo. NAO usar mock/fixture — comparar dado REAL.
    `serve-integrity`); com `--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1`,
    prossegue com aviso de alta visibilidade. Checksum **divergente** bloqueia sempre,
    sem bypass.
+
+## Scenario 11: Atualizacao ao vivo do indice (US2 Acceptance Scenario 3 — CHK017)
+
+Valida que uma escrita concorrente do host no `knowledge.db` fica visivel no painel
+containerizado SEM reiniciar o container — RESOLVIDO empiricamente na FASE 5 (dec-061).
+
+1. Painel Docker `running` (mount `:ro` do dir de dados do cstk, Scenario 4).
+2. Anotar a contagem atual (`GET /api/v1/health` -> `data.counts.executions`, ou via
+   `sqlite3 ~/.claude/cstk/knowledge.db "SELECT count(*) FROM executions;"` no host).
+3. Gerar uma nova escrita no `knowledge.db` do HOST **sem tocar no container** — nem
+   `docker restart`, nem `docker exec`: qualquer escrita nativa server, ex.
+   `cstk recall --ingest --state-dir <state-dir-de-uma-execucao>` (uma nova onda de
+   orquestrador real) ou um `INSERT` direto via `sqlite3` (mais controlavel para
+   reproduzir o teste).
+4. Repetir `GET /api/v1/health` no painel containerizado (mesma sessao, container
+   nunca reiniciado).
+5. **Expected**: a contagem refletiu a escrita na PROXIMA requisicao, sem restart —
+   **CONFIRMADO**: `executions` foi de 54 para 55 imediatamente apos o INSERT do host
+   (container ja `running`), e voltou a 54 apos o DELETE de limpeza, tambem sem
+   restart. Mecanismo: `apps/server/src/db/open.ts::openDb()` abre (e fecha) uma
+   conexao SQLite readonly nova A CADA requisicao HTTP — nunca uma conexao
+   cacheada/long-lived aberta no boot do container — logo cada leitura observa o
+   estado WAL committed no momento em que ela acontece. **Implicacao para o usuario**:
+   nao ha necessidade de reiniciar `cstk serve --docker` apos uma nova execucao dos
+   orquestradores gravar no indice; o painel reflete o dado mais recente na proxima
+   navegacao/refresh de tela.
+6. Regressao automatizada equivalente (dado sintetico, deterministica):
+   `tests/docker/run-panel-docker-smoke.sh::scenario_concurrent_write_visible_without_restart`.
