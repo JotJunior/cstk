@@ -44,59 +44,90 @@ apenas documentados como pre-condicoes aguardando o dono do produto:
 
 Ref: plan.md Structure Decision (carve-out Principio II condicao b); Complexity Tracking item (b)
 
-- [ ] 1.1.1 Criar `cli/lib/serve-docker.sh` (esqueleto sourced condicionalmente por
+- [x] 1.1.1 Criar `cli/lib/serve-docker.sh` (esqueleto sourced condicionalmente por
   `cli/lib/serve.sh` quando `--docker`) — nenhuma outra mencao a `docker` fora deste arquivo,
   exceto o parse da flag em `serve.sh`
-- [ ] 1.1.2 Definir a interface de entrada de `serve-docker.sh` (ex.: funcao `_serve_docker_main`
+- [x] 1.1.2 Definir a interface de entrada de `serve-docker.sh` (ex.: funcao `_serve_docker_main`
   recebendo os mesmos parametros ja parseados por `serve_main`: porta, host, update, reinstall,
   allow_unverified, bypass_method)
-- [ ] 1.1.3 Confirmar via grep que `docker` so aparece em `cli/lib/serve-docker.sh` fora do parse
-  da flag em `serve.sh` — criterio objetivo do carve-out (b)
-- [ ] 1.1.4 Criar `tests/cstk/test_serve-docker.sh` (scaffold com o mesmo harness de
+- [x] 1.1.3 Confirmar via grep que `docker` so aparece em `cli/lib/serve-docker.sh` fora do parse
+  da flag em `serve.sh` — criterio objetivo do carve-out (b). Operacionalizado como regressao
+  automatizada (`scenario_docker_mentions_confined_to_serve_docker_lib`), nao so checagem manual.
+- [x] 1.1.4 Criar `tests/cstk/test_serve-docker.sh` (scaffold com o mesmo harness de
   `tests/cstk/test_serve.sh` — `TESTS_ROOT`/`REPO_ROOT`/`harness.sh`) para satisfazer o
-  mapeamento 1:1 exigido por `--check-coverage` (CLAUDE.md "Como testar scripts shell")
+  mapeamento 1:1 exigido por `--check-coverage` (CLAUDE.md "Como testar scripts shell"). 17
+  scenarios, `--check-coverage` limpo (zero orfaos).
 
 ### 1.2 Dockerfile: build local a partir da arvore verificada `[C]`
 
 Ref: research.md Decision 1; data-model.md "Panel Image"; spec.md FR-006/FR-013
 
-- [ ] 1.2.1 Escrever Dockerfile com `FROM node:20-bookworm-slim` (glibc, `engines.node
+- [x] 1.2.1 Escrever Dockerfile com `FROM node:20-bookworm-slim` (glibc, `engines.node
   >=20.0.0` — package.json L28) pinado por digest — resolver e fixar o `@sha256:...` exato em
-  execute-task (NAO inventar aqui; research.md Decision 1 marca "[detalhe de execute-task]")
-- [ ] 1.2.2 `WORKDIR` + `COPY` da arvore-fonte ja verificada por `_serve_install`
+  execute-task (NAO inventar aqui; research.md Decision 1 marca "[detalhe de execute-task]").
+  Digest `sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0` resolvido via
+  chamada REAL a Registry HTTP API v2 do Docker Hub (dec-032) — `docker pull` nao completa neste
+  ambiente sandboxed (ver nota 1.2.7).
+- [x] 1.2.2 `WORKDIR` + `COPY` da arvore-fonte ja verificada por `_serve_install`
   (`extracted_tree_path`, data-model.md "Verified Panel Installation") como contexto de build —
   sem segunda fonte de download (FR-007)
-- [ ] 1.2.3 `RUN npm ci` (nao `npm install`) a partir do `package-lock.json` da arvore extraida —
+- [!] 1.2.3 `RUN npm ci` (nao `npm install`) a partir do `package-lock.json` da arvore extraida —
   validar empiricamente que o prebuild do `better-sqlite3` (modulo nativo, server package.json)
-  resolve sem toolchain de compilacao extra na base glibc escolhida
-- [ ] 1.2.4 Instalar `socat` na imagem (pacote do gerenciador da base debian escolhida) para o
+  resolve sem toolchain de compilacao extra na base glibc escolhida. **Bloqueado**: a linha `RUN
+  npm ci` (+ `RUN npm run build`, gap-fill grounded em research.md Decision 1/plan.md Summary —
+  dec-033) esta escrita e sintaticamente valida, mas a validacao EMPIRICA do prebuild
+  better-sqlite3 na base glibc nao pode ser executada nesta sessao (ver 1.2.7/dec-032). Nao
+  presumir sucesso — pendente de ambiente com daemon Docker irrestrito.
+- [x] 1.2.4 Instalar `socat` na imagem (pacote do gerenciador da base debian escolhida) para o
   encaminhador da tarefa 1.3
-- [ ] 1.2.5 `USER node` (non-root) + `EXPOSE` da porta do encaminhador + `ENTRYPOINT` apontando
-  para o script da tarefa 1.3
-- [ ] 1.2.6 Definir `image_tag` local deterministico (proposta aterrada em data-model.md "Panel
+- [x] 1.2.5 `USER node` (non-root) + `EXPOSE` da porta do encaminhador + `ENTRYPOINT` apontando
+  para o script da tarefa 1.3 (ordem USER-apos-apt-get coberta por regressao dedicada)
+- [x] 1.2.6 Definir `image_tag` local deterministico (proposta aterrada em data-model.md "Panel
   Image": `cstk-panel:<panel_version>`) — nunca registry remoto (FR-013)
-- [ ] 1.2.7 Teste: `docker build` da imagem local sucede a partir do fixture de arvore verificada
+- [!] 1.2.7 Teste: `docker build` da imagem local sucede a partir do fixture de arvore verificada
   ja usado por `test_serve.sh` (`SERVE_FIXTURE_DIR`); se a suite POSIX nao tiver acesso a um
-  daemon Docker real no ambiente de CI, documentar a estrategia de skip/stub adotada
+  daemon Docker real no ambiente de CI, documentar a estrategia de skip/stub adotada. **Bloqueado
+  (dec-032/dec-035)**: o daemon Docker deste ambiente sandboxed nao completa `docker pull`/`docker
+  build` que dependem de rede (3 tentativas reais — `node:20-bookworm-slim`, `hello-world` 5.2kB,
+  e um build completo com base ja cacheada `node:20-alpine` — ficaram penduradas indefinidamente;
+  em contraste, uma requisicao HTTPS de DENTRO de um container ja rodando respondeu normal,
+  isolando o bloqueio ao proxy de pull/build do daemon, nao a rede em geral). Estrategia adotada
+  (documentada no cabecalho de `tests/cstk/test_serve-docker.sh`): cobertura FAST/hermetica via
+  assercoes de conteudo sobre o Dockerfile/entrypoint gerados (sem daemon real, mesma filosofia
+  de stub ja usada por `test_serve.sh` para curl/npm, e a mesma que a propria task 4.1.1 ja
+  planeja para o Scenario 1 do quickstart). O `docker build` real da imagem de PRODUCAO permanece
+  PENDENTE — proximo passo recomendado: repetir com daemon Docker sem essa restricao de rede.
 
 ### 1.3 Entrypoint e encaminhador in-container (FR-005) `[C]`
 
 Ref: research.md Decision 2 e Decision 4; contracts/cli-docker-mode.md "In-container"
 
-- [ ] 1.3.1 Escrever entrypoint POSIX sh que inicia o painel (`node apps/server/dist/index.js`,
+- [x] 1.3.1 Escrever entrypoint POSIX sh que inicia o painel (`node apps/server/dist/index.js`,
   package.json L13) em background com `PORT=<porta interna>` exportado — candidato aterrado:
-  `3001` (default de config.ts L80 quando `PORT` nao setada); confirmar/fixar em execute-task
-- [ ] 1.3.2 Adicionar ao entrypoint o encaminhador
+  `3001` (default de config.ts L80 quando `PORT` nao setada); confirmar/fixar em execute-task.
+  Fixado `PORT=3001` explicito (nao depende implicitamente do default upstream) + `sh -n`/`dash
+  -n`/shellcheck limpos.
+- [x] 1.3.2 Adicionar ao entrypoint o encaminhador
   `socat TCP-LISTEN:<porta-container>,fork,reuseaddr TCP:127.0.0.1:<porta-interna>` (ou proxy
   Node alternativo — research.md Decision 2 "Alternatives considered" — se o pacote `socat` nao
-  instalar na base escolhida) em foreground
-- [ ] 1.3.3 Propagar sinais corretamente com `docker run --init` (tini como PID 1, Decision 6) —
-  validar que `TERM` chega aos dois processos (painel + encaminhador) sem deixar zumbi
-- [ ] 1.3.4 Registrar a decisao tomada (socat vs proxy Node) como Decisao auditavel do
-  orquestrador, citando o resultado empirico dos testes 1.2.7/1.3.5
-- [ ] 1.3.5 Teste: com a imagem construida (1.2), validar que uma requisicao HTTP a
+  instalar na base escolhida) em foreground. Porta interna fixada em `8080` (nunca exposta ao
+  usuario — `data-model.md container_listen_port`); ordem painel-em-background-antes-do-forwarder
+  coberta por regressao dedicada.
+- [!] 1.3.3 Propagar sinais corretamente com `docker run --init` (tini como PID 1, Decision 6) —
+  validar que `TERM` chega aos dois processos (painel + encaminhador) sem deixar zumbi.
+  **Bloqueado (dec-032)**: o handler `_cstk_term_handler` (mata NODE_PID + SOCAT_PID, aguarda
+  ambos) esta escrito e a LOGICA e coberta por teste estatico
+  (`scenario_entrypoint_term_handler_kills_both_processes`), mas a validacao DINAMICA (container
+  real rodando, sinal enviado de fato, `ps` confirmando ausencia de zumbi) nao pode ser executada
+  nesta sessao — mesmo bloqueio de rede do daemon que impede 1.2.7.
+- [x] 1.3.4 Registrar a decisao tomada (socat vs proxy Node) como Decisao auditavel do
+  orquestrador, citando o resultado empirico dos testes 1.2.7/1.3.5. Registrado dec-034, citando
+  honestamente o resultado PARCIAL (geracao validada; build/run reais pendentes — dec-032).
+- [!] 1.3.5 Teste: com a imagem construida (1.2), validar que uma requisicao HTTP a
   `0.0.0.0:<porta-container>` de dentro do netns do container e respondida pelo painel em
-  `127.0.0.1:<porta-interna>` (quickstart Scenario 1, passos 3-4)
+  `127.0.0.1:<porta-interna>` (quickstart Scenario 1, passos 3-4). **Bloqueado (dec-032)**:
+  depende de uma imagem construida de fato (1.2.7, tambem bloqueado) — sem imagem, nao ha
+  container para exercitar a requisicao HTTP real. Pendente do mesmo follow-up.
 
 ---
 
