@@ -1574,4 +1574,221 @@ scenario_docker_flag_host_nao_loopback_aviso_ainda_aplica() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Asset de release verificavel preferido — fecha o gap do research.md D2:
+# o auto-tarball da API (`tarball_url`) NUNCA tem `.sha256` publicavel, entao
+# so um par de assets `<nome>.tar.gz` + `<nome>.tar.gz.sha256` na release
+# produz outcome `verified`. Sem par completo, fallback ao auto-tarball
+# (fail-closed intacto). Ver cabecalho de cli/lib/serve.sh.
+# ---------------------------------------------------------------------------
+
+# _stub_curl_release_assets BIN_DIR MODE
+# Stub de curl para o caminho asset-preferred de _serve_download_verify_extract:
+# a resposta da API inclui `assets[].browser_download_url` (forma real
+# confirmada contra api.github.com/repos/JotJunior/cstk/releases/latest).
+# Toda URL requisitada e logada em $TMPDIR_TEST/curl-urls.log (baked, mesmo
+# padrao de _stub_npm_logging) para assertar QUAL fonte foi baixada.
+# O `.sha256` do AUTO-TARBALL sempre 404a (estado real do endpoint da API).
+# Modos:
+#   ok          par completo; .sha256 do asset CONFERE -> verified via asset
+#   no-sibling  asset .tar.gz sem sibling .sha256 -> fallback ao auto-tarball
+#   bad-sha     par completo; .sha256 do asset NAO confere -> mismatch
+#   evil-host   par completo hospedado fora da allowlist -> rejeicao de host
+_stub_curl_release_assets() {
+  _scra_bin="$1"
+  _scra_mode="$2"
+  _scra_tarball="$SERVE_FIXTURE_DIR/panel-fixture.tar.gz"
+  _scra_sha256=$(_serve_fixture_sha256 "$_scra_tarball")
+
+  _scra_asset_base="https://github.com/JotJunior/cstk-panel/releases/download/v0.0.1/cstk-panel-0.0.1.tar.gz"
+  if [ "$_scra_mode" = "evil-host" ]; then
+    _scra_asset_base="https://evil.com/releases/download/v0.0.1/cstk-panel-0.0.1.tar.gz"
+  fi
+
+  if [ "$_scra_mode" = "no-sibling" ]; then
+    _scra_assets_json="{\"name\":\"cstk-panel-0.0.1.tar.gz\",\"browser_download_url\":\"${_scra_asset_base}\"}"
+  else
+    _scra_assets_json="{\"name\":\"cstk-panel-0.0.1.tar.gz\",\"browser_download_url\":\"${_scra_asset_base}\"},{\"name\":\"cstk-panel-0.0.1.tar.gz.sha256\",\"browser_download_url\":\"${_scra_asset_base}.sha256\"}"
+  fi
+
+  # Hash servido no .sha256 do ASSET: correto em ok, adulterado em bad-sha
+  # (64 zeros hex — mesmo artificio de _stub_curl_bad_sha256).
+  if [ "$_scra_mode" = "bad-sha" ]; then
+    _scra_served_sha=$(printf '0%.0s' $(seq 1 64))
+  else
+    _scra_served_sha="$_scra_sha256"
+  fi
+
+  cat > "$_scra_bin/curl" <<STUB
+#!/bin/sh
+_url=""
+_output=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    -o) shift; _output="\$1" ;;
+    --) shift; _url="\$1" ;;
+    https://*|http://*) _url="\$1" ;;
+    *) ;;
+  esac
+  shift
+done
+printf '%s\n' "\$_url" >> "$TMPDIR_TEST/curl-urls.log"
+case "\$_url" in
+  *releases/latest*)
+    _resp='{"tag_name":"v0.0.1","tarball_url":"https://github.com/JotJunior/cstk-panel/archive/v0.0.1.tar.gz","prerelease":false,"draft":false,"assets":[${_scra_assets_json}]}'
+    if [ -n "\$_output" ]; then printf '%s\n' "\$_resp" > "\$_output"; else printf '%s\n' "\$_resp"; fi
+    ;;
+  */releases/download/*.sha256)
+    # .sha256 do ASSET de release
+    if [ -n "\$_output" ]; then
+      printf '%s  cstk-panel-0.0.1.tar.gz\n' "${_scra_served_sha}" > "\$_output"
+    else
+      printf '%s  cstk-panel-0.0.1.tar.gz\n' "${_scra_served_sha}"
+    fi
+    ;;
+  *.sha256)
+    # .sha256 do AUTO-TARBALL da API: nunca existe -> 404
+    exit 1
+    ;;
+  */releases/download/*.tar.gz|*archive*.tar.gz)
+    if [ -n "\$_output" ]; then
+      cp "${_scra_tarball}" "\$_output"
+    else
+      cat "${_scra_tarball}"
+    fi
+    ;;
+  *)
+    printf 'stub-curl: URL inesperada: %s\n' "\$_url" >&2
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "$_scra_bin/curl"
+}
+
+# Caminho feliz da feature: par de assets verificavel -> instala VERIFICADO
+# sem nenhum bypass, baixando o asset (nao o auto-tarball), sem linha no
+# enforcement-log (verified e silencioso, task 3.3.3).
+scenario_asset_par_verificavel_instala_sem_bypass() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_release_assets "$_STUB_BIN" ok
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "asset_par_exit" "esperado exit 0 (asset verificado, sem bypass), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ ! -f "$CSTK_PANEL_DIR/package.json" ]; then
+    _fail "asset_par_instalou" "package.json esperado apos install verificado via asset"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDOUT" | grep -qi 'integridade verificada'; then
+    _fail "asset_par_msg" "stdout nao confirma integridade verificada; stdout=$_CAPTURED_STDOUT"
+    return 1
+  fi
+  if ! grep -q 'releases/download/v0.0.1/cstk-panel-0.0.1.tar.gz' "$TMPDIR_TEST/curl-urls.log" 2>/dev/null; then
+    _fail "asset_par_baixou_asset" "curl-urls.log nao mostra download do asset; log=$(cat "$TMPDIR_TEST/curl-urls.log" 2>/dev/null)"
+    return 1
+  fi
+  if grep -q 'archive/v0.0.1.tar.gz' "$TMPDIR_TEST/curl-urls.log" 2>/dev/null; then
+    _fail "asset_par_nao_baixou_tarball_api" "auto-tarball da API foi requisitado mesmo com par de assets disponivel; log=$(cat "$TMPDIR_TEST/curl-urls.log")"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  if [ -n "$_log" ]; then
+    _fail "asset_par_sem_log" "outcome verified NAO deve gravar linha no enforcement-log; log=$_log"
+    return 1
+  fi
+  _assert_no_repo_root_leak || return 1
+}
+
+# Regressao do fallback: asset .tar.gz SEM sibling .sha256 nao forma par ->
+# serve ignora o asset, cai no auto-tarball e o fail-closed default bloqueia
+# (exatamente o comportamento pre-feature).
+scenario_asset_sem_sibling_sha256_cai_no_fallback() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_release_assets "$_STUB_BIN" no-sibling
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "asset_no_sibling_exit" "esperado exit 1 (fallback unverifiable-blocked), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if grep -q 'releases/download/' "$TMPDIR_TEST/curl-urls.log" 2>/dev/null; then
+    _fail "asset_no_sibling_nao_baixa_asset" "asset sem sibling .sha256 NAO deveria ser baixado; log=$(cat "$TMPDIR_TEST/curl-urls.log")"
+    return 1
+  fi
+  if ! grep -q 'archive/v0.0.1.tar.gz' "$TMPDIR_TEST/curl-urls.log" 2>/dev/null; then
+    _fail "asset_no_sibling_fallback" "fallback ao auto-tarball nao aconteceu; log=$(cat "$TMPDIR_TEST/curl-urls.log" 2>/dev/null)"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"unverifiable-blocked"'*) : ;;
+    *) _fail "asset_no_sibling_log" "esperado outcome=unverifiable-blocked; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'archive/v0.0.1.tar.gz'*) : ;;
+    *) _fail "asset_no_sibling_log_pkg_url" "package_url do log deveria ser o auto-tarball (fonte realmente usada); log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# Regressao FR-010 no caminho novo: mismatch de checksum do ASSET bloqueia
+# mesmo com --allow-unverified (bypass NUNCA se aplica a mismatch), e o
+# package_url auditado e o asset realmente baixado.
+scenario_asset_mismatch_bloqueia_mesmo_com_allow_unverified() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_release_assets "$_STUB_BIN" bad-sha
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve --allow-unverified
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "asset_mismatch_exit" "mismatch de asset MUST bloquear mesmo com --allow-unverified; obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if [ -f "$CSTK_PANEL_DIR/package.json" ]; then
+    _fail "asset_mismatch_sem_instalacao" "package.json NAO deveria existir apos mismatch"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"mismatch-blocked"'*) : ;;
+    *) _fail "asset_mismatch_log" "esperado outcome=mismatch-blocked; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'releases/download/v0.0.1/cstk-panel-0.0.1.tar.gz'*) : ;;
+    *) _fail "asset_mismatch_log_pkg_url" "package_url do log deveria ser o asset baixado; log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# Asset selecionado passa pela MESMA allowlist de hosts do auto-tarball:
+# par hospedado fora dela e rejeitado ANTES de qualquer download (loud,
+# exit 1) — nao ha downgrade silencioso para fonte nao confiavel.
+scenario_asset_host_fora_da_allowlist_exit1() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_release_assets "$_STUB_BIN" evil-host
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "asset_evil_host_exit" "asset em host fora da allowlist deve ser rejeitado; obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'evil\|fora da lista\|rejeitad'; then
+    _fail "asset_evil_host_msg" "stderr nao menciona rejeicao de host; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ -f "$CSTK_PANEL_DIR/package.json" ]; then
+    _fail "asset_evil_host_sem_instalacao" "nada deveria ter sido instalado apos rejeicao de host"
+    return 1
+  fi
+}
+
 run_all_scenarios

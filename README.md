@@ -434,7 +434,11 @@ passam a ser **enforced** (não dependem mais do orquestrador lembrar):
    ausência de `.sha256` do pacote baixado bloqueia (`unverifiable-blocked`);
    bypass explícito via `--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1`
    com aviso de alta visibilidade; divergência de checksum continua
-   bloqueando sempre (sem bypass possível).
+   bloqueando sempre (sem bypass possível). Quando a release do painel
+   publica o par de assets `cstk-panel-<versão>.tar.gz` + `.tar.gz.sha256`,
+   o serve prefere esse asset verificável ao auto-tarball da API (que não
+   tem como ter `.sha256` publicado) e instala com outcome `verified` —
+   sem precisar de bypass.
 3. **Allowlist de hosts confiáveis** (`CSTK_TRUSTED_RELEASE_HOSTS`, match
    exato case-insensitive, `file://` isento) aplicada em `cstk serve`,
    `cstk install --from` e `cstk self-update --from` — rejeita host fora

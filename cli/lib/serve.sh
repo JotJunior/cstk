@@ -28,6 +28,15 @@
 #   checksum (`.sha256` presente mas nao confere) permanece bloqueio absoluto
 #   (outcome mismatch-blocked) — o bypass NUNCA se aplica a esse caso.
 #
+#   Fonte VERIFICAVEL preferida (complemento ao D2): o auto-tarball da API
+#   (`tarball_url`) NUNCA tem `.sha256` — nao existe como publicar arquivo
+#   nesse endpoint, entao por ele so saem outcomes unverifiable-*. Quando a
+#   release publica um par de assets `<nome>.tar.gz` + `<nome>.tar.gz.sha256`
+#   (mesma convencao do release.yml do proprio cstk),
+#   _serve_download_verify_extract usa o ASSET como package_url — unica fonte
+#   capaz de outcome `verified`. Sem par completo, fallback ao auto-tarball
+#   (comportamento anterior; fail-closed intacto).
+#
 # POSIX sh puro — sem Bash-isms (nao usa [[ ]], arrays, local, source, <<<).
 # Deps opcionais confinadas: npm, node (runtime do painel, nao do cstk).
 # curl e usado via http.sh (nao diretamente). SEM jq (Principio II — jq e um
@@ -182,7 +191,9 @@ _serve_write_integrity_log() {
 }
 
 # _serve_download_verify_extract DEST_DIR [ALLOW_UNVERIFIED] [BYPASS_METHOD]
-# Baixa a release mais recente do painel via API GitHub, aplica a mesma
+# Baixa a release mais recente do painel via API GitHub (asset de release
+# verificavel preferido; fallback ao auto-tarball — ver "Fonte VERIFICAVEL
+# preferida" no cabecalho), aplica a mesma
 # allowlist de hosts confiaveis + integridade FAIL-CLOSED ja em producao
 # (enforced-guards US2 — FR-008/009/010/011), e extrai o tarball em
 # DEST_DIR (sempre recriado do zero — qualquer conteudo pre-existente em
@@ -272,15 +283,43 @@ _serve_download_verify_extract() {
 
   printf 'cstk serve: instalando versao %s...\n' "$_sdve_tag"
 
-  # S2/CHK-S03/CHK-S04: validar host e schema da tarball_url
-  if ! _serve_check_host_allowlist "$_sdve_tarball"; then
+  # Fonte verificavel preferida (fecha o gap do research.md D2): o
+  # auto-tarball da API nao tem como ter `.sha256` publicado; um par de
+  # assets `<nome>.tar.gz` + `<nome>.tar.gz.sha256` na release e a UNICA
+  # fonte capaz de outcome `verified`. Selecao: primeiro asset `.tar.gz`
+  # (ordem da API) cujo sibling EXATO `.sha256` tambem exista na MESMA
+  # release; sem par completo, fallback ao auto-tarball (comportamento
+  # anterior, fail-closed intacto). Pareamento por igualdade de string
+  # completa (lookup associativo do awk), nunca substring — mesma
+  # disciplina anti-spoofing de trusted-hosts.sh.
+  _sdve_assets=$(grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' "$_sdve_api_file" \
+    | sed 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+  _sdve_asset_pkg=$(printf '%s\n' "$_sdve_assets" | awk '
+    { seen[$0] = 1; url[NR] = $0 }
+    END {
+      for (i = 1; i <= NR; i++)
+        if (url[i] ~ /\.tar\.gz$/ && (url[i] ".sha256") in seen) { print url[i]; exit }
+    }')
+
+  if [ -n "$_sdve_asset_pkg" ]; then
+    _sdve_pkg_url="$_sdve_asset_pkg"
+    _sdve_sha256_url="${_sdve_asset_pkg}.sha256"
+    printf 'cstk serve: release publica asset verificavel; baixando %s\n' "$_sdve_pkg_url"
+  else
+    _sdve_pkg_url="$_sdve_tarball"
+    _sdve_sha256_url="${_sdve_tarball}.sha256"
+  fi
+
+  # S2/CHK-S03/CHK-S04: validar host e schema da URL do pacote (asset ou
+  # auto-tarball — ambas vem do JSON da API e passam pela MESMA allowlist)
+  if ! _serve_check_host_allowlist "$_sdve_pkg_url"; then
     rm -rf -- "$_sdve_tmp"
     return 1
   fi
 
-  # Download do tarball (CHK-R03: timeouts via http.sh)
+  # Download do pacote (CHK-R03: timeouts via http.sh)
   _sdve_archive="$_sdve_tmp/archive.tar.gz"
-  if ! http_download "$_sdve_tarball" "$_sdve_archive"; then
+  if ! http_download "$_sdve_pkg_url" "$_sdve_archive"; then
     printf 'cstk serve: erro: falha ao baixar tarball do painel\n' >&2
     rm -rf -- "$_sdve_tmp"
     return 1
@@ -302,7 +341,8 @@ _serve_download_verify_extract() {
   # prosseguir sem .sha256 (task 3.2) — NUNCA aplicavel quando o .sha256
   # EXISTE mas diverge (mismatch permanece bloqueio absoluto, regressao
   # FR-010/task 3.4). Mesma semantica no modo alternativo (FR-007).
-  _sdve_sha256_url="${_sdve_tarball}.sha256"
+  # _sdve_sha256_url ja resolvida acima, em par com _sdve_pkg_url (asset
+  # sibling ou `<tarball_url>.sha256` no fallback).
   _sdve_sha256_file="$_sdve_tmp/archive.tar.gz.sha256"
   _sdve_expected=""
   _sdve_actual=""
@@ -317,7 +357,7 @@ _serve_download_verify_extract() {
     # .sha256 obtido e ambos os hashes sao calculaveis -> comparacao definitiva.
     if [ "$_sdve_expected" != "$_sdve_actual" ]; then
       printf 'cstk serve: erro: checksum SHA-256 nao confere (integridade comprometida)\n' >&2
-      _serve_write_integrity_log "mismatch-blocked" "$_sdve_tarball" "$_sdve_expected" "$_sdve_actual" ""
+      _serve_write_integrity_log "mismatch-blocked" "$_sdve_pkg_url" "$_sdve_expected" "$_sdve_actual" ""
       rm -rf -- "$_sdve_tmp"
       return 1
     fi
@@ -330,11 +370,11 @@ _serve_download_verify_extract() {
     if [ "$_sdve_allow_unverified" = "1" ]; then
       printf 'cstk serve: AVISO -- prosseguindo SEM verificacao de integridade (bypass=%s); o pacote baixado NAO foi confirmado\n' \
         "${_sdve_bypass_method:-desconhecido}" >&2
-      _serve_write_integrity_log "unverifiable-bypassed" "$_sdve_tarball" "" "" "$_sdve_bypass_method"
+      _serve_write_integrity_log "unverifiable-bypassed" "$_sdve_pkg_url" "" "" "$_sdve_bypass_method"
     else
       printf 'cstk serve: erro: integridade do pacote nao pode ser confirmada (.sha256 indisponivel)\n' >&2
       printf 'cstk serve: use --allow-unverified ou defina CSTK_SERVE_ALLOW_UNVERIFIED=1 para prosseguir conscientemente (risco: pacote nao verificado)\n' >&2
-      _serve_write_integrity_log "unverifiable-blocked" "$_sdve_tarball" "" "" ""
+      _serve_write_integrity_log "unverifiable-blocked" "$_sdve_pkg_url" "" "" ""
       rm -rf -- "$_sdve_tmp"
       return 1
     fi
@@ -477,7 +517,10 @@ Usage: cstk serve [--port PORT] [--host HOST] [--update] [--reinstall]
 
 Start the cstk panel web interface. On first run, downloads the latest
 release from GitHub and installs it locally. Subsequent runs reuse the
-cached installation.
+cached installation. When the release publishes a <name>.tar.gz asset
+with a matching <name>.tar.gz.sha256, that verifiable asset is preferred
+and its SHA-256 is enforced; otherwise the API auto-tarball is used,
+whose integrity cannot be confirmed (see --allow-unverified).
 
 The panel compiles the workspace packages (npm run build) and then runs
 `npm run start`: a single Fastify process (requires cstk-panel >= 0.2.0)
