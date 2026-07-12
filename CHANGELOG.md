@@ -5,6 +5,28 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.18.0] - 2026-07-11
+
+### Added
+
+- **`cstk serve`: asset de release verificável preferido ao auto-tarball da
+  API**: o guard fail-closed do 5.15.0 (enforced-guards) bloqueava todo
+  `cstk serve`/`--update` com `unverifiable-blocked` porque procurava o
+  checksum em `<tarball_url>.sha256` — endpoint de auto-tarball da API do
+  GitHub, que não tem como ter arquivo publicado; o único caminho era
+  `--allow-unverified`. Agora `_serve_download_verify_extract` (modos nativo
+  E `--docker`) prefere um par de assets `<nome>.tar.gz` +
+  `<nome>.tar.gz.sha256` publicado na release (primeiro `.tar.gz` na ordem
+  da API cujo sibling exato exista; pareamento por igualdade de string
+  completa, nunca substring) e instala com outcome `verified`, sem bypass.
+  Sem par completo, fallback ao auto-tarball (fail-closed intacto);
+  mismatch segue bloqueio absoluto; o asset passa pela MESMA allowlist de
+  hosts (`trusted-hosts.sh`). O `package_url` do `enforcement-log.jsonl`
+  registra a URL de fato baixada (asset ou auto-tarball). Lado emissor:
+  workflow `release.yml` adicionado ao repo do cstk-panel publica o par a
+  cada tag (idempotente com release criada manualmente). 4 cenários novos
+  em `tests/cstk/test_serve.sh` (55 no total).
+
 ## [5.17.0] - 2026-07-11
 
 Feature `panel-docker`, via pipeline SDD `feature-00c`. Aditiva/não-breaking:
@@ -3654,6 +3676,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.18.0]: https://github.com/JotJunior/cstk/releases/tag/v5.18.0
 [5.17.0]: https://github.com/JotJunior/cstk/releases/tag/v5.17.0
 [5.16.1]: https://github.com/JotJunior/cstk/releases/tag/v5.16.1
 [5.16.0]: https://github.com/JotJunior/cstk/releases/tag/v5.16.0
