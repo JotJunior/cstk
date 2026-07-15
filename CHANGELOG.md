@@ -5,6 +5,33 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.19.0] - 2026-07-15
+
+### Added
+
+- **knowledge.db schema v9 (`executions-target-path`)**: coluna aditiva
+  `target_project_path TEXT` (nullable) na tabela `executions`, fechando o
+  gap do consumidor (cstk-panel #7) que não tinha como localizar o projeto
+  no filesystem sem configuração manual (`CSTK_PROJECT_PATHS`). O
+  `cstk recall --ingest` agora persiste o caminho do projeto-alvo lido do
+  state.json (`.execution.target_project_path`, com fallback legado
+  `.execucao.projeto_alvo_path`) — valor BRUTO, sem canonicalização nem
+  validação no ingest (responsabilidade do consumidor); campo
+  ausente/vazio → `NULL` silencioso (degradar-nunca-quebrar).
+  - **Migração v8→v9**: `ALTER TABLE ADD COLUMN` idempotente guardado por
+    `PRAGMA table_info` (mesmo padrão da coluna `session` do v8); DB v8
+    existente migra sem perda, DB nova nasce v9, `waves` e `knowledge_fts`
+    intocadas. Puramente aditiva: consumidores antigos que ignoram a coluna
+    continuam funcionando.
+  - **Backfill em re-ingestão**: como o upsert é pela chave natural
+    (`project`, `feature`, `wave`, `source_id`), re-rodar `--ingest` sobre
+    um state já indexado preenche a coluna em linhas pré-existentes, sem
+    duplicatas.
+  - **Cobertura**: 3 cenários novos em `tests/cstk/test_recall.sh` (EN +
+    fallback pt + ausente→NULL; backfill idempotente sobre DB v8; migração
+    v8→v9 idempotente com linhas v8 intactas) + expectativas de
+    `schema_version` atualizadas 8→9 nos cenários existentes.
+
 ## [5.18.0] - 2026-07-11
 
 ### Added
@@ -3676,6 +3703,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.19.0]: https://github.com/JotJunior/cstk/releases/tag/v5.19.0
 [5.18.0]: https://github.com/JotJunior/cstk/releases/tag/v5.18.0
 [5.17.0]: https://github.com/JotJunior/cstk/releases/tag/v5.17.0
 [5.16.1]: https://github.com/JotJunior/cstk/releases/tag/v5.16.1

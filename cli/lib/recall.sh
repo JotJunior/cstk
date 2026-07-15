@@ -94,7 +94,16 @@ RECALL_EXIT_USAGE=2
 # table_info (padrao v2/v5); SEM drop, dados intactos (FR-009/SC-006).
 # knowledge_fts INTOCADA (FTS5 nao suporta ADD COLUMN; drop perderia
 # conhecimento de worktrees removidas — research Decision 6 / dec-014).
-RECALL_SCHEMA_VERSION=8
+# v9 (executions-target-path): coluna aditiva `target_project_path TEXT` em
+# executions (origem: .execution.target_project_path // .execucao.projeto_alvo_path
+# do state.json). Persiste o PATH BRUTO do projeto-alvo — sem canonicalizar/
+# validar no ingest — para o consumidor localizar o projeto no filesystem
+# (gap #7 do cstk-panel; validacao de seguranca e responsabilidade do
+# consumidor). Ausente/vazio -> NULL silencioso. Migracao v8->v9 = ALTER
+# TABLE ADD COLUMN idempotente guardado por PRAGMA table_info (padrao
+# v2/v5/v8); re-ingestao backfilla linhas ja existentes via upsert pela
+# chave natural. waves e knowledge_fts INTOCADAS.
+RECALL_SCHEMA_VERSION=9
 # Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
 # DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
 RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
@@ -471,6 +480,7 @@ CREATE TABLE IF NOT EXISTS executions (
   skill_suggestions_total INTEGER,
   toolkit_issues_opened INTEGER,
   session TEXT,
+  target_project_path TEXT,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -671,6 +681,15 @@ ALTER TABLE executions ADD COLUMN session TEXT;" ;;
         ''|*'|session|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
         *) _as_extra="$_as_extra
 ALTER TABLE waves ADD COLUMN session TEXT;" ;;
+      esac
+      # ---- Migracao v8->v9 (executions-target-path): coluna aditiva
+      # `target_project_path` em executions. Mesmo padrao idempotente acima;
+      # reusa _as_ecols (PRAGMA lido antes de qualquer ALTER — os ALTERs so
+      # executam em batch unico no final, a leitura segue fiel).
+      case "$_as_ecols" in
+        ''|*'|target_project_path|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
+        *) _as_extra="$_as_extra
+ALTER TABLE executions ADD COLUMN target_project_path TEXT;" ;;
       esac
     fi
   fi
@@ -879,6 +898,17 @@ recall_ingest_state_json() {
   else
     _isj_session_sql="NULL"
   fi
+  # target_project_path (schema v9): valor BRUTO ja lido em _isj_proj_path
+  # (EN // pt legado) para a derivacao canonica acima. Persistido sem
+  # canonicalizar/validar — o consumidor (ex. cstk-panel) localiza o projeto
+  # no filesystem e valida por conta propria (gap #7). Ausente/vazio -> NULL
+  # silencioso. UNTRUSTED: strip_nul + sql_escape (A05), como session.
+  _isj_proj_path=$(printf '%s' "$_isj_proj_path" | strip_nul)
+  if [ -n "$_isj_proj_path" ]; then
+    _isj_proj_path_sql="'$(sql_escape "$_isj_proj_path")'"
+  else
+    _isj_proj_path_sql="NULL"
+  fi
 
   # Acumula SQL num heredoc-string e aplica numa unica transacao por arquivo.
   _isj_sql="BEGIN;"
@@ -965,9 +995,9 @@ recall_ingest_state_json() {
       _isj_sg_sql=$(recall_int_or_null "$_f_sg")
       _isj_it_sql=$(recall_int_or_null "$_f_it")
       _isj_sql="$_isj_sql
-INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,$_isj_session_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,session=excluded.session,ingested_at=excluded.ingested_at;"
+INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,target_project_path,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,$_isj_session_sql,$_isj_proj_path_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,session=excluded.session,target_project_path=excluded.target_project_path,ingested_at=excluded.ingested_at;"
       _isj_n_exec=1
     fi
   fi
