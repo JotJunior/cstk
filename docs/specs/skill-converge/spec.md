@@ -56,6 +56,39 @@ com `agente-00c`/`feature-00c` e a derivação de severidade a partir da
 > deriva inteiramente do estado atual do código, não de um cache temporal.
 > Ver FR-011.
 
+## Clarifications
+
+### Session 2026-07-16
+
+- Q: Qual chave a skill usa para reconhecer que um Gap encontrado numa nova
+  execução já corresponde a uma tarefa residual existente numa fase de
+  convergência anterior (evitando duplicação, FR-012)? → A: Combinação
+  (path do arquivo + tipo do Gap + requisito/task de origem) — mesma
+  granularidade de atributos já exigida por FR-007/FR-016 em todo achado.
+- Q: Além de `CRITICAL` (violação de `MUST`/`NON-NEGOTIABLE`), quais níveis
+  de severidade a skill usa e com que critério para achados que não violam
+  a constitution? → A: Escala de quatro níveis (`CRITICAL`/`HIGH`/`MEDIUM`/
+  `LOW`): `HIGH` para achados `missing`/`contradicts` associados a uma User
+  Story `P1`, `MEDIUM` para `P2`/`P3`, `LOW` para achados `unrequested` —
+  derivado da `Priority` já usada nas User Stories da spec.
+- Q: Para determinar se uma capacidade está "de fato implementada"
+  (FR-004), a skill deve rodar a suite de testes/build do projeto-alvo, ou
+  basear-se exclusivamente em leitura semântica estática do código-fonte
+  pelo agente? → A: Leitura semântica estática do código-fonte (sem
+  executar testes/build) — mesmo padrão read-only de `analyze`/`checklist`,
+  sem side-effects no projeto-alvo.
+- Q: Onde o `ConvergenceReport` fica registrado para consumo posterior
+  (pelo orquestrador em execuções autônomas, ou por revisão humana em modo
+  standalone)? → A: Registrado como Decisão auditável no `state.json` da
+  execução — mesmo padrão dos demais quality gates já em uso
+  (`validate-documentation`, `owasp-security`) — sem novo arquivo de
+  artefato dedicado.
+- Q: A execução automática de `converge` entre `execute-task` e
+  `review-task` (FR-015) é incondicional ou configurável pelo operador
+  (opt-in/opt-out)? → A: Incondicional — roda sempre em toda execução
+  autônoma, sem flag de desabilitar, conforme a redação `MUST` literal de
+  FR-015.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Detectar divergência entre o que foi pedido e o que existe no código (Priority: P1)
@@ -280,7 +313,11 @@ convergência dispara antes de `review-task` e que seu resultado (achados
   execução específica.
 - **FR-004**: A skill MUST determinar, para cada path avaliado, se a
   capacidade descrita no requisito/task correspondente está de fato
-  implementada no código — não apenas se o arquivo existe.
+  implementada no código — não apenas se o arquivo existe. Essa
+  determinação MUST ser feita por leitura semântica estática do
+  código-fonte pelo agente — a skill MUST NOT executar a suite de
+  testes/build do projeto-alvo como parte dessa avaliação (mesmo padrão
+  read-only de `analyze`/`checklist`, sem side-effects no projeto-alvo).
 - **FR-005**: A skill MUST classificar cada divergência encontrada em
   exatamente um dos quatro tipos: `missing` (esperado e ausente), `partial`
   (parcialmente implementado), `contradicts` (implementado de forma que
@@ -311,7 +348,9 @@ convergência dispara antes de `review-task` e que seu resultado (achados
 - **FR-012**: Ao reavaliar uma feature que já possui fase(s) de convergência
   de execuções anteriores, a skill MUST reconhecer divergências já
   registradas como tarefa residual pendente e MUST NOT duplicá-las numa
-  nova fase.
+  nova fase. A chave usada para esse reconhecimento MUST ser a combinação
+  (path do arquivo + tipo do Gap + requisito/task de origem) — a mesma
+  granularidade de atributos já exigida por FR-007/FR-016 para todo achado.
 - **FR-013**: Divergências do tipo `unrequested` MUST ser apendadas como
   item de revisão (decisão: manter/documentar/remover), nunca como tarefa
   de "implementar", já que o código correspondente já existe.
@@ -320,7 +359,9 @@ convergência dispara antes de `review-task` e que seu resultado (achados
   execução `agente-00c`/`feature-00c` ativa.
 - **FR-015**: Quando invocada dentro de uma execução `agente-00c`/
   `feature-00c`, a skill MUST rodar automaticamente entre a conclusão de
-  `execute-task` e o início de `review-task`.
+  `execute-task` e o início de `review-task`. Essa execução automática
+  MUST ser incondicional — a skill MUST NOT expor flag de opt-out/opt-in
+  para pular essa etapa dentro de uma execução autônoma.
 - **FR-016**: A skill MUST produzir um relatório estruturado com a lista de
   achados (tipo, severidade, path, requisito/task de origem) e um resumo
   quantitativo (contagem por tipo e por severidade).
@@ -332,20 +373,34 @@ convergência dispara antes de `review-task` e que seu resultado (achados
 - **FR-019**: Achados `CRITICAL` reportados dentro de uma execução autônoma
   MUST ficar disponíveis para o orquestrador decidir escalada (ex.: bloqueio
   humano) — a skill em si reporta severidade e MUST NOT travar o processo
-  autonomamente.
+  autonomamente. Essa disponibilização MUST ocorrer via registro do
+  `ConvergenceReport` como Decisão auditável no `state.json` da execução —
+  mesmo padrão já usado pelos demais quality gates (`validate-documentation`,
+  `owasp-security`) — sem exigir novo arquivo de artefato dedicado.
+- **FR-020**: A skill MUST atribuir severidade a partir de uma escala de
+  quatro níveis: `CRITICAL` (violação de `MUST`/`NON-NEGOTIABLE` da
+  constitution, conforme FR-006), `HIGH` (achado `missing`/`contradicts`
+  associado a uma User Story `P1`), `MEDIUM` (achado `missing`/`contradicts`
+  associado a uma User Story `P2`/`P3`) e `LOW` (achado `unrequested`),
+  derivando a prioridade da User Story de origem já declarada em `spec.md`.
+  A atribuição de severidade para achados `partial` dentro dessa escala de
+  quatro níveis fica deferida para `/plan` (detalhe de algoritmo, não altera
+  a arquitetura da escala em si).
 
 ### Key Entities
 
 - **Gap**: uma divergência única entre a intenção documentada e o código
   presente. Atributos: tipo (`missing`/`partial`/`contradicts`/
-  `unrequested`), severidade (derivada de violação de `MUST` ou não), path
-  de arquivo, requisito/task de origem, descrição.
+  `unrequested`), severidade (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW` — ver
+  FR-006/FR-020), path de arquivo, requisito/task de origem, descrição.
 - **ConvergencePhase**: a fase apendada ao final de `tasks.md` numa
   execução da skill que produziu ao menos um achado acionável. Contém uma
   ou mais tarefas residuais, uma por `Gap` acionável (`missing`, `partial`,
   `contradicts`) ou item de revisão (`unrequested`).
 - **ConvergenceReport**: o resultado apresentado ao final de uma execução —
   lista de `Gap`s encontrados e resumo quantitativo por tipo e severidade.
+  Dentro de uma execução autônoma, MUST ser registrado como Decisão
+  auditável no `state.json` (ver FR-019).
 
 ## Success Criteria
 
