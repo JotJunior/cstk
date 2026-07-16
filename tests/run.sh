@@ -236,6 +236,15 @@ _is_internal_test() {
       # o contrato sumir, o "double check" anti-fabricacao some silenciosamente.
       [ -f "$REPO_ROOT/global/agents/data-veracity-verifier.md" ] && return 0
       return 1 ;;
+    test_converge-orchestrator-gate.sh)
+      # Smoke textual sobre os 2 orquestradores (gate incondicional
+      # `convergence` na fronteira execute-task -> review-task, feature
+      # skill-converge FASE 4 — US5/FR-015/FR-019). Assert no .md, nao em um
+      # unico script — existence-guarded ao orquestrador portador do gate. Se
+      # a secao sumir, a regressao (converge nunca invocada antes de
+      # review-task) volta silenciosamente.
+      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
+      return 1 ;;
     test_e2e_model_routing.sh)
       # Cobre fluxo end-to-end model-routing.sh + model-routing-report.sh +
       # state-rw.sh + state-decisions.sh + state-ondas.sh (composicao de

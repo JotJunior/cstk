@@ -180,25 +180,25 @@ Ref: Constitution III · plan.md §Technical Context "Testing"
 
 Ref: FR-015, FR-019 · US5 · research.md §Decision 5
 
-- [ ] 4.1.1 Adicionar linha à tabela de §5.f Quality Gates complementares: etapa `execute-task→review-task` (todas as tasks da onda concluídas) | gate `convergence` | skill `converge` | foco "divergência spec-vs-código nos paths declarados" | findings `CRITICAL` → BloqueioHumano (decisão do orquestrador, FR-019 — converge não trava sozinha); demais → Decisão informativa
-- [ ] 4.1.2 Inserir a invocação no Loop principal, entre "todas as tasks da onda concluídas" e "transitar para review-task" — **incondicional**, sem flag de opt-out (FR-015, redação MUST literal)
-- [ ] 4.1.3 Two-step atômico-lógico `state-decisions.sh register` + `state-ondas.sh record-skill --skill converge` (mesmo padrão dos demais gates)
-- [ ] 4.1.4 Teste: assert textual (`grep`) confirmando que `converge` aparece na tabela §5.f e na fronteira execute-task→review-task do Loop principal
+- [x] 4.1.1 Adicionar linha à tabela de §5.f Quality Gates complementares: etapa `execute-task→review-task` (todas as tasks da onda concluídas) | gate `convergence` | skill `converge` | foco "divergência spec-vs-código nos paths declarados" | findings `CRITICAL` → BloqueioHumano (decisão do orquestrador, FR-019 — converge não trava sozinha); demais → Decisão informativa <!-- validado: global/agents/agente-00c-orchestrator.md tabela §5.f, linha `execute-task -> review-task` | convergence | `converge` -->
+- [x] 4.1.2 Inserir a invocação no Loop principal, entre "todas as tasks da onda concluídas" e "transitar para review-task" — **incondicional**, sem flag de opt-out (FR-015, redação MUST literal) <!-- validado: nova ### 5.f.bis (gatilho backlog-esgotado + invocacao) + hook pos-deteccao no passo 6, ambos ANTES da transicao para review-task -->
+- [x] 4.1.3 Two-step atômico-lógico `state-decisions.sh register` + `state-ondas.sh record-skill --skill converge` (mesmo padrão dos demais gates) <!-- DESVIO DELIBERADO fiel ao que a skill converge REALMENTE implementa (SKILL.md ETAPA 8, ja commitado b4ce87e FASE 3): o two-step e feito PELA PROPRIA SKILL ao auto-detectar modo autonomo, nao pelo orquestrador externamente como nos outros 4 gates -- documentado explicitamente em 5.f.bis ("Registro - diferente dos 4 gates acima") para nao duplicar Decisao para o mesmo evento; o orquestrador so reage a `escolha` (bloqueios.sh register se escalar-para-humano) -->
+- [x] 4.1.4 Teste: assert textual (`grep`) confirmando que `converge` aparece na tabela §5.f e na fronteira execute-task→review-task do Loop principal <!-- validado: tests/test_converge-orchestrator-gate.sh, 12 scenarios PASS 12 FAIL 0 ERROR 0; --check-coverage zero orfaos -->
 
 ### 4.2 Gate automático em `agente-00c-feature-orchestrator.md` `[A]`
 
 Ref: FR-015, FR-019 · US5
 
-- [ ] 4.2.1 Mesma edição de tabela em "## Quality Gates complementares" (este arquivo)
-- [ ] 4.2.2 Inserir a invocação no "Loop principal de uma onda", passo 7 — entre "Loop até todas as tasks completas" e "depois transitar para review-task"
-- [ ] 4.2.3 Two-step atômico-lógico `state-decisions.sh register` + `state-ondas.sh record-skill --skill converge`
-- [ ] 4.2.4 Teste: assert textual (`grep`) equivalente ao da tarefa 4.1.4 para este arquivo
+- [x] 4.2.1 Mesma edição de tabela em "## Quality Gates complementares" (este arquivo) <!-- validado: global/agents/agente-00c-feature-orchestrator.md, linha `execute-task → review-task` | convergence | `converge` -->
+- [x] 4.2.2 Inserir a invocação no "Loop principal de uma onda", passo 7 — entre "Loop até todas as tasks completas" e "depois transitar para review-task" <!-- validado: passo 7 reescrito com forward-ref obrigatoria a "## Gate incondicional `convergence`" ANTES de "transitar para review-task"; secao nova auto-contida com gatilho+invocacao+reacao. ATENCAO (nota da propria execucao): este arquivo rege o orquestrador que executou esta task -- edicao feita com cuidado para nao quebrar a execucao corrente (so afeta invocacoes futuras apos reload, conforme o proprio contrato de retomada) -->
+- [x] 4.2.3 Two-step atômico-lógico `state-decisions.sh register` + `state-ondas.sh record-skill --skill converge` <!-- mesmo DESVIO DELIBERADO documentado em 4.1.3: skill auto-registra (ETAPA 8), orquestrador NAO duplica -- ver "## Gate incondicional `convergence`" secao "Registro - diferente dos 4 gates de Quality Gates complementares" -->
+- [x] 4.2.4 Teste: assert textual (`grep`) equivalente ao da tarefa 4.1.4 para este arquivo <!-- validado: tests/test_converge-orchestrator-gate.sh cobre os 2 arquivos nos mesmos 12 scenarios (6 pares agente/feat) -->
 
 ### 4.3 Cenário de integração ponta-a-ponta `[M]`
 
 Ref: FR-015, FR-019 · quickstart.md Scenario 11
 
-- [ ] 4.3.1 Roteirizar/documentar o cenário manual: execução `feature-00c` completa até o fim de `execute-task`, observar disparo automático de `converge` antes de `review-task`, achado `CRITICAL` registrado como Decisão auditável no `state.json`
+- [x] 4.3.1 Roteirizar/documentar o cenário manual: execução `feature-00c` completa até o fim de `execute-task`, observar disparo automático de `converge` antes de `review-task`, achado `CRITICAL` registrado como Decisão auditável no `state.json` <!-- validado: docs/specs/skill-converge/quickstart.md Scenario 11 enriquecido com passos 1-7 (gatilho, invocacao, ETAPAs 1-8, reacao CRITICAL->bloqueio e variante sem CRITICAL->fase apendada); documentado, NAO executado de fato nesta tarefa -->
 
 ---
 

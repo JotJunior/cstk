@@ -1298,6 +1298,7 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    | `plan` | security | `owasp-security` | superficie de ataque OWASP/ASVS na arquitetura proposta | findings `critical`/`high` -> BloqueioHumano obrigatorio (constitution exige seguranca como principio MUST) |
    | `create-tasks` | template-fidelity | `validate-tasks-template.sh` (Bash, **deterministico**) | tasks.md conforma ao template canonico: prefixo FASE, checkboxes `- [ ]`, tag de criticidade, legendas, Matriz de Dependencias, Resumo, Escopo Coberto/Excluido | findings `critical` (sem FASE / sem checkbox / sem criticidade) -> Decisao + tentativa de Edit (re-normalizar ao template); `warning` -> Decisao informativa |
    | `create-tasks` | docs-render | `validate-docs-rendered` | Mermaid parseavel, links internos, frontmatter, code blocks com linguagem | findings `critical` (link 404, Mermaid invalido) -> Decisao + tentativa de Edit; demais -> Decisao informativa |
+   | `execute-task -> review-task` | convergence | `converge` | divergencia spec-vs-codigo nos paths declarados (US5, FR-015/FR-019) | findings `CRITICAL` -> BloqueioHumano (decisao do orquestrador; converge nao trava sozinha); demais -> Decisao informativa (a propria skill se auto-registra — ver 5.f.bis) |
 
    **Pre-gate deterministico do `create-tasks` (template-fidelity):** roda
    ANTES do gate `docs-render` (skeleton antes de render). Motivacao: o
@@ -1360,6 +1361,54 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    `/review-task` audita skips: feature com >2 gates skipados sem
    justificativa solida vira finding `quality-gate-bypass`.
 
+   ### 5.f.bis Gate incondicional `convergence` (execute-task -> review-task, US5/FR-015/FR-019)
+
+   > Origem: feature `skill-converge`, FASE 4. Fecha o loop de
+   > reconciliacao spec-vs-codigo entre o backlog executado e o codigo
+   > real. Diferente dos 4 gates da tabela acima (todos elegiveis ao
+   > "Opt-out auditavel"), este e **incondicional**: nenhuma flag de skip
+   > existe (FR-015, redacao MUST literal).
+
+   **Gatilho**: etapa corrente `execute-task` E `tasks.md` sem nenhuma
+   linha `- [ ]`/`- [~]` pendente (backlog da etapa esgotado — a proxima
+   transicao natural seria `review-task`). Cheque isso ao final do
+   passo 5 (apos o loop de tasks da etapa completar), ANTES de permitir
+   que `current_stage` mude para `review-task`:
+
+   ```bash
+   _pendentes=$(grep -cE '^[[:space:]]*-[[:space:]]*\[[ ~]\]' "$FD/tasks.md" 2>/dev/null || echo 0)
+   [ "$_pendentes" -eq 0 ] || _skip_gate=1   # ainda ha tasks a executar; nao invoque o gate agora
+   # senao: Skill(skill="converge", args="<FD>")
+   ```
+
+   **Registro — diferente dos 4 gates acima**: `converge` auto-detecta o
+   modo autonomo (via `AGENTE_00C_STATE_DIR`/presenca de
+   `<PAP>/.claude/agente-00c-state/state.json`) e registra o PROPRIO
+   two-step na sua ETAPA 8 (`state-decisions.sh register --agente
+   "orquestrador-00c" --etapa "converge"` + `state-ondas.sh record-skill
+   --skill converge`, enum `["aceitar","escalar-para-humano"]`). O
+   orquestrador NAO chama `register`/`record-skill` de novo para este
+   gate — evitaria Decisao duplicada para o mesmo evento.
+
+   **Reacao ao retorno**:
+   - `escolha = "escalar-para-humano"` (achado `CRITICAL` sem correcao
+     inline possivel — FR-019: "converge nao trava sozinha", quem decide
+     o bloqueio e o orquestrador) -> emita `bloqueios.sh register`
+     OBRIGATORIO ANTES de fechar a onda.
+   - Relatorio (ETAPA 7 da skill) diz "Fase de convergência apendada:
+     FASE N" -> NAO transicione `current_stage` para `review-task`
+     ainda; ha tasks novas em `tasks.md` — a etapa `execute-task`
+     continua normalmente nelas nas proximas ondas.
+   - Relatorio diz "nenhuma — feature convergida" -> `execute-task` esta
+     de fato esgotada; prossiga a transicao para `review-task`.
+
+   Ciclo (executar pendentes -> converge -> se apendou fase, volta a
+   executar -> converge de novo) e finito por construcao: dedup
+   `existing-keys`/`gap-key` da propria skill (FR-011/FR-012) garante que
+   a mesma divergencia nunca vira uma segunda tarefa; os gatilhos de
+   aborto do passo 7 (`cycles.sh`/`circular.sh`) permanecem como rede de
+   seguranca adicional caso o padrao normal nao se sustente.
+
 6. **Detectar conclusao da etapa**:
    `pipeline.sh detect-completion --feature-dir <FD> --stage <STAGE>
    --projeto-alvo-path <PAP>` — exit 0 indica artefato esperado presente.
@@ -1420,6 +1469,11 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    Essa tabela e ultimo recurso — preferir inferencia. So aplicar
    quando `infer-aspectos` retorna `[]` E a onda nao e puramente
    meta (lock+state, sem decisao de produto).
+
+   **Hook pos-deteccao (gate `convergence` obrigatorio, execute-task ->
+   review-task):** ver `### 5.f.bis` acima — dispara quando a etapa
+   `execute-task` esgota o backlog de `tasks.md`, OBRIGATORIAMENTE ANTES
+   de transitar para `review-task`.
 
 7. **Checar gatilhos de aborto** — chame em ordem; qualquer exit 3 = aborto
    da onda com motivo correspondente:

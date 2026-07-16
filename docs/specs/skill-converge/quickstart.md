@@ -94,12 +94,45 @@ da spec e aos Success Criteria (SC-001..SC-006).
 
 ## Scenario 11: Integração autônoma — gate antes de review-task (US5/AC1-2)
 
-1. Execução `feature-00c` que concluiu todas as tasks da onda em `execute-task`.
-2. Observar a transição de etapa (sem intervenção manual).
-3. **Expected**: `converge` roda automaticamente **antes** de `review-task`;
-   um achado `CRITICAL` fica registrado como Decisão auditável no `state.json`
-   (via `state-decisions.sh register` + `record-skill`); o orquestrador decide
-   se escala para bloqueio humano (converge não trava sozinho — FR-019).
+> Roteiro de integração ponta-a-ponta (FASE 4, tarefa 4.3) — descreve o
+> comportamento esperado da integração já implementada nos dois
+> orquestradores (`agente-00c-orchestrator.md` §5.f.bis /
+> `agente-00c-feature-orchestrator.md` §"Gate incondicional `convergence`").
+> **Documentado, não executado de fato** nesta tarefa — é especificação do
+> cenário, não um registro de execução real.
+
+1. Uma execução `feature-00c` (ou `agente-00c`) está na etapa `execute-task`
+   e conclui a última task pendente do backlog corrente — `tasks.md` não
+   tem mais nenhuma linha `- [ ]`/`- [~]` pendente.
+2. O orquestrador detecta o backlog esgotado e invoca, **sem intervenção
+   manual e sem flag de opt-out** (FR-015, MUST literal),
+   `Skill(skill="converge", args="<feature-dir>")` — antes de permitir a
+   transição de `current_stage` para `review-task`.
+3. A skill `converge` executa as ETAPAs 1-7 (LOCALIZAR → LER → EXTRAIR →
+   AVALIAR → SEVERIDADE → APENDAR → REPORTAR) e detecta modo autônomo via
+   `AGENTE_00C_STATE_DIR`/presença do `state.json` da execução corrente.
+4. Um achado é classificado `CRITICAL` (violação de `MUST`/`NON-NEGOTIABLE`
+   da `constitution.md` do projeto-alvo).
+5. Na ETAPA 8 (autônoma), a própria skill — não o orquestrador — registra o
+   `ConvergenceReport` como Decisão auditável: `state-decisions.sh register
+   --agente "<orquestrador>" --etapa "converge" --escolha
+   "escalar-para-humano"`, seguido imediatamente de `state-ondas.sh
+   record-skill --skill converge --decisao-id <dec-NNN>` (two-step
+   atômico-lógico, mesma onda — contracts §8).
+6. **Expected**: o orquestrador reage à `escolha = "escalar-para-humano"`
+   registrada e emite `bloqueios.sh register` (BloqueioHumano) ANTES de
+   fechar a onda — a skill não travou sozinha (FR-019); quem decidiu o
+   bloqueio foi o orquestrador. A onda encerra com `Schedule intent: none`;
+   `current_stage` permanece `execute-task` até o operador responder.
+7. **Expected (variante sem `CRITICAL`)**: se nenhum achado `CRITICAL`
+   existir mas houver gaps acionáveis (`missing`/`partial`/`contradicts` de
+   severidade `HIGH`/`MEDIUM`/`LOW`), a skill apenda uma nova "FASE N —
+   Convergência" ao final de `tasks.md` (`escolha = "aceitar"`) — o
+   orquestrador NÃO transiciona para `review-task`; a etapa `execute-task`
+   continua normalmente executando as tasks novas nas próximas ondas, até
+   uma invocação de `converge` reportar "nenhuma — feature convergida" (dedup
+   via `existing-keys`/`gap-key`, FR-011/FR-012, garante que o ciclo é
+   finito).
 
 ## Scenario 12: Standalone sem orquestrador (SC-006)
 
