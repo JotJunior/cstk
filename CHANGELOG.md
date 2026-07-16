@@ -5,6 +5,48 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.20.0] - 2026-07-16
+
+Nova skill `converge`: fecha o loop de reconciliação entre documentação
+(spec/plan/tasks) e o estado REAL do código, atuando como gate incondicional
+entre `execute-task` e `review-task` nos orquestradores autônomos. Skill nova
+aditiva — sem breaking changes.
+
+### Added
+
+- **Skill `converge`** (feature `skill-converge`): reconcilia a intenção
+  documentada (spec/plan/tasks) contra o estado ATUAL do código do
+  projeto-alvo e apenda gaps acionáveis como nova fase de `tasks.md`,
+  classificando cada divergência como `missing`/`partial`/`contradicts`/
+  `unrequested`. 5 scripts POSIX novos em `global/skills/converge/scripts/`:
+  `extract-intent.sh` (paths declarados + origem), `extract-must.sh`
+  (princípios MUST/NON-NEGOTIABLE da constitution), `severity.sh` (função
+  pura tipo×prioridade×must→severidade), `converge-tasks.sh` (mecânica
+  determinística do `tasks.md`: next-phase/existing-keys/append-phase) e
+  `path-contains.sh` (contenção de blast radius com resolução de symlinks,
+  fail-closed). `SKILL.md` traz o fluxo de agente + rubrica de classificação
+  determinística, com `templates/convergence-phase.md` e
+  `evals/triggers.jsonl` para eval de disparo. Cobertura: 6 arquivos de teste
+  novos (`test_extract-intent.sh`, `test_extract-must.sh`, `test_severity.sh`,
+  `test_converge-tasks.sh`, `test_path-contains.sh`,
+  `test_converge-orchestrator-gate.sh`), 109 cenários no total.
+- **Gate incondicional `convergence`** em `agente-00c-orchestrator.md` e
+  `agente-00c-feature-orchestrator.md`: disparado automaticamente na
+  fronteira `execute-task → review-task`, diferente dos demais gates de
+  qualidade (`validate-documentation`/`validate-docs-rendered`/
+  `owasp-security`) — não é opt-outable. A própria skill `converge`
+  auto-detecta modo autônomo (via `AGENTE_00C_STATE_DIR`) e auto-registra seu
+  two-step (`state-decisions.sh register` + `record-skill`); findings
+  `CRITICAL` viram `BloqueioHumano`, demais viram Decisão informativa.
+  `quickstart.md` Scenario 11 documenta o roteiro passo-a-passo do cenário de
+  integração ponta-a-ponta.
+- **Perfis de instalação**: `converge` registrado em `scripts/profiles.txt.in`
+  sob `sdd` (gate obrigatório dos orquestradores — mesma razão de
+  `validate-documentation`/`validate-docs-rendered`/`owasp-security`) e
+  `complementary` (uso standalone). Perfil `sdd` 16→17 skills, `complementary`
+  12→13, `all` 30→31; `README.md` atualizado (contagem de skills, tabela de
+  skills complementares, tabela de perfis de instalação).
+
 ## [5.19.0] - 2026-07-15
 
 ### Added
@@ -3703,6 +3745,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.20.0]: https://github.com/JotJunior/cstk/releases/tag/v5.20.0
 [5.19.0]: https://github.com/JotJunior/cstk/releases/tag/v5.19.0
 [5.18.0]: https://github.com/JotJunior/cstk/releases/tag/v5.18.0
 [5.17.0]: https://github.com/JotJunior/cstk/releases/tag/v5.17.0

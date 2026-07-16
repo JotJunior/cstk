@@ -164,7 +164,7 @@ _rp_render_secao_3() {
             "",
             "**Score**: \((.justification_score // .score_justificativa) as $sc | if $sc == null then "(n/a — decisao do orquestrador)" else ($sc | tostring) end)",
             "",
-            "**Referencias**: \(((.references // .referencias) // []) | if length == 0 then "(nenhuma)" else join(", ") end)",
+            "**Referencias**: \(((.references // .referencias) // []) | if length == 0 then "(nenhuma)" else (map(if type == "string" then . else (to_entries | map("\(.key)=\(.value)") | join(" ")) end) | join(", ")) end)",
             "",
             "**Artefato originador**: \((.originating_artifact // .artefato_originador) // "(nenhum)")",
             ""

@@ -1,0 +1,182 @@
+# Data Model: Skill Converge
+
+Não há banco de dados nem persistência estruturada nova. As "entidades" abaixo
+são **estruturas lógicas em memória** produzidas durante a execução da skill e
+materializadas em dois destinos já existentes: (a) o `tasks.md` da feature
+(tarefas de convergência apendadas) e (b) o `state.json` da execução autônoma
+(Decisão auditável). Nenhum schema de tabela, nenhum arquivo de artefato novo
+(clarification 2026-07-16: "sem novo arquivo de artefato dedicado").
+
+---
+
+## Entity: Gap
+
+Uma divergência única entre a intenção documentada e o código presente.
+Unidade atômica de saída da skill (FR-005, FR-007, Key Entities da spec).
+
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| `type` | enum | `missing` \| `partial` \| `contradicts` \| `unrequested` — exatamente um (FR-005) | julgado pelo agente via rubrica determinística (research §Decision 2) |
+| `severity` | enum | `CRITICAL` \| `HIGH` \| `MEDIUM` \| `LOW` (FR-006, FR-020) | função pura de (`type`, `story_priority`, `must_violated`) — research §Decision 3 |
+| `path` | string | NOT NULL, ≥1 path real dentro do projeto-alvo (FR-007, FR-018) | achado sem path rastreável não é reportado (FR-007, Constitution VI) |
+| `origin` | string | NOT NULL | requisito (`FR-NNN`) ou task (`### N.M`) que originou a expectativa (FR-007) |
+| `must_violated` | bool | default `false` | `true` ⇒ `severity=CRITICAL` incondicional (FR-006) |
+| `story_priority` | enum | `P1` \| `P2` \| `P3` \| `null` | derivada da User Story de origem em `spec.md` (FR-020); regra de derivação abaixo |
+| `description` | string | texto-livre, **NÃO** entra na gap-key | descrição legível do desvio (FR-016); pode variar entre runs |
+| `gap_key` | string | derivada, determinística | `sha256-12(normalize(path) + " " + type + " " + normalize(origin))` — chave de dedup (FR-012); definição completa de `normalize()` abaixo |
+| `actionable` | bool | derivada | `true` para `missing`/`partial`/`contradicts`; `unrequested` é revisão, não ação (FR-013) |
+
+### Regras de derivação
+
+- `gap_key` = **apenas** (path + type + origin) normalizados — nunca inclui
+  `description` nem `severity` (research §Decision 2). É o identificador estável
+  para dedup entre execuções (FR-012).
+- `actionable = (type ∈ {missing, partial, contradicts})`. `unrequested` gera
+  **item de revisão**, não tarefa de "implementar" (FR-013).
+- `severity` é computada **após** `type` + `must_violated` + `story_priority`
+  estarem fixados (ordem: MUST vence tudo → prioridade da story → tipo).
+
+### Definição de `normalize()` (fecha CHK011)
+
+`gap_key` combina dois campos distintos (`path`, `origin`), cada um com sua
+própria regra de normalização — não é uma função única/genérica, são duas
+funções puramente textuais que **nunca** resolvem via filesystem (distinto de
+`path-contains.sh` — contracts §6 —, que resolve symlinks para um propósito
+diferente: contenção de blast radius, não identidade de chave).
+
+**`normalize(path)`**:
+1. trim de espaços (líder e final);
+2. remover prefixo `./`, se presente (`./scripts/foo.sh` → `scripts/foo.sh`);
+3. colapsar `//` repetidos em `/` único (`scripts//foo.sh` → `scripts/foo.sh`);
+4. remover `/` final, exceto quando o path é a raiz (`/`);
+5. **sem** case-fold — preserva o case original. Paths são case-sensitive em
+   Linux (tasks.md 1.1.1); aplicar case-fold arriscaria dedup falso entre
+   arquivos distintos (`Scripts/Foo.sh` ≠ `scripts/foo.sh`). Nota: em macOS
+   (APFS/HFS+ default) o filesystem é case-insensitive-mas-preserving — a
+   regra de `normalize()` continua sem case-fold independente do SO, porque é
+   uma comparação textual sobre a string do path declarado, não uma resolução
+   via filesystem.
+
+**`normalize(origin)`**:
+1. trim de espaços (líder e final);
+2. uppercase do prefixo `FR-` quando o origin é um requisito
+   (`fr-007` → `FR-007`; `Fr-007` → `FR-007`);
+3. quando o origin é um heading de task, reduzir à forma `N.M` — remove o
+   prefixo `###` e todo texto de título (`### 2.1 scripts/path-contains.sh —
+   contenção de blast radius [C]` → `2.1`).
+
+Exemplos de equivalência (mesma `gap_key` resultante para o mesmo `path`/
+`origin` lógico):
+`./scripts/foo.sh` ≡ `scripts/foo.sh` ≡ `scripts//foo.sh`;
+`fr-007` ≡ `FR-007` ≡ `Fr-007`;
+`### 2.1 scripts/path-contains.sh — contenção de blast radius [C]` ≡ `2.1`.
+
+### Derivação `origin` → `story_priority` (fecha CHK018)
+
+Responsabilidade do **agente**, não de script determinístico (mesma natureza
+de julgamento já mandatada para FR-004, research.md §Decision 1): o template
+canônico de `spec.md` (`specify/templates/feature-spec.md`) não tem
+mapeamento estrutural `FR → User Story` explícito — `### Functional
+Requirements` lista os FRs linearmente, fora da seção de cada
+`### User Story N - ... (Priority: PN)`. Associar um `origin` à `Priority`
+correta exige interpretação textual, não regex.
+
+Regra:
+- **`origin = FR-NNN`**: localizar a User Story cujo corpo (descrição da
+  jornada) ou `Acceptance Scenarios` referencia esse FR mais diretamente
+  (mesmo capacidade/comportamento descrito); usar o `Priority: PN` dessa
+  story.
+- **`origin = task N.M`**: seguir a linha `Ref:` da task (convenção já usada
+  em `tasks.md` desta e de outras features — ex.: `Ref: FR-014, FR-018 · ...`)
+  até o FR correspondente, e então aplicar a mesma regra acima.
+- **Sem associação encontrada** (nenhuma story referencia o FR/task com
+  confiança razoável): `story_priority = null`. **Nunca** escala para `HIGH`
+  por omissão — a ausência de vínculo com P1 cai no critério `MEDIUM`
+  conservador da tabela de severidade (research.md §Decision 3), nunca é
+  tratada como sinal de alta prioridade por padrão.
+
+Esta rubrica é a fonte que a futura `SKILL.md` (tarefa 3.1.5) incorpora na
+mesma etapa de classificação onde vive a rubrica determinística de tipo
+(research.md §Decision 2) — não duplicada aqui, apenas referenciada.
+
+### Invariantes
+
+- Nenhum `Gap` sem `path` real + `origin` (FR-007 / SC-004: 100% dos achados
+  citam path concreto e origem).
+- `must_violated=true ⟹ severity=CRITICAL` (FR-006 / SC-002).
+- Path fora do projeto-alvo ⟹ `type=missing`/inconclusivo, arquivo **não** é
+  lido (FR-018, Edge Case).
+
+---
+
+## Entity: ConvergencePhase
+
+A fase apendada ao final de `tasks.md` numa execução que produziu ≥1 achado
+**acionável ou de revisão**. Materialização em Markdown, append-only.
+
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| `phase_number` | int | = `max(FASE N existente) + 1` (determinístico) | numeração sequencial já em uso; nunca renumera anteriores (FR-008/FR-009) |
+| `heading` | string | `## FASE {N} - Convergência` | segue o formato canônico do template `create-tasks/templates/tasks.md` |
+| `tasks[]` | list\<ConvergenceTask\> | 1 por `Gap` não-duplicado | um item por achado acionável **ou** de revisão |
+| existência | condicional | criada **somente se** há ≥1 gap novo (não-duplicado) acionável/revisão | FR-010: nunca apenda fase vazia |
+
+### ConvergenceTask (sub-estrutura de uma tarefa dentro da fase)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `task_id` | string | `{N}.{M}` sequencial dentro da fase (via `create-tasks/scripts/next-task-id.sh` — reuso) |
+| `checkbox` | literal | `- [ ]` (não-concluída ao ser apendada) |
+| `criticality_tag` | enum | `` `[C]` `` \| `` `[A]` `` \| `` `[M]` `` — mapeado da `severity` (CRITICAL/HIGH→`[C]`, MEDIUM→`[A]`, LOW→`[M]`) |
+| `kind` | enum | `implementar` (acionável) \| `revisar` (`unrequested`, FR-013) |
+| `body` | string | descrição + path + origem citados (FR-007) |
+| `key_marker` | string | `<!-- converge-key: {gap_key} -->` — comentário HTML relido no dedup (research §Decision 2) |
+
+### State transitions
+
+```
+(gap acionável detectado, key inédita)  → tarefa apendada com `- [ ]`
+(execute-task resolve a tarefa)          → `- [x]` (fora do escopo do converge; quem marca é execute-task)
+(re-run converge, mesmo código)          → key já presente ⇒ NÃO reapenda (FR-012)
+```
+
+### Invariantes
+
+- **Append-only** (FR-009): a escrita só adiciona conteúdo ao final; nenhum
+  número/texto de fase ou tarefa pré-existente é alterado (SC-005).
+- Fase de convergência vazia nunca é criada (FR-010).
+- `unrequested` sempre vira tarefa `kind=revisar`, jamais `implementar`
+  (FR-013).
+
+---
+
+## Entity: ConvergenceReport
+
+O resultado apresentado ao final da execução: lista de `Gap`s + resumo
+quantitativo (FR-016). Em execução autônoma, materializado como Decisão
+auditável no `state.json` (FR-019) — **não** como arquivo novo.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `gaps[]` | list\<Gap\> | todos os achados da execução |
+| `summary_by_type` | map\<type,int\> | contagem por `missing`/`partial`/`contradicts`/`unrequested` (FR-016) |
+| `summary_by_severity` | map\<severity,int\> | contagem por `CRITICAL`/`HIGH`/`MEDIUM`/`LOW` (FR-016) |
+| `appended_phase` | int \| null | `phase_number` apendado nesta execução, ou `null` se nada apendado (FR-010) |
+| `feature_dir` | string | diretório da feature auditada |
+
+### Materialização como Decisão (execução autônoma, FR-019)
+
+Registrada via `state-decisions.sh register` com:
+- `--contexto` = `"Gate converge: <resumo quantitativo>"`
+- `--escolha` ∈ `{aceitar, escalar-para-humano}` (orquestrador decide;
+  converge não trava sozinho — FR-019)
+- `--score` derivado (CRITICAL presente ⇒ candidato a bloqueio humano)
+- registrada em par com `state-ondas.sh record-skill --skill converge`
+  (mesmo two-step dos demais gates)
+
+### Invariantes
+
+- Todo `CRITICAL` fica **disponível** ao orquestrador para decisão de escalada
+  (FR-019) — converge reporta, não bloqueia.
+- Em modo standalone, o report é apresentado ao usuário (stdout/relatório);
+  não há `state.json` a escrever (FR-014, SC-006).

@@ -298,8 +298,9 @@ Sequencia da onda corrente. Cada iteracao:
    feature-00c-preflight.sh check --state-dir $STATE_DIR
    - se exit=1, registrar bloqueio humano + gerar relatorio parcial
 7. na fase execute-task, registrar tasks_concluidas + task_corrente
-   no state.json (FR-012). Loop ate todas as tasks completas, depois
-   transitar para review-task.
+   no state.json (FR-012). Loop ate todas as tasks completas — ao
+   esgotar o backlog, ver "## Gate incondicional `convergence`" abaixo
+   (OBRIGATORIO, sem opt-out) ANTES de transitar para review-task.
 7.bis (ADITIVO — hook de commit por task, opt-in — atomic-commit-pr, FR-004):
     SOMENTE se `commit-mode.sh is-enabled --state-dir $STATE_DIR` retornar `true`
     E a fase corrente for `execute-task`. NAO-OP quando `is-enabled` retorna `false`
@@ -1215,6 +1216,7 @@ agora filtra `kind=gate`, e comandos avulsos pertencem a
 | `plan` | security | `owasp-security` | superficie de ataque OWASP/ASVS na arquitetura proposta | findings `critical`/`high` → BloqueioHumano OBRIGATORIO (constitution exige seguranca como principio MUST) |
 | `create-tasks` | template-fidelity | `validate-tasks-template.sh` (Bash, **deterministico**) | tasks.md conforma ao template canonico: prefixo FASE, checkboxes `- [ ]`, tag de criticidade, legendas, Matriz de Dependencias, Resumo, Escopo Coberto/Excluido | findings `critical` (sem FASE / sem checkbox / sem criticidade) → Decisao + tentativa de Edit (re-normalizar ao template); `warning` → Decisao informativa |
 | `create-tasks` | docs-render | `validate-docs-rendered` | Mermaid parseavel, links internos, frontmatter, code blocks com linguagem | findings `critical` (link 404, Mermaid invalido) → Decisao + tentativa de Edit; demais → Decisao informativa |
+| `execute-task → review-task` | convergence | `converge` | divergencia spec-vs-codigo nos paths declarados (US5, FR-015/FR-019) | findings `CRITICAL` → BloqueioHumano (decisao do orquestrador; converge nao trava sozinha); demais → Decisao informativa (a propria skill se auto-registra — ver "## Gate incondicional `convergence`") |
 
 **Pre-gate deterministico do `create-tasks` (template-fidelity):** roda ANTES
 do gate `docs-render` (skeleton antes de render). Motivacao: o `docs-render`
@@ -1280,6 +1282,11 @@ state-decisions.sh register --state-dir "$AGENTE_00C_STATE_DIR" \
 `/review-task` audita skips: feature com >2 gates skipados sem
 justificativa solida vira finding `quality-gate-bypass`.
 
+**EXCECAO — `convergence` NAO e elegivel a este opt-out**: o gate
+`execute-task → review-task` (linha `convergence` da tabela acima) e
+**incondicional** (FR-015, redacao MUST literal) — nenhuma flag de skip
+existe para ele. Ver "## Gate incondicional `convergence`" abaixo.
+
 **Posicao no Loop principal**: gates rodam **apos o passo 7 (avancar
 fase)** e **antes do passo 8 (gerar backup)** — depois da skill
 principal da fase concluir e gerar artefato, mas antes de finalizar a
@@ -1290,6 +1297,61 @@ backup (passo 8) com Schedule intent: none.
 `validate-docs-rendered`, `owasp-security`) devem ser pre-aprovadas
 no warm-up do `/feature-00c` (vide §0 do slash command). Sem warm-up,
 a primeira invocacao de gate trava aguardando permissao do operador.
+
+## Gate incondicional `convergence` (execute-task → review-task, US5/FR-015/FR-019)
+
+> Origem: feature `skill-converge`, FASE 4. Fecha o loop de
+> reconciliacao spec-vs-codigo entre o backlog executado e o codigo
+> real — complementa a tabela de "## Quality Gates complementares"
+> acima, mas com um ciclo de vida proprio: diferente dos 4 gates
+> daquela secao (todos elegiveis ao "Opt-out auditavel"), este e
+> **incondicional**, sem flag de skip (FR-015, redacao MUST literal).
+
+**Gatilho**: fase corrente `execute-task` E `tasks.md` sem nenhuma linha
+`- [ ]`/`- [~]` pendente (backlog da etapa esgotado — a proxima
+transicao natural seria `review-task`). Cheque isso ao final do passo 7
+(apos o loop de tasks completar), ANTES de permitir que `current_stage`
+mude para `review-task`:
+
+```bash
+_pendentes=$(grep -cE '^[[:space:]]*-[[:space:]]*\[[ ~]\]' "$FD/tasks.md" 2>/dev/null || echo 0)
+[ "$_pendentes" -eq 0 ] || _skip_gate=1   # ainda ha tasks a executar; nao invoque o gate agora
+# senao: Skill(skill="converge", args="<FD>")
+```
+
+**Registro — diferente dos 4 gates de "## Quality Gates complementares"**:
+`converge` auto-detecta o modo autonomo (via `AGENTE_00C_STATE_DIR`/
+presenca de `<projeto-alvo>/.claude/feature-00c-state/<short>/state.json`)
+e registra o PROPRIO two-step na sua ETAPA 8 (`state-decisions.sh
+register --agente "agente-00c-feature-orchestrator" --etapa "converge"`
++ `state-ondas.sh record-skill --skill converge`, enum
+`["aceitar","escalar-para-humano"]`). Voce (orquestrador) NAO chama
+`register`/`record-skill` de novo para este gate — evitaria Decisao
+duplicada para o mesmo evento.
+
+**Reacao ao retorno**:
+- `escolha = "escalar-para-humano"` (achado `CRITICAL` sem correcao
+  inline possivel — FR-019: "converge nao trava sozinha", quem decide o
+  bloqueio e voce) → emita `bloqueios.sh register` OBRIGATORIO ANTES de
+  fechar a onda.
+- Relatorio (ETAPA 7 da skill) diz "Fase de convergência apendada: FASE
+  N" → NAO transicione `current_stage` para `review-task` ainda; ha
+  tasks novas em `tasks.md` — a etapa `execute-task` continua
+  normalmente nelas nas proximas ondas.
+- Relatorio diz "nenhuma — feature convergida" → `execute-task` esta de
+  fato esgotada; prossiga a transicao para `review-task`.
+
+Ciclo (executar pendentes → converge → se apendou fase, volta a
+executar → converge de novo) e finito por construcao: dedup
+`existing-keys`/`gap-key` da propria skill (FR-011/FR-012) garante que a
+mesma divergencia nunca vira uma segunda tarefa; os gatilhos de aborto
+do passo 3 (`cycles.sh`/`circular.sh`) permanecem como rede de seguranca
+adicional caso o padrao normal nao se sustente.
+
+**Posicao no Loop principal**: mesmo slot dos demais gates — apos o
+passo 7 (loop de tasks de `execute-task`) e antes do passo 8 (gerar
+backup) — so que condicionado ao backlog estar esgotado (dispara so na
+onda em que a ultima task fecha, nao em toda onda de `execute-task`).
 
 ## Sugestoes para skills globais (FR-020)
 

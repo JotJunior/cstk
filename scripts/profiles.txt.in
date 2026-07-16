@@ -26,13 +26,19 @@ sdd:review-task
 # (mesma classe do bug do agente-00c-runtime abaixo).
 sdd:review-features
 # Skills-gate invocadas OBRIGATORIAMENTE pelos orquestradores apos
-# specify/plan/create-tasks (doc-quality, security, docs-render — ver
-# "Gates de qualidade" nos orchestrators). Commands/agents instalam sem
-# filtro de profile; sem os gates no sdd default a primeira onda falha
-# ao invocar a skill ausente.
+# specify/plan/create-tasks/execute-task (doc-quality, security,
+# docs-render, convergencia spec<->codigo — ver "Gates de qualidade"
+# nos orchestrators). Commands/agents instalam sem filtro de profile;
+# sem os gates no sdd default a primeira onda falha ao invocar a skill
+# ausente.
 sdd:validate-documentation
 sdd:validate-docs-rendered
 sdd:owasp-security
+# Gate incondicional entre execute-task e review-task (feature
+# skill-converge). Mesma razao do bloco acima: sem ela no sdd default,
+# a fronteira execute-task->review-task do agente-00c/feature-00c
+# invocaria uma skill nao instalada.
+sdd:converge
 # Runtime do agente-00C — infra interna consumida por /agente-00c.
 # Commands e agents de agente-00c sao instalados sem filtro de profile
 # (via _install_apply_extra_kinds), mas a runtime e uma skill e seria
@@ -54,6 +60,8 @@ complementary:owasp-security
 complementary:e2e-integration-flow
 complementary:validate-documentation
 complementary:validate-docs-rendered
+# Uso standalone (nao so gate) — mesma razao das duas linhas acima.
+complementary:converge
 complementary:initialize-docs
 # Visualizador on-demand do state.json do agente-00c/feature-00c
 # (arvore de decisoes em HTML). Uso pontual, sem sequencia.
