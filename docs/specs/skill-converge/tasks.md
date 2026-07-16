@@ -208,18 +208,24 @@ Ref: FR-015, FR-019 · quickstart.md Scenario 11
 
 Ref: plan.md §Project Structure
 
-- [ ] 5.1.1 `README.md` (linha com a contagem de skills): `"23 skills globais"` → `"24 skills globais"` (gateado por `tests/test_doc-counts.sh`)
-- [ ] 5.1.2 Nova entrada no `CHANGELOG.md` (MINOR — skill nova aditiva, sem breaking change) com link de referência correspondente no rodapé (conferir que a tag bate com a versão)
-- [ ] 5.1.3 Listar `converge` na tabela de skills do `README.md`, ao lado das demais skills complementares/SDD
+- [x] 5.1.1 `README.md` (linha com a contagem de skills): `"23 skills globais"` → `"24 skills globais"` (gateado por `tests/test_doc-counts.sh`) <!-- validado: tests/run.sh doc-counts PASS 3/FAIL 0 -->
+- [x] 5.1.2 Nova entrada no `CHANGELOG.md` (MINOR — skill nova aditiva, sem breaking change) com link de referência correspondente no rodapé (conferir que a tag bate com a versão) <!-- validado: [5.20.0] inserido + ref no rodape; comm -23 confirma zero versao sem ref -->
+- [x] 5.1.3 Listar `converge` na tabela de skills do `README.md`, ao lado das demais skills complementares/SDD <!-- validado: linha adicionada na tabela "Skills Complementares" (mesma familia de validate-documentation/validate-docs-rendered/owasp-security) -->
+- [x] 5.1.4 (emergente, nao previsto no plan/tasks original) Registrar `converge` em `scripts/profiles.txt.in` (`sdd` + `complementary`) — gap descoberto via `test_doc-counts.sh::scenario_profile_counts_match_sources` (drift README declarava 30 skills no profile `all`, fonte já tinha 31) e pela própria convenção do arquivo ("Quando adicionar uma nova skill... decidir aqui se ela pertence a `sdd` ou `complementary`"). Sem isso, `cstk install` (profile default `sdd`) não instalaria `converge`, e o gate incondicional wired na FASE 4 chamaria uma skill ausente — mesma classe de bug que motivou `validate-documentation`/`validate-docs-rendered`/`owasp-security` estarem em `sdd` (5.15.0). Perfis: `sdd` 16→17, `complementary` 12→13; `README.md` (tabela "Perfis de instalação", 2 ocorrências duplicadas) + `tests/cstk/test_build-release.sh` + `tests/cstk/test_quickstart-e2e.sh` (contagem hardcoded 16→17) atualizados; fixtures regeneradas via `tests/cstk/fixtures/regen.sh`. <!-- validado: tests/run.sh build-release PASS 11/FAIL 0; tests/run.sh quickstart-e2e PASS 5/FAIL 0 -->
+
+**Nota de escopo** (5.1.4): commit `scripts/profiles.txt.in` (fonte de verdade dos profiles — comentário
+do próprio arquivo manda decidir isso ao adicionar skill nova) diverge do plan.md/tasks.md original, que
+não previa esse arquivo. Registrado aqui em vez de silenciosamente, por ETAPA 9.3 de `execute-task`
+(trabalho emergente vira sub-tarefa nova antes de finalizar).
 
 ### 5.2 Verificação final `[A]`
 
 Ref: Constitution I (SDD recursivo), Constitution II (POSIX puro) · SC-001..SC-006
 
-- [ ] 5.2.1 Rodar `./tests/run.sh --check-coverage` — confirmar que os 5 scripts novos (`extract-intent.sh`, `extract-must.sh`, `severity.sh`, `converge-tasks.sh`, `path-contains.sh`) têm `tests/test_<nome>.sh` correspondente (regra de ouro do repo — nenhum órfão)
-- [ ] 5.2.2 Rodar `./tests/run.sh` completo — 0 falhas
-- [ ] 5.2.3 `cstk doctor` limpo após build local + install (drift zero na skill `converge` recém-adicionada)
-- [ ] 5.2.4 Rodar `/analyze` sobre `docs/specs/skill-converge/` (spec↔plan↔tasks) confirmando consistência pós-backlog (plan.md §Próximos passos item 3)
+- [x] 5.2.1 Rodar `./tests/run.sh --check-coverage` — confirmar que os 5 scripts novos (`extract-intent.sh`, `extract-must.sh`, `severity.sh`, `converge-tasks.sh`, `path-contains.sh`) têm `tests/test_<nome>.sh` correspondente (regra de ouro do repo — nenhum órfão) <!-- validado: "Cobertura completa: zero orfaos." -->
+- [~] 5.2.2 Rodar `./tests/run.sh` completo — 0 falhas <!-- em andamento: suite completa (nao --fast) disparada em background nesta onda (onda-011), rodando ha >10min (mais que o tipico ~5min, provavel contencao com os testes pontuais rodados em foreground nesta mesma onda: doc-counts/build-release/quickstart-e2e/profiles/doctor/install/list). Resultado ainda nao confirmado -- retomar para checar output antes de marcar [x]. Sinal forte de que vai passar: os 3 FAIL conhecidos (doc-counts) ja foram confirmados corrigidos isoladamente (PASS 3/FAIL 0), e todos os demais arquivos tocados/impactados (build-release, quickstart-e2e, profiles, doctor, install, list) ja rodaram isolados 100% verdes nesta mesma onda -->
+- [x] 5.2.3 `cstk doctor` limpo após build local + install (drift zero na skill `converge` recém-adicionada) <!-- validado: build-release.sh 5.20.0-dev + cstk install --from local; doctor: ok=44 edited=0 missing=0 orphan=0, converge [OK] -->
+- [x] 5.2.4 Rodar `/analyze` sobre `docs/specs/skill-converge/` (spec↔plan↔tasks) confirmando consistência pós-backlog (plan.md §Próximos passos item 3) <!-- validado: relatorio gerado nesta onda (dec-057); cobertura FR 20/20 (100%), constitution PASS nos 6 principios, 1 finding LOW nao-bloqueante (contracts/converge-interfaces.md banner [PROPOSTA] desatualizado) -->
 
 ---
 

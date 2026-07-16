@@ -59,7 +59,7 @@ curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh
 
 ```
 ├── global/                     # Skills globais (independentes de linguagem)
-│   └── skills/                 # 23 skills globais (cada skill é uma pasta)
+│   └── skills/                 # 24 skills globais (cada skill é uma pasta)
 │       ├── advisor/
 │       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
 │       ├── analyze/
@@ -145,6 +145,7 @@ Skills independentes que podem ser usados em qualquer momento:
 | **apply-insights** | "aplicar insights", "aplicar playbook", "melhorar claude.md" | Analisa o projeto e aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows. Renomeada de `insights` na 2.0.0 para evitar colisão com o `/insights` nativo do Claude Code (que tem função diferente — analisa suas sessões) |
 | **owasp-security** | Ao revisar segurança | Revisão **guiada por checklist** sobre um catálogo de padrões modernos (OWASP Top 10:2025, API/CI-CD, ASVS 5.0, LLM/Agentic, CWE Top 25:2025, NIST 800-63B-4, WebAuthn, OAuth 2.1, FAPI 2.0, pós-quântica). Assistente de revisão — **não** substitui auditoria/pentest. Profundidade sob demanda em `references/` |
 | **review-features** | "review features", "status global", "comparar features", "quais features priorizar" | Relatório comparativo de TODAS as features (cross-feature) com tabela agregada e sugestão de arquivar/abandonar/priorizar/continuar por feature |
+| **converge** | "converge", "o código bate com a spec?", "reconciliar spec com código" | Reconcilia a intenção documentada (spec/plan/tasks) contra o estado ATUAL do código e apenda gaps acionáveis como nova fase de tasks; classifica cada divergência como faltante/parcial/contradiz/não-solicitado. Gate automático incondicional entre `execute-task` e `review-task` nos orquestradores 00c |
 | **validate-documentation** | "validar documentação", "verificar UC" | Valida documentos individuais contra padrões de qualidade estrutural |
 | **validate-docs-rendered** | "validar renderização", "verificar diagramas" | Valida que a documentação Markdown renderiza corretamente (Mermaid, links internos, frontmatter, tabelas) |
 
@@ -515,7 +516,7 @@ Depois disso, comandos típicos:
 ```bash
 cstk --version                       # confirma instalação
 cstk install                         # instala perfil 'sdd' em ~/.claude/skills/
-cstk install --profile all           # instala TODAS as 29 skills (inclui language-go)
+cstk install --profile all           # instala TODAS as 31 skills (inclui language-go)
 cstk install advisor bugfix          # cherry-pick por nome
 cstk update                          # aplica novas releases preservando edits locais
 cstk update --force                  # sobrescreve skills com edição local
@@ -528,9 +529,9 @@ cstk self-update                     # atualiza o próprio binário cstk
 
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
-| `sdd` | 16 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 3 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 12 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 30 skills (sdd + complementary + language-go) | Instalação completa |
+| `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
+| `complementary` | 13 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 31 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`.
@@ -609,9 +610,9 @@ seu-projeto/
 
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
-| `sdd` | 16 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 3 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 12 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 30 skills (sdd + complementary + language-go) | Instalação completa |
+| `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
+| `complementary` | 13 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 31 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --help`.
