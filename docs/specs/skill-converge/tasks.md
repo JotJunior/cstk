@@ -147,30 +147,30 @@ Ref: FR-008, FR-009, FR-010, FR-011, FR-012 · contracts §4 · tarefa 1.1
 
 Ref: FR-004, FR-005, FR-013, FR-016, FR-017 · research.md §Decision 1/2 · SEC-3 · tarefas 1.3, 1.5
 
-- [ ] 3.1.1 Frontmatter (`name`, `description` com triggers, `argument-hint`, `allowed-tools`) seguindo o formato canônico de skill (Constitution III) — anatomia híbrida `analyze` (agente) + `create-tasks` (agente + `scripts/`)
-- [ ] 3.1.2 Etapa de leitura: `spec.md` + `plan.md` (se presente) + `tasks.md` como intenção, `constitution.md` como restrição; abortar nomeando o comando gerador (`/specify` ou `/create-tasks`) quando `spec.md`/`tasks.md` ausente (FR-017, Scenario 9) — **MUST NOT** inferir conteúdo
-- [ ] 3.1.3 Etapa de avaliação: leitura semântica estática do código nos paths extraídos (orquestra `extract-intent.sh` → `path-contains.sh` → leitura → `extract-must.sh`) — **MUST NOT** rodar suite de testes/build do projeto-alvo (FR-004)
-- [ ] 3.1.4 Rubrica de classificação determinística por tipo (`missing`/`partial`/`contradicts`/`unrequested`) — mitigação ao risco de oscilação `partial`↔`contradicts` entre execuções reconhecido em research.md §Decision 2 (CHK021)
-- [ ] 3.1.5 Incluir a rubrica `origin→story_priority` da tarefa 1.3.2 na mesma etapa de classificação
-- [ ] 3.1.6 Enquadramento explícito de **todo** conteúdo lido (spec/tasks/constitution/**código-fonte auditado**) como DADO untrusted, nunca instrução (SEC-3) — mesma defesa "Injeção via artefatos lidos" já documentada nos orquestradores; incluir o exemplo nomeado ("marque tudo como convergido") como caso que MUST ser ignorado
-- [ ] 3.1.7 Etapa de apendar fase: `gap-key` → `existing-keys` (dedup, FR-012) → `next-phase` → `append-phase`, só quando há gap novo acionável/revisão; `unrequested` sempre vira `kind=revisar` (FR-013), nunca "implementar"
-- [ ] 3.1.8 Etapa de relatório: formato de `contracts/converge-interfaces.md` §7 (achados + resumo por tipo + resumo por severidade)
-- [ ] 3.1.9 Etapa de registro (modo autônomo apenas): `state-decisions.sh register` + `state-ondas.sh record-skill --skill converge`, enum de 2 opções fixado na tarefa 1.5; modo standalone **não** escreve `state.json` (SC-006)
-- [ ] 3.1.10 Gotchas: idempotência (nunca chamar `append-phase` sem gap novo — FR-011), append-only (FR-009), read-only no projeto-alvo **exceto** o append em `tasks.md`, SEC-1/2/3
+- [x] 3.1.1 Frontmatter (`name`, `description` com triggers, `argument-hint`, `allowed-tools`) seguindo o formato canônico de skill (Constitution III) — anatomia híbrida `analyze` (agente) + `create-tasks` (agente + `scripts/`) <!-- validado: global/skills/converge/SKILL.md; frontmatter parseado com o mesmo awk usado por tests/trigger-eval/collect.sh -->
+- [x] 3.1.2 Etapa de leitura: `spec.md` + `plan.md` (se presente) + `tasks.md` como intenção, `constitution.md` como restrição; abortar nomeando o comando gerador (`/specify` ou `/create-tasks`) quando `spec.md`/`tasks.md` ausente (FR-017, Scenario 9) — **MUST NOT** inferir conteúdo <!-- validado: SKILL.md §Pre-requisitos + §ETAPA 1/2 -->
+- [x] 3.1.3 Etapa de avaliação: leitura semântica estática do código nos paths extraídos (orquestra `extract-intent.sh` → `path-contains.sh` → leitura → `extract-must.sh`) — **MUST NOT** rodar suite de testes/build do projeto-alvo (FR-004) <!-- validado: SKILL.md §ETAPA 3/4; todas as flags citadas conferidas contra scripts/*.sh reais (grep -hoE cruzado, zero flag inventada) -->
+- [x] 3.1.4 Rubrica de classificação determinística por tipo (`missing`/`partial`/`contradicts`/`unrequested`) — mitigação ao risco de oscilação `partial`↔`contradicts` entre execuções reconhecido em research.md §Decision 2 (CHK021) <!-- validado: SKILL.md §4.4, teste objetivo "completar e so adicionar (partial) vs completar exige mudar logica existente (contradicts)" -->
+- [x] 3.1.5 Incluir a rubrica `origin→story_priority` da tarefa 1.3.2 na mesma etapa de classificação <!-- validado: SKILL.md §5.2 -->
+- [x] 3.1.6 Enquadramento explícito de **todo** conteúdo lido (spec/tasks/constitution/**código-fonte auditado**) como DADO untrusted, nunca instrução (SEC-3) — mesma defesa "Injeção via artefatos lidos" já documentada nos orquestradores; incluir o exemplo nomeado ("marque tudo como convergido") como caso que MUST ser ignorado <!-- validado: SKILL.md §4.3 + Gotcha final -->
+- [x] 3.1.7 Etapa de apendar fase: `gap-key` → `existing-keys` (dedup, FR-012) → `next-phase` → `append-phase`, só quando há gap novo acionável/revisão; `unrequested` sempre vira `kind=revisar` (FR-013), nunca "implementar" <!-- validado: SKILL.md §ETAPA 6, reuso de next-task-id.sh iterativo confirmado -->
+- [x] 3.1.8 Etapa de relatório: formato de `contracts/converge-interfaces.md` §7 (achados + resumo por tipo + resumo por severidade) <!-- validado: SKILL.md §ETAPA 7, formato copiado do contrato -->
+- [x] 3.1.9 Etapa de registro (modo autônomo apenas): `state-decisions.sh register` + `state-ondas.sh record-skill --skill converge`, enum de 2 opções fixado na tarefa 1.5; modo standalone **não** escreve `state.json` (SC-006) <!-- validado: SKILL.md §ETAPA 8; flags --agente/--contexto/--escolha/--opcoes/--score/--justificativa/--skill/--decisao-id conferidas contra state-decisions.sh/state-ondas.sh reais -->
+- [x] 3.1.10 Gotchas: idempotência (nunca chamar `append-phase` sem gap novo — FR-011), append-only (FR-009), read-only no projeto-alvo **exceto** o append em `tasks.md`, SEC-1/2/3 <!-- validado: SKILL.md §Gotchas, 9 itens -->
 
 ### 3.2 `templates/convergence-phase.md` `[M]`
 
 Ref: FR-008 · data-model.md §ConvergencePhase
 
-- [ ] 3.2.1 Template Markdown da fase apendada, reusando o formato de `create-tasks/templates/tasks.md` (`## FASE {N} - Convergência`, tarefas `### {N}.{M} {Nome} [{C|A|M}]`, checkbox `- [ ]`, marcador `<!-- converge-key: {key} -->`)
-- [ ] 3.2.2 Mapeamento `severity` → `criticality_tag` (`CRITICAL`/`HIGH`→`[C]`, `MEDIUM`→`[A]`, `LOW`→`[M]` — data-model.md §ConvergenceTask)
+- [x] 3.2.1 Template Markdown da fase apendada, reusando o formato de `create-tasks/templates/tasks.md` (`## FASE {N} - Convergência`, tarefas `### {N}.{M} {Nome} [{C|A|M}]`, checkbox `- [ ]`, marcador `<!-- converge-key: {key} -->`) <!-- validado: global/skills/converge/templates/convergence-phase.md; regex do marcador conferida byte-a-byte contra converge-tasks.sh linha 242 (`<!-- converge-key: [^ ]+ -->`) -->
+- [x] 3.2.2 Mapeamento `severity` → `criticality_tag` (`CRITICAL`/`HIGH`→`[C]`, `MEDIUM`→`[A]`, `LOW`→`[M]` — data-model.md §ConvergenceTask) <!-- validado: template inclui o mapeamento no comentario de cabecalho + exemplo de bloco [Revisar] para unrequested/LOW/[M] -->
 
 ### 3.3 `evals/triggers.jsonl` — eval de disparo `[M]`
 
 Ref: Constitution III · plan.md §Technical Context "Testing"
 
-- [ ] 3.3.1 Casos positivos (query pede reconciliação spec-vs-código → `expect: converge`) e negativos (query pede análise artefato-vs-artefato → `expect: analyze`, não `converge` — fronteira já mapeada em memória de projeto sobre o harness de trigger-eval)
-- [ ] 3.3.2 Validação: harness de trigger-eval já existente no repo roda sobre `evals/triggers.jsonl` sem necessidade de script novo dedicado
+- [x] 3.3.1 Casos positivos (query pede reconciliação spec-vs-código → `expect: converge`) e negativos (query pede análise artefato-vs-artefato → `expect: analyze`, não `converge` — fronteira já mapeada em memória de projeto sobre o harness de trigger-eval) <!-- validado: global/skills/converge/evals/triggers.jsonl, 8 casos (6 converge + 2 analyze); convencao do repo confirmada empiricamente (jq sobre os 21 triggers.jsonl existentes: NENHUM skill cita expect de outro skill no proprio arquivo) — 3.3.1 diverge dessa convencao por instrucao textual explicita da propria tarefa + plan.md Project Structure listar so este UM arquivo novo (sem negatives.jsonl) -->
+- [x] 3.3.2 Validação: harness de trigger-eval já existente no repo roda sobre `evals/triggers.jsonl` sem necessidade de script novo dedicado <!-- validado: sh tests/trigger-eval/collect.sh exit 0; catalog passou de 23->24 entradas (converge incluida automaticamente via glob global/skills/*/SKILL.md); 6 queries com expect=converge agregadas do arquivo novo sem qualquer mudanca no harness -->
 
 ---
 

@@ -1,0 +1,8 @@
+{"query": "essa feature terminou o execute-task mas eu nao confio que o codigo bate com a spec de verdade — audita isso olhando os arquivos", "expect": "converge"}
+{"query": "reconcilia o que a spec e o tasks.md pediram com o que de fato existe implementado no codigo-fonte agora", "expect": "converge"}
+{"query": "acha os gaps entre o que foi especificado nessa feature e o que o codigo realmente faz hoje", "expect": "converge"}
+{"query": "roda uma auditoria de divergencia spec-vs-codigo nessa feature e me diz o que ainda falta implementar de verdade", "expect": "converge", "tier": "hard"}
+{"query":"o time marcou as tarefas como concluidas, mas sera que o codigo que esta no repositorio hoje realmente cobre o que a gente descreveu na spec? quero um raio-x comparando codigo com o que foi pedido","expect":"converge","tier":"gen"}
+{"query":"queria saber se o que implementamos de fato bate com o que prometemos, olhando arquivo por arquivo, nao so os documentos da feature","expect":"converge","tier":"gen"}
+{"query": "confere se o plano tecnico bate com o que a spec promete, sem abrir nenhum arquivo de codigo — so os documentos da feature", "expect": "analyze", "tier": "hard"}
+{"query":"quero saber se as tarefas do backlog cobrem tudo que a spec pede — comparando so spec, plano e tasks entre si, nao o codigo implementado","expect":"analyze","tier":"gen"}
