@@ -300,3 +300,38 @@ flowchart TD
 | Cobertura requisito-sem-task | Requisito de `spec.md` sem task/path associado em `tasks.md` | spec.md §Edge Cases — já é responsabilidade de `analyze` (Gaps de Cobertura), fora do escopo de `converge` |
 | Flag de opt-out da execução automática | Nenhum flag para pular o gate dentro de execução autônoma | FR-015 é MUST incondicional, redação literal |
 | Arquivo lateral de estado (`.converge-state`) | Persistência de gap-keys fora do `tasks.md` | research.md §Decision 2 — rejeitado; `tasks.md` já é a fonte de verdade da dedup, artefato novo contraria a clarification "sem novo arquivo dedicado" |
+
+## FASE 6 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código, gate incondicional execute-task→review-task). Cada
+> tarefa abaixo corresponde a um achado (`Gap`) entre o que
+> `spec.md`/`plan.md`/`tasks.md` descreveram e o estado presente do
+> código. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 6.1 Atualizar banner `[PROPOSTA]` desatualizado em `contracts/converge-interfaces.md` `[A]`
+
+Ref: 1.1 · tipo: `contradicts` · severidade: `MEDIUM`
+
+O banner no topo de `docs/specs/skill-converge/contracts/converge-interfaces.md`
+(linha 3) afirma: "TODAS as assinaturas abaixo descrevem scripts e uma
+skill que **ainda não existem** neste repositório (verificado nesta onda:
+`global/skills/converge/` ausente)". Essa afirmação **contradiz** o estado
+atual do código: `global/skills/converge/` existe e contém os 5 scripts
+(`path-contains.sh`, `extract-intent.sh`, `extract-must.sh`,
+`severity.sh`, `converge-tasks.sh`) + `SKILL.md` + `templates/` +
+`evals/`, todos implementados e testados (FASE 2/3, suite completa 1678
+PASS/0 FAIL). O mesmo padrão `[PROPOSTA]` se repete nos headers de cada
+seção (§2, §3, §4, §5 — linhas 53/76/119/172). Achado já identificado como
+finding LOW não-bloqueante pela verificação `/analyze` da tarefa 5.2.4
+(dec-057); esta tarefa converte o achado em ação concreta de correção.
+
+- [x] 6.1.1 Remover/atualizar o banner da linha 3 e as tags `[PROPOSTA]`
+  dos headers §2-§5 de `contracts/converge-interfaces.md`, refletindo que
+  as interfaces descritas estão implementadas e validadas (marcar
+  `[REAL]` ou remover a tag, conforme convenção já usada no próprio
+  arquivo para dependências reusadas) <!-- validado: banner (linhas 3-12) reescrito para "[REAL — implementado e validado]"; tags de header trocadas [PROPOSTA]->[REAL] em §2/§3/§4/§5 E TAMBEM §6 (linha 186, `path-contains.sh` — escopo real da correcao superou o previsto na tarefa: a mesma tag desatualizada tambem estava presente em §6, corrigida por completude); grep "PROPOSTA" no arquivo apos a edicao: 0 ocorrencias -->
+
+<!-- converge-key: af818c0a0b7a -->
+

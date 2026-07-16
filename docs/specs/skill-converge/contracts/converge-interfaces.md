@@ -1,14 +1,15 @@
 # Contracts: Skill Converge — Interfaces
 
-> **[PROPOSTA — a validar na implementação]**: TODAS as assinaturas abaixo
-> descrevem scripts e uma skill que **ainda não existem** neste repositório
-> (verificado nesta onda: `global/skills/converge/` ausente). São contratos de
-> **design projetados do zero**, não interfaces reais afirmadas. Cada
-> assinatura MUST ser reconfirmada/ajustada em `/execute-task`. Nenhum valor,
-> flag ou caminho abaixo é dado factual observado — é proposta de arquitetura
-> (Constitution VI: distinção explícita entre "projetado" e "afirmado como
-> real"). Onde um contrato reusa algo **existente**, está marcado `[REAL]` com
-> o path verificado.
+> **[REAL — implementado e validado]**: todas as assinaturas abaixo descrevem
+> scripts e a skill `converge` **existentes** neste repositório em
+> `global/skills/converge/` (`extract-intent.sh`, `extract-must.sh`,
+> `severity.sh`, `converge-tasks.sh`, `path-contains.sh`, `SKILL.md`,
+> `templates/`, `evals/`), com cobertura de teste dedicada e suite completa
+> verde (`tests/run.sh`: 1678 PASS / 0 FAIL / 0 ERROR / 0 ORPHANS). As
+> assinaturas foram reconfirmadas/ajustadas durante `/execute-task` (FASE 2/3)
+> e reauditadas pelo gate `converge` (execução dogfooding desta própria
+> feature, onda-012, dec-063). Onde um contrato reusa algo de fora desta
+> feature, permanece marcado `[REAL]` com o path verificado.
 
 Convenção de estilo: nomes de scripts, flags, subcomandos e mensagens de
 diagnóstico em inglês onde forem sintaxe; texto de UI/erro pode ser pt-br
@@ -50,7 +51,7 @@ incondicional (sem flag). Além do report, registra Decisão auditável (§8).
 
 ---
 
-## 2. `scripts/extract-intent.sh` — extração determinística de paths [PROPOSTA]
+## 2. `scripts/extract-intent.sh` — extração determinística de paths [REAL]
 
 Parseia `tasks.md` (primário) e `plan.md` (secundário, se presente) para os
 paths de arquivo declarados + sua origem (task/FR). Determinístico (FR-011).
@@ -73,7 +74,7 @@ extract-intent.sh --tasks <tasks.md> [--plan <plan.md>]
 
 ---
 
-## 3. `scripts/extract-must.sh` — princípios MUST da constitution [PROPOSTA]
+## 3. `scripts/extract-must.sh` — princípios MUST da constitution [REAL]
 
 Extrai princípios marcados `MUST`/`NON-NEGOTIABLE` de `constitution.md`.
 
@@ -116,7 +117,7 @@ mesmo assim é corretamente capturado por essa segunda condição.
 
 ---
 
-## 4. `scripts/converge-tasks.sh` — mecânica do `tasks.md` [PROPOSTA]
+## 4. `scripts/converge-tasks.sh` — mecânica do `tasks.md` [REAL]
 
 Agrupa as operações determinísticas sobre o `tasks.md` (espelha o padrão de
 `create-tasks/scripts/next-task-id.sh` `[REAL]`). Subcomandos:
@@ -169,7 +170,7 @@ inválida; `2` erro de uso.
 
 ---
 
-## 5. `scripts/severity.sh` — função pura de severidade [PROPOSTA]
+## 5. `scripts/severity.sh` — função pura de severidade [REAL]
 
 ```
 severity.sh --type <missing|partial|contradicts|unrequested> \
@@ -182,7 +183,7 @@ Exit `0` sucesso; `2` argumento inválido.
 
 ---
 
-## 6. `scripts/path-contains.sh` — contenção de blast radius (FR-018) [PROPOSTA]
+## 6. `scripts/path-contains.sh` — contenção de blast radius (FR-018) [REAL]
 
 ```
 path-contains.sh --root <dir-projeto-alvo> --path <path-declarado>
