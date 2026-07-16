@@ -31,13 +31,22 @@ Ausência de qualquer um ⇒ abortar com mensagem indicando o artefato faltante
 e o comando que o gera (`/specify` ou `/create-tasks`) — MUST NOT inferir
 conteúdo.
 
-**Saída**: `ConvergenceReport` (stdout, formato estruturado — ver §5) +
+**Resolução de `--root`** (fecha CHK017, tarefa 1.2): antes da primeira
+chamada a `path-contains.sh` (§6), a skill resolve automaticamente o
+diretório-raiz do projeto-alvo (flag explícita → `.git/` ascendente →
+`docs/constitution.md` ascendente → abort) — ver §6 para a regra completa.
+Essa resolução acontece **uma vez**, de forma transparente, **sem exigir
+input adicional do usuário**: quem invoca `Skill(converge)` em modo
+standalone não precisa saber ou informar a raiz do projeto manualmente, a
+menos que queira sobrepor a detecção automática via `--root`.
+
+**Saída**: `ConvergenceReport` (stdout, formato estruturado — ver §7) +
 eventual append no `tasks.md` (§4). Sem `state.json` a escrever (SC-006).
 
 ### Modo autônomo (FR-015, via orquestrador)
 
 Invocada pelo orquestrador na fronteira `execute-task → review-task`,
-incondicional (sem flag). Além do report, registra Decisão auditável (§6).
+incondicional (sem flag). Além do report, registra Decisão auditável (§8).
 
 ---
 
@@ -113,6 +122,22 @@ falhar (exit `1`, sem escrever) se `<novaFase.md>` estiver vazio (guarda
 FR-010). Idempotência (FR-011): chamador só invoca quando há gaps novos; se
 nada muda, este subcomando não é chamado ⇒ `tasks.md` byte-idêntico.
 
+### `gap-key`
+
+```
+converge-tasks.sh gap-key --path <p> --type <t> --origin <o>
+```
+Calcula e imprime **uma** `gap_key` nova: `sha256-12(normalize(path) + " " +
+type + " " + normalize(origin))`, onde `normalize()` segue a definição
+fechada em `data-model.md` §Entity Gap "Definição de `normalize()`" (tarefa
+1.1, CHK011). Responsabilidade distinta de `existing-keys`: este subcomando
+**calcula** uma chave a partir de um Gap recém-classificado pelo agente;
+`existing-keys` só **lê** marcadores `<!-- converge-key: ... -->` já
+gravados em execuções anteriores — os dois nunca se sobrepõem. `--type` MUST
+estar em `{missing, partial, contradicts, unrequested}` (mesmo enum de
+`severity.sh` §5); valor fora do enum ⇒ exit `2`. Determinístico (mesma
+tripla `path`/`type`/`origin` ⇒ sempre a mesma `gap_key`, FR-012).
+
 **Exit codes** (todos os subcomandos): `0` ok; `1` erro de I/O / entrada
 inválida; `2` erro de uso.
 
@@ -142,6 +167,32 @@ se está **dentro** de `--root`. Exit `0` = contido (seguro ler); exit `1` =
 fora do projeto-alvo (⇒ achado `missing`/inconclusivo, arquivo NÃO é lido);
 exit `2` erro de uso. Standalone (não depende de state-dir do orquestrador —
 research §Decision 6).
+
+### Resolução automática de `--root` em modo standalone (fecha CHK017, tarefa 1.2)
+
+Em modo autônomo, `--root` é sempre passado explicitamente pelo orquestrador
+(`target_project_path` do `state.json`). Em modo **standalone** (FR-014), não
+há `state.json`; quando a flag não é fornecida, `--root` é resolvido pela
+seguinte ordem de precedência, aplicada **uma única vez** por invocação da
+skill (não por chamada individual do script) e reusada em todas as chamadas
+subsequentes de `path-contains.sh` dentro da mesma execução:
+
+1. **flag `--root` explícita**, se fornecida — vence sempre, sem busca;
+2. senão, **busca ascendente a partir do CWD por `.git/`** (raiz do
+   repositório — sinal mais confiável de "raiz de projeto" no ambiente do
+   toolkit);
+3. senão, **fallback: busca ascendente por `docs/constitution.md`** (raiz do
+   projeto-alvo pela convenção já em uso no restante do toolkit — ver
+   `agente-00c-runtime`);
+4. a busca ascendente tem **teto de 20 níveis** (evita loop em symlink
+   circular ou filesystem malformado);
+5. **nenhum marcador encontrado** dentro do teto ⇒ `path-contains.sh` (e a
+   skill que o invoca) MUST abortar com mensagem indicando que `--root` deve
+   ser passado explicitamente — fail-closed, nunca assume o CWD cego (mesmo
+   padrão de FR-017). Exit `2` (erro de uso — mesma família de "invocação
+   incompleta" já usada pelos demais subcomandos deste contrato; distinto de
+   exit `1`, que significa "root foi determinado, mas o path avaliado está
+   fora dele").
 
 ---
 
@@ -176,6 +227,25 @@ localização rastreável.
 Reusa o runtime existente (verificado): `state-decisions.sh register` +
 `state-ondas.sh record-skill` em
 `global/skills/agente-00c-runtime/scripts/` `[REAL]`.
+
+> **Nota — enum de `--escolha` com 2 valores, divergência intencional do
+> padrão genérico (resolve CHK025, tarefa 1.5)**: os demais quality gates do
+> toolkit (`validate-documentation`, `owasp-security`) usam um enum de 3
+> valores (`corrigir-agora` incluso). Este contrato mantém **2** valores
+> deliberadamente — `corrigir-agora` não tem correspondente semântico na
+> arquitetura do `converge`: **todo** achado acionável vira tarefa residual
+> apendada em `tasks.md` (FR-008/FR-013, data-model.md `ConvergencePhase`),
+> nunca correção inline durante o próprio gate (distinto de
+> `validate-documentation`/`owasp-security`, cujos findings podem ser
+> corrigidos no artefato imediatamente). Decisão registrada e auditada em
+> `dec-027`/`dec-028` (onda `onda-005`, etapa `create-tasks`) —
+> `dec-028` corrige um erro clerical de `dec-027` (citava CHK011 em vez de
+> CHK025 no campo `--contexto`; escolha/justificativa/score de `dec-027`
+> permanecem corretos). **Reversibilidade explícita**: se o dono do produto
+> discordar após revisão, a troca é puramente textual — expandir o enum de
+> 2 para 3 valores (`--opcoes '["aceitar","corrigir-agora",
+> "escalar-para-humano"]'` neste contrato + no `SKILL.md`, tarefa 3.1.9) —
+> sem qualquer refatoração de código ou de scripts.
 
 ```
 state-decisions.sh register --state-dir <SD> \
