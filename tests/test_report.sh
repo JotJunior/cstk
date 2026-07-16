@@ -239,6 +239,28 @@ JSON
   assert_stdout_contains "Proposta legada em portugues" || return 1
 }
 
+# Regressao: feature-00c-clarify-answerer grava `references` como array de
+# OBJETOS estruturados (ex.: {"fonte":"spec_corrente","fr":"FR-007"}), nao
+# array de strings. A secao 3 usava `join(", ")` direto, que so aceita
+# strings — falhava com "jq: error ... string ("") and object (...) cannot
+# be added" (descoberto em execucao real, onda-012 de skill-converge).
+scenario_generate_referencias_objeto_estruturado_nao_quebra() {
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  capture "$ON" start --state-dir "$_sd"
+  capture "$DEC" register --state-dir "$_sd" \
+    --agente "feature-00c-clarify-answerer" --etapa "clarify" \
+    --contexto "Decisao com referencias estruturadas (fonte+fr)" \
+    --opcoes '["A","B"]' --escolha "A" \
+    --justificativa "Justificativa de tamanho ok aqui sim para teste" \
+    --referencias '[{"fonte":"spec_corrente","fr":"FR-007"},{"fonte":"constitution","principio":"VI","version":"1.2.0"}]'
+  capture "$ON" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate com referencias objeto" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "fonte=spec_corrente fr=FR-007" || return 1
+  assert_stdout_contains "fonte=constitution principio=VI version=1.2.0" || return 1
+}
+
 # ---------- emit (FR-018): resolve caminho por flavor + secrets-filter interno ----------
 
 scenario_emit_feature00c_grava_arquivo_filtrado() {
