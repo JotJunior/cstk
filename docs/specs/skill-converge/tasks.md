@@ -93,31 +93,31 @@ Ref: checklists/requirements.md CHK025 · contracts/converge-interfaces.md §8
 
 Ref: FR-014, FR-018 · SEC-2 (plan.md §Security Considerations) · contracts §6 · tarefa 1.2
 
-- [ ] 2.1.1 Implementar `--root <dir>`/`--path <p>`, resolução via `realpath` com fallback POSIX `cd`+`pwd -P` (Constitution II, research.md §Decision 6)
-- [ ] 2.1.2 Canonicalizar symlinks **antes** de checar prefixo (ordem crítica — SEC-2); path irresolvível ⇒ exit 1 fail-closed (nunca fail-open)
-- [ ] 2.1.3 Implementar a resolução automática de `--root` quando a flag não é passada (regra da tarefa 1.2.1: `.git/` ascendente → `docs/constitution.md` ascendente → abort)
-- [ ] 2.1.4 Todas as variáveis quotadas (`"$var"`), zero `eval` sobre conteúdo derivado de artefato lido (SEC-1)
-- [ ] 2.1.5 Teste: `tests/test_path-contains.sh` — path dentro/fora do root; paths adversariais (`"; rm -rf`, `$(...)`, backtick — SEC-1); symlink dentro do root apontando para fora (Scenario 16, SEC-2/CHK007); `--root` ausente resolvido via `.git/`/`docs/constitution.md`/abort (tarefa 1.2)
+- [x] 2.1.1 Implementar `--root <dir>`/`--path <p>`, resolução via `realpath` com fallback POSIX `cd`+`pwd -P` (Constitution II, research.md §Decision 6) <!-- validado: global/skills/converge/scripts/path-contains.sh -->
+- [x] 2.1.2 Canonicalizar symlinks **antes** de checar prefixo (ordem crítica — SEC-2); path irresolvível ⇒ exit 1 fail-closed (nunca fail-open) <!-- validado: _pc_resolve canonicaliza o ancestral existente antes de recompor a cauda + normalizacao lexical colapsa ".." na cauda inexistente (fecha gap fail-open descoberto em revisao) -->
+- [x] 2.1.3 Implementar a resolução automática de `--root` quando a flag não é passada (regra da tarefa 1.2.1: `.git/` ascendente → `docs/constitution.md` ascendente → abort) <!-- validado: _pc_auto_root + _pc_ascend_find, teto 20 niveis -->
+- [x] 2.1.4 Todas as variáveis quotadas (`"$var"`), zero `eval` sobre conteúdo derivado de artefato lido (SEC-1) <!-- validado: shellcheck -s sh limpo (SC2086 unico ponto, com disable justificado + set -f); manual smoke com $(...)/backtick/";" confirma nao-execucao -->
+- [x] 2.1.5 Teste: `tests/test_path-contains.sh` — path dentro/fora do root; paths adversariais (`"; rm -rf`, `$(...)`, backtick — SEC-1); symlink dentro do root apontando para fora (Scenario 16, SEC-2/CHK007); `--root` ausente resolvido via `.git/`/`docs/constitution.md`/abort (tarefa 1.2) <!-- validado: 20 scenarios, PASS 20 FAIL 0 ERROR 0; --check-coverage zero orfaos -->
 
 ### 2.2 `scripts/extract-intent.sh` — extração de paths + origem `[A]`
 
 Ref: FR-001, FR-003, FR-007 · contracts §2 · research.md §Decision 4 · tarefa 1.1
 
-- [ ] 2.2.1 Parsear `tasks.md` (fonte primária): paths em backticks e em linhas de subtarefa, capturando o heading `### N.M` mais próximo como origem
-- [ ] 2.2.2 Parsear `plan.md` (fonte secundária, se presente) §Project Structure para paths adicionais com origem = FR mais próximo
-- [ ] 2.2.3 Saída TSV determinística (`path`, `origin`), ordenação estável (mesma entrada ⇒ mesma saída, mesma ordem)
-- [ ] 2.2.4 Aplicar `normalize(path)`/`normalize(origin)` da tarefa 1.1 antes de compor a chave consumida por outros helpers
-- [ ] 2.2.5 Todas as variáveis quotadas, zero `eval` (SEC-1)
-- [ ] 2.2.6 Teste: `tests/test_extract-intent.sh` — paths em backtick/subtarefa de `tasks.md`, `plan.md` ausente (Scenario 14), paths adversariais no conteúdo lido, equivalência de `normalize()` (`./scripts/foo.sh` vs `scripts/foo.sh`, `scripts//foo.sh` vs `scripts/foo.sh`)
+- [x] 2.2.1 Parsear `tasks.md` (fonte primária): paths em backticks e em linhas de subtarefa, capturando o heading `### N.M` mais próximo como origem <!-- validado: global/skills/converge/scripts/extract-intent.sh, so headings "### N.M" + linhas "- [ |x|~|!]" sao varridas -->
+- [x] 2.2.2 Parsear `plan.md` (fonte secundária, se presente) §Project Structure para paths adicionais com origem = FR mais próximo <!-- validado: FR so atribuido quando literal na MESMA linha do path (nunca carry-forward, evita fabricar associacao — Constitution VI) -->
+- [x] 2.2.3 Saída TSV determinística (`path`, `origin`), ordenação estável (mesma entrada ⇒ mesma saída, mesma ordem) <!-- validado: ordem de scan top-to-bottom preservada; scenario_saida_deterministica_entre_execucoes -->
+- [x] 2.2.4 Aplicar `normalize(path)`/`normalize(origin)` da tarefa 1.1 antes de compor a chave consumida por outros helpers <!-- validado: normalize_path/normalize_origin em awk, equivalencia das 3 formas confirmada -->
+- [x] 2.2.5 Todas as variáveis quotadas, zero `eval` (SEC-1) <!-- validado: shellcheck -s sh limpo; smoke adversarial ($(whoami)/backtick/;rm-rf) confirma nao-execucao -->
+- [x] 2.2.6 Teste: `tests/test_extract-intent.sh` — paths em backtick/subtarefa de `tasks.md`, `plan.md` ausente (Scenario 14), paths adversariais no conteúdo lido, equivalência de `normalize()` (`./scripts/foo.sh` vs `scripts/foo.sh`, `scripts//foo.sh` vs `scripts/foo.sh`) <!-- validado: 22 scenarios, PASS 22 FAIL 0 ERROR 0; --check-coverage zero orfaos -->
 
 ### 2.3 `scripts/extract-must.sh` — princípios MUST da constitution `[A]`
 
 Ref: FR-002, FR-006 · contracts §3
 
-- [ ] 2.3.1 Parsear `constitution.md`, extraindo linhas com `MUST`/`NON-NEGOTIABLE` (identificador + título curto)
-- [ ] 2.3.2 `constitution.md` ausente ⇒ exit 1 (Scenario 15, tarefa 1.4.3) sem abortar a skill inteira — demais critérios de severidade seguem se aplicando
-- [ ] 2.3.3 Todas as variáveis quotadas, zero `eval` sobre conteúdo lido do arquivo (SEC-1)
-- [ ] 2.3.4 Teste: `tests/test_extract-must.sh` — constitution com múltiplos MUST, constitution ausente (exit 1), conteúdo adversarial no arquivo lido (SEC-1)
+- [x] 2.3.1 Parsear `constitution.md`, extraindo linhas com `MUST`/`NON-NEGOTIABLE` (identificador + título curto) <!-- validado: global/skills/converge/scripts/extract-must.sh; DESVIO DELIBERADO da premissa de numeracao romana fixa — o template generico da skill `constitution` e o principio-base obrigatorio que ela semeia (SKILL.md) nao usam numeral algum, entao a deteccao aceita heading COM ou SEM prefixo curto (romano/arabico), usando o proprio titulo como identificador quando a fonte nao declara numeracao (nunca fabrica uma) -->
+- [x] 2.3.2 `constitution.md` ausente ⇒ exit 1 (Scenario 15, tarefa 1.4.3) sem abortar a skill inteira — demais critérios de severidade seguem se aplicando <!-- validado: script isolado retorna 1; decisao de "nao abortar a skill inteira" fica para a orquestracao da SKILL.md (FASE 3, fora do escopo desta tarefa de script) -->
+- [x] 2.3.3 Todas as variáveis quotadas, zero `eval` sobre conteúdo lido do arquivo (SEC-1) <!-- validado: shellcheck -s sh limpo; smoke adversarial ($(whoami)/backtick/;rm-rf dentro do MUST) confirma nao-execucao -->
+- [x] 2.3.4 Teste: `tests/test_extract-must.sh` — constitution com múltiplos MUST, constitution ausente (exit 1), conteúdo adversarial no arquivo lido (SEC-1) <!-- validado: 14 scenarios, PASS 14 FAIL 0 ERROR 0; --check-coverage zero orfaos -->
 
 ### 2.4 `scripts/severity.sh` — função pura de severidade `[A]`
 

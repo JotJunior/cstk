@@ -88,6 +88,32 @@ identificador + título curto (ex.: `II\tScripts POSIX sh Puros`).
 por violação de `MUST` fica indisponível, Edge Case — demais severidades
 seguem); `2` erro de uso.
 
+### Nota de implementação — heading sem numeral fixo (fechado na tarefa 2.3)
+
+O exemplo `II\t...` acima **não** implica que todo `constitution.md` numera
+principios em algarismo romano: o template genérico da skill `constitution`
+(`global/skills/constitution/templates/constitution.md`) usa placeholders
+sem numeração (`### [PRINCIPLE_1_NAME]`), e o próprio princípio-base
+obrigatório que essa skill semeia em toda constituição gerada
+(`SKILL.md` ETAPA 3.2) também não tem numeral: `### Veracidade de Dados —
+Zero Fabricacao (NON-NEGOTIABLE)`. A numeração romana é uma escolha
+estilística que **este repositório** fez para a própria
+`docs/constitution.md` — não é garantida em `constitution.md` de outros
+projetos-alvo.
+
+`extract-must.sh` por isso aceita heading `### <texto>` **com ou sem**
+prefixo curto de identificador (romano `I.`/`II.` ou arábico `1.`/`2.`);
+quando ausente, usa o próprio título (limpo) como identificador — nunca
+fabrica uma numeração que a fonte não declara (Constitution VI). Um
+princípio é emitido se **pelo menos um** dos dois sinais, ambos puramente
+textuais, estiver presente: (a) o heading termina literalmente em
+`(NON-NEGOTIABLE)`; ou (b) o corpo do princípio (até o próximo `### ` ou
+EOF) contém uma linha `**MUST:**`. Isso cobre também o caso de um
+princípio com regras `MUST` reais cujo heading não leva o sufixo — ex.:
+o Princípio III desta própria constituição (`Formato Canônico de Skill`)
+tem bloco `**MUST:**` mas não carrega `(NON-NEGOTIABLE)` no heading, e
+mesmo assim é corretamente capturado por essa segunda condição.
+
 ---
 
 ## 4. `scripts/converge-tasks.sh` — mecânica do `tasks.md` [PROPOSTA]
