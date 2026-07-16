@@ -123,21 +123,21 @@ Ref: FR-002, FR-006 · contracts §3
 
 Ref: FR-006, FR-020 · research.md §Decision 3 · contracts §5
 
-- [ ] 2.4.1 Implementar a tabela de decisão em ordem (MUST violado → `CRITICAL`; `missing`/`contradicts`/`partial` + `P1` → `HIGH`; + `P2`/`P3` → `MEDIUM`; `unrequested` → `LOW`, independente de prioridade)
-- [ ] 2.4.2 Validar `--type`/`--priority`/`--must-violated` contra os enums fechados; argumento fora do enum ⇒ exit 2 (superfície mínima por design — 3 flags enum-fechadas, sem I/O de arquivo, sem `eval` possível)
-- [ ] 2.4.3 Teste: `tests/test_severity.sh` — todas as combinações da tabela (research.md §Decision 3), incluindo `unrequested` + MUST-violado → `CRITICAL` (CHK023: a regra "MUST vence tudo, avaliada em ordem" não deve degradar para a linha `unrequested→LOW`)
+- [x] 2.4.1 Implementar a tabela de decisão em ordem (MUST violado → `CRITICAL`; `missing`/`contradicts`/`partial` + `P1` → `HIGH`; + `P2`/`P3` → `MEDIUM`; `unrequested` → `LOW`, independente de prioridade) <!-- validado: global/skills/converge/scripts/severity.sh; priority=none (sem story associada) tratado como P2/P3 -> MEDIUM, nunca escala para HIGH por omissao (data-model.md fecha CHK018) -->
+- [x] 2.4.2 Validar `--type`/`--priority`/`--must-violated` contra os enums fechados; argumento fora do enum ⇒ exit 2 (superfície mínima por design — 3 flags enum-fechadas, sem I/O de arquivo, sem `eval` possível) <!-- validado: 3 case-statements fechados, flag ausente ou valor fora do enum -> exit 2 -->
+- [x] 2.4.3 Teste: `tests/test_severity.sh` — todas as combinações da tabela (research.md §Decision 3), incluindo `unrequested` + MUST-violado → `CRITICAL` (CHK023: a regra "MUST vence tudo, avaliada em ordem" não deve degradar para a linha `unrequested→LOW`) <!-- validado: 16 scenarios (32 combos tabelados via 2 scenarios table-driven + CHK023 dedicado), PASS 16 FAIL 0 ERROR 0; --check-coverage zero orfaos -->
 
 ### 2.5 `scripts/converge-tasks.sh` — mecânica do `tasks.md` `[A]`
 
 Ref: FR-008, FR-009, FR-010, FR-011, FR-012 · contracts §4 · tarefa 1.1
 
-- [ ] 2.5.1 `next-phase`: imprimir `max(FASE N existente) + 1`
-- [ ] 2.5.2 `existing-keys`: parsear `<!-- converge-key: ... -->` de fases de convergência anteriores (exit 0 mesmo sem nenhuma — feature nunca convergida)
-- [ ] 2.5.3 `gap-key` (novo subcomando, tarefa 1.1.4): imprimir `sha256-12(normalize(path) + " " + type + " " + normalize(origin))`
-- [ ] 2.5.4 `append-phase`: anexar ao final do `tasks.md` (append-only, FR-009); falhar exit 1 **sem escrever** se o arquivo de fase estiver vazio (guarda FR-010)
-- [ ] 2.5.5 Reusar `create-tasks/scripts/next-task-id.sh` `[REAL]` para numerar as tarefas dentro da fase apendada
-- [ ] 2.5.6 Todas as variáveis quotadas; conteúdo adversarial em `tasks.md` (ex.: `$(...)`/backtick dentro de texto de tarefa pré-existente) tratado como texto literal, nunca avaliado (SEC-1)
-- [ ] 2.5.7 Teste: `tests/test_converge-tasks.sh` — `next-phase` com/sem fases existentes; `existing-keys` com/sem marcadores; `gap-key` determinístico (mesma entrada ⇒ mesma saída); `append-phase` idempotente (2 execuções sem mudança de código ⇒ `tasks.md` byte-idêntico, SC-003); `append-phase` falha sem escrever quando a fase está vazia
+- [x] 2.5.1 `next-phase`: imprimir `max(FASE N existente) + 1` <!-- validado: global/skills/converge/scripts/converge-tasks.sh::_ct_cmd_next_phase; tasks.md sem nenhuma FASE -> 1 -->
+- [x] 2.5.2 `existing-keys`: parsear `<!-- converge-key: ... -->` de fases de convergência anteriores (exit 0 mesmo sem nenhuma — feature nunca convergida) <!-- validado: _ct_cmd_existing_keys via awk match()/RSTART/RLENGTH, multiplos marcadores por arquivo -->
+- [x] 2.5.3 `gap-key` (novo subcomando, tarefa 1.1.4): imprimir `sha256-12(normalize(path) + " " + type + " " + normalize(origin))` <!-- validado: _ct_cmd_gap_key + _ct_normalize_path/_ct_normalize_origin/_ct_sha256_12; equivalencia ./scripts/foo.sh ≡ scripts/foo.sh ≡ scripts//foo.sh, fr-007 ≡ FR-007, heading "### 2.1 ... [C]" ≡ "2.1" confirmada empiricamente -->
+- [x] 2.5.4 `append-phase`: anexar ao final do `tasks.md` (append-only, FR-009); falhar exit 1 **sem escrever** se o arquivo de fase estiver vazio (guarda FR-010) <!-- validado: mktemp+mv atomico (padrao state-rw.sh::_sr_atomic_write), prefixo pre-existente preservado byte-a-byte -->
+- [x] 2.5.5 Reusar `create-tasks/scripts/next-task-id.sh` `[REAL]` para numerar as tarefas dentro da fase apendada <!-- validado: append-phase trata o phase-file como blob opaco ja numerado (nao reinventa numeracao); quem monta o phase-file chama next-task-id.sh iterativamente CONTRA O PROPRIO phase-file em construcao (1a chamada "N.1", 2a "N.2", ...) — padrao demonstrado fim-a-fim em scenario_reuso_next_task_id_numera_fase_apendada_sequencialmente -->
+- [x] 2.5.6 Todas as variáveis quotadas; conteúdo adversarial em `tasks.md` (ex.: `$(...)`/backtick dentro de texto de tarefa pré-existente) tratado como texto literal, nunca avaliado (SEC-1) <!-- validado: shellcheck -s sh limpo; smoke adversarial em --path/--origin de gap-key e em conteudo pre-existente de tasks.md apendado via append-phase, ambos confirmam nao-execucao -->
+- [x] 2.5.7 Teste: `tests/test_converge-tasks.sh` — `next-phase` com/sem fases existentes; `existing-keys` com/sem marcadores; `gap-key` determinístico (mesma entrada ⇒ mesma saída); `append-phase` idempotente (2 execuções sem mudança de código ⇒ `tasks.md` byte-idêntico, SC-003); `append-phase` falha sem escrever quando a fase está vazia <!-- validado: 25 scenarios, PASS 25 FAIL 0 ERROR 0; --check-coverage zero orfaos -->
 
 ---
 
