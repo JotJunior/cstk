@@ -5,6 +5,57 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.21.0] - 2026-07-17
+
+Fecha dois gaps de execução autônoma levantados em dogfooding (PR #37):
+a triagem interativa da `specify` não tinha atalho para orquestradores
+(que não têm usuário presente para responder o menu), e a métrica
+`tool_calls` das ondas era sempre 0 porque nenhum mecanismo automático
+invocava o tick. Mudanças aditivas — sem breaking changes.
+
+### Added
+
+- **Hook PostToolUse `posttooluse-tool-call-tick.sh`** (runtime
+  agente-00c): alimenta de verdade a métrica de tool calls por onda.
+  Matcher `*` (todas as tools), fail-OPEN absoluto (qualquer falha = no-op
+  exit 0 — é métrica, nunca guarda), mesma detecção de execução ativa e
+  precedência do `pretooluse-bash-guard.sh` (agente-00c vence; entre
+  feature-00c, menor short-name; status `em_andamento`/`aguardando_humano`).
+  Decisão de design: o hook **nunca toca o `state.json`** — PostToolUse
+  dispara concorrente aos writes transacionais do orquestrador e um
+  read-modify-write clobberaria Decisões/bloqueios; o tick vai num sidecar
+  append-only `<state-dir>/tool-call-ticks.log`. Provisionado por
+  `apply_guard_hooks()` junto do guard (best-effort: catálogo antigo sem o
+  hook não é erro); `settings.snippet.json` ganha o bloco `PostToolUse`.
+  Cobertura: `tests/test_posttooluse-tool-call-tick.sh` (11 cenários) +
+  2 cenários novos em `tests/cstk/test_hooks.sh`.
+- **ETAPA 0.0 na skill `specify`** (atalho de modo autônomo): com execução
+  00c ATIVA (`AGENTE_00C_STATE_DIR` setada, OU `state.json` de
+  agente-00c/feature-00c com status `em_andamento`/`aguardando_humano`), a
+  invocação pelo orquestrador pai vale como a confirmação explícita da
+  triagem — menu 0.3 não é apresentado e o pressuposto é registrado em uma
+  linha no output. Refinamento sobre a detecção da seção de cache: state em
+  disco só conta com status ativo, então um state antigo/concluído no repo
+  não pula a triagem de uma invocação manual. A classificação 0.1 segue
+  rodando como auditoria (divergência bugfix/refactor é registrada, não
+  aborta).
+
+### Changed
+
+- **`state-ondas.sh` + `budget.sh` agregam o sidecar de ticks**: `end` soma
+  campo do state + sidecar no fechamento da onda (e consome o sidecar);
+  `start` zera a janela de contagem; `budget.sh check|status` somam
+  mid-onda. Com isso o threshold `tool_calls_threshold_wave` (default 80)
+  passa a comparar com número real — estourar gera fim de onda gracioso,
+  não aborto; o valor 80 nunca foi validado com contagem real e deve ser
+  recalibrado com dados de execução. `tool-call-tick` manual preservado
+  (legado), mas NÃO deve ser usado em paralelo ao hook (contagem dobrada).
+- **Prosa dos orquestradores** (`agente-00c-orchestrator.md` e
+  `agente-00c-feature-orchestrator.md`): a instrução manual de tick por
+  Bash call (advisory, nunca cumprida — a mesma classe de falha que motivou
+  enforced-guards) foi substituída pela nota do mecanismo automático via
+  hook.
+
 ## [5.20.0] - 2026-07-16
 
 Nova skill `converge`: fecha o loop de reconciliação entre documentação
@@ -3745,6 +3796,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.21.0]: https://github.com/JotJunior/cstk/releases/tag/v5.21.0
 [5.20.0]: https://github.com/JotJunior/cstk/releases/tag/v5.20.0
 [5.19.0]: https://github.com/JotJunior/cstk/releases/tag/v5.19.0
 [5.18.0]: https://github.com/JotJunior/cstk/releases/tag/v5.18.0
