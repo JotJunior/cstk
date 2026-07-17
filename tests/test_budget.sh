@@ -216,4 +216,30 @@ JSON
   assert_stdout_contains "wallclock	0	5400" || return 1
 }
 
+# ==== Sidecar de ticks do hook PostToolUse (tool-call-ticks.log) ====
+
+scenario_check_soma_sidecar_e_dispara_threshold() {
+  _sd="$TMPDIR_TEST/state"
+  _init_with_onda "$_sd"
+  # 78 no campo do state + 2 no sidecar do hook = 80 >= threshold 80.
+  capture "$RW" set --state-dir "$_sd" \
+    --field '.budgets.tool_calls_current_wave' --value '78'
+  printf 't1\nt2\n' > "$_sd/tool-call-ticks.log"
+  capture "$SCRIPT" check --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "check" "esperado exit 1 (78 campo + 2 sidecar = 80), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stdout_contains "tool_calls	80	80" || return 1
+}
+
+scenario_status_reflete_sidecar_sem_disparar() {
+  _sd="$TMPDIR_TEST/state"
+  _init_with_onda "$_sd"
+  printf 't1\nt2\nt3\n' > "$_sd/tool-call-ticks.log"
+  capture "$SCRIPT" status --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "status" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "tool_calls	3	80" || return 1
+}
+
 run_all_scenarios

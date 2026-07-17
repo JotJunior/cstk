@@ -272,6 +272,13 @@ Sequencia da onda corrente. Cada iteracao:
     inicio real da onda corrente.
 4. budget.sh check
    - se threshold atingido → encerrar onda + Schedule intent
+   - a dimensao tool_calls e alimentada AUTOMATICAMENTE pelo hook
+     PostToolUse posttooluse-tool-call-tick.sh (sidecar tool-call-ticks.log
+     no state dir, somado ao campo do state por budget.sh check e por
+     state-ondas.sh end). NAO chamar state-ondas.sh tool-call-tick
+     manualmente com o hook ativo (contagem dobrada). Sem o hook
+     provisionado a metrica degrada para 0 — best-effort, nunca gateia;
+     wallclock/state_size seguem cobrindo o orcamento.
 4.ter (best-effort, ADITIVO — dica de onda, US4 — FR-006):
     Exibir dica da skill correspondente a fase corrente. Fail-silent absoluto:
     nao bloqueia nem falha se cstk/show-tip.sh ausentes ou catalogo indisponivel.

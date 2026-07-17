@@ -24,11 +24,18 @@
 #         tool_calls/termination_reason/next_wave_scheduled_for. Atualiza
 #         accumulated_metrics (waves_total += 1, tool_calls_total +=
 #         tool_calls da onda, wallclock_total_seconds += wallclock).
+#         tool_calls da onda = .budgets.tool_calls_current_wave (ticks
+#         manuais) + linhas do sidecar tool-call-ticks.log (ticks do hook
+#         PostToolUse) — sidecar resetado apos o fechamento.
 #         --add-etapa pode ser passada N vezes para append em executed_stages.
 #
 #   state-ondas.sh tool-call-tick --state-dir DIR
 #       — Incrementa .budgets.tool_calls_current_wave (1 unidade).
-#         Stdout: novo total da onda.
+#         Stdout: novo total da onda (SO o campo do state; nao inclui o
+#         sidecar do hook). Caminho MANUAL/legado: o mecanismo primario de
+#         contagem e o hook posttooluse-tool-call-tick.sh (sidecar
+#         append-only) — nao use os dois em paralelo na mesma execucao ou
+#         cada call contara em dobro.
 #
 #   state-ondas.sh current-id --state-dir DIR
 #       — Imprime .waves[-1].id (ou "init" se nao ha onda).
@@ -183,6 +190,36 @@ _so_next_onda_num() {
     end' "$_sf" 2>/dev/null
 }
 
+# ---------- Sidecar de ticks (hook PostToolUse) ----------
+#
+# O hook posttooluse-tool-call-tick.sh NAO pode fazer read-modify-write no
+# state.json (dispara concorrente aos writes transacionais do orquestrador —
+# risco de clobber); ele appenda 1 linha por tool call em
+# <state-dir>/tool-call-ticks.log. Aqui esse sidecar e AGREGADO (end soma ao
+# campo .budgets.tool_calls_current_wave, que segue existindo para ticks
+# manuais via `tool-call-tick`) e RESETADO (start e end delimitam a janela
+# de contagem da onda). budget.sh faz a mesma soma mid-onda.
+
+_so_ticks_file() { printf '%s/tool-call-ticks.log\n' "$1"; }
+
+# _so_ticks_count DIR -> nº de linhas do sidecar (0 se ausente/ilegivel).
+_so_ticks_count() {
+  _tf=$(_so_ticks_file "$1")
+  [ -f "$_tf" ] || { printf '0\n'; return 0; }
+  _n=$(wc -l < "$_tf" 2>/dev/null | tr -d '[:space:]') || _n=0
+  case "$_n" in
+    '' | *[!0-9]*) printf '0\n' ;;
+    *) printf '%s\n' "$_n" ;;
+  esac
+}
+
+# _so_ticks_reset DIR -> remove o sidecar (best-effort; hook recria no
+# proximo tick). Ticks appendados na exata fronteira do reset se perdem —
+# aceitavel para proxy de custo.
+_so_ticks_reset() {
+  rm -f -- "$(_so_ticks_file "$1")" 2>/dev/null || :
+}
+
 # ---------- Subcomandos ----------
 
 _so_cmd_start() {
@@ -223,6 +260,10 @@ _so_cmd_start() {
   _so_atomic_write "$_sf" "$_new"
   rm -f -- "$_new" 2>/dev/null || :
   _so_update_sha "$_sdir"
+  # Janela de contagem do sidecar comeca zerada junto com a onda (ticks
+  # entre o end anterior e este start pertencem a fechamento/overhead do
+  # orquestrador, nao a onda nova).
+  _so_ticks_reset "$_sdir"
   printf '%s\n' "$_id"
 }
 
@@ -276,7 +317,11 @@ $2"; shift 2 ;;
   ' "$_sf")
   [ -n "$_start" ] || _so_die "end: nao ha onda em andamento" 1
   _wc=$(_so_wallclock "$_start" "$_now") || true
-  _tc=$(jq -r '(.budgets.tool_calls_current_wave // .orcamentos.tool_calls_onda_corrente) // 0' "$_sf")
+  # tool_calls da onda = campo do state (ticks manuais via tool-call-tick)
+  # + sidecar do hook PostToolUse (ver "Sidecar de ticks" acima).
+  _tc_field=$(jq -r '(.budgets.tool_calls_current_wave // .orcamentos.tool_calls_onda_corrente) // 0' "$_sf")
+  _tc_side=$(_so_ticks_count "$_sdir")
+  _tc=$((_tc_field + _tc_side))
 
   # Monta JSON array das etapas adicionais (uma por linha, ignora linhas vazias).
   _etapas_json=$(printf '%s\n' "$_etapas" \
@@ -315,6 +360,8 @@ $2"; shift 2 ;;
   _so_atomic_write "$_sf" "$_new"
   rm -f -- "$_new" 2>/dev/null || :
   _so_update_sha "$_sdir"
+  # Sidecar consumido por esta onda; zera para nao vazar para a proxima.
+  _so_ticks_reset "$_sdir"
   _so_log "end: onda finalizada (motivo=$_motivo, wallclock=${_wc}s, tool_calls=$_tc)"
 }
 

@@ -295,6 +295,13 @@ _is_internal_test() {
       # guarded: se o hook sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh" ] && return 0
       return 1 ;;
+    test_posttooluse-tool-call-tick.sh)
+      # cobre global/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh
+      # (hook PostToolUse de metrica de tool calls por onda) — mesma razao
+      # do test_pretooluse-bash-guard.sh acima: hooks/ esta fora do escaneio
+      # por convencao. Existence-guarded.
+      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh" ] && return 0
+      return 1 ;;
     *) return 1 ;;
   esac
 }
