@@ -101,6 +101,43 @@ Antes de gerar qualquer artefato, classifique o pedido e valide com o usuario
 se o fluxo SDD completo faz sentido para o escopo. O fluxo SDD (spec → clarify
 → plan → tasks) tem custo real e nem todo pedido justifica esse overhead.
 
+### 0.0 Atalho de modo autonomo (agente-00c / feature-00c)
+
+A confirmacao interativa de 0.1-0.3 pressupoe um usuario presente para
+responder o menu. Em execucao autonoma nao ha — e a triagem JA aconteceu:
+o operador decidiu rodar a pipeline SDD completa quando invocou
+`/agente-00c` ou `/feature-00c`.
+
+1. **Detectar execucao autonoma ativa** — mesmos sinais da secao "Leitura
+   de artefatos foundational", com um refinamento para os state.json em
+   disco: exigir status ATIVO (um state antigo/concluido no repo NAO pode
+   pular a triagem de uma invocacao manual):
+   - `AGENTE_00C_STATE_DIR` setada; OU
+   - `<projeto-alvo>/.claude/agente-00c-state/state.json` com
+     `.execution.status` em {`em_andamento`, `aguardando_humano`}; OU
+   - `<projeto-alvo>/.claude/feature-00c-state/<short>/state.json` com
+     `.execution.status` em {`em_andamento`, `aguardando_humano`}.
+
+2. **Se detectado**: a invocacao pelo orquestrador pai VALE como a
+   confirmacao explicita exigida em 0.3 (equivalente a escolher a opcao 2,
+   "Criar feature SDD completa"). NAO apresentar o menu nem aguardar
+   resposta. Executar 0.1 mesmo assim (classificacao e barata e util como
+   auditoria), registrar o pressuposto em UMA linha no output e prosseguir
+   direto a ETAPA 1:
+
+   ```
+   Triagem 0.0: modo autonomo detectado (<sinal>) — confirmacao herdada
+   da invocacao do orquestrador; classificacao: <categoria>.
+   ```
+
+   Se a classificacao 0.1 resultar em **Bugfix** ou **Refactor**, NAO
+   abortar nem trocar de skill: a decisao de rodar a pipeline foi do
+   operador. Apenas registrar a divergencia na mesma linha
+   (`classificacao: bugfix — divergencia registrada para auditoria`) para
+   aparecer no sumario da onda.
+
+3. **Se NAO detectado**: seguir 0.1-0.3 normalmente (fluxo interativo).
+
 ### 0.1 Classificar o pedido
 
 Analise `$ARGUMENTS` e classifique em uma das categorias:
@@ -150,9 +187,10 @@ Antes de criar diretorio ou arquivos, apresentar ao usuario:
 Qual caminho prefere?
 ```
 
-**NUNCA prosseguir para ETAPA 1 sem confirmacao explicita do usuario.**
-Se o usuario escolher opcao 1 ou 3, encerrar a skill e executar o caminho
-escolhido (ou delegar para skill apropriada).
+**NUNCA prosseguir para ETAPA 1 sem confirmacao explicita do usuario** —
+unica excecao: o atalho 0.0, onde a confirmacao e herdada da invocacao do
+orquestrador. Se o usuario escolher opcao 1 ou 3, encerrar a skill e
+executar o caminho escolhido (ou delegar para skill apropriada).
 
 ---
 
