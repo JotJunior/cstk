@@ -193,14 +193,17 @@ scenario_merge_source_ausente() {
 
 # ==== apply_guard_hooks (enforced-guards US1, task 2.4.4) ====
 
-# _guard_src_fixture: monta um src_dir minimo com pretooluse-bash-guard.sh
-# (conteudo trivial, so precisa existir p/ cp) + settings.snippet.json.
+# _guard_src_fixture: monta um src_dir minimo com pretooluse-bash-guard.sh +
+# posttooluse-tool-call-tick.sh (conteudo trivial, so precisa existir p/ cp)
+# + settings.snippet.json (PreToolUse + PostToolUse, como o catalogo real).
 _guard_src_fixture() {
   _gsf_dir="$TMPDIR_TEST/guard-src"
   mkdir -p "$_gsf_dir"
   printf '#!/bin/sh\nexit 0\n' > "$_gsf_dir/pretooluse-bash-guard.sh"
   chmod +x "$_gsf_dir/pretooluse-bash-guard.sh"
-  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x","timeout":5}]}]}}\n' \
+  printf '#!/bin/sh\nexit 0\n' > "$_gsf_dir/posttooluse-tool-call-tick.sh"
+  chmod +x "$_gsf_dir/posttooluse-tool-call-tick.sh"
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x","timeout":5}]}],"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"y","timeout":5}]}]}}\n' \
     > "$_gsf_dir/settings.snippet.json"
   printf '%s' "$_gsf_dir"
 }
@@ -288,6 +291,39 @@ scenario_apply_guard_hooks_args_invalidos() {
     return 1
   fi
   assert_stdout_contains "error" || return 1
+}
+
+scenario_apply_guard_hooks_copia_posttooluse_tick() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _src=$(_guard_src_fixture)
+  _dest="$TMPDIR_TEST/claude-root"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "merged" || return 1
+  [ -x "$_dest/hooks/posttooluse-tool-call-tick.sh" ] \
+    || { _fail "tick hook nao copiado/executavel" ""; return 1; }
+  jq -e '.hooks.PostToolUse[0].matcher == "*"' "$_dest/settings.json" >/dev/null \
+    || { _fail "settings.json sem bloco PostToolUse" "$(cat "$_dest/settings.json" 2>/dev/null)"; return 1; }
+}
+
+# Catalogo ANTIGO (skill sem o hook de metrica): provisionamento do guard
+# segue integral — o tick e best-effort e sua ausencia nao e erro.
+scenario_apply_guard_hooks_catalogo_antigo_sem_tick() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _src="$TMPDIR_TEST/guard-src-old"
+  mkdir -p "$_src"
+  printf '#!/bin/sh\nexit 0\n' > "$_src/pretooluse-bash-guard.sh"
+  chmod +x "$_src/pretooluse-bash-guard.sh"
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x","timeout":5}]}]}}\n' \
+    > "$_src/settings.snippet.json"
+  _dest="$TMPDIR_TEST/claude-root-old"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "merged" || return 1
+  [ -x "$_dest/hooks/pretooluse-bash-guard.sh" ] || { _fail "guard nao copiado" ""; return 1; }
+  [ -f "$_dest/hooks/posttooluse-tool-call-tick.sh" ] \
+    && { _fail "tick fantasma" "catalogo antigo nao traz o tick; nada a copiar"; return 1; }
+  return 0
 }
 
 run_all_scenarios

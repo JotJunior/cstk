@@ -280,8 +280,15 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    `state-rw.sh sha256-verify --state-dir <SD>` (FR-029). Falha = bloqueio
    humano sem auto-correcao.
 
-2. **Onda nova**: `state-ondas.sh start --state-dir <SD>`. Toda Bash
-   call subsequente registra metrica via `state-ondas.sh tool-call-tick`.
+2. **Onda nova**: `state-ondas.sh start --state-dir <SD>`. A metrica de
+   tool calls da onda e registrada AUTOMATICAMENTE pelo hook PostToolUse
+   `posttooluse-tool-call-tick.sh` (provisionado por `cstk install`/`update`
+   no projeto-alvo), que appenda no sidecar `tool-call-ticks.log` do state
+   dir; `budget.sh check` e `state-ondas.sh end` agregam o sidecar. NAO
+   chame `state-ondas.sh tool-call-tick` manualmente quando o hook esta
+   ativo — cada call contaria em dobro. Sem o hook provisionado a metrica
+   degrada para 0 (best-effort; os proxies wallclock/state_size continuam
+   gateando a onda normalmente).
 
 2.bis **Dica de onda** (fail-silent, US4 — FR-006): exibir dica da skill
    correspondente a fase corrente, se disponivel. Nao bloqueia nem falha:

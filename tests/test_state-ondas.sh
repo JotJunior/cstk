@@ -869,4 +869,49 @@ scenario_git_commit_worktree() {
   esac
 }
 
+# ==== Sidecar de ticks do hook PostToolUse (tool-call-ticks.log) ====
+
+scenario_end_soma_sidecar_ao_campo_do_state() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  # 2 ticks manuais (campo do state) + 5 ticks do hook (sidecar).
+  capture "$SCRIPT" tool-call-tick --state-dir "$_sd"
+  capture "$SCRIPT" tool-call-tick --state-dir "$_sd"
+  printf 't1\nt2\nt3\nt4\nt5\n' > "$_sd/tool-call-ticks.log"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  _tc=$(jq -r '.waves[-1].tool_calls' "$_sd/state.json")
+  [ "$_tc" = 7 ] || { _fail "tool_calls" "esperado 7 (2 campo + 5 sidecar), obtido $_tc"; return 1; }
+  _acc=$(jq -r '.accumulated_metrics.tool_calls_total' "$_sd/state.json")
+  [ "$_acc" = 7 ] || { _fail "accumulated" "esperado 7, obtido $_acc"; return 1; }
+  # Sidecar consumido: end reseta para nao vazar para a proxima onda.
+  [ -f "$_sd/tool-call-ticks.log" ] \
+    && { _fail "sidecar" "end deveria remover o sidecar consumido"; return 1; }
+  return 0
+}
+
+scenario_start_reseta_sidecar_residual() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  # Residuo de ticks do overhead de fechamento (entre end e start).
+  printf 'residuo1\nresiduo2\n' > "$_sd/tool-call-ticks.log"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/tool-call-ticks.log" ] \
+    && { _fail "sidecar" "start deveria zerar o sidecar (janela = start->end)"; return 1; }
+  return 0
+}
+
+scenario_end_sem_sidecar_usa_so_o_campo() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" tool-call-tick --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  _tc=$(jq -r '.waves[-1].tool_calls' "$_sd/state.json")
+  [ "$_tc" = 1 ] || { _fail "tool_calls" "sem sidecar, esperado 1 (so campo), obtido $_tc"; return 1; }
+}
+
 run_all_scenarios

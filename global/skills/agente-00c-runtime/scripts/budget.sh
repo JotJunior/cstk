@@ -7,6 +7,9 @@
 #
 # Os proxies cobrem 3 dimensoes (chaves EN do schema; fallback pt-BR no read):
 #   1. tool_calls_current_wave >= tool_calls_threshold_wave (default 80)
+#      (valor corrente = campo do state + linhas do sidecar
+#      <state-dir>/tool-call-ticks.log appendado pelo hook PostToolUse
+#      posttooluse-tool-call-tick.sh — mesma agregacao do state-ondas.sh end)
 #   2. wallclock (now - current_wave_start) >= wallclock_threshold_seconds (5400 = 90min)
 #   3. file size de state.json >= state_size_threshold_bytes (1MB)
 #
@@ -82,7 +85,15 @@ _bd_collect() {
   # Readers diretos sobre o arquivo (schema-en-migration): path EN + fallback
   # (.en // .pt) para back-compat com states pt-BR vivos e com direct-writers
   # ainda nao migrados (ex: state-ondas.sh grava .orcamentos.inicio_onda_corrente).
-  _bd_tc=$(jq -r '(.budgets.tool_calls_current_wave // .orcamentos.tool_calls_onda_corrente) // 0' "$_sf")
+  _bd_tc_field=$(jq -r '(.budgets.tool_calls_current_wave // .orcamentos.tool_calls_onda_corrente) // 0' "$_sf")
+  # Sidecar do hook PostToolUse (ticks automaticos); ausente/ilegivel = 0.
+  _bd_tc_side=0
+  _bd_ticks="$1/tool-call-ticks.log"
+  if [ -f "$_bd_ticks" ]; then
+    _bd_tc_side=$(wc -l < "$_bd_ticks" 2>/dev/null | tr -d '[:space:]') || _bd_tc_side=0
+    case "$_bd_tc_side" in '' | *[!0-9]*) _bd_tc_side=0 ;; esac
+  fi
+  _bd_tc=$((_bd_tc_field + _bd_tc_side))
   _bd_tc_max=$(jq -r '(.budgets.tool_calls_threshold_wave // .orcamentos.tool_calls_threshold_onda) // 80' "$_sf")
   _bd_wc_max=$(jq -r '(.budgets.wallclock_threshold_seconds // .orcamentos.wallclock_threshold_segundos) // 5400' "$_sf")
   _bd_sz_max=$(jq -r '(.budgets.state_size_threshold_bytes // .orcamentos.estado_size_threshold_bytes) // 1048576' "$_sf")
