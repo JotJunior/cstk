@@ -331,16 +331,30 @@ Sequencia da onda corrente. Cada iteracao:
         # 2. Gerar mensagem para o grupo de tasks (range ou individual)
         _ids=$(printf '%s' "$_tasks_passadas" | tr '\n' ',' | sed 's/,$//') # "1.1,1.2"
         _msg=$(commit-mode.sh task-message --feature "$SHORT_NAME" --task-ids "$_ids")
-        # 3. Stage + commit direto (pipeline non-interactive — CHK047/dec-026)
-        git -C "$PAP" add -A 2>/dev/null || true
-        git -C "$PAP" commit -m "$_msg" 2>/dev/null || true
-        # 4. Registrar Decisao auditavel
-        state-decisions.sh register --state-dir "$STATE_DIR" \
-          --agente "agente-00c-feature-orchestrator" --etapa "execute-task" \
-          --contexto "Commit atomico por task (onda): $_msg" \
-          --opcoes '["commit","skip"]' --escolha "commit" \
-          --justificativa "atomic_commit_enabled=true; tasks passadas: $_ids" \
-          --score 2
+        # 3. Staging por allowlist derivada (FR-014) — NUNCA `git add -A`.
+        #    Sem --scope-dir: tasks tocam qualquer path do repo. O baseline
+        #    de untracked ja foi capturado no INICIO desta onda por
+        #    `state-ondas.sh start` (passo 3.bis/4, best-effort via
+        #    .execution.target_project_path) — nao precisa de snapshot
+        #    explicito aqui.
+        commit-mode.sh stage-derived --state-dir "$STATE_DIR" \
+          --projeto-alvo-path "$PAP"
+        _stage_rc=$?
+        if [ "$_stage_rc" = 0 ]; then
+          # 4. Commit direto (pipeline non-interactive — CHK047/dec-026)
+          git -C "$PAP" commit -m "$_msg" 2>/dev/null || true
+          # 5. Registrar Decisao auditavel
+          state-decisions.sh register --state-dir "$STATE_DIR" \
+            --agente "agente-00c-feature-orchestrator" --etapa "execute-task" \
+            --contexto "Commit atomico por task (onda): $_msg" \
+            --opcoes '["commit","skip"]' --escolha "commit" \
+            --justificativa "atomic_commit_enabled=true; tasks passadas: $_ids" \
+            --score 2
+        elif [ "$_stage_rc" = 3 ]; then
+          log_out "commit-mode: allowlist vazia — commit por task pulado nesta onda (nada staged)"
+        else
+          log_out "commit-mode: stage-derived falhou (exit $_stage_rc) — commit por task pulado nesta onda"
+        fi
       else
         log_out "commit-mode: guard-branch exit $_guard_exit — commit por task pulado nesta onda"
       fi
@@ -349,6 +363,7 @@ Sequencia da onda corrente. Cada iteracao:
 
     REGRA DURA: qualquer falha no bloco acima e NO-OP silencioso (best-effort).
     O commit por task e ADITIVO ao record-task/backup/end — nunca os substitui.
+    NUNCA `git add -A`/`git add .`/`git add --all` (FR-014, living-specs).
 8. gerar backup da onda:
    cat state.json | secrets-filter.sh for-backup --wave-number N \
      > <state_dir>/backups/wave-NNN.json
@@ -399,21 +414,36 @@ Sequencia da onda corrente. Cada iteracao:
         _stage=$(state-rw.sh get --state-dir "$STATE_DIR" --field '.current_stage')
         _msg=$(commit-mode.sh stage-message \
                --feature "$SHORT_NAME" --stage "$_stage")
-        # 3. Commit direto via git (pipeline non-interactive — CHK047/dec-026)
-        git -C "$PAP" add -A 2>/dev/null || true
-        git -C "$PAP" commit -m "$_msg" 2>/dev/null || true
-        # 4. Registrar Decisao auditavel do commit
-        state-decisions.sh register --state-dir "$STATE_DIR" \
-          --agente "agente-00c-feature-orchestrator" --etapa "$_stage" \
-          --contexto "Commit atomico por etapa ($_stage): $_msg" \
-          --opcoes '["commit","skip"]' --escolha "commit" \
-          --justificativa "atomic_commit_enabled=true; guard-branch exit 0" \
-          --score 2
+        # 3. Staging por allowlist derivada (FR-014) — NUNCA `git add -A`.
+        #    --scope-dir confina aos artefatos desta etapa: spec/plan/
+        #    tasks da feature + o proprio state dir da execucao.
+        commit-mode.sh stage-derived --state-dir "$STATE_DIR" \
+          --projeto-alvo-path "$PAP" \
+          --scope-dir "docs/specs/$SHORT_NAME" \
+          --scope-dir ".claude/feature-00c-state/$SHORT_NAME"
+        _stage_rc=$?
+        if [ "$_stage_rc" = 0 ]; then
+          # 4. Commit direto via git (pipeline non-interactive — CHK047/dec-026)
+          git -C "$PAP" commit -m "$_msg" 2>/dev/null || true
+          # 5. Registrar Decisao auditavel do commit
+          state-decisions.sh register --state-dir "$STATE_DIR" \
+            --agente "agente-00c-feature-orchestrator" --etapa "$_stage" \
+            --contexto "Commit atomico por etapa ($_stage): $_msg" \
+            --opcoes '["commit","skip"]' --escolha "commit" \
+            --justificativa "atomic_commit_enabled=true; guard-branch exit 0" \
+            --score 2
+        elif [ "$_stage_rc" = 3 ]; then
+          log_out "commit-mode: allowlist vazia — commit atomico pulado nesta onda (nada staged sob escopo da etapa)"
+        else
+          log_out "commit-mode: stage-derived falhou (exit $_stage_rc) — commit atomico pulado nesta onda"
+        fi
       else
         log_out "commit-mode: guard-branch exit $_guard_exit — commit atomico pulado nesta onda"
       fi
     fi
     ```
+
+    NUNCA `git add -A`/`git add .`/`git add --all` (FR-014, living-specs).
 
     **Finalize terminal (FR-008)**: ao concluir `review-task` com sucesso,
     se `is-enabled` retornar `true`, invocar apos o passo 11 (relatorio final):

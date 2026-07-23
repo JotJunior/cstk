@@ -15,8 +15,14 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 _init_state() {
+  # $2 opcional: projeto-alvo-path real (default "/tmp/p" para cenarios que
+  # nao exercitam git de verdade). Cenarios de git-commit precisam do path
+  # REAL para que `state-ondas.sh start` (living-specs FASE 5) consiga
+  # derivar .execution.target_project_path e capturar o baseline de
+  # untracked no inicio da onda.
+  _init_pap="${2:-/tmp/p}"
   capture "$RW" init --state-dir "$1" \
-    --execucao-id "exec-onda-test" --projeto-alvo-path "/tmp/p" --descricao "POC ondas"
+    --execucao-id "exec-onda-test" --projeto-alvo-path "$_init_pap" --descricao "POC ondas"
 }
 
 scenario_start_cria_onda_001() {
@@ -143,12 +149,18 @@ scenario_current_id_retorna_init_sem_onda() {
 scenario_git_commit_cria_commit() {
   _sd="$TMPDIR_TEST/state"
   _pap="$TMPDIR_TEST/proj"
-  _init_state "$_sd"
   mkdir -p "$_pap"
   ( cd "$_pap" && git init -q -b main \
     && git config user.email t@t \
-    && git config user.name t \
-    && touch hello.txt )
+    && git config user.name t )
+  # state.json aponta para o repo REAL (nao o fake "/tmp/p") + start ANTES
+  # de qualquer arquivo novo: e o `start` (living-specs FASE 5) quem
+  # captura o baseline de untracked "no inicio da onda" (data-model.md
+  # UntrackedBaseline) — hello.txt so entra no diff porque e criado DEPOIS
+  # do baseline, nunca porque git-commit varre tudo cegamente.
+  _init_state "$_sd" "$_pap"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  ( cd "$_pap" && touch hello.txt )
   capture "$SCRIPT" git-commit --state-dir "$_sd" --projeto-alvo-path "$_pap" \
     --motivo "test commit FASE 3"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "commit" "$_CAPTURED_STDERR"; return 1; }
@@ -156,6 +168,11 @@ scenario_git_commit_cria_commit() {
   case "$_msg" in
     *"chore(agente-00c):"*"test commit FASE 3"*) ;;
     *) _fail "commit msg" "esperado contem 'chore(agente-00c)' e motivo; obtido: $_msg"; return 1 ;;
+  esac
+  _shown=$(git -C "$_pap" show --name-only --format= HEAD)
+  case "$_shown" in
+    *hello.txt*) : ;;
+    *) _fail "hello.txt deveria estar no commit" "obtido: $_shown"; return 1 ;;
   esac
 }
 
@@ -858,13 +875,17 @@ scenario_git_commit_worktree() {
   _sd="$TMPDIR_TEST/state"
   _main="$TMPDIR_TEST/mainrepo"
   _wt="$TMPDIR_TEST/wt"
-  _init_state "$_sd"
   mkdir -p "$_main"
   ( cd "$_main" && git init -q -b main \
     && git config user.email t@t && git config user.name t \
     && touch base.txt && git add . && git commit -q -m initial \
     && git worktree add -b feat "$_wt" ) >/dev/null 2>&1
   [ -f "$_wt/.git" ] || { _fail "worktree setup" ".git deveria ser ARQUIVO em $_wt"; return 1; }
+  # state.json aponta para o worktree real + start ANTES do arquivo novo
+  # (baseline capturado no inicio da onda — mesma razao de
+  # scenario_git_commit_cria_commit).
+  _init_state "$_sd" "$_wt"
+  capture "$SCRIPT" start --state-dir "$_sd"
   ( cd "$_wt" && touch novo.txt )
   capture "$SCRIPT" git-commit --state-dir "$_sd" --projeto-alvo-path "$_wt" \
     --motivo "commit em worktree"
@@ -873,6 +894,54 @@ scenario_git_commit_worktree() {
   case "$_msg" in
     *"chore(agente-00c):"*"commit em worktree"*) ;;
     *) _fail "worktree commit msg" "obtido: $_msg"; return 1 ;;
+  esac
+}
+
+# ==== quickstart.md Cenario 7: wave-commit endurecido (living-specs FASE 5.5) ====
+# alien.pptx untracked PRE-EXISTENTE (analogo ao incidente real) +
+# mudanca tracked em docs/specs/feat-x/spec.md => commit contem SO a
+# mudanca tracked, alien.pptx permanece untracked. Confirma que o site 3
+# da research Decision 1 (git add -- .) esta convergido ao mesmo helper de
+# staging dos demais sites (5.1-5.4).
+
+scenario_5_5_wave_commit_endurecido_exclui_alien() {
+  _sd="$TMPDIR_TEST/state"
+  _pap="$TMPDIR_TEST/proj-wc"
+  mkdir -p "$_pap/docs/specs/feat-x"
+  ( cd "$_pap" && git init -q -b main \
+    && git config user.email t@t && git config user.name t \
+    && printf 's\n' > docs/specs/feat-x/spec.md \
+    && git add -A && git commit -q -m initial )
+
+  # alien.pptx untracked PRE-EXISTENTE, antes de start capturar o baseline.
+  printf 'alien\n' > "$_pap/alien.pptx"
+
+  _init_state "$_sd" "$_pap"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ -f "$_sd/commit-baseline.txt" ] || { _fail "baseline" "commit-baseline.txt deveria existir apos start"; return 1; }
+  grep -qx "alien.pptx" "$_sd/commit-baseline.txt" \
+    || { _fail "baseline conteudo" "alien.pptx deveria estar no baseline"; return 1; }
+
+  # Trabalho da onda: mudanca TRACKED.
+  printf 's2\n' >> "$_pap/docs/specs/feat-x/spec.md"
+
+  capture "$SCRIPT" git-commit --state-dir "$_sd" --projeto-alvo-path "$_pap" \
+    --motivo "wave-commit endurecido"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "git-commit exit" "obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"; return 1; }
+
+  _shown=$(git -C "$_pap" show --name-only --format= HEAD)
+  case "$_shown" in
+    *alien.pptx*) _fail "alien.pptx nao deveria estar no commit" "obtido: $_shown"; return 1 ;;
+  esac
+  case "$_shown" in
+    *"docs/specs/feat-x/spec.md"*) : ;;
+    *) _fail "spec.md deveria estar no commit" "obtido: $_shown"; return 1 ;;
+  esac
+
+  _untracked=$(git -C "$_pap" status --porcelain | grep '^??' || :)
+  case "$_untracked" in
+    *alien.pptx*) : ;;
+    *) _fail "alien.pptx deveria permanecer untracked" "obtido: $_untracked"; return 1 ;;
   esac
 }
 

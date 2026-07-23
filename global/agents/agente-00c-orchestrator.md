@@ -674,16 +674,29 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
                head -c 40 | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
        _ids=$(printf '%s' "$_tasks_passadas" | tr '\n' ',' | sed 's/,$//') # "1.1,1.2,1.3"
        _msg=$(commit-mode.sh task-message --feature "$_name" --task-ids "$_ids")
-       # 3. Stage + commit direto (pipeline non-interactive — CHK047/dec-026)
-       git -C <PAP> add -A 2>/dev/null || true
-       git -C <PAP> commit -m "$_msg" 2>/dev/null || true
-       # 4. Registrar Decisao auditavel
-       state-decisions.sh register --state-dir <SD> \
-         --agente "orquestrador-00c" --etapa "execute-task" \
-         --contexto "Commit atomico por task (onda): $_msg" \
-         --opcoes '["commit","skip"]' --escolha "commit" \
-         --justificativa "atomic_commit_enabled=true; tasks passadas: $_ids" \
-         --score 2
+       # 3. Staging por allowlist derivada (FR-014) — NUNCA `git add -A`.
+       #    Sem --scope-dir: tasks tocam qualquer path do repo. O baseline
+       #    de untracked ja foi capturado no INICIO desta onda por
+       #    `state-ondas.sh start` (best-effort via
+       #    .execution.target_project_path) — nao precisa de snapshot
+       #    explicito aqui.
+       commit-mode.sh stage-derived --state-dir <SD> --projeto-alvo-path <PAP>
+       _stage_rc=$?
+       if [ "$_stage_rc" = 0 ]; then
+         # 4. Commit direto (pipeline non-interactive — CHK047/dec-026)
+         git -C <PAP> commit -m "$_msg" 2>/dev/null || true
+         # 5. Registrar Decisao auditavel
+         state-decisions.sh register --state-dir <SD> \
+           --agente "orquestrador-00c" --etapa "execute-task" \
+           --contexto "Commit atomico por task (onda): $_msg" \
+           --opcoes '["commit","skip"]' --escolha "commit" \
+           --justificativa "atomic_commit_enabled=true; tasks passadas: $_ids" \
+           --score 2
+       elif [ "$_stage_rc" = 3 ]; then
+         log_out "commit-mode: allowlist vazia — commit por task pulado nesta onda (nada staged)"
+       else
+         log_out "commit-mode: stage-derived falhou (exit $_stage_rc) — commit por task pulado nesta onda"
+       fi
      else
        log_out "commit-mode: guard-branch exit $_guard_exit — commit por task pulado nesta onda"
      fi
@@ -1306,6 +1319,7 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    | `create-tasks` | template-fidelity | `validate-tasks-template.sh` (Bash, **deterministico**) | tasks.md conforma ao template canonico: prefixo FASE, checkboxes `- [ ]`, tag de criticidade, legendas, Matriz de Dependencias, Resumo, Escopo Coberto/Excluido | findings `critical` (sem FASE / sem checkbox / sem criticidade) -> Decisao + tentativa de Edit (re-normalizar ao template); `warning` -> Decisao informativa |
    | `create-tasks` | docs-render | `validate-docs-rendered` | Mermaid parseavel, links internos, frontmatter, code blocks com linguagem | findings `critical` (link 404, Mermaid invalido) -> Decisao + tentativa de Edit; demais -> Decisao informativa |
    | `execute-task -> review-task` | convergence | `converge` | divergencia spec-vs-codigo nos paths declarados (US5, FR-015/FR-019) | findings `CRITICAL` -> BloqueioHumano (decisao do orquestrador; converge nao trava sozinha); demais -> Decisao informativa (a propria skill se auto-registra — ver 5.f.bis) |
+   | `review-features` (por feature `ARQUIVAR`) | delta-gate | `delta-gate.sh` (Bash, **deterministico**, incondicional) | secao `## Delta Requirements` presente/valida antes do archive (FR-010/FR-013, CHK020) | exit != 0 -> BloqueioHumano ESCOPADO aquela feature, sem abortar a onda (ver 5.f.ter) |
 
    **Pre-gate deterministico do `create-tasks` (template-fidelity):** roda
    ANTES do gate `docs-render` (skeleton antes de render). Motivacao: o
@@ -1415,6 +1429,62 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    a mesma divergencia nunca vira uma segunda tarefa; os gatilhos de
    aborto do passo 7 (`cycles.sh`/`circular.sh`) permanecem como rede de
    seguranca adicional caso o padrao normal nao se sustente.
+
+   ### 5.f.ter Gate `delta-gate` na etapa `review-features` (archive, CHK020)
+
+   > Origem: feature `living-specs`, FASE 4. Fecha o gate obrigatorio da
+   > FR-010 (US3) tambem no fluxo AUTONOMO — o gate ja e obrigatorio na
+   > prosa manual de `review-features/SKILL.md` ("Proximos passos
+   > sugeridos" item 3); esta secao herda o MESMO comportamento quando o
+   > orquestrador invoca a skill sem supervisao (research.md Decision 8).
+
+   **Gatilho**: etapa corrente `review-features`, apos a skill reportar o
+   portfolio, para CADA feature classificada `ARQUIVAR` que o
+   orquestrador decida mover para `_archived/<YYYY-MM-DD>-<feature>/`:
+
+   ```bash
+   OUT=$(bash "$HOME/.claude/skills/review-features/scripts/delta-gate.sh" \
+     "docs/specs/<feature>/spec.md" --corpus-dir "docs/specs/current" 2>&1)
+   _gate_exit=$?
+   ```
+
+   **Exit 0 (liberado)**: rodar `delta-merge.sh docs/specs/<feature>/spec.md
+   --feature <feature>` ANTES do `mv` para `_archived/`; merge bloqueado
+   (exit 1 — corpus mudou entre gate e merge) suspende o `mv` da MESMA
+   feature pela mesma politica de bloqueio abaixo (defesa em
+   profundidade). Gate e merge liberados => `mv` acontece normalmente
+   (fluxo existente intacto, US2 cenario 5).
+
+   **Exit != 0 (bloqueado)**: aplicar a politica fixada em
+   `docs/specs/living-specs/tasks.md` tarefa 1.2.1-1.2.3 (research.md
+   Decision 8):
+
+   ```bash
+   state-decisions.sh register --state-dir <SD> \
+     --agente "orquestrador-00c" --etapa "review-features" \
+     --contexto "Gate delta-gate bloqueou archive de <feature>: $OUT" \
+     --opcoes '["bloqueio-humano-escopado","abortar-onda"]' \
+     --escolha "bloqueio-humano-escopado" \
+     --justificativa "FR-010/CHK020: archive sem delta requer preenchimento ou skip explicito; nao falhar silenciosamente" \
+     --score 2
+
+   bloqueios.sh register --state-dir <SD> \
+     --pergunta "Archive de <feature> bloqueado pelo delta-gate: <FINDING|error|... literal>. Preencher a secao Delta Requirements, registrar skip explicito, ou pular o archive desta feature?" \
+     --contexto-para-resposta "<RESULT|<spec>|delta=missing|errors=N|... literal emitido pelo gate>"
+   ```
+
+   O bloqueio e **ESCOPADO aquela feature especifica** — NUNCA aborta a
+   onda inteira de `review-features`: as demais features do portfolio
+   sem bloqueio de gate continuam sendo processadas (arquivadas ou
+   apenas avaliadas) normalmente na mesma onda, o mesmo padrao ja usado
+   pelos demais Quality Gates complementares (§5.f). A pergunta e o
+   contexto-para-resposta citam os `FINDING`/`RESULT` LITERAIS emitidos
+   pelo gate (aterramento de evidencia, Constitution VI) — nunca um
+   resumo parafraseado sem a linha real.
+
+   Registrar `state-ondas.sh record-skill --skill delta-gate --kind gate`
+   (script deterministico) por feature avaliada, para que `/review-task`
+   e `/review-features` consigam medir cobertura deste gate tambem.
 
 6. **Detectar conclusao da etapa**:
    `pipeline.sh detect-completion --feature-dir <FD> --stage <STAGE>
@@ -1548,16 +1618,28 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
                 '.execution.target_project_description // "unnamed"' | \
                 head -c 40 | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
         _msg=$(commit-mode.sh stage-message --feature "$_name" --stage "$_stage")
-        # 3. Commit direto via git (pipeline non-interactive — CHK047/dec-026)
-        git -C <PAP> add -A 2>/dev/null || true
-        git -C <PAP> commit -m "$_msg" 2>/dev/null || true
-        # 4. Registrar Decisao auditavel do commit
-        state-decisions.sh register --state-dir <SD> \
-          --agente "orquestrador-00c" --etapa "$_stage" \
-          --contexto "Commit atomico por etapa ($stage): $msg" \
-          --opcoes '["commit","skip"]' --escolha "commit" \
-          --justificativa "atomic_commit_enabled=true; guard-branch exit 0" \
-          --score 2
+        # 3. Staging por allowlist derivada (FR-014) — NUNCA `git add -A`.
+        #    --scope-dir confina aos artefatos desta etapa: o feature-dir
+        #    corrente <FD> (docs/specs/<feature>, ver detect-completion
+        #    --feature-dir) + o proprio state dir do agente-00c.
+        commit-mode.sh stage-derived --state-dir <SD> --projeto-alvo-path <PAP> \
+          --scope-dir "<FD>" --scope-dir ".claude/agente-00c-state"
+        _stage_rc=$?
+        if [ "$_stage_rc" = 0 ]; then
+          # 4. Commit direto via git (pipeline non-interactive — CHK047/dec-026)
+          git -C <PAP> commit -m "$_msg" 2>/dev/null || true
+          # 5. Registrar Decisao auditavel do commit
+          state-decisions.sh register --state-dir <SD> \
+            --agente "orquestrador-00c" --etapa "$_stage" \
+            --contexto "Commit atomico por etapa ($stage): $msg" \
+            --opcoes '["commit","skip"]' --escolha "commit" \
+            --justificativa "atomic_commit_enabled=true; guard-branch exit 0" \
+            --score 2
+        elif [ "$_stage_rc" = 3 ]; then
+          log_out "commit-mode: allowlist vazia — commit atomico pulado nesta onda (nada staged sob escopo da etapa)"
+        else
+          log_out "commit-mode: stage-derived falhou (exit $_stage_rc) — commit atomico pulado nesta onda"
+        fi
       else
         log_out "commit-mode: guard-branch exit $_guard_exit — commit atomico pulado nesta onda"
       fi
