@@ -5,6 +5,45 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.22.0] - 2026-07-23
+
+Absorve os aprendizados de higiene do benchmark OpenSpec (Fission-AI),
+itens 2-5 do estudo comparativo — o item estrutural (specs vivas + delta
+specs) fica para feature dedicada. Feature `openspec-hygiene` executada
+ponta-a-ponta via `feature-00c` (7 ondas, 46/46 subtasks, converge com
+zero gaps, suite completa 1715/0/0). Mudanças aditivas — sem breaking
+changes.
+
+### Added
+
+- **Gate determinístico de cobertura requirement↔cenário**
+  (`global/skills/checklist/scripts/requirement-coverage.sh`): verifica
+  que todo FR da spec tem >=1 cenário associado por correspondência
+  heurística textual de 2 vias (`--min-match` default 2), no padrão
+  `FINDING|severity|code|msg` + `RESULT` dos gates existentes. Integrado
+  como gate bloqueante na `specify` (ETAPA 4) e advisory na `checklist`
+  (achado vira `[Gap]`). Origem: regra "Every requirement MUST have at
+  least one scenario" do OpenSpec. Cobertura:
+  `tests/test_requirement-coverage.sh` (11 cenários).
+- **Envelope diagnóstico uniforme `_diag.sh`**
+  (`global/skills/agente-00c-runtime/scripts/`): helper sourceable que
+  emite `DIAG|severity|code|message|fix` — onde `fix` é uma frase
+  acionável com o próximo passo — adotado como piloto ADITIVO em 4
+  scripts do runtime (`state-rw.sh`, `state-lock.sh`, `state-ondas.sh`,
+  `bloqueios.sh`); mensagens legadas intactas. Origem:
+  docs/agent-contract.md do OpenSpec (campo `fix`). Cobertura:
+  `tests/test__diag.sh` (6 cenários).
+- **Guia de triagem "atualizar spec existente vs abrir feature nova"**:
+  critérios do OpenSpec (mesma intenção/refino → atualizar; intenção
+  mudou/escopo explodiu → nova feature) absorvidos na `specify`
+  (ETAPA 0.4) e na `clarify` (ETAPA 2.3), com critério consistente
+  entre as duas.
+- **Convenção de archive datado**
+  (`docs/specs/_archived/YYYY-MM-DD-<feature>/`): ordenação cronológica
+  do histórico de features arquivadas, documentada no `review-features`.
+  Anti-retroativa: diretórios já arquivados NÃO são migrados (links em
+  CLAUDE.md/memórias/specs preservados).
+
 ## [5.21.0] - 2026-07-17
 
 Fecha dois gaps de execução autônoma levantados em dogfooding (PR #37):
@@ -3796,6 +3835,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.22.0]: https://github.com/JotJunior/cstk/releases/tag/v5.22.0
 [5.21.0]: https://github.com/JotJunior/cstk/releases/tag/v5.21.0
 [5.20.0]: https://github.com/JotJunior/cstk/releases/tag/v5.20.0
 [5.19.0]: https://github.com/JotJunior/cstk/releases/tag/v5.19.0
