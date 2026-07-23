@@ -49,48 +49,48 @@ os 3 sites reais de `git add -A`/`git add -- .` que causaram o incidente
 
 Ref: checklists/requirements.md CHK015 · Spec Key Entities "Living Spec Corpus" · contracts/delta-section-format.md regra 1
 
-- [ ] 1.1.1 Fixar a regra: antes de declarar um `### Capability: <slug>` novo
+- [x] 1.1.1 Fixar a regra: antes de declarar um `### Capability: <slug>` novo
   numa secao Delta Requirements, o autor MUST consultar as capabilities ja
   existentes rodando `ls docs/specs/current/*.md 2>/dev/null` (corpus pode
   nao existir ainda — lista vazia e um resultado valido) e reusar o slug
   existente sempre que a feature tocar o MESMO conceito, em vez de
   fragmentar em um slug novo semanticamente equivalente (ex.: `commit-mode`
   vs `commit-staging` citado no gap do checklist)
-- [ ] 1.1.2 Definir que a decisao de "mesmo conceito ou conceito novo" e
+- [x] 1.1.2 Definir que a decisao de "mesmo conceito ou conceito novo" e
   julgamento do AUTOR da spec (agente ou humano) no momento de preencher a
   secao delta — nao um script determinístico (mesma natureza de decisao ja
   delegada ao agente em `origin -> story_priority` no precedente
   `skill-converge`, research.md Decision 1 daquela feature); o gate
   (`delta-gate.sh`) so valida a FORMA do slug (`[a-z0-9][a-z0-9-]*`), nunca
   a semantica de reuso
-- [ ] 1.1.3 Anotar a regra acima em
+- [x] 1.1.3 Anotar a regra acima em
   `contracts/delta-section-format.md` §Gramatica, item 1 (apos a definicao
   do padrao do slug), citando o comando de descoberta e o exemplo de
   fragmentacao do gap
-- [ ] 1.1.4 Registrar que a tarefa 2.2 (prosa da skill `specify`) e o local
+- [x] 1.1.4 Registrar que a tarefa 2.2 (prosa da skill `specify`) e o local
   de implementacao desta orientacao — este item so fixa a definicao
 
 ### 1.2 Definir integracao gate-bloqueado <-> bloqueios.sh no fluxo autonomo `[A]`
 
 Ref: checklists/requirements.md CHK020 · Spec Edge Cases · research.md Decision 8 · Plan Constitution Check
 
-- [ ] 1.2.1 Fixar a politica: quando `delta-gate.sh` retorna exit 1 (archive
+- [x] 1.2.1 Fixar a politica: quando `delta-gate.sh` retorna exit 1 (archive
   bloqueado) durante a fase `review-features` do `agente-00c-orchestrator`
   em execucao SEM supervisao, o orquestrador MUST registrar um
   `bloqueios.sh register` para AQUELA feature especifica (pergunta:
   resumo dos `FINDING|error|...` emitidos pelo gate + path da spec),
   nunca falhar silenciosamente nem pular o archive sem rastro
-- [ ] 1.2.2 Fixar que o bloqueio e ESCOPADO a feature (nao aborta a onda
+- [x] 1.2.2 Fixar que o bloqueio e ESCOPADO a feature (nao aborta a onda
   inteira de `review-features`): as demais features do portfolio sem
   bloqueio de gate continuam sendo processadas (arquivadas/avaliadas)
   normalmente na mesma onda — paridade com o padrao ja usado pelos demais
   Quality Gates complementares do orquestrador (severidade alta escala,
   mas nao trava as demais features do lote)
-- [ ] 1.2.3 Fixar o formato da pergunta do bloqueio: contexto-para-resposta
+- [x] 1.2.3 Fixar o formato da pergunta do bloqueio: contexto-para-resposta
   cita o `RESULT|<spec>|delta=missing|errors=N|...` literal emitido pelo
   gate (aterramento de evidencia — nunca resumo parafraseado sem a linha
   real, Constitution VI)
-- [ ] 1.2.4 Registrar que a tarefa 4.2 (`agente-00c-orchestrator.md`, fase
+- [x] 1.2.4 Registrar que a tarefa 4.2 (`agente-00c-orchestrator.md`, fase
   review-features) e o local de implementacao desta politica — este item
   so fixa a definicao; o fluxo MANUAL (operador rodando `/review-features`
   interativamente) segue com o bloqueio reportado em prosa pela skill
@@ -101,7 +101,7 @@ Ref: checklists/requirements.md CHK020 · Spec Edge Cases · research.md Decisio
 
 Ref: checklists/requirements.md CHK034 · Contract corpus-format.md §Estrutura
 
-- [ ] 1.3.1 Fixar que a validacao estrutural do corpus acontece DENTRO de
+- [x] 1.3.1 Fixar que a validacao estrutural do corpus acontece DENTRO de
   `delta-gate.sh`, como pre-checagem ANTES de qualquer validacao
   referencial (ref-not-found/added-collision/renamed-target-exists): para
   cada arquivo `docs/specs/current/<slug>.md` que a secao delta da spec
@@ -111,20 +111,20 @@ Ref: checklists/requirements.md CHK034 · Contract corpus-format.md §Estrutura
   `## Removed Requirements` + coluna "Antigo"/"Novo" de
   `## Renamed Identifiers` simultaneamente — invariante 1 de
   `corpus-format.md`)
-- [ ] 1.3.2 Fixar o novo `FINDING` code `corpus-malformed` (severity=error)
+- [x] 1.3.2 Fixar o novo `FINDING` code `corpus-malformed` (severity=error)
   para violacao de qualquer invariante da tarefa 1.3.1; corpus ausente
   NAO e `corpus-malformed` (permanece `corpus-missing`, severity=info, ja
   definido — US2 cenario 4)
-- [ ] 1.3.3 Fixar que `delta-merge.sh` RE-VALIDA a mesma estrutura antes de
+- [x] 1.3.3 Fixar que `delta-merge.sh` RE-VALIDA a mesma estrutura antes de
   aplicar qualquer mutacao (defesa em profundidade — mesmo padrao ja
   adotado para a re-validacao de slug entre gate e merge,
   `delta-merge-cli.md` invariante 2-bis); corpus malformado bloqueia o
   merge com o MESMO code, exit 1, corpus intacto
-- [ ] 1.3.4 Atualizar `contracts/delta-gate-cli.md` §Codes (nova linha
+- [x] 1.3.4 Atualizar `contracts/delta-gate-cli.md` §Codes (nova linha
   `corpus-malformed`) e `contracts/corpus-format.md` (nota apontando que a
   "advertencia em prosa" hoje existente passa a ter enforcement
   determinístico via este code)
-- [ ] 1.3.5 Registrar que as tarefas 3.3 (`delta-gate.sh`) e 3.7
+- [x] 1.3.5 Registrar que as tarefas 3.3 (`delta-gate.sh`) e 3.7
   (`delta-merge.sh`) sao o local de implementacao — este item so fixa a
   definicao
 

@@ -43,6 +43,17 @@ Regras:
 
 1. `<capability-slug>` casa `[a-z0-9][a-z0-9-]*` e mapeia para
    `docs/specs/current/<capability-slug>.md`.
+   - **Descoberta/reuso de slug (CHK015)**: antes de declarar um
+     `### Capability: <slug>` novo, o autor MUST rodar
+     `ls docs/specs/current/*.md 2>/dev/null` (corpus pode nao existir
+     ainda — lista vazia e um resultado valido) e reusar o slug ja
+     existente sempre que a feature tocar o MESMO conceito, em vez de
+     fragmentar em um slug novo semanticamente equivalente (ex.:
+     `commit-mode` vs `commit-staging` referindo-se ao mesmo mecanismo).
+     A decisao "mesmo conceito ou conceito novo" e julgamento do AUTOR da
+     spec (agente ou humano) no momento de preencher a secao delta — o
+     gate (`delta-gate.sh`) so valida a FORMA do slug (regra acima),
+     nunca a semantica de reuso.
 2. Blocos `### Capability:` sao repetiveis (uma feature pode tocar N
    capabilities). Cada um contem >=1 dos quatro grupos `####`.
 3. Entrada comeca em `- **FR-NNN**:` (ADDED/MODIFIED/REMOVED) ou

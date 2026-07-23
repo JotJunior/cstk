@@ -233,6 +233,14 @@ caminhos.
   julgamento de modelo: duas execucoes do gate sobre a mesma spec e o
   mesmo estado de corpus MUST produzir sempre o mesmo veredito (bloquear
   ou liberar o archive), sem variacao entre chamadas.
+- Fase `review-features` do orquestrador autonomo (`agente-00c`) encontra
+  `delta-gate.sh` bloqueado (exit 1) para uma feature candidata a archive
+  durante execucao SEM supervisao — o orquestrador MUST registrar
+  `bloqueios.sh register` ESCOPADO aquela feature especifica (pergunta
+  citando os `FINDING`/`RESULT` literais emitidos pelo gate), nunca
+  falhar silenciosamente nem pular o archive sem rastro; as demais
+  features do portfolio sem bloqueio de gate continuam sendo processadas
+  normalmente na mesma onda (research.md Decision 8).
 
 ## Requirements
 

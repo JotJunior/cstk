@@ -41,9 +41,10 @@ RESULT|<spec>|delta=<applied|skip|blocked>|added=<N>|modified=<N>|removed=<N>|re
 ```
 
 Codes de erro: mesmos do delta-gate (`ref-not-found`, `added-collision`,
-`renamed-target-exists`, `entry-malformed`, ...) — o merge re-valida
-(defesa em profundidade; gate e merge podem rodar em momentos distintos e o
-corpus pode ter mudado entre eles). Erros de uso: `DIAG|` em stderr.
+`renamed-target-exists`, `entry-malformed`, `corpus-malformed`, ...) — o
+merge re-valida (defesa em profundidade; gate e merge podem rodar em
+momentos distintos e o corpus pode ter mudado entre eles). Erros de uso:
+`DIAG|` em stderr.
 
 ## Exit codes
 
@@ -63,6 +64,13 @@ corpus pode ter mudado entre eles). Erros de uso: `DIAG|` em stderr.
    qualquer path — nunca confia que o gate rodou antes (defesa em
    profundidade contra path traversal); texto delta escrito no corpus
    sempre via `printf '%s'`, nunca como format string.
+2-ter. **Estrutura do corpus (CHK034)**: o merge RE-VALIDA a estrutura de
+   cada arquivo de capability existente (mesmas invariantes de
+   `corpus-format.md`, code `corpus-malformed`) ANTES de aplicar qualquer
+   mutacao — mesmo padrao de defesa em profundidade da invariante 2-bis
+   (gate e merge podem rodar em momentos distintos; o corpus pode ter
+   sido editado a mao entre um e outro). Corpus malformado bloqueia o
+   merge com `corpus-malformed`, exit 1, corpus intacto.
 3. Determinismo byte-a-byte: mesmos inputs (spec + corpus + --date) =>
    mesmo corpus resultante (entradas ordenadas por id).
 4. O fluxo de archive na prosa de `review-features/SKILL.md` roda:

@@ -239,6 +239,27 @@ comportamento por invocar a mesma skill. Nenhum hook novo e necessario.
 archive ja requer") — o gate e parte da mesma acao, nao um passo extra; a
 skill e o unico ponto de entrada documentado do archive (Decision 3).
 
+**Politica de bloqueio no fluxo autonomo (CHK020)**: quando
+`delta-gate.sh` retorna exit 1 (archive bloqueado) durante a fase
+`review-features` do `agente-00c-orchestrator` em execucao SEM
+supervisao, o orquestrador MUST registrar um `bloqueios.sh register`
+ESCOPADO aquela feature especifica — pergunta citando os
+`FINDING|error|<code>|<mensagem>` literais emitidos pelo gate + path do
+`spec.md`; contexto-para-resposta cita o
+`RESULT|<spec>|delta=missing|errors=N|...` literal (aterramento de
+evidencia, Constitution VI — nunca resumo parafraseado sem a linha
+real) — nunca falhar silenciosamente nem pular o archive sem rastro. O
+bloqueio NAO aborta a onda de `review-features` inteira: as demais
+features do portfolio sem bloqueio de gate continuam sendo processadas
+(arquivadas/avaliadas) normalmente na mesma onda — mesmo padrao ja usado
+pelos demais Quality Gates complementares do orquestrador (severidade
+alta escala para bloqueio, mas nao trava as demais features do lote). O
+fluxo MANUAL (operador rodando `/review-features` interativamente) segue
+com o bloqueio reportado em prosa pela skill, sem precisar de
+`bloqueios.sh` (mecanismo exclusivo dos orquestradores autonomos). Local
+de implementacao: `agente-00c-orchestrator.md` fase `review-features`
+(tarefa 4.2 desta feature) — esta decisao so fixa a definicao.
+
 ## Decision 9 — Migracao retroativa e primeiro corpus
 
 **Decision**: `docs/specs/current/` nasce VAZIO (criado pelo primeiro merge

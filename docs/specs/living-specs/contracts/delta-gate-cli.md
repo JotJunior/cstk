@@ -46,7 +46,8 @@ RESULT|<spec>|delta=<present|skip|missing>|errors=<N>|warnings=<M>
 | `added-collision` | error | ADDED com id ja existente na capability (edge case colisao) |
 | `renamed-target-exists` | error | RENAMED para id ja usado (ativo, removido ou aposentado) |
 | `skip-with-delta` | error | Skip E blocos Capability na mesma secao (mutuamente exclusivos) |
-| `corpus-missing` | info | corpus/capability ainda inexistente com apenas ADDED (valido — primeiro merge cria) |
+| `corpus-malformed` | error | arquivo `docs/specs/current/<slug>.md` referenciado pela secao delta viola invariante estrutural do contrato corpus-format (heading `# Capability:`/`## Requirements`/`### FR-NNN` mal-formado, ou id duplicado considerando `## Requirements` + `## Removed Requirements` + coluna Antigo/Novo de `## Renamed Identifiers` simultaneamente) — CHK034 |
+| `corpus-missing` | info | corpus/capability ainda inexistente com apenas ADDED (valido — primeiro merge cria); distinto de `corpus-malformed` (corpus existe mas esta invalido) |
 
 ## Exit codes
 
@@ -69,3 +70,11 @@ RESULT|<spec>|delta=<present|skip|missing>|errors=<N>|warnings=<M>
    `printf '%s'`).
 5. Teste: `tests/test_delta-gate.sh` (convencao de cobertura), incluindo
    cenario de slug hostil (`../escape`, absoluto, com espaco).
+6. **Ordem de validacao (CHK034)**: para cada capability referenciada
+   pela secao delta que ja existe no corpus, a checagem estrutural
+   (`corpus-malformed`) roda como PRE-CHECAGEM, ANTES de qualquer
+   validacao referencial (`ref-not-found`/`added-collision`/
+   `renamed-target-exists`) contra o conteudo daquele arquivo — um corpus
+   malformado nao pode ser lido de forma confiavel para validar
+   referencias. Corpus inexistente permanece `corpus-missing` (nao e
+   `corpus-malformed`).

@@ -26,6 +26,12 @@ nao muda (FR-006).
 
 > Comportamento ATUAL do sistema para esta capability. Gerado/atualizado
 > exclusivamente por delta-merge.sh na acao de archive — nao editar a mao.
+> **Enforcement (CHK034)**: esta advertencia em prosa passa a ter
+> checagem deterministica — `delta-gate.sh` e `delta-merge.sh` validam as
+> invariantes estruturais abaixo como pre-checagem (code
+> `corpus-malformed`, severity=error) ANTES de qualquer validacao
+> referencial ou mutacao; ver `delta-gate-cli.md` §Codes/invariante 6 e
+> `delta-merge-cli.md` invariante 2-ter.
 
 ## Requirements
 
