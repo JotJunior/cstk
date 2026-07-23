@@ -35,6 +35,25 @@ arquitetural muito maiores que os quatro itens aqui tratados.
 > `clarify`, ou pelo operador/agente executando a acao manual de
 > arquivamento descrita em `review-features`).
 
+## Clarifications
+
+### Session 2026-07-23
+
+- Q: FR-005 — qual mecanismo de rastreabilidade liga um Functional
+  Requirement ao(s) seu(s) cenario(s): referencia explicita de ID
+  inserida no texto do cenario (exige ajuste no template
+  `feature-spec.md`), ou correspondencia heuristica textual entre o
+  enunciado do requisito e os cenarios/Edge Cases ja existentes (sem
+  exigir mudanca de template)? → A: correspondencia heuristica
+  textual, sem exigir citacao literal do ID do requisito no texto do
+  cenario e sem mudanca no template `feature-spec.md`. Motivo:
+  nenhuma das specs existentes do repositorio cita FR-IDs dentro de
+  blocos Given/When/Then, e o template atual nao tem essa convencao;
+  exigir citacao explicita forcaria retrofit de todo o portfolio de
+  specs e uma mudanca de template, contradizendo o proprio Edge Case
+  desta spec ("a spec precisa ganhar os cenarios faltantes" — nao
+  "citar IDs").
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Bloquear specs com requisito funcional sem cenario associado (Priority: P1)
@@ -233,14 +252,14 @@ distinta da mensagem.
 - **FR-004**: O gate MUST passar com zero achados quando a spec nao
   declara nenhum Functional Requirement, ou quando todo Functional
   Requirement tem ao menos um cenario associado.
-- **FR-005**: [NEEDS CLARIFICATION: qual mecanismo de rastreabilidade liga
-  um Functional Requirement ao(s) seu(s) cenario(s) — uma referencia
-  explicita a inserir no texto do cenario (ex.: o Acceptance Scenario cita
-  o ID `FR-003` literalmente), exigindo ajuste no template
-  `feature-spec.md`; ou uma correspondencia heuristica textual entre o
-  enunciado do requisito e os cenarios/Edge Cases ja existentes, sem
-  exigir mudanca de template? A decisao afeta se specs futuras precisam
-  citar IDs de requisito dentro dos cenarios.]
+- **FR-005**: O gate da FR-001 MUST determinar a associacao entre um
+  Functional Requirement e seus cenarios por correspondencia
+  heuristica textual — comparando termos-chave (substantivos/verbos
+  centrais) do enunciado do requisito contra o texto dos Acceptance
+  Scenarios e Edge Cases da mesma spec — sem exigir que o cenario cite
+  o ID do requisito literalmente, e MUST NOT exigir qualquer mudanca
+  no template `feature-spec.md` para funcionar sobre specs ja
+  existentes (ver Clarifications, Session 2026-07-23).
 - **FR-006**: A skill `specify` MUST incluir, antes da criacao de uma nova
   spec, uma etapa de triagem que avalia se o pedido refina/mantem a
   intencao de uma feature ja especificada (recomendando atualizar a spec
