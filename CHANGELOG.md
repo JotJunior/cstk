@@ -5,6 +5,50 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.23.0] - 2026-07-23
+
+Absorve o aprendizado ESTRUTURAL do benchmark OpenSpec — specs vivas com
+disciplina de delta e merge — e fecha a sug-001 da execução anterior
+(hardening de staging). Feature `living-specs` executada ponta-a-ponta via
+`feature-00c` (9 ondas, 30 tasks, converge com 1 MEDIUM corrigido, suite
+completa 1758/0/0). Mudanças aditivas — o archive datado da v5.22.0
+continua valendo; o corpus é um destino ADICIONAL do conteúdo.
+
+### Added
+
+- **Corpus canônico de specs vivas** (`docs/specs/current/`): descreve o
+  comportamento ATUAL do sistema por capability (formato em
+  `contracts/corpus-format.md` da feature), alimentado no momento do
+  archive — o conhecimento deixa de evaporar em `_archived/`. Origem:
+  modelo `openspec/specs/` vs `openspec/changes/` do OpenSpec.
+- **Seção opcional `## Delta Requirements`** no template de spec da
+  `specify` (`ADDED/MODIFIED/REMOVED/RENAMED Requirements`): a spec de
+  feature declara o delta que será aplicado ao corpus no archive; regra
+  de descoberta/reuso de slug de capability evita fragmentar o mesmo
+  conceito em arquivos distintos.
+- **`delta-gate.sh`** (`global/skills/review-features/scripts/`): gate
+  read-only determinístico — parser da seção delta, validação estrutural
+  do corpus (`corpus-malformed`, pré-referencial), validação referencial
+  (`ref-not-found`/`added-collision`/`renamed-target-exists`), regra
+  "feature sem delta é inválida salvo skip explícito", anti-path-traversal
+  e envelope DIAG. Cobertura: `tests/test_delta-gate.sh` (22 cenários).
+- **`delta-merge.sh`** (idem): aplicação atômica do delta por capability
+  (mktemp+mv), reusando o parser do gate via source. Conflito NUNCA é
+  mergeado silenciosamente — vira bloqueio com diagnóstico (no fluxo
+  autônomo, `bloqueios.sh register` escopado à feature). Cobertura:
+  `tests/test_delta-merge.sh` (11 cenários).
+- **Integração no archive do `review-features`**: a ação de arquivar roda
+  `delta-gate.sh` → `delta-merge.sh` → `mv` para
+  `_archived/YYYY-MM-DD-<feature>/`.
+- **Hardening de staging (sug-001)**: subcomandos `snapshot` +
+  `stage-derived` no `commit-mode.sh` — staging por allowlist derivada do
+  diff da onda (porcelain `-z` NUL-delimitado + `--untracked-files=all`),
+  NUNCA `git add -A`. Os 4 sites de staging amplo (prosa dos 2
+  orquestradores + `state-ondas.sh`) convergiram ao helper; zero
+  `git add -A` vivo no repo. Cobertura: +32 cenários em
+  `tests/test_commit-mode.sh`, regressão em `tests/test_state-ondas.sh`
+  (cenário "arquivo untracked alheio nunca staged").
+
 ## [5.22.0] - 2026-07-23
 
 Absorve os aprendizados de higiene do benchmark OpenSpec (Fission-AI),
@@ -3835,6 +3879,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.23.0]: https://github.com/JotJunior/cstk/releases/tag/v5.23.0
 [5.22.0]: https://github.com/JotJunior/cstk/releases/tag/v5.22.0
 [5.21.0]: https://github.com/JotJunior/cstk/releases/tag/v5.21.0
 [5.20.0]: https://github.com/JotJunior/cstk/releases/tag/v5.20.0
