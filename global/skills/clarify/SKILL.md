@@ -210,6 +210,24 @@ Para cada categoria Partial ou Missing, adicionar candidato a pergunta EXCETO se
 - Clarificacao nao mudaria materialmente a implementacao ou estrategia de validacao
 - Informacao e melhor resolvida na fase de planejamento (anotar internamente)
 
+### 2.3 Sinalizar quando o ponto levantado e feature nova, nao clarificacao
+
+Aplica o mesmo criterio de `specify/SKILL.md` ETAPA 0.4 (atualizar spec vs
+abrir feature nova): se, ao escanear ambiguidades ou ao longo do diálogo com
+o operador, um ponto levantado **muda a intencao original** da spec corrente
+ou **expande o escopo** para atores/capacidades nao relacionados ao objetivo
+que a spec ja ratificou — isso NAO e uma ambiguidade a resolver dentro da
+spec atual, e o embriao de uma feature separada.
+
+Nesse caso:
+- **Nao** adicionar como candidato a pergunta desta rodada de `clarify`.
+- Sinalizar ao operador citando o criterio aplicado (intencao mudou /
+  escopo expandiu) e sugerir `/specify` para abrir a feature nova, em vez
+  de forcar a resposta dentro da spec corrente.
+- Se o ponto e ambiguo quanto a pertencer ou nao ao escopo original,
+  preferir tratar como clarificacao normal (o overhead de errar para o
+  lado de clarificar e menor do que fragmentar escopo em specs demais).
+
 ---
 
 ## ETAPA 3: PRIORIZAR PERGUNTAS

@@ -55,7 +55,10 @@ scenario_acquire_duplicado_exit_3() {
     _fail "acquire duplicado exit" "esperado 3, obtido $_CAPTURED_EXIT"
     return 1
   fi
+  # Mensagem legada permanece byte-a-byte identica (SC-006, openspec-hygiene).
   assert_stderr_contains "lock ja detido" || return 1
+  # Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015).
+  assert_stderr_contains "DIAG|error|lock-contention|" || return 1
 }
 
 scenario_release_idempotente() {
@@ -86,6 +89,10 @@ scenario_check_detido_exit_3() {
     _fail "check detido" "esperado 3, obtido $_CAPTURED_EXIT"
     return 1
   fi
+  # Mensagem legada permanece byte-a-byte identica (SC-006, openspec-hygiene).
+  assert_stderr_contains "lock detido" || return 1
+  # Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015).
+  assert_stderr_contains "DIAG|error|lock-contention|" || return 1
 }
 
 scenario_locks_independentes_por_state_dir() {

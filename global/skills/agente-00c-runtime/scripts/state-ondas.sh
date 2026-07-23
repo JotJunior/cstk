@@ -130,6 +130,18 @@
 set -eu
 
 _SO_NAME="state-ondas"
+_SO_DIR=$(cd "$(dirname -- "$0")" && pwd)
+
+# Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015 — escopo-piloto).
+# Nota: o contrato propos 2 codes (wave-already-open, no-open-wave), mas a
+# leitura do codigo real (task 4.4.1) confirmou que "start" NAO tem guarda
+# fatal para onda-ja-aberta (nao-idempotente por desenho — cabe ao CALLER
+# checar `wave-status` antes, ver contrato "GUARDA ANTI-DUPLICACAO" no
+# agente-00c-feature-orchestrator.md). Migrado apenas `no-open-wave`, real
+# em 2 pontos de falha: `end` (nenhuma onda para fechar) e `record-skill`
+# (nenhuma onda para registrar a skill).
+# shellcheck source=./_diag.sh
+. "$_SO_DIR/_diag.sh"
 
 _so_die_usage() { printf '%s: %s\n' "$_SO_NAME" "$1" >&2; exit 2; }
 _so_die()       { printf '%s: %s\n' "$_SO_NAME" "$1" >&2; exit "${2:-1}"; }
@@ -315,7 +327,11 @@ $2"; shift 2 ;;
     ((.waves // .ondas) // []) as $w
     | if ($w | length) > 0 then (($w[-1].started_at // $w[-1].inicio) // "") else "" end
   ' "$_sf")
-  [ -n "$_start" ] || _so_die "end: nao ha onda em andamento" 1
+  if [ -z "$_start" ]; then
+    diag_emit error no-open-wave "end: nao ha onda em andamento" \
+      "rode state-ondas.sh start antes de end, ou confira se .waves ja foi fechado por outra chamada" || :
+    _so_die "end: nao ha onda em andamento" 1
+  fi
   _wc=$(_so_wallclock "$_start" "$_now") || true
   # tool_calls da onda = campo do state (ticks manuais via tool-call-tick)
   # + sidecar do hook PostToolUse (ver "Sidecar de ticks" acima).
@@ -422,7 +438,11 @@ _so_cmd_record_skill() {
 
   # Verifica que existe onda em andamento
   _has_onda=$(jq -r 'if ((.waves // .ondas) // []) | length > 0 then "yes" else "no" end' "$_sf")
-  [ "$_has_onda" = "yes" ] || _so_die "record-skill: nenhuma onda em andamento (rode state-ondas.sh start primeiro)" 1
+  if [ "$_has_onda" != "yes" ]; then
+    diag_emit error no-open-wave "record-skill: nenhuma onda em andamento (rode state-ondas.sh start primeiro)" \
+      "rode state-ondas.sh start antes de record-skill" || :
+    _so_die "record-skill: nenhuma onda em andamento (rode state-ondas.sh start primeiro)" 1
+  fi
 
   _now=$(_so_iso_now)
   _dec_json="null"

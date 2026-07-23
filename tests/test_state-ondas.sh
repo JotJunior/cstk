@@ -117,6 +117,10 @@ scenario_end_sem_onda_em_andamento_falha() {
     _fail "end sem onda" "esperado 1, obtido $_CAPTURED_EXIT"
     return 1
   fi
+  # Mensagem legada permanece byte-a-byte identica (SC-006, openspec-hygiene).
+  assert_stderr_contains "nao ha onda em andamento" || return 1
+  # Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015).
+  assert_stderr_contains "DIAG|error|no-open-wave|" || return 1
 }
 
 scenario_proxima_agendada_para_persiste() {
@@ -271,7 +275,10 @@ scenario_record_skill_sem_onda_falha() {
     _fail "exit" "esperado != 0, obtido 0"
     return 1
   fi
+  # Mensagem legada permanece byte-a-byte identica (SC-006, openspec-hygiene).
   assert_stderr_contains "nenhuma onda em andamento" || return 1
+  # Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015).
+  assert_stderr_contains "DIAG|error|no-open-wave|" || return 1
 }
 
 scenario_record_skill_obriga_flags() {

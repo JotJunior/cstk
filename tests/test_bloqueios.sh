@@ -130,7 +130,10 @@ scenario_respond_inexistente_falha() {
     _fail "respond inexistente" "esperado 1, obtido $_CAPTURED_EXIT"
     return 1
   fi
+  # Mensagem legada permanece byte-a-byte identica (SC-006, openspec-hygiene).
   assert_stderr_contains "nao encontrado" || return 1
+  # Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015).
+  assert_stderr_contains "DIAG|error|bloqueio-not-found|" || return 1
 }
 
 scenario_respond_ja_respondido_falha() {

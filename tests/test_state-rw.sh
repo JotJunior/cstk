@@ -133,7 +133,10 @@ scenario_write_recusa_json_invalido() {
     _fail "write json invalido exit" "esperado != 0, obtido 0"
     return 1
   fi
+  # Mensagem legada permanece byte-a-byte identica (SC-006, openspec-hygiene).
   assert_stderr_contains "stdin nao e JSON valido" || return 1
+  # Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015).
+  assert_stderr_contains "DIAG|error|state-invalid-json|" || return 1
 }
 
 scenario_sha256_verify_detecta_corrupcao() {
@@ -151,7 +154,24 @@ scenario_sha256_verify_detecta_corrupcao() {
     _fail "sha256-verify estado corrompido" "esperado 1, obtido $_CAPTURED_EXIT"
     return 1
   fi
+  # Mensagem legada permanece byte-a-byte identica (SC-006, openspec-hygiene).
   assert_stderr_contains "hash divergente" || return 1
+  # Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015).
+  assert_stderr_contains "DIAG|error|hash-mismatch|" || return 1
+}
+
+# ==== get: state.json ausente -> mensagem legada + DIAG|state-not-found
+# (openspec-hygiene FR-012/FR-015, escopo-piloto) ====
+
+scenario_get_state_ausente_emite_diag() {
+  _sd="$TMPDIR_TEST/state-inexistente"
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  if [ "$_CAPTURED_EXIT" = 0 ]; then
+    _fail "get state ausente exit" "esperado != 0, obtido 0"
+    return 1
+  fi
+  assert_stderr_contains "get: state.json ausente" || return 1
+  assert_stderr_contains "DIAG|error|state-not-found|" || return 1
 }
 
 scenario_path_check_dir_existente_passa() {
