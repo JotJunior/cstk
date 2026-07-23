@@ -52,7 +52,7 @@ For each check, output one of:
 **Expected order** (top to bottom in main.go):
 1. `recover.New()`
 2. `requestid.New()`
-3. `nrfiber.Middleware(nrApp)` — after requestid, before logging
+3. `apmfiber.Middleware(apmfiber.WithTracer(tracer))` — after requestid, before logging (unconditional/nil-safe; rollout-window dual-accept detailed in Check 3)
 4. `middleware.LoggingWithLogger(log)` or `middleware.Logging()`
 5. `cors.New(...)` — with AllowOrigins, AllowHeaders, AllowMethods, AllowCredentials
 6. `middleware.DryRun(...)` — if service supports dry-run
@@ -71,14 +71,29 @@ For each check, output one of:
 
 **Search**: `AuditPublisher` in main.go.
 
-### Check 3: New Relic APM
+### Check 3: Elastic APM
 
-- `observability.NewRelicApp(serviceName, cfg, log)` called
-- Conditional `nrfiber.Middleware(nrApp)` (only if nrApp != nil)
-- `defer observability.ShutdownNewRelic(nrApp)` present
+- `observability.ElasticAPMTracer(cfg, log)` called, returns `(tracer, err)` (non-fatal on error — Resilience Class A: degraded/non-recording, not a boot failure)
+- `apmfiber.Middleware(apmfiber.WithTracer(tracer))` present, unconditional — `WithTracer(nil)` is nil-safe (falls back to `apm.DefaultTracer()`), no `!= nil` guard needed
+- `defer observability.ShutdownElasticAPM(tracer)` present
 - Placed after `requestid` and before `logging` middleware
 
-**Search**: `NewRelicApp`, `nrfiber`, `ShutdownNewRelic` in main.go.
+**Rollout-window dual-accept (FR-007)**: while the platform-wide code migration to
+Elastic APM is in progress across the 20 repositories (commons + 19 services), this
+check PASSes if the service shows the Elastic signals above **OR** the legacy signals
+below in isolation — it FAILs only when **neither** is present. This is a documented,
+temporary exception to the zero-New-Relic-references goal (spec.md SC-001), ratified to
+close once code migration completes (spec.md Clarifications — "aperto final").
+
+- Legacy signals (accepted ONLY during the rollout window): `observability.NewRelicApp(serviceName, cfg, log)` called; `nrfiber.Middleware(nrApp)` present (historically conditional on `nrApp != nil`); `defer observability.ShutdownNewRelic(nrApp)` present.
+
+**Search**: Elastic — `ElasticAPMTracer`, `apmfiber`, `ShutdownElasticAPM` in main.go.
+Legacy (rollout window only) — `NewRelicApp`, `nrfiber`, `ShutdownNewRelic` in main.go.
+
+**Aperto final (runbook task 6.5)**: once the operator confirms code migration is
+complete across all 20 repositories, DELETE the "Legacy signals" bullet and the second
+half of the Search line above — this check then requires the Elastic signals
+exclusively and FAILs any service still showing New Relic wiring.
 
 ### Check 4: Route Registration Order
 
@@ -173,7 +188,7 @@ All three must be present:
 - Context cancellation for background goroutines
 - Consumer stop (`consumer.Stop()`) if RabbitMQ consumer exists
 - Server shutdown: `app.ShutdownWithContext(ctx)` or `app.Shutdown()`
-- Deferred resource cleanup (DB close, RabbitMQ close, New Relic shutdown)
+- Deferred resource cleanup (DB close, RabbitMQ close, APM shutdown)
 
 **Search**: `signal.Notify`, `Shutdown`, `defer` in main.go.
 
@@ -259,16 +274,16 @@ PASS: X/17 | FAIL: Y/17 | WARNING: Z/17 | N/A: W/17
 ## Results
 
 ### 1. Middleware Order
-**PASS** — Correct order: recover → requestid → nrfiber → logging → cors → dryrun → audit
+**PASS** — Correct order: recover → requestid → apmfiber → logging → cors → dryrun → audit
 (main.go:45-82)
 
 ### 2. Audit Middleware
 **FAIL** — Missing separate RabbitMQ connection. Audit reuses existing connection.
 (main.go:95)
 
-### 3. New Relic APM
-**WARNING** — nrfiber middleware not conditional on nrApp != nil
-(main.go:52)
+### 3. Elastic APM
+**PASS** — Elastic signals present: `apmfiber.Middleware(apmfiber.WithTracer(tracer))` unconditional/nil-safe, `ElasticAPMTracer`/`ShutdownElasticAPM` wired
+(main.go:104-108, 375)
 
 ... (continue for all 17 checks)
 
