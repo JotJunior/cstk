@@ -42,13 +42,30 @@ visao global ou comparacao entre features, use esta.
 
 1. `/review-task` em features marcadas como `PRIORIZAR` para detalhar tasks
 2. `/execute-task` na proxima task critica
-3. Mover features `ARQUIVAR` para `docs/specs/_archived/<YYYY-MM-DD>-<feature>/`
-   (acao manual, pedir confirmacao ao usuario antes de mover; `<YYYY-MM-DD>`
-   e a data em que a acao de arquivamento de fato ocorre, nao a data de
-   criacao da feature — permite ordenacao cronologica do diretorio sem
-   abrir cada subpasta). Diretorios ja existentes sob `docs/specs/_archived/`
-   sem esse prefixo de data (arquivados antes desta convencao) permanecem
-   inalterados — NAO renomear nem mover conteudo ja arquivado.
+3. Antes de mover uma feature `ARQUIVAR` para
+   `docs/specs/_archived/<YYYY-MM-DD>-<feature>/`, rodar o gate deterministico
+   `scripts/delta-gate.sh docs/specs/<feature>/spec.md --corpus-dir
+   docs/specs/current`:
+   - **Exit != 0 (bloqueado)**: NAO mover a feature. Reportar ao operador os
+     `FINDING|error|<code>|<mensagem>` literais emitidos pelo gate e pedir
+     que a secao `## Delta Requirements` seja preenchida na spec, ou que um
+     skip explicito seja registrado (ver
+     `contracts/delta-section-format.md`).
+   - **Exit 0 (liberado)**: rodar `scripts/delta-merge.sh
+     docs/specs/<feature>/spec.md --feature <feature>` ANTES do `mv` para
+     `_archived/`. Se o merge tambem bloquear (exit 1 — o corpus mudou entre
+     o gate e o merge), o `mv` fica igualmente suspenso (defesa em
+     profundidade — o gate por si so nunca garante que o merge vai passar).
+   - So apos o merge ter sucesso (exit 0) o `mv` acontece — o fluxo de mover
+     para `_archived/` permanece EXATAMENTE como hoje (acao manual, pedir
+     confirmacao ao usuario antes de mover; `<YYYY-MM-DD>` e a data em que a
+     acao de arquivamento de fato ocorre, nao a data de criacao da feature —
+     permite ordenacao cronologica do diretorio sem abrir cada subpasta).
+     Diretorios ja existentes sob `docs/specs/_archived/` sem esse prefixo de
+     data (arquivados antes desta convencao) permanecem inalterados — NAO
+     renomear nem mover conteudo ja arquivado. O corpus canonico
+     (`docs/specs/current/`) e ADICIONAL ao archive existente, nunca uma
+     substituicao (FR-006).
 
 ---
 
@@ -243,6 +260,17 @@ cronologicamente sem abrir cada diretorio. Diretorios ja existentes sob
 vigor) permanecem para sempre sem alteracao de nome — NAO renomear nem mover
 conteudo ja arquivado retroativamente (risco de quebrar links em `CLAUDE.md`,
 memorias e specs existentes que referenciam o path antigo).
+
+### Corpus canonico (`docs/specs/current/`) e a fonte de "como o sistema se comporta hoje"
+
+`_archived/<YYYY-MM-DD>-<feature>/` preserva o HISTORICO de mudancas por
+feature (o que cada feature mudou, quando). `docs/specs/current/` e o
+corpus canonico, atualizado a cada archive via `delta-gate.sh` +
+`delta-merge.sh` (item 3 acima) — responde "como o sistema se comporta
+hoje" para qualquer capacidade coberta, sem precisar abrir nenhum
+diretorio sob `_archived/` (FR-009). Os dois se complementam: use
+`docs/specs/current/` para o comportamento atual e `_archived/` para
+entender a evolucao historica de uma capacidade.
 
 ### `mtime_days` pode mentir em repos com checkout recente
 

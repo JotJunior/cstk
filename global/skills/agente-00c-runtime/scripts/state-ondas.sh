@@ -276,7 +276,40 @@ _so_cmd_start() {
   # entre o end anterior e este start pertencem a fechamento/overhead do
   # orquestrador, nao a onda nova).
   _so_ticks_reset "$_sdir"
+
+  # Baseline de untracked (living-specs FASE 5, FR-014/data-model.md
+  # UntrackedBaseline: "escrito por commit-mode.sh snapshot no inicio da
+  # onda"). Best-effort: git-commit (passo 10 de toda onda) delega a
+  # `stage-derived`, que so inclui untracked NOVOS desde este baseline —
+  # capturar aqui, ANTES de qualquer trabalho da onda mutar o repo, e o
+  # UNICO ponto onde "pre-existente" (alheio) vs "novo desta onda" pode
+  # ser distinguido corretamente. Nunca bloqueia `start`: ausencia de git,
+  # de target_project_path, ou de commit-mode.sh apenas deixa o baseline
+  # ausente (git-commit cai no fail-closed existente, sem regressao no
+  # ciclo de vida da onda).
+  _so_start_snapshot_baseline "$_sdir"
+
   printf '%s\n' "$_id"
+}
+
+# Best-effort: deriva o projeto-alvo do proprio state.json e chama
+# commit-mode.sh snapshot. Isolado em funcao propria para nunca poluir o
+# fluxo principal de start com `set -e` (toda falha aqui e silenciosa).
+_so_start_snapshot_baseline() {
+  _ssb_sdir="$1"
+  _ssb_sf=$(_so_state_file "$_ssb_sdir")
+  command -v git >/dev/null 2>&1 || return 0
+
+  _ssb_pap=$(jq -r '.execution.target_project_path // ""' "$_ssb_sf" 2>/dev/null) || _ssb_pap=""
+  [ -n "$_ssb_pap" ] && [ -d "$_ssb_pap" ] || return 0
+
+  _ssb_selfdir=$(_so_self_dir) || return 0
+  _ssb_cm="$_ssb_selfdir/commit-mode.sh"
+  [ -f "$_ssb_cm" ] || return 0
+
+  sh "$_ssb_cm" snapshot --state-dir "$_ssb_sdir" --projeto-alvo-path "$_ssb_pap" \
+    >/dev/null 2>&1 || _so_log "start: snapshot de baseline nao gravado (best-effort, sem impacto na onda)"
+  return 0
 }
 
 # Calcula wallclock em segundos entre dois timestamps ISO.
@@ -788,10 +821,38 @@ _so_cmd_git_commit() {
   fi
   # Sanitiza motivo: remove newlines + limita a 100 chars
   _motivo_safe=$(printf '%s' "$_motivo" | tr '\n\r' '  ' | cut -c 1-100)
-  # Add ALL changes (estado + artefatos da pipeline). Sem -A para nao incluir
-  # paths fora de cwd; usamos -- "$_pap" se necessario.
+
+  # Staging por allowlist derivada (living-specs FASE 5, FR-014):
+  # delega a commit-mode.sh stage-derived em vez de `git add -- .` — o
+  # wave-commit pode tocar qualquer path do repo (sem --scope-dir), mas o
+  # staging fica explicito por allowlist (tracked mudados + untracked
+  # NOVOS desde o ultimo snapshot da onda), nunca staging amplo.
+  _sog_selfdir=$(_so_self_dir) || _sog_selfdir="."
+  _sog_cm="$_sog_selfdir/commit-mode.sh"
+  [ -f "$_sog_cm" ] || _so_die "git-commit: commit-mode.sh nao encontrado em $_sog_selfdir" 1
+
+  # O baseline (commit-baseline.txt) e capturado no INICIO da onda por
+  # `state-ondas.sh start` (best-effort, via .execution.target_project_path
+  # do proprio state.json — data-model.md UntrackedBaseline: "escrito...
+  # no inicio da onda"). Snapshotar aqui, no momento do commit (fim da
+  # onda), seria tarde demais: todo trabalho da onda ja teria acontecido,
+  # entao o baseline capturaria o MESMO untracked que stage-derived tentaria
+  # marcar como "novo" — diff sempre vazio. Se `start` nao gravou baseline
+  # (target_project_path ausente/invalido, git ausente), stage-derived cai
+  # no fail-closed documentado: untracked fica fora, tracked segue incluido.
+  _sog_stage_rc=0
+  sh "$_sog_cm" stage-derived --state-dir "$_sdir" --projeto-alvo-path "$_pap" \
+    || _sog_stage_rc=$?
+
+  if [ "$_sog_stage_rc" = 3 ]; then
+    # Allowlist vazia: preserva o comportamento atual de "nada para
+    # commitar" (no-op), sem quebrar o contrato existente.
+    _so_log "git-commit: nada para commitar (no-op)"
+    return 0
+  fi
+  [ "$_sog_stage_rc" = 0 ] || _so_die "git-commit: stage-derived falhou (exit $_sog_stage_rc) em $_pap" 1
+
   ( cd -- "$_pap" \
-    && git add -- . \
     && if git diff --cached --quiet; then
          _so_log "git-commit: nada para commitar (no-op)"
        else

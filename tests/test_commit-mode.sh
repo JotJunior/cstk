@@ -16,6 +16,12 @@
 #   - stage-message: todos os stages mapeados
 #   - task-message: ID unico, range, lista
 #   - guard-branch: git ausente => exit 1
+#   - snapshot: baseline ordenado; uso incorreto => exit 2
+#   - stage-derived (living-specs FASE 5, FR-014..FR-017): regressao do
+#     incidente .pptx — scope-dir exclui alheio, task-baseline inclui
+#     arquivo novo, baseline ausente => untracked fora (fail-closed),
+#     allowlist vazia => exit 3, paths com espaco/unicode, rename,
+#     roundtrip real via 'git show --name-only'
 #   - is-enabled: campo=true => stdout "true"
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
@@ -398,6 +404,220 @@ scenario_fr015c_guard_branch_nao_default_nao_bloqueia() {
 
   capture "$SCRIPT" guard-branch --state-dir "$_sd" --projeto-alvo-path "$_gdir"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "feat/: exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ==== snapshot: grava baseline ordenado de untracked ====
+
+scenario_snapshot_grava_baseline_untracked_ordenado() {
+  _gdir="$TMPDIR_TEST/repo-snap"
+  _sd="$TMPDIR_TEST/sd-snap"
+  _init_git_repo "$_gdir" "feat/snap"
+  printf 'b\n' > "$_gdir/beta.txt"
+  printf 'a\n' > "$_gdir/alpha.txt"
+
+  capture "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ -f "$_sd/commit-baseline.txt" ] || { _fail "baseline nao gravado" "arquivo ausente"; return 1; }
+
+  _expected="alpha.txt
+beta.txt"
+  _got=$(cat "$_sd/commit-baseline.txt")
+  [ "$_got" = "$_expected" ] || { _fail "baseline ordenado" "esperado '$_expected' obtido '$_got'"; return 1; }
+}
+
+# ==== snapshot: uso incorreto sem --state-dir/--projeto-alvo-path => exit 2 ====
+
+scenario_snapshot_uso_incorreto_exit2() {
+  capture "$SCRIPT" snapshot --state-dir "$TMPDIR_TEST/x"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ==== 5.3.1: commit de etapa (scope-dir) exclui alheio pre-existente ====
+
+scenario_5_3_1_stagederived_scope_dir_exclui_alien() {
+  _gdir="$TMPDIR_TEST/repo-etapa"
+  _sd="$TMPDIR_TEST/sd-etapa"
+  _init_git_repo "$_gdir" "feat/etapa"
+
+  # Alheio untracked PRE-EXISTENTE (analogo ao incidente .pptx real).
+  printf 'alien\n' > "$_gdir/alien.pptx"
+
+  capture "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  mkdir -p "$_gdir/docs/specs/feat-x"
+  printf 's\n' > "$_gdir/docs/specs/feat-x/plan.md"
+
+  capture "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir" \
+    --scope-dir "docs/specs/feat-x"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-derived exit" "obtido $_CAPTURED_EXIT stderr='$_CAPTURED_STDERR'"; return 1; }
+
+  _staged=$(git -C "$_gdir" diff --cached --name-only)
+  case "$_staged" in
+    *alien.pptx*) _fail "alien.pptx nao deveria estar staged" "obtido: $_staged"; return 1 ;;
+  esac
+  case "$_staged" in
+    *"docs/specs/feat-x/plan.md"*) : ;;
+    *) _fail "plan.md deveria estar staged" "obtido: $_staged"; return 1 ;;
+  esac
+
+  _untracked=$(git -C "$_gdir" status --porcelain | grep '^??' || :)
+  case "$_untracked" in
+    *alien.pptx*) : ;;
+    *) _fail "alien.pptx deveria permanecer untracked" "obtido: $_untracked"; return 1 ;;
+  esac
+}
+
+# ==== 5.3.2: commit de task (baseline + arquivo novo pos-snapshot) inclui o novo ====
+
+scenario_5_3_2_stagederived_task_baseline_inclui_novo_arquivo() {
+  _gdir="$TMPDIR_TEST/repo-task"
+  _sd="$TMPDIR_TEST/sd-task"
+  _init_git_repo "$_gdir" "feat/task"
+  printf 'alien\n' > "$_gdir/alien.pptx"
+
+  capture "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  mkdir -p "$_gdir/cli"
+  printf 'helper\n' > "$_gdir/cli/new-helper.sh"
+
+  capture "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-derived exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  _staged=$(git -C "$_gdir" diff --cached --name-only)
+  case "$_staged" in
+    *"cli/new-helper.sh"*) : ;;
+    *) _fail "new-helper.sh deveria estar staged" "obtido: $_staged"; return 1 ;;
+  esac
+  case "$_staged" in
+    *alien.pptx*) _fail "alien.pptx nao deveria estar staged" "obtido: $_staged"; return 1 ;;
+  esac
+}
+
+# ==== 5.3.3: baseline AUSENTE => untracked todos fora, fail-closed ====
+
+scenario_5_3_3_stagederived_baseline_ausente_untracked_fora() {
+  _gdir="$TMPDIR_TEST/repo-nobase"
+  _sd="$TMPDIR_TEST/sd-nobase"
+  _init_git_repo "$_gdir" "feat/nobase"
+  mkdir -p "$_sd"
+
+  printf 'novo\n' > "$_gdir/untracked-novo.txt"
+  printf 'a\n' >> "$_gdir/README.md"
+
+  capture "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-derived exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  case "$_CAPTURED_STDERR" in
+    *baseline*) : ;;
+    *) _fail "aviso de baseline ausente esperado em stderr" "obtido: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+
+  _staged=$(git -C "$_gdir" diff --cached --name-only)
+  case "$_staged" in
+    *untracked-novo.txt*) _fail "untracked sem baseline nao deveria ser staged" "obtido: $_staged"; return 1 ;;
+  esac
+  case "$_staged" in
+    *README.md*) : ;;
+    *) _fail "README.md (tracked) deveria estar staged mesmo sem baseline" "obtido: $_staged"; return 1 ;;
+  esac
+}
+
+# ==== 5.3.4: allowlist vazia (fixture limpa) => exit 3, nenhum commit ====
+
+scenario_5_3_4_stagederived_allowlist_vazia_exit3() {
+  _gdir="$TMPDIR_TEST/repo-clean"
+  _sd="$TMPDIR_TEST/sd-clean"
+  _init_git_repo "$_gdir" "feat/clean"
+
+  capture "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  capture "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit esperado 3" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  _cached=$(git -C "$_gdir" diff --cached --name-only)
+  [ -z "$_cached" ] || { _fail "diff --cached deveria estar vazio" "obtido: $_cached"; return 1; }
+}
+
+# ==== 5.3.6: path com espaco e char nao-ASCII, tracked e untracked ====
+
+scenario_5_3_6_stagederived_paths_espaco_unicode() {
+  _gdir="$TMPDIR_TEST/repo-unicode"
+  _sd="$TMPDIR_TEST/sd-unicode"
+  mkdir -p "$_gdir"
+  git -C "$_gdir" init -q
+  git -C "$_gdir" config user.email "test@test.com"
+  git -C "$_gdir" config user.name "Test"
+  printf 'a\n' > "$_gdir/tracked file.txt"
+  git -C "$_gdir" add -A 2>/dev/null
+  git -C "$_gdir" commit -q -m init 2>/dev/null
+  git -C "$_gdir" checkout -q -b "feat/unicode" 2>/dev/null
+
+  capture "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  printf 'b\n' >> "$_gdir/tracked file.txt"
+  printf 'n\n' > "$_gdir/new \303\274nicode file.txt"
+
+  capture "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-derived exit" "obtido $_CAPTURED_EXIT stderr='$_CAPTURED_STDERR'"; return 1; }
+
+  _count=$(git -C "$_gdir" diff --cached --name-only | wc -l | tr -d ' ')
+  [ "$_count" = 2 ] || { _fail "esperado 2 paths staged (tracked+unicode)" "obtido $_count: $(git -C "$_gdir" diff --cached --name-only)"; return 1; }
+}
+
+# ==== rename: path novo staged, path antigo descartado (formato -z) ====
+
+scenario_stagederived_rename_stage_path_novo() {
+  _gdir="$TMPDIR_TEST/repo-rename"
+  _sd="$TMPDIR_TEST/sd-rename"
+  _init_git_repo "$_gdir" "feat/rename"
+  printf 'conteudo estavel o suficiente para o git detectar rename\n' > "$_gdir/oldname.txt"
+  git -C "$_gdir" add -A 2>/dev/null
+  git -C "$_gdir" commit -q -m "add oldname" 2>/dev/null
+
+  capture "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  git -C "$_gdir" mv oldname.txt newname.txt 2>/dev/null
+
+  capture "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-derived exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  _staged=$(git -C "$_gdir" diff --cached --name-status)
+  case "$_staged" in
+    *newname.txt*) : ;;
+    *) _fail "newname.txt deveria estar staged" "obtido: $_staged"; return 1 ;;
+  esac
+}
+
+# ==== roundtrip real: git show --name-only HEAD confirma alheio ausente em TODOS os commits ====
+
+scenario_5_3_5_roundtrip_git_show_alien_ausente() {
+  _gdir="$TMPDIR_TEST/repo-roundtrip"
+  _sd="$TMPDIR_TEST/sd-roundtrip"
+  _init_git_repo "$_gdir" "feat/roundtrip"
+  printf 'alien\n' > "$_gdir/alien.pptx"
+
+  capture "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  printf 'novo\n' > "$_gdir/legit.txt"
+  capture "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-derived exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  git -C "$_gdir" commit -q -m "add legit.txt" 2>/dev/null
+
+  _shown=$(git -C "$_gdir" show --name-only --format= HEAD)
+  case "$_shown" in
+    *alien.pptx*) _fail "alien.pptx nao deveria aparecer no commit real" "obtido: $_shown"; return 1 ;;
+  esac
+  case "$_shown" in
+    *legit.txt*) : ;;
+    *) _fail "legit.txt deveria estar no commit" "obtido: $_shown"; return 1 ;;
+  esac
 }
 
 run_all_scenarios

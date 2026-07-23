@@ -1,9 +1,11 @@
 #!/bin/sh
 # commit-mode.sh — helper POSIX para o modo opt-in atomic-commit.
 #
-# Feature: atomic-commit-pr
+# Feature: atomic-commit-pr (staging por allowlist: living-specs FASE 5)
 # Ref:     docs/specs/_archived/atomic-commit-pr/contracts/commit-mode.md
 #          docs/specs/_archived/atomic-commit-pr/spec.md §FR-002..011
+#          docs/specs/living-specs/contracts/commit-staging-cli.md
+#          docs/specs/living-specs/spec.md FR-014..FR-017
 #
 # Subcomandos:
 #   is-enabled   --state-dir DIR
@@ -13,16 +15,25 @@
 #   task-message  --feature NAME --task-ids "ID[,ID...]" [--brief TEXT]
 #   finalize     --state-dir DIR --projeto-alvo-path PATH [--session NAME]
 #                [--title T] [--body B]
+#   snapshot      --state-dir DIR --projeto-alvo-path PATH
+#   stage-derived --state-dir DIR --projeto-alvo-path PATH [--scope-dir REL_DIR]...
 #
 # Exit codes globais:
-#   0  sucesso / caso tratado (inclui skips nao-fatais)
+#   0  sucesso / caso tratado (inclui skips nao-fatais; stage-derived: >=1 path staged)
 #   1  erro generico (ex: git ausente, write falhou)
 #   2  erro de uso (flag faltando ou valor invalido)
-#   3  recusa de guard (branch default ou modo desabilitado — nao-fatal)
+#   3  recusa de guard (branch default ou modo desabilitado — nao-fatal);
+#      stage-derived: allowlist vazia, nada staged (FR-016, nao-fatal)
 #
 # POSIX sh puro. Zero deps obrigatorias.
 # Deps opcionais: jq (state read/write), git (branch/commit), gh (PR).
 # Ausencia de dep opcional => skip com status gravado, NUNCA aborta a onda.
+#
+# snapshot/stage-derived (FR-014): staging EXPLICITO por allowlist derivada —
+# jamais `git add -A`/`git add .`/`git add --all` em qualquer caminho de
+# codigo. `stage-derived` so inclui untracked se `snapshot` rodou antes na
+# mesma onda (baseline ausente => untracked ficam FORA, fail-closed —
+# nunca fallback para staging amplo).
 
 set -eu
 
@@ -37,6 +48,20 @@ if _cm_sd=$(_cm_selfdir 2>/dev/null) && [ -f "$_cm_sd/_log.sh" ]; then
   # shellcheck disable=SC1090
   . "$_cm_sd/_log.sh" && _cm_log_sourced=1
 fi
+
+# Tenta sourcear _diag.sh do mesmo dir (envelope DIAG| uniforme, ja
+# canonico em agente-00c-runtime/scripts/ — sem vendoring necessario aqui).
+_cm_diag_sourced=0
+if [ -n "${_cm_sd:-}" ] && [ -f "$_cm_sd/_diag.sh" ]; then
+  # shellcheck disable=SC1090
+  . "$_cm_sd/_diag.sh" && _cm_diag_sourced=1
+fi
+
+# _cm_diag SEVERITY CODE MESSAGE FIX — no-op se _diag.sh indisponivel.
+_cm_diag() {
+  [ "$_cm_diag_sourced" = 1 ] || return 0
+  diag_emit "$1" "$2" "$3" "$4" || :
+}
 
 _cm_err() {
   if [ "$_cm_log_sourced" = 1 ]; then
@@ -328,6 +353,218 @@ EOF
   return 0
 }
 
+# ---------- subcomando: snapshot ----------
+# snapshot --state-dir DIR --projeto-alvo-path PATH
+# Captura o conjunto de untracked ATUAL do repo (git status --porcelain,
+# linhas "?? "), paths ordenados, grava em DIR/commit-baseline.txt
+# (sidecar — nunca dentro do state.json, nunca versionado; 1 baseline por
+# onda, sobrescreve a anterior).
+# exit: 0 gravado; 1 erro git/IO; 2 uso incorreto
+_cm_cmd_snapshot() {
+  _sdir=""
+  _pap=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)          _sdir=$2; shift 2 ;;
+      --projeto-alvo-path)  _pap=$2;  shift 2 ;;
+      *) _cm_die_usage "snapshot: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_sdir" ] || _cm_die_usage "snapshot: --state-dir obrigatorio"
+  [ -n "$_pap" ]  || _cm_die_usage "snapshot: --projeto-alvo-path obrigatorio"
+
+  if ! _cm_require_git; then
+    _cm_err "snapshot: git nao encontrado no PATH"
+    _cm_diag "error" "git-missing" "git nao encontrado no PATH" "instale git ou ajuste o PATH antes de habilitar atomic-commit"
+    return 1
+  fi
+
+  mkdir -p "$_sdir" 2>/dev/null || {
+    _cm_err "snapshot: nao foi possivel criar diretorio $_sdir"
+    return 1
+  }
+
+  _baseline="$_sdir/commit-baseline.txt"
+  _tmp="$_baseline.tmp.$$"
+
+  # -z: NUL-terminated entries, paths NUNCA quoted/C-style-escaped pelo git
+  # (independe de core.quotepath) — unica forma robusta de extrair paths com
+  # espaco/unicode sem parsing ambiguo (CHK029). --untracked-files=all
+  # desliga o "rollup" de diretorio inteiro-untracked numa unica entrada
+  # ("?? dir/") — sem isso, um diretorio de feature novo (ex: docs/) vira 1
+  # entrada so, quebrando o casamento por prefixo de --scope-dir. Convertido
+  # para uma linha por entrada via tr (paths nao contem NUL; newline
+  # literal em nome de arquivo e fora de escopo, mesma limitacao aceita
+  # pelo restante do runtime POSIX).
+  if ! git -C "$_pap" status --porcelain -z --untracked-files=all 2>/dev/null \
+      | tr '\0' '\n' | sed -n 's/^?? //p' | sort > "$_tmp"; then
+    rm -f "$_tmp" 2>/dev/null || :
+    _cm_err "snapshot: 'git status --porcelain' falhou em $_pap"
+    _cm_diag "error" "git-status-failed" "git status --porcelain falhou em $_pap" "confirme que $_pap e um repositorio git valido"
+    return 1
+  fi
+
+  mv "$_tmp" "$_baseline" || {
+    _cm_err "snapshot: falha ao gravar $_baseline"
+    return 1
+  }
+
+  return 0
+}
+
+# ---------- subcomando: stage-derived ----------
+# stage-derived --state-dir DIR --projeto-alvo-path PATH [--scope-dir REL_DIR]...
+# Computa a CommitAllowlist (tracked_changed + untracked_new via baseline
+# de snapshot) e faz `git add -- <path>` por entrada — NUNCA `git add -A`,
+# `git add .`, `git add --all` (FR-014).
+# exit: 0 (>=1 path staged); 3 (allowlist vazia — nada a commitar, FR-016);
+#       1 (erro git); 2 (uso incorreto)
+_cm_cmd_stage_derived() {
+  _sdir=""
+  _pap=""
+  _scope_file="${TMPDIR:-/tmp}/cm-scopes.$$"
+  _has_scope=0
+  : > "$_scope_file"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)          _sdir=$2; shift 2 ;;
+      --projeto-alvo-path)  _pap=$2;  shift 2 ;;
+      --scope-dir)
+        # Remove barra final para comparacao consistente de prefixo.
+        printf '%s\n' "${2%/}" >> "$_scope_file"
+        _has_scope=1
+        shift 2
+        ;;
+      *) rm -f "$_scope_file" 2>/dev/null || :; _cm_die_usage "stage-derived: flag desconhecida: $1" ;;
+    esac
+  done
+  if [ -z "$_sdir" ] || [ -z "$_pap" ]; then
+    rm -f "$_scope_file" 2>/dev/null || :
+    [ -n "$_sdir" ] || _cm_die_usage "stage-derived: --state-dir obrigatorio"
+    _cm_die_usage "stage-derived: --projeto-alvo-path obrigatorio"
+  fi
+
+  if ! _cm_require_git; then
+    rm -f "$_scope_file" 2>/dev/null || :
+    _cm_err "stage-derived: git nao encontrado no PATH"
+    _cm_diag "error" "git-missing" "git nao encontrado no PATH" "instale git ou ajuste o PATH antes de habilitar atomic-commit"
+    return 1
+  fi
+
+  _raw="${TMPDIR:-/tmp}/cm-raw.$$"
+  _tracked="${TMPDIR:-/tmp}/cm-tracked.$$"
+  _untracked_cur="${TMPDIR:-/tmp}/cm-untracked-cur.$$"
+  _untracked_new="${TMPDIR:-/tmp}/cm-untracked-new.$$"
+  _allowlist="${TMPDIR:-/tmp}/cm-allowlist.$$"
+  _filtered="${TMPDIR:-/tmp}/cm-filtered.$$"
+
+  _cm_cleanup_stage_derived() {
+    rm -f "$_scope_file" "$_raw" "$_tracked" "$_untracked_cur" \
+      "$_untracked_new" "$_allowlist" "$_filtered" 2>/dev/null || :
+  }
+
+  # -z: NUL-terminated entries, paths NUNCA quoted/C-style-escaped pelo git
+  # (independe de core.quotepath — medido empiricamente: mesmo com
+  # core.quotepath=false, `--porcelain` sem -z ainda envolve em aspas
+  # duplas qualquer path com espaco, quebrando parsing por split simples).
+  # -z e a UNICA forma robusta de extrair paths com espaco/unicode sem
+  # ambiguidade (CHK029). --untracked-files=all desliga o "rollup" de
+  # diretorio inteiro-untracked numa unica entrada — sem isso, um path
+  # dentro de um diretorio de feature novo nunca casa com --scope-dir (o
+  # git colapsa TODO o diretorio novo em "?? dir/"). Convertido para 1
+  # linha por campo via tr (paths nao contem NUL; newline literal em nome
+  # de arquivo e fora de escopo).
+  if ! git -C "$_pap" status --porcelain -z --untracked-files=all 2>/dev/null \
+      | tr '\0' '\n' > "$_raw"; then
+    _cm_cleanup_stage_derived
+    _cm_err "stage-derived: 'git status --porcelain' falhou em $_pap"
+    _cm_diag "error" "git-status-failed" "git status --porcelain falhou em $_pap" "confirme que $_pap e um repositorio git valido"
+    return 1
+  fi
+
+  # Split por posicao fixa (cols 1-2 = XY, col 3 = espaco, col 4+ = path)
+  # em vez de word-splitting, entao paths com espaco sao preservados
+  # corretamente. Renames/copies (X ou Y == R/C) emitem, no formato -z, um
+  # segundo campo NUL-terminado logo em seguida com o path ANTIGO — usamos
+  # so o path NOVO (a entrada corrente) e descartamos esse campo extra.
+  : > "$_tracked"
+  : > "$_untracked_cur"
+  _skip_next=0
+  while IFS= read -r _line; do
+    if [ "$_skip_next" = 1 ]; then
+      _skip_next=0
+      continue
+    fi
+    [ -z "$_line" ] && continue
+    _xy=$(printf '%s' "$_line" | cut -c1-2)
+    _rest=$(printf '%s' "$_line" | cut -c4-)
+    case "$_xy" in
+      *R*|*C*) _skip_next=1 ;;
+    esac
+    if [ "$_xy" = "??" ]; then
+      printf '%s\n' "$_rest" >> "$_untracked_cur"
+    else
+      printf '%s\n' "$_rest" >> "$_tracked"
+    fi
+  done < "$_raw"
+
+  sort -u -o "$_tracked" "$_tracked"
+  sort -u -o "$_untracked_cur" "$_untracked_cur"
+
+  _baseline="$_sdir/commit-baseline.txt"
+  if [ -f "$_baseline" ]; then
+    comm -13 "$_baseline" "$_untracked_cur" > "$_untracked_new" 2>/dev/null || : > "$_untracked_new"
+  else
+    _cm_err "stage-derived: baseline ausente ($_baseline) — untracked ficam FORA do staging (fail-closed, nunca fallback amplo)"
+    _cm_diag "warning" "baseline-missing" "commit-baseline.txt ausente em $_sdir" "chame 'commit-mode.sh snapshot' antes de stage-derived para incluir untracked novos"
+    : > "$_untracked_new"
+  fi
+
+  cat "$_tracked" "$_untracked_new" | sort -u > "$_allowlist"
+
+  if [ "$_has_scope" = 1 ]; then
+    : > "$_filtered"
+    while IFS= read -r _path; do
+      [ -z "$_path" ] && continue
+      while IFS= read -r _scope; do
+        [ -z "$_scope" ] && continue
+        case "$_path" in
+          "$_scope"/*|"$_scope")
+            printf '%s\n' "$_path" >> "$_filtered"
+            break
+            ;;
+        esac
+      done < "$_scope_file"
+    done < "$_allowlist"
+    sort -u -o "$_filtered" "$_filtered"
+    cp "$_filtered" "$_allowlist" 2>/dev/null || :
+  fi
+
+  if [ ! -s "$_allowlist" ]; then
+    _cm_cleanup_stage_derived
+    _cm_out "stage-derived: allowlist vazia — nada a commitar (FR-016)"
+    return 3
+  fi
+
+  _add_failed=0
+  while IFS= read -r _path; do
+    [ -z "$_path" ] && continue
+    if ! git -C "$_pap" add -- "$_path" 2>/dev/null; then
+      _cm_err "stage-derived: 'git add -- $_path' falhou"
+      _cm_diag "error" "git-add-failed" "git add -- $_path falhou" "verifique se o path existe/e valido em $_pap"
+      _add_failed=1
+    fi
+  done < "$_allowlist"
+
+  _cm_cleanup_stage_derived
+
+  if [ "$_add_failed" = 1 ]; then
+    return 1
+  fi
+
+  return 0
+}
+
 # ---------- subcomando: finalize ----------
 # finalize --state-dir DIR --projeto-alvo-path PATH [--session NAME]
 #          [--title T] [--body B]
@@ -504,7 +741,7 @@ _cm_cmd_finalize() {
 
 # ---------- dispatch ----------
 
-[ "$#" -gt 0 ] || _cm_die_usage "subcomando obrigatorio: is-enabled|set-enabled|guard-branch|stage-message|task-message|finalize"
+[ "$#" -gt 0 ] || _cm_die_usage "subcomando obrigatorio: is-enabled|set-enabled|guard-branch|stage-message|task-message|finalize|snapshot|stage-derived"
 
 _CM_CMD=$1
 shift
@@ -516,7 +753,9 @@ case "$_CM_CMD" in
   stage-message) _cm_cmd_stage_message "$@" ;;
   task-message)  _cm_cmd_task_message  "$@" ;;
   finalize)      _cm_cmd_finalize      "$@" ;;
+  snapshot)      _cm_cmd_snapshot      "$@" ;;
+  stage-derived) _cm_cmd_stage_derived "$@" ;;
   *)
-    _cm_die_usage "subcomando desconhecido: $_CM_CMD (validos: is-enabled|set-enabled|guard-branch|stage-message|task-message|finalize)"
+    _cm_die_usage "subcomando desconhecido: $_CM_CMD (validos: is-enabled|set-enabled|guard-branch|stage-message|task-message|finalize|snapshot|stage-derived)"
     ;;
 esac

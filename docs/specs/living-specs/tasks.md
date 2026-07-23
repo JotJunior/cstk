@@ -392,21 +392,21 @@ Ref: CLAUDE.md §Como testar scripts shell · Regra de ouro (mapeamento por nome
 
 Ref: FR-006, FR-008 · research.md Decision 3, Decision 8 · delta-merge-cli.md invariante 4
 
-- [ ] 4.1.1 Atualizar "Proximos passos sugeridos" item 3 de
+- [x] 4.1.1 Atualizar "Proximos passos sugeridos" item 3 de
   `global/skills/review-features/SKILL.md`: antes de mover uma feature
   `ARQUIVAR` para `_archived/<YYYY-MM-DD>-<feature>/`, a skill roda
   `delta-gate.sh docs/specs/<feature>/spec.md --corpus-dir
   docs/specs/current` — exit != 0 => NAO mover, reportar os `FINDING|` ao
   operador e pedir preenchimento da secao delta ou skip explicito (US3
   cenario 1/2)
-- [ ] 4.1.2 Gate liberado (exit 0) => rodar `delta-merge.sh
+- [x] 4.1.2 Gate liberado (exit 0) => rodar `delta-merge.sh
   docs/specs/<feature>/spec.md --feature <feature>` ANTES do `mv` para
   `_archived/` — merge bloqueado (exit 1, corpus mudou entre gate e merge)
   tambem impede o `mv` (defesa em profundidade — tarefa 3.6.3)
-- [ ] 4.1.3 Documentar que o fluxo de mover para `_archived/` permanece
+- [x] 4.1.3 Documentar que o fluxo de mover para `_archived/` permanece
   EXATAMENTE como hoje apos o merge ter sucesso (US2 cenario 5, FR-006 —
   corpus e destino ADICIONAL, nunca substituicao)
-- [ ] 4.1.4 Adicionar nota curta no SKILL.md apontando `docs/specs/current/`
+- [x] 4.1.4 Adicionar nota curta no SKILL.md apontando `docs/specs/current/`
   como fonte para responder "como o sistema se comporta hoje" (FR-009),
   complementando (nao substituindo) a leitura de `_archived/` para
   historico de mudancas
@@ -415,16 +415,16 @@ Ref: FR-006, FR-008 · research.md Decision 3, Decision 8 · delta-merge-cli.md 
 
 Ref: checklists/requirements.md CHK020 · tarefa 1.2 (consome o gap) · research.md Decision 8
 
-- [ ] 4.2.1 Na fase `review-features` do `agente-00c-orchestrator.md`,
+- [x] 4.2.1 Na fase `review-features` do `agente-00c-orchestrator.md`,
   apos a acao de archive de CADA feature `ARQUIVAR` do portfolio, invocar
   `delta-gate.sh` conforme tarefa 4.1.1; exit 1 => aplicar a politica
   fixada na tarefa 1.2.1: `bloqueios.sh register` com a pergunta citando o
   `RESULT|` literal do gate (tarefa 1.2.3), sem abortar a onda inteira
   (tarefa 1.2.2)
-- [ ] 4.2.2 Registrar Decisao auditavel (`state-decisions.sh register`)
+- [x] 4.2.2 Registrar Decisao auditavel (`state-decisions.sh register`)
   documentando o veredito do gate por feature avaliada (padrao ja usado
   pelos demais Quality Gates complementares do orquestrador)
-- [ ] 4.2.3 Feature SEM bloqueio de gate na mesma onda continua sendo
+- [x] 4.2.3 Feature SEM bloqueio de gate na mesma onda continua sendo
   arquivada/mergeada normalmente — bloqueio de uma feature nao impede o
   processamento das demais (tarefa 1.2.2)
 
@@ -436,14 +436,18 @@ Ref: checklists/requirements.md CHK020 · tarefa 1.2 (consome o gap) · research
 
 Ref: FR-014 · contracts/commit-staging-cli.md §snapshot · research.md Decision 2
 
-- [ ] 5.1.1 Implementar `commit-mode.sh snapshot --state-dir DIR
+- [x] 5.1.1 Implementar `commit-mode.sh snapshot --state-dir DIR
   --projeto-alvo-path PATH`: captura untracked atual via
-  `git status --porcelain` (linhas `?? `), paths ordenados (`sort`), grava
-  em `DIR/commit-baseline.txt` (sidecar — mesmo padrao de
-  `tool-call-ticks.log`, nunca dentro de `state.json`, nunca versionado)
-- [ ] 5.1.2 Sobrescreve baseline anterior (1 baseline por onda); exit 0
+  `git status --porcelain -z` (entradas `?? `), paths ordenados (`sort`),
+  grava em `DIR/commit-baseline.txt` (sidecar — mesmo padrao de
+  `tool-call-ticks.log`, nunca dentro de `state.json`, nunca versionado).
+  **Divergencia medida da proposta original** (sem `-z`): `git status
+  --porcelain` (mesmo com `-c core.quotepath=false`) ainda envolve em
+  aspas C-style qualquer path com espaco — `-z` e a unica forma que nunca
+  quota (ver contracts/commit-staging-cli.md, nota de topo)
+- [x] 5.1.2 Sobrescreve baseline anterior (1 baseline por onda); exit 0
   gravado, exit 1 erro git/IO, exit 2 uso incorreto
-- [ ] 5.1.3 Confirmar que `commit-baseline.txt` nunca e commitado — vive
+- [x] 5.1.3 Confirmar que `commit-baseline.txt` nunca e commitado — vive
   sob `.claude/` (state dir da execucao), ja coberto pelo `.gitignore` do
   repo-alvo (linha `.claude` — mesmo caso ja garantido para
   `tool-call-ticks.log`, sem gitignore novo necessario)
@@ -452,98 +456,132 @@ Ref: FR-014 · contracts/commit-staging-cli.md §snapshot · research.md Decisio
 
 Ref: FR-014, FR-015, FR-016 · contracts/commit-staging-cli.md §stage-derived · research.md Decision 2
 
-- [ ] 5.2.1 Computar `tracked_changed` = paths com mudanca em arquivos ja
-  rastreados via `git -c core.quotepath=false status --porcelain`
-  (todos os estados exceto `??`); renames tratados (staged o path NOVO;
-  porcelain v1 usa formato `old -> new` em rename — parsing precisa
-  reconhecer esse formato, nao so split por espaco)
-- [ ] 5.2.2 Computar `untracked_new` = untracked atuais MENOS
+- [x] 5.2.1 Computar `tracked_changed` = paths com mudanca em arquivos ja
+  rastreados via `git status --porcelain -z` (todos os estados exceto
+  `??`); renames tratados (staged o path NOVO; formato `-z` emite o path
+  antigo como campo NUL-delimitado SEPARADO, sem a seta ` -> ` textual —
+  parsing consome e descarta esse campo extra via flag `_skip_next`)
+- [x] 5.2.2 Computar `untracked_new` = untracked atuais MENOS
   `DIR/commit-baseline.txt` (`comm -13` sobre listas ordenadas); baseline
   AUSENTE => conjunto vazio + aviso em stderr (fail-closed — untracked
   nunca entram sem baseline, jamais fallback para staging amplo)
-- [ ] 5.2.3 `allowlist` = `tracked_changed` + `untracked_new`; se >=1
+- [x] 5.2.3 `allowlist` = `tracked_changed` + `untracked_new`; se >=1
   `--scope-dir REL_DIR` (repetivel), filtrar aos paths sob esses prefixos
   relativos
-- [ ] 5.2.4 Allowlist vazia => exit 3, NENHUM `git add` executado (caller
+- [x] 5.2.4 Allowlist vazia => exit 3, NENHUM `git add` executado (caller
   pula o commit — FR-016, sem commit vazio, sem fallback amplo mesmo se a
   etapa/task gerou arquivos fora do projeto-alvo — edge case da spec)
-- [ ] 5.2.5 Senao: `git add -- <path>` por entrada, loop `while read` linha
+- [x] 5.2.5 Senao: `git add -- <path>` por entrada, loop `while read` linha
   a linha (nunca word-splitting — paths com espaco tratados corretamente);
   PROIBIDO `git add -A`, `git add .`, `git add --all` em qualquer caminho
   do codigo (FR-014); exit 0 quando >=1 path staged
-- [ ] 5.2.6 Erros de uso/git emitem `DIAG|` (envelope `_diag.sh`, ja
+- [x] 5.2.6 Erros de uso/git emitem `DIAG|` (envelope `_diag.sh`, ja
   sourceable same-dir no runtime — sem vendoring necessario aqui)
 
 ### 5.3 Teste `tests/test_commit-mode.sh`: regressao do incidente `[C]`
 
 Ref: FR-017, SC-003 · contracts/commit-staging-cli.md §Regressao obrigatoria · quickstart.md Cenarios 5, 6
 
-- [ ] 5.3.1 Fixture git com `alien.pptx` untracked pre-existente (analogo
+- [x] 5.3.1 Fixture git com `alien.pptx` untracked pre-existente (analogo
   ao incidente real); commit de etapa com `--scope-dir docs/specs/feat-x`
   => commit contem SO `docs/specs/feat-x/plan.md`, `alien.pptx` permanece
   untracked
-- [ ] 5.3.2 Commit de task: `snapshot` no inicio da onda + arquivo NOVO
+- [x] 5.3.2 Commit de task: `snapshot` no inicio da onda + arquivo NOVO
   criado pos-snapshot (`cli/lib/new-helper.sh`) => `stage-derived` sem
   scope-dir inclui o novo arquivo, `alien.pptx` fora
-- [ ] 5.3.3 Baseline AUSENTE + untracked novo presente => untracked TODOS
+- [x] 5.3.3 Baseline AUSENTE + untracked novo presente => untracked TODOS
   fora do staging, aviso em stderr, jamais fallback amplo (fail-closed)
-- [ ] 5.3.4 Allowlist vazia (fixture limpa) => exit 3, `git diff --cached`
+- [x] 5.3.4 Allowlist vazia (fixture limpa) => exit 3, `git diff --cached`
   vazio, nenhum commit criado
-- [ ] 5.3.5 Roundtrip real (nao mock): `git show --name-only HEAD` em cada
+- [x] 5.3.5 Roundtrip real (nao mock): `git show --name-only HEAD` em cada
   commit gerado pelos cenarios acima => nome do alheio ausente em TODOS
-- [ ] 5.3.6 Cenario de seguranca: path com espaco e path com caractere
-  nao-ASCII, tracked e untracked — staged corretamente via `core.quotepath
-  =false` + parsing de quoting C-style (tarefa 5.2.1)
+- [x] 5.3.6 Cenario de seguranca: path com espaco e path com caractere
+  nao-ASCII, tracked e untracked — staged corretamente via `git status
+  --porcelain -z --untracked-files=all` (parsing NUL-delimitado, sem
+  ambiguidade de quoting — divergencia medida da proposta original
+  `core.quotepath=false`, ver contracts/commit-staging-cli.md nota de
+  topo; tarefa 5.2.1). Adicionalmente cobertos (nao previstos originalmente
+  nesta tarefa, mas necessarios para a mesma seguranca): rename (path novo
+  staged, antigo descartado) e `--untracked-files=all` (evita rollup de
+  diretorio novo inteiro numa unica entrada, que quebraria `--scope-dir`)
 
 ### 5.4 `state-ondas.sh`: `_so_cmd_git_commit` delega staging `[C]`
 
 Ref: FR-014 · research.md Decision 1 site 3 (`state-ondas.sh` linha ~794) · commit-staging-cli.md §Regimes de chamada
 
-- [ ] 5.4.1 Substituir `git add -- .` (linha ~794 de
+- [x] 5.4.1 Substituir `git add -- .` (linha ~794 de
   `global/skills/agente-00c-runtime/scripts/state-ondas.sh`,
-  `_so_cmd_git_commit`) por: `snapshot` (se baseline ainda nao existir
-  nesta onda) + `stage-derived --state-dir "$_sdir" --projeto-alvo-path
-  "$_pap"` (sem `--scope-dir` — wave-commit pode tocar qualquer path do
-  repo, mesmo regime de commit por task da tabela do contrato)
-- [ ] 5.4.2 `stage-derived` exit 3 (allowlist vazia) => preservar o
+  `_so_cmd_git_commit`) por `stage-derived --state-dir "$_sdir"
+  --projeto-alvo-path "$_pap"` (sem `--scope-dir` — wave-commit pode tocar
+  qualquer path do repo, mesmo regime de commit por task da tabela do
+  contrato). **Divergencia medida da proposta original** ("snapshot se
+  baseline ainda nao existir, DENTRO de `_so_cmd_git_commit`"): `git-commit`
+  e a ULTIMA etapa da onda (passo 10, chamado 1x por onda, apos TODO o
+  trabalho ja ter acontecido) — snapshotar ali mesmo, imediatamente antes
+  de `stage-derived`, captura o MESMO untracked que o proprio
+  `stage-derived` tentaria marcar como "novo" (zero janela de tempo entre
+  as duas chamadas), entao o diff da PRIMEIRA onda sempre da vazio para
+  untracked (confirmado empiricamente — regressao nos testes
+  pre-existentes `scenario_git_commit_cria_commit`/`_worktree`). Corrigido
+  movendo o `snapshot` para `state-ondas.sh start` (INICIO da onda, via
+  nova funcao `_so_start_snapshot_baseline`, best-effort, deriva
+  `.execution.target_project_path` do proprio `state.json` — zero mudanca
+  de assinatura/prosa exigida dos orquestradores chamadores), exatamente
+  como `data-model.md` ja especificava (Entity UntrackedBaseline: "escrito
+  por commit-mode.sh snapshot NO INICIO DA ONDA") — a tasks.md original
+  simplesmente errou o ponto de invocacao dentro do proprio contrato ja
+  fixado
+- [x] 5.4.2 `stage-derived` exit 3 (allowlist vazia) => preservar o
   comportamento atual de "nada para commitar" (no-op, `_so_log`), sem
   quebrar o contrato existente de `_so_cmd_git_commit`
-- [ ] 5.4.3 `stage-derived` exit 0 => prosseguir com `git commit -m
+- [x] 5.4.3 `stage-derived` exit 0 => prosseguir com `git commit -m
   "chore(agente-00c): $_onda - $_motivo_safe"` exatamente como hoje
 
 ### 5.5 Teste `tests/test_state-ondas.sh`: cenario wave-commit endurecido `[C]`
 
 Ref: quickstart.md Cenario 7 · commit-staging-cli.md §Regressao item 5
 
-- [ ] 5.5.1 Fixture com `alien.pptx` untracked pre-existente + mudanca
+- [x] 5.5.1 Fixture com `alien.pptx` untracked pre-existente + mudanca
   tracked em `docs/specs/feat-x/spec.md`; `state-ondas.sh git-commit
   --state-dir SD --projeto-alvo-path PAP --motivo teste` => commit contem
   a mudanca tracked, `alien.pptx` permanece untracked
-- [ ] 5.5.2 Confirmar via `git show --name-only HEAD` que o site 3 da
+  (`scenario_5_5_wave_commit_endurecido_exclui_alien`)
+- [x] 5.5.2 Confirmar via `git show --name-only HEAD` que o site 3 da
   research Decision 1 esta convergido ao mesmo helper de staging dos
   demais sites (5.1-5.4)
-- [ ] 5.5.3 Rodar `./tests/run.sh test_state-ondas` isoladamente apos a
+- [x] 5.5.3 Rodar `./tests/run.sh test_state-ondas` isoladamente apos a
   extensao, confirmar 0 FAIL/0 ERROR (sem regressao nos cenarios
-  pre-existentes de `git-commit`)
+  pre-existentes de `git-commit`) — 63/63 PASS, incluindo os 2 cenarios
+  pre-existentes (`scenario_git_commit_cria_commit`,
+  `scenario_git_commit_worktree`) atualizados para refletir o novo ponto
+  de captura do baseline (ver divergencia registrada na tarefa 5.4.1:
+  `_init_state` ganhou `--projeto-alvo-path` real opcional + chamada a
+  `start` antes do arquivo untracked de teste ser criado)
 
 ### 5.6 `agente-00c-feature-orchestrator.md`: 2 sites trocam `add -A` `[A]`
 
 Ref: FR-014 · research.md Decision 1 site 1 (linhas 335, 403) · commit-staging-cli.md §Regimes de chamada
 
-- [ ] 5.6.1 Passo 10.qui (commit atomico por etapa): trocar
-  `git -C "$PAP" add -A 2>/dev/null || true` (linha ~335) por chamada a
+- [x] 5.6.1 Passo 10.qui (commit atomico por etapa): trocar
+  `git -C "$PAP" add -A 2>/dev/null || true` por chamada a
   `commit-mode.sh stage-derived --state-dir "$STATE_DIR"
   --projeto-alvo-path "$PAP" --scope-dir "docs/specs/$SHORT_NAME"
   --scope-dir ".claude/feature-00c-state/$SHORT_NAME"` — exit 3 => pular
   o commit desta etapa (sem commit vazio); exit 0 => prosseguir com o
-  `git commit` existente
-- [ ] 5.6.2 Passo 7.bis (commit atomico por task, agrupado por onda):
-  trocar `git -C "$PAP" add -A 2>/dev/null || true` (linha ~403) por
-  `commit-mode.sh snapshot` na ABERTURA da onda `execute-task` + `
-  stage-derived --state-dir "$STATE_DIR" --projeto-alvo-path "$PAP"` (sem
-  `--scope-dir` — tasks tocam qualquer path do repo) no momento do commit
-  agrupado
-- [ ] 5.6.3 Atualizar a prosa dos dois blocos de pseudocodigo bash no
+  `git commit` existente. **Nota**: a linha ~335 citada na proposta
+  original pertencia na verdade ao bloco 7.bis (task); o site real da
+  etapa (10.qui) esta ~403 — corrigido sem impacto na tarefa, apenas
+  aponta o site certo
+- [x] 5.6.2 Passo 7.bis (commit atomico por task, agrupado por onda):
+  trocar `git -C "$PAP" add -A 2>/dev/null || true` por `stage-derived
+  --state-dir "$STATE_DIR" --projeto-alvo-path "$PAP"` (sem `--scope-dir`
+  — tasks tocam qualquer path do repo). **Divergencia medida**: nao
+  precisa de `commit-mode.sh snapshot` explicito neste ponto — o baseline
+  ja e capturado no INICIO de TODA onda por `state-ondas.sh start`
+  (fix da tarefa 5.4.1, `_so_start_snapshot_baseline`, best-effort via
+  `.execution.target_project_path` do state.json), que roda no passo
+  3.bis/4 do Loop principal, SEMPRE antes do passo 7.bis na mesma onda
+- [x] 5.6.3 Atualizar a prosa dos dois blocos de pseudocodigo bash no
   arquivo (`global/agents/agente-00c-feature-orchestrator.md`) refletindo
   as chamadas novas, preservando o resto do fluxo (guard-branch, mensagem,
   Decisao auditavel) intacto
@@ -552,33 +590,41 @@ Ref: FR-014 · research.md Decision 1 site 1 (linhas 335, 403) · commit-staging
 
 Ref: FR-014 · research.md Decision 1 site 2 (linhas 678, 1552)
 
-- [ ] 5.7.1 Aplicar a MESMA troca da tarefa 5.6.1/5.6.2 nos dois sites
+- [x] 5.7.1 Aplicar a MESMA troca da tarefa 5.6.1/5.6.2 nos dois sites
   equivalentes de `global/agents/agente-00c-orchestrator.md` (linhas
-  ~678 e ~1552), com `--scope-dir` apontando `.claude/agente-00c-state`
-  em vez de `.claude/feature-00c-state/<short>` (state dir do agente-00c)
-- [ ] 5.7.2 Manter paridade textual entre os dois arquivos de orquestrador
+  ~678 e ~1609), com `--scope-dir` apontando `.claude/agente-00c-state`
+  em vez de `.claude/feature-00c-state/<short>` (state dir do agente-00c).
+  Site etapa (~1609) usa `--scope-dir "<FD>"` (feature-dir corrente, ja
+  usado por `pipeline.sh detect-completion --feature-dir <FD>` em outras
+  secoes do mesmo arquivo) como equivalente ao `docs/specs/$SHORT_NAME` do
+  feature-orchestrator — agente-00c nao tem `$SHORT_NAME` fixo, mas opera
+  por feature-dir corrente na mesma onda
+- [x] 5.7.2 Manter paridade textual entre os dois arquivos de orquestrador
   (mesma estrutura de bloco bash, mesmos nomes de variavel) para nao
   divergir prosa entre agente-00c e feature-00c (padrao ja seguido pelas
   demais secoes espelhadas dos dois arquivos)
-- [ ] 5.7.3 Grep de verificacao pontual pos-edicao: confirmar 0 ocorrencias
+- [x] 5.7.3 Grep de verificacao pontual pos-edicao: confirmar 0 ocorrencias
   de `add -A` remanescentes nos 2 sites editados (linhas antigas ~678 e
-  ~1552 de `agente-00c-orchestrator.md`)
+  ~1552 de `agente-00c-orchestrator.md`) — confirmado via
+  `grep -n "add -A" global/agents/agente-00c-orchestrator.md`: zero
+  invocacoes reais (so comentarios `NUNCA git add -A`)
 
 ### 5.8 Verificacao final: zero `add -A`/`add .` remanescente `[A]`
 
 Ref: FR-014, FR-017 · plan.md §Constraints ("nenhum git add -A/add . remanescente em codigo ou prosa dos caminhos automaticos")
 
-- [ ] 5.8.1 Rodar `grep -rn "add -A\|add --all\|add -- \.\b" global/agents/
+- [x] 5.8.1 Rodar `grep -rn "add -A\|add --all\|add -- \.\b" global/agents/
   global/skills/agente-00c-runtime/scripts/` e confirmar 0 ocorrencias nos
   caminhos automaticos (fora de comentarios explicativos que citam o
-  antipattern como PROIBIDO, ex.: contracts e mensagens de erro)
-- [ ] 5.8.2 Se algum resultado remanescente aparecer fora dos 5 sites
+  antipattern como PROIBIDO, ex.: contracts e mensagens de erro) — 9
+  ocorrencias encontradas, TODAS comentarios `NUNCA`/`jamais git add -A`
+- [x] 5.8.2 Se algum resultado remanescente aparecer fora dos 5 sites
   cobertos (5.1-5.7), tratar como escopo desta feature (nao adiar) —
   FR-017 exige cobertura de regressao do incidente original completa,
-  nao parcial
-- [ ] 5.8.3 Registrar Decisao auditavel citando a saida literal do grep
+  nao parcial (nenhum resultado remanescente fora dos 5 sites)
+- [x] 5.8.3 Registrar Decisao auditavel citando a saida literal do grep
   final (zero ocorrencias, ou lista das remanescentes tratadas) como
-  evidencia (score 3, aterramento Constitution VI)
+  evidencia (score 3, aterramento Constitution VI) — dec-038
 
 ---
 
