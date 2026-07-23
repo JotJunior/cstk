@@ -39,8 +39,8 @@ todos os contratos estao `[PROPOSTA]`).
   — Satisfeito: FR-006 explicito + US2 Cenario 5.
 - [x] CHK014 - E o caso "corpus/capability ainda nao existe" (primeiro merge) coberto sem exigir passo manual de bootstrap? [Cobertura de Edge Cases, Spec §US2 Cenario 4] {auto}
   — Satisfeito: US2 Cenario 4 + `corpus-format.md` ("Diretorio nasce vazio e e criado pelo primeiro merge") + `delta-gate-cli.md` code `corpus-missing` (severity=info, nao bloqueia).
-- [ ] CHK015 - Existe orientacao para o autor de uma nova feature descobrir/reusar o slug de capability ja em uso por outra feature (evitando fragmentar o mesmo conceito em dois arquivos de corpus por slugs distintos, ex. `commit-mode` vs `commit-staging`)? [Gap, Spec Key Entities "Living Spec Corpus"] {auto}
-  — Nao satisfeito: nenhuma FR nem contrato define um mecanismo de descoberta/reuso de slug; a escolha e inteiramente do autor no momento de preencher a secao delta (research.md Decision 5 so define o formato do slug, nao a governanca de reuso). Risco de fragmentacao silenciosa (nao e um erro do gate, pois slugs diferentes nunca colidem) — nao invalida a feature, mas e um gap de completude do requisito.
+- [x] CHK015 - Existe orientacao para o autor de uma nova feature descobrir/reusar o slug de capability ja em uso por outra feature (evitando fragmentar o mesmo conceito em dois arquivos de corpus por slugs distintos, ex. `commit-mode` vs `commit-staging`)? [Gap, Spec Key Entities "Living Spec Corpus"] {auto}
+  — Satisfeito (fechado por tasks 1.1 + 2.2): `contracts/delta-section-format.md §Gramatica` item 1 fixa a regra de descoberta (`ls docs/specs/current/*.md` antes de declarar slug novo) + `specify/SKILL.md` implementa a prosa da orientacao. Julgamento de reuso permanece do autor (nao script), conforme 1.1.2.
 
 ## Gate Deterministico (US3 / FR-010..FR-013)
 
@@ -52,8 +52,8 @@ todos os contratos estao `[PROPOSTA]`).
   — Satisfeito: FR-012 exige "mesmo padrao ja adotado" + `delta-gate-cli.md` replica literalmente o formato `FINDING|`/`RESULT|` de `validate-sdd.sh`/`requirement-coverage.sh` (research.md Decision 6, fontes verificadas no repo).
 - [x] CHK019 - O skip auditavel (FR-011) e distinguivel de uma aplicacao normal de delta em QUALQUER trilha que liste o archive, nao so no output do gate? [Mensurabilidade, Spec §FR-011] {auto}
   — Satisfeito no nivel do gate: `delta-gate-cli.md` invariante 2 (`delta=skip` no RESULT). Cobertura em `review-features` (relatorio de portfolio) nao verificada nesta checklist — ver CHK023.
-- [ ] CHK020 - E o comportamento do orquestrador autonomo (`agente-00c`, fase `review-features`) especificado para o caso em que `delta-gate.sh` bloqueia (exit 1) durante uma execucao sem supervisao — vira bloqueio humano via `bloqueios.sh`, ou a fase falha silenciosamente? [Gap, Spec Edge Cases + Plan Decision 8] {auto}
-  — Nao satisfeito: research.md Decision 8 diz apenas que o `agente-00c-orchestrator.md` "herda o comportamento por invocar a mesma skill", sem especificar a integracao concreta com o mecanismo de bloqueio humano ja existente nos orquestradores 00c. Sem essa amarracao explicita, o comportamento em modo autonomo fica implicito.
+- [x] CHK020 - E o comportamento do orquestrador autonomo (`agente-00c`, fase `review-features`) especificado para o caso em que `delta-gate.sh` bloqueia (exit 1) durante uma execucao sem supervisao — vira bloqueio humano via `bloqueios.sh`, ou a fase falha silenciosamente? [Gap, Spec Edge Cases + Plan Decision 8] {auto}
+  — Satisfeito (fechado por tasks 1.2 + 4.2): `agente-00c-orchestrator.md` (fase `review-features`) registra `bloqueios.sh register` ESCOPADO a feature bloqueada (nao aborta a onda inteira), citando o `RESULT|...` literal do gate como evidencia; fluxo manual (`/review-features` interativo) segue reportando em prosa, sem `bloqueios.sh`.
 - [x] CHK021 - E exigido que o gate seja um script determinístico (nao julgamento de modelo), removendo variabilidade de veredito entre execucoes? [Mensurabilidade, Spec §FR-012, Edge Cases ultimo item] {auto}
   — Satisfeito: FR-012 + Edge Cases ("roda como script deterministico... MUST produzir sempre o mesmo veredito") + `delta-gate-cli.md` invariante 1 (POSIX puro, sem jq).
 - [ ] CHK022 - A politica de bloqueio para os 4 subcasos de conflito (MODIFIED/REMOVED/RENAMED referenciando id inexistente, colisao ADDED, RENAMED para id ja usado, referencia cross-feature nao arquivada) reflete o apetite de risco correto do mantenedor, ou algum desses casos deveria ser aviso (warning) em vez de bloqueio (error)? [Risco] {humano}
@@ -84,8 +84,8 @@ todos os contratos estao `[PROPOSTA]`).
   — Satisfeito: `delta-gate-cli.md` invariante 4 ("texto delta nunca passa por `printf "$var"` (sempre `printf '%s'`)") + `delta-merge-cli.md` invariante 2-bis (mesma regra para o texto escrito no corpus).
 - [x] CHK033 - E a mutacao do corpus atomica (sem estado parcial visivel em caso de falha no meio de multiplas capabilities)? [Robustez, Spec Edge Cases (colisao/conflito)] {auto}
   — Satisfeito: `delta-merge-cli.md §Comportamento` passo 3-4 (validacao TOTAL de todas as entradas de todas as capabilities ANTES do primeiro `mv`; `mktemp` + `mv` atomico por arquivo).
-- [ ] CHK034 - O corpus gerado (`docs/specs/current/*.md`) tem alguma protecao contra edicao manual acidental que divirja do formato esperado pelo parser do merge (o contrato so recomenda em prosa "nao editar a mao", sem enforcement)? [Gap, Contract corpus-format §Estrutura] {auto}
-  — Nao satisfeito plenamente: `corpus-format.md` cita a advertencia em prosa ("nao editar a mao") mas nenhuma FR exige deteccao/enforcement de drift manual (ex.: um gate que valide a estrutura do corpus antes do merge). Risco baixo (arquivo gerado, uso interno do toolkit) mas e um requisito implicito nao declarado.
+- [x] CHK034 - O corpus gerado (`docs/specs/current/*.md`) tem alguma protecao contra edicao manual acidental que divirja do formato esperado pelo parser do merge (o contrato so recomenda em prosa "nao editar a mao", sem enforcement)? [Gap, Contract corpus-format §Estrutura] {auto}
+  — Satisfeito (fechado por tasks 1.3 + 3.3 + 3.7): `delta-gate.sh` valida estrutura do corpus (headings/duplicidade de ids) ANTES da validacao referencial, novo `FINDING` code `corpus-malformed` (severity=error); `delta-merge.sh` RE-VALIDA a mesma estrutura antes de qualquer mutacao (defesa em profundidade), corpus malformado bloqueia o merge intacto.
 
 ## Consistencia Cross-Artifact e Dependencias
 
@@ -109,16 +109,18 @@ todos os contratos estao `[PROPOSTA]`).
 
 ### Resolucao
 
-- **{auto} resolvidos**: 32 (`[x]` com evidencia citada)
-- **{auto} com gap identificado**: 3 (CHK015, CHK020, CHK034 — `[ ]` + `[Gap]`, evidencia de ausencia citada)
+- **{auto} resolvidos**: 35 (`[x]` com evidencia citada — inclui CHK015,
+  CHK020, CHK034, fechados por `execute-task` FASE 1/2/3/4; ver nota
+  abaixo)
 - **{humano} aguardando decisao**: 3 (CHK022, CHK030, CHK038)
 
-### Proximos Passos
+### Proximos Passos (historico)
 
-- `[Gap]` CHK015, CHK020, CHK034 -> `/create-tasks` (cada um vira uma tarefa
-  de requisito: governanca de slug de capability, integracao explicita
-  gate<->bloqueio-humano no agente-00c, e enforcement/validacao de estrutura
-  do corpus contra edicao manual).
-- `{humano}` CHK022, CHK030, CHK038 -> decisao do dono do produto antes de
-  `/execute-task`; nao bloqueiam `/create-tasks`.
-- `/create-tasks` — backlog executavel.
+- `[Gap]` CHK015, CHK020, CHK034 -> `/create-tasks` gerou tarefas de
+  requisito dedicadas (FASE 1: 1.1/1.2/1.3), implementadas em FASE 2
+  (2.2), FASE 3 (3.3/3.7) e FASE 4 (4.2). Marcados `[x]` nesta revisao
+  (FASE 6, `/analyze`) apos confirmacao empirica de que a implementacao
+  fecha cada gap — ver dec-043 no state da execucao `feature-00c`.
+- `{humano}` CHK022, CHK030, CHK038 -> decisao do dono do produto
+  permanece em aberto; nao bloqueiam a conclusao desta feature
+  (nenhum e `[Conflict]`/`[Gap]` critico).

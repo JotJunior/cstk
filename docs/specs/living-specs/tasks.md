@@ -634,40 +634,60 @@ Ref: FR-014, FR-017 · plan.md §Constraints ("nenhum git add -A/add . remanesce
 
 Ref: plan.md §Constitution Check ("MINOR; sem BREAKING") · CLAUDE.md §CHANGELOG
 
-- [ ] 6.1.1 Adicionar entrada no `CHANGELOG.md` (bump MINOR — secao delta
-  e opcional e os 2 subcomandos novos de `commit-mode.sh` sao aditivos,
-  sem quebra de contrato existente) resumindo as 4 entregas (delta
-  section, corpus canonico, gate deterministico, staging por allowlist)
-- [ ] 6.1.2 Conferir o bloco de link references do rodape do CHANGELOG
-  (`[X.Y.Z]: https://github.com/JotJunior/cstk/releases/tag/vX.Y.Z`) —
-  nova versao precisa de entrada correspondente (checagem `comm -23` do
-  CLAUDE.md)
-- [ ] 6.1.3 Rodar `validate-docs-rendered` sobre `docs/specs/living-specs/
+- [ ] 6.1.1 **DEFERIDO ao pai (pos-merge)**: adicionar entrada no
+  `CHANGELOG.md` (bump MINOR — secao delta e opcional e os 2
+  subcomandos novos de `commit-mode.sh` sao aditivos, sem quebra de
+  contrato existente) resumindo as 4 entregas (delta section, corpus
+  canonico, gate deterministico, staging por allowlist). Nao executado
+  nesta onda: o pai corta a release (numero de versao + data) somente
+  apos o merge da branch `feat/living-specs`, mesmo padrao observado em
+  features anteriores (ex.: `openspec-hygiene`, commit `4141163` "chore:
+  CHANGELOG 5.22.0" feito como commit separado pelo pai pos-merge) — ver
+  dec-041
+- [ ] 6.1.2 **DEFERIDO ao pai (pos-merge)**: conferir o bloco de link
+  references do rodape do CHANGELOG (`[X.Y.Z]: https://github.com/
+  JotJunior/cstk/releases/tag/vX.Y.Z`) — nova versao precisa de entrada
+  correspondente (checagem `comm -23` do CLAUDE.md). Depende de 6.1.1
+  (so faz sentido apos a entrada de versao existir) — mesma deferral,
+  ver dec-041
+- [x] 6.1.3 Rodar `validate-docs-rendered` sobre `docs/specs/living-specs/
   tasks.md` e sobre este arquivo apos qualquer edicao posterior — Mermaid
-  parseavel, links internos resolvem, frontmatter consistente
+  parseavel, links internos resolvem, frontmatter consistente. Resultado:
+  `tasks.md`/`spec.md` 0 ERRO/0 AVISO; `plan.md` 0 ERRO/2 AVISO (fence sem
+  linguagem, linhas 53/70, nao-bloqueante) — dec-042
 
 ### 6.2 `/analyze` — consistencia cross-artifact `[M]`
 
 Ref: skill analyze · precedente skill-converge FASE 5
 
-- [ ] 6.2.1 Rodar `/analyze` sobre `docs/specs/living-specs/` (spec + plan
+- [x] 6.2.1 Rodar `/analyze` sobre `docs/specs/living-specs/` (spec + plan
   + tasks + constitution) e resolver quaisquer findings de inconsistencia
-  antes de `execute-task` iniciar
-- [ ] 6.2.2 Findings de severidade alta => resolver antes de prosseguir
+  antes de `execute-task` iniciar. Resultado: 17/17 FRs cobertos, 0
+  CRITICAL, 0 HIGH — dec-043
+- [x] 6.2.2 Findings de severidade alta => resolver antes de prosseguir
   para `execute-task`; findings de baixa severidade => registrar como
-  Decisao informativa e seguir (mesmo padrao dos demais gates da FASE 3/4)
+  Decisao informativa e seguir (mesmo padrao dos demais gates da FASE 3/4).
+  1 MEDIUM encontrado (checklist CHK015/CHK020/CHK034 desatualizado vs
+  implementacao real) — corrigido inline em
+  `checklists/requirements.md` — dec-043
 
 ### 6.3 Suite completa + doctor `[A]`
 
 Ref: CLAUDE.md §Como testar scripts shell · §Installed vs Source Drift
 
-- [ ] 6.3.1 Rodar `./tests/run.sh` completo (nao so `--fast`) apos todas as
+- [x] 6.3.1 Rodar `./tests/run.sh` completo (nao so `--fast`) apos todas as
   tasks de FASE 3/5 concluidas — 0 FAIL/0 ERROR obrigatorio antes de
-  `review-task`
-- [ ] 6.3.2 Rodar `./tests/run.sh --check-coverage` — 0 script orfao
-  (delta-gate.sh, delta-merge.sh, `_diag.sh` vendorizado)
-- [ ] 6.3.3 Apos instalar via `cstk install --from` local (build de dev),
-  rodar `cstk doctor` e confirmar drift zero entre catalogo e disco
+  `review-task`. Resultado (rodado em background pelo pai): `PASS: 1758
+  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 828s` — dec-044
+- [x] 6.3.2 Rodar `./tests/run.sh --check-coverage` — 0 script orfao
+  (delta-gate.sh, delta-merge.sh, `_diag.sh` vendorizado). Resultado:
+  "Cobertura completa: zero orfaos." — dec-044
+- [x] 6.3.3 Apos instalar via `cstk install --from` local (build de dev),
+  rodar `cstk doctor` e confirmar drift zero entre catalogo e disco.
+  Build `5.23.0-dev` + install (scope=global, updated=17, commands=6,
+  agents=7) + doctor: `ok=43 edited=1 missing=0 orphan=0` — o unico
+  `[EDITED]` e `go-review-service` (pre-existente, fora do escopo desta
+  feature); zero drift nos artefatos tocados por living-specs — dec-045
 
 ### 6.4 (OPCIONAL, fora de criterio de aceite) Backfill incremental do corpus `[M]`
 
@@ -765,3 +785,36 @@ flowchart TD
 | CHK022 (apetite de risco dos 4 subcasos de conflito serem error vs warning) | Nao vira tarefa — decisao de politica de risco do mantenedor | `{humano}`, aguarda decisao do dono do produto antes de `execute-task`; nao bloqueia `create-tasks` |
 | CHK030 (scope-dir de etapa `plan` que edita `global/` alargar dinamicamente?) | Nao vira tarefa — trade-off de seguranca vs abrangencia do commit de etapa | `{humano}`, aguarda decisao do dono do produto; implementacao atual (5.6.1) usa scope-dir fixo por etapa, revisitavel apos feedback real de uso |
 | CHK038 (criterio de prontidao do backfill opcional) | Nao vira tarefa — apenas anotado em 6.4 como backlog sem dono | `{humano}`, spec.md §Out of Scope ja marca como nao-bloqueante; criterio de prontidao fica para quando/se o operador priorizar |
+
+## FASE 7 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 7.1 Docstring de `state-ondas.sh git-commit` descreve staging antigo `[A]`
+
+Ref: task 5.4 · tipo: `contradicts` · severidade: `MEDIUM`
+
+O cabeçalho de uso de `state-ondas.sh` (linhas 116-121, comando
+`git-commit`) ainda documenta o comportamento PRE-FASE-5: "— Faz `git add
+.` + `git commit -m '...'`". A implementação real de `_so_cmd_git_commit`
+(linhas ~815-853) foi refatorada pela task 5.4 e HOJE delega o staging a
+`commit-mode.sh stage-derived` (allowlist derivada, nunca `git add .`) —
+confirmado pelas linhas 826 ("delega a commit-mode.sh stage-derived em
+vez de `git add -- .`") e 844 (`sh "$_sog_cm" stage-derived ...`). O
+comportamento de fato está correto (FR-014 não é violado em runtime); o
+que diverge é a documentação inline, que pode induzir um leitor/mantenedor
+futuro a acreditar que o subcomando ainda faz staging amplo.
+
+- [x] 7.1.1 Atualizar o comentário de cabeçalho de `state-ondas.sh`
+  (linhas 116-121) para descrever o comportamento real pós-FASE-5:
+  delegação a `commit-mode.sh stage-derived` (allowlist derivada do
+  baseline de untracked), não mais `git add .`
+
+<!-- converge-key: 5438a1045359 -->

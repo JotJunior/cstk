@@ -115,8 +115,12 @@
 #
 #   state-ondas.sh git-commit --state-dir DIR --projeto-alvo-path PATH
 #                             --motivo MOTIVO [--onda-id ID]
-#       — Faz `git add .` + `git commit -m 'chore(agente-00c): onda <ID> - <MOTIVO>'`
-#         dentro de --projeto-alvo-path. NUNCA push (Principio V).
+#       — Delega o staging a `commit-mode.sh stage-derived` (allowlist
+#         derivada do baseline de untracked capturado por `commit-mode.sh
+#         snapshot` — living-specs FASE 5, FR-014..FR-017), NUNCA `git add
+#         .`/`git add -A`/`git add --all`, depois `git commit -m
+#         'chore(agente-00c): onda <ID> - <MOTIVO>'` dentro de
+#         --projeto-alvo-path. NUNCA push (Principio V).
 #         Idempotente: se nao ha mudancas para commitar, retorna 0 sem erro.
 #         Sem fail-soft: se git nao existe / dir nao e repo, exit 1.
 #
