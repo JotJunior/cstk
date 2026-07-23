@@ -72,6 +72,11 @@
 set -eu
 
 _SR_NAME="state-rw"
+_SR_DIR=$(cd "$(dirname -- "$0")" && pwd)
+
+# Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015 — escopo-piloto).
+# shellcheck source=./_diag.sh
+. "$_SR_DIR/_diag.sh"
 
 _sr_die() {
   printf '%s: %s\n' "$_SR_NAME" "$1" >&2
@@ -508,7 +513,10 @@ _sr_cmd_write() {
     rm -f -- "$_new"; _sr_die "I/O lendo stdin" 1
   fi
   if ! jq -e . "$_new" >/dev/null 2>&1; then
-    rm -f -- "$_new"; _sr_die "write: stdin nao e JSON valido (jq falhou)" 1
+    rm -f -- "$_new"
+    diag_emit error state-invalid-json "write: stdin nao e JSON valido (jq falhou)" \
+      "corrija o JSON de entrada (jq -e . <arquivo> para localizar o erro de sintaxe) e tente novamente" || :
+    _sr_die "write: stdin nao e JSON valido (jq falhou)" 1
   fi
   # Canonicaliza chaves pt-BR -> EN antes de persistir (schema-en-migration):
   # o arquivo converge para EN a cada write. Degrada para o conteudo original
@@ -541,7 +549,11 @@ _sr_cmd_get() {
   [ -n "$_f" ]  || _sr_die "get: --field obrigatorio (ex: '.execucao.status')" 2
   _sr_require_jq
   _sr_sf=$(_sr_state_file "$_sd")
-  [ -f "$_sr_sf" ] || _sr_die "get: state.json ausente em $_sd" 1
+  if [ ! -f "$_sr_sf" ]; then
+    diag_emit error state-not-found "get: state.json ausente em $_sd" \
+      "rode state-rw.sh init (ou o command-pai /agente-00c, /feature-00c) para criar o state antes de get" || :
+    _sr_die "get: state.json ausente em $_sd" 1
+  fi
   # Canonicaliza (EN) antes de extrair: callers usam paths EN mesmo sobre
   # states pt-BR vivos (schema-en-migration).
   _sr_canonicalize_file "$_sr_sf" | jq -r "$_f"
@@ -617,6 +629,8 @@ _sr_cmd_sha256_verify() {
     return 0
   fi
   printf '%s: hash divergente\n  stored: %s\n  actual: %s\n' "$_SR_NAME" "$_stored" "$_actual" >&2
+  diag_emit error hash-mismatch "sha256-verify: hash divergente (stored=$_stored actual=$_actual)" \
+    "state.json foi adulterado ou o .sha256 esta desatualizado — rode state-rw.sh sha256-update se a mudanca foi legitima, senao investigue tampering" || :
   exit 1
 }
 

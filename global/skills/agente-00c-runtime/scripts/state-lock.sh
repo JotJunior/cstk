@@ -36,6 +36,17 @@
 set -eu
 
 _SL_NAME="state-lock"
+_SL_DIR=$(cd "$(dirname -- "$0")" && pwd)
+
+# Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015 — escopo-piloto).
+# Nota: o contrato da feature propos 2 codes (lock-contention, lock-stale),
+# mas a leitura do codigo real (task 4.3.1) confirmou que NAO existe
+# deteccao automatica de staleness aqui — "acquire" e "check" reportam a
+# MESMA condicao (lock ja detido); o texto sobre "stale" e apenas uma
+# sugestao textual para o operador remover manualmente. Migrado apenas
+# `lock-contention`, aplicado nos 2 pontos de falha reais (acquire + check).
+# shellcheck source=./_diag.sh
+. "$_SL_DIR/_diag.sh"
 
 _sl_die_usage() {
   printf '%s: %s\n' "$_SL_NAME" "$1" >&2
@@ -108,6 +119,8 @@ case "$_SL_SUBCMD" in
     printf '%s: lock ja detido em %s\n' "$_SL_NAME" "$_SL_LOCK" >&2
     printf '       outro processo do agente-00C esta ativo neste projeto.\n' >&2
     printf '       Se acredita que e stale, remova manualmente: rmdir %s\n' "$_SL_LOCK" >&2
+    diag_emit error lock-contention "acquire: lock ja detido em $_SL_LOCK" \
+      "aguarde o outro processo liberar, ou se tiver certeza que e stale: rmdir $_SL_LOCK" || :
     exit 3
     ;;
   release)
@@ -123,6 +136,8 @@ case "$_SL_SUBCMD" in
   check)
     if [ -d "$_SL_LOCK" ]; then
       printf '%s: lock detido em %s\n' "$_SL_NAME" "$_SL_LOCK" >&2
+      diag_emit error lock-contention "check: lock detido em $_SL_LOCK" \
+        "aguarde o outro processo liberar, ou se tiver certeza que e stale: rmdir $_SL_LOCK" || :
       exit 3
     fi
     exit 0

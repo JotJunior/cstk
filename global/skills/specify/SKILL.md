@@ -192,6 +192,40 @@ unica excecao: o atalho 0.0, onde a confirmacao e herdada da invocacao do
 orquestrador. Se o usuario escolher opcao 1 ou 3, encerrar a skill e
 executar o caminho escolhido (ou delegar para skill apropriada).
 
+### 0.4 Atualizar spec existente vs abrir feature nova
+
+Antes de criar qualquer artefato (mesmo apos o usuario confirmar "Feature
+nova" em 0.3), verifique se o pedido de fato pede uma feature nova ou se e
+um refinamento de uma spec ja existente do portfolio (`docs/specs/*/spec.md`,
+excluindo `_archived/`):
+
+- **Mesma intencao / refinamento** — o pedido mantem os mesmos
+  atores/objetivo de uma spec existente e apenas adiciona detalhe, ajusta
+  escopo ou corrige um requisito dela → recomende **atualizar** essa
+  `spec.md` existente (ela pode entrar em `clarify` para incorporar o
+  ajuste) em vez de abrir um diretorio novo.
+- **Intencao mudou / escopo expandiu** — o pedido introduz atores novos,
+  uma capacidade nao relacionada ao objetivo original de nenhuma spec
+  existente, ou expande o escopo alem do que qualquer spec ja ratificada
+  cobre → prossiga com a **feature nova** normalmente.
+- **Nenhuma spec existente se relaciona ao pedido** (caso mais comum) →
+  prossiga direto para a feature nova, **sem** overhead de comparacao
+  spec-a-spec — este criterio so se aplica quando ha candidata plausivel.
+
+Ao recomendar "atualizar spec existente", **cite o criterio aplicado**
+explicitamente na resposta ao usuario, por exemplo:
+
+```
+Este pedido parece um refinamento de `docs/specs/{existing}/spec.md`
+(mesma intencao/objetivo, apenas detalha escopo) — recomendo atualizar
+essa spec via /clarify em vez de abrir uma feature nova. Prefere seguir
+assim ou ainda quer uma feature nova separada?
+```
+
+O mesmo criterio e aplicado pela skill `clarify` (ver
+`global/skills/clarify/SKILL.md` ETAPA 2) quando a ambiguidade levantada
+durante a clarificacao poderia, de fato, constituir uma feature nova.
+
 ---
 
 ## ETAPA 1: ANALISE
@@ -345,6 +379,31 @@ Se itens falham na validacao:
 2. Atualizar a spec para corrigir cada problema
 3. Re-validar (max 3 iteracoes)
 4. Se ainda falhando apos 3 iteracoes: documentar problemas restantes e avisar usuario
+
+### 4.3 Gate de cobertura de cenarios (requirement-coverage.sh)
+
+Antes de reportar conclusao bem-sucedida (ETAPA 6.2), garanta que o `spec.md`
+corrente esteja persistido em `docs/specs/{short-name}/spec.md` (escreva/
+atualize o arquivo agora se a 6.1 formal ainda nao rodou) e rode o gate
+deterministico:
+
+```bash
+global/skills/checklist/scripts/requirement-coverage.sh docs/specs/{short-name}/spec.md
+```
+
+- Exit 0 (zero `FINDING`): seguir normalmente para ETAPA 5/6.
+- Exit 1 (>=1 `FINDING|error|fr-no-scenario|...`): a falha **impede** o
+  relatorio de sucesso da ETAPA 6.2. Reportar cada `FINDING` ao usuario
+  (ID exato + sugestao de correcao) e voltar para 3.2/4.2: adicionar um
+  Acceptance Scenario ou Edge Case cobrindo os termos centrais do
+  requisito apontado, depois re-rodar o gate (mesmo limite de 3 iteracoes
+  da 4.2).
+- Exit 2 (uso incorreto/arquivo ausente): reportar o erro ao usuario; nao
+  bloqueia por si so (indica problema no proprio script ou no path, nao na
+  spec).
+- Em execucao autonoma (`agente-00c`/`feature-00c`), registrar a invocacao
+  via `state-ondas.sh record-skill --skill requirement-coverage --kind gate`
+  (script deterministico, nao tool Skill).
 
 ---
 

@@ -42,8 +42,13 @@ visao global ou comparacao entre features, use esta.
 
 1. `/review-task` em features marcadas como `PRIORIZAR` para detalhar tasks
 2. `/execute-task` na proxima task critica
-3. Mover features `ARQUIVAR` para `docs/specs/_archived/` (acao manual,
-   pedir confirmacao ao usuario antes de mover)
+3. Mover features `ARQUIVAR` para `docs/specs/_archived/<YYYY-MM-DD>-<feature>/`
+   (acao manual, pedir confirmacao ao usuario antes de mover; `<YYYY-MM-DD>`
+   e a data em que a acao de arquivamento de fato ocorre, nao a data de
+   criacao da feature — permite ordenacao cronologica do diretorio sem
+   abrir cada subpasta). Diretorios ja existentes sob `docs/specs/_archived/`
+   sem esse prefixo de data (arquivados antes desta convencao) permanecem
+   inalterados — NAO renomear nem mover conteudo ja arquivado.
 
 ---
 
@@ -180,7 +185,8 @@ Apos rodar o script, destacar no relatorio:
 
 ### Concluidas (arquivar)
 
-- **analytics-dashboard** — 100% concluida. Mover para `docs/specs/_archived/`.
+- **analytics-dashboard** — 100% concluida. Mover para
+  `docs/specs/_archived/2026-07-23-analytics-dashboard/` (data de hoje).
 
 ---
 
@@ -222,9 +228,21 @@ especifica, redirecione para `review-task`.
 ### Sugestao e recomendacao, nao acao automatica
 
 Nunca arquivar (`mv`/`rm`) ou abandonar arquivos baseado na coluna `Sugestao`.
-A skill so produz o relatorio — a acao destrutiva (mover para `_archived/`,
-deletar, etc.) precisa de confirmacao explicita do usuario, e mesmo assim
-pertence a outra skill ou a um comando direto. Esta skill e read-only.
+A skill so produz o relatorio — a acao destrutiva (mover para
+`_archived/<YYYY-MM-DD>-<feature>/` com a data do arquivamento, deletar,
+etc.) precisa de confirmacao explicita do usuario, e mesmo assim pertence a
+outra skill ou a um comando direto. Esta skill e read-only.
+
+### Prefixo de data no destino do archive (`<YYYY-MM-DD>-<feature>`)
+
+Toda feature arquivada usa `docs/specs/_archived/<YYYY-MM-DD>-<feature>/`,
+onde a data e a do dia em que a acao de arquivamento de fato ocorre (nunca a
+data de criacao da feature) — permite que `ls docs/specs/_archived/` ordene
+cronologicamente sem abrir cada diretorio. Diretorios ja existentes sob
+`_archived/` sem esse prefixo (arquivados antes desta convencao entrar em
+vigor) permanecem para sempre sem alteracao de nome — NAO renomear nem mover
+conteudo ja arquivado retroativamente (risco de quebrar links em `CLAUDE.md`,
+memorias e specs existentes que referenciam o path antigo).
 
 ### `mtime_days` pode mentir em repos com checkout recente
 

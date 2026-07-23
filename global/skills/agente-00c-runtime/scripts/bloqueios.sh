@@ -42,6 +42,11 @@
 set -eu
 
 _BL_NAME="bloqueios"
+_BL_DIR=$(cd "$(dirname -- "$0")" && pwd)
+
+# Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015 — escopo-piloto).
+# shellcheck source=./_diag.sh
+. "$_BL_DIR/_diag.sh"
 
 _bl_die_usage() { printf '%s: %s\n' "$_BL_NAME" "$1" >&2; exit 2; }
 _bl_die()       { printf '%s: %s\n' "$_BL_NAME" "$1" >&2; exit "${2:-1}"; }
@@ -214,7 +219,11 @@ _bl_cmd_respond() {
   ' "$_sf")
   case "$_status" in
     aguardando) ;;
-    ausente) _bl_die "respond: bloqueio nao encontrado: $_bid" 1 ;;
+    ausente)
+      diag_emit error bloqueio-not-found "respond: bloqueio nao encontrado: $_bid" \
+        "confira o id com bloqueios.sh list --state-dir $_sd (block-id invalido ou ja respondido)" || :
+      _bl_die "respond: bloqueio nao encontrado: $_bid" 1
+      ;;
     *) _bl_die "respond: bloqueio $_bid nao esta em status aguardando (status=$_status)" 1 ;;
   esac
 

@@ -244,6 +244,27 @@ Items `{humano}` nunca sao auto-marcados.
 Salvar em `docs/specs/{feature}/checklists/{domain}.md`.
 Criar diretorio `checklists/` se nao existir.
 
+### 4.2.1 Gate de cobertura de cenarios (requirement-coverage.sh)
+
+Antes de reportar o checklist como concluido, rodar o gate deterministico
+sobre o `spec.md` da feature (nao sobre o proprio checklist):
+
+```bash
+global/skills/checklist/scripts/requirement-coverage.sh docs/specs/{feature}/spec.md
+```
+
+- Exit 0 (zero `FINDING`): seguir para 4.3 normalmente.
+- Exit 1 (>=1 `FINDING|error|fr-no-scenario|...`): NAO bloqueia o checklist
+  em si, mas cada FR sem cenario associado vira um item `[Gap]` adicional
+  no checklist (dono `{auto}`, ja resolvido citando a saida do gate como
+  evidencia) — segue a mesma disciplina de "gaps viram acao" da secao 4.4.
+- Exit 2 (uso incorreto/arquivo ausente): reportar o erro ao usuario sem
+  bloquear o checklist (spec.md pode nao existir ainda em fluxos sem SDD
+  completo).
+- Em execucao autonoma (`agente-00c`/`feature-00c`), registrar a invocacao
+  via `state-ondas.sh record-skill --skill requirement-coverage --kind gate`
+  (script deterministico, nao tool Skill).
+
 ### 4.3 Reportar
 
 ```markdown
