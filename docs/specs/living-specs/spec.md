@@ -32,8 +32,27 @@ SDD, sem rastreabilidade a nenhuma feature especifica).
 
 ## Clarifications
 
-_Nenhuma sessao de clarificacao realizada ainda — dois pontos em aberto
-estao marcados diretamente nos Edge Cases e nas Key Entities abaixo._
+### Session 2026-07-23
+
+- Q: Onde o Living Spec Corpus vive fisicamente — novo diretorio dedicado
+  (ex. `docs/specs/current/`), evolucao de `docs/02-requisitos-casos-uso/`,
+  ou outro layout? → A: `docs/specs/current/`, novo diretorio dedicado,
+  paralelo a `docs/specs/_archived/`. `docs/02-requisitos-casos-uso` nao
+  existe neste repositorio — e a estrutura de UC-* que `initialize-docs`
+  cria para PROJETOS-ALVO (formato de casos de uso), distinta do formato
+  FR/SC ja usado pelas specs do proprio toolkit em
+  `docs/specs/<feature>/spec.md`. Um dir novo mantem o corpus no mesmo
+  formato SDD homogeneo, sem misturar UC com FR no mesmo diretorio.
+- Q: Qual a politica de resolucao quando duas features tocam o mesmo
+  identificador do corpus de forma incompativel no merge (ou quando
+  REMOVED/MODIFIED referencia um identificador inexistente/nunca criado
+  no corpus)? → A: Bloqueio automatico com diagnostico, exigindo
+  resolucao humana explicita — estende uniformemente o padrao ja adotado
+  por FR-010/FR-013/US3 desta mesma spec (sinalizar em vez de aplicar
+  silenciosamente; bloquear salvo skip explicito auditavel) para os 3
+  subcasos. Sem merge automatico (last-write-wins arriscaria perda
+  silenciosa de informacao); sem fonte externa suficiente sobre o
+  algoritmo exato do OpenSpec para adotar como suposicao (Principio VI).
 
 ## User Scenarios & Testing
 
@@ -188,13 +207,11 @@ caminhos.
 
 - Duas features arquivadas em momentos diferentes com Delta Requirements
   que tocam o MESMO identificador do corpus de formas incompativeis (uma
-  MODIFICA o que a outra REMOVEU, por exemplo) — politica de resolucao
-  **[NEEDS CLARIFICATION: last-write-wins com registro auditavel,
-  bloqueio automatico exigindo resolucao humana, ou deteccao com merge
-  manual assistido? O material lido do OpenSpec (`docs/concepts.md`)
-  menciona que "two changes can touch the same spec file without
-  conflicting", mas nao ha fonte suficiente sobre o algoritmo exato de
-  resolucao para adotar como suposicao (Principio VI)]**.
+  MODIFICA o que a outra REMOVEU, por exemplo) — politica de resolucao:
+  bloqueio automatico com diagnostico exigindo resolucao humana explicita,
+  na mesma linha de FR-010/FR-013 (nunca last-write-wins silencioso, nunca
+  merge automatico sem fonte suficiente sobre o algoritmo — ver
+  `## Clarifications`).
 - Feature cuja spec foi escrita ANTES desta feature entrar em vigor
   (todas as features hoje abertas em `docs/specs/*`, fora `_archived/`)
   chega ao momento de archive sem nunca ter tido a secao delta pensada
@@ -283,13 +300,10 @@ caminhos.
 
 - **Living Spec Corpus**: local canonico que descreve o comportamento
   ATUAL do sistema-alvo, organizado por requisito rastreavel; distinto do
-  historico de mudancas por feature preservado em `_archived/`. Onde esse
-  corpus vive fisicamente **[NEEDS CLARIFICATION: novo diretorio dedicado
-  (ex. `docs/specs/current/`, paralelo a `_archived/`), evolucao da
-  hierarquia `docs/0X-.../` (ex. um `docs/02-requisitos-casos-uso/`
-  dedicado a comportamento atual — hoje esse diretorio nao existe neste
-  repositorio), ou outro layout? Impacta o desenho do `plan.md` — resolver
-  antes de prosseguir para `/plan`]**.
+  historico de mudancas por feature preservado em `_archived/`. Vive em
+  `docs/specs/current/`, novo diretorio dedicado, paralelo a
+  `docs/specs/_archived/`, mantendo o formato SDD (FR/SC) homogeneo com
+  as specs de origem — ver `## Clarifications`.
 - **Delta Requirements Section**: bloco dentro da spec de uma feature que
   declara requisitos ADICIONADOS, MODIFICADOS, REMOVIDOS ou RENOMEADOS em
   relacao ao comportamento atual, usando o mesmo esquema de identificador
