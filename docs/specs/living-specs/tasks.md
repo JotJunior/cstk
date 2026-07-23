@@ -183,15 +183,15 @@ Ref: FR-001, FR-011 · tarefa 1.1 (consome CHK015) · contracts/delta-section-fo
 
 Ref: research.md Decision 7 · plan.md §Project Structure
 
-- [ ] 3.1.1 Copiar `global/skills/agente-00c-runtime/scripts/_diag.sh` para
+- [x] 3.1.1 Copiar `global/skills/agente-00c-runtime/scripts/_diag.sh` para
   `global/skills/review-features/scripts/_diag.sh`, com cabecalho apontando
   a fonte canonica (`agente-00c-runtime/scripts/_diag.sh`) e o contrato
   `docs/specs/openspec-hygiene/contracts/diagnostic-envelope.md` (mesmo
   padrao de vendoring documentado na Decision 7)
-- [ ] 3.1.2 Confirmar que `tests/test__diag.sh` cobre a copia
+- [x] 3.1.2 Confirmar que `tests/test__diag.sh` cobre a copia
   automaticamente via mapeamento por NOME do `--check-coverage` (sem criar
   teste novo — mesmo arquivo, dois locais)
-- [ ] 3.1.3 Smoke-test manual: sourcing a copia vendorizada e chamar
+- [x] 3.1.3 Smoke-test manual: sourcing a copia vendorizada e chamar
   `diag_emit` com severity valida e invalida, confirmando paridade de
   output com o `_diag.sh` canonico (mesmo contrato, dogfooding do envelope
   antes de consumi-lo em 3.4/3.8)
@@ -200,22 +200,22 @@ Ref: research.md Decision 7 · plan.md §Project Structure
 
 Ref: FR-001, FR-010, FR-011 · contracts/delta-gate-cli.md · contracts/delta-section-format.md
 
-- [ ] 3.2.1 Implementar `delta-gate.sh SPEC_MD [--corpus-dir DIR]`
+- [x] 3.2.1 Implementar `delta-gate.sh SPEC_MD [--corpus-dir DIR]`
   (POSIX sh puro, `set -eu`); resolucao de `--corpus-dir` default subindo
   de `SPEC_MD` pela convencao `docs/specs/<feature>/spec.md` ate
   `docs/specs/current/`; sem convencao e sem flag => exit 2 (uso incorreto)
-- [ ] 3.2.2 Parsear `## Delta Requirements`: ausente => `FINDING|error|
+- [x] 3.2.2 Parsear `## Delta Requirements`: ausente => `FINDING|error|
   delta-missing|...`, `RESULT|...|delta=missing`, exit 1 (FR-010)
-- [ ] 3.2.3 Detectar marcador `**Skip**: <justificativa> — <autor>,
+- [x] 3.2.3 Detectar marcador `**Skip**: <justificativa> — <autor>,
   <YYYY-MM-DD>`; validar os 3 campos nao-vazios — qualquer ausente =>
   `FINDING|error|skip-invalid|...` (FR-011); Skip + blocos `### Capability:`
   na mesma secao => `FINDING|error|skip-with-delta|...` (mutuamente
   exclusivos); Skip valido isolado => `RESULT|...|delta=skip`, exit 0
   (US3 cenario 2)
-- [ ] 3.2.4 Parsear blocos `### Capability: <slug>` repetiveis, cada um com
+- [x] 3.2.4 Parsear blocos `### Capability: <slug>` repetiveis, cada um com
   >=1 dos 4 grupos `####` nao-vazio; secao presente mas sem NENHUM bloco
   Capability nem skip => `FINDING|error|delta-empty|...`
-- [ ] 3.2.5 Parsear entradas `- **FR-NNN**: <texto>` (ADDED/MODIFIED/
+- [x] 3.2.5 Parsear entradas `- **FR-NNN**: <texto>` (ADDED/MODIFIED/
   REMOVED) e `- **FR-NNN -> FR-MMM**` (RENAMED), incluindo continuacao de
   texto em linhas indentadas (2+ espacos); entrada fora da gramatica =>
   `FINDING|error|entry-malformed|...`
@@ -224,24 +224,24 @@ Ref: FR-001, FR-010, FR-011 · contracts/delta-gate-cli.md · contracts/delta-se
 
 Ref: FR-013 · tarefa 1.3 (consome CHK034) · contracts/corpus-format.md §Semantica de aplicacao
 
-- [ ] 3.3.1 Implementar a pre-checagem estrutural do corpus fixada na
+- [x] 3.3.1 Implementar a pre-checagem estrutural do corpus fixada na
   tarefa 1.3.1: para cada capability referenciada pela secao delta, se o
   arquivo `docs/specs/current/<slug>.md` existir, validar headings
   `# Capability:`/`## Requirements`/`### FR-NNN` bem-formados e ausencia de
   id duplicado entre `## Requirements`/`## Removed Requirements`/tabela de
   renames; violacao => `FINDING|error|corpus-malformed|...` (code fixado
   na tarefa 1.3.2), ANTES de qualquer validacao referencial
-- [ ] 3.3.2 Validacao referencial por tipo (tabela `corpus-format.md`
+- [x] 3.3.2 Validacao referencial por tipo (tabela `corpus-format.md`
   §Semantica de aplicacao): MODIFIED/REMOVED exigem id ATIVO no corpus =>
   senao `FINDING|error|ref-not-found|...` (FR-013, US3 cenario 4); ADDED
   com id ja ativo na mesma capability => `FINDING|error|added-collision|
   ...`; RENAMED exige `old_id` ativo E `new_id` inexistente (ativo ou
   removido/aposentado) em qualquer secao => senao `FINDING|error|
   renamed-target-exists|...`
-- [ ] 3.3.3 Corpus/capability inexistente com APENAS entradas ADDED =>
+- [x] 3.3.3 Corpus/capability inexistente com APENAS entradas ADDED =>
   `FINDING|info|corpus-missing|...` (nao bloqueia — US2 cenario 4,
   distinto de `corpus-malformed`)
-- [ ] 3.3.4 Emitir `RESULT|<spec>|delta=<present|skip|missing>|errors=<N>|
+- [x] 3.3.4 Emitir `RESULT|<spec>|delta=<present|skip|missing>|errors=<N>|
   warnings=<M>` como ultima linha de stdout, sempre; exit 0 (errors=0),
   exit 1 (errors>=1), exit 2 (uso incorreto — nao emite RESULT)
 
@@ -249,18 +249,18 @@ Ref: FR-013 · tarefa 1.3 (consome CHK034) · contracts/corpus-format.md §Seman
 
 Ref: contracts/delta-gate-cli.md invariante 4 · gate owasp-security pos-plan · tarefa 3.1
 
-- [ ] 3.4.1 Validar o slug (`[a-z0-9][a-z0-9-]*`) como a PRIMEIRA checagem
+- [x] 3.4.1 Validar o slug (`[a-z0-9][a-z0-9-]*`) como a PRIMEIRA checagem
   do parser sobre cada `### Capability:` lida, ANTES de qualquer composicao
   de path com o valor — slug fora do padrao => `FINDING|error|
   capability-slug-invalid|...`, NUNCA compor `docs/specs/current/$slug.md`
   com valor nao-validado (anti path traversal `../`, absoluto, com espaco)
-- [ ] 3.4.2 Nunca `printf "$var"` com texto delta (sempre `printf '%s'`);
+- [x] 3.4.2 Nunca `printf "$var"` com texto delta (sempre `printf '%s'`);
   todas as variaveis quotadas; zero `eval` sobre conteudo lido do spec.md
   (SEC-1, mesmo padrao de `skill-converge/scripts/*.sh`)
-- [ ] 3.4.3 Erros de uso (SPEC_MD inexistente, `--corpus-dir` irresoluvel)
+- [x] 3.4.3 Erros de uso (SPEC_MD inexistente, `--corpus-dir` irresoluvel)
   emitem `DIAG|error|<code>|<message>|<fix>` em stderr via `_diag.sh`
   vendorizado (tarefa 3.1), ADITIVO a mensagem legada
-- [ ] 3.4.4 Determinismo: mesma spec + mesmo corpus => stdout byte-identico
+- [x] 3.4.4 Determinismo: mesma spec + mesmo corpus => stdout byte-identico
   entre execucoes (edge case da spec) — nenhuma dependencia de ordem de
   filesystem (`sort` explicito onde a ordem de entrada nao e garantida)
 
@@ -268,37 +268,37 @@ Ref: contracts/delta-gate-cli.md invariante 4 · gate owasp-security pos-plan ·
 
 Ref: contracts/delta-gate-cli.md invariante 5 · quickstart.md Cenarios 1, 3, 4 · CLAUDE.md convencao de cobertura
 
-- [ ] 3.5.1 Cenarios happy-path: delta ADDED valida (corpus ausente =>
+- [x] 3.5.1 Cenarios happy-path: delta ADDED valida (corpus ausente =>
   `corpus-missing` info, exit 0); delta MODIFIED/REMOVED sobre corpus
   existente valido; delta so-REMOVED valida (US3 cenario 3)
-- [ ] 3.5.2 Cenarios de bloqueio: sem secao (`delta-missing`, exit 1); skip
+- [x] 3.5.2 Cenarios de bloqueio: sem secao (`delta-missing`, exit 1); skip
   invalido (`skip-invalid`); skip + delta simultaneo (`skip-with-delta`);
   secao vazia (`delta-empty`); entrada malformada (`entry-malformed`)
-- [ ] 3.5.3 Cenarios referenciais: `ref-not-found` (MODIFIED/REMOVED/RENAMED
+- [x] 3.5.3 Cenarios referenciais: `ref-not-found` (MODIFIED/REMOVED/RENAMED
   para id inexistente); `added-collision`; `renamed-target-exists`
-- [ ] 3.5.4 Cenario `corpus-malformed`: fixture com
+- [x] 3.5.4 Cenario `corpus-malformed`: fixture com
   `docs/specs/current/<slug>.md` editado a mao violando o contrato
   (heading fora do padrao, id duplicado) — gate bloqueia ANTES de checar
   referencias (tarefa 3.3.1)
-- [ ] 3.5.5 Cenario de seguranca: slug hostil (`../escape`, path absoluto,
+- [x] 3.5.5 Cenario de seguranca: slug hostil (`../escape`, path absoluto,
   slug com espaco) — `capability-slug-invalid`, nenhum path composto fora
   do corpus-dir (SEC, tarefa 3.4.1)
-- [ ] 3.5.6 Cenario de determinismo: rodar o gate 2x sobre o mesmo input,
+- [x] 3.5.6 Cenario de determinismo: rodar o gate 2x sobre o mesmo input,
   comparar stdout byte-a-byte
-- [ ] 3.5.7 Cenarios de uso incorreto: SPEC_MD inexistente e
+- [x] 3.5.7 Cenarios de uso incorreto: SPEC_MD inexistente e
   `--corpus-dir` irresoluvel sem convencao => exit 2, `DIAG|` em stderr
 
 ### 3.6 `delta-merge.sh`: parse + validacao pre-mutacao `[C]`
 
 Ref: FR-002..FR-005 · contracts/delta-merge-cli.md · contracts/corpus-format.md
 
-- [ ] 3.6.1 Implementar `delta-merge.sh SPEC_MD --feature NAME
+- [x] 3.6.1 Implementar `delta-merge.sh SPEC_MD --feature NAME
   [--corpus-dir DIR] [--date YYYY-MM-DD] [--dry-run]`; reusar o MESMO
   parser da secao delta da tarefa 3.2 (nao duplicar gramatica); `--date`
   default = data corrente UTC
-- [ ] 3.6.2 Skip valido presente => `RESULT|...|delta=skip`, exit 0, zero
+- [x] 3.6.2 Skip valido presente => `RESULT|...|delta=skip`, exit 0, zero
   escrita no corpus (no-op declarado)
-- [ ] 3.6.3 Re-validar TODAS as pre-condicoes de TODAS as entradas de TODAS
+- [x] 3.6.3 Re-validar TODAS as pre-condicoes de TODAS as entradas de TODAS
   as capabilities tocadas contra o corpus ANTES de escrever qualquer byte
   (defesa em profundidade — o merge pode rodar em momento distinto do
   gate, corpus pode ter mudado); mesmos codes de erro do gate
@@ -310,40 +310,40 @@ Ref: FR-002..FR-005 · contracts/delta-merge-cli.md · contracts/corpus-format.m
 
 Ref: FR-002..FR-005, FR-007 · contracts/corpus-format.md §Semantica de aplicacao
 
-- [ ] 3.7.1 ADDED: nova entrada em `## Requirements` com
+- [x] 3.7.1 ADDED: nova entrada em `## Requirements` com
   `### FR-NNN` + texto + `*Introduzida por: <feature> (<data>)*`
-- [ ] 3.7.2 MODIFIED: substitui texto da entrada ativa, id preservado,
+- [x] 3.7.2 MODIFIED: substitui texto da entrada ativa, id preservado,
   adiciona/atualiza `*Ultima modificacao: <feature> (<data>)*`
   (`*Introduzida por:*` permanece imutavel — SC-004)
-- [ ] 3.7.3 REMOVED: move a entrada para `## Removed Requirements` com
+- [x] 3.7.3 REMOVED: move a entrada para `## Removed Requirements` com
   `*Removida por: <feature> (<data>)* — <motivo>` (nunca desaparecimento
   silencioso — FR-004)
-- [ ] 3.7.4 RENAMED: heading `### FR-NNN` vira `### FR-MMM`, linha
+- [x] 3.7.4 RENAMED: heading `### FR-NNN` vira `### FR-MMM`, linha
   adicionada em `## Renamed Identifiers` (tabela old/new/feature/data);
   id antigo nunca reciclado (invariante 1 do contrato)
-- [ ] 3.7.5 Corpus/arquivo de capability inexistente + so ADDED => cria o
+- [x] 3.7.5 Corpus/arquivo de capability inexistente + so ADDED => cria o
   arquivo de capability (US2 cenario 4); diretorio `docs/specs/current/`
   criado sob demanda se ainda nao existir
-- [ ] 3.7.6 Aplicacao atomica: conteudo novo montado via `mktemp`, `mv`
+- [x] 3.7.6 Aplicacao atomica: conteudo novo montado via `mktemp`, `mv`
   so apos validacao TOTAL de TODAS as capabilities da spec (multi-capability
   => nenhum `mv` acontece se qualquer uma falhar); entradas ordenadas por
   id crescente dentro de cada secao (determinismo byte-a-byte — invariante 3)
-- [ ] 3.7.7 `--dry-run`: valida e reporta o que SERIA aplicado
+- [x] 3.7.7 `--dry-run`: valida e reporta o que SERIA aplicado
   (`added=N|modified=N|removed=N|renamed=N`), zero escrita real
-- [ ] 3.7.8 Emitir `RESULT|<spec>|delta=<applied|skip|blocked>|added=<N>|
+- [x] 3.7.8 Emitir `RESULT|<spec>|delta=<applied|skip|blocked>|added=<N>|
   modified=<N>|removed=<N>|renamed=<N>`
 
 ### 3.8 `delta-merge.sh`: seguranca `[C]`
 
 Ref: contracts/delta-merge-cli.md invariante 2-bis · gate owasp-security pos-plan
 
-- [ ] 3.8.1 Re-validar o slug (`[a-z0-9][a-z0-9-]*`) como primeira
+- [x] 3.8.1 Re-validar o slug (`[a-z0-9][a-z0-9-]*`) como primeira
   checagem, ANTES de compor qualquer path — nunca confiar que
   `delta-gate.sh` rodou antes (defesa em profundidade contra path
   traversal, mesma regra da tarefa 3.4.1)
-- [ ] 3.8.2 Texto delta escrito no corpus sempre via `printf '%s'`, nunca
+- [x] 3.8.2 Texto delta escrito no corpus sempre via `printf '%s'`, nunca
   como format string; variaveis quotadas; zero `eval`
-- [ ] 3.8.3 Erros de uso emitem `DIAG|` via `_diag.sh` vendorizado
+- [x] 3.8.3 Erros de uso emitem `DIAG|` via `_diag.sh` vendorizado
   (tarefa 3.1); erros de conflito/bloqueio permanecem no formato
   `FINDING|`/`RESULT|` (nao viram DIAG — sao veredito de dominio, nao erro
   de uso do script)
@@ -352,34 +352,34 @@ Ref: contracts/delta-merge-cli.md invariante 2-bis · gate owasp-security pos-pl
 
 Ref: contracts/delta-merge-cli.md · quickstart.md Cenarios 1, 2, 4
 
-- [ ] 3.9.1 Cenario 1 (happy path ADDED): corpus inexistente => criado com
+- [x] 3.9.1 Cenario 1 (happy path ADDED): corpus inexistente => criado com
   `### FR-001` + proveniencia correta (SC-004)
-- [ ] 3.9.2 Cenario 2 (MODIFIED/REMOVED sobre corpus existente): texto
+- [x] 3.9.2 Cenario 2 (MODIFIED/REMOVED sobre corpus existente): texto
   substituido com id preservado + `Ultima modificacao`; entrada REMOVED
   movida para `## Removed Requirements` com motivo
-- [ ] 3.9.3 Cenario de skip: `delta=skip`, exit 0, corpus (se existir)
+- [x] 3.9.3 Cenario de skip: `delta=skip`, exit 0, corpus (se existir)
   byte-identico antes/depois (hash comparado)
-- [ ] 3.9.4 Cenario de atomicidade (quickstart Cenario 4 item 4): spec
+- [x] 3.9.4 Cenario de atomicidade (quickstart Cenario 4 item 4): spec
   multi-capability com erro na 2a capability => exit 1, hash de TODOS os
   arquivos do corpus identico antes/depois (nenhuma mutacao parcial)
-- [ ] 3.9.5 Cenario `--dry-run`: reporta contagens corretas, zero escrita
+- [x] 3.9.5 Cenario `--dry-run`: reporta contagens corretas, zero escrita
   (hash do corpus inalterado)
-- [ ] 3.9.6 Cenario `corpus-malformed`: merge tambem bloqueia (nao so o
+- [x] 3.9.6 Cenario `corpus-malformed`: merge tambem bloqueia (nao so o
   gate) sobre corpus editado a mao violando o contrato (tarefa 3.6.3)
-- [ ] 3.9.7 Cenario de determinismo: dois merges com os MESMOS inputs
+- [x] 3.9.7 Cenario de determinismo: dois merges com os MESMOS inputs
   (spec + corpus + `--date`) produzem corpus resultante byte-identico
 
 ### 3.10 Fechar cobertura de teste dos scripts novos `[A]`
 
 Ref: CLAUDE.md §Como testar scripts shell · Regra de ouro (mapeamento por nome)
 
-- [ ] 3.10.1 Rodar `./tests/run.sh --check-coverage` e confirmar exit 0 —
+- [x] 3.10.1 Rodar `./tests/run.sh --check-coverage` e confirmar exit 0 —
   `delta-gate.sh`/`delta-merge.sh` mapeados para `tests/test_delta-gate.sh`/
   `tests/test_delta-merge.sh`; `_diag.sh` vendorizado coberto por
   `tests/test__diag.sh` (mapeamento por nome, sem teste duplicado)
-- [ ] 3.10.2 Rodar `./tests/run.sh test_delta-gate` e
+- [x] 3.10.2 Rodar `./tests/run.sh test_delta-gate` e
   `./tests/run.sh test_delta-merge` isoladamente, confirmar 0 FAIL/0 ERROR
-- [ ] 3.10.3 Rodar `shellcheck -s sh` (advisory, mesmo padrao ja adotado
+- [x] 3.10.3 Rodar `shellcheck -s sh` (advisory, mesmo padrao ja adotado
   pelo precedente `skill-converge`) sobre `delta-gate.sh`, `delta-merge.sh`
   e a copia vendorizada de `_diag.sh`; resolver findings antes de
   prosseguir para a FASE 4
