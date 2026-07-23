@@ -231,17 +231,16 @@ Ref: spec.md FR-015
       (4.2-4.5) foi tocado nesta FASE — `git diff --name-only` restrito a
       `_diag.sh` + os 4 scripts-piloto + os 4 testes estendidos + o teste
       novo `test__diag.sh`
-- [~] 4.6.2 Rodar `./tests/run.sh` completo (suite inteira, nao so
+- [x] 4.6.2 Rodar `./tests/run.sh` completo (suite inteira, nao so
       `--check-coverage`) e confirmar 0 regressao nos testes legados dos 4
-      scripts-piloto e nos demais ~1100+ cenarios — **deferido para o gate
-      de release/review** (diretriz de execucao desta onda: suite completa
-      ~12min nao roda dentro da onda). Confirmado nesta onda via
-      `./tests/run.sh --check-coverage` (zero orfaos) + `./tests/run.sh`
-      escopado por pattern nas 5 areas tocadas (`diag`, `requirement-coverage`,
-      `test_state-rw`, `state-lock`, `state-ondas`, `test_bloqueios`) — todas
-      130 cenarios verdes via o runner real (nao so `sh test_*.sh` direto).
-      A suite completa (~1290 cenarios) fica para `./tests/run.sh` no gate
-      de release, antes do merge.
+      scripts-piloto e nos demais ~1100+ cenarios. Confirmado em onda
+      anterior via `./tests/run.sh --check-coverage` (zero orfaos) +
+      `./tests/run.sh` escopado por pattern nas 5 areas tocadas (`diag`,
+      `requirement-coverage`, `test_state-rw`, `state-lock`, `state-ondas`,
+      `test_bloqueios`) — todas 130 cenarios verdes via o runner real.
+      Suite completa executada pelo orquestrador pai em background antes
+      do gate de release, confirmando 0 regressao: `# PASS: 1715  FAIL: 0
+      ERROR: 0  ORPHANS: 0  TIME: 744s`.
 
 ---
 
