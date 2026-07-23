@@ -136,7 +136,7 @@ Ref: checklists/requirements.md CHK034 · Contract corpus-format.md §Estrutura
 
 Ref: FR-001 · contracts/delta-section-format.md · plan.md §Project Structure
 
-- [ ] 2.1.1 Adicionar em
+- [x] 2.1.1 Adicionar em
   `global/skills/specify/templates/feature-spec.md`, apos
   `## Success Criteria` (posicao recomendada do contrato — o parser
   localiza pelo heading, nao pela posicao), a secao opcional
@@ -144,12 +144,12 @@ Ref: FR-001 · contracts/delta-section-format.md · plan.md §Project Structure
   `REMOVED`/`RENAMED` sob `### Capability: <capability-slug>`, seguindo a
   gramatica EXATA de `contracts/delta-section-format.md` (seta `->` ASCII
   no RENAMED, nunca `→`)
-- [ ] 2.1.2 Adicionar comentario de template explicando que a secao e
+- [x] 2.1.2 Adicionar comentario de template explicando que a secao e
   OPCIONAL (feature pode nao tocar nenhum comportamento de corpus ainda) e
   que o marcador de Skip (`**Skip**: <justificativa> — <autor>,
   <YYYY-MM-DD>`) e a forma alternativa mutuamente exclusiva com os blocos
   `### Capability:` — usada quando o archive nao precisa de delta (US3)
-- [ ] 2.1.3 Confirmar (grep) que `validate-sdd.sh` spec-profile nao passa a
+- [x] 2.1.3 Confirmar (grep) que `validate-sdd.sh` spec-profile nao passa a
   exigir a secao nova (permanece exigindo so "User Scenarios & Testing",
   "Requirements", "Success Criteria" — research.md Decision 4, fato ja
   verificado) e que `requirement-coverage.sh` continua ignorando ids sob
@@ -160,17 +160,17 @@ Ref: FR-001 · contracts/delta-section-format.md · plan.md §Project Structure
 
 Ref: FR-001, FR-011 · tarefa 1.1 (consome CHK015) · contracts/delta-section-format.md §Skip explicito
 
-- [ ] 2.2.1 Adicionar secao de prosa em `global/skills/specify/SKILL.md`
+- [x] 2.2.1 Adicionar secao de prosa em `global/skills/specify/SKILL.md`
   orientando: (a) quando preencher Delta Requirements (feature que
   adiciona/muda/remove/renomeia comportamento hoje ativo do sistema-alvo);
   (b) a regra de descoberta/reuso de slug fixada na tarefa 1.1.1-1.1.3
   (`ls docs/specs/current/*.md` antes de nomear capability nova); (c) como
   preencher o marcador de Skip quando a feature e puramente doc-only/meta
   (formato dos 3 campos obrigatorios: justificativa, autor, data)
-- [ ] 2.2.2 Citar no SKILL.md que a validacao de forma (nao de semantica de
+- [x] 2.2.2 Citar no SKILL.md que a validacao de forma (nao de semantica de
   reuso) fica a cargo de `delta-gate.sh` (FASE 3), rodado apenas no
   momento do archive — `specify` nunca invoca o gate diretamente
-- [ ] 2.2.3 Adicionar exemplo minimo de secao `## Delta Requirements`
+- [x] 2.2.3 Adicionar exemplo minimo de secao `## Delta Requirements`
   preenchida (um bloco ADDED simples) na prosa do SKILL.md, ilustrando a
   gramatica de `delta-section-format.md` sem exigir abrir o contrato
   completo para o caso comum

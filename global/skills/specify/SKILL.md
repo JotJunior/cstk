@@ -353,6 +353,39 @@ NAO deixar implicito — `N/A explicito > silencio`.
 - "Database handles 1000 TPS" (detalhe de implementacao)
 - "React components render efficiently" (framework-specific)
 
+**Delta Requirements (opcional — secao `## Delta Requirements`):**
+
+Preencher quando a feature adiciona, muda, remove ou renomeia
+comportamento HOJE ATIVO do sistema-alvo (algo ja documentado no corpus
+canonico `docs/specs/current/`) — contrato completo em
+`docs/specs/living-specs/contracts/delta-section-format.md`.
+
+- Antes de declarar uma `### Capability: <slug>` NOVA, rodar
+  `ls docs/specs/current/*.md 2>/dev/null` (lista vazia e resultado
+  valido — corpus pode nao existir ainda) e reusar o slug ja existente
+  sempre que a feature tocar o MESMO conceito, em vez de fragmentar em
+  um slug novo semanticamente equivalente (ex.: `commit-mode` vs
+  `commit-staging` referindo-se ao mesmo mecanismo). Essa decisao e
+  julgamento do autor da spec — a validacao de FORMA do slug fica a
+  cargo de `delta-gate.sh`, rodado apenas no momento do archive
+  (`specify` nunca invoca o gate diretamente).
+- Feature que nao toca comportamento ativo (puramente nova, ou
+  doc-only/meta) usa o marcador de Skip em vez dos blocos
+  `### Capability:` (mutuamente exclusivos): `**Skip**: <justificativa
+  nao-vazia> — <autor>, <YYYY-MM-DD>` — os 3 campos sao obrigatorios.
+- Exemplo minimo de bloco preenchido:
+
+  ```markdown
+  ## Delta Requirements
+
+  ### Capability: commit-mode
+
+  #### ADDED
+
+  - **FR-018**: Sistema MUST suportar staging por allowlist derivada no
+    modo atomic-commit
+  ```
+
 ---
 
 ## ETAPA 4: VALIDACAO
