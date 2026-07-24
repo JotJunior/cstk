@@ -5,6 +5,40 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.17.0] - 2026-07-24
+
+### Adicionado
+
+- **Briefing e constitution no painel de documentação da feature**: o
+  doc-viewer só enxergava `docs/specs/<feature>/`, então os dois artefatos
+  que governam todas as features do projeto não tinham como aparecer. A
+  listagem agora declara o **escopo** de cada artefato (`project` |
+  `feature`), que define a raiz a que `fileName` é relativo — e a que a
+  leitura fica confinada. Os caminhos seguem a ordem de descoberta
+  declarada pelas próprias skills que geram os arquivos:
+  `docs/01-briefing-discovery/briefing.md` com fallback `docs/briefing.md`,
+  e `docs/constitution.md` com fallback `constitution.md`; o primeiro
+  candidato existente vence e, sem nenhum, a entrada aparece
+  `produced:false` no caminho canônico (FR-007 — ausência nunca é erro).
+  Briefings datados/alternativos do diretório de discovery entram como
+  lista dinâmica, mesmo tratamento de `contracts/` e `checklists/`.
+- **Navegação de docs agrupada por escopo** (`Projeto` / `Feature`, com
+  `optgroup` no modo estreito). A seleção default passa a preferir a spec
+  da própria feature em vez do briefing que abre a lista; sem nada
+  produzido na feature, cai no primeiro doc de projeto disponível.
+
+### Alterado
+
+- `FeatureDocDTO` ganha o campo obrigatório `scope` e `FeatureDocStage`
+  passa a incluir `briefing` e `constitution` (interface manual + schema
+  Zod, dual-def). O confinamento anti-traversal/anti-symlink não afrouxou:
+  passou a ser aplicado na raiz **do escopo do artefato** — raiz do projeto
+  para briefing/constitution, `docs/specs/<feature>/` para o resto — e
+  `fileName` continua saindo do mapa do servidor, nunca do cliente. IDs
+  colidentes são desambiguados (um `constitution.md` solto dentro da
+  feature vira `feature-constitution`), já que a rota de conteúdo resolve
+  por `artifactId`.
+
 ## [0.16.1] - 2026-07-22
 
 ### Corrigido
@@ -832,6 +866,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.17.0]: https://github.com/JotJunior/cstk-panel/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/JotJunior/cstk-panel/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/JotJunior/cstk-panel/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/JotJunior/cstk-panel/compare/v0.15.0...v0.15.1
