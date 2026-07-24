@@ -1,144 +1,146 @@
-# Pipeline SDD (Spec-Driven Development)
+**English** · [Português (pt-BR)](./sdd-pipeline.pt-BR.md)
 
-> Documento por tópico do [README](../README.md). Catálogo resumido das skills
-> na seção [Skills Globais](../README.md#skills-globais).
+# SDD Pipeline (Spec-Driven Development)
 
-O pipeline SDD é a sequência recomendada para levar uma ideia desde o discovery
-até a implementação. Cada skill consome os artefatos do anterior e alimenta o
-próximo.
+> Topic document from the [README](../README.md). Condensed skill catalog in
+> the [Global Skills](../README.md#global-skills) section.
+
+The SDD pipeline is the recommended sequence to take an idea from discovery all
+the way to implementation. Each skill consumes the previous one's artifacts and
+feeds the next.
 
 ```text
  ┌──────────────┐
  │  DISCOVERY   │
  └──────┬───────┘
         │
-   ① briefing          Entrevista de discovery → docs/01-briefing-discovery/briefing.md
-        │                Coleta visão, usuários, escopo, restrições e stack.
-        │                Pergunta UMA pergunta por vez (max 10).
+   ① briefing          Discovery interview → docs/01-briefing-discovery/briefing.md
+        │                Gathers vision, users, scope, constraints and stack.
+        │                Asks ONE question at a time (max 10).
         ▼
    ② constitution      Briefing → docs/constitution.md
-        │                Define princípios MUST/SHOULD que governam todas as decisões.
-        │                Validado contra artefatos existentes (propagação).
+        │                Defines MUST/SHOULD principles that govern every decision.
+        │                Validated against existing artifacts (propagation).
         ▼
  ┌──────────────┐
- │ ESPECIFICAÇÃO│
+ │ SPECIFICATION│
  └──────┬───────┘
         │
-   ③ specify            Descrição natural → docs/specs/{feature}/spec.md
-        │                Gera user stories priorizadas, requisitos funcionais,
-        │                critérios de aceite e success criteria mensuráveis.
-        │                Foco no QUE e POR QUÊ — nunca no COMO.
-        │                Gate determinístico: todo requisito exige >=1 cenário
-        │                (requirement-coverage.sh, v5.22.0). Seção opcional
-        │                "## Delta Requirements" declara o delta a aplicar no
-        │                corpus de specs vivas no archive (v5.23.0).
+   ③ specify            Natural description → docs/specs/{feature}/spec.md
+        │                Produces prioritized user stories, functional requirements,
+        │                acceptance criteria and measurable success criteria.
+        │                Focus on WHAT and WHY — never on HOW.
+        │                Deterministic gate: every requirement needs >=1 scenario
+        │                (requirement-coverage.sh, v5.22.0). Optional
+        │                "## Delta Requirements" section declares the delta to apply
+        │                to the living-specs corpus at archive time (v5.23.0).
         ▼
-   ④ clarify            Spec → Spec refinada (in-place)
-        │                Escaneia ambiguidades por taxonomia (10 categorias).
-        │                Faz max 5 perguntas com opções e recomendação.
-        │                Integra respostas diretamente na spec.
+   ④ clarify            Spec → Refined spec (in-place)
+        │                Scans for ambiguities by taxonomy (10 categories).
+        │                Asks max 5 questions with options and a recommendation.
+        │                Integrates answers directly into the spec.
         ▼
  ┌──────────────┐
- │ PLANEJAMENTO │
+ │   PLANNING   │
  └──────┬───────┘
         │
    ⑤ plan              Spec → docs/specs/{feature}/plan.md + research.md + data-model.md
-        │                Pesquisa tecnologias, define modelo de dados,
-        │                contratos de API e cenários de teste.
-        │                Valida contra constitution (gate obrigatório).
+        │                Researches technologies, defines the data model,
+        │                API contracts and test scenarios.
+        │                Validates against the constitution (mandatory gate).
         ▼
    ⑥ checklist          Plan + Spec → docs/specs/{feature}/checklists/{domain}.md
-        │                "Unit Tests for English" — valida QUALIDADE dos requisitos,
-        │                não da implementação. Domínios: ux, api, security, performance.
-        │                Itens com dono {auto}/{humano}; gaps abertos viram
-        │                tarefas no create-tasks (loop gap → ação).
+        │                "Unit Tests for English" — validates requirement QUALITY,
+        │                not the implementation. Domains: ux, api, security, performance.
+        │                Items with owner {auto}/{humano}; open gaps become
+        │                tasks in create-tasks (gap → action loop).
         ▼
  ┌──────────────┐
- │ IMPLEMENTAÇÃO│
+ │IMPLEMENTATION│
  └──────┬───────┘
         │
-   ⑦ create-tasks      Plan → Backlog de tarefas estruturado por fases
-        │                Tarefas com IDs, criticidade e matriz de dependências.
+   ⑦ create-tasks      Plan → Task backlog structured by phases
+        │                Tasks with IDs, criticality and dependency matrix.
         ▼
-   ⑧ analyze           Spec + Plan + Tasks + Constitution → Relatório de consistência
-        │                Detecta duplicações, ambiguidades, gaps de cobertura
-        │                e violações de princípios. Estritamente READ-ONLY.
+   ⑧ analyze           Spec + Plan + Tasks + Constitution → Consistency report
+        │                Detects duplications, ambiguities, coverage gaps
+        │                and principle violations. Strictly READ-ONLY.
         ▼
-   ⑨ execute-task      Task → Código implementado (workflow de 9 etapas)
-        │                Análise → Localização → Planejamento → Implementação →
-        │                Testes → Validação → Lint → Conclusão → Atualização.
+   ⑨ execute-task      Task → Implemented code (9-step workflow)
+        │                Analysis → Localization → Planning → Implementation →
+        │                Tests → Validation → Lint → Conclusion → Update.
         ▼
-   ⑩ review-task       Tasks → Relatório de status com métricas e próximas ações
+   ⑩ review-task       Tasks → Status report with metrics and next actions
 ```
 
-## Quando usar cada skill
+## When to use each skill
 
-| Momento | Skill | Entrada | Saída |
-|---------|-------|---------|-------|
-| Projeto novo ou feature grande | `briefing` | Conversa interativa | `briefing.md` |
-| Após briefing | `constitution` | Briefing + contexto | `constitution.md` |
-| Nova feature | `specify` | Descrição em linguagem natural | `spec.md` |
-| Spec com dúvidas | `clarify` | `spec.md` existente | `spec.md` atualizada |
-| Spec pronta | `plan` | `spec.md` | `plan.md`, `data-model.md`, `contracts/` |
-| Antes de implementar | `checklist` | Spec + Plan | `checklists/{domain}.md` |
-| Plan pronto | `create-tasks` | `plan.md` | Backlog estruturado |
-| Tasks criadas | `analyze` | Todos os artefatos | Relatório de consistência |
-| Task específica | `execute-task` | ID da tarefa | Código + relatório |
-| Implementação "pronta" | `converge` | Spec + Plan + Tasks + código real | Gaps acionáveis como nova fase de tasks |
-| Acompanhamento | `review-task` | Arquivo de tasks | Relatório de progresso |
+| Moment | Skill | Input | Output |
+|--------|-------|-------|--------|
+| New project or large feature | `briefing` | Interactive conversation | `briefing.md` |
+| After briefing | `constitution` | Briefing + context | `constitution.md` |
+| New feature | `specify` | Natural-language description | `spec.md` |
+| Spec with open questions | `clarify` | Existing `spec.md` | Updated `spec.md` |
+| Spec ready | `plan` | `spec.md` | `plan.md`, `data-model.md`, `contracts/` |
+| Before implementing | `checklist` | Spec + Plan | `checklists/{domain}.md` |
+| Plan ready | `create-tasks` | `plan.md` | Structured backlog |
+| Tasks created | `analyze` | All artifacts | Consistency report |
+| Specific task | `execute-task` | Task ID | Code + report |
+| Implementation "done" | `converge` | Spec + Plan + Tasks + real code | Actionable gaps as a new task phase |
+| Tracking | `review-task` | Tasks file | Progress report |
 
-## Atalhos — nem sempre é preciso percorrer todo o pipeline
+## Shortcuts — you don't always need the full pipeline
 
-- **Feature simples**: `specify` → `plan` → `create-tasks` → `execute-task`
-- **Bug fix**: `bugfix` (skill independente, não requer pipeline)
-- **Projeto existente sem docs**: `initialize-docs` → `briefing` → `constitution`
-- **Só precisa de tasks**: `create-tasks` direto (se já tem contexto suficiente)
+- **Simple feature**: `specify` → `plan` → `create-tasks` → `execute-task`
+- **Bug fix**: `bugfix` (standalone skill, no pipeline required)
+- **Existing project without docs**: `initialize-docs` → `briefing` → `constitution`
+- **Only need tasks**: `create-tasks` directly (if you already have enough context)
 
-A `specify` também traz um guia de triagem "atualizar spec existente vs abrir
-feature nova" (v5.22.0): mesma intenção/refino → atualizar a spec; intenção
-mudou ou escopo explodiu → nova feature.
+`specify` also brings a triage guide "update an existing spec vs. open a new
+feature" (v5.22.0): same intent/refinement → update the spec; intent changed
+or scope exploded → new feature.
 
-## Specs vivas e Delta Requirements (v5.23.0)
+## Living Specs and Delta Requirements (v5.23.0)
 
-As specs de feature descrevem MUDANÇAS e são arquivadas em
-`docs/specs/_archived/YYYY-MM-DD-<feature>/` quando concluídas. Para o
-conhecimento "como o sistema se comporta AGORA" não evaporar no archive,
-existe um **corpus canônico de specs vivas** em `docs/specs/current/`
-(um arquivo por capability):
+Feature specs describe CHANGES and are archived under
+`docs/specs/_archived/YYYY-MM-DD-<feature>/` once completed. So that the
+knowledge of "how the system behaves NOW" does not evaporate into the archive,
+there is a **canonical living-specs corpus** in `docs/specs/current/`
+(one file per capability):
 
-- A spec de feature pode declarar uma seção opcional `## Delta Requirements`
-  com subseções `ADDED/MODIFIED/REMOVED/RENAMED Requirements`.
-- No momento do archive (ação da `review-features`), o delta é validado por
-  `delta-gate.sh` (estrutura do corpus, referências, "feature sem delta é
-  inválida salvo skip explícito") e aplicado ao corpus por `delta-merge.sh`
-  (merge atômico por capability).
-- Conflito NUNCA é mergeado silenciosamente — vira bloqueio com diagnóstico
-  (no fluxo autônomo, registro via `bloqueios.sh`).
+- A feature spec may declare an optional `## Delta Requirements` section
+  with `ADDED/MODIFIED/REMOVED/RENAMED Requirements` subsections.
+- At archive time (a `review-features` action), the delta is validated by
+  `delta-gate.sh` (corpus structure, references, "a feature without a delta is
+  invalid unless explicitly skipped") and applied to the corpus by `delta-merge.sh`
+  (atomic per-capability merge).
+- A conflict is NEVER merged silently — it becomes a block with a diagnostic
+  (in the autonomous flow, recorded via `bloqueios.sh`).
 
-Origem do modelo: benchmark do [OpenSpec](https://github.com/Fission-AI/OpenSpec)
-(separação `specs/` = comportamento atual vs `changes/` = deltas propostos).
+Origin of the model: benchmark of [OpenSpec](https://github.com/Fission-AI/OpenSpec)
+(separation `specs/` = current behavior vs `changes/` = proposed deltas).
 
 ## Workflow: execute-task
 
-O skill `execute-task` impõe um workflow completo de 9 etapas:
+The `execute-task` skill enforces a complete 9-step workflow:
 
-1. **Análise** - Detectar contexto e ler documentação
-2. **Localização** - Encontrar tarefa no arquivo de tarefas
-3. **Planejamento** - Definir escopo e identificar padrões
-4. **Implementação** - Executar a tarefa
-5. **Testes** - Rodar testes se aplicável
-6. **Validação** - Verificar qualidade e consistência
-7. **Lint** - Checar formatação e padrões
-8. **Conclusão** - Gerar relatório de execução
-9. **Atualização** - Marcar tarefa como concluída
+1. **Analysis** - Detect context and read documentation
+2. **Localization** - Find the task in the tasks file
+3. **Planning** - Define scope and identify patterns
+4. **Implementation** - Execute the task
+5. **Tests** - Run tests if applicable
+6. **Validation** - Verify quality and consistency
+7. **Lint** - Check formatting and standards
+8. **Conclusion** - Generate execution report
+9. **Update** - Mark the task as completed
 
-## Protocolo: bugfix
+## Protocol: bugfix
 
-O skill `bugfix` implementa um protocolo de 8 etapas destilado da prática de
-corrigir bugs em arquiteturas multi-serviço, com foco em eliminar ciclos de
-"corrige-revela-corrige":
+The `bugfix` skill implements an 8-step protocol distilled from the practice of
+fixing bugs in multi-service architectures, focused on eliminating
+"fix-reveals-fix" cycles:
 
-- Classifica complexidade (simples vs. multi-camada)
-- Rastreia o fluxo de dados completo antes de qualquer alteração
-- Mapeia DTOs, enums e nomes de campo em todas as fronteiras
-- Implementa correções em todas as camadas afetadas de uma vez
+- Classifies complexity (simple vs. multi-layer)
+- Traces the full data flow before any change
+- Maps DTOs, enums and field names across every boundary
+- Implements fixes across all affected layers at once

@@ -5,6 +5,33 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.24.0] - 2026-07-24
+
+Documentação passa a ter o **inglês como idioma principal**, com a leitura em
+pt-BR a um clique. Cada documento vira o par `X.md` (inglês, primário) +
+`X.pt-BR.md` (português), com uma linha de troca de idioma no topo. Mudança
+puramente documental — nenhum comportamento de skill, CLI ou runtime foi
+alterado.
+
+### Added
+
+- **Cópias em português** de 11 documentos, como siblings `*.pt-BR.md`:
+  `README`, `CONTRIBUTING`, `THIRD-PARTY-NOTICES`, `cli/README` e os 7 docs
+  de tópico (`docs/sdd-pipeline`, `agente-00c`, `cstk-session`, `cstk-recall`,
+  `cstk-serve`, `go-toolkit`, `conventions`).
+- **Troca de idioma** no topo de cada arquivo (`**English** · [Português
+  (pt-BR)](…)` no primário; inverso no sibling), com links cruzados entre
+  docs resolvendo para o sibling do mesmo idioma.
+
+### Changed
+
+- **`README.md` e os 10 documentos relacionados agora são a versão em inglês**
+  (o conteúdo em português foi preservado 1:1 nos `*.pt-BR.md`). Comandos,
+  paths, nomes de skill/flag, contagens, URLs, marcadores de snippet mkdocs e
+  gatilhos de skill (frases literais em pt-BR) foram mantidos byte-a-byte.
+- **`tests/test_doc-counts.sh`**: a guarda de contagem de skills passa a casar
+  a frase em inglês (`"<N> global skills"`) do README primário.
+
 ## [5.23.0] - 2026-07-23
 
 Absorve o aprendizado ESTRUTURAL do benchmark OpenSpec — specs vivas com
@@ -3879,6 +3906,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.24.0]: https://github.com/JotJunior/cstk/releases/tag/v5.24.0
 [5.23.0]: https://github.com/JotJunior/cstk/releases/tag/v5.23.0
 [5.22.0]: https://github.com/JotJunior/cstk/releases/tag/v5.22.0
 [5.21.0]: https://github.com/JotJunior/cstk/releases/tag/v5.21.0

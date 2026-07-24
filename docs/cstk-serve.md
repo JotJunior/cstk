@@ -1,86 +1,85 @@
-# Painel Web (`cstk serve`)
+**English** · [Português (pt-BR)](./cstk-serve.pt-BR.md)
 
-Inicia a interface web do cstk panel localmente. Na primeira execução, baixa
-automaticamente a release mais recente de
-[JotJunior/cstk-panel](https://github.com/JotJunior/cstk-panel) e instala em
-`~/.local/share/cstk/panel`. Execuções subsequentes reutilizam a instalação em
-cache.
+# Web panel (`cstk serve`)
 
-O `cstk serve` compila os workspaces (`npm run build` — shared-types, server e
-web) e então sobe um **único processo Fastify** (`npm run start`) que serve a
-**API e o SPA buildado** (`apps/web/dist`) na **mesma porta**. Não há modo
-dev nem proxy do Vite. Abra **http://127.0.0.1:5173** (ou a porta de `--port`)
-no navegador. Requer `cstk-panel >= 0.2.0`.
+Starts the cstk panel web interface locally. On first run, it automatically
+downloads the latest release of
+[JotJunior/cstk-panel](https://github.com/JotJunior/cstk-panel) and installs it
+in `~/.local/share/cstk/panel`. Subsequent runs reuse the cached installation.
 
-**Dependências**: `curl` sempre; `npm` e `node` (Node.js) apenas no modo nativo
-(padrão). Com `--docker` (abaixo), `npm`/`node` **não** são necessários no
-host: só é preciso Docker Engine/Desktop instalado **e** o daemon rodando.
+`cstk serve` builds the workspaces (`npm run build` — shared-types, server, and
+web) and then starts a **single Fastify process** (`npm run start`) that serves
+the **API and the built SPA** (`apps/web/dist`) on the **same port**. There is
+no dev mode nor Vite proxy. Open **http://127.0.0.1:5173** (or the `--port` port)
+in the browser. Requires `cstk-panel >= 0.2.0`.
+
+**Dependencies**: `curl` always; `npm` and `node` (Node.js) only in native mode
+(default). With `--docker` (below), `npm`/`node` are **not** required on the
+host: you only need Docker Engine/Desktop installed **and** the daemon running.
 
 ```bash
-cstk serve                      # compila e inicia o painel (API + SPA na mesma porta)
-cstk serve --update             # atualiza o painel se houver release nova, depois inicia
-cstk serve --reinstall          # remove e reinstala do zero, depois inicia
-cstk serve --docker             # roda o painel num container Docker local (sem npm/node no host)
+cstk serve                      # builds and starts the panel (API + SPA on the same port)
+cstk serve --update             # updates the panel if there is a new release, then starts
+cstk serve --reinstall          # removes and reinstalls from scratch, then starts
+cstk serve --docker             # runs the panel in a local Docker container (no npm/node on host)
 ```
 
-## Opções
+## Options
 
-| Flag | Padrão | Descrição |
-|------|--------|-----------|
-| `--update` | — | Consulta o GitHub e reinstala o painel **somente** se houver release mais nova (best-effort: falha de rede/API mantém a versão instalada). Com `--docker`, reconstrói a **imagem** local. |
-| `--reinstall` | — | Remove a instalação existente e reinstala do GitHub (incondicional; vence `--update`). Com `--docker`, reconstrói a **imagem** do zero. |
-| `--port PORT` | `5173` | Porta onde o servidor Fastify escuta (inteiro 1024–65535; também lê `$PORT`). |
-| `--host HOST` | `127.0.0.1` | Host de bind (apenas loopback tem suporte completo). |
-| `--docker` | — | Roda o painel dentro de um container Docker local (opt-in; ausente = comportamento nativo 100% preservado). |
-| `--help`, `-h` | — | Exibe ajuda e sai. |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--update` | — | Queries GitHub and reinstalls the panel **only** if there is a newer release (best-effort: a network/API failure keeps the installed version). With `--docker`, rebuilds the local **image**. |
+| `--reinstall` | — | Removes the existing installation and reinstalls from GitHub (unconditional; wins over `--update`). With `--docker`, rebuilds the **image** from scratch. |
+| `--port PORT` | `5173` | Port the Fastify server listens on (integer 1024–65535; also reads `$PORT`). |
+| `--host HOST` | `127.0.0.1` | Bind host (only loopback is fully supported). |
+| `--docker` | — | Runs the panel inside a local Docker container (opt-in; absent = native behavior 100% preserved). |
+| `--help`, `-h` | — | Prints help and exits. |
 
-## Variáveis de ambiente
+## Environment variables
 
-- `CSTK_PANEL_DIR` — Substitui o diretório de instalação (padrão:
+- `CSTK_PANEL_DIR` — Overrides the installation directory (default:
   `~/.local/share/cstk/panel`).
-- `PORT` — Porta padrão quando `--port` não é informado.
-- `CSTK_KNOWLEDGE_DB` — Caminho do `knowledge.db`; com `--docker`, o
-  **diretório** deste arquivo é montado somente leitura no container
-  (padrão: `~/.claude/cstk/knowledge.db`).
+- `PORT` — Default port when `--port` is not provided.
+- `CSTK_KNOWLEDGE_DB` — Path to `knowledge.db`; with `--docker`, the
+  **directory** of this file is mounted read-only in the container
+  (default: `~/.claude/cstk/knowledge.db`).
 
-**Exit codes**: `0` sucesso · `1` erro geral (prereq ausente, download/build
-falhou, instalação corrompida; com `--docker` também: Docker ausente/daemon
-inacessível, build da imagem falhou, container remanescente irreconciliável) ·
-`2` erro de uso (porta inválida, flag desconhecida).
+**Exit codes**: `0` success · `1` general error (missing prereq, download/build
+failed, corrupted installation; with `--docker` also: Docker missing/daemon
+unreachable, image build failed, unreconcilable leftover container) ·
+`2` usage error (invalid port, unknown flag).
 
-**Segurança**: apenas URLs de `api.github.com`, `github.com`,
-`codeload.github.com` e `objects.githubusercontent.com` são autorizadas no
-download (SSRF allowlist). Integridade **fail-closed por padrão**: pacote sem
-`.sha256` bloqueia (`unverifiable-blocked`); bypass explícito e auditado via
-`--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1`; divergência de checksum
-bloqueia sempre. Host `127.0.0.1` é o único com suporte completo.
+**Security**: only URLs from `api.github.com`, `github.com`,
+`codeload.github.com`, and `objects.githubusercontent.com` are authorized for
+the download (SSRF allowlist). Integrity is **fail-closed by default**: a package
+without `.sha256` blocks (`unverifiable-blocked`); explicit and audited bypass
+via `--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1`; a checksum mismatch
+always blocks. Host `127.0.0.1` is the only fully supported one.
 
-## Modo Docker (`cstk serve --docker`)
+## Docker mode (`cstk serve --docker`)
 
-Roda o painel dentro de um **container Docker local** em vez de nativamente no
-host — útil quando `npm`/`node` não estão disponíveis (ou não são desejados)
-na máquina.
+Runs the panel inside a **local Docker container** instead of natively on the
+host — useful when `npm`/`node` are not available (or not wanted) on the machine.
 
-**Pré-requisitos**: Docker Engine ou Docker Desktop instalado **e** o daemon
-rodando. Ambos são checados antes de qualquer acesso à rede, com mensagens
-distintas para "Docker não instalado" vs "daemon parado/inacessível".
+**Prerequisites**: Docker Engine or Docker Desktop installed **and** the daemon
+running. Both are checked before any network access, with distinct messages for
+"Docker not installed" vs "daemon stopped/unreachable".
 
-**O que acontece**: na primeira execução (ou em `--reinstall`, ou em
-`--update` quando há release nova), constrói uma imagem local
-(`cstk-panel:<versão>`, **nunca** publicada em registry) a partir da mesma
-árvore-fonte verificada usada no modo nativo — mesmo mecanismo de integridade
-fail-closed. Builds subsequentes reusam a imagem já construída. O container
-roda com hardening por padrão (usuário não-root, `--cap-drop ALL`,
-`--security-opt no-new-privileges`, rootfs somente leitura) e nome
-determinístico (`cstk-panel`) — um container remanescente de uma execução
-anterior é automaticamente reconciliado.
+**What happens**: on the first run (or on `--reinstall`, or on `--update` when
+there is a new release), it builds a local image (`cstk-panel:<version>`,
+**never** published to a registry) from the same verified source tree used in
+native mode — same fail-closed integrity mechanism. Subsequent builds reuse the
+already-built image. The container runs with hardening by default (non-root user,
+`--cap-drop ALL`, `--security-opt no-new-privileges`, read-only rootfs) and a
+deterministic name (`cstk-panel`) — a leftover container from a previous run is
+automatically reconciled.
 
-**Paridade de dados com o modo nativo**: o diretório do `~/.claude/cstk/`
-(ou o diretório de `$CSTK_KNOWLEDGE_DB`, se definida) é montado **somente
-leitura** dentro do container — o painel containerizado lê o **mesmo**
-`knowledge.db` do modo nativo, byte a byte. Gravações concorrentes no host
-ficam visíveis na próxima requisição, **sem precisar reiniciar** o container.
+**Data parity with native mode**: the `~/.claude/cstk/` directory (or the
+directory of `$CSTK_KNOWLEDGE_DB`, if set) is mounted **read-only** inside the
+container — the containerized panel reads the **same** `knowledge.db` as native
+mode, byte for byte. Concurrent writes on the host become visible on the next
+request, **without needing to restart** the container.
 
-`Ctrl+C` encerra o container graciosamente (`docker stop`, mesmo grace
-period do modo nativo). Detalhes completos:
+`Ctrl+C` shuts down the container gracefully (`docker stop`, same grace period
+as native mode). Full details:
 [`specs/panel-docker/spec.md`](./specs/panel-docker/spec.md).

@@ -1,99 +1,101 @@
-# Memória de conhecimento (`cstk recall`)
+**English** · [Português (pt-BR)](./cstk-recall.pt-BR.md)
 
-> **Trilha avançada** — subsistema do [orquestrador autônomo](./agente-00c.md).
+# Knowledge memory (`cstk recall`)
 
-Camada **aditiva** de memória cross-feature: um índice SQLite global
-(`~/.claude/cstk/knowledge.db`, full-text via FTS5) alimentado automaticamente
-no fim de cada onda dos orquestradores `agente-00c`/`feature-00c`. Permite
-buscar decisões, bloqueios, retro-execuções, skills invocadas e **memorias**
-(arquivos `.md` do Claude Code) de **qualquer projeto ou feature já executados**,
-com proveniência (projeto / feature / onda / data).
+> **Advanced track** — subsystem of the [autonomous orchestrator](./agente-00c.md).
 
-Desde o **schema v2** (índice retro-compatível, migração aditiva e silenciosa),
-a ingestão também deriva **métricas de dashboard** do `state.json` em tabelas
-dedicadas: `executions` (status / motivo / duração por execução), `waves`
-(ciclo de vida, `tool_calls`, `wallclock` por onda), `alert_signals` (sinais de
-circular / budget breach), `tasks` (outcome pass|fail, testes, lint,
-arquivos tocados) e `events`. Métricas como latência humana, clarify-rate e mix
-de modelos são **deriváveis** dessas tabelas — consumidas pelo
-[`cstk serve`](./cstk-serve.md) (dashboard read-only). As 4 tabelas textuais
-originais (`decisions`/`bloqueios`/`retros`/`skills`) seguem inalteradas.
+An **additive** cross-feature memory layer: a global SQLite index
+(`~/.claude/cstk/knowledge.db`, full-text via FTS5) fed automatically at the end
+of each wave of the `agente-00c`/`feature-00c` orchestrators. It lets you search
+decisions, blockers, retro-executions, invoked skills, and **memories**
+(Claude Code `.md` files) from **any project or feature already executed**, with
+provenance (project / feature / wave / date).
 
-O índice é puramente **derivado** — o `state.json` transacional permanece a
-fonte de verdade, intacto e fora do caminho crítico (a ingestão o lê em modo
-**somente leitura**, nunca escreve). A base inteira é descartável: pode ser
-reconstruída a qualquer momento via `--reindex` a partir dos
-`state.json`/`state-history` existentes.
+Since **schema v2** (backward-compatible index, additive and silent migration),
+ingestion also derives **dashboard metrics** from `state.json` into dedicated
+tables: `executions` (status / reason / duration per execution), `waves`
+(lifecycle, `tool_calls`, `wallclock` per wave), `alert_signals` (circular /
+budget breach signals), `tasks` (outcome pass|fail, tests, lint, touched files),
+and `events`. Metrics such as human latency, clarify-rate, and model mix are
+**derivable** from these tables — consumed by [`cstk serve`](./cstk-serve.md)
+(read-only dashboard). The 4 original textual tables
+(`decisions`/`bloqueios`/`retros`/`skills`) remain unchanged.
+
+The index is purely **derived** — the transactional `state.json` remains the
+source of truth, intact and off the critical path (ingestion reads it in
+**read-only** mode, never writes). The whole database is disposable: it can be
+rebuilt at any time via `--reindex` from the existing
+`state.json`/`state-history`.
 
 ```bash
-# Buscar (full-text, ordenado por relevância bm25)
+# Search (full-text, ordered by bm25 relevance)
 cstk recall "lock contention"
 
-# Filtrar por projeto, tipo de registro e limitar resultados
+# Filter by project, record type, and limit results
 cstk recall "secrets-filter" --project cstk --type decision --limit 5
 
-# Filtrar só memorias (.md do Claude Code)
+# Filter only memories (Claude Code .md files)
 cstk recall "setup" --type memory
 
-# Filtrar só sugestões (aprendizado de meta-padrão: diagnóstico + proposta)
+# Filter only suggestions (meta-pattern learning: diagnosis + proposal)
 cstk recall "websocket auth" --type suggestion
 
-# Reconstruir o índice do zero a partir dos states existentes (inclui memorias)
+# Rebuild the index from scratch from existing states (includes memories)
 cstk recall --reindex
 
-# Ingestão manual de uma feature específica (normalmente o hook faz isto)
+# Manual ingestion of a specific feature (normally the hook does this)
 cstk recall --ingest --state-dir .claude/feature-00c-state/<short-name>
 
-# Leitura-para-contexto (read-back loop): bloco markdown pronto para injeção
+# Read-for-context (read-back loop): markdown block ready for injection
 cstk recall --context "cache fts query" --limit 4 \
   --exclude-feature minha-feature-corrente --max-bytes 2000
 
-# Listar memorias indexadas (slug + description, sem body)
+# List indexed memories (slug + description, no body)
 cstk recall --list-memories [--project P]
 ```
 
-## Flags do modo busca
+## Search-mode flags
 
-- `--project P` — filtra pelo projeto de origem
+- `--project P` — filters by source project
 - `--type T` — `decision` | `bloqueio` | `retro` | `skill` | `memory` | `suggestion`
-- `--limit N` — máximo de resultados (inteiro positivo; default 20)
-- `--db PATH` — índice alternativo (default `$CSTK_KNOWLEDGE_DB` ou
+- `--limit N` — maximum results (positive integer; default 20)
+- `--db PATH` — alternative index (default `$CSTK_KNOWLEDGE_DB` or
   `~/.claude/cstk/knowledge.db`)
 
-## Modo `--context` (read-back loop)
+## `--context` mode (read-back loop)
 
-Fecha o ciclo da memória — em vez de exibir resultados para leitura humana,
-retorna um **bloco markdown enxuto** pronto para injeção no contexto de um
-prompt. Os orquestradores `agente-00c`/`feature-00c` o invocam automaticamente
-no início das fases `specify` e `plan` (passo PRE-DECISAO), injetando
-aprendizado de execuções passadas **antes** de decidir. Diferenças face ao modo
-busca: composição **OR** entre termos (maior recall sobre keywords kebab da
-feature), anti-eco `--exclude-feature` (omite a feature corrente para não ecoar
-suas próprias escritas), e teto duro de bytes.
+Closes the memory loop — instead of showing results for human reading, it
+returns a **lean markdown block** ready for injection into a prompt's context.
+The `agente-00c`/`feature-00c` orchestrators invoke it automatically at the start
+of the `specify` and `plan` phases (PRE-DECISION step), injecting learning from
+past executions **before** deciding. Differences from search mode: **OR**
+composition between terms (higher recall over the feature's kebab keywords),
+anti-echo `--exclude-feature` (omits the current feature so it does not echo its
+own writes), and a hard byte ceiling.
 
-- `--exclude-feature NAME` — anti-eco: omite achados da feature `NAME` (no SQL)
-- `--limit N` — máximo de achados (default **4**; faixa recomendada 3-5)
-- `--max-bytes N` — teto de bytes do bloco (default **2000**; corta por achado
-  inteiro, nunca no meio)
-- `--type T` / `--project P` / `--db PATH` — iguais ao modo busca
+- `--exclude-feature NAME` — anti-echo: omits findings from feature `NAME` (in SQL)
+- `--limit N` — maximum findings (default **4**; recommended range 3-5)
+- `--max-bytes N` — byte ceiling for the block (default **2000**; cuts by whole
+  finding, never in the middle)
+- `--type T` / `--project P` / `--db PATH` — same as search mode
 
-É **read-only** e **best-effort**: toda degradação (sem `sqlite3`, índice
-ausente/corrompido, zero achados) resulta em **no-op silencioso** (stdout vazio,
-exit 0) — nunca gateia uma onda. Contra prompt-injection via memória recuperada
-há **duas camadas** (ASI09/LLM01): (1) *scrubbing* de segredos na **ingestão**
-(controle técnico real) e (2) injeção com rótulo **UNTRUSTED / não-autoritativo**
-— uma **mitigação** defense-in-depth, **não uma garantia**. O risco residual de
-um registro antigo *instruir* o modelo permanece; por isso o conteúdo nunca é
-tratado como instrução.
+It is **read-only** and **best-effort**: any degradation (no `sqlite3`, missing/
+corrupted index, zero findings) results in a **silent no-op** (empty stdout,
+exit 0) — it never gates a wave. Against prompt-injection via retrieved memory
+there are **two layers** (ASI09/LLM01): (1) secret *scrubbing* at **ingestion**
+(a real technical control) and (2) injection with an **UNTRUSTED /
+non-authoritative** label — a defense-in-depth **mitigation**, **not a
+guarantee**. The residual risk of an old record *instructing* the model remains;
+that is why the content is never treated as an instruction.
 
-**Degradação graciosa**: a ausência de `sqlite3` ou `jq` **nunca** aborta uma
-onda — o hook de ingestão e o `recall` saem com status 0 emitindo apenas um
-aviso. O índice fica isolado em `~/.claude/cstk/`, separado do estado
-transacional por projeto.
+**Graceful degradation**: the absence of `sqlite3` or `jq` **never** aborts a
+wave — the ingestion hook and `recall` exit with status 0 emitting only a
+warning. The index is isolated in `~/.claude/cstk/`, separate from the
+per-project transactional state.
 
-## Documentação completa
+## Full documentation
 
 - [`specs/_archived/cstk-knowledge-db/spec.md`](./specs/_archived/cstk-knowledge-db/spec.md) — user stories, FRs, success criteria
-- [`specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md`](./specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md) — modos, flags, exit codes, esquema FTS5
-- [`specs/_archived/knowledge-db-metrics/spec.md`](./specs/_archived/knowledge-db-metrics/spec.md) — ingestão de métricas (schema v2)
-- [`specs/_archived/knowledge-db-metrics/data-model.md`](./specs/_archived/knowledge-db-metrics/data-model.md) — DDL das tabelas e chaves naturais
+- [`specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md`](./specs/_archived/cstk-knowledge-db/contracts/cstk-recall.md) — modes, flags, exit codes, FTS5 schema
+- [`specs/_archived/knowledge-db-metrics/spec.md`](./specs/_archived/knowledge-db-metrics/spec.md) — metrics ingestion (schema v2)
+- [`specs/_archived/knowledge-db-metrics/data-model.md`](./specs/_archived/knowledge-db-metrics/data-model.md) — table DDL and natural keys

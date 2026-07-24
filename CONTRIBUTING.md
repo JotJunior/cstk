@@ -1,50 +1,53 @@
-# Contribuindo com o Claude Code Toolkit
+**English** · [Português (pt-BR)](./CONTRIBUTING.pt-BR.md)
 
-Este guia expõe o **modelo mental** do toolkit para que um contribuidor externo
-consiga abrir um PR com segurança. Para detalhes operacionais já documentados,
-ele aponta para o [README.md](./README.md) e o `CLAUDE.md` em vez de duplicar.
+# Contributing to the Claude Code Toolkit
 
-> Contribuindo só com **conteúdo do site de documentação** (páginas em
-> `docs-site/`)? Veja [docs-site/CONTRIBUTING.md](./docs-site/CONTRIBUTING.md) —
-> regras diferentes (princípio D-I / fonte canônica).
+This guide lays out the toolkit's **mental model** so that an external
+contributor can open a PR with confidence. For operational details already
+documented elsewhere, it points to the [README.md](./README.md) and `CLAUDE.md`
+instead of duplicating them.
+
+> Contributing only **documentation-site content** (pages under `docs-site/`)?
+> See [docs-site/CONTRIBUTING.md](./docs-site/CONTRIBUTING.md) — different rules
+> (the D-I principle / canonical source).
 
 ---
 
-## 1. Como o sistema "pensa"
+## 1. How the system "thinks"
 
-O toolkit tem três tipos de artefato que o Claude Code consome, em camadas de
-abstração crescente:
+The toolkit has three kinds of artifact that Claude Code consumes, in layers of
+increasing abstraction:
 
-- **skills** (`global/skills/<nome>/SKILL.md`) — capacidades auto-invocadas por
-  contexto. Unidade fundamental.
-- **commands** (`global/commands/<nome>.md`) — workflows disparados por
+- **skills** (`global/skills/<name>/SKILL.md`) — capabilities auto-invoked by
+  context. The fundamental unit.
+- **commands** (`global/commands/<name>.md`) — workflows triggered by a
   `/slash-command`.
-- **agents** (`global/agents/<nome>.md`) — especialistas autônomos para tarefas
-  multi-passo (ex.: os orquestradores `agente-00c`).
+- **agents** (`global/agents/<name>.md`) — autonomous specialists for multi-step
+  tasks (e.g. the `agente-00c` orchestrators).
 
-Sobre isso correm dois sistemas de mais alto nível: o **pipeline SDD** (a
-sequência de skills do discovery à implementação) e o **`cstk`** (a CLI POSIX que
-instala/versiona/atualiza tudo na máquina do usuário).
+On top of these run two higher-level systems: the **SDD pipeline** (the sequence
+of skills from discovery to implementation) and **`cstk`** (the POSIX CLI that
+installs/versions/updates everything on the user's machine).
 
 ```mermaid
 flowchart TD
-    subgraph Fonte["Repositório (fonte da verdade)"]
+    subgraph Source["Repository (source of truth)"]
         S[global/skills/*]
         C[global/commands/*]
         A[global/agents/*]
         L[language-related/*]
     end
     BR[scripts/build-release.sh] -->|tarball + SHA-256| REL[(GitHub Release)]
-    Fonte --> BR
+    Source --> BR
     REL -->|"curl | sh / cstk update"| INST["~/.claude/skills, commands, agents"]
-    INST -->|consumido por| CC[Claude Code]
-    CC -.->|cstk doctor detecta drift| INST
+    INST -->|consumed by| CC[Claude Code]
+    CC -.->|cstk doctor detects drift| INST
 ```
 
-### 1.1 O pipeline SDD
+### 1.1 The SDD pipeline
 
-A sequência recomendada para levar uma ideia do discovery à implementação. Cada
-skill consome o artefato da anterior:
+The recommended sequence for taking an idea from discovery to implementation.
+Each skill consumes the artifact from the previous one:
 
 ```mermaid
 flowchart LR
@@ -53,121 +56,122 @@ flowchart LR
     analyze -. read-only cross-check .-> specify
 ```
 
-Detalhe de cada etapa: [README §Pipeline SDD](./README.md#pipeline-sdd-spec-driven-development).
+Details of each step: [README §SDD Pipeline](./README.md#sdd-pipeline-spec-driven-development).
 
-### 1.2 Orquestradores autônomos (`agente-00c` / `feature-00c`)
+### 1.2 Autonomous orchestrators (`agente-00c` / `feature-00c`)
 
-Para quem vai mexer no avançado: os orquestradores rodam o pipeline SDD inteiro
-de forma autônoma, em "ondas", mantendo estado transacional em
-`.claude/agente-00c-state/`. Conceitos que você **precisa** respeitar antes de
-tocar nesse código (todos detalhados no `CLAUDE.md`):
+For anyone touching the advanced parts: the orchestrators run the entire SDD
+pipeline autonomously, in "waves", keeping transactional state in
+`.claude/agente-00c-state/`. Concepts you **must** respect before touching that
+code (all detailed in `CLAUDE.md`):
 
-- **`state.json` é a fonte de verdade transacional** — nunca derive lógica
-  crítica de índices secundários.
-- **`cstk recall` (knowledge.db)** é uma camada **aditiva e best-effort**:
-  qualquer degradação vira no-op (exit 0), nunca aborta uma onda.
-- **model-routing** é **suggest-only**: a skill `model-selector` sugere, o
-  operador sempre pode dar override; nada troca de modelo silenciosamente.
-- **Decisões são auditáveis** (`state-decisions.sh`) e **half-records** têm
-  reconciliador próprio (`state-decisions-reconcile.sh`).
+- **`state.json` is the transactional source of truth** — never derive critical
+  logic from secondary indexes.
+- **`cstk recall` (knowledge.db)** is an **additive, best-effort** layer: any
+  degradation becomes a no-op (exit 0), never aborts a wave.
+- **model-routing** is **suggest-only**: the `model-selector` skill suggests, the
+  operator can always override; nothing switches model silently.
+- **Decisions are auditable** (`state-decisions.sh`) and **half-records** have
+  their own reconciler (`state-decisions-reconcile.sh`).
 
 ---
 
-## 2. Fluxo de desenvolvimento
+## 2. Development flow
 
-A armadilha nº 1 deste projeto é **drift entre a fonte (este repo) e a cópia
-instalada** (`~/.claude/skills/`), que o Claude Code de fato consome.
+The #1 pitfall of this project is **drift between the source (this repo) and the
+installed copy** (`~/.claude/skills/`), which is what Claude Code actually
+consumes.
 
 ```mermaid
 flowchart TD
-    D1{cstk doctor<br/>reporta drift?} -->|sim| R[reconciliar:<br/>cstk update ou rebuild] --> D2
-    D1 -->|não| E[editar fonte em<br/>global/skills ou cli/lib]
+    D1{cstk doctor<br/>reports drift?} -->|yes| R[reconcile:<br/>cstk update or rebuild] --> D2
+    D1 -->|no| E[edit source in<br/>global/skills or cli/lib]
     R --> E
     E --> T[./tests/run.sh<br/>+ --check-coverage]
-    T -->|verde| SYNC[sincronizar instalado:<br/>cstk update / install --from file://]
-    SYNC --> V[validar no Claude Code]
+    T -->|green| SYNC[sync installed copy:<br/>cstk update / install --from file://]
+    SYNC --> V[validate in Claude Code]
 ```
 
-**Sempre rode `cstk doctor` ANTES de editar uma skill.** Se houver drift,
-reconcilie primeiro — senão seu fix pousa em estado stale e "funciona no repo mas
-não na sessão". Passo a passo completo: [README §Instalação](./README.md#instalação)
-e a seção "Installed vs Source Drift" do `CLAUDE.md`.
+**Always run `cstk doctor` BEFORE editing a skill.** If there is drift,
+reconcile first — otherwise your fix lands on stale state and "works in the repo
+but not in the session". Full step-by-step: [README §Installation](./README.md#installation)
+and the "Installed vs Source Drift" section of `CLAUDE.md`.
 
-### Em DEV (iterando sem release)
+### In DEV (iterating without a release)
 
 ```bash
-# após build local (scripts/build-release.sh)
+# after a local build (scripts/build-release.sh)
 cstk install --from "file://$PWD/dist/cstk-X.Y.Z.tar.gz"
 ```
 
 ---
 
-## 3. Adicionando artefatos
+## 3. Adding artifacts
 
-### Uma skill nova
+### A new skill
 
-1. Crie `global/skills/<nome>/SKILL.md` seguindo a [Anatomia de uma skill](./README.md#anatomia-de-uma-skill).
-2. **`description` como trigger condition**, não resumo: "Use quando X, Y ou Z.
-   NÃO use quando W."
-3. Documente **gotchas** — o conteúdo mais valioso.
-4. **Generalize**: skills em `global/skills/` ou `language-related/` **não podem
-   nomear clientes/empresas/projetos específicos** (ver o aviso em
-   [README §Contribuindo](./README.md#contribuindo); caso histórico: remoção de
-   `create-report` na v3.12.0). Se não generalizar, a skill pertence a
-   `<projeto>/.claude/skills/`.
-5. Registre o perfil em `scripts/profiles.txt.in` (`sdd` ou `complementary`).
-6. Se a skill tem `scripts/*.sh`, **crie o teste correspondente** (§4).
+1. Create `global/skills/<name>/SKILL.md` following the [Anatomy of a skill](./README.md#anatomy-of-a-skill).
+2. **`description` as a trigger condition**, not a summary: "Use when X, Y or Z.
+   Do NOT use when W."
+3. Document **gotchas** — the most valuable content.
+4. **Generalize**: skills in `global/skills/` or `language-related/` **must not
+   name specific clients/companies/projects** (see the warning in
+   [README §Contributing](./README.md#contributing); historical case: removal of
+   `create-report` in v3.12.0). If it can't be generalized, the skill belongs in
+   `<project>/.claude/skills/`.
+5. Register the profile in `scripts/profiles.txt.in` (`sdd` or `complementary`).
+6. If the skill has `scripts/*.sh`, **create the corresponding test** (§4).
 
-### Um command novo
+### A new command
 
-Crie `global/commands/<nome>.md`. Commands de spawn/resume que integram
-model-routing precisam carregar a instrução `wave-select` — veja os 4 commands
-`agente-00c`/`feature-00c` existentes como referência.
+Create `global/commands/<name>.md`. Spawn/resume commands that integrate
+model-routing need to load the `wave-select` instruction — see the 4 existing
+`agente-00c`/`feature-00c` commands as a reference.
 
-### Um teste novo (regra de ouro)
+### A new test (golden rule)
 
-Todo `.sh` novo em `global/skills/*/scripts/` ou `cli/lib/` **exige** um teste
-1:1 (o `--check-coverage` falha com exit 1 sem ele):
+Every new `.sh` in `global/skills/*/scripts/` or `cli/lib/` **requires** a 1:1
+test (`--check-coverage` fails with exit 1 without it):
 
-| Origem do script | Teste esperado |
+| Script origin | Expected test |
 |------------------|----------------|
 | `global/skills/<X>/scripts/<n>.sh` | `tests/test_<n>.sh` |
 | `cli/lib/<n>.sh` | `tests/cstk/test_<n>.sh` |
 
-Estrutura mínima e convenções (POSIX puro, sem `set -eu`, scenarios retornam
-0/1/2): [tests/README.md](./tests/README.md). Rode antes de commitar:
+Minimal structure and conventions (pure POSIX, no `set -eu`, scenarios return
+0/1/2): [tests/README.md](./tests/README.md). Run before committing:
 
 ```bash
-./tests/run.sh                  # suite completa
-./tests/run.sh --check-coverage # zero órfãos (exit 1 em violação)
+./tests/run.sh                  # full suite
+./tests/run.sh --check-coverage # zero orphans (exit 1 on violation)
 ```
 
 ---
 
-## 4. Versionamento (SemVer)
+## 4. Versioning (SemVer)
 
-O projeto segue [Semantic Versioning](https://semver.org/) com
+The project follows [Semantic Versioning](https://semver.org/) with a
 [CHANGELOG.md](./CHANGELOG.md):
 
-- **PATCH** — correções, ajustes de doc, refinamentos sem mudança de contrato.
-- **MINOR** — skill/command/feature nova retrocompatível.
-- **MAJOR** — **breaking change**. O caso mais comum aqui é **renomear uma
-  skill**: ao renomear, remova **todas** as referências ao nome antigo antes de
-  commitar (`grep -rn "nome-antigo" --include="*.md" --include="*.json" .`) —
-  referência residual vira nome-fantasma que falha silenciosamente. Também é
-  MAJOR remover skill, mudar contrato de CLI ou de `state.json`.
+- **PATCH** — fixes, doc tweaks, refinements with no contract change.
+- **MINOR** — new backward-compatible skill/command/feature.
+- **MAJOR** — **breaking change**. The most common case here is **renaming a
+  skill**: when renaming, remove **all** references to the old name before
+  committing (`grep -rn "old-name" --include="*.md" --include="*.json" .`) — a
+  leftover reference becomes a phantom name that fails silently. Removing a skill
+  or changing a CLI or `state.json` contract is also MAJOR.
 
-Release: `git tag vX.Y.Z` + push dispara `.github/workflows/release.yml`, que
-gera e publica o tarball. Depois, na máquina: `cstk update`.
+Release: `git tag vX.Y.Z` + push triggers `.github/workflows/release.yml`, which
+builds and publishes the tarball. Then, on the machine: `cstk update`.
 
 ---
 
-## 5. Checklist de PR
+## 5. PR checklist
 
-- [ ] `cstk doctor` sem drift antes de começar.
-- [ ] Código/identificadores em **inglês** (comentários e mensagens podem ser pt-br).
-- [ ] `./tests/run.sh` verde e `--check-coverage` com zero órfãos.
-- [ ] Script novo tem teste 1:1 no diretório certo.
-- [ ] Skill nova sem acoplamento a cliente/projeto específico.
-- [ ] `CHANGELOG.md` atualizado e bump de versão coerente com o tipo de mudança.
-- [ ] Se renomeou skill: zero referências ao nome antigo no repo.
+- [ ] `cstk doctor` with no drift before starting.
+- [ ] Code/identifiers in **English** (comments and messages may be pt-br).
+- [ ] `./tests/run.sh` green and `--check-coverage` with zero orphans.
+- [ ] New script has a 1:1 test in the right directory.
+- [ ] New skill with no coupling to a specific client/project.
+- [ ] `CHANGELOG.md` updated and version bump consistent with the type of change.
+- [ ] If you renamed a skill: zero references to the old name in the repo.
