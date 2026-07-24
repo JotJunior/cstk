@@ -254,6 +254,7 @@ describe('Paridade schemas Zod — entidades', () => {
     const payload = {
       stage: 'specify',
       artifactId: 'spec',
+      scope: 'feature',
       fileName: 'spec.md',
       produced: true,
       extra: false,
@@ -269,6 +270,7 @@ describe('Paridade schemas Zod — entidades', () => {
     const payload = {
       stage: 'plan',
       artifactId: 'plan',
+      scope: 'feature',
       fileName: 'plan.md',
       produced: true,
       extra: false,
@@ -282,6 +284,7 @@ describe('Paridade schemas Zod — entidades', () => {
     const payload = {
       stage: 'create-tasks',
       artifactId: 'tasks',
+      scope: 'feature',
       fileName: 'tasks.md',
       produced: false,
       extra: false,
@@ -294,7 +297,7 @@ describe('Paridade schemas Zod — entidades', () => {
   it('FeatureDocDTOSchema: stage fora do enum falha', () => {
     const r = FeatureDocDTOSchema.safeParse({
       stage: 'clarify', // nao esta no mapa fixo (Decision 8)
-      artifactId: 'x', fileName: 'x.md', produced: true, extra: false,
+      artifactId: 'x', scope: 'feature', fileName: 'x.md', produced: true, extra: false,
     });
     expect(r.success).toBe(false);
   });
@@ -304,9 +307,9 @@ describe('Paridade schemas Zod — entidades', () => {
       project: 'cstk-panel',
       feature: 'state-watchers-and-docs',
       artifacts: [
-        { stage: 'specify', artifactId: 'spec', fileName: 'spec.md', produced: true, extra: false },
-        { stage: 'create-tasks', artifactId: 'tasks', fileName: 'tasks.md', produced: false, extra: false },
-        { stage: 'plan', artifactId: 'notes', fileName: 'notes.md', produced: true, extra: true },
+        { stage: 'specify', artifactId: 'spec', scope: 'feature', fileName: 'spec.md', produced: true, extra: false },
+        { stage: 'create-tasks', artifactId: 'tasks', scope: 'feature', fileName: 'tasks.md', produced: false, extra: false },
+        { stage: 'plan', artifactId: 'notes', scope: 'feature', fileName: 'notes.md', produced: true, extra: true },
       ],
     };
     const r = FeatureDocsListDTOSchema.safeParse(payload);

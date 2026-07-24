@@ -249,13 +249,31 @@ export interface SuggestionDTO {
 
 // ---------------------------------------------------------------------------
 // FeatureDocDTO / FeatureDocsListDTO — doc-viewer (feature state-watchers-and-docs)
-// grao: 1 por artefato de documentacao SDD de uma feature (spec/plan/tasks/...).
-// Fonte: filesystem (docs/specs/<feature>/), NAO a knowledge.db (Principio I).
+// grao: 1 por artefato de documentacao SDD visivel na pagina de uma feature —
+// os da propria feature (spec/plan/tasks/...) e os de PROJETO que governam a
+// feature (briefing, constitution).
+// Fonte: filesystem (docs/specs/<feature>/ e raiz de docs/ do projeto), NAO a
+// knowledge.db (Principio I).
 // Ref: data-model.md Entity "Documentation Artifact"; contracts/docs-api.md
 // ---------------------------------------------------------------------------
 
 /** Etapa SDD que produz o artefato (mapa fixo — research.md Decision 8). */
-export type FeatureDocStage = 'specify' | 'plan' | 'checklist' | 'create-tasks';
+export type FeatureDocStage =
+  | 'briefing'
+  | 'constitution'
+  | 'specify'
+  | 'plan'
+  | 'checklist'
+  | 'create-tasks';
+
+/**
+ * Raiz a que `fileName` e relativo — e, portanto, a que a leitura do conteudo
+ * fica confinada (Decision 7):
+ * - `feature`: `docs/specs/<feature>/` (artefatos da feature)
+ * - `project`: raiz do projeto (briefing/constitution — governam TODAS as
+ *   features, por isso aparecem em qualquer pagina de feature)
+ */
+export type FeatureDocScope = 'project' | 'feature';
 
 /**
  * 1 artefato de documentacao. Usado tanto como item da listagem (sem
@@ -267,6 +285,9 @@ export interface FeatureDocDTO {
   stage: FeatureDocStage;
   /** identificador estavel do artefato no mapa fixo (ex: 'spec', 'plan', 'tasks'); nome de arquivo sanitizado quando `extra=true` */
   artifactId: string;
+  /** raiz a que `fileName` e relativo (e a que a leitura fica confinada) */
+  scope: FeatureDocScope;
+  /** caminho relativo a raiz do `scope` (ex: 'spec.md', 'docs/constitution.md') */
   fileName: string;
   /** false quando o artefato do mapa fixo ainda nao foi gerado (FR-007) — nao e erro */
   produced: boolean;

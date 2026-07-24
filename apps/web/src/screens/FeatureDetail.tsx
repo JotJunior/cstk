@@ -10,20 +10,27 @@ import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/i
 import { StatusBadge, MiniStat, PipelineProgress, Icon, MarkdownView } from '@/components/index.js';
 import { fmtNum, fmtDur, fmtTimestamp } from '@/lib/format.js';
 import { stackDisplayItems } from '@/lib/stack-display.js';
-import type { ExecutionDTO, RetroDTO } from '@cstk-panel/shared-types';
+import type { ExecutionDTO, FeatureDocScope, RetroDTO } from '@cstk-panel/shared-types';
 
 // ---------------------------------------------------------------------------
 // Documentacao (doc-viewer, US2 — task 4.3)
 // ---------------------------------------------------------------------------
 
 /**
- * Escolhe o artefato inicial a exibir: o primeiro PRODUZIDO na ordem da
- * listagem (ordem = pipeline SDD: spec, plan, research, data-model,
- * quickstart, tasks, contracts/checklists, extras). Se nenhum artefato foi
- * produzido ainda, cai no primeiro item da lista de qualquer forma — o
- * painel mostra o estado "ainda nao produzido" em vez de ficar vazio
- * (Principio II Degradar-Nunca-Quebrar). `null` somente quando a listagem
- * esta genuinamente vazia (resposta degradada, sem artefatos).
+ * Escolhe o artefato inicial a exibir: o primeiro PRODUZIDO **da propria
+ * feature** na ordem da listagem (ordem = pipeline SDD: spec, plan, research,
+ * data-model, quickstart, tasks, contracts/checklists, extras). A listagem
+ * comeca por briefing/constitution (escopo projeto, iguais para todas as
+ * features), mas quem abre a pagina de UMA feature quer ver a spec dela —
+ * por isso o escopo `feature` tem prioridade na selecao default; os
+ * artefatos de projeto ficam a 1 clique na navegacao.
+ *
+ * Se a feature nao produziu nada ainda, cai no primeiro produzido de qualquer
+ * escopo (briefing/constitution ja dao contexto util); se nada foi produzido,
+ * cai no primeiro item da lista de qualquer forma — o painel mostra o estado
+ * "ainda nao produzido" em vez de ficar vazio (Principio II
+ * Degradar-Nunca-Quebrar). `null` somente quando a listagem esta
+ * genuinamente vazia (resposta degradada, sem artefatos).
  *
  * Extraida como funcao pura para teste unitario direto (sem montar DOM —
  * mesmo padrao de `stageStates` em PipelineProgress.tsx) — task 4.3.4.
@@ -40,12 +47,16 @@ import type { ExecutionDTO, RetroDTO } from '@cstk-panel/shared-types';
 export interface ArtifactPickCandidate {
   artifactId: string;
   produced: boolean;
+  scope: FeatureDocScope;
 }
 
 export function pickDefaultArtifact(artifacts: readonly ArtifactPickCandidate[]): string | null {
-  const produced = artifacts.find(a => a.produced);
-  if (produced) return produced.artifactId;
-  return artifacts[0]?.artifactId ?? null;
+  const ownProduced = artifacts.find(a => a.produced && a.scope === 'feature');
+  if (ownProduced) return ownProduced.artifactId;
+  const anyProduced = artifacts.find(a => a.produced);
+  if (anyProduced) return anyProduced.artifactId;
+  const own = artifacts.find(a => a.scope === 'feature');
+  return own?.artifactId ?? artifacts[0]?.artifactId ?? null;
 }
 
 /**
@@ -62,6 +73,12 @@ export function contentFetchId(
 ): string {
   return selectedEntry?.produced ? (effectiveArtifactId ?? '') : '';
 }
+
+/** Grupos da navegação, na ordem da pipeline SDD (projeto antes de feature). */
+const DOC_SCOPE_GROUPS: ReadonlyArray<{ scope: FeatureDocScope; label: string }> = [
+  { scope: 'project', label: 'Projeto' },
+  { scope: 'feature', label: 'Feature' },
+];
 
 function DocumentationPanel({ project, feature }: { project: string; feature: string }) {
   const docsQuery = useFeatureDocs(project, feature);
@@ -107,24 +124,35 @@ function DocumentationPanel({ project, feature }: { project: string; feature: st
         <div className="docs-layout">
           {/* Navegação por artefato: lista vertical à esquerda no desktop;
               no modo estreito o CSS a troca pelo select abaixo (mesmo padrão
-              esconde/mostra de .projects-list/.projects-cards). */}
+              esconde/mostra de .projects-list/.projects-cards). Agrupada por
+              escopo: briefing/constitution valem para o projeto inteiro, o
+              resto é desta feature. */}
           <nav className="docs-nav" aria-label="Artefatos de documentação">
-            {artifacts.map(a => (
-              <button
-                key={a.artifactId}
-                type="button"
-                className={[
-                  'docs-nav-item',
-                  a.artifactId === effectiveArtifactId ? 'active' : '',
-                  a.produced ? '' : 'missing',
-                ].filter(Boolean).join(' ')}
-                aria-current={a.artifactId === effectiveArtifactId ? 'true' : undefined}
-                onClick={() => setSelectedArtifactId(a.artifactId)}
-              >
-                <span className="docs-nav-label">{a.artifactId}</span>
-                {!a.produced && <span className="docs-nav-hint">ausente</span>}
-              </button>
-            ))}
+            {DOC_SCOPE_GROUPS.map(({ scope, label }) => {
+              const group = artifacts.filter(a => a.scope === scope);
+              if (group.length === 0) return null;
+              return (
+                <div key={scope} className="docs-nav-group">
+                  <div className="docs-nav-group-label">{label}</div>
+                  {group.map(a => (
+                    <button
+                      key={a.artifactId}
+                      type="button"
+                      className={[
+                        'docs-nav-item',
+                        a.artifactId === effectiveArtifactId ? 'active' : '',
+                        a.produced ? '' : 'missing',
+                      ].filter(Boolean).join(' ')}
+                      aria-current={a.artifactId === effectiveArtifactId ? 'true' : undefined}
+                      onClick={() => setSelectedArtifactId(a.artifactId)}
+                    >
+                      <span className="docs-nav-label">{a.artifactId}</span>
+                      {!a.produced && <span className="docs-nav-hint">ausente</span>}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
           </nav>
           <div className="docs-select-wrap">
             <select
@@ -133,11 +161,19 @@ function DocumentationPanel({ project, feature }: { project: string; feature: st
               onChange={e => setSelectedArtifactId(e.target.value)}
               aria-label="Artefato de documentação"
             >
-              {artifacts.map(a => (
-                <option key={a.artifactId} value={a.artifactId}>
-                  {a.produced ? a.artifactId : `${a.artifactId} (ausente)`}
-                </option>
-              ))}
+              {DOC_SCOPE_GROUPS.map(({ scope, label }) => {
+                const group = artifacts.filter(a => a.scope === scope);
+                if (group.length === 0) return null;
+                return (
+                  <optgroup key={scope} label={label}>
+                    {group.map(a => (
+                      <option key={a.artifactId} value={a.artifactId}>
+                        {a.produced ? a.artifactId : `${a.artifactId} (ausente)`}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
             </select>
           </div>
           <div className="docs-content card-pad">
@@ -147,7 +183,7 @@ function DocumentationPanel({ project, feature }: { project: string; feature: st
             {selectedEntry && !selectedEntry.produced && (
               <EmptyState
                 title="Ainda não produzido"
-                subtitle={`O artefato "${selectedEntry.artifactId}" (${selectedEntry.fileName}) ainda não foi gerado por esta feature.`}
+                subtitle={`O artefato "${selectedEntry.artifactId}" (${selectedEntry.fileName}) ainda não foi gerado ${selectedEntry.scope === 'project' ? 'neste projeto' : 'por esta feature'}.`}
               />
             )}
             {selectedEntry?.produced && contentQuery.isLoading && <LoadingState />}

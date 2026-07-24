@@ -51,10 +51,28 @@
  * (data-gaps.md, plan-cards.md, review-onda-013.md, tasks-cards.md) e TODAS
  * as features com contracts/checklists como subdiretorios (nunca arquivos
  * soltos com esses nomes) — grounding real para as regras 2 e 3 acima.
+ *
+ * ── Artefatos de escopo PROJETO (briefing, constitution) ───────────────────
+ *
+ * As etapas `briefing` e `constitution` rodam UMA vez por projeto, antes de
+ * qualquer feature, e gravam FORA de `docs/specs/<feature>/`. Como governam
+ * todas as features (a constituicao e a fonte dos principios que a spec/plan
+ * de cada feature cita), elas entram na listagem de QUALQUER feature —
+ * marcadas com `scope:'project'`, `fileName` relativo a RAIZ DO PROJETO e
+ * confinadas a essa raiz na leitura (nao a `featureDir`).
+ *
+ * Os caminhos candidatos abaixo nao sao inventados: sao exatamente a ordem de
+ * descoberta declarada pelas skills que produzem os arquivos —
+ * `~/.claude/skills/briefing/SKILL.md` (secao de descoberta, itens 1-3, e o
+ * passo de escrita "Salvar em docs/01-briefing-discovery/briefing.md") e
+ * `~/.claude/skills/constitution/SKILL.md` (itens 1-2, e "Salvar em
+ * docs/constitution.md"). O primeiro candidato existente vence; se nenhum
+ * existe, a entrada aparece com `produced:false` apontando o caminho
+ * canonico (mesma semantica FR-007 dos artefatos fixos da feature).
  */
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { FeatureDocDTO, FeatureDocStage } from '@cstk-panel/shared-types';
+import type { FeatureDocDTO, FeatureDocScope, FeatureDocStage } from '@cstk-panel/shared-types';
 
 /** Identica ao regex anti-traversal de path params HTTP (FeatureParamSchema,
  *  routes/features.ts; SAFE_SEGMENT_RE de ingest-watcher.ts) — reaplicada
@@ -67,6 +85,54 @@ interface FixedMapEntry {
   artifactId: string;
   fileName: string;
 }
+
+/**
+ * As duas raizes de leitura de uma pagina de feature. `featureDir` sempre e
+ * derivado de `projectRoot` (nunca recebido pronto) para que a unica fonte
+ * do layout `docs/specs/<feature>/` continue sendo este modulo.
+ */
+export interface ArtifactRoots {
+  projectRoot: string;
+  featureDir: string;
+}
+
+export function artifactRoots(projectRoot: string, feature: string): ArtifactRoots {
+  return { projectRoot, featureDir: join(projectRoot, 'docs', 'specs', feature) };
+}
+
+/** Raiz a que `fileName` de uma entrada e relativo — e a que a leitura do
+ *  conteudo fica confinada (confinement.ts). */
+export function rootForScope(roots: ArtifactRoots, scope: FeatureDocScope): string {
+  return scope === 'project' ? roots.projectRoot : roots.featureDir;
+}
+
+interface ProjectMapEntry {
+  stage: FeatureDocStage;
+  artifactId: string;
+  /** caminhos relativos ao projectRoot, na ordem de descoberta das skills;
+   *  o primeiro existente vence, o primeiro da lista e o canonico */
+  candidates: readonly string[];
+}
+
+/** Mapa fixo de escopo PROJETO — ver nota "Artefatos de escopo PROJETO" no
+ *  topo do arquivo para a proveniencia de cada caminho. */
+const PROJECT_MAP: readonly ProjectMapEntry[] = [
+  {
+    stage: 'briefing',
+    artifactId: 'briefing',
+    candidates: ['docs/01-briefing-discovery/briefing.md', 'docs/briefing.md'],
+  },
+  {
+    stage: 'constitution',
+    artifactId: 'constitution',
+    candidates: ['docs/constitution.md', 'constitution.md'],
+  },
+];
+
+/** Diretorio de briefings do projeto: alem do `briefing.md` canonico, a skill
+ *  grava revisoes datadas (`briefing-[DATE].md`, `BRIEFING-*.md`) — listadas
+ *  dinamicamente, mesmo tratamento de `contracts/`/`checklists/`. */
+const BRIEFING_DIR = 'docs/01-briefing-discovery';
 
 /** Mapa fixo etapa SDD -> artefato de nome unico (research.md Decision 8).
  *  `clarify` nao aparece: so atualiza spec.md, nao produz arquivo novo. */
@@ -90,6 +156,22 @@ function stripMdExt(name: string): string {
   return name.endsWith('.md') ? name.slice(0, -3) : name;
 }
 
+/** Caminho relativo (sempre com '/') -> caminho absoluto de fs. */
+function underRoot(root: string, relPath: string): string {
+  return join(root, ...relPath.split('/'));
+}
+
+/**
+ * artifactId de um briefing datado/alternativo. Normaliza o prefixo para nao
+ * gerar ids como `briefing-BRIEFING-2026-01-01`: o prefixo `briefing`/
+ * `BRIEFING` que a propria skill ja usa no nome do arquivo e removido antes
+ * de reaplicar o prefixo canonico em minusculas.
+ */
+function briefingArtifactId(baseName: string): string {
+  const rest = baseName.replace(/^briefing[-_]?/i, '');
+  return rest ? `briefing-${rest}` : 'briefing';
+}
+
 /**
  * Lista arquivos `.md` de 1 subdiretorio DIRETO (sem recursao). Inclui
  * symlinks (`d.isSymbolicLink()`) alem de arquivos regulares — a listagem
@@ -111,49 +193,96 @@ function listMdFiles(dirAbsPath: string): string[] {
 }
 
 /**
- * Constroi a listagem de artefatos de 1 feature cruzando o mapa fixo com o
+ * Constroi a listagem de artefatos de 1 feature cruzando os mapas fixos com o
  * filesystem real (task 3.1.2). NUNCA lanca (Principio II) — ausencia do
- * proprio `featureDir` so resulta em produced:false para todo o mapa fixo
- * e nenhuma entrada dinamica/extra (nenhum caso especial necessario: todas
- * as chamadas de fs abaixo ja degradam para "nao encontrado" sozinhas).
+ * proprio `featureDir` (ou do proprio `projectRoot`) so resulta em
+ * produced:false para todo o mapa fixo e nenhuma entrada dinamica/extra
+ * (nenhum caso especial necessario: todas as chamadas de fs abaixo ja
+ * degradam para "nao encontrado" sozinhas).
+ *
+ * Ordem = ordem da pipeline SDD: briefing e constitution (escopo projeto)
+ * primeiro, depois os artefatos da feature.
  *
  * Retorna metadados apenas — SEM `content` (contrato da listagem, FR-005;
  * o endpoint de conteudo, task 3.3, preenche `content` para 1 entrada).
  */
-export function buildFeatureDocsList(featureDir: string): FeatureDocDTO[] {
+export function buildFeatureDocsList(roots: ArtifactRoots): FeatureDocDTO[] {
+  const { projectRoot, featureDir } = roots;
   const entries: FeatureDocDTO[] = [];
   const claimedFileNames = new Set<string>();
+  const claimedProjectFiles = new Set<string>();
+  const claimedArtifactIds = new Set<string>();
 
-  // 1. Mapa fixo — 6 artefatos de nome unico e estavel.
-  for (const { stage, artifactId, fileName } of FIXED_MAP) {
-    const produced = existsSync(join(featureDir, fileName));
-    entries.push({ stage, artifactId, fileName, produced, extra: false });
-    claimedFileNames.add(fileName);
+  // 1. Mapa fixo de PROJETO — briefing e constitution (governam a feature).
+  for (const { stage, artifactId, candidates } of PROJECT_MAP) {
+    const found = candidates.find(rel => existsSync(underRoot(projectRoot, rel)));
+    const fileName = found ?? candidates[0]!; // sem match: caminho canonico + produced:false
+    entries.push({ stage, artifactId, scope: 'project', fileName, produced: found !== undefined, extra: false });
+    claimedProjectFiles.add(fileName);
+    claimedArtifactIds.add(artifactId);
   }
 
-  // 2. Subdiretorios de lista dinamica (contracts/, checklists/) — Decision 8.
+  // 2. Briefings alternativos/datados em docs/01-briefing-discovery/ — lista
+  //    dinamica (mesmo tratamento de contracts/ e checklists/).
+  for (const name of listMdFiles(underRoot(projectRoot, BRIEFING_DIR))) {
+    const relFileName = `${BRIEFING_DIR}/${name}`;
+    if (claimedProjectFiles.has(relFileName)) continue;
+    const artifactId = briefingArtifactId(stripMdExt(name));
+    if (claimedArtifactIds.has(artifactId)) continue; // colisao de id apos normalizacao do prefixo
+    claimedArtifactIds.add(artifactId);
+    entries.push({
+      stage: 'briefing',
+      artifactId,
+      scope: 'project',
+      fileName: relFileName,
+      produced: true, // so aparece se foi encontrado — sem placeholder "ausente"
+      extra: false,
+    });
+  }
+
+  // 3. Mapa fixo da FEATURE — 6 artefatos de nome unico e estavel.
+  for (const { stage, artifactId, fileName } of FIXED_MAP) {
+    const produced = existsSync(join(featureDir, fileName));
+    entries.push({ stage, artifactId, scope: 'feature', fileName, produced, extra: false });
+    claimedFileNames.add(fileName);
+    claimedArtifactIds.add(artifactId);
+  }
+
+  // 4. Subdiretorios de lista dinamica (contracts/, checklists/) — Decision 8.
   for (const { dir, stage, prefix } of MAPPED_SUBDIRS) {
     const names = listMdFiles(join(featureDir, dir));
     for (const name of names) {
       const relFileName = `${dir}/${name}`;
+      const artifactId = `${prefix}-${stripMdExt(name)}`;
       entries.push({
         stage,
-        artifactId: `${prefix}-${stripMdExt(name)}`,
+        artifactId,
+        scope: 'feature',
         fileName: relFileName,
         produced: true, // so aparece se foi encontrado — sem placeholder "ausente"
         extra: false,
       });
       claimedFileNames.add(relFileName);
+      claimedArtifactIds.add(artifactId);
     }
   }
 
-  // 3. Arquivos .md soltos na raiz da feature, fora do mapa fixo (SC-002).
+  // 5. Arquivos .md soltos na raiz da feature, fora do mapa fixo (SC-002).
   const rootNames = listMdFiles(featureDir);
   for (const name of rootNames) {
     if (claimedFileNames.has(name)) continue;
+    // Um extra pode colidir com um id de escopo projeto (ex.: um `briefing.md`
+    // solto dentro da feature). O endpoint de conteudo resolve por artifactId,
+    // entao o id precisa ser unico na listagem — desambigua com prefixo de
+    // escopo (deterministico: mesma arvore -> mesmos ids).
+    const baseId = stripMdExt(name);
+    const artifactId = claimedArtifactIds.has(baseId) ? `feature-${baseId}` : baseId;
+    if (claimedArtifactIds.has(artifactId)) continue;
+    claimedArtifactIds.add(artifactId);
     entries.push({
       stage: 'create-tasks', // bucket neutro — ver nota de decisao (3) no topo do arquivo
-      artifactId: stripMdExt(name),
+      artifactId,
+      scope: 'feature',
       fileName: name,
       produced: true,
       extra: true,
@@ -169,12 +298,12 @@ export function buildFeatureDocsList(featureDir: string): FeatureDocDTO[] {
  * mtime dos ARQUIVOS, nao da knowledge.db). `null` se nada foi produzido
  * ainda (nada para basear um ETag).
  */
-export function latestArtifactMtimeMs(featureDir: string, entries: readonly FeatureDocDTO[]): number | null {
+export function latestArtifactMtimeMs(roots: ArtifactRoots, entries: readonly FeatureDocDTO[]): number | null {
   let latest: number | null = null;
   for (const e of entries) {
     if (!e.produced) continue;
     try {
-      const st = statSync(join(featureDir, e.fileName));
+      const st = statSync(underRoot(rootForScope(roots, e.scope), e.fileName));
       if (latest === null || st.mtimeMs > latest) latest = st.mtimeMs;
     } catch {
       // TOCTOU: arquivo removido entre a checagem `produced` e este stat — ignora (Principio II)
