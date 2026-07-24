@@ -1,50 +1,52 @@
-# Convenções de nomenclatura e hierarquia de documentação
+**English** · [Português (pt-BR)](./conventions.pt-BR.md)
 
-## Convenções de Nomenclatura
+# Naming conventions and documentation hierarchy
 
-| Tipo | Padrão | Exemplo |
-|------|--------|---------|
-| Casos de Uso | `UC-{DOMÍNIO}-{NNN}` | UC-CAD-001 |
-| Decisões de Arquitetura | `ADR-{NNN}-{título}` | ADR-001-database |
-| Regras de Negócio | `RN{NN}` | RN01 |
-| Casos de Teste | `CT{NN}` | CT01 |
-| Exceções | `E{NNN}` | E001 |
+## Naming Conventions
 
-### Códigos de Domínio
+| Type | Pattern | Example |
+|------|---------|---------|
+| Use Cases | `UC-{DOMAIN}-{NNN}` | UC-CAD-001 |
+| Architecture Decisions | `ADR-{NNN}-{title}` | ADR-001-database |
+| Business Rules | `RN{NN}` | RN01 |
+| Test Cases | `CT{NN}` | CT01 |
+| Exceptions | `E{NNN}` | E001 |
 
-Os códigos de domínio são **definidos por projeto**, não universais. A partir
-de 1.1.0, as skills consultam os domínios reais via:
+### Domain Codes
 
-1. Campo `domains` em `config.json` (quando o projeto define explicitamente)
-2. Glob de UCs existentes (quando o projeto já tem documentação)
-3. Pergunta ao usuário via AskUserQuestion (quando ambos ausentes)
+Domain codes are **defined per project**, not universal. Since 1.1.0, the
+skills look up the real domains via:
 
-Exemplos comuns em projetos de negócio: `AUTH` (autenticação), `CAD`
-(cadastros), `PED` (pedidos), `FIN` (financeiro). Use o que faz sentido no
-seu domínio.
+1. `domains` field in `config.json` (when the project defines it explicitly)
+2. Glob of existing UCs (when the project already has documentation)
+3. Asking the user via AskUserQuestion (when both are absent)
 
-## Hierarquia de Documentação
+Common examples in business projects: `AUTH` (authentication), `CAD`
+(registration), `PED` (orders), `FIN` (financial). Use whatever makes sense in
+your domain.
 
-O skill `initialize-docs` cria a seguinte estrutura:
+## Documentation Hierarchy
+
+The `initialize-docs` skill creates the following structure:
 
 ```
 docs/
-├── 01-briefing-discovery/      # Requisitos iniciais, PDFs
-├── 02-requisitos-casos-uso/    # Casos de uso (UC-*)
+├── 01-briefing-discovery/      # Initial requirements, PDFs
+├── 02-requisitos-casos-uso/    # Use cases (UC-*)
 ├── 03-modelagem-dados/         # DERs, schemas
-├── 04-arquitetura-sistema/     # ADRs, diagramas
+├── 04-arquitetura-sistema/     # ADRs, diagrams
 ├── 05-definicao-apis/          # REST, gRPC, Webhooks, Messaging
 ├── 06-ui-ux-design/            # Wireframes, mockups
-├── 07-plano-testes/            # Planos de teste
+├── 07-plano-testes/            # Test plans
 ├── 08-operacoes/               # Runbooks
 └── 09-entregaveis/             # Release notes
 ```
 
-## Specs de feature (SDD)
+## Feature specs (SDD)
 
-Specs de feature vivem em `docs/specs/<feature>/` (spec.md, plan.md, tasks.md,
-checklists/, contracts/). Ao concluir, a feature é arquivada em
-`docs/specs/_archived/YYYY-MM-DD-<feature>/` (prefixo de data desde v5.22.0;
-diretórios arquivados antes disso mantêm o nome sem data) e seu delta é
-aplicado ao corpus de specs vivas em `docs/specs/current/` — ver
-[Pipeline SDD](./sdd-pipeline.md#specs-vivas-e-delta-requirements-v5230).
+Feature specs live in `docs/specs/<feature>/` (spec.md, plan.md, tasks.md,
+checklists/, contracts/). Once completed, the feature is archived under
+`docs/specs/_archived/YYYY-MM-DD-<feature>/` (date prefix since v5.22.0;
+directories archived before that keep the name without a date) and its delta is
+applied to the living-specs corpus in `docs/specs/current/` — see
+[SDD Pipeline](./sdd-pipeline.md#living-specs-and-delta-requirements-v5230).

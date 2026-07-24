@@ -1,3 +1,5 @@
+**English** · [Português (pt-BR)](./README.pt-BR.md)
+
 # Claude Code Toolkit
 
 [![Latest Release](https://img.shields.io/github/v/release/JotJunior/cstk?label=latest%20release&color=blue)](https://github.com/JotJunior/cstk/releases/latest)
@@ -6,59 +8,59 @@
 [![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/cstk-blue?logo=readthedocs)](https://jotjunior.github.io/cstk/)
 [![Publish Site](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml)
 
-Conjunto de ferramentas para aumentar a produtividade no desenvolvimento do dia a dia com
-o [Claude Code](https://claude.ai/code): **skills** e **hooks** para
-documentação, desenvolvimento, segurança e qualidade de código.
+A set of tools to boost day-to-day development productivity with
+[Claude Code](https://claude.ai/code): **skills** and **hooks** for
+documentation, development, security and code quality.
 
-> **Quem mantém / para quem é.** Mantido por uma pessoa, otimizado primeiro
-> para o fluxo do mantenedor (microserviços em Go). As partes concretas —
-> skills, hooks, CLI — são de uso geral; a **trilha avançada** (orquestrador
-> autônomo) é mais experimental.
+> **Who maintains it / who it's for.** Maintained by a single person, optimized
+> first for the maintainer's workflow (Go microservices). The concrete parts —
+> skills, hooks, CLI — are general-purpose; the **advanced track** (autonomous
+> orchestrator) is more experimental.
 
-> **Versão atual:** [release mais recente](https://github.com/JotJunior/cstk/releases/latest)
-> · histórico no [CHANGELOG.md](./CHANGELOG.md). Instalação recomendada via
-> `cstk` CLI (ver [Instalação](#instalação)).
+> **Current version:** [latest release](https://github.com/JotJunior/cstk/releases/latest)
+> · history in [CHANGELOG.md](./CHANGELOG.md). Installation recommended via
+> the `cstk` CLI (see [Installation](#installation)).
 
-## Comece aqui
+## Start here
 
-Duas trilhas, dependendo do que você procura:
+Two tracks, depending on what you're looking for:
 
-| Trilha | Para quem | Onde ir |
+| Track | For whom | Where to go |
 |--------|-----------|---------|
-| **Básico** | Quer produtividade no dia a dia — especificar, revisar, corrigir, documentar com algumas skills | Esta seção + [Skills Globais](#skills-globais) |
-| **Avançado** | Quer o orquestrador autônomo rodando o pipeline SDD inteiro sozinho | [Trilha avançada](#trilha-avançada-orquestrador-autônomo) |
+| **Basic** | Wants day-to-day productivity — specify, review, fix, document with a few skills | This section + [Global Skills](#global-skills) |
+| **Advanced** | Wants the autonomous orchestrator running the whole SDD pipeline on its own | [Advanced track](#advanced-track-autonomous-orchestrator) |
 
-### Trilha básica em 3 passos
+### Basic track in 3 steps
 
 ```bash
-# 1. Instale (uma vez por máquina)
+# 1. Install (once per machine)
 curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh | sh
 ```
 
 ```text
-# 2. Abra o Claude Code no seu projeto e invoque uma skill pelo gatilho:
-#    "especifica essa feature: ..."   → specify  (ideia → spec)
+# 2. Open Claude Code in your project and invoke a skill via its trigger:
+#    "especifica essa feature: ..."   → specify  (idea → spec)
 #    "revisa a segurança desse código" → owasp-security
-#    "corrige esse bug: ..."          → bugfix   (investigação multi-camada)
-#    "me aconselhe sobre esse plano"  → advisor  (crítica estratégica)
+#    "corrige esse bug: ..."          → bugfix   (multi-layer investigation)
+#    "me aconselhe sobre esse plano"  → advisor  (strategic critique)
 ```
 
 ```text
-# 3. Pronto. As skills são auto-invocadas por contexto — você descreve a
-#    intenção em linguagem natural e o gatilho dispara a skill certa.
+# 3. Done. Skills are auto-invoked by context — you describe the
+#    intent in natural language and the trigger fires the right skill.
 ```
 
-> Não precisa do orquestrador autônomo para começar. Ele é a trilha avançada
-> — adote quando quiser que o pipeline SDD rode de ponta a ponta sem você
-> conduzir cada etapa.
+> You don't need the autonomous orchestrator to get started. It's the advanced
+> track — adopt it when you want the SDD pipeline to run end to end without you
+> driving each step.
 
-## Estrutura
+## Structure
 
 ```
-├── global/                     # Skills globais (independentes de linguagem)
-│   └── skills/                 # 24 skills globais (cada skill é uma pasta)
+├── global/                     # Global skills (language-independent)
+│   └── skills/                 # 24 global skills (each skill is a folder)
 │       ├── advisor/
-│       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
+│       ├── agente-00c-runtime/ # internal POSIX runtime (not user-invocable)
 │       ├── analyze/
 │       ├── apply-insights/
 │       ├── briefing/
@@ -66,14 +68,14 @@ curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh
 │       ├── checklist/
 │       ├── clarify/
 │       ├── constitution/
-│       ├── converge/           # reconcilia spec/plan/tasks vs código real
+│       ├── converge/           # reconciles spec/plan/tasks vs actual code
 │       ├── create-tasks/
 │       ├── decision-tree/      # ⚠️ DEPRECATED (remove_in 6.0.0) — use cstk-panel (cstk serve)
-│       ├── e2e-integration-flow/ # testes E2E de integração full-stack (Playwright)
+│       ├── e2e-integration-flow/ # full-stack E2E integration tests (Playwright)
 │       ├── execute-task/
-│       ├── image-generation/   # ⚠️ DEPRECATED (remove_in 6.0.0) — fora do escopo do toolkit
+│       ├── image-generation/   # ⚠️ DEPRECATED (remove_in 6.0.0) — out of toolkit scope
 │       ├── initialize-docs/
-│       ├── model-selector/     # heurística de roteamento de modelo (sugestor)
+│       ├── model-selector/     # model routing heuristic (suggester)
 │       ├── owasp-security/
 │       ├── plan/
 │       ├── review-features/
@@ -81,232 +83,232 @@ curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh
 │       ├── specify/
 │       ├── validate-docs-rendered/
 │       └── validate-documentation/
-├── language-related/           # Skills e hooks específicos por linguagem
+├── language-related/           # Language-specific skills and hooks
 │   └── go/                     # Go — ver docs/go-toolkit.md
-├── cli/                        # Binário cstk + libs POSIX
-└── docs/                       # Documentação por tópicos (ver índice abaixo)
+├── cli/                        # cstk binary + POSIX libs
+└── docs/                       # Topic-based documentation (see index below)
 ```
 
-### Anatomia de uma skill
+### Anatomy of a skill
 
-Cada skill é uma pasta com um `SKILL.md` (ponto de entrada) e, conforme o
-caso, subpastas consultadas sob demanda (*progressive disclosure* — o modelo
-paga só o contexto necessário no momento da invocação):
+Each skill is a folder with a `SKILL.md` (entry point) and, as needed,
+subfolders consulted on demand (*progressive disclosure* — the model
+pays only for the context needed at invocation time):
 
 ```
-skills/<nome>/
-├── SKILL.md             # Quando invocar, regras de alto nível, gotchas
-├── templates/           # Templates preenchíveis
-├── examples/            # Casos concretos (good.md vs bad.md)
-├── references/          # Documentação de apoio
-├── scripts/             # Scripts POSIX determinísticos
-└── config.json          # Configuração por projeto (opcional)
+skills/<name>/
+├── SKILL.md             # When to invoke, high-level rules, gotchas
+├── templates/           # Fill-in templates
+├── examples/            # Concrete cases (good.md vs bad.md)
+├── references/          # Supporting documentation
+├── scripts/             # Deterministic POSIX scripts
+└── config.json          # Per-project configuration (optional)
 ```
 
-Nem toda skill usa todas as subpastas — skills simples são só um `SKILL.md`.
+Not every skill uses all subfolders — simple skills are just a `SKILL.md`.
 
-## Skills Globais
+## Global Skills
 
-Skills em `global/skills/`, independentes de linguagem ou framework.
+Skills in `global/skills/`, independent of language or framework.
 
-### Pipeline SDD (Spec-Driven Development)
+### SDD Pipeline (Spec-Driven Development)
 
-Sequência recomendada para levar uma ideia do discovery à implementação.
-Detalhes, diagrama do fluxo e atalhos em
+Recommended sequence to take an idea from discovery to implementation.
+Details, flow diagram and shortcuts in
 [docs/sdd-pipeline.md](./docs/sdd-pipeline.md).
 
-| Skill | Trigger | Descrição |
+| Skill | Trigger | Description |
 |-------|---------|-----------|
-| **briefing** | "briefing", "discovery", "novo projeto" | Entrevista estruturada de discovery (visão, usuários, restrições, stack) |
-| **constitution** | "constitution", "princípios do projeto" | Princípios imutáveis de governança que guiam decisões |
-| **specify** | "specify", "criar spec", "nova feature" | Descrição natural → feature spec SDD (stories, requisitos, success criteria). Gate: todo requisito exige >=1 cenário; seção opcional Delta Requirements (specs vivas) |
-| **clarify** | "clarify", "resolver ambiguidades" | Resolve ambiguidades da spec via perguntas estruturadas (max 5) |
-| **plan** | "plan", "plano técnico" | Plano de implementação: pesquisa, modelo de dados, contratos |
-| **checklist** | "checklist", "quality gate" | "Unit Tests for English" — valida qualidade dos REQUISITOS; gaps viram tarefas |
-| **create-tasks** | "criar tarefas", "criar backlog" | Backlog de tarefas por fases com dependências e criticidade |
-| **analyze** | "analyze", "analisar consistência" | Análise read-only de consistência cross-artifact |
-| **execute-task** | "executar tarefa", "execute task" | Executa tarefa seguindo workflow obrigatório de 9 etapas |
-| **review-task** | "revisar tarefas", "status das tarefas" | Relatório de status com progresso e recomendações |
+| **briefing** | "briefing", "discovery", "novo projeto" | Structured discovery interview (vision, users, constraints, stack) |
+| **constitution** | "constitution", "princípios do projeto" | Immutable governance principles that guide decisions |
+| **specify** | "specify", "criar spec", "nova feature" | Natural description → SDD feature spec (stories, requirements, success criteria). Gate: every requirement needs >=1 scenario; optional Delta Requirements section (living specs) |
+| **clarify** | "clarify", "resolver ambiguidades" | Resolves spec ambiguities via structured questions (max 5) |
+| **plan** | "plan", "plano técnico" | Implementation plan: research, data model, contracts |
+| **checklist** | "checklist", "quality gate" | "Unit Tests for English" — validates REQUIREMENT quality; gaps become tasks |
+| **create-tasks** | "criar tarefas", "criar backlog" | Task backlog by phases with dependencies and criticality |
+| **analyze** | "analyze", "analisar consistência" | Read-only cross-artifact consistency analysis |
+| **execute-task** | "executar tarefa", "execute task" | Executes a task following the mandatory 9-step workflow |
+| **review-task** | "revisar tarefas", "status das tarefas" | Status report with progress and recommendations |
 
-### Skills Complementares
+### Complementary Skills
 
-| Skill | Trigger | Descrição |
+| Skill | Trigger | Description |
 |-------|---------|-----------|
-| **advisor** | "me aconselhe", "analise estratégica" | Conselheiro brutalmente honesto que disseca raciocínio e gera planos de ação |
-| **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
-| **converge** | "converge", "o código bate com a spec?" | Reconcilia spec/plan/tasks contra o código ATUAL e apenda gaps como nova fase de tasks. Gate incondicional entre execute-task e review-task nos orquestradores |
-| **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Testes E2E de integração full-stack (UI → API → banco → fila → efeitos colaterais) |
-| **initialize-docs** | "inicializar docs", "setup documentação" | Cria hierarquia padrão de documentação com 9 níveis |
-| **apply-insights** | "aplicar insights", "melhorar claude.md" | Aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows — ver [Insights de uso](#insights-de-uso) |
-| **owasp-security** | Ao revisar segurança | Revisão guiada por checklist (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Não substitui auditoria/pentest |
-| **review-features** | "status global", "comparar features" | Relatório cross-feature com sugestão de arquivar/abandonar/priorizar; a ação de archive aplica os deltas ao corpus de specs vivas |
-| **validate-documentation** | "validar documentação", "verificar UC" | Valida documentos individuais contra padrões estruturais |
-| **validate-docs-rendered** | "validar renderização", "verificar diagramas" | Valida que o Markdown renderiza (Mermaid, links, frontmatter, tabelas) |
-| **image-generation** | Ao gerar imagens | ⚠️ DEPRECATED (remove_in 6.0.0) |
+| **advisor** | "me aconselhe", "analise estratégica" | Brutally honest advisor that dissects reasoning and generates action plans |
+| **bugfix** | "bugfix", "fix bug", "debug" | Structured multi-layer bug-fixing protocol |
+| **converge** | "converge", "o código bate com a spec?" | Reconciles spec/plan/tasks against the CURRENT code and appends gaps as a new task phase. Unconditional gate between execute-task and review-task in the orchestrators |
+| **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Full-stack E2E integration tests (UI → API → database → queue → side effects) |
+| **initialize-docs** | "inicializar docs", "setup documentação" | Creates the standard documentation hierarchy with 9 levels |
+| **apply-insights** | "aplicar insights", "melhorar claude.md" | Applies proven usage insights to CLAUDE.md, hooks and workflows — see [Usage insights](#usage-insights) |
+| **owasp-security** | When reviewing security | Checklist-guided review (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Does not replace audit/pentest |
+| **review-features** | "status global", "comparar features" | Cross-feature report suggesting archive/abandon/prioritize; the archive action applies deltas to the living-specs corpus |
+| **validate-documentation** | "validar documentação", "verificar UC" | Validates individual documents against structural standards |
+| **validate-docs-rendered** | "validar renderização", "verificar diagramas" | Validates that the Markdown renders (Mermaid, links, frontmatter, tables) |
+| **image-generation** | When generating images | ⚠️ DEPRECATED (remove_in 6.0.0) |
 
-## Trilha avançada (orquestrador autônomo)
+## Advanced track (autonomous orchestrator)
 
-> **Experimental** — funcional e em uso pelo mantenedor, sem garantias de
-> suporte para adoção externa.
+> **Experimental** — functional and in use by the maintainer, with no support
+> guarantees for external adoption.
 
-O `/agente-00c` conduz a pipeline SDD inteira sobre um projeto-alvo, pausando
-apenas em bloqueios reais; o `/feature-00c` faz o mesmo para UMA feature em
-projeto existente. Subsistemas: roteamento de modelos por onda, modo
-atomic-commit (commits automáticos + push/PR no finalize), guardas enforced
-(hook fail-closed), sessões paralelas em worktrees e memória de conhecimento
-cross-feature consultada antes de decidir.
+`/agente-00c` drives the entire SDD pipeline over a target project, pausing
+only on real blockers; `/feature-00c` does the same for ONE feature in an
+existing project. Subsystems: per-wave model routing, atomic-commit mode
+(automatic commits + push/PR at finalize), enforced guards (fail-closed hook),
+parallel sessions in worktrees, and cross-feature knowledge memory consulted
+before deciding.
 
-| Tópico | Documento |
+| Topic | Document |
 |--------|-----------|
-| Orquestradores `/agente-00c` + `/feature-00c`, model-routing, atomic-commit, guardas | [docs/agente-00c.md](./docs/agente-00c.md) |
-| Sessões paralelas (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.md) |
-| Memória de conhecimento (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.md) |
-| Painel web de métricas (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.md) |
+| `/agente-00c` + `/feature-00c` orchestrators, model-routing, atomic-commit, guards | [docs/agente-00c.md](./docs/agente-00c.md) |
+| Parallel sessions (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.md) |
+| Knowledge memory (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.md) |
+| Web metrics panel (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.md) |
 
-## Insights de uso
+## Usage insights
 
-A skill `apply-insights` é **prescritiva**: lê seu playbook
-(`~/.claude/insights/usage-insights.md`, por usuário — gere via `/insights`
-nativo do Claude Code) e o aplica ao projeto. Distinta do `/insights` nativo,
-que é **introspectivo** (analisa suas sessões).
+The `apply-insights` skill is **prescriptive**: it reads your playbook
+(`~/.claude/insights/usage-insights.md`, per user — generate it via Claude
+Code's native `/insights`) and applies it to the project. Distinct from the
+native `/insights`, which is **introspective** (analyzes your sessions).
 
 <!-- --8<-- [start:install-section] -->
-## Instalação
+## Installation
 
-### Via cstk CLI (recomendado)
+### Via cstk CLI (recommended)
 
-O toolkit é instalado via `cstk` — CLI POSIX shell que baixa, valida
-(SHA-256), instala e atualiza skills sem exigir clone do repositório.
+The toolkit is installed via `cstk` — a POSIX shell CLI that downloads,
+validates (SHA-256), installs and updates skills without requiring a clone of
+the repository.
 
-**One-liner de bootstrap** (instala `cstk` em `~/.local/bin/`):
+**Bootstrap one-liner** (installs `cstk` into `~/.local/bin/`):
 
 ```bash
 curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh | sh
 ```
 
-Depois disso, comandos típicos:
+After that, typical commands:
 
 ```bash
-cstk --version                       # confirma instalação
-cstk install                         # instala perfil 'sdd' em ~/.claude/skills/
-cstk install --profile all           # instala TODAS as 31 skills (inclui language-go)
-cstk install advisor bugfix          # cherry-pick por nome
-cstk update                          # aplica novas releases preservando edits locais
-cstk update --force                  # sobrescreve skills com edição local
-cstk list                            # lista skills instaladas + status
-cstk doctor                          # detecta drift entre manifest e disco
-cstk self-update                     # atualiza o próprio binário cstk + cli/lib
+cstk --version                       # confirms installation
+cstk install                         # installs the 'sdd' profile into ~/.claude/skills/
+cstk install --profile all           # installs ALL 31 skills (includes language-go)
+cstk install advisor bugfix          # cherry-pick by name
+cstk update                          # applies new releases preserving local edits
+cstk update --force                  # overwrites locally edited skills
+cstk list                            # lists installed skills + status
+cstk doctor                          # detects drift between manifest and disk
+cstk self-update                     # updates the cstk binary itself + cli/lib
 ```
 
-> **`install`/`update` tocam só o catálogo** (skills/commands/agents em
-> `~/.claude/`); o runtime (`cli/lib/*.sh` + binário) atualiza via
+> **`install`/`update` touch only the catalog** (skills/commands/agents in
+> `~/.claude/`); the runtime (`cli/lib/*.sh` + binary) updates via
 > **`cstk self-update`**.
 
-**Perfis disponíveis:**
+**Available profiles:**
 
-| Perfil | Conteúdo | Uso típico |
+| Profile | Content | Typical use |
 |--------|----------|------------|
-| `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 13 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 31 skills (sdd + complementary + language-go) | Instalação completa |
-| `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
+| `sdd` | 17 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector and the orchestrators' 4 quality gates | Default global installation |
+| `complementary` | 13 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
+| `all` | All 31 skills (sdd + complementary + language-go) | Full installation |
+| `language-go` | Go-specific skills + hooks | Only in Go projects |
 
-Profile padrão quando nada é informado: `sdd`.
+Default profile when none is given: `sdd`.
 
-**Escopo de projeto** (`./.claude/skills/` no CWD em vez de `~/.claude/skills/`):
+**Project scope** (`./.claude/skills/` in the CWD instead of `~/.claude/skills/`):
 
 ```bash
-# Em um projeto Go: instala skills + hooks + merge de settings.json
-cd ~/projetos/meu-app-go
+# In a Go project: installs skills + hooks + settings.json merge
+cd ~/projects/my-go-app
 cstk install --scope project --profile language-go
 
-# Cherry-pick em escopo de projeto
+# Cherry-pick in project scope
 cstk install --scope project advisor owasp-security
 
-# Hooks de language-* SÃO instalados apenas em --scope project
-# (em --scope global, hooks são omitidos com aviso no summary — FR-009c)
+# language-* hooks ARE installed only in --scope project
+# (in --scope global, hooks are omitted with a warning in the summary — FR-009c)
 ```
 
-**Modo interativo** (seletor numerado em TTY) e **dry-run**:
+**Interactive mode** (numbered selector in a TTY) and **dry-run**:
 
 ```bash
-cstk install --interactive   # lista perfis + skills numerados; seleção via toggle
+cstk install --interactive   # lists numbered profiles + skills; selection via toggle
 cstk install --dry-run --profile all
 cstk update --dry-run
 ```
 
-### Instalação manual (deprecated, ainda suportada)
+### Manual installation (deprecated, still supported)
 
-Copia direta dos diretórios continua funcionando (`cp -r global/skills/
-~/.claude/skills/`), mas **não rastreia versões nem detecta drift** — ver
-[`CLAUDE.md`](./CLAUDE.md) §"Installed vs Source Drift". O `cstk` resolve
-isso via manifest + hash_dir.
+Directly copying the directories still works (`cp -r global/skills/
+~/.claude/skills/`), but **does not track versions or detect drift** — see
+[`CLAUDE.md`](./CLAUDE.md) §"Installed vs Source Drift". `cstk` solves
+this via manifest + hash_dir.
 
-### Documentação completa do cstk
+### Complete cstk documentation
 
-- [`cli/README.md`](./cli/README.md) — visão técnica, convenções, processo de release
+- [`cli/README.md`](./cli/README.md) — technical overview, conventions, release process
 - [`docs/specs/_archived/cstk-cli/`](docs/specs/_archived/cstk-cli/) — spec, plan, contracts, quickstart
 <!-- --8<-- [end:install-section] -->
 
 <!-- --8<-- [start:profiles-section] -->
-### Perfis de instalação (resumo)
+### Installation profiles (summary)
 
-| Perfil | Conteúdo | Uso típico |
+| Profile | Content | Typical use |
 |--------|----------|------------|
-| `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 13 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 31 skills (sdd + complementary + language-go) | Instalação completa |
-| `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
+| `sdd` | 17 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector and the orchestrators' 4 quality gates | Default global installation |
+| `complementary` | 13 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
+| `all` | All 31 skills (sdd + complementary + language-go) | Full installation |
+| `language-go` | Go-specific skills + hooks | Only in Go projects |
 
-Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --help`.
+Default profile when none is given: `sdd`. Details in `cstk install --help`.
 <!-- --8<-- [end:profiles-section] -->
 
-## Documentação por tópicos
+## Documentation by topic
 
-| Tópico | Documento |
+| Topic | Document |
 |--------|-----------|
-| Pipeline SDD: fluxo completo, quando usar cada skill, atalhos, specs vivas | [docs/sdd-pipeline.md](./docs/sdd-pipeline.md) |
-| Orquestrador autônomo (agente-00c / feature-00c) | [docs/agente-00c.md](./docs/agente-00c.md) |
-| Sessões paralelas (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.md) |
-| Memória de conhecimento (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.md) |
-| Painel web (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.md) |
-| Skills e hooks para Go | [docs/go-toolkit.md](./docs/go-toolkit.md) |
-| Convenções de nomenclatura e hierarquia de docs | [docs/conventions.md](./docs/conventions.md) |
-| Manual navegável (site) | [jotjunior.github.io/cstk](https://jotjunior.github.io/cstk/) |
+| SDD Pipeline: full flow, when to use each skill, shortcuts, living specs | [docs/sdd-pipeline.md](./docs/sdd-pipeline.md) |
+| Autonomous orchestrator (agente-00c / feature-00c) | [docs/agente-00c.md](./docs/agente-00c.md) |
+| Parallel sessions (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.md) |
+| Knowledge memory (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.md) |
+| Web panel (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.md) |
+| Go skills and hooks | [docs/go-toolkit.md](./docs/go-toolkit.md) |
+| Naming conventions and docs hierarchy | [docs/conventions.md](./docs/conventions.md) |
+| Browsable manual (site) | [jotjunior.github.io/cstk](https://jotjunior.github.io/cstk/) |
 
-## Contribuindo
+## Contributing
 
-Contribuições são bem-vindas. O guia completo — modelo mental do sistema,
-fluxo de desenvolvimento, política de versionamento e o **princípio de escopo
-do toolkit global** (skills publicadas aqui não devem nomear clientes,
-empresas ou projetos específicos) — está em
-[CONTRIBUTING.md](./CONTRIBUTING.md). Resumo para adicionar uma skill:
+Contributions are welcome. The complete guide — the system's mental model,
+development flow, versioning policy and the **global toolkit scope principle**
+(skills published here must not name specific clients, companies or projects) —
+is in [CONTRIBUTING.md](./CONTRIBUTING.md). Summary for adding a skill:
 
-1. Siga a estrutura de pasta de uma skill existente (ver [Anatomia de uma skill](#anatomia-de-uma-skill))
-2. `SKILL.md` enxuto como ponto de entrada; conteúdo pesado em subpastas
-3. **description** como trigger condition, não resumo
-4. **Gotchas** documentados — o conteúdo mais valioso de uma skill
-5. Scripts em POSIX sh para operações determinísticas; todo `.sh` novo exige `tests/test_<nome>.sh`
-6. Generalize: se referencia algo de um projeto específico, pertence ao `<projeto>/.claude/skills/`, não a este toolkit
-7. Teste com o Claude Code antes de submeter
+1. Follow the folder structure of an existing skill (see [Anatomy of a skill](#anatomy-of-a-skill))
+2. Lean `SKILL.md` as the entry point; heavy content in subfolders
+3. **description** as a trigger condition, not a summary
+4. **Gotchas** documented — the most valuable content of a skill
+5. Scripts in POSIX sh for deterministic operations; every new `.sh` requires `tests/test_<name>.sh`
+6. Generalize: if it references something from a specific project, it belongs in `<project>/.claude/skills/`, not in this toolkit
+7. Test with Claude Code before submitting
 
-## Versionamento
+## Versioning
 
-Este projeto segue [Semantic Versioning](https://semver.org/) e mantém um
-[CHANGELOG.md](./CHANGELOG.md) com o histórico de mudanças.
+This project follows [Semantic Versioning](https://semver.org/) and keeps a
+[CHANGELOG.md](./CHANGELOG.md) with the change history.
 
-## Créditos & Atribuições
+## Credits & Attributions
 
-Parte do pipeline SDD é adaptada do [GitHub Spec Kit](https://github.com/github/spec-kit)
-(MIT) — em especial o vocabulário de etapas e o template de constituição. O
-modelo de specs vivas com delta requirements foi inspirado no
-[OpenSpec](https://github.com/Fission-AI/OpenSpec). Outras skills tiveram
-inspiração conceitual de [obra/superpowers](https://github.com/obra/superpowers)
-e das convenções do Claude Code. Padrões públicos (OWASP, NIST, IETF, W3C,
-MITRE) são citados como referência. Detalhes e avisos de licença em
+Part of the SDD pipeline is adapted from the [GitHub Spec Kit](https://github.com/github/spec-kit)
+(MIT) — in particular the step vocabulary and the constitution template. The
+living-specs model with delta requirements was inspired by
+[OpenSpec](https://github.com/Fission-AI/OpenSpec). Other skills had conceptual
+inspiration from [obra/superpowers](https://github.com/obra/superpowers)
+and from Claude Code conventions. Public standards (OWASP, NIST, IETF, W3C,
+MITRE) are cited as reference. Details and license notices in
 [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).
 
-## Licença
+## License
 
-Distribuído sob a licença MIT. Veja o arquivo [LICENSE](./LICENSE) para o
-texto completo.
+Distributed under the MIT license. See the [LICENSE](./LICENSE) file for the
+full text.

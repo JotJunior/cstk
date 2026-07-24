@@ -33,14 +33,16 @@ _count_skills() {
   find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '
 }
 
-# O numero "<N> skills globais" no README bate com a contagem real de pastas.
+# O numero "<N> global skills" no README bate com a contagem real de pastas.
+# (README.md e o primario em ingles desde a virada bilingue; a copia pt-BR e
+# README.pt-BR.md e nao e guardada aqui.)
 # README e versionado -> esta guarda e ativa tambem em CI.
 scenario_skills_count_matches_readme() {
   [ -f "$README" ] || { _error missing "README.md ausente"; return 2; }
   _real=$(_count_skills)
-  _doc=$(grep -oE '[0-9]+ skills globais' "$README" | head -1 | grep -oE '^[0-9]+')
+  _doc=$(grep -oE '[0-9]+ global skills' "$README" | head -1 | grep -oE '^[0-9]+')
   if [ -z "$_doc" ]; then
-    printf 'README.md nao declara "<N> skills globais"\n' >&2
+    printf 'README.md nao declara "<N> global skills"\n' >&2
     return 1
   fi
   if [ "$_doc" != "$_real" ]; then

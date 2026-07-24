@@ -1,47 +1,50 @@
-# Sessões paralelas (`cstk session`)
+**English** · [Português (pt-BR)](./cstk-session.pt-BR.md)
 
-> **Trilha avançada** — suporte ao [orquestrador autônomo](./agente-00c.md).
+# Parallel sessions (`cstk session`)
 
-Permite trabalhar em múltiplas features simultaneamente no mesmo repositório sem
-colisão de working tree, branch HEAD ou `.claude/agente-00c-state/`. Isola cada
-sessão em uma worktree git irmã do repo principal.
+> **Advanced track** — support for the [autonomous orchestrator](./agente-00c.md).
+
+Lets you work on multiple features simultaneously in the same repository without
+colliding on the working tree, HEAD branch, or `.claude/agente-00c-state/`. It
+isolates each session in a git worktree that is a sibling of the main repo.
 
 ```bash
-# Iniciar nova sessão (cria worktree + branch + .claude/ filtrado)
+# Start a new session (creates worktree + branch + filtered .claude/)
 cstk session start iniciacao-membro
-# → cria <parent>/<repo>-iniciacao-membro/ com branch iniciacao-membro
+# → creates <parent>/<repo>-iniciacao-membro/ with branch iniciacao-membro
 
-# Listar sessões ativas
+# List active sessions
 cstk session list
 # NAME              BRANCH              IDLE  STATUS   PATH
 # iniciacao-membro  iniciacao-membro    0d    CURRENT  /home/jot/Projects/meta-gob-ms-iniciacao-membro
 # oauth2-refresh    feat/oauth2         2d    *        /home/jot/Projects/meta-gob-ms-oauth2-refresh
 
-# Abrir PR via gh (idempotente)
+# Open a PR via gh (idempotent)
 cstk session pr iniciacao-membro
 
-# Encerrar sessão (com guards para dirty/unpushed/PR aberto)
+# End the session (with guards for dirty/unpushed/open PR)
 cstk session end iniciacao-membro
-# Ou forçar sem prompts:
+# Or force without prompts:
 cstk session end iniciacao-membro --force
 ```
 
-## Subcomandos
+## Subcommands
 
-- `start <name> [--reset|--reuse] [--force]` — cria worktree + branch + `.claude/`
-  filtrado (exclui `agente-00c-state/`, `agente-00c-archive/`, `insights/`,
+- `start <name> [--reset|--reuse] [--force]` — creates worktree + branch + filtered
+  `.claude/` (excludes `agente-00c-state/`, `agente-00c-archive/`, `insights/`,
   `settings.local.json`, `agente-00c-whitelist`, `agente-00c-report.md`,
   `agente-00c-suggestions.md`, `.agente-00c-state.lock`)
-- `list [--json]` — tabela com `NAME BRANCH IDLE STATUS PATH`; marcadores
-  combináveis `CURRENT,*,STALE`
-- `end <name> [--force]` — remove worktree + branch local; prompt se há
-  mudanças não commitadas, commits não pushados ou PR aberto
-- `pr <name> [--draft] [--title T] [--body B] [--reviewer USER]` — push + abre
-  PR via `gh pr create`; idempotente (retorna URL existente se PR já criado)
+- `list [--json]` — table with `NAME BRANCH IDLE STATUS PATH`; combinable
+  markers `CURRENT,*,STALE`
+- `end <name> [--force]` — removes worktree + local branch; prompts if there are
+  uncommitted changes, unpushed commits, or an open PR
+- `pr <name> [--draft] [--title T] [--body B] [--reviewer USER]` — push + opens
+  a PR via `gh pr create`; idempotent (returns the existing URL if the PR is
+  already created)
 
-**Requisitos**: `git >= 2.36`, `gh` (obrigatório só para `pr`; opcional em `end`).
+**Requirements**: `git >= 2.36`, `gh` (required only for `pr`; optional for `end`).
 
-## Documentação completa
+## Full documentation
 
 - [`specs/_archived/cstk-session/spec.md`](./specs/_archived/cstk-session/spec.md) — user stories, FRs, success criteria
 - [`specs/_archived/cstk-session/contracts/cli-session.md`](./specs/_archived/cstk-session/contracts/cli-session.md) — exit codes (5-15), flags, output formats

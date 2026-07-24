@@ -1,127 +1,127 @@
+**English** · [Português (pt-BR)](./README.pt-BR.md)
+
 # cstk — Claude Specs Toolkit CLI
 
-CLI em POSIX sh para instalar, atualizar e auditar skills do toolkit. Este
-diretorio contem o codigo fonte do CLI; a documentacao de design completa
-vive em [`../docs/specs/cstk-cli/`](../docs/specs/_archived/cstk-cli/).
+A POSIX sh CLI to install, update and audit the toolkit's skills. This directory
+contains the CLI's source code; the full design documentation lives in
+[`../docs/specs/cstk-cli/`](../docs/specs/_archived/cstk-cli/).
 
-**Status atual**: FASES 0-9.2 do backlog concluidas — todos os subcomandos
-(`install`, `update`, `self-update`, `list`, `doctor`, `serve`) implementados e
-testados, com pipeline de release automatizado. Pendentes: FASES 9.3
-(coverage check), 10 (testes de integracao end-to-end) e 11 (docs +
-primeira release publica).
+**Current status**: PHASES 0-9.2 of the backlog complete — all subcommands
+(`install`, `update`, `self-update`, `list`, `doctor`, `serve`) implemented and
+tested, with an automated release pipeline. Pending: PHASES 9.3 (coverage check),
+10 (end-to-end integration tests) and 11 (docs + first public release).
 
 ## Layout
 
 ```
 cli/
-├── cstk         # executavel principal (POSIX sh)
-├── VERSION      # tag de versao (dev: "0.0.0-dev"; release: preenchida pelo build)
-├── lib/         # bibliotecas modulares por subcomando
-└── README.md    # este arquivo
+├── cstk         # main executable (POSIX sh)
+├── VERSION      # version tag (dev: "0.0.0-dev"; release: filled in by the build)
+├── lib/         # modular libraries per subcommand
+└── README.md    # this file
 ```
 
-## Uso em dev (antes de release)
+## Dev usage (before a release)
 
 ```sh
-# Da raiz do repo:
+# From the repo root:
 ./cli/cstk --version        # → cstk 0.0.0-dev
 ./cli/cstk --help
-./cli/cstk help install     # aponta para o contrato
+./cli/cstk help install     # points to the contract
 ```
 
-## Instalacao via one-liner
+## Installation via one-liner
 
-Apos uma release publica estar disponivel, instalar o `cstk` em uma maquina
-nova com:
+Once a public release is available, install `cstk` on a new machine with:
 
 ```sh
 curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh | sh
 ```
 
-O bootstrap baixa o tarball da ultima release, valida o SHA-256 (FR-010a),
-copia `cstk` para `~/.local/bin/` e `cli/lib/` para `~/.local/share/cstk/lib/`.
-Depois disso:
+The bootstrap downloads the latest release tarball, validates the SHA-256
+(FR-010a), copies `cstk` to `~/.local/bin/` and `cli/lib/` to
+`~/.local/share/cstk/lib/`. After that:
 
 ```sh
-cstk --version           # confirma instalacao
-cstk install             # instala perfil sdd em ~/.claude/skills/
-cstk self-update         # atualiza o proprio binario quando houver release nova
+cstk --version           # confirms installation
+cstk install             # installs the sdd profile into ~/.claude/skills/
+cstk self-update         # updates its own binary when a new release exists
 ```
 
-## Processo de release
+## Release process
 
-A pipeline em [`.github/workflows/release.yml`](../.github/workflows/release.yml)
-publica releases automaticamente quando uma tag SemVer e empurrada.
+The pipeline in [`.github/workflows/release.yml`](../.github/workflows/release.yml)
+publishes releases automatically when a SemVer tag is pushed.
 
 ```sh
-# Local: criar e empurrar a tag
+# Local: create and push the tag
 git tag -a v0.1.0 -m "cstk v0.1.0"
 git push origin v0.1.0
 ```
 
-A pipeline (em `ubuntu-latest`):
+The pipeline (on `ubuntu-latest`):
 
-1. Valida o formato da tag (`vX.Y.Z[-suffix]`)
-2. Roda `./tests/run.sh` (suite global) — falha aborta o release
-3. Roda cada `tests/cstk/test_*.sh` — falha aborta o release
-4. Executa `./scripts/build-release.sh <tag>` (build deterministico —
-   ver [scripts/build-release.sh](../scripts/build-release.sh))
-5. Cria o GitHub Release via `gh release create` com upload de:
+1. Validates the tag format (`vX.Y.Z[-suffix]`)
+2. Runs `./tests/run.sh` (global suite) — failure aborts the release
+3. Runs each `tests/cstk/test_*.sh` — failure aborts the release
+4. Executes `./scripts/build-release.sh <tag>` (deterministic build —
+   see [scripts/build-release.sh](../scripts/build-release.sh))
+5. Creates the GitHub Release via `gh release create`, uploading:
    - `cstk-<bare-version>.tar.gz`
    - `cstk-<bare-version>.tar.gz.sha256`
-   - `cli/install.sh` (asset standalone para o one-liner)
+   - `cli/install.sh` (standalone asset for the one-liner)
 
-Release notes sao geradas automaticamente pelo `gh release create
---generate-notes` (lista de PRs/commits desde a ultima tag).
+Release notes are generated automatically by `gh release create
+--generate-notes` (list of PRs/commits since the last tag).
 
-**Re-rodar uma release ja publicada falha** — `gh release create` nao
-sobrescreve. Para corrigir, deletar o release no GitHub UI e re-empurrar
-a tag (ou usar uma nova tag, preferencial).
+**Re-running an already-published release fails** — `gh release create` does not
+overwrite. To fix it, delete the release in the GitHub UI and re-push the tag (or
+use a new tag, preferred).
 
-## Subcomandos
+## Subcommands
 
-| Subcomando | Descricao | Lib |
+| Subcommand | Description | Lib |
 |------------|-----------|-----|
-| `install` | Instala perfis/skills em `~/.claude/` | `lib/install.sh` |
-| `update` | Aplica novas releases preservando edits locais | `lib/install.sh` |
-| `self-update` | Atualiza o binario `cstk` + `cli/lib/` | `lib/self-update.sh` |
-| `list` | Lista skills instaladas + status | `lib/list.sh` |
-| `doctor` | Detecta drift entre manifest e disco | `lib/doctor.sh` |
-| `session` | Cria/lista/encerra sessoes com worktree isolado | `lib/session.sh` |
-| `recall` | Memoria cross-feature: busca/ingestao/reindex | `lib/recall.sh` |
-| `serve` | Inicia o painel web local (lazy-install + npm start) | `lib/serve.sh` |
+| `install` | Installs profiles/skills into `~/.claude/` | `lib/install.sh` |
+| `update` | Applies new releases while preserving local edits | `lib/install.sh` |
+| `self-update` | Updates the `cstk` binary + `cli/lib/` | `lib/self-update.sh` |
+| `list` | Lists installed skills + status | `lib/list.sh` |
+| `doctor` | Detects drift between manifest and disk | `lib/doctor.sh` |
+| `session` | Creates/lists/ends sessions with an isolated worktree | `lib/session.sh` |
+| `recall` | Cross-feature memory: search/ingest/reindex | `lib/recall.sh` |
+| `serve` | Starts the local web panel (lazy-install + npm start) | `lib/serve.sh` |
 
 ### `cstk serve`
 
-Baixa e executa a interface web do cstk panel. Na primeira execucao, consulta
-a GitHub Releases API, baixa o tarball mais recente de
-`JotJunior/cstk-panel`, extrai e roda `npm install`. Execucoes subsequentes
-reutilizam o cache (sem download).
+Downloads and runs the cstk panel web interface. On the first run it queries the
+GitHub Releases API, downloads the latest tarball from `JotJunior/cstk-panel`,
+extracts it and runs `npm install`. Subsequent runs reuse the cache (no
+download).
 
 ```sh
-cstk serve                   # inicia na porta padrao 5173
-cstk serve --port 8080       # porta customizada
-cstk serve --reinstall       # forcca reinstalacao
-PORT=4000 cstk serve         # porta via variavel de ambiente
+cstk serve                   # starts on the default port 5173
+cstk serve --port 8080       # custom port
+cstk serve --reinstall       # force reinstall
+PORT=4000 cstk serve         # port via environment variable
 ```
 
-Opcoes: `--port PORT` (1024-65535), `--host HOST` (default: 127.0.0.1),
-`--reinstall`, `--help`. Override do diretorio via `$CSTK_PANEL_DIR`.
+Options: `--port PORT` (1024-65535), `--host HOST` (default: 127.0.0.1),
+`--reinstall`, `--help`. Override the directory via `$CSTK_PANEL_DIR`.
 
-## Convencoes
+## Conventions
 
-- POSIX sh: `#!/bin/sh`, `set -eu`, sem bash-isms (Constitution 1.1.0 §II).
-- Saida de dados em stdout; mensagens humanas + summaries em stderr.
-- Exit codes: 0 OK, 1 erro geral, 2 uso, 3 lock, 4 edit local, 10 check-available.
-- `$CSTK_LIB` override localiza lib/ durante testes.
-- `$CSTK_VERSION_FILE` override localiza VERSION durante testes.
+- POSIX sh: `#!/bin/sh`, `set -eu`, no bash-isms (Constitution 1.1.0 §II).
+- Data output on stdout; human messages + summaries on stderr.
+- Exit codes: 0 OK, 1 general error, 2 usage, 3 lock, 4 local edit, 10 check-available.
+- `$CSTK_LIB` override locates lib/ during tests.
+- `$CSTK_VERSION_FILE` override locates VERSION during tests.
 
-## Desenvolvimento
+## Development
 
-Veja [`../docs/specs/cstk-cli/tasks.md`](../docs/specs/_archived/cstk-cli/tasks.md) para
-o backlog. Rodar testes:
+See [`../docs/specs/cstk-cli/tasks.md`](../docs/specs/_archived/cstk-cli/tasks.md) for
+the backlog. Running tests:
 
 ```sh
-sh tests/cstk/test_cstk-main.sh    # direto (FASE 1.1)
-./tests/run.sh cstk                # via suite (apos FASE 9.3.1)
+sh tests/cstk/test_cstk-main.sh    # direct (PHASE 1.1)
+./tests/run.sh cstk                # via the suite (after PHASE 9.3.1)
 ```

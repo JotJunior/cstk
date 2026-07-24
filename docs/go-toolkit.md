@@ -1,38 +1,40 @@
-# Skills e hooks para Go
+**English** · [Português (pt-BR)](./go-toolkit.pt-BR.md)
 
-Skills em `language-related/go/skills/` para projetos Go:
+# Skills and hooks for Go
 
-| Skill | Trigger | Descrição |
-|-------|---------|-----------|
-| **commit** | "commit", "commitar" | Commits com conventional commits, suporte a submodules e mudanças multi-serviço |
-| **go-add-entity** | "criar entidade", "novo agregado" | Adiciona CRUD vertical slice completo (domain, DTO, repo, service, handler, migration, wiring) |
-| **go-add-migration** | "nova migration", "criar tabela" | Cria nova migration SQL com naming/numeração corretos |
-| **go-add-test** | "adicionar testes", "cobertura" | Gera testes para handler/service seguindo convenções do projeto |
-| **go-add-consumer** | "novo consumer", "subscribe evento" | Adiciona consumer de mensagens RabbitMQ |
-| **go-review-pr** | "review pr", "quality gate" | Quality gate pré-PR, diff-aware, com revisão em 8 etapas |
-| **go-review-service** | "review service", "auditar serviço" | Audita microserviço Go contra todas as convenções do projeto |
+Skills in `language-related/go/skills/` for Go projects:
 
-Estas skills são acionadas automaticamente pelos orchestrators quando o stack
-detectado for Go — ver seção 4.2.1 de `execute-task` e "Atalhos de auditoria
-por stack" em `review-task`.
+| Skill | Trigger | Description |
+|-------|---------|-------------|
+| **commit** | "commit", "commitar" | Commits following conventional commits, with submodule support and multi-service changes |
+| **go-add-entity** | "criar entidade", "novo agregado" | Adds a complete vertical-slice CRUD (domain, DTO, repo, service, handler, migration, wiring) |
+| **go-add-migration** | "nova migration", "criar tabela" | Creates a new SQL migration with correct naming/numbering |
+| **go-add-test** | "adicionar testes", "cobertura" | Generates tests for handler/service following the project's conventions |
+| **go-add-consumer** | "novo consumer", "subscribe evento" | Adds a RabbitMQ message consumer |
+| **go-review-pr** | "review pr", "quality gate" | Pre-PR quality gate, diff-aware, with an 8-step review |
+| **go-review-service** | "review service", "auditar serviço" | Audits a Go microservice against all of the project's conventions |
 
-## Hooks para Go
+These skills are triggered automatically by the orchestrators when the detected
+stack is Go — see section 4.2.1 of `execute-task` and "Audit shortcuts by
+stack" in `review-task`.
 
-Hooks em `language-related/go/hooks/` para validações automáticas:
+## Hooks for Go
 
-| Hook | Descrição |
-|------|-----------|
-| **go-build-gate.sh** | Valida build antes de operações |
-| **check-uncommitted.sh** | Verifica alterações não commitadas |
-| **check-schema-prefix.sh** | Valida prefixo de schema nas migrations |
-| **check-route-order.sh** | Verifica ordenação de rotas no router |
+Hooks in `language-related/go/hooks/` for automatic validations:
 
-Instalação em projeto Go (skills + hooks + merge de settings.json):
+| Hook | Description |
+|------|-------------|
+| **go-build-gate.sh** | Validates the build before operations |
+| **check-uncommitted.sh** | Checks for uncommitted changes |
+| **check-schema-prefix.sh** | Validates the schema prefix in migrations |
+| **check-route-order.sh** | Checks route ordering in the router |
+
+Installation in a Go project (skills + hooks + settings.json merge):
 
 ```bash
 cd ~/projetos/meu-app-go
 cstk install --scope project --profile language-go
 ```
 
-Hooks de language-* são instalados **apenas** em `--scope project` (em
-`--scope global` são omitidos com aviso no summary — FR-009c).
+language-* hooks are installed **only** with `--scope project` (with
+`--scope global` they are omitted with a warning in the summary — FR-009c).

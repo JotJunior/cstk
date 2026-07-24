@@ -1,30 +1,32 @@
+**English** · [Português (pt-BR)](./THIRD-PARTY-NOTICES.pt-BR.md)
+
 # Third-Party Notices & Acknowledgments
 
-`cstk` é distribuído sob a licença MIT (ver [LICENSE](./LICENSE)). Este arquivo
-reconhece trabalhos de terceiros que inspiraram ou foram parcialmente adaptados
-neste toolkit, e reproduz os avisos de licença exigidos.
+`cstk` is distributed under the MIT license (see [LICENSE](./LICENSE)). This file
+acknowledges third-party works that inspired or were partially adapted in this
+toolkit, and reproduces the required license notices.
 
-O agrupamento abaixo é por **nível de obrigação**: obrigatório (a licença exige
-preservar o aviso), cortesia (inspiração conceitual, sem exigência legal) e
-referências factuais (padrões públicos citados, sem reprodução de texto
-protegido).
+The grouping below is by **level of obligation**: mandatory (the license requires
+preserving the notice), courtesy (conceptual inspiration, no legal requirement)
+and factual references (public standards cited, with no reproduction of protected
+text).
 
 ---
 
-## 1. Obrigatório — código/templates adaptados
+## 1. Mandatory — adapted code/templates
 
 ### GitHub Spec Kit
 
-Partes do pipeline de Spec-Driven Development deste toolkit — o vocabulário de
-etapas (`constitution` → `specify` → `clarify` → `plan` → `tasks` → `analyze`) e,
-em particular, o **template de constituição** em
-`global/skills/constitution/templates/constitution.md` (estrutura
-`## Core Principles` / `### [PRINCIPLE_N_NAME]`, rodapé
-`**Version** | **Ratified** | **Last Amended**`, marcadores `[NEEDS CLARIFICATION]`
-e "Sync Impact Report") — são **adaptados** do projeto **GitHub Spec Kit**.
+Parts of this toolkit's Spec-Driven Development pipeline — the vocabulary of steps
+(`constitution` → `specify` → `clarify` → `plan` → `tasks` → `analyze`) and, in
+particular, the **constitution template** in
+`global/skills/constitution/templates/constitution.md` (structure
+`## Core Principles` / `### [PRINCIPLE_N_NAME]`, footer
+`**Version** | **Ratified** | **Last Amended**`, `[NEEDS CLARIFICATION]` markers
+and "Sync Impact Report") — are **adapted** from the **GitHub Spec Kit** project.
 
-- Projeto: <https://github.com/github/spec-kit>
-- Licença: MIT
+- Project: <https://github.com/github/spec-kit>
+- License: MIT
 
 ```
 MIT License
@@ -50,40 +52,41 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-> Reproduzido verbatim do `LICENSE` upstream
-> (<https://github.com/github/spec-kit/blob/main/LICENSE>), que não declara ano.
+> Reproduced verbatim from the upstream `LICENSE`
+> (<https://github.com/github/spec-kit/blob/main/LICENSE>), which declares no year.
 
 ---
 
-## 2. Cortesia — inspiração conceitual (sem exigência legal)
+## 2. Courtesy — conceptual inspiration (no legal requirement)
 
-Estes projetos influenciaram o **design** de skills/convenções, sem reprodução
-de código ou texto. O reconhecimento é por boa-fé, não por obrigação de licença.
+These projects influenced the **design** of skills/conventions, with no
+reproduction of code or text. The acknowledgment is made in good faith, not out of
+a license obligation.
 
 - **obra/superpowers** (Jesse Vincent) — <https://github.com/obra/superpowers> —
-  inspirou padrões de `description`/anti-atalho e estrutura de skills. Licença MIT.
-- **Anthropic Claude Code** — convenções de scaffolding de skills, commands e
-  agents (formato `SKILL.md`, frontmatter, triggers). Documentação pública.
-- O framework de prompt "Subject-Context-Style" da skill `image-generation`
-  segue o guia público de prompting do Google Imagen.
+  inspired `description`/anti-shortcut patterns and skill structure. MIT license.
+- **Anthropic Claude Code** — scaffolding conventions for skills, commands and
+  agents (`SKILL.md` format, frontmatter, triggers). Public documentation.
+- The "Subject-Context-Style" prompt framework of the `image-generation` skill
+  follows Google Imagen's public prompting guide.
 
 ---
 
-## 3. Referências factuais — padrões públicos citados
+## 3. Factual references — public standards cited
 
-A skill `owasp-security` **não reproduz texto protegido** desses padrões: usa
-nomes de categorias e rankings (fatos) com prosa e exemplos de código próprios,
-e já cita cada fonte nas seções `## Sources` dos arquivos de referência. Listados
-aqui por transparência:
+The `owasp-security` skill **does not reproduce protected text** from these
+standards: it uses category names and rankings (facts) with its own prose and code
+examples, and already cites each source in the `## Sources` sections of the
+reference files. Listed here for transparency:
 
 - OWASP Top 10:2025, API Security Top 10:2023, CI/CD Top 10, ASVS 5.0, Top 10 for
   LLM Applications 2025, Top 10 for Agentic Applications 2026, Mobile/Kubernetes/
-  Docker Top 10 — © OWASP Foundation (conteúdo original sob CC BY-SA; aqui apenas
-  taxonomias factuais são referenciadas).
+  Docker Top 10 — © OWASP Foundation (original content under CC BY-SA; here only
+  factual taxonomies are referenced).
 - MITRE CWE Top 25:2025 · NIST SP 800-63B-4, FIPS 203/204/205, IR 8547 ·
   IETF OAuth 2.1, RFC 9449/9126/9101 · W3C WebAuthn L3 · OpenID FAPI 2.0 ·
   Cloud Security Alliance MAESTRO · EU AI Act.
 
 ---
 
-*Encontrou uma atribuição faltante ou incorreta? Abra uma issue — corrigimos.*
+*Found a missing or incorrect attribution? Open an issue — we'll fix it.*
