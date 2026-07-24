@@ -68,12 +68,12 @@ describe('doc-viewer client — listagem (FeatureDocsListDTOSchema)', () => {
         project: 'cstk-panel',
         feature: 'state-watchers-and-docs',
         artifacts: [
-          { stage: 'specify', artifactId: 'spec', fileName: 'spec.md', produced: true, extra: false },
-          { stage: 'plan', artifactId: 'plan', fileName: 'plan.md', produced: true, extra: false },
-          { stage: 'plan', artifactId: 'research', fileName: 'research.md', produced: true, extra: false },
-          { stage: 'plan', artifactId: 'data-model', fileName: 'data-model.md', produced: true, extra: false },
-          { stage: 'plan', artifactId: 'quickstart', fileName: 'quickstart.md', produced: true, extra: false },
-          { stage: 'create-tasks', artifactId: 'tasks', fileName: 'tasks.md', produced: false, extra: false },
+          { stage: 'specify', artifactId: 'spec', scope: 'feature', fileName: 'spec.md', produced: true, extra: false },
+          { stage: 'plan', artifactId: 'plan', scope: 'feature', fileName: 'plan.md', produced: true, extra: false },
+          { stage: 'plan', artifactId: 'research', scope: 'feature', fileName: 'research.md', produced: true, extra: false },
+          { stage: 'plan', artifactId: 'data-model', scope: 'feature', fileName: 'data-model.md', produced: true, extra: false },
+          { stage: 'plan', artifactId: 'quickstart', scope: 'feature', fileName: 'quickstart.md', produced: true, extra: false },
+          { stage: 'create-tasks', artifactId: 'tasks', scope: 'feature', fileName: 'tasks.md', produced: false, extra: false },
         ],
       },
       meta: { degraded: false, reason: null, freshness: { mtime: '2026-07-15T00:00:00Z', maxIngestedAt: '' }, schemaVersion: '8' },
@@ -90,7 +90,7 @@ describe('doc-viewer client — listagem (FeatureDocsListDTOSchema)', () => {
       expect.objectContaining({ headers: expect.objectContaining({ Accept: 'application/json' }) })
     );
     expect(result.data?.artifacts).toHaveLength(6);
-    expect(result.data?.artifacts[0]).toEqual({ stage: 'specify', artifactId: 'spec', fileName: 'spec.md', produced: true, extra: false });
+    expect(result.data?.artifacts[0]).toEqual({ stage: 'specify', artifactId: 'spec', scope: 'feature', fileName: 'spec.md', produced: true, extra: false });
     // FR-007 — artefato do mapa fixo ainda nao produzido: sucesso, nao erro
     expect(result.data?.artifacts[5]).toMatchObject({ artifactId: 'tasks', produced: false });
   });
@@ -134,7 +134,7 @@ describe('doc-viewer client — conteudo de 1 artefato (FeatureDocDTOSchema)', (
     // confirmado empiricamente: sem eles o parse Zod falha (ZodError
     // Required em data.stage/data.extra), o que este teste tambem trava.
     mockFetchOnce({
-      data: { stage: 'specify', artifactId: 'spec', fileName: 'spec.md', produced: true, extra: false, content: '# Feature Specification: X\n\n...' },
+      data: { stage: 'specify', artifactId: 'spec', scope: 'feature', fileName: 'spec.md', produced: true, extra: false, content: '# Feature Specification: X\n\n...' },
       meta: { degraded: false, reason: null, freshness: { mtime: '2026-07-15T00:00:00Z', maxIngestedAt: '' }, schemaVersion: '8' },
     });
     const result = await fetchApi(
@@ -147,7 +147,7 @@ describe('doc-viewer client — conteudo de 1 artefato (FeatureDocDTOSchema)', (
 
   it('produced:false retorna content:null — sucesso, nunca erro (FR-007)', async () => {
     mockFetchOnce({
-      data: { stage: 'plan', artifactId: 'plan', fileName: 'plan.md', produced: false, extra: false, content: null },
+      data: { stage: 'plan', artifactId: 'plan', scope: 'feature', fileName: 'plan.md', produced: false, extra: false, content: null },
       meta: { degraded: false, reason: null, freshness: { mtime: '', maxIngestedAt: '' }, schemaVersion: '8' },
     });
     const result = await fetchApi(
@@ -173,7 +173,7 @@ describe('doc-viewer client — conteudo de 1 artefato (FeatureDocDTOSchema)', (
   it('304 (ETag casando) retorna o corpo cacheado sem novo parse', async () => {
     const path = '/features/cstk-panel/state-watchers-and-docs/docs/spec-etag-test';
     mockFetchOnce(
-      { data: { stage: 'specify', artifactId: 'spec', fileName: 'spec.md', produced: true, extra: false, content: '# v1' }, meta: { degraded: false, reason: null, freshness: { mtime: '', maxIngestedAt: '' }, schemaVersion: '8' } },
+      { data: { stage: 'specify', artifactId: 'spec', scope: 'feature', fileName: 'spec.md', produced: true, extra: false, content: '# v1' }, meta: { degraded: false, reason: null, freshness: { mtime: '', maxIngestedAt: '' }, schemaVersion: '8' } },
       { etag: 'W/"v1"' }
     );
     const first = await fetchApi(path, FeatureDocDTOSchema.nullable());

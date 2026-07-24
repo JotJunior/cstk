@@ -183,11 +183,16 @@ export const SuggestionDTOSchema = z.object({
 // FeatureDocDTO / FeatureDocsListDTO schema (feature state-watchers-and-docs)
 // Espelha EXATAMENTE os campos de entities.ts (task 1.2.1) — dual-def.
 // ---------------------------------------------------------------------------
-export const FeatureDocStageSchema = z.enum(['specify', 'plan', 'checklist', 'create-tasks']);
+export const FeatureDocStageSchema = z.enum([
+  'briefing', 'constitution', 'specify', 'plan', 'checklist', 'create-tasks',
+]);
+
+export const FeatureDocScopeSchema = z.enum(['project', 'feature']);
 
 export const FeatureDocDTOSchema = z.object({
   stage: FeatureDocStageSchema,
   artifactId: z.string(),
+  scope: FeatureDocScopeSchema,
   fileName: z.string(),
   produced: z.boolean(),
   extra: z.boolean(),

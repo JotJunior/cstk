@@ -78,8 +78,9 @@ describe('GET /features/:project/:feature/docs — listagem', () => {
     expect(body.meta.degraded).toBe(false);
     expect(body.data.project).toBe('meu-projeto');
     expect(body.data.feature).toBe('minha-feature');
-    expect(body.data.artifacts).toHaveLength(6);
-    expect(body.data.artifacts.every((a: { produced: boolean }) => a.produced === true)).toBe(true);
+    const ownArtifacts = body.data.artifacts.filter((a: { scope: string }) => a.scope === 'feature');
+    expect(ownArtifacts).toHaveLength(6);
+    expect(ownArtifacts.every((a: { produced: boolean }) => a.produced === true)).toBe(true);
     // Listagem nunca inclui content (contrato: "Nenhum content, so metadados")
     expect(body.data.artifacts.every((a: Record<string, unknown>) => !('content' in a))).toBe(true);
   });
@@ -129,6 +130,60 @@ describe('GET /features/:project/:feature/docs — listagem', () => {
       headers: { 'if-none-match': etag! },
     });
     expect(second.statusCode).toBe(304);
+  });
+});
+
+// ─── Artefatos de escopo PROJETO (briefing/constitution) ─────────────────
+
+describe('docs de escopo projeto — briefing e constitution', () => {
+  it('listagem inclui briefing/constitution do projeto na pagina da feature', async () => {
+    mkdirSync(join(projectRoot, 'docs', '01-briefing-discovery'), { recursive: true });
+    writeFileSync(join(projectRoot, 'docs', '01-briefing-discovery', 'briefing.md'), '# briefing');
+    writeFileSync(join(projectRoot, 'docs', 'constitution.md'), '# constituicao');
+
+    const res = await server.inject({ method: 'GET', url: '/api/v1/features/meu-projeto/minha-feature/docs' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const project = body.data.artifacts.filter((a: { scope: string }) => a.scope === 'project');
+    expect(project.map((a: { artifactId: string }) => a.artifactId)).toEqual(['briefing', 'constitution']);
+    expect(project.every((a: { produced: boolean }) => a.produced === true)).toBe(true);
+  });
+
+  it('conteudo de briefing e constitution e servido a partir da raiz do projeto', async () => {
+    mkdirSync(join(projectRoot, 'docs', '01-briefing-discovery'), { recursive: true });
+    writeFileSync(join(projectRoot, 'docs', '01-briefing-discovery', 'briefing.md'), '# Briefing\n\nVisao.');
+    writeFileSync(join(projectRoot, 'docs', 'constitution.md'), '# Constituicao\n\nPrincipios.');
+
+    const brief = await server.inject({ method: 'GET', url: '/api/v1/features/meu-projeto/minha-feature/docs/briefing' });
+    expect(brief.statusCode).toBe(200);
+    expect(brief.json().data.content).toBe('# Briefing\n\nVisao.');
+
+    const cons = await server.inject({ method: 'GET', url: '/api/v1/features/meu-projeto/minha-feature/docs/constitution' });
+    expect(cons.statusCode).toBe(200);
+    expect(cons.json().data.content).toBe('# Constituicao\n\nPrincipios.');
+  });
+
+  it('projeto sem briefing/constitution: produced:false, content:null, 200 (FR-007)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/features/meu-projeto/minha-feature/docs/constitution' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.data.produced).toBe(false);
+    expect(body.data.content).toBeNull();
+    expect(body.meta.degraded).toBe(false);
+  });
+
+  it('symlink em doc de projeto continua rejeitado (o confinamento so mudou de raiz, nao sumiu)', async () => {
+    const outside = join(tmpRoot, 'fora.md');
+    writeFileSync(outside, '# segredo fora do projeto');
+    mkdirSync(join(projectRoot, 'docs'), { recursive: true });
+    symlinkSync(outside, join(projectRoot, 'docs', 'constitution.md'));
+
+    const res = await server.inject({ method: 'GET', url: '/api/v1/features/meu-projeto/minha-feature/docs/constitution' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.data.content).toBeNull();
+    expect(body.meta.degraded).toBe(true);
+    expect(body.meta.reason).toBe('artifact-rejected');
   });
 });
 

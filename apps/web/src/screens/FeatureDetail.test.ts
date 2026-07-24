@@ -7,15 +7,43 @@
  * sem montar `DocumentationPanel`.
  */
 import { describe, it, expect } from 'vitest';
+import type { FeatureDocScope } from '@cstk-panel/shared-types';
 import { pickDefaultArtifact, contentFetchId, type ArtifactPickCandidate } from './FeatureDetail.js';
 
-function art(artifactId: string, produced: boolean): ArtifactPickCandidate {
-  return { artifactId, produced };
+function art(artifactId: string, produced: boolean, scope: FeatureDocScope = 'feature'): ArtifactPickCandidate {
+  return { artifactId, produced, scope };
 }
 
 describe('pickDefaultArtifact', () => {
   it('escolhe o primeiro artefato PRODUZIDO na ordem da listagem', () => {
     const artifacts = [art('spec', true), art('plan', true), art('tasks', false)];
+    expect(pickDefaultArtifact(artifacts)).toBe('spec');
+  });
+
+  it('prefere a spec da feature aos docs de projeto que abrem a listagem', () => {
+    const artifacts = [
+      art('briefing', true, 'project'),
+      art('constitution', true, 'project'),
+      art('spec', true),
+    ];
+    expect(pickDefaultArtifact(artifacts)).toBe('spec');
+  });
+
+  it('cai no doc de projeto quando a feature ainda nao produziu nada', () => {
+    const artifacts = [
+      art('briefing', true, 'project'),
+      art('constitution', true, 'project'),
+      art('spec', false),
+    ];
+    expect(pickDefaultArtifact(artifacts)).toBe('briefing');
+  });
+
+  it('nada produzido: cai no primeiro artefato DA FEATURE, nao no de projeto', () => {
+    const artifacts = [
+      art('briefing', false, 'project'),
+      art('spec', false),
+      art('plan', false),
+    ];
     expect(pickDefaultArtifact(artifacts)).toBe('spec');
   });
 

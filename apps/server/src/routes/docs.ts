@@ -28,7 +28,13 @@ import { wrap, wrapDegraded } from '../lib/envelope.js';
 import { generateETag, etagMatches } from '../lib/etag.js';
 import { loadConfig } from '../config.js';
 import { resolveProjectRoot } from '../lib/project-root.js';
-import { buildFeatureDocsList, latestArtifactMtimeMs } from '../docs/artifact-map.js';
+import {
+  artifactRoots,
+  buildFeatureDocsList,
+  latestArtifactMtimeMs,
+  rootForScope,
+  type ArtifactRoots,
+} from '../docs/artifact-map.js';
 import { confineArtifactPath, readConfinedArtifact } from '../docs/confinement.js';
 
 /** Identica ao regex anti-traversal de path params HTTP ja usado em
@@ -55,15 +61,17 @@ function emptyMeta() {
 }
 
 type FeatureDirResolution =
-  | { ok: true; featureDir: string }
+  | { ok: true; roots: ArtifactRoots }
   | { ok: false; reason: 'project-path-unresolved' | 'project-path-inaccessible' };
 
 /**
- * Resolve `<projectRoot>/docs/specs/<feature>` a partir do nome logico do
- * projeto (FR-008/FR-012), via cadeia CSTK_PROJECT_PATHS > knowledge.db v9
- * (resolveProjectRoot). NUNCA lanca. A auséncia do proprio subdiretorio
- * da FEATURE (feature nunca rodou `/specify`) NAO e degradacao — vira
- * produced:false uniforme em artifact-map.ts (Principio II).
+ * Resolve as raizes de leitura da pagina de uma feature — a raiz do projeto
+ * (briefing/constitution) e `<projectRoot>/docs/specs/<feature>` (artefatos da
+ * feature) — a partir do nome logico do projeto (FR-008/FR-012), via cadeia
+ * CSTK_PROJECT_PATHS > knowledge.db v9 (resolveProjectRoot). NUNCA lanca. A
+ * auséncia do proprio subdiretorio da FEATURE (feature nunca rodou
+ * `/specify`) NAO e degradacao — vira produced:false uniforme em
+ * artifact-map.ts (Principio II).
  */
 function resolveFeatureDir(
   db: Database.Database | null,
@@ -77,7 +85,7 @@ function resolveFeatureDir(
   } catch {
     return { ok: false, reason: 'project-path-inaccessible' };
   }
-  return { ok: true, featureDir: join(projectRoot, 'docs', 'specs', feature) };
+  return { ok: true, roots: artifactRoots(projectRoot, feature) };
 }
 
 export async function docsRoutes(server: FastifyInstance): Promise<void> {
@@ -101,13 +109,13 @@ export async function docsRoutes(server: FastifyInstance): Promise<void> {
         return reply.status(200).send(wrapDegraded(resolved.reason, config.dbPath));
       }
 
-      const artifacts = buildFeatureDocsList(resolved.featureDir);
+      const artifacts = buildFeatureDocsList(resolved.roots);
       const data = { project, feature, artifacts };
       const envelope = wrap(data, {}, config.dbPath, db);
 
       // ETag deriva do mtime dos ARQUIVOS (contracts/docs-api.md nota de
       // frescor), NAO de envelope.meta.freshness (que reflete a knowledge.db).
-      const latestMs = latestArtifactMtimeMs(resolved.featureDir, artifacts);
+      const latestMs = latestArtifactMtimeMs(resolved.roots, artifacts);
       const fileFreshness: Freshness = {
         mtime: latestMs !== null ? new Date(latestMs).toISOString() : '',
         maxIngestedAt: '',
@@ -140,7 +148,7 @@ export async function docsRoutes(server: FastifyInstance): Promise<void> {
         return reply.status(200).send(wrapDegraded(resolved.reason, config.dbPath));
       }
 
-      const artifacts = buildFeatureDocsList(resolved.featureDir);
+      const artifacts = buildFeatureDocsList(resolved.roots);
       const entry = artifacts.find(a => a.artifactId === artifact);
 
       if (!entry) {
@@ -157,7 +165,12 @@ export async function docsRoutes(server: FastifyInstance): Promise<void> {
         return reply.status(200).send(envelope);
       }
 
-      const confineResult = confineArtifactPath(resolved.featureDir, join(resolved.featureDir, entry.fileName));
+      // Confinamento na raiz do PROPRIO escopo do artefato: `docs/specs/
+      // <feature>/` para artefatos da feature, raiz do projeto para
+      // briefing/constitution (que vivem fora de docs/specs/). `fileName`
+      // nunca vem do cliente — sai do mapa fixo/listagem do servidor.
+      const artifactRoot = rootForScope(resolved.roots, entry.scope);
+      const confineResult = confineArtifactPath(artifactRoot, join(artifactRoot, ...entry.fileName.split('/')));
       if (!confineResult.ok) {
         if (confineResult.reason === 'too-large') {
           const envelope = wrap({ ...entry, content: null }, {}, config.dbPath, db);
