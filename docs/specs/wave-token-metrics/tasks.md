@@ -1,0 +1,231 @@
+# Tarefas wave-token-metrics - Metricas de Tokens por Spawn de Subagente
+
+Escopo: decompor `plan.md` (fases F1-F6) em backlog executavel. Cobre hook de
+captura `PostToolUse`/`Agent`, sidecar JSONL por onda, agregacao em
+`state-ondas.sh end`, relatorios (`wave-usage-report.sh` + `report.sh`),
+extensao do knowledge.db (v9->v10), consumo em `review-task` (custo x
+roteamento) e backfill via transcript. Inclui a resolucao dos 3 gaps abertos
+pelos checklists (`requirements.md` CHK003, `security.md` CHK017/CHK020) e o
+registro (sem decidir) dos 2 items `{humano}` pendentes (CHK016, CHK024).
+
+**Legenda de status:**
+- `[ ]` Pendente
+- `[~]` Em andamento
+- `[x]` Concluido
+- `[!]` Bloqueado
+
+**Legenda de criticidade:**
+- `[C]` Critico - Impacto financeiro direto ou bloqueante
+- `[A]` Alto - Funcionalidade essencial
+- `[M]` Medio - Necessario mas sem urgencia imediata
+
+---
+
+## FASE 1 - Fundacao: gaps de requisito/seguranca e decisoes pendentes
+
+### 1.1 Fechar gap de escopo da spec `[A]`
+
+Ref: checklists/requirements.md CHK003 `[Gap]`
+
+- [ ] 1.1.1 Adicionar secao explicita `## Fora de Escopo` em `spec.md`, tornando formal as fronteiras hoje implicitas em "Assumptions & Dependencies" (linhas 308-309: schema de armazenamento e formato exato dos campos de captura sao decisao de `/plan`, nao da spec)
+- [ ] 1.1.2 Listar nesta secao, no minimo: schema/formato de persistencia (decisao de plan), custo em dinheiro/token pricing (fora de escopo — ver `feature-00c-feature-orchestrator.md` §"Custo em tokens — NAO inventar", dec-005), dashboard visual (cstk-panel, fora desta feature), qualquer heuristica de estimativa de uso para spawns `indisponivel`
+- [ ] 1.1.3 Rodar `validate-documentation` sobre o `spec.md` atualizado para confirmar que a nova secao nao introduz inconsistencia com o restante do documento
+
+### 1.2 Definir permissoes de arquivo do sidecar e do knowledge.db `[A]`
+
+Ref: checklists/security.md CHK017 `[Gap]` (gap herdado do padrao pre-existente do toolkit — `posttooluse-tool-call-tick.sh` e `~/.claude/cstk/knowledge.db` ja em producao tambem carecem de requisito documentado; esta feature adiciona dado novo ao mesmo arquivo compartilhado, por isso o gap e resolvido aqui em vez de so herdado)
+
+- [ ] 1.2.1 Documentar em `data-model.md` §Sidecar a permissao de criacao do arquivo `wave-agent-usage.jsonl`: `0600` (leitura/escrita apenas do dono do processo), criado pelo hook via `umask 077` antes do primeiro append, mesma politica aplicavel retroativamente ao sidecar irmao `tool-call-ticks.log`
+- [ ] 1.2.2 Documentar a mesma politica (`0600`) para `~/.claude/cstk/knowledge.db`, aplicada na criacao (`sqlite3 ... "PRAGMA ..."` ja usada em `recall.sh`) — sem alterar permissao de um DB ja existente com permissao mais aberta (evitar quebrar setups locais existentes; apenas `chmod` best-effort se detectado mais aberto que `0600`, log via `log_out`, nunca falha)
+- [ ] 1.2.3 Implementar `umask 077` (ou `chmod 600` pos-criacao) em `posttooluse-agent-usage.sh` antes do primeiro append ao sidecar
+- [ ] 1.2.4 Implementar checagem best-effort de permissao do `knowledge.db` em `cli/lib/recall.sh` (na abertura de conexao/migracao), com `chmod 600` corretivo se o arquivo estiver mais aberto — nunca bloqueia, apenas normaliza e loga
+- [ ] 1.2.5 Escrever teste em `tests/test_posttooluse-agent-usage.sh` verificando que o sidecar criado tem permissao `0600` (via `stat` portavel POSIX/macOS+Linux)
+- [ ] 1.2.6 Escrever teste em `tests/cstk/test_recall.sh` verificando que o `knowledge.db` criado do zero tem permissao `0600`
+
+### 1.3 Definir teto de linhas/spawns do sidecar antes do reset `[A]`
+
+Ref: checklists/security.md CHK020 `[Gap]` (achado do gate `owasp-security`, dec-035, severidade INFO/LOW — nao bloqueia, mas fica registrado para create-tasks avaliar um contador leve)
+
+- [ ] 1.3.1 Definir e documentar em `research.md` §Decision 5 o teto: **500 linhas** por onda no sidecar `wave-agent-usage.jsonl` (ordem de grandeza generosa acima do "poucos spawns por onda" do plan §Scale/Scope; numero magico deliberado, revisitavel se a experiencia real mostrar insuficiencia)
+- [ ] 1.3.2 Implementar contador leve (`wc -l` best-effort) em `posttooluse-agent-usage.sh` ANTES de cada append: se a contagem atual já estiver `>= 500`, pular o append desta linha (fail-open, sem bloquear a tool call) e emitir `log_out` de aviso uma unica vez por onda (guard via arquivo-sentinela `<state-dir>/.wave-agent-usage-cap-warned` criado/removido no mesmo ciclo start/end do sidecar)
+- [ ] 1.3.3 Documentar em `data-model.md` §Sidecar o comportamento ao atingir o teto: spawns além do teto ficam fora do agregado da onda (undercounting silencioso conhecido, análogo à tolerância já documentada para a fronteira start/end); o `state-ondas.sh end` reporta `spawns_total` apenas dos observados, nunca fabrica o excedente
+- [ ] 1.3.4 Escrever teste em `tests/test_posttooluse-agent-usage.sh` cobrindo: sidecar com 500 linhas pre-existentes -> hook nao adiciona linha 501 e nao falha (exit 0)
+
+### 1.4 Registrar decisoes pendentes do dono do produto (nao decidir) `[M]`
+
+Ref: checklists/requirements.md CHK016, CHK024 (`{humano}`)
+
+- [ ] 1.4.1 Adicionar em `spec.md` (ou em nota de rodape de `plan.md` §Riscos) um bloco "Decisoes aguardando dono do produto": (a) CHK016 — se a meta 100% de SC-001/SC-004 permanece formalmente correta mesmo com ~50% dos spawns reais sem `usage` (`async_launched`), e como comunicar essa condicional sem parecer metrica quebrada; (b) CHK024 — se a ausencia deliberada de alvo numerico de performance/latencia e aceitavel para este release ou se o operador quer um teto explicito
+- [ ] 1.4.2 NAO implementar nenhuma resposta hipotetica para CHK016/CHK024 nesta fase — registrar apenas o texto da pergunta e o estado atual (spec/plan ja documentam honestamente a ausencia/condicional); a resolucao fica para o operador decidir antes ou durante `review-task` final
+
+---
+
+## FASE 2 - Hook de captura + sidecar (F1, base US1)
+
+### 2.1 Implementar hook `posttooluse-agent-usage.sh` `[A]`
+
+Ref: plan.md §Project Structure ("CRIAR"); contracts/hook-posttooluse-agent-usage.md
+
+- [ ] 2.1.1 Criar `global/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh`, espelhando a estrutura de `posttooluse-tool-call-tick.sh`: le JSON do stdin, extrai `tool_name`, sai `exit 0` silencioso se `tool_name != "Agent"`
+- [ ] 2.1.2 Implementar deteccao de execucao 00c ativa (REUSO da logica ja existente em `pretooluse-bash-guard.sh` §4 — precedencia `agente-00c` > `feature-00c` por short-name lexicografico); `exit 0` sem interferencia se nenhuma execucao ativa
+- [ ] 2.1.3 Extrair campos do `tool_response` (`agentId`, `status`, `resolvedModel`, `modelsUsed`, `totalTokens`, `usage.*`, `totalToolUseCount`, `totalDurationMs`) e do `tool_input` (`subagent_type`) via `jq` com `// null` em todo acesso (Principio VI — nao inventar campo ausente)
+- [ ] 2.1.4 Derivar `status` (`completo`/`parcial`/`indisponivel`) conforme a state machine de `data-model.md` §State transitions; `indisponivel` **MUST** zerar (== `null`, nunca `0`) todos os campos numericos de uso
+- [ ] 2.1.5 Montar a linha JSON compacta (`jq -c`) do sidecar conforme `contracts/hook-posttooluse-agent-usage.md` §2, garantindo ausencia de `content`/`prompt`/`description` e tamanho < PIPE_BUF
+- [ ] 2.1.6 Aplicar `umask 077` antes do primeiro append (ref: subtarefa 1.2.3) e o cap de 500 linhas (ref: subtarefa 1.3.2) antes de gravar
+- [ ] 2.1.7 Fazer append atomico (`>>`) em `<state-dir>/wave-agent-usage.jsonl`; `source = "live"`, `observed_at` via `date -u +%Y-%m-%dT%H:%M:%SZ`
+- [ ] 2.1.8 Garantir politica fail-open absoluta: sem `set -e`; qualquer falha (jq ausente, stdin invalido, append negado) => `exit 0` silencioso, nunca stderr, nunca bloqueio da tool call
+- [ ] 2.1.9 Escrever `tests/test_posttooluse-agent-usage.sh` cobrindo: matcher `Agent` vs outros tools, execucao ativa vs inativa, `status` completo/parcial/indisponivel, ausencia de `content`/`prompt` na linha gravada, fail-open em jq ausente/stdin invalido, permissao `0600` (subtarefa 1.2.5), cap de 500 linhas (subtarefa 1.3.4)
+
+### 2.2 Provisionar o hook novo `[A]`
+
+Ref: plan.md §Project Structure ("MODIFICAR" settings.snippet.json)
+
+- [ ] 2.2.1 Adicionar entrada `PostToolUse` matcher `Agent` -> `posttooluse-agent-usage.sh` em `global/skills/agente-00c-runtime/hooks/settings.snippet.json`
+- [ ] 2.2.2 Confirmar em `cli/lib/hooks.sh::apply_guard_hooks()` que o hook novo e copiado no provisionamento de projeto (mesmo mecanismo do hook de ticks); ajustar se necessario
+- [ ] 2.2.3 Adicionar isencao existence-guarded do hook novo em `tests/run.sh::_is_internal_test` (precedente literal: linhas 298-303, hooks vivem fora de `scripts/` e por isso quebram a regra 1:1 do `--check-coverage`)
+- [ ] 2.2.4 Estender `tests/cstk/test_hooks.sh` cobrindo o provisionamento do hook novo (arquivo copiado + entrada no settings.snippet.json aplicada)
+
+---
+
+## FASE 3 - Agregacao em `state-ondas.sh` (F2, US1)
+
+### 3.1 Agregar `SpawnUsage` do sidecar em `.waves[]` `[A]`
+
+Ref: data-model.md §"Extensoes ao state.json"; contracts/wave-usage-report.md §4
+
+- [ ] 3.1.1 Em `state-ondas.sh start`, garantir reset do sidecar `wave-agent-usage.jsonl` (espelhando `_so_ticks_reset`) e remocao do sentinela de cap-warned (subtarefa 1.3.2)
+- [ ] 3.1.2 Em `state-ondas.sh end`, ler o sidecar da onda corrente e agregar em `WaveUsage`: `spawns_total`, `spawns_with_usage`, `spawns_unavailable`, somas de `total_tokens`/`input_tokens`/`output_tokens`/`cache_read_input_tokens`/`cache_creation_input_tokens`/`tool_use_count`/`duration_ms` (soma **apenas** sobre spawns com dado; `null` quando `spawns_with_usage == 0` — nunca `0` fabricado)
+- [ ] 3.1.3 Gravar o agregado em `.waves[N].agent_usage` e o array bruto de `SpawnUsage` em `.waves[N].agent_spawns[]`
+- [ ] 3.1.4 Incrementar `.accumulated_metrics.agent_spawns_total`, `.agent_spawns_with_usage_total`, `.agent_tokens_total`, `.agent_tool_use_count_total`, `.agent_duration_ms_total` no mesmo `jq` do `end` (padrao `(.campo // 0) + incremento` para retro-compatibilidade)
+- [ ] 3.1.5 Resetar o sidecar apos a agregacao (mesmo ciclo de vida do sidecar de ticks: reset em `start` e em `end`)
+- [ ] 3.1.6 Garantir retro-compatibilidade: onda sem sidecar (feature anterior a esta) produz `agent_usage: null`, `agent_spawns: []`, sem erro
+- [ ] 3.1.7 Estender `tests/test_state-ondas.sh` cobrindo: agregacao com spawns completos/parciais/indisponiveis misturados, onda sem sidecar (retro-compat), reset do sidecar em start/end, incremento correto de `.accumulated_metrics`
+
+---
+
+## FASE 4 - Relatorios (F3, US1/FR-005)
+
+### 4.1 Criar `wave-usage-report.sh` `[A]`
+
+Ref: contracts/wave-usage-report.md §2/§3
+
+- [ ] 4.1.1 Criar `global/skills/agente-00c-runtime/scripts/wave-usage-report.sh` com subcomando `aggregate --state-dir <DIR>` produzindo saida Markdown (default) conforme `contracts/wave-usage-report.md` §2.1, respeitando o invariante de honestidade SC-004 (exibir `spawns_total`/`spawns_with_usage`/`spawns_unavailable` juntos sempre que `spawns_unavailable > 0`)
+- [ ] 4.1.2 Implementar saida `--json` (contracts §2.2) com o mesmo agregado em formato maquina-legivel
+- [ ] 4.1.3 Implementar subcomando `backfill` (US4/FR-010/FR-011) conforme contracts §3 — ver detalhamento na FASE 7
+- [ ] 4.1.4 Escrever `tests/test_wave-usage-report.sh` cobrindo `aggregate` (Markdown + JSON), casos de zero spawns vs "metrica nao coletada" (research Decision 10), e o invariante SC-004
+
+### 4.2 Estender `report.sh` §1/§2 `[M]`
+
+Ref: contracts/wave-usage-report.md §6
+
+- [ ] 4.2.1 Adicionar secao de consumo de tokens/tool-uses/duracao ao relatorio gerado por `report.sh` (secoes 1 e 2), consumindo `wave-usage-report.sh aggregate --json` como fonte
+- [ ] 4.2.2 Garantir que o relatorio distingue "0 spawns" (nenhum subagente spawnado) de "metrica nao coletada" (hook nao provisionado) — nunca reportar 0 quando o dado real e ausencia de coleta
+- [ ] 4.2.3 Estender `tests/test_report.sh` (ou criar se inexistente) cobrindo as novas secoes do relatorio, incluindo o caso "metrica nao coletada"
+
+---
+
+## FASE 5 - knowledge.db v9 -> v10 (F4, US3/FR-006)
+
+### 5.1 Migracao de schema `[A]`
+
+Ref: data-model.md §"Extensao do knowledge.db: v9 -> v10"
+
+- [ ] 5.1.1 Bumpar `RECALL_SCHEMA_VERSION` de 9 para 10 em `cli/lib/recall.sh`
+- [ ] 5.1.2 Adicionar as 9 colunas novas `INTEGER` na tabela `waves` (`agent_spawns_total`, `agent_spawns_with_usage`, `agent_total_tokens`, `agent_input_tokens`, `agent_output_tokens`, `agent_cache_read_tokens`, `agent_cache_creation_tokens`, `agent_tool_use_count`, `agent_duration_ms`) via migracao aditiva idempotente (`PRAGMA table_info(waves)` + `case`, padrao literal ja usado em v7->v8/v8->v9)
+- [ ] 5.1.3 Confirmar que a migracao NAO faz `DROP` e preserva dados v9 existentes
+- [ ] 5.1.4 Aplicar `recall_int_or_null` (helper ja existente) em todas as 9 colunas novas na ingestao — onda antiga ou sem dado => `NULL`, nunca `0` (mesma regra de `wallclock_seconds`/`tool_calls`)
+
+### 5.2 Ingestao e retrofit `[A]`
+
+Ref: contracts/wave-usage-report.md §7
+
+- [ ] 5.2.1 Estender a rotina de ingestao (`--ingest`) para ler `.waves[].agent_usage` do `state.json` e popular as 9 colunas novas
+- [ ] 5.2.2 Estender `recall_mode_reindex()` (`--reindex`) para retrofit das colunas novas a partir de states existentes (aplicando os mesmos defaults `NULL`)
+- [ ] 5.2.3 Aplicar o guard best-effort de permissao `0600` no `knowledge.db` (subtarefa 1.2.4) no ponto de abertura/migracao de conexao
+- [ ] 5.2.4 Estender `tests/cstk/test_recall.sh` cobrindo: migracao v9->v10 idempotente, preservacao de dados v9, ingestao das 9 colunas novas, `--reindex` retrofit, `NULL` em vez de `0` para state antigo, permissao `0600` na criacao (subtarefa 1.2.6)
+
+---
+
+## FASE 6 - `review-task` custo x roteamento (F5, US2/FR-007)
+
+### 6.1 Consumir `wave-usage-report.sh` em `review-task` `[M]`
+
+Ref: contracts/wave-usage-report.md §5
+
+- [ ] 6.1.1 Adicionar em `global/skills/review-task/SKILL.md` §4.5 a invocacao de `wave-usage-report.sh aggregate --json` cruzada com `model-routing-report.sh aggregate` (mesma fonte de `.decisions[]`, sem tocar `.waves` — preserva o invariante que aquele script publica)
+- [ ] 6.1.2 Documentar no SKILL.md a leitura conjunta: para cada onda, exibir modelo aplicado (model-routing) lado a lado com consumo de tokens/tool-uses/duracao observado (wave-usage), destacando divergencias sugerido-vs-aplicado que tiveram alto consumo
+- [ ] 6.1.3 Escrever cenario de teste (fixture de state.json com `.waves[].agent_usage` + `.decisions[]` de model-routing) validando a secao cruzada, ou estender o test existente do `review-task` se houver harness automatizado para o SKILL.md
+
+---
+
+## FASE 7 - Backfill de transcripts (F6, US4/FR-010/FR-011)
+
+### 7.1 Implementar `wave-usage-report.sh backfill` `[M]`
+
+Ref: research.md §"Decision 9 — Backfill por janela temporal, com recusa explicita"; contracts/wave-usage-report.md §3
+
+- [ ] 7.1.1 Implementar subcomando `backfill --state-dir <DIR> --transcript <PATH>` que le o transcript JSONL informado e extrai `SpawnUsage` com `source = "backfill"` (nunca `"live"`)
+- [ ] 7.1.2 Implementar a heuristica de janela temporal (delimitando quais spawns do transcript pertencem a qual onda) conforme documentado em research.md Decision 9
+- [ ] 7.1.3 Implementar recusa explicita: quando o transcript nao cobre a janela da onda solicitada (ou esta ausente), o comando **MUST** recusar com mensagem clara em vez de estimar/inventar — nunca produzir `SpawnUsage` sintetico
+- [ ] 7.1.4 Documentar em `quickstart.md` o fluxo de uso do `backfill` (cenarios 9 e 10)
+- [ ] 7.1.5 Estender `tests/test_wave-usage-report.sh` cobrindo: backfill com transcript valido dentro da janela, recusa com transcript ausente/fora da janela, `source = "backfill"` sempre marcado corretamente
+
+---
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F1[Fase 1 - Fundacao: gaps e decisoes pendentes]
+    F2[Fase 2 - Hook + sidecar]
+    F3[Fase 3 - Agregacao em state-ondas.sh]
+    F4[Fase 4 - Relatorios]
+    F5[Fase 5 - knowledge.db v9-v10]
+    F6[Fase 6 - review-task custo x roteamento]
+    F7[Fase 7 - Backfill de transcripts]
+
+    F1 --> F2
+    F2 --> F3
+    F3 --> F4
+    F3 --> F5
+    F4 --> F6
+    F5 --> F6
+    F4 --> F7
+```
+
+## Resumo Quantitativo
+
+| Fase | Tarefas | Subtarefas | Criticidade |
+|------|---------|------------|-------------|
+| 1 - Fundacao: gaps e decisoes pendentes | 4 | 15 | A/M |
+| 2 - Hook + sidecar | 2 | 13 | A |
+| 3 - Agregacao em state-ondas.sh | 1 | 7 | A |
+| 4 - Relatorios | 2 | 7 | A/M |
+| 5 - knowledge.db v9->v10 | 2 | 8 | A |
+| 6 - review-task custo x roteamento | 1 | 3 | M |
+| 7 - Backfill de transcripts | 1 | 5 | M |
+| **Total** | **13** | **58** | - |
+
+## Escopo Coberto
+
+| Item | Descricao | Fase |
+|------|-----------|------|
+| CHK003 | Secao "Fora de Escopo" formal na spec | 1 |
+| CHK017 | Permissoes de arquivo (0600) do sidecar e knowledge.db | 1 |
+| CHK020 | Teto de 500 linhas/spawns por onda no sidecar antes do reset | 1 |
+| F1 | Hook `posttooluse-agent-usage.sh` + provisionamento + testes | 2 |
+| F2 | Agregacao de `SpawnUsage` em `.waves[]`/`.accumulated_metrics` | 3 |
+| F3 | `wave-usage-report.sh aggregate` + extensao de `report.sh` §1/§2 | 4 |
+| F4 | knowledge.db v9->v10 (9 colunas novas) + ingestao + retrofit | 5 |
+| F5 | `review-task` §4.5 custo x roteamento | 6 |
+| F6 | `wave-usage-report.sh backfill` (US4) | 7 |
+
+## Escopo Excluido
+
+| Item | Descricao | Motivo |
+|------|-----------|--------|
+| Dashboard visual (cstk-panel) | Renderizacao grafica dos dados de consumo | Fora do escopo desta feature (dado disponivel no knowledge.db para consumo futuro; painel e projeto separado) |
+| Custo em $/pricing | Conversao de tokens em custo monetario | dec-005 do model-routing (harness nao expoe contabilidade de tokens/preco a scripts); `tool_calls` permanece o proxy documentado |
+| Estimativa/heuristica para spawns `indisponivel` | Preencher valor estimado quando o harness nao retorna `usage` | Violaria Principio VI (Zero Fabricacao) — `null` e a unica saida correta, nunca numero inferido |
+| CHK016 (meta 100% vs ~50% cobertura) | Decisao sobre comunicar a condicional da metrica 100% | `{humano}` — aguardando dono do produto (subtarefa 1.4.1), nao decidivel pelo backlog |
+| CHK024 (alvo de performance/latencia) | Definir teto numerico de latencia | `{humano}` — aguardando dono do produto (subtarefa 1.4.1), ausencia documentada como deliberada no plan |
