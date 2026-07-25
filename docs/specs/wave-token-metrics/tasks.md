@@ -37,9 +37,9 @@ Ref: checklists/security.md CHK017 `[Gap]` (gap herdado do padrao pre-existente 
 
 - [x] 1.2.1 Documentar em `data-model.md` §Sidecar a permissao de criacao do arquivo `wave-agent-usage.jsonl`: `0600` (leitura/escrita apenas do dono do processo), criado pelo hook via `umask 077` antes do primeiro append, mesma politica aplicavel retroativamente ao sidecar irmao `tool-call-ticks.log`
 - [x] 1.2.2 Documentar a mesma politica (`0600`) para `~/.claude/cstk/knowledge.db`, aplicada na criacao (`sqlite3 ... "PRAGMA ..."` ja usada em `recall.sh`) — sem alterar permissao de um DB ja existente com permissao mais aberta (evitar quebrar setups locais existentes; apenas `chmod` best-effort se detectado mais aberto que `0600`, log via `log_out`, nunca falha)
-- [ ] 1.2.3 Implementar `umask 077` (ou `chmod 600` pos-criacao) em `posttooluse-agent-usage.sh` antes do primeiro append ao sidecar <!-- depende de 2.1.1 (FASE 2, arquivo ainda nao existe); satisfeita em 2.1.6 -->
+- [x] 1.2.3 Implementar `umask 077` (ou `chmod 600` pos-criacao) em `posttooluse-agent-usage.sh` antes do primeiro append ao sidecar <!-- satisfeita em 2.1.6: umask 077 no subshell do append + chmod 600 best-effort apos, defesa em profundidade -->
 - [x] 1.2.4 Implementar checagem best-effort de permissao do `knowledge.db` em `cli/lib/recall.sh` (na abertura de conexao/migracao), com `chmod 600` corretivo se o arquivo estiver mais aberto — nunca bloqueia, apenas normaliza e loga
-- [ ] 1.2.5 Escrever teste em `tests/test_posttooluse-agent-usage.sh` verificando que o sidecar criado tem permissao `0600` (via `stat` portavel POSIX/macOS+Linux) <!-- depende de 2.1.1 (FASE 2, arquivo ainda nao existe); satisfeita em 2.1.9 -->
+- [x] 1.2.5 Escrever teste em `tests/test_posttooluse-agent-usage.sh` verificando que o sidecar criado tem permissao `0600` (via `stat` portavel POSIX/macOS+Linux) <!-- satisfeita em 2.1.9: scenario_sidecar_criado_com_permissao_0600 -->
 - [x] 1.2.6 Escrever teste em `tests/cstk/test_recall.sh` verificando que o `knowledge.db` criado do zero tem permissao `0600`
 
 ### 1.3 Definir teto de linhas/spawns do sidecar antes do reset `[A]`
@@ -47,9 +47,9 @@ Ref: checklists/security.md CHK017 `[Gap]` (gap herdado do padrao pre-existente 
 Ref: checklists/security.md CHK020 `[Gap]` (achado do gate `owasp-security`, dec-035, severidade INFO/LOW — nao bloqueia, mas fica registrado para create-tasks avaliar um contador leve)
 
 - [x] 1.3.1 Definir e documentar em `research.md` §Decision 5 o teto: **500 linhas** por onda no sidecar `wave-agent-usage.jsonl` (ordem de grandeza generosa acima do "poucos spawns por onda" do plan §Scale/Scope; numero magico deliberado, revisitavel se a experiencia real mostrar insuficiencia)
-- [ ] 1.3.2 Implementar contador leve (`wc -l` best-effort) em `posttooluse-agent-usage.sh` ANTES de cada append: se a contagem atual já estiver `>= 500`, pular o append desta linha (fail-open, sem bloquear a tool call) e emitir `log_out` de aviso uma unica vez por onda (guard via arquivo-sentinela `<state-dir>/.wave-agent-usage-cap-warned` criado/removido no mesmo ciclo start/end do sidecar) <!-- depende de 2.1.1 (FASE 2, arquivo ainda nao existe); satisfeita em 2.1.6 -->
+- [x] 1.3.2 Implementar contador leve (`wc -l` best-effort) em `posttooluse-agent-usage.sh` ANTES de cada append: se a contagem atual já estiver `>= 500`, pular o append desta linha (fail-open, sem bloquear a tool call) e emitir aviso uma unica vez por onda (guard via arquivo-sentinela `<state-dir>/.wave-agent-usage-cap-warned` criado aqui; remocao no ciclo start/end fica para a FASE 3) <!-- satisfeita em 2.1.6; DESVIO do texto original: aviso vai para stderr (printf direto), NAO `log_out` (stdout) — contracts/hook-posttooluse-agent-usage.md §3 e MUST literal "NAO escrever em stdout" para este hook (fail-open puro, stdout SEMPRE vazio, mesma politica de posttooluse-tool-call-tick.sh); log_out haveria contradito essa regra dura do proprio contrato -->
 - [x] 1.3.3 Documentar em `data-model.md` §Sidecar o comportamento ao atingir o teto: spawns além do teto ficam fora do agregado da onda (undercounting silencioso conhecido, análogo à tolerância já documentada para a fronteira start/end); o `state-ondas.sh end` reporta `spawns_total` apenas dos observados, nunca fabrica o excedente
-- [ ] 1.3.4 Escrever teste em `tests/test_posttooluse-agent-usage.sh` cobrindo: sidecar com 500 linhas pre-existentes -> hook nao adiciona linha 501 e nao falha (exit 0) <!-- depende de 2.1.1 (FASE 2, arquivo ainda nao existe); satisfeita em 2.1.9 -->
+- [x] 1.3.4 Escrever teste em `tests/test_posttooluse-agent-usage.sh` cobrindo: sidecar com 500 linhas pre-existentes -> hook nao adiciona linha 501 e nao falha (exit 0) <!-- satisfeita em 2.1.9: scenario_cap_500_linhas_nao_adiciona_501 + scenario_cap_sentinela_evita_aviso_duplicado -->
 
 ### 1.4 Registrar decisoes pendentes do dono do produto (nao decidir) `[M]`
 
@@ -66,24 +66,24 @@ Ref: checklists/requirements.md CHK016, CHK024 (`{humano}`)
 
 Ref: plan.md §Project Structure ("CRIAR"); contracts/hook-posttooluse-agent-usage.md
 
-- [ ] 2.1.1 Criar `global/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh`, espelhando a estrutura de `posttooluse-tool-call-tick.sh`: le JSON do stdin, extrai `tool_name`, sai `exit 0` silencioso se `tool_name != "Agent"`
-- [ ] 2.1.2 Implementar deteccao de execucao 00c ativa (REUSO da logica ja existente em `pretooluse-bash-guard.sh` §4 — precedencia `agente-00c` > `feature-00c` por short-name lexicografico); `exit 0` sem interferencia se nenhuma execucao ativa
-- [ ] 2.1.3 Extrair campos do `tool_response` (`agentId`, `status`, `resolvedModel`, `modelsUsed`, `totalTokens`, `usage.*`, `totalToolUseCount`, `totalDurationMs`) e do `tool_input` (`subagent_type`) via `jq` com `// null` em todo acesso (Principio VI — nao inventar campo ausente)
-- [ ] 2.1.4 Derivar `status` (`completo`/`parcial`/`indisponivel`) conforme a state machine de `data-model.md` §State transitions; `indisponivel` **MUST** zerar (== `null`, nunca `0`) todos os campos numericos de uso
-- [ ] 2.1.5 Montar a linha JSON compacta (`jq -c`) do sidecar conforme `contracts/hook-posttooluse-agent-usage.md` §2, garantindo ausencia de `content`/`prompt`/`description` e tamanho < PIPE_BUF
-- [ ] 2.1.6 Aplicar `umask 077` antes do primeiro append (ref: subtarefa 1.2.3) e o cap de 500 linhas (ref: subtarefa 1.3.2) antes de gravar
-- [ ] 2.1.7 Fazer append atomico (`>>`) em `<state-dir>/wave-agent-usage.jsonl`; `source = "live"`, `observed_at` via `date -u +%Y-%m-%dT%H:%M:%SZ`
-- [ ] 2.1.8 Garantir politica fail-open absoluta: sem `set -e`; qualquer falha (jq ausente, stdin invalido, append negado) => `exit 0` silencioso, nunca stderr, nunca bloqueio da tool call
-- [ ] 2.1.9 Escrever `tests/test_posttooluse-agent-usage.sh` cobrindo: matcher `Agent` vs outros tools, execucao ativa vs inativa, `status` completo/parcial/indisponivel, ausencia de `content`/`prompt` na linha gravada, fail-open em jq ausente/stdin invalido, permissao `0600` (subtarefa 1.2.5), cap de 500 linhas (subtarefa 1.3.4)
+- [x] 2.1.1 Criar `global/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh`, espelhando a estrutura de `posttooluse-tool-call-tick.sh`: le JSON do stdin, extrai `tool_name`, sai `exit 0` silencioso se `tool_name != "Agent"`
+- [x] 2.1.2 Implementar deteccao de execucao 00c ativa (REUSO da logica ja existente em `pretooluse-bash-guard.sh` §4 — precedencia `agente-00c` > `feature-00c` por short-name lexicografico); `exit 0` sem interferencia se nenhuma execucao ativa
+- [x] 2.1.3 Extrair campos do `tool_response` (`agentId`, `status`, `resolvedModel`, `modelsUsed`, `totalTokens`, `usage.*`, `totalToolUseCount`, `totalDurationMs`) e do `tool_input` (`subagent_type`) via `jq` com `// null` em todo acesso (Principio VI — nao inventar campo ausente)
+- [x] 2.1.4 Derivar `status` (`completo`/`parcial`/`indisponivel`) conforme a state machine de `data-model.md` §State transitions; `indisponivel` **MUST** zerar (== `null`, nunca `0`) todos os campos numericos de uso
+- [x] 2.1.5 Montar a linha JSON compacta (`jq -c`) do sidecar conforme `contracts/hook-posttooluse-agent-usage.md` §2, garantindo ausencia de `content`/`prompt`/`description` e tamanho < PIPE_BUF
+- [x] 2.1.6 Aplicar `umask 077` antes do primeiro append (ref: subtarefa 1.2.3) e o cap de 500 linhas (ref: subtarefa 1.3.2) antes de gravar
+- [x] 2.1.7 Fazer append atomico (`>>`) em `<state-dir>/wave-agent-usage.jsonl`; `source = "live"`, `observed_at` via `date -u +%Y-%m-%dT%H:%M:%SZ`
+- [x] 2.1.8 Garantir politica fail-open absoluta: sem `set -e`; qualquer falha (jq ausente, stdin invalido, append negado) => `exit 0` silencioso, nunca bloqueio da tool call <!-- "nunca stderr" vale para os caminhos de FALHA (verificado empiricamente: jq ausente e stdin invalido emitem stderr vazio); o UNICO stderr do hook e o aviso de cap deliberado (nota 1.3.2), rate-limited a 1x/onda via sentinela, exigido pelo proprio backlog -->
+- [x] 2.1.9 Escrever `tests/test_posttooluse-agent-usage.sh` cobrindo: matcher `Agent` vs outros tools, execucao ativa vs inativa, `status` completo/parcial/indisponivel, ausencia de `content`/`prompt` na linha gravada, fail-open em jq ausente/stdin invalido, permissao `0600` (subtarefa 1.2.5), cap de 500 linhas (subtarefa 1.3.4) <!-- 18 scenarios, todos verdes via ./tests/run.sh -->
 
 ### 2.2 Provisionar o hook novo `[A]`
 
 Ref: plan.md §Project Structure ("MODIFICAR" settings.snippet.json)
 
-- [ ] 2.2.1 Adicionar entrada `PostToolUse` matcher `Agent` -> `posttooluse-agent-usage.sh` em `global/skills/agente-00c-runtime/hooks/settings.snippet.json`
-- [ ] 2.2.2 Confirmar em `cli/lib/hooks.sh::apply_guard_hooks()` que o hook novo e copiado no provisionamento de projeto (mesmo mecanismo do hook de ticks); ajustar se necessario
-- [ ] 2.2.3 Adicionar isencao existence-guarded do hook novo em `tests/run.sh::_is_internal_test` (precedente literal: linhas 298-303, hooks vivem fora de `scripts/` e por isso quebram a regra 1:1 do `--check-coverage`)
-- [ ] 2.2.4 Estender `tests/cstk/test_hooks.sh` cobrindo o provisionamento do hook novo (arquivo copiado + entrada no settings.snippet.json aplicada)
+- [x] 2.2.1 Adicionar entrada `PostToolUse` matcher `Agent` -> `posttooluse-agent-usage.sh` em `global/skills/agente-00c-runtime/hooks/settings.snippet.json`
+- [x] 2.2.2 Confirmar em `cli/lib/hooks.sh::apply_guard_hooks()` que o hook novo e copiado no provisionamento de projeto (mesmo mecanismo do hook de ticks); ajustar se necessario
+- [x] 2.2.3 Adicionar isencao existence-guarded do hook novo em `tests/run.sh::_is_internal_test` (precedente literal: linhas 298-303, hooks vivem fora de `scripts/` e por isso quebram a regra 1:1 do `--check-coverage`)
+- [x] 2.2.4 Estender `tests/cstk/test_hooks.sh` cobrindo o provisionamento do hook novo (arquivo copiado + entrada no settings.snippet.json aplicada) <!-- scenario_apply_guard_hooks_copia_posttooluse_agent_usage + ghost-check em scenario_apply_guard_hooks_catalogo_antigo_sem_tick -->
 
 ---
 
