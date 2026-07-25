@@ -27,36 +27,36 @@ registro (sem decidir) dos 2 items `{humano}` pendentes (CHK016, CHK024).
 
 Ref: checklists/requirements.md CHK003 `[Gap]`
 
-- [ ] 1.1.1 Adicionar secao explicita `## Fora de Escopo` em `spec.md`, tornando formal as fronteiras hoje implicitas em "Assumptions & Dependencies" (linhas 308-309: schema de armazenamento e formato exato dos campos de captura sao decisao de `/plan`, nao da spec)
-- [ ] 1.1.2 Listar nesta secao, no minimo: schema/formato de persistencia (decisao de plan), custo em dinheiro/token pricing (fora de escopo — ver `feature-00c-feature-orchestrator.md` §"Custo em tokens — NAO inventar", dec-005), dashboard visual (cstk-panel, fora desta feature), qualquer heuristica de estimativa de uso para spawns `indisponivel`
-- [ ] 1.1.3 Rodar `validate-documentation` sobre o `spec.md` atualizado para confirmar que a nova secao nao introduz inconsistencia com o restante do documento
+- [x] 1.1.1 Adicionar secao explicita `## Fora de Escopo` em `spec.md`, tornando formal as fronteiras hoje implicitas em "Assumptions & Dependencies" (linhas 308-309: schema de armazenamento e formato exato dos campos de captura sao decisao de `/plan`, nao da spec)
+- [x] 1.1.2 Listar nesta secao, no minimo: schema/formato de persistencia (decisao de plan), custo em dinheiro/token pricing (fora de escopo — ver `feature-00c-feature-orchestrator.md` §"Custo em tokens — NAO inventar", dec-005), dashboard visual (cstk-panel, fora desta feature), qualquer heuristica de estimativa de uso para spawns `indisponivel`
+- [x] 1.1.3 Rodar `validate-documentation` sobre o `spec.md` atualizado para confirmar que a nova secao nao introduz inconsistencia com o restante do documento
 
 ### 1.2 Definir permissoes de arquivo do sidecar e do knowledge.db `[A]`
 
 Ref: checklists/security.md CHK017 `[Gap]` (gap herdado do padrao pre-existente do toolkit — `posttooluse-tool-call-tick.sh` e `~/.claude/cstk/knowledge.db` ja em producao tambem carecem de requisito documentado; esta feature adiciona dado novo ao mesmo arquivo compartilhado, por isso o gap e resolvido aqui em vez de so herdado)
 
-- [ ] 1.2.1 Documentar em `data-model.md` §Sidecar a permissao de criacao do arquivo `wave-agent-usage.jsonl`: `0600` (leitura/escrita apenas do dono do processo), criado pelo hook via `umask 077` antes do primeiro append, mesma politica aplicavel retroativamente ao sidecar irmao `tool-call-ticks.log`
-- [ ] 1.2.2 Documentar a mesma politica (`0600`) para `~/.claude/cstk/knowledge.db`, aplicada na criacao (`sqlite3 ... "PRAGMA ..."` ja usada em `recall.sh`) — sem alterar permissao de um DB ja existente com permissao mais aberta (evitar quebrar setups locais existentes; apenas `chmod` best-effort se detectado mais aberto que `0600`, log via `log_out`, nunca falha)
-- [ ] 1.2.3 Implementar `umask 077` (ou `chmod 600` pos-criacao) em `posttooluse-agent-usage.sh` antes do primeiro append ao sidecar
-- [ ] 1.2.4 Implementar checagem best-effort de permissao do `knowledge.db` em `cli/lib/recall.sh` (na abertura de conexao/migracao), com `chmod 600` corretivo se o arquivo estiver mais aberto — nunca bloqueia, apenas normaliza e loga
-- [ ] 1.2.5 Escrever teste em `tests/test_posttooluse-agent-usage.sh` verificando que o sidecar criado tem permissao `0600` (via `stat` portavel POSIX/macOS+Linux)
-- [ ] 1.2.6 Escrever teste em `tests/cstk/test_recall.sh` verificando que o `knowledge.db` criado do zero tem permissao `0600`
+- [x] 1.2.1 Documentar em `data-model.md` §Sidecar a permissao de criacao do arquivo `wave-agent-usage.jsonl`: `0600` (leitura/escrita apenas do dono do processo), criado pelo hook via `umask 077` antes do primeiro append, mesma politica aplicavel retroativamente ao sidecar irmao `tool-call-ticks.log`
+- [x] 1.2.2 Documentar a mesma politica (`0600`) para `~/.claude/cstk/knowledge.db`, aplicada na criacao (`sqlite3 ... "PRAGMA ..."` ja usada em `recall.sh`) — sem alterar permissao de um DB ja existente com permissao mais aberta (evitar quebrar setups locais existentes; apenas `chmod` best-effort se detectado mais aberto que `0600`, log via `log_out`, nunca falha)
+- [ ] 1.2.3 Implementar `umask 077` (ou `chmod 600` pos-criacao) em `posttooluse-agent-usage.sh` antes do primeiro append ao sidecar <!-- depende de 2.1.1 (FASE 2, arquivo ainda nao existe); satisfeita em 2.1.6 -->
+- [x] 1.2.4 Implementar checagem best-effort de permissao do `knowledge.db` em `cli/lib/recall.sh` (na abertura de conexao/migracao), com `chmod 600` corretivo se o arquivo estiver mais aberto — nunca bloqueia, apenas normaliza e loga
+- [ ] 1.2.5 Escrever teste em `tests/test_posttooluse-agent-usage.sh` verificando que o sidecar criado tem permissao `0600` (via `stat` portavel POSIX/macOS+Linux) <!-- depende de 2.1.1 (FASE 2, arquivo ainda nao existe); satisfeita em 2.1.9 -->
+- [x] 1.2.6 Escrever teste em `tests/cstk/test_recall.sh` verificando que o `knowledge.db` criado do zero tem permissao `0600`
 
 ### 1.3 Definir teto de linhas/spawns do sidecar antes do reset `[A]`
 
 Ref: checklists/security.md CHK020 `[Gap]` (achado do gate `owasp-security`, dec-035, severidade INFO/LOW — nao bloqueia, mas fica registrado para create-tasks avaliar um contador leve)
 
-- [ ] 1.3.1 Definir e documentar em `research.md` §Decision 5 o teto: **500 linhas** por onda no sidecar `wave-agent-usage.jsonl` (ordem de grandeza generosa acima do "poucos spawns por onda" do plan §Scale/Scope; numero magico deliberado, revisitavel se a experiencia real mostrar insuficiencia)
-- [ ] 1.3.2 Implementar contador leve (`wc -l` best-effort) em `posttooluse-agent-usage.sh` ANTES de cada append: se a contagem atual já estiver `>= 500`, pular o append desta linha (fail-open, sem bloquear a tool call) e emitir `log_out` de aviso uma unica vez por onda (guard via arquivo-sentinela `<state-dir>/.wave-agent-usage-cap-warned` criado/removido no mesmo ciclo start/end do sidecar)
-- [ ] 1.3.3 Documentar em `data-model.md` §Sidecar o comportamento ao atingir o teto: spawns além do teto ficam fora do agregado da onda (undercounting silencioso conhecido, análogo à tolerância já documentada para a fronteira start/end); o `state-ondas.sh end` reporta `spawns_total` apenas dos observados, nunca fabrica o excedente
-- [ ] 1.3.4 Escrever teste em `tests/test_posttooluse-agent-usage.sh` cobrindo: sidecar com 500 linhas pre-existentes -> hook nao adiciona linha 501 e nao falha (exit 0)
+- [x] 1.3.1 Definir e documentar em `research.md` §Decision 5 o teto: **500 linhas** por onda no sidecar `wave-agent-usage.jsonl` (ordem de grandeza generosa acima do "poucos spawns por onda" do plan §Scale/Scope; numero magico deliberado, revisitavel se a experiencia real mostrar insuficiencia)
+- [ ] 1.3.2 Implementar contador leve (`wc -l` best-effort) em `posttooluse-agent-usage.sh` ANTES de cada append: se a contagem atual já estiver `>= 500`, pular o append desta linha (fail-open, sem bloquear a tool call) e emitir `log_out` de aviso uma unica vez por onda (guard via arquivo-sentinela `<state-dir>/.wave-agent-usage-cap-warned` criado/removido no mesmo ciclo start/end do sidecar) <!-- depende de 2.1.1 (FASE 2, arquivo ainda nao existe); satisfeita em 2.1.6 -->
+- [x] 1.3.3 Documentar em `data-model.md` §Sidecar o comportamento ao atingir o teto: spawns além do teto ficam fora do agregado da onda (undercounting silencioso conhecido, análogo à tolerância já documentada para a fronteira start/end); o `state-ondas.sh end` reporta `spawns_total` apenas dos observados, nunca fabrica o excedente
+- [ ] 1.3.4 Escrever teste em `tests/test_posttooluse-agent-usage.sh` cobrindo: sidecar com 500 linhas pre-existentes -> hook nao adiciona linha 501 e nao falha (exit 0) <!-- depende de 2.1.1 (FASE 2, arquivo ainda nao existe); satisfeita em 2.1.9 -->
 
 ### 1.4 Registrar decisoes pendentes do dono do produto (nao decidir) `[M]`
 
 Ref: checklists/requirements.md CHK016, CHK024 (`{humano}`)
 
-- [ ] 1.4.1 Adicionar em `spec.md` (ou em nota de rodape de `plan.md` §Riscos) um bloco "Decisoes aguardando dono do produto": (a) CHK016 — se a meta 100% de SC-001/SC-004 permanece formalmente correta mesmo com ~50% dos spawns reais sem `usage` (`async_launched`), e como comunicar essa condicional sem parecer metrica quebrada; (b) CHK024 — se a ausencia deliberada de alvo numerico de performance/latencia e aceitavel para este release ou se o operador quer um teto explicito
-- [ ] 1.4.2 NAO implementar nenhuma resposta hipotetica para CHK016/CHK024 nesta fase — registrar apenas o texto da pergunta e o estado atual (spec/plan ja documentam honestamente a ausencia/condicional); a resolucao fica para o operador decidir antes ou durante `review-task` final
+- [x] 1.4.1 Adicionar em `spec.md` (ou em nota de rodape de `plan.md` §Riscos) um bloco "Decisoes aguardando dono do produto": (a) CHK016 — se a meta 100% de SC-001/SC-004 permanece formalmente correta mesmo com ~50% dos spawns reais sem `usage` (`async_launched`), e como comunicar essa condicional sem parecer metrica quebrada; (b) CHK024 — se a ausencia deliberada de alvo numerico de performance/latencia e aceitavel para este release ou se o operador quer um teto explicito
+- [x] 1.4.2 NAO implementar nenhuma resposta hipotetica para CHK016/CHK024 nesta fase — registrar apenas o texto da pergunta e o estado atual (spec/plan ja documentam honestamente a ausencia/condicional); a resolucao fica para o operador decidir antes ou durante `review-task` final
 
 ---
 

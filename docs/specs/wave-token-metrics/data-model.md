@@ -194,6 +194,34 @@ Espelha o contrato ja existente de `<state-dir>/tool-call-ticks.log`
 | Janela | start -> end da onda corrente |
 | Perda aceita | Spawns na fronteira exata start/end — mesma tolerancia ja documentada para o sidecar de ticks |
 
+### Permissao de arquivo `[PROPOSTA]` (CHK017)
+
+O sidecar `wave-agent-usage.jsonl` **MUST** ser criado com permissao `0600`
+(leitura/escrita apenas do dono do processo) — dado numerico agregavel por
+onda, sem `content`/`prompt`, mas ainda assim superficie a minimizar por
+padrao (defesa em profundidade, nao porque o conteudo seja sensivel por si).
+O hook `posttooluse-agent-usage.sh` aplica `umask 077` imediatamente antes do
+primeiro append de cada arquivo (o primeiro append cria o arquivo se ausente;
+`umask` so afeta a criacao, nao um arquivo ja existente). Mesma politica
+retroativa se aplica ao sidecar irmao `<state-dir>/tool-call-ticks.log` — gap
+herdado do padrao pre-existente do toolkit, resolvido aqui porque esta
+feature adiciona dado novo ao mesmo mecanismo compartilhado.
+
+### Teto de linhas `[PROPOSTA]` (CHK020)
+
+O sidecar aceita no maximo **500 linhas** por onda (ver `research.md`
+§Decision 5 para a justificativa do numero). Ao atingir o teto, o hook
+`posttooluse-agent-usage.sh` **pula** o append de qualquer linha adicional
+(fail-open — a tool call do spawn nunca e bloqueada) e emite um aviso unico
+por onda via arquivo-sentinela `<state-dir>/.wave-agent-usage-cap-warned`
+(criado/removido no mesmo ciclo `start`/`end` do sidecar). Consequencia
+direta para o consumidor: spawns alem do teto ficam fora do agregado da
+onda — undercounting silencioso conhecido, analogo a tolerancia ja
+documentada acima para a fronteira exata start/end. `state-ondas.sh end`
+reporta `spawns_total` (e os demais campos de `.waves[].agent_usage`) apenas
+com base nas linhas de fato observadas no sidecar; nunca fabrica ou estima o
+excedente pulado (Principio VI).
+
 ---
 
 ## Extensao do knowledge.db: v9 -> v10
@@ -236,6 +264,18 @@ spawn. Motivo: a tabela `waves` tem grao de onda (`UNIQUE(project, feature,
 wave, source_id)`), e o detalhe por spawn permanece consultavel no `state.json`
 da execucao. Uma tabela `spawns` dedicada seria a extensao natural caso o
 detalhe cross-projeto vire requisito — fora do escopo desta feature.
+
+### Permissao de arquivo `[PROPOSTA]` (CHK017)
+
+`~/.claude/cstk/knowledge.db` **MUST** ser criado com permissao `0600` — mesma
+politica do sidecar acima, ja que o DB agrega, entre outras colunas
+pre-existentes, dado novo de uso de tokens por onda. Aplicado em
+`recall_apply_schema()`/`recall_ensure_db_dir()` (`cli/lib/recall.sh`), na
+mesma sequencia ja usada para as `PRAGMA` de abertura. **Nao altera** a
+permissao de um DB ja existente com modo mais aberto silenciosamente: normaliza
+via `chmod 600` best-effort e loga via `log_warn` (nunca falha a ingestao/
+reindex por causa disso) — evita quebrar setups locais existentes com um erro
+inesperado, ao mesmo tempo que corrige o desvio na proxima escrita.
 
 ---
 

@@ -242,6 +242,32 @@ maior severidade:
   mesma exposicao. Mitigacao: o relatorio distingue "0 spawns" de "metrica nao
   coletada", e `cstk doctor` e o lugar natural para sinalizar a ausencia.
 
+### Decisoes aguardando dono do produto (CHK016/CHK024 `{humano}`)
+
+Registro apenas — nenhuma resposta hipotetica foi implementada para os dois
+itens abaixo (checklists/requirements.md CHK016 e CHK024). A resolucao fica
+para o operador decidir antes ou durante `review-task` final desta feature:
+
+- **CHK016**: a meta de 100% de SC-001/SC-004 (todo spawn concluido gera uma
+  metrica no relatorio, e todo spawn sem dado observavel e marcado
+  explicitamente `indisponivel`) permanece formalmente correta mesmo sabendo
+  que ~50% dos spawns reais de hoje nao tem `usage` (`status = async_launched`,
+  ver R1 acima) — o "100%" e sobre cobertura de MARCACAO (nunca um numero
+  fabricado no lugar de um dado ausente), nao sobre cobertura de DADO REAL.
+  Pergunta em aberto: essa condicional precisa ser comunicada de forma mais
+  explicita no relatorio da feature (ex: "100% marcado, X% com dado real") para
+  nao parecer uma metrica quebrada ao operador que le so o resumo?
+- **CHK024**: a spec/plano nao definem um alvo numerico de
+  performance/latencia para a captura (hook `PostToolUse` + agregacao em
+  `state-ondas.sh end`) — ausencia deliberada, documentada honestamente em vez
+  de inventada. Pergunta em aberto: essa ausencia e aceitavel para este
+  release, ou o operador quer um teto explicito (ex: hook `MUST` completar em
+  <N ms fail-open) antes de `execute-task` seguir para as fases de codigo?
+
+Nenhuma das duas perguntas bloqueia o inicio de `execute-task` (FASE 1 apenas
+registra o texto e o estado atual); ambas precisam de resposta humana antes do
+fechamento de `review-task`.
+
 ## Re-check pos-Phase 1
 
 Revalidacao apos o design (Etapa 7):

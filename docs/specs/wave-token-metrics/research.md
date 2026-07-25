@@ -264,6 +264,22 @@ agregar.
 `_so_ticks_reset` (`state-ondas.sh:235`, chamado em `:282` no start e `:417`
 no end). Janela de contagem = start→end, igual ao sidecar de ticks.
 
+**Teto de linhas (CHK020, achado do gate `owasp-security`, dec-035,
+severidade INFO/LOW)**: o sidecar aceita no maximo **500 linhas** por onda.
+Numero magico deliberado — ordem de grandeza generosa acima do "poucos
+spawns por onda" ja descrito em `plan.md` §Scale/Scope, revisitavel se a
+experiencia real mostrar insuficiencia (mesmo espirito do cap de 10
+invocacoes de model-routing por onda, ja precedente no toolkit). O hook
+checa a contagem atual (`wc -l` best-effort) ANTES de cada append: se ja
+`>= 500`, pula o append desta linha (fail-open — nunca bloqueia a tool
+call) e emite um `log_out` de aviso uma unica vez por onda, guardado por
+um arquivo-sentinela `<state-dir>/.wave-agent-usage-cap-warned` criado no
+`start` e removido no `end` (mesmo ciclo de vida do sidecar). Spawns alem
+do teto ficam fora do agregado da onda — undercounting silencioso
+conhecido e aceito, analogo a tolerancia ja documentada acima para a
+fronteira exata start/end. `state-ondas.sh end` reporta `spawns_total`
+apenas dos observados no sidecar, nunca fabrica o excedente (Principio VI).
+
 ---
 
 ## Decision 6 — Agregacao em `state-ondas.sh end` (ponto ja existente)

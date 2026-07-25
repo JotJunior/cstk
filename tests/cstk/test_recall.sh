@@ -18,6 +18,7 @@
 #   13b payload adversarial de injecao na busca (A05/CWE-89)
 #   13c payload adversarial de injecao na ingestao
 #   14 concorrencia WAL best-effort (FR-016)
+#   15 permissao 0600 no knowledge.db criado do zero (CHK017, wave-token-metrics)
 #
 # DB de teste sempre em $TMPDIR_TEST (--db), nunca o indice global.
 # Fixtures de bytes crus (NUL) usam escape OCTAL \000, nunca hex \xHH.
@@ -393,6 +394,50 @@ scenario_14_concorrencia_wal() {
   # graciosa). Aceitamos >=1 feature (best-effort) e exigimos integridade.
   _feats=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(DISTINCT feature) FROM decisions" 2>/dev/null)
   [ "${_feats:-0}" -ge 1 ] || { _fail "concorrencia conteudo" "nenhuma feature ingerida"; return 1; }
+}
+
+# _file_mode PATH -> imprime o modo octal do arquivo, portavel BSD/GNU.
+_file_mode() {
+  stat -f '%Lp' -- "$1" 2>/dev/null || stat -c '%a' -- "$1" 2>/dev/null
+}
+
+# =========================================================================
+# Cenario 15 — Permissao 0600 no knowledge.db criado do zero (CHK017,
+# feature wave-token-metrics, subtarefas 1.2.4/1.2.6). Cobre tanto --ingest
+# (recall_apply_schema cria o arquivo pela primeira vez) quanto --reindex
+# (apaga e recria do zero) e a normalizacao best-effort de um DB PRE-EXISTENTE
+# com permissao mais aberta (recall_normalize_db_perms nao falha o caller).
+# =========================================================================
+scenario_15_permissao_0600_knowledge_db() {
+  _have_deps || return 0
+  # HOME isolado em $TMPDIR_TEST (via _rc_home, nao _rc): --ingest/--reindex
+  # tambem varrem ~/.claude/projects/*/memory/ para memorias (recall_mode_ingest/
+  # recall_mode_reindex); sem isolar HOME, a varredura cai na arvore REAL do
+  # operador (potencialmente grande) em vez do tmpdir do teste — mesmo padrao
+  # ja usado alhures neste arquivo (scenarios TP1-TP3, _rc_home_fake).
+  # (a) --ingest cria o DB do zero -> 0600.
+  _write_state "$TMPDIR_TEST/perm1" "/home/u/permproj" "permfeat"
+  _p1_db="$TMPDIR_TEST/perm1.db"
+  capture _rc_home "$TMPDIR_TEST" --ingest --state-dir "$TMPDIR_TEST/perm1" --db "$_p1_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "perm ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  _p1_mode=$(_file_mode "$_p1_db")
+  [ "$_p1_mode" = "600" ] || { _fail "perm ingest modo" "esperado 600, obtido '$_p1_mode'"; return 1; }
+
+  # (b) --reindex apaga e recria do zero -> 0600.
+  capture _rc_home "$TMPDIR_TEST" --reindex --states-root "$TMPDIR_TEST/perm1" --db "$_p1_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "perm reindex exit" "$_CAPTURED_EXIT"; return 1; }
+  _p1_mode2=$(_file_mode "$_p1_db")
+  [ "$_p1_mode2" = "600" ] || { _fail "perm reindex modo" "esperado 600, obtido '$_p1_mode2'"; return 1; }
+
+  # (c) DB pre-existente com permissao mais aberta -> normalizado, sem falhar.
+  _p2_db="$TMPDIR_TEST/perm2.db"
+  : > "$_p2_db"
+  chmod 644 "$_p2_db" 2>/dev/null || { _fail "perm setup chmod 644" "falhou"; return 1; }
+  _write_state "$TMPDIR_TEST/perm2" "/home/u/permproj2" "permfeat2"
+  capture _rc_home "$TMPDIR_TEST" --ingest --state-dir "$TMPDIR_TEST/perm2" --db "$_p2_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "perm normalizacao exit" "$_CAPTURED_EXIT"; return 1; }
+  _p2_mode=$(_file_mode "$_p2_db")
+  [ "$_p2_mode" = "600" ] || { _fail "perm normalizacao modo" "esperado 600, obtido '$_p2_mode'"; return 1; }
 }
 
 # =========================================================================

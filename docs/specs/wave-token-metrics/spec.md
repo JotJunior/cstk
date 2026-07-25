@@ -307,3 +307,28 @@ capturado ao vivo.
   spawn) e um canal diferente, nao testado por aquela decisao anterior.
 - Esta feature nao especifica o schema de armazenamento nem o formato
   exato dos campos de captura — isso e decisao tecnica de `/plan`.
+
+## Fora de Escopo
+
+As fronteiras abaixo tornam formal o que ja estava implicito em
+"Assumptions & Dependencies" (CHK003):
+
+- **Schema/formato de persistencia**: o formato exato da linha do sidecar,
+  as colunas novas do `knowledge.db` e os campos de `state.json` sao
+  decisao tecnica de `/plan` (ja referenciado acima), nao desta spec.
+- **Custo em dinheiro / precificacao de tokens**: fora de escopo desta
+  feature. Decisao historica ja registrada no toolkit conclui que "a
+  harness nao expoe contabilidade de tokens/preco a scripts/env" e que
+  nenhum orquestrador MUST inventar custo em `$` (ver
+  `agente-00c-feature-orchestrator.md` §"Custo em tokens — NAO
+  inventar", dec-005). Esta feature captura contagem de tokens
+  (input/output/cache), nunca valor monetario.
+- **Dashboard visual**: qualquer apresentacao grafica/visual dos dados
+  capturados (series temporais, graficos por modelo, etc.) pertence ao
+  `cstk-panel` — fora desta feature, que entrega apenas captura +
+  agregacao + relatorio textual.
+- **Heuristica de estimativa para spawns `indisponivel`**: esta feature
+  NUNCA estima, infere ou preenche um valor aproximado quando o dado real
+  de uso nao esta disponivel (Constitution Principio VI, SC-004). Um
+  spawn sem dado observavel permanece marcado `indisponivel`,
+  nunca recebe um numero calculado/estimado em seu lugar.

@@ -608,6 +608,25 @@ recall_ensure_db_dir() {
   return 0
 }
 
+# recall_normalize_db_perms DB_PATH -> best-effort: garante permissao 0600 no
+# arquivo do indice (~/.claude/cstk/knowledge.db ou --db custom). Fecha o gap
+# CHK017 (feature wave-token-metrics, subtarefas 1.2.2/1.2.4): o DB e criado
+# pelo processo do operador (mesma politica ja documentada para o sidecar
+# irmao wave-agent-usage.jsonl, data-model.md §Sidecar). NAO altera um DB ja
+# existente com permissao mais aberta silenciosamente sem log — normaliza via
+# chmod 600 e avisa uma vez via log_warn. Nunca bloqueia o caller: ausencia de
+# `stat` portavel, arquivo inexistente ou chmod negado degradam para no-op.
+recall_normalize_db_perms() {
+  [ -f "$1" ] || return 0
+  _ndp_mode=$(stat -f '%Lp' -- "$1" 2>/dev/null) || _ndp_mode=$(stat -c '%a' -- "$1" 2>/dev/null) || _ndp_mode=""
+  [ -n "$_ndp_mode" ] || return 0
+  [ "$_ndp_mode" = "600" ] && return 0
+  if chmod 600 -- "$1" 2>/dev/null; then
+    log_warn "recall: permissao do indice ($1) era $_ndp_mode, normalizada para 600"
+  fi
+  return 0
+}
+
 # recall_apply_schema DB_PATH -> aplica pragmas + (migracao v7 one-time) + DDL.
 # Roteado pelo retry/backoff (FR-016) porque CREATE TABLE/VIRTUAL TABLE sao
 # escritas e podem contender com outra ingestao concorrente no mesmo DB
@@ -1813,6 +1832,7 @@ recall_mode_ingest() {
     log_warn "recall: falha ao aplicar schema em $_ing_db; ingestao pulada"
     return "$RECALL_EXIT_OK"
   }
+  recall_normalize_db_perms "$_ing_db"
 
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
@@ -2211,6 +2231,7 @@ recall_mode_reindex() {
     log_warn "recall: falha ao recriar schema em $_rx_db; reindex pulado"
     return "$RECALL_EXIT_OK"
   }
+  recall_normalize_db_perms "$_rx_db"
 
   # Raiz de varredura: --states-root ou descoberta padrao (HOME + cwd).
   if [ -z "$_rx_states_root" ]; then
