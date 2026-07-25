@@ -93,13 +93,13 @@ Ref: plan.md §Project Structure ("MODIFICAR" settings.snippet.json)
 
 Ref: data-model.md §"Extensoes ao state.json"; contracts/wave-usage-report.md §4
 
-- [ ] 3.1.1 Em `state-ondas.sh start`, garantir reset do sidecar `wave-agent-usage.jsonl` (espelhando `_so_ticks_reset`) e remocao do sentinela de cap-warned (subtarefa 1.3.2)
-- [ ] 3.1.2 Em `state-ondas.sh end`, ler o sidecar da onda corrente e agregar em `WaveUsage`: `spawns_total`, `spawns_with_usage`, `spawns_unavailable`, somas de `total_tokens`/`input_tokens`/`output_tokens`/`cache_read_input_tokens`/`cache_creation_input_tokens`/`tool_use_count`/`duration_ms` (soma **apenas** sobre spawns com dado; `null` quando `spawns_with_usage == 0` — nunca `0` fabricado)
-- [ ] 3.1.3 Gravar o agregado em `.waves[N].agent_usage` e o array bruto de `SpawnUsage` em `.waves[N].agent_spawns[]`
-- [ ] 3.1.4 Incrementar `.accumulated_metrics.agent_spawns_total`, `.agent_spawns_with_usage_total`, `.agent_tokens_total`, `.agent_tool_use_count_total`, `.agent_duration_ms_total` no mesmo `jq` do `end` (padrao `(.campo // 0) + incremento` para retro-compatibilidade)
-- [ ] 3.1.5 Resetar o sidecar apos a agregacao (mesmo ciclo de vida do sidecar de ticks: reset em `start` e em `end`)
-- [ ] 3.1.6 Garantir retro-compatibilidade: onda sem sidecar (feature anterior a esta) produz `agent_usage: null`, `agent_spawns: []`, sem erro
-- [ ] 3.1.7 Estender `tests/test_state-ondas.sh` cobrindo: agregacao com spawns completos/parciais/indisponiveis misturados, onda sem sidecar (retro-compat), reset do sidecar em start/end, incremento correto de `.accumulated_metrics`
+- [x] 3.1.1 Em `state-ondas.sh start`, garantir reset do sidecar `wave-agent-usage.jsonl` (espelhando `_so_ticks_reset`) e remocao do sentinela de cap-warned (subtarefa 1.3.2)
+- [x] 3.1.2 Em `state-ondas.sh end`, ler o sidecar da onda corrente e agregar em `WaveUsage`: `spawns_total`, `spawns_with_usage`, `spawns_unavailable`, somas de `total_tokens`/`input_tokens`/`output_tokens`/`cache_read_input_tokens`/`cache_creation_input_tokens`/`tool_use_count`/`duration_ms` (soma **apenas** sobre spawns com dado; `null` quando `spawns_with_usage == 0` — nunca `0` fabricado)
+- [x] 3.1.3 Gravar o agregado em `.waves[N].agent_usage` e o array bruto de `SpawnUsage` em `.waves[N].agent_spawns[]`
+- [x] 3.1.4 Incrementar `.accumulated_metrics.agent_spawns_total`, `.agent_spawns_with_usage_total`, `.agent_tokens_total`, `.agent_tool_use_count_total`, `.agent_duration_ms_total` no mesmo `jq` do `end` (padrao `(.campo // 0) + incremento` para retro-compatibilidade) <!-- campos nullable (agent_tokens_total/agent_tool_use_count_total/agent_duration_ms_total) usam helper add_null (delta null preserva o acumulado existente) em vez do padrao `// 0` simples, para nao fabricar 0 quando a onda nao contribui dado -->
+- [x] 3.1.5 Resetar o sidecar apos a agregacao (mesmo ciclo de vida do sidecar de ticks: reset em `start` e em `end`)
+- [x] 3.1.6 Garantir retro-compatibilidade: onda sem sidecar (feature anterior a esta) produz `agent_usage: null`, `agent_spawns: []`, sem erro
+- [x] 3.1.7 Estender `tests/test_state-ondas.sh` cobrindo: agregacao com spawns completos/parciais/indisponiveis misturados, onda sem sidecar (retro-compat), reset do sidecar em start/end, incremento correto de `.accumulated_metrics` <!-- 9 scenarios novos (70 total no arquivo, todos verdes); inclui cenario extra de linhas corrompidas no sidecar (resiliencia via `jq -R -n '[inputs | fromjson?]'`) e cenario de nao-fabricacao de 0 quando todos os spawns sao indisponivel -->
 
 ---
 
