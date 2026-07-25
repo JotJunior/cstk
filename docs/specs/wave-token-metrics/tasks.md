@@ -109,10 +109,10 @@ Ref: data-model.md §"Extensoes ao state.json"; contracts/wave-usage-report.md �
 
 Ref: contracts/wave-usage-report.md §2/§3
 
-- [ ] 4.1.1 Criar `global/skills/agente-00c-runtime/scripts/wave-usage-report.sh` com subcomando `aggregate --state-dir <DIR>` produzindo saida Markdown (default) conforme `contracts/wave-usage-report.md` §2.1, respeitando o invariante de honestidade SC-004 (exibir `spawns_total`/`spawns_with_usage`/`spawns_unavailable` juntos sempre que `spawns_unavailable > 0`)
-- [ ] 4.1.2 Implementar saida `--json` (contracts §2.2) com o mesmo agregado em formato maquina-legivel
-- [ ] 4.1.3 Implementar subcomando `backfill` (US4/FR-010/FR-011) conforme contracts §3 — ver detalhamento na FASE 7
-- [ ] 4.1.4 Escrever `tests/test_wave-usage-report.sh` cobrindo `aggregate` (Markdown + JSON), casos de zero spawns vs "metrica nao coletada" (research Decision 10), e o invariante SC-004
+- [x] 4.1.1 Criar `global/skills/agente-00c-runtime/scripts/wave-usage-report.sh` com subcomando `aggregate --state-dir <DIR>` produzindo saida Markdown (default) conforme `contracts/wave-usage-report.md` §2.1, respeitando o invariante de honestidade SC-004 (exibir `spawns_total`/`spawns_with_usage`/`spawns_unavailable` juntos sempre que `spawns_unavailable > 0`)
+- [x] 4.1.2 Implementar saida `--json` (contracts §2.2) com o mesmo agregado em formato maquina-legivel
+- [ ] 4.1.3 Implementar subcomando `backfill` (US4/FR-010/FR-011) conforme contracts §3 — ver detalhamento na FASE 7. **DEFERIDO**: nao implementado nesta FASE 4 (onda-010) — a implementacao real (heuristica de janela temporal + recusa explicita + testes) e o proprio conteudo das tarefas 7.1.1-7.1.5; ate FASE 7 rodar, `backfill` cai no dispatch de "subcomando desconhecido" (exit 2), documentado no cabecalho do script
+- [x] 4.1.4 Escrever `tests/test_wave-usage-report.sh` cobrindo `aggregate` (Markdown + JSON), casos de zero spawns vs "metrica nao coletada" (research Decision 10), e o invariante SC-004 — 17/17 cenarios verdes, Markdown validado byte-a-byte contra o exemplo do contrato
 
 ### 4.2 Estender `report.sh` §1/§2 `[M]`
 
