@@ -9,6 +9,10 @@
 ### Session 2026-07-25
 
 - Q: Esta feature deve ESTENDER a infraestrutura de metricas por onda ja existente no toolkit (adicionando granularidade por spawn) ou introduzir um mecanismo de captura/armazenamento novo e independente? → A: Estender a infraestrutura ja existente, adicionando granularidade por spawn — mesmo padrao ja usado para tool_calls (fail-open, sidecar por onda, nunca bloqueia a orquestracao).
+- Q: Quando um spawn de subagente falha/aborta antes de completar, a metrica de tokens desse spawn deve ser capturada parcialmente (ate o ponto da falha, marcada explicitamente "parcial") ou sempre marcada como indisponivel? → A: Parcial somente se observavel no transcript/tool result (marcada explicitamente "parcial"); sem dado observavel = "indisponivel". Nunca estimar/fabricar (Constitution Principio VI).
+- Q: A Metrica de Uso de Spawn precisa de um identificador de execucao explicito (alem de onda/feature/projeto) para garantir atribuicao correta sob execucoes concorrentes no mesmo projeto? → A: Sim, incluir identificador de execucao explicito na Metrica de Uso de Spawn — precedente: coluna `session` do knowledge.db v8 (feature `recall-worktree-identity`).
+- Q: Quando um spawn nao teve nenhum modelo roteado via model-routing (ex.: mediacao inline degradada, sem spawn real), a metrica de tokens desse spawn deve ser capturada mesmo assim (so sem correlacao de modelo) ou fica fora do escopo desta feature? → A: Capturar sempre, com o campo de modelo marcado explicitamente como "nao-aplicavel" quando nao houve roteamento — alinhado a FR-001/FR-002 (MUST incondicionais).
+- Q: A metrica de tokens por spawn deve ser um total unico agregado, ou detalhada por categoria (input/output/cache-read/cache-write)? → A: Total agregado + breakdown por categoria (input, output, cache-read, cache-creation), a partir do campo `usage` ja presente no `toolUseResult` — custos por categoria diferem significativamente entre si.
 
 ## User Scenarios & Testing
 
@@ -137,10 +141,13 @@ capturado ao vivo.
 
 ### Edge Cases
 
-- O que acontece quando um spawn de subagente falha/aborta antes de
-  retornar (nunca completa)? O consumo parcial ate o momento da falha deve
-  ser capturado, ou a metrica fica marcada como indisponivel para esse
-  spawn especifico?
+- Quando um spawn de subagente falha/aborta antes de retornar (nunca
+  completa): o consumo parcial ate o momento da falha e capturado somente
+  se estiver observavel na fonte de dados (transcript/tool result), sendo
+  marcado explicitamente como "parcial"; quando nenhum dado observavel
+  existe, a metrica fica marcada como "indisponivel" para esse spawn
+  especifico — nunca estimada (RESOLVIDO nesta sessao, ver bloco
+  "Clarifications").
 - O que acontece quando o dado de uso do subagente simplesmente nao esta
   disponivel para captura (ambiente degradado, fonte de dados ausente)? A
   onda continua normalmente, so sem aquela metrica (ver FR-008)?
@@ -150,9 +157,11 @@ capturado ao vivo.
 - O que acontece quando o operador tenta reconstruir retroativamente
   (US4) uma execucao cujos dados de sessao originais ja foram removidos do
   disco? (ver Acceptance Scenario 2 da US4)
-- O que acontece quando duas execucoes rodam concorrentemente sobre o
-  mesmo projeto — a atribuicao de consumo por onda continua correta sem
-  misturar spawns de execucoes diferentes?
+- Quando duas execucoes rodam concorrentemente sobre o mesmo projeto: a
+  Metrica de Uso de Spawn carrega um identificador de execucao explicito
+  (alem de onda/feature/projeto), garantindo que a atribuicao de consumo
+  por onda nao mistura spawns de execucoes diferentes (RESOLVIDO nesta
+  sessao, ver bloco "Clarifications").
 
 ## Requirements
 
@@ -160,13 +169,19 @@ capturado ao vivo.
 
 - **FR-001**: O sistema MUST capturar, para cada spawn de subagente que
   completa dentro de uma onda de orquestracao autonoma, uma metrica de
-  tokens consumidos associada aquele spawn.
+  tokens consumidos associada aquele spawn, composta por um total agregado
+  e um breakdown por categoria (input, output, cache-read,
+  cache-creation), a partir do campo `usage` do resultado da tool call de
+  spawn quando disponivel.
 - **FR-002**: O sistema MUST capturar, para cada spawn de subagente que
   completa dentro de uma onda, uma metrica de contagem de tool-uses e uma
   metrica de duracao associadas aquele spawn.
 - **FR-003**: O sistema MUST associar cada metrica de spawn capturada a
-  onda, a feature/projeto e, quando aplicavel, ao modelo que foi roteado
-  para aquele spawn.
+  onda, ao identificador de execucao, a feature/projeto e ao modelo que
+  foi roteado para aquele spawn. O campo de modelo MUST estar sempre
+  presente na metrica; quando o spawn nao teve nenhum modelo roteado
+  (ex.: mediacao inline degradada), o campo MUST ser preenchido com o
+  valor explicito "nao-aplicavel", nunca omitido.
 - **FR-004**: As metricas de spawn capturadas MUST permanecer consultaveis
   apos o encerramento da sessao de orquestracao (nao apenas visiveis
   durante a conversa ao vivo).
@@ -197,6 +212,13 @@ capturado ao vivo.
   execucao cujos dados de sessao originais ja nao existem mais em disco, o
   sistema MUST informar explicitamente que aquela execucao nao pode ser
   reconstruida, em vez de preencher a metrica com um valor estimado.
+- **FR-012**: Quando um spawn de subagente falha/aborta antes de completar,
+  o sistema MUST capturar a metrica parcial de tokens/tool-uses/duracao
+  daquele spawn somente se esse dado parcial estiver observavel na fonte
+  de dados subjacente (transcript/resultado da tool call), marcando-a
+  explicitamente como "parcial"; caso nenhum dado observavel exista, a
+  metrica MUST ser marcada como "indisponivel" — nunca estimada
+  (Constitution Principio VI).
 
 > Decisoes de infraestrutura: N/A alem do already-coberto por FR-008/FR-009
 > (best-effort + nao-fabricacao) — a feature nao introduz scheduling,
@@ -208,10 +230,16 @@ capturado ao vivo.
 ### Key Entities
 
 - **Metrica de Uso de Spawn**: registro do consumo observado de um spawn de
-  subagente concluido — tokens consumidos, contagem de tool-uses, duracao,
-  e a associacao com a onda, a feature/projeto e o modelo roteado para
-  aquele spawn. Pode ter campos individuais marcados como indisponiveis
-  quando a fonte de dados subjacente nao permitiu captura-los (FR-009).
+  subagente — tokens consumidos (total agregado e breakdown por categoria:
+  input, output, cache-read, cache-creation), contagem de tool-uses,
+  duracao, e a associacao com a onda, o identificador de execucao, a
+  feature/projeto e o modelo roteado para aquele spawn (campo de modelo
+  sempre presente; "nao-aplicavel" quando nao houve roteamento — FR-003).
+  Carrega um status de completude — completo, parcial (dado ate o momento
+  de uma falha, apenas quando observavel) ou indisponivel (nenhum dado
+  observavel) — nunca estimada (FR-009, FR-012). Pode ter campos
+  individuais marcados como indisponiveis quando a fonte de dados
+  subjacente nao permitiu captura-los (FR-009).
 - **Consumo Agregado da Onda**: soma das Metricas de Uso de Spawn de todos
   os subagentes de uma mesma onda, exibida nos relatorios de execucao
   (FR-005).
@@ -222,8 +250,10 @@ capturado ao vivo.
 
 - **SC-001**: Para 100% dos spawns de subagente concluidos com sucesso
   dentro de uma onda orquestrada (quando a fonte de dados de uso estava
-  disponivel), o relatorio da onda exibe tokens/tool-uses/duracao em vez de
-  apenas uma contagem de tool_calls como proxy.
+  disponivel), o relatorio da onda exibe tokens (total agregado e
+  breakdown por categoria: input/output/cache-read/cache-creation)/
+  tool-uses/duracao em vez de apenas uma contagem de tool_calls como
+  proxy.
 - **SC-002**: O operador consegue consultar retroativamente, para qualquer
   onda concluida, o consumo de tokens associado, sem precisar reabrir a
   sessao original de conversa.
