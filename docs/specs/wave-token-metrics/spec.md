@@ -4,6 +4,12 @@
 **Created**: 2026-07-25
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-07-25
+
+- Q: Esta feature deve ESTENDER a infraestrutura de metricas por onda ja existente no toolkit (adicionando granularidade por spawn) ou introduzir um mecanismo de captura/armazenamento novo e independente? → A: Estender a infraestrutura ja existente, adicionando granularidade por spawn — mesmo padrao ja usado para tool_calls (fail-open, sidecar por onda, nunca bloqueia a orquestracao).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Ver tokens/tool-uses/duracao por onda no relatorio de execucao (Priority: P1)
