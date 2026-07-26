@@ -230,6 +230,32 @@ cstk install --scope project advisor owasp-security
 # (in --scope global, hooks are omitted with a warning in the summary — FR-009c)
 ```
 
+### 00c runtime hooks (`cstk hooks`)
+
+The three 00c runtime hooks — `pretooluse-bash-guard.sh` (fail-closed Bash
+guard), `posttooluse-tool-call-tick.sh` and `posttooluse-agent-usage.sh`
+(per-wave metrics) — only run in a target project once they are copied into
+`.claude/hooks/` **and** registered in `.claude/settings.json`.
+
+`cstk install --scope project agente-00c-runtime` does that, but it also
+copies the skill, 6 commands and 7 agents into the repo. When you only want
+the hooks, use:
+
+```bash
+cd ~/projects/my-target-project
+cstk hooks install                    # touches .claude/hooks/ + settings.json only
+cstk hooks install --dry-run          # show the plan without writing
+cstk hooks install --project-path ../other-project
+```
+
+Without this step the Bash guard is inert and `tool_calls`/`agent_usage`
+stay at zero for every wave. To check the current state without writing
+anything:
+
+```bash
+guard-hooks-status.sh check --projeto-alvo-path .
+```
+
 **Interactive mode** (numbered selector in a TTY) and **dry-run**:
 
 ```bash

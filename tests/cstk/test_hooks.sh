@@ -346,4 +346,124 @@ scenario_apply_guard_hooks_catalogo_antigo_sem_tick() {
   return 0
 }
 
+# ==== hooks_main — comando `cstk hooks install` (5.27.0) ====
+#
+# Motivacao: ate 5.26.0 o unico caminho para provisionar os hooks 00c era
+# `cstk install --scope project agente-00c-runtime`, que tambem copiava
+# skill+6 commands+7 agents para dentro do repo-alvo. `cstk hooks install`
+# faz SO os hooks — delegando integralmente a apply_guard_hooks(), sem
+# regra nova.
+
+# _hooks_catalog_fixture: catalogo minimo no layout que hooks_main espera
+# (<catalog>/skills/agente-00c-runtime/hooks/), reusando _guard_src_fixture.
+_hooks_catalog_fixture() {
+  _hcf_cat="$TMPDIR_TEST/catalog"
+  _hcf_hooks="$_hcf_cat/skills/agente-00c-runtime/hooks"
+  mkdir -p "$_hcf_hooks"
+  _hcf_src=$(_guard_src_fixture)
+  cp "$_hcf_src"/* "$_hcf_hooks/" 2>/dev/null || :
+  chmod +x "$_hcf_hooks"/*.sh 2>/dev/null || :
+  printf '%s' "$_hcf_cat"
+}
+
+# Aspas SIMPLES no -c: o "$@" tem de ser expandido pelo sh INTERNO (a partir
+# dos posicionais depois do `_`), nao interpolado aqui — interpolar quebra
+# qualquer argumento com espaco e desbalanceia as aspas.
+_hooks_main_run() {
+  capture sh -c '. "$CSTK_LIB/hooks.sh" && hooks_main "$@"' _ "$@"
+}
+
+scenario_hooks_main_install_provisiona_so_hooks() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _proj="$TMPDIR_TEST/proj-hooks-main"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  for _h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh; do
+    [ -x "$_proj/.claude/hooks/$_h" ] || { _fail "hook ausente" "$_h"; return 1; }
+  done
+  jq -e '.hooks.PreToolUse[0].matcher == "Bash"' "$_proj/.claude/settings.json" >/dev/null \
+    || { _fail "settings.json nao mesclado" ""; return 1; }
+  # A diferenca para `cstk install --scope project`: NAO duplica catalogo.
+  for _d in skills commands agents; do
+    [ -d "$_proj/.claude/$_d" ] \
+      && { _fail "duplicou catalogo" "$_d nao deveria existir — hooks install toca so hooks+settings"; return 1; }
+  done
+  return 0
+}
+
+scenario_hooks_main_dry_run_nao_escreve() {
+  _cat=$(_hooks_catalog_fixture)
+  _proj="$TMPDIR_TEST/proj-hooks-dry"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -e "$_proj/.claude" ] \
+    && { _fail "dry-run escreveu" ".claude nao deveria existir"; return 1; }
+  return 0
+}
+
+# Escopo de PROJETO por construcao (FR-009c): apontar para $HOME e recusado.
+scenario_hooks_main_recusa_home() {
+  _cat=$(_hooks_catalog_fixture)
+  _hooks_main_run install --project-path "$HOME" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "escopo PROJETO" || return 1
+  return 0
+}
+
+scenario_hooks_main_catalogo_sem_hooks_exit1() {
+  _proj="$TMPDIR_TEST/proj-nocat"
+  mkdir -p "$_proj" "$TMPDIR_TEST/catalog-vazio"
+  _hooks_main_run install --project-path "$_proj" --catalog "$TMPDIR_TEST/catalog-vazio"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "catalogo sem hooks" || return 1
+  return 0
+}
+
+scenario_hooks_main_project_path_inexistente_exit1() {
+  _cat=$(_hooks_catalog_fixture)
+  _hooks_main_run install --project-path "$TMPDIR_TEST/nao-existe" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+scenario_hooks_main_sem_subcomando_exit2() {
+  _hooks_main_run
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+scenario_hooks_main_subcomando_invalido_exit2() {
+  _hooks_main_run nao-existe
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+scenario_hooks_main_flag_desconhecida_exit2() {
+  _cat=$(_hooks_catalog_fixture)
+  _proj="$TMPDIR_TEST/proj-flag"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --nao-existe
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# Idempotencia: rodar 2x nao duplica entradas no settings.json.
+scenario_hooks_main_idempotente() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _proj="$TMPDIR_TEST/proj-idem"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat"
+  _n1=$(jq '.hooks.PostToolUse | length' "$_proj/.claude/settings.json")
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "2a run exit" "$_CAPTURED_EXIT"; return 1; }
+  _n2=$(jq '.hooks.PostToolUse | length' "$_proj/.claude/settings.json")
+  [ "$_n1" = "$_n2" ] \
+    || { _fail "idempotencia" "PostToolUse foi de $_n1 para $_n2 entradas"; return 1; }
+  return 0
+}
+
 run_all_scenarios
