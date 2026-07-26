@@ -112,6 +112,9 @@ describe('mapWave', () => {
       agent_total_tokens: null, agent_input_tokens: null, agent_output_tokens: null,
       agent_cache_read_tokens: null, agent_cache_creation_tokens: null,
       agent_tool_use_count: null, agent_duration_ms: null,
+      // base v<11 (colunas ausentes -> projetadas como NULL pela query)
+      otel_cost_usd: null, otel_cost_main_usd: null, otel_cost_subagent_usd: null,
+      otel_total_tokens: null, otel_subagent_tokens: null,
     };
     const dto = mapWave(row);
     expect(typeof dto.stages).toBe('string');
@@ -128,6 +131,9 @@ describe('mapWave', () => {
       agent_total_tokens: 248500, agent_input_tokens: 9800, agent_output_tokens: 21400,
       agent_cache_read_tokens: 198300, agent_cache_creation_tokens: 19000,
       agent_tool_use_count: 41, agent_duration_ms: 512000,
+      otel_cost_usd: 0.229038, otel_cost_main_usd: 0.130553,
+      otel_cost_subagent_usd: 0.098485,
+      otel_total_tokens: 648, otel_subagent_tokens: 648,
     };
     const dto = mapWave(row);
     expect(dto.session).toBe('minha-feature');
@@ -146,6 +152,8 @@ describe('mapWave', () => {
       agent_total_tokens: null, agent_input_tokens: null, agent_output_tokens: null,
       agent_cache_read_tokens: null, agent_cache_creation_tokens: null,
       agent_tool_use_count: null, agent_duration_ms: null,
+      otel_cost_usd: null, otel_cost_main_usd: null, otel_cost_subagent_usd: null,
+      otel_total_tokens: null, otel_subagent_tokens: null,
     };
     const dto = mapWave(row);
     expect(dto.agentSpawnsTotal).toBe(2);
@@ -153,6 +161,35 @@ describe('mapWave', () => {
     expect(dto.agentTotalTokens).toBeNull();
     expect(dto.agentCacheReadTokens).toBeNull();
     expect(WaveDTOSchema.safeParse(dto).success).toBe(true);
+  });
+
+  it('v11: custo fracionario chega intacto e ausencia continua null', () => {
+    // O custo em USD e a unica metrica REAL (nao inteira) do painel. Um
+    // Math.round no mapper transformaria 0.098485 em 0 — "de graca".
+    const medida = {
+      wave: 'onda-009', execution_id: 'e1', stages: 'plan',
+      started_at: ISO, finished_at: null, wallclock_seconds: 300, tool_calls: 90,
+      termination_reason: null, n_stages: 1, n_skills: 0, session: null,
+      agent_spawns_total: null, agent_spawns_with_usage: null,
+      agent_total_tokens: null, agent_input_tokens: null, agent_output_tokens: null,
+      agent_cache_read_tokens: null, agent_cache_creation_tokens: null,
+      agent_tool_use_count: null, agent_duration_ms: null,
+      otel_cost_usd: 0.229038, otel_cost_main_usd: 0.130553,
+      otel_cost_subagent_usd: 0.098485,
+      otel_total_tokens: 648, otel_subagent_tokens: 648,
+    };
+    const dto = mapWave(medida);
+    expect(dto.otelCostUsd).toBeCloseTo(0.229038, 6);
+    expect(dto.otelCostSubagentUsd).toBeCloseTo(0.098485, 6);
+    expect(dto.otelSubagentTokens).toBe(648);
+    expect(WaveDTOSchema.safeParse(dto).success).toBe(true);
+
+    const semColeta = { ...medida, wave: 'onda-010',
+      otel_cost_usd: null, otel_cost_main_usd: null, otel_cost_subagent_usd: null,
+      otel_total_tokens: null, otel_subagent_tokens: null };
+    const dtoSem = mapWave(semColeta);
+    expect(dtoSem.otelCostUsd).toBeNull();
+    expect(dtoSem.otelTotalTokens).toBeNull();
   });
 });
 

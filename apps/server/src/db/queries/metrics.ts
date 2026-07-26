@@ -557,6 +557,46 @@ export function getOtelUsage(
   return row ?? { ...EMPTY_OTEL_USAGE };
 }
 
+/**
+ * Serie diaria do custo REAL (USD) medido por OTel — schema v11.
+ *
+ * Dias sem NENHUMA onda coletada sao OMITIDOS (nao viram 0), mesma politica de
+ * `getTokensOverTime`: a linha so existe onde houve medicao. E o unico numero
+ * do painel em USD, e ele nao e derivado aqui — vem calculado pelo Claude Code.
+ */
+export interface OtelCostOverTimeRow {
+  day: string;               // 'YYYY-MM-DD'
+  costUsd: number;
+  costMainUsd: number | null;
+  costSubagentUsd: number | null;
+  wavesWithOtel: number | null;
+}
+
+export function getOtelCostOverTime(
+  db: Database.Database,
+  filters: AgentUsageFilters = {},
+): OtelCostOverTimeRow[] {
+  if (!hasOtelUsage(db)) return [];
+  const { where, params, startedCol } = waveScope(db, filters);
+  const scope = where === ''
+    ? 'WHERE otel_cost_usd IS NOT NULL'
+    : `${where} AND otel_cost_usd IS NOT NULL`;
+  return db
+    .prepare(`
+      SELECT substr(${startedCol}, 1, 10) as day,
+             sum(otel_cost_usd)           as costUsd,
+             sum(otel_cost_main_usd)      as costMainUsd,
+             sum(otel_cost_subagent_usd)  as costSubagentUsd,
+             count(*)                     as wavesWithOtel
+      FROM waves
+      ${scope}
+      GROUP BY day
+      HAVING day IS NOT NULL AND day != ''
+      ORDER BY day ASC
+    `)
+    .all(...params) as OtelCostOverTimeRow[];
+}
+
 // ─────────────────────────────────────────────────────────
 // 12. tokens-over-time — serie diaria de tokens medidos (schema v10)
 //     Dias sem NENHUMA onda com dado sao OMITIDOS da serie (nao viram 0):

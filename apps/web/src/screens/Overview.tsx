@@ -21,7 +21,7 @@ import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/i
 import {
   KpiCard, StatusBadge, SeverityBadge, BudgetMini, PipelineProgress,
   Donut, BarH, FunnelChart, Icon, MiniStat,
-  agentUsageState, coverageLabel,
+  agentUsageState, coverageLabel, fmtUsd, subagentCostShare,
 } from '@/components/index.js';
 import type { DonutDatum, FunnelDatum } from '@/components/index.js';
 import { selectOverview, type OverviewRaw } from '@/lib/overview-select.js';
@@ -90,7 +90,7 @@ export function Overview({ period, project = '' }: OverviewProps) {
     totalProjects, totalFeatures, emAndamento, aguardando, totalToolCalls,
     totalWallclock, testsPassed, testsTotal, totalAlertas,
     execucoes, alertas, leaderboard, funnel, modelMix, recentActivity,
-    costSeries, maxToolCalls, agentUsage, tokenSeries, otelUsage,
+    costSeries, maxToolCalls, agentUsage, tokenSeries, otelUsage, otelCostSeries,
   } = vm;
   const hasMeasuredTokens = agentUsageState(agentUsage) === 'measured';
   // Telemetria OTel (schema v11): fonte independente e mais completa — cobre
@@ -100,11 +100,8 @@ export function Overview({ period, project = '' }: OverviewProps) {
   const otelCoverage = hasOtel && otelUsage.wavesTotal
     ? `${otelUsage.wavesWithOtel ?? 0}/${otelUsage.wavesTotal} ondas medidas`
     : null;
-  const fmtUsd = (v: number | null | undefined): string =>
-    v == null ? '—' : `$${v < 0.01 ? v.toFixed(4) : v.toFixed(2)}`;
-  const subagentShare = hasOtel && otelUsage.costUsd && otelUsage.costSubagentUsd != null
-    ? Math.round((otelUsage.costSubagentUsd / otelUsage.costUsd) * 100)
-    : null;
+  const share = subagentCostShare(otelUsage);
+  const subagentShare = share != null ? Math.round(share * 100) : null;
 
   // KPIs derivados
   const nCriticos = (alertas as Record<string, unknown>[]).filter(a => deriveSeverity(a) === 'critical').length;
@@ -159,15 +156,33 @@ export function Overview({ period, project = '' }: OverviewProps) {
           footnote={`${nCriticos} crítico${nCriticos !== 1 ? 's' : ''}`}
           accent={nCriticos > 0 ? 'critical' : totalAlertas > 0 ? 'warning' : undefined}
         />
-        <KpiCard
-          label="Custo · proxy"
-          value={fmtNum(totalToolCalls)}
-          icon="bolt"
-          footnote="tool_calls totais"
-          tip="Chamadas de ferramenta do orquestrador — proxy auditável de esforço. Não é token nem custo monetário."
-          spark={costSeries}
-          sparkColor="var(--accent)"
-        />
+        {/* Custo. Com telemetria OTel (schema v11) o card exibe o valor REAL em
+            USD — calculado pelo Claude Code, apenas somado aqui. Sem ela, cai
+            para o proxy de tool_calls, e o rótulo muda junto: "$" e "proxy"
+            nunca aparecem no mesmo card (Princípio III). */}
+        {hasOtel ? (
+          <KpiCard
+            label="Custo · real"
+            value={fmtUsd(otelUsage.costUsd)}
+            icon="bolt"
+            footnote={subagentShare != null
+              ? `${fmtUsd(otelUsage.costSubagentUsd)} em subagentes (${subagentShare}%)`
+              : (otelCoverage ?? 'telemetria OTel')}
+            tip={`Custo medido pela telemetria OTel do Claude Code, somado por onda. Loop principal ${fmtUsd(otelUsage.costMainUsd)} · subagentes ${fmtUsd(otelUsage.costSubagentUsd)}. Cobertura: ${otelCoverage ?? 'não informada'} — ondas sem telemetria não somam.`}
+            spark={otelCostSeries}
+            sparkColor="var(--accent)"
+          />
+        ) : (
+          <KpiCard
+            label="Custo · proxy"
+            value={fmtNum(totalToolCalls)}
+            icon="bolt"
+            footnote="tool_calls totais"
+            tip="Chamadas de ferramenta do orquestrador — proxy auditável de esforço. Não é token nem custo monetário. Custo real em USD exige knowledge.db v11 (cstk ≥ 5.30.0) com telemetria ligada."
+            spark={costSeries}
+            sparkColor="var(--accent)"
+          />
+        )}
         {/* Consumo MEDIDO dos subagentes (schema v10). Amostra: spawns em
             background não reportam uso, por isso o rodapé traz a cobertura. */}
         <KpiCard
@@ -183,7 +198,7 @@ export function Overview({ period, project = '' }: OverviewProps) {
             ? 'Tokens de subagentes medidos pela telemetria OTel do Claude Code (label query_source=subagent). Contadores incrementados a cada requisição, então cobrem também o consumo do próprio orquestrador.'
             : hasMeasuredTokens
               ? 'Tokens reportados pelo harness para cada subagente e agregados por onda. Medição real, mas parcial: spawns em background não reportam uso.'
-              : 'Exige knowledge.db em schema v11 (cstk ≥ 5.28.0) e telemetria ligada: CLAUDE_CODE_ENABLE_TELEMETRY=1 + OTEL_METRICS_EXPORTER=prometheus.'}
+              : 'Exige knowledge.db em schema v11 (cstk ≥ 5.30.0 para a ingestão) e telemetria ligada durante a execução: CLAUDE_CODE_ENABLE_TELEMETRY=1 + OTEL_METRICS_EXPORTER=prometheus.'}
           spark={tokenSeries}
           sparkColor="var(--info)"
         />

@@ -79,6 +79,14 @@ const REAL_WAVE_PAYLOAD = {
   agentCacheCreationTokens: null,
   agentToolUseCount: null,
   agentDurationMs: null,
+  // schema v11 — servido sobre base v<11 o servidor projeta NULL nas 5
+  // colunas (verificado empiricamente: GET /executions/:id/waves sobre uma
+  // knowledge.db v10 devolve exatamente estes cinco nulls).
+  otelCostUsd: null,
+  otelCostMainUsd: null,
+  otelCostSubagentUsd: null,
+  otelTotalTokens: null,
+  otelSubagentTokens: null,
 };
 
 /**
@@ -109,6 +117,72 @@ const REAL_WAVE_V10_PAYLOAD = {
   agentCacheCreationTokens: 19000,
   agentToolUseCount: 41,
   agentDurationMs: 512000,
+  otelCostUsd: null,
+  otelCostMainUsd: null,
+  otelCostSubagentUsd: null,
+  otelTotalTokens: null,
+  otelSubagentTokens: null,
+};
+
+/**
+ * WaveDTO real de base v11 — payload capturado VERBATIM de
+ * `GET /executions/:id/waves` servido sobre uma knowledge.db gerada pelo
+ * proprio `cstk recall --ingest` (cstk 5.30.0) a partir de um state.json com
+ * `.waves[].otel_usage`. Repare no custo FRACIONARIO: 0.098485 nao sobrevive
+ * a um schema que assuma inteiro, e $0.00 na UI seria indistinguivel de
+ * "onda que nao custou nada".
+ */
+const REAL_WAVE_V11_PAYLOAD = {
+  wave: 'onda-001',
+  executionId: 'exec-otel-panel',
+  stages: 'plan',
+  startedAt: '2026-07-26T10:00:00Z',
+  finishedAt: '2026-07-26T10:05:00Z',
+  wallclockSeconds: 300,
+  toolCalls: 90,
+  terminationReason: '',
+  nStages: 1,
+  nSkills: 0,
+  session: null,
+  agentSpawnsTotal: 4,
+  agentSpawnsWithUsage: 3,
+  agentTotalTokens: 248500,
+  agentInputTokens: 9800,
+  agentOutputTokens: 21400,
+  agentCacheReadTokens: 198300,
+  agentCacheCreationTokens: 19000,
+  agentToolUseCount: 41,
+  agentDurationMs: 512000,
+  otelCostUsd: 0.229038,
+  otelCostMainUsd: 0.130553,
+  otelCostSubagentUsd: 0.098485,
+  otelTotalTokens: 648,
+  otelSubagentTokens: 648,
+};
+
+/** Onda da MESMA execucao sem telemetria coletada — as 5 colunas vem null. */
+const REAL_WAVE_V11_NO_OTEL_PAYLOAD = {
+  ...REAL_WAVE_V11_PAYLOAD,
+  wave: 'onda-002',
+  stages: 'execute-task',
+  startedAt: '2026-07-26T11:00:00Z',
+  finishedAt: '2026-07-26T11:04:00Z',
+  wallclockSeconds: 240,
+  toolCalls: 40,
+  agentSpawnsTotal: null,
+  agentSpawnsWithUsage: null,
+  agentTotalTokens: null,
+  agentInputTokens: null,
+  agentOutputTokens: null,
+  agentCacheReadTokens: null,
+  agentCacheCreationTokens: null,
+  agentToolUseCount: null,
+  agentDurationMs: null,
+  otelCostUsd: null,
+  otelCostMainUsd: null,
+  otelCostSubagentUsd: null,
+  otelTotalTokens: null,
+  otelSubagentTokens: null,
 };
 
 /** Onda v10 com spawns observados mas NENHUM dado de uso (background). */
@@ -214,6 +288,41 @@ describe('7.4.1 Paridade shared-types ↔ payload real', () => {
       expect(r.data.agentSpawnsWithUsage).toBe(0);
       expect(r.data.agentTotalTokens).toBeNull();
     }
+  });
+
+  it('WaveDTOSchema.safeParse(payload_real_v11) === true', () => {
+    const r = WaveDTOSchema.safeParse(REAL_WAVE_V11_PAYLOAD);
+    expect(r.success, `falhou: ${JSON.stringify(r.error?.issues?.slice(0, 3))}`).toBe(true);
+    if (r.success) {
+      // Custo em USD e FRACIONARIO: um schema com .int() ou um mapper que
+      // arredondasse mataria a metrica (0.098485 -> 0). Trava aqui.
+      expect(r.data.otelCostUsd).toBeCloseTo(0.229038, 6);
+      expect(r.data.otelCostSubagentUsd).toBeCloseTo(0.098485, 6);
+      // As duas fontes coexistem e NAO se somam: agent* (por spawn) e otel*
+      // (por API request, incluindo o proprio orquestrador).
+      expect(r.data.agentTotalTokens).toBe(248500);
+      expect(r.data.otelTotalTokens).toBe(648);
+    }
+  });
+
+  it('WaveDTO v11: onda sem telemetria mantem os 5 campos null, jamais 0', () => {
+    const r = WaveDTOSchema.safeParse(REAL_WAVE_V11_NO_OTEL_PAYLOAD);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.otelCostUsd).toBeNull();
+      expect(r.data.otelCostMainUsd).toBeNull();
+      expect(r.data.otelCostSubagentUsd).toBeNull();
+      expect(r.data.otelTotalTokens).toBeNull();
+      expect(r.data.otelSubagentTokens).toBeNull();
+    }
+  });
+
+  it('WaveDTO: payload sem os campos v11 e REJEITADO (drift de borda)', () => {
+    // Mesma regra do bloco v10: ausencia != null. Se a query parar de projetar
+    // as colunas, isto falha aqui em vez de virar `undefined` -> "$0" na UI.
+    const { otelCostUsd: _omit, ...semCampoV11 } = REAL_WAVE_V11_PAYLOAD;
+    const r = WaveDTOSchema.safeParse(semCampoV11);
+    expect(r.success).toBe(false);
   });
 
   it('WaveDTO: payload sem os campos v10 e REJEITADO (drift de borda)', () => {

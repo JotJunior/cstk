@@ -61,6 +61,32 @@ export function hasOtelUsage(db: Database.Database): boolean {
   return hasColumn(db, 'waves', 'otel_cost_usd');
 }
 
+/** As 5 colunas de consumo medido por telemetria introduzidas no schema v11. */
+export const OTEL_USAGE_COLUMNS = [
+  'otel_cost_usd',
+  'otel_cost_main_usd',
+  'otel_cost_subagent_usd',
+  'otel_total_tokens',
+  'otel_subagent_tokens',
+] as const;
+
+export type OtelUsageColumn = (typeof OTEL_USAGE_COLUMNS)[number];
+
+/**
+ * Projeta uma coluna v11 de `waves`, degradando para `NULL as <col>` em base
+ * v<11 — mesmo contrato de `agentUsageSelect`, para que a Row tenha sempre a
+ * mesma forma independentemente da versao do schema.
+ */
+export function otelUsageSelect(
+  db: Database.Database,
+  column: OtelUsageColumn,
+  prefix = '',
+): string {
+  return hasColumn(db, 'waves', column)
+    ? `${prefix}${column}`
+    : `NULL as ${column}`;
+}
+
 export interface WaveRow {
   wave: string;
   execution_id: string;
@@ -84,6 +110,14 @@ export interface WaveRow {
   agent_cache_creation_tokens: number | null;
   agent_tool_use_count: number | null;
   agent_duration_ms: number | null;
+  // schema v11 — consumo medido pela telemetria OTel; fonte independente das
+  // colunas agent_* (cobre tambem o gasto do proprio orquestrador).
+  // Custo em USD e REAL/fracionario, nao inteiro.
+  otel_cost_usd: number | null;
+  otel_cost_main_usd: number | null;
+  otel_cost_subagent_usd: number | null;
+  otel_total_tokens: number | null;
+  otel_subagent_tokens: number | null;
 }
 
 /** Lista ondas de uma execucao, em ordem cronologica */
@@ -99,13 +133,15 @@ export function listWavesByExecution(
   const nStagesCol = hasColumn(db, 'waves', 'n_stages') ? 'n_stages' : 'NULL as n_stages';
   const sessionCol = hasColumn(db, 'waves', 'session') ? 'session' : 'NULL as session';
   const usageCols = AGENT_USAGE_COLUMNS.map(c => agentUsageSelect(db, c)).join(',\n             ');
+  const otelCols = OTEL_USAGE_COLUMNS.map(c => otelUsageSelect(db, c)).join(',\n             ');
   const orderCol = hasColumn(db, 'waves', 'started_at') ? 'started_at' : 'rowid';
   return db
     .prepare(`
       SELECT wave, ${execIdCol}, ${stagesCol}, ${startedCol}, ${finishedCol},
              wallclock_seconds, tool_calls, ${terminationCol},
              ${nStagesCol}, n_skills, ${sessionCol},
-             ${usageCols}
+             ${usageCols},
+             ${otelCols}
       FROM waves
       WHERE execution_id = ?
       ORDER BY ${orderCol} ASC

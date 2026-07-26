@@ -13,10 +13,11 @@ import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/i
 import {
   KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBars, Legend,
   AgentUsagePanel, AgentUsageEmpty, agentUsageState, coverageLabel,
+  OtelUsagePanel, OtelUsageEmpty, otelUsageState, otelCoverageLabel, fmtUsd,
 } from '@/components/index.js';
 import type { ScatterDatum, DonutDatum } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
-import type { PeriodParam, AgentUsageRollup } from '@cstk-panel/shared-types';
+import type { PeriodParam, AgentUsageRollup, OtelUsageRollup } from '@cstk-panel/shared-types';
 
 // Cores por modelo (alinhado ao Overview)
 const MODEL_COLOR: Record<string, string> = {
@@ -226,6 +227,11 @@ export function Metrics({ period }: MetricsProps) {
   const usageQuery = useMetric('agent-usage', period);
   const agentUsage = (usageQuery.data?.data as AgentUsageRollup | null) ?? null;
   const hasMeasuredTokens = agentUsageState(agentUsage) === 'measured';
+  // schema v11 — consumo medido por telemetria OTel. Unica fonte de USD do
+  // painel, e o valor vem calculado pelo Claude Code (nao ha preco embutido).
+  const otelQuery = useMetric('otel-usage', period);
+  const otelUsage = (otelQuery.data?.data as OtelUsageRollup | null) ?? null;
+  const hasOtel = otelUsageState(otelUsage) === 'measured';
 
   const { isDegraded } = useApiState(costQuery);
   const meta = costQuery.data?.meta;
@@ -255,6 +261,14 @@ export function Metrics({ period }: MetricsProps) {
           label="Custo total · proxy"
           value={totalToolCalls != null ? String(totalToolCalls) : '—'}
           trend="tool_calls do orquestrador"
+        />
+        {/* Custo REAL (schema v11). Convive com o proxy acima em vez de
+            substitui-lo: um mede esforco do orquestrador, o outro dinheiro. */}
+        <KpiCard
+          label="Custo total · real"
+          value={hasOtel ? fmtUsd(otelUsage?.costUsd) : '—'}
+          trend={hasOtel ? otelCoverageLabel(otelUsage) : 'telemetria não coletada'}
+          accent={hasOtel ? 'accent' : undefined}
         />
         {/* Token MEDIDO (schema v10) — convive com o proxy: um conta chamadas
             do orquestrador, o outro o consumo dos subagentes. Nao se somam. */}
@@ -298,6 +312,45 @@ export function Metrics({ period }: MetricsProps) {
           renderContent={(raw) => (
             <AgentUsagePanel usage={raw as AgentUsageRollup | null} columns={4} />
           )}
+        />
+
+        <MetricCard
+          name="otel-usage"
+          title="Custo real · telemetria OTel"
+          subtitle="USD medido pelo Claude Code · cobre main + subagente"
+          period={period}
+          emptyFallback={<OtelUsageEmpty />}
+          renderContent={(raw) => (
+            <OtelUsagePanel usage={raw as OtelUsageRollup | null} columns={4} />
+          )}
+        />
+
+        <MetricCard
+          name="otel-cost-over-time"
+          title="Custo no tempo · real"
+          subtitle="soma diária em USD · dias sem telemetria não aparecem"
+          period={period}
+          emptyFallback={<OtelUsageEmpty />}
+          renderContent={(raw) => {
+            const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
+            if (rows.length === 0) return <OtelUsageEmpty />;
+            const series: TimeSeriesPoint[] = rows.map(r => ({
+              d: (r.day as string | null) ?? '',
+              value: (r.costUsd as number | null) ?? 0,
+            }));
+            const totalUsd = sum(nums(raw, 'costUsd'));
+            const subUsd = sum(nums(raw, 'costSubagentUsd'));
+            const share = totalUsd > 0 ? subUsd / totalUsd : null;
+            return (
+              <>
+                <AreaChart data={series} color="var(--info)" height={140} label="USD / dia" />
+                <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
+                  {series.length} dia(s) com telemetria · {fmtUsd(totalUsd)} no período
+                  {share != null && ` · ${fmtPct(share)} em subagentes`}
+                </div>
+              </>
+            );
+          }}
         />
 
         <MetricCard

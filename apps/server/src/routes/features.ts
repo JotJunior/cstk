@@ -11,7 +11,7 @@ import { generateETag, etagMatches } from '../lib/etag.js';
 import { loadConfig } from '../config.js';
 import { getRollupByFeature, listExecutions } from '../db/queries/executions.js';
 import { listRetrosByFeature } from '../db/queries/retros.js';
-import { mapExecution, normalizeStatus, mapAgentUsageRollup } from '../mappers/index.js';
+import { mapExecution, normalizeStatus, mapAgentUsageRollup, mapOtelUsageRollup } from '../mappers/index.js';
 
 // Validacao de path params (FR-018 — sem traversal)
 const FeatureParamSchema = z.object({
@@ -68,6 +68,8 @@ export async function featureRoutes(server: FastifyInstance): Promise<void> {
         latestExecutionAt: r.latest_execution_at,
         // consumo real de subagentes (schema v10); campos null em base v<10
         agentUsage: mapAgentUsageRollup(r),
+        // consumo medido por telemetria OTel (schema v11); null em base v<11
+        otelUsage: mapOtelUsageRollup(r),
       }));
 
       const envelope = wrap(data, {}, config.dbPath, db);
@@ -136,6 +138,7 @@ export async function featureRoutes(server: FastifyInstance): Promise<void> {
           latestStatus: normalizeStatus(featureRollup.latest_status),
           latestExecutionAt: featureRollup.latest_execution_at,
           agentUsage: mapAgentUsageRollup(featureRollup),
+          otelUsage: mapOtelUsageRollup(featureRollup),
         },
         executions,
       };

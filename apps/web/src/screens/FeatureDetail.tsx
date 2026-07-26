@@ -10,10 +10,11 @@ import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/i
 import {
   StatusBadge, MiniStat, PipelineProgress, Icon, MarkdownView,
   AgentUsagePanel, agentUsageState, coverageLabel,
+  OtelUsagePanel, otelUsageState, otelCoverageLabel, fmtUsd,
 } from '@/components/index.js';
 import { fmtNum, fmtDur, fmtTimestamp, fmtTokens } from '@/lib/format.js';
 import { stackDisplayItems } from '@/lib/stack-display.js';
-import type { ExecutionDTO, FeatureDocScope, RetroDTO, AgentUsageRollup } from '@cstk-panel/shared-types';
+import type { ExecutionDTO, FeatureDocScope, RetroDTO, AgentUsageRollup, OtelUsageRollup } from '@cstk-panel/shared-types';
 
 // ---------------------------------------------------------------------------
 // Documentacao (doc-viewer, US2 — task 4.3)
@@ -213,6 +214,8 @@ interface FeatureRollupShape {
   latestStatus: 'em_andamento' | 'aguardando_humano' | 'concluida' | 'abortada' | null;
   /** consumo medido de subagentes (schema v10); null/ausente em bases v<10 */
   agentUsage?: AgentUsageRollup | null;
+  /** consumo medido por telemetria OTel (schema v11); null/ausente em v<11 */
+  otelUsage?: OtelUsageRollup | null;
 }
 
 export function FeatureDetail() {
@@ -233,6 +236,8 @@ export function FeatureDetail() {
   const status = rollup?.latestStatus ?? null;
   const usage = rollup?.agentUsage ?? null;
   const hasUsage = agentUsageState(usage) === 'measured';
+  const otel = rollup?.otelUsage ?? null;
+  const hasOtel = otelUsageState(otel) === 'measured';
 
   // Stack: primeira execucao com stack_sugerida (CARD-FTD-02)
   const stack = executions.find(e => e.suggestedStack)?.suggestedStack ?? null;
@@ -299,6 +304,14 @@ export function FeatureDetail() {
                 </span>
               }
             />
+            <MiniStat
+              label="Custo · real"
+              value={
+                <span className="mono" title={hasOtel ? otelCoverageLabel(otel) : 'telemetria não coletada nesta feature'}>
+                  {hasOtel ? fmtUsd(otel?.costUsd) : '—'}
+                </span>
+              }
+            />
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -313,6 +326,16 @@ export function FeatureDetail() {
             </span>
           </div>
           <AgentUsagePanel usage={usage} columns={4} />
+
+          {/* Custo real desta feature (schema v11). Fonte independente: soma
+              tambem o consumo do proprio orquestrador. */}
+          <div className="divider" />
+          <div className="row gap-2" style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>
+              Custo real · telemetria OTel
+            </span>
+          </div>
+          <OtelUsagePanel usage={otel} columns={4} />
         </div>
       </div>
 

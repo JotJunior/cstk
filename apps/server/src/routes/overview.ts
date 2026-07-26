@@ -17,8 +17,8 @@ import {
   getModelMix, getRecentActivity, getCostSeries,
 } from '../db/queries/overview.js';
 import { getRollupByProject, getRollupByFeature } from '../db/queries/executions.js';
-import { getAgentUsage, getOtelUsage, getTokensOverTime } from '../db/queries/metrics.js';
-import { normalizeStatus, mapAgentUsageResult, mapAgentUsageRollup } from '../mappers/index.js';
+import { getAgentUsage, getOtelUsage, getOtelCostOverTime, getTokensOverTime } from '../db/queries/metrics.js';
+import { normalizeStatus, mapAgentUsageResult, mapAgentUsageRollup, mapOtelUsageResult } from '../mappers/index.js';
 
 const PeriodSchema = z.enum(['24h', '7d', '30d', 'all']).optional().default('7d');
 // FR-022: filtro global de projeto. String vazia/ausente = todos os projetos.
@@ -76,6 +76,11 @@ export async function overviewRoutes(server: FastifyInstance): Promise<void> {
       const otelUsage = getOtelUsage(db, project !== null ? { project } : {});
       const tokenSeries = getTokensOverTime(db, project !== null ? { project } : {})
         .map(r => r.totalTokens);
+      // Serie diaria do custo REAL em USD (schema v11). Dias sem coleta nao
+      // entram na serie — o sparkline so desenha onde houve medicao, senao
+      // um vale de "0" mentiria sobre um dia que apenas nao foi instrumentado.
+      const otelCostSeries = getOtelCostOverTime(db, project !== null ? { project } : {})
+        .map(r => r.costUsd);
 
       // Filtrar por periodo para leaderboard
       const { hasColumn } = await import('../db/columns.js');
@@ -127,7 +132,9 @@ export async function overviewRoutes(server: FastifyInstance): Promise<void> {
           /** consumo medido dos subagentes (schema v10); campos null quando
            *  a base e v<10 ou nenhuma onda do recorte tem medicao */
           agentUsage: mapAgentUsageResult(agentUsage),
-          otelUsage,
+          /** consumo medido pela telemetria OTel (schema v11); campos null
+           *  quando a base e v<11 ou nenhuma onda do recorte foi instrumentada */
+          otelUsage: mapOtelUsageResult(otelUsage),
         },
         recentAlerts: recentAlerts.map(a => ({
           executionId: a.execution_id,
@@ -164,6 +171,9 @@ export async function overviewRoutes(server: FastifyInstance): Promise<void> {
         costSeries,
         /** serie diaria de tokens medidos; dias sem medicao NAO entram como 0 */
         tokenSeries,
+        /** serie diaria do custo REAL em USD (schema v11); dias sem coleta
+         *  OTel NAO entram como 0 — array vazio em base v<11 */
+        otelCostSeries,
         leaderboard: filtered.slice(0, 10).map(e => ({
           executionId: e.execution_id,
           project: e.project,

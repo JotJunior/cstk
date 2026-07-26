@@ -6,10 +6,13 @@ import { useParams } from 'react-router-dom';
 import { useProject } from '@/lib/hooks.js';
 import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState } from '@/states/index.js';
-import { KpiCard, AgentUsagePanel, agentUsageState, coverageLabel } from '@/components/index.js';
+import {
+  KpiCard, AgentUsagePanel, agentUsageState, coverageLabel,
+  OtelUsagePanel, otelUsageState, otelCoverageLabel, fmtUsd,
+} from '@/components/index.js';
 import { FeaturesTable, type FeatureRow } from '@/components/FeaturesTable.js';
 import { fmtNum, fmtDur, fmtTokens } from '@/lib/format.js';
-import type { AgentUsageRollup } from '@cstk-panel/shared-types';
+import type { AgentUsageRollup, OtelUsageRollup } from '@cstk-panel/shared-types';
 
 interface ProjectRollupShape {
   totalExecutions: number;
@@ -20,6 +23,8 @@ interface ProjectRollupShape {
   openAlerts: number;
   /** consumo medido de subagentes (schema v10); null/ausente em bases v<10 */
   agentUsage?: AgentUsageRollup | null;
+  /** consumo medido por telemetria OTel (schema v11); null/ausente em v<11 */
+  otelUsage?: OtelUsageRollup | null;
 }
 
 export function ProjectDetail() {
@@ -37,6 +42,8 @@ export function ProjectDetail() {
   const features = data.features ?? [];
   const usage = rollup?.agentUsage ?? null;
   const hasUsage = agentUsageState(usage) === 'measured';
+  const otel = rollup?.otelUsage ?? null;
+  const hasOtel = otelUsageState(otel) === 'measured';
 
   return (
     <div className="col gap-4">
@@ -50,7 +57,17 @@ export function ProjectDetail() {
       <div className="grid-6">
         <KpiCard label="Features" value={features.length} icon="git-branch" />
         <KpiCard label="Em andamento" value={rollup?.activeExecutions ?? 0} icon="activity" accent={rollup && rollup.activeExecutions > 0 ? 'accent' : undefined} />
-        <KpiCard label="Tool calls · proxy" value={fmtNum(rollup?.totalToolCalls)} icon="bolt" tip="Chamadas de ferramenta do orquestrador — proxy de esforço, não token." />
+        {hasOtel ? (
+          <KpiCard
+            label="Custo · real"
+            value={fmtUsd(otel?.costUsd)}
+            icon="bolt"
+            footnote={otelCoverageLabel(otel)}
+            tip={`Medido pela telemetria OTel e somado por onda (schema v11). Proxy de esforço do orquestrador: ${fmtNum(rollup?.totalToolCalls)} tool calls.`}
+          />
+        ) : (
+          <KpiCard label="Tool calls · proxy" value={fmtNum(rollup?.totalToolCalls)} icon="bolt" tip="Chamadas de ferramenta do orquestrador — proxy de esforço, não token." />
+        )}
         <KpiCard
           label="Tokens · subagentes"
           value={hasUsage ? fmtTokens(usage?.totalTokens) : '—'}
@@ -74,6 +91,20 @@ export function ProjectDetail() {
         </div>
         <div style={{ padding: 14 }}>
           <AgentUsagePanel usage={usage} columns={4} />
+        </div>
+      </div>
+
+      {/* Custo real do projeto (schema v11) — fonte distinta do bloco acima:
+          cobre main + subagente, entao os dois nao se somam. */}
+      <div className="card">
+        <div className="card-head">
+          <h3>Custo real · telemetria OTel</h3>
+          <span className="mono muted" style={{ fontSize: 11 }}>
+            {hasOtel ? otelCoverageLabel(otel) : 'schema v11'}
+          </span>
+        </div>
+        <div style={{ padding: 14 }}>
+          <OtelUsagePanel usage={otel} columns={4} />
         </div>
       </div>
 
