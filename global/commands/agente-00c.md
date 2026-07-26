@@ -148,31 +148,64 @@ ja preparado fora do script), apenas defensivo.
   `/agente-00c-resume` ou `/agente-00c-abort`. Use
   `state-lock.sh check-execution-busy --state-dir <SD>`.
 
-### 2.bis Hooks 00c provisionados no projeto-alvo? (ADVISORY, nunca bloqueia)
+### 2.bis Coleta de consumo: PEDIR instalacao ao operador (nunca instalar sozinho)
 
-Os tres hooks do runtime (guarda de Bash + duas metricas) so chegam ao
-projeto-alvo via `cstk install --scope project agente-00c-runtime` rodado
-DENTRO dele. O default de `cstk install`/`update` e `--scope global`, que
-pula o provisionamento — entao o caso comum e o projeto-alvo NAO ter hook
-nenhum. Como o `cstk install` roda no repo do cstk e nao aqui, este e o
-unico momento do fluxo que esta dentro do projeto-alvo: e aqui que o
-operador precisa ser avisado.
+Rode primeiro o diagnostico:
 
 ```sh
 guard-hooks-status.sh check --projeto-alvo-path "<PROJETO_ALVO_PATH>" || :
 ```
 
-READ-ONLY: nunca copia hook nem edita `settings.json` (provisionar e
-trabalho do `cstk install`, unica fonte da regra). Exit 1 NAO aborta a
-execucao — mostre a saida ao operador e siga:
+READ-ONLY — nunca instala nada. Se os tres hooks ja estao ativos, siga para
+o passo 3 sem incomodar o operador.
 
-- `pretooluse-bash-guard.sh` inativo → **avise com destaque**: a guarda
-  fail-closed de Bash NAO esta enforced nesta execucao. E o item grave;
-  o resto e metrica.
-- `posttooluse-tool-call-tick.sh` inativo → o orquestrador vai tickar
-  manualmente (ver passo 2 do orchestrator); `tool_calls` nao zera.
-- `posttooluse-agent-usage.sh` inativo → `agent_usage`/tokens ficam null
-  nas ondas; nao ha fallback manual, so o provisionamento resolve.
+**Se faltar algum, PECA a instalacao explicitamente** — nao instale por
+conta propria e nao siga em silencio. Apresente os tres pontos abaixo e
+espere a resposta:
+
+1. **O que sera instalado e para que serve** (cada hook tem proposito
+   distinto; nenhum e redundante):
+
+   | Hook | Serve para | Substituivel? |
+   |------|-----------|---------------|
+   | `pretooluse-bash-guard.sh` | Guarda fail-closed de Bash (sudo/push/deploy bloqueados, rede contra whitelist) | **Nao.** E seguranca, nao metrica. Sem ele a guarda que a doc promete simplesmente nao existe. |
+   | `posttooluse-tool-call-tick.sh` | Alimenta `tool_calls`, o proxy de orcamento que fecha a onda | **Nao.** A telemetria OTel conta API requests e tokens, nao tool calls — nao ha outra fonte. |
+   | `posttooluse-agent-usage.sh` | Consumo POR SPAWN (`agent_id`, `agent_type`) | **Parcialmente.** O total por onda hoje vem da telemetria OTel, com mais precisao; este hook ainda e a unica fonte do detalhe por spawn. |
+
+2. **O custo — diga o numero, nao "tem um custo"** (medido, macOS/zsh; nao ha
+   custo de token, os hooks sao shell local):
+
+   - `posttooluse-tool-call-tick.sh`: **~30 ms por tool call** (matcher `*`,
+     roda em TODAS). Numa onda de ~200 tool calls, ~6 s no total.
+   - `pretooluse-bash-guard.sh`: **~177 ms por chamada Bash** (so em Bash).
+   - Coleta de custo real por onda (opcional, ver item 3): ~37 ms por
+     snapshot, 2 por onda.
+
+3. **Como o operador ativa** — dois opt-ins independentes:
+
+   ```sh
+   # (a) hooks: guarda + tool_calls + detalhe por spawn — uma vez por projeto
+   cd <PROJETO_ALVO_PATH> && cstk hooks install
+
+   # (b) custo/tokens reais por onda (main vs subagent) — no ambiente
+   export CLAUDE_CODE_ENABLE_TELEMETRY=1
+   export OTEL_METRICS_EXPORTER=prometheus
+   ```
+
+   (b) nao exige API key, Admin key nem organizacao; funciona em plano de
+   assinatura e nada sai de `127.0.0.1`.
+
+**Regra de decisao** (o operador manda, o default nunca mente):
+
+- Respondeu **sim** -> peca que rode `cstk hooks install` e confirme; so
+  entao siga. Se ele preferir que voce rode, use exatamente o comando acima.
+- Respondeu **nao**, ou nao respondeu -> **siga a execucao normalmente**.
+  Nunca bloqueie a pipeline por metrica. Mas registre o que fica de fora,
+  sem eufemismo: a guarda de Bash NAO esta enforced nesta execucao, e
+  `tool_calls` ficara 0 em todas as ondas (ausente, nao "zero medido").
+- Nunca instale hook sem consentimento explicito: `cstk hooks install`
+  escreve em `<projeto-alvo>/.claude/settings.json`, que pode estar
+  versionado no repo do operador.
 
 ### 3. Aquisicao do lock + inicializacao de estado
 
