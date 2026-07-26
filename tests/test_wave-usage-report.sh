@@ -200,9 +200,15 @@ scenario_aggregate_markdown_bate_com_exemplo_do_contrato() {
 - Cobertura da metrica: 40.0% dos spawns'
 
   [ "$_CAPTURED_STDOUT" = "$_expected" ] || {
+    # diff via arquivos temporarios — process substitution <(...) e bashism
+    # e quebra no dash do CI (POSIX sh).
+    _exp_f="$TMPDIR_TEST/expected.md"
+    _got_f="$TMPDIR_TEST/got.md"
+    printf '%s' "$_expected" > "$_exp_f"
+    printf '%s' "$_CAPTURED_STDOUT" > "$_got_f"
     _fail "Markdown identico ao exemplo do contrato" \
       "diff:
-$(diff <(printf '%s' "$_expected") <(printf '%s' "$_CAPTURED_STDOUT"))"
+$(diff "$_exp_f" "$_got_f")"
     return 1
   }
 

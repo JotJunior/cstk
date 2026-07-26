@@ -398,7 +398,10 @@ scenario_14_concorrencia_wal() {
 
 # _file_mode PATH -> imprime o modo octal do arquivo, portavel BSD/GNU.
 _file_mode() {
-  stat -f '%Lp' -- "$1" 2>/dev/null || stat -c '%a' -- "$1" 2>/dev/null
+  # GNU (-c) primeiro: no BSD 'stat -c' falha com exit != 0 e cai no -f.
+  # A ordem inversa quebra no GNU, onde '-f' significa FILESYSTEM e sai 0
+  # com output errado (o fallback nunca dispara).
+  stat -c '%a' -- "$1" 2>/dev/null || stat -f '%Lp' -- "$1" 2>/dev/null
 }
 
 # =========================================================================
