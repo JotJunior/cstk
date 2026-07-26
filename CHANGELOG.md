@@ -5,6 +5,42 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.30.0] - 2026-07-26
+
+O custo real por onda **chega ao painel**. A v5.28.0 capturou o dado no
+`state.json`; esta versão o indexa na `knowledge.db` e o expõe na UI.
+
+### Added
+
+- **knowledge.db schema v11**: 5 colunas aditivas em `waves` para o consumo
+  medido pela telemetria OTel — `otel_cost_usd`, `otel_cost_main_usd`,
+  `otel_cost_subagent_usd` (todas `REAL`), `otel_total_tokens` e
+  `otel_subagent_tokens` (`INTEGER`). Migração v10→v11 idempotente, guardada
+  por `PRAGMA` como as anteriores; ondas já indexadas ficam intactas com
+  `NULL` nas colunas novas — **ausente, nunca zero**.
+- **`recall_real_or_null`**: coerção para ponto flutuante. O custo em USD é
+  fracionário (`0.098485`); `recall_int_or_null` o descartaria como
+  não-numérico e gravaria `NULL`, perdendo silenciosamente a métrica.
+- Testes: 4 cenários em `tests/cstk/test_recall.sh` — ingestão nas colunas,
+  custo fracionário preservado, ausência vira `NULL`, e migração v10→v11
+  idempotente com linha legada preservada.
+
+### Changed
+
+- **Ingestão** (`cli/lib/recall.sh`): `--ingest` e `--reindex` passam a ler
+  `.waves[N].otel_usage`. Os tokens de subagente são somados dos quatro
+  tipos (`input` + `output` + `cache_read` + `cache_creation`).
+
+### Painel (repo cstk-panel, PR separado)
+
+- `DEFAULT_SCHEMA_VERSIONS` aceita `11` — **sem isso o painel recusaria
+  abrir a base migrada**.
+- `hasOtelUsage()` + `getOtelUsage()`: sonda de capacidade e agregação. Base
+  v10 ou anterior degrada para `null` em vez de erro "no such column".
+- Tile "Tokens · subagentes" passa a **preferir a fonte OTel** quando
+  presente (mais completa: cobre o consumo do próprio orquestrador), com
+  `agentUsage` como fallback e rótulo de cobertura `N/M ondas medidas`.
+
 ## [5.29.0] - 2026-07-26
 
 Os commands 00c passam a **pedir** a instalação dos hooks em vez de só
@@ -4153,6 +4189,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.30.0]: https://github.com/JotJunior/cstk/releases/tag/v5.30.0
 [5.29.0]: https://github.com/JotJunior/cstk/releases/tag/v5.29.0
 [5.28.0]: https://github.com/JotJunior/cstk/releases/tag/v5.28.0
 [5.27.0]: https://github.com/JotJunior/cstk/releases/tag/v5.27.0

@@ -608,7 +608,7 @@ SQL
     _fail "apply schema v7" "recall_apply_schema falhou"; return 1; }
   # (a) schema_version virou a corrente (10 — v10 wave-token-metrics).
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "10" ] || { _fail "schema_version" "esperado 10, obtido $_sv"; return 1; }
+  [ "$_sv" = "11" ] || { _fail "schema_version" "esperado 11, obtido $_sv"; return 1; }
   # (b) tabela bloqueios DROPADA; blocks (EN) criada no lugar.
   _hasbloq=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='bloqueios'")
   [ "$_hasbloq" = "0" ] || { _fail "bloqueios dropada" "tabela pt-BR bloqueios sobreviveu"; return 1; }
@@ -653,7 +653,7 @@ scenario_m11b_v7_reindex_repopula() {
   _v7db="$TMPDIR_TEST/v7.db"
   _rc --reindex --states-root "$TMPDIR_TEST/rxv7" --db "$_v7db" >/dev/null 2>&1
   _sv=$(sqlite3 "$_v7db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "10" ] || { _fail "reindex schema corrente" "esperado schema_version 10, obtido $_sv"; return 1; }
+  [ "$_sv" = "11" ] || { _fail "reindex schema corrente" "esperado schema_version 11, obtido $_sv"; return 1; }
   # decisions repopuladas em EN (2 decisoes do _write_state).
   _n=$(sqlite3 "$_v7db" "SELECT count(*) FROM decisions WHERE feature='featV7'")
   [ "$_n" = "2" ] || { _fail "reindex repopula" "esperado 2 decisoes, obtido $_n"; return 1; }
@@ -675,7 +675,7 @@ scenario_m12_ddl_idempotente() {
   sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p','f','w','e','t','dec-keep','keep','now')"
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "10" ] || { _fail "schema estavel" "esperado 10 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "11" ] || { _fail "schema estavel" "esperado 10 apos 2x, obtido $_sv"; return 1; }
   _keep=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-keep'")
   [ "$_keep" = "1" ] || { _fail "idempotente sem re-drop" "linha sumiu: 2o apply re-dropou ($_keep)"; return 1; }
 }
@@ -1876,7 +1876,7 @@ scenario_b11_ddl_tasks_events() {
   # v9 executions-target-path: coluna target_project_path em executions; v8
   # recall-worktree-identity: coluna session em executions/waves).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "10" ] || { _fail "schema_version" "esperado 10, obtido $_sv"; return 1; }
+  [ "$_sv" = "11" ] || { _fail "schema_version" "esperado 11, obtido $_sv"; return 1; }
   # tasks tem a coluna title (EN, DDL fresco).
   _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='title'")
   [ "$_hascol" = "1" ] || { _fail "coluna title" "esperado 1, obtido $_hascol"; return 1; }
@@ -2192,7 +2192,7 @@ scenario_m1_schema_memories_table_exists() {
   # schema_version deve ser 10 (wave-token-metrics: colunas agent_* em waves)
   _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
     "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "10" ] || { _fail "schema_version errado" "esperado 10, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "11" ] || { _fail "schema_version errado" "esperado 11, obtido '$_ver'"; return 1; }
 }
 
 # M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
@@ -2237,7 +2237,7 @@ scenario_m4_neg_context_type_invalido() {
 # v3 -> ... -> v10: tabelas renomeadas dropadas+recriadas EN (drop v7),
 # memories/suggestions criadas, e o ingest subsequente repopula decisions em
 # EN (o derivado legacy do v3 e descartado pelo drop v7, mas o ingest do
-# state.json o reconstroi). schema_version final = 10.
+# state.json o reconstroi). schema_version final = 11.
 scenario_m1_migration_v3_to_current() {
   _have_deps || return 0
   # Criar um DB v3 com schema pt-BR antigo (sem memories) simulando pre-existente
@@ -2282,7 +2282,7 @@ scenario_m1_migration_v3_to_current() {
   # session/target_project_path de executions e agent_* de waves vem do DDL
   # fresco pos-drop v7)
   _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "10" ] || { _fail "migration: schema_version errado" "esperado 10, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "11" ] || { _fail "migration: schema_version errado" "esperado 11, obtido '$_ver'"; return 1; }
   # decisions repopuladas pelo ingest (>=1; o derivado v3 foi descartado, o
   # state.json o reconstroi em EN).
   _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
@@ -3032,7 +3032,7 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,i
     *) _fail "W5 waves.session" "coluna session ausente em waves pos-migracao"; return 1 ;;
   esac
   _w5_ver=$(sqlite3 "$_w5_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_w5_ver" = "10" ] || { _fail "W5 schema_version" "esperado '10' (corrente pos-v10), obtido '$_w5_ver'"; return 1; }
+  [ "$_w5_ver" = "11" ] || { _fail "W5 schema_version" "esperado '11' (corrente pos-v11), obtido '$_w5_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/w5/sd" --db "$_w5_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W5 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3158,7 +3158,7 @@ JSON
     *) _fail "TP1d shape v9" "coluna target_project_path ausente em executions"; return 1 ;;
   esac
   _tp1_ver=$(sqlite3 "$_tp1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp1_ver" = "10" ] || { _fail "TP1d schema_version" "esperado 10, obtido '$_tp1_ver'"; return 1; }
+  [ "$_tp1_ver" = "11" ] || { _fail "TP1d schema_version" "esperado 11, obtido '$_tp1_ver'"; return 1; }
 }
 
 # Cenario TP2 — re-ingestao idempotente + backfill: DB v8 preexistente com
@@ -3213,7 +3213,7 @@ INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,ses
   _tp3_new=$(sqlite3 "$_tp3_db" "SELECT target_project_path FROM executions WHERE feature='feat-tp3';")
   [ "$_tp3_new" = "/nonexistent/tp3proj" ] || { _fail "TP3 linha nova" "esperado '/nonexistent/tp3proj', obtido '$_tp3_new'"; return 1; }
   _tp3_ver=$(sqlite3 "$_tp3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp3_ver" = "10" ] || { _fail "TP3 schema_version" "esperado '10', obtido '$_tp3_ver'"; return 1; }
+  [ "$_tp3_ver" = "11" ] || { _fail "TP3 schema_version" "esperado '11', obtido '$_tp3_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/tp3/sd" --db "$_tp3_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "TP3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3262,7 +3262,7 @@ JSON
     *) _fail "WT1 shape v10" "coluna agent_spawns_total ausente em waves"; return 1 ;;
   esac
   _wt1_ver=$(sqlite3 "$_wt1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wt1_ver" = "10" ] || { _fail "WT1 schema_version" "esperado 10, obtido '$_wt1_ver'"; return 1; }
+  [ "$_wt1_ver" = "11" ] || { _fail "WT1 schema_version" "esperado 11, obtido '$_wt1_ver'"; return 1; }
 }
 
 # Cenario WT2 — onda SEM .agent_usage: as 9 colunas ficam NULL, nunca 0
@@ -3334,7 +3334,7 @@ JSON
   _wt3_new=$(sqlite3 "$_wt3_db" "SELECT agent_spawns_total||'|'||agent_duration_ms FROM waves WHERE feature='feat-wt3';")
   [ "$_wt3_new" = "3|4321" ] || { _fail "WT3 linha nova" "esperado '3|4321', obtido '$_wt3_new'"; return 1; }
   _wt3_ver=$(sqlite3 "$_wt3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wt3_ver" = "10" ] || { _fail "WT3 schema_version" "esperado '10', obtido '$_wt3_ver'"; return 1; }
+  [ "$_wt3_ver" = "11" ] || { _fail "WT3 schema_version" "esperado '11', obtido '$_wt3_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/wt3/sd" --db "$_wt3_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3387,6 +3387,107 @@ JSON
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT4 reindex#2 exit" "$_CAPTURED_EXIT"; return 1; }
   _wt4_cnt1=$(sqlite3 "$_wt4_db" "SELECT COUNT(*) FROM waves;")
   [ "$_wt4_cnt0" = "$_wt4_cnt1" ] || { _fail "WT4 reindex idempotente" "N0=$_wt4_cnt0 != N1=$_wt4_cnt1"; return 1; }
+}
+
+# ==== otel-wave-cost: consumo real por onda (schema v11) ====
+#
+# O delta OTel start->end grava `.waves[N].otel_usage` no state.json; a
+# ingestao achata isso em 5 colunas. O custo e REAL (fracionario em USD),
+# nao INTEGER — recall_int_or_null descartaria 0.098485 como nao-numerico.
+
+# _otel_state DIR JSON — state.json minimo com uma onda carregando otel_usage.
+_otel_state() {
+  mkdir -p "$1"
+  cat > "$1/state.json" <<STATEEOF
+{
+  "schema_version": "2.0",
+  "execution": {"id": "exec-otel-t", "status": "concluida",
+                "target_project_path": "/tmp/proj-otel",
+                "canonical_project": "proj-otel"},
+  "waves": [
+    {"id": "onda-001", "started_at": "2026-07-26T10:00:00Z",
+     "finished_at": "2026-07-26T10:05:00Z", "executed_stages": ["plan"],
+     "otel_usage": $2}
+  ]
+}
+STATEEOF
+}
+
+scenario_otel_usage_ingerido_em_colunas() {
+  _sd="$TMPDIR_TEST/otel-ing"
+  _db="$TMPDIR_TEST/otel-ing.db"
+  _otel_state "$_sd" '{"session_id":"s1","total_cost_usd":0.229038,"total_tokens":648,"by_source":{"main":{"cost_usd":0.130553,"input":0,"output":0,"cache_read":0,"cache_creation":0},"subagent":{"cost_usd":0.098485,"input":10,"output":600,"cache_read":30,"cache_creation":8}}}'
+  capture _rc --ingest --state-dir "$_sd" --db "$_db"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ingest" "$_CAPTURED_STDERR"; return 1; }
+  _got=$(sqlite3 "$_db" "select otel_cost_usd, otel_cost_main_usd, otel_cost_subagent_usd, otel_subagent_tokens from waves;")
+  [ "$_got" = "0.229038|0.130553|0.098485|648" ]     || { _fail "colunas otel" "esperado '0.229038|0.130553|0.098485|648', obtido '$_got'"; return 1; }
+  return 0
+}
+
+# Custo fracionario NAO pode virar NULL (o bug seria usar recall_int_or_null).
+scenario_otel_custo_fracionario_nao_vira_null() {
+  _sd="$TMPDIR_TEST/otel-frac"
+  _db="$TMPDIR_TEST/otel-frac.db"
+  _otel_state "$_sd" '{"session_id":"s2","total_cost_usd":0.000577,"total_tokens":21,"by_source":{"main":{"cost_usd":0.000577,"input":0,"output":21,"cache_read":0,"cache_creation":0}}}'
+  capture _rc --ingest --state-dir "$_sd" --db "$_db"
+  _got=$(sqlite3 "$_db" "select otel_cost_usd from waves;")
+  [ "$_got" = "0.000577" ]     || { _fail "float" "custo fracionario virou '$_got' (esperado 0.000577)"; return 1; }
+  return 0
+}
+
+# Onda sem otel_usage => NULL, jamais 0 (Principio VI: ausente != medido-zero).
+scenario_otel_ausente_e_null_nao_zero() {
+  _sd="$TMPDIR_TEST/otel-null"
+  _db="$TMPDIR_TEST/otel-null.db"
+  _otel_state "$_sd" 'null'
+  capture _rc --ingest --state-dir "$_sd" --db "$_db"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ingest" "$_CAPTURED_STDERR"; return 1; }
+  _n=$(sqlite3 "$_db" "select count(otel_cost_usd) from waves;")
+  [ "$_n" = "0" ]     || { _fail "null" "otel ausente deveria ser NULL (count=0), obtido count=$_n"; return 1; }
+  _tot=$(sqlite3 "$_db" "select count(*) from waves;")
+  [ "$_tot" = "1" ] || { _fail "linha" "a onda deve existir mesmo sem otel"; return 1; }
+  return 0
+}
+
+# Migracao v10 -> v11: banco pre-existente sem as colunas otel_* recebe os
+# ALTERs guardados por PRAGMA; a linha antiga fica INTACTA com otel NULL
+# (ausente, nao 0); 2a rodada idempotente. Mesmo padrao do WT3 (v9->v10).
+scenario_otel_migracao_v10_v11_idempotente() {
+  _have_deps || return 0
+  _ot_db="$TMPDIR_TEST/otmig/k.db"
+  mkdir -p "$TMPDIR_TEST/otmig"
+  # DB "v10": waves com as colunas agent_* mas SEM as otel_*.
+  sqlite3 "$_ot_db" "
+CREATE TABLE waves (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, stages TEXT, started_at TEXT, finished_at TEXT, wallclock_seconds INTEGER, tool_calls INTEGER, termination_reason TEXT, n_stages INTEGER, n_skills INTEGER, session TEXT, agent_spawns_total INTEGER, agent_spawns_with_usage INTEGER, agent_total_tokens INTEGER, agent_input_tokens INTEGER, agent_output_tokens INTEGER, agent_cache_read_tokens INTEGER, agent_cache_creation_tokens INTEGER, agent_tool_use_count INTEGER, agent_duration_ms INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+INSERT INTO schema_meta VALUES('schema_version','10');
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,session,ingested_at) VALUES('legacyp10','legacyf10','onda-legacy','e-v10','t','onda-legacy','sess-v10','t');
+" || { _fail "fixture v10" "criacao do DB v10 falhou"; return 1; }
+
+  _sd="$TMPDIR_TEST/otmig/sd"
+  _otel_state "$_sd" '{"session_id":"s9","total_cost_usd":0.5,"total_tokens":42,"by_source":{"subagent":{"cost_usd":0.5,"input":2,"output":40,"cache_read":0,"cache_creation":0}}}'
+
+  # 1a rodada: migra v10 -> v11
+  capture _rc --ingest --state-dir "$_sd" --db "$_ot_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest#1" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  _v=$(sqlite3 "$_ot_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
+  [ "$_v" = "11" ] || { _fail "schema_version" "esperado 11, obtido '$_v'"; return 1; }
+
+  # linha v10 intacta: session preservada, coluna nova NULL (nao 0)
+  _leg=$(sqlite3 "$_ot_db" "SELECT session||'|'||COALESCE(otel_cost_usd,-999) FROM waves WHERE project='legacyp10';")
+  [ "$_leg" = "sess-v10|-999.0" ] || [ "$_leg" = "sess-v10|-999" ]     || { _fail "linha v10" "esperado session preservada + otel NULL, obtido '$_leg'"; return 1; }
+
+  # linha nova com o dado otel
+  _new=$(sqlite3 "$_ot_db" "SELECT otel_cost_usd||'|'||otel_cost_subagent_usd FROM waves WHERE project='proj-otel';")
+  [ "$_new" = "0.5|0.5" ] || { _fail "linha nova" "esperado '0.5|0.5', obtido '$_new'"; return 1; }
+
+  # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicar linha)
+  _n1=$(sqlite3 "$_ot_db" "SELECT count(*) FROM waves;")
+  capture _rc --ingest --state-dir "$_sd" --db "$_ot_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest#2 (idempotencia)" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  _n2=$(sqlite3 "$_ot_db" "SELECT count(*) FROM waves;")
+  [ "$_n1" = "$_n2" ] || { _fail "idempotencia" "linhas mudaram de $_n1 para $_n2"; return 1; }
+  return 0
 }
 
 run_all_scenarios
