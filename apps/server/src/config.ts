@@ -15,14 +15,17 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
-/** Default quando CSTK_SCHEMA_VERSIONS nao esta definido — aceita v2..v8.
+/** Default quando CSTK_SCHEMA_VERSIONS nao esta definido — aceita v2..v10.
  *  v4 (recall-memory-mirror) adiciona a tabela `memories`; v5 (recall-suggestions)
  *  adiciona a tabela `suggestions`; v6 adiciona a coluna `decisions.options`;
  *  v7 (new-schema) migra todas as colunas pt-BR→EN snake_case;
- *  v8 (recall-worktree-identity) adiciona a coluna `session` em `executions` e `waves`.
+ *  v8 (recall-worktree-identity) adiciona a coluna `session` em `executions` e `waves`;
+ *  v9 (executions-target-path) adiciona `executions.target_project_path`;
+ *  v10 (wave-token-metrics, cstk 5.25.0) adiciona 9 colunas `agent_*` em `waves`
+ *  com o consumo real de subagentes (tokens, tool uses, duracao).
  *  Todas sao aditivas, entao as telas existentes seguem operando e os recursos
  *  novos aparecem so quando a tabela/coluna esta presente (Principio II). */
-export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9'] as const;
+export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10'] as const;
 
 export interface ServerConfig {
   /** Path absoluto canonicalizado para knowledge.db */

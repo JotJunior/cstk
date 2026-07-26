@@ -20,6 +20,17 @@ export function mapWave(row: WaveRow): WaveDTO {
     nStages: row.n_stages,
     nSkills: row.n_skills,
     session: row.session,
+    // schema v10 — passa NULL adiante sem coalescer para 0 (Principio III):
+    // "nao medido" e "medido e deu zero" nao podem virar o mesmo numero.
+    agentSpawnsTotal: row.agent_spawns_total,
+    agentSpawnsWithUsage: row.agent_spawns_with_usage,
+    agentTotalTokens: row.agent_total_tokens,
+    agentInputTokens: row.agent_input_tokens,
+    agentOutputTokens: row.agent_output_tokens,
+    agentCacheReadTokens: row.agent_cache_read_tokens,
+    agentCacheCreationTokens: row.agent_cache_creation_tokens,
+    agentToolUseCount: row.agent_tool_use_count,
+    agentDurationMs: row.agent_duration_ms,
   };
 }
 

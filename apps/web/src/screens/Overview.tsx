@@ -5,9 +5,12 @@
  * Consome useOverview(period) — dados reais da knowledge.db.
  * 4 estados: loading/empty/error/degraded (US6, FR-006).
  *
- * Principio III (Honestidade de Metrica): custo = proxy "tool calls",
- * nunca "$"/tokens. Mix de modelos e DERIVADO de decisoes de roteamento
- * logadas (FR-010) — rotulado como tal, nao e o relatorio canonico.
+ * Principio III (Honestidade de Metrica): o custo do ORQUESTRADOR continua
+ * sendo o proxy "tool calls" — nunca "$". Desde o schema v10 existe tambem o
+ * consumo MEDIDO dos subagentes (tokens), exibido com a cobertura da amostra
+ * ("N de M spawns medidos"); as duas metricas convivem e NAO se somam.
+ * Nenhuma delas vira valor monetario. Mix de modelos e DERIVADO de decisoes
+ * de roteamento logadas (FR-010) — rotulado como tal.
  *
  * Ref: spec.md §User Story 1; constitution §III, §IV
  */
@@ -18,10 +21,11 @@ import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/i
 import {
   KpiCard, StatusBadge, SeverityBadge, BudgetMini, PipelineProgress,
   Donut, BarH, FunnelChart, Icon, MiniStat,
+  agentUsageState, coverageLabel,
 } from '@/components/index.js';
 import type { DonutDatum, FunnelDatum } from '@/components/index.js';
 import { selectOverview, type OverviewRaw } from '@/lib/overview-select.js';
-import { fmtNum, fmtDur, fmtPct, fmtRelative } from '@/lib/format.js';
+import { fmtNum, fmtDur, fmtPct, fmtRelative, fmtTokens } from '@/lib/format.js';
 import { SDD_STAGES } from '@/lib/constants.js';
 import type { PeriodParam } from '@cstk-panel/shared-types';
 
@@ -86,8 +90,9 @@ export function Overview({ period, project = '' }: OverviewProps) {
     totalProjects, totalFeatures, emAndamento, aguardando, totalToolCalls,
     totalWallclock, testsPassed, testsTotal, totalAlertas,
     execucoes, alertas, leaderboard, funnel, modelMix, recentActivity,
-    costSeries, maxToolCalls,
+    costSeries, maxToolCalls, agentUsage, tokenSeries,
   } = vm;
+  const hasMeasuredTokens = agentUsageState(agentUsage) === 'measured';
 
   // KPIs derivados
   const nCriticos = (alertas as Record<string, unknown>[]).filter(a => deriveSeverity(a) === 'critical').length;
@@ -125,8 +130,8 @@ export function Overview({ period, project = '' }: OverviewProps) {
         </div>
       </div>
 
-      {/* KPI row — 6 cards */}
-      <div className="grid-6">
+      {/* KPI row — 7 cards (o de tokens entrou com o schema v10) */}
+      <div className="grid-7">
         <KpiCard label="Projetos ativos" value={totalProjects} icon="folder" footnote={`${totalFeatures} features`} />
         <KpiCard
           label="Em andamento"
@@ -147,9 +152,22 @@ export function Overview({ period, project = '' }: OverviewProps) {
           value={fmtNum(totalToolCalls)}
           icon="bolt"
           footnote="tool_calls totais"
-          tip="O harness não expõe tokens — usamos tool_calls como proxy auditável."
+          tip="Chamadas de ferramenta do orquestrador — proxy auditável de esforço. Não é token nem custo monetário."
           spark={costSeries}
           sparkColor="var(--accent)"
+        />
+        {/* Consumo MEDIDO dos subagentes (schema v10). Amostra: spawns em
+            background não reportam uso, por isso o rodapé traz a cobertura. */}
+        <KpiCard
+          label="Tokens · subagentes"
+          value={hasMeasuredTokens ? fmtTokens(agentUsage?.totalTokens) : '—'}
+          icon="cpu"
+          footnote={hasMeasuredTokens ? coverageLabel(agentUsage) : 'não coletado nesta fonte'}
+          tip={hasMeasuredTokens
+            ? 'Tokens reportados pelo harness para cada subagente e agregados por onda. Medição real, mas parcial: spawns em background não reportam uso.'
+            : 'Exige knowledge.db em schema v10 (cstk ≥ 5.25.0). Execuções anteriores não são retroalimentadas.'}
+          spark={tokenSeries}
+          sparkColor="var(--info)"
         />
         <KpiCard
           label="Tempo de parede"

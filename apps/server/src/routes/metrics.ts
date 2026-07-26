@@ -27,7 +27,11 @@ import {
   getModelMix,
   getModelMixByStage,
   getRecallConsultations,
+  getAgentUsage,
+  getTokensOverTime,
+  getTokensByWave,
 } from '../db/queries/metrics.js';
+import type { AgentUsageFilters } from '../db/queries/metrics.js';
 
 const PeriodSchema = z.enum(['24h', '7d', '30d', 'all']).optional();
 const ProjectSchema = z.object({ project: z.string().optional() });
@@ -190,6 +194,61 @@ export async function metricsRoutes(server: FastifyInstance): Promise<void> {
     const { db } = openResult;
     try {
       const data = getRecallConsultations(db);
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── Metricas de consumo de subagente (schema v10) ───────────────────────
+  // NAO sao proxy nem estimativa: o harness mede, o hook do cstk grava e
+  // `cstk recall --ingest` agrega por onda. Por isso NAO levam
+  // meta.approximate. Sao, porem, AMOSTRA — spawns em background nao reportam
+  // uso — e por isso todo payload carrega spawnsTotal/spawnsWithUsage juntos.
+  // Base v<10 -> campos null / array vazio, nunca zero fabricado.
+  function parseUsageQuery(query: unknown): AgentUsageFilters {
+    const q = z.object({
+      project: z.string().trim().min(1).max(200).optional(),
+      feature: z.string().trim().min(1).max(200).optional(),
+      period: PeriodSchema,
+    }).safeParse(query);
+    if (!q.success) return {};
+    const { project, feature, period } = q.data;
+    return {
+      ...(project !== undefined ? { project } : {}),
+      ...(feature !== undefined ? { feature } : {}),
+      ...(period !== undefined ? { period: period as MetricPeriod } : {}),
+    };
+  }
+
+  // ─── GET /metrics/agent-usage ────────────────────────────────────────────
+  server.get('/metrics/agent-usage', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getAgentUsage(db, parseUsageQuery(request.query));
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/tokens-over-time ───────────────────────────────────────
+  // Dias sem medicao sao OMITIDOS (nao viram 0) — ver getTokensOverTime.
+  server.get('/metrics/tokens-over-time', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getTokensOverTime(db, parseUsageQuery(request.query));
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/tokens-by-wave ─────────────────────────────────────────
+  server.get('/metrics/tokens-by-wave', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getTokensByWave(db, parseUsageQuery(request.query), 20);
       return reply.status(200).send(wrap(data, {}, config.dbPath, db));
     } finally { db.close(); }
   });

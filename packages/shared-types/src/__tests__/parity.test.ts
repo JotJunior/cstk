@@ -73,6 +73,16 @@ describe('Paridade schemas Zod — entidades', () => {
       nStages: 1,
       nSkills: 3,
       session: null,
+      // schema v10 — medicao presente e parcial (2 de 3 spawns reportaram)
+      agentSpawnsTotal: 3,
+      agentSpawnsWithUsage: 2,
+      agentTotalTokens: 120400,
+      agentInputTokens: 5200,
+      agentOutputTokens: 9800,
+      agentCacheReadTokens: 98000,
+      agentCacheCreationTokens: 7400,
+      agentToolUseCount: 18,
+      agentDurationMs: 240000,
     };
     const r = WaveDTOSchema.safeParse(payload);
     expect(r.success).toBe(true);

@@ -1,5 +1,25 @@
 <!--
-Sync Impact Report
+Sync Impact Report (emenda 2026-07-26)
+- Version: 1.0.0 → 1.1.0
+- Bump rationale: MINOR — expansao material do Principio III. A premissa
+  factual da proibicao original ("o harness nao expoe consumo de tokens")
+  deixou de valer: o cstk 5.25.0 (feature wave-token-metrics) persiste o uso
+  MEDIDO de cada spawn de subagente na knowledge.db v10
+  (waves.agent_total_tokens e 8 colunas irmas). O principio nao foi
+  enfraquecido — foi reancorado: continua proibido inventar, estimar ou
+  monetizar; passa a ser obrigatorio exibir a cobertura da amostra.
+- Principios afetados: III. Honestidade de Metrica (expandido; nenhuma
+  clausula removida — a proibicao de "$"/USD e de metrica inventada segue
+  integral).
+- Artefatos atualizados nesta emenda:
+  - apps/web/src/screens/Overview.tsx (tip "o harness nao expoe tokens" —
+    obsoleto, reescrito)
+  - apps/web/src/screens/{Metrics,ProjectDetail,FeatureDetail,ExecutionDetail}.tsx
+  - apps/web/src/components/AgentUsage.tsx (regra de cobertura centralizada)
+  - apps/server/src/db/queries/{metrics,waves,executions}.ts
+- Artefatos que permanecem validos sem mudanca: Principios I, II, IV, V, VI.
+
+Sync Impact Report (ratificacao inicial)
 - Version: (none) → 1.0.0
 - Bump rationale: ratificacao inicial (MAJOR baseline) — constituicao criada do zero a partir do briefing consolidado.
 - Principios adicionados (Core):
@@ -72,22 +92,47 @@ com `meta.degraded=true`; nenhuma resposta `5xx` por estado de dado.
 
 ### III. Honestidade de Metrica
 
-O painel reporta apenas o que existe no schema. Custo de execucao e medido
-pelo proxy `tool_calls`, jamais inventado.
+O painel reporta apenas o que existe no schema, com a natureza de cada numero
+explicita: **proxy**, **derivado/aproximado** ou **medido**. Esforco do
+orquestrador continua sendo medido pelo proxy `tool_calls`, jamais inventado.
 
-- MUST NOT: exibir `$`, `USD`, `tokens` ou qualquer custo monetario — o
-  harness nao expoe consumo de tokens.
-- MUST: rotular custo explicitamente como "proxy: tool calls".
+- MUST: rotular `tool_calls` explicitamente como "proxy" — ele conta chamadas
+  de ferramenta, nao consumo.
+- MUST NOT: exibir `$`, `USD` ou qualquer valor monetario, derivado ou
+  convertido. O painel nao conhece preco de token e nao o estima.
 - MUST NOT: inventar, estimar ou derivar campos que nao existem nas tabelas
-  v2 (`executions`, `waves`, `decisions`, `tasks`, `events`,
-  `alert_signals`, `bloqueios`, `skills`, `retros`, `knowledge_fts`).
+  da knowledge.db (`executions`, `waves`, `decisions`, `tasks`, `events`,
+  `alert_signals`, `blocks`, `skills`, `retros`, `suggestions`, `memories`,
+  `knowledge_fts`).
 - SHOULD: metricas aproximadas/derivadas (ex: clarify-resolution rate) sao
   rotuladas como derivadas/aproximadas no envelope ou na UI.
 
+**Consumo de subagentes (schema v10 — emenda 1.1.0)**: desde o cstk 5.25.0
+(feature `wave-token-metrics`) o harness reporta o uso de cada spawn e o
+`cstk recall --ingest` agrega em `waves.agent_*`. Esse numero e MEDIDO — nao
+e proxy nem estimativa — e por isso PODE ser exibido como "tokens", sob tres
+regras inegociaveis:
+
+- MUST: exibir a cobertura da amostra sempre que houver total. Spawns em
+  background nao reportam uso, entao todo total vem acompanhado de
+  `spawns_with_usage / spawns_total` (ex: "3 de 4 spawns medidos"). Um total
+  sem denominador apresenta parcial como completo.
+- MUST NOT: converter `NULL` em `0`. A fonte distingue tres estados —
+  nao coletado (sem contagem de spawn), coletado sem dado de uso (spawns
+  contados, tokens nulos) e medido — e a UI MUST manter os tres distintos.
+  "Nao medido" exibido como zero e fabricacao.
+- MUST NOT: somar token medido com `tool_calls` num unico indicador de
+  "custo", nem apresentar um como substituto do outro: contam coisas
+  diferentes (consumo dos subagentes x chamadas do orquestrador).
+
 **Why**: honestidade de instrumentacao e pre-requisito de confianca numa
-ferramenta de observabilidade; metrica inventada e pior que metrica ausente.
-**Testavel**: grep da UI/API por "USD", "$", "token" como rotulo de custo
-retorna zero; todo numero exibido mapeia a uma coluna real do schema v2.
+ferramenta de observabilidade; metrica inventada e pior que metrica ausente —
+e uma metrica real apresentada como mais completa do que e tem o mesmo efeito.
+**Testavel**: grep da UI/API por "USD"/"$" como rotulo de custo retorna zero;
+todo numero exibido mapeia a uma coluna real do schema; nenhum caminho de
+codigo coalesce as colunas `agent_*` para 0 (coberto por
+`apps/server/test/lib/agent-usage.test.ts` e
+`apps/web/src/lib/agent-usage.test.ts`).
 
 ### IV. Nao Reimplementar o que Tem Dono
 
@@ -209,4 +254,4 @@ dele e regressao de produto, nao liberdade de implementacao.
   rationale; uma violacao de MUST/NON-NEGOTIABLE invalida o artefato ate
   ser corrigida ou a constituicao ser emendada via SemVer.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-05-24
+**Version**: 1.1.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-07-26

@@ -10,9 +10,13 @@
 import { useMetric } from '@/lib/hooks.js';
 import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/index.js';
-import { KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBars, Legend } from '@/components/index.js';
+import {
+  KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBars, Legend,
+  AgentUsagePanel, AgentUsageEmpty, agentUsageState, coverageLabel,
+} from '@/components/index.js';
 import type { ScatterDatum, DonutDatum } from '@/components/index.js';
-import type { PeriodParam } from '@cstk-panel/shared-types';
+import { fmtTokens } from '@/lib/format.js';
+import type { PeriodParam, AgentUsageRollup } from '@cstk-panel/shared-types';
 
 // Cores por modelo (alinhado ao Overview)
 const MODEL_COLOR: Record<string, string> = {
@@ -152,7 +156,7 @@ function BarH({ data, label = '' }: { data: { label: string; value: number }[]; 
 // Cartao de metrica generico com hook
 // ---------------------------------------------------------------------------
 function MetricCard({
-  name, title, subtitle, period, renderContent, span = 1,
+  name, title, subtitle, period, renderContent, span = 1, emptyFallback,
 }: {
   name: Parameters<typeof useMetric>[0];
   title: string;
@@ -160,6 +164,13 @@ function MetricCard({
   period?: PeriodParam;
   renderContent: (data: unknown, meta: { approximate?: boolean }) => React.ReactNode;
   span?: number;
+  /**
+   * Estado vazio proprio. Existe porque "sem dado no periodo" e "metrica nao
+   * coletada nesta fonte" nao sao a mesma coisa: o EmptyState generico
+   * sugeriria que basta trocar o periodo, quando na verdade a base nao tem a
+   * coluna (schema v<10). Ver AgentUsageEmpty.
+   */
+  emptyFallback?: React.ReactNode;
 }) {
   const query = useMetric(name, period);
   const { isLoading, isError, errorMessage } = useApiState(query);
@@ -190,7 +201,7 @@ function MetricCard({
         {isLoading && <LoadingState />}
         {isError && <ErrorState message={errorMessage ?? 'Erro ao carregar metrica.'} />}
         {!isLoading && !isError && (raw == null || (Array.isArray(raw) && raw.length === 0))
-          ? <EmptyState title="Sem dados" subtitle="Nenhum dado para este periodo." />
+          ? (emptyFallback ?? <EmptyState title="Sem dados" subtitle="Nenhum dado para este periodo." />)
           : null}
         {!isLoading && !isError && raw != null && (
           !Array.isArray(raw) || (raw as unknown[]).length > 0
@@ -211,6 +222,10 @@ export function Metrics({ period }: MetricsProps) {
   const testQuery = useMetric('test-pass-rate', period);
   const latencyQuery = useMetric('human-latency', period);
   const clarifyQuery = useMetric('clarify-resolution', period);
+  // schema v10 — consumo MEDIDO de subagentes (nao proxy, mas amostra)
+  const usageQuery = useMetric('agent-usage', period);
+  const agentUsage = (usageQuery.data?.data as AgentUsageRollup | null) ?? null;
+  const hasMeasuredTokens = agentUsageState(agentUsage) === 'measured';
 
   const { isDegraded } = useApiState(costQuery);
   const meta = costQuery.data?.meta;
@@ -239,7 +254,15 @@ export function Metrics({ period }: MetricsProps) {
         <KpiCard
           label="Custo total · proxy"
           value={totalToolCalls != null ? String(totalToolCalls) : '—'}
-          trend="tool_calls (nao tokens)"
+          trend="tool_calls do orquestrador"
+        />
+        {/* Token MEDIDO (schema v10) — convive com o proxy: um conta chamadas
+            do orquestrador, o outro o consumo dos subagentes. Nao se somam. */}
+        <KpiCard
+          label="Tokens de subagente"
+          value={hasMeasuredTokens ? fmtTokens(agentUsage?.totalTokens) : '—'}
+          trend={hasMeasuredTokens ? coverageLabel(agentUsage) : 'não coletado nesta fonte'}
+          accent={hasMeasuredTokens ? 'accent' : undefined}
         />
         {passRate != null && passRate >= 0.8 ? (
           <KpiCard label="Test pass rate" value={fmtPct(passRate)} trend="media do periodo" accent="success" />
@@ -258,6 +281,97 @@ export function Metrics({ period }: MetricsProps) {
         ) : (
           <KpiCard label="Auto-resolve clarify" value={fmtPct(autoResolve)} trend={isApproximate ? 'derivada/aproximada' : 'score>=2 vs escalados'} />
         )}
+      </div>
+
+      {/* ─── Consumo de subagentes (schema v10 — wave-token-metrics) ───────
+          Diferente de todo o resto desta tela: nao e proxy nem derivacao. O
+          harness mede o uso de cada spawn, o hook do cstk grava e o ingest
+          agrega por onda. O que continua sendo honestidade obrigatoria e a
+          COBERTURA: spawns em background nao reportam uso, entao todo total
+          aparece com "N de M spawns medidos". */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+        <MetricCard
+          name="agent-usage"
+          title="Consumo de subagentes · medido"
+          subtitle="tokens reportados pelo harness · não é proxy"
+          period={period}
+          renderContent={(raw) => (
+            <AgentUsagePanel usage={raw as AgentUsageRollup | null} columns={4} />
+          )}
+        />
+
+        <MetricCard
+          name="tokens-over-time"
+          title="Tokens no tempo · medido"
+          subtitle="soma diária dos spawns com dado de uso"
+          period={period}
+          emptyFallback={<AgentUsageEmpty usage={agentUsage} />}
+          renderContent={(raw) => {
+            const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
+            if (rows.length === 0) return <AgentUsageEmpty usage={agentUsage} />;
+            const series: TimeSeriesPoint[] = rows.map(r => ({
+              d: (r.day as string | null) ?? '',
+              value: (r.totalTokens as number | null) ?? 0,
+            }));
+            const totalCache = sum(nums(raw, 'cacheReadTokens'));
+            const totalTokens = sum(nums(raw, 'totalTokens'));
+            const cacheShare = totalTokens > 0 ? totalCache / totalTokens : null;
+            return (
+              <>
+                <AreaChart data={series} color="var(--accent)" height={140} label="tokens / dia" />
+                <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
+                  {series.length} dia(s) com medição · dias sem medição não entram como zero
+                  {cacheShare != null && ` · ${fmtPct(cacheShare)} de cache read`}
+                </div>
+              </>
+            );
+          }}
+        />
+      </div>
+
+      {/* Ondas mais caras em token medido */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+        <MetricCard
+          name="tokens-by-wave"
+          title="Ondas mais caras · tokens medidos"
+          subtitle="top 20 por consumo de subagente"
+          period={period}
+          emptyFallback={<AgentUsageEmpty usage={agentUsage} />}
+          renderContent={(raw) => {
+            const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
+            if (rows.length === 0) return <AgentUsageEmpty usage={agentUsage} />;
+            const max = Math.max(...rows.map(r => (r.totalTokens as number | null) ?? 0), 1);
+            return (
+              <div className="col gap-2">
+                {rows.map((r, i) => {
+                  const tokens = (r.totalTokens as number | null) ?? 0;
+                  const spawnsTotal = r.spawnsTotal as number | null;
+                  const spawnsWithUsage = r.spawnsWithUsage as number | null;
+                  const partial = spawnsTotal != null && spawnsWithUsage != null && spawnsWithUsage < spawnsTotal;
+                  return (
+                    <div key={`${String(r.executionId)}-${String(r.wave)}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 170, fontSize: 10.5, color: 'var(--text-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        {String(r.feature ?? '?')} · {String(r.wave ?? '?')}
+                      </div>
+                      <div style={{ flex: 1, height: 8, background: 'var(--bg-3)', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ width: `${(tokens / max) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: 3 }} />
+                      </div>
+                      <span
+                        title={partial ? `${spawnsWithUsage} de ${spawnsTotal} spawns reportaram uso` : undefined}
+                        style={{ width: 96, textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-1)', flexShrink: 0 }}
+                      >
+                        {fmtTokens(tokens)}{partial ? ' *' : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+                  * total parcial — parte dos spawns da onda não reportou uso
+                </div>
+              </div>
+            );
+          }}
+        />
       </div>
 
       {/* Grid de metricas 2x4 */}

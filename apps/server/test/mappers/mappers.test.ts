@@ -107,6 +107,11 @@ describe('mapWave', () => {
       wave: 'onda-007', execution_id: 'e1', stages: 'execute-task',
       started_at: ISO, finished_at: null, wallclock_seconds: 120, tool_calls: 25,
       termination_reason: null, n_stages: 1, n_skills: 3, session: null,
+      // base v<10 (colunas ausentes -> projetadas como NULL pela query)
+      agent_spawns_total: null, agent_spawns_with_usage: null,
+      agent_total_tokens: null, agent_input_tokens: null, agent_output_tokens: null,
+      agent_cache_read_tokens: null, agent_cache_creation_tokens: null,
+      agent_tool_use_count: null, agent_duration_ms: null,
     };
     const dto = mapWave(row);
     expect(typeof dto.stages).toBe('string');
@@ -119,11 +124,35 @@ describe('mapWave', () => {
       wave: 'onda-007', execution_id: 'e1', stages: 'execute-task',
       started_at: ISO, finished_at: null, wallclock_seconds: 120, tool_calls: 25,
       termination_reason: null, n_stages: 1, n_skills: 3, session: 'minha-feature',
+      agent_spawns_total: 4, agent_spawns_with_usage: 3,
+      agent_total_tokens: 248500, agent_input_tokens: 9800, agent_output_tokens: 21400,
+      agent_cache_read_tokens: 198300, agent_cache_creation_tokens: 19000,
+      agent_tool_use_count: 41, agent_duration_ms: 512000,
     };
     const dto = mapWave(row);
     expect(dto.session).toBe('minha-feature');
     const r = WaveDTOSchema.safeParse(dto);
     expect(r.success).toBe(true);
+  });
+
+  it('v10: nao coalesce NULL para 0 — sem medicao chega null no DTO', () => {
+    // Regressao do Principio III: um `?? 0` no mapper transformaria "onda sem
+    // medicao" em "onda que consumiu zero token" — indistinguiveis na UI.
+    const row = {
+      wave: 'onda-008', execution_id: 'e1', stages: 'review-task',
+      started_at: ISO, finished_at: null, wallclock_seconds: 60, tool_calls: 3,
+      termination_reason: null, n_stages: 1, n_skills: 0, session: null,
+      agent_spawns_total: 2, agent_spawns_with_usage: 0,
+      agent_total_tokens: null, agent_input_tokens: null, agent_output_tokens: null,
+      agent_cache_read_tokens: null, agent_cache_creation_tokens: null,
+      agent_tool_use_count: null, agent_duration_ms: null,
+    };
+    const dto = mapWave(row);
+    expect(dto.agentSpawnsTotal).toBe(2);
+    expect(dto.agentSpawnsWithUsage).toBe(0);
+    expect(dto.agentTotalTokens).toBeNull();
+    expect(dto.agentCacheReadTokens).toBeNull();
+    expect(WaveDTOSchema.safeParse(dto).success).toBe(true);
   });
 });
 

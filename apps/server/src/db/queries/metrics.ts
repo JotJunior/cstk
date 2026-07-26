@@ -7,6 +7,11 @@
  * - toolCallsTotal = proxy de custo; NUNCA rotular como "$" ou "tokens" na UI.
  * - clarify-resolution: meta.approximate=true (taxa derivada/estimada).
  * - mix de modelos: nao tem endpoint — card "indisponivel nesta fonte" na UI.
+ * - agent-usage / tokens-over-time (schema v10): tokens MEDIDOS pelo harness e
+ *   persistidos por `cstk recall`. Sao dado real, nao proxy — mas AMOSTRA:
+ *   spawns em background nao reportam uso. Todo consumidor recebe
+ *   spawnsWithUsage/spawnsTotal junto e MUST exibir o denominador. Continua
+ *   proibido converter token em "$"/USD (o painel nao conhece preco).
  *
  * Todos os filtros via binding parametrizado.
  *
@@ -14,6 +19,7 @@
  */
 import type Database from 'better-sqlite3';
 import { hasColumn } from '../columns.js';
+import { hasAgentUsage } from './waves.js';
 
 export type MetricPeriod = '24h' | '7d' | '30d' | 'all';
 
@@ -390,6 +396,195 @@ export interface RecallConsultationsResult {
 }
 
 const HITS_RE = /hits=(\d+)/;
+
+// ─────────────────────────────────────────────────────────
+// 11. agent-usage — consumo REAL de subagentes (schema v10)
+//     Fonte: waves.agent_* (agregado por `cstk recall --ingest` a partir de
+//     .waves[].agent_usage do state.json). Nao e proxy nem estimativa.
+//     AMOSTRA: spawns sem dado de uso (background/async) entram em
+//     spawnsTotal mas nao em spawnsWithUsage — o denominador acompanha o
+//     total para que a UI nunca apresente parcial como completo (SC-004 do
+//     cstk / Principio III do painel).
+// ─────────────────────────────────────────────────────────
+
+export interface AgentUsageResult {
+  spawnsTotal: number | null;
+  spawnsWithUsage: number | null;
+  totalTokens: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheCreationTokens: number | null;
+  toolUseCount: number | null;
+  durationMs: number | null;
+  /** ondas com metrica coletada (agent_spawns_total NAO nulo) */
+  wavesWithUsage: number | null;
+  /** ondas no recorte, coletadas ou nao */
+  wavesTotal: number | null;
+}
+
+/** Recorte vazio/base v<10 — todos os campos null, nunca 0 (Principio III). */
+const EMPTY_AGENT_USAGE: AgentUsageResult = {
+  spawnsTotal: null, spawnsWithUsage: null, totalTokens: null,
+  inputTokens: null, outputTokens: null, cacheReadTokens: null,
+  cacheCreationTokens: null, toolUseCount: null, durationMs: null,
+  wavesWithUsage: null, wavesTotal: null,
+};
+
+/** Filtros comuns das metricas de consumo (grao = onda). */
+export interface AgentUsageFilters {
+  project?: string;
+  feature?: string;
+  period?: MetricPeriod;
+}
+
+/**
+ * Monta WHERE + params para consultas sobre `waves`.
+ * O filtro de periodo usa `waves.started_at` (a onda tem timestamp proprio —
+ * nao precisa do JOIN com executions), degradando para `source_ts` em base
+ * sem a coluna.
+ */
+function waveScope(
+  db: Database.Database,
+  filters: AgentUsageFilters,
+): { where: string; params: unknown[]; startedCol: string } {
+  const startedCol = hasColumn(db, 'waves', 'started_at')
+    ? "coalesce(started_at, source_ts)"
+    : 'source_ts';
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (filters.project !== undefined) {
+    conditions.push('project = ?');
+    params.push(filters.project);
+  }
+  if (filters.feature !== undefined) {
+    conditions.push('feature = ?');
+    params.push(filters.feature);
+  }
+  const pf = periodToFilter(filters.period);
+  if (pf) conditions.push(`${startedCol} >= ${pf}`);
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  return { where, params, startedCol };
+}
+
+export function getAgentUsage(
+  db: Database.Database,
+  filters: AgentUsageFilters = {},
+): AgentUsageResult {
+  if (!hasAgentUsage(db)) return { ...EMPTY_AGENT_USAGE };
+  const { where, params } = waveScope(db, filters);
+  // sum() do SQLite retorna NULL quando nenhuma linha tem valor — exatamente a
+  // semantica desejada ("sem dado"), por isso NAO ha coalesce aqui.
+  const row = db
+    .prepare(`
+      SELECT
+        sum(agent_spawns_total)          as spawnsTotal,
+        sum(agent_spawns_with_usage)     as spawnsWithUsage,
+        sum(agent_total_tokens)          as totalTokens,
+        sum(agent_input_tokens)          as inputTokens,
+        sum(agent_output_tokens)         as outputTokens,
+        sum(agent_cache_read_tokens)     as cacheReadTokens,
+        sum(agent_cache_creation_tokens) as cacheCreationTokens,
+        sum(agent_tool_use_count)        as toolUseCount,
+        sum(agent_duration_ms)           as durationMs,
+        sum(CASE WHEN agent_spawns_total IS NOT NULL THEN 1 ELSE 0 END) as wavesWithUsage,
+        count(*)                         as wavesTotal
+      FROM waves
+      ${where}
+    `)
+    .get(...params) as AgentUsageResult | undefined;
+  return row ?? { ...EMPTY_AGENT_USAGE };
+}
+
+// ─────────────────────────────────────────────────────────
+// 12. tokens-over-time — serie diaria de tokens medidos (schema v10)
+//     Dias sem NENHUMA onda com dado sao OMITIDOS da serie (nao viram 0):
+//     a linha do grafico so existe onde houve medicao.
+// ─────────────────────────────────────────────────────────
+
+export interface TokensOverTimeRow {
+  day: string;               // 'YYYY-MM-DD'
+  totalTokens: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheCreationTokens: number | null;
+  spawnsTotal: number | null;
+  spawnsWithUsage: number | null;
+}
+
+export function getTokensOverTime(
+  db: Database.Database,
+  filters: AgentUsageFilters = {},
+): TokensOverTimeRow[] {
+  if (!hasAgentUsage(db)) return [];
+  const { where, params, startedCol } = waveScope(db, filters);
+  const scope = where === ''
+    ? 'WHERE agent_total_tokens IS NOT NULL'
+    : `${where} AND agent_total_tokens IS NOT NULL`;
+  return db
+    .prepare(`
+      SELECT substr(${startedCol}, 1, 10)   as day,
+             sum(agent_total_tokens)        as totalTokens,
+             sum(agent_input_tokens)        as inputTokens,
+             sum(agent_output_tokens)       as outputTokens,
+             sum(agent_cache_read_tokens)   as cacheReadTokens,
+             sum(agent_cache_creation_tokens) as cacheCreationTokens,
+             sum(agent_spawns_total)        as spawnsTotal,
+             sum(agent_spawns_with_usage)   as spawnsWithUsage
+      FROM waves
+      ${scope}
+      GROUP BY day
+      HAVING day IS NOT NULL AND day != ''
+      ORDER BY day ASC
+    `)
+    .all(...params) as TokensOverTimeRow[];
+}
+
+// ─────────────────────────────────────────────────────────
+// 13. tokens-by-wave — ondas mais caras em token medido (schema v10)
+// ─────────────────────────────────────────────────────────
+
+export interface TokensByWaveRow {
+  project: string;
+  feature: string;
+  executionId: string;
+  wave: string;
+  stages: string | null;
+  totalTokens: number;
+  spawnsTotal: number | null;
+  spawnsWithUsage: number | null;
+  toolCalls: number | null;
+  durationMs: number | null;
+}
+
+export function getTokensByWave(
+  db: Database.Database,
+  filters: AgentUsageFilters = {},
+  limit = 20,
+): TokensByWaveRow[] {
+  if (!hasAgentUsage(db)) return [];
+  const { where, params } = waveScope(db, filters);
+  const scope = where === ''
+    ? 'WHERE agent_total_tokens IS NOT NULL'
+    : `${where} AND agent_total_tokens IS NOT NULL`;
+  const stagesCol = hasColumn(db, 'waves', 'stages') ? 'stages' : 'NULL as stages';
+  const execIdCol = hasColumn(db, 'waves', 'execution_id') ? 'execution_id' : 'NULL';
+  return db
+    .prepare(`
+      SELECT project, feature, ${execIdCol} as executionId, wave, ${stagesCol},
+             agent_total_tokens      as totalTokens,
+             agent_spawns_total      as spawnsTotal,
+             agent_spawns_with_usage as spawnsWithUsage,
+             tool_calls              as toolCalls,
+             agent_duration_ms       as durationMs
+      FROM waves
+      ${scope}
+      ORDER BY agent_total_tokens DESC
+      LIMIT ?
+    `)
+    .all(...params, limit) as TokensByWaveRow[];
+}
 
 export function getRecallConsultations(db: Database.Database): RecallConsultationsResult {
   const descCol = hasColumn(db, 'events', 'description') ? 'description' : 'NULL';

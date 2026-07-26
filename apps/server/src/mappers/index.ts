@@ -12,3 +12,4 @@ export { mapAlert, mapAlerts } from './alert.js';
 export { mapBlock, mapBlocks } from './block.js';
 export { mapSkill, mapSkills } from './skill.js';
 export { mapSuggestion, mapSuggestions } from './suggestion.js';
+export { mapAgentUsageRollup, mapAgentUsageResult } from './agent-usage.js';

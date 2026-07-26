@@ -12,7 +12,7 @@ import { wrap, wrapDegraded } from '../lib/envelope.js';
 import { generateETag, etagMatches } from '../lib/etag.js';
 import { loadConfig } from '../config.js';
 import { getRollupByProject, getRollupByFeature, listExecutionsByProject } from '../db/queries/executions.js';
-import { mapExecution, normalizeStatus } from '../mappers/index.js';
+import { mapExecution, normalizeStatus, mapAgentUsageRollup } from '../mappers/index.js';
 
 // Validacao de path param: string nao-vazia, sem traversal (FR-018)
 const ProjectParamSchema = z.object({
@@ -43,6 +43,8 @@ export async function projectRoutes(server: FastifyInstance): Promise<void> {
         totalWallclock: r.total_wallclock,
         openAlerts: r.open_alerts,
         latestExecutionAt: r.latest_execution_at,
+        // consumo real de subagentes (schema v10); campos null em base v<10
+        agentUsage: mapAgentUsageRollup(r),
       }));
 
       const envelope = wrap(data, {}, config.dbPath, db);
@@ -103,6 +105,7 @@ export async function projectRoutes(server: FastifyInstance): Promise<void> {
         openAlerts: r.open_alerts,
         latestStatus: normalizeStatus(r.latest_status),
         latestExecutionAt: r.latest_execution_at,
+        agentUsage: mapAgentUsageRollup(r),
       }));
 
       // Execucoes recentes do projeto
@@ -121,6 +124,7 @@ export async function projectRoutes(server: FastifyInstance): Promise<void> {
           totalWallclock: projectRollup.total_wallclock,
           openAlerts: projectRollup.open_alerts,
           latestExecutionAt: projectRollup.latest_execution_at,
+          agentUsage: mapAgentUsageRollup(projectRollup),
         },
         features,
         recentExecutions: executions,

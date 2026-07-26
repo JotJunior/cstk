@@ -68,6 +68,63 @@ const REAL_WAVE_PAYLOAD = {
   nStages: 0,
   nSkills: 0,
   session: null,             // schema v8 — onda fora de sessao de worktree
+  // schema v10 — onda anterior a feature wave-token-metrics: TODOS os campos
+  // de uso null (nem a contagem de spawns existe). Nao e "consumo zero".
+  agentSpawnsTotal: null,
+  agentSpawnsWithUsage: null,
+  agentTotalTokens: null,
+  agentInputTokens: null,
+  agentOutputTokens: null,
+  agentCacheReadTokens: null,
+  agentCacheCreationTokens: null,
+  agentToolUseCount: null,
+  agentDurationMs: null,
+};
+
+/**
+ * WaveDTO real de base v10 — payload capturado VERBATIM de
+ * `GET /executions/:id/waves` servido sobre uma knowledge.db gerada pelo
+ * proprio `cstk recall --ingest` (cstk 5.25.0) a partir de um state.json com
+ * `.waves[].agent_usage`. Fixture escrita a mao nao valeria: ela so provaria
+ * que o schema aceita o que o schema espera.
+ */
+const REAL_WAVE_V10_PAYLOAD = {
+  wave: 'onda-001',
+  executionId: 'token-demo-20260726T090000Z',
+  stages: 'specify,clarify',
+  startedAt: '2026-07-26T09:00:00Z',
+  finishedAt: '2026-07-26T10:00:00Z',
+  wallclockSeconds: 3600,
+  toolCalls: 90,
+  terminationReason: 'etapa_concluida_avancando',
+  nStages: 2,
+  nSkills: 1,
+  session: null,
+  agentSpawnsTotal: 4,
+  agentSpawnsWithUsage: 3,        // amostra parcial: 1 spawn sem dado de uso
+  agentTotalTokens: 248500,
+  agentInputTokens: 9800,
+  agentOutputTokens: 21400,
+  agentCacheReadTokens: 198300,
+  agentCacheCreationTokens: 19000,
+  agentToolUseCount: 41,
+  agentDurationMs: 512000,
+};
+
+/** Onda v10 com spawns observados mas NENHUM dado de uso (background). */
+const REAL_WAVE_V10_NO_USAGE_PAYLOAD = {
+  ...REAL_WAVE_V10_PAYLOAD,
+  wave: 'onda-003',
+  stages: 'create-tasks,execute-task',
+  agentSpawnsTotal: 2,
+  agentSpawnsWithUsage: 0,
+  agentTotalTokens: null,
+  agentInputTokens: null,
+  agentOutputTokens: null,
+  agentCacheReadTokens: null,
+  agentCacheCreationTokens: null,
+  agentToolUseCount: null,
+  agentDurationMs: null,
 };
 
 // TaskDTO real (shape da rota GET /executions/:id/tasks)
@@ -140,6 +197,31 @@ describe('7.4.1 Paridade shared-types ↔ payload real', () => {
   it('ExecutionDTOSchema.safeParse(payload_real) === true', () => {
     const r = ExecutionDTOSchema.safeParse(REAL_EXECUTION_PAYLOAD);
     expect(r.success, `falhou: ${JSON.stringify(r.error?.issues?.slice(0, 3))}`).toBe(true);
+  });
+
+  it('WaveDTOSchema.safeParse(payload_real_v10) === true', () => {
+    const r = WaveDTOSchema.safeParse(REAL_WAVE_V10_PAYLOAD);
+    expect(r.success).toBe(true);
+  });
+
+  it('WaveDTO v10: onda com spawns mas sem dado de uso mantem tokens null', () => {
+    const r = WaveDTOSchema.safeParse(REAL_WAVE_V10_NO_USAGE_PAYLOAD);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      // Invariante de honestidade: 2 spawns observados, 0 com uso — os tokens
+      // NAO podem ser 0 (seria afirmar "medido e deu zero").
+      expect(r.data.agentSpawnsTotal).toBe(2);
+      expect(r.data.agentSpawnsWithUsage).toBe(0);
+      expect(r.data.agentTotalTokens).toBeNull();
+    }
+  });
+
+  it('WaveDTO: payload sem os campos v10 e REJEITADO (drift de borda)', () => {
+    // Ausencia != null. Se o mapper parar de projetar as colunas, o schema
+    // precisa falhar aqui em vez de deixar `undefined` virar 0 na UI.
+    const { agentTotalTokens: _omit, ...semCampoV10 } = REAL_WAVE_V10_PAYLOAD;
+    const r = WaveDTOSchema.safeParse(semCampoV10);
+    expect(r.success).toBe(false);
   });
 
   it('WaveDTOSchema.safeParse(payload_real) === true', () => {

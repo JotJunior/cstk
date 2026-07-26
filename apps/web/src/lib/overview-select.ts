@@ -10,6 +10,7 @@
  * Ref: bug pos-entrega (KPIs zerados) — drift snake_case vs camelCase no
  * consumo do payload. Spec §User Story 1.
  */
+import type { AgentUsageRollup } from '@cstk-panel/shared-types';
 
 export interface OverviewKpisRaw {
   totalProjects?: number | null;
@@ -24,6 +25,8 @@ export interface OverviewKpisRaw {
   wallclockTotal?: number | null;
   testsPassed?: number | null;
   testsTotal?: number | null;
+  /** consumo MEDIDO de subagentes (schema v10); ausente em bases v<10 */
+  agentUsage?: AgentUsageRollup | null;
 }
 
 export interface ModelMixRaw { model?: string | null; n?: number | null; }
@@ -46,6 +49,8 @@ export interface OverviewRaw {
   modelMix?: ModelMixRaw[] | null;
   recentActivity?: ActivityRaw[] | null;
   costSeries?: number[] | null;
+  /** serie diaria de tokens medidos; dias sem medicao nao aparecem */
+  tokenSeries?: number[] | null;
 }
 
 export interface OverviewVM {
@@ -70,6 +75,9 @@ export interface OverviewVM {
   modelMix: ModelMixRaw[];
   recentActivity: ActivityRaw[];
   costSeries: number[];
+  /** null (nao 0) quando a base nao tem medicao — Principio III */
+  agentUsage: AgentUsageRollup | null;
+  tokenSeries: number[];
   maxToolCalls: number;
   maxFunnel: number;
 }
@@ -83,6 +91,7 @@ export function selectOverview(raw: OverviewRaw | null | undefined): OverviewVM 
   const modelMix = raw?.modelMix ?? [];
   const recentActivity = raw?.recentActivity ?? [];
   const costSeries = raw?.costSeries ?? [];
+  const tokenSeries = raw?.tokenSeries ?? [];
 
   return {
     totalProjects: kpis.totalProjects ?? 0,
@@ -107,6 +116,10 @@ export function selectOverview(raw: OverviewRaw | null | undefined): OverviewVM 
     modelMix,
     recentActivity,
     costSeries,
+    // NAO coalescer para um objeto zerado: ausencia de medicao precisa chegar
+    // como null na UI para virar "—" em vez de "0 tokens".
+    agentUsage: kpis.agentUsage ?? null,
+    tokenSeries,
     maxToolCalls: leaderboard.reduce(
       (m, row) => Math.max(m, (row['toolCallsTotal'] as number | null) ?? 0), 0,
     ),

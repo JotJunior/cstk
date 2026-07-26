@@ -7,10 +7,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useFeature, useFeatureDocs, useFeatureDocContent } from '@/lib/hooks.js';
 import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/index.js';
-import { StatusBadge, MiniStat, PipelineProgress, Icon, MarkdownView } from '@/components/index.js';
-import { fmtNum, fmtDur, fmtTimestamp } from '@/lib/format.js';
+import {
+  StatusBadge, MiniStat, PipelineProgress, Icon, MarkdownView,
+  AgentUsagePanel, agentUsageState, coverageLabel,
+} from '@/components/index.js';
+import { fmtNum, fmtDur, fmtTimestamp, fmtTokens } from '@/lib/format.js';
 import { stackDisplayItems } from '@/lib/stack-display.js';
-import type { ExecutionDTO, FeatureDocScope, RetroDTO } from '@cstk-panel/shared-types';
+import type { ExecutionDTO, FeatureDocScope, RetroDTO, AgentUsageRollup } from '@cstk-panel/shared-types';
 
 // ---------------------------------------------------------------------------
 // Documentacao (doc-viewer, US2 — task 4.3)
@@ -208,6 +211,8 @@ interface FeatureRollupShape {
   totalWaves: number | null;
   currentStage: string | null;
   latestStatus: 'em_andamento' | 'aguardando_humano' | 'concluida' | 'abortada' | null;
+  /** consumo medido de subagentes (schema v10); null/ausente em bases v<10 */
+  agentUsage?: AgentUsageRollup | null;
 }
 
 export function FeatureDetail() {
@@ -226,6 +231,8 @@ export function FeatureDetail() {
   const executions = data.executions ?? [];
   const retros = data.retros ?? [];
   const status = rollup?.latestStatus ?? null;
+  const usage = rollup?.agentUsage ?? null;
+  const hasUsage = agentUsageState(usage) === 'measured';
 
   // Stack: primeira execucao com stack_sugerida (CARD-FTD-02)
   const stack = executions.find(e => e.suggestedStack)?.suggestedStack ?? null;
@@ -277,18 +284,35 @@ export function FeatureDetail() {
 
           <div className="divider" />
 
-          <div className="grid-6">
+          <div className="grid-7">
             <MiniStat label="Etapa corrente" value={<span className="mono" style={{ color: status === 'em_andamento' ? 'var(--inprogress)' : 'var(--text-0)' }}>{rollup?.currentStage ?? '—'}</span>} />
             <MiniStat label="Ondas" value={fmtNum(rollup?.totalWaves)} />
             <MiniStat label="Tool calls" value={fmtNum(rollup?.totalToolCalls)} />
             <MiniStat label="Wallclock" value={fmtDur(rollup?.totalWallclock)} />
             <MiniStat label="Decisões" value={fmtNum(rollup?.totalDecisions)} />
             <MiniStat label="Execuções" value={rollup?.totalExecutions ?? executions.length} />
+            <MiniStat
+              label="Tokens · subagentes"
+              value={
+                <span className="mono" title={hasUsage ? coverageLabel(usage) : 'não coletado nesta fonte'}>
+                  {hasUsage ? fmtTokens(usage?.totalTokens) : '—'}
+                </span>
+              }
+            />
           </div>
 
           <div style={{ marginTop: 14 }}>
             <PipelineProgress etapa={rollup?.currentStage ?? null} status={status} labeled />
           </div>
+
+          {/* Consumo medido dos subagentes desta feature (schema v10) */}
+          <div className="divider" />
+          <div className="row gap-2" style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>
+              Consumo de subagentes · medido
+            </span>
+          </div>
+          <AgentUsagePanel usage={usage} columns={4} />
         </div>
       </div>
 

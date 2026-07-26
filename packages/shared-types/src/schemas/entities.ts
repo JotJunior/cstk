@@ -45,6 +45,36 @@ export const WaveDTOSchema = z.object({
   nStages: z.number().nullable(),
   nSkills: z.number().nullable(),
   session: z.string().nullable(),
+  // Consumo de subagentes (schema v10). Nullable em toda base; `.default(null)`
+  // NAO e usado de proposito: um payload de base v<10 traz os campos
+  // explicitamente null (o mapper projeta NULL), e um payload que os omitisse
+  // deve falhar a paridade em vez de virar 0/undefined silencioso.
+  agentSpawnsTotal: z.number().nullable(),
+  agentSpawnsWithUsage: z.number().nullable(),
+  agentTotalTokens: z.number().nullable(),
+  agentInputTokens: z.number().nullable(),
+  agentOutputTokens: z.number().nullable(),
+  agentCacheReadTokens: z.number().nullable(),
+  agentCacheCreationTokens: z.number().nullable(),
+  agentToolUseCount: z.number().nullable(),
+  agentDurationMs: z.number().nullable(),
+});
+
+// ---------------------------------------------------------------------------
+// AgentUsageRollup schema (schema v10 — agregado de projeto/feature/metrica)
+// ---------------------------------------------------------------------------
+export const AgentUsageRollupSchema = z.object({
+  spawnsTotal: z.number().nullable(),
+  spawnsWithUsage: z.number().nullable(),
+  totalTokens: z.number().nullable(),
+  inputTokens: z.number().nullable(),
+  outputTokens: z.number().nullable(),
+  cacheReadTokens: z.number().nullable(),
+  cacheCreationTokens: z.number().nullable(),
+  toolUseCount: z.number().nullable(),
+  durationMs: z.number().nullable(),
+  wavesWithUsage: z.number().nullable(),
+  wavesTotal: z.number().nullable(),
 });
 
 // ---------------------------------------------------------------------------
@@ -219,6 +249,7 @@ export const ProjectRollupSchema = z.object({
   totalWallclock: z.number().nullable().optional(),
   openAlerts: z.number().optional(),
   latestExecutionAt: z.string().nullable(),
+  agentUsage: AgentUsageRollupSchema.nullable().optional(),
 });
 
 export const FeatureRollupSchema = z.object({
@@ -237,6 +268,7 @@ export const FeatureRollupSchema = z.object({
   openAlerts: z.number().optional(),
   latestStatus: z.enum(['em_andamento', 'aguardando_humano', 'concluida', 'abortada']).nullable(),
   latestExecutionAt: z.string().nullable(),
+  agentUsage: AgentUsageRollupSchema.nullable().optional(),
 });
 
 // ---------------------------------------------------------------------------
