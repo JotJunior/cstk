@@ -111,8 +111,8 @@ Ref: contracts/wave-usage-report.md §2/§3
 
 - [x] 4.1.1 Criar `global/skills/agente-00c-runtime/scripts/wave-usage-report.sh` com subcomando `aggregate --state-dir <DIR>` produzindo saida Markdown (default) conforme `contracts/wave-usage-report.md` §2.1, respeitando o invariante de honestidade SC-004 (exibir `spawns_total`/`spawns_with_usage`/`spawns_unavailable` juntos sempre que `spawns_unavailable > 0`)
 - [x] 4.1.2 Implementar saida `--json` (contracts §2.2) com o mesmo agregado em formato maquina-legivel
-- [ ] 4.1.3 Implementar subcomando `backfill` (US4/FR-010/FR-011) conforme contracts §3 — ver detalhamento na FASE 7. **DEFERIDO**: nao implementado nesta FASE 4 (onda-010) — a implementacao real (heuristica de janela temporal + recusa explicita + testes) e o proprio conteudo das tarefas 7.1.1-7.1.5; ate FASE 7 rodar, `backfill` cai no dispatch de "subcomando desconhecido" (exit 2), documentado no cabecalho do script
-- [x] 4.1.4 Escrever `tests/test_wave-usage-report.sh` cobrindo `aggregate` (Markdown + JSON), casos de zero spawns vs "metrica nao coletada" (research Decision 10), e o invariante SC-004 — 17/17 cenarios verdes, Markdown validado byte-a-byte contra o exemplo do contrato
+- [x] 4.1.3 Implementar subcomando `backfill` (US4/FR-010/FR-011) conforme contracts §3 — ver detalhamento na FASE 7. <!-- onda-013: implementado em FASE 7 (7.1.1-7.1.5), ver notas la -->
+- [x] 4.1.4 Escrever `tests/test_wave-usage-report.sh` cobrindo `aggregate` (Markdown + JSON), casos de zero spawns vs "metrica nao coletada" (research Decision 10), e o invariante SC-004 — 17/17 cenarios verdes, Markdown validado byte-a-byte contra o exemplo do contrato <!-- onda-013: arquivo estendido com cobertura de backfill (FASE 7), total 31/31 cenarios verdes -->
 
 ### 4.2 Estender `report.sh` §1/§2 `[M]`
 
@@ -164,11 +164,11 @@ Ref: contracts/wave-usage-report.md §5
 
 Ref: research.md §"Decision 9 — Backfill por janela temporal, com recusa explicita"; contracts/wave-usage-report.md §3
 
-- [ ] 7.1.1 Implementar subcomando `backfill --state-dir <DIR> --transcript <PATH>` que le o transcript JSONL informado e extrai `SpawnUsage` com `source = "backfill"` (nunca `"live"`)
-- [ ] 7.1.2 Implementar a heuristica de janela temporal (delimitando quais spawns do transcript pertencem a qual onda) conforme documentado em research.md Decision 9
-- [ ] 7.1.3 Implementar recusa explicita: quando o transcript nao cobre a janela da onda solicitada (ou esta ausente), o comando **MUST** recusar com mensagem clara em vez de estimar/inventar — nunca produzir `SpawnUsage` sintetico
-- [ ] 7.1.4 Documentar em `quickstart.md` o fluxo de uso do `backfill` (cenarios 9 e 10)
-- [ ] 7.1.5 Estender `tests/test_wave-usage-report.sh` cobrindo: backfill com transcript valido dentro da janela, recusa com transcript ausente/fora da janela, `source = "backfill"` sempre marcado corretamente
+- [x] 7.1.1 Implementar subcomando `backfill --state-dir <DIR> --transcript <PATH>` que le o transcript JSONL informado e extrai `SpawnUsage` com `source = "backfill"` (nunca `"live"`) <!-- onda-013: _wur_cmd_backfill + _wur_backfill_jq_program em wave-usage-report.sh; correlaciona tool_use(name="Agent") <-> tool_result via tool_use_id, mesma derivacao de status/null-vs-0 do hook posttooluse-agent-usage.sh; validado empiricamente contra o transcript real desta sessao (15 spawns extraidos, 1 coberto por onda-007 ja fechada) -->
+- [x] 7.1.2 Implementar a heuristica de janela temporal (delimitando quais spawns do transcript pertencem a qual onda) conforme documentado em research.md Decision 9 <!-- onda-013: started_at<=ts<finished_at via epoch(fromdateiso8601), primeiro match vence; spawns fora de toda janela sao descartados (nao pertencem a esta execucao) -->
+- [x] 7.1.3 Implementar recusa explicita: quando o transcript nao cobre a janela da onda solicitada (ou esta ausente), o comando **MUST** recusar com mensagem clara em vez de estimar/inventar — nunca produzir `SpawnUsage` sintetico <!-- onda-013: exit 3 em dois casos distintos — transcript ausente/ilegivel (checado antes do parse) e transcript lido mas covered_total==0 (nenhum spawn cai em nenhuma janela); mensagem nomeia .execution.id/basename do state-dir; nenhum write ocorre em ambos -->
+- [x] 7.1.4 Documentar em `quickstart.md` o fluxo de uso do `backfill` (cenarios 9 e 10) <!-- onda-013: Cenario 9/10 ja escritos no /plan batiam com o comportamento implementado (--dry-run lista onda+agent_id, dedup por (wave_id,agent_id), exit 3 com mensagem nomeando a execucao) — nenhuma correcao necessaria, conferido linha a linha -->
+- [x] 7.1.5 Estender `tests/test_wave-usage-report.sh` cobrindo: backfill com transcript valido dentro da janela, recusa com transcript ausente/fora da janela, `source = "backfill"` sempre marcado corretamente <!-- onda-013: 15 cenarios novos (uso invalido, ausente/sem-cobertura exit 3, happy-path por janela, indisponivel null-nao-zero, linha corrompida ignorada, idempotencia byte-identica, --dry-run sem side-effect, backup+sha256 apos apply, accumulated_metrics incrementado) — 31/31 verdes no arquivo total -->
 
 ---
 
@@ -229,3 +229,37 @@ flowchart TD
 | Estimativa/heuristica para spawns `indisponivel` | Preencher valor estimado quando o harness nao retorna `usage` | Violaria Principio VI (Zero Fabricacao) — `null` e a unica saida correta, nunca numero inferido |
 | CHK016 (meta 100% vs ~50% cobertura) | Decisao sobre comunicar a condicional da metrica 100% | `{humano}` — aguardando dono do produto (subtarefa 1.4.1), nao decidivel pelo backlog |
 | CHK024 (alvo de performance/latencia) | Definir teto numerico de latencia | `{humano}` — aguardando dono do produto (subtarefa 1.4.1), ausencia documentada como deliberada no plan |
+
+
+## FASE 8 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 8.1 Exit code de `aggregate` diverge entre contrato e implementação `[C]`
+
+Ref: FR-005 / task 4.1.1 · tipo: `contradicts` · severidade: `HIGH`
+
+`contracts/wave-usage-report.md` §2 ("Exit codes") declara que `aggregate`
+retorna `2` quando `state.json` está ausente. A implementação em
+`global/skills/agente-00c-runtime/scripts/wave-usage-report.sh` (função
+`_wur_cmd_aggregate`, e o mesmo padrão replicado em `_wur_cmd_backfill`)
+retorna `1` para esse caso — consistente com o precedente que o próprio
+contrato cita ("espelham `model-routing-report.sh`"): `model-routing-report.sh`
+de fato usa exit `1` para `state.json` ausente (`_mrr_die "aggregate:
+state.json nao encontrado..." 1`), não `2`. `2` em ambos os scripts é
+reservado a uso inválido (flag ausente/desconhecida). O comportamento
+atual é o correto (bate com o precedente e com
+`tests/test_wave-usage-report.sh::scenario_aggregate_state_dir_inexistente_exit_1`)
+— o gap está no texto do contrato, desatualizado desde a FASE 4
+(onda-010), nunca corrigido.
+
+- [x] 8.1.1 Corrigir `docs/specs/wave-token-metrics/contracts/wave-usage-report.md` §2 ("Exit codes"): `state.json` inexistente retorna `1` (erro genérico), não `2`; `2` fica só para uso inválido (flag ausente/desconhecida) — sem tocar em código/testes, que já estão corretos <!-- onda-013: linha corrigida no contrato, alinhada ao codigo/testes ja corretos e ao precedente model-routing-report.sh -->
+
+<!-- converge-key: 5a156716f3bf -->

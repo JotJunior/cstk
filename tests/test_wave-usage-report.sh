@@ -3,14 +3,13 @@
 # global/skills/agente-00c-runtime/scripts/wave-usage-report.sh.
 #
 # Feature: wave-token-metrics
-# Ref: docs/specs/wave-token-metrics/contracts/wave-usage-report.md §2
-#      docs/specs/wave-token-metrics/tasks.md FASE 4 (4.1.4)
+# Ref: docs/specs/wave-token-metrics/contracts/wave-usage-report.md §2/§3
+#      docs/specs/wave-token-metrics/tasks.md FASE 4 (4.1.4) e FASE 7 (7.1.5)
 #
 # Cobertura:
 #   Dispatch:
 #     - sem args -> exit 2 + USO em stderr
-#     - subcomando desconhecido (inclusive "backfill", ainda nao
-#       implementado — FASE 7) -> exit 2
+#     - subcomando desconhecido -> exit 2
 #     - -h/--help/help -> exit 2 + USO
 #   aggregate — uso invalido:
 #     - sem --state-dir -> exit 2
@@ -34,6 +33,23 @@
 #   Estabilidade da saida (IR-2):
 #     - 3 invocacoes consecutivas -> stdout identico byte-a-byte (JSON e MD)
 #     - read-only: sha256 do state.json inalterado apos aggregate
+#   backfill (US4/FR-010/FR-011, FASE 7):
+#     - uso invalido: sem --state-dir / sem --transcript -> exit 2
+#     - transcript ausente/ilegivel -> exit 3, mensagem nomeia a execucao
+#     - transcript sem nenhum spawn dentro de janela de onda -> exit 3
+#       (nao confundir com "0 novos" por dedup — ver idempotencia)
+#     - happy path: spawns extraidos + atribuidos a onda por janela
+#       temporal, source="backfill" sempre, status/null-vs-0 identicos as
+#       regras do hook ao vivo (indisponivel -> todos os campos null)
+#     - linha corrompida no meio do transcript e ignorada (nao aborta)
+#     - idempotencia: reexecutar sobre o mesmo transcript -> 0 novos
+#       spawns, state.json byte-identico (sha256 inalterado), sem backup
+#       novo em state-history/
+#     - --dry-run: reporta onda+agent_id sem escrever nada (sha256
+#       inalterado, sem state-history/ novo)
+#     - apos apply: state-history/ ganha snapshot, state.json.sha256
+#       recomputado (sha256-verify passa), accumulated_metrics.agent_*
+#       incrementados pelo delta correto
 #   IR-3 (Principio II POSIX):
 #     - shebang #!/bin/sh + set -eu
 #
@@ -124,14 +140,6 @@ scenario_subcomando_desconhecido_exit_2() {
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit=2" "obtido $_CAPTURED_EXIT"; return 1; }
   assert_stderr_contains "subcomando desconhecido" || return 1
   assert_stderr_contains "bogus-subcmd-xyz" || return 1
-}
-
-# backfill (contract §3) e trabalho da FASE 7 (tasks.md 7.1.*) — nesta FASE
-# 4 o dispatch ainda NAO conhece o subcomando; cai no branch generico.
-scenario_backfill_ainda_nao_implementado_exit_2() {
-  capture sh "$SCRIPT" backfill --state-dir /nao/importa --transcript /nao/importa
-  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit=2 (backfill nao implementado)" "obtido $_CAPTURED_EXIT"; return 1; }
-  assert_stderr_contains "subcomando desconhecido" || return 1
 }
 
 scenario_help_flag_short_long_e_help_subcmd() {
@@ -439,6 +447,236 @@ JSON
   ')
   printf '%s' "$_joined" | jq -e '.[0].onda == "onda-004" and .[0].tokens == 50000 and .[0].divergente == true' >/dev/null \
     || { _fail "join model-routing x wave-usage" "resultado inesperado: $_joined"; return 1; }
+}
+
+# ==== backfill (US4/FR-010/FR-011, FASE 7) ====
+#
+# Fixture compartilhada: 2 ondas (onda-001 20:27:44Z-20:32:23Z, onda-002
+# 20:39:08Z-20:49:16Z) + execution.id, espelhando o formato real de
+# .waves[]/.execution do runtime (state-ondas.sh start/end).
+
+_wur_write_backfill_state() {
+  cat > "$TMPDIR_TEST/state.json" <<'JSON'
+{
+  "execution": {"id": "feat-wtm-test-exec"},
+  "waves": [
+    {"id":"onda-001","started_at":"2026-07-25T20:27:44Z","finished_at":"2026-07-25T20:32:23Z","agent_usage":null,"agent_spawns":[]},
+    {"id":"onda-002","started_at":"2026-07-25T20:39:08Z","finished_at":"2026-07-25T20:49:16Z","agent_usage":null,"agent_spawns":[]}
+  ],
+  "accumulated_metrics": {"waves_total":2,"tool_calls_total":10,"wallclock_total_seconds":600,"agent_spawns_total":0,"agent_spawns_with_usage_total":0}
+}
+JSON
+}
+
+# Transcript valido: agent-001 (completo, onda-001), agent-002
+# (indisponivel/async_launched, onda-002), agent-out (fora de toda janela).
+_wur_write_transcript_valida() {
+  cat > "$TMPDIR_TEST/transcript.jsonl" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_A1","name":"Agent","input":{"description":"d","prompt":"p","subagent_type":"feature-00c-clarify-asker"}}]},"timestamp":"2026-07-25T20:28:00.100Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_A1","content":"ok"}]},"toolUseResult":{"agentId":"agent-001","agentType":"feature-00c-clarify-asker","status":"completed","resolvedModel":"claude-sonnet-5","totalTokens":29678,"totalDurationMs":45000,"totalToolUseCount":3,"usage":{"input_tokens":100,"output_tokens":200,"cache_read_input_tokens":29000,"cache_creation_input_tokens":378}},"timestamp":"2026-07-25T20:29:00.500Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_A2","name":"Agent","input":{"description":"d","prompt":"p","subagent_type":"agente-00c-feature-orchestrator"}}]},"timestamp":"2026-07-25T20:40:00.000Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_A2"}]},"toolUseResult":{"agentId":"agent-002","agentType":"agente-00c-feature-orchestrator","status":"async_launched"},"timestamp":"2026-07-25T20:41:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_OUT","name":"Agent","input":{"description":"fora","subagent_type":"x"}}]},"timestamp":"2026-07-25T19:00:00.000Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_OUT"}]},"toolUseResult":{"agentId":"agent-out","status":"completed","totalTokens":1000},"timestamp":"2026-07-25T19:01:00.000Z"}
+EOF
+}
+
+# Mesmo conteudo, com 1 linha corrompida inserida no meio.
+_wur_write_transcript_corrompida() {
+  _wur_write_transcript_valida
+  _tmp_ins=$(mktemp)
+  _line=0
+  while IFS= read -r _l; do
+    _line=$((_line + 1))
+    printf '%s\n' "$_l" >> "$_tmp_ins"
+    [ "$_line" -eq 2 ] && printf '%s\n' 'isto nao e json valido {{{' >> "$_tmp_ins"
+  done < "$TMPDIR_TEST/transcript.jsonl"
+  mv -- "$_tmp_ins" "$TMPDIR_TEST/transcript.jsonl"
+}
+
+# Transcript so com o spawn fora de qualquer janela (nao cobre a execucao).
+_wur_write_transcript_sem_cobertura() {
+  cat > "$TMPDIR_TEST/transcript.jsonl" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_OUT","name":"Agent","input":{"description":"fora","subagent_type":"x"}}]},"timestamp":"2026-07-25T19:00:00.000Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_OUT"}]},"toolUseResult":{"agentId":"agent-out","status":"completed","totalTokens":1000},"timestamp":"2026-07-25T19:01:00.000Z"}
+EOF
+}
+
+scenario_backfill_sem_state_dir_exit_2() {
+  capture sh "$SCRIPT" backfill --transcript /nao/importa
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit=2 (sem --state-dir)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "--state-dir obrigatorio" || return 1
+}
+
+scenario_backfill_sem_transcript_exit_2() {
+  mktemp_test || return 2
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit=2 (sem --transcript)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "--transcript obrigatorio" || return 1
+}
+
+scenario_backfill_state_json_ausente_exit_1() {
+  mktemp_test || return 2
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST/nope" --transcript /nao/importa
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit=1 (sem state.json)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_backfill_transcript_ausente_exit_3_nao_estima() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/nao-existe.jsonl"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit=3 (FR-011, transcript ausente)" "obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "ausente/ilegivel" || return 1
+  assert_stderr_contains "feat-wtm-test-exec" || return 1
+
+  # FR-011: nenhum campo de metrica escrito — state.json intacto.
+  _tt=$(jq -r '.waves[0].agent_usage' "$TMPDIR_TEST/state.json")
+  [ "$_tt" = "null" ] || { _fail "state.json inalterado" "waves[0].agent_usage nao e mais null: $_tt"; return 1; }
+}
+
+scenario_backfill_transcript_sem_cobertura_exit_3() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+  _wur_write_transcript_sem_cobertura
+
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit=3 (transcript nao cobre nenhuma onda)" "obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "nao cobre nenhuma onda" || return 1
+}
+
+scenario_backfill_happy_path_atribui_por_janela_e_marca_source() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+  _wur_write_transcript_valida
+
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "2 spawn(s) novo(s)" || return 1
+
+  # agent-001 -> onda-001, completo, source=backfill; agent-out (fora de
+  # toda janela) NUNCA aparece em nenhuma onda.
+  _src1=$(jq -r '.waves[0].agent_spawns[0].source' "$TMPDIR_TEST/state.json")
+  [ "$_src1" = "backfill" ] || { _fail "onda-001 spawn source=backfill" "obtido $_src1"; return 1; }
+  _aid1=$(jq -r '.waves[0].agent_spawns[0].agent_id' "$TMPDIR_TEST/state.json")
+  [ "$_aid1" = "agent-001" ] || { _fail "onda-001 agent_id=agent-001" "obtido $_aid1"; return 1; }
+  _tt1=$(jq -r '.waves[0].agent_usage.total_tokens' "$TMPDIR_TEST/state.json")
+  [ "$_tt1" = "29678" ] || { _fail "onda-001 total_tokens=29678" "obtido $_tt1"; return 1; }
+
+  _n_out=$(jq -r '[.waves[].agent_spawns[] | select(.agent_id == "agent-out")] | length' "$TMPDIR_TEST/state.json")
+  [ "$_n_out" = "0" ] || { _fail "agent-out nunca atribuido a nenhuma onda" "obtido $_n_out ocorrencias"; return 1; }
+}
+
+scenario_backfill_status_indisponivel_campos_null_nao_zero() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+  _wur_write_transcript_valida
+
+  sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl" >/dev/null
+
+  # agent-002 (async_launched) -> onda-002, status=indisponivel, TODOS os
+  # campos numericos null (nunca 0) — Principio VI/FR-009.
+  _status2=$(jq -r '.waves[1].agent_spawns[0].status' "$TMPDIR_TEST/state.json")
+  [ "$_status2" = "indisponivel" ] || { _fail "onda-002 status=indisponivel" "obtido $_status2"; return 1; }
+  _tt2=$(jq -r '.waves[1].agent_spawns[0].total_tokens' "$TMPDIR_TEST/state.json")
+  [ "$_tt2" = "null" ] || { _fail "onda-002 total_tokens=null (nao 0)" "obtido $_tt2"; return 1; }
+  _wu2=$(jq -r '.waves[1].agent_usage.total_tokens' "$TMPDIR_TEST/state.json")
+  [ "$_wu2" = "null" ] || { _fail "onda-002 agent_usage.total_tokens=null" "obtido $_wu2"; return 1; }
+}
+
+scenario_backfill_linha_corrompida_e_ignorada_sem_abortar() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+  _wur_write_transcript_corrompida
+
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0 (linha corrompida nao aborta)" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "2 spawn(s) novo(s)" || return 1
+}
+
+scenario_backfill_idempotente_segunda_execucao_zero_novos() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+  _wur_write_transcript_valida
+
+  sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl" >/dev/null
+  _sha_apos_1a=$(_sha256_of "$TMPDIR_TEST/state.json")
+
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0 (rerun idempotente)" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "0 spawns novos" || return 1
+  assert_stdout_contains "idempotente" || return 1
+
+  _sha_apos_2a=$(_sha256_of "$TMPDIR_TEST/state.json")
+  [ "$_sha_apos_1a" = "$_sha_apos_2a" ] || { _fail "state.json byte-identico apos rerun" "sha256 mudou"; return 1; }
+}
+
+scenario_backfill_dry_run_nao_escreve_nada() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+  _wur_write_transcript_valida
+
+  _sha_antes=$(_sha256_of "$TMPDIR_TEST/state.json")
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit=0 (--dry-run)" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-001" || return 1
+  assert_stdout_contains "agent-001" || return 1
+  assert_stdout_contains "Nenhuma escrita realizada" || return 1
+
+  _sha_depois=$(_sha256_of "$TMPDIR_TEST/state.json")
+  [ "$_sha_antes" = "$_sha_depois" ] || { _fail "state.json inalterado (--dry-run)" "sha256 mudou"; return 1; }
+  [ -d "$TMPDIR_TEST/state-history" ] && { _fail "sem state-history/ apos --dry-run" "diretorio foi criado"; return 1; }
+  return 0
+}
+
+scenario_backfill_apply_grava_backup_e_recomputa_sha256() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+  _wur_write_transcript_valida
+
+  sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl" >/dev/null
+
+  [ -d "$TMPDIR_TEST/state-history" ] || { _fail "state-history/ criado" "ausente"; return 1; }
+  _n_backups=$(find "$TMPDIR_TEST/state-history" -type f -name '*.json' | wc -l | tr -d '[:space:]')
+  [ "$_n_backups" -ge 1 ] || { _fail ">=1 backup em state-history/" "obtido $_n_backups"; return 1; }
+
+  [ -f "$TMPDIR_TEST/state.json.sha256" ] || { _fail "state.json.sha256 criado" "ausente"; return 1; }
+  _stored=$(head -n1 "$TMPDIR_TEST/state.json.sha256" | tr -d '[:space:]')
+  _actual=$(_sha256_of "$TMPDIR_TEST/state.json")
+  [ "$_stored" = "$_actual" ] || { _fail "sha256 recomputado bate com o conteudo" "stored=$_stored actual=$_actual"; return 1; }
+}
+
+scenario_backfill_accumulated_metrics_incrementado_pelo_delta() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+  _wur_write_transcript_valida
+
+  sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl" >/dev/null
+
+  _st=$(jq -r '.accumulated_metrics.agent_spawns_total' "$TMPDIR_TEST/state.json")
+  [ "$_st" = "2" ] || { _fail "agent_spawns_total=2" "obtido $_st"; return 1; }
+  _swu=$(jq -r '.accumulated_metrics.agent_spawns_with_usage_total' "$TMPDIR_TEST/state.json")
+  [ "$_swu" = "1" ] || { _fail "agent_spawns_with_usage_total=1" "obtido $_swu"; return 1; }
+  _tt=$(jq -r '.accumulated_metrics.agent_tokens_total' "$TMPDIR_TEST/state.json")
+  [ "$_tt" = "29678" ] || { _fail "agent_tokens_total=29678" "obtido $_tt"; return 1; }
+  # tool_calls_total/wallclock_total_seconds (campos EXISTENTES) intactos.
+  _tct=$(jq -r '.accumulated_metrics.tool_calls_total' "$TMPDIR_TEST/state.json")
+  [ "$_tct" = "10" ] || { _fail "tool_calls_total preservado=10" "obtido $_tct"; return 1; }
+}
+
+scenario_backfill_argumento_desconhecido_exit_2() {
+  mktemp_test || return 2
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript /x --bogus-flag
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit=2 (flag desconhecida)" "obtido $_CAPTURED_EXIT"; return 1; }
 }
 
 # ==== IR-3: Principio II POSIX ====

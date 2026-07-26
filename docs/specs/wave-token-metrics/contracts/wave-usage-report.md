@@ -32,8 +32,10 @@ wave-usage-report.sh aggregate --state-dir DIR [--json]
 | `--state-dir DIR` | sim | diretorio contendo `state.json` |
 | `--json` | nao | emite JSON em vez de Markdown |
 
-**Exit codes** (espelham `model-routing-report.sh`): `0` sucesso;
-`2` uso invalido / `--state-dir` ausente / `state.json` inexistente.
+**Exit codes** (espelham `model-routing-report.sh`, `_mrr_die "aggregate:
+state.json nao encontrado..." 1`): `0` sucesso; `2` uso invalido (flag
+ausente/desconhecida); `1` erro generico, inclusive `state.json`
+inexistente.
 
 **Read-only**: MUST NOT escrever no `state.json`.
 

@@ -6,7 +6,10 @@
 # Ref: docs/specs/wave-token-metrics/contracts/wave-usage-report.md §2/§3
 #      docs/specs/wave-token-metrics/data-model.md
 #        (Entity: SpawnUsage / WaveUsage; secao "Extensoes ao state.json")
+#      docs/specs/wave-token-metrics/research.md
+#        Decision 9 — Backfill por janela temporal, com recusa explicita
 #      docs/specs/wave-token-metrics/tasks.md FASE 4 (4.1.1, 4.1.2, 4.1.4)
+#        e FASE 7 (7.1.1-7.1.5 — subcomando backfill)
 #
 # Por que um helper novo (e nao estender model-routing-report.sh): ver
 # contracts/wave-usage-report.md §1 — model-routing-report.sh le SOMENTE
@@ -22,17 +25,47 @@
 #         Default: Markdown canonico (colavel verbatim em review-task/
 #         report.sh). Com --json: agregado maquina-legivel.
 #
+#   wave-usage-report.sh backfill --state-dir DIR --transcript PATH [--dry-run]
+#       — US4/FR-010/FR-011 (contracts §3, research Decision 9). Reconstroi
+#         SpawnUsage retroativamente a partir de um transcript JSONL de
+#         sessao ja encerrada, para execucoes anteriores a esta feature (ou
+#         com hook nao provisionado no momento). Algoritmo:
+#           1. Extrai do transcript os pares tool_use(name="Agent") + o
+#              tool_result correspondente (mesmo tool_use_id) cujo
+#              toolUseResult carrega agentId — mesmos campos do hook
+#              posttooluse-agent-usage.sh (agentId, status, resolvedModel,
+#              modelsUsed, totalTokens, usage.*, totalToolUseCount,
+#              totalDurationMs), com a MESMA derivacao de `status`
+#              (completo/parcial/indisponivel) e a MESMA regra de
+#              null-nao-fabricado (Principio VI/FR-009).
+#           2. Atribui cada SpawnUsage a onda cuja janela
+#              `started_at <= ts < finished_at` o contem (ts = timestamp do
+#              registro de tool_result no transcript). HEURISTICA, nao
+#              chave — o transcript nao carrega id de onda (Decision 9).
+#              Spawns fora de toda janela sao descartados (nao pertencem a
+#              esta execucao ou ao intervalo coberto pelo transcript).
+#           3. Todo SpawnUsage gravado leva `source: "backfill"` (nunca
+#              "live") — proveniencia obrigatoria.
+#           4. Dedup por chave natural `(wave_id, agent_id)`: spawns ja
+#              presentes em `.waves[].agent_spawns` (de qualquer source) sao
+#              ignorados — reexecutar sobre o mesmo transcript e idempotente
+#              (byte-idêntico, sem novo write).
+#           5. `--dry-run`: imprime o que seria aplicado (onda destino +
+#              agent_id por spawn) e sai 0, sem escrever nada.
+#         Recusa explicita (FR-011, exit 3) quando: (a) --transcript esta
+#         ausente/ilegivel, ou (b) o transcript foi lido mas NENHUM spawn
+#         correlacionado cai dentro de nenhuma janela de onda desta
+#         execucao (transcript nao cobre a execucao). Em ambos os casos,
+#         NENHUM campo de metrica e escrito — nunca estimado/sintetico.
+#         Escrita (quando ha >=1 spawn novo): delega a
+#         `state-rw.sh write --state-dir DIR` (stdin = state.json completo
+#         apos o merge) — reusa o caminho canonico de escrita do runtime
+#         (backup em state-history/ + escrita atomica + recomputo de
+#         state.json.sha256), a mesma garantia que `state-ondas.sh end` ja
+#         oferece para a captura ao vivo.
+#
 #   wave-usage-report.sh -h | --help
 #       — Imprime USO em stderr e exit 2 (padrao do dispatch do runtime).
-#
-# NAO IMPLEMENTADO NESTE ARQUIVO (deliberado): o subcomando `backfill`
-# (contracts/wave-usage-report.md §3, US4/FR-010/FR-011) e trabalho da
-# FASE 7 do backlog (tasks.md 7.1.1-7.1.5 — heuristica de janela temporal +
-# recusa explicita quando o transcript nao cobre a onda). A tarefa 4.1.3
-# desta FASE 4 e um forward-reference explicito para aquela fase ("ver
-# detalhamento na FASE 7") — implementar aqui uma leitura de transcript sem
-# a heuristica/testes da FASE 7 fabricaria funcionalidade nao validada.
-# Ate la, `backfill` cai no dispatch de "subcomando desconhecido" (exit 2).
 #
 # ---------------------------------------------------------------------
 # Semantica de agregacao (decisoes de design desta implementacao — o
@@ -83,16 +116,29 @@
 # imprime uma tabela de zeros — imprime a frase explicita exigida pelo
 # contrato §2.1 ponto 4.
 #
-# Exit codes (espelham model-routing-report.sh):
+# Exit codes de `aggregate` (espelham model-routing-report.sh):
 #   0 sucesso
 #   1 erro generico (state.json ausente/ilegivel, jq ausente, parsing invalido)
 #   2 uso incorreto (flag ausente, subcomando desconhecido)
 #
+# Exit codes de `backfill` (contracts §3):
+#   0 backfill aplicado, ou 0 novos spawns (idempotente), ou --dry-run OK
+#   1 erro generico (state.json ausente/ilegivel, jq ausente)
+#   2 uso incorreto (flag ausente)
+#   3 recusa explicita FR-011 (transcript ausente/ilegivel, ou transcript
+#     nao cobre nenhuma onda desta execucao) — NUNCA escreve valor estimado
+#
 # Invariantes:
-#   IR-1: read-only sobre state.json — jq sem -i, sem redirecionamento ao
-#         arquivo (auditavel via grep no codigo).
-#   IR-2: idempotente — sem timestamps no payload; mesmo input -> mesmo
-#         output byte-a-byte.
+#   IR-1: `aggregate` e read-only sobre state.json — jq sem -i, sem
+#         redirecionamento ao arquivo (auditavel via grep no codigo).
+#         `backfill` e a UNICA excecao documentada: quando ha >=1 spawn
+#         novo, escreve via `state-rw.sh write` (backup + atomic write +
+#         sha256 update no caminho canonico do runtime — nunca io direto
+#         no arquivo por este script).
+#   IR-2: `aggregate` e idempotente — sem timestamps no payload; mesmo
+#         input -> mesmo output byte-a-byte. `backfill` e idempotente por
+#         dedup de chave natural (wave_id, agent_id): reexecutar sobre o
+#         mesmo transcript produz 0 novos spawns e nenhum write.
 #   IR-3: Principio II — #!/bin/sh, set -eu, deps apenas em jq.
 #
 # POSIX sh + jq.
@@ -118,6 +164,7 @@ _wur_print_usage() {
   cat <<'EOF'
 USO:
   wave-usage-report.sh aggregate --state-dir DIR [--json]
+  wave-usage-report.sh backfill --state-dir DIR --transcript PATH [--dry-run]
   wave-usage-report.sh -h | --help
 EOF
 }
@@ -125,6 +172,12 @@ EOF
 _wur_require_jq() {
   command -v jq >/dev/null 2>&1 \
     || _wur_die "jq nao encontrado no PATH" 1
+}
+
+# Diretorio do proprio script (mesma receita de _so_self_dir em
+# state-ondas.sh) — usado por backfill para localizar state-rw.sh irmao.
+_wur_self_dir() {
+  CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P
 }
 
 # ---------- Subcomando: aggregate ----------
@@ -339,6 +392,277 @@ _wur_cmd_aggregate() {
   fi
 }
 
+# ---------- Subcomando: backfill ----------
+
+# _wur_backfill_jq_program — programa jq compartilhado do subcomando
+# backfill. Le o transcript ja parseado (array de registros JSONL, injetado
+# via --slurpfile tr, $tr[0]) e o state.json (input principal `.`) e produz
+# UM objeto: { refuse, extracted_total, covered_total, new_total,
+# duplicate_total, by_wave, state }. `state` e o state.json COMPLETO apos o
+# merge (identico ao original quando new_total == 0 — o chamador so escreve
+# quando new_total > 0, preservando IR-2/idempotencia).
+#
+# Extracao: mesma correlacao tool_use(name="Agent") <-> tool_result via
+# tool_use_id, e a MESMA derivacao de status/campos-null que
+# posttooluse-agent-usage.sh usa para a captura ao vivo (contracts §3:
+# "verificado 6/6 nesta sessao" — Decision 1/2 do research). Atribuicao de
+# onda por janela temporal (Decision 9): heuristica, primeiro match vence.
+_wur_backfill_jq_program() {
+  cat <<'JQ'
+. as $ORIG_STATE |
+def strip_ms(ts): if ts == null then null else (ts | sub("\\.[0-9]+Z$"; "Z")) end;
+def epoch(ts): (strip_ms(ts)) as $s | if $s == null then null else (try ($s | fromdateiso8601) catch null) end;
+
+def sum_field(arr; f): ([arr[] | select(f != null) | f]) as $vals
+  | if ($vals|length) > 0 then ($vals|add) else null end;
+
+# Mesma formula de agregacao de _so_cmd_end (state-ondas.sh) — WaveUsage a
+# partir de um array de SpawnUsage. spawns=[] -> null (nunca onda fantasma).
+def wave_usage_of(spawns):
+  (spawns | length) as $total
+  | ([spawns[] | select(.status != "indisponivel")] | length) as $with_usage
+  | ($total - $with_usage) as $unavail
+  | if $total > 0 then {
+      spawns_total: $total, spawns_with_usage: $with_usage, spawns_unavailable: $unavail,
+      total_tokens: sum_field(spawns; .total_tokens),
+      input_tokens: sum_field(spawns; .input_tokens),
+      output_tokens: sum_field(spawns; .output_tokens),
+      cache_read_input_tokens: sum_field(spawns; .cache_read_input_tokens),
+      cache_creation_input_tokens: sum_field(spawns; .cache_creation_input_tokens),
+      tool_use_count: sum_field(spawns; .tool_use_count),
+      duration_ms: sum_field(spawns; .duration_ms)
+    } else null end;
+
+def add_null(existing; delta): if delta == null then existing else ((existing // 0) + delta) end;
+
+($tr[0] // []) as $records
+
+# tool_use(name="Agent") -> agent_type, indexado por tool_use_id.
+| ([$records[] | select(.type=="assistant") | (.message.content // [])[]
+     | select(.type=="tool_use" and .name=="Agent")
+     | {id: .id, agent_type: (.input.subagent_type // null)}]) as $agent_calls
+| ($agent_calls | map({(.id): .agent_type}) | add // {}) as $agent_type_by_id
+
+# tool_result cujo tool_use_id casa com uma chamada Agent E cujo
+# toolUseResult carrega agentId (mesma condicao de "empty" do hook: sem
+# agentId -> sem SpawnUsage).
+| ([$records[]
+     | select(.type=="user" and .toolUseResult != null)
+     | . as $rec
+     | (((.message.content // [])[] | select(.type=="tool_result") | .tool_use_id) // null) as $tuid
+     | select($tuid != null and ($agent_type_by_id | has($tuid)))
+     | ($rec.toolUseResult) as $trr
+     | ($trr.agentId // null) as $aid
+     | select($aid != null)
+     | ($trr.status // "") as $status_raw
+     | (if $status_raw == "completed" and ($trr.totalTokens != null) then "completo"
+        elif $status_raw == "completed" then "parcial"
+        else "indisponivel" end) as $derived
+     | {
+         agent_id: $aid,
+         agent_type: ($agent_type_by_id[$tuid] // null),
+         status: $derived,
+         model: ($trr.resolvedModel // "nao-aplicavel"),
+         models_used: ($trr.modelsUsed // null),
+         total_tokens: (if $derived=="indisponivel" then null else ($trr.totalTokens // null) end),
+         input_tokens: (if $derived=="indisponivel" then null else ($trr.usage.input_tokens // null) end),
+         output_tokens: (if $derived=="indisponivel" then null else ($trr.usage.output_tokens // null) end),
+         cache_read_input_tokens: (if $derived=="indisponivel" then null else ($trr.usage.cache_read_input_tokens // null) end),
+         cache_creation_input_tokens: (if $derived=="indisponivel" then null else ($trr.usage.cache_creation_input_tokens // null) end),
+         tool_use_count: (if $derived=="indisponivel" then null else ($trr.totalToolUseCount // null) end),
+         duration_ms: (if $derived=="indisponivel" then null else ($trr.totalDurationMs // null) end),
+         source: "backfill",
+         observed_at: ($rec.timestamp // null),
+         _ts_epoch: epoch($rec.timestamp)
+       }
+   ]) as $extracted
+
+| (.waves // []) as $waves_orig
+| ($waves_orig | map({id: .id, s: epoch(.started_at), f: epoch(.finished_at)})) as $windows
+
+# Atribuicao por janela temporal: started_at <= ts < finished_at (onda
+# aberta, finished_at=null -> sem limite superior). Primeiro match vence
+# (ondas nao se sobrepoem em condicoes normais).
+| ($extracted | map(
+     . as $sp
+     | (reduce $windows[] as $w (null;
+         if . == null and $w.s != null and $sp._ts_epoch != null
+            and $sp._ts_epoch >= $w.s and ($w.f == null or $sp._ts_epoch < $w.f)
+         then $w.id else . end)) as $wid
+     | $sp + {wave_id: $wid}
+   )) as $assigned_all
+
+| ($assigned_all | map(select(.wave_id != null))) as $covered
+| ($waves_orig | map({(.id): ([(.agent_spawns // [])[] | .agent_id])}) | add // {}) as $existing_ids_by_wave
+# Dedup por (wave_id, agent_id) — chave natural (data-model.md §"Chave
+# natural"); spawn ja presente (de qualquer source) nao entra de novo.
+| ($covered | map(. as $c | select( ((($existing_ids_by_wave[$c.wave_id]) // []) | index($c.agent_id)) == null ))) as $new_spawns
+
+| ($extracted | length) as $extracted_total
+| ($covered | length) as $covered_total
+| ($new_spawns | length) as $new_total
+| ($covered_total - $new_total) as $duplicate_total
+| ($new_spawns | group_by(.wave_id) | map({wave_id: .[0].wave_id, count: length, agent_ids: map(.agent_id)})) as $by_wave
+
+# FR-011: transcript nao cobre NENHUMA onda desta execucao -> recusa.
+# Distinto de "0 novos" (idempotencia): covered_total==0 e sobre o transcript
+# em si, nao sobre o que ja foi persistido.
+| (if $covered_total == 0 then true else false end) as $refuse
+
+| (
+    if $new_total == 0 then $ORIG_STATE
+    else
+      ($ORIG_STATE
+        | .waves = (.waves | map(
+            . as $w
+            | (($new_spawns | map(select(.wave_id == $w.id)) | map(del(.wave_id, ._ts_epoch)))) as $add
+            | if ($add | length) > 0 then
+                (.agent_spawns = ((.agent_spawns // []) + $add))
+                | (.agent_usage = wave_usage_of(.agent_spawns))
+              else . end
+          ))
+        | (wave_usage_of($new_spawns | map(del(.wave_id, ._ts_epoch)))) as $delta
+        | .accumulated_metrics.agent_spawns_total = ((.accumulated_metrics.agent_spawns_total // 0) + $new_total)
+        | .accumulated_metrics.agent_spawns_with_usage_total =
+            ((.accumulated_metrics.agent_spawns_with_usage_total // 0) + ([$new_spawns[] | select(.status != "indisponivel")] | length))
+        | .accumulated_metrics.agent_tokens_total = add_null(.accumulated_metrics.agent_tokens_total; $delta.total_tokens)
+        | .accumulated_metrics.agent_tool_use_count_total = add_null(.accumulated_metrics.agent_tool_use_count_total; $delta.tool_use_count)
+        | .accumulated_metrics.agent_duration_ms_total = add_null(.accumulated_metrics.agent_duration_ms_total; $delta.duration_ms)
+      )
+    end
+  ) as $new_state
+
+| {
+    refuse: $refuse,
+    extracted_total: $extracted_total,
+    covered_total: $covered_total,
+    new_total: $new_total,
+    duplicate_total: $duplicate_total,
+    by_wave: $by_wave,
+    state: $new_state
+  }
+JQ
+}
+
+_wur_cmd_backfill() {
+  _wur_require_jq
+
+  _wur_bt_state_dir=""
+  _wur_bt_transcript=""
+  _wur_bt_dry_run=0
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --state-dir)
+        [ $# -ge 2 ] || _wur_die_usage "backfill: --state-dir requer valor"
+        _wur_bt_state_dir=$2
+        shift 2
+        ;;
+      --state-dir=*)
+        _wur_bt_state_dir=${1#--state-dir=}
+        shift
+        ;;
+      --transcript)
+        [ $# -ge 2 ] || _wur_die_usage "backfill: --transcript requer valor"
+        _wur_bt_transcript=$2
+        shift 2
+        ;;
+      --transcript=*)
+        _wur_bt_transcript=${1#--transcript=}
+        shift
+        ;;
+      --dry-run)
+        _wur_bt_dry_run=1
+        shift
+        ;;
+      *)
+        _wur_die_usage "backfill: argumento desconhecido: $1"
+        ;;
+    esac
+  done
+
+  [ -n "$_wur_bt_state_dir" ] \
+    || _wur_die_usage "backfill: --state-dir obrigatorio"
+  [ -n "$_wur_bt_transcript" ] \
+    || _wur_die_usage "backfill: --transcript obrigatorio"
+
+  _wur_bt_state_file="$_wur_bt_state_dir/state.json"
+  [ -f "$_wur_bt_state_file" ] \
+    || _wur_die "backfill: state.json nao encontrado em $_wur_bt_state_file" 1
+
+  # Rotulo da execucao para a mensagem de recusa (FR-011: "nomeando a
+  # execucao que nao pode ser reconstruida"). Fallback ao basename do
+  # state-dir quando .execution.id ausente (state antigo).
+  _wur_bt_label=$(jq -r '.execution.id // empty' "$_wur_bt_state_file" 2>/dev/null) || _wur_bt_label=""
+  [ -n "$_wur_bt_label" ] || _wur_bt_label=$(basename -- "$_wur_bt_state_dir")
+
+  # FR-011, exit 3: transcript ausente/ilegivel — recusa explicita, NUNCA
+  # estimar. Checado ANTES de qualquer tentativa de parse.
+  if [ ! -f "$_wur_bt_transcript" ] || [ ! -r "$_wur_bt_transcript" ]; then
+    _wur_die "backfill: recusado — transcript ausente/ilegivel: $_wur_bt_transcript; execucao $_wur_bt_label (state-dir: $_wur_bt_state_dir) nao pode ser reconstruida a partir deste arquivo" 3
+  fi
+
+  # Parse tolerante do transcript JSONL (mesmo idioma de _so_agent_usage_read
+  # em state-ondas.sh): linhas corrompidas sao descartadas silenciosamente,
+  # nunca abortam o arquivo inteiro (Principio VI — degradacao graciosa).
+  _wur_bt_parsed=$(mktemp) || _wur_die "backfill: mktemp falhou" 1
+  if ! jq -R -n '[inputs | fromjson?]' "$_wur_bt_transcript" > "$_wur_bt_parsed" 2>/dev/null; then
+    rm -f -- "$_wur_bt_parsed"
+    _wur_die "backfill: falha ao ler transcript (jq falhou sobre $_wur_bt_transcript)" 1
+  fi
+
+  _wur_bt_out=$(jq -c --slurpfile tr "$_wur_bt_parsed" "$(_wur_backfill_jq_program)" "$_wur_bt_state_file") \
+    || { rm -f -- "$_wur_bt_parsed"; _wur_die "backfill: jq falhou ao processar transcript/state.json" 1; }
+  rm -f -- "$_wur_bt_parsed"
+
+  _wur_bt_refuse=$(printf '%s' "$_wur_bt_out" | jq -r '.refuse')
+  if [ "$_wur_bt_refuse" = "true" ]; then
+    _wur_die "backfill: recusado — transcript $_wur_bt_transcript nao cobre nenhuma onda da execucao $_wur_bt_label (state-dir: $_wur_bt_state_dir); nenhum SpawnUsage sintetico foi gravado" 3
+  fi
+
+  _wur_bt_extracted=$(printf '%s' "$_wur_bt_out" | jq -r '.extracted_total')
+  _wur_bt_covered=$(printf '%s' "$_wur_bt_out" | jq -r '.covered_total')
+  _wur_bt_new=$(printf '%s' "$_wur_bt_out" | jq -r '.new_total')
+  _wur_bt_dup=$(printf '%s' "$_wur_bt_out" | jq -r '.duplicate_total')
+
+  if [ "$_wur_bt_dry_run" = 1 ]; then
+    printf 'backfill --dry-run (%s):\n' "$_wur_bt_label"
+    printf '  spawns extraidos do transcript: %s\n' "$_wur_bt_extracted"
+    printf '  cobertos por alguma janela de onda: %s\n' "$_wur_bt_covered"
+    printf '  ja registrados (duplicados, seriam ignorados): %s\n' "$_wur_bt_dup"
+    printf '  NOVOS a aplicar: %s\n' "$_wur_bt_new"
+    printf '%s' "$_wur_bt_out" | jq -r '
+      .by_wave[] | "    \(.wave_id): +\(.count) spawn(s) (source=backfill) — agent_id: \(.agent_ids | join(", "))"
+    '
+    printf 'Nenhuma escrita realizada (--dry-run).\n'
+    return 0
+  fi
+
+  if [ "$_wur_bt_new" = 0 ]; then
+    printf 'backfill (%s): 0 spawns novos — %s cobertos, todos ja registrados (idempotente); nenhuma escrita realizada\n' \
+      "$_wur_bt_label" "$_wur_bt_covered"
+    return 0
+  fi
+
+  # Escrita via caminho canonico do runtime (IR-1: unica excecao
+  # documentada) — backup em state-history/ + atomic write + sha256 update,
+  # tudo dentro de state-rw.sh write.
+  _wur_selfdir=$(_wur_self_dir) || _wur_die "backfill: nao foi possivel resolver o diretorio do script" 1
+  _wur_state_rw="$_wur_selfdir/state-rw.sh"
+  [ -f "$_wur_state_rw" ] \
+    || _wur_die "backfill: state-rw.sh nao encontrado em $_wur_selfdir (runtime incompleto)" 1
+
+  printf '%s' "$_wur_bt_out" | jq -c '.state' \
+    | sh "$_wur_state_rw" write --state-dir "$_wur_bt_state_dir" \
+    || _wur_die "backfill: state-rw.sh write falhou — nenhuma garantia sobre o estado do arquivo, verifique state-history/" 1
+
+  printf 'backfill (%s): %s spawn(s) novo(s) aplicado(s) (source=backfill), %s duplicado(s) ignorado(s)\n' \
+    "$_wur_bt_label" "$_wur_bt_new" "$_wur_bt_dup"
+  printf '%s' "$_wur_bt_out" | jq -r '
+    .by_wave[] | "  \(.wave_id): +\(.count) spawn(s) — agent_id: \(.agent_ids | join(", "))"
+  '
+}
+
 # ---------- Dispatch ----------
 
 if [ $# -eq 0 ]; then
@@ -354,6 +678,10 @@ case "$1" in
   aggregate)
     shift
     _wur_cmd_aggregate "$@"
+    ;;
+  backfill)
+    shift
+    _wur_cmd_backfill "$@"
     ;;
   *)
     printf '%s: subcomando desconhecido: %s\n' "$_WUR_NAME" "$1" >&2
