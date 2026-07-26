@@ -19,7 +19,7 @@
  */
 import type Database from 'better-sqlite3';
 import { hasColumn } from '../columns.js';
-import { hasAgentUsage } from './waves.js';
+import { hasAgentUsage, hasOtelUsage } from './waves.js';
 
 export type MetricPeriod = '24h' | '7d' | '30d' | 'all';
 
@@ -494,6 +494,67 @@ export function getAgentUsage(
     `)
     .get(...params) as AgentUsageResult | undefined;
   return row ?? { ...EMPTY_AGENT_USAGE };
+}
+
+// ─────────────────────────────────────────────────────────
+// 11.bis otel-usage — consumo REAL da onda (schema v11)
+//
+// Fonte independente de agentUsage: os contadores OTel do Claude Code sobem
+// a cada API request e carregam `query_source`, entao capturam tambem o
+// consumo do PROPRIO orquestrador — que o hook de spawn nunca ve, porque o
+// spawn do orquestrador envolve a onda e seu tool_result chega depois do
+// fechamento. Medido em campo: o subagente e 43-47% do gasto.
+
+export interface OtelUsageResult {
+  /** custo total em USD no recorte; null = nao coletado */
+  costUsd: number | null;
+  /** custo atribuido ao loop principal */
+  costMainUsd: number | null;
+  /** custo atribuido a subagentes — a fatia que agentUsage nao enxergava */
+  costSubagentUsd: number | null;
+  totalTokens: number | null;
+  subagentTokens: number | null;
+  /** ondas com metrica OTel coletada (otel_cost_usd NAO nulo) */
+  wavesWithOtel: number | null;
+  /** ondas no recorte, coletadas ou nao */
+  wavesTotal: number | null;
+}
+
+const EMPTY_OTEL_USAGE: OtelUsageResult = {
+  costUsd: null,
+  costMainUsd: null,
+  costSubagentUsd: null,
+  totalTokens: null,
+  subagentTokens: null,
+  wavesWithOtel: null,
+  wavesTotal: null,
+};
+
+export function getOtelUsage(
+  db: Database.Database,
+  filters: AgentUsageFilters = {},
+): OtelUsageResult {
+  // Banco v10 ou anterior: colunas inexistentes. Devolver vazio e mais
+  // honesto (e nao quebra) do que consultar e explodir.
+  if (!hasOtelUsage(db)) return { ...EMPTY_OTEL_USAGE };
+  const { where, params } = waveScope(db, filters);
+  // Sem coalesce de proposito: sum() devolve NULL quando nenhuma linha tem
+  // valor, que e exatamente "nao coletado" — distinto de "coletado e zero".
+  const row = db
+    .prepare(`
+      SELECT
+        sum(otel_cost_usd)            as costUsd,
+        sum(otel_cost_main_usd)       as costMainUsd,
+        sum(otel_cost_subagent_usd)   as costSubagentUsd,
+        sum(otel_total_tokens)        as totalTokens,
+        sum(otel_subagent_tokens)     as subagentTokens,
+        sum(CASE WHEN otel_cost_usd IS NOT NULL THEN 1 ELSE 0 END) as wavesWithOtel,
+        count(*)                      as wavesTotal
+      FROM waves
+      ${where}
+    `)
+    .get(...params) as OtelUsageResult | undefined;
+  return row ?? { ...EMPTY_OTEL_USAGE };
 }
 
 // ─────────────────────────────────────────────────────────

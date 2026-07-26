@@ -17,7 +17,7 @@ import {
   getModelMix, getRecentActivity, getCostSeries,
 } from '../db/queries/overview.js';
 import { getRollupByProject, getRollupByFeature } from '../db/queries/executions.js';
-import { getAgentUsage, getTokensOverTime } from '../db/queries/metrics.js';
+import { getAgentUsage, getOtelUsage, getTokensOverTime } from '../db/queries/metrics.js';
 import { normalizeStatus, mapAgentUsageResult, mapAgentUsageRollup } from '../mappers/index.js';
 
 const PeriodSchema = z.enum(['24h', '7d', '30d', 'all']).optional().default('7d');
@@ -70,6 +70,10 @@ export async function overviewRoutes(server: FastifyInstance): Promise<void> {
       // Consumo REAL de subagentes (schema v10) — medido, nao proxy. Vem com
       // spawnsWithUsage/spawnsTotal para a UI rotular a cobertura da amostra.
       const agentUsage = getAgentUsage(db, project !== null ? { project } : {});
+      // Consumo REAL medido pela telemetria OTel (schema v11). Fonte
+      // independente de agentUsage: cobre tambem o gasto do proprio
+      // orquestrador, que o hook de spawn nunca enxerga.
+      const otelUsage = getOtelUsage(db, project !== null ? { project } : {});
       const tokenSeries = getTokensOverTime(db, project !== null ? { project } : {})
         .map(r => r.totalTokens);
 
@@ -123,6 +127,7 @@ export async function overviewRoutes(server: FastifyInstance): Promise<void> {
           /** consumo medido dos subagentes (schema v10); campos null quando
            *  a base e v<10 ou nenhuma onda do recorte tem medicao */
           agentUsage: mapAgentUsageResult(agentUsage),
+          otelUsage,
         },
         recentAlerts: recentAlerts.map(a => ({
           executionId: a.execution_id,

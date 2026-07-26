@@ -46,6 +46,21 @@ export function hasAgentUsage(db: Database.Database): boolean {
   return hasColumn(db, 'waves', 'agent_total_tokens');
 }
 
+/**
+ * Consumo REAL por onda (telemetria OTel do Claude Code, schema v11).
+ *
+ * Fonte distinta de `hasAgentUsage`: aquela vem do hook PostToolUse/Agent,
+ * que so enxerga o que o spawn devolve — e o spawn do orquestrador ENVOLVE
+ * a onda, entao o consumo dele nunca aparece la. Os contadores OTel sobem a
+ * cada API request, entao cobrem main + subagent + auxiliary.
+ *
+ * Bancos v10 ou anteriores nao tem as colunas: a sonda evita o erro de
+ * "no such column" e deixa a UI cair no estado honesto de "nao coletado".
+ */
+export function hasOtelUsage(db: Database.Database): boolean {
+  return hasColumn(db, 'waves', 'otel_cost_usd');
+}
+
 export interface WaveRow {
   wave: string;
   execution_id: string;

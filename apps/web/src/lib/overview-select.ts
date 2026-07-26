@@ -27,6 +27,7 @@ export interface OverviewKpisRaw {
   testsTotal?: number | null;
   /** consumo MEDIDO de subagentes (schema v10); ausente em bases v<10 */
   agentUsage?: AgentUsageRollup | null;
+  otelUsage?: OtelUsageRollup | null;
 }
 
 export interface ModelMixRaw { model?: string | null; n?: number | null; }
@@ -53,6 +54,20 @@ export interface OverviewRaw {
   tokenSeries?: number[] | null;
 }
 
+
+/** Consumo REAL da onda medido pela telemetria OTel (knowledge.db v11).
+ *  Fonte independente de agentUsage: cobre tambem o gasto do proprio
+ *  orquestrador. null em todo campo = nao coletado (nunca zero fabricado). */
+export interface OtelUsageRollup {
+  costUsd: number | null;
+  costMainUsd: number | null;
+  costSubagentUsd: number | null;
+  totalTokens: number | null;
+  subagentTokens: number | null;
+  wavesWithOtel: number | null;
+  wavesTotal: number | null;
+}
+
 export interface OverviewVM {
   totalProjects: number;
   totalFeatures: number;
@@ -77,6 +92,8 @@ export interface OverviewVM {
   costSeries: number[];
   /** null (nao 0) quando a base nao tem medicao — Principio III */
   agentUsage: AgentUsageRollup | null;
+  /** null quando a base e < v11 ou a telemetria nao estava ligada */
+  otelUsage: OtelUsageRollup | null;
   tokenSeries: number[];
   maxToolCalls: number;
   maxFunnel: number;
@@ -119,6 +136,7 @@ export function selectOverview(raw: OverviewRaw | null | undefined): OverviewVM 
     // NAO coalescer para um objeto zerado: ausencia de medicao precisa chegar
     // como null na UI para virar "—" em vez de "0 tokens".
     agentUsage: kpis.agentUsage ?? null,
+    otelUsage: kpis.otelUsage ?? null,
     tokenSeries,
     maxToolCalls: leaderboard.reduce(
       (m, row) => Math.max(m, (row['toolCallsTotal'] as number | null) ?? 0), 0,

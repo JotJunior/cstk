@@ -90,9 +90,21 @@ export function Overview({ period, project = '' }: OverviewProps) {
     totalProjects, totalFeatures, emAndamento, aguardando, totalToolCalls,
     totalWallclock, testsPassed, testsTotal, totalAlertas,
     execucoes, alertas, leaderboard, funnel, modelMix, recentActivity,
-    costSeries, maxToolCalls, agentUsage, tokenSeries,
+    costSeries, maxToolCalls, agentUsage, tokenSeries, otelUsage,
   } = vm;
   const hasMeasuredTokens = agentUsageState(agentUsage) === 'measured';
+  // Telemetria OTel (schema v11): fonte independente e mais completa — cobre
+  // o gasto do proprio orquestrador, que o hook de spawn nunca enxerga.
+  // Preferida quando presente; agentUsage vira fallback.
+  const hasOtel = otelUsage != null && otelUsage.costUsd != null;
+  const otelCoverage = hasOtel && otelUsage.wavesTotal
+    ? `${otelUsage.wavesWithOtel ?? 0}/${otelUsage.wavesTotal} ondas medidas`
+    : null;
+  const fmtUsd = (v: number | null | undefined): string =>
+    v == null ? '—' : `$${v < 0.01 ? v.toFixed(4) : v.toFixed(2)}`;
+  const subagentShare = hasOtel && otelUsage.costUsd && otelUsage.costSubagentUsd != null
+    ? Math.round((otelUsage.costSubagentUsd / otelUsage.costUsd) * 100)
+    : null;
 
   // KPIs derivados
   const nCriticos = (alertas as Record<string, unknown>[]).filter(a => deriveSeverity(a) === 'critical').length;
@@ -160,12 +172,18 @@ export function Overview({ period, project = '' }: OverviewProps) {
             background não reportam uso, por isso o rodapé traz a cobertura. */}
         <KpiCard
           label="Tokens · subagentes"
-          value={hasMeasuredTokens ? fmtTokens(agentUsage?.totalTokens) : '—'}
+          value={hasOtel
+            ? fmtTokens(otelUsage.subagentTokens)
+            : hasMeasuredTokens ? fmtTokens(agentUsage?.totalTokens) : '—'}
           icon="cpu"
-          footnote={hasMeasuredTokens ? coverageLabel(agentUsage) : 'não coletado nesta fonte'}
-          tip={hasMeasuredTokens
-            ? 'Tokens reportados pelo harness para cada subagente e agregados por onda. Medição real, mas parcial: spawns em background não reportam uso.'
-            : 'Exige knowledge.db em schema v10 (cstk ≥ 5.25.0). Execuções anteriores não são retroalimentadas.'}
+          footnote={hasOtel
+            ? (otelCoverage ?? 'telemetria OTel')
+            : hasMeasuredTokens ? coverageLabel(agentUsage) : 'não coletado nesta fonte'}
+          tip={hasOtel
+            ? 'Tokens de subagentes medidos pela telemetria OTel do Claude Code (label query_source=subagent). Contadores incrementados a cada requisição, então cobrem também o consumo do próprio orquestrador.'
+            : hasMeasuredTokens
+              ? 'Tokens reportados pelo harness para cada subagente e agregados por onda. Medição real, mas parcial: spawns em background não reportam uso.'
+              : 'Exige knowledge.db em schema v11 (cstk ≥ 5.28.0) e telemetria ligada: CLAUDE_CODE_ENABLE_TELEMETRY=1 + OTEL_METRICS_EXPORTER=prometheus.'}
           spark={tokenSeries}
           sparkColor="var(--info)"
         />
