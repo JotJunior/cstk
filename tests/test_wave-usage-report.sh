@@ -346,6 +346,101 @@ _sha256_of() {
   fi
 }
 
+# ==== FASE 6 (feature wave-token-metrics): cruzamento com model-routing
+# em review-task/SKILL.md §4.5 (F5, US2/FR-007) ====
+#
+# review-task/SKILL.md nao tem harness automatizado proprio (skill
+# prose-driven, sem script dedicado) — cobertura aqui segue o mesmo
+# padrao "sanity" ja usado em test_model-routing-report.sh
+# (scenario_integracao_review_task_skill_md_referencia_helper): grep-based,
+# falha cedo se a SKILL.md for reformatada/perder a secao.
+
+scenario_skill_md_referencia_cruzamento_wave_usage() {
+  _skill="$REPO_ROOT/global/skills/review-task/SKILL.md"
+  [ -f "$_skill" ] || { _fail "SKILL.md ausente" "$_skill"; return 1; }
+  grep -qF 'wave-usage-report.sh' "$_skill" \
+    || { _fail "SKILL.md nao referencia wave-usage-report.sh" ""; return 1; }
+  grep -qF 'Cruzamento com consumo de tokens observado' "$_skill" \
+    || { _fail "subsecao de cruzamento ausente em SKILL.md §4.5" ""; return 1; }
+  grep -qF 'model-routing-report.sh' "$_skill" \
+    || { _fail "SKILL.md nao referencia model-routing-report.sh no cruzamento" ""; return 1; }
+}
+
+# Prova que os dois helpers compoem sem interferencia sobre a MESMA
+# state.json: model-routing-report.sh continua lendo SOMENTE .decisions[]
+# (nunca .waves) e wave-usage-report.sh continua lendo SOMENTE .waves[]
+# (nunca .decisions) — o invariante que a subsecao de cruzamento do
+# SKILL.md promete preservar (nenhum dos dois scripts foi alterado).
+scenario_composicao_com_model_routing_report_preserva_invariantes() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _mrr_script="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/model-routing-report.sh"
+  [ -x "$_mrr_script" ] || { _error "model-routing-report.sh ausente/nao-executavel"; return 2; }
+
+  cat > "$TMPDIR_TEST/state.json" <<'JSON'
+{
+  "schema_version": 1,
+  "waves": [
+    {
+      "id": "onda-004",
+      "agent_usage": {
+        "spawns_total": 1, "spawns_with_usage": 1, "spawns_unavailable": 0,
+        "total_tokens": 50000, "input_tokens": 100, "output_tokens": 900,
+        "cache_read_input_tokens": 48900, "cache_creation_input_tokens": 100,
+        "tool_use_count": 10, "duration_ms": 60000
+      },
+      "agent_spawns": [
+        {"agent_id":"a1","agent_type":"t1","status":"completo","model":"opus","models_used":null,"total_tokens":50000,"input_tokens":100,"output_tokens":900,"cache_read_input_tokens":48900,"cache_creation_input_tokens":100,"tool_use_count":10,"duration_ms":60000,"source":"live","observed_at":"t"}
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "id": "dec-001",
+      "wave_id": "onda-004",
+      "timestamp": "2026-01-01T00:00:00Z",
+      "stage": "plan",
+      "agent": "agente-00c-feature-orchestrator",
+      "context": "Selecao de modelo para onda onda-004 (fase plan)",
+      "options_considered": ["sonnet", "opus"],
+      "choice": "model:opus",
+      "rationale": "sugerido=sonnet aplicado=opus origem=override-operador | operador pediu opus",
+      "justification_score": 3
+    }
+  ]
+}
+JSON
+
+  _before=$(_sha256_of "$TMPDIR_TEST/state.json")
+
+  _wu_json=$(sh "$SCRIPT" aggregate --state-dir "$TMPDIR_TEST" --json)
+  _mr_json=$("$_mrr_script" aggregate --state-dir "$TMPDIR_TEST" --json)
+
+  _after=$(_sha256_of "$TMPDIR_TEST/state.json")
+  [ "$_before" = "$_after" ] || { _fail "read-only preservado" "sha256 do state.json mudou apos os dois aggregates"; return 1; }
+
+  # wave-usage-report.sh: onda-004 presente com tokens reais.
+  printf '%s' "$_wu_json" | jq -e '.por_onda[] | select(.onda == "onda-004") | .total_tokens == 50000' >/dev/null \
+    || { _fail "wave-usage por_onda" "onda-004/total_tokens=50000 nao encontrado: $_wu_json"; return 1; }
+
+  # model-routing-report.sh: onda-004 presente na secao por-onda, com
+  # divergencia sugerido!=aplicado rotulada como override-operador.
+  printf '%s' "$_mr_json" | jq -e '.linhas_onda[] | select(.onda == "onda-004") | .sugerido == "sonnet" and .aplicado == "opus" and .origem == "override-operador" and .divergente == true' >/dev/null \
+    || { _fail "model-routing linhas_onda" "onda-004 nao bate com esperado: $_mr_json"; return 1; }
+
+  # Join (mesma receita documentada em review-task/SKILL.md §4.5): a
+  # onda diverge E tem token acima da media (unica onda com dado -> nao
+  # ha "acima da media" com 1 ponto so; aqui validamos so que o join
+  # produz a linha com os campos combinados, sem quebrar).
+  _joined=$(jq -n --argjson mr "$_mr_json" --argjson wu "$_wu_json" '
+    ($wu.por_onda // [] | map({(.onda): .}) | add // {}) as $wu_by_onda
+    | ($mr.linhas_onda // []) as $rows
+    | $rows | map(. as $r | ($wu_by_onda[$r.onda]) as $u | $r + {tokens: (($u.total_tokens) // null)})
+  ')
+  printf '%s' "$_joined" | jq -e '.[0].onda == "onda-004" and .[0].tokens == 50000 and .[0].divergente == true' >/dev/null \
+    || { _fail "join model-routing x wave-usage" "resultado inesperado: $_joined"; return 1; }
+}
+
 # ==== IR-3: Principio II POSIX ====
 
 scenario_shebang_posix_e_set_eu() {

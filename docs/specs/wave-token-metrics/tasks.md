@@ -118,9 +118,9 @@ Ref: contracts/wave-usage-report.md §2/§3
 
 Ref: contracts/wave-usage-report.md §6
 
-- [ ] 4.2.1 Adicionar secao de consumo de tokens/tool-uses/duracao ao relatorio gerado por `report.sh` (secoes 1 e 2), consumindo `wave-usage-report.sh aggregate --json` como fonte
-- [ ] 4.2.2 Garantir que o relatorio distingue "0 spawns" (nenhum subagente spawnado) de "metrica nao coletada" (hook nao provisionado) — nunca reportar 0 quando o dado real e ausencia de coleta
-- [ ] 4.2.3 Estender `tests/test_report.sh` (ou criar se inexistente) cobrindo as novas secoes do relatorio, incluindo o caso "metrica nao coletada"
+- [x] 4.2.1 Adicionar secao de consumo de tokens/tool-uses/duracao ao relatorio gerado por `report.sh` (secoes 1 e 2), consumindo `wave-usage-report.sh aggregate --json` como fonte
+- [x] 4.2.2 Garantir que o relatorio distingue "0 spawns" (nenhum subagente spawnado) de "metrica nao coletada" (hook nao provisionado) — nunca reportar 0 quando o dado real e ausencia de coleta
+- [x] 4.2.3 Estender `tests/test_report.sh` (ou criar se inexistente) cobrindo as novas secoes do relatorio, incluindo o caso "metrica nao coletada" <!-- onda-012: report.sh delega a wave-usage-report.sh aggregate --json (script irmao, best-effort); secoes 1/2 ganham Spawns/Tokens/Cobertura + colunas Spawns/Tokens por onda; fallback JSON com null (nunca 0) quando o helper esta ausente; 25/25 cenarios verdes em test_report.sh (3 novos: coletado, nao-coletado, helper ausente) -->
 
 ---
 
@@ -152,9 +152,9 @@ Ref: contracts/wave-usage-report.md §7
 
 Ref: contracts/wave-usage-report.md §5
 
-- [ ] 6.1.1 Adicionar em `global/skills/review-task/SKILL.md` §4.5 a invocacao de `wave-usage-report.sh aggregate --json` cruzada com `model-routing-report.sh aggregate` (mesma fonte de `.decisions[]`, sem tocar `.waves` — preserva o invariante que aquele script publica)
-- [ ] 6.1.2 Documentar no SKILL.md a leitura conjunta: para cada onda, exibir modelo aplicado (model-routing) lado a lado com consumo de tokens/tool-uses/duracao observado (wave-usage), destacando divergencias sugerido-vs-aplicado que tiveram alto consumo
-- [ ] 6.1.3 Escrever cenario de teste (fixture de state.json com `.waves[].agent_usage` + `.decisions[]` de model-routing) validando a secao cruzada, ou estender o test existente do `review-task` se houver harness automatizado para o SKILL.md
+- [x] 6.1.1 Adicionar em `global/skills/review-task/SKILL.md` §4.5 a invocacao de `wave-usage-report.sh aggregate --json` cruzada com `model-routing-report.sh aggregate` (mesma fonte de `.decisions[]`, sem tocar `.waves` — preserva o invariante que aquele script publica)
+- [x] 6.1.2 Documentar no SKILL.md a leitura conjunta: para cada onda, exibir modelo aplicado (model-routing) lado a lado com consumo de tokens/tool-uses/duracao observado (wave-usage), destacando divergencias sugerido-vs-aplicado que tiveram alto consumo
+- [x] 6.1.3 Escrever cenario de teste (fixture de state.json com `.waves[].agent_usage` + `.decisions[]` de model-routing) validando a secao cruzada, ou estender o test existente do `review-task` se houver harness automatizado para o SKILL.md <!-- onda-012: review-task/SKILL.md nao tem harness automatizado proprio (skill prose-driven); seguiu o padrao "sanity" ja usado por test_model-routing-report.sh — 2 cenarios novos em test_wave-usage-report.sh (referencia da subsecao no SKILL.md + composicao real dos dois scripts sobre o mesmo state.json, provando read-only preservado e join correto); 19/19 verdes. Subsecao "Cruzamento com consumo de tokens observado" adicionada em SKILL.md §4.5 (join via jq entre linhas_onda[] de model-routing-report.sh --json e por_onda[] de wave-usage-report.sh --json, chave onda; nenhum dos dois scripts alterado, preservando ambos os invariantes publicados); template de relatorio + Gotcha "Agregado model-routing nao deve ser reformatado" atualizados com a excecao explicita (subsecao derivada, nao verbatim) -->
 
 ---
 

@@ -238,6 +238,92 @@ ratificado em
 `agente-00c-runtime` nao instalada), pule a agregacao silenciosamente
 — nao bloqueie o restante do review-task.
 
+#### Cruzamento com consumo de tokens observado (wave-usage-report)
+
+Ref: feature `wave-token-metrics`, FASE 6 (F5, US2/FR-007).
+
+Quando a mesma `state.json` tambem tem `.waves[].agent_usage` (populado
+pelo hook `posttooluse-agent-usage.sh` + `state-ondas.sh end` — ver
+`docs/specs/wave-token-metrics/`), cruze a secao **por-onda** do
+model-routing (`linhas_onda[]`, saida `--json` de
+`model-routing-report.sh`) com o agregado do `wave-usage-report.sh`
+(`por_onda[]`, saida `--json`) pela chave comum `onda`. Objetivo: por
+onda, mostrar o **modelo aplicado** (model-routing) lado a lado com o
+**consumo observado** (tokens/tool-uses/duracao — wave-usage),
+destacando divergencias sugerido≠aplicado que tiveram alto consumo.
+
+**Nao existe um unico script que ja produza esse cruzamento verbatim** —
+e deliberado: `model-routing-report.sh` publica o invariante "le SOMENTE
+`.decisions[]`, nunca `.waves`" (ver cabecalho do script); adicionar um
+campo agregado de `.waves` ali quebraria esse contrato. O review-task
+computa o join a partir dos DOIS `--json`, sem alterar nenhum dos dois
+helpers:
+
+```bash
+STATE_DIR="<projeto>/.claude/feature-00c-state/<feature>"   # ou agente-00c-state
+MR_JSON=$(~/.claude/skills/agente-00c-runtime/scripts/model-routing-report.sh \
+  aggregate --state-dir "$STATE_DIR" --json 2>/dev/null) \
+  || MR_JSON='{"ondas":{"total":0},"linhas_onda":[]}'
+WU_JSON=$(~/.claude/skills/agente-00c-runtime/scripts/wave-usage-report.sh \
+  aggregate --state-dir "$STATE_DIR" --json 2>/dev/null) \
+  || WU_JSON='{"metric_collected":false,"por_onda":[]}'
+
+jq -n --argjson mr "$MR_JSON" --argjson wu "$WU_JSON" '
+  ($wu.por_onda // [] | map({(.onda): .}) | add // {}) as $wu_by_onda
+  | ($mr.linhas_onda // []) as $rows
+  # media de tokens (so valores nao-null) entre as ondas roteadas nesta
+  # execucao — "alto consumo" e RELATIVO a esta execucao, nunca um
+  # limiar fixo inventado (Principio VI: so agrega dado real observado).
+  | ($rows | map($wu_by_onda[.onda].total_tokens) | map(select(. != null))) as $vals
+  | (if ($vals | length) > 0 then ($vals | add / length) else null end) as $media
+  | $rows
+  | map(. as $r
+      | ($wu_by_onda[$r.onda]) as $u
+      | $r + {
+          tokens:      (($u.total_tokens)     // null),
+          tool_uses:   (($u.tool_use_count)    // null),
+          duration_ms: (($u.duration_ms)       // null),
+          alto_consumo: ($r.divergente
+            and (($u.total_tokens) != null)
+            and $media != null
+            and (($u.total_tokens) > $media))
+        })
+'
+```
+
+**Renderizacao** (tabela `#### Consumo x roteamento por onda`, colunas
+GFM): `onda | etapa | sugerido | aplicado | origem | tokens | tool-uses
+| duracao | divergente+alto-consumo`. Marque a ultima coluna com `⚠`
+quando `alto_consumo=true` — sinaliza exatamente o caso mais caro para o
+operador auditar: a escalada/override divergiu do roteamento primario
+**e** custou mais tokens que a media das ondas roteadas nesta execucao.
+
+**Diferenca de §4.5 acima**: as duas tabelas de §4.5 (legado + por-onda)
+sao copiadas **verbatim** do stdout de `model-routing-report.sh` — nunca
+reformatadas (ver Gotcha "Agregado model-routing nao deve ser
+reformatado"). Esta subsecao e **derivada** (join calculado pelo
+review-task sobre dois `--json` independentes); nao ha saida canonica
+unica para colar verbatim, entao a tabela acima e a UNICA
+representacao — mantenha as colunas e o rotulo `⚠` estaveis para nao
+quebrar comparacoes entre relatorios sucessivos.
+
+**Quando incluir** (regra binaria, mesmo espirito de §4.5):
+
+- **Incluir** quando AMBOS os `--json` tem dado (`mr.ondas.total > 0` E
+  `wu.metric_collected == true`) E o join produz >=1 linha com
+  `tokens != null`.
+- **Omitir** silenciosamente quando qualquer uma dessas condicoes falha
+  por AUSENCIA de dado (nao houve roteamento por-onda nesta execucao,
+  ou a metrica de consumo nunca foi coletada) — nao emita cabecalho
+  sozinho.
+- **Skip auditavel** quando QUALQUER um dos dois helpers falha com
+  `exit != 0` (script ausente, `state.json` ilegivel etc.): nao inclua a
+  subsecao, mas adicione nota em "Recomendacoes" (mesmo formato de §4.5
+  §4 do contrato `review-task-aggregate.md`).
+
+**Defesa em profundidade**: identica a §4.5 — qualquer um dos dois
+helpers ausente/falhando nunca bloqueia o restante do review-task.
+
 ### 4.6 Reconciliacao + completude de tasks (.tasks[] ↔ tasks.md)
 
 Quando a feature tem `state.json` da execucao em
@@ -390,6 +476,13 @@ Ordene tarefas pendentes por:
 - manter-atual: n
 - fallback-default: n (pct%)
 
+<!-- INSERIR AQUI quando aplicavel — vide §4.5 (Cruzamento com consumo de tokens observado) -->
+## Consumo x roteamento por onda (wave-usage x model-routing)
+
+| onda | etapa | sugerido | aplicado | origem | tokens | tool-uses | duracao | divergente+alto-consumo |
+|------|-------|----------|----------|--------|--------|-----------|---------|--------------------------|
+| ...  | ...   | ...      | ...      | ...    | ...    | ...       | ...     | ...                      |
+
 ---
 
 ## Recomendacoes
@@ -456,3 +549,5 @@ Esta skill LE e RELATA; nao executa trabalho pendente. Se o usuario pergunta "st
 ### Agregado model-routing nao deve ser reformatado
 
 O `model-routing-report.sh aggregate` retorna Markdown ja canonicalizado (cabecalho, colunas, sumario com chaves fixas). Reformatar (mudar header, reordenar colunas, esconder rotulos com zero) quebra o INV-RT-1 do contrato `docs/specs/agente-00c-model-routing/contracts/review-task-aggregate.md` e invalida testes de integracao. Copie verbatim ou nao inclua.
+
+Excecao deliberada: a subsecao "Cruzamento com consumo de tokens observado" de §4.5 NAO copia verbatim — e um join calculado pelo review-task sobre dois `--json` independentes (`model-routing-report.sh` + `wave-usage-report.sh`), porque nenhum dos dois scripts pode emitir esse cruzamento sem violar seu proprio invariante publicado (`model-routing-report.sh` nunca le `.waves`). Nesse caso especifico, siga o formato de tabela documentado em §4.5 em vez de "copiar verbatim".
