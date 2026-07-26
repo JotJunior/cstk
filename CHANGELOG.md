@@ -5,6 +5,35 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.31.0] - 2026-07-26
+
+Corrige os dois bugs que sobraram no `wave-usage-report.sh backfill` — a
+reconstrução histórica do consumo por onda, que estava **inteiramente
+inoperante**.
+
+### Fixed
+
+- **Backfill não cobria nenhuma onda** (`0/58` medido em gamedev-training).
+  A atribuição era por **contenção** (`started_at <= ts < finished_at`)
+  usando o timestamp do `tool_result` — mas a topologia real é o oposto: o
+  command pai spawna o orquestrador, e é o orquestrador que abre e fecha a
+  onda **por dentro** do spawn. Ou seja
+  `spawn_start < started_at < finished_at < spawn_end`: o `tool_result`
+  chega depois do fechamento, na lacuna entre ondas, e nunca casava.
+  A atribuição agora tenta **enclausuramento** primeiro (o spawn envolve a
+  onda) e cai na contenção como fallback — que continua valendo para spawns
+  feitos de dentro de uma onda já aberta. O fix é **aditivo**, não
+  substitutivo. Resultado no mesmo transcript: **62 de 65 spawns cobertos**.
+- **`toolUseResult` string derrubava o backfill inteiro.** Nem todo tool
+  result é objeto; vários devolvem string crua. `.agentId` sobre string
+  aborta o `jq` com `Cannot index string with string`, matando o
+  processamento do arquivo todo (observado em financial-support). Agora o
+  tipo é checado antes de indexar, e uma linha string apenas é ignorada —
+  os spawns válidos ao redor sobrevivem.
+- Testes: 3 cenários de regressão em `tests/test_wave-usage-report.sh`
+  (spawn que envolve a onda é atribuído; contenção continua valendo; linha
+  com `toolUseResult` string não derruba os spawns seguintes).
+
 ## [5.30.0] - 2026-07-26
 
 O custo real por onda **chega ao painel**. A v5.28.0 capturou o dado no
@@ -4189,6 +4218,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.31.0]: https://github.com/JotJunior/cstk/releases/tag/v5.31.0
 [5.30.0]: https://github.com/JotJunior/cstk/releases/tag/v5.30.0
 [5.29.0]: https://github.com/JotJunior/cstk/releases/tag/v5.29.0
 [5.28.0]: https://github.com/JotJunior/cstk/releases/tag/v5.28.0
