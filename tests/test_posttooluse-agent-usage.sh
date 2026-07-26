@@ -56,7 +56,10 @@ _lines_count() {
 # _perm FILE -> permissao octal do arquivo (portavel BSD/GNU — mesmo
 # padrao de tests/cstk/test_recall.sh:401).
 _perm() {
-  stat -f '%Lp' -- "$1" 2>/dev/null || stat -c '%a' -- "$1" 2>/dev/null
+  # GNU (-c) primeiro: no BSD 'stat -c' falha com exit != 0 e cai no -f.
+  # A ordem inversa quebra no GNU, onde '-f' significa FILESYSTEM e sai 0
+  # com output errado (o fallback nunca dispara).
+  stat -c '%a' -- "$1" 2>/dev/null || stat -f '%Lp' -- "$1" 2>/dev/null
 }
 
 # _payload CWD TOOL_NAME TOOL_RESPONSE_JSON [TOOL_INPUT_JSON] -> payload

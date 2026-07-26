@@ -636,7 +636,10 @@ recall_ensure_db_dir() {
 # `stat` portavel, arquivo inexistente ou chmod negado degradam para no-op.
 recall_normalize_db_perms() {
   [ -f "$1" ] || return 0
-  _ndp_mode=$(stat -f '%Lp' -- "$1" 2>/dev/null) || _ndp_mode=$(stat -c '%a' -- "$1" 2>/dev/null) || _ndp_mode=""
+  # GNU (-c) primeiro: no BSD 'stat -c' falha (exit != 0) e cai no -f. A ordem
+  # inversa quebra no GNU, onde '-f' e FILESYSTEM status e sai 0 com output
+  # errado — o fallback nunca dispararia e _ndp_mode viraria lixo.
+  _ndp_mode=$(stat -c '%a' -- "$1" 2>/dev/null) || _ndp_mode=$(stat -f '%Lp' -- "$1" 2>/dev/null) || _ndp_mode=""
   [ -n "$_ndp_mode" ] || return 0
   [ "$_ndp_mode" = "600" ] && return 0
   if chmod 600 -- "$1" 2>/dev/null; then
