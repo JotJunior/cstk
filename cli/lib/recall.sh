@@ -112,7 +112,7 @@ RECALL_EXIT_USAGE=2
 # table_info (mesmo padrao v2/v5/v8/v9); SEM drop, dados v9 preservados.
 # Onda antiga ou sem .agent_usage -> todas as 9 colunas NULL, nunca 0
 # (recall_int_or_null; Principio VI — nao fabricar dado nao observado).
-RECALL_SCHEMA_VERSION=10
+RECALL_SCHEMA_VERSION=11
 # Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
 # DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
 RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
@@ -510,6 +510,11 @@ CREATE TABLE IF NOT EXISTS waves (
   n_stages INTEGER,
   n_skills INTEGER,
   session TEXT,
+  otel_cost_usd REAL,
+  otel_cost_main_usd REAL,
+  otel_cost_subagent_usd REAL,
+  otel_total_tokens INTEGER,
+  otel_subagent_tokens INTEGER,
   agent_spawns_total INTEGER,
   agent_spawns_with_usage INTEGER,
   agent_total_tokens INTEGER,
@@ -750,6 +755,19 @@ ALTER TABLE waves ADD COLUMN agent_cache_creation_tokens INTEGER;
 ALTER TABLE waves ADD COLUMN agent_tool_use_count INTEGER;
 ALTER TABLE waves ADD COLUMN agent_duration_ms INTEGER;" ;;
       esac
+      # ---- Migracao v10->v11 (otel-wave-cost): 5 colunas aditivas em waves
+      # para o consumo REAL da onda medido pela telemetria OTel. `cost` e
+      # REAL (fracionario em USD), nao INTEGER. Sem DEFAULT -> NULL, coerente
+      # com onda antiga sem otel_usage: ausente, jamais 0.
+      case "$_as_wcols" in
+        ''|*'|otel_cost_usd|'*) : ;;
+        *) _as_extra="$_as_extra
+ALTER TABLE waves ADD COLUMN otel_cost_usd REAL;
+ALTER TABLE waves ADD COLUMN otel_cost_main_usd REAL;
+ALTER TABLE waves ADD COLUMN otel_cost_subagent_usd REAL;
+ALTER TABLE waves ADD COLUMN otel_total_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN otel_subagent_tokens INTEGER;" ;;
+      esac
     fi
   fi
   recall_apply_sql_with_retry "$1" "$_as_pre$(recall_schema_ddl)$_as_extra"
@@ -834,6 +852,19 @@ recall_int_or_null() {
     ''|*[!0-9-]*) printf 'NULL' ;;
     -|-*[!0-9]*)  printf 'NULL' ;;
     *)            printf '%s' "$1" ;;
+  esac
+}
+
+# recall_real_or_null VALOR -> numero literal ou NULL. Custo em USD e
+# fracionario (ex: 0.141282), entao recall_int_or_null o descartaria como
+# nao-numerico. Aceita um unico ponto decimal e sinal opcional; qualquer
+# outra coisa vira NULL (nunca 0 — ausente != zero, Principio VI).
+recall_real_or_null() {
+  case "$1" in
+    ''|*[!0-9.-]*)  printf 'NULL' ;;
+    *.*.*)          printf 'NULL' ;;   # mais de um ponto
+    .|-|-.)         printf 'NULL' ;;
+    *)              printf '%s' "$1" ;;
   esac
 }
 
@@ -1095,7 +1126,16 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
        (($w.agent_usage.cache_read_input_tokens // "")|tostring),
        (($w.agent_usage.cache_creation_input_tokens // "")|tostring),
        (($w.agent_usage.tool_use_count // "")|tostring),
-       (($w.agent_usage.duration_ms // "")|tostring)]
+       (($w.agent_usage.duration_ms // "")|tostring),
+       (($w.otel_usage.total_cost_usd // "")|tostring),
+       (($w.otel_usage.by_source.main.cost_usd // "")|tostring),
+       (($w.otel_usage.by_source.subagent.cost_usd // "")|tostring),
+       (($w.otel_usage.total_tokens // "")|tostring),
+       ((( $w.otel_usage.by_source.subagent
+           | if . == null then null
+             else ((.input // 0) + (.output // 0)
+                   + (.cache_read // 0) + (.cache_creation // 0))
+             end ) // "")|tostring)]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_wave_lines=""
   if [ -n "$_isj_wave_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -1120,6 +1160,11 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _f_acc=$(printf '%s' "$_isj_decoded" | jq -r '.[15]' 2>/dev/null | strip_nul)
       _f_atu=$(printf '%s' "$_isj_decoded" | jq -r '.[16]' 2>/dev/null | strip_nul)
       _f_adm=$(printf '%s' "$_isj_decoded" | jq -r '.[17]' 2>/dev/null | strip_nul)
+      _f_ocu=$(printf '%s' "$_isj_decoded" | jq -r '.[18]' 2>/dev/null | strip_nul)
+      _f_ocm=$(printf '%s' "$_isj_decoded" | jq -r '.[19]' 2>/dev/null | strip_nul)
+      _f_ocs=$(printf '%s' "$_isj_decoded" | jq -r '.[20]' 2>/dev/null | strip_nul)
+      _f_ott=$(printf '%s' "$_isj_decoded" | jq -r '.[21]' 2>/dev/null | strip_nul)
+      _f_ost=$(printf '%s' "$_isj_decoded" | jq -r '.[22]' 2>/dev/null | strip_nul)
       [ -n "$_f_wid" ] || continue
       _f_mt=$(recall_scrub "$_f_mt")
       _isj_wc_sql=$(recall_int_or_null "$_f_wc")
@@ -1135,10 +1180,15 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _isj_acc_sql=$(recall_int_or_null "$_f_acc")
       _isj_atu_sql=$(recall_int_or_null "$_f_atu")
       _isj_adm_sql=$(recall_int_or_null "$_f_adm")
+      _isj_ocu_sql=$(recall_real_or_null "$_f_ocu")
+      _isj_ocm_sql=$(recall_real_or_null "$_f_ocm")
+      _isj_ocs_sql=$(recall_real_or_null "$_f_ocs")
+      _isj_ott_sql=$(recall_int_or_null "$_f_ott")
+      _isj_ost_sql=$(recall_int_or_null "$_f_ost")
       _isj_sql="$_isj_sql
-INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,session,agent_spawns_total,agent_spawns_with_usage,agent_total_tokens,agent_input_tokens,agent_output_tokens,agent_cache_read_tokens,agent_cache_creation_tokens,agent_tool_use_count,agent_duration_ms,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_wid")','$(sql_escape "$_f_etp")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_fim")',$_isj_wc_sql,$_isj_tc_sql,'$(sql_escape "$_f_mt")',$_isj_ne_sql,$_isj_ns_sql,$_isj_session_sql,$_isj_ast_sql,$_isj_asu_sql,$_isj_att_sql,$_isj_ait_sql,$_isj_aot_sql,$_isj_acr_sql,$_isj_acc_sql,$_isj_atu_sql,$_isj_adm_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,session=excluded.session,agent_spawns_total=excluded.agent_spawns_total,agent_spawns_with_usage=excluded.agent_spawns_with_usage,agent_total_tokens=excluded.agent_total_tokens,agent_input_tokens=excluded.agent_input_tokens,agent_output_tokens=excluded.agent_output_tokens,agent_cache_read_tokens=excluded.agent_cache_read_tokens,agent_cache_creation_tokens=excluded.agent_cache_creation_tokens,agent_tool_use_count=excluded.agent_tool_use_count,agent_duration_ms=excluded.agent_duration_ms,ingested_at=excluded.ingested_at;"
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,session,agent_spawns_total,agent_spawns_with_usage,agent_total_tokens,agent_input_tokens,agent_output_tokens,agent_cache_read_tokens,agent_cache_creation_tokens,agent_tool_use_count,agent_duration_ms,otel_cost_usd,otel_cost_main_usd,otel_cost_subagent_usd,otel_total_tokens,otel_subagent_tokens,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_wid")','$(sql_escape "$_f_etp")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_fim")',$_isj_wc_sql,$_isj_tc_sql,'$(sql_escape "$_f_mt")',$_isj_ne_sql,$_isj_ns_sql,$_isj_session_sql,$_isj_ast_sql,$_isj_asu_sql,$_isj_att_sql,$_isj_ait_sql,$_isj_aot_sql,$_isj_acr_sql,$_isj_acc_sql,$_isj_atu_sql,$_isj_adm_sql,$_isj_ocu_sql,$_isj_ocm_sql,$_isj_ocs_sql,$_isj_ott_sql,$_isj_ost_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,session=excluded.session,agent_spawns_total=excluded.agent_spawns_total,agent_spawns_with_usage=excluded.agent_spawns_with_usage,agent_total_tokens=excluded.agent_total_tokens,agent_input_tokens=excluded.agent_input_tokens,agent_output_tokens=excluded.agent_output_tokens,agent_cache_read_tokens=excluded.agent_cache_read_tokens,agent_cache_creation_tokens=excluded.agent_cache_creation_tokens,agent_tool_use_count=excluded.agent_tool_use_count,agent_duration_ms=excluded.agent_duration_ms,otel_cost_usd=excluded.otel_cost_usd,otel_cost_main_usd=excluded.otel_cost_main_usd,otel_cost_subagent_usd=excluded.otel_cost_subagent_usd,otel_total_tokens=excluded.otel_total_tokens,otel_subagent_tokens=excluded.otel_subagent_tokens,ingested_at=excluded.ingested_at;"
       _isj_n_wave=$((_isj_n_wave + 1))
     done
     IFS="$_isj_OLDIFS"
