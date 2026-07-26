@@ -5,6 +5,36 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.29.0] - 2026-07-26
+
+Os commands 00c passam a **pedir** a instalação dos hooks em vez de só
+avisar que faltam — com o propósito de cada um e o custo em números.
+
+### Changed
+
+- **`/agente-00c` (passo 2.bis) e `/feature-00c` (pré-flight 8)**: o passo
+  deixa de ser um aviso passivo e vira um **pedido explícito** ao operador,
+  com três pontos obrigatórios:
+  1. **O que instala e para que serve** — e por que nenhum dos três é
+     redundante: `pretooluse-bash-guard.sh` é segurança (não substituível);
+     `posttooluse-tool-call-tick.sh` é a **única** fonte de `tool_calls` (a
+     telemetria OTel conta API requests e tokens, não tool calls);
+     `posttooluse-agent-usage.sh` é a única fonte do detalhe **por spawn**
+     (o total por onda hoje vem do OTel, com mais precisão).
+  2. **O custo, com número medido** — não "tem um custo". Não há custo de
+     token (são scripts shell locais); o custo é latência:
+     `tool-call-tick` ~30 ms por tool call (matcher `*`, roda em todas —
+     ~6 s numa onda de ~200 chamadas), `bash-guard` ~177 ms por chamada
+     Bash, coleta OTel ~37 ms × 2 por onda.
+  3. **Como ativar** — dois opt-ins independentes: `cstk hooks install`
+     (hooks) e as duas variáveis de ambiente (custo/tokens reais por onda).
+- **Regra de decisão explícita**: recusa ou silêncio **não bloqueiam** a
+  pipeline, mas o que fica de fora é registrado sem eufemismo (guarda de
+  Bash não enforced; `tool_calls` ausente, não "zero medido"). E o
+  orquestrador **nunca instala sem consentimento** — `cstk hooks install`
+  escreve em `<projeto-alvo>/.claude/settings.json`, que pode estar
+  versionado no repo do operador.
+
 ## [5.28.0] - 2026-07-26
 
 Custo real por onda, incluindo o consumo do próprio orquestrador — a fatia
@@ -4123,6 +4153,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.29.0]: https://github.com/JotJunior/cstk/releases/tag/v5.29.0
 [5.28.0]: https://github.com/JotJunior/cstk/releases/tag/v5.28.0
 [5.27.0]: https://github.com/JotJunior/cstk/releases/tag/v5.27.0
 [5.26.0]: https://github.com/JotJunior/cstk/releases/tag/v5.26.0

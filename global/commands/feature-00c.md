@@ -145,18 +145,43 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
    state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR"
    - se ocupado, stderr "outra sessao ativa para $SHORT"; exit 3
 
-8. hooks 00c provisionados? (ADVISORY — exit 1 NAO aborta):
+8. coleta de consumo: PEDIR instalacao ao operador (nunca instalar sozinho)
    guard-hooks-status.sh check --projeto-alvo-path "$_proj" || :
-   - READ-ONLY (nunca copia hook nem edita settings.json; provisionar e
-     trabalho do `cstk install --scope project agente-00c-runtime`, unica
-     fonte da regra). O default do install e `--scope global`, que pula os
-     hooks — logo o caso comum e o projeto-alvo nao ter nenhum, e este e o
-     unico ponto do fluxo que roda DENTRO dele.
-   - guarda inativa (pretooluse-bash-guard.sh) => avisar com DESTAQUE: a
-     guarda fail-closed de Bash nao esta enforced nesta execucao (item
-     grave; o resto e metrica)
-   - tick-hook inativo => o orquestrador ticka manualmente (passo 4 dele)
-   - agent-usage inativo => agent_usage/tokens ficam null, sem fallback
+   - READ-ONLY: diagnostica, nunca instala. Os tres ativos => siga sem
+     incomodar o operador.
+   - Faltando algum => PECA a instalacao, apresentando os 3 pontos:
+
+     (1) O que instala e para que serve — nenhum e redundante:
+         . pretooluse-bash-guard.sh  -> guarda fail-closed de Bash.
+           NAO substituivel: e seguranca, nao metrica.
+         . posttooluse-tool-call-tick.sh -> alimenta tool_calls (proxy de
+           orcamento da onda). NAO substituivel: a telemetria OTel conta
+           API requests e tokens, nao tool calls.
+         . posttooluse-agent-usage.sh -> consumo POR SPAWN (agent_id,
+           agent_type). Parcialmente substituido: o total por onda hoje vem
+           do OTel com mais precisao; o detalhe por spawn so vem daqui.
+
+     (2) O custo — diga o NUMERO (medido; nao ha custo de token, sao shell
+         local):
+         . tick: ~30 ms por tool call (matcher "*", roda em TODAS) —
+           ~6 s numa onda de ~200 tool calls
+         . bash-guard: ~177 ms por chamada Bash
+         . coleta de custo real por onda (opcional): ~37 ms x2 por onda
+
+     (3) Como ativa — dois opt-ins independentes:
+         cd "$_proj" && cstk hooks install
+         export CLAUDE_CODE_ENABLE_TELEMETRY=1
+         export OTEL_METRICS_EXPORTER=prometheus
+         (o segundo nao exige API key, Admin key nem organizacao; funciona
+          em assinatura e nada sai de 127.0.0.1)
+
+   - Regra de decisao:
+     . sim  => pedir que rode `cstk hooks install` e confirmar antes de seguir
+     . nao / sem resposta => SEGUIR normalmente (metrica nunca bloqueia a
+       pipeline), mas registrar sem eufemismo: a guarda de Bash nao esta
+       enforced nesta execucao e tool_calls ficara 0 (ausente, nao medido)
+     . NUNCA instalar sem consentimento: `cstk hooks install` escreve em
+       <projeto-alvo>/.claude/settings.json, que pode estar versionado
 ```
 
 ### 3. Init do state.json
