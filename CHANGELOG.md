@@ -5,6 +5,62 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.28.0] - 2026-07-26
+
+Custo real por onda, incluindo o consumo do próprio orquestrador — a fatia
+que nenhuma métrica anterior conseguia capturar. Medido: **o subagente é
+43–47% do gasto**, exatamente o que o painel mostrava como `—`.
+
+### Added
+
+- **`otel-usage.sh`** (novo helper do runtime 00c): consumo real de
+  tokens/custo por onda a partir da telemetria **OpenTelemetry nativa do
+  Claude Code**. Subcomandos `available` / `snapshot` / `delta`.
+  - **Por que resolve o que o hook não resolvia**: `posttooluse-agent-usage.sh`
+    lê o `tool_response` do spawn, mas o spawn do orquestrador **envolve** a
+    onda — o `tool_result` chega depois do `end` (que já resetou o sidecar) e
+    é destruído pelo `start` seguinte. Os contadores OTel são incrementados
+    **a cada API request**, então o delta `start`→`end` é o consumo da onda
+    independentemente de quando o spawn retorna.
+  - Separa `main` / `subagent` / `auxiliary` pelo label `query_source`, com
+    breakdown por modelo e por tipo de token (input/output/cacheRead/
+    cacheCreation) e custo em USD.
+  - **Opt-in por ambiente, sem segredo nenhum**: `CLAUDE_CODE_ENABLE_TELEMETRY=1`
+    + `OTEL_METRICS_EXPORTER=prometheus`. **Não exige API key, Admin key nem
+    organização** — funciona em plano de assinatura. O exporter escuta em
+    `127.0.0.1:9464`; nada sai da máquina. Endpoint configurável via
+    `CSTK_OTEL_ENDPOINT`.
+  - **Privacidade**: os labels do exporter carregam `user_email`, `user_id`,
+    `user_account_*` e `organization_id`. O snapshot extrai por allowlist
+    (só `session_id`, `model`, `query_source`, `type`) e aborta se algum
+    label de PII vazar — nada disso toca disco, state.json ou knowledge.db.
+  - **Ausente ≠ zero** (Princípio VI): sem telemetria, snapshot faltando, ou
+    `session_id` divergente entre os dois snapshots, o resultado é `null`,
+    nunca um zero fabricado.
+  - Overhead medido: 37 ms por snapshot, 2 por onda.
+- **`.waves[N].otel_usage`**: `state-ondas.sh start`/`end` capturam os
+  snapshots e gravam o delta no mesmo write atômico do fechamento da onda.
+  No-op completo sem a telemetria ligada.
+- Testes: `tests/test_otel-usage.sh` (17 cenários, fixtures no formato real
+  do exporter com identificadores anonimizados) + 2 em `test_state-ondas.sh`.
+  Suíte completa: 1889 cenários, 0 falhas.
+
+### Changed
+
+- **README** (`en` + `pt-BR`): seção "Real per-wave cost / Custo real por
+  onda" com o opt-in e os números medidos.
+- **`agente-00c-orchestrator.md`**: `otel-usage.sh` na tabela de helpers,
+  marcado como automático (o orquestrador não precisa invocar).
+
+### Nota sobre a Usage & Cost Admin API
+
+Foi avaliada e **descartada** como fonte: exige Admin key
+(`sk-ant-admin01-…`), é indisponível para contas individuais, e **não tem
+dimensão de sessão** (agrupa por api_key/workspace/model). A Claude Code
+Analytics API é por usuário/**dia**, com 1 h de atraso e sem tempo real. A
+telemetria OTel entrega o que nenhuma das duas entrega: atribuição por
+sessão e por `query_source`, em tempo real e local.
+
 ## [5.27.0] - 2026-07-26
 
 Fecha a lacuna que a 5.26.0 deixou aberta: a detecção avisava que os hooks
@@ -4067,6 +4123,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.28.0]: https://github.com/JotJunior/cstk/releases/tag/v5.28.0
 [5.27.0]: https://github.com/JotJunior/cstk/releases/tag/v5.27.0
 [5.26.0]: https://github.com/JotJunior/cstk/releases/tag/v5.26.0
 [5.25.0]: https://github.com/JotJunior/cstk/releases/tag/v5.25.0

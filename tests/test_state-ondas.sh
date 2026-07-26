@@ -1239,4 +1239,64 @@ scenario_end_acumula_accumulated_metrics_agent_entre_ondas() {
   return 0
 }
 
+# ==== Telemetria OTel: consumo real da onda (otel_usage) ====
+#
+# O sidecar de spawn (posttooluse-agent-usage.sh) nunca captura o consumo do
+# PROPRIO orquestrador, porque o spawn dele envolve a onda e seu tool_result
+# chega depois do `end`. Os contadores OTel sao incrementados a cada API
+# request, entao o delta start->end fecha essa lacuna.
+
+# _otel_fixture FILE COST_MAIN COST_SUB — formato REAL do exporter
+# Prometheus (labels na ordem real; `terminal_type` antes de `type`).
+_otel_fixture() {
+  {
+    printf 'claude_code_cost_usage_total{session_id="sess-w",terminal_type="ghostty",model="claude-opus-5[1m]",query_source="main"} %s\n' "$2"
+    printf 'claude_code_cost_usage_total{session_id="sess-w",terminal_type="ghostty",model="claude-opus-5[1m]",query_source="subagent"} %s\n' "$3"
+    printf 'claude_code_token_usage_total{session_id="sess-w",terminal_type="ghostty",model="claude-opus-5[1m]",query_source="subagent",type="output"} 100\n'
+  } > "$1"
+}
+
+scenario_end_otel_usage_null_sem_telemetria() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  # Telemetria desligada => AUSENTE (null), jamais zero fabricado.
+  _got=$(jq -r '.waves[-1].otel_usage' "$_sd/state.json")
+  [ "$_got" = "null" ] || { _fail "otel_usage" "esperado null sem telemetria, obtido '$_got'"; return 1; }
+  return 0
+}
+
+scenario_end_otel_usage_captura_delta_da_onda() {
+  _sd="$TMPDIR_TEST/state-otel"
+  _init_state "$_sd"
+  _fx="$TMPDIR_TEST/otel-live.txt"
+
+  # export explicito: a atribuicao-prefixo `VAR=x capture ...` nao propaga
+  # para o subprocesso que `capture` executa.
+  CSTK_OTEL_ENDPOINT="file://$_fx"; export CSTK_OTEL_ENDPOINT
+
+  # start: baseline
+  _otel_fixture "$_fx" 1.0 0.5
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { unset CSTK_OTEL_ENDPOINT; _fail "start" "$_CAPTURED_STDERR"; return 1; }
+
+  # a onda consome: contadores cumulativos sobem
+  _otel_fixture "$_fx" 4.0 3.5
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  _e=$_CAPTURED_EXIT; _err=$_CAPTURED_STDERR
+  unset CSTK_OTEL_ENDPOINT
+  [ "$_e" = 0 ] || { _fail "end" "$_err"; return 1; }
+
+  _cost=$(jq -r '.waves[-1].otel_usage.total_cost_usd' "$_sd/state.json")
+  [ "$_cost" = "6" ] || { _fail "total_cost_usd" "esperado 6 ((4-1)+(3.5-0.5)), obtido '$_cost'"; return 1; }
+  _sub=$(jq -r '.waves[-1].otel_usage.by_source.subagent.cost_usd' "$_sd/state.json")
+  [ "$_sub" = "3" ] || { _fail "subagent cost" "esperado 3 (3.5-0.5), obtido '$_sub'"; return 1; }
+  # PII jamais no state.json
+  grep -q "user_email\|user_account_uuid" "$_sd/state.json" \
+    && { _fail "PII" "label de PII vazou para o state.json"; return 1; }
+  return 0
+}
+
 run_all_scenarios
