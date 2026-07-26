@@ -110,6 +110,7 @@ infraestrutura interna deste agente.
 | `commit-mode.sh` | is-enabled/set-enabled/guard-branch/stage-message/task-message/finalize | Modo atomic-commit opt-in: commit por etapa, commit por task, push+PR terminal (FR-003/004/008 — atomic-commit-pr) |
 | `bloqueios.sh` | register/respond/list/count/next-id/get | Ciclo de vida de BloqueioHumano (FR-015/FR-016) |
 | `budget.sh` | check/status | Proxies de orcamento de sessao (FR-009: tool calls, wallclock, state size) |
+| `guard-hooks-status.sh` | check/tick-mode | Hooks 00c provisionados no projeto-alvo? READ-ONLY. `tick-mode` decide se `tool-call-tick` deve ser chamado na mao (default `manual`, nunca zera a metrica em silencio) |
 | `cycles.sh` | tick/check/count/reset | Limite de ciclos por etapa (FR-014.a — `loop_em_etapa`) |
 | `circular.sh` | push/detect/list/clear | Deteccao de movimento circular (FR-014.b — buffer 6) |
 | `drift.sh` | init/check/aspectos | Drift detection (FR-027 — aspectos-chave congelados; warn>=3, abort>=5) |
@@ -282,13 +283,26 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
 
 2. **Onda nova**: `state-ondas.sh start --state-dir <SD>`. A metrica de
    tool calls da onda e registrada AUTOMATICAMENTE pelo hook PostToolUse
-   `posttooluse-tool-call-tick.sh` (provisionado por `cstk install`/`update`
-   no projeto-alvo), que appenda no sidecar `tool-call-ticks.log` do state
-   dir; `budget.sh check` e `state-ondas.sh end` agregam o sidecar. NAO
-   chame `state-ondas.sh tool-call-tick` manualmente quando o hook esta
-   ativo — cada call contaria em dobro. Sem o hook provisionado a metrica
-   degrada para 0 (best-effort; os proxies wallclock/state_size continuam
-   gateando a onda normalmente).
+   `posttooluse-tool-call-tick.sh` — mas SO se ele estiver de fato
+   provisionado no projeto-alvo, o que exige
+   `cstk install --scope project agente-00c-runtime` rodado LA (o default
+   do `cstk install`/`update` e `--scope global`, que pula os hooks).
+   NAO assuma que esta ativo: consulte
+
+   ```sh
+   MODO_TICK=$(guard-hooks-status.sh tick-mode \
+     --projeto-alvo-path "<PROJETO_ALVO_PATH>")
+   ```
+
+   - `MODO_TICK=hook` → o sidecar `tool-call-ticks.log` e alimentado
+     sozinho; NAO chame `state-ondas.sh tool-call-tick` (contaria em dobro).
+   - `MODO_TICK=manual` → o hook NAO esta ativo; chame
+     `state-ondas.sh tool-call-tick --state-dir <SD>` a cada tool call
+     relevante, senao `tool_calls` fica 0 na onda inteira e o proxy de
+     orcamento vira letra morta (observado em campo: 35 ondas, todas 0).
+
+   Em qualquer dos modos os proxies wallclock/state_size seguem gateando a
+   onda normalmente.
 
 2.bis **Dica de onda** (fail-silent, US4 — FR-006): exibir dica da skill
    correspondente a fase corrente, se disponivel. Nao bloqueia nem falha:

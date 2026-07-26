@@ -233,7 +233,12 @@ validate_spec_profile() {
   if [ -n "$_sc_lines" ]; then
     printf '%s\n' "$_sc_lines" | while IFS=: read -r _ln _rest; do
       _sc_id=$(printf '%s' "$_rest" | grep -oE 'SC-[0-9]+' | head -n 1)
-      if printf '%s' "$_rest" | grep -qiE '\<(API|TPS|paint time|render time)\>'; then
+      # "API" (idem "CLI"/"JSON") NAO entra aqui: e termo generico de
+      # dominio, legitimo em specs de ferramentas de dev — o SKILL.md
+      # promete explicitamente que nao dispara falso-positivo. Reproduzido
+      # em campo: SC-002 com "servicos Go que expoem API HTTP" era
+      # rejeitado. Ficam so termos de performance de implementacao.
+      if printf '%s' "$_rest" | grep -qiE '\<(TPS|paint time|render time)\>'; then
         emit error sc-not-measurable "${_sc_id} usa jargao tecnico de implementacao (linha ${_ln})"
       elif ! printf '%s' "$_rest" | grep -qE '[0-9]'; then
         emit error sc-not-measurable "${_sc_id} sem metrica quantificavel (linha ${_ln})"

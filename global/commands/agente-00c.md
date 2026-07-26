@@ -148,6 +148,32 @@ ja preparado fora do script), apenas defensivo.
   `/agente-00c-resume` ou `/agente-00c-abort`. Use
   `state-lock.sh check-execution-busy --state-dir <SD>`.
 
+### 2.bis Hooks 00c provisionados no projeto-alvo? (ADVISORY, nunca bloqueia)
+
+Os tres hooks do runtime (guarda de Bash + duas metricas) so chegam ao
+projeto-alvo via `cstk install --scope project agente-00c-runtime` rodado
+DENTRO dele. O default de `cstk install`/`update` e `--scope global`, que
+pula o provisionamento — entao o caso comum e o projeto-alvo NAO ter hook
+nenhum. Como o `cstk install` roda no repo do cstk e nao aqui, este e o
+unico momento do fluxo que esta dentro do projeto-alvo: e aqui que o
+operador precisa ser avisado.
+
+```sh
+guard-hooks-status.sh check --projeto-alvo-path "<PROJETO_ALVO_PATH>" || :
+```
+
+READ-ONLY: nunca copia hook nem edita `settings.json` (provisionar e
+trabalho do `cstk install`, unica fonte da regra). Exit 1 NAO aborta a
+execucao — mostre a saida ao operador e siga:
+
+- `pretooluse-bash-guard.sh` inativo → **avise com destaque**: a guarda
+  fail-closed de Bash NAO esta enforced nesta execucao. E o item grave;
+  o resto e metrica.
+- `posttooluse-tool-call-tick.sh` inativo → o orquestrador vai tickar
+  manualmente (ver passo 2 do orchestrator); `tool_calls` nao zera.
+- `posttooluse-agent-usage.sh` inativo → `agent_usage`/tokens ficam null
+  nas ondas; nao ha fallback manual, so o provisionamento resolve.
+
 ### 3. Aquisicao do lock + inicializacao de estado
 
 Adquirir o lock ANTES de inicializar o estado (o orquestrador NAO adquire

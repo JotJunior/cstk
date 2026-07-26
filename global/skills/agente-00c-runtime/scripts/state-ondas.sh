@@ -23,6 +23,7 @@
 #   state-ondas.sh end --state-dir DIR --motivo-termino MOTIVO
 #                      [--proxima-agendada-para ISO]
 #                      [--add-etapa STAGE]
+#                      [--next-instruction TEXT]
 #       — Atualiza ultima Onda (.waves[-1]) com finished_at/wallclock_seconds/
 #         tool_calls/termination_reason/next_wave_scheduled_for. Atualiza
 #         accumulated_metrics (waves_total += 1, tool_calls_total +=
@@ -31,6 +32,9 @@
 #         manuais) + linhas do sidecar tool-call-ticks.log (ticks do hook
 #         PostToolUse) — sidecar resetado apos o fechamento.
 #         --add-etapa pode ser passada N vezes para append em executed_stages.
+#         --next-instruction grava .next_instruction NO MESMO write atomico
+#         (dispensa o `state-rw.sh set` separado ANTES de end — que deixava
+#         backup/sha defasados, ja que `end` tambem escreve no state.json).
 #         Tambem agrega o sidecar wave-agent-usage.jsonl (hook
 #         posttooluse-agent-usage.sh, wave-token-metrics FASE 3) em
 #         .waves[-1].agent_usage (WaveUsage: spawns_total/with_usage/
@@ -397,11 +401,14 @@ _so_cmd_end() {
   _motivo=""
   _proxima="null"
   _etapas=""
+  _next_instr=""
+  _next_instr_set=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)             _sdir=$2; shift 2 ;;
       --motivo-termino)        _motivo=$2; shift 2 ;;
       --proxima-agendada-para) _proxima=$2; shift 2 ;;
+      --next-instruction)      _next_instr=$2; _next_instr_set=1; shift 2 ;;
       --add-etapa)             _etapas="$_etapas
 $2"; shift 2 ;;
       *) _so_die_usage "end: flag desconhecida: $1" ;;
@@ -409,6 +416,9 @@ $2"; shift 2 ;;
   done
   [ -n "$_sdir" ]   || _so_die_usage "end: --state-dir obrigatorio"
   [ -n "$_motivo" ] || _so_die_usage "end: --motivo-termino obrigatorio"
+  if [ "$_next_instr_set" = 1 ] && [ -z "$_next_instr" ]; then
+    _so_die_usage "end: --next-instruction nao aceita valor vazio"
+  fi
   case "$_motivo" in
     etapa_concluida_avancando|threshold_proxy_atingido|bloqueio_humano|aborto|concluido) ;;
     *) _so_die "end: motivo invalido: $_motivo" 2 ;;
@@ -451,8 +461,20 @@ $2"; shift 2 ;;
   # agrega o que foi de fato observado, nunca fabrica o resto).
   _au_spawns_json=$(_so_agent_usage_read "$_sdir")
 
+  # .next_instruction gravado DENTRO do mesmo write atomico do fechamento
+  # da onda. Antes exigia um `state-rw.sh set` separado, e como `end`
+  # tambem escreve no state.json, seguir a ordem literal backup -> hash ->
+  # end do prompt do orquestrador deixava backup/hash defasados. Aqui
+  # backup/atomic-write/sha rodam UMA vez, depois de tudo.
+  _next_instr_json="null"
+  if [ "$_next_instr_set" = 1 ]; then
+    _next_instr_json=$(printf '%s' "$_next_instr" | jq -Rs .) \
+      || _so_die "end: falha ao serializar --next-instruction" 1
+  fi
+
   _new=$(mktemp) || _so_die "mktemp falhou" 1
   jq \
+    --argjson next_instr "$_next_instr_json" \
     --arg now "$_now" \
     --arg motivo "$_motivo" \
     --argjson wc "$_wc" \
@@ -503,6 +525,7 @@ $2"; shift 2 ;;
           add_null(.accumulated_metrics.agent_tool_use_count_total; $au.tool_use_count)
       | .accumulated_metrics.agent_duration_ms_total =
           add_null(.accumulated_metrics.agent_duration_ms_total; $au.duration_ms)
+      | (if $next_instr != null then .next_instruction = $next_instr else . end)
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _so_die "jq update falhou" 1; }
 
   _so_backup_current "$_sdir"
@@ -647,6 +670,17 @@ _so_cmd_record_task() {
   done
   [ -n "$_sdir" ] || _so_die_usage "record-task: --state-dir obrigatorio"
   [ -n "$_tid" ]  || _so_die_usage "record-task: --task-id obrigatorio"
+  # task_id = nivel do heading de TAREFA no tasks.md ("### N.M"), NUNCA o
+  # nivel de subtarefa/checkbox (N.M.K). Aviso e nao erro: gravar no nivel
+  # errado ja aconteceu em campo (7 record-task em N.M.K numa execucao, so
+  # descoberto depois pelo reconcile-tasks do review-task) e daqui nao ha
+  # como saber o nivel correto sem o tasks.md — logo, sinalizamos sem
+  # bloquear.
+  case "$_tid" in
+    *.*.*)
+      _so_log "record-task: AVISO — --task-id '$_tid' tem 3+ niveis; esperado N.M (heading '### N.M' do tasks.md), nao N.M.K (subtarefa/checkbox)"
+      ;;
+  esac
   [ -n "$_oc" ]   || _so_die_usage "record-task: --outcome obrigatorio"
   case "$_oc" in pass|fail) : ;; *) _so_die_usage "record-task: --outcome deve ser pass|fail" ;; esac
   case "$_tr" in ''|*[!0-9]*) _so_die_usage "record-task: --testes-rodados deve ser inteiro >= 0" ;; esac
@@ -975,6 +1009,7 @@ USO:
   state-ondas.sh end            --state-dir DIR --motivo-termino MOTIVO
                                 [--proxima-agendada-para ISO]
                                 [--add-etapa STAGE]...
+                                [--next-instruction TEXT]
   state-ondas.sh tool-call-tick --state-dir DIR
   state-ondas.sh record-skill   --state-dir DIR --skill NAME
                                 [--decisao-id DEC-NNN]

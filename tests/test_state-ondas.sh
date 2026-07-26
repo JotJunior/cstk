@@ -104,6 +104,107 @@ scenario_end_atualiza_onda_e_acumulados() {
   assert_stdout_contains "briefing" || return 1
 }
 
+# --next-instruction: grava .next_instruction NO MESMO write atomico do
+# fechamento da onda. Antes exigia um `state-rw.sh set` separado; como
+# `end` tambem escreve no state.json, seguir a ordem literal
+# backup -> hash -> end do prompt deixava backup/sha defasados.
+scenario_end_next_instruction_grava_no_mesmo_write() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando \
+    --next-instruction "Retomar em plan: rodar skill plan sobre docs/specs/x"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "Retomar em plan" || return 1
+
+  # O sha256 gravado por `end` precisa bater com o state.json final —
+  # e exatamente isso que o caminho antigo (set separado APOS end)
+  # quebrava.
+  if [ -f "$_sd/state.json.sha256" ]; then
+    _expected=$(awk '{print $1}' "$_sd/state.json.sha256")
+    if command -v shasum >/dev/null 2>&1; then
+      _actual=$(shasum -a 256 "$_sd/state.json" | awk '{print $1}')
+    elif command -v sha256sum >/dev/null 2>&1; then
+      _actual=$(sha256sum "$_sd/state.json" | awk '{print $1}')
+    else
+      _actual="$_expected"
+    fi
+    [ "$_expected" = "$_actual" ] \
+      || { _fail "sha256 defasado apos end --next-instruction" "esperado $_expected, obtido $_actual"; return 1; }
+  fi
+  return 0
+}
+
+# Sem a flag, .next_instruction NAO e tocado por `end`.
+scenario_end_sem_next_instruction_preserva_campo() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.next_instruction' --value '"valor previo"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "valor previo" || return 1
+  return 0
+}
+
+# Texto com aspas/newline nao pode quebrar o JSON (serializado via jq -Rs).
+scenario_end_next_instruction_texto_com_aspas() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando \
+    --next-instruction 'usar "aspas" e $cifrao no texto'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  jq -e . "$_sd/state.json" >/dev/null 2>&1 \
+    || { _fail "state.json invalido apos --next-instruction com aspas" "jq falhou"; return 1; }
+  _got=$(jq -r '.next_instruction' "$_sd/state.json")
+  [ "$_got" = 'usar "aspas" e $cifrao no texto' ] \
+    || { _fail "next_instruction corrompido" "obtido '$_got'"; return 1; }
+  return 0
+}
+
+scenario_end_next_instruction_vazia_exit2() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando \
+    --next-instruction ""
+  [ "$_CAPTURED_EXIT" = 2 ] \
+    || { _fail "valor vazio" "esperado exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# record-task: task_id = heading "### N.M" do tasks.md, nunca N.M.K
+# (subtarefa/checkbox). Gravar no nivel errado ja aconteceu em campo (7
+# entradas, so descobertas depois pelo reconcile-tasks). Aviso, nao erro.
+scenario_record_task_id_com_3_niveis_avisa_sem_falhar() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id "4.1.1" --outcome pass
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "record-task deve continuar gravando" "obtido exit $_CAPTURED_EXIT"; return 1; }
+  printf '%s' "$_CAPTURED_STDERR" | grep -q 'AVISO' \
+    || { _fail "esperado aviso de nivel em stderr" "stderr: $_CAPTURED_STDERR"; return 1; }
+  # Aviso nao pode impedir a gravacao.
+  _got=$(jq -r '.tasks[-1].task_id' "$_sd/state.json")
+  [ "$_got" = "4.1.1" ] || { _fail "entrada nao gravada" "obtido '$_got'"; return 1; }
+  return 0
+}
+
+scenario_record_task_id_dois_niveis_sem_aviso() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" record-task --state-dir "$_sd" --task-id "4.1" --outcome pass
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "record-task" "$_CAPTURED_STDERR"; return 1; }
+  printf '%s' "$_CAPTURED_STDERR" | grep -q 'AVISO' \
+    && { _fail "N.M nao pode disparar aviso de nivel" "stderr: $_CAPTURED_STDERR"; return 1; }
+  return 0
+}
+
 scenario_end_motivo_invalido_falha() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"

@@ -36,9 +36,14 @@ scenario_c02_spec_secao_ausente() {
 
 # ==== Cenario 3 — spec.md com termo de stack em Success Criteria ====
 
+# NOTA: o payload antigo era "API response time under 200ms". "API" saiu da
+# regex de sc-not-measurable — e termo generico de dominio, e o SKILL.md
+# sempre prometeu que nao dispararia (ver
+# scenario_sc_com_api_nao_dispara_falso_positivo). O cenario continua
+# valendo com um termo de stack de verdade.
 scenario_c03_spec_termo_stack_em_sc() {
   cp "$EG/spec.md" "$TMPDIR_TEST/broken.md"
-  printf -- '- **SC-099**: API response time under 200ms\n' >> "$TMPDIR_TEST/broken.md"
+  printf -- '- **SC-099**: React components render with <50ms paint time\n' >> "$TMPDIR_TEST/broken.md"
   assert_exit 1 sh "$SCRIPT" "$TMPDIR_TEST/broken.md" --sdd-spec || return 1
   case "${_CAPTURED_STDOUT:-}" in
     *'FINDING|error|sc-not-measurable|'*|*'FINDING|error|impl-detail-in-spec|'*) : ;;
@@ -276,6 +281,62 @@ EOF
   assert_stdout_contains 'FINDING|warning|vague-adjective|' || return 1
   # Anti-padrao 6: N/A residual
   assert_stdout_contains 'FINDING|warning|na-placeholder-section|' || return 1
+}
+
+# ==== Regressao de campo: "API" NAO e jargao de implementacao ====
+# O SKILL.md de validate-documentation promete que termos genericos de
+# dominio (API/CLI/JSON) nao geram falso-positivo em specs de ferramentas
+# de dev — mas a regex de sc-not-measurable incluia "API" e rejeitava
+# SC-002 de uma spec real ("servicos Go que expoem API HTTP"); so passou
+# depois de reescrever para "endpoints HTTP". Script e promessa agora
+# concordam: sobram apenas termos de performance de implementacao.
+
+scenario_sc_com_api_nao_dispara_falso_positivo() {
+  cat > "$TMPDIR_TEST/sc-api.md" <<'EOF'
+# Feature Specification: sc-api
+
+## User Scenarios & Testing
+
+### User Story P1 - Operador instrumenta servico (Priority: P1)
+
+Texto.
+
+## Requirements
+
+### Functional Requirements
+
+- **FR-001**: System MUST registrar cada requisicao recebida.
+
+## Key Entities
+
+- **Servico**: unidade instrumentada.
+
+## Success Criteria
+
+### Measurable Outcomes
+
+- **SC-001**: 100% dos 12 servicos Go que expoem API HTTP ficam instrumentados
+- **SC-002**: 3 dos 3 clientes CLI reportam status em ate 5 segundos
+- **SC-003**: 100% das respostas JSON validam contra o schema publicado
+EOF
+  capture sh "$SCRIPT" "$TMPDIR_TEST/sc-api.md" --sdd-spec
+  assert_stdout_not_contains 'sc-not-measurable' || return 1
+}
+
+# Termos de performance de implementacao seguem sendo Erro.
+scenario_sc_com_tps_e_paint_time_ainda_dispara() {
+  cat > "$TMPDIR_TEST/sc-perf.md" <<'EOF'
+# Feature Specification: sc-perf
+
+## Success Criteria
+
+### Measurable Outcomes
+
+- **SC-001**: Database handles 1000 TPS
+- **SC-002**: Components render with <50ms paint time
+EOF
+  capture sh "$SCRIPT" "$TMPDIR_TEST/sc-perf.md" --sdd-spec
+  assert_stdout_contains 'FINDING|error|sc-not-measurable|' || return 1
 }
 
 run_all_scenarios

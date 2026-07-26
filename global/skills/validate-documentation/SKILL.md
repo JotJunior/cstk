@@ -289,7 +289,7 @@ path) OU deteccao automatica quando `FILE` casa a convencao
 |------|------------|----------|
 | `missing-section` | Erro | Falta uma das 3 secoes obrigatorias (`User Scenarios & Testing`, `Requirements`, `Success Criteria`). |
 | `impl-detail-in-spec` | Erro | Termo de stack/linguagem/framework/lib especifica no corpo da spec (ex.: `bcrypt`, `PostgreSQL`, `React`). |
-| `sc-not-measurable` | Erro | Success Criterion sem metrica quantificavel OU com jargao tecnico (ex.: `API`, `TPS`, `paint time`). |
+| `sc-not-measurable` | Erro | Success Criterion sem metrica quantificavel OU com jargao tecnico de performance de implementacao (ex.: `TPS`, `paint time`, `render time`). Termos genericos de dominio (`API`, `CLI`, `JSON`) NAO disparam. |
 | `too-many-clarifications` | Erro | Mais de 3 marcadores `[NEEDS CLARIFICATION]` no total. |
 | `duplicate-id` | Erro | ID `FR-`/`SC-` repetido no mesmo documento (reusa a convencao do Gotcha abaixo). |
 | `na-placeholder-section` | Aviso | Secao deixada com placeholder `N/A` em vez de removida. |

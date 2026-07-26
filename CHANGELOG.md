@@ -5,6 +5,89 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.26.0] - 2026-07-26
+
+Triagem das sugestões acumuladas na `knowledge.db` — 7 correções validadas
+contra o código antes de aceitas. A mais importante não é uma correção de
+bug: os três hooks do runtime 00c **nunca chegaram a nenhum projeto-alvo**
+desta máquina, o que deixou a guarda fail-closed de Bash inerte em toda
+execução real e zerou as métricas de onda.
+
+### Added
+
+- **`guard-hooks-status.sh`** (agente-00c-runtime, novo helper READ-ONLY):
+  responde se os três hooks 00c (`pretooluse-bash-guard.sh`,
+  `posttooluse-tool-call-tick.sh`, `posttooluse-agent-usage.sh`) estão de
+  fato ativos no projeto-alvo — presentes **e** registrados no
+  `settings.json` (cada metade sozinha não basta: arquivo no lugar sem
+  registro = hook que nunca roda). Dois subcomandos: `check` (TSV por hook +
+  remediação em stderr; exit 1 se algum faltar) e `tick-mode` (`hook` |
+  `manual`). Nunca copia hook nem edita `settings.json` — provisionar segue
+  sendo trabalho exclusivo do `cstk install --scope project`, única fonte da
+  regra. POSIX puro, sem jq.
+  - **Motivação**: `apply_guard_hooks()` só roda com `--scope project` **e**
+    `agente-00c-runtime` na seleção, mas o default de `cstk install`/`update`
+    é `--scope global`, que pula o provisionamento por FR-009c. Como o
+    `cstk install` roda no repo do cstk e não no alvo, não havia momento no
+    fluxo em que o operador fosse avisado. Constatado em campo: projeto com
+    35 ondas 00c executadas e zero hooks em `.claude/hooks/`.
+- **`state-ondas.sh end --next-instruction TEXT`**: grava `.next_instruction`
+  no **mesmo write atômico** do fechamento da onda. Antes exigia um
+  `state-rw.sh set` separado e, como `end` também escreve no `state.json`,
+  seguir a ordem literal `backup → hash → end` do prompt deixava backup e
+  sha256 defasados.
+- Testes: `tests/test_guard-hooks-status.sh` (20 cenários) + extensões em
+  `test_commit-mode.sh` (+6), `test_state-ondas.sh` (+6) e
+  `test_validate-sdd.sh` (+2). Suíte completa: 1857 cenários, 0 falhas.
+
+### Changed
+
+- **`/agente-00c` (passo 2.bis) e `/feature-00c` (pré-flight 8)** passam a
+  chamar `guard-hooks-status.sh check` no init — advisory, exit 1 **não**
+  aborta a execução. A guarda de Bash inativa é destacada como item grave; o
+  resto é métrica.
+- **Orquestradores** deixam de assumir que o hook de tick está ativo:
+  consultam `guard-hooks-status.sh tick-mode` e só pulam o
+  `state-ondas.sh tool-call-tick` manual quando a resposta é `hook`. O
+  default `manual` impede a métrica de zerar em silêncio — a instrução
+  anterior ("não ticke manualmente quando o hook está ativo") não tinha como
+  verificar a condição e virava, na prática, "nunca ticke".
+- **`sc-not-measurable` deixa de sinalizar `API`** (`validate-sdd.sh`): é
+  termo genérico de domínio, e o `SKILL.md` de `validate-documentation` já
+  prometia explicitamente que `API`/`CLI`/`JSON` não disparariam — a tabela
+  de findings do próprio SKILL.md contradizia esse parágrafo e foi alinhada.
+  Sobram apenas termos de performance de implementação (`TPS`, `paint time`,
+  `render time`). Caso real: `SC-002` com "serviços Go que expõem API HTTP"
+  era rejeitado e só passava reescrito para "endpoints HTTP".
+- **`commit-mode.sh task-message`** comprime IDs por *runs* contíguos dentro
+  da mesma fase. A heurística anterior tratava a transição de fase
+  (`major+1`, `minor=1`) como continuidade sem verificar se os minors
+  intermediários estavam na lista: `--task-ids "1.1,2.1,2.2,2.3"` (com
+  1.2/1.3 bloqueadas na onda) emitia `feat: tasks 1.1-2.3`, implicando
+  falsamente que tasks puladas foram concluídas. Agora emite
+  `feat: tasks 1.1, 2.1-2.3`. IDs não-numéricos deixam de entrar em
+  aritmética (sob `set -eu`, abortavam o script).
+- **`state-ondas.sh record-task`** avisa em stderr quando `--task-id` tem 3+
+  níveis (`N.M.K` = subtarefa/checkbox em vez do heading `### N.M` do
+  `tasks.md`). Aviso, não erro — gravar no nível errado já aconteceu em
+  campo, só descoberto depois pelo `reconcile-tasks`.
+
+### Fixed
+
+- **`commit-mode.sh finalize` violava o próprio contrato "sempre exit 0 +
+  `push_pr_result` sempre gravado"**: o script roda sob `set -eu` e o
+  `eval "cstk session pr …"` estava numa linha própria, então uma falha do
+  comando abortava a função inteira antes de qualquer `_cm_record_result`.
+  Observado em campo: exit 9 com `.push_pr_result` null. Agora usa
+  `|| _cstk_rc=$?`, preservando o fallback `git push` + `gh pr create`.
+- **`commit-mode.sh stage-derived` retornava rc=3 "allowlist vazia" enganoso
+  com `--scope-dir` absoluto**: o filtro casa por prefixo contra paths de
+  `git status --porcelain`, que são sempre relativos, mas os prompts dos
+  orquestradores passam `<FD>`, que resolve para absoluto em vários pontos —
+  o casamento nunca ocorria mesmo havendo arquivos staged-áveis. Valores
+  absolutos sob `--projeto-alvo-path` agora são normalizados; fora do repo,
+  emitem diagnóstico em vez de silêncio.
+
 ## [5.25.0] - 2026-07-26
 
 Métricas de consumo por spawn de subagente (feature `wave-token-metrics`,
@@ -3948,6 +4031,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.26.0]: https://github.com/JotJunior/cstk/releases/tag/v5.26.0
 [5.25.0]: https://github.com/JotJunior/cstk/releases/tag/v5.25.0
 [5.24.0]: https://github.com/JotJunior/cstk/releases/tag/v5.24.0
 [5.23.0]: https://github.com/JotJunior/cstk/releases/tag/v5.23.0

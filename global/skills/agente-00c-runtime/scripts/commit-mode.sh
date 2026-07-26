@@ -17,6 +17,9 @@
 #                [--title T] [--body B]
 #   snapshot      --state-dir DIR --projeto-alvo-path PATH
 #   stage-derived --state-dir DIR --projeto-alvo-path PATH [--scope-dir REL_DIR]...
+#                 REL_DIR e RELATIVO a raiz do projeto-alvo. Um valor
+#                 ABSOLUTO sob --projeto-alvo-path e normalizado para
+#                 relativo automaticamente (tolerancia, nao contrato).
 #
 # Exit codes globais:
 #   0  sucesso / caso tratado (inclui skips nao-fatais; stage-derived: >=1 path staged)
@@ -290,65 +293,77 @@ _cm_cmd_task_message() {
     return 0
   fi
 
-  # Multiplos IDs: checar contiguidade
-  # Separa em lista de IDs e verifica se formam range continuo
-  # IDs format: N.M (ex: 1.1, 1.2, 2.1)
-  _first=""
-  _last=""
+  # Multiplos IDs (format N.M): agrupar em RUNS contiguos DENTRO da mesma
+  # fase (major), emitindo "A-B" por run com >=2 IDs e "A" para run unitario,
+  # unidos por ", ".
+  #
+  # A transicao de fase NUNCA conta como continuidade. A heuristica antiga
+  # aceitava "major = prev_major+1 e minor = 1" como contiguo, sem verificar
+  # se os minors intermediarios da fase anterior estavam de fato na lista:
+  # com --task-ids "1.1,2.1,2.2,2.3" (1.2/1.3 bloqueadas nesta onda) ela
+  # emitia "feat: tasks 1.1-2.3", implicando FALSAMENTE que 1.2/1.3 foram
+  # concluidas. Nao ha como saber daqui qual e o ultimo minor esperado de
+  # uma fase (isso mora no tasks.md), entao a compressao cross-fase e
+  # abandonada: "1.1,2.1,2.2,2.3" -> "feat: tasks 1.1, 2.1-2.3".
+  _id_list=$(printf '%s' "$_ids" | tr ',' '\n' | sed 's/^ *//;s/ *$//;/^$/d')
+
+  _out=""
+  _run_first=""
+  _run_last=""
+  _run_n=0
   _prev_major=""
   _prev_minor=""
-  _is_range=1
+  _prev_numeric=0
 
-  # Processar cada ID na lista
-  _n=0
-  _id_list=$(printf '%s' "$_ids" | tr ',' '\n' | sed 's/^ *//;s/ *$//')
   while IFS= read -r _id; do
     [ -z "$_id" ] && continue
-    _n=$((_n + 1))
-    [ "$_n" -eq 1 ] && _first="$_id"
-    _last="$_id"
 
-    # Extrair major.minor
     _major=$(printf '%s' "$_id" | cut -d'.' -f1)
     _minor=$(printf '%s' "$_id" | cut -d'.' -f2)
 
-    if [ "$_n" -gt 1 ]; then
-      # Verificar contiguidade: mesmo major e minor = prev+1,
-      # OU major = prev_major+1 e minor = 1 (transicao de fase)
-      if [ "$_major" = "$_prev_major" ]; then
-        _expected=$((_prev_minor + 1))
-        if [ "$_minor" != "$_expected" ]; then
-          _is_range=0
-        fi
-      else
-        _expected_major=$((_prev_major + 1))
-        if [ "$_major" != "$_expected_major" ] || [ "$_minor" != "1" ]; then
-          _is_range=0
-        fi
+    # ID nao-numerico (ex: "A.1", "1", "1.x") jamais entra em aritmetica —
+    # sob `set -eu` um $(( )) sobre nao-numero aborta o script inteiro.
+    _numeric=1
+    case "$_major" in ''|*[!0-9]*) _numeric=0 ;; esac
+    case "$_minor" in ''|*[!0-9]*) _numeric=0 ;; esac
+
+    _continues=0
+    if [ "$_run_n" -gt 0 ] && [ "$_numeric" = 1 ] && [ "$_prev_numeric" = 1 ] \
+       && [ "$_major" = "$_prev_major" ] \
+       && [ "$_minor" -eq $((_prev_minor + 1)) ]; then
+      _continues=1
+    fi
+
+    if [ "$_continues" = 1 ]; then
+      _run_last="$_id"
+      _run_n=$((_run_n + 1))
+    else
+      if [ "$_run_n" -gt 0 ]; then
+        if [ "$_run_n" -eq 1 ]; then _seg="$_run_first"; else _seg="$_run_first-$_run_last"; fi
+        if [ -z "$_out" ]; then _out="$_seg"; else _out="$_out, $_seg"; fi
       fi
+      _run_first="$_id"
+      _run_last="$_id"
+      _run_n=1
     fi
 
     _prev_major="$_major"
     _prev_minor="$_minor"
+    _prev_numeric="$_numeric"
   done << EOF
 $_id_list
 EOF
 
-  if [ "$_is_range" = 1 ]; then
-    # Range contiguos
-    if [ -n "$_brief" ]; then
-      printf 'feat: tasks %s-%s %s\n' "$_first" "$_last" "$_brief"
-    else
-      printf 'feat: tasks %s-%s\n' "$_first" "$_last"
-    fi
+  # Flush do ultimo run.
+  if [ "$_run_n" -gt 0 ]; then
+    if [ "$_run_n" -eq 1 ]; then _seg="$_run_first"; else _seg="$_run_first-$_run_last"; fi
+    if [ -z "$_out" ]; then _out="$_seg"; else _out="$_out, $_seg"; fi
+  fi
+
+  if [ -n "$_brief" ]; then
+    printf 'feat: tasks %s %s\n' "$_out" "$_brief"
   else
-    # Lista nao-contigua: substituir virgulas por ", "
-    _ids_formatted=$(printf '%s' "$_ids" | sed 's/,/, /g')
-    if [ -n "$_brief" ]; then
-      printf 'feat: tasks %s %s\n' "$_ids_formatted" "$_brief"
-    else
-      printf 'feat: tasks %s\n' "$_ids_formatted"
-    fi
+    printf 'feat: tasks %s\n' "$_out"
   fi
   return 0
 }
@@ -449,6 +464,37 @@ _cm_cmd_stage_derived() {
     _cm_err "stage-derived: git nao encontrado no PATH"
     _cm_diag "error" "git-missing" "git nao encontrado no PATH" "instale git ou ajuste o PATH antes de habilitar atomic-commit"
     return 1
+  fi
+
+  # --scope-dir e RELATIVO a raiz do projeto-alvo (casa por prefixo contra
+  # os paths de `git status --porcelain`, que sao SEMPRE relativos). Passar
+  # um path ABSOLUTO fazia o filtro nunca casar e devolver rc=3 "allowlist
+  # vazia" — diagnostico enganoso, ja que havia arquivos staged-aveis.
+  # Normalizamos aqui (depois do parse: --projeto-alvo-path pode vir DEPOIS
+  # de --scope-dir em argv) em vez de exigir que todo chamador acerte o
+  # formato: os prompts dos orquestradores passam <FD>, que resolve para
+  # absoluto em varios pontos.
+  if [ "$_has_scope" = 1 ]; then
+    _pap_prefix="${_pap%/}/"
+    _scope_norm="$_scope_file.norm"
+    : > "$_scope_norm"
+    while IFS= read -r _sc_line; do
+      [ -z "$_sc_line" ] && continue
+      case "$_sc_line" in
+        "$_pap_prefix"*)
+          _sc_line="${_sc_line#"$_pap_prefix"}"
+          ;;
+        /*)
+          # Absoluto FORA do projeto-alvo: nao ha relativo equivalente.
+          # Mantido como veio (nunca vai casar, mesmo comportamento de
+          # antes), mas agora com diagnostico em vez de rc=3 silencioso.
+          _cm_err "stage-derived: --scope-dir absoluto fora de --projeto-alvo-path: $_sc_line (esperado path RELATIVO a $_pap)"
+          _cm_diag "warning" "scope-dir-outside-repo" "--scope-dir $_sc_line nao esta sob $_pap" "passe --scope-dir relativo a raiz do projeto-alvo (ex: docs/specs/<feature>)"
+          ;;
+      esac
+      printf '%s\n' "$_sc_line" >> "$_scope_norm"
+    done < "$_scope_file"
+    mv "$_scope_norm" "$_scope_file"
   fi
 
   _raw="${TMPDIR:-/tmp}/cm-raw.$$"
@@ -681,9 +727,14 @@ _cm_cmd_finalize() {
       esac
     fi
 
-    # Executar cstk session pr (delega push + PR)
-    eval "cstk session pr $_cstk_args" >/dev/null 2>&1
-    _cstk_rc=$?
+    # Executar cstk session pr (delega push + PR).
+    # `|| _cstk_rc=$?` e OBRIGATORIO: o script roda sob `set -eu` e um
+    # `eval` cru numa linha propria aborta a funcao INTEIRA quando o
+    # comando falha — antes de qualquer _cm_record_result, quebrando a
+    # garantia documentada "finalize e sempre exit 0 + push_pr_result
+    # sempre gravado" (observado em campo: exit 9 com .push_pr_result null).
+    _cstk_rc=0
+    eval "cstk session pr $_cstk_args" >/dev/null 2>&1 || _cstk_rc=$?
     if [ "$_cstk_rc" = 0 ]; then
       # Obter URL do PR criado
       _pr_url=$(gh pr view "$_curr_branch" --json url -q '.url' 2>/dev/null) || _pr_url=""
