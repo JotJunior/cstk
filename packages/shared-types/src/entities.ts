@@ -61,6 +61,56 @@ export interface WaveDTO {
   /** nome da sessao de worktree de origem (schema v8); null fora de sessao/bases v<8.
    *  @untrusted leve — renderizar via textContent */
   session: string | null;
+
+  // --- Consumo de subagentes (schema v10 — cstk wave-token-metrics) ---------
+  // Agregado por onda de `.waves[].agent_usage` do state.json. Semantica de
+  // ausencia (verificada empiricamente contra `cstk recall --ingest` 5.25.0):
+  //   - onda SEM `agent_usage` (execucao pre-v10 ou orquestrador antigo):
+  //     TODOS os 9 campos null — inclusive agentSpawnsTotal ⇒ "nao coletado".
+  //   - onda COM `agent_usage` mas sem nenhum spawn observavel:
+  //     agentSpawnsTotal/agentSpawnsWithUsage preenchidos (ex: 2 e 0) e os
+  //     campos de token null ⇒ "coletado, sem dado de uso".
+  // Os dois casos NAO podem ser exibidos como zero (fabricacao — FR-009 do
+  // cstk / Principio III). Ver `agentSpawnsWithUsage` para a regra de amostra.
+  /** spawns de subagente observados na onda; null = metrica nao coletada */
+  agentSpawnsTotal: number | null;
+  /**
+   * Quantos desses spawns trouxeram dado de uso. `agentSpawnsTotal -
+   * agentSpawnsWithUsage` = spawns sem dado (tipicamente background/async).
+   * INVARIANTE DE HONESTIDADE: quando menor que `agentSpawnsTotal`, os
+   * totais de token sao AMOSTRA PARCIAL e a UI MUST exibir o denominador.
+   */
+  agentSpawnsWithUsage: number | null;
+  /** soma de tokens dos spawns com dado; null = nenhum dado observado */
+  agentTotalTokens: number | null;
+  agentInputTokens: number | null;
+  agentOutputTokens: number | null;
+  agentCacheReadTokens: number | null;
+  agentCacheCreationTokens: number | null;
+  /** tool calls DENTRO dos subagentes — distinto de `toolCalls` (proxy da onda) */
+  agentToolUseCount: number | null;
+  agentDurationMs: number | null;
+}
+
+/**
+ * Agregado de consumo de subagentes (schema v10) usado nos rollups de
+ * projeto/feature e nas metricas. Todos os campos sao `null` quando nada foi
+ * observado — nunca 0 por default (Principio III).
+ */
+export interface AgentUsageRollup {
+  spawnsTotal: number | null;
+  spawnsWithUsage: number | null;
+  totalTokens: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheCreationTokens: number | null;
+  toolUseCount: number | null;
+  durationMs: number | null;
+  /** ondas com `agent_usage` gravado (denominador de cobertura da amostra) */
+  wavesWithUsage: number | null;
+  /** ondas consideradas no recorte (com ou sem metrica coletada) */
+  wavesTotal: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +375,8 @@ export interface ProjectRollup {
   totalWallclock?: number | null;
   openAlerts?: number;
   latestExecutionAt: string | null;
+  /** consumo real de subagentes (schema v10); ausente/null em bases v<10 */
+  agentUsage?: AgentUsageRollup | null;
 }
 
 export interface FeatureRollup {
@@ -344,6 +396,8 @@ export interface FeatureRollup {
   openAlerts?: number;
   latestStatus: 'em_andamento' | 'aguardando_humano' | 'concluida' | 'abortada' | null;
   latestExecutionAt: string | null;
+  /** consumo real de subagentes (schema v10); ausente/null em bases v<10 */
+  agentUsage?: AgentUsageRollup | null;
 }
 
 // ---------------------------------------------------------------------------

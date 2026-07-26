@@ -11,7 +11,7 @@ import { generateETag, etagMatches } from '../lib/etag.js';
 import { loadConfig } from '../config.js';
 import { getRollupByFeature, listExecutions } from '../db/queries/executions.js';
 import { listRetrosByFeature } from '../db/queries/retros.js';
-import { mapExecution, normalizeStatus } from '../mappers/index.js';
+import { mapExecution, normalizeStatus, mapAgentUsageRollup } from '../mappers/index.js';
 
 // Validacao de path params (FR-018 — sem traversal)
 const FeatureParamSchema = z.object({
@@ -66,6 +66,8 @@ export async function featureRoutes(server: FastifyInstance): Promise<void> {
         openAlerts: r.open_alerts,
         latestStatus: normalizeStatus(r.latest_status),
         latestExecutionAt: r.latest_execution_at,
+        // consumo real de subagentes (schema v10); campos null em base v<10
+        agentUsage: mapAgentUsageRollup(r),
       }));
 
       const envelope = wrap(data, {}, config.dbPath, db);
@@ -133,6 +135,7 @@ export async function featureRoutes(server: FastifyInstance): Promise<void> {
           openAlerts: featureRollup.open_alerts,
           latestStatus: normalizeStatus(featureRollup.latest_status),
           latestExecutionAt: featureRollup.latest_execution_at,
+          agentUsage: mapAgentUsageRollup(featureRollup),
         },
         executions,
       };

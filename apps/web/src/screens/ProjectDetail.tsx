@@ -6,9 +6,10 @@ import { useParams } from 'react-router-dom';
 import { useProject } from '@/lib/hooks.js';
 import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState } from '@/states/index.js';
-import { KpiCard } from '@/components/index.js';
+import { KpiCard, AgentUsagePanel, agentUsageState, coverageLabel } from '@/components/index.js';
 import { FeaturesTable, type FeatureRow } from '@/components/FeaturesTable.js';
-import { fmtNum, fmtDur } from '@/lib/format.js';
+import { fmtNum, fmtDur, fmtTokens } from '@/lib/format.js';
+import type { AgentUsageRollup } from '@cstk-panel/shared-types';
 
 interface ProjectRollupShape {
   totalExecutions: number;
@@ -17,6 +18,8 @@ interface ProjectRollupShape {
   totalToolCalls: number | null;
   totalWallclock: number | null;
   openAlerts: number;
+  /** consumo medido de subagentes (schema v10); null/ausente em bases v<10 */
+  agentUsage?: AgentUsageRollup | null;
 }
 
 export function ProjectDetail() {
@@ -32,6 +35,8 @@ export function ProjectDetail() {
 
   const rollup = data.rollup;
   const features = data.features ?? [];
+  const usage = rollup?.agentUsage ?? null;
+  const hasUsage = agentUsageState(usage) === 'measured';
 
   return (
     <div className="col gap-4">
@@ -42,12 +47,34 @@ export function ProjectDetail() {
         </div>
       </div>
 
-      <div className="grid-5">
+      <div className="grid-6">
         <KpiCard label="Features" value={features.length} icon="git-branch" />
         <KpiCard label="Em andamento" value={rollup?.activeExecutions ?? 0} icon="activity" accent={rollup && rollup.activeExecutions > 0 ? 'accent' : undefined} />
-        <KpiCard label="Tool calls · proxy" value={fmtNum(rollup?.totalToolCalls)} icon="bolt" tip="Proxy de custo (tokens não expostos)." />
+        <KpiCard label="Tool calls · proxy" value={fmtNum(rollup?.totalToolCalls)} icon="bolt" tip="Chamadas de ferramenta do orquestrador — proxy de esforço, não token." />
+        <KpiCard
+          label="Tokens · subagentes"
+          value={hasUsage ? fmtTokens(usage?.totalTokens) : '—'}
+          icon="cpu"
+          footnote={hasUsage ? coverageLabel(usage) : 'não coletado nesta fonte'}
+          tip="Medição real do harness, agregada por onda (schema v10). Parcial: spawns em background não reportam uso."
+        />
         <KpiCard label="Wallclock" value={fmtDur(rollup?.totalWallclock)} icon="clock" />
         <KpiCard label="Alertas abertos" value={rollup?.openAlerts ?? 0} icon="alert" accent={rollup && rollup.openAlerts > 0 ? 'critical' : undefined} />
+      </div>
+
+      {/* Breakdown do consumo — input/output/cache e cobertura da amostra */}
+      <div className="card">
+        <div className="card-head">
+          <h3>Consumo de subagentes · medido</h3>
+          <span className="mono muted" style={{ fontSize: 11 }}>
+            {usage?.wavesWithUsage != null && usage.wavesTotal != null
+              ? `${usage.wavesWithUsage} de ${usage.wavesTotal} ondas com medição`
+              : 'schema v10'}
+          </span>
+        </div>
+        <div style={{ padding: 14 }}>
+          <AgentUsagePanel usage={usage} columns={4} />
+        </div>
       </div>
 
       <div className="card">

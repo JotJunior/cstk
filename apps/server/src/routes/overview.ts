@@ -17,7 +17,8 @@ import {
   getModelMix, getRecentActivity, getCostSeries,
 } from '../db/queries/overview.js';
 import { getRollupByProject, getRollupByFeature } from '../db/queries/executions.js';
-import { normalizeStatus } from '../mappers/index.js';
+import { getAgentUsage, getTokensOverTime } from '../db/queries/metrics.js';
+import { normalizeStatus, mapAgentUsageResult, mapAgentUsageRollup } from '../mappers/index.js';
 
 const PeriodSchema = z.enum(['24h', '7d', '30d', 'all']).optional().default('7d');
 // FR-022: filtro global de projeto. String vazia/ausente = todos os projetos.
@@ -66,6 +67,11 @@ export async function overviewRoutes(server: FastifyInstance): Promise<void> {
       const modelMix = getModelMix(db, project);
       const recentActivity = getRecentActivity(db, 8, project);
       const costSeries = getCostSeries(db, 14, project);
+      // Consumo REAL de subagentes (schema v10) — medido, nao proxy. Vem com
+      // spawnsWithUsage/spawnsTotal para a UI rotular a cobertura da amostra.
+      const agentUsage = getAgentUsage(db, project !== null ? { project } : {});
+      const tokenSeries = getTokensOverTime(db, project !== null ? { project } : {})
+        .map(r => r.totalTokens);
 
       // Filtrar por periodo para leaderboard
       const { hasColumn } = await import('../db/columns.js');
@@ -114,6 +120,9 @@ export async function overviewRoutes(server: FastifyInstance): Promise<void> {
           testsTotal: kpis.tests_total,
           totalProjects: kpis.total_projects,
           totalFeatures: kpis.total_features,
+          /** consumo medido dos subagentes (schema v10); campos null quando
+           *  a base e v<10 ou nenhuma onda do recorte tem medicao */
+          agentUsage: mapAgentUsageResult(agentUsage),
         },
         recentAlerts: recentAlerts.map(a => ({
           executionId: a.execution_id,
@@ -148,6 +157,8 @@ export async function overviewRoutes(server: FastifyInstance): Promise<void> {
           description: a.description,
         })),
         costSeries,
+        /** serie diaria de tokens medidos; dias sem medicao NAO entram como 0 */
+        tokenSeries,
         leaderboard: filtered.slice(0, 10).map(e => ({
           executionId: e.execution_id,
           project: e.project,
@@ -167,6 +178,7 @@ export async function overviewRoutes(server: FastifyInstance): Promise<void> {
           totalDecisions: r.total_decisions,
           totalToolCalls: r.total_tool_calls,
           latestExecutionAt: r.latest_execution_at,
+          agentUsage: mapAgentUsageRollup(r),
         })),
         featureRollups: featureRollups.slice(0, 20).map(r => ({
           project: r.project,

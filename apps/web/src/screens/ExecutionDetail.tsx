@@ -18,7 +18,11 @@ import { useApiState } from '@/hooks/useApiState.js';
 import { stackDisplayItems } from '@/lib/stack-display.js';
 import { decisionOptions, chosenOptionIndex } from '@/lib/decision-options.js';
 import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/index.js';
-import { StatusBadge, ScoreChip, OutcomePill, TextRaw, Icon, BarH, MiniStat, PipelineProgress } from '@/components/index.js';
+import {
+  StatusBadge, ScoreChip, OutcomePill, TextRaw, Icon, BarH, MiniStat, PipelineProgress,
+  AgentUsagePanel, CoverageBadge, agentUsageState, sumAgentUsage, waveAgentUsage,
+} from '@/components/index.js';
+import { fmtTokens } from '@/lib/format.js';
 import type { ExecutionDTO, WaveDTO, DecisionDTO, TaskDTO, EventDTO, AlertSignalDTO, BlockDTO, SkillDTO, SuggestionDTO } from '@cstk-panel/shared-types';
 
 // ---------------------------------------------------------------------------
@@ -48,6 +52,32 @@ function fmtTimestamp(iso: string | null | undefined): string {
 // PipelineProgress: usa o componente compartilhado (single source of truth para a
 // logica de etapas done/current/aborted). Ver components/PipelineProgress.tsx.
 
+/**
+ * Celula de token da onda (schema v10). Distingue os tres estados que o cstk
+ * grava — e que nao podem colapsar em "0":
+ *   medido            -> "248.5k" (+ "*" quando parte dos spawns nao reportou)
+ *   coletado sem dado  -> "s/ dado" (houve spawn, nenhum reportou uso)
+ *   nao coletado       -> "—" (onda anterior a feature ou base v<10)
+ */
+export function waveUsageLabel(w: WaveDTO): string {
+  if (w.agentTotalTokens != null) {
+    const partial = w.agentSpawnsWithUsage != null && w.agentSpawnsTotal != null
+      && w.agentSpawnsWithUsage < w.agentSpawnsTotal;
+    return `${fmtTokens(w.agentTotalTokens)}${partial ? ' *' : ''}`;
+  }
+  return w.agentSpawnsTotal != null ? 's/ dado' : '—';
+}
+
+export function waveUsageTip(w: WaveDTO): string {
+  if (w.agentTotalTokens != null) {
+    return `${w.agentSpawnsWithUsage ?? 0} de ${w.agentSpawnsTotal ?? 0} spawns reportaram uso`;
+  }
+  if (w.agentSpawnsTotal != null) {
+    return `${w.agentSpawnsTotal} spawn(s) observado(s), nenhum reportou uso — nao e consumo zero`;
+  }
+  return 'consumo de subagentes nao coletado nesta onda';
+}
+
 // ---------------------------------------------------------------------------
 // WavesTimeline
 // ---------------------------------------------------------------------------
@@ -62,6 +92,11 @@ function WavesTimeline({
   const maxTC = waves.reduce((m, w) => Math.max(m, w.toolCalls ?? 0), 0) || 1;
   const totalTC = waves.reduce((sum, w) => sum + (w.toolCalls ?? 0), 0);
   const totalWS = waves.reduce((sum, w) => sum + (w.wallclockSeconds ?? 0), 0);
+  // Consumo medido dos subagentes (schema v10). A soma preserva null: se
+  // nenhuma onda tem medicao, o rodape mostra "—", nao 0 (Principio III).
+  const usageTotal = sumAgentUsage(waves);
+  const hasUsage = agentUsageState(usageTotal) === 'measured';
+  const selectedWaveRow = selectedWave ? waves.find(w => w.wave === selectedWave) : undefined;
 
   const MOTIVO_COLOR: Record<string, string> = {
     etapa_concluida_avancando: 'var(--success)',
@@ -107,7 +142,7 @@ function WavesTimeline({
       <div style={{ overflowX: 'auto' }}>
         {/* Header row */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '110px 120px 1fr 50px 80px',
+          display: 'grid', gridTemplateColumns: '110px 120px 1fr 50px 90px 80px',
           gap: 8, padding: '8px 14px', borderBottom: '1px solid var(--border)',
           fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600,
         }}>
@@ -115,6 +150,7 @@ function WavesTimeline({
           <span>Etapa</span>
           <span>Tool calls · barra</span>
           <span style={{ textAlign: 'right' }}>Skills</span>
+          <span style={{ textAlign: 'right' }} title="tokens medidos dos subagentes da onda (schema v10)">Tokens</span>
           <span style={{ textAlign: 'right' }}>Wallclock</span>
         </div>
         {waves.map(w => {
@@ -126,7 +162,7 @@ function WavesTimeline({
               key={w.wave}
               onClick={() => onSelectWave(isSelected ? null : w.wave)}
               style={{
-                display: 'grid', gridTemplateColumns: '110px 120px 1fr 50px 80px',
+                display: 'grid', gridTemplateColumns: '110px 120px 1fr 50px 90px 80px',
                 gap: 8, padding: '8px 14px', cursor: 'pointer', alignItems: 'center',
                 background: isSelected ? 'var(--bg-2)' : 'transparent',
                 borderLeft: isSelected ? `2px solid ${barColor}` : '2px solid transparent',
@@ -156,6 +192,18 @@ function WavesTimeline({
               <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text-1)' }}>
                 {w.nSkills ?? '—'}
               </span>
+              {/* Tokens medidos da onda. Tres estados distintos, nunca 0:
+                  medido (numero, com "*" se amostra parcial), coletado sem
+                  dado ("s/ dado") e nao coletado ("—"). */}
+              <span
+                title={waveUsageTip(w)}
+                style={{
+                  textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11.5,
+                  color: w.agentTotalTokens != null ? 'var(--text-1)' : 'var(--text-3)',
+                }}
+              >
+                {waveUsageLabel(w)}
+              </span>
               <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text-1)' }}>
                 {fmtDur(w.wallclockSeconds)}
               </span>
@@ -168,11 +216,25 @@ function WavesTimeline({
           fontSize: 11.5, color: 'var(--text-2)',
         }}>
           <span>{waves.length} ondas</span>
-          <span style={{ fontFamily: 'var(--font-mono)' }}>
+          <span className="row gap-2" style={{ fontFamily: 'var(--font-mono)' }}>
             {fmtNum(totalTC)} tool_calls · {fmtDur(totalWS)} wallclock
+            {hasUsage && <> · {fmtTokens(usageTotal.totalTokens)} tokens</>}
+            {hasUsage && <CoverageBadge usage={usageTotal} />}
           </span>
         </div>
       </div>
+      {/* Detalhe do consumo da onda selecionada — breakdown input/output/cache.
+          Aparece so com onda selecionada para nao competir com a timeline. */}
+      {selectedWaveRow && (
+        <div style={{ borderTop: '1px solid var(--border)', padding: '12px 14px' }}>
+          <div className="row gap-2" style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>
+              Consumo de subagentes · {selectedWaveRow.wave}
+            </span>
+          </div>
+          <AgentUsagePanel usage={waveAgentUsage(selectedWaveRow)} columns={4} />
+        </div>
+      )}
     </div>
   );
 }

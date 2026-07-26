@@ -31,6 +31,7 @@ export type {
   FeatureDocsListDTO,
   ProjectRollup,
   FeatureRollup,
+  AgentUsageRollup,
   PaginationParams,
   PeriodParam,
   ScoreParam,
@@ -65,6 +66,7 @@ export {
   FeatureDocsListDTOSchema,
   ProjectRollupSchema,
   FeatureRollupSchema,
+  AgentUsageRollupSchema,
 } from './schemas/entities.js';
 
 // Schemas Zod — params

@@ -400,7 +400,9 @@ export function useHealth() {
 export function useMetric(
   name: 'cost-over-time' | 'throughput-by-stage' | 'test-pass-rate' | 'test-pass-rate-series'
        | 'human-latency' | 'clarify-resolution' | 'decisions-by-score' | 'execution-duration' | 'depth-subagents'
-       | 'model-mix' | 'model-mix-by-stage' | 'recall-consultations',
+       | 'model-mix' | 'model-mix-by-stage' | 'recall-consultations'
+       // schema v10 — consumo medido de subagentes (nao proxy)
+       | 'agent-usage' | 'tokens-over-time' | 'tokens-by-wave',
   period?: PeriodParam
 ) {
   const qs = period ? `?period=${period}` : '';

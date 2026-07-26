@@ -20,21 +20,23 @@
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
 .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+/* KPI row do Overview: 7 cards desde o token medido (schema v10) */
+.grid-7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
 .grid-overview { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
 /* Detalhe de execucao: gantt (1fr) + coluna de stats (280px) */
 .exec-grid { display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start; }
 /* Responsivo — grids de conteúdo colapsam progressivamente */
 @media (max-width: 1200px) {
-  .grid-5, .grid-6 { grid-template-columns: repeat(3, 1fr); }
+  .grid-5, .grid-6, .grid-7 { grid-template-columns: repeat(3, 1fr); }
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-overview { grid-template-columns: 1fr; }
   .exec-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
-  .grid-3, .grid-4, .grid-5, .grid-6 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3, .grid-4, .grid-5, .grid-6, .grid-7 { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 600px) {
-  .grid-2, .grid-3, .grid-4, .grid-5, .grid-6 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .grid-4, .grid-5, .grid-6, .grid-7 { grid-template-columns: 1fr; }
 }
 
 /* ---------- KPI rico (prototipo .kpi) ---------- */

@@ -10,6 +10,42 @@
  */
 import type Database from 'better-sqlite3';
 import { hasColumn } from '../columns.js';
+import { hasAgentUsage } from './waves.js';
+
+/**
+ * Colunas de consumo real de subagente para os rollups (schema v10). Sao
+ * subconsultas correlacionadas sobre `waves` porque o dado vive na onda, nao
+ * na execucao — e a query externa agrupa `executions`, onde um LEFT JOIN com
+ * o agregado de ondas multiplicaria as somas por linha de execucao.
+ *
+ * `sum()` do SQLite retorna NULL quando nenhuma linha tem valor: e isso que
+ * preserva a distincao "sem medicao" x "medido e deu zero" ate a UI.
+ * Base v<10 (sem as colunas) projeta NULL literal — mesmo efeito.
+ */
+function agentUsageRollupSelect(db: Database.Database, scope: 'project' | 'feature'): string {
+  const fields: Array<[string, string]> = [
+    ['agent_spawns_total', 'sum(w.agent_spawns_total)'],
+    ['agent_spawns_with_usage', 'sum(w.agent_spawns_with_usage)'],
+    ['agent_total_tokens', 'sum(w.agent_total_tokens)'],
+    ['agent_input_tokens', 'sum(w.agent_input_tokens)'],
+    ['agent_output_tokens', 'sum(w.agent_output_tokens)'],
+    ['agent_cache_read_tokens', 'sum(w.agent_cache_read_tokens)'],
+    ['agent_cache_creation_tokens', 'sum(w.agent_cache_creation_tokens)'],
+    ['agent_tool_use_count', 'sum(w.agent_tool_use_count)'],
+    ['agent_duration_ms', 'sum(w.agent_duration_ms)'],
+    ['agent_waves_with_usage', 'sum(CASE WHEN w.agent_spawns_total IS NOT NULL THEN 1 ELSE 0 END)'],
+    ['agent_waves_total', 'count(*)'],
+  ];
+  if (!hasAgentUsage(db)) {
+    return fields.map(([alias]) => `NULL as ${alias}`).join(',\n        ');
+  }
+  const corr = scope === 'project'
+    ? 'w.project = e.project'
+    : 'w.project = e.project AND w.feature = e.feature';
+  return fields
+    .map(([alias, expr]) => `(SELECT ${expr} FROM waves w WHERE ${corr}) as ${alias}`)
+    .join(',\n        ');
+}
 
 /**
  * Projecao tolerante a bases v6 onde a coluna ainda tem nome pt-BR.
@@ -66,7 +102,26 @@ export interface ExecutionRow {
   session: string | null;
 }
 
-export interface ExecutionRollupRow {
+/**
+ * Consumo real de subagentes somado a partir de `waves` (schema v10).
+ * Presente em ExecutionRollupRow e FeatureRollupRow. NULL em base v<10 ou
+ * quando nenhuma onda do recorte tem medicao — nunca 0 (Principio III).
+ */
+export interface AgentUsageRollupRow {
+  agent_spawns_total: number | null;
+  agent_spawns_with_usage: number | null;
+  agent_total_tokens: number | null;
+  agent_input_tokens: number | null;
+  agent_output_tokens: number | null;
+  agent_cache_read_tokens: number | null;
+  agent_cache_creation_tokens: number | null;
+  agent_tool_use_count: number | null;
+  agent_duration_ms: number | null;
+  agent_waves_with_usage: number | null;
+  agent_waves_total: number | null;
+}
+
+export interface ExecutionRollupRow extends AgentUsageRollupRow {
   project: string;
   total_executions: number;
   active_executions: number;
@@ -79,7 +134,7 @@ export interface ExecutionRollupRow {
   latest_execution_at: string | null;
 }
 
-export interface FeatureRollupRow {
+export interface FeatureRollupRow extends AgentUsageRollupRow {
   project: string;
   feature: string;
   total_executions: number;
@@ -221,7 +276,8 @@ export function getRollupByProject(db: Database.Database, project: string | null
         sum(tool_calls_total) as total_tool_calls,
         sum(${wallCol}) as total_wallclock,
         (SELECT count(*) FROM alert_signals a WHERE a.project = e.project) as open_alerts,
-        max(${startedCol}) as latest_execution_at
+        max(${startedCol}) as latest_execution_at,
+        ${agentUsageRollupSelect(db, 'project')}
       FROM executions e
       WHERE (@project IS NULL OR e.project = @project)
       GROUP BY project
@@ -260,7 +316,8 @@ export function getRollupByFeature(db: Database.Database, project: string | null
          ORDER BY ${startedCol} DESC LIMIT 1) as latest_status,
         (SELECT count(*) FROM alert_signals a
          WHERE a.project = e.project AND a.feature = e.feature) as open_alerts,
-        max(${startedCol}) as latest_execution_at
+        max(${startedCol}) as latest_execution_at,
+        ${agentUsageRollupSelect(db, 'feature')}
       FROM executions e
       WHERE (@project IS NULL OR e.project = @project)
       GROUP BY project, feature

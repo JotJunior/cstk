@@ -25,6 +25,25 @@ export function fmtDur(sec: number | null | undefined): string {
   return `${h}h ${String(rm).padStart(2, '0')}m`;
 }
 
+/**
+ * Contagem de tokens compacta: "812" | "12.3k" | "4.06M".
+ * `null` → "—" (nunca "0": ausencia de medicao nao e consumo zero —
+ * Principio III; ver AgentUsageRollup em @cstk-panel/shared-types).
+ */
+export function fmtTokens(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+  if (n >= 1_000) return (n / 1000).toFixed(1).replace('.0', '') + 'k';
+  return new Intl.NumberFormat('pt-BR').format(n);
+}
+
+/** Duracao a partir de milissegundos (agent_duration_ms do schema v10). */
+export function fmtMs(ms: number | null | undefined): string {
+  if (ms == null || ms < 0) return '—';
+  if (ms < 1000) return `${ms}ms`;
+  return fmtDur(Math.round(ms / 1000));
+}
+
 /** Fracao 0..1 → percentual. */
 export function fmtPct(v: number | null | undefined, digits = 0): string {
   if (v == null) return '—';
