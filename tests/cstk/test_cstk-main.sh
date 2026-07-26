@@ -166,4 +166,32 @@ scenario_cstk_lib_override() {
   assert_stderr_contains "nao implementado" || return 1
 }
 
+# ==== dispatch de `cstk hooks` (5.27.0) ====
+#
+# `hooks` segue a convencao generica do dispatch (cli/lib/<cmd>.sh definindo
+# <cmd>_main), entao o que precisa de teste aqui e o WIRING: o comando existe,
+# aparece no help e nao cai no ramo "comando desconhecido".
+
+scenario_help_lista_hooks() {
+  assert_exit 0 sh "$CSTK" --help || return 1
+  assert_stdout_contains "hooks" || return 1
+}
+
+scenario_help_hooks_aponta_doc() {
+  assert_exit 0 sh "$CSTK" help hooks || return 1
+  assert_stdout_contains "hooks" || return 1
+}
+
+scenario_hooks_sem_subcomando_exit2() {
+  # Chega em hooks_main (nao no ramo de comando desconhecido, que tambem e 2):
+  # a mensagem de uso do proprio `cstk hooks` cita o subcomando install.
+  assert_exit 2 sh "$CSTK" hooks || return 1
+  assert_stderr_contains "install" || return 1
+}
+
+scenario_hooks_help_inline() {
+  assert_exit 0 sh "$CSTK" hooks --help || return 1
+  assert_stderr_contains "cstk hooks install" || return 1
+}
+
 run_all_scenarios

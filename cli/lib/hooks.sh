@@ -299,3 +299,162 @@ apply_guard_hooks() {
   fi
   return 0
 }
+
+# ============================================================================
+# hooks_main — comando `cstk hooks install`
+# ============================================================================
+#
+# Ref: README.md §"Hooks do runtime 00c" (o contrato do CLI foi arquivado em
+#      docs/specs/_archived/cstk-cli/ e nao cobre este subcomando)
+#
+# PROBLEMA QUE ISTO RESOLVE
+# -------------------------
+# Ate 5.26.0 o UNICO caminho para provisionar os hooks 00c num projeto-alvo
+# era `cstk install --scope project agente-00c-runtime`, que — alem dos 3
+# hooks — copia 1 skill + 6 commands + 7 agents para dentro do repo. Ou
+# seja: para ativar a guarda fail-closed de Bash o operador precisava
+# duplicar 14 artefatos do catalogo global dentro de cada projeto, com o
+# custo de ruido no repo (arquivos que acabam versionados) e de drift (duas
+# copias do mesmo artefato para manter em sincronia).
+#
+# `cstk hooks install` faz SO a parte dos hooks. Nao ha regra nova aqui:
+# delega integralmente a apply_guard_hooks() (mesma funcao usada por
+# install.sh e update.sh), que segue sendo a fonte unica da regra de
+# provisionamento.
+#
+# Sintaxe:
+#   cstk hooks install [--project-path PATH] [--catalog DIR] [--dry-run]
+#
+#   --project-path PATH  Raiz do projeto-alvo (default: diretorio corrente).
+#                        Os hooks vao para <PATH>/.claude/hooks/ e o merge
+#                        acontece em <PATH>/.claude/settings.json.
+#   --catalog DIR        Catalogo de origem (default: $HOME/.claude). Os
+#                        hooks sao lidos de
+#                        <DIR>/skills/agente-00c-runtime/hooks/.
+#   --dry-run            Reporta o plano sem escrever.
+#
+# Escopo de PROJETO apenas, por construcao: os hooks so fazem sentido
+# registrados no settings.json de um projeto (FR-009c — `--scope global`
+# sempre pulou o provisionamento). Apontar --project-path para $HOME e
+# recusado explicitamente.
+#
+# Exit codes:
+#   0  hooks provisionados (merged) ou plano exibido em --dry-run
+#   1  falha de I/O, catalogo sem hooks, ou --project-path invalido
+#   2  uso incorreto
+
+_hooks_print_help() {
+  cat >&2 <<'HELP'
+cstk hooks — provisiona os hooks do runtime 00c num projeto-alvo.
+
+USO:
+  cstk hooks install [--project-path PATH] [--catalog DIR] [--dry-run]
+
+Copia pretooluse-bash-guard.sh + posttooluse-tool-call-tick.sh +
+posttooluse-agent-usage.sh para <PATH>/.claude/hooks/ e mescla o bloco de
+registro em <PATH>/.claude/settings.json (via jq; sem jq, imprime o bloco
+para colagem manual).
+
+Diferenca para `cstk install --scope project agente-00c-runtime`: aquele
+comando tambem duplica skill+commands+agents dentro do repo; este toca
+APENAS os hooks e o settings.json.
+
+Para conferir o estado atual sem escrever nada:
+  guard-hooks-status.sh check --projeto-alvo-path PATH
+HELP
+}
+
+hooks_main() {
+  _hooks_sub="${1:-}"
+  [ "$#" -ge 1 ] && shift || :
+
+  case "$_hooks_sub" in
+    ''|-h|--help|help)
+      _hooks_print_help
+      [ -z "$_hooks_sub" ] && return 2
+      return 0
+      ;;
+    install) ;;
+    *)
+      log_error "hooks: subcomando desconhecido: $_hooks_sub (use: install)"
+      return 2
+      ;;
+  esac
+
+  _hooks_project_path="."
+  _hooks_catalog="${HOME:?HOME nao setado}/.claude"
+  _hooks_dry_run=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --project-path)
+        [ "$#" -ge 2 ] || { log_error "hooks install: --project-path exige valor"; return 2; }
+        _hooks_project_path=$2; shift 2 ;;
+      --project-path=*) _hooks_project_path=${1#--project-path=}; shift ;;
+      --catalog)
+        [ "$#" -ge 2 ] || { log_error "hooks install: --catalog exige valor"; return 2; }
+        _hooks_catalog=$2; shift 2 ;;
+      --catalog=*) _hooks_catalog=${1#--catalog=}; shift ;;
+      --dry-run) _hooks_dry_run=1; shift ;;
+      -h|--help) _hooks_print_help; return 0 ;;
+      *) log_error "hooks install: flag desconhecida: $1"; return 2 ;;
+    esac
+  done
+
+  if [ ! -d "$_hooks_project_path" ]; then
+    log_error "hooks install: --project-path nao e diretorio: $_hooks_project_path"
+    return 1
+  fi
+
+  # Normaliza para comparar com $HOME sem depender de realpath (nem todo
+  # ambiente POSIX tem). `cd` + `pwd -P` resolve symlinks e relativos.
+  _hooks_abs=$(CDPATH= cd -- "$_hooks_project_path" 2>/dev/null && pwd -P) \
+    || { log_error "hooks install: nao consegui resolver $_hooks_project_path"; return 1; }
+
+  if [ "$_hooks_abs" = "${HOME%/}" ]; then
+    log_error "hooks install: --project-path aponta para \$HOME — hooks 00c sao de escopo PROJETO (FR-009c)."
+    log_error "hooks install: aponte para a raiz de um projeto-alvo, nao para o diretorio home."
+    return 1
+  fi
+
+  _hooks_src="$_hooks_catalog/skills/agente-00c-runtime/hooks"
+  if [ ! -d "$_hooks_src" ]; then
+    log_error "hooks install: catalogo sem hooks 00c: $_hooks_src"
+    log_error "hooks install: rode 'cstk install' (ou 'cstk update') antes, ou passe --catalog DIR."
+    return 1
+  fi
+
+  _hooks_dest="$_hooks_abs/.claude"
+
+  _hooks_state=$(apply_guard_hooks "$_hooks_src" "$_hooks_dest" "$_hooks_dry_run")
+
+  case "$_hooks_state" in
+    merged)
+      if [ "$_hooks_dry_run" = 1 ]; then
+        log_info "hooks install: [dry-run] provisionaria os hooks 00c em $_hooks_dest"
+      else
+        log_info "hooks install: hooks 00c provisionados e registrados em $_hooks_dest"
+      fi
+      return 0
+      ;;
+    paste-instructed)
+      log_warn "hooks install: jq ausente — hooks copiados, mas o REGISTRO em settings.json"
+      log_warn "hooks install: precisa ser colado manualmente (bloco impresso acima)."
+      log_warn "hooks install: sem o registro os hooks NAO rodam."
+      return 0
+      ;;
+    hooks-only)
+      log_warn "hooks install: settings.snippet.json ausente no catalogo — hooks copiados"
+      log_warn "hooks install: mas NAO registrados; eles nao vao rodar. Atualize o catalogo."
+      return 0
+      ;;
+    not-applicable)
+      log_error "hooks install: catalogo nao trouxe os hooks 00c (nada a provisionar)"
+      return 1
+      ;;
+    *)
+      log_error "hooks install: falha ao provisionar (estado=$_hooks_state)"
+      return 1
+      ;;
+  esac
+}

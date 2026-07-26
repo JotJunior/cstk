@@ -5,6 +5,42 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.27.0] - 2026-07-26
+
+Fecha a lacuna que a 5.26.0 deixou aberta: a detecção avisava que os hooks
+00c não estavam ativos, mas o único caminho para provisioná-los duplicava o
+catálogo inteiro dentro do repo-alvo. Agora há um caminho enxuto.
+
+### Added
+
+- **`cstk hooks install`** (novo subcomando): provisiona os três hooks do
+  runtime 00c (`pretooluse-bash-guard.sh`,
+  `posttooluse-tool-call-tick.sh`, `posttooluse-agent-usage.sh`) num
+  projeto-alvo, tocando **apenas** `.claude/hooks/` e `.claude/settings.json`.
+  Flags: `--project-path PATH` (default: diretório corrente),
+  `--catalog DIR` (default: `$HOME/.claude`) e `--dry-run`.
+  - **Motivação**: até 5.26.0 o único caminho documentado era
+    `cstk install --scope project agente-00c-runtime`, que além dos hooks
+    copia 1 skill + 6 commands + 7 agents para dentro do repo — 14 artefatos
+    duplicados do catálogo global por projeto, com ruído no versionamento e
+    superfície de drift. Como sem os hooks a guarda fail-closed de Bash fica
+    inerte e `tool_calls`/`agent_usage` ficam zerados, o custo de ativação
+    precisava cair.
+  - **Nenhuma regra nova**: `hooks_main` delega integralmente a
+    `apply_guard_hooks()` (`cli/lib/hooks.sh`), a mesma função usada por
+    `install.sh` e `update.sh` — que segue sendo a fonte única da regra de
+    provisionamento. Escopo de projeto por construção (FR-009c): apontar
+    `--project-path` para `$HOME` é recusado com exit 1.
+  - Testes: +9 cenários em `tests/cstk/test_hooks.sh` (incluindo idempotência
+    e a asserção de que **não** cria `skills/`, `commands/` ou `agents/` no
+    alvo) e +4 em `tests/cstk/test_cstk-main.sh` (wiring do dispatch).
+
+### Changed
+
+- **README** (`en` + `pt-BR`): nova seção "00c runtime hooks (`cstk hooks`)"
+  explicando que os hooks só rodam quando copiados **e** registrados, e que
+  sem eles a guarda de Bash é inerte.
+
 ## [5.26.0] - 2026-07-26
 
 Triagem das sugestões acumuladas na `knowledge.db` — 7 correções validadas
@@ -4031,6 +4067,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.27.0]: https://github.com/JotJunior/cstk/releases/tag/v5.27.0
 [5.26.0]: https://github.com/JotJunior/cstk/releases/tag/v5.26.0
 [5.25.0]: https://github.com/JotJunior/cstk/releases/tag/v5.25.0
 [5.24.0]: https://github.com/JotJunior/cstk/releases/tag/v5.24.0
