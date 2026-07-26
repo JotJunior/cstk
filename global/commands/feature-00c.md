@@ -144,6 +144,19 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
    _lock="$AGENTE_00C_STATE_DIR/.lock"
    state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR"
    - se ocupado, stderr "outra sessao ativa para $SHORT"; exit 3
+
+8. hooks 00c provisionados? (ADVISORY — exit 1 NAO aborta):
+   guard-hooks-status.sh check --projeto-alvo-path "$_proj" || :
+   - READ-ONLY (nunca copia hook nem edita settings.json; provisionar e
+     trabalho do `cstk install --scope project agente-00c-runtime`, unica
+     fonte da regra). O default do install e `--scope global`, que pula os
+     hooks — logo o caso comum e o projeto-alvo nao ter nenhum, e este e o
+     unico ponto do fluxo que roda DENTRO dele.
+   - guarda inativa (pretooluse-bash-guard.sh) => avisar com DESTAQUE: a
+     guarda fail-closed de Bash nao esta enforced nesta execucao (item
+     grave; o resto e metrica)
+   - tick-hook inativo => o orquestrador ticka manualmente (passo 4 dele)
+   - agent-usage inativo => agent_usage/tokens ficam null, sem fallback
 ```
 
 ### 3. Init do state.json

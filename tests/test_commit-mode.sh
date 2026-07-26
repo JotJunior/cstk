@@ -228,6 +228,70 @@ scenario_inv4_finalize_gh_missing() {
     || { _fail "status esperado skipped-gh-missing ou skipped-no-commits" "stdout: $_fin_out"; return 1; }
 }
 
+# ==== Regressao de campo: falha de `cstk session pr` NAO pode abortar ====
+# O contrato documentado e "finalize e sempre exit 0 + push_pr_result
+# sempre gravado". Como o script roda sob `set -eu`, um `eval "cstk session
+# pr ..."` cru numa linha propria abortava a funcao INTEIRA quando o comando
+# falhava — observado em campo: exit 9 com .push_pr_result null, sem passar
+# por nenhum _cm_record_result.
+
+scenario_finalize_cstk_session_pr_falha_mantem_exit0() {
+  _gdir="$TMPDIR_TEST/repo-cstkfail"
+  _sd="$TMPDIR_TEST/fin-cstkfail"
+  _init_state "$_sd" true
+  _init_git_repo "$_gdir" "feat/cstk-fail"
+
+  # Branch default local + origin/HEAD, para o finalize passar do passo 3
+  # (senao para em skipped-no-commits e nunca chega no passo 6).
+  git -C "$_gdir" branch main 2>/dev/null || :
+  git -C "$_gdir" update-ref refs/remotes/origin/main "$(git -C "$_gdir" rev-parse main)" 2>/dev/null || :
+  git -C "$_gdir" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main 2>/dev/null || :
+
+  printf 'change\n' >> "$_gdir/README.md"
+  git -C "$_gdir" add README.md 2>/dev/null
+  git -C "$_gdir" commit -q -m "feat: change" 2>/dev/null
+
+  # Shims: gh autenticado mas sem PR; cstk que falha com exit 9.
+  _stub="$TMPDIR_TEST/stub-cstkfail"
+  mkdir -p "$_stub"
+  cat > "$_stub/gh" <<'GHEOF'
+#!/bin/sh
+case "$1" in
+  auth) exit 0 ;;
+  *)    exit 1 ;;
+esac
+GHEOF
+  cat > "$_stub/cstk" <<'CSTKEOF'
+#!/bin/sh
+exit 9
+CSTKEOF
+  chmod +x "$_stub/gh" "$_stub/cstk"
+
+  _orig_path="$PATH"
+  PATH="$_stub:$_orig_path"
+  export PATH
+
+  capture "$SCRIPT" finalize --state-dir "$_sd" --projeto-alvo-path "$_gdir" \
+    --session "minha-sessao"
+  _fin_exit=$_CAPTURED_EXIT
+  _fin_out=$_CAPTURED_STDOUT
+  _fin_err=$_CAPTURED_STDERR
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_fin_exit" = 0 ] \
+    || { _fail "exit esperado 0 mesmo com cstk falhando" "obtido $_fin_exit (regressao: set -eu abortando no eval)"; return 1; }
+  printf '%s' "$_fin_err" | grep -q 'cstk session pr falhou (exit 9)' \
+    || { _fail "esperado diagnostico da falha do cstk" "stderr: $_fin_err"; return 1; }
+  # push_pr_result SEMPRE gravado — a garantia que o bug quebrava.
+  printf '%s' "$_fin_out" | grep -q '"status":"' \
+    || { _fail "push_pr_result deveria ter sido emitido" "stdout: $_fin_out"; return 1; }
+  _persisted=$(jq -r '.push_pr_result.status // "null"' "$_sd/state.json" 2>/dev/null) || _persisted="null"
+  [ "$_persisted" != "null" ] \
+    || { _fail "push_pr_result nao persistido no state.json" "obtido null"; return 1; }
+}
+
 # ==== INV-6: stage-message emite Conventional-Commit subjects ====
 
 scenario_inv6_stage_message_conventional_commit() {
@@ -272,6 +336,40 @@ scenario_inv7_task_message_id_unico() {
     _fail "ID unico: nao deve ser plural" "obtido '$_CAPTURED_STDOUT'"
     return 1
   fi
+}
+
+# INV-7 (regressao de campo): transicao de fase NAO e continuidade.
+# "1.1,2.1,2.2,2.3" com 1.2/1.3 deliberadamente puladas/bloqueadas nesta
+# onda emitia "feat: tasks 1.1-2.3" — mensagem que implica FALSAMENTE que
+# 1.2/1.3 foram concluidas. Esperado agora: "feat: tasks 1.1, 2.1-2.3".
+scenario_inv7_task_message_transicao_de_fase_nao_vira_range() {
+  capture "$SCRIPT" task-message --feature "test-feat" --task-ids "1.1,2.1,2.2,2.3" --brief "fase 2"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *"1.1-2.3"*)
+      _fail "range cross-fase implica tasks puladas como concluidas" "obtido '$_CAPTURED_STDOUT'"
+      return 1
+      ;;
+  esac
+  printf '%s' "$_CAPTURED_STDOUT" | grep -qF 'feat: tasks 1.1, 2.1-2.3 fase 2' \
+    || { _fail "esperado 'feat: tasks 1.1, 2.1-2.3 fase 2'" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+# INV-7: runs contiguos DENTRO da mesma fase seguem comprimindo.
+scenario_inv7_task_message_runs_multiplos_por_fase() {
+  capture "$SCRIPT" task-message --feature "f" --task-ids "1.1,1.2,1.4,1.5,1.6"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -qF 'feat: tasks 1.1-1.2, 1.4-1.6' \
+    || { _fail "esperado 'feat: tasks 1.1-1.2, 1.4-1.6'" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+# INV-7: IDs nao-numericos nunca entram em aritmetica (o script roda sob
+# `set -eu`; um $(( )) sobre nao-numero abortaria tudo).
+scenario_inv7_task_message_ids_nao_numericos_nao_abortam() {
+  capture "$SCRIPT" task-message --feature "f" --task-ids "A.1,A.2"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT stderr='$_CAPTURED_STDERR'"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -qF 'feat: tasks A.1, A.2' \
+    || { _fail "esperado lista literal" "obtido '$_CAPTURED_STDOUT'"; return 1; }
 }
 
 # INV-7: task-message sem --brief tambem funciona
@@ -466,6 +564,64 @@ scenario_5_3_1_stagederived_scope_dir_exclui_alien() {
     *alien.pptx*) : ;;
     *) _fail "alien.pptx deveria permanecer untracked" "obtido: $_untracked"; return 1 ;;
   esac
+}
+
+# ==== Regressao de campo: --scope-dir ABSOLUTO sob o projeto-alvo ====
+# Os prompts dos orquestradores passam <FD>, que resolve para path absoluto
+# em varios pontos. Antes, o casamento por prefixo contra os paths de
+# `git status --porcelain` (sempre relativos) nunca casava e o comando
+# devolvia rc=3 "allowlist vazia" — diagnostico enganoso, havia arquivo
+# staged-avel. Agora o absoluto e normalizado para relativo.
+
+scenario_stagederived_scope_dir_absoluto_normaliza() {
+  _gdir="$TMPDIR_TEST/repo-abs-scope"
+  _sd="$TMPDIR_TEST/sd-abs-scope"
+  _init_git_repo "$_gdir" "feat/abs-scope"
+
+  printf 'alien\n' > "$_gdir/alien.pptx"
+  capture "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  mkdir -p "$_gdir/docs/specs/feat-abs"
+  printf 's\n' > "$_gdir/docs/specs/feat-abs/spec.md"
+
+  # --scope-dir ABSOLUTO (o modo de falha reportado)
+  capture "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir" \
+    --scope-dir "$_gdir/docs/specs/feat-abs"
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "stage-derived com scope absoluto" "esperado exit 0, obtido $_CAPTURED_EXIT stderr='$_CAPTURED_STDERR'"; return 1; }
+
+  _staged=$(git -C "$_gdir" diff --cached --name-only)
+  case "$_staged" in
+    *"docs/specs/feat-abs/spec.md"*) : ;;
+    *) _fail "spec.md deveria estar staged" "obtido: $_staged"; return 1 ;;
+  esac
+  # Confinamento preservado: o alheio continua fora.
+  case "$_staged" in
+    *alien.pptx*) _fail "alien.pptx nao deveria estar staged" "obtido: $_staged"; return 1 ;;
+  esac
+}
+
+# Absoluto FORA do projeto-alvo: nao ha relativo equivalente. Mantem o
+# comportamento anterior (nao casa => allowlist vazia => rc=3), mas agora
+# com diagnostico explicito em vez de silencio.
+scenario_stagederived_scope_dir_absoluto_fora_do_repo_diagnostica() {
+  _gdir="$TMPDIR_TEST/repo-abs-fora"
+  _sd="$TMPDIR_TEST/sd-abs-fora"
+  _init_git_repo "$_gdir" "feat/abs-fora"
+
+  capture "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  mkdir -p "$_gdir/docs"
+  printf 's\n' > "$_gdir/docs/spec.md"
+
+  capture "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir" \
+    --scope-dir "/caminho/totalmente/alheio"
+  [ "$_CAPTURED_EXIT" = 3 ] \
+    || { _fail "esperado rc=3 (allowlist vazia)" "obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s' "$_CAPTURED_STDERR" | grep -q 'fora de --projeto-alvo-path' \
+    || { _fail "faltou diagnostico de scope-dir fora do repo" "stderr='$_CAPTURED_STDERR'"; return 1; }
 }
 
 # ==== 5.3.2: commit de task (baseline + arquivo novo pos-snapshot) inclui o novo ====
