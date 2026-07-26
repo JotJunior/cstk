@@ -693,4 +693,79 @@ scenario_shebang_posix_e_set_eu() {
   grep -q '^set -eu$' "$SCRIPT" || { _fail "set -eu presente" "nao encontrado"; return 1; }
 }
 
+# ==== Regressoes de campo: enclausuramento + toolUseResult string ====
+
+# Topologia REAL do agente-00c: o command pai spawna o orquestrador, e e o
+# orquestrador que abre e fecha a onda POR DENTRO do spawn. Logo
+#   spawn_start < wave.started_at < wave.finished_at < spawn_end
+# O tool_result chega DEPOIS de finished_at, na lacuna entre ondas — a regra
+# antiga (contencao: started_at <= ts < finished_at) nunca casava.
+# Medido em gamedev-training antes do fix: 58 spawns, 56 janelas, 0 cobertos.
+_wur_write_state_enclausurado() {
+  mkdir -p "$1"
+  cat > "$1/state.json" <<'JSON'
+{
+  "execution": {"id":"exec-encl","status":"concluida"},
+  "waves": [
+    {"id":"onda-001","started_at":"2026-07-25T20:05:00Z","finished_at":"2026-07-25T20:10:00Z","agent_usage":null,"agent_spawns":[]}
+  ],
+  "accumulated_metrics": {"waves_total":1,"agent_spawns_total":0,"agent_spawns_with_usage_total":0}
+}
+JSON
+}
+
+# Spawn que ENVOLVE a onda: comeca antes de started_at, termina depois de
+# finished_at. Sob a regra antiga isso ficava sem atribuicao.
+_wur_write_transcript_enclausurado() {
+  cat > "$TMPDIR_TEST/tr-encl.jsonl" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_E1","name":"Agent","input":{"subagent_type":"agente-00c-orchestrator"}}]},"timestamp":"2026-07-25T20:04:00.000Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_E1"}]},"toolUseResult":{"agentId":"agent-encl","status":"completed","totalTokens":5000,"totalDurationMs":300000,"totalToolUseCount":9,"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":4900,"cache_creation_input_tokens":70}},"timestamp":"2026-07-25T20:11:00.000Z"}
+EOF
+}
+
+scenario_backfill_atribui_spawn_que_envolve_a_onda() {
+  _wur_write_state_enclausurado "$TMPDIR_TEST/encl"
+  _wur_write_transcript_enclausurado
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST/encl"     --transcript "$TMPDIR_TEST/tr-encl.jsonl" --dry-run
+  # Sob a regra antiga isto era exit 3 ("nao cobre nenhuma onda").
+  [ "$_CAPTURED_EXIT" = 0 ]     || { _fail "enclausuramento" "esperado exit 0, obtido $_CAPTURED_EXIT — spawn que envolve a onda nao foi atribuido"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q "onda-001"     || { _fail "atribuicao" "esperado onda-001 no plano; obtido: $_CAPTURED_STDOUT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q "agent-encl"     || { _fail "agent_id" "esperado agent-encl no plano"; return 1; }
+  return 0
+}
+
+# A regra antiga (contencao) tem de continuar valendo para spawns feitos de
+# DENTRO de uma onda ja aberta — o fix e aditivo, nao substitutivo.
+scenario_backfill_contencao_continua_valendo() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _wur_write_backfill_state
+  _wur_write_transcript_valida
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST" --transcript "$TMPDIR_TEST/transcript.jsonl" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "contencao" "exit $_CAPTURED_EXIT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q "agent-001"     || { _fail "contencao" "spawn contido na onda deixou de ser atribuido"; return 1; }
+  return 0
+}
+
+# `toolUseResult` nem sempre e objeto: varios tools devolvem string crua.
+# `.agentId` sobre string aborta o jq com "Cannot index string with string",
+# derrubando o backfill do arquivo TODO (observado em financial-support).
+scenario_backfill_tooluseresult_string_nao_derruba() {
+  _wur_write_state_enclausurado "$TMPDIR_TEST/strres"
+  {
+    # linha venenosa: toolUseResult e STRING, nao objeto
+    printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_S1","name":"Agent","input":{"subagent_type":"x"}}]},"timestamp":"2026-07-25T20:04:00.000Z"}'
+    printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_S1"}]},"toolUseResult":"resultado em texto puro","timestamp":"2026-07-25T20:06:00.000Z"}'
+    # spawn valido depois dela: se o jq abortasse, este tambem se perderia
+    printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_E1","name":"Agent","input":{"subagent_type":"agente-00c-orchestrator"}}]},"timestamp":"2026-07-25T20:04:00.000Z"}'
+    printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_E1"}]},"toolUseResult":{"agentId":"agent-ok","status":"completed","totalTokens":100,"usage":{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}},"timestamp":"2026-07-25T20:11:00.000Z"}'
+  } > "$TMPDIR_TEST/tr-string.jsonl"
+  capture sh "$SCRIPT" backfill --state-dir "$TMPDIR_TEST/strres"     --transcript "$TMPDIR_TEST/tr-string.jsonl" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ]     || { _fail "string result" "esperado exit 0, obtido $_CAPTURED_EXIT — toolUseResult string derrubou o backfill"; return 1; }
+  printf '%s' "$_CAPTURED_STDERR" | grep -qi "jq falhou"     && { _fail "crash" "jq abortou por causa de toolUseResult string"; return 1; }
+  # o spawn valido tem de sobreviver a linha venenosa
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q "agent-ok"     || { _fail "sobrevivencia" "spawn valido perdido junto com a linha string"; return 1; }
+  return 0
+}
+
 run_all_scenarios "$0"

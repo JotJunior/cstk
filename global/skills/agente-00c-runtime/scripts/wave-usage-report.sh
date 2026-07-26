@@ -438,10 +438,15 @@ def add_null(existing; delta): if delta == null then existing else ((existing //
 ($tr[0] // []) as $records
 
 # tool_use(name="Agent") -> agent_type, indexado por tool_use_id.
-| ([$records[] | select(.type=="assistant") | (.message.content // [])[]
+| ([$records[] | select(.type=="assistant") | . as $arec
+     | (.message.content // [])[]
      | select(.type=="tool_use" and .name=="Agent")
-     | {id: .id, agent_type: (.input.subagent_type // null)}]) as $agent_calls
+     | {id: .id, agent_type: (.input.subagent_type // null),
+        start_ts: $arec.timestamp}]) as $agent_calls
 | ($agent_calls | map({(.id): .agent_type}) | add // {}) as $agent_type_by_id
+# INICIO do spawn (timestamp do tool_use). Necessario para atribuir por
+# ENCLAUSURAMENTO — ver o bloco de atribuicao abaixo.
+| ($agent_calls | map({(.id): .start_ts}) | add // {}) as $agent_start_by_id
 
 # tool_result cujo tool_use_id casa com uma chamada Agent E cujo
 # toolUseResult carrega agentId (mesma condicao de "empty" do hook: sem
@@ -452,6 +457,11 @@ def add_null(existing; delta): if delta == null then existing else ((existing //
      | (((.message.content // [])[] | select(.type=="tool_result") | .tool_use_id) // null) as $tuid
      | select($tuid != null and ($agent_type_by_id | has($tuid)))
      | ($rec.toolUseResult) as $trr
+     # `toolUseResult` NEM SEMPRE e objeto — varios tools devolvem string
+     # crua. `.agentId` sobre string aborta o jq inteiro com
+     # "Cannot index string with string", derrubando o backfill do arquivo
+     # todo (observado em financial-support). Checar o type ANTES de indexar.
+     | select(($trr | type) == "object")
      | ($trr.agentId // null) as $aid
      | select($aid != null)
      | ($trr.status // "") as $status_raw
@@ -473,22 +483,41 @@ def add_null(existing; delta): if delta == null then existing else ((existing //
          duration_ms: (if $derived=="indisponivel" then null else ($trr.totalDurationMs // null) end),
          source: "backfill",
          observed_at: ($rec.timestamp // null),
-         _ts_epoch: epoch($rec.timestamp)
+         _ts_epoch: epoch($rec.timestamp),
+         _start_epoch: epoch($agent_start_by_id[$tuid])
        }
    ]) as $extracted
 
 | (.waves // []) as $waves_orig
 | ($waves_orig | map({id: .id, s: epoch(.started_at), f: epoch(.finished_at)})) as $windows
 
-# Atribuicao por janela temporal: started_at <= ts < finished_at (onda
-# aberta, finished_at=null -> sem limite superior). Primeiro match vence
-# (ondas nao se sobrepoem em condicoes normais).
+# Atribuicao em DUAS regras, nesta ordem.
+#
+# (1) ENCLAUSURAMENTO — spawn_start <= wave.started_at e
+#     wave.finished_at <= spawn_end. E a topologia real do agente-00c: o
+#     command pai spawna o orquestrador, e e o orquestrador que abre e
+#     fecha a onda POR DENTRO do spawn. Logo o spawn ENVOLVE a onda.
+#
+# (2) CONTENCAO (regra antiga) — started_at <= ts < finished_at, como
+#     fallback para spawns feitos de DENTRO de uma onda ja aberta.
+#
+# So a regra (2) existia, e por isso o backfill nao cobria nada: o
+# tool_result do orquestrador chega DEPOIS de finished_at, caindo na lacuna
+# entre ondas. Medido em gamedev-training: 58 spawns, 56 janelas, 0
+# cobertos.
 | ($extracted | map(
      . as $sp
      | (reduce $windows[] as $w (null;
-         if . == null and $w.s != null and $sp._ts_epoch != null
-            and $sp._ts_epoch >= $w.s and ($w.f == null or $sp._ts_epoch < $w.f)
-         then $w.id else . end)) as $wid
+         if . == null and $w.s != null and $w.f != null
+            and $sp._start_epoch != null and $sp._ts_epoch != null
+            and $sp._start_epoch <= $w.s and $w.f <= $sp._ts_epoch
+         then $w.id else . end)) as $encl
+     | (if $encl != null then $encl
+        else (reduce $windows[] as $w (null;
+                if . == null and $w.s != null and $sp._ts_epoch != null
+                   and $sp._ts_epoch >= $w.s and ($w.f == null or $sp._ts_epoch < $w.f)
+                then $w.id else . end))
+        end) as $wid
      | $sp + {wave_id: $wid}
    )) as $assigned_all
 
@@ -515,13 +544,13 @@ def add_null(existing; delta): if delta == null then existing else ((existing //
       ($ORIG_STATE
         | .waves = (.waves | map(
             . as $w
-            | (($new_spawns | map(select(.wave_id == $w.id)) | map(del(.wave_id, ._ts_epoch)))) as $add
+            | (($new_spawns | map(select(.wave_id == $w.id)) | map(del(.wave_id, ._ts_epoch, ._start_epoch)))) as $add
             | if ($add | length) > 0 then
                 (.agent_spawns = ((.agent_spawns // []) + $add))
                 | (.agent_usage = wave_usage_of(.agent_spawns))
               else . end
           ))
-        | (wave_usage_of($new_spawns | map(del(.wave_id, ._ts_epoch)))) as $delta
+        | (wave_usage_of($new_spawns | map(del(.wave_id, ._ts_epoch, ._start_epoch)))) as $delta
         | .accumulated_metrics.agent_spawns_total = ((.accumulated_metrics.agent_spawns_total // 0) + $new_total)
         | .accumulated_metrics.agent_spawns_with_usage_total =
             ((.accumulated_metrics.agent_spawns_with_usage_total // 0) + ([$new_spawns[] | select(.status != "indisponivel")] | length))
