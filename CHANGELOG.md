@@ -5,6 +5,51 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.18.0] - 2026-07-26
+
+### Adicionado
+
+- **Consumo medido de subagentes (schema v10 da knowledge.db)**: o cstk
+  5.25.0 (feature `wave-token-metrics`) passou a persistir o uso reportado
+  pelo harness em cada spawn, agregado por onda — 9 colunas `agent_*` em
+  `waves` (tokens total/input/output/cache read/cache creation, tool uses,
+  duração e a contagem de spawns com e sem dado). O painel passa a exibir
+  esse número em **quatro lugares**: coluna `Tokens` na linha do tempo de
+  ondas (com breakdown da onda selecionada), seção
+  "Consumo de subagentes · medido" na tela de Métricas (KPI, série diária,
+  ondas mais caras), KPI no Overview e rollup em Projeto e Feature.
+- **Endpoints** `GET /metrics/agent-usage`, `GET /metrics/tokens-over-time`
+  e `GET /metrics/tokens-by-wave` (filtros `project`, `feature`, `period`).
+  Os rollups de `/projects`, `/features` e `/overview` ganham o objeto
+  `agentUsage`.
+- `WaveDTO` ganha os 9 campos `agent*` e o novo `AgentUsageRollup` (interface
+  manual + schema Zod).
+
+### Corrigido
+
+- **Painel voltava degradado (`schema-mismatch`) contra qualquer base
+  atualizada pelo cstk ≥ 5.25.0**: `DEFAULT_SCHEMA_VERSIONS` parava em `'9'`
+  e a migração v9→v10 é automática no primeiro `cstk recall --ingest`. Agora
+  aceita `'10'`.
+
+### Alterado
+
+- **Constituição do projeto emendada para 1.1.0** (Princípio III —
+  Honestidade de Métrica). A proibição original de exibir "tokens" estava
+  ancorada num fato que deixou de valer ("o harness não expõe consumo de
+  tokens"). O princípio foi reancorado, não afrouxado: token medido pode
+  ser exibido; continua proibido `$`/USD, estimativa e métrica inventada; e
+  passou a ser **obrigatório** exibir a cobertura da amostra
+  (`spawns_with_usage / spawns_total`), porque spawns em background não
+  reportam uso e um total sem denominador apresentaria parcial como
+  completo. O tooltip do Overview que afirmava "o harness não expõe tokens"
+  foi reescrito.
+- `NULL` das colunas `agent_*` **nunca** vira `0` em nenhuma camada. Os três
+  estados da fonte são preservados até a UI: não coletado (`—`), coletado
+  sem dado de uso (`s/ dado`) e medido (número, com `*` quando a amostra é
+  parcial). Bases v<10 degradam para "não coletado nesta fonte" em vez do
+  vazio genérico "sem dados para este período".
+
 ## [0.17.0] - 2026-07-24
 
 ### Adicionado
@@ -866,6 +911,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.18.0]: https://github.com/JotJunior/cstk-panel/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/JotJunior/cstk-panel/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/JotJunior/cstk-panel/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/JotJunior/cstk-panel/compare/v0.15.1...v0.16.0
