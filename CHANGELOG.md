@@ -5,6 +5,37 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.19.0] - 2026-07-26
+
+### Adicionado
+
+- **Custo real por onda chega à UI (schema v11 da knowledge.db)**: o suporte
+  anterior à v11 parava no agregado — `getOtelUsage` somava o custo, a rota
+  `/overview` mandava no payload e **nada exibia o valor** (`fmtUsd` e
+  `subagentShare` eram código morto em `Overview.tsx`). Agora:
+  - `WaveDTO` ganha os 5 campos `otel*` (interface manual + schema Zod), e
+    `listWavesByExecution` projeta as colunas — com degradação para `NULL` em
+    base v<11, como as `agent_*` da v10;
+  - novo `OtelUsageRollup` nos rollups de `/projects`, `/features` e
+    `/overview`, com o mapper `mapOtelUsageRollup`;
+  - endpoints `GET /metrics/otel-usage` e `GET /metrics/otel-cost-over-time`
+    (filtros `project`, `feature`, `period`), e `otelCostSeries` no
+    `/overview` — dias sem telemetria são **omitidos**, não viram zero;
+  - UI: KPI "Custo · real" na Visão Geral (substitui o proxy de `tool_calls`
+    quando há medição — `$` e "proxy" nunca no mesmo card), coluna `Custo` na
+    linha do tempo de ondas com breakdown da onda selecionada, painel e KPI em
+    Métricas, e rollup em Projeto e Feature.
+- Componente `OtelUsage` com os estados honestos da fonte: `fmtUsd` preserva
+  ordem de grandeza abaixo de 1 centavo (`$0.0006`, não `$0.00`), ausência de
+  telemetria vira `—` (nunca `$0`) e todo total vem com a cobertura
+  `N de M ondas medidas`.
+
+### Corrigido
+
+- O tip do KPI de tokens citava `cstk ≥ 5.28.0` para o schema v11; a versão
+  que **indexa** o dado na knowledge.db é a 5.30.0 (a 5.28.0 só o grava no
+  `state.json`). Uma base ingerida por 5.28.0/5.29.0 fica em v10.
+
 ## [0.18.0] - 2026-07-26
 
 ### Adicionado
@@ -911,6 +942,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.19.0]: https://github.com/JotJunior/cstk-panel/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/JotJunior/cstk-panel/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/JotJunior/cstk-panel/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/JotJunior/cstk-panel/compare/v0.16.0...v0.16.1
