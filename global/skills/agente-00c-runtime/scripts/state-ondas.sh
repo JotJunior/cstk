@@ -294,6 +294,51 @@ _so_agent_usage_read() {
   esac
 }
 
+# ---------- Telemetria OTel (consumo real da onda) ----------
+#
+# Complementa (nao substitui) o sidecar de agent-usage. O hook
+# posttooluse-agent-usage.sh so enxerga o que o spawn devolve, e o spawn do
+# orquestrador ENVOLVE a onda — seu tool_result chega depois do `end`, e o
+# consumo dele nunca era capturado. Os contadores OTel sao incrementados a
+# cada API request, entao um snapshot no start e outro no end fecham essa
+# lacuna independentemente de quando o spawn retorna.
+#
+# 100% best-effort: sem `CLAUDE_CODE_ENABLE_TELEMETRY=1` +
+# `OTEL_METRICS_EXPORTER=prometheus` no ambiente, tudo isto e no-op e a onda
+# roda exatamente como antes.
+
+_so_otel_script() { printf '%s/otel-usage.sh\n' "$(_so_self_dir)"; }
+
+# _so_otel_snapshot DIR PHASE — nunca falha a onda.
+_so_otel_snapshot() {
+  _ots=$(_so_otel_script)
+  [ -f "$_ots" ] || return 0
+  sh "$_ots" snapshot --state-dir "$1" --phase "$2" >/dev/null 2>&1 || :
+  return 0
+}
+
+# _so_otel_delta DIR -> stdout: JSON do consumo da onda, ou `null`.
+# `null` significa AUSENTE (telemetria desligada, snapshot faltando,
+# processo trocou no meio) — nunca zero fabricado.
+_so_otel_delta() {
+  _ots=$(_so_otel_script)
+  [ -f "$_ots" ] || { printf 'null\n'; return 0; }
+  _od=$(sh "$_ots" delta --state-dir "$1" 2>/dev/null) || _od=""
+  # Valida como JSON com jq. NAO usar glob de printaveis (`*[!\ -~]*`):
+  # ele casa newline, entao qualquer JSON multi-linha virava `null`.
+  if [ -z "$_od" ] || ! printf '%s' "$_od" | jq -e . >/dev/null 2>&1; then
+    printf 'null\n'
+  else
+    printf '%s\n' "$_od"
+  fi
+}
+
+# _so_otel_reset DIR — descarta os snapshots da onda encerrada para nao
+# casar o start de uma onda com o end da seguinte.
+_so_otel_reset() {
+  rm -f -- "$1/otel-start.tsv" "$1/otel-end.tsv" 2>/dev/null || :
+}
+
 # ---------- Subcomandos ----------
 
 _so_cmd_start() {
@@ -354,6 +399,13 @@ _so_cmd_start() {
   # ausente (git-commit cai no fail-closed existente, sem regressao no
   # ciclo de vida da onda).
   _so_start_snapshot_baseline "$_sdir"
+
+  # Baseline de consumo real (telemetria OTel). Os contadores sao
+  # cumulativos por sessao, entao o delta start->end e o consumo DESTA
+  # onda — inclusive o do proprio orquestrador, que o sidecar de spawn
+  # nunca conseguiu capturar. No-op sem telemetria ligada.
+  _so_otel_reset "$_sdir"
+  _so_otel_snapshot "$_sdir" start
 
   printf '%s\n' "$_id"
 }
@@ -461,6 +513,13 @@ $2"; shift 2 ;;
   # agrega o que foi de fato observado, nunca fabrica o resto).
   _au_spawns_json=$(_so_agent_usage_read "$_sdir")
 
+  # Consumo real da onda via OTel. O snapshot final tem de sair ANTES do
+  # write — e enquanto o processo Claude Code ainda vive, ja que o exporter
+  # Prometheus e in-process e some junto com ele.
+  _so_otel_snapshot "$_sdir" end
+  _otel_json=$(_so_otel_delta "$_sdir")
+  case "$_otel_json" in ''|null) _otel_json="null" ;; esac
+
   # .next_instruction gravado DENTRO do mesmo write atomico do fechamento
   # da onda. Antes exigia um `state-rw.sh set` separado, e como `end`
   # tambem escreve no state.json, seguir a ordem literal backup -> hash ->
@@ -474,6 +533,7 @@ $2"; shift 2 ;;
 
   _new=$(mktemp) || _so_die "mktemp falhou" 1
   jq \
+    --argjson otel "$_otel_json" \
     --argjson next_instr "$_next_instr_json" \
     --arg now "$_now" \
     --arg motivo "$_motivo" \
@@ -510,6 +570,7 @@ $2"; shift 2 ;;
         | .executed_stages += $etapas
         | .agent_usage = $au
         | .agent_spawns = $sp
+        | .otel_usage = $otel
       ))
       | .accumulated_metrics.waves_total = ((.accumulated_metrics.waves_total // 0) + 1)
       | .accumulated_metrics.tool_calls_total = ((.accumulated_metrics.tool_calls_total // 0) + $tc)
@@ -535,6 +596,7 @@ $2"; shift 2 ;;
   # Sidecares consumidos por esta onda; zeram para nao vazar para a proxima.
   _so_ticks_reset "$_sdir"
   _so_agent_usage_reset "$_sdir"
+  _so_otel_reset "$_sdir"
   _so_log "end: onda finalizada (motivo=$_motivo, wallclock=${_wc}s, tool_calls=$_tc)"
 }
 

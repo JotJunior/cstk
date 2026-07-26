@@ -256,6 +256,36 @@ anything:
 guard-hooks-status.sh check --projeto-alvo-path .
 ```
 
+### Real per-wave cost (`otel-usage.sh`)
+
+Claude Code's native OpenTelemetry counters are incremented **on every API
+request** and carry a `query_source` label (`main` / `subagent` /
+`auxiliary`). A snapshot at wave start and another at wave end gives the
+exact consumption of that wave — including the orchestrator's own spend,
+which the spawn hook can never capture (the orchestrator's spawn *encloses*
+the wave, so its `tool_result` arrives after the wave is already closed).
+
+Opt in with two environment variables — **no API key, no Admin key, no
+organization**; works on subscription plans:
+
+```bash
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_METRICS_EXPORTER=prometheus
+```
+
+`state-ondas.sh start`/`end` then populate `.waves[N].otel_usage`
+automatically. Without the variables everything is a no-op and the field is
+`null` — **absent, never a fabricated zero**.
+
+Measured on a delegated task: `main` $0.156, `subagent` $0.141,
+`auxiliary` $0.001 — the subagent was ~47% of the spend, exactly the slice
+the panel used to show as `—`.
+
+The exporter binds `127.0.0.1:9464`; nothing leaves the machine. Identity
+labels (`user_email`, `user_id`, `user_account_*`, `organization_id`) are
+stripped at snapshot time and never reach disk. Override the endpoint with
+`CSTK_OTEL_ENDPOINT` if you changed the exporter port.
+
 **Interactive mode** (numbered selector in a TTY) and **dry-run**:
 
 ```bash

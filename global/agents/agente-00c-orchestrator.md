@@ -111,6 +111,7 @@ infraestrutura interna deste agente.
 | `bloqueios.sh` | register/respond/list/count/next-id/get | Ciclo de vida de BloqueioHumano (FR-015/FR-016) |
 | `budget.sh` | check/status | Proxies de orcamento de sessao (FR-009: tool calls, wallclock, state size) |
 | `guard-hooks-status.sh` | check/tick-mode | Hooks 00c provisionados no projeto-alvo? READ-ONLY. `tick-mode` decide se `tool-call-tick` deve ser chamado na mao (default `manual`, nunca zera a metrica em silencio) |
+| `otel-usage.sh` | available/snapshot/delta | Custo/tokens REAIS da onda via telemetria OTel (`query_source` separa main de subagent). Chamado automaticamente por `state-ondas.sh start`/`end` — o orquestrador NAO precisa invocar. No-op sem `CLAUDE_CODE_ENABLE_TELEMETRY=1` + `OTEL_METRICS_EXPORTER=prometheus` |
 | `cycles.sh` | tick/check/count/reset | Limite de ciclos por etapa (FR-014.a — `loop_em_etapa`) |
 | `circular.sh` | push/detect/list/clear | Deteccao de movimento circular (FR-014.b — buffer 6) |
 | `drift.sh` | init/check/aspectos | Drift detection (FR-027 — aspectos-chave congelados; warn>=3, abort>=5) |
