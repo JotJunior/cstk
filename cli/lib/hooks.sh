@@ -167,6 +167,10 @@ print_paste_block() {
 #      calls por onda, sidecar tool-call-ticks.log) quando presente no
 #      catalogo. BEST-EFFORT: ausencia (catalogo antigo) ou falha de cp
 #      NAO muda a palavra de estado nem aborta — e metrica, nao guarda.
+#   1c. Copia <src_dir>/posttooluse-agent-usage.sh (metrica de uso de
+#      tokens/tool-uses/duracao por spawn de subagente, sidecar
+#      wave-agent-usage.jsonl — wave-token-metrics FASE 2) quando presente
+#      no catalogo. Mesma politica BEST-EFFORT do item 1b.
 #   2. Mescla <src_dir>/settings.snippet.json em
 #      <dest_claude_root>/settings.json via merge_settings (jq) ou
 #      print_paste_block (fallback sem jq) — mesma mecanica ja testada dos
@@ -218,11 +222,15 @@ apply_guard_hooks() {
   fi
 
   _agh_tick_script="$_agh_src/posttooluse-tool-call-tick.sh"
+  _agh_usage_script="$_agh_src/posttooluse-agent-usage.sh"
 
   if [ "$_agh_dry_run" = 1 ]; then
     log_info "[dry-run] guard-hooks: copiaria $_agh_hook_script -> $_agh_hooks_dst/pretooluse-bash-guard.sh"
     if [ -f "$_agh_tick_script" ]; then
       log_info "[dry-run] guard-hooks: copiaria $_agh_tick_script -> $_agh_hooks_dst/posttooluse-tool-call-tick.sh"
+    fi
+    if [ -f "$_agh_usage_script" ]; then
+      log_info "[dry-run] guard-hooks: copiaria $_agh_usage_script -> $_agh_hooks_dst/posttooluse-agent-usage.sh"
     fi
     if [ -f "$_agh_snippet" ]; then
       if detect_jq; then
@@ -259,6 +267,17 @@ apply_guard_hooks() {
       log_info "hooks: posttooluse-tool-call-tick.sh provisionado em $_agh_hooks_dst"
     else
       log_warn "hooks: cp de posttooluse-tool-call-tick.sh falhou — metrica de tool calls indisponivel (guard intacto)"
+    fi
+  fi
+
+  # Hook de metrica de uso de tokens por spawn (best-effort, mesma politica
+  # do item acima — wave-token-metrics FASE 2).
+  if [ -f "$_agh_usage_script" ]; then
+    if cp -- "$_agh_usage_script" "$_agh_hooks_dst/posttooluse-agent-usage.sh" 2>/dev/null; then
+      chmod +x -- "$_agh_hooks_dst/posttooluse-agent-usage.sh" 2>/dev/null || :
+      log_info "hooks: posttooluse-agent-usage.sh provisionado em $_agh_hooks_dst"
+    else
+      log_warn "hooks: cp de posttooluse-agent-usage.sh falhou — metrica de uso de tokens indisponivel (guard intacto)"
     fi
   fi
 

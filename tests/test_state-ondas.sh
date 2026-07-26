@@ -990,4 +990,152 @@ scenario_end_sem_sidecar_usa_so_o_campo() {
   [ "$_tc" = 1 ] || { _fail "tool_calls" "sem sidecar, esperado 1 (so campo), obtido $_tc"; return 1; }
 }
 
+# ==== Sidecar de uso de agente (wave-agent-usage.jsonl, wave-token-metrics FASE 3) ====
+
+_wau_write_sidecar() {
+  # $1 = state-dir; escreve 3 SpawnUsage: completo + parcial + indisponivel.
+  cat > "$1/wave-agent-usage.jsonl" <<'JSONL'
+{"agent_id":"a1","agent_type":"x","status":"completo","model":"sonnet","models_used":null,"total_tokens":100,"input_tokens":60,"output_tokens":40,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_count":5,"duration_ms":1000,"source":"live","observed_at":"t"}
+{"agent_id":"a2","agent_type":"y","status":"parcial","model":"sonnet","models_used":null,"total_tokens":50,"input_tokens":null,"output_tokens":null,"cache_read_input_tokens":null,"cache_creation_input_tokens":null,"tool_use_count":null,"duration_ms":null,"source":"live","observed_at":"t"}
+{"agent_id":"a3","agent_type":"z","status":"indisponivel","model":"nao-aplicavel","models_used":null,"total_tokens":null,"input_tokens":null,"output_tokens":null,"cache_read_input_tokens":null,"cache_creation_input_tokens":null,"tool_use_count":null,"duration_ms":null,"source":"live","observed_at":"t"}
+JSONL
+}
+
+scenario_end_agrega_sidecar_agent_usage_misto() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  _wau_write_sidecar "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+
+  _total=$(jq -r '.waves[-1].agent_usage.spawns_total' "$_sd/state.json")
+  [ "$_total" = 3 ] || { _fail "spawns_total" "esperado 3, obtido $_total"; return 1; }
+  _with_usage=$(jq -r '.waves[-1].agent_usage.spawns_with_usage' "$_sd/state.json")
+  [ "$_with_usage" = 2 ] || { _fail "spawns_with_usage" "esperado 2 (completo+parcial), obtido $_with_usage"; return 1; }
+  _unavail=$(jq -r '.waves[-1].agent_usage.spawns_unavailable' "$_sd/state.json")
+  [ "$_unavail" = 1 ] || { _fail "spawns_unavailable" "esperado 1, obtido $_unavail"; return 1; }
+  _tot_tok=$(jq -r '.waves[-1].agent_usage.total_tokens' "$_sd/state.json")
+  [ "$_tot_tok" = 150 ] || { _fail "total_tokens" "esperado 150 (100+50), obtido $_tot_tok"; return 1; }
+  _spawns_n=$(jq -r '.waves[-1].agent_spawns | length' "$_sd/state.json")
+  [ "$_spawns_n" = 3 ] || { _fail "agent_spawns" "esperado 3 entradas brutas, obtido $_spawns_n"; return 1; }
+  return 0
+}
+
+scenario_end_agent_usage_sem_sidecar_produz_null() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  _au=$(jq -r '.waves[-1].agent_usage' "$_sd/state.json")
+  [ "$_au" = "null" ] || { _fail "agent_usage" "esperado null (sem sidecar), obtido $_au"; return 1; }
+  _sp=$(jq -c '.waves[-1].agent_spawns' "$_sd/state.json")
+  [ "$_sp" = "[]" ] || { _fail "agent_spawns" "esperado [], obtido $_sp"; return 1; }
+  return 0
+}
+
+scenario_end_agent_usage_ignora_linhas_corrompidas() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  # 2 linhas validas + 1 corrompida no meio: agregacao MUST descartar a
+  # corrompida sem abortar o `end` inteiro (Principio VI — nunca fabrica,
+  # mas tambem nunca falha por causa de dado ilegivel de terceiros).
+  cat > "$_sd/wave-agent-usage.jsonl" <<'JSONL'
+{"agent_id":"a1","agent_type":"x","status":"completo","model":"sonnet","models_used":null,"total_tokens":100,"input_tokens":60,"output_tokens":40,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_count":5,"duration_ms":1000,"source":"live","observed_at":"t"}
+{ isto nao e json valido
+{"agent_id":"a2","agent_type":"y","status":"completo","model":"sonnet","models_used":null,"total_tokens":25,"input_tokens":10,"output_tokens":15,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_count":2,"duration_ms":300,"source":"live","observed_at":"t"}
+JSONL
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "linha corrompida nao deveria abortar end: $_CAPTURED_STDERR"; return 1; }
+  _total=$(jq -r '.waves[-1].agent_usage.spawns_total' "$_sd/state.json")
+  [ "$_total" = 2 ] || { _fail "spawns_total" "esperado 2 (linha corrompida descartada), obtido $_total"; return 1; }
+  _tot_tok=$(jq -r '.waves[-1].agent_usage.total_tokens' "$_sd/state.json")
+  [ "$_tot_tok" = 125 ] || { _fail "total_tokens" "esperado 125 (100+25), obtido $_tot_tok"; return 1; }
+  return 0
+}
+
+scenario_end_agent_usage_null_nunca_fabrica_zero() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  # Todos indisponivel: spawns_with_usage=0, mas spawns_total>0 -> agent_usage
+  # NAO deve ser null (houve spawn); campos numericos MUST ser null, nunca 0.
+  cat > "$_sd/wave-agent-usage.jsonl" <<'JSONL'
+{"agent_id":"a1","agent_type":"x","status":"indisponivel","model":"nao-aplicavel","models_used":null,"total_tokens":null,"input_tokens":null,"output_tokens":null,"cache_read_input_tokens":null,"cache_creation_input_tokens":null,"tool_use_count":null,"duration_ms":null,"source":"live","observed_at":"t"}
+JSONL
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  _au=$(jq -r '.waves[-1].agent_usage' "$_sd/state.json")
+  [ "$_au" != "null" ] || { _fail "agent_usage" "spawns_total=1 (mesmo indisponivel) nao deveria produzir agent_usage null"; return 1; }
+  _tot_tok=$(jq -r '.waves[-1].agent_usage.total_tokens' "$_sd/state.json")
+  [ "$_tot_tok" = "null" ] || { _fail "total_tokens" "esperado null (nao observado), NUNCA 0 fabricado, obtido $_tot_tok"; return 1; }
+  _with_usage=$(jq -r '.waves[-1].agent_usage.spawns_with_usage' "$_sd/state.json")
+  [ "$_with_usage" = 0 ] || { _fail "spawns_with_usage" "esperado 0, obtido $_with_usage"; return 1; }
+  return 0
+}
+
+scenario_start_reseta_sidecar_agent_usage_residual() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  # Residuo de spawns + sentinela de cap do ciclo anterior.
+  printf '{"agent_id":"residuo"}\n' > "$_sd/wave-agent-usage.jsonl"
+  : > "$_sd/.wave-agent-usage-cap-warned"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/wave-agent-usage.jsonl" ] \
+    && { _fail "sidecar" "start deveria zerar wave-agent-usage.jsonl (janela = start->end)"; return 1; }
+  [ -f "$_sd/.wave-agent-usage-cap-warned" ] \
+    && { _fail "sentinela" "start deveria remover o sentinela de cap-warned residual"; return 1; }
+  return 0
+}
+
+scenario_end_reseta_sidecar_agent_usage_consumido() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  _wau_write_sidecar "$_sd"
+  : > "$_sd/.wave-agent-usage-cap-warned"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/wave-agent-usage.jsonl" ] \
+    && { _fail "sidecar" "end deveria remover o sidecar consumido"; return 1; }
+  [ -f "$_sd/.wave-agent-usage-cap-warned" ] \
+    && { _fail "sentinela" "end deveria remover o sentinela de cap-warned consumido"; return 1; }
+  return 0
+}
+
+scenario_end_acumula_accumulated_metrics_agent_entre_ondas() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  # Onda 1: com sidecar (contribui dado real).
+  capture "$SCRIPT" start --state-dir "$_sd"
+  _wau_write_sidecar "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end onda1" "$_CAPTURED_STDERR"; return 1; }
+
+  # Onda 2: SEM sidecar (nenhum spawn) — acumulado nao deve ser corrompido
+  # com 0 fabricado; total de tokens permanece o da onda 1.
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end onda2" "$_CAPTURED_STDERR"; return 1; }
+
+  _spawns_total=$(jq -r '.accumulated_metrics.agent_spawns_total' "$_sd/state.json")
+  [ "$_spawns_total" = 3 ] || { _fail "agent_spawns_total" "esperado 3 (so onda1 contribuiu), obtido $_spawns_total"; return 1; }
+  _tokens_total=$(jq -r '.accumulated_metrics.agent_tokens_total' "$_sd/state.json")
+  [ "$_tokens_total" = 150 ] || { _fail "agent_tokens_total" "esperado 150 (onda2 nao fabrica 0), obtido $_tokens_total"; return 1; }
+
+  # Onda 3: novo sidecar -> acumulado soma sobre o total anterior.
+  capture "$SCRIPT" start --state-dir "$_sd"
+  _wau_write_sidecar "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end onda3" "$_CAPTURED_STDERR"; return 1; }
+  _tokens_total3=$(jq -r '.accumulated_metrics.agent_tokens_total' "$_sd/state.json")
+  [ "$_tokens_total3" = 300 ] || { _fail "agent_tokens_total onda3" "esperado 300 (150+150), obtido $_tokens_total3"; return 1; }
+  _spawns_with_usage_total=$(jq -r '.accumulated_metrics.agent_spawns_with_usage_total' "$_sd/state.json")
+  [ "$_spawns_with_usage_total" = 4 ] || { _fail "agent_spawns_with_usage_total" "esperado 4 (2+0+2), obtido $_spawns_with_usage_total"; return 1; }
+  return 0
+}
+
 run_all_scenarios

@@ -5,6 +5,48 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.25.0] - 2026-07-26
+
+Métricas de consumo por spawn de subagente (feature `wave-token-metrics`,
+PR #46): os totais de tokens/tool-uses/duração que o harness registra ao fim
+de cada spawn agora são capturados, agregados por onda e expostos nos
+relatórios — fechando o gap "quanto custou cada onda e em qual modelo".
+
+### Added
+
+- **Hook `PostToolUse` `posttooluse-agent-usage.sh`** (agente-00c-runtime):
+  captura o `tool_response` de spawns da tool `Agent` (totalTokens + breakdown
+  input/output/cache-read/cache-creation, tool uses, duração, modelo) num
+  sidecar append-only `wave-agent-usage.jsonl` — fail-open absoluto, permissão
+  `0600`, cap de 500 linhas, nunca toca o `state.json`; spawns em background
+  (`async_launched`, ~50% dos casos reais) viram `indisponivel` (`null` ≠ `0`,
+  nunca estimado — Princípio VI). Provisionado por `apply_guard_hooks()`.
+- **Agregação por onda**: `state-ondas.sh start/end` consome o sidecar →
+  `.waves[N].agent_usage` + `.waves[N].agent_spawns[]` +
+  `.accumulated_metrics.agent_*`, com `spawns_total` separado de
+  `spawns_with_usage` e resiliência a linhas corrompidas.
+- **`wave-usage-report.sh`** (novo helper read-only): `aggregate` (Markdown
+  canônico + `--json`, distribuição de tokens por modelo incluindo
+  `nao-aplicavel`) e `backfill` (reconstrói métricas de execuções passadas a
+  partir do transcript JSONL, correlacionando `tool_use`↔`toolUseResult` via
+  `tool_use_id`; opt-in, idempotente, exit 3 quando sem cobertura).
+- **knowledge.db v9→v10**: 9 colunas `agent_*` na tabela `waves`; migração
+  idempotente; `--ingest`/`--reindex` leem `.waves[].agent_usage` com retrofit
+  `NULL` para dados antigos.
+- **Consumo nos relatórios**: `report.sh` §1/§2 (linhas de spawns/tokens/
+  cobertura da métrica) e `review-task` §4.5 (cruzamento custo×roteamento —
+  join `wave-usage-report` × `model-routing-report` por onda).
+- Testes: `tests/test_posttooluse-agent-usage.sh` (18 cenários) +
+  `tests/test_wave-usage-report.sh` (31) + extensões em `test_state-ondas.sh`
+  (+9), `test_report.sh` (+3), `tests/cstk/test_recall.sh` (+4) e
+  `tests/cstk/test_hooks.sh` (+2).
+
+### Changed
+
+- `docs/specs/wave-token-metrics/` — spec/plan/contratos/checklists/tasks da
+  feature (pipeline feature-00c completa: 14 ondas, 76 decisões auditadas,
+  backlog 59/59).
+
 ## [5.24.0] - 2026-07-24
 
 Documentação passa a ter o **inglês como idioma principal**, com a leitura em
@@ -3906,6 +3948,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.25.0]: https://github.com/JotJunior/cstk/releases/tag/v5.25.0
 [5.24.0]: https://github.com/JotJunior/cstk/releases/tag/v5.24.0
 [5.23.0]: https://github.com/JotJunior/cstk/releases/tag/v5.23.0
 [5.22.0]: https://github.com/JotJunior/cstk/releases/tag/v5.22.0

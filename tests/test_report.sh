@@ -357,6 +357,67 @@ scenario_emit_aborta_sem_secrets_filter() {
   assert_stderr_contains "secrets-filter" || return 1
 }
 
+# ---------- Secoes 1/2 estendidas com consumo de subagente (FASE 4.2 de
+# wave-token-metrics, contracts/wave-usage-report.md §6) ----------
+
+scenario_generate_secao1_spawns_tokens_quando_coletado() {
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  # injeta agent_usage na onda-001 (equivalente ao que state-ondas.sh end
+  # gravaria a partir do sidecar do hook posttooluse-agent-usage.sh)
+  capture jq '.waves[0].agent_usage = {"spawns_total":3,"spawns_with_usage":2,"spawns_unavailable":1,"total_tokens":254000,"input_tokens":4,"output_tokens":1975,"cache_read_input_tokens":250900,"cache_creation_input_tokens":1049,"tool_use_count":72,"duration_ms":923000}' "$_sd/state.json"
+  printf '%s' "$_CAPTURED_STDOUT" > "$_sd/state.json.tmp" && mv "$_sd/state.json.tmp" "$_sd/state.json"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "| Spawns de subagente | 3 (2 com uso; 1 indisponiveis) |" || return 1
+  assert_stdout_contains "| Tokens totais (observados) | 254.0k |" || return 1
+  assert_stdout_contains "| Cobertura da metrica | 66.6% |" || return 1
+  # secao 2: colunas novas + linha da onda-001 com dado real
+  assert_stdout_contains "| Onda | Inicio | Fim | Etapas | Tool calls | Wallclock | Spawns | Tokens | Termino |" || return 1
+  assert_stdout_contains "| onda-001 |" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *"3 (2 c/uso) | 254.0k"*) : ;;
+    *) _fail "generate secao2" "linha da onda sem spawns/tokens esperados"; return 1 ;;
+  esac
+}
+
+scenario_generate_distingue_zero_spawns_de_nao_coletado() {
+  # SC-004/FR-009 (Principio VI): "0 spawns" (dado real observado) e
+  # "metrica nao coletada" (hook nunca provisionado/nenhum spawn tentado)
+  # sao estados DIFERENTES e nao podem ser confundidos.
+  #
+  # Aqui simulamos o segundo caso: wave-usage-report.sh roda com sucesso,
+  # mas nenhuma onda tem agent_usage != null (metric_collected=false) ->
+  # secao 1 MUST dizer "nao coletado", NUNCA fabricar "0".
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "| Spawns de subagente | nao coletado nesta execucao |" || return 1
+  assert_stdout_contains "| Tokens totais (observados) | nao coletado nesta execucao |" || return 1
+  assert_stdout_contains "| Cobertura da metrica | nao coletado nesta execucao |" || return 1
+  # secao 2: onda sem agent_usage -> "indisponivel", nunca "0"
+  assert_stdout_contains "indisponivel | indisponivel | etapa_concluida_avancando |" || return 1
+}
+
+scenario_generate_wave_usage_report_ausente_degrada_graciosamente() {
+  # Defesa em profundidade: se wave-usage-report.sh nao esta ao lado de
+  # report.sh (skill parcialmente instalada), generate NUNCA aborta —
+  # degrada para "nao coletado nesta execucao" (nunca 0 fabricado).
+  _iso="$TMPDIR_TEST/iso-wu"
+  mkdir -p "$_iso"
+  cp "$SCRIPT" "$_iso/report.sh"
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$_iso/report.sh" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate sem wave-usage-report" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "| Spawns de subagente | nao coletado nesta execucao |" || return 1
+  assert_stdout_contains "## 2. Linha do Tempo" || return 1
+}
+
 scenario_stack_final_condicional_ao_status() {
   # Regressao: 'Stack final' nao pode afirmar 'abortada' numa execucao
   # concluida sem suggested_stack (caso feature-00c, herda stack do projeto).

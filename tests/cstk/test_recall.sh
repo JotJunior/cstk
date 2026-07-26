@@ -18,6 +18,7 @@
 #   13b payload adversarial de injecao na busca (A05/CWE-89)
 #   13c payload adversarial de injecao na ingestao
 #   14 concorrencia WAL best-effort (FR-016)
+#   15 permissao 0600 no knowledge.db criado do zero (CHK017, wave-token-metrics)
 #
 # DB de teste sempre em $TMPDIR_TEST (--db), nunca o indice global.
 # Fixtures de bytes crus (NUL) usam escape OCTAL \000, nunca hex \xHH.
@@ -395,6 +396,50 @@ scenario_14_concorrencia_wal() {
   [ "${_feats:-0}" -ge 1 ] || { _fail "concorrencia conteudo" "nenhuma feature ingerida"; return 1; }
 }
 
+# _file_mode PATH -> imprime o modo octal do arquivo, portavel BSD/GNU.
+_file_mode() {
+  stat -f '%Lp' -- "$1" 2>/dev/null || stat -c '%a' -- "$1" 2>/dev/null
+}
+
+# =========================================================================
+# Cenario 15 — Permissao 0600 no knowledge.db criado do zero (CHK017,
+# feature wave-token-metrics, subtarefas 1.2.4/1.2.6). Cobre tanto --ingest
+# (recall_apply_schema cria o arquivo pela primeira vez) quanto --reindex
+# (apaga e recria do zero) e a normalizacao best-effort de um DB PRE-EXISTENTE
+# com permissao mais aberta (recall_normalize_db_perms nao falha o caller).
+# =========================================================================
+scenario_15_permissao_0600_knowledge_db() {
+  _have_deps || return 0
+  # HOME isolado em $TMPDIR_TEST (via _rc_home, nao _rc): --ingest/--reindex
+  # tambem varrem ~/.claude/projects/*/memory/ para memorias (recall_mode_ingest/
+  # recall_mode_reindex); sem isolar HOME, a varredura cai na arvore REAL do
+  # operador (potencialmente grande) em vez do tmpdir do teste — mesmo padrao
+  # ja usado alhures neste arquivo (scenarios TP1-TP3, _rc_home_fake).
+  # (a) --ingest cria o DB do zero -> 0600.
+  _write_state "$TMPDIR_TEST/perm1" "/home/u/permproj" "permfeat"
+  _p1_db="$TMPDIR_TEST/perm1.db"
+  capture _rc_home "$TMPDIR_TEST" --ingest --state-dir "$TMPDIR_TEST/perm1" --db "$_p1_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "perm ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  _p1_mode=$(_file_mode "$_p1_db")
+  [ "$_p1_mode" = "600" ] || { _fail "perm ingest modo" "esperado 600, obtido '$_p1_mode'"; return 1; }
+
+  # (b) --reindex apaga e recria do zero -> 0600.
+  capture _rc_home "$TMPDIR_TEST" --reindex --states-root "$TMPDIR_TEST/perm1" --db "$_p1_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "perm reindex exit" "$_CAPTURED_EXIT"; return 1; }
+  _p1_mode2=$(_file_mode "$_p1_db")
+  [ "$_p1_mode2" = "600" ] || { _fail "perm reindex modo" "esperado 600, obtido '$_p1_mode2'"; return 1; }
+
+  # (c) DB pre-existente com permissao mais aberta -> normalizado, sem falhar.
+  _p2_db="$TMPDIR_TEST/perm2.db"
+  : > "$_p2_db"
+  chmod 644 "$_p2_db" 2>/dev/null || { _fail "perm setup chmod 644" "falhou"; return 1; }
+  _write_state "$TMPDIR_TEST/perm2" "/home/u/permproj2" "permfeat2"
+  capture _rc_home "$TMPDIR_TEST" --ingest --state-dir "$TMPDIR_TEST/perm2" --db "$_p2_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "perm normalizacao exit" "$_CAPTURED_EXIT"; return 1; }
+  _p2_mode=$(_file_mode "$_p2_db")
+  [ "$_p2_mode" = "600" ] || { _fail "perm normalizacao modo" "esperado 600, obtido '$_p2_mode'"; return 1; }
+}
+
 # =========================================================================
 # Cenario NUL — rejeicao na busca / strip na ingestao (dec-015/016)
 # Fixture de byte cru NUL via escape OCTAL \000 (NUNCA hex).
@@ -558,9 +603,9 @@ SQL
   # Aplica schema v7 via funcao real (caminho de recall_apply_schema).
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
     _fail "apply schema v7" "recall_apply_schema falhou"; return 1; }
-  # (a) schema_version virou a corrente (9 — v9 executions-target-path).
+  # (a) schema_version virou a corrente (10 — v10 wave-token-metrics).
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "9" ] || { _fail "schema_version" "esperado 9, obtido $_sv"; return 1; }
+  [ "$_sv" = "10" ] || { _fail "schema_version" "esperado 10, obtido $_sv"; return 1; }
   # (b) tabela bloqueios DROPADA; blocks (EN) criada no lugar.
   _hasbloq=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='bloqueios'")
   [ "$_hasbloq" = "0" ] || { _fail "bloqueios dropada" "tabela pt-BR bloqueios sobreviveu"; return 1; }
@@ -605,7 +650,7 @@ scenario_m11b_v7_reindex_repopula() {
   _v7db="$TMPDIR_TEST/v7.db"
   _rc --reindex --states-root "$TMPDIR_TEST/rxv7" --db "$_v7db" >/dev/null 2>&1
   _sv=$(sqlite3 "$_v7db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "9" ] || { _fail "reindex schema corrente" "esperado schema_version 9, obtido $_sv"; return 1; }
+  [ "$_sv" = "10" ] || { _fail "reindex schema corrente" "esperado schema_version 10, obtido $_sv"; return 1; }
   # decisions repopuladas em EN (2 decisoes do _write_state).
   _n=$(sqlite3 "$_v7db" "SELECT count(*) FROM decisions WHERE feature='featV7'")
   [ "$_n" = "2" ] || { _fail "reindex repopula" "esperado 2 decisoes, obtido $_n"; return 1; }
@@ -627,7 +672,7 @@ scenario_m12_ddl_idempotente() {
   sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p','f','w','e','t','dec-keep','keep','now')"
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "9" ] || { _fail "schema estavel" "esperado 9 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "10" ] || { _fail "schema estavel" "esperado 10 apos 2x, obtido $_sv"; return 1; }
   _keep=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-keep'")
   [ "$_keep" = "1" ] || { _fail "idempotente sem re-drop" "linha sumiu: 2o apply re-dropou ($_keep)"; return 1; }
 }
@@ -1824,10 +1869,11 @@ scenario_b11_ddl_tasks_events() {
   assert_exit 0 _rc --ingest --state-dir "$TMPDIR_TEST/featB" --db "$TMPDIR_TEST/k.db" || return 1
   _has=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('tasks','events')")
   [ "$_has" = "2" ] || { _fail "DDL tasks/events" "esperado 2 tabelas, obtido $_has"; return 1; }
-  # schema_version = 9 (executions-target-path: coluna target_project_path em
-  # executions; v8 recall-worktree-identity: coluna session em executions/waves).
+  # schema_version = 10 (wave-token-metrics: 9 colunas agent_* em waves;
+  # v9 executions-target-path: coluna target_project_path em executions; v8
+  # recall-worktree-identity: coluna session em executions/waves).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "9" ] || { _fail "schema_version" "esperado 9, obtido $_sv"; return 1; }
+  [ "$_sv" = "10" ] || { _fail "schema_version" "esperado 10, obtido $_sv"; return 1; }
   # tasks tem a coluna title (EN, DDL fresco).
   _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='title'")
   [ "$_hascol" = "1" ] || { _fail "coluna title" "esperado 1, obtido $_hascol"; return 1; }
@@ -2140,10 +2186,10 @@ scenario_m1_schema_memories_table_exists() {
     *memories*) : ;;
     *) _fail "memories table ausente" "$_tables"; return 1 ;;
   esac
-  # schema_version deve ser 9 (executions-target-path: coluna target_project_path)
+  # schema_version deve ser 10 (wave-token-metrics: colunas agent_* em waves)
   _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
     "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "9" ] || { _fail "schema_version errado" "esperado 9, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "10" ] || { _fail "schema_version errado" "esperado 10, obtido '$_ver'"; return 1; }
 }
 
 # M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
@@ -2185,10 +2231,10 @@ scenario_m4_neg_context_type_invalido() {
 }
 
 # M1-migration — DB v3 pre-existente (pt-BR) e migrado pela cadeia completa
-# v3 -> ... -> v9: tabelas renomeadas dropadas+recriadas EN (drop v7),
+# v3 -> ... -> v10: tabelas renomeadas dropadas+recriadas EN (drop v7),
 # memories/suggestions criadas, e o ingest subsequente repopula decisions em
 # EN (o derivado legacy do v3 e descartado pelo drop v7, mas o ingest do
-# state.json o reconstroi). schema_version final = 9.
+# state.json o reconstroi). schema_version final = 10.
 scenario_m1_migration_v3_to_current() {
   _have_deps || return 0
   # Criar um DB v3 com schema pt-BR antigo (sem memories) simulando pre-existente
@@ -2229,10 +2275,11 @@ scenario_m1_migration_v3_to_current() {
   _dcols=$(sqlite3 "$_v3db" "SELECT group_concat(name,',') FROM pragma_table_info('decisions')")
   case ",$_dcols," in *,choice,*) : ;; *) _fail "migration: decisions nao-EN" "$_dcols"; return 1 ;; esac
   case ",$_dcols," in *,escolha,*|*,execucao_id,*) _fail "migration: decisions pt-BR leak" "$_dcols"; return 1 ;; esac
-  # schema_version deve ser 9 (cadeia completa v3 -> ... -> v9; as colunas
-  # session/target_project_path de executions vem do DDL fresco pos-drop v7)
+  # schema_version deve ser 10 (cadeia completa v3 -> ... -> v10; as colunas
+  # session/target_project_path de executions e agent_* de waves vem do DDL
+  # fresco pos-drop v7)
   _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "9" ] || { _fail "migration: schema_version errado" "esperado 9, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "10" ] || { _fail "migration: schema_version errado" "esperado 10, obtido '$_ver'"; return 1; }
   # decisions repopuladas pelo ingest (>=1; o derivado v3 foi descartado, o
   # state.json o reconstroi em EN).
   _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
@@ -2982,7 +3029,7 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,i
     *) _fail "W5 waves.session" "coluna session ausente em waves pos-migracao"; return 1 ;;
   esac
   _w5_ver=$(sqlite3 "$_w5_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_w5_ver" = "9" ] || { _fail "W5 schema_version" "esperado '9' (corrente pos-v9), obtido '$_w5_ver'"; return 1; }
+  [ "$_w5_ver" = "10" ] || { _fail "W5 schema_version" "esperado '10' (corrente pos-v10), obtido '$_w5_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/w5/sd" --db "$_w5_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W5 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3099,14 +3146,16 @@ JSON
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "TP1c ingest exit" "$_CAPTURED_EXIT"; return 1; }
   _tp1c=$(sqlite3 "$_tp1_db" "SELECT COALESCE(target_project_path,'NULL') FROM executions WHERE feature='feat-abs';")
   [ "$_tp1c" = "NULL" ] || { _fail "TP1c ausente" "esperado NULL, obtido '$_tp1c'"; return 1; }
-  # (d) shape v9 em DB fresca: coluna presente + schema_version=9
+  # (d) shape v9 (target_project_path) presente em DB fresca, mesmo com
+  # schema_version ja corrente (10 — v10 wave-token-metrics: colunas agent_*
+  # em waves nao afetam a coluna v9 em executions, ambas coexistem no DDL).
   _tp1_shape=$(sqlite3 "$_tp1_db" "PRAGMA table_info(executions);")
   case "$_tp1_shape" in
     *'|target_project_path|'*) : ;;
     *) _fail "TP1d shape v9" "coluna target_project_path ausente em executions"; return 1 ;;
   esac
   _tp1_ver=$(sqlite3 "$_tp1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp1_ver" = "9" ] || { _fail "TP1d schema_version" "esperado 9, obtido '$_tp1_ver'"; return 1; }
+  [ "$_tp1_ver" = "10" ] || { _fail "TP1d schema_version" "esperado 10, obtido '$_tp1_ver'"; return 1; }
 }
 
 # Cenario TP2 — re-ingestao idempotente + backfill: DB v8 preexistente com
@@ -3139,7 +3188,8 @@ INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,ing
 # fixture DB v8 (executions/waves COM session, SEM target_project_path +
 # schema_version=8 + linha de OUTRA chave) -> ingest adiciona a coluna via
 # ALTER guardado por PRAGMA; linha v8 INTACTA (session preservada, path NULL
-# nela); schema_version=9; 2a rodada sem erro de coluna duplicada.
+# nela); schema_version = corrente (10, cadeia v8->v9->v10 aplicada em
+# batch pelo mesmo ingest); 2a rodada sem erro de coluna duplicada.
 scenario_tp3_migracao_v8_v9_idempotente() {
   _have_deps || return 0
   _tp3_db="$TMPDIR_TEST/tp3/k.db"
@@ -3160,12 +3210,180 @@ INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,ses
   _tp3_new=$(sqlite3 "$_tp3_db" "SELECT target_project_path FROM executions WHERE feature='feat-tp3';")
   [ "$_tp3_new" = "/nonexistent/tp3proj" ] || { _fail "TP3 linha nova" "esperado '/nonexistent/tp3proj', obtido '$_tp3_new'"; return 1; }
   _tp3_ver=$(sqlite3 "$_tp3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp3_ver" = "9" ] || { _fail "TP3 schema_version" "esperado '9', obtido '$_tp3_ver'"; return 1; }
+  [ "$_tp3_ver" = "10" ] || { _fail "TP3 schema_version" "esperado '10', obtido '$_tp3_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/tp3/sd" --db "$_tp3_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "TP3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
   _tp3_cnt=$(sqlite3 "$_tp3_db" "SELECT COUNT(*) FROM executions;")
   [ "$_tp3_cnt" = "2" ] || { _fail "TP3 count pos-2a-rodada" "esperado '2', obtido '$_tp3_cnt'"; return 1; }
+}
+
+# =========================================================================
+# Cenarios WT1-WT4 — knowledge.db v9 -> v10 (wave-token-metrics, FASE 5):
+# 9 colunas aditivas INTEGER em waves para o agregado .waves[].agent_usage
+# (agent_spawns_total .. agent_duration_ms). Migracao idempotente (ALTER
+# guardado por PRAGMA, mesmo padrao v8/v9), NULL != 0 (FR-009/Principio VI),
+# retrofit via --reindex, permissao 0600 ja coberta pela suite geral (nao
+# reexercitada aqui — ver cenario 15 / TP1d).
+# =========================================================================
+
+# Cenario WT1 — ingest com .agent_usage completo: as 9 colunas recebem os
+# valores exatos, incluindo um campo legitimamente 0 (cache_read_input_tokens)
+# — prova que `//` do jq nao confunde 0 com ausencia (so false/null/vazio).
+# DB fresca nasce v10 com as 9 colunas no shape.
+scenario_wt1_agent_usage_completo() {
+  _have_deps || return 0
+  _wt1_db="$TMPDIR_TEST/wt1/k.db"
+  mkdir -p "$TMPDIR_TEST/wt1/sd"
+  cat > "$TMPDIR_TEST/wt1/sd/state.json" <<'JSON'
+{
+  "short_name": "feat-wt1",
+  "execution": { "id": "exec-feat-wt1", "target_project_path": "/home/u/proj-wt1" },
+  "waves": [
+    { "id": "onda-001", "started_at": "2026-01-01T00:00:00Z", "finished_at": "2026-01-01T01:00:00Z",
+      "executed_stages": ["specify"], "tool_calls": 3, "wallclock_seconds": 60,
+      "termination_reason": "ok",
+      "agent_usage": { "spawns_total": 2, "spawns_with_usage": 1, "total_tokens": 500,
+        "input_tokens": 300, "output_tokens": 200, "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 10, "tool_use_count": 5, "duration_ms": 12345 } }
+  ]
+}
+JSON
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/wt1/sd" --db "$_wt1_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT1 ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  _wt1_row=$(sqlite3 "$_wt1_db" "SELECT agent_spawns_total||'|'||agent_spawns_with_usage||'|'||agent_total_tokens||'|'||agent_input_tokens||'|'||agent_output_tokens||'|'||agent_cache_read_tokens||'|'||agent_cache_creation_tokens||'|'||agent_tool_use_count||'|'||agent_duration_ms FROM waves WHERE wave='onda-001';")
+  [ "$_wt1_row" = "2|1|500|300|200|0|10|5|12345" ] || { _fail "WT1 valores" "esperado '2|1|500|300|200|0|10|5|12345', obtido '$_wt1_row'"; return 1; }
+  _wt1_shape=$(sqlite3 "$_wt1_db" "PRAGMA table_info(waves);")
+  case "$_wt1_shape" in
+    *'|agent_spawns_total|'*) : ;;
+    *) _fail "WT1 shape v10" "coluna agent_spawns_total ausente em waves"; return 1 ;;
+  esac
+  _wt1_ver=$(sqlite3 "$_wt1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
+  [ "$_wt1_ver" = "10" ] || { _fail "WT1 schema_version" "esperado 10, obtido '$_wt1_ver'"; return 1; }
+}
+
+# Cenario WT2 — onda SEM .agent_usage: as 9 colunas ficam NULL, nunca 0
+# (Principio VI: nao fabricar dado nao observado). Mesmo state tambem tem uma
+# onda COM agent_usage, para provar que a ausencia e por-onda, nao global.
+scenario_wt2_null_sem_agent_usage() {
+  _have_deps || return 0
+  _wt2_db="$TMPDIR_TEST/wt2/k.db"
+  mkdir -p "$TMPDIR_TEST/wt2/sd"
+  cat > "$TMPDIR_TEST/wt2/sd/state.json" <<'JSON'
+{
+  "short_name": "feat-wt2",
+  "execution": { "id": "exec-feat-wt2", "target_project_path": "/home/u/proj-wt2" },
+  "waves": [
+    { "id": "onda-001", "started_at": "t", "finished_at": "t", "executed_stages": [],
+      "tool_calls": 0, "wallclock_seconds": 0, "termination_reason": "ok" },
+    { "id": "onda-002", "started_at": "t", "finished_at": "t", "executed_stages": [],
+      "tool_calls": 1, "wallclock_seconds": 5, "termination_reason": "ok",
+      "agent_usage": { "spawns_total": 1, "spawns_with_usage": 1, "total_tokens": 100,
+        "input_tokens": 60, "output_tokens": 40, "cache_read_input_tokens": 1,
+        "cache_creation_input_tokens": 2, "tool_use_count": 3, "duration_ms": 999 } }
+  ]
+}
+JSON
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/wt2/sd" --db "$_wt2_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT2 ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  _wt2_absent=$(sqlite3 "$_wt2_db" "SELECT COALESCE(agent_spawns_total,-999)||'|'||COALESCE(agent_duration_ms,-999) FROM waves WHERE wave='onda-001';")
+  [ "$_wt2_absent" = "-999|-999" ] || { _fail "WT2 sem agent_usage" "esperado NULL(-999)/NULL(-999), obtido '$_wt2_absent'"; return 1; }
+  _wt2_present=$(sqlite3 "$_wt2_db" "SELECT agent_spawns_total||'|'||agent_duration_ms FROM waves WHERE wave='onda-002';")
+  [ "$_wt2_present" = "1|999" ] || { _fail "WT2 com agent_usage" "esperado '1|999', obtido '$_wt2_present'"; return 1; }
+}
+
+# Cenario WT3 — migracao v9->v10 idempotente (espelho de TP3 para o passo
+# v10): fixture DB v9 (executions+waves shape v9, SEM as 9 colunas novas +
+# schema_version=9 + linha de outra chave) -> ingest adiciona as colunas via
+# ALTER guardado por PRAGMA; linha v9 INTACTA (session preservada, colunas
+# novas NULL nela); schema_version=10; 2a rodada idempotente (sem erro de
+# coluna duplicada, sem duplicata).
+scenario_wt3_migracao_v9_v10_idempotente() {
+  _have_deps || return 0
+  _wt3_db="$TMPDIR_TEST/wt3/k.db"
+  mkdir -p "$TMPDIR_TEST/wt3"
+  sqlite3 "$_wt3_db" "
+CREATE TABLE executions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, status TEXT, termination_reason TEXT, current_stage TEXT, started_at TEXT, finished_at TEXT, duration_seconds INTEGER, suggested_stack TEXT, waves_total INTEGER, tool_calls_total INTEGER, wallclock_total_seconds INTEGER, subagents_spawned INTEGER, max_depth INTEGER, decisions_total INTEGER, human_blocks_total INTEGER, skill_suggestions_total INTEGER, toolkit_issues_opened INTEGER, session TEXT, target_project_path TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE waves (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, stages TEXT, started_at TEXT, finished_at TEXT, wallclock_seconds INTEGER, tool_calls INTEGER, termination_reason TEXT, n_stages INTEGER, n_skills INTEGER, session TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+INSERT INTO schema_meta VALUES('schema_version','9');
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,session,ingested_at) VALUES('legacyp9','legacyf9','onda-legacy','e-v9','t','onda-legacy','sess-v9','t');
+" || { _fail "WT3 fixture" "criacao do DB v9 falhou"; return 1; }
+  mkdir -p "$TMPDIR_TEST/wt3/sd"
+  cat > "$TMPDIR_TEST/wt3/sd/state.json" <<'JSON'
+{
+  "short_name": "feat-wt3",
+  "execution": { "id": "exec-feat-wt3", "target_project_path": "/home/u/proj-wt3" },
+  "waves": [
+    { "id": "onda-001", "started_at": "t", "finished_at": "t", "executed_stages": [],
+      "tool_calls": 0, "wallclock_seconds": 0, "termination_reason": "ok",
+      "agent_usage": { "spawns_total": 3, "spawns_with_usage": 2, "total_tokens": 700,
+        "input_tokens": 400, "output_tokens": 300, "cache_read_input_tokens": 5,
+        "cache_creation_input_tokens": 6, "tool_use_count": 7, "duration_ms": 4321 } }
+  ]
+}
+JSON
+  # 1a rodada: migra v9->v10
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/wt3/sd" --db "$_wt3_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT3 ingest#1 exit" "$_CAPTURED_EXIT"; return 1; }
+  _wt3_leg=$(sqlite3 "$_wt3_db" "SELECT session||'|'||COALESCE(agent_spawns_total,-999) FROM waves WHERE project='legacyp9';")
+  [ "$_wt3_leg" = "sess-v9|-999" ] || { _fail "WT3 linha v9 intacta" "esperado 'sess-v9|-999', obtido '$_wt3_leg'"; return 1; }
+  _wt3_new=$(sqlite3 "$_wt3_db" "SELECT agent_spawns_total||'|'||agent_duration_ms FROM waves WHERE feature='feat-wt3';")
+  [ "$_wt3_new" = "3|4321" ] || { _fail "WT3 linha nova" "esperado '3|4321', obtido '$_wt3_new'"; return 1; }
+  _wt3_ver=$(sqlite3 "$_wt3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
+  [ "$_wt3_ver" = "10" ] || { _fail "WT3 schema_version" "esperado '10', obtido '$_wt3_ver'"; return 1; }
+  # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/wt3/sd" --db "$_wt3_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
+  _wt3_cnt=$(sqlite3 "$_wt3_db" "SELECT COUNT(*) FROM waves;")
+  [ "$_wt3_cnt" = "2" ] || { _fail "WT3 count pos-2a-rodada" "esperado '2', obtido '$_wt3_cnt'"; return 1; }
+}
+
+# Cenario WT4 — retrofit via --reindex: varre 2 states no layout de
+# descoberta padrao (com e sem .agent_usage) e confirma que o reindex povoa
+# as colunas novas identicamente ao --ingest direto (NULL para a onda sem
+# dado, valores para a onda com dado). Reindex 2x = mesma contagem (idempotente).
+scenario_wt4_reindex_retrofit() {
+  _have_deps || return 0
+  _wt4_db="$TMPDIR_TEST/wt4/k.db"
+  _wt4_dirA="$TMPDIR_TEST/wt4root/pA/.claude/feature-00c-state/featA"
+  _wt4_dirB="$TMPDIR_TEST/wt4root/pB/.claude/feature-00c-state/featB"
+  mkdir -p "$_wt4_dirA" "$_wt4_dirB"
+  cat > "$_wt4_dirA/state.json" <<'JSON'
+{
+  "short_name": "featA",
+  "execution": { "id": "exec-featA", "target_project_path": "/home/u/projA" },
+  "waves": [
+    { "id": "onda-001", "started_at": "t", "finished_at": "t", "executed_stages": [],
+      "tool_calls": 0, "wallclock_seconds": 0, "termination_reason": "ok" }
+  ]
+}
+JSON
+  cat > "$_wt4_dirB/state.json" <<'JSON'
+{
+  "short_name": "featB",
+  "execution": { "id": "exec-featB", "target_project_path": "/home/u/projB" },
+  "waves": [
+    { "id": "onda-001", "started_at": "t", "finished_at": "t", "executed_stages": [],
+      "tool_calls": 0, "wallclock_seconds": 0, "termination_reason": "ok",
+      "agent_usage": { "spawns_total": 4, "spawns_with_usage": 4, "total_tokens": 800,
+        "input_tokens": 500, "output_tokens": 300, "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0, "tool_use_count": 9, "duration_ms": 5555 } }
+  ]
+}
+JSON
+  capture _rc --reindex --states-root "$TMPDIR_TEST/wt4root" --db "$_wt4_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT4 reindex#1 exit" "$_CAPTURED_EXIT"; return 1; }
+  _wt4_a=$(sqlite3 "$_wt4_db" "SELECT COALESCE(agent_spawns_total,-999) FROM waves WHERE feature='featA';")
+  [ "$_wt4_a" = "-999" ] || { _fail "WT4 retrofit NULL" "esperado -999 (NULL), obtido '$_wt4_a'"; return 1; }
+  _wt4_b=$(sqlite3 "$_wt4_db" "SELECT agent_spawns_total||'|'||agent_duration_ms FROM waves WHERE feature='featB';")
+  [ "$_wt4_b" = "4|5555" ] || { _fail "WT4 retrofit valores" "esperado '4|5555', obtido '$_wt4_b'"; return 1; }
+  _wt4_cnt0=$(sqlite3 "$_wt4_db" "SELECT COUNT(*) FROM waves;")
+  # 2a rodada: reindex apaga e reconstroi do zero — mesma contagem (idempotente).
+  capture _rc --reindex --states-root "$TMPDIR_TEST/wt4root" --db "$_wt4_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT4 reindex#2 exit" "$_CAPTURED_EXIT"; return 1; }
+  _wt4_cnt1=$(sqlite3 "$_wt4_db" "SELECT COUNT(*) FROM waves;")
+  [ "$_wt4_cnt0" = "$_wt4_cnt1" ] || { _fail "WT4 reindex idempotente" "N0=$_wt4_cnt0 != N1=$_wt4_cnt1"; return 1; }
 }
 
 run_all_scenarios

@@ -4,6 +4,14 @@
 # Ref: docs/specs/agente-00c/contracts/report-format.md
 #      docs/specs/agente-00c/spec.md FR-011, SC-001
 #      docs/specs/agente-00c/tasks.md FASE 8.1 + 8.2
+#      docs/specs/wave-token-metrics/contracts/wave-usage-report.md §6
+#        (secoes 1/2 estendidas com consumo de subagente — FASE 4.2)
+#
+# Secoes 1 e 2 consomem `wave-usage-report.sh aggregate --json` (script
+# irmao no mesmo diretorio) para exibir spawns/tokens observados por
+# execucao e por onda. Best-effort: helper ausente/falhando NUNCA aborta
+# o relatorio — degrada para "nao coletado nesta execucao"/"indisponivel"
+# (ver _rp_wave_usage_json), nunca fabricando `0` (Principio VI).
 #
 # Subcomandos:
 #   report.sh generate --state-dir DIR [--final] [--paragrafo-resumo TEXT]
@@ -54,6 +62,28 @@ _rp_require_jq() {
 _rp_iso_now() { date -u +%FT%TZ; }
 _rp_state_file() { printf '%s/state.json\n' "$1"; }
 
+# _rp_wave_usage_json STATE_DIR — agregado read-only de consumo de
+# tokens/tool-uses/duracao de subagente (FASE 4.2 de wave-token-metrics,
+# contracts/wave-usage-report.md §6). Delega ao helper irmao
+# wave-usage-report.sh (le .waves[].agent_usage; nunca reimplementa a
+# agregacao aqui). Best-effort: helper ausente/nao-executavel ou
+# `aggregate` falhando NUNCA aborta o relatorio — produz um JSON neutro
+# com metric_collected=false e campos numericos `null` (nunca `0`
+# fabricado — Principio VI/FR-009). Este fallback e distinto do "0 spawns
+# reais" que o proprio wave-usage-report.sh ja retorna corretamente
+# (spawns_total=0 e uma contagem literal) quando roda com sucesso mas nao
+# encontra nenhum agent_usage no state.json.
+_rp_wave_usage_json() {
+  _wu_script="$(dirname -- "$0")/wave-usage-report.sh"
+  if [ -x "$_wu_script" ]; then
+    if _wu_out=$("$_wu_script" aggregate --state-dir "$1" --json 2>/dev/null); then
+      printf '%s' "$_wu_out"
+      return 0
+    fi
+  fi
+  printf '%s' '{"metric_collected":false,"spawns_total":null,"spawns_with_usage":null,"spawns_unavailable":null,"total_tokens":null,"coverage_pct":null,"por_onda":[]}'
+}
+
 # _rp_render_header STATE_FILE GERADO_EM
 # READER de state.json: paths EN + fallback (.en // .pt) (schema-en-migration).
 _rp_render_header() {
@@ -70,11 +100,22 @@ _rp_render_header() {
   ' "$1"
 }
 
-# _rp_render_secao_1 STATE_FILE PARAGRAFO
+# _rp_render_secao_1 STATE_FILE PARAGRAFO WAVE_USAGE_JSON
 _rp_render_secao_1() {
   _para=$2
   [ -n "$_para" ] || _para="(Paragrafo de resumo nao fornecido — orquestrador deve gerar via --paragrafo-resumo na invocacao final.)"
-  jq -r --arg para "$_para" '
+  jq -r --arg para "$_para" --argjson wu "$3" '
+    def fmt_tokens_num(v):
+      if v == null then null
+      elif v >= 10000 then
+        (v / 100 | floor) as $tenths
+        | ($tenths / 10 | floor) as $whole
+        | ($tenths - ($whole * 10)) as $dec
+        | (($whole | tostring) + "." + ($dec | tostring) + "k")
+      else
+        (v | tostring)
+      end;
+    def fmt_tokens(v): (fmt_tokens_num(v)) // "indisponivel";
     (.execution // .execucao) as $exec
     | (.accumulated_metrics // .metricas_acumuladas) as $met
     | "## 1. Resumo Executivo",
@@ -96,26 +137,43 @@ _rp_render_secao_1() {
     "| Sugestoes para skills globais | \(($met.global_skill_suggestions_total // $met.sugestoes_skills_globais_total) // (((.suggestions // .sugestoes) // []) | length)) |",
     "| Issues abertas no toolkit | \(($met.toolkit_issues_opened // $met.issues_toolkit_abertas) // 0) |",
     "| Profundidade max de subagentes | \(($met.max_depth_reached // $met.profundidade_max_atingida) // 1) |",
+    "| Spawns de subagente | \(if ($wu.metric_collected // false) then "\($wu.spawns_total) (\($wu.spawns_with_usage) com uso; \($wu.spawns_unavailable) indisponiveis)" else "nao coletado nesta execucao" end) |",
+    "| Tokens totais (observados) | \(if ($wu.metric_collected // false) then fmt_tokens($wu.total_tokens) else "nao coletado nesta execucao" end) |",
+    "| Cobertura da metrica | \(if ($wu.metric_collected // false) then (($wu.coverage_pct) // "n/a (sem spawns indisponiveis)") else "nao coletado nesta execucao" end) |",
     "",
     $para,
     ""
   ' "$1"
 }
 
-# _rp_render_secao_2 STATE_FILE
+# _rp_render_secao_2 STATE_FILE WAVE_USAGE_JSON
 _rp_render_secao_2() {
-  jq -r '
-    ((.waves // .ondas) // []) as $waves
+  jq -r --argjson wu "$2" '
+    def fmt_tokens_num(v):
+      if v == null then null
+      elif v >= 10000 then
+        (v / 100 | floor) as $tenths
+        | ($tenths / 10 | floor) as $whole
+        | ($tenths - ($whole * 10)) as $dec
+        | (($whole | tostring) + "." + ($dec | tostring) + "k")
+      else
+        (v | tostring)
+      end;
+    def fmt_tokens(v): (fmt_tokens_num(v)) // "indisponivel";
+    (($wu.por_onda // []) | map({(.onda): .}) | add // {}) as $wu_by_onda
+    | ((.waves // .ondas) // []) as $waves
     | "## 2. Linha do Tempo",
     "",
-    "| Onda | Inicio | Fim | Etapas | Tool calls | Wallclock | Termino |",
-    "|------|--------|-----|--------|------------|-----------|---------|",
+    "| Onda | Inicio | Fim | Etapas | Tool calls | Wallclock | Spawns | Tokens | Termino |",
+    "|------|--------|-----|--------|------------|-----------|--------|--------|---------|",
     (
       if $waves | length == 0 then
-        "| - | - | - | (nenhuma onda completa ainda) | - | - | - |"
+        "| - | - | - | (nenhuma onda completa ainda) | - | - | - | - | - |"
       else
         ($waves[] |
-          "| \(.id) | \(.started_at // .inicio) | \((.finished_at // .fim) // "-") | \(((.executed_stages // .etapas_executadas) // []) | join(", ")) | \(.tool_calls // 0) | \(.wallclock_seconds // 0)s | \((.termination_reason // .motivo_termino) // "(em andamento)") |"
+          . as $w
+          | ($wu_by_onda[$w.id] // null) as $u
+          | "| \($w.id) | \($w.started_at // $w.inicio) | \(($w.finished_at // $w.fim) // "-") | \((($w.executed_stages // $w.etapas_executadas) // []) | join(", ")) | \($w.tool_calls // 0) | \($w.wallclock_seconds // 0)s | \(if $u == null then "indisponivel" else "\($u.spawns_total) (\($u.spawns_with_usage) c/uso)" end) | \(if $u == null then "indisponivel" else fmt_tokens($u.total_tokens) end) | \((($w.termination_reason // $w.motivo_termino)) // "(em andamento)") |"
         )
       end
     ),
@@ -362,9 +420,10 @@ _rp_cmd_generate() {
   [ -f "$_sf" ] || _rp_die "generate: state.json ausente em $_sd" 1
 
   _now=$(_rp_iso_now)
+  _wu_json=$(_rp_wave_usage_json "$_sd")
   _rp_render_header "$_sf" "$_now"
-  _rp_render_secao_1 "$_sf" "$_para"
-  _rp_render_secao_2 "$_sf"
+  _rp_render_secao_1 "$_sf" "$_para" "$_wu_json"
+  _rp_render_secao_2 "$_sf" "$_wu_json"
   _rp_render_secao_3 "$_sf"
   _rp_render_secao_4 "$_sf"
   _rp_render_secao_5 "$_sf"
@@ -470,10 +529,11 @@ _rp_cmd_emit() {
   _scrubbed=$(mktemp) || { rm -f -- "$_raw"; _rp_die "emit: mktemp falhou" 1; }
 
   _now=$(_rp_iso_now)
+  _wu_json=$(_rp_wave_usage_json "$_sd")
   {
     _rp_render_header "$_sf" "$_now"
-    _rp_render_secao_1 "$_sf" "$_para"
-    _rp_render_secao_2 "$_sf"
+    _rp_render_secao_1 "$_sf" "$_para" "$_wu_json"
+    _rp_render_secao_2 "$_sf" "$_wu_json"
     _rp_render_secao_3 "$_sf"
     _rp_render_secao_4 "$_sf"
     _rp_render_secao_5 "$_sf"

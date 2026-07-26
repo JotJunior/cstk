@@ -14,7 +14,10 @@
 #           executed_stages = []
 #           tool_calls = 0
 #         Reseta .budgets.tool_calls_current_wave = 0 e
-#         .budgets.current_wave_start = started_at.
+#         .budgets.current_wave_start = started_at. Tambem reseta os
+#         sidecares de tick (tool-call-ticks.log) e de uso de agente
+#         (wave-agent-usage.jsonl + sentinela de cap) — janela da onda nova
+#         comeca zerada (wave-token-metrics FASE 3, task 3.1.1).
 #         Stdout: id da nova onda.
 #
 #   state-ondas.sh end --state-dir DIR --motivo-termino MOTIVO
@@ -28,6 +31,19 @@
 #         manuais) + linhas do sidecar tool-call-ticks.log (ticks do hook
 #         PostToolUse) — sidecar resetado apos o fechamento.
 #         --add-etapa pode ser passada N vezes para append em executed_stages.
+#         Tambem agrega o sidecar wave-agent-usage.jsonl (hook
+#         posttooluse-agent-usage.sh, wave-token-metrics FASE 3) em
+#         .waves[-1].agent_usage (WaveUsage: spawns_total/with_usage/
+#         unavailable + somas de tokens/tool-uses/duracao, `null` quando
+#         nao observado — NUNCA `0` fabricado) e .waves[-1].agent_spawns
+#         (array bruto de SpawnUsage). Sem sidecar/spawns nesta onda =>
+#         agent_usage null, agent_spawns []. Incrementa
+#         .accumulated_metrics.agent_spawns_total/
+#         agent_spawns_with_usage_total (sempre int) e agent_tokens_total/
+#         agent_tool_use_count_total/agent_duration_ms_total (int|null,
+#         ficam intactos quando a onda nao contribui dado). Sidecar
+#         resetado apos a agregacao (mesmo ciclo de vida do sidecar de
+#         ticks).
 #
 #   state-ondas.sh tool-call-tick --state-dir DIR
 #       — Incrementa .budgets.tool_calls_current_wave (1 unidade).
@@ -236,6 +252,44 @@ _so_ticks_reset() {
   rm -f -- "$(_so_ticks_file "$1")" 2>/dev/null || :
 }
 
+# ---------- Sidecar de uso de agente (hook PostToolUse/Agent) ----------
+#
+# Espelha o sidecar de ticks acima (wave-token-metrics FASE 3,
+# data-model.md §Sidecar). O hook posttooluse-agent-usage.sh NAO toca o
+# state.json (mesma razao: concorrencia com writes transacionais); appenda
+# 1 linha JSON (SpawnUsage) por spawn em <state-dir>/wave-agent-usage.jsonl.
+# Aqui esse sidecar e AGREGADO (end soma em .waves[-1].agent_usage /
+# .accumulated_metrics.agent_*) e RESETADO (start/end delimitam a janela,
+# junto com o sentinela de cap .wave-agent-usage-cap-warned).
+
+_so_agent_usage_file() { printf '%s/wave-agent-usage.jsonl\n' "$1"; }
+_so_agent_usage_cap_sentinel() { printf '%s/.wave-agent-usage-cap-warned\n' "$1"; }
+
+# _so_agent_usage_reset DIR -> remove o sidecar + sentinela de cap
+# (best-effort; hook recria no proximo spawn). Mesma tolerancia de fronteira
+# do sidecar de ticks.
+_so_agent_usage_reset() {
+  rm -f -- "$(_so_agent_usage_file "$1")" 2>/dev/null || :
+  rm -f -- "$(_so_agent_usage_cap_sentinel "$1")" 2>/dev/null || :
+}
+
+# _so_agent_usage_read DIR -> stdout: array JSON de SpawnUsage validos.
+# Resiliente a sidecar ausente (=> "[]") e a linhas corrompidas dentro do
+# arquivo: usa o idioma `inputs | fromjson?` (jq -R -n) para descartar
+# SILENCIOSAMENTE linhas que nao parseiam como JSON, em vez de abortar o
+# arquivo inteiro (jq -c 'inputs' pararia no primeiro erro de parse).
+# Degradacao graciosa (Principio VI: nunca fabrica dado, apenas ignora o
+# que nao pode ler) — jamais falha `end`.
+_so_agent_usage_read() {
+  _auf=$(_so_agent_usage_file "$1")
+  [ -f "$_auf" ] || { printf '[]\n'; return 0; }
+  _out=$(jq -R -n '[inputs | fromjson?]' "$_auf" 2>/dev/null) || _out=""
+  case "$_out" in
+    '') printf '[]\n' ;;
+    *)  printf '%s\n' "$_out" ;;
+  esac
+}
+
 # ---------- Subcomandos ----------
 
 _so_cmd_start() {
@@ -280,6 +334,10 @@ _so_cmd_start() {
   # entre o end anterior e este start pertencem a fechamento/overhead do
   # orquestrador, nao a onda nova).
   _so_ticks_reset "$_sdir"
+  # Idem para o sidecar de uso de agente (wave-token-metrics FASE 3,
+  # task 3.1.1): spawns entre o end anterior e este start ficam fora da
+  # onda nova; mesma tolerancia de fronteira do sidecar de ticks.
+  _so_agent_usage_reset "$_sdir"
 
   # Baseline de untracked (living-specs FASE 5, FR-014/data-model.md
   # UntrackedBaseline: "escrito por commit-mode.sh snapshot no inicio da
@@ -387,6 +445,12 @@ $2"; shift 2 ;;
     _proxima_json="\"$_proxima\""
   fi
 
+  # Agregacao do sidecar de uso de agente (wave-token-metrics FASE 3,
+  # data-model.md §"Entity: Consumo Agregado da Onda"). Resiliente a
+  # sidecar ausente/corrompido — nunca falha `end` (Principio VI: so
+  # agrega o que foi de fato observado, nunca fabrica o resto).
+  _au_spawns_json=$(_so_agent_usage_read "$_sdir")
+
   _new=$(mktemp) || _so_die "mktemp falhou" 1
   jq \
     --arg now "$_now" \
@@ -394,27 +458,60 @@ $2"; shift 2 ;;
     --argjson wc "$_wc" \
     --argjson tc "$_tc" \
     --argjson etapas "$_etapas_json" \
-    --argjson prox "$_proxima_json" '
-    (.waves[-1] |= (
-      .finished_at = $now
-      | .wallclock_seconds = $wc
-      | .tool_calls = $tc
-      | .termination_reason = $motivo
-      | .next_wave_scheduled_for = $prox
-      | .executed_stages += $etapas
-    ))
-    | .accumulated_metrics.waves_total = ((.accumulated_metrics.waves_total // 0) + 1)
-    | .accumulated_metrics.tool_calls_total = ((.accumulated_metrics.tool_calls_total // 0) + $tc)
-    | .accumulated_metrics.wallclock_total_seconds =
-        ((.accumulated_metrics.wallclock_total_seconds // 0) + $wc)
+    --argjson prox "$_proxima_json" \
+    --argjson spawns "$_au_spawns_json" '
+    ($spawns) as $sp
+    | ($sp | length) as $au_total
+    | ([$sp[] | select(.status != "indisponivel")] | length) as $au_with_usage
+    | ($au_total - $au_with_usage) as $au_unavailable
+    | def sum_field(f): ([$sp[] | select(f != null) | f]) as $vals
+        | if ($vals | length) > 0 then ($vals | add) else null end;
+      (if $au_total > 0 then {
+          spawns_total: $au_total,
+          spawns_with_usage: $au_with_usage,
+          spawns_unavailable: $au_unavailable,
+          total_tokens: sum_field(.total_tokens),
+          input_tokens: sum_field(.input_tokens),
+          output_tokens: sum_field(.output_tokens),
+          cache_read_input_tokens: sum_field(.cache_read_input_tokens),
+          cache_creation_input_tokens: sum_field(.cache_creation_input_tokens),
+          tool_use_count: sum_field(.tool_use_count),
+          duration_ms: sum_field(.duration_ms)
+        } else null end) as $au
+    | def add_null(existing; delta): if delta == null then existing else ((existing // 0) + delta) end;
+      (.waves[-1] |= (
+        .finished_at = $now
+        | .wallclock_seconds = $wc
+        | .tool_calls = $tc
+        | .termination_reason = $motivo
+        | .next_wave_scheduled_for = $prox
+        | .executed_stages += $etapas
+        | .agent_usage = $au
+        | .agent_spawns = $sp
+      ))
+      | .accumulated_metrics.waves_total = ((.accumulated_metrics.waves_total // 0) + 1)
+      | .accumulated_metrics.tool_calls_total = ((.accumulated_metrics.tool_calls_total // 0) + $tc)
+      | .accumulated_metrics.wallclock_total_seconds =
+          ((.accumulated_metrics.wallclock_total_seconds // 0) + $wc)
+      | .accumulated_metrics.agent_spawns_total =
+          ((.accumulated_metrics.agent_spawns_total // 0) + $au_total)
+      | .accumulated_metrics.agent_spawns_with_usage_total =
+          ((.accumulated_metrics.agent_spawns_with_usage_total // 0) + $au_with_usage)
+      | .accumulated_metrics.agent_tokens_total =
+          add_null(.accumulated_metrics.agent_tokens_total; $au.total_tokens)
+      | .accumulated_metrics.agent_tool_use_count_total =
+          add_null(.accumulated_metrics.agent_tool_use_count_total; $au.tool_use_count)
+      | .accumulated_metrics.agent_duration_ms_total =
+          add_null(.accumulated_metrics.agent_duration_ms_total; $au.duration_ms)
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _so_die "jq update falhou" 1; }
 
   _so_backup_current "$_sdir"
   _so_atomic_write "$_sf" "$_new"
   rm -f -- "$_new" 2>/dev/null || :
   _so_update_sha "$_sdir"
-  # Sidecar consumido por esta onda; zera para nao vazar para a proxima.
+  # Sidecares consumidos por esta onda; zeram para nao vazar para a proxima.
   _so_ticks_reset "$_sdir"
+  _so_agent_usage_reset "$_sdir"
   _so_log "end: onda finalizada (motivo=$_motivo, wallclock=${_wc}s, tool_calls=$_tc)"
 }
 
