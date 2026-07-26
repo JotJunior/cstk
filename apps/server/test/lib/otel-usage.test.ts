@@ -18,8 +18,9 @@ import { mkdtempSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
-import { getOtelUsage } from '../../src/db/queries/metrics.js';
-import { hasOtelUsage } from '../../src/db/queries/waves.js';
+import { getOtelUsage, getOtelCostOverTime } from '../../src/db/queries/metrics.js';
+import { hasOtelUsage, listWavesByExecution } from '../../src/db/queries/waves.js';
+import { mapWave } from '../../src/mappers/wave.js';
 
 const toClean: string[] = [];
 afterEach(() => {
@@ -131,5 +132,106 @@ describe('getOtelUsage (schema v11)', () => {
     // 2 de 3 ondas medidas — a UI usa isso para rotular a parcialidade
     expect(r.wavesWithOtel).toBe(2);
     expect(r.wavesTotal).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Projecao por onda (listWavesByExecution) — o dado v11 tem que chegar na
+// TABELA de ondas, nao so no agregado. Sem isto o painel some com o custo
+// justamente onde ele e acionavel: a onda cara.
+// ---------------------------------------------------------------------------
+
+/** `waves` completa v11 — o que `cstk recall` cria a partir da 5.30.0. */
+const WAVES_FULL_V11 = `
+CREATE TABLE waves (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL,
+  execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL,
+  stages TEXT, started_at TEXT, finished_at TEXT,
+  wallclock_seconds INTEGER, tool_calls INTEGER, termination_reason TEXT,
+  n_stages INTEGER, n_skills INTEGER, session TEXT,
+  otel_cost_usd REAL, otel_cost_main_usd REAL, otel_cost_subagent_usd REAL,
+  otel_total_tokens INTEGER, otel_subagent_tokens INTEGER,
+  agent_spawns_total INTEGER, agent_spawns_with_usage INTEGER,
+  agent_total_tokens INTEGER, agent_input_tokens INTEGER,
+  agent_output_tokens INTEGER, agent_cache_read_tokens INTEGER,
+  agent_cache_creation_tokens INTEGER, agent_tool_use_count INTEGER,
+  agent_duration_ms INTEGER,
+  ingested_at TEXT NOT NULL
+);`;
+
+/** Mesma tabela sem as 5 colunas v11 — base de quem ainda nao migrou. */
+const WAVES_FULL_V10 = WAVES_FULL_V11
+  .split('\n')
+  .filter(l => !l.includes('otel_'))
+  .join('\n');
+
+describe('listWavesByExecution (schema v11)', () => {
+  it('projeta as 5 colunas otel e preserva o custo fracionario', () => {
+    const db = mkDb(WAVES_FULL_V11);
+    insertWave(db, {
+      wave: 'onda-001', source_id: 's1', stages: 'plan', started_at: '2026-07-26T10:00:00Z',
+      tool_calls: 90, otel_cost_usd: 0.229038, otel_cost_main_usd: 0.130553,
+      otel_cost_subagent_usd: 0.098485, otel_total_tokens: 648, otel_subagent_tokens: 648,
+    });
+    const rows = listWavesByExecution(db, 'e');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.otel_cost_usd).toBeCloseTo(0.229038, 6);
+    expect(rows[0]?.otel_cost_subagent_usd).toBeCloseTo(0.098485, 6);
+    // e o DTO servido a UI carrega o mesmo numero, sem arredondar
+    const dto = mapWave(rows[0]!);
+    expect(dto.otelCostUsd).toBeCloseTo(0.229038, 6);
+    expect(dto.otelSubagentTokens).toBe(648);
+  });
+
+  it('base v10 degrada para null sem "no such column"', () => {
+    const db = mkDb(WAVES_FULL_V10);
+    insertWave(db, { wave: 'onda-001', source_id: 's1', stages: 'plan', tool_calls: 12 });
+    const rows = listWavesByExecution(db, 'e');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.otel_cost_usd).toBeNull();
+    expect(rows[0]?.otel_subagent_tokens).toBeNull();
+    // toolCalls continua vindo: a coluna nova ausente nao derruba a linha
+    expect(rows[0]?.tool_calls).toBe(12);
+  });
+
+  it('onda sem telemetria na MESMA execucao fica null, nao zero', () => {
+    const db = mkDb(WAVES_FULL_V11);
+    insertWave(db, {
+      wave: 'onda-001', source_id: 's1', started_at: '2026-07-26T10:00:00Z',
+      otel_cost_usd: 0.5, otel_cost_main_usd: 0.3, otel_cost_subagent_usd: 0.2,
+    });
+    insertWave(db, { wave: 'onda-002', source_id: 's2', started_at: '2026-07-26T11:00:00Z' });
+    const rows = listWavesByExecution(db, 'e');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.otel_cost_usd).toBeCloseTo(0.5, 6);
+    expect(rows[1]?.otel_cost_usd).toBeNull();
+  });
+});
+
+describe('getOtelCostOverTime (schema v11)', () => {
+  it('agrupa por dia e OMITE dias sem telemetria (nao vira zero)', () => {
+    const db = mkDb(WAVES_FULL_V11);
+    insertWave(db, {
+      wave: 'onda-001', source_id: 's1', started_at: '2026-07-26T10:00:00Z',
+      otel_cost_usd: 0.2, otel_cost_main_usd: 0.12, otel_cost_subagent_usd: 0.08,
+    });
+    insertWave(db, {
+      wave: 'onda-002', source_id: 's2', started_at: '2026-07-26T18:00:00Z',
+      otel_cost_usd: 0.3, otel_cost_main_usd: 0.18, otel_cost_subagent_usd: 0.12,
+    });
+    // dia seguinte executou, mas sem telemetria: NAO pode aparecer como $0
+    insertWave(db, { wave: 'onda-003', source_id: 's3', started_at: '2026-07-27T09:00:00Z' });
+    const rows = getOtelCostOverTime(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.day).toBe('2026-07-26');
+    expect(rows[0]?.costUsd).toBeCloseTo(0.5, 6);
+    expect(rows[0]?.wavesWithOtel).toBe(2);
+  });
+
+  it('base v10 devolve serie vazia (sem lancar)', () => {
+    const db = mkDb(WAVES_FULL_V10);
+    insertWave(db, { wave: 'onda-001', source_id: 's1', started_at: '2026-07-26T10:00:00Z' });
+    expect(getOtelCostOverTime(db)).toEqual([]);
   });
 });

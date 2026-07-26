@@ -28,6 +28,8 @@ import {
   getModelMixByStage,
   getRecallConsultations,
   getAgentUsage,
+  getOtelUsage,
+  getOtelCostOverTime,
   getTokensOverTime,
   getTokensByWave,
 } from '../db/queries/metrics.js';
@@ -226,6 +228,33 @@ export async function metricsRoutes(server: FastifyInstance): Promise<void> {
     const { db } = openResult;
     try {
       const data = getAgentUsage(db, parseUsageQuery(request.query));
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/otel-usage ─────────────────────────────────────────────
+  // Consumo medido pela telemetria OTel (schema v11) — fonte independente de
+  // agent-usage: cobre tambem o consumo do proprio orquestrador. Unico numero
+  // do painel em USD, e ele vem calculado pelo Claude Code (nao ha tabela de
+  // preco aqui). Base v<11 -> todos os campos null, nunca zero fabricado.
+  server.get('/metrics/otel-usage', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getOtelUsage(db, parseUsageQuery(request.query));
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/otel-cost-over-time ────────────────────────────────────
+  // Dias sem coleta OTel sao OMITIDOS (nao viram 0) — ver getOtelCostOverTime.
+  server.get('/metrics/otel-cost-over-time', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getOtelCostOverTime(db, parseUsageQuery(request.query));
       return reply.status(200).send(wrap(data, {}, config.dbPath, db));
     } finally { db.close(); }
   });

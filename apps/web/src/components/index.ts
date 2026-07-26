@@ -16,5 +16,11 @@ export {
   agentUsageState, isPartialSample, coverageLabel, waveAgentUsage, sumAgentUsage,
 } from './AgentUsage.js';
 export type { AgentUsageState } from './AgentUsage.js';
+export {
+  OtelUsagePanel, OtelUsageBreakdown, OtelUsageEmpty, OtelCoverageBadge,
+  otelUsageState, isPartialOtelSample, otelCoverageLabel, fmtUsd,
+  subagentCostShare, waveOtelUsage, sumOtelUsage,
+} from './OtelUsage.js';
+export type { OtelUsageState } from './OtelUsage.js';
 export { Sparkline, Donut, BarH, FunnelChart, Legend, StackedBars, Histogram, ScatterChart } from './charts.js';
 export type { DonutDatum, BarHDatum, FunnelDatum, LegendItem, StackedBarsProps, HistogramProps, ScatterDatum } from './charts.js';

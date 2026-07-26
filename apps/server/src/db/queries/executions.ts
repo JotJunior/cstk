@@ -10,7 +10,7 @@
  */
 import type Database from 'better-sqlite3';
 import { hasColumn } from '../columns.js';
-import { hasAgentUsage } from './waves.js';
+import { hasAgentUsage, hasOtelUsage } from './waves.js';
 
 /**
  * Colunas de consumo real de subagente para os rollups (schema v10). Sao
@@ -37,6 +37,35 @@ function agentUsageRollupSelect(db: Database.Database, scope: 'project' | 'featu
     ['agent_waves_total', 'count(*)'],
   ];
   if (!hasAgentUsage(db)) {
+    return fields.map(([alias]) => `NULL as ${alias}`).join(',\n        ');
+  }
+  const corr = scope === 'project'
+    ? 'w.project = e.project'
+    : 'w.project = e.project AND w.feature = e.feature';
+  return fields
+    .map(([alias, expr]) => `(SELECT ${expr} FROM waves w WHERE ${corr}) as ${alias}`)
+    .join(',\n        ');
+}
+
+/**
+ * Consumo medido por telemetria OTel para os rollups (schema v11). Mesma
+ * estrategia de subconsulta correlacionada de `agentUsageRollupSelect` — e o
+ * mesmo motivo: o dado vive na onda, e um JOIN multiplicaria as somas.
+ *
+ * Base v<11 projeta NULL literal, entao a Row tem sempre a mesma forma e o
+ * mapper nao precisa saber a versao do schema.
+ */
+function otelUsageRollupSelect(db: Database.Database, scope: 'project' | 'feature'): string {
+  const fields: Array<[string, string]> = [
+    ['otel_cost_usd', 'sum(w.otel_cost_usd)'],
+    ['otel_cost_main_usd', 'sum(w.otel_cost_main_usd)'],
+    ['otel_cost_subagent_usd', 'sum(w.otel_cost_subagent_usd)'],
+    ['otel_total_tokens', 'sum(w.otel_total_tokens)'],
+    ['otel_subagent_tokens', 'sum(w.otel_subagent_tokens)'],
+    ['otel_waves_with_usage', 'sum(CASE WHEN w.otel_cost_usd IS NOT NULL THEN 1 ELSE 0 END)'],
+    ['otel_waves_total', 'count(*)'],
+  ];
+  if (!hasOtelUsage(db)) {
     return fields.map(([alias]) => `NULL as ${alias}`).join(',\n        ');
   }
   const corr = scope === 'project'
@@ -121,7 +150,21 @@ export interface AgentUsageRollupRow {
   agent_waves_total: number | null;
 }
 
-export interface ExecutionRollupRow extends AgentUsageRollupRow {
+/**
+ * Consumo medido por telemetria OTel somado a partir de `waves` (schema v11).
+ * NULL em base v<11 ou quando nenhuma onda do recorte teve coleta — nunca 0.
+ */
+export interface OtelUsageRollupRow {
+  otel_cost_usd: number | null;
+  otel_cost_main_usd: number | null;
+  otel_cost_subagent_usd: number | null;
+  otel_total_tokens: number | null;
+  otel_subagent_tokens: number | null;
+  otel_waves_with_usage: number | null;
+  otel_waves_total: number | null;
+}
+
+export interface ExecutionRollupRow extends AgentUsageRollupRow, OtelUsageRollupRow {
   project: string;
   total_executions: number;
   active_executions: number;
@@ -134,7 +177,7 @@ export interface ExecutionRollupRow extends AgentUsageRollupRow {
   latest_execution_at: string | null;
 }
 
-export interface FeatureRollupRow extends AgentUsageRollupRow {
+export interface FeatureRollupRow extends AgentUsageRollupRow, OtelUsageRollupRow {
   project: string;
   feature: string;
   total_executions: number;
@@ -277,7 +320,8 @@ export function getRollupByProject(db: Database.Database, project: string | null
         sum(${wallCol}) as total_wallclock,
         (SELECT count(*) FROM alert_signals a WHERE a.project = e.project) as open_alerts,
         max(${startedCol}) as latest_execution_at,
-        ${agentUsageRollupSelect(db, 'project')}
+        ${agentUsageRollupSelect(db, 'project')},
+        ${otelUsageRollupSelect(db, 'project')}
       FROM executions e
       WHERE (@project IS NULL OR e.project = @project)
       GROUP BY project
@@ -317,7 +361,8 @@ export function getRollupByFeature(db: Database.Database, project: string | null
         (SELECT count(*) FROM alert_signals a
          WHERE a.project = e.project AND a.feature = e.feature) as open_alerts,
         max(${startedCol}) as latest_execution_at,
-        ${agentUsageRollupSelect(db, 'feature')}
+        ${agentUsageRollupSelect(db, 'feature')},
+        ${otelUsageRollupSelect(db, 'feature')}
       FROM executions e
       WHERE (@project IS NULL OR e.project = @project)
       GROUP BY project, feature

@@ -31,6 +31,13 @@ export function mapWave(row: WaveRow): WaveDTO {
     agentCacheCreationTokens: row.agent_cache_creation_tokens,
     agentToolUseCount: row.agent_tool_use_count,
     agentDurationMs: row.agent_duration_ms,
+    // schema v11 — telemetria OTel. Mesma regra: NULL sobe como null. O custo
+    // e fracionario e NAO e arredondado aqui; formatacao e da borda de UI.
+    otelCostUsd: row.otel_cost_usd,
+    otelCostMainUsd: row.otel_cost_main_usd,
+    otelCostSubagentUsd: row.otel_cost_subagent_usd,
+    otelTotalTokens: row.otel_total_tokens,
+    otelSubagentTokens: row.otel_subagent_tokens,
   };
 }
 

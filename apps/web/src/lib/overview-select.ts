@@ -10,7 +10,7 @@
  * Ref: bug pos-entrega (KPIs zerados) — drift snake_case vs camelCase no
  * consumo do payload. Spec §User Story 1.
  */
-import type { AgentUsageRollup } from '@cstk-panel/shared-types';
+import type { AgentUsageRollup, OtelUsageRollup } from '@cstk-panel/shared-types';
 
 export interface OverviewKpisRaw {
   totalProjects?: number | null;
@@ -52,21 +52,13 @@ export interface OverviewRaw {
   costSeries?: number[] | null;
   /** serie diaria de tokens medidos; dias sem medicao nao aparecem */
   tokenSeries?: number[] | null;
+  /** serie diaria do custo REAL em USD (v11); dias sem coleta nao aparecem */
+  otelCostSeries?: number[] | null;
 }
 
-
-/** Consumo REAL da onda medido pela telemetria OTel (knowledge.db v11).
- *  Fonte independente de agentUsage: cobre tambem o gasto do proprio
- *  orquestrador. null em todo campo = nao coletado (nunca zero fabricado). */
-export interface OtelUsageRollup {
-  costUsd: number | null;
-  costMainUsd: number | null;
-  costSubagentUsd: number | null;
-  totalTokens: number | null;
-  subagentTokens: number | null;
-  wavesWithOtel: number | null;
-  wavesTotal: number | null;
-}
+// OtelUsageRollup (schema v11) vive em @cstk-panel/shared-types — mesma fonte
+// do DTO do servidor. Reexportado aqui so por compatibilidade de import.
+export type { OtelUsageRollup };
 
 export interface OverviewVM {
   totalProjects: number;
@@ -95,6 +87,8 @@ export interface OverviewVM {
   /** null quando a base e < v11 ou a telemetria nao estava ligada */
   otelUsage: OtelUsageRollup | null;
   tokenSeries: number[];
+  /** vazia quando a base e < v11 ou nenhuma onda teve telemetria coletada */
+  otelCostSeries: number[];
   maxToolCalls: number;
   maxFunnel: number;
 }
@@ -109,6 +103,7 @@ export function selectOverview(raw: OverviewRaw | null | undefined): OverviewVM 
   const recentActivity = raw?.recentActivity ?? [];
   const costSeries = raw?.costSeries ?? [];
   const tokenSeries = raw?.tokenSeries ?? [];
+  const otelCostSeries = raw?.otelCostSeries ?? [];
 
   return {
     totalProjects: kpis.totalProjects ?? 0,
@@ -138,6 +133,7 @@ export function selectOverview(raw: OverviewRaw | null | undefined): OverviewVM 
     agentUsage: kpis.agentUsage ?? null,
     otelUsage: kpis.otelUsage ?? null,
     tokenSeries,
+    otelCostSeries,
     maxToolCalls: leaderboard.reduce(
       (m, row) => Math.max(m, (row['toolCallsTotal'] as number | null) ?? 0), 0,
     ),

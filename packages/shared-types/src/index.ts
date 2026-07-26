@@ -32,6 +32,7 @@ export type {
   ProjectRollup,
   FeatureRollup,
   AgentUsageRollup,
+  OtelUsageRollup,
   PaginationParams,
   PeriodParam,
   ScoreParam,
@@ -67,6 +68,7 @@ export {
   ProjectRollupSchema,
   FeatureRollupSchema,
   AgentUsageRollupSchema,
+  OtelUsageRollupSchema,
 } from './schemas/entities.js';
 
 // Schemas Zod — params

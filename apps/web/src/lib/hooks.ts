@@ -402,7 +402,9 @@ export function useMetric(
        | 'human-latency' | 'clarify-resolution' | 'decisions-by-score' | 'execution-duration' | 'depth-subagents'
        | 'model-mix' | 'model-mix-by-stage' | 'recall-consultations'
        // schema v10 — consumo medido de subagentes (nao proxy)
-       | 'agent-usage' | 'tokens-over-time' | 'tokens-by-wave',
+       | 'agent-usage' | 'tokens-over-time' | 'tokens-by-wave'
+       // schema v11 — consumo medido por telemetria OTel (custo real em USD)
+       | 'otel-usage' | 'otel-cost-over-time',
   period?: PeriodParam
 ) {
   const qs = period ? `?period=${period}` : '';

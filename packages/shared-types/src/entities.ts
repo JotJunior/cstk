@@ -90,6 +90,27 @@ export interface WaveDTO {
   /** tool calls DENTRO dos subagentes — distinto de `toolCalls` (proxy da onda) */
   agentToolUseCount: number | null;
   agentDurationMs: number | null;
+
+  // --- Consumo medido por telemetria OTel (schema v11 — cstk 5.30.0) --------
+  // Fonte DISTINTA dos campos `agent*` acima, nao um refinamento deles:
+  //   - `agent*` vem do hook de spawn e so enxerga o que cada subagente
+  //     devolve — o consumo do PROPRIO orquestrador nunca aparece la;
+  //   - `otel*` vem dos contadores do Claude Code, incrementados a cada API
+  //     request, entao cobrem main + subagente.
+  // Os dois NAO se somam e nao se substituem em auditoria: a UI prefere o
+  // OTel quando presente por ser mais completo, e mantem `agent*` como fonte
+  // de detalhe por spawn. null = onda sem coleta OTel (telemetria desligada,
+  // execucao anterior a 5.28.0 ou base v<11) — nunca zero.
+  /** custo total da onda em USD; fracionario (ex: 0.098485) */
+  otelCostUsd: number | null;
+  /** fatia do custo atribuida ao loop principal (query_source=main) */
+  otelCostMainUsd: number | null;
+  /** fatia do custo atribuida a subagentes (query_source=subagent) */
+  otelCostSubagentUsd: number | null;
+  /** tokens totais da onda (input+output+cache), todas as origens */
+  otelTotalTokens: number | null;
+  /** tokens atribuidos a subagentes */
+  otelSubagentTokens: number | null;
 }
 
 /**
@@ -109,6 +130,30 @@ export interface AgentUsageRollup {
   durationMs: number | null;
   /** ondas com `agent_usage` gravado (denominador de cobertura da amostra) */
   wavesWithUsage: number | null;
+  /** ondas consideradas no recorte (com ou sem metrica coletada) */
+  wavesTotal: number | null;
+}
+
+/**
+ * Agregado de consumo medido por telemetria OTel (schema v11) usado nos
+ * rollups de projeto/feature, no /overview e nas metricas.
+ *
+ * Diferente de `AgentUsageRollup`, aqui HA valor monetario: o custo em USD e
+ * calculado pelo proprio Claude Code e apenas somado pelo painel — nao ha
+ * tabela de preco embutida nem estimativa local. Todos os campos sao `null`
+ * quando nada foi coletado no recorte; `wavesWithOtel/wavesTotal` dao a
+ * cobertura para que um total parcial nunca seja apresentado como completo.
+ */
+export interface OtelUsageRollup {
+  /** custo total em USD no recorte; null = nao coletado */
+  costUsd: number | null;
+  costMainUsd: number | null;
+  /** fatia de subagente — a parte que `AgentUsageRollup` nao enxerga */
+  costSubagentUsd: number | null;
+  totalTokens: number | null;
+  subagentTokens: number | null;
+  /** ondas com metrica OTel coletada (denominador de cobertura) */
+  wavesWithOtel: number | null;
   /** ondas consideradas no recorte (com ou sem metrica coletada) */
   wavesTotal: number | null;
 }
@@ -377,6 +422,8 @@ export interface ProjectRollup {
   latestExecutionAt: string | null;
   /** consumo real de subagentes (schema v10); ausente/null em bases v<10 */
   agentUsage?: AgentUsageRollup | null;
+  /** consumo medido por telemetria OTel (schema v11); ausente/null em v<11 */
+  otelUsage?: OtelUsageRollup | null;
 }
 
 export interface FeatureRollup {
@@ -398,6 +445,8 @@ export interface FeatureRollup {
   latestExecutionAt: string | null;
   /** consumo real de subagentes (schema v10); ausente/null em bases v<10 */
   agentUsage?: AgentUsageRollup | null;
+  /** consumo medido por telemetria OTel (schema v11); ausente/null em v<11 */
+  otelUsage?: OtelUsageRollup | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -22,7 +22,10 @@ import { resolve } from 'node:path';
  *  v8 (recall-worktree-identity) adiciona a coluna `session` em `executions` e `waves`;
  *  v9 (executions-target-path) adiciona `executions.target_project_path`;
  *  v10 (wave-token-metrics, cstk 5.25.0) adiciona 9 colunas `agent_*` em `waves`
- *  com o consumo real de subagentes (tokens, tool uses, duracao).
+ *  com o consumo real de subagentes (tokens, tool uses, duracao);
+ *  v11 (otel-wave-cost, cstk 5.30.0) adiciona 5 colunas `otel_*` em `waves`
+ *  com o custo REAL em USD e os tokens medidos pela telemetria do Claude Code
+ *  (`otel_cost_usd` e fracionario — REAL, nao INTEGER).
  *  Todas sao aditivas, entao as telas existentes seguem operando e os recursos
  *  novos aparecem so quando a tabela/coluna esta presente (Principio II). */
 export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] as const;

@@ -58,6 +58,14 @@ export const WaveDTOSchema = z.object({
   agentCacheCreationTokens: z.number().nullable(),
   agentToolUseCount: z.number().nullable(),
   agentDurationMs: z.number().nullable(),
+  // Consumo medido por telemetria OTel (schema v11). Custo e REAL (fracionario,
+  // ex: 0.098485) — z.number() sem .int() de proposito. Mesma politica do
+  // bloco acima: nullable obrigatorio, nunca .default(null).
+  otelCostUsd: z.number().nullable(),
+  otelCostMainUsd: z.number().nullable(),
+  otelCostSubagentUsd: z.number().nullable(),
+  otelTotalTokens: z.number().nullable(),
+  otelSubagentTokens: z.number().nullable(),
 });
 
 // ---------------------------------------------------------------------------
@@ -74,6 +82,20 @@ export const AgentUsageRollupSchema = z.object({
   toolUseCount: z.number().nullable(),
   durationMs: z.number().nullable(),
   wavesWithUsage: z.number().nullable(),
+  wavesTotal: z.number().nullable(),
+});
+
+// ---------------------------------------------------------------------------
+// OtelUsageRollup schema (schema v11 — agregado de projeto/feature/metrica)
+// Custo em USD e fracionario: nada de z.number().int() aqui.
+// ---------------------------------------------------------------------------
+export const OtelUsageRollupSchema = z.object({
+  costUsd: z.number().nullable(),
+  costMainUsd: z.number().nullable(),
+  costSubagentUsd: z.number().nullable(),
+  totalTokens: z.number().nullable(),
+  subagentTokens: z.number().nullable(),
+  wavesWithOtel: z.number().nullable(),
   wavesTotal: z.number().nullable(),
 });
 
@@ -250,6 +272,7 @@ export const ProjectRollupSchema = z.object({
   openAlerts: z.number().optional(),
   latestExecutionAt: z.string().nullable(),
   agentUsage: AgentUsageRollupSchema.nullable().optional(),
+  otelUsage: OtelUsageRollupSchema.nullable().optional(),
 });
 
 export const FeatureRollupSchema = z.object({
@@ -269,6 +292,7 @@ export const FeatureRollupSchema = z.object({
   latestStatus: z.enum(['em_andamento', 'aguardando_humano', 'concluida', 'abortada']).nullable(),
   latestExecutionAt: z.string().nullable(),
   agentUsage: AgentUsageRollupSchema.nullable().optional(),
+  otelUsage: OtelUsageRollupSchema.nullable().optional(),
 });
 
 // ---------------------------------------------------------------------------

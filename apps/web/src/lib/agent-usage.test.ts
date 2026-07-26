@@ -34,6 +34,11 @@ const BASE_WAVE: WaveDTO = {
   agentCacheCreationTokens: null,
   agentToolUseCount: null,
   agentDurationMs: null,
+  otelCostUsd: null,
+  otelCostMainUsd: null,
+  otelCostSubagentUsd: null,
+  otelTotalTokens: null,
+  otelSubagentTokens: null,
 };
 
 /** Onda medida, cobertura parcial (3 de 4 spawns) — o caso mais comum. */

@@ -83,6 +83,12 @@ describe('Paridade schemas Zod — entidades', () => {
       agentCacheCreationTokens: 7400,
       agentToolUseCount: 18,
       agentDurationMs: 240000,
+      // schema v11 — custo real fracionario (nao inteiro)
+      otelCostUsd: 0.229038,
+      otelCostMainUsd: 0.130553,
+      otelCostSubagentUsd: 0.098485,
+      otelTotalTokens: 648,
+      otelSubagentTokens: 648,
     };
     const r = WaveDTOSchema.safeParse(payload);
     expect(r.success).toBe(true);

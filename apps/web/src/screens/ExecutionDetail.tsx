@@ -21,6 +21,7 @@ import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/i
 import {
   StatusBadge, ScoreChip, OutcomePill, TextRaw, Icon, BarH, MiniStat, PipelineProgress,
   AgentUsagePanel, CoverageBadge, agentUsageState, sumAgentUsage, waveAgentUsage,
+  OtelUsagePanel, OtelCoverageBadge, otelUsageState, sumOtelUsage, waveOtelUsage, fmtUsd,
 } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
 import type { ExecutionDTO, WaveDTO, DecisionDTO, TaskDTO, EventDTO, AlertSignalDTO, BlockDTO, SkillDTO, SuggestionDTO } from '@cstk-panel/shared-types';
@@ -78,6 +79,22 @@ export function waveUsageTip(w: WaveDTO): string {
   return 'consumo de subagentes nao coletado nesta onda';
 }
 
+/**
+ * Celula de custo REAL da onda (schema v11, telemetria OTel). Dois estados,
+ * sem terceiro: ou a onda foi instrumentada e ha custo, ou nao ha coleta e a
+ * celula fica "—". Zero seria afirmacao falsa sobre uma onda nao medida.
+ */
+export function waveCostLabel(w: WaveDTO): string {
+  return w.otelCostUsd == null ? '—' : fmtUsd(w.otelCostUsd);
+}
+
+export function waveCostTip(w: WaveDTO): string {
+  if (w.otelCostUsd == null) {
+    return 'custo real nao coletado nesta onda (telemetria OTel desligada, execucao anterior ao cstk 5.28.0 ou base v<11)';
+  }
+  return `custo medido: ${fmtUsd(w.otelCostMainUsd)} no loop principal + ${fmtUsd(w.otelCostSubagentUsd)} em subagentes`;
+}
+
 // ---------------------------------------------------------------------------
 // WavesTimeline
 // ---------------------------------------------------------------------------
@@ -96,6 +113,10 @@ function WavesTimeline({
   // nenhuma onda tem medicao, o rodape mostra "—", nao 0 (Principio III).
   const usageTotal = sumAgentUsage(waves);
   const hasUsage = agentUsageState(usageTotal) === 'measured';
+  // Custo REAL medido por telemetria (schema v11). Fonte independente da
+  // acima: soma tambem o que o proprio orquestrador gastou na onda.
+  const otelTotal = sumOtelUsage(waves);
+  const hasOtel = otelUsageState(otelTotal) === 'measured';
   const selectedWaveRow = selectedWave ? waves.find(w => w.wave === selectedWave) : undefined;
 
   const MOTIVO_COLOR: Record<string, string> = {
@@ -142,7 +163,7 @@ function WavesTimeline({
       <div style={{ overflowX: 'auto' }}>
         {/* Header row */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '110px 120px 1fr 50px 90px 80px',
+          display: 'grid', gridTemplateColumns: '110px 120px 1fr 50px 90px 80px 80px',
           gap: 8, padding: '8px 14px', borderBottom: '1px solid var(--border)',
           fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600,
         }}>
@@ -152,6 +173,7 @@ function WavesTimeline({
           <span style={{ textAlign: 'right' }}>Skills</span>
           <span style={{ textAlign: 'right' }} title="tokens medidos dos subagentes da onda (schema v10)">Tokens</span>
           <span style={{ textAlign: 'right' }}>Wallclock</span>
+          <span style={{ textAlign: 'right' }} title="custo real da onda em USD, medido pela telemetria OTel (schema v11)">Custo</span>
         </div>
         {waves.map(w => {
           const pct = Math.max(8, ((w.toolCalls ?? 0) / maxTC) * 100);
@@ -162,7 +184,7 @@ function WavesTimeline({
               key={w.wave}
               onClick={() => onSelectWave(isSelected ? null : w.wave)}
               style={{
-                display: 'grid', gridTemplateColumns: '110px 120px 1fr 50px 90px 80px',
+                display: 'grid', gridTemplateColumns: '110px 120px 1fr 50px 90px 80px 80px',
                 gap: 8, padding: '8px 14px', cursor: 'pointer', alignItems: 'center',
                 background: isSelected ? 'var(--bg-2)' : 'transparent',
                 borderLeft: isSelected ? `2px solid ${barColor}` : '2px solid transparent',
@@ -207,6 +229,16 @@ function WavesTimeline({
               <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text-1)' }}>
                 {fmtDur(w.wallclockSeconds)}
               </span>
+              {/* Custo real da onda. "—" quando nao houve coleta — nunca 0. */}
+              <span
+                title={waveCostTip(w)}
+                style={{
+                  textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11.5,
+                  color: w.otelCostUsd != null ? 'var(--text-1)' : 'var(--text-3)',
+                }}
+              >
+                {waveCostLabel(w)}
+              </span>
             </div>
           );
         })}
@@ -219,7 +251,9 @@ function WavesTimeline({
           <span className="row gap-2" style={{ fontFamily: 'var(--font-mono)' }}>
             {fmtNum(totalTC)} tool_calls · {fmtDur(totalWS)} wallclock
             {hasUsage && <> · {fmtTokens(usageTotal.totalTokens)} tokens</>}
+            {hasOtel && <> · {fmtUsd(otelTotal.costUsd)} medidos</>}
             {hasUsage && <CoverageBadge usage={usageTotal} />}
+            {hasOtel && <OtelCoverageBadge usage={otelTotal} />}
           </span>
         </div>
       </div>
@@ -233,6 +267,14 @@ function WavesTimeline({
             </span>
           </div>
           <AgentUsagePanel usage={waveAgentUsage(selectedWaveRow)} columns={4} />
+          <div className="row gap-2" style={{ margin: '14px 0 8px' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>
+              Custo real · {selectedWaveRow.wave}
+            </span>
+          </div>
+          {/* Fonte distinta do bloco acima: cobre main + subagente, entao os
+              dois nao se somam nem se conferem linha a linha. */}
+          <OtelUsagePanel usage={waveOtelUsage(selectedWaveRow)} columns={4} />
         </div>
       )}
     </div>
@@ -947,6 +989,10 @@ export function ExecutionDetail() {
               { label: 'Etapa corrente',  value: exec.currentStage ?? '—', color: exec.status === 'em_andamento' ? 'var(--inprogress)' : 'var(--text-0)', mono: true },
               { label: 'Duracao',         value: fmtDur(exec.durationSeconds) },
               { label: 'Custo · proxy',   value: fmtNum(exec.toolCallsTotal) },
+              // Custo REAL da execucao = soma das ondas medidas (schema v11).
+              // Fica ao lado do proxy, nao no lugar dele: um conta esforco do
+              // orquestrador, o outro dinheiro, e a cobertura pode ser parcial.
+              { label: 'Custo · real',    value: fmtUsd(sumOtelUsage(waves).costUsd), mono: true },
               // Contagem real das ondas (linhas da tabela waves) em vez do campo
               // denormalizado exec.wavesTotal, que o orquestrador nem sempre
               // incrementa (ver agente-00c wave bookkeeping defect). Fallback para
