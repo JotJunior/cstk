@@ -103,7 +103,16 @@ RECALL_EXIT_USAGE=2
 # TABLE ADD COLUMN idempotente guardado por PRAGMA table_info (padrao
 # v2/v5/v8); re-ingestao backfilla linhas ja existentes via upsert pela
 # chave natural. waves e knowledge_fts INTOCADAS.
-RECALL_SCHEMA_VERSION=9
+# v10 (wave-token-metrics): 9 colunas aditivas INTEGER em waves
+# (agent_spawns_total, agent_spawns_with_usage, agent_total_tokens,
+# agent_input_tokens, agent_output_tokens, agent_cache_read_tokens,
+# agent_cache_creation_tokens, agent_tool_use_count, agent_duration_ms) —
+# origem .waves[].agent_usage do state.json (agregado por onda, FR-006).
+# Migracao v9->v10 = ALTER TABLE ADD COLUMN idempotente guardado por PRAGMA
+# table_info (mesmo padrao v2/v5/v8/v9); SEM drop, dados v9 preservados.
+# Onda antiga ou sem .agent_usage -> todas as 9 colunas NULL, nunca 0
+# (recall_int_or_null; Principio VI — nao fabricar dado nao observado).
+RECALL_SCHEMA_VERSION=10
 # Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
 # DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
 RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
@@ -501,6 +510,15 @@ CREATE TABLE IF NOT EXISTS waves (
   n_stages INTEGER,
   n_skills INTEGER,
   session TEXT,
+  agent_spawns_total INTEGER,
+  agent_spawns_with_usage INTEGER,
+  agent_total_tokens INTEGER,
+  agent_input_tokens INTEGER,
+  agent_output_tokens INTEGER,
+  agent_cache_read_tokens INTEGER,
+  agent_cache_creation_tokens INTEGER,
+  agent_tool_use_count INTEGER,
+  agent_duration_ms INTEGER,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -709,6 +727,25 @@ ALTER TABLE waves ADD COLUMN session TEXT;" ;;
         ''|*'|target_project_path|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
         *) _as_extra="$_as_extra
 ALTER TABLE executions ADD COLUMN target_project_path TEXT;" ;;
+      esac
+      # ---- Migracao v9->v10 (wave-token-metrics): 9 colunas aditivas
+      # INTEGER em waves para o agregado de uso de agentes por onda
+      # (agent_usage). Mesmo padrao idempotente acima; reusa _as_wcols (PRAGMA
+      # ja lido antes de qualquer ALTER neste batch — os ALTERs so executam
+      # em conjunto no final). Sem DEFAULT explicito -> NULL na criacao da
+      # coluna, coerente com onda antiga sem agent_usage (FR-009: nunca 0).
+      case "$_as_wcols" in
+        ''|*'|agent_spawns_total|'*) : ;;  # tabela inexistente (DDL cria) ou ja migrada
+        *) _as_extra="$_as_extra
+ALTER TABLE waves ADD COLUMN agent_spawns_total INTEGER;
+ALTER TABLE waves ADD COLUMN agent_spawns_with_usage INTEGER;
+ALTER TABLE waves ADD COLUMN agent_total_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN agent_input_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN agent_output_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN agent_cache_read_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN agent_cache_creation_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN agent_tool_use_count INTEGER;
+ALTER TABLE waves ADD COLUMN agent_duration_ms INTEGER;" ;;
       esac
     fi
   fi
@@ -1025,6 +1062,10 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
   # Deriva etapas (join ","), inicio/fim, wallclock_seconds, tool_calls,
   # motivo_termino (texto livre filtrado), n_etapas, n_skills (derivados via
   # length). Onda aberta (fim null) -> fim vazio, sem erro (1.3.5).
+  # v10 (wave-token-metrics): +9 campos de .agent_usage (agregado por onda).
+  # .agent_usage ausente/null -> cada subcampo "" via `//` -> recall_int_or_null
+  # produz NULL (nunca 0 fabricado; 0 legitimo de fato observado e preservado,
+  # pois `//` do jq so trata false/null/vazio como falsy, nao 0).
   _isj_n_wave=0
   _isj_wave_lines=$(jq -r '
     ((.waves // .ondas) // [])
@@ -1042,7 +1083,16 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
        ($stages | length | tostring),
        (($w.skills_invoked // [])
         | map(select((.kind // "skill") != "gate"))
-        | length | tostring)]
+        | length | tostring),
+       (($w.agent_usage.spawns_total // "")|tostring),
+       (($w.agent_usage.spawns_with_usage // "")|tostring),
+       (($w.agent_usage.total_tokens // "")|tostring),
+       (($w.agent_usage.input_tokens // "")|tostring),
+       (($w.agent_usage.output_tokens // "")|tostring),
+       (($w.agent_usage.cache_read_input_tokens // "")|tostring),
+       (($w.agent_usage.cache_creation_input_tokens // "")|tostring),
+       (($w.agent_usage.tool_use_count // "")|tostring),
+       (($w.agent_usage.duration_ms // "")|tostring)]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_wave_lines=""
   if [ -n "$_isj_wave_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -1058,16 +1108,34 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       _f_mt=$(printf '%s' "$_isj_decoded" | jq -r '.[6]' 2>/dev/null | strip_nul)
       _f_ne=$(printf '%s' "$_isj_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
       _f_ns=$(printf '%s' "$_isj_decoded" | jq -r '.[8]' 2>/dev/null | strip_nul)
+      _f_ast=$(printf '%s' "$_isj_decoded" | jq -r '.[9]' 2>/dev/null | strip_nul)
+      _f_asu=$(printf '%s' "$_isj_decoded" | jq -r '.[10]' 2>/dev/null | strip_nul)
+      _f_att=$(printf '%s' "$_isj_decoded" | jq -r '.[11]' 2>/dev/null | strip_nul)
+      _f_ait=$(printf '%s' "$_isj_decoded" | jq -r '.[12]' 2>/dev/null | strip_nul)
+      _f_aot=$(printf '%s' "$_isj_decoded" | jq -r '.[13]' 2>/dev/null | strip_nul)
+      _f_acr=$(printf '%s' "$_isj_decoded" | jq -r '.[14]' 2>/dev/null | strip_nul)
+      _f_acc=$(printf '%s' "$_isj_decoded" | jq -r '.[15]' 2>/dev/null | strip_nul)
+      _f_atu=$(printf '%s' "$_isj_decoded" | jq -r '.[16]' 2>/dev/null | strip_nul)
+      _f_adm=$(printf '%s' "$_isj_decoded" | jq -r '.[17]' 2>/dev/null | strip_nul)
       [ -n "$_f_wid" ] || continue
       _f_mt=$(recall_scrub "$_f_mt")
       _isj_wc_sql=$(recall_int_or_null "$_f_wc")
       _isj_tc_sql=$(recall_int_or_null "$_f_tc")
       _isj_ne_sql=$(recall_int_or_null "$_f_ne")
       _isj_ns_sql=$(recall_int_or_null "$_f_ns")
+      _isj_ast_sql=$(recall_int_or_null "$_f_ast")
+      _isj_asu_sql=$(recall_int_or_null "$_f_asu")
+      _isj_att_sql=$(recall_int_or_null "$_f_att")
+      _isj_ait_sql=$(recall_int_or_null "$_f_ait")
+      _isj_aot_sql=$(recall_int_or_null "$_f_aot")
+      _isj_acr_sql=$(recall_int_or_null "$_f_acr")
+      _isj_acc_sql=$(recall_int_or_null "$_f_acc")
+      _isj_atu_sql=$(recall_int_or_null "$_f_atu")
+      _isj_adm_sql=$(recall_int_or_null "$_f_adm")
       _isj_sql="$_isj_sql
-INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,session,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_wid")','$(sql_escape "$_f_etp")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_fim")',$_isj_wc_sql,$_isj_tc_sql,'$(sql_escape "$_f_mt")',$_isj_ne_sql,$_isj_ns_sql,$_isj_session_sql,'$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,session=excluded.session,ingested_at=excluded.ingested_at;"
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,session,agent_spawns_total,agent_spawns_with_usage,agent_total_tokens,agent_input_tokens,agent_output_tokens,agent_cache_read_tokens,agent_cache_creation_tokens,agent_tool_use_count,agent_duration_ms,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_wid")','$(sql_escape "$_f_etp")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_fim")',$_isj_wc_sql,$_isj_tc_sql,'$(sql_escape "$_f_mt")',$_isj_ne_sql,$_isj_ns_sql,$_isj_session_sql,$_isj_ast_sql,$_isj_asu_sql,$_isj_att_sql,$_isj_ait_sql,$_isj_aot_sql,$_isj_acr_sql,$_isj_acc_sql,$_isj_atu_sql,$_isj_adm_sql,'$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,session=excluded.session,agent_spawns_total=excluded.agent_spawns_total,agent_spawns_with_usage=excluded.agent_spawns_with_usage,agent_total_tokens=excluded.agent_total_tokens,agent_input_tokens=excluded.agent_input_tokens,agent_output_tokens=excluded.agent_output_tokens,agent_cache_read_tokens=excluded.agent_cache_read_tokens,agent_cache_creation_tokens=excluded.agent_cache_creation_tokens,agent_tool_use_count=excluded.agent_tool_use_count,agent_duration_ms=excluded.agent_duration_ms,ingested_at=excluded.ingested_at;"
       _isj_n_wave=$((_isj_n_wave + 1))
     done
     IFS="$_isj_OLDIFS"

@@ -130,19 +130,19 @@ Ref: contracts/wave-usage-report.md §6
 
 Ref: data-model.md §"Extensao do knowledge.db: v9 -> v10"
 
-- [ ] 5.1.1 Bumpar `RECALL_SCHEMA_VERSION` de 9 para 10 em `cli/lib/recall.sh`
-- [ ] 5.1.2 Adicionar as 9 colunas novas `INTEGER` na tabela `waves` (`agent_spawns_total`, `agent_spawns_with_usage`, `agent_total_tokens`, `agent_input_tokens`, `agent_output_tokens`, `agent_cache_read_tokens`, `agent_cache_creation_tokens`, `agent_tool_use_count`, `agent_duration_ms`) via migracao aditiva idempotente (`PRAGMA table_info(waves)` + `case`, padrao literal ja usado em v7->v8/v8->v9)
-- [ ] 5.1.3 Confirmar que a migracao NAO faz `DROP` e preserva dados v9 existentes
-- [ ] 5.1.4 Aplicar `recall_int_or_null` (helper ja existente) em todas as 9 colunas novas na ingestao — onda antiga ou sem dado => `NULL`, nunca `0` (mesma regra de `wallclock_seconds`/`tool_calls`)
+- [x] 5.1.1 Bumpar `RECALL_SCHEMA_VERSION` de 9 para 10 em `cli/lib/recall.sh`
+- [x] 5.1.2 Adicionar as 9 colunas novas `INTEGER` na tabela `waves` (`agent_spawns_total`, `agent_spawns_with_usage`, `agent_total_tokens`, `agent_input_tokens`, `agent_output_tokens`, `agent_cache_read_tokens`, `agent_cache_creation_tokens`, `agent_tool_use_count`, `agent_duration_ms`) via migracao aditiva idempotente (`PRAGMA table_info(waves)` + `case`, padrao literal ja usado em v7->v8/v8->v9)
+- [x] 5.1.3 Confirmar que a migracao NAO faz `DROP` e preserva dados v9 existentes
+- [x] 5.1.4 Aplicar `recall_int_or_null` (helper ja existente) em todas as 9 colunas novas na ingestao — onda antiga ou sem dado => `NULL`, nunca `0` (mesma regra de `wallclock_seconds`/`tool_calls`)
 
 ### 5.2 Ingestao e retrofit `[A]`
 
 Ref: contracts/wave-usage-report.md §7
 
-- [ ] 5.2.1 Estender a rotina de ingestao (`--ingest`) para ler `.waves[].agent_usage` do `state.json` e popular as 9 colunas novas
-- [ ] 5.2.2 Estender `recall_mode_reindex()` (`--reindex`) para retrofit das colunas novas a partir de states existentes (aplicando os mesmos defaults `NULL`)
-- [ ] 5.2.3 Aplicar o guard best-effort de permissao `0600` no `knowledge.db` (subtarefa 1.2.4) no ponto de abertura/migracao de conexao
-- [ ] 5.2.4 Estender `tests/cstk/test_recall.sh` cobrindo: migracao v9->v10 idempotente, preservacao de dados v9, ingestao das 9 colunas novas, `--reindex` retrofit, `NULL` em vez de `0` para state antigo, permissao `0600` na criacao (subtarefa 1.2.6)
+- [x] 5.2.1 Estender a rotina de ingestao (`--ingest`) para ler `.waves[].agent_usage` do `state.json` e popular as 9 colunas novas
+- [x] 5.2.2 Estender `recall_mode_reindex()` (`--reindex`) para retrofit das colunas novas a partir de states existentes (aplicando os mesmos defaults `NULL`)
+- [x] 5.2.3 Aplicar o guard best-effort de permissao `0600` no `knowledge.db` (subtarefa 1.2.4) no ponto de abertura/migracao de conexao
+- [x] 5.2.4 Estender `tests/cstk/test_recall.sh` cobrindo: migracao v9->v10 idempotente, preservacao de dados v9, ingestao das 9 colunas novas, `--reindex` retrofit, `NULL` em vez de `0` para state antigo, permissao `0600` na criacao (subtarefa 1.2.6)
 
 ---
 
