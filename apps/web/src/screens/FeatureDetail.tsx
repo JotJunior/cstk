@@ -9,10 +9,11 @@ import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/index.js';
 import {
   StatusBadge, MiniStat, PipelineProgress, Icon, MarkdownView,
-  AgentUsagePanel, agentUsageState, coverageLabel,
+  AgentUsagePanel,
   OtelUsagePanel, otelUsageState, otelCoverageLabel, fmtUsd,
 } from '@/components/index.js';
 import { fmtNum, fmtDur, fmtTimestamp, fmtTokens } from '@/lib/format.js';
+import { pickTokens, tokenCoverageLabel, tokenSourceTip } from '@/lib/token-source.js';
 import { stackDisplayItems } from '@/lib/stack-display.js';
 import type { ExecutionDTO, FeatureDocScope, RetroDTO, AgentUsageRollup, OtelUsageRollup } from '@cstk-panel/shared-types';
 
@@ -235,9 +236,9 @@ export function FeatureDetail() {
   const retros = data.retros ?? [];
   const status = rollup?.latestStatus ?? null;
   const usage = rollup?.agentUsage ?? null;
-  const hasUsage = agentUsageState(usage) === 'measured';
   const otel = rollup?.otelUsage ?? null;
   const hasOtel = otelUsageState(otel) === 'measured';
+  const tokens = pickTokens(otel, usage);
 
   // Stack: primeira execucao com stack_sugerida (CARD-FTD-02)
   const stack = executions.find(e => e.suggestedStack)?.suggestedStack ?? null;
@@ -297,10 +298,10 @@ export function FeatureDetail() {
             <MiniStat label="Decisões" value={fmtNum(rollup?.totalDecisions)} />
             <MiniStat label="Execuções" value={rollup?.totalExecutions ?? executions.length} />
             <MiniStat
-              label="Tokens · subagentes"
+              label={tokens.source === 'agent' ? 'Tokens · subagentes' : 'Tokens · medidos'}
               value={
-                <span className="mono" title={hasUsage ? coverageLabel(usage) : 'não coletado nesta fonte'}>
-                  {hasUsage ? fmtTokens(usage?.totalTokens) : '—'}
+                <span className="mono" title={`${tokenSourceTip(tokens)} · ${tokenCoverageLabel(tokens, otel, usage)}`}>
+                  {tokens.tokens != null ? fmtTokens(tokens.tokens) : '—'}
                 </span>
               }
             />

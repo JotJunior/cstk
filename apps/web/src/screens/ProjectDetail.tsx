@@ -7,11 +7,12 @@ import { useProject } from '@/lib/hooks.js';
 import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState } from '@/states/index.js';
 import {
-  KpiCard, AgentUsagePanel, agentUsageState, coverageLabel,
+  KpiCard, AgentUsagePanel,
   OtelUsagePanel, otelUsageState, otelCoverageLabel, fmtUsd,
 } from '@/components/index.js';
 import { FeaturesTable, type FeatureRow } from '@/components/FeaturesTable.js';
 import { fmtNum, fmtDur, fmtTokens } from '@/lib/format.js';
+import { pickTokens, tokenCoverageLabel, tokenSourceTip } from '@/lib/token-source.js';
 import type { AgentUsageRollup, OtelUsageRollup } from '@cstk-panel/shared-types';
 
 interface ProjectRollupShape {
@@ -41,9 +42,9 @@ export function ProjectDetail() {
   const rollup = data.rollup;
   const features = data.features ?? [];
   const usage = rollup?.agentUsage ?? null;
-  const hasUsage = agentUsageState(usage) === 'measured';
   const otel = rollup?.otelUsage ?? null;
   const hasOtel = otelUsageState(otel) === 'measured';
+  const tokens = pickTokens(otel, usage);
 
   return (
     <div className="col gap-4">
@@ -69,11 +70,11 @@ export function ProjectDetail() {
           <KpiCard label="Tool calls · proxy" value={fmtNum(rollup?.totalToolCalls)} icon="bolt" tip="Chamadas de ferramenta do orquestrador — proxy de esforço, não token." />
         )}
         <KpiCard
-          label="Tokens · subagentes"
-          value={hasUsage ? fmtTokens(usage?.totalTokens) : '—'}
+          label={tokens.source === 'agent' ? 'Tokens · subagentes' : 'Tokens · medidos'}
+          value={tokens.tokens != null ? fmtTokens(tokens.tokens) : '—'}
           icon="cpu"
-          footnote={hasUsage ? coverageLabel(usage) : 'não coletado nesta fonte'}
-          tip="Medição real do harness, agregada por onda (schema v10). Parcial: spawns em background não reportam uso."
+          footnote={tokenCoverageLabel(tokens, otel, usage)}
+          tip={tokenSourceTip(tokens)}
         />
         <KpiCard label="Wallclock" value={fmtDur(rollup?.totalWallclock)} icon="clock" />
         <KpiCard label="Alertas abertos" value={rollup?.openAlerts ?? 0} icon="alert" accent={rollup && rollup.openAlerts > 0 ? 'critical' : undefined} />
