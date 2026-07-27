@@ -1681,41 +1681,35 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
     `commit-mode.sh finalize` no caminho de sucesso terminal (passo 9.ter
     acima). Modo desabilitado (default): comportamento atual intacto.
 
-    **Hook marco-aware (a cada 25 ondas):** apos o commit, calcular
-    `next_retrospective_milestone = (waves.length // 25 + 1) * 25`. Se
-    `waves.length` e multiplo de 25 (25, 50, 75, ...), emitir bloqueio
-    LEVE perguntando se o operador deseja revisao/retrospectiva
-    proativa:
+    **Hook marco-aware (a cada 25 ondas) — AUTOMATICO, NAO EXECUTE NA MAO.**
+    O proprio `state-ondas.sh end` dispara a retrospectiva proativa: quando
+    `waves.length >= next_retrospective_milestone` (default 25) e o motivo de
+    termino e `etapa_concluida_avancando` ou `threshold_proxy_atingido`, ele
+    registra a Decisao `Marco de N ondas atingido`, abre o bloqueio LEVE
+    `sim-rodar-retro | nao-continuar` e avanca
+    `.next_retrospective_milestone`.
 
-    ```bash
-    _ondas_count=$(state-rw.sh get --state-dir <SD> --field '.waves | length')
-    if [ $((_ondas_count % 25)) -eq 0 ] && [ "$_ondas_count" -gt 0 ]; then
-      # Registrar Decisao informativa
-      state-decisions.sh register --state-dir <SD> \
-        --agente "orquestrador-00c" --etapa "<atual>" \
-        --contexto "Marco de $_ondas_count ondas atingido — proposta de retro proativa" \
-        --opcoes '["solicitar-retro","prosseguir-sem-retro"]' \
-        --escolha "solicitar-retro" \
-        --justificativa "Execucao longa: marcos forcam aprendizado de meta-padroes (sug-045 da analise pos-execucao)"
+    Ate a versao anterior isto era prosa aqui, e dependia de voce lembrar de
+    calcular `waves.length % 25` — e falhou na pratica (execucao de 31 ondas
+    sem nenhuma Decisao de marco). Agora e deterministico.
 
-      # Bloqueio LEVE — operador pode prosseguir sem retro
-      bloqueios.sh register --state-dir <SD> \
-        --decisao-id <dec-NNN> \
-        --pergunta "Atingimos $_ondas_count ondas. Revisar padroes acumulados antes de continuar?" \
-        --contexto-para-resposta "Marcos a cada 25 ondas ajudam a detectar falsos positivos recorrentes e desvios de finalidade antes do fim da execucao." \
-        --opcoes-recomendadas '["sim-rodar-retro","nao-continuar"]'
-    fi
-    ```
+    Consequencias para voce:
 
-    Note que isto e bloqueio LEVE (operador pode responder
-    `nao-continuar` instantaneamente). Tambem atualizar campo de
-    estado:
-
-    ```bash
-    state-rw.sh set --state-dir <SD> \
-      --field '.next_retrospective_milestone' \
-      --value "$(( (_ondas_count / 25 + 1) * 25 ))"
-    ```
+    - **NAO** chame `state-decisions.sh`/`bloqueios.sh` para o marco. Fazer
+      isso duplica a Decisao e abre dois bloqueios competindo.
+    - Apos `end`, o `stderr` traz `end: marco de N ondas — retrospectiva
+      proposta (dec-NNN/block-NNN)` quando o marco disparou. Nesse caso ha
+      bloqueio pendente: o Schedule intent do passo 11 e
+      `none; motivo=bloqueio_humano`.
+    - Se o operador responder `sim-rodar-retro`, a retro roda na onda
+      seguinte e o **`context` da Decisao que a consolida DEVE comecar com
+      `Retrospectiva de marco`** — e esse prefixo que `cstk recall --ingest`
+      usa para projetar a retro como `type='retro'` na knowledge.db (e,
+      portanto, exibi-la no painel). Formato:
+      `Retrospectiva de marco (N ondas, block-NNN/dec-NNN): <consolidacao>`.
+    - Ondas terminadas em `bloqueio_humano`/`aborto`/`concluido` nao
+      disparam o marco de proposito; ele fica pendente e dispara na proxima
+      onda que avancar.
 
 11. **Preparar Schedule intent da proxima onda** — voce NAO chama
     ScheduleWakeup (o pai chama; ver "DIVISAO DE TRABALHO DE SCHEDULE"

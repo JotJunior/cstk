@@ -5,6 +5,67 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.32.0] - 2026-07-27
+
+Fecha o buraco da **retrospectiva proativa por marco**: o gatilho nunca era
+confiavel e, quando rodava, o resultado nao chegava ao painel.
+
+Diagnostico que originou o fix (dois projetos reais, causas diferentes):
+
+- `gamedev-training` (66 ondas): as retros de 25 e 50 ondas **rodaram** e
+  estao no `state.json` como Decisoes (`dec-102`, `dec-194`), com bloqueio
+  humano respondido em cada marco. Mesmo assim o painel mostrava
+  "Sem retros ainda" — a tabela `retros` da `knowledge.db` tinha **0 linhas
+  no indice inteiro**, em todos os projetos, desde que foi criada.
+- `mcp-project-scafold` (31 ondas): nenhuma Decisao de marco, nenhum
+  `next_retrospective_milestone`. A retro simplesmente **nunca disparou**.
+
+### Fixed
+
+- **Retro executada nunca virava dado tipado (`type='retro'`).** O
+  orquestrador registra a retrospectiva de marco como Decisao cujo `context`
+  comeca com `Retrospectiva de marco`, mas `cstk recall --ingest` so lia
+  `.retros[]` do `state.json` — chave que **nenhum script do toolkit jamais
+  escreve** (`grep '\.retros'` em `global/` e `cli/`: zero writers). O
+  resultado era uma tabela permanentemente vazia alimentando um painel que
+  a consulta. O `--ingest` agora **projeta** essas Decisoes em `retros` +
+  FTS, com `source_id = retro-<dec-id>` e `wave` = a onda real da Decisao.
+  A projecao e **aditiva**: a Decisao original continua ingerida como
+  `type='decision'`, trilha de auditoria intacta. Historico recuperavel com
+  `cstk recall --reindex`. A fonte `.retros[]` continua funcionando e as
+  duas coexistem.
+- **Gatilho de marco era prosa, e falhava.** O hook "a cada 25 ondas" vivia
+  so como instrucao em `agente-00c-orchestrator.md` (passo 10) e
+  `agente-00c-feature-orchestrator.md`, dependendo de o orquestrador lembrar
+  de calcular `waves.length % 25` — mesma classe de falha das guardas
+  advisory que a feature `enforced-guards` fechou. Agora quem fecha a onda
+  dispara: `state-ondas.sh end` registra a Decisao, abre o bloqueio LEVE
+  (`sim-rodar-retro` | `nao-continuar`) e avanca
+  `.next_retrospective_milestone`.
+
+### Changed
+
+- **Gatilho de marco e self-healing.** A condicao passou de
+  `waves.length % 25 == 0` para `waves.length >= next_retrospective_milestone`
+  (default 25). Um marco pulado numa onda terminada em bloqueio/aborto passa
+  a disparar na proxima onda que avanca, em vez de se perder ate o proximo
+  multiplo de 25 — exatamente o caso das 31 ondas sem marco.
+- Motivos `bloqueio_humano`, `aborto` e `concluido` **nao** disparam o marco
+  (dois bloqueios competindo confundem a resposta do operador; execucao
+  encerrada nao tem o que fazer com a retro) e **nao consomem** a milestone.
+- A milestone so avanca **depois** de Decisao E bloqueio gravados: falha
+  parcial deixa o marco pendente para nova tentativa.
+- Hook best-effort por contrato: qualquer falha (script irmao ausente,
+  validacao de Principio I, I/O) vira aviso em stderr e **nunca** falha o
+  `end`. Kill-switch por `CSTK_RETRO_MILESTONE_DISABLED=1`.
+- Os dois orquestradores foram atualizados para **nao** registrar o marco na
+  mao (duplicaria Decisao e abriria dois bloqueios) e passaram a documentar
+  o contrato do prefixo `Retrospectiva de marco` no `context` da Decisao que
+  consolida a retro — e esse prefixo que a projecao do `--ingest` consome.
+
+Nenhuma mudanca de schema: `retros` ja existia desde a v1 da `knowledge.db`,
+e o painel ja a consulta. Nenhuma alteracao necessaria no `cstk-panel`.
+
 ## [5.31.0] - 2026-07-26
 
 Corrige os dois bugs que sobraram no `wave-usage-report.sh backfill` — a
@@ -4218,6 +4279,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[5.32.0]: https://github.com/JotJunior/cstk/releases/tag/v5.32.0
 [5.31.0]: https://github.com/JotJunior/cstk/releases/tag/v5.31.0
 [5.30.0]: https://github.com/JotJunior/cstk/releases/tag/v5.30.0
 [5.29.0]: https://github.com/JotJunior/cstk/releases/tag/v5.29.0

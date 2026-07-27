@@ -1299,4 +1299,157 @@ scenario_end_otel_usage_captura_delta_da_onda() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# Hook marco-aware de retrospectiva proativa (a cada 25 ondas).
+#
+# Regressao real: o gatilho vivia SO como prosa no agente-00c-orchestrator.md
+# e dependia de o orquestrador lembrar de calcular `waves.length % 25`.
+# Falhou em producao (execucao de 31 ondas sem NENHUMA Decisao de marco).
+# Aqui o gatilho e do proprio `end`, entao e testavel.
+# ---------------------------------------------------------------------------
+
+# Injeta N ondas JA FECHADAS direto no state (muito mais rapido que N
+# start/end reais, que so somariam custo de jq sem cobrir nada a mais).
+_seed_waves() {
+  _sw_sd=$1; _sw_n=$2
+  _sw_tmp="$_sw_sd/state.seed.json"
+  jq --argjson n "$_sw_n" '
+    .waves = [range(0; $n) | {
+      id: ("onda-" + (("00" + ((.+1)|tostring)) | .[-3:])),
+      started_at: "2026-01-01T00:00:00Z",
+      finished_at: "2026-01-01T00:01:00Z",
+      wallclock_seconds: 60,
+      tool_calls: 0,
+      termination_reason: "etapa_concluida_avancando",
+      next_wave_scheduled_for: null,
+      executed_stages: [],
+      skills_invoked: [],
+      touched_key_aspects: []
+    }]
+  ' "$_sw_sd/state.json" > "$_sw_tmp" && mv -f "$_sw_tmp" "$_sw_sd/state.json"
+  capture "$RW" sha256-update --state-dir "$_sw_sd"
+}
+
+# Fecha a onda de indice N (seed de N-1 + um start/end real).
+_close_wave_n() {
+  _cw_sd=$1; _cw_n=$2; _cw_motivo=$3
+  _seed_waves "$_cw_sd" "$((_cw_n - 1))"
+  capture "$SCRIPT" start --state-dir "$_cw_sd"
+  capture "$SCRIPT" end --state-dir "$_cw_sd" --motivo-termino "$_cw_motivo"
+}
+
+scenario_marco_25_dispara_decisao_e_bloqueio() {
+  _sd="$TMPDIR_TEST/state-marco25"
+  _init_state "$_sd"
+  _close_wave_n "$_sd" 25 etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "marco de 25 ondas" || return 1
+
+  _n=$(jq -r '.decisions | length' "$_sd/state.json")
+  [ "$_n" = 1 ] || { _fail "decisoes" "esperado 1 Decisao de marco, obtido $_n"; return 1; }
+  _ctx=$(jq -r '.decisions[-1].context' "$_sd/state.json")
+  case "$_ctx" in
+    "Marco de 25 ondas atingido"*) : ;;
+    *) _fail "context" "esperado prefixo 'Marco de 25 ondas atingido', obtido '$_ctx'"; return 1 ;;
+  esac
+  _n=$(jq -r '.human_blocks | length' "$_sd/state.json")
+  [ "$_n" = 1 ] || { _fail "bloqueios" "esperado 1 bloqueio LEVE, obtido $_n"; return 1; }
+  # Bloqueio linkado a Decisao (Principio I) e LEVE (operador pode recusar).
+  _dec=$(jq -r '.decisions[-1].id' "$_sd/state.json")
+  _lnk=$(jq -r '.human_blocks[-1].decision_id' "$_sd/state.json")
+  [ "$_dec" = "$_lnk" ] || { _fail "link" "bloqueio aponta '$_lnk', Decisao e '$_dec'"; return 1; }
+  jq -e '.human_blocks[-1].recommended_options | index("nao-continuar")' "$_sd/state.json" >/dev/null     || { _fail "opcoes" "bloqueio precisa oferecer 'nao-continuar' (LEVE)"; return 1; }
+  # Milestone so avanca DEPOIS de Decisao + bloqueio gravados.
+  _ms=$(jq -r '.next_retrospective_milestone' "$_sd/state.json")
+  [ "$_ms" = 50 ] || { _fail "milestone" "esperado 50, obtido '$_ms'"; return 1; }
+  _st=$(jq -r '.execution.status' "$_sd/state.json")
+  [ "$_st" = "aguardando_humano" ] || { _fail "status" "esperado aguardando_humano, obtido '$_st'"; return 1; }
+  return 0
+}
+
+scenario_marco_nao_redispara_na_onda_seguinte() {
+  _sd="$TMPDIR_TEST/state-marco-idem"
+  _init_state "$_sd"
+  _close_wave_n "$_sd" 25 etapa_concluida_avancando
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end onda 26" "$_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"marco de 26 ondas"*) _fail "idempotencia" "marco redisparou na onda 26"; return 1 ;;
+  esac
+  _n=$(jq -r '.decisions | length' "$_sd/state.json")
+  [ "$_n" = 1 ] || { _fail "idempotencia" "marco redisparou: $_n Decisoes"; return 1; }
+  _n=$(jq -r '.human_blocks | length' "$_sd/state.json")
+  [ "$_n" = 1 ] || { _fail "idempotencia" "marco redisparou: $_n bloqueios"; return 1; }
+  return 0
+}
+
+# Motivos terminais/bloqueados nao disparam, e — critico — NAO consomem a
+# milestone: ela fica pendente para a proxima onda que de fato avancar.
+scenario_marco_nao_dispara_em_motivo_terminal() {
+  for _m in bloqueio_humano aborto concluido; do
+    _sd="$TMPDIR_TEST/state-marco-$_m"
+    _init_state "$_sd"
+    _close_wave_n "$_sd" 25 "$_m"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end $_m" "$_CAPTURED_STDERR"; return 1; }
+    _n=$(jq -r '.decisions | length' "$_sd/state.json")
+    [ "$_n" = 0 ] || { _fail "motivo=$_m" "nao devia registrar Decisao de marco (obtido $_n)"; return 1; }
+    _ms=$(jq -r '.next_retrospective_milestone // "ausente"' "$_sd/state.json")
+    [ "$_ms" = "ausente" ] || { _fail "motivo=$_m" "milestone consumida sem disparo ('$_ms')"; return 1; }
+  done
+  return 0
+}
+
+# Self-healing: o gatilho e `>= milestone`, nao `% 25 == 0`. Uma execucao que
+# passou de 25 sem disparar (exatamente o caso mcp-project-scafold, 31 ondas
+# sem marco) dispara na primeira onda que avanca, em vez de esperar a 50a.
+scenario_marco_dispara_atrasado_quando_passou_do_multiplo() {
+  _sd="$TMPDIR_TEST/state-marco-atrasado"
+  _init_state "$_sd"
+  _close_wave_n "$_sd" 31 etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "marco de 31 ondas" || return 1
+  _ms=$(jq -r '.next_retrospective_milestone' "$_sd/state.json")
+  [ "$_ms" = 50 ] || { _fail "milestone" "esperado 50 para 31 ondas, obtido '$_ms'"; return 1; }
+  return 0
+}
+
+scenario_marco_desligavel_por_env() {
+  _sd="$TMPDIR_TEST/state-marco-off"
+  _init_state "$_sd"
+  CSTK_RETRO_MILESTONE_DISABLED=1; export CSTK_RETRO_MILESTONE_DISABLED
+  _close_wave_n "$_sd" 25 etapa_concluida_avancando
+  _e=$_CAPTURED_EXIT; _err=$_CAPTURED_STDERR
+  unset CSTK_RETRO_MILESTONE_DISABLED
+  [ "$_e" = 0 ] || { _fail "end" "$_err"; return 1; }
+  _n=$(jq -r '.decisions | length' "$_sd/state.json")
+  [ "$_n" = 0 ] || { _fail "kill-switch" "marco disparou com CSTK_RETRO_MILESTONE_DISABLED=1"; return 1; }
+  return 0
+}
+
+# Contrato best-effort: registrar o marco NUNCA pode derrubar o fechamento da
+# onda. Sem os scripts irmaos, `end` ainda fecha a onda com exit 0 e a
+# milestone fica intacta (nova tentativa na proxima onda).
+scenario_marco_falho_nao_derruba_end() {
+  _sd="$TMPDIR_TEST/state-marco-bestefort"
+  _init_state "$_sd"
+  _seed_waves "$_sd" 24
+  # Copia do diretorio de scripts SEM os irmaos que o hook precisa. Copia o
+  # diretorio inteiro porque state-ondas.sh sourceia _diag.sh — a ausencia
+  # sob teste e a dos helpers do HOOK, nao a do runtime de diagnostico.
+  _iso="$TMPDIR_TEST/iso-scripts"
+  rm -rf "$_iso"; mkdir -p "$_iso"
+  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/"*.sh "$_iso/"
+  rm -f "$_iso/state-decisions.sh" "$_iso/bloqueios.sh"
+  capture "$_iso/state-ondas.sh" start --state-dir "$_sd"
+  capture "$_iso/state-ondas.sh" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "hook derrubou o fechamento da onda: $_CAPTURED_STDERR"; return 1; }
+  # A onda FOI fechada de verdade.
+  _tr=$(jq -r '.waves[-1].termination_reason' "$_sd/state.json")
+  [ "$_tr" = "etapa_concluida_avancando" ] || { _fail "onda" "onda nao foi fechada ('$_tr')"; return 1; }
+  _ms=$(jq -r '.next_retrospective_milestone // "ausente"' "$_sd/state.json")
+  [ "$_ms" = "ausente" ] || { _fail "milestone" "consumida apesar do hook ter falhado ('$_ms')"; return 1; }
+  return 0
+}
+
 run_all_scenarios

@@ -1480,6 +1480,54 @@ VALUES('$(sql_escape "$_f_txt")','retro','$(sql_escape "$_isj_project")','$(sql_
     IFS="$_isj_OLDIFS"
   fi
 
+  # ---- retros derivadas de Decisao de marco (source_id retro-<dec-id>) ----
+  # A retrospectiva proativa a cada 25 ondas NAO e gravada em `.retros[]`:
+  # o orquestrador a registra como Decisao cujo `context` comeca com
+  # "Retrospectiva de marco" (ver state-ondas.sh `end`, hook marco-aware).
+  # Sem esta derivacao a tabela `retros` fica permanentemente vazia mesmo em
+  # execucoes que rodaram a retro — foi o que aconteceu ate aqui: 0 linhas em
+  # `retros` no indice inteiro, enquanto o texto existia em `decisions`.
+  # A Decisao original CONTINUA ingerida como type='decision' (trilha de
+  # auditoria intacta); esta e uma projecao tipada aditiva, nao um move.
+  # wave preserva o `wave_id` da Decisao (provenancia real), diferente do
+  # 'onda' literal do bloco `.retros[]` acima.
+  _isj_retrodec_lines=$(jq -r '
+    ((.decisions // .decisoes) // [])
+    | to_entries[]
+    | .value as $d
+    | (($d.context // $d.contexto) // "") as $ctx
+    | select($ctx | test("^\\s*Retrospectiva de marco"; "i"))
+    | [($d.id // "dec-\(.key)"),
+       (($d.wave_id // $d.onda_id) // "onda"),
+       (($d.timestamp // $d.data) // ""),
+       ($ctx + " " + ((($d.rationale // $d.justificativa) // "")))]
+    | @base64' "$_isj_state" 2>/dev/null) || _isj_retrodec_lines=""
+  if [ -n "$_isj_retrodec_lines" ]; then
+    _isj_OLDIFS="$IFS"; IFS='
+'
+    for _isj_row in $_isj_retrodec_lines; do
+      _isj_decoded=$(printf '%s' "$_isj_row" | base64 -d 2>/dev/null) || continue
+      _f_decid=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
+      _f_wave=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      _f_ts=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
+      _f_txt=$(printf '%s' "$_isj_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
+      [ -n "$_f_decid" ] || continue
+      [ -n "$_f_txt" ] || continue
+      _f_txt=$(recall_scrub "$_f_txt")
+      _f_sid="retro-$_f_decid"
+      [ -n "$_f_wave" ] || _f_wave="onda"
+      _isj_sql="$_isj_sql
+INSERT INTO retros(project,feature,wave,execution_id,source_ts,source_id,text,ingested_at)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_txt")','$(sql_escape "$_isj_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,text=excluded.text,ingested_at=excluded.ingested_at;
+DELETE FROM knowledge_fts WHERE type='retro' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='$(sql_escape "$_f_wave")' AND source_id='$(sql_escape "$_f_sid")';
+INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
+VALUES('$(sql_escape "$_f_txt")','retro','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
+      _isj_n_retro=$((_isj_n_retro + 1))
+    done
+    IFS="$_isj_OLDIFS"
+  fi
+
   # ---- skills (ondas[].skills_invoked[]; source_id skill-<wave>-<idx>) ----
   # skill_name NAO passa pelo filtro (estruturado, FR-017/INV-DM-3).
   # Entradas kind=gate (gates deterministicos de script, ex.
