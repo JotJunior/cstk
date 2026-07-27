@@ -12,11 +12,12 @@ import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/index.js';
 import {
   KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBars, Legend,
-  AgentUsagePanel, AgentUsageEmpty, agentUsageState, coverageLabel,
+  AgentUsagePanel, AgentUsageEmpty,
   OtelUsagePanel, OtelUsageEmpty, otelUsageState, otelCoverageLabel, fmtUsd,
 } from '@/components/index.js';
 import type { ScatterDatum, DonutDatum } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
+import { pickTokens, tokenCoverageLabel } from '@/lib/token-source.js';
 import type { PeriodParam, AgentUsageRollup, OtelUsageRollup } from '@cstk-panel/shared-types';
 
 // Cores por modelo (alinhado ao Overview)
@@ -226,12 +227,12 @@ export function Metrics({ period }: MetricsProps) {
   // schema v10 — consumo MEDIDO de subagentes (nao proxy, mas amostra)
   const usageQuery = useMetric('agent-usage', period);
   const agentUsage = (usageQuery.data?.data as AgentUsageRollup | null) ?? null;
-  const hasMeasuredTokens = agentUsageState(agentUsage) === 'measured';
   // schema v11 — consumo medido por telemetria OTel. Unica fonte de USD do
   // painel, e o valor vem calculado pelo Claude Code (nao ha preco embutido).
   const otelQuery = useMetric('otel-usage', period);
   const otelUsage = (otelQuery.data?.data as OtelUsageRollup | null) ?? null;
   const hasOtel = otelUsageState(otelUsage) === 'measured';
+  const tokens = pickTokens(otelUsage, agentUsage);
 
   const { isDegraded } = useApiState(costQuery);
   const meta = costQuery.data?.meta;
@@ -270,13 +271,14 @@ export function Metrics({ period }: MetricsProps) {
           trend={hasOtel ? otelCoverageLabel(otelUsage) : 'telemetria não coletada'}
           accent={hasOtel ? 'accent' : undefined}
         />
-        {/* Token MEDIDO (schema v10) — convive com o proxy: um conta chamadas
-            do orquestrador, o outro o consumo dos subagentes. Nao se somam. */}
+        {/* Token MEDIDO — convive com o proxy: um conta chamadas do
+            orquestrador, o outro consumo real. Nao se somam. A fonte e a
+            mais completa disponivel (OTel > hook de spawn). */}
         <KpiCard
-          label="Tokens de subagente"
-          value={hasMeasuredTokens ? fmtTokens(agentUsage?.totalTokens) : '—'}
-          trend={hasMeasuredTokens ? coverageLabel(agentUsage) : 'não coletado nesta fonte'}
-          accent={hasMeasuredTokens ? 'accent' : undefined}
+          label={tokens.source === 'agent' ? 'Tokens de subagente' : 'Tokens medidos'}
+          value={tokens.tokens != null ? fmtTokens(tokens.tokens) : '—'}
+          trend={tokenCoverageLabel(tokens, otelUsage, agentUsage)}
+          accent={tokens.tokens != null ? 'accent' : undefined}
         />
         {passRate != null && passRate >= 0.8 ? (
           <KpiCard label="Test pass rate" value={fmtPct(passRate)} trend="media do periodo" accent="success" />

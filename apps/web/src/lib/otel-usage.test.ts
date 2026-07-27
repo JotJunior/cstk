@@ -11,7 +11,7 @@ import {
   otelUsageState, isPartialOtelSample, otelCoverageLabel, fmtUsd,
   subagentCostShare, sumOtelUsage, waveOtelUsage,
 } from '@/components/OtelUsage.js';
-import { waveCostLabel, waveCostTip } from '@/screens/ExecutionDetail.js';
+import { waveCostLabel, waveCostTip, waveUsageLabel, waveUsageTip } from '@/screens/ExecutionDetail.js';
 import type { WaveDTO, OtelUsageRollup } from '@cstk-panel/shared-types';
 
 /** Onda sem nenhuma medicao — base v<11 ou telemetria desligada. */
@@ -150,5 +150,34 @@ describe('celula de custo da onda (ExecutionDetail)', () => {
   it('o tooltip diz por que nao ha numero, em vez de sugerir zero', () => {
     expect(waveCostTip(BASE_WAVE)).toContain('nao coletado');
     expect(waveCostTip(MEASURED)).toContain('subagentes');
+  });
+});
+
+describe('celula de token da onda — fonte OTel', () => {
+  // Regressao do caso de producao (mcp-project-scafold onda-022): a onda tinha
+  // custo e token OTel, mas nenhuma coluna agent_* — a celula lia so a v10 e
+  // exibia "—" ao lado de "$3.14".
+  const OTEL_ONLY: WaveDTO = {
+    ...BASE_WAVE,
+    wave: 'onda-022',
+    otelCostUsd: 3.14147,
+    otelCostMainUsd: 0,
+    otelCostSubagentUsd: 3.14147,
+    otelTotalTokens: 7_228_603,
+    otelSubagentTokens: 7_224_500,
+  };
+
+  it('onda com telemetria exibe o token, mesmo sem hook de spawn', () => {
+    expect(waveUsageLabel(OTEL_ONLY)).toBe('7.23M');
+    expect(waveUsageTip(OTEL_ONLY)).toContain('telemetria OTel');
+  });
+
+  it('OTel vence a fonte v10 quando as duas mediram', () => {
+    const both: WaveDTO = { ...OTEL_ONLY, agentSpawnsTotal: 2, agentSpawnsWithUsage: 2, agentTotalTokens: 4_100 };
+    expect(waveUsageLabel(both)).toBe('7.23M');
+  });
+
+  it('sem nenhuma das duas fontes continua travessao, nunca 0', () => {
+    expect(waveUsageLabel(BASE_WAVE)).toBe('—');
   });
 });

@@ -5,6 +5,26 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.19.1] - 2026-07-26
+
+### Corrigido
+
+- **Token exibido `—` ao lado de custo medido**: a célula `Tokens` da linha do
+  tempo de ondas (e os equivalentes em Projeto, Feature e Métricas) lia apenas
+  `agent_total_tokens` — o schema v10, alimentado pelo hook `agent-usage`. Em
+  projeto onde esse hook nunca foi provisionado, a coluna ficava vazia ao lado
+  de um custo real medido, porque o custo vem da fonte OTel (v11). Caso
+  observado: onda com `otel_total_tokens = 7.228.603` e `otel_cost_usd = 3.14`
+  com todas as `agent_*` em `NULL` — duas fontes diferentes na mesma linha,
+  uma populada e a outra não.
+  Novo `lib/token-source.ts` centraliza a preferência **OTel (v11, loop
+  principal + subagentes) > hook de spawn (v10, só spawns observados)**,
+  aplicada nos quatro pontos afetados; `Overview` já a fazia e serviu de
+  referência. Os estados honestos ficam intactos: ausência continua `—` ou
+  `s/ dado`, **nunca 0**, a cobertura acompanha o número e o marcador de
+  amostra `*` segue exclusivo da v10, a única amostral. Onde a fonte é OTel o
+  rótulo passa a "Tokens · medidos" — ali o número não é só de subagente.
+
 ## [0.19.0] - 2026-07-26
 
 ### Adicionado
@@ -942,6 +962,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.19.1]: https://github.com/JotJunior/cstk-panel/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/JotJunior/cstk-panel/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/JotJunior/cstk-panel/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/JotJunior/cstk-panel/compare/v0.16.1...v0.17.0

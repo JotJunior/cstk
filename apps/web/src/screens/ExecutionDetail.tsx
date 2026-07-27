@@ -24,6 +24,7 @@ import {
   OtelUsagePanel, OtelCoverageBadge, otelUsageState, sumOtelUsage, waveOtelUsage, fmtUsd,
 } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
+import { pickTokens, tokenSourceTip, type TokenPick } from '@/lib/token-source.js';
 import type { ExecutionDTO, WaveDTO, DecisionDTO, TaskDTO, EventDTO, AlertSignalDTO, BlockDTO, SkillDTO, SuggestionDTO } from '@cstk-panel/shared-types';
 
 // ---------------------------------------------------------------------------
@@ -54,29 +55,37 @@ function fmtTimestamp(iso: string | null | undefined): string {
 // logica de etapas done/current/aborted). Ver components/PipelineProgress.tsx.
 
 /**
- * Celula de token da onda (schema v10). Distingue os tres estados que o cstk
- * grava — e que nao podem colapsar em "0":
- *   medido            -> "248.5k" (+ "*" quando parte dos spawns nao reportou)
- *   coletado sem dado  -> "s/ dado" (houve spawn, nenhum reportou uso)
- *   nao coletado       -> "—" (onda anterior a feature ou base v<10)
+ * Celula de token da onda. Le a fonte mais completa disponivel — OTel (v11,
+ * main + subagentes) e, sem telemetria, o hook de spawn (v10). Ver
+ * `lib/token-source.ts` para o porque da preferencia.
+ * Os estados nao colapsam em "0":
+ *   medido            -> "7.2M" (+ "*" quando a amostra v10 e parcial)
+ *   coletado sem dado -> "s/ dado" (houve spawn, nenhum reportou uso)
+ *   nao coletado      -> "—" (nenhuma das duas fontes coletou)
  */
+export function waveTokenPick(w: WaveDTO): TokenPick {
+  return pickTokens(waveOtelUsage(w), waveAgentUsage(w));
+}
+
 export function waveUsageLabel(w: WaveDTO): string {
-  if (w.agentTotalTokens != null) {
-    const partial = w.agentSpawnsWithUsage != null && w.agentSpawnsTotal != null
-      && w.agentSpawnsWithUsage < w.agentSpawnsTotal;
-    return `${fmtTokens(w.agentTotalTokens)}${partial ? ' *' : ''}`;
-  }
+  const pick = waveTokenPick(w);
+  if (pick.tokens != null) return `${fmtTokens(pick.tokens)}${pick.partial ? ' *' : ''}`;
   return w.agentSpawnsTotal != null ? 's/ dado' : '—';
 }
 
 export function waveUsageTip(w: WaveDTO): string {
-  if (w.agentTotalTokens != null) {
+  const pick = waveTokenPick(w);
+  if (pick.source === 'otel') {
+    const sub = w.otelSubagentTokens;
+    return `${tokenSourceTip(pick)}${sub != null ? ` · ${fmtTokens(sub)} em subagentes` : ''}`;
+  }
+  if (pick.source === 'agent') {
     return `${w.agentSpawnsWithUsage ?? 0} de ${w.agentSpawnsTotal ?? 0} spawns reportaram uso`;
   }
   if (w.agentSpawnsTotal != null) {
     return `${w.agentSpawnsTotal} spawn(s) observado(s), nenhum reportou uso — nao e consumo zero`;
   }
-  return 'consumo de subagentes nao coletado nesta onda';
+  return 'consumo da onda nao coletado (nem telemetria OTel, nem hook de spawn)';
 }
 
 /**
@@ -117,6 +126,9 @@ function WavesTimeline({
   // acima: soma tambem o que o proprio orquestrador gastou na onda.
   const otelTotal = sumOtelUsage(waves);
   const hasOtel = otelUsageState(otelTotal) === 'measured';
+  // Token do rodape sai da MESMA fonte que venceu nas celulas — do contrario o
+  // rodape some com o total enquanto as linhas exibem numero.
+  const tokenTotal = pickTokens(otelTotal, usageTotal);
   const selectedWaveRow = selectedWave ? waves.find(w => w.wave === selectedWave) : undefined;
 
   const MOTIVO_COLOR: Record<string, string> = {
@@ -171,7 +183,7 @@ function WavesTimeline({
           <span>Etapa</span>
           <span>Tool calls · barra</span>
           <span style={{ textAlign: 'right' }}>Skills</span>
-          <span style={{ textAlign: 'right' }} title="tokens medidos dos subagentes da onda (schema v10)">Tokens</span>
+          <span style={{ textAlign: 'right' }} title="tokens medidos da onda — telemetria OTel (v11, main + subagentes) e, sem telemetria, hook de spawn (v10)">Tokens</span>
           <span style={{ textAlign: 'right' }}>Wallclock</span>
           <span style={{ textAlign: 'right' }} title="custo real da onda em USD, medido pela telemetria OTel (schema v11)">Custo</span>
         </div>
@@ -221,7 +233,7 @@ function WavesTimeline({
                 title={waveUsageTip(w)}
                 style={{
                   textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11.5,
-                  color: w.agentTotalTokens != null ? 'var(--text-1)' : 'var(--text-3)',
+                  color: waveTokenPick(w).tokens != null ? 'var(--text-1)' : 'var(--text-3)',
                 }}
               >
                 {waveUsageLabel(w)}
@@ -250,7 +262,11 @@ function WavesTimeline({
           <span>{waves.length} ondas</span>
           <span className="row gap-2" style={{ fontFamily: 'var(--font-mono)' }}>
             {fmtNum(totalTC)} tool_calls · {fmtDur(totalWS)} wallclock
-            {hasUsage && <> · {fmtTokens(usageTotal.totalTokens)} tokens</>}
+            {tokenTotal.tokens != null && (
+              <span title={tokenSourceTip(tokenTotal)}>
+                {' '}· {fmtTokens(tokenTotal.tokens)} tokens{tokenTotal.partial ? ' *' : ''}
+              </span>
+            )}
             {hasOtel && <> · {fmtUsd(otelTotal.costUsd)} medidos</>}
             {hasUsage && <CoverageBadge usage={usageTotal} />}
             {hasOtel && <OtelCoverageBadge usage={otelTotal} />}
