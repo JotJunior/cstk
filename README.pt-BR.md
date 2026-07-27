@@ -54,6 +54,26 @@ curl -fsSL https://github.com/JotJunior/cstk/releases/latest/download/install.sh
 > — adote quando quiser que o pipeline SDD rode de ponta a ponta sem você
 > conduzir cada etapa.
 
+### Depois de instalar: ative a captura de custo e tokens
+
+Duas variáveis de ambiente — **sem API key, sem Admin key, sem organização**;
+funciona em plano de assinatura:
+
+```bash
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_METRICS_EXPORTER=prometheus
+```
+
+Com elas, cada onda do orquestrador passa a registrar o consumo **real**
+(custo e tokens, separando `main` de `subagent`) em `.waves[N].otel_usage`,
+e o painel mostra o gasto por onda. Sem elas tudo é no-op e o campo fica
+`null` — ausente, nunca zero fabricado. Ponha no seu `~/.zshrc`/`~/.bashrc`
+para não perder ondas por esquecimento.
+
+Nada sai da máquina (exporter em `127.0.0.1:9464`) e labels de identidade são
+descartados antes de tocar o disco. Detalhes, números medidos e como mudar a
+porta: [Custo real por onda](#custo-real-por-onda-otel-usagesh).
+
 ## Estrutura
 
 ```
