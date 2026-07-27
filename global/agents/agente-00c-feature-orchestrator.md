@@ -386,10 +386,10 @@ Sequencia da onda corrente. Cada iteracao:
     knowledge.db (indice derivado/reconstruivel, isolado do state
     transacional). Pular este passo jamais altera o fluxo de
     fechamento/Schedule da onda.
-10.ter (ADITIVO — marco-aware retrospectiva proativa, paridade com
-    agente-00c): a cada 25 ondas (`.waves | length` multiplo de 25),
-    emitir bloqueio LEVE propondo retrospectiva proativa e atualizar
-    `.next_retrospective_milestone`. Ver "## Retrospectiva proativa por
+10.ter (AUTOMATICO — marco-aware retrospectiva proativa, paridade com
+    agente-00c): NAO EXECUTE NADA aqui. O proprio `state-ondas.sh end`
+    dispara o marco a cada 25 ondas (Decisao + bloqueio LEVE + avanco de
+    `.next_retrospective_milestone`). Ver "## Retrospectiva proativa por
     marco (a cada 25 ondas)" abaixo. REGRA: bloqueio LEVE (operador pode
     responder `nao-continuar`); NUNCA gateia a onda por conta propria.
 10.qua (ADITIVO — sugestao para skill global, FR-020): se durante a onda
@@ -1428,40 +1428,41 @@ por conta da camada de sugestoes.
 Paridade com o `agente-00c-orchestrator`. Execucoes longas (features com
 dezenas de ondas) se beneficiam de uma pausa periodica para revisar padroes
 acumulados e detectar falsos-positivos recorrentes ou desvio de finalidade
-ANTES do fim. Apos fechar a onda (passos 10/10.bis), se a contagem de ondas
-for multiplo de 25, emita um bloqueio LEVE:
+ANTES do fim.
 
-```bash
-_ondas_count=$(state-rw.sh get --state-dir "$STATE_DIR" --field '.waves | length')
-if [ $((_ondas_count % 25)) -eq 0 ] && [ "$_ondas_count" -gt 0 ]; then
-  FASE=$(state-rw.sh get --state-dir "$STATE_DIR" --field '.current_stage')
+**O gatilho e do `state-ondas.sh end`, nao seu.** Ao fechar a onda com motivo
+`etapa_concluida_avancando` ou `threshold_proxy_atingido`, se
+`waves.length >= next_retrospective_milestone` (default 25), o proprio `end`:
 
-  # 1. Decisao auditavel (register imprime o id em stdout)
-  DEC_ID=$(state-decisions.sh register --state-dir "$STATE_DIR" \
-    --agente "agente-00c-feature-orchestrator" --etapa "$FASE" \
-    --contexto "Marco de $_ondas_count ondas atingido — proposta de retro proativa" \
-    --opcoes '["solicitar-retro","prosseguir-sem-retro"]' \
-    --escolha "solicitar-retro" \
-    --justificativa "Execucao longa: marcos forcam aprendizado de meta-padroes")
+1. registra a Decisao `Marco de N ondas atingido - proposta de retro proativa`
+   (`solicitar-retro` | `prosseguir-sem-retro`, score 0);
+2. abre o bloqueio LEVE `sim-rodar-retro` | `nao-continuar`;
+3. avanca `.next_retrospective_milestone` para o proximo multiplo de 25.
 
-  # 2. Bloqueio LEVE — operador responde via /feature-00c-resume
-  bloqueios.sh register --state-dir "$STATE_DIR" \
-    --decisao-id "$DEC_ID" \
-    --pergunta "Atingimos $_ondas_count ondas. Revisar padroes acumulados antes de continuar?" \
-    --contexto-para-resposta "Marcos a cada 25 ondas ajudam a detectar falsos positivos recorrentes e desvios de finalidade antes do fim da execucao." \
-    --opcoes-recomendadas '["sim-rodar-retro","nao-continuar"]'
+Ate a versao anterior isto era prosa aqui, e dependia de o orquestrador
+lembrar de calcular `waves.length % 25` — e falhou na pratica (execucao de 31
+ondas sem nenhuma Decisao de marco registrada). Agora e deterministico.
 
-  # 3. Atualiza o proximo marco
-  state-rw.sh set --state-dir "$STATE_DIR" \
-    --field '.next_retrospective_milestone' \
-    --value "$(( (_ondas_count / 25 + 1) * 25 ))"
-fi
-```
+Consequencias para voce:
 
-Como qualquer bloqueio pendente, na proxima iteracao o passo 2 do loop o
-detecta, encerra a onda com `Schedule intent: none` e aguarda a resposta do
-operador (ver "Contrato de conclusao de turno"). Best-effort: falha de
-qualquer helper aqui NUNCA aborta a onda — logue e siga.
+- **NAO** chame `state-decisions.sh`/`bloqueios.sh` para o marco: duplica a
+  Decisao e abre dois bloqueios competindo pela mesma resposta.
+- Quando o marco dispara, `end` loga em stderr `end: marco de N ondas —
+  retrospectiva proposta (dec-NNN/block-NNN)`. Ha bloqueio pendente: o passo
+  2 do loop o detecta na proxima iteracao e encerra a onda com
+  `Schedule intent: none` (ver "Contrato de conclusao de turno").
+- Se o operador responder `sim-rodar-retro`, a retro roda na onda seguinte e
+  o **`context` da Decisao que a consolida DEVE comecar com `Retrospectiva de
+  marco`** — e esse prefixo que `cstk recall --ingest` usa para projetar a
+  retro como `type='retro'` na knowledge.db (e, portanto, exibi-la no
+  painel). Formato:
+  `Retrospectiva de marco (N ondas, block-NNN/dec-NNN): <consolidacao>`.
+- Ondas terminadas em `bloqueio_humano`/`aborto`/`concluido` nao disparam o
+  marco de proposito; ele fica pendente e dispara na proxima onda que
+  avancar.
+
+Best-effort por contrato: qualquer falha do hook NUNCA aborta a onda — `end`
+loga o aviso e a milestone fica intacta para nova tentativa.
 
 ## Gh issue exclusivo (FR-035 + task 4.1.11)
 

@@ -309,6 +309,109 @@ _so_agent_usage_read() {
 
 _so_otel_script() { printf '%s/otel-usage.sh\n' "$(_so_self_dir)"; }
 
+# ---------------------------------------------------------------------------
+# Hook marco-aware de retrospectiva proativa (a cada 25 ondas).
+#
+# Antes vivia SO como prosa em agente-00c-orchestrator.md passo 10: dependia
+# do orquestrador lembrar de calcular `waves.length % 25` e disparar. Mesma
+# classe de falha das guardas advisory que a feature enforced-guards fechou —
+# e falhou de fato: mcp-project-scafold chegou a 31 ondas sem NENHUMA Decisao
+# de marco registrada. Aqui o gatilho e deterministico: quem fecha a onda
+# calcula e dispara.
+#
+# Regra de disparo (self-healing): dispara quando `waves.length >=
+# next_retrospective_milestone` (default 25 quando o campo esta ausente), e
+# nao apenas na igualdade exata. Assim um marco pulado por onda terminada em
+# bloqueio/aborto ainda dispara na onda seguinte, em vez de se perder ate o
+# proximo multiplo de 25.
+#
+# Motivos que NAO disparam: bloqueio_humano (ja ha bloqueio pendente — dois
+# bloqueios competindo confundem a resposta do operador), aborto e concluido
+# (execucao encerrada; retro proativa nao tem para onde levar). Nesses casos
+# `next_retrospective_milestone` fica INTACTO de proposito, para o marco
+# disparar na proxima onda que de fato avancar.
+#
+# Best-effort por contrato: qualquer falha aqui (script irmao ausente,
+# validacao de Principio I, I/O) vira aviso em stderr e NUNCA falha `end` —
+# fechar a onda e a operacao critica, registrar o marco nao e. Com a
+# milestone intacta, a proxima onda tenta de novo.
+# ---------------------------------------------------------------------------
+_so_retro_milestone_step() { printf '25\n'; }
+
+# Ecoa "1" se a onda recem-fechada cruzou o marco e o motivo permite disparo.
+_so_retro_milestone_due() {
+  _rm_sf=$1; _rm_motivo=$2
+  case "$_rm_motivo" in
+    etapa_concluida_avancando|threshold_proxy_atingido) ;;
+    *) return 1 ;;
+  esac
+  _rm_step=$(_so_retro_milestone_step)
+  _rm_len=$(jq -r '((.waves // .ondas) // []) | length' "$_rm_sf" 2>/dev/null) || return 1
+  case "$_rm_len" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$_rm_len" -gt 0 ] || return 1
+  _rm_next=$(jq -r '
+    (.next_retrospective_milestone // .proximo_marco_retrospectiva) // ""
+    | tostring' "$_rm_sf" 2>/dev/null) || _rm_next=""
+  case "$_rm_next" in ''|null|*[!0-9]*) _rm_next="$_rm_step" ;; esac
+  [ "$_rm_len" -ge "$_rm_next" ] || return 1
+  return 0
+}
+
+_so_retro_milestone_fire() {
+  _rm_sdir=$1
+  _rm_sf=$(_so_state_file "$_rm_sdir")
+  _rm_dir=$(_so_self_dir) || return 0
+  _rm_dec_sh="$_rm_dir/state-decisions.sh"
+  _rm_blo_sh="$_rm_dir/bloqueios.sh"
+  _rm_rw_sh="$_rm_dir/state-rw.sh"
+  for _rm_f in "$_rm_dec_sh" "$_rm_blo_sh" "$_rm_rw_sh"; do
+    if [ ! -x "$_rm_f" ] && [ ! -f "$_rm_f" ]; then
+      _so_log "end: hook de marco pulado (script irmao ausente: $_rm_f)"
+      return 0
+    fi
+  done
+
+  _rm_step=$(_so_retro_milestone_step)
+  _rm_len=$(jq -r '((.waves // .ondas) // []) | length' "$_rm_sf" 2>/dev/null) || return 0
+  case "$_rm_len" in ''|*[!0-9]*) return 0 ;; esac
+  _rm_etapa=$(jq -r '(.current_stage // .etapa_corrente) // "execute-task"' "$_rm_sf" 2>/dev/null) \
+    || _rm_etapa="execute-task"
+  case "$_rm_etapa" in ''|null) _rm_etapa="execute-task" ;; esac
+
+  _rm_dec=$(sh "$_rm_dec_sh" register --state-dir "$_rm_sdir" \
+    --agente "orquestrador-00c" --etapa "$_rm_etapa" \
+    --score 0 \
+    --contexto "Marco de $_rm_len ondas atingido - proposta de retro proativa (gatilho deterministico de state-ondas.sh end)" \
+    --opcoes '["solicitar-retro","prosseguir-sem-retro"]' \
+    --escolha "solicitar-retro" \
+    --justificativa "Execucao longa: marcos a cada $_rm_step ondas forcam aprendizado de meta-padroes e deteccao de desvio de proposito antes do fim da execucao." \
+    2>/dev/null) || _rm_dec=""
+  if [ -z "$_rm_dec" ]; then
+    _so_log "end: hook de marco pulado (falha ao registrar Decisao; marco continua pendente)"
+    return 0
+  fi
+
+  _rm_blk=$(sh "$_rm_blo_sh" register --state-dir "$_rm_sdir" \
+    --decisao-id "$_rm_dec" \
+    --pergunta "Atingimos $_rm_len ondas. Revisar padroes acumulados (retrospectiva de marco) antes de continuar?" \
+    --contexto-para-resposta "Marcos a cada $_rm_step ondas ajudam a detectar falsos positivos recorrentes, loops de etapa e desvios de finalidade antes do fim da execucao. Responder 'nao-continuar' prossegue sem custo." \
+    --opcoes-recomendadas '["sim-rodar-retro","nao-continuar"]' \
+    2>/dev/null) || _rm_blk=""
+  if [ -z "$_rm_blk" ]; then
+    _so_log "end: hook de marco parcial ($_rm_dec registrada, bloqueio falhou; marco continua pendente)"
+    return 0
+  fi
+
+  # So agora avanca a milestone: com Decisao E bloqueio no state, o marco
+  # esta de fato consumido e nao pode redisparar na proxima onda.
+  _rm_new=$(( (_rm_len / _rm_step + 1) * _rm_step ))
+  sh "$_rm_rw_sh" set --state-dir "$_rm_sdir" \
+    --field '.next_retrospective_milestone' --value "$_rm_new" >/dev/null 2>&1 \
+    || _so_log "end: marco disparado ($_rm_dec/$_rm_blk) mas falhou ao gravar next_retrospective_milestone=$_rm_new"
+
+  _so_log "end: marco de $_rm_len ondas — retrospectiva proposta ($_rm_dec/$_rm_blk); proximo marco=$_rm_new"
+}
+
 # _so_otel_snapshot DIR PHASE — nunca falha a onda.
 _so_otel_snapshot() {
   _ots=$(_so_otel_script)
@@ -598,6 +701,14 @@ $2"; shift 2 ;;
   _so_agent_usage_reset "$_sdir"
   _so_otel_reset "$_sdir"
   _so_log "end: onda finalizada (motivo=$_motivo, wallclock=${_wc}s, tool_calls=$_tc)"
+
+  # Hook marco-aware — DEPOIS do write/sha da onda, porque registra Decisao e
+  # bloqueio com writes atomicos proprios. Best-effort: nao altera o exit de
+  # `end`. Ver bloco de comentario em _so_retro_milestone_fire.
+  if [ "${CSTK_RETRO_MILESTONE_DISABLED:-0}" != 1 ] \
+     && _so_retro_milestone_due "$_sf" "$_motivo"; then
+    _so_retro_milestone_fire "$_sdir" || :
+  fi
 }
 
 _so_cmd_tool_call_tick() {

@@ -3490,4 +3490,127 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,session,
   return 0
 }
 
+# =========================================================================
+# Retro derivada de Decisao de marco.
+#
+# Regressao real: a retrospectiva proativa a cada 25 ondas e gravada como
+# Decisao (context com prefixo "Retrospectiva de marco"), nunca em
+# `.retros[]`. Como o --ingest so lia `.retros[]`, a tabela `retros` ficava
+# vazia mesmo em execucoes que RODARAM a retro — o indice global tinha 0
+# linhas em `retros` com duas retros reais em `decisions`.
+# =========================================================================
+
+# state.json com 1 Decisao de marco + 1 Decisao comum (controle).
+_write_state_retro_dec() {
+  _wr_dir="$1"; _wr_proj="$2"; _wr_feat="$3"
+  mkdir -p "$_wr_dir"
+  cat > "$_wr_dir/state.json" <<JSON
+{
+  "short_name": "$_wr_feat",
+  "execution": { "id": "exec-$_wr_feat", "target_project_path": "$_wr_proj" },
+  "decisions": [
+    { "id": "dec-050", "wave_id": "onda-025", "timestamp": "2026-02-01T00:00:00Z",
+      "stage": "execute-task", "agent": "orch", "choice": "solicitar-retro",
+      "options_considered": ["solicitar-retro", "prosseguir-sem-retro"],
+      "context": "Marco de 25 ondas atingido - proposta de retro proativa",
+      "rationale": "marcos forcam aprendizado de meta-padroes", "evidence": null },
+    { "id": "dec-051", "wave_id": "onda-026", "timestamp": "2026-02-02T00:00:00Z",
+      "stage": "execute-task", "agent": "orch", "choice": "prosseguir",
+      "options_considered": ["prosseguir"],
+      "context": "Retrospectiva de marco (25 ondas, block-004/dec-050): consolidacao de padroes zebra",
+      "rationale": "nenhum desvio de proposito encontrado nas 25 ondas", "evidence": null }
+  ]
+}
+JSON
+}
+
+scenario_retro_derivada_de_decisao_de_marco() {
+  _have_deps || return 0
+  _rd_sd="$TMPDIR_TEST/featRetro"
+  _rd_db="$TMPDIR_TEST/kretro.db"
+  _write_state_retro_dec "$_rd_sd" "/home/u/projRetro" "featRetro"
+  capture _rc --ingest --state-dir "$_rd_sd" --db "$_rd_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1 retros" || return 1
+
+  # Apenas a Decisao com prefixo "Retrospectiva de marco" vira retro; a
+  # Decisao que apenas PROPOE a retro (dec-050) nao entra.
+  _got=$(sqlite3 "$_rd_db" "SELECT source_id||'|'||wave FROM retros;")
+  [ "$_got" = "retro-dec-051|onda-026" ]     || { _fail "retro derivada" "esperado 'retro-dec-051|onda-026', obtido '$_got'"; return 1; }
+
+  # Projecao ADITIVA: a Decisao original continua na trilha de auditoria.
+  _n=$(sqlite3 "$_rd_db" "SELECT count(*) FROM decisions;")
+  [ "$_n" = "2" ] || { _fail "decisions" "esperado 2 decisoes preservadas, obtido '$_n'"; return 1; }
+  _n=$(sqlite3 "$_rd_db" "SELECT count(*) FROM knowledge_fts WHERE type='decision' AND source_id='dec-051';")
+  [ "$_n" = "1" ] || { _fail "fts decision" "dec-051 sumiu do type=decision (esperado projecao, nao move)"; return 1; }
+
+  # Corpo da retro concatena context + rationale, EM UMA LINHA SO: o render
+  # da busca e line-based (while read), entao \n no body quebraria a saida.
+  _lines=$(sqlite3 "$_rd_db" "SELECT text FROM retros;" | wc -l | tr -d ' ')
+  [ "$_lines" = "1" ] || { _fail "body" "text da retro tem $_lines linhas, esperado 1"; return 1; }
+  _txt=$(sqlite3 "$_rd_db" "SELECT text FROM retros;")
+  case "$_txt" in
+    *"padroes zebra"*"nenhum desvio de proposito"*) : ;;
+    *) _fail "body" "esperado context + rationale concatenados, obtido '$_txt'"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_retro_derivada_busca_por_tipo() {
+  _have_deps || return 0
+  _rb_sd="$TMPDIR_TEST/featRetroB"
+  _rb_db="$TMPDIR_TEST/kretrob.db"
+  _write_state_retro_dec "$_rb_sd" "/home/u/projRetroB" "featRetroB"
+  capture _rc --ingest --state-dir "$_rb_sd" --db "$_rb_db"
+  capture _rc "zebra" --type retro --db "$_rb_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "busca" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "[retro]" || return 1
+  assert_stdout_contains "retro-dec-051" || return 1
+  assert_stdout_contains "onda-026" || return 1
+  return 0
+}
+
+scenario_retro_derivada_idempotente() {
+  _have_deps || return 0
+  _ri_sd="$TMPDIR_TEST/featRetroC"
+  _ri_db="$TMPDIR_TEST/kretroc.db"
+  _write_state_retro_dec "$_ri_sd" "/home/u/projRetroC" "featRetroC"
+  capture _rc --ingest --state-dir "$_ri_sd" --db "$_ri_db"
+  capture _rc --ingest --state-dir "$_ri_sd" --db "$_ri_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest#2" "$_CAPTURED_STDERR"; return 1; }
+  _n=$(sqlite3 "$_ri_db" "SELECT count(*) FROM retros;")
+  [ "$_n" = "1" ] || { _fail "idempotencia" "esperado 1 retro apos 2 ingests, obtido '$_n'"; return 1; }
+  _n=$(sqlite3 "$_ri_db" "SELECT count(*) FROM knowledge_fts WHERE type='retro';")
+  [ "$_n" = "1" ] || { _fail "idempotencia fts" "esperado 1 entrada FTS, obtido '$_n'"; return 1; }
+  return 0
+}
+
+# As duas fontes coexistem: `.retros[]` (legado) e a projecao de Decisao.
+scenario_retro_derivada_coexiste_com_retros_array() {
+  _have_deps || return 0
+  _rx_sd="$TMPDIR_TEST/featRetroD"
+  _rx_db="$TMPDIR_TEST/kretrod.db"
+  mkdir -p "$_rx_sd"
+  cat > "$_rx_sd/state.json" <<'JSON'
+{
+  "short_name": "featRetroD",
+  "execution": { "id": "exec-featRetroD", "target_project_path": "/home/u/projRetroD" },
+  "retros": [ { "text": "retro legada em texto livre", "timestamp": "2026-02-03T00:00:00Z" } ],
+  "decisions": [
+    { "id": "dec-077", "wave_id": "onda-050", "timestamp": "2026-02-04T00:00:00Z",
+      "stage": "execute-task", "agent": "orch", "choice": "ok",
+      "options_considered": ["ok"],
+      "context": "Retrospectiva de marco (50 ondas): consolidacao girafa",
+      "rationale": "sem loop_em_etapa detectado", "evidence": null }
+  ]
+}
+JSON
+  capture _rc --ingest --state-dir "$_rx_sd" --db "$_rx_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "2 retros" || return 1
+  _got=$(sqlite3 "$_rx_db" "SELECT group_concat(source_id, ',') FROM (SELECT source_id FROM retros ORDER BY source_id);")
+  [ "$_got" = "retro-dec-077,retro-onda-0" ]     || { _fail "coexistencia" "esperado 'retro-dec-077,retro-onda-0', obtido '$_got'"; return 1; }
+  return 0
+}
+
 run_all_scenarios
