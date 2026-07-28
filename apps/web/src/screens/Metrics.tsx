@@ -14,12 +14,13 @@ import {
   KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBars, Legend,
   AgentUsagePanel, AgentUsageEmpty,
   OtelUsagePanel, OtelUsageEmpty, otelUsageState, otelCoverageLabel, fmtUsd,
-  ModelUsageDetailPanel,
+  ModelUsageDetailPanel, TruncatedBarH,
 } from '@/components/index.js';
 import type { ScatterDatum, DonutDatum } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
 import { pickTokens, tokenCoverageLabel } from '@/lib/token-source.js';
 import { selectModelUsage, groupModelUsageByStage } from '@/lib/model-usage-select.js';
+import { truncateBars } from '@/lib/truncate-bars.js';
 import type { PeriodParam, AgentUsageRollup, OtelUsageRollup, ModelUsageResult } from '@cstk-panel/shared-types';
 
 // Cores por modelo (alinhado ao Overview)
@@ -129,28 +130,6 @@ function AreaChart({ data, height = 120, color = 'var(--accent)', label = '' }: 
           <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={color} />
         ))}
       </svg>
-    </div>
-  );
-}
-
-function BarH({ data, label = '' }: { data: { label: string; value: number }[]; label?: string }) {
-  const max = Math.max(...data.map(d => d.value), 1);
-  return (
-    <div>
-      {label && <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>{label}</div>}
-      {data.map((d, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-          <div style={{ width: 90, fontSize: 10.5, color: 'var(--text-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            {d.label}
-          </div>
-          <div style={{ flex: 1, height: 8, background: 'var(--bg-3)', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ width: `${(d.value / max) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: 3 }} />
-          </div>
-          <div style={{ width: 40, textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-1)', flexShrink: 0 }}>
-            {d.value}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -500,19 +479,22 @@ export function Metrics({ period }: MetricsProps) {
           }}
         />
 
-        {/* 3. throughput-by-stage */}
+        {/* 3. throughput-by-stage — top-10 + "Outros" (FASE 5, FR-006/007/008, SC-002) */}
         <MetricCard
           name="throughput-by-stage"
           title="Throughput por etapa"
-          subtitle="soma tool_calls por etapa SDD"
+          subtitle="contagem de decisoes por etapa SDD"
           renderContent={(raw) => {
+            // getThroughputByStage (apps/server/src/db/queries/metrics.ts) ja
+            // retorna { stage, count }[] ordenado por count DESC.
             const arr = Array.isArray(raw)
               ? (raw as Record<string, unknown>[]).map(r => ({
-                  label: (r.etapa as string | null) ?? (r.stage as string | null) ?? '?',
-                  value: (r.tool_calls as number | null) ?? (r.count as number | null) ?? 0,
+                  label: (r.stage as string | null) ?? '?',
+                  value: (r.count as number | null) ?? 0,
                 }))
               : [];
-            return <BarH data={arr} />;
+            const { bars, othersLabel, othersMembers } = truncateBars(arr);
+            return <TruncatedBarH bars={bars} othersLabel={othersLabel} othersMembers={othersMembers} />;
           }}
         />
 

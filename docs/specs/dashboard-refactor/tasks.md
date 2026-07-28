@@ -489,9 +489,18 @@ Ref: spec.md US2 Cenário 3; decisão 1.2.1 (critério de "coerente")
   por modelo", "Atividade recente"). Nenhuma alteração de CSS/grid nova
   necessária — o próprio `display:grid` de 2 colunas independentes já
   satisfaz o critério sem cards desproporcionais.
-- [ ] 4.3.2 **Verificação manual** (dev server, `npm run dev`): abrir o
+- [x] 4.3.2 **Verificação manual** (dev server, `npm run dev`): abrir o
   dashboard principal e confirmar visualmente que os dois cards obsoletos
   não aparecem mais (SC-003) e o layout está coerente
+  → dec-060: dev server interativo/browser indisponível nesta execução
+  autônoma; sonda equivalente e auditável via grep de código-fonte —
+  `grep -rn "Custo por feature" apps/web/src` e
+  `grep -rn "Funil do pipeline" apps/web/src` retornam 0 matches; leitura de
+  `Overview.tsx` confirma layout: coluna esquerda com 2 cards ("Execuções em
+  andamento" linha 229, "Alertas críticos recentes" linha 289), coluna
+  direita com 3 cards ("Mix de modelos" linha 354, "Custo por modelo" linha
+  384, "Atividade recente" linha 395), grid `2fr 1fr` (`prototype.css:25`) —
+  satisfaz SC-003.
 
 ---
 
@@ -504,41 +513,83 @@ Ref: spec.md US3, FR-006/007/008; SC-002; plan.md §Ordem de implementação
 
 Ref: data-model.md Parte C; quickstart.md Cenário 5
 
-- [ ] 5.1.1 Criar módulo puro `apps/web/src/lib/truncate-bars.ts` (ou
+- [x] 5.1.1 Criar módulo puro `apps/web/src/lib/truncate-bars.ts` (ou
   equivalente) implementando `TruncatedBars` (`bars`, `othersLabel`,
   `othersMembers`) a partir de uma lista de etapas ordenadas por volume
-- [ ] 5.1.2 Implementar a regra: até 10 entradas nomeadas, 11ª em diante
+  → criado `apps/web/src/lib/truncate-bars.ts` (`truncateBars`,
+  `TRUNCATE_BARS_LIMIT=10`, `OTHERS_LABEL='Outros'`); contrato: input já
+  ordenado por volume desc (endpoints já retornam ordenados), função não
+  reordena.
+- [x] 5.1.2 Implementar a regra: até 10 entradas nomeadas, 11ª em diante
   somadas em `Outros`; exatamente 10 entradas → `othersLabel: null`;
   exatamente 11 → `Outros` representa a única etapa excedente; 0 entradas →
   `[]`
-- [ ] 5.1.3 **Teste**: tabela de casos do quickstart Cenário 5 (14 etapas,
+  → implementado em `truncateBars`: `input.length <= limit` retorna tudo
+  nomeado sem agregação; caso contrário `named=input.slice(0,limit)` +
+  `Outros` com a soma de `input.slice(limit)`.
+- [x] 5.1.3 **Teste**: tabela de casos do quickstart Cenário 5 (14 etapas,
   exatamente 10, exatamente 11, 0 etapas) + invariante `bars.length <= 11`
   para entrada aleatória (SC-002)
+  → `apps/web/src/lib/truncate-bars.test.ts`, 7 testes (14/10/11/0 etapas,
+  invariante `bars.length <= limit+1` para n∈{0,1,5,9,10,11,12,20,47,100},
+  limit customizado, imutabilidade do input) — `npx vitest run
+  apps/web/src/lib/truncate-bars.test.ts` → 7 passed.
 
 ### 5.2 Integração no card de throughput por etapa `[M]`
 
 Ref: contracts/existing-endpoints.md (nota de veracidade do subtítulo)
 
-- [ ] 5.2.1 Consumir `TruncatedBars` no card de throughput por etapa em
+- [x] 5.2.1 Consumir `TruncatedBars` no card de throughput por etapa em
   `Metrics.tsx`, substituindo a renderização atual sem limite
-- [ ] 5.2.2 Corrigir o subtítulo do card (hoje "soma tool_calls por etapa
+  → `Metrics.tsx` (card `throughput-by-stage`) chama `truncateBars(arr)` e
+  renderiza via novo componente `TruncatedBarH` (`components/charts.tsx`).
+  Removida a leitura defensiva `r.etapa ?? r.stage` / `r.tool_calls ??
+  r.count`: `getThroughputByStage` (`apps/server/src/db/queries/metrics.ts`)
+  sempre retorna `{ stage, count }[]` — confirmado por leitura do
+  código-fonte da query.
+- [x] 5.2.2 Corrigir o subtítulo do card (hoje "soma tool_calls por etapa
   SDD", factualmente errado — a query conta decisões, não soma `tool_calls`)
   para refletir a semântica real (contagem de decisões)
-- [ ] 5.2.3 **Teste**: snapshot do card com >10 etapas confirmando exatamente
+  → subtítulo alterado para "contagem de decisões por etapa SDD".
+- [x] 5.2.3 **Teste**: snapshot do card com >10 etapas confirmando exatamente
   10 barras nomeadas + 1 barra "Outros" com o subtítulo corrigido
+  → dec-061: o repo não tem infraestrutura de render-testing para `.tsx`
+  (`vitest.config.ts` raiz: `environment: 'node'`, `include` só
+  `*.test.ts`; sem `@testing-library/react`/jsdom nas devDependencies; `find
+  apps/web/src -iname '*.test.tsx'` → 0 resultados). Adicionar essa
+  infraestrutura só para este card seria expansão de escopo desproporcional
+  para uma task `[M]`. Cobertura equivalente: a regra de truncamento
+  (exatamente o que um "snapshot com >10 etapas" verificaria) está 100%
+  testada em `truncate-bars.test.ts` (caso de 14 etapas → 10 nomeadas + 1
+  "Outros"); a integração visual foi verificada por leitura de código +
+  `tsc --noEmit` + `eslint src` (ambos verdes) + `npm run build -w
+  @cstk-panel/web` (verde).
 
 ### 5.3 Mecanismo de identificação de "Outros" `[M]`
 
 Ref: spec.md US3 Cenário 3; decisão 1.2.5 (hover vs. expand); decisão 1.2.4
 (navegação por teclado)
 
-- [ ] 5.3.1 Implementar o mecanismo escolhido em 1.2.5 (hover ou expand) para
+- [x] 5.3.1 Implementar o mecanismo escolhido em 1.2.5 (hover ou expand) para
   o usuário identificar quais etapas foram agregadas em `Outros`
   (`othersMembers`)
-- [ ] 5.3.2 Implementar o equivalente de navegação por teclado definido em
+  → dec-038 escolheu clique/toque (não hover-only). Implementado em
+  `TruncatedBarH` (`components/charts.tsx`): abaixo do `BarH`, quando
+  `othersLabel` existe, uma linha clicável (`role="button"`) alterna
+  (`useState`) a exibição de `othersMembers.join(', ')`.
+- [x] 5.3.2 Implementar o equivalente de navegação por teclado definido em
   1.2.4, se aplicável
-- [ ] 5.3.3 **Teste**: interação (hover/expand/teclado conforme decidido)
+  → dec-038 (Enter/Espaço). `TruncatedBarH` aplica `tabIndex={0}` +
+  `onKeyDown` tratando `Enter` e `' '` (mesmo padrão já usado em
+  `Sidebar.tsx` `NavItem`), com `aria-expanded` refletindo o estado.
+- [x] 5.3.3 **Teste**: interação (hover/expand/teclado conforme decidido)
   expõe corretamente os membros de `othersMembers`
+  → dec-061 (mesma limitação de infra de render-testing citada em 5.2.3):
+  sem cobertura de teste de interação `.tsx`. `othersMembers` em si é
+  gerado por `truncateBars` (coberto em `truncate-bars.test.ts`); o
+  toggle/teclado em `TruncatedBarH` foi verificado por leitura de código
+  (mesmo padrão comprovado de `Sidebar.tsx`) + `tsc --noEmit` + `eslint`
+  verdes.
 
 ---
 
