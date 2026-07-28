@@ -1259,8 +1259,17 @@ _otel_fixture() {
 scenario_end_otel_usage_null_sem_telemetria() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
+  # Isolamento de ambiente OBRIGATORIO (sug-006): sem forcar o endpoint, o
+  # cenario cai no default (localhost:9464) e, numa maquina com
+  # CLAUDE_CODE_ENABLE_TELEMETRY=1 + OTEL_METRICS_EXPORTER=prometheus ativos,
+  # o snapshot FUNCIONA — otel_usage nao fica null e o cenario falha sem que
+  # haja defeito no codigo. Porta alta fechada = "maquina sem telemetria"
+  # deterministico. Simetrico ao export de scenario_end_otel_usage_captura_
+  # delta_da_onda, que aponta para uma fixture file://.
+  CSTK_OTEL_ENDPOINT="http://127.0.0.1:59999/metrics"; export CSTK_OTEL_ENDPOINT
   capture "$SCRIPT" start --state-dir "$_sd"
   capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  unset CSTK_OTEL_ENDPOINT
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
   # Telemetria desligada => AUSENTE (null), jamais zero fabricado.
   _got=$(jq -r '.waves[-1].otel_usage' "$_sd/state.json")

@@ -606,9 +606,9 @@ SQL
   # Aplica schema v7 via funcao real (caminho de recall_apply_schema).
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
     _fail "apply schema v7" "recall_apply_schema falhou"; return 1; }
-  # (a) schema_version virou a corrente (10 — v10 wave-token-metrics).
+  # (a) schema_version virou a corrente (12 — v12 otel-model-breakdown).
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "11" ] || { _fail "schema_version" "esperado 11, obtido $_sv"; return 1; }
+  [ "$_sv" = "12" ] || { _fail "schema_version" "esperado 12, obtido $_sv"; return 1; }
   # (b) tabela bloqueios DROPADA; blocks (EN) criada no lugar.
   _hasbloq=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='bloqueios'")
   [ "$_hasbloq" = "0" ] || { _fail "bloqueios dropada" "tabela pt-BR bloqueios sobreviveu"; return 1; }
@@ -653,7 +653,7 @@ scenario_m11b_v7_reindex_repopula() {
   _v7db="$TMPDIR_TEST/v7.db"
   _rc --reindex --states-root "$TMPDIR_TEST/rxv7" --db "$_v7db" >/dev/null 2>&1
   _sv=$(sqlite3 "$_v7db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "11" ] || { _fail "reindex schema corrente" "esperado schema_version 11, obtido $_sv"; return 1; }
+  [ "$_sv" = "12" ] || { _fail "reindex schema corrente" "esperado schema_version 12, obtido $_sv"; return 1; }
   # decisions repopuladas em EN (2 decisoes do _write_state).
   _n=$(sqlite3 "$_v7db" "SELECT count(*) FROM decisions WHERE feature='featV7'")
   [ "$_n" = "2" ] || { _fail "reindex repopula" "esperado 2 decisoes, obtido $_n"; return 1; }
@@ -675,7 +675,7 @@ scenario_m12_ddl_idempotente() {
   sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p','f','w','e','t','dec-keep','keep','now')"
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "11" ] || { _fail "schema estavel" "esperado 10 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "12" ] || { _fail "schema estavel" "esperado 12 apos 2x, obtido $_sv"; return 1; }
   _keep=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-keep'")
   [ "$_keep" = "1" ] || { _fail "idempotente sem re-drop" "linha sumiu: 2o apply re-dropou ($_keep)"; return 1; }
 }
@@ -1876,7 +1876,7 @@ scenario_b11_ddl_tasks_events() {
   # v9 executions-target-path: coluna target_project_path em executions; v8
   # recall-worktree-identity: coluna session em executions/waves).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "11" ] || { _fail "schema_version" "esperado 11, obtido $_sv"; return 1; }
+  [ "$_sv" = "12" ] || { _fail "schema_version" "esperado 12, obtido $_sv"; return 1; }
   # tasks tem a coluna title (EN, DDL fresco).
   _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='title'")
   [ "$_hascol" = "1" ] || { _fail "coluna title" "esperado 1, obtido $_hascol"; return 1; }
@@ -2192,7 +2192,7 @@ scenario_m1_schema_memories_table_exists() {
   # schema_version deve ser 10 (wave-token-metrics: colunas agent_* em waves)
   _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
     "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "11" ] || { _fail "schema_version errado" "esperado 11, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "12" ] || { _fail "schema_version errado" "esperado 12, obtido '$_ver'"; return 1; }
 }
 
 # M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
@@ -2282,7 +2282,7 @@ scenario_m1_migration_v3_to_current() {
   # session/target_project_path de executions e agent_* de waves vem do DDL
   # fresco pos-drop v7)
   _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "11" ] || { _fail "migration: schema_version errado" "esperado 11, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "12" ] || { _fail "migration: schema_version errado" "esperado 12, obtido '$_ver'"; return 1; }
   # decisions repopuladas pelo ingest (>=1; o derivado v3 foi descartado, o
   # state.json o reconstroi em EN).
   _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
@@ -3032,7 +3032,7 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,i
     *) _fail "W5 waves.session" "coluna session ausente em waves pos-migracao"; return 1 ;;
   esac
   _w5_ver=$(sqlite3 "$_w5_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_w5_ver" = "11" ] || { _fail "W5 schema_version" "esperado '11' (corrente pos-v11), obtido '$_w5_ver'"; return 1; }
+  [ "$_w5_ver" = "12" ] || { _fail "W5 schema_version" "esperado '12' (corrente pos-v12), obtido '$_w5_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/w5/sd" --db "$_w5_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W5 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3158,7 +3158,7 @@ JSON
     *) _fail "TP1d shape v9" "coluna target_project_path ausente em executions"; return 1 ;;
   esac
   _tp1_ver=$(sqlite3 "$_tp1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp1_ver" = "11" ] || { _fail "TP1d schema_version" "esperado 11, obtido '$_tp1_ver'"; return 1; }
+  [ "$_tp1_ver" = "12" ] || { _fail "TP1d schema_version" "esperado 12, obtido '$_tp1_ver'"; return 1; }
 }
 
 # Cenario TP2 — re-ingestao idempotente + backfill: DB v8 preexistente com
@@ -3213,7 +3213,7 @@ INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,ses
   _tp3_new=$(sqlite3 "$_tp3_db" "SELECT target_project_path FROM executions WHERE feature='feat-tp3';")
   [ "$_tp3_new" = "/nonexistent/tp3proj" ] || { _fail "TP3 linha nova" "esperado '/nonexistent/tp3proj', obtido '$_tp3_new'"; return 1; }
   _tp3_ver=$(sqlite3 "$_tp3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp3_ver" = "11" ] || { _fail "TP3 schema_version" "esperado '11', obtido '$_tp3_ver'"; return 1; }
+  [ "$_tp3_ver" = "12" ] || { _fail "TP3 schema_version" "esperado '12', obtido '$_tp3_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/tp3/sd" --db "$_tp3_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "TP3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3262,7 +3262,7 @@ JSON
     *) _fail "WT1 shape v10" "coluna agent_spawns_total ausente em waves"; return 1 ;;
   esac
   _wt1_ver=$(sqlite3 "$_wt1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wt1_ver" = "11" ] || { _fail "WT1 schema_version" "esperado 11, obtido '$_wt1_ver'"; return 1; }
+  [ "$_wt1_ver" = "12" ] || { _fail "WT1 schema_version" "esperado 12, obtido '$_wt1_ver'"; return 1; }
 }
 
 # Cenario WT2 — onda SEM .agent_usage: as 9 colunas ficam NULL, nunca 0
@@ -3334,7 +3334,7 @@ JSON
   _wt3_new=$(sqlite3 "$_wt3_db" "SELECT agent_spawns_total||'|'||agent_duration_ms FROM waves WHERE feature='feat-wt3';")
   [ "$_wt3_new" = "3|4321" ] || { _fail "WT3 linha nova" "esperado '3|4321', obtido '$_wt3_new'"; return 1; }
   _wt3_ver=$(sqlite3 "$_wt3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wt3_ver" = "11" ] || { _fail "WT3 schema_version" "esperado '11', obtido '$_wt3_ver'"; return 1; }
+  [ "$_wt3_ver" = "12" ] || { _fail "WT3 schema_version" "esperado '12', obtido '$_wt3_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/wt3/sd" --db "$_wt3_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3471,7 +3471,7 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,session,
   capture _rc --ingest --state-dir "$_sd" --db "$_ot_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest#1" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
   _v=$(sqlite3 "$_ot_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_v" = "11" ] || { _fail "schema_version" "esperado 11, obtido '$_v'"; return 1; }
+  [ "$_v" = "12" ] || { _fail "schema_version" "esperado 12, obtido '$_v'"; return 1; }
 
   # linha v10 intacta: session preservada, coluna nova NULL (nao 0)
   _leg=$(sqlite3 "$_ot_db" "SELECT session||'|'||COALESCE(otel_cost_usd,-999) FROM waves WHERE project='legacyp10';")
@@ -3487,6 +3487,94 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,session,
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest#2 (idempotencia)" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
   _n2=$(sqlite3 "$_ot_db" "SELECT count(*) FROM waves;")
   [ "$_n1" = "$_n2" ] || { _fail "idempotencia" "linhas mudaram de $_n1 para $_n2"; return 1; }
+  return 0
+}
+
+# =========================================================================
+# FASE 2 (otel-model-breakdown, v11->v12): schema/DDL/migracao APENAS — sem
+# ingestao real do breakdown por fonte/modelo, que e escopo de FASE 3 (ainda
+# nao implementada). Cobre tasks 2.1.4 (banco novo) e 2.2.3+2.3.1-2.3.4
+# (migracao aditiva sobre banco v11 real, idempotencia, dado pre-existente
+# intacto) via chamada direta a recall_apply_schema (mesmo padrao de
+# scenario_m12_ddl_idempotente / scenario_wt3_migracao_v9_v10_idempotente).
+# =========================================================================
+
+# Task 2.1.4 — banco criado do zero ja nasce em v12: PRAGMA table_info(waves)
+# confirma as 8 colunas otel_*_tokens novas e sqlite_master confirma a
+# existencia da tabela wave_model_usage.
+scenario_wmu1_fresh_db_colunas_e_tabela() {
+  _have_deps || return 0
+  _wmu1_db="$TMPDIR_TEST/wmu1/k.db"
+  mkdir -p "$TMPDIR_TEST/wmu1"
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_wmu1_db" || {
+    _fail "wmu1 apply" "recall_apply_schema falhou em banco novo"; return 1; }
+  _wmu1_wcols=$(sqlite3 "$_wmu1_db" "SELECT group_concat(name,',') FROM pragma_table_info('waves')")
+  for _col in otel_main_input_tokens otel_main_output_tokens \
+              otel_main_cache_read_tokens otel_main_cache_creation_tokens \
+              otel_subagent_input_tokens otel_subagent_output_tokens \
+              otel_subagent_cache_read_tokens otel_subagent_cache_creation_tokens; do
+    case ",$_wmu1_wcols," in
+      *",$_col,"*) : ;;
+      *) _fail "wmu1 coluna ausente" "$_col nao encontrada em waves: $_wmu1_wcols"; return 1 ;;
+    esac
+  done
+  _wmu1_tbl=$(sqlite3 "$_wmu1_db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='wave_model_usage'")
+  [ "$_wmu1_tbl" = "1" ] || { _fail "wmu1 tabela" "wave_model_usage ausente em banco novo"; return 1; }
+  _wmu1_ver=$(sqlite3 "$_wmu1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
+  [ "$_wmu1_ver" = "12" ] || { _fail "wmu1 schema_version" "esperado 12, obtido '$_wmu1_ver'"; return 1; }
+  return 0
+}
+
+# Tasks 2.2.3 (idempotencia do ALTER) + 2.3.1-2.3.4 (migracao sobre banco v11
+# REAL com dado pre-existente): fixture v11 com linhas em waves/decisions/
+# tasks; apos recall_apply_schema, schema_version=12, as 8 colunas novas
+# existem e ficam NULL para a linha v11 (ausente, nao 0 — Principio VI),
+# wave_model_usage existe vazia (nenhuma ingestao real ainda — FASE 3), e
+# TODAS as linhas/colunas pre-existentes continuam intactas. 2a rodada
+# confirma idempotencia (sem erro de coluna duplicada, sem duplicar linha).
+scenario_wmu2_migracao_v11_v12_real_idempotente() {
+  _have_deps || return 0
+  _wmu2_db="$TMPDIR_TEST/wmu2/k.db"
+  mkdir -p "$TMPDIR_TEST/wmu2"
+  sqlite3 "$_wmu2_db" "
+CREATE TABLE waves (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, stages TEXT, started_at TEXT, finished_at TEXT, wallclock_seconds INTEGER, tool_calls INTEGER, termination_reason TEXT, n_stages INTEGER, n_skills INTEGER, session TEXT, otel_cost_usd REAL, otel_cost_main_usd REAL, otel_cost_subagent_usd REAL, otel_total_tokens INTEGER, otel_subagent_tokens INTEGER, agent_spawns_total INTEGER, agent_spawns_with_usage INTEGER, agent_total_tokens INTEGER, agent_input_tokens INTEGER, agent_output_tokens INTEGER, agent_cache_read_tokens INTEGER, agent_cache_creation_tokens INTEGER, agent_tool_use_count INTEGER, agent_duration_ms INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, agent TEXT, stage TEXT, choice TEXT, score INTEGER, context TEXT, rationale TEXT, evidence TEXT, options TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, title TEXT, outcome TEXT, tests_run INTEGER, tests_passed INTEGER, lint_ok INTEGER, touched_files INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+INSERT INTO schema_meta VALUES('schema_version','11');
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,session,otel_cost_usd,ingested_at) VALUES('p11','f11','onda-1','e11','t','onda-1','sess11',0.5,'t');
+INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p11','f11','onda-1','e11','t','dec-1','keep','t');
+INSERT INTO tasks(project,feature,wave,execution_id,source_ts,source_id,title,outcome,ingested_at) VALUES('p11','f11','onda-1','e11','t','1.1','Task 1','pass','t');
+" || { _fail "wmu2 fixture v11" "criacao do DB v11 falhou"; return 1; }
+
+  # 1a rodada: migra v11 -> v12
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_wmu2_db" || {
+    _fail "wmu2 apply#1" "recall_apply_schema falhou"; return 1; }
+  _wmu2_ver=$(sqlite3 "$_wmu2_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
+  [ "$_wmu2_ver" = "12" ] || { _fail "wmu2 schema_version" "esperado 12, obtido '$_wmu2_ver'"; return 1; }
+
+  # linha v11 intacta: session/otel_cost_usd preservados, colunas novas NULL (nao 0)
+  _wmu2_leg=$(sqlite3 "$_wmu2_db" "SELECT session||'|'||otel_cost_usd||'|'||COALESCE(otel_main_input_tokens,-999) FROM waves WHERE project='p11';")
+  [ "$_wmu2_leg" = "sess11|0.5|-999" ] || { _fail "wmu2 linha v11" "esperado 'sess11|0.5|-999', obtido '$_wmu2_leg'"; return 1; }
+
+  # contagens pre-existentes intactas (2.3.3)
+  _wmu2_nw=$(sqlite3 "$_wmu2_db" "SELECT count(*) FROM waves;")
+  [ "$_wmu2_nw" = "1" ] || { _fail "wmu2 waves count" "esperado 1, obtido $_wmu2_nw"; return 1; }
+  _wmu2_nd=$(sqlite3 "$_wmu2_db" "SELECT count(*) FROM decisions;")
+  [ "$_wmu2_nd" = "1" ] || { _fail "wmu2 decisions count" "esperado 1, obtido $_wmu2_nd"; return 1; }
+  _wmu2_nt=$(sqlite3 "$_wmu2_db" "SELECT count(*) FROM tasks;")
+  [ "$_wmu2_nt" = "1" ] || { _fail "wmu2 tasks count" "esperado 1, obtido $_wmu2_nt"; return 1; }
+
+  # wave_model_usage existe e esta vazia (nenhuma ingestao real ainda — FASE 3)
+  _wmu2_tbl=$(sqlite3 "$_wmu2_db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='wave_model_usage';")
+  [ "$_wmu2_tbl" = "1" ] || { _fail "wmu2 tabela nova" "wave_model_usage ausente pos-migracao"; return 1; }
+  _wmu2_wmurows=$(sqlite3 "$_wmu2_db" "SELECT count(*) FROM wave_model_usage;")
+  [ "$_wmu2_wmurows" = "0" ] || { _fail "wmu2 tabela vazia" "esperado 0 linhas, obtido $_wmu2_wmurows"; return 1; }
+
+  # 2a rodada: idempotente (2.2.3) — sem erro de coluna duplicada, sem duplicar linha
+  assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_wmu2_db" || return 1
+  _wmu2_nw2=$(sqlite3 "$_wmu2_db" "SELECT count(*) FROM waves;")
+  [ "$_wmu2_nw2" = "1" ] || { _fail "wmu2 idempotencia waves" "linhas mudaram para $_wmu2_nw2"; return 1; }
   return 0
 }
 
@@ -3610,6 +3698,207 @@ JSON
   assert_stdout_contains "2 retros" || return 1
   _got=$(sqlite3 "$_rx_db" "SELECT group_concat(source_id, ',') FROM (SELECT source_id FROM retros ORDER BY source_id);")
   [ "$_got" = "retro-dec-077,retro-onda-0" ]     || { _fail "coexistencia" "esperado 'retro-dec-077,retro-onda-0', obtido '$_got'"; return 1; }
+  return 0
+}
+
+# =========================================================================
+# FASE 3 (otel-model-breakdown) — ingestao de wave_model_usage + 8 colunas
+# de breakdown por fonte em waves. Valores das 3 ondas abaixo NAO sao
+# ilustrativos: reproduzem exatamente o corpus real citado em quickstart.md
+# Cenarios 1-5 (onda-001 deste proprio state-dir da feature; onda-004 de
+# my-music-match/foundation), conferidos por leitura direta dos state.json
+# de origem (Principio VI). onda-005 e sintetica, sem otel_usage, para
+# validar SC-002 (onda sem telemetria -> zero linhas, nunca fabricadas).
+# =========================================================================
+_write_wmu_state() {
+  _ww_dir="$1"; _ww_proj="$2"; _ww_feat="$3"
+  mkdir -p "$_ww_dir"
+  cat > "$_ww_dir/state.json" <<JSON
+{
+  "short_name": "$_ww_feat",
+  "execution": { "id": "exec-$_ww_feat", "target_project_path": "$_ww_proj" },
+  "waves": [
+    {
+      "id": "onda-001",
+      "started_at": "2026-07-27T12:00:00Z",
+      "otel_usage": {
+        "total_cost_usd": 1.6861549999999998,
+        "total_tokens": 2519024,
+        "by_source": {
+          "main": {"cost_usd": 0.475915, "input": 3, "output": 907, "cache_read": 371775, "cache_creation": 2938},
+          "subagent": {"cost_usd": 1.21024, "input": 31, "output": 30143, "cache_read": 2077276, "cache_creation": 35951}
+        },
+        "by_model": {
+          "claude-fable-5": {"cost_usd": 0.475915, "total_tokens": 375623},
+          "claude-sonnet-5": {"cost_usd": 1.21024, "total_tokens": 2143401}
+        }
+      }
+    },
+    {
+      "id": "onda-004",
+      "started_at": "2026-07-27T13:00:00Z",
+      "otel_usage": {
+        "total_cost_usd": 6.778993000000001,
+        "total_tokens": 7075765,
+        "by_source": {
+          "subagent": {"cost_usd": 6.778993000000001, "input": 108, "output": 97555, "cache_read": 6756551, "cache_creation": 221551}
+        },
+        "by_model": {
+          "claude-opus-5[1m]": {"cost_usd": 6.1439, "total_tokens": 6864604},
+          "claude-sonnet-5": {"cost_usd": 0.635093, "total_tokens": 211161}
+        }
+      }
+    },
+    {
+      "id": "onda-005",
+      "started_at": "2026-07-27T14:00:00Z"
+    }
+  ]
+}
+JSON
+}
+
+# Cenario 2/1 do quickstart — by_source.main presente + 2 modelos (task 3.1.3/3.3.5).
+scenario_wmu3_breakdown_por_fonte_e_2modelos() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/featWmu3" "/home/u/projWmu3" "featWmu3"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu3" --db "$TMPDIR_TEST/wmu3.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu3 ingest" "$_CAPTURED_STDERR"; return 1; }
+  _cols=$(sqlite3 "$TMPDIR_TEST/wmu3.db" "SELECT otel_main_input_tokens||'|'||otel_main_output_tokens||'|'||otel_main_cache_read_tokens||'|'||otel_main_cache_creation_tokens||'|'||otel_subagent_input_tokens||'|'||otel_subagent_output_tokens||'|'||otel_subagent_cache_read_tokens||'|'||otel_subagent_cache_creation_tokens FROM waves WHERE feature='featWmu3' AND wave='onda-001'")
+  [ "$_cols" = "3|907|371775|2938|31|30143|2077276|35951" ] || { _fail "wmu3 8 colunas" "obtido '$_cols'"; return 1; }
+  # invariante FR-009: soma das 4 parcelas subagent = otel_subagent_tokens (coluna pre-existente).
+  _inv=$(sqlite3 "$TMPDIR_TEST/wmu3.db" "SELECT otel_subagent_tokens FROM waves WHERE feature='featWmu3' AND wave='onda-001'")
+  [ "$_inv" = "2143401" ] || { _fail "wmu3 invariante FR-009" "esperado 2143401, obtido '$_inv'"; return 1; }
+  _wmu=$(sqlite3 "$TMPDIR_TEST/wmu3.db" "SELECT model||'|'||cost_usd||'|'||total_tokens FROM wave_model_usage WHERE feature='featWmu3' AND wave='onda-001' ORDER BY model")
+  _expected="claude-fable-5|0.475915|375623
+claude-sonnet-5|1.21024|2143401"
+  [ "$_wmu" = "$_expected" ] || { _fail "wmu3 wave_model_usage" "obtido '$_wmu'"; return 1; }
+  return 0
+}
+
+# Cenario 3/4 do quickstart — by_source SO subagent (main NULL, nao zero) +
+# modelo com sufixo de tier preservado literalmente (task 3.1.3/3.3.5).
+scenario_wmu4_by_source_so_subagent_tier_preservado() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/featWmu4" "/home/u/projWmu4" "featWmu4"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu4" --db "$TMPDIR_TEST/wmu4.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu4 ingest" "$_CAPTURED_STDERR"; return 1; }
+  # as 4 colunas otel_main_* DEVEM ser NULL (nao 0) — assercao explicita, FR-004.
+  _nn=$(sqlite3 "$TMPDIR_TEST/wmu4.db" "SELECT count(*) FROM waves WHERE feature='featWmu4' AND wave='onda-004' AND otel_main_input_tokens IS NULL AND otel_main_output_tokens IS NULL AND otel_main_cache_read_tokens IS NULL AND otel_main_cache_creation_tokens IS NULL")
+  [ "$_nn" = "1" ] || { _fail "wmu4 main NULL" "esperado 1, obtido '$_nn'"; return 1; }
+  _sub=$(sqlite3 "$TMPDIR_TEST/wmu4.db" "SELECT otel_subagent_input_tokens||'|'||otel_subagent_output_tokens||'|'||otel_subagent_cache_read_tokens||'|'||otel_subagent_cache_creation_tokens FROM waves WHERE feature='featWmu4' AND wave='onda-004'")
+  [ "$_sub" = "108|97555|6756551|221551" ] || { _fail "wmu4 subagent cols" "obtido '$_sub'"; return 1; }
+  _wmu=$(sqlite3 "$TMPDIR_TEST/wmu4.db" "SELECT model||'|'||cost_usd||'|'||total_tokens FROM wave_model_usage WHERE feature='featWmu4' AND wave='onda-004' ORDER BY model")
+  _expected="claude-opus-5[1m]|6.1439|6864604
+claude-sonnet-5|0.635093|211161"
+  [ "$_wmu" = "$_expected" ] || { _fail "wmu4 tier preservado" "obtido '$_wmu'"; return 1; }
+  # negativo: nenhuma normalizacao para alias canonico (opus/sonnet).
+  _norm=$(sqlite3 "$TMPDIR_TEST/wmu4.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu4' AND model IN ('opus','sonnet')")
+  [ "$_norm" = "0" ] || { _fail "wmu4 sem normalizacao" "esperado 0, obtido '$_norm'"; return 1; }
+  return 0
+}
+
+# Cenario 5 do quickstart — onda sem otel_usage: zero linhas fabricadas,
+# linha em waves existe com as 8 colunas novas NULL (SC-002).
+scenario_wmu5_onda_sem_otel_zero_linhas() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/featWmu5" "/home/u/projWmu5" "featWmu5"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu5" --db "$TMPDIR_TEST/wmu5.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu5 ingest" "$_CAPTURED_STDERR"; return 1; }
+  _wn=$(sqlite3 "$TMPDIR_TEST/wmu5.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu5' AND wave='onda-005'")
+  [ "$_wn" = "0" ] || { _fail "wmu5 zero linhas" "esperado 0, obtido '$_wn'"; return 1; }
+  _wc=$(sqlite3 "$TMPDIR_TEST/wmu5.db" "SELECT count(*) FROM waves WHERE feature='featWmu5' AND wave='onda-005'")
+  [ "$_wc" = "1" ] || { _fail "wmu5 waves existe" "esperado 1, obtido '$_wc'"; return 1; }
+  _nn=$(sqlite3 "$TMPDIR_TEST/wmu5.db" "SELECT count(*) FROM waves WHERE feature='featWmu5' AND wave='onda-005' AND otel_main_input_tokens IS NULL AND otel_subagent_input_tokens IS NULL")
+  [ "$_nn" = "1" ] || { _fail "wmu5 8 cols NULL" "esperado 1, obtido '$_nn'"; return 1; }
+  return 0
+}
+
+# Task 3.4.2 (implementa FR-011/1.3.2): apos --ingest, wave_model_usage
+# NUNCA alimenta knowledge_fts, mesmo com linhas reais presentes na tabela
+# (sanity: >0 linhas, para a assercao de isolamento nao ser trivial).
+scenario_wmu6_isolamento_fts_ingest() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/featWmu6" "/home/u/projWmu6" "featWmu6"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu6" --db "$TMPDIR_TEST/wmu6.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu6 ingest" "$_CAPTURED_STDERR"; return 1; }
+  _rows=$(sqlite3 "$TMPDIR_TEST/wmu6.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu6'")
+  [ "$_rows" -gt "0" ] || { _fail "wmu6 sanity" "esperado >0 linhas em wave_model_usage, obtido '$_rows'"; return 1; }
+  _fts=$(sqlite3 "$TMPDIR_TEST/wmu6.db" "SELECT count(*) FROM knowledge_fts WHERE type='wave_model_usage'")
+  [ "$_fts" = "0" ] || { _fail "wmu6 isolamento FTS (ingest)" "esperado 0, obtido '$_fts'"; return 1; }
+  return 0
+}
+
+# Task 3.4.2 (implementa FR-011/1.3.3): mesma assercao pelo caminho --reindex
+# (cobre os dois caminhos de escrita do FTS, CHK013).
+scenario_wmu7_isolamento_fts_reindex() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/rxwmu7/p/.claude/feature-00c-state/featWmu7" "/home/u/projWmu7" "featWmu7"
+  capture _rc --reindex --states-root "$TMPDIR_TEST/rxwmu7" --db "$TMPDIR_TEST/wmu7.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu7 reindex" "$_CAPTURED_STDERR"; return 1; }
+  _rows=$(sqlite3 "$TMPDIR_TEST/wmu7.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu7'")
+  [ "$_rows" -gt "0" ] || { _fail "wmu7 sanity" "esperado >0 linhas em wave_model_usage, obtido '$_rows'"; return 1; }
+  _fts=$(sqlite3 "$TMPDIR_TEST/wmu7.db" "SELECT count(*) FROM knowledge_fts WHERE type='wave_model_usage'")
+  [ "$_fts" = "0" ] || { _fail "wmu7 isolamento FTS (reindex)" "esperado 0, obtido '$_fts'"; return 1; }
+  return 0
+}
+
+# Cenario 10 do quickstart / task 1.2.2 — valor 0 legitimo preservado.
+# Fonte real (Principio VI): mcp-project-scafold/.claude/agente-00c-state/
+# state.json, onda-022 (conferida por leitura direta em 2026-07-28) —
+# by_source.main tem cost_usd/input/output/cache_read = 0 e
+# cache_creation = 4103 NA MESMA linha; by_model.claude-opus-5 tem
+# cost_usd=0 e total_tokens=4103. Custo zero com tokens NAO-zero na mesma
+# linha prova que o zero e MEDIDO, nao ausencia de dado (CHK006).
+_write_wmu_state_zero_legitimo() {
+  _wz_dir="$1"; _wz_proj="$2"; _wz_feat="$3"
+  mkdir -p "$_wz_dir"
+  cat > "$_wz_dir/state.json" <<JSON
+{
+  "short_name": "$_wz_feat",
+  "execution": { "id": "exec-$_wz_feat", "target_project_path": "$_wz_proj" },
+  "waves": [
+    {
+      "id": "onda-022",
+      "started_at": "2026-07-27T00:17:40Z",
+      "otel_usage": {
+        "total_cost_usd": 3.14147,
+        "total_tokens": 7228603,
+        "by_source": {
+          "main": {"cost_usd": 0, "input": 0, "output": 0, "cache_read": 0, "cache_creation": 4103},
+          "subagent": {"cost_usd": 3.14147, "input": 102, "output": 41916, "cache_read": 7078806, "cache_creation": 103676}
+        },
+        "by_model": {
+          "claude-opus-5": {"cost_usd": 0, "total_tokens": 4103},
+          "claude-sonnet-5": {"cost_usd": 3.14147, "total_tokens": 7224500}
+        }
+      }
+    }
+  ]
+}
+JSON
+}
+
+scenario_wmu8_zero_legitimo_preservado() {
+  _have_deps || return 0
+  _write_wmu_state_zero_legitimo "$TMPDIR_TEST/featWmu8" "/home/u/projWmu8" "featWmu8"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu8" --db "$TMPDIR_TEST/wmu8.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu8 ingest" "$_CAPTURED_STDERR"; return 1; }
+  # as 3 colunas otel_main_{input,output,cache_read} DEVEM ser 0 E NAO-NULAS
+  # (nao basta "= 0": SQLite compara NULL = 0 como NULL/falso, mas a
+  # assercao explicita de IS NOT NULL evita falso-positivo por coluna
+  # ausente em schema errado).
+  _zero=$(sqlite3 "$TMPDIR_TEST/wmu8.db" "SELECT count(*) FROM waves WHERE feature='featWmu8' AND wave='onda-022' AND otel_main_input_tokens = 0 AND otel_main_input_tokens IS NOT NULL AND otel_main_output_tokens = 0 AND otel_main_output_tokens IS NOT NULL AND otel_main_cache_read_tokens = 0 AND otel_main_cache_read_tokens IS NOT NULL")
+  [ "$_zero" = "1" ] || { _fail "wmu8 zero nao-nulo" "esperado 1, obtido '$_zero'"; return 1; }
+  # cache_creation NAO-zero na MESMA linha — prova que o zero acima e medido.
+  _cc=$(sqlite3 "$TMPDIR_TEST/wmu8.db" "SELECT otel_main_cache_creation_tokens FROM waves WHERE feature='featWmu8' AND wave='onda-022'")
+  [ "$_cc" = "4103" ] || { _fail "wmu8 cache_creation" "esperado 4103, obtido '$_cc'"; return 1; }
+  # coluna PRE-EXISTENTE (schema v11) otel_cost_main_usd tambem 0 nao-nulo.
+  _cost=$(sqlite3 "$TMPDIR_TEST/wmu8.db" "SELECT count(*) FROM waves WHERE feature='featWmu8' AND wave='onda-022' AND otel_cost_main_usd = 0 AND otel_cost_main_usd IS NOT NULL")
+  [ "$_cost" = "1" ] || { _fail "wmu8 otel_cost_main_usd" "esperado 1, obtido '$_cost'"; return 1; }
+  # wave_model_usage: claude-opus-5 com cost_usd=0 e total_tokens=4103 (nao-zero).
+  _wmu=$(sqlite3 "$TMPDIR_TEST/wmu8.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu8' AND wave='onda-022' AND model='claude-opus-5' AND cost_usd = 0 AND total_tokens = 4103")
+  [ "$_wmu" = "1" ] || { _fail "wmu8 wave_model_usage zero-cost" "esperado 1, obtido '$_wmu'"; return 1; }
   return 0
 }
 
