@@ -52,14 +52,41 @@
 #
 #   otel-usage.sh snapshot --state-dir DIR --phase start|end [--endpoint URL]
 #       — Scrape + filtro + strip de PII -> <state-dir>/otel-<phase>.tsv
-#         (TSV: query_source \t model \t type \t value; `type` = "cost" na
-#         linha de custo). Best-effort: endpoint fora do ar -> exit 0 sem
-#         escrever, a onda segue normal.
+#         (TSV: session_id \t query_source \t model \t type \t value;
+#         `type` = "cost" na linha de custo). Best-effort: endpoint fora
+#         do ar -> exit 0 sem escrever, a onda segue normal.
 #
 #   otel-usage.sh delta --state-dir DIR
-#       — end - start por chave, em JSON no stdout. Sem os dois snapshots,
-#         imprime `null` e sai 0 (metrica ausente NUNCA e zero fabricado —
-#         Principio VI).
+#       — end - start por chave (session, source, model, type), duplicatas
+#         SOMADAS, resultado atribuido a UNICA sessao que cresceu (ver
+#         bloco MULTIPLAS SESSOES). JSON no stdout. Sem os dois snapshots,
+#         mais de uma sessao ativa, processo trocado ou snapshot em
+#         formato antigo: imprime `null` e sai 0 (metrica ausente NUNCA e
+#         zero fabricado — Principio VI).
+#
+# MULTIPLAS SESSOES NO MESMO EXPORTER (bug real, 2026-07-28)
+# ----------------------------------------------------------
+# O processo dono da porta 9464 pode ser um claude -c longevo que expoe
+# metricas de MAIS DE UMA sessao — inclusive sessoes paradas ha horas,
+# congeladas com acumulado gigante. Na execucao dashboard-refactor, 14
+# ondas gravaram 212.447.680 tokens / $88 bit-identicos porque:
+#   (a) o parse descartava o session_id das linhas, somando o historico
+#       de todas as sessoes do processo; e
+#   (b) a chave do join (source, model, type) colide entre linhas que o
+#       exporter separa por agent_name/skill_name/effort — o awk
+#       sobrescrevia a base (s[k]=$4) e imprimia cada duplicata do end
+#       contra essa base unica, transformando o "delta" no acumulado.
+# O delta agora agrega por sessao (duplicatas somadas) e so aceita o
+# resultado quando EXATAMENTE UMA sessao cresceu entre os snapshots —
+# crescimento que, por construcao, aconteceu dentro da janela da onda.
+# Sessao congelada tem delta 0 e nao contamina. Dois casos continuam
+# indecidiveis e viram null (nunca chute):
+#   - mais de uma sessao cresceu (outro claude ativo no mesmo exporter);
+#   - sessao do start ausente no end (o processo dono da porta trocou;
+#     num exporter vivo sessao nunca some — contador e cumulativo).
+# NOTA: o session_id do OTel nao serve como IDENTIDADE da sessao corrente
+# (label ja observado apontando para outra sessao/projeto), por isso NAO
+# ha match contra env — apenas deteccao de crescimento por sessao.
 #
 # Exit codes:
 #   0  sucesso, ou degradacao best-effort (sem telemetria disponivel)
@@ -103,11 +130,16 @@ _ou_scrape() {
   return 0
 }
 
-# _ou_parse INFILE -> TSV em stdout: query_source \t model \t type \t value
+# _ou_parse INFILE -> TSV em stdout:
+#   session_id \t query_source \t model \t type \t value
 #
 # Formato de entrada (verificado empiricamente contra Claude Code 2.1.220):
 #   claude_code_cost_usage_total{...,model="X",query_source="Y",...} 0.000637
 #   claude_code_token_usage_total{...,query_source="Y",type="input",...} 532
+#
+# O session_id sai POR LINHA porque o mesmo exporter pode carregar varias
+# sessoes (ver bloco MULTIPLAS SESSOES no topo) — o delta precisa separar
+# o crescimento da sessao corrente do acumulado congelado das demais.
 #
 # O strip de PII acontece por CONSTRUCAO: extraimos apenas os 4 labels da
 # allowlist e descartamos a linha original. Nao ha caminho em que um label
@@ -130,20 +162,21 @@ _ou_parse() {
     }
     /^claude_code_cost_usage_total\{/ {
       v = $NF
-      print label($0,"query_source") "\t" label($0,"model") "\tcost\t" v
+      print label($0,"session_id") "\t" label($0,"query_source") "\t" label($0,"model") "\tcost\t" v
       next
     }
     /^claude_code_token_usage_total\{/ {
       v = $NF
-      print label($0,"query_source") "\t" label($0,"model") "\t" label($0,"type") "\t" v
+      print label($0,"session_id") "\t" label($0,"query_source") "\t" label($0,"model") "\t" label($0,"type") "\t" v
       next
     }
   ' "$1"
 }
 
 # _ou_session_id INFILE -> session_id do scrape (primeira ocorrencia), ou "".
-# Usado para invalidar o delta se o processo Claude Code trocou entre os
-# dois snapshots (contador reinicia do zero -> delta negativo/absurdo).
+# Hoje e so o header INFORMATIVO `# session_id` do snapshot (debug humano).
+# O delta NAO depende dele: compara sessoes POR LINHA — o header com a
+# "primeira ocorrencia" passava batido quando o scrape misturava sessoes.
 _ou_session_id() {
   awk '
     /^claude_code_(cost|token)_usage_total\{/ {
@@ -245,29 +278,73 @@ _ou_cmd_delta() {
     return 0
   fi
 
-  _ou_sid_s=$(awk -F'\t' '/^# session_id/{print $2; exit}' "$_ou_s")
-  _ou_sid_e=$(awk -F'\t' '/^# session_id/{print $2; exit}' "$_ou_e")
-  if [ "$_ou_sid_s" != "$_ou_sid_e" ]; then
-    # Processo Claude Code trocou no meio da onda: os contadores
-    # reiniciaram, o delta seria lixo. Melhor ausente que errado.
-    _ou_warn "delta: session_id divergente entre snapshots ($_ou_sid_s != $_ou_sid_e) — delta descartado"
-    printf 'null\n'
-    return 0
-  fi
-
   command -v jq >/dev/null 2>&1 || { _ou_warn "delta: jq ausente"; printf 'null\n'; return 0; }
 
+  # Join por chave COMPLETA (session, source, model, type), SOMANDO
+  # duplicatas nos dois lados — o exporter emite linhas separadas por
+  # agent_name/skill_name/effort que colidem nessa chave; sobrescrever
+  # congelava o "delta" no acumulado (ver bloco MULTIPLAS SESSOES).
+  # O resultado so vale se EXATAMENTE UMA sessao cresceu. Saidas do awk:
+  #   exit 0 — rows da sessao vencedora (vazio: nada cresceu -> null)
+  #   exit 3 — snapshot em formato antigo (4 colunas, sem session_id)
+  #   exit 4 — sessao do start ausente no end (processo do exporter trocou)
+  #   exit 5 — mais de uma sessao cresceu (linha "# ambiguous" lista quais)
+  _ou_rows=$(mktemp) || _ou_die "mktemp falhou"
+  _ou_rc=0
   awk -F'\t' '
-    FILENAME==ARGV[1] && !/^#/ { s[$1 "\t" $2 "\t" $3] = $4; next }
-    FILENAME==ARGV[2] && !/^#/ {
-      k = $1 "\t" $2 "\t" $3
-      base = (k in s) ? s[k] : 0
-      d = $4 - base
-      if (d < 0) d = 0          # contador reiniciado: nao inventa negativo
-      if (d > 0) print k "\t" d
+    BEGIN { OFMT = "%.12g"; CONVFMT = "%.12g" }
+    FILENAME==ARGV[1] && !/^#/ {
+      if (NF != 5) { legacy = 1; next }
+      s[$1 FS $2 FS $3 FS $4] += $5
+      seen_start[$1] = 1
+      next
     }
-  ' "$_ou_s" "$_ou_e" \
-  | jq -c -R -s --arg sid "$_ou_sid_e" '
+    FILENAME==ARGV[2] && !/^#/ {
+      if (NF != 5) { legacy = 1; next }
+      e[$1 FS $2 FS $3 FS $4] += $5
+      seen_end[$1] = 1
+    }
+    END {
+      if (legacy) exit 3
+      for (sid in seen_start) if (!(sid in seen_end)) exit 4
+      n = 0
+      for (k in e) {
+        base = (k in s) ? s[k] : 0
+        d = e[k] - base           # contador reiniciado (d<0): nao inventa
+        if (d > 0) {
+          split(k, p, FS)
+          if (!(p[1] in grown)) { n++; list = (n > 1) ? list "," p[1] : p[1] }
+          grown[p[1]] = 1
+          delta[k] = d
+        }
+      }
+      if (n == 0) exit 0
+      if (n > 1) { print "# ambiguous\t" list; exit 5 }
+      cur = list
+      print "# session_id\t" cur
+      for (k in delta) {
+        split(k, p, FS)
+        if (p[1] == cur) print p[2] FS p[3] FS p[4] FS delta[k]
+      }
+    }
+  ' "$_ou_s" "$_ou_e" > "$_ou_rows" || _ou_rc=$?
+
+  case "$_ou_rc" in
+    0) : ;;
+    3) _ou_warn "delta: snapshot em formato antigo (sem session_id por linha) — delta descartado nesta onda"
+       rm -f -- "$_ou_rows"; printf 'null\n'; return 0 ;;
+    4) _ou_warn "delta: sessao do snapshot inicial ausente no snapshot final — processo do exporter trocou, delta descartado"
+       rm -f -- "$_ou_rows"; printf 'null\n'; return 0 ;;
+    5) _ou_amb=$(awk -F'\t' '/^# ambiguous/{print $2; exit}' "$_ou_rows")
+       _ou_warn "delta: mais de uma sessao ativa no exporter ($_ou_amb) — atribuicao ambigua, delta descartado"
+       rm -f -- "$_ou_rows"; printf 'null\n'; return 0 ;;
+    *) _ou_warn "delta: falha inesperada no join (rc=$_ou_rc) — delta descartado"
+       rm -f -- "$_ou_rows"; printf 'null\n'; return 0 ;;
+  esac
+
+  _ou_sid=$(awk -F'\t' '/^# session_id/{print $2; exit}' "$_ou_rows")
+  grep -v '^#' "$_ou_rows" \
+  | jq -c -R -s --arg sid "$_ou_sid" '
       [ split("\n")[] | select(length > 0) | split("\t")
         | {source: .[0], model: .[1], type: .[2], value: (.[3] | tonumber)} ]
       as $rows
@@ -303,6 +380,7 @@ _ou_cmd_delta() {
         )
       } end
     '
+  rm -f -- "$_ou_rows"
   return 0
 }
 
@@ -333,7 +411,11 @@ Nao exige API key, Admin key nem organizacao; funciona em plano de assinatura.
 Labels de PII (user_email, user_id, user_account_*, organization_id) sao
 descartados no snapshot e nunca alcancam disco.
 
-delta imprime `null` quando a metrica esta ausente — nunca zero fabricado.
+delta agrega por sessao (duplicatas de chave SOMADAS) e atribui o resultado
+a unica sessao que cresceu entre os snapshots. Imprime `null` quando a
+metrica esta ausente OU quando a atribuicao e ambigua (mais de uma sessao
+ativa, processo do exporter trocado, snapshot em formato antigo) — nunca
+zero fabricado.
 HELP
     exit 2
     ;;
