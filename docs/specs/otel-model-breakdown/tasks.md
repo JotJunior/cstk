@@ -450,11 +450,11 @@ Ref: `spec.md` SC-004; `quickstart.md` Cenario 9
 
 Ref: `plan.md` §R3 (GOTCHA de distribuicao); `quickstart.md` §Nota de release
 
-- [ ] 6.1.1 Gerar tarball de dev: `./scripts/build-release.sh X.Y.Z-dev`
-- [ ] 6.1.2 Aplicar `cstk self-update --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"`
+- [x] 6.1.1 Gerar tarball de dev: `./scripts/build-release.sh X.Y.Z-dev`
+- [x] 6.1.2 Aplicar `cstk self-update --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"`
       (GOTCHA: `cstk install`/`cstk update` NAO tocam `cli/lib/` — so
       `self-update` atualiza o runtime)
-- [ ] 6.1.3 Validar `cstk recall` a partir do binario/runtime instalado
+- [x] 6.1.3 Validar `cstk recall` a partir do binario/runtime instalado
       (nao so do repo), confirmando que o schema v12 e aplicado de fato
 
 ### 6.2 Gate de coordenacao cross-repo antes do release `[C]`
