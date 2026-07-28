@@ -5,6 +5,27 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.20.0] - 2026-07-28
+
+### Adicionado
+
+- **Aceita `knowledge.db` schema v12** (`otel-model-breakdown`, cstk 5.33.0):
+  `DEFAULT_SCHEMA_VERSIONS` passa a incluir `'12'`. O v12 adiciona a tabela
+  `wave_model_usage` (grão onda × modelo: `model` como string **bruta** do
+  OTel, `cost_usd`, `total_tokens`) e 8 colunas
+  `otel_{main,subagent}_{input,output,cache_read,cache_creation}_tokens` em
+  `waves`, tornando possível custo por modelo (opus vs sonnet) e cache-hit
+  ratio — antes impossíveis, porque o ingest do cstk projetava apenas 5
+  escalares e descartava o `by_model` inteiro.
+
+  Sem este bump, uma base já migrada para v12 era rejeitada com
+  `schema-mismatch` e ~50 rotas degradavam. Todas as mudanças do v12 são
+  aditivas (Princípio II): as telas existentes seguem operando e os recursos
+  novos aparecem só quando a tabela/coluna está presente.
+
+  Validado contra uma `knowledge.db` v12 real (916 ondas, 41 linhas em
+  `wave_model_usage`).
+
 ## [0.19.2] - 2026-07-27
 
 ### Corrigido
@@ -975,6 +996,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.20.0]: https://github.com/JotJunior/cstk-panel/compare/v0.19.2...v0.20.0
 [0.19.2]: https://github.com/JotJunior/cstk-panel/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/JotJunior/cstk-panel/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/JotJunior/cstk-panel/compare/v0.18.0...v0.19.0
