@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { Worker } from 'node:worker_threads';
 import Database from 'better-sqlite3';
 import { openDb } from '../../src/db/open.js';
+import { DEFAULT_SCHEMA_VERSIONS } from '../../src/config.js';
 
 // Track tmpfiles para cleanup
 const toClean: string[] = [];
@@ -251,6 +252,20 @@ describe('openDb — versoes de schema aceitas (FR-V3-001/002)', () => {
     const result = openDb(path);
     expect(result.ok).toBe(true);
     if (result.ok) result.db.close();
+  });
+
+  it('aceita schema_version=12 por default (otel-model-breakdown — wave_model_usage + breakdown por fonte)', () => {
+    const path = tmpFile('.db');
+    makeDbWithVersion(path, '12');
+    const result = openDb(path);
+    expect(result.ok).toBe(true);
+    if (result.ok) result.db.close();
+  });
+
+  it("DEFAULT_SCHEMA_VERSIONS inclui '12' — guard contra remocao acidental", () => {
+    // O teste acima passaria por engano se alguem trocasse a lista inteira;
+    // este assere o conteudo, nao so o efeito.
+    expect([...DEFAULT_SCHEMA_VERSIONS]).toContain('12');
   });
 
   it('versao fora do conjunto aceito (ex.: 99) degrada como schema-mismatch', () => {
