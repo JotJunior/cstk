@@ -285,15 +285,18 @@ Ref: quickstart.md Cenário 0 (OBRIGATÓRIO); plan.md §Convenções de Borda
   degradado `table-empty` da fixture v7 (sem `wave_model_usage`) com os 3
   campos de `coverage` `null` (nunca `0` — invariante 1 do contrato), e
   ausência de snake_case. 12/12 testes verdes em `roundtrip.test.ts`.
-- [ ] 2.5.4 Verificar no DevTools do dev server (`npm run dev`, nunca `:8080`)
+- [x] 2.5.4 Verificar no DevTools do dev server (`npm run dev`, nunca `:8080`)
   que o componente que consome o endpoint novo lê exatamente as chaves que o
   servidor envia — zero `?? r.<nome_legado>`
-  → **BLOQUEADO POR SEQUÊNCIA, não por falha**: nenhum componente frontend
-  consome `model-usage` ainda (`grep -rn "modelUsage" apps/web/src` vazio) —
-  o consumidor só nasce em FASE 3 (3.1-3.2, hook + KPI compacto). Verificação
-  adiada para o início de FASE 3.2 (quando `useMetric('model-usage')` e o KPI
-  existirem), antes de considerar 2.5 100% fechada. Não reordenado no backlog
-  para preservar numeração já referenciada por outras fases.
+  → Consumidor real nasceu em 3.2 (`useMetric('model-usage')` +
+  `selectModelUsage()` + `ModelUsageMiniList`). `npm run dev` com
+  `CSTK_KNOWLEDGE_DB=~/.claude/cstk/knowledge.db`; `curl
+  127.0.0.1:3001/api/v1/metrics/model-usage?period=all` confirma o payload
+  real com `byModel[].model/costUsd/totalTokens/waves` e
+  `coverage.wavesTotal/wavesWithModelUsage/wavesWithOtelCost` — as MESMAS
+  chaves lidas por `model-usage-select.ts`/`ModelUsage.tsx` (auditoria
+  `grep '??'` nos 3 arquivos novos: nenhum fallback para nome legado/
+  snake_case, só defaults `[]`/objeto vazio). 2.5 fecha 100%.
 
 ---
 
@@ -332,17 +335,35 @@ Ref: research.md Decision 5 (regra em função pura, não em JSX); SC-005
 
 Ref: spec.md US1 Cenário 1/2; SC-001; decisão 1.2.2 (limite do resumo)
 
-- [ ] 3.2.1 Adicionar hook de consumo do endpoint `model-usage` em
+- [x] 3.2.1 Adicionar hook de consumo do endpoint `model-usage` em
   `apps/web/src/lib/hooks.ts` (`useMetric`), reusando o padrão de
   `otel-usage`
-- [ ] 3.2.2 Renderizar KPI compacto em `Overview.tsx` mostrando o modelo de
+  → `'model-usage'` acrescentado ao union type de `useMetric` (mesmo grupo
+  de comentário de schema, ao lado de `otel-usage`/`otel-cost-over-time`).
+- [x] 3.2.2 Renderizar KPI compacto em `Overview.tsx` mostrando o modelo de
   maior custo com rótulo de natureza "medido", respeitando o limite definido
   em 1.2.2
-- [ ] 3.2.3 Tratar estado "sem dado" distinto de zero (Acceptance Scenario
+  → Card "Custo por modelo" na coluna direita do Overview, consumindo
+  `useMetric('model-usage', period)` + `selectModelUsage()` (3.1) via novo
+  componente `ModelUsageMiniList` (`components/ModelUsage.tsx`); exibe
+  top-3 por `costUsd` (dec-038), maior custo primeiro (ordenação já garantida
+  pelo módulo puro de 3.1), rótulo fixo `MODEL_USAGE_NATURE_LABEL="medido"` +
+  cobertura da amostra.
+- [x] 3.2.3 Tratar estado "sem dado" distinto de zero (Acceptance Scenario
   US1.2) usando os componentes de estado existentes (`EmptyState`/
   `DegradedBanner`)
-- [ ] 3.2.4 **Teste**: componente/snapshot do KPI compacto cobrindo estado
+  → `ModelUsageEmpty({reason})` distingue `empty` ("sem uso no período",
+  tabela presente) de `degraded` ("não coletado nesta fonte", schema <v12);
+  nenhum dos dois estados exibe `$0` (mesmo padrão de `OtelUsageEmpty`).
+- [x] 3.2.4 **Teste**: componente/snapshot do KPI compacto cobrindo estado
   com dado, estado "sem dado" e estado degradado (`table-empty`)
+  → `components/ModelUsage.test.ts`, 9 testes verdes (maior-custo-primeiro,
+  limite top-3, valores não somados entre modelos, estado vazio sem "$0",
+  estado degradado com texto distinto, `modelUsageColor` inclusive
+  resistência a poluição de protótipo). Sem harness de render DOM neste
+  repo (`environment: node`, sem jsdom/@testing-library) — mesmo precedente
+  de `lib/otel-usage.test.ts`: invoca os componentes funcionais diretamente
+  e inspeciona a árvore de `ReactElement` retornada.
 
 ### 3.3 Detalhe completo na página de Métricas (Metrics.tsx) `[A]`
 

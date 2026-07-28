@@ -15,16 +15,19 @@
  * Ref: spec.md §User Story 1; constitution §III, §IV
  */
 import { useNavigate } from 'react-router-dom';
-import { useOverview } from '@/lib/hooks.js';
+import { useOverview, useMetric } from '@/lib/hooks.js';
 import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/index.js';
 import {
   KpiCard, StatusBadge, SeverityBadge, BudgetMini, PipelineProgress,
   Donut, BarH, FunnelChart, Icon, MiniStat,
   agentUsageState, coverageLabel, fmtUsd, subagentCostShare,
+  ModelUsageMiniList,
 } from '@/components/index.js';
 import type { DonutDatum, FunnelDatum } from '@/components/index.js';
 import { selectOverview, type OverviewRaw } from '@/lib/overview-select.js';
+import { selectModelUsage } from '@/lib/model-usage-select.js';
+import type { ModelUsageResult } from '@cstk-panel/shared-types';
 import { fmtNum, fmtDur, fmtPct, fmtRelative, fmtTokens } from '@/lib/format.js';
 import { SDD_STAGES } from '@/lib/constants.js';
 import type { PeriodParam } from '@cstk-panel/shared-types';
@@ -76,6 +79,11 @@ const EVENT_COLOR: Record<string, string> = {
 export function Overview({ period, project = '' }: OverviewProps) {
   const navigate = useNavigate();
   const query = useOverview(period, project);
+  // Custo/tokens REAIS por modelo (schema v12, wave_model_usage) — endpoint
+  // dedicado (FASE 2), fora do payload de /overview. Hook chamado
+  // incondicionalmente (regra dos hooks do React), antes dos retornos
+  // antecipados de loading/error/empty abaixo.
+  const modelUsageQuery = useMetric('model-usage', period);
   const { isLoading, isEmpty, isError, errorMessage, isDegraded } = useApiState(query);
 
   if (isLoading) return <LoadingState variant="kpi" />;
@@ -126,6 +134,13 @@ export function Overview({ period, project = '' }: OverviewProps) {
     value: (row.toolCallsTotal as number | null) ?? 0,
     color: 'var(--accent)',
   }));
+
+  // Resumo compacto de custo por modelo (US1; dec-038/CHK005 — top-3 por
+  // costUsd). View-model unico (lib/model-usage-select.ts) compartilhado com
+  // o detalhe completo de Metricas (FASE 3.3, ainda nao implementada) —
+  // garante SC-005 (mesmos valores nas duas telas).
+  const modelUsageRaw = modelUsageQuery.data?.data as ModelUsageResult | null | undefined;
+  const modelUsageVm = selectModelUsage(modelUsageRaw);
 
   return (
     <div className="col gap-4">
@@ -386,6 +401,17 @@ export function Overview({ period, project = '' }: OverviewProps) {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Custo por modelo — medido (schema v12, wave_model_usage) */}
+          <div className="card">
+            <div className="card-head">
+              <h3>Custo por modelo</h3>
+              <span className="mono muted" style={{ fontSize: 11 }}>medido · top-3</span>
+            </div>
+            <div className="card-pad">
+              <ModelUsageMiniList vm={modelUsageVm} />
             </div>
           </div>
 
