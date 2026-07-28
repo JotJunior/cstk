@@ -60,15 +60,16 @@ describe('selectOverview', () => {
     expect(selectOverview(realPayload).aguardando).toBe(1);
   });
 
-  it('le leaderboard.toolCallsTotal (nao tool_calls_total) e calcula o max', () => {
+  it('le leaderboard.toolCallsTotal (nao tool_calls_total) — payload preservado no VM (contrato inalterado, FASE 4.1.2)', () => {
     const vm = selectOverview(realPayload);
-    expect(vm.maxToolCalls).toBe(24);
     expect(vm.leaderboard.length).toBe(2);
+    expect(vm.leaderboard[0]).toEqual({ feature: 'swagger-codegen', toolCallsTotal: 24 });
   });
 
-  it('le funnel/inProgress/recentAlerts pelos nomes camelCase corretos', () => {
+  it('le funnel/inProgress/recentAlerts pelos nomes camelCase corretos — funnel preservado no VM (contrato inalterado, FASE 4.2.3)', () => {
     const vm = selectOverview(realPayload);
-    expect(vm.maxFunnel).toBe(9);
+    expect(vm.funnel.length).toBe(2);
+    expect(vm.funnel[0]).toEqual({ stage: 'execute-task', count: 9 });
     expect(vm.execucoes.length).toBe(2);
     expect(vm.totalAlertas).toBe(1);
   });
@@ -111,6 +112,12 @@ describe('selectOverview', () => {
     const vm = selectOverview(null);
     expect(vm.totalProjects).toBe(0);
     expect(vm.execucoes).toEqual([]);
-    expect(vm.maxFunnel).toBe(0);
+    expect(vm.funnel).toEqual([]);
+  });
+
+  it('NAO expoe mais maxToolCalls/maxFunnel — derivados so p/ renderizacao dos cards removidos (FASE 4.1.3/4.2.4)', () => {
+    const vm = selectOverview(realPayload) as unknown as Record<string, unknown>;
+    expect('maxToolCalls' in vm).toBe(false);
+    expect('maxFunnel' in vm).toBe(false);
   });
 });

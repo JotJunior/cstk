@@ -412,9 +412,14 @@ Ref: spec.md US1 Cenário 3; SC-004/005; decisões 1.2.2/1.2.3 (acessibilidade)
 
 Ref: spec.md US1 Cenário 3; SC-005
 
-- [ ] 3.4.1 **Teste de integração**: mesmo período/projeto selecionado nas
+- [x] 3.4.1 **Teste de integração**: mesmo período/projeto selecionado nas
   duas telas produz exatamente os mesmos valores de `costUsd`/`totalTokens`
   por modelo (consumindo o mesmo módulo puro de 3.1)
+  → `screens/model-usage-consistency.test.ts` (3 testes): `selectModelUsage`
+  determinístico entre as duas chamadas independentes (Overview/Metrics);
+  valores de custo do KPI compacto (`ModelUsageMiniList`/`vm.top`) batem
+  com o detalhe completo (`ModelUsageDetailPanel`/`vm.entries`) para cada
+  modelo; `entries` é superset ordenado de `top`.
 
 ---
 
@@ -428,35 +433,62 @@ Ref: spec.md US2, FR-001/002; SC-003; plan.md §Ordem de implementação
 Ref: contracts/existing-endpoints.md (`leaderboard[].toolCallsTotal` — payload
 inalterado, remoção é de renderização)
 
-- [ ] 4.1.1 Remover a renderização do card em `Overview.tsx` que consome
+- [x] 4.1.1 Remover a renderização do card em `Overview.tsx` que consome
   `leaderboard[].toolCallsTotal`
-- [ ] 4.1.2 Confirmar que `GET /api/v1/overview` continua retornando
+  → bloco "Custo por feita · proxy" (card + `barData`/`featureLabel`-uso
+  correspondente) removido de `Overview.tsx`; `BarH` deixou de ser
+  importado no arquivo (segue usado em `ExecutionDetail.tsx`).
+- [x] 4.1.2 Confirmar que `GET /api/v1/overview` continua retornando
   `leaderboard[]` inalterado (nenhuma mudança de contrato)
-- [ ] 4.1.3 **Teste**: `overview-select.test.ts` ajustado para o VM sem
+  → `apps/server/src/routes/overview.ts:177` inalterado — nenhuma edição
+  neste PR tocou o backend; `leaderboard` segue no payload e no VM
+  (`overview-select.ts`), só a renderização foi removida.
+- [x] 4.1.3 **Teste**: `overview-select.test.ts` ajustado para o VM sem
   `maxToolCalls`, refletindo a remoção do consumidor
+  → `maxToolCalls`/`maxFunnel` removidos de `OverviewVM`/`selectOverview`;
+  teste dedicado confirma ausência das duas chaves; `leaderboard[]`
+  continua exposto e testado (contrato inalterado).
 
 ### 4.2 Remover card "funil do pipeline" `[M]`
 
 Ref: contracts/existing-endpoints.md (`funnel[]` — payload inalterado)
 
-- [ ] 4.2.1 Remover a renderização do card em `Overview.tsx` que consome
+- [x] 4.2.1 Remover a renderização do card em `Overview.tsx` que consome
   `funnel[]`
-- [ ] 4.2.2 Remover `FunnelChart` de `apps/web/src/components/charts.tsx` e
+  → bloco "Funil do pipeline" (card + `funnelData`/`funnelByStage`)
+  removido de `Overview.tsx`; import de `SDD_STAGES` removido do arquivo
+  (continua usado em `PipelineProgress.tsx`).
+- [x] 4.2.2 Remover `FunnelChart` de `apps/web/src/components/charts.tsx` e
   seu export em `apps/web/src/components/index.ts` (órfão sem consumidor);
   **não** remover `BarH` (usado em `ExecutionDetail.tsx:853`) nem
   `SDD_STAGES` (usado em `PipelineProgress.tsx`)
-- [ ] 4.2.3 Confirmar que `GET /api/v1/overview` continua retornando
+  → `FunnelChart`/`FunnelDatum` removidos de `charts.tsx` e do
+  export/type-export de `components/index.ts`; `grep` confirmou zero
+  referências remanescentes a `FunnelChart`/`FunnelDatum` no repo.
+- [x] 4.2.3 Confirmar que `GET /api/v1/overview` continua retornando
   `funnel[]` inalterado
-- [ ] 4.2.4 **Teste**: `overview-select.test.ts` ajustado para o VM sem
+  → `apps/server/src/routes/overview.ts:186` inalterado; `funnel` segue
+  no payload e no VM (`overview-select.ts`), só a renderização removida.
+- [x] 4.2.4 **Teste**: `overview-select.test.ts` ajustado para o VM sem
   `maxFunnel`
+  → mesmo teste dedicado de 4.1.3 cobre `maxFunnel`; `funnel[]` continua
+  exposto e testado (contrato inalterado).
 
 ### 4.3 Recomposição de layout `[M]`
 
 Ref: spec.md US2 Cenário 3; decisão 1.2.1 (critério de "coerente")
 
-- [ ] 4.3.1 Ajustar o grid/layout de `Overview.tsx` para os cards
+- [x] 4.3.1 Ajustar o grid/layout de `Overview.tsx` para os cards
   remanescentes ocuparem o espaço conforme o critério definido em 1.2.1, sem
   buracos vazios nem cards desproporcionais
+  → dec-038 ancora o critério nos grids existentes (`grid-overview`,
+  `prototype.css`) — as duas colunas são `col gap-4` (flex vertical, sem
+  posicionamento absoluto), então a remoção dos dois cards já reflui sem
+  buracos: coluna esquerda 3→2 cards ("Execuções em andamento", "Alertas
+  críticos recentes"), coluna direita 4→3 cards ("Mix de modelos", "Custo
+  por modelo", "Atividade recente"). Nenhuma alteração de CSS/grid nova
+  necessária — o próprio `display:grid` de 2 colunas independentes já
+  satisfaz o critério sem cards desproporcionais.
 - [ ] 4.3.2 **Verificação manual** (dev server, `npm run dev`): abrir o
   dashboard principal e confirmar visualmente que os dois cards obsoletos
   não aparecem mais (SC-003) e o layout está coerente

@@ -116,26 +116,6 @@ export function BarH({ data, maxLabel = 160, valueFmt = fmtNum, max: maxProp }: 
 }
 
 // ---------------------------------------------------------------------------
-// FunnelChart — features por etapa corrente (SDD, 9 etapas)
-// ---------------------------------------------------------------------------
-export interface FunnelDatum { label: string; count: number; }
-
-export function FunnelChart({ data }: { data: FunnelDatum[] }) {
-  const max = Math.max(...data.map(d => d.count), 0) || 1;
-  return (
-    <div className="funnel">
-      {data.map((d, i) => (
-        <div className="funnel-row" key={i}>
-          <span className="label" title={d.label}>{d.label}</span>
-          <div className="bar"><div className="bar-fill" style={{ width: `${(d.count / max) * 100}%`, opacity: 0.4 + (d.count / max) * 0.6 }} /></div>
-          <span className="count">{d.count}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Legend — chips de cor + rotulo (cabecalho de graficos empilhados)
 // ---------------------------------------------------------------------------
 export interface LegendItem { color: string; label: string; }

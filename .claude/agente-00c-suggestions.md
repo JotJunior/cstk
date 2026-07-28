@@ -1,26 +1,24 @@
-# Sugestoes do Agente-00C — feat-state-watchers-and-docs-20260715T061306Z
+# Sugestoes do Agente-00C — feat-dashboard-refactor-20260728T120056Z
 
 Total: 1 sugestoes registradas.
 
-## sug-001 — skill `agente-00c-runtime` — severidade: aviso
+## sug-001 — skill `commit-mode.sh` — severidade: informativa
 
-**Criada em**: 2026-07-15T10:36:01Z
+**Criada em**: 2026-07-28T15:10:37Z
 
 **Issue aberta**: (nenhuma)
 
 **Diagnostico**:
 
-budget.sh check monitora 3 dimensoes (tool_calls, wallclock, state_size), mas .budgets.tool_calls_current_wave permanece 0 nas 5 ondas desta execucao (onda-001..onda-005), porque nenhuma instrucao do orquestrador (feature-00c-orchestrator.md) chama state-ondas.sh tool-call-tick apos invocacoes de Bash/Skill/Agent — o subcomando existe e funciona (incrementa via jq), mas nunca e invocado no Loop principal documentado
+task-message so compara major.minor (cut -d'.' -f2) ao decidir contiguidade de runs; com task-ids de 3 niveis (N.M.K, convencao real deste tasks.md/execute-task), IDs de subsecoes DIFERENTES (ex: 4.1.3 e 4.2.1) tem o mesmo 'major' (4) e minors incrementais (1,2), sendo erroneamente fundidos num range '4.1.3-4.2.1' que mistura duas sub-fases distintas.
 
 **Proposta**:
 
-Adicionar ao Loop principal do orquestrador (specify..review-task) uma chamada explicita a 'state-ondas.sh tool-call-tick --state-dir $SD' apos cada tool call relevante (ou, alternativa mais robusta: mover a contagem para fora do orquestrador — um hook do harness Claude Code que incremente automaticamente, ja que depender do LLM lembrar de chamar tick apos cada tool call e fragil). Sem isso, o threshold tool_calls_threshold_wave (default 80) e permanentemente inalcancavel e 1/3 dos gatilhos de fechamento de onda de budget.sh fica morto
+task-message deveria comparar o ID completo (todos os niveis) para decidir contiguidade, nao so major.minor; ou documentar explicitamente que --task-ids so deve receber IDs N.M (2 niveis), nunca N.M.K, evitando o uso ambiguo observado nesta execucao (feature dashboard-refactor, onda-012).
 
 **Referencias**:
 
-- skills/agente-00c-runtime/scripts/budget.sh
-- skills/agente-00c-runtime/scripts/state-ondas.sh
-- agents/agente-00c-feature-orchestrator.md
+- ~/.claude/skills/agente-00c-runtime/scripts/commit-mode.sh
 
 ---
 

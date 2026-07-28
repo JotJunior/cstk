@@ -20,16 +20,15 @@ import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/index.js';
 import {
   KpiCard, StatusBadge, SeverityBadge, BudgetMini, PipelineProgress,
-  Donut, BarH, FunnelChart, Icon, MiniStat,
+  Donut, Icon, MiniStat,
   agentUsageState, coverageLabel, fmtUsd, subagentCostShare,
   ModelUsageMiniList,
 } from '@/components/index.js';
-import type { DonutDatum, FunnelDatum } from '@/components/index.js';
+import type { DonutDatum } from '@/components/index.js';
 import { selectOverview, type OverviewRaw } from '@/lib/overview-select.js';
 import { selectModelUsage } from '@/lib/model-usage-select.js';
 import type { ModelUsageResult } from '@cstk-panel/shared-types';
 import { fmtNum, fmtDur, fmtPct, fmtRelative, fmtTokens } from '@/lib/format.js';
-import { SDD_STAGES } from '@/lib/constants.js';
 import type { PeriodParam } from '@cstk-panel/shared-types';
 
 interface OverviewProps {
@@ -97,8 +96,8 @@ export function Overview({ period, project = '' }: OverviewProps) {
   const {
     totalProjects, totalFeatures, emAndamento, aguardando, totalToolCalls,
     totalWallclock, testsPassed, testsTotal, totalAlertas,
-    execucoes, alertas, leaderboard, funnel, modelMix, recentActivity,
-    costSeries, maxToolCalls, agentUsage, tokenSeries, otelUsage, otelCostSeries,
+    execucoes, alertas, modelMix, recentActivity,
+    costSeries, agentUsage, tokenSeries, otelUsage, otelCostSeries,
   } = vm;
   const hasMeasuredTokens = agentUsageState(agentUsage) === 'measured';
   // Telemetria OTel (schema v11): fonte independente e mais completa — cobre
@@ -115,24 +114,10 @@ export function Overview({ period, project = '' }: OverviewProps) {
   const nCriticos = (alertas as Record<string, unknown>[]).filter(a => deriveSeverity(a) === 'critical').length;
   const passRate = testsTotal && testsTotal > 0 ? (testsPassed ?? 0) / testsTotal : null;
 
-  // Funil — sempre as 9 etapas SDD, na ordem canonica, mesmo se zeradas
-  const funnelByStage = new Map<string, number>();
-  for (const row of funnel as { stage?: string | null; count?: number | null }[]) {
-    if (row.stage) funnelByStage.set(row.stage, row.count ?? 0);
-  }
-  const funnelData: FunnelDatum[] = SDD_STAGES.map(s => ({ label: s, count: funnelByStage.get(s) ?? 0 }));
-
   // Mix de modelos (derivado)
   const mixTotal = modelMix.reduce((a, m) => a + (m.n ?? 0), 0);
   const donutData: DonutDatum[] = modelMix.map(m => ({
     label: m.model ?? '?', value: m.n ?? 0, color: modelColor(m.model ?? ''),
-  }));
-
-  // Leaderboard de custo por feature
-  const barData = (leaderboard as Record<string, unknown>[]).slice(0, 8).map(row => ({
-    label: featureLabel(row.feature, row.executionId),
-    value: (row.toolCallsTotal as number | null) ?? 0,
-    color: 'var(--accent)',
   }));
 
   // Resumo compacto de custo por modelo (US1; dec-038/CHK005 — top-3 por
@@ -359,17 +344,6 @@ export function Overview({ period, project = '' }: OverviewProps) {
               </table>
             </div>
           </div>
-
-          {/* Funil do pipeline */}
-          <div className="card">
-            <div className="card-head">
-              <h3>Funil do pipeline · features por etapa corrente</h3>
-              <span className="mono muted" style={{ fontSize: 11 }}>SDD · 9 etapas</span>
-            </div>
-            <div className="card-pad">
-              <FunnelChart data={funnelData} />
-            </div>
-          </div>
         </div>
 
         {/* Coluna direita */}
@@ -412,21 +386,6 @@ export function Overview({ period, project = '' }: OverviewProps) {
             </div>
             <div className="card-pad">
               <ModelUsageMiniList vm={modelUsageVm} />
-            </div>
-          </div>
-
-          {/* Custo por feature */}
-          <div className="card">
-            <div className="card-head">
-              <h3>Custo por feature · proxy</h3>
-              <span className="mono muted" style={{ fontSize: 11 }}>tool_calls</span>
-            </div>
-            <div className="card-pad">
-              {barData.length === 0 ? (
-                <div style={{ color: 'var(--text-3)', fontSize: 12, textAlign: 'center', padding: '12px 0' }}>Sem dados de leaderboard.</div>
-              ) : (
-                <BarH data={barData} maxLabel={150} max={maxToolCalls} />
-              )}
             </div>
           </div>
 

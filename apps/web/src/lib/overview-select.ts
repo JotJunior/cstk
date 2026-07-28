@@ -89,8 +89,6 @@ export interface OverviewVM {
   tokenSeries: number[];
   /** vazia quando a base e < v11 ou nenhuma onda teve telemetria coletada */
   otelCostSeries: number[];
-  maxToolCalls: number;
-  maxFunnel: number;
 }
 
 export function selectOverview(raw: OverviewRaw | null | undefined): OverviewVM {
@@ -134,9 +132,5 @@ export function selectOverview(raw: OverviewRaw | null | undefined): OverviewVM 
     otelUsage: kpis.otelUsage ?? null,
     tokenSeries,
     otelCostSeries,
-    maxToolCalls: leaderboard.reduce(
-      (m, row) => Math.max(m, (row['toolCallsTotal'] as number | null) ?? 0), 0,
-    ),
-    maxFunnel: funnel.reduce((m, row) => Math.max(m, row.count ?? 0), 0),
   };
 }
