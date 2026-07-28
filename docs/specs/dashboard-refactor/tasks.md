@@ -255,20 +255,45 @@ Ref: quickstart.md Cenário 0 (OBRIGATÓRIO); plan.md §Convenções de Borda
 > fixtures desatualizadas) deixa passar drift de nome de campo em silêncio —
 > foi exatamente esse mecanismo que produziu o defeito da FASE 6.
 
-- [ ] 2.5.1 Subir o servidor com `CSTK_KNOWLEDGE_DB=~/.claude/cstk/knowledge.db
+- [x] 2.5.1 Subir o servidor com `CSTK_KNOWLEDGE_DB=~/.claude/cstk/knowledge.db
   npm run dev -w @cstk-panel/server` e chamar
   `curl -s 'http://127.0.0.1:3001/api/v1/metrics/model-usage?period=all' | jq .`
-- [ ] 2.5.2 Comparar o payload real, campo a campo, com
+  → executado contra `~/.claude/cstk/knowledge.db` real (v12, 925 ondas, 41 com
+  `wave_model_usage`); payload obtido com `byModel`/`byStage`/`coverage`
+  populados (não apenas o esqueleto vazio previsto como pior caso).
+- [x] 2.5.2 Comparar o payload real, campo a campo, com
   `contracts/model-usage-endpoint.md`; se algum nome de campo divergir do
   contrato **[PROPOSTA]**, atualizar o contrato e os DTOs para refletir a
   forma real implementada (o contrato documentado é proposta, não fonte de
   verdade final — a implementação é)
-- [ ] 2.5.3 Estender `apps/server/test/lib/roundtrip.test.ts` (Fastify real
+  → **zero divergência**: `model`, `costUsd`, `totalTokens`, `waves`,
+  `byStage[].stage`, `coverage.wavesTotal/wavesWithModelUsage/wavesWithOtelCost`,
+  `meta.degraded/reason/freshness/schemaVersion` batem 1:1 com
+  `ModelUsageResultSchema`/`ModelUsageEntrySchema`/`ModelUsageByStageSchema`/
+  `ModelUsageCoverageSchema` (`packages/shared-types/src/schemas/entities.ts:109-132`).
+  `meta.approximate` de fato ausente (invariante do contrato). Nenhuma edição
+  necessária no contrato nem nos DTOs. Nota não-bloqueante: `byStage` retornou
+  dado real (12 linhas) na base real — a junção `(project,feature,wave)` que o
+  contrato marcava como "não verificada empiricamente" **funciona** na prática;
+  não é divergência de nome de campo, é confirmação positiva de um risco que o
+  contrato deixava em aberto.
+- [x] 2.5.3 Estender `apps/server/test/lib/roundtrip.test.ts` (Fastify real
   sobre `apps/server/test/knowledge-fixture.db`) para incluir a rota nova,
   validando `RawApiEnvelopeSchema` e checando 100% das chaves em camelCase
+  → 4 testes novos (2.5.3.a-d): envelope via `RawApiEnvelopeSchema`, `data` via
+  `ModelUsageResultSchema` (import novo em `roundtrip.test.ts`), caminho
+  degradado `table-empty` da fixture v7 (sem `wave_model_usage`) com os 3
+  campos de `coverage` `null` (nunca `0` — invariante 1 do contrato), e
+  ausência de snake_case. 12/12 testes verdes em `roundtrip.test.ts`.
 - [ ] 2.5.4 Verificar no DevTools do dev server (`npm run dev`, nunca `:8080`)
   que o componente que consome o endpoint novo lê exatamente as chaves que o
   servidor envia — zero `?? r.<nome_legado>`
+  → **BLOQUEADO POR SEQUÊNCIA, não por falha**: nenhum componente frontend
+  consome `model-usage` ainda (`grep -rn "modelUsage" apps/web/src` vazio) —
+  o consumidor só nasce em FASE 3 (3.1-3.2, hook + KPI compacto). Verificação
+  adiada para o início de FASE 3.2 (quando `useMetric('model-usage')` e o KPI
+  existirem), antes de considerar 2.5 100% fechada. Não reordenado no backlog
+  para preservar numeração já referenciada por outras fases.
 
 ---
 
@@ -282,16 +307,26 @@ das decisões 1.2.2/1.2.3
 
 Ref: research.md Decision 5 (regra em função pura, não em JSX); SC-005
 
-- [ ] 3.1.1 Criar módulo puro `apps/web/src/lib/model-usage-select.ts`
+- [x] 3.1.1 Criar módulo puro `apps/web/src/lib/model-usage-select.ts`
   (seguindo o precedente de `overview-select.ts`) que normaliza o payload de
   `model-usage` em um view-model único, consumido tanto pelo KPI compacto
   quanto pelo detalhe completo — garante SC-005 (mesmos valores nas duas
   telas)
-- [ ] 3.1.2 Aplicar rótulo de natureza do dado (medido) e as regras de
+  → `selectModelUsage()`; `state: 'degraded'|'empty'|'measured'` derivado só
+  da forma do `data` (coverage.wavesTotal null ⇒ degraded); `entries`/`top`
+  (top-3, dec-038) ordenados por `costUsd` desc com `null` por último.
+- [x] 3.1.2 Aplicar rótulo de natureza do dado (medido) e as regras de
   `null`≠`0` (fmtUsd/estado `—` para `null`, `$0` para zero medido)
-- [ ] 3.1.3 **Teste**: unit test do módulo puro com payloads sintéticos
+  → `MODEL_USAGE_NATURE_LABEL='medido'` + `modelUsageCoverageLabel()`;
+  `costUsd`/`totalTokens` preservados como `number | null` (sem coalescer),
+  reusa `fmtUsd` existente (`OtelUsage.tsx`) na camada de apresentação (3.2/3.3).
+- [x] 3.1.3 **Teste**: unit test do módulo puro com payloads sintéticos
   cobrindo: modelo de maior custo primeiro, `null` por último, estado vazio,
   estado degradado
+  → `model-usage-select.test.ts`, 8 testes verdes (maior-custo-primeiro,
+  top-3, reordenação com `null` por último, estado vazio "zero linhas no
+  recorte", estado degradado "table-empty", payload null/undefined, rótulo
+  de natureza, coverage label).
 
 ### 3.2 KPI compacto no dashboard principal (Overview.tsx) `[A]`
 
