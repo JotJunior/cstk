@@ -25,10 +25,17 @@ import { resolve } from 'node:path';
  *  com o consumo real de subagentes (tokens, tool uses, duracao);
  *  v11 (otel-wave-cost, cstk 5.30.0) adiciona 5 colunas `otel_*` em `waves`
  *  com o custo REAL em USD e os tokens medidos pela telemetria do Claude Code
- *  (`otel_cost_usd` e fracionario — REAL, nao INTEGER).
+ *  (`otel_cost_usd` e fracionario — REAL, nao INTEGER);
+ *  v12 (otel-model-breakdown, cstk 5.33.0) adiciona a tabela `wave_model_usage`
+ *  (grao onda x modelo: `model` como string BRUTA do OTel, `cost_usd`,
+ *  `total_tokens`) e 8 colunas `otel_{main,subagent}_{input,output,cache_read,
+ *  cache_creation}_tokens` em `waves` com o breakdown de tokens por fonte.
+ *  Permite custo por modelo (opus vs sonnet) e cache-hit ratio, antes
+ *  impossiveis. `wave_model_usage` NAO alimenta a FTS — o label de modelo vem
+ *  de fonte externa e nunca deve alcancar contexto de LLM.
  *  Todas sao aditivas, entao as telas existentes seguem operando e os recursos
  *  novos aparecem so quando a tabela/coluna esta presente (Principio II). */
-export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] as const;
+export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'] as const;
 
 export interface ServerConfig {
   /** Path absoluto canonicalizado para knowledge.db */
