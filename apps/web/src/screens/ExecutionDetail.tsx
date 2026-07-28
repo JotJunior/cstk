@@ -205,7 +205,16 @@ function WavesTimeline({
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: isSelected ? 'var(--text-0)' : 'var(--text-1)' }}>
                 {w.wave}
               </span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--inprogress)' }}>
+              {/* stages vem do orquestrador e, em casos raros de erro, traz um
+                  paragrafo inteiro em vez do nome da etapa — trunca em 1 linha
+                  (valor completo no title) para nao quebrar o layout da onda. */}
+              <span
+                title={w.stages ?? undefined}
+                style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--inprogress)',
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}
+              >
                 {w.stages ?? '—'}
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
