@@ -259,7 +259,7 @@ Ref: 1.3 (FR-011 e testes ja escritos); `plan.md` item "1.ter"
 
 Ref: `quickstart.md` Cenario 7; `spec.md` FR-005, SC-003
 
-- [ ] 4.1.1 Confirmar que `--reindex` (que ja faz `rm -f` do banco inteiro em
+- [x] 4.1.1 Confirmar que `--reindex` (que ja faz `rm -f` do banco inteiro em
       `recall.sh:2398`) recria `wave_model_usage` do zero via o loop de 3.3
 - [ ] 4.1.2 Rodar `cstk recall --reindex --states-root ~/Projects` duas vezes
       sobre o corpus real e comparar `count(*)`/`SUM(cost_usd)` de
@@ -272,13 +272,13 @@ Ref: `quickstart.md` Cenario 7; `spec.md` FR-005, SC-003
 
 Ref: `plan.md` pontos 9-11
 
-- [ ] 4.2.1 Adicionar `RECALL_TOTAL_WAVE_MODEL` na agregacao de totais
+- [x] 4.2.1 Adicionar `RECALL_TOTAL_WAVE_MODEL` na agregacao de totais
       (`recall.sh:1735`)
-- [ ] 4.2.2 Inicializar o contador novo nas duas posicoes (`recall.sh:2007-2008`
+- [x] 4.2.2 Inicializar o contador novo nas duas posicoes (`recall.sh:2007-2008`
       e `:2411-2412` — caminhos de `--ingest` e `--reindex`)
-- [ ] 4.2.3 Adicionar o contador as duas format strings de sumario
+- [x] 4.2.3 Adicionar o contador as duas format strings de sumario
       (`recall.sh:2014` e `:2454`)
-- [ ] 4.2.4 Teste: o sumario emitido por `--ingest`/`--reindex` reporta a
+- [x] 4.2.4 Teste: o sumario emitido por `--ingest`/`--reindex` reporta a
       contagem correta de linhas de `wave_model_usage` processadas
 
 ### 4.3 Validacao end-to-end contra corpus real `[A]`

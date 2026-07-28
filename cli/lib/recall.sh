@@ -1867,6 +1867,7 @@ COMMIT;"
   RECALL_TOTAL_TASK=$((${RECALL_TOTAL_TASK:-0} + _isj_n_task))
   RECALL_TOTAL_EVENT=$((${RECALL_TOTAL_EVENT:-0} + _isj_n_event))
   RECALL_TOTAL_SUGGESTION=$((${RECALL_TOTAL_SUGGESTION:-0} + _isj_n_suggestion))
+  RECALL_TOTAL_WAVE_MODEL=$((${RECALL_TOTAL_WAVE_MODEL:-0} + _isj_n_wmu))
   return "$RECALL_EXIT_OK"
 }
 
@@ -2136,16 +2137,16 @@ recall_mode_ingest() {
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
   RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0; RECALL_TOTAL_MEMORY=0
-  RECALL_TOTAL_SUGGESTION=0
+  RECALL_TOTAL_SUGGESTION=0; RECALL_TOTAL_WAVE_MODEL=0
   recall_ingest_state_json "$_ing_state_dir/state.json" "$_ing_db"
   # Passo aditivo (CQ2): ingerir memorias do projeto apos state.json.
   recall_ingest_memories "$_ing_state_dir" "$_ing_db"
 
-  printf 'ingested: %d decisions, %d blocks, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions\n' \
+  printf 'ingested: %d decisions, %d blocks, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions, %d wave_model_usage\n' \
     "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
     "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
     "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}" \
-    "${RECALL_TOTAL_SUGGESTION:-0}"
+    "${RECALL_TOTAL_SUGGESTION:-0}" "${RECALL_TOTAL_WAVE_MODEL:-0}"
   return "$RECALL_EXIT_OK"
 }
 
@@ -2540,7 +2541,7 @@ recall_mode_reindex() {
   RECALL_TOTAL_DEC=0; RECALL_TOTAL_BLOQ=0; RECALL_TOTAL_RETRO=0; RECALL_TOTAL_SKILL=0
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
   RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0; RECALL_TOTAL_MEMORY=0
-  RECALL_TOTAL_SUGGESTION=0
+  RECALL_TOTAL_SUGGESTION=0; RECALL_TOTAL_WAVE_MODEL=0
   _rx_count=0
   # Varre feature-00c-state/*/state.json e agente-00c-state/state.json.
   # find e portavel; -path com globs simples.
@@ -2581,11 +2582,11 @@ recall_mode_reindex() {
     fi
   fi
 
-  printf 'reindexed: %d state files (%d decisions, %d blocks, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions)\n' \
+  printf 'reindexed: %d state files (%d decisions, %d blocks, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions, %d wave_model_usage)\n' \
     "$_rx_count" "${RECALL_TOTAL_DEC:-0}" "${RECALL_TOTAL_BLOQ:-0}" "${RECALL_TOTAL_RETRO:-0}" "${RECALL_TOTAL_SKILL:-0}" \
     "${RECALL_TOTAL_EXEC:-0}" "${RECALL_TOTAL_WAVE:-0}" "${RECALL_TOTAL_ALERT:-0}" \
     "${RECALL_TOTAL_TASK:-0}" "${RECALL_TOTAL_EVENT:-0}" "${RECALL_TOTAL_MEMORY:-0}" \
-    "${RECALL_TOTAL_SUGGESTION:-0}"
+    "${RECALL_TOTAL_SUGGESTION:-0}" "${RECALL_TOTAL_WAVE_MODEL:-0}"
   return "$RECALL_EXIT_OK"
 }
 
