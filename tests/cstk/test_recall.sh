@@ -3701,4 +3701,146 @@ JSON
   return 0
 }
 
+# =========================================================================
+# FASE 3 (otel-model-breakdown) — ingestao de wave_model_usage + 8 colunas
+# de breakdown por fonte em waves. Valores das 3 ondas abaixo NAO sao
+# ilustrativos: reproduzem exatamente o corpus real citado em quickstart.md
+# Cenarios 1-5 (onda-001 deste proprio state-dir da feature; onda-004 de
+# my-music-match/foundation), conferidos por leitura direta dos state.json
+# de origem (Principio VI). onda-005 e sintetica, sem otel_usage, para
+# validar SC-002 (onda sem telemetria -> zero linhas, nunca fabricadas).
+# =========================================================================
+_write_wmu_state() {
+  _ww_dir="$1"; _ww_proj="$2"; _ww_feat="$3"
+  mkdir -p "$_ww_dir"
+  cat > "$_ww_dir/state.json" <<JSON
+{
+  "short_name": "$_ww_feat",
+  "execution": { "id": "exec-$_ww_feat", "target_project_path": "$_ww_proj" },
+  "waves": [
+    {
+      "id": "onda-001",
+      "started_at": "2026-07-27T12:00:00Z",
+      "otel_usage": {
+        "total_cost_usd": 1.6861549999999998,
+        "total_tokens": 2519024,
+        "by_source": {
+          "main": {"cost_usd": 0.475915, "input": 3, "output": 907, "cache_read": 371775, "cache_creation": 2938},
+          "subagent": {"cost_usd": 1.21024, "input": 31, "output": 30143, "cache_read": 2077276, "cache_creation": 35951}
+        },
+        "by_model": {
+          "claude-fable-5": {"cost_usd": 0.475915, "total_tokens": 375623},
+          "claude-sonnet-5": {"cost_usd": 1.21024, "total_tokens": 2143401}
+        }
+      }
+    },
+    {
+      "id": "onda-004",
+      "started_at": "2026-07-27T13:00:00Z",
+      "otel_usage": {
+        "total_cost_usd": 6.778993000000001,
+        "total_tokens": 7075765,
+        "by_source": {
+          "subagent": {"cost_usd": 6.778993000000001, "input": 108, "output": 97555, "cache_read": 6756551, "cache_creation": 221551}
+        },
+        "by_model": {
+          "claude-opus-5[1m]": {"cost_usd": 6.1439, "total_tokens": 6864604},
+          "claude-sonnet-5": {"cost_usd": 0.635093, "total_tokens": 211161}
+        }
+      }
+    },
+    {
+      "id": "onda-005",
+      "started_at": "2026-07-27T14:00:00Z"
+    }
+  ]
+}
+JSON
+}
+
+# Cenario 2/1 do quickstart — by_source.main presente + 2 modelos (task 3.1.3/3.3.5).
+scenario_wmu3_breakdown_por_fonte_e_2modelos() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/featWmu3" "/home/u/projWmu3" "featWmu3"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu3" --db "$TMPDIR_TEST/wmu3.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu3 ingest" "$_CAPTURED_STDERR"; return 1; }
+  _cols=$(sqlite3 "$TMPDIR_TEST/wmu3.db" "SELECT otel_main_input_tokens||'|'||otel_main_output_tokens||'|'||otel_main_cache_read_tokens||'|'||otel_main_cache_creation_tokens||'|'||otel_subagent_input_tokens||'|'||otel_subagent_output_tokens||'|'||otel_subagent_cache_read_tokens||'|'||otel_subagent_cache_creation_tokens FROM waves WHERE feature='featWmu3' AND wave='onda-001'")
+  [ "$_cols" = "3|907|371775|2938|31|30143|2077276|35951" ] || { _fail "wmu3 8 colunas" "obtido '$_cols'"; return 1; }
+  # invariante FR-009: soma das 4 parcelas subagent = otel_subagent_tokens (coluna pre-existente).
+  _inv=$(sqlite3 "$TMPDIR_TEST/wmu3.db" "SELECT otel_subagent_tokens FROM waves WHERE feature='featWmu3' AND wave='onda-001'")
+  [ "$_inv" = "2143401" ] || { _fail "wmu3 invariante FR-009" "esperado 2143401, obtido '$_inv'"; return 1; }
+  _wmu=$(sqlite3 "$TMPDIR_TEST/wmu3.db" "SELECT model||'|'||cost_usd||'|'||total_tokens FROM wave_model_usage WHERE feature='featWmu3' AND wave='onda-001' ORDER BY model")
+  _expected="claude-fable-5|0.475915|375623
+claude-sonnet-5|1.21024|2143401"
+  [ "$_wmu" = "$_expected" ] || { _fail "wmu3 wave_model_usage" "obtido '$_wmu'"; return 1; }
+  return 0
+}
+
+# Cenario 3/4 do quickstart — by_source SO subagent (main NULL, nao zero) +
+# modelo com sufixo de tier preservado literalmente (task 3.1.3/3.3.5).
+scenario_wmu4_by_source_so_subagent_tier_preservado() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/featWmu4" "/home/u/projWmu4" "featWmu4"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu4" --db "$TMPDIR_TEST/wmu4.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu4 ingest" "$_CAPTURED_STDERR"; return 1; }
+  # as 4 colunas otel_main_* DEVEM ser NULL (nao 0) — assercao explicita, FR-004.
+  _nn=$(sqlite3 "$TMPDIR_TEST/wmu4.db" "SELECT count(*) FROM waves WHERE feature='featWmu4' AND wave='onda-004' AND otel_main_input_tokens IS NULL AND otel_main_output_tokens IS NULL AND otel_main_cache_read_tokens IS NULL AND otel_main_cache_creation_tokens IS NULL")
+  [ "$_nn" = "1" ] || { _fail "wmu4 main NULL" "esperado 1, obtido '$_nn'"; return 1; }
+  _sub=$(sqlite3 "$TMPDIR_TEST/wmu4.db" "SELECT otel_subagent_input_tokens||'|'||otel_subagent_output_tokens||'|'||otel_subagent_cache_read_tokens||'|'||otel_subagent_cache_creation_tokens FROM waves WHERE feature='featWmu4' AND wave='onda-004'")
+  [ "$_sub" = "108|97555|6756551|221551" ] || { _fail "wmu4 subagent cols" "obtido '$_sub'"; return 1; }
+  _wmu=$(sqlite3 "$TMPDIR_TEST/wmu4.db" "SELECT model||'|'||cost_usd||'|'||total_tokens FROM wave_model_usage WHERE feature='featWmu4' AND wave='onda-004' ORDER BY model")
+  _expected="claude-opus-5[1m]|6.1439|6864604
+claude-sonnet-5|0.635093|211161"
+  [ "$_wmu" = "$_expected" ] || { _fail "wmu4 tier preservado" "obtido '$_wmu'"; return 1; }
+  # negativo: nenhuma normalizacao para alias canonico (opus/sonnet).
+  _norm=$(sqlite3 "$TMPDIR_TEST/wmu4.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu4' AND model IN ('opus','sonnet')")
+  [ "$_norm" = "0" ] || { _fail "wmu4 sem normalizacao" "esperado 0, obtido '$_norm'"; return 1; }
+  return 0
+}
+
+# Cenario 5 do quickstart — onda sem otel_usage: zero linhas fabricadas,
+# linha em waves existe com as 8 colunas novas NULL (SC-002).
+scenario_wmu5_onda_sem_otel_zero_linhas() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/featWmu5" "/home/u/projWmu5" "featWmu5"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu5" --db "$TMPDIR_TEST/wmu5.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu5 ingest" "$_CAPTURED_STDERR"; return 1; }
+  _wn=$(sqlite3 "$TMPDIR_TEST/wmu5.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu5' AND wave='onda-005'")
+  [ "$_wn" = "0" ] || { _fail "wmu5 zero linhas" "esperado 0, obtido '$_wn'"; return 1; }
+  _wc=$(sqlite3 "$TMPDIR_TEST/wmu5.db" "SELECT count(*) FROM waves WHERE feature='featWmu5' AND wave='onda-005'")
+  [ "$_wc" = "1" ] || { _fail "wmu5 waves existe" "esperado 1, obtido '$_wc'"; return 1; }
+  _nn=$(sqlite3 "$TMPDIR_TEST/wmu5.db" "SELECT count(*) FROM waves WHERE feature='featWmu5' AND wave='onda-005' AND otel_main_input_tokens IS NULL AND otel_subagent_input_tokens IS NULL")
+  [ "$_nn" = "1" ] || { _fail "wmu5 8 cols NULL" "esperado 1, obtido '$_nn'"; return 1; }
+  return 0
+}
+
+# Task 3.4.2 (implementa FR-011/1.3.2): apos --ingest, wave_model_usage
+# NUNCA alimenta knowledge_fts, mesmo com linhas reais presentes na tabela
+# (sanity: >0 linhas, para a assercao de isolamento nao ser trivial).
+scenario_wmu6_isolamento_fts_ingest() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/featWmu6" "/home/u/projWmu6" "featWmu6"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu6" --db "$TMPDIR_TEST/wmu6.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu6 ingest" "$_CAPTURED_STDERR"; return 1; }
+  _rows=$(sqlite3 "$TMPDIR_TEST/wmu6.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu6'")
+  [ "$_rows" -gt "0" ] || { _fail "wmu6 sanity" "esperado >0 linhas em wave_model_usage, obtido '$_rows'"; return 1; }
+  _fts=$(sqlite3 "$TMPDIR_TEST/wmu6.db" "SELECT count(*) FROM knowledge_fts WHERE type='wave_model_usage'")
+  [ "$_fts" = "0" ] || { _fail "wmu6 isolamento FTS (ingest)" "esperado 0, obtido '$_fts'"; return 1; }
+  return 0
+}
+
+# Task 3.4.2 (implementa FR-011/1.3.3): mesma assercao pelo caminho --reindex
+# (cobre os dois caminhos de escrita do FTS, CHK013).
+scenario_wmu7_isolamento_fts_reindex() {
+  _have_deps || return 0
+  _write_wmu_state "$TMPDIR_TEST/rxwmu7/p/.claude/feature-00c-state/featWmu7" "/home/u/projWmu7" "featWmu7"
+  capture _rc --reindex --states-root "$TMPDIR_TEST/rxwmu7" --db "$TMPDIR_TEST/wmu7.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu7 reindex" "$_CAPTURED_STDERR"; return 1; }
+  _rows=$(sqlite3 "$TMPDIR_TEST/wmu7.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu7'")
+  [ "$_rows" -gt "0" ] || { _fail "wmu7 sanity" "esperado >0 linhas em wave_model_usage, obtido '$_rows'"; return 1; }
+  _fts=$(sqlite3 "$TMPDIR_TEST/wmu7.db" "SELECT count(*) FROM knowledge_fts WHERE type='wave_model_usage'")
+  [ "$_fts" = "0" ] || { _fail "wmu7 isolamento FTS (reindex)" "esperado 0, obtido '$_fts'"; return 1; }
+  return 0
+}
+
 run_all_scenarios

@@ -195,27 +195,27 @@ Ref: `quickstart.md` Cenario 8; `spec.md` FR-003, FR-009
 
 Ref: `plan.md` pontos 5-6; `data-model.md` §Entity Wave (extensao)
 
-- [ ] 3.1.1 Estender a expressao jq de extracao de `waves` (`recall.sh:1130-1138`)
+- [x] 3.1.1 Estender a expressao jq de extracao de `waves` (`recall.sh:1130-1138`)
       para emitir os 8 campos de `otel_usage.by_source.main.*` e
       `.subagent.*` no array posicional, preservando `//` (operador que
       distingue ausencia de `0` legitimo — nao alterar essa semantica)
-- [ ] 3.1.2 Estender a leitura por indice (`recall.sh:1163-1167`) com as 8
+- [x] 3.1.2 Estender a leitura por indice (`recall.sh:1163-1167`) com as 8
       novas posicoes `.[23]`..`.[30]`, cada uma passando por
       `recall_int_or_null` (`recall.sh:850`)
-- [ ] 3.1.3 Teste: Cenario 2 do quickstart (onda-001, `by_source.main`
+- [x] 3.1.3 Teste: Cenario 2 do quickstart (onda-001, `by_source.main`
       presente) — os 8 valores exatos batem com o `state.json` de origem
 
 ### 3.2 Consistencia das tres listas do `INSERT` de `waves` `[A]`
 
 Ref: `plan.md` ponto 7 (ATENCAO: lista de colunas aparece 3x)
 
-- [ ] 3.2.1 Atualizar a lista de **colunas** do `INSERT INTO waves(...)`
+- [x] 3.2.1 Atualizar a lista de **colunas** do `INSERT INTO waves(...)`
       (`recall.sh:1189`) com as 8 novas colunas
-- [ ] 3.2.2 Atualizar a lista de **VALUES** (mesmo bloco) mantendo a MESMA
+- [x] 3.2.2 Atualizar a lista de **VALUES** (mesmo bloco) mantendo a MESMA
       ordem posicional das colunas
-- [ ] 3.2.3 Atualizar o `ON CONFLICT (...) DO UPDATE SET` (`recall.sh:1191`)
+- [x] 3.2.3 Atualizar o `ON CONFLICT (...) DO UPDATE SET` (`recall.sh:1191`)
       incluindo as 8 colunas novas, mesma ordem
-- [ ] 3.2.4 Teste: contagem de placeholders `?` no `INSERT` bate exatamente
+- [x] 3.2.4 Teste: contagem de placeholders `?` no `INSERT` bate exatamente
       com a contagem de colunas declaradas (falha se as 3 listas divergirem
       apos a edicao)
 
@@ -224,19 +224,19 @@ Ref: `plan.md` ponto 7 (ATENCAO: lista de colunas aparece 3x)
 Ref: `plan.md` ponto 8 + §Tratamento do nome do modelo; `data-model.md`
 §Entity WaveModelUsage
 
-- [ ] 3.3.1 Implementar loop de extracao proprio (padrao ja usado por
+- [x] 3.3.1 Implementar loop de extracao proprio (padrao ja usado por
       `tasks`/`events`) apos `recall.sh:1195`, percorrendo as chaves de
       `otel_usage.by_model` da onda
-- [ ] 3.3.2 Aplicar `sql_escape` (`recall.sh:202`) nas DUAS posicoes onde o
+- [x] 3.3.2 Aplicar `sql_escape` (`recall.sh:202`) nas DUAS posicoes onde o
       nome do modelo aparece: coluna `model` e coluna `source_id`
-- [ ] 3.3.3 Aplicar `strip_nul` (`recall.sh:334`) ao valor extraido do
+- [x] 3.3.3 Aplicar `strip_nul` (`recall.sh:334`) ao valor extraido do
       modelo antes de compor o `INSERT`, evitando truncamento silencioso por
       byte NUL
-- [ ] 3.3.4 NAO passar o campo `model`/`source_id` por `recall_scrub` —
+- [x] 3.3.4 NAO passar o campo `model`/`source_id` por `recall_scrub` —
       documentar inline (comentario pt-br) o motivo: campo estruturado
       (mesma classe de `event_type`), nao texto livre; scrub mutilaria a
       fidelidade da string bruta exigida por FR-001
-- [ ] 3.3.5 Teste: Cenario 1 (onda-001, 2 modelos) e Cenario 4 (onda-004,
+- [x] 3.3.5 Teste: Cenario 1 (onda-001, 2 modelos) e Cenario 4 (onda-004,
       `claude-opus-5[1m]` com sufixo de tier preservado literalmente, sem
       normalizacao para `opus`/`sonnet`)
 
@@ -244,11 +244,11 @@ Ref: `plan.md` ponto 8 + §Tratamento do nome do modelo; `data-model.md`
 
 Ref: 1.3 (FR-011 e testes ja escritos); `plan.md` item "1.ter"
 
-- [ ] 3.4.1 Confirmar por leitura de codigo que nenhum `INSERT`/trigger de
+- [x] 3.4.1 Confirmar por leitura de codigo que nenhum `INSERT`/trigger de
       `knowledge_fts` referencia `wave_model_usage` ou o campo `model`
-- [ ] 3.4.2 Rodar os testes automatizados criados em 1.3.2/1.3.3
+- [x] 3.4.2 Rodar os testes automatizados criados em 1.3.2/1.3.3
       (`--ingest` e `--reindex`) e confirmar `count(*) = 0`
-- [ ] 3.4.3 Auditoria: `grep -n "knowledge_fts" cli/lib/recall.sh` nao produz
+- [x] 3.4.3 Auditoria: `grep -n "knowledge_fts" cli/lib/recall.sh` nao produz
       nenhuma ocorrencia associada a `wave_model_usage`
 
 ---
