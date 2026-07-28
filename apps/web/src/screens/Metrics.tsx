@@ -20,6 +20,7 @@ import type { ScatterDatum, DonutDatum } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
 import { pickTokens, tokenCoverageLabel } from '@/lib/token-source.js';
 import { selectModelUsage, groupModelUsageByStage } from '@/lib/model-usage-select.js';
+import { buildStageBars } from '@/lib/model-mix-by-stage-select.js';
 import { truncateBars } from '@/lib/truncate-bars.js';
 import type { PeriodParam, AgentUsageRollup, OtelUsageRollup, ModelUsageResult } from '@cstk-panel/shared-types';
 
@@ -723,16 +724,10 @@ export function Metrics({ period }: MetricsProps) {
             const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
             if (rows.length === 0) return null;
             const models = sortModels(Array.from(new Set(rows.map(r => (r.modelo as string | null) ?? '?'))));
-            const byStage = new Map<string, Record<string, number | string>>();
-            for (const r of rows) {
-              const etapa = (r.etapa as string | null) ?? '?';
-              const modelo = (r.modelo as string | null) ?? '?';
-              const n = (r.n as number | null) ?? 0;
-              const row = byStage.get(etapa) ?? { d: etapa.slice(0, 8) };
-              row[modelo] = ((row[modelo] as number | undefined) ?? 0) + n;
-              byStage.set(etapa, row);
-            }
-            const data = [...byStage.values()];
+            // FASE 6 (US4/FR-009): agrupa por `r.stage` (campo real do payload —
+            // `r.etapa` nunca existiu, ver model-mix-by-stage-select.ts) e ordena
+            // pela ordem canonica de SDD_STAGES, nao por volume.
+            const data = buildStageBars(rows);
             const colors = models.map(modelColor);
             return (
               <>

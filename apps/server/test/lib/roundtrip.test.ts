@@ -297,3 +297,51 @@ describe.skipIf(!FIXTURE_EXISTS)('2.5.3 Roundtrip E2E — GET /metrics/model-usa
     expect(flat.includes('waves_with_model_usage')).toBe(false);
   });
 });
+
+// ─── 6.1.4 Roundtrip real — GET /metrics/model-mix-by-stage (regressao) ─────
+// Ref: tasks.md 6.1.4; spec.md US4/FR-009; contracts/existing-endpoints.md.
+// Antes da FASE 6 este endpoint nao tinha NENHUMA cobertura — foi o que
+// permitiu o defeito `Metrics.tsx` lendo `r.etapa` (campo inexistente)
+// passar despercebido. `ModelMixByStageRow` (apps/server/src/db/queries/
+// metrics.ts:352) projeta `stage`/`modelo`/`n` — este teste falha se o
+// endpoint regredir e parar de projetar `stage`.
+describe.skipIf(!FIXTURE_EXISTS)('6.1.4 Roundtrip E2E — GET /metrics/model-mix-by-stage com base real', () => {
+  let server: FastifyInstance;
+
+  beforeAll(async () => {
+    server = await buildServer(FIXTURE_DB);
+  });
+  afterAll(async () => { await server.close(); });
+
+  it('6.1.4.a envelope valida contra RawApiEnvelopeSchema (sem mock de DB)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-mix-by-stage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const parse = RawApiEnvelopeSchema.safeParse(res.json());
+    expect(parse.success, `parse falhou: ${JSON.stringify(parse.error?.issues?.slice(0, 3))}`).toBe(true);
+  });
+
+  it('6.1.4.b meta.approximate === true (dado derivado de decisions.choice, nao medido)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-mix-by-stage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json<{ meta: { approximate?: boolean } }>();
+    expect(body.meta.approximate).toBe(true);
+  });
+
+  it('6.1.4.c cada linha projeta `stage`/`modelo`/`n` — nunca `etapa` (defeito FASE 6)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-mix-by-stage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json<{ data: Record<string, unknown>[] }>();
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body.data.length).toBeGreaterThan(0);
+    for (const row of body.data) {
+      expect(row).toHaveProperty('stage');
+      expect(row).toHaveProperty('modelo');
+      expect(row).toHaveProperty('n');
+      expect(row).not.toHaveProperty('etapa');
+      expect(typeof row['stage']).toBe('string');
+    }
+  });
+});

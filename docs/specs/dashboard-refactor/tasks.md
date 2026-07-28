@@ -604,24 +604,49 @@ User Story 4); contracts/existing-endpoints.md (defeito de consumo, linha
 Ref: `apps/web/src/screens/Metrics.tsx:726`; `db/queries/metrics.ts:374`
 (payload projeta `stage`, não `etapa`)
 
-- [ ] 6.1.1 Corrigir `Metrics.tsx:726` para ler `r.stage` em vez de
+- [x] 6.1.1 Corrigir `Metrics.tsx:726` para ler `r.stage` em vez de
   `r.etapa` no consumo de `GET /metrics/model-mix-by-stage` — o payload
   server-side já projeta `stage` (inglês); `etapa` nunca existiu no payload
   real, causando o colapso de todas as linhas no rótulo `'?'`
-- [ ] 6.1.2 Varrer `Metrics.tsx` e arquivos correlatos do dashboard
+  → leitura extraída para módulo puro `apps/web/src/lib/
+  model-mix-by-stage-select.ts` (`buildStageBars`, seguindo o precedente
+  `model-usage-select.ts`), único ponto de leitura de `r.stage` para este
+  card; `Metrics.tsx:722-731` passa a consumi-lo.
+- [x] 6.1.2 Varrer `Metrics.tsx` e arquivos correlatos do dashboard
   (`Overview.tsx`, `overview-select.ts`, demais consumidores de payload em
   `apps/web/src/screens/` e `apps/web/src/lib/`) por outras ocorrências do
   mesmo padrão de mismatch pt/en (nome de campo lido no front divergente do
   nome projetado pelo servidor), usando grep dirigido por `.etapa`, `.modelo`
   e nomes pt-BR remanescentes
-- [ ] 6.1.3 Para cada ocorrência adicional encontrada em 6.1.2, registrar
+  → grep dirigido (`\.etapa\b|\.modelo\b|\.execucaoId\b|\.decisao\b|
+  \.contexto\b|\.escolha\b`) em `apps/web/src`: `.modelo` nas linhas
+  692/694/725/729 de `Metrics.tsx` **não** é mismatch — bate com o campo
+  real `modelo` projetado por `getModelMix`/`getModelMixByStage`
+  (`db/queries/metrics.ts:352/359/374`, legado pt-BR intencional, distinto
+  de `etapa`). `hooks.ts:217 opts?.etapa` é nome de **querystring**
+  (`GET /executions/:id/decisions?wave&etapa&score...`, documentado em
+  `executions.ts:9/49`), não campo de payload — o corpo da resposta usa
+  `stage` (`ExecutionDetail.tsx:398 d.stage`), consistente. `Overview.tsx:243
+  const etapa = f.currentStage` é apenas nome de variável local em pt-BR
+  lendo o campo real `currentStage` — sem mismatch. **Nenhuma ocorrência
+  adicional do defeito encontrada.**
+- [x] 6.1.3 Para cada ocorrência adicional encontrada em 6.1.2, registrar
   como sub-tarefa emergente (formato `6.1.3-bis`) e corrigir com o mesmo
   rigor desta tarefa — **não** corrigir silenciosamente sem registro
-- [ ] 6.1.4 **Teste de regressão**: teste de integração/roundtrip para
+  → N/A: 6.1.2 não encontrou ocorrências adicionais do padrão de mismatch;
+  nenhuma sub-tarefa emergente necessária.
+- [x] 6.1.4 **Teste de regressão**: teste de integração/roundtrip para
   `GET /metrics/model-mix-by-stage` contra o payload real (o endpoint hoje
   não tem NENHUMA cobertura — é o que permitiu o defeito passar
   despercebido); o teste deve falhar se o componente voltar a ler um campo
   ausente do payload real
+  → 3 testes novos em `apps/server/test/lib/roundtrip.test.ts` (6.1.4.a-c,
+  contra `knowledge-fixture.db` real): envelope via `RawApiEnvelopeSchema`,
+  `meta.approximate===true`, e cada linha de `data[]` com `stage`/`modelo`/`n`
+  presentes e `etapa` **ausente** (`not.toHaveProperty('etapa')`). Mais 5
+  testes de unidade em `model-mix-by-stage-select.test.ts` cobrindo o
+  próprio bug (linha com `etapa` em vez de `stage` cai isolada em `'?'`, não
+  em `'plan'`). 663/663 testes verdes (`npm test`).
 
 ### 6.2 Ordenação por ordem do pipeline SDD `[A]`
 
@@ -629,16 +654,29 @@ Ref: spec.md FR-009 (specify→clarify→plan→checklist→create-tasks→
 execute-task→review-task); checklists/ux.md CHK012 (lista completa, sem
 etapas faltando)
 
-- [ ] 6.2.1 Ordenar as barras do card "Mix de modelos por etapa" pela ordem
+- [x] 6.2.1 Ordenar as barras do card "Mix de modelos por etapa" pela ordem
   de `SDD_STAGES` (`apps/web/src/lib/constants.ts`), não por volume
-- [ ] 6.2.2 Etapas presentes no dado e ausentes de `SDD_STAGES` aparecem ao
+  → `buildStageBars` ordena etapas conhecidas por `SDD_STAGES.indexOf`
+  (`model-mix-by-stage-select.ts`).
+- [x] 6.2.2 Etapas presentes no dado e ausentes de `SDD_STAGES` aparecem ao
   fim, ordenadas por volume desc, com o rótulo real preservado (nunca
   descartadas)
-- [ ] 6.2.3 Confirmar rótulo `meta.approximate=true` mantido no card (dado
+  → etapas fora de `SDD_STAGES` (`unknown` em `buildStageBars`) vão ao
+  final ordenadas por `totalByStage` desc; label real preservado (truncado
+  a 8 chars, mesma convenção do eixo X do `StackedBars`, nunca descartado.
+- [x] 6.2.3 Confirmar rótulo `meta.approximate=true` mantido no card (dado
   continua derivado de `decisions.choice`, distinto do card medido por
   modelo da FASE 3)
-- [ ] 6.2.4 **Teste**: ordenação determinística cobrindo etapas conhecidas +
+  → confirmado sem alteração de código: `wrap(data, { approximate: true },
+  ...)` em `routes/metrics.ts:188`; `MetricCard` (`Metrics.tsx:163-178`)
+  renderiza o badge "derivada/aproximada" a partir de `meta.approximate`
+  independente do `renderContent` — regressão coberta por 6.1.4.b.
+- [x] 6.2.4 **Teste**: ordenação determinística cobrindo etapas conhecidas +
   etapa desconhecida (fora de `SDD_STAGES`) ao fim da lista
+  → `model-mix-by-stage-select.test.ts`: "ordena etapas conhecidas pela
+  ordem canônica de SDD_STAGES, não por volume" + "etapas fora de
+  SDD_STAGES vão ao final, ordenadas por volume desc, sem serem
+  descartadas".
 
 ---
 
@@ -648,14 +686,22 @@ Ref: quickstart.md (gates + Cenários 1-7); plan.md §Re-check de Constitution
 
 ### 7.1 Gates automatizados `[A]`
 
-- [ ] 7.1.1 `npm run typecheck` verde (inclui `packages/shared-types` e
+- [x] 7.1.1 `npm run typecheck` verde (inclui `packages/shared-types` e
   `apps/web`/`apps/server`)
-- [ ] 7.1.2 `npm run lint` verde
-- [ ] 7.1.3 `npm run lint:readonly-check` verde (zero
+  → `npm run typecheck` (workspaces `server`+`web`+`shared-types`) sem
+  erros, executado após as mudanças da FASE 6.
+- [x] 7.1.2 `npm run lint` verde
+  → `eslint .` sem erros/warnings.
+- [x] 7.1.3 `npm run lint:readonly-check` verde (zero
   `INSERT|UPDATE|DELETE|CREATE|DROP|ALTER` em `apps/server/src`, incluindo a
   rota nova)
-- [ ] 7.1.4 `npm test` verde (3 configs: raiz, `apps/server`,
+  → `OK: no mutation verbs` (nenhuma rota nova em `apps/server/src` nesta
+  FASE; `model-mix-by-stage` já existia).
+- [x] 7.1.4 `npm test` verde (3 configs: raiz, `apps/server`,
   `packages/shared-types`)
+  → `vitest.config.ts` da raiz agrega `packages/**` + `apps/server/**` +
+  `apps/web/src/**` num único run: 663 passed | 1 skipped (pré-existente,
+  `smoke-v12-real.test.ts`, condicional a ambiente local) de 52 arquivos.
 
 ### 7.2 Verificação manual conforme quickstart `[A]`
 
