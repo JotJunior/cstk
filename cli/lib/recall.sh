@@ -112,7 +112,20 @@ RECALL_EXIT_USAGE=2
 # table_info (mesmo padrao v2/v5/v8/v9); SEM drop, dados v9 preservados.
 # Onda antiga ou sem .agent_usage -> todas as 9 colunas NULL, nunca 0
 # (recall_int_or_null; Principio VI — nao fabricar dado nao observado).
-RECALL_SCHEMA_VERSION=11
+# v12 (otel-model-breakdown): 8 colunas aditivas INTEGER em waves — breakdown
+# de tokens por FONTE (main/subagent): otel_main_input_tokens,
+# otel_main_output_tokens, otel_main_cache_read_tokens,
+# otel_main_cache_creation_tokens, otel_subagent_input_tokens,
+# otel_subagent_output_tokens, otel_subagent_cache_read_tokens,
+# otel_subagent_cache_creation_tokens — origem
+# otel_usage.by_source.{main,subagent} do state.json (FR-002). + tabela nova
+# wave_model_usage (grao onda x modelo; origem otel_usage.by_model, FR-001) —
+# NUNCA alimenta knowledge_fts (FR-011, fronteira LLM01/ASI06). Migracao
+# v11->v12 = ALTER TABLE ADD COLUMN idempotente guardado por PRAGMA
+# table_info (mesmo padrao v2/v5/v8/v9/v10); tabela nova via CREATE TABLE IF
+# NOT EXISTS (sem ALTER necessario). Onda antiga ou sem by_source -> as 8
+# colunas ficam NULL, nunca 0 (Principio VI).
+RECALL_SCHEMA_VERSION=12
 # Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
 # DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
 RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
@@ -524,6 +537,14 @@ CREATE TABLE IF NOT EXISTS waves (
   agent_cache_creation_tokens INTEGER,
   agent_tool_use_count INTEGER,
   agent_duration_ms INTEGER,
+  otel_main_input_tokens INTEGER,
+  otel_main_output_tokens INTEGER,
+  otel_main_cache_read_tokens INTEGER,
+  otel_main_cache_creation_tokens INTEGER,
+  otel_subagent_input_tokens INTEGER,
+  otel_subagent_output_tokens INTEGER,
+  otel_subagent_cache_read_tokens INTEGER,
+  otel_subagent_cache_creation_tokens INTEGER,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -598,6 +619,20 @@ CREATE TABLE IF NOT EXISTS suggestions (
   proposal TEXT,
   "references" TEXT,
   issue_opened TEXT,
+  ingested_at TEXT NOT NULL,
+  UNIQUE(project, feature, wave, source_id)
+);
+CREATE TABLE IF NOT EXISTS wave_model_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  wave TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
+  source_ts TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  model TEXT,
+  cost_usd REAL,
+  total_tokens INTEGER,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
 );
@@ -767,6 +802,24 @@ ALTER TABLE waves ADD COLUMN otel_cost_main_usd REAL;
 ALTER TABLE waves ADD COLUMN otel_cost_subagent_usd REAL;
 ALTER TABLE waves ADD COLUMN otel_total_tokens INTEGER;
 ALTER TABLE waves ADD COLUMN otel_subagent_tokens INTEGER;" ;;
+      esac
+      # ---- Migracao v11->v12 (otel-model-breakdown): 8 colunas aditivas em
+      # waves para o breakdown de tokens por FONTE (main/subagent). Reusa
+      # _as_wcols (mesmo PRAGMA ja lido antes de qualquer ALTER neste batch).
+      # Sem DEFAULT -> NULL, coerente com onda antiga/sem by_source: ausente,
+      # jamais 0 (Principio VI). `wave_model_usage` NAO precisa de ALTER: e
+      # tabela nova, coberta pelo CREATE TABLE IF NOT EXISTS do DDL.
+      case "$_as_wcols" in
+        ''|*'|otel_main_input_tokens|'*) : ;;
+        *) _as_extra="$_as_extra
+ALTER TABLE waves ADD COLUMN otel_main_input_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN otel_main_output_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN otel_main_cache_read_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN otel_main_cache_creation_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN otel_subagent_input_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN otel_subagent_output_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN otel_subagent_cache_read_tokens INTEGER;
+ALTER TABLE waves ADD COLUMN otel_subagent_cache_creation_tokens INTEGER;" ;;
       esac
     fi
   fi

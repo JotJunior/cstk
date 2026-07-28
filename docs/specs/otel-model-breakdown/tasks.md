@@ -144,17 +144,17 @@ Session 2026-07-28, segunda pergunta; `sug-002` na knowledge.db
 Ref: `plan.md` §Project Structure (pontos 1-3); `data-model.md` §Entity
 WaveModelUsage / §Entity Wave (extensao)
 
-- [ ] 2.1.1 Bump `RECALL_SCHEMA_VERSION=11` -> `12` (`recall.sh:115`)
-- [ ] 2.1.2 Adicionar as 8 colunas INTEGER nullable de breakdown por fonte na
+- [x] 2.1.1 Bump `RECALL_SCHEMA_VERSION=11` -> `12` (`recall.sh:115`)
+- [x] 2.1.2 Adicionar as 8 colunas INTEGER nullable de breakdown por fonte na
       DDL de `waves` (`recall.sh:496-529`): `otel_main_input_tokens`,
       `otel_main_output_tokens`, `otel_main_cache_read_tokens`,
       `otel_main_cache_creation_tokens`, `otel_subagent_input_tokens`,
       `otel_subagent_output_tokens`, `otel_subagent_cache_read_tokens`,
       `otel_subagent_cache_creation_tokens`
-- [ ] 2.1.3 Adicionar `CREATE TABLE IF NOT EXISTS wave_model_usage (...)`
+- [x] 2.1.3 Adicionar `CREATE TABLE IF NOT EXISTS wave_model_usage (...)`
       apos `recall.sh:602`, com `UNIQUE(project, feature, wave, source_id)`
       no mesmo padrao das outras 10 tabelas de metrica
-- [ ] 2.1.4 Teste: `PRAGMA table_info(waves)` confirma as 8 colunas novas e
+- [x] 2.1.4 Teste: `PRAGMA table_info(waves)` confirma as 8 colunas novas e
       `sqlite_master` confirma a existencia de `wave_model_usage` num banco
       criado do zero (Cenario 8, parte "banco novo")
 
@@ -162,14 +162,14 @@ WaveModelUsage / §Entity Wave (extensao)
 
 Ref: `data-model.md` §Migracao v11 -> v12; `plan.md` ponto 4
 
-- [ ] 2.2.1 Adicionar bloco `ALTER` apos o bloco v10->v11 existente
+- [x] 2.2.1 Adicionar bloco `ALTER` apos o bloco v10->v11 existente
       (`recall.sh:758-770`), reusando a variavel `_as_wcols` ja lida uma
       unica vez em `recall.sh:724` via `PRAGMA table_info(waves)`
-- [ ] 2.2.2 Implementar o guard idempotente `case "$_as_wcols" in
+- [x] 2.2.2 Implementar o guard idempotente `case "$_as_wcols" in
       ''|*'|otel_main_input_tokens|'*) : ;; *) <8 ALTER TABLE waves ADD
       COLUMN> ;; esac` — `wave_model_usage` NAO precisa de ALTER (o `CREATE
       TABLE IF NOT EXISTS` do DDL ja cobre bancos pre-existentes)
-- [ ] 2.2.3 Teste de idempotencia: rodar o `ALTER` duas vezes sobre o mesmo
+- [x] 2.2.3 Teste de idempotencia: rodar o `ALTER` duas vezes sobre o mesmo
       banco v11 e confirmar que a segunda execucao nao falha nem duplica
       coluna
 
