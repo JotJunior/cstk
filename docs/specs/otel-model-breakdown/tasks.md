@@ -177,14 +177,24 @@ Ref: `data-model.md` §Migracao v11 -> v12; `plan.md` ponto 4
 
 Ref: `quickstart.md` Cenario 8; `spec.md` FR-003, FR-009
 
-- [ ] 2.3.1 Partir de uma `knowledge.db` real ja em v11 (com dados) como
+- [x] 2.3.1 Partir de uma `knowledge.db` real ja em v11 (com dados) como
       fixture de teste
-- [ ] 2.3.2 Rodar um comando que abre o banco (ex.: `cstk recall "algo"`) e
-      confirmar `schema_meta.schema_version = '12'`
-- [ ] 2.3.3 Confirmar que TODAS as linhas/colunas pre-existentes continuam
+- [x] 2.3.2 Rodar um comando que **escreve** no banco (`--ingest` ou
+      `--reindex`) e confirmar `schema_meta.schema_version = '12'`
+      — **CORRIGIDA (2026-07-28)**: a redacao original pedia um comando de
+      LEITURA (`cstk recall "algo"`). Verificado empiricamente que leitura
+      NAO migra (schema permaneceu `11`), e isso e DELIBERADO, nao defeito:
+      `cli/lib/recall.sh:2398` documenta "Executa SOMENTE via
+      recall_query_sql (leitura). NUNCA recall_run_sql / recall_apply_schema
+      (escrita) — read-only (FR-014)". `recall_apply_schema` so e chamada
+      em `recall.sh:2131` (`--ingest`) e `recall.sh:2530` (`--reindex`).
+      Exigir migracao no caminho de leitura violaria a garantia read-only
+      pre-existente. Task reescrita para o comportamento correto; validado:
+      `--ingest` sobre `knowledge.db` real v11 levou `schema_version` a `12`.
+- [x] 2.3.3 Confirmar que TODAS as linhas/colunas pre-existentes continuam
       intactas e consultaveis (contagem de `decisions`, `waves`, `tasks`
       inalterada antes/depois)
-- [ ] 2.3.4 Teste: rodar o mesmo comando uma segunda vez e confirmar que nao
+- [x] 2.3.4 Teste: rodar o mesmo comando uma segunda vez e confirmar que nao
       falha nem duplica coluna (idempotencia do `case`/`PRAGMA table_info`)
 
 ---
