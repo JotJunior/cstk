@@ -27,59 +27,83 @@ truncar o throughput por etapa em top-10 + "Outros"; corrigir o defeito
 
 Ref: checklists/api.md CHK003, CHK007, CHK008, CHK012, CHK014
 
-- [ ] 1.1.1 CHK003 — Definir e documentar no spec.md (ou como nota de escopo
+- [x] 1.1.1 CHK003 — Definir e documentar no spec.md (ou como nota de escopo
   no plan.md) um limite numérico de cardinalidade para `byModel` (ex.: `LIMIT`
   + bucket `'(outros)'`, precedente `tokens-by-wave`), análogo ao truncamento
   top-10 já definido para etapas em FR-006/007/008
-- [ ] 1.1.2 CHK007 — Decidir se a distinção `NULL` (não medido) ≠ `0` (medido
+  → FR-003(c) adicionado ao spec.md (dec-037): limite de 10 modelos + bucket
+  `'(outros)'`.
+- [x] 1.1.2 CHK007 — Decidir se a distinção `NULL` (não medido) ≠ `0` (medido
   e zerado) para `costUsd`/`totalTokens` vira um FR explícito no spec.md, ou
   se permanece apenas como invariante do contrato (`model-usage-endpoint.md`
   Invariante 1); registrar a decisão como nota rastreável
-- [ ] 1.1.3 CHK008 — Decidir se a assimetria de filtro (`model-usage` aceita
+  → dec-037: mantido no contrato; spec.md §Premissas confirma que Edge
+  Cases/FR-005 já rastreiam a intenção.
+- [x] 1.1.3 CHK008 — Decidir se a assimetria de filtro (`model-usage` aceita
   `project`/`period`; `model-mix-by-stage` não aceita nenhum) entre os dois
   cards da mesma tela de Métricas é aceitável, ou se deve virar um FR de
   paridade de filtro; registrar a decisão
-- [ ] 1.1.4 CHK012 — Formalizar no spec.md (nova subseção "Escopo de
+  → dec-037: assimetria aceita, fora de escopo (spec.md §Premissas).
+- [x] 1.1.4 CHK012 — Formalizar no spec.md (nova subseção "Escopo de
   Segurança" ou nota equivalente) a premissa de uso local single-user sem
   autenticação/rate-limit, hoje só presente como "risco aceito" no plano
   (`model-usage-endpoint.md`, nota final) e no gate `owasp-security`
-- [ ] 1.1.5 CHK014 — Adicionar ao spec.md uma nota de escopo explícita de que
+  → dec-037: formalizado em spec.md §Premissas, citando
+  docs/constitution.md linha 248.
+- [x] 1.1.5 CHK014 — Adicionar ao spec.md uma nota de escopo explícita de que
   o campo legado `modelo` (pt-BR) em `model-mix`/`model-mix-by-stage`
   permanece inalterado por esta feature (já documentado em
   `contracts/existing-endpoints.md`, falta o espelho no artefato de
   requisitos)
-- [ ] 1.1.6 Marcar os itens `[x]` correspondentes em `checklists/api.md` após
+  → dec-037: nota espelhada em spec.md §Premissas.
+- [x] 1.1.6 Marcar os itens `[x]` correspondentes em `checklists/api.md` após
   cada decisão registrada, citando a resolução
+  → CHK003/007/008/012/014 marcados `[x]` em checklists/api.md com citação
+  de resolução.
 
 ### 1.2 Resolver gaps abertos do checklist de UX `[A]`
 
 Ref: checklists/ux.md CHK002, CHK005, CHK007, CHK008, CHK010, CHK014
 
-- [ ] 1.2.1 CHK002 — Definir critério mínimo objetivo (mesmo que qualitativo,
+- [x] 1.2.1 CHK002 — Definir critério mínimo objetivo (mesmo que qualitativo,
   ex.: "grid CSS responsivo, sem breakpoint fixo, validado por review visual
   do dono do produto") para "layout recalculado de forma coerente" após a
   remoção dos 2 cards obsoletos (US2 Cenário 3); registrar como nota de
   aceite para a FASE 4
-- [ ] 1.2.2 CHK005 — Quantificar o limite do "resumo compacto" do dashboard
+  → dec-038: critério ancorado nos grids `grid-overview`/`grid-N`
+  (`prototype.css`) já existentes.
+- [x] 1.2.2 CHK005 — Quantificar o limite do "resumo compacto" do dashboard
   principal vs. "detalhe completo" da página de Métricas (quantos modelos no
   topo do resumo, quais dos 3 campos `costUsd`/`totalTokens`/`waves` aparecem
   em cada tela); esta decisão alimenta diretamente as subtarefas 3.2 e 3.3
-- [ ] 1.2.3 CHK007 — Definir requisito mínimo de acessibilidade para a nova
+  → dec-038: top-3 modelos/`costUsd` no resumo; detalhe completo
+  (`costUsd`+`totalTokens`+`coverage`) em Métricas.
+- [x] 1.2.3 CHK007 — Definir requisito mínimo de acessibilidade para a nova
   codificação por cor de modelo: contraste WCAG 2.1 AA e/ou rótulo textual
   redundante para leitores de tela; alimenta a subtarefa 3.3 (implementação
   do indicador detalhado)
-- [ ] 1.2.4 CHK008 — Definir se a interação com a barra "Outros" precisa de
+  → dec-038: rótulo textual redundante obrigatório, mesmo padrão do
+  componente `Legend`.
+- [x] 1.2.4 CHK008 — Definir se a interação com a barra "Outros" precisa de
   equivalente por teclado (foco + tecla para expandir), dado que hover/click
   não cobrem navegação por teclado; alimenta a subtarefa 5.3
-- [ ] 1.2.5 CHK010 — **Decisão bloqueante para FASE 5**: escolher entre hover
+  → dec-038: focável + Enter/Espaço (decidido junto com 1.2.5/CHK010).
+- [x] 1.2.5 CHK010 — **Decisão bloqueante para FASE 5**: escolher entre hover
   (tooltip) e expand (click/detail) como mecanismo único de identificação das
   etapas agregadas em "Outros" (Acceptance Scenario US3.3); tooltip não
   funciona em touch/mobile — registrar a escolha e a justificativa
-- [ ] 1.2.6 CHK014 — Formalizar no spec.md que responsividade mobile/tablet
+  → dec-038: clique/toque (não hover-only), expõe `othersMembers` num
+  painel de detalhe focável.
+- [x] 1.2.6 CHK014 — Formalizar no spec.md que responsividade mobile/tablet
   está fora de escopo (ferramenta interna desktop-only), na mesma seção de
   premissas do CHK012 (escopo de segurança)
-- [ ] 1.2.7 Marcar os itens `[x]` correspondentes em `checklists/ux.md` após
+  → dec-038: hipótese revertida por evidência empírica — o app já é
+  responsivo até 480px (`prototype.css`/`tokens.css`); spec.md formaliza a
+  preservação desse comportamento, não uma exclusão de escopo.
+- [x] 1.2.7 Marcar os itens `[x]` correspondentes em `checklists/ux.md` após
   cada decisão registrada, citando a resolução
+  → CHK002/005/007/008/010/014 marcados `[x]` em checklists/ux.md com
+  citação de resolução.
 
 ---
 

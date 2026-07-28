@@ -16,15 +16,16 @@ testa implementação.
   Satisfeito: FR-001 nomeia "custo por feature como proxy de chamadas de
   ferramenta" e FR-002 "funil de features por etapa corrente"; ambos
   citados de forma específica o bastante para identificar o componente.
-- [ ] CHK002 - O critério de "layout recalculado de forma coerente" após
+- [x] CHK002 - O critério de "layout recalculado de forma coerente" após
   a remoção (Acceptance Scenario US2.3: "sem buracos vazios nem cards
   desproporcionais") é quantificado o suficiente para ser objetivamente
   verificável, ou depende de julgamento visual subjetivo do revisor?
   [Ambiguity, Spec §US2 Cenário 3] {humano}
-  O critério é qualitativo por natureza (grid responsivo); não há
-  referência a número de colunas/breakpoint. Aceitável como requisito de
-  UX de alto nível, mas quem valida o "coerente" é o dono do produto no
-  review visual, não um teste automatizado.
+  Resolvido (FASE 1, tasks.md 1.2.1, dec-038): spec.md §Premissas e Notas
+  de Escopo ancora o critério nos grids responsivos já existentes
+  (`grid-overview`/`grid-N`, `prototype.css`), que recalculam
+  automaticamente via os breakpoints já definidos; validação final por
+  review visual do dono do produto.
 
 ## Indicador de Uso/Custo por Modelo
 
@@ -40,16 +41,16 @@ testa implementação.
   {auto}
   Satisfeito: SC-005 exige explicitamente "sem divergência de valores
   para o mesmo período/projeto" entre as duas telas.
-- [ ] CHK005 - A distinção entre "resumo compacto/agregado" (dashboard
+- [x] CHK005 - A distinção entre "resumo compacto/agregado" (dashboard
   principal) e "detalhe completo por modelo e por etapa" (página de
   Métricas), definida na Clarification (Session 2026-07-28, Q3), tem
   critério objetivo do que diferencia um do outro (quantos modelos
   exibidos, quais campos aparecem em cada tela)? [Clareza, Ambiguity,
   Spec §Clarifications Q3] {humano}
-  A resposta da clarificação fixa a direção (resumo vs. detalhe) mas não
-  quantifica limites (ex: top-N modelos no resumo, quais dos 3 campos
-  `costUsd`/`totalTokens`/`waves` aparecem no compacto). Decisão de design
-  a confirmar antes de `/plan` de UI detalhado.
+  Resolvido (FASE 1, tasks.md 1.2.2, dec-038): spec.md §Premissas e Notas
+  de Escopo fixa top-3 modelos por `costUsd` (campo único) no dashboard
+  principal; detalhe completo (todos até FR-003(c), `costUsd` +
+  `totalTokens` + `coverage`) na página de Métricas.
 - [x] CHK006 - Existe requisito definido para o que acontece ao interagir
   com o indicador de uso por modelo no dashboard principal (é somente
   informativo, ou navega para Métricas)? [Cobertura, Spec §US1 Cenário 3]
@@ -61,21 +62,22 @@ testa implementação.
 
 ## Acessibilidade
 
-- [ ] CHK007 - Os novos indicadores de uso/custo por modelo, que
+- [x] CHK007 - Os novos indicadores de uso/custo por modelo, que
   introduzem uma nova codificação visual por cor de modelo, têm requisito
   de contraste (WCAG 2.1 AA) ou alternativa não-visual (texto/label) para
   leitores de tela? [Cobertura, Gap] {auto}
-  Gap: nenhum FR ou Success Criterion menciona contraste de cor ou
-  suporte a leitor de tela para a nova codificação por modelo. O gate de
-  segurança (Invariante 10) trata apenas do risco de prototype pollution
-  na função de cor, não de acessibilidade.
-- [ ] CHK008 - Navegação por teclado para o novo indicador (se
+  Resolvido (FASE 1, tasks.md 1.2.3, dec-038): spec.md §Premissas e Notas
+  de Escopo exige rótulo textual redundante (nome do modelo) sempre
+  acompanhando a cor, mesmo padrão já usado pelo componente `Legend`
+  (`apps/web/src/components/charts.tsx`).
+- [x] CHK008 - Navegação por teclado para o novo indicador (se
   interativo/expansível) está coberta por algum requisito, dado que a
   barra "Outros" do throughput por etapa espera interação (hover/expand)?
   [Cobertura, Gap] {auto}
-  Gap: Acceptance Scenario US3.3 define a necessidade de identificar
-  etapas agregadas via "mouse ou expande o detalhe", mas não menciona
-  equivalente por teclado.
+  Resolvido (FASE 1, tasks.md 1.2.4, dec-038 — junto de CHK010): o
+  indicador de modelo é puramente informativo (CHK006), sem requisito de
+  teclado. A barra "Outros" MUST ser focável e ativável por Enter/Espaço
+  (ver spec.md §Premissas e Notas de Escopo).
 
 ## Truncamento do Throughput por Etapa ("Outros")
 
@@ -86,14 +88,16 @@ testa implementação.
   Satisfeito: FR-006/007/008 fixam o número 10 e o comportamento acima/
   abaixo dele; Edge Cases cobre explicitamente o caso-limite "exatamente
   10" e o caso "11ª etapa isolada" — ambos com resultado definido.
-- [ ] CHK010 - O mecanismo pelo qual o usuário identifica as etapas
+- [x] CHK010 - O mecanismo pelo qual o usuário identifica as etapas
   agregadas em "Outros" (Acceptance Scenario US3.3: "passa o mouse OU
   expande o detalhe") define um único comportamento a implementar, ou
   deixa as duas alternativas em aberto sem decisão? [Ambiguity, Spec §US3
   Cenário 3] {humano}
-  O "ou" na redação do cenário não resolve entre tooltip (hover) e
-  expansão (click/detail), que têm implicações distintas em mobile/touch
-  (hover não existe). Decisão de design a fixar antes da implementação.
+  Resolvido (FASE 1, tasks.md 1.2.5, dec-038): clique/toque (não
+  hover-only) — o app já tem breakpoints responsivos até largura de
+  celular (CHK014), então hover-only excluiria toque; expõe
+  `othersMembers` (data-model.md) num painel de detalhe, focável e
+  ativável por teclado (cobre CHK008 junto).
 - [x] CHK011 - A ordenação usada para decidir quais 10 etapas aparecem
   nomeadas (maior volume) está definida de forma determinística, sem
   empate ambíguo? [Clareza, Spec §FR-006] {auto}
@@ -118,15 +122,17 @@ testa implementação.
 
 ## Responsividade
 
-- [ ] CHK014 - O escopo de suporte a telas menores (mobile/tablet) para o
+- [x] CHK014 - O escopo de suporte a telas menores (mobile/tablet) para o
   dashboard reorganizado é uma premissa assumida (ferramenta interna
   desktop-only) ou um requisito não endereçado no spec.md? [Assumption,
   Gap] {humano}
-  O spec.md não menciona breakpoints nem responsividade; dado o contexto
-  de ferramenta local single-user (mesma premissa da seção de segurança),
-  é plausível que responsividade mobile esteja fora de escopo — mas isso
-  não está declarado explicitamente como premissa no artefato de
-  requisitos.
+  Resolvido (FASE 1, tasks.md 1.2.6, dec-038) — decisão contrária à
+  hipótese do gap: NÃO é desktop-only. Evidência empírica
+  (`apps/web/src/styles/prototype.css:29-40`,
+  `apps/web/src/styles/tokens.css:733-781`) mostra que o app já implementa
+  grids responsivos com breakpoints até 480px. spec.md §Premissas e Notas
+  de Escopo formaliza: esta feature MUST preservar esse comportamento já
+  existente, sem requisito adicional.
 
 ## Notes
 

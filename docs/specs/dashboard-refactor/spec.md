@@ -179,7 +179,12 @@ clarificação desta spec.
   2026-07-28, Q1): a constitution do projeto foi emendada (v1.1.0 → v1.2.0)
   para abrir, no Princípio III, a mesma exceção já concedida a tokens
   medidos (emenda 1.1.0) também a valor monetário MEDIDO — permanece
-  proibido qualquer valor $/USD estimado, derivado ou inventado.
+  proibido qualquer valor $/USD estimado, derivado ou inventado. (c)
+  cardinalidade do `byModel` MUST ser limitada a 10 modelos nomeados
+  (maior `costUsd` primeiro) + 1 linha agregada rotulada `'(outros)'` somando
+  o restante, quando a fonte tiver mais de 10 modelos distintos no
+  período — mesmo padrão numérico de truncamento de FR-006/007/008.
+  Resolvido em FASE 1 (checklists/api.md CHK003).
 - **FR-004**: Todo valor de uso/custo por modelo exibido MUST indicar
   explicitamente sua natureza (medido, proxy ou derivado) e MUST NOT ser
   somado ou confundido com o proxy de chamadas de ferramenta já existente
@@ -216,6 +221,62 @@ clarificação desta spec.
 > sem scheduling, sem criptografia, sem refresh de token externo, sem
 > mutex multi-pod, sem backup/restore, sem idempotência de escrita — o
 > painel não escreve nada).
+
+### Premissas e Notas de Escopo (Checklist)
+
+Resolvidas na FASE 1 do backlog (`tasks.md`), a partir dos 11 gaps
+identificados nos checklists `checklists/api.md` e `checklists/ux.md`.
+
+- **`NULL` ≠ `0` em `costUsd`/`totalTokens` (api CHK007)**: já coberto pelo
+  nível de abstração deste spec (Edge Cases: "nunca zero") e por FR-005; não
+  vira um FR numerado novo — o detalhe técnico dos três estados vive no
+  contrato (`contracts/model-usage-endpoint.md` Invariante 1), que é o
+  artefato correto para esse nível de detalhe.
+- **Assimetria de filtro entre `model-usage` e `model-mix-by-stage` (api
+  CHK008)**: aceita como está. FR-009 só exige contexto de etapa
+  (rótulos/eixo/ordenação) no card de mix por etapa, não paridade de filtro
+  com o card novo; estender `model-mix-by-stage` para aceitar
+  `project`/`period` está fora do escopo desta feature.
+- **Escopo de Segurança (api CHK012)**: esta feature herda, sem alteração,
+  a premissa já ratificada em `docs/constitution.md` §Padrões de Segurança
+  e Qualidade: bind em `localhost`, sem autenticação real, sem
+  RBAC/multi-tenant no MVP. Nenhum endpoint desta feature introduz
+  autenticação ou rate-limit novos.
+- **Campo legado `modelo` (pt-BR) (api CHK014)**: `model-mix`/
+  `model-mix-by-stage` mantêm o campo `modelo` inalterado por esta feature
+  (`contracts/existing-endpoints.md`); não é uma inconsistência a corrigir
+  aqui.
+- **Critério de layout coerente pós-remoção (ux CHK002)**: critério
+  objetivo — os grids responsivos já existentes (`grid-overview`, `grid-N`
+  em `apps/web/src/styles/prototype.css`) recalculam automaticamente via os
+  breakpoints já definidos (1200/900/600/480px) quando 2 cards saem da
+  grade; validação final por review visual do dono do produto (critério
+  qualitativo, mas ancorado em CSS existente, não em regra nova).
+- **Quantificação resumo vs. detalhe (ux CHK005)**: o dashboard principal
+  exibe um resumo compacto com os top-3 modelos por `costUsd` (apenas o
+  campo `costUsd`, com rótulo de natureza); a página de Métricas exibe o
+  detalhe completo — todos os modelos até o limite de cardinalidade de
+  FR-003(c), com `costUsd` e `totalTokens`, mais `coverage`.
+- **Acessibilidade de cor por modelo (ux CHK007)**: a codificação por cor de
+  modelo MUST sempre vir acompanhada de rótulo textual redundante (nome do
+  modelo) — mesmo padrão já usado pelo componente `Legend`
+  (`apps/web/src/components/charts.tsx`); nenhuma informação nova depende
+  de cor isolada.
+- **Navegação por teclado / mecanismo da barra "Outros" (ux CHK008,
+  CHK010)**: o indicador de uso por modelo é puramente informativo (CHK006,
+  já resolvido) — sem interação, sem requisito de teclado adicional. Para a
+  barra "Outros" do throughput por etapa (FR-007), o mecanismo escolhido é
+  clique/toque (não apenas hover): o app já possui breakpoints responsivos
+  até largura de celular (CHK014 abaixo), então um mecanismo hover-only
+  excluiria toque. O elemento MUST ser focável (nativamente ou via
+  `tabIndex`) e ativável por teclado (Enter/Espaço), expondo
+  `othersMembers` (já modelado em `data-model.md`) num painel de detalhe.
+- **Responsividade mobile/tablet (ux CHK014)**: não é premissa de exclusão
+  de escopo — o app já implementa grids responsivos com breakpoints até
+  480px (`apps/web/src/styles/prototype.css:29-40`,
+  `apps/web/src/styles/tokens.css:733-781`). Esta feature MUST preservar
+  esse comportamento responsivo já existente, sem introduzir requisito
+  adicional de responsividade além do que já está implementado.
 
 ### Key Entities
 

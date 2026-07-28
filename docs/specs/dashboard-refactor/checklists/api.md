@@ -20,14 +20,12 @@ existentes (`contracts/existing-endpoints.md`). Não testa implementação.
   Spec §FR-003, SC-005] {auto}
   Satisfeito: `model-usage-endpoint.md` §Request declara reuso explícito de
   `parseUsageQuery` (`metrics.ts:209`) e justifica a escolha por SC-005.
-- [ ] CHK003 - É especificado, com limite numérico, o comportamento de
+- [x] CHK003 - É especificado, com limite numérico, o comportamento de
   cardinalidade do `byModel` quando houver muitos modelos distintos na
   fonte (análogo ao truncamento top-10 + "Outros" definido para etapas em
   FR-006/007/008)? [Completude, Gap] {auto}
-  Gap: nenhum FR do spec.md limita a quantidade de modelos distintos
-  exibidos em `byModel`. O gate de segurança do plano (Invariante 9,
-  LOW — API4/LLM10) recomenda `LIMIT` + bucket `'(outros)'`, mas isso é
-  uma mitigação de plano, não um requisito rastreável no spec.md.
+  Resolvido (FASE 1, tasks.md 1.1.1): FR-003(c) fixa limite de 10 modelos
+  nomeados + bucket `'(outros)'`, mesmo padrão numérico de FR-006/007/008.
 
 ## Rotulagem da Natureza do Dado
 
@@ -47,28 +45,29 @@ existentes (`contracts/existing-endpoints.md`). Não testa implementação.
   Spec §FR-004] {auto}
   Satisfeito: FR-004 nomeia as duas grandezas explicitamente ("esforço do
   orquestrador vs. uso dos modelos"); Invariante 3 do contrato reforça.
-- [ ] CHK007 - O contrato deixa claro que `costUsd`/`totalTokens` usam
+- [x] CHK007 - O contrato deixa claro que `costUsd`/`totalTokens` usam
   `NULL` (não medido) distinto de `0` (medido e zerado) — e essa distinção
   de três estados (sem dado / zero real / não aplicável) está refletida em
   algum requisito do spec.md, não apenas no contrato de plano? [Clareza,
   Ambiguity] {humano}
-  O spec.md (Edge Cases, FR-005) fala em "sem dado" vs. dado presente, mas
-  não formaliza a distinção `NULL`≠`0` como requisito — hoje ela só existe
-  em `model-usage-endpoint.md` (Invariante 1). Decisão de produto: vale a
-  pena elevar essa distinção para um FR explícito, ou o nível de
-  abstração do spec.md (sem detalhe de tipo) já é suficiente?
+  Resolvido (FASE 1, tasks.md 1.1.2, dec-037): mantido no nível de
+  abstração atual — spec.md §Premissas e Notas de Escopo confirma que a
+  intenção (Edge Cases + FR-005, "nunca zero") já rastreia o requisito de
+  produto; o detalhe de tipo `NULL`≠`0` permanece no contrato (Invariante
+  1), artefato correto para esse nível de detalhe.
 
 ## Consistência entre Rotas
 
-- [ ] CHK008 - Os endpoints usados para o card de mix de modelos por etapa
+- [x] CHK008 - Os endpoints usados para o card de mix de modelos por etapa
   (`model-mix-by-stage`, sem `project`/`period`) e para o card de uso por
   modelo (`model-usage`, com `project`/`period`) produzem experiência
   consistente de filtro entre os dois cards da mesma tela de Métricas —
   ou o spec.md assume, sem declarar, que apenas o card novo é filtrável?
   [Ambiguity, Spec §SC-005, FR-009] {humano}
-  `existing-endpoints.md` confirma que `model-mix-by-stage` "não aceita
-  `period` nem `project`" — o spec.md não resolve explicitamente se essa
-  assimetria de filtro entre os dois cards da mesma página é aceitável.
+  Resolvido (FASE 1, tasks.md 1.1.3, dec-037): assimetria aceita como
+  está — spec.md §Premissas e Notas de Escopo declara que FR-009 só exige
+  contexto de etapa, não paridade de filtro; estender
+  `model-mix-by-stage` fica fora do escopo desta feature.
 - [x] CHK009 - A ordenação de `byModel` (maior custo primeiro, `null` por
   último) é suficiente para satisfazer SC-001 (identificar o modelo de
   maior custo em menos de 10s) de forma objetivamente verificável?
@@ -97,17 +96,15 @@ existentes (`contracts/existing-endpoints.md`). Não testa implementação.
 
 ## Segurança e Superfície
 
-- [ ] CHK012 - O escopo de segurança do endpoint (sem autenticação, sem
+- [x] CHK012 - O escopo de segurança do endpoint (sem autenticação, sem
   rate-limit, uso local single-user) é uma decisão de produto documentada
   no próprio spec.md — ou só existe como "risco aceito" no plano de
   implementação, fora do artefato rastreável de requisitos? [Ambiguity,
   Gap] {humano}
-  O spec.md não tem uma seção de escopo de segurança; a nota "Decisões de
-  infraestrutura: N/A" cobre scheduling/criptografia/mutex, mas não
-  menciona auth/rate-limit. O aceite de risco vive apenas em
-  `model-usage-endpoint.md` (nota final) e no gate `owasp-security`
-  (dec-025). Decisão de produto: formalizar essa premissa no spec.md
-  evita redescoberta futura como "novo risco".
+  Resolvido (FASE 1, tasks.md 1.1.4, dec-037): spec.md §Premissas e Notas
+  de Escopo formaliza a herança da premissa já ratificada em
+  `docs/constitution.md` §Padrões de Segurança e Qualidade (localhost,
+  sem auth real, sem RBAC/multi-tenant no MVP).
 - [x] CHK013 - O requisito de somente-leitura (FR-011) é inequívoco o
   suficiente para vedar qualquer verbo HTTP além de `GET` no endpoint
   novo, sem margem para interpretação de "leitura" incluir upsert de
@@ -118,16 +115,14 @@ existentes (`contracts/existing-endpoints.md`). Não testa implementação.
 
 ## Rastreabilidade de Nomenclatura (pt/en)
 
-- [ ] CHK014 - O spec.md declara, como requisito ou ao menos como nota de
+- [x] CHK014 - O spec.md declara, como requisito ou ao menos como nota de
   escopo, que o payload legado com campo `modelo` (pt-BR, em
   `model-mix`/`model-mix-by-stage`) permanece inalterado por esta feature
   — para não ser confundido com uma inconsistência a corrigir aqui?
   [Consistência, Gap] {auto}
-  Gap parcial: o spec.md não menciona a divergência de nomenclatura
-  `modelo`/`model`; ela só é documentada em
-  `contracts/existing-endpoints.md` como "não alterada por esta feature".
-  Risco baixo (é nota de escopo, não requisito funcional), mas ausente do
-  artefato de requisitos rastreável.
+  Resolvido (FASE 1, tasks.md 1.1.5): spec.md §Premissas e Notas de
+  Escopo espelha `contracts/existing-endpoints.md` — campo `modelo`
+  permanece inalterado por esta feature.
 
 ## Notes
 
