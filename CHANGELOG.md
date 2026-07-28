@@ -5,6 +5,71 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.33.0] - 2026-07-28
+
+Fecha a perda de dimensoes do OTel na ingestao: o `state.json` sempre teve o
+consumo detalhado por **modelo** e por **fonte**, mas a `knowledge.db` so
+guardava 5 escalares e descartava o resto.
+
+O `otel-usage.sh delta` grava em `.waves[].otel_usage` um objeto completo —
+`by_model` (custo/tokens por modelo) e `by_source` (input/output/cache_read/
+cache_creation para `main` e `subagent`). O ingest projetava apenas
+`otel_cost_usd`, `otel_cost_main_usd`, `otel_cost_subagent_usd`,
+`otel_total_tokens` e `otel_subagent_tokens`. Consequencia pratica: era
+impossivel responder "quanto desta execucao foi opus e quanto foi sonnet",
+ou calcular cache-hit ratio, mesmo com o dado presente em disco.
+
+### Added
+
+- **`wave_model_usage`** (schema v12): tabela nova, grao **onda x modelo**,
+  com `model`, `cost_usd` e `total_tokens`. O `model` e a string **BRUTA**
+  do OTel, sem normalizacao — os valores reais incluem `claude-fable-5` (que
+  nao tem alias no mapa fase->modelo) e `claude-opus-5[1m]` (variante de
+  contexto 1M, com custo distinto); normalizar para `opus`/`sonnet`/`haiku`
+  apagaria os dois.
+- **8 colunas de breakdown por fonte em `waves`**:
+  `otel_{main,subagent}_{input,output,cache_read,cache_creation}_tokens`.
+  Antes, o breakdown do `main` sumia por completo e do `subagent` sobrava so
+  o total.
+- Contador `wave_model_usage` no sumario de `--ingest`/`--reindex`.
+
+### Changed
+
+- **`RECALL_SCHEMA_VERSION` 11 -> 12.** Migracao ADITIVA e idempotente, via
+  guard `_as_wcols` no mesmo padrao do bloco v10->v11. Validada sobre uma
+  `knowledge.db` real em v11 (4107 decisions / 913 waves / 67 executions):
+  contagens pre-existentes intactas, segunda execucao sem duplicar nada.
+
+  > **Requer cstk-panel >= 0.20.0.** O painel valida a versao do schema
+  > contra uma allowlist; versoes anteriores rejeitam a base v12 com
+  > `schema-mismatch`. Paliativo enquanto nao atualiza:
+  > `CSTK_SCHEMA_VERSIONS=2,3,4,5,6,7,8,9,10,11,12`.
+
+### Fixed
+
+- **`scenario_end_otel_usage_null_sem_telemetria` nao isolava o ambiente.**
+  O cenario nao setava `CSTK_OTEL_ENDPOINT` e caia no default
+  (`localhost:9464`); numa maquina com `CLAUDE_CODE_ENABLE_TELEMETRY=1` e
+  `OTEL_METRICS_EXPORTER=prometheus` ativos o snapshot funcionava,
+  `otel_usage` nao ficava null e o teste falhava **sem defeito no codigo**.
+  Passa a forcar uma porta fechada como "maquina sem telemetria"
+  deterministica. O defeito estava mascarado no CI, que nao expoe o exporter.
+
+### Notas
+
+- **Ausencia de dado = NULL, jamais 0 fabricado.** Verificado em volume real:
+  das 916 ondas da `knowledge.db`, apenas 7 receberam valor nas colunas
+  novas; as outras 909 permaneceram NULL. O caso oposto tem teste dedicado
+  com dado real (`cost_usd: 0` convivendo com `cache_creation: 4103` na mesma
+  linha) — zero medido nao vira NULL.
+- **`wave_model_usage` NAO alimenta `knowledge_fts`**: o label de modelo vem
+  de fonte externa e nunca pode alcancar contexto de LLM via
+  `cstk recall --context` (LLM01/ASI06).
+- **`otel_session_id` foi deliberadamente deixado de fora.** Investigacao
+  empirica mostrou que o label nao identifica a sessao que gerou o consumo —
+  o mesmo `session_id` aparecia no endpoint, nesta execucao e numa execucao
+  anterior de outro projeto. Indexa-lo propagaria atribuicao errada.
+
 ## [5.32.0] - 2026-07-27
 
 Fecha o buraco da **retrospectiva proativa por marco**: o gatilho nunca era
@@ -4214,6 +4279,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[5.33.0]: https://github.com/JotJunior/cstk/releases/tag/v5.33.0
   tabela por stack.
 
 - **`execute-task` reescrita para ser stack-agnostic** — Etapa 7 (Lint) é
