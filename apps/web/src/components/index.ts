@@ -22,5 +22,9 @@ export {
   subagentCostShare, waveOtelUsage, sumOtelUsage,
 } from './OtelUsage.js';
 export type { OtelUsageState } from './OtelUsage.js';
-export { Sparkline, Donut, BarH, FunnelChart, Legend, StackedBars, Histogram, ScatterChart } from './charts.js';
-export type { DonutDatum, BarHDatum, FunnelDatum, LegendItem, StackedBarsProps, HistogramProps, ScatterDatum } from './charts.js';
+export {
+  ModelUsageMiniList, ModelUsageEmpty, modelUsageColor,
+  ModelUsageDetailPanel, ModelUsageStageBreakdown,
+} from './ModelUsage.js';
+export { Sparkline, Donut, BarH, TruncatedBarH, Legend, StackedBars, Histogram, ScatterChart } from './charts.js';
+export type { DonutDatum, BarHDatum, LegendItem, StackedBarsProps, HistogramProps, ScatterDatum, TruncatedBarHProps } from './charts.js';

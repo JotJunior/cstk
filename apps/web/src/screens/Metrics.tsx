@@ -14,11 +14,15 @@ import {
   KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBars, Legend,
   AgentUsagePanel, AgentUsageEmpty,
   OtelUsagePanel, OtelUsageEmpty, otelUsageState, otelCoverageLabel, fmtUsd,
+  ModelUsageDetailPanel, TruncatedBarH,
 } from '@/components/index.js';
 import type { ScatterDatum, DonutDatum } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
 import { pickTokens, tokenCoverageLabel } from '@/lib/token-source.js';
-import type { PeriodParam, AgentUsageRollup, OtelUsageRollup } from '@cstk-panel/shared-types';
+import { selectModelUsage, groupModelUsageByStage } from '@/lib/model-usage-select.js';
+import { buildStageBars } from '@/lib/model-mix-by-stage-select.js';
+import { truncateBars } from '@/lib/truncate-bars.js';
+import type { PeriodParam, AgentUsageRollup, OtelUsageRollup, ModelUsageResult } from '@cstk-panel/shared-types';
 
 // Cores por modelo (alinhado ao Overview)
 const MODEL_COLOR: Record<string, string> = {
@@ -127,28 +131,6 @@ function AreaChart({ data, height = 120, color = 'var(--accent)', label = '' }: 
           <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={color} />
         ))}
       </svg>
-    </div>
-  );
-}
-
-function BarH({ data, label = '' }: { data: { label: string; value: number }[]; label?: string }) {
-  const max = Math.max(...data.map(d => d.value), 1);
-  return (
-    <div>
-      {label && <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>{label}</div>}
-      {data.map((d, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-          <div style={{ width: 90, fontSize: 10.5, color: 'var(--text-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            {d.label}
-          </div>
-          <div style={{ flex: 1, height: 8, background: 'var(--bg-3)', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ width: `${(d.value / max) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: 3 }} />
-          </div>
-          <div style={{ width: 40, textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-1)', flexShrink: 0 }}>
-            {d.value}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -429,6 +411,24 @@ export function Metrics({ period }: MetricsProps) {
         />
       </div>
 
+      {/* Custo/tokens por modelo — detalhe completo (schema v12, wave_model_usage).
+          Consome o MESMO modulo puro (lib/model-usage-select.ts) do KPI compacto
+          do Overview — garante SC-005 (mesmos valores nas duas telas). */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+        <MetricCard
+          name="model-usage"
+          title="Custo por modelo · detalhe"
+          subtitle="medido (wave_model_usage) · por modelo e por etapa"
+          period={period}
+          renderContent={(raw) => {
+            const result = raw as ModelUsageResult | null;
+            const vm = selectModelUsage(result);
+            const stageGroups = groupModelUsageByStage(result?.byStage);
+            return <ModelUsageDetailPanel vm={vm} stageGroups={stageGroups} />;
+          }}
+        />
+      </div>
+
       {/* Grid de metricas 2x4 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
 
@@ -480,19 +480,22 @@ export function Metrics({ period }: MetricsProps) {
           }}
         />
 
-        {/* 3. throughput-by-stage */}
+        {/* 3. throughput-by-stage — top-10 + "Outros" (FASE 5, FR-006/007/008, SC-002) */}
         <MetricCard
           name="throughput-by-stage"
           title="Throughput por etapa"
-          subtitle="soma tool_calls por etapa SDD"
+          subtitle="contagem de decisoes por etapa SDD"
           renderContent={(raw) => {
+            // getThroughputByStage (apps/server/src/db/queries/metrics.ts) ja
+            // retorna { stage, count }[] ordenado por count DESC.
             const arr = Array.isArray(raw)
               ? (raw as Record<string, unknown>[]).map(r => ({
-                  label: (r.etapa as string | null) ?? (r.stage as string | null) ?? '?',
-                  value: (r.tool_calls as number | null) ?? (r.count as number | null) ?? 0,
+                  label: (r.stage as string | null) ?? '?',
+                  value: (r.count as number | null) ?? 0,
                 }))
               : [];
-            return <BarH data={arr} />;
+            const { bars, othersLabel, othersMembers } = truncateBars(arr);
+            return <TruncatedBarH bars={bars} othersLabel={othersLabel} othersMembers={othersMembers} />;
           }}
         />
 
@@ -721,16 +724,10 @@ export function Metrics({ period }: MetricsProps) {
             const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
             if (rows.length === 0) return null;
             const models = sortModels(Array.from(new Set(rows.map(r => (r.modelo as string | null) ?? '?'))));
-            const byStage = new Map<string, Record<string, number | string>>();
-            for (const r of rows) {
-              const etapa = (r.etapa as string | null) ?? '?';
-              const modelo = (r.modelo as string | null) ?? '?';
-              const n = (r.n as number | null) ?? 0;
-              const row = byStage.get(etapa) ?? { d: etapa.slice(0, 8) };
-              row[modelo] = ((row[modelo] as number | undefined) ?? 0) + n;
-              byStage.set(etapa, row);
-            }
-            const data = [...byStage.values()];
+            // FASE 6 (US4/FR-009): agrupa por `r.stage` (campo real do payload —
+            // `r.etapa` nunca existiu, ver model-mix-by-stage-select.ts) e ordena
+            // pela ordem canonica de SDD_STAGES, nao por volume.
+            const data = buildStageBars(rows);
             const colors = models.map(modelColor);
             return (
               <>

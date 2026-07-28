@@ -4,6 +4,7 @@
  *
  * Sem dependencia de libs de grafico; SVG inline com tokens de cor.
  */
+import { useState } from 'react';
 import { fmtNum } from '@/lib/format.js';
 
 // ---------------------------------------------------------------------------
@@ -116,21 +117,49 @@ export function BarH({ data, maxLabel = 160, valueFmt = fmtNum, max: maxProp }: 
 }
 
 // ---------------------------------------------------------------------------
-// FunnelChart — features por etapa corrente (SDD, 9 etapas)
+// TruncatedBarH — BarH + mecanismo de identificacao da barra "Outros"
+// (dashboard-refactor FASE 5, FR-006/007/008; dec-038/1.2.4/1.2.5: clique ou
+// toque, nao hover-only — tooltip nao funciona em touch; equivalente por
+// teclado via foco + Enter/Espaco).
 // ---------------------------------------------------------------------------
-export interface FunnelDatum { label: string; count: number; }
+export interface TruncatedBarHProps {
+  bars: BarHDatum[];
+  /** `null` quando nao houve truncamento — sem afordancia de expandir. */
+  othersLabel: string | null;
+  /** rotulos agregados na barra "Outros" (data-model.md `TruncatedBars`). */
+  othersMembers: string[];
+  maxLabel?: number;
+  valueFmt?: (n: number) => string;
+}
 
-export function FunnelChart({ data }: { data: FunnelDatum[] }) {
-  const max = Math.max(...data.map(d => d.count), 0) || 1;
+export function TruncatedBarH({ bars, othersLabel, othersMembers, maxLabel = 160, valueFmt = fmtNum }: TruncatedBarHProps) {
+  const [expanded, setExpanded] = useState(false);
+  const toggle = () => setExpanded(v => !v);
   return (
-    <div className="funnel">
-      {data.map((d, i) => (
-        <div className="funnel-row" key={i}>
-          <span className="label" title={d.label}>{d.label}</span>
-          <div className="bar"><div className="bar-fill" style={{ width: `${(d.count / max) * 100}%`, opacity: 0.4 + (d.count / max) * 0.6 }} /></div>
-          <span className="count">{d.count}</span>
-        </div>
-      ))}
+    <div>
+      <BarH data={bars} maxLabel={maxLabel} valueFmt={valueFmt} />
+      {othersLabel && othersMembers.length > 0 && (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-expanded={expanded}
+            onClick={toggle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+            }}
+            className="hover-link"
+            style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-2)', cursor: 'pointer', userSelect: 'none' }}
+          >
+            {expanded ? '▾' : '▸'} {othersLabel} agrega {othersMembers.length} etapa{othersMembers.length === 1 ? '' : 's'}
+          </div>
+          {expanded && (
+            <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+              {othersMembers.join(', ')}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

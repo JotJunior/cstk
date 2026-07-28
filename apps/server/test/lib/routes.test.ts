@@ -299,4 +299,124 @@ describe.skipIf(!FIXTURE_EXISTS)('Rotas com fixture real — GET /api/v1/*', () 
     });
     expect(res2.statusCode).toBe(304);
   });
+
+  // task 2.3.4 — /metrics/model-usage sobre a fixture v7 (sem wave_model_usage,
+  // introduzida so no schema v12): exercita o caminho degradado table-empty
+  // fim-a-fim (contrato §Response 200 degradado, Decision 4).
+  it("GET /metrics/model-usage sobre fixture v7: 200 degradado reason='table-empty', data com shape vazio (nao null)", async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-usage?period=all' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { byModel: unknown[]; byStage: unknown[]; coverage: Record<string, unknown> } | null;
+      meta: { degraded: boolean; reason: string | null; approximate?: boolean };
+    }>();
+    expect(body.meta.degraded).toBe(true);
+    expect(body.meta.reason).toBe('table-empty');
+    // Invariante: data NAO e null mesmo degradado — o shape vazio e afirmativo.
+    expect(body.data).not.toBeNull();
+    expect(body.data!.byModel).toEqual([]);
+    expect(body.data!.byStage).toEqual([]);
+    expect(body.data!.coverage).toEqual({ wavesTotal: null, wavesWithModelUsage: null, wavesWithOtelCost: null });
+    // meta.approximate NAO e emitido: dado MEDIDO, mesmo degradado (contrato §Response 200).
+    expect(body.meta.approximate).toBeUndefined();
+  });
+});
+
+// ─── GET /metrics/model-usage sobre base v12 sintetica (task 2.3.4) ──────────
+//
+// A fixture v7 do repositorio nao tem `wave_model_usage` (introduzida so no
+// schema v12) — o bloco acima cobre so o caminho degradado. Para exercitar o
+// endpoint com dado REAL de ponta a ponta (Fastify inject real, nao so a
+// query), construimos aqui uma base v12 sintetica minima com a tabela nova —
+// mesma estrategia de fixture usada em test/lib/model-usage.test.ts.
+
+describe('GET /metrics/model-usage sobre base v12 sintetica', () => {
+  let server: FastifyInstance;
+  let dbPath: string;
+
+  beforeAll(async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const BetterSqlite3 = (await import('better-sqlite3')).default;
+    dbPath = join(mkdtempSync(join(tmpdir(), 'model-usage-route-')), 'k.db');
+    const db = new BetterSqlite3(dbPath);
+    db.exec(`
+      CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+      INSERT INTO schema_meta VALUES ('schema_version', '12');
+      CREATE TABLE executions (
+        execution_id TEXT PRIMARY KEY, project TEXT NOT NULL, feature TEXT NOT NULL,
+        status TEXT, started_at TEXT
+      );
+      CREATE TABLE waves (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL,
+        execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL,
+        stages TEXT, started_at TEXT, finished_at TEXT,
+        otel_cost_usd REAL, ingested_at TEXT NOT NULL
+      );
+      CREATE TABLE wave_model_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL,
+        execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL,
+        model TEXT, cost_usd REAL, total_tokens INTEGER, ingested_at TEXT NOT NULL,
+        UNIQUE(project, feature, wave, source_id)
+      );
+    `);
+    db.prepare(`INSERT INTO executions(execution_id,project,feature,status,started_at)
+                VALUES ('e1','p','f','concluida','2026-07-28T09:00:00Z')`).run();
+    db.prepare(`INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,otel_cost_usd,ingested_at)
+                VALUES ('p','f','onda-001','e1','2026-07-28T09:00:00Z','w1','execute-task','2026-07-28T09:00:00Z',5.0,'t')`).run();
+    db.prepare(`INSERT INTO wave_model_usage(project,feature,wave,execution_id,source_ts,source_id,model,cost_usd,total_tokens,ingested_at)
+                VALUES ('p','f','onda-001','e1','2026-07-28T09:00:00Z','s1','claude-sonnet-5',5.0,1000,'t')`).run();
+    db.close();
+
+    server = await buildServer(dbPath);
+  });
+  afterAll(async () => { await server.close(); });
+
+  it('4 query params validos (project+feature+period=all): 200 nao-degradado com byModel real', async () => {
+    const res = await server.inject({
+      method: 'GET',
+      url: '/api/v1/metrics/model-usage?project=p&feature=f&period=all',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { byModel: { model: string; costUsd: number }[]; coverage: Record<string, unknown> };
+      meta: { degraded: boolean };
+    }>();
+    expect(body.meta.degraded).toBe(false);
+    expect(body.data.byModel).toHaveLength(1);
+    expect(body.data.byModel[0]?.model).toBe('claude-sonnet-5');
+    expect(body.data.byModel[0]?.costUsd).toBeCloseTo(5.0, 6);
+    expect(body.data.coverage).toEqual({ wavesTotal: 1, wavesWithModelUsage: 1, wavesWithOtelCost: 1 });
+  });
+
+  it("filtro project inexistente: 200 com byModel vazio (nao-degradado — 'sem dado no periodo' != 'nao coletado')", async () => {
+    const res = await server.inject({
+      method: 'GET',
+      url: '/api/v1/metrics/model-usage?project=projeto-que-nao-existe',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { byModel: unknown[] }; meta: { degraded: boolean } }>();
+    expect(body.meta.degraded).toBe(false);
+    expect(body.data.byModel).toEqual([]);
+  });
+
+  it(
+    "param invalido (period fora do enum): 200 com o param IGNORADO, nao 400 " +
+    '(desvio deliberado do texto de tasks.md 2.3.4 — parseUsageQuery e reuso MANDATORIO ' +
+    '(contrato §Request), e ja e permissivo/degrada em vez de 400 nos irmaos otel-usage/ ' +
+    'agent-usage; nenhum parser ad-hoc foi introduzido para este endpoint divergir)',
+    async () => {
+      const res = await server.inject({
+        method: 'GET',
+        url: '/api/v1/metrics/model-usage?period=1year',
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ data: { byModel: unknown[] }; meta: { degraded: boolean } }>();
+      expect(body.meta.degraded).toBe(false);
+      // period invalido -> ignorado -> equivalente a period=all -> ainda ve a onda-001
+      expect(body.data.byModel).toHaveLength(1);
+    },
+  );
 });

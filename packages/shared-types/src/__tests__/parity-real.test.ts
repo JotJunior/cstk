@@ -22,6 +22,10 @@ import {
   FtsHitDTOSchema,
   DecisionDTOSchema,
   AlertSignalDTOSchema,
+  ModelUsageEntrySchema,
+  ModelUsageByStageSchema,
+  ModelUsageCoverageSchema,
+  ModelUsageResultSchema,
 } from '../schemas/entities.js';
 import { RawApiEnvelopeSchema } from '../schemas/envelope.js';
 
@@ -523,5 +527,96 @@ describe('7.4 Enums — valores fora do enum rejeitados', () => {
   it('AlertSignalDTOSchema rejeita type desconhecido', () => {
     const r = AlertSignalDTOSchema.safeParse({ ...REAL_ALERT_SIGNAL_PAYLOAD, type: 'warning' });
     expect(r.success).toBe(false);
+  });
+});
+
+// ─── 2.4.9 Paridade de chaves — ModelUsage DTOs (schema v12, wave_model_usage) ─
+//
+// TS interfaces nao existem em runtime — nao ha `keyof` reflexivo disponivel
+// aqui. A paridade e garantida mantendo, a mao, um array de chaves espelhando
+// EXATAMENTE `entities.ts` (comentado com o nome da interface), comparado
+// contra `Object.keys(Schema.shape)`. Se um dos dois lados esquecer um campo
+// (a interface ganha um campo novo sem o Zod, ou vice-versa), o teste falha.
+// Ref: tasks.md 2.4.9; contracts/model-usage-endpoint.md Invariante 5.
+
+/** Espelha `ModelUsageEntry` (entities.ts). */
+const MODEL_USAGE_ENTRY_KEYS = ['model', 'costUsd', 'totalTokens', 'waves'];
+/** Espelha `ModelUsageByStage` (entities.ts). */
+const MODEL_USAGE_BY_STAGE_KEYS = ['stage', 'model', 'costUsd', 'totalTokens'];
+/** Espelha `ModelUsageCoverage` (entities.ts). */
+const MODEL_USAGE_COVERAGE_KEYS = ['wavesTotal', 'wavesWithModelUsage', 'wavesWithOtelCost'];
+/** Espelha `ModelUsageResult` (entities.ts). */
+const MODEL_USAGE_RESULT_KEYS = ['byModel', 'byStage', 'coverage'];
+
+describe('2.4.9 Paridade de chaves — ModelUsage DTOs (interface manual == Schema.shape)', () => {
+  it('ModelUsageEntry', () => {
+    expect(Object.keys(ModelUsageEntrySchema.shape).sort()).toEqual([...MODEL_USAGE_ENTRY_KEYS].sort());
+  });
+
+  it('ModelUsageByStage', () => {
+    expect(Object.keys(ModelUsageByStageSchema.shape).sort()).toEqual([...MODEL_USAGE_BY_STAGE_KEYS].sort());
+  });
+
+  it('ModelUsageCoverage', () => {
+    expect(Object.keys(ModelUsageCoverageSchema.shape).sort()).toEqual([...MODEL_USAGE_COVERAGE_KEYS].sort());
+  });
+
+  it('ModelUsageResult', () => {
+    expect(Object.keys(ModelUsageResultSchema.shape).sort()).toEqual([...MODEL_USAGE_RESULT_KEYS].sort());
+  });
+});
+
+// ─── ModelUsageResultSchema — payload representativo ─────────────────────────
+//
+// Os valores abaixo (byModel/coverage) sao os mesmos citados em
+// contracts/model-usage-endpoint.md §Response 200 — capturados por sondagem
+// direta (S3/S5) sobre `~/.claude/cstk/knowledge.db` real na epoca do plano.
+// Nao sao um "payload real desta execucao" (a contagem de linhas em
+// `wave_model_usage` cresce a cada onda ingerida), mas SAO valores medidos
+// reais, nao inventados — o contrato ja rotula isso explicitamente.
+
+describe('ModelUsageResultSchema — payload representativo do contrato', () => {
+  it('aceita o shape documentado (contracts/model-usage-endpoint.md §Response 200)', () => {
+    const payload = {
+      byModel: [
+        { model: 'claude-sonnet-5', costUsd: 465.3943, totalTokens: 1127119533, waves: 36 },
+        { model: 'claude-fable-5', costUsd: 23.5946, totalTokens: 13884110, waves: 7 },
+        { model: 'claude-opus-5[1m]', costUsd: 6.1439, totalTokens: 6864604, waves: 1 },
+      ],
+      byStage: [],
+      coverage: { wavesTotal: 920, wavesWithModelUsage: 36, wavesWithOtelCost: 46 },
+    };
+    const r = ModelUsageResultSchema.safeParse(payload);
+    expect(r.success, `falhou: ${JSON.stringify(r.error?.issues?.slice(0, 3))}`).toBe(true);
+  });
+
+  it('estado degradado (tabela ausente, Decision 4): coverage com os 3 campos null, nunca 0', () => {
+    const payload = {
+      byModel: [],
+      byStage: [],
+      coverage: { wavesTotal: null, wavesWithModelUsage: null, wavesWithOtelCost: null },
+    };
+    const r = ModelUsageResultSchema.safeParse(payload);
+    expect(r.success).toBe(true);
+  });
+
+  it('model IS NULL na origem vira rotulo (desconhecido) — model e sempre string, nunca null', () => {
+    const r = ModelUsageEntrySchema.safeParse({
+      model: '(desconhecido)', costUsd: null, totalTokens: null, waves: 3,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejeita snake_case (total_tokens) — regressao de borda', () => {
+    const badPayload = { model: 'claude-sonnet-5', cost_usd: 1, total_tokens: 2, waves: 1 };
+    const r = ModelUsageEntrySchema.safeParse(badPayload);
+    expect(r.success).toBe(false);
+  });
+
+  it('ModelUsageByStage: aceita etapa + modelo com custo fracionario', () => {
+    const r = ModelUsageByStageSchema.safeParse({
+      stage: 'execute-task', model: 'claude-sonnet-5', costUsd: 158.8716, totalTokens: 389180262,
+    });
+    expect(r.success).toBe(true);
   });
 });

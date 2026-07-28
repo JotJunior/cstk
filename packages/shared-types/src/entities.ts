@@ -159,6 +159,66 @@ export interface OtelUsageRollup {
 }
 
 // ---------------------------------------------------------------------------
+// ModelUsage DTOs — custo/tokens REAIS por modelo (schema v12,
+// `wave_model_usage`, cstk 5.33.0). Grao onda x modelo — distinto de
+// `OtelUsageRollup` (grao onda) e de `model-mix` (DERIVADO de
+// `decisions.choice`, sem custo/tokens).
+// Ref: contracts/model-usage-endpoint.md; data-model.md Parte B.
+// ---------------------------------------------------------------------------
+
+/**
+ * Uma linha do breakdown por modelo, ja agregada no recorte pedido.
+ *
+ * `model` e a string BRUTA do OTel (ex.: `claude-sonnet-5`, `claude-opus-5[1m]`),
+ * sem normalizacao — dominio distinto de `MODEL_COLOR`/`MODEL_ORDER` do painel,
+ * que chaveiam por `decisions.choice`. Linhas com `model IS NULL` na origem
+ * chegam aqui com o rotulo literal `'(desconhecido)'`, nunca sao descartadas.
+ * Acima do limite de cardinalidade (10), os excedentes sao agregados na linha
+ * `'(outros)'` (FR-003(c)).
+ */
+export interface ModelUsageEntry {
+  model: string;
+  /** `sum(cost_usd)`. MEDIDO. null = nao medido; 0 = medido e deu zero */
+  costUsd: number | null;
+  /** `sum(total_tokens)`. MEDIDO */
+  totalTokens: number | null;
+  /** ondas distintas que contribuiram para este modelo */
+  waves: number;
+}
+
+/**
+ * Recorte adicional por etapa do pipeline (correlacao `wave_model_usage` x
+ * `waves`). `[]` quando a correlacao nao resolve dado confiavel — nunca um
+ * valor derivado por suposicao.
+ */
+export interface ModelUsageByStage {
+  stage: string;
+  model: string;
+  costUsd: number | null;
+  totalTokens: number | null;
+}
+
+/**
+ * Cobertura da amostra — 3 denominadores INDEPENDENTES, nunca fundidos
+ * (research.md Decision 3): o custo por onda (`otel_cost_usd`) e o breakdown
+ * por modelo (`wave_model_usage`) divergem no banco real. No estado
+ * degradado (tabela ausente), os 3 campos sao `null`, nunca `0`.
+ */
+export interface ModelUsageCoverage {
+  wavesTotal: number | null;
+  wavesWithModelUsage: number | null;
+  wavesWithOtelCost: number | null;
+}
+
+/** Corpo de `data` de `GET /api/v1/metrics/model-usage`. */
+export interface ModelUsageResult {
+  /** ordenado por `costUsd` desc, `null` por ultimo (SC-001) */
+  byModel: ModelUsageEntry[];
+  byStage: ModelUsageByStage[];
+  coverage: ModelUsageCoverage;
+}
+
+// ---------------------------------------------------------------------------
 // DecisionDTO — grao: 1 por decisao auditada — campos textuais UNTRUSTED
 // ---------------------------------------------------------------------------
 export interface DecisionDTO {

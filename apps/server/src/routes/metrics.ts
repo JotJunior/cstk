@@ -32,8 +32,10 @@ import {
   getOtelCostOverTime,
   getTokensOverTime,
   getTokensByWave,
+  getModelUsage,
 } from '../db/queries/metrics.js';
 import type { AgentUsageFilters } from '../db/queries/metrics.js';
+import { hasModelUsage } from '../db/queries/waves.js';
 
 const PeriodSchema = z.enum(['24h', '7d', '30d', 'all']).optional();
 const ProjectSchema = z.object({ project: z.string().optional() });
@@ -279,6 +281,42 @@ export async function metricsRoutes(server: FastifyInstance): Promise<void> {
     try {
       const data = getTokensByWave(db, parseUsageQuery(request.query), 20);
       return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/model-usage ─────────────────────────────────────────────
+  // Custo/tokens REAIS por modelo (schema v12, `wave_model_usage`). Grao onda x
+  // modelo — distinto de otel-usage (grao onda) e model-mix (DERIVADO, sem
+  // custo/tokens). Ref: contracts/model-usage-endpoint.md.
+  // Invariante 7 do gate de seguranca: exceção em query-time NAO pode escapar
+  // como 5xx — as demais rotas desta familia usam try/finally SEM catch; esta
+  // rota nova precisa do catch explicito (nenhum setErrorHandler global existe).
+  server.get('/metrics/model-usage', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      let data;
+      try {
+        data = getModelUsage(db, parseUsageQuery(request.query));
+      } catch {
+        // Principio II: excecao em query-time (ex.: coluna ausente na junção
+        // de byStage, SQLITE_CORRUPT mid-read) nunca vira 5xx.
+        return reply.status(200).send(wrapDegraded('db-corrupt', config.dbPath));
+      }
+      // meta.approximate NAO e emitido: dado MEDIDO, nao derivado (contrato §Response 200).
+      const envelope = wrap(data, {}, config.dbPath, db);
+      if (!hasModelUsage(db)) {
+        // Tabela ausente (base v2-v11): o contrato exige `data` com o shape
+        // vazio explicito (byModel:[], byStage:[], coverage com os 3 campos
+        // null) — NAO null — junto de degraded=true/reason='table-empty'
+        // (contrato §Response degradado, Decision 4). `wrap()` nulificaria
+        // `data` se `degraded` fosse passado direto; por isso o override e
+        // feito apos a chamada, preservando o `data` ja no shape correto.
+        envelope.meta.degraded = true;
+        envelope.meta.reason = 'table-empty';
+      }
+      return reply.status(200).send(envelope);
     } finally { db.close(); }
   });
 }

@@ -404,7 +404,9 @@ export function useMetric(
        // schema v10 — consumo medido de subagentes (nao proxy)
        | 'agent-usage' | 'tokens-over-time' | 'tokens-by-wave'
        // schema v11 — consumo medido por telemetria OTel (custo real em USD)
-       | 'otel-usage' | 'otel-cost-over-time',
+       | 'otel-usage' | 'otel-cost-over-time'
+       // schema v12 — custo/tokens REAIS por modelo (wave_model_usage)
+       | 'model-usage',
   period?: PeriodParam
 ) {
   const qs = period ? `?period=${period}` : '';

@@ -19,7 +19,7 @@
  */
 import type Database from 'better-sqlite3';
 import { hasColumn } from '../columns.js';
-import { hasAgentUsage, hasOtelUsage } from './waves.js';
+import { hasAgentUsage, hasOtelUsage, hasModelUsage } from './waves.js';
 
 export type MetricPeriod = '24h' | '7d' | '30d' | 'all';
 
@@ -704,4 +704,240 @@ export function getRecallConsultations(db: Database.Database): RecallConsultatio
     if (m && Number(m[1]) > 0) produtivas++;
   }
   return { total, produtivas, vazias: total - produtivas };
+}
+
+// ─────────────────────────────────────────────────────────
+// 14. model-usage — custo/tokens REAIS por modelo (schema v12,
+//     `wave_model_usage`, cstk 5.33.0). Grao onda x modelo — distinto de
+//     otel-usage (grao onda) e de model-mix (DERIVADO de decisions.choice,
+//     sem custo/tokens). Ref: contracts/model-usage-endpoint.md; data-model.md
+//     Parte B; research.md Decisions 1-4.
+// ─────────────────────────────────────────────────────────
+
+/** Cardinalidade maxima de `byModel` antes do bucket agregado (FR-003(c), dec-037). */
+export const MODEL_USAGE_LIMIT = 10;
+/** Rotulo do bucket agregado alem do limite de cardinalidade. */
+export const MODEL_USAGE_OTHERS_LABEL = '(outros)';
+/** Rotulo de linhas com `model IS NULL` na origem — nunca descartadas. */
+export const MODEL_USAGE_UNKNOWN_LABEL = '(desconhecido)';
+
+export interface ModelUsageEntry {
+  model: string;
+  costUsd: number | null;
+  totalTokens: number | null;
+  waves: number;
+}
+
+export interface ModelUsageByStage {
+  stage: string;
+  model: string;
+  costUsd: number | null;
+  totalTokens: number | null;
+}
+
+export interface ModelUsageCoverage {
+  wavesTotal: number | null;
+  wavesWithModelUsage: number | null;
+  wavesWithOtelCost: number | null;
+}
+
+export interface ModelUsageResult {
+  byModel: ModelUsageEntry[];
+  byStage: ModelUsageByStage[];
+  coverage: ModelUsageCoverage;
+}
+
+const EMPTY_MODEL_USAGE_COVERAGE: ModelUsageCoverage = {
+  wavesTotal: null,
+  wavesWithModelUsage: null,
+  wavesWithOtelCost: null,
+};
+
+/**
+ * Monta WHERE + params para consultas diretas sobre `wave_model_usage`.
+ * A tabela carrega seu proprio `project`/`feature`/`source_ts` (DDL, research.md
+ * S2) — o recorte por periodo NAO precisa de JOIN com `waves`.
+ */
+function modelUsageScope(
+  filters: AgentUsageFilters,
+): { where: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (filters.project !== undefined) {
+    conditions.push('project = ?');
+    params.push(filters.project);
+  }
+  if (filters.feature !== undefined) {
+    conditions.push('feature = ?');
+    params.push(filters.feature);
+  }
+  const pf = periodToFilter(filters.period);
+  if (pf) conditions.push(`source_ts >= ${pf}`);
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  return { where, params };
+}
+
+/** Soma tolerante a NULL: se todos os valores forem null, o total e null (nunca 0 fabricado). */
+function sumNullable(vals: (number | null)[]): number | null {
+  const present = vals.filter((v): v is number => v !== null);
+  if (present.length === 0) return null;
+  return present.reduce((a, b) => a + b, 0);
+}
+
+/**
+ * byModel — custo/tokens agregados por modelo, ordenado por `costUsd` desc
+ * com `null` por ultimo (SC-001). Acima de `MODEL_USAGE_LIMIT` modelos
+ * distintos, os excedentes viram uma linha `'(outros)'` (FR-003(c), dec-037).
+ *
+ * Invariante 1 do contrato: `sum()` sem `coalesce` — NULL do SQLite quando
+ * nenhuma linha tem valor permanece NULL (nao vira 0).
+ */
+export function getModelUsageByModel(
+  db: Database.Database,
+  filters: AgentUsageFilters = {},
+): ModelUsageEntry[] {
+  if (!hasModelUsage(db)) return [];
+  const { where, params } = modelUsageScope(filters);
+  const rows = db
+    .prepare(`
+      SELECT
+        model,
+        sum(cost_usd)                              as costUsd,
+        sum(total_tokens)                           as totalTokens,
+        count(DISTINCT project || feature || wave)  as waves
+      FROM wave_model_usage
+      ${where}
+      GROUP BY model
+    `)
+    .all(...params) as { model: string | null; costUsd: number | null; totalTokens: number | null; waves: number }[];
+
+  // NULL de costUsd por ultimo (SC-001); nao-nulo ordenado desc.
+  rows.sort((a, b) => {
+    if (a.costUsd === null && b.costUsd === null) return 0;
+    if (a.costUsd === null) return 1;
+    if (b.costUsd === null) return -1;
+    return b.costUsd - a.costUsd;
+  });
+
+  // model IS NULL -> rotulo literal '(desconhecido)', nunca descartado (2.1.6).
+  const labeled: ModelUsageEntry[] = rows.map(r => ({
+    model: r.model === null ? MODEL_USAGE_UNKNOWN_LABEL : r.model,
+    costUsd: r.costUsd,
+    totalTokens: r.totalTokens,
+    waves: r.waves,
+  }));
+
+  if (labeled.length <= MODEL_USAGE_LIMIT) return labeled;
+
+  const top = labeled.slice(0, MODEL_USAGE_LIMIT);
+  const rest = labeled.slice(MODEL_USAGE_LIMIT);
+  const outros: ModelUsageEntry = {
+    model: MODEL_USAGE_OTHERS_LABEL,
+    costUsd: sumNullable(rest.map(r => r.costUsd)),
+    totalTokens: sumNullable(rest.map(r => r.totalTokens)),
+    waves: rest.reduce((acc, r) => acc + r.waves, 0),
+  };
+  return [...top, outros];
+}
+
+/**
+ * byStage — correlaciona `wave_model_usage` com `waves` por
+ * `(project, feature, wave, execution_id)` para recuperar a etapa da onda.
+ *
+ * Viabilidade CONFIRMADA empiricamente (nao suposta): sondagem direta sobre
+ * `~/.claude/cstk/knowledge.db` (v12, 48 linhas em `wave_model_usage`) mostra
+ * 48/48 linhas casando com `waves` pela chave composta — join 100% confiavel
+ * no banco real. 6 dessas 48 tem `stages` vazio/NULL na origem (ondas sem
+ * etapa registrada) e sao excluidas do agrupamento (regra dura do contrato:
+ * nunca inventar etapa para uma onda que nao a registrou).
+ */
+export function getModelUsageByStage(
+  db: Database.Database,
+  filters: AgentUsageFilters = {},
+): ModelUsageByStage[] {
+  if (!hasModelUsage(db)) return [];
+  const stagesCol = hasColumn(db, 'waves', 'stages') ? 'w.stages' : 'NULL';
+  if (stagesCol === 'NULL') return [];
+
+  const conditions: string[] = ["w.stages IS NOT NULL", "w.stages != ''"];
+  const params: unknown[] = [];
+  if (filters.project !== undefined) {
+    conditions.push('wmu.project = ?');
+    params.push(filters.project);
+  }
+  if (filters.feature !== undefined) {
+    conditions.push('wmu.feature = ?');
+    params.push(filters.feature);
+  }
+  const pf = periodToFilter(filters.period);
+  if (pf) conditions.push(`wmu.source_ts >= ${pf}`);
+  const where = `WHERE ${conditions.join(' AND ')}`;
+
+  const rows = db
+    .prepare(`
+      SELECT ${stagesCol}       as stage,
+             wmu.model           as model,
+             sum(wmu.cost_usd)   as costUsd,
+             sum(wmu.total_tokens) as totalTokens
+      FROM wave_model_usage wmu
+      JOIN waves w
+        ON w.project = wmu.project AND w.feature = wmu.feature
+       AND w.wave = wmu.wave AND w.execution_id = wmu.execution_id
+      ${where}
+      GROUP BY stage, wmu.model
+      ORDER BY costUsd IS NULL, costUsd DESC
+    `)
+    .all(...params) as { stage: string; model: string | null; costUsd: number | null; totalTokens: number | null }[];
+
+  return rows.map(r => ({
+    stage: r.stage,
+    model: r.model === null ? MODEL_USAGE_UNKNOWN_LABEL : r.model,
+    costUsd: r.costUsd,
+    totalTokens: r.totalTokens,
+  }));
+}
+
+/**
+ * coverage — 3 denominadores independentes (Decision 3 do research.md):
+ * `wavesTotal` (ondas do recorte), `wavesWithModelUsage` (breakdown por
+ * modelo) e `wavesWithOtelCost` (custo agregado por onda). Os 3 divergem no
+ * banco real (920/36/46) — nunca fundidos num unico numero.
+ */
+export function getModelUsageCoverage(
+  db: Database.Database,
+  filters: AgentUsageFilters = {},
+): ModelUsageCoverage {
+  if (!hasModelUsage(db)) return { ...EMPTY_MODEL_USAGE_COVERAGE };
+  const { where, params } = waveScope(db, filters);
+  const otelCostCol = hasOtelUsage(db) ? 'otel_cost_usd' : null;
+  const otelSelect = otelCostCol
+    ? `sum(CASE WHEN ${otelCostCol} IS NOT NULL THEN 1 ELSE 0 END)`
+    : 'NULL';
+  const row = db
+    .prepare(`
+      SELECT
+        count(*) as wavesTotal,
+        sum(CASE WHEN EXISTS (
+          SELECT 1 FROM wave_model_usage wmu
+          WHERE wmu.project = waves.project AND wmu.feature = waves.feature
+            AND wmu.wave = waves.wave AND wmu.execution_id = waves.execution_id
+        ) THEN 1 ELSE 0 END) as wavesWithModelUsage,
+        ${otelSelect} as wavesWithOtelCost
+      FROM waves
+      ${where}
+    `)
+    .get(...params) as ModelUsageCoverage | undefined;
+  return row ?? { ...EMPTY_MODEL_USAGE_COVERAGE };
+}
+
+/** Agrega os 3 recortes num unico `ModelUsageResult` (corpo de `data` do endpoint). */
+export function getModelUsage(
+  db: Database.Database,
+  filters: AgentUsageFilters = {},
+): ModelUsageResult {
+  return {
+    byModel: getModelUsageByModel(db, filters),
+    byStage: getModelUsageByStage(db, filters),
+    coverage: getModelUsageCoverage(db, filters),
+  };
 }

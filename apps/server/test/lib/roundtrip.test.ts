@@ -18,7 +18,7 @@ import type { FastifyInstance } from 'fastify';
 import { existsSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RawApiEnvelopeSchema, FtsHitDTOSchema } from '@cstk-panel/shared-types';
+import { RawApiEnvelopeSchema, FtsHitDTOSchema, ModelUsageResultSchema } from '@cstk-panel/shared-types';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DB = resolve(join(__dirname, '..', 'knowledge-fixture.db'));
@@ -229,5 +229,119 @@ describe.skipIf(!FIXTURE_EXISTS)('7.1 Convencao de borda — /health', () => {
     ).toHaveLength(0);
     expect('alertSignals' in counts).toBe(true);
     expect('alert_signals' in counts).toBe(false);
+  });
+});
+
+// ─── 2.5.3 Roundtrip real — GET /metrics/model-usage (schema v12) ───────────
+// Ref: contracts/model-usage-endpoint.md; tasks.md 2.5.3.
+// A fixture `knowledge-fixture.db` e schema v7 (sem `wave_model_usage`), logo
+// este cenario exercita o caminho DEGRADADO ('table-empty') previsto pelo
+// contrato §Response 200 degradado — nao o payload medido (esse foi validado
+// contra o banco real ~/.claude/cstk/knowledge.db em 2.5.1/2.5.2, fora do
+// escopo de teste automatizado por depender de dado local do operador).
+// Mesmo no caminho degradado, o shape (chaves + nulidade) MUST bater com o
+// contrato: 100% das chaves em camelCase, validado via ModelUsageResultSchema.
+describe.skipIf(!FIXTURE_EXISTS)('2.5.3 Roundtrip E2E — GET /metrics/model-usage com base real', () => {
+  let server: FastifyInstance;
+
+  beforeAll(async () => {
+    server = await buildServer(FIXTURE_DB);
+  });
+  afterAll(async () => { await server.close(); });
+
+  it('2.5.3.a envelope valida contra RawApiEnvelopeSchema (sem mock de DB)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-usage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const parse = RawApiEnvelopeSchema.safeParse(res.json());
+    expect(parse.success, `parse falhou: ${JSON.stringify(parse.error?.issues?.slice(0, 3))}`).toBe(true);
+  });
+
+  it('2.5.3.b data valida contra ModelUsageResultSchema — 100% das chaves em camelCase', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-usage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json<{ data: unknown }>();
+    const parse = ModelUsageResultSchema.safeParse(body.data);
+    expect(parse.success, `ModelUsageResultSchema safeParse falhou: ${JSON.stringify(parse.error?.issues?.slice(0, 5))}`).toBe(true);
+  });
+
+  it('2.5.3.c fixture v7 (sem wave_model_usage) degrada como table-empty, nunca 0 no coverage', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-usage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json<{
+      data: { byModel: unknown[]; byStage: unknown[]; coverage: Record<string, number | null> };
+      meta: { degraded: boolean; reason: string | null };
+    }>();
+    expect(body.meta.degraded).toBe(true);
+    expect(body.meta.reason).toBe('table-empty');
+    expect(body.data.byModel).toEqual([]);
+    expect(body.data.byStage).toEqual([]);
+    // Invariante 1 do contrato: tabela ausente -> coverage com os 3 campos
+    // null, NUNCA 0 (0 significaria "zero linhas no recorte", semantica
+    // distinta de "métrica não coletada nesta base").
+    expect(body.data.coverage.wavesTotal).toBeNull();
+    expect(body.data.coverage.wavesWithModelUsage).toBeNull();
+    expect(body.data.coverage.wavesWithOtelCost).toBeNull();
+  });
+
+  it('2.5.3.d resposta nao contem snake_case (cost_usd, total_tokens etc)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-usage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json<{ data: Record<string, unknown> }>();
+    const flat = JSON.stringify(body.data);
+    expect(flat.includes('cost_usd')).toBe(false);
+    expect(flat.includes('total_tokens')).toBe(false);
+    expect(flat.includes('waves_with_model_usage')).toBe(false);
+  });
+});
+
+// ─── 6.1.4 Roundtrip real — GET /metrics/model-mix-by-stage (regressao) ─────
+// Ref: tasks.md 6.1.4; spec.md US4/FR-009; contracts/existing-endpoints.md.
+// Antes da FASE 6 este endpoint nao tinha NENHUMA cobertura — foi o que
+// permitiu o defeito `Metrics.tsx` lendo `r.etapa` (campo inexistente)
+// passar despercebido. `ModelMixByStageRow` (apps/server/src/db/queries/
+// metrics.ts:352) projeta `stage`/`modelo`/`n` — este teste falha se o
+// endpoint regredir e parar de projetar `stage`.
+describe.skipIf(!FIXTURE_EXISTS)('6.1.4 Roundtrip E2E — GET /metrics/model-mix-by-stage com base real', () => {
+  let server: FastifyInstance;
+
+  beforeAll(async () => {
+    server = await buildServer(FIXTURE_DB);
+  });
+  afterAll(async () => { await server.close(); });
+
+  it('6.1.4.a envelope valida contra RawApiEnvelopeSchema (sem mock de DB)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-mix-by-stage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const parse = RawApiEnvelopeSchema.safeParse(res.json());
+    expect(parse.success, `parse falhou: ${JSON.stringify(parse.error?.issues?.slice(0, 3))}`).toBe(true);
+  });
+
+  it('6.1.4.b meta.approximate === true (dado derivado de decisions.choice, nao medido)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-mix-by-stage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json<{ meta: { approximate?: boolean } }>();
+    expect(body.meta.approximate).toBe(true);
+  });
+
+  it('6.1.4.c cada linha projeta `stage`/`modelo`/`n` — nunca `etapa` (defeito FASE 6)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/metrics/model-mix-by-stage?period=all' });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json<{ data: Record<string, unknown>[] }>();
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body.data.length).toBeGreaterThan(0);
+    for (const row of body.data) {
+      expect(row).toHaveProperty('stage');
+      expect(row).toHaveProperty('modelo');
+      expect(row).toHaveProperty('n');
+      expect(row).not.toHaveProperty('etapa');
+      expect(typeof row['stage']).toBe('string');
+    }
   });
 });
