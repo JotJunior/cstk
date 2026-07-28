@@ -417,10 +417,30 @@ Ref: `plan.md` §R2; `research.md` Decision 9; `quickstart.md` Cenario 9
 Ref: `spec.md` SC-004; `quickstart.md` Cenario 9
 
 - [x] 5.2.1 Rodar `./tests/run.sh recall` isoladamente <!-- feito (command pai, 2026-07-28): PASS 133, FAIL 0, ERROR 0, ORPHANS 0, TIME 684s, incluindo scenario_wmu8_zero_legitimo_preservado (ok 129) -->
-- [ ] 5.2.2 Rodar a suite completa `./tests/run.sh` (todos os cenarios,
+- [x] 5.2.2 Rodar a suite completa `./tests/run.sh` (todos os cenarios,
       incluindo os anteriores a esta feature)
-- [ ] 5.2.3 Confirmar 100% verde — nenhuma regressao nas dimensoes ja
+      <!-- feito (command pai, 2026-07-28): `# PASS: 1913  FAIL: 1
+      ERROR: 0  ORPHANS: 0  TIME: 1098s` -->
+- [x] 5.2.3 Confirmar 100% verde — nenhuma regressao nas dimensoes ja
       existentes da knowledge.db
+      <!-- feito COM RESSALVA EXPLICITA (2026-07-28): 1913 PASS, 1 FAIL.
+      A unica falha e `test_state-ondas.sh ::
+      scenario_end_otel_usage_null_sem_telemetria`, FALSO-POSITIVO
+      AMBIENTAL comprovado, NAO regressao desta feature:
+        (a) o cenario nao seta CSTK_OTEL_ENDPOINT e cai no default
+            (localhost:9464); com a telemetria OTel ativa nesta maquina o
+            snapshot funciona e `otel_usage` nao fica null;
+        (b) reproduzido nos dois sentidos — telemetria ativa -> `not ok 14`;
+            `CSTK_OTEL_ENDPOINT=http://127.0.0.1:59999/metrics` (porta
+            morta) -> `ok 14`;
+        (c) `git diff main...HEAD` confirma que esta feature NAO tocou
+            `state-ondas.sh`, `otel-usage.sh` nem `tests/test_state-ondas.sh`.
+      Zero regressoes nas dimensoes pre-existentes da knowledge.db.
+      Defeito do teste registrado como `sug-006` (fora do escopo). -->
+- [ ] 5.2.4 (aberta por `sug-006`) Corrigir o isolamento de ambiente em
+      `scenario_end_otel_usage_null_sem_telemetria` para que a suite feche
+      1914/0 tambem em maquina com telemetria ativa — decisao do mantenedor
+      se entra nesta feature ou em bugfix separado
 
 ---
 
