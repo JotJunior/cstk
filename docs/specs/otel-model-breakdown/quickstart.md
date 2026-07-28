@@ -187,6 +187,42 @@ senao a suite quebra.
 
 ---
 
+## Cenario 10 — Valor `0` de custo legitimo preservado (US1/US2, CHK006)
+
+Fonte: `mcp-project-scafold/.claude/agente-00c-state/state.json` (execucao
+real, projeto fora deste repo), onda `onda-022` —
+`otel_usage.by_source.main = {cost_usd:0, input:0, output:0, cache_read:0,
+cache_creation:4103}`; `otel_usage.by_model.claude-opus-5 = {cost_usd:0,
+total_tokens:4103}`. Custo `0` e os 3 contadores `0` de `main` coexistem,
+na MESMA linha, com `cache_creation`/`total_tokens` NAO-zero — prova de que
+o zero e medido, nao ausencia de dado.
+
+1. Ingerir esse `state.json` (ou o corpus equivalente usado pelo teste
+   automatizado que reproduz este cenario).
+2. Consultar as colunas de breakdown do `main` para `onda-022`.
+3. Consultar `wave_model_usage` para `onda-022` e `model='claude-opus-5'`.
+
+**Expected**:
+- `otel_main_input_tokens`, `otel_main_output_tokens`,
+  `otel_main_cache_read_tokens` retornam `0` (nao NULL)
+- `otel_main_cache_creation_tokens` retorna `4103`
+- `otel_cost_main_usd` (coluna PRE-EXISTENTE, ja presente no schema v11)
+  retorna `0` (nao NULL)
+- `wave_model_usage` tem uma linha com `model='claude-opus-5', cost_usd=0,
+  total_tokens=4103`
+
+Assercao explicita de nao-fabricacao:
+`SELECT count(*) FROM waves WHERE wave='onda-022' AND otel_main_input_tokens = 0 AND otel_main_input_tokens IS NOT NULL;`
+deve retornar `1` — distinguindo de `IS NULL`.
+
+**Nota de sequenciamento**: este cenario documenta o comportamento
+esperado (fecha CHK006 ao nivel de especificacao). A assercao
+automatizada correspondente em `tests/cstk/test_recall.sh` so pode
+existir apos a tabela `wave_model_usage` e as 8 colunas aditivas serem
+implementadas (FASE 2/3 desta feature) — ver `tasks.md` FASE 3.4.
+
+---
+
 ## Nota de release (GOTCHA)
 
 `cstk install` / `cstk update` atualizam apenas o catalogo (`~/.claude`) e

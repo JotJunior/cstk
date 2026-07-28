@@ -117,6 +117,14 @@ Consequencia por caso do corpus:
   Scenario 2 da US2;
 - valor `0` de fato medido: gravado como `0`, distinguivel de ausencia.
 
+Segundo caso real, cobrindo `0` em `cost_usd` (nao so em contadores de
+token): `mcp-project-scafold/.claude/agente-00c-state/state.json`,
+`onda-022` — `otel_usage.by_source.main = {cost_usd:0, input:0, output:0,
+cache_read:0, cache_creation:4103}` e `otel_usage.by_model.claude-opus-5 =
+{cost_usd:0, total_tokens:4103}`. Custo `0` coexiste, na MESMA linha, com
+`cache_creation`/`total_tokens` NAO-zero — evidencia adicional de que o
+zero e medido, nunca ausencia (ver `quickstart.md` Cenario 10, CHK006).
+
 ## Migracao v11 -> v12
 
 Dois efeitos, ambos idempotentes:

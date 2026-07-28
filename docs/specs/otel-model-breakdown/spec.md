@@ -132,6 +132,25 @@ aditivas de `waves` sao populadas para essas ondas.
   hoje: ingestao inteira degrada com aviso, nunca aborta a onda em
   execucao.
 
+## Limitacoes Conhecidas
+
+- **Subcontagem silenciosa por falha do guard de invalidacao de
+  delta**: `otel-usage.sh delta` descarta o delta inteiro quando o
+  `session_id` do snapshot OTel diverge entre inicio e fim da onda
+  (ver Edge Cases acima). Investigacao empirica (Clarifications Session
+  2026-07-28) indica que, no ambiente observado, esse guard nunca
+  dispara — o `session_id` permanece estavel entre reinicios do
+  processo Claude Code, mesmo quando o processo de fato trocou. Risco
+  residual, nao reproduzido mas nao descartado: se o guard falhar em
+  disparar QUANDO deveria, o delta calculado poderia misturar
+  custo/tokens de execucoes distintas sob o mesmo `session_id`,
+  produzindo dado silenciosamente incorreto nas dimensoes desta
+  feature (`wave_model_usage` e as 8 colunas de breakdown por fonte).
+  Corrigir o guard e bugfix separado, deliberadamente fora do escopo
+  desta feature (para nao misturar correcao de coleta de telemetria
+  com migracao de schema) — rastreado como `sug-002` na knowledge.db
+  (ver `checklists/schema-migration.md` CHK021).
+
 ## Requirements
 
 ### Functional Requirements
@@ -176,6 +195,25 @@ aditivas de `waves` sao populadas para essas ondas.
   colunas escalares de custo/tokens ja ingeridas hoje) MUST continuar
   funcionando sem alteracao apos a migracao — as novas dimensoes sao
   estritamente aditivas.
+- **FR-010**: O bump de schema desta feature (v11 -> v12) MUST ter
+  rastreabilidade formal do impacto de compatibilidade cross-repo com o
+  `cstk-panel`: o painel instalado valida `schema_version` contra uma
+  allowlist fechada (`DEFAULT_SCHEMA_VERSIONS` em
+  `apps/server/src/config.ts:31`, hoje `['2'..'11']`) e degrada com
+  `schema-mismatch` em toda rota quando o banco esta em `12`. O bump
+  MUST vir acompanhado de uma Sugestao registrada (`suggestions.sh
+  register`) documentando a necessidade de bump correspondente no
+  repo `cstk-panel`, para que o agendamento nao se perca apos o merge
+  (ver Checklist CHK001/CHK003).
+- **FR-011**: `wave_model_usage` MUST NUNCA alimentar `knowledge_fts` —
+  mesma fronteira de seguranca ja aplicada as tabelas `tasks` e
+  `events`. Nenhuma linha dessa tabela, nem o valor do campo `model`
+  (unico dado de origem externa introduzido por esta feature), MUST
+  alcancar o indice de busca full-text nem o read-back loop (`cstk
+  recall --context`) consumido pelos orquestradores no passo
+  PRE-DECISAO — fechando por construcao a superficie de prompt
+  injection indireta (LLM01) e envenenamento de memoria (ASI06) via
+  label de modelo (fecha CHK013/CHK014).
 
 > **Nota de escopo (Clarifications Session 2026-07-28)**: um FR
 > anterior desta secao (`otel_session_id`) foi REMOVIDO do escopo —
@@ -216,6 +254,12 @@ aditivas de `waves` sao populadas para essas ondas.
 - **SC-004**: A suite de testes existente que cobre a ingestao da
   knowledge.db permanece 100% verde apos a migracao, incluindo os
   cenarios das dimensoes ja existentes anteriores a esta feature.
+- **SC-005**: Com a variavel de ambiente
+  `CSTK_SCHEMA_VERSIONS=2,3,4,5,6,7,8,9,10,11,12` setada, `cstk serve`
+  continua servindo todas as rotas do painel sem erro `schema-mismatch`
+  mesmo com o banco da knowledge.db em schema `v12` — mitigacao valida
+  ANTES da publicacao do fix definitivo (bump de
+  `DEFAULT_SCHEMA_VERSIONS`) no repo `cstk-panel` (fecha CHK002).
 
 ## Delta Requirements
 
