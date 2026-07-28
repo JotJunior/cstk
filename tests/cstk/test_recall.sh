@@ -3843,4 +3843,63 @@ scenario_wmu7_isolamento_fts_reindex() {
   return 0
 }
 
+# Cenario 10 do quickstart / task 1.2.2 — valor 0 legitimo preservado.
+# Fonte real (Principio VI): mcp-project-scafold/.claude/agente-00c-state/
+# state.json, onda-022 (conferida por leitura direta em 2026-07-28) —
+# by_source.main tem cost_usd/input/output/cache_read = 0 e
+# cache_creation = 4103 NA MESMA linha; by_model.claude-opus-5 tem
+# cost_usd=0 e total_tokens=4103. Custo zero com tokens NAO-zero na mesma
+# linha prova que o zero e MEDIDO, nao ausencia de dado (CHK006).
+_write_wmu_state_zero_legitimo() {
+  _wz_dir="$1"; _wz_proj="$2"; _wz_feat="$3"
+  mkdir -p "$_wz_dir"
+  cat > "$_wz_dir/state.json" <<JSON
+{
+  "short_name": "$_wz_feat",
+  "execution": { "id": "exec-$_wz_feat", "target_project_path": "$_wz_proj" },
+  "waves": [
+    {
+      "id": "onda-022",
+      "started_at": "2026-07-27T00:17:40Z",
+      "otel_usage": {
+        "total_cost_usd": 3.14147,
+        "total_tokens": 7228603,
+        "by_source": {
+          "main": {"cost_usd": 0, "input": 0, "output": 0, "cache_read": 0, "cache_creation": 4103},
+          "subagent": {"cost_usd": 3.14147, "input": 102, "output": 41916, "cache_read": 7078806, "cache_creation": 103676}
+        },
+        "by_model": {
+          "claude-opus-5": {"cost_usd": 0, "total_tokens": 4103},
+          "claude-sonnet-5": {"cost_usd": 3.14147, "total_tokens": 7224500}
+        }
+      }
+    }
+  ]
+}
+JSON
+}
+
+scenario_wmu8_zero_legitimo_preservado() {
+  _have_deps || return 0
+  _write_wmu_state_zero_legitimo "$TMPDIR_TEST/featWmu8" "/home/u/projWmu8" "featWmu8"
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/featWmu8" --db "$TMPDIR_TEST/wmu8.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "wmu8 ingest" "$_CAPTURED_STDERR"; return 1; }
+  # as 3 colunas otel_main_{input,output,cache_read} DEVEM ser 0 E NAO-NULAS
+  # (nao basta "= 0": SQLite compara NULL = 0 como NULL/falso, mas a
+  # assercao explicita de IS NOT NULL evita falso-positivo por coluna
+  # ausente em schema errado).
+  _zero=$(sqlite3 "$TMPDIR_TEST/wmu8.db" "SELECT count(*) FROM waves WHERE feature='featWmu8' AND wave='onda-022' AND otel_main_input_tokens = 0 AND otel_main_input_tokens IS NOT NULL AND otel_main_output_tokens = 0 AND otel_main_output_tokens IS NOT NULL AND otel_main_cache_read_tokens = 0 AND otel_main_cache_read_tokens IS NOT NULL")
+  [ "$_zero" = "1" ] || { _fail "wmu8 zero nao-nulo" "esperado 1, obtido '$_zero'"; return 1; }
+  # cache_creation NAO-zero na MESMA linha — prova que o zero acima e medido.
+  _cc=$(sqlite3 "$TMPDIR_TEST/wmu8.db" "SELECT otel_main_cache_creation_tokens FROM waves WHERE feature='featWmu8' AND wave='onda-022'")
+  [ "$_cc" = "4103" ] || { _fail "wmu8 cache_creation" "esperado 4103, obtido '$_cc'"; return 1; }
+  # coluna PRE-EXISTENTE (schema v11) otel_cost_main_usd tambem 0 nao-nulo.
+  _cost=$(sqlite3 "$TMPDIR_TEST/wmu8.db" "SELECT count(*) FROM waves WHERE feature='featWmu8' AND wave='onda-022' AND otel_cost_main_usd = 0 AND otel_cost_main_usd IS NOT NULL")
+  [ "$_cost" = "1" ] || { _fail "wmu8 otel_cost_main_usd" "esperado 1, obtido '$_cost'"; return 1; }
+  # wave_model_usage: claude-opus-5 com cost_usd=0 e total_tokens=4103 (nao-zero).
+  _wmu=$(sqlite3 "$TMPDIR_TEST/wmu8.db" "SELECT count(*) FROM wave_model_usage WHERE feature='featWmu8' AND wave='onda-022' AND model='claude-opus-5' AND cost_usd = 0 AND total_tokens = 4103")
+  [ "$_wmu" = "1" ] || { _fail "wmu8 wave_model_usage zero-cost" "esperado 1, obtido '$_wmu'"; return 1; }
+  return 0
+}
+
 run_all_scenarios

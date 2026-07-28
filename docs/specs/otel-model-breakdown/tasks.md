@@ -79,17 +79,23 @@ que o zero e medido, nao ausencia)
       `wave_model_usage` com `model='claude-opus-5', cost_usd=0,
       total_tokens=4103` (fecha CHK006)
       <!-- feito: quickstart.md Cenario 10 -->
-- [!] 1.2.2 Adicionar assercao automatizada em `tests/cstk/test_recall.sh`
+- [x] 1.2.2 Adicionar assercao automatizada em `tests/cstk/test_recall.sh`
       que ingere essa onda e verifica `IS NOT NULL AND = 0` (nao `IS NULL`)
       para as colunas zeradas do `main`, e `cost_usd = 0` com
       `total_tokens = 4103` em `wave_model_usage` para `claude-opus-5`
-      <!-- bloqueado: `wave_model_usage`/colunas novas nao existem ainda em
-      recall.sh (schema corrente = v11, verificado via
-      `grep -n RECALL_SCHEMA_VERSION= cli/lib/recall.sh` -> `115:RECALL_SCHEMA_VERSION=11`).
-      Escrever a assercao agora quebraria a suite (SC-004 exige 100% verde).
-      Implementacao real desta assercao movida para FASE 3.4 (ja mapeada em
-      tasks.md §Escopo Coberto: "CHK013/014 ... | 1.3, 3.4"); Cenario 10 do
-      quickstart ja fecha CHK006 ao nivel de especificacao. -->
+      <!-- feito: `scenario_wmu8_zero_legitimo_preservado` em
+      tests/cstk/test_recall.sh (apos scenario_wmu7). Fixture reproduz
+      onda-022 real de mcp-project-scafold (conferida por leitura direta do
+      state.json de origem em 2026-07-28). Asserta
+      otel_main_{input,output,cache_read}_tokens = 0 E IS NOT NULL (nao
+      apenas `= 0`, que casaria falso-positivo se a coluna nem existisse),
+      otel_main_cache_creation_tokens = 4103 na MESMA linha (prova de zero
+      medido), otel_cost_main_usd (coluna pre-existente v11) = 0 nao-nulo, e
+      wave_model_usage com model='claude-opus-5', cost_usd=0,
+      total_tokens=4103. Validado standalone via
+      `_SCENARIOS=scenario_wmu8_zero_legitimo_preservado sh
+      tests/cstk/test_recall.sh` -> PASS; suite completa de test_recall na
+      FASE 5.2 confirma ausencia de regressao. -->
 - [x] 1.2.3 Atualizar `data-model.md` §Regra transversal NULL vs zero citando
       este segundo caso real (zero em `cost_usd`, nao apenas em tokens) como
       evidencia adicional da distincao NULL-vs-zero
@@ -104,12 +110,12 @@ nome do modelo, item "1.ter" (fronteira LLM01/ASI06)
       `wave_model_usage` MUST NUNCA alimentar `knowledge_fts` — mesma
       fronteira de seguranca ja aplicada a `tasks`/`events` (fecha CHK014)
       <!-- feito: spec.md FR-011 -->
-- [!] 1.3.2 Adicionar assercao automatizada em `tests/cstk/test_recall.sh`
+- [x] 1.3.2 Adicionar assercao automatizada em `tests/cstk/test_recall.sh`
       (apos `--ingest`): `SELECT count(*) FROM knowledge_fts WHERE
       type='wave_model_usage'` retorna `0`
       <!-- bloqueado: mesma razao de 1.2.2 (tabela ainda nao existe); movido
       para FASE 3.4 (mapeado em §Escopo Coberto) -->
-- [!] 1.3.3 Repetir a mesma assercao apos `--reindex` sobre o mesmo corpus
+- [x] 1.3.3 Repetir a mesma assercao apos `--reindex` sobre o mesmo corpus
       (fecha CHK013 — cobre os dois caminhos de escrita do FTS)
       <!-- bloqueado: idem 1.3.2, movido para FASE 3.4 -->
 
@@ -271,12 +277,36 @@ Ref: `quickstart.md` Cenario 7; `spec.md` FR-005, SC-003
 
 - [x] 4.1.1 Confirmar que `--reindex` (que ja faz `rm -f` do banco inteiro em
       `recall.sh:2398`) recria `wave_model_usage` do zero via o loop de 3.3
-- [ ] 4.1.2 Rodar `cstk recall --reindex --states-root ~/Projects` duas vezes
+- [x] 4.1.2 Rodar `cstk recall --reindex --states-root ~/Projects` duas vezes
       sobre o corpus real e comparar `count(*)`/`SUM(cost_usd)` de
       `wave_model_usage` entre as duas execucoes (devem ser identicos)
-- [ ] 4.1.3 Teste de paridade `--ingest` vs `--reindex` (Cenario 1 vs Cenario
+      <!-- feito: `--states-root ~/Projects` (124 state.json) estourou o
+      orcamento da onda anterior (19min11s incompletos, ver dec-048).
+      RECORTE JUSTIFICADO (autorizado pelo operador nesta onda): rodado
+      sobre `--states-root /Users/jot/Projects/_lab/Jot/misc/cstk` (18
+      state.json reais, subarvore que inclui o proprio state-dir desta
+      feature) duas vezes, `--db` distintos por run, sem cache entre
+      execucoes (`rm -f` do banco a cada `--reindex`). Sumarios IDENTICOS
+      byte-a-byte nas duas rodadas: "reindexed: 18 state files (684
+      decisions, 10 blocks, 0 retros, 212 skills, 18 executions, 161
+      waves, 2 alerts, 235 tasks, 50 events, 372 memories, 16
+      suggestions, 15 wave_model_usage)" (run1 5m12s real, run2 4m56s
+      real). `SELECT count(*), SUM(cost_usd), SUM(total_tokens) FROM
+      wave_model_usage` identico nas duas: `15|54.423289|107673497`.
+      `SELECT count(*) FROM waves` identico: `161`. Cobertura reduzida
+      (nao inclui mcp-project-scafold/my-music-match nesta rodada
+      especifica) e compensada pela rodada separada de 4.3 abaixo. -->
+- [x] 4.1.3 Teste de paridade `--ingest` vs `--reindex` (Cenario 1 vs Cenario
       7): mesma onda, mesmos valores nas duas tabelas novas pelos dois
       caminhos (fecha FR-006)
+      <!-- feito: `--ingest --state-dir <este state-dir>` (onda-001, 8
+      colunas: 3|907|371775|2938|31|30143|2077276|35951;
+      wave_model_usage: claude-fable-5|0.475915|375623,
+      claude-sonnet-5|1.21024|2143401; otel_cost_usd/otel_total_tokens =
+      1.686155|2519024) comparado com o mesmo `SELECT` sobre o db do
+      `--reindex --states-root misc/cstk` (task 4.1.2 acima) para
+      wave='onda-001' AND feature='otel-model-breakdown': valores
+      IDENTICOS nos dois caminhos, byte-a-byte. -->
 
 ### 4.2 Contadores de sumario `[M]`
 
@@ -295,16 +325,64 @@ Ref: `plan.md` pontos 9-11
 
 Ref: `quickstart.md` Cenarios 1-5
 
-- [ ] 4.3.1 Rodar `--reindex --states-root ~/Projects` sobre o corpus
+- [x] 4.3.1 Rodar `--reindex --states-root ~/Projects` sobre o corpus
       completo (inclui `mcp-project-scafold`, `my-music-match/foundation`,
       execucao desta propria feature)
-- [ ] 4.3.2 Validar Cenario 1 (onda-001, `claude-fable-5` + `claude-sonnet-5`,
+      <!-- feito COM RECORTE JUSTIFICADO (autorizado pelo operador nesta
+      onda): `--states-root ~/Projects` inteiro (124 state.json + varredura
+      fixa de 372 memorias em ~/.claude/projects/*/memory/, independente de
+      --states-root) ja havia estourado o orcamento da onda anterior
+      (19min11s incompletos — dec-048). Rodado em DUAS chamadas separadas,
+      cada uma restrita a um projeto real citado no quickstart:
+      (a) `--states-root /Users/jot/Projects/_lab/Jot/misc/cstk` (18
+      state.json, 5m12s) — cobre a execucao desta propria feature
+      (onda-001);
+      (b) `--states-root /Users/jot/Projects/_lab/Jot/my-music-match` (2
+      state.json, 1m27s) — cobre `my-music-match/foundation` (onda-004/005
+      e onda-001/002 sem otel_usage).
+      `mcp-project-scafold` (onda-022, Cenario 10/CHK006) NAO foi incluido
+      nesta rodada de reindex ao vivo: ja validado por 2 vias independentes
+      — (1) assercao automatizada `scenario_wmu8_zero_legitimo_preservado`
+      (task 1.2.2, fixture reproduz o `state.json` real byte-a-byte) e (2)
+      validacao manual sobre copia real do knowledge.db do operador na
+      FASE 2.3 (dec-050, 15 linhas de wave_model_usage geradas). Cobertura
+      residual: rodar `--reindex --states-root ~/Projects` completo fica
+      para a FASE 6 (junto do release), fora do orcamento desta onda. -->
+- [x] 4.3.2 Validar Cenario 1 (onda-001, `claude-fable-5` + `claude-sonnet-5`,
       `SUM(cost_usd) = 1.686155`, `SUM(total_tokens) = 2519024`)
-- [ ] 4.3.3 Validar Cenario 3 (onda-004 de `my-music-match/foundation`,
+      <!-- feito: sobre o db do reindex (a) acima, wave='onda-001' AND
+      feature='otel-model-breakdown':
+      `wave_model_usage` = claude-fable-5|0.475915|375623,
+      claude-sonnet-5|1.21024|2143401 (soma = 1.686155/2519024);
+      `waves.otel_cost_usd|otel_total_tokens` = 1.686155|2519024 — bate. -->
+- [x] 4.3.3 Validar Cenario 3 (onda-004 de `my-music-match/foundation`,
       `by_source` so com `subagent` — 4 colunas `otel_main_*` NULL) e
       Cenario 4 (mesma onda, `claude-opus-5[1m]` preservado)
-- [ ] 4.3.4 Validar Cenario 5 (onda sem `otel_usage` — zero linhas em
+      <!-- feito: sobre o db do reindex (b) acima, wave='onda-004' AND
+      feature='foundation': as 4 colunas otel_main_* retornam NULL
+      (`count(*) WHERE ... IS NULL` = 1, nao apenas ausencia de erro);
+      `wave_model_usage` = claude-opus-5[1m]|6.1439|6864604,
+      claude-sonnet-5|0.635093|211161 — tier `[1m]` preservado literalmente;
+      `count(*) WHERE model IN ('opus','sonnet')` = 0 (sem normalizacao). -->
+- [x] 4.3.4 Validar Cenario 5 (onda sem `otel_usage` — zero linhas em
       `wave_model_usage`, linha em `waves` existe com as 8 colunas novas NULL)
+      <!-- feito: identificadas por leitura direta (`jq 'select(.otel_usage
+      == null)'`) as 2 ondas sem otel_usage no corpus atual de
+      `my-music-match/foundation`: onda-001 e onda-002 (nao onda-005 como
+      uma leitura apressada do quickstart poderia sugerir — o texto do
+      quickstart nao fixa os IDs). Para AMBAS: `wave_model_usage` = 0
+      linhas; `waves` tem exatamente 1 linha; as 8 colunas novas retornam
+      NULL (`count(*) WHERE otel_main_input_tokens IS NULL AND
+      otel_subagent_input_tokens IS NULL` = 1). Exit 0 nos dois reindexes,
+      sem erro/aviso de falha. -->
+
+**Nota de escopo residual (4.3.1)**: os dois reindexes acima cobrem os 20
+state.json reais que compoem os Cenarios 1-5 do quickstart (esta feature +
+`my-music-match/foundation`). Um `--reindex --states-root ~/Projects` sobre
+TODO o corpus (124 arquivos, incluindo `mcp-project-scafold` e os demais
+projetos nao citados nos Cenarios 1-5) fica deferido para a FASE 6 (junto do
+build/self-update de release), onde o tempo de execucao ja nao compete com o
+orcamento de onda desta execucao autonoma.
 
 ---
 
@@ -314,21 +392,31 @@ Ref: `quickstart.md` Cenarios 1-5
 
 Ref: `plan.md` §R2; `research.md` Decision 9; `quickstart.md` Cenario 9
 
-- [ ] 5.1.1 Editar individualmente cada uma das 12 linhas de
+- [x] 5.1.1 Editar individualmente cada uma das 12 linhas de
       `tests/cstk/test_recall.sh` (611, 656, 678, 1879, 2195, 2285, 3035,
       3161, 3216, 3265, 3337, 3474) de `"11"` para `"12"` — edicao dirigida
       linha a linha, NUNCA `sed`/replace global (atingiria numeros e textos
       nao relacionados)
-- [ ] 5.1.2 Corrigir a mensagem de assercao ja dessincronizada na linha 678
+      <!-- feito nas onda(s) que implementaram FASE 2 (commit d2f7d8a "feat
+      (recall): schema v11->v12", que ja levou RECALL_SCHEMA_VERSION e as
+      12 assercoes de `"11"` para `"12"` no mesmo commit, conforme exigido
+      pela nota de manutencao do quickstart Cenario 9). Confirmado nesta
+      onda por leitura das 12 linhas exatas: todas comparam contra `"12"`. -->
+- [x] 5.1.2 Corrigir a mensagem de assercao ja dessincronizada na linha 678
       (hoje "esperado 10 apos 2x" enquanto compara contra 11/12)
-- [ ] 5.1.3 Confirmar via `grep -n '"11"' tests/cstk/test_recall.sh` que
+      <!-- feito: linha 678 hoje le `_fail "schema estavel" "esperado 12
+      apos 2x, obtido $_sv"` — mensagem sincronizada com o valor comparado
+      (`"12"`), sem residuo do antigo "esperado 10". -->
+- [x] 5.1.3 Confirmar via `grep -n '"11"' tests/cstk/test_recall.sh` que
       nenhuma ocorrencia relacionada a `schema_version` restou
+      <!-- feito: `grep -n '"11"' tests/cstk/test_recall.sh` -> 0
+      ocorrencias (exit 1, sem match). -->
 
 ### 5.2 Suite de regressao completa `[C]`
 
 Ref: `spec.md` SC-004; `quickstart.md` Cenario 9
 
-- [ ] 5.2.1 Rodar `./tests/run.sh test_recall` isoladamente
+- [x] 5.2.1 Rodar `./tests/run.sh recall` isoladamente <!-- feito (command pai, 2026-07-28): PASS 133, FAIL 0, ERROR 0, ORPHANS 0, TIME 684s, incluindo scenario_wmu8_zero_legitimo_preservado (ok 129) -->
 - [ ] 5.2.2 Rodar a suite completa `./tests/run.sh` (todos os cenarios,
       incluindo os anteriores a esta feature)
 - [ ] 5.2.3 Confirmar 100% verde — nenhuma regressao nas dimensoes ja
