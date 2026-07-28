@@ -5,6 +5,48 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.33.1] - 2026-07-28
+
+Corrige o delta OTel por onda que fabricava consumo. Caso real: com a porta
+9464 ocupada por um processo `claude -c` longevo, as 14 ondas da execucao
+`dashboard-refactor` (cstk-panel) gravaram `otel_usage` bit-identico
+(212.447.680 tokens / $88) — o "delta" era o acumulado congelado do
+exporter, nao o consumo da onda. A onda-015 caiu no guard e ficou `null`
+(comportamento correto que denunciou o resto).
+
+### Fixed
+
+- **`otel-usage.sh`: delta agora agrega por sessao.** Duas causas
+  combinadas: (1) o parse descartava o `session_id` das linhas — o mesmo
+  exporter pode expor MAIS de uma sessao, e o acumulado das sessoes
+  congeladas entrava na soma; o guard antigo comparava so o header
+  `# session_id` (primeira ocorrencia de cada arquivo) e passava com
+  mistura; (2) a chave do join `(source, model, type)` colide entre linhas
+  que o exporter separa por `agent_name`/`skill_name`/`effort` — o awk
+  sobrescrevia a base (`s[k]=$4`) e imprimia cada duplicata do end contra
+  essa base unica, transformando o "delta" em acumulado. O snapshot agora
+  emite TSV de 5 colunas (`session_id` por linha) e o delta SOMA duplicatas
+  nos dois lados, agrega por sessao e so aceita o resultado quando
+  EXATAMENTE UMA sessao cresceu entre os snapshots — crescimento que, por
+  construcao, ocorreu dentro da janela da onda.
+- **Ausente nunca e zero fabricado (Principio VI), agora tambem para
+  ambiguidade de sessao**: mais de uma sessao ativa no exporter, sessao do
+  start ausente no end (processo dono da porta trocou) e snapshot em
+  formato antigo (4 colunas) viram `null` com aviso em stderr — nunca
+  chute. O `session_id` do OTel NAO e usado como identidade da sessao
+  corrente (label ja observado apontando para outra sessao/projeto); a
+  atribuicao e por deteccao de crescimento, sem match contra env.
+- 5 cenarios novos em `tests/test_otel-usage.sh` (INV-6: soma de
+  duplicatas; INV-7: isolamento por sessao, incluindo reproducao do caso
+  real com sessao congelada de 212M tokens) e guard antigo renomeado para
+  `scenario_delta_sessao_do_start_sumida_e_null`.
+
+Nota de operacao: execucoes ja contaminadas nao se corrigem sozinhas —
+anular `.waves[].otel_usage` das ondas afetadas no `state.json` (seguido de
+`state-rw.sh sha256-update`) e rodar `cstk recall --ingest --state-dir
+<dir>` corrige `waves`; linhas orfas em `wave_model_usage` exigem DELETE
+manual, porque onda `null` nao regrava essa tabela por design (FR-004).
+
 ## [5.33.0] - 2026-07-28
 
 Fecha a perda de dimensoes do OTel na ingestao: o `state.json` sempre teve o
@@ -4279,6 +4321,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[5.33.1]: https://github.com/JotJunior/cstk/releases/tag/v5.33.1
 [5.33.0]: https://github.com/JotJunior/cstk/releases/tag/v5.33.0
   tabela por stack.
 
