@@ -100,6 +100,39 @@ export const OtelUsageRollupSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// ModelUsage DTOs schema (schema v12, `wave_model_usage`)
+// Ref: contracts/model-usage-endpoint.md; data-model.md Parte B.
+// Sem `.default(null)` nos campos nulos (mesmo padrao de WaveDTOSchema
+// acima) — ausencia de campo deve falhar o parse, nao virar silenciosamente
+// 0/undefined na UI.
+// ---------------------------------------------------------------------------
+export const ModelUsageEntrySchema = z.object({
+  model: z.string(),
+  costUsd: z.number().nullable(),
+  totalTokens: z.number().nullable(),
+  waves: z.number(),
+});
+
+export const ModelUsageByStageSchema = z.object({
+  stage: z.string(),
+  model: z.string(),
+  costUsd: z.number().nullable(),
+  totalTokens: z.number().nullable(),
+});
+
+export const ModelUsageCoverageSchema = z.object({
+  wavesTotal: z.number().nullable(),
+  wavesWithModelUsage: z.number().nullable(),
+  wavesWithOtelCost: z.number().nullable(),
+});
+
+export const ModelUsageResultSchema = z.object({
+  byModel: z.array(ModelUsageEntrySchema),
+  byStage: z.array(ModelUsageByStageSchema),
+  coverage: ModelUsageCoverageSchema,
+});
+
+// ---------------------------------------------------------------------------
 // DecisionDTO schema
 // ---------------------------------------------------------------------------
 export const DecisionDTOSchema = z.object({

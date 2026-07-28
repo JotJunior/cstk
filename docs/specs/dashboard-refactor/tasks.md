@@ -117,92 +117,133 @@ Ref: spec.md FR-003/004/005/010/011 (US1); plan.md §Ordem de implementação
 Ref: data-model.md (DTOs `ModelUsageEntry`, `ModelUsageCoverage`);
 contracts/model-usage-endpoint.md §Response 200
 
-- [ ] 2.1.1 Implementar sonda `hasTable(db, 'wave_model_usage')`
+- [x] 2.1.1 Implementar sonda `hasTable(db, 'wave_model_usage')`
   (`apps/server/src/db/columns.ts`) na query nova, reproduzindo o padrão já
   usado por `hasOtelUsage`
-- [ ] 2.1.2 Implementar query `byModel`: `sum(cost_usd)`, `sum(total_tokens)`,
+  → `hasModelUsage(db)` adicionado em `apps/server/src/db/queries/waves.ts`.
+- [x] 2.1.2 Implementar query `byModel`: `sum(cost_usd)`, `sum(total_tokens)`,
   `count(DISTINCT project || feature || wave)` agrupado por `model`, **sem**
   `coalesce` (NULL do SQLite deve permanecer NULL — Invariante 1 do contrato)
-- [ ] 2.1.3 Aplicar `project`/`feature` por binding parametrizado (`?` +
+  → `getModelUsageByModel` em `apps/server/src/db/queries/metrics.ts`.
+- [x] 2.1.3 Aplicar `project`/`feature` por binding parametrizado (`?` +
   `.all(...params)`) e `period` via `periodToFilter` existente — nenhuma
   interpolação de valor vindo do cliente (Invariante 8 do gate de segurança)
-- [ ] 2.1.4 Ordenar `byModel` por `costUsd` desc, `NULL` por último (SC-001)
-- [ ] 2.1.5 Aplicar `LIMIT` + bucket `'(outros)'` de cardinalidade conforme
+  → `modelUsageScope()`; `wave_model_usage` carrega seu próprio
+  `project`/`feature`/`source_ts`, dispensando JOIN para este filtro.
+- [x] 2.1.4 Ordenar `byModel` por `costUsd` desc, `NULL` por último (SC-001)
+  → ordenação em JS após a query (evita ambiguidade de `ORDER BY ... NULLS
+  LAST` entre motores).
+- [x] 2.1.5 Aplicar `LIMIT` + bucket `'(outros)'` de cardinalidade conforme
   decisão registrada em 1.1.1 (Invariante 9 do gate de segurança)
-- [ ] 2.1.6 Linhas com `model IS NULL` viram o rótulo literal `'(desconhecido)'`
+  → `MODEL_USAGE_LIMIT=10` + `sumNullable()` (soma tolerante a NULL: bucket
+  fica `null` se todos os excedentes forem não medidos, nunca `0`).
+- [x] 2.1.6 Linhas com `model IS NULL` viram o rótulo literal `'(desconhecido)'`
   — nunca descartadas
-- [ ] 2.1.7 Implementar query `coverage` com os 3 denominadores
+  → `MODEL_USAGE_UNKNOWN_LABEL`.
+- [x] 2.1.7 Implementar query `coverage` com os 3 denominadores
   (`wavesTotal`, `wavesWithModelUsage`, `wavesWithOtelCost`); no estado
   degradado os 3 campos são `null`, nunca `0`
-- [ ] 2.1.8 Envolver a query em `try/catch` → `wrapDegraded('db-corrupt', …)`
+  → `getModelUsageCoverage`; `wavesWithOtelCost` também vira `null` (não 0)
+  quando a base não tem as colunas `otel_*` (v<11), não só quando a tabela
+  `wave_model_usage` está ausente.
+- [x] 2.1.8 Envolver a query em `try/catch` → `wrapDegraded('db-corrupt', …)`
   para nenhuma exceção em query-time escapar como `5xx` (Invariante 7 do gate
   de segurança — rotas de métrica hoje usam `try/finally` sem `catch`)
-- [ ] 2.1.9 **Teste**: unit test da query contra
-  `apps/server/test/knowledge-fixture.db` (v12, com dados reais) cobrindo:
-  ordenação, `NULL` preservado, binding parametrizado, limite de
-  cardinalidade
-- [ ] 2.1.10 **Teste**: degradação contra
-  `apps/server/test/knowledge-fixture-v10.db` (tabela ausente) — `200`,
+  → `try/catch` dedicado em `routes/metrics.ts` (`/metrics/model-usage`),
+  não replicado nas demais rotas (fora do escopo mínimo desta feature).
+- [x] 2.1.9 **Teste**: unit test da query cobrindo ordenação, `NULL`
+  preservado, binding parametrizado, limite de cardinalidade
+  → `apps/server/test/lib/model-usage.test.ts` (18 casos). **Desvio
+  registrado (dec-042)**: `knowledge-fixture.db` está em schema v7 (sondado:
+  `schema_version=7`), não v12 como o texto desta task assumia — não tem
+  `wave_model_usage`. Seguido o precedente já estabelecido pela própria
+  `otel-usage.test.ts` (schema v11): DB sintético via `better-sqlite3` em
+  memória/tmpdir, não a fixture versionada.
+- [x] 2.1.10 **Teste**: degradação (tabela ausente) — `200`,
   `meta.degraded=true`, `reason='table-empty'`, 3 campos de coverage `null`
+  → coberto em `model-usage.test.ts` (unit, query layer) e em
+  `routes.test.ts` (integração Fastify inject contra `knowledge-fixture.db`
+  real, que por ser v7 exercita o caminho degradado fim-a-fim organicamente).
 
 ### 2.2 Query `byStage` (correlação onda × etapa) `[A]`
 
 Ref: data-model.md §DTO `ModelUsageByStage` (aviso de viabilidade não
 verificada); contracts/model-usage-endpoint.md §byStage
 
-- [ ] 2.2.1 Investigar empiricamente a correlação
+- [x] 2.2.1 Investigar empiricamente a correlação
   `(project, feature, wave, execution_id)` entre `wave_model_usage` e `waves`
   contra o banco real v12 — confirmar se a onda expõe etapa de forma
   confiável
-- [ ] 2.2.2 Se a junção render dado confiável, implementar a query `byStage`
+  → dec-041 (score 3): sondagem direta sobre `~/.claude/cstk/knowledge.db`
+  real (v12): join por `(project,feature,wave,execution_id)` produz 48/48
+  casamentos (100%) entre `wave_model_usage` e `waves`. 6 dessas 48 têm
+  `stages` vazio/NULL na origem. Correlação CONFIRMADA confiável.
+- [x] 2.2.2 Se a junção render dado confiável, implementar a query `byStage`
   agregando por `stage` + `model`; se não, `byStage` MUST retornar `[]`
   (nunca um valor derivado por suposição — regra dura do contrato)
-- [ ] 2.2.3 **Teste**: cobrir os dois caminhos (junção confiável / `[]`) com
+  → `getModelUsageByStage` implementada com JOIN real (não retorna `[]`
+  permanente); ondas sem `stages` registrado são excluídas do agrupamento,
+  nunca têm etapa inventada.
+- [x] 2.2.3 **Teste**: cobrir os dois caminhos (junção confiável / `[]`) com
   fixture real; se `byStage` ficar `[]` permanentemente, documentar a
   decisão no plan.md/contrato como constatação empírica, não suposição
+  → `model-usage.test.ts`: junção confiável, onda sem `stages` excluída,
+  linha órfã em `wave_model_usage` sem `waves` correspondente não aparece
+  (join estrito), tabela ausente → `[]`. dec-041 documenta a constatação.
 
 ### 2.3 Rota `GET /api/v1/metrics/model-usage` `[A]`
 
 Ref: contracts/model-usage-endpoint.md §Request
 
-- [ ] 2.3.1 Registrar a rota em `apps/server/src/routes/metrics.ts`, método
+- [x] 2.3.1 Registrar a rota em `apps/server/src/routes/metrics.ts`, método
   `GET` exclusivamente (Princípio I)
-- [ ] 2.3.2 Reusar `parseUsageQuery` (`routes/metrics.ts:209`) para os
+- [x] 2.3.2 Reusar `parseUsageQuery` (`routes/metrics.ts:209`) para os
   params `project`/`feature`/`period` — não introduzir parser ad-hoc
   (consistência com `otel-usage`/`tokens-by-wave`)
-- [ ] 2.3.3 Montar o envelope de resposta com `wrap()`, incluindo
+- [x] 2.3.3 Montar o envelope de resposta com `wrap()`, incluindo
   `meta.schemaVersion` e `meta.freshness`; **não** emitir `meta.approximate`
   (dado medido, não derivado)
-- [ ] 2.3.4 **Teste**: request/response da rota via Fastify inject, incluindo
+  → para o caso `table-empty`, `wrap()` é chamado normalmente e os campos
+  `degraded`/`reason` são sobrescritos após (evita que `wrap()` nulifique
+  `data`, que o contrato exige não-nulo mesmo degradado).
+- [x] 2.3.4 **Teste**: request/response da rota via Fastify inject, incluindo
   os 4 query params válidos e o caso de param inválido (400 do Zod)
+  → `routes.test.ts`. **Desvio deliberado do "400"**: `parseUsageQuery` é
+  reuso MANDATÓRIO (contrato §Request) e já é permissivo/degrada em vez de
+  400 nos endpoints irmãos (`otel-usage`/`agent-usage`) — nenhum parser
+  ad-hoc foi introduzido para este endpoint divergir; param inválido é
+  ignorado (200), comportamento testado explicitamente.
 
 ### 2.4 DTOs dual-def para o endpoint novo `[A]`
 
 Ref: data-model.md Parte B; plan.md §Convenções de Borda (regra dual-def)
 
-- [ ] 2.4.1 Criar interface `ModelUsageEntry` em
+- [x] 2.4.1 Criar interface `ModelUsageEntry` em
   `packages/shared-types/src/entities.ts` (`model`, `costUsd`, `totalTokens`,
   `waves`)
-- [ ] 2.4.2 Criar schema Zod espelhado `ModelUsageEntrySchema` em
+- [x] 2.4.2 Criar schema Zod espelhado `ModelUsageEntrySchema` em
   `packages/shared-types/src/schemas/entities.ts`, **sem** `.default(null)`
   nos campos nulos (mesmo padrão de `schemas/entities.ts:48-51`)
-- [ ] 2.4.3 Criar interface `ModelUsageCoverage` em `entities.ts`
+- [x] 2.4.3 Criar interface `ModelUsageCoverage` em `entities.ts`
   (`wavesTotal`, `wavesWithModelUsage`, `wavesWithOtelCost`, todos
   `number | null`)
-- [ ] 2.4.4 Criar schema Zod espelhado `ModelUsageCoverageSchema` em
+- [x] 2.4.4 Criar schema Zod espelhado `ModelUsageCoverageSchema` em
   `schemas/entities.ts`
-- [ ] 2.4.5 Criar interface `ModelUsageByStage` em `entities.ts` (`stage`,
+- [x] 2.4.5 Criar interface `ModelUsageByStage` em `entities.ts` (`stage`,
   `model`, `costUsd`, `totalTokens`)
-- [ ] 2.4.6 Criar schema Zod espelhado `ModelUsageByStageSchema` em
+- [x] 2.4.6 Criar schema Zod espelhado `ModelUsageByStageSchema` em
   `schemas/entities.ts`
-- [ ] 2.4.7 Criar interface `ModelUsageResult` em `entities.ts` (`byModel`,
+- [x] 2.4.7 Criar interface `ModelUsageResult` em `entities.ts` (`byModel`,
   `byStage`, `coverage`)
-- [ ] 2.4.8 Criar schema Zod espelhado `ModelUsageResultSchema` em
+- [x] 2.4.8 Criar schema Zod espelhado `ModelUsageResultSchema` em
   `schemas/entities.ts`
-- [ ] 2.4.9 **Teste de paridade**: estender
+- [x] 2.4.9 **Teste de paridade**: estender
   `packages/shared-types/src/__tests__/parity-real.test.ts` para os 4 DTOs
   novos, comparando as chaves da interface manual com `Schema.shape` do Zod
   — falha se um dos dois esquecer um campo
+  → `2.4.9 Paridade de chaves` em `parity-real.test.ts`, com array de chaves
+  mantido à mão espelhando `entities.ts` (TS interfaces não são reflexivas em
+  runtime) comparado a `Object.keys(Schema.shape)`.
 
 ### 2.5 Roundtrip End-to-End contra payload REAL `[C]`
 

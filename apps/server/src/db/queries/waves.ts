@@ -10,7 +10,7 @@
  * nao observado); nunca vira 0 na borda (Principio III).
  */
 import type Database from 'better-sqlite3';
-import { hasColumn } from '../columns.js';
+import { hasColumn, hasTable } from '../columns.js';
 
 /** As 9 colunas de consumo de subagente introduzidas no schema v10. */
 export const AGENT_USAGE_COLUMNS = [
@@ -59,6 +59,18 @@ export function hasAgentUsage(db: Database.Database): boolean {
  */
 export function hasOtelUsage(db: Database.Database): boolean {
   return hasColumn(db, 'waves', 'otel_cost_usd');
+}
+
+/**
+ * True quando a base tem a tabela `wave_model_usage` (schema v12, cstk 5.33.0).
+ *
+ * Grao onda x modelo — distinto de `hasOtelUsage` (grao onda). Bancos v2-v11
+ * nao tem a TABELA (nao so a coluna): a sonda usa `hasTable`, nao `hasColumn`,
+ * reproduzindo o mesmo padrao de degradacao (Principio II).
+ * Ref: data-model.md Parte B; contracts/model-usage-endpoint.md Decision 4.
+ */
+export function hasModelUsage(db: Database.Database): boolean {
+  return hasTable(db, 'wave_model_usage');
 }
 
 /** As 5 colunas de consumo medido por telemetria introduzidas no schema v11. */
