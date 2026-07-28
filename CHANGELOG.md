@@ -5,6 +5,44 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.21.0] - 2026-07-28
+
+### Adicionado
+
+- **Custo real por modelo (USD medido)**: novo endpoint
+  `GET /api/v1/metrics/model-usage` sobre a tabela `wave_model_usage` (schema
+  v12), com agregados por modelo (`byModel`, top-10 + bucket `(outros)`), por
+  etapa do pipeline (`byStage`) e cobertura honesta da amostra (nem toda onda
+  tem breakdown OTel — os denominadores divergentes são exibidos, não
+  escondidos). Na UI: card compacto "Custo por modelo" (top-3) no dashboard
+  principal e painel de detalhe por modelo/etapa na página Métricas. Os três
+  estados (`measured`/`empty`/`degraded`) nunca colapsam num `$0` enganoso —
+  ausência de dado é `—`, não zero. Exibição de valor monetário MEDIDO
+  ratificada pela emenda 1.2.0 da constitution (Princípio III); valor
+  estimado/convertido segue proibido.
+- **Throughput por etapa truncado em top-10 + "Outros"**: a página Métricas
+  passa a mostrar as 10 maiores etapas e agrega o restante numa barra
+  "Outros" expansível (clique/toque ou Enter/Espaço revela os membros),
+  preservando a soma total.
+
+### Corrigido
+
+- **"Mix de modelos por etapa" colapsava todas as etapas em `?`**: o card lia
+  `r.etapa` num payload que sempre projetou `stage` (exceção legada da
+  migração v7 pt→EN), somando tudo numa única barra sem rótulo. A leitura usa
+  o campo real, a lógica foi extraída para módulo puro testável
+  (`model-mix-by-stage-select.ts`) e as barras agora seguem a ordem do
+  pipeline SDD (etapas fora da constante ao final, por volume), com rótulos
+  reais — o contexto de etapa que faltava para o card se justificar ao lado
+  do donut de mix total.
+
+### Removido
+
+- **Cards "Custo por feature · proxy" e "Funil do pipeline"** do dashboard
+  principal — remoção apenas de renderização: `leaderboard[]` e `funnel[]`
+  seguem no payload de `/overview` (Princípio II, sem quebra de contrato).
+  `FunnelChart` órfão removido de `charts.tsx`.
+
 ## [0.20.0] - 2026-07-28
 
 ### Adicionado
@@ -996,6 +1034,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.21.0]: https://github.com/JotJunior/cstk-panel/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/JotJunior/cstk-panel/compare/v0.19.2...v0.20.0
 [0.19.2]: https://github.com/JotJunior/cstk-panel/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/JotJunior/cstk-panel/compare/v0.19.0...v0.19.1
