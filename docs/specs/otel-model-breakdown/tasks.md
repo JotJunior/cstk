@@ -437,7 +437,7 @@ Ref: `spec.md` SC-004; `quickstart.md` Cenario 9
             `state-ondas.sh`, `otel-usage.sh` nem `tests/test_state-ondas.sh`.
       Zero regressoes nas dimensoes pre-existentes da knowledge.db.
       Defeito do teste registrado como `sug-006` (fora do escopo). -->
-- [ ] 5.2.4 (aberta por `sug-006`) Corrigir o isolamento de ambiente em
+- [x] 5.2.4 (aberta por `sug-006`) Corrigir o isolamento de ambiente em
       `scenario_end_otel_usage_null_sem_telemetria` para que a suite feche
       1914/0 tambem em maquina com telemetria ativa — decisao do mantenedor
       se entra nesta feature ou em bugfix separado
