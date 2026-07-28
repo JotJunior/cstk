@@ -1,4 +1,29 @@
 <!--
+Sync Impact Report (emenda 2026-07-28)
+- Version: 1.1.0 → 1.2.0
+- Bump rationale: MINOR — segunda expansao material do Principio III, mesmo
+  padrao da emenda 1.1.0. A proibicao original de "$"/USD partia da premissa
+  de que "o painel nao conhece preco de token e nao o estima". Essa premissa
+  ja havia deixado de valer para CONTAGEM de tokens (emenda 1.1.0); agora
+  deixa de valer tambem para CUSTO MONETARIO: o cstk 5.30.0 (feature
+  otel-model-breakdown) persiste `otel_cost_usd` na knowledge.db v11 — um
+  valor de custo REAL MEDIDO por onda e por modelo (nao estimado, nao
+  convertido a partir de preco de token pelo painel). O principio nao foi
+  enfraquecido — a proibicao de valor monetario ESTIMADO/INVENTADO/
+  CONVERTIDO pelo painel segue integral; abre-se excecao apenas para o dado
+  MEDIDO na fonte, com a mesma logica de cobertura de amostra ja exigida
+  para `agent_*`.
+- Autorizacao: operador humano, via bloqueio block-001 da execucao
+  feature-00c/dashboard-refactor (Decisao dec-009, respondido
+  2026-07-28T12:26:28Z) — resposta C, autorizando expressamente esta
+  emenda formal antes/junto da implementacao de FR-003.
+- Principios afetados: III. Honestidade de Metrica (expandido; nenhuma
+  clausula removida — proibicao de valor monetario estimado/inventado
+  segue integral).
+- Artefatos atualizados nesta emenda:
+  - docs/specs/dashboard-refactor/spec.md (FR-003, Clarifications)
+- Artefatos que permanecem validos sem mudanca: Principios I, II, IV, V, VI.
+
 Sync Impact Report (emenda 2026-07-26)
 - Version: 1.0.0 → 1.1.0
 - Bump rationale: MINOR — expansao material do Principio III. A premissa
@@ -98,8 +123,13 @@ orquestrador continua sendo medido pelo proxy `tool_calls`, jamais inventado.
 
 - MUST: rotular `tool_calls` explicitamente como "proxy" — ele conta chamadas
   de ferramenta, nao consumo.
-- MUST NOT: exibir `$`, `USD` ou qualquer valor monetario, derivado ou
-  convertido. O painel nao conhece preco de token e nao o estima.
+- MUST NOT: exibir `$`, `USD` ou qualquer valor monetario ESTIMADO,
+  derivado ou convertido pelo proprio painel a partir de preco de token. O
+  painel nao conhece preco de token e nao o estima. **Excecao (emenda
+  1.2.0)**: valor monetario MEDIDO na fonte (`otel_cost_usd`, schema v11)
+  PODE ser exibido em USD absoluto, sob as mesmas tres regras da secao
+  "Consumo de subagentes" abaixo (cobertura de amostra, NULL != 0, nao
+  somar com outro proxy/medida).
 - MUST NOT: inventar, estimar ou derivar campos que nao existem nas tabelas
   da knowledge.db (`executions`, `waves`, `decisions`, `tasks`, `events`,
   `alert_signals`, `blocks`, `skills`, `retros`, `suggestions`, `memories`,
@@ -125,12 +155,31 @@ regras inegociaveis:
   "custo", nem apresentar um como substituto do outro: contam coisas
   diferentes (consumo dos subagentes x chamadas do orquestrador).
 
+**Custo monetario medido (schema v11 — emenda 1.2.0)**: desde o cstk 5.30.0
+(feature `otel-model-breakdown`) a fonte persiste `otel_cost_usd` por onda e
+por modelo, um valor de custo REAL MEDIDO na instrumentacao (nao estimado
+nem convertido a partir de preco de token pelo painel). Esse numero PODE ser
+exibido em USD absoluto, sob as mesmas tres regras inegociaveis da secao
+"Consumo de subagentes":
+
+- MUST: exibir a cobertura da amostra sempre que houver total agregado
+  (ex: "3 de 4 ondas com custo medido"). Total sem denominador apresenta
+  parcial como completo.
+- MUST NOT: converter `NULL` em `0`. "Nao medido" exibido como zero e
+  fabricacao — a UI MUST distinguir nao coletado de coletado-e-zero.
+- MUST NOT: somar `otel_cost_usd` com `tool_calls` ou com token medido
+  (`agent_*`) num unico indicador; sao tres grandezas distintas (custo
+  monetario medido, esforco-proxy do orquestrador, consumo de tokens
+  medido dos subagentes) e cada uma mantem seu proprio rotulo.
+
 **Why**: honestidade de instrumentacao e pre-requisito de confianca numa
 ferramenta de observabilidade; metrica inventada e pior que metrica ausente —
 e uma metrica real apresentada como mais completa do que e tem o mesmo efeito.
-**Testavel**: grep da UI/API por "USD"/"$" como rotulo de custo retorna zero;
-todo numero exibido mapeia a uma coluna real do schema; nenhum caminho de
-codigo coalesce as colunas `agent_*` para 0 (coberto por
+**Testavel**: grep da UI/API por "USD"/"$" como rotulo de custo ESTIMADO
+retorna zero (uso de "USD"/"$" e permitido exclusivamente atrelado a
+`otel_cost_usd` medido, com cobertura de amostra visivel); todo numero
+exibido mapeia a uma coluna real do schema; nenhum caminho de codigo
+coalesce as colunas `agent_*` ou `otel_cost_usd` para 0 (coberto por
 `apps/server/test/lib/agent-usage.test.ts` e
 `apps/web/src/lib/agent-usage.test.ts`).
 
@@ -254,4 +303,4 @@ dele e regressao de produto, nao liberdade de implementacao.
   rationale; uma violacao de MUST/NON-NEGOTIABLE invalida o artefato ate
   ser corrigida ou a constituicao ser emendada via SemVer.
 
-**Version**: 1.1.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-07-26
+**Version**: 1.2.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-07-28
