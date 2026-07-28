@@ -11,8 +11,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { ReactNode } from 'react';
-import { ModelUsageMiniList, ModelUsageEmpty, modelUsageColor } from './ModelUsage.js';
-import { MODEL_USAGE_NATURE_LABEL, type ModelUsageVM } from '@/lib/model-usage-select.js';
+import {
+  ModelUsageMiniList, ModelUsageEmpty, modelUsageColor,
+  ModelUsageDetailPanel, ModelUsageStageBreakdown,
+} from './ModelUsage.js';
+import { MODEL_USAGE_NATURE_LABEL, type ModelUsageVM, type ModelUsageByStageGroup } from '@/lib/model-usage-select.js';
 
 /**
  * Extrai todo texto (string/number) de uma arvore de ReactElement, em ordem.
@@ -143,5 +146,92 @@ describe('modelUsageColor', () => {
     expect(modelUsageColor('constructor')).toBe('var(--model-fallback)');
     expect(modelUsageColor('toString')).toBe('var(--model-fallback)');
     expect(modelUsageColor('__proto__')).toBe('var(--model-fallback)');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ModelUsageDetailPanel — detalhe completo (FASE 3.3.6, Metrics.tsx)
+// ---------------------------------------------------------------------------
+
+const STAGE_GROUPS: ModelUsageByStageGroup[] = [
+  {
+    stage: 'execute-task',
+    entries: [
+      { stage: 'execute-task', model: 'claude-sonnet-5', costUsd: 246.87, totalTokens: 601627942 },
+    ],
+  },
+];
+
+const MEASURED_WITH_ZERO_VM: ModelUsageVM = {
+  state: 'measured',
+  entries: [
+    { model: 'claude-sonnet-5', costUsd: 905.39, totalTokens: 2189357933, waves: 41 },
+    { model: 'claude-haiku-5', costUsd: 0, totalTokens: 0, waves: 2 },
+  ],
+  top: [
+    { model: 'claude-sonnet-5', costUsd: 905.39, totalTokens: 2189357933, waves: 41 },
+  ],
+  coverage: { wavesTotal: 920, wavesWithModelUsage: 36, wavesWithOtelCost: 46 },
+};
+
+describe('ModelUsageDetailPanel — estado measured', () => {
+  it('mostra modelo, tokens, custo por modelo e os 3 denominadores de cobertura', () => {
+    const text = extractText(ModelUsageDetailPanel({ vm: MEASURED_VM, stageGroups: STAGE_GROUPS })).join(' ');
+    expect(text).toContain('claude-sonnet-5');
+    expect(text).toContain('$905.39');
+    // 3 denominadores independentes (3.3.2): wavesTotal, wavesWithModelUsage, wavesWithOtelCost
+    expect(text).toContain('36');
+    expect(text).toContain('46');
+    expect(text).toContain('920');
+    // recorte por etapa (byStage)
+    expect(text).toContain('execute-task');
+    expect(text).toContain('$246.87');
+  });
+
+  it('nao soma custoUsd entre modelos distintos — cada linha mantem seu proprio valor (3.3.3)', () => {
+    const text = extractText(ModelUsageDetailPanel({ vm: MEASURED_VM, stageGroups: STAGE_GROUPS })).join(' ');
+    expect(text).toContain('$23.59');
+    expect(text).toContain('$6.14');
+  });
+});
+
+describe('ModelUsageDetailPanel — custo medido igual a zero (3c)', () => {
+  it('exibe "$0" distinto de "—" (null) e nunca colapsa com o estado empty/degraded', () => {
+    const text = extractText(ModelUsageDetailPanel({ vm: MEASURED_WITH_ZERO_VM, stageGroups: [] })).join(' ');
+    expect(text).toContain('$0');
+    expect(text).toContain('claude-haiku-5');
+    expect(text.toLowerCase()).not.toContain('nenhum modelo');
+    expect(text.toLowerCase()).not.toContain('não coletado');
+  });
+});
+
+describe('ModelUsageDetailPanel — estado empty (sem dado no periodo)', () => {
+  it('cai no ModelUsageEmpty (reason=empty), sem "$0" nem tabela de modelos', () => {
+    const text = extractText(ModelUsageDetailPanel({ vm: EMPTY_VM, stageGroups: [] })).join(' ');
+    expect(text).not.toContain('$0');
+    expect(text.toLowerCase()).toContain('nenhum modelo');
+  });
+});
+
+describe('ModelUsageDetailPanel — estado degraded (fonte nao coleta o dado)', () => {
+  it('cai no ModelUsageEmpty (reason=degraded), texto distinto do estado empty', () => {
+    const emptyText = extractText(ModelUsageDetailPanel({ vm: EMPTY_VM, stageGroups: [] })).join(' ');
+    const degradedText = extractText(ModelUsageDetailPanel({ vm: DEGRADED_VM, stageGroups: [] })).join(' ');
+    expect(degradedText).not.toBe(emptyText);
+    expect(degradedText.toLowerCase()).toContain('não coletado');
+  });
+});
+
+describe('ModelUsageStageBreakdown', () => {
+  it('groups=[] (correlacao onda x etapa nao resolvel) mostra mensagem propria, nao dado inventado', () => {
+    const text = extractText(ModelUsageStageBreakdown({ groups: [] })).join(' ');
+    expect(text.toLowerCase()).toContain('sem correlação');
+  });
+
+  it('renderiza cada etapa com seus modelos, sem somar custo entre etapas', () => {
+    const text = extractText(ModelUsageStageBreakdown({ groups: STAGE_GROUPS })).join(' ');
+    expect(text).toContain('execute-task');
+    expect(text).toContain('claude-sonnet-5');
+    expect(text).toContain('$246.87');
   });
 });

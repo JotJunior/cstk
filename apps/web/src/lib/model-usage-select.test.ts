@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   selectModelUsage,
   modelUsageCoverageLabel,
+  groupModelUsageByStage,
   MODEL_USAGE_SUMMARY_LIMIT,
   MODEL_USAGE_NATURE_LABEL,
 } from './model-usage-select.js';
-import type { ModelUsageResult } from '@cstk-panel/shared-types';
+import type { ModelUsageResult, ModelUsageByStage } from '@cstk-panel/shared-types';
 
 // Payload representativo no SHAPE REAL do endpoint (validado empiricamente
 // contra ~/.claude/cstk/knowledge.db em tasks.md 2.5.1/2.5.2 — camelCase
@@ -91,5 +92,34 @@ describe('selectModelUsage', () => {
     expect(modelUsageCoverageLabel(realPayload.coverage)).toBe('41 de 925 ondas medidas');
     expect(modelUsageCoverageLabel({ wavesTotal: null, wavesWithModelUsage: null, wavesWithOtelCost: null }))
       .toBe('dado não coletado nesta base');
+  });
+});
+
+describe('groupModelUsageByStage', () => {
+  it('particiona byStage por etapa preservando ordem de primeira aparicao', () => {
+    const rows: ModelUsageByStage[] = [
+      { stage: 'execute-task', model: 'claude-sonnet-5', costUsd: 246.87, totalTokens: 601627942 },
+      { stage: 'plan', model: 'claude-opus-5[1m]', costUsd: 5.1, totalTokens: 120000 },
+      { stage: 'execute-task', model: 'claude-fable-5', costUsd: 12.3, totalTokens: 45000 },
+    ];
+    const groups = groupModelUsageByStage(rows);
+    expect(groups.map((g) => g.stage)).toEqual(['execute-task', 'plan']);
+    expect(groups[0]?.entries.map((e) => e.model)).toEqual(['claude-sonnet-5', 'claude-fable-5']);
+    expect(groups[1]?.entries).toEqual([rows[1]]);
+  });
+
+  it('array vazio (correlacao onda x etapa nao resolvel) produz [] — nunca dado inventado', () => {
+    expect(groupModelUsageByStage([])).toEqual([]);
+    expect(groupModelUsageByStage(null)).toEqual([]);
+    expect(groupModelUsageByStage(undefined)).toEqual([]);
+  });
+
+  it('nao muta nem soma costUsd entre linhas do mesmo grupo (cada linha preserva seu proprio valor)', () => {
+    const rows: ModelUsageByStage[] = [
+      { stage: 'clarify', model: 'a', costUsd: 1, totalTokens: 10 },
+      { stage: 'clarify', model: 'b', costUsd: null, totalTokens: null },
+    ];
+    const groups = groupModelUsageByStage(rows);
+    expect(groups).toEqual([{ stage: 'clarify', entries: rows }]);
   });
 });

@@ -15,7 +15,7 @@
  * `costUsd`; detalhe completo em Metricas mostra `costUsd`+`totalTokens`+
  * `coverage`.
  */
-import type { ModelUsageResult, ModelUsageEntry, ModelUsageCoverage } from '@cstk-panel/shared-types';
+import type { ModelUsageResult, ModelUsageEntry, ModelUsageCoverage, ModelUsageByStage } from '@cstk-panel/shared-types';
 
 /** Limite de modelos exibidos no resumo compacto (dec-038 / CHK005). */
 export const MODEL_USAGE_SUMMARY_LIMIT = 3;
@@ -106,4 +106,39 @@ export const MODEL_USAGE_NATURE_LABEL = 'medido' as const;
 export function modelUsageCoverageLabel(coverage: ModelUsageCoverage): string {
   if (coverage.wavesTotal == null) return 'dado não coletado nesta base';
   return `${coverage.wavesWithModelUsage ?? 0} de ${coverage.wavesTotal} ondas medidas`;
+}
+
+/**
+ * Um grupo de `byStage[]` particionado por etapa — grao (etapa) x [(modelo,
+ * custoUsd, totalTokens)]. Consumido pelo detalhe completo de Metricas (3.3.1).
+ */
+export interface ModelUsageByStageGroup {
+  stage: string;
+  entries: ModelUsageByStage[];
+}
+
+/**
+ * Particiona o array plano `byStage[]` (ja vem ordenado por `costUsd` desc,
+ * `null` por ultimo — `getModelUsageByStage`, apps/server/src/db/queries/
+ * metrics.ts) em grupos por `stage`, preservando a ordem de primeira
+ * aparicao de cada etapa e a ordem relativa das linhas dentro do grupo. Regra
+ * PURA (research.md Decision 5): nenhuma agregacao/reordenacao nova, so
+ * particionamento — a soma por etapa nao e feita aqui porque o contrato ja
+ * entrega uma linha por (etapa, modelo), sem duplicar `costUsd` entre grupos.
+ *
+ * `byStage: []` (correlacao onda x etapa nao resolvel no recorte, ou fonte
+ * sem coluna `stages`) produz `[]` aqui tambem — nunca um valor inventado.
+ */
+export function groupModelUsageByStage(raw: ModelUsageByStage[] | null | undefined): ModelUsageByStageGroup[] {
+  const rows = raw ?? [];
+  const order: string[] = [];
+  const byStage = new Map<string, ModelUsageByStage[]>();
+  for (const r of rows) {
+    if (!byStage.has(r.stage)) {
+      byStage.set(r.stage, []);
+      order.push(r.stage);
+    }
+    byStage.get(r.stage)!.push(r);
+  }
+  return order.map((stage) => ({ stage, entries: byStage.get(stage) ?? [] }));
 }

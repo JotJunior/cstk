@@ -14,11 +14,13 @@ import {
   KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBars, Legend,
   AgentUsagePanel, AgentUsageEmpty,
   OtelUsagePanel, OtelUsageEmpty, otelUsageState, otelCoverageLabel, fmtUsd,
+  ModelUsageDetailPanel,
 } from '@/components/index.js';
 import type { ScatterDatum, DonutDatum } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
 import { pickTokens, tokenCoverageLabel } from '@/lib/token-source.js';
-import type { PeriodParam, AgentUsageRollup, OtelUsageRollup } from '@cstk-panel/shared-types';
+import { selectModelUsage, groupModelUsageByStage } from '@/lib/model-usage-select.js';
+import type { PeriodParam, AgentUsageRollup, OtelUsageRollup, ModelUsageResult } from '@cstk-panel/shared-types';
 
 // Cores por modelo (alinhado ao Overview)
 const MODEL_COLOR: Record<string, string> = {
@@ -425,6 +427,24 @@ export function Metrics({ period }: MetricsProps) {
                 </div>
               </div>
             );
+          }}
+        />
+      </div>
+
+      {/* Custo/tokens por modelo — detalhe completo (schema v12, wave_model_usage).
+          Consome o MESMO modulo puro (lib/model-usage-select.ts) do KPI compacto
+          do Overview — garante SC-005 (mesmos valores nas duas telas). */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+        <MetricCard
+          name="model-usage"
+          title="Custo por modelo · detalhe"
+          subtitle="medido (wave_model_usage) · por modelo e por etapa"
+          period={period}
+          renderContent={(raw) => {
+            const result = raw as ModelUsageResult | null;
+            const vm = selectModelUsage(result);
+            const stageGroups = groupModelUsageByStage(result?.byStage);
+            return <ModelUsageDetailPanel vm={vm} stageGroups={stageGroups} />;
           }}
         />
       </div>

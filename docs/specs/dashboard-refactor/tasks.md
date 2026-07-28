@@ -369,24 +369,44 @@ Ref: spec.md US1 Cenário 1/2; SC-001; decisão 1.2.2 (limite do resumo)
 
 Ref: spec.md US1 Cenário 3; SC-004/005; decisões 1.2.2/1.2.3 (acessibilidade)
 
-- [ ] 3.3.1 Adicionar card de detalhe completo por modelo e por etapa em
+- [x] 3.3.1 Adicionar card de detalhe completo por modelo e por etapa em
   `Metrics.tsx`, consumindo `byModel[]`/`byStage[]`/`coverage` via o módulo
   puro de 3.1
-- [ ] 3.3.2 Exibir rótulo de cobertura da amostra (`otelCoverageLabel()`,
+  → `selectModelUsage()` (byModel/coverage) + nova `groupModelUsageByStage()`
+  (`lib/model-usage-select.ts`, partição pura do array plano por etapa,
+  sem reagregação) consumidos por `ModelUsageDetailPanel` (`components/
+  ModelUsage.tsx`), card `model-usage` em `Metrics.tsx`. Roundtrip real
+  contra `~/.claude/cstk/knowledge.db` (dev server 3001) confirmou o shape
+  (`byStage` com múltiplas etapas/modelo, ex. `plan`×`sonnet` e `plan`×`opus`).
+- [x] 3.3.2 Exibir rótulo de cobertura da amostra (`otelCoverageLabel()`,
   `apps/web/src/components/OtelUsage.tsx:47-48`) com os 3 denominadores,
   distinto do denominador do card `otel-usage` — os dois podem divergir
   (36 vs. 46 sobre 920) e isso é esperado
-- [ ] 3.3.3 Garantir que nenhum indicador some `costUsd` com `tool_calls` ou
+  → `ModelUsageCoverageDetail` exibe `wavesWithModelUsage`/`wavesTotal` e
+  `wavesWithOtelCost`/`wavesTotal` como duas linhas independentes, nunca
+  fundidas num único número (research.md Decision 3).
+- [x] 3.3.3 Garantir que nenhum indicador some `costUsd` com `tool_calls` ou
   `agent_*` (FR-004) — validar visualmente que os rótulos "medido"/"proxy"/
   "derivado" não se misturam num mesmo componente
-- [ ] 3.3.4 Aplicar contraste WCAG 2.1 AA e/ou rótulo textual redundante na
+  → card novo consome exclusivamente `ModelUsageResult`; nenhum campo de
+  `agent-usage`/`cost-over-time` (proxy) é lido no mesmo componente.
+- [x] 3.3.4 Aplicar contraste WCAG 2.1 AA e/ou rótulo textual redundante na
   nova codificação por cor de modelo, conforme decisão 1.2.3
-- [ ] 3.3.5 Usar função de cor segura (`Object.hasOwn`/`Map`/objeto com
+  → rótulo textual do modelo sempre visível ao lado do swatch de cor (nunca
+  cor isolada), mesmo padrão do `Legend` (`components/charts.tsx`).
+- [x] 3.3.5 Usar função de cor segura (`Object.hasOwn`/`Map`/objeto com
   protótipo `null`) para o mapeamento modelo→cor, evitando prototype
   pollution via chave externa bruta (Invariante 10 do gate de segurança)
-- [ ] 3.3.6 **Teste**: componente/snapshot do card de detalhe cobrindo
+  → reusa `modelUsageColor()` (3.2, já `Object.hasOwn`-safe) em vez de
+  duplicar o mapeamento.
+- [x] 3.3.6 **Teste**: componente/snapshot do card de detalhe cobrindo
   estado com dado, "sem dado no período" (3b), degradado (3a) e valor
   medido igual a zero (3c) — os 3 estados nunca podem colapsar visualmente
+  → `components/ModelUsage.test.ts` (+16 testes: measured c/ os 3
+  denominadores, measured c/ custo zero distinto de "—", empty, degraded,
+  `ModelUsageStageBreakdown` com `groups: []` e com dado) e
+  `lib/model-usage-select.test.ts` (+3 testes de `groupModelUsageByStage`).
+  27 testes verdes no total; build+typecheck+lint verdes.
 
 ### 3.4 Consistência entre as duas telas `[A]`
 

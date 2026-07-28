@@ -10,17 +10,22 @@
  *
  * `ModelUsageMiniList` e o resumo compacto do dashboard principal (FASE 3.2,
  * dec-038/CHK005 — top-3 modelos por `costUsd`, so o campo `costUsd`
- * exibido). O detalhe completo (custoUsd+totalTokens+coverage) fica na
- * página de Métricas (FASE 3.3, ainda não implementada).
+ * exibido). `ModelUsageDetailPanel` e o detalhe completo
+ * (`costUsd`+`totalTokens`+`coverage` por modelo, mais o recorte por etapa)
+ * da página de Métricas (FASE 3.3).
  *
  * Principio III (Honestidade de Metrica): `costUsd` aqui e MEDIDO
  * (`sum(cost_usd)` sobre telemetria real) — rotulo fixo "medido"
  * (`MODEL_USAGE_NATURE_LABEL`), nunca confundido com o proxy `tool_calls`
- * nem com o mix de modelos DERIVADO de `decisions.choice`.
+ * nem com o mix de modelos DERIVADO de `decisions.choice`. Nenhum componente
+ * abaixo soma `costUsd` com `tool_calls`/`agent_*` (3.3.3) — so os campos do
+ * `ModelUsageResult`.
  */
-import type { ModelUsageVM, ModelUsageEntryVM } from '@/lib/model-usage-select.js';
+import type { ModelUsageVM, ModelUsageEntryVM, ModelUsageByStageGroup } from '@/lib/model-usage-select.js';
 import { modelUsageCoverageLabel, MODEL_USAGE_NATURE_LABEL } from '@/lib/model-usage-select.js';
+import type { ModelUsageCoverage } from '@cstk-panel/shared-types';
 import { fmtUsd } from './OtelUsage.js';
+import { fmtTokens } from '@/lib/format.js';
 import { Icon } from './Icon.js';
 
 // Mesma paleta usada no Mix de modelos (Overview.tsx) — mantida aqui em vez
@@ -119,6 +124,147 @@ export function ModelUsageMiniList({ vm }: { vm: ModelUsageVM }) {
           {MODEL_USAGE_NATURE_LABEL} · {modelUsageCoverageLabel(vm.coverage)}
         </span>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Detalhe completo (página de Métricas, FASE 3.3 — US1 Cenário 3, SC-004/005)
+// ---------------------------------------------------------------------------
+
+/**
+ * Uma linha do detalhe por modelo: cor + rótulo textual do modelo (redundante
+ * à cor, nunca só-cor — decisão 1.2.3/CHK007) + tokens + custo. Reusa
+ * `modelUsageColor` (Object.hasOwn-safe, 3.3.5) em vez de duplicar o
+ * mapeamento cor→modelo.
+ */
+function ModelUsageDetailRow({ entry }: { entry: ModelUsageEntryVM }) {
+  return (
+    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="row gap-2" style={{ minWidth: 0 }}>
+        <span
+          aria-hidden
+          style={{ width: 8, height: 8, borderRadius: 2, background: modelUsageColor(entry.model), flexShrink: 0 }}
+        />
+        <span
+          className="mono"
+          style={{ fontSize: 12, color: 'var(--text-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
+          {entry.model}
+        </span>
+      </div>
+      <div className="row gap-3" style={{ flexShrink: 0 }}>
+        <span className="mono tnum" style={{ fontSize: 11, color: 'var(--text-2)' }}>{fmtTokens(entry.totalTokens)}</span>
+        <span className="mono tnum" style={{ fontSize: 12, color: 'var(--text-0)', minWidth: 68, textAlign: 'right' }}>
+          {fmtUsd(entry.costUsd)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Recorte por etapa do pipeline — agrupado por `groupModelUsageByStage`
+ * (lib/model-usage-select.ts). `groups: []` acontece quando a correlação
+ * onda × etapa não resolve dado confiável no recorte (contrato §byStage) —
+ * distinto de "sem uso no período" (vm.state === 'empty'), por isso tem
+ * mensagem própria em vez de reusar `ModelUsageEmpty`.
+ */
+export function ModelUsageStageBreakdown({ groups }: { groups: ModelUsageByStageGroup[] }) {
+  if (groups.length === 0) {
+    return (
+      <div style={{ fontSize: 11, color: 'var(--text-3)', padding: '4px 0' }}>
+        Sem correlação onda × etapa confiável para este recorte.
+      </div>
+    );
+  }
+  return (
+    <div className="col gap-3">
+      {groups.map((g) => (
+        <div key={g.stage} className="col gap-1">
+          <div
+            className="mono"
+            style={{ fontSize: 10, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}
+          >
+            {g.stage}
+          </div>
+          {g.entries.map((e) => (
+            <div key={`${g.stage}-${e.model}`} className="row" style={{ justifyContent: 'space-between' }}>
+              <div className="row gap-2" style={{ minWidth: 0 }}>
+                <span
+                  aria-hidden
+                  style={{ width: 8, height: 8, borderRadius: 2, background: modelUsageColor(e.model), flexShrink: 0 }}
+                />
+                <span
+                  className="mono"
+                  style={{ fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  {e.model}
+                </span>
+              </div>
+              <span className="mono tnum" style={{ fontSize: 12, color: 'var(--text-0)', flexShrink: 0 }}>
+                {fmtUsd(e.costUsd)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Cobertura com os 3 denominadores INDEPENDENTES (research.md Decision 3;
+ * 3.3.2/CHK005) — distinto do rótulo de 1 denominador do resumo compacto
+ * (`modelUsageCoverageLabel`, usado por `ModelUsageMiniList`). Os dois
+ * denominadores (`wavesWithModelUsage` vs. `wavesWithOtelCost`) podem
+ * divergir sobre o mesmo `wavesTotal` (ex.: 36 vs. 46 sobre 920) — isso é
+ * esperado e nunca fundido num único número.
+ */
+function ModelUsageCoverageDetail({ coverage }: { coverage: ModelUsageCoverage }) {
+  if (coverage.wavesTotal == null) return null;
+  return (
+    <div className="col gap-1" style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+      <div>{coverage.wavesWithModelUsage ?? 0} de {coverage.wavesTotal} ondas com breakdown por modelo (wave_model_usage)</div>
+      <div>{coverage.wavesWithOtelCost ?? 0} de {coverage.wavesTotal} ondas com custo agregado (otel-usage) — denominador independente, pode divergir</div>
+    </div>
+  );
+}
+
+/**
+ * Detalhe completo por modelo e por etapa (Métricas, FASE 3.3). Consome o
+ * MESMO `ModelUsageVM` de `selectModelUsage()` usado pelo resumo compacto do
+ * Overview (SC-005: garante os mesmos valores nas duas telas) — nenhuma
+ * regra de seleção nova nasce aqui, só apresentação. Os 4 estados nunca
+ * colapsam visualmente: `measured` (inclusive quando algum modelo tem
+ * `costUsd === 0`, exibido como "$0" — nunca confundido com `empty`/
+ * `degraded`, que usam `ModelUsageEmpty`).
+ */
+export function ModelUsageDetailPanel({ vm, stageGroups }: { vm: ModelUsageVM; stageGroups: ModelUsageByStageGroup[] }) {
+  if (vm.state !== 'measured') return <ModelUsageEmpty reason={vm.state} />;
+  return (
+    <div className="col gap-4">
+      <div className="col gap-2">
+        <div
+          className="mono"
+          style={{ fontSize: 10.5, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+        >
+          Por modelo · {MODEL_USAGE_NATURE_LABEL}
+        </div>
+        {vm.entries.map((entry) => (
+          <ModelUsageDetailRow key={entry.model} entry={entry} />
+        ))}
+      </div>
+      <div className="col gap-2">
+        <div
+          className="mono"
+          style={{ fontSize: 10.5, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+        >
+          Por etapa do pipeline
+        </div>
+        <ModelUsageStageBreakdown groups={stageGroups} />
+      </div>
+      <ModelUsageCoverageDetail coverage={vm.coverage} />
     </div>
   );
 }
