@@ -10,14 +10,27 @@
 #          breakdown por tipo vira o nome do terminal — bug observado em
 #          dados reais antes do fix.
 #   INV-3: metrica AUSENTE e `null`, nunca zero fabricado (Principio VI).
-#          Vale para snapshot faltando, endpoint fora do ar e session_id
-#          divergente entre os dois snapshots.
+#          Vale para snapshot faltando, endpoint fora do ar, sessao do
+#          start sumida no end (processo do exporter trocou), mais de uma
+#          sessao ativa entre os snapshots (atribuicao ambigua) e
+#          snapshot em formato antigo (4 colunas, pre-fix).
 #   INV-4: degradacao best-effort — endpoint indisponivel sai 0 e nao
 #          derruba a onda.
 #   INV-5: `available` exige as metricas que o script consome
 #          (cost/token), nao um `claude_code_` qualquer — no cold start o
 #          exporter ja responde com session_count e o snapshot sairia sem
 #          session_id, descartando a onda inteira.
+#   INV-6: duplicatas da mesma chave (session, source, model, type) sao
+#          SOMADAS nos dois lados do join, nunca sobrescritas. O exporter
+#          emite linhas separadas por agent_name/skill_name/effort; o awk
+#          antigo fazia s[k]=$4 (ultima vence) e imprimia CADA duplicata
+#          do end contra essa base unica — o "delta" virava ~acumulado
+#          congelado. Bug real 2026-07-28 (feature-00c dashboard-refactor):
+#          14 ondas bit-identicas de 212.447.680 tokens / $88.
+#   INV-7: linhas de OUTRAS sessoes do mesmo exporter (processo claude -c
+#          longevo expoe mais de uma sessao) nao contaminam o delta: a
+#          sessao congelada e ignorada e o resultado e atribuido a UNICA
+#          sessao que cresceu entre os snapshots.
 #
 # As fixtures reproduzem o formato REAL do exporter Prometheus do Claude
 # Code 2.1.220 (ordem dos labels inclusive — `terminal_type` antes de
@@ -63,6 +76,18 @@ _fixture() {
 _snap() {
   # $1=state-dir $2=phase $3=fixture-file
   capture sh "$SCRIPT" snapshot --state-dir "$1" --phase "$2" --endpoint "file://$3"
+}
+
+# Linhas avulsas para fixtures multi-sessao / com duplicata de chave.
+# _cost_line SID SOURCE MODEL VALUE [EXTRA_LABELS]
+_cost_line() {
+  printf 'claude_code_cost_usage_total{%s} %s\n' \
+    "$(_labels "$1" "$2" "$3" "${5:-}")" "$4"
+}
+# _tok_line SID SOURCE MODEL TYPE VALUE [EXTRA_LABELS]
+_tok_line() {
+  printf 'claude_code_token_usage_total{%s} %s\n' \
+    "$(_labels "$1" "$2" "$3" ",type=\"$4\"${6:-}")" "$5"
 }
 
 # ==== INV-2: ancoragem do label `type` ====
@@ -153,6 +178,130 @@ scenario_delta_negativo_e_clampado() {
   return 0
 }
 
+# ==== INV-6: duplicatas da mesma chave sao somadas, nunca sobrescritas ====
+
+scenario_delta_soma_duplicatas_da_mesma_chave() {
+  _sd="$TMPDIR_TEST/dup"; mkdir -p "$_sd"
+  _fs="$TMPDIR_TEST/dup-s.txt"; _fe="$TMPDIR_TEST/dup-e.txt"
+  # Mesma chave (sess, subagent, sonnet, cacheRead) em DUAS linhas que so
+  # diferem no agent_name — exatamente o que o exporter real emite.
+  {
+    _tok_line sess-dup subagent "claude-sonnet-5" cacheRead 100 ',agent_name="general-purpose"'
+    _tok_line sess-dup subagent "claude-sonnet-5" cacheRead 200 ',agent_name="custom"'
+  } > "$_fs"
+  {
+    _tok_line sess-dup subagent "claude-sonnet-5" cacheRead 150 ',agent_name="general-purpose"'
+    _tok_line sess-dup subagent "claude-sonnet-5" cacheRead 400 ',agent_name="custom"'
+  } > "$_fe"
+  _snap "$_sd" start "$_fs"
+  _snap "$_sd" end   "$_fe"
+  capture sh "$SCRIPT" delta --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "delta exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  _tot=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.total_tokens')
+  # (150+400) - (100+200) = 250. Com sobrescrita, sairia 200 (400-200,
+  # com a duplicata de 150 clampada contra base errada de 200).
+  [ "$_tot" = "250" ] || { _fail "soma duplicatas" "esperado 250, obtido '$_tot'"; return 1; }
+  _cr=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.by_source.subagent.cache_read')
+  [ "$_cr" = "250" ] || { _fail "cache_read" "esperado 250, obtido '$_cr'"; return 1; }
+  return 0
+}
+
+# ==== INV-7: isolamento por sessao dentro do mesmo exporter ====
+
+# Reproducao do bug real (2026-07-28): exporter de um processo claude -c
+# longevo expoe uma sessao antiga CONGELADA com acumulado gigante ao lado
+# da sessao corrente. O acumulado nao pode vazar para o delta da onda.
+scenario_delta_ignora_sessao_congelada_de_outro_processo() {
+  _sd="$TMPDIR_TEST/frozen"; mkdir -p "$_sd"
+  _fs="$TMPDIR_TEST/fz-s.txt"; _fe="$TMPDIR_TEST/fz-e.txt"
+  {
+    _tok_line sess-old main "claude-opus-5[1m]" input 212000000
+    _cost_line sess-old main "claude-opus-5[1m]" 88.0
+    _tok_line sess-cur main "claude-opus-5[1m]" input 100
+    _cost_line sess-cur main "claude-opus-5[1m]" 1.0
+  } > "$_fs"
+  {
+    _tok_line sess-old main "claude-opus-5[1m]" input 212000000
+    _cost_line sess-old main "claude-opus-5[1m]" 88.0
+    _tok_line sess-cur main "claude-opus-5[1m]" input 400
+    _cost_line sess-cur main "claude-opus-5[1m]" 2.5
+  } > "$_fe"
+  _snap "$_sd" start "$_fs"
+  _snap "$_sd" end   "$_fe"
+  capture sh "$SCRIPT" delta --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "delta exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  _tot=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.total_tokens')
+  [ "$_tot" = "300" ] || { _fail "tokens da onda" "esperado 300 (so a sessao corrente), obtido '$_tot'"; return 1; }
+  _cost=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.total_cost_usd')
+  [ "$_cost" = "1.5" ] || { _fail "custo da onda" "esperado 1.5, obtido '$_cost'"; return 1; }
+  _sid=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.session_id')
+  [ "$_sid" = "sess-cur" ] || { _fail "atribuicao" "esperado sess-cur, obtido '$_sid'"; return 1; }
+  return 0
+}
+
+# Duas sessoes crescendo ao mesmo tempo: impossivel atribuir a onda a uma
+# delas — melhor ausente que errado (Principio VI).
+scenario_delta_duas_sessoes_ativas_e_null() {
+  _sd="$TMPDIR_TEST/ambig"; mkdir -p "$_sd"
+  _fs="$TMPDIR_TEST/am-s.txt"; _fe="$TMPDIR_TEST/am-e.txt"
+  {
+    _tok_line sess-a main "claude-opus-5[1m]" input 100
+    _tok_line sess-b main "claude-opus-5[1m]" input 500
+  } > "$_fs"
+  {
+    _tok_line sess-a main "claude-opus-5[1m]" input 300
+    _tok_line sess-b main "claude-opus-5[1m]" input 900
+  } > "$_fe"
+  _snap "$_sd" start "$_fs"
+  _snap "$_sd" end   "$_fe"
+  capture sh "$SCRIPT" delta --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  [ "$(printf '%s' "$_CAPTURED_STDOUT" | tr -d '[:space:]')" = "null" ] \
+    || { _fail "null" "duas sessoes ativas deve dar null, obtido '$_CAPTURED_STDOUT'"; return 1; }
+  printf '%s' "$_CAPTURED_STDERR" | grep -q "ambigua" \
+    || { _fail "stderr" "faltou aviso de atribuicao ambigua"; return 1; }
+  return 0
+}
+
+# Sessao que nasce DEPOIS do snapshot inicial (ex.: nova conversa no mesmo
+# processo): todo o consumo dela aconteceu dentro da janela da onda, entao
+# conta a partir de base 0 — desde que seja a unica que cresceu.
+scenario_delta_sessao_nova_no_end_atribuida_do_zero() {
+  _sd="$TMPDIR_TEST/newsess"; mkdir -p "$_sd"
+  _fs="$TMPDIR_TEST/nw-s.txt"; _fe="$TMPDIR_TEST/nw-e.txt"
+  _tok_line sess-a main "claude-opus-5[1m]" input 100 > "$_fs"
+  {
+    _tok_line sess-a main "claude-opus-5[1m]" input 100
+    _tok_line sess-b main "claude-opus-5[1m]" input 50
+  } > "$_fe"
+  _snap "$_sd" start "$_fs"
+  _snap "$_sd" end   "$_fe"
+  capture sh "$SCRIPT" delta --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  _tot=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.total_tokens')
+  [ "$_tot" = "50" ] || { _fail "sessao nova" "esperado 50, obtido '$_tot'"; return 1; }
+  _sid=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.session_id')
+  [ "$_sid" = "sess-b" ] || { _fail "atribuicao" "esperado sess-b, obtido '$_sid'"; return 1; }
+  return 0
+}
+
+# Transicao de upgrade: snapshot start gravado pela versao antiga (4
+# colunas, sem session_id por linha) nao permite delta confiavel.
+scenario_delta_snapshot_legado_4col_vira_null() {
+  _sd="$TMPDIR_TEST/legacy"; mkdir -p "$_sd"
+  printf '# session_id\tsess-l\nmain\tclaude-opus-5[1m]\tinput\t100\n' > "$_sd/otel-start.tsv"
+  _fe="$TMPDIR_TEST/lg-e.txt"
+  _tok_line sess-l main "claude-opus-5[1m]" input 400 > "$_fe"
+  _snap "$_sd" end "$_fe"
+  capture sh "$SCRIPT" delta --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  [ "$(printf '%s' "$_CAPTURED_STDOUT" | tr -d '[:space:]')" = "null" ] \
+    || { _fail "null" "snapshot legado deve dar null, obtido '$_CAPTURED_STDOUT'"; return 1; }
+  printf '%s' "$_CAPTURED_STDERR" | grep -q "formato antigo" \
+    || { _fail "stderr" "faltou aviso de formato antigo"; return 1; }
+  return 0
+}
+
 # ==== INV-3: ausente e null, nunca zero ====
 
 scenario_delta_sem_snapshot_start_e_null() {
@@ -167,7 +316,10 @@ scenario_delta_sem_snapshot_start_e_null() {
   return 0
 }
 
-scenario_delta_session_divergente_e_null() {
+# Sessao inteira do start ausente no end = o processo dono do exporter
+# trocou no meio da onda (num exporter vivo, sessao nunca desaparece do
+# /metrics — contadores sao cumulativos por processo).
+scenario_delta_sessao_do_start_sumida_e_null() {
   _sd="$TMPDIR_TEST/divsess"; mkdir -p "$_sd"
   _fs="$TMPDIR_TEST/v-start.txt"; _fe="$TMPDIR_TEST/v-end.txt"
   _fixture "$_fs" "sess-AAA" 1.0 1.0 10 5
@@ -176,9 +328,9 @@ scenario_delta_session_divergente_e_null() {
   _snap "$_sd" end   "$_fe"
   capture sh "$SCRIPT" delta --state-dir "$_sd"
   [ "$(printf '%s' "$_CAPTURED_STDOUT" | tr -d '[:space:]')" = "null" ] \
-    || { _fail "null" "session_id divergente deve dar null (processo trocou)"; return 1; }
-  printf '%s' "$_CAPTURED_STDERR" | grep -q "session_id divergente" \
-    || { _fail "stderr" "faltou aviso de session_id divergente"; return 1; }
+    || { _fail "null" "sessao do start sumida deve dar null (processo trocou)"; return 1; }
+  printf '%s' "$_CAPTURED_STDERR" | grep -q "ausente no snapshot final" \
+    || { _fail "stderr" "faltou aviso de sessao ausente no snapshot final"; return 1; }
   return 0
 }
 
