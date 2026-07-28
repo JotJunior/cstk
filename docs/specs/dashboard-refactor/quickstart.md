@@ -122,9 +122,16 @@ e checando camelCase) para incluir a rota nova. Reforçar a paridade DTO em
 
 ## Cenário 3 — Estado "sem dado" ≠ zero (US1 cenário 2, FR-010, Princípio II)
 
-**3a — tabela ausente (banco v10/v11)**
+**3a — tabela ausente (banco v7)**
 
-1. Subir o servidor com `CSTK_KNOWLEDGE_DB=apps/server/test/knowledge-fixture-v10.db`.
+> Nota (verificação FASE 7.2): `knowledge-fixture-v10.db` já tem
+> `schema_meta.schema_version=12` e a tabela `wave_model_usage` presente
+> (0 linhas) — não exercita o caminho `table-empty`, e sim o caso 3b
+> (tabela presente, sem linhas). A fixture que genuinamente carece da
+> tabela (schema v7) é `knowledge-fixture.db`, a mesma usada pelos testes
+> automatizados (`roundtrip.test.ts:237`, `routes.test.ts:306`).
+
+1. Subir o servidor com `CSTK_KNOWLEDGE_DB=apps/server/test/knowledge-fixture.db`.
 2. `curl -s 'http://127.0.0.1:3001/api/v1/metrics/model-usage' | jq '.meta'`
 3. Abrir as duas telas.
 

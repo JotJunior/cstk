@@ -705,19 +705,43 @@ Ref: quickstart.md (gates + Cenários 1-7); plan.md §Re-check de Constitution
 
 ### 7.2 Verificação manual conforme quickstart `[A]`
 
-- [ ] 7.2.1 Cenário 1 — custo por modelo visível e consistente nas duas
+- [x] 7.2.1 Cenário 1 — custo por modelo visível e consistente nas duas
   telas (dev server, banco real v12)
-- [ ] 7.2.2 Cenário 2 — cobertura da amostra exibida com os denominadores
-  divergentes esperados (36 vs. 46 sobre 920)
-- [ ] 7.2.3 Cenário 3 — estados "sem dado" (3a tabela ausente, 3b período
+  → Verificado via sonda HTTP equivalente (browser interativo
+  indisponível; precedente dec-060): `GET /metrics/model-usage?period=all`
+  contra `~/.claude/cstk/knowledge.db` retorna `byModel` com
+  `claude-sonnet-5` como maior custo (camelCase, sem tradução), consumido
+  identicamente por `model-usage-select.ts`/`ModelUsage.tsx`. Evidência:
+  dec-067.
+- [x] 7.2.2 Cenário 2 — cobertura da amostra exibida com os denominadores
+  divergentes esperados (banco real atual: 47 vs. 57 sobre 931 — cresceu
+  desde o exemplo do contrato, denominadores continuam divergentes por
+  desenho)
+  → dec-068.
+- [x] 7.2.3 Cenário 3 — estados "sem dado" (3a tabela ausente, 3b período
   vazio, 3c zero medido) nunca colapsam visualmente
-- [ ] 7.2.4 Cenário 4 — cards obsoletos ausentes, layout coerente
-- [ ] 7.2.5 Cenário 5 — truncamento top-10 + "Outros" correto nos 4 casos de
+  → 3a testado com `knowledge-fixture.db` (schema v7, sem
+  `wave_model_usage`) — a fixture `-v10.db` citada originalmente no
+  quickstart já tem a tabela presente (0 linhas) e não exercita este
+  caminho; quickstart.md corrigido. 3b/3c confirmados por sonda + código
+  (`fmtUsd`) + teste existente. Evidência: dec-069, dec-070.
+- [x] 7.2.4 Cenário 4 — cards obsoletos ausentes, layout coerente
+  → grep confirma ausência de "Custo por feature"/"Funil do pipeline" fora
+  de testes; `GET /overview` preserva `funnel[]`/`leaderboard[]`.
+  Evidência: dec-071.
+- [x] 7.2.5 Cenário 5 — truncamento top-10 + "Outros" correto nos 4 casos de
   entrada
-- [ ] 7.2.6 Cenário 6 — mix de modelos por etapa com rótulos reais e ordem
+  → `truncate-bars.test.ts` 7/7 passed (execução ao vivo). Evidência:
+  dec-072.
+- [x] 7.2.6 Cenário 6 — mix de modelos por etapa com rótulos reais e ordem
   do pipeline
-- [ ] 7.2.7 Cenário 7 — `npm run lint:readonly-check` e revisão da
+  → `GET /metrics/model-mix-by-stage` sobre banco real retorna rótulo real
+  (`model-routing`), não `'?'`; `model-mix-by-stage-select.test.ts` 5/5
+  passed. Evidência: dec-073.
+- [x] 7.2.7 Cenário 7 — `npm run lint:readonly-check` e revisão da
   superfície de rotas adicionada
+  → `OK: no mutation verbs`; 18 rotas em `metrics.ts`, todas `server.get`.
+  Evidência: dec-074.
 
 ---
 
