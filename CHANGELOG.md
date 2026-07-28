@@ -5,6 +5,19 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.19.2] - 2026-07-27
+
+### Corrigido
+
+- **Etapa longa quebrava a linha do tempo de ondas**: a célula `Etapa` renderiza
+  `waves.stages` cru, e em casos raros de erro o orquestrador grava ali um
+  parágrafo inteiro em vez do nome da etapa (observado: `onda-029` com o texto
+  completo da conclusão da task). Numa coluna de grid de 120px o texto quebrava
+  em dezenas de linhas, esticando a linha da onda e empurrando o restante da
+  tabela para fora da tela. A célula passa a truncar em uma única linha
+  (`overflow`/`text-overflow`/`white-space`, com `min-width: 0` por ser item de
+  grid) e mantém o valor íntegro no `title` — nada é descartado, só contido.
+
 ## [0.19.1] - 2026-07-26
 
 ### Corrigido
@@ -962,6 +975,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.19.2]: https://github.com/JotJunior/cstk-panel/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/JotJunior/cstk-panel/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/JotJunior/cstk-panel/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/JotJunior/cstk-panel/compare/v0.17.0...v0.18.0
