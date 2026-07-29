@@ -1450,6 +1450,19 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
   # stage, agent, choice, justification_score (score), context, rationale,
   # evidence, options_considered (array de todas as opcoes avaliadas —
   # serializado como texto JSON via tojson para caber na coluna TEXT 'options').
+  #
+  # NORMALIZACAO DERIVADA (so na ingestao; state.json intacto — mesmo
+  # precedente do etapa_corrente): Decisoes de roteamento LEGADAS gravaram
+  # stage='model-routing' (categoria) em vez da fase da onda; a fase real
+  # ficou embutida no contexto "Selecao de modelo para onda N (fase <f>)".
+  # Consumidores derivados (painel: GROUP BY stage) assumem stage = etapa
+  # SDD, entao extraimos a fase do contexto ao ingerir. Decisoes novas ja
+  # gravam a fase direto (model-routing.sh wave-select); overrides do
+  # operador (contexto "Override...") nao casam o padrao e ficam como estao.
+  # NOTA FR-017: o discriminador aqui e stage='model-routing' + sufixo
+  # "(fase X)" no contexto — de proposito SEM o lead "Selecao de modelo"
+  # em codigo, que e reservado ao agregador delegado (auditado pelo
+  # cenario m63 de test_recall.sh; nenhuma logica de mix vive aqui).
   _isj_n_dec=0
   _isj_dec_lines=$(jq -r '
     ((.decisions // .decisoes) // [])
@@ -1459,7 +1472,12 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
        (($d.wave_id // $d.onda_id) // "onda"),
        ($d.timestamp // $d.data // ""),
        (($d.agent // $d.agente) // ""),
-       (($d.stage // $d.etapa) // ""),
+       ((($d.stage // $d.etapa) // "") as $st
+        | (($d.context // $d.contexto) // "") as $cx
+        | if $st == "model-routing"
+             and ($cx | test("\\(fase [a-z0-9-]+\\)$"))
+          then ($cx | capture("\\(fase (?<f>[a-z0-9-]+)\\)$").f)
+          else $st end),
        (($d.choice // $d.escolha) // ""),
        (($d.score // $d.justification_score // $d.score_justificativa // "")|tostring),
        (($d.context // $d.contexto) // ""),

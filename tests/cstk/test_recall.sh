@@ -3902,4 +3902,55 @@ scenario_wmu8_zero_legitimo_preservado() {
   return 0
 }
 
+# =========================================================================
+# Cenario MRS1 — normalizacao de stage nas Decisoes de roteamento LEGADAS:
+# stage='model-routing' (categoria) e a fase real so no contexto "(fase X)".
+# A ingestao deriva stage=<fase> (state.json intacto — mesmo precedente do
+# etapa_corrente). Override do operador e decisao comum NAO sao tocados.
+# =========================================================================
+scenario_mrs1_stage_roteamento_normaliza_fase() {
+  _have_deps || return 0
+  _mrs_dir="$TMPDIR_TEST/featMRS"
+  mkdir -p "$_mrs_dir"
+  cat > "$_mrs_dir/state.json" <<'JSON'
+{
+  "short_name": "featMRS",
+  "execucao": { "id": "exec-featMRS", "projeto_alvo_path": "/home/u/projMRS" },
+  "decisoes": [
+    { "id": "dec-001", "onda_id": "onda-007", "timestamp": "2026-01-01T00:00:00Z",
+      "etapa": "model-routing", "agente": "agente-00c-feature-orchestrator",
+      "escolha": "model:opus", "score_justificativa": 0,
+      "opcoes_consideradas": ["haiku","sonnet","opus","manter-atual"],
+      "contexto": "Selecao de modelo para onda 7 (fase constitution)",
+      "justificativa": "sugerido=opus aplicado=opus origem=mapa | faixa=profunda fase=constitution (mapa primario)",
+      "evidencia": null },
+    { "id": "dec-002", "onda_id": "onda-007", "timestamp": "2026-01-01T00:05:00Z",
+      "etapa": "model-routing", "agente": "operador",
+      "escolha": "model-override:haiku", "score_justificativa": 0,
+      "opcoes_consideradas": [],
+      "contexto": "Override de modelo para onda 7",
+      "justificativa": "override manual do operador para a onda 7",
+      "evidencia": null },
+    { "id": "dec-003", "onda_id": "onda-008", "timestamp": "2026-01-02T00:00:00Z",
+      "etapa": "specify", "agente": "orch", "escolha": "iniciar",
+      "score_justificativa": 2, "opcoes_consideradas": ["iniciar","adiar"],
+      "contexto": "decisao comum de pipeline", "justificativa": "porque sim porque nao",
+      "evidencia": null }
+  ],
+  "ondas": [ { "id": "onda-007", "skills_invoked": [] } ]
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_mrs_dir" --db "$TMPDIR_TEST/k.db" || return 1
+  # (a) roteamento legado: stage derivado da fase do contexto.
+  _st1=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT stage FROM decisions WHERE source_id='dec-001' AND feature='featMRS'")
+  [ "$_st1" = "constitution" ] || { _fail "MRS1 roteamento normalizado" "esperado constitution, obtido '$_st1'"; return 1; }
+  # (b) override do operador NAO e normalizado (contexto nao casa o lead).
+  _st2=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT stage FROM decisions WHERE source_id='dec-002' AND feature='featMRS'")
+  [ "$_st2" = "model-routing" ] || { _fail "MRS1 override intacto" "esperado model-routing, obtido '$_st2'"; return 1; }
+  # (c) decisao comum intacta.
+  _st3=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT stage FROM decisions WHERE source_id='dec-003' AND feature='featMRS'")
+  [ "$_st3" = "specify" ] || { _fail "MRS1 decisao comum intacta" "esperado specify, obtido '$_st3'"; return 1; }
+  return 0
+}
+
 run_all_scenarios
