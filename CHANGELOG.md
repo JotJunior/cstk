@@ -5,6 +5,35 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.33.4] - 2026-07-29
+
+Documentação do modo de falha silencioso da telemetria OTel com múltiplos
+processos do Claude Code abertos — diagnóstico de caso real em que uma
+execução inteira de 16 ondas não mediu consumo nenhum.
+
+### Fixed
+
+- **Disputa da porta fixa 9464 do exporter OTel documentada em todas as
+  frentes.** Só UM processo do Claude Code consegue o bind da porta do
+  exporter Prometheus — o primeiro lançado ganha; qualquer outro processo
+  simultâneo (outra aba de terminal, outro projeto) falha o bind em
+  silêncio: as métricas dele não são expostas em lugar nenhum, os snapshots
+  por onda scrapeiam as sessões velhas do processo vencedor e o guard do
+  delta descarta o resultado corretamente (Princípio VI) — `otel_usage`
+  fica `null` em TODAS as ondas da execução e o painel não mostra custo.
+  Caso real (2026-07-29): um `claude -c` de dois dias de outro projeto
+  segurava a porta e a execução de 16 ondas da feature webhooks não mediu
+  nada. Mitigação documentada: função-launcher no shell rc que sorteia
+  porta livre por processo (bind na porta `0` → kernel escolhe) e exporta
+  `OTEL_EXPORTER_PROMETHEUS_PORT` + `CSTK_OTEL_ENDPOINT` correspondentes —
+  zero configuração por sessão, cada processo mede isolado, e o guard
+  "exatamente uma sessão cresceu" passa a ver só as sessões daquele
+  processo (descartes por ambiguidade praticamente desaparecem). Snippet
+  completo + diagnóstico via `lsof` nos READMEs (seção "Real per-wave
+  cost" / "Custo real por onda"), bloco "DISPUTA DA PORTA FIXA" no header
+  do `otel-usage.sh`, e aviso no pre-flight de telemetria dos commands
+  `/agente-00c` e `/feature-00c`.
+
 ## [5.33.3] - 2026-07-29
 
 Guard de preflight para o único ambiente onde `cstk serve` quebrava sempre:
@@ -4385,6 +4414,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[5.33.4]: https://github.com/JotJunior/cstk/releases/tag/v5.33.4
 [5.33.3]: https://github.com/JotJunior/cstk/releases/tag/v5.33.3
 [5.33.2]: https://github.com/JotJunior/cstk/releases/tag/v5.33.2
 [5.33.1]: https://github.com/JotJunior/cstk/releases/tag/v5.33.1
