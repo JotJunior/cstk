@@ -339,3 +339,7 @@ erro tecnico de baixo nivel do runtime de container.
 - **SC-006**: Quando o runtime de container esta ausente ou inacessivel, o
   usuario recebe um diagnostico acionavel em menos de 5 segundos, sem que o
   sistema tenha tentado nenhuma operacao de rede antes dessa checagem.
+
+## Delta Requirements
+
+**Skip**: corpus docs/specs/current/ inexistente no momento do arquivamento (primeiro ciclo pos living-specs); backfill de capabilities historicas deferido pelo operador (living-specs 6.4.1/6.4.2); comportamento corrente documentado em CLAUDE.md/README — operador via review-features, 2026-07-28

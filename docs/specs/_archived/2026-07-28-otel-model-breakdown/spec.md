@@ -263,7 +263,4 @@ aditivas de `waves` sao populadas para essas ondas.
 
 ## Delta Requirements
 
-**Skip**: nao ha corpus `docs/specs/current/` com capability documentada
-sobre a knowledge.db/ingestao OTel neste projeto (diretorio inexistente
-no momento desta spec) — feature aditiva sobre schema versionado, sem
-capability ativa documentada para dar delta. — agente-00c-feature-orchestrator, 2026-07-28
+**Skip**: nao ha corpus `docs/specs/current/` com capability documentada sobre a knowledge.db/ingestao OTel neste projeto (diretorio inexistente no momento desta spec); feature aditiva sobre schema versionado, sem capability ativa documentada para dar delta — agente-00c-feature-orchestrator, 2026-07-28

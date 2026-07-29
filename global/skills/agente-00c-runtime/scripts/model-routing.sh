@@ -1117,6 +1117,14 @@ _mr_cmd_phase_model_lookup() {
 # distinto do lead legado "Selecao de modelo para subagente <T>", para
 # o agregador da FASE 6 distinguir as duas geracoes sem colisao (FR-021).
 #
+# Campo stage/etapa da Decisao = a FASE da onda (specify|plan|...), nao a
+# categoria "model-routing" — consumidores derivados (knowledge.db/painel)
+# agrupam por stage assumindo etapa SDD. O discriminador de decisao de
+# roteamento e o LEAD DO CONTEXTO (acima), nunca o stage. Fase vazia
+# degrada para "model-routing" (register exige --etapa nao-vazio).
+# Overrides do operador (choice model-override:*) seguem com
+# stage=model-routing — sao pre-onda, a fase pode nao ser conhecida.
+#
 # Exit codes: 0 sucesso (inclui fallback graceful); 2 uso incorreto.
 #   NUNCA aborta por model-selector ausente/erro.
 #
@@ -1271,11 +1279,13 @@ _mr_cmd_wave_select() {
   # Reader (schema-en-migration): chaves EN com fallback pt-BR
   # ((.decisions // .decisoes), (.stage // .etapa), (.context // .contexto),
   #  (.wave_id // .onda_id), (.rationale // .justificativa), (.choice // .escolha)).
+  # Discriminador = lead do contexto (FR-021), NAO o stage: Decisoes novas
+  # gravam stage=<fase da onda>; legadas gravaram stage=model-routing. O
+  # lead casa as duas geracoes sem colisao com overrides/legado-subagente.
   _mr_ws_existing=$(
     jq -r \
       --arg onda "$_mr_ws_onda" \
       '[(.decisions // .decisoes // [])[]?
-         | select((.stage // .etapa) == "model-routing")
          | select(((.context // .contexto) // "") | startswith("Selecao de modelo para onda "))
          | select((.wave_id // .onda_id) == $onda)
        ][-1] // empty
@@ -1440,10 +1450,16 @@ _mr_cmd_wave_select() {
   _mr_ws_decscript="${0%/*}/state-decisions.sh"
   _mr_ws_ondascript="${0%/*}/state-ondas.sh"
 
+  # stage da Decisao = fase da onda (consumidores derivados agrupam por
+  # stage como etapa SDD). Fase vazia degrada para "model-routing" — o
+  # register exige --etapa nao-vazio e o lead do contexto ja discrimina.
+  _mr_ws_dec_etapa="$_mr_ws_etapa"
+  [ -n "$_mr_ws_dec_etapa" ] || _mr_ws_dec_etapa="model-routing"
+
   # Registrar. score 3 exigiria evidencia; usamos 0 ou 2 (refino) -> ok.
   _mr_ws_dec_id=$(
     sh "$_mr_ws_decscript" register --state-dir "$_mr_ws_sdir" \
-      --agente "agente-00c-feature-orchestrator" --etapa "model-routing" \
+      --agente "agente-00c-feature-orchestrator" --etapa "$_mr_ws_dec_etapa" \
       --contexto "$_mr_ws_ctx" \
       --opcoes '["haiku","sonnet","opus","manter-atual"]' \
       --escolha "$_mr_ws_escolha" \

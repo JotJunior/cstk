@@ -2524,4 +2524,62 @@ scenario_ws_state_ausente_exit_2() {
   assert_exit 2 sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST" || return 1
 }
 
+# ---- C13: stage da Decisao = fase da onda (nao a categoria) ----
+# Consumidores derivados (knowledge.db/painel) agrupam por decisions.stage
+# assumindo etapa SDD; a categoria "model-routing" sequestrava o campo e
+# colapsava o mix de modelos numa unica barra.
+scenario_ws_c13_stage_grava_fase_da_onda() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c13" plan || return 2
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c13"
+  [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C13 stdout=opus (mapa plan)" "$_CAPTURED_STDOUT"; return 1; }
+  jq -e '
+    .decisions[-1]
+    | (.stage == "plan")
+      and ((.context // "") | test("\\(fase plan\\)$"))
+  ' "$TMPDIR_TEST/c13/state.json" >/dev/null 2>&1 \
+    || { _fail "C13 stage=plan (fase da onda, nao model-routing)" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c13/state.json")"; return 1; }
+}
+
+# ---- C14: idempotencia casa registro LEGADO (stage=model-routing) ----
+# Decisoes gravadas antes do fix tem stage=model-routing; o discriminador
+# de idempotencia e o lead do contexto (FR-021), entao resume sobre state
+# legado NAO pode registrar 2a Decisao.
+scenario_ws_c14_idempotencia_registro_legado() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  mkdir -p "$TMPDIR_TEST/c14"
+  jq -n '{
+    current_stage: "plan",
+    waves: [{ id: "onda-007", skills_invoked: [] }],
+    accumulated_metrics: {},
+    decisions: [{
+      id: "dec-001", wave_id: "onda-007", stage: "model-routing",
+      context: "Selecao de modelo para onda 7 (fase plan)",
+      choice: "model:opus",
+      rationale: "sugerido=opus aplicado=opus origem=mapa | faixa=profunda fase=plan (mapa primario)"
+    }]
+  }' > "$TMPDIR_TEST/c14/state.json"
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c14"
+  [ "$_CAPTURED_STDOUT" = "opus" ] || { _fail "C14 stdout=opus (eco do legado)" "$_CAPTURED_STDOUT"; return 1; }
+  _c14_n=$(jq '.decisions | length' "$TMPDIR_TEST/c14/state.json")
+  [ "$_c14_n" = "1" ] || { _fail "C14 nenhuma 2a Decisao sobre legado" "n=$_c14_n"; return 1; }
+}
+
+# ---- C15: fase vazia degrada stage para "model-routing" ----
+# register exige --etapa nao-vazio; sem fase resolvida o fallback preserva
+# o rotulo antigo (lead do contexto segue discriminando).
+scenario_ws_c15_fase_vazia_stage_fallback() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  mktemp_test || return 2
+  _ws_state "$TMPDIR_TEST/c15" "" || return 2
+  capture sh "$SCRIPT" wave-select --state-dir "$TMPDIR_TEST/c15"
+  [ "$_CAPTURED_STDOUT" = "manter-atual" ] || { _fail "C15 stdout=manter-atual (fase vazia)" "$_CAPTURED_STDOUT"; return 1; }
+  jq -e '
+    .decisions[-1] | (.stage == "model-routing")
+  ' "$TMPDIR_TEST/c15/state.json" >/dev/null 2>&1 \
+    || { _fail "C15 stage fallback=model-routing" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c15/state.json")"; return 1; }
+}
+
 run_all_scenarios "$0"

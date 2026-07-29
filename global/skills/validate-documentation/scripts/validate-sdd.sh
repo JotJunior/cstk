@@ -204,7 +204,13 @@ validate_spec_profile() {
   # Reusa a convencao ja aplicada ao perfil UC existente (SKILL.md, Gotcha
   # "IDs duplicados dentro do mesmo documento sao erro, nao aviso") — nao
   # introduz FR novo (CHK004/CHK013 [Gap] resolvido em create-tasks).
-  _dup_ids=$(grep -oE '\*\*(FR|SC)-[0-9]+\*\*' "$FILE" 2>/dev/null \
+  # A secao "## Delta Requirements" (living-specs) REPETE por contrato os
+  # mesmos FR-NNN da secao Functional Requirements (delta-section-format.md
+  # regra 4, entradas ADDED) — fica fora da varredura para nao gerar falso
+  # duplicate-id em spec com delta preenchido.
+  _dup_ids=$(awk '/^## Delta Requirements[[:space:]]*$/ {skip=1; next}
+      skip && /^## / {skip=0} !skip' "$FILE" 2>/dev/null \
+    | grep -oE '\*\*(FR|SC)-[0-9]+\*\*' \
     | tr -d '*' | sort | uniq -d) || _dup_ids=""
   if [ -n "$_dup_ids" ]; then
     for _id in $_dup_ids; do

@@ -332,3 +332,7 @@ As fronteiras abaixo tornam formal o que ja estava implicito em
   de uso nao esta disponivel (Constitution Principio VI, SC-004). Um
   spawn sem dado observavel permanece marcado `indisponivel`,
   nunca recebe um numero calculado/estimado em seu lugar.
+
+## Delta Requirements
+
+**Skip**: corpus docs/specs/current/ inexistente no momento do arquivamento (primeiro ciclo pos living-specs); backfill de capabilities historicas deferido pelo operador (living-specs 6.4.1/6.4.2); comportamento corrente documentado em CLAUDE.md/README — operador via review-features, 2026-07-28
