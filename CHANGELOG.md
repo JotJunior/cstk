@@ -5,6 +5,30 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.33.3] - 2026-07-29
+
+Guard de preflight para o único ambiente onde `cstk serve` quebrava sempre:
+Windows + WSL2 sem Node.js instalado dentro da distro.
+
+### Fixed
+
+- **`serve.sh`: bloqueia o npm do WINDOWS vazando via interop de PATH do
+  WSL.** Sem Node.js na distro, `command -v npm` resolve para o binário do
+  Windows (`/mnt/c/Program Files/nodejs/npm` — denunciado no caso real pelo
+  cache em `C:\Users\...\npm-cache`); esse npm enxerga a árvore Linux pelo
+  caminho UNC `\\wsl.localhost\<distro>\...`, onde os symlinks de
+  workspaces falham (`EISDIR` fatal em `node_modules/@cstk-panel/*`) e o
+  cleanup falha (`EPERM rmdir`) — `npm install` morria no meio com
+  stacktrace críptico. Novo `_serve_check_npm_interop` (WSL detectado via
+  `WSL_DISTRO_NAME` ou `/proc/version` contendo "microsoft"; binário
+  Windows por `/mnt/*`, `*.exe` ou `*.cmd`) aborta ANTES de qualquer
+  download com orientação acionável: instalar Node.js DENTRO da distro
+  (apt/nvm) ou usar `cstk serve --docker`, que nunca exige npm no host.
+  Git Bash/MSYS e ambientes não-WSL seguem intactos (guard inerte fora do
+  WSL). +5 cenários em `test_serve.sh` (bloqueio `/mnt/*` e `*.exe`,
+  não-bloqueio do npm da distro, não-bloqueio fora do WSL, fluxo feliz
+  completo sob WSL sem falso positivo).
+
 ## [5.33.2] - 2026-07-28
 
 Ciclo de arquivamento do portfolio (9 features 100%) que inaugura o corpus
@@ -4361,6 +4385,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[5.33.3]: https://github.com/JotJunior/cstk/releases/tag/v5.33.3
 [5.33.2]: https://github.com/JotJunior/cstk/releases/tag/v5.33.2
 [5.33.1]: https://github.com/JotJunior/cstk/releases/tag/v5.33.1
 [5.33.0]: https://github.com/JotJunior/cstk/releases/tag/v5.33.0
