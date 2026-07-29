@@ -354,3 +354,82 @@ caminhos.
   multiplos repositorios) — nao ha fonte suficiente sobre esse mecanismo
   no material ja lido do benchmark, e esta feature trata de um unico
   projeto-alvo por vez, em paridade com o restante do toolkit.
+
+## Delta Requirements
+
+### Capability: spec-delta-requirements
+
+#### ADDED
+
+- **FR-001**: Autores de spec MUST ser capazes de declarar, dentro da
+  spec da feature, uma secao de Delta Requirements com quatro tipos de
+  entrada — ADDED, MODIFIED, REMOVED e RENAMED — usando o mesmo esquema
+  de identificador (`FR-NNN`) ja usado na secao de Requirements da propria
+  spec.
+- **FR-002**: Uma entrada ADDED MUST, ao a feature ser arquivada, se
+  tornar uma nova entrada no corpus canonico.
+- **FR-003**: Uma entrada MODIFIED MUST, ao a feature ser arquivada,
+  substituir a entrada correspondente do corpus (casada por
+  identificador) pelo novo texto, preservando o identificador.
+- **FR-004**: Uma entrada REMOVED MUST, ao a feature ser arquivada,
+  retirar a entrada correspondente do corpus como comportamento atual,
+  preservando um registro rastreavel da remocao (nunca um desaparecimento
+  silencioso do historico).
+- **FR-005**: Uma entrada RENAMED MUST, ao a feature ser arquivada,
+  aposentar o identificador antigo e registrar o novo identificador para
+  a mesma entrada do corpus, sem perder a rastreabilidade historica da
+  entrada.
+
+### Capability: spec-corpus
+
+#### ADDED
+
+- **FR-006**: System MUST manter um corpus canonico descrevendo o
+  comportamento ATUAL do sistema, distinto do historico de mudancas por
+  feature preservado sob `_archived/` — o corpus e ADICIONAL, nunca
+  substitui o archive existente.
+- **FR-007**: Cada entrada do corpus MUST ser rastreavel ate a(s)
+  feature(s) que a introduziu ou modificou por ultimo (proveniencia).
+- **FR-008**: A atualizacao do corpus MUST acontecer como parte da acao
+  de archive ja existente, sem exigir um passo manual adicional alem do
+  que o archive ja requer hoje.
+- **FR-009**: Consultar o corpus MUST responder "como o sistema se
+  comporta hoje" para qualquer capacidade coberta, sem exigir abrir
+  nenhum diretorio sob `_archived/`.
+
+### Capability: delta-archive-gate
+
+#### ADDED
+
+- **FR-010**: A acao de archive MUST ser bloqueada, por padrao, para
+  qualquer feature que nao tenha secao de Delta Requirements — salvo
+  quando um skip explicito for registrado.
+- **FR-011**: Um skip de delta MUST ser um registro auditavel (quem,
+  quando, por que), distinguivel de uma aplicacao normal de delta em
+  qualquer relatorio ou trilha de auditoria que liste aquele archive.
+- **FR-012**: O gate da FR-010 MUST ser deterministico (script, nao
+  julgamento de modelo), no mesmo padrao ja adotado pelo toolkit para
+  outros gates de qualidade estrutural (ex.: `requirement-coverage.sh`).
+- **FR-013**: O gate MUST sinalizar (nao aplicar silenciosamente)
+  qualquer entrada MODIFIED, REMOVED ou RENAMED cujo identificador
+  referenciado nao exista no corpus atual.
+
+### Capability: atomic-commit-staging
+
+#### ADDED
+
+- **FR-014**: O staging de commits automaticos do modo atomic-commit
+  (por etapa e por task, em execucao autonoma) MUST usar uma allowlist
+  explicita de caminhos derivada dos artefatos tocados pelo passo/task
+  corrente — MUST NOT usar staging amplo (equivalente a "adicionar tudo
+  do working tree").
+- **FR-015**: Quando um arquivo untracked alheio ao passo/task corrente
+  estiver presente no working tree no momento do commit automatico, ele
+  MUST NOT ser incluido no commit gerado, independentemente do tipo de
+  arquivo.
+- **FR-016**: Quando a allowlist de um passo/task for vazia, nenhum
+  commit MUST ser criado para aquele passo/task (sem commits vazios, sem
+  fallback para staging amplo).
+- **FR-017**: O cenario que causou o incidente original (arquivo
+  untracked alheio presente durante commit atomico de etapa) MUST ter
+  cobertura de teste de regressao automatizada.
