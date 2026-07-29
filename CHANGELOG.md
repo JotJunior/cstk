@@ -5,6 +5,46 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.33.2] - 2026-07-28
+
+Ciclo de arquivamento do portfolio (9 features 100%) que inaugura o corpus
+canonico `docs/specs/current/`, com dois fixes expostos pelo proprio ciclo.
+
+### Fixed
+
+- **`validate-sdd.sh`: secao `## Delta Requirements` fora da varredura de
+  `duplicate-id`.** A regra 4 do contrato `delta-section-format.md`
+  (living-specs) EXIGE que entradas ADDED repitam os `FR-NNN` da secao
+  Functional Requirements da propria spec — a primeira spec com delta real
+  (enforced-guards) falhava com 17 `duplicate-id` falsos. Cenario c05
+  ajustado (o duplicado do teste agora vive FORA da secao delta) + nova
+  regressao c05b com fixture real (spec arquivada com 17 FRs repetidos).
+- **`model-routing.sh wave-select`: Decisao por onda grava a FASE da onda
+  no `stage`** (`specify`|`plan`|...), nao mais a categoria
+  `model-routing` — consumidores derivados (knowledge.db/painel) agrupam
+  por `stage` como etapa SDD, o que eliminava a leitura correta (barra
+  unica "model-ro" no painel). O discriminador de decisao de roteamento
+  passa a ser exclusivamente o lead do contexto (FR-021), nunca o
+  `stage`. `recall.sh --ingest` normaliza Decisoes legadas
+  (`stage='model-routing'`) extraindo a fase do sufixo `(fase X)` do
+  contexto — derivacao apenas na ingestao, `state.json` intacto (mesmo
+  precedente do `etapa_corrente`); overrides do operador
+  (`model-override:*`) seguem com `etapa=model-routing`.
+
+### Changed
+
+- **Portfolio de specs zerado e corpus canonico inaugurado.** Arquivadas
+  com o fluxo `delta-gate` -> `delta-merge` -> `_archived/2026-07-28-*`:
+  budget-resume-wallclock, openspec-hygiene, otel-model-breakdown,
+  panel-docker, skill-converge, validate-docs-sdd-profile e
+  wave-token-metrics (Skip explicito), enforced-guards e living-specs
+  (delta REAL, 17 FRs verbatim cada). `docs/specs/current/` nasce com 8
+  capabilities com proveniencia: bash-guard-enforcement, serve-integrity,
+  trusted-release-hosts, guards-defense-in-depth, spec-delta-requirements,
+  spec-corpus, delta-archive-gate, atomic-commit-staging. Backfill
+  retroativo das features arquivadas antes da convencao foi DECLINADO em
+  definitivo pelo operador (living-specs 6.4 / CHK038).
+
 ## [5.33.1] - 2026-07-28
 
 Corrige o delta OTel por onda que fabricava consumo. Caso real: com a porta
@@ -4321,6 +4361,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[5.33.2]: https://github.com/JotJunior/cstk/releases/tag/v5.33.2
 [5.33.1]: https://github.com/JotJunior/cstk/releases/tag/v5.33.1
 [5.33.0]: https://github.com/JotJunior/cstk/releases/tag/v5.33.0
   tabela por stack.
