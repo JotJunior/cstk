@@ -75,6 +75,38 @@ _serve_check_host_allowlist() {
   trusted_host_check "$1"
 }
 
+# _serve_check_npm_interop NPM_PATH
+# Guard contra o npm do WINDOWS vazando via interop de PATH do WSL: quando
+# Node.js nao esta instalado DENTRO da distro WSL, `command -v npm` resolve
+# para o binario do Windows (ex.: /mnt/c/Program Files/nodejs/npm). Esse npm
+# enxerga a arvore Linux pelo caminho UNC \\wsl.localhost\<distro>\... onde
+# symlinks de workspaces falham (EISDIR em node_modules/@cstk-panel/*) e o
+# cleanup falha (EPERM rmdir) — npm install quebra SEMPRE. Fail-fast aqui com
+# orientacao acionavel em vez de deixar o npm morrer no meio da instalacao.
+# Fora do WSL retorna 0 sem verificar nada (Git Bash/MSYS no Windows usa npm
+# nativo sobre filesystem local — cenario nao afetado).
+# NPM_PATH = caminho resolvido de `command -v npm`.
+# exit 0 = npm utilizavel; exit 1 = npm do Windows sob WSL (mensagem em stderr).
+_serve_check_npm_interop() {
+  _scni_npm="$1"
+  # Deteccao de WSL: WSL_DISTRO_NAME e exportada por padrao nas sessoes WSL2;
+  # /proc/version contendo "microsoft" cobre contextos sem a env (sudo, cron).
+  if [ -z "${WSL_DISTRO_NAME:-}" ] && ! grep -qi microsoft /proc/version 2>/dev/null; then
+    return 0
+  fi
+  # Binario do Windows via interop: vive sob o automount (/mnt/<drive>/ por
+  # padrao) ou termina em .exe/.cmd. npm instalado na distro (/usr/bin,
+  # ~/.nvm/...) nunca casa com esses padroes.
+  case "$_scni_npm" in
+    /mnt/*|*.exe|*.cmd) ;;
+    *) return 0 ;;
+  esac
+  printf 'cstk serve: erro: o npm encontrado no PATH e o npm do WINDOWS (%s) acessado via interop do WSL\n' "$_scni_npm" >&2
+  printf 'cstk serve: o npm do Windows nao consegue instalar dependencias na arvore de arquivos do Linux (symlinks de workspaces falham no caminho \\\\wsl.localhost\\...)\n' >&2
+  printf 'cstk serve: instale Node.js DENTRO da distro WSL (ex.: sudo apt install nodejs npm, ou via nvm) ou use: cstk serve --docker\n' >&2
+  return 1
+}
+
 # _serve_is_installed PANEL_DIR
 # Retorna 0 se o painel esta instalado (package.json presente e legivel).
 # Retorna 1 caso contrario.
@@ -696,6 +728,12 @@ HELP
 
   if ! command -v npm >/dev/null 2>&1; then
     printf 'cstk serve: erro: npm nao encontrado no PATH; instale Node.js em https://nodejs.org\n' >&2
+    return 1
+  fi
+
+  # Sob WSL, um npm "presente" pode ser o npm do Windows via interop de
+  # PATH — inutilizavel sobre a arvore Linux (ver _serve_check_npm_interop).
+  if ! _serve_check_npm_interop "$(command -v npm)"; then
     return 1
   fi
 
