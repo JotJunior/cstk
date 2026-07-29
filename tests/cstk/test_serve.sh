@@ -1791,4 +1791,92 @@ scenario_asset_host_fora_da_allowlist_exit1() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Guard de interop WSL — _serve_check_npm_interop
+# Bug real (Windows + WSL2): sem Node.js dentro da distro, `command -v npm`
+# resolve para o npm do WINDOWS via interop de PATH (/mnt/c/...), que quebra
+# npm install na arvore Linux (EISDIR em symlink de workspace via UNC
+# \\wsl.localhost\...). O guard deve bloquear ANTES de qualquer download.
+# ---------------------------------------------------------------------------
+
+# _run_npm_interop_check WSL_VALUE NPM_PATH
+# Executa _serve_check_npm_interop unit-style: sourceia serve.sh num sh limpo
+# com WSL_DISTRO_NAME=WSL_VALUE e chama o helper com NPM_PATH. String vazia
+# em WSL_VALUE simula fora-do-WSL (o guard trata vazia como ausente; o
+# fallback via /proc/version so dispara em WSL de verdade, nunca no ambiente
+# de teste macOS/Linux).
+_run_npm_interop_check() {
+  capture env \
+    CSTK_LIB="$CSTK_LIB" \
+    WSL_DISTRO_NAME="$1" \
+    sh -c '. "$CSTK_LIB/serve.sh" && _serve_check_npm_interop "$1"' interop_test "$2"
+}
+
+scenario_wsl_npm_windows_mnt_bloqueado() {
+  _setup_serve_env
+  _run_npm_interop_check "Ubuntu-24.04" "/mnt/c/Program Files/nodejs/npm"
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "wsl_npm_mnt_exit" "npm do Windows (/mnt/...) sob WSL deve ser bloqueado (exit 1); obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'WINDOWS'; then
+    _fail "wsl_npm_mnt_msg" "stderr deveria identificar npm do Windows; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'docker'; then
+    _fail "wsl_npm_mnt_alt" "stderr deveria sugerir a alternativa --docker; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_wsl_npm_exe_bloqueado() {
+  _setup_serve_env
+  _run_npm_interop_check "Ubuntu-24.04" "/usr/local/bin/npm.exe"
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "wsl_npm_exe_exit" "npm *.exe sob WSL deve ser bloqueado (exit 1); obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+}
+
+scenario_wsl_npm_da_distro_permitido() {
+  _setup_serve_env
+  _run_npm_interop_check "Ubuntu-24.04" "/usr/bin/npm"
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "wsl_npm_distro_exit" "npm da distro (/usr/bin) sob WSL nao deve ser bloqueado; obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_fora_do_wsl_npm_mnt_permitido() {
+  # Fora do WSL o guard nao se aplica (ex.: layout de paths exotico num
+  # Linux comum) — nunca falso positivo.
+  _setup_serve_env
+  _run_npm_interop_check "" "/mnt/c/Program Files/nodejs/npm"
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "fora_wsl_exit" "fora do WSL o guard nao deve bloquear; obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_wsl_fluxo_completo_com_npm_da_distro_instala() {
+  # Regressao de falso positivo no fluxo real: WSL_DISTRO_NAME presente mas
+  # npm resolvendo para stub Linux-like (tmpdir) — serve_main segue ate o
+  # fim do caminho feliz normalmente.
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  WSL_DISTRO_NAME="Ubuntu-24.04"
+  export WSL_DISTRO_NAME
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "wsl_fluxo_exit" "esperado exit 0 (npm da distro sob WSL), obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"
+    return 1
+  fi
+  if printf '%s' "$_CAPTURED_STDERR" | grep -qi 'npm do WINDOWS'; then
+    _fail "wsl_fluxo_falso_positivo" "guard bloqueou npm legitimo da distro: $_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
 run_all_scenarios

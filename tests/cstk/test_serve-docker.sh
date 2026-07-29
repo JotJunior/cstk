@@ -550,6 +550,13 @@ scenario_docker_mentions_confined_to_serve_docker_lib() {
   # CLAUDE.md/CHANGELOG.md ficam DE FORA de proposito -- mencionam "docker"
   # em prosa/testes sem violar o confinamento de DEPENDENCIA de codigo.
   #
+  # 5o padrao exempto: a linha de orientacao do guard de interop WSL
+  # (_serve_check_npm_interop, "ou use: cstk serve --docker") — texto de
+  # erro voltado ao usuario sugerindo a flag como alternativa que dispensa
+  # npm no host; mesma natureza do help-text exempto abaixo, nao
+  # dependencia/orquestracao de docker (que segue confinada a
+  # serve-docker.sh).
+  #
   # 4o padrao exempto (task 6.1, FR-014): o range do heredoc de --help e
   # calculado DINAMICAMENTE a partir dos delimitadores reais `cat <<'HELP'`
   # / `HELP` em serve.sh (nunca numero de linha hardcoded) -- edicoes
@@ -574,13 +581,14 @@ scenario_docker_mentions_confined_to_serve_docker_lib() {
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *-*-docker\)[[:space:]]*$' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *\. "\$\{CSTK_LIB\}/serve-docker\.sh"$' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *_serve_docker_main ' \
+            | grep -vE '/cli/lib/serve\.sh:[0-9]+:.*ou use: cstk serve --docker' \
             | awk -F: -v s="$_help_start" -v e="$_help_end" '
                 $0 ~ /\/cli\/lib\/serve\.sh:/ { n = $2 + 0; if (n >= s && n <= e) next }
                 { print }
               ' \
           || :)
   if [ -n "$_hits" ]; then
-    _fail "docker_confinement" "mencoes a 'docker' fora de serve-docker.sh (ou dos 4 padroes exemptados do encaminhamento/help-text em serve.sh): $_hits"
+    _fail "docker_confinement" "mencoes a 'docker' fora de serve-docker.sh (ou dos 5 padroes exemptados do encaminhamento/help-text em serve.sh): $_hits"
     return 1
   fi
 }
