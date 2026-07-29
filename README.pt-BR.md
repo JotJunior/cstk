@@ -357,6 +357,13 @@ lsof -nP -iTCP:9464 -sTCP:LISTEN     # quem e o dono da porta do exporter?
 lsof -p <PID> | grep cwd             # ...e de qual projeto?
 ```
 
+Ou deixe o runtime decidir: `otel-usage.sh preflight` responde "ESTA sessão
+vai ser medida?" deterministicamente — `status=ok` (exporter pertence a um
+ancestral deste processo), `port-conflict` com PID e cwd do dono (exit 3),
+`exporter-down` (exit 4), `disabled` ou `unverified`. Os commands 00c rodam
+o preflight no diagnóstico inicial e repassam qualquer aviso ao operador
+antes da onda-001.
+
 **Modo interativo** (seletor numerado em TTY) e **dry-run**:
 
 ```bash

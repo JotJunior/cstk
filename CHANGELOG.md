@@ -5,6 +5,42 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.34.0] - 2026-07-29
+
+Pre-flight determinístico de telemetria: a pergunta "ESTA sessão vai ser
+medida?" deixa de depender de diagnóstico manual e vira subcomando do
+runtime, invocado pelos commands 00c antes da onda-001.
+
+### Added
+
+- **`otel-usage.sh preflight [--endpoint URL]`.** Decide deterministicamente
+  se a telemetria OTel da sessão corrente vai ser medida, sem nunca
+  bloquear a pipeline: `status=ok` quando o dono da porta do endpoint é
+  ancestral do processo corrente (i.e. o exporter pertence a ESTA sessão —
+  dono via `lsof`, ancestralidade via walk de `ps -o ppid=`);
+  `status=port-conflict` (exit 3) com `owner_pid` e `owner_cwd` quando a
+  porta pertence a OUTRO processo — o modo de falha silencioso da 5.33.4,
+  agora detectável antes da onda-001; `status=exporter-down` (exit 4)
+  quando o opt-in está ligado mas nada responde; `status=disabled` (opt-in
+  ausente) e `status=unverified` (endpoint não-local/`file://` ou posse
+  indeterminável com scrape respondendo — nunca acusa conflito sem
+  evidência) saem com exit 0. Aviso de alta visibilidade em stderr nos
+  exits 3/4. +6 cenários em `test_otel-usage.sh` com `lsof` stubado no
+  PATH (dono ancestral = `$$` do teste; dono estranho = PID 1).
+
+### Changed
+
+- **Commands `/agente-00c` e `/feature-00c`**: o diagnóstico de coleta
+  (passo 2.bis / 8) agora roda `otel-usage.sh preflight` junto do
+  `guard-hooks-status.sh check` e instrui REPASSAR ao operador qualquer
+  `port-conflict`/`exporter-down` antes de seguir — a execução sairia
+  inteira com `otel_usage` null. Deliberadamente FORA do
+  `state-ondas.sh start`: rodar o preflight a cada onda poluiria stderr de
+  toda a suite em ambiente com telemetria ligada e duplicaria scrapes; o
+  ponto determinístico certo é o pre-flight único do command pai.
+- **READMEs + tabela de helpers do orquestrador**: documentam o subcomando
+  novo como alternativa ao diagnóstico manual via `lsof`.
+
 ## [5.33.4] - 2026-07-29
 
 Documentação do modo de falha silencioso da telemetria OTel com múltiplos
@@ -4414,6 +4450,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[5.34.0]: https://github.com/JotJunior/cstk/releases/tag/v5.34.0
 [5.33.4]: https://github.com/JotJunior/cstk/releases/tag/v5.33.4
 [5.33.3]: https://github.com/JotJunior/cstk/releases/tag/v5.33.3
 [5.33.2]: https://github.com/JotJunior/cstk/releases/tag/v5.33.2
