@@ -37,6 +37,20 @@
 # assinatura. O exporter sobe um HTTP local em 127.0.0.1:9464/metrics; nada
 # trafega para fora da maquina.
 #
+# DISPUTA DA PORTA FIXA (caso real, 2026-07-29)
+# ---------------------------------------------
+# So UM processo do Claude Code consegue o bind da porta 9464 — o primeiro
+# lancado ganha. Qualquer outro processo simultaneo (outra aba, outro projeto)
+# falha o bind EM SILENCIO: as metricas dele nao sao expostas em lugar nenhum,
+# o snapshot scrapeia as sessoes do processo vencedor e o guard do delta
+# descarta (corretamente) o resultado — otel_usage null em TODAS as ondas da
+# execucao. Caso observado: um `claude -c` de 2 dias de outro projeto segurou
+# a porta e uma execucao de 16 ondas nao mediu nada. Mitigacao recomendada:
+# launcher no shell rc que sorteia porta livre por processo
+# (OTEL_EXPORTER_PROMETHEUS_PORT dinamico) e exporta CSTK_OTEL_ENDPOINT
+# correspondente — ver README "Real per-wave cost". Diagnostico:
+# `lsof -nP -iTCP:9464 -sTCP:LISTEN` + `lsof -p <PID> | grep cwd`.
+#
 # PRIVACIDADE (regra dura)
 # ------------------------
 # Os labels do exporter carregam PII: `user_email`, `user_id`,

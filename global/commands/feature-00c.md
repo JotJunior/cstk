@@ -173,7 +173,12 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
          export CLAUDE_CODE_ENABLE_TELEMETRY=1
          export OTEL_METRICS_EXPORTER=prometheus
          (o segundo nao exige API key, Admin key nem organizacao; funciona
-          em assinatura e nada sai de 127.0.0.1)
+          em assinatura e nada sai de 127.0.0.1. ATENCAO: so UM processo do
+          Claude Code faz bind da porta fixa 9464 — com outro processo aberto
+          antes, esta sessao nao mede nada, otel_usage null em toda onda.
+          Mitigacao: launcher de porta dinamica por processo, ver README
+          "Real per-wave cost"; diagnostico:
+          `lsof -nP -iTCP:9464 -sTCP:LISTEN`)
 
    - Regra de decisao:
      . sim  => pedir que rode `cstk hooks install` e confirmar antes de seguir

@@ -193,7 +193,12 @@ espere a resposta:
    ```
 
    (b) nao exige API key, Admin key nem organizacao; funciona em plano de
-   assinatura e nada sai de `127.0.0.1`.
+   assinatura e nada sai de `127.0.0.1`. ATENCAO: so UM processo do Claude
+   Code faz bind da porta fixa 9464 — com outro processo aberto antes, esta
+   sessao nao mede nada (otel_usage null em toda onda). Mitigacao: launcher
+   de porta dinamica por processo (ver README "Real per-wave cost") ou
+   garantir que nao ha outro claude segurando a porta
+   (`lsof -nP -iTCP:9464 -sTCP:LISTEN`).
 
 **Regra de decisao** (o operador manda, o default nunca mente):
 

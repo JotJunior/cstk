@@ -71,8 +71,13 @@ stays `null` — absent, never a fabricated zero. Put them in your
 `~/.zshrc`/`~/.bashrc` so you don't lose waves to forgetfulness.
 
 Nothing leaves the machine (exporter binds `127.0.0.1:9464`) and identity
-labels are stripped before touching disk. Details, measured numbers and how to
-change the port: [Real per-wave cost](#real-per-wave-cost-otel-usagesh).
+labels are stripped before touching disk.
+
+> **Running more than one Claude Code process at a time?** Only the first can
+> bind the fixed port — the others silently measure nothing (`otel_usage`
+> `null` on every wave). Use the per-process port launcher shown in
+> [Real per-wave cost](#real-per-wave-cost-otel-usagesh) to give each process
+> its own exporter automatically.
 
 ## Structure
 
@@ -305,6 +310,50 @@ The exporter binds `127.0.0.1:9464`; nothing leaves the machine. Identity
 labels (`user_email`, `user_id`, `user_account_*`, `organization_id`) are
 stripped at snapshot time and never reach disk. Override the endpoint with
 `CSTK_OTEL_ENDPOINT` if you changed the exporter port.
+
+**Multiple Claude Code processes at once? Give each one its own port.** Only
+ONE process can bind the fixed port `9464` — the first one launched wins.
+Every other process (another terminal tab, another project) fails the bind
+silently: its metrics are exposed nowhere, the per-wave snapshots scrape the
+*winner's* stale sessions, and the delta guard correctly discards the result —
+so `otel_usage` comes out `null` for **every wave** of that execution, with the
+panel showing no cost at all. Real case: a two-day-old `claude -c` from an
+unrelated project held the port and an entire 16-wave run measured nothing.
+
+The fix is a launcher function in your `~/.zshrc` that asks the OS for a free
+port at every launch (binding port `0` lets the kernel pick) and points the
+cstk scraper at it via `CSTK_OTEL_ENDPOINT` — hooks and runtime scripts run
+inside the Claude process, so they inherit both variables:
+
+```zsh
+# One OTel exporter per claude process: OS picks a free port at each launch.
+claude() {
+  local _otel_port
+  _otel_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()' 2>/dev/null)
+  if [ -n "$_otel_port" ]; then
+    OTEL_EXPORTER_PROMETHEUS_PORT=$_otel_port \
+    CSTK_OTEL_ENDPOINT="http://127.0.0.1:${_otel_port}/metrics" \
+    command claude "$@"
+  else
+    command claude "$@"   # no python3: fall back to the fixed default port
+  fi
+}
+```
+
+Zero per-session configuration: each `claude` you type gets an isolated
+exporter and an isolated measurement. As a bonus, the delta's
+"exactly-one-session-grew" guard only ever sees that process's sessions, so
+ambiguity discards (`null` from concurrent sessions) all but disappear. The
+wrapper only covers processes launched from your shell — anything launched
+outside it (IDE, desktop app) still uses the fixed default port.
+
+Quick diagnosis when the panel shows no cost for any wave: check who owns the
+port and whether its working directory is the project you're actually running:
+
+```bash
+lsof -nP -iTCP:9464 -sTCP:LISTEN     # who owns the exporter port?
+lsof -p <PID> | grep cwd             # ...and from which project?
+```
 
 **Interactive mode** (numbered selector in a TTY) and **dry-run**:
 

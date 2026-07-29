@@ -71,8 +71,13 @@ e o painel mostra o gasto por onda. Sem elas tudo é no-op e o campo fica
 para não perder ondas por esquecimento.
 
 Nada sai da máquina (exporter em `127.0.0.1:9464`) e labels de identidade são
-descartados antes de tocar o disco. Detalhes, números medidos e como mudar a
-porta: [Custo real por onda](#custo-real-por-onda-otel-usagesh).
+descartados antes de tocar o disco.
+
+> **Mais de um processo do Claude Code ao mesmo tempo?** Só o primeiro
+> consegue o bind da porta fixa — os demais não medem nada em silêncio
+> (`otel_usage` `null` em toda onda). Use o launcher de porta por processo
+> mostrado em [Custo real por onda](#custo-real-por-onda-otel-usagesh) para
+> cada processo ganhar seu próprio exporter automaticamente.
 
 ## Estrutura
 
@@ -305,6 +310,52 @@ O exporter escuta em `127.0.0.1:9464`; nada sai da máquina. Labels de
 identidade (`user_email`, `user_id`, `user_account_*`, `organization_id`)
 são descartados no snapshot e nunca tocam o disco. Use `CSTK_OTEL_ENDPOINT`
 para apontar a outra porta.
+
+**Vários processos do Claude Code ao mesmo tempo? Dê uma porta a cada um.**
+Só UM processo consegue o bind da porta fixa `9464` — o primeiro que abrir
+ganha. Qualquer outro processo (outra aba do terminal, outro projeto) falha o
+bind em silêncio: as métricas dele não são expostas em lugar nenhum, os
+snapshots por onda scrapeiam as sessões velhas do processo *vencedor*, e o
+guard do delta descarta o resultado corretamente — `otel_usage` sai `null` em
+**todas as ondas** daquela execução, com o painel sem custo nenhum. Caso real:
+um `claude -c` de dois dias de outro projeto segurava a porta e uma execução
+inteira de 16 ondas não mediu nada.
+
+A correção é uma função-launcher no seu `~/.zshrc` que pede ao OS uma porta
+livre a cada lançamento (bind na porta `0` deixa o kernel escolher) e aponta o
+scraper do cstk para ela via `CSTK_OTEL_ENDPOINT` — hooks e scripts do runtime
+rodam dentro do processo do Claude, então herdam as duas variáveis:
+
+```zsh
+# Um exporter OTel por processo do claude: OS sorteia porta livre a cada lancamento.
+claude() {
+  local _otel_port
+  _otel_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()' 2>/dev/null)
+  if [ -n "$_otel_port" ]; then
+    OTEL_EXPORTER_PROMETHEUS_PORT=$_otel_port \
+    CSTK_OTEL_ENDPOINT="http://127.0.0.1:${_otel_port}/metrics" \
+    command claude "$@"
+  else
+    command claude "$@"   # sem python3: cai na porta default fixa
+  fi
+}
+```
+
+Zero configuração por sessão: cada `claude` que você digita ganha um exporter
+isolado e uma medição isolada. De bônus, o guard "exatamente uma sessão
+cresceu" do delta passa a ver só as sessões daquele processo — os descartes
+por ambiguidade (`null` por sessões concorrentes) praticamente desaparecem.
+O wrapper só cobre processos lançados do seu shell — o que nascer por fora
+(IDE, app desktop) continua na porta default fixa.
+
+Diagnóstico rápido quando o painel não mostra custo em onda nenhuma: veja
+quem é o dono da porta e se o diretório de trabalho dele é mesmo o projeto
+da execução:
+
+```bash
+lsof -nP -iTCP:9464 -sTCP:LISTEN     # quem e o dono da porta do exporter?
+lsof -p <PID> | grep cwd             # ...e de qual projeto?
+```
 
 **Modo interativo** (seletor numerado em TTY) e **dry-run**:
 
