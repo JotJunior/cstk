@@ -338,7 +338,7 @@ Ref: CLAUDE.md convencoes; plan.md.
 - [x] 5.3.3 Atualizar README se a contagem de skills/estrutura mudar (test_doc-counts.sh gateia)
 - [x] 5.3.4 Atualizar spec.md Status Draft → aprovado/implementado ao final
 
-### 5.4 Distribuicao e sincronizacao da copia instalada `[M]` `[!]`
+### 5.4 Distribuicao e sincronizacao da copia instalada `[M]`
 
 Ref: CLAUDE.md §Installed vs Source Drift.
 
@@ -367,7 +367,14 @@ Ref: CLAUDE.md §Installed vs Source Drift.
 - [x] 5.4.1 Build local do tarball (`./scripts/build-release.sh X.Y.Z-dev`)
 - [x] 5.4.2 `cstk install --from file://...` (catalogo: hook em global/skills/agente-00c-runtime) + `cstk self-update --from file://...` (runtime cli/lib: trusted-hosts.sh, serve.sh, install.sh, update.sh, self-update.sh)
 - [x] 5.4.3 `cstk doctor` confirma catalogo sem drift
-- [!] 5.4.4 Provisionar o hook no proprio cstk (dogfood: execucoes autonomas futuras no repo passam a ser interceptadas) — bloqueado pelo classificador de auto mode do harness; mecanismo validado em projeto-teste descartavel; acao manual documentada acima
+- [x] 5.4.4 Provisionar o hook no proprio cstk (dogfood: execucoes autonomas futuras no repo passam a ser interceptadas) — bloqueado pelo classificador de auto mode do harness; mecanismo validado em projeto-teste descartavel; acao manual documentada acima
+      <!-- feito (review-task 2026-07-28): acao manual executada fora de auto
+      mode em 2026-07-26. Evidencias: .claude/hooks/pretooluse-bash-guard.sh
+      executavel e byte-identico a fonte em
+      global/skills/agente-00c-runtime/hooks/; .claude/settings.json com
+      hooks.PreToolUse matcher Bash apontando para o hook (timeout 5);
+      .claude/enforcement-log.jsonl com 753 decisoes auditaveis, ultima em
+      2026-07-28T17:00:18Z — mecanismo provisionado E operante. -->
 
 ---
 

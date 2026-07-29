@@ -14,7 +14,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
 SCRIPT="$REPO_ROOT/global/skills/validate-documentation/scripts/validate-sdd.sh"
-EG="$REPO_ROOT/docs/specs/enforced-guards"
+EG="$REPO_ROOT/docs/specs/_archived/2026-07-28-enforced-guards"
 
 # ==== Cenario 1 — spec.md conformante (spec-profile, 0 erros) ====
 
@@ -65,11 +65,30 @@ scenario_c04_spec_excesso_clarifications() {
 # ==== Cenario 5 — spec.md com ID duplicado ====
 
 scenario_c05_spec_id_duplicado() {
-  cp "$EG/spec.md" "$TMPDIR_TEST/broken.md"
+  # Corta a secao "## Delta Requirements" (ultima do fixture) antes de
+  # duplicar: ela repete FR-NNN por contrato e fica FORA da varredura de
+  # duplicate-id — o duplicado do teste precisa estar no corpo da spec.
+  awk '/^## Delta Requirements[[:space:]]*$/ {exit} {print}' "$EG/spec.md" \
+    > "$TMPDIR_TEST/broken.md"
   printf -- '- **FR-001**: Duplicado deliberadamente para o teste.\n' >> "$TMPDIR_TEST/broken.md"
   assert_exit 1 sh "$SCRIPT" "$TMPDIR_TEST/broken.md" --sdd-spec || return 1
   assert_stdout_contains 'FINDING|error|duplicate-id|' || return 1
   assert_stdout_contains 'FR-001' || return 1
+}
+
+# ==== Cenario 5b — secao Delta Requirements repete FR-NNN sem falso positivo ====
+
+scenario_c05b_delta_section_nao_gera_duplicate_id() {
+  # O fixture real (enforced-guards) tem "## Delta Requirements" preenchida
+  # com entradas ADDED que REPETEM os 17 FR-NNN da secao Functional
+  # Requirements (delta-section-format.md regra 4). Isso NAO pode acusar
+  # duplicate-id (regressao do fix pos-living-specs).
+  grep -q '^## Delta Requirements' "$EG/spec.md" || {
+    _error "fixture_sem_delta" "fixture $EG/spec.md nao tem secao Delta Requirements"
+    return 2
+  }
+  assert_exit 0 sh "$SCRIPT" "$EG/spec.md" --sdd-spec || return 1
+  assert_stdout_not_contains 'duplicate-id' || return 1
 }
 
 # ==== Cenario 6 — avisos nao bloqueiam ====
