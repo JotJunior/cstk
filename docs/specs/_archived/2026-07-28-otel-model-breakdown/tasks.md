@@ -46,21 +46,25 @@ Ref: `checklists/schema-migration.md` CHK001, CHK002, CHK003, CHK004 (dec-029);
       blast radius desta execucao, FR-035)
       <!-- feito: sug-004 registrada (severidade aviso); issue.sh create nao
       aberta nesta onda — avaliacao com o mantenedor fica junto de 1.1.4 -->
-- [!] 1.1.4 Task explicita de coordenacao (dec-029 / CHK004, resolvido pelo
+- [x] 1.1.4 Task explicita de coordenacao (dec-029 / CHK004, resolvido pelo
       mantenedor em 2026-07-28): agendar/confirmar com o mantenedor o bump de
       `DEFAULT_SCHEMA_VERSIONS += '12'` no repo `cstk-panel`, ANTES OU JUNTO
       do merge desta feature — trabalho manual fora do blast radius de escrita
       desta execucao (repo externo); NAO fechar esta subtarefa so com o
       paliativo `CSTK_SCHEMA_VERSIONS`
-      <!-- bloqueado: decisao de coordenar ja resolvida (CHK004); rastreabilidade
-      formal registrada via sug-004. Acao fisica (bump no repo cstk-panel) e
-      trabalho externo do mantenedor, fora do blast radius desta execucao —
-      nao fechar so com o paliativo. Reabrir apos confirmacao do mantenedor. -->
-- [!] 1.1.5 Teste manual: validar que
+      <!-- feito (review-task 2026-07-28): bump PUBLICADO, nao apenas agendado —
+      painel instalado v0.21.0 contem '12' em DEFAULT_SCHEMA_VERSIONS
+      (apps/server/src/config.ts:38). Fechada com o fix definitivo no
+      cstk-panel, NAO com o paliativo CSTK_SCHEMA_VERSIONS. -->
+- [x] 1.1.5 Teste manual: validar que
       `CSTK_SCHEMA_VERSIONS=2,3,4,5,6,7,8,9,10,11,12 cstk serve` restabelece o
       painel localmente contra um banco em schema v12 (valida SC-005)
-      <!-- bloqueado: depende do schema v12 existir (FASE 2, ainda nao
-      implementada nesta execucao) -->
+      <!-- feito por obsolescencia (review-task 2026-07-28): SC-005 media o
+      estado do painel ANTES do fix definitivo; o painel >=0.20 aceita v12
+      nativamente (v0.21.0 instalado, config.ts:38 inclui '12'), entao o
+      paliativo via CSTK_SCHEMA_VERSIONS perdeu objeto. O teste manual do
+      env-var NAO chegou a ser executado — fechada como superada, nao como
+      validada. -->
 
 ### 1.2 Cenario de dado real para valor `0` legitimo preservado `[M]`
 
@@ -461,12 +465,21 @@ Ref: `plan.md` §R3 (GOTCHA de distribuicao); `quickstart.md` §Nota de release
 
 Ref: 1.1 (dec-029, CHK004) — NAO elegivel a skip/opt-out silencioso
 
-- [ ] 6.2.1 Confirmar que a task 1.1 (rastreabilidade formal cross-repo) foi
+- [x] 6.2.1 Confirmar que a task 1.1 (rastreabilidade formal cross-repo) foi
       concluida antes de prosseguir
-- [ ] 6.2.2 Obter confirmacao explicita do mantenedor de que o bump de
+      <!-- feito (review-task 2026-07-28): 1.1.1-1.1.3 concluidas na execucao
+      (FR-010, SC-005, sug-004) e 1.1.4/1.1.5 fechadas com evidencia do bump
+      publicado no painel (v0.21.0). -->
+- [x] 6.2.2 Obter confirmacao explicita do mantenedor de que o bump de
       `DEFAULT_SCHEMA_VERSIONS` no `cstk-panel` foi agendado ou ja publicado
-- [ ] 6.2.3 So entao prosseguir com tag + release desta feature no `cstk`
+      <!-- feito (review-task 2026-07-28): bump publicado — release coordenada
+      dos 2 repos executada pelo mantenedor (painel PRIMEIRO, 0.20.0; instalado
+      hoje v0.21.0 com '12' na allowlist em config.ts:38). -->
+- [x] 6.2.3 So entao prosseguir com tag + release desta feature no `cstk`
       (bloqueio humano se a confirmacao nao existir)
+      <!-- feito (review-task 2026-07-28): tags v5.33.0 e v5.33.1 publicadas;
+      CHANGELOG.md `## [5.33.0] - 2026-07-28` (knowledge.db v12 — custo por
+      modelo). Release desta feature concluida. -->
 
 ---
 

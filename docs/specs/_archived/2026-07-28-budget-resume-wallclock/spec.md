@@ -121,3 +121,7 @@ estouro de orcamento.
 - **SC-003**: A suite de testes automatizados do runtime de orquestracao
   cobre ambos os cenarios (retomada sem estouro falso; estouro legitimo
   dentro de onda aberta) e permanece 100% verde apos a correcao.
+
+## Delta Requirements
+
+**Skip**: corpus docs/specs/current/ inexistente no momento do arquivamento (primeiro ciclo pos living-specs); backfill de capabilities historicas deferido pelo operador (living-specs 6.4.1/6.4.2); comportamento corrente documentado em CLAUDE.md/README — operador via review-features, 2026-07-28

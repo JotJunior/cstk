@@ -405,3 +405,7 @@ selecao).
   neste projeto, ex.: `docs/specs/enforced-guards/`) e estavel o bastante
   para servir de base a deteccao automatica de perfil (US3/FR-015). Se essa
   convencao mudar, a deteccao automatica precisa ser revisada.
+
+## Delta Requirements
+
+**Skip**: corpus docs/specs/current/ inexistente no momento do arquivamento (primeiro ciclo pos living-specs); backfill de capabilities historicas deferido pelo operador (living-specs 6.4.1/6.4.2); comportamento corrente documentado em CLAUDE.md/README — operador via review-features, 2026-07-28

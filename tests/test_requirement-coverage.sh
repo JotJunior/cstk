@@ -165,7 +165,7 @@ scenario_file_ausente() {
 # ==== fixture real do repo: esta propria spec.md (anti-regressao da heuristica) ====
 
 scenario_fixture_real_spec_openspec_hygiene() {
-  _real="$REPO_ROOT/docs/specs/openspec-hygiene/spec.md"
+  _real="$REPO_ROOT/docs/specs/_archived/2026-07-28-openspec-hygiene/spec.md"
   if [ ! -f "$_real" ]; then
     _error "fixture_real_ausente" "spec.md real nao encontrado: $_real"
     return 2
@@ -178,7 +178,7 @@ scenario_fixture_real_spec_openspec_hygiene() {
 # ==== read-only: nao toca o working tree ====
 
 scenario_sem_efeito_colateral() {
-  _real="$REPO_ROOT/docs/specs/openspec-hygiene/spec.md"
+  _real="$REPO_ROOT/docs/specs/_archived/2026-07-28-openspec-hygiene/spec.md"
   sh "$SCRIPT" "$_real" >/dev/null 2>&1 || true
   assert_no_side_effect || return 1
 }
