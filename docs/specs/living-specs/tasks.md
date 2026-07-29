@@ -634,7 +634,7 @@ Ref: FR-014, FR-017 · plan.md §Constraints ("nenhum git add -A/add . remanesce
 
 Ref: plan.md §Constitution Check ("MINOR; sem BREAKING") · CLAUDE.md §CHANGELOG
 
-- [ ] 6.1.1 **DEFERIDO ao pai (pos-merge)**: adicionar entrada no
+- [x] 6.1.1 **DEFERIDO ao pai (pos-merge)**: adicionar entrada no
   `CHANGELOG.md` (bump MINOR — secao delta e opcional e os 2
   subcomandos novos de `commit-mode.sh` sao aditivos, sem quebra de
   contrato existente) resumindo as 4 entregas (delta section, corpus
@@ -644,12 +644,18 @@ Ref: plan.md §Constitution Check ("MINOR; sem BREAKING") · CLAUDE.md §CHANGEL
   features anteriores (ex.: `openspec-hygiene`, commit `4141163` "chore:
   CHANGELOG 5.22.0" feito como commit separado pelo pai pos-merge) — ver
   dec-041
-- [ ] 6.1.2 **DEFERIDO ao pai (pos-merge)**: conferir o bloco de link
+  <!-- feito (review-task 2026-07-28): cumprida pelo pai pos-merge, no
+  padrao previsto — CHANGELOG.md:515 "## [5.23.0] - 2026-07-23" via
+  commit 153f35a (PR #43), apos o merge do PR #42 (feat/living-specs). -->
+- [x] 6.1.2 **DEFERIDO ao pai (pos-merge)**: conferir o bloco de link
   references do rodape do CHANGELOG (`[X.Y.Z]: https://github.com/
   JotJunior/cstk/releases/tag/vX.Y.Z`) — nova versao precisa de entrada
   correspondente (checagem `comm -23` do CLAUDE.md). Depende de 6.1.1
   (so faz sentido apos a entrada de versao existir) — mesma deferral,
   ver dec-041
+  <!-- feito (review-task 2026-07-28): rodape CHANGELOG.md:4400 tem
+  "[5.23.0]: https://github.com/JotJunior/cstk/releases/tag/v5.23.0" e a
+  tag v5.23.0 existe — checagem comm -23 sem versao orfa. -->
 - [x] 6.1.3 Rodar `validate-docs-rendered` sobre `docs/specs/living-specs/
   tasks.md` e sobre este arquivo apos qualquer edicao posterior — Mermaid
   parseavel, links internos resolvem, frontmatter consistente. Resultado:
@@ -693,16 +699,27 @@ Ref: CLAUDE.md §Como testar scripts shell · §Installed vs Source Drift
 
 Ref: spec.md §Out of Scope · CHK038 (nao-bloqueante, ver Escopo Excluido)
 
-- [ ] 6.4.1 NAO EXECUTAR nesta feature salvo pedido explicito do operador:
+- [x] 6.4.1 NAO EXECUTAR nesta feature salvo pedido explicito do operador:
   script/rotina que roda `delta-merge.sh` retroativamente sobre as ~15
   features ja em `docs/specs/_archived/` SEM secao delta (nenhuma tem —
   feature entrou em vigor depois). Item permanece em backlog aberto,
   sem dono e sem criterio de prontidao ate decisao humana (CHK038) — task
   registrada aqui apenas para nao se perder, marcada explicitamente como
   NAO BLOQUEANTE da conclusao desta feature (spec.md §Out of Scope)
-- [ ] 6.4.2 Se o operador decidir priorizar o backfill no futuro, abrir
+  <!-- fechada como DECLINADA em definitivo (decisao do operador,
+  2026-07-28, sessao de review-task): o backfill retroativo do corpus
+  sobre as features arquivadas antes desta convencao NAO sera executado.
+  Features arquivadas de 2026-07-28 em diante seguem o fluxo delta por
+  feature do review-features (Skip explicito ou delta real — o corpus
+  docs/specs/current/ foi inaugurado nesta data pela enforced-guards).
+  CHK038 resolvido por declinio. -->
+- [x] 6.4.2 Se o operador decidir priorizar o backfill no futuro, abrir
   uma feature NOVA dedicada (nao reabrir `living-specs`) — mantem esta
   feature fechada e auditavel sem escopo residual pendurado
+  <!-- fechada por consequencia do declinio definitivo de 6.4.1 (mesma
+  decisao do operador, 2026-07-28): nao havera feature de backfill. A
+  prescricao "feature nova, nunca reabrir living-specs" permanece valida
+  caso a decisao seja revertida no futuro — nada pendente aqui. -->
 
 ---
 
