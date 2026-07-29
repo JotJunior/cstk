@@ -147,8 +147,13 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
 
 8. coleta de consumo: PEDIR instalacao ao operador (nunca instalar sozinho)
    guard-hooks-status.sh check --projeto-alvo-path "$_proj" || :
-   - READ-ONLY: diagnostica, nunca instala. Os tres ativos => siga sem
-     incomodar o operador.
+   otel-usage.sh preflight || :
+   - READ-ONLY: diagnosticam, nunca instalam. Os tres hooks ativos => siga
+     sem incomodar o operador.
+   - preflight com `status=port-conflict` (porta do exporter presa por
+     OUTRO processo; owner_pid/owner_cwd na saida) ou `status=exporter-down`
+     => REPASSE o aviso ao operador antes de seguir (execucao sairia com
+     otel_usage null em toda onda). ok/disabled/unverified => siga.
    - Faltando algum => PECA a instalacao, apresentando os 3 pontos:
 
      (1) O que instala e para que serve — nenhum e redundante:
@@ -175,10 +180,9 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
          (o segundo nao exige API key, Admin key nem organizacao; funciona
           em assinatura e nada sai de 127.0.0.1. ATENCAO: so UM processo do
           Claude Code faz bind da porta fixa 9464 — com outro processo aberto
-          antes, esta sessao nao mede nada, otel_usage null em toda onda.
-          Mitigacao: launcher de porta dinamica por processo, ver README
-          "Real per-wave cost"; diagnostico:
-          `lsof -nP -iTCP:9464 -sTCP:LISTEN`)
+          antes, esta sessao nao mede nada, otel_usage null em toda onda; o
+          preflight do diagnostico acima detecta. Mitigacao: launcher de
+          porta dinamica por processo, ver README "Real per-wave cost")
 
    - Regra de decisao:
      . sim  => pedir que rode `cstk hooks install` e confirmar antes de seguir

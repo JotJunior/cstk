@@ -408,5 +408,115 @@ scenario_flag_desconhecida_exit2() {
   return 0
 }
 
+# ==== preflight: a telemetria DESTA sessao vai ser medida? ====
+#
+# O dono da porta e detectado via lsof e comparado com a cadeia de
+# ancestrais do processo (ps -o ppid=). Nos cenarios, lsof e STUBADO no
+# PATH (nunca escondido — ver feedback PATH-stub): o stub responde as duas
+# invocacoes que o script faz (-tiTCP:... para o PID dono; -d cwd -Fn para
+# o diretorio). Dono "ancestral" usa $$ do proprio test (que E ancestral
+# do SUT); dono "estranho" usa PID 1 (launchd/init: existe sempre e nunca
+# e ancestral — o walk para em pid > 1).
+
+# _pf_stub_lsof DIR OWNER_PID CWD_PATH — stub de lsof que devolve um dono
+# fixo para a porta e um cwd fixo para esse dono. OWNER_PID vazio simula
+# porta livre (nada em LISTEN).
+_pf_stub_lsof() {
+  mkdir -p "$1"
+  cat > "$1/lsof" <<EOF
+#!/bin/sh
+case "\$*" in
+  *-tiTCP:*)  [ -n '$2' ] && printf '%s\n' '$2'; exit 0 ;;
+  *"-d cwd"*) [ -n '$3' ] && printf 'n%s\n' '$3'; exit 0 ;;
+esac
+exit 1
+EOF
+  chmod +x "$1/lsof"
+}
+
+_pf_run() {
+  # $1=stub-dir(ou "-" p/ PATH real) $2=endpoint; telemetria LIGADA.
+  if [ "$1" = "-" ]; then
+    capture env CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_METRICS_EXPORTER=prometheus \
+      sh "$SCRIPT" preflight --endpoint "$2"
+  else
+    capture env CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_METRICS_EXPORTER=prometheus \
+      PATH="$1:$PATH" sh "$SCRIPT" preflight --endpoint "$2"
+  fi
+}
+
+scenario_preflight_disabled_sem_optin() {
+  # Env vazio (nao unset: o script exige exatamente "1"/"prometheus").
+  capture env CLAUDE_CODE_ENABLE_TELEMETRY= OTEL_METRICS_EXPORTER= \
+    sh "$SCRIPT" preflight --endpoint "http://127.0.0.1:29464/metrics"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    status=disabled*) : ;;
+    *) _fail "stdout" "esperado status=disabled, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_preflight_ok_dono_ancestral() {
+  _stub="$TMPDIR_TEST/pf-anc"
+  _pf_stub_lsof "$_stub" "$$" "/qualquer/cwd"
+  _pf_run "$_stub" "http://127.0.0.1:29464/metrics"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    status=ok*owner_pid=$$*) : ;;
+    *) _fail "stdout" "esperado status=ok owner_pid=$$, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_preflight_conflito_dono_nao_ancestral_exit3() {
+  _stub="$TMPDIR_TEST/pf-conf"
+  _pf_stub_lsof "$_stub" "1" "/Users/outro/projeto-alheio"
+  _pf_run "$_stub" "http://127.0.0.1:29464/metrics"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    status=port-conflict*owner_pid=1*owner_cwd=/Users/outro/projeto-alheio*) : ;;
+    *) _fail "stdout" "esperado port-conflict com dono+cwd, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *AVISO*) : ;;
+    *) _fail "stderr" "esperado AVISO de conflito em stderr, obtido: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_preflight_exporter_down_porta_livre_exit4() {
+  # Stub devolve porta livre (sem dono); endpoint local sem ninguem
+  # escutando (porta 9 / discard) -> scrape falha -> exporter-down.
+  _stub="$TMPDIR_TEST/pf-down"
+  _pf_stub_lsof "$_stub" "" ""
+  _pf_run "$_stub" "http://127.0.0.1:9/metrics"
+  [ "$_CAPTURED_EXIT" = 4 ] || { _fail "exit" "esperado 4, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    status=exporter-down*) : ;;
+    *) _fail "stdout" "esperado status=exporter-down, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_preflight_unverified_endpoint_arquivo() {
+  # Endpoint nao-local (file://): sem dono verificavel; scrape com as
+  # metricas presentes -> unverified, exit 0, sem aviso.
+  _fx="$TMPDIR_TEST/pf-file.txt"
+  _fixture "$_fx" "sess-pf" 1.0 0.5 100 20
+  _pf_run "-" "file://$_fx"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    status=unverified*) : ;;
+    *) _fail "stdout" "esperado status=unverified, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_preflight_flag_desconhecida_exit2() {
+  assert_exit 2 sh "$SCRIPT" preflight --nao-existe || return 1
+  return 0
+}
+
 run_all_scenarios
 exit $?

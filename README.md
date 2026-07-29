@@ -355,6 +355,13 @@ lsof -nP -iTCP:9464 -sTCP:LISTEN     # who owns the exporter port?
 lsof -p <PID> | grep cwd             # ...and from which project?
 ```
 
+Or let the runtime decide: `otel-usage.sh preflight` answers "will THIS
+session be measured?" deterministically — `status=ok` (exporter owned by an
+ancestor of this process), `port-conflict` with the owner's PID and cwd
+(exit 3), `exporter-down` (exit 4), `disabled` or `unverified`. The 00c
+launcher commands run it in their pre-flight diagnostics and relay any
+warning to the operator before wave 001.
+
 **Interactive mode** (numbered selector in a TTY) and **dry-run**:
 
 ```bash

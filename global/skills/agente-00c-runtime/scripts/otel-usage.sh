@@ -398,9 +398,125 @@ _ou_cmd_delta() {
   return 0
 }
 
+# ---------- preflight ----------
+# A telemetria DESTA sessao vai ser medida? Checagem deterministica para o
+# inicio da execucao — os commands 00c invocam e repassam o aviso ao
+# operador; `state-ondas.sh start` tambem chama best-effort. Modo de falha
+# real que motivou isto (2026-07-29): porta 9464 presa por um `claude -c`
+# de outro projeto — a sessao corrente nao faz bind, nada e exportado e
+# otel_usage sai null em todas as ondas, sem nenhum aviso (ver bloco
+# DISPUTA DA PORTA FIXA no topo).
+#
+# Saida (stdout, 1 linha estavel):  status=<estado> endpoint=<url> [k=v...]
+# Exit: 0 = ok | disabled | unverified (nada a corrigir / indeterminavel)
+#       3 = port-conflict  (porta do endpoint pertence a OUTRO processo)
+#       4 = exporter-down  (opt-in ligado mas nada responde no endpoint)
+# NUNCA bloqueia: quem chama decide o que fazer com o aviso (best-effort,
+# como todo o resto deste script).
+
+# _ou_ep_port ENDPOINT -> porta quando o endpoint e HTTP local (127.0.0.1
+# ou localhost); exit 1 caso contrario (file://, host remoto: sem dono
+# local verificavel).
+_ou_ep_port() {
+  case "$1" in
+    http://127.0.0.1:[0-9]*|http://localhost:[0-9]*)
+      _ou_p=${1#http://*:}
+      _ou_p=${_ou_p%%/*}
+      printf '%s\n' "$_ou_p"
+      return 0 ;;
+  esac
+  return 1
+}
+
+# _ou_port_owner PORT -> PID do processo em LISTEN na porta, ou exit 1
+# (porta livre, ou lsof ausente/sem visibilidade — caller decide pelo
+# scrape nesse caso).
+_ou_port_owner() {
+  command -v lsof >/dev/null 2>&1 || return 1
+  _ou_own=$(lsof -nP -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -n 1)
+  [ -n "$_ou_own" ] || return 1
+  printf '%s\n' "$_ou_own"
+}
+
+# _ou_owner_cwd PID -> diretorio de trabalho do processo (best-effort;
+# vazio se indeterminavel). `-Fn` emite `n/caminho` para o descriptor cwd.
+_ou_owner_cwd() {
+  lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1
+}
+
+# _ou_is_ancestor PID -> 0 se PID e ancestral do processo corrente — i.e.
+# o exporter pertence a ESTA sessao do Claude Code (o script roda como
+# descendente do processo claude). 1 caso contrario.
+_ou_is_ancestor() {
+  _ou_walk=$$
+  while [ "$_ou_walk" -gt 1 ] 2>/dev/null; do
+    [ "$_ou_walk" = "$1" ] && return 0
+    _ou_walk=$(ps -o ppid= -p "$_ou_walk" 2>/dev/null | tr -d '[:space:]')
+    [ -n "$_ou_walk" ] || return 1
+  done
+  return 1
+}
+
+_ou_cmd_preflight() {
+  _ou_ep="$_OU_DEFAULT_ENDPOINT"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --endpoint) [ "$#" -ge 2 ] || _ou_die_usage "preflight: --endpoint exige valor"
+                  _ou_ep=$2; shift 2 ;;
+      *) _ou_die_usage "preflight: flag desconhecida: $1" ;;
+    esac
+  done
+
+  if [ "${CLAUDE_CODE_ENABLE_TELEMETRY:-}" != "1" ] || \
+     [ "${OTEL_METRICS_EXPORTER:-}" != "prometheus" ]; then
+    printf 'status=disabled endpoint=%s\n' "$_ou_ep"
+    return 0
+  fi
+
+  if _ou_port=$(_ou_ep_port "$_ou_ep"); then
+    if _ou_owner=$(_ou_port_owner "$_ou_port"); then
+      if _ou_is_ancestor "$_ou_owner"; then
+        printf 'status=ok endpoint=%s owner_pid=%s\n' "$_ou_ep" "$_ou_owner"
+        return 0
+      fi
+      _ou_cwd=$(_ou_owner_cwd "$_ou_owner")
+      printf 'status=port-conflict endpoint=%s owner_pid=%s owner_cwd=%s\n' \
+        "$_ou_ep" "$_ou_owner" "${_ou_cwd:--}"
+      _ou_warn "AVISO: a porta de $_ou_ep pertence a OUTRO processo (PID $_ou_owner${_ou_cwd:+, cwd $_ou_cwd}) — o consumo DESTA sessao NAO sera medido (otel_usage null em toda onda). Encerre o processo dono ou de a cada processo sua porta (OTEL_EXPORTER_PROMETHEUS_PORT + CSTK_OTEL_ENDPOINT — ver README 'Real per-wave cost')."
+      return 3
+    fi
+    # Porta local sem dono visivel: se ainda assim alguem responde com as
+    # metricas, a posse e indeterminavel (lsof ausente/sem visibilidade) —
+    # nao acusar conflito sem evidencia. Se nada responde: exporter-down.
+    _ou_tmp=$(mktemp) || _ou_die "mktemp falhou"
+    if _ou_scrape "$_ou_ep" "$_ou_tmp"; then
+      rm -f -- "$_ou_tmp"
+      printf 'status=unverified endpoint=%s\n' "$_ou_ep"
+      return 0
+    fi
+    rm -f -- "$_ou_tmp"
+    printf 'status=exporter-down endpoint=%s\n' "$_ou_ep"
+    _ou_warn "AVISO: telemetria ligada mas nada escuta em $_ou_ep — consumo NAO sera medido nesta sessao."
+    return 4
+  fi
+
+  # Endpoint nao-local (file://, host custom): sem dono verificavel;
+  # decide pelo scrape.
+  _ou_tmp=$(mktemp) || _ou_die "mktemp falhou"
+  if _ou_scrape "$_ou_ep" "$_ou_tmp"; then
+    rm -f -- "$_ou_tmp"
+    printf 'status=unverified endpoint=%s\n' "$_ou_ep"
+    return 0
+  fi
+  rm -f -- "$_ou_tmp"
+  printf 'status=exporter-down endpoint=%s\n' "$_ou_ep"
+  _ou_warn "AVISO: telemetria ligada mas o endpoint $_ou_ep nao responde com metricas claude_code — consumo NAO sera medido nesta sessao."
+  return 4
+}
+
 # ---------- dispatch ----------
 
-[ "$#" -gt 0 ] || _ou_die_usage "subcomando obrigatorio: available|snapshot|delta"
+[ "$#" -gt 0 ] || _ou_die_usage "subcomando obrigatorio: available|snapshot|delta|preflight"
 
 _ou_sub=$1
 shift
@@ -408,6 +524,7 @@ case "$_ou_sub" in
   available) _ou_cmd_available "$@" ;;
   snapshot)  _ou_cmd_snapshot "$@" ;;
   delta)     _ou_cmd_delta "$@" ;;
+  preflight) _ou_cmd_preflight "$@" ;;
   -h|--help)
     cat >&2 <<'HELP'
 otel-usage.sh — consumo real de tokens/custo por onda (telemetria OTel do Claude Code)
@@ -416,6 +533,7 @@ USO:
   otel-usage.sh available [--endpoint URL]
   otel-usage.sh snapshot  --state-dir DIR --phase start|end [--endpoint URL]
   otel-usage.sh delta     --state-dir DIR
+  otel-usage.sh preflight [--endpoint URL]
 
 Pre-requisito (opt-in, sem segredo):
   export CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -430,6 +548,11 @@ a unica sessao que cresceu entre os snapshots. Imprime `null` quando a
 metrica esta ausente OU quando a atribuicao e ambigua (mais de uma sessao
 ativa, processo do exporter trocado, snapshot em formato antigo) — nunca
 zero fabricado.
+
+preflight responde "a telemetria DESTA sessao vai ser medida?" sem nunca
+bloquear: exit 0 (ok|disabled|unverified), 3 (porta do endpoint pertence a
+OUTRO processo — dono nao e ancestral deste), 4 (opt-in ligado mas nada
+responde). stdout: `status=<estado> endpoint=<url> [owner_pid=N owner_cwd=D]`.
 HELP
     exit 2
     ;;
