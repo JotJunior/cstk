@@ -48,6 +48,24 @@ _BL_DIR=$(cd "$(dirname -- "$0")" && pwd)
 # shellcheck source=./_diag.sh
 . "$_BL_DIR/_diag.sh"
 
+# Backend dual (feature state-db-foundation, FASE 3 task 3.5): presenca de
+# <state-dir>/state.db seleciona SQLite; senao, backend JSON (comportamento
+# historico, intacto abaixo). Ver contracts/primitives.md §C1/C2. Reusa os
+# primitivos ja testados de _state-rw-db.sh (_sr_backend/_sr_db_file/
+# _sr_exec_id/_sr_sql_quote) em vez de duplica-los — mesmo racional de C8
+# para sql_escape/strip_nul (paridade com state-decisions.sh/state-ondas.sh).
+# shellcheck source=./_state-db.sh
+. "$_BL_DIR/_state-db.sh"
+# shellcheck source=./_state-rw-db.sh
+. "$_BL_DIR/_state-rw-db.sh"
+# shellcheck source=./_bloqueios-db.sh
+. "$_BL_DIR/_bloqueios-db.sh"
+
+# Shim para _state-rw-db.sh (_sr_exec_id/_sr_sql_quote nao chamam _sr_die em
+# seus caminhos normais, mas o shim protege contra qualquer caminho de erro
+# latente sem duplicar a logica de _bl_die).
+_sr_die() { _bl_die "$1" "${2:-1}"; }
+
 _bl_die_usage() { printf '%s: %s\n' "$_BL_NAME" "$1" >&2; exit 2; }
 _bl_die()       { printf '%s: %s\n' "$_BL_NAME" "$1" >&2; exit "${2:-1}"; }
 
@@ -133,15 +151,9 @@ _bl_cmd_register() {
   [ -n "$_ctx" ]  || _bl_die_usage "register: --contexto-para-resposta obrigatorio"
   _bl_require_jq
 
-  _sf=$(_bl_state_file "$_sd")
-  [ -f "$_sf" ] || _bl_die "register: state.json ausente em $_sd" 1
-
-  # FK integrity: decisao referenciada precisa existir
-  if ! _bl_decisao_exists "$_sd" "$_dec"; then
-    _bl_die "register: decisao_id nao existe: $_dec (use state-decisions.sh register antes)" 1
-  fi
-
-  # Validacao de tamanho minimo (data-model: pergunta>=20, contexto>=1)
+  # Validacao de tamanho minimo (data-model: pergunta>=20, contexto>=1) —
+  # comum aos dois backends, roda ANTES do dispatch (paridade de
+  # comportamento, mesmo padrao de state-decisions.sh).
   if [ "$(printf '%s' "$_perg" | wc -c | tr -d ' ')" -lt 20 ]; then
     _bl_die "register: pergunta muito curta (<20 chars). Humano precisa entender sem releitura." 1
   fi
@@ -157,6 +169,20 @@ _bl_cmd_register() {
         || _bl_die "register: --opcoes-recomendadas precisa ser JSON array (ou omitido)" 2
       ;;
   esac
+
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _bl_db_register "$_sd" "$_dec" "$_perg" "$_ctx" "$_opcoes"
+    return 0
+  fi
+
+  _sf=$(_bl_state_file "$_sd")
+  [ -f "$_sf" ] || _bl_die "register: state.json ausente em $_sd" 1
+
+  # FK integrity: decisao referenciada precisa existir (path JSON — sob
+  # SQLite a FK real do schema ja garante isto, ver _bl_db_register/C3).
+  if ! _bl_decisao_exists "$_sd" "$_dec"; then
+    _bl_die "register: decisao_id nao existe: $_dec (use state-decisions.sh register antes)" 1
+  fi
 
   _id=$(_bl_next_block_id "$_sd")
   _now=$(_bl_iso_now)
@@ -210,6 +236,11 @@ _bl_cmd_respond() {
   [ "$_resp_set" = 1 ] || _bl_die_usage "respond: --resposta obrigatorio (use '' para resposta vazia explicita)"
   _bl_require_jq
 
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _bl_db_respond "$_sd" "$_bid" "$_resp"
+    return 0
+  fi
+
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "respond: state.json ausente em $_sd" 1
 
@@ -262,6 +293,10 @@ _bl_cmd_list() {
   done
   [ -n "$_sd" ] || _bl_die_usage "list: --state-dir obrigatorio"
   _bl_require_jq
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _bl_db_list "$_sd" "$_st"
+    return 0
+  fi
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "list: state.json ausente" 1
   jq -r --arg s "$_st" '
@@ -284,6 +319,10 @@ _bl_cmd_count() {
   done
   [ -n "$_sd" ] || _bl_die_usage "count: --state-dir obrigatorio"
   _bl_require_jq
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _bl_db_count "$_sd" "$([ "$_pending" = 1 ] && printf '1' || printf '')"
+    return 0
+  fi
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "count: state.json ausente" 1
   if [ "$_pending" = 1 ]; then
@@ -303,6 +342,10 @@ _bl_cmd_next_id() {
   done
   [ -n "$_sd" ] || _bl_die_usage "next-id: --state-dir obrigatorio"
   _bl_require_jq
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _bl_db_next_id "$_sd"
+    return 0
+  fi
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "next-id: state.json ausente" 1
   _bl_next_block_id "$_sd"
@@ -321,6 +364,10 @@ _bl_cmd_get() {
   [ -n "$_sd" ]  || _bl_die_usage "get: --state-dir obrigatorio"
   [ -n "$_bid" ] || _bl_die_usage "get: --block-id obrigatorio"
   _bl_require_jq
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _bl_db_get "$_sd" "$_bid"
+    return 0
+  fi
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "get: state.json ausente" 1
   _out=$(jq --arg id "$_bid" '

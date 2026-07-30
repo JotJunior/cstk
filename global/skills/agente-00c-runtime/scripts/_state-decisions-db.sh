@@ -80,8 +80,21 @@ _sd_db_exec_capture() {
   _sdc_try=1
   while [ "$_sdc_try" -le 4 ]; do
     _sdc_errfile=$(mktemp) || return 1
-    _sdc_out=$(_state_db_exec "$_sdc_db" "$_sdc_sql" "$_sdc_ms" 2>"$_sdc_errfile")
-    _sdc_rc=$?
+    # `if _sdc_out=$(...); then ... else ...; fi` (NAO uma atribuicao nua
+    # seguida de `_sdc_rc=$?`): sob `set -e` (o caller sempre roda com
+    # `set -eu`), uma atribuicao `x=$(cmd)` cujo `cmd` falha DISPARA saida
+    # imediata do shell inteiro — a atribuicao nao esta numa lista
+    # if/while/&&/|| que a isente de -e (POSIX 2.8.1). Bug latente achado
+    # na task 3.5 (bloqueios.sh dual-backend), corrigido aqui por
+    # compartilhar exatamente o mesmo padrao: o `case` de retry/lock (C6)
+    # abaixo nunca era alcancado sob erro nao-lock nem sob lock persistente
+    # — o processo morria silenciosamente na primeira falha de
+    # `_state_db_exec`, pulando o backoff/retry inteiro.
+    if _sdc_out=$(_state_db_exec "$_sdc_db" "$_sdc_sql" "$_sdc_ms" 2>"$_sdc_errfile"); then
+      _sdc_rc=0
+    else
+      _sdc_rc=$?
+    fi
     _sdc_err=$(cat -- "$_sdc_errfile" 2>/dev/null)
     rm -f -- "$_sdc_errfile"
     if [ "$_sdc_rc" -eq 0 ]; then

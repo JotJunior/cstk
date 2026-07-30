@@ -317,12 +317,61 @@ Ref: contracts/primitives.md tabela de subcomandos `state-ondas.sh`
 
 ### 3.5 Adaptar `bloqueios.sh` `[C]`
 
-- [ ] 3.5.1 Adaptar `register` para gravar o bloqueio **e** mudar
+- [x] 3.5.1 Adaptar `register` para gravar o bloqueio **e** mudar
   `.execution.status` na mesma transação (C4 — hoje são dois RMW
   separados)
-- [ ] 3.5.2 Adaptar `respond`/`list`/`count`/`next-id`/`get`
-- [ ] 3.5.3 Teste: `register` com `--decisao-id` inexistente falha por FK
+  — onda-013: novo `_bloqueios-db.sh` (`_bl_db_register` +
+  `_bl_db_next_block_num_expr`/`_bl_db_exec_capture`), dispatch por backend
+  em `bloqueios.sh`. Mesmo padrão de `_sd_db_register` (id `block-NNN` por
+  subquery dentro do próprio `INSERT`, lido de volta via
+  `last_insert_rowid()` antes do `COMMIT`); o `UPDATE execution SET
+  status='aguardando_humano'` entra na MESMA transação `BEGIN IMMEDIATE
+  ... COMMIT` do `INSERT`. C3: `decisao_id` inexistente deixa a FK real do
+  schema (`human_block.decision_id REFERENCES decision(id)`) disparar — a
+  transação inteira reverte (nada persistido, `execution.status`
+  intocado) e o erro é mapeado para a mesma mensagem/exit 1 do path JSON.
+  **Bug lateral achado e corrigido** (afeta também `_sd_db_exec_capture`
+  de 3.4, mesma causa): `x=$(cmd)` como atribuição nua seguida de
+  `rc=$?` — sob `set -e` (todo caller roda `set -eu`), a falha de `cmd`
+  dentro da substituição de comando dispara saída imediata do shell
+  INTEIRO antes de `rc=$?` executar (POSIX 2.8.1: atribuição nua não está
+  numa lista if/while/&&/|| que a isente de `-e`). Sem o guard `if
+  x=$(cmd); then...else...fi`, o retry/backoff sob lock (C6) e o
+  mapeamento de erro FK (C3) nunca eram alcançados — o processo morria
+  silenciosamente na primeira falha não-zero de `_state_db_exec`. Corrigido
+  nos dois arquivos (`_bloqueios-db.sh` e `_state-decisions-db.sh`).
+  Segundo achado, específico de `_bloqueios-db.sh`: como `register`
+  precisa inspecionar o TEXTO do erro após a falha (para diferenciar FK de
+  erro genérico), `_bl_db_exec_capture` não pode ser chamada dentro de
+  `$(...)` — command substitution sempre forka uma subshell, e qualquer
+  atribuição feita dentro dela (inclusive à variável "global" de erro) é
+  descartada quando a subshell termina. Resolvido devolvendo o resultado
+  via duas globais (`$_bl_db_last_out`/`$_bl_db_last_err`) e chamando a
+  função como comando simples (`if _bl_db_exec_capture ...; then`), nunca
+  via `$(...)`.
+- [x] 3.5.2 Adaptar `respond`/`list`/`count`/`next-id`/`get`
+  — onda-013: `_bl_db_respond` (mesma transação: fecha o `human_block` e,
+  se não restar nenhum outro `aguardando`, promove `execution.status` de
+  volta a `em_andamento` via `NOT EXISTS` na mesma `UPDATE`, C4);
+  `_bl_db_list` (TSV `id/decision_id/status/triggered_at/question`,
+  paridade com o formato do path JSON); `_bl_db_count`
+  (`--pending-only` filtra `status='aguardando'`); `_bl_db_next_id`
+  (mesma subquery de 3.5.1, sem inserir); `_bl_db_get` (JSON via
+  `json_object`, mesmos campos/ordem do path JSON).
+  `accumulated_metrics.human_blocks_total` não precisou de tratamento
+  dedicado — já é DERIVADO por agregação SQL em `_sr_db_read` desde a
+  task 3.2.2.
+- [x] 3.5.3 Teste: `register` com `--decisao-id` inexistente falha por FK
   (US1 AS-4)
+  — onda-013: `scenario_sqlite_register_decisao_inexistente_falha_fk`
+  (`tests/test_bloqueios.sh`) confirma exit 1, mensagem
+  "decisao_id nao existe", `count == 0` e `execution.status` intocado
+  (rollback completo da transação). 32 cenários sqlite/paridade novos em
+  `tests/test_bloqueios.sh` (register/respond/list/count/next-id/get,
+  payload hostil C8, concorrência 15 registers simultâneos, paridade
+  cross-backend) + 7 cenários unitários em `tests/test__bloqueios-db.sh`
+  (incl. regressão do bug de `set -e`/subshell acima). Suite completa
+  filtrada por `state-` verde (349/349); `--check-coverage` sem órfãos.
 
 ### 3.6 Adaptar `spawn-tracker.sh` `[C]`
 

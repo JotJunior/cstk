@@ -9,6 +9,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/bloqueios.sh"
 RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
 DEC="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
+SCHEMA_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-db-schema.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_bloqueios.sh: jq ausente — pulando suite\n'
@@ -331,5 +332,291 @@ scenario_backcompat_migrate_entao_register_respond() {
   capture "$RW" get --state-dir "$_sd" --field '.human_blocks[0].human_answer'
   assert_stdout_contains "Sim" || return 1
 }
+
+# ==== Backend SQLite (feature state-db-foundation, FASE 3 task 3.5) ====
+#
+# Ref: docs/specs/state-db-foundation/tasks.md FASE 3, task 3.5
+#      docs/specs/state-db-foundation/contracts/primitives.md §C1 (paridade)
+#      §C2 (selecao de backend) §C3 (FK) §C4 (transacao) §C6 (concorrencia)
+#      §C8 (escape)
+#
+# Mesmo padrao de tests/test_state-decisions.sh (task 3.4): aplica o DDL via
+# state-db-schema.sh e semeia uma execution + decision minimas via sqlite3
+# diretamente (init nunca cria state.db — isso e a migracao, FASE 6, ainda
+# nao implementada).
+
+if ! command -v sqlite3 >/dev/null 2>&1; then
+  printf '# test_bloqueios.sh: sqlite3 ausente — pulando cenarios de backend SQLite\n'
+else
+
+# _seed_sqlite_backend DIR -> cria state.db com execution (id=exec-1) e
+# decision (id=dec-001) minimas, prontas para bloqueios.sh register.
+_seed_sqlite_backend() {
+  _ssb_dir=$1
+  mkdir -p "$_ssb_dir"
+  "$SCHEMA_SCRIPT" create --db "$_ssb_dir/state.db" >/dev/null 2>&1 \
+    || { _fail "seed: schema create falhou" ""; return 1; }
+  sqlite3 "$_ssb_dir/state.db" "
+    PRAGMA foreign_keys=ON;
+    INSERT INTO execution (id,schema_version,target_project_path,target_project_description,status,started_at,current_stage,next_instruction,external_urls_whitelist,circular_movement_history,initial_key_aspects,atomic_commit_enabled)
+    VALUES ('exec-1','1.0.0','/tmp/p','desc de teste com detalhe','em_andamento','2026-07-30T00:00:00Z','execute-task','faca algo','[]','[]','[]',0);
+    INSERT INTO decision (id,execution_id,timestamp,agent,stage,context,options_considered,choice,rationale)
+    VALUES ('dec-001','exec-1','2026-07-30T00:00:00Z','x','clarify','contexto de teste com detalhe suficiente','[\"a\"]','a','justificativa de teste com detalhe suficiente');
+  " || { _fail "seed: insert execution/decision falhou" ""; return 1; }
+}
+
+_register_sqlite_default() {
+  capture "$SCRIPT" register --state-dir "$1" \
+    --decisao-id "dec-001" \
+    --pergunta "Qual stack escolher para a feature, Go ou Node?" \
+    --contexto-para-resposta "Briefing nao define; stack-sugerida vazia"
+}
+
+scenario_sqlite_register_gera_block_001() {
+  _sd="$TMPDIR_TEST/sqlite-register-001"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite register" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "block-001" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_sqlite_register_atualiza_status_para_aguardando_humano() {
+  # C4: register grava o bloqueio E muda .execution.status na MESMA
+  # transacao.
+  _sd="$TMPDIR_TEST/sqlite-register-status"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite register" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "aguardando_humano" || return 1
+  # accumulated_metrics.human_blocks_total e DERIVADO por agregacao SQL sob
+  # o backend sqlite (paridade de state-ondas.sh task 3.3.1) — nao um
+  # contador mantido em sincronia.
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.human_blocks_total'
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_sqlite_register_sequencial_gera_block_002() {
+  _sd="$TMPDIR_TEST/sqlite-register-seq"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  _register_sqlite_default "$_sd"
+  assert_stdout_contains "block-002" || return 1
+  capture "$SCRIPT" next-id --state-dir "$_sd"
+  assert_stdout_contains "block-003" || return 1
+}
+
+# C3: decisao_id inexistente dispara a FK REAL do schema
+# (human_block.decision_id REFERENCES decision(id)) — a transacao inteira
+# reverte (nenhum bloqueio persistido, execution.status intocado) e o erro
+# e mapeado para a mesma mensagem/exit 1 do path JSON (US1 AS-4).
+scenario_sqlite_register_decisao_inexistente_falha_fk() {
+  _sd="$TMPDIR_TEST/sqlite-register-fk"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --decisao-id "dec-fantasma" \
+    --pergunta "Pergunta longa o suficiente para passar (>=20 chars)" \
+    --contexto-para-resposta "ctx"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "sqlite FK violation" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "decisao_id nao existe" || return 1
+  # Nada persistido — a transacao reverteu por inteiro (C4).
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "0" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "em_andamento" || return 1
+}
+
+scenario_sqlite_list_imprime_tsv() {
+  _sd="$TMPDIR_TEST/sqlite-list-tsv"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  capture "$SCRIPT" list --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite list" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "block-001	dec-001	aguardando	" || return 1
+  assert_stdout_contains "Qual stack escolher" || return 1
+}
+
+scenario_sqlite_list_filtra_por_status() {
+  _sd="$TMPDIR_TEST/sqlite-list-status"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-001" --resposta "Go"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite respond" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd" --status "respondido"
+  assert_stdout_contains "block-001	" || return 1
+  capture "$SCRIPT" list --state-dir "$_sd" --status "aguardando"
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "sqlite list filtrado" "esperava vazio, obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_sqlite_get_imprime_json() {
+  _sd="$TMPDIR_TEST/sqlite-get"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  capture "$SCRIPT" get --state-dir "$_sd" --block-id "block-001"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite get" "$_CAPTURED_STDERR"; return 1; }
+  capture jq -e '.id == "block-001" and .decision_id == "dec-001" and .status == "aguardando" and .recommended_options == null' <<EOF
+$_CAPTURED_STDOUT
+EOF
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite get json" "campos incorretos: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_sqlite_get_inexistente_falha() {
+  _sd="$TMPDIR_TEST/sqlite-get-ausente"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --block-id "block-999"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "sqlite get ausente" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# C4: respond fecha o bloqueio E, se nao restar nenhum outro aguardando,
+# promove execution.status de volta a "em_andamento" — mesma transacao.
+scenario_sqlite_respond_marca_respondido_e_volta_status() {
+  _sd="$TMPDIR_TEST/sqlite-respond"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-001" --resposta "Vamos de Go"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite respond" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "em_andamento" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.human_blocks[0].human_answer'
+  assert_stdout_contains "Vamos de Go" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd" --pending-only
+  assert_stdout_contains "0" || return 1
+}
+
+scenario_sqlite_respond_status_so_volta_quando_todos_resolvidos() {
+  _sd="$TMPDIR_TEST/sqlite-respond-parcial"
+  _seed_sqlite_backend "$_sd" || return 1
+  # segunda decisao + segundo bloqueio pendente
+  capture "$DEC" register --state-dir "$_sd" \
+    --agente "x" --etapa "clarify" \
+    --contexto "Outra decisao de teste com 20+ chars aqui" \
+    --opcoes '["a","b"]' --escolha "a" \
+    --justificativa "Justificativa generica com 20+ chars aqui"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite dec-002" "$_CAPTURED_STDERR"; return 1; }
+  _register_sqlite_default "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --decisao-id "dec-002" \
+    --pergunta "Segunda pergunta longa o suficiente para passar?" \
+    --contexto-para-resposta "ctx2"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite block-002" "$_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-001" --resposta "resp1"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite respond 1" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "aguardando_humano" || return 1
+
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-002" --resposta "resp2"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite respond 2" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "em_andamento" || return 1
+}
+
+scenario_sqlite_respond_ja_respondido_falha() {
+  _sd="$TMPDIR_TEST/sqlite-respond-duplo"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-001" --resposta "primeira"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite respond 1" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-001" --resposta "segunda"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "sqlite respond duplo" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "nao esta em status aguardando" || return 1
+}
+
+scenario_sqlite_respond_inexistente_falha() {
+  _sd="$TMPDIR_TEST/sqlite-respond-ausente"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id "block-999" --resposta "x"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "sqlite respond ausente" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "bloqueio nao encontrado" || return 1
+}
+
+# C8: payload hostil (apostrofo + tentativa de injecao) persistido literal,
+# tabela human_block sobrevive, integrity_check continua ok.
+scenario_sqlite_payload_hostil_preservado_literal_tabela_sobrevive() {
+  _sd="$TMPDIR_TEST/sqlite-hostil"
+  _seed_sqlite_backend "$_sd" || return 1
+  _hostil="'; DROP TABLE human_block; -- e apostrofo simples it's here"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --decisao-id "dec-001" \
+    --pergunta "$_hostil (pergunta hostil, 20+ chars)" \
+    --contexto-para-resposta "$_hostil"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite payload hostil" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.human_blocks[-1].question'
+  assert_stdout_contains "DROP TABLE human_block" || return 1
+  capture "$RW" sha256-verify --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "integrity apos payload hostil" "$_CAPTURED_STDERR"; return 1; }
+}
+
+# Teste de concorrencia (task 3.5, paridade com 3.4.3): N registers
+# simultaneos, cada um referenciando uma decisao DISTINTA (FK 1:1 por
+# design do schema nao impede reuso do MESMO decision_id por varios
+# human_blocks — mas exercitamos IDs unicos por worker para simular o caso
+# real de varios bloqueios concorrentes na mesma execucao), nao perde
+# nenhum bloqueio e nao colide em block-NNN.
+scenario_sqlite_register_concorrente_sem_colisao() {
+  _sd="$TMPDIR_TEST/sqlite-concorrencia"
+  _seed_sqlite_backend "$_sd" || return 1
+  _n=15
+  _i=1
+  while [ "$_i" -le "$_n" ]; do
+    ( "$SCRIPT" register --state-dir "$_sd" \
+        --decisao-id "dec-001" \
+        --pergunta "Pergunta concorrente numero $_i com 20+ chars" \
+        --contexto-para-resposta "ctx concorrente $_i" \
+        > "$TMPDIR_TEST/sqlite-concorrencia-out-$_i.txt" \
+        2> "$TMPDIR_TEST/sqlite-concorrencia-err-$_i.txt" ) &
+    _i=$((_i + 1))
+  done
+  wait
+
+  _i=1
+  while [ "$_i" -le "$_n" ]; do
+    if [ -s "$TMPDIR_TEST/sqlite-concorrencia-err-$_i.txt" ]; then
+      _fail "worker $_i emitiu stderr" "$(cat "$TMPDIR_TEST/sqlite-concorrencia-err-$_i.txt")"
+      return 1
+    fi
+    _i=$((_i + 1))
+  done
+
+  _unique=$(cat "$TMPDIR_TEST"/sqlite-concorrencia-out-*.txt | sort -u | wc -l | tr -d ' ')
+  [ "$_unique" = "$_n" ] || { _fail "ids unicos" "esperado $_n, obtido $_unique"; return 1; }
+
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "$_n" || return 1
+}
+
+# Paridade cross-backend (C1): mesmos inputs, mesmo formato de stdout
+# (block-001) para o primeiro register em cada backend.
+scenario_sqlite_paridade_register_primeiro_id_json() {
+  _sd_json="$TMPDIR_TEST/paridade-bloqueios-json"
+  _setup_with_decisao "$_sd_json" || { _error "fixture" ""; return 2; }
+  _register_block_default "$_sd_json"
+  _json_id="$_CAPTURED_STDOUT"
+
+  _sd_db="$TMPDIR_TEST/paridade-bloqueios-sqlite"
+  _seed_sqlite_backend "$_sd_db" || return 1
+  _register_sqlite_default "$_sd_db"
+  _db_id="$_CAPTURED_STDOUT"
+
+  [ "$_json_id" = "$_db_id" ] || { _fail "paridade register id" "json='$_json_id' sqlite='$_db_id'"; return 1; }
+}
+
+scenario_sqlite_register_state_db_ausente_falha() {
+  _sd="$TMPDIR_TEST/sqlite-ausente"
+  mkdir -p "$_sd"
+  # sem state.db -> backend json (C2); sem state.json tambem -> falha 1
+  _register_sqlite_default "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "sqlite state ausente" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+}
+
+fi # sqlite3 disponivel
 
 run_all_scenarios
