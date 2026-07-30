@@ -870,6 +870,33 @@ scenario_sqlite_sha256_update_e_noop_com_exit_0() {
   [ ! -f "$_sd/state.json.sha256" ] || { _fail "sha256-update sob sqlite nao deveria criar state.json.sha256" ""; return 1; }
 }
 
+# Task 7.1.3 (contracts/primitives.md §C7, dec-025/D4-a FECHADA, block-002):
+# edicao externa bem-formada (UPDATE direto via sqlite3, sem quebrar a
+# estrutura do banco) NAO e detectada por PRAGMA integrity_check. Este e o
+# comportamento ACEITO e DOCUMENTADO (nao um bug) — cenario 7.a do
+# quickstart.md. O assert correto e "exit 0 mesmo apos edicao bem-formada",
+# registrando o limite conhecido do mecanismo (modelo de ameaca: operador
+# local confiavel).
+scenario_sqlite_sha256_verify_edicao_bem_formada_nao_detectada() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "
+    INSERT INTO wave (id,execution_id,seq,started_at) VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z');
+    INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score)
+      VALUES ('dec-001','exec-1','onda-001','2026-07-30T00:01:00Z','tester','specify','contexto de teste com pelo menos vinte caracteres','[\"a\",\"b\"]','a','justificativa de teste com pelo menos vinte caracteres',2);
+  " || { _fail "seed decision falhou" ""; return 1; }
+
+  capture "$SCRIPT" sha256-verify --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sha256-verify pre-edicao deveria ser exit 0" "$_CAPTURED_STDERR"; return 1; }
+
+  sqlite3 "$_sd/state.db" "UPDATE decision SET choice='outra' WHERE id='dec-001';" \
+    || { _fail "UPDATE bem-formado falhou" ""; return 1; }
+
+  capture "$SCRIPT" sha256-verify --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "regresso documentado (D4-a/dec-025): integrity_check deveria seguir exit 0 apos UPDATE bem-formado" "$_CAPTURED_STDERR"; return 1; }
+}
+
 # ---- Paridade C1 (task 3.2.4): mesma sequencia de operacoes, dois backends,
 # mesmo stdout/exit code observavel nos pontos comparaveis ----
 scenario_sqlite_paridade_get_set_com_backend_json() {

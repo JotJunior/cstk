@@ -841,12 +841,12 @@ Ref: spec.md FR-010; contracts/primitives.md §C7; research.md Decision 4
 
 ### 7.1 `sha256-update`/`sha256-verify` sob backend SQLite `[A]`
 
-- [ ] 7.1.1 Implementar `sha256-update`/`sha256-verify`, sob backend
+- [x] 7.1.1 Implementar `sha256-update`/`sha256-verify`, sob backend
   `state.db`, delegando a `PRAGMA integrity_check` (ou `quick_check` no
   caminho quente), preservando nome e contrato de exit code do comando
-- [ ] 7.1.2 Teste: corrupção estrutural simulada (truncar o arquivo) é
+- [x] 7.1.2 Teste: corrupção estrutural simulada (truncar o arquivo) é
   detectada por `integrity_check`
-- [ ] 7.1.3 Teste de regressão **documentado e esperado** (dec-025): uma
+- [x] 7.1.3 Teste de regressão **documentado e esperado** (dec-025): uma
   edição externa bem-formada via `UPDATE` direto não é detectada — cenário
   7.a do quickstart.md, confirmando que o comportamento aceito está
   implementado como decidido, não como falha
