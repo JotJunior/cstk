@@ -272,11 +272,48 @@ Ref: contracts/primitives.md tabela de subcomandos `state-ondas.sh`
 
 ### 3.4 Adaptar `state-decisions.sh` `[C]`
 
-- [ ] 3.4.1 Adaptar `register` para inserir via transação `BEGIN
+- [x] 3.4.1 Adaptar `register` para inserir via transação `BEGIN
   IMMEDIATE`, preservando impressão de `dec-NNN` em stdout
-- [ ] 3.4.2 Adaptar `count`/`next-id`/`list`
-- [ ] 3.4.3 Teste: `register` sob concorrência (duas invocações
+  — onda-011: novo `_state-decisions-db.sh` (`_sd_db_register` +
+  `_sd_db_next_num_expr`/`_sd_db_current_wave_id`/`_sd_db_exec_capture`),
+  dispatch por backend em `state-decisions.sh`. O número sequencial de
+  `dec-NNN` é calculado por **subquery dentro do próprio `INSERT`**
+  (`'dec-' || printf('%03d', (SELECT coalesce(max(...),0)+1 FROM decision
+  WHERE execution_id=...))`) — nunca por leitura separada antes do `BEGIN
+  IMMEDIATE`, que é exatamente o padrão que colidiria sob concorrência
+  (diferente do precedente de `_so_db_start`/onda-NNN, que pré-computa fora
+  da transação; aqui isso foi deliberadamente evitado por 3.4.3 exigir
+  prova de não-colisão). O id novo é lido de volta via
+  `SELECT id FROM decision WHERE rowid=last_insert_rowid()` **dentro** da
+  mesma transação, antes do `COMMIT` (isolado por conexão, nunca enxerga
+  commit de outro escritor). Como isso precisa de stdout preservado —
+  diferente de `_state_db_exec_with_retry` (FASE 3.1), que descarta stdout
+  por desenho —, foi criado `_sd_db_exec_capture` (mesmo backoff/retry sob
+  lock, contrato de falha C6 idêntico, mas propaga stdout da tentativa
+  vencedora) em vez de alterar o helper compartilhado. `wave_id` liga à
+  última onda por `seq` (aberta ou não, paridade com `.waves[-1].id` do
+  path JSON); `NULL` quando não há nenhuma onda ainda (`"init"` no path
+  JSON — data-model.md já documentava essa representação).
+- [x] 3.4.2 Adaptar `count`/`next-id`/`list`
+  — onda-011: `_sd_db_count` (COUNT com filtro opcional `--agente`),
+  `_sd_db_next_id` (mesma subquery de 3.4.1, sem inserir), `_sd_db_list`
+  (TSV `id/wave_id/agent/stage/choice`; `wave_id` NULL normalizado para
+  `"init"` na saída textual, mesma convenção de exibição do JSON — o
+  export completo (`state-rw.sh read`, já implementado na FASE 3.2) ainda
+  emite `null` nesse caso específico, gap conhecido e documentado no
+  cabeçalho de `_state-decisions-db.sh`, fora do escopo desta task)
+- [x] 3.4.3 Teste: `register` sob concorrência (duas invocações
   simultâneas) não perde nenhuma decisão e não colide em `next-id`
+  — onda-011: `scenario_sqlite_register_concorrente_sem_colisao`
+  (`tests/test_state-decisions.sh`) dispara 15 `register` simultâneos via
+  `&`/`wait`; confirma 15 ids únicos (`dec-001`..`dec-015`) e `count == 15`.
+  Smoke manual adicional com 20 invocações concorrentes confirmou o mesmo
+  resultado antes de escrever o cenário automatizado. Unit tests
+  complementares em `tests/test__state-decisions-db.sh` (8 cenários:
+  `_sd_db_next_num_expr`, `_sd_db_current_wave_id`,
+  `_sd_db_exec_capture` incl. o padrão BEGIN IMMEDIATE+SELECT+COMMIT numa
+  única sessão). Suite completa (`--fast`, filtro `state-`) verde
+  (349/349); `--check-coverage` sem órfãos.
 
 ### 3.5 Adaptar `bloqueios.sh` `[C]`
 

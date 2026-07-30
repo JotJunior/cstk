@@ -44,6 +44,20 @@
 set -eu
 
 _SD_NAME="state-decisions"
+_SD_DIR=$(cd "$(dirname -- "$0")" && pwd)
+
+# Backend dual (feature state-db-foundation, FASE 3 task 3.4): presenca de
+# <state-dir>/state.db seleciona SQLite; senao, backend JSON (comportamento
+# historico, intacto abaixo). Ver contracts/primitives.md §C1/C2. Reusa os
+# primitivos ja testados de _state-rw-db.sh (_sr_backend/_sr_db_file/
+# _sr_exec_id/_sr_sql_quote) em vez de duplica-los — mesmo racional de C8
+# para sql_escape/strip_nul.
+# shellcheck source=./_state-db.sh
+. "$_SD_DIR/_state-db.sh"
+# shellcheck source=./_state-rw-db.sh
+. "$_SD_DIR/_state-rw-db.sh"
+# shellcheck source=./_state-decisions-db.sh
+. "$_SD_DIR/_state-decisions-db.sh"
 
 _sd_die_usage() {
   printf '%s: %s\n' "$_SD_NAME" "$1" >&2
@@ -54,6 +68,11 @@ _sd_die() {
   printf '%s: %s\n' "$_SD_NAME" "$1" >&2
   exit "${2:-1}"
 }
+
+# Shim para _state-rw-db.sh (_sr_exec_id/_sr_sql_quote nao chamam _sr_die em
+# seus caminhos normais, mas o shim protege contra qualquer caminho de erro
+# latente sem duplicar a logica de _sd_die).
+_sr_die() { _sd_die "$1" "${2:-1}"; }
 
 _sd_require_jq() {
   if ! command -v jq >/dev/null 2>&1; then
@@ -215,6 +234,12 @@ _sd_cmd_register() {
     fi
   fi
 
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _sd_db_register "$_sdir" "$_ag" "$_et" "$_ctx" "$_ops" "$_esc" "$_just" \
+      "$_score" "$_evi" "$_refs" "$_arto"
+    return 0
+  fi
+
   _sf=$(_sd_state_file "$_sdir")
   [ -f "$_sf" ] || _sd_die "register: state.json ausente em $_sdir" 1
 
@@ -276,6 +301,10 @@ _sd_cmd_count() {
   done
   [ -n "$_sdir" ] || _sd_die_usage "count: --state-dir obrigatorio"
   _sd_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _sd_db_count "$_sdir" "$_ag"
+    return 0
+  fi
   _sf=$(_sd_state_file "$_sdir")
   [ -f "$_sf" ] || _sd_die "count: state.json ausente" 1
   if [ -n "$_ag" ]; then
@@ -295,6 +324,10 @@ _sd_cmd_next_id() {
   done
   [ -n "$_sdir" ] || _sd_die_usage "next-id: --state-dir obrigatorio"
   _sd_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _sd_db_next_id "$_sdir"
+    return 0
+  fi
   _sd_next_dec_id "$_sdir"
 }
 
@@ -312,6 +345,10 @@ _sd_cmd_list() {
   done
   [ -n "$_sdir" ] || _sd_die_usage "list: --state-dir obrigatorio"
   _sd_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _sd_db_list "$_sdir" "$_ag" "$_et"
+    return 0
+  fi
   _sf=$(_sd_state_file "$_sdir")
   [ -f "$_sf" ] || _sd_die "list: state.json ausente" 1
   jq -r --arg a "$_ag" --arg e "$_et" '
