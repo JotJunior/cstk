@@ -121,7 +121,7 @@ amendment — não substituto dele, e não autoriza prosseguir sem ele.
 docs/specs/state-db-foundation/
 ├── spec.md
 ├── plan.md              # This file
-├── research.md          # Phase 0 — 9 decisões + 2 em aberto (D4-a, D7-a)
+├── research.md          # Phase 0 — 9 decisões + 1 em aberto (D7-a; D4-a fechada por dec-025)
 ├── data-model.md        # Phase 1 — schema + constraints do FR-002
 ├── quickstart.md        # Phase 1 — 7 cenários cobrindo SC-001..SC-006
 └── contracts/
@@ -218,7 +218,7 @@ para `/create-tasks`, não substituto dele.
 | 3 | Seleção de backend (`state.db` vs `state.json`) | FR-012, SC-003 | 2 |
 | 4 | Export derivado | FR-007, FR-013-INFRA-BACKUP | 2 |
 | 5 | Migração + verificação | FR-005, FR-006, FR-014 | 3, 4 |
-| 6 | Verificação de integridade | FR-010 | 1, **D4-a fechada** |
+| 6 | Verificação de integridade | FR-010 | 1, D4-a (**fechada** — dec-025, opção 1) |
 | 7 | Ingestão SQL→SQL | FR-008, FR-009 | 5, **D7-a fechada** |
 
 O passo 4 antes do 5 é deliberado: a verificação campo-a-campo da migração
@@ -229,13 +229,13 @@ comparador novo.
 
 ## Decisões em aberto a fechar antes das tasks correspondentes
 
-| # | Decisão | Bloqueia | Onde |
-|---|---|---|---|
-| D4-a | Cobertura de adulteração deliberada (`integrity_check` não detecta edição bem-formada, `sha256-verify` detecta) | FR-010 | research.md Decision 4 |
-| D7-a | Forma do acesso na ingestão SQL→SQL (`ATTACH … mode=ro` vs. processo separado) | FR-008 | research.md Decision 7 |
-| E5-a | Gatilho do export (sob demanda / ao fim da onda / ambos) | FR-007 | export.md §E5 |
-| M1-a | `aguardando_humano` é migrável ou recusado? | FR-005 | migration.md §M1 |
-| C8-a | Parâmetros nomeados (`.param set`) disponíveis na versão mínima de `sqlite3`? Se não, `strip_nul`+`sql_escape` é o piso | FR-003, FR-004 | primitives.md §C8 |
+| # | Decisão | Bloqueia | Onde | Status |
+|---|---|---|---|---|
+| D4-a | Cobertura de adulteração deliberada (`integrity_check` não detecta edição bem-formada, `sha256-verify` detecta) | FR-010 | research.md Decision 4 | **Fechada** — dec-025 (resposta ao block-002): opção 1, `integrity_check` apenas, regresso aceito |
+| D7-a | Forma do acesso na ingestão SQL→SQL (`ATTACH … mode=ro` vs. processo separado) | FR-008 | research.md Decision 7 | Em aberto — fechar em `/create-tasks` |
+| E5-a | Gatilho do export (sob demanda / ao fim da onda / ambos) | FR-007 | export.md §E5 | Em aberto — fechar em `/create-tasks` |
+| M1-a | `aguardando_humano` é migrável ou recusado? | FR-005 | migration.md §M1 | Em aberto — fechar em `/create-tasks` |
+| C8-a | Parâmetros nomeados (`.param set`) disponíveis na versão mínima de `sqlite3`? Se não, `strip_nul`+`sql_escape` é o piso | FR-003, FR-004 | primitives.md §C8 | Em aberto — fechar em `/create-tasks` |
 
 ### Achados do gate de segurança (onda-004)
 
@@ -246,7 +246,7 @@ escalada ao operador; um é informativo.
 | # | Finding | Sev. | Tratamento |
 |---|---|---|---|
 | S1 | Contratos especificavam SQL sem exigir escape de texto livre de origem LLM (A05/CWE-89; `sqlite3` CLI executa múltiplos statements) | **high** | **Remediado** — primitives.md §C8 (MUST `strip_nul`+`sql_escape`, reusando os helpers de `recall.sh`) + teste obrigatório |
-| S2 | Troca de `sha256-verify` por `PRAGMA integrity_check` remove detecção de adulteração bem-formada do rastro de auditoria (A08/A09, ASVS L2 "tamper-evident") | **high** | **Escalado ao operador** — bloqueio humano; é D4-a |
+| S2 | Troca de `sha256-verify` por `PRAGMA integrity_check` remove detecção de adulteração bem-formada do rastro de auditoria (A08/A09, ASVS L2 "tamper-evident") | **high** | **Escalado ao operador e respondido** — bloqueio `block-002`, resolvido via `dec-025`: opção 1 (`integrity_check` apenas, regresso aceito, operador local confiável). D4-a fechada. |
 | S3 | Permissão de arquivo é ambiente (umask), não imposta; WAL triplica os arquivos e o `-wal` contém transações recentes em claro | **medium** | **Remediado** — primitives.md §C9 (`chmod 600` explícito) |
 | S4 | Temporário da migração com nome derivado de PID (symlink/TOCTOU) | **medium** | **Remediado** — primitives.md §C10 + migration.md §M2 (`mktemp`) |
 | S5 | Cadeia de propagação: `state.db` adulterado → export → ingestão → `knowledge.db` → read-back loop realimenta prompts futuros (ASI06 memory poisoning) | **medium** | **Informativo** — amplifica o impacto de S2; mitigado se S2 for resolvido. O scrub de segredos na ingestão permanece inalterado. |
@@ -266,7 +266,7 @@ Reavaliação após o design (data-model + contratos + quickstart):
 | O design introduziu complexidade não justificada? | **Não.** Nenhum serviço, camada ou processo novo. Uma tabela por entidade **já existente** na spec; a única entidade nova (`migration_run`) é exigida pela auditabilidade do FR-006. `ExportSnapshot` foi deliberadamente **não** modelada como tabela para não duplicar a fonte de verdade. |
 | Princípios MUST continuam respeitados? | I, IV, V, VI: PASS, sem alteração. **II: continua CONDICIONAL** — o design não removeu a necessidade do amendment 1.3.0; ao contrário, confirmou-a (o `state.db` é inviável sem `sqlite3`). |
 | Superfície pública mudou? | Não — §C1 de primitives.md fixa paridade de subcomandos/flags/exit codes. Uma mudança de comportamento observável foi identificada e declarada: `state-ondas.sh start` com onda aberta passa a **falhar** em vez de duplicar (§C3) — é a correção de um bug, mas precisa constar. |
-| Novo risco identificado no design? | Sim, um: trocar `sha256-verify` por `PRAGMA integrity_check` **reduz** a cobertura contra adulteração deliberada. Não silenciado — virou D4-a e o cenário 7.a do quickstart fica sem *expected* até ser fechado. |
+| Novo risco identificado no design? | Sim, um: trocar `sha256-verify` por `PRAGMA integrity_check` **reduz** a cobertura contra adulteração deliberada. Não silenciado — virou D4-a, escalada como bloqueio humano (`block-002`) e **fechada** via `dec-025` (opção 1, regresso aceito e documentado); o cenário 7.a do quickstart já tem *expected* definido. |
 
 **Veredito**: PASS em todos os princípios exceto o II, que permanece
 **CONDICIONAL ao amendment 1.3.0** — pré-requisito externo, bloqueante para

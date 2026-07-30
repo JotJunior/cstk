@@ -141,20 +141,29 @@ Nota: o sha256 de hoje já é uma defesa parcial — quem adultera o
 `state.json` pode recomputar o sidecar `.sha256`, já que a chave não é
 secreta. Ele detecta adulteração *descuidada*, não adulteração informada.
 
-**DECISÃO EM ABERTO (D4-a)** — como cobrir a parte de adulteração. Opções
-levantadas, nenhuma escolhida nesta fase:
+**DECISÃO FECHADA (D4-a)** — opção **1: `integrity_check` apenas**, aceitando
+o regresso documentado acima. Resolvida pelo operador humano em resposta ao
+bloqueio `block-002` (finding S2 do gate `owasp-security`, onda-004),
+registrada como `dec-025`. Opções que estavam em avaliação:
 
-1. `integrity_check` apenas, aceitando o regresso e documentando-o
-   (registra que o modelo de ameaça do toolkit é operador local confiável).
+1. **[ESCOLHIDA]** `integrity_check` apenas, aceitando o regresso e
+   documentando-o (registra que o modelo de ameaça do toolkit é operador
+   local confiável).
 2. `integrity_check` + hash-chain append-only sobre a tabela de decisões
    (cada linha carrega o hash da anterior) — detecta remoção/reescrita de
    rastro de auditoria, que é o ativo que o Princípio I protege.
 3. `integrity_check` + sha256 do **export** `state.json` (FR-007),
    preservando literalmente o mecanismo atual sobre o artefato derivado.
 
-Recomendação para `/checklist` e `/create-tasks`: tratar D4-a como item que
-precisa de decisão explícita antes da task que implementa FR-010 —
-não deixar o implementador escolher por conta própria.
+**Justificativa do operador**: o sha256 atual já é defesa parcial — quem
+adultera o `state.json` pode recomputar o sidecar `.sha256`, já que a chave
+não é secreta; ele detecta adulteração *descuidada*, não *informada*. O
+modelo de ameaça assumido para esta feature é operador local confiável, o
+que torna as opções 2/3 (custo adicional de hash-chain ou de manter dois
+mecanismos de verificação) desproporcionais ao ativo protegido nesta fase.
+`FR-010` passa a ser implementado apenas com `PRAGMA integrity_check` (ou
+`quick_check`), sem cobertura adicional de adulteração bem-formada — o
+regresso é aceito e documentado, não silenciado.
 
 ---
 
@@ -311,11 +320,12 @@ migração jamais escreva no nome final antes de verificar.
 | # | Item | Estado |
 |---|---|---|
 | R1 | Amendment 1.3.0 da constitution (sqlite3 obrigatório) | **Pré-requisito externo não ratificado** — ver [plan.md](./plan.md) §Constitution Check |
-| R2 | Cobertura de adulteração (D4-a) | Decisão em aberto — fechar antes da task de FR-010 |
+| R2 | Cobertura de adulteração (D4-a) | **Fechada** (dec-025, resposta ao block-002) — opção 1, `integrity_check` apenas, regresso aceito e documentado |
 | R3 | Forma do acesso na ingestão SQL→SQL (D7-a) | Decisão em aberto — fechar antes da task de FR-008 |
 | R4 | ~24 scripts leem `state.json` hoje | Mitigado por FR-007 (export); nenhum precisa ser reescrito nesta fase |
 
 **Nenhum `NEEDS CLARIFICATION` do Technical Context permanece aberto.** D4-a
 e D7-a não são unknowns de contexto técnico: são escolhas de design
 delimitadas, com opções enumeradas e ponto de decisão atribuído — registradas
-aqui para não serem decididas silenciosamente na implementação.
+aqui para não serem decididas silenciosamente na implementação. D4-a **já
+está fechada** (dec-025); D7-a permanece em aberto para `/create-tasks`.

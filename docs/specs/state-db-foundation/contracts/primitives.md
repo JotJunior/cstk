@@ -204,9 +204,12 @@ aceitável por ser índice derivado).
 
 `sha256-update` / `sha256-verify` mantêm o nome e o contrato de exit code.
 A implementação sob `state.db` passa a executar `PRAGMA integrity_check`.
-**A cobertura de adulteração deliberada é decisão em aberto (D4-a do
-research.md)** e MUST ser fechada antes da task que implementa FR-010 —
-`integrity_check` sozinho não detecta edição externa bem-formada.
+**A cobertura de adulteração deliberada é decisão fechada (D4-a do
+research.md, `dec-025` em resposta ao bloqueio `block-002`)**: opção 1,
+`integrity_check` apenas — `integrity_check` sozinho não detecta edição
+externa bem-formada, e esse regresso frente ao `sha256-verify` anterior é
+**aceito e documentado**, não um item pendente. Modelo de ameaça assumido:
+operador local confiável.
 
 ### C8 — Escape de texto livre em SQL (MUST) — A05/CWE-89
 

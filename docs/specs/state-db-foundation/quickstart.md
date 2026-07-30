@@ -249,16 +249,19 @@ feature — a seleção de backend (§C2) é o ponto único de falha.
 
 **Expected**: (1) exit 0. (2) exit != 0, corrupção reportada.
 
-### 7.a — Adulteração bem-formada `[DECISÃO EM ABERTO D4-a]`
+### 7.a — Adulteração bem-formada `[D4-a FECHADA — dec-025]`
 
 1. `UPDATE decision SET choice='outra' WHERE id='dec-001';` via `sqlite3`.
 2. Rodar a verificação.
 
-**Expected**: **depende de D4-a** (research.md Decision 4).
-`PRAGMA integrity_check` sozinho retorna `ok` — não detecta edição
-bem-formada, enquanto o `sha256-verify` de hoje detectaria. Este cenário
-**não tem expected definido** até D4-a ser fechada; deixá-lo passar por
-inércia mascararia um regresso de cobertura. Fechar antes da task de FR-010.
+**Expected**: exit 0 (`ok`) — comportamento **aceito e documentado**, não um
+bug. D4-a (research.md Decision 4) foi fechada pelo operador (bloqueio
+`block-002`, resposta `dec-025`) na opção 1: `PRAGMA integrity_check`
+sozinho, sem cobertura de adulteração bem-formada, assumindo operador local
+confiável. Este cenário existe para **documentar o regresso**, não para
+reprová-lo — se um teste automatizado cobrir 7.a, o assert correto é "exit
+0 mesmo após edição bem-formada", registrando o limite conhecido do
+mecanismo.
 
 ---
 
