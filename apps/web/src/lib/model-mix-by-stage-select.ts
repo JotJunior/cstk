@@ -47,7 +47,11 @@ export function buildStageBars(rows: Record<string, unknown>[]): StageBarDatum[]
     const stage = (r.stage as string | null) ?? '?';
     const modelo = (r.modelo as string | null) ?? '?';
     const n = (r.n as number | null) ?? 0;
-    const row = byStage.get(stage) ?? { d: stage.slice(0, 8) };
+    // `d` carrega o rotulo INTEIRO da etapa — o card empilhado renderiza as
+    // barras na horizontal (StackedBarsH), onde o rotulo tem coluna propria e
+    // nao precisa mais do truncamento a 8 chars que o eixo X vertical exigia
+    // ('create-tasks' aparecia como 'create-t').
+    const row = byStage.get(stage) ?? { d: stage };
     row[modelo] = ((row[modelo] as number | undefined) ?? 0) + n;
     byStage.set(stage, row);
     totalByStage.set(stage, (totalByStage.get(stage) ?? 0) + n);

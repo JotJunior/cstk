@@ -22,7 +22,7 @@
  * `ModelUsageResult`.
  */
 import type { ModelUsageVM, ModelUsageEntryVM, ModelUsageByStageGroup } from '@/lib/model-usage-select.js';
-import { modelUsageCoverageLabel, MODEL_USAGE_NATURE_LABEL } from '@/lib/model-usage-select.js';
+import { modelUsageCoverageLabel, modelUsageStageLabel, MODEL_USAGE_NATURE_LABEL } from '@/lib/model-usage-select.js';
 import type { ModelUsageCoverage } from '@cstk-panel/shared-types';
 import { fmtUsd } from './OtelUsage.js';
 import { fmtTokens } from '@/lib/format.js';
@@ -180,13 +180,26 @@ export function ModelUsageStageBreakdown({ groups }: { groups: ModelUsageByStage
   }
   return (
     <div className="col gap-3">
-      {groups.map((g) => (
+      {groups.map((g) => {
+        // `g.stage` e string BRUTA de `waves.stages` — ha ondas na base real
+        // que gravaram um resumo narrativo inteiro nessa coluna. O cabecalho
+        // usa o rotulo normalizado (`modelUsageStageLabel`); o valor bruto so
+        // sobrevive encurtado no `title`, nunca no fluxo do layout.
+        const label = modelUsageStageLabel(g.stage);
+        return (
         <div key={g.stage} className="col gap-1">
           <div
             className="mono"
-            style={{ fontSize: 10, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}
+            title={label.valid ? undefined : label.rawPreview}
+            style={{
+              fontSize: 10, letterSpacing: '0.06em',
+              color: label.valid ? 'var(--text-2)' : 'var(--text-3)',
+              textTransform: label.valid ? 'uppercase' : 'none',
+              fontStyle: label.valid ? 'normal' : 'italic',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
           >
-            {g.stage}
+            {label.text}
           </div>
           {g.entries.map((e) => (
             <div key={`${g.stage}-${e.model}`} className="row" style={{ justifyContent: 'space-between' }}>
@@ -208,7 +221,8 @@ export function ModelUsageStageBreakdown({ groups }: { groups: ModelUsageByStage
             </div>
           ))}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

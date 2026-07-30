@@ -11,7 +11,7 @@ import { useMetric } from '@/lib/hooks.js';
 import { useApiState } from '@/hooks/useApiState.js';
 import { LoadingState, EmptyState, ErrorState, DegradedBanner } from '@/states/index.js';
 import {
-  KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBars, Legend,
+  KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBarsH, Legend,
   AgentUsagePanel, AgentUsageEmpty,
   OtelUsagePanel, OtelUsageEmpty, otelUsageState, otelCoverageLabel, fmtUsd,
   ModelUsageDetailPanel, TruncatedBarH,
@@ -733,7 +733,10 @@ export function Metrics({ period }: MetricsProps) {
               <>
                 <Legend items={models.map((m, i) => ({ color: colors[i] ?? 'var(--model-fallback)', label: m }))} />
                 <div style={{ marginTop: 8 }}>
-                  <StackedBars data={data} keys={models} colors={colors} height={180} />
+                  {/* Horizontal: a categoria aqui e o nome da etapa (texto), nao
+                      tempo — cabe inteiro na coluna de rotulos e sobrevive ao
+                      caso em que uma etapa domina toda a escala. */}
+                  <StackedBarsH data={data} keys={models} colors={colors} />
                 </div>
               </>
             );
