@@ -237,6 +237,69 @@ export function StackedBars({ data, keys, colors, height = 160, xKey = 'd' }: St
 }
 
 // ---------------------------------------------------------------------------
+// StackedBarsH — mesma composicao empilhada do StackedBars, mas com as barras
+// na HORIZONTAL (uma linha por categoria). Preferivel quando a categoria e um
+// rotulo textual (etapa do pipeline, feature) em vez de tempo: o rotulo cabe
+// inteiro na coluna da esquerda, sem truncar nem alternar labels do eixo X, e
+// a leitura nao depende de barras finas quando uma categoria domina a escala.
+// DOM (nao SVG) pelo mesmo motivo do BarH: rotulos com ellipsis + title.
+// ---------------------------------------------------------------------------
+export interface StackedBarsHProps {
+  /** Cada linha tem o rotulo da categoria (xKey) + uma chave numerica por serie. */
+  data: Record<string, number | string>[];
+  keys: string[];
+  colors: string[];
+  /** Chave do rotulo da categoria em cada linha (default 'd'). */
+  xKey?: string;
+  /** Largura da coluna de rotulos, em px. */
+  maxLabel?: number;
+  valueFmt?: (n: number) => string;
+}
+
+export function StackedBarsH({ data, keys, colors, xKey = 'd', maxLabel = 120, valueFmt = fmtNum }: StackedBarsHProps) {
+  const valOf = (row: Record<string, number | string>, k: string): number =>
+    typeof row[k] === 'number' ? (row[k] as number) : 0;
+  const totals = data.map(d => keys.reduce((a, k) => a + valOf(d, k), 0));
+  const max = Math.max(...totals, 0) || 1;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {data.map((d, i) => {
+        const label = String(d[xKey] ?? '');
+        const total = totals[i] ?? 0;
+        return (
+          <div key={`${label}-${i}`} style={{ display: 'grid', gridTemplateColumns: `${maxLabel}px 1fr 48px`, gap: 10, alignItems: 'center' }}>
+            <div
+              className="mono"
+              title={label}
+              style={{ color: 'var(--text-1)', fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {label}
+            </div>
+            <div style={{ height: 14, background: 'var(--bg-2)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', height: '100%', width: `${(total / max) * 100}%`, borderRadius: 4, overflow: 'hidden' }}>
+                {keys.map((k, ki) => {
+                  const v = valOf(d, k);
+                  // total === 0 nunca chega aqui: sem valor nao ha segmento.
+                  if (!v) return null;
+                  return (
+                    <div
+                      key={k}
+                      title={`${k}: ${valueFmt(v)}`}
+                      style={{ width: `${(v / total) * 100}%`, background: colors[ki] ?? 'var(--model-fallback)' }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+            <div className="mono" style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-0)' }}>{valueFmt(total)}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Histogram — distribuicao de valores numericos em bins (ex: latencia humana)
 // ---------------------------------------------------------------------------
 export interface HistogramProps {

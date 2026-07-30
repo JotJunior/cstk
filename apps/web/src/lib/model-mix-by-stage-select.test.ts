@@ -37,9 +37,9 @@ describe('buildStageBars', () => {
     // execute-task primeiro; a ordenacao correta (FR-009) nao.
     const bars = buildStageBars(realPayload);
     const order = bars.map(b => b.d);
-    // rotulo truncado a 8 chars (mesma convencao do eixo X do chart) —
-    // 'execute-task'.slice(0, 8) === 'execute-'.
-    expect(order).toEqual(['specify', 'clarify', 'execute-']);
+    // rotulo INTEIRO (barras horizontais: o rotulo tem coluna propria e nao
+    // sofre mais o truncamento a 8 chars que o eixo X vertical exigia).
+    expect(order).toEqual(['specify', 'clarify', 'execute-task']);
   });
 
   it('etapas fora de SDD_STAGES vao ao final, ordenadas por volume desc, sem serem descartadas', () => {
@@ -50,9 +50,9 @@ describe('buildStageBars', () => {
     ];
     const bars = buildStageBars(rows);
     const order = bars.map(b => b.d);
-    // conhecida primeiro; desconhecidas ao final ordenadas por volume desc
-    // (label truncado a 8 chars, mesma convencao do eixo X do chart).
-    expect(order).toEqual(['clarify', 'legacy-u', 'another-']);
+    // conhecida primeiro; desconhecidas ao final ordenadas por volume desc,
+    // com o rotulo real preservado inteiro.
+    expect(order).toEqual(['clarify', 'legacy-unknown-stage', 'another-unknown']);
   });
 
   it('lista vazia produz array vazio (sem inventar etapa)', () => {

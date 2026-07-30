@@ -142,3 +142,52 @@ export function groupModelUsageByStage(raw: ModelUsageByStage[] | null | undefin
   }
   return order.map((stage) => ({ stage, entries: byStage.get(stage) ?? [] }));
 }
+
+/**
+ * Rotulo usado quando `waves.stages` na origem NAO contem uma lista de etapas.
+ * Observado no banco real (`~/.claude/cstk/knowledge.db` v12): uma onda gravou
+ * um resumo narrativo de 2766 caracteres na coluna `stages` (as demais gravam
+ * tokens como `execute-task`, `create-tasks`), e esse texto vazava inteiro como
+ * cabecalho de grupo no card de custo por modelo.
+ *
+ * O custo da linha continua exibido (nunca descartado); so o CABECALHO passa a
+ * dizer que a origem nao registrou etapa valida. Nao inventamos uma etapa para
+ * a onda — Principio "jamais inventar dado".
+ */
+export const MODEL_USAGE_STAGE_INVALID_LABEL = 'etapa não registrada na origem';
+
+/** Tamanho maximo plausivel de UM token de etapa (`execute-task-F3.1` = 17). */
+const STAGE_TOKEN_MAX = 40;
+/** Token de etapa: sem espacos, sem pontuacao de prosa. */
+const STAGE_TOKEN_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+export interface ModelUsageStageLabel {
+  /** Texto a exibir no cabecalho do grupo. */
+  text: string;
+  /** `false` quando o valor bruto nao e uma lista de etapas (dado poluido na origem). */
+  valid: boolean;
+  /** Valor bruto encurtado, para tooltip — nunca vai inteiro para o layout. */
+  rawPreview: string;
+}
+
+const RAW_PREVIEW_MAX = 160;
+
+/**
+ * Normaliza o valor bruto de `stages` (lista separada por virgula) num rotulo
+ * seguro de exibir. Aceita 1..N tokens; rejeita qualquer valor com espaco,
+ * token acima de `STAGE_TOKEN_MAX` ou pontuacao de prosa — esses caem em
+ * `MODEL_USAGE_STAGE_INVALID_LABEL` com o bruto preservado em `rawPreview`.
+ *
+ * Funcao PURA — sem React/DOM, testavel isoladamente.
+ */
+export function modelUsageStageLabel(stage: string): ModelUsageStageLabel {
+  const raw = (stage ?? '').trim();
+  const rawPreview = raw.length > RAW_PREVIEW_MAX ? `${raw.slice(0, RAW_PREVIEW_MAX)}…` : raw;
+  const tokens = raw.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
+  const valid =
+    tokens.length > 0 &&
+    tokens.every((t) => t.length <= STAGE_TOKEN_MAX && STAGE_TOKEN_RE.test(t));
+  return valid
+    ? { text: tokens.join(', '), valid: true, rawPreview }
+    : { text: MODEL_USAGE_STAGE_INVALID_LABEL, valid: false, rawPreview };
+}

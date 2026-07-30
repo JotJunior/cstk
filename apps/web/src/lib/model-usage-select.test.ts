@@ -3,8 +3,10 @@ import {
   selectModelUsage,
   modelUsageCoverageLabel,
   groupModelUsageByStage,
+  modelUsageStageLabel,
   MODEL_USAGE_SUMMARY_LIMIT,
   MODEL_USAGE_NATURE_LABEL,
+  MODEL_USAGE_STAGE_INVALID_LABEL,
 } from './model-usage-select.js';
 import type { ModelUsageResult, ModelUsageByStage } from '@cstk-panel/shared-types';
 
@@ -121,5 +123,38 @@ describe('groupModelUsageByStage', () => {
     ];
     const groups = groupModelUsageByStage(rows);
     expect(groups).toEqual([{ stage: 'clarify', entries: rows }]);
+  });
+});
+
+describe('modelUsageStageLabel', () => {
+  it('token unico de etapa passa intacto', () => {
+    const l = modelUsageStageLabel('execute-task');
+    expect(l).toMatchObject({ text: 'execute-task', valid: true });
+  });
+
+  it('lista separada por virgula e normalizada com espaco apos a virgula', () => {
+    const l = modelUsageStageLabel('specify,clarify,plan');
+    expect(l).toMatchObject({ text: 'specify, clarify, plan', valid: true });
+  });
+
+  it('token com sufixo de tarefa (execute-task-F3.1) continua valido', () => {
+    expect(modelUsageStageLabel('execute-task-F3.1,execute-task-F3.2').valid).toBe(true);
+  });
+
+  // Caso REAL da base (~/.claude/cstk/knowledge.db v12): uma onda gravou um
+  // resumo narrativo de 2766 chars na coluna `stages`, que vazava inteiro como
+  // cabecalho de grupo no card "Custo por modelo · detalhe".
+  it('prosa gravada em `stages` cai no rotulo de etapa invalida, com o bruto so no preview', () => {
+    const prosa = 'onda-029 concluida: task 5.3 avancou de 8/16 para 9/16 patterns (backend.handler embarcado). '.repeat(30);
+    const l = modelUsageStageLabel(prosa);
+    expect(l.valid).toBe(false);
+    expect(l.text).toBe(MODEL_USAGE_STAGE_INVALID_LABEL);
+    expect(l.rawPreview.length).toBeLessThanOrEqual(161);
+    expect(l.rawPreview.endsWith('…')).toBe(true);
+  });
+
+  it('string vazia nao vira etapa inventada', () => {
+    expect(modelUsageStageLabel('').valid).toBe(false);
+    expect(modelUsageStageLabel('   ').text).toBe(MODEL_USAGE_STAGE_INVALID_LABEL);
   });
 });

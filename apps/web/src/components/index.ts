@@ -26,5 +26,5 @@ export {
   ModelUsageMiniList, ModelUsageEmpty, modelUsageColor,
   ModelUsageDetailPanel, ModelUsageStageBreakdown,
 } from './ModelUsage.js';
-export { Sparkline, Donut, BarH, TruncatedBarH, Legend, StackedBars, Histogram, ScatterChart } from './charts.js';
-export type { DonutDatum, BarHDatum, LegendItem, StackedBarsProps, HistogramProps, ScatterDatum, TruncatedBarHProps } from './charts.js';
+export { Sparkline, Donut, BarH, TruncatedBarH, Legend, StackedBars, StackedBarsH, Histogram, ScatterChart } from './charts.js';
+export type { DonutDatum, BarHDatum, LegendItem, StackedBarsProps, StackedBarsHProps, HistogramProps, ScatterDatum, TruncatedBarHProps } from './charts.js';
