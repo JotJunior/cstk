@@ -315,14 +315,64 @@ migração jamais escreva no nome final antes de verificar.
 
 ---
 
+## Decision 10 — Versão mínima de `sqlite3` suportada (task 1.2)
+
+**Decision**: piso de `sqlite3` **3.45.1**, definido pelo ambiente mais
+restritivo entre os dois já documentados como reais (não hipotéticos):
+macOS local (`3.51.0`) e o runner `ubuntu-latest` do CI (`3.45.1`, imagem
+`Ubuntu 24.04`).
+
+**Evidência (fonte rastreável, não suposição)**:
+
+- macOS local: `sqlite3 --version` → `3.51.0 2025-06-12 ... f0ca7bba1c5e...`
+  (Decision 1, já documentado).
+- CI (`ubuntu-latest`, `.github/workflows/*.yml` — `release.yml`,
+  `shellcheck.yml`, `publish-site.yml` usam `runs-on: ubuntu-latest`):
+  consultado via GitHub API
+  (`api.github.com/repos/actions/runner-images/contents/images/ubuntu/Ubuntu2404-Readme.md`,
+  README oficial da imagem Ubuntu 24.04 usada pelos runners hospedados),
+  seção "Databases" lista `sqlite3 3.45.1` e a tabela de pacotes lista
+  `sqlite3 | 3.45.1-1ubuntu2.6`.
+- Menor das duas versões reais = **3.45.1** → piso adotado.
+
+**C8-b (JSON1 / `json_valid` / `json_array_length`)**: suportado no piso.
+Confirmado por duas fontes: (1) execução local —
+`SELECT json_valid('{"a":1}'), json_array_length('[1,2,3]');` → `1|3`,
+sem PRAGMA nem extensão carregada; (2) árvore de fontes do tag
+`version-3.45.1` no repositório oficial (`github.com/sqlite/sqlite`,
+consultado via `api.github.com/repos/sqlite/sqlite/contents/src?ref=version-3.45.1`)
+já contém `src/json.c` **dentro do core** (não em `ext/misc/`), confirmando
+que as funções JSON são compiladas por padrão desde antes do piso — não é
+preciso o degrade documentado em `data-model.md` para `CHECK
+(length(options_considered) > 2)`.
+
+**C8-a (parâmetros nomeados / `.param set`)**: suportado no piso.
+Confirmado via árvore de fontes do mesmo tag (`src/shell.c.in` em
+`version-3.45.1`): a função `bind_table_init` cria a tabela
+`temp.sqlite_parameters` e o dispatcher de comandos-ponto implementa
+`.parameter set NAME VALUE` (`.param` casa por prefixo, forma abreviada
+usual do shell `sqlite3`). Veredito: **adotar `.param set` como
+otimização** sobre o piso já obrigatório (`strip_nul` + `sql_escape`,
+`contracts/primitives.md` §C8) — ambos os mecanismos convivem; primitivas
+usam parâmetros nomeados quando disponíveis e mantêm o escape manual como
+caminho compatível caso uma instalação divergente não suporte `.param`.
+
+**Consequência**: nenhum degrade de JSON1 é necessário; `research.md`/
+`data-model.md` documentam piso `3.45.1` (não mais "assumir >= 3.38, a
+verificar"). Decisão registrada como `dec-046` (score 3, evidência =
+outputs literais acima).
+
+---
+
 ## Riscos e não-decisões
 
 | # | Item | Estado |
 |---|---|---|
-| R1 | Amendment 1.3.0 da constitution (sqlite3 obrigatório) | **Pré-requisito externo não ratificado** — ver [plan.md](./plan.md) §Constitution Check |
+| R1 | Amendment 1.3.0 da constitution (sqlite3 obrigatório) | **Fechada** — ratificado (commit `c5b2d65`, rodapé `docs/constitution.md` = `1.3.0`); gate task 1.1 liberado (dec-045) |
 | R2 | Cobertura de adulteração (D4-a) | **Fechada** (dec-025, resposta ao block-002) — opção 1, `integrity_check` apenas, regresso aceito e documentado |
 | R3 | Forma do acesso na ingestão SQL→SQL (D7-a) | Decisão em aberto — fechar antes da task de FR-008 |
 | R4 | ~24 scripts leem `state.json` hoje | Mitigado por FR-007 (export); nenhum precisa ser reescrito nesta fase |
+| R5 | Versão mínima de `sqlite3` (task 1.2) | **Fechada** (Decision 10, dec-046) — piso `3.45.1`, JSON1 e `.param set` confirmados no piso |
 
 **Nenhum `NEEDS CLARIFICATION` do Technical Context permanece aberto.** D4-a
 e D7-a não são unknowns de contexto técnico: são escolhas de design

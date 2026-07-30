@@ -56,10 +56,11 @@ Ref: spec.md §Clarifications Session 2026-07-30 (Q1); plan.md §Constitution
 Check + §Complexity Tracking; dec-020 (execução original desta feature).
 **BLOQUEIA todas as FASES 2-9.**
 
-- [ ] 1.1.1 Verificar `docs/constitution.md` (rodapé `**Version**`) — se já
+- [x] 1.1.1 Verificar `docs/constitution.md` (rodapé `**Version**`) — se já
   `>= 1.3.0` e o Princípio II já cita a exceção da camada de estado
   transacional, marcar esta tarefa concluída e liberar as fases seguintes
-- [ ] 1.1.2 Se a versão ainda for `1.2.0` (ou o Princípio II não citar a
+  — onda-007: versão encontrada `1.2.0`, sem menção a `sqlite`; seguiu para 1.1.2
+- [x] 1.1.2 Se a versão ainda for `1.2.0` (ou o Princípio II não citar a
   exceção), registrar bloqueio humano via `bloqueios.sh register`
   solicitando que o operador conduza o amendment MINOR (1.2.0 → 1.3.0)
   fora deste pipeline — via `/agente-00c` (que inclui a etapa
@@ -67,36 +68,49 @@ Check + §Complexity Tracking; dec-020 (execução original desta feature).
   humano — reconhecendo `sqlite3` como dependência obrigatória e sem
   fallback da camada de estado transacional, análoga ao gate já existente
   de `jq` (`state-rw.sh` L116-118)
-- [ ] 1.1.3 Após ratificação, revalidar que `docs/constitution.md` cita a
+  — onda-007: block-003 registrado (dec-042); onda-008: respondido
+  `ratificado-retomar` (dec-043)
+- [x] 1.1.3 Após ratificação, revalidar que `docs/constitution.md` cita a
   exceção explicitamente e que o rodapé de versão reflete `1.3.0` (ou
   superior) antes de desbloquear a FASE 2
-- [ ] 1.1.4 Registrar Decisão auditável confirmando a liberação do gate
+  — onda-008: rodapé confirma `1.3.0`; Princípio II linha 133 cita
+  "Mandatory dependency carve-out: transactional state layer (amendment 1.3.0)"
+- [x] 1.1.4 Registrar Decisão auditável confirmando a liberação do gate
   (referenciando a versão ratificada da constitution)
+  — onda-008: dec-045, `escolha=liberar-fase-2-9`, score 3
 
 ### 1.2 Descoberta da versão mínima de `sqlite3` suportada `[A]`
 
 Ref: checklists/requirements.md CHK004; data-model.md L227-231 (JSON1);
 contracts/primitives.md §C8 (C8-a, `.param set`)
 
-- [ ] 1.2.1 Levantar a versão mínima de `sqlite3` que o toolkit passa a
+- [x] 1.2.1 Levantar a versão mínima de `sqlite3` que o toolkit passa a
   exigir — usar como piso a menor versão presente nos ambientes reais já
   documentados no repo (macOS local: `3.51.0`, `research.md` Decision 1) e
   a versão mínima do runner de CI (verificar `.github/workflows/*.yml`)
-- [ ] 1.2.2 Confirmar suporte a `JSON1`/`json_valid`/`json_array_length` na
+  — onda-008: piso = `3.45.1` (ubuntu-latest/Ubuntu 24.04, via
+  `actions/runner-images` README oficial)
+- [x] 1.2.2 Confirmar suporte a `JSON1`/`json_valid`/`json_array_length` na
   versão mínima levantada (presente por padrão desde SQLite 3.38, 2022) —
   se a versão mínima real for anterior a 3.38, registrar Decisão sobre o
   degrade documentado em data-model.md (`CHECK (length(options_considered)
   > 2)` + validação em script)
-- [ ] 1.2.3 Confirmar disponibilidade de parâmetros nomeados (`.param set`)
+  — onda-008: confirmado (`src/json.c` já no core no tag `version-3.45.1`;
+  teste local `json_valid`/`json_array_length` ok); sem degrade necessário
+- [x] 1.2.3 Confirmar disponibilidade de parâmetros nomeados (`.param set`)
   na versão mínima levantada — fecha C8-a: se disponível, adotar como
   otimização sobre o piso já obrigatório (`strip_nul`+`sql_escape`,
   contracts/primitives.md §C8); se indisponível, documentar que o piso
   permanece a única forma de escape
-- [ ] 1.2.4 Documentar a versão mínima resultante e o veredito de C8-a em
+  — onda-008: confirmado presente no tag `version-3.45.1`
+  (`temp.sqlite_parameters` + `.parameter set`); adotado como otimização
+- [x] 1.2.4 Documentar a versão mínima resultante e o veredito de C8-a em
   `research.md` (nova subseção) ou `data-model.md`, com fonte citada
   (output real de `sqlite3 --version` / `.param` no ambiente verificado)
-- [ ] 1.2.5 Registrar Decisão auditável com a versão mínima escolhida e
+  — onda-008: `research.md` Decision 10
+- [x] 1.2.5 Registrar Decisão auditável com a versão mínima escolhida e
   evidência (`--score 3`, exigindo saída literal do comando verificador)
+  — onda-008: dec-046
 
 ---
 
@@ -109,42 +123,56 @@ Ref: data-model.md (schema completo); spec.md FR-001, FR-002
 Ref: data-model.md §Entity execution/wave/decision/human_block/task_outcome/
 event/skill_invocation/migration_run
 
-- [ ] 2.1.1 Escrever o DDL de `execution` com as 4 `CHECK` de status/
+- [x] 2.1.1 Escrever o DDL de `execution` com as 4 `CHECK` de status/
   finished_at/subagent_depth/cycles/retro (data-model.md linhas 86-103)
-- [ ] 2.1.2 Escrever o DDL de `wave` com `ux_wave_single_open` (índice
+- [x] 2.1.2 Escrever o DDL de `wave` com `ux_wave_single_open` (índice
   único parcial) e `trg_wave_close_once` (trigger)
-- [ ] 2.1.3 Escrever o DDL de `decision` com as 6 `CHECK` dos campos
+- [x] 2.1.3 Escrever o DDL de `decision` com as 6 `CHECK` dos campos
   obrigatórios (agent/stage/choice/context/rationale/options_considered) e
   a trava de score 3 exigindo evidência
-- [ ] 2.1.4 Escrever o DDL de `human_block` com `FOREIGN KEY` para
+- [x] 2.1.4 Escrever o DDL de `human_block` com `FOREIGN KEY` para
   `decision(id)` e `CHECK` de status×answered_at
-- [ ] 2.1.5 Escrever o DDL de `task_outcome` com PK composta
+- [x] 2.1.5 Escrever o DDL de `task_outcome` com PK composta
   `(execution_id, task_id)` e `CHECK` de outcome/tests
-- [ ] 2.1.6 Escrever o DDL de `event`, `skill_invocation` (com `CHECK kind
+- [x] 2.1.6 Escrever o DDL de `event`, `skill_invocation` (com `CHECK kind
   IN ('skill','gate')`) e `migration_run`
-- [ ] 2.1.7 Decidir granularidade dos campos `[PROPOSTA]` de `execution`
+- [x] 2.1.7 Decidir granularidade dos campos `[PROPOSTA]` de `execution`
   (budgets/accumulated_metrics/whitelist/circular_movement_history/
   prerequisites/caches/push_pr_result) — colunas adicionais vs. tabelas
   satélite — e registrar Decisão auditável antes de fechar o DDL
-- [ ] 2.1.8 Script de criação idempotente (`CREATE TABLE IF NOT EXISTS`) +
+  — onda-008: dec-047, colunas JSON em `execution` (1:1, sem acesso
+  relacional por elemento)
+- [x] 2.1.8 Script de criação idempotente (`CREATE TABLE IF NOT EXISTS`) +
   aplicação de `PRAGMA journal_mode=WAL` uma única vez na criação
+  — onda-008: `global/skills/agente-00c-runtime/references/state-db-schema.sql`
+  (DDL) + `.../scripts/state-db-schema.sh create --db PATH` (aplicacao +
+  WAL + chmod 600); testado empiricamente (criacao, reexecucao idempotente,
+  WAL ativo, permissoes)
 
 ### 2.2 Testes de invariantes do FR-002 `[C]`
 
 Ref: quickstart.md; spec.md US1 AS-1, AS-2, AS-4
 
-- [ ] 2.2.1 Teste: segunda tentativa de abrir onda com onda já aberta falha
+- [x] 2.2.1 Teste: segunda tentativa de abrir onda com onda já aberta falha
   (`ux_wave_single_open`)
-- [ ] 2.2.2 Teste: tentativa de fechar onda já fechada falha
+  — onda-008: `tests/test_state-db-schema.sh::scenario_wave_ux_wave_single_open_bloqueia_segunda_onda_aberta`
+- [x] 2.2.2 Teste: tentativa de fechar onda já fechada falha
   (`trg_wave_close_once`)
-- [ ] 2.2.3 Teste: registro de decisão com campo obrigatório ausente/vazio
+  — onda-008: `tests/test_state-db-schema.sh::scenario_wave_trg_wave_close_once_bloqueia_reabertura`
+- [x] 2.2.3 Teste: registro de decisão com campo obrigatório ausente/vazio
   é rejeitado pela própria constraint (não pelo script chamador)
-- [ ] 2.2.4 Teste: registro de bloqueio humano com `decision_id` inexistente
+  — onda-008: `tests/test_state-db-schema.sh::scenario_decision_campo_obrigatorio_ausente_e_rejeitado`
+- [x] 2.2.4 Teste: registro de bloqueio humano com `decision_id` inexistente
   é rejeitado por `FOREIGN KEY` (com `PRAGMA foreign_keys=ON` ativo)
-- [ ] 2.2.5 Teste: tentativa de `enter` de spawn acima do teto configurado
+  — onda-008: `tests/test_state-db-schema.sh::scenario_human_block_fk_decisao_inexistente_e_rejeitado_com_fk_on`
+- [x] 2.2.5 Teste: tentativa de `enter` de spawn acima do teto configurado
   é rejeitada por `CHECK (subagent_depth <= max_recursion)`
-- [ ] 2.2.6 Teste: `--score 3` sem `--evidencia` >= 20 chars é rejeitado na
+  — onda-008: `tests/test_state-db-schema.sh::scenario_execution_subagent_depth_acima_do_teto_e_rejeitado`
+  (nivel de banco; adaptacao do `spawn-tracker.sh enter` propriamente dito
+  fica para FASE 3.6)
+- [x] 2.2.6 Teste: `--score 3` sem `--evidencia` >= 20 chars é rejeitado na
   camada de banco
+  — onda-008: `tests/test_state-db-schema.sh::scenario_decision_score3_sem_evidencia_e_rejeitado`
 
 ---
 
