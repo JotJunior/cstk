@@ -643,6 +643,33 @@ scenario_sqlite_paridade_register_primeiro_id_json() {
   [ "$_json_id" = "$_db_id" ] || { _fail "paridade register id" "json='$_json_id' sqlite='$_db_id'"; return 1; }
 }
 
+# Task 4.1.1/4.2.2 (FASE 4): branch de selecao de backend explicito por C2 —
+# um state.json coexistente e export/legado, NUNCA consultado como fonte.
+# Prova positiva: 1 decisao registrada no state.db, state.json divergente
+# com 5 decisoes falsas — count deve refletir sempre o state.db (1).
+scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
+  _sd="$TMPDIR_TEST/c2-coexist-decisions"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2: register sqlite" "$_CAPTURED_STDERR"; return 1; }
+
+  # state.json divergente no MESMO diretorio (5 decisoes falsas).
+  printf '{"decisions":[1,2,3,4,5]}\n' > "$_sd/state.json"
+
+  capture "$SCRIPT" count --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2 count exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" \
+    || { _fail "c2: count deveria refletir state.db (1), nao o state.json coexistente (5)" "obtido $_CAPTURED_STDOUT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    5*) _fail "c2: count leu o state.json coexistente" "obtido $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+
+  # state.json coexistente permanece intocado.
+  _stale_now=$(cat "$_sd/state.json")
+  [ "$_stale_now" = '{"decisions":[1,2,3,4,5]}' ] \
+    || { _fail "c2: state.json coexistente foi modificado" "obtido: $_stale_now"; return 1; }
+}
+
 fi # sqlite3 disponivel
 
 run_all_scenarios

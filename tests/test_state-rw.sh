@@ -835,6 +835,38 @@ scenario_sqlite_paridade_sha256_verify_exit_0_ok() {
   [ "$_db_rc" = 0 ] || { _fail "paridade sha256-verify sqlite exit" "obtido $_db_rc"; return 1; }
 }
 
+# Task 4.1.1/4.2.2 (FASE 4): branch de selecao de backend explicito por C2 —
+# "existe state.db => SQLite; um state.json coexistente e export/legado e
+# NUNCA consultado como fonte". Prova positiva: com os dois arquivos
+# presentes e VALORES DIVERGENTES, get/set devem refletir sempre o state.db,
+# e set nao deve tocar o state.json coexistente.
+scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
+  _sd="$TMPDIR_TEST/c2-coexist"
+  _seed_sqlite_backend "$_sd" || return 1  # current_stage='specify' no state.db
+
+  # state.json divergente no MESMO diretorio (simula export/legado stale).
+  mkdir -p "$_sd"
+  printf '{"current_stage":"clarify"}\n' > "$_sd/state.json"
+
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2 get exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "specify" \
+    || { _fail "c2: get deveria refletir state.db, nao o state.json coexistente" "obtido $_CAPTURED_STDOUT"; return 1; }
+
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.current_stage' --value '"plan"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2 set exit" "$_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "plan" \
+    || { _fail "c2: set/get pos-mutacao deveria refletir state.db" "obtido $_CAPTURED_STDOUT"; return 1; }
+
+  # o state.json coexistente permanece intocado (script nunca escreve nele
+  # quando o backend e sqlite).
+  _stale_now=$(cat "$_sd/state.json")
+  [ "$_stale_now" = '{"current_stage":"clarify"}' ] \
+    || { _fail "c2: state.json coexistente foi modificado" "obtido: $_stale_now"; return 1; }
+}
+
 fi # sqlite3 disponivel
 
 run_all_scenarios

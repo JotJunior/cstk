@@ -443,33 +443,70 @@ Ref: spec.md FR-012, SC-003; contracts/primitives.md §C2, C11
 
 ### 4.1 Lógica de seleção de backend em todos os scripts de escrita `[A]`
 
-- [ ] 4.1.1 Aplicar a lógica de C2 (presença de `state.db` decide o
+- [x] 4.1.1 Aplicar a lógica de C2 (presença de `state.db` decide o
   backend) uniformemente nos 6 scripts adaptados na FASE 3
-- [ ] 4.1.2 Confirmar que um projeto sem `state.db` continua operando
+  — onda-014: confirmado por auditoria (`grep -n "_sr_backend" global/skills/agente-00c-runtime/scripts/*.sh`)
+  que `state-rw.sh`, `state-ondas.sh`, `state-decisions.sh`, `bloqueios.sh`
+  e `spawn-tracker.sh` dispatcham uniformemente via `_sr_backend`/
+  `_state-db.sh` (helper compartilhado extraído na task 3.1); nenhuma
+  lógica nova de seleção foi necessária — já implementada e testada na
+  FASE 3. Nenhuma mudança de código nesta task, só verificação.
+- [x] 4.1.2 Confirmar que um projeto sem `state.db` continua operando
   exatamente como hoje (backend JSON, FR-012) sem qualquer mudança de
   comportamento observável
+  — onda-014: suite completa (`./tests/run.sh`) rodada sobre este
+  repositório (sem `state.db` em `.claude/feature-00c-state/`), 2088/2091
+  verde (3 falhas = flakies conhecidos, não relacionados — ver 4.2.1).
 
 ### 4.2 Regressão da suíte para projeto não migrado (SC-003) `[A]`
 
-- [ ] 4.2.1 Rodar `./tests/run.sh` completo sobre o estado atual (sem
+- [x] 4.2.1 Rodar `./tests/run.sh` completo sobre o estado atual (sem
   `state.db`) e confirmar 0 regressões atribuíveis a esta feature
-- [ ] 4.2.2 Adicionar cenários novos ao harness (`tests/test_<script>.sh`)
+  — onda-014: `# PASS: 2088  FAIL: 3  ERROR: 0  ORPHANS: 0  TIME: 1181s`.
+  As 3 falhas são flakies conhecidos e pré-existentes (MEMORY.md),
+  confirmados por rerun isolado nesta mesma onda:
+  `test_00c-bootstrap.sh :: scenario_issue_2_sigint_propaga_exit_130`
+  (passa isolado — flaky de suite paralela) e
+  `test_otel-usage.sh :: scenario_delta_ignora_sessao_congelada_de_outro_processo`
+  + `scenario_delta_subtrai_contadores_cumulativos` (ambos passam com
+  `LC_ALL=C sh tests/test_otel-usage.sh` — falso-FAIL de locale pt_BR,
+  `locale` do ambiente confirmou `LANG="pt_BR.UTF-8"`). Nenhuma das 3
+  falhas toca scripts desta feature. 0 regressões atribuíveis a
+  state-db-foundation.
+- [x] 4.2.2 Adicionar cenários novos ao harness (`tests/test_<script>.sh`)
   cobrindo o branch de seleção de backend explicitamente, por script
   adaptado
+  — onda-014: novo cenário `scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente`
+  em `tests/test_state-rw.sh`, `tests/test_state-ondas.sh`,
+  `tests/test_state-decisions.sh`, `tests/test_bloqueios.sh` e
+  `tests/test_spawn-tracker.sh` (5 scripts) — prova positiva de C2: com
+  `state.db` E um `state.json` divergente coexistindo no mesmo
+  `state-dir`, a leitura/escrita reflete sempre o `state.db` e o
+  `state.json` legado permanece intocado. Todos os 5 cenários verdes.
 
 ### 4.3 Preservar `state-lock.sh` como camada opcional `[M]`
 
 Ref: contracts/primitives.md §C11 (o que NÃO muda)
 
-- [ ] 4.3.1 Confirmar que `state-lock.sh` não é removido e sua superfície
+- [x] 4.3.1 Confirmar que `state-lock.sh` não é removido e sua superfície
   não muda — segue disponível como camada extra opcional, não mais como
   requisito de serialização
-- [ ] 4.3.2 Atualizar a prosa dos orquestradores (`agente-00c-orchestrator.md`,
+  — onda-014: `git diff main...HEAD -- global/skills/agente-00c-runtime/scripts/state-lock.sh`
+  vazio — zero mudanças no arquivo desde o início desta feature branch.
+- [x] 4.3.2 Atualizar a prosa dos orquestradores (`agente-00c-orchestrator.md`,
   `agente-00c-feature-orchestrator.md`) e commands que hoje descrevem o
   lock como serializador primário, refletindo que WAL é o mecanismo
   primário sob backend `state.db` (FR-011) — **fora desta feature de
   runtime**, mas necessário para a prosa não ficar desatualizada; abrir
   como nota de sugestão se não couber nesta task
+  — onda-014: anotação adicionada na linha da tabela de `state-lock.sh`
+  em ambos os arquivos (`global/agents/agente-00c-orchestrator.md`,
+  `global/agents/agente-00c-feature-orchestrator.md`), citando C6/C11 e
+  FR-011: sob backend `state.db` o WAL passa a serializar escritas
+  concorrentes; o lock segue como camada extra opcional, superfície
+  inalterada. Commands (`agente-00c*.md`/`feature-00c*.md`) não tocados —
+  descrevem mutex de PROCESSO (evitar 2 execuções simultâneas), uma
+  preocupação distinta não superada pelo WAL.
 
 ---
 

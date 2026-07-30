@@ -1787,6 +1787,31 @@ scenario_sqlite_paridade_current_id_wave_status_com_backend_json() {
   [ "$_json_status" = "$_db_status" ] || { _fail "paridade wave-status" "json='$_json_status' sqlite='$_db_status'"; return 1; }
 }
 
+# Task 4.1.1/4.2.2 (FASE 4): branch de selecao de backend explicito por C2 —
+# um state.json coexistente e export/legado, NUNCA consultado como fonte.
+# Prova positiva: onda aberta no state.db ("open") com state.json divergente
+# (0 waves => "none" se fosse lido por engano) — wave-status deve refletir
+# sempre o state.db.
+scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
+  _sd="$TMPDIR_TEST/c2-coexist-ondas"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2: start sqlite" "$_CAPTURED_STDERR"; return 1; }
+
+  # state.json divergente no MESMO diretorio (0 waves => "none" se lido).
+  printf '{"waves":[]}\n' > "$_sd/state.json"
+
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2 wave-status exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "open" \
+    || { _fail "c2: wave-status deveria refletir state.db (open), nao o state.json coexistente" "obtido $_CAPTURED_STDOUT"; return 1; }
+
+  # state.json coexistente permanece intocado.
+  _stale_now=$(cat "$_sd/state.json")
+  [ "$_stale_now" = '{"waves":[]}' ] \
+    || { _fail "c2: state.json coexistente foi modificado" "obtido: $_stale_now"; return 1; }
+}
+
 fi # sqlite3 disponivel
 
 run_all_scenarios

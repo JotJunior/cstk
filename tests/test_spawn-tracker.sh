@@ -307,6 +307,33 @@ scenario_sqlite_paridade_enter_leave_json() {
     || { _fail "paridade leave stdout" "json='$_json_leave_out' sqlite='$_sqlite_leave_out'"; return 1; }
 }
 
+# Task 4.1.1/4.2.2 (FASE 4): branch de selecao de backend explicito por C2 —
+# um state.json coexistente e export/legado, NUNCA consultado como fonte.
+# Prova positiva: subagent_depth=2 no state.db (1 enter), state.json
+# divergente com depth=99 — current deve refletir sempre o state.db (2).
+scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
+  _sd="$TMPDIR_TEST/c2-coexist-spawn"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" enter --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2: enter sqlite" "$_CAPTURED_STDERR"; return 1; }
+
+  # state.json divergente no MESMO diretorio.
+  printf '{"execution":{"subagent_depth":99}}\n' > "$_sd/state.json"
+
+  capture "$SCRIPT" current --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2 current exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "2" \
+    || { _fail "c2: current deveria refletir state.db (2), nao o state.json coexistente (99)" "obtido $_CAPTURED_STDOUT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    99*) _fail "c2: current leu o state.json coexistente" "obtido $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+
+  # state.json coexistente permanece intocado.
+  _stale_now=$(cat "$_sd/state.json")
+  [ "$_stale_now" = '{"execution":{"subagent_depth":99}}' ] \
+    || { _fail "c2: state.json coexistente foi modificado" "obtido: $_stale_now"; return 1; }
+}
+
 fi  # command -v sqlite3
 
 run_all_scenarios

@@ -617,6 +617,35 @@ scenario_sqlite_register_state_db_ausente_falha() {
   fi
 }
 
+# Task 4.1.1/4.2.2 (FASE 4): branch de selecao de backend explicito por C2 —
+# um state.json coexistente e export/legado, NUNCA consultado como fonte.
+# Prova positiva: 1 bloqueio registrado no state.db, state.json divergente
+# com 3 bloqueios falsos — count --pending-only deve refletir sempre o
+# state.db (1).
+scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
+  _sd="$TMPDIR_TEST/c2-coexist-bloqueios"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_sqlite_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2: register sqlite" "$_CAPTURED_STDERR"; return 1; }
+
+  # state.json divergente no MESMO diretorio (3 bloqueios pendentes falsos).
+  printf '{"human_blocks":[{"status":"aguardando"},{"status":"aguardando"},{"status":"aguardando"}]}\n' > "$_sd/state.json"
+
+  capture "$SCRIPT" count --state-dir "$_sd" --pending-only
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2 count exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" \
+    || { _fail "c2: count deveria refletir state.db (1), nao o state.json coexistente (3)" "obtido $_CAPTURED_STDOUT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    3*) _fail "c2: count leu o state.json coexistente" "obtido $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+
+  # state.json coexistente permanece intocado.
+  case "$(cat "$_sd/state.json")" in
+    *aguardando*) : ;;
+    *) _fail "c2: state.json coexistente foi modificado" "obtido: $(cat "$_sd/state.json")"; return 1 ;;
+  esac
+}
+
 fi # sqlite3 disponivel
 
 run_all_scenarios
