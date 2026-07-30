@@ -375,22 +375,65 @@ Ref: contracts/primitives.md tabela de subcomandos `state-ondas.sh`
 
 ### 3.6 Adaptar `spawn-tracker.sh` `[C]`
 
-- [ ] 3.6.1 Adaptar `check`/`enter`/`leave`/`current` preservando exit 3 no
+- [x] 3.6.1 Adaptar `check`/`enter`/`leave`/`current` preservando exit 3 no
   teto (paridade C1)
-- [ ] 3.6.2 Teste: `enter` acima do teto não grava (paridade com hoje)
+  — onda-014: novo `_spawn-tracker-db.sh` (`_st_db_check`/`_st_db_enter`/
+  `_st_db_leave`/`_st_db_current`), dispatch por backend nas 4 funcoes
+  `_st_cmd_*` de `spawn-tracker.sh`. Escopo confinado a
+  `execution.subagent_depth` (teto `execution.max_recursion`, espelho de
+  `_ST_MAX=3`); `enter` valida ANTES de escrever (mesmo padrao do path
+  JSON — nunca depende do texto de erro do CHECK do schema para reportar
+  o teto, so a mensagem/exit 3). `accumulated_metrics.max_depth_reached`/
+  `subagents_spawned` permanecem o placeholder ja documentado em
+  `_sr_db_read` (task 3.2, gap conhecido, fora do escopo desta task —
+  confirmado em `contracts/primitives.md` §spawn-tracker.sh, que so
+  cobre check/enter/leave/current + exit 3).
+- [x] 3.6.2 Teste: `enter` acima do teto não grava (paridade com hoje)
+  — onda-014: `scenario_enter_acima_do_teto_exit_3_sem_gravar`
+  (`tests/test__spawn-tracker-db.sh`, 9 cenarios unitarios) +
+  `scenario_sqlite_enter_excedendo_max_exit_3_sem_modificar_estado`
+  (`tests/test_spawn-tracker.sh`, 9 cenarios sqlite/paridade novos incl.
+  teto customizado via `max_recursion` != 3 e paridade cross-backend
+  enter/leave). Suite filtrada por `spawn-tracker` verde (28/28).
 
 ### 3.7 Testes de atomicidade e concorrência (SC-002, US1 AS-3) `[C]`
 
 Ref: spec.md SC-002; contracts/primitives.md §C4, C6
 
-- [ ] 3.7.1 Teste de carga: duas mutações concorrentes distintas (ex.:
+- [x] 3.7.1 Teste de carga: duas mutações concorrentes distintas (ex.:
   registrar decisão + fechar onda) aplicadas em paralelo — nenhuma
   atualização perdida, 0% de taxa de perda
-- [ ] 3.7.2 Teste de interrupção simulada (kill -9 no meio de uma
+  — onda-013: novo `tests/test_state-db-concurrency.sh` (nao mapeia 1:1
+  para um script — registrado em `run.sh::_is_internal_test`), exercita a
+  COMPOSICAO de scripts sobre o mesmo `state.db`.
+  `scenario_mutacoes_concorrentes_decisao_e_fechamento_onda_sem_perda`:
+  8 `state-decisions.sh register` concorrentes (tabela `decision`) + 1
+  `state-ondas.sh end` (tabela `wave`) em paralelo — 8 ids unicos sem
+  duplicata/erro E a onda fecha (nenhuma das duas mutacoes "desaparece"
+  por causa da outra), absorvido pelo retry/backoff sob lock (C6) ja
+  existente em `_state_db_exec_with_retry`/`_sd_db_exec_capture`.
+- [x] 3.7.2 Teste de interrupção simulada (kill -9 no meio de uma
   transação) — verificar que o `state.db` não fica com escrita parcial
   (rollback automático do SQLite)
-- [ ] 3.7.3 Teste de leitura concorrente durante escrita em andamento — sem
+  — onda-013: `scenario_kill9_meio_transacao_nao_deixa_escrita_parcial`.
+  Sessao `sqlite3` alimentada por FIFO (controle preciso de timing):
+  `BEGIN IMMEDIATE` + `INSERT` sem `COMMIT`, processo morto com `SIGKILL`
+  com a transacao ainda aberta. Confirma `PRAGMA integrity_check = 'ok'`
+  (sem corrupcao), a linha nao-commitada nao existe (rollback automatico
+  via WAL — frames sem marcador de commit valido sao ignorados) e o banco
+  segue utilizavel por escritores subsequentes (lock do processo morto
+  liberado pelo kernel, sem deadlock).
+- [x] 3.7.3 Teste de leitura concorrente durante escrita em andamento — sem
   bloqueio, sem leitura parcial (C6, WAL)
+  — onda-013: `scenario_leitura_concorrente_durante_escrita_sem_bloqueio`.
+  Mesma tecnica de FIFO: transacao de escrita aberta (sem commit) enquanto
+  uma leitura roda numa conexao separada — mede tempo decorrido via epoch
+  (`date +%s`, evita `timeout` GNU-only) para provar que nao bloqueou
+  (<2s, nao esperou o `busy_timeout` de 5s) e confirma snapshot isolation
+  (leitura ve 0, o dado nao-commitado); apos `COMMIT`, nova leitura reflete
+  o dado novo (1). Suite completa (`sh tests/test_state-db-concurrency.sh`,
+  3 cenarios) estavel em 3 execucoes consecutivas; `--check-coverage` sem
+  orfaos apos registrar o arquivo em `run.sh::_is_internal_test`.
 
 ---
 

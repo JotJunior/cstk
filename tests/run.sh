@@ -252,6 +252,14 @@ _is_internal_test() {
       # script sob a convencao de FASE 9.3). Equivalente ao
       # test_quickstart-e2e.sh para o pipeline do agente-00c.
       return 0 ;;
+    test_state-db-concurrency.sh)
+      # Testes de atomicidade/concorrencia do backend SQLite (feature
+      # state-db-foundation, FASE 3 task 3.7, SC-002) — exercita a
+      # COMPOSICAO de state-decisions.sh + bloqueios.sh + state-ondas.sh
+      # sobre o mesmo state.db (mutacoes concorrentes distintas, kill -9
+      # em transacao aberta, leitura concorrente sob WAL). Nao mapeia 1:1
+      # para um unico script sob a convencao de FASE 9.3.
+      return 0 ;;
     # ---- Cobertura real sob nome NAO-1:1 (existence-guarded) ----
     # Estes tests exercitam um script real, mas com nome descritivo que nao
     # casa test_<base>.sh. Cada ramo so isenta se o script cobridor EXISTE —

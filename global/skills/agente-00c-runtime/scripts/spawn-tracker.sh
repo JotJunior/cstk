@@ -39,6 +39,25 @@ set -eu
 
 _ST_NAME="spawn-tracker"
 _ST_MAX=3   # FR-013: max 3 niveis (filho, neto, bisneto)
+_ST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P)
+
+# Backend dual (feature state-db-foundation, FASE 3 task 3.6): presenca de
+# <state-dir>/state.db seleciona SQLite; senao, backend JSON (comportamento
+# historico, intacto abaixo). Ver contracts/primitives.md §C1/C2/C3. Reusa
+# os primitivos ja testados de _state-rw-db.sh (_sr_backend/_sr_db_file/
+# _sr_exec_id/_sr_sql_quote) em vez de duplica-los — mesmo racional de C8
+# ja aplicado em bloqueios.sh/state-decisions.sh/state-ondas.sh.
+# shellcheck source=./_state-db.sh
+. "$_ST_DIR/_state-db.sh"
+# shellcheck source=./_state-rw-db.sh
+. "$_ST_DIR/_state-rw-db.sh"
+# shellcheck source=./_spawn-tracker-db.sh
+. "$_ST_DIR/_spawn-tracker-db.sh"
+
+# Shim para _state-rw-db.sh (_sr_exec_id/_sr_sql_quote nao chamam _sr_die em
+# seus caminhos normais, mas o shim protege contra qualquer caminho de erro
+# latente sem duplicar a logica de _st_die — definida logo abaixo).
+_sr_die() { _st_die "$1" "${2:-1}"; }
 
 _st_die_usage() {
   printf '%s: %s\n' "$_ST_NAME" "$1" >&2
@@ -105,6 +124,10 @@ _st_cmd_check() {
   done
   [ -n "$_sdir" ] || _st_die_usage "check: --state-dir obrigatorio"
   _st_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _st_db_check "$_sdir"
+    return 0
+  fi
   _sf=$(_st_state_file "$_sdir")
   [ -f "$_sf" ] || _st_die "check: state.json ausente em $_sdir" 1
   _curr=$(_st_get_current "$_sdir")
@@ -127,6 +150,10 @@ _st_cmd_enter() {
   done
   [ -n "$_sdir" ] || _st_die_usage "enter: --state-dir obrigatorio"
   _st_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _st_db_enter "$_sdir"
+    return 0
+  fi
   _sf=$(_st_state_file "$_sdir")
   [ -f "$_sf" ] || _st_die "enter: state.json ausente em $_sdir" 1
 
@@ -168,6 +195,10 @@ _st_cmd_leave() {
   done
   [ -n "$_sdir" ] || _st_die_usage "leave: --state-dir obrigatorio"
   _st_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _st_db_leave "$_sdir"
+    return 0
+  fi
   _sf=$(_st_state_file "$_sdir")
   [ -f "$_sf" ] || _st_die "leave: state.json ausente em $_sdir" 1
 
@@ -201,6 +232,10 @@ _st_cmd_current() {
   done
   [ -n "$_sdir" ] || _st_die_usage "current: --state-dir obrigatorio"
   _st_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _st_db_current "$_sdir"
+    return 0
+  fi
   _sf=$(_st_state_file "$_sdir")
   [ -f "$_sf" ] || _st_die "current: state.json ausente em $_sdir" 1
   _st_get_current "$_sdir"
