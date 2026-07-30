@@ -1593,6 +1593,12 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    --motivo-termino <M> [--add-etapa <S>] [--proxima-agendada-para <ISO>]`.
    Motivos validos: `etapa_concluida_avancando`, `threshold_proxy_atingido`,
    `bloqueio_humano`, `aborto`, `concluido`.
+   `--add-etapa` aceita SOMENTE token de etapa (`specify`, `plan`,
+   `execute-task`, `execute-task-F3.1`... — `[A-Za-z0-9._-]`, sem espaco).
+   NUNCA passe resumo/narrativa da onda: o knowledge.db deriva
+   `waves.stages`/`n_stages` desse campo, e prosa o corrompe. Resumo de
+   conclusao vai em Decisao (`state-decisions.sh register`); valor invalido
+   e rejeitado com erro de uso.
 
 9.bis. **Ingestao na memoria de conhecimento (best-effort, ADITIVO —
    FASE 7 cstk-knowledge-db, FR-006/FR-018)**: apos o `end`, ingerir o

@@ -1461,4 +1461,30 @@ scenario_marco_falho_nao_derruba_end() {
   return 0
 }
 
+# --add-etapa e token de etapa, nunca prosa: o knowledge.db deriva
+# waves.stages/n_stages de executed_stages, e um resumo de conclusao gravado
+# aqui corrompia o indice (caso real: 3 ondas com narrativa e n_stages=1).
+scenario_end_add_etapa_rejeita_prosa() {
+  _sd="$TMPDIR_TEST/state-etapa-token"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando \
+    --add-etapa "onda-029 concluida: task 5.3 avancou de 8/16 para 9/16 patterns"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "prosa aceita" "end deveria rejeitar --add-etapa com prosa"; return 1; }
+  # Rejeicao acontece no parse, ANTES de qualquer write: a onda segue aberta.
+  _fim=$(jq -r '.waves[-1].finished_at // "aberta"' "$_sd/state.json")
+  [ "$_fim" = "aberta" ] || { _fail "write parcial" "onda foi fechada apesar do erro ($_fim)"; return 1; }
+  # Valor com newline embutido viraria 2+ etapas no split por linha: rejeita.
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando \
+    --add-etapa "specify
+prosa contrabandeada na segunda linha"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "newline aceito" "token multi-linha deveria ser rejeitado"; return 1; }
+  # Tokens legitimos (ponto, maiuscula, hifen) seguem aceitos.
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando \
+    --add-etapa execute-task-F3.1 --add-etapa execute-task-F3.2
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "token valido" "$_CAPTURED_STDERR"; return 1; }
+  _st=$(jq -r '.waves[-1].executed_stages | join(",")' "$_sd/state.json")
+  [ "$_st" = "execute-task-F3.1,execute-task-F3.2" ] || { _fail "etapas" "obtido $_st"; return 1; }
+}
+
 run_all_scenarios

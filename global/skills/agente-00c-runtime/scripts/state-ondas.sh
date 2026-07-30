@@ -32,6 +32,13 @@
 #         manuais) + linhas do sidecar tool-call-ticks.log (ticks do hook
 #         PostToolUse) — sidecar resetado apos o fechamento.
 #         --add-etapa pode ser passada N vezes para append em executed_stages.
+#         Cada valor DEVE ser um token de etapa ([A-Za-z0-9._-], ate 64
+#         chars, sem espaco/prosa) — o knowledge.db deriva waves.stages e
+#         n_stages deste campo, e um resumo narrativo gravado aqui corrompe
+#         o indice (caso real: 3 ondas com prosa de conclusao e n_stages=1).
+#         Resumo de onda pertence a Decisao (state-decisions.sh register),
+#         nunca a executed_stages. Valor invalido => erro de uso ANTES de
+#         qualquer write (fail-closed).
 #         --next-instruction grava .next_instruction NO MESMO write atomico
 #         (dispensa o `state-rw.sh set` separado ANTES de end — que deixava
 #         backup/sha defasados, ja que `end` tambem escreve no state.json).
@@ -178,6 +185,21 @@ _so_require_jq() {
 
 _so_iso_now() { date -u +%FT%TZ; }
 _so_state_file() { printf '%s/state.json\n' "$1"; }
+
+# Token de etapa valido para executed_stages: identificador curto tipo
+# "specify" / "execute-task-F3.1". Prosa (espaco, pontuacao narrativa,
+# acento, newline) NAO e etapa — o knowledge.db deriva waves.stages e
+# n_stages deste campo. LC_ALL=C evita que ranges casem acentuados em
+# locale pt_BR.
+_so_is_stage_token() {
+  _t=$1
+  [ -n "$_t" ] || return 1
+  # newline embutido viraria 2+ etapas no split por linha de `end`.
+  _nl='
+'
+  case "$_t" in *"$_nl"*) return 1 ;; esac
+  printf '%s' "$_t" | LC_ALL=C grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+}
 
 # Diretorio do proprio script — resolve scripts irmaos (pipeline.sh, state-rw.sh)
 # usados por reconcile-wave. Deriva de $0 (mesmo padrao de model-routing.sh).
@@ -564,7 +586,10 @@ _so_cmd_end() {
       --motivo-termino)        _motivo=$2; shift 2 ;;
       --proxima-agendada-para) _proxima=$2; shift 2 ;;
       --next-instruction)      _next_instr=$2; _next_instr_set=1; shift 2 ;;
-      --add-etapa)             _etapas="$_etapas
+      --add-etapa)
+        _so_is_stage_token "$2" || _so_die_usage \
+          "end: --add-etapa aceita token de etapa ([A-Za-z0-9._-], ate 64 chars, sem espaco/prosa); recebido: '$2'. Resumo de onda vai em Decisao (state-decisions.sh register), nao em executed_stages."
+        _etapas="$_etapas
 $2"; shift 2 ;;
       *) _so_die_usage "end: flag desconhecida: $1" ;;
     esac

@@ -922,6 +922,43 @@ JSON
 }
 
 # =========================================================================
+# Cenario M3.2 — waves.stages e lista de TOKENS: prosa em executed_stages
+# nao vira etapa (caso real: 3 ondas legadas com resumo de conclusao no
+# campo e n_stages=1). Entrada nao-token e descartada do CSV e da contagem;
+# lista 100% invalida -> stages NULL + n_stages NULL (NULL honesto, nunca a
+# prosa nem contagem fabricada); lista vazia legitima preserva ''/0.
+# =========================================================================
+scenario_m32_stages_prosa_nao_vira_etapa() {
+  _have_deps || return 0
+  _mdir="$TMPDIR_TEST/featPr"
+  mkdir -p "$_mdir"
+  cat > "$_mdir/state.json" <<'JSON'
+{
+  "short_name": "featPr",
+  "etapa_corrente": "execute-task",
+  "execucao": { "id": "exec-featPr", "projeto_alvo_path": "/home/u/projPr", "status": "concluida", "iniciada_em": "2026-01-01T00:00:00Z", "terminada_em": "2026-01-01T01:00:00Z" },
+  "metricas_acumuladas": { "ondas_total": 3 },
+  "decisoes": [], "bloqueios_humanos": [],
+  "ondas": [
+    { "id": "onda-001", "inicio": "2026-01-01T00:00:00Z", "fim": "2026-01-01T00:20:00Z", "etapas_executadas": ["onda-001 concluida: task 5.3 avancou de 8/16 para 9/16 patterns"], "tool_calls": 1, "motivo_termino": "etapa_concluida" },
+    { "id": "onda-002", "inicio": "2026-01-01T00:20:00Z", "fim": "2026-01-01T00:40:00Z", "etapas_executadas": ["specify", "resumo em prosa que nao e etapa"], "tool_calls": 1, "motivo_termino": "etapa_concluida" },
+    { "id": "onda-003", "inicio": "2026-01-01T00:40:00Z", "fim": "2026-01-01T01:00:00Z", "etapas_executadas": [], "tool_calls": 0, "motivo_termino": "etapa_concluida" }
+  ]
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_mdir" --db "$TMPDIR_TEST/k.db" || return 1
+  # onda-001: so prosa -> stages NULL e n_stages NULL (nunca a prosa, nunca 1).
+  _r=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT (stages IS NULL)||'|'||(n_stages IS NULL) FROM waves WHERE feature='featPr' AND wave='onda-001'")
+  [ "$_r" = "1|1" ] || { _fail "prosa->NULL" "obtido [$_r]"; return 1; }
+  # onda-002: token valido preservado, prosa descartada, n_stages conta so validos.
+  _r=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT stages||'|'||n_stages FROM waves WHERE feature='featPr' AND wave='onda-002'")
+  [ "$_r" = "specify|1" ] || { _fail "filtra prosa" "obtido [$_r]"; return 1; }
+  # onda-003: lista vazia legitima segue '' + 0 (comportamento inalterado).
+  _r=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT (stages='')||'|'||n_stages FROM waves WHERE feature='featPr' AND wave='onda-003'")
+  [ "$_r" = "1|0" ] || { _fail "vazio inalterado" "obtido [$_r]"; return 1; }
+}
+
+# =========================================================================
 # Cenario M4.1 — re-ingestao N vezes: delta de linhas executions/waves = 0
 # (task 1.4.2; SC-004, Acceptance US1.4). Valor reflete estado mais recente.
 # =========================================================================
