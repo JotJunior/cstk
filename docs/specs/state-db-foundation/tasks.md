@@ -220,16 +220,55 @@ Ref: contracts/primitives.md §C1 (paridade), §C2 (seleção de backend)
 
 Ref: contracts/primitives.md tabela de subcomandos `state-ondas.sh`
 
-- [ ] 3.3.1 Adaptar `start`/`end`/`wave-status`/`current-id` — declarar
+- [x] 3.3.1 Adaptar `start`/`end`/`wave-status`/`current-id` — declarar
   explicitamente a mudança de comportamento autorizada por C3: `start` com
   onda já aberta passa a **falhar** (hoje duplica silenciosamente)
-- [ ] 3.3.2 Adaptar `record-skill`/`record-task`/`reconcile-tasks` — PK
+  — onda-009: novo `_state-ondas-db.sh` (`_so_db_start`/`_so_db_end`/
+  `_so_db_wave_status`/`_so_db_current_id`), dispatch por backend em
+  `state-ondas.sh`; `start` sobre onda aberta falha via `ux_wave_single_open`
+  (INSERT rejeitado, exit 1 + stderr); `end` fecha a onda aberta numa unica
+  transacao (C4) incl. `next_instruction` quando fornecido;
+  `accumulated_metrics` passa a ser DERIVADO por agregação SQL
+  (`_sr_db_read`), sem campo separado a manter em sincronia. Fix lateral:
+  `_so_start_snapshot_baseline` lia `.execution.target_project_path` via
+  `jq` direto no `state.json` (quebrava sob SQLite) — migrado para
+  `state-rw.sh get` (backend-safe nos dois backends)
+- [x] 3.3.2 Adaptar `record-skill`/`record-task`/`reconcile-tasks` — PK
   composta de `task_outcome` substitui o upsert em `jq` por
   `INSERT ... ON CONFLICT DO UPDATE`
-- [ ] 3.3.3 Adaptar `tool-call-tick`/`git-commit`
-- [ ] 3.3.4 Teste: guarda `wave-status` do orquestrador continua válida
+  — onda-009: `_so_db_record_skill` (INSERT...SELECT...WHERE NOT EXISTS,
+  check-then-insert atomico, mesma idempotência skill+decisão do path
+  JSON, alvo = última onda por seq como `.waves[-1]`, não exige onda
+  aberta); `_so_db_record_task` (dispatcher DO UPDATE default / DO NOTHING
+  para `--if-absent`); `_so_db_reconcile_tasks` reusa o mesmo parsing
+  awk de tasks.md (extraído para `_so_tasks_md_titlemap`/
+  `_so_tasks_md_missing`, chamados também pelo path SQLite)
+- [x] 3.3.3 Adaptar `tool-call-tick`/`git-commit`
+  — onda-009: `_so_db_tool_call_tick` incrementa `wave.tool_calls` da onda
+  aberta diretamente (sem onda aberta = exit 1, mudança deliberada face ao
+  fallback silencioso do JSON); `git-commit` não precisou de mudança de
+  lógica própria — já delega a `current-id` (dispatchado) e a
+  `commit-mode.sh` (que só lê/escreve via `state-rw.sh get/set`, já
+  backend-safe desde a task 3.2); testado ponta-a-ponta com repo git real
+  sob backend sqlite
+- [x] 3.3.4 Teste: guarda `wave-status` do orquestrador continua válida
   como defesa em profundidade (não mais requisito único) sob o novo erro
   de `start`
+  — onda-009: `scenario_sqlite_start_onda_ja_aberta_falha` (segundo
+  `start` falha por C3, `wave-status`/`current-id` seguem corretos e
+  utilizáveis como defesa em profundidade). Bônus (fora do escopo
+  original, mas necessário para não deixar `reconcile-wave` quebrado sob
+  SQLite): adaptado para backend dual via primitivas já dispatchadas
+  (`_so_cmd_wave_status`, `state-rw.sh get`); achou e corrigiu bug real —
+  a promoção de status terminal fazia 5 `state-rw.sh set` sequenciais,
+  violando a CHECK composta `status×finished_at` de `execution` sob
+  SQLite (nenhuma ordem de sets de 1 coluna satisfaz a transição
+  atômica); trocado por `read`→jq patch→`write` atômico (C4), aplicado
+  nos dois backends. 9 testes unitários novos
+  (`tests/test__state-ondas-db.sh`) + 20 cenários sqlite em
+  `tests/test_state-ondas.sh` (incl. paridade C1 current-id/wave-status);
+  suite completa (`--fast`) verde (1615/1617; as 2 falhas são
+  `test_otel-usage.sh` pré-existentes por locale pt_BR, não desta task)
 
 ### 3.4 Adaptar `state-decisions.sh` `[C]`
 
