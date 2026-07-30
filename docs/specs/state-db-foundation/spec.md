@@ -52,14 +52,17 @@ deste documento.
   nunca como fonte independente.
 - Q: Qual mecanismo de concorrência do `state.db` substitui/complementa o
   lock de diretório atual para serializar escritores e permitir leitores
-  concorrentes sem bloqueio (FR-011)? → **BLOQUEADO aguardando decisão
-  humana** (bloqueio `block-001`): o próprio spec.md tem sinais
-  conflitantes entre FR-011 (leitor concorrente sem bloqueio, sugerindo
-  WAL mode nativo do SQLite) e a nota de infraestrutura "Mutex
-  multi-réplica" (serialização entre orquestradores via lock de diretório
-  hoje vigente, declarada fora do escopo desta feature). Nenhuma das duas
-  opções viola a constitution — resolução requer decisão humana antes de
-  `plan`.
+  concorrentes sem bloqueio (FR-011)? → **A: WAL mode nativo do SQLite**
+  (`PRAGMA journal_mode=WAL`) resolve FR-011 diretamente — passa a ser o
+  mecanismo primário de concorrência do `state.db`, liberando leitores
+  durante uma escrita em andamento sem bloqueio nem leitura parcial. O
+  lock de diretório hoje vigente deixa de ser o único serializador entre
+  orquestradores; é **mantido apenas como camada extra opcional**,
+  acionável quando se justificar por melhoria de robustez/segurança
+  adicional (ex.: coordenação cross-processo além do que o WAL cobre
+  sozinho), nunca como requisito para leitores nem como mecanismo
+  primário de FR-011. Resolução do bloqueio `block-001` — decisão
+  registrada em `dec-014` (respondida pelo operador em 2026-07-30).
 
 ## User Scenarios & Testing
 
@@ -248,13 +251,14 @@ skills) devem ser equivalentes.
   tratado como export/legado, nunca como fonte independente (ver
   Clarifications, Session 2026-07-30).
 - O que acontece quando duas instâncias de orquestrador (ex.: agente-00c
-  e feature-00c) tentam escrever no mesmo `state.db` ao mesmo tempo? O
-  comportamento de serialização de escrita concorrente hoje garantido
-  pelo lock de diretório não pode regredir. **Mecanismo exato ainda em
-  aberto** — bloqueado aguardando decisão humana (`block-001`, ver
-  Clarifications, Session 2026-07-30) sobre se WAL mode nativo do SQLite
-  substitui o lock de diretório ou se o lock é mantido como camada de
-  serialização entre orquestradores.
+  e feature-00c) tentam escrever no mesmo `state.db` ao mesmo tempo? WAL
+  mode nativo do SQLite (`PRAGMA journal_mode=WAL`) serializa escritores
+  automaticamente e libera leitores concorrentes sem bloqueio — resolvido
+  via `block-001` (ver Clarifications, Session 2026-07-30). O lock de
+  diretório hoje vigente deixa de ser o serializador exigido; pode ser
+  mantido como camada extra opcional se uma necessidade concreta de
+  robustez/segurança adicional justificar, mas não é requisito desta
+  feature.
 - O que acontece quando a geração do export falha (ex.: disco cheio,
   processo interrompido) no meio do fechamento de uma onda? O
   fechamento da onda no `state.db` não pode ficar condicionado ao
@@ -335,7 +339,11 @@ skills) devem ser equivalentes.
 - **FR-011**: System MUST permitir que leitores (ex.: painel, comando de
   inspeção) acessem os dados do `state.db` enquanto uma escrita está em
   andamento, sem bloquear a escrita nem produzir leitura corrompida ou
-  parcial.
+  parcial. O mecanismo primário é WAL mode nativo do SQLite (`PRAGMA
+  journal_mode=WAL`); o lock de diretório hoje vigente deixa de ser
+  exigido para este fim e pode ser mantido apenas como camada extra
+  opcional quando justificar melhoria de robustez/segurança (ver
+  Clarifications, Session 2026-07-30 — `block-001`).
 - **FR-012**: Um projeto que ainda não foi migrado MUST continuar
   operando exatamente como hoje (lendo/escrevendo `state.json`) até que a
   migração seja executada — a introdução do `state.db` não pode quebrar
@@ -362,8 +370,12 @@ skills) devem ser equivalentes.
 > de token externo — não há integração com IdP/OAuth nesta feature.
 > Mutex multi-réplica — o toolkit roda como processo local
 > single-instance por projeto; a serialização entre orquestradores
-> concorrentes continua sendo resolvida pelo mecanismo de lock hoje
-> vigente (fora do escopo desta feature alterar).
+> concorrentes passa a ser resolvida primariamente pelo WAL mode nativo
+> do `state.db` (ver `block-001`, Clarifications Session 2026-07-30); o
+> lock de diretório hoje vigente deixa de ser o único mecanismo e é
+> mantido apenas como camada extra opcional, quando justificar melhoria
+> de robustez/segurança — não é reintroduzido como requisito desta
+> feature.
 
 ### Key Entities
 
