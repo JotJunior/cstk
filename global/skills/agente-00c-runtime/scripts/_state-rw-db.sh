@@ -399,10 +399,21 @@ _sr_db_replace_events() {
   _state_db_exec_with_retry "$_re_db" "$_re_sql" || _sr_die "set: resync de '.events' falhou" 1
 }
 
-# _sr_db_upsert_wave DB EXEC_ID WAVE_JSON -> UPSERT de UMA onda + resync do
-# seu skills_invoked (leaf table, seguro DELETE+INSERT por wave_id).
+# _sr_db_upsert_wave DB EXEC_ID WAVE_JSON [WITH_SKILLS] -> UPSERT de UMA onda
+# + (por default) resync do seu skills_invoked (leaf table, seguro
+# DELETE+INSERT por wave_id).
+#
+# WITH_SKILLS=no OMITE o bloco de skill_invocation, para o caller emiti-lo
+# DEPOIS das decisions. Necessario porque skill_invocation.decision_id e FK
+# para decision(id): emitir a skill junto da onda (ordem
+# execution -> wave+skills -> decision) viola a FK sempre que a skill carrega
+# decision_id — que e o caso normal do two-step register+record-skill do
+# model-routing. A ordem correta e a do contracts/migration.md §M2:
+# execution -> wave -> decision -> human_block/skill_invocation/task/event.
+# Achado empiricamente na FASE 6 ao migrar state.json reais (os fixtures
+# sinteticos da FASE 3 nao tinham skills_invoked com decision_id).
 _sr_db_upsert_wave() {
-  _uw_db="$1"; _uw_exec_id="$2"; _uw_row="$3"
+  _uw_db="$1"; _uw_exec_id="$2"; _uw_row="$3"; _uw_with_skills="${4:-yes}"
   _uw_id=$(printf '%s' "$_uw_row" | jq -r '.id')
   _uw_seq=$(printf '%s' "$_uw_id" | sed -n 's/^onda-0*\([0-9][0-9]*\)$/\1/p')
   [ -n "$_uw_seq" ] || _sr_die "write: id de onda invalido (esperado 'onda-NNN'): '$_uw_id'" 1
@@ -433,26 +444,42 @@ _sr_db_upsert_wave() {
   _uw_sql="$_uw_sql) ON CONFLICT(id) DO UPDATE SET seq=excluded.seq, started_at=excluded.started_at, finished_at=excluded.finished_at, wallclock_seconds=excluded.wallclock_seconds, tool_calls=excluded.tool_calls, termination_reason=excluded.termination_reason, next_wave_scheduled_for=excluded.next_wave_scheduled_for, executed_stages=excluded.executed_stages, agent_usage=excluded.agent_usage, agent_spawns=excluded.agent_spawns, otel_usage=excluded.otel_usage, extra_fields=excluded.extra_fields;"
   printf '%s' "$_uw_sql"
 
-  _uw_skills=$(printf '%s' "$_uw_row" | jq -c '.skills_invoked // []')
-  printf ' DELETE FROM skill_invocation WHERE wave_id = %s;' "$(_sr_sql_quote "$_uw_id")"
-  _uw_stmp=$(mktemp) || _sr_die "write: mktemp falhou" 1
-  printf '%s' "$_uw_skills" | jq -c '.[]' > "$_uw_stmp" 2>/dev/null
-  while IFS= read -r _uw_srow; do
-    _uw_sk=$(printf '%s' "$_uw_srow" | jq -r '.skill')
-    _uw_sts=$(printf '%s' "$_uw_srow" | jq -r '.timestamp')
-    _uw_sdec=$(printf '%s' "$_uw_srow" | jq -r '.decision_id // empty')
-    _uw_skind=$(printf '%s' "$_uw_srow" | jq -r '.kind // "skill"')
+  [ "$_uw_with_skills" = "no" ] && return 0
+  _sr_db_wave_skills_sql "$_uw_row"
+}
+
+# _sr_db_wave_skills_sql WAVE_JSON -> imprime o resync (DELETE+INSERT) do
+# skills_invoked de UMA onda. Separado de _sr_db_upsert_wave para permitir
+# emissao APOS as decisions (FK skill_invocation.decision_id -> decision.id).
+_sr_db_wave_skills_sql() {
+  _ws_row="$1"
+  _ws_id=$(printf '%s' "$_ws_row" | jq -r '.id')
+  _ws_skills=$(printf '%s' "$_ws_row" | jq -c '.skills_invoked // []')
+  printf ' DELETE FROM skill_invocation WHERE wave_id = %s;' "$(_sr_sql_quote "$_ws_id")"
+  _ws_stmp=$(mktemp) || _sr_die "write: mktemp falhou" 1
+  printf '%s' "$_ws_skills" | jq -c '.[]' > "$_ws_stmp" 2>/dev/null
+  while IFS= read -r _ws_srow; do
+    _ws_sk=$(printf '%s' "$_ws_srow" | jq -r '.skill')
+    _ws_sts=$(printf '%s' "$_ws_srow" | jq -r '.timestamp')
+    _ws_sdec=$(printf '%s' "$_ws_srow" | jq -r '.decision_id // empty')
+    _ws_skind=$(printf '%s' "$_ws_srow" | jq -r '.kind // "skill"')
     printf ' INSERT INTO skill_invocation (wave_id,skill,timestamp,decision_id,kind) VALUES (%s,%s,%s,%s,%s);' \
-      "$(_sr_sql_quote "$_uw_id")" "$(_sr_sql_quote "$_uw_sk")" "$(_sr_sql_quote "$_uw_sts")" \
-      "$([ -n "$_uw_sdec" ] && _sr_sql_quote "$_uw_sdec" || printf NULL)" "$(_sr_sql_quote "$_uw_skind")"
-  done < "$_uw_stmp"
-  rm -f -- "$_uw_stmp"
+      "$(_sr_sql_quote "$_ws_id")" "$(_sr_sql_quote "$_ws_sk")" "$(_sr_sql_quote "$_ws_sts")" \
+      "$([ -n "$_ws_sdec" ] && _sr_sql_quote "$_ws_sdec" || printf NULL)" "$(_sr_sql_quote "$_ws_skind")"
+  done < "$_ws_stmp"
+  rm -f -- "$_ws_stmp"
 }
 
 _sr_db_upsert_decision() {
   _ud_exec_id="$1"; _ud_row="$2"
   _ud_id=$(printf '%s' "$_ud_row" | jq -r '.id')
-  _ud_wid=$(printf '%s' "$_ud_row" | jq -r '.wave_id // empty')
+  # wave_id sentinela "init" -> NULL (data-model.md §decision: `FK -> wave(id),
+  # NULL p/ "init"`). Decisoes registradas pelo command PAI antes da primeira
+  # onda (ex.: wave-select pre-onda) carregam wave_id="init", que nao e uma
+  # onda real — inseri-lo verbatim viola a FK. Achado empiricamente na FASE 6:
+  # 10 dos 19 state.json reais de .claude/feature-00c-state/ tem essa
+  # sentinela.
+  _ud_wid=$(printf '%s' "$_ud_row" | jq -r 'if (.wave_id // "") == "init" then "" else (.wave_id // empty) end')
   _ud_ts=$(printf '%s' "$_ud_row" | jq -r '.timestamp')
   _ud_agent=$(printf '%s' "$_ud_row" | jq -r '.agent')
   _ud_stage=$(printf '%s' "$_ud_row" | jq -r '.stage')
@@ -665,13 +692,15 @@ _sr_db_write_document() {
   _wd_sql="${_wd_sql}extra_fields=$(_sr_sql_quote "$_wd_extra")"
   _wd_sql="${_wd_sql} WHERE id = $(_sr_sql_quote "$_wd_exec_id");"
 
-  # --- waves (+ skills_invoked) — FK-dependente de execution, precede decisions/tasks ---
+  # --- waves (SEM skills_invoked) — FK-dependente de execution, precede
+  # decisions/tasks. As skills_invoked sao emitidas mais abaixo, DEPOIS das
+  # decisions, porque skill_invocation.decision_id e FK para decision(id)
+  # (ordem do contracts/migration.md §M2). ---
   _wd_wtmp=$(mktemp) || _sr_die "write: mktemp falhou" 1
   printf '%s' "$_wd_doc" | jq -c '.waves[]? // empty' > "$_wd_wtmp" 2>/dev/null
   while IFS= read -r _wd_wrow; do
-    _wd_sql="$_wd_sql $(_sr_db_upsert_wave "$_wd_db" "$_wd_exec_id" "$_wd_wrow")"
+    _wd_sql="$_wd_sql $(_sr_db_upsert_wave "$_wd_db" "$_wd_exec_id" "$_wd_wrow" no)"
   done < "$_wd_wtmp"
-  rm -f -- "$_wd_wtmp"
 
   # --- decisions — FK-dependente de wave ---
   _wd_dtmp=$(mktemp) || _sr_die "write: mktemp falhou" 1
@@ -680,6 +709,12 @@ _sr_db_write_document() {
     _wd_sql="$_wd_sql $(_sr_db_upsert_decision "$_wd_exec_id" "$_wd_drow")"
   done < "$_wd_dtmp"
   rm -f -- "$_wd_dtmp"
+
+  # --- skills_invoked — FK-dependente de wave E de decision ---
+  while IFS= read -r _wd_wrow; do
+    _wd_sql="$_wd_sql $(_sr_db_wave_skills_sql "$_wd_wrow")"
+  done < "$_wd_wtmp"
+  rm -f -- "$_wd_wtmp"
 
   # --- human_blocks — FK-dependente de decision ---
   _wd_htmp=$(mktemp) || _sr_die "write: mktemp falhou" 1

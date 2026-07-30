@@ -641,89 +641,196 @@ dec-033 (M1-a), dec-034 (CHK005)
 
 Ref: dec-034 (subcomando `cstk state migrate` delegando a `state-db-migrate.sh`)
 
-- [ ] 6.1.1 Criar `global/skills/agente-00c-runtime/scripts/state-db-migrate.sh`
+- [x] 6.1.1 Criar `global/skills/agente-00c-runtime/scripts/state-db-migrate.sh`
   como script dedicado (evita colisão com `state-rw.sh migrate`, que migra
   schema interno do JSON — migration.md §Nomeação)
-- [ ] 6.1.2 Expor `cstk state migrate --state-dir <dir>` no CLI, delegando
+  — onda-016: `state-db-migrate.sh` (subcomando `migrate --state-dir`),
+  exit 3 dedicado para RECUSA por pre-condicao (distinguivel de falha).
+
+- [x] 6.1.2 Expor `cstk state migrate --state-dir <dir>` no CLI, delegando
   ao script acima
-- [ ] 6.1.3 Criar `tests/test_state-db-migrate.sh` seguindo a convenção do
+  — onda-016: `cli/lib/state.sh` (`state_main`) + dispatch em `cli/cstk`
+  (case generico + help geral + `cstk help state`). Delegacao pura: flags e
+  exit codes repassados VERBATIM. Resolucao do script em 3 camadas (PATH ->
+  CSTK_LIB/../../global/skills -> ~/.claude), mesmo padrao de
+  `recall_secrets_filter_path` — resolver so via ~/.claude passa local e
+  quebra no CI fresh-checkout.
+
+- [x] 6.1.3 Criar `tests/test_state-db-migrate.sh` seguindo a convenção do
   harness (`--check-coverage` deve reconhecer o script novo)
+  — onda-016: `tests/test_state-db-migrate.sh` (23 cenarios, cobre os 7 do
+  contrato) + `tests/cstk/test_state.sh` (9 cenarios da fronteira do CLI).
+  `--check-coverage` verde para ambos os scripts novos.
 
 ### 6.2 Pré-condições M1 `[C]`
 
 Ref: migration.md §M1; dec-033 (M1-a: permitir `aguardando_humano`)
 
-- [ ] 6.2.1 Recusar com diagnóstico claro se `.execution.status ==
+- [x] 6.2.1 Recusar com diagnóstico claro se `.execution.status ==
   "em_andamento"` (FR-005, literal) — **permitir** `aguardando_humano`
   (dec-033)
-- [ ] 6.2.2 Recusar se `state-validate.sh --state-dir <dir>` sair != 0
+  — onda-016: recusa `em_andamento` citando o campo; `aguardando_humano`
+  PERMITIDO (dec-033), com cenario dedicado provando a migracao completa.
+
+- [x] 6.2.2 Recusar se `state-validate.sh --state-dir <dir>` sair != 0
   (reaproveita o verificador existente — cobre SC-006/bloqueio órfão sem
   código novo)
-- [ ] 6.2.3 Recusar se `state-rw.sh sha256-verify --state-dir <dir>` sair
+  — onda-016: delega a `state-validate.sh` (que le state.json DIRETO, sem
+  passar por state-rw.sh — segue validando a ORIGEM mesmo com state.db ja
+  presente). Cenario de bloqueio orfao confirma a recusa com o id do
+  registro problematico no diagnostico.
+
+- [x] 6.2.3 Recusar se `state-rw.sh sha256-verify --state-dir <dir>` sair
   != 0 (integridade divergente)
-- [ ] 6.2.4 Recusar se `state.json` ausente/ilegível
-- [ ] 6.2.5 Recusar (não sobrescrever) se já existe `state.db` de
+  — onda-016: comparacao do `state.json.sha256` com o hash real da origem.
+  NAO delega a `state-rw.sh sha256-verify` porque aquele comando e
+  BACKEND-AWARE: com state.db presente ele verifica o BANCO
+  (`PRAGMA integrity_check`), nao o state.json — o oposto do que M1.3 pede
+  numa reexecucao.
+
+- [x] 6.2.4 Recusar se `state.json` ausente/ilegível
+  — onda-016: cenarios de state.json ausente e de JSON nao-parseavel, ambos
+  exit 3 sem criar state.db.
+
+- [x] 6.2.5 Recusar (não sobrescrever) se já existe `state.db` de
   `execution.id` diferente da origem — ver 6.5 (idempotência)
+  — onda-016: compara `.execution.id` da origem com `SELECT id FROM
+  execution` do banco existente; divergiu, recusa e REGISTRA a tentativa em
+  `migration_run` (result='refused' + diagnostic).
 
 ### 6.3 Sequência de migração (M2) `[C]`
 
 Ref: migration.md §M2; primitives.md §C10 (mktemp, finding S4)
 
-- [ ] 6.3.1 Criar arquivo temporário via `mktemp` no `<state-dir>` (mesmo
+- [x] 6.3.1 Criar arquivo temporário via `mktemp` no `<state-dir>` (mesmo
   filesystem) — MUST NOT usar nome derivado de PID (C10)
-- [ ] 6.3.2 Aplicar o schema (FASE 2) + PRAGMAs ao temporário
-- [ ] 6.3.3 Inserir os dados na ordem imposta pelas FKs: `execution` →
+  — onda-016: `mktemp -d` no PROPRIO state-dir (mesmo filesystem, exigencia
+  do mv atomico). Um DIRETORIO e nao um arquivo, para que o banco em
+  construcao se chame exatamente `state.db` e `state-rw.sh write` resolva o
+  backend SQLite por presenca (`_sr_backend`), reusando o importador
+  FK-ordenado ja auditado. Cenario de auditoria estatica (C10) rejeita nome
+  derivado de PID.
+
+- [x] 6.3.2 Aplicar o schema (FASE 2) + PRAGMAs ao temporário
+  — onda-016: reusa `state-db-schema.sh create` (DDL + WAL + chmod 600).
+
+- [x] 6.3.3 Inserir os dados na ordem imposta pelas FKs: `execution` →
   `wave` → `decision` → `human_block`/`skill_invocation`/`task_outcome`/
   `event` → `migration_run`, preservando IDs e timestamps originais sem
   renumeração
-- [ ] 6.3.4 Publicar por `mv` atômico do temporário para `state.db`
+  — onda-016: `execution` inserida pelo proprio script (o importador faz
+  UPDATE, nao INSERT, e nao toca as colunas de budget); demais entidades via
+  `state-rw.sh write`. **Dois defeitos de FASE 3 corrigidos aqui**, ambos
+  invisiveis aos fixtures sinteticos e fatais em dado real:
+  (a) `decisions[].wave_id == "init"` era inserido verbatim, violando a FK —
+  agora mapeado para NULL conforme data-model.md §decision (a sentinela
+  aparece em 10 dos 19 state.json reais do repo);
+  (b) `skill_invocation` era emitida JUNTO da onda, ANTES das decisions,
+  violando a FK `decision_id` sempre que a skill carregava decisao (o caso
+  normal do two-step do model-routing) — `_sr_db_wave_skills_sql` agora e
+  emitida depois das decisions, na ordem literal do contrato §M2.
+
+- [x] 6.3.4 Publicar por `mv` atômico do temporário para `state.db`
   (dentro do mesmo filesystem)
+  — onda-016: `PRAGMA wal_checkpoint(TRUNCATE)` antes do `mv` (sem isso o
+  mv de um unico arquivo deixaria transacoes no -wal), depois `mv -f` +
+  `chmod 600`.
 
 ### 6.4 Verificação pós-migração M3 (FR-006, SC-001) `[C]`
 
 Ref: migration.md §M3.1, M3.2
 
-- [ ] 6.4.1 M3.1 — contagem por entidade: `COUNT(*)` no destino == `length`
+- [x] 6.4.1 M3.1 — contagem por entidade: `COUNT(*)` no destino == `length`
   do array de origem, para as 6 entidades listadas (decisions, waves,
   human_blocks, tasks, events, skill_invocation), gravado em
   `migration_run.counts_source`/`counts_target`
-- [ ] 6.4.2 M3.2 — gerar o export (FASE 5) a partir do `state.db` recém-
+  — onda-016: `_sdm_counts_source` (jq) vs `_sdm_counts_target` (COUNT(*)),
+  mesmo formato JSON de chaves fixas, comparados literalmente; ambos
+  gravados em `migration_run.counts_source`/`counts_target`.
+
+- [x] 6.4.2 M3.2 — gerar o export (FASE 5) a partir do `state.db` recém-
   construído e comparar campo-a-campo com o `state.json` de origem, ambos
   canonicalizados (`jq -S .`) — divergência ⇒ migração recusada, temporário
   removido
-- [ ] 6.4.3 Teste: `state.json` que falha na validação (bloqueio órfão) é
+  — onda-016: export via `state-rw.sh read` comparado com a origem, ambos
+  `jq -S` + normalizacao contratual FECHADA de 4 itens (documentada no
+  script): sentinela `init`, null<->chave-ausente, `accumulated_metrics`
+  (agregado derivado — todos os INSUMOS sao preservados; o objeto de origem
+  fica integral em `migration_run.counts_source`) e
+  `budgets.current_wave_start`/`tool_calls_current_wave` (derivados da onda
+  aberta, que `_sr_db_set` inclusive RECUSA gravar). Divergencia FORA da
+  lista reprova — provado em campo: a 1a execucao real reprovou de verdade
+  e nada foi publicado.
+
+- [x] 6.4.3 Teste: `state.json` que falha na validação (bloqueio órfão) é
   recusado com diagnóstico apontando o registro problemático (SC-006, US2
   AS-3)
-- [ ] 6.4.4 Teste: interrupção simulada entre construção e publicação —
+  — onda-016: `scenario_bloqueio_orfao_recusado_com_diagnostico` — exit 3,
+  nenhum state.db criado, diagnostico nomeando `block-001`.
+
+- [x] 6.4.4 Teste: interrupção simulada entre construção e publicação —
   `state.json` original permanece intacto e o projeto continua operável
   (US2 AS-4)
+  — onda-016: `scenario_interrupcao_antes_da_publicacao_preserva_origem` —
+  sha256 do state.json identico antes/depois e leitura operavel apos a
+  falha. Cenario irmao confirma que nenhum temporario sobrevive.
 
 ### 6.5 Idempotência (FR-014-INFRA-IDEMP, M5) `[C]`
 
 Ref: migration.md §M5
 
-- [ ] 6.5.1 Chave de idempotência = `.execution.id` — reexecutar sobre
+- [x] 6.5.1 Chave de idempotência = `.execution.id` — reexecutar sobre
   projeto já migrado (mesmo `execution.id`) não duplica nem corrompe
   (reconstrução completa + republicação atômica)
-- [ ] 6.5.2 `state.db` pré-existente com `execution.id` diferente da
+  — onda-016: garantido por construcao (reconstrucao TOTAL + publicacao
+  atomica, nunca append incremental). Cenario roda a migracao 2x e compara
+  as contagens.
+
+- [x] 6.5.2 `state.db` pré-existente com `execution.id` diferente da
   origem ⇒ recusar, exigindo intervenção humana
-- [ ] 6.5.3 Registrar toda tentativa (inclusive recusadas) em
+  — onda-016: ver 6.2.5.
+
+- [x] 6.5.3 Registrar toda tentativa (inclusive recusadas) em
   `migration_run` com `result` ∈ `success`\|`refused`\|`failed`
-- [ ] 6.5.4 Teste: migração executada duas vezes seguidas sobre o mesmo
+  — onda-016: `success` (antes de publicar, no proprio banco que vai ser
+  publicado), `refused` e `failed` — os dois ultimos no state.db
+  PRE-EXISTENTE quando ha um. Numa primeira migracao que falha nao existe
+  banco onde registrar: stderr + exit nao-zero sao o registro (documentado,
+  nao esquecido). O historico de `migration_run` do banco anterior e
+  copiado para o novo a cada reexecucao — sem isso a reconstrucao total
+  apagaria a trilha de auditoria.
+
+- [x] 6.5.4 Teste: migração executada duas vezes seguidas sobre o mesmo
   projeto produz o mesmo resultado, sem duplicação (US2 AS-2)
+  — onda-016: `scenario_migracao_reexecutada_nao_duplica` (contagens iguais
+  + 2 linhas de `migration_run` com result='success').
 
 ### 6.6 Garantias M4/M6 e cobertura dos 7 cenários do contrato `[C]`
 
 Ref: migration.md §M4, M6, §Cenários de teste (tabela final)
 
-- [ ] 6.6.1 Confirmar M6: migração nunca dispara automaticamente numa
+- [x] 6.6.1 Confirmar M6: migração nunca dispara automaticamente numa
   invocação de orquestrador (nenhum caminho de `/agente-00c`,
   `/feature-00c` ou resumes a chama)
-- [ ] 6.6.2 Confirmar M6: `state.json`, `state.json.sha256` e
+  — onda-016: `scenario_m6_nenhum_orquestrador_invoca_migracao_automaticamente`
+  — auditoria estatica: nenhum arquivo de `global/commands` ou
+  `global/agents` pode referenciar `state-db-migrate`.
+
+- [x] 6.6.2 Confirmar M6: `state.json`, `state.json.sha256` e
   `state-history/` nunca são apagados pela migração
-- [ ] 6.6.3 Rodar a suíte completa dos 7 cenários de
+  — onda-016: `scenario_m6_nao_apaga_state_json_sha256_nem_history` — os 3
+  artefatos sobrevivem e o conteudo de `state-history/` nao e reescrito.
+
+- [x] 6.6.3 Rodar a suíte completa dos 7 cenários de
   `contracts/migration.md` §Cenários de teste como teste de aceitação
   final da FASE 6
+  — onda-016: os 7 cenarios da tabela final do contrato implementados e
+  verdes (1 contagens/IDs, 2 idempotencia, 3 bloqueio orfao, 4
+  em_andamento, 5 interrupcao, 6 sha256 divergente, 7 round-trip).
+  Validacao adicional em dado REAL: migracao completa do state.json da
+  feature `skill-converge` (67 decisoes / 12 ondas / 20 tasks / 23 skills),
+  banco operavel por `get`/`wave-status`/`sha256-verify` e state.json de
+  origem byte-identico a origem.
 
 ---
 
