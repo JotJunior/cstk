@@ -20,7 +20,17 @@
 #                                                 via ux_wave_single_open)
 #   _so_db_end DIR MOTIVO PROXIMA ETAPAS_RAW NEXT_SET NEXT_RAW
 #                                              -> fecha a onda aberta (uma
-#                                                 unica transacao, C4)
+#                                                 unica transacao, C4). Apos
+#                                                 o COMMIT, dispara o export
+#                                                 derivado (FASE 5,
+#                                                 contracts/export.md E5/E6
+#                                                 — _so_export_snapshot,
+#                                                 definida em
+#                                                 state-ondas.sh) como
+#                                                 gatilho automatico de
+#                                                 FR-013-INFRA-BACKUP;
+#                                                 best-effort, nunca reverte
+#                                                 o fechamento ja commitado
 #   _so_db_tool_call_tick DIR                 -> UPDATE wave.tool_calls+=1
 #                                                 na onda aberta
 #   _so_db_record_skill DIR SKILL DEC KIND    -> INSERT idempotente em
@@ -258,6 +268,17 @@ _so_db_end() {
 
   _state_db_exec_with_retry "$_e_db" "$_e_sql" \
     || _so_die "end: UPDATE de onda falhou (backend sqlite)" 1
+
+  # Export derivado (FASE 5, contracts/export.md E5/E6, dec-032 E5-a):
+  # gatilho automatico ao fim da onda — reaproveita o export como mecanismo
+  # de FR-013-INFRA-BACKUP sob backend SQLite sem introduzir backup nativo
+  # do SQLite (research.md Decision 6). Roda DEPOIS do COMMIT acima: a
+  # fonte de verdade (state.db) ja fechou a onda; E6 (MUST) exige que uma
+  # falha aqui NUNCA reverta nem impeca esse fechamento — so degrada,
+  # reportada em stderr por _so_export_snapshot (definida em
+  # state-ondas.sh, disponivel neste escopo por sourcing).
+  _so_export_snapshot "$_e_sdir" >/dev/null \
+    || _so_log "end: export/backup derivado nao gerado nesta onda (E6: fechamento da onda ja commitado, nao afetado) [backend sqlite]"
 
   _so_ticks_reset "$_e_sdir"
   _so_agent_usage_reset "$_e_sdir"

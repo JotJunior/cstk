@@ -664,6 +664,85 @@ scenario_sqlite_read_reconstroi_documento_valido_por_state_validate() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "export nao passa em state-validate.sh (E1)" "$_CAPTURED_STDERR"; return 1; }
 }
 
+scenario_sqlite_read_e2_e3_ids_e_skills_invoked_aninhado() {
+  # E2 (fidelidade de nomes/IDs) + E3 (aninhamento skills_invoked, ausente-vs-null)
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "
+    INSERT INTO wave (id,execution_id,seq,started_at) VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z');
+    INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score)
+      VALUES ('dec-001','exec-1','onda-001','2026-07-30T00:01:00Z','tester','specify','contexto de teste com pelo menos vinte caracteres','[\"a\",\"b\"]','a','justificativa de teste com pelo menos vinte caracteres',2);
+    INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,status,triggered_at)
+      VALUES ('block-001','exec-1','dec-001','pergunta de teste com pelo menos vinte caracteres','contexto para resposta','aguardando','2026-07-30T00:02:00Z');
+    INSERT INTO skill_invocation (wave_id,skill,timestamp,decision_id,kind)
+      VALUES ('onda-001','specify','2026-07-30T00:01:30Z','dec-001','skill');
+  " || { _fail "seed decision/human_block/skill_invocation falhou" ""; return 1; }
+
+  capture "$SCRIPT" read --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "read exit" "$_CAPTURED_STDERR"; return 1; }
+  _doc="$_CAPTURED_STDOUT"
+
+  # IDs preservados literalmente (formato dec-NNN, block-NNN, onda-NNN)
+  [ "$(printf '%s' "$_doc" | jq -r '.waves[0].id')" = "onda-001" ] \
+    || { _fail "waves[0].id" "$(printf '%s' "$_doc" | jq -r '.waves[0].id')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].id')" = "dec-001" ] \
+    || { _fail "decisions[0].id" "$(printf '%s' "$_doc" | jq -r '.decisions[0].id')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.human_blocks[0].id')" = "block-001" ] \
+    || { _fail "human_blocks[0].id" "$(printf '%s' "$_doc" | jq -r '.human_blocks[0].id')"; return 1; }
+
+  # Nome de campo justification_score (nao "score")
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].justification_score')" = "2" ] \
+    || { _fail "decisions[0].justification_score" "$(printf '%s' "$_doc" | jq -r '.decisions[0].justification_score')"; return 1; }
+
+  # skills_invoked aninhado em waves[N], nao tabela solta no topo
+  [ "$(printf '%s' "$_doc" | jq -r '.waves[0].skills_invoked[0].skill')" = "specify" ] \
+    || { _fail "waves[0].skills_invoked[0].skill" "$(printf '%s' "$_doc" | jq -r '.waves[0].skills_invoked[0].skill')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.waves[0].skills_invoked[0].decision_id')" = "dec-001" ] \
+    || { _fail "waves[0].skills_invoked[0].decision_id" ""; return 1; }
+  [ "$(printf '%s' "$_doc" | jq 'has("skills_invoked")')" = "false" ] \
+    || { _fail "skills_invoked nao deveria existir no topo do documento" ""; return 1; }
+
+  # Ausente-vs-null: canonical_project/session_name nao setados ficam AUSENTES
+  [ "$(printf '%s' "$_doc" | jq -r '.execution | has("canonical_project")')" = "false" ] \
+    || { _fail "execution deveria omitir canonical_project quando nao setado" ""; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.execution | has("session_name")')" = "false" ] \
+    || { _fail "execution deveria omitir session_name quando nao setado" ""; return 1; }
+}
+
+scenario_sqlite_read_e4_accumulated_metrics_agregado() {
+  # E4: accumulated_metrics MUST ser agregacao das tabelas no momento do
+  # export, nao um contador materializado.
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "
+    INSERT INTO wave (id,execution_id,seq,started_at,finished_at,tool_calls,wallclock_seconds,termination_reason)
+      VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z','2026-07-30T00:05:00Z',10,300,'etapa_concluida_avancando');
+    INSERT INTO wave (id,execution_id,seq,started_at,finished_at,tool_calls,wallclock_seconds,termination_reason)
+      VALUES ('onda-002','exec-1',2,'2026-07-30T00:05:00Z','2026-07-30T00:09:00Z',5,240,'etapa_concluida_avancando');
+    INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score)
+      VALUES ('dec-001','exec-1','onda-001','2026-07-30T00:01:00Z','tester','specify','contexto de teste com pelo menos vinte caracteres','[\"a\",\"b\"]','a','justificativa de teste com pelo menos vinte caracteres',2);
+    INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score)
+      VALUES ('dec-002','exec-1','onda-002','2026-07-30T00:06:00Z','tester','plan','contexto de teste com pelo menos vinte caracteres','[\"a\",\"b\"]','a','justificativa de teste com pelo menos vinte caracteres',2);
+    INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,status,triggered_at)
+      VALUES ('block-001','exec-1','dec-001','pergunta de teste com pelo menos vinte caracteres','contexto para resposta','aguardando','2026-07-30T00:02:00Z');
+  " || { _fail "seed multi-onda falhou" ""; return 1; }
+
+  capture "$SCRIPT" read --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "read exit" "$_CAPTURED_STDERR"; return 1; }
+  _doc="$_CAPTURED_STDOUT"
+
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.waves_total')" = "2" ] \
+    || { _fail "waves_total" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.waves_total')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.tool_calls_total')" = "15" ] \
+    || { _fail "tool_calls_total" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.tool_calls_total')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.wallclock_total_seconds')" = "540" ] \
+    || { _fail "wallclock_total_seconds" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.wallclock_total_seconds')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.decisions_total')" = "2" ] \
+    || { _fail "decisions_total" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.decisions_total')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.human_blocks_total')" = "1" ] \
+    || { _fail "human_blocks_total" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.human_blocks_total')"; return 1; }
+}
+
 scenario_sqlite_get_extrai_campo() {
   _sd="$TMPDIR_TEST/migrated"
   _seed_sqlite_backend "$_sd" || return 1

@@ -518,47 +518,117 @@ Ref: spec.md FR-007, FR-013-INFRA-BACKUP; contracts/export.md; dec-032 (E5-a)
 
 Ref: contracts/export.md §Interface do comando (opção A preferida)
 
-- [ ] 5.1.1 Sob backend SQLite, `state-rw.sh read` produz o `state.json`
+- [x] 5.1.1 Sob backend SQLite, `state-rw.sh read` produz o `state.json`
   equivalente descrito em E1-E4 (schema_version, todos os campos de topo,
   nomes/IDs preservados literalmente, `accumulated_metrics` derivado por
   agregação das tabelas)
-- [ ] 5.1.2 Preservar distinção ausente-vs-null (`canonical_project`/
+  — onda-015: já implementado desde a FASE 3 (`_sr_db_read` em
+  `_state-rw-db.sh`, consumido por `state-rw.sh read` — Opção A do
+  contrato, "sem subcomando novo"). Auditoria confirmou os 4 pontos de
+  E1-E4 presentes na query: `json_object` cobre todos os campos de topo
+  listados em E1.3 (exceto `suggestions`/`retros`/
+  `next_retrospective_milestone`, que caem no catch-all `extra_fields`
+  quando gravados via `set` — `suggestions.sh`/`retro.sh` não foram
+  adaptados nesta feature, fora de escopo da FASE 3/4); `accumulated_metrics`
+  é `SELECT sum(...)`/`count(...)` sobre as tabelas (E4, não contador
+  materializado). Nenhuma mudança de código nesta task, só verificação.
+- [x] 5.1.2 Preservar distinção ausente-vs-null (`canonical_project`/
   `session_name` ausentes quando não setados) — E3
-- [ ] 5.1.3 Teste E1: export passa em `state-validate.sh --state-dir <dir>`
+  — onda-015: já implementado (`drop_null_keys` no pipeline `jq` de
+  `_sr_db_read`, aplicado a `.execution` e a cada onda em `.waves[]`).
+  Verificado por novo teste dedicado (5.1.4).
+- [x] 5.1.3 Teste E1: export passa em `state-validate.sh --state-dir <dir>`
   com exit 0
-- [ ] 5.1.4 Teste E2/E3: fidelidade de nomes/IDs e ordem/aninhamento
+  — onda-015: já coberto por
+  `scenario_sqlite_read_reconstroi_documento_valido_por_state_validate`
+  (`tests/test_state-rw.sh`), existente desde a FASE 3/4. Confirmado verde
+  nesta onda, nenhuma mudança necessária.
+- [x] 5.1.4 Teste E2/E3: fidelidade de nomes/IDs e ordem/aninhamento
   (`skills_invoked` volta a ficar aninhado em `.waves[N]`)
+  — onda-015: 2 cenários novos em `tests/test_state-rw.sh` —
+  `scenario_sqlite_read_e2_e3_ids_e_skills_invoked_aninhado` (IDs
+  `dec-NNN`/`block-NNN`/`onda-NNN` literais, campo
+  `justification_score`, `skills_invoked` aninhado em `.waves[0]` — não
+  solto no topo —, e ausência confirmada de `canonical_project`/
+  `session_name` quando não setados) e
+  `scenario_sqlite_read_e4_accumulated_metrics_agregado` (E4: agregação
+  multi-onda de `waves_total`/`tool_calls_total`/
+  `wallclock_total_seconds`/`decisions_total`/`human_blocks_total`,
+  cobertura que ainda não existia). Ambos verdes.
 
 ### 5.2 Gatilho automático ao fim da onda `[A]`
 
 Ref: dec-032 (E5-a: ambos os gatilhos); export.md §E5, E6
 
-- [ ] 5.2.1 Disparar a geração do export dentro de `state-ondas.sh end`, no
+- [x] 5.2.1 Disparar a geração do export dentro de `state-ondas.sh end`, no
   mesmo ponto onde o snapshot de `state-history/` é gerado hoje —
   reaproveita o export como mecanismo de FR-013-INFRA-BACKUP sem
   introduzir backup nativo do SQLite (research.md Decision 6)
-- [ ] 5.2.2 Implementar E6: falha na geração do export (disco cheio,
+  — onda-015: nova função `_so_export_snapshot` (`state-ondas.sh`) —
+  reusa `state-rw.sh read` (Opção A, backend-agnóstico), grava
+  atomicamente (mktemp+mv, sufixo aleatório do mktemp preservado no nome
+  final contra colisão no mesmo segundo UTC) em
+  `state-history/export-<wave-id>-<timestamp>-<rand>.json`. Escopo
+  confirmado por auditoria (`grep`): só `_so_db_end` (backend SQLite)
+  carecia de qualquer mecanismo de backup em `end` — o path JSON já tem
+  `_so_backup_current`. Chamada inserida em `_so_db_end`
+  (`_state-ondas-db.sh`) logo após o `COMMIT` que fecha a onda.
+- [x] 5.2.2 Implementar E6: falha na geração do export (disco cheio,
   interrupção) MUST ser reportada em stderr e MUST NOT reverter nem
   impedir o commit da transação que fechou a onda
-- [ ] 5.2.3 Teste SC-004: export reflete uma mutação em até 5 segundos após
+  — onda-015: `_so_export_snapshot` nunca chama `_so_die` (só `_so_log` +
+  `return 1`); a chamada em `_so_db_end` roda **depois** do `COMMIT` e
+  ignora o código de retorno além de logar. Fechamento da onda já está
+  persistido no `state.db` antes de qualquer tentativa de export.
+- [x] 5.2.3 Teste SC-004: export reflete uma mutação em até 5 segundos após
   aplicada
-- [ ] 5.2.4 Teste E6: simular falha de escrita do export (ex.: diretório
+  — onda-015: `scenario_sqlite_end_gera_export_snapshot_automatico`
+  (`tests/test_state-ondas.sh`) — freshness satisfeita trivialmente (E5,
+  contrato): geração é síncrona dentro do próprio `end`. Teste confirma
+  que o snapshot automático reflete `termination_reason`/`tool_calls` da
+  onda recém-fechada e passa em `state-validate.sh` (E1).
+- [x] 5.2.4 Teste E6: simular falha de escrita do export (ex.: diretório
   sem permissão) e confirmar que o fechamento de onda no `state.db` não é
   revertido
+  — onda-015: `scenario_sqlite_end_e6_falha_export_nao_reverte_fechamento`
+  — ocupa `state-history` com um arquivo comum (não diretório) antes do
+  `end`, forçando falha do `mkdir -p` só no passo de export (sem tocar
+  permissões do state-dir, que quebraria o próprio `UPDATE` do
+  `state.db`). Confirma exit 0, diagnóstico em stderr mencionando
+  "export", e `termination_reason` persistido normalmente.
 
 ### 5.3 Gatilho sob demanda `[A]`
 
-- [ ] 5.3.1 Expor comando explícito para regenerar o export a qualquer
+- [x] 5.3.1 Expor comando explícito para regenerar o export a qualquer
   momento (consumido por auditoria/debug manual e por FASE 6 M3.2)
-- [ ] 5.3.2 Teste: export sob demanda gerado após múltiplas mutações
+  — onda-015: novo subcomando `state-ondas.sh export-snapshot --state-dir
+  DIR` (dispatch + `_so_cmd_export_snapshot`), reusa
+  `_so_export_snapshot`; falha aqui vira exit 1 (pedido explícito do
+  operador, ao contrário do gatilho automático best-effort de 5.2).
+  Backend-agnóstico (funciona também sob `state.json`, já que delega a
+  `state-rw.sh read`).
+- [x] 5.3.2 Teste: export sob demanda gerado após múltiplas mutações
   reflete o estado corrente completo
+  — onda-015:
+  `scenario_sqlite_export_snapshot_sob_demanda_multiplas_mutacoes` (2
+  chamadas de `export-snapshot` intercaladas por `state-rw.sh set` +
+  `tool-call-tick`, confirma nomes de arquivo distintos e conteúdo
+  refletindo a mutação mais recente) +
+  `scenario_json_export_snapshot_sob_demanda` (cobertura equivalente sob
+  backend JSON, provando o comando backend-agnóstico).
 
 ### 5.4 Teste de restauração a partir do export (FR-013-INFRA-BACKUP) `[A]`
 
-- [ ] 5.4.1 Validar que a restauração a partir de um snapshot em
+- [x] 5.4.1 Validar que a restauração a partir de um snapshot em
   `state-history/` (export serializado) é operável — "com a restauração
   validada por teste antes de ser considerada disponível" (FR-013-INFRA-BACKUP,
   literal)
+  — onda-015: `scenario_sqlite_export_snapshot_restauracao_operavel_fr013`
+  — copia um snapshot automático (origem SQLite) para `state.json` de um
+  state-dir novo (backend JSON) e confirma operabilidade real: `get`,
+  `current-id`, `wave-status` funcionam sobre o restaurado, e uma onda
+  NOVA consegue iniciar a partir dele (`start` produz `onda-002`). Não é
+  só "passa em state-validate.sh" — é literalmente operável.
 
 ---
 

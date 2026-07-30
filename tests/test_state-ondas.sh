@@ -1605,6 +1605,150 @@ scenario_sqlite_end_atualiza_onda_e_acumulados() {
   assert_stdout_contains "briefing" || return 1
 }
 
+# ---- FASE 5 (state-db-foundation): export derivado, contracts/export.md ----
+
+# 5.2.1/5.2.3 (SC-004): `end` sob backend sqlite dispara o export
+# automaticamente, refletindo a onda recem-fechada (freshness trivial —
+# gerado sincronamente dentro do proprio `end`).
+scenario_sqlite_end_gera_export_snapshot_automatico() {
+  _sd="$TMPDIR_TEST/sqlite-end-export-auto"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" tool-call-tick --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino concluido
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end" "$_CAPTURED_STDERR"; return 1; }
+
+  _snap=$(ls "$_sd"/state-history/export-onda-001-*.json 2>/dev/null | head -1)
+  [ -n "$_snap" ] && [ -f "$_snap" ] \
+    || { _fail "export automatico nao gerado (5.2.1)" "$_sd/state-history"; return 1; }
+
+  _reason=$(jq -r '.waves[-1].termination_reason' "$_snap" 2>/dev/null)
+  [ "$_reason" = "concluido" ] \
+    || { _fail "export nao reflete termination_reason da onda fechada (SC-004)" "$_reason"; return 1; }
+  _tc=$(jq -r '.waves[-1].tool_calls' "$_snap" 2>/dev/null)
+  [ "$_tc" = "1" ] \
+    || { _fail "export nao reflete tool_calls da onda fechada (SC-004)" "$_tc"; return 1; }
+
+  # E1: o export automatico tambem passa em state-validate.sh
+  _validate_dir="$TMPDIR_TEST/validate-auto-export"
+  mkdir -p "$_validate_dir"
+  cp "$_snap" "$_validate_dir/state.json"
+  capture sh "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-validate.sh" --state-dir "$_validate_dir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "export automatico nao passa em state-validate.sh (E1)" "$_CAPTURED_STDERR"; return 1; }
+}
+
+# 5.2.2/5.2.4 (E6): falha ao gerar o export MUST NOT reverter nem impedir o
+# fechamento da onda no state.db (fonte de verdade). Simula a falha
+# ocupando state-history/ com um arquivo comum (nao diretorio) — mkdir -p
+# falha sem tocar em permissoes do state-dir (que quebraria o proprio
+# UPDATE do state.db, nao so o export).
+scenario_sqlite_end_e6_falha_export_nao_reverte_fechamento() {
+  _sd="$TMPDIR_TEST/sqlite-end-export-e6"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
+  : > "$_sd/state-history"
+
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  _exit=$_CAPTURED_EXIT
+  _stderr="$_CAPTURED_STDERR"
+  rm -f "$_sd/state-history"  # restaura para cleanup
+
+  [ "$_exit" = 0 ] \
+    || { _fail "end deveria seguir exit 0 mesmo com export falho (E6)" "$_stderr"; return 1; }
+  case "$_stderr" in
+    *export*) : ;;
+    *) _fail "falha do export deveria ser reportada em stderr (E6)" "$_stderr"; return 1 ;;
+  esac
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].termination_reason'
+  assert_stdout_contains "etapa_concluida_avancando" || return 1
+}
+
+# 5.3.1/5.3.2: gatilho sob demanda — comando explicito, reflete mutacoes
+# aplicadas apos snapshots anteriores, nomes distintos por chamada.
+scenario_sqlite_export_snapshot_sob_demanda_multiplas_mutacoes() {
+  _sd="$TMPDIR_TEST/sqlite-export-sob-demanda"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" export-snapshot --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "export-snapshot 1 exit" "$_CAPTURED_STDERR"; return 1; }
+  _snap1="$_CAPTURED_STDOUT"
+  [ -f "$_snap1" ] || { _fail "export-snapshot 1 nao criou arquivo" "$_snap1"; return 1; }
+  _stage1=$(jq -r '.current_stage' "$_snap1" 2>/dev/null)
+  [ "$_stage1" = "execute-task" ] || { _fail "snapshot1.current_stage" "$_stage1"; return 1; }
+
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"plan"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set current_stage" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" tool-call-tick --state-dir "$_sd"
+
+  capture "$SCRIPT" export-snapshot --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "export-snapshot 2 exit" "$_CAPTURED_STDERR"; return 1; }
+  _snap2="$_CAPTURED_STDOUT"
+  [ -f "$_snap2" ] || { _fail "export-snapshot 2 nao criou arquivo" "$_snap2"; return 1; }
+  [ "$_snap1" != "$_snap2" ] \
+    || { _fail "snapshots sucessivos deveriam ter nomes distintos" "$_snap1"; return 1; }
+  _stage2=$(jq -r '.current_stage' "$_snap2" 2>/dev/null)
+  [ "$_stage2" = "plan" ] \
+    || { _fail "snapshot2 nao reflete mutacao aplicada apos snapshot1 (5.3.2)" "$_stage2"; return 1; }
+}
+
+# export-snapshot tambem funciona sob backend JSON (backend-agnostico —
+# reusa `state-rw.sh read`, que ja dispatcha por backend).
+scenario_json_export_snapshot_sob_demanda() {
+  _sd="$TMPDIR_TEST/json-export-sob-demanda"
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-export" \
+    --projeto-alvo-path "/tmp/proj" --descricao "descricao valida >=10"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init json" "$_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" export-snapshot --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "export-snapshot json exit" "$_CAPTURED_STDERR"; return 1; }
+  _snap="$_CAPTURED_STDOUT"
+  [ -f "$_snap" ] || { _fail "export-snapshot json nao criou arquivo" "$_snap"; return 1; }
+  jq -e . "$_snap" >/dev/null 2>&1 || { _fail "export-snapshot json nao e JSON valido" ""; return 1; }
+}
+
+# 5.4.1 (FR-013-INFRA-BACKUP, literal: "com a restauracao validada por
+# teste antes de ser considerada disponivel"): um snapshot de
+# state-history/ (export serializado) restaurado como state.json de um
+# state-dir NOVO (backend JSON) e de fato OPERAVEL — nao so passa em
+# state-validate.sh, mas sustenta get/current-id/wave-status e permite
+# iniciar onda nova a partir dele.
+scenario_sqlite_export_snapshot_restauracao_operavel_fr013() {
+  _sd="$TMPDIR_TEST/sqlite-export-origem"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start origem" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end origem" "$_CAPTURED_STDERR"; return 1; }
+
+  _snap=$(ls "$_sd"/state-history/export-onda-001-*.json 2>/dev/null | head -1)
+  [ -n "$_snap" ] || { _fail "export automatico ausente para restauracao" ""; return 1; }
+
+  _restore_dir="$TMPDIR_TEST/restaurado"
+  mkdir -p "$_restore_dir"
+  cp "$_snap" "$_restore_dir/state.json"
+
+  capture "$RW" get --state-dir "$_restore_dir" --field '.current_stage'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "get pos-restauracao" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "execute-task" || return 1
+
+  capture "$SCRIPT" current-id --state-dir "$_restore_dir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "current-id pos-restauracao" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-001" || return 1
+
+  capture "$SCRIPT" wave-status --state-dir "$_restore_dir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "wave-status pos-restauracao" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "closed" || return 1
+
+  # Operavel de verdade: uma onda NOVA pode comecar a partir do restaurado.
+  capture "$SCRIPT" start --state-dir "$_restore_dir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start pos-restauracao" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-002" || return 1
+}
+
 scenario_sqlite_end_add_etapa_acumula_multiplas() {
   _sd="$TMPDIR_TEST/sqlite-end-etapas"
   _seed_sqlite_backend "$_sd" || return 1
