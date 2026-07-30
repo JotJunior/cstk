@@ -5,6 +5,34 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.21.1] - 2026-07-29
+
+### Corrigido
+
+- **"Custo por modelo · detalhe" exibia um texto de 2766 caracteres como se
+  fosse um cabeçalho de etapa**: o card agrupa por `waves.stages`, e uma onda
+  na base real gravou um resumo narrativo inteiro nessa coluna em vez de um
+  token (`execute-task`, `create-tasks`, …). O rótulo agora é validado como
+  lista de tokens separados por vírgula (sem espaços, ≤40 chars por token — o
+  formato legítimo `execute-task-F3.1,execute-task-F3.2` segue aceito); o que
+  não passa aparece como *"etapa não registrada na origem"*, com o valor bruto
+  encurtado a 160 caracteres apenas no `title`. O custo da linha continua
+  visível: nenhuma etapa é inventada para a onda e nenhum valor medido é
+  descartado (Princípio III + "jamais inventar dado"). A causa raiz está na
+  escrita do `cstk`, não no painel — aqui trata-se apenas do degrade.
+
+### Alterado
+
+- **"Mix de modelos por etapa" passa a empilhar na horizontal**: com
+  `execute-task` valendo 29 contra 2–3 das demais etapas, o formato vertical
+  reduzia todas as outras a barras de 1px, e o eixo X ainda truncava o rótulo
+  a 8 caracteres (`create-tasks` virava `create-t`) alternando labels
+  par/ímpar. Cada etapa agora ocupa uma linha com `rótulo | barra empilhada |
+  total`, com o nome inteiro e a ordem canônica do pipeline SDD preservada.
+  Novo componente `StackedBarsH` (DOM, pelo mesmo motivo do `BarH`: ellipsis +
+  `title`); o `StackedBars` vertical permanece onde a categoria é tempo
+  (Incidentes).
+
 ## [0.21.0] - 2026-07-28
 
 ### Adicionado
@@ -1034,6 +1062,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.21.1]: https://github.com/JotJunior/cstk-panel/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/JotJunior/cstk-panel/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/JotJunior/cstk-panel/compare/v0.19.2...v0.20.0
 [0.19.2]: https://github.com/JotJunior/cstk-panel/compare/v0.19.1...v0.19.2
