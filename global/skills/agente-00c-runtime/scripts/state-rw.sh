@@ -78,6 +78,14 @@ _SR_DIR=$(cd "$(dirname -- "$0")" && pwd)
 # shellcheck source=./_diag.sh
 . "$_SR_DIR/_diag.sh"
 
+# Backend dual (feature state-db-foundation, FASE 3 task 3.2): presenca de
+# <state-dir>/state.db seleciona SQLite; senao, backend JSON (comportamento
+# historico, intacto abaixo). Ver contracts/primitives.md §C1/C2.
+# shellcheck source=./_state-db.sh
+. "$_SR_DIR/_state-db.sh"
+# shellcheck source=./_state-rw-db.sh
+. "$_SR_DIR/_state-rw-db.sh"
+
 _sr_die() {
   printf '%s: %s\n' "$_SR_NAME" "$1" >&2
   exit "${2:-1}"
@@ -379,6 +387,13 @@ _sr_cmd_init() {
 
   _sr_ensure_state_dir "$_sd"
 
+  # C2: init nunca cria state.db (isso e a migracao, FASE 6) — mas se um
+  # state.db ja existe (projeto migrado), recusa em vez de criar um
+  # state.json paralelo que nunca seria a fonte de verdade (C2/Decision 9).
+  if [ -f "$(_sr_db_file "$_sd")" ]; then
+    _sr_die "init: state.db ja existe em $_sd (projeto migrado para backend SQLite) — init nao se aplica; use os subcomandos normais (state-ondas.sh etc.) diretamente." 1
+  fi
+
   _sr_sf=$(_sr_state_file "$_sd")
   if [ -f "$_sr_sf" ]; then
     _sr_die "init: state.json ja existe em $_sd. Use /agente-00c-abort ou /agente-00c-resume." 1
@@ -483,6 +498,11 @@ _sr_cmd_read() {
     esac
   done
   [ -n "$_sd" ] || _sr_die "read: --state-dir obrigatorio" 2
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _sr_require_jq
+    _sr_db_read "$_sd"
+    return 0
+  fi
   _sr_sf=$(_sr_state_file "$_sd")
   [ -f "$_sr_sf" ] || _sr_die "read: state.json nao existe em $_sd" 1
   # Canonicaliza chaves pt-BR -> EN (schema-en-migration). Degrada para raw se
@@ -504,6 +524,25 @@ _sr_cmd_write() {
   done
   [ -n "$_sd" ] || _sr_die "write: --state-dir obrigatorio" 2
   _sr_require_jq
+
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _wr_doc=$(mktemp) || _sr_die "mktemp falhou" 1
+    if ! cat > "$_wr_doc"; then
+      rm -f -- "$_wr_doc"; _sr_die "write: I/O lendo stdin" 1
+    fi
+    if ! jq -e . "$_wr_doc" >/dev/null 2>&1; then
+      rm -f -- "$_wr_doc"
+      diag_emit error state-invalid-json "write: stdin nao e JSON valido (jq falhou)" \
+        "corrija o JSON de entrada (jq -e . <arquivo> para localizar o erro de sintaxe) e tente novamente" || :
+      _sr_die "write: stdin nao e JSON valido (jq falhou)" 1
+    fi
+    _wr_doc_content=$(cat -- "$_wr_doc")
+    rm -f -- "$_wr_doc"
+    _sr_db_write_document "$_sd" "$_wr_doc_content"
+    _sr_log "write: state.db atualizado em $(_sr_db_file "$_sd")"
+    return 0
+  fi
+
   _sr_ensure_state_dir "$_sd"
 
   _sr_sf=$(_sr_state_file "$_sd")
@@ -548,6 +587,10 @@ _sr_cmd_get() {
   [ -n "$_sd" ] || _sr_die "get: --state-dir obrigatorio" 2
   [ -n "$_f" ]  || _sr_die "get: --field obrigatorio (ex: '.execucao.status')" 2
   _sr_require_jq
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _sr_db_read "$_sd" | jq -r "$_f"
+    return 0
+  fi
   _sr_sf=$(_sr_state_file "$_sd")
   if [ ! -f "$_sr_sf" ]; then
     diag_emit error state-not-found "get: state.json ausente em $_sd" \
@@ -576,13 +619,18 @@ _sr_cmd_set() {
   [ -n "$_f" ]    || _sr_die "set: --field obrigatorio" 2
   [ "$_v_set" = 1 ] || _sr_die "set: --value obrigatorio (JSON valido — strings com aspas)" 2
   _sr_require_jq
-  _sr_ensure_state_dir "$_sd"
-  _sr_sf=$(_sr_state_file "$_sd")
-  [ -f "$_sr_sf" ] || _sr_die "set: state.json ausente em $_sd" 1
   # Valida que --value e JSON parseavel (string raw nao serve — pedimos aspas).
   if ! printf '%s' "$_v" | jq -e . >/dev/null 2>&1; then
     _sr_die "set: --value nao e JSON valido. Strings precisam de aspas: '\"foo\"'." 1
   fi
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _sr_db_set "$_sd" "$_f" "$_v"
+    _sr_log "set: $_f atualizado (backend sqlite)"
+    return 0
+  fi
+  _sr_ensure_state_dir "$_sd"
+  _sr_sf=$(_sr_state_file "$_sd")
+  [ -f "$_sr_sf" ] || _sr_die "set: state.json ausente em $_sd" 1
   _new=$(mktemp -- "${_sr_sf}.new.XXXXXX") || _sr_die "mktemp falhou" 1
   # Canonicaliza o doc inteiro (EN) ANTES de aplicar o set: evita doc misto
   # (set EN sobre arquivo pt-BR criaria container duplicado). --field e EN.
@@ -605,6 +653,14 @@ _sr_cmd_sha256_update() {
     esac
   done
   [ -n "$_sd" ] || _sr_die "sha256-update: --state-dir obrigatorio" 2
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    # C7 (dec-025): sob SQLite nao ha hash derivado a manter — a verificacao
+    # de integridade passa a ser `PRAGMA integrity_check` (sha256-verify).
+    # sha256-update vira no-op (mesmo exit 0, mesma superficie de comando).
+    [ -f "$(_sr_db_file "$_sd")" ] || _sr_die "sha256-update: state.db ausente em $_sd" 1
+    _sr_log "sha256-update: no-op sob backend SQLite (C7 — integridade via PRAGMA integrity_check)"
+    return 0
+  fi
   _sr_sf=$(_sr_state_file "$_sd")
   [ -f "$_sr_sf" ] || _sr_die "sha256-update: state.json ausente em $_sd" 1
   _sr_update_sha "$_sd"
@@ -619,6 +675,10 @@ _sr_cmd_sha256_verify() {
     esac
   done
   [ -n "$_sd" ] || _sr_die "sha256-verify: --state-dir obrigatorio" 2
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _sr_db_integrity_check "$_sd" || exit 1
+    return 0
+  fi
   _sr_sf=$(_sr_state_file "$_sd")
   _sr_shf=$(_sr_sha_file "$_sd")
   [ -f "$_sr_sf" ]  || _sr_die "sha256-verify: state.json ausente em $_sd" 1

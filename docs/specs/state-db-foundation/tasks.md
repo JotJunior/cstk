@@ -206,15 +206,15 @@ Ref: contracts/primitives.md §C5 (PRAGMAs), §C8 (escape), §C9 (permissões)
 
 Ref: contracts/primitives.md §C1 (paridade), §C2 (seleção de backend)
 
-- [ ] 3.2.1 Implementar seleção de backend por presença de arquivo (existe
-  `<state-dir>/state.db` ⇒ SQLite; senão ⇒ JSON atual) em `init`
-- [ ] 3.2.2 Adaptar `read`/`get`/`set`/`write` preservando stdout/exit code
-  idênticos ao comportamento JSON atual (C1)
-- [ ] 3.2.3 Adaptar `sha256-update`/`sha256-verify` para, sob backend
+- [x] 3.2.1 Implementar seleção de backend por presença de arquivo (existe
+  `<state-dir>/state.db` ⇒ SQLite; senão ⇒ JSON atual) em `init` <!-- _sr_backend/_sr_db_file em _state-rw-db.sh; init recusa se state.db ja existe (migracao e FASE 6, nao init) -->
+- [x] 3.2.2 Adaptar `read`/`get`/`set`/`write` preservando stdout/exit code
+  idênticos ao comportamento JSON atual (C1) <!-- _sr_db_read (reconstrucao completa via json_object/json_group_array + catch-all execution.extra_fields/wave.extra_fields para campos de topo/por-onda ainda nao modelados como coluna — gap documentado entre export.md e data-model.md, dec pendente de registro); _sr_db_set (dispatcher: arrays completos via upsert, .waves[-1|N].campo, colunas conhecidas, fallback extra_fields para campo de topo simples — path aninhado nao modelado falha alto, nunca perde dado silenciosamente); _sr_db_write_document (import completo). Bug lateral corrigido em _state-db.sh: PRAGMA busy_timeout ecoava o valor como linha de resultado, corrompendo stdout de toda SELECT via _state_db_exec -->
+- [x] 3.2.3 Adaptar `sha256-update`/`sha256-verify` para, sob backend
   SQLite, delegar à FASE 7 (`PRAGMA integrity_check`) mantendo nome e
-  contrato de exit code
-- [ ] 3.2.4 Teste de paridade: cada subcomando de `state-rw.sh` produz o
-  mesmo stdout/exit code sob os dois backends, para os mesmos dados
+  contrato de exit code <!-- _sr_db_integrity_check; sha256-update vira no-op (exit 0, sem hash derivado a manter) -->
+- [x] 3.2.4 Teste de paridade: cada subcomando de `state-rw.sh` produz o
+  mesmo stdout/exit code sob os dois backends, para os mesmos dados <!-- tests/test_state-rw.sh (16 cenarios sqlite novos, incl. 2 paridade cross-backend get/set/sha256-verify) + tests/test__state-rw-db.sh (17 cenarios unitarios); read reconstruido passa em state-validate.sh (E1) -->
 
 ### 3.3 Adaptar `state-ondas.sh` `[C]`
 

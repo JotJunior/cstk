@@ -54,6 +54,16 @@ CREATE TABLE IF NOT EXISTS execution (
   constitution_cache                  TEXT,   -- JSON
   push_pr_result                      TEXT,   -- JSON
 
+  -- Catch-all [PROPOSTA state-rw dual-backend, task 3.2]: campos de topo do
+  -- state.json que esta feature ainda NAO modela como coluna/tabela dedicada
+  -- (ex.: next_retrospective_milestone, suggestions[], retros[] — gap entre
+  -- contracts/export.md e as 9 entidades fechadas em data-model.md, ver
+  -- Decisao da task 3.2). Guarda um objeto JSON de nivel 1 (chave -> valor)
+  -- preservando fidelidade de round-trip de state-rw.sh set/write generico
+  -- (C1) sem exigir schema apriori de todo campo futuro. Precedencia no
+  -- export: colunas/tabelas modeladas SEMPRE vencem em caso de colisao.
+  extra_fields                        TEXT,   -- JSON object
+
   -- Constraint 1: enum de status
   CHECK (status IN ('em_andamento','aguardando_humano','abortada','concluida')),
 
@@ -89,6 +99,9 @@ CREATE TABLE IF NOT EXISTS wave (
   agent_usage              TEXT,   -- JSON
   agent_spawns             TEXT,   -- JSON
   otel_usage                TEXT,  -- JSON
+  extra_fields             TEXT,   -- JSON object; catch-all por-onda (mesmo
+                                    -- racional de execution.extra_fields
+                                    -- acima — ex.: touched_key_aspects)
 
   UNIQUE (execution_id, seq),
 

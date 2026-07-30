@@ -72,10 +72,22 @@ strip_nul() {
 # Diferente de recall_pragmas (cli/lib/recall.sh): aqui foreign_keys=ON
 # (state.db e fonte de verdade transacional com FKs reais entre as 9
 # entidades) em vez de OFF (recall.sh e um indice derivado sem FK).
+#
+# `.output /dev/null` ... `.output stdout` em volta dos PRAGMAs suprime o
+# eco de `PRAGMA busy_timeout=N` — achado em campo na task 3.2 (state-rw.sh
+# dual-backend): o sqlite3 CLI trata `busy_timeout` como "pragma de
+# consulta" e IMPRIME o novo valor como uma linha de resultado
+# (`PRAGMA foreign_keys=ON` nao tem esse efeito colateral). Sem a supressao,
+# todo caller que capture stdout de _state_db_exec para uma SELECT recebia
+# "N\n<resultado real>", corrompendo silenciosamente qualquer leitura —
+# so nao havia sido percebido porque as chamadas ate aqui (task 3.1) eram
+# todas de mutacao (INSERT), cujo stdout ninguem inspecionava.
 _state_db_pragmas() {
   _sdb_ms="${1:-5000}"
+  printf '.output /dev/null\n'
   printf 'PRAGMA foreign_keys=ON;\n'
   printf 'PRAGMA busy_timeout=%s;\n' "$_sdb_ms"
+  printf '.output stdout\n'
 }
 
 # _state_db_exec DB SQL [BUSY_MS] -> aplica SQL sobre DB com os PRAGMAs de
