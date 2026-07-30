@@ -30,6 +30,9 @@ _SDS_NAME="state-db-schema"
 _SDS_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P)
 _SDS_SCHEMA_SQL="$_SDS_SELF_DIR/../references/state-db-schema.sql"
 
+# shellcheck source=./_state-db.sh
+. "$_SDS_SELF_DIR/_state-db.sh"
+
 _sds_die_usage() {
   printf '%s: %s\n' "$_SDS_NAME" "$1" >&2
   exit 2
@@ -70,9 +73,7 @@ _sds_cmd_create() {
   sqlite3 "$_sds_db" 'PRAGMA journal_mode=WAL;' >/dev/null \
     || _sds_die "create: falha ao aplicar PRAGMA journal_mode=WAL em $_sds_db" 1
 
-  chmod 600 -- "$_sds_db" 2>/dev/null || :
-  chmod 600 -- "$_sds_db-wal" 2>/dev/null || :
-  chmod 600 -- "$_sds_db-shm" 2>/dev/null || :
+  _state_db_secure_perms "$_sds_db"
 
   printf '%s: create: schema aplicado em %s\n' "$_SDS_NAME" "$_sds_db"
 }

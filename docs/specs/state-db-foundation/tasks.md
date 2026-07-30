@@ -184,23 +184,23 @@ Ref: spec.md FR-003, FR-004, FR-011; contracts/primitives.md §C1, C4-C10
 
 Ref: contracts/primitives.md §C5 (PRAGMAs), §C8 (escape), §C9 (permissões)
 
-- [ ] 3.1.1 Extrair `sql_escape`/`strip_nul` de `cli/lib/recall.sh` para um
+- [x] 3.1.1 Extrair `sql_escape`/`strip_nul` de `cli/lib/recall.sh` para um
   ponto compartilhável consumível pelos scripts de `agente-00c-runtime`
-  (reuso, não reimplementação — per C8)
-- [ ] 3.1.2 Implementar wrapper de invocação `sqlite3` que emite sempre
+  (reuso, não reimplementação — per C8) <!-- global/skills/agente-00c-runtime/scripts/_state-db.sh; cópia (não source cross-boundary de deploy) do MESMO algoritmo, paridade garantida por teste — ver dec-051 -->
+- [x] 3.1.2 Implementar wrapper de invocação `sqlite3` que emite sempre
   `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=<ms>;` antes do SQL da
-  mutação (C5)
-- [ ] 3.1.3 Implementar `chmod 600` explícito após criação de `state.db` e
+  mutação (C5) <!-- _state_db_exec/_state_db_pragmas em _state-db.sh -->
+- [x] 3.1.3 Implementar `chmod 600` explícito após criação de `state.db` e
   seus sidecars `-wal`/`-shm` (C9, finding S3), seguindo o padrão já usado
-  em `otel-usage.sh:262`
-- [ ] 3.1.4 Reaproveitar o padrão de retry sob lock de
+  em `otel-usage.sh:262` <!-- _state_db_secure_perms em _state-db.sh; state-db-schema.sh refatorado para reusa-lo (DRY) -->
+- [x] 3.1.4 Reaproveitar o padrão de retry sob lock de
   `recall_apply_sql_with_retry` (`cli/lib/recall.sh`) — MAS com contrato de
   falha diferente: lock persistente após retries MUST sair não-zero, nunca
-  degradar silenciosamente (C6, diferença deliberada face ao `recall.sh`)
-- [ ] 3.1.5 Teste: payload de texto livre contendo `'; DROP TABLE decision;
+  degradar silenciosamente (C6, diferença deliberada face ao `recall.sh`) <!-- _state_db_exec_with_retry em _state-db.sh -->
+- [x] 3.1.5 Teste: payload de texto livre contendo `'; DROP TABLE decision;
   --` e apóstrofo simples é persistido literalmente, a tabela `decision`
   continua existindo e `state-validate.sh` sai 0 (C8, paridade com
-  `tests/test_model-routing.sh`)
+  `tests/test_model-routing.sh`) <!-- tests/test__state-db.sh scenario_state_db_exec_persiste_payload_hostil_literal_e_tabela_sobrevive; substitui state-validate.sh (so valida JSON, sem export ainda) por PRAGMA integrity_check = 'ok', o equivalente sob backend SQLite documentado em C7 -->
 
 ### 3.2 Adaptar `state-rw.sh` para backend dual `[C]`
 
