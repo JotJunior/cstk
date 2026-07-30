@@ -5,6 +5,41 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [5.34.1] - 2026-07-30
+
+`waves.stages` no knowledge.db é uma lista de tokens de etapa — mas 3 ondas
+reais (2 execuções `agente-00c`, 1 `feature-00c`) tinham prosa de conclusão
+no campo e `n_stages=1`, porque `state-ondas.sh end --add-etapa` aceitava
+texto livre e o ingest confiava cegamente. Correção nas duas pontas +
+backfill das 3 linhas com valor rastreável.
+
+### Fixed
+
+- **`state-ondas.sh end --add-etapa` valida token de etapa (fail-closed).**
+  Cada valor deve casar `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` (LC_ALL=C; newline
+  embutido também rejeitado — viraria 2+ etapas no split por linha). Valor
+  inválido = erro de uso no parse, ANTES de qualquer write; a mensagem
+  orienta que resumo de onda vai em Decisão (`state-decisions.sh register`),
+  nunca em `executed_stages`. Novo cenário
+  `scenario_end_add_etapa_rejeita_prosa` em `tests/test_state-ondas.sh`.
+- **Ingest de waves em `cli/lib/recall.sh` filtra não-tokens de
+  `executed_stages`.** Entrada que não é token é descartada do CSV e da
+  contagem com `log_warn` (nunca etapa silenciosa); lista não-vazia sem
+  nenhum token válido grava `stages` e `n_stages` como NULL (NULL honesto —
+  a prosa não é re-alojada: `waves` não tem coluna de resumo e a narrativa
+  segue no state.json de origem); lista vazia legítima preserva `''`/0.
+  `n_stages` passa a refletir SEMPRE a lista validada. Novo cenário
+  `scenario_m32_stages_prosa_nao_vira_etapa` em `tests/cstk/test_recall.sh`.
+- **Docs dos orquestradores** (`agente-00c-orchestrator.md` passo 9,
+  `agente-00c-feature-orchestrator.md` passo 4) declaram o contrato de token
+  de `--add-etapa` — a lacuna de prompt que originou as 3 gravações erradas.
+- **Backfill das 3 ondas afetadas** (operacional, fora do tarball): etapa
+  real `execute-task` recuperada de fonte rastreável em cada state.json
+  (dec-141 mcp-project-scafold onda-029; `skills_invoked` financial-support
+  onda-010; dec-005 cstk/model-routing-por-onda onda-002), com backup em
+  `state-history/` + sha256 atualizado; re-ingest zerou as linhas com prosa
+  (`instr(stages,' ')>0` → 0 linhas, 551 preenchidas intactas).
+
 ## [5.34.0] - 2026-07-29
 
 Pre-flight determinístico de telemetria: a pergunta "ESTA sessão vai ser
@@ -4450,6 +4485,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[5.34.1]: https://github.com/JotJunior/cstk/releases/tag/v5.34.1
 [5.34.0]: https://github.com/JotJunior/cstk/releases/tag/v5.34.0
 [5.33.4]: https://github.com/JotJunior/cstk/releases/tag/v5.33.4
 [5.33.3]: https://github.com/JotJunior/cstk/releases/tag/v5.33.3

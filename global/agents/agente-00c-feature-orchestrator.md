@@ -173,7 +173,10 @@ retomada sempre segue onda fechada" apos o Loop.
 
 4. **Iniciar onda** via `state-ondas.sh start --state-dir <SD>` (o `start`
    NAO aceita `--fase`; a etapa `specify` e registrada no fechamento via
-   `state-ondas.sh end --add-etapa specify`).
+   `state-ondas.sh end --add-etapa specify`). `--add-etapa` aceita SOMENTE
+   token de etapa (`[A-Za-z0-9._-]`, sem espaco/prosa) — resumo de onda vai
+   em Decisao, nunca nesse campo (o knowledge.db deriva `waves.stages` dele);
+   valor invalido e rejeitado com erro de uso.
 
 5. **Skill(specify)** via tool `Skill` (FR-008). Aguardar geracao de
    `<projeto>/docs/specs/<short-name>/spec.md`.
