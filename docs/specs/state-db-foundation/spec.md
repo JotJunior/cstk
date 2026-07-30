@@ -100,7 +100,7 @@ duplicada é rejeitada ou idempotente, nunca corrompe o registro existente.
    **Then** exatamente uma onda fica registrada como aberta e uma
    segunda tentativa de abrir onda antes de fechar a primeira é
    rejeitada ou tratada como no-op, nunca cria uma segunda onda aberta.
-2. **Given** uma decisão sendo registrada sem um dos cinco campos
+2. **Given** uma decisão sendo registrada sem um dos seis campos
    obrigatórios (agente, etapa, contexto, opções consideradas, escolha,
    justificativa),
    **Then** o registro é rejeitado antes de ser persistido — a
@@ -288,7 +288,7 @@ skills) devem ser equivalentes.
 - **FR-002**: System MUST impedir, na própria camada de armazenamento,
   os estados inválidos que hoje dependem só de convenção de script — no
   mínimo: duas ondas abertas simultaneamente, uma onda fechada mais de
-  uma vez, uma decisão sem os cinco campos obrigatórios de auditoria
+  uma vez, uma decisão sem os seis campos obrigatórios de auditoria
   (agente, etapa, contexto, opções consideradas, escolha, justificativa),
   um bloqueio humano referenciando uma decisão inexistente, e
   profundidade de subagente excedendo o teto configurado.
@@ -385,7 +385,7 @@ skills) devem ser equivalentes.
   etapas executadas, motivo de término e as invocações de skill/gate
   ocorridas dentro dela.
 - **Decision (Decisão)**: um registro auditável de uma escolha tomada
-  durante uma onda, com os cinco campos obrigatórios de auditoria mais
+  durante uma onda, com os seis campos obrigatórios de auditoria mais
   score/evidência opcionais.
 - **HumanBlock (Bloqueio Humano)**: uma pausa da execução aguardando
   resposta humana, sempre vinculada a uma Decision existente.
