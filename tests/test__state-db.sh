@@ -177,10 +177,12 @@ scenario_state_db_secure_perms_aplica_600_no_db_e_sidecars() {
   chmod 644 "$_db"
   [ -f "$_db-wal" ] && chmod 644 "$_db-wal" 2>/dev/null
   _state_db_secure_perms "$_db"
-  _perm_db=$(stat -f '%Lp' "$_db" 2>/dev/null || stat -c '%a' "$_db" 2>/dev/null)
+  # GNU-first: no GNU stat, `-f` e modo filesystem — imprime bloco no stdout
+  # E sai != 0, poluindo o $() com lixo concatenado ao fallback (CI Ubuntu).
+  _perm_db=$(stat -c '%a' "$_db" 2>/dev/null) || _perm_db=$(stat -f '%Lp' "$_db" 2>/dev/null)
   [ "$_perm_db" = "600" ] || { _fail "chmod db" "esperado 600, obtido $_perm_db"; return 1; }
   if [ -f "$_db-wal" ]; then
-    _perm_wal=$(stat -f '%Lp' "$_db-wal" 2>/dev/null || stat -c '%a' "$_db-wal" 2>/dev/null)
+    _perm_wal=$(stat -c '%a' "$_db-wal" 2>/dev/null) || _perm_wal=$(stat -f '%Lp' "$_db-wal" 2>/dev/null)
     [ "$_perm_wal" = "600" ] || { _fail "chmod wal" "esperado 600, obtido $_perm_wal"; return 1; }
   fi
 }

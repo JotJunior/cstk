@@ -55,8 +55,9 @@ scenario_create_chmod_600() {
   _db="$TMPDIR_TEST/state.db"
   capture "$SCRIPT" create --db "$_db"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "create" "$_CAPTURED_STDERR"; return 1; }
-  _perm=$(perl -e 'printf "%03o", (stat($ARGV[0]))[2] & 07777' "$_db" 2>/dev/null \
-          || stat -f '%Lp' "$_db" 2>/dev/null || stat -c '%a' "$_db" 2>/dev/null)
+  _perm=$(perl -e 'printf "%03o", (stat($ARGV[0]))[2] & 07777' "$_db" 2>/dev/null) \
+    || _perm=$(stat -c '%a' "$_db" 2>/dev/null) \
+    || _perm=$(stat -f '%Lp' "$_db" 2>/dev/null)
   [ "$_perm" = "600" ] || { _fail "chmod" "esperado 600, obtido $_perm"; return 1; }
 }
 
