@@ -860,39 +860,81 @@ dec-037); dec-035 (CHK015, critério de amostra)
 
 ### 8.1 Caminho de ingestão SQL→SQL em `cli/lib/recall.sh` `[M]`
 
-- [ ] 8.1.1 Implementar `ATTACH DATABASE 'file:<path do state.db>?mode=ro'
+- [x] 8.1.1 Implementar `ATTACH DATABASE 'file:<path do state.db>?mode=ro'
   AS src;` seguido de `INSERT ... SELECT` para cada entidade (executions,
   waves, decisions, blocks, tasks, events, skills), preservando a mesma
   proveniência (`project`/`feature`/`onda`/data) e a mesma idempotência
   (`UNIQUE(project, feature, wave, source_id)` + `ON CONFLICT DO UPDATE`)
   do caminho JSON atual
-- [ ] 8.1.2 Aplicar o mesmo filtro `kind == 'gate'` na exclusão da tabela
+  — onda-018: `recall_ingest_state_db()` (`cli/lib/recall.sh`). Duas
+  passagens: PASS 1 bulk `ATTACH+INSERT...SELECT` (json_extract/json_each
+  para os blobs de onda — piso sqlite3 3.45.1, dec-046 — sem shell/jq);
+  PASS 2 fixup de scrub (secrets-filter.sh é processo externo, sem
+  equivalente em SQL puro) + reconstrução de `knowledge_fts` escopada por
+  execution_id. Ver dec-086 (mecanismo `mode=ro` sozinho falha sem
+  `-shm`/`-wal` presentes; `immutable=1` é obrigatório junto) e dec-087
+  (`INSERT...SELECT...ON CONFLICT` exige `WHERE` explícito antes do
+  `ON CONFLICT` para o parser SQLite não confundir com join-`ON`)
+- [x] 8.1.2 Aplicar o mesmo filtro `kind == 'gate'` na exclusão da tabela
   `skills` (paridade com o caminho JSON)
-- [ ] 8.1.3 Preservar FR-009: nenhuma escrita direta no `knowledge.db` por
+  — onda-018: `WHERE si.kind != 'gate'` na SELECT de `skill_invocation`,
+  com `ROW_NUMBER() OVER (PARTITION BY wave_id ORDER BY id)` (window
+  function, piso 3.25 — bem abaixo do piso 3.45.1) replicando o índice
+  posicional por onda que o caminho JSON deriva de `to_entries[]`
+- [x] 8.1.3 Preservar FR-009: nenhuma escrita direta no `knowledge.db` por
   outro caminho; `ATTACH ... mode=ro` garante que o processo de ingestão
   não pode escrever acidentalmente no `state.db` de origem
+  — onda-018: verificado empiricamente (dec-086) que `mode=ro&immutable=1`
+  rejeita QUALQUER escrita em `src` com exit 8 ("attempt to write a
+  readonly database"), inclusive quando não há `-shm`/`-wal` no disco
 
 ### 8.2 Preservar o caminho JSON legado intacto (FR-012, US4 AS-2) `[M]`
 
-- [ ] 8.2.1 Detectar presença de `state.db` para escolher o caminho
+- [x] 8.2.1 Detectar presença de `state.db` para escolher o caminho
   SQL→SQL; ausência mantém o caminho JSON atual sem alteração
-- [ ] 8.2.2 Teste: projeto ainda não migrado (`state.json` apenas) ingere
+  — onda-018: `recall_mode_ingest()` checa `[ -r "$_ing_state_dir/state.db" ]`
+  antes de despachar para `recall_ingest_state_db` vs `recall_ingest_state_json`
+- [x] 8.2.2 Teste: projeto ainda não migrado (`state.json` apenas) ingere
   exatamente como hoje, sem regressão
+  — onda-018: `scenario_sqldb_json_path_preservado_sem_migracao`
+  (`tests/cstk/test_recall.sh`)
 
 ### 8.3 Testes de equivalência SQL vs JSON (SC-005) `[M]`
 
 Ref: dec-035 (critério de amostra)
 
-- [ ] 8.3.1 Fixtures sintéticas cobrindo os 3 casos de dec-035 (vazio/
+- [x] 8.3.1 Fixtures sintéticas cobrindo os 3 casos de dec-035 (vazio/
   mínimo: 0 decisões e 1 onda; médio: ~10 decisões/3 ondas; grande: ~50+
   decisões/10+ ondas) — ingerir via os dois caminhos (JSON exportado vs
   SQL direto) e comparar as entidades resultantes no `knowledge.db`
-- [ ] 8.3.2 Incluir, quando disponíveis no ambiente de teste local, os
+  — onda-018: `_seed_sql_equiv_state` + `_assert_sql_json_equivalent` +
+  `scenario_sqldb_equiv_vazio/medio/grande` (`tests/cstk/test_recall.sh`).
+  Bug pre-existente achado ao construir as fixtures (FASE 3/6, fora do
+  escopo de 8.x mas bloqueava `state-db-migrate.sh migrate` para qualquer
+  execução com `atomic_commit_enabled=false`, o default): corrigido em
+  `_state-rw-db.sh` — dec-085
+- [~] 8.3.2 Incluir, quando disponíveis no ambiente de teste local, os
   state-dirs reais já existentes (ex.: este próprio
   `.claude/feature-00c-state/state-db-foundation` após migrado) como
   amostra adicional, sem depender exclusivamente deles
-- [ ] 8.3.3 Confirmar 100% de equivalência de entidades entre os dois
+  — onda-018: **deliberadamente NÃO migrado** o state-dir desta própria
+  execução em andamento (`.claude/feature-00c-state/state-db-foundation`)
+  — migrar o state.json ATIVO de uma orquestração em curso é destrutivo
+  (M2/M6 do contrato de migração assumem execução parada) e violaria o
+  blast radius desta onda. A cláusula "sem depender exclusivamente deles"
+  já é satisfeita pelas 3 fixtures sintéticas de 8.3.1 (ver dec-035); a
+  amostra de state-dir real fica como extensão futura opcional, não
+  bloqueante para SC-005 — dec-088
+- [x] 8.3.3 Confirmar 100% de equivalência de entidades entre os dois
   caminhos de ingestão na amostra (SC-005)
+  — onda-018: `_assert_sql_json_equivalent` compara as 7 tabelas linha-a-
+  linha (`ORDER BY source_id`) para as 3 fixtures; 100% de equivalência nas
+  colunas comparáveis. 2 classes de divergência ACEITA e documentada (não
+  são falha de SC-005): `ingested_at` (wall-clock, propositalmente fora do
+  escopo de comparação) e `executions.subagents_spawned/
+  skill_suggestions_total/toolkit_issues_opened` (sem coluna em state.db —
+  mesmo gap já aceito em dec-079/M3.2; NULL em vez do 0 fabricado que o
+  export JSON produz, por Princípio VI)
 
 ---
 

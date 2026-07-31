@@ -3990,4 +3990,230 @@ JSON
   return 0
 }
 
+# =========================================================================
+# FASE 8 (state-db-foundation) — equivalencia SQL->SQL vs JSON (SC-005,
+# dec-035 §criterio de amostra: fixtures sinteticas vazio/medio/grande).
+#
+# Estrategia: gera um state.json EN valido (mesmo formato de
+# tests/test_state-db-migrate.sh::_seed_state_json) com N decisoes/M ondas,
+# ingere via o caminho JSON (recall_ingest_state_json, ainda sem state.db),
+# migra para state.db (state-db-migrate.sh migrate), ingere de novo o MESMO
+# state-dir (agora recall_mode_ingest prefere o caminho SQL->SQL por
+# recall_ingest_state_db) e compara as entidades resultantes.
+#
+# Divergencias ACEITAS (fora do escopo de equivalencia, documentadas):
+#   - ingested_at: timestamp de wall-clock da propria ingestao, nunca igual.
+#   - executions.subagents_spawned/skill_suggestions_total/
+#     toolkit_issues_opened: state.db nao tem coluna para essas 3 metricas
+#     (mesmo gap ja documentado em dec-079 M3.2/contracts/migration.md —
+#     export do backend SQLite as fixa em 0; a ingestao SQL->SQL usa NULL em
+#     vez de propagar esse 0 fabricado, por Principio VI/anti-fabricacao).
+# =========================================================================
+
+SCRIPTS_00C="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
+STATE_RW_00C="$SCRIPTS_00C/state-rw.sh"
+MIGRATE_00C="$SCRIPTS_00C/state-db-migrate.sh"
+
+# _seed_sql_equiv_state DIR N_DEC N_WAVE -> escreve um state.json EN valido
+# (schema-en-migration) com N_DEC decisoes distribuidas por N_WAVE ondas (>=1),
+# 1 human_block (se N_DEC>0), 1 task por onda, 2 events, 1 skill por onda
+# (kind=skill) + 1 skill kind=gate na 1a onda (para exercitar o filtro
+# kind!='gate' tanto no caminho JSON quanto no SQL->SQL).
+_seed_sql_equiv_state() {
+  _ses_dir="$1"; _ses_ndec="$2"; _ses_nwave="$3"
+  mkdir -p "$_ses_dir"
+
+  _ses_waves='[]'
+  _ses_i=0
+  while [ "$_ses_i" -lt "$_ses_nwave" ]; do
+    _ses_wid="onda-$((_ses_i + 1))"
+    if [ "$_ses_ndec" -gt 0 ]; then
+      _ses_dec_mod=$_ses_ndec
+    else
+      _ses_dec_mod=1
+    fi
+    _ses_skill_dec="dec-$(( (_ses_i % _ses_dec_mod) + 1 ))"
+    _ses_skills=$(jq -n --arg dec "$_ses_skill_dec" \
+      --argjson has_dec "$([ "$_ses_ndec" -gt 0 ] && echo true || echo false)" \
+      --argjson is_first "$([ "$_ses_i" -eq 0 ] && echo true || echo false)" \
+      '[{skill:"specify", timestamp:"2026-01-01T00:00:30Z", decision_id: (if $has_dec then $dec else null end), kind:"skill"}]
+       + (if $is_first then [{skill:"validate-tasks-template", timestamp:"2026-01-01T00:00:40Z", decision_id: null, kind:"gate"}] else [] end)')
+    _ses_w=$(jq -n --arg id "$_ses_wid" --argjson skills "$_ses_skills" --argjson idx "$_ses_i" '
+      {id:$id,
+       started_at: ("2026-01-01T\( ($idx/60|floor) % 24 | if . < 10 then "0\(.)" else "\(.)" end ):\( $idx % 60 | if . < 10 then "0\(.)" else "\(.)" end ):00Z"),
+       finished_at: ("2026-01-01T\( ($idx/60|floor) % 24 | if . < 10 then "0\(.)" else "\(.)" end ):\( ($idx % 60) | if . < 10 then "0\(.)" else "\(.)" end ):30Z"),
+       wallclock_seconds: 30, tool_calls: 5,
+       termination_reason: "etapa_concluida_avancando",
+       executed_stages: ["specify"],
+       skills_invoked: $skills}')
+    _ses_waves=$(printf '%s' "$_ses_waves" | jq -c --argjson w "$_ses_w" '. + [$w]')
+    _ses_i=$((_ses_i + 1))
+  done
+  # ultima onda fecha com motivo=concluido (coerente com status=concluida).
+  _ses_waves=$(printf '%s' "$_ses_waves" | jq -c '
+    if length > 0 then (.[-1].termination_reason = "concluido") else . end')
+
+  _ses_decs='[]'
+  _ses_i=0
+  while [ "$_ses_i" -lt "$_ses_ndec" ]; do
+    _ses_wid="onda-$(( (_ses_i % _ses_nwave) + 1 ))"
+    _ses_score=$((_ses_i % 4))
+    _ses_d=$(jq -n --arg id "dec-$((_ses_i + 1))" --arg wid "$_ses_wid" --argjson score "$_ses_score" --argjson idx "$_ses_i" '
+      {id:$id, wave_id: $wid,
+       timestamp: ("2026-01-01T00:0\($idx % 10):00Z"),
+       agent: "agente-00c-feature-orchestrator", stage: "specify",
+       context: "contexto de decisao de equivalencia numero \($idx) com mais de vinte caracteres",
+       options_considered: ["a","b"], choice: "a",
+       rationale: "justificativa de equivalencia numero \($idx) com mais de vinte caracteres",
+       justification_score: $score,
+       evidence: (if $score == 3 then "evidencia empirica de pelo menos vinte caracteres" else null end),
+       references: [], originating_artifact: null}')
+    _ses_decs=$(printf '%s' "$_ses_decs" | jq -c --argjson d "$_ses_d" '. + [$d]')
+    _ses_i=$((_ses_i + 1))
+  done
+
+  _ses_blocks='[]'
+  if [ "$_ses_ndec" -gt 0 ]; then
+    _ses_blocks='[{"id":"block-001","decision_id":"dec-1","question":"pergunta de bloqueio de equivalencia com mais de vinte caracteres?","context_for_answer":"contexto para a resposta de equivalencia","recommended_options":["sim","nao"],"status":"respondido","human_answer":"sim","triggered_at":"2026-01-01T00:00:05Z","answered_at":"2026-01-01T00:00:10Z"}]'
+  fi
+
+  _ses_tasks='[]'
+  _ses_i=0
+  while [ "$_ses_i" -lt "$_ses_nwave" ]; do
+    _ses_wid="onda-$((_ses_i + 1))"
+    _ses_t=$(jq -n --arg tid "1.$((_ses_i + 1))" --arg wid "$_ses_wid" --argjson idx "$_ses_i" '
+      {task_id:$tid, title:"task de equivalencia \($idx)", wave_id:$wid, outcome:"pass",
+       tests_run:2, tests_passed:2, lint_ok:true, touched_files:["a.sh"],
+       recorded_at:"2026-01-01T00:00:20Z", source:"execute-task"}')
+    _ses_tasks=$(printf '%s' "$_ses_tasks" | jq -c --argjson t "$_ses_t" '. + [$t]')
+    _ses_i=$((_ses_i + 1))
+  done
+
+  jq -n \
+    --argjson waves "$_ses_waves" --argjson decisions "$_ses_decs" \
+    --argjson blocks "$_ses_blocks" --argjson tasks "$_ses_tasks" \
+    --argjson ndec "$_ses_ndec" --argjson nwave "$_ses_nwave" '
+    {
+      schema_version: "1.0.0", short_name: "equiv-feat",
+      execution: {
+        id: "exec-equiv-001", target_project_path: "/tmp/equiv-proj",
+        target_project_description: "projeto de equivalencia SQL vs JSON com tamanho suficiente",
+        status: "concluida", termination_reason: "concluido com sucesso",
+        started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T02:00:00Z"
+      },
+      current_stage: "review-task", next_instruction: "nada a fazer",
+      atomic_commit_enabled: false,
+      initial_key_aspects: ["equivalencia","sql"],
+      external_urls_whitelist: [], circular_movement_history: [],
+      budgets: {
+        max_recursion:3, current_subagent_depth:1,
+        max_retro_executions_per_feature:2, retro_executions_consumed:0,
+        max_cycles_per_stage:5, cycles_consumed_current_stage:0,
+        tool_calls_threshold_wave:80, wallclock_threshold_seconds:5400,
+        state_size_threshold_bytes:1048576,
+        tool_calls_current_wave:0, current_wave_start:null
+      },
+      accumulated_metrics: {
+        waves_total:$nwave, tool_calls_total:(5*$nwave), wallclock_total_seconds:(30*$nwave),
+        max_depth_reached:1, subagents_spawned:0, decisions_total:$ndec,
+        human_blocks_total:(if $ndec>0 then 1 else 0 end),
+        global_skill_suggestions_total:0, toolkit_issues_opened:0
+      },
+      waves:$waves, decisions:$decisions, human_blocks:$blocks, tasks:$tasks,
+      events: [
+        {event_type:"schedule_wait", timestamp:"2026-01-01T00:00:15Z", description:"aguardando wakeup do equivalence test"},
+        {event_type:"recall_consulted", timestamp:"2026-01-01T00:00:16Z"}
+      ]
+    }' > "$_ses_dir/state.json"
+  "$STATE_RW_00C" sha256-update --state-dir "$_ses_dir" >/dev/null 2>&1
+}
+
+# _assert_sql_json_equivalent DIR LABEL -> ingere DIR (state.json presente,
+# state.db ausente) via caminho JSON em k-json.db, migra DIR para state.db,
+# ingere de novo (agora via SQL->SQL) em k-sql.db, e compara as 7 tabelas de
+# entidade linha-a-linha (ORDER BY source_id), ignorando as colunas
+# `ingested_at` (wall-clock, nunca igual) e as 3 colunas de executions sem
+# fonte em state.db (subagents_spawned/skill_suggestions_total/
+# toolkit_issues_opened — NULL no SQL->SQL vs 0 fabricado no export JSON).
+_assert_sql_json_equivalent() {
+  _aje_dir="$1"; _aje_label="$2"
+  _aje_kjson="$TMPDIR_TEST/${_aje_label}-json.db"
+  _aje_ksql="$TMPDIR_TEST/${_aje_label}-sql.db"
+
+  assert_exit 0 _rc --ingest --state-dir "$_aje_dir" --db "$_aje_kjson" || return 1
+
+  capture "$MIGRATE_00C" migrate --state-dir "$_aje_dir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "$_aje_label: migrate" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_aje_dir/state.db" ] || { _fail "$_aje_label: state.db ausente pos-migracao" ""; return 1; }
+
+  assert_exit 0 _rc --ingest --state-dir "$_aje_dir" --db "$_aje_ksql" || return 1
+
+  for _aje_t in executions waves decisions blocks tasks events skills; do
+    case "$_aje_t" in
+      executions) _aje_cols="project,feature,wave,execution_id,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,decisions_total,human_blocks_total,session,target_project_path" ;;
+      waves) _aje_cols="project,feature,wave,execution_id,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,session" ;;
+      decisions) _aje_cols="project,feature,wave,execution_id,source_id,agent,stage,choice,options,score,context,rationale,evidence" ;;
+      blocks) _aje_cols="project,feature,wave,execution_id,source_id,status,question,context_for_answer,answer,decision_id,triggered_at,answered_at,latency_seconds" ;;
+      tasks) _aje_cols="project,feature,wave,execution_id,source_id,title,outcome,tests_run,tests_passed,lint_ok,touched_files" ;;
+      events) _aje_cols="project,feature,wave,execution_id,source_id,event_type,timestamp,description" ;;
+      skills) _aje_cols="project,feature,wave,execution_id,source_id,skill_name,decision_id" ;;
+    esac
+    _aje_a=$(sqlite3 "$_aje_kjson" "SELECT $_aje_cols FROM $_aje_t ORDER BY source_id;")
+    _aje_b=$(sqlite3 "$_aje_ksql" "SELECT $_aje_cols FROM $_aje_t ORDER BY source_id;")
+    if [ "$_aje_a" != "$_aje_b" ]; then
+      # sh POSIX (dash) nao suporta `<(...)`: usa arquivos temporarios em vez
+      # de process substitution para o diff de diagnostico.
+      _aje_fa="$TMPDIR_TEST/${_aje_label}-${_aje_t}-json.txt"
+      _aje_fb="$TMPDIR_TEST/${_aje_label}-${_aje_t}-sql.txt"
+      printf '%s\n' "$_aje_a" > "$_aje_fa"
+      printf '%s\n' "$_aje_b" > "$_aje_fb"
+      _fail "$_aje_label: $_aje_t diverge entre JSON e SQL->SQL" \
+        "$(diff "$_aje_fa" "$_aje_fb")"
+      return 1
+    fi
+  done
+  return 0
+}
+
+# Cenario 8.3-vazio: 0 decisoes, 1 onda (minimo/vazio de dec-035).
+scenario_sqldb_equiv_vazio() {
+  _have_deps || return 0
+  command -v "$MIGRATE_00C" >/dev/null 2>&1 || : # sempre existe no repo
+  _d="$TMPDIR_TEST/equiv-vazio"
+  _seed_sql_equiv_state "$_d" 0 1
+  _assert_sql_json_equivalent "$_d" "vazio" || return 1
+  return 0
+}
+
+# Cenario 8.3-medio: ~10 decisoes, 3 ondas (dec-035).
+scenario_sqldb_equiv_medio() {
+  _have_deps || return 0
+  _d="$TMPDIR_TEST/equiv-medio"
+  _seed_sql_equiv_state "$_d" 10 3
+  _assert_sql_json_equivalent "$_d" "medio" || return 1
+  return 0
+}
+
+# Cenario 8.3-grande: ~50+ decisoes, 10+ ondas (dec-035).
+scenario_sqldb_equiv_grande() {
+  _have_deps || return 0
+  _d="$TMPDIR_TEST/equiv-grande"
+  _seed_sql_equiv_state "$_d" 55 12
+  _assert_sql_json_equivalent "$_d" "grande" || return 1
+  return 0
+}
+
+# Cenario 8.2.2: projeto NAO migrado (so state.json, sem state.db) continua
+# ingerindo pelo caminho JSON sem regressao (FR-012, US4 AS-2) — presenca de
+# state.db em OUTRO state-dir nao interfere.
+scenario_sqldb_json_path_preservado_sem_migracao() {
+  _have_deps || return 0
+  _d="$TMPDIR_TEST/no-migrate"
+  _seed_sql_equiv_state "$_d" 3 2
+  assert_exit 0 _rc --ingest --state-dir "$_d" --db "$TMPDIR_TEST/no-migrate.db" || return 1
+  assert_stdout_contains "3 decisions" || return 1
+  [ ! -f "$_d/state.db" ] || { _fail "no-migrate: state.db nao deveria existir" ""; return 1; }
+  return 0
+}
+
 run_all_scenarios

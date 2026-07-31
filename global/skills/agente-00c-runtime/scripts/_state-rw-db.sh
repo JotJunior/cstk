@@ -542,7 +542,10 @@ _sr_db_upsert_task() {
   _ut_outcome=$(printf '%s' "$_ut_row" | jq -r '.outcome')
   _ut_tr=$(printf '%s' "$_ut_row" | jq -r '.tests_run // 0')
   _ut_tp=$(printf '%s' "$_ut_row" | jq -r '.tests_passed // 0')
-  _ut_lint=$(printf '%s' "$_ut_row" | jq -c '.lint_ok // null')
+  # SEM `// null` (mesma classe de bug de .atomic_commit_enabled acima):
+  # jq trata `false` como falsy, entao `.lint_ok // null` perderia um
+  # lint_ok=false real. Chave ausente ja produz `null` sem o `//`.
+  _ut_lint=$(printf '%s' "$_ut_row" | jq -c '.lint_ok')
   _ut_files=$(printf '%s' "$_ut_row" | jq -c '.touched_files // []')
   _ut_rec=$(printf '%s' "$_ut_row" | jq -r '.recorded_at')
   _ut_src=$(printf '%s' "$_ut_row" | jq -r '.source // empty')
@@ -647,7 +650,14 @@ _sr_db_write_document() {
   _wd_short=$(printf '%s' "$_wd_doc" | jq -r '.short_name // empty')
   _wd_stage=$(printf '%s' "$_wd_doc" | jq -r '.current_stage')
   _wd_next=$(printf '%s' "$_wd_doc" | jq -r '.next_instruction')
-  _wd_atomic=$(printf '%s' "$_wd_doc" | jq -c '.atomic_commit_enabled // null')
+  # SEM `// null`: jq trata `false` como falsy, entao `.atomic_commit_enabled
+  # // null` colapsa o valor legitimo `false` (o default do campo — a maioria
+  # das execucoes reais) para `null`, perdendo o dado no UPDATE abaixo
+  # (bug achado empiricamente na FASE 8 desta feature, ao migrar um state.json
+  # de fixture com atomic_commit_enabled=false: M3.2 reprovava toda vez). Sem
+  # o `//`, chave ausente ja produz `null` por padrao do jq — nenhum
+  # comportamento de fallback e perdido.
+  _wd_atomic=$(printf '%s' "$_wd_doc" | jq -c '.atomic_commit_enabled')
   _wd_atomic_sql="NULL"
   case "$_wd_atomic" in true) _wd_atomic_sql=1 ;; false) _wd_atomic_sql=0 ;; esac
   _wd_ika=$(printf '%s' "$_wd_doc" | jq -c '.initial_key_aspects // []')
