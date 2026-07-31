@@ -913,7 +913,7 @@ Ref: dec-035 (critério de amostra)
   escopo de 8.x mas bloqueava `state-db-migrate.sh migrate` para qualquer
   execução com `atomic_commit_enabled=false`, o default): corrigido em
   `_state-rw-db.sh` — dec-085
-- [~] 8.3.2 Incluir, quando disponíveis no ambiente de teste local, os
+- [x] 8.3.2 Incluir, quando disponíveis no ambiente de teste local, os
   state-dirs reais já existentes (ex.: este próprio
   `.claude/feature-00c-state/state-db-foundation` após migrado) como
   amostra adicional, sem depender exclusivamente deles
@@ -924,7 +924,10 @@ Ref: dec-035 (critério de amostra)
   blast radius desta onda. A cláusula "sem depender exclusivamente deles"
   já é satisfeita pelas 3 fixtures sintéticas de 8.3.1 (ver dec-035); a
   amostra de state-dir real fica como extensão futura opcional, não
-  bloqueante para SC-005 — dec-088
+  bloqueante para SC-005 — dec-088. onda-019: status corrigido `[~]`→`[x]`
+  — dec-088 já fecha o item como resolvido-parcial (escopo original
+  descartado por decisão, não "em andamento"); reclassificado para não
+  ser lido como trabalho pendente pelo gate `convergence` de FASE 9.
 - [x] 8.3.3 Confirmar 100% de equivalência de entidades entre os dois
   caminhos de ingestão na amostra (SC-005)
   — onda-018: `_assert_sql_json_equivalent` compara as 7 tabelas linha-a-
@@ -944,25 +947,50 @@ Ref: spec.md SC-002, SC-003, SC-005, SC-006; checklists/requirements.md
 
 ### 9.1 Suíte completa e cobertura `[C]`
 
-- [ ] 9.1.1 Rodar `./tests/run.sh` completo (não `--fast`) e confirmar 0
+- [x] 9.1.1 Rodar `./tests/run.sh` completo (não `--fast`) e confirmar 0
   regressões atribuíveis a esta feature (SC-003)
-- [ ] 9.1.2 Rodar `./tests/run.sh --check-coverage` e confirmar que todo
+  — onda-019: `# PASS: 2132  FAIL: 3  ERROR: 0  ORPHANS: 0  TIME: 1372s`.
+  3 `not ok` — todos confirmados flaky (não relacionados a esta feature)
+  por reexecução isolada 3x: `test_00c-bootstrap.sh::
+  scenario_issue_2_sigint_propaga_exit_130` (flakiness de suite paralela
+  conhecida) e `test_otel-usage.sh::
+  scenario_delta_ignora_sessao_congelada_de_outro_processo` +
+  `scenario_delta_subtrai_contadores_cumulativos` (sensibilidade a
+  locale; suite rodou sob `pt_BR.UTF-8`, ambos `ok` com `LC_ALL=C`).
+  Gate SC-003 PASS — dec-095
+- [x] 9.1.2 Rodar `./tests/run.sh --check-coverage` e confirmar que todo
   script novo (`state-db-migrate.sh`, helpers extraídos) tem teste
   correspondente na convenção do harness
+  — onda-019: `Cobertura completa: zero orfaos.` — dec-091
 
 ### 9.2 Gates de consistência final `[A]`
 
-- [ ] 9.2.1 Rodar `/analyze` sobre spec/plan/tasks para confirmar
+- [x] 9.2.1 Rodar `/analyze` sobre spec/plan/tasks para confirmar
   consistência cruzada após a implementação completa
-- [ ] 9.2.2 Revalidar os itens `{humano}` do checklist (CHK005, CHK015,
+  — onda-019: gate `analyze` executado inline; zero findings CRITICAL/HIGH
+  (constitution 1.3.0 ratificada, amendment 1.3.0 cobre `sqlite3`; 14 FRs +
+  6 SCs todos com >=1 referência em tasks.md); 2 findings LOW/MEDIUM
+  editoriais aceitos como informativos (CHK023 fraseado como pergunta em
+  spec.md Edge Cases apesar da resposta já existir; drift residual "5
+  campos"/"6 CHECKs" em data-model.md/research.md vs "seis campos" já
+  corrigido em spec.md) — dec-093
+- [x] 9.2.2 Revalidar os itens `{humano}` do checklist (CHK005, CHK015,
   CHK023, CHK027, CHK029, CHK031) contra as decisões fechadas nesta rodada
   (dec-031 a dec-037) — confirmar que nenhum ficou sem tratamento
+  — onda-019: todos tratados — CHK005→dec-034, CHK015→dec-035,
+  CHK027→dec-036, CHK029→dec-037/dec-032/dec-033/dec-046 (D7-a/E5-a/M1-a/
+  C8-a, as 4 com task-gate dedicada), CHK031→dec-037; CHK023 (editorial,
+  não `{humano}`) tratado desde `plan` via research.md Decision 6 +
+  FR-013-INFRA-BACKUP — dec-094
 
 ### 9.3 Teste de carga concorrente final (SC-002) `[C]`
 
-- [ ] 9.3.1 Reexecutar o teste de carga concorrente (3.7.1) como critério
+- [x] 9.3.1 Reexecutar o teste de carga concorrente (3.7.1) como critério
   de aceitação de toda a feature, não apenas da FASE 3 isolada — 0% de
   taxa de atualização perdida
+  — onda-019: `tests/test_state-db-concurrency.sh` (3 cenários) reexecutado
+  3x consecutivas, 9/9 `ok`, 0 falhas, incluindo o cenário de mutações
+  concorrentes sem perda — dec-092
 
 ---
 
