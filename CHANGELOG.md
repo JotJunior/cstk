@@ -5,6 +5,70 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.0.0-alpha.1] - 2026-07-31
+
+Abertura da linha v6.0.0 (pre-release): fundação do `state.db` SQLite como
+fonte de verdade transacional das execuções 00c, entregue pela feature
+`state-db-foundation` (pipeline feature-00c completa: 20 ondas, 31 tarefas,
+spec em `docs/specs/state-db-foundation/`). Nesta fase o backend é **opt-in
+por projeto** via migração explícita — sem `state.db` presente, tudo segue
+em `state.json` exatamente como antes. O cutover (init em SQLite por
+default, config global e `cstk state enable-sqlite`) fica para as próximas
+alphas da linha v6.
+
+### Added
+
+- **Schema do `state.db` (9 entidades).**
+  `global/skills/agente-00c-runtime/references/state-db-schema.sql` +
+  `state-db-schema.sh create` (WAL, `chmod 600` em db+sidecars): execution,
+  wave, decision, human_block, task, event, skill_invocation, agent_spawn e
+  migration_run, com UNIQUE/CHECK/triggers (onda única aberta, fechamento
+  único, CHECKs de score/evidência e status×finished_at). Testes de
+  invariantes em `tests/test_state-db-schema.sh`.
+- **Primitivas de acesso dual-backend.** `state-rw.sh`, `state-ondas.sh`,
+  `state-decisions.sh`, `bloqueios.sh` e `spawn-tracker.sh` despacham por
+  presença de `state.db` (contrato C2) para as novas implementações
+  `_state-rw-db.sh`, `_state-ondas-db.sh`, `_state-decisions-db.sh`,
+  `_bloqueios-db.sh` e `_spawn-tracker-db.sh`, com paridade de stdout/exit
+  code (C1), escape obrigatório de texto de origem LLM (C8, payload hostil
+  testado) e helpers compartilhados em `_state-db.sh` (pragmas, retry sob
+  lock, permissões). IDs (`dec-NNN`, `block-NNN`) gerados por subquery na
+  própria transação — sem colisão sob concorrência (15 writers simultâneos
+  testados; `tests/test_state-db-concurrency.sh` cobre kill -9 sem corrupção
+  e leitor não-bloqueado sob WAL).
+- **Export derivado para compat.** `_so_export_snapshot` gera `state.json`
+  derivado no fim de cada onda SQLite (gatilho automático) e sob demanda via
+  `state-ondas.sh export-snapshot` — painel/recall seguem funcionando sem
+  mudança.
+- **Migração explícita `state.json` → `state.db`.**
+  `state-db-migrate.sh` (gate de equivalência round-trip: reprova e não
+  publica nada se o export do banco divergir da origem) + subcomando
+  `cstk state migrate` (`cli/lib/state.sh`). Recusa execução `em_andamento`;
+  permite `aguardando_humano`. Exit 3 dedicado para recusa por pré-condição.
+- **Ingestão SQL→SQL no knowledge.db.** `cli/lib/recall.sh` ingere direto do
+  `state.db` via `ATTACH DATABASE mode=ro&immutable=1` + `INSERT...SELECT`
+  (7 entidades), com fixtures de equivalência contra a ingestão JSON.
+- **Constitution 1.3.0.** Amendment ratificado: carve-out disciplinado de
+  dependência obrigatória restrito à camada de estado transacional
+  (`sqlite3` >= 3.45.1; regulariza a condição pré-existente de `jq`).
+
+### Fixed
+
+- **4 bugs pré-existentes expostos pelo trabalho da feature**: padrão
+  `x=$(cmd); rc=$?` sob `set -e` matava o shell antes do tratamento de erro
+  (retry/backoff e mapeamento de FK inalcançáveis); `PRAGMA busy_timeout`
+  ecoava o valor no stdout do CLI `sqlite3` corrompendo `SELECT`s;
+  `decisions[].wave_id="init"` e ordem de emissão skill→decision violavam FK
+  na reconstrução com dados reais; `jq '.campo // null'` colapsava booleanos
+  `false` para NULL na migração.
+
+### CI
+
+- **`release.yml` publica tag com sufixo SemVer como prerelease.** Tag
+  `vX.Y.Z-suffix` recebe `--prerelease` no `gh release create` — pre-release
+  não vira `releases/latest`, preservando o canal estável de
+  `cstk update`/install one-liner.
+
 ## [5.34.1] - 2026-07-30
 
 `waves.stages` no knowledge.db é uma lista de tokens de etapa — mas 3 ondas
@@ -4485,6 +4549,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.0.0-alpha.1]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.1
 [5.34.1]: https://github.com/JotJunior/cstk/releases/tag/v5.34.1
 [5.34.0]: https://github.com/JotJunior/cstk/releases/tag/v5.34.0
 [5.33.4]: https://github.com/JotJunior/cstk/releases/tag/v5.33.4
