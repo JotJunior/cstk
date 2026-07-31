@@ -85,7 +85,13 @@ jobs:
           set -eu
           TAG="${{ steps.tag.outputs.tag }}"
           BARE="${{ steps.tag.outputs.bare }}"
-          gh release create "$TAG" \
+          # Sufixo SemVer de pre-release (v6.0.0-alpha.1, v1.2.3-rc.1) publica
+          # como prerelease — fora de releases/latest, canal estavel intacto.
+          PRERELEASE=""
+          case "$BARE" in
+            *-*) PRERELEASE="--prerelease" ;;
+          esac
+          gh release create "$TAG" $PRERELEASE \
             --title "cstk $TAG" \
             --generate-notes \
             "dist/cstk-${BARE}.tar.gz" \

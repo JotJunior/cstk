@@ -140,6 +140,22 @@
 #         --dry-run descreve a acao sem escrever. Stdout em recuperacao:
 #         "reconciled (phase=... motivo=... [next=...|terminal])".
 #
+#   state-ondas.sh export-snapshot --state-dir DIR
+#       — Export derivado (FASE 5 — state-db-foundation, FR-007/
+#         FR-013-INFRA-BACKUP, contracts/export.md, dec-032 E5-a): gera um
+#         `state.json` equivalente via `state-rw.sh read` (Opcao A do
+#         contrato, backend-agnostico) e grava em
+#         state-history/export-<wave-id-ou-init>-<timestamp>.json (escrita
+#         atomica via mktemp+mv; sufixo aleatorio do mktemp preservado no
+#         nome final, evita colisao entre chamadas no mesmo segundo UTC).
+#         Gatilho SOB DEMANDA — o gatilho
+#         AUTOMATICO equivalente roda dentro de `end` sob backend SQLite
+#         (mesmo ponto conceitual onde o backup de state-history/ acontece
+#         hoje sob backend JSON via `_so_backup_current`; ver E6: falha no
+#         export MUST NOT reverter nem impedir o fechamento da onda).
+#         Stdout: path do snapshot gerado. Exit 1 com diagnostico em stderr
+#         se a geracao falhar (jq ausente, read falhou, I/O).
+#
 #   state-ondas.sh git-commit --state-dir DIR --projeto-alvo-path PATH
 #                             --motivo MOTIVO [--onda-id ID]
 #       — Delega o staging a `commit-mode.sh stage-derived` (allowlist
@@ -174,9 +190,27 @@ _SO_DIR=$(cd "$(dirname -- "$0")" && pwd)
 # shellcheck source=./_diag.sh
 . "$_SO_DIR/_diag.sh"
 
+# Backend dual (feature state-db-foundation, FASE 3 task 3.3): presenca de
+# <state-dir>/state.db seleciona SQLite; senao, backend JSON (comportamento
+# historico, intacto abaixo). Ver contracts/primitives.md §C1/C2. Reusa os
+# primitivos ja testados de _state-rw-db.sh (_sr_backend/_sr_db_file/
+# _sr_exec_id/_sr_sql_quote) em vez de duplica-los — mesmo racional de C8
+# para sql_escape/strip_nul.
+# shellcheck source=./_state-db.sh
+. "$_SO_DIR/_state-db.sh"
+# shellcheck source=./_state-rw-db.sh
+. "$_SO_DIR/_state-rw-db.sh"
+# shellcheck source=./_state-ondas-db.sh
+. "$_SO_DIR/_state-ondas-db.sh"
+
 _so_die_usage() { printf '%s: %s\n' "$_SO_NAME" "$1" >&2; exit 2; }
 _so_die()       { printf '%s: %s\n' "$_SO_NAME" "$1" >&2; exit "${2:-1}"; }
 _so_log()       { printf '%s: %s\n' "$_SO_NAME" "$1" >&2; }
+
+# Shim para _state-rw-db.sh (funcoes reusadas como _sr_exec_id/_sr_sql_quote
+# nao chamam _sr_die em seus caminhos normais, mas o shim protege contra
+# qualquer caminho de erro latente sem duplicar a logica de _so_die).
+_sr_die() { _so_die "$1" "${2:-1}"; }
 
 _so_require_jq() {
   command -v jq >/dev/null 2>&1 \
@@ -237,6 +271,73 @@ _so_backup_current() {
   _ts=$(date -u +%Y%m%dT%H%M%SZ)
   _bk="$_hd/${_curr}-${_ts}.json"
   mv -- "$_sf" "$_bk" || _so_die "backup falhou" 1
+}
+
+# _so_export_snapshot DIR -> Export derivado (FASE 5, contracts/export.md
+# Opcao A — reusa `state-rw.sh read`, backend-agnostico: funciona tanto sob
+# state.db quanto sob state.json). Grava snapshot atomico (mktemp + mv) em
+# state-history/export-<wave-id-ou-init>-<timestamp>.json. Imprime o path
+# gerado em stdout no sucesso.
+#
+# NUNCA falha alto: qualquer erro (self-dir irresolvivel, state-rw.sh
+# ausente, read falhou, JSON invalido, I/O) loga via _so_log e retorna 1 —
+# jamais chama _so_die. E6 (contracts/export.md, MUST): quem decide se a
+# falha e fatal e o CALLER — o gatilho automatico em `_so_db_end` roda isto
+# APOS o COMMIT que fechou a onda (a fonte de verdade ja esta segura;
+# degradar aqui nunca reverte nem bloqueia esse fechamento), enquanto o
+# subcomando `export-snapshot` (uso explicito/sob-demanda) converte a falha
+# em exit 1 porque ali e um pedido direto do operador.
+_so_export_snapshot() {
+  _oes_sdir=$1
+  _oes_selfdir=$(_so_self_dir) \
+    || { _so_log "export-snapshot: nao foi possivel resolver o diretorio de scripts"; return 1; }
+  _oes_rw="$_oes_selfdir/state-rw.sh"
+  [ -f "$_oes_rw" ] || { _so_log "export-snapshot: state-rw.sh ausente ($_oes_rw)"; return 1; }
+
+  _oes_hd="$_oes_sdir/state-history"
+  mkdir -p -- "$_oes_hd" 2>/dev/null \
+    || { _so_log "export-snapshot: mkdir state-history falhou"; return 1; }
+
+  _oes_doc=$(sh "$_oes_rw" read --state-dir "$_oes_sdir" 2>/dev/null) \
+    || { _so_log "export-snapshot: state-rw.sh read falhou"; return 1; }
+  [ -n "$_oes_doc" ] || { _so_log "export-snapshot: documento gerado por read esta vazio"; return 1; }
+  printf '%s' "$_oes_doc" | jq -e . >/dev/null 2>&1 \
+    || { _so_log "export-snapshot: documento gerado por read nao e JSON valido"; return 1; }
+
+  _oes_label=$(printf '%s' "$_oes_doc" | jq -r '((.waves // [])[-1].id // "init")' 2>/dev/null) \
+    || _oes_label="init"
+  case "$_oes_label" in ''|null) _oes_label="init" ;; esac
+  _oes_ts=$(date -u +%Y%m%dT%H%M%SZ)
+  # mktemp gera o componente aleatorio de unicidade — 2 chamadas no MESMO
+  # segundo UTC (granularidade de $_oes_ts, sem fracao portavel em sh/date)
+  # com a mesma onda aberta colidiriam se o destino final nao carregasse
+  # esse sufixo. Mantemos o nome gerado pelo proprio mktemp (dentro de
+  # state-history/) em vez de descarta-lo apos o mv, como C10 (primitives.md)
+  # ja recomenda para nomes nao-derivados-de-PID.
+  _oes_tmp=$(mktemp -- "$_oes_hd/.export-tmp-XXXXXX") \
+    || { _so_log "export-snapshot: mktemp falhou"; return 1; }
+  _oes_rand=${_oes_tmp##*-}
+  _oes_dst="$_oes_hd/export-${_oes_label}-${_oes_ts}-${_oes_rand}.json"
+  printf '%s\n' "$_oes_doc" > "$_oes_tmp" \
+    || { rm -f -- "$_oes_tmp"; _so_log "export-snapshot: I/O ao gravar snapshot"; return 1; }
+  mv -f -- "$_oes_tmp" "$_oes_dst" \
+    || { rm -f -- "$_oes_tmp"; _so_log "export-snapshot: mv falhou"; return 1; }
+  printf '%s\n' "$_oes_dst"
+  return 0
+}
+
+_so_cmd_export_snapshot() {
+  _sdir=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir) _sdir=$2; shift 2 ;;
+      *) _so_die_usage "export-snapshot: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_sdir" ] || _so_die_usage "export-snapshot: --state-dir obrigatorio"
+  _so_require_jq
+  _so_export_snapshot "$_sdir" \
+    || _so_die "export-snapshot: falha ao gerar o snapshot (ver diagnostico acima)" 1
 }
 
 _so_next_onda_num() {
@@ -476,6 +577,10 @@ _so_cmd_start() {
   done
   [ -n "$_sdir" ] || _so_die_usage "start: --state-dir obrigatorio"
   _so_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _so_db_start "$_sdir"
+    return 0
+  fi
   _sf=$(_so_state_file "$_sdir")
   [ -f "$_sf" ] || _so_die "start: state.json ausente em $_sdir" 1
 
@@ -540,13 +645,19 @@ _so_cmd_start() {
 # fluxo principal de start com `set -e` (toda falha aqui e silenciosa).
 _so_start_snapshot_baseline() {
   _ssb_sdir="$1"
-  _ssb_sf=$(_so_state_file "$_ssb_sdir")
   command -v git >/dev/null 2>&1 || return 0
 
-  _ssb_pap=$(jq -r '.execution.target_project_path // ""' "$_ssb_sf" 2>/dev/null) || _ssb_pap=""
-  [ -n "$_ssb_pap" ] && [ -d "$_ssb_pap" ] || return 0
-
+  # Le via state-rw.sh get (backend-safe: funciona sob JSON e SQLite sem
+  # branch aqui — state-rw.sh ja faz a selecao de backend internamente).
+  # Antes lia .execution.target_project_path via jq direto no state.json,
+  # o que quebrava silenciosamente sob backend SQLite (arquivo ausente).
   _ssb_selfdir=$(_so_self_dir) || return 0
+  _ssb_rw="$_ssb_selfdir/state-rw.sh"
+  [ -f "$_ssb_rw" ] || return 0
+  _ssb_pap=$(sh "$_ssb_rw" get --state-dir "$_ssb_sdir" --field '.execution.target_project_path' 2>/dev/null) || _ssb_pap=""
+  case "$_ssb_pap" in ''|null) return 0 ;; esac
+  [ -d "$_ssb_pap" ] || return 0
+
   _ssb_cm="$_ssb_selfdir/commit-mode.sh"
   [ -f "$_ssb_cm" ] || return 0
 
@@ -604,6 +715,10 @@ $2"; shift 2 ;;
     *) _so_die "end: motivo invalido: $_motivo" 2 ;;
   esac
   _so_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _so_db_end "$_sdir" "$_motivo" "$_proxima" "$_etapas" "$_next_instr_set" "$_next_instr"
+    return 0
+  fi
   _sf=$(_so_state_file "$_sdir")
   [ -f "$_sf" ] || _so_die "end: state.json ausente em $_sdir" 1
 
@@ -746,6 +861,10 @@ _so_cmd_tool_call_tick() {
   done
   [ -n "$_sdir" ] || _so_die_usage "tool-call-tick: --state-dir obrigatorio"
   _so_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _so_db_tool_call_tick "$_sdir"
+    return 0
+  fi
   _sf=$(_so_state_file "$_sdir")
   [ -f "$_sf" ] || _so_die "tool-call-tick: state.json ausente" 1
 
@@ -788,6 +907,10 @@ _so_cmd_record_skill() {
     *) _so_die_usage "record-skill: --kind deve ser skill|gate (recebido: $_kind)" ;;
   esac
   _so_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _so_db_record_skill "$_sdir" "$_skill" "$_dec" "$_kind"
+    return 0
+  fi
   _sf=$(_so_state_file "$_sdir")
   [ -f "$_sf" ] || _so_die "record-skill: state.json ausente em $_sdir" 1
 
@@ -891,10 +1014,14 @@ _so_cmd_record_task() {
     *) _so_die_usage "record-task: --lint-ok deve ser true|false (ou vazio)" ;;
   esac
   _so_require_jq
-  _sf=$(_so_state_file "$_sdir")
-  [ -f "$_sf" ] || _so_die "record-task: state.json ausente em $_sdir" 1
   printf '%s' "$_af" | jq -e 'type == "array"' >/dev/null 2>&1 \
     || _so_die_usage "record-task: --arquivos deve ser um array JSON (ex: '[]')"
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _so_db_record_task "$_sdir" "$_tid" "$_ttl" "$_wid" "$_oc" "$_tr" "$_tp" "$_lk_json" "$_af" "$_origem" "$_ifabsent"
+    return 0
+  fi
+  _sf=$(_so_state_file "$_sdir")
+  [ -f "$_sf" ] || _so_die "record-task: state.json ausente em $_sdir" 1
 
   # wave-id default = onda corrente (proveniencia best-effort)
   if [ -z "$_wid" ]; then
@@ -959,9 +1086,13 @@ _so_cmd_reconcile_tasks() {
   [ -n "$_rc_sdir" ] || _so_die_usage "reconcile-tasks: --state-dir obrigatorio"
   [ -n "$_rc_md" ]   || _so_die_usage "reconcile-tasks: --tasks-md obrigatorio"
   _so_require_jq
+  [ -f "$_rc_md" ] || _so_die "reconcile-tasks: tasks.md ausente: $_rc_md" 1
+  if [ "$(_sr_backend "$_rc_sdir")" = "sqlite" ]; then
+    _so_db_reconcile_tasks "$_rc_sdir" "$_rc_md" "$_rc_wid" "$_rc_dry"
+    return 0
+  fi
   _rc_sf=$(_so_state_file "$_rc_sdir")
   [ -f "$_rc_sf" ] || _so_die "reconcile-tasks: state.json ausente em $_rc_sdir" 1
-  [ -f "$_rc_md" ] || _so_die "reconcile-tasks: tasks.md ausente: $_rc_md" 1
 
   if [ -z "$_rc_wid" ]; then
     _rc_wid=$(jq -r '((.waves // .ondas) // []) as $w | if ($w | length) > 0 then ($w[-1].id // "") else "" end' "$_rc_sf" 2>/dev/null) || _rc_wid=""
@@ -1114,6 +1245,10 @@ _so_cmd_current_id() {
   done
   [ -n "$_sdir" ] || _so_die_usage "current-id: --state-dir obrigatorio"
   _so_require_jq
+  if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    _so_db_current_id "$_sdir"
+    return 0
+  fi
   _sf=$(_so_state_file "$_sdir")
   [ -f "$_sf" ] || _so_die "current-id: state.json ausente" 1
   jq -r '
@@ -1245,6 +1380,10 @@ _so_cmd_wave_status() {
   done
   [ -n "$_ws_sdir" ] || _so_die_usage "wave-status: --state-dir obrigatorio"
   _so_require_jq
+  if [ "$(_sr_backend "$_ws_sdir")" = "sqlite" ]; then
+    _so_db_wave_status "$_ws_sdir"
+    return 0
+  fi
   _ws_sf=$(_so_state_file "$_ws_sdir")
   [ -f "$_ws_sf" ] || _so_die "wave-status: state.json ausente em $_ws_sdir" 1
   jq -r '
@@ -1269,18 +1408,26 @@ _so_cmd_reconcile_wave() {
   done
   [ -n "$_rcw_sdir" ] || _so_die_usage "reconcile-wave: --state-dir obrigatorio"
   _so_require_jq
-  _rcw_sf=$(_so_state_file "$_rcw_sdir")
-  [ -f "$_rcw_sf" ] || _so_die "reconcile-wave: state.json ausente em $_rcw_sdir" 1
+  # Existencia do estado — backend-aware (task 3.3): state.json so existe
+  # sob backend JSON; sob SQLite o arquivo fonte de verdade e state.db.
+  if [ "$(_sr_backend "$_rcw_sdir")" = "sqlite" ]; then
+    [ -f "$(_sr_db_file "$_rcw_sdir")" ] || _so_die "reconcile-wave: state.db ausente em $_rcw_sdir" 1
+  else
+    _rcw_sf=$(_so_state_file "$_rcw_sdir")
+    [ -f "$_rcw_sf" ] || _so_die "reconcile-wave: state.json ausente em $_rcw_sdir" 1
+  fi
+
+  _rcw_selfdir=$(_so_self_dir) || _rcw_selfdir="."
+  _rcw_pipeline="$_rcw_selfdir/pipeline.sh"
+  _rcw_rw="$_rcw_selfdir/state-rw.sh"
+  [ -f "$_rcw_rw" ] || _so_die "reconcile-wave: state-rw.sh nao encontrado em $_rcw_selfdir" 1
 
   # Guarda de idempotencia: so recupera onda ABERTA. Onda fechada/inexistente
   # = no-op (exit 0). E o que torna seguro o pai chamar a CADA onda sem
   # double-count em accumulated_metrics (que `end` incrementa por chamada).
-  _rcw_status=$(jq -r '
-    ((.waves // .ondas) // []) as $w
-    | if   ($w | length) == 0                  then "none"
-      elif ($w[-1].termination_reason // null) == null then "open"
-      else "closed" end
-  ' "$_rcw_sf")
+  # Via _so_cmd_wave_status (ja dispatcha por backend) em vez de jq direto
+  # no arquivo — o jq inline so funcionava sob backend JSON.
+  _rcw_status=$(_so_cmd_wave_status --state-dir "$_rcw_sdir")
   if [ "$_rcw_status" != "open" ]; then
     printf 'noop (%s)\n' "$_rcw_status"
     return 0
@@ -1289,8 +1436,10 @@ _so_cmd_reconcile_wave() {
   # Resolve a fase que a onda rodou. current_stage == fase corrente ate o
   # fechamento (init grava current_stage = fase a rodar; o avanco do ponteiro
   # so ocorre ao fechar a onda). --phase permite ao pai fixar explicitamente.
+  # Via state-rw.sh get (backend-aware) em vez de jq direto no arquivo.
   if [ -z "$_rcw_phase" ]; then
-    _rcw_phase=$(jq -r '(.current_stage // .etapa_corrente) // ""' "$_rcw_sf")
+    _rcw_phase=$(sh "$_rcw_rw" get --state-dir "$_rcw_sdir" --field '.current_stage' 2>/dev/null) || _rcw_phase=""
+    case "$_rcw_phase" in null) _rcw_phase="" ;; esac
   fi
   [ -n "$_rcw_phase" ] || _so_die "reconcile-wave: nao foi possivel resolver a fase (--phase ou .current_stage)" 1
 
@@ -1300,9 +1449,6 @@ _so_cmd_reconcile_wave() {
   # feature-00c o pai passa --terminal-phase review-task — quando a fase
   # corrente == terminal-phase, tratamos como terminal (next vazio) sem
   # consultar pipeline.sh (que avancaria erroneamente para review-features).
-  _rcw_selfdir=$(_so_self_dir) || _rcw_selfdir="."
-  _rcw_pipeline="$_rcw_selfdir/pipeline.sh"
-  _rcw_rw="$_rcw_selfdir/state-rw.sh"
   if [ -n "$_rcw_terminal" ] && [ "$_rcw_phase" = "$_rcw_terminal" ]; then
     _rcw_next=""
   elif [ -f "$_rcw_pipeline" ]; then
@@ -1337,7 +1483,7 @@ _so_cmd_reconcile_wave() {
   _so_cmd_end --state-dir "$_rcw_sdir" --motivo-termino "$_rcw_motivo" >/dev/null
 
   # 4. avancar ponteiro (ou promover status terminal). end NAO faz isto.
-  [ -f "$_rcw_rw" ] || _so_die "reconcile-wave: state-rw.sh nao encontrado em $_rcw_selfdir" 1
+  # (state-rw.sh ja validado presente no inicio da funcao.)
   if [ -n "$_rcw_next" ]; then
     sh "$_rcw_rw" set --state-dir "$_rcw_sdir" \
       --field '.current_stage' --value "\"$_rcw_next\"" >/dev/null
@@ -1345,12 +1491,27 @@ _so_cmd_reconcile_wave() {
     sh "$_rcw_rw" set --state-dir "$_rcw_sdir" \
       --field '.next_instruction' --value "$_rcw_instr" >/dev/null
   else
+    # Promocao a status terminal via read-patch-write ATOMICO (uma unica
+    # transacao), NAO 5 `set` sequenciais: sob backend sqlite a CHECK de
+    # execution (status IN ('abortada','concluida') <=> finished_at NOT
+    # NULL) rejeita qualquer estado intermediario onde status=concluida e
+    # finished_at ainda esta NULL (ou vice-versa) — nenhuma ordem de sets
+    # de UMA coluna por vez consegue transitar (status=em_andamento,
+    # finished_at=NULL) -> (status=concluida, finished_at=<ts>) sem passar
+    # por um estado invalido. `write` aplica as 5 mudancas na mesma
+    # transacao (C4), backend-agnostico (funciona identico sob JSON).
     _rcw_now=$(_so_iso_now)
-    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.execution.status' --value '"concluida"' >/dev/null
-    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.execution.termination_reason' --value '"concluido"' >/dev/null
-    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.execution.finished_at' --value "\"$_rcw_now\"" >/dev/null
-    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.current_stage' --value '"concluida"' >/dev/null
-    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" --field '.next_instruction' --value '"Execucao concluida — nenhuma proxima etapa."' >/dev/null
+    _rcw_doc=$(sh "$_rcw_rw" read --state-dir "$_rcw_sdir") \
+      || _so_die "reconcile-wave: read falhou ao promover status terminal" 1
+    _rcw_patched=$(printf '%s' "$_rcw_doc" | jq --arg now "$_rcw_now" '
+      .execution.status = "concluida"
+      | .execution.termination_reason = "concluido"
+      | .execution.finished_at = $now
+      | .current_stage = "concluida"
+      | .next_instruction = "Execucao concluida — nenhuma proxima etapa."
+    ') || _so_die "reconcile-wave: jq falhou ao promover status terminal" 1
+    printf '%s' "$_rcw_patched" | sh "$_rcw_rw" write --state-dir "$_rcw_sdir" >/dev/null \
+      || _so_die "reconcile-wave: write falhou ao promover status terminal" 1
   fi
 
   if [ -n "$_rcw_next" ]; then
@@ -1373,6 +1534,7 @@ case "$_SO_SUBCMD" in
   wave-status)      _so_cmd_wave_status "$@" ;;
   reconcile-wave)   _so_cmd_reconcile_wave "$@" ;;
   current-id)       _so_cmd_current_id "$@" ;;
+  export-snapshot)  _so_cmd_export_snapshot "$@" ;;
   git-commit)       _so_cmd_git_commit "$@" ;;
   -h|--help|help)   exit 0 ;;
   *) _so_die_usage "subcomando desconhecido: $_SO_SUBCMD" ;;

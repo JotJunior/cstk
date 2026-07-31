@@ -3,6 +3,7 @@ Sync Impact Report
 - Version: (none) → 1.0.0  [initial ratification]
 - Version: 1.0.0 → 1.1.0  [MINOR: optional-deps carve-out]
 - Version: 1.1.0 → 1.2.0  [MINOR: novo Principio VI — Veracidade de Dados / Zero Fabricacao]
+- Version: 1.2.0 → 1.3.0  [MINOR: mandatory-dep carve-out — camada de estado transacional (sqlite3; regulariza jq)]
 - Bump rationale: constituicao inexistente antes; criacao inicial versao 1.0.0.
   Amendment 1.1.0 adiciona subsecao no Principio II disciplinando "deps opcionais
   com fallback graceful" em tres condicoes cumulativas; nota complementar no
@@ -13,6 +14,13 @@ Sync Impact Report
   valores concretos) sem fonte rastreavel — esgotadas as fontes, bloqueio humano.
   Generaliza o aterramento de evidencia de seguranca dos orquestradores
   (anti-confabulacao) para qualquer dado factual produzido pelo toolkit.
+  Amendment 1.3.0 adiciona subsecao no Principio II disciplinando dependencia
+  OBRIGATORIA (sem fallback) restrita a camada de estado transacional dos
+  orquestradores: reconhece `sqlite3` (state.db, feature state-db-foundation)
+  e regulariza a condicao ja vigente de `jq` (state-rw.sh L116-118 e ~23
+  scripts do runtime encerram com exit 1 quando ausente). Quatro condicoes
+  cumulativas (confinamento de camada, fail-fast diagnostico, consumidores
+  derivados degradam gracioso, declaracao na spec/plan da feature).
 - Principios criados (1.0.0):
   I.   SDD como regra recursiva (NON-NEGOTIABLE)
   II.  POSIX sh puro para scripts (NON-NEGOTIABLE)
@@ -27,6 +35,8 @@ Sync Impact Report
 - Secoes adicionadas (1.0.0): Quality Standards, Decision Framework, Governance
 - Secoes modificadas (1.1.0): Principio II recebe subsecao "Optional dependencies
   with graceful fallback"; Decision Framework item 4 recebe nota clarificadora.
+- Secoes modificadas (1.3.0): Principio II recebe subsecao "Mandatory dependency
+  carve-out: transactional state layer"; I/III/IV/V/VI inalterados.
 - Artefatos que precisam atualizacao (resolver quando conveniente):
   * CLAUDE.md: adicionar secao curta "Principios" apontando para docs/constitution.md (NAO URGENTE — os principios ja sao seguidos de facto). Avaliado novamente em 2026-04-24 durante amendment 1.1.0: mantido nao-urgente; Principio V favorece profundidade sobre marketing; rastreabilidade essencial ja existe via spec↔plan↔constitution.
   * docs/specs/shell-scripts-tests/plan.md §Constitution Check: atualmente diz "Constitution nao presente"; re-rodar /analyze ou re-checar manualmente agora que existe
@@ -119,6 +129,43 @@ em `metrics.sh` (`grep -c` sem matches concatenando "0\n0" via fallback `|| prin
 mostrou que mesmo POSIX puro exige disciplina — introduzir Bash seria degradar o padrao,
 nao proteger dele. Adicionar dependencia externa transforma "clone e uso" em "clone,
 instale, configure", contrariando o modelo de distribuicao via `cp -r`.
+
+#### Mandatory dependency carve-out: transactional state layer (amendment 1.3.0)
+
+Excecao disciplinada a proibicao de dependencias obrigatorias (sem fallback)
+do bloco MUST acima, RESTRITA a camada de estado transacional dos
+orquestradores autonomos (`agente-00c`/`feature-00c`). Uma ferramenta
+nao-POSIX PODE ser dependencia obrigatoria dessa camada desde que as quatro
+condicoes abaixo sejam CUMULATIVAS (todas MUST ser satisfeitas):
+
+(a) **Confinamento de camada.** A obrigatoriedade vale apenas para o runtime
+    de estado transacional (`state.db` e primitivas de acesso; condicao ja
+    vigente de `jq` no runtime `agente-00c-runtime`). Nenhuma outra parte do
+    toolkit (skills de documentacao, CLI de catalogo, hooks) pode exigir a
+    ferramenta como pre-requisito de funcionamento.
+(b) **Fail-fast diagnostico.** Ausencia da ferramenta MUST produzir erro
+    imediato, claro e com instrucao de instalacao (nunca comportamento
+    silenciosamente incorreto), coberto por teste automatizado.
+(c) **Consumidores derivados degradam gracioso.** Camadas best-effort que
+    consomem o estado (knowledge.db/recall, painel, relatorios) MUST manter
+    sua degradacao graciosa propria — a dependencia obrigatoria nao se
+    propaga transitivamente a elas.
+(d) **Declaracao explicita na feature que a introduz.** A dep aparece em
+    `spec.md`/`plan.md` da feature com justificativa de por que fallback e
+    impossivel (fonte de verdade transacional nao pode ter implementacao
+    alternativa divergente).
+
+**Casos concretos sob esta regra**: `sqlite3` para o `state.db` (feature
+`state-db-foundation`, linha v6.0.0 — ver
+[specs/state-db-foundation/plan.md](specs/state-db-foundation/plan.md)
+§Constitution Check); `jq` no runtime de estado (`state-rw.sh` L116-118 e
+demais scripts do `agente-00c-runtime` ja encerram com exit 1 e mensagem de
+instalacao — condicao pre-existente regularizada por este amendment).
+
+**O que NAO muda:** POSIX sh puro segue obrigatorio em todos os scripts;
+ferramentas banidas nominalmente (`ripgrep`, `fd`, `bats`) seguem vetadas;
+o carve-out 1.1.0 (deps opcionais com fallback) permanece o caminho padrao
+para toda dep fora da camada de estado transacional.
 
 ### III. Formato Canonico de Skill: Progressive Disclosure, Gotchas, Description-como-Trigger
 
@@ -297,4 +344,4 @@ Quando principios entram em tensao, a ordem de desempate e:
 - Datas em ISO YYYY-MM-DD.
 - Versao inicial 1.0.0 — qualquer amendment futuro muda este rodape.
 
-**Version**: 1.2.0 | **Ratified**: 2026-04-20 | **Last Amended**: 2026-06-18
+**Version**: 1.3.0 | **Ratified**: 2026-04-20 | **Last Amended**: 2026-07-30

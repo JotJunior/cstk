@@ -143,6 +143,7 @@ COMANDOS:
                 tambem --ingest (pos-onda) e --reindex (reconstrucao)
   show-tip      Exibe uma dica sobre uma skill do toolkit (aleatoria ou por SKILL/--phase)
   serve         Inicia o painel web cstk; baixa e instala na primeira execucao
+  state         Operacoes sobre o estado transacional 00c (state migrate)
   hooks         Provisiona os hooks do runtime 00c num projeto-alvo
                 (so hooks + settings.json; nao duplica skill/commands/agents)
   00c <path>    Bootstrap interativo de projeto-alvo do agente-00C
@@ -170,6 +171,11 @@ HELP
       printf 'Para help inline, rode: cstk hooks --help\n'
       exit "$CSTK_EXIT_OK"
       ;;
+    state)
+      printf 'cstk help state: consulte docs/specs/state-db-foundation/contracts/migration.md\n'
+      printf 'Para help inline, rode: cstk state --help\n'
+      exit "$CSTK_EXIT_OK"
+      ;;
     install|update|self-update|list|doctor|session|serve)
       printf 'cstk help %s: consulte docs/specs/cstk-cli/contracts/cli-commands.md §%s\n' \
         "$_sub" "$_sub"
@@ -195,7 +201,7 @@ HELP
       ;;
     *)
       printf 'cstk: comando desconhecido para help: %s\n' "$_sub" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, 00c\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, state, 00c\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac
@@ -228,7 +234,7 @@ _dispatch() {
       . "$_lib_file"
       serve_main "$@"
       ;;
-    install|update|self-update|list|doctor|session|recall|show-tip|hooks)
+    install|update|self-update|list|doctor|session|recall|show-tip|hooks|state)
       # Boot-check para todos exceto self-update (que e o caminho de recovery
       # da janela transiente — bloquea-lo aqui causaria deadlock).
       case "$_cmd" in
@@ -277,7 +283,7 @@ _dispatch() {
       ;;
     *)
       printf 'cstk: comando desconhecido: %s\n' "$_cmd" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, 00c, help, --version\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, state, 00c, help, --version\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac

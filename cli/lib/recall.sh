@@ -842,6 +842,54 @@ recall_query_sql() {
   printf '%s\n' "$2" | sqlite3 -cmd '.timeout 5000' -- "$1" 2>/dev/null
 }
 
+# recall_sqlite_ro_uri PATH -> imprime a URI `file:PATH?mode=ro&immutable=1`
+# com os caracteres especiais de URI (%, ?, #, espaco, aspa simples,
+# ampersand) percent-encoded — a aspa simples e percent-encoded porque a URI
+# e, no caso de recall_query_sql_ro, entregue via o dot-command
+# `.open '<uri>'` (tokenizer proprio do shell sqlite3, que nao entende
+# escaping de aspa embutida; ver comentario de recall_query_sql_ro).
+#
+# `immutable=1` e OBRIGATORIO junto de `mode=ro` (nao apenas um dos dois):
+# testado empiricamente que `mode=ro` SOZINHO falha ("unable to open
+# database file") sempre que o state.db esta em journal_mode=WAL SEM os
+# sidecars `-shm`/`-wal` presentes no disco — o caso COMUM logo apos
+# `state-db-migrate.sh migrate` (que fecha a conexao de escrita e
+# tipicamente faz checkpoint, removendo os sidecars) ou entre ondas do
+# orquestrador (cada invocacao da CLI abre/fecha sua propria conexao). Um
+# leitor mode=ro precisaria criar o `-shm` para coordenar o indice WAL, mas
+# mode=ro proibe qualquer criacao de arquivo — falha em exatamente o caso
+# mais comum. `immutable=1` informa ao SQLite que o arquivo nao mudara
+# durante a conexao, dispensando o `-shm` inteiramente, MANTENDO a mesma
+# rejeicao de escrita a nivel de driver ("attempt to write a readonly
+# database", exit 8) — verificado com e sem sidecars presentes. Usada para
+# TODA leitura do state.db pela ingestao SQL->SQL (FR-009): a fonte NUNCA
+# pode ser escrita por este caminho — dec-037 (refinado empiricamente nesta
+# FASE 8; `mode=ro` isolado, como a Decisao original propunha, se mostrou
+# insuficiente na pratica).
+recall_sqlite_ro_uri() {
+  printf 'file:%s?mode=ro&immutable=1' \
+    "$(printf '%s' "$1" | sed "s/%/%25/g; s/?/%3F/g; s/#/%23/g; s/ /%20/g; s/'/%27/g; s/&/%26/g")"
+}
+
+# recall_query_sql_ro DB_PATH SQL_TEXT -> como recall_query_sql, mas abre
+# DB_PATH estritamente read-only via a URI de recall_sqlite_ro_uri. Uso
+# exclusivo: ler o state.db a partir da ingestao SQL->SQL
+# (recall_ingest_state_db) — a fonte NUNCA pode ser escrita por este
+# caminho, mesmo em consultas de leitura pontual (contagens/proveniencia).
+#
+# IMPORTANTE: passar a URI como argumento FILENAME posicional do sqlite3 NAO
+# ativa o parsing de URI nesta CLI (testado empiricamente: build Apple do
+# sqlite3 3.51.0 nao reconhece `file:...?mode=ro` como FILENAME direto —
+# "unable to open database file"; so `-uri` ativaria, mas essa flag nao
+# existe nesta build). O dot-command `.open '<uri>'` SEMPRE reconhece URI
+# (mesmo codigo usado por `ATTACH DATABASE 'file:...'`, que ja funciona
+# passado direto em SQL — ATTACH sempre interpreta URI, independente da
+# CLI). Abre um `:memory:` inicial (nunca tocado) e troca via `.open`.
+recall_query_sql_ro() {
+  printf '%s\n' "$2" \
+    | sqlite3 -cmd '.timeout 5000' -cmd ".open '$(recall_sqlite_ro_uri "$1")'" -- :memory: 2>/dev/null
+}
+
 # ==========================================================================
 # Dispatcher de modos (parsing de argv: busca | --ingest | --reindex)
 # ==========================================================================
@@ -946,28 +994,41 @@ recall_derive_canonical() {
     printf '%s' "$_rdc_name" | strip_nul
     return 0
   fi
+  recall_derive_canonical_from_path "$_rdc_pap"
+  return 0
+}
+
+# recall_derive_canonical_from_path TARGET_PROJECT_PATH -> stdout: nome
+# canonico, camadas 2+3 de recall_derive_canonical (git ao vivo -> basename).
+# Extraido para ser reusado pelo caminho SQL de ingestao
+# (recall_ingest_state_db): a camada 1 la vem de uma COLUNA (execution.
+# canonical_project), nao de jq sobre um state.json — so as camadas 2/3
+# (que nao dependem de JSON) sao compartilhaveis. Mesmas garantias: nunca
+# falha, stdout nao-vazio quando TARGET_PROJECT_PATH nao-vazio.
+recall_derive_canonical_from_path() {
+  _rdcp_pap="$1"
   # Camada 2: git ao vivo — somente quando `.git` e ARQUIVO (worktree).
-  if [ -n "$_rdc_pap" ] && [ -f "$_rdc_pap/.git" ] \
+  if [ -n "$_rdcp_pap" ] && [ -f "$_rdcp_pap/.git" ] \
      && command -v git >/dev/null 2>&1; then
-    _rdc_common=$(git -C "$_rdc_pap" rev-parse --git-common-dir 2>/dev/null) \
-      || _rdc_common=""
-    if [ -n "$_rdc_common" ]; then
+    _rdcp_common=$(git -C "$_rdcp_pap" rev-parse --git-common-dir 2>/dev/null) \
+      || _rdcp_common=""
+    if [ -n "$_rdcp_common" ]; then
       # Normalizacao relativo->absoluto (CHK026): git pode retornar `.git`
       # relativo; prefixar o proprio path-alvo antes do dirname.
-      case "$_rdc_common" in
+      case "$_rdcp_common" in
         /*) : ;;
-        *)  _rdc_common="$_rdc_pap/$_rdc_common" ;;
+        *)  _rdcp_common="$_rdcp_pap/$_rdcp_common" ;;
       esac
-      _rdc_name=$(basename -- "$(dirname -- "$_rdc_common" 2>/dev/null)" 2>/dev/null) \
-        || _rdc_name=""
-      if [ -n "$_rdc_name" ] && [ "$_rdc_name" != "/" ] && [ "$_rdc_name" != "." ]; then
-        printf '%s' "$_rdc_name" | strip_nul
+      _rdcp_name=$(basename -- "$(dirname -- "$_rdcp_common" 2>/dev/null)" 2>/dev/null) \
+        || _rdcp_name=""
+      if [ -n "$_rdcp_name" ] && [ "$_rdcp_name" != "/" ] && [ "$_rdcp_name" != "." ]; then
+        printf '%s' "$_rdcp_name" | strip_nul
         return 0
       fi
     fi
   fi
   # Camada 3: fallback final = basename do path-alvo (comportamento atual).
-  basename -- "$_rdc_pap" 2>/dev/null | strip_nul
+  basename -- "$_rdcp_pap" 2>/dev/null | strip_nul
   return 0
 }
 
@@ -1918,6 +1979,381 @@ COMMIT;"
   return "$RECALL_EXIT_OK"
 }
 
+# ==========================================================================
+# FASE 8 (state-db-foundation) — Ingestao SQL->SQL a partir de state.db
+# ==========================================================================
+#
+# recall_ingest_state_db STATE_DB STATE_DIR DB -> ingere um unico state.db
+# (backend SQLite dual do state-db-foundation) no indice DB. Caminho ADITIVO
+# a recall_ingest_state_json (FR-012): so acionado quando state.db existe
+# (recall_mode_ingest decide qual dos dois chamar — o caminho JSON permanece
+# intocado para projetos ainda nao migrados).
+#
+# Mecanismo (dec-037, D7-a): `ATTACH DATABASE 'file:...?mode=ro' AS src;`
+# seguido de `INSERT ... SELECT` por entidade (research.md Decision 7).
+# `mode=ro` e ENFORCED pelo driver SQLite — a fonte nunca pode ser escrita
+# por este caminho (FR-009), sem depender de disciplina de codigo.
+#
+# Duas passagens (dec auditavel registrada pelo caller apos o 1o ingest):
+#   PASS 1 (ATTACH + INSERT...SELECT, uma unica transacao): copia em bloco
+#     as 7 entidades (executions, waves, decisions, blocks, tasks, events,
+#     skills) com TODAS as colunas, incluindo os campos de texto livre
+#     AINDA NAO filtrados. json_extract()/json_each() (JSON1, piso
+#     sqlite3 3.45.1 — research.md Decision 10) extraem os blobs JSON de
+#     wave.agent_usage/agent_spawns/otel_usage e filtram/normalizam
+#     wave.executed_stages em SQL puro, sem shell/jq.
+#   PASS 2 (fixup, mesma conexao knowledge.db, SEM ATTACH): secrets-filter.sh
+#     e um processo externo — nenhuma extensao SQL o substitui. Os poucos
+#     campos de texto livre (executions.termination_reason;
+#     decisions.context/rationale/evidence; blocks.question/
+#     context_for_answer/answer; tasks.title; events.description) sao lidos
+#     de volta (JSON via json_group_array, mesmo idioma de
+#     recall_ingest_state_json), filtrados via recall_scrub e regravados via
+#     UPDATE ... WHERE id=<pk interno>. Encerra reconstruindo knowledge_fts
+#     (decisions/blocks) so com o corpo ja filtrado, escopado por
+#     execution_id (nunca apaga FTS de outras execucoes da mesma feature).
+#
+# Idempotencia: mesma chave UNIQUE(project,feature,wave,source_id) +
+# ON CONFLICT DO UPDATE do caminho JSON. Best-effort: qualquer falha
+# degrada gracioso (aviso + exit 0), nunca aborta a onda.
+recall_ingest_state_db() {
+  _isd_state_db="$1"
+  _isd_state_dir="$2"
+  _isd_db="$3"
+
+  if [ ! -r "$_isd_state_db" ]; then
+    log_warn "recall: state.db ausente ou ilegivel: $_isd_state_db (ingestao pulada)"
+    return "$RECALL_EXIT_OK"
+  fi
+
+  _isd_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _isd_now="1970-01-01T00:00:00Z"
+
+  # ---- Proveniencia (grao = 1 execucao por state.db) ----
+  _isd_prov_json=$(recall_query_sql_ro "$_isd_state_db" \
+    "SELECT json_object('id',id,'canonical_project',canonical_project,'short_name',short_name,'target_project_path',target_project_path,'session_name',session_name) FROM execution LIMIT 1;")
+  if [ -z "$_isd_prov_json" ]; then
+    log_warn "recall: state.db sem linha em 'execution': $_isd_state_db (ingestao pulada)"
+    return "$RECALL_EXIT_OK"
+  fi
+  _isd_exec_id=$(printf '%s' "$_isd_prov_json" | jq -r '.id // ""' 2>/dev/null | strip_nul)
+  _isd_canon=$(printf '%s' "$_isd_prov_json" | jq -r '.canonical_project // ""' 2>/dev/null | strip_nul)
+  _isd_short=$(printf '%s' "$_isd_prov_json" | jq -r '.short_name // ""' 2>/dev/null | strip_nul)
+  _isd_proj_path=$(printf '%s' "$_isd_prov_json" | jq -r '.target_project_path // ""' 2>/dev/null | strip_nul)
+  _isd_session=$(printf '%s' "$_isd_prov_json" | jq -r '.session_name // ""' 2>/dev/null | strip_nul)
+  if [ -z "$_isd_exec_id" ]; then
+    log_warn "recall: state.db com execution.id vazio: $_isd_state_db (ingestao pulada)"
+    return "$RECALL_EXIT_OK"
+  fi
+
+  # project: camada 1 (coluna canonical_project, congelada no init) ->
+  # camadas 2/3 compartilhadas com o caminho JSON.
+  if [ -n "$_isd_canon" ]; then
+    _isd_project="$_isd_canon"
+  else
+    _isd_project=$(recall_derive_canonical_from_path "$_isd_proj_path") || _isd_project=""
+  fi
+  [ -n "$_isd_project" ] || _isd_project="unknown"
+
+  # feature: coluna short_name -> fallback por layout de diretorio (mesma
+  # heuristica do caminho JSON, aplicada sobre STATE_DIR: parent =
+  # dirname(STATE_DIR), leaf = basename(STATE_DIR) — equivalente a
+  # dirname/basename do state.json dentro daquele diretorio).
+  _isd_feature="$_isd_short"
+  if [ -z "$_isd_feature" ]; then
+    _isd_parent=$(dirname -- "$_isd_state_dir" 2>/dev/null) || _isd_parent=""
+    if [ "$(basename -- "$_isd_parent" 2>/dev/null)" = "feature-00c-state" ]; then
+      _isd_feature=$(basename -- "$_isd_state_dir" 2>/dev/null) || _isd_feature=""
+    elif [ "$(basename -- "$_isd_state_dir" 2>/dev/null)" = "agente-00c-state" ]; then
+      _isd_feature="$_isd_project"
+    fi
+  fi
+  [ -n "$_isd_feature" ] || _isd_feature="unknown"
+
+  _isd_project_sql="'$(sql_escape "$_isd_project")'"
+  _isd_feature_sql="'$(sql_escape "$_isd_feature")'"
+  _isd_exec_id_sql="'$(sql_escape "$_isd_exec_id")'"
+  _isd_now_sql="'$(sql_escape "$_isd_now")'"
+  if [ -n "$_isd_session" ]; then
+    _isd_session_sql="'$(sql_escape "$_isd_session")'"
+  else
+    _isd_session_sql="NULL"
+  fi
+  if [ -n "$_isd_proj_path" ]; then
+    _isd_path_sql="'$(sql_escape "$_isd_proj_path")'"
+  else
+    _isd_path_sql="NULL"
+  fi
+
+  # ---- Contagens (mesma semantica dos contadores do caminho JSON: linhas
+  # de origem processadas, nao delta real do UPSERT) — lidas do state.db. ----
+  _isd_counts_json=$(recall_query_sql_ro "$_isd_state_db" "
+SELECT json_object(
+  'n_wave',(SELECT count(*) FROM wave WHERE execution_id=$_isd_exec_id_sql),
+  'n_dec',(SELECT count(*) FROM decision WHERE execution_id=$_isd_exec_id_sql),
+  'n_bloq',(SELECT count(*) FROM human_block WHERE execution_id=$_isd_exec_id_sql),
+  'n_task',(SELECT count(*) FROM task_outcome WHERE execution_id=$_isd_exec_id_sql),
+  'n_event',(SELECT count(*) FROM event WHERE execution_id=$_isd_exec_id_sql),
+  'n_skill',(SELECT count(*) FROM skill_invocation si JOIN wave w ON w.id=si.wave_id WHERE w.execution_id=$_isd_exec_id_sql AND si.kind != 'gate')
+);")
+  _isd_n_exec=1
+  _isd_n_wave=$(printf '%s' "$_isd_counts_json" | jq -r '.n_wave // 0' 2>/dev/null)
+  _isd_n_dec=$(printf '%s' "$_isd_counts_json" | jq -r '.n_dec // 0' 2>/dev/null)
+  _isd_n_bloq=$(printf '%s' "$_isd_counts_json" | jq -r '.n_bloq // 0' 2>/dev/null)
+  _isd_n_task=$(printf '%s' "$_isd_counts_json" | jq -r '.n_task // 0' 2>/dev/null)
+  _isd_n_event=$(printf '%s' "$_isd_counts_json" | jq -r '.n_event // 0' 2>/dev/null)
+  _isd_n_skill=$(printf '%s' "$_isd_counts_json" | jq -r '.n_skill // 0' 2>/dev/null)
+
+  # ==== PASS 1: ATTACH + INSERT...SELECT em bloco (texto livre AINDA cru) ====
+  _isd_attach_val="$(sql_escape "$(recall_sqlite_ro_uri "$_isd_state_db")")"
+  _isd_p1="ATTACH DATABASE '$_isd_attach_val' AS src;
+BEGIN;
+INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,target_project_path,ingested_at)
+SELECT $_isd_project_sql,$_isd_feature_sql,'-',e.id,e.started_at,e.id,
+  e.status, e.termination_reason,
+  CASE WHEN e.status='concluida' THEN 'concluido' ELSE e.current_stage END,
+  e.started_at, e.finished_at,
+  CAST(unixepoch(e.finished_at) - unixepoch(e.started_at) AS INTEGER),
+  e.suggested_stack,
+  (SELECT count(*) FROM src.wave WHERE execution_id=e.id),
+  (SELECT sum(tool_calls) FROM src.wave WHERE execution_id=e.id),
+  (SELECT sum(wallclock_seconds) FROM src.wave WHERE execution_id=e.id),
+  NULL, e.subagent_depth,
+  (SELECT count(*) FROM src.decision WHERE execution_id=e.id),
+  (SELECT count(*) FROM src.human_block WHERE execution_id=e.id),
+  NULL, NULL,
+  $_isd_session_sql,$_isd_path_sql,$_isd_now_sql
+FROM src.execution e
+WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,session=excluded.session,target_project_path=excluded.target_project_path,ingested_at=excluded.ingested_at;
+
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,session,agent_spawns_total,agent_spawns_with_usage,agent_total_tokens,agent_input_tokens,agent_output_tokens,agent_cache_read_tokens,agent_cache_creation_tokens,agent_tool_use_count,agent_duration_ms,otel_cost_usd,otel_cost_main_usd,otel_cost_subagent_usd,otel_total_tokens,otel_subagent_tokens,otel_main_input_tokens,otel_main_output_tokens,otel_main_cache_read_tokens,otel_main_cache_creation_tokens,otel_subagent_input_tokens,otel_subagent_output_tokens,otel_subagent_cache_read_tokens,otel_subagent_cache_creation_tokens,ingested_at)
+SELECT $_isd_project_sql,$_isd_feature_sql,w.id,w.execution_id,w.started_at,w.id,
+  CASE WHEN coalesce(json_array_length(w.executed_stages),0) > 0
+        AND coalesce((SELECT count(*) FROM json_each(w.executed_stages) je WHERE je.value GLOB '[A-Za-z0-9]*' AND je.value NOT GLOB '*[^A-Za-z0-9._-]*' AND length(je.value)<=64),0)=0
+       THEN NULL
+       ELSE coalesce((SELECT group_concat(je.value,',' ORDER BY je.key) FROM json_each(w.executed_stages) je WHERE je.value GLOB '[A-Za-z0-9]*' AND je.value NOT GLOB '*[^A-Za-z0-9._-]*' AND length(je.value)<=64),'')
+  END,
+  w.started_at, w.finished_at, w.wallclock_seconds, w.tool_calls, w.termination_reason,
+  CASE WHEN coalesce(json_array_length(w.executed_stages),0) > 0
+        AND coalesce((SELECT count(*) FROM json_each(w.executed_stages) je WHERE je.value GLOB '[A-Za-z0-9]*' AND je.value NOT GLOB '*[^A-Za-z0-9._-]*' AND length(je.value)<=64),0)=0
+       THEN NULL
+       ELSE coalesce((SELECT count(*) FROM json_each(w.executed_stages) je WHERE je.value GLOB '[A-Za-z0-9]*' AND je.value NOT GLOB '*[^A-Za-z0-9._-]*' AND length(je.value)<=64),0)
+  END,
+  (SELECT count(*) FROM src.skill_invocation si WHERE si.wave_id=w.id AND si.kind != 'gate'),
+  $_isd_session_sql,
+  json_extract(w.agent_usage,'\$.spawns_total'), json_extract(w.agent_usage,'\$.spawns_with_usage'),
+  json_extract(w.agent_usage,'\$.total_tokens'), json_extract(w.agent_usage,'\$.input_tokens'),
+  json_extract(w.agent_usage,'\$.output_tokens'), json_extract(w.agent_usage,'\$.cache_read_input_tokens'),
+  json_extract(w.agent_usage,'\$.cache_creation_input_tokens'), json_extract(w.agent_usage,'\$.tool_use_count'),
+  json_extract(w.agent_usage,'\$.duration_ms'),
+  json_extract(w.otel_usage,'\$.total_cost_usd'), json_extract(w.otel_usage,'\$.by_source.main.cost_usd'),
+  json_extract(w.otel_usage,'\$.by_source.subagent.cost_usd'), json_extract(w.otel_usage,'\$.total_tokens'),
+  (CASE WHEN json_extract(w.otel_usage,'\$.by_source.subagent') IS NULL THEN NULL
+        ELSE coalesce(json_extract(w.otel_usage,'\$.by_source.subagent.input'),0)
+           + coalesce(json_extract(w.otel_usage,'\$.by_source.subagent.output'),0)
+           + coalesce(json_extract(w.otel_usage,'\$.by_source.subagent.cache_read'),0)
+           + coalesce(json_extract(w.otel_usage,'\$.by_source.subagent.cache_creation'),0)
+   END),
+  json_extract(w.otel_usage,'\$.by_source.main.input'), json_extract(w.otel_usage,'\$.by_source.main.output'),
+  json_extract(w.otel_usage,'\$.by_source.main.cache_read'), json_extract(w.otel_usage,'\$.by_source.main.cache_creation'),
+  json_extract(w.otel_usage,'\$.by_source.subagent.input'), json_extract(w.otel_usage,'\$.by_source.subagent.output'),
+  json_extract(w.otel_usage,'\$.by_source.subagent.cache_read'), json_extract(w.otel_usage,'\$.by_source.subagent.cache_creation'),
+  $_isd_now_sql
+FROM src.wave w
+WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,session=excluded.session,agent_spawns_total=excluded.agent_spawns_total,agent_spawns_with_usage=excluded.agent_spawns_with_usage,agent_total_tokens=excluded.agent_total_tokens,agent_input_tokens=excluded.agent_input_tokens,agent_output_tokens=excluded.agent_output_tokens,agent_cache_read_tokens=excluded.agent_cache_read_tokens,agent_cache_creation_tokens=excluded.agent_cache_creation_tokens,agent_tool_use_count=excluded.agent_tool_use_count,agent_duration_ms=excluded.agent_duration_ms,otel_cost_usd=excluded.otel_cost_usd,otel_cost_main_usd=excluded.otel_cost_main_usd,otel_cost_subagent_usd=excluded.otel_cost_subagent_usd,otel_total_tokens=excluded.otel_total_tokens,otel_subagent_tokens=excluded.otel_subagent_tokens,otel_main_input_tokens=excluded.otel_main_input_tokens,otel_main_output_tokens=excluded.otel_main_output_tokens,otel_main_cache_read_tokens=excluded.otel_main_cache_read_tokens,otel_main_cache_creation_tokens=excluded.otel_main_cache_creation_tokens,otel_subagent_input_tokens=excluded.otel_subagent_input_tokens,otel_subagent_output_tokens=excluded.otel_subagent_output_tokens,otel_subagent_cache_read_tokens=excluded.otel_subagent_cache_read_tokens,otel_subagent_cache_creation_tokens=excluded.otel_subagent_cache_creation_tokens,ingested_at=excluded.ingested_at;
+
+INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,agent,stage,choice,options,score,context,rationale,evidence,ingested_at)
+SELECT $_isd_project_sql,$_isd_feature_sql,coalesce(d.wave_id,'onda'),d.execution_id,d.timestamp,d.id,
+  d.agent,
+  CASE WHEN d.stage='model-routing' AND substr(d.context,-1,1)=')' AND instr(d.context,'(fase ')>0
+       THEN substr(d.context, instr(d.context,'(fase ')+6, length(d.context)-instr(d.context,'(fase ')-6)
+       ELSE d.stage END,
+  d.choice, d.options_considered, d.justification_score,
+  d.context, d.rationale, d.evidence,
+  $_isd_now_sql
+FROM src.decision d
+WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agent=excluded.agent,stage=excluded.stage,choice=excluded.choice,options=excluded.options,score=excluded.score,context=excluded.context,rationale=excluded.rationale,evidence=excluded.evidence,ingested_at=excluded.ingested_at;
+
+INSERT INTO blocks(project,feature,wave,execution_id,source_ts,source_id,status,question,context_for_answer,answer,decision_id,triggered_at,answered_at,latency_seconds,ingested_at)
+SELECT $_isd_project_sql,$_isd_feature_sql,'bloq',h.execution_id,coalesce(h.answered_at,h.triggered_at),h.id,
+  h.status, h.question, h.context_for_answer, h.human_answer, h.decision_id, h.triggered_at, h.answered_at,
+  CASE WHEN h.triggered_at IS NOT NULL AND h.answered_at IS NOT NULL
+       THEN CAST(unixepoch(h.answered_at) - unixepoch(h.triggered_at) AS INTEGER) ELSE NULL END,
+  $_isd_now_sql
+FROM src.human_block h
+WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,question=excluded.question,context_for_answer=excluded.context_for_answer,answer=excluded.answer,decision_id=excluded.decision_id,triggered_at=excluded.triggered_at,answered_at=excluded.answered_at,latency_seconds=excluded.latency_seconds,ingested_at=excluded.ingested_at;
+
+INSERT INTO tasks(project,feature,wave,execution_id,source_ts,source_id,title,outcome,tests_run,tests_passed,lint_ok,touched_files,ingested_at)
+SELECT $_isd_project_sql,$_isd_feature_sql,t.wave_id,t.execution_id,'',t.task_id,
+  t.title, t.outcome, t.tests_run, t.tests_passed, t.lint_ok,
+  coalesce(json_array_length(t.touched_files),0),
+  $_isd_now_sql
+FROM src.task_outcome t
+WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,title=excluded.title,outcome=excluded.outcome,tests_run=excluded.tests_run,tests_passed=excluded.tests_passed,lint_ok=excluded.lint_ok,touched_files=excluded.touched_files,ingested_at=excluded.ingested_at;
+
+INSERT INTO events(project,feature,wave,execution_id,source_ts,source_id,event_type,timestamp,description,ingested_at)
+SELECT $_isd_project_sql,$_isd_feature_sql,'-',ev.execution_id,ev.timestamp,ev.event_type || ':' || ev.timestamp,
+  ev.event_type, ev.timestamp, ev.description,
+  $_isd_now_sql
+FROM src.event ev
+WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,event_type=excluded.event_type,timestamp=excluded.timestamp,description=excluded.description,ingested_at=excluded.ingested_at;
+
+INSERT INTO skills(project,feature,wave,execution_id,source_ts,source_id,skill_name,decision_id,ingested_at)
+SELECT $_isd_project_sql,$_isd_feature_sql,si.wave_id,w2.execution_id,si.timestamp,
+  'skill-' || si.wave_id || '-' || (ord.rn - 1),
+  si.skill, si.decision_id, $_isd_now_sql
+FROM src.skill_invocation si
+JOIN src.wave w2 ON w2.id = si.wave_id
+JOIN (SELECT id, ROW_NUMBER() OVER (PARTITION BY wave_id ORDER BY id) AS rn FROM src.skill_invocation) ord ON ord.id = si.id
+WHERE si.kind != 'gate'
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,skill_name=excluded.skill_name,decision_id=excluded.decision_id,ingested_at=excluded.ingested_at;
+
+DELETE FROM knowledge_fts WHERE type='skill' AND project=$_isd_project_sql AND feature=$_isd_feature_sql AND source_id IN (SELECT source_id FROM skills WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql);
+INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
+SELECT skill_name,'skill',project,feature,wave,source_id,source_ts FROM skills WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql;
+
+COMMIT;
+DETACH DATABASE src;"
+
+  recall_apply_sql_with_retry "$_isd_db" "$_isd_p1" || {
+    log_warn "recall: ingestao SQL->SQL de $_isd_state_db degradou (lock persistente apos retries); pulada"
+    return "$RECALL_EXIT_OK"
+  }
+
+  # ==== PASS 2: fixup de scrub (secrets-filter.sh e processo externo, sem
+  # equivalente em SQL puro) + reconstrucao de knowledge_fts com o corpo ja
+  # filtrado. Sem ATTACH — opera so sobre knowledge.db. Escopado por
+  # execution_id em toda consulta/():nunca toca linhas de outras execucoes. ====
+  _isd_fix="BEGIN;"
+
+  _isd_tr_json=$(recall_query_sql "$_isd_db" \
+    "SELECT json_object('tr',termination_reason) FROM executions WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql AND wave='-';")
+  _isd_tr=$(printf '%s' "$_isd_tr_json" | jq -r '.tr // empty' 2>/dev/null | strip_nul)
+  if [ -n "$_isd_tr" ]; then
+    _isd_tr=$(recall_scrub "$_isd_tr")
+    _isd_fix="$_isd_fix
+UPDATE executions SET termination_reason='$(sql_escape "$_isd_tr")' WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql AND wave='-';"
+  fi
+
+  _isd_dec_json=$(recall_query_sql "$_isd_db" \
+    "SELECT coalesce(json_group_array(json_object('id',id,'context',context,'rationale',rationale,'evidence',evidence)),'[]') FROM decisions WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql;")
+  _isd_rows=$(printf '%s' "$_isd_dec_json" | jq -r '.[] | @base64' 2>/dev/null)
+  if [ -n "$_isd_rows" ]; then
+    _isd_OLDIFS="$IFS"; IFS='
+'
+    for _isd_row in $_isd_rows; do
+      _isd_dec=$(printf '%s' "$_isd_row" | base64 -d 2>/dev/null) || continue
+      _isd_rid=$(printf '%s' "$_isd_dec" | jq -r '.id' 2>/dev/null)
+      case "$_isd_rid" in ''|*[!0-9]*) continue ;; esac
+      _isd_ctx=$(printf '%s' "$_isd_dec" | jq -r '.context // ""' 2>/dev/null | strip_nul)
+      _isd_rat=$(printf '%s' "$_isd_dec" | jq -r '.rationale // ""' 2>/dev/null | strip_nul)
+      _isd_evd=$(printf '%s' "$_isd_dec" | jq -r '.evidence // ""' 2>/dev/null | strip_nul)
+      _isd_ctx=$(recall_scrub "$_isd_ctx")
+      _isd_rat=$(recall_scrub "$_isd_rat")
+      _isd_evd=$(recall_scrub "$_isd_evd")
+      _isd_fix="$_isd_fix
+UPDATE decisions SET context='$(sql_escape "$_isd_ctx")',rationale='$(sql_escape "$_isd_rat")',evidence='$(sql_escape "$_isd_evd")' WHERE id=$_isd_rid;"
+    done
+    IFS="$_isd_OLDIFS"
+  fi
+
+  _isd_bloq_json=$(recall_query_sql "$_isd_db" \
+    "SELECT coalesce(json_group_array(json_object('id',id,'question',question,'context_for_answer',context_for_answer,'answer',answer)),'[]') FROM blocks WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql;")
+  _isd_rows=$(printf '%s' "$_isd_bloq_json" | jq -r '.[] | @base64' 2>/dev/null)
+  if [ -n "$_isd_rows" ]; then
+    _isd_OLDIFS="$IFS"; IFS='
+'
+    for _isd_row in $_isd_rows; do
+      _isd_b=$(printf '%s' "$_isd_row" | base64 -d 2>/dev/null) || continue
+      _isd_rid=$(printf '%s' "$_isd_b" | jq -r '.id' 2>/dev/null)
+      case "$_isd_rid" in ''|*[!0-9]*) continue ;; esac
+      _isd_q=$(printf '%s' "$_isd_b" | jq -r '.question // ""' 2>/dev/null | strip_nul)
+      _isd_cpr=$(printf '%s' "$_isd_b" | jq -r '.context_for_answer // ""' 2>/dev/null | strip_nul)
+      _isd_ans=$(printf '%s' "$_isd_b" | jq -r '.answer // ""' 2>/dev/null | strip_nul)
+      _isd_q=$(recall_scrub "$_isd_q")
+      _isd_cpr=$(recall_scrub "$_isd_cpr")
+      _isd_ans=$(recall_scrub "$_isd_ans")
+      _isd_fix="$_isd_fix
+UPDATE blocks SET question='$(sql_escape "$_isd_q")',context_for_answer='$(sql_escape "$_isd_cpr")',answer='$(sql_escape "$_isd_ans")' WHERE id=$_isd_rid;"
+    done
+    IFS="$_isd_OLDIFS"
+  fi
+
+  _isd_task_json=$(recall_query_sql "$_isd_db" \
+    "SELECT coalesce(json_group_array(json_object('id',id,'title',title)),'[]') FROM tasks WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql;")
+  _isd_rows=$(printf '%s' "$_isd_task_json" | jq -r '.[] | @base64' 2>/dev/null)
+  if [ -n "$_isd_rows" ]; then
+    _isd_OLDIFS="$IFS"; IFS='
+'
+    for _isd_row in $_isd_rows; do
+      _isd_t=$(printf '%s' "$_isd_row" | base64 -d 2>/dev/null) || continue
+      _isd_rid=$(printf '%s' "$_isd_t" | jq -r '.id' 2>/dev/null)
+      case "$_isd_rid" in ''|*[!0-9]*) continue ;; esac
+      _isd_tit=$(printf '%s' "$_isd_t" | jq -r '.title // ""' 2>/dev/null | strip_nul)
+      _isd_tit=$(recall_scrub "$_isd_tit")
+      _isd_fix="$_isd_fix
+UPDATE tasks SET title='$(sql_escape "$_isd_tit")' WHERE id=$_isd_rid;"
+    done
+    IFS="$_isd_OLDIFS"
+  fi
+
+  _isd_event_json=$(recall_query_sql "$_isd_db" \
+    "SELECT coalesce(json_group_array(json_object('id',id,'description',description)),'[]') FROM events WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql;")
+  _isd_rows=$(printf '%s' "$_isd_event_json" | jq -r '.[] | @base64' 2>/dev/null)
+  if [ -n "$_isd_rows" ]; then
+    _isd_OLDIFS="$IFS"; IFS='
+'
+    for _isd_row in $_isd_rows; do
+      _isd_e=$(printf '%s' "$_isd_row" | base64 -d 2>/dev/null) || continue
+      _isd_rid=$(printf '%s' "$_isd_e" | jq -r '.id' 2>/dev/null)
+      case "$_isd_rid" in ''|*[!0-9]*) continue ;; esac
+      _isd_isnull=$(printf '%s' "$_isd_e" | jq -r '.description == null' 2>/dev/null)
+      [ "$_isd_isnull" = "true" ] && continue
+      _isd_desc=$(printf '%s' "$_isd_e" | jq -r '.description // ""' 2>/dev/null | strip_nul)
+      _isd_desc=$(recall_scrub "$_isd_desc")
+      _isd_fix="$_isd_fix
+UPDATE events SET description='$(sql_escape "$_isd_desc")' WHERE id=$_isd_rid;"
+    done
+    IFS="$_isd_OLDIFS"
+  fi
+
+  # Reconstrucao de knowledge_fts (decisions/blocks) com o corpo ja
+  # filtrado — escopada por execution_id (nunca apaga FTS de outras
+  # execucoes da mesma feature/projeto). Ordem do corpo espelha
+  # recall_ingest_state_json: decision=choice+options+context+rationale+
+  # evidence; block=question+context_for_answer+answer.
+  _isd_fix="$_isd_fix
+DELETE FROM knowledge_fts WHERE type='decision' AND project=$_isd_project_sql AND feature=$_isd_feature_sql AND source_id IN (SELECT source_id FROM decisions WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql);
+INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
+SELECT coalesce(choice,'')||' '||coalesce(options,'')||' '||coalesce(context,'')||' '||coalesce(rationale,'')||' '||coalesce(evidence,''),'decision',project,feature,wave,source_id,source_ts
+FROM decisions WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql;
+
+DELETE FROM knowledge_fts WHERE type='block' AND project=$_isd_project_sql AND feature=$_isd_feature_sql AND source_id IN (SELECT source_id FROM blocks WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql);
+INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
+SELECT coalesce(question,'')||' '||coalesce(context_for_answer,'')||' '||coalesce(answer,''),'block',project,feature,wave,source_id,source_ts
+FROM blocks WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql;
+
+COMMIT;"
+
+  recall_apply_sql_with_retry "$_isd_db" "$_isd_fix" || {
+    log_warn "recall: fixup de scrub (PASS 2) de $_isd_state_db degradou (lock persistente); dados PASS 1 ficam sem filtro de segredo ate proxima ingestao"
+  }
+
+  RECALL_TOTAL_EXEC=$((${RECALL_TOTAL_EXEC:-0} + _isd_n_exec))
+  RECALL_TOTAL_WAVE=$((${RECALL_TOTAL_WAVE:-0} + _isd_n_wave))
+  RECALL_TOTAL_DEC=$((${RECALL_TOTAL_DEC:-0} + _isd_n_dec))
+  RECALL_TOTAL_BLOQ=$((${RECALL_TOTAL_BLOQ:-0} + _isd_n_bloq))
+  RECALL_TOTAL_TASK=$((${RECALL_TOTAL_TASK:-0} + _isd_n_task))
+  RECALL_TOTAL_EVENT=$((${RECALL_TOTAL_EVENT:-0} + _isd_n_event))
+  RECALL_TOTAL_SKILL=$((${RECALL_TOTAL_SKILL:-0} + _isd_n_skill))
+  return "$RECALL_EXIT_OK"
+}
+
 # recall_backoff_sleep TRY -> dorme ~TRY segundos + jitter fracionario [0,1)s
 # derivado do PID. Sem jitter, dois writers que colidiram dormem o MESMO tempo
 # e re-colidem em lockstep (thundering herd) ate esgotar retries; o jitter
@@ -2185,8 +2621,18 @@ recall_mode_ingest() {
   RECALL_TOTAL_EXEC=0; RECALL_TOTAL_WAVE=0; RECALL_TOTAL_ALERT=0
   RECALL_TOTAL_TASK=0; RECALL_TOTAL_EVENT=0; RECALL_TOTAL_MEMORY=0
   RECALL_TOTAL_SUGGESTION=0; RECALL_TOTAL_WAVE_MODEL=0
-  recall_ingest_state_json "$_ing_state_dir/state.json" "$_ing_db"
-  # Passo aditivo (CQ2): ingerir memorias do projeto apos state.json.
+  # FR-008/FR-012 (state-db-foundation, task 8.2.1): presenca de state.db
+  # escolhe o caminho SQL->SQL (recall_ingest_state_db); ausencia preserva
+  # o caminho JSON atual SEM ALTERACAO (projeto ainda nao migrado — US4
+  # AS-2). Os dois caminhos sao mutuamente exclusivos por execucao: um
+  # state-dir tem OU state.json OU state.db como fonte de verdade corrente
+  # (nunca ambos simultaneamente pos-migracao — contracts/migration.md).
+  if [ -r "$_ing_state_dir/state.db" ]; then
+    recall_ingest_state_db "$_ing_state_dir/state.db" "$_ing_state_dir" "$_ing_db"
+  else
+    recall_ingest_state_json "$_ing_state_dir/state.json" "$_ing_db"
+  fi
+  # Passo aditivo (CQ2): ingerir memorias do projeto apos state.json/state.db.
   recall_ingest_memories "$_ing_state_dir" "$_ing_db"
 
   printf 'ingested: %d decisions, %d blocks, %d retros, %d skills, %d executions, %d waves, %d alerts, %d tasks, %d events, %d memories, %d suggestions, %d wave_model_usage\n' \

@@ -430,4 +430,246 @@ scenario_ptbr_legado_register_helpers_via_fallback() {
   assert_stdout_contains "dec-002" || return 1
 }
 
+# ==== Backend dual SQLite (feature state-db-foundation, FASE 3 task 3.4) ====
+#
+# Ref: docs/specs/state-db-foundation/contracts/primitives.md §C1 (paridade)
+#      §C2 (selecao de backend) §C4 (transacao) §C6 (concorrencia) §C8 (escape)
+#
+# Mesmo padrao de tests/test_state-ondas.sh (task 3.3): aplica o DDL via
+# state-db-schema.sh e semeia uma execution minima via sqlite3 diretamente
+# (init nunca cria state.db — isso e a migracao, FASE 6, ainda nao
+# implementada).
+
+SCHEMA_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-db-schema.sh"
+SO="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
+
+if ! command -v sqlite3 >/dev/null 2>&1; then
+  printf '# test_state-decisions.sh: sqlite3 ausente — pulando cenarios de backend SQLite\n'
+else
+
+# _seed_sqlite_backend DIR -> cria state.db com uma execution minima
+# (id=exec-1), pronta para register/count/next-id/list.
+_seed_sqlite_backend() {
+  _ssb_dir=$1
+  mkdir -p "$_ssb_dir"
+  "$SCHEMA_SCRIPT" create --db "$_ssb_dir/state.db" >/dev/null 2>&1 \
+    || { _fail "seed: schema create falhou" ""; return 1; }
+  sqlite3 "$_ssb_dir/state.db" "
+    PRAGMA foreign_keys=ON;
+    INSERT INTO execution (id,schema_version,target_project_path,target_project_description,status,started_at,current_stage,next_instruction,external_urls_whitelist,circular_movement_history,initial_key_aspects,atomic_commit_enabled)
+    VALUES ('exec-1','1.0.0','/tmp/p','desc de teste com detalhe','em_andamento','2026-07-30T00:00:00Z','execute-task','faca algo','[]','[]','[]',0);
+  " || { _fail "seed: insert execution falhou" ""; return 1; }
+}
+
+scenario_sqlite_register_gera_dec_001() {
+  _sd="$TMPDIR_TEST/sqlite-register-001"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite register" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "dec-001" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_sqlite_register_sequencial_gera_dec_002() {
+  _sd="$TMPDIR_TEST/sqlite-register-seq"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_default "$_sd"
+  _register_default "$_sd"
+  assert_stdout_contains "dec-002" || return 1
+  capture "$SCRIPT" next-id --state-dir "$_sd"
+  assert_stdout_contains "dec-003" || return 1
+}
+
+scenario_sqlite_wave_id_null_sem_onda_vira_init_no_list() {
+  # data-model.md: wave_id NULL representa "init" (nenhuma onda ainda).
+  # list normaliza para "init" na saida textual (mesma convencao do JSON).
+  _sd="$TMPDIR_TEST/sqlite-wave-id-init"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_default "$_sd"
+  capture "$SCRIPT" list --state-dir "$_sd"
+  assert_stdout_contains "	init	" || return 1
+}
+
+scenario_sqlite_wave_id_liga_onda_aberta() {
+  _sd="$TMPDIR_TEST/sqlite-wave-id-open"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SO" start --state-dir "$_sd"
+  _register_default "$_sd"
+  capture "$SCRIPT" list --state-dir "$_sd"
+  assert_stdout_contains "	onda-001	" || return 1
+}
+
+scenario_sqlite_count_filtra_por_agente() {
+  _sd="$TMPDIR_TEST/sqlite-count-agente"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_default "$_sd" "orquestrador-00c"
+  _register_default "$_sd" "clarify-asker"
+  _register_default "$_sd" "clarify-asker"
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "3" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd" --agente "clarify-asker"
+  assert_stdout_contains "2" || return 1
+}
+
+scenario_sqlite_list_imprime_tsv() {
+  _sd="$TMPDIR_TEST/sqlite-list-tsv"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_default "$_sd"
+  capture "$SCRIPT" list --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite list" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "dec-001	" || return 1
+  assert_stdout_contains "	orquestrador-00c	" || return 1
+  assert_stdout_contains "	briefing	" || return 1
+  assert_stdout_contains "	Operador unico" || return 1
+}
+
+scenario_sqlite_score_3_sem_evidencia_rejeita() {
+  # Validacao Principio I (FR-EVI-001) roda ANTES do dispatch de backend —
+  # paridade de comportamento com o path JSON.
+  _sd="$TMPDIR_TEST/sqlite-score3-sem-evi"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "execute-task" \
+    --contexto "Afirmar comportamento de runtime sem rodar sonda" \
+    --opcoes '["A","B"]' --escolha "A" \
+    --justificativa "Conviccao baseada em leitura previa do codigo" \
+    --score 3
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "sqlite score=3 sem evidencia" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "evidencia" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "0" || return 1
+}
+
+scenario_sqlite_score_3_com_evidencia_persiste() {
+  _sd="$TMPDIR_TEST/sqlite-score3-com-evi"
+  _seed_sqlite_backend "$_sd" || return 1
+  _evi='npx tsc --noEmit: error TS2322 em src/foo.ts:12 confirma tipo nao bate'
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "execute-task" \
+    --contexto "Decisao tecnica empiricamente validada por TS" \
+    --opcoes '["Manter","Trocar"]' --escolha "Trocar" \
+    --justificativa "Output de tsc indica incompatibilidade real" \
+    --score 3 --evidencia "$_evi"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite score=3" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[-1].evidence'
+  assert_stdout_contains "TS2322" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[-1].justification_score'
+  assert_stdout_contains "3" || return 1
+}
+
+# C8: payload hostil (apostrofo + tentativa de injecao) persistido literal,
+# tabela decision sobrevive, integrity_check continua ok. Paridade com
+# tests/test__state-db.sh scenario_state_db_exec_persiste_payload_hostil_*.
+scenario_sqlite_payload_hostil_preservado_literal_tabela_sobrevive() {
+  _sd="$TMPDIR_TEST/sqlite-hostil"
+  _seed_sqlite_backend "$_sd" || return 1
+  _hostil="'; DROP TABLE decision; -- e apostrofo simples it's here"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "specify" \
+    --contexto "$_hostil (20+ chars de contexto)" \
+    --opcoes '["a","b"]' --escolha "$_hostil" \
+    --justificativa "justificativa com o mesmo payload hostil $_hostil"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite payload hostil" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[-1].choice'
+  assert_stdout_contains "DROP TABLE decision" || return 1
+  capture "$RW" sha256-verify --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "integrity apos payload hostil" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_sqlite_register_state_db_ausente_falha() {
+  _sd="$TMPDIR_TEST/sqlite-ausente"
+  mkdir -p "$_sd"
+  # sem state.db -> backend json (C2); sem state.json tambem -> falha 1
+  _register_default "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "sqlite state ausente" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+}
+
+# Teste de concorrencia (task 3.4.3): N invocacoes simultaneas de `register`
+# nao perdem nenhuma decisao e nao colidem em next-id — cada uma recebe um
+# dec-NNN unico, e o total persistido bate com N.
+scenario_sqlite_register_concorrente_sem_colisao() {
+  _sd="$TMPDIR_TEST/sqlite-concorrencia"
+  _seed_sqlite_backend "$_sd" || return 1
+  _n=15
+  _i=1
+  while [ "$_i" -le "$_n" ]; do
+    ( "$SCRIPT" register --state-dir "$_sd" \
+        --agente "worker-$_i" --etapa "specify" \
+        --contexto "contexto concorrente numero $_i com 20+ chars" \
+        --opcoes '["a","b"]' --escolha "a" \
+        --justificativa "justificativa concorrente numero $_i com 20+chars" \
+        > "$TMPDIR_TEST/sqlite-concorrencia-out-$_i.txt" \
+        2> "$TMPDIR_TEST/sqlite-concorrencia-err-$_i.txt" ) &
+    _i=$((_i + 1))
+  done
+  wait
+
+  _i=1
+  while [ "$_i" -le "$_n" ]; do
+    if [ -s "$TMPDIR_TEST/sqlite-concorrencia-err-$_i.txt" ]; then
+      _fail "worker $_i emitiu stderr" "$(cat "$TMPDIR_TEST/sqlite-concorrencia-err-$_i.txt")"
+      return 1
+    fi
+    _i=$((_i + 1))
+  done
+
+  _unique=$(cat "$TMPDIR_TEST"/sqlite-concorrencia-out-*.txt | sort -u | wc -l | tr -d ' ')
+  [ "$_unique" = "$_n" ] || { _fail "ids unicos" "esperado $_n, obtido $_unique"; return 1; }
+
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "$_n" || return 1
+}
+
+# Paridade cross-backend (C1): mesmos inputs, mesmo formato de stdout
+# (dec-001) para o primeiro register em cada backend.
+scenario_sqlite_paridade_register_primeiro_id_json() {
+  _sd_json="$TMPDIR_TEST/paridade-decisions-json"
+  _init_state "$_sd_json"
+  _register_default "$_sd_json"
+  _json_id="$_CAPTURED_STDOUT"
+
+  _sd_db="$TMPDIR_TEST/paridade-decisions-sqlite"
+  _seed_sqlite_backend "$_sd_db" || return 1
+  _register_default "$_sd_db"
+  _db_id="$_CAPTURED_STDOUT"
+
+  [ "$_json_id" = "$_db_id" ] || { _fail "paridade register id" "json='$_json_id' sqlite='$_db_id'"; return 1; }
+}
+
+# Task 4.1.1/4.2.2 (FASE 4): branch de selecao de backend explicito por C2 —
+# um state.json coexistente e export/legado, NUNCA consultado como fonte.
+# Prova positiva: 1 decisao registrada no state.db, state.json divergente
+# com 5 decisoes falsas — count deve refletir sempre o state.db (1).
+scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
+  _sd="$TMPDIR_TEST/c2-coexist-decisions"
+  _seed_sqlite_backend "$_sd" || return 1
+  _register_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2: register sqlite" "$_CAPTURED_STDERR"; return 1; }
+
+  # state.json divergente no MESMO diretorio (5 decisoes falsas).
+  printf '{"decisions":[1,2,3,4,5]}\n' > "$_sd/state.json"
+
+  capture "$SCRIPT" count --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2 count exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" \
+    || { _fail "c2: count deveria refletir state.db (1), nao o state.json coexistente (5)" "obtido $_CAPTURED_STDOUT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    5*) _fail "c2: count leu o state.json coexistente" "obtido $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+
+  # state.json coexistente permanece intocado.
+  _stale_now=$(cat "$_sd/state.json")
+  [ "$_stale_now" = '{"decisions":[1,2,3,4,5]}' ] \
+    || { _fail "c2: state.json coexistente foi modificado" "obtido: $_stale_now"; return 1; }
+}
+
+fi # sqlite3 disponivel
+
 run_all_scenarios

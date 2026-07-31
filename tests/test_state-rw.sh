@@ -604,4 +604,375 @@ scenario_init_atomic_commit_retro_compat() {
   [ "$_CAPTURED_STDOUT" = "false" ] || { _fail "legado sem campo: esperado false via jq fallback" "obtido $_CAPTURED_STDOUT"; return 1; }
 }
 
+# ==== Backend dual SQLite (feature state-db-foundation, FASE 3 task 3.2) ====
+#
+# Ref: docs/specs/state-db-foundation/contracts/primitives.md §C1 (paridade)
+#      §C2 (selecao de backend) §C7 (sha256-* sob SQLite)
+#
+# init nunca cria state.db (isso e a migracao, FASE 6 — nao implementada
+# ainda) — os cenarios abaixo simulam um projeto "ja migrado" aplicando o
+# DDL diretamente via state-db-schema.sh (task 2.1.8) e semeando a linha de
+# execution minima via sqlite3, o mesmo padrao usado por
+# tests/test_state-db-schema.sh.
+
+SCHEMA_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-db-schema.sh"
+
+if ! command -v sqlite3 >/dev/null 2>&1; then
+  printf '# test_state-rw.sh: sqlite3 ausente — pulando cenarios de backend SQLite\n'
+else
+
+# _seed_sqlite_backend DIR [SHORT_NAME] -> cria state.db com uma execution
+# minima (id=exec-1), pronta para read/get/set/write/sha256-*.
+_seed_sqlite_backend() {
+  _ssb_dir=$1
+  _ssb_short=${2:-}
+  mkdir -p "$_ssb_dir"
+  "$SCHEMA_SCRIPT" create --db "$_ssb_dir/state.db" >/dev/null 2>&1 \
+    || { _fail "seed: schema create falhou" ""; return 1; }
+  _ssb_short_sql="NULL"
+  [ -n "$_ssb_short" ] && _ssb_short_sql="'$_ssb_short'"
+  sqlite3 "$_ssb_dir/state.db" "
+    PRAGMA foreign_keys=ON;
+    INSERT INTO execution (id,schema_version,short_name,target_project_path,target_project_description,status,started_at,current_stage,next_instruction,external_urls_whitelist,circular_movement_history,initial_key_aspects,atomic_commit_enabled)
+    VALUES ('exec-1','1.0.0',$_ssb_short_sql,'/tmp/proj','desc de teste com detalhe','em_andamento','2026-07-30T00:00:00Z','specify','faca algo',' []','[]','[]',0);
+  " || { _fail "seed: insert execution falhou" ""; return 1; }
+}
+
+scenario_sqlite_init_recusa_se_state_db_existe() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" init --state-dir "$_sd" --execucao-id "exec-x" \
+    --projeto-alvo-path "/tmp/foo" --descricao "descricao valida >=10"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "init sob state.db existente" "esperado exit != 0, obtido 0"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *state.db*) : ;;
+    *) _fail "init recusa msg" "esperava mencionar state.db, obtido: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_sqlite_read_reconstroi_documento_valido_por_state_validate() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" "my-feat" || return 1
+  capture "$SCRIPT" read --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "read exit" "$_CAPTURED_STDERR"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | jq -e . >/dev/null \
+    || { _fail "read produz JSON invalido" "$_CAPTURED_STDOUT"; return 1; }
+  _validate_dir="$TMPDIR_TEST/validate-export"
+  mkdir -p "$_validate_dir"
+  printf '%s' "$_CAPTURED_STDOUT" > "$_validate_dir/state.json"
+  capture sh "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-validate.sh" --state-dir "$_validate_dir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "export nao passa em state-validate.sh (E1)" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_sqlite_read_e2_e3_ids_e_skills_invoked_aninhado() {
+  # E2 (fidelidade de nomes/IDs) + E3 (aninhamento skills_invoked, ausente-vs-null)
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "
+    INSERT INTO wave (id,execution_id,seq,started_at) VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z');
+    INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score)
+      VALUES ('dec-001','exec-1','onda-001','2026-07-30T00:01:00Z','tester','specify','contexto de teste com pelo menos vinte caracteres','[\"a\",\"b\"]','a','justificativa de teste com pelo menos vinte caracteres',2);
+    INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,status,triggered_at)
+      VALUES ('block-001','exec-1','dec-001','pergunta de teste com pelo menos vinte caracteres','contexto para resposta','aguardando','2026-07-30T00:02:00Z');
+    INSERT INTO skill_invocation (wave_id,skill,timestamp,decision_id,kind)
+      VALUES ('onda-001','specify','2026-07-30T00:01:30Z','dec-001','skill');
+  " || { _fail "seed decision/human_block/skill_invocation falhou" ""; return 1; }
+
+  capture "$SCRIPT" read --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "read exit" "$_CAPTURED_STDERR"; return 1; }
+  _doc="$_CAPTURED_STDOUT"
+
+  # IDs preservados literalmente (formato dec-NNN, block-NNN, onda-NNN)
+  [ "$(printf '%s' "$_doc" | jq -r '.waves[0].id')" = "onda-001" ] \
+    || { _fail "waves[0].id" "$(printf '%s' "$_doc" | jq -r '.waves[0].id')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].id')" = "dec-001" ] \
+    || { _fail "decisions[0].id" "$(printf '%s' "$_doc" | jq -r '.decisions[0].id')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.human_blocks[0].id')" = "block-001" ] \
+    || { _fail "human_blocks[0].id" "$(printf '%s' "$_doc" | jq -r '.human_blocks[0].id')"; return 1; }
+
+  # Nome de campo justification_score (nao "score")
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].justification_score')" = "2" ] \
+    || { _fail "decisions[0].justification_score" "$(printf '%s' "$_doc" | jq -r '.decisions[0].justification_score')"; return 1; }
+
+  # skills_invoked aninhado em waves[N], nao tabela solta no topo
+  [ "$(printf '%s' "$_doc" | jq -r '.waves[0].skills_invoked[0].skill')" = "specify" ] \
+    || { _fail "waves[0].skills_invoked[0].skill" "$(printf '%s' "$_doc" | jq -r '.waves[0].skills_invoked[0].skill')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.waves[0].skills_invoked[0].decision_id')" = "dec-001" ] \
+    || { _fail "waves[0].skills_invoked[0].decision_id" ""; return 1; }
+  [ "$(printf '%s' "$_doc" | jq 'has("skills_invoked")')" = "false" ] \
+    || { _fail "skills_invoked nao deveria existir no topo do documento" ""; return 1; }
+
+  # Ausente-vs-null: canonical_project/session_name nao setados ficam AUSENTES
+  [ "$(printf '%s' "$_doc" | jq -r '.execution | has("canonical_project")')" = "false" ] \
+    || { _fail "execution deveria omitir canonical_project quando nao setado" ""; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.execution | has("session_name")')" = "false" ] \
+    || { _fail "execution deveria omitir session_name quando nao setado" ""; return 1; }
+}
+
+scenario_sqlite_read_e4_accumulated_metrics_agregado() {
+  # E4: accumulated_metrics MUST ser agregacao das tabelas no momento do
+  # export, nao um contador materializado.
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "
+    INSERT INTO wave (id,execution_id,seq,started_at,finished_at,tool_calls,wallclock_seconds,termination_reason)
+      VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z','2026-07-30T00:05:00Z',10,300,'etapa_concluida_avancando');
+    INSERT INTO wave (id,execution_id,seq,started_at,finished_at,tool_calls,wallclock_seconds,termination_reason)
+      VALUES ('onda-002','exec-1',2,'2026-07-30T00:05:00Z','2026-07-30T00:09:00Z',5,240,'etapa_concluida_avancando');
+    INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score)
+      VALUES ('dec-001','exec-1','onda-001','2026-07-30T00:01:00Z','tester','specify','contexto de teste com pelo menos vinte caracteres','[\"a\",\"b\"]','a','justificativa de teste com pelo menos vinte caracteres',2);
+    INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score)
+      VALUES ('dec-002','exec-1','onda-002','2026-07-30T00:06:00Z','tester','plan','contexto de teste com pelo menos vinte caracteres','[\"a\",\"b\"]','a','justificativa de teste com pelo menos vinte caracteres',2);
+    INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,status,triggered_at)
+      VALUES ('block-001','exec-1','dec-001','pergunta de teste com pelo menos vinte caracteres','contexto para resposta','aguardando','2026-07-30T00:02:00Z');
+  " || { _fail "seed multi-onda falhou" ""; return 1; }
+
+  capture "$SCRIPT" read --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "read exit" "$_CAPTURED_STDERR"; return 1; }
+  _doc="$_CAPTURED_STDOUT"
+
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.waves_total')" = "2" ] \
+    || { _fail "waves_total" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.waves_total')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.tool_calls_total')" = "15" ] \
+    || { _fail "tool_calls_total" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.tool_calls_total')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.wallclock_total_seconds')" = "540" ] \
+    || { _fail "wallclock_total_seconds" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.wallclock_total_seconds')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.decisions_total')" = "2" ] \
+    || { _fail "decisions_total" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.decisions_total')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.human_blocks_total')" = "1" ] \
+    || { _fail "human_blocks_total" "$(printf '%s' "$_doc" | jq -r '.accumulated_metrics.human_blocks_total')"; return 1; }
+}
+
+scenario_sqlite_get_extrai_campo() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "get exit" "$_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "specify" ] || { _fail "get .current_stage" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_sqlite_set_top_level_scalar_conhecido() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.current_stage' --value '"plan"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set exit" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  [ "$_CAPTURED_STDOUT" = "plan" ] || { _fail "set nao persistiu" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_sqlite_set_campo_novo_cai_em_extra_fields() {
+  # Fidelidade de round-trip (C1) para campos de topo ainda nao modelados
+  # como coluna dedicada (gap documentado entre export.md e data-model.md).
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.next_retrospective_milestone' --value '25'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set extra_fields exit" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.next_retrospective_milestone'
+  [ "$_CAPTURED_STDOUT" = "25" ] || { _fail "extra_fields nao persistiu" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_sqlite_set_campo_aninhado_nao_modelado_falha_alto() {
+  # Anti-silent-data-loss: path aninhado sob um campo NAO modelado nao tem
+  # fallback seguro (mesclaria dentro de extra_fields.execution e seria
+  # sombreado pela reconstrucao real na leitura) — deve falhar alto, nunca
+  # silenciosamente perder o dado.
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.execution.algum_campo_novo' --value '1'
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "set aninhado nao modelado deveria falhar" "obtido exit 0"; return 1; }
+}
+
+scenario_sqlite_set_events_substitui_array_completo() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.events' \
+    --value '[{"event_type":"lock_contention","timestamp":"2026-07-30T00:00:00Z"},{"event_type":"schedule_wait","timestamp":"2026-07-30T00:01:00Z","description":"aguardando"}]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set .events exit" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.events | length'
+  [ "$_CAPTURED_STDOUT" = "2" ] || { _fail "events length" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.events[1].description'
+  [ "$_CAPTURED_STDOUT" = "aguardando" ] || { _fail "events[1].description" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.events[0] | has("description")'
+  [ "$_CAPTURED_STDOUT" = "false" ] || { _fail "events[0] nao deveria ter description (ausente, nao null)" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_sqlite_set_waves_field_conhecido_e_extra() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "INSERT INTO wave (id,execution_id,seq,started_at) VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z');" \
+    || { _fail "seed wave falhou" ""; return 1; }
+
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.waves[-1].next_wave_scheduled_for' --value '"2026-07-31T00:00:00Z"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set waves[-1] coluna conhecida" "$_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.waves[-1].touched_key_aspects' --value '["foo","bar"]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set waves[-1] campo extra" "$_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.waves[-1].next_wave_scheduled_for'
+  [ "$_CAPTURED_STDOUT" = "2026-07-31T00:00:00Z" ] || { _fail "waves[-1].next_wave_scheduled_for" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.waves[-1].touched_key_aspects | join(",")'
+  [ "$_CAPTURED_STDOUT" = "foo,bar" ] || { _fail "waves[-1].touched_key_aspects" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_sqlite_write_full_document_roundtrip() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "INSERT INTO wave (id,execution_id,seq,started_at) VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z');" \
+    || { _fail "seed wave falhou" ""; return 1; }
+
+  _doc=$("$SCRIPT" read --state-dir "$_sd")
+  _newdoc=$(printf '%s' "$_doc" | jq '
+    .current_stage = "checklist"
+    | .decisions += [{"id":"dec-001","wave_id":"onda-001","timestamp":"2026-07-30T00:02:00Z","agent":"tester","stage":"specify","context":"contexto de teste com pelo menos vinte caracteres","options_considered":["a","b"],"choice":"a","rationale":"justificativa de teste com pelo menos vinte caracteres","justification_score":2,"evidence":null,"references":null,"originating_artifact":null}]
+    | .tasks += [{"task_id":"1.1","title":"t","wave_id":"onda-001","outcome":"pass","tests_run":1,"tests_passed":1,"lint_ok":true,"touched_files":["a.sh"],"recorded_at":"2026-07-30T00:04:00Z","source":"execute-task"}]
+  ')
+  # capture roda o comando do lado direito de um pipe DENTRO de um subshell
+  # em sh/dash — as variaveis _CAPTURED_* setadas la nao propagam de volta.
+  # Idioma correto (ja usado por scenario_write_recusa_json_invalido acima):
+  # gravar o payload em arquivo e envolver TODO o pipeline num unico
+  # `sh -c`, que passa a ser o comando capturado (nao o alvo de um pipe).
+  _newdoc_file="$TMPDIR_TEST/newdoc.json"
+  printf '%s' "$_newdoc" > "$_newdoc_file"
+  capture sh -c "cat '$_newdoc_file' | '$SCRIPT' write --state-dir '$_sd'"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "write exit" "$_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  [ "$_CAPTURED_STDOUT" = "checklist" ] || { _fail "write nao persistiu current_stage" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.decisions | length'
+  [ "$_CAPTURED_STDOUT" = "1" ] || { _fail "write nao persistiu decisions" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.tasks[0].outcome'
+  [ "$_CAPTURED_STDOUT" = "pass" ] || { _fail "write nao persistiu tasks" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_sqlite_sha256_verify_ok_via_integrity_check() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" sha256-verify --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sha256-verify ok" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_sqlite_sha256_verify_corrompido_falha() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  _sz=$(wc -c < "$_sd/state.db")
+  _half=$((_sz / 2))
+  dd if="$_sd/state.db" of="$_sd/state.db.trunc" bs=1 count="$_half" 2>/dev/null
+  mv "$_sd/state.db.trunc" "$_sd/state.db"
+  capture "$SCRIPT" sha256-verify --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "sha256-verify deveria falhar sob corrupcao" "obtido exit 0"; return 1; }
+}
+
+scenario_sqlite_sha256_update_e_noop_com_exit_0() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" sha256-update --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sha256-update sob sqlite deveria ser exit 0 (C7)" "$_CAPTURED_STDERR"; return 1; }
+  [ ! -f "$_sd/state.json.sha256" ] || { _fail "sha256-update sob sqlite nao deveria criar state.json.sha256" ""; return 1; }
+}
+
+# Task 7.1.3 (contracts/primitives.md §C7, dec-025/D4-a FECHADA, block-002):
+# edicao externa bem-formada (UPDATE direto via sqlite3, sem quebrar a
+# estrutura do banco) NAO e detectada por PRAGMA integrity_check. Este e o
+# comportamento ACEITO e DOCUMENTADO (nao um bug) — cenario 7.a do
+# quickstart.md. O assert correto e "exit 0 mesmo apos edicao bem-formada",
+# registrando o limite conhecido do mecanismo (modelo de ameaca: operador
+# local confiavel).
+scenario_sqlite_sha256_verify_edicao_bem_formada_nao_detectada() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "
+    INSERT INTO wave (id,execution_id,seq,started_at) VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z');
+    INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score)
+      VALUES ('dec-001','exec-1','onda-001','2026-07-30T00:01:00Z','tester','specify','contexto de teste com pelo menos vinte caracteres','[\"a\",\"b\"]','a','justificativa de teste com pelo menos vinte caracteres',2);
+  " || { _fail "seed decision falhou" ""; return 1; }
+
+  capture "$SCRIPT" sha256-verify --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sha256-verify pre-edicao deveria ser exit 0" "$_CAPTURED_STDERR"; return 1; }
+
+  sqlite3 "$_sd/state.db" "UPDATE decision SET choice='outra' WHERE id='dec-001';" \
+    || { _fail "UPDATE bem-formado falhou" ""; return 1; }
+
+  capture "$SCRIPT" sha256-verify --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "regresso documentado (D4-a/dec-025): integrity_check deveria seguir exit 0 apos UPDATE bem-formado" "$_CAPTURED_STDERR"; return 1; }
+}
+
+# ---- Paridade C1 (task 3.2.4): mesma sequencia de operacoes, dois backends,
+# mesmo stdout/exit code observavel nos pontos comparaveis ----
+scenario_sqlite_paridade_get_set_com_backend_json() {
+  # Backend JSON: init normal + set + get.
+  _sd_json="$TMPDIR_TEST/parity-json"
+  capture "$SCRIPT" init --state-dir "$_sd_json" --execucao-id "exec-parity" \
+    --projeto-alvo-path "/tmp/proj" --descricao "descricao de paridade valida"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "paridade: init json" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" set --state-dir "$_sd_json" --field '.current_stage' --value '"plan"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "paridade: set json" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd_json" --field '.current_stage'
+  _json_out="$_CAPTURED_STDOUT"
+  _json_rc="$_CAPTURED_EXIT"
+
+  # Backend SQLite: schema + seed equivalente + mesmo set + get.
+  _sd_db="$TMPDIR_TEST/parity-sqlite"
+  _seed_sqlite_backend "$_sd_db" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd_db" --field '.current_stage' --value '"plan"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "paridade: set sqlite" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd_db" --field '.current_stage'
+  _db_out="$_CAPTURED_STDOUT"
+  _db_rc="$_CAPTURED_EXIT"
+
+  [ "$_json_rc" = "$_db_rc" ] || { _fail "paridade exit code" "json=$_json_rc sqlite=$_db_rc"; return 1; }
+  [ "$_json_out" = "$_db_out" ] || { _fail "paridade stdout" "json='$_json_out' sqlite='$_db_out'"; return 1; }
+}
+
+scenario_sqlite_paridade_sha256_verify_exit_0_ok() {
+  # sha256-verify: exit 0 em ambos os backends quando integro (C1/C7).
+  _sd_json="$TMPDIR_TEST/parity-sha-json"
+  capture "$SCRIPT" init --state-dir "$_sd_json" --execucao-id "exec-parity-sha" \
+    --projeto-alvo-path "/tmp/proj" --descricao "descricao de paridade valida"
+  capture "$SCRIPT" sha256-verify --state-dir "$_sd_json"
+  _json_rc="$_CAPTURED_EXIT"
+
+  _sd_db="$TMPDIR_TEST/parity-sha-sqlite"
+  _seed_sqlite_backend "$_sd_db" || return 1
+  capture "$SCRIPT" sha256-verify --state-dir "$_sd_db"
+  _db_rc="$_CAPTURED_EXIT"
+
+  [ "$_json_rc" = 0 ] || { _fail "paridade sha256-verify json exit" "obtido $_json_rc"; return 1; }
+  [ "$_db_rc" = 0 ] || { _fail "paridade sha256-verify sqlite exit" "obtido $_db_rc"; return 1; }
+}
+
+# Task 4.1.1/4.2.2 (FASE 4): branch de selecao de backend explicito por C2 —
+# "existe state.db => SQLite; um state.json coexistente e export/legado e
+# NUNCA consultado como fonte". Prova positiva: com os dois arquivos
+# presentes e VALORES DIVERGENTES, get/set devem refletir sempre o state.db,
+# e set nao deve tocar o state.json coexistente.
+scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
+  _sd="$TMPDIR_TEST/c2-coexist"
+  _seed_sqlite_backend "$_sd" || return 1  # current_stage='specify' no state.db
+
+  # state.json divergente no MESMO diretorio (simula export/legado stale).
+  mkdir -p "$_sd"
+  printf '{"current_stage":"clarify"}\n' > "$_sd/state.json"
+
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2 get exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "specify" \
+    || { _fail "c2: get deveria refletir state.db, nao o state.json coexistente" "obtido $_CAPTURED_STDOUT"; return 1; }
+
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.current_stage' --value '"plan"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "c2 set exit" "$_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "plan" \
+    || { _fail "c2: set/get pos-mutacao deveria refletir state.db" "obtido $_CAPTURED_STDOUT"; return 1; }
+
+  # o state.json coexistente permanece intocado (script nunca escreve nele
+  # quando o backend e sqlite).
+  _stale_now=$(cat "$_sd/state.json")
+  [ "$_stale_now" = '{"current_stage":"clarify"}' ] \
+    || { _fail "c2: state.json coexistente foi modificado" "obtido: $_stale_now"; return 1; }
+}
+
+fi # sqlite3 disponivel
+
 run_all_scenarios

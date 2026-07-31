@@ -92,7 +92,7 @@ cada chamada).
 | Script | Uso principal |
 |--------|---------------|
 | `state-rw.sh init\|read\|write\|get\|set\|sha256-update\|sha256-verify` | CRUD do state.json |
-| `state-lock.sh acquire\|release\|check` | mutex anti-concorrencia (FR-028). **acquire/release sao do command PAI** (ver "Fronteira command↔orquestrador") — o orquestrador NAO os chama |
+| `state-lock.sh acquire\|release\|check` | mutex anti-concorrencia (FR-028). **acquire/release sao do command PAI** (ver "Fronteira command↔orquestrador") — o orquestrador NAO os chama. Sob backend `state.db` (feature `state-db-foundation`), o lock deixa de ser o serializador primario — quem serializa escritas concorrentes e o modo WAL do SQLite (PRAGMAs + retry/backoff em `_state-db.sh`, contracts/primitives.md §C6, FR-011); o lock segue disponivel como camada extra opcional, superficie inalterada (contracts/primitives.md §C11) |
 | `state-validate.sh` | schema check (FR-013) |
 | `state-ondas.sh start\|end\|record-skill` | ciclo de vida da onda + skills_invoked (FR-012, FR-020) |
 | `state-decisions.sh register --score N --evidencia "..."` | Decisao auditavel (FR-017) |
