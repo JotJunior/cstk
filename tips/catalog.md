@@ -367,38 +367,6 @@ Rodar /create-tasks novamente sobre um tasks.md existente pode sobrescrever
 progresso marcado — verifique antes.
 
 ---
-skill: decision-tree
-category: uso
-text: DEPRECATED (remove_in 6.0.0). /decision-tree gera um HTML da arvore de decisoes do state.json, mas o cstk-panel (cstk serve) ja faz isso de forma mais eficiente — prefira o painel.
----
-A skill `/decision-tree` esta **deprecated desde a v5.6.0** (remocao em v6.0.0).
-O **cstk-panel** trouxe uma solucao mais eficiente para visualizar as decisoes:
-
-```
-cstk serve   # interface web interativa, sempre atualizada
-```
-
-A skill ainda funciona ate a remocao (gera HTML autocontido a partir do
-state.json), mas nenhum substituto sera portado para o toolkit — a
-visualizacao vive no painel.
-
----
-skill: decision-tree
-category: gotcha
-text: /decision-tree esta deprecated (remove_in 6.0.0) — prefira o cstk-panel (cstk serve). Em qualquer caso, nao use para metricas de selecao de modelo (use model-routing-report.sh) nem para status de tarefas (use /review-task).
----
-```
-# Para arvore de decisoes do orquestrador:
-/decision-tree   # le state.json e gera HTML
-
-# Para status de tarefas:
-/review-task
-
-# Para metricas de modelo:
-~/.claude/skills/agente-00c-runtime/scripts/model-routing-report.sh
-```
-
----
 skill: execute-task
 category: uso
 text: Use /execute-task com o ID da tarefa para executar um item do backlog seguindo o fluxo de 9 etapas — analise, localizacao, planejamento, implementacao, testes, validacao, lint, conclusao, atualizacao.
@@ -442,34 +410,6 @@ sem reimplementar."
 
 Isso evita que a skill re-leia e re-analise codigo ja conhecido, focando
 no que e realmente novo na tarefa 4.2.
-
----
-skill: image-generation
-category: uso
-text: Use /image-generation para melhorar prompts de imagem com a estrutura Sujeito-Contexto-Estilo antes de enviar para geradores como Midjourney, DALL-E ou Stable Diffusion.
----
-Para uma ilustracao tecnica:
-
-```
-/image-generation
-Diagrama de arquitetura de microservicos com 3 servicos e um API gateway
-```
-
-A skill estrutura o prompt: sujeito claro, contexto visual, estilo (ex: "clean
-tech illustration, white background, blue accent colors").
-
----
-skill: image-generation
-category: gotcha
-text: O /image-generation melhora PROMPTS — nao gera imagens diretamente. Para diagramas tecnicos use Mermaid/PlantUML; a skill e para assets visuais criativos.
----
-```
-# Para diagramas tecnicos (arquitetura, fluxo, ER):
-# Use Mermaid ou PlantUML diretamente no Markdown
-
-# Para assets visuais (ilustracao, mockup, foto):
-/image-generation  # gera prompt estruturado para enviar ao gerador
-```
 
 ---
 skill: initialize-docs

@@ -83,7 +83,7 @@ descartados antes de tocar o disco.
 
 ```
 ├── global/                     # Skills globais (independentes de linguagem)
-│   └── skills/                 # 24 skills globais (cada skill é uma pasta)
+│   └── skills/                 # 22 skills globais (cada skill é uma pasta)
 │       ├── advisor/
 │       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
 │       ├── analyze/
@@ -95,10 +95,8 @@ descartados antes de tocar o disco.
 │       ├── constitution/
 │       ├── converge/           # reconcilia spec/plan/tasks vs código real
 │       ├── create-tasks/
-│       ├── decision-tree/      # ⚠️ DEPRECATED (remove_in 6.0.0) — use cstk-panel (cstk serve)
 │       ├── e2e-integration-flow/ # testes E2E de integração full-stack (Playwright)
 │       ├── execute-task/
-│       ├── image-generation/   # ⚠️ DEPRECATED (remove_in 6.0.0) — fora do escopo do toolkit
 │       ├── initialize-docs/
 │       ├── model-selector/     # heurística de roteamento de modelo (sugestor)
 │       ├── owasp-security/
@@ -169,7 +167,6 @@ Detalhes, diagrama do fluxo e atalhos em
 | **review-features** | "status global", "comparar features" | Relatório cross-feature com sugestão de arquivar/abandonar/priorizar; a ação de archive aplica os deltas ao corpus de specs vivas |
 | **validate-documentation** | "validar documentação", "verificar UC" | Valida documentos individuais contra padrões estruturais |
 | **validate-docs-rendered** | "validar renderização", "verificar diagramas" | Valida que o Markdown renderiza (Mermaid, links, frontmatter, tabelas) |
-| **image-generation** | Ao gerar imagens | ⚠️ DEPRECATED (remove_in 6.0.0) |
 
 ## Trilha avançada (orquestrador autônomo)
 
@@ -216,7 +213,7 @@ Depois disso, comandos típicos:
 ```bash
 cstk --version                       # confirma instalação
 cstk install                         # instala perfil 'sdd' em ~/.claude/skills/
-cstk install --profile all           # instala TODAS as 31 skills (inclui language-go)
+cstk install --profile all           # instala TODAS as 29 skills (inclui language-go)
 cstk install advisor bugfix          # cherry-pick por nome
 cstk update                          # aplica novas releases preservando edits locais
 cstk update --force                  # sobrescreve skills com edição local
@@ -234,8 +231,8 @@ cstk self-update                     # atualiza o próprio binário cstk + cli/l
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 13 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 31 skills (sdd + complementary + language-go) | Instalação completa |
+| `complementary` | 11 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`.
@@ -391,8 +388,8 @@ isso via manifest + hash_dir.
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 13 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 31 skills (sdd + complementary + language-go) | Instalação completa |
+| `complementary` | 11 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --help`.

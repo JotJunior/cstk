@@ -54,7 +54,6 @@ sdd:model-selector
 # Skills complementares (uso pontual, sem sequencia)
 complementary:advisor
 complementary:bugfix
-complementary:image-generation
 complementary:apply-insights
 complementary:owasp-security
 complementary:e2e-integration-flow
@@ -63,9 +62,6 @@ complementary:validate-docs-rendered
 # Uso standalone (nao so gate) — mesma razao das duas linhas acima.
 complementary:converge
 complementary:initialize-docs
-# Visualizador on-demand do state.json do agente-00c/feature-00c
-# (arvore de decisoes em HTML). Uso pontual, sem sequencia.
-complementary:decision-tree
 # Mesma razao do sdd:agente-00c-runtime / sdd:model-selector acima.
 complementary:agente-00c-runtime
 complementary:model-selector
