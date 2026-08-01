@@ -14,10 +14,18 @@
 #
 # Subcomandos:
 #   cstk state migrate --state-dir DIR   — migra state.json -> state.db
+#   cstk state enable-sqlite             — ativa state_backend=sqlite na
+#                                           config global (feature
+#                                           state-backend-config, FASE 4)
+#
+# `enable-sqlite` delega a cli/lib/config.sh (que por sua vez delega a
+# global/skills/agente-00c-runtime/scripts/state-backend.sh) — mesma
+# disciplina de delegacao pura de `migrate`: zero logica de decisao aqui.
 #
 # Exit codes (repassados VERBATIM do script delegado, para o operador poder
 # distinguir "recusado" de "falhou"):
-#   0 sucesso   1 falha   2 uso incorreto   3 recusado por pre-condicao (M1)
+#   0 sucesso   1 falha   2 uso incorreto   3 recusado por pre-condicao (M1
+#   para migrate; dependencia/capability ausente para enable-sqlite)
 #
 # POSIX sh puro. Sem bash-isms.
 
@@ -29,6 +37,11 @@ _CSTK_STATE_LOADED=1
 if [ -n "${CSTK_LIB:-}" ] && [ -f "$CSTK_LIB/common.sh" ]; then
   # shellcheck source=./common.sh
   . "$CSTK_LIB/common.sh"
+fi
+
+if [ -n "${CSTK_LIB:-}" ] && [ -f "$CSTK_LIB/config.sh" ]; then
+  # shellcheck source=./config.sh
+  . "$CSTK_LIB/config.sh"
 fi
 
 # _state_migrate_script_path -> imprime o caminho de state-db-migrate.sh.
@@ -66,12 +79,21 @@ cstk state — operacoes sobre o estado transacional de execucoes 00c
 
 USO:
   cstk state migrate --state-dir DIR   Migra <DIR>/state.json para <DIR>/state.db
+  cstk state enable-sqlite             Ativa state_backend=sqlite na config
+                                        global (~/.claude/cstk/config)
 
 MIGRATE:
   Migracao EXPLICITA e nunca automatica (FR-005). Recusa se a execucao estiver
   ativa (status em_andamento), se o estado for invalido, se a integridade do
   state.json divergir, ou se ja existir um state.db de outra execucao.
   O state.json de origem e sempre PRESERVADO como export/legado.
+
+ENABLE-SQLITE:
+  Ativa o backend SQLite para NOVAS inicializacoes de execucao 00c
+  (state-rw.sh init). Verifica, nesta ordem, ANTES de qualquer escrita:
+  sqlite3 no PATH, versao >= 3.45.1, e capability do runtime do catalogo
+  instalado. Qualquer falha ⇒ config byte-a-byte inalterada, exit
+  recusado por pre-condicao. Idempotente: se ja ativado, no-op, exit 0.
 
 EXIT CODES:
   0 sucesso   1 falha   2 uso incorreto   3 recusado por pre-condicao
@@ -99,9 +121,19 @@ state_main() {
       sh "$_st_script" migrate "$@"
       return $?
       ;;
+    enable-sqlite)
+      if ! command -v config_state_backend_enable_sqlite >/dev/null 2>&1; then
+        printf 'cstk state: cli/lib/config.sh nao carregado (CSTK_LIB indisponivel?).\n' >&2
+        return 1
+      fi
+      # Delegacao pura via cli/lib/config.sh -> state-backend.sh
+      # enable-sqlite; argumentos e exit code repassados verbatim.
+      config_state_backend_enable_sqlite "$@"
+      return $?
+      ;;
     *)
       printf 'cstk state: subcomando desconhecido: %s\n' "$_st_sub" >&2
-      printf 'Subcomandos validos: migrate\n' >&2
+      printf 'Subcomandos validos: migrate, enable-sqlite\n' >&2
       return 2
       ;;
   esac

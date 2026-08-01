@@ -609,11 +609,15 @@ scenario_init_atomic_commit_retro_compat() {
 # Ref: docs/specs/state-db-foundation/contracts/primitives.md §C1 (paridade)
 #      §C2 (selecao de backend) §C7 (sha256-* sob SQLite)
 #
-# init nunca cria state.db (isso e a migracao, FASE 6 — nao implementada
-# ainda) — os cenarios abaixo simulam um projeto "ja migrado" aplicando o
-# DDL diretamente via state-db-schema.sh (task 2.1.8) e semeando a linha de
-# execution minima via sqlite3, o mesmo padrao usado por
-# tests/test_state-db-schema.sh.
+# NOTA (feature state-backend-config, FASE 5): `init` agora PODE criar
+# state.db diretamente quando a config global declara `state_backend=sqlite`
+# com dependencia adequada (ver scenarios `scenario_init_sqlite_*` mais
+# abaixo) — mas o cenario historico permanece valido para o caso "projeto ja
+# migrado / state.db pre-existente de outra origem" (guarda de recusa
+# preservada independente da config, FR-006): os cenarios abaixo simulam
+# esse estado aplicando o DDL diretamente via state-db-schema.sh (task
+# 2.1.8) e semeando a linha de execution minima via sqlite3, o mesmo padrao
+# usado por tests/test_state-db-schema.sh.
 
 SCHEMA_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-db-schema.sh"
 
@@ -971,6 +975,114 @@ scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
   _stale_now=$(cat "$_sd/state.json")
   [ "$_stale_now" = '{"current_stage":"clarify"}' ] \
     || { _fail "c2: state.json coexistente foi modificado" "obtido: $_stale_now"; return 1; }
+}
+
+# ==== FASE 5 (state-backend-config): init honra a configuracao global ====
+# Ref: docs/specs/state-backend-config/tasks.md FASE 5 task 5.2
+#      docs/specs/state-backend-config/quickstart.md Scenario 1, 7, 8a/8b
+
+MIN_SQLITE_VER_FASE5="3.45.1"
+
+# _sr_real_sqlite3_adequate: exit 0 se o sqlite3 REAL do ambiente atende o
+# minimo exigido — necessario porque `init` sob config sqlite consulta
+# `state-backend.sh resolve`, que so retorna effective_backend=sqlite se a
+# dependencia REAL for adequada (nao basta sqlite3 estar no PATH).
+_sr_real_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  _va=$(printf '%s' "$_v" | cut -d'.' -f1); _vb=$(printf '%s' "$_v" | cut -d'.' -f2); _vc=$(printf '%s' "$_v" | cut -d'.' -f3)
+  _ma=$(printf '%s' "$MIN_SQLITE_VER_FASE5" | cut -d'.' -f1); _mb=$(printf '%s' "$MIN_SQLITE_VER_FASE5" | cut -d'.' -f2); _mc=$(printf '%s' "$MIN_SQLITE_VER_FASE5" | cut -d'.' -f3)
+  [ "${_va:-0}" -gt "${_ma:-0}" ] 2>/dev/null && return 0
+  [ "${_va:-0}" -lt "${_ma:-0}" ] 2>/dev/null && return 1
+  [ "${_vb:-0}" -gt "${_mb:-0}" ] 2>/dev/null && return 0
+  [ "${_vb:-0}" -lt "${_mb:-0}" ] 2>/dev/null && return 1
+  [ "${_vc:-0}" -ge "${_mc:-0}" ] 2>/dev/null
+}
+
+# 5.2.1 (Scenario 1, passos 5-6): config declara sqlite + dependencia
+# adequada -> init cria state.db, NAO cria state.json.
+scenario_init_sqlite_config_declarada_cria_state_db_nao_state_json() {
+  _sr_real_sqlite3_adequate || { printf '# skip: sqlite3 real >= %s indisponivel\n' "$MIN_SQLITE_VER_FASE5"; return 0; }
+  _home="$TMPDIR_TEST/home-fase5-sqlite"
+  mkdir -p "$_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_home/.claude/cstk/config"
+  _sd="$TMPDIR_TEST/fase5-sqlite"
+  capture env HOME="$_home" "$SCRIPT" init --state-dir "$_sd" \
+    --execucao-id "exec-fase5-1" --projeto-alvo-path "/tmp/p5" \
+    --descricao "descricao de teste com tamanho suficiente para validacao"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init sob config sqlite" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/state.db" ] || { _fail "state.db nao foi criado" ""; return 1; }
+  [ -f "$_sd/state.json" ] && { _fail "state.json NAO deveria ser criado sob backend sqlite" ""; return 1; }
+  capture env HOME="$_home" "$SCRIPT" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "em_andamento" || return 1
+}
+
+# 5.2.2 (Scenario 7, passos 4-5): config ausente OU invalida (lixo
+# nao-interpretavel) -> init cria state.json normalmente, sem falhar.
+scenario_init_config_ausente_ou_invalida_cria_state_json_sem_falhar() {
+  _home_ausente="$TMPDIR_TEST/home-fase5-ausente"
+  mkdir -p "$_home_ausente"
+  _sd_a="$TMPDIR_TEST/fase5-config-ausente"
+  capture env HOME="$_home_ausente" "$SCRIPT" init --state-dir "$_sd_a" \
+    --execucao-id "exec-fase5-2a" --projeto-alvo-path "/tmp/p5a" \
+    --descricao "descricao de teste com tamanho suficiente para validacao"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init sem config" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd_a/state.json" ] || { _fail "state.json nao foi criado (config ausente)" ""; return 1; }
+  [ -f "$_sd_a/state.db" ] && { _fail "state.db nao deveria existir (config ausente)" ""; return 1; }
+
+  _home_lixo="$TMPDIR_TEST/home-fase5-lixo"
+  mkdir -p "$_home_lixo/.claude/cstk"
+  printf 'isto nao e key=value valido\n' > "$_home_lixo/.claude/cstk/config"
+  _sd_b="$TMPDIR_TEST/fase5-config-invalida"
+  capture env HOME="$_home_lixo" "$SCRIPT" init --state-dir "$_sd_b" \
+    --execucao-id "exec-fase5-2b" --projeto-alvo-path "/tmp/p5b" \
+    --descricao "descricao de teste com tamanho suficiente para validacao"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init com config invalida" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd_b/state.json" ] || { _fail "state.json nao foi criado (config invalida)" ""; return 1; }
+  # ANTI-PADRAO evitado: um `[ ... ] && { ... }` como ULTIMA instrucao da
+  # funcao faria o exit code do proprio teste (1, quando a condicao e falsa
+  # — o caso PASSANDO aqui) virar o retorno da funcao inteira, marcando um
+  # scenario correto como FAIL. `return 0` explicito fecha o caminho feliz.
+  if [ -f "$_sd_b/state.db" ]; then
+    _fail "state.db nao deveria existir (config invalida)" ""
+    return 1
+  fi
+  return 0
+}
+
+# 5.2.3 (Scenario 8a/8b, FR-006): projeto com state.json OU state.db
+# pre-existente -> guardas de recusa preservadas independentemente da
+# config global (config global NUNCA dispara/forca migracao).
+scenario_init_guardas_preservadas_independente_da_config_global() {
+  # 8a: state.json ja existente + config global declara sqlite -> recusa.
+  _sd_json="$TMPDIR_TEST/fase5-guarda-json"
+  capture env HOME="$TMPDIR_TEST/home-vazio-guarda" "$SCRIPT" init --state-dir "$_sd_json" \
+    --execucao-id "exec-fase5-3a" --projeto-alvo-path "/tmp/p5c" \
+    --descricao "descricao de teste com tamanho suficiente para validacao"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "fixture: init inicial (sem config)" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd_json/state.json" ] || { _fail "fixture: state.json deveria existir" ""; return 1; }
+
+  _home_sqlite="$TMPDIR_TEST/home-fase5-guardas-sqlite"
+  mkdir -p "$_home_sqlite/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_home_sqlite/.claude/cstk/config"
+  capture env HOME="$_home_sqlite" "$SCRIPT" init --state-dir "$_sd_json" \
+    --execucao-id "exec-fase5-3a-retry" --projeto-alvo-path "/tmp/p5c" \
+    --descricao "descricao de teste com tamanho suficiente para validacao"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "8a: init com state.json ja existente + config sqlite deveria recusar" "exit=0"; return 1; }
+  assert_stderr_contains "state.json ja existe" || return 1
+
+  # 8b: state.db ja existente (projeto migrado) + config global declara
+  # json -> recusa (guarda independe da config).
+  _home_json="$TMPDIR_TEST/home-fase5-guardas-json"
+  mkdir -p "$_home_json/.claude/cstk"
+  printf 'state_backend=json\n' > "$_home_json/.claude/cstk/config"
+  _sd_db="$TMPDIR_TEST/fase5-guarda-db"
+  _seed_sqlite_backend "$_sd_db" || return 1
+  capture env HOME="$_home_json" "$SCRIPT" init --state-dir "$_sd_db" \
+    --execucao-id "exec-fase5-3b" --projeto-alvo-path "/tmp/p5d" \
+    --descricao "descricao de teste com tamanho suficiente para validacao"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "8b: init com state.db ja existente + config json deveria recusar" "exit=0"; return 1; }
+  assert_stderr_contains "state.db ja existe" || return 1
 }
 
 fi # sqlite3 disponivel

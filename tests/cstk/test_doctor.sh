@@ -197,4 +197,99 @@ scenario_doctor_scope_invalido() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# `cstk doctor --deps` (feature state-backend-config, FASE 4, task 4.3.4).
+# Cobre quickstart Scenario 6 (6a/6b/6c). Relatorio SEMPRE em STDOUT (nao
+# stderr — diferente do relatorio de drift acima), read-only.
+# ---------------------------------------------------------------------------
+
+MIN_SQLITE_VER="3.45.1"
+
+_dd_real_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  _va=$(printf '%s' "$_v" | cut -d'.' -f1); _vb=$(printf '%s' "$_v" | cut -d'.' -f2); _vc=$(printf '%s' "$_v" | cut -d'.' -f3)
+  _ma=$(printf '%s' "$MIN_SQLITE_VER" | cut -d'.' -f1); _mb=$(printf '%s' "$MIN_SQLITE_VER" | cut -d'.' -f2); _mc=$(printf '%s' "$MIN_SQLITE_VER" | cut -d'.' -f3)
+  [ "${_va:-0}" -gt "${_ma:-0}" ] 2>/dev/null && return 0
+  [ "${_va:-0}" -lt "${_ma:-0}" ] 2>/dev/null && return 1
+  [ "${_vb:-0}" -gt "${_mb:-0}" ] 2>/dev/null && return 0
+  [ "${_vb:-0}" -lt "${_mb:-0}" ] 2>/dev/null && return 1
+  [ "${_vc:-0}" -ge "${_mc:-0}" ] 2>/dev/null
+}
+
+_run_doctor_deps() {
+  _h=$1; shift
+  capture env HOME="$_h" CSTK_LIB="$CSTK_LIB" sh -c '
+    . "$CSTK_LIB/doctor.sh"; doctor_main "$@"
+  ' doctor_deps_test --deps "$@"
+}
+
+# 6c — config global ausente ("nunca configurado"): NUNCA e anomalia,
+# independente das dependencias — exit 0, motivo nunca-configurado, backend
+# efetivo json (FR-008).
+scenario_doctor_deps_nunca_configurado_exit0() {
+  _h="$TMPDIR_TEST/h-nunca-configurado"
+  mkdir -p "$_h"
+  _run_doctor_deps "$_h"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "6c exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDOUT / $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "reason:            nunca-configurado" || return 1
+  assert_stdout_contains "effective_backend: json" || return 1
+}
+
+# 6a — sem anomalia, com state_backend=sqlite declarado e dependencia REAL
+# adequada: exit 0; stdout lista sqlite3+jq com presenca/versao, backend
+# efetivo, motivo.
+scenario_doctor_deps_sem_anomalia_configurado_adequado_exit0() {
+  _dd_real_sqlite3_adequate || { printf '# skip: sqlite3 real >= %s indisponivel\n' "$MIN_SQLITE_VER"; return 0; }
+  command -v jq >/dev/null 2>&1 || { printf '# skip: jq indisponivel\n'; return 0; }
+  _h="$TMPDIR_TEST/h-adequado"
+  mkdir -p "$_h/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_h/.claude/cstk/config"
+  _run_doctor_deps "$_h"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "6a exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDOUT / $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "sqlite3: presente=sim" || return 1
+  assert_stdout_contains "jq:      presente=sim" || return 1
+  assert_stdout_contains "reason:            configurado-dependencia-adequada" || return 1
+  assert_stdout_contains "effective_backend: sqlite" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *"[ANOMALY]"*) _fail "nao deveria reportar anomalia" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+# 6b — com anomalia: state_backend=sqlite declarado, sqlite3 abaixo do
+# minimo (stub controlado) — exit NAO-ZERO, e o relatorio E EMITIDO mesmo
+# assim (gate de CI precisa dizer o que falhou na mesma execucao).
+scenario_doctor_deps_com_anomalia_versao_baixa_exit_nao_zero() {
+  _h="$TMPDIR_TEST/h-anomalia"
+  mkdir -p "$_h/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_h/.claude/cstk/config"
+  _stub="$TMPDIR_TEST/stub-deps-low"
+  mkdir -p "$_stub"
+  cat > "$_stub/sqlite3" <<'EOF'
+#!/bin/sh
+printf '3.40.0 2024-01-01 00:00:00 deadbeef\n'
+EOF
+  chmod +x "$_stub/sqlite3"
+  capture env HOME="$_h" PATH="$_stub:$PATH" CSTK_LIB="$CSTK_LIB" sh -c '
+    . "$CSTK_LIB/doctor.sh"; doctor_main --deps
+  '
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "6b exit" "esperado nao-zero, obtido 0; $_CAPTURED_STDOUT"; return 1; }
+  assert_stdout_contains "reason:            configurado-dependencia-abaixo-do-minimo" || return 1
+  assert_stdout_contains "effective_backend: json" || return 1
+  assert_stdout_contains "[ANOMALY]" \
+    || { _fail "relatorio deveria ser emitido mesmo com anomalia (gate de CI)" "$_CAPTURED_STDOUT"; return 1; }
+}
+
+# --deps e --fix/--scope continuam com comportamento inalterado (aditivo).
+scenario_doctor_deps_nao_interfere_com_fix_scope() {
+  _h="$TMPDIR_TEST/h"
+  _r="$TMPDIR_TEST/r"
+  _make_release "$_r" || { _error "fixture" ""; return 2; }
+  _install_v1 "$_h" "$_r"
+  # sem --deps: fluxo normal de drift, inalterado.
+  _run_doctor "$_h"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "fluxo normal sem --deps deveria seguir igual" "exit=$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "ok:      3" || return 1
+}
+
 run_all_scenarios

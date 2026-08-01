@@ -5,6 +5,57 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.0.0-alpha.2] - 2026-08-01
+
+Fase 2 da linha v6.0.0 (pre-release): cutover do backend de estado de
+opt-in-por-projeto (`v6.0.0-alpha.1`, exigia migração explícita por
+diretório) para **config global** — uma decisão em `~/.claude/cstk/config`
+passa a valer para toda `state-rw.sh init` nova, entregue pela feature
+`state-backend-config` (pipeline feature-00c: 7 fases, 64 subtarefas, spec
+em `docs/specs/state-backend-config/`).
+
+### Added
+
+- **Config global `~/.claude/cstk/config`.**
+  `global/skills/agente-00c-runtime/scripts/state-backend.sh` (novo):
+  parser linha-a-linha sem `.`/`source`/`eval` (payload de injeção nunca é
+  interpretado), allowlist `state_backend=sqlite|json`, chave desconhecida
+  ignorada (arquivo extensível), linha sem `=` invalida a config inteira.
+  Escrita atômica via `mktemp` no mesmo diretório + `mv`, diretório criado
+  com permissão `700`.
+- **`cstk state enable-sqlite`.** Ativa o backend SQLite globalmente após
+  checar pré-condições: `sqlite3` presente e na versão mínima (`3.45.1`,
+  mesmo piso da `state-db-foundation`) — recusa com exit `3` e diagnóstico
+  citando versão exigida × detectada quando a dependência está ausente ou
+  desatualizada. Checagem de capability prioriza deliberadamente o catálogo
+  instalado sobre a árvore do repo.
+- **`cstk doctor --deps`.** Diagnóstico read-only: lista presença/versão de
+  `sqlite3` e `jq`, o `effective_backend` resolvido e o motivo (`reason`,
+  6 valores possíveis — "nunca configurado" nunca é anomalia). Utilizável
+  como gate de CI (`cstk doctor --deps || exit 1`).
+- **`state-rw.sh init` honra a config global.** Antes das guardas
+  existentes de criação, consulta `state-backend.sh resolve` e cria
+  `state.db` (via `state-db-schema.sh create`) ou `state.json` conforme o
+  backend efetivo — guardas de recusa por state pré-existente preservadas
+  intactas, config global nunca força migração de projeto já inicializado.
+- **`cli/lib/config.sh` (delegação pura).** Resolvedor de 3 camadas (PATH →
+  árvore do repo via `CSTK_LIB` → catálogo instalado) que localiza
+  `state-backend.sh` e repassa args/exit code verbatim — zero
+  reimplementação de parsing ou de lógica de decisão no binário `cstk`
+  (mesma unicidade de `resolve` que torna a consistência binário↔runtime
+  verdadeira por construção).
+
+### Testing
+
+- **Roundtrip de consistência binário↔runtime (SC-004).**
+  `tests/test_config-roundtrip.sh` (novo, cross-cutting): para as 6
+  combinações de config×ambiente do quickstart Scenario 9, compara
+  empiricamente o backend resolvido por `cstk doctor --deps` contra o
+  arquivo efetivamente criado por `state-rw.sh init` num state-dir limpo —
+  0% de divergência. Sensibilidade a regressão validada manualmente (drift
+  sintético temporário em `doctor.sh` fez 6/7 scenarios falharem; revertido)
+  e coberta permanentemente por um scenario dedicado no próprio arquivo.
+
 ## [6.0.0-alpha.1] - 2026-07-31
 
 Abertura da linha v6.0.0 (pre-release): fundação do `state.db` SQLite como
@@ -4549,6 +4600,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.0.0-alpha.2]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.2
 [6.0.0-alpha.1]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.1
 [5.34.1]: https://github.com/JotJunior/cstk/releases/tag/v5.34.1
 [5.34.0]: https://github.com/JotJunior/cstk/releases/tag/v5.34.0
