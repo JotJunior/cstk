@@ -12,6 +12,7 @@ Toda afirmacao factual neste documento carrega um destes rotulos:
 | **[VERIFICADO]** | Extraido de fonte rastreavel do repo (path + linha) ou de doc oficial citada |
 | **[PROPOSAL]** | Desenho novo desta feature — nao existe ainda, sera validado na implementacao |
 | **[NAO-VERIFICADO]** | Consultado em fonte externa mas sem confirmacao conclusiva; exige spike empirico antes de virar compromisso |
+| **[OBSERVADO]** | Resultado literal de execucao REAL feita nesta execucao (onda 7, feature-00c, 2026-08-01) — servidor/subagente/container de fato rodados; nunca simulado |
 
 Nada neste plano afirma como real uma assinatura de API que nao foi lida de uma
 fonte. As lacunas estao concentradas na Decision 2 e no §Spike Obrigatorio.
@@ -333,11 +334,11 @@ Consultados em documentacao oficial; registrados aqui para rastreabilidade.
 | Transportes server-side: `stdio` e Streamable HTTP | [VERIFICADO] | Decision 2 |
 | Revisao 2026-07-28 da spec e stateless; header `Mcp-Session-Id` removido | [VERIFICADO] | Reforca resolucao lazy por chamada (Decision 2) — nao ha sessao de transporte para amarrar |
 | `.mcp.json` (escopo project) com `mcpServers.<nome> = {type, url\|command, args, env, headers}`; precedencia local > project > user | [VERIFICADO] | `contracts/mcp-session-lifecycle.md` |
-| Aceitacao de **JSON Schema cru** (sem Zod) pelo SDK | [NAO-VERIFICADO] | Spike S4 |
-| Sintaxe exata de expansao de env em `.mcp.json` | [NAO-VERIFICADO] | Spike S5 — nao depender dela ate confirmar |
-| Padrao de nome de tool MCP em allowlist de subagente (`mcp__<server>__<tool>`?) | [NAO-VERIFICADO] | **Spike S2 — bloqueante** |
-| Subagente enxerga tools MCP herdadas da sessao | [PARCIALMENTE VERIFICADO — doc menciona escopo de MCP por subagente, sem detalhar nomes] | **Spike S1 — bloqueante** |
-| Adicao de servidor MCP em sessao ja em curso | [NAO-VERIFICADO] | Spike S3 (mitigado por desenho — Decision 2) |
+| Aceitacao de **JSON Schema cru** (sem Zod) pelo SDK | [OBSERVADO — REJEITADO, ver Spike S4] | `mcp/state-server/package.json` fixa `zod` como dependencia obrigatoria |
+| Sintaxe exata de expansao de env em `.mcp.json` | [NAO-VERIFICADO] | Nao testada nesta onda (fora do escopo dos 5 spikes obrigatorios); nao depender dela ate confirmar |
+| Padrao de nome de tool MCP em allowlist de subagente (`mcp__<server>__<tool>`?) | [OBSERVADO — CONFIRMADO, ver Spike S2] | Contratos em `contracts/mcp-tools.md` podem referenciar `mcp__state-mcp-server__<tool>` como nome literal |
+| Subagente enxerga tools MCP herdadas da sessao | [OBSERVADO — CONFIRMADO com ressalva, ver Spike S1] | Consumidor primario (orquestrador→subagente) e viavel, DESDE QUE o servidor esteja registrado ANTES do boot da sessao top-level |
+| Adicao de servidor MCP em sessao ja em curso | [OBSERVADO — NAO ENTRA EM VIGOR, ver Spike S3] | Confirma a necessidade da Decision 2 (entrada estatica, resolucao lazy por chamada) |
 | Claude Code valida `Origin`/loopback em servidor HTTP local | [NAO-VERIFICADO] | Irrelevante no caminho `stdio` escolhido; so volta a importar no plano B |
 
 ---
@@ -360,3 +361,110 @@ chamar as tools. Se S1 falhar, nao existe consumidor — e o caminho correto e
 Cada spike encerra registrando **Decisao auditavel** com a saida observada como
 `--evidencia` (aterramento empirico: score 3 exige evidencia literal de >= 20
 chars — `state-decisions.sh:208-215`).
+
+### Resultados observados (onda 7, feature-00c, 2026-08-01)
+
+Todos os 5 spikes foram executados de fato (nao simulados). Harness descartavel
+em scratchpad da onda (nao versionado no repo): servidor stdio minimo com
+`@modelcontextprotocol/sdk` + `zod`, dependencias instaladas via
+`docker run --network=host node:22.17.0 npm install` (o guard de package-manager
+do host bloqueia `npm install` direto; o wrapper docker e o caminho aprovado).
+
+**S1 — subagente consegue chamar tool MCP? [OBSERVADO: SIM, com pre-condicao]**
+
+Duas tentativas:
+
+1. **Dentro desta MESMA sessao ja em curso** (subagente geral spawnado via tool
+   `Agent`, apos `claude mcp add -s user state-mcp-spike-s1 -- node
+   <scratchpad>/server.js`): a tool NAO apareceu no catalogo do subagente
+   (`tools_relacionadas_encontradas: nenhuma`). Resultado negativo, mas
+   CONFUNDIDO — a sessao top-level ja estava rodando antes do registro.
+2. **Processo `claude` NOVO** (`claude -p ... --allowedTools "Task,mcp__state-mcp-spike-s1__ping"`,
+   cwd num projeto descartavel `mktemp -d`, servidor ja registrado em escopo
+   `user` antes do boot): o processo usou a tool `Task` para spawnar um
+   subagente `general-purpose`, que localizou e chamou
+   `mcp__state-mcp-spike-s1__ping` com `{"echo":"subagent-nested-call"}` e
+   recebeu de volta o texto literal `pong:subagent-nested-call`. Resposta
+   textual completa do processo: *"Subagent's literal finding: `pong:subagent-nested-call`.
+   The tool was available (as a deferred tool, schema loaded via ToolSearch
+   before calling)."*
+
+**Conclusao**: o consumidor primario (orquestrador spawnando subagente que
+chama a tool) FUNCIONA — mas so quando o servidor MCP ja esta registrado
+ANTES do boot do processo `claude`/da sessao. Registrar um servidor novo
+NO MEIO de uma sessao ja em curso nao basta (ver S3). Para os orquestradores
+00c em producao isso e naturalmente satisfeito: o `.mcp.json`/registro do
+servidor `state-mcp-server` e provisionado durante `cstk install`, antes de
+qualquer sessao `/agente-00c`/`/feature-00c` iniciar.
+
+**S2 — nome exato da tool na allowlist [OBSERVADO: CONFIRMADO]**
+
+O processo `claude -p` fresco, quando instruido a listar (sem chamar) tools
+cujo nome contivesse "ping"/"mcp"/"state-mcp-spike-s1", reportou exatamente
+uma: `` `mcp__state-mcp-spike-s1__ping` ``. Confirma literalmente o padrao
+presumido `mcp__<nome-do-servidor>__<nome-da-tool>`.
+
+**S3 — `.mcp.json`/registro de servidor novo vale na sessao corrente? [OBSERVADO: NAO]**
+
+Coberto pela primeira tentativa de S1 acima: registrar o servidor em escopo
+`user` (`claude mcp add -s user ...`) enquanto esta sessao ja estava aberta
+NAO tornou a tool disponivel para um subagente spawnado nesta mesma sessao
+depois do registro. Nao-bloqueante (ja esperado pelo desenho — Decision 2,
+resolucao lazy por chamada, sem depender de "hot reload" de config).
+
+**S4 — SDK aceita JSON Schema cru ou exige Zod? [OBSERVADO: REJEITA JSON Schema cru]**
+
+`server.registerTool("ping-raw", { inputSchema: { type: "object", properties: {...} } }, ...)`
+lancou em runtime, na propria chamada de registro (antes de qualquer conexao
+de transporte):
+
+```
+Error: inputSchema must be a Zod schema or raw shape, received an unrecognized object
+    at getZodSchemaObject (.../node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js:869:15)
+    at McpServer._createRegisteredTool (.../server/mcp.js:611:26)
+    at McpServer.registerTool (.../server/mcp.js:704:21)
+```
+
+A mesma tool registrada com `inputSchema: { echo: z.string().optional() }` (Zod
+raw shape) funcionou normalmente; um cliente MCP padrao (`Client` +
+`StdioClientTransport` do proprio SDK, testado fora do Claude Code) confirmou
+`tools/list` retornando o schema convertido para JSON Schema no protocolo
+(`"$schema": "http://json-schema.org/draft-07/schema#"`) e que **a validacao
+roda antes do handler**: uma chamada com `{"echo": 123}` (tipo errado) voltou
+`isError: true` com `"MCP error -32602: Input validation error: Invalid
+arguments for tool ping: Invalid input: expected string, received number at echo"`
+sem o handler ter sido executado (texto de retorno `pong:...` nunca apareceu).
+
+**Consequencia**: `mcp/state-server/package.json` MUST fixar `zod` (ou outro
+Standard Schema compativel) como dependencia direta — JSON Schema cru na API
+`registerTool()` de alto nivel nao e uma opcao.
+
+**S5 — helpers POSIX rodam corretos sob busybox (alpine)? [OBSERVADO: SIM, apos isolar 2 falsos-positivos do ambiente de teste]**
+
+Container `node:20-alpine` (imagem ja em cache local), montando o repo
+read-only, rodando o subset `tests/run.sh state-rw|state-ondas|state-decisions|bloqueios`:
+
+- 1a rodada (root, sem `curl` no container): `state-rw` 72/73 pass (1 fail:
+  `scenario_path_check_perm_negada`); `state-ondas` 118/119 pass (1 fail:
+  `scenario_end_otel_usage_captura_delta_da_onda`, mensagem `esperado 6
+  ((4-1)+(3.5-0.5)), obtido 'null'`); `state-decisions` 59/59; `bloqueios`
+  40/40.
+- Investigacao das 2 falhas (leitura de codigo, nao suposicao): (a) o teste de
+  permissao nega escrita via `chmod`, mas o container roda como `root`
+  (`uid=0`), que ignora bits de permissao — artefato do container, nao do
+  script; (b) `otel-usage.sh` exige `curl` (`_ou_have_curl`) para o scrape —
+  a imagem `node:20-alpine` base nao traz `curl` por padrao.
+- Rodada de confirmacao com `curl` instalado (root): `state-ondas` **119/119
+  pass, 0 fail**.
+- Rodada de confirmacao como usuario nao-root (`adduser -D spiketester`,
+  `su spiketester`): `state-rw` **73/73 pass, 0 fail**.
+
+**Conclusao**: com o container configurado corretamente (usuario nao-root +
+dependencias completas, `curl` incluido), as 291 cenas dos 4 arquivos de teste
+passam integralmente sob busybox/alpine — nao ha divergencia de comportamento
+dos helpers POSIX (`jq`, `sqlite3`, `awk`, aritmetica) atribuivel a alpine em
+si. Base `node:XX-alpine` confirmada como viavel; nao ha motivo, por este
+spike, para trocar para `node:22-slim` (Debian). O Dockerfile de producao do
+servidor MUST incluir `curl` no conjunto de pacotes (junto de `jq`/`sqlite3`,
+ja previstos) se algum dia depender de `otel-usage.sh`; caso contrario o alerta
+serve como nota para o proprio Dockerfile de teste/CI.

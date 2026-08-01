@@ -33,105 +33,144 @@ Nenhuma linha de codigo do servidor deve ser escrita antes destes spikes
 (research.md §Spike Obrigatorio). S1 e o item decisivo: sem consumidor
 (subagente) capaz de chamar a tool, a feature nao tem valor.
 
-### 0.1 Decisao humana: contingencia se S1 falhar `[C]` {humano}
+### 0.1 Decisao humana: contingencia se S1 falhar `[C]` {humano} — CONCLUIDO
 
 Ref: checklists/operational.md CHK085
 
-- [ ] 0.1.1 Apresentar ao operador as duas alternativas identificadas em
+- [x] 0.1.1 Apresentar ao operador as duas alternativas identificadas em
       CHK085: (a) abandonar a feature, (b) reduzir escopo (ex.: so
       CLI/POSIX, sem consumidor subagente, mutacao continua so por Bash)
-- [ ] 0.1.2 Registrar a decisao via `bloqueios.sh register` +
+      — apresentado via `bloqueios.sh register` (block-002, onda 6)
+- [x] 0.1.2 Registrar a decisao via `bloqueios.sh register` +
       `state-decisions.sh register` ANTES de iniciar a tarefa 0.3 (Spike S1)
-- [ ] 0.1.3 Se a resposta for "reduzir escopo", anotar aqui a alternativa
-      escolhida como criterio de escalada objetivo para 0.3, para que a
-      execucao de S1 nao precise pausar de novo em caso de falha
+      — respondido pelo operador via `/feature-00c-resume --resposta-bloqueio`
+      (dec-033, onda 7): **A = reduzir-escopo**
+- [x] 0.1.3 Criterio de escalada objetivo para 0.3 (resposta = "reduzir
+      escopo"): se o Spike S1 falhar, a feature NAO e abandonada. Escopo
+      passa a: tools MCP expostas como contrato equivalente ao CLI/POSIX
+      atual (sem consumidor via subagente), mutacao de estado continua
+      sendo feita via Bash pelos orquestradores como e hoje. **Nota da
+      execucao de S1 (onda 7)**: o spike foi executado e teve resultado
+      POSITIVO (subagente conseguiu chamar a tool MCP num processo `claude`
+      novo — ver research.md §Resultados observados), entao esta
+      contingencia NAO precisou ser acionada. Registrada aqui apenas como
+      criterio ja resolvido.
 
-### 0.2 Decisao humana: paralelizar F1 com F0 ou serializar `[M]` {humano}
+### 0.2 Decisao humana: paralelizar F1 com F0 ou serializar `[M]` {humano} — CONCLUIDO
 
 Ref: checklists/operational.md CHK084
 
-- [ ] 0.2.1 Apresentar ao operador o trade-off: F1 (fundacao POSIX,
+- [x] 0.2.1 Apresentar ao operador o trade-off: F1 (fundacao POSIX,
       `mcp-session.sh` + `cstk mcp status`) nao depende do resultado de S1,
       mas o plano trata F0 como gate bloqueante da feature inteira
-      (plan.md §Fases de implementacao)
-- [ ] 0.2.2 Registrar a decisao via `state-decisions.sh register`
-- [ ] 0.2.3 Se aprovado paralelizar, anotar aqui que a FASE 1 pode iniciar
-      antes de 0.3-0.7 fecharem; caso contrario, FASE 1 aguarda F0 completa
+      (plan.md §Fases de implementacao) — apresentado via `bloqueios.sh
+      register` (block-002, onda 6)
+- [x] 0.2.2 Registrar a decisao via `state-decisions.sh register` —
+      respondido pelo operador (dec-033, onda 7): **B = serializar**
+- [x] 0.2.3 Aprovado **serializar**: FASE 1 aguarda F0 completa (spikes
+      0.3-0.7 fechados) antes de iniciar. Nao ha paralelizacao.
 
-### 0.3 Spike S1: subagente consegue chamar tool MCP? `[C]` {auto}
+### 0.3 Spike S1: subagente consegue chamar tool MCP? `[C]` {auto} — CONCLUIDO, RESULTADO: PASS
 
 Ref: research.md §Spike Obrigatorio S1; quickstart.md Scenario 0.1;
 plan.md §Riscos(1)
 
-- [ ] 0.3.1 Construir servidor stdio minimo com uma tool `ping` (retorna
-      `pong`) fora da arvore final (`mcp/state-server` ainda nao existe
-      nesta task — usar um protótipo descartavel)
-- [ ] 0.3.2 Registrar o servidor via `.mcp.json` (escopo project) num
+- [x] 0.3.1 Construido servidor stdio minimo com tools `ping`/`ping-raw`
+      (`@modelcontextprotocol/sdk` + `zod`) em scratchpad da onda —
+      descartavel, fora da arvore final e fora do repo cstk
+- [x] 0.3.2 Registrado via `claude mcp add -s user` (escopo **user**, nao
+      `project` — necessario para o servidor valer independente do cwd do
+      processo `claude` de teste; ver desvio anotado abaixo) num
       projeto-alvo descartavel (`mktemp -d`)
-- [ ] 0.3.3 Spawnar subagente de teste (tool `Agent`) instruido a chamar
-      `ping` e reportar o resultado literal
-- [ ] 0.3.4 Registrar Decisao auditavel com a saida observada como
-      `--evidencia` (>= 20 chars, aterramento empirico obrigatorio)
-- [ ] 0.3.5 **Se falhar**: nao prosseguir para 0.4-0.7 nem para FASE 1+;
-      abrir bloqueio humano aplicando o criterio definido em 0.1
-      (CHK085) e encerrar a onda
+- [x] 0.3.3 Spawnado subagente de teste: PRIMEIRO dentro desta MESMA sessao
+      (via tool `Agent`) — resultado negativo, confundido por a sessao ja
+      estar em curso antes do registro (ver S3). SEGUNDO, decisivo: processo
+      `claude -p` NOVO (`--allowedTools "Task,mcp__state-mcp-spike-s1__ping"`)
+      que usou a tool `Task` para spawnar um subagente `general-purpose`, que
+      chamou a tool e reportou o literal `pong:subagent-nested-call`
+- [x] 0.3.4 Decisao auditavel registrada (dec-035) com a saida observada
+      como evidencia
+- [x] 0.3.5 N/A — S1 NAO falhou; contingencia de 0.1 nao acionada
 
-### 0.4 Spike S2: nome exato da tool na allowlist do subagente `[A]` {auto}
+**Desvio do backlog original**: 0.3.2 previa `.mcp.json` em escopo
+`project` no diretorio descartavel; usei `claude mcp add -s user` porque o
+teste real precisa que o servidor esteja visivel independente do cwd da
+sessao que o consome (a sessao/processo de teste roda separada do
+diretorio do servidor). Escopo `project`/`.mcp.json` versionado e o alvo de
+producao (FASE 1+); este spike so precisava confirmar o mecanismo de
+descoberta de tool, que e o mesmo para ambos os escopos.
+
+### 0.4 Spike S2: nome exato da tool na allowlist do subagente `[A]` {auto} — CONCLUIDO, RESULTADO: PASS
 
 Ref: research.md §Spike Obrigatorio S2; quickstart.md Scenario 0.2
 
-- [ ] 0.4.1 Com S1 verde, inspecionar como a tool `ping` aparece na sessao
-      do subagente (nome completo, ex. padrao presumido
-      `mcp__<server>__<tool>`)
-- [ ] 0.4.2 Restringir o `tools:` do frontmatter do subagente de teste ao
-      nome exato descoberto
-- [ ] 0.4.3 Confirmar que a chamada continua funcionando com a allowlist
-      restrita e que outras tools ficam de fora
-- [ ] 0.4.4 Documentar o padrao confirmado em research.md (atualizar
-      rotulo de `[NAO-VERIFICADO]` para `[VERIFICADO]`) e registrar Decisao
-      com a evidencia literal
+- [x] 0.4.1 Com S1 verde (no processo `claude -p` novo), pedido para listar
+      (sem chamar) tools contendo "ping"/"mcp"/nome do servidor: retornou
+      exatamente `mcp__state-mcp-spike-s1__ping`
+- [x] 0.4.2 Allowlist restrita testada via `--allowedTools "mcp__state-mcp-spike-s1__ping"`
+      (chamada direta no processo top-level) e via `--allowedTools "Task,mcp__state-mcp-spike-s1__ping"`
+      (chamada indireta via subagente)
+- [x] 0.4.3 Confirmado: chamada funciona com a allowlist restrita ao nome
+      exato; nenhuma outra tool foi necessaria
+- [x] 0.4.4 research.md atualizado: rotulo do padrao de nome mudou de
+      `[NAO-VERIFICADO]` para `[OBSERVADO — CONFIRMADO]`; Decisao registrada
+      (dec-036) com a evidencia literal
 
-### 0.5 Spike S3: `.mcp.json` novo vale na sessao corrente? `[M]` {auto}
+### 0.5 Spike S3: `.mcp.json` novo vale na sessao corrente? `[M]` {auto} — CONCLUIDO, RESULTADO: NAO (nao-bloqueante, como esperado)
 
 Ref: research.md §Spike Obrigatorio S3 (nao-bloqueante); plan.md §Riscos(2)
 
-- [ ] 0.5.1 Com uma sessao ja aberta, criar/alterar a entrada
-      `mcpServers` no `.mcp.json` e tentar usar a tool sem reiniciar a
-      sessao
-- [ ] 0.5.2 Registrar o resultado observado (confirma ou nao a
-      necessidade da resolucao lazy por chamada da Decision 2 do
-      research.md)
-- [ ] 0.5.3 Registrar Decisao com evidencia; **nao bloqueia** progresso
-      independente do resultado (o desenho ja e imune por construcao)
+- [x] 0.5.1 Com esta sessao ja aberta, registrado `claude mcp add -s user
+      state-mcp-spike-s1 ...` e tentado usar via subagente spawnado na
+      MESMA sessao (tool `Agent`)
+- [x] 0.5.2 Resultado observado: a tool NAO apareceu no catalogo do
+      subagente (`tools_relacionadas_encontradas: nenhuma`) — confirma que
+      alteracoes de registro MCP nao valem em sessao ja em curso; reforca a
+      necessidade da resolucao lazy por chamada (Decision 2 do research.md)
+- [x] 0.5.3 Decisao registrada (dec-037) com a evidencia; nao bloqueou
+      progresso (resultado esperado, desenho ja imune por construcao)
 
-### 0.6 Spike S4: SDK aceita JSON Schema cru ou exige Zod? `[A]` {auto}
+### 0.6 Spike S4: SDK aceita JSON Schema cru ou exige Zod? `[A]` {auto} — CONCLUIDO, RESULTADO: REJEITA (Zod obrigatorio)
 
 Ref: research.md §Spike Obrigatorio S4; checklists/api.md CHK023
 
-- [ ] 0.6.1 Registrar uma tool de teste com `inputSchema` em JSON Schema
-      cru
-- [ ] 0.6.2 Registrar a mesma tool com `inputSchema` em Zod
-- [ ] 0.6.3 Comparar comportamento de validacao pre-handler nos dois casos
-- [ ] 0.6.4 Se JSON Schema cru falhar, fixar Zod como dependencia de
-      `mcp/state-server/package.json` (decisao registrada aqui, sem
-      impacto no desenho) e registrar Decisao com evidencia
+- [x] 0.6.1 Registrada tool `ping-raw` com `inputSchema` em JSON Schema
+      cru: `McpServer.registerTool()` lancou
+      `Error: inputSchema must be a Zod schema or raw shape, received an
+      unrecognized object` em tempo de registro (antes de qualquer conexao)
+- [x] 0.6.2 Registrada tool `ping` com `inputSchema` em Zod raw shape
+      (`{ echo: z.string().optional() }`): funcionou normalmente
+- [x] 0.6.3 Comparado: com Zod, chamada `{"echo": 123}` (tipo errado) foi
+      rejeitada ANTES do handler (`isError:true`, `MCP error -32602: Input
+      validation error...`); com JSON Schema cru nem chega a registrar
+- [x] 0.6.4 Zod fixado como dependencia obrigatoria de
+      `mcp/state-server/package.json` (nao ha alternativa via JSON Schema
+      cru na API `registerTool()` de alto nivel); Decisao registrada
+      (dec-038) com a evidencia (stack trace literal)
 
-### 0.7 Spike S5: helpers POSIX sob busybox (alpine)? `[A]` {auto}
+### 0.7 Spike S5: helpers POSIX sob busybox (alpine)? `[A]` {auto} — CONCLUIDO, RESULTADO: ALPINE CONFIRMADO
 
 Ref: research.md §Spike Obrigatorio S5; quickstart.md Scenario 0.3;
 plan.md §Riscos(3)
 
-- [ ] 0.7.1 Construir uma imagem Docker minima baseada em alpine com
-      `jq`/`sqlite3` instalados
-- [ ] 0.7.2 Rodar dentro do container o subconjunto de `tests/run.sh`
-      relativo a `state-rw`, `state-ondas`, `state-decisions`, `bloqueios`
-- [ ] 0.7.3 Comparar resultado com o host; atencao especial a gotchas
-      GNU-first ja conhecidos no repo (`stat`, `date`)
-- [ ] 0.7.4 Se divergir, registrar Decisao trocando a base para
-      `node:22-slim` (Debian) — custo de tamanho de imagem, documentado
-      como aceito, nao de desenho
-- [ ] 0.7.5 Registrar Decisao final (alpine confirmado ou trocado) com
-      evidencia literal do resultado dos testes
+- [x] 0.7.1 Usada imagem `node:20-alpine` ja cacheada localmente (equivalente
+      a "minima com jq/sqlite instalados" — pacotes instalados via
+      `apk add --no-cache jq sqlite bash git coreutils` num container
+      efemero, sem alterar a imagem base)
+- [x] 0.7.2 Rodado dentro do container o subset `tests/run.sh
+      state-rw|state-ondas|state-decisions|bloqueios`
+- [x] 0.7.3 Comparado com o host: 1a rodada encontrou 2 falhas (root ignora
+      `chmod` em teste de permissao; `otel-usage.sh` exige `curl`, ausente
+      na imagem base) — ambas isoladas como artefatos do AMBIENTE DE TESTE
+      (root + dependencia faltante), nao do codigo. Rodadas de confirmacao
+      (usuario nao-root via `adduser -D`; `curl` instalado): **291/291
+      cenarios passam, 0 fail** nos 4 arquivos
+- [x] 0.7.4 N/A — nao houve divergencia real de comportamento sob
+      busybox/alpine; base mantida
+- [x] 0.7.5 Decisao final registrada (dec-039): alpine CONFIRMADO como base
+      viavel para o Dockerfile de producao do `mcp/state-server`, com nota
+      de que o Dockerfile precisa incluir `curl` no set de pacotes SE algum
+      componente depender de `otel-usage.sh`
 
 ---
 
