@@ -149,6 +149,17 @@ Cláusulas obrigatórias para `enable-sqlite`:
 > testes e CI; esta decisão precisa refletir o runtime que as execuções 00c reais
 > consomem.
 
+> **Decisão de conteúdo da mensagem (CHK010, task 1.1 — resolvida, dec-034)**:
+> "reportar qual caminho foi validado" MUST se materializar como uma linha
+> literal `cstk state enable-sqlite: capability verificado via <origem>
+> (<path>)` (`<origem>` ∈ `catalogo-instalado` \| `arvore-do-repo`), emitida
+> tanto no caminho de sucesso quanto na recusa por "Runtime incapaz" — nunca
+> apenas como uma cláusula documentada sem contrapartida de texto. Escopo
+> deliberadamente restrito a esses dois casos (não se aplica às recusas por
+> `sqlite3` ausente/abaixo do mínimo, que não envolvem escolha de caminho
+> repo-vs-catálogo). Formalizado em `contracts/cli-surface.md` §Comportamento
+> e §Diagnósticos de recusa.
+
 ## Invariante de consistência (SC-004)
 
 > Para uma mesma configuração e um mesmo ambiente, a decisão de backend obtida

@@ -38,6 +38,45 @@ crítico (happy path + error cases), rastreados aos critérios de sucesso da spe
 
 ---
 
+## Scenario 2.5: Payload de injeção na config nunca é executado — CHK002
+
+1. Escrever em `$HOME/.claude/cstk/config` uma linha sintaticamente
+   `key=value` cujo valor é um payload de shell, ex.:
+   `state_backend=$(touch /tmp/pwned)`
+2. Rodar `cstk doctor --deps` (ou `state-backend.sh resolve` diretamente)
+3. **Expected**: o valor é tratado como fora-da-allowlist (nem `sqlite` nem
+   `json`) ⇒ `reason=config-invalida` ⇒ `effective_backend=json`; o comando
+   `touch /tmp/pwned` **nunca é executado** — o canary não passa a existir.
+   Contrapartida de teste para P1/SEC-01 (o leitor NUNCA usa `.`/`source`/
+   `eval` sobre o arquivo).
+
+---
+
+## Scenario 2.6: Valor sintaticamente válido porém fora da allowlist — CHK006
+
+1. Escrever `state_backend=mysql` em `$HOME/.claude/cstk/config` (linha
+   `key=value` bem formada, mas o valor não pertence a `sqlite`\|`json`)
+2. Rodar `state-backend.sh resolve`
+3. **Expected**: `reason=config-invalida`, `effective_backend=json`.
+   Distinto do Scenario 7 ("linha sem `=`"): aqui o parse da linha é
+   válido, é o **valor** que falha a allowlist (P3).
+
+---
+
+## Scenario 2.7: Chave desconhecida é ignorada — CHK007
+
+1. Escrever em `$HOME/.claude/cstk/config`:
+   ```
+   chave_nova=valor
+   state_backend=sqlite
+   ```
+2. Rodar `state-backend.sh resolve` (com `sqlite3` adequado)
+3. **Expected**: a chave desconhecida não quebra o parse nem é reportada
+   como erro (P4); `state_backend=sqlite` é honrado normalmente
+   (`reason=configurado-dependencia-adequada`, `effective_backend=sqlite`).
+
+---
+
 ## Scenario 3: Recusa por dependência ausente — FR-004
 
 1. Ambiente sem `sqlite3` no `PATH`
@@ -70,12 +109,45 @@ crítico (happy path + error cases), rastreados aos critérios de sucesso da spe
 
 ---
 
+## Scenario 4.5: Coexistência repo + catálogo instalado com capabilities divergentes — CHK009
+
+1. Ambiente com `sqlite3` ≥ `3.45.1` (dependência **adequada**)
+2. Catálogo instalado (`~/.claude/skills/agente-00c-runtime/scripts/state-backend.sh`)
+   presente, porém **antigo** — não reconhece o subcomando `capability`
+   (simula um `cstk update` desatualizado)
+3. Árvore de repo (`$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/state-backend.sh`)
+   com o script **novo/capaz** — coexistindo com o catálogo antigo
+4. Rodar `cstk state enable-sqlite`
+5. **Expected**: exit não-zero; a mensagem cita `capability verificado via
+   catalogo-instalado (<path>)` — o **catálogo instalado prevalece** mesmo
+   com um repo capaz disponível; config **inalterada**. Prova de que P8 é
+   prioridade determinística, não apenas ordem de fallback.
+
+> Este é o único risco de severidade Média (SEC-03) que não tinha
+> contrapartida de teste antes desta feature (CHK009). Sem este cenário, uma
+> reintrodução futura do resolvedor padrão `PATH`→repo→instalado (usado por
+> `_state_migrate_script_path`) para `enable-sqlite` passaria despercebida —
+> validando um runtime e executando outro.
+
+---
+
 ## Scenario 5: Idempotência da ativação — FR-009-INFRA-IDEMP
 
 1. Ambiente adequado; rodar `cstk state enable-sqlite` uma vez (sucesso)
 2. Rodar `cstk state enable-sqlite` **de novo**
 3. **Expected**: exit 0, sucesso silencioso; a config contém **exatamente uma**
    linha `state_backend=` (sem entrada duplicada); nenhum erro reportado.
+
+---
+
+## Scenario 5.5: Permissões e atomicidade — CHK013
+
+1. Ambiente adequado, config global ausente
+2. Rodar `cstk state enable-sqlite`
+3. **Expected**: `$HOME/.claude/cstk/` fica com permissão `700`;
+   `$HOME/.claude/cstk/config` fica com permissão `600` (P6); nenhum
+   arquivo temporário residual (`config.XXXXXX` do `mktemp`) permanece em
+   `$HOME/.claude/cstk/` após a execução (P7 — write-temp-then-rename).
 
 ---
 

@@ -43,6 +43,14 @@ torna SC-002 verdadeiro por construção e não por limpeza posterior.
 
 ### Comportamento
 
+Em **todo** caminho de sucesso (linhas 1-3 da tabela abaixo), a primeira linha
+emitida MUST citar qual caminho foi validado na checagem de capability (P8,
+decisão da task 1.1/CHK010 — ver `state-backend-runtime.md` §Nota sobre P8):
+`cstk state enable-sqlite: capability verificado via <origem> (<path>)`, onde
+`<origem>` ∈ `catalogo-instalado` \| `arvore-do-repo` e `<path>` é o path
+absoluto de fato inspecionado. Essa linha é seguida pela linha de resultado
+descrita na coluna "Resultado".
+
 | Estado inicial da config | Resultado |
 |--------------------------|-----------|
 | Ausente, pré-condições OK | Cria o arquivo com `state_backend=sqlite`, exit 0 |
@@ -59,7 +67,14 @@ Cada mensagem MUST citar o que foi observado e o que era exigido — nunca apena
 |------|-----------------------|
 | `sqlite3` ausente | que a dependência está ausente + a versão mínima exigida (`3.45.1`) + como instalar |
 | `sqlite3` abaixo do mínimo | a versão **mínima exigida** e a versão **efetivamente detectada** (FR-004, literal) |
-| Runtime incapaz | a necessidade de rodar `cstk update` / `cstk self-update` (FR-004A, literal) |
+| Runtime incapaz | **a linha `cstk state enable-sqlite: capability verificado via <origem> (<path>)`** (P8 — qual caminho foi validado, repo vs. catálogo instalado) seguida da necessidade de rodar `cstk update` / `cstk self-update` (FR-004A, literal) |
+
+> **Decisão de escopo (CHK010, task 1.1)**: a linha "caminho validado" é
+> exigida SOMENTE nos casos ligados à checagem de capability (sucesso e
+> "Runtime incapaz") — é aí que existe uma noção de caminho repo-vs-catálogo a
+> reportar (P8/SEC-03). As recusas por `sqlite3` ausente/abaixo do mínimo não
+> ganham essa linha: dizem respeito à presença/versão do binário `sqlite3` no
+> `PATH`, sem relação com qual runtime do catálogo foi validado.
 
 ### Exit codes
 

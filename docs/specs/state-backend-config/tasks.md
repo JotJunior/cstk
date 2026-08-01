@@ -33,21 +33,21 @@ recusa" de `cli-surface.md` listam hoje "caminho validado" como conteúdo
 obrigatório da mensagem, embora P8/SEC-03 exijam isso. Esta tarefa fecha essa
 lacuna com uma decisão concreta ANTES de codificar `enable-sqlite` (FASE 3).
 
-- [ ] 1.1.1 Decidir e registrar (Decisão auditável) o formato literal: toda
+- [x] 1.1.1 Decidir e registrar (Decisão auditável) o formato literal: toda
       mensagem de `enable-sqlite` (sucesso e recusa por "Runtime incapaz")
       MUST citar explicitamente qual caminho foi validado —
       `<catalogo-instalado|arvore-do-repo>` + path absoluto — usando o
       template `cstk state enable-sqlite: capability verificado via <origem>
       (<path>)`, seguido da linha de resultado (ativação/no-op) ou da
       instrução `cstk update`/`cstk self-update` (FR-004A, texto literal)
-- [ ] 1.1.2 Atualizar `contracts/cli-surface.md` — tabela "Diagnósticos de
+- [x] 1.1.2 Atualizar `contracts/cli-surface.md` — tabela "Diagnósticos de
       recusa" (caso "Runtime incapaz") passa a incluir "caminho validado
       (repo vs catálogo instalado)" como conteúdo obrigatório; a seção
       "Comportamento" (caminho de sucesso) passa a mencionar a mesma linha
-- [ ] 1.1.3 Atualizar `contracts/state-backend-runtime.md` — nota de P8
+- [x] 1.1.3 Atualizar `contracts/state-backend-runtime.md` — nota de P8
       (linhas próximas a L147-150) referenciando a decisão acima e removendo
       o `[Conflict]`
-- [ ] 1.1.4 Marcar CHK010 como resolvido em `checklists/security.md`
+- [x] 1.1.4 Marcar CHK010 como resolvido em `checklists/security.md`
       (`[x]`), citando os dois artefatos atualizados acima
 
 ### 1.2 Scaffold do script `state-backend.sh` (novo) `[A]`
@@ -55,19 +55,19 @@ lacuna com uma decisão concreta ANTES de codificar `enable-sqlite` (FASE 3).
 Ref: research.md Decision 1, Decision 2; contracts/state-backend-runtime.md
 (caminho projetado); data-model.md §BackendConfig
 
-- [ ] 1.2.1 Criar `global/skills/agente-00c-runtime/scripts/state-backend.sh`
+- [x] 1.2.1 Criar `global/skills/agente-00c-runtime/scripts/state-backend.sh`
       com header POSIX (`#!/bin/sh`) e dispatcher de subcomandos
       (`capability`, `resolve`, `enable-sqlite`), seguindo o padrão de
       header/usage/`_log.sh` dos demais scripts do runtime
-- [ ] 1.2.2 Declarar como constantes únicas no topo do script: a versão
+- [x] 1.2.2 Declarar como constantes únicas no topo do script: a versão
       mínima exigida de `sqlite3` (`3.45.1` — research.md Decision 4, piso
       herdado de `docs/specs/state-db-foundation/research.md:320-336`, NÃO
       da constitution — ver correção de citação em spec.md FR-003) e o token
       de capability versionado (research.md Decision 5)
-- [ ] 1.2.3 Implementar comparação numérica campo-a-campo de versão
+- [x] 1.2.3 Implementar comparação numérica campo-a-campo de versão
       (`IFS='.'`, expansão de parâmetro; sem `sort -V`, sem `awk`) — research.md
       Decision 4
-- [ ] 1.2.4 Aplicar o GOTCHA `set -e` + captura (forma
+- [x] 1.2.4 Aplicar o GOTCHA `set -e` + captura (forma
       `if x=$(cmd); then ... else ... fi`, nunca `x=$(cmd); rc=$?`) em toda
       captura de saída externa (`sqlite3 --version`, resolução de path) —
       research.md Decision 8
@@ -81,20 +81,20 @@ Ref: research.md Decision 1, Decision 2; contracts/state-backend-runtime.md
 Ref: contracts/state-backend-runtime.md P1/P2/P5; plan.md §SEC-01;
 checklists/security.md CHK001, CHK003, CHK004
 
-- [ ] 2.1.1 Implementar parser linha-a-linha SEM `.`/`source`/`eval` sobre o
+- [x] 2.1.1 Implementar parser linha-a-linha SEM `.`/`source`/`eval` sobre o
       arquivo de config (P1) — split no primeiro `=` via expansão de
       parâmetro, nunca `eval`
-- [ ] 2.1.2 Tratar `#` no início da linha como comentário, linha em branco
+- [x] 2.1.2 Tratar `#` no início da linha como comentário, linha em branco
       ignorada, linha sem `=` marca a config inteira como inválida (P2)
-- [ ] 2.1.3 Citar toda expansão de variável (`"$var"`), sem exceção (P5)
-- [ ] 2.1.4 Confirmar que `.shellcheckrc`/`shellcheck.yml` (glob `**/*.sh`,
+- [x] 2.1.3 Citar toda expansão de variável (`"$var"`), sem exceção (P5)
+- [x] 2.1.4 Confirmar que `.shellcheckrc`/`shellcheck.yml` (glob `**/*.sh`,
       sem exclusão para `agente-00c-runtime/scripts/`) cobrem
       `state-backend.sh` automaticamente, e rodar `shellcheck` local
       confirmando 0 achados `SC2086` (variável não citada) — critério
       objetivo e automatizável para P5, resolve CHK004 (nenhum mecanismo
       novo de lint necessário; o advisory existente já cobre o arquivo por
       ser `.sh` sob o repositório)
-- [ ] 2.1.5 Criar `tests/test_state-backend.sh` cobrindo parsing: comentário
+- [x] 2.1.5 Criar `tests/test_state-backend.sh` cobrindo parsing: comentário
       ignorado, linha em branco ignorada, linha sem `=` invalida a config
 
 ### 2.2 Validação de valor e allowlist (P3, P4) `[C]`
@@ -102,24 +102,24 @@ checklists/security.md CHK001, CHK003, CHK004
 Ref: contracts/state-backend-runtime.md P3/P4; data-model.md §BackendConfig;
 checklists/security.md CHK002, CHK006, CHK007
 
-- [ ] 2.2.1 Validar `state_backend` contra a allowlist `sqlite`\|`json`
+- [x] 2.2.1 Validar `state_backend` contra a allowlist `sqlite`\|`json`
       ANTES de qualquer uso; valor fora do domínio ⇒ `config-invalida` ⇒
       fallback `json` (P3, SEC-02, FR-008)
-- [ ] 2.2.2 Ignorar chave desconhecida sem erro, mantendo o arquivo
+- [x] 2.2.2 Ignorar chave desconhecida sem erro, mantendo o arquivo
       extensível (P4)
-- [ ] 2.2.3 Adicionar `quickstart.md` Scenario 2.5 "Payload de injeção na
+- [x] 2.2.3 Adicionar `quickstart.md` Scenario 2.5 "Payload de injeção na
       config nunca é executado" (ex.: `state_backend=$(touch /tmp/pwned)`)
       validando que o valor é tratado como fora-da-allowlist (fallback
       `json`), NUNCA sourceado/executado — resolve CHK002 (contrapartida de
       teste para P1/SEC-01, severidade Alta pré-mitigação)
-- [ ] 2.2.4 Adicionar `quickstart.md` Scenario 2.6 "Valor sintaticamente
+- [x] 2.2.4 Adicionar `quickstart.md` Scenario 2.6 "Valor sintaticamente
       válido porém fora da allowlist" (`state_backend=mysql`), distinto do
       cenário de "linha sem `=`" do Scenario 7 — resolve CHK006
-- [ ] 2.2.5 Adicionar `quickstart.md` Scenario 2.7 "Chave desconhecida é
+- [x] 2.2.5 Adicionar `quickstart.md` Scenario 2.7 "Chave desconhecida é
       ignorada" (`chave_nova=valor` coexistindo com `state_backend=sqlite`
       válido) confirmando que a chave desconhecida não quebra o parse nem é
       reportada como erro — resolve CHK007
-- [ ] 2.2.6 Estender `tests/test_state-backend.sh` cobrindo os 3 cenários
+- [x] 2.2.6 Estender `tests/test_state-backend.sh` cobrindo os 3 cenários
       acima (2.2.3-2.2.5): payload de injeção, valor fora da allowlist,
       chave desconhecida
 
@@ -128,11 +128,11 @@ checklists/security.md CHK002, CHK006, CHK007
 Ref: contracts/state-backend-runtime.md §Subcommand resolve; data-model.md
 §DependencyDiagnosticReport (domínio de `reason`)
 
-- [ ] 2.3.1 Implementar `state-backend.sh resolve`: lê a config + versão de
+- [x] 2.3.1 Implementar `state-backend.sh resolve`: lê a config + versão de
       `sqlite3` detectada, imprime `effective_backend` (`sqlite`\|`json`) +
       `reason` em stdout, SEMPRE exit 0 (contrato de não-falha, FR-008) —
       inclusive quando o resultado é o fallback `json`
-- [ ] 2.3.2 Cobrir os 6 valores do domínio de `reason`
+- [x] 2.3.2 Cobrir os 6 valores do domínio de `reason`
       (`nunca-configurado`, `config-invalida`,
       `configurado-dependencia-adequada`,
       `configurado-dependencia-abaixo-do-minimo`,
@@ -144,13 +144,13 @@ Ref: contracts/state-backend-runtime.md §Subcommand resolve; data-model.md
 Ref: contracts/state-backend-runtime.md §Subcommand capability; research.md
 Decision 5
 
-- [ ] 2.4.1 Implementar `state-backend.sh capability`: imprime o token de
+- [x] 2.4.1 Implementar `state-backend.sh capability`: imprime o token de
       capability versionado (task 1.2.2) em stdout, exit 0
-- [ ] 2.4.2 Cobrir os 3 casos que o chamador MUST tratar como a mesma
+- [x] 2.4.2 Cobrir os 3 casos que o chamador MUST tratar como a mesma
       decisão ("recusar a ativação"): script ausente, subcomando não
       reconhecido (exit não-zero), token abaixo do mínimo (research.md
       Decision 5)
-- [ ] 2.4.3 Estender `tests/test_state-backend.sh` cobrindo `capability`
+- [x] 2.4.3 Estender `tests/test_state-backend.sh` cobrindo `capability`
       (sucesso e os 3 casos de incapacidade acima, simulados)
 
 ---
@@ -162,11 +162,11 @@ Decision 5
 Ref: contracts/cli-surface.md §Pré-condições verificadas; contracts/state-backend-runtime.md
 P8; plan.md §SEC-03; task 1.1 (decisão de mensagem)
 
-- [ ] 3.1.1 Implementar a verificação em ordem — (1) `sqlite3` presente no
+- [x] 3.1.1 Implementar a verificação em ordem — (1) `sqlite3` presente no
       `PATH`, (2) versão ≥ `3.45.1`, (3) capability do runtime instalado —
       NENHUMA escrita ocorre antes de as 3 passarem (FR-004, FR-004A,
       SC-002 por construção)
-- [ ] 3.1.2 Implementar a checagem de capability priorizando
+- [x] 3.1.2 Implementar a checagem de capability priorizando
       `$HOME/.claude/skills/agente-00c-runtime/scripts/state-backend.sh`
       (catálogo instalado) quando existir, com fallback ao layout de repo
       (`CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/`) apenas
@@ -174,18 +174,18 @@ P8; plan.md §SEC-03; task 1.1 (decisão de mensagem)
       resolvedor padrão `PATH`→repo→instalado usado para delegação de
       execução normal (P8, SEC-03; a config é por-usuário e serve às
       execuções 00c reais, que consomem o catálogo instalado)
-- [ ] 3.1.3 Emitir as mensagens de diagnóstico conforme o formato decidido
+- [x] 3.1.3 Emitir as mensagens de diagnóstico conforme o formato decidido
       na tarefa 1.1 (linha explícita do caminho validado) nos 3 casos de
       recusa: `sqlite3` ausente, versão insuficiente, runtime incapaz —
       cada mensagem MUST citar o que foi observado e o que era exigido
       (cli-surface.md §Diagnósticos de recusa)
-- [ ] 3.1.4 Adicionar `quickstart.md` Scenario 4.5 "Coexistência repo +
+- [x] 3.1.4 Adicionar `quickstart.md` Scenario 4.5 "Coexistência repo +
       catálogo instalado com capabilities divergentes" (catálogo instalado
       sem `state-backend.sh`/com token antigo; repo com o script
       novo/token atual) confirmando que o catálogo instalado prevalece e a
       ativação é recusada — resolve CHK009 (único risco severidade Média
       sem contrapartida de teste)
-- [ ] 3.1.5 Estender `tests/test_state-backend.sh` cobrindo os Scenarios 2,
+- [x] 3.1.5 Estender `tests/test_state-backend.sh` cobrindo os Scenarios 2,
       3, 4 e 4.5 do quickstart: recusa por versão baixa, recusa por
       ausência (GOTCHA: stub de `PATH` não esconde binário em `/usr/bin` —
       desacoplar o lookup do SUT), recusa por runtime incapaz, recusa por
@@ -196,23 +196,23 @@ P8; plan.md §SEC-03; task 1.1 (decisão de mensagem)
 Ref: contracts/state-backend-runtime.md P6/P7; research.md Decision 7;
 plan.md §SEC-05/SEC-06
 
-- [ ] 3.2.1 Criar `$HOME/.claude/cstk/` com permissão `700` (se ausente) e
+- [x] 3.2.1 Criar `$HOME/.claude/cstk/` com permissão `700` (se ausente) e
       escrever o arquivo de config com `600`, reusando o padrão de
       `_state_db_secure_perms` (`_state-db.sh:147-152`, já aplica `600` ao
       `state.db`)
-- [ ] 3.2.2 Implementar escrita via `mktemp` NO MESMO diretório + `mv`
+- [x] 3.2.2 Implementar escrita via `mktemp` NO MESMO diretório + `mv`
       (write-temp-then-rename, mesmo padrão de `state-rw.sh:407`);
       atualização de uma chave já presente reescreve a linha existente em
       vez de acrescentar — NUNCA `>>` (duplicaria entrada), NUNCA
       `sed -i` (sintaxe GNU/BSD incompatível, não-atômico)
-- [ ] 3.2.3 Implementar idempotência: reativar quando `state_backend=sqlite`
+- [x] 3.2.3 Implementar idempotência: reativar quando `state_backend=sqlite`
       já declarado e deps OK é sucesso silencioso (no-op), exit 0, sem
       duplicar linha (FR-009-INFRA-IDEMP)
-- [ ] 3.2.4 Adicionar `quickstart.md` Scenario 5.5 "Permissões e
+- [x] 3.2.4 Adicionar `quickstart.md` Scenario 5.5 "Permissões e
       atomicidade" verificando `700`/`600` no diretório/arquivo após
       `enable-sqlite`, e a ausência de arquivo temporário residual após uma
       execução normal — resolve CHK013
-- [ ] 3.2.5 Estender `tests/test_state-backend.sh` cobrindo o Scenario 5
+- [x] 3.2.5 Estender `tests/test_state-backend.sh` cobrindo o Scenario 5
       (idempotência — exatamente uma linha `state_backend=`, sem
       duplicação) e o Scenario 5.5 (permissões `700`/`600`)
 
