@@ -214,9 +214,16 @@ depender de o operador já ter rodado qualquer comando de ativação.
   parser YAML nunca MUST ser introduzido para esta finalidade.
 - **FR-003**: System MUST prover um comando explícito de ativação que, quando
   a versão de `sqlite3` detectada no ambiente atende ao mínimo suportado
-  (3.45.1 — piso já formalizado no amendment 1.3.0 da constitution do
-  projeto, herdado da Fase 1), atualiza a configuração global para declarar
+  (3.45.1 — piso herdado da Fase 1, definido em
+  `docs/specs/state-db-foundation/research.md` como a menor versão real entre
+  os ambientes suportados), atualiza a configuração global para declarar
   SQLite como backend padrão.
+
+  > **Correção de citação (Princípio VI, aplicada na fase `plan`)**: a redação
+  > anterior atribuía o piso ao *"amendment 1.3.0 da constitution"*. Verificado
+  > que `docs/constitution.md` não contém a string `3.45` — o amendment autoriza
+  > `sqlite3` como dependência obrigatória, mas não fixa versão. O valor
+  > normativo (3.45.1) permanece inalterado; apenas a fonte foi corrigida.
 - **FR-004**: O comando de ativação MUST se recusar (saída não-zero,
   diagnóstico claro citando a versão mínima exigida e a versão efetivamente
   detectada, ou a ausência da dependência) a ativar o backend SQLite quando
