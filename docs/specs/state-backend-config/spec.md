@@ -30,6 +30,27 @@ orquestradores `agente-00c`/`feature-00c`) — não o binário `cstk`
 runtime** também a ler; se apenas o binário `cstk` a consultasse, o comando de
 ativação ligaria uma política que a criação de estado de fato ignoraria.
 
+## Clarifications
+
+### Session 2026-08-01
+
+- Q: Qual o escopo da configuração global de backend (por-usuário do SO vs
+  system-wide)? → A: Por-usuário do SO — arquivo sob `~/.claude/` (ex.:
+  `~/.claude/cstk/config`), consistente com o restante do toolkit
+  (instalação/configuração sempre por-usuário, nunca system-wide).
+- Q: O que deve acontecer se o `state-rw.sh` instalado no projeto-alvo for
+  de uma versão anterior a esta feature (não sabe ler a configuração global
+  de backend)? → A: Checagem ativa fail-fast — o comando de ativação
+  (`cstk state enable-sqlite`) verifica se o runtime do catálogo instalado
+  suporta o backend config (via marcador/versão mínima) e recusa a ativação
+  (saída não-zero) com diagnóstico + instrução explícita de rodar
+  `cstk update`/`cstk self-update`.
+- Q: O comando `cstk doctor --deps` deve sempre sair com exit 0 (relatório
+  informativo) ou sair com exit não-zero quando detecta uma anomalia
+  (dependência ausente/versão insuficiente)? → A: Exit code não-zero quando
+  há anomalia — consistente com o `cstk doctor` atual (já falha em drift) e
+  utilizável como gate de CI; exit 0 apenas quando tudo OK.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Ativar SQLite como backend padrão para novas execuções (Priority: P1)
@@ -169,15 +190,24 @@ depender de o operador já ter rodado qualquer comando de ativação.
 - Reverter uma ativação (desativar o backend SQLite como padrão depois de
   ativado) está fora do escopo desta feature — não há comando de
   desativação especificado aqui.
+- O que acontece quando o runtime do catálogo instalado
+  (`~/.claude/skills/agente-00c-runtime/`) é anterior a esta feature e não
+  sabe ler a configuração global de backend? O comando de ativação
+  (`cstk state enable-sqlite`) detecta essa incapacidade via checagem ativa
+  de marcador/versão e recusa a ativação (saída não-zero), instruindo o
+  operador a rodar `cstk update`/`cstk self-update` antes de tentar
+  novamente — nunca grava uma configuração global que o runtime instalado
+  não conseguiria honrar (ver FR-004A).
 
 ## Requirements
 
 ### Functional Requirements
 
-- **FR-001**: System MUST expor uma configuração global (arquivo único por
-  máquina, fora de qualquer projeto específico) que declara qual backend de
-  estado deve ser usado por padrão para novas inicializações de execução
-  00c.
+- **FR-001**: System MUST expor uma configuração global **por-usuário do
+  sistema operacional** (arquivo único sob `~/.claude/` — ex.:
+  `~/.claude/cstk/config` —, nunca system-wide/compartilhada entre usuários,
+  e fora de qualquer projeto específico) que declara qual backend de estado
+  deve ser usado por padrão para novas inicializações de execução 00c.
 - **FR-002**: O formato da configuração global MUST ser texto plano
   `key=value` (uma atribuição por linha), parseável sem depender de um
   parser YAML ou JSON — consistente com a base POSIX-pura do toolkit; um
@@ -193,6 +223,15 @@ depender de o operador já ter rodado qualquer comando de ativação.
   `sqlite3` estiver ausente do ambiente ou abaixo da versão mínima
   suportada — e MUST deixar a configuração global exatamente como estava
   antes da tentativa nesse caso.
+- **FR-004A**: O comando de ativação MUST verificar, antes de escrever a
+  configuração global, se o runtime do catálogo instalado (scripts sob
+  `~/.claude/skills/agente-00c-runtime/`) suporta a leitura do backend
+  config (via marcador/versão mínima explícita nesse runtime) — checagem
+  ATIVA executada pelo próprio comando, não apenas uma precondição
+  documentada. Se o runtime instalado for anterior a essa capability, o
+  comando MUST se recusar (saída não-zero) com diagnóstico citando a
+  necessidade de rodar `cstk update`/`cstk self-update`, e MUST deixar a
+  configuração global inalterada.
 - **FR-005**: A decisão de qual backend usar para uma inicialização **nova**
   (nenhum `state.json` nem `state.db` presente ainda para aquela execução)
   MUST ser regida pela configuração global e MUST produzir o mesmo resultado
@@ -208,7 +247,11 @@ depender de o operador já ter rodado qualquer comando de ativação.
   a decisão de backend (ao menos `sqlite3` e `jq`), e qual backend seria
   efetivamente usado numa nova inicialização agora, incluindo o motivo dessa
   escolha (ex.: configurado e dependência adequada; configurado mas
-  dependência abaixo do mínimo; nunca configurado).
+  dependência abaixo do mínimo; nunca configurado). O diagnóstico MUST sair
+  com exit code não-zero quando detectar qualquer anomalia (dependência
+  ausente ou abaixo da versão mínima suportada) e MUST sair com exit 0
+  apenas quando nenhuma anomalia for detectada — tornando o diagnóstico
+  utilizável como gate em CI.
 - **FR-008**: Se a configuração global estiver ausente ou não puder ser
   interpretada (formato inválido), System MUST tratar isso como equivalente
   a "nenhum backend configurado" (fallback para o backend legado) em vez de
@@ -234,9 +277,11 @@ depender de o operador já ter rodado qualquer comando de ativação.
 
 ### Key Entities
 
-- **BackendConfig (Configuração de Backend)**: o registro global (um por
-  máquina) que declara qual backend de estado (JSON legado ou SQLite) deve
-  ser usado por padrão para novas inicializações de execução 00c.
+- **BackendConfig (Configuração de Backend)**: o registro global
+  **por-usuário do SO** (um por usuário, não compartilhado entre usuários
+  nem system-wide) que declara qual backend de estado (JSON legado ou
+  SQLite) deve ser usado por padrão para novas inicializações de execução
+  00c.
 - **DependencyDiagnosticReport (Relatório de Diagnóstico de Dependências)**:
   a saída do diagnóstico de dependências — lista de dependências relevantes,
   presença/versão detectada de cada uma, e o backend efetivo resultante com
@@ -256,7 +301,9 @@ depender de o operador já ter rodado qualquer comando de ativação.
 - **SC-003**: Um operador consegue determinar, numa única consulta de
   diagnóstico, quais dependências relevantes estão presentes/ausentes e
   qual backend será efetivamente usado, sem precisar inspecionar arquivos
-  internos manualmente.
+  internos manualmente; o exit code dessa consulta (zero = sem anomalia,
+  não-zero = anomalia detectada) é utilizável diretamente como gate em
+  pipelines de CI, sem parsing adicional da saída.
 - **SC-004**: A decisão de backend para uma nova inicialização é idêntica
   entre os dois caminhos de leitura da configuração (binário `cstk` e
   chamada direta ao runtime dos orquestradores) — 0% de divergência entre
