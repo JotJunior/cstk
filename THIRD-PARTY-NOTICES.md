@@ -67,8 +67,6 @@ a license obligation.
   inspired `description`/anti-shortcut patterns and skill structure. MIT license.
 - **Anthropic Claude Code** — scaffolding conventions for skills, commands and
   agents (`SKILL.md` format, frontmatter, triggers). Public documentation.
-- The "Subject-Context-Style" prompt framework of the `image-generation` skill
-  follows Google Imagen's public prompting guide.
 
 ---
 

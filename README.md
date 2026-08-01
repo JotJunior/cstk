@@ -83,7 +83,7 @@ labels are stripped before touching disk.
 
 ```
 ├── global/                     # Global skills (language-independent)
-│   └── skills/                 # 24 global skills (each skill is a folder)
+│   └── skills/                 # 22 global skills (each skill is a folder)
 │       ├── advisor/
 │       ├── agente-00c-runtime/ # internal POSIX runtime (not user-invocable)
 │       ├── analyze/
@@ -95,10 +95,8 @@ labels are stripped before touching disk.
 │       ├── constitution/
 │       ├── converge/           # reconciles spec/plan/tasks vs actual code
 │       ├── create-tasks/
-│       ├── decision-tree/      # ⚠️ DEPRECATED (remove_in 6.0.0) — use cstk-panel (cstk serve)
 │       ├── e2e-integration-flow/ # full-stack E2E integration tests (Playwright)
 │       ├── execute-task/
-│       ├── image-generation/   # ⚠️ DEPRECATED (remove_in 6.0.0) — out of toolkit scope
 │       ├── initialize-docs/
 │       ├── model-selector/     # model routing heuristic (suggester)
 │       ├── owasp-security/
@@ -169,7 +167,6 @@ Details, flow diagram and shortcuts in
 | **review-features** | "status global", "comparar features" | Cross-feature report suggesting archive/abandon/prioritize; the archive action applies deltas to the living-specs corpus |
 | **validate-documentation** | "validar documentação", "verificar UC" | Validates individual documents against structural standards |
 | **validate-docs-rendered** | "validar renderização", "verificar diagramas" | Validates that the Markdown renders (Mermaid, links, frontmatter, tables) |
-| **image-generation** | When generating images | ⚠️ DEPRECATED (remove_in 6.0.0) |
 
 ## Advanced track (autonomous orchestrator)
 
@@ -217,7 +214,7 @@ After that, typical commands:
 ```bash
 cstk --version                       # confirms installation
 cstk install                         # installs the 'sdd' profile into ~/.claude/skills/
-cstk install --profile all           # installs ALL 31 skills (includes language-go)
+cstk install --profile all           # installs ALL 29 skills (includes language-go)
 cstk install advisor bugfix          # cherry-pick by name
 cstk update                          # applies new releases preserving local edits
 cstk update --force                  # overwrites locally edited skills
@@ -235,8 +232,8 @@ cstk self-update                     # updates the cstk binary itself + cli/lib
 | Profile | Content | Typical use |
 |--------|----------|------------|
 | `sdd` | 17 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector and the orchestrators' 4 quality gates | Default global installation |
-| `complementary` | 13 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
-| `all` | All 31 skills (sdd + complementary + language-go) | Full installation |
+| `complementary` | 11 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
+| `all` | All 29 skills (sdd + complementary + language-go) | Full installation |
 | `language-go` | Go-specific skills + hooks | Only in Go projects |
 
 Default profile when none is given: `sdd`.
@@ -389,8 +386,8 @@ this via manifest + hash_dir.
 | Profile | Content | Typical use |
 |--------|----------|------------|
 | `sdd` | 17 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector and the orchestrators' 4 quality gates | Default global installation |
-| `complementary` | 13 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
-| `all` | All 31 skills (sdd + complementary + language-go) | Full installation |
+| `complementary` | 11 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
+| `all` | All 29 skills (sdd + complementary + language-go) | Full installation |
 | `language-go` | Go-specific skills + hooks | Only in Go projects |
 
 Default profile when none is given: `sdd`. Details in `cstk install --help`.

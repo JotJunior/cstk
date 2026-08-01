@@ -66,8 +66,6 @@ de código ou texto. O reconhecimento é por boa-fé, não por obrigação de li
   inspirou padrões de `description`/anti-atalho e estrutura de skills. Licença MIT.
 - **Anthropic Claude Code** — convenções de scaffolding de skills, commands e
   agents (formato `SKILL.md`, frontmatter, triggers). Documentação pública.
-- O framework de prompt "Subject-Context-Style" da skill `image-generation`
-  segue o guia público de prompting do Google Imagen.
 
 ---
 

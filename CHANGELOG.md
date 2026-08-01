@@ -5,6 +5,33 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.0.0] - 2026-08-01
+
+Release FINAL da linha v6: consolida a fundação state.db SQLite
+(`6.0.0-alpha.1`) e o cutover por config global (`6.0.0-alpha.2`) como canal
+estável, e cumpre a remoção anunciada das duas skills deprecated desde a
+v5.6.0 (`remove_in 6.0.0`).
+
+### Removed
+
+- **Skill `image-generation` removida.** Deprecated desde a v5.6.0 (fora do
+  escopo do toolkit). Removidos `global/skills/image-generation/`, a entrada
+  `complementary:image-generation` de `scripts/profiles.txt.in`, a menção no
+  help de `cli/lib/install.sh`, 2 tips do `tips/catalog.md` e o aviso de
+  atribuição do guia Imagen nos `THIRD-PARTY-NOTICES*.md`.
+- **Skill `decision-tree` removida.** Deprecated desde a v5.6.0 — a
+  visualização vive no cstk-panel (`cstk serve`). Removidos
+  `global/skills/decision-tree/` (incl. `render-decision-tree.sh`), a entrada
+  no profile `complementary`, 2 tips, `tests/test_render-decision-tree.sh` e a
+  fixture `tests/fixtures/decision-tree-state/`.
+
+### Changed
+
+- **Contagens de catálogo atualizadas** (gate `test_doc-counts.sh`):
+  22 skills globais, profile `complementary` com 11 skills, `all` com 29
+  (READMEs EN/pt-BR); fixtures de release regeneradas via
+  `tests/cstk/fixtures/regen.sh`. Profile `sdd` inalterado (17 skills).
+
 ## [6.0.0-alpha.2] - 2026-08-01
 
 Fase 2 da linha v6.0.0 (pre-release): cutover do backend de estado de
@@ -4600,6 +4627,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.0.0]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0
 [6.0.0-alpha.2]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.2
 [6.0.0-alpha.1]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.1
 [5.34.1]: https://github.com/JotJunior/cstk/releases/tag/v5.34.1
