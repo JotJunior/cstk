@@ -1,0 +1,724 @@
+# Tarefas state-mcp-server - Servidor MCP de Estado das Execucoes 00C
+
+Escopo: expor as mutacoes de estado de `agente-00c`/`feature-00c` (decisoes,
+ondas, tasks, bloqueios humanos, skills invocadas) como tools MCP com
+contrato validado, delegando sempre aos helpers POSIX ja existentes em
+`global/skills/agente-00c-runtime/scripts/` — nunca reimplementando regra de
+estado em TypeScript. Backlog derivado de `spec.md` + `plan.md` +
+`research.md` + `data-model.md` + `quickstart.md` + `contracts/*` e dos
+achados acionaveis dos 3 checklists (`checklists/api.md`,
+`checklists/security.md`, `checklists/operational.md`).
+
+**Legenda de status:**
+- `[ ]` Pendente
+- `[~]` Em andamento
+- `[x]` Concluido
+- `[!]` Bloqueado
+
+**Legenda de criticidade:**
+- `[C]` Critico - Impacto financeiro direto ou bloqueante
+- `[A]` Alto - Funcionalidade essencial
+- `[M]` Medio - Necessario mas sem urgencia imediata
+
+**Legenda de ownership:**
+- `{auto}` - executavel pelo `execute-task` sem intervencao humana
+- `{humano}` - decisao que exige resposta do operador (bloqueio humano
+  registrado via `bloqueios.sh register` antes de a fase seguinte iniciar)
+
+---
+
+## FASE 0 - Spikes Empiricos e Contingencia (BLOQUEANTE)
+
+Nenhuma linha de codigo do servidor deve ser escrita antes destes spikes
+(research.md §Spike Obrigatorio). S1 e o item decisivo: sem consumidor
+(subagente) capaz de chamar a tool, a feature nao tem valor.
+
+### 0.1 Decisao humana: contingencia se S1 falhar `[C]` {humano}
+
+Ref: checklists/operational.md CHK085
+
+- [ ] 0.1.1 Apresentar ao operador as duas alternativas identificadas em
+      CHK085: (a) abandonar a feature, (b) reduzir escopo (ex.: so
+      CLI/POSIX, sem consumidor subagente, mutacao continua so por Bash)
+- [ ] 0.1.2 Registrar a decisao via `bloqueios.sh register` +
+      `state-decisions.sh register` ANTES de iniciar a tarefa 0.3 (Spike S1)
+- [ ] 0.1.3 Se a resposta for "reduzir escopo", anotar aqui a alternativa
+      escolhida como criterio de escalada objetivo para 0.3, para que a
+      execucao de S1 nao precise pausar de novo em caso de falha
+
+### 0.2 Decisao humana: paralelizar F1 com F0 ou serializar `[M]` {humano}
+
+Ref: checklists/operational.md CHK084
+
+- [ ] 0.2.1 Apresentar ao operador o trade-off: F1 (fundacao POSIX,
+      `mcp-session.sh` + `cstk mcp status`) nao depende do resultado de S1,
+      mas o plano trata F0 como gate bloqueante da feature inteira
+      (plan.md §Fases de implementacao)
+- [ ] 0.2.2 Registrar a decisao via `state-decisions.sh register`
+- [ ] 0.2.3 Se aprovado paralelizar, anotar aqui que a FASE 1 pode iniciar
+      antes de 0.3-0.7 fecharem; caso contrario, FASE 1 aguarda F0 completa
+
+### 0.3 Spike S1: subagente consegue chamar tool MCP? `[C]` {auto}
+
+Ref: research.md §Spike Obrigatorio S1; quickstart.md Scenario 0.1;
+plan.md §Riscos(1)
+
+- [ ] 0.3.1 Construir servidor stdio minimo com uma tool `ping` (retorna
+      `pong`) fora da arvore final (`mcp/state-server` ainda nao existe
+      nesta task — usar um protótipo descartavel)
+- [ ] 0.3.2 Registrar o servidor via `.mcp.json` (escopo project) num
+      projeto-alvo descartavel (`mktemp -d`)
+- [ ] 0.3.3 Spawnar subagente de teste (tool `Agent`) instruido a chamar
+      `ping` e reportar o resultado literal
+- [ ] 0.3.4 Registrar Decisao auditavel com a saida observada como
+      `--evidencia` (>= 20 chars, aterramento empirico obrigatorio)
+- [ ] 0.3.5 **Se falhar**: nao prosseguir para 0.4-0.7 nem para FASE 1+;
+      abrir bloqueio humano aplicando o criterio definido em 0.1
+      (CHK085) e encerrar a onda
+
+### 0.4 Spike S2: nome exato da tool na allowlist do subagente `[A]` {auto}
+
+Ref: research.md §Spike Obrigatorio S2; quickstart.md Scenario 0.2
+
+- [ ] 0.4.1 Com S1 verde, inspecionar como a tool `ping` aparece na sessao
+      do subagente (nome completo, ex. padrao presumido
+      `mcp__<server>__<tool>`)
+- [ ] 0.4.2 Restringir o `tools:` do frontmatter do subagente de teste ao
+      nome exato descoberto
+- [ ] 0.4.3 Confirmar que a chamada continua funcionando com a allowlist
+      restrita e que outras tools ficam de fora
+- [ ] 0.4.4 Documentar o padrao confirmado em research.md (atualizar
+      rotulo de `[NAO-VERIFICADO]` para `[VERIFICADO]`) e registrar Decisao
+      com a evidencia literal
+
+### 0.5 Spike S3: `.mcp.json` novo vale na sessao corrente? `[M]` {auto}
+
+Ref: research.md §Spike Obrigatorio S3 (nao-bloqueante); plan.md §Riscos(2)
+
+- [ ] 0.5.1 Com uma sessao ja aberta, criar/alterar a entrada
+      `mcpServers` no `.mcp.json` e tentar usar a tool sem reiniciar a
+      sessao
+- [ ] 0.5.2 Registrar o resultado observado (confirma ou nao a
+      necessidade da resolucao lazy por chamada da Decision 2 do
+      research.md)
+- [ ] 0.5.3 Registrar Decisao com evidencia; **nao bloqueia** progresso
+      independente do resultado (o desenho ja e imune por construcao)
+
+### 0.6 Spike S4: SDK aceita JSON Schema cru ou exige Zod? `[A]` {auto}
+
+Ref: research.md §Spike Obrigatorio S4; checklists/api.md CHK023
+
+- [ ] 0.6.1 Registrar uma tool de teste com `inputSchema` em JSON Schema
+      cru
+- [ ] 0.6.2 Registrar a mesma tool com `inputSchema` em Zod
+- [ ] 0.6.3 Comparar comportamento de validacao pre-handler nos dois casos
+- [ ] 0.6.4 Se JSON Schema cru falhar, fixar Zod como dependencia de
+      `mcp/state-server/package.json` (decisao registrada aqui, sem
+      impacto no desenho) e registrar Decisao com evidencia
+
+### 0.7 Spike S5: helpers POSIX sob busybox (alpine)? `[A]` {auto}
+
+Ref: research.md §Spike Obrigatorio S5; quickstart.md Scenario 0.3;
+plan.md §Riscos(3)
+
+- [ ] 0.7.1 Construir uma imagem Docker minima baseada em alpine com
+      `jq`/`sqlite3` instalados
+- [ ] 0.7.2 Rodar dentro do container o subconjunto de `tests/run.sh`
+      relativo a `state-rw`, `state-ondas`, `state-decisions`, `bloqueios`
+- [ ] 0.7.3 Comparar resultado com o host; atencao especial a gotchas
+      GNU-first ja conhecidos no repo (`stat`, `date`)
+- [ ] 0.7.4 Se divergir, registrar Decisao trocando a base para
+      `node:22-slim` (Debian) — custo de tamanho de imagem, documentado
+      como aceito, nao de desenho
+- [ ] 0.7.5 Registrar Decisao final (alpine confirmado ou trocado) com
+      evidencia literal do resultado dos testes
+
+---
+
+## FASE 1 - Fundacao POSIX e Coordenacao Externa
+
+### 1.1 Amendment: reescrever FR-016 no spec.md `[A]` {auto}
+
+Ref: checklists/security.md CHK036; dec-023 (onda-004); dec-021 (onda-003,
+block-001)
+
+- [ ] 1.1.1 Reler o texto atual de FR-016 (spec.md, "cada uma MUST receber
+      sua propria instancia/**porta** de servidor MCP isolada")
+- [ ] 1.1.2 Reescrever para a releitura ja aprovada pelo operador
+      (dec-021): isolamento por **container + token de capacidade** em
+      transporte `stdio` **sem porta**, preservando a garantia de
+      confinamento de FR-008
+- [ ] 1.1.3 Adicionar nota de rastreabilidade da mudanca (referenciar
+      dec-021/dec-023 no changelog da spec, se a spec tiver secao de
+      historico; senao, deixar rastro so na Decisao desta task)
+- [ ] 1.1.4 Revisar `contracts/mcp-session-lifecycle.md` §Nota de
+      autenticacao para confirmar que o texto ja reflete a mesma leitura
+      (nao deve exigir mudanca, apenas checagem de consistencia)
+- [ ] 1.1.5 Rodar `analyze` (ou checagem manual equivalente) para
+      confirmar que spec.md e plan.md deixaram de divergir apos o
+      amendment
+
+### 1.2 Coordenacao cross-feature: token de capacidade pelos commands pai `[C]` {humano}
+
+Ref: checklists/security.md CHK031; plan.md §Bloqueio humano item 1;
+dec-021 (aprovado em block-001)
+
+- [ ] 1.2.1 Registrar formalmente que a geracao e injecao do token de
+      capacidade (SEC-H3: `session_id` >= 128 bits CSPRNG, `chmod 600`,
+      injetado pelo pai no spawn do orquestrador) em
+      `/agente-00c`, `/feature-00c` e seus `-resume` **nao e implementada
+      dentro desta feature** — e uma dependencia externa cujo merito ja
+      foi aprovado pelo operador (dec-021), mas cujo trabalho de artefato
+      (editar `global/commands/agente-00c*.md`,
+      `global/commands/feature-00c*.md`) fica fora do escopo de codigo de
+      `state-mcp-server`
+- [ ] 1.2.2 Coordenar com o operador QUANDO essa mudanca nos commands pai
+      sera feita (feature separada / PR separado) e se ha uma janela
+      minima antes de F6 (Integracao 00c) precisar dela
+- [ ] 1.2.3 Registrar Decisao (`state-decisions.sh register`) apontando o
+      short-name/PR de destino dessa coordenacao, ou o bloqueio explicito
+      se ainda nao houver destino definido
+- [ ] 1.2.4 **Gate**: as tasks 1.3 (mcp-session.sh) e 6.2/6.3 (integracao
+      com commands pai) MUST tratar a ausencia do token real como caso
+      esperado durante o desenvolvimento desta feature (usar token
+      sintetico nos testes) — a consumacao end-to-end do token real so e
+      possivel apos esta coordenacao externa concluir
+
+### 1.3 `mcp-session.sh`: resolucao da execucao ativa `[A]` {auto}
+
+Ref: plan.md §Project Structure;
+contracts/mcp-session-lifecycle.md §Resolucao da execucao ativa;
+SEC-H3 (roteamento por capacidade, fail-closed)
+
+- [ ] 1.3.1 Criar `global/skills/agente-00c-runtime/scripts/mcp-session.sh`
+      com subcomando de resolucao: dado um token/`session_id`, localizar o
+      `state-dir` correspondente
+- [ ] 1.3.2 Implementar fail-closed: token ausente/invalido ⇒ erro
+      explicito, nunca fallback silencioso para "execucao ativa por
+      precedencia" (precedencia so vale para consulta read-only, nunca
+      para mutacao — SEC-H3)
+- [ ] 1.3.3 Aceitar token sintetico via variavel de ambiente/arquivo para
+      viabilizar testes sem depender da coordenacao externa (1.2)
+- [ ] 1.3.4 Criar `tests/test_mcp-session.sh` cobrindo: token valido,
+      token ausente, token invalido, dois state-dirs concorrentes (nao
+      deve haver vazamento entre eles)
+- [ ] 1.3.5 Rodar `./tests/run.sh test_mcp-session` e confirmar verde
+
+### 1.4 `cstk mcp status` (fundacao de `cli/lib/mcp.sh`) `[A]` {auto}
+
+Ref: plan.md §Project Structure; contracts/mcp-session-lifecycle.md
+`cstk mcp status`; FR-015
+
+- [ ] 1.4.1 Criar `cli/lib/mcp.sh` com o subcomando `status
+      [--state-dir DIR] [--project-path PATH]` (ativo / parado /
+      indisponivel), sem exigir Docker rodando ainda (F5 adiciona o
+      container real)
+- [ ] 1.4.2 Adicionar `mcp)` ao dispatch de `cli/cstk`
+- [ ] 1.4.3 Criar `tests/cstk/test_mcp.sh` cobrindo `status` nos 3 estados
+- [ ] 1.4.4 Rodar `./tests/run.sh --check-coverage` e confirmar que os
+      dois `.sh` novos desta fase (`mcp-session.sh`, `mcp.sh`) tem teste
+      correspondente
+
+---
+
+## FASE 2 - Servidor Minimo
+
+### 2.1 Decisao humana: auto-atestacao do log e aceitavel? `[M]` {humano}
+
+Ref: checklists/security.md CHK057; plan.md §Seguranca "Auto-atestacao do
+log (limite conhecido)"
+
+- [ ] 2.1.1 Apresentar ao operador o limite conhecido: a linha de
+      auditoria e escrita pelo mesmo processo que executa a mutacao; um
+      servidor comprometido poderia suprimir o proprio rastro
+- [ ] 2.1.2 Perguntar se e aceitavel no modelo de ameaca atual (container
+      confiavel por construcao, adversario = conteudo lido pelo LLM) ou se
+      a auditoria exige testemunha externa (ex.: watcher de arquivo fora
+      do container) antes do primeiro uso real
+- [ ] 2.1.3 Registrar Decisao; se "exige testemunha externa", abrir gap
+      explicito a ser resolvido antes de F6 (nao implementado nesta
+      feature se sair do MVP aprovado)
+
+### 2.2 Bootstrap `McpServer` + transporte stdio + tool `record_skill` `[A]` {auto}
+
+Ref: plan.md §Fases de implementacao F2; contracts/mcp-tools.md
+`record_skill`
+
+- [ ] 2.2.1 Inicializar `mcp/state-server/` com `package.json` +
+      `package-lock.json` (lock obrigatorio — build falha sem ele),
+      `@modelcontextprotocol/sdk` como dependencia
+- [ ] 2.2.2 Implementar `mcp/state-server/src/index.ts`: bootstrap do
+      `McpServer` + transporte `stdio`
+- [ ] 2.2.3 Implementar `mcp/state-server/src/session/resolve.ts`:
+      le o token/`session_id` e delega a `mcp-session.sh` (1.3) — nenhuma
+      reimplementacao da regra de resolucao em TS
+- [ ] 2.2.4 Implementar `mcp/state-server/src/runtime/exec.ts` (versao
+      inicial): invocacao de helper POSIX via `execFile`/`spawn` com
+      **array de argv** e `shell: false` (SEC-H1 — nunca `exec`,
+      `execSync`, `shell: true` ou crase)
+- [ ] 2.2.5 Implementar a tool `record_skill` (`mcp/state-server/src/tools/record_skill.ts`)
+      delegando a `state-ondas.sh record-skill`, com `inputSchema`
+      validando os campos allowlist (SEC-M2 — nenhum id inicia com `-`)
+- [ ] 2.2.6 Criar `mcp/state-server/test/` com `node:test` cobrindo o
+      bootstrap e a tool `record_skill` (happy path + rejeicao de schema)
+- [ ] 2.2.7 Adicionar assercao estatica no teste: grep no codigo-fonte
+      proibindo `exec(`, `execSync(`, `shell: true`, template string em
+      chamada de processo (SEC-H1)
+
+### 2.3 `audit/log.ts`: enforcement-log.jsonl (scrub -> truncate) `[A]` {auto}
+
+Ref: plan.md §Summary item 5; SEC-M1; SEC-M3; contracts/mcp-tools.md
+§Controles de seguranca
+
+- [ ] 2.3.1 Implementar `mcp/state-server/src/audit/log.ts`: linha de
+      auditoria com `source` proprio, timestamp, ferramenta chamada,
+      sessao/execucao de origem, resultado (aceita/rejeitada + motivo)
+- [ ] 2.3.2 Aplicar a ordem obrigatoria **scrub -> truncate -> serialize**
+      (research.md D6): nunca montar a linha por `printf`/concatenacao —
+      usar serializador JSON real (SEC-M3, previne log injection via
+      `"`/`\n`)
+- [ ] 2.3.3 Truncar stderr do helper por code point a um teto de 2 KiB
+      antes de devolver ao contexto do LLM (SEC-M1)
+- [ ] 2.3.4 Bind-mount do **arquivo** `enforcement-log.jsonl` (nunca do
+      diretorio `.claude`) — preparar a interface aqui; a montagem real
+      do container e task 5.2 (SEC-H2)
+- [ ] 2.3.5 Testes `node:test`: linha serializada corretamente com
+      caracteres hostis (`"`, `\n`, `\t`) no input; teto de 2 KiB
+      respeitado; ordem scrub->truncate->serialize verificada por teste,
+      nao so por leitura de codigo
+- [ ] 2.3.6 Aplicar a decisao de 2.1 (auto-atestacao) se ela introduziu
+      algum requisito adicional de rastreabilidade
+
+---
+
+## FASE 3 - Tools de Mutacao
+
+### 3.1 Decisao humana: escopo correto das 6 tools do MVP `[M]` {humano}
+
+Ref: checklists/api.md CHK027
+
+- [ ] 3.1.1 Apresentar ao operador a lista das 6 tools (`record_skill` ja
+      implementada em F2; `record_decision`, `open_wave`, `close_wave`,
+      `record_task`, `register_human_block` restantes) e a lista de
+      "nao-tools" declaradas em `contracts/mcp-tools.md`
+      §Nao-tools (status do servidor, escrita em knowledge.db,
+      lock, `state-rw.sh set` generico)
+- [ ] 3.1.2 Perguntar se alguma operacao hoje listada como "nao-tool"
+      deveria entrar antes do primeiro uso real
+- [ ] 3.1.3 Registrar Decisao confirmando o escopo (ou ajustando-o) ANTES
+      de iniciar 3.6-3.9
+
+### 3.2 Decisao humana: nivel de detalhe do `reason` de erro `[M]` {humano}
+
+Ref: checklists/api.md CHK026
+
+- [ ] 3.2.1 Apresentar ao operador o trade-off: `reason` = stderr do
+      helper (scrubbed, <= 2 KiB) reintroduz mais texto no contexto do
+      LLM (risco LLM05) vs. `reason` = so codigo de erro enumerado (menos
+      informativo para o orquestrador decidir o proximo passo)
+- [ ] 3.2.2 Registrar Decisao; o resultado direciona o formato de
+      `Errors` a implementar em 3.6-3.9 e 4.1
+
+### 3.3 Resolver ambiguidade CHK007: criterio de "motivo acionavel" (FR-009) `[A]` {auto}
+
+Ref: checklists/api.md CHK007; spec.md FR-009
+
+- [ ] 3.3.1 Definir criterio objetivo e verificavel de equivalencia entre
+      o erro do script manual e o erro da tool (ex.: mesmo codigo de
+      invariante + mesma informacao minima, nao necessariamente o mesmo
+      texto literal)
+- [ ] 3.3.2 Documentar o criterio em `contracts/mcp-tools.md` (nova
+      subsecao ou nota em cada `### Errors`)
+- [ ] 3.3.3 Registrar Decisao com o criterio adotado
+
+### 3.4 Resolver ambiguidade CHK025: quantificar o conjunto de SC-001 `[M]` {auto}
+
+Ref: checklists/api.md CHK025; spec.md SC-001
+
+- [ ] 3.4.1 Definir quantas execucoes de teste, quais fases e quais
+      backends (json/sqlite) compoem o conjunto sobre o qual a taxa "cai a
+      zero" e medida
+- [ ] 3.4.2 Atualizar SC-001 no spec.md com a quantificacao
+- [ ] 3.4.3 Registrar Decisao
+
+### 3.5 Gap CHK004: estrategia de versionamento de schema de tool `[M]` {auto}
+
+Ref: checklists/api.md CHK004
+
+- [ ] 3.5.1 Definir o que acontece quando um `inputSchema` muda e um
+      orquestrador antigo chama a versao nova (ex.: campo novo opcional
+      com default seguro nunca quebra; campo removido/renomeado exige
+      bump de versao do servidor documentado em CHANGELOG)
+- [ ] 3.5.2 Documentar a politica em `contracts/mcp-tools.md` (nova
+      secao "Versionamento de contrato")
+- [ ] 3.5.3 Registrar Decisao
+
+### 3.6 Tool `record_decision` `[A]` {auto}
+
+Ref: contracts/mcp-tools.md §Tool: record_decision
+
+- [ ] 3.6.1 Implementar `mcp/state-server/src/tools/record_decision.ts`
+      delegando a `state-decisions.sh register`
+- [ ] 3.6.2 `inputSchema` com allowlist de campos (SEC-M2) e validacao de
+      score >= 3 exigindo `evidencia` (paridade com a trava do helper —
+      dupla checagem no schema nao substitui a checagem do helper, apenas
+      falha mais cedo)
+- [ ] 3.6.3 Mapear campos ingles -> flags portugues em `exec.ts`
+      (`evidence` -> `--evidencia`, `rationale` -> `--justificativa`, etc)
+- [ ] 3.6.4 Implementar `### Errors` do contrato (score 3 sem evidencia,
+      etc) conforme o formato decidido em 3.2
+- [ ] 3.6.5 Testes `node:test`: happy path, score 3 sem evidencia
+      (rejeicao), campos allowlist violados
+
+### 3.7 Tool `open_wave` `[A]` {auto}
+
+Ref: contracts/mcp-tools.md §Tool: open_wave
+
+- [ ] 3.7.1 Implementar `mcp/state-server/src/tools/open_wave.ts`
+      delegando a `state-ondas.sh start`
+- [ ] 3.7.2 `inputSchema` + mapeamento de campos em `exec.ts`
+- [ ] 3.7.3 Implementar `### Errors` (ex.: onda ja aberta)
+- [ ] 3.7.4 Testes `node:test`: happy path, onda ja aberta (rejeicao)
+
+### 3.8 Tool `record_task` (+ fix CHK016) `[A]` {auto}
+
+Ref: contracts/mcp-tools.md §Tool: record_task; checklists/api.md CHK016;
+spec.md FR-004 (idempotencia), FR-009
+
+- [ ] 3.8.1 Implementar `mcp/state-server/src/tools/record_task.ts`
+      delegando a `state-ondas.sh record-task` (upsert idempotente por
+      `task_id`)
+- [ ] 3.8.2 `inputSchema` + mapeamento de campos em `exec.ts`
+- [ ] 3.8.3 **Fechar o gap CHK016**: adicionar codigo de rejeicao
+      dedicado (ex.: `WAVE_ID_NOT_FOUND`) para o caso de `wave_id`
+      explicito que nao corresponde a nenhuma onda existente — hoje o
+      contrato so cobre `NO_OPEN_WAVE` e `TESTS_PASSED_EXCEEDS_RUN`
+- [ ] 3.8.4 Atualizar `contracts/mcp-tools.md` §Tool: record_task
+      §Errors com o novo codigo
+- [ ] 3.8.5 Testes `node:test`: happy path, idempotencia (upsert em
+      `task_id` repetido), `wave_id` inexistente (novo codigo),
+      `tests_passed > tests_run` (rejeicao existente)
+
+### 3.9 Tool `register_human_block` `[A]` {auto}
+
+Ref: contracts/mcp-tools.md §Tool: register_human_block
+
+- [ ] 3.9.1 Implementar `mcp/state-server/src/tools/register_human_block.ts`
+      delegando a `bloqueios.sh register`
+- [ ] 3.9.2 `inputSchema` + mapeamento de campos em `exec.ts`
+- [ ] 3.9.3 Implementar `### Errors` do contrato
+- [ ] 3.9.4 Testes `node:test`: happy path, campos obrigatorios ausentes
+
+### 3.10 Mapper `exec.ts` completo + rejeicoes tipadas cross-tool `[A]` {auto}
+
+Ref: plan.md §Convencoes de Borda "Mapper layer (tool <-> helper)"
+
+- [ ] 3.10.1 Consolidar em `exec.ts` a tabela explicita de mapeamento
+      campo-ingles -> flag-portugues usada por todas as tools de 3.6-3.9
+      (nao ha mapeamento automatico por convencao — e tabela explicita)
+- [ ] 3.10.2 Garantir que TODO campo opcional do schema chega ao helper
+      quando presente (risco especifico documentado em plan.md
+      §Convencoes de Borda: "falha em silencio" — schema aceita, helper
+      grava sem o campo, nada quebra)
+- [ ] 3.10.3 Teste de paridade: para cada tool, listar campos do
+      `inputSchema` e confirmar que todos tem entrada na tabela de
+      mapeamento (falha se algum campo ficar orfao)
+- [ ] 3.10.4 Definir tipo de erro comum (`McpToolError`) reutilizado por
+      todas as tools, com `code` enumerado + `message` (formato decidido
+      em 3.2)
+
+---
+
+## FASE 4 - Atomicidade
+
+### 4.1 Tool `close_wave` com pre-imagem/compensacao `[C]` {auto}
+
+Ref: contracts/mcp-tools.md §Tool: close_wave; plan.md §Summary item 3;
+research.md D3; quickstart.md Scenario 5
+
+- [ ] 4.1.1 Implementar `mcp/state-server/src/tools/close_wave.ts`
+      delegando a `state-ondas.sh end`
+- [ ] 4.1.2 Implementar pre-imagem: capturar estado antes da mutacao
+      (backup da onda + hash) para permitir compensacao caso qualquer um
+      dos efeitos fora do banco (backup em disco, `sha256-update`) falhe
+      apos a escrita no banco
+- [ ] 4.1.3 Implementar a logica de compensacao: se backup ou hash
+      falharem apos o `state-ondas.sh end` gravar, reverter para um
+      estado observavel consistente (nunca deixar o banco "fechado" com
+      backup ausente ou hash desatualizado)
+- [ ] 4.1.4 `inputSchema` + mapeamento de campos em `exec.ts`
+- [ ] 4.1.5 Implementar `### Errors` do contrato (onda ja fechada, etc)
+
+### 4.2 Testes de atomicidade cross-backend `[A]` {auto}
+
+Ref: quickstart.md Scenario 5; plan.md Technical Context "Storage"
+
+- [ ] 4.2.1 Testes `node:test` de `close_wave` rodando contra backend
+      `json`
+- [ ] 4.2.2 Testes `node:test` de `close_wave` rodando contra backend
+      `sqlite` (state.db)
+- [ ] 4.2.3 Teste de falha simulada: interromper apos a escrita no banco
+      e antes do backup — confirmar compensacao observavel nos dois
+      backends
+- [ ] 4.2.4 Rodar `./tests/run.sh` (subset MCP) e confirmar verde nos
+      dois backends
+
+---
+
+## FASE 5 - Docker e Ciclo de Vida
+
+### 5.1 Decisao humana: leitura da condicao (b) do carve-out 1.1.0 `[C]` {humano}
+
+Ref: checklists/operational.md CHK073; plan.md §Complexity Tracking linha
+2; §Re-check de Constitution
+
+- [ ] 5.1.1 Apresentar ao operador as duas leituras possiveis da condicao
+      "um unico arquivo identificavel" do carve-out 1.1.0 para a dep
+      `docker`: (a) um arquivo **por feature** (precedente: `cstk serve`
+      -> `serve-docker.sh`; esta feature -> `mcp-docker.sh`), ou (b) um
+      arquivo **por dependencia** no repo inteiro (exigiria consolidar
+      `serve-docker.sh` + `mcp-docker.sh`)
+- [ ] 5.1.2 Registrar Decisao com a leitura confirmada
+- [ ] 5.1.3 **Se a leitura for (b)**: abrir amendment MINOR a
+      constitution/carve-out ANTES de prosseguir para 5.2 — nao ha
+      opt-out tacito de MUST (Decision Framework item 4); esta subtarefa
+      so se materializa nesse cenario
+- [ ] 5.1.4 **Gate**: 5.2 (mcp-docker.sh) so inicia apos esta decisao
+      estar registrada
+
+### 5.2 `mcp-docker.sh`: uso de Docker confinado `[A]` {auto}
+
+Ref: plan.md §Project Structure; §Analise do Principio II; SEC-H2
+
+- [ ] 5.2.1 Criar `cli/lib/mcp-docker.sh` — TODO uso de `docker` desta
+      feature fica confinado neste arquivo (condicao (b) do carve-out,
+      conforme decisao de 5.1)
+- [ ] 5.2.2 Implementar montagens do container conforme
+      `contracts/mcp-session-lifecycle.md` §Montagens: bind-mount do
+      **arquivo** `enforcement-log.jsonl`, nunca do diretorio `.claude`
+- [ ] 5.2.3 Implementar teste estatico proibindo mount de `.claude`,
+      `$HOME`, `/`, `docker.sock` (SEC-H2) — falha o build/teste se
+      algum desses paths aparecer em qualquer chamada `docker run`/`-v`
+- [ ] 5.2.4 Aplicar `npm ci --ignore-scripts` (nunca `npm install`) no
+      Dockerfile de build da imagem (SEC-M4); base pinada por digest
+- [ ] 5.2.5 Criar `tests/cstk/test_mcp-docker.sh` cobrindo as assercoes
+      estaticas de flags proibidas (`--check-coverage` exige)
+
+### 5.3 `cstk mcp start`/`stop` + health check `[A]` {auto}
+
+Ref: contracts/mcp-session-lifecycle.md `cstk mcp start`/`stop`;
+§Health check; FR-010, FR-011
+
+- [ ] 5.3.1 Estender `cli/lib/mcp.sh` com `start --state-dir DIR` e
+      `stop --state-dir DIR`, delegando a `mcp-docker.sh` (5.2)
+- [ ] 5.3.2 Implementar health check: verificar que o container esta
+      saudavel antes de o orquestrador emitir a primeira chamada de
+      ferramenta; erro claro e acionavel se nao ficar saudavel dentro do
+      tempo limite (FR-011; "<= 30s [a calibrar]" do plan.md Technical
+      Context — calibrar aqui com evidencia empirica)
+- [ ] 5.3.3 Implementar FR-010: sessao do servidor coextensiva com a
+      execucao inteira — o servidor permanece ativo durante
+      `Schedule intent` (pausas entre ondas); so encerra em estado
+      terminal (`concluida`/`abortada`)
+- [ ] 5.3.4 Estender `tests/cstk/test_mcp.sh` com `start`/`stop`/health
+      check (mock de `docker`, sem exigir Docker real na suite)
+
+### 5.4 Gap CHK064: deteccao/limpeza de container orfao `[A]` {auto}
+
+Ref: checklists/operational.md CHK064; spec.md User Story 2
+
+- [ ] 5.4.1 Definir o mecanismo de deteccao de container remanescente
+      quando o command pai termina sem chamar `stop` (crash, `kill -9`,
+      sessao encerrada) — paridade com o lock, que hoje NAO tem deteccao
+      de stale (research.md), entao esta feature decide se replica essa
+      lacuna ou fecha
+- [ ] 5.4.2 Implementar limpeza (ex.: `cstk mcp status` ou um comando
+      dedicado detecta containers com label da execucao cujo state-dir
+      esta em estado terminal, e oferece/realiza cleanup)
+- [ ] 5.4.3 Atualizar `contracts/mcp-session-lifecycle.md` §Ciclo de vida
+      documentando o caminho de limpeza
+- [ ] 5.4.4 Teste cobrindo deteccao de container orfao (mock de `docker
+      ps`)
+
+### 5.5 Gap CHK071: deteccao de queda do servidor no meio da onda `[A]` {auto}
+
+Ref: checklists/operational.md CHK071; spec.md FR-007, User Story 4
+cenario 2
+
+- [ ] 5.5.1 Definir o gatilho de deteccao (ex.: timeout de resposta da
+      tool, ou falha de conexao stdio) para o caso em que a queda ocorre
+      **apos** a primeira tool ja ter sido chamada nesta onda (FR-007 e
+      US4 cenario 1 so cobrem deteccao **antes** de delegar)
+- [ ] 5.5.2 Definir o numero de tentativas e o ponto exato de comutacao
+      para o caminho `Bash` — garantir que o estado nao fique pior (US4
+      cenario 2)
+- [ ] 5.5.3 Documentar o gatilho + numero de tentativas em
+      `contracts/mcp-session-lifecycle.md`
+- [ ] 5.5.4 Testes `node:test`/shell simulando queda no meio da onda e
+      confirmando a comutacao sem duplicar nem perder mutacao
+
+### 5.6 Decisao humana: aceitar SEC-M5/SEC-L1 no MVP? `[M]` {humano}
+
+Ref: checklists/security.md CHK056; plan.md §Seguranca linhas SEC-M5,
+SEC-L1
+
+- [ ] 5.6.1 Apresentar ao operador: SEC-M5 (mutacao fora do
+      `bash-guard`, mitigado por contrato de tool + enforcement-log +
+      lock do pai) e SEC-L1 (sem teto de chamadas por tool/sessao,
+      recomendado pos-MVP)
+- [ ] 5.6.2 Registrar Decisao de aceite de risco (ou de exigir mitigacao
+      adicional antes de F6 liberar uso real)
+
+---
+
+## FASE 6 - Integracao 00c
+
+### 6.1 `cstk mcp install` (`.mcp.json`) `[A]` {auto}
+
+Ref: contracts/mcp-session-lifecycle.md `cstk mcp install`
+
+- [ ] 6.1.1 Estender `cli/lib/mcp.sh` com
+      `install [--project-path PATH] [--dry-run]`: grava a entrada
+      `mcpServers` estatica no `.mcp.json` (escopo project) apontando
+      para o entrypoint stdio
+- [ ] 6.1.2 Criar `global/skills/agente-00c-runtime/scripts/mcp-launch.sh`
+      (entrypoint stdio do `.mcp.json`) — orquestra subir o
+      container/processo e conectar o transporte
+- [ ] 6.1.3 Criar `tests/test_mcp-launch.sh` (exigido pelo
+      `--check-coverage`)
+- [ ] 6.1.4 Estender `tests/cstk/test_mcp.sh` cobrindo `install`
+      (idempotente, `--dry-run` nao escreve)
+
+### 6.2 Integracao dos commands pai: chamada de status/start/stop `[A]` {auto}
+
+Ref: plan.md §Fases de implementacao F6; §Fronteira lock+init
+(CLAUDE.md); NAO inclui geracao/injecao do token (ver 1.2)
+
+- [ ] 6.2.1 `/agente-00c` e `/feature-00c` (inicio): chamar `cstk mcp
+      status`; se disponivel, `cstk mcp start` antes de spawnar o
+      orquestrador
+- [ ] 6.2.2 `/agente-00c-resume` e `/feature-00c-resume`: chamar `cstk mcp
+      status` (paridade com FR-011) a cada retomada, sem
+      parar/reiniciar o processo/container a cada pausa (FR-010)
+- [ ] 6.2.3 Encerramento: `cstk mcp stop` somente quando a execucao
+      atinge estado terminal (`concluida`/`abortada`)
+- [ ] 6.2.4 Esta task **nao** implementa a geracao/injecao do token de
+      capacidade (1.2, cross-feature) — usar o mesmo mecanismo de token
+      sintetico de 1.3 ate a coordenacao externa concluir; documentar
+      isso explicitamente no PR desta task
+
+### 6.3 Fallback sem Docker (FR-007, FR-012, SC-004) `[A]` {auto}
+
+Ref: quickstart.md Scenario 7; spec.md FR-007, FR-012
+
+- [ ] 6.3.1 Confirmar que `cstk mcp status`/`start` retornando
+      indisponivel faz o orquestrador cair no caminho `Bash` existente
+      sem regressao funcional e sem intervencao manual
+- [ ] 6.3.2 Testes cobrindo execucao headless/cron sem servidor MCP
+      disponivel completando por `Bash` (SC-004)
+
+### 6.4 Scenario 6 e Scenario 9: confinamento e roundtrip end-to-end `[C]` {auto}
+
+Ref: quickstart.md Scenario 6, Scenario 9; FR-008, FR-016 (pos-amendment
+1.1)
+
+- [ ] 6.4.1 Scenario 6: duas execucoes concorrentes (`agente-00c` +
+      `feature-00c`) no mesmo projeto-alvo — confirmar que nenhuma tool
+      chamada numa sessao muta o estado da outra (com token real se 1.2
+      ja tiver concluido; senao, com dois tokens sinteticos distintos
+      simulando o isolamento)
+- [ ] 6.4.2 Scenario 9: roundtrip completo preenchendo **todos** os
+      campos opcionais de cada tool, comparando campo a campo nos
+      **dois** backends (`json` e `sqlite`) — expõe o risco de campo
+      opcional que nunca chega ao helper (plan.md §Convencoes de Borda)
+- [ ] 6.4.3 Registrar Decisao com o resultado de ambos os cenarios
+
+### 6.5 Suite completa verde + documentacao final `[A]` {auto}
+
+Ref: CLAUDE.md §Como testar scripts shell; §Regra de ouro
+
+- [ ] 6.5.1 Rodar `./tests/run.sh --check-coverage` completo (todos os
+      `.sh` novos desta feature com teste correspondente:
+      `mcp-session.sh`, `mcp.sh`, `mcp-docker.sh`, `mcp-launch.sh`)
+- [ ] 6.5.2 Rodar a suite `node:test` completa de `mcp/state-server/`
+- [ ] 6.5.3 Atualizar `global/skills/agente-00c-runtime/SKILL.md` com
+      ponteiro para os scripts novos (`mcp-session.sh`, `mcp-launch.sh`)
+- [ ] 6.5.4 Atualizar `CLAUDE.md` (secao curta apontando para
+      `docs/specs/state-mcp-server/` e o comando `cstk mcp`), seguindo o
+      padrao das demais features documentadas ali
+- [ ] 6.5.5 Confirmar que nenhuma das convencoes de contagem gateadas
+      (README "N skills globais", `test_build-release.sh`,
+      `test_quickstart-e2e.sh`) foi afetada — esta feature nao adiciona
+      skill nova nem altera `profiles.txt.in`, entao nenhum bump e
+      esperado; se algum desses arquivos mudou incidentalmente, revisar
+
+---
+
+## Matriz de Dependencias
+
+```mermaid
+flowchart TD
+    F0[FASE 0 - Spikes S1..S5 + contingencia BLOQUEANTE]
+    F1[FASE 1 - Fundacao POSIX + amendment FR-016 + coordenacao token]
+    F2[FASE 2 - Servidor minimo + record_skill]
+    F3[FASE 3 - Tools de mutacao]
+    F4[FASE 4 - Atomicidade close_wave]
+    F5[FASE 5 - Docker e ciclo de vida]
+    F6[FASE 6 - Integracao 00c]
+
+    TOKEN["1.2 Coordenacao externa: token de capacidade\n(cross-feature, fora do codigo desta feature)"]
+
+    F0 --> F1
+    F1 --> F2
+    F2 --> F3
+    F3 --> F4
+    F4 --> F5
+    F5 --> F6
+    TOKEN -.bloqueia consumo real do token.-> F6
+    TOKEN -.token sintetico ate concluir.-> F1
+```
+
+Nota: `TOKEN` (task 1.2) e uma dependencia **externa** — nao e uma fase
+executada por esta feature, e uma coordenacao que corre em paralelo. F1 e
+F3-F6 usam token sintetico durante o desenvolvimento; a consumacao real do
+isolamento por capacidade (SEC-H3 em producao) so se completa quando 1.2
+concluir, fora deste backlog.
+
+## Resumo Quantitativo
+
+| Fase | Tarefas | Subtarefas | Criticidade dominante |
+|------|---------|------------|------------------------|
+| 0 - Spikes e Contingencia | 7 | 27 | C (bloqueante) |
+| 1 - Fundacao POSIX e Coordenacao Externa | 4 | 18 | A/C |
+| 2 - Servidor Minimo | 3 | 16 | A |
+| 3 - Tools de Mutacao | 10 | 36 | A |
+| 4 - Atomicidade | 2 | 9 | C |
+| 5 - Docker e Ciclo de Vida | 6 | 23 | A/C |
+| 6 - Integracao 00c | 5 | 18 | A/C |
+| **Total** | **37** | **147** | - |
+
+## Escopo Coberto
+
+| Item | Descricao | Fase |
+|------|-----------|------|
+| Spikes S1-S5 | Validacao empirica das 5 premissas [NAO-VERIFICADO]/[PARCIALMENTE VERIFICADO] do research.md | 0 |
+| 6 tools MCP | `record_skill`, `record_decision`, `open_wave`, `record_task`, `register_human_block`, `close_wave` | 2, 3, 4 |
+| Auditoria propria | `enforcement-log.jsonl`, scrub->truncate->serialize | 2 |
+| Fallback sem Docker | Caminho `Bash` existente, sem regressao | 6 |
+| Ciclo de vida do servidor | `cstk mcp install/status/start/stop`, health check, coextensivo com a execucao | 1, 5, 6 |
+| Confinamento por sessao | Roteamento por token de capacidade, fail-closed (SEC-H3) | 1, 6 |
+| Atomicidade de `close_wave` | Pre-imagem + compensacao para backup/hash fora do banco | 4 |
+| Amendment FR-016 | Texto normativo alinhado ao desenho aprovado (container+capacidade, sem porta) | 1 |
+| Gaps/ambiguidades do checklist | CHK004, CHK007, CHK016, CHK025, CHK064, CHK071 | 3, 5 |
+| Decisoes humanas pendentes | CHK026, CHK027, CHK031, CHK056, CHK057, CHK073, CHK084, CHK085 | 0, 1, 2, 3, 5 |
+
+## Escopo Excluido
+
+| Item | Descricao | Motivo |
+|------|-----------|--------|
+| Geracao/injecao do token de capacidade nos commands pai | Edicao de `global/commands/agente-00c*.md` e `feature-00c*.md` para gerar e injetar o `session_id` no spawn | Cross-feature/coordenacao externa (CHK031); merito ja aprovado em dec-021, mas o artefato de codigo fica fora desta feature — ver task 1.2 |
+| Escrita em `knowledge.db` | Qualquer tool mutando o indice cross-feature | FR-013: read-only por desenho; o container sequer monta o arquivo |
+| Aquisicao/liberacao de lock pelo servidor | Tool dedicada a `state-lock.sh acquire/release` | research.md Decision 4: lock e nao-reentrante e ja e detido pelo command pai durante a onda inteira; um `acquire` do servidor sempre retornaria `exit 3` |
+| `state-rw.sh set` generico como tool | Mutacao arbitraria de qualquer campo do state.json | Anularia o proposito da feature (contrato validado); escape hatch deliberadamente fora de escopo |
+| Modo alternativo sem container (processo Node local) quando Docker ausente | Um segundo caminho de execucao alem do fallback Bash | FR-012: o fallback Bash ja satisfaz o carve-out de dependencia opcional; multiplicaria superficie de auditoria/health-check/isolamento sem ser exigido — reavaliavel como extensao futura |
+| OAuth 2.1 / PKCE / RFC 8707 / DPoP | Mecanismos de autenticacao HTTP do checklist MCP oficial | SEC-I1: N/A justificado — transporte `stdio`, zero listener de rede; caduca so se um "plano B" HTTP for acionado no futuro |
