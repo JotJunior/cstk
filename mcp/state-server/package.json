@@ -1,0 +1,24 @@
+{
+  "name": "@cstk/state-mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server exposing state.json/state.db mutation tools to the cstk 00c orchestrators (stdio transport, one container per execution).",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "test:watch": "node --test --watch dist/test/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "^7.0.2"
+  }
+}

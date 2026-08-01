@@ -283,26 +283,40 @@ log (limite conhecido)"
 Ref: plan.md §Fases de implementacao F2; contracts/mcp-tools.md
 `record_skill`
 
-- [ ] 2.2.1 Inicializar `mcp/state-server/` com `package.json` +
+- [x] 2.2.1 Inicializar `mcp/state-server/` com `package.json` +
       `package-lock.json` (lock obrigatorio — build falha sem ele),
-      `@modelcontextprotocol/sdk` como dependencia
-- [ ] 2.2.2 Implementar `mcp/state-server/src/index.ts`: bootstrap do
-      `McpServer` + transporte `stdio`
-- [ ] 2.2.3 Implementar `mcp/state-server/src/session/resolve.ts`:
+      `@modelcontextprotocol/sdk` como dependencia — instalado via
+      `docker run --network=host node:22.17.0 npm ci` (guard de
+      package-manager do host bloqueia `npm install`/`npm ci` direto,
+      mesmo caminho aprovado do spike S4/S5); versoes verificadas via
+      `npm view` (`@modelcontextprotocol/sdk@1.30.0`, `zod@4.4.3`,
+      `typescript@7.0.2` — latest real do dia, compilador nativo Go)
+- [x] 2.2.2 Implementar `mcp/state-server/src/index.ts`: bootstrap do
+      `McpServer` + transporte `stdio`, fail-closed no startup se a
+      sessao nao resolver (SessionMismatchError)
+- [x] 2.2.3 Implementar `mcp/state-server/src/session/resolve.ts`:
       le o token/`session_id` e delega a `mcp-session.sh` (1.3) — nenhuma
       reimplementacao da regra de resolucao em TS
-- [ ] 2.2.4 Implementar `mcp/state-server/src/runtime/exec.ts` (versao
+- [x] 2.2.4 Implementar `mcp/state-server/src/runtime/exec.ts` (versao
       inicial): invocacao de helper POSIX via `execFile`/`spawn` com
       **array de argv** e `shell: false` (SEC-H1 — nunca `exec`,
-      `execSync`, `shell: true` ou crase)
-- [ ] 2.2.5 Implementar a tool `record_skill` (`mcp/state-server/src/tools/record_skill.ts`)
+      `execSync`, `shell: true` ou crase); inclui parser do envelope
+      `DIAG|severity|code|message|fix` emitido por `_diag.sh`
+- [x] 2.2.5 Implementar a tool `record_skill` (`mcp/state-server/src/tools/record_skill.ts`)
       delegando a `state-ondas.sh record-skill`, com `inputSchema`
-      validando os campos allowlist (SEC-M2 — nenhum id inicia com `-`)
-- [ ] 2.2.6 Criar `mcp/state-server/test/` com `node:test` cobrindo o
+      validando os campos allowlist (SEC-M2 — nenhum id inicia com `-`);
+      corrigido `result.wave_id` (proposta) -> `result.skills_invoked_count`
+      e a regex de allowlist para `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`
+      apos leitura do codigo real do helper (dec-050, contracts/mcp-tools.md
+      atualizado no mesmo commit)
+- [x] 2.2.6 Criar `mcp/state-server/test/` com `node:test` cobrindo o
       bootstrap e a tool `record_skill` (happy path + rejeicao de schema)
-- [ ] 2.2.7 Adicionar assercao estatica no teste: grep no codigo-fonte
+      — `index.test.ts`, `resolve.test.ts`, `record_skill.test.ts`, com
+      fixtures POSIX reais em `test/fixtures/` (execFile de verdade, sem
+      mocks); 21/21 testes verdes (`npm test` via docker node:22.17.0)
+- [x] 2.2.7 Adicionar assercao estatica no teste: grep no codigo-fonte
       proibindo `exec(`, `execSync(`, `shell: true`, template string em
-      chamada de processo (SEC-H1)
+      chamada de processo (SEC-H1) — `test/static-security.test.ts`
 
 ### 2.3 `audit/log.ts`: enforcement-log.jsonl (scrub -> truncate) `[A]` {auto}
 

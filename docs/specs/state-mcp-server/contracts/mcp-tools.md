@@ -82,14 +82,25 @@ nao serem confundidos com flags nem corromper ids:
 
 | Campo | Allowlist |
 |-------|-----------|
-| `task_id` | `^[A-Za-z0-9._-]{1,64}$` |
+| `task_id` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` [CORRIGIDO na task 2.2: ver nota abaixo] |
 | `decision_id` | `^dec-[0-9]{1,9}$` |
-| `skill` | `^[A-Za-z0-9._-]{1,64}$` |
-| `executed_stages[]` | `^[A-Za-z0-9._-]{1,64}$` [VERIFICADO: mesma regra do helper] |
+| `skill` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` [CORRIGIDO na task 2.2: ver nota abaixo] |
+| `executed_stages[]` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` [VERIFICADO: `state-ondas.sh:228-235` `_so_is_stage_token`, mesma regra do helper] |
 | `kind`, `outcome`, `termination_reason` | enum fechado (ja especificado) |
 | `touched_files[]` | path **relativo**; rejeitar absoluto, `..` e byte NUL |
 
 Regra transversal: nenhum campo de identificador pode comecar com `-`.
+
+> **Nota de correcao empirica (task 2.2, Principio VI)**: a regra
+> `^[A-Za-z0-9._-]{1,64}$` originalmente proposta neste documento **permite
+> um primeiro caractere `-`**, contradizendo a "Regra transversal" acima.
+> A implementacao de `tools/record_skill.ts` usa a regra realmente aplicada
+> pelo helper a tokens de identificador [VERIFICADO:
+> `state-ondas.sh:228-235`, funcao `_so_is_stage_token`]:
+> `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` (primeiro caractere obrigatoriamente
+> alfanumerico, ate 64 chars no total). `task_id` e `skill` foram
+> atualizados para a mesma regra por consistencia; nenhuma tool de F3 (que
+> ainda nao existe) foi implementada com a regra antiga.
 
 ### SEC-M1 (MEDIUM) — saida do helper e DADO, com teto
 
@@ -316,14 +327,14 @@ Registra invocacao de skill/gate na onda. **Delega para** [VERIFICADO]:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `result.wave_id` | string | Onda que recebeu o registro |
+| `result.skills_invoked_count` | integer | **[CORRIGIDO na task 2.2, Principio VI]** Contagem de `skills_invoked`/`skill_invocation` da onda apos o insert idempotente — **nao** `wave_id` como proposto originalmente. [VERIFICADO: `state-ondas.sh:889-954` `_so_cmd_record_skill` e `_state-ondas-db.sh:311-342` `_so_db_record_skill` — AMBOS os backends (`json`/`sqlite`) imprimem em stdout essa contagem, nunca um id de onda] |
 
 ### Errors
 
 | Code | Description |
 |------|-------------|
-| `NO_OPEN_WAVE` | Sem onda aberta |
-| `INVALID_KIND` | `kind` fora de `skill\|gate` |
+| `NO_OPEN_WAVE` | Sem onda aberta — detectado pelo tool via o envelope `DIAG\|error\|no-open-wave\|...` emitido no stderr do helper [VERIFICADO: `_diag.sh::diag_emit`, `state-ondas.sh:920-922`] |
+| `INVALID_KIND` | `kind` fora de `skill\|gate` — inalcancavel em runtime: rejeitado pelo `inputSchema` (enum Zod) antes do handler, por desenho (FR-002 no schema) |
 
 > **Higiene de metrica** (herdada do contrato dos orquestradores): `kind=gate`
 > para gates deterministicos de script; `kind=skill` apenas para invocacao real
