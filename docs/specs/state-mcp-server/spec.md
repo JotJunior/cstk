@@ -43,7 +43,32 @@ sob a disciplina POSIX sh do Principio II da constitution, da mesma forma que
 
 ## Clarifications
 
-*(preenchido na etapa `/clarify`)*
+### Session 2026-08-01
+
+- Q: FR-010 — o servidor MCP permanece ativo durante uma pausa longa entre
+  ondas (`Schedule intent`), ou e encerrado a cada pausa e reiniciado a cada
+  `-resume`? → A: Permanece ativo. A sessao do servidor e coextensiva com a
+  execucao autonoma inteira (do inicio ate um estado terminal), nao com cada
+  onda; o command pai so verifica saude a cada `-resume` (paridade FR-011).
+  E encerrado somente quando a execucao atinge estado terminal (`concluida`/
+  `abortada`) — ja afirmado literalmente por User Story 2 Acceptance
+  Scenario 2.
+- Q: FR-012 — quando Docker esta ausente/indisponivel no host, o sistema
+  bloqueia a inicializacao do servidor MCP (caindo direto no fallback Bash
+  da FR-007), ou tenta um modo alternativo sem container (processo Node
+  local) antes de cair no fallback? → A: Bloqueia direto para o fallback
+  Bash; nenhum modo Node-local intermediario nesta feature. O fallback Bash
+  ja satisfaz integralmente o carve-out de dependencia opcional (Principio
+  II, amendment 1.1.0) — um segundo caminho de execucao so multiplicaria
+  superficie de auditoria/isolamento sem ser exigido. Extensao futura
+  possivel, fora de escopo aqui.
+- Q: FR-016 — quando duas execucoes autonomas concorrentes rodam no mesmo
+  projeto-alvo, cada uma recebe sua propria instancia/porta de servidor MCP
+  isolada, ou uma unica instancia multiplexa chamadas por sessao/execucao?
+  → A: Cada execucao recebe sua propria instancia/porta isolada — sem
+  multiplexacao por processo compartilhado. Isolamento fisico e a forma
+  mais direta de garantir o confinamento ja exigido por FR-008 e pela
+  definicao de "Orchestrator Server Session" nas Key Entities.
 
 ## User Scenarios & Testing
 
@@ -257,18 +282,27 @@ servidor MCP ativo, usando o caminho `Bash` atual.
   acionavel equivalente em clareza ao erro hoje produzido pelo script
   manual.
 - **FR-010**: O sistema MUST definir uma fronteira clara de sessao para o
-  servidor: quando ele deve estar ativo em relacao ao inicio/fim de uma
-  execucao autonoma. [NEEDS CLARIFICATION: o servidor permanece ativo
-  durante uma pausa longa entre ondas (`Schedule intent`), ou e encerrado a
-  cada pausa e reiniciado a cada `-resume`?]
+  servidor: a sessao do servidor MCP e coextensiva com a execucao autonoma
+  inteira (do inicio ate um estado terminal), NAO com cada onda individual.
+  O servidor MUST permanecer ativo durante pausas longas entre ondas
+  (`Schedule intent`) — o command pai apenas verifica saude (paridade com
+  FR-011) a cada `-resume`, sem parar/reiniciar o processo/container a cada
+  pausa. O servidor MUST ser encerrado somente quando a execucao atinge
+  estado terminal (`concluida` ou `abortada`), conforme User Story 2
+  Acceptance Scenario 2.
 - **FR-011**: Quando Docker e o modo de inicializacao selecionado, o sistema
   MUST verificar que o container esta saudavel antes de o orquestrador
   emitir a primeira chamada de ferramenta, e MUST expor um erro claro e
   acionavel caso o container nao fique saudavel dentro de um tempo limite.
-- **FR-012**: [NEEDS CLARIFICATION: quando Docker esta ausente/indisponivel
-  no host, o sistema deve bloquear a inicializacao do servidor MCP (caindo
-  direto no fallback Bash da FR-007), ou tentar um modo alternativo sem
-  container (processo Node local) antes de cair no fallback?]
+- **FR-012**: Quando Docker esta ausente/indisponivel no host, o sistema
+  MUST bloquear a inicializacao do servidor MCP e cair diretamente no
+  fallback Bash existente (FR-007) — sem tentar um modo alternativo sem
+  container (processo Node local) nesta feature. O fallback Bash ja
+  satisfaz o requisito de funcionamento sem a ferramenta do carve-out de
+  dependencia opcional (Principio II da constitution, amendment 1.1.0); um
+  segundo caminho de execucao multiplicaria superficie de auditoria/
+  health-check/isolamento de sessao (FR-008, FR-016) sem ser exigido. Pode
+  ser reavaliado como extensao futura fora desta feature.
 - **FR-013**: O `knowledge.db` (indice cross-feature) MUST permanecer unico
   e somente-leitura — nenhuma ferramenta MCP introduzida por esta feature
   MUST escrever nele; ele continua populado exclusivamente pelo mecanismo
@@ -281,11 +315,13 @@ servidor MCP ativo, usando o caminho `Bash` atual.
 - **FR-015**: O sistema MUST permitir que o operador (ou o command pai)
   consulte o status do servidor MCP de uma execucao especifica (ativo /
   parado / indisponivel) sem precisar inspecionar Docker diretamente.
-- **FR-016**: [NEEDS CLARIFICATION: quando duas execucoes autonomas
-  concorrentes rodam no mesmo projeto-alvo (ex.: um `agente-00c` e uma
-  `feature-00c`), cada uma recebe sua propria instancia/porta de servidor
-  MCP isolada, ou uma unica instancia multiplexa chamadas por
-  sessao/execucao?]
+- **FR-016**: Quando duas execucoes autonomas concorrentes rodam no mesmo
+  projeto-alvo (ex.: um `agente-00c` e uma `feature-00c`), cada uma MUST
+  receber sua propria instancia/porta de servidor MCP isolada — nenhuma
+  instancia unica MUST multiplexar chamadas por sessao/execucao. Isolamento
+  fisico por processo/container e a forma mais direta de garantir o
+  confinamento de FR-008 sem depender de isolamento logico dentro de um
+  processo compartilhado (defesa em profundidade, Principio III herdado).
 - **FR-017**: Quando tanto o caminho de ferramenta MCP quanto o caminho
   `Bash` legado puderem, em tese, mutar o mesmo estado na mesma janela
   (ex.: fallback acionado no meio de uma onda), o sistema MUST preservar
