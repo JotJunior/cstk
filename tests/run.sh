@@ -260,6 +260,14 @@ _is_internal_test() {
       # em transacao aberta, leitura concorrente sob WAL). Nao mapeia 1:1
       # para um unico script sob a convencao de FASE 9.3.
       return 0 ;;
+    test_config-roundtrip.sh)
+      # SC-004 (feature state-backend-config, FASE 6, task 6.1.1): compara
+      # EMPIRICAMENTE o backend resolvido pelo caminho do binario
+      # (cli/lib/doctor.sh + cli/lib/config.sh) contra o arquivo criado pelo
+      # caminho do runtime (global/skills/agente-00c-runtime/scripts/
+      # state-rw.sh init) — composicao cross-cutting de 2+ scripts, nao
+      # mapeia 1:1 para um unico script sob a convencao de FASE 9.3.
+      return 0 ;;
     # ---- Cobertura real sob nome NAO-1:1 (existence-guarded) ----
     # Estes tests exercitam um script real, mas com nome descritivo que nao
     # casa test_<base>.sh. Cada ramo so isenta se o script cobridor EXISTE —

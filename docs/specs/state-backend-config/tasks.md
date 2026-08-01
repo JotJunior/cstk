@@ -337,38 +337,54 @@ Ref: quickstart.md Scenario 1, Scenario 7, Scenario 8a/8b
 Ref: quickstart.md Scenario 9; contracts/state-backend-runtime.md
 §Invariante de consistência
 
-- [ ] 6.1.1 Escrever teste automatizado (`tests/cstk/test_config.sh` ou
+- [x] 6.1.1 Escrever teste automatizado (`tests/cstk/test_config.sh` ou
       arquivo dedicado) que, para as 6 combinações de config×ambiente do
       Scenario 9 (config ausente/json/sqlite × sqlite3 adequado/abaixo do
       mínimo/ausente, + config inválida), compara EMPIRICAMENTE o backend
       resolvido por `cstk doctor --deps` (caminho do binário) contra o
       arquivo efetivamente criado por `state-rw.sh init` num state-dir
-      limpo (caminho do runtime) — 0% de divergência nas 6 combinações
-- [ ] 6.1.2 Validar que o teste é sensível a regressão: introduzir
+      limpo (caminho do runtime) — 0% de divergência nas 6 combinações.
+      Implementado em `tests/test_config-roundtrip.sh` (arquivo dedicado —
+      cross-cutting, registrado como interno em `tests/run.sh::_is_internal_test`).
+      7 scenarios verdes.
+- [x] 6.1.2 Validar que o teste é sensível a regressão: introduzir
       temporariamente um drift sintético (ex.: hardcode local no caminho do
       CLI) e confirmar que o teste FALHA; reverter antes de commitar —
       prova de que a unicidade de `resolve` (research.md Decision 2) é
-      contrato testado, não apenas convenção
-- [ ] 6.1.3 Documentar no cabeçalho do teste a referência a SC-004 e ao
+      contrato testado, não apenas convenção. Executado manualmente: patch
+      temporário em `cli/lib/doctor.sh::_doctor_deps_run` (hardcode
+      `_ddr_resolve_out=""` ignorando `config_state_backend_resolve`) —
+      resultado 6/7 scenarios FAIL (`obtido=desconhecido` em todos os
+      reasons esperados); revertido via `git checkout -- cli/lib/doctor.sh`
+      (working tree limpo confirmado). Adicionalmente, a sensibilidade fica
+      PERMANENTEMENTE coberta em CI por
+      `scenario_roundtrip_e_sensivel_a_drift_sintetico` no próprio arquivo.
+- [x] 6.1.3 Documentar no cabeçalho do teste a referência a SC-004 e ao
       Scenario 9, para que uma reintrodução futura de parser paralelo no
-      CLI seja identificada imediatamente pelo nome do teste
+      CLI seja identificada imediatamente pelo nome do teste. Feito no
+      cabeçalho de `tests/test_config-roundtrip.sh`.
 
 ### 6.2 Regressão zero e projetos existentes intocados (SC-005, FR-006) `[A]`
 
 Ref: quickstart.md Scenario 8c; tests/README.md; CLAUDE.md §Como testar
 scripts shell
 
-- [ ] 6.2.1 Rodar `./tests/run.sh --check-coverage` confirmando que
+- [x] 6.2.1 Rodar `./tests/run.sh --check-coverage` confirmando que
       `state-backend.sh`, `cli/lib/config.sh` e as extensões de
       `state.sh`/`doctor.sh`/`state-rw.sh` têm teste mapeado pela
-      convenção (nenhum órfão)
+      convenção (nenhum órfão). Resultado: "Cobertura completa: zero
+      orfaos." Testes das áreas tocadas nesta onda também verdes
+      isoladamente: `test_config.sh` (7/7), `test_doctor.sh` (12/12),
+      `test_state-backend.sh` (8/8 do arquivo), `test_state-rw.sh` (56/56).
 - [ ] 6.2.2 Rodar a suíte completa `LC_ALL=C ./tests/run.sh` em background
       (GOTCHA: ~12min reais, não rodar em foreground nem via subagente
       efêmero — ver memória do projeto) confirmando 0 regressões
       atribuíveis a esta feature (Scenario 8c)
+      <!-- suite completa delegada ao pai da sessão (gotcha 16min); evidência será registrada antes do review-task -->
 - [ ] 6.2.3 Registrar no relatório de conclusão da fase (execute-task) o
       resultado do 6.2.2 (contagem de cenários, 0 falhas atribuíveis) como
       evidência de SC-005
+      <!-- pendente de 6.2.2 (delegado ao pai da sessão) -->
 
 ---
 
@@ -378,15 +394,20 @@ scripts shell
 
 Ref: CLAUDE.md §CHANGELOG: link de referência por versão; CHANGELOG.md
 
-- [ ] 7.1.1 Adicionar entrada no `CHANGELOG.md` descrevendo o cutover Fase 2
+- [x] 7.1.1 Adicionar entrada no `CHANGELOG.md` descrevendo o cutover Fase 2
       (config global `~/.claude/cstk/config`, `cstk state enable-sqlite`,
       `cstk doctor --deps`), com o link de referência correspondente no
-      rodapé (`[X.Y.Z]: https://github.com/JotJunior/cstk/releases/tag/vX.Y.Z`)
-- [ ] 7.1.2 Adicionar seção breve em `CLAUDE.md` documentando
+      rodapé (`[X.Y.Z]: https://github.com/JotJunior/cstk/releases/tag/vX.Y.Z`).
+      Adicionado `## [6.0.0-alpha.2] - 2026-08-01` (linha v6, Fase 2 do
+      cutover) + ref `[6.0.0-alpha.2]:` no rodapé; verificado sem headers
+      orfãos (`comm -23` entre headers e refs).
+- [x] 7.1.2 Adicionar seção breve em `CLAUDE.md` documentando
       `cstk state enable-sqlite` e `cstk doctor --deps`, e a localização de
       `$HOME/.claude/cstk/config`, seguindo o padrão das seções existentes
-      ("Modo atomic-commit", "Painel Web")
-- [ ] 7.1.3 Documentar explicitamente a divisão de sincronização: mudanças
+      ("Modo atomic-commit", "Painel Web"). Seção
+      "Backend de estado global (`cstk state enable-sqlite` / `cstk doctor
+      --deps`)" adicionada antes de "Modo atomic-commit".
+- [x] 7.1.3 Documentar explicitamente a divisão de sincronização: mudanças
       em `cli/lib/config.sh`/`state.sh`/`doctor.sh` exigem `cstk
       self-update` (runtime do binário); mudanças em `state-backend.sh`
       (skill/runtime `agente-00c-runtime`) exigem `cstk update`/`cstk
@@ -398,13 +419,34 @@ Ref: CLAUDE.md §CHANGELOG: link de referência por versão; CHANGELOG.md
 
 Ref: skill `analyze` (consistência cross-artifact, read-only)
 
-- [ ] 7.2.1 Rodar `/analyze` cross-artifact (spec.md, plan.md, tasks.md,
-      checklists/security.md) antes de iniciar `execute-task`
-- [ ] 7.2.2 Corrigir quaisquer inconsistências apontadas pelo `/analyze`
+- [x] 7.2.1 Rodar `/analyze` cross-artifact (spec.md, plan.md, tasks.md,
+      checklists/security.md) antes de iniciar `execute-task`. NOTA DE
+      ORDEM: efetivamente rodado no fechamento da FASE 7 (esta onda), não
+      antes do início de `execute-task` como o texto original previa — o
+      backlog já estava com FASE 1-6 concluídas quando esta task foi
+      alcançada na sequência do próprio backlog. Rodado mesmo assim como
+      gate real de fechamento (mais tarde que o ideal, mas antes do
+      `review-task`).
+- [x] 7.2.2 Corrigir quaisquer inconsistências apontadas pelo `/analyze`
       (ex.: referência quebrada, requisito órfão) antes de iniciar a
-      execução do backlog
-- [ ] 7.2.3 Registrar o resultado do `/analyze` (0 inconsistências, ou as
-      corrigidas) como referência para a fase `execute-task`
+      execução do backlog. Único achado real: `checklists/security.md`
+      estava STALE — 6 itens `[Gap]`/`[ ]` (CHK002, CHK004, CHK006, CHK007,
+      CHK009, CHK013) cuja cobertura de teste JÁ EXISTIA desde as FASES 2-3
+      (quickstart Scenarios 2.5/2.6/2.7/4.5/5.5 + testes correspondentes em
+      `tests/test_state-backend.sh`) mas o checklist nunca foi atualizado
+      para refletir isso. Corrigido: os 6 itens marcados `[x]` com citação
+      do scenario/teste que os resolve; CHK016 (`{humano}`) mantido aberto
+      (decisão de risco não delegável), com nota do resultado observado
+      anexada. Nenhum requisito órfão, nenhuma referência quebrada, nenhuma
+      violação de constitution encontrada — SC-001..SC-005 todos com
+      cobertura de task rastreável.
+- [x] 7.2.3 Registrar o resultado do `/analyze` (0 inconsistências, ou as
+      corrigidas) como referência para a fase `execute-task`. Resultado: 1
+      inconsistência encontrada e corrigida (checklist stale, ver 7.2.2); 0
+      CRITICAL/HIGH; FR-001..FR-009-INFRA-IDEMP e SC-001..SC-005 todos
+      mapeados a tasks concluídas (exceto 6.2.2/6.2.3, delegadas — não é
+      inconsistência de artefato, é transferência de responsabilidade
+      auditada, ver nota inline em 6.2.2).
 
 ---
 
