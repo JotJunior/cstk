@@ -225,17 +225,17 @@ plan.md §SEC-05/SEC-06
 Ref: research.md Decision 2; cli/lib/state.sh (`_state_migrate_script_path`,
 padrão a reusar)
 
-- [ ] 4.1.1 Criar `cli/lib/config.sh` com resolvedor de 3 camadas — (1)
+- [x] 4.1.1 Criar `cli/lib/config.sh` com resolvedor de 3 camadas — (1)
       `PATH` via `command -v`, (2) layout de repo relativo a `CSTK_LIB`
       (`$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/`), (3)
       layout instalado (`$HOME/.claude/skills/agente-00c-runtime/scripts/`)
       — para localizar `state-backend.sh`, espelhando
       `_state_migrate_script_path` (`cli/lib/state.sh`)
-- [ ] 4.1.2 Expor funções de delegação pura (uma por subcomando de
+- [x] 4.1.2 Expor funções de delegação pura (uma por subcomando de
       `state-backend.sh`) que repassam argumentos e exit code VERBATIM —
       ZERO reimplementação de parsing ou de lógica de decisão de backend
       (é isso que torna SC-004 verdadeiro por construção)
-- [ ] 4.1.3 Criar `tests/cstk/test_config.sh` cobrindo o resolvedor de 3
+- [x] 4.1.3 Criar `tests/cstk/test_config.sh` cobrindo o resolvedor de 3
       camadas (`PATH`, repo via `CSTK_LIB`, instalado) e a delegação
       verbatim de exit code para cada subcomando
 
@@ -244,14 +244,14 @@ padrão a reusar)
 Ref: contracts/cli-surface.md §Command cstk state enable-sqlite;
 cli/lib/state.sh (`state_main`, padrão do subcomando `migrate` já existente)
 
-- [ ] 4.2.1 Adicionar `enable-sqlite)` ao `case` de `state_main`, delegando
+- [x] 4.2.1 Adicionar `enable-sqlite)` ao `case` de `state_main`, delegando
       via `cli/lib/config.sh` a `state-backend.sh enable-sqlite` e
       repassando o exit code verbatim (mesmo padrão do `migrate`
       existente: `0` sucesso, `1` falha, `2` uso incorreto, `3` recusado
       por pré-condição)
-- [ ] 4.2.2 Atualizar `_state_usage` (texto de `-h`/`--help`) listando
+- [x] 4.2.2 Atualizar `_state_usage` (texto de `-h`/`--help`) listando
       `enable-sqlite` junto de `migrate`
-- [ ] 4.2.3 Estender `tests/cstk/test_state.sh` cobrindo
+- [x] 4.2.3 Estender `tests/cstk/test_state.sh` cobrindo
       `cstk state enable-sqlite`: sucesso, as 3 recusas (FR-004/FR-004A),
       idempotência (FR-009-INFRA-IDEMP), `-h`/`--help`
 
@@ -260,21 +260,21 @@ cli/lib/state.sh (`state_main`, padrão do subcomando `migrate` já existente)
 Ref: contracts/cli-surface.md §Command cstk doctor --deps; data-model.md
 §DependencyDiagnosticReport; research.md Decision 6
 
-- [ ] 4.3.1 Adicionar a flag `--deps` (ADITIVA a `--fix`/`--scope`
+- [x] 4.3.1 Adicionar a flag `--deps` (ADITIVA a `--fix`/`--scope`
       existentes) em `_doctor_parse_args`, sem alterar o comportamento das
       flags atuais
-- [ ] 4.3.2 Implementar o modo `--deps`: delega a `state-backend.sh
+- [x] 4.3.2 Implementar o modo `--deps`: delega a `state-backend.sh
       resolve` (via `cli/lib/config.sh`) e reporta, no mínimo, presença +
       versão detectada de `sqlite3` e `jq`, o `effective_backend` e o
       `reason` — relatório emitido em stdout TANTO no caminho de sucesso
       quanto no de anomalia (um gate de CI que falha precisa dizer o que
       falhou na mesma execução)
-- [ ] 4.3.3 Exit code: `0` quando nenhuma anomalia é detectada, não-zero
+- [x] 4.3.3 Exit code: `0` quando nenhuma anomalia é detectada, não-zero
       quando há ao menos uma (dependência ausente ou abaixo do mínimo
       suportado); "nunca configurado" NUNCA é anomalia — é o default
       legítimo de qualquer instalação que não optou pelo SQLite
       (research.md Decision 6, FR-008)
-- [ ] 4.3.4 Estender `tests/cstk/test_doctor.sh` cobrindo os 3 sub-cenários
+- [x] 4.3.4 Estender `tests/cstk/test_doctor.sh` cobrindo os 3 sub-cenários
       do quickstart Scenario 6 (6a sem anomalia, 6b com anomalia — relatório
       ainda emitido, 6c nunca configurado ⇒ exit 0) e confirmar que
       `--fix`/`--scope` continuam com comportamento inalterado
@@ -289,15 +289,15 @@ Ref: contracts/state-backend-runtime.md §Consumo por state-rw.sh init;
 research.md Decision 3; state-rw.sh (guardas existentes, próximo às linhas
 citadas em plan.md L390-395/L397-400)
 
-- [ ] 5.1.1 Em `_sr_cmd_init`, ANTES das guardas existentes de criação,
+- [x] 5.1.1 Em `_sr_cmd_init`, ANTES das guardas existentes de criação,
       invocar `state-backend.sh resolve` (resolução de path via mesmo
       padrão de 3 camadas do runtime) e ramificar por `effective_backend`
-- [ ] 5.1.2 Preservar INTACTAS as guardas existentes: recusa se `state.db`
+- [x] 5.1.2 Preservar INTACTAS as guardas existentes: recusa se `state.db`
       já existe (`"init: state.db ja existe em $_sd..."`) e recusa se
       `state.json` já existe (`"init: state.json ja existe em $_sd..."`) —
       nenhuma guarda relaxada; a mudança é só sobre qual arquivo `init`
       cria quando NENHUM dos dois existe ainda
-- [ ] 5.1.3 Quando `effective_backend=sqlite`: criar `state.db` via
+- [x] 5.1.3 Quando `effective_backend=sqlite`: criar `state.db` via
       `state-db-schema.sh create --db <state-dir>/state.db` (reusa o
       criador canônico — aplica DDL + `PRAGMA journal_mode=WAL` +
       `_state_db_secure_perms`) e popular a execução diretamente nele — SEM
@@ -305,10 +305,10 @@ citadas em plan.md L390-395/L397-400)
       migração recusa `.execution.status = em_andamento`, que é
       exatamente o status que `init` sempre escreve — logo "init → migrate"
       é estruturalmente impossível)
-- [ ] 5.1.4 Quando `effective_backend=json` (qualquer motivo, incluindo
+- [x] 5.1.4 Quando `effective_backend=json` (qualquer motivo, incluindo
       fallback por config ausente/inválida): comportamento atual
       inalterado — cria `state.json`
-- [ ] 5.1.5 Aplicar o GOTCHA de `PRAGMA busy_timeout` (ecoa o valor no
+- [x] 5.1.5 Aplicar o GOTCHA de `PRAGMA busy_timeout` (ecoa o valor no
       stdout do `sqlite3` CLI) — qualquer captura de stdout de `sqlite3`
       no caminho novo MUST usar `.output`/descartar, sob pena de
       contaminar o valor lido (research.md Decision 8)
@@ -317,13 +317,13 @@ citadas em plan.md L390-395/L397-400)
 
 Ref: quickstart.md Scenario 1, Scenario 7, Scenario 8a/8b
 
-- [ ] 5.2.1 Estender `tests/test_state-rw.sh`: config `state_backend=sqlite`
+- [x] 5.2.1 Estender `tests/test_state-rw.sh`: config `state_backend=sqlite`
       + deps OK ⇒ `init` cria `state.db`, NÃO cria `state.json` (Scenario
       1, passos 5-6)
-- [ ] 5.2.2 Estender `tests/test_state-rw.sh`: config ausente ou inválida
+- [x] 5.2.2 Estender `tests/test_state-rw.sh`: config ausente ou inválida
       (lixo não-interpretável) ⇒ `init` cria `state.json` normalmente, sem
       falhar (Scenario 7, passos 4-5)
-- [ ] 5.2.3 Estender `tests/test_state-rw.sh`: projeto com `state.json` OU
+- [x] 5.2.3 Estender `tests/test_state-rw.sh`: projeto com `state.json` OU
       `state.db` pré-existente ⇒ guardas de recusa preservadas
       independentemente da configuração global (Scenario 8a/8b, FR-006 —
       config global nunca dispara migração)

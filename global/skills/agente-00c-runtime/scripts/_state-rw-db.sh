@@ -100,6 +100,93 @@ _sr_exec_id() {
   _state_db_exec "$1" "SELECT id FROM execution LIMIT 1;"
 }
 
+# ---------- INSERT de execution para um documento NOVO (init, FASE 5) ----------
+#
+# feature state-backend-config, FASE 5 (task 5.1.3): `state-rw.sh init` sob
+# effective_backend=sqlite cria state.db diretamente — NUNCA passa por
+# state.json/migracao (research.md Decision 3: state-db-migrate.sh RECUSA
+# .execution.status = em_andamento, que e exatamente o status que init
+# sempre escreve; logo "init -> migrate" e estruturalmente impossivel).
+#
+# Espelha `_sdm_insert_execution` (state-db-migrate.sh) coluna-a-coluna —
+# MESMA ordem, MESMAS 32 colunas — mas le de um DOC_FILE (o documento que
+# `_sr_cmd_init` acabou de montar via jq) em vez do state.json de origem de
+# uma migracao. SQL montado em shell (nao dentro do jq) pela mesma razao de
+# `_sdm_insert_execution`: literal SQL simples-aspeado dentro de um script
+# jq single-quoted no shell e fonte classica de quebra de quoting.
+
+# _sr_ie_jq_raw DOC_FILE FILTER -> extrai texto ("" se null/ausente).
+_sr_ie_jq_raw() { jq -r "$2 // empty" "$1" 2>/dev/null || printf ''; }
+# _sr_ie_jq_json DOC_FILE FILTER -> extrai JSON compacto.
+_sr_ie_jq_json() { jq -c "$2" "$1" 2>/dev/null || printf 'null'; }
+# _sr_ie_jq_int DOC_FILE FILTER DEFAULT -> extrai inteiro (com default).
+_sr_ie_jq_int() { jq -r "$2 // $3" "$1" 2>/dev/null || printf '%s' "$3"; }
+
+# _sr_ie_lit_str VALUE -> literal SQL: NULL se vazio, senao 'valor-escapado'.
+_sr_ie_lit_str() {
+  if [ -z "$1" ]; then printf 'NULL'; else printf "'%s'" "$(printf '%s' "$1" | strip_nul | sed "s/'/''/g")"; fi
+}
+# _sr_ie_lit_json JSON -> literal SQL: NULL se vazio/`null`, senao 'json'.
+_sr_ie_lit_json() {
+  if [ -z "$1" ] || [ "$1" = "null" ]; then printf 'NULL'; else
+    printf "'%s'" "$(printf '%s' "$1" | strip_nul | sed "s/'/''/g")"; fi
+}
+
+# _sr_db_insert_execution_from_doc_file DB DOC_FILE -> INSERT da linha unica
+# de `execution`. Chamado UMA vez, em banco recem-criado (schema aplicado
+# por state-db-schema.sh create) e sem execution ainda — diferente de
+# `_sr_db_write_document`, que faz UPDATE assumindo a linha ja existente.
+_sr_db_insert_execution_from_doc_file() {
+  _ie_db="$1"; _ie_doc="$2"
+  _ie_atomic=$(_sr_ie_jq_json "$_ie_doc" '.atomic_commit_enabled')
+  _ie_atomic_sql="NULL"
+  case "$_ie_atomic" in true) _ie_atomic_sql=1 ;; false) _ie_atomic_sql=0 ;; esac
+
+  _ie_sql="INSERT INTO execution (id,schema_version,short_name,target_project_path,\
+target_project_description,suggested_stack,status,termination_reason,started_at,\
+finished_at,canonical_project,session_name,current_stage,next_instruction,\
+atomic_commit_enabled,initial_key_aspects,subagent_depth,max_recursion,\
+cycles_consumed_current_stage,max_cycles_per_stage,retro_executions_consumed,\
+max_retro_executions_per_feature,tool_calls_threshold_wave,\
+wallclock_threshold_seconds,state_size_threshold_bytes,external_urls_whitelist,\
+circular_movement_history,prerequisites,briefing_cache,constitution_cache,\
+push_pr_result) VALUES ("
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.id')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(jq -r '.schema_version // "1.0.0"' "$_ie_doc" 2>/dev/null || printf '1.0.0')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.short_name')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.target_project_path')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.target_project_description')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.execution.suggested_stack')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.status')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.termination_reason')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.started_at')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.finished_at')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.canonical_project')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.session_name')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.current_stage')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.next_instruction')"),"
+  _ie_sql="$_ie_sql$_ie_atomic_sql,"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.initial_key_aspects // []')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_jq_int "$_ie_doc" '.budgets.current_subagent_depth' 1),"
+  _ie_sql="$_ie_sql$(_sr_ie_jq_int "$_ie_doc" '.budgets.max_recursion' 3),"
+  _ie_sql="$_ie_sql$(_sr_ie_jq_int "$_ie_doc" '.budgets.cycles_consumed_current_stage' 0),"
+  _ie_sql="$_ie_sql$(_sr_ie_jq_int "$_ie_doc" '.budgets.max_cycles_per_stage' 5),"
+  _ie_sql="$_ie_sql$(_sr_ie_jq_int "$_ie_doc" '.budgets.retro_executions_consumed' 0),"
+  _ie_sql="$_ie_sql$(_sr_ie_jq_int "$_ie_doc" '.budgets.max_retro_executions_per_feature' 2),"
+  _ie_sql="$_ie_sql$(_sr_ie_jq_int "$_ie_doc" '.budgets.tool_calls_threshold_wave' 80),"
+  _ie_sql="$_ie_sql$(_sr_ie_jq_int "$_ie_doc" '.budgets.wallclock_threshold_seconds' 5400),"
+  _ie_sql="$_ie_sql$(_sr_ie_jq_int "$_ie_doc" '.budgets.state_size_threshold_bytes' 1048576),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.external_urls_whitelist // []')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.circular_movement_history // []')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.prerequisites')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.briefing_cache')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.constitution_cache')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.push_pr_result')"));"
+
+  _state_db_exec_with_retry "$_ie_db" "$_ie_sql" >/dev/null 2>&1 || return 1
+  return 0
+}
+
 # ---------- C7: sha256-update/sha256-verify sob backend SQLite ----------
 
 # _sr_db_integrity_check STATE_DIR -> exit 0 se PRAGMA integrity_check = 'ok'

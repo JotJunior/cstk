@@ -387,9 +387,27 @@ _sr_cmd_init() {
 
   _sr_ensure_state_dir "$_sd"
 
-  # C2: init nunca cria state.db (isso e a migracao, FASE 6) — mas se um
-  # state.db ja existe (projeto migrado), recusa em vez de criar um
-  # state.json paralelo que nunca seria a fonte de verdade (C2/Decision 9).
+  # feature state-backend-config, FASE 5 (task 5.1.1): resolve o backend
+  # EFETIVO ANTES das guardas de criacao abaixo — decide qual arquivo esta
+  # funcao vai criar quando NENHUM dos dois (state.db/state.json) existe
+  # ainda. Best-effort: state-backend.sh e sibling de state-rw.sh no mesmo
+  # dir do runtime ($_SR_DIR); resolve SEMPRE sai 0 (contrato de nao-falha,
+  # FR-008) — ausencia do script ou qualquer falha de leitura degrada para
+  # o fallback historico "json" sem abortar init (config ausente/invalida
+  # nunca quebra a inicializacao, quickstart.md Scenario 7).
+  _sr_effective_backend="json"
+  if [ -f "$_SR_DIR/state-backend.sh" ]; then
+    if _sr_sb_out=$(sh "$_SR_DIR/state-backend.sh" resolve 2>/dev/null); then
+      _sr_sb_eb=$(printf '%s\n' "$_sr_sb_out" | grep '^effective_backend=' | head -n 1)
+      [ "$_sr_sb_eb" = "effective_backend=sqlite" ] && _sr_effective_backend="sqlite"
+    fi
+  fi
+
+  # C2 (herdado de state-db-foundation) + FASE 5: se um state.db ja existe
+  # (projeto migrado, OU ja inicializado sob backend sqlite), recusa em vez
+  # de criar um state.json paralelo que nunca seria a fonte de verdade
+  # (C2/Decision 9) — guarda preservada INTACTA independente da config
+  # global (FR-006, task 5.1.2).
   if [ -f "$(_sr_db_file "$_sd")" ]; then
     _sr_die "init: state.db ja existe em $_sd (projeto migrado para backend SQLite) — init nao se aplica; use os subcomandos normais (state-ondas.sh etc.) diretamente." 1
   fi
@@ -483,6 +501,32 @@ _sr_cmd_init() {
       initial_key_aspects: $ka,
       atomic_commit_enabled: $atomic_commit
     }' > "$_tmp" || { rm -f -- "$_tmp"; _sr_die "jq init falhou" 1; }
+
+  # feature state-backend-config, FASE 5 (task 5.1.3/5.1.5): backend
+  # efetivo sqlite -> cria state.db diretamente (schema canonico +
+  # PRAGMA WAL + permissoes via state-db-schema.sh create) e popula a
+  # execucao via INSERT direto — NUNCA passa por state.json/migracao. O
+  # doc acima (mesmo template do caminho json) e usado so como FONTE dos
+  # valores do INSERT; o arquivo $_tmp em si nunca vira state.json aqui.
+  if [ "$_sr_effective_backend" = "sqlite" ]; then
+    _sr_db_target=$(_sr_db_file "$_sd")
+    # GOTCHA busy_timeout (research.md Decision 8): descarta stdout do
+    # sqlite3 CLI acionado por state-db-schema.sh — nao captura para
+    # variavel (evitaria contaminar qualquer leitura por 'PRAGMA
+    # busy_timeout' ecoado). Aqui so o exit code importa.
+    if ! "$_SR_DIR/state-db-schema.sh" create --db "$_sr_db_target" >/dev/null 2>&1; then
+      rm -f -- "$_tmp"
+      _sr_die "init: falha ao criar schema em $_sr_db_target" 1
+    fi
+    if ! _sr_db_insert_execution_from_doc_file "$_sr_db_target" "$_tmp"; then
+      rm -f -- "$_tmp" "$_sr_db_target" 2>/dev/null || :
+      _sr_die "init: INSERT da execution falhou em $_sr_db_target" 1
+    fi
+    rm -f -- "$_tmp" 2>/dev/null || :
+    _sr_log "init: estado (SQLite) criado em $_sr_db_target"
+    return 0
+  fi
+
   _sr_atomic_write "$_sr_sf" "$_tmp"
   rm -f -- "$_tmp" 2>/dev/null || :
   _sr_update_sha "$_sd"

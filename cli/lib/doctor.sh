@@ -9,6 +9,7 @@
 #
 # Sintaxe:
 #   cstk doctor [--scope global|project] [--fix]
+#   cstk doctor --deps
 #
 # Comportamento:
 #   1. Le manifest do scope; le diretorios em scope_dir/
@@ -23,10 +24,23 @@
 #      conteudo de skills (FR-007: third-party preservado; EDITED fica
 #      inalterado para preservar trabalho do usuario).
 #
+# --deps (feature state-backend-config, FASE 4, task 4.3): modo de
+# diagnostico DISTINTO e READ-ONLY, aditivo a --fix/--scope (que
+# permanecem com comportamento inalterado quando --deps NAO e passado).
+# Reporta em STDOUT (nao stderr — um gate de CI precisa da saida no
+# caminho de falha tambem): presenca+versao de sqlite3 e jq, o
+# effective_backend e o reason (delegados a `state-backend.sh resolve`
+# via cli/lib/config.sh — doctor.sh NAO reimplementa a decisao de
+# backend). "Nunca configurado" NUNCA e anomalia (FR-008).
+#
 # Exit codes:
 #   0 sem drift OU --fix executado (best-effort reconciliation)
 #   1 drift detectado sem --fix
 #   2 uso incorreto
+#
+# Exit codes (--deps):
+#   0 nenhuma anomalia detectada
+#   1 ao menos uma anomalia (dependencia ausente ou abaixo do minimo)
 
 if [ -n "${_CSTK_DOCTOR_LOADED:-}" ]; then
   return 0 2>/dev/null
@@ -41,6 +55,8 @@ _CSTK_DOCTOR_LOADED=1
 . "${CSTK_LIB}/hash.sh"
 # shellcheck source=/dev/null
 . "${CSTK_LIB}/manifest.sh"
+# shellcheck source=/dev/null
+. "${CSTK_LIB}/config.sh"
 
 _doctor_print_help() {
   cat >&2 <<'HELP'
@@ -48,11 +64,16 @@ cstk doctor — verifica integridade da instalacao (manifest vs disco).
 
 USO:
   cstk doctor [--scope global|project] [--fix]
+  cstk doctor --deps
 
 OPCOES:
   --scope S   global (default) ou project
   --fix       Reconcilia: remove entries MISSING; recalcula hash de OK.
               NUNCA modifica conteudo de skills.
+  --deps      Diagnostico read-only de dependencias (sqlite3, jq) e do
+              backend efetivo de estado (state-backend-config). Modo
+              distinto: ignora --fix/--scope. Relatorio em stdout, util
+              como gate de CI: `cstk doctor --deps || exit 1`.
 
 CLASSIFICACAO:
   OK       entry + dir + hash batem
@@ -61,8 +82,8 @@ CLASSIFICACAO:
   ORPHAN   dir sem entry (skill third-party — preservada)
 
 EXIT:
-  0  sem drift, ou --fix executado
-  1  drift detectado sem --fix
+  0  sem drift, ou --fix executado (ou --deps sem anomalia)
+  1  drift detectado sem --fix (ou --deps com anomalia)
 HELP
 }
 
@@ -76,6 +97,13 @@ doctor_main() {
   if [ "$_doctor_help" = 1 ]; then
     _doctor_print_help
     return 0
+  fi
+
+  if [ "$_doctor_deps" = 1 ]; then
+    if _doctor_deps_run; then
+      return 0
+    fi
+    return 1
   fi
 
   # Varre todos os 3 kinds. Skills usa hash_dir (artefato = pasta);
@@ -165,6 +193,7 @@ _doctor_walk_kind() {
 _doctor_reset_state() {
   _doctor_help=0
   _doctor_fix=0
+  _doctor_deps=0
   _doctor_scope=global
   _doctor_scope_dir=""
   _doctor_manifest_path=""
@@ -182,6 +211,7 @@ _doctor_parse_args() {
     case "$1" in
       --help|-h) _doctor_help=1; shift ;;
       --fix) _doctor_fix=1; shift ;;
+      --deps) _doctor_deps=1; shift ;;
       --scope)
         if [ "$#" -lt 2 ]; then log_error "doctor: --scope exige valor"; return 1; fi
         case "$2" in
@@ -364,4 +394,85 @@ _doctor_emit_report() {
       fi
     fi
   } >&2
+}
+
+# _doctor_deps_run — modo `cstk doctor --deps` (feature state-backend-config,
+# FASE 4, task 4.3). Read-only. Delega a decisao de backend a
+# `state-backend.sh resolve` (via cli/lib/config.sh) — NAO reimplementa
+# parsing de config nem logica de decisao. Detecta sqlite3/jq apenas para
+# fins de RELATO (presenca + versao), nunca para decidir o backend.
+#
+# Relatorio SEMPRE em stdout (sucesso e anomalia — contrato de gate de CI,
+# cli-surface.md). Exit 0 sem anomalia; 1 com >=1 anomalia. "Nunca
+# configurado" NUNCA e anomalia (FR-008, data-model.md dominio de reason).
+_doctor_deps_run() {
+  _ddr_effective="json"
+  _ddr_reason="desconhecido"
+
+  if command -v config_state_backend_resolve >/dev/null 2>&1; then
+    _ddr_resolve_out=$(config_state_backend_resolve 2>/dev/null) || _ddr_resolve_out=""
+  else
+    _ddr_resolve_out=""
+  fi
+
+  if [ -n "$_ddr_resolve_out" ]; then
+    _ddr_old_ifs=$IFS
+    IFS='
+'
+    for _ddr_line in $_ddr_resolve_out; do
+      case "$_ddr_line" in
+        effective_backend=*) _ddr_effective=${_ddr_line#effective_backend=} ;;
+        reason=*)            _ddr_reason=${_ddr_line#reason=} ;;
+      esac
+    done
+    IFS=$_ddr_old_ifs
+  fi
+
+  # Deteccao de sqlite3 (relato apenas). GOTCHA (research.md Decision 8):
+  # sob `set -e` em chamadores estritos, `x=$(cmd); rc=$?` mataria o shell —
+  # usa a forma `if x=$(cmd); then`.
+  _ddr_sqlite_present="nao"
+  _ddr_sqlite_version=""
+  if command -v sqlite3 >/dev/null 2>&1; then
+    _ddr_sqlite_present="sim"
+    if _ddr_sqlite_raw=$(sqlite3 --version 2>/dev/null); then
+      _ddr_sqlite_version=$(printf '%s\n' "$_ddr_sqlite_raw" | cut -d' ' -f1)
+    fi
+  fi
+
+  # Deteccao de jq (relato apenas; ausencia e SEMPRE anomalia — vide
+  # data-model.md, carve-out amendment 1.3.0 da constitution).
+  _ddr_jq_present="nao"
+  _ddr_jq_version=""
+  if command -v jq >/dev/null 2>&1; then
+    _ddr_jq_present="sim"
+    if _ddr_jq_raw=$(jq --version 2>/dev/null); then
+      _ddr_jq_version="$_ddr_jq_raw"
+    fi
+  fi
+
+  _ddr_anomaly=0
+  case "$_ddr_reason" in
+    configurado-dependencia-abaixo-do-minimo|configurado-dependencia-ausente)
+      _ddr_anomaly=1
+      ;;
+  esac
+  if [ "$_ddr_jq_present" != "sim" ]; then
+    _ddr_anomaly=1
+  fi
+
+  printf '==> cstk doctor --deps\n'
+  printf '  sqlite3: presente=%s versao=%s minima=3.45.1\n' \
+    "$_ddr_sqlite_present" "${_ddr_sqlite_version:-N/A}"
+  printf '  jq:      presente=%s versao=%s\n' \
+    "$_ddr_jq_present" "${_ddr_jq_version:-N/A}"
+  printf '  effective_backend: %s\n' "$_ddr_effective"
+  printf '  reason:            %s\n' "$_ddr_reason"
+  if [ "$_ddr_anomaly" -eq 1 ]; then
+    printf '  [ANOMALY] dependencia ausente ou abaixo do minimo suportado.\n'
+  else
+    printf '  ---\n  sem anomalias.\n'
+  fi
+
+  [ "$_ddr_anomaly" -eq 0 ]
 }
