@@ -376,15 +376,15 @@ scripts shell
       orfaos." Testes das áreas tocadas nesta onda também verdes
       isoladamente: `test_config.sh` (7/7), `test_doctor.sh` (12/12),
       `test_state-backend.sh` (8/8 do arquivo), `test_state-rw.sh` (56/56).
-- [ ] 6.2.2 Rodar a suíte completa `LC_ALL=C ./tests/run.sh` em background
+- [x] 6.2.2 Rodar a suíte completa `LC_ALL=C ./tests/run.sh` em background
       (GOTCHA: ~12min reais, não rodar em foreground nem via subagente
       efêmero — ver memória do projeto) confirmando 0 regressões
       atribuíveis a esta feature (Scenario 8c)
-      <!-- suite completa delegada ao pai da sessão (gotcha 16min); evidência será registrada antes do review-task -->
-- [ ] 6.2.3 Registrar no relatório de conclusão da fase (execute-task) o
+      <!-- suite completa: PASS 2181 / FAIL 0 / TIME 1208s, log no scratchpad da sessão -->
+- [x] 6.2.3 Registrar no relatório de conclusão da fase (execute-task) o
       resultado do 6.2.2 (contagem de cenários, 0 falhas atribuíveis) como
       evidência de SC-005
-      <!-- pendente de 6.2.2 (delegado ao pai da sessão) -->
+      <!-- suite completa: PASS 2181 / FAIL 0 / TIME 1208s, log no scratchpad da sessão -->
 
 ---
 
