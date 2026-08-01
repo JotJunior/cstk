@@ -26,6 +26,48 @@ O `state_dir` **NAO** e argumento de tool: e propriedade da sessao, resolvida do
 descritor. Aceitar `state_dir` do chamador permitiria que uma sessao mutasse
 outra execucao — exatamente o que FR-008 proibe.
 
+## Criterio de equivalencia de `reason` (FR-009 / CHK007)
+
+FR-009 exige que a rejeicao de uma tool tenha "motivo acionavel equivalente
+em clareza ao erro hoje produzido pelo script manual" — comparativo que, sem
+um teste de equivalencia definido, e subjetivo (CHK007). Este e o criterio
+**objetivo e verificavel** adotado (task 3.3, resolve CHK007):
+
+Um `reason` cumpre FR-009 SE E SOMENTE SE as tres condicoes abaixo se
+verificam, para CADA linha de `### Errors` de cada tool:
+
+1. **Cobertura de invariante 1:1** — o `Code` corresponde a exatamente uma
+   invariante ja imposta pelo helper POSIX equivalente, nunca uma invariante
+   nova inventada pela tool. Verificavel por citacao `[VERIFICADO:
+   arquivo:linha]` na propria tabela de `### Errors` — convencao ja em uso
+   neste documento (ex.: `NO_OPEN_WAVE` cita o envelope `DIAG` emitido por
+   `state-ondas.sh`/`_diag.sh`).
+2. **Preservacao do dado identificador** — quando o erro do script manual
+   imprime um identificador que localiza o problema (wave id, task id, nome
+   do campo invalido), o `reason` da tool preserva o MESMO identificador,
+   nunca um texto generico quando o helper informou qual recurso falhou.
+   Verificavel no codigo: o handler constroi `reason` concatenando o `Code`
+   com o texto (sanitizado por SEC-M1) efetivamente devolvido pelo helper —
+   padrao `` `${code}: ${diagnostico-ou-stderr-do-helper}` `` — nunca uma
+   string totalmente literal desconectada de `stdout`/`stderr`/diagnostico.
+   Padrao ja em producao: `tools/record_skill.ts`
+   `` `${code}: ${err.diagnostic?.message ?? err.stderr}` ``.
+3. **Estagio correto** — o `stage` (`schema|precondition|delegation`) aponta
+   exatamente onde o script manual teria detectado o mesmo problema: erro de
+   forma do payload (tipo, enum, obrigatoriedade) = `schema` (mensagem do
+   proprio Zod, ja acionavel por construcao do SDK — nao exige citacao de
+   helper); checagem de pre-condicao feita ANTES de delegar para evitar
+   side-effect (ex.: `WAVE_ALREADY_OPEN` verificado via `wave-status` antes
+   do `start`) = `precondition`; falha do proprio helper apos invocado =
+   `delegation`.
+
+**Teste de conformidade** (nao subjetivo — roda por tool): para cada linha de
+`### Errors`, confirmar (a) existe citacao `[VERIFICADO: ...]` na tabela, e
+(b) para codigos de estagio `delegation`, o handler usa o padrao
+`` `${CODE}: ${diagnostico-do-helper}` `` (nunca string literal fixa
+substituindo o diagnostico do helper). Codigos de estagio `schema` sao
+isentos de (b) — a mensagem e do Zod, nao do helper.
+
 **Envelope de resposta** (todas as tools):
 
 | Field | Type | Description |
@@ -351,3 +393,54 @@ Registra invocacao de skill/gate na onda. **Delega para** [VERIFICADO]:
 | Qualquer escrita em `knowledge.db` | **FR-013**: read-only, e o container sequer a monta |
 | Adquirir/liberar lock | **research.md Decision 4**: o lock do command pai ja envolve a onda; `state-lock.sh` e nao-reentrante (um `acquire` daria exit 3 sempre) |
 | `state-rw.sh set` generico | Escape hatch que anularia todo o proposito da feature — mutacao arbitraria sem contrato |
+
+---
+
+## Versionamento de contrato (CHK004)
+
+Nenhum FR nem secao deste documento tratava, ate a task 3.5, o que acontece
+quando um `inputSchema` muda e um orquestrador antigo (catalogo desatualizado
+em `~/.claude`, ver CLAUDE.md §"Installed vs Source Drift") chama a versao
+nova do servidor (gap CHK004). Politica adotada:
+
+**Fonte de verdade de compatibilidade**: o `version` (SemVer) declarado no
+bootstrap do `McpServer` [VERIFICADO: `src/index.ts`, `SERVER_VERSION =
+"0.1.0"`, espelhando `package.json`]. Nao existe (nem sera criado) um numero
+de versao separado por tool — uma unica versao de servidor cobre as 6 tools.
+
+- **Mudanca aditiva/retrocompativel** → bump **PATCH** ou **MINOR**:
+  - Campo NOVO **opcional** no `inputSchema`, com o handler tratando a
+    ausencia com o MESMO comportamento de hoje (omitir a flag do helper —
+    nunca alterar o efeito de um payload que ja passava antes).
+  - Nova tool adicionada (nao remove nem redefine nenhuma existente).
+  - Um orquestrador antigo que nunca envia o campo novo continua funcionando
+    identico: nenhuma invariante nova e imposta a payloads pre-existentes.
+
+- **Mudanca breaking** → bump **MAJOR** + entrada obrigatoria no CHANGELOG do
+  repo (secao dedicada ao `state-mcp-server`) descrevendo tool/campo afetado
+  e a migracao. Sao breaking:
+  - Remover ou renomear um campo do `inputSchema` (obrigatorio ou opcional).
+  - Apertar validacao existente (tornar obrigatorio um campo antes opcional;
+    estreitar um enum removendo valor antes aceito).
+  - Mudar o TIPO de um campo ja existente.
+  - Remover ou renomear uma tool inteira.
+  - Mudar o significado de um `Code` de erro ja documentado — o `Code`/
+    `reason` sao contrato tanto quanto o schema, porque orquestradores fazem
+    parsing de `reason` para decidir o proximo passo (FR-009).
+
+- **Efeito observavel para o chamador antigo diante de uma mudanca breaking**:
+  como o SDK MCP valida `inputSchema` **antes do handler** [VERIFICADO — ja
+  documentado em "Forma geral" acima], um payload antigo que nao contempla um
+  novo campo obrigatorio falha DETERMINISTICAMENTE no proprio SDK, com
+  `stage=schema` — nunca falha silenciosa. Isso e o mesmo principio do risco
+  documentado em CHK018/plan.md (linha ~220, "campo opcional que nunca chega
+  ao helper"), aplicado aqui a nivel de versao de contrato em vez de campo
+  isolado.
+
+- **Sem negociacao de versao em runtime**: o cliente MCP nao pede "versao X"
+  na chamada — a compatibilidade e resolvida OFFLINE, por disciplina de
+  release (mesma logica de CLAUDE.md §"Installed vs Source Drift": o catalogo
+  instalado pode ficar atras ate `cstk update`/`cstk self-update` rodar).
+  Nenhuma tool nova e necessaria so para checar versao: `serverInfo.version` ja
+  e exposto nativamente pelo handshake `initialize` do protocolo MCP e basta
+  para diagnostico manual (`cstk mcp status`, fora de escopo desta secao).

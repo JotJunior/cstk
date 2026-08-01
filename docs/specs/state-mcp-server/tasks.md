@@ -396,39 +396,44 @@ Ref: checklists/api.md CHK026
 - [ ] 3.2.2 Registrar Decisao; o resultado direciona o formato de
       `Errors` a implementar em 3.6-3.9 e 4.1
 
-### 3.3 Resolver ambiguidade CHK007: criterio de "motivo acionavel" (FR-009) `[A]` {auto}
+### 3.3 Resolver ambiguidade CHK007: criterio de "motivo acionavel" (FR-009) `[A]` {auto} — CONCLUIDO
 
 Ref: checklists/api.md CHK007; spec.md FR-009
 
-- [ ] 3.3.1 Definir criterio objetivo e verificavel de equivalencia entre
+- [x] 3.3.1 Definir criterio objetivo e verificavel de equivalencia entre
       o erro do script manual e o erro da tool (ex.: mesmo codigo de
       invariante + mesma informacao minima, nao necessariamente o mesmo
-      texto literal)
-- [ ] 3.3.2 Documentar o criterio em `contracts/mcp-tools.md` (nova
-      subsecao ou nota em cada `### Errors`)
-- [ ] 3.3.3 Registrar Decisao com o criterio adotado
+      texto literal) — 3 condicoes verificaveis (invariante 1:1 citada,
+      identificador preservado via padrao `${code}: ${diagnostico}`,
+      stage correto)
+- [x] 3.3.2 Documentar o criterio em `contracts/mcp-tools.md` (nova
+      subsecao ou nota em cada `### Errors`) — nova subsecao "Criterio de
+      equivalencia de `reason` (FR-009 / CHK007)"
+- [x] 3.3.3 Registrar Decisao com o criterio adotado — dec-059
 
-### 3.4 Resolver ambiguidade CHK025: quantificar o conjunto de SC-001 `[M]` {auto}
+### 3.4 Resolver ambiguidade CHK025: quantificar o conjunto de SC-001 `[M]` {auto} — CONCLUIDO
 
 Ref: checklists/api.md CHK025; spec.md SC-001
 
-- [ ] 3.4.1 Definir quantas execucoes de teste, quais fases e quais
+- [x] 3.4.1 Definir quantas execucoes de teste, quais fases e quais
       backends (json/sqlite) compoem o conjunto sobre o qual a taxa "cai a
-      zero" e medida
-- [ ] 3.4.2 Atualizar SC-001 no spec.md com a quantificacao
-- [ ] 3.4.3 Registrar Decisao
+      zero" e medida — 15 execucoes (Scenarios 1-9, exclui spikes 0.1-0.3;
+      1/2/3/4/5/9 dual-backend + 6/7/8 backend default)
+- [x] 3.4.2 Atualizar SC-001 no spec.md com a quantificacao — feito
+- [x] 3.4.3 Registrar Decisao — dec-060
 
-### 3.5 Gap CHK004: estrategia de versionamento de schema de tool `[M]` {auto}
+### 3.5 Gap CHK004: estrategia de versionamento de schema de tool `[M]` {auto} — CONCLUIDO
 
 Ref: checklists/api.md CHK004
 
-- [ ] 3.5.1 Definir o que acontece quando um `inputSchema` muda e um
+- [x] 3.5.1 Definir o que acontece quando um `inputSchema` muda e um
       orquestrador antigo chama a versao nova (ex.: campo novo opcional
       com default seguro nunca quebra; campo removido/renomeado exige
-      bump de versao do servidor documentado em CHANGELOG)
-- [ ] 3.5.2 Documentar a politica em `contracts/mcp-tools.md` (nova
-      secao "Versionamento de contrato")
-- [ ] 3.5.3 Registrar Decisao
+      bump de versao do servidor documentado em CHANGELOG) — SemVer via
+      `SERVER_VERSION` ja existente; aditivo=PATCH/MINOR, breaking=MAJOR
+- [x] 3.5.2 Documentar a politica em `contracts/mcp-tools.md` (nova
+      secao "Versionamento de contrato") — feito
+- [x] 3.5.3 Registrar Decisao — dec-061
 
 ### 3.6 Tool `record_decision` `[A]` {auto}
 

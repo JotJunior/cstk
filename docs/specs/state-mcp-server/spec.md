@@ -371,7 +371,23 @@ servidor MCP ativo, usando o caminho `Bash` atual.
   para toda mutacao de estado, a taxa de registros de estado incompletos
   (onda fechada sem motivo de termino, bloqueio humano sem decisao
   associada, task concluida sem registro correspondente) cai a zero,
-  medida sobre um conjunto de execucoes completas de teste.
+  medida sobre o conjunto quantificado abaixo (fecha CHK025).
+  - **Conjunto de medicao**: os Scenarios 1-9 de `quickstart.md` (cenarios
+    funcionais de aceitacao). Os Scenarios 0.1-0.3 ficam FORA do conjunto —
+    sao spikes de viabilidade, gate binario ("a feature e viavel?"), nao
+    medem taxa de defeito de registro de estado.
+  - **Fases/backends**: Scenarios 1, 2, 3, 4, 5 e 9 escrevem/leem estado
+    mutavel diretamente pelas tools e rodam **1x por backend**
+    (`json` e `sqlite`, ver `_sr_backend`) — a dimensao testada e sensivel ao
+    backend de persistencia. Scenarios 6, 7 e 8 (confinamento entre sessoes,
+    fallback sem Docker, sobrevivencia entre ondas) rodam **1x** cada, no
+    backend default do ambiente, por serem ortogonais a persistencia.
+    Total: 6 cenarios × 2 backends + 3 cenarios × 1 backend = **15
+    execucoes de teste**.
+  - **Criterio de zero**: nenhuma das 15 execucoes apresenta qualquer um dos
+    3 sintomas acima, reproduzido em pelo menos **2 rodadas completas** da
+    suite de aceitacao (paridade com o padrao de estabilidade ja adotado
+    pela suite POSIX do repo — `tests/README.md`).
 - **SC-002**: 100% das tentativas de registrar uma decisao de score 3 sem
   evidencia sao rejeitadas no momento da chamada, nunca chegando a
   persistir no estado.
