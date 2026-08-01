@@ -262,21 +262,25 @@ Ref: plan.md §Project Structure; contracts/mcp-session-lifecycle.md
 
 ## FASE 2 - Servidor Minimo
 
-### 2.1 Decisao humana: auto-atestacao do log e aceitavel? `[M]` {humano}
+### 2.1 Decisao humana: auto-atestacao do log e aceitavel? `[M]` {humano} — CONCLUIDO, RESULTADO: ACEITO
 
 Ref: checklists/security.md CHK057; plan.md §Seguranca "Auto-atestacao do
 log (limite conhecido)"
 
-- [ ] 2.1.1 Apresentar ao operador o limite conhecido: a linha de
+- [x] 2.1.1 Apresentar ao operador o limite conhecido: a linha de
       auditoria e escrita pelo mesmo processo que executa a mutacao; um
       servidor comprometido poderia suprimir o proprio rastro
-- [ ] 2.1.2 Perguntar se e aceitavel no modelo de ameaca atual (container
+- [x] 2.1.2 Perguntar se e aceitavel no modelo de ameaca atual (container
       confiavel por construcao, adversario = conteudo lido pelo LLM) ou se
       a auditoria exige testemunha externa (ex.: watcher de arquivo fora
       do container) antes do primeiro uso real
-- [ ] 2.1.3 Registrar Decisao; se "exige testemunha externa", abrir gap
+- [x] 2.1.3 Registrar Decisao; se "exige testemunha externa", abrir gap
       explicito a ser resolvido antes de F6 (nao implementado nesta
-      feature se sair do MVP aprovado)
+      feature se sair do MVP aprovado) — bloqueio block-003 registrado
+      (dec-049) e RESPONDIDO pelo operador (dec-053):
+      `aceitar-auto-atestacao-sem-testemunha`. Nenhum gap de testemunha
+      externa aberto; o limite permanece documentado como aceito
+      (ver 2.3.6)
 
 ### 2.2 Bootstrap `McpServer` + transporte stdio + tool `record_skill` `[A]` {auto}
 
@@ -318,29 +322,49 @@ Ref: plan.md §Fases de implementacao F2; contracts/mcp-tools.md
       proibindo `exec(`, `execSync(`, `shell: true`, template string em
       chamada de processo (SEC-H1) — `test/static-security.test.ts`
 
-### 2.3 `audit/log.ts`: enforcement-log.jsonl (scrub -> truncate) `[A]` {auto}
+### 2.3 `audit/log.ts`: enforcement-log.jsonl (scrub -> truncate) `[A]` {auto} — CONCLUIDO
 
 Ref: plan.md §Summary item 5; SEC-M1; SEC-M3; contracts/mcp-tools.md
 §Controles de seguranca
 
-- [ ] 2.3.1 Implementar `mcp/state-server/src/audit/log.ts`: linha de
+- [x] 2.3.1 Implementar `mcp/state-server/src/audit/log.ts`: linha de
       auditoria com `source` proprio, timestamp, ferramenta chamada,
-      sessao/execucao de origem, resultado (aceita/rejeitada + motivo)
-- [ ] 2.3.2 Aplicar a ordem obrigatoria **scrub -> truncate -> serialize**
+      sessao/execucao de origem, resultado (aceita/rejeitada + motivo) —
+      `appendAuditRecord()`, campos conforme data-model.md §Entity: Tool
+      Invocation Audit Record (`source="mcp-state-tool"`)
+- [x] 2.3.2 Aplicar a ordem obrigatoria **scrub -> truncate -> serialize**
       (research.md D6): nunca montar a linha por `printf`/concatenacao —
       usar serializador JSON real (SEC-M3, previne log injection via
-      `"`/`\n`)
-- [ ] 2.3.3 Truncar stderr do helper por code point a um teto de 2 KiB
-      antes de devolver ao contexto do LLM (SEC-M1)
-- [ ] 2.3.4 Bind-mount do **arquivo** `enforcement-log.jsonl` (nunca do
+      `"`/`\n`) — `JSON.stringify` real; scrub via
+      `secrets-filter.sh scrub` (stdin, novo suporte em `runHelper` com
+      `options.stdin`) ANTES de truncar `reason`/`arguments_digest`
+- [x] 2.3.3 Truncar stderr do helper por code point a um teto de 2 KiB
+      antes de devolver ao contexto do LLM (SEC-M1) — logica ja existente
+      em `tools/record_skill.ts` (task 2.2.5, `sanitizeHelperReason`)
+      extraida para `mcp/state-server/src/runtime/sanitize.ts`
+      (`sanitizeForLlmContext`/`truncateUtf8ByteBudget`) e reusada por
+      `audit/log.ts` para o `reason` persistido no log (FR-006 — mesma
+      disciplina de sanitizacao aplicada ao que vai para disco)
+- [x] 2.3.4 Bind-mount do **arquivo** `enforcement-log.jsonl` (nunca do
       diretorio `.claude`) — preparar a interface aqui; a montagem real
-      do container e task 5.2 (SEC-H2)
-- [ ] 2.3.5 Testes `node:test`: linha serializada corretamente com
+      do container e task 5.2 (SEC-H2) — `resolveEnforcementLogPath()`
+      em `runtime/exec.ts`, default `/data/enforcement-log.jsonl`
+      [VERIFICADO: `contracts/mcp-session-lifecycle.md` §Montagens],
+      override via `CSTK_MCP_ENFORCEMENT_LOG_PATH`
+- [x] 2.3.5 Testes `node:test`: linha serializada corretamente com
       caracteres hostis (`"`, `\n`, `\t`) no input; teto de 2 KiB
       respeitado; ordem scrub->truncate->serialize verificada por teste,
-      nao so por leitura de codigo
-- [ ] 2.3.6 Aplicar a decisao de 2.1 (auto-atestacao) se ela introduziu
-      algum requisito adicional de rastreabilidade
+      nao so por leitura de codigo — `test/audit-log.test.ts` (10
+      cenarios, incl. 2 adversariais: segredo na fronteira exata do teto
+      de 2 KiB do `reason` e dos 500 code points do `arguments_digest`,
+      confirmando que nenhum fragmento sobrevive) + `test/sanitize.test.ts`
+      (8 cenarios das primitivas extraidas); 39/39 testes verdes
+      (`npm test` via docker node:22.17.0)
+- [x] 2.3.6 Aplicar a decisao de 2.1 (auto-atestacao) se ela introduziu
+      algum requisito adicional de rastreabilidade — dec-053 confirma que
+      NENHUM requisito adicional foi introduzido (nao exige testemunha
+      externa); `audit/log.ts` documenta o limite aceito no cabecalho,
+      sem implementar (nem simular) um watcher externo
 
 ---
 

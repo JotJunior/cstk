@@ -26,6 +26,7 @@ import {
   resolveScriptsDir,
   HelperExecutionError,
 } from "../runtime/exec.js";
+import { sanitizeForLlmContext } from "../runtime/sanitize.js";
 import {
   matchesResolvedSession,
   type ResolvedSession,
@@ -79,22 +80,14 @@ const MAX_REASON_BYTES = 2048; // 2 KiB
 /**
  * SEC-M1: stderr do helper e DADO potencialmente influenciado por um
  * atacante (LLM05) — remove caracteres de controle e limita a 2 KiB antes
- * de devolver ao chamador.
+ * de devolver ao chamador. Implementacao compartilhada em
+ * `runtime/sanitize.ts` (task 2.3, extraida daqui para reuso por
+ * `audit/log.ts` e futuras tools de F3).
  */
 function sanitizeHelperReason(stderr: string): string {
-  // eslint-disable-next-line no-control-regex
-  const withoutControlChars = stderr.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, " ");
-  const codePoints = Array.from(withoutControlChars.trim());
-  let bytes = 0;
-  let truncated = "";
-  for (const ch of codePoints) {
-    const chBytes = Buffer.byteLength(ch, "utf8");
-    if (bytes + chBytes > MAX_REASON_BYTES) break;
-    truncated += ch;
-    bytes += chBytes;
-  }
-  return truncated || "helper falhou sem mensagem de erro utilizavel";
+  return sanitizeForLlmContext(stderr, MAX_REASON_BYTES);
 }
+
 
 export interface RecordSkillDeps {
   readonly session: ResolvedSession;
