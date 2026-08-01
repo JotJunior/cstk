@@ -66,8 +66,10 @@ execucoes concorrentes por projeto
 
 O Principio II governa **"scripts auxiliares de skills"**. O servidor MCP e um
 **processo de servico**, categoria em que o toolkit ja opera fora da disciplina
-POSIX — `cli/cstk` (Go) e o `cstk-panel` (Node) sao precedentes vivos, fato que a
-propria spec registra. Os artefatos desta feature se dividem assim:
+POSIX — o `cstk-panel` (Node), ja lancado hoje por `cstk serve --docker`
+(v5.17.0), e o precedente vivo; o proprio `cli/cstk` **e** o dispatcher que o
+invoca (POSIX sh, `#!/bin/sh`, `set -eu`) sem trazer Node para dentro da
+arvore de scripts, fato que a propria spec registra. Os artefatos desta feature se dividem assim:
 
 | Artefato | Regime |
 |----------|--------|
@@ -119,7 +121,7 @@ cli/
 global/skills/agente-00c-runtime/
 ├── scripts/
 │   ├── state-rw.sh, state-ondas.sh, state-decisions.sh, bloqueios.sh   # delegatarios (nao alterados)
-│   ├── mcp-session.sh             [NOVO] # resolve execucao ativa (precedencia do hook)
+│   ├── mcp-session.sh             [NOVO] # resolve execucao pelo token de capacidade (SEC-H3; nao por precedencia)
 │   └── mcp-launch.sh              [NOVO] # entrypoint stdio do .mcp.json
 ├── references/state-db-schema.sql       # nao alterado (zero tabela nova)
 └── hooks/                               # nao alterado

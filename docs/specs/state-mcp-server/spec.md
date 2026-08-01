@@ -37,9 +37,12 @@ stack **Node** (nao Go — o `cstk serve` ja traz Node ao toolkit; a
 referencia externa `mcp-project-scafold` serve so de inspiracao de desenho de
 tools, nao de stack) e **Docker-first** (precedente: `cstk serve --docker`,
 v5.17.0, container alpine multi-stage). O servidor MCP e, portanto, um
-processo de servico como o `cstk-panel` — nao um "script auxiliar de skill"
-sob a disciplina POSIX sh do Principio II da constitution, da mesma forma que
-`cli/cstk` (Go) e o `cstk-panel` (Node) ja nao estao sob essa disciplina hoje.
+processo de servico como o `cstk-panel` (Node) — nao um "script auxiliar de
+skill" sob a disciplina POSIX sh do Principio II da constitution. O toolkit ja
+orquestra esse tipo de processo hoje sem violar o principio: `cli/cstk` **e**
+o dispatcher POSIX sh (`#!/bin/sh`, `set -eu`) que invoca o `cstk-panel` via
+`cstk serve`, sem trazer Node para dentro da arvore de scripts — o mesmo
+padrao que esta feature reusa.
 
 ## Clarifications
 
@@ -231,8 +234,8 @@ servidor MCP ativo, usando o caminho `Bash` atual.
 - O que acontece com chamadas de ferramenta durante uma pausa longa entre
   ondas (`Schedule intent`)? Ver requisito FR-010 (fronteira de sessao do
   servidor) sobre manter o servidor ativo ou reinicia-lo a cada retomada.
-- O que acontece se duas execucoes autonomas tentarem usar a mesma porta/
-  identificador de sessao simultaneamente? A alocacao de identidade de
+- O que acontece se duas execucoes autonomas tentarem colidir no mesmo
+  identificador/token de sessao simultaneamente? A alocacao de identidade de
   sessao deve evitar colisao sem exigir coordenacao manual do operador.
 
 ## Requirements
@@ -317,11 +320,21 @@ servidor MCP ativo, usando o caminho `Bash` atual.
   parado / indisponivel) sem precisar inspecionar Docker diretamente.
 - **FR-016**: Quando duas execucoes autonomas concorrentes rodam no mesmo
   projeto-alvo (ex.: um `agente-00c` e uma `feature-00c`), cada uma MUST
-  receber sua propria instancia/porta de servidor MCP isolada — nenhuma
-  instancia unica MUST multiplexar chamadas por sessao/execucao. Isolamento
-  fisico por processo/container e a forma mais direta de garantir o
-  confinamento de FR-008 sem depender de isolamento logico dentro de um
-  processo compartilhado (defesa em profundidade, Principio III herdado).
+  receber isolamento fisico dedicado — um container por execucao (transporte
+  `stdio`, **sem porta publicada**), roteado por um token de capacidade unico
+  (>= 128 bits, fonte CSPRNG) apresentado pelo chamador — nenhuma instancia
+  unica MUST multiplexar chamadas por sessao/execucao nem rotear por
+  precedencia/heuristica de "execucao ativa". `stdio` sem porta satisfaz o
+  isolamento por construcao (superficie de rede zero, mais forte que
+  separacao por porta dedicada) e preserva o confinamento de FR-008 sem
+  depender de isolamento logico dentro de um processo compartilhado (defesa
+  em profundidade, Principio III herdado).
+  *(Amendment CHK036/dec-023, onda-004: substitui a leitura literal anterior
+  — "sua propria instancia/porta isolada" — pela releitura aprovada pelo
+  operador em dec-021/block-001, apos o gate `owasp-security` (SEC-H3)
+  apontar que roteamento por precedencia seria confused deputy — ASI03 — e
+  que `stdio` nao tem porta. Isolamento passa a ser container + token de
+  capacidade; ver `contracts/mcp-session-lifecycle.md` §SEC-H3.)*
 - **FR-017**: Quando tanto o caminho de ferramenta MCP quanto o caminho
   `Bash` legado puderem, em tese, mutar o mesmo estado na mesma janela
   (ex.: fallback acionado no meio de uma onda), o sistema MUST preservar

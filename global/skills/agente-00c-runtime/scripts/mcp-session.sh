@@ -1,0 +1,211 @@
+#!/bin/sh
+# mcp-session.sh — resolucao da execucao ativa por TOKEN DE CAPACIDADE (SEC-H3).
+#
+# Ref: docs/specs/state-mcp-server/spec.md FR-016, FR-008
+#      docs/specs/state-mcp-server/contracts/mcp-session-lifecycle.md
+#        §Resolucao da execucao ativa (helper mcp-session.sh)
+#      docs/specs/state-mcp-server/data-model.md
+#        §Entity: Orchestrator Server Session
+#      docs/specs/state-mcp-server/tasks.md FASE 1 task 1.3
+#
+# Fail-closed por desenho (SEC-H3, finding HIGH do gate owasp-security,
+# onda-003/block-001/dec-021, ratificado em dec-023/onda-004): o
+# roteamento de MUTACAO nunca usa a precedencia do hook PreToolUse
+# (agente-00c vence; entre feature-00c, menor short-name lexicografico —
+# global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh). Essa
+# regra so vale para uma guarda que BLOQUEIA; aqui o roteador MUTA, entao
+# a autorizacao e por POSSE de um token de capacidade — o `session_id` do
+# descritor `<state-dir>/mcp-server.json` (>= 128 bits CSPRNG, gravado por
+# `cstk mcp start`) — nunca por heuristica de ambiente. Token
+# ausente/desconhecido/de execucao ja terminal ⇒ SESSION_MISMATCH, sem
+# fallback para "a execucao ativa mais provavel".
+#
+# Subcomandos:
+#   mcp-session.sh resolve --project-path PATH
+#       [--token TOKEN | --token-file FILE]
+#     Le o token nesta ordem de precedencia: --token, --token-file, env
+#     MCP_SESSION_TOKEN (aceita token SINTETICO por qualquer uma das tres
+#     fontes — viabiliza testes desta fase sem depender da coordenacao
+#     cross-feature ainda pendente com os commands pai, task 1.2). Varre
+#     os descritores `mcp-server.json` de TODAS as execucoes do
+#     projeto-alvo (`.claude/agente-00c-state/` +
+#     `.claude/feature-00c-state/*/`) e imprime os campos do UNICO
+#     descritor cujo `session_id` bate exatamente e cujo `stopped_at`
+#     ainda e nulo. Zero match, mais de um match (colisao) ou token vazio
+#     => SESSION_MISMATCH (exit 3), nada em stdout.
+#
+# Saida (stdout, uma chave por linha — mesmo estilo de `state-backend.sh
+# resolve` / `cstk mcp status`):
+#   state_dir=<path>
+#   execution_kind=<agente-00c|feature-00c>
+#   short_name=<name|->
+#   target_project_path=<path>
+#   mode=<docker|bash-fallback>
+#   container=<name|->
+#
+# Exit codes:
+#   0 sucesso (descritor unico resolvido)
+#   1 erro generico (I/O, jq ausente)
+#   2 uso incorreto
+#   3 SESSION_MISMATCH (fail-closed — token invalido/ausente/terminal/colisao)
+#
+# POSIX sh + jq.
+
+set -eu
+
+_MS_NAME="mcp-session"
+
+_ms_die_usage() {
+  printf '%s: %s\n' "$_MS_NAME" "$1" >&2
+  exit 2
+}
+
+_ms_die() {
+  printf '%s: %s\n' "$_MS_NAME" "$1" >&2
+  exit "${2:-1}"
+}
+
+_ms_mismatch() {
+  printf '%s: resolve: SESSION_MISMATCH (%s)\n' "$_MS_NAME" "$1" >&2
+  exit 3
+}
+
+_ms_require_jq() {
+  command -v jq >/dev/null 2>&1 \
+    || _ms_die "jq nao encontrado no PATH (brew install jq | apt install jq)" 1
+}
+
+# _ms_resolve_token EXPLICIT TOKENFILE -> imprime o token em stdout (string
+# vazia se nenhuma fonte forneceu um); a validacao de "vazio" e feita pelo
+# caller (resolve). Ordem: --token > --token-file > env MCP_SESSION_TOKEN.
+_ms_resolve_token() {
+  _explicit=$1
+  _file=$2
+  if [ -n "$_explicit" ]; then
+    printf '%s' "$_explicit"
+    return 0
+  fi
+  if [ -n "$_file" ]; then
+    [ -f "$_file" ] || _ms_die "resolve: --token-file nao encontrado: $_file" 1
+    _t=$(head -n 1 -- "$_file" 2>/dev/null) || _t=""
+    printf '%s' "$_t"
+    return 0
+  fi
+  if [ -n "${MCP_SESSION_TOKEN:-}" ]; then
+    printf '%s' "$MCP_SESSION_TOKEN"
+    return 0
+  fi
+  printf '%s' ""
+}
+
+# _ms_check_descriptor DESCRIPTOR_PATH TOKEN -> exit 0 SE o descritor
+# existe, `session_id` bate exatamente com TOKEN e `stopped_at` e nulo
+# (sessao ainda ativa); exit 1 caso contrario. Nunca imprime nada nem
+# aborta o script — quem decide o resultado agregado e o caller.
+_ms_check_descriptor() {
+  _desc=$1
+  _token=$2
+  [ -f "$_desc" ] || return 1
+  _sid=$(jq -r '.session_id // ""' "$_desc" 2>/dev/null) || return 1
+  [ -n "$_sid" ] || return 1
+  [ "$_sid" = "$_token" ] || return 1
+  _stopped=$(jq -r '.stopped_at // ""' "$_desc" 2>/dev/null) || _stopped=""
+  [ -z "$_stopped" ] || return 1   # execucao ja terminal — nunca roteia (fail-closed)
+  return 0
+}
+
+_ms_print_descriptor() {
+  _desc=$1
+  jq -r '
+    "state_dir=" + (.state_dir // "-"),
+    "execution_kind=" + (.execution_kind // "-"),
+    "short_name=" + (.short_name // "-"),
+    "target_project_path=" + (.target_project_path // "-"),
+    "mode=" + (.mode // "-"),
+    "container=" + (.container_name // "-")
+  ' "$_desc"
+}
+
+_ms_cmd_resolve() {
+  _project_path=""
+  _token_explicit=""
+  _token_file=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --project-path) _project_path=$2; shift 2 ;;
+      --token) _token_explicit=$2; shift 2 ;;
+      --token-file) _token_file=$2; shift 2 ;;
+      *) _ms_die_usage "resolve: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_project_path" ] || _ms_die_usage "resolve: --project-path obrigatorio"
+  [ -d "$_project_path" ] \
+    || _ms_die "resolve: --project-path nao existe ou nao e diretorio: $_project_path" 1
+  _ms_require_jq
+
+  _token=$(_ms_resolve_token "$_token_explicit" "$_token_file")
+  if [ -z "$_token" ]; then
+    _ms_mismatch "nenhum token fornecido (--token | --token-file | MCP_SESSION_TOKEN)"
+  fi
+
+  _match=""
+  _match_count=0
+
+  _agente_desc="$_project_path/.claude/agente-00c-state/mcp-server.json"
+  if _ms_check_descriptor "$_agente_desc" "$_token"; then
+    _match="$_agente_desc"
+    _match_count=$((_match_count + 1))
+  fi
+
+  _feat_root="$_project_path/.claude/feature-00c-state"
+  if [ -d "$_feat_root" ]; then
+    for _d in "$_feat_root"/*/; do
+      [ -d "$_d" ] || continue
+      _fd="${_d}mcp-server.json"
+      if _ms_check_descriptor "$_fd" "$_token"; then
+        _match="$_fd"
+        _match_count=$((_match_count + 1))
+      fi
+    done
+  fi
+
+  if [ "$_match_count" -eq 0 ]; then
+    _ms_mismatch "token desconhecido, invalido ou de execucao ja terminal"
+  fi
+  if [ "$_match_count" -gt 1 ]; then
+    _ms_mismatch "colisao de token entre multiplas execucoes — recusado, nunca roteia por precedencia"
+  fi
+
+  _ms_print_descriptor "$_match"
+}
+
+# ---------- Dispatch ----------
+
+if [ "$#" -lt 1 ]; then
+  cat >&2 <<'HELP'
+mcp-session.sh — resolucao da execucao ativa por token de capacidade (SEC-H3).
+
+USO:
+  mcp-session.sh resolve --project-path PATH \
+      [--token TOKEN | --token-file FILE]
+
+  Token tambem pode vir de MCP_SESSION_TOKEN (env), com precedencia
+  --token > --token-file > env.
+
+EXIT:
+  0 sucesso
+  1 erro generico
+  2 uso incorreto
+  3 SESSION_MISMATCH (fail-closed — token invalido/ausente/terminal/colisao)
+HELP
+  exit 2
+fi
+
+_MS_SUBCMD=$1
+shift
+
+case "$_MS_SUBCMD" in
+  resolve)         _ms_cmd_resolve "$@" ;;
+  -h|--help|help)  exit 0 ;;
+  *) _ms_die_usage "subcomando desconhecido: $_MS_SUBCMD" ;;
+esac

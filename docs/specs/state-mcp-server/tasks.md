@@ -181,19 +181,19 @@ plan.md §Riscos(3)
 Ref: checklists/security.md CHK036; dec-023 (onda-004); dec-021 (onda-003,
 block-001)
 
-- [ ] 1.1.1 Reler o texto atual de FR-016 (spec.md, "cada uma MUST receber
+- [x] 1.1.1 Reler o texto atual de FR-016 (spec.md, "cada uma MUST receber
       sua propria instancia/**porta** de servidor MCP isolada")
-- [ ] 1.1.2 Reescrever para a releitura ja aprovada pelo operador
+- [x] 1.1.2 Reescrever para a releitura ja aprovada pelo operador
       (dec-021): isolamento por **container + token de capacidade** em
       transporte `stdio` **sem porta**, preservando a garantia de
       confinamento de FR-008
-- [ ] 1.1.3 Adicionar nota de rastreabilidade da mudanca (referenciar
+- [x] 1.1.3 Adicionar nota de rastreabilidade da mudanca (referenciar
       dec-021/dec-023 no changelog da spec, se a spec tiver secao de
       historico; senao, deixar rastro so na Decisao desta task)
-- [ ] 1.1.4 Revisar `contracts/mcp-session-lifecycle.md` §Nota de
+- [x] 1.1.4 Revisar `contracts/mcp-session-lifecycle.md` §Nota de
       autenticacao para confirmar que o texto ja reflete a mesma leitura
       (nao deve exigir mudanca, apenas checagem de consistencia)
-- [ ] 1.1.5 Rodar `analyze` (ou checagem manual equivalente) para
+- [x] 1.1.5 Rodar `analyze` (ou checagem manual equivalente) para
       confirmar que spec.md e plan.md deixaram de divergir apos o
       amendment
 
@@ -202,7 +202,7 @@ block-001)
 Ref: checklists/security.md CHK031; plan.md §Bloqueio humano item 1;
 dec-021 (aprovado em block-001)
 
-- [ ] 1.2.1 Registrar formalmente que a geracao e injecao do token de
+- [x] 1.2.1 Registrar formalmente que a geracao e injecao do token de
       capacidade (SEC-H3: `session_id` >= 128 bits CSPRNG, `chmod 600`,
       injetado pelo pai no spawn do orquestrador) em
       `/agente-00c`, `/feature-00c` e seus `-resume` **nao e implementada
@@ -211,13 +211,13 @@ dec-021 (aprovado em block-001)
       (editar `global/commands/agente-00c*.md`,
       `global/commands/feature-00c*.md`) fica fora do escopo de codigo de
       `state-mcp-server`
-- [ ] 1.2.2 Coordenar com o operador QUANDO essa mudanca nos commands pai
+- [x] 1.2.2 Coordenar com o operador QUANDO essa mudanca nos commands pai
       sera feita (feature separada / PR separado) e se ha uma janela
       minima antes de F6 (Integracao 00c) precisar dela
-- [ ] 1.2.3 Registrar Decisao (`state-decisions.sh register`) apontando o
+- [x] 1.2.3 Registrar Decisao (`state-decisions.sh register`) apontando o
       short-name/PR de destino dessa coordenacao, ou o bloqueio explicito
       se ainda nao houver destino definido
-- [ ] 1.2.4 **Gate**: as tasks 1.3 (mcp-session.sh) e 6.2/6.3 (integracao
+- [x] 1.2.4 **Gate**: as tasks 1.3 (mcp-session.sh) e 6.2/6.3 (integracao
       com commands pai) MUST tratar a ausencia do token real como caso
       esperado durante o desenvolvimento desta feature (usar token
       sintetico nos testes) — a consumacao end-to-end do token real so e
@@ -229,32 +229,32 @@ Ref: plan.md §Project Structure;
 contracts/mcp-session-lifecycle.md §Resolucao da execucao ativa;
 SEC-H3 (roteamento por capacidade, fail-closed)
 
-- [ ] 1.3.1 Criar `global/skills/agente-00c-runtime/scripts/mcp-session.sh`
+- [x] 1.3.1 Criar `global/skills/agente-00c-runtime/scripts/mcp-session.sh`
       com subcomando de resolucao: dado um token/`session_id`, localizar o
       `state-dir` correspondente
-- [ ] 1.3.2 Implementar fail-closed: token ausente/invalido ⇒ erro
+- [x] 1.3.2 Implementar fail-closed: token ausente/invalido ⇒ erro
       explicito, nunca fallback silencioso para "execucao ativa por
       precedencia" (precedencia so vale para consulta read-only, nunca
       para mutacao — SEC-H3)
-- [ ] 1.3.3 Aceitar token sintetico via variavel de ambiente/arquivo para
+- [x] 1.3.3 Aceitar token sintetico via variavel de ambiente/arquivo para
       viabilizar testes sem depender da coordenacao externa (1.2)
-- [ ] 1.3.4 Criar `tests/test_mcp-session.sh` cobrindo: token valido,
+- [x] 1.3.4 Criar `tests/test_mcp-session.sh` cobrindo: token valido,
       token ausente, token invalido, dois state-dirs concorrentes (nao
       deve haver vazamento entre eles)
-- [ ] 1.3.5 Rodar `./tests/run.sh test_mcp-session` e confirmar verde
+- [x] 1.3.5 Rodar `./tests/run.sh test_mcp-session` e confirmar verde
 
 ### 1.4 `cstk mcp status` (fundacao de `cli/lib/mcp.sh`) `[A]` {auto}
 
 Ref: plan.md §Project Structure; contracts/mcp-session-lifecycle.md
 `cstk mcp status`; FR-015
 
-- [ ] 1.4.1 Criar `cli/lib/mcp.sh` com o subcomando `status
+- [x] 1.4.1 Criar `cli/lib/mcp.sh` com o subcomando `status
       [--state-dir DIR] [--project-path PATH]` (ativo / parado /
       indisponivel), sem exigir Docker rodando ainda (F5 adiciona o
       container real)
-- [ ] 1.4.2 Adicionar `mcp)` ao dispatch de `cli/cstk`
-- [ ] 1.4.3 Criar `tests/cstk/test_mcp.sh` cobrindo `status` nos 3 estados
-- [ ] 1.4.4 Rodar `./tests/run.sh --check-coverage` e confirmar que os
+- [x] 1.4.2 Adicionar `mcp)` ao dispatch de `cli/cstk`
+- [x] 1.4.3 Criar `tests/cstk/test_mcp.sh` cobrindo `status` nos 3 estados
+- [x] 1.4.4 Rodar `./tests/run.sh --check-coverage` e confirmar que os
       dois `.sh` novos desta fase (`mcp-session.sh`, `mcp.sh`) tem teste
       correspondente
 
