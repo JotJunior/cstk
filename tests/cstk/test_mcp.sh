@@ -39,9 +39,15 @@ _cstk_mcp() {
 }
 
 # _init_active_exec DIR -> inicializa uma execucao 00c (status em_andamento
-# por padrao do state-rw.sh init) em DIR.
+# por padrao do state-rw.sh init) em DIR. HOME isolado em $TMPDIR_TEST/home
+# (nunca o HOME real do operador): `state-rw.sh init` decide o backend
+# (json|sqlite) lendo $HOME/.claude/cstk/config (state-backend.sh) — sem
+# isolar, a suite herdaria silenciosamente o backend global da maquina do
+# desenvolvedor (sqlite, se `cstk state enable-sqlite` ja tiver rodado ali),
+# quebrando a hermeticidade do teste (CLAUDE.md "Fonte de verdade" +
+# padrao ja praticado por test_mcp-docker.sh::_run_mcp_docker_fn).
 _init_active_exec() {
-  capture "$STATE_RW" init --state-dir "$1" \
+  capture env HOME="$TMPDIR_TEST/home" "$STATE_RW" init --state-dir "$1" \
     --execucao-id "exec-mcp-test" --projeto-alvo-path "/tmp/p" --descricao "POC mcp status"
 }
 
@@ -49,7 +55,7 @@ _init_active_exec() {
 # target_project_path REAL (necessario para start: o enforcement-log.jsonl
 # e criado de fato sob <PROJECT_PATH>/.claude/).
 _init_active_exec_at() {
-  capture "$STATE_RW" init --state-dir "$2" \
+  capture env HOME="$TMPDIR_TEST/home" "$STATE_RW" init --state-dir "$2" \
     --execucao-id "exec-mcp-start-test" --projeto-alvo-path "$1" --descricao "POC mcp start/stop"
 }
 
@@ -285,6 +291,27 @@ scenario_status_live_mode_docker_morto_reporta_unavailable_sem_reiniciar() {
   # stopped_at=null) — --live e observacional, nao muda estado persistido.
   _mode_disco=$(jq -r '.mode' "$_sd/mcp-server.json")
   [ "$_mode_disco" = "docker" ] || { _fail "descritor mutado por --live" "$_mode_disco"; return 1; }
+}
+
+scenario_status_live_deteccao_mid_onda_uma_unica_sonda_sem_retry() {
+  # task 5.5, CHK071: gatilho de deteccao de queda MID-ONDA (apos a 1a tool
+  # ja ter sido chamada) reusa `status --live` -- contracts/mcp-session-
+  # lifecycle.md §Deteccao de queda mid-onda define ZERO retries da MESMA
+  # chamada + UMA confirmacao via status --live. Esta assercao prova, no
+  # nivel do stub `docker`, que a confirmacao e de fato uma UNICA sonda
+  # (nenhum loop de retry escondido em _mcp_docker_healthcheck/status --live).
+  _sd="$TMPDIR_TEST/sd-live-mid-onda"
+  _write_descriptor "$_sd" "tok-live-mid-onda" "docker" ""
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  mkdir -p "$TMPDIR_TEST/docker-stub"
+  : >"$TMPDIR_TEST/docker-stub/exec-fails"
+  capture _cstk_mcp status --state-dir "$_sd" --live
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "live mid-onda exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "status=unavailable" || return 1
+  assert_stdout_contains "reason=health-timeout" || return 1
+  _exec_calls=$(grep -c '^exec ' "$TMPDIR_TEST/docker-calls.log" 2>/dev/null || echo 0)
+  [ "$_exec_calls" = "1" ] || { _fail "gc mid-onda deveria fazer exatamente 1 sonda (0 retries), fez" "$_exec_calls"; return 1; }
 }
 
 scenario_status_sem_live_nao_chama_docker() {
@@ -652,6 +679,256 @@ scenario_cstk_help_mcp() {
   capture env CSTK_LIB="$CSTK_LIB_DIR" sh "$CSTK_BIN" help mcp
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "help mcp exit" "$_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "mcp-session-lifecycle" || return 1
+}
+
+# ---------- gc (task 5.4, CHK064: deteccao/limpeza de container orfao) ----------
+
+# _stub_docker_gc BIN_DIR — stub `docker` cobrindo info/ps/rm, suficiente
+# para exercitar `cstk mcp gc`. Marcador $TMPDIR_TEST/docker-stub/ps-output
+# (TSV name<TAB>state_dir, uma linha por container) e escrito PELO PROPRIO
+# scenario ANTES de invocar `gc` — mesmo padrao de test_mcp-docker.sh
+# scenario_list_managed_com_containers. rm-fails-for/rm-nothing-for listam
+# (uma por linha) nomes de container para os quais `docker rm -f` deve
+# falhar (permissao) ou reportar "No such container" (idempotente).
+_stub_docker_gc() {
+  _sdg_bin="$1"
+  cat >"$_sdg_bin/docker" <<'STUB'
+#!/bin/sh
+_stub_dir="$TMPDIR_TEST/docker-stub"
+mkdir -p "$_stub_dir"
+printf '%s\n' "$*" >>"$TMPDIR_TEST/docker-calls.log"
+
+case "$1" in
+  info)
+    [ -f "$_stub_dir/daemon-down" ] && exit 1
+    exit 0
+    ;;
+  ps)
+    [ -f "$_stub_dir/ps-output" ] && cat "$_stub_dir/ps-output"
+    exit 0
+    ;;
+  rm)
+    _target="$3"
+    if [ -f "$_stub_dir/rm-fails-for" ] && grep -qx "$_target" "$_stub_dir/rm-fails-for" 2>/dev/null; then
+      printf 'Error: permission denied while trying to connect to the Docker daemon socket\n' >&2
+      exit 1
+    fi
+    if [ -f "$_stub_dir/rm-nothing-for" ] && grep -qx "$_target" "$_stub_dir/rm-nothing-for" 2>/dev/null; then
+      printf 'Error: No such container: %s\n' "$_target" >&2
+      exit 1
+    fi
+    exit 0
+    ;;
+  *)
+    printf 'stub-docker-gc: subcomando inesperado: %s\n' "$*" >&2
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "$_sdg_bin/docker"
+}
+
+# _gc_ps_line NAME STATE_DIR -> escreve uma linha TSV em docker-stub/ps-output
+_gc_ps_line() {
+  mkdir -p "$TMPDIR_TEST/docker-stub"
+  printf '%s\t%s\n' "$1" "$2" >>"$TMPDIR_TEST/docker-stub/ps-output"
+}
+
+# _mark_terminal STATE_DIR STATUS -> promove execution.status para um valor
+# terminal (concluida|abortada) na fixture ja inicializada por
+# _init_active_exec[_at]. finished_at e escrito ANTES de status (sob
+# backend sqlite, um CHECK constraint exige status terminal <=> finished_at
+# NAO-NULO; escrever status sozinho primeiro violaria o constraint).
+_mark_terminal() {
+  capture env HOME="$TMPDIR_TEST/home" "$STATE_RW" set --state-dir "$1" \
+    --field '.execution.finished_at' --value '"2026-08-01T00:00:00Z"'
+  capture env HOME="$TMPDIR_TEST/home" "$STATE_RW" set --state-dir "$1" \
+    --field '.execution.status' --value "\"$2\""
+}
+
+scenario_gc_docker_ausente_summary_indisponivel_exit_0() {
+  _MCP_INNER_PATH=$(_path_without_docker)
+  capture _cstk_mcp gc
+  unset _MCP_INNER_PATH
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc docker ausente exit" "esperado 0, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
+  assert_stdout_contains "summary=docker-indisponivel" || return 1
+}
+
+scenario_gc_daemon_down_summary_indisponivel_exit_0() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  mkdir -p "$TMPDIR_TEST/docker-stub"
+  : >"$TMPDIR_TEST/docker-stub/daemon-down"
+  capture _cstk_mcp gc
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc daemon down exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "summary=docker-indisponivel" || return 1
+}
+
+scenario_gc_nenhum_container_gerenciado_summary_zero() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  capture _cstk_mcp gc
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc vazio exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "summary=ok examined:0 removed:0 kept:0 skipped:0" || return 1
+}
+
+scenario_gc_sem_label_e_skipped_e_preservado() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_ps_line "cstk-mcp-state-legacy" "-"
+  capture _cstk_mcp gc
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc sem-label exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "action=skipped name=cstk-mcp-state-legacy reason=sem-label" || return 1
+  assert_stdout_contains "skipped:1" || return 1
+  case "$(_docker_calls_log)" in
+    *"rm -f cstk-mcp-state-legacy"*) _fail "gc sem-label removeu" "$(_docker_calls_log)"; return 1 ;;
+  esac
+}
+
+scenario_gc_state_dir_ausente_e_removido() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_sd="$TMPDIR_TEST/nao-existe-mais/.claude/feature-00c-state/x"
+  _gc_ps_line "cstk-mcp-state-gone" "$_gc_sd"
+  capture _cstk_mcp gc
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc state-dir-ausente exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "action=removed name=cstk-mcp-state-gone reason=state-dir-ausente" || return 1
+  assert_stdout_contains "removed:1" || return 1
+  case "$(_docker_calls_log)" in
+    *"rm -f cstk-mcp-state-gone"*) : ;;
+    *) _fail "gc state-dir-ausente nao chamou docker rm" "$(_docker_calls_log)"; return 1 ;;
+  esac
+}
+
+scenario_gc_execucao_terminal_concluida_e_removido() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_sd="$TMPDIR_TEST/proj-term/.claude/feature-00c-state/x"
+  mkdir -p "$_gc_sd"
+  _init_active_exec "$_gc_sd"
+  _mark_terminal "$_gc_sd" "concluida"
+  _gc_ps_line "cstk-mcp-state-done" "$_gc_sd"
+  capture _cstk_mcp gc
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc terminal exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "action=removed name=cstk-mcp-state-done reason=terminal:concluida" || return 1
+  case "$(_docker_calls_log)" in
+    *"rm -f cstk-mcp-state-done"*) : ;;
+    *) _fail "gc terminal nao chamou docker rm" "$(_docker_calls_log)"; return 1 ;;
+  esac
+}
+
+scenario_gc_execucao_terminal_abortada_e_removido() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_sd="$TMPDIR_TEST/proj-abort/.claude/feature-00c-state/x"
+  mkdir -p "$_gc_sd"
+  _init_active_exec "$_gc_sd"
+  _mark_terminal "$_gc_sd" "abortada"
+  _gc_ps_line "cstk-mcp-state-aborted" "$_gc_sd"
+  capture _cstk_mcp gc
+  assert_stdout_contains "action=removed name=cstk-mcp-state-aborted reason=terminal:abortada" || return 1
+}
+
+scenario_gc_execucao_ativa_e_preservado_nunca_remove() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_sd="$TMPDIR_TEST/proj-ativo/.claude/feature-00c-state/x"
+  mkdir -p "$_gc_sd"
+  _init_active_exec "$_gc_sd"
+  _gc_ps_line "cstk-mcp-state-live" "$_gc_sd"
+  capture _cstk_mcp gc
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc ativo exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "action=kept name=cstk-mcp-state-live reason=ativo:em_andamento" || return 1
+  case "$(_docker_calls_log)" in
+    *"rm -f cstk-mcp-state-live"*) _fail "gc ativo removeu execucao viva" "$(_docker_calls_log)"; return 1 ;;
+  esac
+}
+
+scenario_gc_state_dir_existe_sem_estado_e_removido() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_sd="$TMPDIR_TEST/proj-vazio/.claude/feature-00c-state/x"
+  mkdir -p "$_gc_sd"
+  _gc_ps_line "cstk-mcp-state-empty" "$_gc_sd"
+  capture _cstk_mcp gc
+  assert_stdout_contains "action=removed name=cstk-mcp-state-empty reason=state-dir-sem-estado" || return 1
+}
+
+scenario_gc_dry_run_reporta_sem_remover() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_sd="$TMPDIR_TEST/proj-dry/.claude/feature-00c-state/x"
+  mkdir -p "$_gc_sd"
+  _init_active_exec "$_gc_sd"
+  _mark_terminal "$_gc_sd" "concluida"
+  _gc_ps_line "cstk-mcp-state-dryrun" "$_gc_sd"
+  capture _cstk_mcp gc --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc dry-run exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "action=would-remove name=cstk-mcp-state-dryrun reason=terminal:concluida" || return 1
+  case "$(_docker_calls_log)" in
+    *"rm -f cstk-mcp-state-dryrun"*) _fail "gc --dry-run chamou docker rm" "$(_docker_calls_log)"; return 1 ;;
+  esac
+}
+
+scenario_gc_remocao_falha_reporta_remove_failed() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_sd="$TMPDIR_TEST/proj-rmfail/.claude/feature-00c-state/x"
+  mkdir -p "$_gc_sd"
+  _init_active_exec "$_gc_sd"
+  _mark_terminal "$_gc_sd" "concluida"
+  _gc_ps_line "cstk-mcp-state-rmfail" "$_gc_sd"
+  printf 'cstk-mcp-state-rmfail\n' >"$TMPDIR_TEST/docker-stub/rm-fails-for"
+  capture _cstk_mcp gc
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc rm-fails exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "action=remove-failed name=cstk-mcp-state-rmfail" || return 1
+  assert_stdout_contains "removed:0" || return 1
+}
+
+scenario_gc_remocao_ja_removido_idempotente() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_sd="$TMPDIR_TEST/proj-rmnothing/.claude/feature-00c-state/x"
+  mkdir -p "$_gc_sd"
+  _init_active_exec "$_gc_sd"
+  _mark_terminal "$_gc_sd" "concluida"
+  _gc_ps_line "cstk-mcp-state-already-gone" "$_gc_sd"
+  printf 'cstk-mcp-state-already-gone\n' >"$TMPDIR_TEST/docker-stub/rm-nothing-for"
+  capture _cstk_mcp gc
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc rm-nothing exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "action=removed name=cstk-mcp-state-already-gone" || return 1
+}
+
+scenario_gc_multiplos_containers_summary_agrega() {
+  _make_bin_dir
+  _stub_docker_gc "$_STUB_BIN"
+  _gc_sd_term="$TMPDIR_TEST/proj-multi-term/.claude/feature-00c-state/x"
+  _gc_sd_ativo="$TMPDIR_TEST/proj-multi-ativo/.claude/feature-00c-state/x"
+  mkdir -p "$_gc_sd_term" "$_gc_sd_ativo"
+  _init_active_exec "$_gc_sd_term"
+  _mark_terminal "$_gc_sd_term" "concluida"
+  _init_active_exec "$_gc_sd_ativo"
+  _gc_ps_line "cstk-mcp-state-t" "$_gc_sd_term"
+  _gc_ps_line "cstk-mcp-state-a" "$_gc_sd_ativo"
+  _gc_ps_line "cstk-mcp-state-nolabel" "-"
+  capture _cstk_mcp gc
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gc multi exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "summary=ok examined:3 removed:1 kept:1 skipped:1" || return 1
+}
+
+scenario_gc_flag_desconhecida_exit_2() {
+  capture _cstk_mcp gc --bogus
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "gc flag desconhecida deveria ser exit 2" "exit=$_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_mcp_sem_subcomando_mostra_gc_no_uso() {
+  capture _cstk_mcp
+  assert_stdout_contains "gc" || return 1
+}
+
+scenario_mcp_subcomando_desconhecido_lista_gc() {
+  capture _cstk_mcp naoexiste
+  assert_stderr_contains "status, start, stop, gc" || return 1
 }
 
 run_all_scenarios

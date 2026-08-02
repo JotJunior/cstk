@@ -262,3 +262,59 @@ test("handleCloseWave (4.1.3/4.2.3): falha DEPOIS da mutacao (sha256-update) => 
     await rm(stateDir, { recursive: true, force: true });
   }
 });
+
+test("handleCloseWave (5.5, CHK071): queda simulada apos a mutacao seguida de nova tentativa -- fecha exatamente uma vez, sem duplicar nem perder a mutacao", async () => {
+  // Simula o cenario mid-onda de US4 cenario 2 / contracts/mcp-session-
+  // lifecycle.md §Deteccao de queda mid-onda: a 1a chamada "cai" DEPOIS da
+  // mutacao (equivalente a o processo morrer no meio de close_wave) -- a
+  // compensacao por pre-imagem ja PROVADA no teste anterior restaura a onda
+  // para "aberta". O orquestrador (per contrato: 0 retries da MESMA chamada,
+  // 1 confirmacao via `status --live`, depois comuta) reemite o fechamento
+  // -- aqui simulado como uma 2a chamada happy-path a handleCloseWave.
+  // Invariante sob teste: o resultado final e UMA UNICA onda fechada
+  // (state.json nunca fica em "onda fechada duas vezes" nem "mutacao
+  // perdida").
+  const stateDir = await makeStateDir();
+  try {
+    const original = '{"waves":[{"id":"onda-013"}],"original":true}';
+    await writeFile(join(stateDir, "state.json"), original, "utf8");
+    await writeFile(join(stateDir, "state.json.sha256"), "origsha\n", "utf8");
+
+    const input = parseOrThrow({ session_id: "synthetic-token-abc123", termination_reason: "concluido" });
+
+    // 1a tentativa: "queda" apos a mutacao (mesma fixture do teste acima) --
+    // resultado observavel: CLOSE_ROLLED_BACK, onda permanece aberta.
+    const firstAttempt = await handleCloseWave(input, {
+      session: sessionFor(stateDir),
+      ondasHelperPath: F.ondasEndMutates,
+      stateRwHelperPath: F.stateRwShaFails,
+      secretsFilterHelperPath: F.secretsFilterHappy,
+    });
+    assert.equal(firstAttempt.outcome, "rejected");
+    assert.match(firstAttempt.reason ?? "", /CLOSE_ROLLED_BACK/);
+
+    const afterFirstAttempt = await readFile(join(stateDir, "state.json"), "utf8");
+    assert.equal(afterFirstAttempt, original, "onda deve permanecer aberta (pre-imagem restaurada) apos a 1a tentativa");
+
+    // 2a tentativa (a "comutacao"/nova tentativa pos-deteccao): dessa vez
+    // tudo funciona -- fecha a onda de fato, exatamente uma vez.
+    const secondAttempt = await handleCloseWave(input, {
+      session: sessionFor(stateDir),
+      ondasHelperPath: F.ondasHappy,
+      stateRwHelperPath: F.stateRwHappy,
+      secretsFilterHelperPath: F.secretsFilterHappy,
+    });
+    assert.equal(secondAttempt.outcome, "accepted");
+    assert.equal(secondAttempt.result?.wave_id, "onda-013");
+
+    // Prova de "sem duplicar": exatamente um backup da onda-013 em disco
+    // (o mesmo arquivo sobrescrito pela tentativa 1 -- que gravou o backup
+    // ANTES de mutar -- e pela tentativa 2 que de fato fechou), nao dois
+    // arquivos/entradas distintas.
+    const backupContent = await readFile(join(stateDir, "backups", "wave-013.json"), "utf8");
+    const envelope = JSON.parse(backupContent) as { wave_number: number };
+    assert.equal(envelope.wave_number, 13);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});

@@ -802,44 +802,96 @@ real** de ponta a ponta (build → run → health check MCP de verdade via
 - [x] 5.3.4 Estender `tests/cstk/test_mcp.sh` com `start`/`stop`/health
       check (mock de `docker`, sem exigir Docker real na suite)
 
-### 5.4 Gap CHK064: deteccao/limpeza de container orfao `[A]` {auto}
+### 5.4 Gap CHK064: deteccao/limpeza de container orfao `[A]` {auto} — CONCLUIDO
 
 Ref: checklists/operational.md CHK064; spec.md User Story 2
 
-- [ ] 5.4.1 Definir o mecanismo de deteccao de container remanescente
+RESULTADO: **decisao (5.4.1)**: NAO replica a lacuna do lock (research.md:
+"sem deteccao de stale") — custo assimetrico (lock preso so bloqueia a
+proxima aquisicao; container orfao consome recursos do host indefinidamente
+e sem sinal). `cstk mcp gc [--dry-run]` (comando DEDICADO, nao extensao de
+`status` — remocao e mutante) implementado em `cli/lib/mcp.sh::_mcp_cmd_gc`,
+reusando `_mcp_docker_list_managed`/label `cstk.mcp.state_dir` ja
+disponiveis desde a task 5.3. Classifica cada container gerenciado por
+estado do state-dir dono (terminal/ativo/ausente/sem-estado/sem-label) e
+so remove os casos comprovadamente terminais ou sem state-dir — fail-safe
+por design: container sem label OU com leitura de status indisponivel
+NUNCA e removido por suposicao (Principio VI). Contrato documentado em
+`contracts/mcp-session-lifecycle.md` §Limpeza de containers orfaos.
+16/16 cenarios novos verdes em `tests/cstk/test_mcp.sh` (docker ausente/
+daemon down/vazio/sem-label/state-dir-ausente/sem-estado/terminal
+concluida+abortada/ativo-preservado/dry-run/rm-falha/rm-idempotente/
+multiplos-agregados/flag invalida/wiring no `mcp_main`+usage); suite
+completa do arquivo 52/52 (inclui tambem o cenario novo da task 5.5);
+shellcheck limpo.
+
+- [x] 5.4.1 Definir o mecanismo de deteccao de container remanescente
       quando o command pai termina sem chamar `stop` (crash, `kill -9`,
       sessao encerrada) — paridade com o lock, que hoje NAO tem deteccao
       de stale (research.md), entao esta feature decide se replica essa
       lacuna ou fecha
-- [ ] 5.4.2 Implementar limpeza (ex.: `cstk mcp status` ou um comando
+- [x] 5.4.2 Implementar limpeza (ex.: `cstk mcp status` ou um comando
       dedicado detecta containers com label da execucao cujo state-dir
       esta em estado terminal, e oferece/realiza cleanup)
-- [ ] 5.4.3 Atualizar `contracts/mcp-session-lifecycle.md` §Ciclo de vida
+- [x] 5.4.3 Atualizar `contracts/mcp-session-lifecycle.md` §Ciclo de vida
       documentando o caminho de limpeza
-- [ ] 5.4.4 Teste cobrindo deteccao de container orfao (mock de `docker
+- [x] 5.4.4 Teste cobrindo deteccao de container orfao (mock de `docker
       ps`)
 
-### 5.5 Gap CHK071: deteccao de queda do servidor no meio da onda `[A]` {auto}
+### 5.5 Gap CHK071: deteccao de queda do servidor no meio da onda `[A]` {auto} — CONCLUIDO
 
 Ref: checklists/operational.md CHK071; spec.md FR-007, User Story 4
 cenario 2
 
-- [ ] 5.5.1 Definir o gatilho de deteccao (ex.: timeout de resposta da
+RESULTADO: contrato definido em `contracts/mcp-session-lifecycle.md`
+§Deteccao de queda mid-onda: **gatilho** = tool MCP retorna erro de
+transporte (nao um `outcome=rejected` de validacao normal); **tentativas**
+= zero retries da MESMA chamada MCP + uma unica confirmacao via
+`cstk mcp status --live` (reusa o health check real ja calibrado/testado
+na task 5.3, sem reiniciar o container — FR-010); **comutacao** = se
+confirmado indisponivel, o caminho Bash e usado para o RESTANTE da onda —
+a mutacao que falhou nunca e reemitida via MCP, o orquestrador releh o
+state.json antes de reemitir via Bash (idempotencia dos helpers). US4
+cenario 2 ("estado nao fica pior") ja e satisfeito por dois mecanismos
+PRE-EXISTENTES e agora citados explicitamente: (a) compensacao por
+pre-imagem de `close_wave` (research.md Decision 3, verde desde a FASE 4)
+cobre queda DENTRO da propria tool; (b) `reconcile-wave` (independente de
+MCP) cobre o caso residual de o processo morrer sem chance de compensar —
+nenhum mecanismo NOVO de recuperacao foi necessario, so a documentacao do
+gatilho/tentativas/comutacao que faltava (a lacuna que CHK071 apontava).
+Testes: `mcp/state-server/test/close_wave.test.ts` ganhou 1 cenario novo
+(queda simulada apos a mutacao + nova tentativa fecha exatamente uma vez,
+sem duplicar nem perder a mutacao — 11/11 verdes no arquivo, 110/110 na
+suite `node:test` completa); `tests/cstk/test_mcp.sh` ganhou 1 cenario
+novo provando que a confirmacao via `status --live` e uma UNICA sonda
+`docker exec` (0 retries, nao um loop escondido).
+
+- [x] 5.5.1 Definir o gatilho de deteccao (ex.: timeout de resposta da
       tool, ou falha de conexao stdio) para o caso em que a queda ocorre
       **apos** a primeira tool ja ter sido chamada nesta onda (FR-007 e
       US4 cenario 1 so cobrem deteccao **antes** de delegar)
-- [ ] 5.5.2 Definir o numero de tentativas e o ponto exato de comutacao
+- [x] 5.5.2 Definir o numero de tentativas e o ponto exato de comutacao
       para o caminho `Bash` — garantir que o estado nao fique pior (US4
       cenario 2)
-- [ ] 5.5.3 Documentar o gatilho + numero de tentativas em
+- [x] 5.5.3 Documentar o gatilho + numero de tentativas em
       `contracts/mcp-session-lifecycle.md`
-- [ ] 5.5.4 Testes `node:test`/shell simulando queda no meio da onda e
+- [x] 5.5.4 Testes `node:test`/shell simulando queda no meio da onda e
       confirmando a comutacao sem duplicar nem perder mutacao
 
-### 5.6 Decisao humana: aceitar SEC-M5/SEC-L1 no MVP? `[M]` {humano}
+### 5.6 Decisao humana: aceitar SEC-M5/SEC-L1 no MVP? `[M]` {humano} — BLOQUEADO, AGUARDANDO OPERADOR
 
 Ref: checklists/security.md CHK056; plan.md §Seguranca linhas SEC-M5,
 SEC-L1
+
+RESULTADO PARCIAL: bloqueio `block-006` registrado (dec-091) com a analise
+completa apresentada ao operador (texto literal de SEC-M5/SEC-L1 do
+plan.md + CHK056), 2 opcoes e recomendacao nao-vinculante
+(`aceitar-sem-mitigacao-adicional`, pelos controles compensatorios ja
+verificados nesta feature — contrato de tool/enforcement-log/lock do pai
+para SEC-M5; rotulo explicito "pos-MVP" no proprio plan.md para SEC-L1).
+Onda encerrada em `aguardando_humano`; retomar via
+`/feature-00c-resume --resposta-bloqueio` aplica a resposta e completa
+5.6.1/5.6.2.
 
 - [ ] 5.6.1 Apresentar ao operador: SEC-M5 (mutacao fora do
       `bash-guard`, mitigado por contrato de tool + enforcement-log +

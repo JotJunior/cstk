@@ -1,11 +1,13 @@
 # mcp.sh — subcomando `cstk mcp` (feature state-mcp-server, FASE 1 fundacao
-# + FASE 5 task 5.3 start/stop).
+# + FASE 5 task 5.3 start/stop + task 5.4 gc).
 #
 # Ref: docs/specs/state-mcp-server/contracts/mcp-session-lifecycle.md
-#        §CLI: `cstk mcp` / §`cstk mcp status` / §`cstk mcp start`/`stop`
+#        §CLI: `cstk mcp` / §`cstk mcp status` / §`cstk mcp start`/`stop` /
+#        §Limpeza de containers orfaos (`cstk mcp gc`)
 #      docs/specs/state-mcp-server/data-model.md
 #        §Entity: Orchestrator Server Session
-#      docs/specs/state-mcp-server/tasks.md FASE 1 task 1.4, FASE 5 task 5.3
+#      docs/specs/state-mcp-server/tasks.md FASE 1 task 1.4, FASE 5 tasks
+#        5.3, 5.4
 #
 # `status`: reporta o descritor `<state-dir>/mcp-server.json` quando existe;
 # sem `--state-dir`, resolve a execucao ativa do projeto-alvo pela MESMA
@@ -35,10 +37,16 @@
 # `start`) em vez de so ecoar o descritor — usado pelo command pai em cada
 # `-resume` para reverificar saude SEM reiniciar o container.
 #
+# `gc` (task 5.4, CHK064): detecta e remove containers gerenciados cujo
+# state-dir dono esta em estado terminal ou nao existe mais — ver comentario
+# de _mcp_cmd_gc abaixo para o racional completo (fail-safe: nunca remove
+# por suposicao).
+#
 # Subcomandos:
 #   cstk mcp status [--state-dir DIR] [--project-path PATH] [--live]
 #   cstk mcp start --state-dir DIR
 #   cstk mcp stop --state-dir DIR
+#   cstk mcp gc [--dry-run]
 #
 # Saida (stdout, uma chave por linha — mesmo estilo de `state-backend.sh
 # resolve`):
@@ -600,6 +608,153 @@ _mcp_cmd_stop() {
   return 0
 }
 
+# _mcp_cmd_gc [--dry-run]
+#
+# GC de containers orfaos (task 5.4, CHK064,
+# contracts/mcp-session-lifecycle.md §Ciclo de vida ->
+# §Limpeza de containers orfaos). Detecta containers gerenciados (label
+# $_MD_MANAGEMENT_LABEL) cujo state-dir dono (label
+# cstk.mcp.state_dir, gravado por _mcp_docker_run desde a task 5.4)
+# esta em estado TERMINAL (execution.status=concluida|abortada) ou nao
+# existe mais no disco, e os remove (`docker rm -f`, via
+# _mcp_docker_reconcile_container, ja idempotente).
+#
+# Decisao (5.4.1): fecha a lacuna que o lock (state-lock.sh) deixa em
+# aberto de proposito (research.md: "sem deteccao de stale") em vez de
+# replica-la aqui -- o custo de nao limpar e assimetrico: um lock preso
+# so bloqueia a PROXIMA tentativa de aquisicao (falha rapida e visivel,
+# exit 3), mas um container orfao consome CPU/memoria/disco do host
+# indefinidamente e sem sinal nenhum para o operador. Dedicado (nao uma
+# extensao de `status`) porque remover container e uma acao MUTANTE --
+# `status` documenta-se como leitura pura.
+#
+# Fail-safe por design: container SEM o label cstk.mcp.state_dir (gerado
+# por uma versao anterior a esta task, ou por qualquer origem que nao
+# _mcp_docker_run) NUNCA e removido aqui -- sem o label nao ha como
+# confirmar que o state-dir dono chegou a estado terminal, e a ausencia
+# de evidencia nunca vira remocao (Principio VI: nunca supor). Idem
+# quando a leitura de status falha (state-rw.sh indisponivel/erro): o
+# container e preservado (--dry-run mental por padrao), nunca removido
+# por suposicao.
+#
+# --dry-run: reporta o que SERIA removido (action=would-remove) sem
+# chamar `docker rm -f`.
+#
+# Saida (stdout, uma linha por container):
+#   action=removed|would-remove|remove-failed name=<container> reason=<motivo> state_dir=<path>
+#   action=kept name=<container> reason=ativo:<status>|status-indisponivel state_dir=<path>
+#   action=skipped name=<container> reason=sem-label
+# Linha final:
+#   summary=examined:N removed:R kept:K skipped:S
+#
+# exit 0 SEMPRE (best-effort/nao-fatal, mesma disciplina de `status`):
+# docker ausente/daemon indisponivel = nada a fazer, nao e erro.
+_mcp_cmd_gc() {
+  _mgc_dry_run=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) _mgc_dry_run="1"; shift ;;
+      *)
+        printf 'cstk mcp gc: flag desconhecida: %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+
+  if ! command -v _mcp_docker_list_managed >/dev/null 2>&1; then
+    printf 'cstk mcp gc: mcp-docker.sh nao carregado (CSTK_LIB invalido?)\n' >&2
+    return 1
+  fi
+
+  if ! _mcp_docker_preflight 2>/dev/null; then
+    printf 'summary=docker-indisponivel examined:0 removed:0 kept:0 skipped:0\n'
+    return 0
+  fi
+
+  _mgc_rw=$(_mcp_runtime_script_path state-rw.sh) || _mgc_rw=""
+
+  _mgc_list_file=$(mktemp 2>/dev/null) || {
+    printf 'cstk mcp gc: erro: nao foi possivel criar arquivo temporario\n' >&2
+    return 1
+  }
+  _mcp_docker_list_managed >"$_mgc_list_file" 2>/dev/null || :
+
+  _mgc_examined=0
+  _mgc_removed=0
+  _mgc_kept=0
+  _mgc_skipped=0
+  _mgc_tab=$(printf '\t')
+
+  # `while read ... < arquivo` (redirecao, NUNCA pipe) para os contadores
+  # sobreviverem fora do loop -- um pipe rodaria o corpo num subshell e
+  # descartaria todo incremento (mesmo padrao ja usado no runtime: ver
+  # state-backend.sh::_sb_read_config_from, commit-mode.sh).
+  while IFS="$_mgc_tab" read -r _mgc_name _mgc_sd; do
+    [ -n "$_mgc_name" ] || continue
+    _mgc_examined=$((_mgc_examined + 1))
+    _mgc_action="kept"
+    _mgc_reason="status-indisponivel"
+
+    if [ -z "$_mgc_sd" ] || [ "$_mgc_sd" = "-" ]; then
+      _mgc_action="skipped"
+      _mgc_reason="sem-label"
+    elif [ ! -d "$_mgc_sd" ]; then
+      _mgc_action="orphan"
+      _mgc_reason="state-dir-ausente"
+    elif [ ! -f "$_mgc_sd/state.json" ] && [ ! -f "$_mgc_sd/state.db" ]; then
+      _mgc_action="orphan"
+      _mgc_reason="state-dir-sem-estado"
+    elif [ -n "$_mgc_rw" ]; then
+      _mgc_status=$("$_mgc_rw" get --state-dir "$_mgc_sd" --field '.execution.status' 2>/dev/null) || _mgc_status=""
+      case "$_mgc_status" in
+        concluida | abortada)
+          _mgc_action="orphan"
+          _mgc_reason="terminal:$_mgc_status"
+          ;;
+        em_andamento | aguardando_humano)
+          _mgc_action="kept"
+          _mgc_reason="ativo:$_mgc_status"
+          ;;
+        *)
+          _mgc_action="kept"
+          _mgc_reason="status-indisponivel"
+          ;;
+      esac
+    fi
+
+    case "$_mgc_action" in
+      orphan)
+        if [ -n "$_mgc_dry_run" ]; then
+          printf 'action=would-remove name=%s reason=%s state_dir=%s\n' \
+            "$_mgc_name" "$_mgc_reason" "$_mgc_sd"
+          _mgc_removed=$((_mgc_removed + 1))
+        elif _mcp_docker_reconcile_container "$_mgc_name" 2>/dev/null; then
+          printf 'action=removed name=%s reason=%s state_dir=%s\n' \
+            "$_mgc_name" "$_mgc_reason" "$_mgc_sd"
+          _mgc_removed=$((_mgc_removed + 1))
+        else
+          printf 'action=remove-failed name=%s reason=%s state_dir=%s\n' \
+            "$_mgc_name" "$_mgc_reason" "$_mgc_sd"
+        fi
+        ;;
+      skipped)
+        printf 'action=skipped name=%s reason=%s\n' "$_mgc_name" "$_mgc_reason"
+        _mgc_skipped=$((_mgc_skipped + 1))
+        ;;
+      *)
+        printf 'action=kept name=%s reason=%s state_dir=%s\n' \
+          "$_mgc_name" "$_mgc_reason" "$_mgc_sd"
+        _mgc_kept=$((_mgc_kept + 1))
+        ;;
+    esac
+  done <"$_mgc_list_file"
+  rm -f "$_mgc_list_file" 2>/dev/null || :
+
+  printf 'summary=ok examined:%d removed:%d kept:%d skipped:%d\n' \
+    "$_mgc_examined" "$_mgc_removed" "$_mgc_kept" "$_mgc_skipped"
+  return 0
+}
+
 _mcp_usage() {
   cat <<'HELP'
 cstk mcp — operacoes sobre o servidor MCP de estado das execucoes 00c
@@ -627,6 +782,13 @@ USO:
       stopped_at. Idempotente: parar o que ja esta parado, ou --state-dir
       sem descritor algum, e exit 0.
 
+  cstk mcp gc [--dry-run]
+      GC de containers orfaos (task 5.4, CHK064): remove containers
+      gerenciados cujo state-dir esta em estado terminal
+      (concluida/abortada) ou nao existe mais. Container sem label de
+      state-dir NUNCA e removido (fail-safe). --dry-run so reporta, sem
+      remover. Best-effort: docker indisponivel e exit 0, nao erro.
+
 EXIT CODES (status):
   0 consulta bem-sucedida (inclusive status=unavailable)
   1 erro inesperado
@@ -637,6 +799,11 @@ EXIT CODES (start/stop):
   1 erro inesperado (jq ausente, --state-dir invalido, IO)
   2 uso incorreto
   3 indisponivel (so em start): mode=bash-fallback gravado, nao fatal
+
+EXIT CODES (gc):
+  0 sempre (best-effort; ver linha summary= no stdout)
+  1 erro inesperado (mcp-docker.sh nao carregado, IO de tmpfile)
+  2 uso incorreto
 HELP
 }
 
@@ -661,9 +828,13 @@ mcp_main() {
       _mcp_cmd_stop "$@"
       return $?
       ;;
+    gc)
+      _mcp_cmd_gc "$@"
+      return $?
+      ;;
     *)
       printf 'cstk mcp: subcomando desconhecido: %s\n' "$_mcp_sub" >&2
-      printf 'Subcomandos validos: status, start, stop\n' >&2
+      printf 'Subcomandos validos: status, start, stop, gc\n' >&2
       return 2
       ;;
   esac

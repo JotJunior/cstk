@@ -201,6 +201,106 @@ grace (SIGKILL), a rede de seguranca externa (`reconcile-wave` do command pai,
 [VERIFICADO: subcomando existente de `state-ondas.sh`]) continua aplicavel na
 retomada, exatamente como hoje (US4 cenario 2).
 
+### Limpeza de containers orfaos (task 5.4, CHK064)
+
+**Decisao (5.4.1)**: `state-lock.sh` (mutex do pai) deliberadamente NAO detecta
+lock stale (research.md, linhas 175-178) — mas esta feature NAO replica essa
+lacuna para o container. Motivo: o custo de nao limpar e assimetrico. Um lock
+preso so bloqueia a **proxima** tentativa de aquisicao (falha rapida, visivel,
+`exit 3`); um container orfao consome CPU/memoria/disco do host **indefinidamente**
+e sem sinal nenhum para o operador. A feature fecha a lacuna com um comando
+dedicado.
+
+`cstk mcp gc [--dry-run]` [VERIFICADO — `cli/lib/mcp.sh::_mcp_cmd_gc`, task
+5.4.2]: lista todo container gerenciado (label `cstk.managed=mcp-state`, via
+`_mcp_docker_list_managed`, ja disponivel desde a task 5.3) e classifica cada um
+pelo state-dir dono, lido do label `cstk.mcp.state_dir` (gravado por
+`_mcp_docker_run` desde esta task):
+
+| Condicao do state-dir dono | Acao | `reason` reportado |
+|---|---|---|
+| Label ausente (`-`) — container de uma versao anterior a esta task, ou de qualquer origem que nao `_mcp_docker_run` | **preservado** (nunca removido) | `sem-label` |
+| Diretorio nao existe mais no disco | removido | `state-dir-ausente` |
+| Diretorio existe, sem `state.json`/`state.db` | removido | `state-dir-sem-estado` |
+| `execution.status` ∈ {`concluida`, `abortada`} | removido | `terminal:<status>` |
+| `execution.status` ∈ {`em_andamento`, `aguardando_humano`} | preservado | `ativo:<status>` |
+| Leitura de status falhou (`state-rw.sh` indisponivel/erro) | preservado | `status-indisponivel` |
+
+**Fail-safe por design** (Principio VI: nunca supor um fato que nao pode
+confirmar): as duas ultimas linhas da tabela cobrem exatamente os casos onde a
+prova de "esta terminal" nao pode ser obtida — a decisao pende sempre para
+**preservar**, nunca para remover por suposicao. Um container sem label nunca e
+removido automaticamente por este comando, mesmo que pareca obviamente morto.
+
+Remocao via `docker rm -f` (reusa `_mcp_docker_reconcile_container`, ja
+idempotente: "No such container" conta como sucesso). `--dry-run` reporta
+`action=would-remove` sem chamar `docker rm`. Saida: uma linha `action=...`
+por container + uma linha `summary=ok examined:N removed:R kept:K skipped:S`
+ao final. **Best-effort, nunca fatal**: docker ausente ou daemon inacessivel
+produz `summary=docker-indisponivel ...` e `exit 0` (mesma disciplina de
+`cstk mcp status` — indisponibilidade nao e erro).
+
+**Onde e quando roda**: comando standalone, invocavel pelo operador ou por
+automacao externa (cron, CI). A integracao no fluxo automatico dos commands
+pai (`/agente-00c`/`/feature-00c`) e explicitamente **fora do escopo da
+FASE 5** — a FASE 6 (task 6.2, "Integracao dos commands pai") cobre
+`status`/`start`/`stop`; `gc` nao consta ali por decisao deliberada (nenhum
+requisito exige remocao automatica sincronizada com o ciclo de vida de UMA
+execucao — a limpeza de orfaos e, por natureza, uma preocupacao **entre**
+execucoes).
+
+### Deteccao de queda mid-onda (task 5.5, CHK071)
+
+CHK071 identificou uma lacuna de requisito: FR-007 e US4 cenario 1 cobrem a
+deteccao de indisponibilidade **antes** de delegar ao orquestrador (o command
+pai chama `cstk mcp status`/`start` no inicio); nenhum requisito definia o
+gatilho, o numero de tentativas nem o ponto de comutacao quando a queda ocorre
+**depois** de a primeira tool MCP ja ter sido chamada nesta onda.
+
+**Gatilho**: uma chamada de tool MCP retorna erro de transporte (conexao
+perdida, timeout do handshake stdio) — nao um `outcome=rejected` de validacao
+normal (esse e um retorno legitimo da tool, nao indicio de queda). O cliente
+MCP (harness) e quem observa essa falha; esta feature nao pode interceptar
+esse evento diretamente (fora do controle do toolkit), mas define o protocolo
+de reacao que o orquestrador (FASE 6 task 6.2, prosa em
+`agente-00c-orchestrator.md`/`agente-00c-feature-orchestrator.md`) MUST
+seguir.
+
+**Tentativas**: **zero retries da MESMA chamada MCP** contra um transporte
+possivelmente morto — reexecutar so adia a decisao e arrisca duplicar a
+mutacao se o processo ainda estiver vivo mas lento. Em vez disso, **uma unica
+chamada confirmatoria** a `cstk mcp status --live` [VERIFICADO — ja calibrado
+e testado na task 5.3: `scenario_status_live_mode_docker_morto_reporta_
+unavailable_sem_reiniciar`, `tests/cstk/test_mcp.sh`], que reaproveita o
+MESMO handshake de health check real ja usado por `start`, **sem reiniciar o
+container** (FR-010). Distingue flutuacao transitoria (uma tool falhou mas o
+container segue saudavel — nao comuta) de queda real (`status=unavailable`,
+`reason=health-timeout` — comuta).
+
+**Ponto de comutacao**: se `status --live` confirma indisponibilidade, o
+caminho Bash passa a ser usado para o **restante da onda inteira** — nao so
+para reemitir a chamada que falhou. A mutacao que falhou **nunca** e
+reemitida via MCP. Antes de reemitir o equivalente via Bash, o orquestrador
+releh o campo afetado em `state.json` (os helpers `state-ondas.sh`/
+`state-decisions.sh` sao idempotentes e ja auditados) para nao duplicar —
+mesma disciplina que `close_wave` ja aplica internamente (ver abaixo).
+
+**Por que isso ja satisfaz US4 cenario 2** ("o estado nao fica em condicao
+pior do que uma onda interrompida no caminho Bash de hoje"): a
+`close_wave` [VERIFICADO — `mcp/state-server/src/tools/close_wave.ts`,
+research.md Decision 3] ja garante, por compensacao de pre-imagem, que
+qualquer falha DENTRO da propria tool (antes ou depois da mutacao) restaura o
+estado anterior em disco — nunca ha fechamento parcial observavel
+(`tests/close_wave.test.ts`, casos "falha ANTES da mutacao" e "falha DEPOIS
+da mutacao", ambos verdes). O UNICO caso que a `close_wave` nao pode
+compensar sozinha e o processo inteiro morrer sem chance de rodar a propria
+logica de rollback (SIGKILL/OOM/daemon caido) — para esse caso, a MESMA rede
+de seguranca externa que ja existe hoje (`reconcile-wave`, independente de
+MCP) continua aplicavel na retomada, exatamente como o texto do §Ciclo de
+vida acima ja afirma. Nenhum mecanismo NOVO de reconciliacao e necessario:
+o gatilho+retries+comutacao acima e o que faltava DOCUMENTAR (a lacuna que
+CHK071 apontava), nao um novo sistema de recuperacao.
+
 ---
 
 ## Resolucao da execucao ativa (helper `mcp-session.sh`)
