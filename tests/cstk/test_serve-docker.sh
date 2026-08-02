@@ -576,8 +576,18 @@ scenario_docker_mentions_confined_to_serve_docker_lib() {
     return 1
   fi
 
+  # Leitura ratificada do carve-out (dec-074, feature state-mcp-server):
+  # confinamento por PAR (dependencia, feature) — cada feature que orquestra
+  # docker tem UM arquivo confinado com a invocacao funcional:
+  #   (docker, serve) -> cli/lib/serve-docker.sh
+  #   (docker, mcp)   -> cli/lib/mcp-docker.sh
+  # cli/lib/mcp.sh e exempto da checagem de MENCAO (comentarios, strings de
+  # modo "docker|bash-fallback", sourcing e chamadas _mcp_docker_*), mas a
+  # checagem de INVOCACAO FUNCIONAL abaixo continua cobrindo-o.
   _hits=$(grep -rniE 'docker' "$REPO_ROOT/cli" 2>/dev/null \
             | grep -v '/cli/lib/serve-docker\.sh:' \
+            | grep -v '/cli/lib/mcp-docker\.sh:' \
+            | grep -v '/cli/lib/mcp\.sh:' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *-*-docker\)[[:space:]]*$' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *\. "\$\{CSTK_LIB\}/serve-docker\.sh"$' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *_serve_docker_main ' \
@@ -588,7 +598,21 @@ scenario_docker_mentions_confined_to_serve_docker_lib() {
               ' \
           || :)
   if [ -n "$_hits" ]; then
-    _fail "docker_confinement" "mencoes a 'docker' fora de serve-docker.sh (ou dos 5 padroes exemptados do encaminhamento/help-text em serve.sh): $_hits"
+    _fail "docker_confinement" "mencoes a 'docker' fora dos arquivos confinados por par dependencia+feature (serve-docker.sh, mcp-docker.sh; dec-074) ou dos padroes exemptados de serve.sh/mcp.sh: $_hits"
+    return 1
+  fi
+
+  # Invocacao FUNCIONAL de docker (docker <subcomando>) em cli/ so pode
+  # existir nos 2 arquivos confinados — pega inclusive o que a exempcao de
+  # mencao acima deixaria passar em mcp.sh/serve.sh.
+  _func_hits=$(grep -rnE '(^|[^_[:alnum:]-])docker[[:space:]]+(run|build|ps|stop|rm|rmi|inspect|exec|images|pull|push|network|volume|cp|kill|logs|start|create|wait)([[:space:]]|$)' \
+                 "$REPO_ROOT/cli" 2>/dev/null \
+               | grep -v '/cli/lib/serve-docker\.sh:' \
+               | grep -v '/cli/lib/mcp-docker\.sh:' \
+               | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+          || :)
+  if [ -n "$_func_hits" ]; then
+    _fail "docker_functional_confinement" "invocacao funcional de docker fora de serve-docker.sh/mcp-docker.sh: $_func_hits"
     return 1
   fi
 }
