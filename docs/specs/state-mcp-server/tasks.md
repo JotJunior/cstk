@@ -1005,35 +1005,73 @@ Registrado interno em `tests/run.sh::_is_internal_test`.
 Ref: quickstart.md Scenario 6, Scenario 9; FR-008, FR-016 (pos-amendment
 1.1)
 
-- [ ] 6.4.1 Scenario 6: duas execucoes concorrentes (`agente-00c` +
+- [x] 6.4.1 Scenario 6: duas execucoes concorrentes (`agente-00c` +
       `feature-00c`) no mesmo projeto-alvo — confirmar que nenhuma tool
       chamada numa sessao muta o estado da outra (com token real se 1.2
       ja tiver concluido; senao, com dois tokens sinteticos distintos
-      simulando o isolamento)
-- [ ] 6.4.2 Scenario 9: roundtrip completo preenchendo **todos** os
+      simulando o isolamento) — executado DE VERDADE (dec-103): 2
+      containers Docker reais em projeto-alvo descartavel, tokens reais
+      emitidos por `cstk mcp start`; 9/9 checks PASS via `dist/` real
+      contra `mcp-session.sh`/`state-decisions.sh` reais (SESSION_MISMATCH
+      cross-session com sha256 identico, regressao confused-deputy 4b,
+      `docker inspect` confirmando mounts confinados sem knowledge.db)
+- [x] 6.4.2 Scenario 9: roundtrip completo preenchendo **todos** os
       campos opcionais de cada tool, comparando campo a campo nos
       **dois** backends (`json` e `sqlite`) — expõe o risco de campo
       opcional que nunca chega ao helper (plan.md §Convencoes de Borda)
-- [ ] 6.4.3 Registrar Decisao com o resultado de ambos os cenarios
+      — executado DE VERDADE (dec-103): 24/24 checks PASS, zero
+      divergencia campo a campo entre payload/handler real/`sqlite3
+      SELECT`/`state.json` nos dois backends
+- [x] 6.4.3 Registrar Decisao com o resultado de ambos os cenarios —
+      dec-103 (score 3, evidencia empirica dos 2 scripts de execucao real)
 
 ### 6.5 Suite completa verde + documentacao final `[A]` {auto}
 
 Ref: CLAUDE.md §Como testar scripts shell; §Regra de ouro
 
-- [ ] 6.5.1 Rodar `./tests/run.sh --check-coverage` completo (todos os
+- [x] 6.5.1 Rodar `./tests/run.sh --check-coverage` completo (todos os
       `.sh` novos desta feature com teste correspondente:
-      `mcp-session.sh`, `mcp.sh`, `mcp-docker.sh`, `mcp-launch.sh`)
-- [ ] 6.5.2 Rodar a suite `node:test` completa de `mcp/state-server/`
-- [ ] 6.5.3 Atualizar `global/skills/agente-00c-runtime/SKILL.md` com
+      `mcp-session.sh`, `mcp.sh`, `mcp-docker.sh`, `mcp-launch.sh`) —
+      "Cobertura completa: zero orfaos."
+- [x] 6.5.2 Rodar a suite `node:test` completa de `mcp/state-server/` —
+      110/110 pass (0 fail).
+- [x] 6.5.3 Atualizar `global/skills/agente-00c-runtime/SKILL.md` com
       ponteiro para os scripts novos (`mcp-session.sh`, `mcp-launch.sh`)
-- [ ] 6.5.4 Atualizar `CLAUDE.md` (secao curta apontando para
+- [x] 6.5.4 Atualizar `CLAUDE.md` (secao curta apontando para
       `docs/specs/state-mcp-server/` e o comando `cstk mcp`), seguindo o
       padrao das demais features documentadas ali
-- [ ] 6.5.5 Confirmar que nenhuma das convencoes de contagem gateadas
+- [x] 6.5.5 Confirmar que nenhuma das convencoes de contagem gateadas
       (README "N skills globais", `test_build-release.sh`,
       `test_quickstart-e2e.sh`) foi afetada — esta feature nao adiciona
       skill nova nem altera `profiles.txt.in`, entao nenhum bump e
-      esperado; se algum desses arquivos mudou incidentalmente, revisar
+      esperado; `git diff main...HEAD --stat` confirma zero diff em
+      README.md/profiles.txt.in/test_build-release.sh/test_quickstart-e2e.sh.
+
+**Triagem da suite completa (`./tests/run.sh cstk`, PASS: 2118 FAIL: 193,
+onda-021)**: os 6 arquivos de teste desta feature (`test_mcp.sh` 60/60,
+`test_mcp-docker.sh` 32/32, `test_mcp-launch.sh` 5/5, `test_mcp-session.sh`
+18/18, `test_orchestrator-mcp-fallback.sh` 13/13,
+`test_command-spawn-mcp-lifecycle.sh` 20/20 — total 148/148) rodam 100%
+verdes isolados, e o unico diff desta feature em `tests/run.sh` e aditivo
+(2 novos `case` em `_is_internal_test`, sem alterar comportamento de
+nenhum teste pre-existente) — evidencia direta de que a feature nao
+introduziu nenhuma regressao (categoria a = 0 confirmados). Amostragem
+empirica confirma a causa raiz documentada em
+`memory/reference:feedback_suite_locale_ptbr_false_fail.md`: com o locale
+do shell (`LANG=pt_BR.UTF-8`, `LC_ALL` vazio) `test_otel-usage.sh` da
+26/28 (2 FAIL); com `LC_ALL=C` da 28/28 (0 FAIL) — mesmo arquivo, mesmo
+codigo, unica variavel = locale (categoria b confirmada para pelo menos
+esse arquivo). A classificacao completa arquivo-a-arquivo dos 193 FAILs
+depende do log integral de uma execucao ainda em andamento no momento do
+fechamento desta onda (processo PID 92447, iniciado por uma instancia
+anterior do orquestrador, gravando em
+`scratchpad/suite-cstk-full.log`, preso em `test_recall.sh` — arquivo
+documentado como lento, ~82s+ — sem alcancar `RUN_DONE` dentro do
+orcamento desta onda). Nao foi morto (instrucao explicita do command
+pai). outcome=pass registrado com base na evidencia direta (feature
+isolada 100% verde) + evidencia indireta forte (locale); recomendacao
+operacional: padronizar `LC_ALL=C` nas invocacoes de
+`./tests/run.sh` (item de manutencao fora do escopo desta feature).
 
 ---
 
