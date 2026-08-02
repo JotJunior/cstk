@@ -50,6 +50,24 @@ Deliberadamente **sem `env` com valores interpolados**: a sintaxe exata de
 expansao de variaveis em `.mcp.json` e [NAO-VERIFICADO] (spike S5). O launcher
 descobre tudo do disco — nao depende de env injetada pelo harness.
 
+**Modo IDLE do launcher** (fix pos-v6.2.0; bug observado: `Failed to
+reconnect to cstk-state: -32000` em todo boot de sessao sem execucao 00c
+ativa): a entrada estatica e conectada pelo harness em TODO boot, entao a
+ausencia de execucao NAO pode ser tratada como erro. Sem
+`MCP_SESSION_TOKEN` (boot normal) ou com execucao resolvida sem container
+(`mode=bash-fallback`/stopped), `mcp-launch.sh` serve um stub MCP minimo
+em sh+jq (JSON-RPC newline-delimited [VERIFICADO:
+`@modelcontextprotocol/sdk` `shared/stdio.js` — `JSON.stringify(msg) +
+'\n'`]): responde `initialize` (ecoa o `protocolVersion` do cliente),
+`tools/list` com lista **VAZIA** e `ping`; metodo desconhecido com `id`
+recebe `-32601`; EOF encerra com exit 0. Zero tools ⇒ zero mutacao
+possivel — SEC-H3 permanece intacto. Token **fornecido** e divergente
+segue exit 3 barulhento (violacao de capacidade, nunca degrada para
+idle); `jq`/`mcp-session.sh` ausentes seguem exit 1 (falha de mecanismo).
+Para anexar ao container depois de `cstk mcp start`, reconectar o MCP
+(`/mcp` → reconnect) ou abrir sessao nova. Cobertura:
+`tests/test_mcp-launch.sh` (idle sem token, handshake, bash-fallback).
+
 ### `cstk mcp status [--state-dir DIR] [--project-path PATH]`
 
 **Satisfaz FR-015**: responde sem que o operador inspecione Docker.

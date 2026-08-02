@@ -69,13 +69,40 @@ _run_launch() {
   fi
 }
 
-scenario_sem_token_exit_3_sem_chamar_docker() {
+# Fix "-32000 no boot": sem token (boot normal do harness, nenhuma
+# execucao 00c ativa) o launcher NAO pode morrer — serve o stub MCP idle
+# e encerra 0 no EOF do stdin.
+scenario_sem_token_serve_idle_exit_0() {
   _proj="$TMPDIR_TEST/proj1"
   mkdir -p "$_proj"
   _run_launch "$_proj"
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "sem token exit" "esperado 3, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sem token exit" "esperado 0 (idle), obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "modo IDLE" || return 1
   case "$(_docker_launch_calls)" in
     *attach*) _fail "docker attach nao deveria ter sido chamado" "$(_docker_launch_calls)"; return 1 ;;
+  esac
+}
+
+# Handshake do stub idle: initialize ecoa o protocolVersion do cliente,
+# tools/list responde lista VAZIA (zero mutacao possivel — SEC-H3),
+# metodo desconhecido com id recebe -32601.
+scenario_idle_handshake_initialize_e_tools_vazio() {
+  _proj="$TMPDIR_TEST/proj1b"
+  mkdir -p "$_proj"
+  _hs_in="$TMPDIR_TEST/idle-handshake-in"
+  printf '%s\n%s\n%s\n%s\n' \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+    '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+    '{"jsonrpc":"2.0","id":3,"method":"prompts/list"}' > "$_hs_in"
+  capture sh -c 'env CSTK_MCP_PROJECT_PATH="$1" "$2" < "$3"' _ "$_proj" "$SCRIPT" "$_hs_in"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "idle handshake exit" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains '"protocolVersion":"2025-06-18"' || return 1
+  assert_stdout_contains '"tools":[]' || return 1
+  assert_stdout_contains '"code":-32601' || return 1
+  # Notificacao nao gera resposta: nenhuma linha com id nulo/ausente.
+  case "$_CAPTURED_STDOUT" in
+    *'"id":null'*) _fail "notificacao nao deveria receber resposta" "$_CAPTURED_STDOUT"; return 1 ;;
   esac
 }
 
@@ -90,13 +117,16 @@ scenario_token_desconhecido_exit_3_sem_chamar_docker() {
   esac
 }
 
-scenario_sessao_bash_fallback_exit_3_sem_chamar_docker() {
+# Execucao ativa mas SEM container (bash-fallback): benigno — a onda roda
+# pelo caminho Bash e o launcher serve idle em vez de morrer.
+scenario_sessao_bash_fallback_serve_idle_exit_0() {
   _proj="$TMPDIR_TEST/proj3"
   _sd="$_proj/.claude/agente-00c-state"
   _write_descriptor "$_sd" "tok-bf" "-" "bash-fallback"
   _run_launch "$_proj" "tok-bf"
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "bash-fallback exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "bash-fallback exit" "esperado 0 (idle), obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
   assert_stderr_contains "mode=bash-fallback" || return 1
+  assert_stderr_contains "modo IDLE" || return 1
   case "$(_docker_launch_calls)" in
     *attach*) _fail "docker attach nao deveria ter sido chamado (mode=bash-fallback)" "$(_docker_launch_calls)"; return 1 ;;
   esac
