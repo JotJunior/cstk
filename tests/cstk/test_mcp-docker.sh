@@ -127,6 +127,26 @@ case "$1" in
   stop)
     exit 0
     ;;
+  exec)
+    if [ -f "$_stub_dir/exec-fails" ]; then
+      printf 'healthcheck: falhou: stub-docker exec simulado falhou\n' >&2
+      exit 1
+    fi
+    if [ -f "$_stub_dir/exec-hangs" ]; then
+      # Simula um `docker exec` que nunca retorna (health check travado) —
+      # o watcher POSIX do caller (_mcp_docker_healthcheck) deve mata-lo.
+      sleep 30
+      exit 0
+    fi
+    printf 'healthcheck: ok\n'
+    exit 0
+    ;;
+  ps)
+    if [ -f "$_stub_dir/ps-output" ]; then
+      cat "$_stub_dir/ps-output"
+    fi
+    exit 0
+    ;;
   *)
     printf 'stub-docker: subcomando inesperado: %s\n' "$*" >&2
     exit 1
@@ -412,6 +432,19 @@ scenario_run_montagens_contratadas() {
   esac
 }
 
+scenario_run_env_cstk_mcp_state_dir_container_mode() {
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  _setup_run_fixture
+  _run_mcp_docker_fn _mcp_docker_run "cstk-mcp-state-demo" "cstk-mcp-state:test" \
+    "$_RF_STATE_DIR" "$_RF_SCRIPTS_DIR" "$_RF_LOG_PATH" "$_RF_PROJECT_PATH" "tok3n"
+  _line=$(_docker_run_line)
+  case "$_line" in
+    *'-e CSTK_MCP_STATE_DIR=/data/state'*) : ;;
+    *) _fail "run_env_state_dir" "faltou -e CSTK_MCP_STATE_DIR=/data/state (dec-081): $_line"; return 1 ;;
+  esac
+}
+
 # 5.2.3 — assercao estatica obrigatoria: nenhuma linha `docker run` monta
 # .claude como DIRETORIO, $HOME, /, ou docker.sock (SEC-H2). O fixture
 # acima ja coloca o enforcement-log SOB .claude/ deliberadamente -- esta
@@ -498,6 +531,75 @@ STUBFAIL
   chmod +x "$_STUB_BIN/docker"
   _run_mcp_docker_fn _mcp_docker_stop "cstk-mcp-state-inexistente"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stop_idem_exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# _mcp_docker_healthcheck (task 5.3.2)
+# ---------------------------------------------------------------------------
+
+scenario_healthcheck_saudavel_exit_0() {
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  _run_mcp_docker_fn _mcp_docker_healthcheck "cstk-mcp-state-demo" "5"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "healthcheck_ok_exit" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$(_docker_calls_log)" in
+    *'exec cstk-mcp-state-demo node dist/src/healthcheck.js'*) : ;;
+    *) _fail "healthcheck_invocation" "docker exec nao invocou healthcheck.js corretamente: $(_docker_calls_log)"; return 1 ;;
+  esac
+}
+
+scenario_healthcheck_falha_exit_1() {
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  mkdir -p "$TMPDIR_TEST/docker-stub"
+  : >"$TMPDIR_TEST/docker-stub/exec-fails"
+  _run_mcp_docker_fn _mcp_docker_healthcheck "cstk-mcp-state-demo" "5"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "healthcheck_fail_exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "health check do servidor MCP de estado falhou" || return 1
+}
+
+scenario_healthcheck_timeout_exit_124() {
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  mkdir -p "$TMPDIR_TEST/docker-stub"
+  : >"$TMPDIR_TEST/docker-stub/exec-hangs"
+  _run_mcp_docker_fn _mcp_docker_healthcheck "cstk-mcp-state-demo" "1"
+  [ "$_CAPTURED_EXIT" = 124 ] || { _fail "healthcheck_timeout_exit" "esperado 124, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "estourou o tempo limite" || return 1
+}
+
+scenario_healthcheck_usa_timeout_default_quando_omitido() {
+  capture env CSTK_LIB="$CSTK_LIB" HOME="$TMPDIR_TEST" \
+    sh -c '. "$CSTK_LIB/mcp-docker.sh" && printf "%s\n" "$_MD_HEALTHCHECK_TIMEOUT_DEFAULT"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "healthcheck_default_exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "10" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# _mcp_docker_list_managed (task 5.4, deteccao de orfaos)
+# ---------------------------------------------------------------------------
+
+scenario_list_managed_vazio() {
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  _run_mcp_docker_fn _mcp_docker_list_managed
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list_managed_empty_exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "list_managed_empty_stdout" "esperava stdout vazio, obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_list_managed_com_containers() {
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  mkdir -p "$TMPDIR_TEST/docker-stub"
+  printf 'cstk-mcp-state-abc\t/proj/.claude/agente-00c-state\n' >"$TMPDIR_TEST/docker-stub/ps-output"
+  _run_mcp_docker_fn _mcp_docker_list_managed
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list_managed_exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "cstk-mcp-state-abc" || return 1
+  assert_stdout_contains "/proj/.claude/agente-00c-state" || return 1
+  case "$(_docker_calls_log)" in
+    *"label=cstk.managed=mcp-state"*) : ;;
+    *) _fail "list_managed_filter" "docker ps -a nao filtrou pelo management label: $(_docker_calls_log)"; return 1 ;;
+  esac
 }
 
 run_all_scenarios

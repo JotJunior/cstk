@@ -727,19 +727,67 @@ publicada. 25/25 cenarios verdes em `tests/cstk/test_mcp-docker.sh`
 Ref: contracts/mcp-session-lifecycle.md `cstk mcp start`/`stop`;
 §Health check; FR-010, FR-011
 
-- [ ] 5.3.1 Estender `cli/lib/mcp.sh` com `start --state-dir DIR` e
-      `stop --state-dir DIR`, delegando a `mcp-docker.sh` (5.2)
-- [ ] 5.3.2 Implementar health check: verificar que o container esta
-      saudavel antes de o orquestrador emitir a primeira chamada de
-      ferramenta; erro claro e acionavel se nao ficar saudavel dentro do
-      tempo limite (FR-011; "<= 30s [a calibrar]" do plan.md Technical
-      Context — calibrar aqui com evidencia empirica)
-- [ ] 5.3.3 Implementar FR-010: sessao do servidor coextensiva com a
-      execucao inteira — o servidor permanece ativo durante
-      `Schedule intent` (pausas entre ondas); so encerra em estado
-      terminal (`concluida`/`abortada`)
-- [ ] 5.3.4 Estender `tests/cstk/test_mcp.sh` com `start`/`stop`/health
-      check (mock de `docker`, sem exigir Docker real na suite)
+PROGRESSO PARCIAL (onda 16, dec-081): a fundacao empirica do health check
+esta pronta e testada (102 -> 113 `node:test` verdes + suites shell
+correspondentes), mas 5.3.1/5.3.3/5.3.4 (o proprio `cstk mcp start`/`stop`
+em `mcp.sh`) AINDA NAO FORAM ESCRITOS — onda encerrou por threshold de
+orcamento antes de chegar la. Retomar a partir daqui:
+
+- **Gap descoberto e corrigido primeiro** (bloqueava qualquer health check
+  real): `mcp-session.sh resolve --project-path` faz tree-walk a partir do
+  projeto-alvo, mas DENTRO do container so `/data/state` (flat) esta
+  montado — o `CSTK_MCP_PROJECT_PATH` (path do HOST) nao existe la, entao
+  o modo existente sempre falharia dentro do container. Corrigido de forma
+  ADITIVA (zero regressao no modo `--project-path` — 18/18 cenarios shell
+  + toda a suite `node:test` continuam verdes): novo modo
+  `mcp-session.sh resolve --state-dir DIR` (sem tree-walk, mesma
+  autorizacao por token) + `resolve.ts` passa a usar esse modo quando
+  `CSTK_MCP_STATE_DIR` esta presente no env + `_mcp_docker_run` agora
+  exporta `CSTK_MCP_STATE_DIR=/data/state` no container.
+- **5.3.2 (health check) IMPLEMENTADO e calibrado empiricamente**:
+  `mcp/state-server/src/healthcheck.ts` (compilado para
+  `dist/src/healthcheck.js`) — decisao de design (dec-081): NUNCA
+  `docker attach` ao PID1 real (fechar esse pipe mataria o servidor que
+  deve sobreviver a execucao inteira, FR-010); em vez disso sobe uma
+  instancia EFEMERA do proprio servidor como child process, conecta um
+  CLIENTE MCP real via stdio (SDK `Client` + `StdioClientTransport`) e
+  faz handshake `initialize` + `tools/call get_status` (tool read-only) de
+  ponta a ponta. Validado localmente com processos Node reais (fixture
+  `test/fixtures/scripts-healthcheck-ok/`) nos 4 cenarios de
+  `test/healthcheck.test.ts` (sucesso, token divergente, token ausente,
+  isolamento entre sondas concorrentes). `cli/lib/mcp-docker.sh::
+  _mcp_docker_healthcheck CONTAINER_NAME [TIMEOUT_SECONDS]` invoca via
+  `docker exec CONTAINER_NAME node dist/src/healthcheck.js`, com timeout
+  POSIX portavel (watcher SIGTERM->SIGKILL, mesmo padrao de
+  `model-routing.sh::_mr_invoke_skill`) — default calibrado em **10s**
+  (roundtrip real mede < 1s local; 30s do contrato permanece como TETO
+  MAXIMO aceitavel, nao o default). 4 cenarios shell cobrindo
+  saudavel/falha/timeout/default em `tests/cstk/test_mcp-docker.sh`
+  (stub `docker exec`/`docker ps` estendido).
+- **Primitiva de 5.4 adiantada**: `_mcp_docker_list_managed` (lista
+  containers com o management label via `docker ps -a --filter`, TSV
+  `nome<TAB>state_dir`) + label `cstk.mcp.state_dir=<host-path>` agora
+  gravado em `_mcp_docker_run` — a orquestracao de `cstk mcp gc`
+  (task 5.4.2) ainda precisa ser escrita, mas a primitiva de listagem ja
+  esta pronta e testada (2 cenarios).
+- **PENDENTE para a proxima onda**:
+  - [ ] 5.3.1 Estender `cli/lib/mcp.sh` com `start --state-dir DIR` e
+        `stop --state-dir DIR`, delegando a `mcp-docker.sh` (5.2) — gerar
+        `session_id` CSPRNG >= 128 bits (`/dev/urandom`), escrever
+        `mcp-server.json` (`chmod 600`), chamar
+        `_mcp_docker_healthcheck` apos o `docker run` e ANTES de reportar
+        sucesso (FR-011: "antes da primeira chamada de ferramenta");
+        falha de health check ⇒ `mode=bash-fallback` +
+        `unavailable_reason=health-timeout`, exit 3 (nunca aborta a
+        execucao — FR-007)
+  - [ ] 5.3.3 Implementar FR-010: sessao do servidor coextensiva com a
+        execucao inteira — o servidor permanece ativo durante
+        `Schedule intent` (pausas entre ondas); so encerra em estado
+        terminal (`concluida`/`abortada`); em cada `-resume`, `status`
+        (ou um `--live` dedicado, ver nota em 5.5) reverifica saude SEM
+        reiniciar
+  - [ ] 5.3.4 Estender `tests/cstk/test_mcp.sh` com `start`/`stop`/health
+        check (mock de `docker`, sem exigir Docker real na suite)
 
 ### 5.4 Gap CHK064: deteccao/limpeza de container orfao `[A]` {auto}
 

@@ -155,4 +155,61 @@ scenario_sem_subcomando_exit_2() {
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "sem subcomando exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+# ---------- modo direto --state-dir (dec-081, task 5.3) ----------
+
+scenario_state_dir_direto_resolve_sem_tree_walk() {
+  _sd="$TMPDIR_TEST/direct1/qualquer-nome"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-direct-1" "feature-00c" "state-mcp-server" "/data/state" "docker" ""
+
+  capture "$SCRIPT" resolve --state-dir "$_sd" --token "tok-direct-1"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "state-dir direto exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "state_dir=/data/state" || return 1
+  assert_stdout_contains "execution_kind=feature-00c" || return 1
+}
+
+scenario_state_dir_direto_token_invalido_exit_3() {
+  _sd="$TMPDIR_TEST/direct2"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-real-2" "agente-00c" "" "/data/state" "docker" ""
+
+  capture "$SCRIPT" resolve --state-dir "$_sd" --token "tok-adivinhado"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "state-dir token invalido exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "SESSION_MISMATCH" || return 1
+}
+
+scenario_state_dir_direto_execucao_terminal_exit_3() {
+  _sd="$TMPDIR_TEST/direct3"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-term-2" "agente-00c" "" "/data/state" "docker" "2026-08-01T01:00:00Z"
+
+  capture "$SCRIPT" resolve --state-dir "$_sd" --token "tok-term-2"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "state-dir terminal exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_state_dir_direto_sem_descritor_exit_3() {
+  _sd="$TMPDIR_TEST/direct4"
+  mkdir -p "$_sd"
+
+  capture "$SCRIPT" resolve --state-dir "$_sd" --token "tok-qualquer"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "state-dir sem descritor exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_state_dir_inexistente_exit_1() {
+  capture "$SCRIPT" resolve --state-dir "$TMPDIR_TEST/nao-existe-direct" --token "tok-x"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "state-dir inexistente exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_state_dir_e_project_path_juntos_exit_2() {
+  _sd="$TMPDIR_TEST/direct5"
+  mkdir -p "$_sd"
+  capture "$SCRIPT" resolve --state-dir "$_sd" --project-path "$TMPDIR_TEST" --token "tok-x"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "state-dir+project-path exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_nenhum_locator_exit_2() {
+  capture "$SCRIPT" resolve --token "tok-x"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "nenhum locator exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
 run_all_scenarios

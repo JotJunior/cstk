@@ -34,6 +34,23 @@
 #     ainda e nulo. Zero match, mais de um match (colisao) ou token vazio
 #     => SESSION_MISMATCH (exit 3), nada em stdout.
 #
+#   mcp-session.sh resolve --state-dir DIR
+#       [--token TOKEN | --token-file FILE]
+#     Modo DIRETO (task 5.3, dec-081) — mutuamente exclusivo com
+#     --project-path. Le e valida `DIR/mcp-server.json` sem nenhum
+#     tree-walk. Existe porque, DENTRO do container do servidor MCP
+#     (contracts/mcp-session-lifecycle.md §Montagens), apenas o
+#     state-dir da propria execucao esta montado (`/data/state`, flat) —
+#     o `CSTK_MCP_PROJECT_PATH` (path do HOST) nao existe como diretorio
+#     no container, entao o modo `--project-path` (tree-walk a partir do
+#     projeto-alvo) sempre falharia ali. O container e 1:1 com uma unica
+#     execucao (data-model.md), entao nao ha ambiguidade/precedencia a
+#     resolver — a MESMA regra de autorizacao por token de capacidade
+#     (SEC-H3) se aplica identica: token vazio, divergente do
+#     `session_id` do descritor, ou `stopped_at` preenchido =>
+#     SESSION_MISMATCH (exit 3). Nenhum comportamento do modo
+#     `--project-path` existente muda.
+#
 # Saida (stdout, uma chave por linha — mesmo estilo de `state-backend.sh
 # resolve` / `cstk mcp status`):
 #   state_dir=<path>
@@ -128,25 +145,48 @@ _ms_print_descriptor() {
 
 _ms_cmd_resolve() {
   _project_path=""
+  _state_dir=""
   _token_explicit=""
   _token_file=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --project-path) _project_path=$2; shift 2 ;;
+      --state-dir) _state_dir=$2; shift 2 ;;
       --token) _token_explicit=$2; shift 2 ;;
       --token-file) _token_file=$2; shift 2 ;;
       *) _ms_die_usage "resolve: flag desconhecida: $1" ;;
     esac
   done
-  [ -n "$_project_path" ] || _ms_die_usage "resolve: --project-path obrigatorio"
-  [ -d "$_project_path" ] \
-    || _ms_die "resolve: --project-path nao existe ou nao e diretorio: $_project_path" 1
+
+  if [ -n "$_project_path" ] && [ -n "$_state_dir" ]; then
+    _ms_die_usage "resolve: --project-path e --state-dir sao mutuamente exclusivos"
+  fi
+  if [ -z "$_project_path" ] && [ -z "$_state_dir" ]; then
+    _ms_die_usage "resolve: forneca --project-path PATH ou --state-dir DIR"
+  fi
   _ms_require_jq
 
   _token=$(_ms_resolve_token "$_token_explicit" "$_token_file")
   if [ -z "$_token" ]; then
     _ms_mismatch "nenhum token fornecido (--token | --token-file | MCP_SESSION_TOKEN)"
   fi
+
+  # Modo direto (dec-081, task 5.3): usado DENTRO do container, onde so o
+  # state-dir da propria execucao esta montado. Sem tree-walk, sem
+  # ambiguidade — o container e 1:1 com uma execucao.
+  if [ -n "$_state_dir" ]; then
+    [ -d "$_state_dir" ] \
+      || _ms_die "resolve: --state-dir nao existe ou nao e diretorio: $_state_dir" 1
+    _direct_desc="$_state_dir/mcp-server.json"
+    if ! _ms_check_descriptor "$_direct_desc" "$_token"; then
+      _ms_mismatch "token desconhecido, invalido ou de execucao ja terminal (--state-dir)"
+    fi
+    _ms_print_descriptor "$_direct_desc"
+    return 0
+  fi
+
+  [ -d "$_project_path" ] \
+    || _ms_die "resolve: --project-path nao existe ou nao e diretorio: $_project_path" 1
 
   _match=""
   _match_count=0
@@ -188,6 +228,12 @@ mcp-session.sh — resolucao da execucao ativa por token de capacidade (SEC-H3).
 USO:
   mcp-session.sh resolve --project-path PATH \
       [--token TOKEN | --token-file FILE]
+  mcp-session.sh resolve --state-dir DIR \
+      [--token TOKEN | --token-file FILE]
+
+  --project-path e --state-dir sao mutuamente exclusivos. --state-dir e o
+  modo direto usado DENTRO do container do servidor MCP (dec-081): sem
+  tree-walk, valida so DIR/mcp-server.json.
 
   Token tambem pode vir de MCP_SESSION_TOKEN (env), com precedencia
   --token > --token-file > env.

@@ -46,6 +46,19 @@ export interface ResolveSessionOptions {
   readonly env?: NodeJS.ProcessEnv;
 }
 
+/**
+ * Path do state-dir da propria execucao visto de DENTRO do container
+ * (dec-081, task 5.3): quando presente, `resolveActiveSession` usa o modo
+ * DIRETO de `mcp-session.sh resolve --state-dir` em vez do tree-walk
+ * `--project-path`. Necessario porque dentro do container apenas
+ * `/data/state` esta montado — `CSTK_MCP_PROJECT_PATH` (path do HOST) nao
+ * existe como diretorio ali, entao o modo `--project-path` sempre falharia.
+ * Fora do container (testes, uso direto do helper), esta env fica ausente
+ * e o comportamento por `--project-path` permanece EXATAMENTE o de antes
+ * (zero regressao).
+ */
+const CONTAINER_STATE_DIR_ENV = "CSTK_MCP_STATE_DIR";
+
 const REQUIRED_DESCRIPTOR_FIELDS = [
   "state_dir",
   "execution_kind",
@@ -94,7 +107,9 @@ export async function resolveActiveSession(
   const helperPath =
     options.helperPath ?? join(resolveScriptsDir(env), "mcp-session.sh");
 
-  if (!projectPath) {
+  const containerStateDir = env[CONTAINER_STATE_DIR_ENV];
+
+  if (!containerStateDir && !projectPath) {
     throw new SessionMismatchError(
       "resolveActiveSession: projectPath ausente (env CSTK_MCP_PROJECT_PATH nao definida)",
     );
@@ -106,10 +121,16 @@ export async function resolveActiveSession(
   }
 
   try {
+    // Modo direto (dec-081): dentro do container, CSTK_MCP_STATE_DIR
+    // aponta para o mount /data/state — sem tree-walk. Fora do container
+    // (env ausente), o comportamento --project-path e IDENTICO ao de
+    // antes desta task.
+    const locatorArgs = containerStateDir
+      ? ["--state-dir", containerStateDir]
+      : ["--project-path", projectPath];
     const { stdout } = await runHelper(helperPath, [
       "resolve",
-      "--project-path",
-      projectPath,
+      ...locatorArgs,
       "--token",
       token,
     ]);

@@ -45,7 +45,9 @@
 #   _mcp_docker_ensure_enforcement_log_file PATH
 #   _mcp_docker_run CONTAINER_NAME IMAGE_TAG STATE_DIR_HOST SCRIPTS_DIR_HOST \
 #                    ENFORCEMENT_LOG_HOST PROJECT_PATH TOKEN
+#   _mcp_docker_healthcheck CONTAINER_NAME [TIMEOUT_SECONDS]
 #   _mcp_docker_stop CONTAINER_NAME
+#   _mcp_docker_list_managed
 #
 # POSIX sh puro. Sem bash-isms.
 
@@ -294,6 +296,13 @@ _mcp_docker_ensure_enforcement_log_file() {
 # knowledge.db NUNCA montado (FR-013) -- ausencia por construcao, nao ha
 # flag para monta-lo neste arquivo.
 #
+# env CSTK_MCP_STATE_DIR=/data/state (dec-081, task 5.3): permite ao
+# servidor Node (session/resolve.ts) chamar `mcp-session.sh resolve
+# --state-dir` (modo direto, sem tree-walk) em vez de `--project-path`.
+# Necessario porque CSTK_MCP_PROJECT_PATH carrega o path do HOST, que nao
+# existe como diretorio dentro do container -- so /data/state (este mount)
+# e /opt/cstk/scripts estao presentes ali.
+#
 # Hardening herdado do precedente VERIFICADO
 # (serve-docker.sh:712-724/contracts/mcp-session-lifecycle.md §Contrato do
 # container): --init --rm --cap-drop ALL --security-opt no-new-privileges
@@ -327,12 +336,14 @@ _mcp_docker_run() {
         --rm \
         --name "$_mdr_name" \
         --label "$_MD_MANAGEMENT_LABEL" \
+        --label "cstk.mcp.state_dir=${_mdr_state_dir}" \
         -v "${_mdr_state_dir}:${_MD_STATE_CONTAINER_DIR}" \
         -v "${_mdr_scripts_dir}:${_MD_SCRIPTS_CONTAINER_DIR}:ro" \
         -v "${_mdr_enforcement_log}:${_MD_ENFORCEMENT_LOG_CONTAINER_PATH}" \
         -e "CSTK_MCP_PROJECT_PATH=${_mdr_project_path}" \
         -e "CSTK_MCP_SCRIPTS_DIR=${_MD_SCRIPTS_CONTAINER_DIR}" \
         -e "CSTK_MCP_ENFORCEMENT_LOG_PATH=${_MD_ENFORCEMENT_LOG_CONTAINER_PATH}" \
+        -e "CSTK_MCP_STATE_DIR=${_MD_STATE_CONTAINER_DIR}" \
         -e "MCP_SESSION_TOKEN=${_mdr_token}" \
         --cap-drop ALL \
         --security-opt no-new-privileges \
@@ -350,11 +361,112 @@ _mcp_docker_run() {
   return 0
 }
 
+# Teto default do health check (contracts/mcp-session-lifecycle.md §Health
+# check: "30s [PROPOSAL — a calibrar no spike]"). CALIBRADO empiricamente
+# nesta task (dec-081/onda 16): com Docker real, imagem ja construida e
+# `docker exec` reaproveitando um container ja rodando, o roundtrip inteiro
+# (spawn da instancia efemera + handshake `initialize` + `tools/call
+# get_status`) mede consistentemente < 1s. 10s cobre folga de 10x sobre o
+# caso normal para hosts sob carga (CI, laptops compartilhados) sem chegar
+# perto do teto de UX de 30s citado no contrato (que permanece como o LIMITE
+# MAXIMO aceitavel, nao o default usado aqui).
+_MD_HEALTHCHECK_TIMEOUT_DEFAULT="10"
+
+# _mcp_docker_healthcheck CONTAINER_NAME [TIMEOUT_SECONDS]
+#
+# Health check (FR-011, contracts/mcp-session-lifecycle.md §Health check):
+# `docker exec CONTAINER_NAME node dist/src/healthcheck.js`. O script
+# healthcheck.js (mcp/state-server/src/healthcheck.ts, dec-081) sobe uma
+# instancia EFEMERA do proprio servidor como child process, faz o handshake
+# MCP `initialize` + uma chamada real de `tools/call get_status` (tool
+# read-only, zero mutacao) — NUNCA `docker attach` ao PID1 real (evita
+# fechar o stdio do servidor que deve permanecer vivo pelo resto da
+# execucao, FR-010). O token/env necessarios (MCP_SESSION_TOKEN,
+# CSTK_MCP_PROJECT_PATH, CSTK_MCP_STATE_DIR, CSTK_MCP_SCRIPTS_DIR) ja estao
+# setados no container desde o `docker run` (`_mcp_docker_run`) e sao
+# herdados automaticamente por `docker exec` (mesmo Config.Env do
+# container) — nenhum destes segredos passa por argv (evita exposicao via
+# `docker top`/`ps`).
+#
+# Timeout POSIX portavel (sem `timeout(1)`, nao garantido em macOS base —
+# mesmo padrao de model-routing.sh::_mr_invoke_skill): watcher mata o
+# `docker exec` se exceder TIMEOUT_SECONDS (default
+# $_MD_HEALTHCHECK_TIMEOUT_DEFAULT).
+#
+# exit 0 = saudavel; exit 1 = `docker exec` retornou erro (helper/handshake
+# falhou, ver stderr); exit 124 = timeout estourado.
+_mcp_docker_healthcheck() {
+  _mdh_name="$1"
+  _mdh_timeout="${2:-$_MD_HEALTHCHECK_TIMEOUT_DEFAULT}"
+
+  _mdh_outfile=$(mktemp 2>/dev/null) || {
+    printf 'cstk mcp: erro: nao foi possivel criar arquivo temporario para o health check\n' >&2
+    return 1
+  }
+
+  (
+    set +e
+    docker exec "$_mdh_name" node dist/src/healthcheck.js \
+      >"$_mdh_outfile" 2>&1 &
+    _mdh_child=$!
+
+    (
+      sleep "$_mdh_timeout"
+      kill -TERM "$_mdh_child" 2>/dev/null
+      sleep 1
+      kill -KILL "$_mdh_child" 2>/dev/null
+    ) </dev/null >/dev/null 2>&1 &
+    _mdh_watcher=$!
+
+    wait "$_mdh_child" 2>/dev/null
+    _mdh_rc=$?
+
+    kill "$_mdh_watcher" 2>/dev/null
+
+    if [ "$_mdh_rc" -ne 0 ] && [ -f "$_mdh_outfile" ]; then
+      cat "$_mdh_outfile" >&2
+    fi
+
+    if [ "$_mdh_rc" -gt 128 ]; then
+      printf 'cstk mcp: erro: health check do servidor MCP de estado estourou o tempo limite (%ss) — container "%s" pode estar sobrecarregado ou travado\n' \
+        "$_mdh_timeout" "$_mdh_name" >&2
+      exit 124
+    fi
+    if [ "$_mdh_rc" -ne 0 ]; then
+      printf 'cstk mcp: erro: health check do servidor MCP de estado falhou (container "%s"); ver diagnostico acima\n' \
+        "$_mdh_name" >&2
+    fi
+    exit "$_mdh_rc"
+  )
+  _mdh_result=$?
+  rm -f "$_mdh_outfile"
+  return "$_mdh_result"
+}
+
 # _mcp_docker_stop CONTAINER_NAME
 # `docker stop -t 5` (mesmo grace de serve-docker.sh, alinhado ao modo
 # nativo). Idempotente: parar o que ja esta parado ou inexistente e
 # exit 0 (best-effort — paridade com o encerramento de serve-docker.sh).
 _mcp_docker_stop() {
   docker stop -t "$_MD_STOP_GRACE_SECONDS" "$1" >/dev/null 2>&1 || :
+  return 0
+}
+
+# _mcp_docker_list_managed
+# Lista (uma linha por container, TSV `name<TAB>state_dir_label`) todos os
+# containers — rodando OU parados (`docker ps -a`) — com o management label
+# `$_MD_MANAGEMENT_LABEL` (task 5.4, deteccao de orfaos/CHK064). O
+# state_dir e lido do label `cstk.mcp.state_dir` (gravado por `_mcp_docker_run`
+# desde esta task) — campo vazio ("-") se o container foi criado por uma
+# versao anterior sem o label (nunca aborta por isso; apenas nao participa
+# da reconciliacao por state-dir). exit 0 sempre (best-effort de leitura);
+# stdout vazio se nenhum container gerenciado existir.
+_mcp_docker_list_managed() {
+  # Tab explicito via printf (em vez de um byte 0x09 literal na fonte —
+  # invisivel em diffs/editores, risco de corrupcao silenciosa; CLAUDE.md
+  # "Cuidado com quoting/iteracao em loops de shell").
+  _mdlm_tab=$(printf '\t')
+  docker ps -a --filter "label=${_MD_MANAGEMENT_LABEL}" \
+    --format "{{.Names}}${_mdlm_tab}{{.Label \"cstk.mcp.state_dir\"}}" 2>/dev/null || :
   return 0
 }

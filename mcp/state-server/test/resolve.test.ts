@@ -67,6 +67,41 @@ test("resolveActiveSession: SESSION_MISMATCH (exit 3) do helper vira SessionMism
   );
 });
 
+test("resolveActiveSession: CSTK_MCP_STATE_DIR presente -> usa modo direto --state-dir (dec-081), nunca --project-path", async () => {
+  const session = await resolveActiveSession({
+    projectPath: "/host/path/nao/existe/no/container",
+    token: "synthetic-token-abc123",
+    helperPath: join(FIXTURES_DIR, "fake-mcp-session-ok-container-mode.sh"),
+    env: { CSTK_MCP_STATE_DIR: "/data/state" },
+  });
+
+  assert.equal(session.stateDir, "/data/state");
+  assert.equal(session.executionKind, "feature-00c");
+});
+
+test("resolveActiveSession: CSTK_MCP_STATE_DIR presente dispensa projectPath (fail-closed do project-path nao se aplica no modo container)", async () => {
+  const session = await resolveActiveSession({
+    projectPath: "",
+    token: "synthetic-token-abc123",
+    helperPath: join(FIXTURES_DIR, "fake-mcp-session-ok-container-mode.sh"),
+    env: { CSTK_MCP_STATE_DIR: "/data/state" },
+  });
+
+  assert.equal(session.stateDir, "/data/state");
+});
+
+test("resolveActiveSession: sem CSTK_MCP_STATE_DIR, comportamento --project-path e IDENTICO ao anterior (zero regressao)", async () => {
+  const session = await resolveActiveSession({
+    projectPath: "/work",
+    token: "synthetic-token-abc123",
+    helperPath: join(FIXTURES_DIR, "fake-mcp-session-ok.sh"),
+    env: {},
+  });
+
+  assert.equal(session.stateDir, "/data/state");
+  assert.equal(session.targetProjectPath, "/work");
+});
+
 test("matchesResolvedSession: compara o session_id apresentado contra o token resolvido", async () => {
   const session = await resolveActiveSession({
     projectPath: "/work",

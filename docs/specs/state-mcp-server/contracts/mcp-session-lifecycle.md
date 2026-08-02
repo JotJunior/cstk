@@ -173,6 +173,19 @@ retomada, exatamente como hoje (US4 cenario 2).
 Novo script POSIX em `global/skills/agente-00c-runtime/scripts/mcp-session.sh`
 (⇒ teste obrigatorio em `tests/test_mcp-session.sh`).
 
+> **Modo direto `--state-dir` (dec-081, task 5.3)**: `resolve` aceita
+> `--state-dir DIR` como alternativa MUTUAMENTE EXCLUSIVA a
+> `--project-path PATH` — valida `DIR/mcp-server.json` diretamente, sem
+> tree-walk. Existe porque, DENTRO do container (§Montagens abaixo), so o
+> state-dir da propria execucao esta montado (`/data/state`, flat); o
+> `CSTK_MCP_PROJECT_PATH` (path do HOST) nao existe como diretorio ali, e o
+> modo `--project-path` sempre falharia. O container e 1:1 com uma unica
+> execucao (data-model.md), entao nao ha ambiguidade a resolver — a MESMA
+> autorizacao por token de capacidade se aplica identica (fail-closed).
+> `env CSTK_MCP_STATE_DIR=/data/state` (gravado por `_mcp_docker_run`, dec-081)
+> sinaliza a `session/resolve.ts` para usar este modo; fora do container, a
+> env fica ausente e o comportamento `--project-path` e inalterado.
+
 ### SEC-H3 (finding HIGH do gate) — roteamento e por CAPACIDADE, nao por precedencia
 
 O desenho inicial roteava a chamada para a "execucao ativa" resolvida por
