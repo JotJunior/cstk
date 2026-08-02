@@ -5,6 +5,26 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.2.1] - 2026-08-02
+
+### Fixed
+
+- **`Failed to reconnect to cstk-state: -32000` em todo boot de sessão sem
+  execução 00c ativa.** A entrada estática do `.mcp.json` (`cstk mcp
+  install`) é conectada pelo harness em todo boot, mas `mcp-launch.sh`
+  saía com exit 3 quando não havia token/execução — o caso mais comum —
+  e o harness reportava a conexão como falha. O launcher agora serve um
+  **stub MCP idle** (sh+jq, JSON-RPC newline-delimited): `initialize`
+  ecoando o `protocolVersion` do cliente, `tools/list` com lista vazia
+  (zero mutação possível — SEC-H3 intacto), `ping`, `-32601` para o
+  resto; EOF encerra com exit 0. O `/mcp` passa a mostrar `cstk-state`
+  conectado (validado E2E com `claude mcp list`: ✔ Connected). Token
+  fornecido e divergente segue exit 3 (violação de capacidade);
+  `jq`/`mcp-session.sh` ausentes seguem exit 1 (mecanismo). Para anexar
+  ao container após `cstk mcp start`, reconecte o MCP ou abra sessão
+  nova. +2 cenários em `tests/test_mcp-launch.sh`; contrato atualizado em
+  `contracts/mcp-session-lifecycle.md`.
+
 ## [6.2.0] - 2026-08-02
 
 Fecha as quatro pendências registradas no review-task da `state-mcp-server`
@@ -4747,6 +4767,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.2.1]: https://github.com/JotJunior/cstk/releases/tag/v6.2.1
 [6.2.0]: https://github.com/JotJunior/cstk/releases/tag/v6.2.0
 [6.1.0]: https://github.com/JotJunior/cstk/releases/tag/v6.1.0
 [6.0.0]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0
