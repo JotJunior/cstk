@@ -1,13 +1,20 @@
 # Contracts: state-mcp-server — Tools MCP
 
-Contrato das 6 tools de mutacao de estado exigidas por FR-001.
+Contrato das 6 tools de mutacao de estado exigidas por FR-001, mais a tool
+`get_status` (read-only, escopo expandido pelo operador — task 3.1,
+dec-064/block-004: a UNICA "nao-tool" original que entrou no MVP).
 
-> **Status de todo este documento: `[PROPOSTA — a validar na implementacao]`.**
-> Nenhuma destas tools existe hoje: nao ha `package.json`, `.ts` nem
-> `@modelcontextprotocol/sdk` no repo [VERIFICADO por varredura]. O que **e**
-> fato verificado sao (a) as flags dos helpers POSIX para os quais cada tool
-> delega e (b) as colunas do `state.db` afetadas — ambas citadas por tool. O
-> desenho da assinatura MCP e novo e, portanto, proposta.
+> **Status deste documento (atualizado na task 3.6-3.9 + get_status):**
+> `record_skill` (F2), `record_decision`, `open_wave`, `record_task` e
+> `register_human_block` (F3) e `get_status` (F3, dec-064) estao
+> **implementadas e testadas** [VERIFICADO: `mcp/state-server/src/tools/*.ts`
+> + `mcp/state-server/test/*.test.ts`, 82/82 green]. `close_wave` (F4,
+> atomicidade com pre-imagem/compensacao) **ainda nao existe** — sua secao
+> abaixo permanece `[PROPOSTA — a validar na implementacao]`. Onde o
+> comportamento REAL do helper divergiu do que este documento propunha
+> originalmente, uma nota "NOTA DE CORRECAO EMPIRICA" foi adicionada tanto
+> aqui quanto no `.ts` correspondente (Principio VI — nao inventar dados;
+> mesmo padrao ja usado por `record_skill.ts` desde a task 2.2).
 
 ## Forma geral
 
@@ -127,6 +134,7 @@ nao serem confundidos com flags nem corromper ids:
 | `task_id` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` [CORRIGIDO na task 2.2: ver nota abaixo] |
 | `decision_id` | `^dec-[0-9]{1,9}$` |
 | `skill` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` [CORRIGIDO na task 2.2: ver nota abaixo] |
+| `wave_id` | `^onda-[0-9]{3,}$` [VERIFICADO na task 3.8: `state-ondas.sh:588` e `_state-ondas-db.sh:182`, ambos `printf 'onda-%03d' N`] |
 | `executed_stages[]` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` [VERIFICADO: `state-ondas.sh:228-235` `_so_is_stage_token`, mesma regra do helper] |
 | `kind`, `outcome`, `termination_reason` | enum fechado (ja especificado) |
 | `touched_files[]` | path **relativo**; rejeitar absoluto, `..` e byte NUL |
@@ -306,8 +314,8 @@ Registra outcome de task, **idempotente por `task_id`** (FR-004). **Delega para*
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `result.task_id` | string | |
-| `result.operation` | `"inserted"` \| `"updated"` | Evidencia do upsert (FR-004) |
+| `result.task_id` | string | Ecoado do input (nao gerado pela tool) |
+| `result.tasks_total_count` | integer | **[CORRIGIDO na task 3.8, Principio VI]** Contagem de `.tasks`/`task_outcome` da execucao apos o upsert — **nao** `{task_id, operation}` como proposto originalmente. [VERIFICADO: `state-ondas.sh:1017-1056` e `_state-ondas-db.sh:372-375` — AMBOS os backends imprimem essa contagem em stdout, nunca um par {task_id, operation}]. Nao ha como derivar "inserted" vs "updated" do stdout sem uma leitura extra fragil, e sob `--if-absent` com task ja existente o upsert nem executa — "updated" seria uma mentira (mesmo racional da correcao de `record_skill.ts` §`skills_invoked_count`). |
 
 **Base da idempotencia** [VERIFICADO]: PK `(execution_id, task_id)` em
 `task_outcome` (`state-db-schema.sql:192`). Repetir a chamada **atualiza**; nunca
@@ -317,8 +325,9 @@ duplica.
 
 | Code | Description |
 |------|-------------|
-| `TESTS_PASSED_EXCEEDS_RUN` | `tests_passed > tests_run` |
-| `NO_OPEN_WAVE` | Registrar task sem onda aberta (Edge Case "fora de ordem") |
+| `TESTS_PASSED_EXCEEDS_RUN` | `tests_passed > tests_run` — verificado no schema (FR-002) e, em defesa de profundidade, no stderr do helper [VERIFICADO: `state-ondas.sh:1009`] |
+| `NO_OPEN_WAVE` | **[CORRIGIDO na task 3.8, Principio VI]** O helper `record-task` **NAO** checa isto sozinho — usa `.waves[-1].id` como default best-effort independente do estado da onda [VERIFICADO: `state-ondas.sh:1026-1029`]. A TOOL impoe esta pre-condicao explicitamente via `wave-status` ANTES de delegar (mesmo padrao de `open_wave` para `WAVE_ALREADY_OPEN`), fechando o Edge Case "fora de ordem" que o contrato original ja pretendia cobrir mas o helper nao garantia |
+| `WAVE_ID_NOT_FOUND` | **[Fecha CHK016]** `wave_id` informado explicitamente nao corresponde a nenhuma onda existente em `.waves[].id` — checado pela tool ANTES de delegar (o helper aceitaria qualquer string silenciosamente) |
 
 ---
 
@@ -333,7 +342,7 @@ Registra bloqueio humano. **Delega para** [VERIFICADO]: `bloqueios.sh register
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
 | `decision_id` | string | yes | Decisao associada (ex.: `dec-012`) |
-| `question` | string | yes | min 1 |
+| `question` | string | yes | **min 20 chars** [CORRIGIDO na task 3.9, Principio VI — VERIFICADO: `bloqueios.sh:155-158`, "pergunta muito curta (<20 chars). Humano precisa entender sem releitura."; a tabela [PROPOSTA] original dizia min 1] |
 | `context_for_answer` | string | yes | min 1 |
 | `recommended_options` | string[] \| null | no | |
 
@@ -385,11 +394,54 @@ Registra invocacao de skill/gate na onda. **Delega para** [VERIFICADO]:
 
 ---
 
+## Tool: `get_status`
+
+**Escopo expandido pelo operador** (task 3.1, dec-064/block-004): a UNICA
+"nao-tool" da lista original de §Nao-tools que entrou no MVP — consulta
+READ-ONLY do status do servidor/execucao. As outras 3 nao-tools permanecem
+fora (ver §Nao-tools abaixo).
+
+READ-ONLY: nenhuma chamada muta o `state.json`/`state.db`. **Compoe 5
+leituras independentes** [VERIFICADO]:
+`state-rw.sh get --state-dir <SD> --field '.execution.status'`,
+`state-rw.sh get --state-dir <SD> --field '.current_stage'`,
+`state-ondas.sh wave-status --state-dir <SD>`,
+`state-ondas.sh current-id --state-dir <SD>`,
+`bloqueios.sh count --state-dir <SD> --pending-only`.
+
+### Request
+
+Somente `session_id`.
+
+### Response (accepted)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `result.execution_status` | string | Ex.: `em_andamento`, `aguardando_humano`, `abortada`, `concluida` |
+| `result.current_stage` | string | Etapa SDD corrente (ex.: `execute-task`) |
+| `result.wave_status` | string | `none` \| `open` \| `closed` |
+| `result.current_wave_id` | string | Ex.: `onda-012`, ou `init` se nenhuma onda ainda |
+| `result.pending_human_blocks` | integer | Contagem de bloqueios com `status == aguardando` |
+
+### Errors
+
+| Code | Description |
+|------|-------------|
+| `HELPER_FAILED` | Qualquer uma das 5 leituras falhou (ex.: `state.json`/`state.db` ausente). A tool NUNCA fabrica um valor para o campo que nao pode ser lido (Principio VI) — se uma leitura falha, a resposta inteira e `rejected` |
+
+---
+
 ## Nao-tools (fora de escopo deliberado)
+
+> **[CORRIGIDO na task 3.1, dec-064/block-004]**: a linha original
+> "Consultar status do servidor (FR-015)" foi PROMOVIDA a tool (`get_status`,
+> ver secao acima) — o operador confirmou, via block-004, que esta e a UNICA
+> das 4 nao-tools originais com valor real antes do primeiro uso, por ser
+> READ-ONLY e sem conflito com nenhum invariante. As 3 restantes abaixo
+> permanecem deliberadamente fora do escopo.
 
 | Capacidade | Por que nao e tool |
 |-----------|--------------------|
-| Consultar status do servidor (FR-015) | E consulta do **operador/command pai**, nao do orquestrador ⇒ CLI (`cstk mcp status`), ver `mcp-session-lifecycle.md` |
 | Qualquer escrita em `knowledge.db` | **FR-013**: read-only, e o container sequer a monta |
 | Adquirir/liberar lock | **research.md Decision 4**: o lock do command pai ja envolve a onda; `state-lock.sh` e nao-reentrante (um `acquire` daria exit 3 sempre) |
 | `state-rw.sh set` generico | Escape hatch que anularia todo o proposito da feature — mutacao arbitraria sem contrato |
@@ -404,9 +456,16 @@ em `~/.claude`, ver CLAUDE.md §"Installed vs Source Drift") chama a versao
 nova do servidor (gap CHK004). Politica adotada:
 
 **Fonte de verdade de compatibilidade**: o `version` (SemVer) declarado no
-bootstrap do `McpServer` [VERIFICADO: `src/index.ts`, `SERVER_VERSION =
-"0.1.0"`, espelhando `package.json`]. Nao existe (nem sera criado) um numero
-de versao separado por tool — uma unica versao de servidor cobre as 6 tools.
+bootstrap do `McpServer` [VERIFICADO: `src/index.ts`, `SERVER_VERSION`,
+espelhando `package.json`]. Nao existe (nem sera criado) um numero de versao
+separado por tool — uma unica versao de servidor cobre todas as tools.
+
+**Aplicacao empirica desta politica (task 3.6-3.9)**: `SERVER_VERSION`
+avancou de `0.1.0` para `0.2.0` ao registrar as 5 tools novas de F3
+(`record_decision`, `open_wave`, `record_task`, `register_human_block`,
+`get_status`) — bump **MINOR**, nao MAJOR: nenhuma tool/campo existente
+(`record_skill`) foi removido ou redefinido, mudanca puramente aditiva
+conforme a regra abaixo.
 
 - **Mudanca aditiva/retrocompativel** → bump **PATCH** ou **MINOR**:
   - Campo NOVO **opcional** no `inputSchema`, com o handler tratando a

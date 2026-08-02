@@ -24,7 +24,7 @@ function registeredToolNames(server: McpServer): string[] {
   return Object.keys(withPrivateAccess._registeredTools);
 }
 
-test("bootstrap: sessao resolvida registra a tool record_skill", async () => {
+test("bootstrap: sessao resolvida registra as 6 tools do MVP (F2 + F3 + get_status/dec-064)", async () => {
   const server = await bootstrap({
     ...process.env,
     MCP_SESSION_TOKEN: "synthetic-token-abc123",
@@ -33,7 +33,14 @@ test("bootstrap: sessao resolvida registra a tool record_skill", async () => {
   });
 
   assert.ok(server instanceof McpServer);
-  assert.deepEqual(registeredToolNames(server), ["record_skill"]);
+  assert.deepEqual(registeredToolNames(server), [
+    "record_skill",
+    "record_decision",
+    "open_wave",
+    "record_task",
+    "register_human_block",
+    "get_status",
+  ]);
 });
 
 test("bootstrap: SESSION_MISMATCH no startup rejeita (fail-closed) — nenhuma tool e registrada", async () => {

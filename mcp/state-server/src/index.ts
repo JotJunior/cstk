@@ -27,19 +27,55 @@ import {
   handleRecordSkill,
   type RecordSkillResponse,
 } from "./tools/record_skill.js";
+import {
+  recordDecisionInputSchema,
+  handleRecordDecision,
+  type RecordDecisionResponse,
+} from "./tools/record_decision.js";
+import {
+  openWaveInputShape,
+  handleOpenWave,
+  type OpenWaveResponse,
+} from "./tools/open_wave.js";
+import {
+  recordTaskInputSchema,
+  handleRecordTask,
+  type RecordTaskResponse,
+} from "./tools/record_task.js";
+import {
+  registerHumanBlockInputShape,
+  handleRegisterHumanBlock,
+  type RegisterHumanBlockResponse,
+} from "./tools/register_human_block.js";
+import {
+  getStatusInputShape,
+  handleGetStatus,
+  type GetStatusResponse,
+} from "./tools/get_status.js";
 
 const SERVER_NAME = "cstk-state";
-const SERVER_VERSION = "0.1.0";
+// F3 (task 3.6-3.9 + tool get_status/dec-064): 5 tools novas registradas —
+// mudanca ADITIVA (nenhuma tool/campo existente removido ou redefinido) —
+// bump MINOR conforme contracts/mcp-tools.md §Versionamento de contrato.
+const SERVER_VERSION = "0.2.0";
 
-function toCallToolResult(response: RecordSkillResponse) {
+/** Envelope generico de resposta de tool (accepted/rejected/stage/result — contracts/mcp-tools.md). */
+interface ToolEnvelope {
+  readonly outcome: "accepted" | "rejected";
+  readonly reason: string | null;
+  readonly stage: string | null;
+  readonly result: unknown;
+}
+
+function toCallToolResult(toolName: string, response: ToolEnvelope) {
   return {
     content: [
       {
         type: "text" as const,
         text:
           response.outcome === "accepted"
-            ? `record_skill: accepted (${JSON.stringify(response.result)})`
-            : `record_skill: rejected — ${response.reason ?? "motivo desconhecido"}`,
+            ? `${toolName}: accepted (${JSON.stringify(response.result)})`
+            : `${toolName}: rejected — ${response.reason ?? "motivo desconhecido"}`,
       },
     ],
     structuredContent: response as unknown as Record<string, unknown>,
@@ -70,8 +106,81 @@ export async function bootstrap(
       inputSchema: recordSkillInputShape,
     },
     async (input) => {
-      const response = await handleRecordSkill(input, { session, env });
-      return toCallToolResult(response);
+      const response: RecordSkillResponse = await handleRecordSkill(input, { session, env });
+      return toCallToolResult("record_skill", response);
+    },
+  );
+
+  server.registerTool(
+    "record_decision",
+    {
+      title: "Record auditable decision",
+      description:
+        "Registra uma Decisao auditavel (Principio I) na execucao corrente (delega a state-decisions.sh register).",
+      inputSchema: recordDecisionInputSchema,
+    },
+    async (input) => {
+      const response: RecordDecisionResponse = await handleRecordDecision(input, { session, env });
+      return toCallToolResult("record_decision", response);
+    },
+  );
+
+  server.registerTool(
+    "open_wave",
+    {
+      title: "Open a new wave",
+      description:
+        "Abre a proxima onda da execucao corrente (delega a state-ondas.sh start; rejeita se ja houver onda aberta).",
+      inputSchema: openWaveInputShape,
+    },
+    async (input) => {
+      const response: OpenWaveResponse = await handleOpenWave(input, { session, env });
+      return toCallToolResult("open_wave", response);
+    },
+  );
+
+  server.registerTool(
+    "record_task",
+    {
+      title: "Record task outcome",
+      description:
+        "Registra o outcome (pass/fail) de uma task, idempotente por task_id (delega a state-ondas.sh record-task).",
+      inputSchema: recordTaskInputSchema,
+    },
+    async (input) => {
+      const response: RecordTaskResponse = await handleRecordTask(input, { session, env });
+      return toCallToolResult("record_task", response);
+    },
+  );
+
+  server.registerTool(
+    "register_human_block",
+    {
+      title: "Register human block",
+      description:
+        "Registra um bloqueio humano associado a uma Decisao (delega a bloqueios.sh register).",
+      inputSchema: registerHumanBlockInputShape,
+    },
+    async (input) => {
+      const response: RegisterHumanBlockResponse = await handleRegisterHumanBlock(input, {
+        session,
+        env,
+      });
+      return toCallToolResult("register_human_block", response);
+    },
+  );
+
+  server.registerTool(
+    "get_status",
+    {
+      title: "Get server/execution status",
+      description:
+        "Consulta READ-ONLY do status da execucao corrente (status, etapa, onda, bloqueios pendentes) — nenhuma mutacao.",
+      inputSchema: getStatusInputShape,
+    },
+    async (input) => {
+      const response: GetStatusResponse = await handleGetStatus(input, { session, env });
+      return toCallToolResult("get_status", response);
     },
   );
 

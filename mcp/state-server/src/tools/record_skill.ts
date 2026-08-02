@@ -31,21 +31,11 @@ import {
   matchesResolvedSession,
   type ResolvedSession,
 } from "../session/resolve.js";
-
-// SEC-M2: allowlist de identificador, NUNCA texto livre. Regex verificada
-// contra a MESMA regra aplicada pelo helper a tokens de etapa
-// [VERIFICADO: state-ondas.sh:228-235 `_so_is_stage_token`,
-// `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`] — mais estrita que a tabela
-// [PROPOSTA] de mcp-tools.md (`^[A-Za-z0-9._-]{1,64}$`, que permitiria um
-// primeiro caractere `-` e violaria a "Regra transversal: nenhum campo de
-// identificador pode comecar com -" do mesmo documento). Usamos a regra
-// verificada: primeiro caractere obrigatoriamente alfanumerico.
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-
-// `^dec-[0-9]{1,9}$` [VERIFICADO: contracts/mcp-tools.md, formato de id
-// emitido por state-decisions.sh register — mesmo formato usado nesta
-// propria execucao, ex.: dec-049].
-const DECISION_ID_PATTERN = /^dec-[0-9]{1,9}$/;
+// SEC-M2: allowlist de identificador, NUNCA texto livre. Consolidado em
+// runtime/identifiers.ts (task 3.6, F3) para reuso pelas tools novas —
+// ANTES vivia duplicado aqui como constante local; ver esse arquivo para o
+// racional completo de cada regex (`_so_is_stage_token`, etc).
+import { IDENTIFIER_PATTERN, DECISION_ID_PATTERN } from "../runtime/identifiers.js";
 
 export const recordSkillInputShape = {
   session_id: z.string().min(1, "session_id obrigatorio"),

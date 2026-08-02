@@ -370,31 +370,39 @@ Ref: plan.md §Summary item 5; SEC-M1; SEC-M3; contracts/mcp-tools.md
 
 ## FASE 3 - Tools de Mutacao
 
-### 3.1 Decisao humana: escopo correto das 6 tools do MVP `[M]` {humano}
+### 3.1 Decisao humana: escopo correto das 6 tools do MVP `[M]` {humano} — CONCLUIDO
 
 Ref: checklists/api.md CHK027
 
-- [ ] 3.1.1 Apresentar ao operador a lista das 6 tools (`record_skill` ja
+- [x] 3.1.1 Apresentar ao operador a lista das 6 tools (`record_skill` ja
       implementada em F2; `record_decision`, `open_wave`, `close_wave`,
       `record_task`, `register_human_block` restantes) e a lista de
       "nao-tools" declaradas em `contracts/mcp-tools.md`
       §Nao-tools (status do servidor, escrita em knowledge.db,
-      lock, `state-rw.sh set` generico)
-- [ ] 3.1.2 Perguntar se alguma operacao hoje listada como "nao-tool"
-      deveria entrar antes do primeiro uso real
-- [ ] 3.1.3 Registrar Decisao confirmando o escopo (ou ajustando-o) ANTES
-      de iniciar 3.6-3.9
+      lock, `state-rw.sh set` generico) — apresentado via block-004
+- [x] 3.1.2 Perguntar se alguma operacao hoje listada como "nao-tool"
+      deveria entrar antes do primeiro uso real — respondido via
+      block-004 + clarificacao AskUserQuestion
+- [x] 3.1.3 Registrar Decisao confirmando o escopo (ou ajustando-o) ANTES
+      de iniciar 3.6-3.9 — dec-064 (score 3): escopo EXPANDIDO com
+      exatamente UMA tool adicional, `get_status` (read-only, consulta
+      status do servidor/execucao). As outras 3 nao-tools permanecem
+      fora (knowledge.db read-only, lock do command pai, sem
+      `state-rw set` generico)
 
-### 3.2 Decisao humana: nivel de detalhe do `reason` de erro `[M]` {humano}
+### 3.2 Decisao humana: nivel de detalhe do `reason` de erro `[M]` {humano} — CONCLUIDO
 
 Ref: checklists/api.md CHK026
 
-- [ ] 3.2.1 Apresentar ao operador o trade-off: `reason` = stderr do
+- [x] 3.2.1 Apresentar ao operador o trade-off: `reason` = stderr do
       helper (scrubbed, <= 2 KiB) reintroduz mais texto no contexto do
       LLM (risco LLM05) vs. `reason` = so codigo de erro enumerado (menos
-      informativo para o orquestrador decidir o proximo passo)
-- [ ] 3.2.2 Registrar Decisao; o resultado direciona o formato de
-      `Errors` a implementar em 3.6-3.9 e 4.1
+      informativo para o orquestrador decidir o proximo passo) —
+      apresentado via block-004
+- [x] 3.2.2 Registrar Decisao; o resultado direciona o formato de
+      `Errors` a implementar em 3.6-3.9 e 4.1 — dec-064 (score 3):
+      MANTER reason = stderr do helper scrubbed (SEC-M1), exigido pelo
+      criterio de motivo acionavel de dec-059/FR-009
 
 ### 3.3 Resolver ambiguidade CHK007: criterio de "motivo acionavel" (FR-009) `[A]` {auto} — CONCLUIDO
 
@@ -435,63 +443,122 @@ Ref: checklists/api.md CHK004
       secao "Versionamento de contrato") — feito
 - [x] 3.5.3 Registrar Decisao — dec-061
 
-### 3.6 Tool `record_decision` `[A]` {auto}
+### 3.6 Tool `record_decision` `[A]` {auto} — CONCLUIDO
 
 Ref: contracts/mcp-tools.md §Tool: record_decision
 
-- [ ] 3.6.1 Implementar `mcp/state-server/src/tools/record_decision.ts`
+- [x] 3.6.1 Implementar `mcp/state-server/src/tools/record_decision.ts`
       delegando a `state-decisions.sh register`
-- [ ] 3.6.2 `inputSchema` com allowlist de campos (SEC-M2) e validacao de
+- [x] 3.6.2 `inputSchema` com allowlist de campos (SEC-M2) e validacao de
       score >= 3 exigindo `evidencia` (paridade com a trava do helper —
       dupla checagem no schema nao substitui a checagem do helper, apenas
-      falha mais cedo)
-- [ ] 3.6.3 Mapear campos ingles -> flags portugues em `exec.ts`
-      (`evidence` -> `--evidencia`, `rationale` -> `--justificativa`, etc)
-- [ ] 3.6.4 Implementar `### Errors` do contrato (score 3 sem evidencia,
-      etc) conforme o formato decidido em 3.2
-- [ ] 3.6.5 Testes `node:test`: happy path, score 3 sem evidencia
-      (rejeicao), campos allowlist violados
+      falha mais cedo) — via `.superRefine()`, exportado como
+      `recordDecisionInputSchema` (schema completo, nao so a `shape` —
+      necessario para o SDK aplicar o refine ANTES do handler)
+- [x] 3.6.3 Mapear campos ingles -> flags portugues — inline no proprio
+      handler (`record_decision.ts`), mesmo padrao ja usado por
+      `record_skill.ts`; a consolidacao COMPLETA cross-tool em `exec.ts`
+      permanece tarefa de 3.10 (nao feita nesta onda)
+- [x] 3.6.4 Implementar `### Errors` do contrato (score 3 sem evidencia,
+      etc) conforme o formato decidido em 3.2 — `EVIDENCE_REQUIRED`,
+      `TEXT_TOO_SHORT`, `SCORE_OUT_OF_RANGE`, `CONSTITUTION_CONFLICT_SCORE`
+- [x] 3.6.5 Testes `node:test`: happy path, score 3 sem evidencia
+      (rejeicao), campos allowlist violados — 15 casos em
+      `test/record_decision.test.ts`
 
-### 3.7 Tool `open_wave` `[A]` {auto}
+### 3.7 Tool `open_wave` `[A]` {auto} — CONCLUIDO
 
 Ref: contracts/mcp-tools.md §Tool: open_wave
 
-- [ ] 3.7.1 Implementar `mcp/state-server/src/tools/open_wave.ts`
+- [x] 3.7.1 Implementar `mcp/state-server/src/tools/open_wave.ts`
       delegando a `state-ondas.sh start`
-- [ ] 3.7.2 `inputSchema` + mapeamento de campos em `exec.ts`
-- [ ] 3.7.3 Implementar `### Errors` (ex.: onda ja aberta)
-- [ ] 3.7.4 Testes `node:test`: happy path, onda ja aberta (rejeicao)
+- [x] 3.7.2 `inputSchema` (so `session_id`) + mapeamento inline (ver nota
+      3.6.3)
+- [x] 3.7.3 Implementar `### Errors` (`WAVE_ALREADY_OPEN` via precondicao
+      `wave-status`, `HELPER_FAILED`)
+- [x] 3.7.4 Testes `node:test`: happy path, onda ja aberta (rejeicao,
+      `start` nunca invocado), SESSION_MISMATCH, falha de leitura —
+      5 casos em `test/open_wave.test.ts`
 
-### 3.8 Tool `record_task` (+ fix CHK016) `[A]` {auto}
+### 3.8 Tool `record_task` (+ fix CHK016) `[A]` {auto} — CONCLUIDO
 
 Ref: contracts/mcp-tools.md §Tool: record_task; checklists/api.md CHK016;
 spec.md FR-004 (idempotencia), FR-009
 
-- [ ] 3.8.1 Implementar `mcp/state-server/src/tools/record_task.ts`
+- [x] 3.8.1 Implementar `mcp/state-server/src/tools/record_task.ts`
       delegando a `state-ondas.sh record-task` (upsert idempotente por
       `task_id`)
-- [ ] 3.8.2 `inputSchema` + mapeamento de campos em `exec.ts`
-- [ ] 3.8.3 **Fechar o gap CHK016**: adicionar codigo de rejeicao
-      dedicado (ex.: `WAVE_ID_NOT_FOUND`) para o caso de `wave_id`
-      explicito que nao corresponde a nenhuma onda existente — hoje o
-      contrato so cobre `NO_OPEN_WAVE` e `TESTS_PASSED_EXCEEDS_RUN`
-- [ ] 3.8.4 Atualizar `contracts/mcp-tools.md` §Tool: record_task
-      §Errors com o novo codigo
-- [ ] 3.8.5 Testes `node:test`: happy path, idempotencia (upsert em
-      `task_id` repetido), `wave_id` inexistente (novo codigo),
-      `tests_passed > tests_run` (rejeicao existente)
+- [x] 3.8.2 `inputSchema` (exportado como `recordTaskInputSchema` com
+      `.superRefine()`, mesmo racional de 3.6.2) + mapeamento inline (ver
+      nota 3.6.3)
+- [x] 3.8.3 **Fechou o gap CHK016**: `WAVE_ID_NOT_FOUND` para `wave_id`
+      explicito que nao corresponde a nenhuma onda existente — checado
+      pela tool via `state-rw.sh get --field '(.waves // []) | map(.id)'`
+      ANTES de delegar. Correcao adicional descoberta na implementacao
+      (Principio VI): o helper `record-task` **nao** checa onda aberta
+      sozinho [VERIFICADO: `state-ondas.sh:1026-1029`] — a tool tambem
+      impos `NO_OPEN_WAVE` como precondicao (nao so `WAVE_ID_NOT_FOUND`)
+- [x] 3.8.4 Atualizado `contracts/mcp-tools.md` §Tool: record_task
+      §Errors com `WAVE_ID_NOT_FOUND` + `NO_OPEN_WAVE` corrigido +
+      `result.operation` substituido por `result.tasks_total_count`
+      (correcao empirica, mesmo padrao de `record_skill.ts`)
+- [x] 3.8.5 Testes `node:test`: happy path, `NO_OPEN_WAVE`,
+      `WAVE_ID_NOT_FOUND` (novo codigo), wave_id existente (prossegue),
+      `TESTS_PASSED_EXCEEDS_RUN` (schema + defesa em profundidade),
+      touched_files inseguro (absoluto/traversal) — 15 casos em
+      `test/record_task.test.ts`
 
-### 3.9 Tool `register_human_block` `[A]` {auto}
+### 3.9 Tool `register_human_block` `[A]` {auto} — CONCLUIDO
 
 Ref: contracts/mcp-tools.md §Tool: register_human_block
 
-- [ ] 3.9.1 Implementar `mcp/state-server/src/tools/register_human_block.ts`
+- [x] 3.9.1 Implementar `mcp/state-server/src/tools/register_human_block.ts`
       delegando a `bloqueios.sh register`
-- [ ] 3.9.2 `inputSchema` + mapeamento de campos em `exec.ts`
-- [ ] 3.9.3 Implementar `### Errors` do contrato
-- [ ] 3.9.4 Testes `node:test`: happy path, campos obrigatorios ausentes
+- [x] 3.9.2 `inputSchema` + mapeamento inline (ver nota 3.6.3). Correcao
+      empirica (Principio VI): `question` exige >= 20 chars no helper real
+      [VERIFICADO: `bloqueios.sh:155-158`], nao "min 1" como o contrato
+      [PROPOSTA] original dizia — corrigido no schema e no contrato
+- [x] 3.9.3 Implementar `### Errors` do contrato — `DECISION_NOT_FOUND`
+      (deteccao por substring no stderr, sem envelope DIAG — nao
+      alcancavel via `_diag.sh` neste helper)
+- [x] 3.9.4 Testes `node:test`: happy path (com `execution_status`
+      verificado), campos obrigatorios ausentes/curtos, SESSION_MISMATCH,
+      DECISION_NOT_FOUND — 7 casos em `test/register_human_block.test.ts`
+
+### 3.11 Tool `get_status` (read-only) `[A]` {auto} — CONCLUIDO
+
+> Task nova, fora do backlog original de FASE 3: escopo aprovado pelo
+> operador via block-004/dec-064 (task 3.1) DEPOIS de `tasks.md` ter sido
+> gerado por `create-tasks` — nao existia FR/tarefa previa para esta tool.
+> Registrada aqui para auditabilidade (Principio I: todo trabalho executado
+> tem uma task rastreavel).
+
+Ref: contracts/mcp-tools.md §Tool: get_status; dec-064
+
+- [x] 3.11.1 Implementar `mcp/state-server/src/tools/get_status.ts`:
+      compoe 5 leituras READ-ONLY (`state-rw.sh get` x2, `state-ondas.sh
+      wave-status`/`current-id`, `bloqueios.sh count --pending-only`)
+- [x] 3.11.2 `inputSchema` (so `session_id`) + documentar em
+      `contracts/mcp-tools.md` (nova secao "Tool: get_status" + ajuste de
+      §Nao-tools removendo a linha promovida)
+- [x] 3.11.3 Implementar `### Errors` — `HELPER_FAILED` unico (qualquer
+      leitura falhar rejeita o todo; nunca fabrica campo)
+- [x] 3.11.4 Testes `node:test`: happy path (5 leituras compostas),
+      SESSION_MISMATCH, falha de uma leitura — 4 casos em
+      `test/get_status.test.ts`
+- [x] 3.11.5 Registrar em `src/index.ts` (`SERVER_VERSION` 0.1.0 ->
+      0.2.0, bump MINOR — mudanca aditiva, `contracts/mcp-tools.md`
+      §Versionamento de contrato)
 
 ### 3.10 Mapper `exec.ts` completo + rejeicoes tipadas cross-tool `[A]` {auto}
+
+> **Parcialmente coberto nesta onda, NAO concluido**: `runtime/identifiers.ts`
+> (criado na task 3.6) ja consolida os padroes de allowlist (SEC-M2,
+> `IDENTIFIER_PATTERN`/`DECISION_ID_PATTERN`/`WAVE_ID_PATTERN`/
+> `BLOCK_ID_PATTERN`/`isSafeRelativePath`) reutilizados por todas as tools
+> de F3 — mas a tabela de mapeamento CAMPO->FLAG e o tipo `McpToolError`
+> comum permanecem inline por tool (mesmo padrao de `record_skill.ts`),
+> nao consolidados em `exec.ts`. Fica para uma onda futura.
 
 Ref: plan.md §Convencoes de Borda "Mapper layer (tool <-> helper)"
 
