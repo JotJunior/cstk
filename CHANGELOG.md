@@ -5,6 +5,50 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.2.0] - 2026-08-02
+
+Fecha as quatro pendências registradas no review-task da `state-mcp-server`
+(v6.1.0): consuma a coordenação cross-feature do token de capacidade nos
+commands pai, implementa o teto de chamadas SEC-L1 no servidor MCP e corrige
+dois bugs de campo (finalize do atomic-commit e locale no otel-usage).
+
+### Added
+
+- **Injeção do token de capacidade no spawn (dec-043 consumada, SEC-H3).**
+  Os 4 commands 00c (`/agente-00c`, `/feature-00c` e resumes) leem
+  `<state-dir>/mcp-server.json` após `cstk mcp start`/`status --live` e,
+  quando `mode=docker`, injetam o `session_id` no contexto do spawn do
+  orquestrador com a instrução de preferir as tools `mcp__cstk-state__*`
+  apresentando o token em cada chamada. Token vazio/`bash-fallback` ⇒
+  prompt sem menção a MCP (zero regressão, SC-004); o token nunca é ecoado
+  em stdout/logs. Cobertura: +6 cenários em
+  `tests/test_command-spawn-mcp-lifecycle.sh`.
+- **Teto de chamadas por sessão no servidor MCP (SEC-L1/LLM10, server
+  0.4.0).** Contador único por sessão/processo compartilhado pelas 7 tools;
+  exceder rejeita com o novo código enumerado `TOOL_CALL_LIMIT_EXCEEDED`
+  (o servidor permanece de pé — o cliente comuta para Bash). Default 2000;
+  override via env `MCP_MAX_TOOL_CALLS` (allowlist: inteiro positivo;
+  inválido ⇒ default, nunca desabilitado), com passthrough no `docker run`
+  (`cli/lib/mcp-docker.sh`). Cobertura: `mcp/state-server/test/call-limit.test.ts`
+  (+3, 113 no total) e +2 cenários em `tests/cstk/test_mcp-docker.sh`.
+  Contrato atualizado em `contracts/mcp-tools.md`.
+
+### Fixed
+
+- **`commit-mode.sh finalize` consertado nas duas pontas (sug-007/sug-008,
+  regressões de campo da execução state-mcp-server).** (1) Sem
+  `--title`/`--body`, o `gh pr create` não-interativo falhava e o PR nunca
+  era criado — agora usa `--fill` como default. (2) Com PR OPEN
+  pré-existente, o finalize retornava `pr-exists` SEM empurrar a branch,
+  deixando commits locais fora do PR — agora o push acontece antes
+  (só PR MERGED dispensa push). +2 cenários com remote bare real em
+  `tests/test_commit-mode.sh`.
+- **`otel-usage.sh` pina `LC_ALL=C`.** O script parseia e emite números
+  (awk float) — sob `LANG=pt_BR.UTF-8` o separador decimal vira vírgula e
+  a agregação quebra (2 cenários de `test_otel-usage.sh` falhavam no shell
+  do operador). O pin protege produção (hooks rodando no locale do
+  operador), não apenas os testes.
+
 ## [6.1.0] - 2026-08-02
 
 Servidor MCP de estado (`cstk mcp`) — 3º pilar do estudo da v6: as primitivas
@@ -4703,6 +4747,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.2.0]: https://github.com/JotJunior/cstk/releases/tag/v6.2.0
 [6.1.0]: https://github.com/JotJunior/cstk/releases/tag/v6.1.0
 [6.0.0]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0
 [6.0.0-alpha.2]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.2
