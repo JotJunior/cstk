@@ -61,6 +61,25 @@ automático. Feature executada de ponta a ponta pela pipeline `/feature-00c`
 - **`CLAUDE.md`/`SKILL.md` do runtime** documentam a camada `cstk mcp` e o
   contrato de queda mid-onda (erro de transporte ⇒ 0 retries + 1 confirmação
   via `status --live` ⇒ comutação para Bash no resto da onda).
+- **`test_serve-docker.sh` alinhado à leitura ratificada do carve-out
+  docker** (dec-074): confinamento por par (dependência, feature) —
+  `serve-docker.sh` e `mcp-docker.sh` são os arquivos confinados; novo check
+  de invocação FUNCIONAL de docker cobre todo `cli/` fora deles.
+
+### Fixed
+
+- **Hermeticidade da suite (paridade local↔CI).** `tests/run.sh` passa a
+  executar cada test file com `HOME` sandbox vazio e canonicalizado — a
+  config global do operador (`~/.claude/cstk/config`, ex.:
+  `state_backend=sqlite`) vazava para os cenários e produzia 191 FAILs
+  falsos locais com CI verde. Escape hatch de depuração:
+  `CSTK_TESTS_REAL_HOME=1`.
+- **`_path_without_docker` por espelho de diretório.** Os cenários "docker
+  ausente" (`test_mcp.sh`, `test_orchestrator-mcp-fallback.sh`) removiam o
+  diretório inteiro que contém `docker` — no CI Ubuntu isso é `/usr/bin` e
+  arrancava `sed`/`jq`/`awk` do SUT (7 FAILs no primeiro run do release
+  v6.1.0). Agora o dir é substituído por espelho com symlinks a tudo exceto
+  `docker` — `command -v docker` falha de verdade em qualquer host.
 
 ## [6.0.0] - 2026-08-01
 

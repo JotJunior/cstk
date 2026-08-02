@@ -76,27 +76,45 @@ _isolated_sh_dir() {
   printf '%s' "$_ish_dir"
 }
 
-# _path_without_docker -> imprime uma copia do PATH corrente removendo
-# APENAS o(s) diretorio(s) que de fato contem um binario `docker`
-# executavel — nunca um PATH hardcoded/minimo (CLAUDE.md "PATH-stub nao
-# esconde binario de /usr/bin": um PATH artificial pode nao refletir onde
-# o SUT (aqui, o proprio binario `cstk`, que precisa de sed/jq/etc.)
-# realmente busca seus utilitarios; passa local e quebra no CI). Deriva
-# dinamicamente de $PATH — funciona independente de onde o `docker` do
-# host esteja instalado.
+# _path_without_docker -> imprime uma copia do PATH corrente em que cada
+# diretorio que contem um `docker` executavel e SUBSTITUIDO por um espelho
+# (symlinks a todo o conteudo EXCETO `docker`). A versao anterior REMOVIA o
+# diretorio inteiro — no CI Ubuntu docker mora em /usr/bin, e remover o dir
+# arrancava junto sed/jq/awk do SUT: os cenarios "docker ausente" passavam
+# local (macOS, docker em dir dedicado) e quebravam no CI com outra falha
+# que nao docker-absent (variante nova da armadilha CLAUDE.md "PATH-stub
+# nao esconde binario de /usr/bin", caso real: release v6.1.0 run
+# 30751019774). O espelho preserva todos os utilitarios e faz
+# `command -v docker` falhar de verdade em qualquer host.
 _path_without_docker() {
   _pwd_out=""
+  _pwd_mirrors="$TMPDIR_TEST/path-no-docker"
+  _pwd_n=0
   _pwd_ifs_save=$IFS
   IFS=:
   for _pwd_dir in $PATH; do
     IFS=$_pwd_ifs_save
     [ -n "$_pwd_dir" ] || continue
-    [ -x "$_pwd_dir/docker" ] && continue
+    if [ -x "$_pwd_dir/docker" ]; then
+      _pwd_n=$((_pwd_n + 1))
+      _pwd_m="$_pwd_mirrors/$_pwd_n"
+      if [ ! -d "$_pwd_m" ]; then
+        mkdir -p "$_pwd_m"
+        for _pwd_f in "$_pwd_dir"/*; do
+          [ -e "$_pwd_f" ] || continue
+          _pwd_b=${_pwd_f##*/}
+          [ "$_pwd_b" = "docker" ] && continue
+          ln -s "$_pwd_f" "$_pwd_m/$_pwd_b" 2>/dev/null || :
+        done
+      fi
+      _pwd_dir="$_pwd_m"
+    fi
     if [ -z "$_pwd_out" ]; then
       _pwd_out="$_pwd_dir"
     else
       _pwd_out="$_pwd_out:$_pwd_dir"
     fi
+    IFS=:
   done
   IFS=$_pwd_ifs_save
   printf '%s' "$_pwd_out"
