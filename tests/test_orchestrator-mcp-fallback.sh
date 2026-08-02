@@ -123,22 +123,41 @@ scenario_resume_feat_mcp_stop_best_effort() {
 
 # ---------- 6.3.2: prova funcional (SC-004) ----------
 
-# _path_without_docker -> copia do PATH real removendo so o(s) dir(s) com
-# `docker` executavel (derivado dinamicamente — CLAUDE.md "PATH-stub nao
-# esconde binario de /usr/bin"; mesmo padrao de tests/cstk/test_mcp.sh).
+# _path_without_docker -> copia do PATH real em que cada dir com `docker`
+# executavel e SUBSTITUIDO por um espelho (symlinks a tudo EXCETO docker) —
+# remover o dir inteiro arrancava sed/jq/awk no CI Ubuntu (/usr/bin);
+# mesmo padrao e racional de tests/cstk/test_mcp.sh (caso real: release
+# v6.1.0 run 30751019774, variante da armadilha CLAUDE.md "PATH-stub nao
+# esconde binario de /usr/bin").
 _path_without_docker() {
   _pwd_out=""
+  _pwd_mirrors="$TMPDIR_TEST/path-no-docker"
+  _pwd_n=0
   _pwd_ifs_save=$IFS
   IFS=:
   for _pwd_dir in $PATH; do
     IFS=$_pwd_ifs_save
     [ -n "$_pwd_dir" ] || continue
-    [ -x "$_pwd_dir/docker" ] && continue
+    if [ -x "$_pwd_dir/docker" ]; then
+      _pwd_n=$((_pwd_n + 1))
+      _pwd_m="$_pwd_mirrors/$_pwd_n"
+      if [ ! -d "$_pwd_m" ]; then
+        mkdir -p "$_pwd_m"
+        for _pwd_f in "$_pwd_dir"/*; do
+          [ -e "$_pwd_f" ] || continue
+          _pwd_b=${_pwd_f##*/}
+          [ "$_pwd_b" = "docker" ] && continue
+          ln -s "$_pwd_f" "$_pwd_m/$_pwd_b" 2>/dev/null || :
+        done
+      fi
+      _pwd_dir="$_pwd_m"
+    fi
     if [ -z "$_pwd_out" ]; then
       _pwd_out="$_pwd_dir"
     else
       _pwd_out="$_pwd_out:$_pwd_dir"
     fi
+    IFS=:
   done
   IFS=$_pwd_ifs_save
   printf '%s' "$_pwd_out"

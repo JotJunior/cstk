@@ -123,6 +123,15 @@ export TESTS_ROOT REPO_ROOT
 # Imprime caminho absoluto de cada test_*.sh, filtrado por PATTERN (substring
 # sobre o path) se fornecido. Cobre tests/ (toplevel) e tests/cstk/ (FASE 9.3).
 # Ordena para determinismo.
+# Limpeza do loop de execucao: tmpfile de captura + sandbox HOME (este
+# ultimo SOMENTE quando criado por nos — nunca remove o HOME real).
+_rw_cleanup() {
+  rm -f "${_TMPOUT:-}" 2>/dev/null || :
+  if [ -n "${_SANDBOX_HOME:-}" ] && [ "$_SANDBOX_HOME" != "${HOME:-}" ]; then
+    rm -rf "$_SANDBOX_HOME" 2>/dev/null || :
+  fi
+}
+
 _find_test_files() {
   _filter="${1:-}"
   _all=$(
@@ -595,8 +604,33 @@ mode_run() {
     printf 'run.sh: mktemp indisponivel\n' >&2
     return 2
   }
-  # Limpeza por trap cobre ctrl+c / term.
-  trap 'rm -f "$_TMPOUT"' EXIT INT TERM
+
+  # Hermeticidade / CI-parity: cada test file roda com HOME sandbox VAZIO —
+  # a config global do operador (ex.: ~/.claude/cstk/config com
+  # state_backend=sqlite) nao pode vazar para os cenarios. Caso real
+  # (2026-08-02): com a config sqlite presente, `state-rw.sh init` cria
+  # state.db em vez de state.json e 191 cenarios pre-existentes falham
+  # localmente enquanto o CI (HOME limpo) fica verde. O sandbox torna
+  # local == CI por construcao. Escape hatch para depurar interacao com o
+  # HOME real: CSTK_TESTS_REAL_HOME=1.
+  if [ "${CSTK_TESTS_REAL_HOME:-0}" = "1" ]; then
+    _SANDBOX_HOME="$HOME"
+  else
+    _SANDBOX_HOME=$(mktemp -d 2>/dev/null) || {
+      printf 'run.sh: mktemp -d indisponivel (sandbox HOME)\n' >&2
+      return 2
+    }
+    # Canonicaliza (pwd -P): no macOS o mktemp devolve /var/folders/... que
+    # e symlink de /private/var/... — sem isso, cenarios que comparam paths
+    # contra "$HOME" resolvido falham por divergencia literal-vs-fisico.
+    _SANDBOX_HOME=$(cd "$_SANDBOX_HOME" && pwd -P) || {
+      printf 'run.sh: falha ao canonicalizar sandbox HOME\n' >&2
+      return 2
+    }
+  fi
+
+  # Limpeza por trap cobre ctrl+c / term (sandbox so e removido se criado).
+  trap '_rw_cleanup' EXIT INT TERM
 
   _OLD_IFS="$IFS"
   IFS='
@@ -608,7 +642,7 @@ mode_run() {
 
     # Executa test em subshell, capturando stdout+stderr num tmpfile.
     # Nao abortamos se test falha (por design — _e_ o que estamos medindo).
-    sh "$_test" > "$_TMPOUT" 2>&1 || :
+    HOME="$_SANDBOX_HOME" sh "$_test" > "$_TMPOUT" 2>&1 || :
     # Reemite o output integral para o usuario (preserva TAP + diagnostico).
     cat "$_TMPOUT"
 
