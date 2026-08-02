@@ -201,9 +201,27 @@ cstk mcp status --state-dir <SD> --live >/dev/null 2>&1 || :
 
 Se a sonda reportar `status=unavailable` (container caiu durante a
 pausa), nenhuma acao adicional AQUI — o proximo spawn segue via caminho
-Bash de hoje (o roteamento de tools MCP por token depende de 1.2,
-cross-feature). Esta task cobre so a verificacao de saude, nao a
-comutacao mid-onda (protocolo da task 5.5).
+Bash. Esta etapa cobre so a verificacao de saude, nao a comutacao
+mid-onda (protocolo da task 5.5).
+
+**Injecao do token de capacidade (dec-043 / SEC-H3)**: apos a sonda, leia
+o descritor e injete o token no contexto do spawn (mesmo protocolo do
+/agente-00c inicial):
+
+```bash
+_mcp_mode=$(jq -r '.mode // "-"' "<SD>/mcp-server.json" 2>/dev/null) || _mcp_mode="-"
+_mcp_token=""
+if [ "$_mcp_mode" = "docker" ]; then
+  _mcp_token=$(jq -r '.session_id // ""' "<SD>/mcp-server.json" 2>/dev/null) || _mcp_token=""
+fi
+```
+
+- Token NAO-vazio E sonda saudavel ⇒ linha no prompt do orquestrador:
+  `MCP: servidor de estado ativo; session_id=<token>. Prefira as tools
+  mcp__cstk-state__* apresentando ESTE session_id; em erro de transporte,
+  contrato de queda mid-onda e comutacao para Bash.`
+- Token vazio ou sonda unavailable ⇒ NAO mencione MCP no prompt (caminho
+  Bash, zero regressao). Token NUNCA ecoado em stdout/logs.
 
 ### 6. Spawnar agente-orquestrador (continuacao da pipeline)
 

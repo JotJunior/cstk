@@ -126,16 +126,51 @@ scenario_resume_feat_nao_para_em_aguardando_humano() {
   assert_exit 0 grep -Eq 'aguardando_humano.*NAO e terminal|NAO e terminal' "$CMD_RES_FEAT" || return 1
 }
 
-# ==== 6.2.4: token de capacidade explicitamente adiado (fora do escopo) ====
+# ==== dec-043 (consumada): injecao do token de capacidade no spawn ====
+# A coordenacao cross-feature da task 1.2 foi CONSUMADA pos-v6.1.0: os 4
+# commands leem o descritor mcp-server.json e injetam o session_id no
+# contexto do spawn do orquestrador (SEC-H3: capacidade, nunca precedencia).
 
-scenario_init_agente_documenta_token_fora_de_escopo() {
+scenario_init_agente_injeta_token_no_spawn() {
   assert_exit 0 grep -Eiq 'token de capacidade' "$CMD_INIT_AGENTE" || return 1
-  assert_exit 0 grep -Eiq 'fora de escopo|cross-feature' "$CMD_INIT_AGENTE" || return 1
+  assert_exit 0 grep -Eq 'mcp-server\.json' "$CMD_INIT_AGENTE" || return 1
+  assert_exit 0 grep -Eq '\.session_id' "$CMD_INIT_AGENTE" || return 1
+  assert_exit 0 grep -Eq 'mcp__cstk-state__' "$CMD_INIT_AGENTE" || return 1
 }
 
-scenario_init_feat_documenta_token_fora_de_escopo() {
+scenario_init_feat_injeta_token_no_spawn() {
   assert_exit 0 grep -Eiq 'token de capacidade' "$CMD_INIT_FEAT" || return 1
-  assert_exit 0 grep -Eiq 'fora de escopo|cross-feature' "$CMD_INIT_FEAT" || return 1
+  assert_exit 0 grep -Eq 'mcp-server\.json' "$CMD_INIT_FEAT" || return 1
+  assert_exit 0 grep -Eq '\.session_id' "$CMD_INIT_FEAT" || return 1
+  assert_exit 0 grep -Eq 'mcp__cstk-state__' "$CMD_INIT_FEAT" || return 1
+}
+
+scenario_resume_agente_injeta_token_no_spawn() {
+  assert_exit 0 grep -Eq 'mcp-server\.json' "$CMD_RES_AGENTE" || return 1
+  assert_exit 0 grep -Eq '\.session_id' "$CMD_RES_AGENTE" || return 1
+  assert_exit 0 grep -Eq 'mcp__cstk-state__' "$CMD_RES_AGENTE" || return 1
+}
+
+scenario_resume_feat_injeta_token_no_spawn() {
+  assert_exit 0 grep -Eq 'mcp-server\.json' "$CMD_RES_FEAT" || return 1
+  assert_exit 0 grep -Eq '\.session_id' "$CMD_RES_FEAT" || return 1
+  assert_exit 0 grep -Eq 'mcp__cstk-state__' "$CMD_RES_FEAT" || return 1
+}
+
+scenario_token_nunca_ecoado_em_logs() {
+  # Os 4 arquivos declaram explicitamente que o token nao vai a stdout/logs.
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    grep -Eiq 'token NUNCA e? ?ecoado' "$_f" \
+      || { _fail "declaracao de nao-eco do token ausente" "$_f"; return 1; }
+  done
+}
+
+scenario_token_fallback_sem_mcp_no_prompt() {
+  # Token vazio => prompt sem mencao a MCP (zero regressao, SC-004).
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    grep -Eiq 'NAO mencione MCP' "$_f" \
+      || { _fail "instrucao de fallback sem-MCP ausente" "$_f"; return 1; }
+  done
 }
 
 # ==== Best-effort: chamadas MCP nunca abortam a pipeline (FR-007/FR-012) ====
