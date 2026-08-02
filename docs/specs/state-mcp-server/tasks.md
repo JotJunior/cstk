@@ -665,41 +665,61 @@ Ref: quickstart.md Scenario 5; plan.md Technical Context "Storage"
 
 ## FASE 5 - Docker e Ciclo de Vida
 
-### 5.1 Decisao humana: leitura da condicao (b) do carve-out 1.1.0 `[C]` {humano}
+### 5.1 Decisao humana: leitura da condicao (b) do carve-out 1.1.0 `[C]` {humano} — CONCLUIDO
 
 Ref: checklists/operational.md CHK073; plan.md §Complexity Tracking linha
 2; §Re-check de Constitution
 
-- [ ] 5.1.1 Apresentar ao operador as duas leituras possiveis da condicao
+RESULTADO (dec-074, resposta do operador a block-005, onda 14):
+`leitura-permissiva-por-feature-sem-amendment` — condicao (b) e por PAR
+(dependencia, feature); mencoes em guards/comentarios nao contam como
+referenciar a dep; `mcp-docker.sh` pode ser criado SEM amendment. 5.1.3
+(amendment) nao se materializa (leitura escolhida foi (a), nao (b)).
+Nota de rastreabilidade tambem registrada em plan.md §Complexity Tracking.
+
+- [x] 5.1.1 Apresentar ao operador as duas leituras possiveis da condicao
       "um unico arquivo identificavel" do carve-out 1.1.0 para a dep
       `docker`: (a) um arquivo **por feature** (precedente: `cstk serve`
       -> `serve-docker.sh`; esta feature -> `mcp-docker.sh`), ou (b) um
       arquivo **por dependencia** no repo inteiro (exigiria consolidar
-      `serve-docker.sh` + `mcp-docker.sh`)
-- [ ] 5.1.2 Registrar Decisao com a leitura confirmada
-- [ ] 5.1.3 **Se a leitura for (b)**: abrir amendment MINOR a
+      `serve-docker.sh` + `mcp-docker.sh`) — feito em block-005 (onda 14)
+- [x] 5.1.2 Registrar Decisao com a leitura confirmada — dec-074
+      (`leitura-permissiva-por-feature-sem-amendment`)
+- [x] 5.1.3 **Se a leitura for (b)**: abrir amendment MINOR a
       constitution/carve-out ANTES de prosseguir para 5.2 — nao ha
       opt-out tacito de MUST (Decision Framework item 4); esta subtarefa
-      so se materializa nesse cenario
-- [ ] 5.1.4 **Gate**: 5.2 (mcp-docker.sh) so inicia apos esta decisao
-      estar registrada
+      so se materializa nesse cenario — N/A: operador adotou a leitura
+      (a), amendment nao se aplica (dec-074)
+- [x] 5.1.4 **Gate**: 5.2 (mcp-docker.sh) so inicia apos esta decisao
+      estar registrada — liberado por dec-074
 
-### 5.2 `mcp-docker.sh`: uso de Docker confinado `[A]` {auto}
+### 5.2 `mcp-docker.sh`: uso de Docker confinado `[A]` {auto} — CONCLUIDO
 
 Ref: plan.md §Project Structure; §Analise do Principio II; SEC-H2
 
-- [ ] 5.2.1 Criar `cli/lib/mcp-docker.sh` — TODO uso de `docker` desta
+RESULTADO: `cli/lib/mcp-docker.sh` criado e validado empiricamente com
+Docker real (daemon local, `--network=host`): build da imagem
+(`node ci --ignore-scripts` + `npm run build`, sem toolchain nativo — deps
+sao JS puro) e `docker run -d -i` com as 3 montagens contratadas
+confirmadas em runtime (`/data/state` rw, `/opt/cstk/scripts` ro —
+tentativa de escrita rejeitada pelo kernel, `/data/enforcement-log.jsonl`
+rw com `chmod 600`), rootfs `--read-only` confirmado (escrita fora de
+`/tmp` rejeitada), `/tmp` gravavel, usuario nao-root (`node`), zero porta
+publicada. 25/25 cenarios verdes em `tests/cstk/test_mcp-docker.sh`
+(`--check-coverage` verde).
+
+- [x] 5.2.1 Criar `cli/lib/mcp-docker.sh` — TODO uso de `docker` desta
       feature fica confinado neste arquivo (condicao (b) do carve-out,
       conforme decisao de 5.1)
-- [ ] 5.2.2 Implementar montagens do container conforme
+- [x] 5.2.2 Implementar montagens do container conforme
       `contracts/mcp-session-lifecycle.md` §Montagens: bind-mount do
       **arquivo** `enforcement-log.jsonl`, nunca do diretorio `.claude`
-- [ ] 5.2.3 Implementar teste estatico proibindo mount de `.claude`,
+- [x] 5.2.3 Implementar teste estatico proibindo mount de `.claude`,
       `$HOME`, `/`, `docker.sock` (SEC-H2) — falha o build/teste se
       algum desses paths aparecer em qualquer chamada `docker run`/`-v`
-- [ ] 5.2.4 Aplicar `npm ci --ignore-scripts` (nunca `npm install`) no
+- [x] 5.2.4 Aplicar `npm ci --ignore-scripts` (nunca `npm install`) no
       Dockerfile de build da imagem (SEC-M4); base pinada por digest
-- [ ] 5.2.5 Criar `tests/cstk/test_mcp-docker.sh` cobrindo as assercoes
+- [x] 5.2.5 Criar `tests/cstk/test_mcp-docker.sh` cobrindo as assercoes
       estaticas de flags proibidas (`--check-coverage` exige)
 
 ### 5.3 `cstk mcp start`/`stop` + health check `[A]` {auto}
