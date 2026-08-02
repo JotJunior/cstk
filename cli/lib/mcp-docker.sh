@@ -345,6 +345,7 @@ _mcp_docker_run() {
         -e "CSTK_MCP_ENFORCEMENT_LOG_PATH=${_MD_ENFORCEMENT_LOG_CONTAINER_PATH}" \
         -e "CSTK_MCP_STATE_DIR=${_MD_STATE_CONTAINER_DIR}" \
         -e "MCP_SESSION_TOKEN=${_mdr_token}" \
+        ${MCP_MAX_TOOL_CALLS:+-e "MCP_MAX_TOOL_CALLS=${MCP_MAX_TOOL_CALLS}"} \
         --cap-drop ALL \
         --security-opt no-new-privileges \
         --read-only \

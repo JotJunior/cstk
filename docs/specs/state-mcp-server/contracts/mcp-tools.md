@@ -91,6 +91,7 @@ isentos de (b) — a mensagem e do Zod, nao do helper.
 | `SESSION_MISMATCH` | `session_id` nao corresponde ao token de capacidade da sessao (FR-008; ver `mcp-session-lifecycle.md` §SEC-H3) |
 | `EXECUTION_TERMINAL` | `execution.status` ∈ `abortada\|concluida` — nao se muta execucao terminal |
 | `HELPER_FAILED` | Helper POSIX retornou != 0; `reason` carrega o stderr do helper (scrubbed e limitado — ver SEC-M1) |
+| `TOOL_CALL_LIMIT_EXCEEDED` | Teto de chamadas da sessao atingido (SEC-L1/LLM10; server >= 0.4.0). Contador UNICO por sessao/processo, compartilhado entre todas as tools (inclusive `get_status`). Default 2000; override via env `MCP_MAX_TOOL_CALLS` no launcher (inteiro positivo; ausente/invalido ⇒ default — o teto nunca e desabilitado). O servidor REJEITA e permanece de pe (nunca encerra); o cliente comuta para o caminho Bash |
 
 ---
 
@@ -465,7 +466,10 @@ avancou de `0.1.0` para `0.2.0` ao registrar as 5 tools novas de F3
 (`record_decision`, `open_wave`, `record_task`, `register_human_block`,
 `get_status`) — bump **MINOR**, nao MAJOR: nenhuma tool/campo existente
 (`record_skill`) foi removido ou redefinido, mudanca puramente aditiva
-conforme a regra abaixo.
+conforme a regra abaixo. `0.4.0` (pos-v6.1.0): teto de chamadas por sessao
+(SEC-L1) — aditivo: novo codigo de erro `TOOL_CALL_LIMIT_EXCEEDED` + env
+`MCP_MAX_TOOL_CALLS`; payloads que ja passavam continuam passando enquanto
+a sessao esta dentro do teto (default folgado: 2000).
 
 - **Mudanca aditiva/retrocompativel** → bump **PATCH** ou **MINOR**:
   - Campo NOVO **opcional** no `inputSchema`, com o handler tratando a
