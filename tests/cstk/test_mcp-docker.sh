@@ -445,6 +445,39 @@ scenario_run_env_cstk_mcp_state_dir_container_mode() {
   esac
 }
 
+# SEC-L1 (pos-v6.1.0): MCP_MAX_TOOL_CALLS do ambiente do operador e
+# repassado ao container QUANDO setado; ausente => nenhum -e extra (o
+# servidor usa o default interno).
+scenario_run_env_max_tool_calls_passthrough() {
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  _setup_run_fixture
+  MCP_MAX_TOOL_CALLS=350
+  export MCP_MAX_TOOL_CALLS
+  _run_mcp_docker_fn _mcp_docker_run "cstk-mcp-state-demo" "cstk-mcp-state:test" \
+    "$_RF_STATE_DIR" "$_RF_SCRIPTS_DIR" "$_RF_LOG_PATH" "$_RF_PROJECT_PATH" "tok3n"
+  unset MCP_MAX_TOOL_CALLS
+  _line=$(_docker_run_line)
+  case "$_line" in
+    *'-e MCP_MAX_TOOL_CALLS=350'*) : ;;
+    *) _fail "run_env_max_tool_calls" "faltou -e MCP_MAX_TOOL_CALLS=350 (SEC-L1): $_line"; return 1 ;;
+  esac
+}
+
+scenario_run_env_max_tool_calls_ausente_sem_flag() {
+  _make_bin_dir
+  _stub_docker "$_STUB_BIN"
+  _setup_run_fixture
+  unset MCP_MAX_TOOL_CALLS 2>/dev/null || :
+  _run_mcp_docker_fn _mcp_docker_run "cstk-mcp-state-demo" "cstk-mcp-state:test" \
+    "$_RF_STATE_DIR" "$_RF_SCRIPTS_DIR" "$_RF_LOG_PATH" "$_RF_PROJECT_PATH" "tok3n"
+  _line=$(_docker_run_line)
+  case "$_line" in
+    *'MCP_MAX_TOOL_CALLS'*) _fail "run_env_max_tool_calls_ausente" "flag nao deveria aparecer sem env: $_line"; return 1 ;;
+    *) : ;;
+  esac
+}
+
 # 5.2.3 — assercao estatica obrigatoria: nenhuma linha `docker run` monta
 # .claude como DIRETORIO, $HOME, /, ou docker.sock (SEC-H2). O fixture
 # acima ja coloca o enforcement-log SOB .claude/ deliberadamente -- esta

@@ -715,13 +715,27 @@ _cm_cmd_finalize() {
     [ -n "$_body" ]  && _cstk_args="$_cstk_args --body $_body"
 
     # Checar idempotencia: PR ja existe?
+    # sug-008: com PR OPEN pre-existente, o push AINDA e obrigatorio —
+    # retornar pr-exists sem empurrar deixava commits locais fora do PR
+    # (caso real: state-mcp-server, push pulado com PR #69 aberto).
     _ex_json=$(gh pr view "$_curr_branch" --json url,state 2>/dev/null) || _ex_json=""
     if [ -n "$_ex_json" ]; then
       case "$_ex_json" in
-        *'"state":"OPEN"'*|*'"state":"MERGED"'*)
+        *'"state":"OPEN"'*)
+          _ex_url=$(printf '%s' "$_ex_json" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
+          if git -C "$_pap" push -u origin "$_curr_branch" 2>/dev/null; then
+            _cm_out "finalize: PR ja existe (pr-exists), branch empurrada: $_ex_url"
+            _cm_record_result "pr-exists" "$_curr_branch" "$_ex_url" "PR pre-existente reusado; push executado"
+          else
+            _cm_err "finalize: PR existe mas 'git push' falhou — commits locais fora do PR"
+            _cm_record_result "error" "$_curr_branch" "$_ex_url" "PR pre-existente; git push falhou"
+          fi
+          return 0
+          ;;
+        *'"state":"MERGED"'*)
           _ex_url=$(printf '%s' "$_ex_json" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
           _cm_out "finalize: PR ja existe (pr-exists): $_ex_url"
-          _cm_record_result "pr-exists" "$_curr_branch" "$_ex_url" "PR pre-existente reusado"
+          _cm_record_result "pr-exists" "$_curr_branch" "$_ex_url" "PR pre-existente (merged)"
           return 0
           ;;
       esac
@@ -747,18 +761,17 @@ _cm_cmd_finalize() {
   fi
 
   # Passo 7: fallback — git push + gh pr create diretamente
-  # Idempotencia: checar PR existente
+  # sug-008: push ANTES do check de PR existente — com PR OPEN, o push
+  # continua obrigatorio (atualiza o PR); so MERGED dispensa push.
   _ex_json=$(gh pr view "$_curr_branch" --json url,state 2>/dev/null) || _ex_json=""
-  if [ -n "$_ex_json" ]; then
-    case "$_ex_json" in
-      *'"state":"OPEN"'*|*'"state":"MERGED"'*)
-        _ex_url=$(printf '%s' "$_ex_json" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
-        _cm_out "finalize: PR ja existe (pr-exists): $_ex_url"
-        _cm_record_result "pr-exists" "$_curr_branch" "$_ex_url" "PR pre-existente reusado"
-        return 0
-        ;;
-    esac
-  fi
+  case "$_ex_json" in
+    *'"state":"MERGED"'*)
+      _ex_url=$(printf '%s' "$_ex_json" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
+      _cm_out "finalize: PR ja existe (pr-exists): $_ex_url"
+      _cm_record_result "pr-exists" "$_curr_branch" "$_ex_url" "PR pre-existente (merged)"
+      return 0
+      ;;
+  esac
 
   # Push
   if ! git -C "$_pap" push -u origin "$_curr_branch" 2>/dev/null; then
@@ -768,10 +781,27 @@ _cm_cmd_finalize() {
     return 0
   fi
 
+  # PR OPEN pre-existente: push ja feito acima — reusar.
+  case "$_ex_json" in
+    *'"state":"OPEN"'*)
+      _ex_url=$(printf '%s' "$_ex_json" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
+      _cm_out "finalize: PR ja existe (pr-exists), branch empurrada: $_ex_url"
+      _cm_record_result "pr-exists" "$_curr_branch" "$_ex_url" "PR pre-existente reusado; push executado"
+      return 0
+      ;;
+  esac
+
   # gh pr create
+  # sug-007: sem --title/--body o gh nao-interativo FALHA (era a causa de
+  # "push feito, PR nao criado" — caso real state-mcp-server). Default:
+  # --fill (titulo/corpo derivados dos commits da branch).
   _gh_args="--base $_default --head $_curr_branch"
-  [ -n "$_title" ] && _gh_args="$_gh_args --title $_title"
-  [ -n "$_body" ]  && _gh_args="$_gh_args --body $_body"
+  if [ -n "$_title" ] || [ -n "$_body" ]; then
+    [ -n "$_title" ] && _gh_args="$_gh_args --title $_title"
+    [ -n "$_body" ]  && _gh_args="$_gh_args --body $_body"
+  else
+    _gh_args="$_gh_args --fill"
+  fi
 
   _pr_url=$(eval "cd $_pap && gh pr create $_gh_args" 2>/dev/null) || _pr_url=""
   if [ -z "$_pr_url" ]; then

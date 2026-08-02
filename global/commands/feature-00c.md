@@ -283,12 +283,30 @@ else
 fi
 ```
 
-> **Fora de escopo desta task (6.2.1)**: geracao/injecao do token de capacidade
-> no prompt de spawn do orquestrador (task 1.2, coordenacao
-> cross-feature) e `cstk mcp stop` no encerramento (task 6.2.3, `-resume`
-> em 6.2.2). Este passo apenas garante que, quando Docker estiver
-> disponivel, o container MCP dedicado da execucao ja esteja de pe antes
-> da primeira onda.
+> **Injecao do token de capacidade (dec-043 / SEC-H3)** — consumacao da
+> coordenacao cross-feature da task 1.2. Apos o `start`, leia o descritor
+> e injete o token no CONTEXTO do spawn do orquestrador:
+>
+> ```bash
+> _mcp_mode=$(jq -r '.mode // "-"' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _mcp_mode="-"
+> _mcp_token=""
+> if [ "$_mcp_mode" = "docker" ]; then
+>   _mcp_token=$(jq -r '.session_id // ""' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _mcp_token=""
+> fi
+> ```
+>
+> - `_mcp_token` NAO-vazio ⇒ inclua no prompt do orquestrador a linha:
+>   `MCP: servidor de estado ativo; session_id=<token>. Prefira as tools
+>   mcp__cstk-state__* (open_wave, record_decision, record_skill,
+>   record_task, register_human_block, close_wave, get_status)
+>   apresentando ESTE session_id em cada chamada; em erro de transporte,
+>   contrato de queda mid-onda (0 retries + 1 confirmacao via cstk mcp
+>   status --live) e comutacao para Bash no resto da onda.`
+> - `_mcp_token` vazio (`bash-fallback` / sem descritor) ⇒ NAO mencione MCP
+>   no prompt; o orquestrador segue o caminho Bash (zero regressao, SC-004).
+> - O token NUNCA e ecoado em stdout/stderr/logs do command — vive apenas
+>   no descritor (`chmod 600`) e no prompt do spawn (SEC-H3: roteamento por
+>   capacidade, nunca por precedencia).
 
 ### 4. Selecionar modelo da onda + delegar ao orquestrador via Agent
 

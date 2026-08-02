@@ -111,6 +111,15 @@
 
 set -eu
 
+# Locale pinado: o script parseia e emite numeros (awk float, sort) — sob
+# locale pt_BR o printf de float produz virgula decimal e a comparacao
+# numerica quebra (caso real: 2 cenarios de test_otel-usage falhavam para
+# operadores com LANG=pt_BR.UTF-8; suite CI passa porque roda em C).
+# Pinar aqui protege PRODUCAO (hooks rodando no shell do operador), nao
+# apenas os testes.
+LC_ALL=C
+export LC_ALL
+
 _OU_NAME="otel-usage"
 # Endpoint default do exporter Prometheus do Claude Code. Override via
 # CSTK_OTEL_ENDPOINT para porta customizada (OTEL_EXPORTER_PROMETHEUS_PORT

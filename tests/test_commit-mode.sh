@@ -776,4 +776,124 @@ scenario_5_3_5_roundtrip_git_show_alien_ausente() {
   esac
 }
 
+# ==== sug-008: PR OPEN pre-existente NAO dispensa o push ====
+# Regressao de campo (state-mcp-server): finalize retornava pr-exists sem
+# empurrar, deixando commits locais fora do PR aberto.
+
+scenario_finalize_pr_aberto_ainda_empurra_push() {
+  _gdir="$TMPDIR_TEST/repo-propen"
+  _sd="$TMPDIR_TEST/fin-propen"
+  _init_state "$_sd" true
+  _init_git_repo "$_gdir" "feat/pr-open"
+
+  git -C "$_gdir" branch main 2>/dev/null || :
+  git -C "$_gdir" update-ref refs/remotes/origin/main "$(git -C "$_gdir" rev-parse main)" 2>/dev/null || :
+  git -C "$_gdir" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main 2>/dev/null || :
+
+  # Remote REAL (bare) para o push acontecer de verdade.
+  _bare="$TMPDIR_TEST/origin-propen.git"
+  git init -q --bare "$_bare" 2>/dev/null
+  git -C "$_gdir" remote add origin "$_bare" 2>/dev/null
+
+  printf 'change\n' >> "$_gdir/README.md"
+  git -C "$_gdir" add README.md 2>/dev/null
+  git -C "$_gdir" commit -q -m "feat: change" 2>/dev/null
+  _head_sha=$(git -C "$_gdir" rev-parse HEAD)
+
+  # gh stub: autenticado; pr view responde OPEN; pr create NUNCA deve rodar.
+  _stub="$TMPDIR_TEST/stub-propen"
+  mkdir -p "$_stub"
+  cat > "$_stub/gh" <<GHEOF
+#!/bin/sh
+case "\$1 \$2" in
+  "auth status") exit 0 ;;
+  "pr view")     printf '{"url":"https://example.test/pr/1","state":"OPEN"}\n'; exit 0 ;;
+  "pr create")   printf 'create-nao-deveria-rodar\n' >> "$_stub/pr-create-called"; exit 1 ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$_stub/gh"
+
+  _orig_path="$PATH"
+  PATH="$_stub:$_orig_path"
+  export PATH
+
+  capture "$SCRIPT" finalize --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  _fin_exit=$_CAPTURED_EXIT
+  _fin_out=$_CAPTURED_STDOUT
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_fin_exit" = 0 ] || { _fail "exit esperado 0" "obtido $_fin_exit"; return 1; }
+  printf '%s' "$_fin_out" | grep -q '"status":"pr-exists"' \
+    || { _fail "status esperado pr-exists" "stdout: $_fin_out"; return 1; }
+  # A prova do sug-008: o remoto bare TEM o commit local apos o finalize.
+  _remote_sha=$(git -C "$_bare" rev-parse refs/heads/feat/pr-open 2>/dev/null) || _remote_sha=""
+  [ "$_remote_sha" = "$_head_sha" ] \
+    || { _fail "push nao aconteceu com PR OPEN (sug-008)" "remoto=$_remote_sha esperado=$_head_sha"; return 1; }
+  [ ! -f "$_stub/pr-create-called" ] \
+    || { _fail "pr create nao deveria rodar com PR pre-existente" "foi chamado"; return 1; }
+}
+
+# ==== sug-007: sem --title/--body, pr create usa --fill ====
+# Regressao de campo: gh nao-interativo FALHA sem title/body — finalize
+# empurrava a branch e nunca criava o PR.
+
+scenario_finalize_sem_titulo_usa_fill() {
+  _gdir="$TMPDIR_TEST/repo-fill"
+  _sd="$TMPDIR_TEST/fin-fill"
+  _init_state "$_sd" true
+  _init_git_repo "$_gdir" "feat/fill"
+
+  git -C "$_gdir" branch main 2>/dev/null || :
+  git -C "$_gdir" update-ref refs/remotes/origin/main "$(git -C "$_gdir" rev-parse main)" 2>/dev/null || :
+  git -C "$_gdir" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main 2>/dev/null || :
+
+  _bare="$TMPDIR_TEST/origin-fill.git"
+  git init -q --bare "$_bare" 2>/dev/null
+  git -C "$_gdir" remote add origin "$_bare" 2>/dev/null
+
+  printf 'change\n' >> "$_gdir/README.md"
+  git -C "$_gdir" add README.md 2>/dev/null
+  git -C "$_gdir" commit -q -m "feat: change" 2>/dev/null
+
+  # gh stub: sem PR previo (view falha); pr create grava argv e responde URL.
+  _stub="$TMPDIR_TEST/stub-fill"
+  mkdir -p "$_stub"
+  cat > "$_stub/gh" <<GHEOF
+#!/bin/sh
+case "\$1 \$2" in
+  "auth status") exit 0 ;;
+  "pr view")     exit 1 ;;
+  "pr create")   printf '%s\n' "\$*" > "$_stub/pr-create-args"
+                 printf 'https://example.test/pr/2\n'; exit 0 ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$_stub/gh"
+
+  _orig_path="$PATH"
+  PATH="$_stub:$_orig_path"
+  export PATH
+
+  capture "$SCRIPT" finalize --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  _fin_exit=$_CAPTURED_EXIT
+  _fin_out=$_CAPTURED_STDOUT
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_fin_exit" = 0 ] || { _fail "exit esperado 0" "obtido $_fin_exit"; return 1; }
+  [ -f "$_stub/pr-create-args" ] \
+    || { _fail "gh pr create nao foi invocado (sug-007)" "stdout: $_fin_out"; return 1; }
+  grep -q -- '--fill' "$_stub/pr-create-args" \
+    || { _fail "esperado --fill nos args do pr create" "args: $(cat "$_stub/pr-create-args")"; return 1; }
+  if grep -q -- '--title' "$_stub/pr-create-args"; then
+    _fail "--title nao deveria aparecer sem input do operador" "args: $(cat "$_stub/pr-create-args")"; return 1
+  fi
+  printf '%s' "$_fin_out" | grep -q '"status":"pr-opened"' \
+    || { _fail "status esperado pr-opened" "stdout: $_fin_out"; return 1; }
+}
+
 run_all_scenarios
