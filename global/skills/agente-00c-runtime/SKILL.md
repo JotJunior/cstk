@@ -150,3 +150,29 @@ e version (MAJOR drift = error/exit 1; MINOR/PATCH = warn/exit 0),
 (c) chama `pipeline.sh constitution-conflict` para forward-compat.
 Output JSON estruturado `{ok: bool, findings: [...]}`. Reuso direto do
 runtime do agente-00c (Principio I, sem implementacao paralela).
+
+### Scripts `mcp-session.sh` e `mcp-launch.sh` (feature `state-mcp-server`)
+
+`mcp-session.sh resolve` implementa a resolucao da execucao ativa por TOKEN
+DE CAPACIDADE (SEC-H3): dado um token (`--token`/`--token-file`/env
+`MCP_SESSION_TOKEN`), varre os descritores `mcp-server.json` de
+`.claude/agente-00c-state/` + `.claude/feature-00c-state/*/` (modo
+`--project-path`, tree-walk) ou le direto um unico state-dir (modo
+`--state-dir`, usado DENTRO do container — dec-081). Roteamento de MUTACAO
+e sempre por posse do token, nunca por precedencia de ambiente — divergencia,
+ausencia ou colisao de token e sempre `SESSION_MISMATCH` (exit 3,
+fail-closed), sem fallback para "a execucao ativa mais provavel". Consumido
+pelo servidor MCP de estado (`mcp/state-server/src/session/resolve.ts`) e
+pelo `mcp-launch.sh` (abaixo).
+
+`mcp-launch.sh` e o comando registrado em `.mcp.json` (via `cstk mcp
+install`) que o Claude Code invoca ao conectar ao servidor MCP `cstk-state`:
+resolve a sessao ativa do projeto-alvo (delegando a `mcp-session.sh
+resolve`) e, se `mode=docker`, faz `docker exec -i` attach ao container
+ja rodando (subido por `cstk mcp start`); nunca sobe um container novo.
+Sessao `bash-fallback`, token ausente/invalido, ou Docker indisponivel ⇒
+exit 3 sem tentar `docker exec` (mesmo padrao fail-closed do resolve).
+
+Ambos POSIX puros + `jq`, seguem a mesma convencao `--state-dir` do resto
+do runtime. Detalhes completos: `docs/specs/state-mcp-server/`
+(`contracts/mcp-session-lifecycle.md`, `contracts/mcp-tools.md`).

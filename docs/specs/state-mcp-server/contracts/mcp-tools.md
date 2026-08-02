@@ -1,0 +1,505 @@
+# Contracts: state-mcp-server — Tools MCP
+
+Contrato das 6 tools de mutacao de estado exigidas por FR-001, mais a tool
+`get_status` (read-only, escopo expandido pelo operador — task 3.1,
+dec-064/block-004: a UNICA "nao-tool" original que entrou no MVP).
+
+> **Status deste documento (atualizado na task 3.6-3.9 + get_status):**
+> `record_skill` (F2), `record_decision`, `open_wave`, `record_task` e
+> `register_human_block` (F3) e `get_status` (F3, dec-064) estao
+> **implementadas e testadas** [VERIFICADO: `mcp/state-server/src/tools/*.ts`
+> + `mcp/state-server/test/*.test.ts`, 82/82 green]. `close_wave` (F4,
+> atomicidade com pre-imagem/compensacao) **ainda nao existe** — sua secao
+> abaixo permanece `[PROPOSTA — a validar na implementacao]`. Onde o
+> comportamento REAL do helper divergiu do que este documento propunha
+> originalmente, uma nota "NOTA DE CORRECAO EMPIRICA" foi adicionada tanto
+> aqui quanto no `.ts` correspondente (Principio VI — nao inventar dados;
+> mesmo padrao ja usado por `record_skill.ts` desde a task 2.2).
+
+## Forma geral
+
+[VERIFICADO — docs oficiais do SDK TS]: registro via
+`server.registerTool(name, { description, inputSchema }, handler)`; o SDK
+**valida `inputSchema` antes de invocar o handler**. Isso e o que permite que
+FR-002 seja imposto **no schema**, e nao em codigo do handler.
+
+**Argumento comum a TODAS as tools** (nao repetido em cada tabela):
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `session_id` | string | yes | Deve casar com `<state-dir>/mcp-server.json`; divergencia ⇒ `SESSION_MISMATCH` (FR-008) |
+
+O `state_dir` **NAO** e argumento de tool: e propriedade da sessao, resolvida do
+descritor. Aceitar `state_dir` do chamador permitiria que uma sessao mutasse
+outra execucao — exatamente o que FR-008 proibe.
+
+## Criterio de equivalencia de `reason` (FR-009 / CHK007)
+
+FR-009 exige que a rejeicao de uma tool tenha "motivo acionavel equivalente
+em clareza ao erro hoje produzido pelo script manual" — comparativo que, sem
+um teste de equivalencia definido, e subjetivo (CHK007). Este e o criterio
+**objetivo e verificavel** adotado (task 3.3, resolve CHK007):
+
+Um `reason` cumpre FR-009 SE E SOMENTE SE as tres condicoes abaixo se
+verificam, para CADA linha de `### Errors` de cada tool:
+
+1. **Cobertura de invariante 1:1** — o `Code` corresponde a exatamente uma
+   invariante ja imposta pelo helper POSIX equivalente, nunca uma invariante
+   nova inventada pela tool. Verificavel por citacao `[VERIFICADO:
+   arquivo:linha]` na propria tabela de `### Errors` — convencao ja em uso
+   neste documento (ex.: `NO_OPEN_WAVE` cita o envelope `DIAG` emitido por
+   `state-ondas.sh`/`_diag.sh`).
+2. **Preservacao do dado identificador** — quando o erro do script manual
+   imprime um identificador que localiza o problema (wave id, task id, nome
+   do campo invalido), o `reason` da tool preserva o MESMO identificador,
+   nunca um texto generico quando o helper informou qual recurso falhou.
+   Verificavel no codigo: o handler constroi `reason` concatenando o `Code`
+   com o texto (sanitizado por SEC-M1) efetivamente devolvido pelo helper —
+   padrao `` `${code}: ${diagnostico-ou-stderr-do-helper}` `` — nunca uma
+   string totalmente literal desconectada de `stdout`/`stderr`/diagnostico.
+   Padrao ja em producao: `tools/record_skill.ts`
+   `` `${code}: ${err.diagnostic?.message ?? err.stderr}` ``.
+3. **Estagio correto** — o `stage` (`schema|precondition|delegation`) aponta
+   exatamente onde o script manual teria detectado o mesmo problema: erro de
+   forma do payload (tipo, enum, obrigatoriedade) = `schema` (mensagem do
+   proprio Zod, ja acionavel por construcao do SDK — nao exige citacao de
+   helper); checagem de pre-condicao feita ANTES de delegar para evitar
+   side-effect (ex.: `WAVE_ALREADY_OPEN` verificado via `wave-status` antes
+   do `start`) = `precondition`; falha do proprio helper apos invocado =
+   `delegation`.
+
+**Teste de conformidade** (nao subjetivo — roda por tool): para cada linha de
+`### Errors`, confirmar (a) existe citacao `[VERIFICADO: ...]` na tabela, e
+(b) para codigos de estagio `delegation`, o handler usa o padrao
+`` `${CODE}: ${diagnostico-do-helper}` `` (nunca string literal fixa
+substituindo o diagnostico do helper). Codigos de estagio `schema` sao
+isentos de (b) — a mensagem e do Zod, nao do helper.
+
+**Envelope de resposta** (todas as tools):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcome` | `"accepted"` \| `"rejected"` | |
+| `reason` | string \| null | Motivo acionavel quando `rejected` (FR-009) |
+| `stage` | `"schema"` \| `"precondition"` \| `"delegation"` \| null | Onde parou |
+| `result` | object \| null | Dados da mutacao aceita (ex.: `decision_id`) |
+
+**Erros comuns a todas** (alem dos especificos por tool):
+
+| Code | Quando |
+|------|--------|
+| `SESSION_MISMATCH` | `session_id` nao corresponde ao token de capacidade da sessao (FR-008; ver `mcp-session-lifecycle.md` §SEC-H3) |
+| `EXECUTION_TERMINAL` | `execution.status` ∈ `abortada\|concluida` — nao se muta execucao terminal |
+| `HELPER_FAILED` | Helper POSIX retornou != 0; `reason` carrega o stderr do helper (scrubbed e limitado — ver SEC-M1) |
+
+---
+
+## Controles de seguranca da fronteira Node → POSIX (do gate `owasp-security`)
+
+Todo campo de texto livre destas tools (`context`, `rationale`, `evidence`,
+`question`, `title`, `touched_files`, ...) chega de um LLM que pode ter lido
+conteudo nao-confiavel (arquivos do projeto, saida de ferramenta) — ou seja, e
+**entrada hostil em potencial por injecao indireta** (LLM01/ASI01), nao texto de
+um humano. As regras abaixo sao **MUST** e devem ter assercao estatica no teste.
+
+### SEC-H1 (HIGH) — invocacao por argv, jamais por shell
+
+O handler MUST invocar o helper por **`execFile`/`spawn` com array de argumentos
+e `shell: false`**. E **PROIBIDO**: `exec()`, `execSync()`, `spawn(..., {shell:
+true})`, template string montando linha de comando, e qualquer forma de `eval`.
+
+```
+PROIBIDO:  exec(`state-decisions.sh register --evidencia "${evidence}"`)
+EXIGIDO:   execFile(helperPath, ["register", "--state-dir", sd,
+                                 "--evidencia", evidence], { shell: false })
+```
+
+Sem isso, um `evidence` contendo `"; curl … | sh; #` vira **execucao de comando
+arbitrario dentro do container**, que tem o state-dir montado rw (A05 Injection /
+ASI02 Tool Misuse). O array de argv elimina a classe inteira: o valor nunca e
+interpretado por um shell.
+
+**Assercao estatica obrigatoria** (teste que falha o build): `grep` no fonte do
+servidor nao pode casar `exec(`, `execSync(`, `shell: true` nem crase com
+`.sh`.
+
+### SEC-M2 (MEDIUM) — campos de identificador sao allowlist, nao texto livre
+
+Texto livre e seguro como **valor** de flag (argv o preserva), mas campos que
+viram identificadores MUST ser validados por allowlist no `inputSchema`, para
+nao serem confundidos com flags nem corromper ids:
+
+| Campo | Allowlist |
+|-------|-----------|
+| `task_id` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` [CORRIGIDO na task 2.2: ver nota abaixo] |
+| `decision_id` | `^dec-[0-9]{1,9}$` |
+| `skill` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` [CORRIGIDO na task 2.2: ver nota abaixo] |
+| `wave_id` | `^onda-[0-9]{3,}$` [VERIFICADO na task 3.8: `state-ondas.sh:588` e `_state-ondas-db.sh:182`, ambos `printf 'onda-%03d' N`] |
+| `executed_stages[]` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` [VERIFICADO: `state-ondas.sh:228-235` `_so_is_stage_token`, mesma regra do helper] |
+| `kind`, `outcome`, `termination_reason` | enum fechado (ja especificado) |
+| `touched_files[]` | path **relativo**; rejeitar absoluto, `..` e byte NUL |
+
+Regra transversal: nenhum campo de identificador pode comecar com `-`.
+
+> **Nota de correcao empirica (task 2.2, Principio VI)**: a regra
+> `^[A-Za-z0-9._-]{1,64}$` originalmente proposta neste documento **permite
+> um primeiro caractere `-`**, contradizendo a "Regra transversal" acima.
+> A implementacao de `tools/record_skill.ts` usa a regra realmente aplicada
+> pelo helper a tokens de identificador [VERIFICADO:
+> `state-ondas.sh:228-235`, funcao `_so_is_stage_token`]:
+> `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` (primeiro caractere obrigatoriamente
+> alfanumerico, ate 64 chars no total). `task_id` e `skill` foram
+> atualizados para a mesma regra por consistencia; nenhuma tool de F3 (que
+> ainda nao existe) foi implementada com a regra antiga.
+
+### SEC-M1 (MEDIUM) — saida do helper e DADO, com teto
+
+O `reason` devolvido ao modelo carrega stderr do helper, que pode ecoar conteudo
+influenciado pelo atacante (ex.: um path vindo de `touched_files`). Isso e
+**saida de ferramenta voltando ao contexto do LLM** (LLM05 / injecao indireta).
+MUST: remover caracteres de controle, limitar a **2 KiB**, e nunca reinjetar sem
+o rotulo de dado nao-confiavel.
+
+### SEC-M3 (MEDIUM) — a linha de auditoria e serializada, nunca concatenada
+
+A linha do `enforcement-log.jsonl` MUST ser produzida por um **serializador JSON
+real** (`JSON.stringify`, ou `jq -nc` como faz o hook [VERIFICADO:
+`pretooluse-bash-guard.sh:150-163`]) — **nunca** por `printf`/concatenacao de
+string. Um `"` ou `\n` num campo de texto livre quebraria a linha e permitiria
+**forjar entradas de auditoria** (A09 / ASI09).
+
+Ordem obrigatoria e integral: `scrub` → `truncate` → `serialize`. O truncamento
+MUST ocorrer em **code points**, nao bytes (cortar UTF-8 no meio produz JSON
+invalido e derruba a linha inteira do log).
+
+### SEC-L1 (LOW) — teto de chamadas por sessao
+
+Nenhum limite de chamadas por tool/sessao existe hoje (item do checklist MCP;
+LLM10 Unbounded Consumption). Recomendado: teto por sessao com o mesmo espirito
+do `budget.sh` (que orca a **onda**, nao a tool). Nao bloqueante para o MVP.
+
+---
+
+## Tool: `record_decision`
+
+Registra Decisao auditavel. **Delega para** [VERIFICADO]:
+`state-decisions.sh register --state-dir <SD> --agente --etapa --contexto
+--opcoes --escolha --justificativa [--score] [--evidencia] [--referencias]
+[--artefato-originador]`.
+
+### Request
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `agent` | string | yes | min 1 |
+| `stage` | string | yes | Etapa SDD corrente |
+| `context` | string | yes | **min 20 chars** [VERIFICADO: `state-decisions.sh:185-189`] |
+| `options_considered` | string[] | yes | min 1 item |
+| `choice` | string | yes | min 1 |
+| `rationale` | string | yes | **min 20 chars** [VERIFICADO: mesma linha] |
+| `justification_score` | integer \| null | no | `null \| 0 \| 1 \| 2 \| 3` [VERIFICADO: `state-decisions.sh:198-201`] |
+| `evidence` | string \| null | condicional | **Obrigatorio e min 20 chars quando `justification_score == 3`** [VERIFICADO: `state-decisions.sh:208-215`] |
+| `references` | string[] \| null | no | |
+| `originating_artifact` | string \| null | no | |
+
+**FR-002 no schema**: a condicional `score == 3 ⇒ evidence` e expressa como
+refinamento do `inputSchema` (Zod `.refine()` ou equivalente), logo a rejeicao
+ocorre **antes do handler** — nenhum byte persiste. A trava do helper permanece
+como segunda barreira (defesa em profundidade: se o schema for afrouxado por
+engano, o helper ainda rejeita).
+
+### Response (accepted)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `result.decision_id` | string | Id emitido pelo helper (ex.: `dec-013`) — **ecoado do stdout do helper, nunca gerado pela tool** |
+
+### Errors
+
+| Code | Description |
+|------|-------------|
+| `EVIDENCE_REQUIRED` | `justification_score == 3` sem `evidence` >= 20 chars (SC-002) |
+| `TEXT_TOO_SHORT` | `context` ou `rationale` < 20 chars |
+| `SCORE_OUT_OF_RANGE` | `justification_score` fora de `null\|0..3` |
+| `CONSTITUTION_CONFLICT_SCORE` | `options_considered` contem as strings canonicas de conflito com constitution e `justification_score != 0` [VERIFICADO: `state-decisions.sh:225-235`] |
+
+---
+
+## Tool: `open_wave`
+
+Abre a onda. **Delega para** [VERIFICADO]: `state-ondas.sh start --state-dir <SD>`
+(o `start` nao aceita `--fase`).
+
+### Request
+
+Somente `session_id`.
+
+### Response (accepted)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `result.wave_id` | string | Ex.: `onda-004` (stdout do helper) |
+
+### Errors
+
+| Code | Description |
+|------|-------------|
+| `WAVE_ALREADY_OPEN` | Ja existe onda aberta. **Pre-condicao checada com `state-ondas.sh wave-status` (`open\|closed\|none`) antes de delegar** [VERIFICADO] — `start` **nao e idempotente**: cada chamada faz append em `.waves[]`, e chama-lo com onda aberta duplicaria a onda |
+
+> Esta e a mesma armadilha que o Loop principal do orquestrador trata hoje no
+> passo 3.bis. A tool a torna fisicamente impossivel, em vez de depender de o LLM
+> lembrar da guarda — que e o proposito declarado da feature.
+
+---
+
+## Tool: `close_wave`
+
+Fecha a onda **atomicamente** (FR-003). **Delega para** [VERIFICADO]:
+`secrets-filter.sh for-backup --wave-number N` → `state-ondas.sh end --state-dir
+<SD> --motivo-termino <M> [--proxima-agendada-para] [--add-etapa] [--next-instruction]`
+→ `state-rw.sh sha256-update --state-dir <SD>`, com pre-imagem e compensacao
+(research.md Decision 3).
+
+### Request
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `termination_reason` | enum | yes | **exatamente** `etapa_concluida_avancando` \| `threshold_proxy_atingido` \| `bloqueio_humano` \| `aborto` \| `concluido` [VERIFICADO: `state-ondas.sh:714`] |
+| `executed_stages` | string[] \| null | no | Cada item casa `[A-Za-z0-9._-]`, <= 64 chars [VERIFICADO]; vira N x `--add-etapa` |
+| `next_scheduled_for` | string \| null | no | ISO 8601 |
+| `next_instruction` | string \| null | no | Checkpoint da proxima onda |
+
+### Response (accepted)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `result.wave_id` | string | Onda fechada |
+| `result.backup_path` | string | Backup gerado (pos-condicao de FR-003) |
+| `result.state_sha256` | string | Selo recalculado |
+
+### Errors
+
+| Code | Description |
+|------|-------------|
+| `NO_OPEN_WAVE` | `wave-status` != `open` |
+| `INVALID_TERMINATION_REASON` | Fora do enum de 5 valores |
+| `INVALID_STAGE_TOKEN` | Item de `executed_stages` com caractere fora de `[A-Za-z0-9._-]` ou > 64 chars |
+| `CLOSE_ROLLED_BACK` | Falha em backup/hash apos a mutacao ⇒ pre-imagem restaurada; **a onda permanece aberta** (nunca parcialmente fechada) |
+
+---
+
+## Tool: `record_task`
+
+Registra outcome de task, **idempotente por `task_id`** (FR-004). **Delega para**
+[VERIFICADO]: `state-ondas.sh record-task --state-dir <SD> --task-id --outcome
+[--titulo] [--wave-id] [--testes-rodados] [--testes-passados] [--lint-ok]
+[--arquivos] [--origem] [--if-absent]`.
+
+### Request
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `task_id` | string | yes | Ex.: `4.1` |
+| `outcome` | enum | yes | `pass` \| `fail` |
+| `title` | string \| null | no | Titulo do heading em `tasks.md`; `""` se indisponivel |
+| `wave_id` | string \| null | no | Default: onda corrente |
+| `tests_run` | integer | no | >= 0, default 0 |
+| `tests_passed` | integer | no | >= 0 e **<= `tests_run`** |
+| `lint_ok` | boolean | no | |
+| `touched_files` | string[] | no | Paths relativos |
+| `source` | string \| null | no | Ex.: `execute-task` |
+| `if_absent` | boolean | no | `true` ⇒ nao sobrescreve entrada existente (back-fill) |
+
+### Response (accepted)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `result.task_id` | string | Ecoado do input (nao gerado pela tool) |
+| `result.tasks_total_count` | integer | **[CORRIGIDO na task 3.8, Principio VI]** Contagem de `.tasks`/`task_outcome` da execucao apos o upsert — **nao** `{task_id, operation}` como proposto originalmente. [VERIFICADO: `state-ondas.sh:1017-1056` e `_state-ondas-db.sh:372-375` — AMBOS os backends imprimem essa contagem em stdout, nunca um par {task_id, operation}]. Nao ha como derivar "inserted" vs "updated" do stdout sem uma leitura extra fragil, e sob `--if-absent` com task ja existente o upsert nem executa — "updated" seria uma mentira (mesmo racional da correcao de `record_skill.ts` §`skills_invoked_count`). |
+
+**Base da idempotencia** [VERIFICADO]: PK `(execution_id, task_id)` em
+`task_outcome` (`state-db-schema.sql:192`). Repetir a chamada **atualiza**; nunca
+duplica.
+
+### Errors
+
+| Code | Description |
+|------|-------------|
+| `TESTS_PASSED_EXCEEDS_RUN` | `tests_passed > tests_run` — verificado no schema (FR-002) e, em defesa de profundidade, no stderr do helper [VERIFICADO: `state-ondas.sh:1009`] |
+| `NO_OPEN_WAVE` | **[CORRIGIDO na task 3.8, Principio VI]** O helper `record-task` **NAO** checa isto sozinho — usa `.waves[-1].id` como default best-effort independente do estado da onda [VERIFICADO: `state-ondas.sh:1026-1029`]. A TOOL impoe esta pre-condicao explicitamente via `wave-status` ANTES de delegar (mesmo padrao de `open_wave` para `WAVE_ALREADY_OPEN`), fechando o Edge Case "fora de ordem" que o contrato original ja pretendia cobrir mas o helper nao garantia |
+| `WAVE_ID_NOT_FOUND` | **[Fecha CHK016]** `wave_id` informado explicitamente nao corresponde a nenhuma onda existente em `.waves[].id` — checado pela tool ANTES de delegar (o helper aceitaria qualquer string silenciosamente) |
+
+---
+
+## Tool: `register_human_block`
+
+Registra bloqueio humano. **Delega para** [VERIFICADO]: `bloqueios.sh register
+--state-dir <SD> --decisao-id --pergunta --contexto-para-resposta
+[--opcoes-recomendadas]`.
+
+### Request
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `decision_id` | string | yes | Decisao associada (ex.: `dec-012`) |
+| `question` | string | yes | **min 20 chars** [CORRIGIDO na task 3.9, Principio VI — VERIFICADO: `bloqueios.sh:155-158`, "pergunta muito curta (<20 chars). Humano precisa entender sem releitura."; a tabela [PROPOSTA] original dizia min 1] |
+| `context_for_answer` | string | yes | min 1 |
+| `recommended_options` | string[] \| null | no | |
+
+### Response (accepted)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `result.block_id` | string | Ex.: `block-001` (stdout do helper) |
+| `result.execution_status` | string | `aguardando_humano` — **efeito colateral verificado do helper** |
+
+### Errors
+
+| Code | Description |
+|------|-------------|
+| `DECISION_NOT_FOUND` | `decision_id` inexistente (FK `human_block.decision_id`) |
+
+---
+
+## Tool: `record_skill`
+
+Registra invocacao de skill/gate na onda. **Delega para** [VERIFICADO]:
+`state-ondas.sh record-skill --state-dir <SD> --skill [--decisao-id] [--kind]`.
+
+### Request
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `skill` | string | yes | Nome da skill/gate |
+| `decision_id` | string \| null | no | Par two-step com `record_decision` |
+| `kind` | enum | no | `skill` \| `gate` [VERIFICADO: CHECK em `skill_invocation.kind`]; default `skill` |
+
+### Response (accepted)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `result.skills_invoked_count` | integer | **[CORRIGIDO na task 2.2, Principio VI]** Contagem de `skills_invoked`/`skill_invocation` da onda apos o insert idempotente — **nao** `wave_id` como proposto originalmente. [VERIFICADO: `state-ondas.sh:889-954` `_so_cmd_record_skill` e `_state-ondas-db.sh:311-342` `_so_db_record_skill` — AMBOS os backends (`json`/`sqlite`) imprimem em stdout essa contagem, nunca um id de onda] |
+
+### Errors
+
+| Code | Description |
+|------|-------------|
+| `NO_OPEN_WAVE` | Sem onda aberta — detectado pelo tool via o envelope `DIAG\|error\|no-open-wave\|...` emitido no stderr do helper [VERIFICADO: `_diag.sh::diag_emit`, `state-ondas.sh:920-922`] |
+| `INVALID_KIND` | `kind` fora de `skill\|gate` — inalcancavel em runtime: rejeitado pelo `inputSchema` (enum Zod) antes do handler, por desenho (FR-002 no schema) |
+
+> **Higiene de metrica** (herdada do contrato dos orquestradores): `kind=gate`
+> para gates deterministicos de script; `kind=skill` apenas para invocacao real
+> da tool Skill. Comandos de build/test/lint **nao** entram aqui — pertencem a
+> `record_task`.
+
+---
+
+## Tool: `get_status`
+
+**Escopo expandido pelo operador** (task 3.1, dec-064/block-004): a UNICA
+"nao-tool" da lista original de §Nao-tools que entrou no MVP — consulta
+READ-ONLY do status do servidor/execucao. As outras 3 nao-tools permanecem
+fora (ver §Nao-tools abaixo).
+
+READ-ONLY: nenhuma chamada muta o `state.json`/`state.db`. **Compoe 5
+leituras independentes** [VERIFICADO]:
+`state-rw.sh get --state-dir <SD> --field '.execution.status'`,
+`state-rw.sh get --state-dir <SD> --field '.current_stage'`,
+`state-ondas.sh wave-status --state-dir <SD>`,
+`state-ondas.sh current-id --state-dir <SD>`,
+`bloqueios.sh count --state-dir <SD> --pending-only`.
+
+### Request
+
+Somente `session_id`.
+
+### Response (accepted)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `result.execution_status` | string | Ex.: `em_andamento`, `aguardando_humano`, `abortada`, `concluida` |
+| `result.current_stage` | string | Etapa SDD corrente (ex.: `execute-task`) |
+| `result.wave_status` | string | `none` \| `open` \| `closed` |
+| `result.current_wave_id` | string | Ex.: `onda-012`, ou `init` se nenhuma onda ainda |
+| `result.pending_human_blocks` | integer | Contagem de bloqueios com `status == aguardando` |
+
+### Errors
+
+| Code | Description |
+|------|-------------|
+| `HELPER_FAILED` | Qualquer uma das 5 leituras falhou (ex.: `state.json`/`state.db` ausente). A tool NUNCA fabrica um valor para o campo que nao pode ser lido (Principio VI) — se uma leitura falha, a resposta inteira e `rejected` |
+
+---
+
+## Nao-tools (fora de escopo deliberado)
+
+> **[CORRIGIDO na task 3.1, dec-064/block-004]**: a linha original
+> "Consultar status do servidor (FR-015)" foi PROMOVIDA a tool (`get_status`,
+> ver secao acima) — o operador confirmou, via block-004, que esta e a UNICA
+> das 4 nao-tools originais com valor real antes do primeiro uso, por ser
+> READ-ONLY e sem conflito com nenhum invariante. As 3 restantes abaixo
+> permanecem deliberadamente fora do escopo.
+
+| Capacidade | Por que nao e tool |
+|-----------|--------------------|
+| Qualquer escrita em `knowledge.db` | **FR-013**: read-only, e o container sequer a monta |
+| Adquirir/liberar lock | **research.md Decision 4**: o lock do command pai ja envolve a onda; `state-lock.sh` e nao-reentrante (um `acquire` daria exit 3 sempre) |
+| `state-rw.sh set` generico | Escape hatch que anularia todo o proposito da feature — mutacao arbitraria sem contrato |
+
+---
+
+## Versionamento de contrato (CHK004)
+
+Nenhum FR nem secao deste documento tratava, ate a task 3.5, o que acontece
+quando um `inputSchema` muda e um orquestrador antigo (catalogo desatualizado
+em `~/.claude`, ver CLAUDE.md §"Installed vs Source Drift") chama a versao
+nova do servidor (gap CHK004). Politica adotada:
+
+**Fonte de verdade de compatibilidade**: o `version` (SemVer) declarado no
+bootstrap do `McpServer` [VERIFICADO: `src/index.ts`, `SERVER_VERSION`,
+espelhando `package.json`]. Nao existe (nem sera criado) um numero de versao
+separado por tool — uma unica versao de servidor cobre todas as tools.
+
+**Aplicacao empirica desta politica (task 3.6-3.9)**: `SERVER_VERSION`
+avancou de `0.1.0` para `0.2.0` ao registrar as 5 tools novas de F3
+(`record_decision`, `open_wave`, `record_task`, `register_human_block`,
+`get_status`) — bump **MINOR**, nao MAJOR: nenhuma tool/campo existente
+(`record_skill`) foi removido ou redefinido, mudanca puramente aditiva
+conforme a regra abaixo.
+
+- **Mudanca aditiva/retrocompativel** → bump **PATCH** ou **MINOR**:
+  - Campo NOVO **opcional** no `inputSchema`, com o handler tratando a
+    ausencia com o MESMO comportamento de hoje (omitir a flag do helper —
+    nunca alterar o efeito de um payload que ja passava antes).
+  - Nova tool adicionada (nao remove nem redefine nenhuma existente).
+  - Um orquestrador antigo que nunca envia o campo novo continua funcionando
+    identico: nenhuma invariante nova e imposta a payloads pre-existentes.
+
+- **Mudanca breaking** → bump **MAJOR** + entrada obrigatoria no CHANGELOG do
+  repo (secao dedicada ao `state-mcp-server`) descrevendo tool/campo afetado
+  e a migracao. Sao breaking:
+  - Remover ou renomear um campo do `inputSchema` (obrigatorio ou opcional).
+  - Apertar validacao existente (tornar obrigatorio um campo antes opcional;
+    estreitar um enum removendo valor antes aceito).
+  - Mudar o TIPO de um campo ja existente.
+  - Remover ou renomear uma tool inteira.
+  - Mudar o significado de um `Code` de erro ja documentado — o `Code`/
+    `reason` sao contrato tanto quanto o schema, porque orquestradores fazem
+    parsing de `reason` para decidir o proximo passo (FR-009).
+
+- **Efeito observavel para o chamador antigo diante de uma mudanca breaking**:
+  como o SDK MCP valida `inputSchema` **antes do handler** [VERIFICADO — ja
+  documentado em "Forma geral" acima], um payload antigo que nao contempla um
+  novo campo obrigatorio falha DETERMINISTICAMENTE no proprio SDK, com
+  `stage=schema` — nunca falha silenciosa. Isso e o mesmo principio do risco
+  documentado em CHK018/plan.md (linha ~220, "campo opcional que nunca chega
+  ao helper"), aplicado aqui a nivel de versao de contrato em vez de campo
+  isolado.
+
+- **Sem negociacao de versao em runtime**: o cliente MCP nao pede "versao X"
+  na chamada — a compatibilidade e resolvida OFFLINE, por disciplina de
+  release (mesma logica de CLAUDE.md §"Installed vs Source Drift": o catalogo
+  instalado pode ficar atras ate `cstk update`/`cstk self-update` rodar).
+  Nenhuma tool nova e necessaria so para checar versao: `serverInfo.version` ja
+  e exposto nativamente pelo handshake `initialize` do protocolo MCP e basta
+  para diagnostico manual (`cstk mcp status`, fora de escopo desta secao).

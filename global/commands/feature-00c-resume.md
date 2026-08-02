@@ -130,6 +130,21 @@ fi
        escalou ao operador antes de a verificacao pegar.)
      - mudar status para em_andamento
 
+6.bis. verificar saude do servidor MCP (paridade FR-011, sem restart) —
+   FASE 6 task 6.2.2. Best-effort, puramente observacional: `status --live`
+   roda um health check REAL quando mode=docker e a sessao nao esta
+   stopped, mas NUNCA reinicia o container nem muta o descritor em disco
+   (contracts/mcp-session-lifecycle.md "cstk mcp status --live"). Roda a
+   cada retomada, independente do passo 6:
+
+     cstk mcp status --state-dir "$AGENTE_00C_STATE_DIR" --live >/dev/null 2>&1 || :
+
+   Se a sonda reportar `status=unavailable` (container caiu durante a
+   pausa), nenhuma acao adicional AQUI — o proximo spawn segue via
+   caminho Bash de hoje (o roteamento de tools MCP por token depende de
+   1.2, cross-feature). Esta task cobre so a verificacao de saude, nao a
+   comutacao mid-onda (essa e o protocolo da task 5.5).
+
 7. selecionar modelo da onda + delegar ao orquestrador
 
    Migrate defensivo (best-effort): canonicaliza um `state.json` pt-BR
@@ -235,6 +250,28 @@ onda fechada/recuperada manualmente por este comando, sem ter chegado ao
 cstk recall --ingest --state-dir "$AGENTE_00C_STATE_DIR" 2>/dev/null \
   || echo "knowledge-db: ingestao (rede de seguranca) pulada — cstk/sqlite3/jq ausentes" >&2
 ```
+
+### 4.quater Encerramento do servidor MCP em estado terminal — FASE 6 task 6.2.3
+
+Best-effort, roda apos 4.ter/4.bis, ANTES do cleanup (passo 5). `cstk mcp
+stop` e idempotente (parar o que ja esta parado, ou `--state-dir` sem
+descritor algum, e exit 0 — contracts/mcp-session-lifecycle.md
+"`cstk mcp stop`") — chamar mesmo quando o servidor nunca chegou a subir
+(mode=bash-fallback ou init sem Docker) e seguro.
+
+```bash
+_status_final=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" \
+  --field '.execution.status' 2>/dev/null) || _status_final=""
+case "$_status_final" in
+  concluida|abortada)
+    cstk mcp stop --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1 || :
+    ;;
+esac
+```
+
+> Estado `aguardando_humano` NAO e terminal (FR-010: a sessao do servidor
+> e coextensiva com a execucao inteira) — o servidor MUST permanecer
+> ativo durante a pausa; `stop` so dispara em `concluida`/`abortada`.
 
 ### 5. Cleanup
 
