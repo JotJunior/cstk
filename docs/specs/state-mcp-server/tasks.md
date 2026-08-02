@@ -938,32 +938,66 @@ todos exit != 0 sem chamar `docker attach`).
 - [x] 6.1.4 Estender `tests/cstk/test_mcp.sh` cobrindo `install`
       (idempotente, `--dry-run` nao escreve) — 7 cenarios novos
 
-### 6.2 Integracao dos commands pai: chamada de status/start/stop `[A]` {auto}
+### 6.2 Integracao dos commands pai: chamada de status/start/stop `[A]` {auto} — CONCLUIDO
 
 Ref: plan.md §Fases de implementacao F6; §Fronteira lock+init
 (CLAUDE.md); NAO inclui geracao/injecao do token (ver 1.2)
 
-- [ ] 6.2.1 `/agente-00c` e `/feature-00c` (inicio): chamar `cstk mcp
+RESULTADO: os 4 commands (`agente-00c.md`, `feature-00c.md`,
+`agente-00c-resume.md`, `feature-00c-resume.md`) instruem o ciclo de vida
+`status`/`start`/`status --live`/`stop`, todos best-effort (nunca abortam
+a pipeline — FR-007/FR-012). Nos 2 commands de INICIO: `status` seguido
+de `start` logo apos o init do `state.json`, ANTES do spawn do
+orquestrador (secao "3.bis"/"3.quater"). Nos 2 `-resume`: `status --live`
+(paridade FR-011, sem restart) ANTES do spawn de continuacao (secao
+"5.e."/"6.bis"). Nos 4 commands: `stop` quando `.execution.status` ∈
+{`concluida`,`abortada`} (nunca em `aguardando_humano` — FR-010), apos a
+rede de seguranca de fechamento de onda e ANTES do cleanup/liberacao de
+lock. Cobertura: `tests/test_command-spawn-mcp-lifecycle.sh` (20
+cenarios, smoke textual sobre os 4 `.md`, mesmo padrao de
+`test_command-spawn-model-routing.sh`; registrado interno em
+`tests/run.sh::_is_internal_test`). Decisao dec-099 documenta a
+interpretacao de "status disponivel" (existencia do subcomando `cstk
+mcp`, nao do Docker — o descritor `mcp-server.json` NUNCA existe antes do
+primeiro `start`, evidencia em `cli/lib/mcp.sh:225-226`).
+
+- [x] 6.2.1 `/agente-00c` e `/feature-00c` (inicio): chamar `cstk mcp
       status`; se disponivel, `cstk mcp start` antes de spawnar o
       orquestrador
-- [ ] 6.2.2 `/agente-00c-resume` e `/feature-00c-resume`: chamar `cstk mcp
+- [x] 6.2.2 `/agente-00c-resume` e `/feature-00c-resume`: chamar `cstk mcp
       status` (paridade com FR-011) a cada retomada, sem
       parar/reiniciar o processo/container a cada pausa (FR-010)
-- [ ] 6.2.3 Encerramento: `cstk mcp stop` somente quando a execucao
+- [x] 6.2.3 Encerramento: `cstk mcp stop` somente quando a execucao
       atinge estado terminal (`concluida`/`abortada`)
-- [ ] 6.2.4 Esta task **nao** implementa a geracao/injecao do token de
+- [x] 6.2.4 Esta task **nao** implementa a geracao/injecao do token de
       capacidade (1.2, cross-feature) — usar o mesmo mecanismo de token
       sintetico de 1.3 ate a coordenacao externa concluir; documentar
-      isso explicitamente no PR desta task
+      isso explicitamente no PR desta task <!-- documentado inline nos 4
+      commands ("Fora de escopo desta task (6.2.1)") + no RESULTADO acima -->
 
-### 6.3 Fallback sem Docker (FR-007, FR-012, SC-004) `[A]` {auto}
+### 6.3 Fallback sem Docker (FR-007, FR-012, SC-004) `[A]` {auto} — CONCLUIDO
 
 Ref: quickstart.md Scenario 7; spec.md FR-007, FR-012
 
-- [ ] 6.3.1 Confirmar que `cstk mcp status`/`start` retornando
+RESULTADO: confirmado por CONSTRUCAO (nao so por teste) que o caminho
+Bash e o UNICO caminho hoje: nem `agente-00c-orchestrator.md` nem
+`agente-00c-feature-orchestrator.md` listam qualquer tool `mcp__*` no
+frontmatter `tools:` — a injecao de tools MCP no orquestrador e a task
+1.2 (cross-feature, fora do escopo desta feature). Logo
+`status`/`start`/`stop` indisponiveis nunca afetam o pipeline: os 4
+commands sempre os chamam com supressao de erro (`|| :`). Prova funcional
+de SC-004 em `tests/test_orchestrator-mcp-fallback.sh` (13 cenarios):
+`cstk mcp status`/`start` com `docker` removido do PATH (derivado
+dinamicamente, nunca hardcoded) retornam `unavailable`/`bash-fallback`
+sem erro, e uma execucao completa (init + onda + decisao auditavel +
+fechamento de onda) via `state-rw.sh`/`state-ondas.sh`/
+`state-decisions.sh` termina com exit 0 identico ao caminho com Docker.
+Registrado interno em `tests/run.sh::_is_internal_test`.
+
+- [x] 6.3.1 Confirmar que `cstk mcp status`/`start` retornando
       indisponivel faz o orquestrador cair no caminho `Bash` existente
       sem regressao funcional e sem intervencao manual
-- [ ] 6.3.2 Testes cobrindo execucao headless/cron sem servidor MCP
+- [x] 6.3.2 Testes cobrindo execucao headless/cron sem servidor MCP
       disponivel completando por `Bash` (SC-004)
 
 ### 6.4 Scenario 6 e Scenario 9: confinamento e roundtrip end-to-end `[C]` {auto}

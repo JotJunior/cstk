@@ -297,6 +297,37 @@ Habilitar o modo atomic-commit? [s/N]
   Status inicial: `em_andamento`, etapa `briefing`, `next_instruction`
   apontando para inicio do briefing.
 
+### 3.quater Ciclo de vida do servidor MCP (status/start) — FASE 6 task 6.2.1
+
+Best-effort, NUNCA bloqueia a pipeline (FR-007/FR-012 — indisponibilidade
+do MCP cai no caminho `Bash` existente, zero regressao). Roda logo apos o
+init do `state.json` (passo 3), ANTES do spawn do orquestrador (passo 4):
+
+```bash
+if cstk mcp status --state-dir <SD> >/dev/null 2>&1; then
+  # "disponivel" aqui significa: o subcomando `cstk mcp` existe e respondeu
+  # nesta instalacao (nao que o Docker esteja de pe — status=unavailable
+  # com reason=no-active-execution E ESPERADO neste ponto, ja que o
+  # descritor mcp-server.json ainda nao existe para uma execucao recem-
+  # inicializada; cli/lib/mcp.sh::_mcp_print_status_from_descriptor). A
+  # decisao real de disponibilidade de Docker fica DENTRO de `start`, que
+  # faz seu proprio preflight e degrada sozinho para mode=bash-fallback
+  # sem abortar (dec-099, feature state-mcp-server).
+  cstk mcp start --state-dir <SD> >/dev/null 2>&1 || :
+else
+  : # subcomando `mcp` ausente (instalacao sem self-update recente) ou
+    # `--state-dir` invalido — pula silenciosamente; pipeline segue no
+    # caminho Bash de hoje (zero regressao)
+fi
+```
+
+> **Fora de escopo desta task (6.2.1)**: geracao/injecao do token de capacidade
+> no prompt de spawn do orquestrador (task 1.2, coordenacao
+> cross-feature) e `cstk mcp stop` no encerramento (task 6.2.3, `-resume`
+> em 6.2.2). Este passo apenas garante que, quando Docker estiver
+> disponivel, o container MCP dedicado da execucao ja esteja de pe antes
+> da primeira onda.
+
 ### 4. Selecao de modelo da onda + delegacao ao orquestrador
 
 Migrate defensivo (best-effort): canonicaliza um `state.json` pt-BR legado
@@ -409,6 +440,25 @@ o conhecimento da onda.
 # toda falha (cstk fora do PATH, sqlite3/jq ausentes) degrada para no-op.
 cstk recall --ingest --state-dir <SD> 2>/dev/null \
   || echo "knowledge-db: ingestao (rede de seguranca) pulada — cstk/sqlite3/jq ausentes" >&2
+```
+
+### 5.quater Encerramento do servidor MCP em estado terminal — FASE 6 task 6.2.3
+
+Best-effort, roda apos 5.bis, ANTES de liberar o lock (5.ter). `cstk mcp
+stop` e idempotente (parar o que ja esta parado, ou `--state-dir` sem
+descritor algum, e exit 0) — chamar mesmo quando o servidor nunca chegou
+a subir (mode=bash-fallback ou init sem Docker) e seguro. Raro na
+primeira invocacao (normalmente termina em `em_andamento` com Schedule
+intent), mas cobre o caso de uma execucao curta que ja fecha terminal na
+propria primeira onda:
+
+```bash
+_status_final=$(state-rw.sh get --state-dir <SD> --field '.execution.status' 2>/dev/null) || _status_final=""
+case "$_status_final" in
+  concluida|abortada)
+    cstk mcp stop --state-dir <SD> >/dev/null 2>&1 || :
+    ;;
+esac
 ```
 
 ### 5.ter Liberacao do lock (SEMPRE — inclusive em paths de erro)

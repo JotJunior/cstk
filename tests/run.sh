@@ -207,6 +207,25 @@ _is_internal_test() {
       # wave-select. Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/global/commands/feature-00c.md" ] && return 0
       return 1 ;;
+    test_command-spawn-mcp-lifecycle.sh)
+      # Smoke textual sobre os 4 commands de spawn/resume (ciclo de vida do
+      # servidor MCP: status/start/stop, FASE 6 task 6.2 de
+      # state-mcp-server). Assert no .md, nao em um unico script —
+      # existence-guarded ao command portador da instrucao `cstk mcp`. Se a
+      # fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/global/commands/feature-00c.md" ] && return 0
+      return 1 ;;
+    test_orchestrator-mcp-fallback.sh)
+      # Hibrido textual+funcional (FASE 6 task 6.3 de state-mcp-server,
+      # SC-004): confirma que os 2 agentes orquestradores nao dependem de
+      # tools mcp__* (zero regressao por construcao) e que uma execucao
+      # headless/cron completa via Bash puro mesmo com `cstk mcp start`
+      # falhando por docker ausente. Composicao de multiplos scripts do
+      # runtime (state-rw.sh + state-ondas.sh + state-decisions.sh +
+      # cli/lib/mcp.sh) — nao mapeia 1:1 para um unico script sob a
+      # convencao de FASE 9.3.
+      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
+      return 1 ;;
     test_orchestrator-spawn-model-apply.sh)
       # Smoke textual sobre os 2 orquestradores (model-routing por onda,
       # FASE 5 de model-routing-por-onda). Assert no .md (passo 8 da
