@@ -5,6 +5,63 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.1.0] - 2026-08-02
+
+Servidor MCP de estado (`cstk mcp`) — 3º pilar do estudo da v6: as primitivas
+de mutação do estado das execuções 00c viram tools MCP com contrato validado
+no schema, servidas por um container Docker por execução com fallback Bash
+automático. Feature executada de ponta a ponta pela pipeline `/feature-00c`
+(22 ondas, 46/46 tasks, 108 decisões auditáveis, gate `converge` sem gaps).
+
+### Added
+
+- **`mcp/state-server/` — primeira árvore Node/TypeScript do toolkit.**
+  Servidor MCP stdio (`@modelcontextprotocol/sdk` + Zod) com 7 tools:
+  `open_wave`, `record_decision`, `record_skill`, `record_task`,
+  `register_human_block`, `close_wave` (atômico por pré-imagem +
+  compensação) e `get_status` (read-only). Tools delegam aos helpers POSIX
+  reais via `execFile`/argv (`runtime/exec.ts`, sem shell — SEC-H1); scores
+  altos exigem evidência já na validação do schema (FR-EVI-001). Suite
+  própria `node:test` com fixtures POSIX reais (110 cenários, sem mocks).
+- **`cstk mcp` (`cli/lib/mcp.sh`)**: subcomandos `install` (registra
+  `mcpServers.cstk-state` no `.mcp.json`), `start`/`stop` (invocados pelo
+  command pai, idempotentes), `status [--live]` (health check por handshake
+  MCP real) e `gc [--dry-run]` (containers órfãos de execuções terminais,
+  fail-safe por label `cstk.mcp.state_dir`).
+- **`cli/lib/mcp-docker.sh`**: lifecycle do container (`node:22-alpine`,
+  build de estágio único, `--cap-drop ALL --read-only --tmpfs`, 3 montagens
+  contratadas: state-dir rw, scripts ro, `enforcement-log.jsonl` rw-arquivo).
+  Invocação funcional de `docker` confinada a este arquivo (carve-out por
+  par dependência+feature, decisão do operador dec-074).
+- **`mcp-session.sh` + `mcp-launch.sh`** (runtime `agente-00c-runtime`):
+  resolução de sessão por token de capacidade (≥128 bits CSPRNG, gravado em
+  `<state-dir>/mcp-server.json`) com roteamento fail-closed — token
+  ausente/divergente/terminal ⇒ `SESSION_MISMATCH`, nunca fallback por
+  precedência (SEC-H3); entrypoint stdio registrado no `.mcp.json`.
+- **Integração nos 4 commands 00c** (`agente-00c`, `feature-00c` e resumes):
+  `cstk mcp status`+`start` best-effort antes do spawn, `status --live` a
+  cada resume, `stop` só em estado terminal. Sem Docker (ou falha em
+  build/run/health), `mode=bash-fallback` — zero regressão funcional
+  (SC-004, provado com `docker` removido do PATH).
+- **Auditoria própria das tools** em `enforcement-log.jsonl`
+  (`source=mcp-state-tool`, ordem scrub→truncate→serialize); `knowledge.db`
+  permanece única e read-only (FR-013 — o container nem a monta).
+- **Testes shell novos**: `tests/cstk/test_mcp.sh`,
+  `tests/cstk/test_mcp-docker.sh`, `tests/test_mcp-session.sh`,
+  `tests/test_mcp-launch.sh`, `tests/test_orchestrator-mcp-fallback.sh`,
+  `tests/test_command-spawn-mcp-lifecycle.sh` (148 cenários somados;
+  validação end-to-end com Docker real nos Scenarios 6 e 9 do quickstart).
+
+### Changed
+
+- **`spec.md` FR-016 reescrito** (amendment ratificado no block-001):
+  isolamento de execuções concorrentes passa a ser por container + token de
+  capacidade — em `stdio` não há porta; texto anterior exigia
+  "instância/porta isolada".
+- **`CLAUDE.md`/`SKILL.md` do runtime** documentam a camada `cstk mcp` e o
+  contrato de queda mid-onda (erro de transporte ⇒ 0 retries + 1 confirmação
+  via `status --live` ⇒ comutação para Bash no resto da onda).
+
 ## [6.0.0] - 2026-08-01
 
 Release FINAL da linha v6: consolida a fundação state.db SQLite
@@ -4627,6 +4684,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.1.0]: https://github.com/JotJunior/cstk/releases/tag/v6.1.0
 [6.0.0]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0
 [6.0.0-alpha.2]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.2
 [6.0.0-alpha.1]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.1
