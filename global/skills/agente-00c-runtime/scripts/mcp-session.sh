@@ -131,10 +131,29 @@ _ms_check_descriptor() {
   return 0
 }
 
+# _ms_print_descriptor DESCRIPTOR_PATH [STATE_DIR_OVERRIDE]
+#
+# STATE_DIR_OVERRIDE (task 5.3, achado empirico com Docker real — validando
+# `cstk mcp start`/health check ponta a ponta): quando fornecido, imprime
+# esse valor em vez de `.state_dir` do proprio descritor. Existe porque o
+# campo `.state_dir` do JSON e sempre o path ABSOLUTO DO HOST (gravado por
+# `cli/lib/mcp.sh::_mcp_write_descriptor` — data-model.md "state_dir |
+# path absoluto"). No modo DIRETO (`--state-dir`, dec-081), quem chama esta
+# funcao esta DENTRO do container, onde o path do host nao existe no
+# filesystem — so o mount `/data/state` (ou o que veio em
+# CSTK_MCP_STATE_DIR) e valido ali. Sem este override, toda tool MCP que
+# usa `session.stateDir` (mcp/state-server/src/session/resolve.ts) recebia
+# o path do HOST e falhava (`state-ondas.sh wave-status: state.json
+# ausente em <path-do-host>`, sonda: `docker logs` de um container real
+# apos `cstk mcp start` bem-sucedido). No modo `--project-path`
+# (tree-walk, quem chama roda no HOST), NENHUM override e passado — o
+# `.state_dir` do proprio descritor (ja o path certo do host) permanece
+# inalterado, zero regressao.
 _ms_print_descriptor() {
   _desc=$1
-  jq -r '
-    "state_dir=" + (.state_dir // "-"),
+  _sd_override=${2:-}
+  jq -r --arg override "$_sd_override" '
+    "state_dir=" + (if $override != "" then $override else (.state_dir // "-") end),
     "execution_kind=" + (.execution_kind // "-"),
     "short_name=" + (.short_name // "-"),
     "target_project_path=" + (.target_project_path // "-"),
@@ -181,7 +200,7 @@ _ms_cmd_resolve() {
     if ! _ms_check_descriptor "$_direct_desc" "$_token"; then
       _ms_mismatch "token desconhecido, invalido ou de execucao ja terminal (--state-dir)"
     fi
-    _ms_print_descriptor "$_direct_desc"
+    _ms_print_descriptor "$_direct_desc" "$_state_dir"
     return 0
   fi
 

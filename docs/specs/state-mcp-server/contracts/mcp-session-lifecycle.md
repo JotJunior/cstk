@@ -76,14 +76,49 @@ Motivos canonicos de `unavailable`: `docker-absent`, `daemon-unreachable`,
 
 ### `cstk mcp start --state-dir DIR` / `cstk mcp stop --state-dir DIR`
 
+**[VERIFICADO — task 5.3.1, validado com Docker real de ponta a ponta:
+build da imagem, `docker run`, health check MCP real via
+`get_status`, `cstk mcp stop`, ciclo `active` → `stopped` idempotente]**
+
 Invocados **pelo command pai**, nao pelo operador no caminho normal.
 
-- `start`: preflight de Docker → build/reuso da imagem → `docker run` → health
-  check → grava `<state-dir>/mcp-server.json`. **Exit 3 = indisponivel** ⇒ o pai
-  grava `mode=bash-fallback` e segue (FR-007/FR-012), sem erro para o operador.
+- `start`: preflight de Docker → build/reuso da imagem → reconcilia
+  container remanescente → **grava `<state-dir>/mcp-server.json` (`session_id`
+  CSPRNG, `mode=docker`) ANTES do `docker run`** → `docker run` → health check
+  → confirma sucesso. **Exit 3 = indisponivel** ⇒ grava `mode=bash-fallback` +
+  `unavailable_reason` e retorna sem abortar a execucao (FR-007/FR-012), sem
+  erro para o operador. Motivos: `docker-absent`, `daemon-unreachable`,
+  `image-build-failed`, `container-start-failed`, `health-timeout`. Falha do
+  health check derruba o container recem-subido (`docker stop`) antes de
+  reportar `bash-fallback` — nunca deixa um container saudavel-de-mentirinha
+  para tras.
+  - **Achado empirico (task 5.3.1)**: o processo PID1 do servidor
+    (`mcp/state-server/src/index.ts::bootstrap`) resolve a propria sessao
+    **uma vez no startup** e recusa subir se `resolveActiveSession` falhar
+    (fail-closed). Isso EXIGE que o descritor exista no disco, com o
+    `session_id` ja batendo o token, **antes** do `docker run` — gravar
+    depois (como uma implementacao ingênua faria) produz
+    `SESSION_MISMATCH` garantido no boot do container. A ordem
+    grava-depois-builda-depois-run acima e, portanto, MANDATORIA, nao
+    estilistica.
 - `stop`: `docker stop -t 5` [VERIFICADO: `_SD_STOP_GRACE_SECONDS="5"` em
   `serve-docker.sh`] + preenche `stopped_at`. **Idempotente**: parar o que ja
-  esta parado e exit 0.
+  esta parado, ou `--state-dir` sem descritor algum, e exit 0. So invoca
+  `docker stop` quando `mode=docker` E `stopped_at` ainda nulo.
+
+### `cstk mcp status --live` (task 5.3.3, FR-010)
+
+Extensao de `cstk mcp status` (mesmas flags `--state-dir`/`--project-path`,
+mesma saida de 5 linhas). Quando `mode=docker` e a sessao nao esta `stopped`,
+roda um health check **de verdade** (mesmo handshake MCP real de `start` —
+`_mcp_docker_healthcheck`) em vez de so ecoar o descritor gravado em disco.
+Falha ⇒ reporta `status=unavailable`/`reason=health-timeout` — **nunca
+reinicia o container** (FR-010: "reverifica saude SEM reiniciar") e **nunca
+muta o descritor em disco** (observacional, sem efeito colateral). Usado pelo
+command pai em cada `-resume` para confirmar que a sessao sobreviveu a pausa
+entre ondas antes de injetar `session_id`/tools no proximo spawn do
+orquestrador. Sem `--live` (default), o comportamento e identico ao de antes
+desta task — leitura pura, zero custo de Docker.
 
 ---
 
@@ -185,6 +220,22 @@ Novo script POSIX em `global/skills/agente-00c-runtime/scripts/mcp-session.sh`
 > `env CSTK_MCP_STATE_DIR=/data/state` (gravado por `_mcp_docker_run`, dec-081)
 > sinaliza a `session/resolve.ts` para usar este modo; fora do container, a
 > env fica ausente e o comportamento `--project-path` e inalterado.
+>
+> **[VERIFICADO — task 5.3.1, achado empirico com Docker real]**: no modo
+> direto, o `state_dir=` retornado no output e o valor de `--state-dir`
+> **usado para localizar o descritor** (i.e., `/data/state` visto de DENTRO
+> do container), **nunca** o campo `.state_dir` do proprio JSON — esse
+> campo e sempre o path ABSOLUTO DO HOST (`cli/lib/mcp.sh::
+> _mcp_write_descriptor`, data-model.md). Sem essa distincao, TODA tool MCP
+> subsequente (que usa `session.stateDir` para chamar `state-rw.sh`/
+> `state-ondas.sh`/`bloqueios.sh` — `mcp/state-server/src/session/
+> resolve.ts`) recebia um path que nao existe no filesystem do container e
+> falhava (`state-ondas.sh wave-status: state.json ausente em
+> <path-do-host>`; sonda: `docker logs` de um `cstk mcp start`
+> bem-sucedido, capturado ao validar o health check ponta a ponta). No
+> modo `--project-path` (tree-walk, sempre executado no HOST), nenhum
+> override e aplicado — `.state_dir` do descritor permanece a fonte,
+> comportamento inalterado.
 
 ### SEC-H3 (finding HIGH do gate) — roteamento e por CAPACIDADE, nao por precedencia
 

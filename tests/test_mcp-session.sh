@@ -160,11 +160,21 @@ scenario_sem_subcomando_exit_2() {
 scenario_state_dir_direto_resolve_sem_tree_walk() {
   _sd="$TMPDIR_TEST/direct1/qualquer-nome"
   mkdir -p "$_sd"
+  # Descritor grava .state_dir=/data/state (simula o valor REAL gravado por
+  # cli/lib/mcp.sh — sempre o path ABSOLUTO DO HOST, nao "/data/state"; aqui
+  # usamos "/data/state" so como um valor DIFERENTE do $_sd de resolucao,
+  # para provar que o output reflete o --state-dir do CALLER, nao o campo
+  # interno do JSON).
   _write_descriptor "$_sd/mcp-server.json" "tok-direct-1" "feature-00c" "state-mcp-server" "/data/state" "docker" ""
 
   capture "$SCRIPT" resolve --state-dir "$_sd" --token "tok-direct-1"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "state-dir direto exit" "$_CAPTURED_STDERR"; return 1; }
-  assert_stdout_contains "state_dir=/data/state" || return 1
+  # achado empirico (task 5.3, validacao com Docker real): o modo direto
+  # DEVE ecoar o --state-dir usado para localizar o descritor (valido
+  # DENTRO do container), nunca o campo .state_dir do proprio JSON (que e
+  # sempre o path do HOST — inutilizavel de dentro do container).
+  assert_stdout_contains "state_dir=$_sd" || return 1
+  assert_stdout_not_contains "state_dir=/data/state" || return 1
   assert_stdout_contains "execution_kind=feature-00c" || return 1
 }
 
