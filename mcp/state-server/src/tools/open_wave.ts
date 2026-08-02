@@ -13,6 +13,7 @@ import {
   runHelper,
   resolveScriptsDir,
   HelperExecutionError,
+  formatToolError,
 } from "../runtime/exec.js";
 import { sanitizeForLlmContext } from "../runtime/sanitize.js";
 import {
@@ -67,7 +68,10 @@ export async function handleOpenWave(
   if (!matchesResolvedSession(session, input.session_id)) {
     return {
       outcome: "rejected",
-      reason: "SESSION_MISMATCH: session_id nao corresponde ao token de capacidade desta sessao",
+      reason: formatToolError({
+        code: "SESSION_MISMATCH",
+        message: "session_id nao corresponde ao token de capacidade desta sessao",
+      }),
       stage: "precondition",
       result: null,
     };
@@ -86,8 +90,11 @@ export async function handleOpenWave(
     if (status === "open") {
       return {
         outcome: "rejected",
-        reason:
-          "WAVE_ALREADY_OPEN: ja existe onda aberta (state-ondas.sh start nao e idempotente — chama-lo agora duplicaria a onda)",
+        reason: formatToolError({
+          code: "WAVE_ALREADY_OPEN",
+          message:
+            "ja existe onda aberta (state-ondas.sh start nao e idempotente — chama-lo agora duplicaria a onda)",
+        }),
         stage: "precondition",
         result: null,
       };
@@ -101,7 +108,9 @@ export async function handleOpenWave(
           : String(err);
     return {
       outcome: "rejected",
-      reason: sanitizeHelperReason(`HELPER_FAILED: wave-status: ${message}`),
+      reason: sanitizeHelperReason(
+        formatToolError({ code: "HELPER_FAILED", message: `wave-status: ${message}` }),
+      ),
       stage: "delegation",
       result: null,
     };
@@ -118,7 +127,10 @@ export async function handleOpenWave(
       return {
         outcome: "rejected",
         reason: sanitizeHelperReason(
-          "HELPER_FAILED: saida vazia de state-ondas.sh start (esperado onda-NNN)",
+          formatToolError({
+            code: "HELPER_FAILED",
+            message: "saida vazia de state-ondas.sh start (esperado onda-NNN)",
+          }),
         ),
         stage: "delegation",
         result: null,
@@ -135,7 +147,10 @@ export async function handleOpenWave(
       return {
         outcome: "rejected",
         reason: sanitizeHelperReason(
-          `HELPER_FAILED: ${err.diagnostic?.message ?? err.stderr}`,
+          formatToolError({
+            code: "HELPER_FAILED",
+            message: err.diagnostic?.message ?? err.stderr,
+          }),
         ),
         stage: "delegation",
         result: null,
@@ -144,7 +159,10 @@ export async function handleOpenWave(
     return {
       outcome: "rejected",
       reason: sanitizeHelperReason(
-        `HELPER_FAILED: ${err instanceof Error ? err.message : String(err)}`,
+        formatToolError({
+          code: "HELPER_FAILED",
+          message: err instanceof Error ? err.message : String(err),
+        }),
       ),
       stage: "delegation",
       result: null,

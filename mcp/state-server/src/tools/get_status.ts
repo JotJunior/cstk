@@ -16,7 +16,12 @@
 
 import { join } from "node:path";
 import { z } from "zod";
-import { runHelper, resolveScriptsDir, HelperExecutionError } from "../runtime/exec.js";
+import {
+  runHelper,
+  resolveScriptsDir,
+  HelperExecutionError,
+  formatToolError,
+} from "../runtime/exec.js";
 import { sanitizeForLlmContext } from "../runtime/sanitize.js";
 import {
   matchesResolvedSession,
@@ -93,7 +98,10 @@ export async function handleGetStatus(
   if (!matchesResolvedSession(session, input.session_id)) {
     return {
       outcome: "rejected",
-      reason: "SESSION_MISMATCH: session_id nao corresponde ao token de capacidade desta sessao",
+      reason: formatToolError({
+        code: "SESSION_MISMATCH",
+        message: "session_id nao corresponde ao token de capacidade desta sessao",
+      }),
       stage: "precondition",
       result: null,
     };
@@ -128,7 +136,10 @@ export async function handleGetStatus(
       return {
         outcome: "rejected",
         reason: sanitizeHelperReason(
-          `HELPER_FAILED: saida inesperada de bloqueios.sh count: '${pendingOut}'`,
+          formatToolError({
+            code: "HELPER_FAILED",
+            message: `saida inesperada de bloqueios.sh count: '${pendingOut}'`,
+          }),
         ),
         stage: "delegation",
         result: null,
@@ -152,7 +163,10 @@ export async function handleGetStatus(
       return {
         outcome: "rejected",
         reason: sanitizeHelperReason(
-          `HELPER_FAILED: ${err.diagnostic?.message ?? err.stderr}`,
+          formatToolError({
+            code: "HELPER_FAILED",
+            message: err.diagnostic?.message ?? err.stderr,
+          }),
         ),
         stage: "delegation",
         result: null,
@@ -161,7 +175,10 @@ export async function handleGetStatus(
     return {
       outcome: "rejected",
       reason: sanitizeHelperReason(
-        `HELPER_FAILED: ${err instanceof Error ? err.message : String(err)}`,
+        formatToolError({
+          code: "HELPER_FAILED",
+          message: err instanceof Error ? err.message : String(err),
+        }),
       ),
       stage: "delegation",
       result: null,

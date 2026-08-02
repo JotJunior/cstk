@@ -21,6 +21,8 @@ import {
   runHelper,
   resolveScriptsDir,
   HelperExecutionError,
+  formatToolError,
+  type McpToolErrorCode,
 } from "../runtime/exec.js";
 import { sanitizeForLlmContext } from "../runtime/sanitize.js";
 import {
@@ -141,7 +143,10 @@ export async function handleRecordDecision(
   if (!matchesResolvedSession(session, input.session_id)) {
     return {
       outcome: "rejected",
-      reason: "SESSION_MISMATCH: session_id nao corresponde ao token de capacidade desta sessao",
+      reason: formatToolError({
+        code: "SESSION_MISMATCH",
+        message: "session_id nao corresponde ao token de capacidade desta sessao",
+      }),
       stage: "precondition",
       result: null,
     };
@@ -188,7 +193,10 @@ export async function handleRecordDecision(
       return {
         outcome: "rejected",
         reason: sanitizeHelperReason(
-          "HELPER_FAILED: saida vazia de state-decisions.sh register (esperado dec-NNN)",
+          formatToolError({
+            code: "HELPER_FAILED",
+            message: "saida vazia de state-decisions.sh register (esperado dec-NNN)",
+          }),
         ),
         stage: "delegation",
         result: null,
@@ -206,7 +214,7 @@ export async function handleRecordDecision(
       const code = classifyHelperError(message);
       return {
         outcome: "rejected",
-        reason: sanitizeHelperReason(`${code}: ${message}`),
+        reason: sanitizeHelperReason(formatToolError({ code, message })),
         stage: "delegation",
         result: null,
       };
@@ -214,7 +222,10 @@ export async function handleRecordDecision(
     return {
       outcome: "rejected",
       reason: sanitizeHelperReason(
-        `HELPER_FAILED: ${err instanceof Error ? err.message : String(err)}`,
+        formatToolError({
+          code: "HELPER_FAILED",
+          message: err instanceof Error ? err.message : String(err),
+        }),
       ),
       stage: "delegation",
       result: null,
@@ -232,7 +243,7 @@ export async function handleRecordDecision(
  * caminho so e alcancado se o schema for contornado (bug) ou o helper for
  * chamado fora da tool.
  */
-function classifyHelperError(message: string): string {
+function classifyHelperError(message: string): McpToolErrorCode {
   if (message.includes("EXIGE --evidencia") || message.includes("--evidencia < 20")) {
     return "EVIDENCE_REQUIRED";
   }

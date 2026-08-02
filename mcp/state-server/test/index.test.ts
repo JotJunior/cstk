@@ -24,7 +24,7 @@ function registeredToolNames(server: McpServer): string[] {
   return Object.keys(withPrivateAccess._registeredTools);
 }
 
-test("bootstrap: sessao resolvida registra as 6 tools do MVP (F2 + F3 + get_status/dec-064)", async () => {
+test("bootstrap: sessao resolvida registra as 7 tools do MVP (F2 + F3 + get_status/dec-064 + F4 close_wave)", async () => {
   const server = await bootstrap({
     ...process.env,
     MCP_SESSION_TOKEN: "synthetic-token-abc123",
@@ -40,6 +40,7 @@ test("bootstrap: sessao resolvida registra as 6 tools do MVP (F2 + F3 + get_stat
     "record_task",
     "register_human_block",
     "get_status",
+    "close_wave",
   ]);
 });
 

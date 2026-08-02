@@ -39,6 +39,7 @@ import {
   runHelper,
   resolveScriptsDir,
   HelperExecutionError,
+  formatToolError,
 } from "../runtime/exec.js";
 import { sanitizeForLlmContext } from "../runtime/sanitize.js";
 import {
@@ -161,7 +162,10 @@ export async function handleRecordTask(
   if (!matchesResolvedSession(session, input.session_id)) {
     return {
       outcome: "rejected",
-      reason: "SESSION_MISMATCH: session_id nao corresponde ao token de capacidade desta sessao",
+      reason: formatToolError({
+        code: "SESSION_MISMATCH",
+        message: "session_id nao corresponde ao token de capacidade desta sessao",
+      }),
       stage: "precondition",
       result: null,
     };
@@ -180,7 +184,10 @@ export async function handleRecordTask(
     if (statusOut.trim() !== "open") {
       return {
         outcome: "rejected",
-        reason: "NO_OPEN_WAVE: nenhuma onda em andamento (rode open_wave primeiro)",
+        reason: formatToolError({
+          code: "NO_OPEN_WAVE",
+          message: "nenhuma onda em andamento (rode open_wave primeiro)",
+        }),
         stage: "precondition",
         result: null,
       };
@@ -194,7 +201,9 @@ export async function handleRecordTask(
           : String(err);
     return {
       outcome: "rejected",
-      reason: sanitizeHelperReason(`HELPER_FAILED: wave-status: ${message}`),
+      reason: sanitizeHelperReason(
+        formatToolError({ code: "HELPER_FAILED", message: `wave-status: ${message}` }),
+      ),
       stage: "delegation",
       result: null,
     };
@@ -206,7 +215,10 @@ export async function handleRecordTask(
       if (!waveIds.includes(input.wave_id)) {
         return {
           outcome: "rejected",
-          reason: `WAVE_ID_NOT_FOUND: wave_id '${input.wave_id}' nao corresponde a nenhuma onda existente`,
+          reason: formatToolError({
+            code: "WAVE_ID_NOT_FOUND",
+            message: `wave_id '${input.wave_id}' nao corresponde a nenhuma onda existente`,
+          }),
           stage: "precondition",
           result: null,
         };
@@ -215,7 +227,9 @@ export async function handleRecordTask(
       const message = err instanceof Error ? err.message : String(err);
       return {
         outcome: "rejected",
-        reason: sanitizeHelperReason(`HELPER_FAILED: leitura de .waves: ${message}`),
+        reason: sanitizeHelperReason(
+          formatToolError({ code: "HELPER_FAILED", message: `leitura de .waves: ${message}` }),
+        ),
         stage: "delegation",
         result: null,
       };
@@ -261,7 +275,10 @@ export async function handleRecordTask(
       return {
         outcome: "rejected",
         reason: sanitizeHelperReason(
-          `HELPER_FAILED: saida inesperada de state-ondas.sh record-task: '${stdout.trim()}'`,
+          formatToolError({
+            code: "HELPER_FAILED",
+            message: `saida inesperada de state-ondas.sh record-task: '${stdout.trim()}'`,
+          }),
         ),
         stage: "delegation",
         result: null,
@@ -281,7 +298,7 @@ export async function handleRecordTask(
         : "HELPER_FAILED";
       return {
         outcome: "rejected",
-        reason: sanitizeHelperReason(`${code}: ${message}`),
+        reason: sanitizeHelperReason(formatToolError({ code, message })),
         stage: "delegation",
         result: null,
       };
@@ -289,7 +306,10 @@ export async function handleRecordTask(
     return {
       outcome: "rejected",
       reason: sanitizeHelperReason(
-        `HELPER_FAILED: ${err instanceof Error ? err.message : String(err)}`,
+        formatToolError({
+          code: "HELPER_FAILED",
+          message: err instanceof Error ? err.message : String(err),
+        }),
       ),
       stage: "delegation",
       result: null,

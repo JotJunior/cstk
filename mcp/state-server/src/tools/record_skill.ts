@@ -25,6 +25,7 @@ import {
   runHelper,
   resolveScriptsDir,
   HelperExecutionError,
+  formatToolError,
 } from "../runtime/exec.js";
 import { sanitizeForLlmContext } from "../runtime/sanitize.js";
 import {
@@ -100,7 +101,10 @@ export async function handleRecordSkill(
   if (!matchesResolvedSession(session, input.session_id)) {
     return {
       outcome: "rejected",
-      reason: "SESSION_MISMATCH: session_id nao corresponde ao token de capacidade desta sessao",
+      reason: formatToolError({
+        code: "SESSION_MISMATCH",
+        message: "session_id nao corresponde ao token de capacidade desta sessao",
+      }),
       stage: "precondition",
       result: null,
     };
@@ -133,7 +137,10 @@ export async function handleRecordSkill(
       return {
         outcome: "rejected",
         reason: sanitizeHelperReason(
-          `HELPER_FAILED: saida inesperada de state-ondas.sh record-skill: '${stdout.trim()}'`,
+          formatToolError({
+            code: "HELPER_FAILED",
+            message: `saida inesperada de state-ondas.sh record-skill: '${stdout.trim()}'`,
+          }),
         ),
         stage: "delegation",
         result: null,
@@ -150,7 +157,9 @@ export async function handleRecordSkill(
       const code = err.diagnostic?.code === "no-open-wave" ? "NO_OPEN_WAVE" : "HELPER_FAILED";
       return {
         outcome: "rejected",
-        reason: sanitizeHelperReason(`${code}: ${err.diagnostic?.message ?? err.stderr}`),
+        reason: sanitizeHelperReason(
+          formatToolError({ code, message: err.diagnostic?.message ?? err.stderr }),
+        ),
         stage: "delegation",
         result: null,
       };
@@ -158,7 +167,10 @@ export async function handleRecordSkill(
     return {
       outcome: "rejected",
       reason: sanitizeHelperReason(
-        `HELPER_FAILED: ${err instanceof Error ? err.message : String(err)}`,
+        formatToolError({
+          code: "HELPER_FAILED",
+          message: err instanceof Error ? err.message : String(err),
+        }),
       ),
       stage: "delegation",
       result: null,

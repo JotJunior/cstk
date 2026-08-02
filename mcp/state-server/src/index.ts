@@ -52,12 +52,18 @@ import {
   handleGetStatus,
   type GetStatusResponse,
 } from "./tools/get_status.js";
+import {
+  closeWaveInputShape,
+  handleCloseWave,
+  type CloseWaveResponse,
+} from "./tools/close_wave.js";
 
 const SERVER_NAME = "cstk-state";
 // F3 (task 3.6-3.9 + tool get_status/dec-064): 5 tools novas registradas —
 // mudanca ADITIVA (nenhuma tool/campo existente removido ou redefinido) —
 // bump MINOR conforme contracts/mcp-tools.md §Versionamento de contrato.
-const SERVER_VERSION = "0.2.0";
+// F4 (task 4.1): tool `close_wave` (atomicidade, FR-003) — tambem aditiva.
+const SERVER_VERSION = "0.3.0";
 
 /** Envelope generico de resposta de tool (accepted/rejected/stage/result — contracts/mcp-tools.md). */
 interface ToolEnvelope {
@@ -181,6 +187,20 @@ export async function bootstrap(
     async (input) => {
       const response: GetStatusResponse = await handleGetStatus(input, { session, env });
       return toCallToolResult("get_status", response);
+    },
+  );
+
+  server.registerTool(
+    "close_wave",
+    {
+      title: "Close the current wave (atomic)",
+      description:
+        "Fecha a onda corrente atomicamente (delega a state-ondas.sh end + backup escrubado + selo de integridade; compensacao por pre-imagem em qualquer falha — a onda nunca fica parcialmente fechada).",
+      inputSchema: closeWaveInputShape,
+    },
+    async (input) => {
+      const response: CloseWaveResponse = await handleCloseWave(input, { session, env });
+      return toCallToolResult("close_wave", response);
     },
   );
 

@@ -550,67 +550,116 @@ Ref: contracts/mcp-tools.md §Tool: get_status; dec-064
       0.2.0, bump MINOR — mudanca aditiva, `contracts/mcp-tools.md`
       §Versionamento de contrato)
 
-### 3.10 Mapper `exec.ts` completo + rejeicoes tipadas cross-tool `[A]` {auto}
+### 3.10 Mapper `exec.ts` completo + rejeicoes tipadas cross-tool `[A]` {auto} — CONCLUIDO (onda 13)
 
-> **Parcialmente coberto nesta onda, NAO concluido**: `runtime/identifiers.ts`
-> (criado na task 3.6) ja consolida os padroes de allowlist (SEC-M2,
-> `IDENTIFIER_PATTERN`/`DECISION_ID_PATTERN`/`WAVE_ID_PATTERN`/
-> `BLOCK_ID_PATTERN`/`isSafeRelativePath`) reutilizados por todas as tools
-> de F3 — mas a tabela de mapeamento CAMPO->FLAG e o tipo `McpToolError`
-> comum permanecem inline por tool (mesmo padrao de `record_skill.ts`),
-> nao consolidados em `exec.ts`. Fica para uma onda futura.
+> **Nota de conclusao (onda 13)**: `runtime/identifiers.ts` (task 3.6) ja
+> consolidava os padroes de allowlist (SEC-M2). Esta task consolidou o que
+> faltava: `FIELD_TO_FLAG_TABLE` (tabela declarativa cross-tool, exportada
+> por `exec.ts`) + `McpToolError`/`formatToolError` (tipo de erro comum). A
+> logica IMPERATIVA de `args.push(...)` de cada tool foi mantida local a
+> cada `tools/*.ts` (ja testada individualmente, 82/82 verdes) — a tabela e
+> o REGISTRO auditavel verificado por teste de paridade
+> (`test/exec-mapper-parity.test.ts`), nao o gerador do argv. `close_wave`
+> ja entrou na tabela por antecipacao (mapeamento documentado ANTES do
+> arquivo existir); a task 4.1 remove a excecao `TOOLS_WITHOUT_SOURCE_YET`
+> ao criar `tools/close_wave.ts`.
 
 Ref: plan.md §Convencoes de Borda "Mapper layer (tool <-> helper)"
 
-- [ ] 3.10.1 Consolidar em `exec.ts` a tabela explicita de mapeamento
+- [x] 3.10.1 Consolidar em `exec.ts` a tabela explicita de mapeamento
       campo-ingles -> flag-portugues usada por todas as tools de 3.6-3.9
       (nao ha mapeamento automatico por convencao — e tabela explicita)
-- [ ] 3.10.2 Garantir que TODO campo opcional do schema chega ao helper
+      <!-- FIELD_TO_FLAG_TABLE em src/runtime/exec.ts, cobre tambem
+      record_skill (2.2), get_status (3.11) e close_wave (4.1, antecipado) -->
+- [x] 3.10.2 Garantir que TODO campo opcional do schema chega ao helper
       quando presente (risco especifico documentado em plan.md
       §Convencoes de Borda: "falha em silencio" — schema aceita, helper
       grava sem o campo, nada quebra)
-- [ ] 3.10.3 Teste de paridade: para cada tool, listar campos do
+      <!-- test/exec-mapper-parity.test.ts: assercao estatica confirma que
+      toda flag != null da tabela aparece como literal `args.push(...)` no
+      arquivo-fonte da tool correspondente -->
+- [x] 3.10.3 Teste de paridade: para cada tool, listar campos do
       `inputSchema` e confirmar que todos tem entrada na tabela de
       mapeamento (falha se algum campo ficar orfao)
-- [ ] 3.10.4 Definir tipo de erro comum (`McpToolError`) reutilizado por
+      <!-- test/exec-mapper-parity.test.ts, 1 teste por tool + checagem de
+      duplicata -->
+- [x] 3.10.4 Definir tipo de erro comum (`McpToolError`) reutilizado por
       todas as tools, com `code` enumerado + `message` (formato decidido
       em 3.2)
+      <!-- McpToolError + formatToolError em src/runtime/exec.ts;
+      formato serializado "${code}: ${message}" identico ao anterior
+      (dec-059/dec-064) — zero mudanca de comportamento observavel,
+      82 testes pre-existentes continuam verdes -->
 
 ---
 
 ## FASE 4 - Atomicidade
 
-### 4.1 Tool `close_wave` com pre-imagem/compensacao `[C]` {auto}
+### 4.1 Tool `close_wave` com pre-imagem/compensacao `[C]` {auto} — CONCLUIDO (onda 13)
 
 Ref: contracts/mcp-tools.md §Tool: close_wave; plan.md §Summary item 3;
 research.md D3; quickstart.md Scenario 5
 
-- [ ] 4.1.1 Implementar `mcp/state-server/src/tools/close_wave.ts`
+> **Notas de correcao empirica (Principio VI, onda 13)** — `close_wave.ts`
+> documenta as 3 no cabecalho do arquivo:
+> 1. o backup da onda usa `state-rw.sh read` (backend-agnostico
+>    [VERIFICADO: `_sr_cmd_read`]) em vez de `cat state.json` (so
+>    funcionaria sob backend json).
+> 2. `result.state_sha256` corrigido para `string | null` — `null` sob
+>    backend sqlite (C7/dec-025: nao ha hash derivado a manter la).
+> 3. A ORDEM implementada e a de research.md Decision 3 (pre-imagem ->
+>    wave-backup -> `end` -> sha256-update), que ja REJEITA explicitamente
+>    a ordem inversa ("Alternatives considered"). A task 4.2.3 original
+>    descrevia o teste de falha simulada com fraseado que sugeria a ordem
+>    inversa (end-entao-backup) — reescrita abaixo para casar com a ordem
+>    realmente ratificada/implementada.
+
+- [x] 4.1.1 Implementar `mcp/state-server/src/tools/close_wave.ts`
       delegando a `state-ondas.sh end`
-- [ ] 4.1.2 Implementar pre-imagem: capturar estado antes da mutacao
+- [x] 4.1.2 Implementar pre-imagem: capturar estado antes da mutacao
       (backup da onda + hash) para permitir compensacao caso qualquer um
       dos efeitos fora do banco (backup em disco, `sha256-update`) falhe
       apos a escrita no banco
-- [ ] 4.1.3 Implementar a logica de compensacao: se backup ou hash
+      <!-- capturePreImage/restorePreImage: state.json+.sha256 (backend
+      json) ou state.db+wal+shm (backend sqlite), mkdtemp em os.tmpdir() -->
+- [x] 4.1.3 Implementar a logica de compensacao: se backup ou hash
       falharem apos o `state-ondas.sh end` gravar, reverter para um
       estado observavel consistente (nunca deixar o banco "fechado" com
       backup ausente ou hash desatualizado)
-- [ ] 4.1.4 `inputSchema` + mapeamento de campos em `exec.ts`
-- [ ] 4.1.5 Implementar `### Errors` do contrato (onda ja fechada, etc)
+      <!-- rollback() restaura a pre-imagem e responde CLOSE_ROLLED_BACK;
+      testado empiricamente (bytes em disco, nao so o retorno da tool) em
+      test/close_wave.test.ts -->
+- [x] 4.1.4 `inputSchema` + mapeamento de campos em `exec.ts`
+      <!-- closeWaveInputShape (task 4.1) + FIELD_TO_FLAG_TABLE (task 3.10,
+      antecipado) -->
+- [x] 4.1.5 Implementar `### Errors` do contrato (onda ja fechada, etc)
+      <!-- NO_OPEN_WAVE, INVALID_TERMINATION_REASON, INVALID_STAGE_TOKEN
+      (schema + defesa em profundidade), CLOSE_ROLLED_BACK, HELPER_FAILED -->
 
-### 4.2 Testes de atomicidade cross-backend `[A]` {auto}
+### 4.2 Testes de atomicidade cross-backend `[A]` {auto} — CONCLUIDO (onda 13)
 
 Ref: quickstart.md Scenario 5; plan.md Technical Context "Storage"
 
-- [ ] 4.2.1 Testes `node:test` de `close_wave` rodando contra backend
+- [x] 4.2.1 Testes `node:test` de `close_wave` rodando contra backend
       `json`
-- [ ] 4.2.2 Testes `node:test` de `close_wave` rodando contra backend
+- [x] 4.2.2 Testes `node:test` de `close_wave` rodando contra backend
       `sqlite` (state.db)
-- [ ] 4.2.3 Teste de falha simulada: interromper apos a escrita no banco
-      e antes do backup — confirmar compensacao observavel nos dois
-      backends
-- [ ] 4.2.4 Rodar `./tests/run.sh` (subset MCP) e confirmar verde nos
+      <!-- deteccao de backend via presenca de state.db; result.state_sha256
+      == null verificado -->
+- [x] 4.2.3 Teste de falha simulada: interromper a sequencia ANTES da
+      mutacao (falha no wave-backup ou na leitura backend-agnostica que o
+      alimenta — nada em disco muda, `end` nunca e invocado) e DEPOIS da
+      mutacao (falha no `sha256-update`; a fixture de `end` MUTA de
+      verdade um `state.json` real em disco para provar que a compensacao
+      restaura os bytes originais, nao so o retorno da tool) — confirmar
+      compensacao observavel nos dois backends
+      <!-- reescrita nesta onda para a ordem realmente implementada (ver
+      nota de correcao empirica #3 em 4.1); backend sqlite coberto pelo
+      teste 4.2.2 (mesmo codepath de rollback, backend-generico) -->
+- [x] 4.2.4 Rodar `./tests/run.sh` (subset MCP) e confirmar verde nos
       dois backends
+      <!-- `node --test dist/test/*.test.js` (build via docker, ver nota de
+      execucao abaixo): 102/102 verdes, incluindo os 2 backends -->
 
 ---
 
