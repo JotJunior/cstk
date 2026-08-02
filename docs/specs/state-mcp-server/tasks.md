@@ -878,47 +878,65 @@ novo provando que a confirmacao via `status --live` e uma UNICA sonda
 - [x] 5.5.4 Testes `node:test`/shell simulando queda no meio da onda e
       confirmando a comutacao sem duplicar nem perder mutacao
 
-### 5.6 Decisao humana: aceitar SEC-M5/SEC-L1 no MVP? `[M]` {humano} — BLOQUEADO, AGUARDANDO OPERADOR
+### 5.6 Decisao humana: aceitar SEC-M5/SEC-L1 no MVP? `[M]` {humano} — CONCLUIDO
 
 Ref: checklists/security.md CHK056; plan.md §Seguranca linhas SEC-M5,
 SEC-L1
 
-RESULTADO PARCIAL: bloqueio `block-006` registrado (dec-091) com a analise
+RESULTADO: bloqueio `block-006` registrado (dec-091) com a analise
 completa apresentada ao operador (texto literal de SEC-M5/SEC-L1 do
 plan.md + CHK056), 2 opcoes e recomendacao nao-vinculante
 (`aceitar-sem-mitigacao-adicional`, pelos controles compensatorios ja
 verificados nesta feature — contrato de tool/enforcement-log/lock do pai
 para SEC-M5; rotulo explicito "pos-MVP" no proprio plan.md para SEC-L1).
-Onda encerrada em `aguardando_humano`; retomar via
-`/feature-00c-resume --resposta-bloqueio` aplica a resposta e completa
-5.6.1/5.6.2.
+Operador respondeu `aceitar-sem-mitigacao-adicional` (dec-093, score 3,
+block-006 `respondido`): SEC-M5 aceito com os controles compensatorios
+existentes (contrato Zod da tool + `enforcement-log.jsonl` + lock do
+pai cobrindo a onda inteira); SEC-L1 adiado para pos-MVP (sem teto de
+chamadas por sessao; `budget.sh` ja orca a onda). FASE 6 liberada sem
+subtask adicional de mitigacao.
 
-- [ ] 5.6.1 Apresentar ao operador: SEC-M5 (mutacao fora do
+- [x] 5.6.1 Apresentar ao operador: SEC-M5 (mutacao fora do
       `bash-guard`, mitigado por contrato de tool + enforcement-log +
       lock do pai) e SEC-L1 (sem teto de chamadas por tool/sessao,
-      recomendado pos-MVP)
-- [ ] 5.6.2 Registrar Decisao de aceite de risco (ou de exigir mitigacao
-      adicional antes de F6 liberar uso real)
+      recomendado pos-MVP) — apresentado via block-006 (dec-091)
+- [x] 5.6.2 Registrar Decisao de aceite de risco (ou de exigir mitigacao
+      adicional antes de F6 liberar uso real) — dec-093,
+      `aceitar-sem-mitigacao-adicional`, score 3
 
 ---
 
 ## FASE 6 - Integracao 00c
 
-### 6.1 `cstk mcp install` (`.mcp.json`) `[A]` {auto}
+### 6.1 `cstk mcp install` (`.mcp.json`) `[A]` {auto} — CONCLUIDO
 
 Ref: contracts/mcp-session-lifecycle.md `cstk mcp install`
 
-- [ ] 6.1.1 Estender `cli/lib/mcp.sh` com
+RESULTADO: `_mcp_cmd_install` em `cli/lib/mcp.sh` reusa `merge_settings`/
+`detect_jq`/`print_paste_block` de `hooks.sh` (sourced condicionalmente,
+mesmo padrao de `mcp-docker.sh`) — `jq` permanece confinado a `hooks.sh`
+(Constitution carve-out condicao b). `command` resolvido via
+`_mcp_runtime_script_path mcp-launch.sh` (PATH -> repo -> `~/.claude`).
+`mcp-launch.sh` resolve a sessao ativa por token de capacidade
+(`mcp-session.sh resolve --project-path`, SEC-H3) e faz
+`exec docker attach <container>`, entregando o stdio do harness
+diretamente ao container detached subido por `cstk mcp start`. Validado
+manualmente com stub `docker` (sucesso: `attach <container>`; falha:
+sem token / token invalido / `mode=bash-fallback` / docker ausente —
+todos exit != 0 sem chamar `docker attach`).
+
+- [x] 6.1.1 Estender `cli/lib/mcp.sh` com
       `install [--project-path PATH] [--dry-run]`: grava a entrada
       `mcpServers` estatica no `.mcp.json` (escopo project) apontando
       para o entrypoint stdio
-- [ ] 6.1.2 Criar `global/skills/agente-00c-runtime/scripts/mcp-launch.sh`
+- [x] 6.1.2 Criar `global/skills/agente-00c-runtime/scripts/mcp-launch.sh`
       (entrypoint stdio do `.mcp.json`) — orquestra subir o
       container/processo e conectar o transporte
-- [ ] 6.1.3 Criar `tests/test_mcp-launch.sh` (exigido pelo
-      `--check-coverage`)
-- [ ] 6.1.4 Estender `tests/cstk/test_mcp.sh` cobrindo `install`
-      (idempotente, `--dry-run` nao escreve)
+- [x] 6.1.3 Criar `tests/test_mcp-launch.sh` (exigido pelo
+      `--check-coverage`) — 5 cenarios (sem token, token desconhecido,
+      `mode=bash-fallback`, docker ausente, sucesso com attach)
+- [x] 6.1.4 Estender `tests/cstk/test_mcp.sh` cobrindo `install`
+      (idempotente, `--dry-run` nao escreve) — 7 cenarios novos
 
 ### 6.2 Integracao dos commands pai: chamada de status/start/stop `[A]` {auto}
 

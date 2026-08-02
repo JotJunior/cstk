@@ -931,4 +931,81 @@ scenario_mcp_subcomando_desconhecido_lista_gc() {
   assert_stderr_contains "status, start, stop, gc" || return 1
 }
 
+# ---------- install (FASE 6 task 6.1.4) ----------
+
+scenario_install_dry_run_nao_escreve() {
+  _ip="$TMPDIR_TEST/install-dry"
+  mkdir -p "$_ip"
+  capture _cstk_mcp install --project-path "$_ip" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install dry-run exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "dry-run" || return 1
+  if [ -f "$_ip/.mcp.json" ]; then
+    _fail "install --dry-run nao deveria escrever .mcp.json" "arquivo existe"
+    return 1
+  fi
+}
+
+scenario_install_cria_mcp_json_com_cstk_state() {
+  if ! command -v jq >/dev/null 2>&1; then
+    return 0
+  fi
+  _ip="$TMPDIR_TEST/install-fresh"
+  mkdir -p "$_ip"
+  capture _cstk_mcp install --project-path "$_ip"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install exit" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_ip/.mcp.json" ] || { _fail "install deveria criar .mcp.json" "ausente"; return 1; }
+  _cmd=$(jq -r '.mcpServers["cstk-state"].command' "$_ip/.mcp.json")
+  case "$_cmd" in
+    */mcp-launch.sh) : ;;
+    *) _fail "command deveria apontar para mcp-launch.sh" "$_cmd"; return 1 ;;
+  esac
+  _type=$(jq -r '.mcpServers["cstk-state"].type' "$_ip/.mcp.json")
+  [ "$_type" = "stdio" ] || { _fail "type deveria ser stdio" "$_type"; return 1; }
+}
+
+scenario_install_idempotente_preserva_chaves_existentes() {
+  if ! command -v jq >/dev/null 2>&1; then
+    return 0
+  fi
+  _ip="$TMPDIR_TEST/install-idem"
+  mkdir -p "$_ip"
+  printf '{"mcpServers":{"outro-servidor":{"type":"stdio","command":"/bin/true","args":[]}}}\n' \
+    >"$_ip/.mcp.json"
+  capture _cstk_mcp install --project-path "$_ip"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install idempotente exit 1a chamada" "$_CAPTURED_STDERR"; return 1; }
+  capture _cstk_mcp install --project-path "$_ip"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install idempotente exit 2a chamada" "$_CAPTURED_STDERR"; return 1; }
+  # chave pre-existente de outro servidor MCP precisa sobreviver ao merge
+  _outro=$(jq -r '.mcpServers["outro-servidor"].command' "$_ip/.mcp.json")
+  [ "$_outro" = "/bin/true" ] || { _fail "merge nao deveria descartar outro-servidor" "$_outro"; return 1; }
+  _cstk=$(jq -r '.mcpServers["cstk-state"].type' "$_ip/.mcp.json")
+  [ "$_cstk" = "stdio" ] || { _fail "cstk-state deveria estar presente apos merge" "$_cstk"; return 1; }
+}
+
+scenario_install_recusa_home_exit_3() {
+  capture _cstk_mcp install --project-path "$HOME"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "install HOME exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "HOME" || return 1
+}
+
+scenario_install_project_path_inexistente_exit_1() {
+  capture _cstk_mcp install --project-path "$TMPDIR_TEST/nao-existe-install"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "install path inexistente exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_install_flag_desconhecida_exit_2() {
+  capture _cstk_mcp install --bogus
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "install flag desconhecida exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_mcp_uso_lista_install() {
+  capture _cstk_mcp
+  assert_stdout_contains "install" || return 1
+}
+
+scenario_mcp_subcomando_desconhecido_lista_install() {
+  capture _cstk_mcp naoexiste
+  assert_stderr_contains "install" || return 1
+}
+
 run_all_scenarios

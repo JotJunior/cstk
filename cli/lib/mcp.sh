@@ -42,11 +42,22 @@
 # de _mcp_cmd_gc abaixo para o racional completo (fail-safe: nunca remove
 # por suposicao).
 #
+# `install` (FASE 6 task 6.1): registra a entrada ESTATICA e UNICA
+# `mcpServers.cstk-state` no `.mcp.json` do projeto-alvo, apontando para o
+# entrypoint stdio `mcp-launch.sh` (resolvido do catalogo — mesmo helper
+# `_mcp_runtime_script_path` ja usado por status/start/stop/gc). Roda UMA
+# VEZ por projeto, nao por execucao (research.md Decision 2). Recusa
+# `--project-path $HOME` (mesma guarda de `cstk hooks install`,
+# `hooks.sh` linha ~414). Merge via `merge_settings`/`print_paste_block`
+# de `hooks.sh` — jq permanece CONFINADO aquele arquivo (Constitution
+# carve-out condicao b); `mcp.sh` NUNCA chama `jq` diretamente.
+#
 # Subcomandos:
 #   cstk mcp status [--state-dir DIR] [--project-path PATH] [--live]
 #   cstk mcp start --state-dir DIR
 #   cstk mcp stop --state-dir DIR
 #   cstk mcp gc [--dry-run]
+#   cstk mcp install [--project-path PATH] [--dry-run]
 #
 # Saida (stdout, uma chave por linha — mesmo estilo de `state-backend.sh
 # resolve`):
@@ -68,7 +79,16 @@
 #   3 indisponivel (start): mode=bash-fallback gravado, NAO e erro fatal —
 #     o pai deve seguir com o caminho Bash de hoje (FR-007)
 #
-# POSIX sh puro. Sem bash-isms.
+# Exit codes (install):
+#   0 entrada mcpServers.cstk-state criada/ja presente (idempotente), ou
+#     --dry-run
+#   1 erro de IO/merge, ou catalogo sem mcp-launch.sh
+#   2 uso incorreto
+#   3 recusa: --project-path aponta para $HOME
+#
+# POSIX sh puro. Sem bash-isms. `jq` NAO e referenciado neste arquivo —
+# `install` delega merge de JSON a hooks.sh (UNICO arquivo autorizado a
+# invocar jq, Constitution carve-out condicao b).
 
 if [ -n "${_CSTK_MCP_LOADED:-}" ]; then
   return 0 2>/dev/null
@@ -87,6 +107,15 @@ fi
 if [ -n "${CSTK_LIB:-}" ] && [ -f "$CSTK_LIB/mcp-docker.sh" ]; then
   # shellcheck source=./mcp-docker.sh
   . "$CSTK_LIB/mcp-docker.sh"
+fi
+
+# hooks.sh: UNICO arquivo do toolkit autorizado a referenciar `jq`
+# (Constitution carve-out condicao b). `install` reusa merge_settings/
+# detect_jq/print_paste_block de la — nenhum mecanismo de merge JSON novo
+# (mesma mecanica ja usada por `cstk hooks install`/`cstk install`).
+if [ -n "${CSTK_LIB:-}" ] && [ -f "$CSTK_LIB/hooks.sh" ]; then
+  # shellcheck source=./hooks.sh
+  . "$CSTK_LIB/hooks.sh"
 fi
 
 # _mcp_runtime_script_path NAME -> imprime o path do script NAME do
@@ -755,6 +784,106 @@ _mcp_cmd_gc() {
   return 0
 }
 
+# _mcp_cmd_install [--project-path PATH] [--dry-run]
+#
+# Registra a entrada ESTATICA `mcpServers.cstk-state` em `<PATH>/.mcp.json`
+# (contracts/mcp-session-lifecycle.md §`cstk mcp install`). Roda uma vez
+# por projeto, nao por execucao. `command` aponta para `mcp-launch.sh`
+# resolvido do catalogo via `_mcp_runtime_script_path` (mesma resolucao
+# PATH -> repo -> ~/.claude ja usada pelos demais subcomandos). Sem
+# `env` interpolado (task 1.2: sintaxe de expansao em .mcp.json e
+# [NAO-VERIFICADO] — mcp-launch.sh descobre tudo do disco/PATH).
+#
+# Merge via hooks.sh (target vence em conflito — mesma politica de
+# merge_settings): entrada ja presente e equivalente => idempotente,
+# exit 0. Sem jq, imprime bloco para colagem manual (print_paste_block)
+# em vez de falhar — carve-out de dep opcional preservado.
+_mcp_cmd_install() {
+  _mci_project_path="."
+  _mci_dry_run=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --project-path) _mci_project_path=$2; shift 2 ;;
+      --dry-run) _mci_dry_run="1"; shift ;;
+      *)
+        printf 'cstk mcp install: flag desconhecida: %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+
+  if [ ! -d "$_mci_project_path" ]; then
+    printf 'cstk mcp install: --project-path nao e diretorio: %s\n' "$_mci_project_path" >&2
+    return 1
+  fi
+
+  # Normaliza para path absoluto (resolve symlinks/relativos), no mesmo
+  # espirito de `cstk hooks install` — sem depender de `realpath` (nem
+  # todo ambiente POSIX tem).
+  _mci_abs=$(CDPATH= cd -- "$_mci_project_path" 2>/dev/null && pwd -P) || {
+    printf 'cstk mcp install: nao consegui resolver %s\n' "$_mci_project_path" >&2
+    return 1
+  }
+
+  if [ -n "${HOME:-}" ] && [ "$_mci_abs" = "${HOME%/}" ]; then
+    printf 'cstk mcp install: --project-path aponta para $HOME — recusado.\n' >&2
+    printf 'cstk mcp install: cstk-state e escopo de PROJETO; aponte para a raiz de um projeto-alvo.\n' >&2
+    return 3
+  fi
+
+  _mci_launcher=$(_mcp_runtime_script_path mcp-launch.sh) || {
+    printf 'cstk mcp install: mcp-launch.sh nao encontrado no catalogo (rode "cstk install" ou "cstk update")\n' >&2
+    return 1
+  }
+
+  _mci_target="$_mci_abs/.mcp.json"
+
+  if [ -n "$_mci_dry_run" ]; then
+    printf 'cstk mcp install: [dry-run] registraria mcpServers.cstk-state em %s -> %s\n' \
+      "$_mci_target" "$_mci_launcher"
+    return 0
+  fi
+
+  _mci_tmp_src=$(mktemp "${TMPDIR:-/tmp}/cstk-mcp-install.XXXXXX") || {
+    printf 'cstk mcp install: mktemp falhou\n' >&2
+    return 1
+  }
+
+  # Forma da entrada [contracts/mcp-session-lifecycle.md §`cstk mcp
+  # install`]: chaves type/command/args conforme doc oficial do .mcp.json.
+  # POSIX puro (sem jq) — o payload e estatico, sem dado dinamico alem do
+  # path resolvido do launcher.
+  cat > "$_mci_tmp_src" <<MCPJSON
+{
+  "mcpServers": {
+    "cstk-state": {
+      "type": "stdio",
+      "command": "$_mci_launcher",
+      "args": []
+    }
+  }
+}
+MCPJSON
+
+  if ! detect_jq; then
+    print_paste_block "$_mci_target" "$_mci_tmp_src"
+    rm -f "$_mci_tmp_src" 2>/dev/null || :
+    printf 'cstk mcp install: jq ausente — cole manualmente o bloco acima em %s\n' "$_mci_target" >&2
+    return 0
+  fi
+
+  if ! merge_settings "$_mci_target" "$_mci_tmp_src"; then
+    rm -f "$_mci_tmp_src" 2>/dev/null || :
+    printf 'cstk mcp install: merge falhou para %s\n' "$_mci_target" >&2
+    return 1
+  fi
+
+  rm -f "$_mci_tmp_src" 2>/dev/null || :
+  printf 'cstk mcp install: mcpServers.cstk-state registrado em %s\n' "$_mci_target"
+  return 0
+}
+
 _mcp_usage() {
   cat <<'HELP'
 cstk mcp — operacoes sobre o servidor MCP de estado das execucoes 00c
@@ -789,6 +918,13 @@ USO:
       state-dir NUNCA e removido (fail-safe). --dry-run so reporta, sem
       remover. Best-effort: docker indisponivel e exit 0, nao erro.
 
+  cstk mcp install [--project-path PATH] [--dry-run]
+      Registra a entrada estatica mcpServers.cstk-state em
+      <PATH>/.mcp.json, apontando para mcp-launch.sh do catalogo. Roda
+      uma vez por projeto. Idempotente: entrada ja presente e
+      equivalente nao gera erro. Recusa --project-path $HOME (exit 3).
+      Sem jq, imprime bloco para colagem manual em vez de falhar.
+
 EXIT CODES (status):
   0 consulta bem-sucedida (inclusive status=unavailable)
   1 erro inesperado
@@ -804,6 +940,12 @@ EXIT CODES (gc):
   0 sempre (best-effort; ver linha summary= no stdout)
   1 erro inesperado (mcp-docker.sh nao carregado, IO de tmpfile)
   2 uso incorreto
+
+EXIT CODES (install):
+  0 entrada criada/ja presente (idempotente), ou --dry-run
+  1 erro de IO/merge, ou catalogo sem mcp-launch.sh
+  2 uso incorreto
+  3 recusa: --project-path aponta para $HOME
 HELP
 }
 
@@ -832,9 +974,13 @@ mcp_main() {
       _mcp_cmd_gc "$@"
       return $?
       ;;
+    install)
+      _mcp_cmd_install "$@"
+      return $?
+      ;;
     *)
       printf 'cstk mcp: subcomando desconhecido: %s\n' "$_mcp_sub" >&2
-      printf 'Subcomandos validos: status, start, stop, gc\n' >&2
+      printf 'Subcomandos validos: status, start, stop, gc, install\n' >&2
       return 2
       ;;
   esac

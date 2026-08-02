@@ -50,7 +50,7 @@ container (SEC-H2). NAO valida implementacao (nao ha codigo).
 - [x] CHK053 - O risco de mutar estado fora do alcance do `bash-guard` e sem lock proprio esta declarado com controles compensatorios nomeados? [Assumption, plan.md §SEC-M5 + research D4] {auto} — contrato da tool + `enforcement-log.jsonl`; a onda inteira roda dentro do lock do command pai.
 - [x] CHK054 - Os controles de supply chain da primeira arvore Node do repo estao especificados como requisito? [Completude, plan.md §SEC-M4] {auto} — `npm ci --ignore-scripts` (nunca `npm install`), lockfile obrigatorio, base pinada por digest, arvore minima, `npm audit` no CI (F5/F6).
 - [x] CHK055 - FR-017 (exclusao mutua entre caminho MCP e caminho Bash) tem mecanismo declarado, e nao so a exigencia? [Clareza, Spec §FR-017 + research D4 + plan §Riscos(4)] {auto} — ambos os caminhos dentro do mesmo lock nao-reentrante do pai; `busy_timeout`/retry/WAL no banco.
-- [ ] CHK056 - Aceitar SEC-M5 (mutacao fora do `bash-guard`) e SEC-L1 (sem teto de chamadas por sessao) no MVP e compativel com o apetite de risco do produto? {humano}
+- [x] CHK056 - Aceitar SEC-M5 (mutacao fora do `bash-guard`) e SEC-L1 (sem teto de chamadas por sessao) no MVP e compativel com o apetite de risco do produto? {humano} — Ratificado pelo operador via block-006/dec-093: `aceitar-sem-mitigacao-adicional`. SEC-M5 aceito com controles compensatorios existentes (contrato Zod + enforcement-log + lock do pai); SEC-L1 adiado pos-MVP.
 - [ ] CHK057 - A auto-atestacao do log (o servidor escreve o proprio rastro) e aceitavel, ou a auditoria exige uma testemunha externa ao processo antes do primeiro uso real? {humano}
 
 ## Notes
