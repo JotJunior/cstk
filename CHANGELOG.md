@@ -5,6 +5,22 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.22.0] - 2026-08-02
+
+### Adicionado
+
+- **Tela "Cheat Sheet"** (rota `/cheatsheet`, novo item de menu na seção
+  *diagnosticar*, ícone `help`): referência rápida dos comandos do CLI
+  `cstk` (v6.2.0) — instalação/manutenção (com o gotcha catálogo vs
+  runtime), estado transacional 00c (`enable-sqlite`/`migrate`), servidor
+  MCP (`install/status/start/stop/gc` + `MCP_MAX_TOOL_CALLS`), pipelines
+  autônomas (slash commands), sessões/recall/hooks — mais os dois
+  passo-a-passos de setup: **completo** (MCP + state.db) e **básico**
+  (Bash + state.json), com o caminho de upgrade entre eles. Conteúdo
+  estático derivado do help real do binário, renderizado pelo
+  `MarkdownView` (renderer seguro: GFM, sem HTML bruto, allowlist de
+  esquemas de URL).
+
 ## [0.21.1] - 2026-07-29
 
 ### Corrigido
