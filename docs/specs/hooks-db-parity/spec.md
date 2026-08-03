@@ -11,6 +11,30 @@
 > `docs/specs/state-db-runtime-parity/tasks.md` (task 6.4.3). Ver tambem
 > `.claude/agente-00c-suggestions.md` (entrada `hooks-db-parity`).
 
+## Clarifications
+
+### Session 2026-08-03
+
+- Q: O orcamento de latencia (~30ms/~177ms) do FR-005 deve ser imposto por
+  um gate automatizado que mede e falha (ex: CI) se ultrapassado, ou e
+  apenas uma referencia de projeto a validar manualmente antes do merge?
+  → A: Gate automatizado — teste/CI mede a latencia real do hook e falha
+  se exceder o teto, alinhado a SC-003.
+- Q: O hook `posttooluse-agent-usage.sh` (User Story 3) entra no escopo
+  desta feature ou vira uma quarta feature separada?
+  → A: Entra no escopo desta feature — os 3 hooks compartilham o mesmo
+  algoritmo de deteccao de execucao ativa (FR-001 ja os lista juntos);
+  corrigir a causa-raiz unificada evita deixar um terceiro arquivo com
+  bug conhecido.
+- Q: O cenario de "backend misto" (execucoes ativas simultaneas sob
+  backends diferentes no mesmo host) precisa ser suportado e testado de
+  fato, ou e aceitavel deixar como best-effort?
+  → A: Best-effort, nao garantido — `state_backend` e config global
+  (`cstk state enable-sqlite`) e a mistura so ocorre em janelas raras de
+  transicao; nao exige cenario de teste dedicado, mas a precedencia
+  deterministica (FR-002) deve continuar valendo quando os dois backends
+  aparecerem simultaneamente por acidente.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Guarda fail-closed continua ativa sob backend SQLite (Priority: P1)
@@ -165,10 +189,11 @@ subagente (`tool_name: Agent`) e confirmar que o sidecar
   (aproximadamente 30ms para os hooks de metrica disparados a cada tool
   call; aproximadamente 177ms para o hook de guarda, que roda antes de
   cada comando Bash) — requisito ja registrado como bloqueante em
-  `sug-001`/CHK031 da feature `state-db-runtime-parity`.
-  [NEEDS CLARIFICATION: esses numeros (~30ms/~177ms) sao um teto que um
-  gate automatizado deve medir e falhar caso ultrapassado, ou uma
-  referencia de projeto a validar manualmente antes do merge?]
+  `sug-001`/CHK031 da feature `state-db-runtime-parity`. Esse orcamento
+  MUST ser imposto por um gate automatizado (teste que mede a latencia
+  real do hook contra um state-dir SQLite e falha se o teto for
+  ultrapassado), nao apenas uma referencia de projeto validada
+  manualmente antes do merge (Clarifications, Session 2026-08-03).
 - **FR-006**: Sessoes manuais do operador (sem nenhuma execucao
   `agente-00c`/`feature-00c` ativa) MUST continuar completamente livres de
   interferencia dos tres hooks, em qualquer backend de persistencia.
@@ -180,18 +205,19 @@ subagente (`tool_name: Agent`) e confirmar que o sidecar
 
 ### Assunções e decisões em aberto
 
-- [NEEDS CLARIFICATION: o hook `posttooluse-agent-usage.sh` (User Story 3)
-  entra no escopo desta feature — que e o que a leitura do codigo-fonte
-  confirma sofrer da mesma classe de bug — ou deve ser tratado como uma
-  quarta feature separada, ficando esta limitada aos 2 hooks citados na
-  descricao original do operador?]
-- [NEEDS CLARIFICATION: o cenario de "backend misto" (execucoes ativas
-  simultaneas sob backends diferentes, descrito no segundo Edge Case) deve
-  ser suportado de fato por esta feature, ou e aceitavel assumir backend
-  uniforme por host — dado que `state_backend` e uma config global
-  (`cstk state enable-sqlite`) e a mistura so ocorreria em janelas raras de
-  transicao — deixando o comportamento sob mistura como "nao garantido,
-  best-effort"?]
+- Resolvido (Clarifications, Session 2026-08-03): o hook
+  `posttooluse-agent-usage.sh` (User Story 3) entra no escopo desta
+  feature — a leitura do codigo-fonte confirma que sofre da mesma classe
+  de bug dos outros dois hooks, e FR-001 ja os lista juntos como MUST
+  unificado.
+- Resolvido (Clarifications, Session 2026-08-03): o cenario de "backend
+  misto" (execucoes ativas simultaneas sob backends diferentes, descrito
+  no segundo Edge Case) e tratado como best-effort/nao garantido —
+  `state_backend` e uma config global (`cstk state enable-sqlite`) e a
+  mistura so ocorreria em janelas raras de transicao. A precedencia
+  deterministica (FR-002) deve continuar valendo se a mistura ocorrer por
+  acidente, mas nenhum cenario de teste dedicado e exigido para o caso
+  misto.
 
 > Decisoes de infraestrutura: N/A (feature stateless do ponto de vista de
 > scheduling/sessao/chave — os hooks sao scripts POSIX invocados
@@ -214,8 +240,10 @@ subagente (`tool_name: Agent`) e confirmar que o sidecar
 - **SC-003**: O tempo adicional introduzido pela deteccao de execucao
   ativa em cada hook permanece dentro do orcamento de latencia hoje
   praticado por esse hook (~30ms para os hooks de metrica, ~177ms para o
-  hook de guarda), medido em 100% de uma amostra representativa de
-  execucoes.
+  hook de guarda), verificado por um gate automatizado (teste dedicado
+  que mede a latencia contra state-dir SQLite e falha o build se o teto
+  for ultrapassado — Clarifications, Session 2026-08-03), nao apenas por
+  validacao manual pontual.
 - **SC-004**: Sessoes manuais do operador (sem execucao autonoma ativa)
   nao apresentam nenhuma interferencia observavel dos hooks — 0 bloqueios
   e 0 escritas de sidecar fora de uma execucao ativa, em qualquer backend.
