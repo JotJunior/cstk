@@ -646,50 +646,117 @@ _sr_cmd_get() {
   _sr_canonicalize_file "$_sr_sf" | jq -r "$_f"
 }
 
+# set — mutacao pontual (1 par) ou lote multi-campo atomico (N pares).
+# Multi-campo (state-db-runtime-parity FR-005/FR-006, contracts/
+# runtime-interfaces.md §1): N pares --field/--value aplicados atomicamente
+# (JSON: 1 write do documento; SQLite: 1 transacao). 1 par = comportamento
+# anterior inalterado (retrocompat FR-004). Semantica do parser:
+# - `--value` sem `--field` previo => exit 2 (uso);
+# - `--field` sem `--value` ao fim => exit 2 (uso);
+# - `--field` repetido com par pendente sobrescreve o pendente (continuidade
+#   com o last-wins de flags do parser anterior);
+# - MESMO --field em pares completos repetidos no lote => LAST-WINS na ordem
+#   de aplicacao (CHK009), NAO erro de uso.
 _sr_cmd_set() {
   _sd=""
   _f=""
   _v=""
-  _v_set=0
+  _f_set=0
+  _n=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir) _sd=$2; shift 2 ;;
-      --field)     _f=$2;  shift 2 ;;
-      --value)     _v=$2;  _v_set=1; shift 2 ;;
+      --field)     _f=$2; _f_set=1; shift 2 ;;
+      --value)
+        [ "$_f_set" = 1 ] || _sr_die "set: --value sem --field previo" 2
+        # Acumula o par em variaveis indexadas (POSIX sh sem arrays; eval
+        # seguro — rhs referencia variavel, nunca interpola conteudo).
+        eval "_sr_set_f_$_n=\$_f"
+        eval "_sr_set_v_$_n=\$2"
+        _n=$((_n + 1))
+        _f=""
+        _f_set=0
+        shift 2 ;;
       *) _sr_die "set: flag desconhecida: $1" 2 ;;
     esac
   done
-  [ -n "$_sd" ]   || _sr_die "set: --state-dir obrigatorio" 2
-  [ -n "$_f" ]    || _sr_die "set: --field obrigatorio" 2
-  [ "$_v_set" = 1 ] || _sr_die "set: --value obrigatorio (JSON valido — strings com aspas)" 2
+  [ -n "$_sd" ] || _sr_die "set: --state-dir obrigatorio" 2
+  [ "$_f_set" = 0 ] || _sr_die "set: --value obrigatorio (JSON valido — strings com aspas)" 2
+  [ "$_n" -gt 0 ] || _sr_die "set: --field obrigatorio" 2
   _sr_require_jq
-  # Valida que --value e JSON parseavel (string raw nao serve — pedimos aspas).
-  # SEM `-e`: jq -e retorna 1 para output falsy (null/false), que SAO valores
-  # JSON validos e legitimos (ex.: `.briefing_cache = null` do state-cache.sh
-  # invalidate; `.atomic_commit_enabled = false`). Parse invalido segue
-  # detectado: jq sem -e retorna exit 2 em erro de sintaxe.
-  if ! printf '%s' "$_v" | jq . >/dev/null 2>&1; then
-    _sr_die "set: --value nao e JSON valido. Strings precisam de aspas: '\"foo\"'." 1
+  # Valida que TODO --value e JSON parseavel ANTES de qualquer escrita
+  # (all-or-nothing — FR-006). SEM `-e`: jq -e retorna 1 para output falsy
+  # (null/false), que SAO valores JSON validos e legitimos (ex.:
+  # `.briefing_cache = null` do state-cache.sh invalidate;
+  # `.atomic_commit_enabled = false`). Parse invalido segue detectado:
+  # jq sem -e retorna exit 2 em erro de sintaxe.
+  if [ "$_n" -eq 1 ]; then
+    eval "_f=\$_sr_set_f_0"
+    eval "_v=\$_sr_set_v_0"
+    if ! printf '%s' "$_v" | jq . >/dev/null 2>&1; then
+      _sr_die "set: --value nao e JSON valido. Strings precisam de aspas: '\"foo\"'." 1
+    fi
+    if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+      _sr_db_set "$_sd" "$_f" "$_v"
+      _sr_log "set: $_f atualizado (backend sqlite)"
+      return 0
+    fi
+    _sr_ensure_state_dir "$_sd"
+    _sr_sf=$(_sr_state_file "$_sd")
+    [ -f "$_sr_sf" ] || _sr_die "set: state.json ausente em $_sd" 1
+    _new=$(mktemp -- "${_sr_sf}.new.XXXXXX") || _sr_die "mktemp falhou" 1
+    # Canonicaliza o doc inteiro (EN) ANTES de aplicar o set: evita doc misto
+    # (set EN sobre arquivo pt-BR criaria container duplicado). --field e EN.
+    if ! _sr_canonicalize_file "$_sr_sf" | jq --argjson v "$_v" "$_f = \$v" > "$_new"; then
+      rm -f -- "$_new"; _sr_die "set: jq update falhou" 1
+    fi
+    _sr_backup_current "$_sd"
+    _sr_atomic_write "$_sr_sf" "$_new"
+    rm -f -- "$_new" 2>/dev/null || :
+    _sr_update_sha "$_sd"
+    _sr_log "set: $_f atualizado"
+    return 0
   fi
+
+  # ---- Lote multi-campo (N >= 2) ----
+  _pairs='[]'
+  _i=0
+  while [ "$_i" -lt "$_n" ]; do
+    eval "_f=\$_sr_set_f_$_i"
+    eval "_v=\$_sr_set_v_$_i"
+    if ! printf '%s' "$_v" | jq . >/dev/null 2>&1; then
+      _sr_die "set: --value do campo '$_f' nao e JSON valido. Strings precisam de aspas: '\"foo\"'." 1
+    fi
+    _pairs=$(printf '%s' "$_pairs" | jq -c --arg f "$_f" --argjson v "$_v" '. + [{f:$f,v:$v}]') \
+      || _sr_die "set: falha ao acumular o par '$_f' do lote" 1
+    _i=$((_i + 1))
+  done
   if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
-    _sr_db_set "$_sd" "$_f" "$_v"
-    _sr_log "set: $_f atualizado (backend sqlite)"
+    _sr_db_set_multi "$_sd" "$_pairs"
+    _sr_log "set: $_n campos atualizados atomicamente (backend sqlite)"
     return 0
   fi
   _sr_ensure_state_dir "$_sd"
   _sr_sf=$(_sr_state_file "$_sd")
   [ -f "$_sr_sf" ] || _sr_die "set: state.json ausente em $_sd" 1
+  # Todos os setpaths num UNICO pipeline jq = 1 write do documento (FR-005);
+  # aplicacao sequencial em ordem de par => last-wins de campo duplicado.
+  _filter=""
+  _i=0
+  while [ "$_i" -lt "$_n" ]; do
+    eval "_f=\$_sr_set_f_$_i"
+    _filter="${_filter:+$_filter | }$_f = \$__sr_pairs[$_i].v"
+    _i=$((_i + 1))
+  done
   _new=$(mktemp -- "${_sr_sf}.new.XXXXXX") || _sr_die "mktemp falhou" 1
-  # Canonicaliza o doc inteiro (EN) ANTES de aplicar o set: evita doc misto
-  # (set EN sobre arquivo pt-BR criaria container duplicado). --field e EN.
-  if ! _sr_canonicalize_file "$_sr_sf" | jq --argjson v "$_v" "$_f = \$v" > "$_new"; then
-    rm -f -- "$_new"; _sr_die "set: jq update falhou" 1
+  if ! _sr_canonicalize_file "$_sr_sf" | jq --argjson __sr_pairs "$_pairs" "$_filter" > "$_new"; then
+    rm -f -- "$_new"; _sr_die "set: jq update multi-campo falhou (nenhum campo foi escrito)" 1
   fi
   _sr_backup_current "$_sd"
   _sr_atomic_write "$_sr_sf" "$_new"
   rm -f -- "$_new" 2>/dev/null || :
   _sr_update_sha "$_sd"
-  _sr_log "set: $_f atualizado"
+  _sr_log "set: $_n campos atualizados atomicamente"
 }
 
 _sr_cmd_sha256_update() {

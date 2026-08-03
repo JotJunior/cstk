@@ -1085,6 +1085,101 @@ scenario_init_guardas_preservadas_independente_da_config_global() {
   assert_stderr_contains "state.db ja existe" || return 1
 }
 
+# ==== set multi-campo atomico sob SQLite (state-db-runtime-parity FASE 3,
+# FR-005/FR-006, contracts/runtime-interfaces.md §1) ====
+
+# Prova de aceitacao da FASE 3: a promocao terminal canonica
+# (status+finished_at+termination_reason) sob C2 do schema. Single-field
+# falha (CHECK avaliado por statement); o MESMO lote num set multi-campo
+# passa (colunas coalescidas num unico UPDATE dentro da transacao).
+scenario_sqlite_set_multi_promocao_terminal_sob_c2() {
+  _sd="$TMPDIR_TEST/sq-multi-terminal"
+  _seed_sqlite_backend "$_sd" || return 1
+  # Baseline: single-field de status terminal continua violando C2
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.execution.status' --value '"concluida"'
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "single-field terminal deveria violar C2" "exit=0"; return 1; }
+  # Multi-campo: os 3 campos no MESMO set => aceito
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.execution.status' --value '"concluida"' \
+    --field '.execution.finished_at' --value '"2026-08-03T00:00:00Z"' \
+    --field '.execution.termination_reason' --value '"concluido"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set multi terminal" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  _row=$(sqlite3 "$_sd/state.db" "SELECT status || '|' || finished_at || '|' || termination_reason FROM execution;")
+  [ "$_row" = "concluida|2026-08-03T00:00:00Z|concluido" ] \
+    || { _fail "promocao terminal persistida" "obtido '$_row'"; return 1; }
+}
+
+# FR-006: invariante violada (status terminal SEM finished_at no lote) =>
+# exit 1, diagnostico cita os campos do lote, NENHUM campo do lote escrito
+# (all-or-nothing via rollback da transacao).
+scenario_sqlite_set_multi_rejeicao_invariante_estado_intacto() {
+  _sd="$TMPDIR_TEST/sq-multi-reject"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.execution.status' --value '"concluida"' \
+    --field '.current_stage' --value '"plan"'
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit esperado 1" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains ".execution.status .current_stage" || return 1
+  assert_stderr_contains "estado intacto" || return 1
+  _row=$(sqlite3 "$_sd/state.db" "SELECT status || '|' || current_stage FROM execution;")
+  [ "$_row" = "em_andamento|specify" ] \
+    || { _fail "estado deveria estar intacto (rollback)" "obtido '$_row'"; return 1; }
+}
+
+# CHK009: MESMO --field repetido no lote => last-wins na ordem de aplicacao
+# (SET duplicado e legal em SQLite e o ultimo vence), NAO erro de uso.
+scenario_sqlite_set_multi_campo_duplicado_last_wins() {
+  _sd="$TMPDIR_TEST/sq-multi-lastwins"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.current_stage' --value '"plan"' \
+    --field '.current_stage' --value '"checklist"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set duplicado" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  _v=$(sqlite3 "$_sd/state.db" "SELECT current_stage FROM execution;")
+  [ "$_v" = "checklist" ] || { _fail "last-wins" "obtido '$_v'"; return 1; }
+}
+
+# Lote heterogeneo: coluna de execution + coluna de wave + fallback
+# extra_fields no MESMO set; e fechamento de onda com o par
+# termination_reason+finished_at juntos (CHECK cross-coluna da tabela wave
+# tambem exige coalescencia num unico UPDATE por onda).
+scenario_sqlite_set_multi_mix_execution_wave_extra() {
+  _sd="$TMPDIR_TEST/sq-multi-mix"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "INSERT INTO wave (id,execution_id,seq,started_at) VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z');" \
+    || { _fail "seed wave" ""; return 1; }
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.current_stage' --value '"execute-task"' \
+    --field '.waves[-1].tool_calls' --value '7' \
+    --field '.next_retrospective_milestone' --value '25'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set mix" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '[.current_stage, .waves[-1].tool_calls, .next_retrospective_milestone] | join("|")'
+  [ "$_CAPTURED_STDOUT" = "execute-task|7|25" ] || { _fail "mix persistido" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  # Fechamento de onda: termination_reason + finished_at no MESMO set
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.waves[-1].termination_reason' --value '"etapa_concluida_avancando"' \
+    --field '.waves[-1].finished_at' --value '"2026-08-03T01:00:00Z"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "fechar onda multi" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  _row=$(sqlite3 "$_sd/state.db" "SELECT termination_reason || '|' || finished_at FROM wave WHERE id='onda-001';")
+  [ "$_row" = "etapa_concluida_avancando|2026-08-03T01:00:00Z" ] \
+    || { _fail "fechamento de onda persistido" "obtido '$_row'"; return 1; }
+}
+
+# Resync de array (.events/.waves/.decisions/...) nao e suportado em lote
+# multi-campo (merge pre-transacao perderia updates entre pares): rejeicao
+# explicita ANTES de qualquer escrita.
+scenario_sqlite_set_multi_rejeita_resync_de_array_em_lote() {
+  _sd="$TMPDIR_TEST/sq-multi-array"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.events' --value '[]' \
+    --field '.current_stage' --value '"plan"'
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit esperado 1" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "nao e suportado em lote multi-campo" || return 1
+  _v=$(sqlite3 "$_sd/state.db" "SELECT current_stage FROM execution;")
+  [ "$_v" = "specify" ] || { _fail "nada deveria ter sido escrito" "obtido '$_v'"; return 1; }
+}
+
 fi # sqlite3 disponivel
 
 # ==== set aceita literais JSON falsy (state-db-runtime-parity 2.4.3) ====
@@ -1105,6 +1200,76 @@ scenario_set_aceita_null_e_false_como_valor() {
   # Parse invalido continua recusado
   capture "$SCRIPT" set --state-dir "$_sd" --field '.current_stage' --value 'nao-e-json'
   [ "$_CAPTURED_EXIT" != 0 ] || { _fail "set invalido" "aceitou valor nao-JSON"; return 1; }
+}
+
+# ==== set multi-campo atomico sob JSON (state-db-runtime-parity FASE 3,
+# FR-005/FR-006, contracts/runtime-interfaces.md §1) ====
+
+# N pares aplicados num UNICO write do documento: exatamente 1 backup novo
+# em state-history (evidencia da escrita unica) + todos os campos gravados.
+scenario_set_multi_json_aplica_lote_num_unico_write() {
+  _sd="$TMPDIR_TEST/state-multi-json"
+  _init_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _hist_antes=$(find "$_sd/state-history" -name '*.json' | wc -l | tr -d ' ')
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.current_stage' --value '"plan"' \
+    --field '.next_instruction' --value '"executar plan"' \
+    --field '.custom_flag' --value 'true'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set multi json" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  _hist_depois=$(find "$_sd/state-history" -name '*.json' | wc -l | tr -d ' ')
+  [ "$((_hist_depois - _hist_antes))" = 1 ] \
+    || { _fail "esperado exatamente 1 backup novo (write unico)" "antes=$_hist_antes depois=$_hist_depois"; return 1; }
+  _row=$(jq -r '[.current_stage, .next_instruction, (.custom_flag|tostring)] | join("|")' "$_sd/state.json")
+  [ "$_row" = "plan|executar plan|true" ] || { _fail "lote persistido" "obtido '$_row'"; return 1; }
+  # sha256 recomputado no write unico
+  capture "$SCRIPT" sha256-verify --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sha256-verify pos-lote" "$_CAPTURED_STDERR"; return 1; }
+}
+
+# CHK009: campo duplicado no lote => last-wins na ordem de aplicacao.
+scenario_set_multi_json_campo_duplicado_last_wins() {
+  _sd="$TMPDIR_TEST/state-multi-lastwins"
+  _init_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.current_stage' --value '"plan"' \
+    --field '.current_stage' --value '"checklist"'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set duplicado" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  _v=$(jq -r '.current_stage' "$_sd/state.json")
+  [ "$_v" = "checklist" ] || { _fail "last-wins" "obtido '$_v'"; return 1; }
+}
+
+# FR-006 (all-or-nothing): um par com --value invalido no lote => exit 1 e
+# NENHUM campo do lote e escrito (validacao de todos os pares ANTES da
+# primeira escrita).
+scenario_set_multi_json_par_invalido_nao_escreve_nada() {
+  _sd="$TMPDIR_TEST/state-multi-atomico"
+  _init_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.current_stage' --value '"plan"' \
+    --field '.next_instruction' --value 'nao-e-json'
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit esperado 1" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "nao e JSON valido" || return 1
+  _v=$(jq -r '.current_stage' "$_sd/state.json")
+  [ "$_v" != "plan" ] || { _fail "primeiro par NAO deveria ter sido escrito" "current_stage=plan"; return 1; }
+}
+
+# Erros de uso do parser N pares (contract §1): --value sem --field previo e
+# --field sem --value ao fim => exit 2, sem escrita.
+scenario_set_multi_erros_de_uso_do_parser() {
+  _sd="$TMPDIR_TEST/state-multi-uso"
+  _init_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" set --state-dir "$_sd" --value '"orfao"'
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "--value sem --field: exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "sem --field previo" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd" \
+    --field '.current_stage' --value '"plan"' --field '.pendente'
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "--field sem --value ao fim: exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  _v=$(jq -r '.current_stage' "$_sd/state.json")
+  [ "$_v" != "plan" ] || { _fail "erro de uso nao pode escrever par valido do lote" "current_stage=plan"; return 1; }
 }
 
 run_all_scenarios

@@ -25,21 +25,45 @@ state-rw.sh set --state-dir DIR --field F --value V
   # V = JSON valido (strings com aspas); exit 2 uso, exit 1 falha
 ```
 
-Extensao `[PROPOSTA — a validar na implementacao]`:
+Extensao (validada na implementacao — FASE 3, onda-012; assinatura conferida
+por sonda empirica: `tests/test_state-rw.sh` 66/66, incl. promocao terminal
+sob C2 e rejeicao all-or-nothing):
 
 ```
 state-rw.sh set --state-dir DIR --field F1 --value V1 [--field F2 --value V2]...
   # N pares aplicados atomicamente:
-  #   JSON   = 1 write do documento com todos os setpaths
-  #   SQLite = 1 transacao BEGIN IMMEDIATE...COMMIT com todos os fragmentos
+  #   JSON   = 1 write do documento com todos os setpaths (pipeline jq unico)
+  #   SQLite = 1 transacao BEGIN IMMEDIATE...COMMIT
   # 1 par => comportamento atual inalterado (retrocompat FR-004)
   # --value sem --field previo, ou --field sem --value ao fim => exit 2 (uso)
   # invariante violada (CHECK do schema) => exit 1 + diagnostico
-  #   (invariante + campos do lote), estado intacto
+  #   (invariante + campos do lote), estado intacto (rollback automatico)
   # MESMO --field repetido no lote => LAST-WINS na ordem de aplicacao
   #   (pares aplicados sequencialmente; o ultimo valor do path prevalece),
   #   NAO erro de uso. [CHK009, decisao FASE 1/1.1.1]
 ```
+
+Deltas fixados na implementacao (divergencias vs a proposta original,
+protocolo CHK008 — Decisao auditavel na onda-012):
+
+- **CHECKs do SQLite sao avaliados POR STATEMENT, nao deferidos ao COMMIT**
+  (verificado empiricamente: `BEGIN; UPDATE status; UPDATE finished_at;
+  COMMIT` viola C2 com exit 19). "Todos os fragmentos na transacao" foi
+  refinado para: colunas de `execution` coalescidas num UNICO UPDATE
+  multi-coluna, e colunas de `wave` num UNICO UPDATE por onda (a tabela
+  wave tambem tem CHECK cross-coluna `termination_reason x finished_at`).
+  E isso que habilita a promocao terminal canonica. `SET col=a, col=b` e
+  legal em SQLite com o ultimo vencendo — o last-wins do CHK009 sai da
+  propria ordem dos pares.
+- **Resyncs de array nao entram em lote** (`.events`, `.waves`,
+  `.decisions`, `.human_blocks`, `.tasks`) nem o fallback extra_fields de
+  campo de ONDA nao mapeado: o merge read-modify-write pre-transacao
+  perderia updates entre pares do mesmo lote. Rejeicao explicita (exit 1)
+  ANTES de qualquer escrita; o set single-field dedicado continua cobrindo
+  esses paths integralmente.
+- **`--field` repetido com par PENDENTE (sem `--value` entre eles)
+  sobrescreve o pendente** — continuidade com o last-wins de flags do
+  parser single-par anterior; nao e erro de uso.
 
 Rationale do last-wins (CHK009): (a) dedup textual nao capta equivalencia
 semantica de paths jq (`.a.b` == `.a["b"]`) — um guard exit-2 parcial daria

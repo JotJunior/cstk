@@ -153,13 +153,35 @@ Ref: plan.md F2 (elimina as 2 copias locais do padrao a06e747, v6.2.2)
 
 Ref: spec FR-005/FR-006; contracts/runtime-interfaces.md §1; research.md Decision 2; plan §Security Review LOW/A05
 
-- [ ] 3.1.1 Estender o parser de `_sr_cmd_set` (state-rw.sh:649) para acumular N pares `--field/--value`; `--value` sem `--field` previo ou `--field` sem `--value` ao fim => exit 2 (uso)
-- [ ] 3.1.2 Aplicar a semantica de `--field` duplicado no lote decidida em 1.1.1 (Ref: CHK009)
-- [ ] 3.1.3 Backend JSON: aplicar todos os setpaths num UNICO write do documento
-- [ ] 3.1.4 Backend SQLite: 1 transacao `BEGIN IMMEDIATE...COMMIT` em `_sr_db_set` (:657); fragmentos compostos EXCLUSIVAMENTE pelos helpers existentes (`_sr_sql_literal`, `_sr_exec_col_lookup`, `_sr_sql_quote`) — nunca interpolar `--field`/`--value` crus (LOW/A05)
-- [ ] 3.1.5 Rejeicao por invariante (CHECK do schema, ex. C2): exit 1 + diagnostico citando invariante + campos do lote, estado intacto sem escrita parcial (FR-006)
-- [ ] 3.1.6 Testes em `tests/test_state-rw.sh`: promocao terminal canonica sob C2 (status+finished_at+termination_reason), rejeicao com estado intacto, retrocompat 1 par byte-identica (FR-004), erros de uso exit 2, campo duplicado
-- [ ] 3.1.7 Validar assinatura `[PROPOSTA]` do contract §1 contra a implementacao e remover o marcador (Ref: CHK008)
+- [x] 3.1.1 Estender o parser de `_sr_cmd_set` (state-rw.sh:649) para acumular N pares `--field/--value`; `--value` sem `--field` previo ou `--field` sem `--value` ao fim => exit 2 (uso)
+      <!-- onda-012: pares em vars indexadas via eval (POSIX sem arrays);
+           --field com par pendente sobrescreve (continuidade flag last-wins) -->
+- [x] 3.1.2 Aplicar a semantica de `--field` duplicado no lote decidida em 1.1.1 (Ref: CHK009)
+      <!-- onda-012: last-wins pela ordem dos pares; em SQLite sai de graca
+           (SET col=a, col=b e legal e o ultimo vence — sonda empirica) -->
+- [x] 3.1.3 Backend JSON: aplicar todos os setpaths num UNICO write do documento
+      <!-- onda-012: pipeline jq unico (.f1=$p[0].v | .f2=$p[1].v ...) +
+           tmp+mv + sha256; evidencia: exatamente 1 backup novo por lote -->
+- [x] 3.1.4 Backend SQLite: 1 transacao `BEGIN IMMEDIATE...COMMIT` em `_sr_db_set` (:657); fragmentos compostos EXCLUSIVAMENTE pelos helpers existentes (`_sr_sql_literal`, `_sr_exec_col_lookup`, `_sr_sql_quote`) — nunca interpolar `--field`/`--value` crus (LOW/A05)
+      <!-- onda-012: _sr_db_set_multi em _state-rw-db.sh; ACHADO EMPIRICO:
+           CHECK do SQLite e por STATEMENT (nao deferido ao COMMIT) => colunas
+           de execution coalescidas num UNICO UPDATE multi-coluna e wave num
+           UPDATE por onda (wave tambem tem CHECK cross-coluna); resolver
+           read-only extraido (_sr_db_wave_field_resolve); resync de array e
+           wave-extra rejeitados em lote (single-field segue cobrindo) -->
+- [x] 3.1.5 Rejeicao por invariante (CHECK do schema, ex. C2): exit 1 + diagnostico citando invariante + campos do lote, estado intacto sem escrita parcial (FR-006)
+      <!-- onda-012: sqlite stderr propaga o CHECK; die cita lote + "estado
+           intacto (rollback automatico)"; validacao de TODOS os pares antes
+           de qualquer escrita nos 2 backends -->
+- [x] 3.1.6 Testes em `tests/test_state-rw.sh`: promocao terminal canonica sob C2 (status+finished_at+termination_reason), rejeicao com estado intacto, retrocompat 1 par byte-identica (FR-004), erros de uso exit 2, campo duplicado
+      <!-- onda-012: +9 cenarios (5 sqlite + 4 json/uso), 66/66 verde;
+           vizinhas: state-ondas 110, _state-read 9, state-cache 30,
+           state-decisions 53 — zero regressao; shellcheck limpo -->
+- [x] 3.1.7 Validar assinatura `[PROPOSTA]` do contract §1 contra a implementacao e remover o marcador (Ref: CHK008)
+      <!-- onda-012: marcador removido; 3 deltas fixados no contract (CHECK
+           por statement/UPDATE coalescido, arrays fora de lote, --field
+           pendente sobrescreve); quickstart Cenario 3 ja bate (sem edit);
+           dogfooding: set 2 extra_fields no state.db real, integrity ok -->
 
 ---
 
