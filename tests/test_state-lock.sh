@@ -147,6 +147,78 @@ scenario_check_execution_busy_terminal_passa() {
   fi
 }
 
+scenario_check_execution_busy_json_caminho_inalterado() {
+  # 2.5.3 (FR-004): sob backend JSON o comportamento e identico ao legado —
+  # exit 3 e mensagem apontando o proprio state.json (nunca tmp materializado).
+  _sd="$TMPDIR_TEST/state-json-path"
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-1" \
+    --projeto-alvo-path "/tmp/p" --descricao "POC teste"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/state.json" ] || { _fail "fixture json" "harness deveria ter backend json (HOME sandbox)"; return 1; }
+  capture "$SCRIPT" check-execution-busy --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "busy json" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "$_sd/state.json" || return 1
+}
+
+# --- Cenarios sqlite (state-db-runtime-parity FASE 2 lote 2.5) ------------
+# Fixture: init sob config global state_backend=sqlite em HOME proprio
+# (padrao test_retro.sh). Requer sqlite3 >= piso do state-db-foundation.
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_init_sqlite() {
+  _is_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_is_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_is_home/.claude/cstk/config"
+  env HOME="$_is_home" "$RW" init --state-dir "$1" \
+    --execucao-id "x-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC lock sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+}
+
+scenario_sqlite_busy_em_andamento_exit_3() {
+  # FR-010: sob state.db com execucao ativa, busy NAO pode degradar para
+  # exit 0 (comportamento pre-porte). Mensagem aponta o state.db real.
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  capture "$SCRIPT" check-execution-busy --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "busy sqlite em_andamento" "esperado 3, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "/agente-00c-resume" || return 1
+  assert_stderr_contains "$_sd/state.db" || return 1
+}
+
+scenario_sqlite_busy_terminal_passa() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite-term"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  # Status terminal direto no schema (CHECK exige finished_at junto — o set
+  # multi-campo atomico e escopo da FASE 3; fixture manipula via sqlite3,
+  # padrao test_state-db-schema.sh).
+  capture sqlite3 "$_sd/state.db" \
+    "UPDATE execution SET status='concluida', finished_at='2026-08-03T00:00:00Z';"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "fixture UPDATE" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" check-execution-busy --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "busy sqlite terminal" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_sqlite_busy_anti_mirror_state_dir_intacto() {
+  # FR-003: a materializacao NUNCA cria arquivo dentro do state-dir (nem
+  # state.json espelho, nem tmp).
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite-mirror"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _antes=$(ls -a "$_sd" | sort)
+  capture "$SCRIPT" check-execution-busy --state-dir "$_sd"
+  _depois=$(ls -a "$_sd" | sort)
+  [ "$_antes" = "$_depois" ] || { _fail "anti-mirror" "conteudo do state-dir mudou: antes[$_antes] depois[$_depois]"; return 1; }
+  [ ! -f "$_sd/state.json" ] || { _fail "anti-mirror" "state.json espelho criado no state-dir"; return 1; }
+}
+
 scenario_help_exit_zero() {
   capture "$SCRIPT" --help
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "help exit" "$_CAPTURED_EXIT"; return 1; }

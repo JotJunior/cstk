@@ -13,10 +13,13 @@
 #   state-lock.sh check --state-dir DIR
 #       — exit 0 se acquirable (lock livre), exit 3 se detido.
 #   state-lock.sh check-execution-busy --state-dir DIR
-#       — exit 0 se nao ha execucao em andamento (state.json ausente OU
-#         status terminal). Exit 3 se ha execucao com status em_andamento
+#       — exit 0 se nao ha execucao em andamento (estado ausente OU status
+#         terminal). Exit 3 se ha execucao com status em_andamento
 #         ou aguardando_humano (instrui /agente-00c-resume ou
-#         /agente-00c-abort).
+#         /agente-00c-abort). Le o estado via _state-read.sh — cobre os
+#         DOIS backends (state.json e state.db — feature
+#         state-db-runtime-parity FR-010; falha de materializacao propaga,
+#         nunca degrada mudo, FR-012).
 #
 # Permite invocacoes simultaneas em projetos-alvo distintos — cada um tem
 # seu proprio state-dir e portanto seu proprio lock.
@@ -31,7 +34,9 @@
 #   2 uso incorreto
 #   3 lock ja detido OU execucao ja em andamento
 #
-# POSIX sh + mkdir/rmdir + (jq apenas em check-execution-busy).
+# POSIX sh + mkdir/rmdir + (jq + _state-read.sh apenas em
+# check-execution-busy; o lock em si NAO depende do estado para
+# adquirir/liberar).
 
 set -eu
 
@@ -47,6 +52,13 @@ _SL_DIR=$(cd "$(dirname -- "$0")" && pwd)
 # `lock-contention`, aplicado nos 2 pontos de falha reais (acquire + check).
 # shellcheck source=./_diag.sh
 . "$_SL_DIR/_diag.sh"
+
+# Materializacao de estado legivel nos dois backends (json/sqlite) — usada
+# apenas por check-execution-busy (state-db-runtime-parity FR-010). O lock
+# mkdir permanece independente do estado (acquire/release/check intactos).
+# shellcheck source=./_state-read.sh
+. "$_SL_DIR/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
 
 _sl_die_usage() {
   printf '%s: %s\n' "$_SL_NAME" "$1" >&2
@@ -143,17 +155,29 @@ case "$_SL_SUBCMD" in
     exit 0
     ;;
   check-execution-busy)
-    if [ ! -f "$_SL_STATE" ]; then
+    # Materializa o estado nos dois backends (FR-010). Sob JSON devolve o
+    # proprio path do state.json (caminho identico ao legado — FR-004);
+    # sob SQLite devolve tmp legivel. Falha de materializacao (sqlite3
+    # ausente, state.db corrompido) propaga via set -e (FR-012).
+    _sf=$(state_read_materialize "$_SL_STATE_DIR")
+    if [ ! -f "$_sf" ]; then
       exit 0
     fi
     if ! command -v jq >/dev/null 2>&1; then
       printf '%s: jq nao encontrado no PATH (necessario para check-execution-busy).\n' "$_SL_NAME" >&2
       exit 1
     fi
-    _status=$(jq -r '(.execution.status // .execucao.status) // ""' "$_SL_STATE" 2>/dev/null) || _status=""
+    # Path exibido nas mensagens: o armazenamento REAL do estado (nunca o
+    # tmp materializado). Sob JSON permanece byte-identico ao legado.
+    if [ -f "$_SL_STATE_DIR/state.db" ]; then
+      _SL_STATE_SHOW="$_SL_STATE_DIR/state.db"
+    else
+      _SL_STATE_SHOW="$_SL_STATE"
+    fi
+    _status=$(jq -r '(.execution.status // .execucao.status) // ""' "$_sf" 2>/dev/null) || _status=""
     case "$_status" in
       em_andamento|aguardando_humano)
-        printf '%s: ja existe execucao em status "%s" em %s.\n' "$_SL_NAME" "$_status" "$_SL_STATE" >&2
+        printf '%s: ja existe execucao em status "%s" em %s.\n' "$_SL_NAME" "$_status" "$_SL_STATE_SHOW" >&2
         printf '       Use /agente-00c-resume para retomar ou /agente-00c-abort para abortar.\n' >&2
         exit 3
         ;;
@@ -161,7 +185,7 @@ case "$_SL_SUBCMD" in
         exit 0
         ;;
       *)
-        printf '%s: status desconhecido em %s: "%s"\n' "$_SL_NAME" "$_SL_STATE" "$_status" >&2
+        printf '%s: status desconhecido em %s: "%s"\n' "$_SL_NAME" "$_SL_STATE_SHOW" "$_status" >&2
         exit 1
         ;;
     esac

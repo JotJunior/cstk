@@ -114,17 +114,36 @@ Ref: spec FR-001/FR-011; research.md Decision 6 (classe read-write)
 
 Ref: spec FR-010 (codigo real, nao prosa); research.md Decision 6
 
-- [ ] 2.5.1 Portar a leitura de estado do `check-execution-busy` para `_state-read.sh`
-- [ ] 2.5.2 Adicionar cenarios sqlite em `tests/test_state-lock.sh`
-- [ ] 2.5.3 Assertar caminho JSON inalterado (comportamento identico ao atual — FR-004)
+- [x] 2.5.1 Portar a leitura de estado do `check-execution-busy` para `_state-read.sh`
+      <!-- onda-011: sonda pre-porte confirmou o gap FR-010 (state.db com
+           em_andamento => busy exit 0); pos-porte exit 3 com mensagem
+           apontando state.db; lock mkdir intacto (nao depende do estado) -->
+- [x] 2.5.2 Adicionar cenarios sqlite em `tests/test_state-lock.sh`
+      <!-- onda-011: +3 cenarios (em_andamento exit 3, terminal exit 0 via
+           UPDATE direto — CHECK exige finished_at junto, escopo FASE 3 —,
+           anti-mirror FR-003); fixture padrao test_retro.sh (HOME sandbox) -->
+- [x] 2.5.3 Assertar caminho JSON inalterado (comportamento identico ao atual — FR-004)
+      <!-- onda-011: cenario json_caminho_inalterado (exit 3 + stderr aponta
+           o proprio state.json); suite 16/16 verde -->
 
 ### 2.6 Migrar `report.sh` + `feature-00c-preflight.sh` para o helper comum `[A]`
 
 Ref: plan.md F2 (elimina as 2 copias locais do padrao a06e747, v6.2.2)
 
-- [ ] 2.6.1 Substituir a copia local de materializacao do `report.sh` por `_state-read.sh`
-- [ ] 2.6.2 Substituir a copia local do `feature-00c-preflight.sh` por `_state-read.sh`
-- [ ] 2.6.3 Confirmar testes existentes verdes (`tests/test_report.sh`, `tests/test_feature-00c-preflight.sh`) com cenarios sqlite mantidos
+- [x] 2.6.1 Substituir a copia local de materializacao do `report.sh` por `_state-read.sh`
+      <!-- onda-011: _rp_state_file/_rp_cleanup_tmp_state removidos; source
+           sibling + trap state_read_cleanup; falha de read agora propaga
+           (FR-012) em vez de fallback mudo -->
+- [x] 2.6.2 Substituir a copia local do `feature-00c-preflight.sh` por `_state-read.sh`
+      <!-- onda-011: bloco a06e747 (~14 linhas) => 2 linhas via helper;
+           mensagem "estado ausente" preservada (teste assere) -->
+- [x] 2.6.3 Confirmar testes existentes verdes (`tests/test_report.sh`, `tests/test_feature-00c-preflight.sh`) com cenarios sqlite mantidos
+      <!-- onda-011: report 40/40, preflight 10/10, _state-read 9/9;
+           expectativas intactas — so as fixtures iso do test_report copiam
+           agora o sibling _state-read.sh (dependencia obrigatoria, padrao
+           _diag.sh); allowlist CHK016 ainda nao existe (nasce na 6.1.1) e o
+           conjunto canonico do research.md ja exclui os 2 arquivos;
+           dogfooding: preflight ok:true + generate exit 0 no state.db real -->
 
 ---
 

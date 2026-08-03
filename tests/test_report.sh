@@ -347,6 +347,9 @@ scenario_emit_aborta_sem_secrets_filter() {
   _iso="$TMPDIR_TEST/iso"
   mkdir -p "$_iso"
   cp "$SCRIPT" "$_iso/report.sh"
+  # _state-read.sh e dependencia obrigatoria (sourced sibling, FASE 2 lote
+  # 2.6) — o cenario testa a ausencia do secrets-filter, nao do helper.
+  cp "$(dirname "$SCRIPT")/_state-read.sh" "$_iso/_state-read.sh"
   _sd="$TMPDIR_TEST/state"
   _init "$_sd"
   _run_wave_with_decision "$_sd"
@@ -409,6 +412,9 @@ scenario_generate_wave_usage_report_ausente_degrada_graciosamente() {
   _iso="$TMPDIR_TEST/iso-wu"
   mkdir -p "$_iso"
   cp "$SCRIPT" "$_iso/report.sh"
+  # _state-read.sh e dependencia obrigatoria (sourced sibling, FASE 2 lote
+  # 2.6) — o cenario testa a ausencia do wave-usage-report, nao do helper.
+  cp "$(dirname "$SCRIPT")/_state-read.sh" "$_iso/_state-read.sh"
   _sd="$TMPDIR_TEST/state"
   _init "$_sd"
   _run_wave_with_decision "$_sd"
