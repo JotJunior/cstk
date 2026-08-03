@@ -31,10 +31,10 @@ JSON, anti-mirror e varredura dinamica.
 ## Fluxo dogfooding e conclusao (SC-002)
 
 - [x] CHK030 - O criterio de aceitacao da execucao completa sob SQLite e observavel (SC-002: zero workarounds manuais "read | transform | write")? [Mensurabilidade, Spec §SC-002] {auto} — evidencia: SC-002 quantifica "zero intervencoes do tipo read | transform | write feitas a mao".
-- [ ] CHK031 - A exclusao dos hooks do escopo (Out of Scope) deve ganhar gatilho/prioridade para a feature dedicada (hoje o hook de tick nunca dispara sob SQLite)? [Dependencias, Spec §Out of Scope; dec-010] {humano} — priorizacao de backlog do produto; a lacuna esta registrada mas sem dono/prazo.
+- [x] CHK031 - A exclusao dos hooks do escopo (Out of Scope) deve ganhar gatilho/prioridade para a feature dedicada (hoje o hook de tick nunca dispara sob SQLite)? [Dependencias, Spec §Out of Scope; dec-010] {humano} — RESPONDIDO (block-002 → dec-069, score 3): operador escolheu `priorizar-feature-de-hooks`. Feature dedicada priorizada (short-name sugerido: `hooks-db-parity`), dono: operador; gatilho: proxima `/feature-00c` apos release desta feature. Sugestao formal registrada via `suggestions.sh register` (task 6.4.3) com escopo minimo: porte de `posttooluse-tool-call-tick.sh` e `pretooluse-bash-guard.sh` para deteccao backend-agnostica de execucao ativa, com requisito de latencia (~30ms tick / ~177ms bash-guard).
 
 ## Notes
 
-- `{humano}` em aberto: CHK031 (priorizacao da feature de hooks).
+- `{humano}` em aberto: nenhum — CHK031 respondido via block-002/dec-069 (onda-015).
 - `[Gap]` CHK032 resolvido na FASE 1/1.1.3 (onda-006) — ver item acima.
 - Itens `{auto}` resolvidos com citacao de spec/plan/contract.

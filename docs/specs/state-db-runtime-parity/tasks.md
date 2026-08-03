@@ -272,9 +272,9 @@ Ref: plan.md §Project Structure; CLAUDE.md do repo; convencao de docs do runtim
 
 Ref: checklists/operational.md CHK031; spec §Out of Scope; dec-010
 
-- [ ] 6.4.1 Registrar a decisao/bloqueio de priorizacao da feature dedicada de hooks (`posttooluse-tool-call-tick.sh` nunca dispara sob SQLite hoje)
-- [ ] 6.4.2 Refletir a resposta em checklists/operational.md CHK031
-- [ ] 6.4.3 Se priorizada, registrar entrada de backlog/sugestao para a feature dedicada com dono e gatilho
+- [x] 6.4.1 Registrar a decisao/bloqueio de priorizacao da feature dedicada de hooks (`posttooluse-tool-call-tick.sh` nunca dispara sob SQLite hoje) — feito via block-002 (bloqueio humano, onda-014) respondido pelo operador → dec-069 (score 3): `priorizar-feature-de-hooks`
+- [x] 6.4.2 Refletir a resposta em checklists/operational.md CHK031 — CHK031 [x] citando block-002/dec-069 (onda-015)
+- [x] 6.4.3 Se priorizada, registrar entrada de backlog/sugestao para a feature dedicada com dono e gatilho — sugestao registrada via `suggestions.sh register` (short-name sugerido `hooks-db-parity`; dono: operador; gatilho: proxima `/feature-00c` apos release; requisito de latencia ~30ms/~177ms)
 
 ---
 
