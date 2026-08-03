@@ -761,7 +761,8 @@ _install_apply_extra_kinds() {
 # identico ao de skills, reaproveitando manifest.sh sem alteracao.
 # _install_apply_mcp_server: espelha catalog/mcp/state-server no destino
 # instalado (~/.claude/mcp/state-server). Conteudo versionado com a release
-# (fonte de build da imagem docker, consumido por `docker build` + npm ci);
+# (fonte de build da imagem do servidor, consumida pelo helper confinado de
+# container + npm ci dentro da imagem);
 # sem manifest por arquivo: replace atomico do diretorio inteiro (rm+cp),
 # mesmo espirito do provisionamento de hooks. Escopo global apenas — o
 # resolve de _mcp_context_dir so olha ~/.claude. Catalogo sem mcp/ (release
