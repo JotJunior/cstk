@@ -46,28 +46,25 @@ _rt_require_jq() {
     || _rt_die "jq nao encontrado no PATH" 1
 }
 
-_rt_state_file() { printf '%s/state.json\n' "$1"; }
+# Leitura de estado via interface canonica (state-db-runtime-parity FR-001):
+# materializa documento legivel por jq nos DOIS backends (json/sqlite).
+# Mutacoes (consume/reset) roteiam por `state-rw.sh set` sobre
+# `.budgets.retro_executions_consumed` (coluna int em execution — research
+# Decision 6, classe read-write). O guard pre-write do consume ("exit 3 SEM
+# modificar estado") ja casa com o CHECK do schema SQLite
+# (retro_executions_consumed <= max_retro_executions_per_feature).
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
 
-_rt_atomic_write() {
-  _dst=$1; _src=$2
-  _tmp=$(mktemp -- "${_dst}.XXXXXX") || _rt_die "mktemp falhou" 1
-  cp -- "$_src" "$_tmp" || { rm -f -- "$_tmp"; _rt_die "I/O cp" 1; }
-  mv -f -- "$_tmp" "$_dst" || { rm -f -- "$_tmp"; _rt_die "mv" 1; }
-}
-
-_rt_update_sha() {
-  _sf=$(_rt_state_file "$1")
-  _shf="$1/state.json.sha256"
-  if command -v sha256sum >/dev/null 2>&1; then
-    _h=$(sha256sum -- "$_sf" | awk '{print $1}')
-  else
-    _h=$(shasum -a 256 -- "$_sf" | awk '{print $1}')
-  fi
-  printf '%s\n' "$_h" > "$_shf"
+# _rt_set_consumed STATE_DIR N — grava .budgets.retro_executions_consumed
+# nos dois backends via state-rw.sh set (falha propaga via set -e — FR-012).
+_rt_set_consumed() {
+  "$(_state_read_rw_bin)" set --state-dir "$1" \
+    --field '.budgets.retro_executions_consumed' --value "$2"
 }
 
 _rt_get_state() {
-  _sf=$(_rt_state_file "$1")
+  _sf=$(state_read_materialize "$1")
   [ -f "$_sf" ] || _rt_die "state.json ausente em $1" 1
   # Readers (schema-en-migration): chaves EN com fallback pt-BR (.en // .pt).
   # Fallback no container (budgets // orcamentos) E na folha para ler states
@@ -119,15 +116,9 @@ _rt_cmd_consume() {
     exit 3
   fi
 
-  _sf=$(_rt_state_file "$_sd")
-  _new_state=$(mktemp) || _rt_die "mktemp falhou" 1
-  # Writer (schema-en-migration): chave EN, sem fallback (EN-on-disk garantido
-  # pelo migrate defensivo do command-pai no inicio da onda).
-  jq --argjson n "$_new" '.budgets.retro_executions_consumed = $n' "$_sf" > "$_new_state" \
-    || { rm -f -- "$_new_state"; _rt_die "jq update falhou" 1; }
-  _rt_atomic_write "$_sf" "$_new_state"
-  rm -f -- "$_new_state" 2>/dev/null || :
-  _rt_update_sha "$_sd"
+  # Writer (schema-en-migration): chave EN via state-rw.sh set (canonicaliza
+  # o doc no backend json; UPDATE de coluna no sqlite).
+  _rt_set_consumed "$_sd" "$_new"
   printf '%s\n' "$_new"
 }
 
@@ -155,16 +146,10 @@ _rt_cmd_reset() {
   done
   [ -n "$_sd" ] || _rt_die_usage "reset: --state-dir obrigatorio"
   _rt_require_jq
-  _sf=$(_rt_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _rt_die "reset: state.json ausente" 1
-  _new_state=$(mktemp) || _rt_die "mktemp falhou" 1
-  # Writer (schema-en-migration): chave EN, sem fallback (EN-on-disk garantido
-  # pelo migrate defensivo do command-pai no inicio da onda).
-  jq '.budgets.retro_executions_consumed = 0' "$_sf" > "$_new_state" \
-    || { rm -f -- "$_new_state"; _rt_die "jq update falhou" 1; }
-  _rt_atomic_write "$_sf" "$_new_state"
-  rm -f -- "$_new_state" 2>/dev/null || :
-  _rt_update_sha "$_sd"
+  # Writer (schema-en-migration): chave EN via state-rw.sh set.
+  _rt_set_consumed "$_sd" 0
 }
 
 # ---------- Dispatch ----------

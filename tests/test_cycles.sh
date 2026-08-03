@@ -17,8 +17,13 @@ fi
 # os cenarios abaixo exercitam o caminho EN dos readers/writers de cycles.sh
 # (.budgets.cycles_consumed_current_stage / .budgets.max_cycles_per_stage).
 _init() {
-  capture "$RW" init --state-dir "$1" --execucao-id "x" \
-    --projeto-alvo-path "/tmp/p" --descricao "POC cycles tests"
+  # HOME sandbox SEM config global: forca backend JSON deterministico mesmo
+  # em hosts com `state_backend=sqlite` em ~/.claude/cstk/config (padrao de
+  # hermeticidade do test__state-read.sh; state-db-runtime-parity 2.2.2).
+  _i_home="$TMPDIR_TEST/home-json"
+  mkdir -p "$_i_home"
+  env HOME="$_i_home" "$RW" init --state-dir "$1" --execucao-id "x" \
+    --projeto-alvo-path "/tmp/p" --descricao "POC cycles tests" >/dev/null 2>&1
 }
 
 # Fixture pt-BR legado (schema-en-migration back-compat): escreve um state
@@ -148,6 +153,88 @@ scenario_check_le_state_legado_pt_acima_de_max_exit_3() {
     return 1
   fi
   assert_stderr_contains "loop_em_etapa" || return 1
+}
+
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.2 / FR-002 / SC-003) ====
+# Fixture minima por CHK032: init sob config global state_backend=sqlite
+# (padrao test__state-read.sh). Mutacoes de tick/reset roteiam por
+# state-rw.sh set (coluna execution.cycles_consumed_current_stage).
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_init_sqlite() {
+  _is_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_is_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_is_home/.claude/cstk/config"
+  env HOME="$_is_home" "$RW" init --state-dir "$1" \
+    --execucao-id "x-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC cycles sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+}
+
+scenario_sqlite_tick_incrementa_e_count_persiste() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  capture "$SCRIPT" tick --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "tick sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "1" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "tick sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+  capture "$SCRIPT" tick --state-dir "$_sd"
+  assert_stdout_contains "2" || return 1
+  # Persistencia no state.db: count le o valor gravado pelo set.
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "2" || return 1
+}
+
+scenario_sqlite_tick_acima_de_max_exit_3_equivalente_json() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  for _ in 1 2 3 4 5; do
+    capture "$SCRIPT" tick --state-dir "$_sd"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "tick legal sqlite" "$_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  done
+  capture "$SCRIPT" tick --state-dir "$_sd"
+  # Veredito equivalente ao backend JSON (SC-003): exit 3 + loop_em_etapa.
+  if [ "$_CAPTURED_EXIT" != 3 ]; then
+    _fail "tick > 5 sqlite" "esperado 3, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"
+    return 1
+  fi
+  assert_stderr_contains "loop_em_etapa" || return 1
+  # Estado intacto (contrato runtime-interfaces §1 / CHECK do schema): o
+  # estouro nao e persistido — contador permanece no max e um novo tick
+  # re-dispara o veredito de aborto.
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "5" || return 1
+  capture "$SCRIPT" tick --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "re-tick sqlite pos-estouro" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_sqlite_progress_reset_e_anti_mirror() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  capture "$SCRIPT" tick --state-dir "$_sd"
+  capture "$SCRIPT" tick --state-dir "$_sd" --progress-made
+  assert_stdout_contains "0" || return 1
+  capture "$SCRIPT" tick --state-dir "$_sd"
+  capture "$SCRIPT" reset --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reset sqlite" "$_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "0" || return 1
+  # Anti-mirror (FR-003): nenhuma operacao pode materializar state.json
+  # dentro do state-dir sqlite.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "cycles criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
 }
 
 run_all_scenarios

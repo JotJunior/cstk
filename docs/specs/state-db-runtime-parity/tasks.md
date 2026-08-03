@@ -63,12 +63,12 @@ Ref: spec FR-001/FR-002/FR-011; research.md Decision 6 (classe reader)
 
 Ref: spec FR-001/FR-002/FR-011; research.md Decision 6 (classe read-write — escrita roteia por `state-rw.sh set`)
 
-- [ ] 2.2.1 Portar leitura de `cycles.sh` para `_state-read.sh` e rotear a mutacao do `tick` por `state-rw.sh set`
-- [ ] 2.2.2 Adicionar cenarios sqlite em `tests/test_cycles.sh`
-- [ ] 2.2.3 Portar leitura de `circular.sh` e rotear a mutacao do `push` por `state-rw.sh set`
-- [ ] 2.2.4 Adicionar cenarios sqlite em `tests/test_circular.sh`
-- [ ] 2.2.5 Portar leitura de `retro.sh` e rotear a mutacao do `consume` por `state-rw.sh set`
-- [ ] 2.2.6 Adicionar cenarios sqlite em `tests/test_retro.sh`
+- [x] 2.2.1 Portar leitura de `cycles.sh` para `_state-read.sh` e rotear a mutacao do `tick` por `state-rw.sh set`
+- [x] 2.2.2 Adicionar cenarios sqlite em `tests/test_cycles.sh`
+- [x] 2.2.3 Portar leitura de `circular.sh` e rotear a mutacao do `push` por `state-rw.sh set`
+- [x] 2.2.4 Adicionar cenarios sqlite em `tests/test_circular.sh`
+- [x] 2.2.5 Portar leitura de `retro.sh` e rotear a mutacao do `consume` por `state-rw.sh set`
+- [x] 2.2.6 Adicionar cenarios sqlite em `tests/test_retro.sh`
 
 ### 2.3 Lote leitores de relatorio/roteamento: wave-usage-report, model-routing, model-routing-report `[M]`
 

@@ -14,8 +14,13 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 _init() {
-  capture "$RW" init --state-dir "$1" --execucao-id "x" \
-    --projeto-alvo-path "/tmp/p" --descricao "POC circular tests"
+  # HOME sandbox SEM config global: forca backend JSON deterministico mesmo
+  # em hosts com `state_backend=sqlite` em ~/.claude/cstk/config (padrao de
+  # hermeticidade do test__state-read.sh; state-db-runtime-parity 2.2.4).
+  _i_home="$TMPDIR_TEST/home-json"
+  mkdir -p "$_i_home"
+  env HOME="$_i_home" "$RW" init --state-dir "$1" --execucao-id "x" \
+    --projeto-alvo-path "/tmp/p" --descricao "POC circular tests" >/dev/null 2>&1
 }
 
 _push() {
@@ -188,6 +193,85 @@ scenario_backcompat_pt_push_converge_para_en() {
   # A nova entrada usa folhas EN (problem_hash/solution_hash).
   _last_en=$(jq -r '.circular_movement_history[-1] | has("problem_hash") and has("solution_hash")' "$_sd/state.json")
   [ "$_last_en" = "true" ] || { _fail "push folha EN" "ultima entrada sem problem_hash/solution_hash"; return 1; }
+}
+
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.2 / FR-002 / SC-003) ====
+# Fixture minima por CHK032: init sob config global state_backend=sqlite
+# (padrao test__state-read.sh). push/clear roteiam por state-rw.sh set
+# (coluna json execution.circular_movement_history).
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_init_sqlite() {
+  _is_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_is_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_is_home/.claude/cstk/config"
+  env HOME="$_is_home" "$RW" init --state-dir "$1" \
+    --execucao-id "x-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC circular sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+}
+
+scenario_sqlite_push_acumula_e_list_persiste() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _push "$_sd" "Test failing on null body" "Add nil check"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "push sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "push sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+  assert_stdout_contains "	1" || return 1   # buffer size = 1
+  _push "$_sd" "Another distinct problem" "another fix"
+  assert_stdout_contains "	2" || return 1
+  # Persistencia no state.db: list le o que o set gravou.
+  capture "$SCRIPT" list --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list sqlite" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "0	" || return 1
+  assert_stdout_contains "1	" || return 1
+}
+
+scenario_sqlite_detect_exit_3_equivalente_json() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _push "$_sd" "same recurring problem" "fix A"
+  _push "$_sd" "same recurring problem" "fix B"
+  capture "$SCRIPT" detect --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "detect < threshold sqlite" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _push "$_sd" "same recurring problem" "fix C"
+  capture "$SCRIPT" detect --state-dir "$_sd"
+  # Veredito equivalente ao backend JSON (SC-003): exit 3 + diagnostico.
+  if [ "$_CAPTURED_EXIT" != 3 ]; then
+    _fail "detect >= 3 sqlite" "esperado 3, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"
+    return 1
+  fi
+  assert_stderr_contains "movimento circular" || return 1
+}
+
+scenario_sqlite_clear_esvazia_e_anti_mirror() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _push "$_sd" "p1" "s1"
+  _push "$_sd" "p2" "s2"
+  capture "$SCRIPT" clear --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "clear sqlite" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd"
+  if [ -n "$_CAPTURED_STDOUT" ]; then
+    _fail "clear sqlite" "buffer nao esvaziou: $_CAPTURED_STDOUT"
+    return 1
+  fi
+  # Anti-mirror (FR-003): nenhuma operacao pode materializar state.json
+  # dentro do state-dir sqlite.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "circular criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
 }
 
 run_all_scenarios

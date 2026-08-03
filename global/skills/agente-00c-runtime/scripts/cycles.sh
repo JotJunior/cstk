@@ -49,6 +49,14 @@ set -eu
 
 _CY_NAME="cycles"
 
+# Leitura de estado via interface canonica (state-db-runtime-parity FR-001):
+# materializa documento legivel por jq nos DOIS backends (json/sqlite).
+# Mutacoes (tick/reset) roteiam por `state-rw.sh set` (research Decision 6,
+# classe read-write) — o set cuida de atomic write + sha (json) ou UPDATE
+# na coluna cycles_consumed_current_stage (sqlite).
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _cy_die_usage() { printf '%s: %s\n' "$_CY_NAME" "$1" >&2; exit 2; }
 _cy_die()       { printf '%s: %s\n' "$_CY_NAME" "$1" >&2; exit "${2:-1}"; }
 
@@ -57,24 +65,11 @@ _cy_require_jq() {
     || _cy_die "jq nao encontrado no PATH" 1
 }
 
-_cy_state_file() { printf '%s/state.json\n' "$1"; }
-
-_cy_atomic_write() {
-  _dst=$1; _src=$2
-  _tmp=$(mktemp -- "${_dst}.XXXXXX") || _cy_die "mktemp falhou" 1
-  cp -- "$_src" "$_tmp" || { rm -f -- "$_tmp"; _cy_die "I/O cp" 1; }
-  mv -f -- "$_tmp" "$_dst" || { rm -f -- "$_tmp"; _cy_die "mv" 1; }
-}
-
-_cy_update_sha() {
-  _sf=$(_cy_state_file "$1")
-  _shf="$1/state.json.sha256"
-  if command -v sha256sum >/dev/null 2>&1; then
-    _h=$(sha256sum -- "$_sf" | awk '{print $1}')
-  else
-    _h=$(shasum -a 256 -- "$_sf" | awk '{print $1}')
-  fi
-  printf '%s\n' "$_h" > "$_shf"
+# _cy_set_counter STATE_DIR N — grava .budgets.cycles_consumed_current_stage
+# nos dois backends via state-rw.sh set (falha propaga via set -e — FR-012).
+_cy_set_counter() {
+  "$(_state_read_rw_bin)" set --state-dir "$1" \
+    --field '.budgets.cycles_consumed_current_stage' --value "$2"
 }
 
 _cy_cmd_tick() {
@@ -89,7 +84,9 @@ _cy_cmd_tick() {
   done
   [ -n "$_sd" ] || _cy_die_usage "tick: --state-dir obrigatorio"
   _cy_require_jq
-  _sf=$(_cy_state_file "$_sd")
+  # Falha de materializacao sob sqlite (sqlite3 ausente, state.db corrompido)
+  # propaga exit+stderr do state-rw.sh read via set -e (FR-012).
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _cy_die "tick: state.json ausente em $_sd" 1
 
   _curr_count=$(jq -r '((.budgets.cycles_consumed_current_stage // .orcamentos.ciclos_consumidos_etapa_corrente) // 0)' "$_sf")
@@ -101,20 +98,20 @@ _cy_cmd_tick() {
     _new=$((_curr_count + 1))
   fi
 
-  # Aplica
-  _new_state=$(mktemp) || _cy_die "mktemp falhou" 1
-  jq --argjson n "$_new" '.budgets.cycles_consumed_current_stage = $n' "$_sf" > "$_new_state" \
-    || { rm -f -- "$_new_state"; _cy_die "jq update falhou" 1; }
-  _cy_atomic_write "$_sf" "$_new_state"
-  rm -f -- "$_new_state" 2>/dev/null || :
-  _cy_update_sha "$_sd"
-  printf '%s\n' "$_new"
-
   if [ "$_new" -gt "$_max" ]; then
+    # Estouro NAO e persistido: o schema SQLite tem CHECK
+    # (cycles_consumed_current_stage <= max_cycles_per_stage) que rejeita o
+    # valor com "estado intacto" (contrato runtime-interfaces §1); paridade
+    # exige o mesmo modelo no backend JSON. O veredito de aborto e o exit 3
+    # — ticks subsequentes re-disparam ate o orquestrador abortar.
+    printf '%s\n' "$_new"
     printf '%s: loop_em_etapa — %s ciclos consecutivos sem progresso (max %s)\n' \
       "$_CY_NAME" "$_new" "$_max" >&2
     exit 3
   fi
+
+  _cy_set_counter "$_sd" "$_new"
+  printf '%s\n' "$_new"
 }
 
 _cy_cmd_check() {
@@ -127,7 +124,7 @@ _cy_cmd_check() {
   done
   [ -n "$_sd" ] || _cy_die_usage "check: --state-dir obrigatorio"
   _cy_require_jq
-  _sf=$(_cy_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _cy_die "check: state.json ausente" 1
   _curr=$(jq -r '((.budgets.cycles_consumed_current_stage // .orcamentos.ciclos_consumidos_etapa_corrente) // 0)' "$_sf")
   _max=$(jq -r '((.budgets.max_cycles_per_stage // .orcamentos.ciclos_max_por_etapa) // 5)' "$_sf")
@@ -148,7 +145,7 @@ _cy_cmd_count() {
   done
   [ -n "$_sd" ] || _cy_die_usage "count: --state-dir obrigatorio"
   _cy_require_jq
-  _sf=$(_cy_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _cy_die "count: state.json ausente" 1
   jq -r '((.budgets.cycles_consumed_current_stage // .orcamentos.ciclos_consumidos_etapa_corrente) // 0)' "$_sf"
 }
@@ -163,14 +160,9 @@ _cy_cmd_reset() {
   done
   [ -n "$_sd" ] || _cy_die_usage "reset: --state-dir obrigatorio"
   _cy_require_jq
-  _sf=$(_cy_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _cy_die "reset: state.json ausente" 1
-  _new_state=$(mktemp) || _cy_die "mktemp falhou" 1
-  jq '.budgets.cycles_consumed_current_stage = 0' "$_sf" > "$_new_state" \
-    || { rm -f -- "$_new_state"; _cy_die "jq update falhou" 1; }
-  _cy_atomic_write "$_sf" "$_new_state"
-  rm -f -- "$_new_state" 2>/dev/null || :
-  _cy_update_sha "$_sd"
+  _cy_set_counter "$_sd" 0
 }
 
 # ---------- Dispatch ----------
