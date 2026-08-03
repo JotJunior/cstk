@@ -232,10 +232,10 @@ Ref: spec FR-007 + FR-007a; contracts/runtime-interfaces.md §2; research.md Dec
 
 Ref: spec FR-008; contracts/runtime-interfaces.md §3; research.md Decision 4; checklists/api.md CHK010
 
-- [ ] 5.1.1 `generate`: trocar exit 1 por exit 7 na morte por estado ausente (report.sh:452) + diagnostico em stderr, estado (se algum) preservado
-- [ ] 5.1.2 `emit`: idem na morte por estado ausente (report.sh:552)
-- [ ] 5.1.3 Preservar exit 2 (uso) e exit 1 (falhas genericas) sem sobreposicao nos DOIS subcomandos (CHK010)
-- [ ] 5.1.4 Testes de contrato em `tests/test_report.sh`: state-dir sem `state.json` E sem `state.db` legivel => exit 7, nos dois backends e nos dois subcomandos
+- [x] 5.1.1 `generate`: trocar exit 1 por exit 7 na morte por estado ausente (report.sh:452) + diagnostico em stderr, estado (se algum) preservado
+- [x] 5.1.2 `emit`: idem na morte por estado ausente (report.sh:552)
+- [x] 5.1.3 Preservar exit 2 (uso) e exit 1 (falhas genericas) sem sobreposicao nos DOIS subcomandos (CHK010)
+- [x] 5.1.4 Testes de contrato em `tests/test_report.sh`: state-dir sem `state.json` E sem `state.db` legivel => exit 7, nos dois backends e nos dois subcomandos
 
 ---
 
@@ -245,28 +245,28 @@ Ref: spec FR-008; contracts/runtime-interfaces.md §3; research.md Decision 4; c
 
 Ref: spec FR-009/FR-010; research.md Decision 5; checklists CHK016/CHK032
 
-- [ ] 6.1.1 Camada estatica: grep por acesso direto a `state.json` fora da interface canonica, com allowlist de prosa no mecanismo definido em 1.1.2 (Ref: CHK016)
-- [ ] 6.1.2 Camada dinamica: manifest dos 15 leitores executados contra state-dir SQLite populado com a fixture definida em 1.1.3 (Ref: CHK032); assert de veredito nao-degradado por leitor
-- [ ] 6.1.3 Registrar o sweep em `_is_internal_test` (`tests/run.sh`) para nao falsear o orphan check
-- [ ] 6.1.4 Rodar `./tests/run.sh --check-coverage` e confirmar verde (novos `test__state-read.sh` + sweep reconhecidos)
+- [x] 6.1.1 Camada estatica: grep por acesso direto a `state.json` fora da interface canonica, com allowlist de prosa no mecanismo definido em 1.1.2 (Ref: CHK016)
+- [x] 6.1.2 Camada dinamica: manifest dos 15 leitores executados contra state-dir SQLite populado com a fixture definida em 1.1.3 (Ref: CHK032); assert de veredito nao-degradado por leitor
+- [x] 6.1.3 Registrar o sweep em `_is_internal_test` (`tests/run.sh`) para nao falsear o orphan check
+- [x] 6.1.4 Rodar `./tests/run.sh --check-coverage` e confirmar verde (novos `test__state-read.sh` + sweep reconhecidos)
 
 ### 6.2 Validacao end-to-end (quickstart.md) `[A]`
 
 Ref: quickstart.md cenarios 1-6 + roundtrip; spec SC-001..SC-005
 
-- [ ] 6.2.1 Executar cenarios 1-2: helper de orcamento sob SQLite + equivalencia de veredito entre backends
-- [ ] 6.2.2 Executar cenarios 3-4: promocao terminal multi-campo (happy + error) + force-acquire de lock orfao
-- [ ] 6.2.3 Executar cenarios 5-6: exit contratual do relatorio + varredura detecta reintroducao
-- [ ] 6.2.4 Executar o roundtrip end-to-end real (nao mock) do quickstart
-- [ ] 6.2.5 Rodar os testes dos scripts tocados (filtro por pattern) e a suite completa APENAS em background — NUNCA suite completa em foreground
+- [x] 6.2.1 Executar cenarios 1-2: helper de orcamento sob SQLite + equivalencia de veredito entre backends
+- [x] 6.2.2 Executar cenarios 3-4: promocao terminal multi-campo (happy + error) + force-acquire de lock orfao
+- [x] 6.2.3 Executar cenarios 5-6: exit contratual do relatorio + varredura detecta reintroducao
+- [x] 6.2.4 Executar o roundtrip end-to-end real (nao mock) do quickstart
+- [x] 6.2.5 Rodar os testes dos scripts tocados (filtro por pattern) e a suite completa APENAS em background — NUNCA suite completa em foreground
 
 ### 6.3 Documentacao `[M]`
 
 Ref: plan.md §Project Structure; CLAUDE.md do repo; convencao de docs do runtime
 
-- [ ] 6.3.1 Adicionar secao no CLAUDE.md do repo documentando a paridade do runtime com o backend SQLite (helper `_state-read.sh`, set multi-campo, `--force`, exit 7)
-- [ ] 6.3.2 Atualizar SKILL.md/README do `agente-00c-runtime` com as interfaces novas
-- [ ] 6.3.3 Verificacao final: nenhum marcador `[PROPOSTA — a validar na implementacao]` restante em contracts/runtime-interfaces.md (fecha CHK008)
+- [x] 6.3.1 Adicionar secao no CLAUDE.md do repo documentando a paridade do runtime com o backend SQLite (helper `_state-read.sh`, set multi-campo, `--force`, exit 7)
+- [x] 6.3.2 Atualizar SKILL.md/README do `agente-00c-runtime` com as interfaces novas
+- [x] 6.3.3 Verificacao final: nenhum marcador `[PROPOSTA — a validar na implementacao]` restante em contracts/runtime-interfaces.md (fecha CHK008)
 
 ### 6.4 Decisao CHK031: priorizacao da feature dedicada de hooks `[M]`
 

@@ -44,6 +44,12 @@
 #   0 sucesso
 #   1 erro generico OU validacao falhou
 #   2 uso incorreto
+#   7 estado ausente (nem state.json nem state.db legivel no state-dir) em
+#     generate|emit — contratual FR-008 (state-db-runtime-parity; alinha
+#     "falha na geracao do relatorio: exit 7 + estado preservado" do
+#     contrato cli-invocation.md do feature-00c). Falha de LEITURA de um
+#     state.db presente (corrompido/sqlite3 ausente) segue propagando o
+#     exit do `state-rw.sh read` (FR-012) — classe "falha generica".
 #
 # POSIX sh + jq.
 
@@ -427,7 +433,7 @@ _rp_cmd_generate() {
   [ -n "$_sd" ] || _rp_die_usage "generate: --state-dir obrigatorio"
   _rp_require_jq
   _sf=$(state_read_materialize "$_sd")
-  [ -f "$_sf" ] || _rp_die "generate: estado ausente (state.json/state.db) em $_sd" 1
+  [ -f "$_sf" ] || _rp_die "generate: estado ausente (state.json/state.db) em $_sd" 7
 
   _now=$(_rp_iso_now)
   _wu_json=$(_rp_wave_usage_json "$_sd")
@@ -527,7 +533,7 @@ _rp_cmd_emit() {
 
   _rp_require_jq
   _sf=$(state_read_materialize "$_sd")
-  [ -f "$_sf" ] || _rp_die "emit: estado ausente (state.json/state.db) em $_sd" 1
+  [ -f "$_sf" ] || _rp_die "emit: estado ausente (state.json/state.db) em $_sd" 7
 
   # secrets-filter OBRIGATORIO (ver doc da funcao): ausencia/inacessibilidade
   # = erro, NUNCA grava relatorio nao-filtrado.
