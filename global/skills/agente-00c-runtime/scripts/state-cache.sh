@@ -49,6 +49,12 @@ _SC_DIR=$(cd "$(dirname -- "$0")" && pwd)
 # Helpers sourceaveis
 . "$_SC_DIR/_hash.sh"
 
+# Leitura via interface canonica (state-db-runtime-parity FR-001, lote 2.4):
+# materializa documento legivel por jq nos DOIS backends (json/sqlite).
+# Mutacoes (ensure/invalidate/metrics-bump) roteiam por `state-rw.sh set`.
+. "$_SC_DIR/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _sc_die_usage() { printf '%s: %s\n' "$_SC_NAME" "$1" >&2; exit 2; }
 _sc_die() {      printf '%s: %s\n' "$_SC_NAME" "$1" >&2; exit "${2:-2}"; }
 
@@ -59,17 +65,16 @@ _sc_require_jq() {
 }
 
 _sc_iso_now() { date -u +%FT%TZ; }
-_sc_state_file() { printf '%s/state.json\n' "$1"; }
 
 # Defaults (FR-CACHE-007)
 _SC_PASSTHROUGH_DEFAULT=3000
 _SC_RESUMO_MAX_DEFAULT=2000
 _SC_RATIO_DEFAULT="0.25"
 
-# _sc_config STATE_DIR FIELD DEFAULT
-#   Le .config.cache.<FIELD> do state.json com fallback DEFAULT.
+# _sc_config FILE FIELD DEFAULT
+#   Le .config.cache.<FIELD> do documento materializado com fallback DEFAULT.
 _sc_config() {
-  _sf=$(_sc_state_file "$1")
+  _sf=$1
   _field=$2
   _default=$3
   [ -f "$_sf" ] || { printf '%s\n' "$_default"; return 0; }
@@ -93,16 +98,12 @@ _sc_cache_field() {
   esac
 }
 
-# _sc_atomic_set STATE_DIR JQ_FILTER
-#   Aplica JQ_FILTER sobre state.json em tmp, depois mv atomico.
-_sc_atomic_set() {
-  _sd=$1
-  _filter=$2
-  _sf=$(_sc_state_file "$_sd")
-  [ -f "$_sf" ] || _sc_die "state.json ausente em $_sd" 2
-  _tmp=$(mktemp -- "${_sf}.XXXXXX") || _sc_die "mktemp falhou" 2
-  jq "$_filter" "$_sf" >"$_tmp" || { rm -f -- "$_tmp"; _sc_die "jq filter falhou" 2; }
-  mv -f -- "$_tmp" "$_sf" || { rm -f -- "$_tmp"; _sc_die "mv atomico falhou" 2; }
+# _sc_set STATE_DIR FIELD VALUE_JSON
+#   Mutacao pontual via interface canonica (backup/atomic/sha no json;
+#   UPDATE no sqlite). Falha do set propaga via set -e (FR-012).
+_sc_set() {
+  "$(_state_read_rw_bin)" set --state-dir "$1" --field "$2" --value "$3" \
+    || _sc_die "state-rw.sh set falhou ($2)" 2
 }
 
 # _sc_summarize RESUMO_MAX
@@ -188,16 +189,17 @@ _sc_cmd_ensure() {
     return 1
   fi
 
-  _sf=$(_sc_state_file "$_sd")
+  # Falha de materializacao sob sqlite propaga exit+stderr do read (FR-012).
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _sc_die "ensure: state.json ausente em $_sd" 2
 
   _sha=$(_hash_sha256_file "$_src")
   _chars=$(wc -c <"$_src" | awk '{print $1}')
-  _threshold=$(_sc_config "$_sd" passthrough_threshold_chars "$_SC_PASSTHROUGH_DEFAULT")
+  _threshold=$(_sc_config "$_sf" passthrough_threshold_chars "$_SC_PASSTHROUGH_DEFAULT")
   # Config key (schema-en-migration §3.9d): summary_max_chars (EN) com fallback
   # ao pt-BR resumo_max_chars. Pega o EN; se vazio, tenta o pt-BR legado.
-  _resumo_max=$(_sc_config "$_sd" summary_max_chars "")
-  [ -n "$_resumo_max" ] || _resumo_max=$(_sc_config "$_sd" resumo_max_chars "$_SC_RESUMO_MAX_DEFAULT")
+  _resumo_max=$(_sc_config "$_sf" summary_max_chars "")
+  [ -n "$_resumo_max" ] || _resumo_max=$(_sc_config "$_sf" resumo_max_chars "$_SC_RESUMO_MAX_DEFAULT")
   _now=$(_sc_iso_now)
   _onda=$(jq -r '
     ((.waves // .ondas) // []) as $w
@@ -224,31 +226,31 @@ _sc_cmd_ensure() {
 
   # Encode resumo como string JSON valida (jq -Rs faz: aspas + escape)
   _resumo_json=$(printf '%s' "$_resumo" | jq -Rs .)
-  _sf=$(_sc_state_file "$_sd")
-  _tmp=$(mktemp -- "${_sf}.XXXXXX") || _sc_die "mktemp falhou" 2
-  # WRITER (schema-en-migration §3.9d + idiom §4.1): chaves EN no state.json.
+  # WRITER (schema-en-migration §3.9d + idiom §4.1): chaves EN no state.
   # resumo->summary, resumo_chars->summary_chars, estrategia->strategy,
   # gerado_em->generated_at, gerado_na_onda->generated_in_wave.
   # Containers/folhas source_* = KEEP (ja EN). VALOR de strategy = KEEP.
-  jq --arg src "$_src" \
+  # Escrita via interface canonica: briefing_cache/constitution_cache sao
+  # colunas json modeladas no backend sqlite; jq-path no backend json.
+  _obj=$(jq -nc --arg src "$_src" \
      --arg sha "$_sha" \
      --argjson chars "$_chars" \
      --argjson resumo "$_resumo_json" \
      --argjson resumo_chars "$_resumo_chars" \
      --arg estrategia "$_estrategia" \
-     --arg now "$_now" \
      --argjson onda "$_onda" \
-     ".${_field} = {
-        source_path: \$src,
-        source_sha256: \$sha,
-        source_chars: \$chars,
-        summary: \$resumo,
-        summary_chars: \$resumo_chars,
-        strategy: \$estrategia,
-        generated_at: \$now,
-        generated_in_wave: \$onda
-      }" "$_sf" >"$_tmp" || { rm -f -- "$_tmp"; _sc_die "ensure: jq filter falhou" 2; }
-  mv -f -- "$_tmp" "$_sf" || { rm -f -- "$_tmp"; _sc_die "ensure: mv atomico falhou" 2; }
+     --arg now "$_now" \
+     '{
+        source_path: $src,
+        source_sha256: $sha,
+        source_chars: $chars,
+        summary: $resumo,
+        summary_chars: $resumo_chars,
+        strategy: $estrategia,
+        generated_at: $now,
+        generated_in_wave: $onda
+      }') || _sc_die "ensure: jq build falhou" 2
+  _sc_set "$_sd" ".${_field}" "$_obj"
 
   printf '%s: ensure: %s cache populado (estrategia=%s, source_chars=%d, resumo_chars=%d)\n' \
     "$_SC_NAME" "$_art" "$_estrategia" "$_chars" "$_resumo_chars" >&2
@@ -270,7 +272,7 @@ _sc_cmd_get_resumo() {
   _sc_validate_artifact "$_art"
   _sc_require_jq
 
-  _sf=$(_sc_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || { printf '%s: state.json ausente\n' "$_SC_NAME" >&2; return 2; }
 
   # READER (schema-en-migration §4.3): path EN + fallback (.en // .pt).
@@ -312,7 +314,7 @@ _sc_cmd_check_drift() {
   _sc_validate_artifact "$_art"
   _sc_require_jq
 
-  _sf=$(_sc_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || { printf '%s: state.json ausente\n' "$_SC_NAME" >&2; return 3; }
 
   _field=$(_sc_cache_field "$_art")
@@ -375,7 +377,10 @@ _sc_cmd_invalidate() {
   _sc_require_jq
 
   _field=$(_sc_cache_field "$_art")
-  _sc_atomic_set "$_sd" ".${_field} = null"
+  # Preserva o contrato de exit 2 do antigo _sc_atomic_set p/ state ausente.
+  _sf=$(state_read_materialize "$_sd")
+  [ -f "$_sf" ] || _sc_die "state.json ausente em $_sd" 2
+  _sc_set "$_sd" ".${_field}" "null"
 
   # Registrar Decisao auditavel (FR-CACHE-011) — best-effort: se state-decisions.sh
   # disponivel, registra; senao apenas warning em stderr.
@@ -410,34 +415,45 @@ _sc_cmd_metrics_bump() {
   [ -n "$_tipo" ] || _sc_die_usage "metrics-bump: --tipo obrigatorio"
   _sc_require_jq
 
-  _ratio=$(_sc_config "$_sd" tokens_per_char_ratio "$_SC_RATIO_DEFAULT")
+  # READ-MODIFY-WRITE via interface canonica: le o objeto .accumulated_metrics
+  # .cache do documento materializado, aplica o incremento e grava o objeto
+  # INTEIRO de volta via `state-rw.sh set --field '.accumulated_metrics.cache'`
+  # — jq-path no backend json; extra_fields.cache_metrics no sqlite (unico
+  # path de accumulated_metrics gravavel — ver _state-rw-db.sh, dec-052).
+  _sf=$(state_read_materialize "$_sd")
+  [ -f "$_sf" ] || _sc_die "state.json ausente em $_sd" 2
+  _ratio=$(_sc_config "$_sf" tokens_per_char_ratio "$_SC_RATIO_DEFAULT")
 
   case "$_tipo" in
     hit)
       _tokens=$(awk -v c="$_chars" -v r="$_ratio" 'BEGIN { printf "%d", c * r }')
       # WRITER (schema-en-migration §3.9d): grava EN estimated_tokens_saved.
-      # READ-MODIFY-WRITE: o seed do contador cai no fallback pt-BR
-      # (tokens_economizados_estimados) p/ nao zerar metrica de state legado.
-      # tokens_cache_hits = KEEP (folha tokens_cache_*). VALOR nunca tocado.
-      _sc_atomic_set "$_sd" "
-        .accumulated_metrics.cache.tokens_cache_hits =
-          ((.accumulated_metrics.cache.tokens_cache_hits // 0) + 1)
-        | .accumulated_metrics.cache.estimated_tokens_saved =
-          (((.accumulated_metrics.cache.estimated_tokens_saved // .accumulated_metrics.cache.tokens_economizados_estimados) // 0) + $_tokens)
-      "
+      # Seed do contador cai no fallback pt-BR (tokens_economizados_estimados)
+      # p/ nao zerar metrica de state legado. tokens_cache_hits = KEEP.
+      _newcache=$(jq -c --argjson t "$_tokens" '
+        (.accumulated_metrics.cache // {})
+        | .tokens_cache_hits = ((.tokens_cache_hits // 0) + 1)
+        | .estimated_tokens_saved =
+            (((.estimated_tokens_saved // .tokens_economizados_estimados) // 0) + $t)
+      ' "$_sf") || _sc_die "metrics-bump: jq falhou" 2
       ;;
     miss-drift)
-      _sc_atomic_set "$_sd" ".accumulated_metrics.cache.tokens_cache_misses_drift =
-        ((.accumulated_metrics.cache.tokens_cache_misses_drift // 0) + 1)"
+      _newcache=$(jq -c '
+        (.accumulated_metrics.cache // {})
+        | .tokens_cache_misses_drift = ((.tokens_cache_misses_drift // 0) + 1)
+      ' "$_sf") || _sc_die "metrics-bump: jq falhou" 2
       ;;
     miss-disabled)
-      _sc_atomic_set "$_sd" ".accumulated_metrics.cache.tokens_cache_misses_disabled =
-        ((.accumulated_metrics.cache.tokens_cache_misses_disabled // 0) + 1)"
+      _newcache=$(jq -c '
+        (.accumulated_metrics.cache // {})
+        | .tokens_cache_misses_disabled = ((.tokens_cache_misses_disabled // 0) + 1)
+      ' "$_sf") || _sc_die "metrics-bump: jq falhou" 2
       ;;
     *)
       _sc_die_usage "metrics-bump: --tipo invalido: '$_tipo' (esperado: hit|miss-drift|miss-disabled)"
       ;;
   esac
+  _sc_set "$_sd" '.accumulated_metrics.cache' "$_newcache"
   return 0
 }
 
@@ -456,7 +472,7 @@ _sc_cmd_status() {
   _sc_validate_artifact "$_art"
   _sc_require_jq
 
-  _sf=$(_sc_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _sc_die "state.json ausente em $_sd" 2
 
   _field=$(_sc_cache_field "$_art")

@@ -280,6 +280,13 @@ _is_internal_test() {
       # script sob a convencao de FASE 9.3). Equivalente ao
       # test_quickstart-e2e.sh para o pipeline do agente-00c.
       return 0 ;;
+    test_state-parity-sweep.sh)
+      # Varredura anti-regressao da paridade runtime x backend SQLite
+      # (feature state-db-runtime-parity, FR-009, FASE 6.1): camada dinamica
+      # roda o MANIFEST dos 15 leitores contra state-dir sqlite populado;
+      # camada estatica grep de acesso direto a state.json com allowlist
+      # literal (CHK016). Composicao de N scripts — nao mapeia 1:1.
+      return 0 ;;
     test_state-db-concurrency.sh)
       # Testes de atomicidade/concorrencia do backend SQLite (feature
       # state-db-foundation, FASE 3 task 3.7, SC-002) — exercita a

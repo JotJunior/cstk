@@ -14,7 +14,12 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 _init() {
-  capture "$RW" init --state-dir "$1" --execucao-id "exec-sug" \
+  # HOME sandbox SEM config global: forca backend JSON deterministico mesmo
+  # em hosts com `state_backend=sqlite` em ~/.claude/cstk/config (padrao de
+  # hermeticidade do test__state-read.sh; state-db-runtime-parity 2.4.2).
+  _i_home="$TMPDIR_TEST/home-json"
+  mkdir -p "$_i_home"
+  capture env HOME="$_i_home" "$RW" init --state-dir "$1" --execucao-id "exec-sug" \
     --projeto-alvo-path "/tmp/p" --descricao "POC suggestions tests"
 }
 
@@ -209,6 +214,89 @@ scenario_ptbr_legado_render_md_via_fallback() {
   assert_stdout_contains "skill \`clarify\`" || return 1
   assert_stdout_contains "Proposta legada" || return 1
   assert_stdout_contains "docs/legado.md" || return 1
+}
+
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.4 / FR-001 / SC-003) ====
+# register/mark-issue roteiam por state-rw.sh set (.suggestions vive em
+# extra_fields; contadores accumulated_metrics derivados no read — dec-052).
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_init_sqlite() {
+  _is_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_is_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_is_home/.claude/cstk/config"
+  env HOME="$_is_home" "$RW" init --state-dir "$1" \
+    --execucao-id "exec-sug-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC suggestions sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+}
+
+scenario_sqlite_register_persiste_e_count_le() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"; _md="$TMPDIR_TEST/sug-sqlite.md"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _register_default "$_sd" "$_md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "sug-001" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "register sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+  [ -f "$_md" ] || { _fail "md sqlite" "suggestions.md nao gerada"; return 1; }
+  _register_default "$_sd" "$_md" "plan" "informativa"
+  assert_stdout_contains "sug-002" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "2" || return 1
+  capture "$SCRIPT" list --state-dir "$_sd" --severidade informativa
+  assert_stdout_contains "sug-002" || return 1
+}
+
+scenario_sqlite_metric_derivada_no_read() {
+  # Sob sqlite o contador global_skill_suggestions_total NAO e gravado pelo
+  # register — e derivado no read a partir de .suggestions (dec-052).
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"; _md="$TMPDIR_TEST/sug-sqlite.md"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _register_default "$_sd" "$_md"
+  _register_default "$_sd" "$_md"
+  _total=$("$RW" read --state-dir "$_sd" \
+    | jq -r '.accumulated_metrics.global_skill_suggestions_total')
+  [ "$_total" = "2" ] || { _fail "metric derivada" "esperado 2, obtido $_total"; return 1; }
+}
+
+scenario_sqlite_mark_issue_e_toolkit_issues_derivado() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"; _md="$TMPDIR_TEST/sug-sqlite.md"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _register_default "$_sd" "$_md"
+  capture "$SCRIPT" mark-issue --state-dir "$_sd" \
+    --suggestion-id "sug-001" --issue "https://github.com/JotJunior/cstk/issues/999"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "mark-issue sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd"
+  assert_stdout_contains "issues/999" || return 1
+  _ti=$("$RW" read --state-dir "$_sd" \
+    | jq -r '.accumulated_metrics.toolkit_issues_opened')
+  [ "$_ti" = "1" ] || { _fail "toolkit_issues derivado" "esperado 1, obtido $_ti"; return 1; }
+}
+
+scenario_sqlite_anti_mirror() {
+  # FR-003: nenhuma operacao pode materializar state.json dentro do state-dir.
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"; _md="$TMPDIR_TEST/sug-sqlite.md"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _register_default "$_sd" "$_md"
+  capture "$SCRIPT" next-id --state-dir "$_sd"
+  assert_stdout_contains "sug-002" || return 1
+  capture "$SCRIPT" render-md --state-dir "$_sd"
+  assert_stdout_contains "sug-001" || return 1
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "suggestions criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
 }
 
 run_all_scenarios

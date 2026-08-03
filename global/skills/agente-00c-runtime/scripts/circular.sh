@@ -56,24 +56,19 @@ _cc_require_jq() {
     || _cc_die "jq nao encontrado no PATH" 1
 }
 
-_cc_state_file() { printf '%s/state.json\n' "$1"; }
+# Leitura de estado via interface canonica (state-db-runtime-parity FR-001):
+# materializa documento legivel por jq nos DOIS backends (json/sqlite).
+# Mutacoes (push/clear) roteiam por `state-rw.sh set` sobre o campo
+# `.circular_movement_history` (coluna json em execution — research
+# Decision 6, classe read-write).
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
 
-_cc_atomic_write() {
-  _dst=$1; _src=$2
-  _tmp=$(mktemp -- "${_dst}.XXXXXX") || _cc_die "mktemp falhou" 1
-  cp -- "$_src" "$_tmp" || { rm -f -- "$_tmp"; _cc_die "I/O cp" 1; }
-  mv -f -- "$_tmp" "$_dst" || { rm -f -- "$_tmp"; _cc_die "mv" 1; }
-}
-
-_cc_update_sha() {
-  _sf=$(_cc_state_file "$1")
-  _shf="$1/state.json.sha256"
-  if command -v sha256sum >/dev/null 2>&1; then
-    _h=$(sha256sum -- "$_sf" | awk '{print $1}')
-  else
-    _h=$(shasum -a 256 -- "$_sf" | awk '{print $1}')
-  fi
-  printf '%s\n' "$_h" > "$_shf"
+# _cc_set_history STATE_DIR JSON_ARRAY — grava .circular_movement_history
+# nos dois backends via state-rw.sh set (falha propaga via set -e — FR-012).
+_cc_set_history() {
+  "$(_state_read_rw_bin)" set --state-dir "$1" \
+    --field '.circular_movement_history' --value "$2"
 }
 
 # _cc_normalize TEXT -> texto normalizado para hash
@@ -119,7 +114,7 @@ _cc_cmd_push() {
   [ -n "$_sol" ]  || _cc_die_usage "push: --solucao obrigatorio"
   _cc_require_jq
 
-  _sf=$(_cc_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _cc_die "push: state.json ausente" 1
 
   _ph=$(_cc_sha256_text "$(_cc_normalize "$_prob")")
@@ -130,27 +125,24 @@ _cc_cmd_push() {
   # (.circular_movement_history) e folhas EN (problem_hash/solution_hash).
   # Reader do append com fallback (.en // .pt) p/ acumular sobre states pt-BR
   # vivos antes do migrate convergir o disco para EN.
-  _new_state=$(mktemp) || _cc_die "mktemp falhou" 1
-  jq \
+  # O buffer novo e computado do doc materializado e gravado via state-rw.sh
+  # set; o buffer_size do stdout deriva do proprio array novo (o tmp
+  # materializado fica stale apos o set sob sqlite).
+  _new_buf=$(jq -c \
     --arg ph "$_ph" \
     --arg sh "$_sh" \
     --arg ts "$_now" \
     --argjson max "$_CC_BUFFER_MAX" '
-    .circular_movement_history =
-      (
-        (((.circular_movement_history // .historico_movimento_circular) // []) + [{
-          problem_hash: $ph,
-          solution_hash: $sh,
-          timestamp: $ts
-        }])
-        | (if length > $max then .[length - $max:] else . end)
-      )
-  ' "$_sf" > "$_new_state" || { rm -f -- "$_new_state"; _cc_die "jq update falhou" 1; }
-  _cc_atomic_write "$_sf" "$_new_state"
-  rm -f -- "$_new_state" 2>/dev/null || :
-  _cc_update_sha "$_sd"
+      (((.circular_movement_history // .historico_movimento_circular) // []) + [{
+        problem_hash: $ph,
+        solution_hash: $sh,
+        timestamp: $ts
+      }])
+      | (if length > $max then .[length - $max:] else . end)
+  ' "$_sf") || _cc_die "jq update falhou" 1
+  _cc_set_history "$_sd" "$_new_buf"
 
-  _bsize=$(jq '(.circular_movement_history // .historico_movimento_circular) | length' "$_sf")
+  _bsize=$(printf '%s' "$_new_buf" | jq 'length')
   printf '%s\t%s\t%s\n' "$_ph" "$_sh" "$_bsize"
 }
 
@@ -164,7 +156,7 @@ _cc_cmd_detect() {
   done
   [ -n "$_sd" ] || _cc_die_usage "detect: --state-dir obrigatorio"
   _cc_require_jq
-  _sf=$(_cc_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _cc_die "detect: state.json ausente" 1
 
   # Reader (schema-en-migration): container EN + fallback (.en // .pt); folha
@@ -197,7 +189,7 @@ _cc_cmd_list() {
   done
   [ -n "$_sd" ] || _cc_die_usage "list: --state-dir obrigatorio"
   _cc_require_jq
-  _sf=$(_cc_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _cc_die "list: state.json ausente" 1
   # Reader (schema-en-migration): container EN + fallback; folhas problem_hash/
   # solution_hash com fallback p/ problema_hash/solucao_hash.
@@ -219,16 +211,12 @@ _cc_cmd_clear() {
   done
   [ -n "$_sd" ] || _cc_die_usage "clear: --state-dir obrigatorio"
   _cc_require_jq
-  _sf=$(_cc_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _cc_die "clear: state.json ausente" 1
-  # Writer (schema-en-migration): zera container EN e remove eventual chave pt-BR
-  # residual (clear = "esquecer historico", precisa valer mesmo pre-migrate).
-  _new_state=$(mktemp) || _cc_die "mktemp falhou" 1
-  jq '.circular_movement_history = [] | del(.historico_movimento_circular)' "$_sf" > "$_new_state" \
-    || { rm -f -- "$_new_state"; _cc_die "jq update falhou" 1; }
-  _cc_atomic_write "$_sf" "$_new_state"
-  rm -f -- "$_new_state" 2>/dev/null || :
-  _cc_update_sha "$_sd"
+  # Writer (schema-en-migration): zera o container EN via state-rw.sh set —
+  # o canonicalizador do set (backend json) ja converte/remove a chave pt-BR
+  # residual antes de aplicar (clear vale mesmo pre-migrate).
+  _cc_set_history "$_sd" '[]'
 }
 
 # ---------- Dispatch ----------

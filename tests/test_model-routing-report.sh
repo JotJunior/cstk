@@ -797,4 +797,95 @@ scenario_fase6_idempotente_bloco_novo() {
   [ "$_o3" = "$_o3b" ] || { _fail "Markdown identico" "diferem"; return 1; }
 }
 
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.3 / FR-001 / FR-011) ====
+# aggregate le o documento materializado via _state-read.sh a partir de
+# state.db; paridade de agregados com o backend JSON (SC-003).
+
+RW_SQLITE="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+# Init sqlite (HOME sandbox) + importa a fixture mixed no state.db via
+# read|jq|write. Ondas da fixture ganham campos de fechamento (schema
+# exige started_at NOT NULL + max 1 onda aberta, ux_wave_single_open);
+# decisions pt-BR sao canonicalizadas pelo proprio write.
+_mrr_sqlite_state_mixed() {
+  _mss_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_mss_home/.claude/cstk" || return 2
+  printf 'state_backend=sqlite\n' > "$_mss_home/.claude/cstk/config"
+  env HOME="$_mss_home" "$RW_SQLITE" init --state-dir "$1" \
+    --execucao-id "x-mrr-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC model-routing-report sqlite" >/dev/null 2>&1 || return 2
+  [ -f "$1/state.db" ] || return 2
+  "$RW_SQLITE" read --state-dir "$1" > "$TMPDIR_TEST/base.json" || return 2
+  # Decisions da fixture sao pt-BR (exercitam o reader-fallback no backend
+  # JSON); o import sqlite exige documento canonico EN + CHECKs do schema
+  # (score 3 -> evidence >= 20 chars) — canonicalizamos no merge. Evidencia
+  # sintetica de fixture, nao dado factual.
+  jq -s '
+    def canon_dec:
+      { id: .id,
+        wave_id: (.wave_id // .onda_id),
+        timestamp: .timestamp,
+        agent: (.agent // .agente),
+        stage: (.stage // .etapa),
+        context: (.context // .contexto),
+        options_considered: (.options_considered // .opcoes_consideradas),
+        choice: (.choice // .escolha),
+        rationale: (.rationale // .justificativa),
+        justification_score: (.justification_score // .score_justificativa) }
+      + (if (.justification_score // .score_justificativa) == 3
+         then { evidence: (.evidence // .evidencia
+                  // "evidencia sintetica de fixture para o CHECK score-3") }
+         else {} end);
+    ((.[1].decisions // .[1].decisoes // []) | map(canon_dec)) as $decs
+    | ((.[1].waves // .[1].ondas // []) | map(.id)) as $have
+    # FK decision.wave_id -> wave.id: a fixture referencia ondas (onda-003..
+    # 006) fora de .waves; sintetiza-as FECHADAS para o import aceitar.
+    | ([$decs[].wave_id] | unique | map(select(. != null and (. as $i | $have | index($i) | not)))
+        | map({id: .})) as $missing
+    | .[0]
+    + { waves: ((((.[1].waves // .[1].ondas // [])) + $missing) | map(. + {
+          started_at: (.started_at // "2026-05-24T10:00:00Z"),
+          finished_at: (.finished_at // "2026-05-24T11:00:00Z"),
+          termination_reason: (.termination_reason // "etapa_concluida_avancando")
+        })),
+        decisions: $decs }
+  ' "$TMPDIR_TEST/base.json" "$TESTS_ROOT/fixtures/state-with-routing-onda-mixed.json" \
+    | "$RW_SQLITE" write --state-dir "$1" >/dev/null 2>&1 || return 2
+}
+
+scenario_sqlite_aggregate_paridade_com_fixture_mixed() {
+  _mrr_have_jq || { _error "jq ausente"; return 2; }
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  mktemp_test || return 2
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _mrr_sqlite_state_mixed "$_sd" || { _fail "fixture sqlite" "init/import da fixture falhou"; return 1; }
+
+  capture sh "$SCRIPT" aggregate --state-dir "$_sd" --json
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "aggregate sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"state.json nao encontrado"*) _fail "aggregate sqlite" "degradou com 'state.json nao encontrado'"; return 1 ;;
+  esac
+  # Paridade com o backend JSON (subconjunto representativo do cenario
+  # scenario_fase6_mista_json_contagens_e_rotulos): legado=2, ondas=4,
+  # divergencias=2 rotuladas.
+  printf '%s' "$_CAPTURED_STDOUT" | jq -e '
+    .total == 2
+    and .ondas.total == 4
+    and .ondas.divergencias == 2
+    and .ondas.divergencias_sem_rotulo == 0
+  ' >/dev/null \
+    || { _fail "paridade sqlite" "agregado divergente: $_CAPTURED_STDOUT"; return 1; }
+  # Anti-mirror (FR-003): leitura nao materializa state.json no state-dir.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "aggregate criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
+}
+
 run_all_scenarios "$0"

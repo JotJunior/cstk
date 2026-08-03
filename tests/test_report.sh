@@ -347,6 +347,9 @@ scenario_emit_aborta_sem_secrets_filter() {
   _iso="$TMPDIR_TEST/iso"
   mkdir -p "$_iso"
   cp "$SCRIPT" "$_iso/report.sh"
+  # _state-read.sh e dependencia obrigatoria (sourced sibling, FASE 2 lote
+  # 2.6) — o cenario testa a ausencia do secrets-filter, nao do helper.
+  cp "$(dirname "$SCRIPT")/_state-read.sh" "$_iso/_state-read.sh"
   _sd="$TMPDIR_TEST/state"
   _init "$_sd"
   _run_wave_with_decision "$_sd"
@@ -409,6 +412,9 @@ scenario_generate_wave_usage_report_ausente_degrada_graciosamente() {
   _iso="$TMPDIR_TEST/iso-wu"
   mkdir -p "$_iso"
   cp "$SCRIPT" "$_iso/report.sh"
+  # _state-read.sh e dependencia obrigatoria (sourced sibling, FASE 2 lote
+  # 2.6) — o cenario testa a ausencia do wave-usage-report, nao do helper.
+  cp "$(dirname "$SCRIPT")/_state-read.sh" "$_iso/_state-read.sh"
   _sd="$TMPDIR_TEST/state"
   _init "$_sd"
   _run_wave_with_decision "$_sd"
@@ -452,6 +458,72 @@ scenario_generate_backend_sqlite_produz_relatorio() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate sqlite exit" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "Relatorio do Agente-00C" || return 1
   assert_stdout_contains "exec-rpsq-1" || return 1
+}
+
+# ==== exit 7 contratual por estado ausente (state-db-runtime-parity FR-008) ====
+# Contrato: contracts/runtime-interfaces.md §3 + cli-invocation.md do
+# feature-00c ("falha na geracao do relatorio: exit 7 + estado preservado").
+# state-dir sem state.json E sem state.db => exit 7 nos DOIS subcomandos,
+# sob os DOIS backends configurados (a resolucao por presenca de state.db
+# no dir garante o mesmo veredito independente da config global).
+
+scenario_generate_estado_ausente_exit_7_backend_json() {
+  _sd="$TMPDIR_TEST/ausente-gen-json"
+  mkdir -p "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 7 ] || { _fail "exit" "esperado 7, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "estado ausente" || return 1
+}
+
+scenario_emit_estado_ausente_exit_7_backend_json() {
+  _sd="$TMPDIR_TEST/ausente-emit-json"
+  mkdir -p "$_sd"
+  capture "$SCRIPT" emit --flavor feature-00c --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 7 ] || { _fail "exit" "esperado 7, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "estado ausente" || return 1
+}
+
+scenario_generate_estado_ausente_exit_7_backend_sqlite_config() {
+  _h="$TMPDIR_TEST/home-aus-sq"
+  mkdir -p "$_h/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_h/.claude/cstk/config"
+  _sd="$TMPDIR_TEST/ausente-gen-sq"
+  mkdir -p "$_sd"
+  capture env HOME="$_h" "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 7 ] || { _fail "exit" "esperado 7, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "estado ausente" || return 1
+}
+
+scenario_emit_estado_ausente_exit_7_backend_sqlite_config() {
+  _h="$TMPDIR_TEST/home-aus-sq2"
+  mkdir -p "$_h/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_h/.claude/cstk/config"
+  _sd="$TMPDIR_TEST/ausente-emit-sq"
+  mkdir -p "$_sd"
+  capture env HOME="$_h" "$SCRIPT" emit --flavor agente-00c --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 7 ] || { _fail "exit" "esperado 7, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "estado ausente" || return 1
+}
+
+scenario_generate_estado_ausente_preserva_state_dir() {
+  # "estado preservado": a morte por exit 7 nao pode criar/remover nada
+  # dentro do state-dir (anti-mirror FR-003 + contrato "estado preservado").
+  _sd="$TMPDIR_TEST/ausente-preserva"
+  mkdir -p "$_sd/backups"
+  : > "$_sd/backups/wave-001.json"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 7 ] || { _fail "exit" "esperado 7, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -f "$_sd/backups/wave-001.json" ] || { _fail "preservacao" "conteudo previo do state-dir sumiu"; return 1; }
+  _n=$(find "$_sd" -type f | wc -l | tr -d ' ')
+  [ "$_n" = 1 ] || { _fail "anti-mirror" "arquivos inesperados criados no state-dir ($_n)"; return 1; }
+}
+
+scenario_usage_exit_2_preservado_pos_fr008() {
+  # CHK010: exit 2 (uso) nao pode ter sido absorvido pelo 7
+  capture "$SCRIPT" generate
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" emit --flavor feature-00c
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
 run_all_scenarios

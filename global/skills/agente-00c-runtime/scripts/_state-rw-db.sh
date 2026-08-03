@@ -26,6 +26,17 @@
 # volta ao documento no `read`. Nenhum dado e perdido; apenas nao ganha
 # tratamento relacional (sem FK/CHECK) enquanto o gap nao fecha.
 #
+# Fechamento parcial (state-db-runtime-parity, lote 2.4 / dec-052):
+#   - `.suggestions` vive em extra_fields (catch-all) e os contadores
+#     derivados `accumulated_metrics.global_skill_suggestions_total` /
+#     `toolkit_issues_opened` sao computados NO read a partir dele
+#     (nao mais hardcoded 0) — suggestions.sh nao precisa (nem pode)
+#     gravar contador sob sqlite.
+#   - `.accumulated_metrics.cache` (state-cache.sh metrics-bump) e o UNICO
+#     path de accumulated_metrics gravavel via set: persiste em
+#     extra_fields.cache_metrics (chave interna, nunca exposta no doc) e o
+#     read remonta em .accumulated_metrics.cache.
+#
 # Funcoes expostas (todas exigem STATE_DIR ja resolvido para backend sqlite
 # pelo caller — `_sr_backend` — e state.db existente):
 #   _sr_db_file STATE_DIR                    -> imprime STATE_DIR/state.db
@@ -301,8 +312,9 @@ _sr_db_read() {
       'subagents_spawned', 0,
       'decisions_total', (SELECT count(*) FROM decision WHERE execution_id = execution.id),
       'human_blocks_total', (SELECT count(*) FROM human_block WHERE execution_id = execution.id),
-      'global_skill_suggestions_total', 0,
-      'toolkit_issues_opened', 0
+      'global_skill_suggestions_total', json_array_length(coalesce(json_extract(execution.extra_fields,'$.suggestions'),'[]')),
+      'toolkit_issues_opened', (SELECT count(*) FROM json_each(coalesce(json_extract(execution.extra_fields,'$.suggestions'),'[]')) AS je WHERE json_extract(je.value,'$.issue_opened') IS NOT NULL),
+      'cache', json(coalesce(json_extract(execution.extra_fields,'$.cache_metrics'),'null'))
     ),
     'external_urls_whitelist', json(coalesce(external_urls_whitelist,'[]')),
     'circular_movement_history', json(coalesce(circular_movement_history,'[]')),
@@ -338,11 +350,12 @@ _sr_db_read() {
     def drop_null_keys(ks):
       reduce ks[] as $k (.; if (has($k) and .[$k] == null) then del(.[$k]) else . end);
 
-    ((.extra_fields // {}) ) as $ext
+    ((.extra_fields // {}) | del(.cache_metrics)) as $ext
     | (del(.extra_fields)) as $core
     | ($ext + $core)
     | drop_null_keys(["short_name"])
     | (if (has("short_name") | not) then del(.prerequisites) else . end)
+    | .accumulated_metrics |= drop_null_keys(["cache"])
     | .execution |= drop_null_keys(["canonical_project","session_name"])
     | .waves |= map(
         ((.extra_fields // {})) as $we
@@ -402,7 +415,55 @@ _sr_exec_col_lookup() {
     budgets.tool_calls_current_wave|budgets.current_wave_start)
       _sr_die "set: campo '.$1' e derivado da onda aberta — nao gravavel diretamente sob backend SQLite" 1 ;;
     accumulated_metrics.*)
-      _sr_die "set: campo '.$1' e derivado (accumulated_metrics) — nao gravavel sob backend SQLite" 1 ;;
+      _sr_die "set: campo '.$1' e derivado (accumulated_metrics) — nao gravavel sob backend SQLite (excecao: '.accumulated_metrics.cache' inteiro, tratado antes deste lookup)" 1 ;;
+    *) : ;;
+  esac
+}
+
+# _sr_db_wave_field_resolve DB BARE -> resolve "waves[-1].NAME"/"waves[N].NAME"
+# em _sr_wfr_wave_id / _sr_wfr_name / _sr_wfr_col / _sr_wfr_type. col/type
+# vazios = campo sem coluna dedicada (fallback extra_fields, decisao do
+# caller). Read-only: faz apenas SELECTs; morre em path malformado/onda
+# ausente ANTES de qualquer escrita.
+_sr_db_wave_field_resolve() {
+  _wfr_db="$1"; _wfr_bare="$2"
+  _wfr_sel=${_wfr_bare#waves[}
+  [ "$_wfr_sel" != "$_wfr_bare" ] || _sr_die "set: path de onda malformado: '.$_wfr_bare'" 1
+  _wfr_idx=${_wfr_sel%%]*}
+  _wfr_rest=${_wfr_sel#*].}
+  [ "$_wfr_rest" != "$_wfr_sel" ] && [ -n "$_wfr_rest" ] \
+    || _sr_die "set: path de onda malformado (esperado 'waves[N].campo'): '.$_wfr_bare'" 1
+  # Suporta somente um segmento apos o indice — nesting mais profundo
+  # (ex.: waves[-1].skills_invoked[0].skill) nao e usado hoje e cairia em
+  # fallback ambiguo; falha explicita em vez de mesclar errado (C1/anti-fabricacao).
+  case "$_wfr_rest" in
+    *.*|*\[*) _sr_die "set: path de onda com aninhamento nao suportado sob backend SQLite: '.$_wfr_bare'" 1 ;;
+  esac
+  _sr_wfr_name="$_wfr_rest"
+
+  if [ "$_wfr_idx" = "-1" ]; then
+    _sr_wfr_wave_id=$(_state_db_exec "$_wfr_db" "SELECT id FROM wave ORDER BY seq DESC LIMIT 1;")
+  else
+    case "$_wfr_idx" in
+      ''|*[!0-9]*) _sr_die "set: indice de onda invalido: '$_wfr_idx' (so -1 ou inteiro >= 0 suportado)" 1 ;;
+    esac
+    _wfr_seq=$((_wfr_idx + 1))
+    _sr_wfr_wave_id=$(_state_db_exec "$_wfr_db" "SELECT id FROM wave WHERE seq = $_wfr_seq;")
+  fi
+  [ -n "$_sr_wfr_wave_id" ] || _sr_die "set: onda nao encontrada para '.$_wfr_bare'" 1
+
+  _sr_wfr_col=""
+  _sr_wfr_type=""
+  case "$_sr_wfr_name" in
+    finished_at)               _sr_wfr_col=finished_at; _sr_wfr_type=str ;;
+    wallclock_seconds)         _sr_wfr_col=wallclock_seconds; _sr_wfr_type=int ;;
+    tool_calls)                _sr_wfr_col=tool_calls; _sr_wfr_type=int ;;
+    termination_reason)        _sr_wfr_col=termination_reason; _sr_wfr_type=str ;;
+    next_wave_scheduled_for)   _sr_wfr_col=next_wave_scheduled_for; _sr_wfr_type=str ;;
+    executed_stages)           _sr_wfr_col=executed_stages; _sr_wfr_type=json ;;
+    agent_usage)                _sr_wfr_col=agent_usage; _sr_wfr_type=json ;;
+    agent_spawns)               _sr_wfr_col=agent_spawns; _sr_wfr_type=json ;;
+    otel_usage)                _sr_wfr_col=otel_usage; _sr_wfr_type=json ;;
     *) : ;;
   esac
 }
@@ -410,58 +471,20 @@ _sr_exec_col_lookup() {
 # _sr_db_set_wave_field DB BARE VALUE_JSON -> "waves[-1].NAME" ou "waves[N].NAME"
 _sr_db_set_wave_field() {
   _wf_db="$1"; _wf_bare="$2"; _wf_value="$3"
-  _wf_sel=${_wf_bare#waves[}
-  [ "$_wf_sel" != "$_wf_bare" ] || _sr_die "set: path de onda malformado: '.$_wf_bare'" 1
-  _wf_idx=${_wf_sel%%]*}
-  _wf_rest=${_wf_sel#*].}
-  [ "$_wf_rest" != "$_wf_sel" ] && [ -n "$_wf_rest" ] \
-    || _sr_die "set: path de onda malformado (esperado 'waves[N].campo'): '.$_wf_bare'" 1
-  # Suporta somente um segmento apos o indice — nesting mais profundo
-  # (ex.: waves[-1].skills_invoked[0].skill) nao e usado hoje e cairia em
-  # fallback ambiguo; falha explicita em vez de mesclar errado (C1/anti-fabricacao).
-  case "$_wf_rest" in
-    *.*|*\[*) _sr_die "set: path de onda com aninhamento nao suportado sob backend SQLite: '.$_wf_bare'" 1 ;;
-  esac
-  _wf_name="$_wf_rest"
+  _sr_db_wave_field_resolve "$_wf_db" "$_wf_bare"
 
-  if [ "$_wf_idx" = "-1" ]; then
-    _wf_wave_id=$(_state_db_exec "$_wf_db" "SELECT id FROM wave ORDER BY seq DESC LIMIT 1;")
+  if [ -n "$_sr_wfr_col" ]; then
+    _wf_sqlval=$(_sr_sql_literal "$_sr_wfr_type" "$_wf_value")
+    _wf_sql="UPDATE wave SET $_sr_wfr_col = $_wf_sqlval WHERE id = $(_sr_sql_quote "$_sr_wfr_wave_id");"
   else
-    case "$_wf_idx" in
-      ''|*[!0-9]*) _sr_die "set: indice de onda invalido: '$_wf_idx' (so -1 ou inteiro >= 0 suportado)" 1 ;;
-    esac
-    _wf_seq=$((_wf_idx + 1))
-    _wf_wave_id=$(_state_db_exec "$_wf_db" "SELECT id FROM wave WHERE seq = $_wf_seq;")
-  fi
-  [ -n "$_wf_wave_id" ] || _sr_die "set: onda nao encontrada para '.$_wf_bare'" 1
-
-  _wf_col=""
-  _wf_typ=""
-  case "$_wf_name" in
-    finished_at)               _wf_col=finished_at; _wf_typ=str ;;
-    wallclock_seconds)         _wf_col=wallclock_seconds; _wf_typ=int ;;
-    tool_calls)                _wf_col=tool_calls; _wf_typ=int ;;
-    termination_reason)        _wf_col=termination_reason; _wf_typ=str ;;
-    next_wave_scheduled_for)   _wf_col=next_wave_scheduled_for; _wf_typ=str ;;
-    executed_stages)           _wf_col=executed_stages; _wf_typ=json ;;
-    agent_usage)                _wf_col=agent_usage; _wf_typ=json ;;
-    agent_spawns)               _wf_col=agent_spawns; _wf_typ=json ;;
-    otel_usage)                _wf_col=otel_usage; _wf_typ=json ;;
-    *) : ;;
-  esac
-
-  if [ -n "$_wf_col" ]; then
-    _wf_sqlval=$(_sr_sql_literal "$_wf_typ" "$_wf_value")
-    _wf_sql="UPDATE wave SET $_wf_col = $_wf_sqlval WHERE id = $(_sr_sql_quote "$_wf_wave_id");"
-  else
-    _wf_cur_extra=$(_state_db_exec "$_wf_db" "SELECT coalesce(extra_fields,'{}') FROM wave WHERE id = $(_sr_sql_quote "$_wf_wave_id");")
-    _wf_new_extra=$(printf '%s' "$_wf_cur_extra" | jq -c --argjson v "$_wf_value" --arg n "$_wf_name" '.[$n] = $v') \
-      || _sr_die "set: jq falhou ao mesclar campo de onda '$_wf_name'" 1
+    _wf_cur_extra=$(_state_db_exec "$_wf_db" "SELECT coalesce(extra_fields,'{}') FROM wave WHERE id = $(_sr_sql_quote "$_sr_wfr_wave_id");")
+    _wf_new_extra=$(printf '%s' "$_wf_cur_extra" | jq -c --argjson v "$_wf_value" --arg n "$_sr_wfr_name" '.[$n] = $v') \
+      || _sr_die "set: jq falhou ao mesclar campo de onda '$_sr_wfr_name'" 1
     _wf_sqlval=$(_sr_sql_literal json "$_wf_new_extra")
-    _wf_sql="UPDATE wave SET extra_fields = $_wf_sqlval WHERE id = $(_sr_sql_quote "$_wf_wave_id");"
+    _wf_sql="UPDATE wave SET extra_fields = $_wf_sqlval WHERE id = $(_sr_sql_quote "$_sr_wfr_wave_id");"
   fi
   _state_db_exec_with_retry "$_wf_db" "BEGIN IMMEDIATE; $_wf_sql COMMIT;" \
-    || _sr_die "set: UPDATE wave.$_wf_name falhou" 1
+    || _sr_die "set: UPDATE wave.$_sr_wfr_name falhou" 1
 }
 
 # _sr_db_replace_events DB EXEC_ID ARRAY_JSON -> DELETE+INSERT (leaf table,
@@ -698,6 +721,19 @@ _sr_db_set() {
     waves\[*)
       _sr_db_set_wave_field "$_sds_db" "$_sds_bare" "$_sds_value"
       ;;
+    accumulated_metrics.cache)
+      # Metricas de cache (state-cache.sh metrics-bump — state-db-runtime-parity
+      # 2.4.3): sem coluna dedicada no schema; persiste o objeto inteiro em
+      # extra_fields.cache_metrics e o read remonta em .accumulated_metrics.cache
+      # (drop se null). Demais paths accumulated_metrics.* seguem derivados
+      # (die abaixo via _sr_exec_col_lookup).
+      _sds_cur_extra=$(_state_db_exec "$_sds_db" "SELECT coalesce(extra_fields,'{}') FROM execution LIMIT 1;")
+      _sds_new_extra=$(printf '%s' "$_sds_cur_extra" | jq -c --argjson v "$_sds_value" '.cache_metrics = $v') \
+        || _sr_die "set: jq falhou ao aplicar cache_metrics em extra_fields" 1
+      _sds_sqlval=$(_sr_sql_literal json "$_sds_new_extra")
+      _state_db_exec_with_retry "$_sds_db" "BEGIN IMMEDIATE; UPDATE execution SET extra_fields = $_sds_sqlval; COMMIT;" \
+        || _sr_die "set: UPDATE execution.extra_fields (cache_metrics) falhou" 1
+      ;;
     *)
       _sr_exec_col_lookup "$_sds_bare"
       if [ -n "$_sr_lu_col" ]; then
@@ -719,6 +755,126 @@ _sr_db_set() {
       fi
       ;;
   esac
+}
+
+# _sr_db_set_multi STATE_DIR PAIRS_JSON -> `set` multi-campo atomico sob
+# backend SQLite (state-db-runtime-parity FR-005/FR-006).
+# PAIRS_JSON = [{"f":".campo","v":<json>}, ...] (>= 2 pares; valores ja
+# validados como JSON pelo caller `_sr_cmd_set`).
+#
+# Regras (contracts/runtime-interfaces.md §1):
+# - classifica e valida TODOS os pares ANTES de qualquer escrita
+#   (all-or-nothing: par invalido => die sem tocar o estado);
+# - aplica tudo numa UNICA transacao BEGIN IMMEDIATE...COMMIT;
+# - colunas de `execution` sao coalescidas num UNICO UPDATE multi-coluna, e
+#   colunas de `wave` num UNICO UPDATE por onda: CHECKs do SQLite sao
+#   avaliados POR STATEMENT, nao deferidos ao COMMIT (verificado
+#   empiricamente: `BEGIN; UPDATE status; UPDATE finished_at; COMMIT` viola
+#   C2 com exit 19, enquanto `UPDATE ... SET status=..., finished_at=...`
+#   passa). E isso que habilita a promocao terminal canonica
+#   (status+finished_at+termination_reason no mesmo set);
+# - `SET col = a, col = b` e legal em SQLite e o ULTIMO vence (verificado
+#   empiricamente) — o last-wins de `--field` duplicado (CHK009) sai da
+#   propria ordem dos pares, sem dedup;
+# - resyncs de array (.events/.waves/.decisions/.human_blocks/.tasks) e o
+#   fallback extra_fields de campo de ONDA nao mapeado NAO sao suportados em
+#   lote (o merge read-modify-write pre-transacao perderia updates entre
+#   pares do mesmo lote); rejeicao explicita antes de qualquer escrita — o
+#   set single-field dedicado continua cobrindo esses paths.
+_sr_db_set_multi() {
+  _sm_sd="$1"; _sm_pairs="$2"
+  _sm_db=$(_sr_db_file "$_sm_sd")
+  [ -f "$_sm_db" ] || _sr_die "set: state.db ausente em $_sm_sd" 1
+  _sm_exec_id=$(_sr_exec_id "$_sm_db")
+  [ -n "$_sm_exec_id" ] || _sr_die "set: execution ausente em $_sm_db" 1
+
+  _sm_n=$(printf '%s' "$_sm_pairs" | jq 'length')
+  _sm_lote=$(printf '%s' "$_sm_pairs" | jq -r '[.[].f] | join(" ")')
+
+  _sm_exec_sets=""   # fragmentos "col = literal" do UPDATE execution unico
+  _sm_extra=""       # extra_fields de execution (lazy; merges sequenciais)
+  _sm_extra_dirty=0
+  _sm_wave_ids=""    # wave ids distintos do lote (ordem de aparicao)
+  _sm_wave_count=0   # quantos ids distintos (indexa _sm_wsets_N/_sm_wid_N)
+
+  # ---- Fase 1: classificar/validar todos os pares (nenhuma escrita) ----
+  _sm_i=0
+  while [ "$_sm_i" -lt "$_sm_n" ]; do
+    _sm_f=$(printf '%s' "$_sm_pairs" | jq -r ".[$_sm_i].f")
+    _sm_v=$(printf '%s' "$_sm_pairs" | jq -c ".[$_sm_i].v")
+    _sm_bare=${_sm_f#.}
+    case "$_sm_bare" in
+      events|waves|decisions|human_blocks|tasks)
+        _sr_die "set: campo '.$_sm_bare' (resync de array) nao e suportado em lote multi-campo — grave-o numa invocacao set single-field dedicada" 1
+        ;;
+      accumulated_metrics.cache)
+        [ -n "$_sm_extra" ] || _sm_extra=$(_state_db_exec "$_sm_db" "SELECT coalesce(extra_fields,'{}') FROM execution LIMIT 1;")
+        _sm_extra=$(printf '%s' "$_sm_extra" | jq -c --argjson v "$_sm_v" '.cache_metrics = $v') \
+          || _sr_die "set: jq falhou ao aplicar cache_metrics em extra_fields" 1
+        _sm_extra_dirty=1
+        ;;
+      waves\[*)
+        _sr_db_wave_field_resolve "$_sm_db" "$_sm_bare"
+        [ -n "$_sr_wfr_col" ] \
+          || _sr_die "set: campo de onda '$_sm_f' sem coluna dedicada nao e suportado em lote multi-campo — grave-o numa invocacao set single-field dedicada" 1
+        _sm_lit=$(_sr_sql_literal "$_sr_wfr_type" "$_sm_v")
+        # Agrupa por onda: 1 UPDATE multi-coluna por wave id (CHECKs de wave
+        # tambem sao cross-coluna, ex. termination_reason x finished_at).
+        _sm_widx=0
+        _sm_found=""
+        for _sm_wid_i in $_sm_wave_ids; do
+          if [ "$_sm_wid_i" = "$_sr_wfr_wave_id" ]; then _sm_found=$_sm_widx; break; fi
+          _sm_widx=$((_sm_widx + 1))
+        done
+        if [ -z "$_sm_found" ]; then
+          _sm_found=$_sm_wave_count
+          _sm_wave_ids="${_sm_wave_ids:+$_sm_wave_ids }$_sr_wfr_wave_id"
+          eval "_sm_wid_$_sm_found=\$_sr_wfr_wave_id"
+          eval "_sm_wsets_$_sm_found=''"
+          _sm_wave_count=$((_sm_wave_count + 1))
+        fi
+        eval "_sm_wprev=\$_sm_wsets_$_sm_found"
+        eval "_sm_wsets_$_sm_found=\"\${_sm_wprev:+\$_sm_wprev, }\$_sr_wfr_col = \$_sm_lit\""
+        ;;
+      *)
+        _sr_exec_col_lookup "$_sm_bare"
+        if [ -n "$_sr_lu_col" ]; then
+          _sm_lit=$(_sr_sql_literal "$_sr_lu_type" "$_sm_v")
+          _sm_exec_sets="${_sm_exec_sets:+$_sm_exec_sets, }$_sr_lu_col = $_sm_lit"
+        else
+          case "$_sm_bare" in
+            *.*|*\[*)
+              _sr_die "set: campo nao suportado sob backend SQLite (path aninhado nao modelado): '$_sm_f' — so campos de topo simples tem fallback para extra_fields" 1
+              ;;
+          esac
+          [ -n "$_sm_extra" ] || _sm_extra=$(_state_db_exec "$_sm_db" "SELECT coalesce(extra_fields,'{}') FROM execution LIMIT 1;")
+          _sm_extra=$(printf '%s' "$_sm_extra" | jq -c --argjson v "$_sm_v" "$_sm_f = \$v") \
+            || _sr_die "set: jq falhou ao aplicar '$_sm_f' em extra_fields" 1
+          _sm_extra_dirty=1
+        fi
+        ;;
+    esac
+    _sm_i=$((_sm_i + 1))
+  done
+
+  # ---- Fase 2: montar a transacao unica e executar ----
+  if [ "$_sm_extra_dirty" = 1 ]; then
+    _sm_extra_lit=$(_sr_sql_literal json "$_sm_extra")
+    _sm_exec_sets="${_sm_exec_sets:+$_sm_exec_sets, }extra_fields = $_sm_extra_lit"
+  fi
+  _sm_sql="BEGIN IMMEDIATE;"
+  [ -n "$_sm_exec_sets" ] && _sm_sql="$_sm_sql UPDATE execution SET $_sm_exec_sets;"
+  _sm_widx=0
+  while [ "$_sm_widx" -lt "$_sm_wave_count" ]; do
+    eval "_sm_wid=\$_sm_wid_$_sm_widx"
+    eval "_sm_wsets=\$_sm_wsets_$_sm_widx"
+    # shellcheck disable=SC2154 # _sm_wid/_sm_wsets sao atribuidas via eval acima
+    _sm_sql="$_sm_sql UPDATE wave SET $_sm_wsets WHERE id = $(_sr_sql_quote "$_sm_wid");"
+    _sm_widx=$((_sm_widx + 1))
+  done
+  _sm_sql="$_sm_sql COMMIT;"
+  _state_db_exec_with_retry "$_sm_db" "$_sm_sql" \
+    || _sr_die "set: transacao multi-campo rejeitada (invariante do schema violada? veja o erro do sqlite acima) — lote: $_sm_lote; estado intacto (rollback automatico)" 1
 }
 
 # ============================================================

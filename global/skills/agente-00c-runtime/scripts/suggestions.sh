@@ -53,6 +53,14 @@ set -eu
 
 _SG_NAME="suggestions"
 
+# Leitura via interface canonica (state-db-runtime-parity FR-001, lote 2.4):
+# materializa documento legivel por jq nos DOIS backends (json/sqlite).
+# Mutacoes (register/mark-issue) roteiam por `state-rw.sh set` — que cuida
+# de backup + atomic write + sha (json) ou UPDATE (sqlite). O plumbing local
+# de escrita (backup/atomic/sha) foi removido no porte.
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _sg_die_usage() { printf '%s: %s\n' "$_SG_NAME" "$1" >&2; exit 2; }
 _sg_die()       { printf '%s: %s\n' "$_SG_NAME" "$1" >&2; exit "${2:-1}"; }
 
@@ -62,41 +70,10 @@ _sg_require_jq() {
 }
 
 _sg_iso_now() { date -u +%FT%TZ; }
-_sg_state_file() { printf '%s/state.json\n' "$1"; }
 
-_sg_atomic_write() {
-  _dst=$1; _src=$2
-  _tmp=$(mktemp -- "${_dst}.XXXXXX") || _sg_die "mktemp falhou" 1
-  cp -- "$_src" "$_tmp" || { rm -f -- "$_tmp"; _sg_die "I/O cp" 1; }
-  mv -f -- "$_tmp" "$_dst" || { rm -f -- "$_tmp"; _sg_die "mv" 1; }
-}
-
-_sg_update_sha() {
-  _sf=$(_sg_state_file "$1")
-  _shf="$1/state.json.sha256"
-  if command -v sha256sum >/dev/null 2>&1; then
-    _h=$(sha256sum -- "$_sf" | awk '{print $1}')
-  else
-    _h=$(shasum -a 256 -- "$_sf" | awk '{print $1}')
-  fi
-  printf '%s\n' "$_h" > "$_shf"
-}
-
-_sg_backup_current() {
-  _sf=$(_sg_state_file "$1")
-  [ -f "$_sf" ] || return 0
-  _hd="$1/state-history"
-  mkdir -p -- "$_hd" 2>/dev/null || _sg_die "mkdir state-history falhou" 1
-  _curr=$(jq -r '
-    ((.waves // .ondas) // []) as $w
-    | if ($w | length) > 0 then ($w[-1].id // "init") else "init" end
-  ' "$_sf" 2>/dev/null) || _curr="init"
-  _ts=$(date -u +%Y%m%dT%H%M%SZ)
-  mv -- "$_sf" "$_hd/${_curr}-${_ts}.json" || _sg_die "backup falhou" 1
-}
-
+# _sg_next_sug_id FILE (documento materializado)
 _sg_next_sug_id() {
-  _sf=$(_sg_state_file "$1")
+  _sf=$1
   jq -r '
     ((.suggestions // .sugestoes) // []) as $s
     | if ($s | length) == 0 then "sug-001"
@@ -156,14 +133,15 @@ _sg_cmd_register() {
     _sg_die "register: --referencias precisa ser JSON array" 2
   fi
 
-  _sf=$(_sg_state_file "$_sd")
+  # Falha de materializacao sob sqlite (sqlite3 ausente, state.db corrompido)
+  # propaga exit+stderr do state-rw.sh read via set -e (FR-012).
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _sg_die "register: state.json ausente em $_sd" 1
 
-  _id=$(_sg_next_sug_id "$_sd")
+  _id=$(_sg_next_sug_id "$_sf")
   _now=$(_sg_iso_now)
 
-  _new=$(mktemp) || _sg_die "mktemp falhou" 1
-  jq \
+  _new_suggs=$(jq -c \
     --arg id "$_id" \
     --arg skill "$_skill" \
     --arg diag "$_diag" \
@@ -171,7 +149,7 @@ _sg_cmd_register() {
     --arg prop "$_prop" \
     --arg now "$_now" \
     --argjson refs "$_refs" '
-    .suggestions = ((.suggestions // []) + [{
+    (.suggestions // []) + [{
       id: $id,
       affected_skill: $skill,
       diagnosis: $diag,
@@ -180,18 +158,24 @@ _sg_cmd_register() {
       references: $refs,
       issue_opened: null,
       created_at: $now
-    }])
-    | .accumulated_metrics.global_skill_suggestions_total =
-        ((.accumulated_metrics.global_skill_suggestions_total // 0) + 1)
-  ' "$_sf" > "$_new" || { rm -f -- "$_new"; _sg_die "jq update falhou" 1; }
+    }]' "$_sf") || _sg_die "register: jq update falhou" 1
 
-  _sg_backup_current "$_sd"
-  _sg_atomic_write "$_sf" "$_new"
-  rm -f -- "$_new" 2>/dev/null || :
-  _sg_update_sha "$_sd"
+  "$(_state_read_rw_bin)" set --state-dir "$_sd" \
+    --field '.suggestions' --value "$_new_suggs"
 
-  # Regenera suggestions.md (sem secrets-filter — caller aplica se quiser)
-  _sg_render_md "$_sd" > "$_sf_md.tmp.$$" || {
+  # Contador acumulado: sob backend SQLite ele e DERIVADO no read a partir de
+  # .suggestions (extra_fields) — gravar seria recusado pelo set (campo
+  # derivado). Sob JSON, preserva o bump historico no documento (FR-004).
+  if [ ! -f "$_sd/state.db" ]; then
+    _total=$(jq -r '((.accumulated_metrics.global_skill_suggestions_total // 0) + 1)' "$_sf")
+    "$(_state_read_rw_bin)" set --state-dir "$_sd" \
+      --field '.accumulated_metrics.global_skill_suggestions_total' --value "$_total"
+  fi
+
+  # Regenera suggestions.md a partir do estado ATUALIZADO (re-materializa;
+  # sem secrets-filter — caller aplica se quiser)
+  _sf_after=$(state_read_materialize "$_sd")
+  _sg_render_md "$_sf_after" > "$_sf_md.tmp.$$" || {
     rm -f -- "$_sf_md.tmp.$$" 2>/dev/null
     _sg_die "render-md falhou" 1
   }
@@ -212,7 +196,7 @@ _sg_cmd_count() {
   done
   [ -n "$_sd" ] || _sg_die_usage "count: --state-dir obrigatorio"
   _sg_require_jq
-  _sf=$(_sg_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _sg_die "count: state.json ausente" 1
   if [ -n "$_sev" ]; then
     _sg_validate_severidade "$_sev" \
@@ -235,7 +219,7 @@ _sg_cmd_list() {
   done
   [ -n "$_sd" ] || _sg_die_usage "list: --state-dir obrigatorio"
   _sg_require_jq
-  _sf=$(_sg_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _sg_die "list: state.json ausente" 1
   jq -r --arg s "$_sev" '
     (.suggestions // .sugestoes) // []
@@ -257,9 +241,9 @@ _sg_cmd_next_id() {
   done
   [ -n "$_sd" ] || _sg_die_usage "next-id: --state-dir obrigatorio"
   _sg_require_jq
-  _sf=$(_sg_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _sg_die "next-id: state.json ausente" 1
-  _sg_next_sug_id "$_sd"
+  _sg_next_sug_id "$_sf"
 }
 
 _sg_cmd_mark_issue() {
@@ -280,7 +264,7 @@ _sg_cmd_mark_issue() {
   [ -n "$_sug" ]   || _sg_die_usage "mark-issue: --suggestion-id obrigatorio"
   [ -n "$_issue" ] || _sg_die_usage "mark-issue: --issue obrigatorio (URL ou numero)"
   _sg_require_jq
-  _sf=$(_sg_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _sg_die "mark-issue: state.json ausente" 1
   # Valida que sug existe
   _exists=$(jq --arg id "$_sug" '
@@ -288,22 +272,26 @@ _sg_cmd_mark_issue() {
   ' "$_sf")
   [ "$_exists" -gt 0 ] || _sg_die "mark-issue: $_sug nao encontrada" 1
 
-  _new=$(mktemp) || _sg_die "mktemp falhou" 1
-  jq --arg id "$_sug" --arg url "$_issue" '
-    .suggestions = (.suggestions // [] | map(
+  _new_suggs=$(jq -c --arg id "$_sug" --arg url "$_issue" '
+    .suggestions // [] | map(
       if .id == $id then .issue_opened = $url else . end
-    ))
-    | .accumulated_metrics.toolkit_issues_opened =
-        ((.accumulated_metrics.toolkit_issues_opened // 0) + 1)
-  ' "$_sf" > "$_new" || { rm -f -- "$_new"; _sg_die "jq update falhou" 1; }
-  _sg_backup_current "$_sd"
-  _sg_atomic_write "$_sf" "$_new"
-  rm -f -- "$_new" 2>/dev/null || :
-  _sg_update_sha "$_sd"
+    )' "$_sf") || _sg_die "mark-issue: jq update falhou" 1
 
-  # Regenera suggestions.md se path passado
+  "$(_state_read_rw_bin)" set --state-dir "$_sd" \
+    --field '.suggestions' --value "$_new_suggs"
+
+  # Contador acumulado: derivado no read sob SQLite (count de issue_opened
+  # nao-null em .suggestions); bump so no backend JSON (FR-004).
+  if [ ! -f "$_sd/state.db" ]; then
+    _total=$(jq -r '((.accumulated_metrics.toolkit_issues_opened // 0) + 1)' "$_sf")
+    "$(_state_read_rw_bin)" set --state-dir "$_sd" \
+      --field '.accumulated_metrics.toolkit_issues_opened' --value "$_total"
+  fi
+
+  # Regenera suggestions.md se path passado (a partir do estado atualizado)
   if [ -n "$_sf_md" ]; then
-    if _sg_render_md "$_sd" > "$_sf_md.tmp.$$"; then
+    _sf_after=$(state_read_materialize "$_sd")
+    if _sg_render_md "$_sf_after" > "$_sf_md.tmp.$$"; then
       mv -f -- "$_sf_md.tmp.$$" "$_sf_md" \
         || { rm -f -- "$_sf_md.tmp.$$" 2>/dev/null; _sg_die "mv md falhou" 1; }
     else
@@ -313,9 +301,9 @@ _sg_cmd_mark_issue() {
   fi
 }
 
-# _sg_render_md STATE_DIR -> markdown completo de suggestions.md em stdout
+# _sg_render_md FILE (documento materializado) -> markdown de suggestions.md
 _sg_render_md() {
-  _sf=$(_sg_state_file "$1")
+  _sf=$1
   jq -r '
     ((.suggestions // .sugestoes) // []) as $sugs
     | "# Sugestoes do Agente-00C — \((.execution.id // .execucao.id))",
@@ -364,9 +352,9 @@ _sg_cmd_render_md() {
   done
   [ -n "$_sd" ] || _sg_die_usage "render-md: --state-dir obrigatorio"
   _sg_require_jq
-  _sf=$(_sg_state_file "$_sd")
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _sg_die "render-md: state.json ausente" 1
-  _sg_render_md "$_sd"
+  _sg_render_md "$_sf"
 }
 
 # ---------- Dispatch ----------

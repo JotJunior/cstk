@@ -39,6 +39,16 @@ set -eu
 
 _FP_NAME="feature-00c-preflight"
 
+# Materializacao de estado backend-agnostica via helper comum
+# _state-read.sh (state-db-runtime-parity FASE 2 lote 2.6 — substitui a
+# copia local do padrao a06e747/v6.2.2). JSON: path direto do
+# state.json; SQLite (state.db): tmp 0600 fora do state-dir. Falha de
+# materializacao propaga via set -e (FR-012) em vez do antigo fallback
+# mudo para o state.json.
+# shellcheck source=./_state-read.sh
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _fp_die_usage() { printf '%s: %s\n' "$_FP_NAME" "$1" >&2; exit 2; }
 _fp_die_io()    { printf '%s: %s\n' "$_FP_NAME" "$1" >&2; exit 2; }
 
@@ -70,23 +80,10 @@ _fp_cmd_check() {
 
   # Backend-agnostico (fix pos-6.2.1: com backend sqlite este check era
   # INERTE — "state.json ausente" e a validacao de drift FR-PRE-004 nunca
-  # rodava nas retomadas). Materializa o estado canonico via
-  # `state-rw.sh read` (json E sqlite); fallback ao state.json direto so
-  # quando o sibling nao existe (layout degradado).
-  _fp_scripts_dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) || _fp_scripts_dir=""
-  _state_file=""
-  if [ -n "$_fp_scripts_dir" ] && [ -x "$_fp_scripts_dir/state-rw.sh" ]; then
-    _state_file=$(mktemp 2>/dev/null) || _fp_die_io "check: mktemp indisponivel"
-    trap 'rm -f "$_state_file" 2>/dev/null' EXIT INT TERM
-    if ! sh "$_fp_scripts_dir/state-rw.sh" read --state-dir "$_state_dir" > "$_state_file" 2>/dev/null; then
-      rm -f "$_state_file" 2>/dev/null
-      _state_file=""
-    fi
-  fi
-  if [ -z "$_state_file" ] || [ ! -s "$_state_file" ]; then
-    _state_file="$_state_dir/state.json"
-    [ -f "$_state_file" ] || _fp_die_io "check: estado ausente em $_state_dir (nem state-rw read nem state.json)"
-  fi
+  # rodava nas retomadas). Materializacao delegada ao helper comum
+  # _state-read.sh (json E sqlite); ausencia de estado morre no check -f.
+  _state_file=$(state_read_materialize "$_state_dir")
+  [ -f "$_state_file" ] || _fp_die_io "check: estado ausente em $_state_dir (nem state.db nem state.json)"
 
   # Extrair campos de prerequisites (FR-PRE-004). Reader-fallback EN->pt (schema-en-migration).
   _br_path=$(jq -r '(.prerequisites.briefing.path // .pre_requisitos.briefing.path) // empty' "$_state_file" 2>/dev/null)

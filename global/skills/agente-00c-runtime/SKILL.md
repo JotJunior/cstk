@@ -176,3 +176,38 @@ exit 3 sem tentar `docker exec` (mesmo padrao fail-closed do resolve).
 Ambos POSIX puros + `jq`, seguem a mesma convencao `--state-dir` do resto
 do runtime. Detalhes completos: `docs/specs/state-mcp-server/`
 (`contracts/mcp-session-lifecycle.md`, `contracts/mcp-tools.md`).
+
+### Paridade dos leitores com o backend SQLite (feature `state-db-runtime-parity`)
+
+Todos os leitores do runtime funcionam contra os DOIS backends de estado
+(`state.json` e `state.db`) via a interface canonica de materializacao —
+nenhum leitor constroi o path `state.json` na mao:
+
+- **`_state-read.sh`** (sibling sourceable): `state_read_materialize DIR`
+  devolve o proprio `state.json` no backend JSON (zero mudanca, FR-004) ou
+  materializa o documento via `state-rw.sh read` num `mktemp` 0600 FORA do
+  state-dir no backend SQLite (anti-mirror FR-003). Falha de leitura de um
+  `state.db` presente (corrompido, `sqlite3` ausente) PROPAGA exit+stderr
+  do read — nunca degrada mudo (FR-012). Cleanup por trap
+  `state_read_cleanup EXIT INT TERM`.
+- **`state-rw.sh set` multi-campo**: aceita N pares `--field/--value` num
+  UNICO envelope transacional — necessario para promocao terminal sob
+  SQLite, cujo schema tem CHECK constraint C2 (status terminal exige
+  `finished_at`); set de campo unico para status terminal e REJEITADO com
+  diagnostico e estado intacto (sem escrita parcial). Mesmo `--field`
+  repetido no lote = last-wins (FR-005).
+- **`state-lock.sh acquire --force`**: readquire lock orfao (dono morto)
+  com diagnostico auditavel `DIAG|warning|lock-force-acquired|...`;
+  pre-condicao CONTRATUAL (SIGTERM + grace 60s) e do caller. Sem
+  `--force`, lock ocupado segue exit 3. `check-execution-busy` le o estado
+  pelos DOIS backends (FR-010).
+- **`report.sh generate|emit` exit 7**: estado ausente (nem `state.json`
+  nem `state.db` legivel) retorna exit 7 contratual (FR-008, alinha o
+  contrato de invocacao do feature-00c); exit 2 (uso) e exit 1 (falha
+  generica) inalterados.
+- **Varredura anti-regressao**: `tests/test_state-parity-sweep.sh` roda o
+  manifest dos 15 leitores contra state-dir SQLite populado + grep
+  estatico de acesso direto com allowlist literal (CHK016) — helper novo
+  lendo `state.json` direto falha a suite.
+
+Spec: `docs/specs/state-db-runtime-parity/` (contracts/runtime-interfaces.md).

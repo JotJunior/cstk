@@ -15,8 +15,13 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 _init_with_onda() {
-  capture "$RW" init --state-dir "$1" --execucao-id "x" \
-    --projeto-alvo-path "/tmp/p" --descricao "POC budget tests"
+  # HOME sandbox SEM config global: forca backend JSON deterministico mesmo
+  # em hosts com `state_backend=sqlite` em ~/.claude/cstk/config (padrao de
+  # hermeticidade do test__state-read.sh; state-db-runtime-parity 2.1.2).
+  _iwo_home="$TMPDIR_TEST/home-json"
+  mkdir -p "$_iwo_home"
+  env HOME="$_iwo_home" "$RW" init --state-dir "$1" --execucao-id "x" \
+    --projeto-alvo-path "/tmp/p" --descricao "POC budget tests" >/dev/null 2>&1
   capture "$ON" start --state-dir "$1"
 }
 
@@ -240,6 +245,72 @@ scenario_status_reflete_sidecar_sem_disparar() {
   capture "$SCRIPT" status --state-dir "$_sd"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "status" "$_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "tool_calls	3	80" || return 1
+}
+
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.1 / FR-002 / SC-003) ====
+# Fixture minima por CHK032: init sob config global state_backend=sqlite
+# (padrao test__state-read.sh) + onda aberta via state-ondas start (backend
+# decidido pela presenca de state.db, nao pelo HOME nas chamadas seguintes).
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_init_sqlite_with_onda() {
+  _isw_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_isw_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_isw_home/.claude/cstk/config"
+  env HOME="$_isw_home" "$RW" init --state-dir "$1" \
+    --execucao-id "x-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC budget sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+  capture "$ON" start --state-dir "$1"
+}
+
+scenario_sqlite_check_inicial_passa_sem_state_json_ausente() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite_with_onda "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  capture "$SCRIPT" check --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "check sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "check sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+}
+
+scenario_sqlite_tool_calls_threshold_dispara_exit_1_equivalente_json() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite_with_onda "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  # Sob sqlite `.budgets.tool_calls_current_wave` e derivado da onda aberta
+  # (set direto e recusado); o sidecar do hook e backend-agnostico e soma na
+  # mesma dimensao (contrato do budget.sh) — 85 ticks >= threshold 80.
+  awk 'BEGIN{for(i=1;i<=85;i++)print "t"i}' > "$_sd/tool-call-ticks.log"
+  capture "$SCRIPT" check --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "tool_calls trigger sqlite" "esperado 1, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"
+    return 1
+  fi
+  # Veredito equivalente ao backend JSON (SC-003): mesma linha TSV.
+  assert_stdout_contains "tool_calls	85	80" || return 1
+}
+
+scenario_sqlite_status_imprime_3_linhas_e_nao_cria_mirror() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite_with_onda "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  capture "$SCRIPT" status --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "status sqlite" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "tool_calls	0	80" || return 1
+  assert_stdout_contains "wallclock	" || return 1
+  assert_stdout_contains "state_size	" || return 1
+  # Anti-mirror (FR-003): a leitura nao pode materializar state.json no state-dir.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "status criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
 }
 
 run_all_scenarios

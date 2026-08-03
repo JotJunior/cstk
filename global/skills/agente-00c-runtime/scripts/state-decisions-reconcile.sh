@@ -56,6 +56,13 @@ set -eu
 
 _SDR_NAME="state-decisions-reconcile"
 
+# Leitura via interface canonica (state-db-runtime-parity FR-001, lote 2.4):
+# materializa documento legivel por jq nos DOIS backends (json/sqlite).
+# `check` segue read-only (INV-4) — nenhum subcomando mutador existe neste
+# script (a mencao a `repair --apply` no backlog e vacua; dec-051).
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _sdr_die_usage() {
   printf '%s: %s\n' "$_SDR_NAME" "$1" >&2
   exit 2
@@ -71,7 +78,6 @@ _sdr_require_jq() {
     || _sdr_die "jq nao encontrado no PATH (necessario para este subcomando)" 1
 }
 
-_sdr_state_file() { printf '%s/state.json\n' "$1"; }
 
 # ---------- Subcomando: check ----------
 _sdr_cmd_check() {
@@ -92,7 +98,9 @@ _sdr_cmd_check() {
 
   [ -n "$_sdr_sd" ] || _sdr_die_usage "check: --state-dir ausente"
 
-  _sdr_sf=$(_sdr_state_file "$_sdr_sd")
+  # Falha de materializacao sob sqlite (sqlite3 ausente, state.db corrompido)
+  # propaga exit+stderr do state-rw.sh read via set -e (FR-012).
+  _sdr_sf=$(state_read_materialize "$_sdr_sd")
   [ -f "$_sdr_sf" ] || _sdr_die_usage "check: state.json ausente em '$_sdr_sd'"
   [ -r "$_sdr_sf" ] || _sdr_die_usage "check: state.json sem permissao de leitura em '$_sdr_sd'"
 

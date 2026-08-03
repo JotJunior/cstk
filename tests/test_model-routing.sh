@@ -2582,4 +2582,90 @@ scenario_ws_c15_fase_vazia_stage_fallback() {
     || { _fail "C15 stage fallback=model-routing" "$(jq -c '.decisions[-1]' "$TMPDIR_TEST/c15/state.json")"; return 1; }
 }
 
+# ============================================================================
+# Backend SQLite (state-db-runtime-parity FASE 2.3 / FR-001 / FR-011)
+# Leitura de wave-select/idempotent-check via _state-read.sh (materializa
+# state.db); escritas (state-decisions.sh register) ja sao db-aware.
+# ============================================================================
+
+RW_SQLITE="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+# Init sqlite (HOME sandbox com state_backend=sqlite) + fixture minima de
+# wave-select: current_stage=$2 e 1 onda ABERTA (started_at NOT NULL no
+# schema; unica aberta respeita ux_wave_single_open).
+_ws_sqlite_state() {
+  _wss_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_wss_home/.claude/cstk" || return 2
+  printf 'state_backend=sqlite\n' > "$_wss_home/.claude/cstk/config"
+  env HOME="$_wss_home" "$RW_SQLITE" init --state-dir "$1" \
+    --execucao-id "x-mr-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC model-routing sqlite" >/dev/null 2>&1 || return 2
+  [ -f "$1/state.db" ] || return 2
+  "$RW_SQLITE" read --state-dir "$1" \
+    | jq --arg e "$2" '.current_stage = $e
+        | .waves = [{id:"onda-007", started_at:"2026-08-03T00:00:00Z", skills_invoked:[]}]' \
+    | "$RW_SQLITE" write --state-dir "$1" >/dev/null 2>&1 || return 2
+}
+
+scenario_sqlite_wave_select_resolve_mapa_e_registra() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  mktemp_test || return 2
+  _sd="$TMPDIR_TEST/mr-sqlite"
+  _ws_sqlite_state "$_sd" review-task || { _fail "fixture sqlite" "init/write falhou"; return 1; }
+
+  capture sh "$SCRIPT" wave-select --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "wave-select sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "wave-select sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+  # Veredito equivalente ao backend JSON (SC-003): mapa review-task -> haiku,
+  # nao o fallback manter-atual (que era o sintoma do gap sob sqlite).
+  [ "$_CAPTURED_STDOUT" = "haiku" ] || { _fail "wave-select sqlite stdout=haiku" "$_CAPTURED_STDOUT"; return 1; }
+  # Decisao persistida no state.db (register db-aware), com proveniencia da
+  # onda corrente.
+  "$RW_SQLITE" read --state-dir "$_sd" | jq -e '
+    [.decisions[] | select(.context | startswith("Selecao de modelo para onda "))][0]
+    | (.choice == "model:haiku")
+      and (.wave_id == "onda-007")
+      and (.rationale | test("sugerido=haiku aplicado=haiku origem=mapa"))
+  ' >/dev/null 2>&1 \
+    || { _fail "Decisao no state.db" "$("$RW_SQLITE" read --state-dir "$_sd" | jq -c '.decisions')"; return 1; }
+}
+
+scenario_sqlite_wave_select_idempotente_anti_mirror() {
+  _mr_have_jq || { _error "jq ausente"; return 2; }
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  mktemp_test || return 2
+  _sd="$TMPDIR_TEST/mr-sqlite"
+  _ws_sqlite_state "$_sd" review-task || { _fail "fixture sqlite" "init/write falhou"; return 1; }
+
+  capture sh "$SCRIPT" wave-select --state-dir "$_sd"
+  [ "$_CAPTURED_STDOUT" = "haiku" ] || { _fail "1a chamada" "$_CAPTURED_STDOUT"; return 1; }
+  # 2a chamada: eco idempotente (FR-008) sem 2a Decisao no state.db.
+  capture sh "$SCRIPT" wave-select --state-dir "$_sd"
+  [ "$_CAPTURED_STDOUT" = "haiku" ] || { _fail "2a chamada eco" "$_CAPTURED_STDOUT"; return 1; }
+  _n=$("$RW_SQLITE" read --state-dir "$_sd" | jq '[.decisions[] | select(.context | startswith("Selecao de modelo para onda "))] | length')
+  [ "$_n" = 1 ] || { _fail "idempotencia sqlite" "esperado 1 Decisao, obtido $_n"; return 1; }
+  # idempotent-check (subagente) sob sqlite: inexistente -> exit 1 limpo,
+  # sem degradacao "state.json ausente".
+  capture sh "$SCRIPT" idempotent-check --state-dir "$_sd" \
+    --onda-id onda-007 --subagent-type agente-00c-clarify-asker
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "idempotent-check sqlite" "esperado exit 1, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "idempotent-check sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+  # Anti-mirror (FR-003): leitura nao materializa state.json no state-dir.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "wave-select criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
+}
+
 run_all_scenarios "$0"

@@ -72,6 +72,12 @@
 
 set -eu
 
+# Leitura de estado via interface canonica (state-db-runtime-parity FR-001):
+# usada pelos subcomandos LEITORES (check). Subcomandos mutadores (init,
+# mark-touched) seguem no builder direto — fora do escopo do porte 2.1.3.
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _DR_NAME="drift"
 _DR_WINDOW_SIZE="${DRIFT_WINDOW_SIZE:-12}"
 _DR_WARN_THRESHOLD="${DRIFT_WARN_THRESHOLD:-5}"
@@ -258,7 +264,9 @@ _dr_cmd_check() {
   done
   [ -n "$_sd" ] || _dr_die_usage "check: --state-dir obrigatorio"
   _dr_require_jq
-  _sf=$(_dr_state_file "$_sd")
+  # Materializa via _state-read.sh (json: proprio state.json; sqlite: tmp).
+  # Falha do read sob sqlite propaga via set -e (FR-012).
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _dr_die "check: state.json ausente" 1
 
   _aspectos_count=$(jq -r '

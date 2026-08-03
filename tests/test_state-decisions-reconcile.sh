@@ -427,4 +427,80 @@ scenario_sdr_inv6_shebang_set_eu() {
   fi
 }
 
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.4 / FR-001 / SC-003) ====
+# check le via _state-read.sh (materializacao) — fixtures construidas pelos
+# writers reais do runtime (state-ondas/state-decisions, ja db-aware).
+
+RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+DEC="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
+ONDAS="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_init_sqlite() {
+  _is_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_is_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_is_home/.claude/cstk/config"
+  env HOME="$_is_home" "$RW" init --state-dir "$1" \
+    --execucao-id "exec-sdr-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC reconcile sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+  "$ONDAS" start --state-dir "$1" >/dev/null 2>&1 || return 1
+}
+
+_register_model_decision() {
+  # $1 = state-dir; imprime o dec-id registrado
+  "$DEC" register --state-dir "$1" \
+    --agente "agente-00c-feature-orchestrator" --etapa "clarify" \
+    --contexto "Selecao de modelo para subagente feature-00c-clarify-asker" \
+    --opcoes '["haiku","sonnet","opus","manter-atual","fallback-default"]' \
+    --escolha "sonnet" \
+    --justificativa "Justificativa longa o suficiente para o registro" 2>/dev/null
+}
+
+scenario_sqlite_half_record_exit_1_tsv() {
+  _sdr_have_jq || { printf "# skip: jq indisponivel\n"; return 0; }
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite-orfa"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init/start falhou"; return 1; }
+  _dec_id=$(_register_model_decision "$_sd") \
+    || { _fail "register sqlite" "state-decisions.sh falhou"; return 1; }
+  capture "$SCRIPT" check --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "orfa sqlite" "esperado exit 1, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"
+    return 1
+  fi
+  assert_stdout_contains "$_dec_id" || return 1
+  assert_stdout_contains "feature-00c-clarify-asker" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "check sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+}
+
+scenario_sqlite_balanceado_exit_0_e_anti_mirror() {
+  _sdr_have_jq || { printf "# skip: jq indisponivel\n"; return 0; }
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite-ok"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init/start falhou"; return 1; }
+  _dec_id=$(_register_model_decision "$_sd") \
+    || { _fail "register sqlite" "state-decisions.sh falhou"; return 1; }
+  "$ONDAS" record-skill --state-dir "$_sd" \
+    --skill model-selector --decisao-id "$_dec_id" >/dev/null 2>&1 \
+    || { _fail "record-skill sqlite" "state-ondas.sh falhou"; return 1; }
+  capture "$SCRIPT" check --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "balanceado sqlite" "esperado exit 0, obtido $_CAPTURED_EXIT: stdout=$_CAPTURED_STDOUT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  # FR-003: check nao pode materializar state.json no state-dir.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "reconcile criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
+}
+
 run_all_scenarios "$0"

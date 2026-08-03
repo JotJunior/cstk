@@ -453,7 +453,11 @@ _BL="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/bloqueios.sh"
 _init_preflight_state() {
   # Cria state.json + registra decisao pre-flight (score=0) com as 3
   # opcoes canonicas. Retorna o id da decisao em $_CAPTURED_STDOUT.
-  capture "$_RW" init --state-dir "$1" \
+  # HOME sandbox SEM config global: backend JSON deterministico mesmo em
+  # hosts com `state_backend=sqlite` (state-db-runtime-parity 2.1.8).
+  _ips_home="$TMPDIR_TEST/home-json"
+  mkdir -p "$_ips_home"
+  capture env HOME="$_ips_home" "$_RW" init --state-dir "$1" \
     --execucao-id "exec-test-preflight" --projeto-alvo-path "/tmp/p" --descricao "POC preflight"
   capture "$_SD" register --state-dir "$1" \
     --agente "orquestrador-00c" --etapa "constitution" \
@@ -616,6 +620,77 @@ EOF
   }
   assert_stdout_contains "status: resolved" || return 1
   assert_stdout_contains "criar-feature-delta-com-sync-impact-report" || return 1
+}
+
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.1 / FR-002 / SC-003) ====
+# Fixture por CHK032: decisao pre-flight + bloqueio RESPONDIDO via primitivas.
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_init_preflight_state_sqlite() {
+  _ipss_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_ipss_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_ipss_home/.claude/cstk/config"
+  env HOME="$_ipss_home" "$_RW" init --state-dir "$1" \
+    --execucao-id "exec-pl-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC preflight sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+  capture "$_SD" register --state-dir "$1" \
+    --agente "orquestrador-00c" --etapa "constitution" \
+    --contexto "Detectada constitution global; alerta pre-skill exit=2" \
+    --opcoes '["atualizar-global-via-bump-SemVer","criar-feature-delta-com-sync-impact-report","abortar-feature-sem-principios-proprios"]' \
+    --escolha "pause-humano" \
+    --justificativa "Exit=2 detectado, registrando para BloqueioHumano" \
+    --score 0
+}
+
+scenario_sqlite_require_blockade_respondido_criar_delta_passa() {
+  _sqlite3_adequate || { printf '# skip: sqlite3 indisponivel\n'; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_preflight_state_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _dec_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" register --state-dir "$_sd" --decisao-id "$_dec_id" \
+    --pergunta "Detectei docs/constitution.md global v1.1.0. Como tratar?" \
+    --contexto-para-resposta "ver paths"
+  _bl_id="$(printf '%s' "$_CAPTURED_STDOUT" | tail -1)"
+  capture "$_BL" respond --state-dir "$_sd" --block-id "$_bl_id" \
+    --resposta "criar-feature-delta-com-sync-impact-report"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "respond sqlite" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "esperado exit 0" "exit=$_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  # Veredito equivalente ao JSON (SC-003).
+  assert_stdout_contains "status: resolved" || return 1
+  assert_stdout_contains "criar-feature-delta-com-sync-impact-report" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+}
+
+scenario_sqlite_require_blockade_sem_decisao_falha_e_sem_mirror() {
+  _sqlite3_adequate || { printf '# skip: sqlite3 indisponivel\n'; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _ipsq_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_ipsq_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_ipsq_home/.claude/cstk/config"
+  env HOME="$_ipsq_home" "$_RW" init --state-dir "$_sd" \
+    --execucao-id "exec-pl-sqlite2" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC preflight sqlite" >/dev/null 2>&1
+  [ -f "$_sd/state.db" ] || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  capture "$SCRIPT" require-blockade-resolved --state-dir "$_sd" --etapa constitution
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "sem decisao preflight sqlite" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "missing-preflight-decision" || return 1
+  # Anti-mirror (FR-003).
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "leitura criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
 }
 
 run_all_scenarios

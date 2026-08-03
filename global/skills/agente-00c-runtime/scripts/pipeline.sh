@@ -83,6 +83,11 @@
 
 set -eu
 
+# Leitura de estado via interface canonica (state-db-runtime-parity FR-001):
+# usada por require-blockade-resolved (unico subcomando que le o estado).
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _PL_NAME="pipeline"
 
 # Lista canonica em ordem (FR-004; tasks.md 3.1.1).
@@ -498,7 +503,9 @@ _pl_cmd_require_blockade_resolved() {
   command -v jq >/dev/null 2>&1 \
     || _pl_die "require-blockade-resolved: jq nao encontrado no PATH" 1
 
-  _sf="$_sd/state.json"
+  # Materializa via _state-read.sh (json: proprio state.json; sqlite: tmp).
+  # Falha do read sob sqlite propaga via set -e (FR-012).
+  _sf=$(state_read_materialize "$_sd")
   [ -f "$_sf" ] || _pl_die "require-blockade-resolved: state.json ausente em $_sd" 1
 
   # Hoje so suportamos enforcement para --etapa constitution. Demais
