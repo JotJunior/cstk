@@ -18,6 +18,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-validate.sh"
 RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+ON="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_state-validate.sh: jq ausente — pulando suite\n'
@@ -27,8 +28,12 @@ fi
 # ==== helpers ====
 
 # _make_valid_state DIR -> cria state.json valido em DIR via state-rw init
+# HOME sandbox SEM config global: forca backend JSON deterministico mesmo em
+# hosts com `state_backend=sqlite` (state-db-runtime-parity 2.1.6).
 _make_valid_state() {
-  capture "$RW" init --state-dir "$1" \
+  _mvs_home="$TMPDIR_TEST/home-json"
+  mkdir -p "$_mvs_home"
+  capture env HOME="$_mvs_home" "$RW" init --state-dir "$1" \
     --execucao-id "exec-test-001" \
     --projeto-alvo-path "/tmp/poc-test" \
     --descricao "POC de teste (>=10 chars)"
@@ -600,6 +605,61 @@ scenario_push_pr_result_objeto_valido() {
   _patch_state "$_sd" '.push_pr_result = {status:"pr-opened", branch:"feat/x", recorded_at:"2026-06-13T00:00:00Z"}'
   capture "$SCRIPT" --state-dir "$_sd"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate push_pr_result obj" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.1 / FR-002 / SC-003) ====
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_make_sqlite_state() {
+  _mss_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_mss_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_mss_home/.claude/cstk/config"
+  env HOME="$_mss_home" "$RW" init --state-dir "$1" \
+    --execucao-id "exec-sv-sqlite" --projeto-alvo-path "/tmp/poc-test" \
+    --descricao "POC sv sqlite (>=10 chars)" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+}
+
+scenario_sqlite_estado_valido_exit_zero() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _make_sqlite_state "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  # Fixture CHK032: onda + decisao + task para schema completo nao-trivial.
+  capture "$ON" start --state-dir "$_sd"
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"nao existe"*) _fail "validate sqlite" "degradou com 'state.json nao existe'"; return 1 ;;
+  esac
+  # Anti-mirror (FR-003).
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "validate criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
+}
+
+scenario_sqlite_violacao_detectada_exit_um() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _make_sqlite_state "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  # Violacao produzivel pelo writer canonico sob sqlite: whitelist com string
+  # vazia (equivalencia com scenario_whitelist_com_string_vazia_falha do JSON).
+  # Nota: invariantes numericas como depth>3 sao IMPRODUZIVEIS sob sqlite —
+  # o CHECK do schema rejeita no write (defesa na escrita, nao regressao).
+  capture "$RW" set --state-dir "$_sd" \
+    --field '.external_urls_whitelist' --value '[""]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set whitelist sqlite" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" --state-dir "$_sd"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "validate sqlite violacao" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  assert_stderr_contains "external_urls_whitelist" || return 1
 }
 
 run_all_scenarios

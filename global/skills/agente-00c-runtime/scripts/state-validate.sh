@@ -37,6 +37,11 @@
 
 set -eu
 
+# Leitura de estado via interface canonica (state-db-runtime-parity FR-001):
+# valida o documento materializado nos DOIS backends (json/sqlite).
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _SV_NAME="state-validate"
 
 _sv_die_usage() {
@@ -97,8 +102,10 @@ done
 
 [ -n "$_SV_STATE_DIR" ] || _sv_die_usage "--state-dir obrigatorio"
 
-_SV_FILE="$_SV_STATE_DIR/state.json"
 _sv_require_jq
+# Materializa via _state-read.sh (json: proprio state.json; sqlite: tmp).
+# Falha do read sob sqlite propaga via set -e (FR-012).
+_SV_FILE=$(state_read_materialize "$_SV_STATE_DIR")
 
 # 1. Existe e parseavel
 if [ ! -f "$_SV_FILE" ]; then

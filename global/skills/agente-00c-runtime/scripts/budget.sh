@@ -11,7 +11,9 @@
 #      <state-dir>/tool-call-ticks.log appendado pelo hook PostToolUse
 #      posttooluse-tool-call-tick.sh — mesma agregacao do state-ondas.sh end)
 #   2. wallclock (now - current_wave_start) >= wallclock_threshold_seconds (5400 = 90min)
-#   3. file size de state.json >= state_size_threshold_bytes (1MB)
+#   3. file size do documento de estado >= state_size_threshold_bytes (1MB)
+#      (backend JSON: o proprio state.json; backend SQLite: o documento
+#      materializado via _state-read.sh — mesmo proxy logico)
 #
 # Sem signal nativo de tokens consumidos no Claude Code (Decision 2);
 # por isso usa proxies indiretos.
@@ -37,6 +39,11 @@ set -eu
 
 _BD_NAME="budget"
 
+# Leitura de estado via interface canonica (state-db-runtime-parity FR-001):
+# materializa documento legivel por jq nos DOIS backends (json/sqlite).
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _bd_die_usage() { printf '%s: %s\n' "$_BD_NAME" "$1" >&2; exit 2; }
 _bd_die()       { printf '%s: %s\n' "$_BD_NAME" "$1" >&2; exit "${2:-1}"; }
 
@@ -44,8 +51,6 @@ _bd_require_jq() {
   command -v jq >/dev/null 2>&1 \
     || _bd_die "jq nao encontrado no PATH (brew install jq | apt install jq)" 1
 }
-
-_bd_state_file() { printf '%s/state.json\n' "$1"; }
 
 # _bd_file_size FILE -> tamanho em bytes (portavel BSD/GNU)
 _bd_file_size() {
@@ -79,7 +84,9 @@ _bd_now_epoch() { date -u +%s; }
 # _bd_collect STATE_DIR
 # Sets globals: _bd_tc, _bd_tc_max, _bd_wc, _bd_wc_max, _bd_sz, _bd_sz_max
 _bd_collect() {
-  _sf=$(_bd_state_file "$1")
+  # Falha de materializacao sob sqlite (sqlite3 ausente, state.db corrompido)
+  # propaga exit+stderr do state-rw.sh read via set -e (FR-012).
+  _sf=$(state_read_materialize "$1")
   [ -f "$_sf" ] || _bd_die "state.json ausente em $1" 1
   _bd_require_jq
   # Readers diretos sobre o arquivo (schema-en-migration): path EN + fallback

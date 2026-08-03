@@ -50,14 +50,14 @@ Ref: research.md Decision 1; contracts/runtime-interfaces.md §4; spec FR-001/FR
 
 Ref: spec FR-001/FR-002/FR-011; research.md Decision 6 (classe reader)
 
-- [ ] 2.1.1 Portar `budget.sh` (`_bd_state_file()` builder direto) para `_state-read.sh`; jq pipelines internos INALTERADOS
-- [ ] 2.1.2 Adicionar cenarios sqlite em `tests/test_budget.sh` (veredito equivalente ao backend JSON — SC-003)
-- [ ] 2.1.3 Portar `drift.sh` (`check`/`extract`) para `_state-read.sh`
-- [ ] 2.1.4 Adicionar cenarios sqlite em `tests/test_drift.sh`
-- [ ] 2.1.5 Portar `state-validate.sh` (schema check sobre doc materializado) para `_state-read.sh`
-- [ ] 2.1.6 Adicionar cenarios sqlite em `tests/test_state-validate.sh`
-- [ ] 2.1.7 Portar `pipeline.sh` para `_state-read.sh`
-- [ ] 2.1.8 Adicionar cenarios sqlite em `tests/test_pipeline.sh`
+- [x] 2.1.1 Portar `budget.sh` (`_bd_state_file()` builder direto) para `_state-read.sh`; jq pipelines internos INALTERADOS
+- [x] 2.1.2 Adicionar cenarios sqlite em `tests/test_budget.sh` (veredito equivalente ao backend JSON — SC-003)
+- [x] 2.1.3 Portar `drift.sh` (`check`/`extract`) para `_state-read.sh`
+- [x] 2.1.4 Adicionar cenarios sqlite em `tests/test_drift.sh`
+- [x] 2.1.5 Portar `state-validate.sh` (schema check sobre doc materializado) para `_state-read.sh`
+- [x] 2.1.6 Adicionar cenarios sqlite em `tests/test_state-validate.sh`
+- [x] 2.1.7 Portar `pipeline.sh` para `_state-read.sh`
+- [x] 2.1.8 Adicionar cenarios sqlite em `tests/test_pipeline.sh`
 
 ### 2.2 Lote guardas mutadoras: cycles, circular, retro `[A]`
 
