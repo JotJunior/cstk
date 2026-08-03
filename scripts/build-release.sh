@@ -210,6 +210,27 @@ done
 # usuarios instalam. Prune defensivo sob todo o catalog/.
 find "$STAGE_ROOT/catalog" -type d -name evals -prune -exec rm -rf -- {} +
 
+# ==== 3c. catalog/mcp/state-server/ (fonte de build do servidor MCP) ====
+# Sem isto, ambientes INSTALADOS nunca conseguem buildar a imagem docker do
+# cstk mcp: `_mcp_context_dir` (cli/lib/mcp.sh) cai nos 3 caminhos e o start
+# degrada SEMPRE para bash-fallback (bug observado no meta-gob-ms,
+# reason=image-build-failed com docker saudavel). Destino instalado:
+# ~/.claude/mcp/state-server (caminho 3 do resolve). So o necessario para o
+# `docker build` (npm ci + tsc dentro da imagem): src/, package.json,
+# package-lock.json, tsconfig.json, .dockerignore — NUNCA node_modules/,
+# dist/ ou test/.
+# Tolerante a arvores sem mcp/ (fixtures de teste com REPO_ROOT fake); no
+# repo real a presenca e gateada por scenario_build_release_estrutura_layout.
+if [ -f "$REPO_ROOT/mcp/state-server/package.json" ]; then
+  mkdir -p -- "$STAGE_ROOT/catalog/mcp/state-server"
+  cp -R -- "$REPO_ROOT/mcp/state-server/src" "$STAGE_ROOT/catalog/mcp/state-server/src"
+  for _mcpf in package.json package-lock.json tsconfig.json .dockerignore; do
+    cp -- "$REPO_ROOT/mcp/state-server/$_mcpf" "$STAGE_ROOT/catalog/mcp/state-server/$_mcpf"
+  done
+else
+  printf 'build-release: aviso: mcp/state-server ausente em %s — tarball sem fonte do servidor MCP\n' "$REPO_ROOT" >&2
+fi
+
 # ==== 4. catalog/VERSION ====
 printf '%s\n' "$VERSION_BARE" > "$STAGE_ROOT/catalog/VERSION"
 

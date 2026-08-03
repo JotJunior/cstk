@@ -414,4 +414,42 @@ scenario_install_host_file_scheme_regressao() {
   [ -f "$_h/.claude/skills/foo/SKILL.md" ] || { _fail "file scheme regressao instalacao" ""; return 1; }
 }
 
+# ==== mcp/state-server: espelho em ~/.claude/mcp (fix pos-6.2.1) ====
+# Catalogo COM catalog/mcp/state-server -> install espelha no HOME; sem a
+# secao (release antiga, caso do _make_fixture_release padrao) -> no-op.
+
+scenario_install_espelha_mcp_state_server() {
+  _h="$TMPDIR_TEST/home-mcp"
+  _r="$TMPDIR_TEST/release-mcp"
+  _make_fixture_release "$_r" || { _error "fixture" "tarball build falhou"; return 2; }
+  # Reabre o fixture e adiciona catalog/mcp/state-server antes de re-tarar.
+  _root="$_r/cstk-test-v0.1.0"
+  mkdir -p "$_root/catalog/mcp/state-server/src"
+  printf '{"name":"@cstk-panel/state-server-fixture","version":"0.0.1"}\n' \
+    > "$_root/catalog/mcp/state-server/package.json"
+  printf '// fixture index\n' > "$_root/catalog/mcp/state-server/src/index.ts"
+  (cd "$_r" && tar -czf cstk-test-v0.1.0.tar.gz cstk-test-v0.1.0) || return 1
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$_r" && sha256sum cstk-test-v0.1.0.tar.gz > cstk-test-v0.1.0.tar.gz.sha256) || return 1
+  else
+    (cd "$_r" && shasum -a 256 cstk-test-v0.1.0.tar.gz > cstk-test-v0.1.0.tar.gz.sha256) || return 1
+  fi
+
+  _run_install "$_h" --from "file://$_r/cstk-test-v0.1.0.tar.gz"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install exit" "obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  [ -f "$_h/.claude/mcp/state-server/package.json" ] \
+    || { _fail "mcp/state-server nao espelhado no HOME" "$(ls -R "$_h/.claude" 2>/dev/null | head -20)"; return 1; }
+  [ -f "$_h/.claude/mcp/state-server/src/index.ts" ] \
+    || { _fail "src/ do state-server ausente no espelho" ""; return 1; }
+}
+
+scenario_install_catalogo_sem_mcp_e_noop() {
+  _h="$TMPDIR_TEST/home-semcp"
+  _r="$TMPDIR_TEST/release-semcp"
+  _make_fixture_release "$_r" || { _error "fixture" "tarball build falhou"; return 2; }
+  _run_install "$_h" --from "file://$_r/cstk-test-v0.1.0.tar.gz"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install exit" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ ! -e "$_h/.claude/mcp" ] || { _fail "mcp/ criado sem fonte no catalogo" ""; return 1; }
+}
+
 run_all_scenarios

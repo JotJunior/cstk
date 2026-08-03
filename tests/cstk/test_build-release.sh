@@ -101,6 +101,26 @@ scenario_build_release_estrutura_layout() {
     _fail "language/go/skills ausente" ""
     return 1
   fi
+
+  # catalog/mcp/state-server/ (fonte de build do servidor MCP — fix
+  # pos-6.2.1): sem ela, ambiente instalado nunca sai de bash-fallback.
+  for _mcp_expected in \
+    'cstk-0.1.0/catalog/mcp/state-server/package.json' \
+    'cstk-0.1.0/catalog/mcp/state-server/package-lock.json' \
+    'cstk-0.1.0/catalog/mcp/state-server/tsconfig.json' \
+    'cstk-0.1.0/catalog/mcp/state-server/.dockerignore' \
+    'cstk-0.1.0/catalog/mcp/state-server/src/index.ts'
+  do
+    if ! printf '%s\n' "$_list" | grep -qx -- "$_mcp_expected"; then
+      _fail "mcp/state-server entry ausente" "$_mcp_expected"
+      return 1
+    fi
+  done
+  # NUNCA empacotar node_modules/dist/test do servidor.
+  if printf '%s\n' "$_list" | grep -qE '^cstk-0\.1\.0/catalog/mcp/state-server/(node_modules|dist|test)/'; then
+    _fail "mcp/state-server com conteudo proibido no tarball" "node_modules/dist/test"
+    return 1
+  fi
 }
 
 # ==== Checksum file ====

@@ -553,7 +553,11 @@ scenario_start_contexto_ausente_bash_fallback_exit_3() {
   capture sh "$CSTK_BIN" mcp start --state-dir "$_SF_STATE_DIR"
   unset CSTK_LIB
   [ "$_CAPTURED_EXIT" = 3 ] || { _fail "start contexto ausente exit" "esperado 3, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
-  assert_stdout_contains "reason=image-build-failed" || return 1
+  # Reason DISTINTO de image-build-failed (fix pos-6.2.1): fonte do servidor
+  # nao instalada => server-source-missing (aponta `cstk update`), nunca o
+  # reason de build que mascarava o gap de distribuicao.
+  assert_stdout_contains "reason=server-source-missing" || return 1
+  assert_stderr_contains "cstk update" || return 1
 }
 
 # ---------- start: caminho feliz (mode=docker) ----------
