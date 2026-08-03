@@ -23,10 +23,10 @@ SEC-M1/M2/M3 Medium mitigados no contrato; SEC-L1/L2 Low aceitos como residual.
       → FR-004 decompoe em tres condicoes verificaveis: sem stdout, sem stderr de erro, sem interferencia na tool call.
 - [x] CHK005 - Os requisitos deixam inequivoco que os dois hooks de metrica NAO devem herdar o fail-closed do hook de guarda? [Consistencia, Spec §FR-003 vs §FR-004] {auto}
       → FR-003 e FR-004 separam os hooks por nome e atribuem posturas opostas explicitamente; contracts/hook-io.md §"Modos de no-op (fail-open)" repete a separacao por evento.
-- [ ] CHK006 - O estouro do orcamento de tempo da propria deteccao esta definido como uma classe de falha nos requisitos (e nao apenas como risco de performance)? [Gap, Spec §FR-003; plan §SEC-H2] {auto}
-      → **[Gap]**: FR-003 enumera dependencia ausente / corrompido / erro de leitura, mas NAO nomeia "excedeu o tempo limite" como falha de mecanismo. A mitigacao existe no plano (fase 0 + auto-teto interno, plan §SEC-H2, dec-026), porem sem requisito correspondente na spec o gate fica sem criterio de aceite. Destino: `/create-tasks` — task "elevar auto-teto de deteccao a requisito explicito de FR-003".
-- [ ] CHK007 - Os requisitos definem a fronteira de confianca do carregamento do proprio codigo de deteccao (de onde o helper pode ser sourceado)? [Gap, contracts/hook-active-exec.md §"Ordem MODIFICADA"/§"Pre-condicao de sourcing"] {auto}
-      → **[Gap]** no nivel da spec: o contrato define a ordem invertida (`$HOME` antes de `<cwd>`) e o pre-check inline como MUST, mas nenhum FR da spec cobre integridade de carregamento. Aprovado como desenho em `dec-026`; falta o requisito rastreavel. Destino: `/create-tasks`.
+- [x] CHK006 - O estouro do orcamento de tempo da propria deteccao esta definido como uma classe de falha nos requisitos (e nao apenas como risco de performance)? [Gap, Spec §FR-003; plan §SEC-H2] {auto}
+      → **Resolvido (task 1.2, onda-006)**: FR-003 agora nomeia "estouro do auto-teto interno de deteccao (SEC-H2)" como quarta classe de falha de mecanismo, ao lado de dependencia ausente/corrompido/erro de leitura; `quickstart.md §Cenario 7b` cobre o caminho de teste dedicado.
+- [x] CHK007 - Os requisitos definem a fronteira de confianca do carregamento do proprio codigo de deteccao (de onde o helper pode ser sourceado)? [Gap, contracts/hook-active-exec.md §"Ordem MODIFICADA"/§"Pre-condicao de sourcing"] {auto}
+      → **Resolvido (task 1.3, onda-006)**: novo `spec.md` FR-008 cobre a ordem invertida (`$HOME` antes de `<cwd>`) e o pre-check inline como MUST rastreavel, citando `dec-026`; `contracts/hook-active-exec.md` referencia FR-008 nas 2 secoes relevantes.
 
 ## Clareza e nao-ambiguidade
 
@@ -36,13 +36,13 @@ SEC-M1/M2/M3 Medium mitigados no contrato; SEC-L1/L2 Low aceitos como residual.
       → Explicito: "um state-dir ilegivel **nao** curto-circuita a varredura; `indeterminada` so e o resultado final se nenhuma execucao ativa foi confirmada".
 - [x] CHK010 - O conjunto de status considerados "execucao ativa" esta enumerado, em vez de descrito por adjetivo? [Clareza, Spec §FR-001; data-model §"Validation rules"] {auto}
       → Conjunto fechado `em_andamento` + `aguardando_humano`; `abortada`/`concluida` explicitamente nao-ativos, ancorados no `CHECK` da coluna `execution.status`.
-- [ ] CHK011 - O "teto defensivo de state-dirs sondados por invocacao" esta quantificado? [Ambiguity, contracts/hook-active-exec.md §SEC-M3] {auto}
-      → **[Ambiguity]**: o contrato exige "aplicar teto defensivo" sem nenhum numero, e nenhum outro artefato o fixa (verificado por varredura em todos os 7 artefatos: unica ocorrencia e a linha do SEC-M3). Sem valor, o requisito nao e verificavel nem testavel. Destino: `/clarify`.
+- [x] CHK011 - O "teto defensivo de state-dirs sondados por invocacao" esta quantificado? [Ambiguity, contracts/hook-active-exec.md §SEC-M3] {auto}
+      → **Resolvido (task 1.4, onda-006)**: teto = **100** state-dirs/invocacao, grounded em medicao empirica REAL neste repositorio (`research.md §"Achado empirico"` — 23 dirs organicos hoje, ~5.2ms/dir, ~119ms total). Achado residual documentado: o crescimento organico (nao-adversarial) ja se aproxima do teto de latencia do gate (150ms/FR-005) — risco distinto levado ao checkpoint humano CHK022.
 
 ## Consistencia entre artefatos
 
-- [ ] CHK012 - O criterio de sucesso de latencia e consistente com o teto que o gate automatizado de fato impoe? [Conflict, Spec §SC-003/§FR-005 vs research §Decision 3 + quickstart §Cenario 7] {auto}
-      → **[Conflict]**: SC-003 exige que a latencia "permaneca dentro do orcamento hoje praticado (~30 ms metricas / ~177 ms guarda), verificado por gate automatizado", mas o gate especificado usa tetos de **150 ms** e **400 ms** (5x o orcamento, justificado por ruido de CI). Um build pode passar no gate e ainda assim violar SC-003 como literalmente escrito. Destino: `/clarify` — separar "orcamento de projeto" de "teto de regressao do gate" no texto de SC-003/FR-005.
+- [x] CHK012 - O criterio de sucesso de latencia e consistente com o teto que o gate automatizado de fato impoe? [Conflict, Spec §SC-003/§FR-005 vs research §Decision 3 + quickstart §Cenario 7] {auto}
+      → **Resolvido (task 1.5, onda-006 — PRIORITARIO)**: SC-003/FR-005 reescritos separando explicitamente "orcamento de projeto" (~30ms/~177ms, referencia de desenho) do "teto do gate" (150ms/400ms, UNICO criterio verificavel de pass/fail); `quickstart.md §Cenario 7` idem, com nota explicita de que o orcamento de projeto nao gateia o build.
 - [x] CHK013 - O requisito de nao-interferencia em sessoes manuais e consistente entre a spec e o delta da capability existente? [Consistencia, Spec §FR-006/§SC-004 vs §"Delta Requirements"/bash-guard-enforcement FR-006 MODIFIED] {auto}
       → Ambos afirmam a mesma restricao com o mesmo escopo, e o delta adiciona apenas a clausula "independente do backend"; nenhuma contradicao.
 - [x] CHK014 - A proibicao de leitura stale esta consistente entre pesquisa, plano e contrato? [Consistencia, research §Decision 1.a; plan §Riscos; contracts/hook-active-exec.md] {auto}

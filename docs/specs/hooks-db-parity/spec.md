@@ -176,24 +176,42 @@ subagente (`tool_name: Agent`) e confirmar que o sidecar
 - **FR-003**: O hook `pretooluse-bash-guard.sh` MUST manter comportamento
   fail-closed sob backend SQLite: qualquer falha ao determinar o status da
   execucao a partir do `state.db` (dependencia ausente, arquivo corrompido,
-  erro de leitura) MUST ser tratada como bloqueio do comando
-  (`MECANISMO_FALHOU`), nunca como ausencia de execucao ativa.
+  erro de leitura, **ou estouro do auto-teto interno de deteccao — SEC-H2,
+  ver `research.md` §"Resultado Fase 0"**) MUST ser tratada como bloqueio do
+  comando (`MECANISMO_FALHOU`), nunca como ausencia de execucao ativa. O
+  auto-teto interno (defesa em profundidade sobre o `timeout: 5` do harness
+  — confirmado por fonte que ja e fail-closed por si so) MUST emitir
+  `MECANISMO_FALHOU` caso a propria varredura de deteccao estoure seu teto
+  antes de concluir.
 - **FR-004**: Os hooks `posttooluse-tool-call-tick.sh` e
   `posttooluse-agent-usage.sh` MUST manter comportamento fail-open sob
   backend SQLite: qualquer falha na deteccao (dependencia ausente, erro de
   leitura do `state.db`) MUST resultar em no-op silencioso (sem stdout,
   sem stderr de erro, sem interferencia na tool call), nunca em bloqueio ou
-  mensagem visivel ao operador.
-- **FR-005**: A deteccao de execucao ativa sob backend SQLite MUST caber
-  dentro do orcamento de latencia ja em vigor para cada hook hoje
-  (aproximadamente 30ms para os hooks de metrica disparados a cada tool
-  call; aproximadamente 177ms para o hook de guarda, que roda antes de
-  cada comando Bash) — requisito ja registrado como bloqueante em
-  `sug-001`/CHK031 da feature `state-db-runtime-parity`. Esse orcamento
-  MUST ser imposto por um gate automatizado (teste que mede a latencia
-  real do hook contra um state-dir SQLite e falha se o teto for
-  ultrapassado), nao apenas uma referencia de projeto validada
-  manualmente antes do merge (Clarifications, Session 2026-08-03).
+  mensagem visivel ao operador. Sob contencao transitoria do SQLite (busy/
+  lock), esses dois hooks MUST usar um `busy_timeout` reduzido (**50 ms**,
+  distinto do `busy_timeout=200ms` do hook de guarda — CHK027/task 1.6):
+  esperar os 200ms inteiros do guard, em TODA tool call, estouraria sozinho
+  o teto do gate de 150ms (FR-005/SC-003) mesmo sem nenhum outro custo,
+  incompativel com o requisito de nao-interferencia perceptivel (FR-006). Se
+  a contencao nao resolver dentro dos 50ms, o resultado e `indeterminada` e
+  o hook segue fail-open (no-op silencioso), nunca esperando o `busy_timeout`
+  completo de 200ms.
+- **FR-005**: A deteccao de execucao ativa sob backend SQLite MUST ser
+  verificada por um **gate automatizado** de latencia (teste dedicado que
+  mede a mediana de N=20 invocacoes reais do hook contra um state-dir SQLite
+  isolado e **falha o build** se a mediana ultrapassar o **teto do gate**:
+  **150 ms** para os hooks de metrica, **400 ms** para o hook de guarda —
+  research.md Decision 3, `quickstart.md §Cenario 7`) — requisito ja
+  registrado como bloqueante em `sug-001`/CHK031 da feature
+  `state-db-runtime-parity`, imposto por gate e nao apenas por validacao
+  manual pontual (Clarifications, Session 2026-08-03). Esse teto do gate e
+  DISTINTO do **orcamento de projeto** citado em SC-003 (~30 ms/~177 ms,
+  referencia de desenho medida nesta maquina, nao o criterio de
+  pass/fail do gate) — o teto do gate e deliberadamente 5x mais folgado
+  que o orcamento de projeto para absorver ruido de CI, e e ELE, nao o
+  orcamento de projeto, que determina se o build passa ou falha
+  (CHK012/task 1.5).
 - **FR-006**: Sessoes manuais do operador (sem nenhuma execucao
   `agente-00c`/`feature-00c` ativa) MUST continuar completamente livres de
   interferencia dos tres hooks, em qualquer backend de persistencia.
@@ -202,6 +220,20 @@ subagente (`tool_name: Agent`) e confirmar que o sidecar
   ausencia como "fora de escopo" (equivalente a "nenhuma execucao ativa"),
   distinta de uma falha de leitura de um `state.db` presente porem
   corrompido (que cai em FR-003/FR-004 conforme o hook).
+- **FR-008**: A resolucao do proprio codigo de deteccao (`_hook-active-exec.sh`)
+  MUST executar um pre-check inline (apenas builtins do shell, sem sourcing)
+  confirmando a existencia de ao menos um `state.json` ou `state.db` sob
+  `.claude/agente-00c-state/` ou `.claude/feature-00c-state/*/` **antes** de
+  resolver ou sourcear qualquer dependencia externa; e a cadeia de resolucao
+  de dependencia para este helper especifico MUST priorizar o candidato de
+  escopo global (`$HOME/.claude/skills/agente-00c-runtime/...`) **antes** do
+  candidato derivado do `cwd` da sessao (`<cwd>/.claude/skills/agente-00c-runtime/...`)
+  — ordem invertida em relacao a cadeia de resolucao ja usada pelos demais
+  hooks para suas outras dependencias (`bash-guard.sh`, `secrets-filter.sh`),
+  que permanece inalterada. Aprovado como decisao de desenho em `dec-026`
+  (mitigacao do finding SEC-H1 — sourcing de codigo por caminho derivado do
+  `cwd` amplia a superficie de execucao a qualquer projeto aberto, nao so a
+  execucoes 00c ativas).
 
 ### Assunções e decisões em aberto
 
@@ -234,16 +266,30 @@ subagente (`tool_name: Agent`) e confirmar que o sidecar
   casos testados) quando o projeto usa backend `state.db`.
 - **SC-002**: Ao final de uma onda de execucao autonoma sob backend
   SQLite, a contagem de tool calls registrada reflete as chamadas reais
-  feitas durante a onda, com a mesma margem de tolerancia de fronteira
-  start/end ja aceita sob backend JSON (hoje: perda aceitavel apenas de
-  ticks exatamente na borda de abertura/fechamento da onda).
-- **SC-003**: O tempo adicional introduzido pela deteccao de execucao
-  ativa em cada hook permanece dentro do orcamento de latencia hoje
-  praticado por esse hook (~30ms para os hooks de metrica, ~177ms para o
-  hook de guarda), verificado por um gate automatizado (teste dedicado
-  que mede a latencia contra state-dir SQLite e falha o build se o teto
-  for ultrapassado — Clarifications, Session 2026-08-03), nao apenas por
-  validacao manual pontual.
+  feitas durante a onda, com tolerancia maxima de **2 ticks perdidos por
+  onda** (no maximo 1 tick na abertura — corrida entre `state-ondas.sh
+  start` truncando o sidecar `tool-call-ticks.log` e um `append` concorrente
+  do hook — e no maximo 1 tick no fechamento — corrida entre `state-ondas.sh
+  end` lendo a contagem via `wc -l` e um `append` concorrente). Tolerancia
+  quantificada (task 1.7/CHK033) a partir do mecanismo real: o sidecar e
+  resetado no `start` (`.budgets.tool_calls_current_wave = 0`,
+  `state-ondas.sh` L604) e agregado no `end` (`_so_ticks_count`,
+  `state-ondas.sh` L365-372, consumida em L738-739) — cada operacao de
+  `append` do hook e uma unica escrita rapida, e a janela de corrida so
+  existe nesses dois instantes, nunca durante a onda em curso.
+  Perda acima de 2 ticks por onda (ou perda fora dessas duas bordas) indica
+  regressao, nao tolerancia aceita — mesma margem entre backend JSON e
+  SQLite.
+- **SC-003**: O tempo adicional introduzido pela deteccao de execucao ativa
+  em cada hook e verificado por um **gate automatizado** que mede a mediana
+  de N=20 invocacoes contra um state-dir SQLite isolado e falha o build se
+  ultrapassar o **teto do gate** (**150 ms** hooks de metrica, **400 ms**
+  hook de guarda — research.md Decision 3). Esse teto do gate e o UNICO
+  criterio verificavel de pass/fail (FR-005) — DISTINTO do **orcamento de
+  projeto** (~30 ms/~177 ms), que e apenas a referencia de desenho medida
+  nesta maquina hoje (12.36 ms/17.36 ms reais, folga generosa) e NAO o
+  criterio de aceite do gate (CHK012/task 1.5 — reconciliacao explicita
+  entre os dois numeros).
 - **SC-004**: Sessoes manuais do operador (sem execucao autonoma ativa)
   nao apresentam nenhuma interferencia observavel dos hooks — 0 bloqueios
   e 0 escritas de sidecar fora de uma execucao ativa, em qualquer backend.

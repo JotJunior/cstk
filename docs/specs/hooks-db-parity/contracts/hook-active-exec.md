@@ -116,7 +116,7 @@ auto-contidos).
 
 Vence o primeiro existente **e executavel**. Exit `1` se nenhum encontrado.
 
-### Ordem MODIFICADA para o helper (SEC-H1) [APROVADA — dec-026]
+### Ordem MODIFICADA para o helper (SEC-H1) [APROVADA — dec-026, spec.md FR-008]
 
 Para `_hook-active-exec.sh` — e **somente** para ele — a ordem dos
 candidatos 2 e 3 e **invertida**:
@@ -137,7 +137,7 @@ repositorio hostil sem necessidade de execucao 00c ativa.
 A ordem original permanece **inalterada** para as demais deps (nenhuma
 regressao de comportamento).
 
-### Pre-condicao de sourcing (SEC-H1, obrigatoria)
+### Pre-condicao de sourcing (SEC-H1, obrigatoria — spec.md FR-008)
 
 O hook MUST executar um **pre-check inline**, usando apenas builtins do
 shell (`[ -f ]`, `[ -d ]`), antes de resolver ou sourcear o helper:
@@ -154,8 +154,8 @@ operador — que passam a nao tocar em nenhum arquivo externo.
 | ID | Requisito |
 |----|-----------|
 | SEC-M1 | NAO interpolar o path cru numa URI `file:...`. Usar `sqlite3 -readonly <path>` ou escapar `?`, `#`, `%` antes de montar a URI |
-| SEC-M2 | Emitir `PRAGMA busy_timeout=200;` antes do `SELECT`; descartar o eco do pragma no stdout (gotcha documentado em `_state-db.sh` L77-89) |
-| SEC-M3 | Ordenar os short-names (`LC_ALL=C sort`) **antes** de sondar e parar no primeiro ativo; aplicar teto defensivo de state-dirs sondados por invocacao |
+| SEC-M2 | Politica DIFERENCIADA por hook (task 1.6/CHK027 — reconcilia `busy_timeout` com o orcamento de latencia): hook de guarda (`pretooluse-bash-guard.sh`) emite `PRAGMA busy_timeout=200;` — fail-closed pode tolerar a espera plena, ainda folgado dentro do teto de gate de 400ms (FR-005). Hooks de metrica (`posttooluse-tool-call-tick.sh`, `posttooluse-agent-usage.sh`) emitem `PRAGMA busy_timeout=50;` — esperar 200ms em toda tool call estouraria sozinho o teto de gate de 150ms; ao esgotar os 50ms sem resolver a contencao, o resultado e `indeterminada` e o hook segue fail-open (FR-004). Em ambos os casos, descartar o eco do pragma no stdout (gotcha documentado em `_state-db.sh` L77-89) |
+| SEC-M3 | Ordenar os short-names (`LC_ALL=C sort`) **antes** de sondar e parar no primeiro ativo; aplicar teto defensivo de **100 state-dirs sondados por invocacao** (task 1.4 — medicao empirica neste repositorio: ~5.2 ms/dir, 23 dirs organicos hoje = ~119ms; 100 da ~4x de margem sobre a contagem organica atual antes de acionar o teto). Estourar o teto ANTES de confirmar `ativa` MUST produzir o mesmo outcome de um `state.db` ilegivel: `indeterminada` (exit `2`) — nunca `inativa`. **Residual documentado** (research.md §"Achado empirico"): o teto protege contra crescimento pathologico (dirs plantados por conteudo hostil do repositorio), mas NAO resolve a tendencia de o proprio custo do scan organico (nao-adversarial) se aproximar do teto de latencia do gate (150ms/FR-005) conforme o numero real de features acumuladas cresce — risco operacional distinto, levado ao checkpoint humano (CHK022/CHK044, tasks.md 1.9) |
 | SEC-H2 | **Fase 0 obrigatoria (dec-026)**: verificar em fonte rastreavel a semantica de estouro de `timeout` em hook `PreToolUse`. Default vigente ate prova em contrario: auto-teto interno bem abaixo do `timeout: 5` do harness, com `MECANISMO_FALHOU` explicito no guard. So relaxavel se houver fonte confirmando que timeout ja significa `deny` |
 
 > Nota de implementacao: para um arquivo **sourceable** o teste `-x` do

@@ -403,7 +403,115 @@ exit 1.
 
 ---
 
-## Riscos residuais
+## Resultado Fase 0 — semantica de timeout do hook `PreToolUse` (SEC-H2, task 1.1)
+
+**Data da verificacao**: 2026-08-03 (onda-006 da execucao `feature-00c` desta
+feature).
+
+**Fonte**: documentacao oficial do Claude Agent SDK,
+`https://code.claude.com/docs/en/agent-sdk/hooks.md`, secao "Hook timeout"
+(verificada por `curl -fsSL` direto contra a URL nesta maquina — nao via
+memoria/treino do modelo). Citacao literal:
+
+> "When a callback exceeds its timeout, Claude Code cancels it and treats it
+> as a failed hook: it discards the callback's output and the session
+> continues rather than hanging. What happens next depends on the event: ...
+> `PreToolUse`: Claude Code doesn't run the tool call, Claude receives a tool
+> result stating the hook didn't respond before its timeout, and the turn
+> continues. If another `PreToolUse` hook returned an explicit deny, Claude
+> receives that denial instead of the timeout error. Before v2.1.210, Claude
+> Code reported the timeout to Claude as a user rejection, which made
+> unattended sessions stop and wait for input."
+
+**Conclusao (com fonte, Constitution VI)**: em **nenhuma** versao do harness
+(nem antes nem depois de v2.1.210) o estouro do timeout de um hook
+`PreToolUse` resulta em "allow"/execucao da tool call. Em ambos os casos o
+comando NAO roda:
+
+- v2.1.210+: a tool call e cancelada; Claude recebe um tool-result de erro
+  ("hook didn't respond before its timeout") e o turno continua sem o
+  comando ter sido executado.
+- Pre-v2.1.210: o harness reporta o timeout como "user rejection" — sessoes
+  desacompanhadas (autonomas) paravam esperando input, tambem sem o comando
+  rodar.
+
+Isso **resolve SEC-H2**: o pior cenario hipotetico do plan.md (`"se for
+'allow', latencia vira bypass de guarda"`) esta descartado por fonte
+rastreavel — o timeout do harness ja e, na pratica, equivalente a um bloqueio
+(nunca um `allow` silencioso), embora tecnicamente seja um tool-result de
+falha do hook e nao um `permissionDecision:deny` explicito emitido pelo
+proprio `pretooluse-bash-guard.sh`.
+
+**Efeito sobre o auto-teto interno (procedimento §SEC-H2 do plan.md, passo
+2)**: conforme o proprio plan.md ja previa ("so se a verificacao... confirmar,
+com fonte, que timeout de hook `PreToolUse` ja significa `deny`, o auto-teto
+pode ser relaxado a mera defesa em profundidade"), essa condicao foi
+satisfeita. O auto-teto interno **continua implementado** nas FASEs 2/3 (nao
+foi removido do escopo) — mas passa de "unica barreira contra bypass por
+timeout" para **defesa em profundidade**: mesmo que o auto-teto falhe em
+disparar por algum bug de implementacao, o timeout do proprio harness (5s,
+`settings.snippet.json`) ja garante que o comando nao roda. Ver plan.md
+§SEC-H2 (paragrafo atualizado) e spec.md FR-003 (task 1.2).
+
+---
+
+## Achado empirico — custo real do scan O(N) neste proprio repositorio (SEC-M3, task 1.4)
+
+**Data da medicao**: 2026-08-03 (onda-006). Ambiente: mesma maquina do
+restante desta pesquisa (macOS, Darwin 25.5.0).
+
+**Medicao**: este proprio repositorio (`cstk`) tem hoje **23**
+state-dirs sob `.claude/feature-00c-state/*/` (2 backend `state.db`, 21
+backend `state.json` — contagem real, `find .claude/feature-00c-state
+-mindepth 1 -maxdepth 1 -type d | wc -l`). Reproduzindo o laco de deteccao
+(status de cada dir, backend correto por dir) com 3 warm-ups + 5 medicoes via
+`perl -MTime::HiRes=time`:
+
+```
+run 1: total=118.43ms  count=23  avg_per_dir=5.15ms
+run 2: total=120.33ms  count=23  avg_per_dir=5.23ms
+run 3: total=117.95ms  count=23  avg_per_dir=5.13ms
+run 4: total=120.79ms  count=23  avg_per_dir=5.25ms
+run 5: total=118.57ms  count=23  avg_per_dir=5.16ms
+```
+
+**Interpretacao — achado critico para CHK006/CHK011/CHK012/CHK022**: o custo
+medio por state-dir sondado (~5.2 ms, dominado pelo spawn do processo
+`jq`/`sqlite3`) e real e mensuravel, **nao hipotetico**. Com a contagem
+ORGANICA (nao-adversarial) de dirs ja acumulada neste repositorio apos
+poucos meses de desenvolvimento intenso de features, o custo total do scan
+completo (~119ms) **ja se aproxima do teto de 150ms** do gate automatizado
+de latencia dos hooks de metrica (Decision 3/FR-005) — e isso e medido
+isolando APENAS o custo do laco, sem o overhead do proprio hook (parsing de
+stdin, resolucao de dependencias, etc).
+
+Isso expoe uma limitacao que a otimizacao SEC-M3 ("ordenar e parar no
+primeiro ativo") **nao resolve**: no caso mais comum de todos — nenhuma
+execucao ativa (sessao manual do operador, que e a maioria esmagadora do
+tempo) — nao ha "parar no primeiro ativo" possivel, porque so se conclui
+"nenhuma ativa" apos esgotar TODOS os candidatos. O caso feliz do gate
+(Cenario 7) mede deliberadamente um sandbox com **exatamente um** state-dir
+(isolando o custo SQLite do custo O(N) de variar dirs), o que mascara este
+comportamento em condicao real de repositorio maduro.
+
+**Consequencia para o teto defensivo (1.4.1)**: um teto BAIXO (ex: 10-20)
+sondagens, se aplicado ingenuamente, faria o proprio repositorio `cstk` (23
+dirs hoje) estourar o teto em toda sessao manual sem execucao ativa —
+resultando em `indeterminada` e, no guard, `MECANISMO_FALHOU` (bloqueio de
+TODO comando Bash em sessao manual comum). Isso seria uma regressao de
+usabilidade severa e imediata, pior que o bug que esta feature corrige. Por
+isso o valor escolhido (100 — ver `contracts/hook-active-exec.md §SEC-M3`)
+da margem de ~4x sobre a contagem organica atual, mas **nao resolve** a
+tensao de fundo: o crescimento organico deste mesmo repositorio, mantido no
+ritmo atual, tende a aproximar a contagem real do teto de latencia do GATE
+(150ms/FR-005) MESMO SEM nenhum ataque — um risco operacional distinto do
+risco de seguranca do teto defensivo, e que **nao e resolvido por esta
+tarefa** (FASE 1 e fundacao/requisitos, nao redesenho de algoritmo). Ambos
+os riscos (valor do teto E tendencia de crescimento organico) sao
+explicitamente levados ao checkpoint humano (tasks.md 1.9, CHK022/CHK044)
+com estes numeros reais como insumo.
+
+
 
 | Risco | Severidade | Mitigacao |
 |-------|------------|-----------|

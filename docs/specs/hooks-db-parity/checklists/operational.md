@@ -19,8 +19,8 @@ para evitar colisao de IDs dentro da feature.
       → Requisito de nao-regressao declarado: o caminho `jq`/`state.json` permanece inline e inalterado, e a suite existente dos 3 hooks e o piso de nao-regressao.
 - [x] CHK026 - Ha requisito cobrindo contencao transitoria do SQLite (busy/lock) para que nao vire falha espuria? [Cobertura, Spec §Edge Cases (3o); contracts/hook-active-exec.md §SEC-M2] {auto}
       → `PRAGMA busy_timeout=200` exigido antes do `SELECT`, com o gotcha do eco do pragma no stdout do CLI documentado (precedente `_state-db.sh`).
-- [ ] CHK027 - O valor do `busy_timeout` (200 ms) esta reconciliado com o orcamento de latencia do hook de metrica (~30 ms)? [Ambiguity, contracts/hook-active-exec.md §SEC-M2 vs Spec §FR-005] {auto}
-      → **[Ambiguity]**: um unico evento de contencao que consuma o `busy_timeout` inteiro (200 ms) excede sozinho o orcamento de ~30 ms do hook de metrica e o teto de gate de 150 ms. Os requisitos nao dizem qual dos dois vence sob contencao (esperar e estourar latencia, ou desistir cedo e no-op). Destino: `/clarify`.
+- [x] CHK027 - O valor do `busy_timeout` (200 ms) esta reconciliado com o orcamento de latencia do hook de metrica (~30 ms)? [Ambiguity, contracts/hook-active-exec.md §SEC-M2 vs Spec §FR-005] {auto}
+      → **Resolvido (task 1.6, onda-006)**: politica DIFERENCIADA por hook — guarda mantem `busy_timeout=200ms` (fail-closed tolera a espera, cabe no teto de gate de 400ms); hooks de metrica usam `busy_timeout=50ms` (fail-open nao pode custar 200ms em toda tool call sem estourar o teto de gate de 150ms) — `contracts/hook-active-exec.md §SEC-M2` e `spec.md` FR-004 atualizados.
 
 ## Observabilidade e auditoria
 
@@ -37,8 +37,8 @@ para evitar colisao de IDs dentro da feature.
 
 - [x] CHK032 - O criterio de sucesso da guarda e expresso como taxa verificavel, e nao como adjetivo? [Mensurabilidade, Spec §SC-001] {auto}
       → "100% dos casos testados" continuam bloqueados sob `state.db`, comparado contra a linha de base JSON.
-- [ ] CHK033 - A tolerancia de fronteira aceita para a contagem de tool calls esta quantificada? [Ambiguity, Spec §SC-002/§US2 Acceptance 1] {auto}
-      → **[Ambiguity]**: SC-002 admite "a mesma margem de tolerancia de fronteira start/end ja aceita sob backend JSON" e a define apenas por referencia ("perda aceitavel apenas de ticks exatamente na borda"). Nenhum artefato converte isso em numero ou em regra de contagem verificavel, entao o cenario de aceite nao tem criterio de falha objetivo. Destino: `/clarify`.
+- [x] CHK033 - A tolerancia de fronteira aceita para a contagem de tool calls esta quantificada? [Ambiguity, Spec §SC-002/§US2 Acceptance 1] {auto}
+      → **Resolvido (task 1.7, onda-006)**: tolerancia = maximo **2 ticks perdidos por onda** (1 na abertura + 1 no fechamento), derivada do mecanismo real de reset/agregacao do sidecar em `state-ondas.sh` (`start` L604, `end`/`_so_ticks_count` L365-372/L738-739) — `spec.md` SC-002 e `quickstart.md §Cenario 12` atualizados com o criterio verificavel.
 - [x] CHK034 - O gate de latencia tem estatistica, tamanho de amostra e condicao de skip definidos, em vez de "medir a latencia"? [Mensurabilidade, research §Decision 3; quickstart §Cenario 7] {auto}
       → Mediana (nao media/p95) de N=20 apos 3 warm-ups; tetos por hook; skip — nunca fail — se `perl` ou `sqlite3` ausentes.
 - [x] CHK035 - O criterio de nao-interferencia em sessao manual e observavel por contagem? [Mensurabilidade, Spec §SC-004; quickstart §Cenario 8/§Cenario 10] {auto}
@@ -63,8 +63,8 @@ para evitar colisao de IDs dentro da feature.
       → Secao dedicada declara reuso do provisionamento existente (`apply_guard_hooks`, escopo `project`), sem novo canal.
 - [x] CHK042 - O `settings.snippet.json` (matchers e timeouts) esta declarado como inalterado, evitando mudanca silenciosa de contrato com o harness? [Consistencia, plan §Project Structure] {auto}
       → Marcado "INALTERADO — matchers e timeouts preservados" na arvore de arquivos do plano.
-- [ ] CHK043 - A ordem de rollout entre catalogo (`~/.claude`) e runtime esta definida para evitar janela de incoerencia? [Gap, plan §"Distribuicao"] {auto}
-      → **[Gap]**: os hooks e o helper `_hook-active-exec.sh` vivem ambos na skill `agente-00c-runtime` (mesmo canal `cstk install`/`update`), o que evita o gotcha classico install-vs-self-update; porem os requisitos nao dizem o que acontece num host que atualizou o catalogo enquanto uma execucao 00c estava em andamento (hook novo + onda aberta por versao antiga). Destino: `/create-tasks`.
+- [x] CHK043 - A ordem de rollout entre catalogo (`~/.claude`) e runtime esta definida para evitar janela de incoerencia? [Gap, plan §"Distribuicao"] {auto}
+      → **Resolvido (task 1.8, onda-006)**: `plan.md §Distribuicao` (paragrafo "Ordem de rollout catalogo x runtime") documenta que hooks + helper vivem na mesma skill (mesmo `cstk update`/`install`, sem janela hook-novo-vs-helper-ausente) e aceita o unico risco residual (troca de arquivos durante onda aberta) sem mitigacao adicional, por ser identico ao de qualquer update de skill hoje.
 - [ ] CHK044 - A decisao de habilitar a guarda em projetos hoje desprotegidos foi validada com o dono quanto a impacto operacional? [Risco, Spec §US1 "Why this priority"] {humano}
       → Em aberto: a correcao reativa bloqueios em todo projeto migrado para SQLite que hoje roda sem guarda alguma. E o objetivo da feature, mas muda o comportamento percebido nesses projetos — confirmar antes do rollout.
 - [ ] CHK045 - A profundidade de validacao antes do merge (suite completa vs `--fast`) esta acordada para uma mudanca que roda a cada tool call? [Risco, plan §Estrategia de implementacao] {humano}

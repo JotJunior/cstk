@@ -70,6 +70,10 @@ casos exclusivamente pelo exit code.
                  +-- >=1 candidato com status ativo ----------> ativa (0)
                  |
                  +-- 0 ativos E >=1 state.db ilegivel --------> indeterminada (2)
+                 |
+                 +-- teto defensivo de sondagem (SEC-M3, 100
+                     state-dirs) excedido ANTES de confirmar
+                     `ativa` -----------------------------------> indeterminada (2)
 ```
 
 Regra de desempate (FR-002, preservada de hoje):

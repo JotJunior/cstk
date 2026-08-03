@@ -158,6 +158,33 @@ self-update` **nao** e necessario. Projetos-alvo que ja tem os hooks
 provisionados precisam re-rodar `cstk install --scope project` para receber
 os hooks corrigidos.
 
+**Ordem de rollout catalogo x runtime (CHK043/task 1.8)**: os 3 hooks E o
+helper novo (`_hook-active-exec.sh`) vivem na MESMA skill
+(`agente-00c-runtime`), logo sao atualizados pelo MESMO comando
+(`cstk install`/`cstk update`) na MESMA operacao — nao ha janela onde um
+hook novo referencia um helper ainda ausente do catalogo, ou vice-versa
+(diferente do gotcha classico install-vs-self-update, que so se aplica
+quando runtime do binario e catalogo divergem). A janela de incoerencia
+possivel e outra: um host que roda `cstk update` **enquanto uma onda 00c
+esta aberta**, trocando os 3 arquivos de hook (e o helper) por baixo de uma
+execucao em andamento sob a versao antiga.
+
+Comportamento aceito (nenhuma mudanca de codigo exigida por esta feature):
+os hooks sao invocados **sincronamente pelo harness a cada tool call**, sem
+processo de longa duracao — nao ha estado em memoria que fique
+"desatualizado" a meio caminho. A pior consequencia possivel e um unico tool
+call, durante a troca de arquivos em si (janela de poucos milissegundos de
+`cp`/`mv` do instalador), ver um hook parcialmente escrito — cenario ja
+identico ao de qualquer atualizacao de skill hoje, nao introduzido por esta
+feature. Fora dessa janela minuscula, a proxima invocacao do hook (proximo
+tool call) ja usa a versao nova consistente (hook + helper do mesmo
+`cstk update`). **Decisao**: aceitavel sem aviso ou degradacao graciosa
+adicional — o comportamento best-effort atual (nenhuma garantia formal de
+janela de coerencia, mas sem inconsistencia hook-vs-helper por construirem
+parte do mesmo pacote) cobre o caso real. Revisitar apenas se a telemetria
+mostrar falhas correlacionadas a updates concorrentes com execucao ativa
+(nenhuma ate o momento).
+
 ## Convencoes de Borda
 
 **N/A — single-layer.** Esta feature vive inteiramente numa camada:
@@ -292,6 +319,26 @@ Procedimento da fase 0 (nesta ordem):
 
 Resultado da fase 0 **nao pode** ser "assumimos que o harness nega": ou ha
 fonte, ou vigora o auto-teto.
+
+**Resultado (task 1.1, onda-006, dec-039)**: fonte encontrada e verificada —
+doc oficial do Claude Agent SDK
+(`https://code.claude.com/docs/en/agent-sdk/hooks.md`, secao "Hook timeout")
+confirma que o estouro do timeout de um hook `PreToolUse` **nunca** resulta em
+"allow", em nenhuma versao do harness: a partir de v2.1.210 a tool call
+simplesmente nao roda (tool-result de erro, turno continua); antes de
+v2.1.210 era tratado como "user rejection" (tambem sem executar o comando).
+Detalhe completo + citacao literal em `research.md §"Resultado Fase 0 —
+semantica de timeout do hook PreToolUse"`. Consequencia: a condicao do passo
+2 acima foi satisfeita — o auto-teto interno **permanece implementado** nas
+FASEs 2/3 (nenhuma reducao de escopo), mas e reclassificado de "unica
+barreira contra bypass por timeout" para **defesa em profundidade**: o
+timeout de 5s do proprio harness ja garante, por fonte, que o comando nao
+roda mesmo se o auto-teto falhar por bug de implementacao. FR-003 (spec.md,
+task 1.2/CHK006) foi atualizado para nomear "estouro do auto-teto interno de
+deteccao" como quarta classe de falha de mecanismo, ao lado de dependencia
+ausente/arquivo corrompido/erro de leitura — o gate automatizado (FASE 6,
+`quickstart.md §Cenario 7`) passa a ter um cenario explicito cobrindo esse
+caminho, nao so o caminho feliz de latencia dentro do orcamento.
 
 ### SEC-M1 / M2 / M3 — mitigacoes de implementacao
 

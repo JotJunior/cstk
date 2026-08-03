@@ -21,7 +21,7 @@ regredir o caminho JSON existente.
 
 ## FASE 1 - Fundacao e Requisitos (achados do checklist + verificacao empirica SEC-H2)
 
-### 1.1 Verificacao empirica da semantica de timeout do hook PreToolUse (SEC-H2) `[C]`
+### 1.1 Verificacao empirica da semantica de timeout do hook PreToolUse (SEC-H2) `[C]` `[x]`
 
 Ref: plan.md §Estrategia de implementacao Fase 0, §SEC-H2 em detalhe; dec-026
 (bloqueio humano `block-001` aprovado com mitigacoes)
@@ -29,72 +29,106 @@ Ref: plan.md §Estrategia de implementacao Fase 0, §SEC-H2 em detalhe; dec-026
 Bloqueia o fechamento da FASE 3 (guarda de seguranca). Nao produz codigo de
 producao — produz evidencia/decisao rastreavel (Constitution VI).
 
-- [ ] 1.1.1 Buscar fonte rastreavel (doc oficial de hooks do Claude Code) sobre o comportamento do harness quando um hook `PreToolUse` excede o `timeout` configurado (`settings.snippet.json`, `"timeout": 5`)
-- [ ] 1.1.2 Se a doc nao resolver com certeza, construir hook `PreToolUse` sintetico que dorme alem do teto e observar empiricamente se a chamada `Bash` correspondente foi permitida ou negada
-- [ ] 1.1.3 Registrar a evidencia (fonte citada literalmente, ou output observado do experimento) como Decisao auditavel — nunca concluir sem fonte (Constitution VI)
-- [ ] 1.1.4 Documentar o resultado em `research.md` (nova secao "Resultado Fase 0 — semantica de timeout") e referenciar de volta em `plan.md §SEC-H2`
-- [ ] 1.1.5 Se o resultado nao confirmar, com fonte, que timeout de `PreToolUse` ja significa `deny`: manter o auto-teto interno fail-closed como default vigente (nenhuma acao adicional alem do que a FASE 2 ja projeta); registrar essa manutencao explicitamente
+**Resultado (onda-006, dec-039)**: fonte oficial encontrada e verificada
+(`code.claude.com/docs/en/agent-sdk/hooks.md` §"Hook timeout") — timeout de
+`PreToolUse` NUNCA resulta em "allow" em nenhuma versao do harness. Detalhe em
+`research.md §"Resultado Fase 0..."` e `plan.md §SEC-H2`.
 
-### 1.2 Elevar auto-teto de deteccao a requisito explicito de FR-003 `[A]`
+- [x] 1.1.1 Buscar fonte rastreavel (doc oficial de hooks do Claude Code) sobre o comportamento do harness quando um hook `PreToolUse` excede o `timeout` configurado (`settings.snippet.json`, `"timeout": 5`) <!-- fonte encontrada: code.claude.com/docs/en/agent-sdk/hooks.md -->
+- [x] 1.1.2 Se a doc nao resolver com certeza, construir hook `PreToolUse` sintetico que dorme alem do teto e observar empiricamente se a chamada `Bash` correspondente foi permitida ou negada <!-- N/A: doc resolveu com certeza, verificacao empirica sintetica nao necessaria -->
+- [x] 1.1.3 Registrar a evidencia (fonte citada literalmente, ou output observado do experimento) como Decisao auditavel — nunca concluir sem fonte (Constitution VI) <!-- dec-039, score 3 -->
+- [x] 1.1.4 Documentar o resultado em `research.md` (nova secao "Resultado Fase 0 — semantica de timeout") e referenciar de volta em `plan.md §SEC-H2`
+- [x] 1.1.5 Se o resultado nao confirmar, com fonte, que timeout de `PreToolUse` ja significa `deny`: manter o auto-teto interno fail-closed como default vigente (nenhuma acao adicional alem do que a FASE 2 ja projeta); registrar essa manutencao explicitamente <!-- resultado CONFIRMOU com fonte; auto-teto mantido na FASE 2/3, reclassificado para defesa em profundidade (nao removido) -->
+
+### 1.2 Elevar auto-teto de deteccao a requisito explicito de FR-003 `[A]` `[x]`
 
 Ref: checklists/security.md CHK006 (Gap); spec.md FR-003; plan.md §SEC-H2
 
-- [ ] 1.2.1 Editar `spec.md` FR-003 incluindo "estouro do auto-teto interno de deteccao" como classe de falha de mecanismo explicita (ao lado de dependencia ausente/corrompida/erro de leitura)
-- [ ] 1.2.2 Atualizar `plan.md §SEC-H2` referenciando o FR-003 revisado
-- [ ] 1.2.3 Revisar o criterio de aceite correspondente em `quickstart.md` (Cenario 7 / novo cenario, se necessario) para cobrir o caminho de estouro do auto-teto
+- [x] 1.2.1 Editar `spec.md` FR-003 incluindo "estouro do auto-teto interno de deteccao" como classe de falha de mecanismo explicita (ao lado de dependencia ausente/corrompida/erro de leitura)
+- [x] 1.2.2 Atualizar `plan.md §SEC-H2` referenciando o FR-003 revisado
+- [x] 1.2.3 Revisar o criterio de aceite correspondente em `quickstart.md` (Cenario 7 / novo cenario, se necessario) para cobrir o caminho de estouro do auto-teto <!-- novo Cenario 7b adicionado -->
 
-### 1.3 Requisito rastreavel para a fronteira de confianca de sourcing `[A]`
+### 1.3 Requisito rastreavel para a fronteira de confianca de sourcing `[A]` `[x]`
 
 Ref: checklists/security.md CHK007 (Gap); contracts/hook-active-exec.md
 §"Ordem MODIFICADA para o helper (SEC-H1)"; dec-026
 
-- [ ] 1.3.1 Adicionar requisito novo (ou subitem de FR existente) em `spec.md` cobrindo a ordem de resolucao invertida (`$HOME` antes de `<cwd>`) e o pre-check inline como MUST rastreavel — hoje so existe no contrato, nao na spec
-- [ ] 1.3.2 Referenciar `dec-026` na spec como origem da decisao de desenho aprovada
-- [ ] 1.3.3 Validar que `contracts/hook-active-exec.md` cita o novo requisito da spec
+**Resultado**: novo `spec.md` FR-008 cobre pre-check inline + ordem invertida
+de resolucao (`$HOME` antes de `<cwd>`), citando `dec-026`.
 
-### 1.4 Quantificar o teto defensivo de state-dirs sondados por invocacao `[A]`
+- [x] 1.3.1 Adicionar requisito novo (ou subitem de FR existente) em `spec.md` cobrindo a ordem de resolucao invertida (`$HOME` antes de `<cwd>`) e o pre-check inline como MUST rastreavel — hoje so existe no contrato, nao na spec <!-- FR-008 -->
+- [x] 1.3.2 Referenciar `dec-026` na spec como origem da decisao de desenho aprovada <!-- FR-008 cita dec-026 -->
+- [x] 1.3.3 Validar que `contracts/hook-active-exec.md` cita o novo requisito da spec <!-- referencias a FR-008 adicionadas nas 2 secoes do contrato -->
+
+### 1.4 Quantificar o teto defensivo de state-dirs sondados por invocacao `[A]` `[x]`
 
 Ref: checklists/security.md CHK011 (Ambiguity); contracts/hook-active-exec.md
 §SEC-M3
 
-- [ ] 1.4.1 Definir o valor numerico do teto (quantidade maxima de state-dirs sondados por invocacao antes de `MECANISMO_FALHOU`/no-op), com justificativa (medicao empirica ou decisao de produto documentada)
-- [ ] 1.4.2 Atualizar `contracts/hook-active-exec.md §SEC-M3` com o numero concreto
-- [ ] 1.4.3 Nota: o valor definido aqui e insumo de CHK022 ({humano}) — confirmacao final do dono do produto acontece no checkpoint 1.9, antes da FASE 3
+**Resultado**: teto = **100** state-dirs por invocacao, grounded em medicao
+empirica real neste repositorio (23 dirs organicos hoje, ~5.2ms/dir, ~119ms
+total — ver `research.md §"Achado empirico"`). Achado critico adicional:
+essa mesma medicao revela que o custo ORGANICO do scan (nao-adversarial) ja
+se aproxima do teto de latencia do gate (150ms/FR-005) — risco distinto do
+teto defensivo, levado ao checkpoint 1.9 (CHK022/CHK044).
 
-### 1.5 Reconciliar SC-003/FR-005 com os tetos reais do gate de latencia `[C]`
+- [x] 1.4.1 Definir o valor numerico do teto (quantidade maxima de state-dirs sondados por invocacao antes de `MECANISMO_FALHOU`/no-op), com justificativa (medicao empirica ou decisao de produto documentada) <!-- teto=100, medicao empirica real -->
+- [x] 1.4.2 Atualizar `contracts/hook-active-exec.md §SEC-M3` com o numero concreto
+- [x] 1.4.3 Nota: o valor definido aqui e insumo de CHK022 ({humano}) — confirmacao final do dono do produto acontece no checkpoint 1.9, antes da FASE 3
+
+### 1.5 Reconciliar SC-003/FR-005 com os tetos reais do gate de latencia `[C]` `[x]`
 
 Ref: checklists/security.md CHK012 (Conflict — PRIORITARIO); spec.md
 SC-003/FR-005; research.md Decision 3; quickstart.md Cenario 7
 
-- [ ] 1.5.1 Editar `spec.md` separando explicitamente "orcamento de projeto" (~30 ms metricas / ~177 ms guarda — referencia de desenho medida nesta maquina) de "teto de regressao do gate automatizado" (150 ms / 400 ms — criterio de aceite verificavel, 5x o orcamento por ruido de CI) em SC-003 e FR-005
-- [ ] 1.5.2 Atualizar `quickstart.md §Cenario 7` citando os dois numeros com os rotulos corretos, sem ambiguidade sobre qual "vence" como criterio de aceite
-- [ ] 1.5.3 Esta tarefa e pre-requisito obrigatorio da FASE 6 (Gate de Latencia) — nenhum gate automatizado deve ser implementado antes desta reconciliacao
+**Resultado**: SC-003/FR-005 reescritos separando "orcamento de projeto"
+(~30ms/~177ms, referencia de desenho) de "teto do gate" (150ms/400ms, unico
+criterio verificavel de pass/fail). `quickstart.md §Cenario 7` idem.
 
-### 1.6 Reconciliar busy_timeout com o orcamento de latencia do hook de metrica `[A]`
+- [x] 1.5.1 Editar `spec.md` separando explicitamente "orcamento de projeto" (~30 ms metricas / ~177 ms guarda — referencia de desenho medida nesta maquina) de "teto de regressao do gate automatizado" (150 ms / 400 ms — criterio de aceite verificavel, 5x o orcamento por ruido de CI) em SC-003 e FR-005
+- [x] 1.5.2 Atualizar `quickstart.md §Cenario 7` citando os dois numeros com os rotulos corretos, sem ambiguidade sobre qual "vence" como criterio de aceite
+- [x] 1.5.3 Esta tarefa e pre-requisito obrigatorio da FASE 6 (Gate de Latencia) — nenhum gate automatizado deve ser implementado antes desta reconciliacao <!-- satisfeito nesta onda, antes de qualquer codigo da FASE 6 -->
+
+### 1.6 Reconciliar busy_timeout com o orcamento de latencia do hook de metrica `[A]` `[x]`
 
 Ref: checklists/operational.md CHK027 (Ambiguity); contracts/hook-active-exec.md
 §SEC-M2; spec.md FR-005
 
-- [ ] 1.6.1 Decidir a politica de contencao do SQLite: esperar o `busy_timeout` inteiro (200 ms, aceitando estouro de latencia sobre o orcamento de ~30 ms) vs desistir cedo e tratar como `indeterminada`/no-op — registrar como Decisao auditavel com justificativa
-- [ ] 1.6.2 Atualizar `contracts/hook-active-exec.md §SEC-M2` com a politica escolhida e o valor de `busy_timeout` final
-- [ ] 1.6.3 Refletir a politica escolhida em `spec.md` FR-004/FR-005 se a redacao atual pressupuser o contrario
+**Resultado**: politica DIFERENCIADA por hook — guarda mantem
+`busy_timeout=200ms` (fail-closed pode tolerar a espera, ainda folgado
+dentro do teto de gate de 400ms); hooks de metrica usam `busy_timeout=50ms`
+(fail-open nao pode blindar 200ms de espera em TODA tool call sem estourar o
+teto de gate de 150ms). Ver `contracts/hook-active-exec.md §SEC-M2`.
 
-### 1.7 Quantificar a tolerancia de fronteira na contagem de tool calls `[M]`
+- [x] 1.6.1 Decidir a politica de contencao do SQLite: esperar o `busy_timeout` inteiro (200 ms, aceitando estouro de latencia sobre o orcamento de ~30 ms) vs desistir cedo e tratar como `indeterminada`/no-op — registrar como Decisao auditavel com justificativa <!-- politica hibrida: 200ms guarda / 50ms metricas -->
+- [x] 1.6.2 Atualizar `contracts/hook-active-exec.md §SEC-M2` com a politica escolhida e o valor de `busy_timeout` final
+- [x] 1.6.3 Refletir a politica escolhida em `spec.md` FR-004/FR-005 se a redacao atual pressupuser o contrario <!-- FR-004 atualizado com busy_timeout=50ms para hooks de metrica -->
+
+### 1.7 Quantificar a tolerancia de fronteira na contagem de tool calls `[M]` `[x]`
 
 Ref: checklists/operational.md CHK033 (Ambiguity); spec.md SC-002/US2
 Acceptance 1; quickstart.md Cenario 12
 
-- [ ] 1.7.1 Definir o numero/regra concreta de tolerancia aceitavel na fronteira open/close de onda (ex: N ticks perdidos no maximo, exatamente na borda)
-- [ ] 1.7.2 Atualizar `spec.md` SC-002 com o criterio quantificado
-- [ ] 1.7.3 Validar o criterio contra `quickstart.md §Cenario 12` (roundtrip real via `state-ondas.sh`)
+**Resultado**: tolerancia = **maximo 2 ticks perdidos por onda** (1 na
+abertura + 1 no fechamento), derivada do mecanismo real de reset/agregacao
+do sidecar em `state-ondas.sh` (nao um numero arbitrario).
 
-### 1.8 Definir ordem de rollout entre catalogo e runtime `[M]`
+- [x] 1.7.1 Definir o numero/regra concreta de tolerancia aceitavel na fronteira open/close de onda (ex: N ticks perdidos no maximo, exatamente na borda) <!-- 2 ticks/onda, 1 por borda -->
+- [x] 1.7.2 Atualizar `spec.md` SC-002 com o criterio quantificado
+- [x] 1.7.3 Validar o criterio contra `quickstart.md §Cenario 12` (roundtrip real via `state-ondas.sh`)
+
+### 1.8 Definir ordem de rollout entre catalogo e runtime `[M]` `[x]`
 
 Ref: checklists/operational.md CHK043 (Gap); plan.md §Distribuicao
 
-- [ ] 1.8.1 Documentar em `plan.md §Distribuicao` (ou nota dedicada) o comportamento esperado quando o catalogo (`~/.claude`) e atualizado com os hooks novos enquanto uma onda 00c segue aberta sob versao antiga do runtime
-- [ ] 1.8.2 Decidir se e necessario aviso/degradacao graciosa adicional, ou se o comportamento atual (best-effort, sem janela de coerencia garantida) e aceitavel — registrar a decisao
-- [ ] 1.8.3 Nota: esta tarefa NAO resolve CHK044/CHK045 ({humano}) — apenas fecha o Gap de documentacao; a validacao de impacto operacional fica no checkpoint 1.9
+**Resultado**: hooks + helper vivem na MESMA skill (mesmo `cstk
+update`/`install`), sem janela hook-novo-vs-helper-ausente. Unico risco
+residual (troca de arquivos durante onda aberta) aceito sem mitigacao
+adicional — ver `plan.md §Distribuicao` (paragrafo "Ordem de rollout").
+
+- [x] 1.8.1 Documentar em `plan.md §Distribuicao` (ou nota dedicada) o comportamento esperado quando o catalogo (`~/.claude`) e atualizado com os hooks novos enquanto uma onda 00c segue aberta sob versao antiga do runtime
+- [x] 1.8.2 Decidir se e necessario aviso/degradacao graciosa adicional, ou se o comportamento atual (best-effort, sem janela de coerencia garantida) e aceitavel — registrar a decisao <!-- aceitavel, sem mitigacao adicional -->
+- [x] 1.8.3 Nota: esta tarefa NAO resolve CHK044/CHK045 ({humano}) — apenas fecha o Gap de documentacao; a validacao de impacto operacional fica no checkpoint 1.9
 
 ### 1.9 Checkpoint de bloqueio humano pre-implementacao `[C]`
 
@@ -104,9 +138,18 @@ CHK044, CHK045 ({humano})
 Bloqueia o inicio da FASE 3 (execute-task da guarda de seguranca). Nao e
 tarefa de codigo — e um gate de decisao do dono do produto.
 
-- [ ] 1.9.1 Confirmar com o dono do produto os valores numericos definidos em 1.4 (teto SEC-M3) e a manutencao/relaxamento do auto-teto SEC-H2 (1.1) — CHK022
-- [ ] 1.9.2 Confirmar aceite do impacto operacional de habilitar a guarda fail-closed em projetos hoje desprotegidos (migrados para SQLite, atualmente sem guarda alguma) — CHK044
-- [ ] 1.9.3 Confirmar a profundidade de validacao exigida antes do merge de cada fase mergeavel (suite completa `~12 min` vs `--fast`) — CHK045
+**Status (onda-006)**: as tasks 1.1-1.8 prepararam evidencia e valores
+concretos para as 3 perguntas (teto SEC-M3=100 com medicao empirica real;
+auto-teto SEC-H2 reclassificado com fonte oficial), mas CHK022 (risco),
+CHK044 (impacto operacional) e CHK045 (politica de merge) permanecem
+decisoes de apetite de risco/produto que o agente autonomo nao tem
+autoridade para fechar sozinho. **Bloqueio humano consolidado registrado:
+`block-002` (dec-047)** — onda encerrada em `aguardando_humano`. As 3
+subtarefas abaixo permanecem `[ ]` ate a resposta do operador.
+
+- [ ] 1.9.1 Confirmar com o dono do produto os valores numericos definidos em 1.4 (teto SEC-M3) e a manutencao/relaxamento do auto-teto SEC-H2 (1.1) — CHK022 <!-- aguardando resposta, block-002 -->
+- [ ] 1.9.2 Confirmar aceite do impacto operacional de habilitar a guarda fail-closed em projetos hoje desprotegidos (migrados para SQLite, atualmente sem guarda alguma) — CHK044 <!-- aguardando resposta, block-002 -->
+- [ ] 1.9.3 Confirmar a profundidade de validacao exigida antes do merge de cada fase mergeavel (suite completa `~12 min` vs `--fast`) — CHK045 <!-- aguardando resposta, block-002 -->
 - [ ] 1.9.4 Registrar as 3 respostas como Decisao auditavel ANTES de iniciar a FASE 3
 
 ---

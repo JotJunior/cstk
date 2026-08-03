@@ -178,9 +178,37 @@ mensagem.
 | `posttooluse-agent-usage.sh` | mesma ordem do tick | **150 ms** |
 | `pretooluse-bash-guard.sh` | 17.36 ms | **400 ms** |
 
-O cenario **falha o build** se a mediana exceder o teto. Se `sqlite3` ou
-`perl` estiverem ausentes, o cenario faz **skip** (nunca fail) — e um gate
-de performance, nao de disponibilidade de ferramenta.
+O cenario **falha o build** se a mediana exceder o **teto do gate** (150 ms /
+400 ms) — esse teto, e SOMENTE ele, e o criterio de pass/fail (FR-005/SC-003,
+CHK012/task 1.5). A coluna "Mediana medida" acima e o **orcamento de
+projeto** (~30 ms/~177 ms referenciado em SC-003) — uma referencia de
+desenho, NAO um segundo criterio de aceite: um build com mediana de, por
+exemplo, 80ms passa o gate (< 150ms) mesmo excedendo o orcamento de projeto
+de ~30ms, porque o orcamento e informativo e o teto do gate e o unico
+verificavel. Se `sqlite3` ou `perl` estiverem ausentes, o cenario faz
+**skip** (nunca fail) — e um gate de performance, nao de disponibilidade de
+ferramenta.
+
+### Cenario 7b — Estouro do auto-teto interno de deteccao (FR-003, SEC-H2)
+
+Cobre a quarta classe de falha de mecanismo adicionada a FR-003 (task 1.2 /
+CHK006) — distinta do caminho feliz acima, que mede latencia DENTRO do
+orcamento.
+
+1. Sandbox com um state-dir SQLite artificialmente lento o bastante para
+   estourar o auto-teto interno do helper (ex: `state.db` com lock mantido
+   por um processo auxiliar alem do `busy_timeout`, ou um stub de
+   `sqlite3`/`jq` que dorme alem do auto-teto — a implementacao concreta do
+   auto-teto e definida na FASE 2/3; este cenario e o contrato de aceite que
+   ela precisa satisfazer).
+2. Disparar `pretooluse-bash-guard.sh`.
+
+**Expected**: o hook emite `MECANISMO_FALHOU` (`deny`), nunca stdout vazio
+nem `allow` — o estouro do auto-teto e tratado como falha de mecanismo
+(FR-003), igual a dependencia ausente/arquivo corrompido/erro de leitura.
+Este e o caminho que prova que o auto-teto funciona como defesa em
+profundidade mesmo apos a confirmacao (research.md §"Resultado Fase 0") de
+que o timeout do harness ja e fail-closed por si so.
 
 ---
 
@@ -254,9 +282,13 @@ qual esta regressao chegou a producao.
 3. Fechar a onda (`state-ondas.sh end`) e ler o contador de tool calls
    agregado no estado.
 
-**Expected**: o contador reflete N (menos, no maximo, os ticks exatamente
-na fronteira de abertura/fechamento — a mesma tolerancia ja aceita sob
-backend JSON). Hoje esse valor e invariavelmente `0` sob SQLite.
+**Expected**: o contador reflete N, com tolerancia maxima de **2 ticks
+perdidos por onda** (no maximo 1 na abertura, no maximo 1 no fechamento —
+quantificado em `spec.md` SC-002/task 1.7, a partir da janela de corrida real
+entre o reset/agregacao do sidecar em `state-ondas.sh start`/`end` e um
+`append` concorrente do hook). Perda acima de 2 ticks, ou fora dessas duas
+bordas, e regressao — mesma margem ja aceita sob backend JSON. Hoje esse
+valor e invariavelmente `0` sob SQLite.
 
 > Este e o unico cenario que exige execucao autonoma real; os demais rodam
 > com sandboxes sinteticos. Ele valida a integracao ponta a ponta
@@ -275,6 +307,7 @@ backend JSON). Hoje esse valor e invariavelmente `0` sob SQLite.
 | 5 | FR-003 |
 | 6 | FR-004 |
 | 7 | FR-005, SC-003 |
+| 7b | FR-003 (estouro do auto-teto interno) |
 | 8, 10 | FR-006, FR-007, SC-004 |
 | 9 | FR-003, FR-004, FR-007 |
 | 11 | prevencao de regressao (research Decision 6) |
