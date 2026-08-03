@@ -116,7 +116,7 @@ auto-contidos).
 
 Vence o primeiro existente **e executavel**. Exit `1` se nenhum encontrado.
 
-### Ordem MODIFICADA para o helper (SEC-H1) [PROPOSTA]
+### Ordem MODIFICADA para o helper (SEC-H1) [APROVADA — dec-026]
 
 Para `_hook-active-exec.sh` — e **somente** para ele — a ordem dos
 candidatos 2 e 3 e **invertida**:
@@ -156,7 +156,7 @@ operador — que passam a nao tocar em nenhum arquivo externo.
 | SEC-M1 | NAO interpolar o path cru numa URI `file:...`. Usar `sqlite3 -readonly <path>` ou escapar `?`, `#`, `%` antes de montar a URI |
 | SEC-M2 | Emitir `PRAGMA busy_timeout=200;` antes do `SELECT`; descartar o eco do pragma no stdout (gotcha documentado em `_state-db.sh` L77-89) |
 | SEC-M3 | Ordenar os short-names (`LC_ALL=C sort`) **antes** de sondar e parar no primeiro ativo; aplicar teto defensivo de state-dirs sondados por invocacao |
-| SEC-H2 | Auto-teto interno de tempo bem abaixo do `timeout: 5` do harness, com `MECANISMO_FALHOU` explicito no guard — a menos que a doc oficial confirme que timeout de hook `PreToolUse` ja significa `deny` |
+| SEC-H2 | **Fase 0 obrigatoria (dec-026)**: verificar em fonte rastreavel a semantica de estouro de `timeout` em hook `PreToolUse`. Default vigente ate prova em contrario: auto-teto interno bem abaixo do `timeout: 5` do harness, com `MECANISMO_FALHOU` explicito no guard. So relaxavel se houver fonte confirmando que timeout ja significa `deny` |
 
 > Nota de implementacao: para um arquivo **sourceable** o teste `-x` do
 > `_pbg_resolve_dep` original nao e apropriado (helpers `_*.sh` do runtime

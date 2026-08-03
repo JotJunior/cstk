@@ -182,6 +182,7 @@ tecnica (helper antes dos consumidores):
 
 | Fase | Entrega | Requisitos | Independentemente testavel |
 |------|---------|------------|----------------------------|
+| 0 | **Verificacao empirica da semantica de timeout de hook `PreToolUse`** (SEC-H2) — bloqueia o fechamento da fase 2 | FR-003, SEC-H2 (dec-026) | sim — procedimento em §SEC-H2 |
 | 1 | `_hook-active-exec.sh` + `test_hook-active-exec.sh` | FR-001, FR-002, FR-007 | sim — unitario, sem hooks |
 | 2 | `pretooluse-bash-guard.sh` + extensao do teste | FR-003, SC-001 (US1, P1) | sim — quickstart 1, 2, 5, 9 |
 | 3 | `posttooluse-tool-call-tick.sh` + extensao | FR-004, SC-002 (US2, P2) | sim — quickstart 3, 6 |
@@ -190,12 +191,25 @@ tecnica (helper antes dos consumidores):
 | 6 | Extensao do `test_state-parity-sweep.sh` a `hooks/` + allowlist | prevencao de regressao | sim — quickstart 11 |
 
 Cada fase e mergeavel isoladamente: apos a fase 2 a regressao de seguranca
-(a mais grave) ja esta fechada, mesmo que as metricas sigam zeradas.
+(a mais grave) ja esta fechada, mesmo que as metricas sigam zeradas. A fase 0
+nao produz codigo de producao: e o gate de verificacao exigido por dec-026 e
+pode rodar em paralelo com a fase 1, mas MUST estar concluida antes de a fase
+2 ser considerada fechada.
 
 ## Security Review (gate `owasp-security`, pos-design)
 
 Revisao de desenho (nao ha codigo ainda) contra OWASP Top 10:2025, Agentic
 2026 e CWE Top 25:2025. Escopo: os 4 artefatos desta fase.
+
+> **Status: APROVADO COM MITIGACOES** — bloqueio humano `block-001`
+> respondido pelo operador em `dec-026` (score 3):
+> `aprovar-com-mitigacoes-sech1-e-task-verificacao-sech2`. Os dois findings
+> High estao endereçados: **SEC-H1** por mitigacoes ja incorporadas ao
+> desenho (pre-check inline + inversao da ordem de resolucao, §SEC-H1 e
+> `contracts/hook-active-exec.md`); **SEC-H2** pela promocao a fase 0 da
+> estrategia de implementacao — verificacao empirica obrigatoria com
+> auto-teto interno fail-closed como default. Os 3 Medium estao mitigados no
+> contrato; os 2 Low sao aceitos como residual documentado.
 
 ### Findings
 
@@ -244,7 +258,7 @@ candidato `cwd` volta a ser o unico — situacao identica a de hoje para o
 guard. Reduzir isso alem deste ponto exigiria assinatura de artefato, fora
 do escopo desta feature.
 
-### SEC-H2 em detalhe (pendencia de verificacao, nao suposicao)
+### SEC-H2 em detalhe (fase 0 obrigatoria — dec-026)
 
 O `settings.snippet.json` registra `"timeout": 5` para os tres hooks. **Nao
 foi possivel determinar, com fonte rastreavel, o que o harness faz quando um
@@ -253,15 +267,31 @@ hook `PreToolUse` excede esse timeout** — se trata como `deny`, como
 que empurre o hook alem de 5 s (ver SEC-M3) converte uma degradacao de
 performance em **bypass da guarda**, invertendo o fail-closed.
 
-Por Constitution VI, o desenho **nao assume** nenhuma das respostas. A
-implementacao MUST, antes de fechar a fase 2 da estrategia:
+Por Constitution VI, o desenho **nao assume** nenhuma das respostas. Por
+dec-026 essa pendencia deixou de ser nota de risco e virou a **fase 0** da
+estrategia de implementacao — task obrigatoria, com o auto-teto interno
+fail-closed como **default vigente ate prova em contrario**.
 
-1. verificar o comportamento na documentacao oficial de hooks do Claude
-   Code (fonte rastreavel), e
-2. se a semantica for "allow" ou indeterminada, adotar um **auto-teto
-   interno** bem abaixo de 5 s: o hook aborta a propria varredura e emite
+Procedimento da fase 0 (nesta ordem):
+
+1. **Verificar em fonte rastreavel** o que o harness faz quando um hook
+   `PreToolUse` excede o `timeout` configurado: documentacao oficial de
+   hooks do Claude Code, ou observacao empirica direta (hook sintetico que
+   dorme alem do teto, registrando se a chamada Bash foi permitida ou
+   negada). Registrar a fonte — doc citada ou output observado — como
+   evidencia da decisao; **sem fonte, nao ha conclusao** (Constitution VI).
+2. **Adotar o auto-teto interno como default**: independentemente do
+   resultado, o hook impoe um teto proprio bem abaixo do `timeout: 5` do
+   harness; ao estoura-lo, aborta a propria varredura e emite
    `MECANISMO_FALHOU` (fail-closed explicito) em vez de deixar o harness
-   decidir por timeout.
+   decidir por timeout. So se a verificacao do passo 1 confirmar, com fonte,
+   que timeout de hook `PreToolUse` ja significa `deny`, o auto-teto pode
+   ser relaxado a mera defesa em profundidade.
+3. **Cobrir por teste** o caminho do auto-teto: varredura que estoura o teto
+   interno produz `MECANISMO_FALHOU`, nao `allow`.
+
+Resultado da fase 0 **nao pode** ser "assumimos que o harness nega": ou ha
+fonte, ou vigora o auto-teto.
 
 ### SEC-M1 / M2 / M3 — mitigacoes de implementacao
 
