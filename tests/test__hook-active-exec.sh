@@ -241,11 +241,17 @@ scenario_stderr_sempre_vazio_uso_incorreto_cwd_vazio() {
 
 scenario_g7_helper_nao_escreve_nenhum_arquivo() {
   _sqlite_state_db "$TMPDIR_TEST" "demo" "em_andamento"
-  _before=$(find "$TMPDIR_TEST" -type f | LC_ALL=C sort)
+  # Sidecars -shm/-wal ficam FORA da comparacao: sao artefatos legitimos
+  # do motor no fallback rw sobre um db WAL em repouso (nota de escopo do
+  # contrato hook-active-exec.md / cabecalho do helper, research Decision
+  # 1.a). A persistencia deles pos-fixture varia por plataforma (macOS os
+  # mantem; Linux os remove no close), o que tornava este cenario
+  # plataforma-dependente — vide FAIL do release v6.4.0 no CI Ubuntu.
+  _before=$(find "$TMPDIR_TEST" -type f | grep -v -E -- '-(shm|wal)$' | LC_ALL=C sort)
   _run_helper "$TMPDIR_TEST"
-  _after=$(find "$TMPDIR_TEST" -type f | LC_ALL=C sort)
+  _after=$(find "$TMPDIR_TEST" -type f | grep -v -E -- '-(shm|wal)$' | LC_ALL=C sort)
   [ "$_before" = "$_after" ] || {
-    _fail "G7" "conjunto de arquivos mudou apos a chamada (antes/depois):
+    _fail "G7" "conjunto de arquivos (excluindo sidecars -shm/-wal) mudou apos a chamada (antes/depois):
 before: $_before
 after:  $_after"
     return 1
