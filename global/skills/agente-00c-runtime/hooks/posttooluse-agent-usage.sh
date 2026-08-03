@@ -30,11 +30,23 @@
 # `state-ondas.sh end` (FASE 3); `start`/`end` resetam o sidecar (janela de
 # contagem = start->end, mesmo ciclo do sidecar de ticks).
 #
-# Deteccao de execucao ativa: mesmo algoritmo e precedencia de
-# pretooluse-bash-guard.sh / posttooluse-tool-call-tick.sh (agente-00c
-# vence; entre feature-00c, menor short-name lexicografico byte-wise;
-# status em_andamento|aguardando_humano). Fora de execucao ativa: exit 0,
-# zero interferencia na sessao manual.
+# Deteccao de execucao ativa (feature hooks-db-parity, FASE 5): delegada ao
+# helper agnostico a backend `_hook-active-exec.sh`
+# (docs/specs/hooks-db-parity/contracts/hook-active-exec.md), substituindo a
+# antiga leitura inline de `state.json` (unico backend suportado ate entao).
+# Mesmo padrao ja portado em posttooluse-tool-call-tick.sh (FASE 4): pre-check
+# inline (SEC-H1/spec.md FR-008) com builtins puros, seguido de
+# `_resolve_dep_hae` com ORDEM INVERTIDA (dec-026): `$HOME` antes de
+# `<cwd>`. Precedencia dentro do helper: agente-00c vence; entre
+# feature-00c, menor short-name lexicografico byte-wise; status
+# em_andamento|aguardando_humano. Fora de execucao ativa: exit 0, zero
+# interferencia na sessao manual.
+#
+# Politica de exit codes do helper — fail-OPEN (metrica, nao guarda),
+# identica ao hook de ticks: `0` (ativa) grava a linha; `1` (inativa) e
+# `2`/`127` (indeterminada/helper irresolvivel) sao NO-OP silencioso, exit 0.
+# busy_timeout diferenciado (SEC-M2/task 1.6/CHK027): 50ms
+# (HAE_BUSY_TIMEOUT_MS=50), nao os 200ms tolerados pelo guard.
 #
 # Permissao do sidecar (CHK017, data-model.md §Sidecar): `umask 077` MUST
 # ser aplicado antes do primeiro append de cada arquivo (a criacao so
@@ -60,6 +72,8 @@ set -u
 
 _PAU_CAP_LINES=500
 
+_PAU_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || _PAU_SELF_DIR=""
+
 command -v jq >/dev/null 2>&1 || exit 0
 
 _PAU_INPUT=$(cat 2>/dev/null) || exit 0
@@ -73,47 +87,79 @@ _PAU_TOOL_NAME=$(printf '%s' "$_PAU_INPUT" | jq -r '.tool_name // ""' 2>/dev/nul
 # (contracts/hook-posttooluse-agent-usage.md §1.2).
 [ "$_PAU_TOOL_NAME" = "Agent" ] || exit 0
 
-_pau_is_active_status() {
-  case "$1" in
-    em_andamento | aguardando_humano) return 0 ;;
-    *) return 1 ;;
-  esac
+# _pau_precheck_active_scope -> 0 se ao menos um `state.json` OU `state.db`
+# existe sob `$_PAU_CWD/.claude/agente-00c-state/` ou
+# `$_PAU_CWD/.claude/feature-00c-state/*/` (SEC-H1, spec.md FR-008). Usa
+# EXCLUSIVAMENTE builtins do shell — nenhuma resolucao de dependencia nem
+# sourcing acontece antes desta checagem.
+_pau_precheck_active_scope() {
+  _pau_pa_agente="$_PAU_CWD/.claude/agente-00c-state"
+  if [ -f "$_pau_pa_agente/state.json" ] || [ -f "$_pau_pa_agente/state.db" ]; then
+    return 0
+  fi
+
+  _pau_pa_froot="$_PAU_CWD/.claude/feature-00c-state"
+  if [ -d "$_pau_pa_froot" ]; then
+    for _pau_pa_d in "$_pau_pa_froot"/*/; do
+      [ -d "$_pau_pa_d" ] || continue
+      if [ -f "${_pau_pa_d}state.json" ] || [ -f "${_pau_pa_d}state.db" ]; then
+        return 0
+      fi
+    done
+  fi
+  return 1
 }
 
-# Deteccao de execucao ativa (precedencia identica ao pretooluse-bash-guard.sh
-# e ao posttooluse-tool-call-tick.sh — contrato §4, REUSO nao reimplementacao).
-_PAU_STATE_DIR=""
+# Pre-check inline: sem NENHUM state.json/state.db sob agente-00c-state/ ou
+# feature-00c-state/*/, o hook sai 0 sem resolver nem sourcear coisa alguma
+# (FR-006, 100% das sessoes manuais).
+_pau_precheck_active_scope || exit 0
 
-_pau_agente_state="$_PAU_CWD/.claude/agente-00c-state/state.json"
-if [ -f "$_pau_agente_state" ]; then
-  _pau_status=$(jq -r '.execution.status // ""' "$_pau_agente_state" 2>/dev/null) || _pau_status=""
-  if _pau_is_active_status "$_pau_status"; then
-    _PAU_STATE_DIR="$_PAU_CWD/.claude/agente-00c-state"
+# _pau_resolve_dep_hae REL_PATH -> cadeia de resolucao para
+# _hook-active-exec.sh com a ORDEM MODIFICADA exigida pelo contrato
+# (contracts/hook-active-exec.md §"Ordem MODIFICADA para o helper (SEC-H1)
+# [APROVADA — dec-026]"): $HOME (escopo global) ANTES de <cwd> (escopo
+# project); teste `-r` (legivel), nao `-x` (helpers `_*.sh` do runtime nao
+# sao executaveis). Paridade com _pbg_resolve_dep_hae/_ptt_resolve_dep_hae.
+_pau_resolve_dep_hae() {
+  _pau_rel=$1
+  if [ -n "$_PAU_SELF_DIR" ] && [ -r "$_PAU_SELF_DIR/../$_pau_rel" ]; then
+    printf '%s' "$_PAU_SELF_DIR/../$_pau_rel"
+    return 0
   fi
+  if [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/$_pau_rel" ]; then
+    printf '%s' "$HOME/.claude/skills/agente-00c-runtime/$_pau_rel"
+    return 0
+  fi
+  if [ -n "${_PAU_CWD:-}" ] && [ -r "$_PAU_CWD/.claude/skills/agente-00c-runtime/$_pau_rel" ]; then
+    printf '%s' "$_PAU_CWD/.claude/skills/agente-00c-runtime/$_pau_rel"
+    return 0
+  fi
+  return 1
+}
+
+_PAU_HAE_HELPER=$(_pau_resolve_dep_hae "scripts/_hook-active-exec.sh") || exit 0
+
+# shellcheck disable=SC1090 # caminho resolvido dinamicamente pela cadeia de candidatos acima
+. "$_PAU_HAE_HELPER"
+
+# SEC-M2: hook de metrica tolera so 50ms de contencao (orcamento de ~30ms) —
+# diferente dos 200ms tolerados pelo guard (task 1.6/contracts §SEC-M2).
+HAE_BUSY_TIMEOUT_MS=50
+export HAE_BUSY_TIMEOUT_MS
+
+if _PAU_HAE_OUT=$(hook_active_exec "$_PAU_CWD"); then
+  _PAU_HAE_RC=0
+else
+  _PAU_HAE_RC=$?
 fi
 
-if [ -z "$_PAU_STATE_DIR" ]; then
-  _pau_feat_root="$_PAU_CWD/.claude/feature-00c-state"
-  if [ -d "$_pau_feat_root" ]; then
-    _pau_active_shorts=""
-    for _pau_d in "$_pau_feat_root"/*/; do
-      [ -d "$_pau_d" ] || continue
-      [ -f "${_pau_d}state.json" ] || continue
-      _pau_status=$(jq -r '.execution.status // ""' "${_pau_d}state.json" 2>/dev/null) || continue
-      _pau_is_active_status "$_pau_status" || continue
-      _pau_active_shorts="${_pau_active_shorts}$(basename "$_pau_d")
-"
-    done
-    if [ -n "$_pau_active_shorts" ]; then
-      # Ordem lexicografica byte-wise (C locale), deterministica — mesma
-      # regra do guard e do hook de ticks.
-      _pau_first=$(printf '%s' "$_pau_active_shorts" | LC_ALL=C sort | sed -n '1p')
-      _PAU_STATE_DIR="$_pau_feat_root/$_pau_first"
-    fi
-  fi
-fi
+# Fail-open: so o caso `0` (ativa) grava a linha. Inativa (1), indeterminada
+# (2) e helper irresolvivel (convencao 127, ja tratado acima via `exit 0`)
+# sao TODOS no-op silencioso — nunca stderr, nunca sidecar criado.
+[ "$_PAU_HAE_RC" -eq 0 ] || exit 0
 
-# Fora de escopo: nenhuma execucao ativa -> zero interferencia.
+_PAU_STATE_DIR=$(printf '%s' "$_PAU_HAE_OUT" | cut -f2)
 [ -n "$_PAU_STATE_DIR" ] || exit 0
 
 _PAU_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _PAU_TS="unknown"

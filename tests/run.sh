@@ -368,9 +368,11 @@ _is_internal_test() {
 # _is_slow_test PATH -> exit 0 se o test e "lento", 1 caso contrario.
 # "Lento" = tempo de parede medido > ~5s (corte limpo no perfil). Allowlist
 # DERIVADA DE MEDICAO (nao de categoria): rodada `for f in tests/**/test_*.sh;
-# do time sh "$f"; done` em 2026-05-24. Os 11 abaixo somam ~177s dos ~260s da
-# suite — `--fast` os pula e roda em ~1/3 do tempo. Reavaliar se o perfil mudar
-# (ver tests/README.md "Suite rapida vs completa"). Mesmo estilo de
+# do time sh "$f"; done` em 2026-05-24 (11 entradas originais, ~177s dos
+# ~260s da suite). test_pretooluse-bash-guard.sh entrou depois (feature
+# hooks-db-parity FASE 6, gate de latencia) apos medicao dedicada — `--fast`
+# os pula e roda em fracao do tempo. Reavaliar se o perfil mudar (ver
+# tests/README.md "Suite rapida vs completa"). Mesmo estilo de
 # _is_internal_test; consumida por _select_tests p/ servir --fast/--slow.
 _is_slow_test() {
   _slow_name=$(basename "$1")
@@ -381,6 +383,7 @@ _is_slow_test() {
     test_quickstart-e2e.sh|test_e2e_model_routing.sh) return 0 ;;  # ~9s, ~5s (e2e)
     test_update.sh|test_update-extra-kinds.sh)   return 0 ;;  # ~5s, ~6s (manifest/doctor)
     test_model_selector_corpus.sh)               return 0 ;;  # ~5s (corpus 45 entradas)
+    test_pretooluse-bash-guard.sh)               return 0 ;;  # ~7s (gate de latencia N=20+warmup, hooks-db-parity FASE 6)
     *) return 1 ;;
   esac
 }

@@ -21,9 +21,12 @@
 #     operacionalizacao mecanica do criterio codigo-real-vs-prosa de FR-010:
 #     mensagem voltada a humano cita "state.json" como palavra, sem barra;
 #     acesso real constroi "<dir>/state.json") sobre os scripts do runtime +
-#     cli/lib/00c-bootstrap.sh, com linhas de comentario descartadas ANTES
-#     do match. Hit em arquivo fora da ALLOWLIST literal abaixo falha o
-#     teste (US5 AS2: helper novo com acesso direto e detectado).
+#     cli/lib/00c-bootstrap.sh + global/skills/agente-00c-runtime/hooks/*.sh
+#     (feature hooks-db-parity FASE 7, task 7.1.1 — a lacuna original que
+#     deixou a regressao de triplicacao dos hooks passar despercebida), com
+#     linhas de comentario descartadas ANTES do match. Hit em arquivo fora
+#     da ALLOWLIST literal abaixo falha o teste (US5 AS2: helper novo com
+#     acesso direto e detectado).
 #
 # Manutencao da allowlist (CHK016): uma entrada por linha
 # `<script-basename>:<classificacao>` com classificacao ∈ {prosa,
@@ -210,6 +213,24 @@ scenario_dinamica_15_leitores_sqlite_sem_degradacao() {
 #   report.sh:prosa                — linha de texto markdown gerado (path de
 #                                    exemplo no corpo do relatorio)
 #   wave-usage-report.sh:prosa     — "transcript/state.json" em mensagem de erro
+#
+# Feature hooks-db-parity FASE 7 (task 7.1.2) adiciona:
+#   _hook-active-exec.sh:codigo-real — fundacao do backend para os hooks;
+#                                    helper unico de deteccao tri-estado,
+#                                    mesma familia do conjunto canonico acima
+#   pretooluse-bash-guard.sh:codigo-real       — pre-check inline (`[ -f ]`
+#   posttooluse-tool-call-tick.sh:codigo-real  — apenas, sem jq/sourcing)
+#   posttooluse-agent-usage.sh:codigo-real     — MUST pelo contrato SEC-H1/
+#     dec-026/FR-008 (contracts/hook-active-exec.md), ANTES de resolver ou
+#     sourcear o helper: "existe ao menos um state.json OU state.db sob
+#     .../agente-00c-state/ ou .../feature-00c-state/*/?". Checagem
+#     SIMETRICA de existencia (nunca le/parseia conteudo, nunca so
+#     state.json) — nao e a classe de regressao que este sweep cacha
+#     (leitura direta que quebraria sob backend so-sqlite); e o fast-path
+#     que garante 100% das sessoes manuais nao tocarem em arquivo nenhum.
+#     tasks.md 7.1.3 pedia os 3 hooks FORA da allowlist; a divergencia e do
+#     desenho ja ratificado (SEC-H1 e MUST), nao um erro de implementacao —
+#     mesmo precedente de tasks.md 4.2.1.
 _static_allowlist() {
   cat <<'EOF'
 state-rw.sh:codigo-real
@@ -224,20 +245,33 @@ state-ondas.sh:codigo-real
 drift.sh:codigo-real
 report.sh:prosa
 wave-usage-report.sh:prosa
+_hook-active-exec.sh:codigo-real
+pretooluse-bash-guard.sh:codigo-real
+posttooluse-tool-call-tick.sh:codigo-real
+posttooluse-agent-usage.sh:codigo-real
 EOF
+}
+
+# _static_hits FILE -> imprime (uma por linha) os numeros de linha onde FILE
+# constroi um path de state.json (`/state\.json`), descartando linhas de
+# comentario ANTES do match (criterio CHK016) — match por CONSTRUCAO DE
+# PATH, nao por mencao em mensagem (palavra sem barra = prosa por
+# construcao). Fatorado de scenario_estatica_sem_acesso_direto_fora_da_
+# allowlist (task 7.1.1) para ser reusavel pelo cenario negativo dedicado
+# (task 7.1.4).
+_static_hits() {
+  grep -n '/state\.json' "$1" 2>/dev/null | awk -F: '
+    { line=$0; sub(/^[0-9]+:/,"",line); gsub(/^[[:space:]]+/,"",line);
+      if (line !~ /^#/) print $1 }'
 }
 
 scenario_estatica_sem_acesso_direto_fora_da_allowlist() {
   _viol=""
-  for _f in "$R"/*.sh "$REPO_ROOT/cli/lib/00c-bootstrap.sh"; do
+  for _f in "$R"/*.sh "$REPO_ROOT/cli/lib/00c-bootstrap.sh" \
+            "$REPO_ROOT/global/skills/agente-00c-runtime/hooks"/*.sh; do
     [ -f "$_f" ] || continue
     _base=$(basename "$_f")
-    # Descarta linhas de comentario ANTES do match (criterio CHK016);
-    # match por CONSTRUCAO DE PATH (`/state.json`), nao por mencao em
-    # mensagem (palavra sem barra = prosa por construcao).
-    _hits=$(grep -n '/state\.json' "$_f" 2>/dev/null | awk -F: '
-      { line=$0; sub(/^[0-9]+:/,"",line); gsub(/^[[:space:]]+/,"",line);
-        if (line !~ /^#/) print $1 }')
+    _hits=$(_static_hits "$_f")
     [ -n "$_hits" ] || continue
     if ! _static_allowlist | grep -q "^$_base:"; then
       _viol="$_viol $_base(linhas:$(printf '%s' "$_hits" | tr '\n' ','))"
@@ -246,13 +280,61 @@ scenario_estatica_sem_acesso_direto_fora_da_allowlist() {
   [ -z "$_viol" ] || { _fail "acesso direto a state.json fora da allowlist" "$_viol — adicionar via interface canonica (_state-read.sh) ou registrar na allowlist com classificacao+justificativa no MESMO commit"; return 1; }
 }
 
+# ---- 7.1.4: cenario negativo — introduzir path direto num hook e confirmar
+# que o mecanismo de deteccao aponta arquivo e linha ----
+#
+# Nao modifica os hooks reais (regressao deliberada so num scratch file, via
+# TMPDIR_TEST); exercita a MESMA funcao (_static_hits) usada pelo scenario
+# acima, contra um arquivo cujo basename nunca esta na allowlist real —
+# prova que o mecanismo de deteccao (nao so a allowlist ja aprovada hoje)
+# continua vivo e discrimina codigo real de comentario.
+scenario_estatica_deteccao_regressao_deliberada_em_hook() {
+  _rogue="$TMPDIR_TEST/rogue-hook.sh"
+  cat > "$_rogue" <<'ROGUE'
+#!/bin/sh
+# NAO construir "$dir/state.json" diretamente aqui (apenas documentacao)
+_dir="$1"
+if [ -f "$_dir/state.json" ]; then
+  cat "$_dir/state.json"
+fi
+ROGUE
+
+  _hits=$(_static_hits "$_rogue")
+  [ -n "$_hits" ] || { _fail "deteccao" "esperado hit de construcao direta de path no arquivo injetado, obtido nenhum"; return 1; }
+
+  # Linha 2 (comentario, com barra antes de state.json) NAO deve contar;
+  # linhas 4 e 5 (codigo real) DEVEM.
+  case "$_hits" in
+    *2*) _fail "falso positivo" "linha de comentario (2) nao deveria ser reportada; hits=$_hits"; return 1 ;;
+  esac
+  case "$_hits" in
+    *4*) : ;;
+    *) _fail "falso negativo" "esperado linha 4 (construcao real) reportada; hits=$_hits"; return 1 ;;
+  esac
+  case "$_hits" in
+    *5*) : ;;
+    *) _fail "falso negativo" "esperado linha 5 (construcao real) reportada; hits=$_hits"; return 1 ;;
+  esac
+
+  # basename do scratch nunca esta na allowlist real -> se este arquivo
+  # estivesse no conjunto varrido pelo scenario principal, seria classificado
+  # como violacao (mesma condicao usada la).
+  _base=$(basename "$_rogue")
+  if _static_allowlist | grep -q "^$_base:"; then
+    _fail "allowlist" "arquivo de teste nao deveria estar pre-aprovado na allowlist real"; return 1
+  fi
+}
+
 scenario_estatica_allowlist_sem_entradas_mortas() {
   # Entrada morta (arquivo listado sem hit real) mascara regressao futura:
   # exigimos que cada entrada da allowlist ainda tenha pelo menos 1 hit.
   _dead=""
+  _hooks_dir="$REPO_ROOT/global/skills/agente-00c-runtime/hooks"
   for _entry in $(_static_allowlist | cut -d: -f1); do
     if [ "$_entry" = "00c-bootstrap.sh" ]; then
       _f="$REPO_ROOT/cli/lib/00c-bootstrap.sh"
+    elif [ -f "$_hooks_dir/$_entry" ]; then
+      _f="$_hooks_dir/$_entry"
     else
       _f="$R/$_entry"
     fi
@@ -260,9 +342,7 @@ scenario_estatica_allowlist_sem_entradas_mortas() {
       _dead="$_dead $_entry(arquivo-inexistente)"
       continue
     fi
-    _hits=$(grep -n '/state\.json' "$_f" 2>/dev/null | awk -F: '
-      { line=$0; sub(/^[0-9]+:/,"",line); gsub(/^[[:space:]]+/,"",line);
-        if (line !~ /^#/) print $1 }')
+    _hits=$(_static_hits "$_f")
     # Excecao: entradas do conjunto canonico podem ficar sem hit (a lista
     # canonica e estavel por contrato, nao por contagem de hits).
     case "$_entry" in

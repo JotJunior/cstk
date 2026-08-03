@@ -13,16 +13,17 @@
 #
 # POLITICA INVERSA ao pretooluse-bash-guard.sh: isto e METRICA, nao guarda.
 # Fail-OPEN absoluto — qualquer falha (jq ausente, stdin invalido/vazio,
-# state ilegivel, append negado) = exit 0 silencioso, stdout vazio. Este
-# hook NUNCA bloqueia, atrasa ou interfere numa tool call. Por isso NAO usa
-# `set -e` (um erro nao tratado viraria exit != 0 e o harness exporia stderr
-# ao usuario); cada passo trata a propria falha com no-op.
+# state ilegivel, backend indeterminado, append negado) = exit 0 silencioso,
+# stdout vazio. Este hook NUNCA bloqueia, atrasa ou interfere numa tool call.
+# Por isso NAO usa `set -e` (um erro nao tratado viraria exit != 0 e o
+# harness exporia stderr ao usuario); cada passo trata a propria falha com
+# no-op.
 #
-# REGRA DURA — NAO tocar o state.json: PostToolUse dispara CONCORRENTE as
-# tool calls do orquestrador (batches paralelos do harness). Um
-# read-modify-write do state.json aqui (como faz `tool-call-tick`) poderia
+# REGRA DURA — NAO tocar o state.json/state.db: PostToolUse dispara
+# CONCORRENTE as tool calls do orquestrador (batches paralelos do harness).
+# Um read-modify-write do state aqui (como faz `tool-call-tick`) poderia
 # clobberar um write transacional (Decisao/bloqueio/onda) gravado entre o
-# read e o `mv` do tick. O state.json e a fonte de verdade transacional;
+# read e o `mv`/commit do tick. O state e a fonte de verdade transacional;
 # a metrica e derivada. O tick vai num SIDECAR append-only:
 #
 #   <state-dir>/tool-call-ticks.log   — 1 linha (timestamp ISO) por tick
@@ -33,10 +34,27 @@
 # `end` resetam o sidecar (janela de contagem = start→end). Ticks na
 # fronteira start/end podem se perder — aceitavel para proxy de custo.
 #
-# Deteccao de execucao ativa: mesmo algoritmo e precedencia do
-# pretooluse-bash-guard.sh (agente-00c vence; entre feature-00c, menor
-# short-name lexicografico byte-wise; status em_andamento|aguardando_humano).
-# Fora de execucao ativa: exit 0, zero interferencia na sessao manual.
+# Deteccao de execucao ativa (feature hooks-db-parity, FASE 4): delegada ao
+# helper agnostico a backend `_hook-active-exec.sh`
+# (docs/specs/hooks-db-parity/contracts/hook-active-exec.md), substituindo a
+# antiga leitura inline de `state.json` (unico backend suportado ate entao).
+# Precondicionada por um pre-check inline com builtins puros (SEC-H1/
+# spec.md FR-008) — mesma mitigacao do pretooluse-bash-guard.sh (task
+# 3.1.1). So DEPOIS do pre-check o helper e resolvido com a ORDEM INVERTIDA
+# (dec-026): `$HOME` antes de `<cwd>`.
+#
+# Politica de exit codes do helper — DIFERENTE do guard (fail-closed):
+#   0 (ativa)        -> grava o tick no sidecar do state-dir resolvido.
+#   1 (inativa)       -> no-op silencioso, exit 0 (paridade FR-006).
+#   2/127 (indeterminada/helper irresolvivel) -> no-op silencioso, exit 0
+#     (FR-004: aqui e METRICA, nunca guarda — a falta de certeza NUNCA vira
+#     bloqueio, so subconta o proxy de custo).
+#
+# busy_timeout diferenciado (SEC-M2/task 1.6/CHK027): este hook usa 50ms
+# (HAE_BUSY_TIMEOUT_MS=50), nao os 200ms tolerados pelo guard — orcamento de
+# ~30ms deste hook de metrica nao pode ser consumido esperando contencao do
+# SQLite; sob contencao, o helper retorna indeterminada e o tick e pulado
+# (fail-open, nunca bloqueia).
 #
 # jq: mesma dependencia OPCIONAL confinada dos hooks (Constitution 1.1.0
 # Principio II carve-out). Sem jq nao ha parsing seguro do stdin -> no-op
@@ -44,6 +62,8 @@
 # aqui a falta de metrica so subconta).
 
 set -u
+
+_PTT_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || _PTT_SELF_DIR=""
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -57,46 +77,80 @@ _PTT_TOOL_NAME=$(printf '%s' "$_PTT_INPUT" | jq -r '.tool_name // ""' 2>/dev/nul
 # tool_name vazio = payload anomalo do harness; nao inventa tick.
 [ -n "$_PTT_TOOL_NAME" ] || exit 0
 
-_ptt_is_active_status() {
-  case "$1" in
-    em_andamento | aguardando_humano) return 0 ;;
-    *) return 1 ;;
-  esac
+# _ptt_precheck_active_scope -> 0 se ao menos um `state.json` OU `state.db`
+# existe sob `$_PTT_CWD/.claude/agente-00c-state/` ou
+# `$_PTT_CWD/.claude/feature-00c-state/*/` (SEC-H1, spec.md FR-008). Usa
+# EXCLUSIVAMENTE builtins do shell — nenhuma resolucao de dependencia nem
+# sourcing acontece antes desta checagem.
+_ptt_precheck_active_scope() {
+  _ptt_pa_agente="$_PTT_CWD/.claude/agente-00c-state"
+  if [ -f "$_ptt_pa_agente/state.json" ] || [ -f "$_ptt_pa_agente/state.db" ]; then
+    return 0
+  fi
+
+  _ptt_pa_froot="$_PTT_CWD/.claude/feature-00c-state"
+  if [ -d "$_ptt_pa_froot" ]; then
+    for _ptt_pa_d in "$_ptt_pa_froot"/*/; do
+      [ -d "$_ptt_pa_d" ] || continue
+      if [ -f "${_ptt_pa_d}state.json" ] || [ -f "${_ptt_pa_d}state.db" ]; then
+        return 0
+      fi
+    done
+  fi
+  return 1
 }
 
-# Deteccao de execucao ativa (precedencia identica ao pretooluse-bash-guard.sh).
-_PTT_STATE_DIR=""
+# Pre-check inline: sem NENHUM state.json/state.db sob agente-00c-state/ ou
+# feature-00c-state/*/, o hook sai 0 sem resolver nem sourcear coisa alguma
+# (FR-006, 100% das sessoes manuais).
+_ptt_precheck_active_scope || exit 0
 
-_ptt_agente_state="$_PTT_CWD/.claude/agente-00c-state/state.json"
-if [ -f "$_ptt_agente_state" ]; then
-  _ptt_status=$(jq -r '.execution.status // ""' "$_ptt_agente_state" 2>/dev/null) || _ptt_status=""
-  if _ptt_is_active_status "$_ptt_status"; then
-    _PTT_STATE_DIR="$_PTT_CWD/.claude/agente-00c-state"
+# _ptt_resolve_dep_hae REL_PATH -> cadeia de resolucao para
+# _hook-active-exec.sh com a ORDEM MODIFICADA exigida pelo contrato
+# (contracts/hook-active-exec.md §"Ordem MODIFICADA para o helper (SEC-H1)
+# [APROVADA — dec-026]"): $HOME (escopo global) ANTES de <cwd> (escopo
+# project); teste `-r` (legivel), nao `-x` (helpers `_*.sh` do runtime nao
+# sao executaveis). Paridade com _pbg_resolve_dep_hae do
+# pretooluse-bash-guard.sh (task 3.1.1).
+_ptt_resolve_dep_hae() {
+  _ptt_rel=$1
+  if [ -n "$_PTT_SELF_DIR" ] && [ -r "$_PTT_SELF_DIR/../$_ptt_rel" ]; then
+    printf '%s' "$_PTT_SELF_DIR/../$_ptt_rel"
+    return 0
   fi
+  if [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/$_ptt_rel" ]; then
+    printf '%s' "$HOME/.claude/skills/agente-00c-runtime/$_ptt_rel"
+    return 0
+  fi
+  if [ -n "${_PTT_CWD:-}" ] && [ -r "$_PTT_CWD/.claude/skills/agente-00c-runtime/$_ptt_rel" ]; then
+    printf '%s' "$_PTT_CWD/.claude/skills/agente-00c-runtime/$_ptt_rel"
+    return 0
+  fi
+  return 1
+}
+
+_PTT_HAE_HELPER=$(_ptt_resolve_dep_hae "scripts/_hook-active-exec.sh") || exit 0
+
+# shellcheck disable=SC1090 # caminho resolvido dinamicamente pela cadeia de candidatos acima
+. "$_PTT_HAE_HELPER"
+
+# SEC-M2: hook de metrica tolera so 50ms de contencao (orcamento de ~30ms) —
+# diferente dos 200ms tolerados pelo guard (task 1.6/contracts §SEC-M2).
+HAE_BUSY_TIMEOUT_MS=50
+export HAE_BUSY_TIMEOUT_MS
+
+if _PTT_HAE_OUT=$(hook_active_exec "$_PTT_CWD"); then
+  _PTT_HAE_RC=0
+else
+  _PTT_HAE_RC=$?
 fi
 
-if [ -z "$_PTT_STATE_DIR" ]; then
-  _ptt_feat_root="$_PTT_CWD/.claude/feature-00c-state"
-  if [ -d "$_ptt_feat_root" ]; then
-    _ptt_active_shorts=""
-    for _ptt_d in "$_ptt_feat_root"/*/; do
-      [ -d "$_ptt_d" ] || continue
-      [ -f "${_ptt_d}state.json" ] || continue
-      _ptt_status=$(jq -r '.execution.status // ""' "${_ptt_d}state.json" 2>/dev/null) || continue
-      _ptt_is_active_status "$_ptt_status" || continue
-      _ptt_active_shorts="${_ptt_active_shorts}$(basename "$_ptt_d")
-"
-    done
-    if [ -n "$_ptt_active_shorts" ]; then
-      # Ordem lexicografica byte-wise (C locale), deterministica — mesma
-      # regra do guard (CHK007/enforced-guards data-model.md).
-      _ptt_first=$(printf '%s' "$_ptt_active_shorts" | LC_ALL=C sort | sed -n '1p')
-      _PTT_STATE_DIR="$_ptt_feat_root/$_ptt_first"
-    fi
-  fi
-fi
+# Fail-open: so o caso `0` (ativa) grava o tick. Inativa (1), indeterminada
+# (2) e helper irresolvivel (convencao 127, ja tratado acima via `exit 0`)
+# sao TODOS no-op silencioso — nunca stderr, nunca sidecar criado.
+[ "$_PTT_HAE_RC" -eq 0 ] || exit 0
 
-# Fora de escopo: nenhuma execucao ativa -> zero interferencia.
+_PTT_STATE_DIR=$(printf '%s' "$_PTT_HAE_OUT" | cut -f2)
 [ -n "$_PTT_STATE_DIR" ] || exit 0
 
 _ptt_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _ptt_ts="tick"

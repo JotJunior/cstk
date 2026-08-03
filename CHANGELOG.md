@@ -5,6 +5,65 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.4.0] - 2026-08-03
+
+Paridade dos hooks do runtime 00c com o backend SQLite, feature
+`hooks-db-parity` (priorizada pelo operador em dec-069/sug-001 da
+`state-db-runtime-parity`). Fecha o último ponto cego do cutover: os 3
+hooks do harness detectavam execução ativa via `[ -f state.json ]` e
+ficavam INERTES quando o estado vive em `state.db` — inclusive a guarda
+de Bash fail-closed, que é superfície de segurança, não métrica.
+Executada via `/feature-00c` no próprio cstk (11 ondas, 2 bloqueios
+humanos, MCP em modo docker e model-routing aplicado de ponta a ponta).
+
+### Added
+
+- **Helper sourceable `_hook-active-exec.sh`** em
+  `global/skills/agente-00c-runtime/scripts/`: detecção
+  backend-agnostica de execução ativa para hooks, com retorno tri-estado
+  (`ativa`/`inativa`/`indeterminada`). Backend SQLite usa query pontual
+  (`SELECT status`, medido 3.79ms — mais barato que o `jq` que os hooks
+  já faziam no `state.json`) via URI `file:...?mode=ro` com
+  percent-encoding e fallback a path direto; `busy_timeout` configurável
+  por `HAE_BUSY_TIMEOUT_MS`. Precedência preservada (agente-00c >
+  feature-00c > menor short-name; `state.db` vence `state.json`) e teto
+  defensivo de sondagem de 100 state-dirs por invocação. Elimina a
+  triplicação verbatim do algoritmo de detecção — a causa-raiz de o bug
+  existir em 3 cópias. Teste: `tests/test__hook-active-exec.sh` (22
+  cenários).
+- **Gate automatizado de latência de hooks**: `tests/lib/latency.sh`
+  (mediana de N=20 invocações + warm-up) com cenários nos 3 testes de
+  hook — teto 400ms para a guarda e 150ms para os hooks de métrica.
+- **Sweep de paridade estendido a hooks**:
+  `tests/test_state-parity-sweep.sh` agora varre também
+  `global/skills/agente-00c-runtime/hooks/*.sh` (com cenário negativo
+  provando que a detecção segue viva) — exatamente o ponto cego que
+  deixou a regressão dos hooks passar despercebida.
+
+### Fixed
+
+- **`pretooluse-bash-guard.sh` inerte sob backend SQLite.** A guarda
+  fail-closed de Bash nunca disparava em projetos com `state.db` — todo
+  comando passava sem verificação. Portada ao helper com as mitigações
+  de segurança ratificadas (pre-check inline antes de qualquer sourcing;
+  ordem de resolução `$HOME` antes de `cwd` só para o helper — SEC-H1);
+  estado `indeterminada` (ex.: `state.db` presente com `sqlite3`
+  ausente/ilegível) vira `MECANISMO_FALHOU` e bloqueia, nunca libera.
+  Verificado com fonte oficial que o timeout de hook `PreToolUse` do
+  harness nunca resulta em "allow" (SEC-H2) — o auto-teto interno fica
+  como defesa em profundidade. `tests/test_pretooluse-bash-guard.sh`
+  estendido de 11 para 18+1 cenários.
+- **`posttooluse-tool-call-tick.sh` e `posttooluse-agent-usage.sh`
+  inertes sob SQLite** (sintoma visível: ondas fechando com
+  `tool_calls=0` apesar de dezenas de tool calls — observado ao vivo na
+  própria execução desta feature). Portados ao helper com semântica
+  fail-open (métrica nunca bloqueia: `indeterminada` = no-op
+  silencioso). Testes estendidos (17 e 23 cenários).
+
+Suite completa: 2444/2444 PASS, zero órfãos. Escopo 100% catálogo
+(`global/skills/` + `tests/` + docs) — sincronização pós-release via
+`cstk update` apenas.
+
 ## [6.3.0] - 2026-08-03
 
 Paridade completa do runtime 00c com o backend SQLite (`state.db`), feature
@@ -4861,6 +4920,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.4.0]: https://github.com/JotJunior/cstk/releases/tag/v6.4.0
 [6.3.0]: https://github.com/JotJunior/cstk/releases/tag/v6.3.0
 [6.2.2]: https://github.com/JotJunior/cstk/releases/tag/v6.2.2
 [6.2.1]: https://github.com/JotJunior/cstk/releases/tag/v6.2.1

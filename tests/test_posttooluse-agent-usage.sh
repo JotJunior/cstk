@@ -21,6 +21,7 @@
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/latency.sh"
 
 SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh"
 
@@ -40,6 +41,24 @@ _active_feature() {
 _active_agente() {
   mkdir -p "$1/.claude/agente-00c-state"
   printf '{"execution":{"status":"%s"}}' "$2" > "$1/.claude/agente-00c-state/state.json"
+}
+
+# _require_sqlite3 -> marca o scenario como ERROR (pre-requisito ausente) e
+# retorna 2 se `sqlite3` nao estiver no PATH deste ambiente de teste.
+_require_sqlite3() {
+  command -v sqlite3 >/dev/null 2>&1 && return 0
+  _error "no_sqlite3" "sqlite3 indisponivel neste ambiente de teste"
+  return 1
+}
+
+# _active_feature_db CWD SHORT STATUS -> fixture feature-00c ativa, backend
+# SQLite (paridade com tests/test__hook-active-exec.sh::_sqlite_state_db).
+_active_feature_db() {
+  _afd_dir="$1/.claude/feature-00c-state/$2"
+  mkdir -p "$_afd_dir"
+  sqlite3 "$_afd_dir/state.db" \
+    "PRAGMA journal_mode=WAL; CREATE TABLE execution(status TEXT); INSERT INTO execution VALUES('$3');" \
+    >/dev/null 2>&1
 }
 
 # _sidecar_for CWD SHORT -> path do sidecar de uso para uma feature.
@@ -79,6 +98,22 @@ _make_shim_path() {
   _shim="$TMPDIR_TEST/shimbin"
   mkdir -p "$_shim"
   for _cmd in sh mktemp awk sed grep find head printf cp mv rm mkdir \
+              chmod ls dirname basename tr cut wc env command sort \
+              uniq date cat stat; do
+    _src=$(command -v "$_cmd" 2>/dev/null) || continue
+    [ -n "$_src" ] || continue
+    ln -sf "$_src" "$_shim/$_cmd" 2>/dev/null || :
+  done
+  printf '%s' "$_shim"
+}
+
+# _make_shim_path_no_sqlite: PATH completo (symlinks) COM jq mas SEM
+# sqlite3. Espelha tests/test_pretooluse-bash-guard.sh::_make_shim_path_no_sqlite
+# (armadilha conhecida: PATH minimo/stub nao esconde binario absoluto).
+_make_shim_path_no_sqlite() {
+  _shim="$TMPDIR_TEST/shimbin-no-sqlite"
+  mkdir -p "$_shim"
+  for _cmd in sh jq mktemp awk sed grep find head printf cp mv rm mkdir \
               chmod ls dirname basename tr cut wc env command sort \
               uniq date cat stat; do
     _src=$(command -v "$_cmd" 2>/dev/null) || continue
@@ -349,6 +384,103 @@ scenario_cap_sentinela_evita_aviso_duplicado() {
   _run_hook "$(_payload "$TMPDIR_TEST" "Agent" "$_tr")"
   [ -z "$_CAPTURED_STDERR" ] || { _fail "aviso duplicado" "sentinela ja existia, nao deveria reavisar: $_CAPTURED_STDERR"; return 1; }
   [ "$(_lines_count "$_side")" = 500 ] || { _fail "cap" "ainda deveria estar em 500"; return 1; }
+}
+
+# ==== FASE 5 (hooks-db-parity) — paridade backend SQLite (task 5.2) ====
+
+# ---- 5.2.1 (Cenario 3): tool_response completo sob state.db -> 1 linha, permissao 600 ----
+
+scenario_db_completed_com_usage_completo() {
+  _require_sqlite3 || return 2
+  _active_feature_db "$TMPDIR_TEST" "hooks-db-parity" "em_andamento"
+  _tr='{"status":"completed","agentId":"a1b598e5d8f9a0318","resolvedModel":"claude-sonnet-5","totalTokens":131692,"totalDurationMs":681768,"totalToolUseCount":45,"usage":{"input_tokens":2,"output_tokens":1097}}'
+  _run_hook "$(_payload "$TMPDIR_TEST" "Agent" "$_tr")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout" "esperado vazio (metrica silenciosa): $_CAPTURED_STDOUT"; return 1; }
+  _side=$(_sidecar_for "$TMPDIR_TEST" "hooks-db-parity")
+  [ "$(_lines_count "$_side")" = 1 ] || { _fail "sidecar" "esperado 1 linha, obtido $(_lines_count "$_side")"; return 1; }
+  _line=$(cat "$_side")
+  echo "$_line" | jq -e '.status == "completo"' >/dev/null || { _fail "status" "$_line"; return 1; }
+  echo "$_line" | jq -e '.agent_id == "a1b598e5d8f9a0318"' >/dev/null || { _fail "agent_id" "$_line"; return 1; }
+  echo "$_line" | jq -e '.total_tokens == 131692' >/dev/null || { _fail "total_tokens" "$_line"; return 1; }
+  echo "$_line" | jq -e '.source == "live"' >/dev/null || { _fail "source" "$_line"; return 1; }
+  _perm=$(_perm "$_side")
+  [ "$_perm" = "600" ] || { _fail "permissao" "esperado 600, obtido $_perm"; return 1; }
+}
+
+# ---- 5.2.2 (Cenario 6): fail-open sem sqlite3 (state.db presente) -> exit 0, silencioso ----
+
+scenario_db_sqlite3_ausente_fail_open() {
+  _active_feature_db "$TMPDIR_TEST" "hooks-db-parity" "em_andamento"
+  _require_sqlite3 || return 2
+  _shim=$(_make_shim_path_no_sqlite)
+  _tr='{"status":"completed","agentId":"x","totalTokens":1}'
+  _json=$(jq -n --arg cwd "$TMPDIR_TEST" --argjson tr "$_tr" \
+    '{cwd:$cwd,hook_event_name:"PostToolUse",tool_name:"Agent",tool_input:{},tool_response:$tr}')
+  capture env -i PATH="$_shim" HOME="$TMPDIR_TEST" \
+    sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$SCRIPT"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "fail-open exige exit 0 sem sqlite3, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout" "esperado vazio: $_CAPTURED_STDOUT"; return 1; }
+  [ -z "$_CAPTURED_STDERR" ] || { _fail "stderr" "fail-open NUNCA emite stderr: $_CAPTURED_STDERR"; return 1; }
+  [ -f "$(_sidecar_for "$TMPDIR_TEST" "hooks-db-parity")" ] \
+    && { _fail "sidecar" "sem sqlite3 o helper retorna indeterminada -> sem linha"; return 1; }
+  return 0
+}
+
+# ---- 5.2.3 (Cenarios 8/9/10): sem state, state.db corrompido, ou status terminal -> zero efeito ----
+
+scenario_db_execucao_terminal_zero_efeito() {
+  _require_sqlite3 || return 2
+  _active_feature_db "$TMPDIR_TEST" "hooks-db-parity" "concluida"
+  _tr='{"status":"completed","agentId":"x","totalTokens":1}'
+  _run_hook "$(_payload "$TMPDIR_TEST" "Agent" "$_tr")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -f "$(_sidecar_for "$TMPDIR_TEST" "hooks-db-parity")" ] \
+    && { _fail "sidecar" "state concluido (sqlite) NAO deveria receber linha"; return 1; }
+  return 0
+}
+
+scenario_db_corrompido_zero_efeito() {
+  _require_sqlite3 || return 2
+  mkdir -p "$TMPDIR_TEST/.claude/feature-00c-state/hooks-db-parity"
+  printf 'not a database' > "$TMPDIR_TEST/.claude/feature-00c-state/hooks-db-parity/state.db"
+  _tr='{"status":"completed","agentId":"x","totalTokens":1}'
+  _run_hook "$(_payload "$TMPDIR_TEST" "Agent" "$_tr")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout" "esperado vazio: $_CAPTURED_STDOUT"; return 1; }
+  [ -z "$_CAPTURED_STDERR" ] || { _fail "stderr" "fail-open NUNCA emite stderr: $_CAPTURED_STDERR"; return 1; }
+  [ -f "$(_sidecar_for "$TMPDIR_TEST" "hooks-db-parity")" ] \
+    && { _fail "sidecar" "state.db corrompido -> indeterminada -> sem linha"; return 1; }
+  return 0
+}
+
+scenario_db_sem_state_zero_efeito() {
+  _require_sqlite3 || return 2
+  _tr='{"status":"completed","agentId":"x","totalTokens":1}'
+  _run_hook "$(_payload "$TMPDIR_TEST" "Agent" "$_tr")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  find "$TMPDIR_TEST" -name 'wave-agent-usage.jsonl' 2>/dev/null | grep -q . \
+    && { _fail "sidecar" "NAO deveria existir sidecar sem nenhum state presente"; return 1; }
+  return 0
+}
+
+# ==== FASE 6 (hooks-db-parity) — gate de latencia automatizado (task 6.1) ====
+#
+# Mediana de N=20 + 3 warm-up sob state-dir SQLite ativo criado no proprio
+# scenario (research.md Decision 3). Teto 150ms (orcamento ~30ms; medido
+# hoje 21.79ms). Skip se perl/sqlite3 ausentes — gate de performance, nao
+# de disponibilidade de ferramenta.
+
+scenario_gate_latencia_mediana_agent_usage_sob_state_db() {
+  _require_perl || return 2
+  _require_sqlite3 || return 2
+  _active_feature_db "$TMPDIR_TEST" "gate-latencia" "em_andamento"
+  _tr='{"status":"completed","agentId":"x","totalTokens":1}'
+  _json=$(_payload "$TMPDIR_TEST" "Agent" "$_tr")
+  _mediana=$(_measure_median_ms 3 20 sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$SCRIPT")
+  [ -n "$_mediana" ] || { _error "medicao_falhou" "_measure_median_ms nao produziu mediana"; return 2; }
+  [ "$_mediana" -le 150 ] 2>/dev/null \
+    || { _fail "latencia" "mediana=${_mediana}ms excede teto de 150ms (FR-005/SC-003, research Decision 3)"; return 1; }
 }
 
 run_all_scenarios
