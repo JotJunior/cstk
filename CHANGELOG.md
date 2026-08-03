@@ -27,6 +27,20 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
   `tests/cstk/test_build-release.sh` (+layout do tarball),
   `test_install.sh` (+2), `test_update.sh` (+1, prova o replace atômico) e
   `test_mcp.sh` (reason novo).
+- **`feature-00c-preflight.sh` e `report.sh` inertes sob backend SQLite.**
+  Com `state.db`, o preflight reportava "state.json ausente" e a validação
+  de drift de briefing/constitution (FR-PRE-004) nunca rodava nas
+  retomadas; o `report.sh generate/emit` falhava mascarado e nenhum
+  relatório de auditoria era gerado (casos reais na execução
+  `document-templates` do meta-gob-ms). Ambos agora materializam o estado
+  canônico via `state-rw.sh read` (cross-backend, com fallback ao
+  `state.json` direto). Cenários novos em `tests/test_feature-00c-preflight.sh`
+  (+2: drift detectado sob sqlite) e `tests/test_report.sh` (+1: relatório
+  gerado a partir de `state.db`). É o fix mínimo dos furos mascarados — o
+  porte completo da classe (~16 leitores diretos restantes, `set`
+  multi-campo compatível com a CHECK constraint, `acquire --force` do
+  contrato de abort) fica registrado como feature própria
+  (`state-db-runtime-parity`).
 
 ## [6.2.1] - 2026-08-02
 
