@@ -130,7 +130,7 @@ adicional — ver `plan.md §Distribuicao` (paragrafo "Ordem de rollout").
 - [x] 1.8.2 Decidir se e necessario aviso/degradacao graciosa adicional, ou se o comportamento atual (best-effort, sem janela de coerencia garantida) e aceitavel — registrar a decisao <!-- aceitavel, sem mitigacao adicional -->
 - [x] 1.8.3 Nota: esta tarefa NAO resolve CHK044/CHK045 ({humano}) — apenas fecha o Gap de documentacao; a validacao de impacto operacional fica no checkpoint 1.9
 
-### 1.9 Checkpoint de bloqueio humano pre-implementacao `[C]`
+### 1.9 Checkpoint de bloqueio humano pre-implementacao `[C]` `[x]`
 
 Ref: checklists/security.md CHK022 ({humano}); checklists/operational.md
 CHK044, CHK045 ({humano})
@@ -147,16 +147,16 @@ autoridade para fechar sozinho. **Bloqueio humano consolidado registrado:
 `block-002` (dec-047)** — onda encerrada em `aguardando_humano`. As 3
 subtarefas abaixo permanecem `[ ]` ate a resposta do operador.
 
-- [ ] 1.9.1 Confirmar com o dono do produto os valores numericos definidos em 1.4 (teto SEC-M3) e a manutencao/relaxamento do auto-teto SEC-H2 (1.1) — CHK022 <!-- aguardando resposta, block-002 -->
-- [ ] 1.9.2 Confirmar aceite do impacto operacional de habilitar a guarda fail-closed em projetos hoje desprotegidos (migrados para SQLite, atualmente sem guarda alguma) — CHK044 <!-- aguardando resposta, block-002 -->
-- [ ] 1.9.3 Confirmar a profundidade de validacao exigida antes do merge de cada fase mergeavel (suite completa `~12 min` vs `--fast`) — CHK045 <!-- aguardando resposta, block-002 -->
-- [ ] 1.9.4 Registrar as 3 respostas como Decisao auditavel ANTES de iniciar a FASE 3
+- [x] 1.9.1 Confirmar com o dono do produto os valores numericos definidos em 1.4 (teto SEC-M3) e a manutencao/relaxamento do auto-teto SEC-H2 (1.1) — CHK022 <!-- respondido: aceitar-ambos (teto=100 + auto-teto defesa em profundidade), dec-049/block-002 -->
+- [x] 1.9.2 Confirmar aceite do impacto operacional de habilitar a guarda fail-closed em projetos hoje desprotegidos (migrados para SQLite, atualmente sem guarda alguma) — CHK044 <!-- respondido: aceitar, dec-049/block-002 -->
+- [x] 1.9.3 Confirmar a profundidade de validacao exigida antes do merge de cada fase mergeavel (suite completa `~12 min` vs `--fast`) — CHK045 <!-- respondido: suite-completa, dec-049/block-002 -->
+- [x] 1.9.4 Registrar as 3 respostas como Decisao auditavel ANTES de iniciar a FASE 3 <!-- dec-049, score 3, evidencia=human_answer registrada em block-002 -->
 
 ---
 
 ## FASE 2 - Helper de Deteccao Tri-Estado (`_hook-active-exec.sh`)
 
-### 2.1 Implementar `_hook-active-exec.sh` `[A]`
+### 2.1 Implementar `_hook-active-exec.sh` `[A]` `[x]`
 
 Ref: contracts/hook-active-exec.md (Command `hook_active_exec`); research.md
 Decision 1/1.a; plan.md §Estrategia de implementacao Fase 1
@@ -164,40 +164,71 @@ Decision 1/1.a; plan.md §Estrategia de implementacao Fase 1
 Depende de: FASE 1 (1.2, 1.3, 1.4, 1.6 fecham os requisitos que este helper
 implementa; 1.1 define o default de auto-teto).
 
-- [ ] 2.1.1 Implementar `hook_active_exec(cwd)` com a assinatura do contrato: exit `0`/`1`/`2`/`3`, stdout tri-estado `<execution_kind>\t<state_dir>\t<backend>` apenas no caso `0`
-- [ ] 2.1.2 Implementar leitura de `state.json` (`jq`) preservando comportamento atual (garantias G2, G3 — status ativos `em_andamento`/`aguardando_humano`)
-- [ ] 2.1.3 Implementar leitura de `state.db`: `file:<dir>/state.db?mode=ro` com fallback ao path direto (Decision 1.a), `PRAGMA busy_timeout=<valor de 1.6>;` antes do `SELECT status FROM execution LIMIT 1;`, descartando o eco do pragma no stdout
-- [ ] 2.1.4 Implementar precedencia G1 (`agente-00c` > `feature-00c`, `LC_ALL=C sort` entre short-names) e G6 (`indeterminada` nao interrompe a varredura dos demais; `ativa` sempre vence)
-- [ ] 2.1.5 Implementar SEC-M1: nao interpolar o path cru na URI `file:...` — usar `sqlite3 -readonly <path>` ou escapar `?`, `#`, `%` antes de montar a URI
-- [ ] 2.1.6 Implementar SEC-M3: ordenar os short-names antes de sondar, parar no primeiro ativo, aplicar o teto defensivo quantificado em 1.4.1
-- [ ] 2.1.7 Implementar o default de SEC-H2 definido em 1.1 (auto-teto interno fail-closed, `MECANISMO_FALHOU` se estourar)
-- [ ] 2.1.8 Garantir stderr sempre vazio (suprimir `sqlite3`/`jq` com `2>/dev/null`, traduzir erro para exit `2`) e stdout limpo (nenhum diagnostico fora do caso `0`)
-- [ ] 2.1.9 Garantir G7 (nenhuma escrita, nenhuma criacao de diretorio/arquivo) e G8 (nao consumir stdin)
+**Resultado (onda-007)**: implementado em
+`global/skills/agente-00c-runtime/scripts/_hook-active-exec.sh`. Desvio
+documentado da assinatura do contrato (marcado "[PROPOSTA]" no proprio
+contrato): SEC-M2 exige `busy_timeout` DIFERENTE por hook (200ms guarda /
+50ms metricas), mas a tabela de parametros do contrato so lista `cwd`. Em
+vez de inflar a assinatura posicional, o valor e opcional via variavel de
+ambiente `HAE_BUSY_TIMEOUT_MS` (default 200 se omitida) — documentado no
+cabecalho do arquivo. Validado manualmente com 11+ cenarios sinteticos
+(json/sqlite ativo, sem state, corrompido, sqlite3 ausente, precedencia,
+teto 100 dirs, terminal) antes da suite formal (2.3).
+
+- [x] 2.1.1 Implementar `hook_active_exec(cwd)` com a assinatura do contrato: exit `0`/`1`/`2`/`3`, stdout tri-estado `<execution_kind>\t<state_dir>\t<backend>` apenas no caso `0`
+- [x] 2.1.2 Implementar leitura de `state.json` (`jq`) preservando comportamento atual (garantias G2, G3 — status ativos `em_andamento`/`aguardando_humano`)
+- [x] 2.1.3 Implementar leitura de `state.db`: `file:<dir>/state.db?mode=ro` com fallback ao path direto (Decision 1.a), `PRAGMA busy_timeout=<valor de 1.6>;` antes do `SELECT status FROM execution LIMIT 1;`, descartando o eco do pragma no stdout
+- [x] 2.1.4 Implementar precedencia G1 (`agente-00c` > `feature-00c`, `LC_ALL=C sort` entre short-names) e G6 (`indeterminada` nao interrompe a varredura dos demais; `ativa` sempre vence)
+- [x] 2.1.5 Implementar SEC-M1: nao interpolar o path cru na URI `file:...` — usar `sqlite3 -readonly <path>` ou escapar `?`, `#`, `%` antes de montar a URI <!-- escolhida a opcao de escape (percent-encode %/?/# antes de montar a URI mode=ro); fallback path-direto sem URI -->
+- [x] 2.1.6 Implementar SEC-M3: ordenar os short-names antes de sondar, parar no primeiro ativo, aplicar o teto defensivo quantificado em 1.4.1
+- [x] 2.1.7 Implementar o default de SEC-H2 definido em 1.1 (auto-teto interno fail-closed, `MECANISMO_FALHOU` se estourar) <!-- auto-teto = mesmo teto SEC-M3 (100 dirs); confirmado em spec.md FR-003 que sao o mesmo mecanismo -->
+- [x] 2.1.8 Garantir stderr sempre vazio (suprimir `sqlite3`/`jq` com `2>/dev/null`, traduzir erro para exit `2`) e stdout limpo (nenhum diagnostico fora do caso `0`)
+- [x] 2.1.9 Garantir G7 (nenhuma escrita, nenhuma criacao de diretorio/arquivo) e G8 (nao consumir stdin)
 
 ### 2.2 Implementar `_resolve_dep` com ordem invertida para o helper `[A]`
 
 Ref: contracts/hook-active-exec.md §"Ordem MODIFICADA para o helper (SEC-H1)
 [APROVADA — dec-026]"; §"Pre-condicao de sourcing"
 
+**Status (onda-007)**: DEFERIDO deliberadamente para as tasks 3.1.1/4.1.1/
+5.1.1 (FASE 3/4/5) — cada uma delas ja re-referencia "2.2.3"/"2.2.1" como os
+passos executados NO MOMENTO do porte de cada hook (ver 3.1.1: "pre-check
+inline (2.2.3) -> sourcing via `_resolve_dep` com ordem invertida (2.2.1) ->
+chamada de `hook_active_exec`"). Nao ha onde aplicar a cadeia de resolucao
+ou o pre-check inline sem editar os 3 arquivos de hook, o que e escopo
+explicito da FASE 3-5 (guarda/metricas), nao da FASE 2 (helper isolado).
+Implementar aqui preventivamente arriscaria hooks parcialmente portados
+antes do checkpoint de cada fase. Subtarefas permanecem `[ ]` ate o porte
+real de cada hook.
+
 - [ ] 2.2.1 Implementar a cadeia de resolucao com ordem `<dir-do-hook>/../<rel-path>` -> `$HOME/.claude/skills/agente-00c-runtime/<rel-path>` -> `<cwd>/.claude/skills/agente-00c-runtime/<rel-path>` — invertida SOMENTE para `_hook-active-exec.sh` (demais deps mantem a ordem original, sem regressao)
 - [ ] 2.2.2 Usar teste `-r` (legivel) em vez de `-x` (executavel) ao validar o candidato — nota de implementacao do contrato (`_*.sh` do runtime nao sao executaveis)
 - [ ] 2.2.3 Implementar o pre-check inline (SEC-H1) nos 3 hooks: testar `[ -f ]`/`[ -d ]` para existencia de `state.json` OU `state.db` sob `<cwd>/.claude/agente-00c-state/` ou `<cwd>/.claude/feature-00c-state/*/` — usando apenas builtins, ANTES de resolver ou sourcear qualquer arquivo
 
-### 2.3 Escrever `tests/test_hook-active-exec.sh` (novo — regra de ouro `--check-coverage`) `[A]`
+### 2.3 Escrever `tests/test_hook-active-exec.sh` (novo — regra de ouro `--check-coverage`) `[A]` `[x]`
 
 Ref: quickstart.md Cenarios 0, 4, 5, 6, 8, 9, 10; contracts/hook-active-exec.md
 garantias G1-G10
 
-- [ ] 2.3.1 Cenario: execucao ativa sob `state.json` -> exit `0`, tri-estado correto no stdout
-- [ ] 2.3.2 Cenario: execucao ativa sob `state.db` -> exit `0` (G2: `state.db` vence sobre `state.json` no mesmo state-dir)
-- [ ] 2.3.3 Cenario: nenhum state presente (nem `.json` nem `.db`) -> exit `1`, nunca `2` (G4, FR-007)
-- [ ] 2.3.4 Cenario: `state.db` presente + `sqlite3` ausente do `PATH` -> exit `2`, nunca `1` (G5) — usar `PATH` completo menos `sqlite3` (armadilha conhecida do repo, nao `PATH` minimo)
-- [ ] 2.3.5 Cenario: `state.db` corrompido (conteudo nao-SQLite) -> exit `2`
-- [ ] 2.3.6 Cenario: multiplos state-dirs simultaneos (`agente-00c` + 2x `feature-00c`) -> G1 (agente-00c vence; entre feature-00c, menor short-name `LC_ALL=C`)
-- [ ] 2.3.7 Cenario: status terminal (`concluida`/`abortada`) -> exit `1` (fora de escopo, nao "ativa")
-- [ ] 2.3.8 Cenario: stderr **sempre vazio** em todos os casos acima (assert explicito, nao so no caso feliz)
-- [ ] 2.3.9 Cenario: helper nao escreve nem cria arquivo/diretorio algum em nenhum dos casos (G7) — `find` antes/depois comparado
-- [ ] 2.3.10 Registrar o teste em `tests/run.sh` conforme convencao 1:1 script<->teste; rodar `--check-coverage` para confirmar zero orfaos
+**Resultado (onda-007)**: `tests/test__hook-active-exec.sh` (nome com
+underscore duplo — convencao 1:1 do `tests/run.sh` para scripts
+`_prefixados.sh`, paridade com `test__state-db.sh`/`test__state-read.sh`).
+22 scenarios, todos verdes; `--check-coverage` confirma zero orfaos.
+Cobertura extra alem do minimo pedido: precedencia com backend MISTO (G1
+entre json/sqlite), teto SEC-M3 (dentro e estourando 100 dirs), parametro
+opcional `HAE_BUSY_TIMEOUT_MS`, e um canario informal de latencia
+(nao-gateante — o gate real e a FASE 6).
+
+- [x] 2.3.1 Cenario: execucao ativa sob `state.json` -> exit `0`, tri-estado correto no stdout
+- [x] 2.3.2 Cenario: execucao ativa sob `state.db` -> exit `0` (G2: `state.db` vence sobre `state.json` no mesmo state-dir)
+- [x] 2.3.3 Cenario: nenhum state presente (nem `.json` nem `.db`) -> exit `1`, nunca `2` (G4, FR-007)
+- [x] 2.3.4 Cenario: `state.db` presente + `sqlite3` ausente do `PATH` -> exit `2`, nunca `1` (G5) — usar `PATH` completo menos `sqlite3` (armadilha conhecida do repo, nao `PATH` minimo)
+- [x] 2.3.5 Cenario: `state.db` corrompido (conteudo nao-SQLite) -> exit `2`
+- [x] 2.3.6 Cenario: multiplos state-dirs simultaneos (`agente-00c` + 2x `feature-00c`) -> G1 (agente-00c vence; entre feature-00c, menor short-name `LC_ALL=C`)
+- [x] 2.3.7 Cenario: status terminal (`concluida`/`abortada`) -> exit `1` (fora de escopo, nao "ativa")
+- [x] 2.3.8 Cenario: stderr **sempre vazio** em todos os casos acima (assert explicito, nao so no caso feliz)
+- [x] 2.3.9 Cenario: helper nao escreve nem cria arquivo/diretorio algum em nenhum dos casos (G7) — `find` antes/depois comparado
+- [x] 2.3.10 Registrar o teste em `tests/run.sh` conforme convencao 1:1 script<->teste; rodar `--check-coverage` para confirmar zero orfaos
 
 ---
 
