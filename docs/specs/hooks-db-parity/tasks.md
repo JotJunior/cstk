@@ -290,44 +290,44 @@ Ref: plan.md §Estrategia de implementacao Fase 3; spec.md FR-004, US2 (P2)
 
 Depende de: FASE 2 completa.
 
-- [ ] 4.1.1 Substituir deteccao inline por pre-check inline + sourcing + `hook_active_exec`
-- [ ] 4.1.2 Tratar exit `0`: gravar tick em `tool-call-ticks.log` do state-dir resolvido, preservando formato/permissao atuais
-- [ ] 4.1.3 Tratar exit `1` (inativa): no-op silencioso, exit `0`
-- [ ] 4.1.4 Tratar exit `2`/`127` (indeterminada/irresolvivel): no-op silencioso fail-open (FR-004) — nunca stderr, nunca sidecar criado
-- [ ] 4.1.5 Aplicar a politica de `busy_timeout` definida em 1.6 (CHK027)
+- [x] 4.1.1 Substituir deteccao inline por pre-check inline + sourcing + `hook_active_exec`
+- [x] 4.1.2 Tratar exit `0`: gravar tick em `tool-call-ticks.log` do state-dir resolvido, preservando formato/permissao atuais
+- [x] 4.1.3 Tratar exit `1` (inativa): no-op silencioso, exit `0`
+- [x] 4.1.4 Tratar exit `2`/`127` (indeterminada/irresolvivel): no-op silencioso fail-open (FR-004) — nunca stderr, nunca sidecar criado
+- [x] 4.1.5 Aplicar a politica de `busy_timeout` definida em 1.6 (CHK027) <!-- HAE_BUSY_TIMEOUT_MS=50 -->
 
-### 4.2 Estender `tests/test_posttooluse-tool-call-tick.sh` `[A]`
+### 4.2 Estender `tests/test_posttooluse-tool-call-tick.sh` `[A]` `[x]`
 
 Ref: quickstart.md Cenarios 0, 3, 4, 6, 8, 9, 10, 12
 
-- [ ] 4.2.1 Cenario 3: 5 disparos sob `state.db` -> `tool-call-ticks.log` com 5 linhas, permissao `600`
-- [ ] 4.2.2 Cenario 4: precedencia `agente-00c` > `feature-00c` e menor short-name, independente do backend de cada state-dir concorrente
-- [ ] 4.2.3 Cenario 6: fail-open sem `sqlite3` -> exit `0`, stdout e stderr vazios, nenhum sidecar criado
-- [ ] 4.2.4 Cenarios 8/10: sem state ou status terminal -> zero efeito
-- [ ] 4.2.5 Cenario 9: `state.db` corrompido -> exit `0`, silencioso, sem sidecar
-- [ ] 4.2.6 Cenario 12: roundtrip real via `state-ondas.sh start`/`end` contabiliza N ticks sob backend SQLite (hoje sempre `0` — este e o teste que fecha a regressao ponta a ponta)
+- [x] 4.2.1 Cenario 3: 5 disparos sob `state.db` -> `tool-call-ticks.log` com 5 linhas, permissao `600` <!-- permissao 600 NAO asserida: data-model.md (WaveTickSidecar, "nenhuma mudanca de permissao") + plan.md SEC-L1 documentam que este sidecar (diferente do irmao wave-agent-usage.jsonl) nunca recebeu umask 077, aceito como residual Low em dec-026/block-001; este texto da task diverge do desenho ja ratificado -->
+- [x] 4.2.2 Cenario 4: precedencia `agente-00c` > `feature-00c` e menor short-name, independente do backend de cada state-dir concorrente
+- [x] 4.2.3 Cenario 6: fail-open sem `sqlite3` -> exit `0`, stdout e stderr vazios, nenhum sidecar criado
+- [x] 4.2.4 Cenarios 8/10: sem state ou status terminal -> zero efeito
+- [x] 4.2.5 Cenario 9: `state.db` corrompido -> exit `0`, silencioso, sem sidecar
+- [x] 4.2.6 Cenario 12: roundtrip real via `state-ondas.sh start`/`end` contabiliza N ticks sob backend SQLite (hoje sempre `0` — este e o teste que fecha a regressao ponta a ponta)
 
 ---
 
 ## FASE 5 - Metricas de Uso de Agente (`posttooluse-agent-usage.sh`) `[A]`
 
-### 5.1 Portar `posttooluse-agent-usage.sh` para usar o helper `[A]`
+### 5.1 Portar `posttooluse-agent-usage.sh` para usar o helper `[A]` `[x]`
 
 Ref: plan.md §Estrategia de implementacao Fase 4; spec.md FR-004, US3 (P3)
 
 Depende de: FASE 2 completa.
 
-- [ ] 5.1.1 Substituir deteccao inline por pre-check inline + sourcing + `hook_active_exec`
-- [ ] 5.1.2 Tratar exit `0`: gravar linha em `wave-agent-usage.jsonl` do state-dir resolvido, permissao `600`, campos preservados (`agent_id`, `status`, `total_tokens`, `source`)
-- [ ] 5.1.3 Tratar exit `1`/`2`/`127`: no-op silencioso fail-open, identico ao tratamento do hook de tick (4.1.3/4.1.4)
+- [x] 5.1.1 Substituir deteccao inline por pre-check inline + sourcing + `hook_active_exec`
+- [x] 5.1.2 Tratar exit `0`: gravar linha em `wave-agent-usage.jsonl` do state-dir resolvido, permissao `600`, campos preservados (`agent_id`, `status`, `total_tokens`, `source`)
+- [x] 5.1.3 Tratar exit `1`/`2`/`127`: no-op silencioso fail-open, identico ao tratamento do hook de tick (4.1.3/4.1.4)
 
-### 5.2 Estender `tests/test_posttooluse-agent-usage.sh` `[A]`
+### 5.2 Estender `tests/test_posttooluse-agent-usage.sh` `[A]` `[x]`
 
 Ref: quickstart.md Cenarios 0, 3, 6, 8, 9, 10
 
-- [ ] 5.2.1 Cenario 3: `tool_response` completo sob `state.db` -> 1 linha JSON valida com `agent_id`, `status:completo`, `total_tokens`, `source:live`; permissao `600`
-- [ ] 5.2.2 Cenario 6: fail-open sem `sqlite3` -> exit `0`, stdout/stderr vazios, nenhum sidecar
-- [ ] 5.2.3 Cenarios 8/9/10: sem state, `state.db` corrompido, ou status terminal -> zero efeito em todos os tres
+- [x] 5.2.1 Cenario 3: `tool_response` completo sob `state.db` -> 1 linha JSON valida com `agent_id`, `status:completo`, `total_tokens`, `source:live`; permissao `600`
+- [x] 5.2.2 Cenario 6: fail-open sem `sqlite3` -> exit `0`, stdout/stderr vazios, nenhum sidecar
+- [x] 5.2.3 Cenarios 8/9/10: sem state, `state.db` corrompido, ou status terminal -> zero efeito em todos os tres
 
 ---
 
