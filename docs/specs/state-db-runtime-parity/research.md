@@ -184,6 +184,68 @@ garante que o check `[ -f "$_sf" ]` so falha quando NEM `state.json` NEM
 de composicao interno ja existe no harness; manifest dinamico da a garantia
 comportamental e o grep estatico a garantia estrutural (classe fechada).
 
+### Mecanismo da allowlist da camada estatica (CHK016, FASE 1/1.1.2)
+
+- **Onde vive**: tabela literal DENTRO de `tests/test_state-parity-sweep.sh`
+  (nao arquivo de dados separado) — mesmo padrao do manifest de leitores, que
+  tambem e lista literal no teste; um arquivo de dados externo exigiria
+  cobertura/manifest proprios sem ganho.
+- **Formato**: uma entrada por linha `<script-basename>:<classificacao>`,
+  com `classificacao` ∈ {`prosa`, `codigo-real`}, cada entrada acompanhada
+  de comentario citando a linha/justificativa da excecao.
+- **Criterio codigo-real-vs-prosa (operacionaliza FR-010)**: a camada
+  estatica descarta linhas de comentario (`grep -v` em linhas cujo primeiro
+  token nao-whitespace e `#`) ANTES do match — hit em comentario puro nunca
+  precisa de allowlist. Hit restante e PROSA somente se a ocorrencia de
+  `state.json` esta dentro de string de mensagem voltada a humano
+  (log/diagnostico, ex.: `secrets-filter.sh`, `cli/lib/00c-bootstrap.sh:446`);
+  qualquer outro hit (path builder, `[ -f ]`, argumento de jq/leitura) e
+  CODIGO REAL.
+- **Como adicionar item novo**: editar a tabela no teste, no MESMO commit da
+  mudanca que introduz o hit, citando classificacao + justificativa.
+  Aprovacao via review do PR. Entradas `codigo-real` sao restritas ao
+  conjunto canonico (`state-rw.sh`, `_state-rw-db.sh`, `_state-read.sh`
+  fallback JSON, `state-lock.sh` fluxo JSON pos-porte) — entrada
+  `codigo-real` fora desse conjunto exige tambem atualizar o manifest
+  dinamico, senao a varredura falha (US5 AS2: helper novo detectado).
+
+### Fixture minima da varredura dinamica (CHK032, FASE 1/1.1.3)
+
+Construida EXCLUSIVAMENTE via primitivas do runtime (nunca write direto no
+state — anti-mirror por construcao). Conjunto minimo para os 15 leitores
+exercitarem caminho real, aterrado na sonda de campos lidos por script
+(onda-006):
+
+1. `state-rw.sh init` com `--key-aspects` de >=3 aspectos —
+   **`drift.sh` EXIGE `initial_key_aspects` nao-vazio** (le
+   `.initial_key_aspects`/`.waves`/`.decisions`); sem aspects o check passa
+   vazio-trivial.
+2. `state-ondas.sh start` + `end` (1 onda FECHADA) e novo `start` (1 onda
+   ABERTA) — cobre `budget.sh` (`.budgets.current_wave_start` real),
+   `wave-usage-report.sh`, `model-routing.sh` (`.current_stage`/`.waves`),
+   `suggestions.sh` e `state-validate.sh`.
+3. `state-decisions.sh register` x2: 1 generica (score 2) + 1 de roteamento
+   ("Selecao de modelo para onda N") seguida de `state-ondas.sh
+   record-skill --skill model-selector` — cobre `model-routing-report.sh`
+   e o par Decisao⟷skill de `state-decisions-reconcile.sh` (caminho real,
+   nao lista vazia).
+4. `bloqueios.sh register` + `respond` (1 bloqueio RESPONDIDO) — cobre
+   `pipeline.sh` (`.human_blocks`) e `issue.sh`.
+5. `circular.sh push` x2 — `.circular_movement_history` nao-vazio para o
+   `detect`.
+6. `retro.sh consume` x1 — **SIM, `retro.sh` exige retro-execucao
+   consumida**: `check` le `.budgets.retro_executions_consumed`; com o
+   default 0 do init o caminho de contagem nao-trivial nunca roda.
+7. `suggestions.sh register` x1 — `.suggestions` nao-vazio (tambem
+   pre-condicao de `issue.sh create`).
+8. `state-ondas.sh record-task` x1 — `.tasks[]` nao-vazio
+   (`state-validate.sh` schema completo).
+9. `state-cache.sh metrics-bump` x1 — `.accumulated_metrics.cache.*` real.
+
+Criterio de aceite da fixture: apos os passos acima, cada helper do manifest
+roda contra o state-dir SQLite lendo pelo menos 1 entidade nao-default do
+seu conjunto de campos; nenhum helper pode passar por lista vazia.
+
 ## Decision 6 — Manifest de porte: classificacao reader-only vs read-write
 
 Sonda desta onda (`grep -c 'state.json'` por script) confirma os 15 alvos do

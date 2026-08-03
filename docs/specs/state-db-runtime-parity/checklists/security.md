@@ -23,7 +23,7 @@ fail-fast de dependencia.
 
 ## Varredura estatica como controle (FR-009b/FR-010)
 
-- [ ] CHK016 - A allowlist de prosa da varredura estatica tem criterio de manutencao especificado (onde vive, como um item novo e adicionado, quem aprova)? [Gap, Spec §FR-009/FR-010] {auto} — FR-010 da exemplos de prosa (secrets-filter, mensagem do bootstrap) e o criterio codigo-real-vs-prosa, mas o MECANISMO da allowlist (arquivo? padrao no teste? processo de adicao) nao esta especificado; vira tarefa "especificar formato e manutencao da allowlist da camada estatica" (create-tasks consome).
+- [x] CHK016 - A allowlist de prosa da varredura estatica tem criterio de manutencao especificado (onde vive, como um item novo e adicionado, quem aprova)? [Resolvido, Research Decision 5] {auto} — resolvido na FASE 1/1.1.2 (onda-006): research.md §"Mecanismo da allowlist da camada estatica (CHK016)" — tabela literal em `tests/test_state-parity-sweep.sh`, formato `<script>:<classificacao>` com comentario-justificativa, criterio codigo-real-vs-prosa operacionalizado (comentarios descartados pre-match; string de mensagem = prosa; resto = codigo real), adicao no mesmo commit + review de PR, `codigo-real` restrito ao conjunto canonico.
 - [x] CHK018 - Ha requisito garantindo que a falha rapida por `sqlite3` ausente NAO caia para leitura de um `state.json` inexistente (sem fallback silencioso)? [Cobertura, Spec §Edge Cases; §FR-012] {auto} — evidencia: edge case "nunca degrada silenciosamente nem cai para leitura de um `state.json` inexistente".
 
 ## Fail-fast de dependencia (FR-012)
@@ -36,4 +36,4 @@ fail-fast de dependencia.
   satisfeitos na spec/plan — a verificacao de implementacao pertence as
   tasks F3/F1.
 - `{humano}` em aberto: CHK019 (apetite de risco TOCTOU).
-- `[Gap]` aberto: CHK016 (mecanismo da allowlist estatica).
+- `[Gap]` CHK016 resolvido na FASE 1/1.1.2 (onda-006) — ver item acima.

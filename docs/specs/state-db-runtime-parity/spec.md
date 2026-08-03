@@ -290,6 +290,10 @@ varredura o detecta e falha.
   `--field F --value V` repetidos, aplicados atomicamente — backend JSON
   num unico write do documento; backend SQLite num lote unico
   transacional. Um unico par preserva o comportamento atual (FR-004).
+  O MESMO `--field` repetido no lote segue semantica LAST-WINS na ordem
+  de aplicacao (nao erro de uso): dedup textual nao capta equivalencia
+  semantica de paths jq, e o parser atual ja faz last-wins para flags
+  repetidas (CHK009; rationale completo no contract §1).
 - **FR-006**: Quando uma escrita (single ou multi-campo) violar invariante
   de consistencia do estado, o sistema MUST rejeitar com diagnostico
   (invariante + campos envolvidos) e deixar o estado intacto — sem escrita

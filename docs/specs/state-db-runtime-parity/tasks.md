@@ -25,22 +25,22 @@ Origem: [spec.md](./spec.md) (FR-001..FR-012) + [plan.md](./plan.md) (F1-F6).
 
 Ref: checklists/api.md CHK008/CHK009; checklists/security.md CHK016; checklists/operational.md CHK032
 
-- [ ] 1.1.1 CHK009: definir semantica do MESMO `--field` repetido no lote multi-campo (last-wins vs erro de uso exit 2) e registrar a decisao no contract §1 + spec FR-005
-- [ ] 1.1.2 CHK016: especificar o mecanismo da allowlist de prosa da camada estatica (onde vive — arquivo ou padrao no teste; como um item novo e adicionado; criterio codigo-real-vs-prosa de FR-010) e registrar no contract/research
-- [ ] 1.1.3 CHK032: definir a fixture minima do state-dir SQLite da varredura dinamica (entidades por leitor: ondas/decisoes/bloqueios/tasks; `retro.sh` exige retro-execucoes? `drift.sh` exige `key_aspects`?) para que os 15 leitores exercitem caminho real, nao vazio-trivial
-- [ ] 1.1.4 CHK008: definir o protocolo de validacao das assinaturas `[PROPOSTA]` do contract — cada tarefa implementadora (1.2.6, 3.1.7, 4.2.5) valida a assinatura contra o codigo real e remove o marcador no MESMO commit
-- [ ] 1.1.5 Marcar CHK008/CHK009/CHK016/CHK032 como resolvidos nos checklists com citacao da evidencia
+- [x] 1.1.1 CHK009: definir semantica do MESMO `--field` repetido no lote multi-campo (last-wins vs erro de uso exit 2) e registrar a decisao no contract §1 + spec FR-005
+- [x] 1.1.2 CHK016: especificar o mecanismo da allowlist de prosa da camada estatica (onde vive — arquivo ou padrao no teste; como um item novo e adicionado; criterio codigo-real-vs-prosa de FR-010) e registrar no contract/research
+- [x] 1.1.3 CHK032: definir a fixture minima do state-dir SQLite da varredura dinamica (entidades por leitor: ondas/decisoes/bloqueios/tasks; `retro.sh` exige retro-execucoes? `drift.sh` exige `key_aspects`?) para que os 15 leitores exercitem caminho real, nao vazio-trivial
+- [x] 1.1.4 CHK008: definir o protocolo de validacao das assinaturas `[PROPOSTA]` do contract — cada tarefa implementadora (1.2.6, 3.1.7, 4.2.5) valida a assinatura contra o codigo real e remove o marcador no MESMO commit
+- [x] 1.1.5 Marcar CHK008/CHK009/CHK016/CHK032 como resolvidos nos checklists com citacao da evidencia
 
 ### 1.2 Implementar sibling sourceable `_state-read.sh` `[A]`
 
 Ref: research.md Decision 1; contracts/runtime-interfaces.md §4; spec FR-001/FR-003/FR-004/FR-012
 
-- [ ] 1.2.1 Implementar `state_read_materialize`: state-dir JSON devolve o proprio `state.json` (zero mudanca, FR-004); state-dir SQLite materializa via `state-rw.sh read` em `mktemp` 0600 FORA do state-dir (LOW/A04 do plan)
-- [ ] 1.2.2 Implementar `state_read_cleanup` + protocolo de trap `EXIT INT TERM` conforme contract §4
-- [ ] 1.2.3 Sob SQLite com `sqlite3` ausente no host, propagar a falha rapida do `state-rw.sh read` (FR-012 — nunca degradar mudo)
-- [ ] 1.2.4 Garantir anti-mirror: o helper MUST NOT criar arquivo dentro do state-dir (FR-003)
-- [ ] 1.2.5 Criar `tests/test__state-read.sh` (precedente de sibling: `tests/test__state-ondas-db.sh`): JSON direto, SQLite via read, anti-mirror, `sqlite3` ausente, state-dir vazio
-- [ ] 1.2.6 Validar assinatura `[PROPOSTA]` do contract §4 contra a implementacao e remover o marcador (Ref: CHK008)
+- [x] 1.2.1 Implementar `state_read_materialize`: state-dir JSON devolve o proprio `state.json` (zero mudanca, FR-004); state-dir SQLite materializa via `state-rw.sh read` em `mktemp` 0600 FORA do state-dir (LOW/A04 do plan)
+- [x] 1.2.2 Implementar `state_read_cleanup` + protocolo de trap `EXIT INT TERM` conforme contract §4
+- [x] 1.2.3 Sob SQLite com `sqlite3` ausente no host, propagar a falha rapida do `state-rw.sh read` (FR-012 — nunca degradar mudo)
+- [x] 1.2.4 Garantir anti-mirror: o helper MUST NOT criar arquivo dentro do state-dir (FR-003)
+- [x] 1.2.5 Criar `tests/test__state-read.sh` (precedente de sibling: `tests/test__state-ondas-db.sh`): JSON direto, SQLite via read, anti-mirror, `sqlite3` ausente, state-dir vazio
+- [x] 1.2.6 Validar assinatura `[PROPOSTA]` do contract §4 contra a implementacao e remover o marcador (Ref: CHK008)
 
 ---
 

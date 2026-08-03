@@ -26,7 +26,7 @@ JSON, anti-mirror e varredura dinamica.
 ## Anti-mirror e varredura (FR-003/FR-009/SC-004)
 
 - [x] CHK023 - O anti-mirror esta coberto como requisito (FR-003, nenhum fluxo materializa espelho) E como verificacao automatica pos-varredura (SC-004, US1 AS4)? [Consistencia, Spec §FR-003/SC-004] {auto} — evidencia: FR-003 + SC-004 "verificacao automatica pos-varredura" + FR-009a "criar espelho `state.json` pos-varredura" como condicao de falha.
-- [ ] CHK032 - A fixture "state-dir SQLite populado" da varredura dinamica especifica as entidades minimas (ondas? decisoes? bloqueios? tasks?) para que os 15 leitores exercitem caminho real e nao vazio-trivial? [Gap, Spec §FR-009; US1 Independent Test] {auto} — US1 cita "popular estado (ondas, decisoes)" mas o conjunto minimo por leitor (ex.: retro exige retro-execucoes? drift exige key_aspects?) nao esta especificado; vira tarefa "definir fixture minima da varredura" (create-tasks consome).
+- [x] CHK032 - A fixture "state-dir SQLite populado" da varredura dinamica especifica as entidades minimas (ondas? decisoes? bloqueios? tasks?) para que os 15 leitores exercitem caminho real e nao vazio-trivial? [Resolvido, Research Decision 5] {auto} — resolvido na FASE 1/1.1.3 (onda-006): research.md §"Fixture minima da varredura dinamica (CHK032)" — 9 passos via primitivas (init com >=3 key-aspects; 1 onda fechada + 1 aberta; 2 decisoes incl. roteamento + record-skill; 1 bloqueio respondido; 2 pushes circulares; 1 retro consumida — SIM, retro.sh exige; 1 sugestao; 1 record-task; 1 metrics-bump). drift EXIGE key_aspects; retro EXIGE retro-execucao consumida. Aterrado em sonda de campos por script (onda-006).
 
 ## Fluxo dogfooding e conclusao (SC-002)
 
@@ -36,5 +36,5 @@ JSON, anti-mirror e varredura dinamica.
 ## Notes
 
 - `{humano}` em aberto: CHK031 (priorizacao da feature de hooks).
-- `[Gap]` aberto: CHK032 (fixture minima da varredura) — create-tasks consome.
+- `[Gap]` CHK032 resolvido na FASE 1/1.1.3 (onda-006) — ver item acima.
 - Itens `{auto}` resolvidos com citacao de spec/plan/contract.
