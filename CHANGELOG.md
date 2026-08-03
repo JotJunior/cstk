@@ -5,6 +5,63 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.3.0] - 2026-08-03
+
+Paridade completa do runtime 00c com o backend SQLite (`state.db`), feature
+`state-db-runtime-parity`. Fecha a classe inteira de leitores que assumiam
+`state.json` e degradavam silenciosamente sob `state.db` (achado em campo na
+execução `document-templates` do meta-gob-ms; a v6.2.2 havia corrigido apenas
+preflight e report). Executada via `/feature-00c` no próprio cstk, dogfooding
+do backend SQLite de ponta a ponta (15 ondas, 2 bloqueios humanos).
+
+### Added
+
+- **Helper comum `_state-read.sh`** (sourceable) em
+  `global/skills/agente-00c-runtime/scripts/`: materialização
+  backend-agnostica do estado. Backend JSON devolve o próprio `state.json`;
+  backend SQLite materializa via `state-rw.sh read` em `mktemp` 0600 FORA
+  do state-dir (anti-mirror: nunca cria `state.json` ao lado de `state.db`,
+  que viraria canônico stale se a config regredisse). Falha de leitura de
+  `state.db` presente propaga exit+stderr — nunca degrada mudo. Cleanup via
+  `state_read_cleanup` (trap EXIT/INT/TERM). Teste: `tests/test__state-read.sh`.
+- **`state-rw.sh set` multi-campo**: N pares `--field/--value` num único
+  envelope transacional (validação all-or-nothing; JSON = um jq + escrita
+  atômica; SQLite = uma transação com UPDATE coalescido multi-coluna).
+  Necessário porque a CHECK constraint C2 do `state.db` é por STATEMENT:
+  promoção a status terminal exige `finished_at` no MESMO lote — o `set`
+  sequencial antigo era rejeitado com estado intacto. Usado pela própria
+  execução para a promoção terminal (3 campos, 1 transação).
+- **`state-lock.sh acquire --force`** (retomada de lock órfão, contrato
+  FR-025 do `/feature-00c-abort` que referenciava flag inexistente): grava
+  dono em `.lock/owner` (pid + timestamp, default `$PPID`, override
+  `--owner-pid`); `--force` RECUSA owner vivo (exit 3 +
+  `lock-force-denied-owner-alive`) e consuma órfão/legado emitindo
+  diagnóstico auditável `DIAG|warning|lock-force-acquired`.
+- **Sweep anti-regressão `tests/test_state-parity-sweep.sh`** (interno):
+  camada dinâmica roda os leitores do manifesto contra state-dir SQLite
+  populado; camada estática greps construção de path `/state.json` com
+  allowlist literal — helper novo lendo `state.json` direto falha a suite.
+
+### Changed
+
+- **17 leitores do runtime portados para `_state-read.sh`** (antes liam
+  `state.json` direto e falhavam/no-op sob SQLite): `budget.sh`, `drift.sh`,
+  `state-validate.sh`, `pipeline.sh`, `cycles.sh`, `circular.sh`,
+  `retro.sh`, `wave-usage-report.sh`, `model-routing.sh`,
+  `model-routing-report.sh`, `suggestions.sh`, `state-cache.sh`,
+  `state-decisions-reconcile.sh`, `issue.sh`, `state-lock.sh`
+  (check-execution-busy), `report.sh` e `feature-00c-preflight.sh` (estes
+  dois convergidos ao helper, removendo as cópias locais do padrão da
+  v6.2.2). Guardas de orçamento, detectores de ciclo/abort e roteamento de
+  modelo voltam a operar em execuções com `state.db`.
+- **`report.sh generate|emit`**: estado ausente (nem `state.json` nem
+  `state.db`) agora é exit 7 contratual, alinhado ao `cli-invocation.md`
+  do feature-00c (antes exit 1 genérico); exits 1/2 preservados para os
+  demais erros.
+
+Suite completa: 2400/2400 PASS. Escopo 100% catálogo (`global/skills/` +
+`tests/` + docs) — sincronização pós-release via `cstk update` apenas.
+
 ## [6.2.2] - 2026-08-02
 
 ### Fixed
@@ -4804,6 +4861,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.3.0]: https://github.com/JotJunior/cstk/releases/tag/v6.3.0
 [6.2.2]: https://github.com/JotJunior/cstk/releases/tag/v6.2.2
 [6.2.1]: https://github.com/JotJunior/cstk/releases/tag/v6.2.1
 [6.2.0]: https://github.com/JotJunior/cstk/releases/tag/v6.2.0
