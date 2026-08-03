@@ -232,9 +232,9 @@ opcional `HAE_BUSY_TIMEOUT_MS`, e um canario informal de latencia
 
 ---
 
-## FASE 3 - Guarda de Seguranca (`pretooluse-bash-guard.sh`) `[C]`
+## FASE 3 - Guarda de Seguranca (`pretooluse-bash-guard.sh`) `[C]` `[x]`
 
-### 3.1 Portar `pretooluse-bash-guard.sh` para usar o helper `[C]`
+### 3.1 Portar `pretooluse-bash-guard.sh` para usar o helper `[C]` `[x]`
 
 Ref: plan.md §Estrategia de implementacao Fase 2; contracts/hook-active-exec.md;
 spec.md FR-003, FR-007, US1 (P1)
@@ -244,25 +244,41 @@ humano 1.9. Criticidade `[C]`: e a guarda fail-closed de seguranca — falha
 aqui e regressao de seguranca silenciosa (o proprio bug que a feature
 corrige).
 
-- [ ] 3.1.1 Substituir a deteccao inline triplicada (hoje leitura direta de `state.json`) por: pre-check inline (2.2.3) -> sourcing via `_resolve_dep` com ordem invertida (2.2.1) -> chamada de `hook_active_exec`
-- [ ] 3.1.2 Tratar exit `0` (ativa): prosseguir ao fluxo existente de resolucao de `bash-guard.sh` e validacao do comando — **inalterado**
-- [ ] 3.1.3 Tratar exit `1` (inativa): sair `0` imediatamente, sem tocar em nenhum arquivo (paridade com FR-006, caso de 100% das sessoes manuais)
-- [ ] 3.1.4 Tratar exit `2` (indeterminada) ou helper irresolvivel (convencao `127`): emitir `MECANISMO_FALHOU` (`deny`) — nunca stdout vazio nesse caminho
-- [ ] 3.1.5 Preservar 100% do caminho `jq`/`state.json` existente intocado (research Decision 2 — piso de nao-regressao para a base instalada hoje)
-- [ ] 3.1.6 Aplicar o auto-teto interno de latencia (SEC-H2, default de 1.1) dentro do fluxo do guard, produzindo `MECANISMO_FALHOU` se estourado
+**Resultado (onda-008)**: nova funcao `_pbg_precheck_active_scope` (builtins
+puros) + `_pbg_resolve_dep_hae` (ordem invertida `$HOME` > `<cwd>`, teste
+`-r`) substituem a antiga deteccao inline triplicada. Exit `0` do helper
+preenche `_PBG_DETECTED_EXEC`/`_PBG_DETECTED_PATH` (mapeando backend
+`sqlite`->`state.db`, `json`->`state.json`) e segue ao fluxo existente de
+`bash-guard.sh`, inalterado. Exit `1` sai `0` imediatamente. Exit `2`/demais
+(helper irresolvivel) emitem `MECANISMO_FALHOU`. `HAE_BUSY_TIMEOUT_MS=200`
+aplicado explicitamente (SEC-M2). Funcao `_pbg_is_active_status` (agora
+morta) removida.
 
-### 3.2 Estender `tests/test_pretooluse-bash-guard.sh` `[C]`
+- [x] 3.1.1 Substituir a deteccao inline triplicada (hoje leitura direta de `state.json`) por: pre-check inline (2.2.3) -> sourcing via `_resolve_dep` com ordem invertida (2.2.1) -> chamada de `hook_active_exec`
+- [x] 3.1.2 Tratar exit `0` (ativa): prosseguir ao fluxo existente de resolucao de `bash-guard.sh` e validacao do comando — **inalterado**
+- [x] 3.1.3 Tratar exit `1` (inativa): sair `0` imediatamente, sem tocar em nenhum arquivo (paridade com FR-006, caso de 100% das sessoes manuais)
+- [x] 3.1.4 Tratar exit `2` (indeterminada) ou helper irresolvivel (convencao `127`): emitir `MECANISMO_FALHOU` (`deny`) — nunca stdout vazio nesse caminho
+- [x] 3.1.5 Preservar 100% do caminho `jq`/`state.json` existente intocado (research Decision 2 — piso de nao-regressao para a base instalada hoje)
+- [x] 3.1.6 Aplicar o auto-teto interno de latencia (SEC-H2, default de 1.1) dentro do fluxo do guard, produzindo `MECANISMO_FALHOU` se estourado <!-- ja implementado dentro do helper (_HAE_MAX_DIRS=100, SEC-M3); o guard so precisa tratar exit 2 como MECANISMO_FALHOU, o que 3.1.4 ja cobre -->
+
+### 3.2 Estender `tests/test_pretooluse-bash-guard.sh` `[C]` `[x]`
 
 Ref: quickstart.md Cenarios 0, 1, 2, 4, 5, 8, 9, 10
 
-- [ ] 3.2.1 Cenario 1: guarda bloqueia sob `state.db` — `permissionDecision:deny`, prefixo `REGRA_VIOLADA:`, linha `outcome:blocked-by-rule` com `detected_execution:feature-00c` em `enforcement-log.jsonl`
-- [ ] 3.2.2 Cenario 2: comando permitido segue permitido sob `state.db` — stdout vazio, `outcome:allowed`
-- [ ] 3.2.3 Cenario 5: fail-closed sem `sqlite3` — `MECANISMO_FALHOU:`, nunca stdout vazio; usar `PATH` completo menos `sqlite3` (symlinks), nunca `PATH` minimo (memoria de projeto registrada)
-- [ ] 3.2.4 Cenario 8: ausencia total de state -> exit `0`, zero arquivo criado, **nunca** `MECANISMO_FALHOU` (fora de escopo != falha de mecanismo)
-- [ ] 3.2.5 Cenario 9: `state.db` corrompido -> `MECANISMO_FALHOU` (`deny`)
-- [ ] 3.2.6 Cenario 10: execucao terminal (`concluida`/`abortada`) -> comportamento identico ao Cenario 8
-- [ ] 3.2.7 Comparacao de paridade: mesmo comando produz a mesma categoria de bloqueio sob `state.json` e sob `state.db` (teste direto lado a lado)
-- [ ] 3.2.8 Regressao: suite existente do caminho `state.json` permanece 100% verde apos o porte
+**Resultado (onda-008)**: 7 scenarios novos (fixtures `_active_feature_db`/
+`_active_agente_db` via sqlite3 CLI, `_make_shim_path_no_sqlite`) + 1
+scenario de regressao para o novo modo de falha "`_hook-active-exec.sh`
+ausente" (scenario 4b original ajustado para prover o helper como sibling,
+isolando o alvo "bash-guard.sh ausente"). Suite completa: 18/18 verde.
+
+- [x] 3.2.1 Cenario 1: guarda bloqueia sob `state.db` — `permissionDecision:deny`, prefixo `REGRA_VIOLADA:`, linha `outcome:blocked-by-rule` com `detected_execution:feature-00c` em `enforcement-log.jsonl`
+- [x] 3.2.2 Cenario 2: comando permitido segue permitido sob `state.db` — stdout vazio, `outcome:allowed`
+- [x] 3.2.3 Cenario 5: fail-closed sem `sqlite3` — `MECANISMO_FALHOU:`, nunca stdout vazio; usar `PATH` completo menos `sqlite3` (symlinks), nunca `PATH` minimo (memoria de projeto registrada)
+- [x] 3.2.4 Cenario 8: ausencia total de state -> exit `0`, zero arquivo criado, **nunca** `MECANISMO_FALHOU` (fora de escopo != falha de mecanismo) <!-- ja coberto por scenario_fora_de_execucao_ativa_zero_interferencia (backend-agnostico, sem fixture) -->
+- [x] 3.2.5 Cenario 9: `state.db` corrompido -> `MECANISMO_FALHOU` (`deny`)
+- [x] 3.2.6 Cenario 10: execucao terminal (`concluida`/`abortada`) -> comportamento identico ao Cenario 8
+- [x] 3.2.7 Comparacao de paridade: mesmo comando produz a mesma categoria de bloqueio sob `state.json` e sob `state.db` (teste direto lado a lado)
+- [x] 3.2.8 Regressao: suite existente do caminho `state.json` permanece 100% verde apos o porte <!-- 18/18 scenarios verdes, incluindo os 11 pre-existentes -->
 
 ---
 

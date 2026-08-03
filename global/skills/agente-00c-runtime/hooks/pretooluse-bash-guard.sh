@@ -39,6 +39,20 @@
 #      e scripts/ sao irmaos ali tambem)
 #   2. <cwd>/.claude/skills/agente-00c-runtime/scripts/* (escopo project)
 #   3. $HOME/.claude/skills/agente-00c-runtime/scripts/* (escopo global)
+#
+# Deteccao de execucao ativa (feature hooks-db-parity, FASE 3): delegada ao
+# helper agnostico a backend `_hook-active-exec.sh`
+# (docs/specs/hooks-db-parity/contracts/hook-active-exec.md), substituindo a
+# antiga leitura inline triplicada de `state.json`. Precondicionada por um
+# pre-check inline com builtins puros (SEC-H1/spec.md FR-008) — se nao ha
+# nenhum `state.json`/`state.db` sob `.claude/{agente-00c,feature-00c}-state`,
+# o hook sai `0` sem resolver nem sourcear nada (FR-006, 100% das sessoes
+# manuais). So DEPOIS do pre-check o helper e resolvido com a ORDEM
+# INVERTIDA (dec-026): `$HOME` antes de `<cwd>` — sombrear conteudo
+# plantado no repositorio-alvo com a instalacao global controlada pelo
+# operador. A ordem original (cwd antes de HOME) permanece INALTERADA para
+# `bash-guard.sh`/`secrets-filter.sh` abaixo (resolvidos so apos confirmar
+# execucao ativa — nenhuma regressao de superficie).
 
 set -eu
 
@@ -68,6 +82,57 @@ _pbg_resolve_dep() {
   return 1
 }
 
+# _pbg_resolve_dep_hae REL_PATH -> cadeia de resolucao IDENTICA a
+# _pbg_resolve_dep, exceto por duas diferencas exigidas pelo contrato
+# (contracts/hook-active-exec.md §"Ordem MODIFICADA para o helper (SEC-H1)
+# [APROVADA — dec-026]"), aplicadas SOMENTE ao sourcing de
+# _hook-active-exec.sh:
+#   1. ordem invertida: $HOME (escopo global) ANTES de <cwd> (escopo
+#      project) — instalacao controlada pelo operador sombreia conteudo
+#      plantado no repositorio-alvo.
+#   2. teste `-r` (legivel), nao `-x` (executavel) — arquivo sourceable,
+#      nao executavel (helpers `_*.sh` do runtime nao tem bit +x).
+_pbg_resolve_dep_hae() {
+  _pbg_rel=$1
+  if [ -n "$_PBG_SELF_DIR" ] && [ -r "$_PBG_SELF_DIR/../$_pbg_rel" ]; then
+    printf '%s' "$_PBG_SELF_DIR/../$_pbg_rel"
+    return 0
+  fi
+  if [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/$_pbg_rel" ]; then
+    printf '%s' "$HOME/.claude/skills/agente-00c-runtime/$_pbg_rel"
+    return 0
+  fi
+  if [ -n "${_PBG_CWD:-}" ] && [ -r "$_PBG_CWD/.claude/skills/agente-00c-runtime/$_pbg_rel" ]; then
+    printf '%s' "$_PBG_CWD/.claude/skills/agente-00c-runtime/$_pbg_rel"
+    return 0
+  fi
+  return 1
+}
+
+# _pbg_precheck_active_scope -> 0 (existe escopo a checar) se ao menos um
+# `state.json` OU `state.db` existe sob
+# `$_PBG_CWD/.claude/agente-00c-state/` ou
+# `$_PBG_CWD/.claude/feature-00c-state/*/` (SEC-H1, spec.md FR-008).
+# Usa EXCLUSIVAMENTE builtins do shell (`[ -f ]`, `[ -d ]`) — nenhuma
+# resolucao de dependencia nem sourcing acontece antes desta checagem.
+_pbg_precheck_active_scope() {
+  _pbg_pa_agente="$_PBG_CWD/.claude/agente-00c-state"
+  if [ -f "$_pbg_pa_agente/state.json" ] || [ -f "$_pbg_pa_agente/state.db" ]; then
+    return 0
+  fi
+
+  _pbg_pa_froot="$_PBG_CWD/.claude/feature-00c-state"
+  if [ -d "$_pbg_pa_froot" ]; then
+    for _pbg_pa_d in "$_pbg_pa_froot"/*/; do
+      [ -d "$_pbg_pa_d" ] || continue
+      if [ -f "${_pbg_pa_d}state.json" ] || [ -f "${_pbg_pa_d}state.db" ]; then
+        return 0
+      fi
+    done
+  fi
+  return 1
+}
+
 # _pbg_emit_deny PREFIXO MOTIVO -> stdout JSON de bloqueio (jq quando
 # disponivel, com escaping seguro via --arg; literal fixo SO no ramo
 # jq-ausente, onde o motivo e sempre um texto estatico proprio do hook,
@@ -84,13 +149,6 @@ _pbg_emit_deny() {
       "$_pbg_prefix" "$_pbg_motivo"
   fi
   exit 0
-}
-
-_pbg_is_active_status() {
-  case "$1" in
-    em_andamento | aguardando_humano) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 # _pbg_category_from_stderr TEXTO -> extrai a categoria emitida por
@@ -202,48 +260,72 @@ if [ "$_PBG_TOOL_NAME" != "Bash" ]; then
   exit 0
 fi
 
-# ---------- 4. Deteccao de execucao ativa (Decision 3 + precedencia 1.3) ----------
+# ---------- 4. Pre-check inline (SEC-H1) + deteccao tri-estado via helper ----------
+
+# Pre-check inline: sem NENHUM state.json/state.db sob agente-00c-state/ ou
+# feature-00c-state/*/, o hook sai 0 sem resolver nem sourcear coisa
+# alguma — 100% das sessoes manuais do operador (FR-006).
+if ! _pbg_precheck_active_scope; then
+  exit 0
+fi
 
 _PBG_DETECTED_EXEC=""
 _PBG_DETECTED_PATH=""
 
-_pbg_agente_state="$_PBG_CWD/.claude/agente-00c-state/state.json"
-if [ -f "$_pbg_agente_state" ]; then
-  _pbg_status=$(jq -r '.execution.status // ""' "$_pbg_agente_state" 2>/dev/null) || _pbg_status=""
-  if _pbg_is_active_status "$_pbg_status"; then
-    _PBG_DETECTED_EXEC="agente-00c"
-    _PBG_DETECTED_PATH="$_pbg_agente_state"
-  fi
+if ! _PBG_HAE_HELPER=$(_pbg_resolve_dep_hae "scripts/_hook-active-exec.sh"); then
+  _pbg_write_log "blocked-mechanism-failure" "$_PBG_CMD" "_hook-active-exec.sh ausente ou ilegivel" "mechanism-error"
+  _pbg_emit_deny "MECANISMO_FALHOU" "_hook-active-exec.sh ausente ou ilegivel"
 fi
 
-if [ -z "$_PBG_DETECTED_EXEC" ]; then
-  _pbg_feat_root="$_PBG_CWD/.claude/feature-00c-state"
-  if [ -d "$_pbg_feat_root" ]; then
-    _pbg_active_shorts=""
-    for _pbg_d in "$_pbg_feat_root"/*/; do
-      [ -d "$_pbg_d" ] || continue
-      _pbg_sf_state="${_pbg_d}state.json"
-      [ -f "$_pbg_sf_state" ] || continue
-      _pbg_status=$(jq -r '.execution.status // ""' "$_pbg_sf_state" 2>/dev/null) || continue
-      _pbg_is_active_status "$_pbg_status" || continue
-      _pbg_short=$(basename "$_pbg_d")
-      _pbg_active_shorts="${_pbg_active_shorts}${_pbg_short}
-"
-    done
-    if [ -n "$_pbg_active_shorts" ]; then
-      # Ordem lexicografica byte-wise (C locale), deterministica independente
-      # do locale do ambiente (CHK007/task 1.3/data-model.md).
-      _pbg_first=$(printf '%s' "$_pbg_active_shorts" | LC_ALL=C sort | sed -n '1p')
-      _PBG_DETECTED_EXEC="feature-00c"
-      _PBG_DETECTED_PATH="$_pbg_feat_root/$_pbg_first/state.json"
-    fi
-  fi
+# shellcheck disable=SC1090 # caminho resolvido dinamicamente pela cadeia de candidatos acima
+. "$_PBG_HAE_HELPER"
+
+# SEC-M2: guarda tolera a espera plena do busy_timeout (200ms), ainda
+# folgado dentro do teto de gate de 400ms (FR-005/task 1.6/contracts
+# §SEC-M2) — diferente dos hooks de metrica (50ms).
+HAE_BUSY_TIMEOUT_MS=200
+export HAE_BUSY_TIMEOUT_MS
+
+# Idioma if/else em vez de atribuicao direta de `$(...)` (paridade com o
+# padrao ja usado neste arquivo em L189/L269): sob `set -e`, uma atribuicao
+# simples cujo command substitution falha aborta o script inteiro — aqui
+# exit 1/2 do helper sao caminhos de controle legitimos, nao erros.
+if _PBG_HAE_OUT=$(hook_active_exec "$_PBG_CWD"); then
+  _PBG_HAE_RC=0
+else
+  _PBG_HAE_RC=$?
 fi
 
-# Fora de escopo (Decision 3/FR-006): nenhuma execucao ativa -> zero interferencia.
-if [ -z "$_PBG_DETECTED_EXEC" ]; then
-  exit 0
-fi
+case "$_PBG_HAE_RC" in
+  0)
+    # ativa: <execution_kind>\t<state_dir>\t<backend> — prossegue ao fluxo
+    # existente de delegacao ao bash-guard.sh, inalterado (task 3.1.2/3.1.5).
+    _PBG_DETECTED_EXEC=$(printf '%s' "$_PBG_HAE_OUT" | cut -f1)
+    _pbg_hae_dir=$(printf '%s' "$_PBG_HAE_OUT" | cut -f2)
+    _pbg_hae_backend=$(printf '%s' "$_PBG_HAE_OUT" | cut -f3)
+    # backend do helper e "sqlite"|"json" (nao a extensao do arquivo) —
+    # mapear para o nome de arquivo real lido (state.db / state.json).
+    case "$_pbg_hae_backend" in
+      sqlite) _pbg_hae_file="state.db" ;;
+      *) _pbg_hae_file="state.json" ;;
+    esac
+    _PBG_DETECTED_PATH="$_pbg_hae_dir/$_pbg_hae_file"
+    ;;
+  1)
+    # inativa (inclui "nenhum state presente" e status terminal, FR-007):
+    # sai 0 imediatamente, sem tocar em nenhum arquivo (paridade FR-006).
+    exit 0
+    ;;
+  *)
+    # indeterminada (exit 2) ou helper irresolvivel/uso incorreto (demais
+    # exits, convencao 127) — MECANISMO_FALHOU, nunca stdout vazio
+    # (task 3.1.4; SEC-H2 auto-teto interno do helper, SEC-M3, ja aplicado
+    # dentro de hook_active_exec, reclassificado a defesa em profundidade
+    # apos dec-039 confirmar com fonte que timeout de PreToolUse = deny).
+    _pbg_write_log "blocked-mechanism-failure" "$_PBG_CMD" "hook_active_exec indeterminada (exit $_PBG_HAE_RC)" "mechanism-error"
+    _pbg_emit_deny "MECANISMO_FALHOU" "deteccao de execucao ativa indeterminada"
+    ;;
+esac
 
 # ---------- 5. Delegar a bash-guard.sh (task 2.1.2 — nunca reimplementar) ----------
 
