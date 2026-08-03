@@ -90,7 +90,10 @@ mode=docker|bash-fallback
 | 2 | Uso incorreto |
 
 Motivos canonicos de `unavailable`: `docker-absent`, `daemon-unreachable`,
-`image-build-failed`, `health-timeout`, `no-active-execution`.
+`server-source-missing` (fonte `mcp/state-server` nao instalada em
+`~/.claude/mcp/` — instalacao anterior ao empacotamento da fonte no
+tarball; `cstk update` resolve), `image-build-failed`, `health-timeout`,
+`no-active-execution`.
 
 ### `cstk mcp start --state-dir DIR` / `cstk mcp stop --state-dir DIR`
 

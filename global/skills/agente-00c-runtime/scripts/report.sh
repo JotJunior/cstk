@@ -60,7 +60,39 @@ _rp_require_jq() {
 }
 
 _rp_iso_now() { date -u +%FT%TZ; }
-_rp_state_file() { printf '%s/state.json\n' "$1"; }
+
+# _rp_state_file SD — materializa o estado canonico como ARQUIVO json e
+# imprime o path. Backend-agnostico (fix pos-6.2.1: com backend sqlite o
+# report reclamava "state.json ausente" e nenhum relatorio era gerado —
+# falha de auditoria mascarada): state.json existente e usado direto;
+# senao tenta `state-rw.sh read` (cobre state.db) num tmp; sem nenhum dos
+# dois, imprime o path inexistente e o caller morre no proprio check -f.
+# Tmps sao registrados em _RP_TMP_STATE e removidos no trap do dispatch.
+_RP_TMP_STATE=""
+_rp_state_file() {
+  if [ -f "$1/state.json" ]; then
+    printf '%s/state.json\n' "$1"
+    return 0
+  fi
+  _rpsf_rw="$(dirname -- "$0")/state-rw.sh"
+  if [ -x "$_rpsf_rw" ]; then
+    _rpsf_tmp=$(mktemp 2>/dev/null) || { printf '%s/state.json\n' "$1"; return 0; }
+    if sh "$_rpsf_rw" read --state-dir "$1" > "$_rpsf_tmp" 2>/dev/null && [ -s "$_rpsf_tmp" ]; then
+      _RP_TMP_STATE="$_RP_TMP_STATE $_rpsf_tmp"
+      printf '%s\n' "$_rpsf_tmp"
+      return 0
+    fi
+    rm -f -- "$_rpsf_tmp" 2>/dev/null
+  fi
+  printf '%s/state.json\n' "$1"
+}
+_rp_cleanup_tmp_state() {
+  # Lista separada por espaco (paths de mktemp, sem espacos internos) —
+  # expansao sem aspas e intencional.
+  # shellcheck disable=SC2086
+  [ -n "$_RP_TMP_STATE" ] && rm -f -- $_RP_TMP_STATE 2>/dev/null || :
+}
+trap _rp_cleanup_tmp_state EXIT INT TERM
 
 # _rp_wave_usage_json STATE_DIR — agregado read-only de consumo de
 # tokens/tool-uses/duracao de subagente (FASE 4.2 de wave-token-metrics,
@@ -417,7 +449,7 @@ _rp_cmd_generate() {
   [ -n "$_sd" ] || _rp_die_usage "generate: --state-dir obrigatorio"
   _rp_require_jq
   _sf=$(_rp_state_file "$_sd")
-  [ -f "$_sf" ] || _rp_die "generate: state.json ausente em $_sd" 1
+  [ -f "$_sf" ] || _rp_die "generate: estado ausente (state.json/state.db) em $_sd" 1
 
   _now=$(_rp_iso_now)
   _wu_json=$(_rp_wave_usage_json "$_sd")
@@ -517,7 +549,7 @@ _rp_cmd_emit() {
 
   _rp_require_jq
   _sf=$(_rp_state_file "$_sd")
-  [ -f "$_sf" ] || _rp_die "emit: state.json ausente em $_sd" 1
+  [ -f "$_sf" ] || _rp_die "emit: estado ausente (state.json/state.db) em $_sd" 1
 
   # secrets-filter OBRIGATORIO (ver doc da funcao): ausencia/inacessibilidade
   # = erro, NUNCA grava relatorio nao-filtrado.

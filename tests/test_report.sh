@@ -431,4 +431,27 @@ scenario_stack_final_condicional_ao_status() {
   assert_stdout_contains "herdada do projeto" || return 1
 }
 
+# ==== backend sqlite (fix pos-6.2.1): report NAO pode mascarar falha ====
+# Bug de campo (meta-gob-ms, abort de document-templates): com state.db o
+# emit reclamava "state.json ausente" e NENHUM relatorio era gerado.
+
+scenario_generate_backend_sqlite_produz_relatorio() {
+  command -v sqlite3 >/dev/null 2>&1 || { printf '# skip: sqlite3 indisponivel\n'; return 0; }
+  _h="$TMPDIR_TEST/home-rpsq"
+  mkdir -p "$_h/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_h/.claude/cstk/config"
+  _sd="$TMPDIR_TEST/rpsq-state"
+  env HOME="$_h" sh "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh" init \
+    --state-dir "$_sd" --execucao-id "exec-rpsq-1" --projeto-alvo-path "/tmp/rpsq" \
+    --descricao "descricao de teste com tamanho suficiente para validacao" >/dev/null 2>&1 \
+    || { _error "fixture" "init sqlite falhou"; return 2; }
+  [ -f "$_sd/state.db" ] || { _error "fixture" "state.db nao criado"; return 2; }
+  [ ! -f "$_sd/state.json" ] || { _error "fixture" "state.json presente — cenario invalido"; return 2; }
+
+  capture env HOME="$_h" "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate sqlite exit" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "Relatorio do Agente-00C" || return 1
+  assert_stdout_contains "exec-rpsq-1" || return 1
+}
+
 run_all_scenarios

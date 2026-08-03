@@ -214,6 +214,12 @@ install_main() {
   # (sem filtro de profile) porque sao infraestrutura global do toolkit.
   _install_apply_extra_kinds
 
+  # state-mcp-server: fonte de build do servidor MCP (catalog/mcp/state-server
+  # -> ~/.claude/mcp/state-server, caminho 3 de _mcp_context_dir em
+  # cli/lib/mcp.sh). Sem isto, `cstk mcp start` em ambiente instalado nunca
+  # acha o contexto de build e degrada sempre para bash-fallback.
+  _install_apply_mcp_server
+
   _install_emit_summary
   return 0
 }
@@ -753,6 +759,31 @@ _install_apply_extra_kinds() {
 #
 # Usa manifest dedicado por kind (~/.claude/<kind>/.cstk-manifest) — schema
 # identico ao de skills, reaproveitando manifest.sh sem alteracao.
+# _install_apply_mcp_server: espelha catalog/mcp/state-server no destino
+# instalado (~/.claude/mcp/state-server). Conteudo versionado com a release
+# (fonte de build da imagem do servidor, consumida pelo helper confinado de
+# container + npm ci dentro da imagem);
+# sem manifest por arquivo: replace atomico do diretorio inteiro (rm+cp),
+# mesmo espirito do provisionamento de hooks. Escopo global apenas — o
+# resolve de _mcp_context_dir so olha ~/.claude. Catalogo sem mcp/ (release
+# antiga) = no-op silencioso.
+_install_apply_mcp_server() {
+  _iams_src="$_install_catalog_dir/mcp/state-server"
+  [ -d "$_iams_src" ] && [ -f "$_iams_src/package.json" ] || return 0
+  [ "$_install_scope" = "global" ] || return 0
+
+  _iams_dst="${HOME:?HOME nao setado}/.claude/mcp/state-server"
+  if [ "$_install_dry_run" = 1 ]; then
+    log_info "[dry-run] mcp/state-server -> $_iams_dst"
+    return 0
+  fi
+  mkdir -p -- "${_iams_dst%/state-server}"
+  rm -rf -- "$_iams_dst"
+  cp -R -- "$_iams_src" "$_iams_dst"
+  log_info "mcp/state-server instalado em $_iams_dst"
+  return 0
+}
+
 _install_apply_kind() {
   _iak_kind=$1
   _iak_src_dir="$_install_catalog_dir/$_iak_kind"

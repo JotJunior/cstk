@@ -487,13 +487,18 @@ _mcp_cmd_start() {
     return 3
   fi
 
-  # contexto de build (arvore-fonte mcp/state-server/).
+  # contexto de build (arvore-fonte mcp/state-server/). Reason DISTINTO de
+  # image-build-failed: aqui nada chegou a buildar — a fonte do servidor nao
+  # esta instalada (fix pos-6.2.1: o tarball passou a empacotar
+  # catalog/mcp/state-server e o install/update a espelhar em
+  # ~/.claude/mcp/state-server; reason server-source-missing indica
+  # instalacao antiga => rode `cstk update`).
   if ! _mst_context=$(_mcp_context_dir); then
-    printf 'cstk mcp start: aviso: contexto de build (mcp/state-server/) nao encontrado — mode=bash-fallback\n' >&2
+    printf 'cstk mcp start: aviso: fonte do servidor (mcp/state-server/) nao instalada — rode `cstk update`; mode=bash-fallback\n' >&2
     _mcp_write_descriptor "$_mst_state_dir" "$_mst_token" "$_mst_kind" "$_mst_short" \
-      "$_mst_target_path" "-" "bash-fallback" "image-build-failed" "$_mst_started_at" "-"
+      "$_mst_target_path" "-" "bash-fallback" "server-source-missing" "$_mst_started_at" "-"
     printf 'status=unavailable\n'
-    printf 'reason=image-build-failed\n'
+    printf 'reason=server-source-missing\n'
     printf 'container=-\n'
     printf 'session_id=%s\n' "$_mst_token"
     printf 'mode=bash-fallback\n'

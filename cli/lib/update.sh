@@ -194,6 +194,11 @@ update_main() {
   # profile ou cherry-pick de skills.
   _update_apply_extra_kinds || return 1
 
+  # Espelha install: espelho de catalog/mcp/state-server (fonte de build do
+  # servidor MCP) em ~/.claude/mcp/state-server — sem isto o update deixa a
+  # fonte stale (ou ausente) e `cstk mcp start` degrada para bash-fallback.
+  _update_apply_mcp_server
+
   _update_emit_summary
 
   if [ "$_update_count_skipped_edits" -gt 0 ] \
@@ -629,6 +634,28 @@ _update_do_prune() {
 # Espelha _install_apply_extra_kinds em install.sh, mas com semantica de
 # update: detecta edits locais, respeita --force/--keep, reporta uptodate
 # quando release_hash == stored_sha (idempotencia SC-002).
+# _update_apply_mcp_server: identico ao _install_apply_mcp_server
+# (cli/lib/install.sh) — replace atomico de ~/.claude/mcp/state-server a
+# partir de catalog/mcp/state-server. Global apenas; catalogo sem mcp/
+# (release antiga) = no-op; dry-run reporta sem escrever. Best-effort no
+# fluxo do update (nunca gateia o update de skills).
+_update_apply_mcp_server() {
+  _uams_src="$_update_catalog_dir/mcp/state-server"
+  [ -d "$_uams_src" ] && [ -f "$_uams_src/package.json" ] || return 0
+  [ "$_update_scope" = "global" ] || return 0
+
+  _uams_dst="${HOME:?HOME nao setado}/.claude/mcp/state-server"
+  if [ "$_update_dry_run" = 1 ]; then
+    log_info "[dry-run] mcp/state-server -> $_uams_dst"
+    return 0
+  fi
+  mkdir -p -- "${_uams_dst%/state-server}"
+  rm -rf -- "$_uams_dst"
+  cp -R -- "$_uams_src" "$_uams_dst"
+  log_info "mcp/state-server atualizado em $_uams_dst"
+  return 0
+}
+
 _update_apply_extra_kinds() {
   for _uaek_kind in commands agents; do
     _update_apply_kind "$_uaek_kind" || return 1

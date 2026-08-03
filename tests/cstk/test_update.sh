@@ -319,4 +319,39 @@ scenario_update_help_exit0() {
   assert_stderr_contains "cstk update" || return 1
 }
 
+# ==== mcp/state-server: update espelha e substitui a fonte (fix pos-6.2.1) ====
+
+scenario_update_espelha_mcp_state_server() {
+  _h="$TMPDIR_TEST/home-mcpup"
+  _r1="$TMPDIR_TEST/rel-mcpup-1"
+  _r2="$TMPDIR_TEST/rel-mcpup-2"
+  _make_release "$_r1" "v1.0" "alpha" || return 2
+  _install_release "$_h" "file://$_r1/cstk-v1.0.tar.gz"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _error "seed install" "$_CAPTURED_STDERR"; return 2; }
+
+  # v2.0 traz catalog/mcp/state-server; o update deve espelhar no HOME.
+  _make_release "$_r2" "v2.0" "alpha" || return 2
+  _root2="$_r2/cstk-v2.0"
+  mkdir -p "$_root2/catalog/mcp/state-server/src"
+  printf '{"version":"0.9.9"}\n' > "$_root2/catalog/mcp/state-server/package.json"
+  printf '// v2 index\n' > "$_root2/catalog/mcp/state-server/src/index.ts"
+  (cd "$_r2" && tar -czf cstk-v2.0.tar.gz cstk-v2.0) || return 2
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$_r2" && sha256sum cstk-v2.0.tar.gz > cstk-v2.0.tar.gz.sha256) || return 2
+  else
+    (cd "$_r2" && shasum -a 256 cstk-v2.0.tar.gz > cstk-v2.0.tar.gz.sha256) || return 2
+  fi
+
+  # Sujeira pre-existente no destino prova o replace atomico (rm+cp).
+  mkdir -p "$_h/.claude/mcp/state-server"
+  printf 'stale\n' > "$_h/.claude/mcp/state-server/stale-file.txt"
+
+  _run_update "$_h" --from "file://$_r2/cstk-v2.0.tar.gz"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "update exit" "obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  grep -q '"version":"0.9.9"' "$_h/.claude/mcp/state-server/package.json" 2>/dev/null \
+    || { _fail "fonte do state-server nao atualizada" ""; return 1; }
+  [ ! -e "$_h/.claude/mcp/state-server/stale-file.txt" ] \
+    || { _fail "replace nao removeu conteudo stale" ""; return 1; }
+}
+
 run_all_scenarios
