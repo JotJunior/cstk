@@ -191,7 +191,10 @@ Ref: spec FR-005/FR-006; contracts/runtime-interfaces.md §1; research.md Decisi
 
 Ref: checklists/security.md CHK019; plan §Security Review MEDIUM/ASI02-03; CHK072 (herdado)
 
-- [ ] 4.1.1 Registrar bloqueio humano com contexto: aceitar a janela TOCTOU herdada (CHK072) vs mitigar (ex. lock com dono/PID verificado) no freio de emergencia `--force`
+- [x] 4.1.1 Registrar bloqueio humano com contexto: aceitar a janela TOCTOU herdada (CHK072) vs mitigar (ex. lock com dono/PID verificado) no freio de emergencia `--force`
+      <!-- onda-012: block-001 registrado (dec-058) com opcoes
+           aceitar-toctou-herdada | mitigar-lock-com-dono-pid; contexto cita
+           contract §2, CHK012/CHK014 e o desdobramento 4.1.2/4.1.3 -->
 - [ ] 4.1.2 Aplicar a resposta: atualizar checklists/security.md CHK019 e, se mitigacao exigida, refletir em spec/plan
 - [ ] 4.1.3 Se mitigacao exigida, inserir sub-FASE emergente ANTES de 4.2 no mesmo commit da Decisao
 
