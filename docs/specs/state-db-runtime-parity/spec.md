@@ -13,6 +13,55 @@
 > onde budget/cycles/circular/drift/retro/suggestions ficaram inertes durante
 > uma execucao inteira. Esta feature fecha essa lacuna de paridade.
 
+## Clarifications
+
+### Session 2026-08-02
+
+- Q: FR-007 — implementar `state-lock.sh acquire --force` ou emendar o
+  contrato do `/feature-00c-abort`? → A: Implementar `--force`
+  (dec-007, score 3). O contrato shipado ja invoca a flag em bloco
+  executavel (`feature-00c-abort.md:91`) e prosa normativa; o substituto
+  (release + acquire em 2 chamadas do caller) tem a MESMA janela de race
+  (rmdir+mkdir nao-atomicos) porem sem primitiva unica auditavel. O
+  `--force` confina a janela num unico script com diagnostico auditavel;
+  SIGTERM + grace period permanece pre-condicao obrigatoria (nunca
+  primeiro recurso — ver Edge Cases).
+- Q: FR-005 — qual a assinatura da escrita multi-campo atomica? → A:
+  Estender `state-rw.sh set` para aceitar N pares `--field F --value V`
+  repetidos, aplicados atomicamente: backend JSON = um unico write do
+  documento com todos os setpaths; backend SQLite = lote unico
+  transacional. Um par = comportamento atual inalterado (retrocompat
+  FR-004; interface unica, US2 AS3). Sem subcomando novo (dec-008).
+- Q: FR-009 — o que constitui a varredura anti-regressao e seu criterio
+  de pass/fail? → A: Duas camadas (dec-009): (a) DINAMICA — manifest
+  explicito dos 15 leitores do FR-001 executados contra state-dir SQLite
+  populado; falha em "state.json ausente", falha por backend, ou espelho
+  `state.json` criado pos-varredura (SC-004); (b) ESTATICA — scan dos
+  scripts do runtime por referencia a `state.json` em codigo real fora
+  da allowlist de prosa (FR-010). A camada estatica e o que detecta
+  helper NOVO fora do manifest (US5 AS2).
+- Q: Os hooks (`posttooluse-tool-call-tick.sh`, `pretooluse-bash-guard.sh`)
+  que detectam execucao ativa lendo `state.json` direto entram no porte?
+  → A: NAO — feature separada (dec-010; criterio de expansao de escopo:
+  sinalizar, nao forcar). A camada de hooks tem constraints proprios
+  (regra dura de nao tocar o state por concorrencia PostToolUse,
+  provisionamento distinto via `--scope project`). Exclusao registrada
+  em Out of Scope abaixo.
+- Q: FR-008 — o exit 7 contratual aplica so a `report.sh emit` ou tambem
+  a `generate`? → A: Aos DOIS subcomandos (dec-011, score 3): ambos tem
+  hoje o mesmo modo de falha "estado ausente" com exit 1 generico
+  (`report.sh:452` e `:552`) e o contrato nao distingue subcomando — a
+  classe de falha e uma so.
+
+### Out of Scope (registrado em clarify)
+
+- Porte dos hooks do runtime (`posttooluse-tool-call-tick.sh`,
+  `pretooluse-bash-guard.sh`) para deteccao de execucao ativa
+  backend-agnostica: fica para feature dedicada (evidencia da lacuna:
+  `posttooluse-tool-call-tick.sh:70,84-85` le `state.json` via jq
+  direto; sob state-dir SQLite o hook nunca dispara). Esta feature NAO
+  altera hooks.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Guardas e helpers de leitura funcionam sob SQLite (Priority: P1)
@@ -237,26 +286,37 @@ varredura o detecta e falha.
   multi-campo atomica (varios campos num unico write), permitindo promover
   status terminal + `finished_at` (+ `termination_reason`) sem estado
   intermediario que viole as invariantes de consistencia do backend.
+  Assinatura (dec-008): `state-rw.sh set` aceita N pares
+  `--field F --value V` repetidos, aplicados atomicamente — backend JSON
+  num unico write do documento; backend SQLite num lote unico
+  transacional. Um unico par preserva o comportamento atual (FR-004).
 - **FR-006**: Quando uma escrita (single ou multi-campo) violar invariante
   de consistencia do estado, o sistema MUST rejeitar com diagnostico
   (invariante + campos envolvidos) e deixar o estado intacto — sem escrita
   parcial.
-- **FR-007**: O fluxo de abort MUST ser executavel fim-a-fim: o
-  force-acquire do lock referenciado pelo contrato do abort (FR-025 do
-  feature-00c) MUST existir e se comportar como documentado, OU o contrato
-  MUST ser emendado removendo a referencia — com a decisao fundamentada e
-  registrada. [NEEDS CLARIFICATION: implementar `state-lock.sh acquire
-  --force` ou emendar o contrato do `/feature-00c-abort` para usar um
-  mecanismo existente (ex.: release + acquire)? Criterio: menor risco de
-  race + fidelidade ao comportamento SIGTERM+grace ja prescrito.]
+- **FR-007**: O fluxo de abort MUST ser executavel fim-a-fim:
+  `state-lock.sh acquire --force` MUST ser implementado conforme ja
+  referenciado pelo contrato do abort (FR-025 do feature-00c) — remove o
+  lock detido e o readquire numa unica invocacao auditavel, emitindo
+  diagnostico que registra a aquisicao forcada. O `--force` MUST
+  permanecer restrito ao fluxo de abort apos SIGTERM + grace period
+  (nunca primeiro recurso); `acquire` sem `--force` mantem o
+  comportamento atual byte-identico. [Decisao: dec-007, Clarifications
+  2026-08-02.]
 - **FR-008**: A geracao de relatorio sem estado disponivel MUST retornar o
   exit code contratual 7 (contrato de invocacao do feature-00c, "falha na
   geracao do relatorio: exit 7 + estado preservado"), preservando os demais
-  exit codes existentes.
+  exit codes existentes. Aplica-se aos DOIS subcomandos de `report.sh`
+  com esse modo de falha (`generate` e `emit`) — mesma classe de falha,
+  mesmo exit code (dec-011).
 - **FR-009**: A suite de testes MUST incluir uma varredura anti-regressao
-  que executa cada helper leitor do runtime contra um state-dir SQLite
-  populado e falha se qualquer helper reportar ausencia de `state.json`,
-  falhar por backend, ou criar espelho `state.json`.
+  em duas camadas (dec-009): (a) DINAMICA — executa cada helper do
+  manifest explicito de leitores (a lista do FR-001) contra um state-dir
+  SQLite populado e falha se qualquer helper reportar ausencia de
+  `state.json`, falhar por backend, ou criar espelho `state.json`
+  pos-varredura; (b) ESTATICA — scan dos scripts do runtime que falha em
+  referencia a `state.json` em codigo real fora da allowlist de prosa
+  (FR-010), detectando helpers novos fora do manifest (US5 AS2).
 - **FR-010**: As referencias residuais a `state.json` fora da lista de
   porte MUST ser auditadas e classificadas: prosa (comentarios, mensagens
   de log — ex.: `secrets-filter.sh`, mensagem de erro do bootstrap)
