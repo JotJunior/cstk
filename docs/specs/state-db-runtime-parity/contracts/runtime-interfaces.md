@@ -1,20 +1,16 @@
 # Contract: deltas de interface do runtime (state-db-runtime-parity)
 
 Interfaces CLI internas do runtime 00c alteradas/criadas pela feature. Toda
-assinatura EXISTENTE abaixo foi extraida do codigo real (paths citados);
-assinaturas novas estao marcadas `[PROPOSTA — a validar na implementacao]`.
+assinatura abaixo foi extraida ou validada contra o codigo real (paths
+citados).
 
-**Protocolo de validacao das assinaturas `[PROPOSTA]` (CHK008, FASE 1/1.1.4):**
-cada tarefa implementadora dona de uma assinatura proposta — 1.2.6
-(`_state-read.sh`, §4), 3.1.7 (`set` multi-campo, §1), 4.2.5 (`acquire
---force`, §2) — MUST, no MESMO commit que entrega a implementacao:
-(a) validar a assinatura shipada contra este contract via sonda empirica
-(invocacao real do helper/teste, nao leitura de prosa); (b) em divergencia,
-atualizar o texto do contract para a assinatura REAL, registrando Decisao
-auditavel (`state-decisions.sh register`) com a justificativa da mudanca;
-(c) remover o marcador `[PROPOSTA — a validar na implementacao]` da secao.
-Gate verificavel: ao fim da FASE 4, `grep -c 'PROPOSTA' <este arquivo>`
-retorna 0; marcador residual = tarefa implementadora incompleta.
+**Protocolo de validacao das assinaturas propostas (CHK008, FASE 1/1.1.4) —
+CONCLUIDO:** cada tarefa implementadora dona de uma assinatura proposta —
+1.2.6 (`_state-read.sh`, §4, onda-006), 3.1.7 (`set` multi-campo, §1,
+onda-012), 4.2.5 (`acquire --force`, §2, onda-013) — validou a assinatura
+shipada via sonda empirica (invocacao real do helper/teste), atualizou o
+texto para a assinatura REAL com Decisao auditavel em divergencia e removeu
+o marcador da secao. Gate satisfeito: nenhum marcador residual neste arquivo.
 
 ## 1. `state-rw.sh set` — multi-campo atomico (FR-005)
 
@@ -91,13 +87,37 @@ Assinatura JA REFERENCIADA por contrato shipado (fonte:
 state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" --force
 ```
 
-Semantica `[PROPOSTA — a validar na implementacao]`:
+Semantica validada na implementacao (FASE 4, onda-013 — sonda empirica:
+`tests/test_state-lock.sh` 25/25, incl. os 9 cenarios novos de owner/force;
+refinada pela mitigacao TOCTOU dec-059/block-001 → spec FR-007a):
 
-- lock ausente: identico a `acquire` normal (mkdir, exit 0);
-- lock detido: `rmdir` + `mkdir` na mesma invocacao, `diag_emit` evento
-  `lock-force-acquired` (auditavel), exit 0;
-- falha de rmdir/mkdir: exit != 0 com diagnostico;
-- `acquire` SEM `--force`: byte-identico ao atual (exit 3 se detido).
+```
+state-lock.sh acquire --state-dir DIR [--force] [--owner-pid N]
+```
+
+- **Dono do lock (FR-007a)**: TODA aquisicao grava `<DIR>/.lock/owner`
+  (`pid=` + `acquired_at=`) pos-mkdir, best-effort — o mkdir permanece a
+  primitiva atomica. Default do pid: `$PPID`; override via `--owner-pid N`
+  (numerico; senao exit 2). `check` e o diagnostico de contention do
+  `acquire` reportam o dono (pid, vivo/morto, acquired_at); lock legado
+  sem owner = dono-desconhecido.
+- lock ausente: identico a `acquire` normal (mkdir + owner, exit 0; sem
+  evento force);
+- lock detido + dono VIVO (`kill -0` sucede): force RECUSADO — exit 3 +
+  `diag_emit error lock-force-denied-owner-alive`; lock e owner intactos
+  (dec-059: nunca forcar dono vivo);
+- lock detido + dono morto (`kill -0` falha): remocao (`rmdir`, fallback
+  `rm -rf` por causa do arquivo owner interno) + `mkdir` na mesma
+  invocacao, `diag_emit warning lock-force-acquired` com pid antigo/novo,
+  exit 0;
+- lock detido legado SEM owner: consuma como dono-desconhecido com aviso
+  explicito em stderr + `lock-force-acquired` (`pid antigo=desconhecido`);
+- falha de remocao/mkdir: exit 1 + `diag_emit error
+  lock-force-remove-failed` / `lock-force-reacquire-failed`;
+- `acquire` SEM `--force`: comportamento preservado (exit 3 se detido;
+  mensagens legadas intactas; adicoes: gravacao do owner na aquisicao e
+  linha aditiva de dono no diagnostico de contention);
+- `--force`/`--owner-pid` fora do `acquire`: exit 2 (uso).
 - Pre-condicao CONTRATUAL (nao verificada pelo script): SIGTERM + grace 60s
   antes (`feature-00c-abort.md:59-91`); `--force` nunca e primeiro recurso.
 

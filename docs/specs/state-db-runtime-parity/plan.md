@@ -139,8 +139,11 @@ onda-003):
   interpolar `--field`/`--value` crus no SQL do lote (requisito de task F3).
 - **MEDIUM/ASI02-03**: `acquire --force` auditavel — teste MUST assertar que
   todo force-acquire emite `diag_emit lock-force-acquired`; restricao de uso
-  permanece contratual (`feature-00c-abort.md:172`), janela TOCTOU herdada de
-  CHK072 (aceita).
+  permanece contratual (`feature-00c-abort.md:172`). Janela TOCTOU herdada de
+  CHK072: MITIGADA por decisao do operador (dec-059/block-001, CHK019) — o
+  lock ganha dono (PID gravado na aquisicao) e o `--force` so consuma com
+  dono comprovadamente morto (`kill -0` falha) ou lock legado sem owner
+  (aviso explicito); dono vivo e SEMPRE recusado. Ver spec FR-007a.
 - **LOW/A04**: materializacao SEMPRE via `mktemp` (0600), fora do state-dir,
   removida por trap; jamais path previsivel.
 - **INFO (positivo)**: fail-closed preservado (exit 7; FR-012 falha rapida);

@@ -307,6 +307,17 @@ varredura o detecta e falha.
   (nunca primeiro recurso); `acquire` sem `--force` mantem o
   comportamento atual byte-identico. [Decisao: dec-007, Clarifications
   2026-08-02.]
+  - **FR-007a (mitigacao TOCTOU — dec-059/block-001)**: o lock MUST ter
+    DONO: toda aquisicao grava o PID do adquirente (+ timestamp) dentro do
+    diretorio `.lock` (o `mkdir` permanece a primitiva atomica de
+    aquisicao). `acquire --force` MUST verificar o dono antes de consumar:
+    (a) dono comprovadamente morto (`kill -0` falha) → força e emite
+    diagnostico com PID antigo/novo; (b) lock legado SEM owner →
+    dono-desconhecido: força apenas com aviso explicito no diagnostico
+    (heuristica antiga preservada); (c) dono VIVO → MUST recusar com exit
+    != 0 e diagnostico — nunca forca dono vivo. `check` MUST reportar o
+    dono quando presente. [Decisao: dec-059, resposta ao block-001,
+    CHK019.]
 - **FR-008**: A geracao de relatorio sem estado disponivel MUST retornar o
   exit code contratual 7 (contrato de invocacao do feature-00c, "falha na
   geracao do relatorio: exit 7 + estado preservado"), preservando os demais

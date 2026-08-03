@@ -13,8 +13,8 @@ fail-fast de dependencia.
 
 - [x] CHK012 - Existe criterio VERIFICAVEL de auditabilidade do force-acquire: teste que asserta que todo force-acquire emite `diag_emit lock-force-acquired`? [Mensurabilidade, Spec §FR-007; Plan §Security Review MEDIUM/ASI02-03] {auto} — evidencia: plan.md:140-141 "teste MUST assertar que todo force-acquire emite `diag_emit lock-force-acquired`".
 - [x] CHK013 - A restricao de uso do `--force` (SIGTERM + grace period como pre-condicao; nunca primeiro recurso) esta definida como CONTRATUAL com dono do enforcement explicito (contrato do abort, nao o script)? [Clareza, Spec §FR-007; Contract §2] {auto} — evidencia: contract §2 "Pre-condicao CONTRATUAL (nao verificada pelo script): SIGTERM + grace 60s antes (`feature-00c-abort.md:59-91`)".
-- [x] CHK014 - A janela TOCTOU do force-acquire esta explicitamente ACEITA com referencia rastreavel (CHK072 herdado), em vez de silenciosamente ignorada? [Assumption, Plan §Security Review] {auto} — evidencia: plan.md:142-143 "janela TOCTOU herdada de CHK072 (aceita)".
-- [ ] CHK019 - Aceitar a janela TOCTOU herdada (CHK072) em vez de mitiga-la (ex.: lock com dono/PID verificado) reflete o apetite de risco do produto para o freio de emergencia? [Risco, Plan §Security Review] {humano} — julgamento de apetite de risco; aguardando dono do produto.
+- [x] CHK014 - A janela TOCTOU do force-acquire esta explicitamente ACEITA com referencia rastreavel (CHK072 herdado), em vez de silenciosamente ignorada? [Assumption, Plan §Security Review] {auto} — evidencia: plan.md:142-143 "janela TOCTOU herdada de CHK072 (aceita)". NOTA (onda-013): superado por dec-059/CHK019 — a janela deixou de ser aceita e passou a ser MITIGADA (lock com dono/PID); plan atualizado.
+- [x] CHK019 - Aceitar a janela TOCTOU herdada (CHK072) em vez de mitiga-la (ex.: lock com dono/PID verificado) reflete o apetite de risco do produto para o freio de emergencia? [Risco, Plan §Security Review] {humano} — RESPONDIDO (block-001/dec-059, onda-013): o operador escolheu `mitigar-lock-com-dono-pid` — a janela NAO e aceita; o lock ganha dono (PID gravado na aquisicao) e o `--force` so consuma com dono comprovadamente morto ou lock legado sem owner (aviso explicito); dono vivo e sempre recusado. Refletido em spec FR-007a e plan §Security Review.
 
 ## Findings LOW do gate owasp (onda 3) como requisitos verificaveis
 
@@ -35,5 +35,5 @@ fail-fast de dependencia.
 - Os 2 LOW do owasp (onda 3) estao integrados como CHK011 e CHK015, ambos
   satisfeitos na spec/plan — a verificacao de implementacao pertence as
   tasks F3/F1.
-- `{humano}` em aberto: CHK019 (apetite de risco TOCTOU).
+- `{humano}` CHK019 RESPONDIDO na onda-013 (block-001/dec-059): mitigar com lock dono/PID — nenhum `{humano}` em aberto neste checklist.
 - `[Gap]` CHK016 resolvido na FASE 1/1.1.2 (onda-006) — ver item acima.

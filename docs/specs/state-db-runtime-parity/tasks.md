@@ -195,18 +195,34 @@ Ref: checklists/security.md CHK019; plan §Security Review MEDIUM/ASI02-03; CHK0
       <!-- onda-012: block-001 registrado (dec-058) com opcoes
            aceitar-toctou-herdada | mitigar-lock-com-dono-pid; contexto cita
            contract §2, CHK012/CHK014 e o desdobramento 4.1.2/4.1.3 -->
-- [ ] 4.1.2 Aplicar a resposta: atualizar checklists/security.md CHK019 e, se mitigacao exigida, refletir em spec/plan
-- [ ] 4.1.3 Se mitigacao exigida, inserir sub-FASE emergente ANTES de 4.2 no mesmo commit da Decisao
+- [x] 4.1.2 Aplicar a resposta: atualizar checklists/security.md CHK019 e, se mitigacao exigida, refletir em spec/plan
+      <!-- onda-013: dec-059 = mitigar-lock-com-dono-pid; CHK019 [x] citando
+           block-001/dec-059; spec ganhou FR-007a; plan §Security MEDIUM/ASI02-03
+           atualizado de "aceita" para "MITIGADA"; nota de consistencia em CHK014 -->
+- [x] 4.1.3 Se mitigacao exigida, inserir sub-FASE emergente ANTES de 4.2 no mesmo commit da Decisao
+      <!-- onda-013: sub-FASE 4.1.bis inserida abaixo (mitigacao exigida por dec-059) -->
+
+### 4.1.bis Sub-FASE emergente (dec-059): owner-PID no lock `[C]`
+
+Ref: spec FR-007a; dec-059/block-001; CHK019; plan §Security Review MEDIUM/ASI02-03
+
+- [x] 4.1.bis.1 Gravar o dono na aquisicao: `acquire` escreve arquivo `owner` dentro do diretorio `.lock` com `pid` + `timestamp` (mkdir continua sendo a primitiva atomica de aquisicao; a escrita do owner e pos-mkdir, best-effort para nao quebrar a atomicidade) <!-- onda-013: _sl_write_owner; default $PPID, override --owner-pid -->
+- [x] 4.1.bis.2 `check` (e diagnosticos de contention) passam a reportar o dono quando o arquivo `owner` existe (pid + timestamp no stdout/diagnostico) <!-- onda-013: _sl_report_owner (pid, vivo/morto, acquired_at) -->
+- [x] 4.1.bis.3 Retrocompat com locks legados SEM `owner`: tratar como dono-desconhecido — `--force` exige a heuristica antiga (pre-condicao contratual SIGTERM+grace) + diagnostico explicito de aviso <!-- onda-013: aviso "lock legado sem arquivo owner (dono-desconhecido)" -->
+
+
 
 ### 4.2 Implementar `acquire --force` auditavel `[C]`
 
-Ref: spec FR-007; contracts/runtime-interfaces.md §2; research.md Decision 3; feature-00c-abort.md:91 (contrato shipado)
+Ref: spec FR-007 + FR-007a; contracts/runtime-interfaces.md §2; research.md Decision 3; feature-00c-abort.md:91 (contrato shipado); dec-059
 
-- [ ] 4.2.1 Flag `--force` no `acquire`: lock ausente = identico ao acquire normal (mkdir, exit 0); lock detido = `rmdir` + `mkdir` na MESMA invocacao, exit 0
-- [ ] 4.2.2 Todo force-acquire sobre lock detido emite `diag_emit lock-force-acquired` (auditavel — MEDIUM/ASI02-03)
-- [ ] 4.2.3 `acquire` SEM `--force` permanece byte-identico ao atual (exit 3 se detido)
-- [ ] 4.2.4 Testes em `tests/test_state-lock.sh`: lock orfao force-adquirido, sem-force exit 3, lock ausente, assert do evento `diag_emit`, falha de rmdir/mkdir com exit != 0
-- [ ] 4.2.5 Validar semantica `[PROPOSTA]` do contract §2 contra a implementacao e remover o marcador (Ref: CHK008)
+- [x] 4.2.1 Flag `--force` no `acquire`: lock ausente = identico ao acquire normal (mkdir, exit 0); lock detido = verificar dono (4.1.bis) e, se autorizado, `rmdir` + `mkdir` na MESMA invocacao, exit 0 <!-- onda-013: _sl_force_consummate -->
+- [x] 4.2.1a `--force` NUNCA consuma com dono VIVO (`kill -0` sucede): exit != 0 + diagnostico citando o PID vivo (dec-059) <!-- onda-013: exit 3 + lock-force-denied-owner-alive -->
+- [x] 4.2.1b `--force` com dono morto (`kill -0` falha) ou lock legado sem owner (aviso explicito) consuma normalmente
+- [x] 4.2.2 Todo force-acquire sobre lock detido emite `diag_emit lock-force-acquired` com PID antigo/novo (auditavel — MEDIUM/ASI02-03) <!-- onda-013: DIAG|warning|lock-force-acquired| pid antigo/novo -->
+- [x] 4.2.3 `acquire` SEM `--force` permanece comportamentalmente identico ao atual (exit 3 se detido; unica adicao: gravacao do owner pos-mkdir, 4.1.bis.1) <!-- onda-013: cenarios legados 16/16 intactos -->
+- [x] 4.2.4 Testes em `tests/test_state-lock.sh`: owner gravado na aquisicao; check reporta dono; force com dono morto passa; force com dono VIVO recusa; force em lock legado sem owner (aviso); sem-force exit 3; lock ausente; assert do evento `diag_emit`; falha de rmdir/mkdir com exit != 0; cenarios existentes intactos <!-- onda-013: 9 cenarios novos; suite 25/25 -->
+- [x] 4.2.5 Validar semantica `[PROPOSTA]` do contract §2 contra a implementacao (incluindo FR-007a) e remover o marcador (Ref: CHK008) <!-- onda-013: contract §2 reescrito com semantica real; grep -c PROPOSTA = 0 (gate CHK008 satisfeito) -->
 
 ---
 

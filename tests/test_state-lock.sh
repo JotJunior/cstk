@@ -233,4 +233,125 @@ scenario_subcomando_invalido_exit_2() {
   fi
 }
 
+# --- FR-007a (dec-059): owner-PID no lock + acquire --force ---
+
+scenario_acquire_grava_owner_pid_timestamp() {
+  # 4.1.bis.1: acquire grava .lock/owner com pid= numerico + acquired_at=.
+  _sd="$TMPDIR_TEST/owner-basic"
+  capture "$SCRIPT" acquire --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "acquire" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/.lock/owner" ] || { _fail "arquivo owner ausente" ""; return 1; }
+  _pid=$(sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' "$_sd/.lock/owner")
+  [ -n "$_pid" ] || { _fail "linha pid= invalida" "$(cat "$_sd/.lock/owner")"; return 1; }
+  grep -q '^acquired_at=....-..-..T' "$_sd/.lock/owner" \
+    || { _fail "linha acquired_at ausente" "$(cat "$_sd/.lock/owner")"; return 1; }
+  capture "$SCRIPT" release --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "release com owner dentro" "$_CAPTURED_EXIT"; return 1; }
+  [ -d "$_sd/.lock" ] && { _fail ".lock presente apos release" ""; return 1; }
+  return 0
+}
+
+scenario_acquire_owner_pid_override() {
+  # --owner-pid sobrepoe o PPID default gravado no owner.
+  _sd="$TMPDIR_TEST/owner-override"
+  capture "$SCRIPT" acquire --state-dir "$_sd" --owner-pid 99999
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "acquire --owner-pid" "$_CAPTURED_STDERR"; return 1; }
+  grep -q '^pid=99999$' "$_sd/.lock/owner" \
+    || { _fail "owner nao respeitou --owner-pid" "$(cat "$_sd/.lock/owner")"; return 1; }
+  # --owner-pid nao-numerico = uso incorreto (exit 2)
+  capture "$SCRIPT" acquire --state-dir "$TMPDIR_TEST/owner-bad" --owner-pid abc
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "--owner-pid abc" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_check_reporta_dono() {
+  # 4.1.bis.2: check em lock detido reporta pid + estado (vivo/morto) do dono.
+  _sd="$TMPDIR_TEST/owner-check"
+  capture "$SCRIPT" acquire --state-dir "$_sd" --owner-pid "$$"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "acquire" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" check --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "check detido" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "dono do lock: pid=$$" || return 1
+  assert_stderr_contains "(vivo)" || return 1
+}
+
+scenario_force_lock_ausente_identico_acquire() {
+  # 4.2.1: --force com lock ausente = acquire normal (exit 0, owner gravado).
+  _sd="$TMPDIR_TEST/force-free"
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "force em lock livre" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/.lock/owner" ] || { _fail "owner ausente" ""; return 1; }
+  # Sem lock detido: NAO deve emitir lock-force-acquired.
+  case "$_CAPTURED_STDERR" in
+    *lock-force-acquired*) _fail "diag indevido em lock livre" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_force_dono_morto_consuma_com_diag() {
+  # 4.2.1b + 4.2.2: dono comprovadamente morto => force passa + diag com pids.
+  _sd="$TMPDIR_TEST/force-dead"
+  sh -c 'exit 0' &
+  _dead=$!
+  wait "$_dead" 2>/dev/null || :
+  capture "$SCRIPT" acquire --state-dir "$_sd" --owner-pid "$_dead"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "acquire dono-morto" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "force dono morto" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "DIAG|warning|lock-force-acquired|" || return 1
+  assert_stderr_contains "pid antigo=$_dead" || return 1
+  [ -f "$_sd/.lock/owner" ] || { _fail "owner novo ausente pos-force" ""; return 1; }
+}
+
+scenario_force_dono_vivo_recusa_exit_3() {
+  # 4.2.1a (dec-059): dono VIVO => force RECUSADO, lock e owner intactos.
+  _sd="$TMPDIR_TEST/force-alive"
+  capture "$SCRIPT" acquire --state-dir "$_sd" --owner-pid "$$"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "acquire" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "force dono vivo" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "DIAG|error|lock-force-denied-owner-alive|" || return 1
+  assert_stderr_contains "dono do lock esta VIVO (pid=$$" || return 1
+  # NAO pode ter consumado nem trocado o dono.
+  case "$_CAPTURED_STDERR" in
+    *lock-force-acquired*) _fail "force consumou com dono vivo" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+  grep -q "^pid=$$\$" "$_sd/.lock/owner" \
+    || { _fail "owner alterado apos recusa" "$(cat "$_sd/.lock/owner")"; return 1; }
+}
+
+scenario_force_lock_legado_sem_owner_aviso() {
+  # 4.1.bis.3 + 4.2.1b: lock legado SEM owner = dono-desconhecido; force
+  # consuma com aviso explicito + diag citando pid antigo=desconhecido.
+  _sd="$TMPDIR_TEST/force-legacy"
+  mkdir -p "$_sd/.lock"
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "force legado" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "lock legado sem arquivo owner (dono-desconhecido)" || return 1
+  assert_stderr_contains "DIAG|warning|lock-force-acquired|" || return 1
+  assert_stderr_contains "pid antigo=desconhecido" || return 1
+  [ -f "$_sd/.lock/owner" ] || { _fail "owner novo ausente pos-force" ""; return 1; }
+}
+
+scenario_force_falha_remocao_exit_nao_zero() {
+  # contract §2: falha de rmdir/mkdir => exit != 0 com diagnostico.
+  _sd="$TMPDIR_TEST/force-rofail"
+  mkdir -p "$_sd/.lock"
+  chmod 555 "$_sd"
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force
+  _got=$_CAPTURED_EXIT
+  chmod 755 "$_sd"
+  [ "$_got" != 0 ] || { _fail "force com FS read-only" "esperado exit != 0, obtido 0"; return 1; }
+  assert_stderr_contains "DIAG|error|lock-force-remove-failed|" || return 1
+}
+
+scenario_force_flag_invalida_fora_do_acquire() {
+  # --force/--owner-pid so valem para acquire; demais subcomandos = exit 2.
+  _sd="$TMPDIR_TEST/force-usage"
+  mkdir -p "$_sd"
+  capture "$SCRIPT" release --state-dir "$_sd" --force
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "release --force" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" check --state-dir "$_sd" --owner-pid 123
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "check --owner-pid" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
 run_all_scenarios
