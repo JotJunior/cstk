@@ -9,6 +9,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
 SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/feature-00c-preflight.sh"
+SCRIPTS_DIR="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
 
 # Helper: cria fixture de projeto-alvo + state.json com hashes corretos.
 # Imprime path do state-dir em stdout.
@@ -198,7 +199,61 @@ scenario_check_sem_state_json_falha() {
     _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"
     return 1
   fi
-  assert_stderr_contains "state.json ausente" || return 1
+  assert_stderr_contains "estado ausente" || return 1
+}
+
+# ==== backend sqlite (fix pos-6.2.1): check NAO pode ser inerte ====
+# Bug de campo (meta-gob-ms): com state.db o preflight reportava
+# "state.json ausente" e a validacao de drift FR-PRE-004 nunca rodava.
+
+_fp_make_sqlite_state() {
+  # $1=home sandbox  $2=state-dir  $3=projeto (com briefing/constitution)
+  mkdir -p "$1/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$1/.claude/cstk/config"
+  mkdir -p "$3/docs/01-briefing-discovery"
+  printf '# briefing de teste com conteudo suficiente\n' > "$3/docs/01-briefing-discovery/briefing.md"
+  printf '# constitution de teste\n\n**Version**: 1.0.0\n' > "$3/docs/constitution.md"
+  if command -v sha256sum >/dev/null 2>&1; then
+    _fpms_br=$(sha256sum "$3/docs/01-briefing-discovery/briefing.md" | awk '{print $1}')
+    _fpms_ct=$(sha256sum "$3/docs/constitution.md" | awk '{print $1}')
+  else
+    _fpms_br=$(shasum -a 256 "$3/docs/01-briefing-discovery/briefing.md" | awk '{print $1}')
+    _fpms_ct=$(shasum -a 256 "$3/docs/constitution.md" | awk '{print $1}')
+  fi
+  env HOME="$1" sh "$SCRIPTS_DIR/state-rw.sh" init --state-dir "$2" \
+    --short-name "sqlite-preflight" \
+    --projeto-alvo-path "$3" \
+    --descricao "descricao de teste com tamanho suficiente para validacao" \
+    --briefing-path "$3/docs/01-briefing-discovery/briefing.md" --briefing-sha256 "$_fpms_br" \
+    --constitution-path "$3/docs/constitution.md" --constitution-sha256 "$_fpms_ct" \
+    --constitution-version "1.0.0" >/dev/null 2>&1
+}
+
+scenario_check_backend_sqlite_valida_ok() {
+  command -v sqlite3 >/dev/null 2>&1 || { printf '# skip: sqlite3 indisponivel\n'; return 0; }
+  _h="$TMPDIR_TEST/home-sq1"
+  _sd="$TMPDIR_TEST/sq1-state"
+  _pj="$TMPDIR_TEST/sq1-proj"
+  _fp_make_sqlite_state "$_h" "$_sd" "$_pj" || { _error "fixture" "init sqlite falhou"; return 2; }
+  [ -f "$_sd/state.db" ] || { _error "fixture" "state.db nao criado (config nao aplicou?)"; return 2; }
+  [ ! -f "$_sd/state.json" ] || { _error "fixture" "state.json presente — cenario invalido"; return 2; }
+  capture env HOME="$_h" "$SCRIPT" check --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit sqlite ok" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains '"ok": true' || return 1
+}
+
+scenario_check_backend_sqlite_detecta_drift() {
+  command -v sqlite3 >/dev/null 2>&1 || { printf '# skip: sqlite3 indisponivel\n'; return 0; }
+  _h="$TMPDIR_TEST/home-sq2"
+  _sd="$TMPDIR_TEST/sq2-state"
+  _pj="$TMPDIR_TEST/sq2-proj"
+  _fp_make_sqlite_state "$_h" "$_sd" "$_pj" || { _error "fixture" "init sqlite falhou"; return 2; }
+  # Muta o briefing DEPOIS do init: o check deve reportar drift (a prova de
+  # que a validacao deixou de ser inerte sob sqlite).
+  printf '\nconteudo novo pos-init\n' >> "$_pj/docs/01-briefing-discovery/briefing.md"
+  capture env HOME="$_h" "$SCRIPT" check --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit sqlite drift" "esperado 1 (findings), obtido $_CAPTURED_EXIT: $_CAPTURED_STDOUT"; return 1; }
+  assert_stdout_contains 'briefing' || return 1
 }
 
 scenario_uso_sem_argumentos() {
