@@ -20,7 +20,12 @@ fi
 # Helpers
 
 _init_state() {
-  capture "$RW" init --state-dir "$1" \
+  # HOME sandbox SEM config global: forca backend JSON deterministico mesmo
+  # em hosts com `state_backend=sqlite` em ~/.claude/cstk/config (padrao de
+  # hermeticidade do test__state-read.sh; state-db-runtime-parity 2.4.4).
+  _is_home="$TMPDIR_TEST/home-json"
+  mkdir -p "$_is_home"
+  capture env HOME="$_is_home" "$RW" init --state-dir "$1" \
     --execucao-id "exec-cache-test" \
     --projeto-alvo-path "/tmp/p" \
     --descricao "test cache"
@@ -357,6 +362,80 @@ scenario_subcomando_desconhecido_exit_2() {
 
 scenario_sem_subcomando_exit_2() {
   assert_exit 2 "$SCRIPT"
+}
+
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.4 / FR-001 / SC-003) ====
+# get-resumo/status/check-drift leem via _state-read.sh; ensure grava as
+# colunas json briefing_cache/constitution_cache via state-rw.sh set;
+# metrics-bump grava .accumulated_metrics.cache (extra_fields.cache_metrics
+# no sqlite — dec-052).
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_init_sqlite() {
+  _is_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_is_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_is_home/.claude/cstk/config"
+  env HOME="$_is_home" "$RW" init --state-dir "$1" \
+    --execucao-id "exec-cache-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC cache sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+}
+
+scenario_sqlite_ensure_e_get_resumo_hit() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"; _src="$TMPDIR_TEST/brief-sqlite.md"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _make_big_source "$_src"
+  capture "$SCRIPT" ensure --state-dir "$_sd" --artifact briefing --source-path "$_src"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ensure sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "ensure sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+  capture "$SCRIPT" get-resumo --state-dir "$_sd" --artifact briefing
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "get-resumo sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "Secao" || return 1
+  capture "$SCRIPT" status --state-dir "$_sd" --artifact briefing
+  assert_stdout_contains "resumo" || return 1
+}
+
+scenario_sqlite_metrics_bump_persiste_cache_metrics() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  capture "$SCRIPT" metrics-bump --state-dir "$_sd" --tipo hit --chars-economizados 400
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "bump hit sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" metrics-bump --state-dir "$_sd" --tipo hit --chars-economizados 400
+  capture "$SCRIPT" metrics-bump --state-dir "$_sd" --tipo miss-drift
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "bump miss sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  _cache=$("$RW" read --state-dir "$_sd" | jq -c '.accumulated_metrics.cache')
+  _hits=$(printf '%s' "$_cache" | jq -r '.tokens_cache_hits')
+  _saved=$(printf '%s' "$_cache" | jq -r '.estimated_tokens_saved')
+  _drift=$(printf '%s' "$_cache" | jq -r '.tokens_cache_misses_drift')
+  [ "$_hits" = "2" ] || { _fail "hits sqlite" "esperado 2, obtido $_hits ($_cache)"; return 1; }
+  [ "$_saved" = "200" ] || { _fail "saved sqlite" "esperado 200, obtido $_saved"; return 1; }
+  [ "$_drift" = "1" ] || { _fail "drift sqlite" "esperado 1, obtido $_drift"; return 1; }
+}
+
+scenario_sqlite_invalidate_e_anti_mirror() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"; _src="$TMPDIR_TEST/brief-sqlite.md"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _make_small_source "$_src"
+  capture "$SCRIPT" ensure --state-dir "$_sd" --artifact briefing --source-path "$_src"
+  capture "$SCRIPT" invalidate --state-dir "$_sd" --artifact briefing --razao "teste sqlite"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "invalidate sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" status --state-dir "$_sd" --artifact briefing
+  assert_stdout_contains "null" || return 1
+  # FR-003: nenhuma operacao pode materializar state.json no state-dir.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "state-cache criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
 }
 
 run_all_scenarios

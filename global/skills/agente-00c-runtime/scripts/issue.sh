@@ -48,6 +48,13 @@ set -eu
 _ISH_NAME="issue"
 _ISH_REPO="JotJunior/cstk"
 
+# Leitura via interface canonica (state-db-runtime-parity FR-001, lote 2.4):
+# materializa documento legivel por jq nos DOIS backends (json/sqlite).
+# issue.sh nao escreve estado diretamente — o registro da issue no state
+# delega a `suggestions.sh mark-issue` (ja portado, roteia por state-rw set).
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _ish_die_usage() { printf '%s: %s\n' "$_ISH_NAME" "$1" >&2; exit 2; }
 _ish_die()       { printf '%s: %s\n' "$_ISH_NAME" "$1" >&2; exit "${2:-1}"; }
 
@@ -60,8 +67,6 @@ _ish_require_jq() {
   command -v jq >/dev/null 2>&1 \
     || _ish_die "jq nao encontrado no PATH" 1
 }
-
-_ish_state_file() { printf '%s/state.json\n' "$1"; }
 
 # _ish_normalize TEXT -> texto normalizado (lowercase, whitespace colapsado)
 _ish_normalize() {
@@ -81,10 +86,12 @@ _ish_hash() {
   fi
 }
 
-# _ish_get_state STATE_DIR -> populates _ISH_EXEC_ID, _ISH_PAP, etc.
+# _ish_get_state STATE_DIR -> populates _ISH_EXEC_ID, _ISH_PAP, _ISH_SF etc.
+# Falha de materializacao sob sqlite propaga exit+stderr do read (FR-012).
 _ish_get_state() {
-  _sf=$(_ish_state_file "$1")
-  [ -f "$_sf" ] || _ish_die "state.json ausente em $1" 1
+  _ISH_SF=$(state_read_materialize "$1")
+  [ -f "$_ISH_SF" ] || _ish_die "state.json ausente em $1" 1
+  _sf=$_ISH_SF
   _ISH_EXEC_ID=$(jq -r '(.execution // .execucao).id' "$_sf")
   _ISH_PAP=$(jq -r '(.execution // .execucao) | (.target_project_path // .projeto_alvo_path)' "$_sf")
   _ISH_PROJ_DESC=$(jq -r '(.execution // .execucao) | (.target_project_description // .projeto_alvo_descricao)' "$_sf")
@@ -116,12 +123,13 @@ _ish_build_body() {
   _ish_get_state "$_sd"
   _now=$(date -u +%FT%TZ)
 
-  # Sumario das decisoes recentes que evidenciam o bug (max 5)
+  # Sumario das decisoes recentes que evidenciam o bug (max 5) — le do
+  # documento materializado por _ish_get_state (interface canonica).
   _rel_decs=$(jq -r '
     ((.decisions // .decisoes) // []) | reverse | .[0:5]
     | map("- Decisao `\(.id)`: \((.context // .contexto) | .[0:100])")
     | join("\n")
-  ' "$(_ish_state_file "$_sd")")
+  ' "$_ISH_SF")
   [ -z "$_rel_decs" ] && _rel_decs="- (nenhuma decisao registrada ainda)"
 
   # Reproducao default — orquestrador pode passar via --reproducao

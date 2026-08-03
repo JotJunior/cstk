@@ -85,14 +85,30 @@ Ref: spec FR-001/FR-011; research.md Decision 6 (classe reader)
 
 Ref: spec FR-001/FR-011; research.md Decision 6 (classe read-write)
 
-- [ ] 2.4.1 Portar `suggestions.sh` (leitura via helper; `register` muta via `state-rw.sh set`)
-- [ ] 2.4.2 Adicionar cenarios sqlite em `tests/test_suggestions.sh`
-- [ ] 2.4.3 Portar `state-cache.sh` (`get-resumo` le; `metrics-bump` muta via set)
-- [ ] 2.4.4 Adicionar cenarios sqlite em `tests/test_state-cache.sh`
-- [ ] 2.4.5 Portar `state-decisions-reconcile.sh` (`check` le; `repair --apply` muta via set)
-- [ ] 2.4.6 Adicionar cenarios sqlite em `tests/test_state-decisions-reconcile.sh`
-- [ ] 2.4.7 Portar `issue.sh` (registro de issue no state via set)
-- [ ] 2.4.8 Adicionar cenarios sqlite em `tests/test_issue.sh`
+- [x] 2.4.1 Portar `suggestions.sh` (leitura via helper; `register` muta via `state-rw.sh set`)
+      <!-- onda-010: .suggestions via set (extra_fields no sqlite); contadores
+           global_skill_suggestions_total/toolkit_issues_opened DERIVADOS no read
+           sob sqlite (dec-052) e bumpados via set so no backend JSON (FR-004) -->
+- [x] 2.4.2 Adicionar cenarios sqlite em `tests/test_suggestions.sh`
+      <!-- + hermeticidade HOME-json no _init (host com state_backend=sqlite) -->
+- [x] 2.4.3 Portar `state-cache.sh` (`get-resumo` le; `metrics-bump` muta via set)
+      <!-- onda-010: todos os subcomandos portados; metrics-bump grava o objeto
+           .accumulated_metrics.cache inteiro via set (novo case em _state-rw-db.sh:
+           persiste em extra_fields.cache_metrics, read remonta). Fix emergente em
+           state-rw.sh set: validacao usava `jq -e`, que rejeitava null/false
+           (valores JSON validos — invalidate quebrava); coberto por
+           scenario_set_aceita_null_e_false_como_valor em tests/test_state-rw.sh -->
+- [x] 2.4.4 Adicionar cenarios sqlite em `tests/test_state-cache.sh`
+- [x] 2.4.5 Portar `state-decisions-reconcile.sh` (`check` le; `repair --apply` muta via set)
+      <!-- onda-010/dec-051: metade `repair --apply` do enunciado e VACUA — o
+           subcomando repair nao existe no runtime (grep -rn repair = 0 hits);
+           portado o `check` (read-only, INV-4) via _state-read.sh -->
+- [x] 2.4.6 Adicionar cenarios sqlite em `tests/test_state-decisions-reconcile.sh`
+- [x] 2.4.7 Portar `issue.sh` (registro de issue no state via set)
+      <!-- onda-010: issue.sh nao escreve estado diretamente — leitura
+           (_ish_get_state/_ish_build_body) via _state-read.sh; o registro no
+           state delega a suggestions.sh mark-issue (ja portado) -->
+- [x] 2.4.8 Adicionar cenarios sqlite em `tests/test_issue.sh`
 
 ### 2.5 Portar `state-lock.sh check-execution-busy` `[A]`
 

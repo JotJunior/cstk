@@ -20,7 +20,12 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 _setup() {
-  capture "$RW" init --state-dir "$1" --execucao-id "exec-issue-test" \
+  # HOME sandbox SEM config global: forca backend JSON deterministico mesmo
+  # em hosts com `state_backend=sqlite` em ~/.claude/cstk/config (padrao de
+  # hermeticidade do test__state-read.sh; state-db-runtime-parity 2.4.8).
+  _s_home="$TMPDIR_TEST/home-json"
+  mkdir -p "$_s_home"
+  capture env HOME="$_s_home" "$RW" init --state-dir "$1" --execucao-id "exec-issue-test" \
     --projeto-alvo-path "/tmp/p" --descricao "POC issue tests"
   [ "$_CAPTURED_EXIT" = 0 ] || return 1
   capture "$DEC" register --state-dir "$1" \
@@ -185,6 +190,58 @@ scenario_ptbr_legado_reader_fallback() {
   # decisoes[].id + contexto (fallback) afloram nas decisoes relevantes
   assert_stdout_contains "Decisao \`dec-001\`" || return 1
   assert_stdout_contains "Decisao legada que evidencia bug via fallback pt-BR" || return 1
+}
+
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.4 / FR-001 / SC-003) ====
+# _ish_get_state/_ish_build_body leem via _state-read.sh (materializacao).
+# Segue dry-run only (nunca gh real).
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_setup_sqlite() {
+  _ss_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_ss_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_ss_home/.claude/cstk/config"
+  env HOME="$_ss_home" "$RW" init --state-dir "$1" \
+    --execucao-id "exec-issue-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC issue sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+  "$DEC" register --state-dir "$1" \
+    --agente "orquestrador-00c" --etapa "clarify" \
+    --contexto "Decisao sqlite que evidencia o bug reportado" \
+    --opcoes '["A","B"]' --escolha "A" \
+    --justificativa "Justificativa de tamanho ok aqui sim para teste" >/dev/null 2>&1 || return 1
+  "$SG" register --state-dir "$1" --suggestions-file "$2" \
+    --skill "clarify" --severidade "impeditiva" \
+    --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 no cenario sqlite" \
+    --proposta "Adicionar etapa de cross-check entre perguntas geradas" >/dev/null 2>&1
+}
+
+scenario_sqlite_dry_run_le_estado_do_state_db() {
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _sd="$TMPDIR_TEST/state-sqlite"; _md="$TMPDIR_TEST/sug-sqlite.md"
+  _setup_sqlite "$_sd" "$_md" || { _error "fixture sqlite" ""; return 2; }
+  capture "$SCRIPT" create --state-dir "$_sd" --suggestion-id "sug-001" \
+    --skill "clarify" \
+    --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 no cenario sqlite" \
+    --proposta "Adicionar etapa de cross-check entre perguntas" \
+    --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"state.json ausente"*) _fail "dry-run sqlite" "degradou com 'state.json ausente'"; return 1 ;;
+  esac
+  # Valores do estado afloram no body: exec id + decisao registrada no state.db
+  assert_stdout_contains "exec-issue-sqlite" || return 1
+  assert_stdout_contains "Decisao sqlite que evidencia o bug reportado" || return 1
+  # FR-003: nenhuma operacao pode materializar state.json no state-dir.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "issue criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
 }
 
 run_all_scenarios

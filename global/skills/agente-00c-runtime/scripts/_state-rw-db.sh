@@ -26,6 +26,17 @@
 # volta ao documento no `read`. Nenhum dado e perdido; apenas nao ganha
 # tratamento relacional (sem FK/CHECK) enquanto o gap nao fecha.
 #
+# Fechamento parcial (state-db-runtime-parity, lote 2.4 / dec-052):
+#   - `.suggestions` vive em extra_fields (catch-all) e os contadores
+#     derivados `accumulated_metrics.global_skill_suggestions_total` /
+#     `toolkit_issues_opened` sao computados NO read a partir dele
+#     (nao mais hardcoded 0) — suggestions.sh nao precisa (nem pode)
+#     gravar contador sob sqlite.
+#   - `.accumulated_metrics.cache` (state-cache.sh metrics-bump) e o UNICO
+#     path de accumulated_metrics gravavel via set: persiste em
+#     extra_fields.cache_metrics (chave interna, nunca exposta no doc) e o
+#     read remonta em .accumulated_metrics.cache.
+#
 # Funcoes expostas (todas exigem STATE_DIR ja resolvido para backend sqlite
 # pelo caller — `_sr_backend` — e state.db existente):
 #   _sr_db_file STATE_DIR                    -> imprime STATE_DIR/state.db
@@ -301,8 +312,9 @@ _sr_db_read() {
       'subagents_spawned', 0,
       'decisions_total', (SELECT count(*) FROM decision WHERE execution_id = execution.id),
       'human_blocks_total', (SELECT count(*) FROM human_block WHERE execution_id = execution.id),
-      'global_skill_suggestions_total', 0,
-      'toolkit_issues_opened', 0
+      'global_skill_suggestions_total', json_array_length(coalesce(json_extract(execution.extra_fields,'$.suggestions'),'[]')),
+      'toolkit_issues_opened', (SELECT count(*) FROM json_each(coalesce(json_extract(execution.extra_fields,'$.suggestions'),'[]')) AS je WHERE json_extract(je.value,'$.issue_opened') IS NOT NULL),
+      'cache', json(coalesce(json_extract(execution.extra_fields,'$.cache_metrics'),'null'))
     ),
     'external_urls_whitelist', json(coalesce(external_urls_whitelist,'[]')),
     'circular_movement_history', json(coalesce(circular_movement_history,'[]')),
@@ -338,11 +350,12 @@ _sr_db_read() {
     def drop_null_keys(ks):
       reduce ks[] as $k (.; if (has($k) and .[$k] == null) then del(.[$k]) else . end);
 
-    ((.extra_fields // {}) ) as $ext
+    ((.extra_fields // {}) | del(.cache_metrics)) as $ext
     | (del(.extra_fields)) as $core
     | ($ext + $core)
     | drop_null_keys(["short_name"])
     | (if (has("short_name") | not) then del(.prerequisites) else . end)
+    | .accumulated_metrics |= drop_null_keys(["cache"])
     | .execution |= drop_null_keys(["canonical_project","session_name"])
     | .waves |= map(
         ((.extra_fields // {})) as $we
@@ -402,7 +415,7 @@ _sr_exec_col_lookup() {
     budgets.tool_calls_current_wave|budgets.current_wave_start)
       _sr_die "set: campo '.$1' e derivado da onda aberta — nao gravavel diretamente sob backend SQLite" 1 ;;
     accumulated_metrics.*)
-      _sr_die "set: campo '.$1' e derivado (accumulated_metrics) — nao gravavel sob backend SQLite" 1 ;;
+      _sr_die "set: campo '.$1' e derivado (accumulated_metrics) — nao gravavel sob backend SQLite (excecao: '.accumulated_metrics.cache' inteiro, tratado antes deste lookup)" 1 ;;
     *) : ;;
   esac
 }
@@ -697,6 +710,19 @@ _sr_db_set() {
       ;;
     waves\[*)
       _sr_db_set_wave_field "$_sds_db" "$_sds_bare" "$_sds_value"
+      ;;
+    accumulated_metrics.cache)
+      # Metricas de cache (state-cache.sh metrics-bump — state-db-runtime-parity
+      # 2.4.3): sem coluna dedicada no schema; persiste o objeto inteiro em
+      # extra_fields.cache_metrics e o read remonta em .accumulated_metrics.cache
+      # (drop se null). Demais paths accumulated_metrics.* seguem derivados
+      # (die abaixo via _sr_exec_col_lookup).
+      _sds_cur_extra=$(_state_db_exec "$_sds_db" "SELECT coalesce(extra_fields,'{}') FROM execution LIMIT 1;")
+      _sds_new_extra=$(printf '%s' "$_sds_cur_extra" | jq -c --argjson v "$_sds_value" '.cache_metrics = $v') \
+        || _sr_die "set: jq falhou ao aplicar cache_metrics em extra_fields" 1
+      _sds_sqlval=$(_sr_sql_literal json "$_sds_new_extra")
+      _state_db_exec_with_retry "$_sds_db" "BEGIN IMMEDIATE; UPDATE execution SET extra_fields = $_sds_sqlval; COMMIT;" \
+        || _sr_die "set: UPDATE execution.extra_fields (cache_metrics) falhou" 1
       ;;
     *)
       _sr_exec_col_lookup "$_sds_bare"

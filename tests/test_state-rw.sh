@@ -1087,4 +1087,24 @@ scenario_init_guardas_preservadas_independente_da_config_global() {
 
 fi # sqlite3 disponivel
 
+# ==== set aceita literais JSON falsy (state-db-runtime-parity 2.4.3) ====
+# Regressao: a validacao de --value usava `jq -e`, que retorna exit 1 para
+# output falsy (null/false) — valores JSON VALIDOS e legitimos (ex.:
+# `.briefing_cache = null` do state-cache.sh invalidate). Sem -e, parse
+# invalido segue detectado (jq exit 2).
+scenario_set_aceita_null_e_false_como_valor() {
+  _sd="$TMPDIR_TEST/state-falsy"
+  _init_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.briefing_cache' --value 'null'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set null" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.atomic_commit_enabled' --value 'false'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set false" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  _v=$(jq -r '.atomic_commit_enabled' "$_sd/state.json")
+  [ "$_v" = "false" ] || { _fail "false persistido" "obtido $_v"; return 1; }
+  # Parse invalido continua recusado
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.current_stage' --value 'nao-e-json'
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "set invalido" "aceitou valor nao-JSON"; return 1; }
+}
+
 run_all_scenarios

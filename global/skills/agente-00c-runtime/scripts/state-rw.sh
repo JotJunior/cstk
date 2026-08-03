@@ -664,7 +664,11 @@ _sr_cmd_set() {
   [ "$_v_set" = 1 ] || _sr_die "set: --value obrigatorio (JSON valido — strings com aspas)" 2
   _sr_require_jq
   # Valida que --value e JSON parseavel (string raw nao serve — pedimos aspas).
-  if ! printf '%s' "$_v" | jq -e . >/dev/null 2>&1; then
+  # SEM `-e`: jq -e retorna 1 para output falsy (null/false), que SAO valores
+  # JSON validos e legitimos (ex.: `.briefing_cache = null` do state-cache.sh
+  # invalidate; `.atomic_commit_enabled = false`). Parse invalido segue
+  # detectado: jq sem -e retorna exit 2 em erro de sintaxe.
+  if ! printf '%s' "$_v" | jq . >/dev/null 2>&1; then
     _sr_die "set: --value nao e JSON valido. Strings precisam de aspas: '\"foo\"'." 1
   fi
   if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
