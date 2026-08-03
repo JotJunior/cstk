@@ -21,6 +21,7 @@
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/latency.sh"
 
 SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh"
 
@@ -461,6 +462,25 @@ scenario_db_sem_state_zero_efeito() {
   find "$TMPDIR_TEST" -name 'wave-agent-usage.jsonl' 2>/dev/null | grep -q . \
     && { _fail "sidecar" "NAO deveria existir sidecar sem nenhum state presente"; return 1; }
   return 0
+}
+
+# ==== FASE 6 (hooks-db-parity) — gate de latencia automatizado (task 6.1) ====
+#
+# Mediana de N=20 + 3 warm-up sob state-dir SQLite ativo criado no proprio
+# scenario (research.md Decision 3). Teto 150ms (orcamento ~30ms; medido
+# hoje 21.79ms). Skip se perl/sqlite3 ausentes — gate de performance, nao
+# de disponibilidade de ferramenta.
+
+scenario_gate_latencia_mediana_agent_usage_sob_state_db() {
+  _require_perl || return 2
+  _require_sqlite3 || return 2
+  _active_feature_db "$TMPDIR_TEST" "gate-latencia" "em_andamento"
+  _tr='{"status":"completed","agentId":"x","totalTokens":1}'
+  _json=$(_payload "$TMPDIR_TEST" "Agent" "$_tr")
+  _mediana=$(_measure_median_ms 3 20 sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$SCRIPT")
+  [ -n "$_mediana" ] || { _error "medicao_falhou" "_measure_median_ms nao produziu mediana"; return 2; }
+  [ "$_mediana" -le 150 ] 2>/dev/null \
+    || { _fail "latencia" "mediana=${_mediana}ms excede teto de 150ms (FR-005/SC-003, research Decision 3)"; return 1; }
 }
 
 run_all_scenarios

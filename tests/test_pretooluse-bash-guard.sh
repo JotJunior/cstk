@@ -14,6 +14,7 @@
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/latency.sh"
 
 SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh"
 HELPER="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_hook-active-exec.sh"
@@ -471,6 +472,27 @@ scenario_paridade_json_vs_db_mesma_categoria_bloqueio() {
     *'"outcome":"blocked-by-rule"'*) : ;;
     *) _fail "outcome db" "esperado blocked-by-rule; log=$_log_db"; return 1 ;;
   esac
+}
+
+# ==== FASE 6 (hooks-db-parity) — gate de latencia automatizado (task 6.1) ====
+#
+# Mede a latencia end-to-end do hook real (mediana de N=20 + 3 warm-up
+# descartados, research.md Decision 3) contra um state-dir SQLite ativo
+# criado no proprio scenario. Teto 400ms para o hook de guarda (orcamento
+# da spec ~177ms; medido hoje 17.36ms — folga de ~23x, absorve CI lento
+# sem tornar o gate mudo a regressoes de ordem de grandeza). Skip (nao
+# fail) se perl ou sqlite3 estiverem ausentes: e gate de performance, nao
+# de disponibilidade de ferramenta.
+
+scenario_gate_latencia_mediana_guarda_sob_state_db() {
+  _require_perl || return 2
+  _require_sqlite3 || return 2
+  _active_feature_db "$TMPDIR_TEST" "gate-latencia" "em_andamento"
+  _json='{"cwd":"'"$TMPDIR_TEST"'","tool_name":"Bash","tool_input":{"command":"ls -la"}}'
+  _mediana=$(_measure_median_ms 3 20 sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$SCRIPT")
+  [ -n "$_mediana" ] || { _error "medicao_falhou" "_measure_median_ms nao produziu mediana"; return 2; }
+  [ "$_mediana" -le 400 ] 2>/dev/null \
+    || { _fail "latencia" "mediana=${_mediana}ms excede teto de 400ms (FR-005/SC-003, research Decision 3)"; return 1; }
 }
 
 run_all_scenarios

@@ -201,9 +201,16 @@ Implementar aqui preventivamente arriscaria hooks parcialmente portados
 antes do checkpoint de cada fase. Subtarefas permanecem `[ ]` ate o porte
 real de cada hook.
 
-- [ ] 2.2.1 Implementar a cadeia de resolucao com ordem `<dir-do-hook>/../<rel-path>` -> `$HOME/.claude/skills/agente-00c-runtime/<rel-path>` -> `<cwd>/.claude/skills/agente-00c-runtime/<rel-path>` — invertida SOMENTE para `_hook-active-exec.sh` (demais deps mantem a ordem original, sem regressao)
-- [ ] 2.2.2 Usar teste `-r` (legivel) em vez de `-x` (executavel) ao validar o candidato — nota de implementacao do contrato (`_*.sh` do runtime nao sao executaveis)
-- [ ] 2.2.3 Implementar o pre-check inline (SEC-H1) nos 3 hooks: testar `[ -f ]`/`[ -d ]` para existencia de `state.json` OU `state.db` sob `<cwd>/.claude/agente-00c-state/` ou `<cwd>/.claude/feature-00c-state/*/` — usando apenas builtins, ANTES de resolver ou sourcear qualquer arquivo
+- [x] 2.2.1 Implementar a cadeia de resolucao com ordem `<dir-do-hook>/../<rel-path>` -> `$HOME/.claude/skills/agente-00c-runtime/<rel-path>` -> `<cwd>/.claude/skills/agente-00c-runtime/<rel-path>` — invertida SOMENTE para `_hook-active-exec.sh` (demais deps mantem a ordem original, sem regressao) <!-- validado empiricamente onda-010: `_pau_resolve_dep_hae`/`_pbg_resolve_dep_hae`/`_ptt_resolve_dep_hae` nos 3 hooks (FASES 3-5), ordem HOME antes de cwd -->
+- [x] 2.2.2 Usar teste `-r` (legivel) em vez de `-x` (executavel) ao validar o candidato — nota de implementacao do contrato (`_*.sh` do runtime nao sao executaveis) <!-- validado empiricamente onda-010: os 3 `_resolve_dep_hae` usam `[ -r ... ]` -->
+- [x] 2.2.3 Implementar o pre-check inline (SEC-H1) nos 3 hooks: testar `[ -f ]`/`[ -d ]` para existencia de `state.json` OU `state.db` sob `<cwd>/.claude/agente-00c-state/` ou `<cwd>/.claude/feature-00c-state/*/` — usando apenas builtins, ANTES de resolver ou sourcear qualquer arquivo <!-- validado empiricamente onda-010: `_pau_precheck_active_scope`/analogas nos 3 hooks; mesmo pre-check agora coberto (allowlist codigo-real) pelo sweep estendido na FASE 7 (task 7.1.2) -->
+
+Fechamento (onda-010): as 3 subtarefas acima ficaram deliberadamente `[ ]`
+desde onda-007 ate o porte real de cada hook (nota "Status (onda-007)"
+acima). Fechadas nesta onda apos confirmacao empirica (grep) de que as
+FASES 3-5 as implementaram de fato nos 3 hooks — nenhum codigo novo
+necessario aqui, so sincronizacao de checkbox com o estado real (Etapa 9.3
+do execute-task).
 
 ### 2.3 Escrever `tests/test_hook-active-exec.sh` (novo — regra de ouro `--check-coverage`) `[A]` `[x]`
 
@@ -342,11 +349,11 @@ Depende de: 1.5 (CHK012 reconciliado — sem isso o gate nao tem criterio de
 aceite nao-ambiguo) e das FASES 3, 4, 5 completas (hooks portados e
 estaveis).
 
-- [ ] 6.1.1 Implementar helper de medicao (`perl -MTime::HiRes=time`) com 3 invocacoes de warm-up descartadas + 20 medicoes reais + calculo de mediana
-- [ ] 6.1.2 Aplicar teto de **150 ms** para os 2 hooks de metrica (`posttooluse-tool-call-tick.sh`, `posttooluse-agent-usage.sh`)
-- [ ] 6.1.3 Aplicar teto de **400 ms** para o hook de guarda (`pretooluse-bash-guard.sh`)
-- [ ] 6.1.4 Implementar skip (nunca fail) quando `perl` ou `sqlite3` estiverem ausentes — e gate de performance, nao de disponibilidade de ferramenta
-- [ ] 6.1.5 Integrar o gate nos 3 arquivos de teste ja estendidos (3.2, 4.2, 5.2)
+- [x] 6.1.1 Implementar helper de medicao (`perl -MTime::HiRes=time`) com 3 invocacoes de warm-up descartadas + 20 medicoes reais + calculo de mediana <!-- tests/lib/latency.sh: _epoch_ms + _measure_median_ms + _median_of_file -->
+- [x] 6.1.2 Aplicar teto de **150 ms** para os 2 hooks de metrica (`posttooluse-tool-call-tick.sh`, `posttooluse-agent-usage.sh`)
+- [x] 6.1.3 Aplicar teto de **400 ms** para o hook de guarda (`pretooluse-bash-guard.sh`)
+- [x] 6.1.4 Implementar skip (nunca fail) quando `perl` ou `sqlite3` estiverem ausentes — e gate de performance, nao de disponibilidade de ferramenta <!-- _require_perl/_require_sqlite3 -> return 2 (ERROR/skip), nunca FAIL -->
+- [x] 6.1.5 Integrar o gate nos 3 arquivos de teste ja estendidos (3.2, 4.2, 5.2) <!-- scenario_gate_latencia_mediana_* em cada um; test_pretooluse-bash-guard.sh adicionado a _is_slow_test (tests/run.sh, ~7s medido) -->
 
 ---
 
@@ -359,10 +366,10 @@ Ref: quickstart.md Cenario 11; research.md Decision 6; dec-022
 Depende de: FASES 2-6 completas (codigo final estabilizado antes de fechar a
 varredura de regressao).
 
-- [ ] 7.1.1 Adicionar `global/skills/agente-00c-runtime/hooks/*.sh` (os 3 hooks) ao laco da varredura estatica — hoje limitado a `"$R"/*.sh "$REPO_ROOT/cli/lib/00c-bootstrap.sh"` (`tests/test_state-parity-sweep.sh` L230-231), exatamente a lacuna que deixou a regressao original passar
-- [ ] 7.1.2 Expandir `_static_allowlist()` se `_hook-active-exec.sh` precisar de entrada `codigo-real` (unica mencao legitima a `state.db`/`sqlite3` fora da camada de estado transacional) — com classificacao e justificativa no mesmo commit (CHK016)
-- [ ] 7.1.3 Validar que os 3 hooks portados **nao** aparecem na allowlist — nao devem ter acesso direto a `state.json`/`state.db` fora do helper
-- [ ] 7.1.4 Cenario negativo: introduzir deliberadamente, num hook, uma construcao de path `"$dir/state.json"` fora da allowlist e confirmar que o sweep falha com diagnostico apontando arquivo e linha
+- [x] 7.1.1 Adicionar `global/skills/agente-00c-runtime/hooks/*.sh` (os 3 hooks) ao laco da varredura estatica — hoje limitado a `"$R"/*.sh "$REPO_ROOT/cli/lib/00c-bootstrap.sh"` (`tests/test_state-parity-sweep.sh` L230-231), exatamente a lacuna que deixou a regressao original passar <!-- FEITO: loop estende para hooks/*.sh; scenario_estatica_allowlist_sem_entradas_mortas tambem ajustado (resolve arquivo em hooks/ quando aplicavel) -->
+- [x] 7.1.2 Expandir `_static_allowlist()` se `_hook-active-exec.sh` precisar de entrada `codigo-real` (unica mencao legitima a `state.db`/`sqlite3` fora da camada de estado transacional) — com classificacao e justificativa no mesmo commit (CHK016) <!-- FEITO: _hook-active-exec.sh:codigo-real adicionado (resolvia o FAIL persistente ja existente antes desta onda, pre-existente em scripts/ desde as FASES 1-2) -->
+- [x] 7.1.3 Validar que os 3 hooks portados **nao** aparecem na allowlist — nao devem ter acesso direto a `state.json`/`state.db` fora do helper <!-- DIVERGENCIA EMPIRICA (aterramento factual, mesmo precedente de 4.2.1): os 3 hooks TEM um pre-check inline `[ -f "$dir/state.json" ] || [ -f "$dir/state.db" ]` (existencia simetrica, nunca leitura/parse) — e MUST do contrato SEC-H1/dec-026/FR-008 (contracts/hook-active-exec.md L140-150: "o hook MUST executar um pre-check inline... antes de resolver ou sourcear o helper"), preservado desde as FASES 3-5 e verificado via grep nesta onda. Fraquejar esse pre-check violaria o MUST ja ratificado; forcar o sweep a nao detecta-lo mascarariam uma classe real de acesso direto. Resolucao: os 3 hooks FORAM adicionados a allowlist como codigo-real com a justificativa completa (SEC-H1, checagem simetrica json+db, nao e a classe de regressao que o sweep cata) — nao ficaram fora dela. Texto da task diverge do desenho ja ratificado; seguimos o artefato ratificado -->
+- [x] 7.1.4 Cenario negativo: introduzir deliberadamente, num hook, uma construcao de path `"$dir/state.json"` fora da allowlist e confirmar que o sweep falha com diagnostico apontando arquivo e linha <!-- FEITO via scenario_estatica_deteccao_regressao_deliberada_em_hook: nao modifica hooks reais, injeta scratch file com _static_hits (funcao fatorada) e confirma deteccao de linha real + nao-deteccao de comentario -->
 
 ---
 

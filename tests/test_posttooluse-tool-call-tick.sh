@@ -15,6 +15,7 @@
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
+. "$TESTS_ROOT/lib/latency.sh"
 
 SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh"
 
@@ -352,6 +353,24 @@ scenario_db_roundtrip_state_ondas_contabiliza_ticks() {
   _tool_calls=$("$_RUNTIME_SCRIPTS/state-rw.sh" get --state-dir "$_sd" --field '.waves[-1].tool_calls' 2>/dev/null)
   [ "$_tool_calls" = "4" ] \
     || { _fail "agregacao" "esperado .waves[-1].tool_calls == 4 apos state-ondas end, obtido: $_tool_calls"; return 1; }
+}
+
+# ==== FASE 6 (hooks-db-parity) — gate de latencia automatizado (task 6.1) ====
+#
+# Mediana de N=20 + 3 warm-up sob state-dir SQLite ativo criado no proprio
+# scenario (research.md Decision 3). Teto 150ms (orcamento ~30ms; medido
+# hoje 12.36ms). Skip se perl/sqlite3 ausentes — gate de performance, nao
+# de disponibilidade de ferramenta.
+
+scenario_gate_latencia_mediana_tick_sob_state_db() {
+  _require_perl || return 2
+  _require_sqlite3 || return 2
+  _active_feature_db "$TMPDIR_TEST" "gate-latencia" "em_andamento"
+  _json=$(_json_for "$TMPDIR_TEST" "Bash")
+  _mediana=$(_measure_median_ms 3 20 sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$SCRIPT")
+  [ -n "$_mediana" ] || { _error "medicao_falhou" "_measure_median_ms nao produziu mediana"; return 2; }
+  [ "$_mediana" -le 150 ] 2>/dev/null \
+    || { _fail "latencia" "mediana=${_mediana}ms excede teto de 150ms (FR-005/SC-003, research Decision 3)"; return 1; }
 }
 
 run_all_scenarios
