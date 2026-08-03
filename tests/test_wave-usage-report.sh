@@ -768,4 +768,100 @@ scenario_backfill_tooluseresult_string_nao_derruba() {
   return 0
 }
 
+# ==== Backend SQLite (state-db-runtime-parity FASE 2.3 / FR-001 / FR-011) ====
+# Leitura via _state-read.sh: aggregate/backfill materializam o documento a
+# partir de state.db; a escrita do backfill ja delega a state-rw.sh write
+# (db-aware). Fixture: init sob config global state_backend=sqlite (HOME
+# sandbox) + injecao de .waves via read|jq|write (caminho canonico).
+
+RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+
+_sqlite3_adequate() {
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  _v=$(sqlite3 --version 2>/dev/null | cut -d' ' -f1) || return 1
+  [ -n "$_v" ]
+}
+
+_wur_init_sqlite() {
+  _wis_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_wis_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_wis_home/.claude/cstk/config"
+  env HOME="$_wis_home" "$RW" init --state-dir "$1" \
+    --execucao-id "x-wur-sqlite" --projeto-alvo-path "/tmp/p" \
+    --descricao "POC wave-usage-report sqlite" >/dev/null 2>&1 || return 1
+  [ -f "$1/state.db" ] || return 1
+}
+
+# Substitui .waves do documento persistido em state.db pelo array JSON $2,
+# via caminho canonico read|jq|write (write e db-aware).
+_wur_sqlite_set_waves() {
+  "$RW" read --state-dir "$1" \
+    | jq --argjson w "$2" '.waves = $w' \
+    | "$RW" write --state-dir "$1" >/dev/null 2>&1
+}
+
+scenario_sqlite_aggregate_json_le_state_db() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  mktemp_test || return 2
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _wur_init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  # Reusa a fixture canonica do contrato: extrai .waves do state.json gerado
+  # pelo helper e injeta no documento sqlite. Enriquecidas com campos de
+  # fechamento: o schema sqlite exige started_at NOT NULL e permite no
+  # maximo 1 onda aberta por execucao (ux_wave_single_open) — ondas da
+  # fixture precisam estar FECHADAS para o import aceitar as 3.
+  _wur_write_fixture_contrato
+  _waves=$(jq -c '[.waves[] | . + {started_at:"2026-07-25T20:00:00Z", finished_at:"2026-07-25T20:05:00Z", termination_reason:"etapa_concluida_avancando"}]' "$TMPDIR_TEST/state.json")
+  _wur_sqlite_set_waves "$_sd" "$_waves" || { _fail "fixture sqlite" "write das waves falhou"; return 1; }
+
+  capture sh "$SCRIPT" aggregate --state-dir "$_sd" --json
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "aggregate sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"state.json nao encontrado"*) _fail "aggregate sqlite" "degradou com 'state.json nao encontrado'"; return 1 ;;
+  esac
+  # Veredito equivalente ao backend JSON (SC-003): mesmos agregados.
+  printf '%s' "$_CAPTURED_STDOUT" | jq -e '.spawns_total == 5 and .waves_total == 2 and .metric_collected == true' >/dev/null \
+    || { _fail "aggregate sqlite" "agregado divergente do backend JSON: $_CAPTURED_STDOUT"; return 1; }
+  # Anti-mirror (FR-003): leitura nao materializa state.json no state-dir.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "aggregate criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
+}
+
+scenario_sqlite_backfill_apply_persiste_no_state_db() {
+  _wur_have_jq || { _error "jq ausente"; return 2; }
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  mktemp_test || return 2
+  _sd="$TMPDIR_TEST/state-sqlite"
+  _wur_init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  # Janelas identicas a fixture do backfill JSON (transcript valida cobre
+  # onda-001 por contencao). Ondas FECHADAS (termination_reason preenchido):
+  # o schema sqlite exige coerencia finished_at<->termination_reason e no
+  # maximo 1 onda aberta (ux_wave_single_open).
+  _wur_sqlite_set_waves "$_sd" '[
+    {"id":"onda-001","started_at":"2026-07-25T20:27:44Z","finished_at":"2026-07-25T20:32:23Z","termination_reason":"etapa_concluida_avancando","agent_usage":null,"agent_spawns":[]},
+    {"id":"onda-002","started_at":"2026-07-25T20:39:08Z","finished_at":"2026-07-25T20:49:16Z","termination_reason":"etapa_concluida_avancando","agent_usage":null,"agent_spawns":[]}
+  ]' || { _fail "fixture sqlite" "write das waves falhou"; return 1; }
+  _wur_write_transcript_valida
+
+  capture sh "$SCRIPT" backfill --state-dir "$_sd" --transcript "$TMPDIR_TEST/transcript.jsonl"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "backfill sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  # Persistencia no state.db via state-rw.sh write (db-aware): read devolve
+  # o spawn aplicado com source=backfill e agent_usage recomputado.
+  _doc=$("$RW" read --state-dir "$_sd") || { _fail "read pos-backfill" "state-rw.sh read falhou"; return 1; }
+  printf '%s' "$_doc" | jq -e '.waves[0].agent_spawns[0].agent_id == "agent-001" and .waves[0].agent_spawns[0].source == "backfill" and .waves[0].agent_usage.spawns_total == 1' >/dev/null \
+    || { _fail "backfill sqlite" "spawn nao persistido no state.db: $(printf '%s' "$_doc" | jq -c '.waves[0]')"; return 1; }
+  # Idempotencia sob sqlite: 2a execucao -> 0 novos, sem write.
+  capture sh "$SCRIPT" backfill --state-dir "$_sd" --transcript "$TMPDIR_TEST/transcript.jsonl"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "backfill sqlite 2a" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "0 spawns novos" || return 1
+  # Anti-mirror (FR-003).
+  if [ -f "$_sd/state.json" ]; then
+    _fail "anti-mirror" "backfill criou state.json dentro do state-dir sqlite"
+    return 1
+  fi
+}
+
 run_all_scenarios "$0"

@@ -131,6 +131,12 @@
 
 set -eu
 
+# Materializacao de estado legivel (feature state-db-runtime-parity, FASE 2):
+# sob backend JSON devolve o proprio state.json; sob SQLite (state.db)
+# materializa via `state-rw.sh read` num tmp 0600 fora do state-dir.
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
+
 _MRR_NAME="model-routing-report"
 
 # ---------- Helpers privados ----------
@@ -410,7 +416,9 @@ _mrr_cmd_aggregate() {
   [ -n "$_mrr_state_dir" ] \
     || _mrr_die_usage "aggregate: --state-dir obrigatorio"
 
-  _mrr_state_file="$_mrr_state_dir/state.json"
+  # Materializa via _state-read.sh (json: proprio state.json; sqlite: tmp).
+  # Falha do read sob sqlite propaga via set -e (FR-012 — nunca degrada mudo).
+  _mrr_state_file=$(state_read_materialize "$_mrr_state_dir")
   [ -f "$_mrr_state_file" ] \
     || _mrr_die "aggregate: state.json nao encontrado em $_mrr_state_file" 1
 

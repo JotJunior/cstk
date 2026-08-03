@@ -74,12 +74,12 @@ Ref: spec FR-001/FR-002/FR-011; research.md Decision 6 (classe read-write — es
 
 Ref: spec FR-001/FR-011; research.md Decision 6 (classe reader)
 
-- [ ] 2.3.1 Portar `wave-usage-report.sh` (19 hits — maior contagem) para `_state-read.sh`
-- [ ] 2.3.2 Adicionar cenarios sqlite em `tests/test_wave-usage-report.sh`
-- [ ] 2.3.3 Portar `model-routing.sh` (`idempotent-check`/`wave-select`) para `_state-read.sh`
-- [ ] 2.3.4 Adicionar cenarios sqlite em `tests/test_model-routing.sh`
-- [ ] 2.3.5 Portar `model-routing-report.sh` (`aggregate`) para `_state-read.sh`
-- [ ] 2.3.6 Adicionar cenarios sqlite em `tests/test_model-routing-report.sh`
+- [x] 2.3.1 Portar `wave-usage-report.sh` (19 hits — maior contagem) para `_state-read.sh`
+- [x] 2.3.2 Adicionar cenarios sqlite em `tests/test_wave-usage-report.sh`
+- [x] 2.3.3 Portar `model-routing.sh` (`idempotent-check`/`wave-select`) para `_state-read.sh`
+- [x] 2.3.4 Adicionar cenarios sqlite em `tests/test_model-routing.sh`
+- [x] 2.3.5 Portar `model-routing-report.sh` (`aggregate`) para `_state-read.sh`
+- [x] 2.3.6 Adicionar cenarios sqlite em `tests/test_model-routing-report.sh`
 
 ### 2.4 Lote read-write auxiliares: suggestions, state-cache, state-decisions-reconcile, issue `[M]`
 

@@ -18,7 +18,8 @@
 #
 # Subcomandos:
 #   wave-usage-report.sh aggregate --state-dir DIR [--json]
-#       — Le state.json em <DIR>/state.json e agrega .waves[].agent_usage +
+#       — Le o estado de <DIR> (state.json, ou state.db materializado via
+#         _state-read.sh sob backend SQLite) e agrega .waves[].agent_usage +
 #         .waves[].agent_spawns[] (escritos por state-ondas.sh end, que por
 #         sua vez consome o sidecar wave-agent-usage.jsonl do hook
 #         posttooluse-agent-usage.sh). Read-only sobre state.json.
@@ -144,6 +145,12 @@
 # POSIX sh + jq.
 
 set -eu
+
+# Materializacao de estado legivel (feature state-db-runtime-parity, FASE 2):
+# sob backend JSON devolve o proprio state.json; sob SQLite (state.db)
+# materializa via `state-rw.sh read` num tmp 0600 fora do state-dir.
+. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+trap state_read_cleanup EXIT INT TERM
 
 _WUR_NAME="wave-usage-report"
 
@@ -377,7 +384,9 @@ _wur_cmd_aggregate() {
   [ -n "$_wur_state_dir" ] \
     || _wur_die_usage "aggregate: --state-dir obrigatorio"
 
-  _wur_state_file="$_wur_state_dir/state.json"
+  # Materializa via _state-read.sh (json: proprio state.json; sqlite: tmp).
+  # Falha do read sob sqlite propaga via set -e (FR-012 — nunca degrada mudo).
+  _wur_state_file=$(state_read_materialize "$_wur_state_dir")
   [ -f "$_wur_state_file" ] \
     || _wur_die "aggregate: state.json nao encontrado em $_wur_state_file" 1
 
@@ -615,7 +624,10 @@ _wur_cmd_backfill() {
   [ -n "$_wur_bt_transcript" ] \
     || _wur_die_usage "backfill: --transcript obrigatorio"
 
-  _wur_bt_state_file="$_wur_bt_state_dir/state.json"
+  # Materializa via _state-read.sh (json: proprio state.json; sqlite: tmp).
+  # A ESCRITA do backfill ja delega a `state-rw.sh write` (db-aware) — so o
+  # caminho de leitura muda (feature state-db-runtime-parity, FASE 2).
+  _wur_bt_state_file=$(state_read_materialize "$_wur_bt_state_dir")
   [ -f "$_wur_bt_state_file" ] \
     || _wur_die "backfill: state.json nao encontrado em $_wur_bt_state_file" 1
 

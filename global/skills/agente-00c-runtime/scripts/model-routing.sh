@@ -80,6 +80,20 @@
 
 set -eu
 
+# Materializacao de estado legivel (feature state-db-runtime-parity, FASE 2):
+# sob backend JSON devolve o proprio state.json; sob SQLite (state.db)
+# materializa via `state-rw.sh read` num tmp 0600 fora do state-dir. As
+# ESCRITAS do wave-select (state-decisions.sh register + state-ondas.sh
+# record-skill) ja sao db-aware — so o caminho de leitura passa por aqui.
+# Guard MR_SOURCE_ONLY: quando o proprio model-routing.sh e SOURCEADO pelos
+# testes (F4.5), $0 aponta para o chamador — o sibling _state-read.sh nao
+# resolveria. Nesse modo os helpers de estado nao sao exercitados; pular o
+# source preserva o guard sem tocar o caminho de execucao normal.
+if [ "${MR_SOURCE_ONLY:-0}" != "1" ]; then
+  . "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+  trap state_read_cleanup EXIT INT TERM
+fi
+
 _MR_NAME="model-routing"
 
 # ---------- Helpers privados ----------
@@ -104,7 +118,10 @@ _mr_require_jq() {
 }
 
 _mr_state_file() {
-  printf '%s/state.json\n' "$1"
+  # Materializa via _state-read.sh (json: proprio state.json; sqlite: tmp).
+  # Falha do read sob sqlite propaga via set -e (FR-012 — nunca degrada
+  # mudo). Os call-sites preservam seus proprios checks de ausencia.
+  state_read_materialize "$1"
 }
 
 # Sanitiza arquivo de input do invoke removendo NUL bytes (\000). NUL
