@@ -284,8 +284,10 @@ Sequencia da onda corrente. Cada iteracao:
      pula os hooks). NAO assuma que esta ativo; consulte
      `guard-hooks-status.sh tick-mode --projeto-alvo-path <PAP>`:
        - "hook"   → NAO chamar state-ondas.sh tool-call-tick (dobraria)
-       - "manual" → chamar tool-call-tick a cada tool call relevante,
-         senao tool_calls fica 0 na onda inteira (observado em campo)
+       - "manual" → hook ausente OU cego ao backend (copia anterior a
+         hooks-db-parity, que so le state.json, com state.db em uso);
+         chamar tool-call-tick a cada tool call relevante, senao
+         tool_calls fica 0 na onda inteira (observado em campo)
      wallclock/state_size seguem cobrindo o orcamento nos dois modos.
 4.ter (best-effort, ADITIVO — dica de onda, US4 — FR-006):
     Exibir dica da skill correspondente a fase corrente. Fail-silent absoluto:

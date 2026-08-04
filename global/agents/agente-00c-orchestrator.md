@@ -297,10 +297,14 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
 
    - `MODO_TICK=hook` → o sidecar `tool-call-ticks.log` e alimentado
      sozinho; NAO chame `state-ondas.sh tool-call-tick` (contaria em dobro).
-   - `MODO_TICK=manual` → o hook NAO esta ativo; chame
+   - `MODO_TICK=manual` → o hook NAO esta ativo **ou esta cego ao backend
+     em uso** (copia anterior a `hooks-db-parity`, que so le `state.json`,
+     num projeto que ja usa `state.db`); chame
      `state-ondas.sh tool-call-tick --state-dir <SD>` a cada tool call
      relevante, senao `tool_calls` fica 0 na onda inteira e o proxy de
-     orcamento vira letra morta (observado em campo: 35 ondas, todas 0).
+     orcamento vira letra morta (observado em campo duas vezes: 35 ondas
+     por hook ausente; 15 ondas por copia stale apos o cutover
+     `state.json`->`state.db`).
 
    Em qualquer dos modos os proxies wallclock/state_size seguem gateando a
    onda normalmente.

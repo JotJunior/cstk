@@ -14,6 +14,16 @@
 #          metrica em silencio).
 #   INV-5: remediacao citada em stderr aponta `--scope project` (a causa
 #          raiz e o default `--scope global` do cstk install/update).
+#   INV-6: 3a dimensao `current|stale|unknown` — copia do projeto que
+#          diverge do catalogo reprova (exit 1). Foi o 2o modo de falha de
+#          campo: apos o cutover state.json->state.db os projetos ficaram
+#          com a copia de jul/2026 do tick-hook (que so le state.json),
+#          `check` dizia "3/3 ativos" e tool_calls zerou em todas as ondas.
+#          "unknown" (hook ausente, catalogo irresolvivel, `cmp` ausente)
+#          NUNCA reprova — na duvida nao se acusa drift.
+#   INV-7: tick-mode rebaixa para "manual" no par exato
+#          (copia cega a backend + projeto com state.db). Copia cega sobre
+#          backend JSON SEGUE "hook" — rebaixar ali daria contagem DUPLA.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -32,11 +42,40 @@ _mkproj() {
   printf '%s' "$_p"
 }
 
-# _put_hook PAP HOOK -> materializa o arquivo do hook, executavel.
+# Catalogo de referencia dos cenarios: `_put_hook` materializa a MESMA
+# copia no projeto e no catalogo, entao o default de todo cenario e
+# "current". Cenarios de drift divergem uma das duas pontas de proposito.
+# Sem este override o catalogo resolveria para o sibling do script (os
+# hooks reais do repo) e todo stub viraria "stale".
+# Define e EXPORTA CSTK_HOOKS_CATALOG_DIR, deixando o path em $_CATALOG.
+# Nao pode ecoar via $(...): o export morreria no subshell e o catalogo
+# cairia no sibling (hooks reais do repo), tornando todo stub "stale".
+_catalog_dir() {
+  _CATALOG="$TMPDIR_TEST/catalog-hooks"
+  mkdir -p "$_CATALOG"
+  CSTK_HOOKS_CATALOG_DIR="$_CATALOG"
+  export CSTK_HOOKS_CATALOG_DIR
+}
+
+# _put_hook PAP HOOK [BODY] -> materializa o arquivo do hook (executavel)
+# no projeto E no catalogo, com o mesmo conteudo.
 _put_hook() {
+  _ph_body=${3:-'#!/bin/sh
+exit 0'}
+  _catalog_dir
   mkdir -p "$1/.claude/hooks"
-  printf '#!/bin/sh\nexit 0\n' > "$1/.claude/hooks/$2"
+  printf '%s\n' "$_ph_body" > "$1/.claude/hooks/$2"
   chmod +x "$1/.claude/hooks/$2"
+  printf '%s\n' "$_ph_body" > "$_CATALOG/$2"
+}
+
+# _put_hook_stale PAP HOOK -> copia do projeto DIVERGE da do catalogo.
+_put_hook_stale() {
+  _catalog_dir
+  mkdir -p "$1/.claude/hooks"
+  printf '#!/bin/sh\n# versao antiga (so le state.json)\nexit 0\n' > "$1/.claude/hooks/$2"
+  chmod +x "$1/.claude/hooks/$2"
+  printf '#!/bin/sh\n# versao nova\n. _hook-active-exec.sh\nexit 0\n' > "$_CATALOG/$2"
 }
 
 # _register PAP HOOK... -> settings.json citando os hooks passados.
@@ -70,8 +109,8 @@ scenario_check_completo_exit0() {
   capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
   for _h in $_HOOKS; do
-    printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered$" \
-      || { _fail "TSV" "esperado '$_h present registered'"; return 1; }
+    printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered	current$" \
+      || { _fail "TSV" "esperado '$_h present registered current'"; return 1; }
   done
   return 0
 }
@@ -134,8 +173,8 @@ scenario_check_parcial_exit1_com_alerta_da_guarda() {
   _register "$_p" "posttooluse-tool-call-tick.sh"
   capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
-  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-tool-call-tick.sh	present	registered$' \
-    || { _fail "TSV" "tick-hook ativo deveria aparecer como present/registered"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-tool-call-tick.sh	present	registered	current$' \
+    || { _fail "TSV" "tick-hook ativo deveria aparecer como present/registered/current"; return 1; }
   # A ausencia da guarda e o item grave: precisa vir destacada em stderr.
   printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'pretooluse-bash-guard.sh inativo' \
     || { _fail "stderr" "faltou alerta destacado da guarda inativa"; return 1; }
@@ -211,6 +250,128 @@ scenario_tick_mode_manual_sem_registro() {
   capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
   [ "$_CAPTURED_STDOUT" = "manual" ] \
     || { _fail "stdout" "hook nao-registrado deve dar 'manual'"; return 1; }
+  return 0
+}
+
+# ==== INV-6: copia stale (o 2o modo de falha de campo) ====
+
+# Reproduz o bug de 03/ago/2026: os 3 hooks present+registered, mas a copia
+# do projeto e a de jul/2026. Antes desta dimensao, `check` dizia 3/3 ativos
+# e tool_calls zerava em silencio.
+scenario_check_stale_exit1() {
+  _p=$(_mkproj proj-stale)
+  for _h in $_HOOKS; do _put_hook_stale "$_p" "$_h"; done
+  # shellcheck disable=SC2086
+  _register "$_p" $_HOOKS
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "copia stale deve reprovar (esperado 1, obtido $_CAPTURED_EXIT)"; return 1; }
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	present	registered	stale$')
+  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas present/registered/stale, obtido $_n"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'STALE' \
+    || { _fail "stderr" "faltou diagnostico de stale"; return 1; }
+  return 0
+}
+
+# A guarda stale e o item grave (roda com regras de versao anterior) —
+# precisa de alerta destacado, paridade com o alerta de guarda inativa.
+scenario_check_stale_da_guarda_tem_alerta_destacado() {
+  _p=$(_mkproj proj-stale-guarda)
+  _fully_provisioned "$_p"
+  _put_hook_stale "$_p" "pretooluse-bash-guard.sh"
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'pretooluse-bash-guard.sh STALE' \
+    || { _fail "stderr" "faltou alerta destacado da guarda stale"; return 1; }
+  return 0
+}
+
+# INV-6: catalogo irresolvivel => "unknown", nunca "stale" (nao se acusa
+# drift sem ter com que comparar).
+scenario_check_catalogo_ausente_da_unknown_e_nao_reprova() {
+  _p=$(_mkproj proj-sem-catalogo)
+  _fully_provisioned "$_p"
+  _vazio="$TMPDIR_TEST/catalogo-vazio"
+  mkdir -p "$_vazio"
+  # As TRES pontas da cadeia precisam falhar para valer como "irresolvivel":
+  # override vazio, script copiado para fora do catalogo (sem sibling
+  # ../hooks) e HOME falso. Neutralizar so o override deixaria o sibling do
+  # repo responder — e o veredito seria "stale", nao "unknown".
+  _solto="$TMPDIR_TEST/script-solto"
+  mkdir -p "$_solto"
+  cp "$SCRIPT" "$_solto/guard-hooks-status.sh"
+  capture env HOME="$_vazio" CSTK_HOOKS_CATALOG_DIR="$_vazio" \
+    sh "$_solto/guard-hooks-status.sh" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "exit" "catalogo irresolvivel nao pode reprovar (obtido $_CAPTURED_EXIT)"; return 1; }
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	unknown$')
+  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas unknown, obtido $_n"; return 1; }
+  return 0
+}
+
+# Hook ausente => freshness "unknown" (nao ha copia do projeto p/ comparar);
+# o que reprova ali e o missing, nao o drift.
+scenario_check_hook_ausente_da_unknown() {
+  _p=$(_mkproj proj-unknown-missing)
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	missing	unregistered	unknown$')
+  [ "$_n" = 3 ] || { _fail "TSV" "hook ausente deve dar freshness unknown, obtido $_n linhas"; return 1; }
+  return 0
+}
+
+# ==== INV-7: rebaixamento do tick-mode por cegueira de backend ====
+
+# Copia cega (pre hooks-db-parity) + state.db no projeto = o par exato em
+# que o hook nunca ticka. Sem o rebaixamento, tool_calls fica 0.
+scenario_tick_mode_manual_com_copia_cega_e_state_db() {
+  _p=$(_mkproj proj-cego-sqlite)
+  _fully_provisioned "$_p"
+  mkdir -p "$_p/.claude/feature-00c-state/demo"
+  : > "$_p/.claude/feature-00c-state/demo/state.db"
+  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_STDOUT" = "manual" ] \
+    || { _fail "stdout" "copia cega + state.db deve dar 'manual', obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+# Mesma cegueira em agente-00c-state/ (nao so feature-00c-state/*/).
+scenario_tick_mode_manual_com_copia_cega_e_state_db_agente() {
+  _p=$(_mkproj proj-cego-sqlite-agente)
+  _fully_provisioned "$_p"
+  mkdir -p "$_p/.claude/agente-00c-state"
+  : > "$_p/.claude/agente-00c-state/state.db"
+  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_STDOUT" = "manual" ] \
+    || { _fail "stdout" "copia cega + state.db (agente) deve dar 'manual', obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+# ANTI-CONTAGEM-DUPLA: copia cega sobre backend JSON SEGUE funcionando —
+# devolver "manual" ali somaria tick do hook + tick manual.
+scenario_tick_mode_hook_com_copia_cega_e_backend_json() {
+  _p=$(_mkproj proj-cego-json)
+  _fully_provisioned "$_p"
+  mkdir -p "$_p/.claude/feature-00c-state/demo"
+  printf '{}\n' > "$_p/.claude/feature-00c-state/demo/state.json"
+  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_STDOUT" = "hook" ] \
+    || { _fail "stdout" "copia cega + backend JSON deve seguir 'hook', obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+# Copia ATUAL (referencia _hook-active-exec.sh) + state.db => "hook":
+# o rebaixamento e por cegueira, nao pela mera presenca de sqlite.
+scenario_tick_mode_hook_com_copia_atual_e_state_db() {
+  _p=$(_mkproj proj-atual-sqlite)
+  _fully_provisioned "$_p"
+  _put_hook "$_p" "posttooluse-tool-call-tick.sh" '#!/bin/sh
+# versao pos hooks-db-parity
+. _hook-active-exec.sh
+exit 0'
+  mkdir -p "$_p/.claude/feature-00c-state/demo"
+  : > "$_p/.claude/feature-00c-state/demo/state.db"
+  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_STDOUT" = "hook" ] \
+    || { _fail "stdout" "copia atual + state.db deve dar 'hook', obtido '$_CAPTURED_STDOUT'"; return 1; }
   return 0
 }
 

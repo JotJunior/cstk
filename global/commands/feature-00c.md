@@ -148,13 +148,19 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
 8. coleta de consumo: PEDIR instalacao ao operador (nunca instalar sozinho)
    guard-hooks-status.sh check --projeto-alvo-path "$_proj" || :
    otel-usage.sh preflight || :
-   - READ-ONLY: diagnosticam, nunca instalam. Os tres hooks ativos => siga
-     sem incomodar o operador.
+   - READ-ONLY: diagnosticam, nunca instalam. Os tres hooks ativos E
+     `current` (4a coluna do TSV) => siga sem incomodar o operador.
+   - 4a coluna `stale` = copia do projeto diverge da do catalogo: reprova
+     igual a ausente, MESMA remediacao (`cstk hooks install`). Copia stale
+     roda codigo de versao anterior — foi assim que o cutover
+     `state.json`->`state.db` zerou `tool_calls` em projetos que exibiam
+     "3/3 hooks ativos". `unknown` nao e veredito: siga.
    - preflight com `status=port-conflict` (porta do exporter presa por
      OUTRO processo; owner_pid/owner_cwd na saida) ou `status=exporter-down`
      => REPASSE o aviso ao operador antes de seguir (execucao sairia com
      otel_usage null em toda onda). ok/disabled/unverified => siga.
-   - Faltando algum => PECA a instalacao, apresentando os 3 pontos:
+   - Faltando algum OU algum `stale` => PECA a instalacao, apresentando os
+     3 pontos:
 
      (1) O que instala e para que serve — nenhum e redundante:
          . pretooluse-bash-guard.sh  -> guarda fail-closed de Bash.
