@@ -5,6 +5,56 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.5.0] - 2026-08-04
+
+`tool_calls` estava zerado em TODAS as ondas desde o cutover
+`state.json` → `state.db` (03/ago). As cópias dos hooks em
+`<projeto>/.claude/hooks/` são snapshots do dia do provisionamento e nada
+as reconcilia com o catálogo: os projetos seguiram com o
+`posttooluse-tool-call-tick.sh` de julho, que só sabe detectar execução
+ativa lendo `state.json`. Sob backend SQLite o hook não enxerga a
+execução, sai mudo, e o sidecar `tool-call-ticks.log` nunca é criado. As
+duas guardas que deveriam pegar isso falharam juntas: `check` só olhava
+*present + registered* (cópia stale passava como saudável) e `tick-mode`
+respondia `hook`, então o orquestrador também não tickava na mão. Esta
+release torna a cópia stale visível e faz a métrica sobreviver até o
+reprovisionamento.
+
+### Added
+
+- **`guard-hooks-status.sh check`: 4ª coluna `current|stale|unknown`.** A
+  cópia do projeto é comparada byte-a-byte (`cmp`) com a do catálogo
+  (`CSTK_HOOKS_CATALOG_DIR` > sibling `../hooks` > `$HOME`). `stale`
+  reprova com exit 1 e diagnóstico próprio; a guarda stale
+  (`pretooluse-bash-guard.sh`) ganha alerta destacado, em paridade com o
+  alerta de guarda inativa — copia stale roda regras de uma versão
+  anterior, o que é problema de segurança, não só de métrica.
+- **Invariantes INV-6 e INV-7 em `tests/test_guard-hooks-status.sh`** — 8
+  cenários novos (28 no total), incluindo o anti-contagem-dupla e a
+  reprodução do bug de campo (3 hooks present+registered porém stale).
+
+### Changed
+
+- **`guard-hooks-status.sh tick-mode` rebaixa para `manual` por cegueira de
+  backend.** No par exato *cópia que não referencia `_hook-active-exec.sh`*
+  + *projeto com `state.db`*, o hook nunca ticka: o orquestrador volta a
+  tickar na mão e a métrica sobrevive sem reprovisionar. Fora desse par a
+  resposta segue `hook` — rebaixar uma cópia cega sobre backend JSON, onde
+  ela funciona, produziria contagem DUPLA.
+- **Diagnóstico dos commands `/agente-00c` e `/feature-00c`** trata `stale`
+  como ausente (mesma remediação, `cstk hooks install`); `unknown` nunca é
+  veredito.
+- **Prosa do `tick-mode` nos dois orquestradores** cobre o caso de cegueira
+  de backend, não só o de hook ausente.
+- **README**: documenta a 4ª coluna e por que reprovisionar após todo
+  upgrade que toque os hooks.
+
+### Fixed
+
+- **`freshness` degrada para `unknown` — nunca `stale` — quando não há com
+  que comparar** (`cmp` fora do PATH, catálogo irresolvível, hook ausente
+  no projeto): acusar drift sem ter comparado seria inventar veredito.
+
 ## [6.4.1] - 2026-08-03
 
 Arquivamento das 5 features do ciclo v6.x (cutover `state.json` →
@@ -4951,6 +5001,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.5.0]: https://github.com/JotJunior/cstk/releases/tag/v6.5.0
 [6.4.1]: https://github.com/JotJunior/cstk/releases/tag/v6.4.1
 [6.4.0]: https://github.com/JotJunior/cstk/releases/tag/v6.4.0
 [6.3.0]: https://github.com/JotJunior/cstk/releases/tag/v6.3.0

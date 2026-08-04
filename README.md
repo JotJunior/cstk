@@ -276,7 +276,19 @@ anything:
 
 ```bash
 guard-hooks-status.sh check --projeto-alvo-path .
+# <hook>  present|missing  registered|unregistered  current|stale|unknown
 ```
+
+Re-run `cstk hooks install` after every cstk upgrade that touches the hooks:
+the copies under `.claude/hooks/` are snapshots and nothing reconciles them
+with the catalog. A **stale** copy is as harmful as a missing one — it runs
+an older ruleset. That is a real regression, not a hypothetical: after the
+`state.json` → `state.db` cutover, projects kept a tick hook that only knew
+how to read `state.json`, so `tool_calls` was 0 for every wave while the
+check still reported "3/3 hooks active". The fourth column exists to make
+that visible, and `tick-mode` falls back to `manual` in exactly that pairing
+(backend-blind copy + `state.db`) so the metric survives until you
+re-provision.
 
 ### Real per-wave cost (`otel-usage.sh`)
 

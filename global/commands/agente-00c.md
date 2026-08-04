@@ -161,10 +161,17 @@ Se o preflight imprimir `status=port-conflict` (porta do exporter presa por
 OUTRO processo — `owner_pid`/`owner_cwd` na saida) ou `status=exporter-down`,
 REPASSE o aviso ao operador antes de seguir: a execucao inteira sairia com
 `otel_usage` null em toda onda. `ok`/`disabled`/`unverified` seguem sem
-mencao. Se os tres hooks ja estao ativos, siga para o passo 3 sem incomodar
-o operador.
+mencao. Se os tres hooks ja estao ativos E `current`, siga para o passo 3 sem
+incomodar o operador.
 
-**Se faltar algum, PECA a instalacao explicitamente** — nao instale por
+A 4a coluna do TSV (`current|stale|unknown`) diz se a copia do projeto ainda
+bate com a do catalogo. `stale` reprova igual a ausente e pede a MESMA
+remediacao (`cstk hooks install`): copia stale roda codigo de uma versao
+anterior — foi assim que o cutover `state.json`->`state.db` zerou
+`tool_calls` em projetos que exibiam "3/3 hooks ativos". `unknown` (catalogo
+irresolvivel) nao e veredito: siga.
+
+**Se faltar algum OU algum estiver `stale`, PECA a instalacao explicitamente** — nao instale por
 conta propria e nao siga em silencio. Apresente os tres pontos abaixo e
 espere a resposta:
 
