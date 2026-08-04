@@ -5,6 +5,37 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.4.1] - 2026-08-03
+
+Arquivamento das 5 features do ciclo v6.x (cutover `state.json` →
+`state.db` + servidor MCP de estado), todas 100% concluídas segundo o
+`review-features`. Fluxo padrão de archive respeitado: `delta-gate.sh` →
+`delta-merge.sh` → `mv` para `docs/specs/_archived/2026-08-03-<feature>/`.
+Release docs-only — nenhum script, skill ou binário alterado.
+
+### Changed
+
+- **5 features movidas para `docs/specs/_archived/2026-08-03-*/`**:
+  `hooks-db-parity`, `state-backend-config`, `state-db-foundation`,
+  `state-db-runtime-parity` e `state-mcp-server`. O portfolio ativo em
+  `docs/specs/` fica vazio (restam `current/` e `_archived/`).
+- **Corpus canônico atualizado pelo delta da `hooks-db-parity`**:
+  `docs/specs/current/bash-guard-enforcement.md` FR-006 (MODIFIED) agora
+  explicita que a detecção de execução ativa vale para ambos os backends
+  de persistência (`state.json` ou `state.db`). Os outros 4 specs tinham
+  Skip explícito (nenhuma capability ativa tocada) — merge no-op.
+
+### Fixed
+
+- **Marcadores Skip das seções `## Delta Requirements` reformatados para
+  a gramática do `delta-gate.sh`** em 4 specs (`state-backend-config`,
+  `state-db-foundation`, `state-db-runtime-parity`, `state-mcp-server`):
+  o parser exige `**Skip**: justificativa — autor, data` numa única linha
+  e divide no PRIMEIRO em-dash. As justificativas estavam quebradas em
+  múltiplas linhas (gate bloqueava com `entry-malformed`/`skip-invalid`);
+  texto preservado, em-dashes internos trocados por hífen e ponto final
+  após a data removido no `state-mcp-server`.
+
 ## [6.4.0] - 2026-08-03
 
 Paridade dos hooks do runtime 00c com o backend SQLite, feature
@@ -4920,6 +4951,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.4.1]: https://github.com/JotJunior/cstk/releases/tag/v6.4.1
 [6.4.0]: https://github.com/JotJunior/cstk/releases/tag/v6.4.0
 [6.3.0]: https://github.com/JotJunior/cstk/releases/tag/v6.3.0
 [6.2.2]: https://github.com/JotJunior/cstk/releases/tag/v6.2.2
