@@ -403,11 +403,4 @@ servidor MCP ativo, usando o caminho `Bash` atual.
 
 ## Delta Requirements
 
-**Skip**: feature inteiramente nova — nenhuma capability hoje ativa em
-`docs/specs/current/` e adicionada, alterada, removida ou renomeada por
-este documento; o servidor MCP e uma interface aditiva sobre a camada de
-estado transacional ja existente, sem tocar o comportamento documentado das
-capabilities correntes (`bash-guard-enforcement`, `guards-defense-in-depth`,
-`serve-integrity`, `trusted-release-hosts`, `atomic-commit-staging`,
-`delta-archive-gate`, `spec-corpus`, `spec-delta-requirements`). — feature-00c
-orchestrator (state-mcp-server), 2026-08-01.
+**Skip**: feature inteiramente nova - nenhuma capability hoje ativa em `docs/specs/current/` e adicionada, alterada, removida ou renomeada por este documento; o servidor MCP e uma interface aditiva sobre a camada de estado transacional ja existente, sem tocar o comportamento documentado das capabilities correntes (`bash-guard-enforcement`, `guards-defense-in-depth`, `serve-integrity`, `trusted-release-hosts`, `atomic-commit-staging`, `delta-archive-gate`, `spec-corpus`, `spec-delta-requirements`). — feature-00c orchestrator (state-mcp-server), 2026-08-01

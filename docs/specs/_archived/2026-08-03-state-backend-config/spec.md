@@ -322,16 +322,4 @@ depender de o operador já ter rodado qualquer comando de ativação.
 
 ## Delta Requirements
 
-**Skip**: nenhuma capability documentada em `docs/specs/current/`
-(`atomic-commit-staging`, `bash-guard-enforcement`, `delta-archive-gate`,
-`guards-defense-in-depth`, `serve-integrity`, `spec-corpus`,
-`spec-delta-requirements`, `trusted-release-hosts`) descreve seleção de
-backend de estado ou configuração global do `cstk` — o comportamento
-relacionado mais próximo (seleção de backend por presença de `state.db`)
-foi introduzido pela `state-db-foundation`, que ainda não foi arquivada e
-portanto ainda não tem capability correspondente no corpus vivo. Nada a
-alterar no corpus nesta fase; uma capability nova (`state-backend-config` ou
-equivalente, possivelmente absorvida na mesma capability futura de
-`state-db-foundation`) poderá ser declarada quando esta feature for
-arquivada, seguindo o processo padrão de `delta-merge`. —
-agente-00c-feature-orchestrator, 2026-08-01
+**Skip**: nenhuma capability documentada em `docs/specs/current/` (`atomic-commit-staging`, `bash-guard-enforcement`, `delta-archive-gate`, `guards-defense-in-depth`, `serve-integrity`, `spec-corpus`, `spec-delta-requirements`, `trusted-release-hosts`) descreve seleção de backend de estado ou configuração global do `cstk` - o comportamento relacionado mais próximo (seleção de backend por presença de `state.db`) foi introduzido pela `state-db-foundation`, que ainda não foi arquivada e portanto ainda não tem capability correspondente no corpus vivo. Nada a alterar no corpus nesta fase; uma capability nova (`state-backend-config` ou equivalente, possivelmente absorvida na mesma capability futura de `state-db-foundation`) poderá ser declarada quando esta feature for arquivada, seguindo o processo padrão de `delta-merge`. — agente-00c-feature-orchestrator, 2026-08-01

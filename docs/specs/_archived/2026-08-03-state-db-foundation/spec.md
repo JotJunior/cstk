@@ -438,13 +438,4 @@ skills) devem ser equivalentes.
 
 ## Delta Requirements
 
-**Skip**: nenhuma capability documentada em `docs/specs/current/`
-(`atomic-commit-staging`, `bash-guard-enforcement`, `delta-archive-gate`,
-`guards-defense-in-depth`, `serve-integrity`, `spec-corpus`,
-`spec-delta-requirements`, `trusted-release-hosts`) descreve o mecanismo
-de persistência transacional do `state.json`/scripts de runtime — esse
-comportamento hoje vive nos scripts de runtime e nos arquivos de agente,
-não no corpus de specs vivas. Nada a alterar no corpus nesta fase; uma
-capability nova (`state-db-foundation` ou equivalente) poderá ser
-declarada quando esta feature for arquivada, seguindo o processo padrão
-de `delta-merge`. — agente-00c-feature-orchestrator, 2026-07-30
+**Skip**: nenhuma capability documentada em `docs/specs/current/` (`atomic-commit-staging`, `bash-guard-enforcement`, `delta-archive-gate`, `guards-defense-in-depth`, `serve-integrity`, `spec-corpus`, `spec-delta-requirements`, `trusted-release-hosts`) descreve o mecanismo de persistência transacional do `state.json`/scripts de runtime - esse comportamento hoje vive nos scripts de runtime e nos arquivos de agente, não no corpus de specs vivas. Nada a alterar no corpus nesta fase; uma capability nova (`state-db-foundation` ou equivalente) poderá ser declarada quando esta feature for arquivada, seguindo o processo padrão de `delta-merge`. — agente-00c-feature-orchestrator, 2026-07-30
