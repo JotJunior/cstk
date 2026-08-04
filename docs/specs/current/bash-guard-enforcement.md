@@ -37,9 +37,10 @@ As invocacoes advisory ja existentes (a propria prosa dos orquestradores chamand
 
 ### FR-006
 
-A interceptacao automatica MUST validar comandos Bash apenas quando originados de uma execucao ativa de `agente-00c`/`feature-00c` (deteccao via presenca de state/lock da execucao) — sessoes interativas comuns do operador no mesmo projeto-alvo MUST NOT ser afetadas ou interceptadas por esta feature, mesmo apos a protecao estar provisionada (escopo restrito, opcao A; resolvido via bloqueio block-001/decisao dec-012).
+A interceptacao automatica MUST validar comandos Bash apenas quando originados de uma execucao ativa de `agente-00c`/`feature-00c` (deteccao via presenca de state/lock da execucao, **independente do backend de persistencia configurado — `state.json` ou `state.db`**) — sessoes interativas comuns do operador no mesmo projeto-alvo MUST NOT ser afetadas ou interceptadas por esta feature, mesmo apos a protecao estar provisionada, em qualquer backend (escopo restrito, opcao A; resolvido via bloqueio block-001/decisao dec-012 da feature `enforced-guards`).
 
 *Introduzida por: enforced-guards (2026-07-28)*
+*Ultima modificacao: hooks-db-parity (2026-08-04)*
 
 ### FR-007
 

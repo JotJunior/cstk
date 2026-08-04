@@ -387,8 +387,4 @@ varredura o detecta e falha.
 
 ## Delta Requirements
 
-**Skip**: comportamento alterado (leitura de estado dos helpers 00c e
-primitivas de escrita/lock) nao esta documentado no corpus canonico
-`docs/specs/current/` — a camada de estado pertence as specs ativas
-`state-db-foundation`/`state-backend-config`, ainda nao arquivadas no
-corpus; nao ha capability ativa a modificar. — agente-00c-feature-orchestrator, 2026-08-02
+**Skip**: comportamento alterado (leitura de estado dos helpers 00c e primitivas de escrita/lock) nao esta documentado no corpus canonico `docs/specs/current/` - a camada de estado pertence as specs ativas `state-db-foundation`/`state-backend-config`, ainda nao arquivadas no corpus; nao ha capability ativa a modificar. — agente-00c-feature-orchestrator, 2026-08-02
