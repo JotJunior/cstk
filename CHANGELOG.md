@@ -5,6 +5,44 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.5.1] - 2026-08-05
+
+Fecha as issues #77 e #49, ambas do runtime dos orquestradores. A #77
+bloqueava o gate FR-010A (clarify→plan) em qualquer execução feature-00c
+sobre projeto com path Windows (drive-letter): `C:/Users/...` não era
+reconhecido como absoluto e virava `<projeto>/C:/Users/...`, produzindo
+`briefing_missing`/`constitution_missing` falsos com hash correto no
+disco. A #49 (wave-commit staged ~45 untracked pré-existentes) já tinha o
+fix proposto na issue implementado desde a v5.23.0 (`--untracked-files=all`
+nos dois lados) — a análise achou as duas brechas residuais que explicam o
+incidente: baseline stale sobrevivendo a uma captura best-effort falha, e
+collation de locale divergente entre `sort` (snapshot) e `comm`
+(stage-derived).
+
+### Fixed
+
+- **`feature-00c-preflight.sh` reconhece path absoluto Windows (#77).** O
+  resolve de `prerequisites.briefing.path`/`constitution.path` agora casa
+  `/*` E `[A-Za-z]:[/\\]*` — path com drive-letter deixa de ser
+  concatenado ao `target_project_path`. Cenário novo
+  `scenario_check_path_windows_drive_letter_nao_concatena` prova que o
+  finding cita o path original sem prefixo do projeto.
+- **`state-ondas.sh start` invalida o baseline da onda anterior (#49).**
+  `commit-baseline.txt` é removido ANTES de qualquer early-return da
+  captura best-effort: se a captura falhar, o arquivo fica ausente e
+  `stage-derived` cai no fail-closed existente (untracked fora do
+  staging), em vez de reusar baseline stale e vazar untracked
+  pré-existente para o wave-commit. Cenário novo
+  `scenario_issue49_start_invalida_baseline_stale_quando_captura_falha`.
+- **`commit-mode.sh` fixa `LC_ALL=C` em todos os `sort`/`comm` (#49).**
+  `snapshot` e `stage-derived` comparavam via `comm` listas ordenadas sob
+  o locale herdado de cada invocação — collation divergente (ex.: pt_BR
+  ordena `a.txt` antes de `Z.txt`) fazia linhas do baseline não casarem e
+  untracked pré-existente "vazar" como novo. Cenário novo
+  `scenario_issue49_collation_c_entre_snapshot_e_stagederived` roda
+  snapshot sob `en_US.UTF-8` e stage-derived sob `C` e prova o roundtrip
+  limpo.
+
 ## [6.5.0] - 2026-08-04
 
 `tool_calls` estava zerado em TODAS as ondas desde o cutover
@@ -5001,6 +5039,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.5.1]: https://github.com/JotJunior/cstk/releases/tag/v6.5.1
 [6.5.0]: https://github.com/JotJunior/cstk/releases/tag/v6.5.0
 [6.4.1]: https://github.com/JotJunior/cstk/releases/tag/v6.4.1
 [6.4.0]: https://github.com/JotJunior/cstk/releases/tag/v6.4.0

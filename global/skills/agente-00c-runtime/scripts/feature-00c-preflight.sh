@@ -98,9 +98,12 @@ _fp_cmd_check() {
   fi
   [ -n "$_projeto" ] || _fp_die_io "check: state.json sem execution.target_project_path"
 
-  # Resolver paths absolutos relativos ao projeto-alvo
-  case "$_br_path" in /*) _br_abs="$_br_path" ;; *) _br_abs="$_projeto/$_br_path" ;; esac
-  case "$_ct_path" in /*) _ct_abs="$_ct_path" ;; *) _ct_abs="$_projeto/$_ct_path" ;; esac
+  # Resolver paths absolutos relativos ao projeto-alvo. Alem de absoluto
+  # POSIX (/*), reconhece drive-letter Windows (C:/..., execucao sob Git
+  # Bash) — sem isso o path vira "relativo", concatena com _projeto e o
+  # gate FR-010A reporta briefing/constitution_missing falso (issue #77).
+  case "$_br_path" in /*|[A-Za-z]:[/\\]*) _br_abs="$_br_path" ;; *) _br_abs="$_projeto/$_br_path" ;; esac
+  case "$_ct_path" in /*|[A-Za-z]:[/\\]*) _ct_abs="$_ct_path" ;; *) _ct_abs="$_projeto/$_ct_path" ;; esac
 
   # Coletar findings em arquivos temporarios (linhas JSON)
   _findings_file=$(mktemp)

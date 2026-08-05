@@ -523,6 +523,49 @@ beta.txt"
   [ "$_got" = "$_expected" ] || { _fail "baseline ordenado" "esperado '$_expected' obtido '$_got'"; return 1; }
 }
 
+# ==== issue #49: collation estavel (LC_ALL=C) entre snapshot e stage-derived ====
+# Incidente real: ~45 untracked PRE-EXISTENTES staged no wave-commit. Uma
+# das causas: baseline ordenado sob collation de locale (en_US/pt_BR poem
+# "a.txt" antes de "Z.txt") e `comm` comparando sob outra — linhas do
+# baseline nao casam e o pre-existente "vaza" como novo. Com o fix, sort e
+# comm rodam SEMPRE em LC_ALL=C nos dois subcomandos, independente do
+# locale herdado da invocacao.
+
+scenario_issue49_collation_c_entre_snapshot_e_stagederived() {
+  _loc=$(locale -a 2>/dev/null | grep -i '^en_US\.utf-*8$' | head -1)
+  [ -n "$_loc" ] || { printf '# skip: locale en_US.UTF-8 indisponivel\n'; return 0; }
+  _gdir="$TMPDIR_TEST/repo-collation"
+  _sd="$TMPDIR_TEST/sd-collation"
+  _init_git_repo "$_gdir" "feat/collation"
+  # Em C, "Z.txt" < "a.txt"; em en_US, "a.txt" < "Z.txt" — o par detecta
+  # qualquer sort fora de LC_ALL=C.
+  printf 'z\n' > "$_gdir/Z.txt"
+  printf 'a\n' > "$_gdir/a.txt"
+
+  # snapshot herda locale UTF-8 (sessao tipica do operador nao-C)
+  capture env LC_ALL="$_loc" "$SCRIPT" snapshot --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "snapshot exit" "obtido $_CAPTURED_EXIT"; return 1; }
+  _expected="Z.txt
+a.txt"
+  _got=$(cat "$_sd/commit-baseline.txt")
+  [ "$_got" = "$_expected" ] \
+    || { _fail "baseline deve ser C-sorted mesmo sob $_loc" "obtido '$_got'"; return 1; }
+
+  # stage-derived herda OUTRO locale (C): os pre-existentes continuam fora,
+  # so a mudanca tracked entra.
+  printf 'r2\n' >> "$_gdir/README.md"
+  capture env LC_ALL=C "$SCRIPT" stage-derived --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-derived exit" "obtido $_CAPTURED_EXIT stderr='$_CAPTURED_STDERR'"; return 1; }
+  _staged=$(git -C "$_gdir" diff --cached --name-only)
+  case "$_staged" in
+    *Z.txt*|*a.txt*) _fail "pre-existentes vazaram para o staging" "obtido: $_staged"; return 1 ;;
+  esac
+  case "$_staged" in
+    *README.md*) : ;;
+    *) _fail "README.md deveria estar staged" "obtido: $_staged"; return 1 ;;
+  esac
+}
+
 # ==== snapshot: uso incorreto sem --state-dir/--projeto-alvo-path => exit 2 ====
 
 scenario_snapshot_uso_incorreto_exit2() {
