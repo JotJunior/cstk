@@ -182,6 +182,28 @@ CT
   assert_stdout_contains '"ok": false' || return 1
 }
 
+# ==== issue #77: path Windows drive-letter tratado como ABSOLUTO ====
+# Execucao sob Git Bash grava prerequisites.*.path como "C:/Users/...".
+# O case pattern antigo (/*) nao reconhecia esse formato como absoluto e
+# concatenava com target_project_path ("<proj>/C:/Users/..."), gerando
+# false-positive briefing_missing/constitution_missing que bloqueia o gate
+# FR-010A em toda execucao. O path drive-letter nao existe no runner (o
+# arquivo segue missing), mas o finding DEVE citar o path original SEM o
+# prefixo do projeto — prova de que nao houve concatenacao.
+scenario_check_path_windows_drive_letter_nao_concatena() {
+  _sdir=$(_setup_fixture)
+  _proj=$(dirname -- "$(dirname -- "$(dirname -- "$_sdir")")")
+  _tmp=$(mktemp)
+  jq '.prerequisites.briefing.path = "C:/Users/Op/proj/docs/01-briefing-discovery/briefing.md"
+      | .prerequisites.constitution.path = "C:/Users/Op/proj/docs/constitution.md"' \
+    "$_sdir/state.json" > "$_tmp" && mv "$_tmp" "$_sdir/state.json"
+  capture "$SCRIPT" check --state-dir "$_sdir"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1 (missing), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains 'briefing_missing' || return 1
+  assert_stdout_contains 'C:/Users/Op/proj' || return 1
+  assert_stdout_not_contains "$_proj/C:" || return 1
+}
+
 scenario_check_state_dir_inexistente_falha() {
   capture "$SCRIPT" check --state-dir "/path/que/nao/existe"
   if [ "$_CAPTURED_EXIT" != 2 ]; then

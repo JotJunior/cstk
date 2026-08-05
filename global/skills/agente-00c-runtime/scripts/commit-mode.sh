@@ -411,8 +411,11 @@ _cm_cmd_snapshot() {
   # para uma linha por entrada via tr (paths nao contem NUL; newline
   # literal em nome de arquivo e fora de escopo, mesma limitacao aceita
   # pelo restante do runtime POSIX).
+  # LC_ALL=C: baseline e comparado via `comm` em stage-derived, que exige
+  # ordenacao IDENTICA — collation de locale (pt_BR etc.) divergente entre
+  # as duas invocacoes faz untracked pre-existente "vazar" como novo.
   if ! git -C "$_pap" status --porcelain -z --untracked-files=all 2>/dev/null \
-      | tr '\0' '\n' | sed -n 's/^?? //p' | sort > "$_tmp"; then
+      | tr '\0' '\n' | sed -n 's/^?? //p' | LC_ALL=C sort > "$_tmp"; then
     rm -f "$_tmp" 2>/dev/null || :
     _cm_err "snapshot: 'git status --porcelain' falhou em $_pap"
     _cm_diag "error" "git-status-failed" "git status --porcelain falhou em $_pap" "confirme que $_pap e um repositorio git valido"
@@ -554,19 +557,21 @@ _cm_cmd_stage_derived() {
     fi
   done < "$_raw"
 
-  sort -u -o "$_tracked" "$_tracked"
-  sort -u -o "$_untracked_cur" "$_untracked_cur"
+  # LC_ALL=C em sort/comm: mesma collation do snapshot (baseline) — `comm`
+  # exige ordenacao identica dos dois lados (issue #49).
+  LC_ALL=C sort -u -o "$_tracked" "$_tracked"
+  LC_ALL=C sort -u -o "$_untracked_cur" "$_untracked_cur"
 
   _baseline="$_sdir/commit-baseline.txt"
   if [ -f "$_baseline" ]; then
-    comm -13 "$_baseline" "$_untracked_cur" > "$_untracked_new" 2>/dev/null || : > "$_untracked_new"
+    LC_ALL=C comm -13 "$_baseline" "$_untracked_cur" > "$_untracked_new" 2>/dev/null || : > "$_untracked_new"
   else
     _cm_err "stage-derived: baseline ausente ($_baseline) — untracked ficam FORA do staging (fail-closed, nunca fallback amplo)"
     _cm_diag "warning" "baseline-missing" "commit-baseline.txt ausente em $_sdir" "chame 'commit-mode.sh snapshot' antes de stage-derived para incluir untracked novos"
     : > "$_untracked_new"
   fi
 
-  cat "$_tracked" "$_untracked_new" | sort -u > "$_allowlist"
+  cat "$_tracked" "$_untracked_new" | LC_ALL=C sort -u > "$_allowlist"
 
   if [ "$_has_scope" = 1 ]; then
     : > "$_filtered"
@@ -582,7 +587,7 @@ _cm_cmd_stage_derived() {
         esac
       done < "$_scope_file"
     done < "$_allowlist"
-    sort -u -o "$_filtered" "$_filtered"
+    LC_ALL=C sort -u -o "$_filtered" "$_filtered"
     cp "$_filtered" "$_allowlist" 2>/dev/null || :
   fi
 

@@ -645,6 +645,12 @@ _so_cmd_start() {
 # fluxo principal de start com `set -e` (toda falha aqui e silenciosa).
 _so_start_snapshot_baseline() {
   _ssb_sdir="$1"
+  # Invalida o baseline da onda ANTERIOR antes de qualquer early-return:
+  # se a captura desta onda falhar (best-effort), o arquivo fica AUSENTE e
+  # stage-derived cai no fail-closed (untracked fora do staging). Sem isso,
+  # um baseline stale sobrevive e tudo que ficou untracked desde aquela
+  # onda antiga "vaza" como novo e e staged no wave-commit (issue #49).
+  rm -f "$_ssb_sdir/commit-baseline.txt" 2>/dev/null || :
   command -v git >/dev/null 2>&1 || return 0
 
   # Le via state-rw.sh get (backend-safe: funciona sob JSON e SQLite sem

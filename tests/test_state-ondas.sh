@@ -1046,6 +1046,24 @@ scenario_5_5_wave_commit_endurecido_exclui_alien() {
   esac
 }
 
+# ==== issue #49: baseline stale invalidado no start ====
+# A captura do baseline e best-effort e silenciosa. Se ela falha numa onda
+# nova, o commit-baseline.txt da onda ANTERIOR nao pode sobreviver:
+# stage-derived o trataria como valido e tudo que ficou untracked desde
+# aquela onda antiga "vazaria" como novo no wave-commit (o incidente dos
+# ~45 arquivos .claude/). start remove o baseline ANTES de qualquer
+# early-return: falha de captura => arquivo AUSENTE => fail-closed.
+scenario_issue49_start_invalida_baseline_stale_quando_captura_falha() {
+  _sd="$TMPDIR_TEST/state-stale-baseline"
+  # projeto-alvo inexistente: a captura early-returns sem gravar baseline
+  _init_state "$_sd" "$TMPDIR_TEST/projeto-que-nao-existe"
+  printf 'stale-da-onda-anterior.txt\n' > "$_sd/commit-baseline.txt"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start exit" "$_CAPTURED_STDERR"; return 1; }
+  [ ! -f "$_sd/commit-baseline.txt" ] \
+    || { _fail "baseline stale sobreviveu ao start" "$(cat "$_sd/commit-baseline.txt")"; return 1; }
+}
+
 # ==== Sidecar de ticks do hook PostToolUse (tool-call-ticks.log) ====
 
 scenario_end_soma_sidecar_ao_campo_do_state() {
