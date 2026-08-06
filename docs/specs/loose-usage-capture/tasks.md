@@ -101,42 +101,42 @@ Ref: contracts/hook-loose-usage.md §Registro no harness, research.md Decision 1
 
 Ref: plan.md §Convencoes de Borda "Mapper layer (sidecar ↔ DB)", data-model.md
 
-- [ ] 4.1.1 Varredura de `~/.claude/cstk/loose-usage/*/seg-*/`, invocando `otel-usage.sh delta --state-dir <segmento>` por segmento
-- [ ] 4.1.2 Conversao do JSON `by_model` do `delta` em linhas `loose_usage`, UPSERT pela chave natural `(process_key, segment_id, model)`, delegando a `cli/lib/recall.sh` (usage.sh NUNCA invoca `sqlite3` diretamente — invariante grep-avel de plan.md/contracts/cli-usage.md)
-- [ ] 4.1.3 Tratamento de ausencia conforme Constitution VI: campo nao medido vira `null`/`NULL`, nunca `0` fabricado
+- [x] 4.1.1 Varredura de `~/.claude/cstk/loose-usage/*/seg-*/`, invocando `otel-usage.sh delta --state-dir <segmento>` por segmento
+- [x] 4.1.2 Conversao do JSON `by_model` do `delta` em linhas `loose_usage`, UPSERT pela chave natural `(process_key, segment_id, model)`, delegando a `cli/lib/recall.sh` (usage.sh NUNCA invoca `sqlite3` diretamente — invariante grep-avel de plan.md/contracts/cli-usage.md)
+- [x] 4.1.3 Tratamento de ausencia conforme Constitution VI: campo nao medido vira `null`/`NULL`, nunca `0` fabricado
 
 ### 4.2 Implementar `cstk usage` (listagem por projeto) `[A]`
 
 Ref: contracts/cli-usage.md §`cstk usage`
 
-- [ ] 4.2.1 Parser de flags `--project`/`--since`/`--limit`/`--json`/`--db`; flag desconhecida ⇒ exit `2` com uso em stderr
-- [ ] 4.2.2 Saida texto: uma secao por projeto, uma linha por modelo (modelo, tokens, custo, participacao); campo sem medicao imprime `nao medido`
-- [ ] 4.2.3 Saida `--json`: objeto `{project, category: "loose", models[]}` com `model`/`total_tokens`/`cost_usd`; ausencia representada por `null` JSON
-- [ ] 4.2.4 Comportamento sem dados conforme tabela do contrato: `knowledge.db` ausente (aviso stderr + `nao medido`, exit 0), tabela vazia (`nao medido — sem cobertura de captura`, exit 0), `sqlite3` ausente (aviso stderr, exit 1)
+- [x] 4.2.1 Parser de flags `--project`/`--since`/`--limit`/`--json`/`--db`; flag desconhecida ⇒ exit `2` com uso em stderr
+- [x] 4.2.2 Saida texto: uma secao por projeto, uma linha por modelo (modelo, tokens, custo, participacao); campo sem medicao imprime `nao medido`
+- [x] 4.2.3 Saida `--json`: objeto `{project, category: "loose", models[]}` com `model`/`total_tokens`/`cost_usd`; ausencia representada por `null` JSON
+- [x] 4.2.4 Comportamento sem dados conforme tabela do contrato: `knowledge.db` ausente (aviso stderr + `nao medido`, exit 0), tabela vazia (`nao medido — sem cobertura de captura`, exit 0), `sqlite3` ausente (aviso stderr, exit 1)
 
 ### 4.3 Implementar `cstk usage compare` `[A]`
 
 Ref: contracts/cli-usage.md §`cstk usage compare`, data-model.md §Entity ProjectUsageComparison
 
-- [ ] 4.3.1 Agregacao por categoria (`loose` via `loose_usage`, `pipeline` via `wave_model_usage` ja existente em cli/lib/recall.sh linhas 625-637) — soma lado a lado, NUNCA `JOIN` linha a linha (granularidades diferentes)
-- [ ] 4.3.2 Calculo de `share_pct` e `blended_cost_per_mtok` (`SUM(cost_usd)/SUM(total_tokens)*1e6`; `null` quando `SUM(total_tokens)` e `0` ou `NULL` — divisao indefinida nunca vira `0`)
-- [ ] 4.3.3 Regras de ausencia: categoria sem nenhuma linha ⇒ `nao medido`/`null`, a outra categoria segue exibida; ambas vazias ⇒ `nao medido` nas duas, exit `0`
+- [x] 4.3.1 Agregacao por categoria (`loose` via `loose_usage`, `pipeline` via `wave_model_usage` ja existente em cli/lib/recall.sh linhas 625-637) — soma lado a lado, NUNCA `JOIN` linha a linha (granularidades diferentes)
+- [x] 4.3.2 Calculo de `share_pct` e `blended_cost_per_mtok` (`SUM(cost_usd)/SUM(total_tokens)*1e6`; `null` quando `SUM(total_tokens)` e `0` ou `NULL` — divisao indefinida nunca vira `0`)
+- [x] 4.3.3 Regras de ausencia: categoria sem nenhuma linha ⇒ `nao medido`/`null`, a outra categoria segue exibida; ambas vazias ⇒ `nao medido` nas duas, exit `0`
 
 ### 4.4 Implementar `cstk usage prune` `[A]`
 
 Ref: task 1.1/2.2 (politica de retencao)
 
-- [ ] 4.4.1 Poda dos segmentos fechados do sidecar (marcador `closed` presente) mais antigos que o TTL (`CSTK_LOOSE_USAGE_RETENTION_DAYS`, default `90`, ou `--older-than-days N`)
-- [ ] 4.4.2 Poda das linhas correspondentes em `loose_usage` via o helper da task 2.2.1
-- [ ] 4.4.3 Flag `--dry-run` (paridade com `cstk mcp gc --dry-run`): reporta o que seria removido sem remover
+- [x] 4.4.1 Poda dos segmentos fechados do sidecar (marcador `closed` presente) mais antigos que o TTL (`CSTK_LOOSE_USAGE_RETENTION_DAYS`, default `90`, ou `--older-than-days N`)
+- [x] 4.4.2 Poda das linhas correspondentes em `loose_usage` via o helper da task 2.2.1
+- [x] 4.4.3 Flag `--dry-run` (paridade com `cstk mcp gc --dry-run`): reporta o que seria removido sem remover
 
 ### 4.5 Wiring no dispatch + help do binario `[A]`
 
 Ref: contracts/cli-usage.md, cli/cstk (case dispatch e lista de subcomandos validos, linha ~243)
 
-- [ ] 4.5.1 Adicionar `usage)` ao `case "$1"` de cli/cstk, roteando para cli/lib/usage.sh
-- [ ] 4.5.2 Adicionar `usage` a lista de subcomandos validos (`install|update|...`) e ao texto de `--help`/uso
-- [ ] 4.5.3 Escrever tests/cstk/test_usage.sh cobrindo: listagem com/sem dados, `--json`, `compare`, `prune --dry-run`, flag desconhecida (exit 2), `sqlite3` ausente (exit 1)
+- [x] 4.5.1 Adicionar `usage)` ao `case "$1"` de cli/cstk, roteando para cli/lib/usage.sh
+- [x] 4.5.2 Adicionar `usage` a lista de subcomandos validos (`install|update|...`) e ao texto de `--help`/uso
+- [x] 4.5.3 Escrever tests/cstk/test_usage.sh cobrindo: listagem com/sem dados, `--json`, `compare`, `prune --dry-run`, flag desconhecida (exit 2), `sqlite3` ausente (exit 1)
 
 ---
 
