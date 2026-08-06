@@ -211,6 +211,87 @@ _guard_src_fixture() {
   printf '%s' "$_gsf_dir"
 }
 
+# _guard_src_fixture_with_loose: mesma fixture base + posttooluse-loose-usage.sh
+# + settings.loose-usage.snippet.json (feature loose-usage-capture task 3.3.4).
+_guard_src_fixture_with_loose() {
+  _gsfl_dir=$(_guard_src_fixture)
+  printf '#!/bin/sh\nexit 0\n' > "$_gsfl_dir/posttooluse-loose-usage.sh"
+  chmod +x "$_gsfl_dir/posttooluse-loose-usage.sh"
+  printf '{"hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"loose-usage-cmd","timeout":5}]}]}}\n' \
+    > "$_gsfl_dir/settings.loose-usage.snippet.json"
+  printf '%s' "$_gsfl_dir"
+}
+
+# ==== --with-loose-usage (loose-usage-capture task 3.3) ====
+
+# Sem a flag (default 0): zero regressao — hook opt-in NAO copiado, comando
+# opt-in NAO aparece em settings.json, mesmo quando o catalogo o traz.
+scenario_apply_guard_hooks_sem_flag_nao_provisiona_loose_usage() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _src=$(_guard_src_fixture_with_loose)
+  _dest="$TMPDIR_TEST/claude-root"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "merged" || return 1
+  [ -f "$_dest/hooks/posttooluse-loose-usage.sh" ] \
+    && { _fail "hook opt-in provisionado sem a flag" "regressao FR-006/3.3.3"; return 1; }
+  jq -e '[.hooks.PostToolUse[] | select(.matcher=="*") | .hooks[] | select(.command=="loose-usage-cmd")] | length == 0' \
+    "$_dest/settings.json" >/dev/null \
+    || { _fail "settings.json registrou o comando opt-in sem a flag" "$(cat "$_dest/settings.json")"; return 1; }
+  return 0
+}
+
+# Com a flag: hook copiado + comando ANEXADO ao array PostToolUse[matcher="*"]
+# SEM perder o comando do tick (regressao do bug jq '*' que descarta arrays).
+scenario_apply_guard_hooks_com_flag_provisiona_e_appenda() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _src=$(_guard_src_fixture_with_loose)
+  _dest="$TMPDIR_TEST/claude-root"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0 1"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "merged" || return 1
+  [ -x "$_dest/hooks/posttooluse-loose-usage.sh" ] \
+    || { _fail "hook opt-in nao copiado/executavel" ""; return 1; }
+  jq -e '[.hooks.PostToolUse[] | select(.matcher=="*") | .hooks[] | select(.command=="loose-usage-cmd")] | length == 1' \
+    "$_dest/settings.json" >/dev/null \
+    || { _fail "comando opt-in nao registrado" "$(cat "$_dest/settings.json")"; return 1; }
+  # Regressao critica: o comando do tick (base snippet, mesmo matcher "*")
+  # tem de SOBREVIVER ao append do hook opt-in.
+  jq -e '[.hooks.PostToolUse[] | select(.matcher=="*") | .hooks[] | select(.command=="y")] | length == 1' \
+    "$_dest/settings.json" >/dev/null \
+    || { _fail "comando do tick (base) foi perdido pelo append do opt-in" "$(cat "$_dest/settings.json")"; return 1; }
+  # A entrada matcher="Agent" (posttooluse-agent-usage) tambem sobrevive.
+  jq -e '[.hooks.PostToolUse[] | select(.matcher=="Agent")] | length == 1' \
+    "$_dest/settings.json" >/dev/null \
+    || { _fail "entrada matcher=Agent foi perdida" "$(cat "$_dest/settings.json")"; return 1; }
+}
+
+# Idempotencia: reinstalar com a flag nao duplica o comando no array.
+scenario_apply_guard_hooks_com_flag_idempotente() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _src=$(_guard_src_fixture_with_loose)
+  _dest="$TMPDIR_TEST/claude-root"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0 1"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "1a chamada exit" "$_CAPTURED_EXIT"; return 1; }
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0 1"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "2a chamada exit" "$_CAPTURED_EXIT"; return 1; }
+  jq -e '[.hooks.PostToolUse[] | select(.matcher=="*") | .hooks[] | select(.command=="loose-usage-cmd")] | length == 1' \
+    "$_dest/settings.json" >/dev/null \
+    || { _fail "comando opt-in duplicado apos reinstalar" "$(cat "$_dest/settings.json")"; return 1; }
+}
+
+# Catalogo SEM o hook opt-in mas flag passada: best-effort, nao quebra o
+# provisionamento dos 3 hooks obrigatorios.
+scenario_apply_guard_hooks_flag_sem_catalogo_best_effort() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _src=$(_guard_src_fixture)
+  _dest="$TMPDIR_TEST/claude-root"
+  capture sh -c ". $CSTK_LIB/hooks.sh && apply_guard_hooks '$_src' '$_dest' 0 1"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "apply exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "merged" || return 1
+  [ -x "$_dest/hooks/pretooluse-bash-guard.sh" ] || { _fail "guard obrigatorio nao provisionado" ""; return 1; }
+}
+
 scenario_apply_guard_hooks_merged_com_jq() {
   if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
   _src=$(_guard_src_fixture)
@@ -391,6 +472,47 @@ scenario_hooks_main_install_provisiona_so_hooks() {
       && { _fail "duplicou catalogo" "$_d nao deveria existir — hooks install toca so hooks+settings"; return 1; }
   done
   return 0
+}
+
+# _hooks_catalog_fixture_with_loose: catalogo com o hook opt-in incluido.
+_hooks_catalog_fixture_with_loose() {
+  _hcfl_cat="$TMPDIR_TEST/catalog-loose"
+  _hcfl_hooks="$_hcfl_cat/skills/agente-00c-runtime/hooks"
+  mkdir -p "$_hcfl_hooks"
+  _hcfl_src=$(_guard_src_fixture_with_loose)
+  cp "$_hcfl_src"/* "$_hcfl_hooks/" 2>/dev/null || :
+  chmod +x "$_hcfl_hooks"/*.sh 2>/dev/null || :
+  printf '%s' "$_hcfl_cat"
+}
+
+# `cstk hooks install --with-loose-usage` end-to-end: hook opt-in provisionado
+# e registrado; `cstk hooks install` (sem a flag) NAO o registra.
+scenario_hooks_main_with_loose_usage_registra() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_with_loose)
+  _proj="$TMPDIR_TEST/proj-hooks-loose"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --with-loose-usage
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  [ -x "$_proj/.claude/hooks/posttooluse-loose-usage.sh" ] \
+    || { _fail "hook opt-in ausente" ""; return 1; }
+  jq -e '[.hooks.PostToolUse[] | select(.matcher=="*") | .hooks[] | select(.command=="loose-usage-cmd")] | length == 1' \
+    "$_proj/.claude/settings.json" >/dev/null \
+    || { _fail "comando opt-in nao registrado" "$(cat "$_proj/.claude/settings.json")"; return 1; }
+}
+
+scenario_hooks_main_sem_with_loose_usage_nao_registra() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_with_loose)
+  _proj="$TMPDIR_TEST/proj-hooks-no-loose"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  [ -f "$_proj/.claude/hooks/posttooluse-loose-usage.sh" ] \
+    && { _fail "hook opt-in provisionado sem a flag" "regressao"; return 1; }
+  jq -e '[.hooks.PostToolUse[] | select(.matcher=="*") | .hooks[] | select(.command=="loose-usage-cmd")] | length == 0' \
+    "$_proj/.claude/settings.json" >/dev/null \
+    || { _fail "comando opt-in registrado sem a flag" "$(cat "$_proj/.claude/settings.json")"; return 1; }
 }
 
 scenario_hooks_main_dry_run_nao_escreve() {

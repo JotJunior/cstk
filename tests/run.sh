@@ -361,6 +361,13 @@ _is_internal_test() {
       # Existence-guarded.
       [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh" ] && return 0
       return 1 ;;
+    test_posttooluse-loose-usage.sh)
+      # cobre global/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh
+      # (hook PostToolUse OPT-IN de captura de consumo avulso — feature
+      # loose-usage-capture FASE 3) — mesma razao dos 3 casos acima: hooks/
+      # esta fora do escaneio por convencao. Existence-guarded.
+      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh" ] && return 0
+      return 1 ;;
     *) return 1 ;;
   esac
 }

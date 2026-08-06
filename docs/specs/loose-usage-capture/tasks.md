@@ -68,30 +68,30 @@ Ref: task 1.1 (politica de retencao), data-model.md §Retencao
 
 Ref: contracts/hook-loose-usage.md §Sequencia (7 passos), molde `global/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh`
 
-- [ ] 3.1.1 Resolucao de dependencias (`_hook-active-exec.sh`, `otel-usage.sh`) pela cadeia de 3 niveis: `<dir do hook>/../scripts/`, `$HOME/.claude/skills/agente-00c-runtime/scripts/`, `<cwd>/.claude/skills/agente-00c-runtime/scripts/`
-- [ ] 3.1.2 Passos 1-3: checar `CSTK_OTEL_ENDPOINT` presente, `jq` disponivel, parse de stdin (`.cwd`/`.tool_name` nao-vazios) — no-op em qualquer ausencia
-- [ ] 3.1.3 Passo 4: throttle O(1) via `meta.tsv.updated_at` + `CSTK_LOOSE_USAGE_INTERVAL_S` (default `300`), executado ANTES do passo 5 (mais barato primeiro)
-- [ ] 3.1.4 Passo 5: deteccao de execucao ativa com polaridade INVERTIDA de `_hook-active-exec.sh` (exit `0`=ativa fecha segmento sem capturar; `1`=inativa captura; `2`/`3`=no-op) — pre-check inline usando exclusivamente builtins do shell (SEC-H1)
-- [ ] 3.1.5 Passos 6-7: `otel-usage.sh snapshot` no diretorio do segmento aberto + atualizacao de `meta.tsv` (`updated_at`, `current_segment`)
-- [ ] 3.1.6 Garantir o contrato de saida: stdout/stderr SEMPRE vazios, exit SEMPRE `0`, hook nunca toca `state.json`/`state.db`/`knowledge.db`
-- [ ] 3.1.7 Escrever tests/test_posttooluse-loose-usage.sh cobrindo: `CSTK_OTEL_ENDPOINT` ausente (no-op), `jq` ausente (no-op), throttle nao vencido (no-op), execucao ativa (fecha segmento), execucao inativa (captura), estados `indeterminada`/`uso incorreto` (no-op), payload sem `.cwd`/`.tool_name` (no-op)
+- [x] 3.1.1 Resolucao de dependencias (`_hook-active-exec.sh`, `otel-usage.sh`) pela cadeia de 3 niveis: `<dir do hook>/../scripts/`, `$HOME/.claude/skills/agente-00c-runtime/scripts/`, `<cwd>/.claude/skills/agente-00c-runtime/scripts/`
+- [x] 3.1.2 Passos 1-3: checar `CSTK_OTEL_ENDPOINT` presente, `jq` disponivel, parse de stdin (`.cwd`/`.tool_name` nao-vazios) — no-op em qualquer ausencia
+- [x] 3.1.3 Passo 4: throttle O(1) via `meta.tsv.updated_at` + `CSTK_LOOSE_USAGE_INTERVAL_S` (default `300`), executado ANTES do passo 5 (mais barato primeiro)
+- [x] 3.1.4 Passo 5: deteccao de execucao ativa com polaridade INVERTIDA de `_hook-active-exec.sh` (exit `0`=ativa fecha segmento sem capturar; `1`=inativa captura; `2`/`3`=no-op) — pre-check inline usando exclusivamente builtins do shell (SEC-H1)
+- [x] 3.1.5 Passos 6-7: `otel-usage.sh snapshot` no diretorio do segmento aberto + atualizacao de `meta.tsv` (`updated_at`, `current_segment`)
+- [x] 3.1.6 Garantir o contrato de saida: stdout/stderr SEMPRE vazios, exit SEMPRE `0`, hook nunca toca `state.json`/`state.db`/`knowledge.db`
+- [x] 3.1.7 Escrever tests/test_posttooluse-loose-usage.sh cobrindo: `CSTK_OTEL_ENDPOINT` ausente (no-op), `jq` ausente (no-op), throttle nao vencido (no-op), execucao ativa (fecha segmento), execucao inativa (captura), estados `indeterminada`/`uso incorreto` (no-op), payload sem `.cwd`/`.tool_name` (no-op) — 10 scenarios, `./tests/run.sh test_posttooluse-loose-usage`: PASS 10 FAIL 0
 
 ### 3.2 Aplicar permissao restritiva no sidecar (CHK021) `[A]`
 
 Ref: task 1.2
 
-- [ ] 3.2.1 `chmod 700` no diretorio raiz `~/.claude/cstk/loose-usage/` e em cada `<process_key>/`/`seg-*/` criado pelo hook
-- [ ] 3.2.2 `chmod 600` em `meta.tsv`, `otel-start.tsv`, `otel-end.tsv` apos cada escrita
-- [ ] 3.2.3 Estender tests/test_posttooluse-loose-usage.sh com cenario que confirma o modo de arquivo/diretorio apos uma captura bem-sucedida
+- [x] 3.2.1 `chmod 700` no diretorio raiz `~/.claude/cstk/loose-usage/` e em cada `<process_key>/`/`seg-*/` criado pelo hook <!-- implementado junto com 3.1 (mesmo arquivo, funcoes _plu_secure_dir/_plu_secure_file) -->
+- [x] 3.2.2 `chmod 600` em `meta.tsv`, `otel-start.tsv`, `otel-end.tsv` apos cada escrita <!-- otel-start.tsv/otel-end.tsv ja recebem 600 do proprio otel-usage.sh snapshot; hook reforca via _plu_secure_file -->
+- [x] 3.2.3 Estender tests/test_posttooluse-loose-usage.sh com cenario que confirma o modo de arquivo/diretorio apos uma captura bem-sucedida — scenario_permissoes_apos_captura
 
 ### 3.3 Registro opt-in do hook no harness `[A]`
 
 Ref: contracts/hook-loose-usage.md §Registro no harness, research.md Decision 10
 
-- [ ] 3.3.1 Criar `global/skills/agente-00c-runtime/hooks/settings.loose-usage.snippet.json` (evento `PostToolUse`, matcher `*`, `command` para `posttooluse-loose-usage.sh`, `timeout: 5`) em arquivo SEPARADO de `settings.snippet.json`
-- [ ] 3.3.2 Adicionar flag `--with-loose-usage` (default DESLIGADA) ao subcomando `hooks install` em cli/lib/hooks.sh, mesclando o snippet novo apenas quando a flag e passada
-- [ ] 3.3.3 Garantir que `apply_guard_hooks()` chamada sem a flag preserva exatamente o comportamento atual (3 hooks obrigatorios, zero regressao)
-- [ ] 3.3.4 Estender tests/cstk/test_hooks.sh: cenario com `--with-loose-usage` registra o hook novo; cenario sem a flag NAO o registra
+- [x] 3.3.1 Criar `global/skills/agente-00c-runtime/hooks/settings.loose-usage.snippet.json` (evento `PostToolUse`, matcher `*`, `command` para `posttooluse-loose-usage.sh`, `timeout: 5`) em arquivo SEPARADO de `settings.snippet.json`
+- [x] 3.3.2 Adicionar flag `--with-loose-usage` (default DESLIGADA) ao subcomando `hooks install` em cli/lib/hooks.sh, mesclando o snippet novo apenas quando a flag e passada <!-- append idempotente via merge_settings_loose_usage (jq '*' generico NAO serve p/ arrays — descartaria o comando do tick; verificado empiricamente e corrigido durante a implementacao) -->
+- [x] 3.3.3 Garantir que `apply_guard_hooks()` chamada sem a flag preserva exatamente o comportamento atual (3 hooks obrigatorios, zero regressao) <!-- 4o parametro with_loose_usage e opcional (default 0); install.sh/update.sh chamam com 3 args, comportamento intacto; ./tests/run.sh test_install.sh + test_update.sh + test_hooks.sh: PASS -->
+- [x] 3.3.4 Estender tests/cstk/test_hooks.sh: cenario com `--with-loose-usage` registra o hook novo; cenario sem a flag NAO o registra — 6 scenarios novos (apply_guard_hooks com/sem flag, idempotencia, catalogo sem hook opt-in, hooks_main com/sem flag); `./tests/run.sh test_hooks.sh`: PASS 36 FAIL 0
 
 ---
 
