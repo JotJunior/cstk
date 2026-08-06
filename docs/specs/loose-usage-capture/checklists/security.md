@@ -31,13 +31,15 @@ repositorio versionado.
   `project`, `project_path`, `process_key`, `segment_id`, `model`,
   `cost_usd`, `total_tokens`, `segment_open`, `captured_at`,
   `ingested_at`; nenhum campo de texto livre de conteudo de sessao.
-- [ ] CHK021 - Existe requisito de permissao de arquivo restritiva
+- [x] CHK021 - Existe requisito de permissao de arquivo restritiva
   (least privilege) para o diretorio novo `~/.claude/cstk/loose-usage/`
   e seus arquivos, no MESMO padrao ja aplicado ao `knowledge.db`
   (`chmod 600`, `recall_normalize_db_perms`)? [Gap, cli/lib/recall.sh
   linhas ~669-685 vs spec.md/plan.md/data-model.md/contracts/*] {auto} —
-  nao encontrado: `grep -rniE "chmod|0700|0600|permiss|umask"
-  docs/specs/loose-usage-capture/` nao retorna nenhuma ocorrencia.
+  RESOLVIDO pela task 1.2: data-model.md §Permissao (CHK021) documenta
+  `chmod 700` nos diretorios (raiz, `<process_key>/`, `seg-*/`) e
+  `chmod 600` nos arquivos (`meta.tsv`, `otel-start.tsv`, `otel-end.tsv`),
+  paridade com `recall_normalize_db_perms`.
   Precedente direto ja existe no proprio codebase para o arquivo irmao
   (`knowledge.db`) — a ausencia de requisito equivalente para o
   diretorio de sidecar (que tambem contem `project_path` — path absoluto
@@ -100,7 +102,7 @@ repositorio versionado.
 
 ## Ciclo de Vida dos Dados (retencao/compliance)
 
-- [ ] CHK029 - Existe politica declarada de retencao/expurgo para os
+- [x] CHK029 - Existe politica declarada de retencao/expurgo para os
   segmentos do sidecar (`~/.claude/cstk/loose-usage/<process_key>/seg-*/`)
   e para as linhas correspondentes em `loose_usage`, dado que a captura
   roda continuamente sem limite superior de volume declarado? [Gap,
@@ -108,7 +110,9 @@ repositorio versionado.
   angulo de seguranca de dados: crescimento local ilimitado de um
   diretorio que contem `project_path` (path absoluto do operador) e um
   risco de superficie de dados que cresce sem controle declarado, nao
-  apenas uma questao de completude funcional.
+  apenas uma questao de completude funcional. RESOLVIDO pela task 1.1:
+  data-model.md §Retencao (CHK002/CHK029) + contracts/cli-usage.md
+  §`cstk usage prune`.
 
 ## Itens de julgamento humano
 

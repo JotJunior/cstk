@@ -54,6 +54,27 @@ projeto (Edge Case "duas janelas/terminais abertos").
 > **Constitution VI**: `owner_pid` ausente e gravado como `unknown`, jamais
 > como `0` ou PID chutado.
 
+### Permissao (CHK021)
+
+Paridade com `recall_normalize_db_perms` (`cli/lib/recall.sh` ~669-689,
+que fecha o mesmo gap para `knowledge.db`): o hook aplica permissao
+restritiva no sidecar apos cada escrita, best-effort (nunca bloqueia o
+caller — ausencia de `stat` portavel ou `chmod` negado degrada para
+no-op silencioso, mesmo padrao fail-open do proprio hook).
+
+| Alvo | Modo |
+|------|------|
+| `~/.claude/cstk/loose-usage/` (raiz) | `chmod 700` |
+| `<process_key>/` | `chmod 700` |
+| `seg-*/` | `chmod 700` |
+| `meta.tsv` | `chmod 600` |
+| `otel-start.tsv` | `chmod 600` |
+| `otel-end.tsv` | `chmod 600` |
+
+Motivo: os arquivos carregam `project_path` e trechos de metricas de
+consumo por processo — conteudo local sensivel o suficiente para restringir
+ao dono do processo, mesma logica ja aplicada ao indice SQLite irmao.
+
 ### Formato de `otel-start.tsv` / `otel-end.tsv` (JA EXISTENTE)
 
 Escrito por `otel-usage.sh snapshot`. Cabecalho `# session_id<TAB><valor>`
@@ -130,6 +151,26 @@ e sem `DROP` (precedente literal da v11->v12 para tabela nova —
 `cli/lib/recall.sh` linhas 810-811). Base v12 existente do operador ganha a
 tabela vazia na proxima escrita; bases pre-v12 seguem o caminho de migracao
 ja existente sem interferencia.
+
+### Retencao (CHK002 / CHK029)
+
+Politica de design explicita — nao dado factual (mesma natureza do default
+de intervalo tratado em research.md Decision 4). Mecanismo: subcomando
+dedicado `cstk usage prune [--dry-run] [--older-than-days N]`, paridade
+estrutural com `cstk mcp gc [--dry-run]` ja existente em `cli/lib/mcp.sh`.
+
+| Aspecto | Valor |
+|---------|-------|
+| Variavel de TTL | `CSTK_LOOSE_USAGE_RETENTION_DAYS` |
+| Default | `90` (dias) |
+| Override | `--older-than-days N` no subcomando `cstk usage prune` |
+| Alvo da poda (camada de captura) | Segmentos `seg-*` **fechados** (marcador `closed` presente) sob `~/.claude/cstk/loose-usage/<process_key>/` |
+| Alvo da poda (camada de indice) | Linhas de `loose_usage` correspondentes aos segmentos podados |
+| Criterio de elegibilidade | Idade de `updated_at` (`meta.tsv`) / `captured_at` (`loose_usage`) acima do TTL — segmentos **abertos** nunca sao elegiveis, mesmo com `updated_at` antigo (evita truncar captura em andamento) |
+| Modo dry-run | `--dry-run` reporta o que seria removido sem remover (paridade com `cstk mcp gc --dry-run`) |
+
+A poda e best-effort e idempotente: rodar `cstk usage prune` sobre um
+diretorio ja podado nao produz erro, apenas relata zero itens elegiveis.
 
 ---
 

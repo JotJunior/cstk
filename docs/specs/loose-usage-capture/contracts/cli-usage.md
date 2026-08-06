@@ -88,6 +88,47 @@ linha a linha.
 
 ---
 
+## `cstk usage prune` (retencao/expurgo — CHK002/CHK029) `[PROPOSTA]`
+
+**Comando**: `cstk usage prune [--dry-run] [--older-than-days N] [--db PATH]`
+
+Paridade estrutural com `cstk mcp gc [--dry-run]` (`cli/lib/mcp.sh`).
+Politica detalhada em [data-model.md §Retencao](../data-model.md#retencao-chk002--chk029).
+
+### Parametros
+
+| Flag | Type | Required | Validation |
+|------|------|----------|------------|
+| `--dry-run` | flag | nao | Reporta o que seria removido sem remover |
+| `--older-than-days` | int | nao | Override do TTL; default `CSTK_LOOSE_USAGE_RETENTION_DAYS` (env), ou `90` se a env tambem estiver ausente |
+| `--db` | path | nao | Override do `knowledge.db` (paridade com `cstk usage`/`cstk recall --db`) |
+
+### Comportamento
+
+1. Varre `~/.claude/cstk/loose-usage/*/seg-*/` e seleciona segmentos com
+   marcador `closed` cujo `updated_at` (de `meta.tsv`) e mais antigo que o
+   TTL efetivo. Segmentos **abertos** nunca sao elegiveis.
+2. Remove os diretorios `seg-*` elegiveis (camada de captura).
+3. Remove as linhas `loose_usage` correspondentes via o helper de poda de
+   `cli/lib/recall.sh` (task 2.2 — `usage.sh` nunca chama `sqlite3`
+   diretamente, mesma restricao da secao abaixo).
+
+### Saida
+
+| Situacao | Saida | Exit |
+|----------|-------|------|
+| Itens elegiveis removidos (ou listados em `--dry-run`) | Uma linha por `process_key/segment_id` afetado + contagem total | 0 |
+| Nenhum item elegivel | `nada a podar — sem segmentos alem do TTL` | 0 |
+| Sidecar (`~/.claude/cstk/loose-usage/`) ausente | Aviso em stderr + `nada a podar` | 0 |
+| `sqlite3` ausente (impede poda da camada de indice) | Aviso em stderr explicando a dep | 1 |
+| Flag desconhecida / `--older-than-days` nao-numerico | Uso em stderr | 2 |
+
+`--dry-run` nunca produz efeito colateral em nenhuma das duas camadas
+(sidecar ou `knowledge.db`) — apenas reporta a mesma selecao que a execucao
+real removeria.
+
+---
+
 ## Restricao de arquitetura (Constitution II)
 
 `cli/lib/usage.sh` `[PROPOSTA]` **nao invoca `sqlite3` diretamente**: delega

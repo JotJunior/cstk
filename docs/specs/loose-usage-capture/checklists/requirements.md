@@ -15,14 +15,13 @@ feature).
   paralelo e potencialmente inconsistente? [Completude, Spec §FR-006] {auto}
   — FR-006: "habilitada pela mesma configuracao nativa de telemetria local
   do Claude Code".
-- [ ] CHK002 - Existe requisito de retencao/expurgo para os artefatos
+- [x] CHK002 - Existe requisito de retencao/expurgo para os artefatos
   persistidos (sidecar TSV por processo/segmento + linhas em
   `loose_usage`), dado que a captura e continua e sem limite superior de
-  volume declarado? [Completude, Gap] {auto} — nao encontrado: `grep -rniE
-  "retenc|limpeza|expira|cleanup|purge|ttl|delete"
-  docs/specs/loose-usage-capture/` so retorna spec.md linha 215, que trata
-  apenas de "TTL de token externo" como N/A ("a feature ... nao depende de
-  token externo com TTL") — nao aborda o ciclo de vida dos proprios dados
+  volume declarado? [Completude, Gap] {auto} — RESOLVIDO pela task 1.1:
+  data-model.md §Retencao (CHK002/CHK029) documenta `CSTK_LOOSE_USAGE_RETENTION_DAYS`
+  (default `90`) e o subcomando `cstk usage prune [--dry-run] [--older-than-days N]`
+  (contracts/cli-usage.md §`cstk usage prune`)
   de consumo capturados. `plan.md` §Scale/Scope estima "dezenas por dia"
   mas nao projeta acumulo de longo prazo nem define poda.
 - [x] CHK003 - O requisito de nao-degradacao da sessao do operador (NFR de

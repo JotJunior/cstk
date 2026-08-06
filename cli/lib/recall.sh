@@ -125,7 +125,15 @@ RECALL_EXIT_USAGE=2
 # table_info (mesmo padrao v2/v5/v8/v9/v10); tabela nova via CREATE TABLE IF
 # NOT EXISTS (sem ALTER necessario). Onda antiga ou sem by_source -> as 8
 # colunas ficam NULL, nunca 0 (Principio VI).
-RECALL_SCHEMA_VERSION=12
+# v13 (loose-usage-capture): tabela nova `loose_usage` (grao processo x
+# segmento x modelo; origem: ingest-on-read do hook posttooluse-loose-usage
+# via `cstk usage`, fora do fluxo state.json/onda — consumo AVULSO do
+# Claude Code, nao pipeline agente-00c/feature-00c). Migracao v12->v13 e
+# puramente aditiva: sem ALTER TABLE, sem DROP — mesmo precedente literal
+# de `wave_model_usage` na v11->v12 (linhas 810-811 acima), CREATE TABLE IF
+# NOT EXISTS coberto pelo DDL. `cost_usd`/`total_tokens`/`model` NULL quando
+# nao medido, nunca 0 (Principio VI; data-model.md §Entity LooseUsageRecord).
+RECALL_SCHEMA_VERSION=13
 # Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
 # DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
 RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
@@ -635,6 +643,20 @@ CREATE TABLE IF NOT EXISTS wave_model_usage (
   total_tokens INTEGER,
   ingested_at TEXT NOT NULL,
   UNIQUE(project, feature, wave, source_id)
+);
+CREATE TABLE IF NOT EXISTS loose_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  project_path TEXT,
+  process_key TEXT NOT NULL,
+  segment_id TEXT NOT NULL,
+  model TEXT,
+  cost_usd REAL,
+  total_tokens INTEGER,
+  segment_open INTEGER,
+  captured_at TEXT NOT NULL,
+  ingested_at TEXT NOT NULL,
+  UNIQUE(process_key, segment_id, model)
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5 (
   body,
@@ -2387,6 +2409,52 @@ recall_apply_sql_with_retry() {
     esac
   done
   return 1
+}
+
+# recall_prune_loose_usage DB_PATH DAYS [--dry-run] -> poda linhas `loose_usage`
+# com `captured_at` mais antigo que DAYS dias (camada de indice — task 2.2,
+# CHK002/CHK029, data-model.md §Retencao). Imprime a contagem de linhas
+# elegiveis em stdout (dry-run: contagem sem remover; real: contagem removida)
+# e retorna 0. So retorna 1 em falha de infra (DB ausente ao tentar escrever,
+# `date` sem suporte a aritmetica relativa em NENHUMA das duas variantes
+# GNU/BSD, ou retries de escrita esgotados) — nunca por "zero elegiveis"
+# (isso e sucesso com contagem 0). `cli/lib/usage.sh` (FASE 4) delega a
+# remocao da camada de indice a este helper — nunca chama `sqlite3`
+# diretamente (Constitution II, contracts/cli-usage.md §Restricao de
+# arquitetura).
+recall_prune_loose_usage() {
+  _plu_db="$1"
+  _plu_days="$2"
+  _plu_dry=0
+  [ "$3" = "--dry-run" ] && _plu_dry=1
+  case "$_plu_days" in
+    ''|*[!0-9]*)
+      log_warn "recall: recall_prune_loose_usage: DAYS invalido: '$_plu_days'"
+      return 1
+      ;;
+  esac
+  # DB ausente: nada a podar (mesma semantica de recall_normalize_db_perms
+  # para arquivo inexistente — no-op de sucesso, contagem 0).
+  if [ ! -f "$_plu_db" ]; then
+    printf '0\n'
+    return 0
+  fi
+  # GNU (-d) primeiro, fallback BSD (-v-Nd) — mesmo padrao GNU-first de
+  # recall_normalize_db_perms (stat -c antes de -f).
+  _plu_cutoff=$(date -u -d "-${_plu_days} days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) \
+    || _plu_cutoff=$(date -u -v-"${_plu_days}"d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) \
+    || { log_warn "recall: recall_prune_loose_usage: 'date' sem suporte a aritmetica relativa (GNU -d / BSD -v)"; return 1; }
+  _plu_n=$(recall_query_sql "$_plu_db" "SELECT count(*) FROM loose_usage WHERE captured_at < '$_plu_cutoff';")
+  _plu_n=${_plu_n:-0}
+  if [ "$_plu_dry" = 1 ]; then
+    printf '%s\n' "$_plu_n"
+    return 0
+  fi
+  [ "$_plu_n" = "0" ] && { printf '0\n'; return 0; }
+  recall_apply_sql_with_retry "$_plu_db" "DELETE FROM loose_usage WHERE captured_at < '$_plu_cutoff';" || return 1
+  recall_normalize_db_perms "$_plu_db"
+  printf '%s\n' "$_plu_n"
+  return 0
 }
 
 # ==========================================================================

@@ -26,18 +26,18 @@ em tres camadas — hook de captura opt-in, indice derivado no `knowledge.db`
 
 Ref: checklists/requirements.md CHK002, checklists/security.md CHK029
 
-- [ ] 1.1.1 Decidir o mecanismo (subcomando dedicado `cstk usage prune [--dry-run] [--older-than-days N]`, paridade estrutural com `cstk mcp gc [--dry-run]` ja existente em `cli/lib/mcp.sh`) e o TTL default (`CSTK_LOOSE_USAGE_RETENTION_DAYS`, default `90`) — politica de design explicita, nao dado factual (mesma natureza do default de intervalo tratado em research.md Decision 4)
-- [ ] 1.1.2 Adicionar secao "Retencao" em data-model.md descrevendo o TTL, o alvo da poda (segmentos `seg-*` fechados do sidecar + linhas de `loose_usage`) e o criterio de elegibilidade (idade de `captured_at`/`updated_at` acima do TTL)
-- [ ] 1.1.3 Atualizar contracts/cli-usage.md com a secao `cstk usage prune` (flags, saida, comportamento sem dados)
-- [ ] 1.1.4 Marcar CHK002 (requirements.md) e CHK029 (security.md) como `[x]` citando a secao nova de data-model.md
+- [x] 1.1.1 Decidir o mecanismo (subcomando dedicado `cstk usage prune [--dry-run] [--older-than-days N]`, paridade estrutural com `cstk mcp gc [--dry-run]` ja existente em `cli/lib/mcp.sh`) e o TTL default (`CSTK_LOOSE_USAGE_RETENTION_DAYS`, default `90`) — politica de design explicita, nao dado factual (mesma natureza do default de intervalo tratado em research.md Decision 4) — dec-029
+- [x] 1.1.2 Adicionar secao "Retencao" em data-model.md descrevendo o TTL, o alvo da poda (segmentos `seg-*` fechados do sidecar + linhas de `loose_usage`) e o criterio de elegibilidade (idade de `captured_at`/`updated_at` acima do TTL)
+- [x] 1.1.3 Atualizar contracts/cli-usage.md com a secao `cstk usage prune` (flags, saida, comportamento sem dados)
+- [x] 1.1.4 Marcar CHK002 (requirements.md) e CHK029 (security.md) como `[x]` citando a secao nova de data-model.md
 
 ### 1.2 Definir e documentar permissao restritiva do sidecar de captura avulsa `[A]`
 
 Ref: checklists/security.md CHK021
 
-- [ ] 1.2.1 Decidir o esquema de permissao (`chmod 700` no diretorio raiz `~/.claude/cstk/loose-usage/` e em cada `<process_key>/`/`seg-*/`; `chmod 600` em `meta.tsv`/`otel-start.tsv`/`otel-end.tsv`), paridade com `recall_normalize_db_perms` (`cli/lib/recall.sh` ~669-685)
-- [ ] 1.2.2 Adicionar nota de permissao em data-model.md §LooseUsageProcess
-- [ ] 1.2.3 Marcar CHK021 (security.md) como `[x]` citando a nota nova
+- [x] 1.2.1 Decidir o esquema de permissao (`chmod 700` no diretorio raiz `~/.claude/cstk/loose-usage/` e em cada `<process_key>/`/`seg-*/`; `chmod 600` em `meta.tsv`/`otel-start.tsv`/`otel-end.tsv`), paridade com `recall_normalize_db_perms` (`cli/lib/recall.sh` ~669-685) — dec-030
+- [x] 1.2.2 Adicionar nota de permissao em data-model.md §LooseUsageProcess
+- [x] 1.2.3 Marcar CHK021 (security.md) como `[x]` citando a nota nova
 
 ---
 
@@ -47,18 +47,18 @@ Ref: checklists/security.md CHK021
 
 Ref: data-model.md §Entity LooseUsageRecord, cli/lib/recall.sh (linha 128 `RECALL_SCHEMA_VERSION`, linha 652 `schema_meta`, precedente v11->v12 linhas 810-811)
 
-- [ ] 2.1.1 Bump `RECALL_SCHEMA_VERSION` para `13` em cli/lib/recall.sh
-- [ ] 2.1.2 Adicionar `CREATE TABLE IF NOT EXISTS loose_usage (...)` em `recall_schema_ddl`, colunas conforme data-model.md (`id`, `project`, `project_path`, `process_key`, `segment_id`, `model`, `cost_usd`, `total_tokens`, `segment_open`, `captured_at`, `ingested_at`) + `UNIQUE(process_key, segment_id, model)`
-- [ ] 2.1.3 Confirmar que a migracao e puramente aditiva (sem `ALTER TABLE`/`DROP`), seguindo o precedente literal da v11->v12 para tabela nova
-- [ ] 2.1.4 Escrever teste de migracao em tests/cstk/test_recall.sh: base v12 populada ganha `loose_usage` vazia na proxima escrita; base nova cria o schema direto em v13
+- [x] 2.1.1 Bump `RECALL_SCHEMA_VERSION` para `13` em cli/lib/recall.sh — dec-031
+- [x] 2.1.2 Adicionar `CREATE TABLE IF NOT EXISTS loose_usage (...)` em `recall_schema_ddl`, colunas conforme data-model.md (`id`, `project`, `project_path`, `process_key`, `segment_id`, `model`, `cost_usd`, `total_tokens`, `segment_open`, `captured_at`, `ingested_at`) + `UNIQUE(process_key, segment_id, model)`
+- [x] 2.1.3 Confirmar que a migracao e puramente aditiva (sem `ALTER TABLE`/`DROP`), seguindo o precedente literal da v11->v12 para tabela nova
+- [x] 2.1.4 Escrever teste de migracao em tests/cstk/test_recall.sh: base v12 populada ganha `loose_usage` vazia na proxima escrita; base nova cria o schema direto em v13 — scenario_lu1/scenario_lu2, `./tests/run.sh test_recall.sh`: PASS 145 FAIL 0 (145 scenarios, inclui as 14 pre-existentes que hardcodeavam schema_version=12 e foram atualizadas para 13)
 
 ### 2.2 Rotina de poda (prune) na camada de indice `[A]`
 
 Ref: task 1.1 (politica de retencao), data-model.md §Retencao
 
-- [ ] 2.2.1 Adicionar helper de poda em cli/lib/recall.sh (`recall_prune_loose_usage` ou equivalente): `DELETE` de linhas `loose_usage` com `captured_at` mais antigo que o TTL recebido
-- [ ] 2.2.2 Aplicar `recall_normalize_db_perms` apos a poda, mesmo padrao das demais mutacoes do `knowledge.db`
-- [ ] 2.2.3 Escrever teste em tests/cstk/test_recall.sh: poda remove linhas expiradas e preserva linhas dentro do TTL
+- [x] 2.2.1 Adicionar helper de poda em cli/lib/recall.sh (`recall_prune_loose_usage` ou equivalente): `DELETE` de linhas `loose_usage` com `captured_at` mais antigo que o TTL recebido
+- [x] 2.2.2 Aplicar `recall_normalize_db_perms` apos a poda, mesmo padrao das demais mutacoes do `knowledge.db`
+- [x] 2.2.3 Escrever teste em tests/cstk/test_recall.sh: poda remove linhas expiradas e preserva linhas dentro do TTL — scenario_lu3 (remove expirada/preserva recente), scenario_lu4 (--dry-run nao remove), scenario_lu5 (DAYS invalido), scenario_lu6 (DB ausente); `./tests/run.sh test_recall.sh`: PASS 145 FAIL 0
 
 ---
 
