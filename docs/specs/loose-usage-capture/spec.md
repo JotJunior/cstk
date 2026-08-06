@@ -4,6 +4,31 @@
 **Created**: 2026-08-06
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-06
+
+- Q: Onde os registros de consumo avulso sao persistidos? → A: reusar o
+  `knowledge.db` global (`~/.claude/cstk/knowledge.db`, mesma base do `cstk
+  recall`), numa tabela nova de grao processo/projeto — distinta de
+  `wave_model_usage` (grao onda x modelo), conforme constraint ja registrada
+  na etapa specify.
+- Q: Qual mecanismo dispara a captura periodica e como o FR-004 exclui
+  janelas de pipeline ativas? → A: um hook `PostToolUse` dedicado (mesmo
+  padrao operacional do hook de tick ja existente), que so grava quando
+  NENHUMA execucao de pipeline `agente-00c`/`feature-00c` esta ativa no
+  projeto — a mesma checagem serve simultaneamente como gatilho periodico e
+  como exclusao do FR-004 (sem filtro pos-hoc separado por janela de tempo).
+- Q: Qual e a interface pela qual o operador obtem a comparacao avulso-vs-
+  pipeline (FR-009/SC-005)? → A: subcomando novo do `cstk` CLI (mesmo
+  padrao de superficie ja usado por `cstk recall`/`cstk session`); exposicao
+  no painel web fica fora do escopo desta feature.
+- Q: O hook de captura avulsa e provisionado junto dos hooks obrigatorios de
+  guarda (`pretooluse-bash-guard` etc.) ou por caminho de opt-in separado? →
+  A: caminho de opt-in separado — nunca bundlado automaticamente junto dos
+  guard hooks (que sao obrigatorios/fail-closed); a captura so e provisionada
+  quando o operador habilita explicitamente, preservando FR-006.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Visibilidade do consumo avulso por modelo (Priority: P1)
@@ -166,7 +191,8 @@ consumo ate a ultima captura periodica permanece registrado.
 - **FR-009**: Usuarios MUST ser capazes de obter, para um projeto, uma
   comparacao entre o mix de modelos e o custo blended por milhao de tokens
   do consumo avulso e do consumo de execucoes de pipeline SDD do mesmo
-  projeto.
+  projeto, via um subcomando do `cstk` CLI (exposicao em painel web fica
+  fora do escopo desta feature — ver Clarifications).
 - **FR-010**: Quando o mesmo processo de sessao avulsa dá origem, no meio
   de sua execucao, a uma execucao de pipeline SDD, o sistema MUST voltar a
   contabilizar consumo avulso normalmente assim que a execucao de pipeline
@@ -177,7 +203,13 @@ consumo ate a ultima captura periodica permanece registrado.
 > eventos do harness (inicio de sessao como baseline + capturas periodicas
 > subsequentes), nao por um agendador externo (cron); o sistema MUST
 > tolerar a ausencia do evento de fim de sessao, dependendo das capturas
-> periodicas como mecanismo de durabilidade. Demais itens do checklist
+> periodicas como mecanismo de durabilidade. O gatilho periodico e um hook
+> `PostToolUse` dedicado que so grava quando nenhuma execucao de pipeline
+> esta ativa no projeto — a mesma checagem serve como exclusao do FR-004
+> (ver Clarifications). Esse hook MUST ser provisionado por um caminho de
+> opt-in separado dos guard hooks obrigatorios (nunca bundlado junto de
+> `pretooluse-bash-guard`/`posttooluse-tool-call-tick`), preservando o
+> opt-in do operador exigido por FR-006. Demais itens do checklist
 > (rotacao de chave, refresh de token externo, mutex multi-pod, backup)
 > N/A — a feature nao persiste segredos, nao depende de token externo com
 > TTL, e roda em processo unico local por sessao.
@@ -186,7 +218,10 @@ consumo ate a ultima captura periodica permanece registrado.
 
 - **Registro de Consumo Avulso**: uma medicao (baseline ou periodica) do
   consumo de tokens e custo de um processo local, por modelo, atribuida a
-  um projeto — nunca a um identificador de sessao.
+  um projeto — nunca a um identificador de sessao. Persistido no mesmo
+  indice global de conhecimento (`knowledge.db`) ja usado pelo `cstk
+  recall`, numa tabela de grao processo/projeto — nao reutiliza o grao
+  onda x modelo da tabela de consumo de pipeline (ver Clarifications).
 - **Janela de Consumo de Pipeline**: o intervalo de tempo em que uma
   execucao de pipeline SDD esteve ativa para um projeto; usado para excluir
   consumo ja contabilizado do total avulso (evita dupla contagem).
