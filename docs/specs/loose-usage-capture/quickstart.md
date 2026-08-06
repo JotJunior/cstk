@@ -15,19 +15,35 @@ Isso tambem torna os cenarios deterministicos e reproduziveis em CI.
 
 ## Scenario 1: Happy path — captura avulsa com dois modelos (US1)
 
-1. Preparar fixture `A` com linhas `claude_code_cost_usage_total{...}` e
-   `claude_code_token_usage_total{...}` para DOIS modelos distintos, e uma
-   fixture `B` identica porem com os contadores incrementados.
+1. Preparar um UNICO arquivo de fixture (ex: `fixture-live.prom`) com linhas
+   `claude_code_cost_usage_total{...}` e `claude_code_token_usage_total{...}`
+   para DOIS modelos distintos — conteudo `A` (baseline).
 2. Provisionar o hook num projeto de teste:
-   `cstk hooks install --with-loose-usage --project-path <tmp>` `[PROPOSTA]`
+   `cstk hooks install --with-loose-usage --project-path <tmp>`
 3. Disparar o hook com payload de `PostToolUse` (`.cwd` = projeto de teste,
-   `.tool_name` preenchido) e `CSTK_OTEL_ENDPOINT=file://.../A`.
-4. Avancar o relogio do throttle (tocar `meta.tsv` com `updated_at` antigo) e
-   disparar o hook de novo, agora apontando para a fixture `B`.
-5. `cstk usage --project <projeto de teste> --json` `[PROPOSTA]`
+   `.tool_name` preenchido) e `CSTK_OTEL_ENDPOINT=file:///.../fixture-live.prom`.
+4. Avancar o relogio do throttle (tocar `meta.tsv` com `updated_at` antigo),
+   **sobrescrever o MESMO arquivo `fixture-live.prom`** com os contadores
+   incrementados (conteudo `B`) e disparar o hook de novo — **sem trocar o
+   valor de `CSTK_OTEL_ENDPOINT`**.
+   > **Validado empiricamente (onda execute-task FASE 5)**: `process_key` e
+   > uma funcao estavel de `(endpoint, project_path)` (hash de
+   > `"${CSTK_OTEL_ENDPOINT}|${cwd}"` — hook linhas ~99-100). Apontar o
+   > `CSTK_OTEL_ENDPOINT` para um path de arquivo DIFERENTE entre os dois
+   > disparos (ex.: `.../A` depois `.../B`) muda o `process_key` e cria um
+   > **processo/segmento novo e independente** em vez de reabrir o mesmo
+   > segmento — confirmado reproduzindo os dois disparos e observando dois
+   > diretorios `<project>-<hash>` distintos sob
+   > `~/.claude/cstk/loose-usage/`. Em producao o endpoint (URL do exporter
+   > Prometheus local) e estavel durante a sessao; quem muda ao longo do
+   > tempo e o VALOR lido daquele mesmo endpoint — a fixture deve simular
+   > isso reescrevendo o conteudo do mesmo path, nao trocando de path.
+5. `cstk usage --project <projeto de teste> --json`
 6. **Expected**: duas entradas em `models[]`, uma por modelo, com
    `total_tokens` e `cost_usd` iguais a `B - A` **por modelo**; nenhum campo
-   `null`; exit 0.
+   `null`; exit 0. Reproduzido empiricamente com fixtures sinteticas
+   (`claude-opus-5[1m]`: cost `0.25`, tokens `750`; `claude-sonnet-5`: cost
+   `0.05`, tokens `150`).
 
 ---
 
@@ -37,11 +53,19 @@ Isso tambem torna os cenarios deterministicos e reproduziveis em CI.
 2. Disparar o hook com `CSTK_OTEL_ENDPOINT` apontando para um caminho
    inexistente.
 3. **Expected**:
-   - hook: exit `0`, stdout vazio, stderr vazio, nenhum diretorio de captura
-     criado;
-   - `cstk usage --project <p>` responde **`nao medido`** (mensagem de
-     ausencia de cobertura), exit 0;
+   - hook: exit `0`, stdout vazio, stderr vazio;
+   - `cstk usage --project <p>` responde **`nao medido — sem cobertura de
+     captura`** (mensagem de ausencia de cobertura), exit 0;
    - a saida NAO contem `0` como valor de tokens nem de custo.
+   > **Correcao empirica (onda execute-task FASE 5)**: o diretorio de
+   > processo + `meta.tsv` + o diretorio do segmento SAO criados mesmo
+   > quando o scrape falha (o hook faz `mkdir -p` antes de tentar o scrape,
+   > e a falha do `otel-usage.sh snapshot` e engolida via `|| :`) — o que
+   > NAO existe e o arquivo `otel-start.tsv`/dado de consumo em si. Por
+   > isso `cstk usage` ainda reporta corretamente "nao medido" (a ausencia
+   > de LINHA em `loose_usage`, nao a ausencia do diretorio, e o que
+   > importa para FR-005/SC-004); a formulacao original ("nenhum diretorio
+   > ... criado") nao correspondia ao comportamento real.
 
 ---
 
@@ -82,7 +106,7 @@ Isso tambem torna os cenarios deterministicos e reproduziveis em CI.
 1. Popular `wave_model_usage` com ao menos uma linha para o projeto (via
    execucao 00c real ou `cstk recall --ingest` de um state-dir de teste).
 2. Popular `loose_usage` pelos Scenarios 1/3.
-3. `cstk usage compare --project <p>` `[PROPOSTA]`
+3. `cstk usage compare --project <p>`
 4. **Expected**: duas categorias (`loose` e `pipeline`) lado a lado, cada uma
    com mix por modelo (`share_pct`) e `blended_cost_per_mtok`; sem
    cruzamento manual de fontes pelo operador.

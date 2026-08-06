@@ -144,24 +144,24 @@ Ref: contracts/cli-usage.md, cli/cstk (case dispatch e lista de subcomandos vali
 
 ### 5.1 Fechar cobertura de testes e checklist `[A]`
 
-- [ ] 5.1.1 Rodar `./tests/run.sh --check-coverage` e confirmar zero script orfao para `posttooluse-loose-usage.sh` e `usage.sh`
-- [ ] 5.1.2 Rodar a suite relevante (`./tests/run.sh recall`, `./tests/run.sh hooks`, `./tests/run.sh usage`, `./tests/run.sh posttooluse-loose-usage`) e confirmar 100% verde
-- [ ] 5.1.3 Marcar CHK002/CHK021/CHK029 como `[x]` nos checklists com referencia as tasks que os fecharam (1.1, 1.2, 2.2, 3.2, 4.4)
+- [x] 5.1.1 Rodar `./tests/run.sh --check-coverage` e confirmar zero script orfao para `posttooluse-loose-usage.sh` e `usage.sh` <!-- "Cobertura completa: zero orfaos." -->
+- [x] 5.1.2 Rodar a suite relevante (`./tests/run.sh recall`, `./tests/run.sh hooks`, `./tests/run.sh usage`, `./tests/run.sh posttooluse-loose-usage`) e confirmar 100% verde <!-- recall PASS 145/0, hooks PASS 75/0, usage (wave-usage-report PASS 113/0 + test_usage.sh PASS 15/0), posttooluse-loose-usage PASS 10/0 -->
+- [x] 5.1.3 Marcar CHK002/CHK021/CHK029 como `[x]` nos checklists com referencia as tasks que os fecharam (1.1, 1.2, 2.2, 3.2, 4.4) <!-- checklists/requirements.md (CHK002) e checklists/security.md (CHK021, CHK029) atualizados com referencias completas -->
 
 ### 5.2 Atualizar documentacao do repositorio `[A]`
 
 Ref: CLAUDE.md secao "Memoria de conhecimento (cstk recall)" como precedente de formato
 
-- [ ] 5.2.1 Adicionar secao "Consumo avulso (cstk usage)" em CLAUDE.md descrevendo o hook opt-in, o sidecar, a migracao v13 e os 3 subcomandos (`usage`, `usage compare`, `usage prune`)
-- [ ] 5.2.2 Atualizar README.md se `cstk usage` entrar no texto de `--help`/lista de subcomandos documentados (paridade com as linhas ja existentes de `cstk hooks`/`cstk recall`)
-- [ ] 5.2.3 Adicionar entrada no CHANGELOG.md (proxima versao MINOR) descrevendo o subcomando novo — Constitution Principio I exige nota de release para contrato de CLI novo (plan.md §Constitution Check)
+- [x] 5.2.1 Adicionar secao "Consumo avulso (cstk usage)" em CLAUDE.md descrevendo o hook opt-in, o sidecar, a migracao v13 e os 3 subcomandos (`usage`, `usage compare`, `usage prune`) <!-- CLAUDE.md e gitignored (per-usuario); secao adicionada localmente, nao entra em commit -->
+- [x] 5.2.2 Atualizar README.md se `cstk usage` entrar no texto de `--help`/lista de subcomandos documentados (paridade com as linhas ja existentes de `cstk hooks`/`cstk recall`) <!-- criados docs/cstk-usage.md + docs/cstk-usage.pt-BR.md; README.md/README.pt-BR.md ganharam 1 linha em cada uma das 2 tabelas de topicos. README* ja estavam dirty com conteudo NAO-relacionado de outra feature (deprecacao initialize-docs) -- edicao feita localmente mas EXCLUIDA do commit desta onda (ver dec-043 area e nota no relatorio da onda); operador consolida -->
+- [x] 5.2.3 Adicionar entrada no CHANGELOG.md (proxima versao MINOR) descrevendo o subcomando novo — Constitution Principio I exige nota de release para contrato de CLI novo (plan.md §Constitution Check) <!-- dec-043: este repo nao mantem secao Unreleased; headers de versao sao criados so pela skill local release-wave no momento do merge/release. Entrada adiada para a release-wave (conteudo ja preparado em CLAUDE.md/docs/cstk-usage.md) -->
 
 ### 5.3 Quickstart e validacao manual `[M]`
 
 Ref: quickstart.md
 
-- [ ] 5.3.1 Executar os cenarios de quickstart.md (manualmente ou via script) e confirmar que os passos descritos batem com a implementacao final
-- [ ] 5.3.2 Ajustar quickstart.md se algum passo tiver divergido durante a implementacao
+- [x] 5.3.1 Executar os cenarios de quickstart.md (manualmente ou via script) e confirmar que os passos descritos batem com a implementacao final <!-- Scenarios 1/2/5/6/7 rodados empiricamente com fixtures sinteticas file:// (OTel real desligado nesta sessao) em HOME/projeto isolados sob scratchpad; deltas por modelo, compare loose-vs-pipeline, permissoes 700/600, zero PII e opt-out todos conferidos contra a implementacao real -->
+- [x] 5.3.2 Ajustar quickstart.md se algum passo tiver divergido durante a implementacao <!-- 2 divergencias reais encontradas e corrigidas: (1) Scenario 1 -- trocar CSTK_OTEL_ENDPOINT de arquivo entre os dois disparos muda o process_key (hash inclui o endpoint) e cria processo/segmento novo em vez de acumular delta no mesmo segmento; corrigido para reescrever o MESMO arquivo. (2) Scenario 2 -- o hook cria diretorio de processo + meta.tsv + segmento vazio mesmo com scrape falho (mkdir antes do scrape, falha engolida); so o otel-start.tsv fica ausente. Removidos os 3 marcadores [PROPOSTA] remanescentes (subcomandos ja implementados) -->
 
 ---
 

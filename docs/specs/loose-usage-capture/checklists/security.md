@@ -36,10 +36,12 @@ repositorio versionado.
   e seus arquivos, no MESMO padrao ja aplicado ao `knowledge.db`
   (`chmod 600`, `recall_normalize_db_perms`)? [Gap, cli/lib/recall.sh
   linhas ~669-685 vs spec.md/plan.md/data-model.md/contracts/*] {auto} —
-  RESOLVIDO pela task 1.2: data-model.md §Permissao (CHK021) documenta
+  RESOLVIDO pelas tasks 1.2 (data-model.md §Permissao (CHK021) documenta
   `chmod 700` nos diretorios (raiz, `<process_key>/`, `seg-*/`) e
   `chmod 600` nos arquivos (`meta.tsv`, `otel-start.tsv`, `otel-end.tsv`),
-  paridade com `recall_normalize_db_perms`.
+  paridade com `recall_normalize_db_perms`) e 3.2 (permissao aplicada de
+  fato no hook `posttooluse-loose-usage.sh`, funcoes
+  `_plu_secure_dir`/`_plu_secure_file`).
   Precedente direto ja existe no proprio codebase para o arquivo irmao
   (`knowledge.db`) — a ausencia de requisito equivalente para o
   diretorio de sidecar (que tambem contem `project_path` — path absoluto
@@ -110,9 +112,10 @@ repositorio versionado.
   angulo de seguranca de dados: crescimento local ilimitado de um
   diretorio que contem `project_path` (path absoluto do operador) e um
   risco de superficie de dados que cresce sem controle declarado, nao
-  apenas uma questao de completude funcional. RESOLVIDO pela task 1.1:
-  data-model.md §Retencao (CHK002/CHK029) + contracts/cli-usage.md
-  §`cstk usage prune`.
+  apenas uma questao de completude funcional. RESOLVIDO pelas tasks 1.1
+  (data-model.md §Retencao (CHK002/CHK029)), 2.2 (rotina de poda na
+  camada de indice, `recall_prune_loose_usage` em `cli/lib/recall.sh`) e
+  4.4 (`cstk usage prune`, contracts/cli-usage.md §`cstk usage prune`).
 
 ## Itens de julgamento humano
 
