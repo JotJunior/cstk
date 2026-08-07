@@ -294,7 +294,7 @@ scenario_dry_run_precedes_yes() {
   _make_repo "$_repo"
   _before=$(find "$_repo" -mindepth 1 | sort)
 
-  assert_exit 0 sh "$CSTK" setup --project-path "$_repo" --dry-run --yes || return 1
+  assert_exit 0 sh "$CSTK" setup --verbose --project-path "$_repo" --dry-run --yes || return 1
   # Diagnosticos de modo vao para stderr (Constitution II: dados em stdout,
   # erros/avisos em stderr) — cli/lib/common.sh::log_info.
   assert_stderr_contains "mode=preview" || return 1
@@ -308,7 +308,7 @@ scenario_dry_run_precedes_yes() {
 
   # Ordem invertida (--yes --dry-run) deve dar o mesmo resultado —
   # precedencia e por PRESENCA da flag, nao por posicao.
-  assert_exit 0 sh "$CSTK" setup --project-path "$_repo" --yes --dry-run || return 1
+  assert_exit 0 sh "$CSTK" setup --verbose --project-path "$_repo" --yes --dry-run || return 1
   assert_stderr_contains "mode=preview" || return 1
 }
 
@@ -431,7 +431,7 @@ scenario_hooks_second_run_zero_calls() {
   _cat=$(_make_fake_catalog "$_home")
 
   assert_exit 0 env HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --yes || return 1
+    sh "$CSTK" setup --verbose --project-path "$_repo" --yes || return 1
 
   [ -f "$_repo/.claude/hooks/pretooluse-bash-guard.sh" ] || {
     _fail "scenario_hooks_second_run_zero_calls" \
@@ -441,7 +441,7 @@ scenario_hooks_second_run_zero_calls() {
   cp -R "$_repo/.claude" "$TMPDIR_TEST/hooks-idem-snapshot"
 
   capture env HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --yes
+    sh "$CSTK" setup --verbose --project-path "$_repo" --yes
   if [ "$_CAPTURED_EXIT" != "0" ]; then
     _fail "scenario_hooks_second_run_zero_calls" \
       "segundo run esperava exit 0, obteve $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
@@ -477,7 +477,7 @@ scenario_hooks_paste_instructed_surfaces_warning() {
   _shim=$(_make_shim_path_no_jq)
 
   capture env -i PATH="$_shim" HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --yes
+    sh "$CSTK" setup --verbose --project-path "$_repo" --yes
   if [ "$_CAPTURED_EXIT" != "0" ]; then
     _fail "scenario_hooks_paste_instructed_surfaces_warning" \
       "esperado exit 0 (applied com aviso), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
@@ -667,7 +667,7 @@ scenario_state_backend_deliberate_json_not_migrated() {
   chmod 600 "$_home/.claude/cstk/config"
 
   capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --yes
+    sh "$CSTK" setup --verbose --project-path "$_repo" --yes
   case "$_CAPTURED_STDERR" in
     *"[state-backend] status atual = configured"*"reason=json-explicito"*) : ;;
     *)
@@ -753,7 +753,7 @@ scenario_state_backend_unavailable_sqlite_missing() {
   _shim=$(_make_shim_path_no_sqlite3)
 
   capture env -i PATH="$_shim" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --yes
+    sh "$CSTK" setup --verbose --project-path "$_repo" --yes
   if [ "$_CAPTURED_EXIT" != "1" ]; then
     _fail "scenario_state_backend_unavailable_sqlite_missing" \
       "esperado exit 1 (area failed), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
@@ -865,7 +865,7 @@ scenario_mcp_status_displayed_before_action() {
   mkdir -p "$_home"
 
   capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --dry-run
+    sh "$CSTK" setup --verbose --project-path "$_repo" --dry-run
   if [ "$_CAPTURED_EXIT" != "0" ]; then
     _fail "scenario_mcp_status_displayed_before_action" \
       "esperado exit 0 (dry-run), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
@@ -908,7 +908,7 @@ scenario_mcp_applied_without_docker_warns() {
   _shim=$(_make_shim_path_no_docker)
 
   capture env -i PATH="$_shim" HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --yes
+    sh "$CSTK" setup --verbose --project-path "$_repo" --yes
   case "$_CAPTURED_STDERR" in
     *"[mcp] outcome=applied"*) : ;;
     *)
@@ -954,7 +954,7 @@ JSON
   _snapshot=$(cat "$_mcp_file")
 
   capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --yes
+    sh "$CSTK" setup --verbose --project-path "$_repo" --yes
   if [ "$_CAPTURED_EXIT" != "1" ]; then
     _fail "scenario_mcp_divergent_no_install_call" \
       "esperado exit 1 (mcp divergent), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
@@ -1009,7 +1009,7 @@ scenario_mcp_cross_layer_not_divergent() {
   # FASE 2.3.9): CSTK_LIB=repo (contexto DIFERENTE do HOME onde o
   # candidato "instalado" mora) — agora validado no nivel do wizard.
   capture env HOME="$_fake_home" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --dry-run
+    sh "$CSTK" setup --verbose --project-path "$_repo" --dry-run
   if [ "$_CAPTURED_EXIT" != "0" ]; then
     _fail "scenario_mcp_cross_layer_not_divergent" \
       "esperado exit 0 (dry-run, configured), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
@@ -1055,7 +1055,7 @@ scenario_telemetry_readonly_no_home_write() {
   _before=$(find "$_home" -type f -exec cksum {} + 2>/dev/null | sort)
 
   capture env -i HOME="$_home" PATH="$PATH" CSTK_LIB="$CSTK_LIB" \
-    sh "$CSTK" setup --project-path "$_repo" --dry-run
+    sh "$CSTK" setup --verbose --project-path "$_repo" --dry-run
   if [ "$_CAPTURED_EXIT" != "0" ]; then
     _fail "scenario_telemetry_readonly_no_home_write" \
       "esperado exit 0 (--dry-run), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
@@ -1314,6 +1314,74 @@ EOF
       ".mcp.json nao foi escrito apesar do aceite interativo (y)"
     return 1
   fi
+}
+
+# ==== modo silencioso default (ajuste de UX 2026-08-07) ====
+
+# Default (sem --verbose): sucesso emite so [OK] por area + summary —
+# nenhuma linha de progresso [info] de status/preview aparece.
+scenario_quiet_default_emits_ok_lines() {
+  _repo="$TMPDIR_TEST/repo-quiet-ok"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-quiet-ok"
+  mkdir -p "$_home"
+
+  capture env -i PATH="$PATH" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_quiet_default_emits_ok_lines" \
+      "esperado exit 0 em dry-run, obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  for _qa in hooks state-backend mcp telemetry; do
+    case "$_CAPTURED_STDERR" in
+      *"[OK] $_qa"*) : ;;
+      *)
+        _fail "scenario_quiet_default_emits_ok_lines" \
+          "linha '[OK] $_qa' ausente no modo silencioso: $_CAPTURED_STDERR"
+        return 1
+        ;;
+    esac
+  done
+  case "$_CAPTURED_STDERR" in
+    *"status atual"* | *"pre-condicoes OK"*)
+      _fail "scenario_quiet_default_emits_ok_lines" \
+        "linhas de progresso vazaram sem --verbose: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
+# --verbose restaura o progresso detalhado (status atual, preview, outcome=).
+scenario_verbose_flag_restores_progress() {
+  _repo="$TMPDIR_TEST/repo-verbose-progress"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-verbose-progress"
+  mkdir -p "$_home"
+
+  capture env -i PATH="$PATH" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run --verbose
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_verbose_flag_restores_progress" \
+      "esperado exit 0, obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"[hooks] status atual"*) : ;;
+    *)
+      _fail "scenario_verbose_flag_restores_progress" \
+        "--verbose nao restaurou o progresso detalhado: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"pre-condicoes OK"*) : ;;
+    *)
+      _fail "scenario_verbose_flag_restores_progress" \
+        "--verbose nao mostrou pre-condicoes: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
 }
 
 run_all_scenarios
