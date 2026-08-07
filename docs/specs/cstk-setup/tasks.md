@@ -64,41 +64,41 @@ Ref: spec.md FR-004, FR-005, FR-006, FR-018; contracts/cli-setup.md §1 "Precede
 
 Ref: spec.md FR-002, FR-008; contracts/cli-setup.md §2.2; research.md Decision 3
 
-- [ ] 2.1.1 Adicionar flag `--include-loose-usage` a `guard-hooks-status.sh check`, acrescentando uma 4a linha TSV para `posttooluse-loose-usage.sh` (mesmo formato de 4 campos)
-- [ ] 2.1.2 Garantir retro-compatibilidade: sem a flag, saida byte-a-byte identica a atual; exit code inalterado (derivado apenas dos 3 hooks de `_GH_HOOKS`)
-- [ ] 2.1.3 Documentar que o consumidor (`setup.sh`) deve tratar exit 2 (`_gh_die_usage`, flag desconhecida em runtime antigo) como `loose_usage_status=indeterminate`, nunca como falha da area de hooks
-- [ ] 2.1.4 Teste: `scenario_loose_usage_detection_current_runtime` — flag presente, hook opt-in ausente => 4a linha reflete ausencia sem afetar exit
-- [ ] 2.1.5 Teste: `scenario_loose_usage_detection_stale_runtime` (quickstart Scenario 10) — runtime antigo rejeita a flag com exit 2; consumo trata como `indeterminate`, hooks obrigatorios seguem detectados/aplicados normalmente
+- [x] 2.1.1 Adicionar flag `--include-loose-usage` a `guard-hooks-status.sh check`, acrescentando uma 4a linha TSV para `posttooluse-loose-usage.sh` (mesmo formato de 4 campos)
+- [x] 2.1.2 Garantir retro-compatibilidade: sem a flag, saida byte-a-byte identica a atual; exit code inalterado (derivado apenas dos 3 hooks de `_GH_HOOKS`)
+- [x] 2.1.3 Documentar que o consumidor (`setup.sh`) deve tratar exit 2 (`_gh_die_usage`, flag desconhecida em runtime antigo) como `loose_usage_status=indeterminate`, nunca como falha da area de hooks
+- [x] 2.1.4 Teste: `scenario_loose_usage_detection_current_runtime` — flag presente, hook opt-in ausente => 4a linha reflete ausencia sem afetar exit
+- [x] 2.1.5 Teste: `scenario_loose_usage_detection_stale_runtime` (quickstart Scenario 10) — runtime antigo rejeita a flag com exit 2; consumo trata como `indeterminate`, hooks obrigatorios seguem detectados/aplicados normalmente
 
 ### 2.2 `guard-hooks-status.sh --verify-registration` `[C]`
 
 Ref: spec.md FR-016 (SEC-01/SEC-02/SEC-03 ja corrigidos no contrato/data-model); contracts/cli-setup.md §2.3; data-model.md invariante I5
 
-- [ ] 2.2.1 Adicionar flag `--verify-registration`, acrescentando 5a coluna TSV (`canonical`/`divergent`/`indeterminate`) por hook
-- [ ] 2.2.2 Implementar regra de decisao: toda linha do `settings.json` que contenha o basename MUST tambem conter o fragmento canonico **e** o token literal `"command"` na MESMA linha — senao `divergent` (fecha o caso de linha-isca decorativa, achado SEC-01)
-- [ ] 2.2.3 Com a flag, `divergent` em qualquer hook de `_GH_HOOKS` muda o exit para `1`; sem a flag, saida e exit permanecem identicos aos atuais
-- [ ] 2.2.4 Documentar que o consumidor deve tratar exit 2 (flag desconhecida em runtime antigo) como `indeterminate` — nunca `divergent`, nunca `configured` (I5)
-- [ ] 2.2.5 Teste: `scenario_verify_registration_canonical` — registro correto => `canonical`, area reporta `configured`
-- [ ] 2.2.6 Teste: `scenario_hook_redirected_reports_divergent` (quickstart Scenario 13) — `"command"` real aponta para outro programa mantendo o basename na linha => `divergent`, exit 1 com a flag
-- [ ] 2.2.7 Teste: `scenario_decoy_line_not_canonical` (quickstart Scenario 17, achado SEC-01) — linha decorativa com basename+fragmento canonico mas sem o token `"command"` na mesma linha NAO conta como `canonical`; `"command"` real divergente => `divergent`
-- [ ] 2.2.8 Teste: `scenario_minified_settings_indeterminate` (quickstart Scenario 15) — `settings.json` minificado numa unica linha => `indeterminate` (nunca `canonical`)
-- [ ] 2.2.9 Teste: `scenario_verify_registration_isolated_from_baseline` (quickstart Scenario 18, achado SEC-03) — chamada baseline roda SEPARADA e retorna exit 0 mesmo quando `--verify-registration` falha com exit 2 em runtime antigo; assertar via stub/contador que as duas chamadas de fato ocorreram
-- [ ] 2.2.10 Teste de retro-compatibilidade: `tests/test_guard-hooks-status.sh` existente permanece verde sem alteracao de comportamento quando a flag nao e passada
+- [x] 2.2.1 Adicionar flag `--verify-registration`, acrescentando 5a coluna TSV (`canonical`/`divergent`/`indeterminate`) por hook
+- [x] 2.2.2 Implementar regra de decisao: toda linha do `settings.json` que contenha o basename MUST tambem conter o fragmento canonico **e** o token literal `"command"` na MESMA linha — senao `divergent` (fecha o caso de linha-isca decorativa, achado SEC-01)
+- [x] 2.2.3 Com a flag, `divergent` em qualquer hook de `_GH_HOOKS` muda o exit para `1`; sem a flag, saida e exit permanecem identicos aos atuais
+- [x] 2.2.4 Documentar que o consumidor deve tratar exit 2 (flag desconhecida em runtime antigo) como `indeterminate` — nunca `divergent`, nunca `configured` (I5)
+- [x] 2.2.5 Teste: `scenario_verify_registration_canonical` — registro correto => `canonical`, area reporta `configured`
+- [x] 2.2.6 Teste: `scenario_hook_redirected_reports_divergent` (quickstart Scenario 13) — `"command"` real aponta para outro programa mantendo o basename na linha => `divergent`, exit 1 com a flag
+- [x] 2.2.7 Teste: `scenario_decoy_line_not_canonical` (quickstart Scenario 17, achado SEC-01) — linha decorativa com basename+fragmento canonico mas sem o token `"command"` na mesma linha NAO conta como `canonical`; `"command"` real divergente => `divergent`
+- [x] 2.2.8 Teste: `scenario_minified_settings_indeterminate` (quickstart Scenario 15) — `settings.json` minificado numa unica linha => `indeterminate` (nunca `canonical`)
+- [x] 2.2.9 Teste: `scenario_verify_registration_isolated_from_baseline` (quickstart Scenario 18, achado SEC-03) — chamada baseline roda SEPARADA e retorna exit 0 mesmo quando `--verify-registration` falha com exit 2 em runtime antigo; assertar via stub/contador que as duas chamadas de fato ocorreram
+- [x] 2.2.10 Teste de retro-compatibilidade: `tests/test_guard-hooks-status.sh` existente permanece verde sem alteracao de comportamento quando a flag nao e passada
 
 ### 2.3 `_mcp_registration_status` em `cli/lib/mcp.sh` `[C]`
 
 Ref: spec.md FR-016; contracts/cli-setup.md §4.1; checklists/security.md CHK012 (SEC-05), CHK013 (SEC-06); plan.md Risco 7
 
-- [ ] 2.3.1 Implementar `_mcp_registration_status PROJECT_PATH` — leitura textual sem `jq`, stdout `configured`/`divergent`/`not-configured`, exit sempre 0 (contrato de nao-falha, paridade com `state-backend.sh resolve`)
-- [ ] 2.3.2 Regra: `.mcp.json` ausente ou sem mencao a `cstk-state` => `not-configured`
-- [ ] 2.3.3 Regra: `cstk-state` presente e `command` e um dos 3 paths candidatos de `_mcp_runtime_script_path` (PATH / repo / catalogo instalado, `cli/lib/mcp.sh:127-146`) => `configured`
-- [ ] 2.3.4 Regra: `cstk-state` presente e `command` aponta para outro lugar OU nao e atribuivel => `divergent`
-- [ ] 2.3.5 (achado SEC-05 / CHK012) Restringir os paths candidatos aceitos ao sufixo esperado `/skills/agente-00c-runtime/scripts/mcp-launch.sh` **e** que exista de fato em disco no momento da verificacao — nao aceitar qualquer resultado de `command -v mcp-launch.sh` sem essa restricao
-- [ ] 2.3.6 (achado SEC-06 / CHK013) Tratar stdout vazio de `_mcp_registration_status` (nenhuma das 3 palavras esperadas) como indeterminado — nunca como uma das 3 respostas validas por omissao; nunca resolve para `configured`
-- [ ] 2.3.7 Teste: `scenario_mcp_not_configured` (quickstart Scenario 14c) — chave ausente => `not-configured`
-- [ ] 2.3.8 Teste: `scenario_mcp_divergent_foreign_script` (quickstart Scenario 14a) — `command` fora do catalogo => `divergent`
-- [ ] 2.3.9 Teste: `scenario_mcp_configured_cross_layer` (quickstart Scenario 14b) — `.mcp.json` gerado a partir do repo, verificado a partir do catalogo instalado => `configured`, nao `divergent` (evita falso-positivo entre camadas)
-- [ ] 2.3.10 Teste: `scenario_mcp_registration_status_empty_stdout` (SEC-06) — simular resposta vazia e confirmar tratamento como indeterminado, nunca `configured`
+- [x] 2.3.1 Implementar `_mcp_registration_status PROJECT_PATH` — leitura textual sem `jq`, stdout `configured`/`divergent`/`not-configured`, exit sempre 0 (contrato de nao-falha, paridade com `state-backend.sh resolve`)
+- [x] 2.3.2 Regra: `.mcp.json` ausente ou sem mencao a `cstk-state` => `not-configured`
+- [x] 2.3.3 Regra: `cstk-state` presente e `command` e um dos 3 paths candidatos de `_mcp_runtime_script_path` (PATH / repo / catalogo instalado, `cli/lib/mcp.sh:127-146`) => `configured`
+- [x] 2.3.4 Regra: `cstk-state` presente e `command` aponta para outro lugar OU nao e atribuivel => `divergent`
+- [x] 2.3.5 (achado SEC-05 / CHK012) Restringir os paths candidatos aceitos ao sufixo esperado `/skills/agente-00c-runtime/scripts/mcp-launch.sh` **e** que exista de fato em disco no momento da verificacao — nao aceitar qualquer resultado de `command -v mcp-launch.sh` sem essa restricao
+- [x] 2.3.6 (achado SEC-06 / CHK013) Tratar stdout vazio de `_mcp_registration_status` (nenhuma das 3 palavras esperadas) como indeterminado — nunca como uma das 3 respostas validas por omissao; nunca resolve para `configured`
+- [x] 2.3.7 Teste: `scenario_mcp_not_configured` (quickstart Scenario 14c) — chave ausente => `not-configured`
+- [x] 2.3.8 Teste: `scenario_mcp_divergent_foreign_script` (quickstart Scenario 14a) — `command` fora do catalogo => `divergent`
+- [x] 2.3.9 Teste: `scenario_mcp_configured_cross_layer` (quickstart Scenario 14b) — `.mcp.json` gerado a partir do repo, verificado a partir do catalogo instalado => `configured`, nao `divergent` (evita falso-positivo entre camadas)
+- [x] 2.3.10 Teste: `scenario_mcp_registration_status_empty_stdout` (SEC-06) — simular resposta vazia e confirmar tratamento como indeterminado, nunca `configured`
 
 ---
 
