@@ -12,6 +12,10 @@
 - Q: Quais marcadores concretos definem 'diretorio de projeto gerenciado pelo toolkit' para o gate de recusa do FR-011? → A: Raiz de repositorio git (presenca de `.git`, arquivo ou diretorio — worktrees contam); nao exige artefatos do toolkit, para evitar circularidade com o proprio onboarding.
 - Q: No modo nao-interativo, a area de MCP deve tentar aplicar `cstk mcp install` por padrao mesmo sem Docker detectado, ou pular a area? → A: Tenta aplicar mesmo sem Docker (registro fica inerte sem Docker; start das execucoes ja degrada sozinho para bash-fallback), emitindo aviso claro de Docker ausente.
 
+### Sessao 2026-08-07 — gate de seguranca (fase plan, bloqueio HIGH)
+
+- Q: A deteccao das areas `hooks`/`mcp` e por presenca de chave/basename e nao distingue configuracao legitima de hostil preexistente; o wizard reportaria "already configured" sobre um controle de seguranca redirecionado. Endurecer, reduzir o escopo da garantia, ou aceitar o risco? → A: **Endurecer a deteccao** — antes de reportar como ja configurado, verificar que o path registrado aponta para o script real do catalogo provisionado pelo cstk; registro com path divergente vira status `divergente` com remediacao, nunca "already configured". Formalizado em FR-016.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Guided first-time setup (Priority: P1)
@@ -187,8 +191,8 @@ still applies the mandatory hooks.
   state-server registration, and telemetry activation.
 - **FR-002**: For each area, before offering to apply anything, the
   guided setup MUST first determine and display that area's current
-  status in the project (already configured / not configured /
-  unavailable) using the same detection logic as that area's existing
+  status in the project (already configured / not configured / divergent
+  / unavailable) using the same detection logic as that area's existing
   dedicated command.
 - **FR-003**: The guided setup MUST NOT re-apply, modify, or force a
   migration for any area already reported as configured — a
@@ -238,6 +242,27 @@ still applies the mandatory hooks.
   is not detected — the resulting registration is inert without Docker,
   and execution start already degrades gracefully to bash-fallback on its
   own — while emitting a clear warning that Docker was not found.
+- **FR-016**: (SECURITY) For the hooks and MCP areas, the guided setup
+  MUST NOT report an area as configured based on the mere presence of a
+  key or file name in the project's configuration. It MUST verify that
+  the registered entry actually invokes the toolkit-provisioned script,
+  and MUST report an entry that names the hook or server but points
+  elsewhere as **divergent** — never as already configured. A divergent
+  area MUST be reported with its remediation, MUST NOT be silently
+  overwritten by the wizard, and MUST make the run's outcome
+  unambiguously non-successful.
+- **FR-017**: The state backend area MUST state explicitly, before
+  applying and in preview, that its change is written to **global**
+  user-level configuration affecting every project on the machine — not
+  to the project directory being set up. The other three areas are
+  project-scoped and MUST NOT be presented with that label.
+- **FR-018**: The guided setup MUST NOT expose, accept, or set any option
+  that redirects where provisioned scripts — or the reference copies they
+  are compared against — are read from. It always provisions from the
+  toolkit's own installed catalog. When such a redirection is already
+  present in the invoking environment, the guided setup MUST NOT report
+  an area as configured on the strength of a redirected reference; it
+  MUST say the verification was made against a non-default source.
 
 > Decisoes de infraestrutura adicionais: N/A — feature nao introduz
 > scheduling, rotacao de chaves, refresh de token externo, mutex
@@ -248,8 +273,9 @@ still applies the mandatory hooks.
 
 - **Configuration Area**: One of the four things the wizard walks
   through (hooks, state backend, MCP integration, telemetry). Has a
-  current status (configured / not configured / unavailable) and, after
-  a run, an outcome (applied / already configured / skipped / failed).
+  current status (configured / not configured / divergent / unavailable)
+  and, after a run, an outcome (applied / already configured / skipped /
+  failed).
 - **Setup Run Summary**: The end-of-run report listing every
   Configuration Area's outcome for that invocation, used to confirm
   results in both interactive and non-interactive modes.
@@ -272,6 +298,10 @@ still applies the mandatory hooks.
 - **SC-005**: 100% of runs — interactive or not, successful or partially
   failed — end with a per-area outcome summary that a user can read to
   know exactly what changed and what did not.
+- **SC-006**: In a project whose configuration names a mandatory hook or
+  the MCP state server but routes it to something other than the
+  toolkit-provisioned script, 100% of runs report that area as divergent
+  with remediation, and 0% report it as already configured.
 
 ## Delta Requirements
 

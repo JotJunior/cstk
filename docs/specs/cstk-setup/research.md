@@ -396,3 +396,74 @@ ausente esbarra no gotcha ja registrado do projeto — stub de `PATH` nao
 esconde binario de `/usr/bin`. Cenarios de "dependencia ausente" devem
 ser desenhados desacoplando a deteccao do `PATH` interno, ou aceitos como
 nao-cobertos com nota explicita. Decisao adiada para `create-tasks`.
+
+---
+
+## Decision 11: Autenticidade do registro em hooks/MCP (FR-016)
+
+> Adicionada na revisao pos-gate `owasp-security` da fase plan (achado
+> HIGH), apos resposta do operador ao bloqueio. Revisa parcialmente as
+> Decisions 2 e 3, que definiram a deteccao por presenca.
+
+**Decision**: verificar que a configuracao do projeto **invoca** o script
+do catalogo, e nao apenas que **cita** seu nome. Divergencia vira o
+status `divergent`, que jamais colapsa para `configured`. Implementado
+como extensao aditiva na lib dona de cada area — 5a coluna TSV em
+`guard-hooks-status.sh check --verify-registration` e helper read-only
+`_mcp_registration_status` em `cli/lib/mcp.sh` — nunca como deteccao
+propria de `setup.sh` (preserva a Decision 2).
+
+**Problema observado** (nao hipotetico — verificado no codigo):
+
+1. `_gh_registered` (`guard-hooks-status.sh:119-127`) e
+   `grep -Fq -- "$2" "$_gh_settings"`: presenca do **basename**. O
+   comentario do proprio script assume ser "condicao necessaria e
+   suficiente na pratica". E necessaria, nao suficiente.
+2. A deteccao de MCP desenhada na Decision 2 era a presenca da chave
+   `cstk-state` no `.mcp.json`.
+3. Os dois comandos de aplicacao fazem merge com **o target vencendo**:
+   `jq -s '.[0] * .[1]'`, "Source primeiro, target segundo => target
+   vence em conflitos" (`cli/lib/hooks.sh`); "entrada ja presente e
+   equivalente => idempotente, exit 0" (`cli/lib/mcp.sh:800-802`).
+
+Combinados: uma entrada preexistente que cite o nome e execute outro
+programa sobrevive a instalacao **e** era reportada como
+`already configured`. O hook em questao, `pretooluse-bash-guard.sh`, e o
+bloqueio fail-closed de comandos durante execucao 00c — a falsa garantia
+recairia sobre um controle de seguranca, no cenario que a feature mira
+(repo recem-clonado, onde a configuracao veio junto).
+
+**Rationale**: um wizard de onboarding cuja mensagem central e "esta area
+ja esta configurada" so agrega valor se essa afirmacao for verificavel. A
+alternativa de apenas reduzir o escopo da garantia no texto transfere ao
+usuario um julgamento que ele nao tem como fazer — ele nao vai auditar o
+`settings.json` que o wizard acabou de declarar em ordem.
+
+**Alternatives considered**:
+
+- *Reduzir o escopo da garantia (opcao (b) do bloqueio)*: rejeitado pelo
+  operador. Manteria a superficie e trocaria a falsa garantia por um
+  aviso que o usuario tende a nao ler.
+- *Aceitar o risco (opcao (c))*: rejeitado pelo operador.
+- *Sobrescrever a entrada divergente automaticamente*: rejeitado — o
+  wizard passaria a destruir configuracao que nao entende, e o caso
+  legitimo (usuario com wrapper proprio deliberado) e indistinguivel do
+  hostil sem intervencao humana. Detectar e instruir preserva as duas
+  situacoes.
+- *Fazer da verificacao o comportamento default de
+  `guard-hooks-status.sh check`*: adiado. Mudaria formato de saida e exit
+  de um contrato publicado (README.md:279, prosa dos orquestradores) —
+  BREAKING, exigindo bump MAJOR por Constitution I. Registrado como
+  candidato para a proxima major.
+- *Parsear o JSON com `jq` em vez de `grep -F` por linha*: rejeitado —
+  `jq` e justamente a dependencia que costuma faltar no projeto mal
+  provisionado sob diagnostico (Decision 2; comentario em
+  `guard-hooks-status.sh:119-125`). O custo e a limitacao textual
+  documentada (JSON minificado → `indeterminate`), aceitavel porque
+  falha fechada.
+
+**Consequencia na remediacao publicada**: como re-rodar `install` nao
+substitui a entrada divergente (item 3 acima), a remediacao exibida e de
+**duas etapas** — remover a entrada, depois reinstalar. Publicar apenas
+"re-rode `cstk hooks install`" seria uma instrucao comprovadamente
+inefetiva (Constitution VI).

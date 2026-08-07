@@ -237,6 +237,110 @@ fechar a feature.
 
 ---
 
+## Scenario 13: Hook registrado apontando para outro programa (FR-016, SC-006)
+
+1. Projeto valido, hooks obrigatorios **provisionados corretamente** em
+   `.claude/hooks/` (copias byte-identicas ao catalogo — a 4a coluna do
+   TSV sai `current`).
+2. Editar `.claude/settings.json` para que a entrada `PreToolUse` execute
+   outro programa, mantendo o basename citado na linha (ex.
+   `"command": "/tmp/nao-e-o-guard.sh # pretooluse-bash-guard.sh"`).
+3. Rodar `cstk setup --project-path "$PROJ" --yes`.
+4. **Expected**:
+   - Area `hooks` reportada como **`divergent`**, nunca
+     `already-configured` (SC-006).
+   - Motivo exibido cita o hook afetado e a remediacao de **duas etapas**:
+     remover a entrada divergente e so entao rodar
+     `cstk hooks install --project-path "$PROJ"`.
+   - **Nenhuma chamada** a `hooks install` foi feita (invariante I6 —
+     assertar por stub/contador, nao por efeito colateral).
+   - `.claude/settings.json` permanece **inalterado** — o wizard nao
+     sobrescreve o que nao reconhece.
+   - Exit `1` (houve `failed`).
+5. Repetir com `--dry-run`: mesmo diagnostico, mesma remediacao, exit `0`,
+   zero escrita.
+
+> **Por que a remediacao tem duas etapas**: `merge_settings` roda
+> `jq -s '.[0] * .[1]'` com "Source primeiro, target segundo => target
+> vence em conflitos" (`cli/lib/hooks.sh`). Um `cstk hooks install`
+> sozinho **nao** substitui a entrada divergente. Um teste que so
+> verificasse o texto "rode cstk hooks install" validaria uma instrucao
+> inefetiva.
+
+---
+
+## Scenario 14: MCP — divergente vs. falso-positivo de path (FR-016)
+
+**14a — divergente de verdade**:
+
+1. `.mcp.json` com a chave `mcpServers.cstk-state` presente, mas
+   `command` apontando para um script fora do catalogo (ex.
+   `/tmp/fake-launch.sh`).
+2. Rodar `cstk setup --project-path "$PROJ" --yes`.
+3. **Expected**: area `mcp` = `divergent`; nenhuma chamada a
+   `mcp install`; `.mcp.json` inalterado; remediacao de duas etapas;
+   exit `1`.
+
+**14b — legitimo resolvido por outra camada (nao pode ser divergente)**:
+
+1. Gerar o `.mcp.json` via `cstk mcp install` com `CSTK_LIB` apontando
+   para o **repo** (o `command` grava o path do repo, `cli/lib/mcp.sh:840`).
+2. Rodar a deteccao num contexto em que `_mcp_runtime_script_path`
+   resolveria primeiro para `$HOME/.claude/skills/agente-00c-runtime/scripts/`.
+3. **Expected**: area `mcp` = `configured`, **nao** `divergent` — as tres
+   camadas de resolucao (`cli/lib/mcp.sh:127-146`) sao todas aceitas.
+   Sem esta asserção, o falso-positivo apareceria em toda maquina de
+   desenvolvimento.
+
+**14c — chave ausente**: `.mcp.json` sem `cstk-state` → `not-configured`
+(caminho normal de aplicacao, inalterado).
+
+---
+
+## Scenario 15: Ambiguidade textual falha fechada (FR-016, invariante I5)
+
+1. Projeto com hooks corretamente provisionados e registrados, mas com
+   `.claude/settings.json` **minificado numa unica linha**.
+2. Rodar `cstk setup --project-path "$PROJ" --yes`.
+3. **Expected**:
+   - A verificacao de registro devolve `indeterminate`.
+   - A area **nao** e reportada como `already-configured` (I5).
+   - O motivo distingue "nao consegui verificar" de "esta errado" —
+     texto honesto, sem afirmar subversao que nao foi observada.
+4. Variante com runtime instalado antigo (sem `--verify-registration`):
+   a chamada retorna exit `2` (`_gh_die_usage`,
+   `guard-hooks-status.sh:205`) e o resultado tambem e `indeterminate`,
+   pelo mesmo caminho — nao uma falha da area (FR-009).
+
+---
+
+## Scenario 16: Rotulo de escopo global e ausencia de override (FR-017, FR-018)
+
+1. Projeto limpo, `HOME` sandboxado.
+2. Rodar `cstk setup --project-path "$PROJ" --dry-run`.
+3. **Expected (FR-017)**:
+   - A area `state-backend` declara explicitamente, **antes** de qualquer
+     aplicacao, que escreve em `$HOME/.claude/cstk/config`
+     (`state-backend.sh:75-76`) e que o efeito vale para **todos os
+     projetos** da maquina.
+   - As areas `hooks`, `mcp` e `telemetry` **nao** carregam esse rotulo.
+   - A linha do summary da area `state-backend` repete a marca de escopo.
+4. **Expected (FR-018)**:
+   - `cstk setup --catalog /qualquer/dir` → exit `2` (flag desconhecida).
+     O wizard nao aceita a flag nem a repassa a `hooks install`, cujo
+     default permanece `${HOME}/.claude` (`cli/lib/hooks.sh:575`).
+   - Os hooks provisionados sao byte-identicos aos do catalogo do
+     toolkit — `--catalog` nao e influenciavel por ambiente
+     (`hooks install` nao le nenhuma variavel para essa escolha).
+   - Com `CSTK_HOOKS_CATALOG_DIR` setado no ambiente apontando para um
+     diretorio arbitrario: a area de hooks **anuncia** que a verificacao
+     de frescor usou referencia nao-padrao e **nao** reporta
+     `already-configured` com base nela. A variavel altera apenas a
+     referencia de `guard-hooks-status.sh` (`:136-137`), nunca a origem
+     do provisionamento nem a forma canonica de §2.3 do contrato.
+
+---
+
 > **Sobre o "Roundtrip End-to-End" do template**: N/A. A feature e
 > single-layer (CLI POSIX sh, sem borda backend↔frontend, sem payload
 > serializado entre camadas). O equivalente funcional de roundtrip aqui e

@@ -20,10 +20,46 @@ dedicado") sem criar uma segunda implementacao que derive com o tempo.
 Idempotencia (FR-003/FR-013) cai fora de graca: o status e re-apurado
 vivo a cada invocacao e area ja configurada nao recebe chamada alguma.
 
-Uma unica extensao de contrato e necessaria — o hook opt-in
-`posttooluse-loose-usage.sh` nao tem hoje nenhuma fonte de deteccao
-read-only, embora FR-002 + FR-008 exijam mostrar seu status antes de
-perguntar. Ver research.md Decision 3.
+Tres extensoes de contrato sao necessarias, todas **aditivas** e todas
+alojadas na lib que ja e dona da area — nunca em `setup.sh`, para nao
+criar a segunda implementacao que a abordagem existe para evitar:
+
+1. `guard-hooks-status.sh check --include-loose-usage` — o hook opt-in
+   `posttooluse-loose-usage.sh` nao tem hoje nenhuma fonte de deteccao
+   read-only, embora FR-002 + FR-008 exijam mostrar seu status antes de
+   perguntar. Ver research.md Decision 3.
+2. `guard-hooks-status.sh check --verify-registration` — 5a coluna TSV
+   que verifica se o comando de fato registrado no `settings.json` e o
+   canonico do catalogo (FR-016).
+3. `_mcp_registration_status` em `cli/lib/mcp.sh` — deteccao read-only
+   equivalente para a chave `mcpServers.cstk-state` (FR-016).
+
+### Nota de seguranca: por que (2) e (3) existem
+
+Ambas nasceram de um gate `owasp-security` na fase plan, respondido pelo
+operador (spec.md §Clarifications, sessao de gate). O desenho original
+apurava as duas areas por **presenca de nome**: basename do hook no
+`settings.json` (`_gh_registered`, `guard-hooks-status.sh:119-127`) e
+chave `cstk-state` no `.mcp.json`. Presenca de nome nao distingue um
+registro legitimo de um que cita o nome e executa outro programa — e o
+hook em questao, `pretooluse-bash-guard.sh`, e um controle de seguranca
+(bloqueio fail-closed de comandos durante execucao 00c).
+
+O agravante e a semantica de merge: `merge_settings` roda
+`jq -s '.[0] * .[1]'` com "Source primeiro, target segundo => target
+vence em conflitos" (`cli/lib/hooks.sh`), e `cstk mcp install` declara
+"entrada ja presente e equivalente => idempotente, exit 0"
+(`cli/lib/mcp.sh:800-802`). Uma entrada preexistente **sobrevive** a
+instalacao. Sem (2) e (3), o wizard reportaria `already configured`
+sobre um controle redirecionado — falsa garantia no cenario exato que a
+feature mira, o repo recem-clonado.
+
+A resposta e **deteccao**, nao sobrescrita: o wizard classifica como
+`divergent`, imprime a remediacao de duas etapas (remover a entrada,
+depois reinstalar — porque so reinstalar comprovadamente nao substitui) e
+falha a area. Ele nunca apaga configuracao que nao reconhece.
+Fail-closed: toda ambiguidade de apuracao vira `divergent`, jamais
+`configured` (data-model, invariantes I5/I6).
 
 ## Technical Context
 
@@ -50,8 +86,8 @@ leitura humana
 telemetria nao escreve fora do projeto); FR-007 (falha rapida sem TTY);
 Constitution II (POSIX puro, sem bashismos)
 **Scale/Scope**: 1 lib nova + 1 arquivo de teste novo + edicoes pontuais
-em `cli/cstk` (4 listas) + 1 extensao aditiva de flag em
-`guard-hooks-status.sh`
+em `cli/cstk` (4 listas) + 2 extensoes aditivas de flag em
+`guard-hooks-status.sh` + 1 helper read-only aditivo em `cli/lib/mcp.sh`
 
 Zero `NEEDS CLARIFICATION` remanescentes. As tres ambiguidades originais
 foram fechadas no clarify (spec.md linhas 11-13); as decisoes tecnicas
@@ -138,13 +174,13 @@ cli/
     ├── ui.sh                               require_tty (42-50)
     ├── config.sh                           config_state_backend_{capability,resolve,enable_sqlite} (90/94/98)
     ├── hooks.sh                            hooks_main (557), apply_guard_hooks (318)
-    ├── mcp.sh                              _mcp_cmd_install (806-877), _mcp_cmd_status (371)
+    ├── mcp.sh                              [EDIT] + _mcp_registration_status (FR-016); _mcp_cmd_install (806-877), _mcp_cmd_status (371), _mcp_runtime_script_path (127-146)
     ├── mcp-docker.sh                       _mcp_docker_preflight — nao invocado por setup.sh
     ├── doctor.sh                           _doctor_deps_run (408-474)
     └── state.sh                            state_main (103-149) — referencia de contrato
 global/skills/agente-00c-runtime/
 ├── scripts/
-│   ├── guard-hooks-status.sh               [EDIT] flag --include-loose-usage (aditiva)
+│   ├── guard-hooks-status.sh               [EDIT] flags --include-loose-usage e --verify-registration (ambas aditivas)
 │   ├── state-backend.sh                    resolve (234-269), enable-sqlite (358-397)
 │   └── otel-usage.sh                       preflight (469)
 └── hooks/
@@ -192,13 +228,14 @@ textuais explicitos, documentados em `contracts/cli-setup.md`:
 | `setup.sh` ↔ `state-backend.sh` (via `config.sh`) | `chave=valor` (`effective_backend=`, `reason=`) | `_sb_cmd_resolve`, `state-backend.sh:234-269` |
 | `setup.sh` ↔ `hooks.sh` / `mcp.sh` | funcao sourceada + exit code | contratos em `cli/lib/hooks.sh:526-535`, `cli/lib/mcp.sh:949-953` |
 | `setup.sh` ↔ `otel-usage.sh` | texto de diagnostico + exit | `_ou_cmd_preflight`, `otel-usage.sh:469-561` |
+| `setup.sh` ↔ `mcp.sh` (registro) | palavra unica em stdout (`configured`/`divergent`/`not-configured`) | `_mcp_registration_status` [PROPOSTA], `contracts/cli-setup.md` §4.1 |
 
 **Disciplina equivalente ao "case style"** para esta feature: o
-vocabulario de status (`configured` / `not-configured` / `unavailable`) e
-de outcome (`applied` / `already-configured` / `skipped` / `failed`) e
-**fechado e declarado uma unica vez** em `data-model.md`, e vem
-literalmente de FR-002 e FR-010. Nenhuma area pode inventar um quinto
-valor — e a mesma classe de bug que o template alerta (dois lados
+vocabulario de status (`configured` / `not-configured` / `divergent` /
+`unavailable`) e de outcome (`applied` / `already-configured` /
+`skipped` / `failed`) e **fechado e declarado uma unica vez** em
+`data-model.md`, e vem literalmente de FR-002, FR-016 e FR-010. Nenhuma
+area pode inventar um valor fora desse conjunto — e a mesma classe de bug que o template alerta (dois lados
 falando dialetos diferentes do mesmo dado), transposta para CLI.
 
 ## Re-check de Constitution (pos-Phase 1)
@@ -221,6 +258,15 @@ Revalidacao apos o design estar completo:
   duas metades da instalacao (runtime do binario **e** catalogo),
   exigindo `cstk self-update` **e** `cstk install`. Mitigado pelo
   quickstart Scenario 11 como verificacao manual obrigatoria.
+- **Revisao de seguranca aplicada (gate `owasp-security`, achado HIGH)**:
+  o design pos-gate incorpora FR-016 (autenticidade do registro,
+  fail-closed), FR-017 (rotulo de escrita global) e FR-018 (nao expor
+  override de catalogo). Nenhum dos tres introduz dependencia, camada ou
+  formato novo — sao uma coluna TSV aditiva, um helper read-only e uma
+  flag deliberadamente ausente. Principio II intacto (a verificacao e
+  `grep -F` por linha, sem `jq`); Principio VI intacto (a remediacao
+  publicada foi corrigida contra a semantica real do merge em vez de
+  repetir a instrucao intuitiva que nao surte efeito).
 
 **Veredito**: todos os MUST (I, II, IV, VI) seguem PASS. Nenhum novo
 carve-out necessario.
@@ -256,3 +302,27 @@ Levantados no Phase 1, a converter em tarefas:
 6. **Nome de flag `--yes`** — sem precedente verificado no repo para
    "nao-interativo". Confirmar com o operador antes de congelar o
    contrato publico (research.md Decision 5).
+7. **Falso-positivo de `divergent` no MCP (FR-016)** — o `command`
+   gravado e o path resolvido no momento da instalacao
+   (`cli/lib/mcp.sh:840`), e `_mcp_runtime_script_path` (linhas 127-146)
+   tem tres camadas de resolucao. Comparar contra uma so gera
+   `divergent` espurio em maquina de dev. A regra e aceitar o **conjunto**
+   das tres camadas (contrato §4.1). Testar explicitamente os dois lados:
+   entrada escrita a partir do repo e verificada via `~/.claude`
+   (**nao** divergente) e entrada apontando para fora do catalogo
+   (**divergente**).
+8. **`settings.json` minificado** — a verificacao de registro e por
+   linha. JSON numa unica linha impede atribuir a mencao ao basename e
+   MUST resolver para `indeterminate` → nunca `configured` (I5). Cenario
+   de teste obrigatorio: o caso minificado nao pode passar por
+   `already-configured`.
+9. **Remediacao precisa ser testada, nao so impressa** — o teste de
+   `divergent` deve assertar que o wizard **nao chamou** `hooks install`
+   / `mcp install` (I6) e que o texto exibido inclui a etapa de remocao.
+   Instruir apenas "re-rode o install" seria instrucao comprovadamente
+   inefetiva (merge com target vencendo).
+10. **5a coluna e o exit sob `--verify-registration`** — a extensao muda
+    o exit para `1` em divergencia **apenas** quando a flag e passada.
+    Teste de retro-compatibilidade obrigatorio: sem a flag, saida
+    byte-a-byte e exit identicos aos atuais, para nao quebrar
+    `tests/test_guard-hooks-status.sh` nem os consumidores existentes.

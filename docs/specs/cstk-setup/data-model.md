@@ -23,8 +23,8 @@ e a propria ordem de apresentacao.
 |-------|------|-------------|-------|
 | `id` | enum | `hooks` \| `state-backend` \| `mcp` \| `telemetry` | Ordem fixa de apresentacao (FR-001); `hooks` primeiro |
 | `label` | string | NOT NULL | Texto exibido ao usuario (pt-br permitido — CLAUDE.md: mensagens podem ser pt-br) |
-| `status` | enum | `configured` \| `not-configured` \| `unavailable` | Vocabulario da spec (FR-002); apurado fresco a cada run (FR-013) |
-| `status_reason` | string | pode ser vazio | Motivo legivel — obrigatorio quando `status=unavailable` |
+| `status` | enum | `configured` \| `not-configured` \| `divergent` \| `unavailable` | Vocabulario da spec (FR-002); apurado fresco a cada run (FR-013) |
+| `status_reason` | string | pode ser vazio | Motivo legivel — obrigatorio quando `status` e `unavailable` ou `divergent` (neste, carrega a remediacao) |
 | `applicable` | bool | — | `false` para `telemetry` (FR-012 proibe aplicar) |
 | `outcome` | enum | ver `AreaOutcome` | Preenchido ao fim do passo da area |
 
@@ -32,9 +32,9 @@ e a propria ordem de apresentacao.
 
 | `id` | Fonte read-only | Mapeamento para `status` |
 |------|-----------------|--------------------------|
-| `hooks` | `guard-hooks-status.sh check --projeto-alvo-path PATH --quiet` (contrato linhas 49-60) | exit 0 → `configured`; exit 1 → `not-configured` (inclui `stale`, ver nota); exit 2 → `unavailable` |
+| `hooks` | `guard-hooks-status.sh check --projeto-alvo-path PATH --quiet --verify-registration` (contrato linhas 49-60 + extensao [PROPOSTA] em `contracts/cli-setup.md` §2.2) | exit 0 → `configured`; exit 1 → `not-configured` (inclui `stale`, ver nota); **5a coluna `divergent` em qualquer hook obrigatorio → `divergent` (precede o mapeamento por exit)**; exit 2 → `unavailable` |
 | `state-backend` | `config_state_backend_resolve` (`cli/lib/config.sh:94`) | `effective_backend=sqlite` → `configured`; `effective_backend=json` → `not-configured` (com `reason=` do proprio resolve em `status_reason`) |
-| `mcp` | chave `cstk-state` presente em `<project>/.mcp.json` (alvo escrito por `cli/lib/mcp.sh:847`, bloco 864-865) | presente → `configured`; ausente → `not-configured` |
+| `mcp` | `_mcp_registration_status <project-path>` ([PROPOSTA], `cli/lib/mcp.sh` — ver `contracts/cli-setup.md` §4.1) | `configured` (chave `cstk-state` presente **e** `command` apontando para um `mcp-launch.sh` do catalogo) / `divergent` (chave presente, `command` fora do catalogo ou indeterminavel) / `not-configured` (chave ausente) |
 | `telemetry` | `otel-usage.sh preflight` (`otel-usage.sh:469`) | medicao ativa → `configured`; senao → `not-configured` |
 
 > **Nota `stale`**: a 3a coluna do TSV do `guard-hooks-status.sh`
@@ -42,6 +42,25 @@ e a propria ordem de apresentacao.
 > configurado. `stale` = copia do projeto diverge do catalogo, e o proprio
 > `check` retorna exit 1 nesse caso (`_gh_cmd_check`, linhas 238-244).
 > O wizard herda esse veredito: `stale` → `not-configured`.
+
+> **Nota `divergent` (FR-016)**: distingue "a configuracao **nomeia** o
+> controle" de "a configuracao **executa** o controle do catalogo". Para
+> `hooks`, a 4a coluna do TSV ja compara o **conteudo** do arquivo com o
+> catalogo (`cmp` byte-a-byte) — mas o **registro** e apenas presenca
+> textual do basename no `settings.json` (`_gh_registered`,
+> `guard-hooks-status.sh:119-127`), entao um registro que cita o basename
+> e invoca outro programa e hoje indistinguivel de um legitimo. Para
+> `mcp`, a deteccao originalmente desenhada era so a presenca da chave
+> `cstk-state`. Em ambos, `divergent` NUNCA pode colapsar para
+> `configured`: e o unico status que sinaliza um controle de seguranca
+> possivelmente subvertido.
+>
+> **Fail-closed (invariante I5)**: qualquer ambiguidade na apuracao —
+> layout do JSON que impeca atribuir o registro, fonte de deteccao sem
+> suporte a verificacao, path irresolvivel — resolve para `divergent`,
+> jamais para `configured`. O custo de um falso `divergent` e um aviso
+> com remediacao; o de um falso `configured` e a falsa garantia que este
+> requisito existe para eliminar.
 
 > **Nota `unavailable`**: reservado para dependencia faltando ou fonte de
 > deteccao inutilizavel — ex. `sqlite3` ausente/abaixo de
@@ -59,9 +78,10 @@ obrigatorios.
 
 | Field | Type | Constraints | Notes |
 |-------|------|-------------|-------|
-| `mandatory_status` | enum | `configured` \| `not-configured` \| `unavailable` | Derivado do exit do `check` sobre os 3 hooks de `_GH_HOOKS` (`guard-hooks-status.sh:104-107`) |
-| `mandatory_detail` | TSV lines | 3 linhas | `<arquivo>\t<present\|missing>\t<registered\|unregistered>\t<current\|stale\|unknown>` |
-| `loose_usage_status` | enum | `configured` \| `not-configured` \| `indeterminate` | `indeterminate` quando a fonte de deteccao nao suporta a consulta — ver research.md Decision 3 |
+| `mandatory_status` | enum | `configured` \| `not-configured` \| `divergent` \| `unavailable` | Derivado do exit do `check` sobre os 3 hooks de `_GH_HOOKS` (`guard-hooks-status.sh:104-107`), com `divergent` precedendo (FR-016) |
+| `mandatory_detail` | TSV lines | 3 linhas | `<arquivo>\t<present\|missing>\t<registered\|unregistered>\t<current\|stale\|unknown>\t<canonical\|divergent\|indeterminate>` — a 5a coluna so aparece com `--verify-registration` |
+| `divergent_hooks` | lines | pode ser vazio | Basenames cuja 5a coluna != `canonical`; alimenta a remediacao exibida |
+| `loose_usage_status` | enum | `configured` \| `not-configured` \| `divergent` \| `indeterminate` | `indeterminate` quando a fonte de deteccao nao suporta a consulta — ver research.md Decision 3 |
 | `loose_usage_choice` | enum | `apply` \| `skip` | Default em `--yes` e **`skip`** (opt-in preservado: `--with-loose-usage` e default off, `cli/lib/hooks.sh:513,543`) |
 
 ### Relationships
@@ -93,7 +113,26 @@ already configured / skipped by user / failed (com motivo).
 | Aplicacao retornou exit 0 | `applied` |
 | Aplicacao retornou exit != 0 | `failed`, `reason` cita o exit e o comando |
 | `status=unavailable` | `failed`, `reason` = `status_reason` (dependencia ausente) |
+| `status=divergent` | `failed`, `reason` = remediacao (FR-016); **nenhuma** chamada de aplicacao — ver nota abaixo |
 | Area `telemetry` diagnosticada e nao ativa | `skipped`, `reason` = "diagnostico exibido; ativacao e manual (FR-012)" |
+
+> **Por que `divergent` → `failed`, e nao `applied` apos "corrigir"**: o
+> wizard nao tem como corrigir, e nao deve tentar. Os comandos de
+> aplicacao fazem merge com **o target vencendo** — `merge_settings` roda
+> `jq -s '.[0] * .[1]'` com "Source primeiro, target segundo => target
+> vence em conflitos" (`cli/lib/hooks.sh`), e `cstk mcp install` declara
+> "entrada ja presente e equivalente => idempotente, exit 0"
+> (`cli/lib/mcp.sh:800-802`). Logo **re-rodar `cstk hooks install` /
+> `cstk mcp install` sobre uma entrada divergente NAO a substitui**: a
+> entrada existente sobrevive ao merge. A remediacao correta, e a unica
+> que o wizard deve imprimir, e em duas etapas: **(1)** remover a entrada
+> divergente do `.claude/settings.json` / `.mcp.json`, **(2)** rodar
+> `cstk hooks install --project-path <PATH>` / `cstk mcp install
+> --project-path <PATH>` para reescrever a canonica.
+>
+> Mapear para `failed` tambem propaga exit `1` (`SetupRunSummary`), o que
+> impede um run com controle de seguranca subvertido de terminar com o
+> mesmo exit de um run limpo — requisito de SC-006.
 
 > **`telemetry` nunca produz `applied`** — decorre de FR-012 (ver
 > research.md Decision 8). Forcar `applied` ali seria afirmar uma
@@ -130,6 +169,8 @@ detect ──> configured ──────────────────
    │
    ├─────> unavailable ────────────────────────> failed
    │
+   ├─────> divergent ──────────────────────────> failed   (remediacao; sem aplicacao)
+   │
    └─────> not-configured ──┬─ preview ────────> skipped
                             ├─ declined ───────> skipped
                             └─ accepted ──┬────> applied      (exit 0)
@@ -147,3 +188,9 @@ Invariantes:
   transicao de nenhuma outra — as 4 sao independentes.
 - **I4 (FR-004)**: em `mode=preview`, `applied` e inalcancavel para todas
   as areas.
+- **I5 (FR-016, fail-closed)**: nenhuma transicao leva `divergent` a
+  `already-configured` ou `applied`, em nenhum modo — inclusive `--yes`.
+  Toda ambiguidade de apuracao resolve para `divergent`.
+- **I6 (FR-016)**: a partir de `divergent` nao ha chamada de comando de
+  aplicacao. O wizard nao sobrescreve o que nao reconhece; so relata e
+  instrui.

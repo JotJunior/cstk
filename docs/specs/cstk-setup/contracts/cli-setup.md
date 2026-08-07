@@ -27,6 +27,10 @@ funcao derivado por `sed 's/-/_/g'` + `_main` (`cli/cstk:267`)
 | `--yes` | bool | off | Nao-interativo: aplica o default recomendado de cada area nao configurada, sem prompt (FR-005) |
 | `--project-path PATH` | path | `$PWD` | Raiz do projeto-alvo. MUST ser raiz de repo git (FR-011) |
 
+**Flags deliberadamente ausentes (FR-018)**: nao ha `--catalog` nem
+qualquer equivalente, e nenhuma variavel de override de catalogo e
+repassada aos comandos delegados. Ver §2.4.
+
 ### Precedencia de modo (FR-006)
 
 ```
@@ -42,8 +46,13 @@ Por area, na ordem fixa de FR-001 (`hooks`, `state-backend`, `mcp`,
 `SetupRunSummary` (FR-010) com uma linha por area:
 
 ```
-<area>  <applied|already-configured|skipped|failed>  [motivo]
+<area>  <applied|already-configured|skipped|failed>  [escopo]  [motivo]
 ```
+
+- `[escopo]` marca `global` apenas na area `state-backend` (FR-017); as
+  demais sao de escopo projeto e nao recebem marca.
+- Area com `status=divergent` aparece como `failed`, com `[motivo]`
+  carregando a remediacao de duas etapas (§4.1, data-model).
 
 Diagnosticos e avisos vao para **stderr** (Constitution II: "Mensagens de
 erro em stderr, saida de dados em stdout").
@@ -67,6 +76,18 @@ publicado por `cstk mcp install` (`cli/lib/mcp.sh:949-953`) e
 
 1. **FR-011** — `[ -e "$PATH/.git" ]` (arquivo OU diretorio; worktree
    conta). Falha → exit 3, **zero escrita**.
+
+   > **`.git` e marcador de onboarding, NAO fronteira de confianca.** O
+   > teste responde "isto parece a raiz de um projeto?", evitando que um
+   > `cstk setup` disparado no diretorio errado espalhe `.claude/` e
+   > `.mcp.json` por ali. Ele **nao** atesta procedencia: `.git` e
+   > trivialmente criavel, e um repo clonado de terceiro passa no teste
+   > por construcao — e e exatamente o cenario que a feature mira. Toda
+   > garantia de seguranca desta feature vem de FR-016 (verificar o que
+   > esta registrado) e FR-018 (nao redirecionar a origem do catalogo);
+   > nenhuma vem de FR-011. Endurecer FR-011 exigindo artefato do toolkit
+   > foi rejeitado no clarify por circularidade, e nao daria a garantia
+   > que FR-016 da.
 2. **FR-007** — em `mode=interactive`, TTY obrigatorio via `require_tty`
    (`cli/lib/ui.sh:42-50`, teste `[ -t 0 ]` na linha 46, bypass
    `CSTK_FORCE_INTERACTIVE=1` na linha 43). Falha → exit 3 com mensagem
@@ -90,6 +111,15 @@ publicado por `cstk mcp install` (`cli/lib/mcp.sh:949-953`) e
 | 2 — presenca | `present` \| `missing` |
 | 3 — registro | `registered` \| `unregistered` (basename aparece em `<PAP>/.claude/settings.json`) |
 | 4 — frescor | `current` \| `stale` \| `unknown` (comparacao byte-a-byte com o catalogo) |
+
+> **Limite conhecido da coluna 3** (motiva 2.3, FR-016): `_gh_registered`
+> (`guard-hooks-status.sh:119-127`) e busca textual do **basename** —
+> `grep -Fq -- "$2" "$_gh_settings"`. O comentario no proprio script
+> assume que "a presenca do basename e condicao necessaria e suficiente
+> na pratica". Ela e **necessaria**, mas nao suficiente: um `settings.json`
+> que cite o basename e execute outro programa marca `registered`. A
+> coluna 4 protege o **conteudo** do arquivo em `.claude/hooks/`, nunca o
+> **comando registrado**.
 
 **Exit codes**: `0` os 3 present+registered+(current\|unknown); `1` caso
 contrario (**inclui `stale`**); `2` uso incorreto.
@@ -118,7 +148,62 @@ Extensao **aditiva** ao contrato 2.1: acrescenta uma 4a linha TSV para
 `settings.loose-usage.snippet.json` proprio) mas nao e coberto por
 nenhuma fonte de deteccao read-only hoje. Ver research.md Decision 3.
 
-### 2.3 Aplicacao — `hooks install` **[EXISTENTE]**
+### 2.3 Verificacao de autenticidade do registro — `--verify-registration` **[PROPOSTA]**
+
+**Invocacao**: `guard-hooks-status.sh check --projeto-alvo-path PATH --quiet --verify-registration`
+
+Segunda extensao **aditiva** ao contrato 2.1, exigida por FR-016.
+Acrescenta uma **5a coluna** TSV a cada linha:
+
+| Valor | Significado |
+|-------|-------------|
+| `canonical` | Toda mencao ao basename no `settings.json` esta na forma canonica do snippet |
+| `divergent` | Ha mencao ao basename que **nao** esta na forma canonica |
+| `indeterminate` | Nao foi possivel atribuir o registro (hook nao registrado, `settings.json` ausente, ou layout que impeca a atribuicao por linha) |
+
+**Forma canonica** — literal do catalogo, nao suposto
+(`global/skills/agente-00c-runtime/hooks/settings.snippet.json`, e
+`settings.loose-usage.snippet.json` para o hook opt-in):
+
+```
+"$CLAUDE_PROJECT_DIR"/.claude/hooks/<basename>
+```
+
+**Regra de decisao** (POSIX puro, sem `jq` — mesma restricao de 2.1):
+toda linha do `settings.json` que contenha o basename MUST tambem conter
+o fragmento canonico. Existindo ao menos uma linha com o basename sem o
+fragmento canonico → `divergent`.
+
+**Invariantes obrigatorias da extensao**:
+
+- Sem a flag, a saida e byte-a-byte identica a atual e o exit code e o de
+  2.1 — retro-compatibilidade total com os consumidores existentes
+  (README.md:279 e a prosa dos orquestradores).
+- **Com** a flag, `divergent` em qualquer hook de `_GH_HOOKS` faz o exit
+  ser `1` (mesma classe de "nao esta provisionado corretamente"). Isso e
+  seguro porque a flag e opt-in: nenhum consumidor atual a passa.
+- Runtime instalado anterior rejeita a flag em `_gh_die_usage`
+  (`guard-hooks-status.sh:205`) com **exit 2**. O consumidor MUST tratar
+  como `indeterminate` — e, por I5 do data-model, `indeterminate` na
+  verificacao **nao** autoriza reportar `configured`.
+- A verificacao e **read-only**, como todo o script (cabecalho: "READ-ONLY
+  por construcao").
+
+**Limite textual declarado**: a regra e por linha, e vale para o layout
+que o proprio `merge_settings` produz (`jq` pretty-print). Um
+`settings.json` minificado numa unica linha impede a atribuicao por linha
+→ `indeterminate` (nunca `canonical`). Elevar a verificacao a parse real
+exigiria `jq`, que o script deliberadamente nao usa por ser a dependencia
+que costuma faltar justamente no projeto mal provisionado sob diagnostico
+(comentario em `guard-hooks-status.sh:119-125`).
+
+> **Nota de escopo**: promover esta verificacao a comportamento **default**
+> (sem flag) beneficiaria tambem os orquestradores, mas mudaria formato de
+> saida e exit code de um contrato publicado — BREAKING, exigindo bump
+> MAJOR por Constitution I. Fica registrado como candidato para a proxima
+> major, fora desta feature.
+
+### 2.4 Aplicacao — `hooks install` **[EXISTENTE]**
 
 **Invocacao**: `hooks_main install --project-path PATH [--catalog DIR] [--dry-run] [--with-loose-usage]`
 **Arquivo**: `cli/lib/hooks.sh` — `hooks_main` linha 557; flags linhas 583-593
@@ -139,6 +224,33 @@ que sao apenas warnings** (linhas 631-643); `1` erro (linhas 598, 608,
 
 **Guarda**: recusa `--project-path` igual a `$HOME` (linhas 617-620) —
 "hooks 00c sao de escopo PROJETO".
+
+> **FR-018 — os dois knobs de catalogo, e o que cada um faz**:
+>
+> | Knob | Quem le | Efeito |
+> |------|---------|--------|
+> | `--catalog DIR` (flag) | `hooks install` — default `${HOME}/.claude` (`cli/lib/hooks.sh:575`; origem dos hooks em `:612`) | redireciona **de onde o hook e copiado** |
+> | `CSTK_HOOKS_CATALOG_DIR` (env) | apenas `guard-hooks-status.sh` (`:136-137`; cabecalho: "so para teste/diagnostico") | redireciona **a copia de referencia** da comparacao `current`/`stale` |
+>
+> `setup.sh` **nao expoe flag equivalente, nao repassa `--catalog` e nao
+> define `CSTK_HOOKS_CATALOG_DIR`**. Expor o primeiro daria a um comando
+> copiado de um README de terceiro o poder de provisionar um
+> `pretooluse-bash-guard.sh` arbitrario com aparencia de instalacao
+> oficial.
+>
+> O segundo e **herdado do ambiente** — nao ha como "nao repassar" uma
+> variavel exportada sem apaga-la, e apaga-la quebraria diagnostico
+> legitimo. Como um `CSTK_HOOKS_CATALOG_DIR` apontando para um diretorio
+> arbitrario faz a dimensao `current`/`stale` medir contra a referencia
+> errada, o comportamento exigido e **declarar, nao confiar**: detectada a
+> variavel no ambiente, a area de hooks anuncia que a verificacao usou
+> referencia nao-padrao e **nao** reporta `configured` com base nela.
+> Note que ela nao afeta a verificacao de registro de §2.3 — a forma
+> canonica ali e uma constante, nao lida do catalogo.
+>
+> Testes que precisem de catalogo alternativo devem invocar
+> `hooks install` / `guard-hooks-status.sh` diretamente, nao via
+> `cstk setup`.
 
 > **Consequencia de projeto**: como exit 0 abrange `paste-instructed`
 > (jq ausente → bloco para colar manualmente), o wizard NAO pode
@@ -196,6 +308,16 @@ pre-condicao** — `sqlite3` ausente ou abaixo do minimo (linhas 358-370).
 > pelo wizard, e nao conflita com FR-012 (que restringe apenas a area de
 > telemetria). Tem consequencia direta em teste: exige `HOME` sandboxado
 > (ver quickstart.md e research.md Decision 10).
+>
+> **FR-017 — rotulo obrigatorio na UI**: o usuario invoca `cstk setup`
+> com um `--project-path` na mao e a expectativa razoavel de que esta
+> configurando **aquele projeto**. Esta area quebra essa expectativa: o
+> efeito e da maquina inteira. O wizard MUST, antes de aplicar **e** em
+> `--dry-run`, nomear o alvo real (`$HOME/.claude/cstk/config`) e dizer
+> que a mudanca vale para **todos os projetos**. As outras tres areas sao
+> de escopo projeto e MUST NOT carregar esse rotulo — rotular tudo
+> igualmente destreinaria o usuario a le-lo. O `SetupRunSummary` repete a
+> marca de escopo na linha desta area.
 
 ### 3.4 Diagnostico complementar — `cstk doctor --deps` **[EXISTENTE]**
 
@@ -220,16 +342,54 @@ Reusado pelo wizard como texto de diagnostico quando a area fica
 
 ## 4. Fronteira: area de MCP **[EXISTENTE]**
 
-### 4.1 Deteccao
+### 4.1 Deteccao — `_mcp_registration_status` **[PROPOSTA]**
 
-Presenca da chave `cstk-state` sob `mcpServers` em
-`<project-path>/.mcp.json` — exatamente o alvo que `_mcp_cmd_install`
-escreve (`cli/lib/mcp.sh:847`; bloco JSON linhas 864-865).
+**Funcao**: `_mcp_registration_status PROJECT_PATH` em `cli/lib/mcp.sh`
+(lib **dona** da area — mantem a deteccao junto do comando dedicado,
+como FR-002 exige, em vez de uma segunda implementacao em `setup.sh`)
+**Saida (stdout)**: `configured` \| `divergent` \| `not-configured`
+**Exit**: `0` sempre (consulta respondida, nao veredito) — mesmo contrato
+de nao-falha de `state-backend.sh resolve` (linha 269)
 
 Leitura textual (sem `jq`), coerente com a mesma escolha ja feita por
 `_gh_registered` (`guard-hooks-status.sh:119` e seguintes), que usa busca
 textual em vez de parse justamente para nao depender de `jq` num projeto
 possivelmente mal provisionado.
+
+**Regra de decisao** (FR-016 — a presenca da chave nao basta):
+
+| Condicao | Resultado |
+|----------|-----------|
+| `<project-path>/.mcp.json` ausente, ou sem mencao a `cstk-state` | `not-configured` |
+| `cstk-state` presente **e** o `command` registrado e um dos paths candidatos de `mcp-launch.sh` do catalogo | `configured` |
+| `cstk-state` presente e o `command` aponta para outro lugar, ou nao e atribuivel | `divergent` |
+
+**Paths candidatos** — o conjunto que `_mcp_runtime_script_path`
+(`cli/lib/mcp.sh:127-146`) produziria, nas tres camadas que ele consulta,
+**todas** aceitas:
+
+1. `command -v mcp-launch.sh` (PATH)
+2. `$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/mcp-launch.sh` (repo)
+3. `$HOME/.claude/skills/agente-00c-runtime/scripts/mcp-launch.sh` (catalogo instalado)
+
+> **Por que o conjunto, e nao so o primeiro hit**: `_mcp_cmd_install`
+> grava o path **resolvido no momento da instalacao** (`cli/lib/mcp.sh:840`,
+> interpolado no bloco JSON). Um `.mcp.json` escrito por uma invocacao a
+> partir do repo e depois verificado por uma invocacao a partir de
+> `~/.claude` produziria paths diferentes para a **mesma** instalacao
+> legitima. Comparar apenas contra o primeiro hit geraria `divergent`
+> falso-positivo rotineiro em maquina de desenvolvimento. Aceitar as tres
+> camadas preserva a propriedade que importa: o comando aponta para um
+> `mcp-launch.sh` **do catalogo do toolkit**, nao para um programa
+> arbitrario.
+
+**Nao remedia sozinho**: `_mcp_cmd_install` faz merge com o target
+vencendo ("entrada ja presente e equivalente => idempotente, exit 0",
+linhas 800-802). Uma entrada divergente **sobrevive** a um novo
+`cstk mcp install` — por isso `divergent` mapeia para `failed` com
+remediacao em duas etapas (remover a entrada, depois reinstalar), nunca
+para uma tentativa cega de aplicacao. Ver `data-model.md`, regras de
+derivacao de `AreaOutcome`.
 
 ### 4.2 Aplicacao — `cstk mcp install`
 
