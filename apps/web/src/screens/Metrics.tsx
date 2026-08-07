@@ -14,15 +14,16 @@ import {
   KpiCard, Icon, Histogram, ScatterChart, Donut, StackedBarsH, Legend,
   AgentUsagePanel, AgentUsageEmpty,
   OtelUsagePanel, OtelUsageEmpty, otelUsageState, otelCoverageLabel, fmtUsd,
-  ModelUsageDetailPanel, TruncatedBarH,
+  ModelUsageDetailPanel, LooseUsageDetailPanel, TruncatedBarH,
 } from '@/components/index.js';
 import type { ScatterDatum, DonutDatum } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
 import { pickTokens, tokenCoverageLabel } from '@/lib/token-source.js';
 import { selectModelUsage, groupModelUsageByStage } from '@/lib/model-usage-select.js';
+import { selectLooseUsage } from '@/lib/loose-usage-select.js';
 import { buildStageBars } from '@/lib/model-mix-by-stage-select.js';
 import { truncateBars } from '@/lib/truncate-bars.js';
-import type { PeriodParam, AgentUsageRollup, OtelUsageRollup, ModelUsageResult } from '@cstk-panel/shared-types';
+import type { PeriodParam, AgentUsageRollup, OtelUsageRollup, ModelUsageResult, LooseUsageResult } from '@cstk-panel/shared-types';
 
 // Cores por modelo (alinhado ao Overview)
 const MODEL_COLOR: Record<string, string> = {
@@ -425,6 +426,22 @@ export function Metrics({ period }: MetricsProps) {
             const vm = selectModelUsage(result);
             const stageGroups = groupModelUsageByStage(result?.byStage);
             return <ModelUsageDetailPanel vm={vm} stageGroups={stageGroups} />;
+          }}
+        />
+      </div>
+
+      {/* Consumo avulso — sessões interativas fora do pipeline (schema v13,
+          loose_usage, cstk 6.6.0). Captura opt-in: "sem linhas" = sem medição,
+          nunca "sem consumo". Inclui comparação avulso × pipeline. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+        <MetricCard
+          name="loose-usage"
+          title="Consumo avulso · fora do pipeline"
+          subtitle="medido (loose_usage) · sessões interativas comuns · avulso × pipeline"
+          period={period}
+          renderContent={(raw) => {
+            const vm = selectLooseUsage(raw as LooseUsageResult | null);
+            return <LooseUsageDetailPanel vm={vm} />;
           }}
         />
       </div>

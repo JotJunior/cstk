@@ -33,9 +33,10 @@ import {
   getTokensOverTime,
   getTokensByWave,
   getModelUsage,
+  getLooseUsage,
 } from '../db/queries/metrics.js';
-import type { AgentUsageFilters } from '../db/queries/metrics.js';
-import { hasModelUsage } from '../db/queries/waves.js';
+import type { AgentUsageFilters, LooseUsageFilters } from '../db/queries/metrics.js';
+import { hasModelUsage, hasLooseUsage } from '../db/queries/waves.js';
 
 const PeriodSchema = z.enum(['24h', '7d', '30d', 'all']).optional();
 const ProjectSchema = z.object({ project: z.string().optional() });
@@ -313,6 +314,47 @@ export async function metricsRoutes(server: FastifyInstance): Promise<void> {
         // (contrato §Response degradado, Decision 4). `wrap()` nulificaria
         // `data` se `degraded` fosse passado direto; por isso o override e
         // feito apos a chamada, preservando o `data` ja no shape correto.
+        envelope.meta.degraded = true;
+        envelope.meta.reason = 'table-empty';
+      }
+      return reply.status(200).send(envelope);
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/loose-usage ─────────────────────────────────────────────
+  // Consumo AVULSO de sessoes interativas (schema v13, `loose_usage`,
+  // cstk 6.6.0) + comparacao avulso x pipeline (`wave_model_usage`).
+  // SEM filtro `feature`: a origem nao tem a dimensao — aceitar o parametro e
+  // ignora-lo fingiria um recorte que nao aconteceu.
+  // Mesmo contrato de degradacao do model-usage: excecao query-time nunca
+  // vira 5xx; tabela ausente -> shape vazio explicito + reason='table-empty'.
+  server.get('/metrics/loose-usage', async (request, reply) => {
+    const q = z.object({
+      project: z.string().trim().min(1).max(200).optional(),
+      period: PeriodSchema,
+    }).safeParse(request.query);
+    const filters: LooseUsageFilters = q.success
+      ? {
+          ...(q.data.project !== undefined ? { project: q.data.project } : {}),
+          ...(q.data.period !== undefined ? { period: q.data.period as MetricPeriod } : {}),
+        }
+      : {};
+
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      let data;
+      try {
+        data = getLooseUsage(db, filters);
+      } catch {
+        // Principio II: excecao em query-time nunca escapa como 5xx.
+        return reply.status(200).send(wrapDegraded('db-corrupt', config.dbPath));
+      }
+      const envelope = wrap(data, {}, config.dbPath, db);
+      if (!hasLooseUsage(db)) {
+        // Base v2-v12: `data` mantem o shape vazio explicito (arrays vazios,
+        // coverage/comparison com todos os campos null) + degraded=true.
         envelope.meta.degraded = true;
         envelope.meta.reason = 'table-empty';
       }

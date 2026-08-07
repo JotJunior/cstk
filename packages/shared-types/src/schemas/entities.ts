@@ -133,6 +133,56 @@ export const ModelUsageResultSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// LooseUsage DTOs schema (schema v13, `loose_usage`, cstk 6.6.0) — consumo
+// avulso fora de pipeline. Mesmo padrao dos demais: sem `.default(null)` —
+// ausencia de campo falha o parse, nunca vira 0/undefined silencioso.
+// ---------------------------------------------------------------------------
+export const LooseUsageProjectEntrySchema = z.object({
+  project: z.string(),
+  projectPath: z.string().nullable(),
+  costUsd: z.number().nullable(),
+  totalTokens: z.number().nullable(),
+  processes: z.number(),
+  segments: z.number(),
+  openSegments: z.number(),
+  lastCapturedAt: z.string().nullable(),
+});
+
+export const LooseUsageModelEntrySchema = z.object({
+  model: z.string(),
+  costUsd: z.number().nullable(),
+  totalTokens: z.number().nullable(),
+  segments: z.number(),
+});
+
+export const LooseUsageComparisonSideSchema = z.object({
+  costUsd: z.number().nullable(),
+  totalTokens: z.number().nullable(),
+  blendedCostPerMtok: z.number().nullable(),
+});
+
+export const LooseUsageComparisonSchema = z.object({
+  loose: LooseUsageComparisonSideSchema,
+  pipeline: LooseUsageComparisonSideSchema,
+});
+
+export const LooseUsageCoverageSchema = z.object({
+  rowsTotal: z.number().nullable(),
+  segmentsTotal: z.number().nullable(),
+  segmentsOpen: z.number().nullable(),
+  processes: z.number().nullable(),
+  projects: z.number().nullable(),
+  lastCapturedAt: z.string().nullable(),
+});
+
+export const LooseUsageResultSchema = z.object({
+  byProject: z.array(LooseUsageProjectEntrySchema),
+  byModel: z.array(LooseUsageModelEntrySchema),
+  comparison: LooseUsageComparisonSchema,
+  coverage: LooseUsageCoverageSchema,
+});
+
+// ---------------------------------------------------------------------------
 // DecisionDTO schema
 // ---------------------------------------------------------------------------
 export const DecisionDTOSchema = z.object({

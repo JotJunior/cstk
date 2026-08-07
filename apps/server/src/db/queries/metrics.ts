@@ -19,7 +19,7 @@
  */
 import type Database from 'better-sqlite3';
 import { hasColumn } from '../columns.js';
-import { hasAgentUsage, hasOtelUsage, hasModelUsage } from './waves.js';
+import { hasAgentUsage, hasOtelUsage, hasModelUsage, hasLooseUsage } from './waves.js';
 
 export type MetricPeriod = '24h' | '7d' | '30d' | 'all';
 
@@ -939,5 +939,281 @@ export function getModelUsage(
     byModel: getModelUsageByModel(db, filters),
     byStage: getModelUsageByStage(db, filters),
     coverage: getModelUsageCoverage(db, filters),
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// 15. loose-usage — consumo AVULSO de sessoes interativas (schema v13,
+//     `loose_usage`, cstk 6.6.0). Grao processo x segmento x modelo — fora de
+//     qualquer execucao 00c, SEM feature/wave/execution_id por construcao
+//     (dec-005: preencher com sentinela seria fabricar dado). Captura e
+//     OPT-IN (hook posttooluse-loose-usage): tabela presente e vazia NAO
+//     significa ausencia de consumo, so ausencia de medicao.
+//     Ref: ../cstk/docs/specs/loose-usage-capture/data-model.md;
+//     ../cstk/docs/cstk-usage.md.
+// ─────────────────────────────────────────────────────────
+
+/** Filtros do recorte avulso — sem `feature` (a origem nao tem a dimensao). */
+export interface LooseUsageFilters {
+  project?: string;
+  period?: MetricPeriod;
+}
+
+export interface LooseUsageProjectEntry {
+  project: string;
+  projectPath: string | null;
+  costUsd: number | null;
+  totalTokens: number | null;
+  processes: number;
+  segments: number;
+  openSegments: number;
+  lastCapturedAt: string | null;
+}
+
+export interface LooseUsageModelEntry {
+  model: string;
+  costUsd: number | null;
+  totalTokens: number | null;
+  segments: number;
+}
+
+export interface LooseUsageComparisonSide {
+  costUsd: number | null;
+  totalTokens: number | null;
+  blendedCostPerMtok: number | null;
+}
+
+export interface LooseUsageComparison {
+  loose: LooseUsageComparisonSide;
+  pipeline: LooseUsageComparisonSide;
+}
+
+export interface LooseUsageCoverage {
+  rowsTotal: number | null;
+  segmentsTotal: number | null;
+  segmentsOpen: number | null;
+  processes: number | null;
+  projects: number | null;
+  lastCapturedAt: string | null;
+}
+
+export interface LooseUsageResult {
+  byProject: LooseUsageProjectEntry[];
+  byModel: LooseUsageModelEntry[];
+  comparison: LooseUsageComparison;
+  coverage: LooseUsageCoverage;
+}
+
+const EMPTY_LOOSE_USAGE_COVERAGE: LooseUsageCoverage = {
+  rowsTotal: null,
+  segmentsTotal: null,
+  segmentsOpen: null,
+  processes: null,
+  projects: null,
+  lastCapturedAt: null,
+};
+
+const EMPTY_COMPARISON_SIDE: LooseUsageComparisonSide = {
+  costUsd: null,
+  totalTokens: null,
+  blendedCostPerMtok: null,
+};
+
+/**
+ * WHERE + params sobre `loose_usage`. O recorte temporal usa `captured_at`
+ * (ultima captura do segmento) — a tabela nao tem `source_ts`.
+ */
+function looseUsageScope(
+  filters: LooseUsageFilters,
+): { where: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (filters.project !== undefined) {
+    conditions.push('project = ?');
+    params.push(filters.project);
+  }
+  const pf = periodToFilter(filters.period);
+  if (pf) conditions.push(`captured_at >= ${pf}`);
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  return { where, params };
+}
+
+/**
+ * byProject — rollup do consumo avulso por projeto, ordenado por `costUsd`
+ * desc com `null` por ultimo. `sum()` sem coalesce (NULL permanece NULL).
+ * `segment_open` conta segmentos DISTINTOS ainda abertos — o consumidor deve
+ * sinalizar parcialidade (valor ainda em captura), nunca apresentar como
+ * final (SC-004 do cstk).
+ */
+export function getLooseUsageByProject(
+  db: Database.Database,
+  filters: LooseUsageFilters = {},
+): LooseUsageProjectEntry[] {
+  if (!hasLooseUsage(db)) return [];
+  const { where, params } = looseUsageScope(filters);
+  const rows = db
+    .prepare(`
+      SELECT
+        project,
+        max(project_path)                     as projectPath,
+        sum(cost_usd)                         as costUsd,
+        sum(total_tokens)                     as totalTokens,
+        count(DISTINCT process_key)           as processes,
+        count(DISTINCT process_key || '/' || segment_id) as segments,
+        count(DISTINCT CASE WHEN segment_open = 1
+              THEN process_key || '/' || segment_id END) as openSegments,
+        max(captured_at)                      as lastCapturedAt
+      FROM loose_usage
+      ${where}
+      GROUP BY project
+    `)
+    .all(...params) as LooseUsageProjectEntry[];
+  rows.sort((a, b) => {
+    if (a.costUsd === null && b.costUsd === null) return 0;
+    if (a.costUsd === null) return 1;
+    if (b.costUsd === null) return -1;
+    return b.costUsd - a.costUsd;
+  });
+  return rows;
+}
+
+/**
+ * byModel — rollup por rotulo BRUTO de modelo (mesma regra do model-usage:
+ * NULL vira `'(desconhecido)'`, nunca descartado; acima de
+ * `MODEL_USAGE_LIMIT` modelos, excedentes viram `'(outros)'`).
+ */
+export function getLooseUsageByModel(
+  db: Database.Database,
+  filters: LooseUsageFilters = {},
+): LooseUsageModelEntry[] {
+  if (!hasLooseUsage(db)) return [];
+  const { where, params } = looseUsageScope(filters);
+  const rows = db
+    .prepare(`
+      SELECT
+        model,
+        sum(cost_usd)                                    as costUsd,
+        sum(total_tokens)                                as totalTokens,
+        count(DISTINCT process_key || '/' || segment_id) as segments
+      FROM loose_usage
+      ${where}
+      GROUP BY model
+    `)
+    .all(...params) as { model: string | null; costUsd: number | null; totalTokens: number | null; segments: number }[];
+
+  rows.sort((a, b) => {
+    if (a.costUsd === null && b.costUsd === null) return 0;
+    if (a.costUsd === null) return 1;
+    if (b.costUsd === null) return -1;
+    return b.costUsd - a.costUsd;
+  });
+
+  const labeled: LooseUsageModelEntry[] = rows.map(r => ({
+    model: r.model === null ? MODEL_USAGE_UNKNOWN_LABEL : r.model,
+    costUsd: r.costUsd,
+    totalTokens: r.totalTokens,
+    segments: r.segments,
+  }));
+
+  if (labeled.length <= MODEL_USAGE_LIMIT) return labeled;
+
+  const top = labeled.slice(0, MODEL_USAGE_LIMIT);
+  const rest = labeled.slice(MODEL_USAGE_LIMIT);
+  const outros: LooseUsageModelEntry = {
+    model: MODEL_USAGE_OTHERS_LABEL,
+    costUsd: sumNullable(rest.map(r => r.costUsd)),
+    totalTokens: sumNullable(rest.map(r => r.totalTokens)),
+    segments: rest.reduce((acc, r) => acc + r.segments, 0),
+  };
+  return [...top, outros];
+}
+
+/**
+ * Custo blended por Mtok — `SUM(cost_usd)/SUM(total_tokens)*1e6`. `null`
+ * quando tokens e 0/NULL (divisao indefinida nunca vira 0) — formula do
+ * data-model.md §ProjectUsageComparison do cstk.
+ */
+function blendedCostPerMtok(costUsd: number | null, totalTokens: number | null): number | null {
+  if (costUsd === null || totalTokens === null || totalTokens === 0) return null;
+  return (costUsd / totalTokens) * 1e6;
+}
+
+/**
+ * comparison — avulso (`loose_usage`) vs pipeline (`wave_model_usage`, v12)
+ * lado a lado, agregado por categoria — NUNCA join linha a linha
+ * (granularidades diferentes por construcao; FR-009 do cstk). O recorte
+ * temporal de cada lado usa a coluna da propria origem (`captured_at` vs
+ * `source_ts`). Base sem `wave_model_usage`: lado pipeline 3x null.
+ */
+export function getLooseUsageComparison(
+  db: Database.Database,
+  filters: LooseUsageFilters = {},
+): LooseUsageComparison {
+  if (!hasLooseUsage(db)) {
+    return { loose: { ...EMPTY_COMPARISON_SIDE }, pipeline: { ...EMPTY_COMPARISON_SIDE } };
+  }
+  const { where, params } = looseUsageScope(filters);
+  const looseRow = db
+    .prepare(`SELECT sum(cost_usd) as costUsd, sum(total_tokens) as totalTokens FROM loose_usage ${where}`)
+    .get(...params) as { costUsd: number | null; totalTokens: number | null };
+  const loose: LooseUsageComparisonSide = {
+    costUsd: looseRow.costUsd,
+    totalTokens: looseRow.totalTokens,
+    blendedCostPerMtok: blendedCostPerMtok(looseRow.costUsd, looseRow.totalTokens),
+  };
+
+  if (!hasModelUsage(db)) {
+    return { loose, pipeline: { ...EMPTY_COMPARISON_SIDE } };
+  }
+  const pipelineScope = modelUsageScope(filters);
+  const pipelineRow = db
+    .prepare(`SELECT sum(cost_usd) as costUsd, sum(total_tokens) as totalTokens FROM wave_model_usage ${pipelineScope.where}`)
+    .get(...pipelineScope.params) as { costUsd: number | null; totalTokens: number | null };
+  const pipeline: LooseUsageComparisonSide = {
+    costUsd: pipelineRow.costUsd,
+    totalTokens: pipelineRow.totalTokens,
+    blendedCostPerMtok: blendedCostPerMtok(pipelineRow.costUsd, pipelineRow.totalTokens),
+  };
+  return { loose, pipeline };
+}
+
+/**
+ * coverage — contadores da amostra avulsa. Tabela ausente (base v2-v12):
+ * todos null, nunca 0. Tabela presente e vazia: contagens 0 legitimas
+ * (captura opt-in desligada ou sem sessao avulsa no recorte).
+ */
+export function getLooseUsageCoverage(
+  db: Database.Database,
+  filters: LooseUsageFilters = {},
+): LooseUsageCoverage {
+  if (!hasLooseUsage(db)) return { ...EMPTY_LOOSE_USAGE_COVERAGE };
+  const { where, params } = looseUsageScope(filters);
+  const row = db
+    .prepare(`
+      SELECT
+        count(*)                                         as rowsTotal,
+        count(DISTINCT process_key || '/' || segment_id) as segmentsTotal,
+        count(DISTINCT CASE WHEN segment_open = 1
+              THEN process_key || '/' || segment_id END) as segmentsOpen,
+        count(DISTINCT process_key)                      as processes,
+        count(DISTINCT project)                          as projects,
+        max(captured_at)                                 as lastCapturedAt
+      FROM loose_usage
+      ${where}
+    `)
+    .get(...params) as LooseUsageCoverage | undefined;
+  return row ?? { ...EMPTY_LOOSE_USAGE_COVERAGE };
+}
+
+/** Agrega os 4 recortes num unico `LooseUsageResult` (corpo de `data` do endpoint). */
+export function getLooseUsage(
+  db: Database.Database,
+  filters: LooseUsageFilters = {},
+): LooseUsageResult {
+  return {
+    byProject: getLooseUsageByProject(db, filters),
+    byModel: getLooseUsageByModel(db, filters),
+    comparison: getLooseUsageComparison(db, filters),
+    coverage: getLooseUsageCoverage(db, filters),
   };
 }

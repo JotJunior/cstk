@@ -37,6 +37,12 @@ export type {
   ModelUsageByStage,
   ModelUsageCoverage,
   ModelUsageResult,
+  LooseUsageProjectEntry,
+  LooseUsageModelEntry,
+  LooseUsageComparisonSide,
+  LooseUsageComparison,
+  LooseUsageCoverage,
+  LooseUsageResult,
   PaginationParams,
   PeriodParam,
   ScoreParam,
@@ -77,6 +83,12 @@ export {
   ModelUsageByStageSchema,
   ModelUsageCoverageSchema,
   ModelUsageResultSchema,
+  LooseUsageProjectEntrySchema,
+  LooseUsageModelEntrySchema,
+  LooseUsageComparisonSideSchema,
+  LooseUsageComparisonSchema,
+  LooseUsageCoverageSchema,
+  LooseUsageResultSchema,
 } from './schemas/entities.js';
 
 // Schemas Zod — params

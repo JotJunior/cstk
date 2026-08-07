@@ -5,6 +5,27 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.23.0] - 2026-08-07
+
+### Adicionado
+
+- **Consumo avulso (`loose_usage`, schema v13 / cstk 6.6.0)**: o painel
+  passa a exibir os tokens/custo das sessões interativas comuns do Claude
+  Code — capturados fora de qualquer execução 00c pelo hook opt-in
+  `cstk hooks install --with-loose-usage` — no novo card "Consumo avulso ·
+  fora do pipeline" da tela Métricas: rollup por projeto (com segmentos/
+  processos e marcador `*` para segmento ainda em captura), rollup por
+  modelo (rótulo bruto do OTel) e comparação **avulso × pipeline** com
+  custo blended por Mtok. Novo endpoint `GET /api/v1/metrics/loose-usage`
+  (filtros `project`/`period`; sem `feature` — a origem não tem a
+  dimensão), DTOs `LooseUsage*` no shared-types e view-model puro
+  `loose-usage-select.ts`. Semânticas preservadas da fonte: `NULL` nunca
+  vira 0; tabela presente e vazia = "sem medição" (captura é opt-in),
+  estado distinto de "fonte não coleta" (base v2-v12, `table-empty`);
+  comparação agregada lado a lado por categoria, nunca JOIN linha a linha;
+  `blendedCostPerMtok` nulo quando a soma de tokens é 0/`NULL`. Validado
+  por roundtrip empírico contra a `knowledge.db` v13 real.
+
 ## [0.22.1] - 2026-08-07
 
 ### Corrigido
@@ -1091,6 +1112,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.23.0]: https://github.com/JotJunior/cstk-panel/compare/v0.22.1...v0.23.0
 [0.22.1]: https://github.com/JotJunior/cstk-panel/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/JotJunior/cstk-panel/compare/v0.21.1...v0.22.0
 [0.21.1]: https://github.com/JotJunior/cstk-panel/compare/v0.21.0...v0.21.1

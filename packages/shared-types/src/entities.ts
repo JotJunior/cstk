@@ -219,6 +219,83 @@ export interface ModelUsageResult {
 }
 
 // ---------------------------------------------------------------------------
+// LooseUsage DTOs — consumo AVULSO (schema v13, tabela `loose_usage`,
+// cstk 6.6.0): tokens/custo de sessoes interativas comuns do Claude Code,
+// FORA de qualquer execucao agente-00c/feature-00c. Grao processo x segmento
+// x modelo — sem `feature`/`wave`/`execution_id` por construcao (preencher
+// seria fabricar dado). Captura e OPT-IN (hook posttooluse-loose-usage):
+// ausencia de linhas NAO significa ausencia de consumo.
+// Ref: ../cstk/docs/specs/loose-usage-capture/data-model.md.
+// ---------------------------------------------------------------------------
+
+/** Uma linha do rollup por projeto do consumo avulso. */
+export interface LooseUsageProjectEntry {
+  project: string;
+  /** paridade com `executions.target_project_path`; null quando nao capturado */
+  projectPath: string | null;
+  /** `sum(cost_usd)`. MEDIDO. null = nao medido; 0 = medido e deu zero */
+  costUsd: number | null;
+  totalTokens: number | null;
+  /** processos (janelas/terminais) distintos observados */
+  processes: number;
+  /** segmentos avulsos distintos que contribuiram */
+  segments: number;
+  /** segmentos ainda ABERTOS — valores desses ainda em captura (parciais) */
+  openSegments: number;
+  lastCapturedAt: string | null;
+}
+
+/** Uma linha do rollup por modelo do consumo avulso (rotulo BRUTO do OTel). */
+export interface LooseUsageModelEntry {
+  model: string;
+  costUsd: number | null;
+  totalTokens: number | null;
+  segments: number;
+}
+
+/**
+ * Um lado da comparacao avulso x pipeline (FR-009 do cstk): agregacao lado a
+ * lado por categoria, nunca JOIN linha a linha (granularidades diferentes).
+ */
+export interface LooseUsageComparisonSide {
+  costUsd: number | null;
+  totalTokens: number | null;
+  /** `SUM(cost_usd)/SUM(total_tokens)*1e6`; null quando a soma de tokens e 0/NULL */
+  blendedCostPerMtok: number | null;
+}
+
+export interface LooseUsageComparison {
+  /** consumo avulso (`loose_usage`) */
+  loose: LooseUsageComparisonSide;
+  /** consumo de pipeline (`wave_model_usage`, v12); 3x null em base sem a tabela */
+  pipeline: LooseUsageComparisonSide;
+}
+
+/**
+ * Cobertura da amostra avulsa. No estado degradado (tabela `loose_usage`
+ * ausente, base v2-v12) TODOS os campos sao null, nunca 0. Tabela presente e
+ * vazia => contagens 0 legitimas (captura opt-in desligada ou sem uso).
+ */
+export interface LooseUsageCoverage {
+  rowsTotal: number | null;
+  segmentsTotal: number | null;
+  /** segmentos abertos = medicao ainda em andamento (parcial, nao final) */
+  segmentsOpen: number | null;
+  processes: number | null;
+  projects: number | null;
+  lastCapturedAt: string | null;
+}
+
+/** Corpo de `data` de `GET /api/v1/metrics/loose-usage`. */
+export interface LooseUsageResult {
+  /** ordenado por `costUsd` desc, `null` por ultimo */
+  byProject: LooseUsageProjectEntry[];
+  byModel: LooseUsageModelEntry[];
+  comparison: LooseUsageComparison;
+  coverage: LooseUsageCoverage;
+}
+
+// ---------------------------------------------------------------------------
 // DecisionDTO — grao: 1 por decisao auditada — campos textuais UNTRUSTED
 // ---------------------------------------------------------------------------
 export interface DecisionDTO {

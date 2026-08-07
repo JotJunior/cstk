@@ -406,7 +406,9 @@ export function useMetric(
        // schema v11 — consumo medido por telemetria OTel (custo real em USD)
        | 'otel-usage' | 'otel-cost-over-time'
        // schema v12 — custo/tokens REAIS por modelo (wave_model_usage)
-       | 'model-usage',
+       | 'model-usage'
+       // schema v13 — consumo avulso de sessões interativas (loose_usage)
+       | 'loose-usage',
   period?: PeriodParam
 ) {
   const qs = period ? `?period=${period}` : '';
