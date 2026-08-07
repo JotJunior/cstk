@@ -28,33 +28,33 @@ os gaps abertos dos checklists de `requirements.md`/`security.md`.
 
 Ref: plan.md "Pontos de edicao em `cli/cstk`"; contracts/cli-setup.md §1
 
-- [ ] 1.1.1 Adicionar `setup` ao `case` do ramo generico de dispatch (`cli/cstk:250`)
-- [ ] 1.1.2 Adicionar `setup` a lista de comandos do help geral (`cli/cstk:136-152`)
-- [ ] 1.1.3 Adicionar ramo `setup)` ao `case` de help por subcomando (`cli/cstk:169-211`)
-- [ ] 1.1.4 Incluir `setup` nas listas de comandos validos das mensagens de erro (`cli/cstk:217` e `cli/cstk:299`)
-- [ ] 1.1.5 Teste: `scenario_dispatch_setup_wiring` em `tests/cstk/test_setup.sh` — `cstk setup --help`/`cstk help setup` respondem, e `setup` aparece nos 4 pontos de edicao
+- [x] 1.1.1 Adicionar `setup` ao `case` do ramo generico de dispatch (`cli/cstk:250`)
+- [x] 1.1.2 Adicionar `setup` a lista de comandos do help geral (`cli/cstk:136-152`)
+- [x] 1.1.3 Adicionar ramo `setup)` ao `case` de help por subcomando (`cli/cstk:169-211`)
+- [x] 1.1.4 Incluir `setup` nas listas de comandos validos das mensagens de erro (`cli/cstk:217` e `cli/cstk:299`)
+- [x] 1.1.5 Teste: `scenario_dispatch_setup_wiring` em `tests/cstk/test_setup.sh` — `cstk setup --help`/`cstk help setup` respondem, e `setup` aparece nos 4 pontos de edicao
 
 ### 1.2 Skeleton de `cli/lib/setup.sh` e pre-condicoes `[A]`
 
 Ref: spec.md FR-011, FR-007, FR-014; contracts/cli-setup.md §1 "Pre-condicoes"; plan.md Riscos item 2
 
-- [ ] 1.2.1 Criar `cli/lib/setup.sh` (`#!/bin/sh`, `set -eu`) com `setup_main`, sourceando libs irmas via `. "${CSTK_LIB:?CSTK_LIB must be set}/<lib>.sh"` (padrao `cli/lib/hooks.sh:60`)
-- [ ] 1.2.2 Implementar pre-condicao FR-011: `[ -e "$PATH/.git" ]` (arquivo OU diretorio); falha => exit 3, diagnostico em stderr, zero escrita
-- [ ] 1.2.3 Implementar pre-condicao FR-007: `require_tty` (`cli/lib/ui.sh:42-50`) quando `mode=interactive`; falha => exit 3 apontando `--dry-run`/`--yes`
-- [ ] 1.2.4 Definir e documentar (comentario no topo do arquivo) o padrao de neutralizacao de exit para toda chamada de aplicacao (`if ! fn; then ...` / `fn || rc=$?`) — nenhuma chamada de area pode derrubar o `set -eu` do wizard inteiro (FR-009, plan.md Risco 2)
-- [ ] 1.2.5 Teste: `scenario_git_root_gate` (quickstart Scenario 8) — diretorio sem `.git` falha exit 3 sem escrita; worktree (`.git` arquivo-ponteiro) e aceito
-- [ ] 1.2.6 Teste: `scenario_non_interactive_no_flag_fails_fast` (quickstart Scenario 6) — sem TTY e sem `--dry-run`/`--yes`, falha imediata exit 3 apontando as duas flags
+- [x] 1.2.1 Criar `cli/lib/setup.sh` (`#!/bin/sh`, `set -eu`) com `setup_main`, sourceando libs irmas via `. "${CSTK_LIB:?CSTK_LIB must be set}/<lib>.sh"` (padrao `cli/lib/hooks.sh:60`)
+- [x] 1.2.2 Implementar pre-condicao FR-011: `[ -e "$PATH/.git" ]` (arquivo OU diretorio); falha => exit 3, diagnostico em stderr, zero escrita
+- [x] 1.2.3 Implementar pre-condicao FR-007: `require_tty` (`cli/lib/ui.sh:42-50`) quando `mode=interactive`; falha => exit 3 apontando `--dry-run`/`--yes`
+- [x] 1.2.4 Definir e documentar (comentario no topo do arquivo) o padrao de neutralizacao de exit para toda chamada de aplicacao (`if ! fn; then ...` / `fn || rc=$?`) — nenhuma chamada de area pode derrubar o `set -eu` do wizard inteiro (FR-009, plan.md Risco 2)
+- [x] 1.2.5 Teste: `scenario_git_root_gate` (quickstart Scenario 8) — diretorio sem `.git` falha exit 3 sem escrita; worktree (`.git` arquivo-ponteiro) e aceito
+- [x] 1.2.6 Teste: `scenario_non_interactive_no_flag_fails_fast` (quickstart Scenario 6) — sem TTY e sem `--dry-run`/`--yes`, falha imediata exit 3 apontando as duas flags
 
 ### 1.3 Flags e precedencia de modo `[A]`
 
 Ref: spec.md FR-004, FR-005, FR-006, FR-018; contracts/cli-setup.md §1 "Precedencia de modo"
 
-- [ ] 1.3.1 Implementar parsing de `--dry-run`, `--yes`, `--project-path PATH` (default `$PWD`); flag desconhecida => exit 2
-- [ ] 1.3.2 Implementar precedencia: `--dry-run` presente => `mode=preview` (ignora `--yes`); so `--yes` => `mode=non-interactive`; nenhum => `mode=interactive`
-- [ ] 1.3.3 Confirmar ausencia deliberada de `--catalog`/equivalente (FR-018) — nenhuma flag de override de catalogo e repassada aos comandos delegados
-- [ ] 1.3.4 Teste: `scenario_dry_run_precedes_yes` (quickstart Scenario 5) — `--dry-run --yes` juntas => preview, zero escrita
-- [ ] 1.3.5 Teste: `scenario_unknown_flag_usage_error` — flag desconhecida => exit 2
-- [ ] 1.3.6 Teste: `scenario_catalog_flag_rejected` (quickstart Scenario 16, parte FR-018) — `cstk setup --catalog /qualquer/dir` => exit 2
+- [x] 1.3.1 Implementar parsing de `--dry-run`, `--yes`, `--project-path PATH` (default `$PWD`); flag desconhecida => exit 2 <!-- validado empiricamente sessao (implementado na task 1.2, _setup_parse_args) -->
+- [x] 1.3.2 Implementar precedencia: `--dry-run` presente => `mode=preview` (ignora `--yes`); so `--yes` => `mode=non-interactive`; nenhum => `mode=interactive` <!-- validado empiricamente sessao (implementado na task 1.2, _setup_resolve_mode) -->
+- [x] 1.3.3 Confirmar ausencia deliberada de `--catalog`/equivalente (FR-018) — nenhuma flag de override de catalogo e repassada aos comandos delegados
+- [x] 1.3.4 Teste: `scenario_dry_run_precedes_yes` (quickstart Scenario 5) — `--dry-run --yes` juntas => preview, zero escrita
+- [x] 1.3.5 Teste: `scenario_unknown_flag_usage_error` — flag desconhecida => exit 2
+- [x] 1.3.6 Teste: `scenario_catalog_flag_rejected` (quickstart Scenario 16, parte FR-018) — `cstk setup --catalog /qualquer/dir` => exit 2
 
 ---
 
