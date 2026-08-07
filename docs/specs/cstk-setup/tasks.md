@@ -221,10 +221,10 @@ Ref: spec.md FR-016, SC-006; contracts/cli-setup.md §4.1 "Nao remedia sozinho"
 
 Ref: spec.md FR-012; contracts/cli-setup.md §5
 
-- [ ] 6.1.1 Chamar `otel-usage.sh preflight` para diagnosticar o status de ativacao atual
-- [ ] 6.1.2 Exibir instrucoes/valores exatos (`CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_METRICS_EXPORTER=prometheus`, `CSTK_OTEL_ENDPOINT`, `OTEL_EXPORTER_PROMETHEUS_PORT`, endpoint padrao `127.0.0.1:9464`) — todos citados de `README.md`, nunca inventados
-- [ ] 6.1.3 Garantir que outcome `applied` e INALCANCAVEL para esta area — apenas `already-configured`/`skipped`/`failed`; NUNCA escrever em `~/.zshrc` nem em qualquer arquivo fora do diretorio do projeto (FR-012)
-- [ ] 6.1.4 Teste: `scenario_telemetry_readonly_no_home_write` — assinatura do `HOME` sandboxado inalterada apos rodar a area, em qualquer modo
+- [x] 6.1.1 Chamar `otel-usage.sh preflight` para diagnosticar o status de ativacao atual
+- [x] 6.1.2 Exibir instrucoes/valores exatos (`CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_METRICS_EXPORTER=prometheus`, `CSTK_OTEL_ENDPOINT`, `OTEL_EXPORTER_PROMETHEUS_PORT`, endpoint padrao `127.0.0.1:9464`) — todos citados de `README.md`, nunca inventados
+- [x] 6.1.3 Garantir que outcome `applied` e INALCANCAVEL para esta area — apenas `already-configured`/`skipped`/`failed`; NUNCA escrever em `~/.zshrc` nem em qualquer arquivo fora do diretorio do projeto (FR-012)
+- [x] 6.1.4 Teste: `scenario_telemetry_readonly_no_home_write` — assinatura do `HOME` sandboxado inalterada apos rodar a area, em qualquer modo
 
 ---
 
@@ -234,17 +234,17 @@ Ref: spec.md FR-012; contracts/cli-setup.md §5
 
 Ref: spec.md FR-010; contracts/cli-setup.md §1 "Saida (stdout)"
 
-- [ ] 7.1.1 Implementar a impressao do summary final: uma linha por area (`<area> <outcome> [escopo] [motivo]`), na ordem fixa de FR-001
-- [ ] 7.1.2 `[escopo]` marca `global` apenas na linha de `state-backend` (FR-017); demais sem marca
-- [ ] 7.1.3 Diagnosticos/avisos em stderr; dados de saida (status, summary) em stdout (Constitution II)
-- [ ] 7.1.4 Teste: `scenario_summary_lists_all_four_areas` (quickstart Scenario 1, 7) — summary sempre lista as 4 areas, mesmo com falha parcial
+- [x] 7.1.1 Implementar a impressao do summary final: uma linha por area (`<area> <outcome> [escopo] [motivo]`), na ordem fixa de FR-001
+- [x] 7.1.2 `[escopo]` marca `global` apenas na linha de `state-backend` (FR-017); demais sem marca
+- [x] 7.1.3 Diagnosticos/avisos em stderr; dados de saida (status, summary) em stdout (Constitution II)
+- [x] 7.1.4 Teste: `scenario_summary_lists_all_four_areas` (quickstart Scenario 1, 7) — summary sempre lista as 4 areas, mesmo com falha parcial
 
 ### 7.2 Declaracao de escopo da verificacao (achado SEC-07) `[A]`
 
 Ref: checklists/security.md CHK009; plan.md §Re-check de Constitution SEC-07
 
-- [ ] 7.2.1 O summary final DEVE declarar explicitamente que a verificacao de hooks cobre apenas os 3 hooks obrigatorios de `_GH_HOOKS`, sem inferir garantia sobre outras entradas do `settings.json`
-- [ ] 7.2.2 Teste: `scenario_summary_declares_verification_scope` — texto do summary cita o escopo real (3 hooks obrigatorios), sem implicar auditoria do `settings.json` inteiro
+- [x] 7.2.1 O summary final DEVE declarar explicitamente que a verificacao de hooks cobre apenas os 3 hooks obrigatorios de `_GH_HOOKS`, sem inferir garantia sobre outras entradas do `settings.json`
+- [x] 7.2.2 Teste: `scenario_summary_declares_verification_scope` — texto do summary cita o escopo real (3 hooks obrigatorios), sem implicar auditoria do `settings.json` inteiro
 
 ### 7.3 Consolidacao documental de defaults (CHK005) `[M]`
 

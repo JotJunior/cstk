@@ -223,6 +223,31 @@ _setup_hooks_status_script_path() {
   return 1
 }
 
+# _setup_otel_script_path -> mesma cadeia de resolucao de
+# _setup_hooks_status_script_path (command -v -> fallback relativo a
+# CSTK_LIB -> fallback $HOME/.claude), agora para `otel-usage.sh`
+# (FASE 6, contracts/cli-setup.md §5.1). Ecoa o path em stdout; exit 1 se
+# nao encontrado em nenhuma das 3 fontes.
+_setup_otel_script_path() {
+  if command -v otel-usage.sh >/dev/null 2>&1; then
+    command -v otel-usage.sh
+    return 0
+  fi
+  if [ -n "${CSTK_LIB:-}" ]; then
+    _sot_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/otel-usage.sh"
+    if [ -f "$_sot_repo" ]; then
+      printf '%s\n' "$_sot_repo"
+      return 0
+    fi
+  fi
+  _sot_default="${HOME:-/tmp}/.claude/skills/agente-00c-runtime/scripts/otel-usage.sh"
+  if [ -f "$_sot_default" ]; then
+    printf '%s\n' "$_sot_default"
+    return 0
+  fi
+  return 1
+}
+
 # _setup_prompt_yn QUESTION -> pergunta em stderr, le resposta em stdin.
 # Exit 0 se y/Y/yes/YES; 1 caso contrario (inclusive vazio/EOF). Mesmo
 # padrao de _session_prompt_yn (cli/lib/session.sh:333-343).
@@ -877,6 +902,162 @@ _setup_run_mcp_area() {
   return 0
 }
 
+# ============================================================================
+# Area de Telemetria (FASE 6 — tasks.md; contract em contracts/cli-setup.md
+# §5; data-model.md Entity ConfigurationArea, linha `telemetry`).
+#
+# 100% READ-ONLY (FR-012): esta area NUNCA escreve em nenhum arquivo — nem
+# no projeto, nem em ~/.zshrc, nem em qualquer outro lugar. So diagnostica
+# (delegando a `otel-usage.sh preflight`, script ja existente do catalogo —
+# nenhuma reimplementacao de deteccao de porta/exporter aqui) e exibe os
+# valores EXATOS citados de README.md ("Real per-wave cost"), nunca
+# inventados (Constitution VI). Outcome `applied` e INALCANCAVEL nesta area
+# (task 6.1.3) — so already-configured|skipped|failed.
+# ============================================================================
+
+# _setup_show_telemetry_instructions STATUS -> imprime em stderr as
+# instrucoes/valores EXATOS de ativacao citados de README.md (task 6.1.2).
+# Nunca escreve em arquivo algum — so texto informativo.
+_setup_show_telemetry_instructions() {
+  case "$1" in
+    port-conflict)
+      log_warn "setup: [telemetry] a porta do exporter esta ocupada por OUTRO processo — o consumo DESTA sessao nao sera medido enquanto isso."
+      ;;
+    exporter-down)
+      log_warn "setup: [telemetry] telemetria habilitada mas nada responde no endpoint — o consumo NAO sera medido nesta sessao."
+      ;;
+    unverified)
+      log_warn "setup: [telemetry] o endpoint responde mas a propriedade do exporter nao pode ser confirmada (lsof ausente ou sem visibilidade) — pode ser esta sessao ou outra."
+      ;;
+    *)
+      log_info "setup: [telemetry] telemetria desligada nesta sessao."
+      ;;
+  esac
+  log_info "setup: [telemetry] para ativar, exporte estas variaveis na sua sessao de shell ANTES de rodar 'claude' (README.md, secao 'Real per-wave cost'):"
+  log_info "setup: [telemetry]   export CLAUDE_CODE_ENABLE_TELEMETRY=1"
+  log_info "setup: [telemetry]   export OTEL_METRICS_EXPORTER=prometheus"
+  log_info "setup: [telemetry] o exporter local escuta em 127.0.0.1:9464 por padrao — nada sai da maquina."
+  log_info "setup: [telemetry] mais de um processo Claude Code ao mesmo tempo? So UM pode usar a porta fixa 9464. De a cada processo sua propria porta com OTEL_EXPORTER_PROMETHEUS_PORT (porta sorteada) + CSTK_OTEL_ENDPOINT (URL correspondente) — README.md documenta um wrapper 'claude()' de exemplo para ~/.zshrc que sorteia porta livre a cada lancamento."
+  log_info "setup: [telemetry] este wizard NAO escreve nada disso por voce (FR-012) — a ativacao e sempre manual, fora do diretorio do projeto."
+}
+
+# _setup_run_telemetry_area PROJECT_PATH MODE DRY_RUN
+#
+# Orquestra a area 'telemetry' de ponta a ponta (FASE 6):
+#   1. Deteccao read-only via `otel-usage.sh preflight` (sempre roda,
+#      inclusive em --dry-run — nao ha nada a aplicar de qualquer forma)
+#   2. Apresentacao do status ANTES de qualquer instrucao adicional (FR-002)
+#   3. script `otel-usage.sh` nao encontrado -> outcome=failed (mesmo
+#      padrao das demais areas quando a dependencia delegada esta ausente)
+#   4. `status=ok` (medicao confirmada ativa PARA ESTA sessao — o dono da
+#      porta e ancestral do processo corrente) -> outcome
+#      already-configured, ZERO chamada de aplicacao (nao existe chamada de
+#      aplicacao possivel aqui — I1 trivialmente satisfeita)
+#   5. `status=disabled|port-conflict|exporter-down|unverified` -> NUNCA
+#      already-configured (nao ha confirmacao solida de medicao ativa desta
+#      sessao especifica — Constitution VI, nunca afirmar o que nao foi
+#      confirmado) -> outcome=skipped (data-model.md "Area telemetry
+#      diagnosticada e nao ativa" -> skipped, reason "diagnostico exibido;
+#      ativacao e manual (FR-012)"), sempre seguido das instrucoes exatas
+#      de ativacao (task 6.1.2)
+#   6. saida inesperada (sem token `status=`, ou exit fora do vocabulario
+#      documentado do preflight) -> outcome=failed, citando a saida crua
+#      como evidencia (nunca inventar interpretacao)
+#
+# MODE/DRY_RUN sao aceitos so por simetria de assinatura com as demais
+# _setup_run_*_area — nenhum dos dois muda o comportamento desta area (nao
+# ha decisao de usuario nem aplicacao possivel: 100% read-only sempre).
+#
+# Preenche _SU_TEL_OUTCOME (already-configured|skipped|failed) e
+# _SU_TEL_OUTCOME_REASON (motivo legivel).
+_setup_run_telemetry_area() {
+  _srt_pap=$1
+  _srt_mode=$2
+  _srt_dry=$3
+
+  log_info "setup: [telemetry] area 100% read-only (FR-012, project-path=$_srt_pap, mode=$_srt_mode, dry-run=$_srt_dry) — nenhuma escrita e feita em nenhum caso."
+
+  if ! _srt_script=$(_setup_otel_script_path); then
+    _SU_TEL_OUTCOME="failed"
+    _SU_TEL_OUTCOME_REASON="nao foi possivel localizar otel-usage.sh (rode 'cstk install' ou 'cstk update' antes)"
+    log_error "setup: [telemetry] $_SU_TEL_OUTCOME_REASON"
+    return 0
+  fi
+
+  if _srt_out=$(sh "$_srt_script" preflight 2>/dev/null); then
+    _srt_rc=0
+  else
+    _srt_rc=$?
+  fi
+
+  # FR-002 — status exibido ANTES de qualquer instrucao/decisao.
+  log_info "setup: [telemetry] status atual = $_srt_out"
+
+  _srt_status=""
+  case "$_srt_out" in
+    status=*)
+      _srt_status=${_srt_out#status=}
+      _srt_status=${_srt_status%% *}
+      ;;
+  esac
+
+  case "$_srt_status" in
+    ok)
+      _SU_TEL_OUTCOME="already-configured"
+      _SU_TEL_OUTCOME_REASON=""
+      log_info "setup: [telemetry] medicao confirmada ativa para esta sessao — nenhuma acao necessaria."
+      ;;
+    disabled | port-conflict | exporter-down | unverified)
+      _SU_TEL_OUTCOME="skipped"
+      _SU_TEL_OUTCOME_REASON="diagnostico exibido; ativacao e manual (FR-012)"
+      _setup_show_telemetry_instructions "$_srt_status"
+      ;;
+    *)
+      _SU_TEL_OUTCOME="failed"
+      _SU_TEL_OUTCOME_REASON="otel-usage.sh preflight saida inesperada (exit $_srt_rc): $_srt_out"
+      log_error "setup: [telemetry] $_SU_TEL_OUTCOME_REASON"
+      ;;
+  esac
+  return 0
+}
+
+# ============================================================================
+# SetupRunSummary (FASE 7 — tasks.md; contract em contracts/cli-setup.md §1
+# "Saida (stdout)"; data-model.md Entity AreaOutcome).
+#
+# Toda a orquestracao acima (`_setup_run_*_area`) loga PROGRESSO/diagnostico
+# via log_info/log_warn/log_error — ou seja, sempre em STDERR
+# (cli/lib/common.sh). O summary final e DADO DE SAIDA (Constitution II:
+# "mensagens de erro em stderr, saida de dados em stdout" — task 7.1.3), por
+# isso usa `printf` direto para stdout, nunca log_*.
+# ============================================================================
+
+# _setup_print_summary_line AREA OUTCOME SCOPE REASON -> uma linha em
+# stdout no formato `<area>  <outcome>  [escopo]  [motivo]`
+# (contracts/cli-setup.md §1). SCOPE/REASON vazios sao omitidos (task
+# 7.1.2 — `[escopo]` so aparece na linha de state-backend).
+_setup_print_summary_line() {
+  _spsl_line="$1  $2"
+  [ -n "$3" ] && _spsl_line="$_spsl_line  $3"
+  [ -n "$4" ] && _spsl_line="$_spsl_line  $4"
+  printf '%s\n' "$_spsl_line"
+}
+
+# _setup_print_run_summary -> imprime em stdout (a) a declaracao de escopo
+# da verificacao (achado SEC-07/CHK009, task 7.2.1: os 3 hooks obrigatorios
+# de `_GH_HOOKS` foram verificados; NENHUMA outra entrada do
+# `settings.json`/`.mcp.json` foi auditada — CHK016 permanece {humano},
+# fora de escopo desta feature) e (b) o `SetupRunSummary` (FR-010): uma
+# linha por area, na ordem fixa de FR-001.
+_setup_print_run_summary() {
+  printf 'setup: escopo da verificacao — apenas os 3 hooks obrigatorios de _GH_HOOKS (pretooluse-bash-guard.sh, posttooluse-tool-call-tick.sh, posttooluse-agent-usage.sh) foram verificados nesta execucao. Demais entradas de .claude/settings.json, e entradas de .mcp.json alem de mcpServers.cstk-state, NAO foram auditadas — nenhuma garantia e feita sobre elas.\n'
+  printf '\n'
+  _setup_print_summary_line "hooks" "$_SU_HOOKS_OUTCOME" "" "$_SU_HOOKS_OUTCOME_REASON"
+  _setup_print_summary_line "state-backend" "$_SU_SB_OUTCOME" "global" "$_SU_SB_OUTCOME_REASON"
+  _setup_print_summary_line "mcp" "$_SU_MCP_OUTCOME" "" "$_SU_MCP_OUTCOME_REASON"
+  _setup_print_summary_line "telemetry" "$_SU_TEL_OUTCOME" "" "$_SU_TEL_OUTCOME_REASON"
+}
+
 setup_main() {
   if ! _setup_parse_args "$@"; then
     return 2
@@ -922,10 +1103,16 @@ setup_main() {
   _setup_run_mcp_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
   log_info "setup: [mcp] outcome=$_SU_MCP_OUTCOME"
 
-  log_info "setup: area restante (telemetry) ainda nao implementada nesta versao (FASE 5 de 8)."
+  _setup_run_telemetry_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
+  log_info "setup: [telemetry] outcome=$_SU_TEL_OUTCOME"
+
+  # FR-010/FASE 7 — SetupRunSummary consolidado, SEMPRE impresso ao final,
+  # inclusive quando alguma area falhou (quickstart Scenario 7, SC-005:
+  # "summary lista as 4 areas" mesmo com falha parcial).
+  _setup_print_run_summary
 
   if [ "$_SU_HOOKS_OUTCOME" = "failed" ] || [ "$_SU_SB_OUTCOME" = "failed" ] \
-    || [ "$_SU_MCP_OUTCOME" = "failed" ]; then
+    || [ "$_SU_MCP_OUTCOME" = "failed" ] || [ "$_SU_TEL_OUTCOME" = "failed" ]; then
     return 1
   fi
   return 0

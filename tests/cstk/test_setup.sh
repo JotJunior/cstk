@@ -79,8 +79,30 @@
 #      agora validado no nivel de orquestracao do wizard: `configured`,
 #      nunca falso-positivo `divergent`.
 #
-# Ref: docs/specs/cstk-setup/tasks.md FASE 1, FASE 3, FASE 4, FASE 5;
-#      contracts/cli-setup.md §1, §2, §3.
+# FASE 6 (area de telemetria, contracts/cli-setup.md §5):
+#  21  scenario_telemetry_readonly_no_home_write (task 6.1.4, FR-012) —
+#      `otel-usage.sh preflight` diagnostica (status=disabled no HOME
+#      sandboxado, sem as env vars de telemetria); a arvore de $HOME e
+#      byte-a-byte identica antes/depois; outcome nunca `applied`
+#      (INALCANCAVEL nesta area); as instrucoes exibidas citam os valores
+#      EXATOS de README.md (CLAUDE_CODE_ENABLE_TELEMETRY=1,
+#      OTEL_METRICS_EXPORTER=prometheus, CSTK_OTEL_ENDPOINT,
+#      OTEL_EXPORTER_PROMETHEUS_PORT, 127.0.0.1:9464), nunca inventados.
+#
+# FASE 7 (sumario final, contracts/cli-setup.md §1 "Saida (stdout)"):
+#  22  scenario_summary_lists_all_four_areas (task 7.1.4, quickstart
+#      Scenario 1/7) — o `SetupRunSummary` lista as 4 areas em STDOUT, na
+#      ordem fixa `hooks`/`state-backend`/`mcp`/`telemetry`, mesmo com
+#      falha parcial (sqlite3 ausente força a area state-backend a
+#      `failed`); `[escopo]=global` so na linha de state-backend; texto
+#      de diagnostico/progresso continua so em stderr.
+#  23  scenario_summary_declares_verification_scope (task 7.2.2, achado
+#      SEC-07/CHK009) — o summary declara que so os 3 hooks obrigatorios
+#      de `_GH_HOOKS` foram verificados, sem implicar auditoria do
+#      `settings.json`/`.mcp.json` inteiro.
+#
+# Ref: docs/specs/cstk-setup/tasks.md FASE 1, FASE 3, FASE 4, FASE 5,
+#      FASE 6, FASE 7; contracts/cli-setup.md §1, §2, §3, §5.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -1001,6 +1023,200 @@ scenario_mcp_cross_layer_not_divergent() {
     *)
       _fail "scenario_mcp_cross_layer_not_divergent" \
         "already-configured/I1 nao confirmado: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
+# ==== 6.1.4 telemetria e 100% read-only, zero escrita em $HOME (FR-012) ====
+
+scenario_telemetry_readonly_no_home_write() {
+  _repo="$TMPDIR_TEST/repo-telemetry-ro"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-telemetry-ro"
+  mkdir -p "$_home"
+
+  # Snapshot recursivo de $HOME (nomes + conteudo) ANTES do run. Sem env
+  # de telemetria setadas -> otel-usage.sh preflight reporta
+  # status=disabled (nem CLAUDE_CODE_ENABLE_TELEMETRY nem
+  # OTEL_METRICS_EXPORTER estao presentes neste `env -i`).
+  _before=$(find "$_home" -type f -exec cksum {} + 2>/dev/null | sort)
+
+  capture env -i HOME="$_home" PATH="$PATH" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_telemetry_readonly_no_home_write" \
+      "esperado exit 0 (--dry-run), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+
+  _after=$(find "$_home" -type f -exec cksum {} + 2>/dev/null | sort)
+  if [ "$_before" != "$_after" ]; then
+    _fail "scenario_telemetry_readonly_no_home_write" \
+      "\$HOME mudou apos o wizard — area telemetry (e nenhuma outra, em --dry-run) MUST ser 100% read-only (FR-012)"
+    return 1
+  fi
+
+  # FR-002 — status exibido ANTES de qualquer instrucao/decisao.
+  case "$_CAPTURED_STDERR" in
+    *"[telemetry] status atual = status=disabled"*) : ;;
+    *)
+      _fail "scenario_telemetry_readonly_no_home_write" \
+        "status nao exibido (ou inesperado): $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+
+  # outcome=applied e INALCANCAVEL para esta area (task 6.1.3).
+  case "$_CAPTURED_STDERR" in
+    *"[telemetry] outcome=applied"*)
+      _fail "scenario_telemetry_readonly_no_home_write" \
+        "outcome=applied apareceu para telemetry — INALCANCAVEL por FR-012"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"[telemetry] outcome=skipped"*) : ;;
+    *)
+      _fail "scenario_telemetry_readonly_no_home_write" \
+        "esperado outcome=skipped (status=disabled), obtido: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+
+  # task 6.1.2 — valores EXATOS citados de README.md, nunca inventados.
+  for _val in "CLAUDE_CODE_ENABLE_TELEMETRY=1" "OTEL_METRICS_EXPORTER=prometheus" \
+              "CSTK_OTEL_ENDPOINT" "OTEL_EXPORTER_PROMETHEUS_PORT" "127.0.0.1:9464"; do
+    case "$_CAPTURED_STDERR" in
+      *"$_val"*) : ;;
+      *)
+        _fail "scenario_telemetry_readonly_no_home_write" \
+          "instrucao exibida nao contem o valor exato '$_val' (README.md): $_CAPTURED_STDERR"
+        return 1
+        ;;
+    esac
+  done
+}
+
+# ==== FASE 7 — Sumario Final ====
+
+# ==== 7.1.4 summary lista as 4 areas, mesmo com falha parcial (quickstart
+# Scenario 1/7, SC-005) ====
+
+scenario_summary_lists_all_four_areas() {
+  _repo="$TMPDIR_TEST/repo-summary-4areas"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-summary-4areas"
+  mkdir -p "$_home/.claude/cstk"
+  # Mesmo padrao de scenario_state_backend_unavailable_sqlite_missing:
+  # forca SO a area state-backend a `failed`, isolando o efeito nas
+  # demais 3 (FR-009 — falha isolada nao interrompe o resto).
+  printf 'state_backend=sqlite\n' > "$_home/.claude/cstk/config"
+  chmod 600 "$_home/.claude/cstk/config"
+  _shim=$(_make_shim_path_no_sqlite3)
+
+  capture env -i PATH="$_shim" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "scenario_summary_lists_all_four_areas" \
+      "esperado exit 1 (state-backend failed), obtido $_CAPTURED_EXIT (stdout: $_CAPTURED_STDOUT; stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+
+  # As 4 areas aparecem no summary, na ordem fixa de FR-001, MESMO com
+  # state-backend em failed.
+  _sm_prev_line=0
+  for _sm_area in hooks state-backend mcp telemetry; do
+    _sm_line=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -n "^$_sm_area  " | head -n 1 | cut -d: -f1)
+    if [ -z "$_sm_line" ]; then
+      _fail "scenario_summary_lists_all_four_areas" \
+        "area '$_sm_area' ausente do summary: $_CAPTURED_STDOUT"
+      return 1
+    fi
+    if [ "$_sm_line" -le "$_sm_prev_line" ]; then
+      _fail "scenario_summary_lists_all_four_areas" \
+        "ordem fixa violada em '$_sm_area' (linha $_sm_line, anterior $_sm_prev_line): $_CAPTURED_STDOUT"
+      return 1
+    fi
+    _sm_prev_line=$_sm_line
+  done
+
+  case "$_CAPTURED_STDOUT" in
+    *"state-backend  failed  global"*) : ;;
+    *)
+      _fail "scenario_summary_lists_all_four_areas" \
+        "linha de state-backend nao reporta failed+escopo global: $_CAPTURED_STDOUT"
+      return 1
+      ;;
+  esac
+
+  # `[escopo]=global` e EXCLUSIVO de state-backend (FR-017/task 7.1.2) —
+  # nenhuma outra linha do summary carrega " global".
+  _sm_global_lines=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '  global')
+  if [ "$_sm_global_lines" != "1" ]; then
+    _fail "scenario_summary_lists_all_four_areas" \
+      "rotulo 'global' apareceu $_sm_global_lines vezes no summary (esperado 1, so em state-backend): $_CAPTURED_STDOUT"
+    return 1
+  fi
+
+  # Progresso/diagnostico (log_info/log_warn/log_error) continua em
+  # stderr — o summary em si nao duplica no stdout.
+  case "$_CAPTURED_STDOUT" in
+    *"[hooks]"* | *"[mcp]"* | *"[telemetry]"* | *"[state-backend]"*)
+      _fail "scenario_summary_lists_all_four_areas" \
+        "stdout carrega linhas de progresso ([area]) que deveriam estar so em stderr: $_CAPTURED_STDOUT"
+      return 1
+      ;;
+  esac
+}
+
+# ==== 7.2.2 summary declara o escopo real da verificacao (SEC-07/CHK009)
+# ====
+
+scenario_summary_declares_verification_scope() {
+  _repo="$TMPDIR_TEST/repo-summary-scope"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-summary-scope"
+  mkdir -p "$_home"
+
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_summary_declares_verification_scope" \
+      "esperado exit 0 (--dry-run), obtido $_CAPTURED_EXIT (stdout: $_CAPTURED_STDOUT; stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+
+  # Cita os 3 hooks obrigatorios REAIS de _GH_HOOKS (nunca inventados).
+  for _sv_hook in "pretooluse-bash-guard.sh" "posttooluse-tool-call-tick.sh" \
+                  "posttooluse-agent-usage.sh"; do
+    case "$_CAPTURED_STDOUT" in
+      *"$_sv_hook"*) : ;;
+      *)
+        _fail "scenario_summary_declares_verification_scope" \
+          "declaracao de escopo nao cita '$_sv_hook': $_CAPTURED_STDOUT"
+        return 1
+        ;;
+    esac
+  done
+
+  # Declara explicitamente que o settings.json/.mcp.json NAO foi todo
+  # auditado — nao pode implicar garantia mais ampla (CHK009).
+  case "$_CAPTURED_STDOUT" in
+    *"nao foi auditada"* | *"NAO foi auditada"* \
+      | *"nao foram auditadas"* | *"NAO foram auditadas"*) : ;;
+    *)
+      _fail "scenario_summary_declares_verification_scope" \
+        "declaracao nao deixa claro que o restante do settings.json/.mcp.json NAO foi auditado: $_CAPTURED_STDOUT"
+      return 1
+      ;;
+  esac
+
+  # A declaracao de escopo vive em stdout (dado de saida), nao stderr.
+  case "$_CAPTURED_STDERR" in
+    *"_GH_HOOKS"*)
+      _fail "scenario_summary_declares_verification_scope" \
+        "declaracao de escopo vazou para stderr em vez de stdout: $_CAPTURED_STDERR"
       return 1
       ;;
   esac
