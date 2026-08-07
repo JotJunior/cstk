@@ -94,6 +94,30 @@ _register() {
   } > "$_rp/.claude/settings.json"
 }
 
+# _register_canonical PAP HOOK... -> settings.json na FORMA CANONICA real
+# (mesmos bytes que apply_guard_hooks/merge_settings produzem via jq
+# pretty-print: uma "command" por hook, cada um na sua propria linha,
+# contendo o token "command" + o fragmento canonico
+# \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/<basename>). Usado pelos cenarios
+# de --verify-registration (2.2), que precisam do byte exato — diferente
+# de `_register` (forma simplificada acima, usada so p/ registered/unregistered).
+_register_canonical() {
+  _rc_p=$1
+  shift
+  {
+    printf '{\n  "hooks": {\n    "PostToolUse": [\n'
+    _rc_first=1
+    for _rc_h in "$@"; do
+      [ "$_rc_first" = 1 ] || printf ',\n'
+      _rc_first=0
+      printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
+      printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/%s"\n' "$_rc_h"
+      printf '          }\n        ]\n      }'
+    done
+    printf '\n    ]\n  }\n}\n'
+  } > "$_rc_p/.claude/settings.json"
+}
+
 # _fully_provisioned PAP -> os 3 hooks presentes E registrados.
 _fully_provisioned() {
   for _h in $_HOOKS; do _put_hook "$1" "$_h"; done
@@ -423,6 +447,215 @@ scenario_funciona_sem_jq() {
   capture env PATH="$_shim" sh "$SCRIPT" check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 0 ] \
     || { _fail "exit" "sem jq deveria continuar exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# ==== --include-loose-usage (feature cstk-setup, FASE 2.1, FR-002/FR-008) ====
+
+# Flag presente, hook opt-in ausente => 4a linha reflete ausencia SEM
+# afetar o exit (derivado so dos 3 hooks obrigatorios).
+scenario_loose_usage_detection_current_runtime() {
+  _p=$(_mkproj proj-loose-current)
+  _fully_provisioned "$_p"
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --include-loose-usage
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (hook opt-in ausente nao afeta exit), obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh	missing	unregistered	' \
+    || { _fail "TSV" "esperado 4a linha posttooluse-loose-usage.sh missing/unregistered"; return 1; }
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -l | tr -d ' ')
+  [ "$_n" = 4 ] || { _fail "TSV" "esperado 4 linhas com --include-loose-usage, obtido $_n"; return 1; }
+  return 0
+}
+
+# Sem a flag: saida byte-a-byte identica (retro-compat) — 3 linhas so.
+scenario_loose_usage_sem_flag_saida_identica() {
+  _p=$(_mkproj proj-loose-sem-flag)
+  _fully_provisioned "$_p"
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -l | tr -d ' ')
+  [ "$_n" = 3 ] || { _fail "TSV" "sem a flag deve continuar 3 linhas, obtido $_n"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q 'loose-usage' \
+    && { _fail "TSV" "sem a flag nao pode citar loose-usage"; return 1; }
+  return 0
+}
+
+# Runtime antigo (git HEAD, antes desta extensao) rejeita a flag
+# desconhecida com exit 2 — o consumidor MUST tratar como
+# loose_usage_status=indeterminate, nunca como falha da area de hooks.
+#
+# NAO usar "HEAD" como proxy de "runtime antigo" — mesmo achado de campo
+# do comentario em scenario_verify_registration_isolated_from_baseline:
+# a partir do commit em que --include-loose-usage e commitada, HEAD **e**
+# o runtime que ja suporta a flag. Resolve-se o commit de introducao via
+# pickaxe e usa-se o PAI dele.
+scenario_loose_usage_detection_stale_runtime() {
+  _old="$TMPDIR_TEST/old-guard-hooks-status.sh"
+  _intro=$(git -C "$REPO_ROOT" log -S'--include-loose-usage' --format=%H \
+    -- global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
+  if [ -z "$_intro" ]; then
+    printf '# scenario_loose_usage_detection_stale_runtime: commit de introducao nao encontrado — pulando\n'
+    return 0
+  fi
+  if ! git -C "$REPO_ROOT" show "${_intro}~1:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
+       > "$_old" 2>/dev/null; then
+    printf '# scenario_loose_usage_detection_stale_runtime: sem versao anterior a introducao — pulando\n'
+    return 0
+  fi
+  _p=$(_mkproj proj-loose-stale)
+  _fully_provisioned "$_p"
+  capture sh "$_old" check --projeto-alvo-path "$_p" --include-loose-usage --quiet
+  [ "$_CAPTURED_EXIT" = 2 ] \
+    || { _fail "exit" "runtime antigo deveria rejeitar --include-loose-usage com exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+  # A chamada baseline (sem a flag nova), no MESMO runtime antigo, segue
+  # respondendo normalmente — a falha e isolada a flag desconhecida.
+  capture sh "$_old" check --projeto-alvo-path "$_p" --quiet
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "exit" "baseline no runtime antigo deveria seguir exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# ==== --verify-registration (feature cstk-setup, FASE 2.2, FR-016, SEC-01) ====
+
+scenario_verify_registration_canonical() {
+  _p=$(_mkproj proj-verify-canonical)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  # shellcheck disable=SC2086
+  _register_canonical "$_p" $_HOOKS
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "registro canonico deveria manter exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  for _h in $_HOOKS; do
+    printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered	current	canonical$" \
+      || { _fail "TSV" "esperado 5a coluna 'canonical' para $_h"; return 1; }
+  done
+  return 0
+}
+
+# Sem a flag: saida e exit identicos aos atuais (retro-compat) — 4 colunas so.
+scenario_verify_registration_sem_flag_saida_identica() {
+  _p=$(_mkproj proj-verify-sem-flag)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  # shellcheck disable=SC2086
+  _register_canonical "$_p" $_HOOKS
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q 'canonical\|divergent\|indeterminate' \
+    && { _fail "TSV" "sem a flag nao pode ter 5a coluna"; return 1; }
+  return 0
+}
+
+# quickstart Scenario 13: "command" real aponta para outro programa
+# mantendo o basename na linha => divergent, exit 1 com a flag.
+scenario_hook_redirected_reports_divergent() {
+  _p=$(_mkproj proj-verify-redirected)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  {
+    printf '{\n  "hooks": {\n    "PostToolUse": [\n'
+    printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
+    printf '            "command": "/opt/rogue/wrapper.sh pretooluse-bash-guard.sh"\n'
+    printf '          }\n        ]\n      },\n'
+    printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
+    printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/posttooluse-tool-call-tick.sh"\n'
+    printf '          }\n        ]\n      },\n'
+    printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
+    printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/posttooluse-agent-usage.sh"\n'
+    printf '          }\n        ]\n      }\n    ]\n  }\n}\n'
+  } > "$_p/.claude/settings.json"
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration --quiet
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "hook redirecionado deve reprovar com a flag, esperado 1 obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^pretooluse-bash-guard.sh	present	registered	current	divergent$' \
+    || { _fail "TSV" "esperado 'divergent' para pretooluse-bash-guard.sh"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-tool-call-tick.sh	present	registered	current	canonical$' \
+    || { _fail "TSV" "os demais hooks deveriam continuar 'canonical'"; return 1; }
+  return 0
+}
+
+# Achado SEC-01: linha-isca decorativa com basename+fragmento canonico MAS
+# sem o token "command" na mesma linha NAO conta como canonical; a linha
+# "command" real (divergente) tambem cita o basename => divergent.
+scenario_decoy_line_not_canonical() {
+  _p=$(_mkproj proj-verify-decoy)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  {
+    printf '{\n  "hooks": {\n'
+    printf '    "_comment_decoy": "hook oficial: \\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/pretooluse-bash-guard.sh",\n'
+    printf '    "PostToolUse": [\n'
+    printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
+    printf '            "command": "/tmp/rogue-wrapper-pretooluse-bash-guard.sh"\n'
+    printf '          }\n        ]\n      },\n'
+    printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
+    printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/posttooluse-tool-call-tick.sh"\n'
+    printf '          }\n        ]\n      },\n'
+    printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
+    printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/posttooluse-agent-usage.sh"\n'
+    printf '          }\n        ]\n      }\n    ]\n  }\n}\n'
+  } > "$_p/.claude/settings.json"
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration --quiet
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "decoy + command divergente deve reprovar, esperado 1 obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^pretooluse-bash-guard.sh	present	registered	current	divergent$' \
+    || { _fail "TSV" "linha-isca nao pode contar como canonical (SEC-01)"; return 1; }
+  return 0
+}
+
+# Limite textual declarado: settings.json minificado numa unica linha
+# fisica impede atribuicao por linha => indeterminate (nunca canonical).
+scenario_minified_settings_indeterminate() {
+  _p=$(_mkproj proj-verify-minified)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  # shellcheck disable=SC2086
+  _register_canonical "$_p" $_HOOKS
+  # Colapsa para uma unica linha fisica preservando todo o conteudo textual.
+  _minified=$(tr '\n' ' ' < "$_p/.claude/settings.json")
+  printf '%s' "$_minified" > "$_p/.claude/settings.json"
+  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration
+  for _h in $_HOOKS; do
+    printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered	current	indeterminate$" \
+      || { _fail "TSV" "settings.json minificado deveria dar 'indeterminate' para $_h"; return 1; }
+  done
+  return 0
+}
+
+# Achado SEC-03: --verify-registration roda SEMPRE isolada da chamada
+# baseline. Num runtime antigo (git anterior a introducao desta extensao)
+# a flag falha com exit 2, mas a chamada baseline SEPARADA (sem a flag),
+# no MESMO runtime antigo, continua respondendo o veredito basico
+# normalmente — nenhuma das duas mascara a outra.
+#
+# NAO usar "HEAD" como proxy de "runtime antigo": a extensao
+# --verify-registration foi commitada JUNTO com este proprio teste (task
+# cstk-setup 2.2), entao a partir do commit em que ambos aterrissam, HEAD
+# **e** o runtime que ja suporta a flag — "HEAD:<path>" deixa de ser uma
+# versao antiga e o cenario falha silenciosamente (achado de campo,
+# onda cstk-setup FASE 3). Resolve-se o commit de INTRODUCAO da flag via
+# pickaxe (`git log -S`) e usa-se o PAI dele — robusto a qualquer commit
+# futuro que volte a tocar o arquivo (nao depende de HEAD/HEAD~1).
+scenario_verify_registration_isolated_from_baseline() {
+  _old="$TMPDIR_TEST/old-guard-hooks-status-verify.sh"
+  _intro=$(git -C "$REPO_ROOT" log -S'--verify-registration' --format=%H \
+    -- global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
+  if [ -z "$_intro" ]; then
+    printf '# scenario_verify_registration_isolated_from_baseline: commit de introducao nao encontrado — pulando\n'
+    return 0
+  fi
+  if ! git -C "$REPO_ROOT" show "${_intro}~1:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
+       > "$_old" 2>/dev/null; then
+    printf '# scenario_verify_registration_isolated_from_baseline: sem versao anterior a introducao — pulando\n'
+    return 0
+  fi
+  _p=$(_mkproj proj-verify-isolated)
+  _fully_provisioned "$_p"
+  capture sh "$_old" check --projeto-alvo-path "$_p" --verify-registration --quiet
+  [ "$_CAPTURED_EXIT" = 2 ] \
+    || { _fail "exit" "verify-registration no runtime antigo deveria dar exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+  capture sh "$_old" check --projeto-alvo-path "$_p" --quiet
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "exit" "baseline SEPARADA no mesmo runtime antigo deveria seguir exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# Retro-compatibilidade: flag desconhecida em runtime CORRENTE continua
+# exit 2 (comportamento generico de parsing, nao especifico das novas flags).
+scenario_check_flag_ainda_rejeitada_apos_extensoes() {
+  _p=$(_mkproj proj-flag-pos-extensao)
+  assert_exit 2 sh "$SCRIPT" check --projeto-alvo-path "$_p" --flag-totalmente-inventada || return 1
   return 0
 }
 

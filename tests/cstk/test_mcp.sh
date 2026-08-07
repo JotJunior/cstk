@@ -1030,4 +1030,130 @@ scenario_mcp_subcomando_desconhecido_lista_install() {
   assert_stderr_contains "install" || return 1
 }
 
+# ---------- _mcp_registration_status (feature cstk-setup, FASE 2.3, FR-016) ----------
+#
+# Funcao interna (nao subcomando `cstk mcp`), consumida pelo wizard
+# `cstk setup`. Testada sourcing cli/lib/mcp.sh diretamente e chamando a
+# funcao — mesmo motivo de nao existir `cstk mcp registration-status`
+# (contracts/cli-setup.md §4.1: "lib DONA da area", nao um comando novo).
+#
+# INVARIANTES:
+#   SEC-05 (CHK012): candidato via PATH restrito ao sufixo
+#     /skills/agente-00c-runtime/scripts/mcp-launch.sh E existente em disco.
+#   SEC-06 (CHK013): stdout NUNCA vazio; sem atribuicao textual => divergent
+#     (nunca "configured" por omissao).
+
+# _registration_status PROJECT_PATH -> stdout de _mcp_registration_status,
+# rodando com CSTK_LIB=repo (mesmo contexto de _cstk_mcp install) e PATH
+# controlavel via $_MCP_INNER_PATH (default: PATH corrente).
+_registration_status() {
+  env CSTK_LIB="$CSTK_LIB_DIR" PATH="${_MCP_INNER_PATH:-$PATH}" \
+    sh -c '. "$CSTK_LIB/mcp.sh"; _mcp_registration_status "$1"' _ "$1"
+}
+
+scenario_mcp_not_configured_arquivo_ausente() {
+  _p="$TMPDIR_TEST/reg-ausente"
+  mkdir -p "$_p"
+  capture _registration_status "$_p"
+  [ "$_CAPTURED_STDOUT" = "not-configured" ] \
+    || { _fail "stdout" "esperado 'not-configured', obtido '$_CAPTURED_STDOUT'"; return 1; }
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+scenario_mcp_not_configured_sem_cstk_state() {
+  _p="$TMPDIR_TEST/reg-outro-servidor"
+  mkdir -p "$_p"
+  printf '{"mcpServers":{"outro-servidor":{"type":"stdio","command":"/bin/true","args":[]}}}\n' \
+    > "$_p/.mcp.json"
+  capture _registration_status "$_p"
+  [ "$_CAPTURED_STDOUT" = "not-configured" ] \
+    || { _fail "stdout" "esperado 'not-configured', obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+scenario_mcp_configured_apos_install_real() {
+  _p="$TMPDIR_TEST/reg-configured"
+  mkdir -p "$_p"
+  capture _cstk_mcp install --project-path "$_p"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install exit" "$_CAPTURED_STDERR"; return 1; }
+  capture _registration_status "$_p"
+  [ "$_CAPTURED_STDOUT" = "configured" ] \
+    || { _fail "stdout" "esperado 'configured', obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+scenario_mcp_divergent_foreign_script() {
+  _p="$TMPDIR_TEST/reg-divergent"
+  mkdir -p "$_p"
+  printf '{\n  "mcpServers": {\n    "cstk-state": {\n      "type": "stdio",\n      "command": "/usr/local/bin/outro-launcher.sh",\n      "args": []\n    }\n  }\n}\n' \
+    > "$_p/.mcp.json"
+  capture _registration_status "$_p"
+  [ "$_CAPTURED_STDOUT" = "divergent" ] \
+    || { _fail "stdout" "esperado 'divergent', obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+# Cross-layer (quickstart Scenario 14b): .mcp.json com o "command" na forma
+# HOME/catalogo instalado (candidato independente de CSTK_LIB), verificado
+# num contexto com CSTK_LIB=repo — deve dar "configured", nunca "divergent"
+# (evita falso-positivo entre camadas, contracts/cli-setup.md §4.1).
+scenario_mcp_configured_cross_layer() {
+  _p="$TMPDIR_TEST/reg-cross-layer"
+  mkdir -p "$_p"
+  _fake_home="$TMPDIR_TEST/reg-cross-layer-home"
+  _catalog_launcher="$_fake_home/.claude/skills/agente-00c-runtime/scripts/mcp-launch.sh"
+  mkdir -p "$(dirname "$_catalog_launcher")"
+  printf '#!/bin/sh\nexit 0\n' > "$_catalog_launcher"
+  chmod +x "$_catalog_launcher"
+  printf '{\n  "mcpServers": {\n    "cstk-state": {\n      "type": "stdio",\n      "command": "%s",\n      "args": []\n    }\n  }\n}\n' \
+    "$_catalog_launcher" > "$_p/.mcp.json"
+  # Verifica com CSTK_LIB=repo (contexto DIFERENTE do HOME onde o
+  # candidato "instalado" mora) + HOME apontando para o catalogo fake —
+  # candidato 3 (home) e independente de CSTK_LIB, entao casa mesmo assim.
+  capture env CSTK_LIB="$CSTK_LIB_DIR" HOME="$_fake_home" PATH="${_MCP_INNER_PATH:-$PATH}" \
+    sh -c '. "$CSTK_LIB/mcp.sh"; _mcp_registration_status "$1"' _ "$_p"
+  [ "$_CAPTURED_STDOUT" = "configured" ] \
+    || { _fail "stdout" "esperado 'configured' (cross-layer), obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+# SEC-06 (CHK013): cstk-state presente mas "command" nao atribuivel
+# textualmente (bloco malformado, sem linha "command" apos "cstk-state")
+# => "divergent", NUNCA stdout vazio, NUNCA "configured" por omissao.
+scenario_mcp_registration_status_empty_stdout() {
+  _p="$TMPDIR_TEST/reg-malformado"
+  mkdir -p "$_p"
+  printf '{\n  "mcpServers": {\n    "cstk-state": {\n      "type": "stdio"\n    }\n  }\n}\n' \
+    > "$_p/.mcp.json"
+  capture _registration_status "$_p"
+  [ -n "$_CAPTURED_STDOUT" ] \
+    || { _fail "stdout" "_mcp_registration_status NUNCA pode emitir stdout vazio (SEC-06)"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "divergent" ] \
+    || { _fail "stdout" "esperado 'divergent' (nao-atribuivel), obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+# SEC-05 (CHK012): candidato via PATH homonimo FORA do sufixo esperado
+# NAO pode contar como legitimo, mesmo apontando para um arquivo real.
+scenario_mcp_path_candidate_fora_do_sufixo_nao_conta() {
+  _p="$TMPDIR_TEST/reg-path-homonimo"
+  mkdir -p "$_p"
+  _fake_bin="$TMPDIR_TEST/reg-path-homonimo-bin"
+  mkdir -p "$_fake_bin"
+  printf '#!/bin/sh\nexit 0\n' > "$_fake_bin/mcp-launch.sh"
+  chmod +x "$_fake_bin/mcp-launch.sh"
+  printf '{\n  "mcpServers": {\n    "cstk-state": {\n      "type": "stdio",\n      "command": "%s",\n      "args": []\n    }\n  }\n}\n' \
+    "$_fake_bin/mcp-launch.sh" > "$_p/.mcp.json"
+  # Homonimo na FRENTE do PATH real (command -v acha ele primeiro); o
+  # sufixo de path esperado nao bate, entao SEC-05 deve rejeita-lo mesmo
+  # apontando para um arquivo que de fato existe em disco.
+  capture env CSTK_LIB="$CSTK_LIB_DIR" HOME="$TMPDIR_TEST/reg-path-homonimo-home" \
+    PATH="$_fake_bin:$PATH" \
+    sh -c '. "$CSTK_LIB/mcp.sh"; _mcp_registration_status "$1"' _ "$_p"
+  [ "$_CAPTURED_STDOUT" = "divergent" ] \
+    || { _fail "stdout" "candidato PATH fora do sufixo nao pode contar (SEC-05), obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
 run_all_scenarios

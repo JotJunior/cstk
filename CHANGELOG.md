@@ -5,6 +5,57 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.7.0] - 2026-08-07
+
+Onboarding de projeto num comando só: o novo `cstk setup` substitui a
+sequência manual `cstk hooks install` → `cstk state enable-sqlite` →
+`cstk mcp install` → configuração de telemetria por um wizard interativo
+idempotente, com detecção endurecida ("já configurado" só quando o registro
+aponta para o script real do catálogo — nunca por mera presença de chave).
+Feature conduzida pela pipeline feature-00c (spec/plan/checklists em
+`docs/specs/cstk-setup/`; PR #83).
+
+### Added
+
+- **`cstk setup`** (`cli/lib/setup.sh`, novo; dispatch em `cli/cstk`).
+  Wizard interativo com 4 áreas — hooks, state backend, MCP e telemetria —
+  cada uma com detecção read-only ANTES de qualquer aplicação, delegando aos
+  comandos existentes (`hooks_main install`, `enable-sqlite`, `_mcp_cmd_install`)
+  sem reimplementar parsing. Precedência de modo `--dry-run` > `--yes` >
+  interativo; gate de projeto = raiz de repositório git (worktrees contam);
+  `SetupRunSummary` em stdout com ordem fixa das áreas, exit codes
+  contratuais e declaração explícita do escopo verificado (só os 3 hooks
+  obrigatórios são auditados; demais entradas do `settings.json` não).
+  Defaults conservadores: loose-usage e state backend global (`[escopo]=global`,
+  rótulo obrigatório) são opt-in — em `--yes`, loose-usage fica OFF e
+  `enable-sqlite` só aplica quando `reason=` prova ausência de config prévia;
+  área de telemetria é 100% read-only (diagnóstico via `otel-usage.sh
+  preflight` + instruções do README, nunca escreve fora do projeto). MCP
+  instala mesmo sem Docker (registro em `.mcp.json` é inerte; aviso emitido).
+- **`guard-hooks-status.sh --verify-registration` e `--include-loose-usage`**
+  (flags aditivas). `--verify-registration` adiciona 5ª coluna
+  `canonical|divergent|indeterminate`: linha canônica exige path do catálogo
+  E o token `"command"` na mesma linha (fecha linha-isca decorativa);
+  `divergent` muda exit para 1 e o setup reporta remediação em 2 etapas
+  (remover entrada, reinstalar) em vez de "already configured".
+  `--include-loose-usage` emite 4ª linha TSV para o hook opcional sem afetar
+  o exit. O setup consome as flags em chamadas SEPARADAS — o veredito dos 3
+  hooks obrigatórios sai de chamada baseline sem flags, então runtime antigo
+  degrada só a dimensão estendida (sem regressão).
+- **`_mcp_registration_status`** (`cli/lib/mcp.sh`): classifica o registro
+  `mcpServers.cstk-state` de `.mcp.json` em `configured|divergent|not-configured`;
+  candidatos aceitos restritos a sufixo canônico
+  `/skills/agente-00c-runtime/scripts/mcp-launch.sh` existente em disco
+  (ambiente hostil não amplia o conjunto); stdout vazio nunca é resposta
+  válida (fallback `divergent`).
+- **Testes.** `tests/cstk/test_setup.sh` (novo, 24 cenários — inclui modo
+  interativo real via stdin, dry-run sem side-effects, idempotência,
+  telemetria sem escrita em `$HOME`); extensões em
+  `tests/test_guard-hooks-status.sh` (28→38) e `tests/cstk/test_mcp.sh`
+  (94→101); exemção de menção documentada no sweep de confinamento de
+  `tests/cstk/test_serve-docker.sh` (`setup.sh` usa apenas `command -v docker`
+  para texto de aviso — invocação funcional segue confinada a `mcp-docker.sh`).
+
 ## [6.6.0] - 2026-08-07
 
 Duas frentes: (1) rastreio de consumo avulso — tokens/custo das sessões
@@ -5097,6 +5148,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.7.0]: https://github.com/JotJunior/cstk/releases/tag/v6.7.0
 [6.6.0]: https://github.com/JotJunior/cstk/releases/tag/v6.6.0
 [6.5.1]: https://github.com/JotJunior/cstk/releases/tag/v6.5.1
 [6.5.0]: https://github.com/JotJunior/cstk/releases/tag/v6.5.0

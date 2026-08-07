@@ -52,6 +52,13 @@
 # de `hooks.sh` — jq permanece CONFINADO aquele arquivo (Constitution
 # carve-out condicao b); `mcp.sh` NUNCA chama `jq` diretamente.
 #
+# `_mcp_registration_status PROJECT_PATH` (feature cstk-setup, FASE 2.3,
+# FR-016): funcao interna (nao subcomando) consumida pelo wizard
+# `cstk setup` para decidir a area MCP sem duplicar a deteccao. stdout
+# `configured`|`divergent`|`not-configured`, exit sempre 0 (contrato de
+# nao-falha, paridade com `state-backend.sh resolve`). Leitura textual sem
+# jq. Ver contracts/cli-setup.md §4.1 (docs/specs/cstk-setup/).
+#
 # Subcomandos:
 #   cstk mcp status [--state-dir DIR] [--project-path PATH] [--live]
 #   cstk mcp start --state-dir DIR
@@ -143,6 +150,101 @@ _mcp_runtime_script_path() {
     return 0
   fi
   return 1
+}
+
+# _mcp_registration_candidate_matches VALUE -> 0 se VALUE e igual (string
+# exata) a um dos tres paths candidatos que `_mcp_runtime_script_path
+# mcp-launch.sh` produziria — a MESMA resolucao PATH -> repo -> catalogo
+# instalado usada por `_mcp_cmd_install` (linhas ~127-146), com a mesma
+# forma literal (nao canonicalizada: o candidato "repo" preserva o `..`).
+#
+# SEC-05 (CHK012): o candidato via PATH (`command -v mcp-launch.sh`) e
+# restrito ao SUFIXO esperado /skills/agente-00c-runtime/scripts/mcp-launch.sh
+# E precisa existir de fato em disco no momento da verificacao — nunca
+# aceitar qualquer resultado de `command -v` sem essa dupla checagem (um
+# `mcp-launch.sh` homonimo em outro diretorio do PATH nao pode contar como
+# instalacao legitima do catalogo).
+_mcp_registration_candidate_matches() {
+  _mrcm_value=$1
+
+  if _mrcm_path=$(command -v mcp-launch.sh 2>/dev/null); then
+    case "$_mrcm_path" in
+      */skills/agente-00c-runtime/scripts/mcp-launch.sh)
+        if [ -f "$_mrcm_path" ] && [ "$_mrcm_value" = "$_mrcm_path" ]; then
+          return 0
+        fi
+        ;;
+    esac
+  fi
+
+  if [ -n "${CSTK_LIB:-}" ]; then
+    _mrcm_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/mcp-launch.sh"
+    if [ -f "$_mrcm_repo" ] && [ "$_mrcm_value" = "$_mrcm_repo" ]; then
+      return 0
+    fi
+  fi
+
+  _mrcm_home="${HOME:-/tmp}/.claude/skills/agente-00c-runtime/scripts/mcp-launch.sh"
+  if [ -f "$_mrcm_home" ] && [ "$_mrcm_value" = "$_mrcm_home" ]; then
+    return 0
+  fi
+
+  return 1
+}
+
+# _mcp_registration_status PROJECT_PATH -> "configured" | "divergent" |
+# "not-configured" (feature cstk-setup, FASE 2.3, FR-016).
+#
+# Leitura textual sem jq (mesma escolha de _gh_registered em
+# guard-hooks-status.sh — nao depender de jq no projeto possivelmente mal
+# provisionado que estamos diagnosticando). Contrato de nao-falha: SEMPRE
+# imprime exatamente uma das 3 palavras e retorna 0 (consulta respondida,
+# nao veredito — mesmo contrato de state-backend.sh resolve).
+#
+# SEC-06 (CHK013): todo caminho de codigo termina em printf explicito; o
+# fallback final ("divergent") garante que a funcao NUNCA emite stdout
+# vazio — um chamador recebendo stdout vazio (bug) deve tratar como
+# indeterminado, nunca como "configured" por omissao.
+_mcp_registration_status() {
+  _mrs_project_path=$1
+  _mrs_file="$_mrs_project_path/.mcp.json"
+
+  if [ ! -f "$_mrs_file" ]; then
+    printf 'not-configured\n'
+    return 0
+  fi
+  if ! grep -Fq -- '"cstk-state"' "$_mrs_file" 2>/dev/null; then
+    printf 'not-configured\n'
+    return 0
+  fi
+
+  # Atribuicao textual por proximidade: a primeira linha "command" que
+  # aparece APOS a linha "cstk-state" (mesmo padrao de atribuicao por
+  # linha/proximidade de _gh_registered — declarado, nao parse estrutural).
+  _mrs_cmd_line=$(awk '
+    /"cstk-state"/ { infield=1; next }
+    infield && /"command"/ { print; exit }
+  ' "$_mrs_file" 2>/dev/null)
+
+  _mrs_cmd_value=""
+  if [ -n "$_mrs_cmd_line" ]; then
+    _mrs_cmd_value=$(printf '%s\n' "$_mrs_cmd_line" \
+      | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  fi
+
+  if [ -z "$_mrs_cmd_value" ]; then
+    # cstk-state presente mas "command" nao atribuivel textualmente ->
+    # "nao e atribuivel" da regra de decisao => divergent.
+    printf 'divergent\n'
+    return 0
+  fi
+
+  if _mcp_registration_candidate_matches "$_mrs_cmd_value"; then
+    printf 'configured\n'
+  else
+    printf 'divergent\n'
+  fi
+  return 0
 }
 
 _mcp_is_active_status() {
