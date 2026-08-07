@@ -189,29 +189,29 @@ Ref: contracts/cli-setup.md §3.4
 
 Ref: spec.md FR-001, FR-002; contracts/cli-setup.md §4.1 (consome FASE 2.3)
 
-- [ ] 5.1.1 Chamar `_mcp_registration_status PROJECT_PATH` (implementada em 2.3) para obter `configured`/`divergent`/`not-configured`
-- [ ] 5.1.2 Exibir o status atual antes de oferecer a acao (FR-002)
-- [ ] 5.1.3 Teste: `scenario_mcp_status_displayed_before_action` — status impresso antes do prompt/aplicacao
+- [x] 5.1.1 Chamar `_mcp_registration_status PROJECT_PATH` (implementada em 2.3) para obter `configured`/`divergent`/`not-configured`
+- [x] 5.1.2 Exibir o status atual antes de oferecer a acao (FR-002)
+- [x] 5.1.3 Teste: `scenario_mcp_status_displayed_before_action` — status impresso antes do prompt/aplicacao
 
 ### 5.2 Aplicacao — `cstk mcp install`, inclusive sem Docker (FR-015) `[A]`
 
 Ref: spec.md FR-015; contracts/cli-setup.md §4.2, §4.3
 
-- [ ] 5.2.1 Nao chamar `mcp install` quando `status=configured` (idempotencia, invariante I1)
-- [ ] 5.2.2 Chamar `_mcp_cmd_install` (`cli/lib/mcp.sh:806-877`) quando `not-configured` e aceito/`--yes`
-- [ ] 5.2.3 (FR-015) Em `--yes`, aplicar `mcp install` MESMO sem Docker detectado — usar apenas `command -v docker` (nunca invocar `docker` funcionalmente, mesmo padrao de `cli/lib/mcp.sh:475-479`) para emitir aviso claro de Docker ausente
-- [ ] 5.2.4 Mapear `print_paste_block` (jq ausente, exit 0) para outcome com aviso de acao manual pendente, mesmo tratamento de 3.2.3
-- [ ] 5.2.5 Teste: `scenario_mcp_applied_without_docker_warns` (spec.md Clarifications, sessao 2026-08-07, item 3) — `--yes` sem Docker aplica `mcp install` e emite aviso claro
+- [x] 5.2.1 Nao chamar `mcp install` quando `status=configured` (idempotencia, invariante I1)
+- [x] 5.2.2 Chamar `_mcp_cmd_install` (`cli/lib/mcp.sh:806-877`) quando `not-configured` e aceito/`--yes`
+- [x] 5.2.3 (FR-015) Em `--yes`, aplicar `mcp install` MESMO sem Docker detectado — usar apenas `command -v docker` (nunca invocar `docker` funcionalmente, mesmo padrao de `cli/lib/mcp.sh:475-479`) para emitir aviso claro de Docker ausente
+- [x] 5.2.4 Mapear `print_paste_block` (jq ausente, exit 0) para outcome com aviso de acao manual pendente, mesmo tratamento de 3.2.3
+- [x] 5.2.5 Teste: `scenario_mcp_applied_without_docker_warns` (spec.md Clarifications, sessao 2026-08-07, item 3) — `--yes` sem Docker aplica `mcp install` e emite aviso claro
 
 ### 5.3 Tratamento de `divergent` — remediacao `[C]`
 
 Ref: spec.md FR-016, SC-006; contracts/cli-setup.md §4.1 "Nao remedia sozinho"
 
-- [ ] 5.3.1 `status=divergent` => outcome `failed`, NUNCA `already-configured`
-- [ ] 5.3.2 Exibir remediacao de duas etapas (remover a entrada divergente, depois `cstk mcp install`)
-- [ ] 5.3.3 Garantir invariante I6: nenhuma chamada a `mcp install` quando `status=divergent`
-- [ ] 5.3.4 Teste: `scenario_mcp_divergent_no_install_call` (quickstart Scenario 14a) — assertar ausencia de chamada, `.mcp.json` inalterado, exit 1
-- [ ] 5.3.5 Teste: `scenario_mcp_cross_layer_not_divergent` (quickstart Scenario 14b) — validacao no nivel de orquestracao do wizard (reusa a deteccao de 2.3.9)
+- [x] 5.3.1 `status=divergent` => outcome `failed`, NUNCA `already-configured`
+- [x] 5.3.2 Exibir remediacao de duas etapas (remover a entrada divergente, depois `cstk mcp install`)
+- [x] 5.3.3 Garantir invariante I6: nenhuma chamada a `mcp install` quando `status=divergent`
+- [x] 5.3.4 Teste: `scenario_mcp_divergent_no_install_call` (quickstart Scenario 14a) — assertar ausencia de chamada, `.mcp.json` inalterado, exit 1
+- [x] 5.3.5 Teste: `scenario_mcp_cross_layer_not_divergent` (quickstart Scenario 14b) — validacao no nivel de orquestracao do wizard (reusa a deteccao de 2.3.9)
 
 ---
 

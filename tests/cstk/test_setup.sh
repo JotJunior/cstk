@@ -61,7 +61,25 @@
 #      texto de `cstk doctor --deps` (sqlite3 presente+versao) aparece no
 #      motivo exibido para status=unavailable.
 #
-# Ref: docs/specs/cstk-setup/tasks.md FASE 1, FASE 3, FASE 4;
+# FASE 5 (area de MCP, contracts/cli-setup.md §4):
+#  17  scenario_mcp_status_displayed_before_action (task 5.1.3, FR-002) —
+#      status da area mcp e impresso ANTES da linha de preview/acao,
+#      mesmo em --dry-run.
+#  18  scenario_mcp_applied_without_docker_warns (task 5.2.5, quickstart
+#      Scenario 14 + Clarifications item 3, FR-015) — `--yes` sem Docker
+#      no PATH aplica `mcp install` mesmo assim e emite aviso claro;
+#      `.mcp.json` e escrito de verdade.
+#  19  scenario_mcp_divergent_no_install_call (task 5.3.4, quickstart
+#      Scenario 14a, I6) — status=divergent nunca chama `mcp install`;
+#      `.mcp.json` permanece byte-a-byte identico; remediacao em duas
+#      etapas exibida.
+#  20  scenario_mcp_cross_layer_not_divergent (task 5.3.5, quickstart
+#      Scenario 14b) — mesmo cenario cross-layer de
+#      scenario_mcp_configured_cross_layer (test_mcp.sh, FASE 2.3.9),
+#      agora validado no nivel de orquestracao do wizard: `configured`,
+#      nunca falso-positivo `divergent`.
+#
+# Ref: docs/specs/cstk-setup/tasks.md FASE 1, FASE 3, FASE 4, FASE 5;
 #      contracts/cli-setup.md §1, §2, §3.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -731,9 +749,9 @@ scenario_state_backend_unavailable_sqlite_missing() {
     return 1
   fi
   # FR-009: o wizard prossegue apos a falha isolada — nao aborta o
-  # processo no meio da area; a linha de areas restantes ainda e emitida.
+  # processo no meio da area; a area seguinte (mcp) ainda roda.
   case "$_CAPTURED_STDERR" in
-    *"areas restantes"*) : ;;
+    *"[mcp] outcome="*) : ;;
     *)
       _fail "scenario_state_backend_unavailable_sqlite_missing" \
         "wizard nao prosseguiu apos falha isolada em state-backend (FR-009): $_CAPTURED_STDERR"
@@ -777,6 +795,212 @@ scenario_state_backend_doctor_diagnostic_surfaced() {
     *)
       _fail "scenario_state_backend_doctor_diagnostic_surfaced" \
         "diagnostico nao cita a versao minima exigida: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
+# ==== Helpers FASE 5 (area de MCP) ====
+
+# _make_shim_path_no_docker -> mesmo padrao de _make_shim_path_no_jq /
+# _make_shim_path_no_sqlite3: PATH curado incluindo jq E sqlite3 (para
+# isolar a area mcp de efeitos colaterais nas outras 3 areas) mas
+# deliberadamente SEM docker, para exercitar o aviso de Docker ausente
+# (task 5.2.3/5.2.5) sem depender de o Docker estar instalado ou nao na
+# maquina que roda a suite.
+_make_shim_path_no_docker() {
+  _msnd_dir=$(mktemp -d "$TMPDIR_TEST/shimbin-nodocker.XXXXXX")
+  for _msnd_c in sh mktemp awk sed grep find head printf cp mv rm mkdir \
+                chmod ls dirname basename tr cut wc env command sort \
+                uniq date cat cmp jq sqlite3; do
+    _msnd_src=$(command -v "$_msnd_c" 2>/dev/null) || continue
+    [ -n "$_msnd_src" ] || continue
+    ln -sf "$_msnd_src" "$_msnd_dir/$_msnd_c" 2>/dev/null || :
+  done
+  printf '%s' "$_msnd_dir"
+}
+
+# ==== FASE 5 — Area de MCP ====
+
+# ==== 5.1.3 status exibido ANTES de qualquer decisao (FR-002) ====
+
+scenario_mcp_status_displayed_before_action() {
+  _repo="$TMPDIR_TEST/repo-mcp-status-order"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-mcp-status-order"
+  mkdir -p "$_home"
+
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_mcp_status_displayed_before_action" \
+      "esperado exit 0 (dry-run), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"[mcp] status atual = not-configured"*) : ;;
+    *)
+      _fail "scenario_mcp_status_displayed_before_action" \
+        "status da area mcp nao foi exibido: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+
+  _status_line=$(printf '%s\n' "$_CAPTURED_STDERR" | grep -n '\[mcp\] status atual' | head -1 | cut -d: -f1)
+  _preview_line=$(printf '%s\n' "$_CAPTURED_STDERR" | grep -n '\[mcp\] preview' | head -1 | cut -d: -f1)
+  if [ -z "$_status_line" ] || [ -z "$_preview_line" ]; then
+    _fail "scenario_mcp_status_displayed_before_action" \
+      "nao foi possivel localizar as duas linhas para comparar ordem: $_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ "$_status_line" -ge "$_preview_line" ]; then
+    _fail "scenario_mcp_status_displayed_before_action" \
+      "status (linha $_status_line) nao apareceu ANTES do preview de acao (linha $_preview_line) — FR-002"
+    return 1
+  fi
+}
+
+# ==== 5.2.5 --yes sem Docker aplica mesmo assim e avisa (FR-015) ====
+
+scenario_mcp_applied_without_docker_warns() {
+  if ! command -v jq >/dev/null 2>&1; then
+    _error "no_jq" "jq nao disponivel no ambiente — cenario exige jq presente no PATH real para o merge de verdade ocorrer"
+  fi
+  _repo="$TMPDIR_TEST/repo-mcp-no-docker"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-mcp-no-docker"
+  mkdir -p "$_home"
+  _cat=$(_make_fake_catalog "$_home")
+  _shim=$(_make_shim_path_no_docker)
+
+  capture env -i PATH="$_shim" HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  case "$_CAPTURED_STDERR" in
+    *"[mcp] outcome=applied"*) : ;;
+    *)
+      _fail "scenario_mcp_applied_without_docker_warns" \
+        "area mcp nao ficou applied mesmo sem Docker (FR-015): $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"Docker nao encontrado"*) : ;;
+    *)
+      _fail "scenario_mcp_applied_without_docker_warns" \
+        "aviso claro de Docker ausente nao foi emitido: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  if ! grep -Fq -- '"cstk-state"' "$_repo/.mcp.json" 2>/dev/null; then
+    _fail "scenario_mcp_applied_without_docker_warns" \
+      ".mcp.json nao foi escrito com a entrada mcpServers.cstk-state"
+    return 1
+  fi
+}
+
+# ==== 5.3.4 status=divergent nunca chama `mcp install` (I6, FR-016) ====
+
+scenario_mcp_divergent_no_install_call() {
+  _repo="$TMPDIR_TEST/repo-mcp-divergent"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-mcp-divergent"
+  mkdir -p "$_home"
+  _mcp_file="$_repo/.mcp.json"
+  cat > "$_mcp_file" <<'JSON'
+{
+  "mcpServers": {
+    "cstk-state": {
+      "type": "stdio",
+      "command": "/tmp/fake-launch.sh",
+      "args": []
+    }
+  }
+}
+JSON
+  _snapshot=$(cat "$_mcp_file")
+
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "scenario_mcp_divergent_no_install_call" \
+      "esperado exit 1 (mcp divergent), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"[mcp] status atual = divergent"*) : ;;
+    *)
+      _fail "scenario_mcp_divergent_no_install_call" \
+        "status divergent nao reportado: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"[mcp] outcome=failed"*) : ;;
+    *)
+      _fail "scenario_mcp_divergent_no_install_call" \
+        "outcome divergent nao virou failed: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"[mcp] remediacao (duas etapas"*) : ;;
+    *)
+      _fail "scenario_mcp_divergent_no_install_call" \
+        "remediacao em duas etapas ausente: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  _after=$(cat "$_mcp_file")
+  if [ "$_after" != "$_snapshot" ]; then
+    _fail "scenario_mcp_divergent_no_install_call" \
+      ".mcp.json foi alterado apesar de status=divergent (I6)"
+    return 1
+  fi
+}
+
+# ==== 5.3.5 cross-layer legitimo NAO pode ser divergent (quickstart 14b) ====
+
+scenario_mcp_cross_layer_not_divergent() {
+  _repo="$TMPDIR_TEST/repo-mcp-cross-layer"
+  _make_repo "$_repo"
+  _fake_home="$TMPDIR_TEST/home-mcp-cross-layer"
+  _catalog_launcher="$_fake_home/.claude/skills/agente-00c-runtime/scripts/mcp-launch.sh"
+  mkdir -p "$(dirname "$_catalog_launcher")"
+  printf '#!/bin/sh\nexit 0\n' > "$_catalog_launcher"
+  chmod +x "$_catalog_launcher"
+  printf '{\n  "mcpServers": {\n    "cstk-state": {\n      "type": "stdio",\n      "command": "%s",\n      "args": []\n    }\n  }\n}\n' \
+    "$_catalog_launcher" > "$_repo/.mcp.json"
+
+  # Mesmo cenario de scenario_mcp_configured_cross_layer (test_mcp.sh,
+  # FASE 2.3.9): CSTK_LIB=repo (contexto DIFERENTE do HOME onde o
+  # candidato "instalado" mora) — agora validado no nivel do wizard.
+  capture env HOME="$_fake_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_mcp_cross_layer_not_divergent" \
+      "esperado exit 0 (dry-run, configured), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"[mcp] status atual = configured"*) : ;;
+    *)
+      _fail "scenario_mcp_cross_layer_not_divergent" \
+        "esperado status=configured (cross-layer), obtido: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"[mcp] status atual = divergent"*)
+      _fail "scenario_mcp_cross_layer_not_divergent" \
+        "falso-positivo: cross-layer legitimo reportado como divergent"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"[mcp] ja configurado"*) : ;;
+    *)
+      _fail "scenario_mcp_cross_layer_not_divergent" \
+        "already-configured/I1 nao confirmado: $_CAPTURED_STDERR"
       return 1
       ;;
   esac

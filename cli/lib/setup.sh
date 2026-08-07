@@ -93,6 +93,12 @@ set -eu
 # quando a area state-backend fica unavailable (task 4.4.1) — nenhuma
 # reimplementacao de deteccao de sqlite3/jq.
 . "${CSTK_LIB}/doctor.sh"
+# shellcheck source=./mcp.sh
+# mcp.sh e a lib DONA da area MCP (contracts/cli-setup.md §4) — setup.sh
+# reusa _mcp_registration_status (deteccao, FASE 2.3) e _mcp_cmd_install
+# (aplicacao) de la, sem duplicar parsing de .mcp.json nem invocar docker
+# diretamente (FASE 5, task 5.2/5.3).
+. "${CSTK_LIB}/mcp.sh"
 
 _setup_usage() {
   cat <<'HELP'
@@ -738,6 +744,139 @@ _setup_run_state_backend_area() {
   return 0
 }
 
+# ============================================================================
+# Area de MCP (FASE 5 — tasks.md; contract em contracts/cli-setup.md §4;
+# data-model.md Entity ConfigurationArea, linha `mcp`).
+#
+# Reusa `_mcp_registration_status` (cli/lib/mcp.sh, FASE 2.3) para
+# deteccao e `_mcp_cmd_install` (cli/lib/mcp.sh) para aplicacao — NENHUMA
+# reimplementacao de parsing de .mcp.json nem de invocacao de docker
+# aqui (mesmo principio de state-backend reusar config_state_backend_*).
+# ============================================================================
+
+# _setup_run_mcp_area PROJECT_PATH MODE DRY_RUN
+#
+# Orquestra a area 'mcp' de ponta a ponta (FASE 5):
+#   1. Deteccao read-only via _mcp_registration_status (sempre roda, mesmo
+#      em --dry-run) — task 5.1.1
+#   2. Apresentacao do status ANTES de oferecer a acao (FR-002) — task 5.1.2
+#   3. `configured` -> outcome=already-configured, ZERO chamada (I1) —
+#      task 5.2.1
+#   4. `divergent` -> outcome=failed, ZERO chamada de aplicacao (I6,
+#      FR-016), com remediacao em DUAS etapas — task 5.3 (nunca
+#      already-configured, nunca sobrescrita silenciosa: `_mcp_cmd_install`
+#      faz merge com o target vencendo, entao uma entrada divergente
+#      SOBREVIVE a um novo install — contracts/cli-setup.md §4.1)
+#   5. `not-configured` -> decide (prompt interativo ou default de --yes,
+#      que SEMPRE aplica — FR-015, sem opt-in distinto como state-backend);
+#      aplica `cstk mcp install` MESMO sem Docker detectado, emitindo
+#      aviso claro (task 5.2.3) — o registro fica inerte sem Docker, mas
+#      o start das execucoes ja degrada sozinho para bash-fallback
+#
+# Preenche _SU_MCP_OUTCOME (already-configured|applied|skipped|failed) e
+# _SU_MCP_OUTCOME_REASON (motivo legivel; nao vazio em failed e nos
+# avisos pendentes de applied — task 5.2.4/5.2.5, mesmo tratamento de
+# 3.2.3/3.2.5 para a area de hooks).
+_setup_run_mcp_area() {
+  _srm_pap=$1
+  _srm_mode=$2
+  _srm_dry=$3
+
+  if ! _srm_status=$(_mcp_registration_status "$_srm_pap"); then
+    _srm_status="divergent"
+  fi
+
+  # FR-002 — status exibido ANTES de qualquer decisao de acao.
+  log_info "setup: [mcp] status atual = $_srm_status"
+
+  case "$_srm_status" in
+    configured)
+      _SU_MCP_OUTCOME="already-configured"
+      _SU_MCP_OUTCOME_REASON=""
+      log_info "setup: [mcp] ja configurado — nenhuma chamada de aplicacao (I1)."
+      return 0
+      ;;
+    divergent)
+      _SU_MCP_OUTCOME="failed"
+      _SU_MCP_OUTCOME_REASON="entrada mcpServers.cstk-state em $_srm_pap/.mcp.json aponta para fora do catalogo do toolkit"
+      log_error "setup: [mcp] $_SU_MCP_OUTCOME_REASON"
+      log_error "setup: [mcp] remediacao (duas etapas — 'cstk mcp install' NAO sobrescreve entrada divergente, o merge faz o target vencer): (1) remova a entrada mcpServers.cstk-state de $_srm_pap/.mcp.json; (2) so entao rode 'cstk mcp install --project-path $_srm_pap'."
+      log_error "setup: [mcp] nenhuma chamada de aplicacao sera feita (I6)."
+      return 0
+      ;;
+  esac
+
+  # not-configured a partir daqui.
+  if [ "$_srm_dry" = 1 ]; then
+    _SU_MCP_OUTCOME="skipped"
+    _SU_MCP_OUTCOME_REASON="preview: nenhuma alteracao aplicada"
+    log_info "setup: [mcp] preview — registraria mcpServers.cstk-state em $_srm_pap/.mcp.json (nao aplicado)."
+    return 0
+  fi
+
+  _srm_accept=1
+  if [ "$_srm_mode" = "interactive" ]; then
+    if ! _setup_prompt_yn "setup: [mcp] registrar o servidor de estado MCP (mcpServers.cstk-state) agora? [y/N]"; then
+      _srm_accept=0
+    fi
+  fi
+  # --yes (non-interactive): FR-015 — SEMPRE tenta aplicar como default
+  # recomendado, mesmo sem Docker detectado (sem opt-in distinto, ao
+  # contrario da area state-backend).
+
+  if [ "$_srm_accept" != 1 ]; then
+    _SU_MCP_OUTCOME="skipped"
+    _SU_MCP_OUTCOME_REASON="recusado pelo usuario"
+    log_info "setup: [mcp] recusado — mcpServers.cstk-state NAO registrado."
+    return 0
+  fi
+
+  # FR-015/task 5.2.3 — SOMENTE `command -v docker` para o TEXTO do
+  # aviso; NUNCA invocar docker funcionalmente aqui (mcp-docker.sh e o
+  # UNICO ponto autorizado, e nao e chamado por esta area).
+  _srm_docker_warning=""
+  if ! command -v docker >/dev/null 2>&1; then
+    _srm_docker_warning="Docker nao encontrado no PATH — o registro ficara INERTE ate Docker estar disponivel; execucoes 00c degradam sozinhas para bash-fallback nesse meio-tempo."
+  fi
+
+  if _srm_install_out=$(_mcp_cmd_install --project-path "$_srm_pap" 2>&1); then
+    _srm_rc=0
+  else
+    _srm_rc=$?
+  fi
+
+  if [ "$_srm_rc" = 0 ]; then
+    _SU_MCP_OUTCOME="applied"
+    _SU_MCP_OUTCOME_REASON=""
+    log_info "setup: [mcp] aplicado (mcpServers.cstk-state registrado)."
+
+    # task 5.2.4 — jq ausente cai em print_paste_block (exit 0 preservado
+    # por _mcp_cmd_install); mesmo tratamento de 3.2.3 (hooks
+    # paste-instructed): applied com aviso de acao manual pendente, nunca
+    # applied cego.
+    case "$_srm_install_out" in
+      *"jq ausente"*)
+        _SU_MCP_OUTCOME_REASON="jq ausente — registro em .mcp.json exige colagem manual (bloco impresso acima); sem isso o servidor MCP NAO fica registrado"
+        log_warn "setup: [mcp] $_SU_MCP_OUTCOME_REASON"
+        ;;
+    esac
+
+    if [ -n "$_srm_docker_warning" ]; then
+      if [ -n "$_SU_MCP_OUTCOME_REASON" ]; then
+        _SU_MCP_OUTCOME_REASON="$_SU_MCP_OUTCOME_REASON; $_srm_docker_warning"
+      else
+        _SU_MCP_OUTCOME_REASON="$_srm_docker_warning"
+      fi
+      log_warn "setup: [mcp] $_srm_docker_warning"
+    fi
+  else
+    _SU_MCP_OUTCOME="failed"
+    _SU_MCP_OUTCOME_REASON="cstk mcp install falhou (exit $_srm_rc): $_srm_install_out"
+    log_error "setup: [mcp] $_SU_MCP_OUTCOME_REASON"
+  fi
+  return 0
+}
+
 setup_main() {
   if ! _setup_parse_args "$@"; then
     return 2
@@ -780,9 +919,13 @@ setup_main() {
   _setup_run_state_backend_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
   log_info "setup: [state-backend] outcome=$_SU_SB_OUTCOME"
 
-  log_info "setup: areas restantes (mcp, telemetry) ainda nao implementadas nesta versao (FASE 4 de 8)."
+  _setup_run_mcp_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
+  log_info "setup: [mcp] outcome=$_SU_MCP_OUTCOME"
 
-  if [ "$_SU_HOOKS_OUTCOME" = "failed" ] || [ "$_SU_SB_OUTCOME" = "failed" ]; then
+  log_info "setup: area restante (telemetry) ainda nao implementada nesta versao (FASE 5 de 8)."
+
+  if [ "$_SU_HOOKS_OUTCOME" = "failed" ] || [ "$_SU_SB_OUTCOME" = "failed" ] \
+    || [ "$_SU_MCP_OUTCOME" = "failed" ]; then
     return 1
   fi
   return 0
