@@ -26,5 +26,8 @@ export {
   ModelUsageMiniList, ModelUsageEmpty, modelUsageColor,
   ModelUsageDetailPanel, ModelUsageStageBreakdown,
 } from './ModelUsage.js';
+export {
+  LooseUsageDetailPanel, LooseUsageEmpty, LooseUsageComparisonTable,
+} from './LooseUsage.js';
 export { Sparkline, Donut, BarH, TruncatedBarH, Legend, StackedBars, StackedBarsH, Histogram, ScatterChart } from './charts.js';
 export type { DonutDatum, BarHDatum, LegendItem, StackedBarsProps, StackedBarsHProps, HistogramProps, ScatterDatum, TruncatedBarHProps } from './charts.js';

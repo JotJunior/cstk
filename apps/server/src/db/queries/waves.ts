@@ -73,6 +73,19 @@ export function hasModelUsage(db: Database.Database): boolean {
   return hasTable(db, 'wave_model_usage');
 }
 
+/**
+ * True quando a base tem a tabela `loose_usage` (schema v13, cstk 6.6.0) —
+ * consumo AVULSO de sessoes interativas, fora de qualquer execucao 00c.
+ *
+ * Grao processo x segmento x modelo, sem `feature`/`wave`/`execution_id` por
+ * construcao (dec-005 do cstk: preencher com sentinela seria fabricar dado).
+ * Vive aqui junto das demais sondas de capacidade apesar de nao ser grao-onda.
+ * Ref: ../cstk/docs/specs/loose-usage-capture/data-model.md.
+ */
+export function hasLooseUsage(db: Database.Database): boolean {
+  return hasTable(db, 'loose_usage');
+}
+
 /** As 5 colunas de consumo medido por telemetria introduzidas no schema v11. */
 export const OTEL_USAGE_COLUMNS = [
   'otel_cost_usd',
