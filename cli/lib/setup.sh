@@ -82,6 +82,17 @@ set -eu
 # carve-out); setup.sh reusa hooks_main/apply_guard_hooks de la — nenhum
 # mecanismo de merge JSON novo (FASE 3, contracts/cli-setup.md §2.4).
 . "${CSTK_LIB}/hooks.sh"
+# shellcheck source=./config.sh
+# config.sh delega puramente a state-backend.sh (fonte unica de decisao de
+# backend, Decision 2 de state-backend-config) — setup.sh reusa
+# config_state_backend_resolve/enable_sqlite de la (FASE 4, contracts/
+# cli-setup.md §3). Nenhuma logica de parsing/decisao nova aqui.
+. "${CSTK_LIB}/config.sh"
+# shellcheck source=./doctor.sh
+# doctor.sh fornece _doctor_deps_run, reusada COMO TEXTO DE DIAGNOSTICO
+# quando a area state-backend fica unavailable (task 4.4.1) — nenhuma
+# reimplementacao de deteccao de sqlite3/jq.
+. "${CSTK_LIB}/doctor.sh"
 
 _setup_usage() {
   cat <<'HELP'
@@ -515,6 +526,218 @@ _setup_run_hooks_area() {
   return 0
 }
 
+# ============================================================================
+# Area de state backend (FASE 4 — tasks.md; contract em
+# contracts/cli-setup.md §3; data-model.md Entity ConfigurationArea, linha
+# `state-backend`, e Nota "unavailable").
+#
+# **Investigacao empirica (task 4.1)**: os 6 valores de `reason=`
+# produzidos por `_sb_cmd_resolve` (state-backend.sh:234-269) foram
+# enumerados rodando `resolve` nos 4 cenarios exigidos (nunca-configurado,
+# `state_backend=json` explicito, `state_backend=sqlite` explicito, config
+# ausente) sobre um `HOME` sandboxado real:
+#   nunca-configurado                          (config ausente OU sem a chave)
+#   config-invalida                            (linha sem `=`)
+#   json-explicito                             (`state_backend=json`)
+#   configurado-dependencia-adequada           (`state_backend=sqlite` + sqlite3 >= 3.45.1)
+#   configurado-dependencia-abaixo-do-minimo   (`state_backend=sqlite` + sqlite3 < 3.45.1 — via codigo, `_sb_version_ge`)
+#   configurado-dependencia-ausente            (`state_backend=sqlite` + sqlite3 ausente do PATH — via codigo)
+# Nenhum valor alem destes 6 e produzido pelo case fechado de
+# `_sb_cmd_resolve` (verificado por leitura de state-backend.sh:234-269) —
+# nunca inventado (Constitution VI).
+#
+# **`config_state_backend_capability`** (cli/lib/config.sh:90) NAO checa
+# sqlite3 — imprime `_SB_CAPABILITY_TOKEN` fixo ("1", state-backend.sh:72),
+# um identificador de versao do RUNTIME usado so internamente por
+# `enable-sqlite` (P8, checagem de catalogo instalado). Nao e a fonte para
+# detectar dependencia ausente/abaixo do minimo — essa informacao ja vem
+# EMBUTIDA no `reason=` de `resolve` quando o backend foi declarado
+# sqlite (o caminho `declarado -> sqlite` de `_sb_cmd_resolve` chama
+# `_sb_check_sqlite3` internamente). Portanto a area NUNCA chama
+# `capability` para decidir status — o mapeamento abaixo e suficiente e
+# nao duplica logica de decisao (Decision 2).
+#
+# **Mapeamento reason -> status** (reconcilia data-model.md com a US2 AC3
+# — "escolha deliberada de manter o backend legado NAO e migrada nem
+# reportada como not-configured"):
+#   nunca-configurado, config-invalida                    -> not-configured (nenhuma escolha feita ainda)
+#   json-explicito, configurado-dependencia-adequada       -> configured   (escolha explicita e funcional — inclui US2 AC3)
+#   configurado-dependencia-ausente,
+#   configurado-dependencia-abaixo-do-minimo               -> unavailable  (escolha sqlite feita, dependencia quebrada; um `enable-sqlite` recusaria com exit 3 sem nenhuma escrita — data-model.md Nota "unavailable")
+# ============================================================================
+
+# _setup_state_backend_status_from_reason REASON -> stdout:
+# configured|not-configured|unavailable. Fail-closed (I5): reason fora do
+# dominio conhecido (runtime futuro/desconhecido) NUNCA vira 'configured'.
+_setup_state_backend_status_from_reason() {
+  case "$1" in
+    nunca-configurado | config-invalida)
+      printf 'not-configured\n'
+      ;;
+    json-explicito | configurado-dependencia-adequada)
+      printf 'configured\n'
+      ;;
+    configurado-dependencia-ausente | configurado-dependencia-abaixo-do-minimo)
+      printf 'unavailable\n'
+      ;;
+    *)
+      printf 'unavailable\n'
+      ;;
+  esac
+}
+
+# _setup_detect_state_backend_area -> preenche globais:
+#   _SU_SB_EFFECTIVE  sqlite|json (cru de resolve)
+#   _SU_SB_REASON     motivo cru de resolve
+#   _SU_SB_STATUS     configured|not-configured|unavailable
+_setup_detect_state_backend_area() {
+  _SU_SB_EFFECTIVE="json"
+  _SU_SB_REASON="config_state_backend_resolve indisponivel"
+  _SU_SB_STATUS="unavailable"
+
+  if ! _sdsb_out=$(config_state_backend_resolve 2>/dev/null); then
+    return 0
+  fi
+  if [ -z "$_sdsb_out" ]; then
+    return 0
+  fi
+
+  _sdsb_old_ifs=$IFS
+  IFS='
+'
+  for _sdsb_line in $_sdsb_out; do
+    case "$_sdsb_line" in
+      effective_backend=*) _SU_SB_EFFECTIVE=${_sdsb_line#effective_backend=} ;;
+      reason=*) _SU_SB_REASON=${_sdsb_line#reason=} ;;
+    esac
+  done
+  IFS=$_sdsb_old_ifs
+
+  _SU_SB_STATUS=$(_setup_state_backend_status_from_reason "$_SU_SB_REASON")
+  return 0
+}
+
+# _setup_run_state_backend_area PROJECT_PATH MODE DRY_RUN
+#
+# Orquestra a area 'state-backend' de ponta a ponta (FASE 4):
+#   1. Deteccao read-only (sempre roda, mesmo em --dry-run) — task 4.2.1
+#   2. FR-017: rotulo de ESCOPO GLOBAL exibido SEMPRE, antes de qualquer
+#      decisao e mesmo em --dry-run — task 4.2.3
+#   3. `unavailable` -> outcome=failed, ZERO chamada de aplicacao (mesmo
+#      padrao I6 de hooks); diagnostico de `_doctor_deps_run` anexado —
+#      task 4.3.3/4.4.1
+#   4. `configured` -> outcome=already-configured, ZERO chamada (I1) —
+#      cobre tanto sqlite funcional quanto json deliberado (US2 AC3)
+#   5. `not-configured` -> decide: interativo pergunta sempre; `--yes`
+#      SO aplica quando reason indica ausencia de configuracao (task
+#      4.1.3 + achado SEC-04 — opt-in equivalente ao de loose-usage: o
+#      aviso FR-017 explicito + o escopo restrito a "nunca decidiu nada"
+#      sao o sinal equivalente; nunca migra json-explicito nem re-tenta
+#      dependencia quebrada, que ja caiu em unavailable acima)
+#
+# Preenche _SU_SB_OUTCOME (already-configured|applied|skipped|failed) e
+# _SU_SB_OUTCOME_REASON (motivo legivel).
+_setup_run_state_backend_area() {
+  _srsb_pap=$1
+  _srsb_mode=$2
+  _srsb_dry=$3
+
+  _setup_detect_state_backend_area
+
+  # FR-017 — rotulo de escopo GLOBAL, sempre, antes de qualquer decisao
+  # (inclusive --dry-run). As outras 3 areas NAO carregam este rotulo.
+  log_info "setup: [state-backend] ESCOPO GLOBAL — esta area escreve em \$HOME/.claude/cstk/config e vale para TODOS os projetos desta maquina, nao apenas $_srsb_pap."
+  log_info "setup: [state-backend] status atual = $_SU_SB_STATUS (effective_backend=$_SU_SB_EFFECTIVE, reason=$_SU_SB_REASON)"
+
+  case "$_SU_SB_STATUS" in
+    configured)
+      _SU_SB_OUTCOME="already-configured"
+      _SU_SB_OUTCOME_REASON=""
+      log_info "setup: [state-backend] ja configurado — nenhuma chamada de aplicacao (I1)."
+      return 0
+      ;;
+    unavailable)
+      _SU_SB_OUTCOME="failed"
+      _SU_SB_OUTCOME_REASON="$_SU_SB_REASON"
+      log_error "setup: [state-backend] $_SU_SB_REASON"
+      if command -v _doctor_deps_run >/dev/null 2>&1; then
+        # `_doctor_deps_run` retorna exit 1 quando ha anomalia — que e
+        # EXATAMENTE o caso em que estamos exibindo o diagnostico. Nao
+        # usar `|| _srsb_diag=""` aqui: sob `||`, a atribuicao ja
+        # concluida seria sobrescrita por string vazia so por causa do
+        # exit != 0 do lado direito, apagando o proprio texto que
+        # queremos mostrar.
+        if _srsb_diag=$(_doctor_deps_run 2>/dev/null); then :; else :; fi
+        if [ -n "$_srsb_diag" ]; then
+          log_error "setup: [state-backend] diagnostico (cstk doctor --deps):"
+          printf '%s\n' "$_srsb_diag" >&2
+        fi
+      fi
+      log_error "setup: [state-backend] nenhuma chamada de aplicacao sera feita."
+      return 0
+      ;;
+  esac
+
+  # not-configured a partir daqui.
+  if [ "$_srsb_dry" = 1 ]; then
+    _SU_SB_OUTCOME="skipped"
+    _SU_SB_OUTCOME_REASON="preview: nenhuma alteracao aplicada"
+    log_info "setup: [state-backend] preview — ativaria state_backend=sqlite em \$HOME/.claude/cstk/config (escopo global, nao aplicado)."
+    return 0
+  fi
+
+  _srsb_accept=0
+  if [ "$_srsb_mode" = "interactive" ]; then
+    if _setup_prompt_yn "setup: [state-backend] ativar backend sqlite GLOBALMENTE (\$HOME/.claude/cstk/config, afeta todos os projetos)? [y/N]"; then
+      _srsb_accept=1
+    fi
+  else
+    # --yes (non-interactive): SEC-04 — so aplica quando reason indica
+    # AUSENCIA de configuracao (task 4.1.3); preserva US2 AC3 (json
+    # deliberado nunca migra) e nunca re-tenta dependencia quebrada
+    # (unavailable, tratado acima).
+    case "$_SU_SB_REASON" in
+      nunca-configurado | config-invalida)
+        _srsb_accept=1
+        ;;
+    esac
+  fi
+
+  if [ "$_srsb_accept" != 1 ]; then
+    _SU_SB_OUTCOME="skipped"
+    _SU_SB_OUTCOME_REASON="recusado pelo usuario, ou --yes sem sinal equivalente de opt-in (SEC-04) para reason=$_SU_SB_REASON"
+    log_info "setup: [state-backend] nao aplicado — $_SU_SB_OUTCOME_REASON"
+    return 0
+  fi
+
+  if _srsb_apply_out=$(config_state_backend_enable_sqlite 2>&1); then
+    _srsb_rc=0
+  else
+    _srsb_rc=$?
+  fi
+
+  if [ "$_srsb_rc" = 0 ]; then
+    _SU_SB_OUTCOME="applied"
+    _SU_SB_OUTCOME_REASON=""
+    log_info "setup: [state-backend] aplicado (state_backend=sqlite, escopo global)."
+  else
+    _SU_SB_OUTCOME="failed"
+    _SU_SB_OUTCOME_REASON="enable-sqlite falhou (exit $_srsb_rc): $_srsb_apply_out"
+    log_error "setup: [state-backend] $_SU_SB_OUTCOME_REASON"
+    if [ "$_srsb_rc" = 3 ] && command -v _doctor_deps_run >/dev/null 2>&1; then
+      # Ver comentario acima (case unavailable) — nao usar `|| X=""` aqui,
+      # apagaria o diagnostico capturado quando `_doctor_deps_run` sinaliza
+      # anomalia via exit 1.
+      if _srsb_diag=$(_doctor_deps_run 2>/dev/null); then :; else :; fi
+      if [ -n "$_srsb_diag" ]; then
+        log_error "setup: [state-backend] diagnostico (cstk doctor --deps):"
+        printf '%s\n' "$_srsb_diag" >&2
+      fi
+    fi
+  fi
+  return 0
+}
+
 setup_main() {
   if ! _setup_parse_args "$@"; then
     return 2
@@ -554,9 +777,12 @@ setup_main() {
   _setup_run_hooks_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
   log_info "setup: [hooks] outcome=$_SU_HOOKS_OUTCOME"
 
-  log_info "setup: areas restantes (state-backend, mcp, telemetry) ainda nao implementadas nesta versao (FASE 3 de 8)."
+  _setup_run_state_backend_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
+  log_info "setup: [state-backend] outcome=$_SU_SB_OUTCOME"
 
-  if [ "$_SU_HOOKS_OUTCOME" = "failed" ]; then
+  log_info "setup: areas restantes (mcp, telemetry) ainda nao implementadas nesta versao (FASE 4 de 8)."
+
+  if [ "$_SU_HOOKS_OUTCOME" = "failed" ] || [ "$_SU_SB_OUTCOME" = "failed" ]; then
     return 1
   fi
   return 0

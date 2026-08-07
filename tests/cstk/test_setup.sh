@@ -45,8 +45,24 @@
 #      Scenario 15) — status=unavailable distingue "nao consegui
 #      verificar" do texto de divergent ("esta errado").
 #
-# Ref: docs/specs/cstk-setup/tasks.md FASE 1, FASE 3;
-#      contracts/cli-setup.md §1, §2.
+# FASE 4 (area de state-backend, contracts/cli-setup.md §3):
+#  13  scenario_state_backend_deliberate_json_not_migrated (task 4.1.4,
+#      quickstart Scenario 3, US2 AC3) — `state_backend=json` explicito e
+#      reportado como already-configured (nunca not-configured) e `--yes`
+#      NAO migra para sqlite.
+#  14  scenario_state_backend_global_label_shown (task 4.2.4, quickstart
+#      Scenario 16 parte FR-017) — rotulo de escopo GLOBAL aparece so na
+#      area state-backend (inclusive em --dry-run), nunca em hooks.
+#  15  scenario_state_backend_unavailable_sqlite_missing (task 4.3.4,
+#      quickstart Scenario 7) — sqlite3 ausente do PATH que o SUT enxerga
+#      (state_backend=sqlite declarado) => area failed, zero escrita,
+#      exit 1; o wizard prossegue (nao aborta o processo).
+#  16  scenario_state_backend_doctor_diagnostic_surfaced (task 4.4.2) —
+#      texto de `cstk doctor --deps` (sqlite3 presente+versao) aparece no
+#      motivo exibido para status=unavailable.
+#
+# Ref: docs/specs/cstk-setup/tasks.md FASE 1, FASE 3, FASE 4;
+#      contracts/cli-setup.md §1, §2, §3.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -91,11 +107,17 @@ _make_fake_catalog() {
 # (tests/cstk/test_hooks.sh) — PATH curado SEM jq, para exercitar o
 # caminho paste-instructed (jq ausente). Inclui `cmp` (freshness) e `sh`
 # (necessario para o proprio `env -i PATH=... sh "$CSTK" ...` executar).
+# Inclui `sqlite3` deliberadamente (FASE 4): este shim so quer isolar jq
+# — sem sqlite3 no PATH, a area state-backend (agora ativa) tentaria
+# `enable-sqlite` (reason=nunca-configurado) e falharia com exit 3,
+# mudando o exit code GERAL do wizard e quebrando cenarios desta area que
+# testam so o comportamento de `hooks`. Cenarios que precisam de sqlite3
+# genuinamente ausente usam `_make_shim_path_no_sqlite3` (abaixo).
 _make_shim_path_no_jq() {
   _msp_dir=$(mktemp -d "$TMPDIR_TEST/shimbin.XXXXXX")
   for _msp_c in sh mktemp awk sed grep find head printf cp mv rm mkdir \
                 chmod ls dirname basename tr cut wc env command sort \
-                uniq date cat cmp; do
+                uniq date cat cmp sqlite3; do
     _msp_src=$(command -v "$_msp_c" 2>/dev/null) || continue
     [ -n "$_msp_src" ] || continue
     ln -sf "$_msp_src" "$_msp_dir/$_msp_c" 2>/dev/null || :
@@ -554,6 +576,207 @@ scenario_hooks_unavailable_status_reason() {
     *)
       _fail "scenario_hooks_unavailable_status_reason" \
         "reason nao distingue 'nao consegui verificar': $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
+# ==== Helpers FASE 4 (area de state-backend) ====
+
+# _make_shim_path_no_sqlite3 -> mesmo padrao de _make_shim_path_no_jq:
+# PATH curado SEM sqlite3 nem jq (nenhum dos dois esta na allowlist copiada),
+# desacoplando a deteccao do SUT do PATH real do harness (gotcha registrado
+# no projeto — "PATH-stub nao esconde binario de /usr/bin": nao tentamos
+# "esconder" nada, construimos um PATH isolado que nunca inclui o dir onde
+# sqlite3 mora, em vez de tentar sobrepor um dir anterior).
+_make_shim_path_no_sqlite3() {
+  _mss_dir=$(mktemp -d "$TMPDIR_TEST/shimbin-nosqlite.XXXXXX")
+  for _mss_c in sh mktemp awk sed grep find head printf cp mv rm mkdir \
+                chmod ls dirname basename tr cut wc env command sort \
+                uniq date cat cmp; do
+    _mss_src=$(command -v "$_mss_c" 2>/dev/null) || continue
+    [ -n "$_mss_src" ] || continue
+    ln -sf "$_mss_src" "$_mss_dir/$_mss_c" 2>/dev/null || :
+  done
+  printf '%s' "$_mss_dir"
+}
+
+# ==== FASE 4 — Area de state-backend ====
+
+# ==== 4.1.4 escolha deliberada de json NAO e migrada (US2 AC3, quickstart
+# Scenario 3) ====
+
+scenario_state_backend_deliberate_json_not_migrated() {
+  _repo="$TMPDIR_TEST/repo-sb-json-deliberate"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-sb-json-deliberate"
+  mkdir -p "$_home/.claude/cstk"
+  printf 'state_backend=json\n' > "$_home/.claude/cstk/config"
+  chmod 600 "$_home/.claude/cstk/config"
+
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  case "$_CAPTURED_STDERR" in
+    *"[state-backend] status atual = configured"*"reason=json-explicito"*) : ;;
+    *)
+      _fail "scenario_state_backend_deliberate_json_not_migrated" \
+        "esperava status=configured com reason=json-explicito: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"[state-backend] ja configurado"*) : ;;
+    *)
+      _fail "scenario_state_backend_deliberate_json_not_migrated" \
+        "esperava 'ja configurado' (I1, zero chamada de aplicacao): $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+
+  _content_after=$(cat "$_home/.claude/cstk/config")
+  if [ "$_content_after" != "state_backend=json" ]; then
+    _fail "scenario_state_backend_deliberate_json_not_migrated" \
+      "--yes migrou a escolha deliberada de json para: $_content_after"
+    return 1
+  fi
+}
+
+# ==== 4.2.4 rotulo de escopo GLOBAL — FR-017 (quickstart Scenario 16) ====
+
+scenario_state_backend_global_label_shown() {
+  _repo="$TMPDIR_TEST/repo-sb-global-label"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-sb-global-label"
+  mkdir -p "$_home"
+
+  # (a) em --dry-run: rotulo aparece ANTES de qualquer decisao, mesmo sem
+  # aplicar nada.
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run
+  case "$_CAPTURED_STDERR" in
+    *"[state-backend] ESCOPO GLOBAL"*"TODOS os projetos"*) : ;;
+    *)
+      _fail "scenario_state_backend_global_label_shown" \
+        "rotulo de escopo global ausente em --dry-run: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+
+  # (b) em --yes tambem (nao so em preview).
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  case "$_CAPTURED_STDERR" in
+    *"[state-backend] ESCOPO GLOBAL"*) : ;;
+    *)
+      _fail "scenario_state_backend_global_label_shown" \
+        "rotulo de escopo global ausente em --yes: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+
+  # (c) as outras areas (hooks) NAO carregam esse rotulo.
+  _hooks_block=$(printf '%s\n' "$_CAPTURED_STDERR" | grep '\[hooks\]')
+  case "$_hooks_block" in
+    *"ESCOPO GLOBAL"*)
+      _fail "scenario_state_backend_global_label_shown" \
+        "area de hooks carregou o rotulo de escopo global (FR-017 restringe a state-backend)"
+      return 1
+      ;;
+  esac
+}
+
+# ==== 4.3.4 sqlite3 ausente/abaixo do minimo => area failed, isolada
+# (task 4.3.3, quickstart Scenario 7) ====
+
+scenario_state_backend_unavailable_sqlite_missing() {
+  _repo="$TMPDIR_TEST/repo-sb-unavailable"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-sb-unavailable"
+  mkdir -p "$_home/.claude/cstk"
+  # backend=sqlite ja declarado -> resolve() checa sqlite3 internamente e
+  # devolve reason=configurado-dependencia-ausente quando nao encontrado
+  # no PATH que o SUT enxerga.
+  printf 'state_backend=sqlite\n' > "$_home/.claude/cstk/config"
+  chmod 600 "$_home/.claude/cstk/config"
+  _shim=$(_make_shim_path_no_sqlite3)
+
+  capture env -i PATH="$_shim" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "scenario_state_backend_unavailable_sqlite_missing" \
+      "esperado exit 1 (area failed), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"[state-backend] status atual = unavailable"*"reason=configurado-dependencia-ausente"*) : ;;
+    *)
+      _fail "scenario_state_backend_unavailable_sqlite_missing" \
+        "esperava status=unavailable/reason=configurado-dependencia-ausente: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"[state-backend] nenhuma chamada de aplicacao sera feita."*) : ;;
+    *)
+      _fail "scenario_state_backend_unavailable_sqlite_missing" \
+        "esperava aviso de zero chamada de aplicacao: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  # config global INTOCADA (zero escrita sobre status=unavailable).
+  _content_after=$(cat "$_home/.claude/cstk/config")
+  if [ "$_content_after" != "state_backend=sqlite" ]; then
+    _fail "scenario_state_backend_unavailable_sqlite_missing" \
+      "config global foi escrita apesar de status=unavailable: $_content_after"
+    return 1
+  fi
+  # FR-009: o wizard prossegue apos a falha isolada — nao aborta o
+  # processo no meio da area; a linha de areas restantes ainda e emitida.
+  case "$_CAPTURED_STDERR" in
+    *"areas restantes"*) : ;;
+    *)
+      _fail "scenario_state_backend_unavailable_sqlite_missing" \
+        "wizard nao prosseguiu apos falha isolada em state-backend (FR-009): $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
+# ==== 4.4.2 diagnostico de `cstk doctor --deps` reusado quando unavailable
+# (task 4.4.1) ====
+
+scenario_state_backend_doctor_diagnostic_surfaced() {
+  _repo="$TMPDIR_TEST/repo-sb-doctor-diag"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-sb-doctor-diag"
+  mkdir -p "$_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_home/.claude/cstk/config"
+  chmod 600 "$_home/.claude/cstk/config"
+  _shim=$(_make_shim_path_no_sqlite3)
+
+  capture env -i PATH="$_shim" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  case "$_CAPTURED_STDERR" in
+    *"diagnostico (cstk doctor --deps)"*) : ;;
+    *)
+      _fail "scenario_state_backend_doctor_diagnostic_surfaced" \
+        "diagnostico de cstk doctor --deps ausente: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"sqlite3: presente=nao"*) : ;;
+    *)
+      _fail "scenario_state_backend_doctor_diagnostic_surfaced" \
+        "diagnostico nao cita sqlite3 presente=nao: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"minima=3.45.1"*) : ;;
+    *)
+      _fail "scenario_state_backend_doctor_diagnostic_surfaced" \
+        "diagnostico nao cita a versao minima exigida: $_CAPTURED_STDERR"
       return 1
       ;;
   esac

@@ -151,35 +151,35 @@ Ref: spec.md FR-016, SC-006; contracts/cli-setup.md §2.3 "Nao remedia sozinho";
 
 Ref: quickstart.md Scenario 3; research.md Decision 10; plan.md Riscos item 1; checklists/requirements.md CHK015
 
-- [ ] 4.1.1 Enumerar empiricamente os valores de `reason=` produzidos por `_sb_cmd_resolve` (`state-backend.sh:234-269`), rodando `resolve` nos cenarios: nunca-configurado, `state_backend=json` explicito, `state_backend=sqlite` explicito, config ausente
-- [ ] 4.1.2 Documentar os valores encontrados (citando `arquivo:linha`) — nunca inventar valor nao observado empiricamente (Constitution VI)
-- [ ] 4.1.3 Definir a regra de aplicacao: `--yes` so aplica `enable-sqlite` quando `reason` indicar ausencia de configuracao; qualquer `reason` que indique escolha explicita => `already-configured` (preserva US2 AC3)
-- [ ] 4.1.4 Teste: `scenario_state_backend_deliberate_json_not_migrated` (quickstart Scenario 3) — `state_backend=json` mantido de proposito; `--yes` NAO migra
+- [x] 4.1.1 Enumerar empiricamente os valores de `reason=` produzidos por `_sb_cmd_resolve` (`state-backend.sh:234-269`), rodando `resolve` nos cenarios: nunca-configurado, `state_backend=json` explicito, `state_backend=sqlite` explicito, config ausente
+- [x] 4.1.2 Documentar os valores encontrados (citando `arquivo:linha`) — nunca inventar valor nao observado empiricamente (Constitution VI)
+- [x] 4.1.3 Definir a regra de aplicacao: `--yes` so aplica `enable-sqlite` quando `reason` indicar ausencia de configuracao; qualquer `reason` que indique escolha explicita => `already-configured` (preserva US2 AC3)
+- [x] 4.1.4 Teste: `scenario_state_backend_deliberate_json_not_migrated` (quickstart Scenario 3) — `state_backend=json` mantido de proposito; `--yes` NAO migra
 
 ### 4.2 Deteccao e rotulo de escopo global `[A]`
 
 Ref: spec.md FR-002, FR-017; contracts/cli-setup.md §3.1, §3.2, §3.4
 
-- [ ] 4.2.1 Chamar `config_state_backend_resolve` (`cli/lib/config.sh:94`) para obter `effective_backend=`/`reason=` (contrato de nao-falha, sempre exit 0)
-- [ ] 4.2.2 Chamar `config_state_backend_capability` para checar `sqlite3` ausente/abaixo de `3.45.1` — mapear para `status=unavailable` com motivo
-- [ ] 4.2.3 (FR-017) Antes de aplicar E em `--dry-run`, declarar explicitamente que a mudanca e escrita em `$HOME/.claude/cstk/config` e vale para TODOS os projetos da maquina — as outras 3 areas NAO carregam esse rotulo
-- [ ] 4.2.4 Teste: `scenario_state_backend_global_label_shown` (quickstart Scenario 16, parte FR-017) — rotulo global aparece so na area `state-backend`, inclusive em `--dry-run`; linha do summary repete a marca
+- [x] 4.2.1 Chamar `config_state_backend_resolve` (`cli/lib/config.sh:94`) para obter `effective_backend=`/`reason=` (contrato de nao-falha, sempre exit 0)
+- [x] 4.2.2 ~~Chamar `config_state_backend_capability`~~ — achado empirico (4.1): `capability` imprime so um token fixo de versao de runtime (`_SB_CAPABILITY_TOKEN="1"`, state-backend.sh:72), usado internamente por `enable-sqlite`/P8; NAO checa sqlite3. O sinal de `sqlite3` ausente/abaixo do minimo ja vem embutido no `reason=` de `resolve` (`configurado-dependencia-ausente`/`configurado-dependencia-abaixo-do-minimo`, produzido quando o backend foi declarado `sqlite`) — mapeado para `status=unavailable` em `_setup_state_backend_status_from_reason` (cli/lib/setup.sh) sem nenhuma chamada adicional. Ver comentario de cabecalho da area em `cli/lib/setup.sh` para o mapeamento completo reason->status.
+- [x] 4.2.3 (FR-017) Antes de aplicar E em `--dry-run`, declarar explicitamente que a mudanca e escrita em `$HOME/.claude/cstk/config` e vale para TODOS os projetos da maquina — as outras 3 areas NAO carregam esse rotulo
+- [x] 4.2.4 Teste: `scenario_state_backend_global_label_shown` (quickstart Scenario 16, parte FR-017) — rotulo global aparece so na area `state-backend`, inclusive em `--dry-run`; linha do summary repete a marca (repeticao no summary consolidado fica para a FASE 7, quando o `SetupRunSummary` for implementado — nao existe ainda)
 
 ### 4.3 Aplicacao com opt-in equivalente (achado SEC-04) `[C]`
 
 Ref: spec.md FR-005; checklists/requirements.md CHK004; plan.md §Re-check de Constitution SEC-04
 
-- [ ] 4.3.1 Chamar `config_state_backend_enable_sqlite` (`cli/lib/config.sh:98`) somente quando 4.1.3 autorizar E (usuario aceita interativamente OU `--yes` com `reason` de ausencia de configuracao)
-- [ ] 4.3.2 (achado SEC-04) `--yes` NAO deve gravar a config global sem um sinal equivalente ao opt-in ja exigido para loose-usage — aplicar o mesmo padrao de "aviso explicito + default conservador quando ambiguo" antes de escrever fora do escopo do projeto
-- [ ] 4.3.3 Isolar falha de `enable-sqlite` (`sqlite3` ausente/abaixo do minimo, exit 3) como outcome `failed` da area, sem interromper as areas seguintes (FR-009)
-- [ ] 4.3.4 Teste: `scenario_state_backend_unavailable_sqlite_missing` (quickstart Scenario 7) — `sqlite3` ausente/abaixo de `3.45.1` => area `failed`; `mcp` e `telemetry` (areas seguintes na ordem fixa) continuam sendo percorridas e reportam outcome proprio
+- [x] 4.3.1 Chamar `config_state_backend_enable_sqlite` (`cli/lib/config.sh:98`) somente quando 4.1.3 autorizar E (usuario aceita interativamente OU `--yes` com `reason` de ausencia de configuracao)
+- [x] 4.3.2 (achado SEC-04) `--yes` NAO deve gravar a config global sem um sinal equivalente ao opt-in ja exigido para loose-usage — aplicar o mesmo padrao de "aviso explicito + default conservador quando ambiguo" antes de escrever fora do escopo do projeto. Implementado como: o aviso FR-017 (4.2.3) e SEMPRE exibido antes de decidir, em qualquer modo; e o "default conservador" e `--yes` so aplicar quando `reason` prova que NENHUMA escolha foi feita (`nunca-configurado`/`config-invalida`) — nunca migra `json-explicito` (US2 AC3) nem re-tenta uma dependencia ja conhecida como quebrada (`unavailable`, tratado sem chamada).
+- [x] 4.3.3 Isolar falha de `enable-sqlite` (`sqlite3` ausente/abaixo do minimo, exit 3) como outcome `failed` da area, sem interromper as areas seguintes (FR-009)
+- [x] 4.3.4 Teste: `scenario_state_backend_unavailable_sqlite_missing` (quickstart Scenario 7) — `sqlite3` ausente/abaixo de `3.45.1` => area `failed`; `mcp` e `telemetry` (areas seguintes na ordem fixa) continuam sendo percorridas e reportam outcome proprio (verificado ate onde essas areas existem nesta versao — `mcp`/`telemetry` ainda sao FASES futuras; o teste confirma que o wizard prossegue apos a falha isolada, exibindo a linha de areas restantes)
 
 ### 4.4 Diagnostico complementar via `cstk doctor --deps` `[M]`
 
 Ref: contracts/cli-setup.md §3.4
 
-- [ ] 4.4.1 Reusar `_doctor_deps_run` (`cli/lib/doctor.sh:408-474`) como texto de diagnostico quando a area fica `unavailable`
-- [ ] 4.4.2 Teste: `scenario_state_backend_doctor_diagnostic_surfaced` — texto de `doctor --deps` (sqlite3/jq presente+versao) aparece no motivo exibido para `unavailable`
+- [x] 4.4.1 Reusar `_doctor_deps_run` (`cli/lib/doctor.sh:408-474`) como texto de diagnostico quando a area fica `unavailable`
+- [x] 4.4.2 Teste: `scenario_state_backend_doctor_diagnostic_surfaced` — texto de `doctor --deps` (sqlite3/jq presente+versao) aparece no motivo exibido para `unavailable`
 
 ---
 
