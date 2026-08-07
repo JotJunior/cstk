@@ -217,3 +217,26 @@ Invariantes:
 - **I6 (FR-016)**: a partir de `divergent` nao ha chamada de comando de
   aplicacao. O wizard nao sobrescreve o que nao reconhece; so relata e
   instrui.
+
+---
+
+## Defaults sob `--yes` (consolidado — CHK005)
+
+Tabela unica "area → o que `--yes` (mode=non-interactive) de fato faz
+quando a area esta `not-configured`", substituindo a dispersao anterior
+em quatro locais (comentarios de `cli/lib/setup.sh` por area + esta
+entidade + `tasks.md`). So se aplica a partir de `not-configured`:
+`configured` nunca aplica (I1), e `divergent`/`unavailable` nunca aplicam
+(I5/I6) — em nenhum modo, `--yes` incluido.
+
+| `id` | Default sob `--yes` | Fonte (arquivo:linha) |
+|------|----------------------|------------------------|
+| `hooks` (obrigatorios) | **Sempre aplica** — `_srh_accept_mandatory` permanece `1` fora do `mode=interactive` (nenhum gate adicional) | `cli/lib/setup.sh:482-487` |
+| `hooks` → `loose_usage` (opt-in) | **Sempre recusa** (`_srh_with_loose` permanece `0` fora do `mode=interactive`) — unica sub-area cujo default recomendado e "nao" | `cli/lib/setup.sh:498-503`; `data-model.md` linha `loose_usage_choice` acima |
+| `state-backend` | **Condicional ao `reason`** (task 4.1.3/4.3.2, achado SEC-04): aplica so quando `reason` prova AUSENCIA de escolha previa (`nunca-configurado` ou `config-invalida`); qualquer outro `reason` (ex.: `json-explicito`) => nao aplica, preserva US2 AC3 | `cli/lib/setup.sh:725-734` |
+| `mcp` | **Sempre aplica** — `_srm_accept` permanece `1` fora do `mode=interactive`; tenta `_mcp_cmd_install` mesmo sem Docker detectado (`command -v docker` so gera o TEXTO do aviso, nunca bloqueia — FR-015), sem opt-in distinto (ao contrario de `state-backend`) | `cli/lib/setup.sh:842-865` |
+| `telemetry` | **N/A** — area 100% read-only (FR-012); `--yes` nao tem efeito nenhum, so o diagnostico de `otel-usage.sh preflight` e exibido; `applied` e INALCANCAVEL nesta area em qualquer modo | `cli/lib/setup.sh:973-978` |
+
+> Nenhum destes defaults e overridable por flag dedicada (FR-018 — ver
+> `contracts/cli-setup.md` §1, "Flags"): a unica alavanca de modo e a
+> precedencia `--dry-run` > `--yes` > interativo (FR-006).

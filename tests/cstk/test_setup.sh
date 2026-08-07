@@ -101,8 +101,20 @@
 #      de `_GH_HOOKS` foram verificados, sem implicar auditoria do
 #      `settings.json`/`.mcp.json` inteiro.
 #
+# FASE 8 (integracao — tasks.md 8.1.3, quickstart Scenario 1):
+#  24  scenario_interactive_happy_path_accepts_all (task 8.1.3) — UNICO
+#      cenario que roda em mode=interactive de verdade (sem --yes/--dry-run),
+#      via CSTK_FORCE_INTERACTIVE=1 (bypassa require_tty, ui.sh:43) +
+#      stdin alimentado com as respostas dos 4 prompts reais na ordem fixa
+#      (hooks-mandatorio, loose-usage, state-backend, mcp — telemetria
+#      nunca pergunta, FR-012): y/n/y/y (quickstart Scenario 1: afirmativa
+#      p/ hooks, negativa p/ loose usage). Todos os demais 23 cenarios
+#      usam --yes/--dry-run, que pulam _setup_prompt_yn inteiramente — este
+#      e o unico que exercita a leitura de stdin do wizard de ponta a
+#      ponta.
+#
 # Ref: docs/specs/cstk-setup/tasks.md FASE 1, FASE 3, FASE 4, FASE 5,
-#      FASE 6, FASE 7; contracts/cli-setup.md §1, §2, §3, §5.
+#      FASE 6, FASE 7, FASE 8; contracts/cli-setup.md §1, §2, §3, §5.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -1220,6 +1232,88 @@ scenario_summary_declares_verification_scope() {
       return 1
       ;;
   esac
+}
+
+# ==== FASE 8 — Integracao: modo interativo real (task 8.1.3) ====
+
+# ==== 8.1.3 happy path interativo aceitando os 4 prompts (quickstart
+# Scenario 1) ====
+
+scenario_interactive_happy_path_accepts_all() {
+  if ! command -v jq >/dev/null 2>&1; then
+    _error "no_jq" "jq nao disponivel no ambiente — cenario exige jq presente no PATH real para os merges de hooks/mcp ocorrerem de verdade"
+  fi
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    _error "no_sqlite3" "sqlite3 nao disponivel no ambiente — cenario exige sqlite3 presente no PATH real para enable-sqlite aplicar de verdade"
+  fi
+
+  _repo="$TMPDIR_TEST/repo-interactive-happy"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-interactive-happy"
+  mkdir -p "$_home"
+  _cat=$(_make_fake_catalog "$_home")
+
+  # Sem --yes/--dry-run -> mode=interactive (_setup_resolve_mode). Os 4
+  # prompts reais de _setup_prompt_yn, na ordem em que o wizard os emite:
+  #   1. [hooks] instalar os hooks obrigatorios agora?      -> y
+  #   2. [hooks] tambem habilitar loose usage (default nao)? -> n
+  #   3. [state-backend] ativar backend sqlite GLOBALMENTE?  -> y
+  #   4. [mcp] registrar o servidor de estado MCP agora?     -> y
+  # (telemetria e 100% read-only, FR-012 — nunca pergunta.)
+  capture env CSTK_FORCE_INTERACTIVE=1 HOME="$_home" \
+    CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" <<EOF
+y
+n
+y
+y
+EOF
+
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_interactive_happy_path_accepts_all" \
+      "esperado exit 0, obtido $_CAPTURED_EXIT (stdout: $_CAPTURED_STDOUT; stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+
+  # As 4 areas presentes no summary final (FR-010), ordem fixa de FR-001.
+  for _a in "hooks" "state-backend" "mcp" "telemetry"; do
+    case "$_CAPTURED_STDOUT" in
+      *"$_a "*) : ;;
+      *)
+        _fail "scenario_interactive_happy_path_accepts_all" \
+          "summary nao lista a area '$_a': $_CAPTURED_STDOUT"
+        return 1
+        ;;
+    esac
+  done
+
+  # hooks obrigatorios de fato provisionados apos aceite interativo (y).
+  if [ ! -f "$_repo/.claude/hooks/pretooluse-bash-guard.sh" ]; then
+    _fail "scenario_interactive_happy_path_accepts_all" \
+      "hooks obrigatorios nao foram aplicados apesar do aceite interativo (y)"
+    return 1
+  fi
+
+  # loose usage recusado interativamente (n) -> hook opt-in NAO provisionado.
+  if [ -f "$_repo/.claude/hooks/posttooluse-loose-usage.sh" ]; then
+    _fail "scenario_interactive_happy_path_accepts_all" \
+      "loose usage foi provisionado apesar da resposta negativa (n)"
+    return 1
+  fi
+
+  # state-backend aceito interativamente (y) -> config global GRAVADA.
+  if ! grep -q '^state_backend=sqlite$' "$_home/.claude/cstk/config" 2>/dev/null; then
+    _fail "scenario_interactive_happy_path_accepts_all" \
+      "state-backend nao foi migrado apesar do aceite interativo (y); config: $(cat "$_home/.claude/cstk/config" 2>/dev/null)"
+    return 1
+  fi
+
+  # mcp aceito interativamente (y) -> .mcp.json ESCRITO no projeto.
+  if ! grep -Fq -- '"cstk-state"' "$_repo/.mcp.json" 2>/dev/null; then
+    _fail "scenario_interactive_happy_path_accepts_all" \
+      ".mcp.json nao foi escrito apesar do aceite interativo (y)"
+    return 1
+  fi
 }
 
 run_all_scenarios

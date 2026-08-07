@@ -250,8 +250,8 @@ Ref: checklists/security.md CHK009; plan.md §Re-check de Constitution SEC-07
 
 Ref: checklists/requirements.md CHK005
 
-- [ ] 7.3.1 Criar tabela unica "area -> default aplicado sob `--yes`" (hooks obrigatorios=aplicar; loose-usage=skip; state-backend=condicional a 4.1.3; mcp=aplicar mesmo sem Docker; telemetry=N/A, so diagnostico) em `data-model.md` ou `contracts/cli-setup.md`, substituindo a dispersao atual em 4 locais
-- [ ] 7.3.2 Validar a tabela consolidada com o gate `validate-documentation` (tarefa documental, sem teste automatizado de codigo aplicavel)
+- [x] 7.3.1 Criar tabela unica "area -> default aplicado sob `--yes`" (hooks obrigatorios=aplicar; loose-usage=skip; state-backend=condicional a 4.1.3; mcp=aplicar mesmo sem Docker; telemetry=N/A, so diagnostico) em `data-model.md` ou `contracts/cli-setup.md`, substituindo a dispersao atual em 4 locais
+- [x] 7.3.2 Validar a tabela consolidada com o gate `validate-documentation` (tarefa documental, sem teste automatizado de codigo aplicavel) <!-- validate-sdd.sh --spec spec.md: profile=plan, errors=0, warnings=0 -->
 
 ---
 
@@ -261,26 +261,26 @@ Ref: checklists/requirements.md CHK005
 
 Ref: plan.md Technical Context "Testing"; `tests/run.sh:10-13`; `tests/lib/harness.sh:245-251`
 
-- [ ] 8.1.1 Criar `tests/cstk/test_setup.sh` com `HOME` sandboxado (`env HOME="$TMPDIR_TEST/home"`, padrao `tests/cstk/test_mcp.sh:50,58`) e `CSTK_LIB="$REPO_ROOT/cli/lib"` (padrao `tests/cstk/test_hooks.sh:13-14`)
-- [ ] 8.1.2 Registrar `tests/cstk/test_setup.sh` no mapeamento de `tests/run.sh:10-13`
-- [ ] 8.1.3 Consolidar no arquivo todos os `scenario_*` ja definidos como subtarefas de teste nas FASES 1-7, com prompts interativos usando o bypass `CSTK_FORCE_INTERACTIVE=1` (`cli/lib/ui.sh:43`)
+- [x] 8.1.1 Criar `tests/cstk/test_setup.sh` com `HOME` sandboxado (`env HOME="$TMPDIR_TEST/home"`, padrao `tests/cstk/test_mcp.sh:50,58`) e `CSTK_LIB="$REPO_ROOT/cli/lib"` (padrao `tests/cstk/test_hooks.sh:13-14`) <!-- ja criado nas FASES 1-6 (23 scenarios); confirmado HOME sandboxado + CSTK_LIB em todo o arquivo -->
+- [x] 8.1.2 Registrar `tests/cstk/test_setup.sh` no mapeamento de `tests/run.sh:10-13` <!-- automatico por convencao cli/lib/setup.sh -> tests/cstk/test_setup.sh (run.sh:168); `./tests/run.sh --list` ja o descobre sem registro manual -->
+- [x] 8.1.3 Consolidar no arquivo todos os `scenario_*` ja definidos como subtarefas de teste nas FASES 1-7, com prompts interativos usando o bypass `CSTK_FORCE_INTERACTIVE=1` (`cli/lib/ui.sh:43`) <!-- adicionado scenario_interactive_happy_path_accepts_all (24o cenario): unico que roda mode=interactive de verdade via CSTK_FORCE_INTERACTIVE=1 + stdin com os 4 prompts reais (y/n/y/y); os demais 23 usavam --yes/--dry-run, que pulam _setup_prompt_yn -->
 
 ### 8.2 Gotcha de dependencia ausente `[A]`
 
 Ref: plan.md Riscos item 5
 
-- [ ] 8.2.1 Desenhar os testes de "dependencia ausente" (sqlite3/docker/jq) desacoplando a deteccao do `PATH` interno em vez de tentar esconder o binario via stub de `PATH` (gotcha conhecido do projeto: stub de `PATH` nao esconde binario de `/usr/bin`)
-- [ ] 8.2.2 Onde nao for possivel desacoplar, documentar explicitamente o cenario como "nao-coberto" com a nota do motivo, em vez de produzir um teste falso-positivo
+- [x] 8.2.1 Desenhar os testes de "dependencia ausente" (sqlite3/docker/jq) desacoplando a deteccao do `PATH` interno em vez de tentar esconder o binario via stub de `PATH` (gotcha conhecido do projeto: stub de `PATH` nao esconde binario de `/usr/bin`) <!-- ja implementado nas FASES 3-5: _make_shim_path_no_jq/_no_sqlite3/_no_docker usam `env -i PATH="$_shim"` (substituicao total, nao prepend) -->
+- [x] 8.2.2 Onde nao for possivel desacoplar, documentar explicitamente o cenario como "nao-coberto" com a nota do motivo, em vez de produzir um teste falso-positivo <!-- comentario explicito citando o gotcha do projeto ja presente em tests/cstk/test_setup.sh:626-631 (_make_shim_path_no_sqlite3); nenhum cenario desta feature ficou nao-coberto -->
 
 ### 8.3 Cobertura, extensoes de suites existentes e sincronizacao de release `[A]`
 
 Ref: quickstart.md Scenario 11, Scenario 12; CLAUDE.md "Installed vs Source Drift"
 
-- [ ] 8.3.1 Rodar `./tests/run.sh --check-coverage` — `cli/lib/setup.sh` deve ter `tests/cstk/test_setup.sh` correspondente (quickstart Scenario 12)
-- [ ] 8.3.2 Estender `tests/cstk/test_hooks.sh` para cobrir `--include-loose-usage` e `--verify-registration` (incluindo retro-compatibilidade sem flag — 2.2.10)
-- [ ] 8.3.3 Estender `tests/cstk/test_mcp.sh` para cobrir `_mcp_registration_status` (cenarios 2.3.7-2.3.10)
-- [ ] 8.3.4 Rodar gate `validate-tasks-template.sh` sobre este `tasks.md` e gate `validate-docs-rendered` sobre os artefatos da feature
-- [ ] 8.3.5 Verificacao manual de sincronizacao das duas metades (quickstart Scenario 11): `./scripts/build-release.sh X.Y.Z-dev`, depois **ambos** `cstk self-update --from ...` (runtime/binario) e `cstk install --from ...` (catalogo), confirmando `cstk doctor` com drift zero
+- [x] 8.3.1 Rodar `./tests/run.sh --check-coverage` — `cli/lib/setup.sh` deve ter `tests/cstk/test_setup.sh` correspondente (quickstart Scenario 12) <!-- "Cobertura completa: zero orfaos." -->
+- [x] 8.3.2 Estender `tests/cstk/test_hooks.sh` para cobrir `--include-loose-usage` e `--verify-registration` (incluindo retro-compatibilidade sem flag — 2.2.10) <!-- flags pertencem a guard-hooks-status.sh (global skill, nao cli/lib); ja cobertas em tests/test_guard-hooks-status.sh (scenario_loose_usage_detection_*, scenario_verify_registration_*, scenario_hook_redirected_reports_divergent, scenario_decoy_line_not_canonical, scenario_minified_settings_indeterminate, scenario_verify_registration_isolated_from_baseline) desde as tasks 2.1-2.2; test_hooks.sh cobre cli/lib/hooks.sh (`cstk hooks install`), escopo distinto -->
+- [x] 8.3.3 Estender `tests/cstk/test_mcp.sh` para cobrir `_mcp_registration_status` (cenarios 2.3.7-2.3.10) <!-- ja implementado na task 2.3 (commit b098310): scenario_mcp_not_configured/_divergent_foreign_script/_configured_cross_layer/_registration_status_empty_stdout em tests/cstk/test_mcp.sh:1033+ -->
+- [x] 8.3.4 Rodar gate `validate-tasks-template.sh` sobre este `tasks.md` e gate `validate-docs-rendered` sobre os artefatos da feature
+- [!] 8.3.5 Verificacao manual de sincronizacao das duas metades (quickstart Scenario 11): `./scripts/build-release.sh X.Y.Z-dev`, depois **ambos** `cstk self-update --from ...` (runtime/binario) e `cstk install --from ...` (catalogo), confirmando `cstk doctor` com drift zero <!-- DEFERRED: task de release/sync (build-release + self-update + install --from), decisao do operador pos-review via skill release-wave; nao executada por politica de escopo desta execucao autonoma -->
 
 ---
 
