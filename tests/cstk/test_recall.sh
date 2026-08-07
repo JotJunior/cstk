@@ -606,9 +606,9 @@ SQL
   # Aplica schema v7 via funcao real (caminho de recall_apply_schema).
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || {
     _fail "apply schema v7" "recall_apply_schema falhou"; return 1; }
-  # (a) schema_version virou a corrente (12 — v12 otel-model-breakdown).
+  # (a) schema_version virou a corrente (13 — v13 loose-usage-capture).
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "12" ] || { _fail "schema_version" "esperado 12, obtido $_sv"; return 1; }
+  [ "$_sv" = "13" ] || { _fail "schema_version" "esperado 13, obtido $_sv"; return 1; }
   # (b) tabela bloqueios DROPADA; blocks (EN) criada no lugar.
   _hasbloq=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='bloqueios'")
   [ "$_hasbloq" = "0" ] || { _fail "bloqueios dropada" "tabela pt-BR bloqueios sobreviveu"; return 1; }
@@ -653,7 +653,7 @@ scenario_m11b_v7_reindex_repopula() {
   _v7db="$TMPDIR_TEST/v7.db"
   _rc --reindex --states-root "$TMPDIR_TEST/rxv7" --db "$_v7db" >/dev/null 2>&1
   _sv=$(sqlite3 "$_v7db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "12" ] || { _fail "reindex schema corrente" "esperado schema_version 12, obtido $_sv"; return 1; }
+  [ "$_sv" = "13" ] || { _fail "reindex schema corrente" "esperado schema_version 13, obtido $_sv"; return 1; }
   # decisions repopuladas em EN (2 decisoes do _write_state).
   _n=$(sqlite3 "$_v7db" "SELECT count(*) FROM decisions WHERE feature='featV7'")
   [ "$_n" = "2" ] || { _fail "reindex repopula" "esperado 2 decisoes, obtido $_n"; return 1; }
@@ -675,7 +675,7 @@ scenario_m12_ddl_idempotente() {
   sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p','f','w','e','t','dec-keep','keep','now')"
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "12" ] || { _fail "schema estavel" "esperado 12 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "13" ] || { _fail "schema estavel" "esperado 13 apos 2x, obtido $_sv"; return 1; }
   _keep=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-keep'")
   [ "$_keep" = "1" ] || { _fail "idempotente sem re-drop" "linha sumiu: 2o apply re-dropou ($_keep)"; return 1; }
 }
@@ -1913,7 +1913,7 @@ scenario_b11_ddl_tasks_events() {
   # v9 executions-target-path: coluna target_project_path em executions; v8
   # recall-worktree-identity: coluna session em executions/waves).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "12" ] || { _fail "schema_version" "esperado 12, obtido $_sv"; return 1; }
+  [ "$_sv" = "13" ] || { _fail "schema_version" "esperado 13, obtido $_sv"; return 1; }
   # tasks tem a coluna title (EN, DDL fresco).
   _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='title'")
   [ "$_hascol" = "1" ] || { _fail "coluna title" "esperado 1, obtido $_hascol"; return 1; }
@@ -2229,7 +2229,7 @@ scenario_m1_schema_memories_table_exists() {
   # schema_version deve ser 10 (wave-token-metrics: colunas agent_* em waves)
   _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
     "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "12" ] || { _fail "schema_version errado" "esperado 12, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "13" ] || { _fail "schema_version errado" "esperado 13, obtido '$_ver'"; return 1; }
 }
 
 # M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
@@ -2319,7 +2319,7 @@ scenario_m1_migration_v3_to_current() {
   # session/target_project_path de executions e agent_* de waves vem do DDL
   # fresco pos-drop v7)
   _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "12" ] || { _fail "migration: schema_version errado" "esperado 12, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "13" ] || { _fail "migration: schema_version errado" "esperado 13, obtido '$_ver'"; return 1; }
   # decisions repopuladas pelo ingest (>=1; o derivado v3 foi descartado, o
   # state.json o reconstroi em EN).
   _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
@@ -3069,7 +3069,7 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,i
     *) _fail "W5 waves.session" "coluna session ausente em waves pos-migracao"; return 1 ;;
   esac
   _w5_ver=$(sqlite3 "$_w5_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_w5_ver" = "12" ] || { _fail "W5 schema_version" "esperado '12' (corrente pos-v12), obtido '$_w5_ver'"; return 1; }
+  [ "$_w5_ver" = "13" ] || { _fail "W5 schema_version" "esperado '13' (corrente pos-v13), obtido '$_w5_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/w5/sd" --db "$_w5_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W5 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3195,7 +3195,7 @@ JSON
     *) _fail "TP1d shape v9" "coluna target_project_path ausente em executions"; return 1 ;;
   esac
   _tp1_ver=$(sqlite3 "$_tp1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp1_ver" = "12" ] || { _fail "TP1d schema_version" "esperado 12, obtido '$_tp1_ver'"; return 1; }
+  [ "$_tp1_ver" = "13" ] || { _fail "TP1d schema_version" "esperado 13, obtido '$_tp1_ver'"; return 1; }
 }
 
 # Cenario TP2 — re-ingestao idempotente + backfill: DB v8 preexistente com
@@ -3250,7 +3250,7 @@ INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,ses
   _tp3_new=$(sqlite3 "$_tp3_db" "SELECT target_project_path FROM executions WHERE feature='feat-tp3';")
   [ "$_tp3_new" = "/nonexistent/tp3proj" ] || { _fail "TP3 linha nova" "esperado '/nonexistent/tp3proj', obtido '$_tp3_new'"; return 1; }
   _tp3_ver=$(sqlite3 "$_tp3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp3_ver" = "12" ] || { _fail "TP3 schema_version" "esperado '12', obtido '$_tp3_ver'"; return 1; }
+  [ "$_tp3_ver" = "13" ] || { _fail "TP3 schema_version" "esperado '13', obtido '$_tp3_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/tp3/sd" --db "$_tp3_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "TP3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3299,7 +3299,7 @@ JSON
     *) _fail "WT1 shape v10" "coluna agent_spawns_total ausente em waves"; return 1 ;;
   esac
   _wt1_ver=$(sqlite3 "$_wt1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wt1_ver" = "12" ] || { _fail "WT1 schema_version" "esperado 12, obtido '$_wt1_ver'"; return 1; }
+  [ "$_wt1_ver" = "13" ] || { _fail "WT1 schema_version" "esperado 13, obtido '$_wt1_ver'"; return 1; }
 }
 
 # Cenario WT2 — onda SEM .agent_usage: as 9 colunas ficam NULL, nunca 0
@@ -3371,7 +3371,7 @@ JSON
   _wt3_new=$(sqlite3 "$_wt3_db" "SELECT agent_spawns_total||'|'||agent_duration_ms FROM waves WHERE feature='feat-wt3';")
   [ "$_wt3_new" = "3|4321" ] || { _fail "WT3 linha nova" "esperado '3|4321', obtido '$_wt3_new'"; return 1; }
   _wt3_ver=$(sqlite3 "$_wt3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wt3_ver" = "12" ] || { _fail "WT3 schema_version" "esperado '12', obtido '$_wt3_ver'"; return 1; }
+  [ "$_wt3_ver" = "13" ] || { _fail "WT3 schema_version" "esperado '13', obtido '$_wt3_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/wt3/sd" --db "$_wt3_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3508,7 +3508,7 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,session,
   capture _rc --ingest --state-dir "$_sd" --db "$_ot_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest#1" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
   _v=$(sqlite3 "$_ot_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_v" = "12" ] || { _fail "schema_version" "esperado 12, obtido '$_v'"; return 1; }
+  [ "$_v" = "13" ] || { _fail "schema_version" "esperado 13, obtido '$_v'"; return 1; }
 
   # linha v10 intacta: session preservada, coluna nova NULL (nao 0)
   _leg=$(sqlite3 "$_ot_db" "SELECT session||'|'||COALESCE(otel_cost_usd,-999) FROM waves WHERE project='legacyp10';")
@@ -3558,13 +3558,13 @@ scenario_wmu1_fresh_db_colunas_e_tabela() {
   _wmu1_tbl=$(sqlite3 "$_wmu1_db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='wave_model_usage'")
   [ "$_wmu1_tbl" = "1" ] || { _fail "wmu1 tabela" "wave_model_usage ausente em banco novo"; return 1; }
   _wmu1_ver=$(sqlite3 "$_wmu1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wmu1_ver" = "12" ] || { _fail "wmu1 schema_version" "esperado 12, obtido '$_wmu1_ver'"; return 1; }
+  [ "$_wmu1_ver" = "13" ] || { _fail "wmu1 schema_version" "esperado 13, obtido '$_wmu1_ver'"; return 1; }
   return 0
 }
 
 # Tasks 2.2.3 (idempotencia do ALTER) + 2.3.1-2.3.4 (migracao sobre banco v11
 # REAL com dado pre-existente): fixture v11 com linhas em waves/decisions/
-# tasks; apos recall_apply_schema, schema_version=12, as 8 colunas novas
+# tasks; apos recall_apply_schema, schema_version=13, as 8 colunas novas
 # existem e ficam NULL para a linha v11 (ausente, nao 0 — Principio VI),
 # wave_model_usage existe vazia (nenhuma ingestao real ainda — FASE 3), e
 # TODAS as linhas/colunas pre-existentes continuam intactas. 2a rodada
@@ -3588,7 +3588,7 @@ INSERT INTO tasks(project,feature,wave,execution_id,source_ts,source_id,title,ou
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_wmu2_db" || {
     _fail "wmu2 apply#1" "recall_apply_schema falhou"; return 1; }
   _wmu2_ver=$(sqlite3 "$_wmu2_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wmu2_ver" = "12" ] || { _fail "wmu2 schema_version" "esperado 12, obtido '$_wmu2_ver'"; return 1; }
+  [ "$_wmu2_ver" = "13" ] || { _fail "wmu2 schema_version" "esperado 13, obtido '$_wmu2_ver'"; return 1; }
 
   # linha v11 intacta: session/otel_cost_usd preservados, colunas novas NULL (nao 0)
   _wmu2_leg=$(sqlite3 "$_wmu2_db" "SELECT session||'|'||otel_cost_usd||'|'||COALESCE(otel_main_input_tokens,-999) FROM waves WHERE project='p11';")
@@ -4213,6 +4213,153 @@ scenario_sqldb_json_path_preservado_sem_migracao() {
   assert_exit 0 _rc --ingest --state-dir "$_d" --db "$TMPDIR_TEST/no-migrate.db" || return 1
   assert_stdout_contains "3 decisions" || return 1
   [ ! -f "$_d/state.db" ] || { _fail "no-migrate: state.db nao deveria existir" ""; return 1; }
+  return 0
+}
+
+# =========================================================================
+# FASE 2 (loose-usage-capture, v12->v13): schema/DDL/migracao APENAS — a
+# ingestao real de loose_usage (mapper sidecar -> DB) e escopo de FASE 4
+# (cli/lib/usage.sh, ainda nao implementada). Cobre tasks 2.1.4: base v12
+# populada ganha `loose_usage` vazia na proxima escrita, base nova cria o
+# schema direto em v13. Mesmo padrao de scenario_wmu1/scenario_wmu2.
+# =========================================================================
+
+# Task 2.1.4 (banco novo) — banco criado do zero ja nasce em v13: sqlite_master
+# confirma a existencia da tabela loose_usage e schema_meta confirma v13.
+scenario_lu1_fresh_db_tabela_e_versao() {
+  _have_deps || return 0
+  _lu1_db="$TMPDIR_TEST/lu1/k.db"
+  mkdir -p "$TMPDIR_TEST/lu1"
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_lu1_db" || {
+    _fail "lu1 apply" "recall_apply_schema falhou em banco novo"; return 1; }
+  _lu1_tbl=$(sqlite3 "$_lu1_db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='loose_usage'")
+  [ "$_lu1_tbl" = "1" ] || { _fail "lu1 tabela" "loose_usage ausente em banco novo"; return 1; }
+  _lu1_ver=$(sqlite3 "$_lu1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
+  [ "$_lu1_ver" = "13" ] || { _fail "lu1 schema_version" "esperado 13, obtido '$_lu1_ver'"; return 1; }
+  return 0
+}
+
+# Task 2.1.4 (base v12 populada) — fixture v12 real com linhas em
+# waves/decisions/tasks. Apos recall_apply_schema: schema_version=13,
+# loose_usage existe VAZIA (nenhuma ingestao real ainda — FASE 4), e TODAS as
+# linhas/colunas pre-existentes continuam intactas. 2a rodada confirma
+# idempotencia (sem erro de tabela duplicada, sem duplicar linha) — migracao
+# e puramente aditiva (sem ALTER TABLE, sem DROP; precedente literal de
+# wave_model_usage na v11->v12).
+scenario_lu2_migracao_v12_v13_real_idempotente() {
+  _have_deps || return 0
+  _lu2_db="$TMPDIR_TEST/lu2/k.db"
+  mkdir -p "$TMPDIR_TEST/lu2"
+  sqlite3 "$_lu2_db" "
+CREATE TABLE waves (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, stages TEXT, started_at TEXT, finished_at TEXT, wallclock_seconds INTEGER, tool_calls INTEGER, termination_reason TEXT, n_stages INTEGER, n_skills INTEGER, session TEXT, otel_cost_usd REAL, otel_cost_main_usd REAL, otel_cost_subagent_usd REAL, otel_total_tokens INTEGER, otel_subagent_tokens INTEGER, agent_spawns_total INTEGER, agent_spawns_with_usage INTEGER, agent_total_tokens INTEGER, agent_input_tokens INTEGER, agent_output_tokens INTEGER, agent_cache_read_tokens INTEGER, agent_cache_creation_tokens INTEGER, agent_tool_use_count INTEGER, agent_duration_ms INTEGER, otel_main_input_tokens INTEGER, otel_main_output_tokens INTEGER, otel_main_cache_read_tokens INTEGER, otel_main_cache_creation_tokens INTEGER, otel_subagent_input_tokens INTEGER, otel_subagent_output_tokens INTEGER, otel_subagent_cache_read_tokens INTEGER, otel_subagent_cache_creation_tokens INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, agent TEXT, stage TEXT, choice TEXT, score INTEGER, context TEXT, rationale TEXT, evidence TEXT, options TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, title TEXT, outcome TEXT, tests_run INTEGER, tests_passed INTEGER, lint_ok INTEGER, touched_files INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE wave_model_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, model TEXT, cost_usd REAL, total_tokens INTEGER, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+INSERT INTO schema_meta VALUES('schema_version','12');
+INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,session,otel_cost_usd,ingested_at) VALUES('p12','f12','onda-1','e12','t','onda-1','sess12',0.5,'t');
+INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p12','f12','onda-1','e12','t','dec-1','keep','t');
+INSERT INTO tasks(project,feature,wave,execution_id,source_ts,source_id,title,outcome,ingested_at) VALUES('p12','f12','onda-1','e12','t','1.1','Task 1','pass','t');
+" || { _fail "lu2 fixture v12" "criacao do DB v12 falhou"; return 1; }
+
+  # 1a rodada: migra v12 -> v13
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_lu2_db" || {
+    _fail "lu2 apply#1" "recall_apply_schema falhou"; return 1; }
+  _lu2_ver=$(sqlite3 "$_lu2_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
+  [ "$_lu2_ver" = "13" ] || { _fail "lu2 schema_version" "esperado 13, obtido '$_lu2_ver'"; return 1; }
+
+  # linha v12 intacta
+  _lu2_leg=$(sqlite3 "$_lu2_db" "SELECT session||'|'||otel_cost_usd FROM waves WHERE project='p12';")
+  [ "$_lu2_leg" = "sess12|0.5" ] || { _fail "lu2 linha v12" "esperado 'sess12|0.5', obtido '$_lu2_leg'"; return 1; }
+
+  # contagens pre-existentes intactas
+  _lu2_nw=$(sqlite3 "$_lu2_db" "SELECT count(*) FROM waves;")
+  [ "$_lu2_nw" = "1" ] || { _fail "lu2 waves count" "esperado 1, obtido $_lu2_nw"; return 1; }
+  _lu2_nd=$(sqlite3 "$_lu2_db" "SELECT count(*) FROM decisions;")
+  [ "$_lu2_nd" = "1" ] || { _fail "lu2 decisions count" "esperado 1, obtido $_lu2_nd"; return 1; }
+  _lu2_nt=$(sqlite3 "$_lu2_db" "SELECT count(*) FROM tasks;")
+  [ "$_lu2_nt" = "1" ] || { _fail "lu2 tasks count" "esperado 1, obtido $_lu2_nt"; return 1; }
+
+  # loose_usage existe e esta vazia (nenhuma ingestao real ainda — FASE 4)
+  _lu2_tbl=$(sqlite3 "$_lu2_db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='loose_usage';")
+  [ "$_lu2_tbl" = "1" ] || { _fail "lu2 tabela nova" "loose_usage ausente pos-migracao"; return 1; }
+  _lu2_lurows=$(sqlite3 "$_lu2_db" "SELECT count(*) FROM loose_usage;")
+  [ "$_lu2_lurows" = "0" ] || { _fail "lu2 tabela vazia" "esperado 0 linhas, obtido $_lu2_lurows"; return 1; }
+
+  # 2a rodada: idempotente — sem erro de tabela duplicada, sem duplicar linha
+  assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_lu2_db" || return 1
+  _lu2_nw2=$(sqlite3 "$_lu2_db" "SELECT count(*) FROM waves;")
+  [ "$_lu2_nw2" = "1" ] || { _fail "lu2 idempotencia waves" "linhas mudaram para $_lu2_nw2"; return 1; }
+  return 0
+}
+
+# Task 2.2.3 — recall_prune_loose_usage (poda da camada de indice, CHK002/
+# CHK029, data-model.md §Retencao). Semeia uma linha "expirada" (captured_at
+# em 2020, muito alem de qualquer TTL razoavel) e uma "recente" (captured_at
+# = agora). Poda com TTL=90 dias remove SO a expirada e preserva a recente.
+scenario_lu3_prune_remove_expirada_preserva_recente() {
+  _have_deps || return 0
+  _lu3_db="$TMPDIR_TEST/lu3/k.db"
+  mkdir -p "$TMPDIR_TEST/lu3"
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_lu3_db" || {
+    _fail "lu3 apply" "recall_apply_schema falhou"; return 1; }
+  _lu3_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  sqlite3 "$_lu3_db" "
+INSERT INTO loose_usage(project,project_path,process_key,segment_id,model,cost_usd,total_tokens,segment_open,captured_at,ingested_at) VALUES('p-lu3','/p','proc-old','seg-001','sonnet',0.1,100,0,'2020-01-01T00:00:00Z','$_lu3_now');
+INSERT INTO loose_usage(project,project_path,process_key,segment_id,model,cost_usd,total_tokens,segment_open,captured_at,ingested_at) VALUES('p-lu3','/p','proc-new','seg-001','sonnet',0.2,200,0,'$_lu3_now','$_lu3_now');
+" || { _fail "lu3 seed" "insercao de fixture falhou"; return 1; }
+
+  _lu3_out=$(sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_prune_loose_usage "$1" "$2"' _ "$_lu3_db" 90)
+  _lu3_rc=$?
+  [ "$_lu3_rc" = "0" ] || { _fail "lu3 exit" "esperado 0, obtido $_lu3_rc"; return 1; }
+  [ "$_lu3_out" = "1" ] || { _fail "lu3 contagem removida" "esperado 1, obtido '$_lu3_out'"; return 1; }
+
+  _lu3_left=$(sqlite3 "$_lu3_db" "SELECT count(*) FROM loose_usage;")
+  [ "$_lu3_left" = "1" ] || { _fail "lu3 linhas restantes" "esperado 1, obtido $_lu3_left"; return 1; }
+  _lu3_which=$(sqlite3 "$_lu3_db" "SELECT process_key FROM loose_usage;")
+  [ "$_lu3_which" = "proc-new" ] || { _fail "lu3 linha preservada" "esperado 'proc-new', obtido '$_lu3_which'"; return 1; }
+  return 0
+}
+
+# Task 4.4.3 (paridade --dry-run) coberta na camada de indice: --dry-run
+# reporta a mesma contagem elegivel SEM remover nenhuma linha.
+scenario_lu4_prune_dry_run_nao_remove() {
+  _have_deps || return 0
+  _lu4_db="$TMPDIR_TEST/lu4/k.db"
+  mkdir -p "$TMPDIR_TEST/lu4"
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_lu4_db" || {
+    _fail "lu4 apply" "recall_apply_schema falhou"; return 1; }
+  _lu4_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  sqlite3 "$_lu4_db" "
+INSERT INTO loose_usage(project,project_path,process_key,segment_id,model,cost_usd,total_tokens,segment_open,captured_at,ingested_at) VALUES('p-lu4','/p','proc-old','seg-001','sonnet',0.1,100,0,'2020-01-01T00:00:00Z','$_lu4_now');
+" || { _fail "lu4 seed" "insercao de fixture falhou"; return 1; }
+
+  _lu4_out=$(sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_prune_loose_usage "$1" "$2" --dry-run' _ "$_lu4_db" 90)
+  [ "$_lu4_out" = "1" ] || { _fail "lu4 dry-run contagem" "esperado 1, obtido '$_lu4_out'"; return 1; }
+  _lu4_left=$(sqlite3 "$_lu4_db" "SELECT count(*) FROM loose_usage;")
+  [ "$_lu4_left" = "1" ] || { _fail "lu4 nada removido" "esperado 1 (intacta), obtido $_lu4_left"; return 1; }
+  return 0
+}
+
+# DAYS nao-numerico -> exit 1 (uso incorreto), sem tocar o banco.
+scenario_lu5_prune_dias_invalido() {
+  _have_deps || return 0
+  _lu5_db="$TMPDIR_TEST/lu5/k.db"
+  mkdir -p "$TMPDIR_TEST/lu5"
+  sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_lu5_db" || {
+    _fail "lu5 apply" "recall_apply_schema falhou"; return 1; }
+  assert_exit 1 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_prune_loose_usage "$1" "abc"' _ "$_lu5_db" 2>/dev/null || return 1
+  return 0
+}
+
+# DB inexistente -> no-op de sucesso, contagem 0 (mesma semantica de
+# recall_normalize_db_perms para arquivo ausente).
+scenario_lu6_prune_db_ausente() {
+  _have_deps || return 0
+  _lu6_out=$(sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_prune_loose_usage "$1" "$2"' _ "$TMPDIR_TEST/lu6-nao-existe/k.db" 90)
+  _lu6_rc=$?
+  [ "$_lu6_rc" = "0" ] || { _fail "lu6 exit" "esperado 0, obtido $_lu6_rc"; return 1; }
+  [ "$_lu6_out" = "0" ] || { _fail "lu6 contagem" "esperado 0, obtido '$_lu6_out'"; return 1; }
   return 0
 }
 

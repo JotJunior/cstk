@@ -27,7 +27,6 @@ Apos salvar o briefing, o fluxo sugerido e:
 
 1. `/constitution` — derivar principios de governanca a partir do briefing
 2. `/specify` — especificar as features do MVP identificadas no briefing
-3. `/initialize-docs` (se ainda nao feito) — garantir estrutura padrao de docs/
 
 ## Argumentos
 
@@ -63,7 +62,8 @@ Leia os seguintes arquivos (se existirem) para entender o que ja se sabe:
 SEMPRE LER (se existirem):
 -- README.md
 -- CLAUDE.md
--- docs/01-briefing-discovery/*.md (briefings anteriores)
+-- docs/briefing.md (briefing atual, caminho canonico)
+-- docs/01-briefing-discovery/*.md (briefings legados)
 -- docs/constitution.md
 -- docs/specs/*/spec.md (specs existentes)
 -- package.json, go.mod, pyproject.toml, Cargo.toml (stack tecnica)
@@ -71,15 +71,18 @@ SEMPRE LER (se existirem):
 
 ### 1.2 Verificar Briefing Existente
 
-Procurar briefings existentes:
-1. `docs/01-briefing-discovery/briefing.md`
-2. `docs/01-briefing-discovery/BRIEFING-*.md`
-3. `docs/briefing.md`
+Procurar briefings existentes (canonico primeiro, legado depois):
+1. `docs/briefing.md` (caminho canonico)
+2. `docs/01-briefing-discovery/briefing.md` (legado)
+3. `docs/01-briefing-discovery/BRIEFING-*.md` (legado)
 
 Se encontrado:
 - Carregar conteudo atual
 - Identificar secoes incompletas ou marcadas com TODO
 - Perguntar ao usuario: "Encontrei um briefing existente. Deseja **atualizar** ou **criar um novo**?"
+- Se encontrado APENAS no caminho legado: registrar que o salvamento
+  continuara no caminho legado (ver Etapa 6.2) — nunca mover o arquivo
+  sem o usuario pedir
 
 Se nao encontrado:
 - Seguir para entrevista completa (Etapa 2)
@@ -208,22 +211,37 @@ Deseja que eu salve este briefing? Ou ha algo a corrigir/complementar?
 
 ### 6.1 Criar Diretorio
 
-Se `docs/01-briefing-discovery/` nao existir, criar.
+Se `docs/` nao existir, criar. O briefing vive na raiz de `docs/`, ao lado
+de `constitution.md` — nao depende mais da hierarquia numerada do
+`/initialize-docs`:
+
+```
+docs/
+-- briefing.md
+-- constitution.md
+-- specs/
+```
 
 ### 6.2 Salvar Briefing
 
-Salvar em `docs/01-briefing-discovery/briefing.md`.
+Caminho canonico: `docs/briefing.md`.
 
-Se ja existe um briefing:
-- Salvar como `docs/01-briefing-discovery/briefing-[DATE].md`
-- Ou sobrescrever se usuario pediu atualizacao
+**Excecao (legado preservado)**: se ja existe
+`docs/01-briefing-discovery/briefing.md` e NAO existe `docs/briefing.md`,
+atualizar o arquivo legado no lugar — nunca mover/duplicar sem o usuario
+pedir. Se o usuario pedir migracao explicitamente, mover o arquivo para
+`docs/briefing.md` (um unico briefing canonico; nao deixar copia para tras).
+
+Se ja existe um briefing e o usuario pediu **criar um novo** (nao atualizar):
+- Salvar o novo como `briefing-[DATE].md` no MESMO diretorio do briefing
+  em uso (canonico ou legado)
 
 ### 6.3 Reportar
 
 ```markdown
 ## Briefing Salvo
 
-**Arquivo**: docs/01-briefing-discovery/briefing.md
+**Arquivo**: docs/briefing.md  (ou o caminho legado, se foi o caso)
 **Dimensoes cobertas**: [N]/7
 **Itens a definir**: [N]
 
@@ -263,7 +281,7 @@ concluido:
    # bootstrap-deps.sh — pre-flight de dependencias para evitar bloqueios
    # cirurgicos npm install no meio da pipeline agente-00c.
    #
-   # Rode UMA VEZ antes de /agente-00c (ou apos /initialize-docs).
+   # Rode UMA VEZ antes de /agente-00c.
    #
    # Gerado por: briefing skill (pre-flight de bootstrap)
    # Data: <ISO>
@@ -342,7 +360,7 @@ do `/agente-00c` NAO encontra bloqueio `npm install`.
 | `clarify` | Pode refinar ambiguidades do briefing se necessario |
 | `advisor` | Pode criticar decisoes registradas no briefing |
 | `plan` | Usa briefing como contexto tecnico de alto nivel |
-| `initialize-docs` | Cria o diretorio onde o briefing e salvo |
+| `initialize-docs` | LEGADO: criava `docs/01-briefing-discovery/` onde o briefing era salvo; hoje o briefing vive em `docs/briefing.md` |
 
 ---
 
@@ -375,3 +393,12 @@ Se o projeto e uma biblioteca interna sem usuarios finais, remover a secao "Usua
 ### Nunca reescrever em jargao tecnico
 
 Usar as palavras do usuario. Se ele disse "app de caixa", nao trocar por "sistema de ponto-de-venda transacional". O briefing preserva linguagem; o `/plan` traduz em tecnico.
+
+### Caminho canonico vs legado — nunca migrar em silencio
+
+O canonico e `docs/briefing.md`. Projetos antigos tem
+`docs/01-briefing-discovery/briefing.md` (hierarquia do `/initialize-docs`) —
+esses continuam sendo atualizados NO LUGAR, e todos os leitores do pipeline
+(detect-completion, preflight do feature-00c) aceitam os dois caminhos.
+Migrar so com pedido explicito do usuario, movendo (nao copiando): dois
+briefings vivos = fonte de verdade ambigua para constitution/specify.

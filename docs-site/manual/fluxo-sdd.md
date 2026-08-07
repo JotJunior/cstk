@@ -16,7 +16,7 @@ command.
    ideia
      |
      v
-[1] briefing ----------> docs/01-briefing-discovery/briefing.md
+[1] briefing ----------> docs/briefing.md
      |                   (discovery por entrevista estruturada)
      v
 [2] constitution ------> docs/constitution.md
@@ -54,7 +54,9 @@ command.
 ### 1. [`briefing`](../skills/briefing/) — Discovery
 
 Entrevista estruturada que captura visao, usuarios, restricoes, prioridades,
-stack e qualidade. Saida: `docs/01-briefing-discovery/briefing.md`. Esse
+stack e qualidade. Saida: `docs/briefing.md` (projetos antigos usam o
+caminho legado `docs/01-briefing-discovery/briefing.md`, ainda aceito por
+todo o pipeline). Esse
 documento alimenta TODAS as etapas seguintes — pular esta etapa significa
 inventar premissas no meio do pipeline.
 

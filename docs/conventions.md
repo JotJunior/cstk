@@ -27,7 +27,10 @@ your domain.
 
 ## Documentation Hierarchy
 
-The `initialize-docs` skill creates the following structure:
+**LEGACY** — the `initialize-docs` skill (deprecated, removal in v7) creates
+the numbered structure below. New projects use the SDD layout instead:
+`docs/briefing.md` + `docs/constitution.md` + `docs/specs/<feature>/`. The
+pipeline accepts both layouts.
 
 ```
 docs/

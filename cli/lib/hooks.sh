@@ -22,7 +22,13 @@
 #                                       — fallback sem jq: imprime bloco
 #                                         JSON em stderr com instrucoes
 #                                         para o usuario mesclar manualmente.
-#   apply_guard_hooks <src_dir> <dest_claude_root> <dry_run>
+#   merge_settings_loose_usage <target> <source>
+#                                       — append idempotente (NAO jq '*')
+#                                         do hook opt-in de consumo avulso
+#                                         no array .hooks.PostToolUse[]
+#                                         ja populado pelo merge_settings
+#                                         base (loose-usage-capture task 3.3).
+#   apply_guard_hooks <src_dir> <dest_claude_root> <dry_run> [with_loose_usage]
 #                                       — provisiona o hook PreToolUse/Bash
 #                                         de enforced-guards (US1): copia
 #                                         pretooluse-bash-guard.sh para
@@ -30,6 +36,9 @@
 #                                         settings.snippet.json. Reusa
 #                                         merge_settings/print_paste_block
 #                                         (Decision 9 — nenhum mecanismo novo).
+#                                         with_loose_usage=1 (opt-in, default
+#                                         0) tambem provisiona
+#                                         posttooluse-loose-usage.sh.
 #                                         Imprime em stdout uma palavra de
 #                                         estado: merged | paste-instructed |
 #                                         hooks-only | not-applicable | error.
@@ -130,6 +139,110 @@ merge_settings() {
   return 0
 }
 
+# merge_settings_loose_usage TARGET SOURCE
+#
+# Merge ADITIVO especializado para o hook OPT-IN de captura de consumo
+# avulso (posttooluse-loose-usage.sh, feature loose-usage-capture task
+# 3.3). NAO reusa merge_settings (jq '*' generico): jq's `*` NAO faz merge
+# recursivo de ARRAYS — quando os dois lados tem `.hooks.PostToolUse` como
+# array, o SEGUNDO operando vence POR INTEIRO, descartando o primeiro
+# (verificado empiricamente: `jq -s '.[0]*.[1]'` com dois arrays sempre
+# devolve o array do segundo operando, nunca uma uniao). Como o snippet
+# base (settings.snippet.json) ja populou target.hooks.PostToolUse com as
+# 2 entradas obrigatorias (tick + agent-usage) ANTES deste merge rodar,
+# aplicar merge_settings aqui perderia o hook opt-in silenciosamente.
+#
+# Estrategia: acha (ou cria) a entrada de matcher "*" dentro de
+# .hooks.PostToolUse e APPENDA o comando do SOURCE ao array .hooks[] dessa
+# entrada, dedup por `.command` (idempotente — reinstalar nao duplica).
+# jq obrigatorio (mesmo carve-out de merge_settings); target inexistente
+# apenas copia o source (source ja e um settings.json valido e minimo).
+merge_settings_loose_usage() {
+  if [ "$#" -ne 2 ]; then
+    log_error "hooks: merge_settings_loose_usage espera 2 argumentos (target, source)"
+    return 2
+  fi
+  _hooks_target=$1
+  _hooks_source=$2
+
+  if ! detect_jq; then
+    log_error "hooks: merge_settings_loose_usage exige jq (carve-out 1.1.0); use print_paste_block como fallback"
+    return 1
+  fi
+  if [ ! -f "$_hooks_source" ]; then
+    log_error "hooks: source JSON nao encontrado: $_hooks_source"
+    return 1
+  fi
+
+  _hooks_target_dir=$(dirname -- "$_hooks_target")
+  if [ ! -d "$_hooks_target_dir" ]; then
+    if ! mkdir -p -- "$_hooks_target_dir"; then
+      log_error "hooks: nao consegui criar dir pai de $_hooks_target"
+      return 1
+    fi
+  fi
+
+  # Caso 1: target nao existe -> apenas copia source (ja e um settings.json
+  # minimo valido, mesmo caso 1 de merge_settings).
+  if [ ! -f "$_hooks_target" ]; then
+    if ! cp -- "$_hooks_source" "$_hooks_target"; then
+      log_error "hooks: cp inicial falhou para $_hooks_target"
+      return 1
+    fi
+    log_info "hooks: $_hooks_target criado a partir de $_hooks_source"
+    return 0
+  fi
+
+  _hooks_cmd=$(jq -r '.hooks.PostToolUse[0].hooks[0].command // empty' -- "$_hooks_source" 2>/dev/null)
+  _hooks_timeout=$(jq -r '.hooks.PostToolUse[0].hooks[0].timeout // 5' -- "$_hooks_source" 2>/dev/null)
+  if [ -z "$_hooks_cmd" ]; then
+    log_error "hooks: source $_hooks_source nao tem o formato esperado (hooks.PostToolUse[0].hooks[0].command)"
+    return 1
+  fi
+
+  # Caso 2: target existe -> backup defensivo + append idempotente.
+  if ! cp -- "$_hooks_target" "${_hooks_target}.bak"; then
+    log_error "hooks: backup de $_hooks_target falhou — abortando sem merge"
+    return 1
+  fi
+
+  _hooks_tmp=$(mktemp -- "${_hooks_target_dir}/.cstk-merge.XXXXXX") || {
+    log_error "hooks: mktemp em $_hooks_target_dir falhou"
+    return 1
+  }
+
+  if ! jq --arg cmd "$_hooks_cmd" --argjson timeout "$_hooks_timeout" '
+    .hooks.PostToolUse = ((.hooks.PostToolUse // [])
+      | if any(.[]; .matcher == "*") then
+          map(
+            if .matcher == "*" then
+              .hooks = (
+                (.hooks // []) as $eh
+                | if ($eh | map(.command) | index($cmd)) then $eh
+                  else $eh + [{"type":"command","command":$cmd,"timeout":$timeout}]
+                  end
+              )
+            else . end
+          )
+        else
+          . + [{"matcher":"*","hooks":[{"type":"command","command":$cmd,"timeout":$timeout}]}]
+        end)
+  ' -- "$_hooks_target" > "$_hooks_tmp" 2>/dev/null; then
+    log_error "hooks: jq append falhou (JSON invalido em target?)"
+    rm -f -- "$_hooks_tmp"
+    return 1
+  fi
+
+  if ! mv -f -- "$_hooks_tmp" "$_hooks_target"; then
+    log_error "hooks: mv atomico falhou para $_hooks_target"
+    rm -f -- "$_hooks_tmp"
+    return 1
+  fi
+
+  log_info "hooks: $_hooks_target mesclado com hook opt-in de consumo avulso (backup em ${_hooks_target}.bak)"
+  return 0
+}
+
 # print_paste_block: fallback quando jq ausente. Imprime em stderr o JSON
 # do source com instrucao clara de onde colar. NUNCA modifica o filesystem.
 print_paste_block() {
@@ -175,6 +288,12 @@ print_paste_block() {
 #      <dest_claude_root>/settings.json via merge_settings (jq) ou
 #      print_paste_block (fallback sem jq) — mesma mecanica ja testada dos
 #      hooks language-*, nenhum mecanismo de distribuicao novo (FR-017).
+#   3. SOMENTE quando <with_loose_usage>=1 (opt-in, default 0 — feature
+#      loose-usage-capture task 3.3): copia
+#      <src_dir>/posttooluse-loose-usage.sh e mescla (append idempotente,
+#      via merge_settings_loose_usage) <src_dir>/settings.loose-usage.snippet.json.
+#      Best-effort — falha aqui NUNCA muda a palavra de estado nem os
+#      3 hooks obrigatorios (dec-008/FR-006).
 #
 # <src_dir> = diretorio contendo pretooluse-bash-guard.sh +
 # settings.snippet.json (tipicamente <catalog>/skills/agente-00c-runtime/hooks,
@@ -187,7 +306,9 @@ print_paste_block() {
 # resolvida para instalacao/atualizacao E escopo=project — Decision 9 diz
 # que --scope global sempre pula, mesma regra ja aplicada a language-*).
 #
-# Retorno: imprime em stdout UMA palavra de estado (sem newline extra):
+# Retorno: imprime em stdout UMA palavra de estado (sem newline extra),
+# SEMPRE derivada dos 3 hooks OBRIGATORIOS (o opt-in de item 3 nunca altera
+# esta palavra — best-effort separado):
 #   merged           — settings.json mesclado via jq
 #   paste-instructed — jq ausente, bloco impresso em stderr p/ colar manual
 #   hooks-only       — script copiado mas settings.snippet.json ausente
@@ -195,14 +316,15 @@ print_paste_block() {
 #                      trouxe hooks/ nesta instalacao — nao e erro)
 #   error            — falha de I/O (mkdir/cp/merge)
 apply_guard_hooks() {
-  if [ "$#" -ne 3 ]; then
-    log_error "hooks: apply_guard_hooks espera 3 argumentos (src_dir, dest_claude_root, dry_run)"
+  if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+    log_error "hooks: apply_guard_hooks espera 3 ou 4 argumentos (src_dir, dest_claude_root, dry_run, [with_loose_usage])"
     printf '%s' "error"
     return 2
   fi
   _agh_src=$1
   _agh_dest_root=$2
   _agh_dry_run=$3
+  _agh_with_loose=${4:-0}
 
   if [ ! -d "$_agh_src" ]; then
     log_warn "hooks: guard-hooks source ausente: $_agh_src"
@@ -223,6 +345,8 @@ apply_guard_hooks() {
 
   _agh_tick_script="$_agh_src/posttooluse-tool-call-tick.sh"
   _agh_usage_script="$_agh_src/posttooluse-agent-usage.sh"
+  _agh_loose_script="$_agh_src/posttooluse-loose-usage.sh"
+  _agh_loose_snippet="$_agh_src/settings.loose-usage.snippet.json"
 
   if [ "$_agh_dry_run" = 1 ]; then
     log_info "[dry-run] guard-hooks: copiaria $_agh_hook_script -> $_agh_hooks_dst/pretooluse-bash-guard.sh"
@@ -231,6 +355,18 @@ apply_guard_hooks() {
     fi
     if [ -f "$_agh_usage_script" ]; then
       log_info "[dry-run] guard-hooks: copiaria $_agh_usage_script -> $_agh_hooks_dst/posttooluse-agent-usage.sh"
+    fi
+    if [ "$_agh_with_loose" = 1 ]; then
+      if [ -f "$_agh_loose_script" ]; then
+        log_info "[dry-run] guard-hooks: copiaria $_agh_loose_script -> $_agh_hooks_dst/posttooluse-loose-usage.sh (opt-in --with-loose-usage)"
+      fi
+      if [ -f "$_agh_loose_snippet" ]; then
+        if detect_jq; then
+          log_info "[dry-run] guard-hooks: mesclaria (append) $_agh_loose_snippet -> $_agh_settings_dst"
+        else
+          log_info "[dry-run] guard-hooks: imprimiria paste-block do hook opt-in (jq ausente)"
+        fi
+      fi
     fi
     if [ -f "$_agh_snippet" ]; then
       if detect_jq; then
@@ -281,22 +417,63 @@ apply_guard_hooks() {
     fi
   fi
 
-  if [ ! -f "$_agh_snippet" ]; then
-    log_info "hooks: settings.snippet.json ausente em $_agh_src — so hook copiado"
-    printf '%s' "hooks-only"
-    return 0
+  # Hook OPT-IN de consumo avulso: copia do script e best-effort, independe
+  # do settings.json e por isso pode rodar aqui. So o MERGE do snippet
+  # precisa acontecer DEPOIS do merge base (bloco abaixo) — ver nota la.
+  if [ "$_agh_with_loose" = 1 ]; then
+    if [ -f "$_agh_loose_script" ]; then
+      if cp -- "$_agh_loose_script" "$_agh_hooks_dst/posttooluse-loose-usage.sh" 2>/dev/null; then
+        chmod +x -- "$_agh_hooks_dst/posttooluse-loose-usage.sh" 2>/dev/null || :
+        log_info "hooks: posttooluse-loose-usage.sh provisionado em $_agh_hooks_dst (opt-in --with-loose-usage)"
+      else
+        log_warn "hooks: cp de posttooluse-loose-usage.sh falhou — captura de consumo avulso indisponivel (demais hooks intactos)"
+      fi
+    else
+      log_warn "hooks: posttooluse-loose-usage.sh ausente no catalogo — --with-loose-usage sem efeito"
+    fi
   fi
 
-  if detect_jq; then
-    if merge_settings "$_agh_settings_dst" "$_agh_snippet"; then
-      printf '%s' "merged"
+  _agh_state="hooks-only"
+  if [ -f "$_agh_snippet" ]; then
+    if detect_jq; then
+      if merge_settings "$_agh_settings_dst" "$_agh_snippet"; then
+        _agh_state="merged"
+      else
+        _agh_state="error"
+      fi
     else
-      printf '%s' "error"
+      print_paste_block "$_agh_settings_dst" "$_agh_snippet"
+      _agh_state="paste-instructed"
     fi
   else
-    print_paste_block "$_agh_settings_dst" "$_agh_snippet"
-    printf '%s' "paste-instructed"
+    log_info "hooks: settings.snippet.json ausente em $_agh_src — so hook copiado"
   fi
+
+  # Merge do snippet OPT-IN: OBRIGATORIAMENTE depois do merge base acima.
+  # jq's `*` NAO faz merge recursivo de arrays — se este bloco rodasse
+  # ANTES do merge base (ordem tentada originalmente), com settings.json
+  # ainda inexistente, `merge_settings_loose_usage` criaria settings.json
+  # SO com o snippet opt-in; o merge base seguinte entao veria
+  # target.hooks.PostToolUse ja populado (so com o comando opt-in) e o
+  # `jq -s '.[0]*.[1]'` do merge_settings faria TARGET vencer o array
+  # inteiro — descartando o comando do tick/agent-usage. Rodar o append
+  # DEPOIS garante que o array PostToolUse ja tem as entradas obrigatorias
+  # quando o append (idempotente, por comando) acontece.
+  if [ "$_agh_with_loose" = 1 ] && [ -f "$_agh_loose_snippet" ]; then
+    if detect_jq; then
+      if merge_settings_loose_usage "$_agh_settings_dst" "$_agh_loose_snippet"; then
+        log_info "hooks: hook opt-in de consumo avulso registrado em $_agh_settings_dst"
+      else
+        log_warn "hooks: merge do hook opt-in de consumo avulso falhou (demais hooks intactos)"
+      fi
+    else
+      print_paste_block "$_agh_settings_dst" "$_agh_loose_snippet"
+    fi
+  elif [ "$_agh_with_loose" = 1 ]; then
+    log_warn "hooks: settings.loose-usage.snippet.json ausente no catalogo — --with-loose-usage sem registro automatico"
+  fi
+
+  printf '%s' "$_agh_state"
   return 0
 }
 
@@ -324,6 +501,7 @@ apply_guard_hooks() {
 #
 # Sintaxe:
 #   cstk hooks install [--project-path PATH] [--catalog DIR] [--dry-run]
+#                       [--with-loose-usage]
 #
 #   --project-path PATH  Raiz do projeto-alvo (default: diretorio corrente).
 #                        Os hooks vao para <PATH>/.claude/hooks/ e o merge
@@ -332,6 +510,12 @@ apply_guard_hooks() {
 #                        hooks sao lidos de
 #                        <DIR>/skills/agente-00c-runtime/hooks/.
 #   --dry-run            Reporta o plano sem escrever.
+#   --with-loose-usage   OPT-IN (default DESLIGADA — feature
+#                        loose-usage-capture task 3.3.2): tambem provisiona
+#                        posttooluse-loose-usage.sh (captura de consumo
+#                        avulso fora de execucoes 00c). Sem esta flag,
+#                        apply_guard_hooks() se comporta EXATAMENTE como
+#                        antes (3 hooks obrigatorios, zero regressao).
 #
 # Escopo de PROJETO apenas, por construcao: os hooks so fazem sentido
 # registrados no settings.json de um projeto (FR-009c — `--scope global`
@@ -349,11 +533,17 @@ cstk hooks — provisiona os hooks do runtime 00c num projeto-alvo.
 
 USO:
   cstk hooks install [--project-path PATH] [--catalog DIR] [--dry-run]
+                      [--with-loose-usage]
 
 Copia pretooluse-bash-guard.sh + posttooluse-tool-call-tick.sh +
 posttooluse-agent-usage.sh para <PATH>/.claude/hooks/ e mescla o bloco de
 registro em <PATH>/.claude/settings.json (via jq; sem jq, imprime o bloco
 para colagem manual).
+
+--with-loose-usage (opt-in, default DESLIGADA): tambem provisiona
+posttooluse-loose-usage.sh, hook que captura consumo avulso (fora de
+execucoes agente-00c/feature-00c) num sidecar local. Sem a flag,
+comportamento identico a antes desta opcao existir.
 
 Diferenca para `cstk install --scope project agente-00c-runtime`: aquele
 comando tambem duplica skill+commands+agents dentro do repo; este toca
@@ -384,6 +574,7 @@ hooks_main() {
   _hooks_project_path="."
   _hooks_catalog="${HOME:?HOME nao setado}/.claude"
   _hooks_dry_run=0
+  _hooks_with_loose=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -396,6 +587,7 @@ hooks_main() {
         _hooks_catalog=$2; shift 2 ;;
       --catalog=*) _hooks_catalog=${1#--catalog=}; shift ;;
       --dry-run) _hooks_dry_run=1; shift ;;
+      --with-loose-usage) _hooks_with_loose=1; shift ;;
       -h|--help) _hooks_print_help; return 0 ;;
       *) log_error "hooks install: flag desconhecida: $1"; return 2 ;;
     esac
@@ -426,7 +618,7 @@ hooks_main() {
 
   _hooks_dest="$_hooks_abs/.claude"
 
-  _hooks_state=$(apply_guard_hooks "$_hooks_src" "$_hooks_dest" "$_hooks_dry_run")
+  _hooks_state=$(apply_guard_hooks "$_hooks_src" "$_hooks_dest" "$_hooks_dry_run" "$_hooks_with_loose")
 
   case "$_hooks_state" in
     merged)

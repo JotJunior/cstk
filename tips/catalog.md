@@ -413,31 +413,19 @@ no que e realmente novo na tarefa 4.2.
 
 ---
 skill: initialize-docs
-category: uso
-text: Use /initialize-docs para criar a hierarquia padrao de documentacao (01-09 dirs, READMEs, briefing, UCs, DER, ADRs, APIs, tests, ops) em projetos novos.
----
-No inicio de um projeto:
-
-```
-/initialize-docs
-```
-
-Cria a estrutura padrao de `docs/` com todos os diretorios padronizados
-e arquivos README.md descritivos. Evita criar estrutura manual inconsistente.
-
----
-skill: initialize-docs
 category: gotcha
-text: O /initialize-docs pula automaticamente se a estrutura ja existe — use --force apenas se quiser recriar diretorios que ja existem (cuidado com sobrescrita).
+text: DEPRECATED (remocao na v7) — nao use /initialize-docs em projetos novos. O layout SDD e docs/briefing.md + docs/constitution.md + docs/specs/, criado pelas proprias skills briefing/constitution/specify.
 ---
-```
-# Verificar antes:
-ls docs/
+A hierarquia numerada 01-09 e legado. Em projetos novos, va direto:
 
-# Se estrutura ja existe, a skill nao sobrescreve por padrao.
-# Para forccar recreacao (CUIDADO — pode sobrescrever):
-/initialize-docs --force
 ```
+/briefing        # -> docs/briefing.md
+/constitution    # -> docs/constitution.md
+/specify ...     # -> docs/specs/<feature>/spec.md
+```
+
+Projetos que ja tem `docs/01-briefing-discovery/` continuam suportados —
+o pipeline aceita os dois layouts ate a remocao da skill na v7.
 
 ---
 skill: model-selector

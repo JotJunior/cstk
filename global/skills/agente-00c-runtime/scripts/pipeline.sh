@@ -28,8 +28,10 @@
 #           review-features -> sempre passa
 #       — `briefing` e `constitution` sao artefatos PROJECT-LEVEL (uma vez por
 #         projeto, nao por feature). As skills `briefing` e `constitution`
-#         salvam em paths do `/initialize-docs` (hierarquia numerada):
-#           briefing      -> docs/01-briefing-discovery/briefing.md
+#         salvam na raiz de docs/:
+#           briefing      -> docs/briefing.md (canonico)
+#                            docs/01-briefing-discovery/briefing.md (legado,
+#                            hierarquia numerada do /initialize-docs)
 #           constitution  -> docs/constitution.md
 #         Quando `--projeto-alvo-path PAP` e passado, esses paths sao
 #         aceitos como fallback alem do feature-dir convencional. Isso
@@ -266,8 +268,9 @@ _pl_validate_tasks() {
 #
 # Fallback PAP (issue #3): briefing e constitution sao project-level. Quando
 # `--projeto-alvo-path PAP` e passado, alem do feature-dir convencional, os
-# paths do /initialize-docs sao aceitos:
-#   briefing      -> $PAP/docs/01-briefing-discovery/briefing.md
+# paths project-level sao aceitos (canonico primeiro, legado depois):
+#   briefing      -> $PAP/docs/briefing.md (canonico)
+#                    $PAP/docs/01-briefing-discovery/briefing.md (legado)
 #   constitution  -> $PAP/docs/constitution.md
 _pl_cmd_detect_completion() {
   _fd=""
@@ -292,6 +295,9 @@ _pl_cmd_detect_completion() {
       # Valida estrutura: header + >=4 secoes nucleares.
       if [ -f "$_fd/briefing.md" ]; then
         _pl_validate_briefing "$_fd/briefing.md" || return 1
+        return 0
+      elif [ -n "$_pap" ] && [ -f "$_pap/docs/briefing.md" ]; then
+        _pl_validate_briefing "$_pap/docs/briefing.md" || return 1
         return 0
       elif [ -n "$_pap" ] && [ -f "$_pap/docs/01-briefing-discovery/briefing.md" ]; then
         _pl_validate_briefing "$_pap/docs/01-briefing-discovery/briefing.md" || return 1

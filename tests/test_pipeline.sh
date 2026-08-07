@@ -163,6 +163,43 @@ scenario_detect_completion_briefing_aceita_path_initialize_docs() {
   }
 }
 
+# ==== Briefing canonico em docs/briefing.md (legado 01-briefing-discovery preservado) ====
+scenario_detect_completion_briefing_aceita_path_canonico_docs() {
+  _fd="$TMPDIR_TEST/feat-canon"
+  _pap="$TMPDIR_TEST/pap-canon"
+  mkdir -p "$_fd" "$_pap/docs"
+
+  # Briefing SO em docs/briefing.md (canonico) -> exit 0 (com PAP)
+  _write_briefing_valido "$_pap/docs/briefing.md"
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage briefing \
+    --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 0 ] || {
+    _fail "briefing canonico em PAP" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  }
+
+  # Precedencia: canonico INVALIDO vence o legado valido -> exit 1
+  # (prova que docs/briefing.md e checado antes do path legado)
+  mkdir -p "$_pap/docs/01-briefing-discovery"
+  _write_briefing_valido "$_pap/docs/01-briefing-discovery/briefing.md"
+  printf '# so header, sem secoes\n' > "$_pap/docs/briefing.md"
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage briefing \
+    --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || {
+    _fail "precedencia canonico sobre legado" "esperado 1, obtido $_CAPTURED_EXIT"
+    return 1
+  }
+
+  # Canonico valido + legado valido -> exit 0 (canonico usado)
+  _write_briefing_valido "$_pap/docs/briefing.md"
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage briefing \
+    --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 0 ] || {
+    _fail "canonico+legado validos" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  }
+}
+
 # ==== Issue #3: constitution aceita docs/constitution.md via --projeto-alvo-path ====
 scenario_detect_completion_constitution_aceita_path_initialize_docs() {
   _fd="$TMPDIR_TEST/feat"

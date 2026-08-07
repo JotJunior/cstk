@@ -14,7 +14,7 @@ próximo.
  │  DISCOVERY   │
  └──────┬───────┘
         │
-   ① briefing          Entrevista de discovery → docs/01-briefing-discovery/briefing.md
+   ① briefing          Entrevista de discovery → docs/briefing.md
         │                Coleta visão, usuários, escopo, restrições e stack.
         │                Pergunta UMA pergunta por vez (max 10).
         ▼
@@ -93,7 +93,7 @@ próximo.
 
 - **Feature simples**: `specify` → `plan` → `create-tasks` → `execute-task`
 - **Bug fix**: `bugfix` (skill independente, não requer pipeline)
-- **Projeto existente sem docs**: `initialize-docs` → `briefing` → `constitution`
+- **Projeto existente sem docs**: `briefing` → `constitution` (sem scaffold — as proprias skills criam `docs/briefing.md` e `docs/constitution.md`)
 - **Só precisa de tasks**: `create-tasks` direto (se já tem contexto suficiente)
 
 A `specify` também traz um guia de triagem "atualizar spec existente vs abrir

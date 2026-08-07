@@ -106,7 +106,8 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
    - se >500 chars, truncar + warning (limit-length trunca e adiciona "...")
 
 3. validar briefing (FR-PRE-001):
-   _br="$_proj/docs/01-briefing-discovery/briefing.md"
+   _br="$_proj/docs/briefing.md"
+   [ -f "$_br" ] || _br="$_proj/docs/01-briefing-discovery/briefing.md"  # legado
    - existe + nao-vazio + seções mínimas (visão, usuários-alvo, restrições, prioridades)
    - sem placeholders [TBD]/[A definir]/[FILL]/TODO em seções minimas
    - se falha: stderr "/briefing antes ou /agente-00c para bootstrap"; exit 1

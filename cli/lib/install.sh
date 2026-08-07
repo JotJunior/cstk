@@ -93,7 +93,7 @@ PROFILES DISPONIVEIS:
   complementary  Skills de uso pontual (sem sequencia): advisor, bugfix,
                  apply-insights, owasp-security,
                  validate-documentation, validate-docs-rendered,
-                 initialize-docs.
+                 initialize-docs (deprecated, remocao na v7).
   all            Todas as skills do catalog (uniao de sdd + complementary
                  + qualquer skill nova em global/skills/).
 
