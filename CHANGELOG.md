@@ -5,6 +5,20 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.24.0] - 2026-08-07
+
+### Adicionado
+
+- **Filtro de tarefas por onda no detalhe da execução**: ao clicar numa
+  onda na timeline, a aba Tarefas passa a ser filtrada pela onda
+  selecionada — mesma semântica já aplicada às Decisões — permitindo ver
+  lado a lado o que foi decidido e o que foi efetivamente executado
+  naquela onda. Os cards de resumo do painel (Tarefas, Pass rate,
+  Lint OK, Fails) refletem apenas a onda filtrada, e o empty state
+  diferencia "sem tarefas nesta onda" (com dica para limpar o filtro) de
+  "sem tarefas registradas". Filtro aplicado no cliente: o endpoint
+  devolve todas as tarefas da execução, sem paginação.
+
 ## [0.23.1] - 2026-08-07
 
 ### Alterado
@@ -1129,6 +1143,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.24.0]: https://github.com/JotJunior/cstk-panel/compare/v0.23.1...v0.24.0
 [0.23.1]: https://github.com/JotJunior/cstk-panel/compare/v0.23.0...v0.23.1
 [0.23.0]: https://github.com/JotJunior/cstk-panel/compare/v0.22.1...v0.23.0
 [0.22.1]: https://github.com/JotJunior/cstk-panel/compare/v0.22.0...v0.22.1
