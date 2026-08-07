@@ -581,13 +581,16 @@ scenario_docker_mentions_confined_to_serve_docker_lib() {
   # docker tem UM arquivo confinado com a invocacao funcional:
   #   (docker, serve) -> cli/lib/serve-docker.sh
   #   (docker, mcp)   -> cli/lib/mcp-docker.sh
-  # cli/lib/mcp.sh e exempto da checagem de MENCAO (comentarios, strings de
-  # modo "docker|bash-fallback", sourcing e chamadas _mcp_docker_*), mas a
-  # checagem de INVOCACAO FUNCIONAL abaixo continua cobrindo-o.
+  # cli/lib/mcp.sh e cli/lib/setup.sh sao exemptados da checagem de MENCAO
+  # (mcp.sh: comentarios, strings de modo "docker|bash-fallback", sourcing e
+  # chamadas _mcp_docker_*; setup.sh: `command -v docker` para TEXTO de aviso
+  # em FR-015, nunca invocacao funcional), mas a checagem de INVOCACAO
+  # FUNCIONAL abaixo continua cobrindo ambos.
   _hits=$(grep -rniE 'docker' "$REPO_ROOT/cli" 2>/dev/null \
             | grep -v '/cli/lib/serve-docker\.sh:' \
             | grep -v '/cli/lib/mcp-docker\.sh:' \
             | grep -v '/cli/lib/mcp\.sh:' \
+            | grep -v '/cli/lib/setup\.sh:' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *-*-docker\)[[:space:]]*$' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *\. "\$\{CSTK_LIB\}/serve-docker\.sh"$' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *_serve_docker_main ' \
