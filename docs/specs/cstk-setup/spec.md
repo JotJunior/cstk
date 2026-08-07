@@ -4,6 +4,14 @@
 **Created**: 2026-08-07
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-07
+
+- Q: O 'guided setup wizard' e implementado como um novo subcomando 'cstk setup' do binario CLI, ou como uma skill/slash-command do Claude Code? → A: Novo subcomando `cstk setup` no binario CLI (`cli/lib/setup.sh`), interativo — nao e skill/slash-command do Claude Code.
+- Q: Quais marcadores concretos definem 'diretorio de projeto gerenciado pelo toolkit' para o gate de recusa do FR-011? → A: Raiz de repositorio git (presenca de `.git`, arquivo ou diretorio — worktrees contam); nao exige artefatos do toolkit, para evitar circularidade com o proprio onboarding.
+- Q: No modo nao-interativo, a area de MCP deve tentar aplicar `cstk mcp install` por padrao mesmo sem Docker detectado, ou pular a area? → A: Tenta aplicar mesmo sem Docker (registro fica inerte sem Docker; start das execucoes ja degrada sozinho para bash-fallback), emitindo aviso claro de Docker ausente.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Guided first-time setup (Priority: P1)
@@ -149,9 +157,9 @@ still applies the mandatory hooks.
   failed/unavailable with the reason, and MUST continue offering the
   remaining areas rather than stopping the whole run.
 - How does the wizard behave when it is run inside a directory that is
-  not a toolkit-managed project (no recognizable project markers)? It
-  MUST say so clearly and MUST NOT create partial configuration in an
-  unrelated directory.
+  not a toolkit-managed project (i.e. not the root of a git repository —
+  see FR-011)? It MUST say so clearly and MUST NOT create partial
+  configuration in an unrelated directory.
 - How does the wizard behave when the terminal is not interactive (e.g.
   piped input, no TTY) and neither the non-interactive nor the preview
   flag was supplied? It MUST detect the non-interactive terminal and
@@ -210,7 +218,11 @@ still applies the mandatory hooks.
   configured, skipped by user, or failed (with reason).
 - **FR-011**: The guided setup MUST refuse to run, with a clear
   diagnostic, when invoked outside a recognizable toolkit-managed project
-  directory, and MUST NOT write any configuration in that case.
+  directory — defined as the root of a git repository (presence of a
+  `.git` file or directory; git worktrees count) — and MUST NOT write any
+  configuration in that case. No toolkit-specific artifact (e.g.
+  `.claude/`, `docs/constitution.md`) is required as a marker, since the
+  guided setup is itself part of onboarding a project onto the toolkit.
 - **FR-012**: The telemetry area MUST only diagnose current activation
   status and display the exact instructions/values needed to activate it
   manually; it MUST NOT write to any file outside the project directory.
@@ -218,6 +230,14 @@ still applies the mandatory hooks.
   re-checking that area's live current status immediately before acting,
   every run — never by a persisted "setup already ran" flag. Scope: the
   four areas listed in FR-001, checked fresh on every invocation.
+- **FR-014**: The guided setup MUST be implemented as a new subcommand of
+  the CLI binary (`cstk setup`, backed by `cli/lib/setup.sh`), interactive
+  by default — not as a Claude Code skill or slash-command.
+- **FR-015**: In non-interactive mode, the MCP state-server area MUST
+  attempt `cstk mcp install` as its recommended default even when Docker
+  is not detected — the resulting registration is inert without Docker,
+  and execution start already degrades gracefully to bash-fallback on its
+  own — while emitting a clear warning that Docker was not found.
 
 > Decisoes de infraestrutura adicionais: N/A — feature nao introduz
 > scheduling, rotacao de chaves, refresh de token externo, mutex
