@@ -5,6 +5,19 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.22.1] - 2026-08-07
+
+### Corrigido
+
+- **Aceita `knowledge.db` schema v13** (`loose-usage-capture`, cstk 6.6.0):
+  `'13'` adicionado a `DEFAULT_SCHEMA_VERSIONS`. A migração v13 é aditiva
+  (tabela `loose_usage`, consumo avulso fora de execuções 00c) e roda
+  automaticamente no primeiro `cstk recall`/ingest após o upgrade — sem esta
+  entrada o painel degradava com `schema-mismatch` em bases já migradas. O
+  painel ainda não exibe os dados de `loose_usage`; todas as telas seguem
+  operando sobre as tabelas existentes. Smoke real atualizado para aceitar
+  v12 ou v13.
+
 ## [0.22.0] - 2026-08-02
 
 ### Adicionado
@@ -1078,6 +1091,8 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.22.1]: https://github.com/JotJunior/cstk-panel/compare/v0.22.0...v0.22.1
+[0.22.0]: https://github.com/JotJunior/cstk-panel/compare/v0.21.1...v0.22.0
 [0.21.1]: https://github.com/JotJunior/cstk-panel/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/JotJunior/cstk-panel/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/JotJunior/cstk-panel/compare/v0.19.2...v0.20.0

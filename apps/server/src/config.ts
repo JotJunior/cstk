@@ -15,7 +15,7 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
-/** Default quando CSTK_SCHEMA_VERSIONS nao esta definido — aceita v2..v11.
+/** Default quando CSTK_SCHEMA_VERSIONS nao esta definido — aceita v2..v13.
  *  v4 (recall-memory-mirror) adiciona a tabela `memories`; v5 (recall-suggestions)
  *  adiciona a tabela `suggestions`; v6 adiciona a coluna `decisions.options`;
  *  v7 (new-schema) migra todas as colunas pt-BR→EN snake_case;
@@ -33,9 +33,14 @@ import { resolve } from 'node:path';
  *  Permite custo por modelo (opus vs sonnet) e cache-hit ratio, antes
  *  impossiveis. `wave_model_usage` NAO alimenta a FTS — o label de modelo vem
  *  de fonte externa e nunca deve alcancar contexto de LLM.
+ *  v13 (loose-usage-capture, cstk 6.6.0) adiciona a tabela `loose_usage`
+ *  (consumo avulso: sessoes interativas FORA de execucoes 00c, grao
+ *  processo/projeto — nao confundir com `wave_model_usage`, grao onda x
+ *  modelo). O painel ainda nao exibe esses dados; aceitar a versao evita
+ *  schema-mismatch em bases ja migradas pelo cstk >= 6.6.0.
  *  Todas sao aditivas, entao as telas existentes seguem operando e os recursos
  *  novos aparecem so quando a tabela/coluna esta presente (Principio II). */
-export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'] as const;
+export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13'] as const;
 
 export interface ServerConfig {
   /** Path absoluto canonicalizado para knowledge.db */
