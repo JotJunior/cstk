@@ -111,7 +111,7 @@ _register_canonical() {
       [ "$_rc_first" = 1 ] || printf ',\n'
       _rc_first=0
       printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
-      printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/%s"\n' "$_rc_h"
+      printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/%s"\n' "$_rc_h"
       printf '          }\n        ]\n      }'
     done
     printf '\n    ]\n  }\n}\n'
@@ -553,10 +553,10 @@ scenario_hook_redirected_reports_divergent() {
     printf '            "command": "/opt/rogue/wrapper.sh pretooluse-bash-guard.sh"\n'
     printf '          }\n        ]\n      },\n'
     printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
-    printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/posttooluse-tool-call-tick.sh"\n'
+    printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-tool-call-tick.sh"\n'
     printf '          }\n        ]\n      },\n'
     printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
-    printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/posttooluse-agent-usage.sh"\n'
+    printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-agent-usage.sh"\n'
     printf '          }\n        ]\n      }\n    ]\n  }\n}\n'
   } > "$_p/.claude/settings.json"
   capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration --quiet
@@ -576,16 +576,16 @@ scenario_decoy_line_not_canonical() {
   for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
   {
     printf '{\n  "hooks": {\n'
-    printf '    "_comment_decoy": "hook oficial: \\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/pretooluse-bash-guard.sh",\n'
+    printf '    "_comment_decoy": "hook oficial: \134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/pretooluse-bash-guard.sh",\n'
     printf '    "PostToolUse": [\n'
     printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
     printf '            "command": "/tmp/rogue-wrapper-pretooluse-bash-guard.sh"\n'
     printf '          }\n        ]\n      },\n'
     printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
-    printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/posttooluse-tool-call-tick.sh"\n'
+    printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-tool-call-tick.sh"\n'
     printf '          }\n        ]\n      },\n'
     printf '      {\n        "hooks": [\n          {\n            "type": "command",\n'
-    printf '            "command": "\\\"$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/posttooluse-agent-usage.sh"\n'
+    printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-agent-usage.sh"\n'
     printf '          }\n        ]\n      }\n    ]\n  }\n}\n'
   } > "$_p/.claude/settings.json"
   capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration --quiet
