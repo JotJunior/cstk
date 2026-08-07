@@ -1,0 +1,258 @@
+# Implementation Plan: Guided Project Setup Wizard
+
+**Feature**: `cstk-setup` | **Date**: 2026-08-07 | **Spec**: [spec.md](./spec.md)
+
+## Summary
+
+Adicionar `cstk setup`: um subcomando novo do binario CLI que percorre,
+numa ordem fixa, as quatro areas de configuracao recomendadas de um
+projeto — hooks obrigatorios (com o hook opt-in de captura avulsa como
+escolha aninhada), backend de estado global, registro do servidor MCP de
+estado, e telemetria — mostrando o status atual de cada uma antes de
+oferecer aplica-la, e terminando com um sumario por area.
+
+**Abordagem tecnica**: `cli/lib/setup.sh` e uma camada de **orquestracao
+pura**. Nao implementa nenhuma deteccao nem nenhuma escrita propria: cada
+area delega deteccao a uma fonte read-only existente e aplicacao ao
+comando dedicado existente (research.md Decisions 2 e 4). Essa e a unica
+forma de satisfazer FR-002 ("usando a mesma logica de deteccao do comando
+dedicado") sem criar uma segunda implementacao que derive com o tempo.
+Idempotencia (FR-003/FR-013) cai fora de graca: o status e re-apurado
+vivo a cada invocacao e area ja configurada nao recebe chamada alguma.
+
+Uma unica extensao de contrato e necessaria — o hook opt-in
+`posttooluse-loose-usage.sh` nao tem hoje nenhuma fonte de deteccao
+read-only, embora FR-002 + FR-008 exijam mostrar seu status antes de
+perguntar. Ver research.md Decision 3.
+
+## Technical Context
+
+**Language/Version**: POSIX sh (`#!/bin/sh`, `set -eu`) — Constitution II
+**Primary Dependencies**: nenhuma nova. `setup.sh` sourceia libs irmas pelo
+padrao ja estabelecido `. "${CSTK_LIB:?CSTK_LIB must be set}/<lib>.sh"`
+(`cli/lib/hooks.sh:60`, `cli/lib/doctor.sh:51-59`, `cli/lib/list.sh:31-41`)
+e invoca scripts do catalogo como processo. **Nao** chama `sqlite3`
+(confinado a `cli/lib/recall.sh`), **nao** chama `docker` funcionalmente
+(confinado a `cli/lib/mcp-docker.sh`), **nao** exige `jq`
+**Storage**: N/A — feature sem persistencia propria (FR-013 proibe flag
+persistido de "setup ja rodou"). Escritas ocorrem apenas dentro dos
+comandos delegados
+**Testing**: harness POSIX do repo — `tests/cstk/test_setup.sh` (novo),
+cenarios `scenario_<nome>()` descobertos por `run_all_scenarios`
+(`tests/lib/harness.sh:245-251`); mapeamento obrigatorio de
+`tests/run.sh:10-13`, enforced por `./tests/run.sh --check-coverage`
+**Target Platform**: macOS/Linux, shell POSIX. Sem GNU-only (CLAUDE.md)
+**Project Type**: CLI (subcomando de binario existente)
+**Performance Goals**: SC-001 — decidir as 4 areas em menos de 2 min de
+tempo interativo. Nao ha meta de latencia de maquina; o custo dominante e
+leitura humana
+**Constraints**: FR-011 (so roda em raiz de repo git); FR-012 (area de
+telemetria nao escreve fora do projeto); FR-007 (falha rapida sem TTY);
+Constitution II (POSIX puro, sem bashismos)
+**Scale/Scope**: 1 lib nova + 1 arquivo de teste novo + edicoes pontuais
+em `cli/cstk` (4 listas) + 1 extensao aditiva de flag em
+`guard-hooks-status.sh`
+
+Zero `NEEDS CLARIFICATION` remanescentes. As tres ambiguidades originais
+foram fechadas no clarify (spec.md linhas 11-13); as decisoes tecnicas
+restantes estao resolvidas em research.md.
+
+## Constitution Check
+
+*GATE: Deve passar antes do Phase 0. Re-checado apos Phase 1 — ver
+§Re-check.*
+
+| Principio | Status | Notas |
+|-----------|--------|-------|
+| I. SDD recursivo (NON-NEGOTIABLE) | PASS | Feature nao-trivial entrou pela pipeline completa: `spec.md` + `clarify` (3 Q&A registradas) + este `plan.md`; `tasks.md` vem a seguir. Nao ha alteracao de contrato de skill existente, logo sem BREAKING |
+| II. POSIX sh puro (NON-NEGOTIABLE) | PASS | `cli/lib/setup.sh` e `#!/bin/sh` + `set -eu`, sem arrays, `[[ ]]`, `local`, `<<<` ou `function`. **Nenhuma dep nova**: nao invoca `jq`, `sqlite3`, `docker`, `git`. A deteccao de MCP e leitura textual (`grep -F`), mesma escolha que `_gh_registered` (`guard-hooks-status.sh:119`) ja faz explicitamente para nao depender de `jq`. Ver §Registro de dependencias |
+| III. Formato canonico de skill | N/A | Nao e skill — FR-014 fixa subcomando de CLI. Nao ha `SKILL.md` envolvido |
+| IV. Zero coleta remota (NON-NEGOTIABLE) | PASS | Ver §Analise dedicada abaixo — as duas superficies suspeitas (area de telemetria, hook de captura avulsa) sao 100% locais |
+| V. Profundidade sobre adocao | PASS | A feature reduz retrabalho real (substitui conhecimento tribal de 4 comandos por um ponto de entrada), nao gera visibilidade. Nenhuma superficie nova de configuracao foi inventada — so orquestracao do que existe |
+| VI. Veracidade de dados (NON-NEGOTIABLE) | PASS | Todo comportamento existente afirmado nos artefatos cita `arquivo:linha` verificado. Interfaces novas estao marcadas **[PROPOSTA]** em `contracts/cli-setup.md`, distintas de **[EXISTENTE]**. Onde faltou fonte (Scenario 3 do quickstart: valores de `reason=` do `state-backend.sh resolve`), a lacuna foi **registrada como investigacao**, nao preenchida por suposicao |
+
+### Analise dedicada — Principio IV (zero coleta remota)
+
+A feature toca duas superficies que, pelo nome, parecem colidir com
+"nenhuma skill faz requisicao de rede para endpoint de telemetria":
+
+1. **Area de telemetria (OTel)**. O que existe no repo e um exporter
+   **Prometheus local** em `127.0.0.1:9464` (README.md:315), consumido
+   por `otel-usage.sh` na propria maquina. Nao ha endpoint do autor, nao
+   ha upload. Alem disso o wizard **nao ativa nada** — FR-012 restringe a
+   area a diagnosticar (`otel-usage.sh preflight`, `otel-usage.sh:469`) e
+   exibir instrucoes. A decisao de ativar continua inteiramente do
+   usuario, no shell dele.
+2. **Hook opt-in de captura avulsa**. Grava em sidecar local
+   (`~/.claude/cstk/loose-usage/`) e no `knowledge.db` local. E opt-in
+   explicito (`--with-loose-usage` default off, `cli/lib/hooks.sh:513,543`),
+   e o wizard **preserva** esse opt-in: FR-008 exige pergunta separada, e
+   o default em `--yes` e **nao aplicar** (research.md Decision 5) —
+   unica area cujo default recomendado e "nao". Logs e artefatos
+   permanecem no filesystem local, como o Principio IV exige.
+
+**Veredito**: PASS. O wizard nao introduz nenhuma requisicao de rede; ao
+contrario, torna explicita ao usuario uma escolha que hoje esta enterrada
+em documentacao.
+
+### Registro de dependencias (Principio II, carve-outs 1.1.0 e 1.3.0)
+
+`cli/lib/setup.sh` **nao aciona nenhum carve-out**: nao introduz
+dependencia opcional nem obrigatoria. As deps que aparecem
+transitivamente ja estao cobertas por carve-outs anteriores e
+permanecem confinadas onde ja estavam:
+
+| Dep | Onde e usada | Cobertura |
+|-----|--------------|-----------|
+| `jq` | dentro de `hooks install` / `mcp install`, com fallback `print_paste_block` que retorna 0 (`cli/lib/hooks.sh:631-643`, `cli/lib/mcp.sh:866-871`) | carve-out 1.1.0 (opcional com fallback), preexistente |
+| `sqlite3` | dentro de `enable-sqlite` (`state-backend.sh`), com recusa limpa exit 3 quando ausente (linhas 358-370) | carve-out 1.3.0 (camada de estado transacional), preexistente |
+| `docker` | dentro de `cli/lib/mcp-docker.sh` (unico ponto funcional, cabecalho linhas 1-11) | preexistente; `setup.sh` no maximo usa `command -v docker` para texto de aviso, mesmo padrao de `cli/lib/mcp.sh:475-479` |
+
+## Project Structure
+
+### Documentation (this feature)
+
+```
+docs/specs/cstk-setup/
+├── spec.md
+├── plan.md                  # This file
+├── research.md              # Phase 0 output — 10 decisions
+├── data-model.md            # Phase 1 output — estruturas em memoria
+├── quickstart.md            # Phase 1 output — 12 cenarios
+└── contracts/
+    └── cli-setup.md         # Phase 1 output — contrato CLI + 4 fronteiras
+```
+
+### Source Code (repository root)
+
+Paths verificados no repo em 2026-08-07. `[NOVO]` = arquivo a criar;
+`[EDIT]` = arquivo existente a alterar; demais sao consumidos sem
+alteracao.
+
+```
+cli/
+├── cstk                                    [EDIT] 4 pontos — ver tabela
+└── lib/
+    ├── setup.sh                            [NOVO] setup_main + orquestracao
+    ├── common.sh                           log_info/log_warn/log_error (19/23/27), is_tty (31)
+    ├── ui.sh                               require_tty (42-50)
+    ├── config.sh                           config_state_backend_{capability,resolve,enable_sqlite} (90/94/98)
+    ├── hooks.sh                            hooks_main (557), apply_guard_hooks (318)
+    ├── mcp.sh                              _mcp_cmd_install (806-877), _mcp_cmd_status (371)
+    ├── mcp-docker.sh                       _mcp_docker_preflight — nao invocado por setup.sh
+    ├── doctor.sh                           _doctor_deps_run (408-474)
+    └── state.sh                            state_main (103-149) — referencia de contrato
+global/skills/agente-00c-runtime/
+├── scripts/
+│   ├── guard-hooks-status.sh               [EDIT] flag --include-loose-usage (aditiva)
+│   ├── state-backend.sh                    resolve (234-269), enable-sqlite (358-397)
+│   └── otel-usage.sh                       preflight (469)
+└── hooks/
+    ├── posttooluse-loose-usage.sh          alvo da nova deteccao
+    └── settings.loose-usage.snippet.json   snippet separado (opt-in)
+tests/
+├── run.sh                                  mapeamento (10-13) + --check-coverage
+├── lib/harness.sh                          run_all_scenarios (245-251)
+└── cstk/
+    └── test_setup.sh                       [NOVO] cenarios do quickstart.md
+```
+
+**Pontos de edicao em `cli/cstk`** (todos os quatro sao obrigatorios —
+esquecer um produz UX inconsistente, ver research.md Decision 1):
+
+| Local | Mudanca |
+|-------|---------|
+| `cli/cstk:250` | adicionar `setup` ao `case` do ramo generico de dispatch |
+| `cli/cstk:136-152` | adicionar `setup` a lista de comandos do help geral |
+| `cli/cstk:169-211` | adicionar ramo `setup)` ao `case` de help por subcomando |
+| `cli/cstk:217` e `cli/cstk:299` | incluir `setup` nas listas de comandos validos das mensagens de erro |
+
+**Structure Decision**: `setup` entra pelo ramo **generico** do
+dispatcher, sem ramo dedicado. O ramo generico ja resolve
+`$CSTK_LIB/setup.sh` (`cli/cstk:257`), sourceia (linha 265) e deriva
+`setup_main` pela convencao `sed 's/-/_/g'` + `_main` (linha 267). O
+special-casing de `00c` (linhas 274-291) existe apenas porque nome de
+funcao nao pode comecar com digito — nao se aplica. Um ramo dedicado
+seria codigo morto.
+
+## Convencoes de Borda
+
+**N/A — single-layer.** A feature e um subcomando CLI em POSIX sh puro:
+nao ha borda backend↔frontend, nao ha DB, nao ha broker, nao ha payload
+serializado atravessando camadas. Nenhum mapper, nenhum schema
+compartilhado, nenhuma validacao de case style aplicavel.
+
+A unica fronteira real e **processo ↔ processo** (`setup.sh` consumindo
+stdout/exit de scripts do catalogo), e ela ja e governada por contratos
+textuais explicitos, documentados em `contracts/cli-setup.md`:
+
+| Fronteira | Formato | Fonte da verdade |
+|-----------|---------|------------------|
+| `setup.sh` ↔ `guard-hooks-status.sh` | TSV, 4 campos por linha | cabecalho de `guard-hooks-status.sh:49-60` |
+| `setup.sh` ↔ `state-backend.sh` (via `config.sh`) | `chave=valor` (`effective_backend=`, `reason=`) | `_sb_cmd_resolve`, `state-backend.sh:234-269` |
+| `setup.sh` ↔ `hooks.sh` / `mcp.sh` | funcao sourceada + exit code | contratos em `cli/lib/hooks.sh:526-535`, `cli/lib/mcp.sh:949-953` |
+| `setup.sh` ↔ `otel-usage.sh` | texto de diagnostico + exit | `_ou_cmd_preflight`, `otel-usage.sh:469-561` |
+
+**Disciplina equivalente ao "case style"** para esta feature: o
+vocabulario de status (`configured` / `not-configured` / `unavailable`) e
+de outcome (`applied` / `already-configured` / `skipped` / `failed`) e
+**fechado e declarado uma unica vez** em `data-model.md`, e vem
+literalmente de FR-002 e FR-010. Nenhuma area pode inventar um quinto
+valor — e a mesma classe de bug que o template alerta (dois lados
+falando dialetos diferentes do mesmo dado), transposta para CLI.
+
+## Re-check de Constitution (pos-Phase 1)
+
+Revalidacao apos o design estar completo:
+
+- **Complexidade introduzida**: uma lib nova de orquestracao e uma flag
+  aditiva. Nenhuma camada, nenhum servico, nenhum formato de dado novo.
+  O design REDUZ superficie conceitual (4 comandos → 1 ponto de entrada)
+  em vez de aumenta-la.
+- **Principio II segue integro**: o design explicitamente rejeitou
+  `git rev-parse` (research.md Decision 7), reescrita direta de
+  `settings.json`/`.mcp.json` (Decision 4) e parse com `jq` (Decision 2) —
+  em todos os casos escolhendo a alternativa POSIX ou a delegacao.
+- **Principio VI segue integro apos o design**: o Phase 1 *encontrou* uma
+  lacuna factual (valores de `reason=` do `resolve`) e a registrou como
+  investigacao no quickstart Scenario 3, em vez de inventar o conjunto de
+  valores. Esse e o comportamento que o principio exige.
+- **Risco novo identificado, mitigado por processo**: a feature toca as
+  duas metades da instalacao (runtime do binario **e** catalogo),
+  exigindo `cstk self-update` **e** `cstk install`. Mitigado pelo
+  quickstart Scenario 11 como verificacao manual obrigatoria.
+
+**Veredito**: todos os MUST (I, II, IV, VI) seguem PASS. Nenhum novo
+carve-out necessario.
+
+## Complexity Tracking
+
+Nao aplicavel — Constitution Check sem violacoes, nenhuma excecao
+solicitada, nenhum carve-out novo acionado.
+
+## Riscos e pontos de atencao para `create-tasks`
+
+Levantados no Phase 1, a converter em tarefas:
+
+1. **`reason=` do `state-backend.sh resolve` nao enumerado** — bloqueia a
+   regra de US2 AC3 (nao migrar backend deliberadamente diferente).
+   Tarefa de investigacao empirica ANTES de codificar o default de `--yes`
+   para a area de state backend. Ver quickstart Scenario 3.
+2. **`set -e` e isolamento de falha (FR-009)** — libs sourceadas rodam no
+   mesmo shell sob `set -eu`. Toda chamada de aplicacao MUST ser
+   neutralizada (`if ! fn; then` ou `fn || rc=$?`). Uma unica chamada
+   solta derruba o wizard inteiro e viola FR-009 silenciosamente.
+3. **Exit 0 nao significa `applied`** — `hooks install` e `mcp install`
+   retornam 0 em `paste-instructed` (jq ausente). Mapear para um outcome
+   que carregue o aviso ao summary, senao o usuario le "tudo certo" com
+   acao manual pendente. Caminho mais provavel de falso positivo em
+   producao.
+4. **Sincronizacao das duas metades** — checklist de release deve exigir
+   `cstk self-update` **e** `cstk install` + `cstk doctor` drift zero.
+5. **Teste de "dependencia ausente"** — esbarra no gotcha conhecido do
+   projeto: stub de `PATH` nao esconde binario de `/usr/bin`. Desenhar
+   desacoplando a deteccao do `PATH` interno, ou aceitar como
+   nao-coberto com nota explicita.
+6. **Nome de flag `--yes`** — sem precedente verificado no repo para
+   "nao-interativo". Confirmar com o operador antes de congelar o
+   contrato publico (research.md Decision 5).

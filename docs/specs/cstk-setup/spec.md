@@ -226,7 +226,7 @@ still applies the mandatory hooks.
 - **FR-012**: The telemetry area MUST only diagnose current activation
   status and display the exact instructions/values needed to activate it
   manually; it MUST NOT write to any file outside the project directory.
-- **FR-013 (INFRA-IDEMP)**: Idempotency for every area is achieved by
+- **FR-013**: (INFRA-IDEMP) Idempotency for every area is achieved by
   re-checking that area's live current status immediately before acting,
   every run — never by a persisted "setup already ran" flag. Scope: the
   four areas listed in FR-001, checked fresh on every invocation.
