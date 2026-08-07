@@ -489,14 +489,21 @@ function DecisionsPanel({ execucaoId, waveFilter }: { execucaoId: string; waveFi
 // ---------------------------------------------------------------------------
 // Painel de Tarefas
 // ---------------------------------------------------------------------------
-function TasksPanel({ execucaoId }: { execucaoId: string }) {
+function TasksPanel({ execucaoId, waveFilter }: { execucaoId: string; waveFilter: string | null }) {
   const query = useTasks(execucaoId);
   const { isLoading, isError, errorMessage } = useApiState(query);
-  const items: TaskDTO[] = query.data?.data?.tasks ?? [];
+  // O endpoint devolve todas as tarefas da execucao (sem paginacao), entao o
+  // filtro por onda e aplicado no cliente — mesma semantica do DecisionsPanel.
+  const allItems: TaskDTO[] = query.data?.data?.tasks ?? [];
+  const items = waveFilter ? allItems.filter(t => t.wave === waveFilter) : allItems;
 
   if (isLoading) return <LoadingState />;
   if (isError) return <ErrorState message={errorMessage ?? 'Erro'} />;
-  if (!items.length) return <EmptyState title="Sem tarefas registradas" subtitle="Tarefas sao gravadas pelo orquestrador durante execute-task." />;
+  if (!items.length) {
+    return waveFilter && allItems.length
+      ? <EmptyState title="Sem tarefas nesta onda" subtitle={`Nenhuma tarefa registrada na onda ${waveFilter}. Limpe o filtro para ver todas.`} />
+      : <EmptyState title="Sem tarefas registradas" subtitle="Tarefas sao gravadas pelo orquestrador durante execute-task." />;
+  }
 
   const totalTR = items.reduce((a, t) => a + (t.testsRun ?? 0), 0);
   const totalTP = items.reduce((a, t) => a + (t.testsPassed ?? 0), 0);
@@ -1080,7 +1087,7 @@ export function ExecutionDetail() {
           {activeTab === 'decisions' && (
             <DecisionsPanel execucaoId={execucaoId ?? ''} waveFilter={selectedWave} />
           )}
-          {activeTab === 'tasks'     && <TasksPanel execucaoId={execucaoId ?? ''} />}
+          {activeTab === 'tasks'     && <TasksPanel execucaoId={execucaoId ?? ''} waveFilter={selectedWave} />}
           {activeTab === 'events'    && <EventsPanel execucaoId={execucaoId ?? ''} />}
           {activeTab === 'alerts'    && <AlertsPanel execucaoId={execucaoId ?? ''} />}
           {activeTab === 'bloqueios' && <BloqueiosPanel execucaoId={execucaoId ?? ''} />}
