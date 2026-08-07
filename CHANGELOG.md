@@ -5,6 +5,64 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.6.0] - 2026-08-07
+
+Duas frentes: (1) rastreio de consumo avulso — tokens/custo das sessões
+interativas comuns do Claude Code, que ficavam invisíveis porque o
+`cstk recall` só cobre ondas de orquestrador — via hook opt-in + subcomando
+`cstk usage`; (2) oficialização do briefing canônico em `docs/briefing.md`
+e deprecation formal do `initialize-docs` (remoção na v7).
+
+### Added
+
+- **`cstk usage` / `usage compare` / `usage prune`** (`cli/lib/usage.sh`,
+  novo). `usage` lista consumo avulso por projeto/modelo (`--project`,
+  `--since ISO`, `--json`); `compare` põe avulso vs pipeline lado a lado;
+  `prune` remove segmentos fechados do sidecar + linhas `loose_usage` acima
+  do TTL (`CSTK_LOOSE_USAGE_RETENTION_DAYS`, default `90`; `--dry-run`;
+  segmentos abertos nunca são elegíveis). Campo sem medição imprime
+  `nao medido` / `null` no `--json` — nunca `0` fabricado (Princípio VI).
+  `usage.sh` nunca chama `sqlite3` direto: delega a `cli/lib/recall.sh`,
+  único arquivo autorizado (mesma regra do `cstk recall`).
+- **Hook de captura opt-in `posttooluse-loose-usage.sh`** +
+  `cstk hooks install --with-loose-usage`. Registrado em snippet SEPARADO
+  (`settings.loose-usage.snippet.json`) do dos 3 hooks obrigatórios —
+  nunca bundlado sem a flag (default DESLIGADO). Throttle O(1) via
+  `meta.tsv` (`CSTK_LOOSE_USAGE_INTERVAL_S`, default `300`); detecta
+  execução 00c ativa (polaridade invertida de `_hook-active-exec.sh`) para
+  não contar duas vezes o mesmo consumo; contrato de saída stdout/stderr
+  sempre vazios, exit sempre `0`. Sidecar TSV em
+  `~/.claude/cstk/loose-usage/<process_key>/seg-*/` com permissões
+  restritivas (`700` diretórios, `600` arquivos).
+- **`knowledge.db` schema v13** (migração `12 → 13`, aditiva): tabela
+  `loose_usage` + `recall_prune_loose_usage` em `cli/lib/recall.sh`.
+- **Docs e testes.** `docs/cstk-usage.md` (+ pt-BR), spec completa em
+  `docs/specs/loose-usage-capture/`; `tests/cstk/test_usage.sh` e
+  `tests/test_posttooluse-loose-usage.sh` novos, extensões em
+  `tests/cstk/test_recall.sh` + `tests/cstk/test_hooks.sh`.
+
+### Changed
+
+- **Briefing canônico em `docs/briefing.md`.** Todos os leitores checam o
+  caminho canônico primeiro e caem no legado
+  `docs/01-briefing-discovery/briefing.md` só em fallback:
+  `pipeline.sh detect-completion` (inclusive fallback `--projeto-alvo-path`),
+  skills `briefing`/`clarify`/`plan`/`specify`/`execute-task`, orquestrador
+  `agente-00c` e command `feature-00c`, docs e READMEs. A skill `briefing`
+  passa a salvar no canônico e registra aviso quando encontra briefing
+  apenas no caminho legado. Cenários novos em `tests/test_pipeline.sh`.
+
+### Deprecated
+
+- **`initialize-docs` (remoção planejada na v7).** A hierarquia numerada
+  01-09 foi superada pelo layout SDD (`docs/briefing.md` +
+  `docs/constitution.md` + `docs/specs/`), criado pelas próprias skills
+  `briefing`/`constitution`/`specify` sem scaffold prévio. Marcação de
+  deprecated no frontmatter/description da skill, READMEs, help do
+  `cstk install` (profile `complementary`) e `tips/catalog.md`; a skill
+  permanece instalável apenas para projetos legados. O pipeline aceita os
+  dois layouts até a remoção.
+
 ## [6.5.1] - 2026-08-05
 
 Fecha as issues #77 e #49, ambas do runtime dos orquestradores. A #77
@@ -5039,6 +5097,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.6.0]: https://github.com/JotJunior/cstk/releases/tag/v6.6.0
 [6.5.1]: https://github.com/JotJunior/cstk/releases/tag/v6.5.1
 [6.5.0]: https://github.com/JotJunior/cstk/releases/tag/v6.5.0
 [6.4.1]: https://github.com/JotJunior/cstk/releases/tag/v6.4.1
