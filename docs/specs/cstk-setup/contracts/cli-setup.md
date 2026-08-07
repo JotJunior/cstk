@@ -14,7 +14,7 @@ consome.
 
 ## 1. `cstk setup` **[PROPOSTA]**
 
-**Invocacao**: `cstk setup [--dry-run] [--yes] [--project-path PATH]`
+**Invocacao**: `cstk setup [--dry-run] [--yes] [--project-path PATH] [--verbose]`
 **Funcao de entrada**: `setup_main` em `cli/lib/setup.sh`
 **Resolucao**: ramo generico do dispatcher — `cli/cstk:250-273`; nome da
 funcao derivado por `sed 's/-/_/g'` + `_main` (`cli/cstk:267`)
@@ -26,6 +26,7 @@ funcao derivado por `sed 's/-/_/g'` + `_main` (`cli/cstk:267`)
 | `--dry-run` | bool | off | Preview: exibe status e o que seria aplicado, sem escrever nada (FR-004). **Precede `--yes`** (FR-006) |
 | `--yes` | bool | off | Nao-interativo: aplica o default recomendado de cada area nao configurada, sem prompt (FR-005) |
 | `--project-path PATH` | path | `$PWD` | Raiz do projeto-alvo. MUST ser raiz de repo git (FR-011) |
+| `--verbose` | bool | off | Restaura o progresso detalhado por area (status detectado, decisoes, instrucoes de telemetria). Sem ela o wizard e silencioso no sucesso: mostra apenas perguntas, uma linha `[OK] <area> — <resumo>` por area bem-sucedida (stderr) e o `SetupRunSummary`; erros e avisos (`log_error`/`log_warn`) aparecem sempre (ajuste de UX 2026-08-07) |
 
 **Flags deliberadamente ausentes (FR-018)**: nao ha `--catalog` nem
 qualquer equivalente, e nenhuma variavel de override de catalogo e
@@ -350,7 +351,12 @@ pre-condicao** — `sqlite3` ausente ou abaixo do minimo (linhas 358-370).
 > configurando **aquele projeto**. Esta area quebra essa expectativa: o
 > efeito e da maquina inteira. O wizard MUST, antes de aplicar **e** em
 > `--dry-run`, nomear o alvo real (`$HOME/.claude/cstk/config`) e dizer
-> que a mudanca vale para **todos os projetos**. As outras tres areas sao
+> que a mudanca vale para **todos os projetos**. Ajuste de UX 2026-08-07:
+> no modo silencioso (sem `--verbose`) o rotulo e exibido sempre que uma
+> escrita global e possivel ou previewada (`status=not-configured`,
+> inclusive em `--dry-run`); quando nenhuma escrita e possivel
+> (`configured`/`unavailable`) ele so aparece com `--verbose` — a intencao
+> do FR-017 (aviso precede toda escrita global possivel) e preservada. As outras tres areas sao
 > de escopo projeto e MUST NOT carregar esse rotulo — rotular tudo
 > igualmente destreinaria o usuario a le-lo. O `SetupRunSummary` repete a
 > marca de escopo na linha desta area.

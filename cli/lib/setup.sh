@@ -116,6 +116,11 @@ FLAGS:
                           cada area ainda nao configurada, sem prompt.
   --project-path PATH    Raiz do projeto-alvo (default: diretorio atual).
                           MUST ser raiz de repositorio git.
+  --verbose              Mostra o progresso detalhado de cada area (status
+                          detectado, decisoes, instrucoes de telemetria).
+                          Sem ela, o wizard mostra apenas as perguntas, uma
+                          linha [OK] por area bem-sucedida e o summary;
+                          erros e avisos aparecem sempre.
 
 Sem nenhuma flag de modo, roda interativo (exige TTY) e pergunta area a
 area. Sem TTY e sem --dry-run/--yes, falha rapido em vez de bloquear
@@ -138,11 +143,16 @@ _setup_parse_args() {
   _SU_DRY_RUN=0
   _SU_YES=0
   _SU_HELP=0
+  _SU_VERBOSE=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --dry-run)
         _SU_DRY_RUN=1
+        shift
+        ;;
+      --verbose)
+        _SU_VERBOSE=1
         shift
         ;;
       --yes)
@@ -258,6 +268,36 @@ _setup_prompt_yn() {
     y | Y | yes | YES) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# _setup_info MSG — linha de progresso/detalhe: visivel apenas com
+# --verbose. O default e silencioso (pedido do operador, 2026-08-07):
+# sucesso mostra so as perguntas + uma linha [OK] por area; erros e avisos
+# (log_error/log_warn) aparecem SEMPRE, independente de --verbose.
+_setup_info() {
+  if [ "${_SU_VERBOSE:-0}" = 1 ]; then
+    log_info "$1"
+  fi
+  return 0
+}
+
+# _setup_area_ok NAME OUTCOME [NOTE] — linha compacta de sucesso da area,
+# em stderr (progresso, nao dado — Constitution II), com [OK] a esquerda.
+# Areas failed NUNCA passam por aqui: o caminho de erro ja logou o
+# diagnostico completo via log_error.
+_setup_area_ok() {
+  case "$2" in
+    already-configured) _sao_label="ja configurado" ;;
+    applied)            _sao_label="aplicado" ;;
+    skipped)            _sao_label="pulado" ;;
+    *)                  _sao_label="$2" ;;
+  esac
+  if [ -n "${3:-}" ]; then
+    printf '[OK] %s — %s (%s)\n' "$1" "$_sao_label" "$3" >&2
+  else
+    printf '[OK] %s — %s\n' "$1" "$_sao_label" >&2
+  fi
+  return 0
 }
 
 # _setup_detect_hooks_area PROJECT_PATH
@@ -446,17 +486,17 @@ _setup_run_hooks_area() {
 
   _setup_detect_hooks_area "$_srh_pap"
 
-  log_info "setup: [hooks] status atual (obrigatorios) = $_SU_HOOKS_MANDATORY_STATUS"
+  _setup_info "setup: [hooks] status atual (obrigatorios) = $_SU_HOOKS_MANDATORY_STATUS"
   if [ -n "$_SU_HOOKS_MANDATORY_REASON" ]; then
-    log_info "setup: [hooks] motivo: $_SU_HOOKS_MANDATORY_REASON"
+    _setup_info "setup: [hooks] motivo: $_SU_HOOKS_MANDATORY_REASON"
   fi
-  log_info "setup: [hooks] loose usage (opt-in, escolha distinta — FR-008): $_SU_HOOKS_LOOSE_STATUS"
+  _setup_info "setup: [hooks] loose usage (opt-in, escolha distinta — FR-008): $_SU_HOOKS_LOOSE_STATUS"
 
   case "$_SU_HOOKS_MANDATORY_STATUS" in
     configured)
       _SU_HOOKS_OUTCOME="already-configured"
       _SU_HOOKS_OUTCOME_REASON=""
-      log_info "setup: [hooks] ja configurado — nenhuma chamada de aplicacao (I1)."
+      _setup_info "setup: [hooks] ja configurado — nenhuma chamada de aplicacao (I1)."
       return 0
       ;;
     divergent | unavailable)
@@ -475,7 +515,7 @@ _setup_run_hooks_area() {
   if [ "$_srh_dry" = 1 ]; then
     _SU_HOOKS_OUTCOME="skipped"
     _SU_HOOKS_OUTCOME_REASON="preview: nenhuma alteracao aplicada"
-    log_info "setup: [hooks] preview — instalaria os hooks obrigatorios (nao aplicado)."
+    _setup_info "setup: [hooks] preview — instalaria os hooks obrigatorios (nao aplicado)."
     return 0
   fi
 
@@ -488,7 +528,7 @@ _setup_run_hooks_area() {
   if [ "$_srh_accept_mandatory" != 1 ]; then
     _SU_HOOKS_OUTCOME="skipped"
     _SU_HOOKS_OUTCOME_REASON="recusado pelo usuario"
-    log_info "setup: [hooks] recusado — hooks obrigatorios NAO instalados."
+    _setup_info "setup: [hooks] recusado — hooks obrigatorios NAO instalados."
     return 0
   fi
 
@@ -531,7 +571,7 @@ _setup_run_hooks_area() {
     merged)
       _SU_HOOKS_OUTCOME="applied"
       _SU_HOOKS_OUTCOME_REASON=""
-      log_info "setup: [hooks] aplicado (merged)."
+      _setup_info "setup: [hooks] aplicado (merged)."
       ;;
     paste-instructed)
       _SU_HOOKS_OUTCOME="applied"
@@ -675,16 +715,23 @@ _setup_run_state_backend_area() {
 
   _setup_detect_state_backend_area
 
-  # FR-017 — rotulo de escopo GLOBAL, sempre, antes de qualquer decisao
-  # (inclusive --dry-run). As outras 3 areas NAO carregam este rotulo.
-  log_info "setup: [state-backend] ESCOPO GLOBAL — esta area escreve em \$HOME/.claude/cstk/config e vale para TODOS os projetos desta maquina, nao apenas $_srsb_pap."
-  log_info "setup: [state-backend] status atual = $_SU_SB_STATUS (effective_backend=$_SU_SB_EFFECTIVE, reason=$_SU_SB_REASON)"
+  # FR-017 — rotulo de escopo GLOBAL antes de qualquer decisao, SEMPRE que
+  # uma escrita global e possivel ou previewada (status not-configured,
+  # inclusive em --dry-run) e sempre em --verbose. Quando ja configurado /
+  # unavailable nenhuma escrita e possivel — em modo silencioso o rotulo
+  # seria ruido sem acao associada (ajuste de UX 2026-08-07; intencao do
+  # FR-017 preservada: o aviso precede toda escrita global possivel). As
+  # outras 3 areas NAO carregam este rotulo.
+  if [ "${_SU_VERBOSE:-0}" = 1 ] || [ "$_SU_SB_STATUS" = "not-configured" ]; then
+    log_info "setup: [state-backend] ESCOPO GLOBAL — esta area escreve em \$HOME/.claude/cstk/config e vale para TODOS os projetos desta maquina, nao apenas $_srsb_pap."
+  fi
+  _setup_info "setup: [state-backend] status atual = $_SU_SB_STATUS (effective_backend=$_SU_SB_EFFECTIVE, reason=$_SU_SB_REASON)"
 
   case "$_SU_SB_STATUS" in
     configured)
       _SU_SB_OUTCOME="already-configured"
       _SU_SB_OUTCOME_REASON=""
-      log_info "setup: [state-backend] ja configurado — nenhuma chamada de aplicacao (I1)."
+      _setup_info "setup: [state-backend] ja configurado — nenhuma chamada de aplicacao (I1)."
       return 0
       ;;
     unavailable)
@@ -713,7 +760,7 @@ _setup_run_state_backend_area() {
   if [ "$_srsb_dry" = 1 ]; then
     _SU_SB_OUTCOME="skipped"
     _SU_SB_OUTCOME_REASON="preview: nenhuma alteracao aplicada"
-    log_info "setup: [state-backend] preview — ativaria state_backend=sqlite em \$HOME/.claude/cstk/config (escopo global, nao aplicado)."
+    _setup_info "setup: [state-backend] preview — ativaria state_backend=sqlite em \$HOME/.claude/cstk/config (escopo global, nao aplicado)."
     return 0
   fi
 
@@ -737,7 +784,7 @@ _setup_run_state_backend_area() {
   if [ "$_srsb_accept" != 1 ]; then
     _SU_SB_OUTCOME="skipped"
     _SU_SB_OUTCOME_REASON="recusado pelo usuario, ou --yes sem sinal equivalente de opt-in (SEC-04) para reason=$_SU_SB_REASON"
-    log_info "setup: [state-backend] nao aplicado — $_SU_SB_OUTCOME_REASON"
+    _setup_info "setup: [state-backend] nao aplicado — $_SU_SB_OUTCOME_REASON"
     return 0
   fi
 
@@ -750,7 +797,7 @@ _setup_run_state_backend_area() {
   if [ "$_srsb_rc" = 0 ]; then
     _SU_SB_OUTCOME="applied"
     _SU_SB_OUTCOME_REASON=""
-    log_info "setup: [state-backend] aplicado (state_backend=sqlite, escopo global)."
+    _setup_info "setup: [state-backend] aplicado (state_backend=sqlite, escopo global)."
   else
     _SU_SB_OUTCOME="failed"
     _SU_SB_OUTCOME_REASON="enable-sqlite falhou (exit $_srsb_rc): $_srsb_apply_out"
@@ -812,13 +859,13 @@ _setup_run_mcp_area() {
   fi
 
   # FR-002 — status exibido ANTES de qualquer decisao de acao.
-  log_info "setup: [mcp] status atual = $_srm_status"
+  _setup_info "setup: [mcp] status atual = $_srm_status"
 
   case "$_srm_status" in
     configured)
       _SU_MCP_OUTCOME="already-configured"
       _SU_MCP_OUTCOME_REASON=""
-      log_info "setup: [mcp] ja configurado — nenhuma chamada de aplicacao (I1)."
+      _setup_info "setup: [mcp] ja configurado — nenhuma chamada de aplicacao (I1)."
       return 0
       ;;
     divergent)
@@ -835,7 +882,7 @@ _setup_run_mcp_area() {
   if [ "$_srm_dry" = 1 ]; then
     _SU_MCP_OUTCOME="skipped"
     _SU_MCP_OUTCOME_REASON="preview: nenhuma alteracao aplicada"
-    log_info "setup: [mcp] preview — registraria mcpServers.cstk-state em $_srm_pap/.mcp.json (nao aplicado)."
+    _setup_info "setup: [mcp] preview — registraria mcpServers.cstk-state em $_srm_pap/.mcp.json (nao aplicado)."
     return 0
   fi
 
@@ -852,7 +899,7 @@ _setup_run_mcp_area() {
   if [ "$_srm_accept" != 1 ]; then
     _SU_MCP_OUTCOME="skipped"
     _SU_MCP_OUTCOME_REASON="recusado pelo usuario"
-    log_info "setup: [mcp] recusado — mcpServers.cstk-state NAO registrado."
+    _setup_info "setup: [mcp] recusado — mcpServers.cstk-state NAO registrado."
     return 0
   fi
 
@@ -873,7 +920,7 @@ _setup_run_mcp_area() {
   if [ "$_srm_rc" = 0 ]; then
     _SU_MCP_OUTCOME="applied"
     _SU_MCP_OUTCOME_REASON=""
-    log_info "setup: [mcp] aplicado (mcpServers.cstk-state registrado)."
+    _setup_info "setup: [mcp] aplicado (mcpServers.cstk-state registrado)."
 
     # task 5.2.4 — jq ausente cai em print_paste_block (exit 0 preservado
     # por _mcp_cmd_install); mesmo tratamento de 3.2.3 (hooks
@@ -930,15 +977,15 @@ _setup_show_telemetry_instructions() {
       log_warn "setup: [telemetry] o endpoint responde mas a propriedade do exporter nao pode ser confirmada (lsof ausente ou sem visibilidade) — pode ser esta sessao ou outra."
       ;;
     *)
-      log_info "setup: [telemetry] telemetria desligada nesta sessao."
+      _setup_info "setup: [telemetry] telemetria desligada nesta sessao."
       ;;
   esac
-  log_info "setup: [telemetry] para ativar, exporte estas variaveis na sua sessao de shell ANTES de rodar 'claude' (README.md, secao 'Real per-wave cost'):"
-  log_info "setup: [telemetry]   export CLAUDE_CODE_ENABLE_TELEMETRY=1"
-  log_info "setup: [telemetry]   export OTEL_METRICS_EXPORTER=prometheus"
-  log_info "setup: [telemetry] o exporter local escuta em 127.0.0.1:9464 por padrao — nada sai da maquina."
-  log_info "setup: [telemetry] mais de um processo Claude Code ao mesmo tempo? So UM pode usar a porta fixa 9464. De a cada processo sua propria porta com OTEL_EXPORTER_PROMETHEUS_PORT (porta sorteada) + CSTK_OTEL_ENDPOINT (URL correspondente) — README.md documenta um wrapper 'claude()' de exemplo para ~/.zshrc que sorteia porta livre a cada lancamento."
-  log_info "setup: [telemetry] este wizard NAO escreve nada disso por voce (FR-012) — a ativacao e sempre manual, fora do diretorio do projeto."
+  _setup_info "setup: [telemetry] para ativar, exporte estas variaveis na sua sessao de shell ANTES de rodar 'claude' (README.md, secao 'Real per-wave cost'):"
+  _setup_info "setup: [telemetry]   export CLAUDE_CODE_ENABLE_TELEMETRY=1"
+  _setup_info "setup: [telemetry]   export OTEL_METRICS_EXPORTER=prometheus"
+  _setup_info "setup: [telemetry] o exporter local escuta em 127.0.0.1:9464 por padrao — nada sai da maquina."
+  _setup_info "setup: [telemetry] mais de um processo Claude Code ao mesmo tempo? So UM pode usar a porta fixa 9464. De a cada processo sua propria porta com OTEL_EXPORTER_PROMETHEUS_PORT (porta sorteada) + CSTK_OTEL_ENDPOINT (URL correspondente) — README.md documenta um wrapper 'claude()' de exemplo para ~/.zshrc que sorteia porta livre a cada lancamento."
+  _setup_info "setup: [telemetry] este wizard NAO escreve nada disso por voce (FR-012) — a ativacao e sempre manual, fora do diretorio do projeto."
 }
 
 # _setup_run_telemetry_area PROJECT_PATH MODE DRY_RUN
@@ -975,7 +1022,7 @@ _setup_run_telemetry_area() {
   _srt_mode=$2
   _srt_dry=$3
 
-  log_info "setup: [telemetry] area 100% read-only (FR-012, project-path=$_srt_pap, mode=$_srt_mode, dry-run=$_srt_dry) — nenhuma escrita e feita em nenhum caso."
+  _setup_info "setup: [telemetry] area 100% read-only (FR-012, project-path=$_srt_pap, mode=$_srt_mode, dry-run=$_srt_dry) — nenhuma escrita e feita em nenhum caso."
 
   if ! _srt_script=$(_setup_otel_script_path); then
     _SU_TEL_OUTCOME="failed"
@@ -991,7 +1038,7 @@ _setup_run_telemetry_area() {
   fi
 
   # FR-002 — status exibido ANTES de qualquer instrucao/decisao.
-  log_info "setup: [telemetry] status atual = $_srt_out"
+  _setup_info "setup: [telemetry] status atual = $_srt_out"
 
   _srt_status=""
   case "$_srt_out" in
@@ -1005,11 +1052,15 @@ _setup_run_telemetry_area() {
     ok)
       _SU_TEL_OUTCOME="already-configured"
       _SU_TEL_OUTCOME_REASON=""
-      log_info "setup: [telemetry] medicao confirmada ativa para esta sessao — nenhuma acao necessaria."
+      _setup_info "setup: [telemetry] medicao confirmada ativa para esta sessao — nenhuma acao necessaria."
       ;;
     disabled | port-conflict | exporter-down | unverified)
       _SU_TEL_OUTCOME="skipped"
-      _SU_TEL_OUTCOME_REASON="diagnostico exibido; ativacao e manual (FR-012)"
+      if [ "${_SU_VERBOSE:-0}" = 1 ]; then
+        _SU_TEL_OUTCOME_REASON="diagnostico exibido; ativacao e manual (FR-012)"
+      else
+        _SU_TEL_OUTCOME_REASON="ativacao e manual (FR-012); instrucoes: cstk setup --verbose"
+      fi
       _setup_show_telemetry_instructions "$_srt_status"
       ;;
     *)
@@ -1092,19 +1143,31 @@ setup_main() {
   # SetupRunSummary consolidado sao adicionados nas FASES 4-7 do backlog
   # (docs/specs/cstk-setup/tasks.md) — esta versao (FASE 3) cobre
   # dispatch + pre-condicoes + area de hooks.
-  log_info "setup: pre-condicoes OK (mode=$_su_mode, project-path=$_SU_PROJECT_PATH)."
+  _setup_info "setup: pre-condicoes OK (mode=$_su_mode, project-path=$_SU_PROJECT_PATH)."
 
   _setup_run_hooks_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
-  log_info "setup: [hooks] outcome=$_SU_HOOKS_OUTCOME"
+  _setup_info "setup: [hooks] outcome=$_SU_HOOKS_OUTCOME"
+  if [ "$_SU_HOOKS_OUTCOME" != "failed" ]; then
+    _setup_area_ok "hooks" "$_SU_HOOKS_OUTCOME" "$_SU_HOOKS_OUTCOME_REASON"
+  fi
 
   _setup_run_state_backend_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
-  log_info "setup: [state-backend] outcome=$_SU_SB_OUTCOME"
+  _setup_info "setup: [state-backend] outcome=$_SU_SB_OUTCOME"
+  if [ "$_SU_SB_OUTCOME" != "failed" ]; then
+    _setup_area_ok "state-backend" "$_SU_SB_OUTCOME" "$_SU_SB_OUTCOME_REASON"
+  fi
 
   _setup_run_mcp_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
-  log_info "setup: [mcp] outcome=$_SU_MCP_OUTCOME"
+  _setup_info "setup: [mcp] outcome=$_SU_MCP_OUTCOME"
+  if [ "$_SU_MCP_OUTCOME" != "failed" ]; then
+    _setup_area_ok "mcp" "$_SU_MCP_OUTCOME" "$_SU_MCP_OUTCOME_REASON"
+  fi
 
   _setup_run_telemetry_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
-  log_info "setup: [telemetry] outcome=$_SU_TEL_OUTCOME"
+  _setup_info "setup: [telemetry] outcome=$_SU_TEL_OUTCOME"
+  if [ "$_SU_TEL_OUTCOME" != "failed" ]; then
+    _setup_area_ok "telemetry" "$_SU_TEL_OUTCOME" "$_SU_TEL_OUTCOME_REASON"
+  fi
 
   # FR-010/FASE 7 — SetupRunSummary consolidado, SEMPRE impresso ao final,
   # inclusive quando alguma area falhou (quickstart Scenario 7, SC-005:
