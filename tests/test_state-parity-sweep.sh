@@ -231,6 +231,14 @@ scenario_dinamica_15_leitores_sqlite_sem_degradacao() {
 #     tasks.md 7.1.3 pedia os 3 hooks FORA da allowlist; a divergencia e do
 #     desenho ja ratificado (SEC-H1 e MUST), nao um erro de implementacao —
 #     mesmo precedente de tasks.md 4.2.1.
+#
+# Feature loose-usage-capture adiciona:
+#   posttooluse-loose-usage.sh:codigo-real — mesma classe dos 3 hooks acima:
+#     pre-check inline de existencia (`[ -f state.json ] || [ -f state.db ]`,
+#     builtins puros, sem jq/sourcing) ANTES de resolver
+#     _hook-active-exec.sh (SEC-H1/dec-006, polaridade invertida). Checagem
+#     SIMETRICA (nunca le/parseia conteudo, nunca so state.json) — nao
+#     quebra sob backend so-sqlite.
 _static_allowlist() {
   cat <<'EOF'
 state-rw.sh:codigo-real
@@ -249,6 +257,7 @@ _hook-active-exec.sh:codigo-real
 pretooluse-bash-guard.sh:codigo-real
 posttooluse-tool-call-tick.sh:codigo-real
 posttooluse-agent-usage.sh:codigo-real
+posttooluse-loose-usage.sh:codigo-real
 EOF
 }
 
