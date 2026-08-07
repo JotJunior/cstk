@@ -32,7 +32,7 @@ e a propria ordem de apresentacao.
 
 | `id` | Fonte read-only | Mapeamento para `status` |
 |------|-----------------|--------------------------|
-| `hooks` | `guard-hooks-status.sh check --projeto-alvo-path PATH --quiet --verify-registration` (contrato linhas 49-60 + extensao [PROPOSTA] em `contracts/cli-setup.md` §2.2) | exit 0 → `configured`; exit 1 → `not-configured` (inclui `stale`, ver nota); **5a coluna `divergent` em qualquer hook obrigatorio → `divergent` (precede o mapeamento por exit)**; exit 2 → `unavailable` |
+| `hooks` | **3 chamadas SEPARADAS** (achado SEC-03 — NUNCA combinadas): (1) baseline `guard-hooks-status.sh check --projeto-alvo-path PATH --quiet` (contrato §2.1 [EXISTENTE]); (2) `... --quiet --verify-registration` (contrato §2.3 [PROPOSTA]); (3) `... --quiet --include-loose-usage` (contrato §2.2 [PROPOSTA], alimenta so `loose_usage_status` em `HooksAreaDetail`, nunca esta linha) | Veredito base vem **sempre** de (1), que todo runtime instalado suporta: exit 0 → `configured`; exit 1 → `not-configured` (inclui `stale`, ver nota). Chamada (2) so pode **escalar**, nunca substituir silenciosamente o veredito de (1): 5a coluna `divergent` em qualquer hook obrigatorio → `divergent` (precede (1)); 5a coluna `indeterminate` em qualquer hook obrigatorio (inclusive por (2) sair exit 2 em runtime antigo, contrato §2.3) → `unavailable` (precede (1) — I5; nunca herda o `configured`/`not-configured` de (1)) |
 | `state-backend` | `config_state_backend_resolve` (`cli/lib/config.sh:94`) | `effective_backend=sqlite` → `configured`; `effective_backend=json` → `not-configured` (com `reason=` do proprio resolve em `status_reason`) |
 | `mcp` | `_mcp_registration_status <project-path>` ([PROPOSTA], `cli/lib/mcp.sh` — ver `contracts/cli-setup.md` §4.1) | `configured` (chave `cstk-state` presente **e** `command` apontando para um `mcp-launch.sh` do catalogo) / `divergent` (chave presente, `command` fora do catalogo ou indeterminavel) / `not-configured` (chave ausente) |
 | `telemetry` | `otel-usage.sh preflight` (`otel-usage.sh:469`) | medicao ativa → `configured`; senao → `not-configured` |
@@ -55,17 +55,40 @@ e a propria ordem de apresentacao.
 > `configured`: e o unico status que sinaliza um controle de seguranca
 > possivelmente subvertido.
 >
-> **Fail-closed (invariante I5)**: qualquer ambiguidade na apuracao —
-> layout do JSON que impeca atribuir o registro, fonte de deteccao sem
-> suporte a verificacao, path irresolvivel — resolve para `divergent`,
-> jamais para `configured`. O custo de um falso `divergent` e um aviso
-> com remediacao; o de um falso `configured` e a falsa garantia que este
-> requisito existe para eliminar.
+> **Fail-closed (invariante I5)**: jamais `configured` sob ambiguidade —
+> mas ha DUAS ambiguidades distintas, com destinos diferentes no enum
+> fechado de `status`/`mandatory_status` (`configured | not-configured |
+> divergent | unavailable` — **nao ha valor `indeterminate` neste enum**,
+> so na 5a coluna do TSV):
+>
+> - **Confirmacao positiva de nao-canonico** — a 5a coluna leu uma linha
+>   real e concluiu que o registro nao bate com o fragmento canonico →
+>   `divergent`. O custo de um falso `divergent` e um aviso com
+>   remediacao; a garantia e "detectamos algo que nao reconhecemos".
+> - **Impossibilidade de verificar** — layout do JSON que impeca atribuir
+>   o registro (minificado), fonte de deteccao sem suporte a extensao
+>   (runtime antigo, exit 2 em `_gh_die_usage` — mesmo caminho do
+>   quickstart Scenario 15 variante 4), path irresolvivel: a 5a coluna
+>   e/ou a chamada inteira retorna `indeterminate`, e **isso mapeia para
+>   `unavailable`** no `status`/`mandatory_status` (achado SEC-02) —
+>   nunca para `divergent` (nao houve confirmacao de nada) e nunca para
+>   `configured`/`not-configured` herdado da chamada baseline (essa
+>   heranca silenciosa era exatamente o fail-open do achado SEC-02: sem
+>   mapeamento explicito, um implementador podia ignorar a 5a coluna
+>   indeterminada e reportar o exit 0/1 cru da chamada baseline).
+>
+> Em ambos os casos o custo aceito e um falso aviso (`divergent` ou
+> `unavailable`) com remediacao/motivo; o custo rejeitado e a falsa
+> garantia de `configured` que este requisito existe para eliminar.
 
-> **Nota `unavailable`**: reservado para dependencia faltando ou fonte de
-> deteccao inutilizavel — ex. `sqlite3` ausente/abaixo de
+> **Nota `unavailable`**: dependencia faltando ou fonte de deteccao
+> inutilizavel — ex. `sqlite3` ausente/abaixo de
 > `_SB_MIN_SQLITE_VERSION="3.45.1"` (`state-backend.sh:67`), caso em que
-> `enable-sqlite` recusaria com exit 3 (linhas 358-370). Area
+> `enable-sqlite` recusaria com exit 3 (linhas 358-370) — **e tambem** o
+> caso de `hooks` cuja 5a coluna (`--verify-registration`) resolveu
+> `indeterminate` para algum hook obrigatorio (achado SEC-02, ver
+> invariante I5 acima): a autenticidade do registro nao pode ser
+> confirmada nem refutada, entao a area nunca anuncia `configured`. Area
 > `unavailable` ainda e exibida e ainda entra no summary (FR-009/FR-010).
 
 ---
@@ -78,7 +101,7 @@ obrigatorios.
 
 | Field | Type | Constraints | Notes |
 |-------|------|-------------|-------|
-| `mandatory_status` | enum | `configured` \| `not-configured` \| `divergent` \| `unavailable` | Derivado do exit do `check` sobre os 3 hooks de `_GH_HOOKS` (`guard-hooks-status.sh:104-107`), com `divergent` precedendo (FR-016) |
+| `mandatory_status` | enum | `configured` \| `not-configured` \| `divergent` \| `unavailable` | Base = exit da chamada **baseline** (sem flags) sobre os 3 hooks de `_GH_HOOKS` (`guard-hooks-status.sh:104-107`); a chamada `--verify-registration` (separada — SEC-03) so escala: `divergent` precede a base (FR-016), `indeterminate` precede a base e vira `unavailable` (SEC-02) — nunca ambas na mesma chamada da base |
 | `mandatory_detail` | TSV lines | 3 linhas | `<arquivo>\t<present\|missing>\t<registered\|unregistered>\t<current\|stale\|unknown>\t<canonical\|divergent\|indeterminate>` — a 5a coluna so aparece com `--verify-registration` |
 | `divergent_hooks` | lines | pode ser vazio | Basenames cuja 5a coluna != `canonical`; alimenta a remediacao exibida |
 | `loose_usage_status` | enum | `configured` \| `not-configured` \| `divergent` \| `indeterminate` | `indeterminate` quando a fonte de deteccao nao suporta a consulta — ver research.md Decision 3 |
@@ -112,7 +135,7 @@ already configured / skipped by user / failed (com motivo).
 | `--dry-run` ativo | `skipped`, com `reason` = "preview: nenhuma alteracao aplicada" |
 | Aplicacao retornou exit 0 | `applied` |
 | Aplicacao retornou exit != 0 | `failed`, `reason` cita o exit e o comando |
-| `status=unavailable` | `failed`, `reason` = `status_reason` (dependencia ausente) |
+| `status=unavailable` | `failed`, `reason` = `status_reason` (dependencia ausente **ou**, para `hooks`, registro nao-verificavel — SEC-02) |
 | `status=divergent` | `failed`, `reason` = remediacao (FR-016); **nenhuma** chamada de aplicacao — ver nota abaixo |
 | Area `telemetry` diagnosticada e nao ativa | `skipped`, `reason` = "diagnostico exibido; ativacao e manual (FR-012)" |
 

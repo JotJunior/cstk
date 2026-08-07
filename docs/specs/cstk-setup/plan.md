@@ -34,6 +34,17 @@ criar a segunda implementacao que a abordagem existe para evitar:
 3. `_mcp_registration_status` em `cli/lib/mcp.sh` — deteccao read-only
    equivalente para a chave `mcpServers.cstk-state` (FR-016).
 
+> **Invocacao das extensoes (1) e (2) e sempre SEPARADA da baseline
+> (achado SEC-03)**: `setup.sh` MUST chamar
+> `guard-hooks-status.sh check --projeto-alvo-path PATH --quiet` (sem
+> flags) como fonte do veredito dos 3 hooks obrigatorios, e (1)/(2) como
+> chamadas adicionais **isoladas** cuja falha (runtime antigo, exit 2)
+> degrada apenas a propria dimensao — `loose_usage_status` para (1),
+> `mandatory_status`/`status` (via I5, para `unavailable`) para (2).
+> Combinar as tres flags numa unica chamada faria um runtime antigo sem
+> suporte a alguma delas perder tambem o veredito basico que ele sabe
+> responder. Ver data-model.md §Fonte de `status` por area.
+
 ### Nota de seguranca: por que (2) e (3) existem
 
 Ambas nasceram de um gate `owasp-security` na fase plan, respondido pelo
@@ -267,6 +278,42 @@ Revalidacao apos o design estar completo:
   `grep -F` por linha, sem `jq`); Principio VI intacto (a remediacao
   publicada foi corrigida contra a semantica real do merge em vez de
   repetir a instrucao intuitiva que nao surte efeito).
+
+- **Re-review de seguranca pos-hardening (gate `owasp-security`, sem
+  HIGH/CRITICAL, 7 achados MEDIUM/LOW SEC-01..SEC-07)**: os 3 achados que
+  alteravam contrato/data-model foram corrigidos nesta mesma revisao,
+  ANTES de `create-tasks`, para nao gerar retrabalho de tarefas ja
+  quebradas por FASE:
+  - **SEC-01** (MEDIUM, linha-isca decorativa satisfazia a regra de linha
+    canonica de `--verify-registration`): `contracts/cli-setup.md` §2.3
+    agora exige tambem o token `"command"` na mesma linha, e declara
+    explicitamente que posicionamento estrutural sob `PreToolUse`/
+    `matcher` NAO e verificado (residual aceito, mesma classe do limite
+    de JSON minificado).
+  - **SEC-02** (MEDIUM, mapeamento de `indeterminate` sem destino no enum
+    fechado gerava fail-open para `configured`): `data-model.md`
+    invariante I5 agora enumera `indeterminate` → `unavailable`
+    explicitamente (nunca herda o exit 0/1 da chamada baseline), mesmo
+    caminho ja descrito para o exit 2 do quickstart Scenario 15 variante
+    4.
+  - **SEC-03** (MEDIUM, combinar `--include-loose-usage` e
+    `--verify-registration` na mesma chamada regride runtime antigo):
+    `data-model.md` linha `hooks` da tabela de fontes agora exige 3
+    chamadas SEPARADAS — baseline sem flags (fonte real de
+    `configured`/`not-configured`), `--verify-registration` isolada
+    (so escala para `divergent`/`unavailable`) e `--include-loose-usage`
+    isolada (so alimenta `loose_usage_status`).
+  - **SEC-04..SEC-07** (MEDIUM/LOW restantes, sem impacto em
+    contrato/data-model): registrados para virar tarefas explicitas no
+    `create-tasks` em vez de fechados aqui — `--yes` nao deve gravar
+    config global sem opt-in equivalente ao do loose-usage (SEC-04);
+    candidatos de `mcp-launch.sh` em `_mcp_registration_status` devem se
+    restringir ao sufixo `/skills/agente-00c-runtime/scripts/
+    mcp-launch.sh` **existente em disco** (SEC-05); stdout vazio de
+    `_mcp_registration_status` nunca e resposta valida, deve virar
+    indeterminado (SEC-06); o summary deve declarar o escopo real da
+    verificacao — hooks obrigatorios verificados, demais entradas do
+    `settings.json` nao auditadas (SEC-07).
 
 **Veredito**: todos os MUST (I, II, IV, VI) seguem PASS. Nenhum novo
 carve-out necessario.

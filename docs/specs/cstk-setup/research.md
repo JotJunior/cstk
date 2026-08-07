@@ -467,3 +467,34 @@ substitui a entrada divergente (item 3 acima), a remediacao exibida e de
 **duas etapas** — remover a entrada, depois reinstalar. Publicar apenas
 "re-rode `cstk hooks install`" seria uma instrucao comprovadamente
 inefetiva (Constitution VI).
+
+> **Endurecimento pos-re-review** (gate `owasp-security` na onda de
+> `checklist`, 7 achados MEDIUM/LOW, nenhum HIGH/CRITICAL — 3 corrigidos
+> nesta mesma onda por alterarem contrato/data-model):
+>
+> - **SEC-01**: a regra de linha canonica de §2.3 (`contracts/
+>   cli-setup.md`) exigia so basename+fragmento na mesma linha —
+>   satisfazivel por uma linha decorativa (comentario/descricao) que cite
+>   os dois sem ser a atribuicao `"command"` real. Fix: exigir tambem o
+>   token `"command"` na mesma linha; residual (posicionamento estrutural
+>   sob `PreToolUse`/`matcher` nao verificado) declarado como limite
+>   aceito, mesma classe do limite ja existente de JSON minificado.
+> - **SEC-02**: o enum fechado de `status`/`mandatory_status` nao tem
+>   valor `indeterminate` (so a 5a coluna do TSV tem); sem uma regra
+>   explicita de para onde `indeterminate` mapeia, um implementador podia
+>   ignorar a 5a coluna e herdar o exit 0/1 cru da chamada baseline —
+>   fail-open para `configured`. Fix: `indeterminate` → `unavailable`
+>   explicito na invariante I5, mesmo destino ja usado pelo caminho do
+>   exit 2 do quickstart Scenario 15 variante 4.
+> - **SEC-03**: a tabela de fontes de `data-model.md` descrevia a area
+>   `hooks` como uma unica chamada `--quiet --verify-registration`. Num
+>   runtime instalado anterior a esta feature, essa flag e desconhecida e
+>   a chamada inteira sai exit 2 (`_gh_die_usage`) — perdendo tambem o
+>   veredito basico dos 3 hooks obrigatorios, que aquele runtime sabe
+>   responder via a chamada baseline sem flags. Fix: 3 chamadas sempre
+>   separadas (baseline / `--verify-registration` / `--include-loose-usage`),
+>   cada extensao so podendo escalar ou degradar a **propria** dimensao.
+>
+> As 4 restantes (SEC-04..SEC-07) nao alteram contrato/data-model —
+> registradas para virar tarefas explicitas em `create-tasks` (ver
+> plan.md §Re-check de Constitution).

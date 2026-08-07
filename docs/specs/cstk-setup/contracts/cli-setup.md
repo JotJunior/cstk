@@ -171,8 +171,33 @@ Acrescenta uma **5a coluna** TSV a cada linha:
 
 **Regra de decisao** (POSIX puro, sem `jq` — mesma restricao de 2.1):
 toda linha do `settings.json` que contenha o basename MUST tambem conter
-o fragmento canonico. Existindo ao menos uma linha com o basename sem o
-fragmento canonico → `divergent`.
+o fragmento canonico **e** o token literal `"command"` (a chave JSON,
+com aspas). Existindo ao menos uma linha com o basename sem o fragmento
+canonico, ou sem o token `"command"`, → `divergent`.
+
+> **Correcao pos-gate (achado SEC-01, MEDIUM)**: a regra original exigia
+> so basename+fragmento na mesma linha, satisfazivel por uma **linha-isca
+> decorativa** — ex. um `"description"` ou comentario JSON informal que
+> cite o basename e cole o fragmento canonico ao lado de um `"command"`
+> real apontando para outro programa, em linhas diferentes do pretty-print
+> do `merge_settings`. Exigir o token `"command"` na MESMA linha reduz o
+> caso a exigir que a linha-isca seja, ela propria, uma atribuicao
+> `"command": ...` — que e o unico lugar onde `merge_settings`
+> (`jq` pretty-print, uma chave por linha) de fato emite o path executado.
+>
+> **Limite aceito, declarado (nao verificado textualmente)**: esta regra
+> continua sendo co-ocorrencia textual por linha, nao parse de JSON. Ela
+> **nao verifica posicionamento estrutural** — isto e, nao confirma que a
+> linha `"command"` encontrada esta de fato dentro do objeto de hook
+> correto sob `PreToolUse`/`matcher` esperado (poderia, em tese, estar sob
+> uma chave nao-relacionada com o mesmo par `"command"` + fragmento
+> coincidindo por acaso, ou um objeto de hook malformado que o
+> `merge_settings` ainda assim aceitou). Elevar a essa garantia exigiria
+> `jq` ou um parser real, fora do orcamento desta extensao pelo mesmo
+> motivo do "Limite textual declarado" abaixo (minificacao). Residual
+> aceito porque o objetivo desta extensao e fechar o caso de decoy mais
+> barato de forjar (linha solta com o basename), nao alcancar paridade com
+> parse estrutural.
 
 **Invariantes obrigatorias da extensao**:
 
@@ -184,8 +209,19 @@ fragmento canonico → `divergent`.
   seguro porque a flag e opt-in: nenhum consumidor atual a passa.
 - Runtime instalado anterior rejeita a flag em `_gh_die_usage`
   (`guard-hooks-status.sh:205`) com **exit 2**. O consumidor MUST tratar
-  como `indeterminate` — e, por I5 do data-model, `indeterminate` na
-  verificacao **nao** autoriza reportar `configured`.
+  como `indeterminate` — e, por I5 do data-model, `indeterminate`
+  **nesta chamada** (5a coluna) resolve `ConfigurationArea{hooks}.status`
+  (e `mandatory_status`) para `unavailable` — nunca `configured`, e
+  distinto de `divergent` (que exige confirmacao positiva de nao-canonico,
+  nao mera impossibilidade de verificar). Ver data-model.md §invariante I5
+  e §Nota `unavailable`.
+- **Esta chamada e SEPARADA da chamada baseline** (§2.1, sem flags) e da
+  chamada de `--include-loose-usage` (§2.2) — nunca as tres combinadas
+  numa unica invocacao. Combina-las faria um runtime antigo que rejeita
+  **qualquer uma** das flags (exit 2 em `_gh_die_usage`) perder tambem o
+  veredito basico dos 3 hooks obrigatorios, que aquele runtime SABE
+  responder. Ver data-model.md §Fonte de `status` por area, linha
+  `hooks` (achado SEC-03).
 - A verificacao e **read-only**, como todo o script (cabecalho: "READ-ONLY
   por construcao").
 

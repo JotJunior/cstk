@@ -304,13 +304,19 @@ fechar a feature.
 2. Rodar `cstk setup --project-path "$PROJ" --yes`.
 3. **Expected**:
    - A verificacao de registro devolve `indeterminate`.
-   - A area **nao** e reportada como `already-configured` (I5).
+   - Area `hooks`.`status` = **`unavailable`** (achado SEC-02) — **nao**
+     `already-configured`/`configured` (I5), e tambem **nao** `divergent`
+     (nao houve confirmacao positiva de nao-canonico, so impossibilidade
+     de verificar). `outcome` = `failed` com `reason` = `status_reason`.
    - O motivo distingue "nao consegui verificar" de "esta errado" —
      texto honesto, sem afirmar subversao que nao foi observada.
+   - Exit `1` (houve `failed`).
 4. Variante com runtime instalado antigo (sem `--verify-registration`):
    a chamada retorna exit `2` (`_gh_die_usage`,
-   `guard-hooks-status.sh:205`) e o resultado tambem e `indeterminate`,
-   pelo mesmo caminho — nao uma falha da area (FR-009).
+   `guard-hooks-status.sh:205`) e o resultado tambem e `indeterminate` →
+   `unavailable`, pelo mesmo caminho — **nao** uma excecao/crash da area
+   (FR-009 segue intacto: a area reporta um status valido do enum
+   fechado, o wizard nao aborta).
 
 ---
 
@@ -338,6 +344,64 @@ fechar a feature.
      `already-configured` com base nela. A variavel altera apenas a
      referencia de `guard-hooks-status.sh` (`:136-137`), nunca a origem
      do provisionamento nem a forma canonica de §2.3 do contrato.
+
+---
+
+## Scenario 17: Linha-isca decorativa nao satisfaz o registro canonico (achado SEC-01)
+
+1. Projeto valido, hooks obrigatorios provisionados corretamente em
+   `.claude/hooks/` (4a coluna do TSV = `current`).
+2. Editar `.claude/settings.json` para que a entrada real `"command"` do
+   `PreToolUse` aponte para outro programa (`/tmp/nao-e-o-guard.sh`), e
+   acrescentar em **outra linha** (ex. um campo `"_comment"` decorativo,
+   valido como JSON) o basename **e** o fragmento canonico completo:
+   `"_comment": "espera-se \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pretooluse-bash-guard.sh"`.
+3. Rodar `cstk setup --project-path "$PROJ" --yes`.
+4. **Expected**:
+   - A linha decorativa contem basename + fragmento canonico, mas **nao**
+     contem o token `"command"` — a regra de decisao de §2.3 (pos-fix
+     SEC-01) exige os tres na mesma linha, entao essa linha **nao** conta
+     como `canonical`.
+   - A linha `"command"` real (que executa `/tmp/nao-e-o-guard.sh`) nao
+     contem o fragmento canonico → hook classificado `divergent`.
+   - Area `hooks` = `divergent` (nunca `already-configured`/`configured`).
+   - **Nenhuma chamada** a `hooks install` (invariante I6).
+   - Exit `1`.
+
+---
+
+## Scenario 18: Extensao `--verify-registration` isolada nao regride a deteccao base (achado SEC-03)
+
+1. Projeto valido, hooks obrigatorios **provisionados e registrados
+   corretamente** (baseline `guard-hooks-status.sh check --quiet` sairia
+   exit `0`).
+2. Apontar a resolucao de `guard-hooks-status.sh` para uma copia
+   **anterior** a esta feature — suporta a chamada baseline (§2.1,
+   existente ha mais tempo) mas rejeita `--verify-registration` com exit
+   `2` (`_gh_die_usage`, `guard-hooks-status.sh:205`), mesma tecnica do
+   Scenario 10.
+3. Rodar `cstk setup --project-path "$PROJ" --yes`.
+4. **Expected**:
+   - A chamada baseline (sem flags) roda **separadamente** e retorna
+     exit `0` normalmente — o wizard SABE que os 3 hooks obrigatorios
+     estao presentes+registrados+atuais.
+   - A chamada `--verify-registration` (separada) falha com exit `2` →
+     resultado `indeterminate` para a dimensao de autenticidade.
+   - Por I5/SEC-02, `indeterminate` escala `status` para `unavailable` —
+     mas o wizard chega a esse veredito **por ter rodado as duas
+     chamadas**, nao por a segunda chamada ter destruido o resultado da
+     primeira. Assertar via stub/contador que a chamada baseline (sem
+     `--verify-registration`) de fato ocorreu e retornou exit `0` antes
+     da escalada.
+   - **Regressao que este cenario previne**: se as flags fossem
+     combinadas numa unica chamada (`--quiet --verify-registration` sem
+     baseline separada, redacao pre-SEC-03 de `data-model.md`), o exit
+     `2` da flag desconhecida faria o wizard perder tambem o veredito
+     basico que aquele runtime sabe responder — `status` cairia
+     igualmente em `unavailable`, mas **sem nunca ter consultado** a
+     configuracao real dos 3 hooks, o que quebraria o Scenario 1 (happy
+     path) em qualquer maquina com runtime instalado ligeiramente
+     desatualizado.
 
 ---
 
