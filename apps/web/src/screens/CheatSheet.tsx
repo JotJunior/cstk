@@ -3,7 +3,7 @@
  * setup (completo: MCP + state.db | básico: Bash + state.json).
  *
  * Conteúdo ESTÁTICO (não consome API): derivado do help real do
- * `cstk v6.2.0` (2026-08-02). Ao mudar a superfície de comandos do CLI,
+ * `cstk v6.6.0` (2026-08-07). Ao mudar a superfície de comandos do CLI,
  * atualizar este texto junto (fonte de verdade: `cstk help [CMD]` e
  * docs/specs/cstk-cli/contracts/cli-commands.md no repo JotJunior/cstk).
  *
@@ -13,7 +13,7 @@
 import { MarkdownView } from '@/components/MarkdownView.js';
 
 const CHEATSHEET_MD = `
-# cstk cheat sheet (v6.2.0)
+# cstk cheat sheet (v6.6.0)
 
 Comandos do CLI e os dois caminhos de setup para rodar as pipelines
 autônomas 00c: **completo** (servidor MCP + state.db) ou **básico**
@@ -40,6 +40,10 @@ Cada metade tem seu comando de atualização.
 > rodando ("o fix funciona no repo mas não na sessão").
 
 ## Estado transacional 00c
+
+Desde a v6.3.0/v6.4.0 o cutover está completo: todos os leitores do
+runtime e os 3 hooks do harness funcionam contra os dois backends
+(\`state.json\` e \`state.db\`) — nenhum degrada mudo sob SQLite.
 
 | Comando | O que faz |
 | --- | --- |
@@ -71,7 +75,12 @@ permanece de pé).
 ## Pipelines autônomas (slash commands no Claude Code)
 
 Pré-requisito do \`/feature-00c\`: briefing + constitution ratificados
-(sem eles, \`/agente-00c\` faz o bootstrap).
+(sem eles, \`/agente-00c\` faz o bootstrap). Desde a v6.6.0 o briefing
+canônico vive em \`docs/briefing.md\` — o caminho legado
+\`docs/01-briefing-discovery/briefing.md\` é aceito só como fallback, e a
+skill \`initialize-docs\` está **deprecated** (remoção na v7): o layout SDD
+(\`docs/briefing.md\` + \`docs/constitution.md\` + \`docs/specs/\`) é criado
+pelas próprias skills, sem scaffold prévio.
 
 | Comando | O que faz |
 | --- | --- |
@@ -91,7 +100,31 @@ Pré-requisito do \`/feature-00c\`: briefing + constitution ratificados
 | \`cstk recall --reindex --states-root ~/Projects\` | Reconstrói o índice (states-root explícito é bem mais rápido) |
 | \`cstk serve [--docker] [--update]\` | Este painel, em \`http://127.0.0.1:5173\` |
 | \`cstk hooks install [--project-path P]\` | Provisiona os 3 hooks: bash-guard fail-closed + tool-call-tick + agent-usage |
+| \`cstk hooks install --with-loose-usage\` | Também provisiona o hook opt-in de consumo avulso (default DESLIGADO; snippet separado dos 3 obrigatórios) |
 | \`cstk show-tip\` | Dica aleatória (ou por skill/fase) sobre o toolkit |
+
+> **GOTCHA**: cópias de hooks são snapshots — \`cstk update\` NÃO reconcilia
+> os hooks já copiados em \`<projeto>/.claude/hooks/\`. Cópia stale roda
+> regras antigas (sintoma real: \`tool_calls=0\` em todas as ondas sob
+> state.db). Desde a v6.5.0 o diagnóstico dos commands 00c acusa hook
+> \`stale\`; remediação: rodar \`cstk hooks install\` de novo em cada projeto.
+
+## Consumo avulso (\`cstk usage\`, v6.6.0)
+
+Tokens/custo das sessões interativas comuns do Claude Code — invisíveis
+para o \`cstk recall\`, que só cobre ondas de orquestrador. Captura via
+hook opt-in (\`--with-loose-usage\`) em sidecar local; índice na
+\`knowledge.db\` schema v13 (tabela \`loose_usage\`). Campo sem medição
+imprime \`nao medido\` (\`null\` no \`--json\`) — nunca \`0\` fabricado.
+
+| Comando | O que faz |
+| --- | --- |
+| \`cstk usage [--project P] [--since ISO] [--limit N] [--json]\` | Lista consumo avulso: uma seção por projeto, uma linha por modelo (tokens, custo, participação) |
+| \`cstk usage compare [--project P] [--since ISO] [--json]\` | Mix de modelos e custo blended, avulso vs pipeline lado a lado |
+| \`cstk usage prune [--dry-run] [--older-than-days N]\` | Poda segmentos fechados do sidecar + linhas do índice acima do TTL (default 90 dias; segmentos abertos nunca são elegíveis) |
+
+> O hook captura com throttle (default 300s) e detecta execução 00c ativa
+> para não contar duas vezes o consumo que já entra pelas ondas.
 
 ---
 
@@ -104,13 +137,30 @@ Pré-requisito do \`/feature-00c\`: briefing + constitution ratificados
    cstk doctor && cstk doctor --deps
    \`\`\`
 
-2. **Backend SQLite global** — execuções novas nascem em \`state.db\`:
+   O one-liner instala só o **runtime** (binário + \`cli/lib\`) — as
+   skills/commands/agents vêm no próximo passo.
+
+2. **Catálogo: skills + commands + agents**
+
+   \`\`\`sh
+   cstk install
+   \`\`\`
+
+   Sem este passo os slash commands não existem na sessão. O profile
+   default \`sdd\` traz as skills da pipeline (briefing → review-features),
+   os gates de qualidade (validate-documentation, validate-docs-rendered,
+   owasp-security, converge), \`agente-00c-runtime\` e \`model-selector\`;
+   commands e agents (\`/agente-00c\`, \`/feature-00c\`, subagentes) são
+   instalados sempre, sem filtro de profile. \`cstk install --profile all\`
+   instala também as complementares.
+
+3. **Backend SQLite global** — execuções novas nascem em \`state.db\`:
 
    \`\`\`sh
    cstk state enable-sqlite
    \`\`\`
 
-3. **No projeto-alvo: hooks + MCP**
+4. **No projeto-alvo: hooks + MCP**
 
    \`\`\`sh
    cd ~/meu-projeto
@@ -118,7 +168,7 @@ Pré-requisito do \`/feature-00c\`: briefing + constitution ratificados
    cstk mcp install
    \`\`\`
 
-4. **Telemetria de custo real (opcional)** — sem API key, tudo local:
+5. **Telemetria de custo real (opcional)** — sem API key, tudo local:
 
    \`\`\`sh
    export CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -127,9 +177,9 @@ Pré-requisito do \`/feature-00c\`: briefing + constitution ratificados
 
    Atenção: a porta 9464 aceita um único processo do Claude Code.
 
-5. **Reiniciar a sessão do Claude Code** — o \`.mcp.json\` só carrega no boot.
+6. **Reiniciar a sessão do Claude Code** — o \`.mcp.json\` só carrega no boot.
 
-6. **Rodar a pipeline** (no Claude Code):
+7. **Rodar a pipeline** (no Claude Code):
 
    \`\`\`text
    /feature-00c "descrição da feature" meu-short-name
@@ -139,7 +189,7 @@ Pré-requisito do \`/feature-00c\`: briefing + constitution ratificados
    orquestrador e agenda as ondas. Bloqueio humano pausa; responda com
    \`/feature-00c-resume meu-short-name --resposta-bloqueio "..."\`.
 
-7. **Higiene eventual**
+8. **Higiene eventual**
 
    \`\`\`sh
    cstk mcp gc --dry-run

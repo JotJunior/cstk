@@ -5,6 +5,23 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.23.1] - 2026-08-07
+
+### Alterado
+
+- **Cheat sheet sincronizado com o cstk v6.6.0** (a tela estava derivada
+  da v6.2.0): nova seção "Consumo avulso (`cstk usage`)" — subcomandos
+  `usage`/`usage compare`/`usage prune`, hook opt-in
+  `cstk hooks install --with-loose-usage`, schema v13 (`loose_usage`) e a
+  regra `nao medido`/`null` (nunca `0` fabricado); briefing canônico em
+  `docs/briefing.md` (legado só como fallback) e deprecation do
+  `initialize-docs` (remoção na v7); notas das 6.3–6.5 que faltavam
+  (hooks backend-agnósticos e gotcha de cópia stale — `tool_calls=0` sob
+  state.db). O passo a passo do setup COMPLETO ganha o passo
+  `cstk install` (catálogo: skills + commands + agents), ausente até
+  então — o one-liner `install.sh` instala só o runtime, e sem o
+  catálogo os slash commands não existem na sessão.
+
 ## [0.23.0] - 2026-08-07
 
 ### Adicionado
@@ -1112,6 +1129,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.23.1]: https://github.com/JotJunior/cstk-panel/compare/v0.23.0...v0.23.1
 [0.23.0]: https://github.com/JotJunior/cstk-panel/compare/v0.22.1...v0.23.0
 [0.22.1]: https://github.com/JotJunior/cstk-panel/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/JotJunior/cstk-panel/compare/v0.21.1...v0.22.0
