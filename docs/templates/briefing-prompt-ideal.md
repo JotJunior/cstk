@@ -139,7 +139,8 @@ As **§1–§5** são o mínimo irredutível — com elas o briefing já fecha s
 
 ## Mapeamento template → seções do briefing salvo
 
-Para auditoria (o briefing final é salvo em `docs/01-briefing-discovery/briefing.md`):
+Para auditoria (o briefing final é salvo em `docs/briefing.md`; projetos
+antigos usam o legado `docs/01-briefing-discovery/briefing.md`):
 
 | Seção deste prompt | Seção do `briefing.md` gerado |
 |---|---|

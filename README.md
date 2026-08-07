@@ -161,7 +161,7 @@ Details, flow diagram and shortcuts in
 | **bugfix** | "bugfix", "fix bug", "debug" | Structured multi-layer bug-fixing protocol |
 | **converge** | "converge", "o código bate com a spec?" | Reconciles spec/plan/tasks against the CURRENT code and appends gaps as a new task phase. Unconditional gate between execute-task and review-task in the orchestrators |
 | **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Full-stack E2E integration tests (UI → API → database → queue → side effects) |
-| **initialize-docs** | "inicializar docs", "setup documentação" | Creates the standard documentation hierarchy with 9 levels |
+| **initialize-docs** | *(deprecated — removal in v7)* | Creates the legacy 9-level documentation hierarchy. Superseded by the SDD layout (`docs/briefing.md` + `docs/constitution.md` + `docs/specs/`); kept only for legacy projects |
 | **apply-insights** | "aplicar insights", "melhorar claude.md" | Applies proven usage insights to CLAUDE.md, hooks and workflows — see [Usage insights](#usage-insights) |
 | **owasp-security** | When reviewing security | Checklist-guided review (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Does not replace audit/pentest |
 | **review-features** | "status global", "comparar features" | Cross-feature report suggesting archive/abandon/prioritize; the archive action applies deltas to the living-specs corpus |
@@ -185,6 +185,7 @@ before deciding.
 | `/agente-00c` + `/feature-00c` orchestrators, model-routing, atomic-commit, guards | [docs/agente-00c.md](./docs/agente-00c.md) |
 | Parallel sessions (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.md) |
 | Knowledge memory (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.md) |
+| Loose usage tracking (`cstk usage`) | [docs/cstk-usage.md](./docs/cstk-usage.md) |
 | Web metrics panel (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.md) |
 
 ## Usage insights
@@ -413,6 +414,7 @@ Default profile when none is given: `sdd`. Details in `cstk install --help`.
 | Autonomous orchestrator (agente-00c / feature-00c) | [docs/agente-00c.md](./docs/agente-00c.md) |
 | Parallel sessions (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.md) |
 | Knowledge memory (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.md) |
+| Loose usage tracking (`cstk usage`) | [docs/cstk-usage.md](./docs/cstk-usage.md) |
 | Web panel (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.md) |
 | Go skills and hooks | [docs/go-toolkit.md](./docs/go-toolkit.md) |
 | Naming conventions and docs hierarchy | [docs/conventions.md](./docs/conventions.md) |

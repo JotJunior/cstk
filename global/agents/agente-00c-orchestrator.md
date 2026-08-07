@@ -1510,9 +1510,10 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    --projeto-alvo-path <PAP>` — exit 0 indica artefato esperado presente.
    O flag `--projeto-alvo-path` e CRITICO para as etapas `briefing` e
    `constitution`: a skill `briefing` salva em
-   `<PAP>/docs/01-briefing-discovery/briefing.md` e a skill
-   `constitution` salva em `<PAP>/docs/constitution.md` (paths do
-   `/initialize-docs`, fora do feature-dir). Sem o flag, detect-completion
+   `<PAP>/docs/briefing.md` (canonico; o legado
+   `<PAP>/docs/01-briefing-discovery/briefing.md` tambem e aceito) e a skill
+   `constitution` salva em `<PAP>/docs/constitution.md` (paths
+   project-level, fora do feature-dir). Sem o flag, detect-completion
    so olha o feature-dir e a etapa nunca eh detectada como concluida —
    resultava no double-write workaround do issue #3.
 

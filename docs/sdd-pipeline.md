@@ -14,7 +14,7 @@ feeds the next.
  │  DISCOVERY   │
  └──────┬───────┘
         │
-   ① briefing          Discovery interview → docs/01-briefing-discovery/briefing.md
+   ① briefing          Discovery interview → docs/briefing.md
         │                Gathers vision, users, scope, constraints and stack.
         │                Asks ONE question at a time (max 10).
         ▼
@@ -93,7 +93,7 @@ feeds the next.
 
 - **Simple feature**: `specify` → `plan` → `create-tasks` → `execute-task`
 - **Bug fix**: `bugfix` (standalone skill, no pipeline required)
-- **Existing project without docs**: `initialize-docs` → `briefing` → `constitution`
+- **Existing project without docs**: `briefing` → `constitution` (no scaffold needed — the skills create `docs/briefing.md` and `docs/constitution.md` themselves)
 - **Only need tasks**: `create-tasks` directly (if you already have enough context)
 
 `specify` also brings a triage guide "update an existing spec vs. open a new

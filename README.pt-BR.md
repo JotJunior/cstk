@@ -161,7 +161,7 @@ Detalhes, diagrama do fluxo e atalhos em
 | **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
 | **converge** | "converge", "o código bate com a spec?" | Reconcilia spec/plan/tasks contra o código ATUAL e apenda gaps como nova fase de tasks. Gate incondicional entre execute-task e review-task nos orquestradores |
 | **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Testes E2E de integração full-stack (UI → API → banco → fila → efeitos colaterais) |
-| **initialize-docs** | "inicializar docs", "setup documentação" | Cria hierarquia padrão de documentação com 9 níveis |
+| **initialize-docs** | *(deprecated — remoção na v7)* | Cria a hierarquia legada de 9 níveis. Superada pelo layout SDD (`docs/briefing.md` + `docs/constitution.md` + `docs/specs/`); mantida só para projetos legados |
 | **apply-insights** | "aplicar insights", "melhorar claude.md" | Aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows — ver [Insights de uso](#insights-de-uso) |
 | **owasp-security** | Ao revisar segurança | Revisão guiada por checklist (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Não substitui auditoria/pentest |
 | **review-features** | "status global", "comparar features" | Relatório cross-feature com sugestão de arquivar/abandonar/priorizar; a ação de archive aplica os deltas ao corpus de specs vivas |
@@ -185,6 +185,7 @@ cross-feature consultada antes de decidir.
 | Orquestradores `/agente-00c` + `/feature-00c`, model-routing, atomic-commit, guardas | [docs/agente-00c.md](./docs/agente-00c.pt-BR.md) |
 | Sessões paralelas (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.pt-BR.md) |
 | Memória de conhecimento (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.pt-BR.md) |
+| Consumo avulso (`cstk usage`) | [docs/cstk-usage.md](./docs/cstk-usage.pt-BR.md) |
 | Painel web de métricas (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.pt-BR.md) |
 
 ## Insights de uso
@@ -403,6 +404,7 @@ Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --hel
 | Orquestrador autônomo (agente-00c / feature-00c) | [docs/agente-00c.md](./docs/agente-00c.pt-BR.md) |
 | Sessões paralelas (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.pt-BR.md) |
 | Memória de conhecimento (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.pt-BR.md) |
+| Consumo avulso (`cstk usage`) | [docs/cstk-usage.md](./docs/cstk-usage.pt-BR.md) |
 | Painel web (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.pt-BR.md) |
 | Skills e hooks para Go | [docs/go-toolkit.md](./docs/go-toolkit.pt-BR.md) |
 | Convenções de nomenclatura e hierarquia de docs | [docs/conventions.md](./docs/conventions.pt-BR.md) |

@@ -41,7 +41,8 @@ $ARGUMENTS
 
 ## Leitura de artefatos foundational (briefing + constitution)
 
-Quando a tarefa em execucao precisar consultar `docs/01-briefing-discovery/briefing.md`
+Quando a tarefa em execucao precisar consultar `docs/briefing.md` (ou o
+legado `docs/01-briefing-discovery/briefing.md`)
 ou `docs/constitution.md` (por exemplo, ETAPA 1 ANALISE ou ETAPA 6 VALIDACAO
 contra MUSTs), verifique se ha cache valido populado pelo agente-00c
 ou feature-00c. Aditivo — se nao houver cache, leia direto do disco

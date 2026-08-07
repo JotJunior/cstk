@@ -55,7 +55,8 @@ $ARGUMENTS
 
 ## Leitura de artefatos foundational (briefing + constitution)
 
-Antes de ler `docs/01-briefing-discovery/briefing.md` ou `docs/constitution.md`
+Antes de ler `docs/briefing.md` (ou o legado
+`docs/01-briefing-discovery/briefing.md`) ou `docs/constitution.md`
 direto do disco, verifique se ha cache valido populado pelo agente-00c
 ou feature-00c. Aditivo — se nao houver cache, leia direto do disco
 conforme comportamento padrao (FR-CACHE-014).

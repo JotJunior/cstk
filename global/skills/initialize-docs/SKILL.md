@@ -1,6 +1,6 @@
 ---
 name: initialize-docs
-description: 'Create standard docs hierarchy (01-09 dirs, READMEs, briefing/UCs/DER/ADRs/APIs/tests/ops). Triggers: "inicializar docs", "criar estrutura docs", "setup documentacao". Skip if structure exists and no --force.'
+description: 'DEPRECATED (remocao na v7) — a hierarquia numerada 01-09 nao faz mais sentido com o SDD; layout canonico e docs/briefing.md + docs/constitution.md + docs/specs/. NAO usar em projetos novos; mantida so para projetos legados que ja tem a hierarquia. Triggers legados: "inicializar docs", "criar estrutura docs", "setup documentacao".'
 argument-hint: "[--dry-run | --force | --no-move]"
 allowed-tools:
   - Read
@@ -12,6 +12,14 @@ allowed-tools:
 ---
 
 # Skill: Inicializar Estrutura de Documentacao
+
+> **DEPRECATED — remocao planejada na v7.** A hierarquia numerada 01-09
+> deixou de fazer sentido com o pipeline SDD: o layout canonico e
+> `docs/briefing.md` + `docs/constitution.md` + `docs/specs/` (criados pelas
+> proprias skills `briefing`, `constitution` e `specify`, sem scaffold
+> previo). Esta skill NAO deve ser usada em projetos novos; permanece
+> instalavel apenas para projetos legados que ja adotam a hierarquia
+> numerada. Todo o pipeline aceita os dois layouts ate a remocao.
 
 Inicializa a estrutura padrao de documentacao do projeto, criando diretorios e arquivos de template.
 
