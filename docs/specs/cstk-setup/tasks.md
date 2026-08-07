@@ -108,40 +108,40 @@ Ref: spec.md FR-016; contracts/cli-setup.md §4.1; checklists/security.md CHK012
 
 Ref: spec.md FR-001, FR-002, FR-009; plan.md nota "Invocacao das extensoes (1) e (2) e sempre SEPARADA da baseline" (achado SEC-03); data-model.md "Fonte de status por area"
 
-- [ ] 3.1.1 Chamar `guard-hooks-status.sh check --projeto-alvo-path PATH --quiet` (baseline, sem flags) como fonte do veredito dos 3 hooks obrigatorios
-- [ ] 3.1.2 Chamar `--verify-registration` ISOLADAMENTE; mapear exit 2 => `mandatory_status`/`status` = `unavailable` (via I5); NUNCA combinar com a baseline na mesma invocacao
-- [ ] 3.1.3 Chamar `--include-loose-usage` ISOLADAMENTE; alimenta apenas `loose_usage_status`, nunca o exit/status principal
-- [ ] 3.1.4 Exibir o status atual (`configured`/`not-configured`/`divergent`/`unavailable`) ANTES de oferecer a acao (FR-002)
-- [ ] 3.1.5 Teste: `scenario_hooks_three_calls_isolated` (quickstart Scenario 18) — assertar via stub/contador que as 3 chamadas ocorrem separadamente e que a falha de uma nao mascara o veredito das outras
+- [x] 3.1.1 Chamar `guard-hooks-status.sh check --projeto-alvo-path PATH --quiet` (baseline, sem flags) como fonte do veredito dos 3 hooks obrigatorios
+- [x] 3.1.2 Chamar `--verify-registration` ISOLADAMENTE; mapear exit 2 => `mandatory_status`/`status` = `unavailable` (via I5); NUNCA combinar com a baseline na mesma invocacao
+- [x] 3.1.3 Chamar `--include-loose-usage` ISOLADAMENTE; alimenta apenas `loose_usage_status`, nunca o exit/status principal
+- [x] 3.1.4 Exibir o status atual (`configured`/`not-configured`/`divergent`/`unavailable`) ANTES de oferecer a acao (FR-002)
+- [x] 3.1.5 Teste: `scenario_hooks_three_calls_isolated` (quickstart Scenario 18) — assertar via stub/contador que as 3 chamadas ocorrem separadamente e que a falha de uma nao mascara o veredito das outras
 
 ### 3.2 Aplicacao e mapeamento de outcome `[A]`
 
 Ref: spec.md FR-003, FR-009; contracts/cli-setup.md §2.4; plan.md Risco 3
 
-- [ ] 3.2.1 Nao chamar `hooks install` quando `status=configured` (invariante I1 — idempotencia via zero chamada)
-- [ ] 3.2.2 Chamar `hooks_main install --project-path PATH` quando nao configurado e usuario aceita (ou `--yes`)
-- [ ] 3.2.3 Mapear os estados internos de `apply_guard_hooks` (`merged`/`paste-instructed`/`hooks-only`/`not-applicable`/`error`) para outcome do wizard — `paste-instructed` (jq ausente) NAO pode virar `applied` silencioso; deve carregar aviso de acao manual pendente ao summary
-- [ ] 3.2.4 Teste: `scenario_hooks_second_run_zero_calls` (quickstart Scenario 2) — segundo run com `status=configured` nao chama `hooks install` nenhuma vez
-- [ ] 3.2.5 Teste: `scenario_hooks_paste_instructed_surfaces_warning` (quickstart Scenario 7, sub-caso jq ausente) — exit 0 de `hooks install` em `paste-instructed` nao vira `applied` cego no summary
+- [x] 3.2.1 Nao chamar `hooks install` quando `status=configured` (invariante I1 — idempotencia via zero chamada)
+- [x] 3.2.2 Chamar `hooks_main install --project-path PATH` quando nao configurado e usuario aceita (ou `--yes`)
+- [x] 3.2.3 Mapear os estados internos de `apply_guard_hooks` (`merged`/`paste-instructed`/`hooks-only`/`not-applicable`/`error`) para outcome do wizard — `paste-instructed` (jq ausente) NAO pode virar `applied` silencioso; deve carregar aviso de acao manual pendente ao summary
+- [x] 3.2.4 Teste: `scenario_hooks_second_run_zero_calls` (quickstart Scenario 2) — segundo run com `status=configured` nao chama `hooks install` nenhuma vez
+- [x] 3.2.5 Teste: `scenario_hooks_paste_instructed_surfaces_warning` (quickstart Scenario 7, sub-caso jq ausente) — exit 0 de `hooks install` em `paste-instructed` nao vira `applied` cego no summary
 
 ### 3.3 Escolha distinta de loose usage `[A]`
 
 Ref: spec.md FR-008, US4; quickstart.md Scenario 9
 
-- [ ] 3.3.1 Apresentar a pergunta de loose usage capture SEPARADA da pergunta de hooks obrigatorios, com explicacao do que a captura registra
-- [ ] 3.3.2 Default em `--yes` para a sub-area de loose usage = `skip` (unica area cujo default recomendado e "nao", `data-model.md` `loose_usage_choice`)
-- [ ] 3.3.3 Recusar loose usage NAO impede a aplicacao dos hooks obrigatorios
-- [ ] 3.3.4 Teste: `scenario_loose_usage_declined_mandatory_still_applied` (quickstart Scenario 9) — negar loose usage; hooks obrigatorios instalados (`guard-hooks-status.sh check` sai exit 0); `posttooluse-loose-usage.sh` nao provisionado nem registrado
+- [x] 3.3.1 Apresentar a pergunta de loose usage capture SEPARADA da pergunta de hooks obrigatorios, com explicacao do que a captura registra
+- [x] 3.3.2 Default em `--yes` para a sub-area de loose usage = `skip` (unica area cujo default recomendado e "nao", `data-model.md` `loose_usage_choice`)
+- [x] 3.3.3 Recusar loose usage NAO impede a aplicacao dos hooks obrigatorios
+- [x] 3.3.4 Teste: `scenario_loose_usage_declined_mandatory_still_applied` (quickstart Scenario 9) — negar loose usage; hooks obrigatorios instalados (`guard-hooks-status.sh check` sai exit 0); `posttooluse-loose-usage.sh` nao provisionado nem registrado
 
 ### 3.4 Tratamento de `divergent`/`unavailable` — falha fechada e remediacao `[C]`
 
 Ref: spec.md FR-016, SC-006; contracts/cli-setup.md §2.3 "Nao remedia sozinho"; data-model.md invariantes I5/I6
 
-- [ ] 3.4.1 `status=divergent` OU `status=unavailable` => outcome `failed`, NUNCA `already-configured`/`configured`
-- [ ] 3.4.2 Exibir remediacao de duas etapas (remover a entrada divergente, so entao rodar `cstk hooks install`) — nunca instrucao de uma etapa so, comprovadamente inefetiva contra o merge "target vence"
-- [ ] 3.4.3 Garantir invariante I6: nenhuma chamada a `hooks install` quando `status` in {divergent, unavailable}
-- [ ] 3.4.4 Teste: `scenario_hooks_divergent_no_install_call` (quickstart Scenario 13) — assertar ausencia de chamada a `hooks install` via stub/contador, `.claude/settings.json` inalterado, exit 1
-- [ ] 3.4.5 Teste: `scenario_hooks_unavailable_status_reason` (quickstart Scenario 15) — `unavailable` reporta motivo distinguindo "nao consegui verificar" de "esta errado", exit 1
+- [x] 3.4.1 `status=divergent` OU `status=unavailable` => outcome `failed`, NUNCA `already-configured`/`configured`
+- [x] 3.4.2 Exibir remediacao de duas etapas (remover a entrada divergente, so entao rodar `cstk hooks install`) — nunca instrucao de uma etapa so, comprovadamente inefetiva contra o merge "target vence"
+- [x] 3.4.3 Garantir invariante I6: nenhuma chamada a `hooks install` quando `status` in {divergent, unavailable}
+- [x] 3.4.4 Teste: `scenario_hooks_divergent_no_install_call` (quickstart Scenario 13) — assertar ausencia de chamada a `hooks install` via stub/contador, `.claude/settings.json` inalterado, exit 1
+- [x] 3.4.5 Teste: `scenario_hooks_unavailable_status_reason` (quickstart Scenario 15) — `unavailable` reporta motivo distinguindo "nao consegui verificar" de "esta errado", exit 1
 
 ---
 

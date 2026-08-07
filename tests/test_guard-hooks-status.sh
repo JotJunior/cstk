@@ -481,11 +481,23 @@ scenario_loose_usage_sem_flag_saida_identica() {
 # Runtime antigo (git HEAD, antes desta extensao) rejeita a flag
 # desconhecida com exit 2 — o consumidor MUST tratar como
 # loose_usage_status=indeterminate, nunca como falha da area de hooks.
+#
+# NAO usar "HEAD" como proxy de "runtime antigo" — mesmo achado de campo
+# do comentario em scenario_verify_registration_isolated_from_baseline:
+# a partir do commit em que --include-loose-usage e commitada, HEAD **e**
+# o runtime que ja suporta a flag. Resolve-se o commit de introducao via
+# pickaxe e usa-se o PAI dele.
 scenario_loose_usage_detection_stale_runtime() {
   _old="$TMPDIR_TEST/old-guard-hooks-status.sh"
-  if ! git -C "$REPO_ROOT" show HEAD:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh \
+  _intro=$(git -C "$REPO_ROOT" log -S'--include-loose-usage' --format=%H \
+    -- global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
+  if [ -z "$_intro" ]; then
+    printf '# scenario_loose_usage_detection_stale_runtime: commit de introducao nao encontrado — pulando\n'
+    return 0
+  fi
+  if ! git -C "$REPO_ROOT" show "${_intro}~1:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
        > "$_old" 2>/dev/null; then
-    printf '# scenario_loose_usage_detection_stale_runtime: HEAD sem versao anterior — pulando\n'
+    printf '# scenario_loose_usage_detection_stale_runtime: sem versao anterior a introducao — pulando\n'
     return 0
   fi
   _p=$(_mkproj proj-loose-stale)
@@ -602,15 +614,30 @@ scenario_minified_settings_indeterminate() {
 }
 
 # Achado SEC-03: --verify-registration roda SEMPRE isolada da chamada
-# baseline. Num runtime antigo (git HEAD anterior a esta extensao) a flag
-# falha com exit 2, mas a chamada baseline SEPARADA (sem a flag), no MESMO
-# runtime antigo, continua respondendo o veredito basico normalmente —
-# nenhuma das duas mascara a outra.
+# baseline. Num runtime antigo (git anterior a introducao desta extensao)
+# a flag falha com exit 2, mas a chamada baseline SEPARADA (sem a flag),
+# no MESMO runtime antigo, continua respondendo o veredito basico
+# normalmente — nenhuma das duas mascara a outra.
+#
+# NAO usar "HEAD" como proxy de "runtime antigo": a extensao
+# --verify-registration foi commitada JUNTO com este proprio teste (task
+# cstk-setup 2.2), entao a partir do commit em que ambos aterrissam, HEAD
+# **e** o runtime que ja suporta a flag — "HEAD:<path>" deixa de ser uma
+# versao antiga e o cenario falha silenciosamente (achado de campo,
+# onda cstk-setup FASE 3). Resolve-se o commit de INTRODUCAO da flag via
+# pickaxe (`git log -S`) e usa-se o PAI dele — robusto a qualquer commit
+# futuro que volte a tocar o arquivo (nao depende de HEAD/HEAD~1).
 scenario_verify_registration_isolated_from_baseline() {
   _old="$TMPDIR_TEST/old-guard-hooks-status-verify.sh"
-  if ! git -C "$REPO_ROOT" show HEAD:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh \
+  _intro=$(git -C "$REPO_ROOT" log -S'--verify-registration' --format=%H \
+    -- global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
+  if [ -z "$_intro" ]; then
+    printf '# scenario_verify_registration_isolated_from_baseline: commit de introducao nao encontrado — pulando\n'
+    return 0
+  fi
+  if ! git -C "$REPO_ROOT" show "${_intro}~1:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
        > "$_old" 2>/dev/null; then
-    printf '# scenario_verify_registration_isolated_from_baseline: HEAD sem versao anterior — pulando\n'
+    printf '# scenario_verify_registration_isolated_from_baseline: sem versao anterior a introducao — pulando\n'
     return 0
   fi
   _p=$(_mkproj proj-verify-isolated)

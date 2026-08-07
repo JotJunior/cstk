@@ -25,7 +25,28 @@
 #      FR-018) — `cstk setup --catalog /qualquer/dir` => exit 2 (nenhuma
 #      flag de override de catalogo existe neste subcomando).
 #
-# Ref: docs/specs/cstk-setup/tasks.md FASE 1; contracts/cli-setup.md §1.
+# FASE 3 (area de hooks, contracts/cli-setup.md §2):
+#   7  scenario_hooks_three_calls_isolated (task 3.1.5, achado SEC-03) —
+#      as 3 chamadas a guard-hooks-status.sh (baseline, --verify-registration,
+#      --include-loose-usage) ocorrem SEPARADAS, nunca combinadas.
+#   8  scenario_hooks_second_run_zero_calls (task 3.2.4, quickstart
+#      Scenario 2, I1) — segundo run com status=configured nao chama
+#      `hooks install`; arvore .claude identica antes/depois.
+#   9  scenario_hooks_paste_instructed_surfaces_warning (task 3.2.5,
+#      quickstart Scenario 7 sub-caso jq ausente) — exit 0 de `hooks
+#      install` em paste-instructed carrega aviso, nao vira applied cego.
+#  10  scenario_loose_usage_declined_mandatory_still_applied (task 3.3.4,
+#      quickstart Scenario 9, FR-008) — default skip do hook opt-in nao
+#      impede a aplicacao dos 3 hooks obrigatorios.
+#  11  scenario_hooks_divergent_no_install_call (task 3.4.4, quickstart
+#      Scenario 13, I6) — status=divergent nunca chama `hooks install`;
+#      .claude nem chega a ser criado no projeto.
+#  12  scenario_hooks_unavailable_status_reason (task 3.4.5, quickstart
+#      Scenario 15) — status=unavailable distingue "nao consegui
+#      verificar" do texto de divergent ("esta errado").
+#
+# Ref: docs/specs/cstk-setup/tasks.md FASE 1, FASE 3;
+#      contracts/cli-setup.md §1, §2.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -46,6 +67,40 @@ _make_repo() {
     && git config user.email test@example.com \
     && git config user.name "Test" \
     && git commit -q --allow-empty -m "init" )
+}
+
+# ==== Helpers FASE 3 (area de hooks) ====
+
+# _make_fake_catalog HOME_DIR -> cria um catalogo MINIMO em
+# $HOME_DIR/.claude/skills/agente-00c-runtime/hooks com os 3 hooks
+# obrigatorios (scripts triviais, so precisam existir+ser copiaveis) e o
+# settings.snippet.json REAL do repo (para que jq faca merge de verdade).
+# Ecoa o path do catalogo em stdout.
+_make_fake_catalog() {
+  _mfc_dir="$1/.claude/skills/agente-00c-runtime/hooks"
+  mkdir -p "$_mfc_dir"
+  for _mfc_h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh; do
+    printf '#!/bin/sh\nexit 0\n' > "$_mfc_dir/$_mfc_h"
+    chmod +x "$_mfc_dir/$_mfc_h"
+  done
+  cp "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/settings.snippet.json" "$_mfc_dir/"
+  printf '%s' "$_mfc_dir"
+}
+
+# _make_shim_path_no_jq -> mesmo padrao de _make_shim_path
+# (tests/cstk/test_hooks.sh) — PATH curado SEM jq, para exercitar o
+# caminho paste-instructed (jq ausente). Inclui `cmp` (freshness) e `sh`
+# (necessario para o proprio `env -i PATH=... sh "$CSTK" ...` executar).
+_make_shim_path_no_jq() {
+  _msp_dir=$(mktemp -d "$TMPDIR_TEST/shimbin.XXXXXX")
+  for _msp_c in sh mktemp awk sed grep find head printf cp mv rm mkdir \
+                chmod ls dirname basename tr cut wc env command sort \
+                uniq date cat cmp; do
+    _msp_src=$(command -v "$_msp_c" 2>/dev/null) || continue
+    [ -n "$_msp_src" ] || continue
+    ln -sf "$_msp_src" "$_msp_dir/$_msp_c" 2>/dev/null || :
+  done
+  printf '%s' "$_msp_dir"
 }
 
 # ==== 1.1.5 wiring do dispatcher ====
@@ -220,6 +275,288 @@ scenario_catalog_flag_rejected() {
     return 1
   fi
   return 0
+}
+
+# ==== FASE 3 — Area de hooks ====
+
+# ==== 3.1.5 tres chamadas isoladas (achado SEC-03) ====
+
+scenario_hooks_three_calls_isolated() {
+  _repo="$TMPDIR_TEST/repo-hooks-isolated"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-hooks-isolated"
+  mkdir -p "$_home"
+
+  _stubbin="$TMPDIR_TEST/stubbin-isolated"
+  mkdir -p "$_stubbin"
+  _calls="$TMPDIR_TEST/gh-calls-isolated.log"
+  : > "$_calls"
+  cat > "$_stubbin/guard-hooks-status.sh" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >> "$_calls"
+case "\$*" in
+  *--verify-registration*)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\tcanonical\n'
+    printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\tcanonical\n'
+    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\tcanonical\n'
+    exit 0 ;;
+  *--include-loose-usage*)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-loose-usage.sh\tmissing\tunregistered\tunknown\n'
+    exit 0 ;;
+  *)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
+    exit 0 ;;
+esac
+STUB
+  chmod +x "$_stubbin/guard-hooks-status.sh"
+
+  assert_exit 0 env PATH="$_stubbin:$PATH" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run || return 1
+
+  _n=$(wc -l < "$_calls" | tr -d ' ')
+  if [ "$_n" != "3" ]; then
+    _fail "scenario_hooks_three_calls_isolated" \
+      "esperava exatamente 3 chamadas, obteve $_n: $(cat "$_calls")"
+    return 1
+  fi
+
+  if grep -qE -- '--verify-registration.*--include-loose-usage|--include-loose-usage.*--verify-registration' "$_calls"; then
+    _fail "scenario_hooks_three_calls_isolated" \
+      "as duas flags de extensao foram combinadas numa unica chamada"
+    return 1
+  fi
+
+  _n_baseline=$(grep -vc -- '--verify-registration\|--include-loose-usage' "$_calls")
+  if [ "$_n_baseline" != "1" ]; then
+    _fail "scenario_hooks_three_calls_isolated" \
+      "esperava exatamente 1 chamada baseline sem flags, obteve $_n_baseline"
+    return 1
+  fi
+  grep -q -- '--verify-registration' "$_calls" || {
+    _fail "scenario_hooks_three_calls_isolated" "chamada --verify-registration ausente"
+    return 1
+  }
+  grep -q -- '--include-loose-usage' "$_calls" || {
+    _fail "scenario_hooks_three_calls_isolated" "chamada --include-loose-usage ausente"
+    return 1
+  }
+}
+
+# ==== 3.2.4 status=configured -> zero chamadas de aplicacao (I1) ====
+
+scenario_hooks_second_run_zero_calls() {
+  _repo="$TMPDIR_TEST/repo-hooks-idem"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-hooks-idem"
+  mkdir -p "$_home"
+  _cat=$(_make_fake_catalog "$_home")
+
+  assert_exit 0 env HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes || return 1
+
+  [ -f "$_repo/.claude/hooks/pretooluse-bash-guard.sh" ] || {
+    _fail "scenario_hooks_second_run_zero_calls" \
+      "pre-condicao do teste falhou: primeiro run nao provisionou os hooks"
+    return 1
+  }
+  cp -R "$_repo/.claude" "$TMPDIR_TEST/hooks-idem-snapshot"
+
+  capture env HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_hooks_second_run_zero_calls" \
+      "segundo run esperava exit 0, obteve $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"already-configured"*) : ;;
+    *)
+      _fail "scenario_hooks_second_run_zero_calls" \
+        "segundo run nao reportou already-configured: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+
+  if ! diff -r "$TMPDIR_TEST/hooks-idem-snapshot" "$_repo/.claude" >/dev/null 2>&1; then
+    _fail "scenario_hooks_second_run_zero_calls" \
+      ".claude mudou no segundo run — esperava zero chamada de aplicacao (I1)"
+    return 1
+  fi
+}
+
+# ==== 3.2.5 paste-instructed (jq ausente) nao vira applied cego ====
+
+scenario_hooks_paste_instructed_surfaces_warning() {
+  if ! command -v jq >/dev/null 2>&1; then
+    _error "no_jq" "jq nao disponivel no ambiente — cenario exige jq presente no PATH real para o shim ter algo a excluir"
+  fi
+  _repo="$TMPDIR_TEST/repo-hooks-paste"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-hooks-paste"
+  mkdir -p "$_home"
+  _cat=$(_make_fake_catalog "$_home")
+  _shim=$(_make_shim_path_no_jq)
+
+  capture env -i PATH="$_shim" HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_hooks_paste_instructed_surfaces_warning" \
+      "esperado exit 0 (applied com aviso), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"jq ausente"*) : ;;
+    *)
+      _fail "scenario_hooks_paste_instructed_surfaces_warning" \
+        "stderr nao carrega o aviso de jq ausente / colagem manual: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"outcome=applied"*) : ;;
+    *)
+      _fail "scenario_hooks_paste_instructed_surfaces_warning" \
+        "outcome nao reportado como applied: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
+# ==== 3.3.4 loose usage recusado nao impede hooks obrigatorios (FR-008) ====
+
+scenario_loose_usage_declined_mandatory_still_applied() {
+  _repo="$TMPDIR_TEST/repo-hooks-loose-declined"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-hooks-loose-declined"
+  mkdir -p "$_home"
+  _cat=$(_make_fake_catalog "$_home")
+  # Hook opt-in TAMBEM presente no catalogo — prova que a ausencia no
+  # projeto e por ESCOLHA (default skip em --yes), nao por ausencia no
+  # catalogo.
+  printf '#!/bin/sh\nexit 0\n' > "$_cat/posttooluse-loose-usage.sh"
+  chmod +x "$_cat/posttooluse-loose-usage.sh"
+
+  assert_exit 0 env HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes || return 1
+
+  assert_exit 0 env HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" \
+    sh "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
+    check --projeto-alvo-path "$_repo" --quiet || return 1
+
+  if [ -f "$_repo/.claude/hooks/posttooluse-loose-usage.sh" ]; then
+    _fail "scenario_loose_usage_declined_mandatory_still_applied" \
+      "hook opt-in de loose usage foi provisionado apesar do default skip"
+    return 1
+  fi
+  if grep -q "posttooluse-loose-usage" "$_repo/.claude/settings.json" 2>/dev/null; then
+    _fail "scenario_loose_usage_declined_mandatory_still_applied" \
+      "hook opt-in de loose usage foi registrado em settings.json apesar do default skip"
+    return 1
+  fi
+}
+
+# ==== 3.4.4 status=divergent -> zero chamada de aplicacao (I6) ====
+
+scenario_hooks_divergent_no_install_call() {
+  _repo="$TMPDIR_TEST/repo-hooks-divergent"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-hooks-divergent"
+  mkdir -p "$_home"
+  # Catalogo REAL presente — se hooks_main fosse chamado por engano isso
+  # deixaria rastro (.claude criado/populado no projeto).
+  _make_fake_catalog "$_home" >/dev/null
+
+  _stubbin="$TMPDIR_TEST/stubbin-divergent"
+  mkdir -p "$_stubbin"
+  cat > "$_stubbin/guard-hooks-status.sh" <<'STUB'
+#!/bin/sh
+case "$*" in
+  *--verify-registration*)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\tdivergent\n'
+    printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\tcanonical\n'
+    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\tcanonical\n'
+    exit 1 ;;
+  *--include-loose-usage*)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-loose-usage.sh\tmissing\tunregistered\tunknown\n'
+    exit 0 ;;
+  *)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
+    exit 0 ;;
+esac
+STUB
+  chmod +x "$_stubbin/guard-hooks-status.sh"
+
+  capture env PATH="$_stubbin:$PATH" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "scenario_hooks_divergent_no_install_call" \
+      "esperado exit 1 (area divergente), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  if [ -e "$_repo/.claude" ]; then
+    _fail "scenario_hooks_divergent_no_install_call" \
+      "status=divergent NAO pode chamar aplicacao (I6); .claude foi criado no projeto"
+    return 1
+  fi
+}
+
+# ==== 3.4.5 status=unavailable distingue motivo de divergent ====
+
+scenario_hooks_unavailable_status_reason() {
+  _repo="$TMPDIR_TEST/repo-hooks-unavailable"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-hooks-unavailable"
+  mkdir -p "$_home"
+  mkdir -p "$_repo/.claude/hooks"
+  printf '#!/bin/sh\nexit 0\n' > "$_repo/.claude/hooks/pretooluse-bash-guard.sh"
+  chmod +x "$_repo/.claude/hooks/pretooluse-bash-guard.sh"
+  # settings.json minificado numa unica linha fisica: impede atribuicao
+  # por linha em _gh_verify_registration -> indeterminate (nunca
+  # canonical) — e como o hook ESTA registrado (baseline), isso e
+  # ambiguidade REAL, nao o caso trivial "nada para autenticar".
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"\\"$CLAUDE_PROJECT_DIR\\"/.claude/hooks/pretooluse-bash-guard.sh"}]}]}}' \
+    > "$_repo/.claude/settings.json"
+
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --yes
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "scenario_hooks_unavailable_status_reason" \
+      "esperado exit 1 (unavailable), obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"unavailable"*) : ;;
+    *)
+      _fail "scenario_hooks_unavailable_status_reason" \
+        "stderr nao reporta status=unavailable: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"registro nao-canonico detectado"*)
+      _fail "scenario_hooks_unavailable_status_reason" \
+        "reason usou o texto de divergent ('esta errado') em vez do de unavailable ('nao consegui verificar')"
+      return 1
+      ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"nao pode ser confirmada nem refutada"*) : ;;
+    *)
+      _fail "scenario_hooks_unavailable_status_reason" \
+        "reason nao distingue 'nao consegui verificar': $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
 }
 
 run_all_scenarios

@@ -77,6 +77,11 @@ set -eu
 . "${CSTK_LIB:?CSTK_LIB must be set}/common.sh"
 # shellcheck source=./ui.sh
 . "${CSTK_LIB}/ui.sh"
+# shellcheck source=./hooks.sh
+# hooks.sh e o UNICO arquivo autorizado a referenciar jq (Constitution
+# carve-out); setup.sh reusa hooks_main/apply_guard_hooks de la — nenhum
+# mecanismo de merge JSON novo (FASE 3, contracts/cli-setup.md §2.4).
+. "${CSTK_LIB}/hooks.sh"
 
 _setup_usage() {
   cat <<'HELP'
@@ -168,6 +173,348 @@ _setup_check_git_root() {
   [ -e "$1/.git" ]
 }
 
+# ============================================================================
+# Area de hooks (FASE 3 — docs/specs/cstk-setup/tasks.md; contract em
+# contracts/cli-setup.md §2; data-model.md Entity ConfigurationArea/
+# HooksAreaDetail).
+# ============================================================================
+
+# _setup_hooks_status_script_path -> imprime o caminho de
+# guard-hooks-status.sh. Mesmo padrao de 3 camadas de
+# _mcp_runtime_script_path (cli/lib/mcp.sh) / _state_migrate_script_path
+# (cli/lib/state.sh): (1) PATH; (2) layout de repo relativo a CSTK_LIB
+# (cli/lib -> ../../global/skills/agente-00c-runtime/scripts); (3) layout
+# instalado em ~/.claude. Necessario porque testes/CI rodam o CLI da
+# arvore do repo (CSTK_LIB=cli/lib) sem o runtime em ~/.claude.
+_setup_hooks_status_script_path() {
+  if command -v guard-hooks-status.sh >/dev/null 2>&1; then
+    command -v guard-hooks-status.sh
+    return 0
+  fi
+  if [ -n "${CSTK_LIB:-}" ]; then
+    _shs_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
+    if [ -f "$_shs_repo" ]; then
+      printf '%s\n' "$_shs_repo"
+      return 0
+    fi
+  fi
+  _shs_default="${HOME:-/tmp}/.claude/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
+  if [ -f "$_shs_default" ]; then
+    printf '%s\n' "$_shs_default"
+    return 0
+  fi
+  return 1
+}
+
+# _setup_prompt_yn QUESTION -> pergunta em stderr, le resposta em stdin.
+# Exit 0 se y/Y/yes/YES; 1 caso contrario (inclusive vazio/EOF). Mesmo
+# padrao de _session_prompt_yn (cli/lib/session.sh:333-343).
+_setup_prompt_yn() {
+  printf '%s ' "$1" >&2
+  read -r _spy_ans 2>/dev/null || _spy_ans=""
+  case "$_spy_ans" in
+    y | Y | yes | YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# _setup_detect_hooks_area PROJECT_PATH
+#
+# 3 chamadas SEPARADAS a guard-hooks-status.sh (achado SEC-03 —
+# contracts/cli-setup.md §2.1-2.3): (1) baseline sem flags; (2)
+# --verify-registration isolada; (3) --include-loose-usage isolada.
+# NUNCA combinadas numa unica invocacao — um runtime antigo que rejeita
+# UMA flag (exit 2) nao pode perder o veredito basico que ele SABE
+# responder. 100% read-only (nunca escreve nada).
+#
+# Preenche globais:
+#   _SU_HOOKS_MANDATORY_STATUS  configured|not-configured|divergent|unavailable
+#   _SU_HOOKS_MANDATORY_REASON  motivo legivel (vazio quando configured)
+#   _SU_HOOKS_DIVERGENT_NAMES   basenames divergentes, espaco-separado
+#   _SU_HOOKS_LOOSE_STATUS      configured|not-configured|indeterminate
+#
+# Regra de escalada (I5 do data-model, achados SEC-01/SEC-02): a chamada
+# --verify-registration so pode ESCALAR o veredito da baseline, nunca
+# substitui-lo silenciosamente:
+#   - qualquer hook com 5a coluna "divergent" -> status=divergent
+#     (precede a baseline)
+#   - senao, qualquer hook cuja 5a coluna seja "indeterminate" E cuja
+#     3a coluna (a MESMA chamada) seja "registered" -> status=unavailable
+#     (ambiguidade REAL: algo esta registrado mas a forma canonica nao
+#     pode ser confirmada — o caso citado no contrato e o settings.json
+#     minificado). Um hook "indeterminate" cuja 3a coluna e "unregistered"
+#     NAO escala: e o caso trivial "nada para autenticar" (settings.json
+#     ausente ou hook nunca mencionado) — _gh_verify_registration usa o
+#     MESMO grep -F que _gh_registered para decidir isso, entao os dois
+#     vereditos sao consistentes por construcao. Escalar aqui produziria
+#     `unavailable` para TODO projeto ainda nao configurado, contradizendo
+#     quickstart.md Scenario 1 (projeto novo, sem settings.json, MUST
+#     oferecer configurar hooks — nao reportar "indisponivel").
+#   - a chamada --verify-registration inteira com exit 2 (flag rejeitada
+#     por runtime desatualizado) -> unavailable incondicional, sem colunas
+#     para inspecionar (contrato §2.3).
+_setup_detect_hooks_area() {
+  _sdh_pap=$1
+  _SU_HOOKS_MANDATORY_STATUS="unavailable"
+  _SU_HOOKS_MANDATORY_REASON="nao foi possivel localizar guard-hooks-status.sh (rode 'cstk install' ou 'cstk update' antes)"
+  _SU_HOOKS_DIVERGENT_NAMES=""
+  _SU_HOOKS_LOOSE_STATUS="indeterminate"
+
+  if ! _sdh_script=$(_setup_hooks_status_script_path); then
+    return 0
+  fi
+
+  # (1) baseline — SEM flags (contracts/cli-setup.md §2.1)
+  if _sdh_baseline_out=$(sh "$_sdh_script" check --projeto-alvo-path "$_sdh_pap" --quiet 2>/dev/null); then
+    _sdh_baseline_rc=0
+  else
+    _sdh_baseline_rc=$?
+  fi
+  case "$_sdh_baseline_rc" in
+    0)
+      _SU_HOOKS_MANDATORY_STATUS="configured"
+      _SU_HOOKS_MANDATORY_REASON=""
+      ;;
+    1)
+      _SU_HOOKS_MANDATORY_STATUS="not-configured"
+      _SU_HOOKS_MANDATORY_REASON="um ou mais hooks obrigatorios ausentes, nao registrados ou desatualizados"
+      ;;
+    *)
+      _SU_HOOKS_MANDATORY_STATUS="unavailable"
+      _SU_HOOKS_MANDATORY_REASON="guard-hooks-status.sh check (baseline) retornou uso incorreto (exit $_sdh_baseline_rc)"
+      ;;
+  esac
+
+  # (2) --verify-registration — SEPARADA (achado SEC-03, §2.3, FR-016)
+  if _sdh_verify_out=$(sh "$_sdh_script" check --projeto-alvo-path "$_sdh_pap" --quiet --verify-registration 2>/dev/null); then
+    _sdh_verify_rc=0
+  else
+    _sdh_verify_rc=$?
+  fi
+  if [ "$_sdh_verify_rc" = 2 ]; then
+    _SU_HOOKS_MANDATORY_STATUS="unavailable"
+    _SU_HOOKS_MANDATORY_REASON="verificacao de autenticidade do registro indisponivel (runtime desatualizado) — nao foi possivel confirmar nem refutar"
+  else
+    _sdh_divergent=""
+    _sdh_ambiguous=0
+    while IFS='	' read -r _h _pf _rg _fr _vr; do
+      [ -n "$_h" ] || continue
+      case "$_vr" in
+        divergent)
+          _sdh_divergent="${_sdh_divergent:+$_sdh_divergent }$_h"
+          ;;
+        indeterminate)
+          [ "$_rg" = "registered" ] && _sdh_ambiguous=1
+          ;;
+      esac
+    done <<SDHVR
+$_sdh_verify_out
+SDHVR
+    if [ -n "$_sdh_divergent" ]; then
+      _SU_HOOKS_MANDATORY_STATUS="divergent"
+      _SU_HOOKS_DIVERGENT_NAMES="$_sdh_divergent"
+      _SU_HOOKS_MANDATORY_REASON="registro nao-canonico detectado para: $_sdh_divergent"
+    elif [ "$_sdh_ambiguous" = 1 ]; then
+      _SU_HOOKS_MANDATORY_STATUS="unavailable"
+      _SU_HOOKS_MANDATORY_REASON="autenticidade do registro nao pode ser confirmada nem refutada (layout do settings.json impede atribuicao por linha)"
+    fi
+  fi
+
+  # (3) --include-loose-usage — SEPARADA (§2.2); alimenta SO
+  # loose_usage_status, NUNCA a linha acima (hook obrigatorio).
+  if _sdh_loose_out=$(sh "$_sdh_script" check --projeto-alvo-path "$_sdh_pap" --quiet --include-loose-usage 2>/dev/null); then
+    _sdh_loose_rc=0
+  else
+    _sdh_loose_rc=$?
+  fi
+  if [ "$_sdh_loose_rc" = 2 ]; then
+    _SU_HOOKS_LOOSE_STATUS="indeterminate"
+  else
+    _sdh_loose_line=$(printf '%s\n' "$_sdh_loose_out" | awk -F'\t' '$1=="posttooluse-loose-usage.sh"{print;exit}')
+    if [ -z "$_sdh_loose_line" ]; then
+      _SU_HOOKS_LOOSE_STATUS="indeterminate"
+    else
+      _sdh_l_present=$(printf '%s' "$_sdh_loose_line" | awk -F'\t' '{print $2}')
+      _sdh_l_reg=$(printf '%s' "$_sdh_loose_line" | awk -F'\t' '{print $3}')
+      _sdh_l_fresh=$(printf '%s' "$_sdh_loose_line" | awk -F'\t' '{print $4}')
+      if [ "$_sdh_l_present" = "present" ] && [ "$_sdh_l_reg" = "registered" ] && [ "$_sdh_l_fresh" != "stale" ]; then
+        _SU_HOOKS_LOOSE_STATUS="configured"
+      else
+        _SU_HOOKS_LOOSE_STATUS="not-configured"
+      fi
+    fi
+  fi
+  return 0
+}
+
+# _setup_classify_hooks_install_stderr STDERR_TEXT ->
+# merged|paste-instructed|hooks-only|not-applicable|error|unknown
+#
+# `hooks_main install` (cli/lib/hooks.sh) so expoe exit code (0 para
+# merged/paste-instructed/hooks-only; 1 para not-applicable/error) — os 5
+# estados internos de apply_guard_hooks nao chegam ao caller por outro
+# canal. Esta funcao INTERPRETA o texto de log ja documentado e estavel
+# que hooks_main emite para cada estado (cli/lib/hooks.sh, case
+# `$_hooks_state` em `hooks_main`) — nao reimplementa a decisao de estado,
+# so classifica o relatorio que o proprio delegado ja produziu (task
+# 3.2.3): garante que `paste-instructed`/`hooks-only` (jq ausente /
+# catalogo incompleto) nunca virem `applied` silencioso no wizard.
+_setup_classify_hooks_install_stderr() {
+  case "$1" in
+    *"provisionados e registrados em"* | *"provisionaria os hooks 00c em"*)
+      printf 'merged\n'
+      ;;
+    *"REGISTRO em settings.json"*)
+      printf 'paste-instructed\n'
+      ;;
+    *"settings.snippet.json ausente no catalogo"*)
+      printf 'hooks-only\n'
+      ;;
+    *"catalogo nao trouxe os hooks 00c"*)
+      printf 'not-applicable\n'
+      ;;
+    *"falha ao provisionar"*)
+      printf 'error\n'
+      ;;
+    *)
+      printf 'unknown\n'
+      ;;
+  esac
+}
+
+# _setup_run_hooks_area PROJECT_PATH MODE DRY_RUN
+#
+# Orquestra a area 'hooks' de ponta a ponta (FASE 3):
+#   1. Deteccao read-only (sempre roda, mesmo em --dry-run)
+#   2. Apresentacao do status ANTES de oferecer a acao (FR-002)
+#   3. `divergent`/`unavailable` -> outcome=failed, ZERO chamada de
+#      aplicacao (I6, FR-016) — falha fechada com remediacao em 2 etapas
+#   4. `configured` -> outcome=already-configured, ZERO chamada (I1, FR-003)
+#   5. `not-configured` -> decide (prompt interativo ou default de --yes)
+#      a instalacao dos hooks obrigatorios E, como escolha DISTINTA
+#      (FR-008), a do hook opt-in de loose usage (default skip)
+#
+# Preenche _SU_HOOKS_OUTCOME (already-configured|applied|skipped|failed) e
+# _SU_HOOKS_OUTCOME_REASON (motivo legivel; nao vazio em failed e nos
+# avisos pendentes de applied — task 3.2.3).
+_setup_run_hooks_area() {
+  _srh_pap=$1
+  _srh_mode=$2
+  _srh_dry=$3
+
+  _setup_detect_hooks_area "$_srh_pap"
+
+  log_info "setup: [hooks] status atual (obrigatorios) = $_SU_HOOKS_MANDATORY_STATUS"
+  if [ -n "$_SU_HOOKS_MANDATORY_REASON" ]; then
+    log_info "setup: [hooks] motivo: $_SU_HOOKS_MANDATORY_REASON"
+  fi
+  log_info "setup: [hooks] loose usage (opt-in, escolha distinta — FR-008): $_SU_HOOKS_LOOSE_STATUS"
+
+  case "$_SU_HOOKS_MANDATORY_STATUS" in
+    configured)
+      _SU_HOOKS_OUTCOME="already-configured"
+      _SU_HOOKS_OUTCOME_REASON=""
+      log_info "setup: [hooks] ja configurado — nenhuma chamada de aplicacao (I1)."
+      return 0
+      ;;
+    divergent | unavailable)
+      _SU_HOOKS_OUTCOME="failed"
+      _SU_HOOKS_OUTCOME_REASON="$_SU_HOOKS_MANDATORY_REASON"
+      log_error "setup: [hooks] $_SU_HOOKS_MANDATORY_REASON"
+      if [ "$_SU_HOOKS_MANDATORY_STATUS" = "divergent" ]; then
+        log_error "setup: [hooks] remediacao (duas etapas — reescrever por cima NAO substitui o divergente, o merge faz o target vencer): (1) remova a entrada divergente de $_srh_pap/.claude/settings.json; (2) so entao rode 'cstk hooks install --project-path $_srh_pap'."
+      fi
+      log_error "setup: [hooks] nenhuma chamada de aplicacao sera feita (I6)."
+      return 0
+      ;;
+  esac
+
+  # not-configured a partir daqui.
+  if [ "$_srh_dry" = 1 ]; then
+    _SU_HOOKS_OUTCOME="skipped"
+    _SU_HOOKS_OUTCOME_REASON="preview: nenhuma alteracao aplicada"
+    log_info "setup: [hooks] preview — instalaria os hooks obrigatorios (nao aplicado)."
+    return 0
+  fi
+
+  _srh_accept_mandatory=1
+  if [ "$_srh_mode" = "interactive" ]; then
+    if ! _setup_prompt_yn "setup: [hooks] instalar os hooks obrigatorios agora? [y/N]"; then
+      _srh_accept_mandatory=0
+    fi
+  fi
+  if [ "$_srh_accept_mandatory" != 1 ]; then
+    _SU_HOOKS_OUTCOME="skipped"
+    _SU_HOOKS_OUTCOME_REASON="recusado pelo usuario"
+    log_info "setup: [hooks] recusado — hooks obrigatorios NAO instalados."
+    return 0
+  fi
+
+  # Escolha DISTINTA (FR-008, US4) do hook opt-in de loose usage. Default
+  # em --yes = skip (data-model.md loose_usage_choice — unica sub-area
+  # cujo default recomendado e "nao").
+  _srh_with_loose=0
+  if [ "$_srh_mode" = "interactive" ]; then
+    if _setup_prompt_yn "setup: [hooks] tambem habilitar captura de consumo avulso (loose usage, opt-in, default nao)? [y/N]"; then
+      _srh_with_loose=1
+    fi
+  fi
+
+  if ! _srh_err_file=$(mktemp 2>/dev/null); then
+    _SU_HOOKS_OUTCOME="failed"
+    _SU_HOOKS_OUTCOME_REASON="mktemp falhou ao preparar captura de diagnostico de 'hooks install'"
+    log_error "setup: [hooks] $_SU_HOOKS_OUTCOME_REASON"
+    return 0
+  fi
+
+  if [ "$_srh_with_loose" = 1 ]; then
+    if hooks_main install --project-path "$_srh_pap" --with-loose-usage 2>"$_srh_err_file"; then
+      _srh_rc=0
+    else
+      _srh_rc=$?
+    fi
+  else
+    if hooks_main install --project-path "$_srh_pap" 2>"$_srh_err_file"; then
+      _srh_rc=0
+    else
+      _srh_rc=$?
+    fi
+  fi
+  _srh_stderr=$(cat "$_srh_err_file" 2>/dev/null) || _srh_stderr=""
+  rm -f "$_srh_err_file" 2>/dev/null || :
+
+  _srh_state=$(_setup_classify_hooks_install_stderr "$_srh_stderr")
+
+  case "$_srh_state" in
+    merged)
+      _SU_HOOKS_OUTCOME="applied"
+      _SU_HOOKS_OUTCOME_REASON=""
+      log_info "setup: [hooks] aplicado (merged)."
+      ;;
+    paste-instructed)
+      _SU_HOOKS_OUTCOME="applied"
+      _SU_HOOKS_OUTCOME_REASON="jq ausente — registro em settings.json exige colagem manual (bloco impresso acima); sem isso os hooks NAO rodam"
+      log_warn "setup: [hooks] $_SU_HOOKS_OUTCOME_REASON"
+      ;;
+    hooks-only)
+      _SU_HOOKS_OUTCOME="applied"
+      _SU_HOOKS_OUTCOME_REASON="settings.snippet.json ausente no catalogo — hooks copiados mas NAO registrados; atualize o catalogo (cstk update)"
+      log_warn "setup: [hooks] $_SU_HOOKS_OUTCOME_REASON"
+      ;;
+    not-applicable)
+      _SU_HOOKS_OUTCOME="failed"
+      _SU_HOOKS_OUTCOME_REASON="catalogo local nao trouxe os hooks 00c (exit $_srh_rc)"
+      log_error "setup: [hooks] $_SU_HOOKS_OUTCOME_REASON"
+      ;;
+    error | unknown)
+      _SU_HOOKS_OUTCOME="failed"
+      _SU_HOOKS_OUTCOME_REASON="hooks install falhou (exit $_srh_rc)"
+      log_error "setup: [hooks] $_SU_HOOKS_OUTCOME_REASON"
+      ;;
+  esac
+  return 0
+}
+
 setup_main() {
   if ! _setup_parse_args "$@"; then
     return 2
@@ -198,11 +545,19 @@ setup_main() {
   fi
 
   # A partir daqui: pre-condicoes satisfeitas, modo resolvido. A
-  # orquestracao das 4 areas (hooks, state-backend, mcp, telemetry) e o
-  # SetupRunSummary sao adicionados nas FASES 3-7 do backlog
-  # (docs/specs/cstk-setup/tasks.md) — este skeleton (FASE 1) cobre
-  # apenas dispatch + pre-condicoes.
+  # orquestracao das demais 3 areas (state-backend, mcp, telemetry) e o
+  # SetupRunSummary consolidado sao adicionados nas FASES 4-7 do backlog
+  # (docs/specs/cstk-setup/tasks.md) — esta versao (FASE 3) cobre
+  # dispatch + pre-condicoes + area de hooks.
   log_info "setup: pre-condicoes OK (mode=$_su_mode, project-path=$_SU_PROJECT_PATH)."
-  log_info "setup: areas de configuracao ainda nao implementadas nesta versao (FASE 1 de 8)."
+
+  _setup_run_hooks_area "$_SU_PROJECT_PATH" "$_su_mode" "$_SU_DRY_RUN"
+  log_info "setup: [hooks] outcome=$_SU_HOOKS_OUTCOME"
+
+  log_info "setup: areas restantes (state-backend, mcp, telemetry) ainda nao implementadas nesta versao (FASE 3 de 8)."
+
+  if [ "$_SU_HOOKS_OUTCOME" = "failed" ]; then
+    return 1
+  fi
   return 0
 }
