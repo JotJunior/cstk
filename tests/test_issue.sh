@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_issue.sh — cobre global/skills/agente-00c-runtime/scripts/issue.sh.
+# test_issue.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/issue.sh.
 #
 # Testes apenas locais (dry-run) — NAO chama gh real para nao gerar issues
 # de teste em produçao. check-duplicate exige rede + auth, portanto e
@@ -9,10 +9,10 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/issue.sh"
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
-DEC="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
-SG="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/suggestions.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/issue.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
+DEC="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
+SG="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/suggestions.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_issue.sh: jq ausente — pulando\n'
@@ -258,7 +258,7 @@ scenario_sqlite_dry_run_le_estado_do_state_db() {
 _copy_issue_isolated() {
   mkdir -p "$1"
   cp "$SCRIPT" "$1/issue.sh"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_state-read.sh" "$1/_state-read.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_state-read.sh" "$1/_state-read.sh"
   chmod +x "$1/issue.sh"
   printf '%s/issue.sh' "$1"
 }
@@ -274,7 +274,7 @@ scenario_caminho_instalado_reflete_raiz_resolvida() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run exit" "$_CAPTURED_STDERR"; return 1; }
   # Rodando in-tree, o sibling de issue.sh resolve a raiz REAL do repo —
   # o path nao pode mais ser o antigo literal fixo ~/.claude/skills/.
-  assert_stdout_contains "$REPO_ROOT/global/skills/clarify/" || return 1
+  assert_stdout_contains "$REPO_ROOT/plugins/cstk/skills/clarify/" || return 1
 }
 
 scenario_plugin_root_resolve_caminho_instalado_via_claude_plugin_root() {
@@ -284,7 +284,7 @@ scenario_plugin_root_resolve_caminho_instalado_via_claude_plugin_root() {
   _isolated=$(_copy_issue_isolated "$TMPDIR_TEST/isolated-plugin")
   _plugin_scripts="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/scripts"
   mkdir -p "$_plugin_scripts"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_scripts/_resolve-root.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_scripts/_resolve-root.sh"
   _fake_home="$TMPDIR_TEST/fake-home-plugin"
   mkdir -p "$_fake_home"
 

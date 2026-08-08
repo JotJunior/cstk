@@ -69,7 +69,7 @@ _MD_BASE_IMAGE="node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62
 
 # piso ja vigente no toolkit para sqlite3 dentro do container (helpers do
 # runtime exigem >= 3.45.1 no backend sqlite). [VERIFICADO:
-# global/skills/agente-00c-runtime/scripts/state-backend.sh
+# plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh
 # _SB_MIN_SQLITE_VERSION]
 _MD_MIN_SQLITE_VERSION="3.45.1"
 

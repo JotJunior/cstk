@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_state-db-migrate.sh — cobre
-# global/skills/agente-00c-runtime/scripts/state-db-migrate.sh
+# plugins/cstk/skills/agente-00c-runtime/scripts/state-db-migrate.sh
 # (migracao explicita state.json -> state.db).
 #
 # Ref: docs/specs/state-db-foundation/tasks.md FASE 6
@@ -12,7 +12,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPTS="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
+SCRIPTS="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
 SCRIPT="$SCRIPTS/state-db-migrate.sh"
 STATE_RW="$SCRIPTS/state-rw.sh"
 
@@ -531,10 +531,10 @@ scenario_m6_nao_apaga_state_json_sha256_nem_history() {
 # estatica — nenhum command/agent 00c pode referenciar o script.
 scenario_m6_nenhum_orquestrador_invoca_migracao_automaticamente() {
   _hits=$(grep -rl 'state-db-migrate' \
-    "$REPO_ROOT/global/commands" "$REPO_ROOT/global/agents" 2>/dev/null | wc -l | tr -d ' ')
+    "$REPO_ROOT/plugins/cstk/commands" "$REPO_ROOT/plugins/cstk/agents" 2>/dev/null | wc -l | tr -d ' ')
   [ "$_hits" = "0" ] || {
     _fail "migracao referenciada em command/agent (viola M6/FR-005)" \
-      "$(grep -rl 'state-db-migrate' "$REPO_ROOT/global/commands" "$REPO_ROOT/global/agents" 2>/dev/null)"
+      "$(grep -rl 'state-db-migrate' "$REPO_ROOT/plugins/cstk/commands" "$REPO_ROOT/plugins/cstk/agents" 2>/dev/null)"
     return 1
   }
 }

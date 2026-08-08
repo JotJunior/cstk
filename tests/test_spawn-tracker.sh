@@ -1,13 +1,13 @@
 #!/bin/sh
-# test_spawn-tracker.sh — cobre global/skills/agente-00c-runtime/scripts/spawn-tracker.sh.
+# test_spawn-tracker.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/spawn-tracker.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/spawn-tracker.sh"
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/spawn-tracker.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_spawn-tracker.sh: jq ausente — pulando suite\n'
@@ -169,7 +169,7 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
   printf '# test_spawn-tracker.sh: sqlite3 ausente — pulando cenarios de backend SQLite\n'
 else
 
-SCHEMA_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-db-schema.sh"
+SCHEMA_SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-db-schema.sh"
 
 # _seed_sqlite_backend DIR [MAX_RECURSION] -> cria state.db com execution
 # minima (id=exec-1, subagent_depth=1 default do schema).

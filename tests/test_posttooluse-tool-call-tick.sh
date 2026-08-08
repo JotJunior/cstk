@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_posttooluse-tool-call-tick.sh — cobre
-# global/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh
+# plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh
 # (hook PostToolUse de metrica de tool calls por onda; sidecar append-only).
 #
 # Politica sob teste (INVERSA ao pretooluse-bash-guard.sh): fail-OPEN
@@ -17,7 +17,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 . "$TESTS_ROOT/lib/latency.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh"
 
 # _run_hook JSON -> invoca o script com JSON via stdin; popula _CAPTURED_*.
 _run_hook() {
@@ -319,7 +319,7 @@ scenario_db_corrompido_fail_open() {
 
 scenario_db_roundtrip_state_ondas_contabiliza_ticks() {
   _require_sqlite3 || return 2
-  _RUNTIME_SCRIPTS="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
+  _RUNTIME_SCRIPTS="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
 
   # Fixture SQLite via config global state_backend=sqlite simulada com HOME
   # falso (mesmo padrao de tests/test__state-read.sh::_mk_sqlite_state_dir).
@@ -389,8 +389,8 @@ scenario_plugin_root_resolve_hae_via_claude_plugin_root() {
 
   _plugin_root="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/scripts"
   mkdir -p "$_plugin_root"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_root/_resolve-root.sh"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_hook-active-exec.sh" "$_plugin_root/_hook-active-exec.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_root/_resolve-root.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_hook-active-exec.sh" "$_plugin_root/_hook-active-exec.sh"
 
   _fake_home="$TMPDIR_TEST/fake-home-plugin"
   mkdir -p "$_fake_home"

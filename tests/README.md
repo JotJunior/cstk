@@ -1,7 +1,7 @@
 # Suite de Testes para Scripts Shell
 
 Suite automatizada que valida o comportamento dos scripts POSIX em
-`global/skills/**/scripts/`. Nasceu do bug historico em `metrics.sh` e
+`plugins/cstk/skills/**/scripts/`. Nasceu do bug historico em `metrics.sh` e
 segue o principio de "nao commita sem teste para script novo".
 
 ## Quickstart
@@ -136,21 +136,21 @@ permitem diagnosticar bug-do-teste vs bug-do-script-sob-teste.
 
 ## Adicionar teste para script novo
 
-1. Script-alvo existe em `global/skills/<skill>/scripts/<nome>.sh`.
+1. Script-alvo existe em `plugins/cstk/skills/<skill>/scripts/<nome>.sh`.
 2. Criar `tests/test_<nome>.sh` (convencao estrita — `--check-coverage`
    depende dela).
 3. Estrutura minima:
 
    ```sh
    #!/bin/sh
-   # test_<nome>.sh — cobre global/skills/<skill>/scripts/<nome>.sh
+   # test_<nome>.sh — cobre plugins/cstk/skills/<skill>/scripts/<nome>.sh
 
    TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
    REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
    . "$TESTS_ROOT/lib/harness.sh"
 
-   SCRIPT="$REPO_ROOT/global/skills/<skill>/scripts/<nome>.sh"
+   SCRIPT="$REPO_ROOT/plugins/cstk/skills/<skill>/scripts/<nome>.sh"
 
    scenario_happy_path() {
        assert_exit 0 sh "$SCRIPT" arg1 arg2 || return 1

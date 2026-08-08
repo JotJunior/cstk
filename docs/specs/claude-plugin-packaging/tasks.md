@@ -248,44 +248,44 @@ Ref: plan.md Fase 3; Nota de governanca (BREAKING, bump MAJOR)
 
 ### 4.1 Relocar `global/{skills,commands,agents}` para `plugins/cstk/` via `git mv` `[C]`
 
-- [ ] 4.1.1 `git mv global/skills plugins/cstk/skills`
-- [ ] 4.1.2 `git mv global/commands plugins/cstk/commands`
-- [ ] 4.1.3 `git mv global/agents plugins/cstk/agents`
-- [ ] 4.1.4 Confirmar que `_resolve-root.sh` (task 3.1.1) segue acessivel
+- [x] 4.1.1 `git mv global/skills plugins/cstk/skills`
+- [x] 4.1.2 `git mv global/commands plugins/cstk/commands`
+- [x] 4.1.3 `git mv global/agents plugins/cstk/agents`
+- [x] 4.1.4 Confirmar que `_resolve-root.sh` (task 3.1.1) segue acessivel
       no novo path `plugins/cstk/skills/agente-00c-runtime/scripts/`
 
 ### 4.2 Relocar `language-related/go/{skills,hooks}` para `plugins/cstk-language-go/` `[A]`
 
-- [ ] 4.2.1 `git mv language-related/go/skills plugins/cstk-language-go/skills`
-- [ ] 4.2.2 `git mv language-related/go/hooks plugins/cstk-language-go/hooks`
+- [x] 4.2.1 `git mv language-related/go/skills plugins/cstk-language-go/skills`
+- [x] 4.2.2 `git mv language-related/go/hooks plugins/cstk-language-go/hooks`
 
 ### 4.3 Atualizar `scripts/build-release.sh` para ler de `plugins/cstk/**` `[C]`
 
 Ref: CLAUDE.md "mudanca de profiles/catalogo exige counts em test_build-release + test_quickstart-e2e"
 
-- [ ] 4.3.1 Atualizar todos os paths hardcoded de `global/` para
+- [x] 4.3.1 Atualizar todos os paths hardcoded de `global/` para
       `plugins/cstk/` (e `language-related/go` para
       `plugins/cstk-language-go`) em `scripts/build-release.sh`
-- [ ] 4.3.2 Atualizar `scripts/profiles.txt.in` se referenciar os paths
+- [x] 4.3.2 Atualizar `scripts/profiles.txt.in` se referenciar os paths
       antigos
-- [ ] 4.3.3 Regenerar fixtures: `tests/cstk/fixtures/regen.sh`
-- [ ] 4.3.4 Atualizar contagens/paths em `tests/cstk/test_build-release.sh`
+- [x] 4.3.3 Regenerar fixtures: `tests/cstk/fixtures/regen.sh`
+- [x] 4.3.4 Atualizar contagens/paths em `tests/cstk/test_build-release.sh`
       e `tests/cstk/test_quickstart-e2e.sh`
-- [ ] 4.3.5 Escrever/atualizar `tests/cstk/test_build-release.sh` cobrindo
+- [x] 4.3.5 Escrever/atualizar `tests/cstk/test_build-release.sh` cobrindo
       o novo layout de leitura (`plugins/cstk/**`)
 
 ### 4.4 Atualizar referencias residuais a `global/`/`language-related/go` em tests e docs `[A]`
 
-- [ ] 4.4.1 `grep -rn "global/skills\|global/commands\|global/agents\|language-related/go" --include="*.sh" --include="*.md"`
+- [x] 4.4.1 `grep -rn "global/skills\|global/commands\|global/agents\|language-related/go" --include="*.sh" --include="*.md"`
       e atualizar cada ocorrencia executavel/instrutiva (preservar
       `CHANGELOG.md` e specs `_archived/` intactos — sao registro
       historico)
-- [ ] 4.4.2 Atualizar `tests/README.md` e a tabela de mapeamento de testes
+- [x] 4.4.2 Atualizar `tests/README.md` e a tabela de mapeamento de testes
       do `CLAUDE.md` (`global/skills/<X>/scripts/<n>.sh` →
       `plugins/cstk/skills/<X>/scripts/<n>.sh`)
-- [ ] 4.4.3 Rodar `./tests/run.sh --check-coverage` e confirmar que nenhum
+- [x] 4.4.3 Rodar `./tests/run.sh --check-coverage` e confirmar que nenhum
       script orfao de cobertura surgiu com a relocacao
-- [ ] 4.4.4 Rodar `./tests/run.sh` completo e confirmar suite verde
+- [x] 4.4.4 Rodar `./tests/run.sh` completo e confirmar suite verde
 
 ---
 

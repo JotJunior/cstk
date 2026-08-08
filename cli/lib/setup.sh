@@ -210,7 +210,7 @@ _setup_check_git_root() {
 # guard-hooks-status.sh. Mesmo padrao de 3 camadas de
 # _mcp_runtime_script_path (cli/lib/mcp.sh) / _state_migrate_script_path
 # (cli/lib/state.sh): (1) PATH; (2) layout de repo relativo a CSTK_LIB
-# (cli/lib -> ../../global/skills/agente-00c-runtime/scripts); (3) layout
+# (cli/lib -> ../../plugins/cstk/skills/agente-00c-runtime/scripts); (3) layout
 # instalado em ~/.claude. Necessario porque testes/CI rodam o CLI da
 # arvore do repo (CSTK_LIB=cli/lib) sem o runtime em ~/.claude.
 _setup_hooks_status_script_path() {
@@ -219,7 +219,7 @@ _setup_hooks_status_script_path() {
     return 0
   fi
   if [ -n "${CSTK_LIB:-}" ]; then
-    _shs_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
+    _shs_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
     if [ -f "$_shs_repo" ]; then
       printf '%s\n' "$_shs_repo"
       return 0
@@ -244,7 +244,7 @@ _setup_otel_script_path() {
     return 0
   fi
   if [ -n "${CSTK_LIB:-}" ]; then
-    _sot_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/otel-usage.sh"
+    _sot_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/otel-usage.sh"
     if [ -f "$_sot_repo" ]; then
       printf '%s\n' "$_sot_repo"
       return 0

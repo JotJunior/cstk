@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_digest-facets.sh — cobre
-# global/skills/apply-insights/scripts/digest-facets.sh
+# plugins/cstk/skills/apply-insights/scripts/digest-facets.sh
 #
 # Agregador dos facets do /insights nativo -> digest markdown data-driven.
 # Cobre: agregacao basica, ranking de friccao (sort desc), cap --top da cauda
@@ -11,7 +11,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/apply-insights/scripts/digest-facets.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/apply-insights/scripts/digest-facets.sh"
 
 _need_jq() { command -v jq >/dev/null 2>&1 || return 1; return 0; }
 

@@ -14,7 +14,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SKILLS_DIR="$REPO_ROOT/global/skills"
+SKILLS_DIR="$REPO_ROOT/plugins/cstk/skills"
 
 # Skills afetadas pelo protocolo de cache
 _AFFECTED_SKILLS="specify clarify plan execute-task"

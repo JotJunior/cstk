@@ -4,7 +4,7 @@
 #      (dec-034: "B para a UX do operador, delegando a A a implementacao")
 #
 # Esta lib NAO implementa migracao: ela e a SUPERFICIE DE OPERADOR que delega
-# a global/skills/agente-00c-runtime/scripts/state-db-migrate.sh, mantendo a
+# a plugins/cstk/skills/agente-00c-runtime/scripts/state-db-migrate.sh, mantendo a
 # logica testavel pelo harness POSIX do runtime e dando ao operador um verbo
 # coerente com o resto do CLI.
 #
@@ -19,7 +19,7 @@
 #                                           state-backend-config, FASE 4)
 #
 # `enable-sqlite` delega a cli/lib/config.sh (que por sua vez delega a
-# global/skills/agente-00c-runtime/scripts/state-backend.sh) — mesma
+# plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh) — mesma
 # disciplina de delegacao pura de `migrate`: zero logica de decisao aqui.
 #
 # Exit codes (repassados VERBATIM do script delegado, para o operador poder
@@ -46,7 +46,7 @@ fi
 
 # _state_migrate_script_path -> imprime o caminho de state-db-migrate.sh.
 # Procura, em ordem: (1) PATH; (2) layout repo/CLI relativo a CSTK_LIB
-# (cli/lib -> ../../global/skills/agente-00c-runtime/scripts); (3) layout
+# (cli/lib -> ../../plugins/cstk/skills/agente-00c-runtime/scripts); (3) layout
 # instalado em ~/.claude/skills/agente-00c-runtime/scripts.
 #
 # A camada (2) e essencial fora de uma instalacao: testes e CI rodam o CLI da
@@ -59,7 +59,7 @@ _state_migrate_script_path() {
     return 0
   fi
   if [ -n "${CSTK_LIB:-}" ]; then
-    _sm_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/state-db-migrate.sh"
+    _sm_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/state-db-migrate.sh"
     if [ -f "$_sm_repo" ]; then
       printf '%s\n' "$_sm_repo"
       return 0

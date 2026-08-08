@@ -3,7 +3,7 @@
 #
 # Cobre subtarefas 2.2.1 a 2.2.6 da feature `model-selector` (FASE 2,
 # task 2.2). Valida o pipeline de tokenizacao adicionado em
-# global/skills/model-selector/scripts/classify.sh.
+# plugins/cstk/skills/model-selector/scripts/classify.sh.
 #
 # Contratos testados:
 #   2.2.1  tokenizacao via tr+tr+sed produz tokens [a-z0-9]+ apos
@@ -23,7 +23,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-CLASSIFY="$REPO_ROOT/global/skills/model-selector/scripts/classify.sh"
+CLASSIFY="$REPO_ROOT/plugins/cstk/skills/model-selector/scripts/classify.sh"
 export CLASSIFY
 
 scenario_classify_existe_e_executavel() {

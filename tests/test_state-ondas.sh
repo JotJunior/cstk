@@ -1,13 +1,13 @@
 #!/bin/sh
-# test_state-ondas.sh — cobre global/skills/agente-00c-runtime/scripts/state-ondas.sh.
+# test_state-ondas.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_state-ondas.sh: jq ausente — pulando suite\n'
@@ -1466,7 +1466,7 @@ scenario_marco_falho_nao_derruba_end() {
   # sob teste e a dos helpers do HOOK, nao a do runtime de diagnostico.
   _iso="$TMPDIR_TEST/iso-scripts"
   rm -rf "$_iso"; mkdir -p "$_iso"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/"*.sh "$_iso/"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/"*.sh "$_iso/"
   rm -f "$_iso/state-decisions.sh" "$_iso/bloqueios.sh"
   capture "$_iso/state-ondas.sh" start --state-dir "$_sd"
   capture "$_iso/state-ondas.sh" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
@@ -1515,7 +1515,7 @@ prosa contrabandeada na segunda linha"
 # (init nunca cria state.db — isso e a migracao, FASE 6, ainda nao
 # implementada).
 
-SCHEMA_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-db-schema.sh"
+SCHEMA_SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-db-schema.sh"
 
 if ! command -v sqlite3 >/dev/null 2>&1; then
   printf '# test_state-ondas.sh: sqlite3 ausente — pulando cenarios de backend SQLite\n'
@@ -1652,7 +1652,7 @@ scenario_sqlite_end_gera_export_snapshot_automatico() {
   _validate_dir="$TMPDIR_TEST/validate-auto-export"
   mkdir -p "$_validate_dir"
   cp "$_snap" "$_validate_dir/state.json"
-  capture sh "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-validate.sh" --state-dir "$_validate_dir"
+  capture sh "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-validate.sh" --state-dir "$_validate_dir"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "export automatico nao passa em state-validate.sh (E1)" "$_CAPTURED_STDERR"; return 1; }
 }
 

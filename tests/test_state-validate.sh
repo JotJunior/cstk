@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_state-validate.sh — cobre global/skills/agente-00c-runtime/scripts/state-validate.sh.
+# test_state-validate.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/state-validate.sh.
 #
 # Cada cenario monta um state.json sintetico via jq e roda o validador.
 # Estado valido = exit 0; cada tipo de violacao = exit 1 com mensagem
@@ -16,9 +16,9 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-validate.sh"
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
-ON="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-validate.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
+ON="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_state-validate.sh: jq ausente — pulando suite\n'

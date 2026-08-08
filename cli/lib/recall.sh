@@ -368,7 +368,7 @@ recall_have_jq() { command -v jq >/dev/null 2>&1; }
 
 # recall_have_secrets_filter -> exit 0 se secrets-filter.sh resolvivel.
 # Procura, em ordem: (1) PATH; (2) layout repo/CLI relativo a CSTK_LIB
-# (cli/lib -> ../../global/skills/agente-00c-runtime/scripts); (3) layout
+# (cli/lib -> ../../plugins/cstk/skills/agente-00c-runtime/scripts); (3) layout
 # instalado em ~/.claude/skills/agente-00c-runtime/scripts.
 #
 # A camada (2) e essencial fora de uma instalacao: testes e CI rodam recall.sh
@@ -381,7 +381,7 @@ recall_secrets_filter_path() {
     return 0
   fi
   if [ -n "${CSTK_LIB:-}" ]; then
-    _sf_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/secrets-filter.sh"
+    _sf_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/secrets-filter.sh"
     if [ -f "$_sf_repo" ]; then
       printf '%s\n' "$_sf_repo"
       return 0

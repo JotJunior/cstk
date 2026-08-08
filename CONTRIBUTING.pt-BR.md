@@ -17,11 +17,11 @@ ele aponta para o [README.md](./README.pt-BR.md) e o `CLAUDE.md` em vez de dupli
 O toolkit tem três tipos de artefato que o Claude Code consome, em camadas de
 abstração crescente:
 
-- **skills** (`global/skills/<nome>/SKILL.md`) — capacidades auto-invocadas por
+- **skills** (`plugins/cstk/skills/<nome>/SKILL.md`) — capacidades auto-invocadas por
   contexto. Unidade fundamental.
-- **commands** (`global/commands/<nome>.md`) — workflows disparados por
+- **commands** (`plugins/cstk/commands/<nome>.md`) — workflows disparados por
   `/slash-command`.
-- **agents** (`global/agents/<nome>.md`) — especialistas autônomos para tarefas
+- **agents** (`plugins/cstk/agents/<nome>.md`) — especialistas autônomos para tarefas
   multi-passo (ex.: os orquestradores `agente-00c`).
 
 Sobre isso correm dois sistemas de mais alto nível: o **pipeline SDD** (a
@@ -31,9 +31,9 @@ instala/versiona/atualiza tudo na máquina do usuário).
 ```mermaid
 flowchart TD
     subgraph Fonte["Repositório (fonte da verdade)"]
-        S[global/skills/*]
-        C[global/commands/*]
-        A[global/agents/*]
+        S[plugins/cstk/skills/*]
+        C[plugins/cstk/commands/*]
+        A[plugins/cstk/agents/*]
         L[language-related/*]
     end
     BR[scripts/build-release.sh] -->|tarball + SHA-256| REL[(GitHub Release)]
@@ -83,7 +83,7 @@ instalada** (`~/.claude/skills/`), que o Claude Code de fato consome.
 ```mermaid
 flowchart TD
     D1{cstk doctor<br/>reporta drift?} -->|sim| R[reconciliar:<br/>cstk update ou rebuild] --> D2
-    D1 -->|não| E[editar fonte em<br/>global/skills ou cli/lib]
+    D1 -->|não| E[editar fonte em<br/>plugins/cstk/skills ou cli/lib]
     R --> E
     E --> T[./tests/run.sh<br/>+ --check-coverage]
     T -->|verde| SYNC[sincronizar instalado:<br/>cstk update / install --from file://]
@@ -108,11 +108,11 @@ cstk install --from "file://$PWD/dist/cstk-X.Y.Z.tar.gz"
 
 ### Uma skill nova
 
-1. Crie `global/skills/<nome>/SKILL.md` seguindo a [Anatomia de uma skill](./README.pt-BR.md#anatomia-de-uma-skill).
+1. Crie `plugins/cstk/skills/<nome>/SKILL.md` seguindo a [Anatomia de uma skill](./README.pt-BR.md#anatomia-de-uma-skill).
 2. **`description` como trigger condition**, não resumo: "Use quando X, Y ou Z.
    NÃO use quando W."
 3. Documente **gotchas** — o conteúdo mais valioso.
-4. **Generalize**: skills em `global/skills/` ou `language-related/` **não podem
+4. **Generalize**: skills em `plugins/cstk/skills/` ou `language-related/` **não podem
    nomear clientes/empresas/projetos específicos** (ver o aviso em
    [README §Contribuindo](./README.pt-BR.md#contribuindo); caso histórico: remoção de
    `create-report` na v3.12.0). Se não generalizar, a skill pertence a
@@ -122,18 +122,18 @@ cstk install --from "file://$PWD/dist/cstk-X.Y.Z.tar.gz"
 
 ### Um command novo
 
-Crie `global/commands/<nome>.md`. Commands de spawn/resume que integram
+Crie `plugins/cstk/commands/<nome>.md`. Commands de spawn/resume que integram
 model-routing precisam carregar a instrução `wave-select` — veja os 4 commands
 `agente-00c`/`feature-00c` existentes como referência.
 
 ### Um teste novo (regra de ouro)
 
-Todo `.sh` novo em `global/skills/*/scripts/` ou `cli/lib/` **exige** um teste
+Todo `.sh` novo em `plugins/cstk/skills/*/scripts/` ou `cli/lib/` **exige** um teste
 1:1 (o `--check-coverage` falha com exit 1 sem ele):
 
 | Origem do script | Teste esperado |
 |------------------|----------------|
-| `global/skills/<X>/scripts/<n>.sh` | `tests/test_<n>.sh` |
+| `plugins/cstk/skills/<X>/scripts/<n>.sh` | `tests/test_<n>.sh` |
 | `cli/lib/<n>.sh` | `tests/cstk/test_<n>.sh` |
 
 Estrutura mínima e convenções (POSIX puro, sem `set -eu`, scenarios retornam

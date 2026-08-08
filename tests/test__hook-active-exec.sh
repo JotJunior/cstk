@@ -1,6 +1,6 @@
 #!/bin/sh
 # test__hook-active-exec.sh — cobre
-# global/skills/agente-00c-runtime/scripts/_hook-active-exec.sh (helper
+# plugins/cstk/skills/agente-00c-runtime/scripts/_hook-active-exec.sh (helper
 # sourceable de deteccao tri-estado de execucao ativa, feature
 # hooks-db-parity FASE 2).
 #
@@ -20,7 +20,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-HELPER="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_hook-active-exec.sh"
+HELPER="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_hook-active-exec.sh"
 
 if ! command -v sqlite3 >/dev/null 2>&1; then
   printf '# test__hook-active-exec.sh: sqlite3 ausente — pulando suite\n'
@@ -324,7 +324,7 @@ scenario_latencia_informal_um_state_dir_sqlite() {
 # (verificado por tests/run.sh::_expected_test_for_script e
 # --check-coverage; nenhum scenario adicional necessario aqui — o proprio
 # NOME deste arquivo, test__hook-active-exec.sh, satisfaz a convencao
-# test_<basename-sem-.sh> para global/skills/agente-00c-runtime/scripts/
+# test_<basename-sem-.sh> para plugins/cstk/skills/agente-00c-runtime/scripts/
 # _hook-active-exec.sh.)
 
 # assert_exit_captured EXPECTED -> variante de assert_exit que usa a

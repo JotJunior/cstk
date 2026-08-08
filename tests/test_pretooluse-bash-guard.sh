@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_pretooluse-bash-guard.sh — cobre
-# global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh (US1,
+# plugins/cstk/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh (US1,
 # enforced-guards, task 2.6).
 #
 # Ref: docs/specs/enforced-guards/{contracts/pretooluse-hook.md,
@@ -16,8 +16,8 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 . "$TESTS_ROOT/lib/latency.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh"
-HELPER="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_hook-active-exec.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh"
+HELPER="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_hook-active-exec.sh"
 
 # _run_hook JSON -> invoca o script com JSON via stdin; popula _CAPTURED_*.
 _run_hook() {
@@ -517,7 +517,7 @@ scenario_gate_latencia_mediana_guarda_sob_state_db() {
 # delegacao a bash-guard.sh).
 _copy_resolve_root_bootstrap() {
   mkdir -p "$1"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$1/_resolve-root.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$1/_resolve-root.sh"
   cp "$HELPER" "$1/_hook-active-exec.sh"
 }
 
@@ -537,8 +537,8 @@ scenario_plugin_root_resolve_bash_guard_via_claude_plugin_root() {
   # + dependencias reais (bash-guard.sh, secrets-filter.sh).
   _plugin_root="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/scripts"
   _copy_resolve_root_bootstrap "$_plugin_root"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/bash-guard.sh" "$_plugin_root/bash-guard.sh"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/secrets-filter.sh" "$_plugin_root/secrets-filter.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/bash-guard.sh" "$_plugin_root/bash-guard.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/secrets-filter.sh" "$_plugin_root/secrets-filter.sh"
   chmod +x "$_plugin_root/bash-guard.sh" "$_plugin_root/secrets-filter.sh"
 
   _fake_home="$TMPDIR_TEST/fake-home-plugin"
@@ -568,8 +568,8 @@ scenario_sibling_beats_claude_plugin_root_env_shadow() {
   chmod +x "$_isolated/pretooluse-bash-guard.sh"
   _sib_scripts="$TMPDIR_TEST/isolated-shadow/scripts"
   _copy_resolve_root_bootstrap "$_sib_scripts"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/bash-guard.sh" "$_sib_scripts/bash-guard.sh"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/secrets-filter.sh" "$_sib_scripts/secrets-filter.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/bash-guard.sh" "$_sib_scripts/bash-guard.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/secrets-filter.sh" "$_sib_scripts/secrets-filter.sh"
   chmod +x "$_sib_scripts/bash-guard.sh" "$_sib_scripts/secrets-filter.sh"
 
   # Plugin root MALICIOSO: bash-guard.sh sempre aprova (simula processo pai

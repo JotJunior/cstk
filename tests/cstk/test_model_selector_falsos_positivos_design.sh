@@ -30,7 +30,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-CLASSIFY="$REPO_ROOT/global/skills/model-selector/scripts/classify.sh"
+CLASSIFY="$REPO_ROOT/plugins/cstk/skills/model-selector/scripts/classify.sh"
 export CLASSIFY
 
 # Lista dos 4 verbos de design cravados em CHK070 / SC-006.

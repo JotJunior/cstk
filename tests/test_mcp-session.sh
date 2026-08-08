@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_mcp-session.sh — cobre global/skills/agente-00c-runtime/scripts/mcp-session.sh.
+# test_mcp-session.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/mcp-session.sh.
 #
 # Ref: docs/specs/state-mcp-server/tasks.md FASE 1 task 1.3.4
 #      docs/specs/state-mcp-server/contracts/mcp-session-lifecycle.md
@@ -10,7 +10,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/mcp-session.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/mcp-session.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_mcp-session.sh: jq ausente — pulando suite\n'

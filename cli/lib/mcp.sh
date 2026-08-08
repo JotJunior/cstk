@@ -13,10 +13,10 @@
 # sem `--state-dir`, resolve a execucao ativa do projeto-alvo pela MESMA
 # precedencia do hook PreToolUse (agente-00c vence; entre feature-00c,
 # menor short-name lexicografico —
-# global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh). Essa
+# plugins/cstk/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh). Essa
 # precedencia e leitura de CONVENIENCIA, read-only — nunca roteia mutacao
 # (isso e por token de capacidade, ver
-# global/skills/agente-00c-runtime/scripts/mcp-session.sh resolve; SEC-H3,
+# plugins/cstk/skills/agente-00c-runtime/scripts/mcp-session.sh resolve; SEC-H3,
 # contracts/mcp-session-lifecycle.md §SEC-H3).
 #
 # `start`/`stop`: invocados PELO COMMAND PAI (nao pelo operador no caminho
@@ -128,7 +128,7 @@ fi
 # _mcp_runtime_script_path NAME -> imprime o path do script NAME do
 # runtime agente-00c-runtime. Mesmo padrao de _state_migrate_script_path
 # (cli/lib/state.sh): (1) PATH; (2) layout de repo relativo a CSTK_LIB
-# (cli/lib -> ../../global/skills/agente-00c-runtime/scripts); (3) layout
+# (cli/lib -> ../../plugins/cstk/skills/agente-00c-runtime/scripts); (3) layout
 # instalado em ~/.claude. Necessario porque testes/CI rodam o CLI da
 # arvore do repo (CSTK_LIB=cli/lib), sem o runtime em ~/.claude.
 _mcp_runtime_script_path() {
@@ -138,7 +138,7 @@ _mcp_runtime_script_path() {
     return 0
   fi
   if [ -n "${CSTK_LIB:-}" ]; then
-    _mrs_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/$_mrs_name"
+    _mrs_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/$_mrs_name"
     if [ -f "$_mrs_repo" ]; then
       printf '%s\n' "$_mrs_repo"
       return 0
@@ -178,7 +178,7 @@ _mcp_registration_candidate_matches() {
   fi
 
   if [ -n "${CSTK_LIB:-}" ]; then
-    _mrcm_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/mcp-launch.sh"
+    _mrcm_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/mcp-launch.sh"
     if [ -f "$_mrcm_repo" ] && [ "$_mrcm_value" = "$_mrcm_repo" ]; then
       return 0
     fi

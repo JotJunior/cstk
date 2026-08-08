@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_mcp-launch.sh — cobre global/skills/agente-00c-runtime/scripts/mcp-launch.sh.
+# test_mcp-launch.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/mcp-launch.sh.
 #
 # Ref: docs/specs/state-mcp-server/contracts/mcp-session-lifecycle.md
 #        §CLI: `cstk mcp` / §`cstk mcp install` / §Resolucao da execucao
@@ -16,7 +16,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/mcp-launch.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/mcp-launch.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_mcp-launch.sh: jq ausente — pulando suite\n'

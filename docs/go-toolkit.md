@@ -2,7 +2,7 @@
 
 # Skills and hooks for Go
 
-Skills in `language-related/go/skills/` for Go projects:
+Skills in `plugins/cstk-language-go/skills/` for Go projects:
 
 | Skill | Trigger | Description |
 |-------|---------|-------------|
@@ -20,7 +20,7 @@ stack" in `review-task`.
 
 ## Hooks for Go
 
-Hooks in `language-related/go/hooks/` for automatic validations:
+Hooks in `plugins/cstk-language-go/hooks/` for automatic validations:
 
 | Hook | Description |
 |------|-------------|

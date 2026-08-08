@@ -1,11 +1,11 @@
 #!/bin/sh
-# test_whitelist-validate.sh — cobre global/skills/agente-00c-runtime/scripts/whitelist-validate.sh.
+# test_whitelist-validate.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/whitelist-validate.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/whitelist-validate.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/whitelist-validate.sh"
 
 _make_wl() {
   _f="$TMPDIR_TEST/wl"

@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_state-backend.sh — cobre global/skills/agente-00c-runtime/scripts/state-backend.sh.
+# test_state-backend.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh.
 #
 # Ref: docs/specs/state-backend-config/tasks.md FASE 2 (2.1.5, 2.2.6, 2.3.2,
 #      2.4.3), FASE 3 (3.1.5, 3.2.5); quickstart.md Scenarios 2, 2.5, 2.6,
@@ -10,7 +10,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SB="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-backend.sh"
+SB="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh"
 MIN_VER="3.45.1"
 
 # _sb_real_sqlite3_adequate: exit 0 se sqlite3 real estiver no PATH e >= MIN_VER.
@@ -260,9 +260,9 @@ EOF
   chmod +x "$_home/.claude/skills/agente-00c-runtime/scripts/state-backend.sh"
 
   _fakerepo="$TMPDIR_TEST/fakerepo"
-  mkdir -p "$_fakerepo/cli/lib" "$_fakerepo/global/skills/agente-00c-runtime/scripts"
-  cp "$SB" "$_fakerepo/global/skills/agente-00c-runtime/scripts/state-backend.sh"
-  chmod +x "$_fakerepo/global/skills/agente-00c-runtime/scripts/state-backend.sh"
+  mkdir -p "$_fakerepo/cli/lib" "$_fakerepo/plugins/cstk/skills/agente-00c-runtime/scripts"
+  cp "$SB" "$_fakerepo/plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh"
+  chmod +x "$_fakerepo/plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh"
 
   CSTK_LIB="$_fakerepo/cli/lib" HOME="$_home" capture "$SB" enable-sqlite
   [ "$_CAPTURED_EXIT" != 0 ] \

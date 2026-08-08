@@ -29,7 +29,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
 CSTK_LIB="$REPO_ROOT/cli/lib"
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 MIN_SQLITE_VER="3.45.1"
 
 # _rt_real_sqlite3_adequate: exit 0 se o sqlite3 REAL do ambiente (PATH

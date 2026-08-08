@@ -2,7 +2,7 @@
 # Fake secrets-filter.sh for audit-log tests: implements only `scrub`
 # (stdin -> stdout), replacing the literal marker SECRETXYZ789 with
 # [REDACTED]. Standing in for the real
-# global/skills/agente-00c-runtime/scripts/secrets-filter.sh (fixtures POSIX
+# plugins/cstk/skills/agente-00c-runtime/scripts/secrets-filter.sh (fixtures POSIX
 # reais, sem mocks JS -- mesma filosofia de fake-mcp-session-ok.sh).
 set -eu
 

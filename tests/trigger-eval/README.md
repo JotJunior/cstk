@@ -32,7 +32,7 @@ justificativa do juiz) — é onde mora o problema de description.
 
 ## Formato do dado
 
-Cada skill é dona das suas queries em `global/skills/<nome>/evals/triggers.jsonl`
+Cada skill é dona das suas queries em `plugins/cstk/skills/<nome>/evals/triggers.jsonl`
 (espelha a convenção `tests/test_<n>.sh`). Casos que **não** devem disparar
 nada ficam em `tests/trigger-eval/negatives.jsonl`. Uma query por linha:
 

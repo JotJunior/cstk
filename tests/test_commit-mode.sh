@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_commit-mode.sh — cobre global/skills/agente-00c-runtime/scripts/commit-mode.sh.
+# test_commit-mode.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/commit-mode.sh.
 #
 # Cobertura:
 #   INV-1: is-enabled sem campo => false, exit 0
@@ -29,8 +29,8 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/commit-mode.sh"
-SCRIPT_RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/commit-mode.sh"
+SCRIPT_RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 # Bloqueia suite se jq ausente
 if ! command -v jq >/dev/null 2>&1; then

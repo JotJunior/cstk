@@ -151,7 +151,7 @@ _make_fake_catalog() {
     printf '#!/bin/sh\nexit 0\n' > "$_mfc_dir/$_mfc_h"
     chmod +x "$_mfc_dir/$_mfc_h"
   done
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/settings.snippet.json" "$_mfc_dir/"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/settings.snippet.json" "$_mfc_dir/"
   printf '%s' "$_mfc_dir"
 }
 
@@ -519,7 +519,7 @@ scenario_loose_usage_declined_mandatory_still_applied() {
     sh "$CSTK" setup --project-path "$_repo" --yes || return 1
 
   assert_exit 0 env HOME="$_home" CSTK_HOOKS_CATALOG_DIR="$_cat" \
-    sh "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
+    sh "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
     check --projeto-alvo-path "$_repo" --quiet || return 1
 
   if [ -f "$_repo/.claude/hooks/posttooluse-loose-usage.sh" ]; then

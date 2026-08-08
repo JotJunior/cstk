@@ -10,7 +10,7 @@
 #   tests/cstk/fixtures/releases/v0.2.0/install.sh
 #
 # v0.1.0 espelha o catalog atual (build padrao via scripts/build-release.sh).
-# v0.2.0 e v0.1.0 + sentinel marker em global/skills/specify/SKILL.md, para
+# v0.2.0 e v0.1.0 + sentinel marker em plugins/cstk/skills/specify/SKILL.md, para
 # habilitar testes de update detection (hash difere entre as duas versoes).
 #
 # Idempotente: rodar 2x produz exatamente os mesmos artefatos (build-release.sh
@@ -58,7 +58,7 @@ mkdir -p "$STAGED"
 
 # Copiamos apenas o que build-release.sh consome.
 cp -R -- "$REPO_ROOT/cli" "$STAGED/cli"
-cp -R -- "$REPO_ROOT/global" "$STAGED/global"
+cp -R -- "$REPO_ROOT/plugins" "$STAGED/plugins"
 cp -R -- "$REPO_ROOT/language-related" "$STAGED/language-related"
 cp -R -- "$REPO_ROOT/scripts" "$STAGED/scripts"
 [ -f "$REPO_ROOT/CHANGELOG.md" ] && cp -- "$REPO_ROOT/CHANGELOG.md" "$STAGED/CHANGELOG.md" || :
@@ -68,7 +68,7 @@ cp -R -- "$REPO_ROOT/scripts" "$STAGED/scripts"
 {
   printf '\n'
   printf '<!-- v0.2.0-fixture-sentinel: DO NOT REMOVE FROM TESTS -->\n'
-} >> "$STAGED/global/skills/specify/SKILL.md"
+} >> "$STAGED/plugins/cstk/skills/specify/SKILL.md"
 
 REPO_ROOT="$STAGED" sh "$STAGED/scripts/build-release.sh" v0.2.0 \
   --out "$RELEASES_DIR/v0.2.0" >/dev/null

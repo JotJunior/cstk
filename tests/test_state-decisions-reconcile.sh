@@ -1,10 +1,10 @@
 #!/bin/sh
 # test_state-decisions-reconcile.sh — cobre
-# global/skills/agente-00c-runtime/scripts/state-decisions-reconcile.sh.
+# plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions-reconcile.sh.
 #
 # Feature: agente-00c-model-routing
 # Ref: docs/specs/agente-00c-model-routing/tasks.md F4.4
-#      global/agents/agente-00c-feature-orchestrator.md §Invariante I3 + §Protocolo de falha
+#      plugins/cstk/agents/agente-00c-feature-orchestrator.md §Invariante I3 + §Protocolo de falha
 #      dec-009 finding F-004 (low) — two-step half-record
 #
 # Cobertura:
@@ -35,7 +35,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions-reconcile.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions-reconcile.sh"
 
 _sdr_have_jq() {
   command -v jq >/dev/null 2>&1
@@ -431,9 +431,9 @@ scenario_sdr_inv6_shebang_set_eu() {
 # check le via _state-read.sh (materializacao) — fixtures construidas pelos
 # writers reais do runtime (state-ondas/state-decisions, ja db-aware).
 
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
-DEC="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
-ONDAS="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
+DEC="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
+ONDAS="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
 
 _sqlite3_adequate() {
   command -v sqlite3 >/dev/null 2>&1 || return 1

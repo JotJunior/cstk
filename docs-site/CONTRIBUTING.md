@@ -18,11 +18,11 @@ no site, edite **direto no arquivo de origem**:
 
 | Para mudar pagina em... | Edite o arquivo... |
 |--------------------------|---------------------|
-| `/skills/<nome>/` | `global/skills/<nome>/SKILL.md` |
-| `/skills/go/<nome>/` | `language-related/go/skills/<nome>/SKILL.md` |
+| `/skills/<nome>/` | `plugins/cstk/skills/<nome>/SKILL.md` |
+| `/skills/go/<nome>/` | `plugins/cstk-language-go/skills/<nome>/SKILL.md` |
 | `/skills/dotnet/<nome>/` | `language-related/dotnet/skills/<nome>/SKILL.md` |
-| `/agents/<nome>/` | `global/agents/<nome>.md` |
-| `/commands/<nome>/` | `global/commands/<nome>.md` |
+| `/agents/<nome>/` | `plugins/cstk/agents/<nome>.md` |
+| `/commands/<nome>/` | `plugins/cstk/commands/<nome>.md` |
 
 Apos editar e fazer push para a branch publicadora (normalmente `main`),
 o workflow `publish-site.yml` re-publica em ate 10 minutos.
@@ -86,10 +86,10 @@ sh     scripts/smoke-site.sh      # apos mkdocs build, faz grep negativo de trac
 Basta criar o arquivo no path canonico:
 
 ```
-global/skills/<novo-nome>/SKILL.md       # nova skill global
-language-related/go/skills/<novo>/SKILL.md  # nova skill Go
-global/agents/<novo>.md                  # novo agent
-global/commands/<novo>.md                # novo command
+plugins/cstk/skills/<novo-nome>/SKILL.md       # nova skill global
+plugins/cstk-language-go/skills/<novo>/SKILL.md  # nova skill Go
+plugins/cstk/agents/<novo>.md                  # novo agent
+plugins/cstk/commands/<novo>.md                # novo command
 ```
 
 `gen_pages.py` descobre via glob — **zero edits aqui** sao necessarios.

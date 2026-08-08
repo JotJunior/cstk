@@ -9,7 +9,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-RESOLVE_ROOT_LIB="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+RESOLVE_ROOT_LIB="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh"
 
 # _rr_mkroot DIR -> cria um candidato de raiz VALIDO (contem scripts/ e
 # hooks/ — layout real de agente-00c-runtime/{hooks,scripts}). O hooks/ e

@@ -1,6 +1,6 @@
 # Fixtures: docs-site/
 
-Fixtures de entrada para testes de `global/skills/validate-docs-rendered/scripts/validate.sh`.
+Fixtures de entrada para testes de `plugins/cstk/skills/validate-docs-rendered/scripts/validate.sh`.
 Cada subdiretorio isola UM tipo de problema (ou zero, no caso de `valid/`)
 para que o teste possa afirmar exatamente qual checagem disparou o erro.
 

@@ -11,7 +11,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-HELPER="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_state-dir.sh"
+HELPER="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_state-dir.sh"
 
 # Wrapper que source-a o helper e invoca _sd_resolve com o arg fornecido.
 _run_resolve() {
@@ -145,7 +145,7 @@ scenario_backcompat_state_rw_aceita_state_dir_arg() {
   # state-rw.sh existe e aceita --state-dir como antes (sem nada mudou
   # nesse script). Smoke: invocar com path inexistente deve dar erro
   # claro, nao silencioso.
-  capture "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh" \
+  capture "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh" \
     read --state-dir "/path/que/nao/existe"
   if [ "$_CAPTURED_EXIT" = 0 ]; then
     _fail "backcompat" "state-rw deveria falhar com path inexistente"

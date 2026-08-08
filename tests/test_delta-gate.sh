@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_delta-gate.sh —
-# cobre global/skills/review-features/scripts/delta-gate.sh.
+# cobre plugins/cstk/skills/review-features/scripts/delta-gate.sh.
 #
 # Contrato: docs/specs/living-specs/contracts/delta-gate-cli.md
 #   delta-gate.sh SPEC_MD [--corpus-dir DIR]
@@ -14,7 +14,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/review-features/scripts/delta-gate.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/review-features/scripts/delta-gate.sh"
 
 # Escreve $1 em $TMPDIR_TEST/spec.md e retorna o path via stdout.
 _write_spec() {

@@ -12,7 +12,7 @@
 #
 # IMPORTANTE: a logica de path-guard, sanitize e whitelist-validate aqui
 # **espelha** os scripts canonicos em
-# `global/skills/agente-00c-runtime/scripts/*.sh`. Por decisao arquitetural
+# `plugins/cstk/skills/agente-00c-runtime/scripts/*.sh`. Por decisao arquitetural
 # (Clarifications 2026-05-09 round 2 Q1), `cstk` reimplementa essa logica
 # em `cli/lib/` por ser camada inferior ao runtime (instalador vs instalado);
 # divergencias futuras passam por PR review explicito.
@@ -609,7 +609,7 @@ _00c_read_stack() {
 
 # ==== _00c_validate_url ====
 #
-# Espelha global/skills/agente-00c-runtime/scripts/whitelist-validate.sh:50-100.
+# Espelha plugins/cstk/skills/agente-00c-runtime/scripts/whitelist-validate.sh:50-100.
 # Retorno 0 = URL valida; 1 = invalida (mensagem em stderr).
 _00c_validate_url() {
   _vu_url=$1

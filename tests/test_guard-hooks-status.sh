@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_guard-hooks-status.sh — cobre
-# global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh
+# plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh
 #
 # Invariantes sob teste:
 #   INV-1: READ-ONLY — nenhuma invocacao cria/edita arquivo no projeto-alvo.
@@ -29,7 +29,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
 
 _HOOKS='pretooluse-bash-guard.sh
 posttooluse-tool-call-tick.sh
@@ -493,12 +493,12 @@ scenario_loose_usage_sem_flag_saida_identica() {
 scenario_loose_usage_detection_stale_runtime() {
   _old="$TMPDIR_TEST/old-guard-hooks-status.sh"
   _intro=$(git -C "$REPO_ROOT" log -S'--include-loose-usage' --format=%H \
-    -- global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
+    -- plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
   if [ -z "$_intro" ]; then
     printf '# scenario_loose_usage_detection_stale_runtime: commit de introducao nao encontrado — pulando\n'
     return 0
   fi
-  if ! git -C "$REPO_ROOT" show "${_intro}~1:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
+  if ! git -C "$REPO_ROOT" show "${_intro}~1:plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
        > "$_old" 2>/dev/null; then
     printf '# scenario_loose_usage_detection_stale_runtime: sem versao anterior a introducao — pulando\n'
     return 0
@@ -633,12 +633,12 @@ scenario_minified_settings_indeterminate() {
 scenario_verify_registration_isolated_from_baseline() {
   _old="$TMPDIR_TEST/old-guard-hooks-status-verify.sh"
   _intro=$(git -C "$REPO_ROOT" log -S'--verify-registration' --format=%H \
-    -- global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
+    -- plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
   if [ -z "$_intro" ]; then
     printf '# scenario_verify_registration_isolated_from_baseline: commit de introducao nao encontrado — pulando\n'
     return 0
   fi
-  if ! git -C "$REPO_ROOT" show "${_intro}~1:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
+  if ! git -C "$REPO_ROOT" show "${_intro}~1:plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
        > "$_old" 2>/dev/null; then
     printf '# scenario_verify_registration_isolated_from_baseline: sem versao anterior a introducao — pulando\n'
     return 0
@@ -678,7 +678,7 @@ exit 0'
   _plugin_scripts="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/scripts"
   _plugin_hooks="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/hooks"
   mkdir -p "$_plugin_scripts" "$_plugin_hooks"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_scripts/_resolve-root.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_scripts/_resolve-root.sh"
   for _h in $_HOOKS; do
     printf '%s\n' "$_body" > "$_p/.claude/hooks/$_h"
     chmod +x "$_p/.claude/hooks/$_h"

@@ -1,6 +1,6 @@
 # Fixtures: tasks-md/
 
-Fixtures de entrada para testes de `global/skills/review-task/scripts/metrics.sh`.
+Fixtures de entrada para testes de `plugins/cstk/skills/review-task/scripts/metrics.sh`.
 Cada arquivo exercita um cenario especifico — os valores esperados estao
 documentados no proprio fixture (secao final "Contagem esperada").
 

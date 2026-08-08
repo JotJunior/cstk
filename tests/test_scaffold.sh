@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_scaffold.sh — cobre global/skills/initialize-docs/scripts/scaffold.sh.
+# test_scaffold.sh — cobre plugins/cstk/skills/initialize-docs/scripts/scaffold.sh.
 #
 # Contrato:
 #   scaffold.sh                   # cria docs/ em CWD
@@ -13,7 +13,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/initialize-docs/scripts/scaffold.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/initialize-docs/scripts/scaffold.sh"
 
 # Os 9 diretorios top-level esperados (convencao do toolkit).
 _TOP_DIRS="01-briefing-discovery 02-requisitos-casos-uso 03-modelagem-dados 04-arquitetura-sistema 05-definicao-apis 06-ui-ux-design 07-plano-testes 08-operacoes 09-entregaveis"

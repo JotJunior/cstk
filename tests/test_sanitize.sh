@@ -1,11 +1,11 @@
 #!/bin/sh
-# test_sanitize.sh — cobre global/skills/agente-00c-runtime/scripts/sanitize.sh.
+# test_sanitize.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/sanitize.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/sanitize.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/sanitize.sh"
 
 scenario_limit_length_curto_passa_intacto() {
   capture sh -c "printf '%s' 'short text' | '$SCRIPT' limit-length --max 500"

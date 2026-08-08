@@ -154,7 +154,7 @@ commits automáticos.
 
 | Componente | Localização |
 |------------|-------------|
-| Helper POSIX (`is-enabled`, `set-enabled`, `guard-branch`, `stage-message`, `task-message`, `snapshot`, `stage-derived`, `finalize`) | `global/skills/agente-00c-runtime/scripts/commit-mode.sh` |
+| Helper POSIX (`is-enabled`, `set-enabled`, `guard-branch`, `stage-message`, `task-message`, `snapshot`, `stage-derived`, `finalize`) | `plugins/cstk/skills/agente-00c-runtime/scripts/commit-mode.sh` |
 | Testes | `tests/test_commit-mode.sh` |
 | Spec | [`specs/_archived/atomic-commit-pr/`](./specs/_archived/atomic-commit-pr/) |
 
@@ -181,7 +181,7 @@ esquema de URL) eram **advisory**. Três frentes passaram a ser **enforced**
 
 | Componente | Localização |
 |------------|-------------|
-| Hook + snippet de settings | `global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh` + `settings.snippet.json` |
+| Hook + snippet de settings | `plugins/cstk/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh` + `settings.snippet.json` |
 | Provisionamento automático | `apply_guard_hooks()` em `cli/lib/hooks.sh` (escopo `project`) |
 | Allowlist de hosts compartilhada | `cli/lib/trusted-hosts.sh` |
 | Log auditável | `.claude/enforcement-log.jsonl` (por projeto-alvo) |

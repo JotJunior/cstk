@@ -24,8 +24,8 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-ORCH_AGENTE="$REPO_ROOT/global/agents/agente-00c-orchestrator.md"
-ORCH_FEAT="$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md"
+ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
 
 # ==== Linha na tabela de Quality Gates complementares (4.1.1/4.2.1) ====
 

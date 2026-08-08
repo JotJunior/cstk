@@ -10,7 +10,7 @@
 #
 # Natureza: assert TEXTUAL no .md (nao ha helper novo nesta fase — a
 # "implementacao" e a instrucao de spawn embutida nos commands). Cobre as
-# 4 fontes em global/commands/. NAO mapeia 1:1 a um unico .sh, portanto e
+# 4 fontes em plugins/cstk/commands/. NAO mapeia 1:1 a um unico .sh, portanto e
 # registrado como interno em tests/run.sh::_is_internal_test (orphan-check).
 #
 # Cobertura (FR-002, FR-006, FR-009 / quickstart C8):
@@ -27,10 +27,10 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-CMD_INIT_AGENTE="$REPO_ROOT/global/commands/agente-00c.md"
-CMD_INIT_FEAT="$REPO_ROOT/global/commands/feature-00c.md"
-CMD_RES_AGENTE="$REPO_ROOT/global/commands/agente-00c-resume.md"
-CMD_RES_FEAT="$REPO_ROOT/global/commands/feature-00c-resume.md"
+CMD_INIT_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c.md"
+CMD_INIT_FEAT="$REPO_ROOT/plugins/cstk/commands/feature-00c.md"
+CMD_RES_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c-resume.md"
+CMD_RES_FEAT="$REPO_ROOT/plugins/cstk/commands/feature-00c-resume.md"
 
 # _grep_file FILE PATTERN -> captura grep -E (exit 0 se casa). Helper
 # textual reutilizado pelos scenarios (capture + assert_exit 0).

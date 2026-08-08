@@ -132,7 +132,7 @@ Not every skill uses all subfolders — simple skills are just a `SKILL.md`.
 
 ## Global Skills
 
-Skills in `global/skills/`, independent of language or framework.
+Skills in `plugins/cstk/skills/`, independent of language or framework.
 
 ### SDD Pipeline (Spec-Driven Development)
 
@@ -388,7 +388,7 @@ cstk update --dry-run
 
 ### Manual installation (deprecated, still supported)
 
-Directly copying the directories still works (`cp -r global/skills/
+Directly copying the directories still works (`cp -r plugins/cstk/skills/
 ~/.claude/skills/`), but **does not track versions or detect drift** — see
 [`CLAUDE.md`](./CLAUDE.md) §"Installed vs Source Drift". `cstk` solves
 this via manifest + hash_dir.

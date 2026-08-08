@@ -1,12 +1,12 @@
 #!/bin/sh
-# test_pipeline.sh — cobre global/skills/agente-00c-runtime/scripts/pipeline.sh.
+# test_pipeline.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/pipeline.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/pipeline.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/pipeline.sh"
 
 # Helpers para gerar artefatos validos minimos (estruturas que o pipeline
 # detect-completion aceita).
@@ -483,9 +483,9 @@ EOF
 
 # --- require-blockade-resolved (regressao do bypass dec-004) -----------
 
-_RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
-_SD="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
-_BL="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/bloqueios.sh"
+_RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
+_SD="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
+_BL="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/bloqueios.sh"
 
 _init_preflight_state() {
   # Cria state.json + registra decisao pre-flight (score=0) com as 3

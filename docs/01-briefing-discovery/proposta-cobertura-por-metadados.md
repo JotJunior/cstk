@@ -10,7 +10,7 @@ A convenção de cobertura atual (`tests/run.sh`, FR-009) infere o par
 script↔teste **pelo nome**:
 
 ```
-global/skills/<X>/scripts/<n>.sh  ->  tests/test_<n>.sh
+plugins/cstk/skills/<X>/scripts/<n>.sh  ->  tests/test_<n>.sh
 cli/lib/<n>.sh                    ->  tests/cstk/test_<n>.sh
 ```
 
@@ -37,7 +37,7 @@ Cada `test_*.sh` declara, num comentário de cabeçalho, qual(is) script(s) cobr
 ```sh
 #!/bin/sh
 # test_runtime-log-redaction.sh
-# covers: global/skills/agente-00c-runtime/scripts/_log.sh
+# covers: plugins/cstk/skills/agente-00c-runtime/scripts/_log.sh
 ```
 
 Regras do formato:

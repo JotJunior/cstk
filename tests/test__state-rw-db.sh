@@ -1,5 +1,5 @@
 #!/bin/sh
-# test__state-rw-db.sh — cobre global/skills/agente-00c-runtime/scripts/_state-rw-db.sh
+# test__state-rw-db.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/_state-rw-db.sh
 # (implementacao do backend SQLite de state-rw.sh — feature state-db-foundation,
 # FASE 3 task 3.2).
 #
@@ -26,12 +26,12 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-_R="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
-# shellcheck source=../global/skills/agente-00c-runtime/scripts/_diag.sh
+_R="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
+# shellcheck source=../plugins/cstk/skills/agente-00c-runtime/scripts/_diag.sh
 . "$_R/_diag.sh"
-# shellcheck source=../global/skills/agente-00c-runtime/scripts/_state-db.sh
+# shellcheck source=../plugins/cstk/skills/agente-00c-runtime/scripts/_state-db.sh
 . "$_R/_state-db.sh"
-# shellcheck source=../global/skills/agente-00c-runtime/scripts/_state-rw-db.sh
+# shellcheck source=../plugins/cstk/skills/agente-00c-runtime/scripts/_state-rw-db.sh
 . "$_R/_state-rw-db.sh"
 
 # _sr_die/_SR_NAME: normalmente definidos por state-rw.sh antes de sourcear

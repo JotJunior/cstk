@@ -467,28 +467,31 @@ _st_audit() {
   fi
 
   # Descoberta dinamica do universo de skills:
-  # 1. Diretorios em global/skills/ (cada diretorio = 1 skill)
-  # 2. Arquivos SKILL.md em language-related/ (dirname do arquivo = skill)
+  # 1. Diretorios em plugins/cstk/skills/ (cada diretorio = 1 skill)
+  # 2. Arquivos SKILL.md em plugins/cstk-language-*/skills/ (perfis de
+  #    linguagem relocados para plugin — claude-plugin-packaging FASE 4;
+  #    dirname do arquivo = skill)
   _st_universe_file=$(mktemp)
   # Coletar universo de skills
   {
-    if [ -d "$_st_root/global/skills" ]; then
-      find "$_st_root/global/skills" -maxdepth 1 -mindepth 1 -type d \
+    if [ -d "$_st_root/plugins/cstk/skills" ]; then
+      find "$_st_root/plugins/cstk/skills" -maxdepth 1 -mindepth 1 -type d \
         2>/dev/null \
         | while IFS= read -r _st_d; do basename -- "$_st_d"; done
     fi
-    if [ -d "$_st_root/language-related" ]; then
-      find "$_st_root/language-related" -name "SKILL.md" 2>/dev/null \
+    for _st_langdir in "$_st_root/plugins/"cstk-language-*/; do
+      [ -d "$_st_langdir" ] || continue
+      find "$_st_langdir" -name "SKILL.md" 2>/dev/null \
         | while IFS= read -r _st_f; do
             _st_dir=$(dirname -- "$_st_f")
             basename -- "$_st_dir"
           done
-    fi
+    done
   } | sort -u > "$_st_universe_file"
 
   _st_universe_count=$(awk 'END{print NR+0}' "$_st_universe_file")
   if [ "$_st_universe_count" -eq 0 ]; then
-    printf 'AUDIT WARN: nenhuma skill encontrada no universo (global/skills/ e language-related/).\n'
+    printf 'AUDIT WARN: nenhuma skill encontrada no universo (plugins/cstk/skills/ e plugins/cstk-language-*/skills/).\n'
     rm -f "$_st_universe_file"
     return "$SHOW_TIP_EXIT_GAPS"
   fi

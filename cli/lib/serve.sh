@@ -43,7 +43,7 @@
 # carve-out confinado a pretooluse-bash-guard.sh, research.md Decision 2, nao
 # uma dependencia livre para todo o runtime); a linha JSONL de
 # `enforcement-log.jsonl` e composta via printf + escaping manual
-# (`_serve_json_escape`, mesmo padrao de global/skills/review-features/
+# (`_serve_json_escape`, mesmo padrao de plugins/cstk/skills/review-features/
 # scripts/aggregate.sh::json_escape).
 
 if [ "${_SERVE_LOADED:-}" = "1" ]; then
@@ -165,7 +165,7 @@ _serve_shutdown() {
 
 # _serve_json_escape STRING -> imprime STRING com \ e " escapados (sem jq —
 # serve.sh permanece POSIX puro sem dependencia nova, Principio II). Mesmo
-# padrao de global/skills/review-features/scripts/aggregate.sh::json_escape.
+# padrao de plugins/cstk/skills/review-features/scripts/aggregate.sh::json_escape.
 _serve_json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }

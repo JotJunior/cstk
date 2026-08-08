@@ -272,14 +272,14 @@ o aterramento de evidencia de seguranca ja presente nos orquestradores
 Estes padroes operacionais implementam os principios acima. Sao verificaveis e
 formam o quality gate em `/plan` (Constitution Check) e `/analyze`.
 
-- **Toda skill tem SKILL.md + Gotchas** — verificavel via `find global/skills -name
+- **Toda skill tem SKILL.md + Gotchas** — verificavel via `find plugins/cstk/skills -name
   SKILL.md -exec grep -L '## Gotchas' {} +` (deve retornar vazio).
 - **Scripts sao POSIX** — scripts que violam Principio II sao detectados por shellcheck
   com dialeto `sh` (ex: `shellcheck -s sh script.sh`). Zero warnings e meta; warnings
   justificaveis sao comentados em linha no script.
 - **Scripts tem teste automatizado** — conforme suite `docs/specs/shell-scripts-tests/`
   (em construcao). Quando concluida, a regra se torna: adicionar `.sh` em
-  `global/skills/**/scripts/` sem `tests/test_<nome>.sh` correspondente e detectavel via
+  `plugins/cstk/skills/**/scripts/` sem `tests/test_<nome>.sh` correspondente e detectavel via
   `tests/run.sh --check-coverage`.
 - **Feature nao-trivial tem `docs/specs/{feature}/spec.md`** — verificavel observando
   se commits substantivos sao acompanhados de artefato. Principio I formaliza.
@@ -304,7 +304,7 @@ Quando principios entram em tensao, a ordem de desempate e:
    o caso merece emenda da constituicao (MINOR bump), nao decisao ad-hoc.
 
 3. **Reversibilidade favorece exploracao; irreversibilidade favorece conservadorismo.**
-   Decisao reversivel (nova skill experimental em `global/skills/`, novo template) pode
+   Decisao reversivel (nova skill experimental em `plugins/cstk/skills/`, novo template) pode
    ser tomada rapido. Decisao irreversivel ou de alto custo de reversao (renomear skill
    amplamente usada, mudar layout de diretorios) exige `spec.md` + discussao explicita.
 

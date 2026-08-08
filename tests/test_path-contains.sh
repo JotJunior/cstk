@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_path-contains.sh — cobre global/skills/converge/scripts/path-contains.sh.
+# test_path-contains.sh — cobre plugins/cstk/skills/converge/scripts/path-contains.sh.
 #
 # Ref: docs/specs/skill-converge/tasks.md tarefa 2.1.5
 #      docs/specs/skill-converge/contracts/converge-interfaces.md §6
@@ -8,7 +8,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/converge/scripts/path-contains.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/converge/scripts/path-contains.sh"
 
 # ---------- Contido / fora do root ----------
 

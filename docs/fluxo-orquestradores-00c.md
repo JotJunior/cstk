@@ -7,8 +7,8 @@ humano e condições terminais.
 
 Fontes (extraídas, sem invenção):
 
-- `global/commands/agente-00c.md` + `global/agents/agente-00c-orchestrator.md`
-- `global/commands/feature-00c.md` + `global/agents/agente-00c-feature-orchestrator.md`
+- `plugins/cstk/commands/agente-00c.md` + `plugins/cstk/agents/agente-00c-orchestrator.md`
+- `plugins/cstk/commands/feature-00c.md` + `plugins/cstk/agents/agente-00c-feature-orchestrator.md`
 
 ---
 

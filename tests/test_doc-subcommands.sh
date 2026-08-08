@@ -14,7 +14,7 @@
 # e cara de pegar (so falha em runtime, dentro de uma onda autonoma).
 #
 # Escopo: SO valida o verbo/subcomando contra os scripts do runtime 00c
-# (global/skills/agente-00c-runtime/scripts/). NAO valida flags (parsing varia
+# (plugins/cstk/skills/agente-00c-runtime/scripts/). NAO valida flags (parsing varia
 # demais p/ ser confiavel). Refs a scripts fora desse dir, ou a scripts sem
 # dispatch (libs sourcadas), sao puladas.
 #
@@ -29,8 +29,8 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPTS_DIR="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
-DOC_DIRS="$REPO_ROOT/global/agents $REPO_ROOT/global/commands"
+SCRIPTS_DIR="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
+DOC_DIRS="$REPO_ROOT/plugins/cstk/agents $REPO_ROOT/plugins/cstk/commands"
 
 # Tokens meta que nunca sao subcomandos de negocio (nao devem falhar).
 _DL_SKIP_TOKENS=" help "

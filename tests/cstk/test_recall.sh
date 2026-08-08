@@ -1263,7 +1263,7 @@ JSON
 
 # Resolve model-routing-report.sh via CSTK_LIB (repo) ou ~/.claude (instalado).
 _mrr_path() {
-  _mrr_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/model-routing-report.sh"
+  _mrr_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/model-routing-report.sh"
   if [ -f "$_mrr_repo" ]; then printf '%s\n' "$_mrr_repo"; return 0; fi
   _mrr_inst="${HOME:-/tmp}/.claude/skills/agente-00c-runtime/scripts/model-routing-report.sh"
   if [ -f "$_mrr_inst" ]; then printf '%s\n' "$_mrr_inst"; return 0; fi
@@ -1770,7 +1770,7 @@ scenario_ctx_usage_help() {
 
 # Resolve state-decisions.sh via CSTK_LIB (repo) ou ~/.claude (instalado).
 _ctx_state_decisions_path() {
-  _sd_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/state-decisions.sh"
+  _sd_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
   if [ -f "$_sd_repo" ]; then printf '%s\n' "$_sd_repo"; return 0; fi
   _sd_inst="${HOME:-/tmp}/.claude/skills/agente-00c-runtime/scripts/state-decisions.sh"
   if [ -f "$_sd_inst" ]; then printf '%s\n' "$_sd_inst"; return 0; fi
@@ -4010,7 +4010,7 @@ JSON
 #     vez de propagar esse 0 fabricado, por Principio VI/anti-fabricacao).
 # =========================================================================
 
-SCRIPTS_00C="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
+SCRIPTS_00C="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
 STATE_RW_00C="$SCRIPTS_00C/state-rw.sh"
 MIGRATE_00C="$SCRIPTS_00C/state-db-migrate.sh"
 

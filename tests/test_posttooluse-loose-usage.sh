@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_posttooluse-loose-usage.sh — cobre
-# global/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh
+# plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh
 # (hook PostToolUse OPT-IN de captura de consumo avulso).
 #
 # Contrato sob teste: docs/specs/loose-usage-capture/contracts/hook-loose-usage.md
@@ -19,7 +19,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh"
 
 # Endpoint que falha rapido (nada escuta) — nunca precisa de exporter real;
 # curl --max-time 3 contra porta fechada retorna connection-refused quase
@@ -299,8 +299,8 @@ scenario_plugin_root_resolve_otel_usage_via_claude_plugin_root() {
 
   _plugin_root="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/scripts"
   mkdir -p "$_plugin_root"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_root/_resolve-root.sh"
-  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/otel-usage.sh" "$_plugin_root/otel-usage.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_root/_resolve-root.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/otel-usage.sh" "$_plugin_root/otel-usage.sh"
   chmod +x "$_plugin_root/otel-usage.sh"
 
   export CSTK_OTEL_ENDPOINT="$_FAKE_ENDPOINT"

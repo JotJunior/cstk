@@ -13,7 +13,7 @@
 #   - sanity: corpus existe, e legivel, e tem entradas das 3 faixas
 #
 # Cobertura (orphan-check): este teste exercita
-# global/skills/model-selector/scripts/classify.sh — ja isento via o
+# plugins/cstk/skills/model-selector/scripts/classify.sh — ja isento via o
 # ramo `test_model_selector_*.sh` de _is_internal_test em tests/run.sh
 # (existence-guarded ao classify.sh). Nenhum script novo introduzido.
 #
@@ -24,7 +24,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-CLASSIFY="$REPO_ROOT/global/skills/model-selector/scripts/classify.sh"
+CLASSIFY="$REPO_ROOT/plugins/cstk/skills/model-selector/scripts/classify.sh"
 CORPUS="$TESTS_ROOT/fixtures/model-selector-corpus/corpus.tsv"
 export CLASSIFY CORPUS
 

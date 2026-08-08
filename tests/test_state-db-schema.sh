@@ -1,6 +1,6 @@
 #!/bin/sh
-# test_state-db-schema.sh — cobre global/skills/agente-00c-runtime/scripts/state-db-schema.sh
-# e o DDL em global/skills/agente-00c-runtime/references/state-db-schema.sql.
+# test_state-db-schema.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/state-db-schema.sh
+# e o DDL em plugins/cstk/skills/agente-00c-runtime/references/state-db-schema.sql.
 #
 # Ref: docs/specs/state-db-foundation/data-model.md (contrato das constraints)
 #      docs/specs/state-db-foundation/tasks.md FASE 2 (2.1 DDL, 2.2 invariantes)
@@ -10,7 +10,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-db-schema.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-db-schema.sh"
 
 if ! command -v sqlite3 >/dev/null 2>&1; then
   printf '# test_state-db-schema.sh: sqlite3 ausente — pulando suite\n'

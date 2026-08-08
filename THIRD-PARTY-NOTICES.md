@@ -20,7 +20,7 @@ text).
 Parts of this toolkit's Spec-Driven Development pipeline — the vocabulary of steps
 (`constitution` → `specify` → `clarify` → `plan` → `tasks` → `analyze`) and, in
 particular, the **constitution template** in
-`global/skills/constitution/templates/constitution.md` (structure
+`plugins/cstk/skills/constitution/templates/constitution.md` (structure
 `## Core Principles` / `### [PRINCIPLE_N_NAME]`, footer
 `**Version** | **Ratified** | **Last Amended**`, `[NEEDS CLARIFICATION]` markers
 and "Sync Impact Report") — are **adapted** from the **GitHub Spec Kit** project.

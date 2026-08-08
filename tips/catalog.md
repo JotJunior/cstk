@@ -21,7 +21,7 @@
 #
 # CAMPOS OBRIGATORIOS:
 #   skill:    nome exato da skill (case-sensitive; deve corresponder a um
-#             diretorio em global/skills/ ou language-related/*/skills/)
+#             diretorio em plugins/cstk/skills/ ou language-related/*/skills/)
 #   category: um dos tres valores: uso | gotcha | avancado
 #   text:     texto da dica em ate 2 frases; manter em uma unica linha YAML
 #

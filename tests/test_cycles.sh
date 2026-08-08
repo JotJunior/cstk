@@ -1,12 +1,12 @@
 #!/bin/sh
-# test_cycles.sh — cobre global/skills/agente-00c-runtime/scripts/cycles.sh.
+# test_cycles.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/cycles.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/cycles.sh"
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/cycles.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_cycles.sh: jq ausente — pulando\n'
