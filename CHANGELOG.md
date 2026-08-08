@@ -5,6 +5,41 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [6.8.0] - 2026-08-07
+
+Ajuste de UX no `cstk setup` a pedido do operador: o wizard estava verboso
+demais no caminho feliz. O sucesso agora e silencioso — so as perguntas,
+uma linha `[OK]` por area e o summary; o detalhamento completo migrou para
+a nova flag `--verbose`. Erros e avisos continuam sempre visiveis.
+
+### Changed
+
+- **`cstk setup` silencioso por default** (`cli/lib/setup.sh`, PR #85).
+  Sucesso mostra apenas: perguntas (modo interativo), uma linha
+  `[OK] <area> — <resumo>` por area bem-sucedida (stderr, via
+  `_setup_area_ok`) e o `SetupRunSummary` (stdout, inalterado). As ~25
+  linhas de progresso `[info]` (status detectado, decisoes, instrucoes de
+  telemetria, `outcome=`) agora so aparecem com `--verbose` (helper
+  `_setup_info`). Erros e avisos (`log_error`/`log_warn`) — divergencia
+  com remediacao em 2 etapas, jq/Docker ausente, diagnostico
+  `doctor --deps` — aparecem SEMPRE, independente da flag. O rotulo
+  FR-017 de escopo global (`state-backend`) segue exibido sempre que uma
+  escrita global e possivel ou previewada (`status=not-configured`,
+  inclusive `--dry-run`) e sempre em `--verbose`; quando nenhuma escrita e
+  possivel, sai do modo silencioso (intencao do FR-017 preservada —
+  contrato `contracts/cli-setup.md` §1/§3 atualizado). A linha `[OK]` da
+  area de telemetria aponta `cstk setup --verbose` para as instrucoes de
+  ativacao.
+
+### Added
+
+- **Flag `--verbose` no `cstk setup`** — restaura o progresso detalhado
+  identico ao comportamento da 6.7.0. Cobertura:
+  `tests/cstk/test_setup.sh` 24→26 cenarios (novos:
+  `scenario_quiet_default_emits_ok_lines`,
+  `scenario_verbose_flag_restores_progress`; 10 cenarios que asserem
+  texto de progresso passaram a invocar com `--verbose`).
+
 ## [6.7.0] - 2026-08-07
 
 Onboarding de projeto num comando só: o novo `cstk setup` substitui a
@@ -5148,6 +5183,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[6.8.0]: https://github.com/JotJunior/cstk/releases/tag/v6.8.0
 [6.7.0]: https://github.com/JotJunior/cstk/releases/tag/v6.7.0
 [6.6.0]: https://github.com/JotJunior/cstk/releases/tag/v6.6.0
 [6.5.1]: https://github.com/JotJunior/cstk/releases/tag/v6.5.1
