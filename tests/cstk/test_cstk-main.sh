@@ -194,4 +194,27 @@ scenario_hooks_help_inline() {
   assert_stderr_contains "cstk hooks install" || return 1
 }
 
+# ==== cstk help telemetry (feature install-telemetry-optin) ====
+
+scenario_help_telemetry_prints_snippet() {
+  capture env CSTK_LIB="$CSTK_LIB" sh "$CSTK" help telemetry
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  for _tok in '# >>> cstk telemetry >>>' 'CLAUDE_CODE_ENABLE_TELEMETRY=1' \
+              'OTEL_METRICS_EXPORTER=prometheus' 'CSTK_OTEL_ENDPOINT' 'command claude "$@"'; do
+    case "$_CAPTURED_STDOUT" in
+      *"$_tok"*) : ;;
+      *) _fail "conteudo" "help telemetry sem '$_tok'"; return 1 ;;
+    esac
+  done
+}
+
+# Paridade: o snippet entre marcadores em cli/install.sh e cli/cstk MUST ser
+# byte-identico — o help ensina exatamente o que o install escreveria.
+scenario_help_telemetry_snippet_parity_with_install() {
+  _a=$(awk '/^# >>> cstk telemetry >>>$/,/^# <<< cstk telemetry <<<$/' "$REPO_ROOT/cli/install.sh")
+  _b=$(awk '/^# >>> cstk telemetry >>>$/,/^# <<< cstk telemetry <<<$/' "$REPO_ROOT/cli/cstk")
+  [ -n "$_a" ] || { _fail "extract" "snippet ausente de cli/install.sh"; return 1; }
+  [ "$_a" = "$_b" ] || { _fail "parity" "snippet de telemetria divergiu entre cli/install.sh e cli/cstk"; return 1; }
+}
+
 run_all_scenarios

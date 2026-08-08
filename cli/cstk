@@ -216,12 +216,58 @@ HELP
       printf 'Para help inline, rode: cstk 00c --help\n'
       exit "$CSTK_EXIT_OK"
       ;;
+    telemetry)
+      cat <<'TELHELP'
+cstk help telemetry — medicao local de custo/tokens do Claude Code
+
+O exporter OTel vive DENTRO de cada processo `claude` (nasce e morre com a
+sessao) e cada processo precisa da PROPRIA porta. Por isso a ativacao e um
+wrapper `claude()` no seu shell rc (~/.zshrc ou ~/.bashrc, conforme $SHELL),
+que sorteia uma porta livre por lancamento e liga as variaveis SO no
+ambiente do processo `claude` — nada fica exportado no shell (evita o falso
+alarme "exporter-down" em terminais sem sessao ativa) e nada sai da maquina
+(exporter escuta apenas em 127.0.0.1).
+
+O `cstk install` oferece esse opt-in na primeira instalacao. Se voce
+recusou (ou instalou em ambiente nao-interativo), cole o bloco abaixo no
+final do seu shell rc e rode `source <rc>` (ou abra um novo terminal):
+
+# >>> cstk telemetry >>>
+# Gerenciado por `cstk install` — medicao LOCAL de custo/tokens do Claude
+# Code (nada sai da maquina; exporter escuta so em 127.0.0.1, porta sorteada
+# por processo). Remova o bloco inteiro entre os marcadores para desativar.
+claude() {
+  local _otel_port
+  _otel_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()' 2>/dev/null)
+  if [ -n "$_otel_port" ]; then
+    CLAUDE_CODE_ENABLE_TELEMETRY=1 \
+    OTEL_METRICS_EXPORTER=prometheus \
+    OTEL_EXPORTER_PROMETHEUS_PORT=$_otel_port \
+    CSTK_OTEL_ENDPOINT="http://127.0.0.1:${_otel_port}/metrics" \
+    command claude "$@"
+  else
+    CLAUDE_CODE_ENABLE_TELEMETRY=1 \
+    OTEL_METRICS_EXPORTER=prometheus \
+    command claude "$@"
+  fi
+}
+# <<< cstk telemetry <<<
+
+Verificacao (de dentro de uma sessao claude lancada pelo wrapper):
+  ~/.claude/skills/agente-00c-runtime/scripts/otel-usage.sh preflight
+  # esperado: status=ok  (fora de sessao: disabled e normal)
+
+Snippet canonico: identico ao de cli/install.sh (telemetry_snippet) —
+teste de paridade em tests/cstk/test_cstk-main.sh gateia drift entre os dois.
+TELHELP
+      exit "$CSTK_EXIT_OK"
+      ;;
     help|--help|-h)
       _cmd_help ""
       ;;
     *)
       printf 'cstk: comando desconhecido para help: %s\n' "$_sub" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, state, mcp, usage, setup, 00c\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, state, mcp, usage, setup, 00c, telemetry\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac

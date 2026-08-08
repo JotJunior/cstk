@@ -213,4 +213,90 @@ scenario_bootstrap_tag_inferida_do_url() {
   fi
 }
 
+# ==== Telemetria opt-in no install (feature install-telemetry-optin) ====
+
+# Sem TTY e sem CSTK_INSTALL_TELEMETRY: fail-safe = nao escreve rc nenhum e
+# aponta o caminho manual (cstk help telemetry).
+scenario_bootstrap_telemetry_non_tty_skips() {
+  _h="$TMPDIR_TEST/home-tel-nontty"
+  _r="$TMPDIR_TEST/release-tel-nontty"
+  _make_bootstrap_fixture "$_r" v0.1.0-test || { _error "fixture" "tarball build falhou"; return 2; }
+  capture env HOME="$_h" INSTALL_BIN="$_h/.local/bin" INSTALL_LIB="$_h/.local/share/cstk" \
+    CSTK_RELEASE_URL="file://$_r/cstk-v0.1.0-test.tar.gz" PATH="$PATH" SHELL=/bin/zsh \
+    sh "$BOOTSTRAP"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ ! -f "$_h/.zshrc" ] || { _fail "rc" "sem opt-in nao pode escrever .zshrc"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"cstk help telemetry"*) : ;;
+    *) _fail "pointer" "stderr nao aponta cstk help telemetry: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# CSTK_INSTALL_TELEMETRY=yes + SHELL=zsh: snippet vai para ~/.zshrc entre
+# marcadores; wrapper contem as 4 variaveis no prefixo do processo.
+scenario_bootstrap_telemetry_yes_zsh_writes_zshrc() {
+  _h="$TMPDIR_TEST/home-tel-zsh"
+  _r="$TMPDIR_TEST/release-tel-zsh"
+  _make_bootstrap_fixture "$_r" v0.1.0-test || { _error "fixture" "tarball build falhou"; return 2; }
+  capture env HOME="$_h" INSTALL_BIN="$_h/.local/bin" INSTALL_LIB="$_h/.local/share/cstk" \
+    CSTK_RELEASE_URL="file://$_r/cstk-v0.1.0-test.tar.gz" PATH="$PATH" SHELL=/bin/zsh \
+    CSTK_INSTALL_TELEMETRY=yes sh "$BOOTSTRAP"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  grep -Fq '# >>> cstk telemetry >>>' "$_h/.zshrc" || { _fail "marker" "marcador begin ausente de .zshrc"; return 1; }
+  grep -Fq '# <<< cstk telemetry <<<' "$_h/.zshrc" || { _fail "marker" "marcador end ausente"; return 1; }
+  for _var in CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_METRICS_EXPORTER=prometheus \
+              OTEL_EXPORTER_PROMETHEUS_PORT CSTK_OTEL_ENDPOINT; do
+    grep -Fq "$_var" "$_h/.zshrc" || { _fail "var" "wrapper sem $_var"; return 1; }
+  done
+}
+
+# CSTK_INSTALL_TELEMETRY=yes + SHELL=bash: rc alvo e ~/.bashrc (o host pode
+# ser bash — deteccao por $SHELL, nao hardcoded zshrc).
+scenario_bootstrap_telemetry_yes_bash_writes_bashrc() {
+  _h="$TMPDIR_TEST/home-tel-bash"
+  _r="$TMPDIR_TEST/release-tel-bash"
+  _make_bootstrap_fixture "$_r" v0.1.0-test || { _error "fixture" "tarball build falhou"; return 2; }
+  capture env HOME="$_h" INSTALL_BIN="$_h/.local/bin" INSTALL_LIB="$_h/.local/share/cstk" \
+    CSTK_RELEASE_URL="file://$_r/cstk-v0.1.0-test.tar.gz" PATH="$PATH" SHELL=/bin/bash \
+    CSTK_INSTALL_TELEMETRY=yes sh "$BOOTSTRAP"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  grep -Fq '# >>> cstk telemetry >>>' "$_h/.bashrc" || { _fail "rc" "snippet nao foi para .bashrc com SHELL=bash"; return 1; }
+  [ ! -f "$_h/.zshrc" ] || { _fail "rc" "com SHELL=bash nao pode tocar .zshrc"; return 1; }
+}
+
+# Re-run com marcador ja presente: idempotente (1 unico bloco).
+scenario_bootstrap_telemetry_idempotent_rerun() {
+  _h="$TMPDIR_TEST/home-tel-idem"
+  _r="$TMPDIR_TEST/release-tel-idem"
+  _make_bootstrap_fixture "$_r" v0.1.0-test || { _error "fixture" "tarball build falhou"; return 2; }
+  for _i in 1 2; do
+    capture env HOME="$_h" INSTALL_BIN="$_h/.local/bin" INSTALL_LIB="$_h/.local/share/cstk" \
+      CSTK_RELEASE_URL="file://$_r/cstk-v0.1.0-test.tar.gz" PATH="$PATH" SHELL=/bin/zsh \
+      CSTK_INSTALL_TELEMETRY=yes sh "$BOOTSTRAP"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "run $_i esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  done
+  _n=$(grep -Fc '# >>> cstk telemetry >>>' "$_h/.zshrc")
+  [ "$_n" = 1 ] || { _fail "idem" "esperado 1 bloco apos re-run, obtido $_n"; return 1; }
+}
+
+# rc ja tem claude() proprio (sem marcadores): NUNCA sobrescrever — avisa e
+# aponta o caminho manual.
+scenario_bootstrap_telemetry_existing_claude_fn_preserved() {
+  _h="$TMPDIR_TEST/home-tel-existing"
+  _r="$TMPDIR_TEST/release-tel-existing"
+  _make_bootstrap_fixture "$_r" v0.1.0-test || { _error "fixture" "tarball build falhou"; return 2; }
+  mkdir -p "$_h"
+  printf 'claude() {\n  command claude --meu-wrapper "$@"\n}\n' > "$_h/.zshrc"
+  _before=$(cat "$_h/.zshrc")
+  capture env HOME="$_h" INSTALL_BIN="$_h/.local/bin" INSTALL_LIB="$_h/.local/share/cstk" \
+    CSTK_RELEASE_URL="file://$_r/cstk-v0.1.0-test.tar.gz" PATH="$PATH" SHELL=/bin/zsh \
+    CSTK_INSTALL_TELEMETRY=yes sh "$BOOTSTRAP"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$(cat "$_h/.zshrc")" = "$_before" ] || { _fail "preserve" "claude() pre-existente foi alterado"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"cstk help telemetry"*) : ;;
+    *) _fail "pointer" "sem instrucao manual no aviso: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
 run_all_scenarios
