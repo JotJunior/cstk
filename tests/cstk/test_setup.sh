@@ -1384,4 +1384,127 @@ scenario_verbose_flag_restores_progress() {
   esac
 }
 
+# ==== Dedup plugin-vence na area de hooks (FR-005, feature
+# claude-plugin-packaging FASE 6, task 6.2.4) — mesma regra 3-condicoes de
+# cli/lib/hooks.sh::hooks_main, replicada em _setup_run_hooks_area. ====
+
+# _setup_plugin_home_fixture HOME_DIR MODE: popula registro nativo
+# "cstk@cstk" instalado+habilitado em HOME_DIR; MODE=with-hooks cria
+# hooks/hooks.json no installPath, MODE=without-hooks nao (achado F4).
+_setup_plugin_home_fixture() {
+  _sphf_home=$1
+  _sphf_mode=$2
+  _sphf_ip="$_sphf_home/plugins/cache/cstk/6.8.0"
+  mkdir -p "$_sphf_home/.claude/plugins" "$_sphf_ip"
+  cat > "$_sphf_home/.claude/plugins/installed_plugins.json" <<EOF
+{"version":2,"plugins":{"cstk@cstk":[{"scope":"user","installPath":"$_sphf_ip","installedAt":"2026-08-01T00:00:00.000Z","lastUpdated":"2026-08-08T00:00:00.000Z"}]}}
+EOF
+  cat > "$_sphf_home/.claude/settings.json" <<'EOF'
+{"enabledPlugins": {"cstk@cstk": true}}
+EOF
+  if [ "$_sphf_mode" = "with-hooks" ]; then
+    mkdir -p "$_sphf_ip/hooks"
+    printf '{"hooks":{}}\n' > "$_sphf_ip/hooks/hooks.json"
+  fi
+}
+
+# Condicao 1: plugin cobre os hooks -> area pulada, ZERO chamada a
+# guard-hooks-status.sh (deteccao classica nem roda), exit 0.
+scenario_setup_hooks_dedup_skip_quando_plugin_cobre() {
+  _repo="$TMPDIR_TEST/repo-setup-dedup-skip"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-setup-dedup-skip"
+  mkdir -p "$_home"
+  _setup_plugin_home_fixture "$_home" with-hooks
+
+  _stubbin="$TMPDIR_TEST/stubbin-dedup-skip"
+  mkdir -p "$_stubbin"
+  _calls="$TMPDIR_TEST/gh-calls-dedup-skip.log"
+  : > "$_calls"
+  cat > "$_stubbin/guard-hooks-status.sh" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >> "$_calls"
+exit 1
+STUB
+  chmod +x "$_stubbin/guard-hooks-status.sh"
+
+  capture env PATH="$_stubbin:$PATH" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_setup_hooks_dedup_skip_quando_plugin_cobre" \
+      "esperado exit 0, obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  _n=$(wc -l < "$_calls" | tr -d ' ')
+  if [ "$_n" != "0" ]; then
+    _fail "scenario_setup_hooks_dedup_skip_quando_plugin_cobre" \
+      "guard-hooks-status.sh nao deveria ser chamado (dedup pula deteccao classica); chamadas=$_n"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"dedup, plugin vence"*) ;;
+    *)
+      _fail "scenario_setup_hooks_dedup_skip_quando_plugin_cobre" \
+        "esperava aviso de dedup em stderr: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
+# Condicao 2 (F4): plugin habilitado sem hooks.json -> prossegue com
+# deteccao classica normalmente (3 chamadas), so com aviso extra.
+scenario_setup_hooks_dedup_f4_prossegue_classico() {
+  _repo="$TMPDIR_TEST/repo-setup-dedup-f4"
+  _make_repo "$_repo"
+  _home="$TMPDIR_TEST/home-setup-dedup-f4"
+  mkdir -p "$_home"
+  _setup_plugin_home_fixture "$_home" without-hooks
+
+  _stubbin="$TMPDIR_TEST/stubbin-dedup-f4"
+  mkdir -p "$_stubbin"
+  _calls="$TMPDIR_TEST/gh-calls-dedup-f4.log"
+  : > "$_calls"
+  cat > "$_stubbin/guard-hooks-status.sh" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >> "$_calls"
+case "\$*" in
+  *--verify-registration*)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\tcanonical\n'
+    exit 0 ;;
+  *--include-loose-usage*)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-loose-usage.sh\tmissing\tunregistered\tunknown\n'
+    exit 0 ;;
+  *)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
+    exit 0 ;;
+esac
+STUB
+  chmod +x "$_stubbin/guard-hooks-status.sh"
+
+  # --verbose: a mensagem de inconsistencia F4 e emitida via _setup_info,
+  # gated por _SU_VERBOSE (default quiet so mostra o resumo [OK]/[FAIL]).
+  capture env PATH="$_stubbin:$PATH" HOME="$_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_repo" --dry-run --verbose
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "scenario_setup_hooks_dedup_f4_prossegue_classico" \
+      "esperado exit 0, obtido $_CAPTURED_EXIT (stderr: $_CAPTURED_STDERR)"
+    return 1
+  fi
+  _n=$(wc -l < "$_calls" | tr -d ' ')
+  if [ "$_n" != "3" ]; then
+    _fail "scenario_setup_hooks_dedup_f4_prossegue_classico" \
+      "esperava 3 chamadas classicas (F4 nao deve pular deteccao), obteve $_n"
+    return 1
+  fi
+  case "$_CAPTURED_STDERR" in
+    *"instalacao do plugin parece incompleta"*) ;;
+    *)
+      _fail "scenario_setup_hooks_dedup_f4_prossegue_classico" \
+        "esperava aviso F4 em stderr: $_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
 run_all_scenarios

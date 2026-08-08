@@ -41,6 +41,17 @@
 # Exit codes (--deps):
 #   0 nenhuma anomalia detectada
 #   1 ao menos uma anomalia (dependencia ausente ou abaixo do minimo)
+#
+# Secao "Distribution Paths" (feature claude-plugin-packaging, FASE 6,
+# task 6.3; contract cli-plugin-awareness.md §cstk doctor): emitida SOMENTE
+# quando o plugin "cstk" e detectado como habilitado via
+# plugin_settings_enabled (sinal fraco, so settings.json — mantem a secao
+# visivel mesmo com installed_plugins.json corrompido, contrato Scenario
+# 7). Reporta o alinhamento entre o catalogo classico (~/.claude/skills) e
+# o catalogo do plugin (<installPath>/skills) por hash_dir (NUNCA pelo
+# campo version do registro nativo — pode vir "unknown"). Nao interage com
+# --scope/--fix/--deps; roda sempre que aplicavel, independente das outras
+# flags (SC-006: ausencia de plugin = zero diferenca observavel).
 
 if [ -n "${_CSTK_DOCTOR_LOADED:-}" ]; then
   return 0 2>/dev/null
@@ -57,6 +68,11 @@ _CSTK_DOCTOR_LOADED=1
 . "${CSTK_LIB}/manifest.sh"
 # shellcheck source=/dev/null
 . "${CSTK_LIB}/config.sh"
+# shellcheck source=/dev/null
+# plugin-detect.sh (feature claude-plugin-packaging FASE 6): alimenta a
+# secao "Distribution Paths" (_doctor_distribution_paths). jq confinado
+# la (amendment 1.1.0); doctor.sh so consome as funcoes exportadas.
+. "${CSTK_LIB}/plugin-detect.sh"
 
 _doctor_print_help() {
   cat >&2 <<'HELP'
@@ -81,9 +97,17 @@ CLASSIFICACAO:
   MISSING  entry sem dir (use --fix para limpar manifest)
   ORPHAN   dir sem entry (skill third-party — preservada)
 
+DISTRIBUTION PATHS (secao condicional, so quando o plugin "cstk" do
+Claude Code esta habilitado neste ambiente — sem plugin, zero saida
+nova): compara o catalogo classico (~/.claude/skills) com o catalogo do
+plugin por hash de conteudo. Estados: plugin-only, aligned, diverged,
+duplicated-hooks (hooks classicos registrados no projeto ALEM do
+plugin), undetermined (registros nativos ilegiveis — nunca fatal).
+
 EXIT:
   0  sem drift, ou --fix executado (ou --deps sem anomalia)
-  1  drift detectado sem --fix (ou --deps com anomalia)
+  1  drift detectado sem --fix (ou --deps com anomalia, ou Distribution
+     Paths reportando diverged/duplicated-hooks)
 HELP
 }
 
@@ -121,10 +145,20 @@ doctor_main() {
 
   _doctor_emit_report
 
+  # Distribution Paths (FASE 6, task 6.3): independente de --scope/--fix —
+  # nao ha acao de --fix para divergencia entre catalogo classico e
+  # plugin (remediacao e sempre manual: cstk update / /plugin update /
+  # editar settings.json). Por isso o resultado NUNCA e suprimido pelo
+  # ramo --fix abaixo (ao contrario do drift de manifest, que --fix pode
+  # legitimamente zerar).
+  _doctor_distribution_paths
+  _doctor_dp_rc=$?
+
   if [ "$_doctor_fix" = 1 ]; then
+    [ "$_doctor_dp_rc" = 0 ] || return 1
     return 0
   fi
-  if [ "$_doctor_count_drift" -gt 0 ]; then
+  if [ "$_doctor_count_drift" -gt 0 ] || [ "$_doctor_dp_rc" != 0 ]; then
     return 1
   fi
   return 0
@@ -394,6 +428,115 @@ _doctor_emit_report() {
       fi
     fi
   } >&2
+}
+
+# _doctor_distribution_paths — secao "Distribution Paths" (FASE 6, task
+# 6.3; contract cli-plugin-awareness.md §cstk doctor, data-model.md Entity
+# Installation Alignment Report). Read-only, sem --fix associado.
+#
+# GATE de exibicao: plugin_settings_enabled cstk (sinal FRACO, so
+# settings.json) — se falhar, a secao inteira e OMITIDA (status classic-
+# only implicito, sem imprimir nada, SC-006). Isso e deliberadamente MAIS
+# TOLERANTE que plugin_enabled (que exige os 2 sinais validos): o
+# contrato exige que installed_plugins.json corrompido AINDA mostre a
+# secao (com status=undetermined), desde que settings.json confirme
+# habilitado — Scenario 7 do quickstart.
+#
+# Determinacao de status (nesta ordem — duplicated-hooks tem precedencia
+# sobre aligned/diverged, pois e o achado mais acionavel: efeito duplo
+# real, nao so drift de conteudo):
+#   1. installPath nao resolve (installed_plugins.json ilegivel/corrompido
+#      apesar do settings.json dizer habilitado) -> undetermined
+#   2. settings.json DESTE PROJETO (./.claude/settings.json, cwd) ja tem o
+#      snippet classico de hooks registrado -> duplicated-hooks
+#   3. ~/.claude/skills ausente -> plugin-only
+#   4. hash_dir(~/.claude/skills) == hash_dir(<installPath>/skills) -> aligned
+#   5. hashes calculados mas diferentes -> diverged
+#   6. qualquer hash_dir falhar apos os checks acima -> undetermined
+#
+# NOTA sobre "diverged" e ordenacao temporal (Constitution VI — nunca
+# inventar dado factual): o contrato pede para "apontar qual esta
+# desatualizado", mas TAMBEM proibe inferir isso por timestamp/mtime, e
+# nao ha terceira fonte de verdade disponivel em tempo de execucao (o
+# operador pode nao ter o repo cstk clonado). Reportar uma ordem sem fonte
+# rastreavel seria fabricar dado (violacao direta do Principio VI) —
+# em vez disso, o relatorio mostra AMBOS os hashes truncados e AMBAS as
+# remediacoes possiveis, deixando o operador decidir com contexto que so
+# ele tem (o que rodou por ultimo).
+#
+# Saida em stderr (mesmo canal do relatorio principal). Retorno (via
+# echo do exit code, NAO stdout — consumido por doctor_main via $?):
+#   0  omitida, plugin-only, aligned, ou undetermined
+#   1  diverged ou duplicated-hooks
+_doctor_distribution_paths() {
+  if ! plugin_settings_enabled cstk; then
+    return 0
+  fi
+
+  _dp_classic_root="${HOME:?HOME nao setado}/.claude/skills"
+  _dp_project_settings="./.claude/settings.json"
+
+  if ! _dp_plugin_root=$(plugin_install_path cstk); then
+    {
+      printf '\n==> Distribution Paths (plugin cstk)\n'
+      printf '  [undetermined] registro de instalacao do plugin ilegivel/ausente,\n'
+      printf '                 apesar de settings.json indicar habilitado.\n'
+      printf '                 Degradando para classic-only (nenhum erro fatal).\n'
+    } >&2
+    return 0
+  fi
+
+  # duplicated-hooks tem precedencia — checagem barata (grep -F, sem jq).
+  if [ -f "$_dp_project_settings" ] \
+     && grep -qF "pretooluse-bash-guard.sh" "$_dp_project_settings" 2>/dev/null; then
+    {
+      printf '\n==> Distribution Paths (plugin cstk)\n'
+      printf '  [duplicated-hooks] plugin habilitado E registro classico de hooks\n'
+      printf '                     presente em %s\n' "$_dp_project_settings"
+      printf '  remediacao: remova o bloco de hooks do cstk de %s\n' "$_dp_project_settings"
+      printf '              (o plugin ja os provê — mesma regra de "cstk hooks install").\n'
+    } >&2
+    return 1
+  fi
+
+  if [ ! -d "$_dp_classic_root" ]; then
+    {
+      printf '\n==> Distribution Paths (plugin cstk)\n'
+      printf '  [plugin-only] catalogo classico ausente (%s); so o plugin esta presente.\n' "$_dp_classic_root"
+    } >&2
+    return 0
+  fi
+
+  _dp_classic_hash=$(hash_dir "$_dp_classic_root" 2>/dev/null) || _dp_classic_hash=""
+  _dp_plugin_hash=$(hash_dir "$_dp_plugin_root/skills" 2>/dev/null) || _dp_plugin_hash=""
+
+  if [ -z "$_dp_classic_hash" ] || [ -z "$_dp_plugin_hash" ]; then
+    {
+      printf '\n==> Distribution Paths (plugin cstk)\n'
+      printf '  [undetermined] nao foi possivel calcular hash_dir de um dos dois caminhos.\n'
+    } >&2
+    return 0
+  fi
+
+  if [ "$_dp_classic_hash" = "$_dp_plugin_hash" ]; then
+    {
+      printf '\n==> Distribution Paths (plugin cstk)\n'
+      printf '  [aligned] OK: catalogo classico e plugin alinhados (mesmo hash_dir).\n'
+    } >&2
+    return 0
+  fi
+
+  {
+    printf '\n==> Distribution Paths (plugin cstk)\n'
+    printf '  [diverged] catalogo classico e plugin tem conteudo diferente:\n'
+    printf '    classico (%s): %s\n' "$_dp_classic_root" "$(printf '%s' "$_dp_classic_hash" | cut -c1-12)..."
+    printf '    plugin   (%s): %s\n' "$_dp_plugin_root/skills" "$(printf '%s' "$_dp_plugin_hash" | cut -c1-12)..."
+    printf '  remediacao: se o CLASSICO estiver desatualizado, rode `cstk update`;\n'
+    printf '              se o PLUGIN estiver desatualizado, rode `/plugin update cstk@cstk`.\n'
+    printf '              (o hash nao revela qual lado mudou por ultimo — confira qual\n'
+    printf '              caminho voce atualizou mais recentemente.)\n'
+  } >&2
+  return 1
 }
 
 # _doctor_deps_run — modo `cstk doctor --deps` (feature state-backend-config,

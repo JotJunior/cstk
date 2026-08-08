@@ -359,18 +359,18 @@ Ref: plan.md Fase 5; contracts/cli-plugin-awareness.md
 
 Ref: contracts/cli-plugin-awareness.md §Helper compartilhado
 
-- [ ] 6.1.1 `plugin_enabled <nome>`: le
+- [x] 6.1.1 `plugin_enabled <nome>`: le
       `~/.claude/plugins/installed_plugins.json` (installPath) **e**
       `~/.claude/settings.json` (`enabledPlugins["<nome>@<mkt>"] == true`);
       ambos os sinais exigidos (research.md Decision 4)
-- [ ] 6.1.2 `plugin_install_path <nome>`: stdout = path absoluto; exit 0/1
-- [ ] 6.1.3 `plugin_hooks_present <nome>`: exit 0 se
+- [x] 6.1.2 `plugin_install_path <nome>`: stdout = path absoluto; exit 0/1
+- [x] 6.1.3 `plugin_hooks_present <nome>`: exit 0 se
       `<installPath>/hooks/hooks.json` existe e e legivel; exit 1 caso
       contrario
-- [ ] 6.1.4 Degradacao: arquivo ausente → exit 1 (nao habilitado); JSON
+- [x] 6.1.4 Degradacao: arquivo ausente → exit 1 (nao habilitado); JSON
       malformado/`jq` ausente → exit 2 (indeterminado); qualquer consumidor
       trata exit 2 como "nao habilitado" (nunca suprime a guarda classica)
-- [ ] 6.1.5 Escrever `tests/cstk/test_plugin-detect.sh` cobrindo os 3
+- [x] 6.1.5 Escrever `tests/cstk/test_plugin-detect.sh` cobrindo os 3
       estados (instalado+habilitado, so instalado, ausente) x degradacao
       (JSON malformado, `jq` ausente)
 
@@ -378,17 +378,17 @@ Ref: contracts/cli-plugin-awareness.md §Helper compartilhado
 
 Ref: contracts/cli-plugin-awareness.md §`cstk hooks install`; spec.md FR-005; F4 (dec-027)
 
-- [ ] 6.2.1 Implementar a regra das 3 condicoes: skip do snippet classico
+- [x] 6.2.1 Implementar a regra das 3 condicoes: skip do snippet classico
       exige `plugin_enabled == 0` **e** `plugin_hooks_present == 0` (as
       duas — nunca so a primeira, corrige F4)
-- [ ] 6.2.2 Se `plugin_enabled == 0` mas `plugin_hooks_present != 0`:
+- [x] 6.2.2 Se `plugin_enabled == 0` mas `plugin_hooks_present != 0`:
       provisionar normalmente + aviso de inconsistencia
-- [ ] 6.2.3 No caso de skip: nao copiar scripts para `.claude/hooks/`,
+- [x] 6.2.3 No caso de skip: nao copiar scripts para `.claude/hooks/`,
       emitir aviso orientando remocao de registro classico pre-existente,
       exit 0
-- [ ] 6.2.4 Replicar a mesma regra em `cstk setup` (etapa de hooks pulada
+- [x] 6.2.4 Replicar a mesma regra em `cstk setup` (etapa de hooks pulada
       com aviso quando aplicavel; demais etapas inalteradas)
-- [ ] 6.2.5 Atualizar `tests/cstk/test_hooks.sh` cobrindo os 3 ramos (dedup
+- [x] 6.2.5 Atualizar `tests/cstk/test_hooks.sh` cobrindo os 3 ramos (dedup
       skip, inconsistencia F4, comportamento identico ao atual quando
       plugin nao habilitado)
 
