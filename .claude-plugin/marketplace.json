@@ -7,14 +7,14 @@
       "name": "cstk",
       "description": "Pipeline SDD completa (briefing -> review-features), orquestradores autonomos 00c e guardas enforced",
       "source": "./plugins/cstk",
-      "version": "6.8.0",
+      "version": "7.0.0",
       "category": "development"
     },
     {
       "name": "cstk-language-go",
       "description": "Perfil Go do cstk: skills e hooks especificos de linguagem",
       "source": "./plugins/cstk-language-go",
-      "version": "6.8.0",
+      "version": "7.0.0",
       "category": "development"
     }
   ]
