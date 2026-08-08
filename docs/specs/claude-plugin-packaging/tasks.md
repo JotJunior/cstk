@@ -454,38 +454,74 @@ Ref: plan.md Fase 6; spec.md FR-013
 
 ### 7.1 Atualizar README com os dois caminhos de instalacao `[M]`
 
-- [ ] 7.1.1 Descrever o caminho classico e o caminho plugin, com criterio
-      de escolha (ou uso combinado dos dois)
-- [ ] 7.1.2 Atualizar a contagem "N skills globais" se os paths mudarem a
-      forma de contagem (gate `tests/test_doc-counts.sh`)
+- [x] 7.1.1 Descrever o caminho classico e o caminho plugin, com criterio
+      de escolha (ou uso combinado dos dois). Nova subsecao "Via Claude
+      Code plugin (native, no binary)" em README.md (apos "Project scope"),
+      com comandos reais (`/plugin marketplace add`, `/plugin install`),
+      tabela comparativa de escolha e nota de dedup (`cstk doctor`/`hooks
+      install` — plugin vence)
+- [x] 7.1.2 Atualizar a contagem "N skills globais" se os paths mudarem a
+      forma de contagem (gate `tests/test_doc-counts.sh`). Contagem
+      inalterada (22 — `git mv` nao muda quantidade); ASCII tree da secao
+      "## Structure" atualizada para `plugins/cstk/skills/` +
+      `plugins/cstk-language-go/`; gate `test_doc-counts.sh` verde (3/3)
 
 ### 7.2 Atualizar CLAUDE.md `[M]`
 
-- [ ] 7.2.1 Adicionar secao descrevendo o plugin, `plugin-detect.sh`, o
-      dedup de hooks e a secao `Distribution Paths` do `doctor`
-- [ ] 7.2.2 Atualizar as referencias de path de `global/` para
-      `plugins/cstk/` em todo o arquivo (mapeamento de testes, arquitetura)
+- [x] 7.2.1 Adicionar secao descrevendo o plugin, `plugin-detect.sh`, o
+      dedup de hooks e a secao `Distribution Paths` do `doctor`. Nova
+      secao "## Distribuicao via plugin nativo do Claude Code
+      (`claude-plugin-packaging`)" apos "## Installed vs Source Drift",
+      incluindo a tabela do modelo de integridade por caminho (plan.md)
+- [x] 7.2.2 Atualizar as referencias de path de `global/` para
+      `plugins/cstk/` em todo o arquivo (mapeamento de testes,
+      arquitetura). O corpo do arquivo ja estava atualizado (onda
+      anterior); so a ASCII tree da secao "## Architecture" ainda citava
+      `global/`/`language-related/` — corrigida para `plugins/cstk/` +
+      `plugins/cstk-language-go/`. CLAUDE.md e gitignored (nao versionado
+      neste repo — nota do memory `project_claudemd_gitignored`)
 
 ### 7.3 Atualizar CHANGELOG.md com nota BREAKING `[C]`
 
 Ref: plan.md §Constitution Check (Principio I); Nota de governanca
 
-- [ ] 7.3.1 Nova entrada `## [X.0.0]` (bump MAJOR) com nota BREAKING
+- [x] 7.3.1 Nova entrada `## [X.0.0]` (bump MAJOR) com nota BREAKING
       explicita: relocacao `global/` → `plugins/cstk/`,
-      `language-related/go/` → `plugins/cstk-language-go/`
-- [ ] 7.3.2 Adicionar a linha de link reference
-      (`[X.0.0]: https://github.com/JotJunior/cstk/releases/tag/vX.0.0`) no
-      rodape do CHANGELOG — checagem `comm -23` documentada no CLAUDE.md
+      `language-related/go/` → `plugins/cstk-language-go/`. Versao
+      concreta escolhida: `[7.0.0]` (MAJOR seguinte a 6.8.0 — decisao
+      registrada; numero final de release permanece a cargo do operador
+      via `release-wave`, task 7.5 DEFERRED)
+- [x] 7.3.2 Adicionar a linha de link reference
+      (`[7.0.0]: https://github.com/JotJunior/cstk/releases/tag/v7.0.0`) no
+      rodape do CHANGELOG — checagem `comm -23` rodada, 0 headers sem ref
 
 ### 7.4 Consolidar os fallbacks documentados de A1-A5 na documentacao final `[A]`
 
 Ref: checklists/requirements.md CHK019/CHK023 (fechados na FASE 1); tasks 1.5.3/1.5.4
 
-- [ ] 7.4.1 Confirmar que os fallbacks decididos na FASE 1 (tasks
+- [x] 7.4.1 Confirmar que os fallbacks decididos na FASE 1 (tasks
       1.5.3/1.5.4) estao refletidos em FR-013/README/CLAUDE.md, nao apenas
-      no `state.json` da execucao
-- [ ] 7.4.2 Rodar o gate `validate-docs-rendered` sobre README/CLAUDE.md/
-      CHANGELOG atualizados
+      no `state.json` da execucao. A1 verdadeira (sem fallback 1.5.2
+      aplicavel); A2 (update de plugin exige `marketplace update` +
+      `plugin update --scope` + restart, sem live-reload) refletido na
+      tabela "Choosing between the two paths" do README e no paragrafo
+      "Achado empirico A1-A5" do CLAUDE.md; A4 (sem tracking automatico de
+      `ref`, fluxo de release do toolkit e o unico gatilho) refletido no
+      mesmo par de trechos
+- [x] 7.4.2 Rodar o gate `validate-docs-rendered` sobre README/CLAUDE.md/
+      CHANGELOG atualizados. README: 0 ERRO (2 AVISO pre-existentes,
+      fences de ASCII tree sem linguagem, nao introduzidos por esta
+      task); 2 AVISO corrigidos nesta task (pipe escapado em tabela,
+      fence de exemplo `/plugin` sem linguagem). CLAUDE.md: 1 ERRO
+      pre-existente e fora de escopo (link morto para
+      `docs/specs/loose-usage-capture/contracts/cli-usage.md` — causado
+      por dirty state NAO desta feature: arquivos ja arquivados em
+      `docs/specs/_archived/2026-08-08-loose-usage-capture/` porem
+      deletados sem commit; nao tocado, fora do escopo de
+      `claude-plugin-packaging`). CHANGELOG.md: 4 ERRO pre-existentes em
+      entradas historicas (2026-04-19 a 2026-07-xx, specs arquivadas
+      depois da entrada ter sido escrita) — nenhum na entrada `[7.0.0]`
+      adicionada por esta task
 
 ### 7.5 [DEFERRED] Publicacao da tag e release `[M]`
 
