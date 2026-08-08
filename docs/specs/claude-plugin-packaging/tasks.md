@@ -34,49 +34,49 @@ os gaps abertos em `checklists/requirements.md` e `checklists/security.md`.
 
 Ref: plan.md linhas 152/159-161; quickstart.md Scenarios 1-3; research.md Decision 1
 
-- [ ] 1.1.1 Criar plugin minimo descartavel (marketplace.json + plugin.json
+- [x] 1.1.1 Criar plugin minimo descartavel (marketplace.json + plugin.json
       via `source` file-path local) num diretorio de teste fora do repo
       contendo 1 skill trivial + `hooks/hooks.json` com os 3 hooks reais
       (`pretooluse-bash-guard.sh`, `posttooluse-tool-call-tick.sh`,
       `posttooluse-agent-usage.sh`)
-- [ ] 1.1.2 Registrar o marketplace local via `/plugin marketplace add
+- [x] 1.1.2 Registrar o marketplace local via `/plugin marketplace add
       <path-local>` (Scenario 1 do quickstart)
-- [ ] 1.1.3 Instalar via `/plugin install <nome>@<marketplace-local>` e
+- [x] 1.1.3 Instalar via `/plugin install <nome>@<marketplace-local>` e
       habilitar o plugin
 
 ### 1.2 Validar A1/A2 - hooks ativos e timing `[C]`
 
 Ref: quickstart.md Scenario 2; research.md Assumptions A1/A2
 
-- [ ] 1.2.1 Abrir um projeto que nunca rodou `cstk hooks install`;
+- [x] 1.2.1 Abrir um projeto que nunca rodou `cstk hooks install`;
       confirmar ausencia de bloco de hooks classico em `.claude/settings.json`
-- [ ] 1.2.2 Rodar um comando `Bash` bloqueavel (ex.: `sudo`) e registrar se
+- [x] 1.2.2 Rodar um comando `Bash` bloqueavel (ex.: `sudo`) e registrar se
       foi interceptado sem nenhum passo manual (evidencia de A1)
-- [ ] 1.2.3 Se o hook so ativar apos `/reload-plugins` ou reinicio da
+- [x] 1.2.3 Se o hook so ativar apos `/reload-plugins` ou reinicio da
       sessao, registrar o timing real observado (evidencia de A2) — nunca
       supor
-- [ ] 1.2.4 Fechar uma onda de execucao autonoma nesse projeto e conferir
+- [x] 1.2.4 Fechar uma onda de execucao autonoma nesse projeto e conferir
       `tool_calls > 0` no state (evidencia de PostToolUse ativo)
 
 ### 1.3 Validar A3/A4 - source relativo e semantica de ref `[A]`
 
 Ref: quickstart.md Scenarios 1 e 3; research.md Assumptions A3/A4
 
-- [ ] 1.3.1 Confirmar que `source` relativo (`"./plugins/cstk"`) resolve
+- [x] 1.3.1 Confirmar que `source` relativo (`"./plugins/cstk"`) resolve
       corretamente a partir de um marketplace hospedado no proprio repo
-- [ ] 1.3.2 Publicar 2 estados do plugin de teste (tag antiga vs `main`) e
+- [x] 1.3.2 Publicar 2 estados do plugin de teste (tag antiga vs `main`) e
       observar se `ref: <tag>` atualiza como esperado ao trocar a tag, e
       como `ref: main` se comporta em comparacao (evidencia de A4)
-- [ ] 1.3.3 Rodar o roundtrip empirico: `diff -r` entre o `installPath`
+- [x] 1.3.3 Rodar o roundtrip empirico: `diff -r` entre o `installPath`
       materializado e a arvore comitada no mesmo ref (Scenario 3)
 
 ### 1.4 Validar A5 - bit de execucao preservado `[A]`
 
 Ref: quickstart.md Scenario 3 passo 4; research.md Assumption A5
 
-- [ ] 1.4.1 `find "<installPath>" -name '*.sh' ! -perm -u+x` apos a
+- [x] 1.4.1 `find "<installPath>" -name '*.sh' ! -perm -u+x` apos a
       instalacao — confirmar se o bit `+x` sobrevive a materializacao
-- [ ] 1.4.2 Confirmar que a invocacao via `sh "<path>"` (ja adotada em
+- [x] 1.4.2 Confirmar que a invocacao via `sh "<path>"` (ja adotada em
       todos os `command` de `hooks.json`) torna A5 irrelevante mesmo se o
       bit nao sobreviver
 
@@ -85,28 +85,28 @@ Ref: quickstart.md Scenario 3 passo 4; research.md Assumption A5
 Ref: checklists/requirements.md CHK021 (materializacao do spike como task
 bloqueante), CHK019 (fallback se A1 falsa), CHK023 (fallback A3/A4)
 
-- [ ] 1.5.1 Registrar Decisao auditavel (`state-decisions.sh register
+- [x] 1.5.1 Registrar Decisao auditavel (`state-decisions.sh register
       --score 3 --evidencia "<output empirico das tasks 1.2-1.4>"`) com o
       veredito de cada assumption (A1..A5: confirmada ou refutada)
-- [ ] 1.5.2 **SE A1 for FALSA** (hooks nao ativam automaticamente so por
+- [x] 1.5.2 **SE A1 for FALSA** (hooks nao ativam automaticamente so por
       habilitar o plugin): registrar bloqueio humano (`bloqueios.sh
       register`) propondo reavaliacao de escopo/SC-002 e **NAO** prosseguir
       para FASE 4 em diante ate resposta do operador — apenas FASE 2 e
       FASE 3 (independentes do veredito) podem continuar. Fallback
       operacional a documentar: `cstk hooks install --scope project`
       permanece necessario para esse projeto
-- [ ] 1.5.3 **SE A1 for VERDADEIRA mas A2 revelar timing extra** (ex.:
+- [x] 1.5.3 **SE A1 for VERDADEIRA mas A2 revelar timing extra** (ex.:
       exige `/reload-plugins` apos habilitar): documentar o passo adicional
       como fallback operacional a incluir em FR-013/README (consumido na
       task 7.4) e atualizar `spec.md` §Clarifications substituindo
       `[ASSUMPTION a validar empiricamente]` pelo resultado observado
-- [ ] 1.5.4 **SE A3 ou A4 revelarem comportamento diferente do assumido**
+- [x] 1.5.4 **SE A3 ou A4 revelarem comportamento diferente do assumido**
       (source relativo nao resolve, ou `ref: main` nao atualiza como
       esperado): documentar o fallback (ex.: nunca depender de `ref: main`
       implicito, usar sempre a tag explicita no fluxo de release) — a
       decisao alimenta a task 5.1.2 antes de `marketplace.json` ser
       finalizado
-- [ ] 1.5.5 Atualizar `spec.md` §Clarifications trocando cada
+- [x] 1.5.5 Atualizar `spec.md` §Clarifications trocando cada
       `[ASSUMPTION a validar empiricamente]` (A1-A5) pelo resultado
       empirico confirmado, com evidencia citada — nenhuma assumption pode
       permanecer sem fechamento apos esta fase

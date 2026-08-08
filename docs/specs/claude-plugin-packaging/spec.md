@@ -33,16 +33,58 @@
   nenhum guard adicional em tempo de execucao nos scripts de hook.
 - Q: Habilitar o plugin cstk ja e suficiente para os hooks de guarda
   ficarem ativos automaticamente, sem nenhum passo de confianca adicional
-  especifico para hooks? → A: [ASSUMPTION a validar empiricamente] — a doc
-  oficial (discover-plugins/plugins-reference) confirma a tela "Will
-  install" (lista hooks/MCP antes de instalar) + aviso geral de confianca,
-  mas NAO confirma nem nega um gate de consentimento separado especifico
-  para hooks, nem o timing exato de ativacao (pode exigir `/reload-plugins`
-  apos habilitar). A spec assume, defensivamente, que basta habilitar o
-  plugin — sem inventar um comportamento de plataforma nao documentado
-  (Constitution VI); o backlog (`create-tasks`) MUST incluir uma task de
-  validacao empirica dessa premissa antes de FR-004 ser dado como
-  encerrado.
+  especifico para hooks? → A: **CONFIRMADO EMPIRICAMENTE (FASE 1 do
+  backlog, dec-037)** via spike descartavel isolado (marketplace/plugin de
+  teste, `claude` CLI real com `HOME` sandboxed + `--plugin-dir`, sem
+  tocar `~/.claude/plugins/` do operador — residuo verificado limpo ao
+  final). Resultado por assumption:
+  - **A1 (habilitar basta)** — CONFIRMADA. Uma sessao `claude -p` iniciada
+    com o plugin ja habilitado (equivalente ao estado apos `/plugin
+    install` + proxima sessao) disparou os hooks `PreToolUse`(`Bash`) e
+    `PostToolUse`(`*`) na PRIMEIRA tool call, sem `cstk hooks install` e
+    sem nenhum gate de consentimento adicional alem do carregamento do
+    proprio plugin. Evidencia literal (marker file):
+    `PreToolUse-Bash|2026-08-08T03:57:32Z|CLAUDE_PLUGIN_ROOT=.../plugins/cstk-probe`
+    seguido de `PostToolUse-Any|...` seguido de resposta do `claude`
+    (`hello-from-probe`), tudo na mesma execucao.
+  - **A2 (timing)** — sessao NOVA com plugin ja habilitado: ativacao
+    imediata, sem `/reload-plugins`. Update de um plugin JA instalado
+    (`claude plugin update <nome> --scope <escopo>`) EXIGE restart
+    explicito — o proprio CLI emite literalmente `Restart to apply
+    changes.`; mudanca de conteudo NAO e live-reloaded numa sessao ja
+    aberta. Nao testado: habilitar o plugin NO MEIO de uma sessao ja
+    rodando (fora do escopo de SC-002, que assume sessao nova apos
+    instalacao).
+  - **A3 (source relativo resolve)** — CONFIRMADA. `"source":
+    "./plugins/cstk-probe"` (relativo, dentro do proprio repo do
+    marketplace) materializou via `claude plugin install`; roundtrip
+    `diff -r <installPath> <arvore-fonte>` = zero diferenca.
+  - **A4 (semantica de `ref`)** — a pergunta original presumia o schema
+    `git-subdir` (`url`+`path`+`ref`+`sha`), que o cstk **nao usa** (cstk
+    usa `source` string relativa dentro do PROPRIO repo — A3 confirma que
+    esse e o mecanismo certo). Tentativa empirica com `git-subdir` +
+    `path: "."` produziu checkout vazio (achado negativo, mas de
+    mecanismo irrelevante ao design ratificado). O que E relevante ao
+    mecanismo real foi validado: atualizar um plugin de `source` relativo
+    e um processo EXPLICITO em duas etapas — `claude plugin marketplace
+    update <marketplace>` seguido de `claude plugin update <plugin>
+    --scope <escopo>` — sem tracking automatico de branch/tag; nao ha
+    `ref` a fixar para esse tipo de fonte. Fallback: nunca assumir
+    propagacao automatica de release — o fluxo de release do toolkit
+    (tag + CHANGELOG) continua sendo o unico gatilho de "nova versao
+    disponivel", e o operador MUST rodar update explicito + reiniciar a
+    sessao.
+  - **A5 (bit `+x` preservado)** — CONFIRMADA. `find <installPath> -name
+    '*.sh' ! -perm -u+x` retornou vazio; `.sh` materializado manteve
+    `-rwxr-xr-x`.
+  - **Achado adicional (nao-assumption, schema)**: `claude plugin
+    validate --strict` acusa aviso se `plugin.json` nao tiver o campo
+    `version` proprio (alem do `version` no `marketplace.json`) — os
+    Artefatos 2/3 de `contracts/plugin-artifacts.md` MUST incluir
+    `"version"` em `plugin.json` (nao so em `marketplace.json`); a
+    validar/corrigir na FASE 5.
+  - Nenhuma assumption bloqueante (A1 CONFIRMADA) — FASE 4 em diante
+    prossegue sem bloqueio humano.
 
 ## User Scenarios & Testing
 
@@ -245,13 +287,12 @@ aviso.
   consumo avulso) empacotados junto do plugin, de forma que fiquem ativos
   automaticamente em qualquer projeto onde o plugin esteja habilitado — sem
   exigir do operador um passo de provisionamento manual adicional por
-  projeto. [ASSUMPTION a validar empiricamente — ver secao Clarifications]:
-  esta spec assume que habilitar o plugin basta para os hooks ficarem
-  ativos, sem gate de consentimento extra especifico para hooks alem do
-  trust dialog padrao de habilitacao do plugin; a doc oficial confirma a
-  tela "Will install" + aviso geral de confianca, mas nao confirma nem nega
-  um gate adicional nem o timing exato de ativacao. O backlog (`create-tasks`)
-  MUST incluir task de validacao empirica dessa premissa.
+  projeto. **CONFIRMADO EMPIRICAMENTE (FASE 1 do backlog, dec-037 — ver
+  secao Clarifications)**: habilitar o plugin basta; hooks disparam desde a
+  primeira tool call de uma sessao nova, sem gate de consentimento extra
+  especifico para hooks e sem `/reload-plugins`. Atualizacao de um plugin
+  ja instalado exige restart explicito da sessao (nao afeta este FR, que
+  trata da ativacao inicial).
 - **FR-005**: Quando um projeto-alvo tiver tanto o plugin habilitado quanto
   hooks provisionados pelo caminho classico, o sistema MUST evitar
   duplicacao de efeito (bloqueio disparado duas vezes, contagem de tool
