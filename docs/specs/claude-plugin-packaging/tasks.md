@@ -122,20 +122,20 @@ bloqueante), CHK019 (fallback se A1 falsa), CHK023 (fallback A3/A4)
 Ref: checklists/requirements.md CHK006; checklists/security.md CHK002,
 CHK006; plan.md linhas 163-193 (gate owasp F1, dec-026/dec-027)
 
-- [ ] 2.1.1 Editar `spec.md` > Delta Requirements > Capability
+- [x] 2.1.1 Editar `spec.md` > Delta Requirements > Capability
       `guards-defense-in-depth` > FR-017: trocar "o mesmo conjunto de
       garantias de seguranca" pela redacao do plan (linhas 191-193):
       "garantias equivalentes em efeito, com mecanismos e responsaveis
       distintos, documentados por caminho"
-- [ ] 2.1.2 Adicionar a tabela "Modelo de integridade por caminho de
+- [x] 2.1.2 Adicionar a tabela "Modelo de integridade por caminho de
       distribuicao" (plan.md linhas 169-176: verificacao de integridade,
       origem confiavel, transporte, consentimento, quem aplica) na propria
       `spec.md` — fecha CHK002
-- [ ] 2.1.3 Adicionar nota explicita sobre transporte HTTPS do caminho
+- [x] 2.1.3 Adicionar nota explicita sobre transporte HTTPS do caminho
       plugin: fato observado do mecanismo do harness (nao uma politica que
       o toolkit impoe, diferente de `trusted-hosts.sh` no caminho
       classico) — fecha CHK006 de `checklists/security.md`
-- [ ] 2.1.4 Revisar `checklists/requirements.md` CHK006 e
+- [x] 2.1.4 Revisar `checklists/requirements.md` CHK006 e
       `checklists/security.md` CHK002/CHK006, marcar `[x]` citando a nova
       secao da spec
 
@@ -143,32 +143,37 @@ CHK006; plan.md linhas 163-193 (gate owasp F1, dec-026/dec-027)
 
 Ref: checklists/requirements.md CHK014
 
-- [ ] 2.2.1 Decidir e documentar um criterio objetivo para SC-001 (ex.:
+- [x] 2.2.1 Decidir e documentar um criterio objetivo para SC-001 (ex.:
       numero de comandos do operador — `/plugin marketplace add` +
       `/plugin install` + habilitar = 3 passos, comparavel ao numero de
       passos de qualquer outro plugin do Claude Code) OU registrar Decisao
       explicita justificando a ausencia de um numero proprio (a comparacao
       e com um mecanismo nativo fora do controle do toolkit)
-- [ ] 2.2.2 Atualizar `spec.md` SC-001 com o criterio (ou a justificativa
+- [x] 2.2.2 Atualizar `spec.md` SC-001 com o criterio (ou a justificativa
       registrada) e marcar CHK014 `[x]`
 
 ### 2.3 Documentar os 2 achados LOW do gate owasp-security `[M]`
 
 Ref: checklists/security.md CHK019; dec-026 (onda-004)
 
-- [ ] 2.3.1 Recuperar o detalhe dos 2 achados LOW citados em dec-026
+- [x] 2.3.1 Recuperar o detalhe dos 2 achados LOW citados em dec-026
       ("0 CRITICAL, 0 HIGH, 3 MEDIUM..., 2 LOW") consultando o
       output/transcript bruto da invocacao original da skill
       `owasp-security` desta feature; se indisponivel, re-rodar
       `Skill(owasp-security)` sobre `plan.md` + `contracts/` para
-      regenerar o relatorio completo
-- [ ] 2.3.2 **Se a identidade dos 2 LOW nao puder ser recuperada de fonte
+      regenerar o relatorio completo — **log original indisponivel**
+      (nao presente em `state-history/` nem `backups/`); skill
+      re-executada sobre `plan.md` + os 2 contratos nesta onda
+- [x] 2.3.2 **Se a identidade dos 2 LOW nao puder ser recuperada de fonte
       real** (nem log, nem re-execucao) — registrar bloqueio humano em vez
       de supor ou inventar a descricao (Constitution VI); nunca fabricar
-      nomes de findings
-- [ ] 2.3.3 Registrar Decisao nomeando os 2 LOW com descricao rastreavel
+      nomes de findings — **N/A**: a re-execucao produziu 2 achados LOW
+      grounded em fonte real (linhas de codigo/contrato citadas), sem
+      necessidade de bloqueio humano
+- [x] 2.3.3 Registrar Decisao nomeando os 2 LOW com descricao rastreavel
       (referenciando dec-026) e marcar CHK019 de `checklists/security.md`
-      `[x]`
+      `[x]` — dec-042 (LOW-1 corresponde ao "F2" da evidencia de dec-026;
+      LOW-2 e novo, achado nesta re-execucao)
 
 ---
 

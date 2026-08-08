@@ -386,8 +386,14 @@ aviso.
 
 - **SC-001**: Um operador habilita o catalogo completo do toolkit (skills,
   commands, agents) num projeto novo, atraves do mecanismo nativo de
-  plugins, sem executar nenhum comando de copia manual — tempo do processo
-  comparavel ao de habilitar qualquer outro plugin do Claude Code.
+  plugins, sem executar nenhum comando de copia manual, em **no maximo 2
+  comandos do operador** (`/plugin marketplace add <repo-do-toolkit>` +
+  `/plugin install cstk@cstk`) — identico ao numero de comandos exigido
+  para habilitar qualquer outro plugin atraves do mesmo mecanismo nativo
+  (evidencia empirica: FASE 1 do backlog, tasks 1.1.2/1.1.3, dec-037 —
+  nenhum passo adicional especifico do cstk). O criterio nao mede tempo em
+  segundos porque a materializacao do plugin e responsabilidade do
+  harness do Claude Code (fora do controle do toolkit medir).
 - **SC-002**: Apos o plugin estar habilitado num projeto-alvo, zero passos
   manuais adicionais sao necessarios para os hooks de guarda ficarem
   ativos nesse projeto — elimina por completo a etapa hoje obrigatoria de
@@ -437,6 +443,27 @@ aviso.
   mecanismo de distribuicao paralelo fora desses dois, nem um caminho que
   contorne a auditabilidade/consistencia de qualquer um dos dois. A adicao
   do caminho plugin nao e um mecanismo concorrente nao-governado: e uma
-  segunda forma OFICIAL de entregar o mesmo conteudo auditavel, com o
-  mesmo conjunto de garantias de seguranca (FR-015/FR-016 desta capability
-  permanecem intactas nos dois caminhos).
+  segunda forma OFICIAL de entregar o mesmo conteudo auditavel, com
+  garantias equivalentes em efeito, com mecanismos e responsaveis
+  distintos, documentados por caminho (FR-015/FR-016 desta capability
+  permanecem intactas nos dois caminhos; ver tabela abaixo).
+
+  **Modelo de integridade por caminho de distribuicao** (achado F1 do gate
+  `owasp-security` sobre o `plan`, MEDIUM, aceito com correcao textual —
+  dec-026/dec-027, onda-004): os dois caminhos sao **comparaveis em forca
+  de protecao, mas nao identicos em mecanismo**. Afirmar "o mesmo conjunto
+  de garantias" seria, ele proprio, uma violacao do Principio VI
+  (veracidade de dados) — por isso a redacao acima descreve equivalencia
+  em EFEITO, nunca em mecanismo:
+
+  | Garantia | Caminho classico | Caminho plugin |
+  |----------|------------------|----------------|
+  | Verificacao de integridade | `sha256` do tarball, fail-closed (`serve-integrity`) | Pin por `gitCommitSha` registrado pelo harness |
+  | Origem confiavel | Allowlist fixa `CSTK_TRUSTED_RELEASE_HOSTS` (match exato, nao-overridable) | Repo git declarado no marketplace + confianca do harness |
+  | Transporte | `http://` MUST ser rejeitado — politica que o proprio toolkit aplica e pode enforcar (`trusted-hosts.sh`) | HTTPS do provedor git — fato observado do mecanismo do harness; **nao** e uma politica que o toolkit impoe ou pode enforcar, ao contrario do caminho classico |
+  | Consentimento | Comando explicito do operador | Tela "Will install" + dialogo de confianca do harness |
+  | Quem aplica a garantia | Codigo do proprio cstk | Harness do Claude Code |
+
+  Nenhum dos dois caminhos e "mais seguro" que o outro — cada um e
+  auditavel dentro do que o respectivo responsavel (toolkit vs harness)
+  efetivamente controla e pode enforcar.
