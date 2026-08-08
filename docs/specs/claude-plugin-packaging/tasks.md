@@ -185,19 +185,29 @@ Ref: plan.md "Ordem de implementacao sugerida" Fase 2; contracts/plugin-artifact
 
 Ref: contracts/plugin-artifacts.md Artefato 5
 
-- [ ] 3.1.1 Criar `plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh`
-      (POSIX sh puro) com a funcao `resolve_runtime_root [strict]`
-- [ ] 3.1.2 Implementar Ordem A (consumidores gerais): `${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime`
+- [x] 3.1.1 Criar `plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh`
+      (POSIX sh puro) com a funcao `resolve_runtime_root [strict]` —
+      **criado em `global/skills/agente-00c-runtime/scripts/_resolve-root.sh`**
+      (localizacao atual do runtime, pre-FASE4): a FASE 4 (`git mv
+      global/skills plugins/cstk/skills`, task 4.1.1) move todo
+      `global/skills/` de uma vez, carregando este arquivo junto para
+      exatamente `plugins/cstk/skills/agente-00c-runtime/scripts/` sem
+      exigir edicao — task 4.1.4 so confirma o resultado do `git mv`.
+      Criar no destino final agora quebraria a resolucao por
+      diretorio-irmao dos 6 consumidores da task 3.2 (ainda em
+      `global/skills/agente-00c-runtime/hooks/`, nao movidos ate FASE 4)
+- [x] 3.1.2 Implementar Ordem A (consumidores gerais): `${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime`
       → diretorio-irmao de `$0` → `$HOME/.claude/skills/agente-00c-runtime`
       → erro diagnostico em stderr, exit 1
-- [ ] 3.1.3 Implementar Ordem B (`strict`, consumidor fail-closed): diretorio-irmao
+- [x] 3.1.3 Implementar Ordem B (`strict`, consumidor fail-closed): diretorio-irmao
       de `$0` → `${CLAUDE_PLUGIN_ROOT}/...` → `$HOME/.claude/skills/...` →
       erro
-- [ ] 3.1.4 Cada candidato so e aceito se o diretorio existir **e** conter
+- [x] 3.1.4 Cada candidato so e aceito se o diretorio existir **e** conter
       `scripts/` (contrato do Artefato 5)
-- [ ] 3.1.5 Escrever `tests/test__resolve-root.sh` cobrindo os 2 modos
+- [x] 3.1.5 Escrever `tests/test__resolve-root.sh` cobrindo os 2 modos
       (normal/`strict`) x 4 candidatos cada, incluindo o caso de erro
-      diagnostico
+      diagnostico — 11 scenarios, todos verdes (`sh tests/test__resolve-root.sh`);
+      shellcheck limpo em ambos os arquivos
 
 ### 3.2 Adotar o helper nos 6 arquivos que hoje hardcodeiam `$HOME/.claude` `[A]`
 
