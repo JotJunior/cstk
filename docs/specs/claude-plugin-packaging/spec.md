@@ -4,6 +4,46 @@
 **Created**: 2026-08-08
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-08
+
+- Q: Marketplace listing deve seguir tags SemVer (lockstep) ou HEAD continuo
+  de main? → A: lockstep-tags-semver — atualizacoes do marketplace amarradas
+  a tags SemVer publicadas (nao a HEAD continuo), alinhado ao versionamento
+  SemVer + CHANGELOG ja praticado pelo toolkit.
+- Q: Versao instalada via plugin (FR-008) e determinada por metadado do
+  harness ou por checksum de conteudo do catalogo? → A:
+  checksum-conteudo-catalogo — a comparacao de alinhamento usa checksum do
+  conteudo do catalogo (mesma abordagem hash_dir ja usada por `cstk doctor`
+  hoje), nao um metadado de versao exposto pelo harness (nao confirmado em
+  doc oficial).
+- Q: O plugin cstk deve empacotar o catalogo completo (core + todos os
+  perfis de linguagem) num unico bundle, ou espelhar a selecao por perfil da
+  instalacao classica? → A: marketplace com 2 entradas — `cstk` (catalogo
+  default: 22 skills, 6 commands, agents, hooks) e `cstk-language-go`
+  (perfil go, ja fora do manifest default desde v6.0.0), espelhando a
+  separacao de profiles existente na instalacao classica.
+- Q: Quando um projeto tem hooks classicos (`cstk hooks install --scope
+  project`) E o plugin habilitado ao mesmo tempo, como evitar duplicacao de
+  efeito? → A: dedup em tempo de instalacao, PLUGIN VENCE — `cstk hooks
+  install` e `cstk setup` detectam o plugin cstk habilitado e nao registram
+  o snippet classico no `settings.json` do projeto (orientando remocao de
+  registro pre-existente); `cstk doctor` reporta duplicacao com remediacao;
+  nenhum guard adicional em tempo de execucao nos scripts de hook.
+- Q: Habilitar o plugin cstk ja e suficiente para os hooks de guarda
+  ficarem ativos automaticamente, sem nenhum passo de confianca adicional
+  especifico para hooks? → A: [ASSUMPTION a validar empiricamente] — a doc
+  oficial (discover-plugins/plugins-reference) confirma a tela "Will
+  install" (lista hooks/MCP antes de instalar) + aviso geral de confianca,
+  mas NAO confirma nem nega um gate de consentimento separado especifico
+  para hooks, nem o timing exato de ativacao (pode exigir `/reload-plugins`
+  apos habilitar). A spec assume, defensivamente, que basta habilitar o
+  plugin — sem inventar um comportamento de plataforma nao documentado
+  (Constitution VI); o backlog (`create-tasks`) MUST incluir uma task de
+  validacao empirica dessa premissa antes de FR-004 ser dado como
+  encerrado.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Catalogo completo disponivel sem copia manual (Priority: P1)
@@ -151,7 +191,11 @@ aviso.
   hooks de guarda provisionados manualmente (`cstk hooks install --scope
   project`) de uma instalacao classica anterior? A interceptacao MUST
   continuar se comportando como uma unica camada efetiva — sem disparar
-  duas vezes o mesmo bloqueio nem contar tool calls em dobro.
+  duas vezes o mesmo bloqueio nem contar tool calls em dobro. Resolvido via
+  dedup em tempo de instalacao (plugin vence — ver FR-005): `cstk hooks
+  install`/`cstk setup` detectam o plugin habilitado e nao registram o
+  snippet classico; `cstk doctor` reporta duplicacao residual com
+  remediacao.
 - O que acontece quando `${CLAUDE_PLUGIN_ROOT}` nao esta definida (harness
   mais antigo, ou script invocado fora do contexto de um plugin)? O sistema
   MUST cair no comportamento classico (resolver a partir de `~/.claude`)
@@ -189,18 +233,37 @@ aviso.
   oficial, hospedada no proprio repositorio git do toolkit) que permita a
   um operador descobrir e habilitar o plugin atraves do mecanismo nativo de
   instalacao de plugins, sem depender de nenhum servico de terceiros
-  operado pelo autor do toolkit.
+  operado pelo autor do toolkit. A listagem MUST conter exatamente 2
+  entradas, espelhando a separacao de profiles ja existente na instalacao
+  classica: `cstk` (catalogo default — 22 skills, 6 commands, agents,
+  hooks) e `cstk-language-go` (perfil go, ja fora do manifest default desde
+  v6.0.0). Atualizacoes da listagem MUST seguir tags SemVer publicadas
+  (lockstep) — nunca refletir HEAD continuo de `main` — consistente com o
+  versionamento SemVer + CHANGELOG ja praticado pelo toolkit.
 - **FR-004**: O sistema MUST disponibilizar os hooks de guarda hoje
   existentes (interceptacao de comandos, contagem de tool calls, captura de
   consumo avulso) empacotados junto do plugin, de forma que fiquem ativos
   automaticamente em qualquer projeto onde o plugin esteja habilitado — sem
   exigir do operador um passo de provisionamento manual adicional por
-  projeto.
+  projeto. [ASSUMPTION a validar empiricamente — ver secao Clarifications]:
+  esta spec assume que habilitar o plugin basta para os hooks ficarem
+  ativos, sem gate de consentimento extra especifico para hooks alem do
+  trust dialog padrao de habilitacao do plugin; a doc oficial confirma a
+  tela "Will install" + aviso geral de confianca, mas nao confirma nem nega
+  um gate adicional nem o timing exato de ativacao. O backlog (`create-tasks`)
+  MUST incluir task de validacao empirica dessa premissa.
 - **FR-005**: Quando um projeto-alvo tiver tanto o plugin habilitado quanto
   hooks provisionados pelo caminho classico, o sistema MUST evitar
   duplicacao de efeito (bloqueio disparado duas vezes, contagem de tool
   calls em dobro) — o comportamento efetivo MUST ser equivalente a uma
-  unica camada de interceptacao.
+  unica camada de interceptacao. Mecanismo: dedup em tempo de instalacao,
+  plugin vence — `cstk hooks install` e `cstk setup` MUST detectar o plugin
+  cstk habilitado e, quando detectado, MUST NOT registrar o snippet
+  classico no `settings.json` do projeto (orientando o operador a remover
+  qualquer registro classico pre-existente); `cstk doctor` MUST reportar a
+  duplicacao (quando ambos os registros coexistirem) com remediacao
+  acionavel. Nenhum guard adicional em tempo de execucao MUST ser
+  introduzido nos scripts de hook para este fim.
 - **FR-006**: O binario cstk (CLI real usado por subcomandos como `recall`,
   `usage`, `mcp`, `session`, `doctor`) MUST continuar sendo distribuido e
   atualizado pelo fluxo hoje existente (install.sh/self-update),
@@ -218,7 +281,11 @@ aviso.
   a instalacao classica do catalogo (`cstk install`/`cstk update`) e a
   instalacao via plugin, quando ambas presentes no mesmo ambiente, estao
   alinhadas (mesma versao de conteudo) ou divergentes — reportando
-  explicitamente qual das duas (se alguma) esta desatualizada.
+  explicitamente qual das duas (se alguma) esta desatualizada. O criterio de
+  alinhamento MUST ser checksum do conteudo do catalogo (mesma abordagem
+  `hash_dir` ja usada por `cstk doctor` hoje), nao um metadado de versao
+  exposto pelo harness do Claude Code — a doc oficial consultada nao
+  documenta tal metadado.
 - **FR-009**: Os scripts de runtime hoje referenciados por caminho fixo
   (`~/.claude/skills/...`) MUST resolver corretamente sua propria
   localizacao tanto quando invocados a partir da instalacao classica quanto
@@ -258,7 +325,9 @@ aviso.
 - **Marketplace Listing**: entrada publicada (`.claude-plugin/
   marketplace.json`) que permite a descoberta e habilitacao do plugin
   atraves do mecanismo nativo `/plugin install`, hospedada no proprio
-  repositorio git do toolkit.
+  repositorio git do toolkit. Contem exatamente 2 entradas (`cstk` catalogo
+  default, `cstk-language-go` perfil go) e e atualizada em lockstep com
+  tags SemVer publicadas (nunca refletindo HEAD continuo de `main`).
 - **Distribution Path**: um dos dois caminhos pelos quais um operador pode
   obter o catalogo do toolkit num ambiente — classico (`cstk install`/
   `cstk update` copiando para `~/.claude`) ou plugin (habilitado atraves do
@@ -267,6 +336,8 @@ aviso.
 - **Installation Alignment Report**: a informacao (reportada ao operador
   via checagem de diagnostico do toolkit) sobre se os Distribution Paths
   presentes num ambiente estao na mesma versao de conteudo ou divergentes.
+  O criterio de comparacao e checksum de conteudo do catalogo (`hash_dir`),
+  nao metadado de versao exposto pelo harness.
 
 ## Success Criteria
 
