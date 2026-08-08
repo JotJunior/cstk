@@ -83,7 +83,7 @@ descartados antes de tocar o disco.
 
 ```
 ├── global/                     # Skills globais (independentes de linguagem)
-│   └── skills/                 # 22 skills globais (cada skill é uma pasta)
+│   └── skills/                 # 21 skills globais (cada skill é uma pasta)
 │       ├── advisor/
 │       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
 │       ├── analyze/
@@ -97,7 +97,6 @@ descartados antes de tocar o disco.
 │       ├── create-tasks/
 │       ├── e2e-integration-flow/ # testes E2E de integração full-stack (Playwright)
 │       ├── execute-task/
-│       ├── initialize-docs/
 │       ├── model-selector/     # heurística de roteamento de modelo (sugestor)
 │       ├── owasp-security/
 │       ├── plan/
@@ -161,7 +160,6 @@ Detalhes, diagrama do fluxo e atalhos em
 | **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
 | **converge** | "converge", "o código bate com a spec?" | Reconcilia spec/plan/tasks contra o código ATUAL e apenda gaps como nova fase de tasks. Gate incondicional entre execute-task e review-task nos orquestradores |
 | **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Testes E2E de integração full-stack (UI → API → banco → fila → efeitos colaterais) |
-| **initialize-docs** | *(deprecated — remoção na v7)* | Cria a hierarquia legada de 9 níveis. Superada pelo layout SDD (`docs/briefing.md` + `docs/constitution.md` + `docs/specs/`); mantida só para projetos legados |
 | **apply-insights** | "aplicar insights", "melhorar claude.md" | Aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows — ver [Insights de uso](#insights-de-uso) |
 | **owasp-security** | Ao revisar segurança | Revisão guiada por checklist (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Não substitui auditoria/pentest |
 | **review-features** | "status global", "comparar features" | Relatório cross-feature com sugestão de arquivar/abandonar/priorizar; a ação de archive aplica os deltas ao corpus de specs vivas |
@@ -232,8 +230,8 @@ cstk self-update                     # atualiza o próprio binário cstk + cli/l
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 11 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
+| `complementary` | 10 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 28 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`.
@@ -389,8 +387,8 @@ isso via manifest + hash_dir.
 | Perfil | Conteúdo | Uso típico |
 |--------|----------|------------|
 | `sdd` | 17 skills: pipeline Spec-Driven Development completa (briefing → review-features) + runtime interno, model-selector e os 4 gates de qualidade dos orquestradores | Instalação global default |
-| `complementary` | 11 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
-| `all` | Todas as 29 skills (sdd + complementary + language-go) | Instalação completa |
+| `complementary` | 10 skills independentes (advisor, bugfix, e2e-integration-flow, etc.) | Complementa o pipeline SDD |
+| `all` | Todas as 28 skills (sdd + complementary + language-go) | Instalação completa |
 | `language-go` | Skills + hooks específicos para Go | Apenas em projetos Go |
 
 Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --help`.

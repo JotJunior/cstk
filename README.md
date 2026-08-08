@@ -87,7 +87,7 @@ labels are stripped before touching disk.
 │   │   ├── commands/            # The 6 /agente-00c*, /feature-00c* slash commands
 │   │   ├── agents/              # Orchestrators, clarify asker/answerer, data-veracity
 │   │   ├── hooks/hooks.json     # 3 enforced guard hooks (bash-guard, tool-call-tick, agent-usage)
-│   │   └── skills/               # 22 global skills (each skill is a folder)
+│   │   └── skills/               # 21 global skills (each skill is a folder)
 │   │       ├── advisor/
 │   │       ├── agente-00c-runtime/ # internal POSIX runtime (not user-invocable)
 │   │       ├── analyze/
@@ -101,7 +101,6 @@ labels are stripped before touching disk.
 │   │       ├── create-tasks/
 │   │       ├── e2e-integration-flow/ # full-stack E2E integration tests (Playwright)
 │   │       ├── execute-task/
-│   │       ├── initialize-docs/
 │   │       ├── model-selector/     # model routing heuristic (suggester)
 │   │       ├── owasp-security/
 │   │       ├── plan/
@@ -173,7 +172,6 @@ Details, flow diagram and shortcuts in
 | **bugfix** | "bugfix", "fix bug", "debug" | Structured multi-layer bug-fixing protocol |
 | **converge** | "converge", "o código bate com a spec?" | Reconciles spec/plan/tasks against the CURRENT code and appends gaps as a new task phase. Unconditional gate between execute-task and review-task in the orchestrators |
 | **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Full-stack E2E integration tests (UI → API → database → queue → side effects) |
-| **initialize-docs** | *(deprecated — removal in v7)* | Creates the legacy 9-level documentation hierarchy. Superseded by the SDD layout (`docs/briefing.md` + `docs/constitution.md` + `docs/specs/`); kept only for legacy projects |
 | **apply-insights** | "aplicar insights", "melhorar claude.md" | Applies proven usage insights to CLAUDE.md, hooks and workflows — see [Usage insights](#usage-insights) |
 | **owasp-security** | When reviewing security | Checklist-guided review (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Does not replace audit/pentest |
 | **review-features** | "status global", "comparar features" | Cross-feature report suggesting archive/abandon/prioritize; the archive action applies deltas to the living-specs corpus |
@@ -245,8 +243,8 @@ cstk self-update                     # updates the cstk binary itself + cli/lib
 | Profile | Content | Typical use |
 |--------|----------|------------|
 | `sdd` | 17 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector and the orchestrators' 4 quality gates | Default global installation |
-| `complementary` | 11 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
-| `all` | All 29 skills (sdd + complementary + language-go) | Full installation |
+| `complementary` | 10 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
+| `all` | All 28 skills (sdd + complementary + language-go) | Full installation |
 | `language-go` | Go-specific skills + hooks | Only in Go projects |
 
 Default profile when none is given: `sdd`.
@@ -462,8 +460,8 @@ this via manifest + hash_dir.
 | Profile | Content | Typical use |
 |--------|----------|------------|
 | `sdd` | 17 skills: complete Spec-Driven Development pipeline (briefing → review-features) + internal runtime, model-selector and the orchestrators' 4 quality gates | Default global installation |
-| `complementary` | 11 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
-| `all` | All 29 skills (sdd + complementary + language-go) | Full installation |
+| `complementary` | 10 independent skills (advisor, bugfix, e2e-integration-flow, etc.) | Complements the SDD pipeline |
+| `all` | All 28 skills (sdd + complementary + language-go) | Full installation |
 | `language-go` | Go-specific skills + hooks | Only in Go projects |
 
 Default profile when none is given: `sdd`. Details in `cstk install --help`.

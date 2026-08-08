@@ -411,11 +411,6 @@ sem reimplementar."
 Isso evita que a skill re-leia e re-analise codigo ja conhecido, focando
 no que e realmente novo na tarefa 4.2.
 
----
-skill: initialize-docs
-category: gotcha
-text: DEPRECATED (remocao na v7) — nao use /initialize-docs em projetos novos. O layout SDD e docs/briefing.md + docs/constitution.md + docs/specs/, criado pelas proprias skills briefing/constitution/specify.
----
 A hierarquia numerada 01-09 e legado. Em projetos novos, va direto:
 
 ```

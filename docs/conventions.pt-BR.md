@@ -27,8 +27,8 @@ seu domínio.
 
 ## Hierarquia de Documentação
 
-**LEGADO** — a skill `initialize-docs` (deprecated, remoção na v7) cria a
-estrutura numerada abaixo. Projetos novos usam o layout SDD:
+**LEGADO** — a estrutura numerada abaixo vinha de uma skill de scaffold
+removida na v7. Projetos novos usam o layout SDD:
 `docs/briefing.md` + `docs/constitution.md` + `docs/specs/<feature>/`. O
 pipeline aceita os dois layouts.
 

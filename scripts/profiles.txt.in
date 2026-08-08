@@ -61,7 +61,6 @@ complementary:validate-documentation
 complementary:validate-docs-rendered
 # Uso standalone (nao so gate) — mesma razao das duas linhas acima.
 complementary:converge
-complementary:initialize-docs
 # Mesma razao do sdd:agente-00c-runtime / sdd:model-selector acima.
 complementary:agente-00c-runtime
 complementary:model-selector

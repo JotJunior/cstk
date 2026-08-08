@@ -31,11 +31,11 @@
 #         salvam na raiz de docs/:
 #           briefing      -> docs/briefing.md (canonico)
 #                            docs/01-briefing-discovery/briefing.md (legado,
-#                            hierarquia numerada do /initialize-docs)
+#                            hierarquia numerada legada 01-09)
 #           constitution  -> docs/constitution.md
 #         Quando `--projeto-alvo-path PAP` e passado, esses paths sao
 #         aceitos como fallback alem do feature-dir convencional. Isso
-#         resolve o conflito com `/initialize-docs` (issue #3) sem quebrar
+#         resolve o conflito com a hierarquia numerada legada (issue #3) sem quebrar
 #         o layout SDD canonico.
 #       — Validacao estrutural: briefing e create-tasks tem validacao de
 #         template alem da existencia do arquivo. Ver `_pl_validate_<stage>`.
@@ -291,7 +291,7 @@ _pl_cmd_detect_completion() {
 
   case "$_st" in
     briefing)
-      # feature-dir OR (com PAP) hierarquia numerada do /initialize-docs.
+      # feature-dir OR (com PAP) hierarquia numerada legada 01-09.
       # Valida estrutura: header + >=4 secoes nucleares.
       if [ -f "$_fd/briefing.md" ]; then
         _pl_validate_briefing "$_fd/briefing.md" || return 1

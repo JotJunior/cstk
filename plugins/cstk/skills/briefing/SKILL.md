@@ -212,8 +212,8 @@ Deseja que eu salve este briefing? Ou ha algo a corrigir/complementar?
 ### 6.1 Criar Diretorio
 
 Se `docs/` nao existir, criar. O briefing vive na raiz de `docs/`, ao lado
-de `constitution.md` — nao depende mais da hierarquia numerada do
-`/initialize-docs`:
+de `constitution.md` — nao depende da hierarquia numerada legada (01-09,
+removida na v7):
 
 ```
 docs/
@@ -360,7 +360,6 @@ do `/agente-00c` NAO encontra bloqueio `npm install`.
 | `clarify` | Pode refinar ambiguidades do briefing se necessario |
 | `advisor` | Pode criticar decisoes registradas no briefing |
 | `plan` | Usa briefing como contexto tecnico de alto nivel |
-| `initialize-docs` | LEGADO: criava `docs/01-briefing-discovery/` onde o briefing era salvo; hoje o briefing vive em `docs/briefing.md` |
 
 ---
 
@@ -397,7 +396,7 @@ Usar as palavras do usuario. Se ele disse "app de caixa", nao trocar por "sistem
 ### Caminho canonico vs legado — nunca migrar em silencio
 
 O canonico e `docs/briefing.md`. Projetos antigos tem
-`docs/01-briefing-discovery/briefing.md` (hierarquia do `/initialize-docs`) —
+`docs/01-briefing-discovery/briefing.md` (hierarquia numerada legada) —
 esses continuam sendo atualizados NO LUGAR, e todos os leitores do pipeline
 (detect-completion, preflight do feature-00c) aceitam os dois caminhos.
 Migrar so com pedido explicito do usuario, movendo (nao copiando): dois
