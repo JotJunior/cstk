@@ -29,7 +29,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SKILL_DIR="$REPO_ROOT/global/skills/model-selector"
+SKILL_DIR="$REPO_ROOT/plugins/cstk/skills/model-selector"
 CLASSIFY="$SKILL_DIR/scripts/classify.sh"
 export SKILL_DIR CLASSIFY
 

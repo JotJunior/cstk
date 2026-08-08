@@ -23,7 +23,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-CLASSIFY="$REPO_ROOT/global/skills/model-selector/scripts/classify.sh"
+CLASSIFY="$REPO_ROOT/plugins/cstk/skills/model-selector/scripts/classify.sh"
 export CLASSIFY
 
 # Helper: extrai a linha "rasa=N media=N profunda=N faixa=X" do stdout
@@ -189,7 +189,7 @@ scenario_2_3_1_parsing_catalogo_extrai_45_sinais() {
       c++
     }
     END { print c+0 }
-  ' "$REPO_ROOT/global/skills/model-selector/references/sinais.md")
+  ' "$REPO_ROOT/plugins/cstk/skills/model-selector/references/sinais.md")
   if [ "$_count" != "45" ]; then
     _fail "scenario_2_3_1_parsing" "esperado 45 sinais, parser extraiu: $_count"
     return 1
@@ -212,7 +212,7 @@ scenario_2_3_1_distribuicao_15_por_faixa() {
       cnt[f]++
     }
     END { printf "%d|%d|%d", cnt["rasa"]+0, cnt["media"]+0, cnt["profunda"]+0 }
-  ' "$REPO_ROOT/global/skills/model-selector/references/sinais.md")
+  ' "$REPO_ROOT/plugins/cstk/skills/model-selector/references/sinais.md")
   if [ "$_dist" != "15|15|15" ]; then
     _fail "scenario_2_3_1_dist" "esperado 15|15|15 (rasa|media|profunda), obtido: $_dist"
     return 1

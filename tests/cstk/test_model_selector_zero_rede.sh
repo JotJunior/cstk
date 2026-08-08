@@ -16,7 +16,7 @@
 #   getent hosts, dig, host(1).
 #
 # Mecanismo (CHK049):
-#   `grep -rn` estatico sobre `global/skills/model-selector/`,
+#   `grep -rn` estatico sobre `plugins/cstk/skills/model-selector/`,
 #   filtrando comentarios shell via `grep -v '^[[:space:]]*#'` (resolve
 #   CHK047 — falsos positivos em texto explicativo nao quebram o teste).
 #   Sandbox/unshare/strace e overkill para o MVP — uma skill POSIX
@@ -42,7 +42,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SKILL_DIR="$REPO_ROOT/global/skills/model-selector"
+SKILL_DIR="$REPO_ROOT/plugins/cstk/skills/model-selector"
 export SKILL_DIR
 
 # Padrao alvo: alternativas separadas por `\|` (ERE basico para grep -E

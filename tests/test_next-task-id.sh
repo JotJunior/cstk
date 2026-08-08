@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_next-task-id.sh — cobre global/skills/create-tasks/scripts/next-task-id.sh.
+# test_next-task-id.sh — cobre plugins/cstk/skills/create-tasks/scripts/next-task-id.sh.
 #
 # Contrato:
 #   next-task-id.sh PREFIX FILE
@@ -13,7 +13,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/create-tasks/scripts/next-task-id.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/create-tasks/scripts/next-task-id.sh"
 
 # ==== 3.2.1 proxima tarefa em fase existente ====
 

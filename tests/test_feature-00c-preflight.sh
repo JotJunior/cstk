@@ -8,8 +8,8 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/feature-00c-preflight.sh"
-SCRIPTS_DIR="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/feature-00c-preflight.sh"
+SCRIPTS_DIR="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
 
 # Helper: cria fixture de projeto-alvo + state.json com hashes corretos.
 # Imprime path do state-dir em stdout.

@@ -154,7 +154,7 @@ commits.
 
 | Component | Location |
 |-----------|----------|
-| POSIX helper (`is-enabled`, `set-enabled`, `guard-branch`, `stage-message`, `task-message`, `snapshot`, `stage-derived`, `finalize`) | `global/skills/agente-00c-runtime/scripts/commit-mode.sh` |
+| POSIX helper (`is-enabled`, `set-enabled`, `guard-branch`, `stage-message`, `task-message`, `snapshot`, `stage-derived`, `finalize`) | `plugins/cstk/skills/agente-00c-runtime/scripts/commit-mode.sh` |
 | Tests | `tests/test_commit-mode.sh` |
 | Spec | [`specs/_archived/atomic-commit-pr/`](./specs/_archived/atomic-commit-pr/) |
 
@@ -181,7 +181,7 @@ depend on the orchestrator remembering):
 
 | Component | Location |
 |-----------|----------|
-| Hook + settings snippet | `global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh` + `settings.snippet.json` |
+| Hook + settings snippet | `plugins/cstk/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh` + `settings.snippet.json` |
 | Automatic provisioning | `apply_guard_hooks()` in `cli/lib/hooks.sh` (`project` scope) |
 | Shared host allowlist | `cli/lib/trusted-hosts.sh` |
 | Auditable log | `.claude/enforcement-log.jsonl` (per target project) |

@@ -95,7 +95,7 @@ PROFILES DISPONIVEIS:
                  validate-documentation, validate-docs-rendered,
                  initialize-docs (deprecated, remocao na v7).
   all            Todas as skills do catalog (uniao de sdd + complementary
-                 + qualquer skill nova em global/skills/).
+                 + qualquer skill nova em plugins/cstk/skills/).
 
 EXEMPLOS:
   cstk install                                # profile sdd (default)

@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_otel-usage.sh — cobre
-# global/skills/agente-00c-runtime/scripts/otel-usage.sh
+# plugins/cstk/skills/agente-00c-runtime/scripts/otel-usage.sh
 #
 # Invariantes sob teste:
 #   INV-1: PRIVACIDADE — nenhum label de PII (user_email, user_id,
@@ -41,7 +41,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/otel-usage.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/otel-usage.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_otel-usage.sh: jq ausente — pulando suite\n'

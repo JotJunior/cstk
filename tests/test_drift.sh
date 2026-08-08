@@ -1,14 +1,14 @@
 #!/bin/sh
-# test_drift.sh — cobre global/skills/agente-00c-runtime/scripts/drift.sh.
+# test_drift.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/drift.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/drift.sh"
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
-ON="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
-DEC="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/drift.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
+ON="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
+DEC="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_drift.sh: jq ausente — pulando\n'

@@ -46,7 +46,7 @@ _emit_decisoes() {
       "etapa": "plan", "score": 3,
       "contexto": "Carve-out 1.1.0 para jq opcional apenas em report.sh — confirmado por grep no codigo.",
       "opcoes": ["jq-banido","carve-out-1.1.0","jq-em-tudo"], "escolha": "carve-out-1.1.0",
-      "justificativa": "grep -rn jq global/skills/model-selector/scripts/ retornou 1 arquivo apenas (report.sh) confirmando confinamento",
+      "justificativa": "grep -rn jq plugins/cstk/skills/model-selector/scripts/ retornou 1 arquivo apenas (report.sh) confirmando confinamento",
       "evidencia": "grep -rn jq scripts/: scripts/report.sh:38 if command -v jq",
       "timestamp": "2026-05-20T14:00:00Z" },
     { "id": "dec-004", "agente": "agente-00c-feature-orchestrator",

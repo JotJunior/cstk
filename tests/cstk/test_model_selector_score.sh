@@ -26,7 +26,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-CLASSIFY="$REPO_ROOT/global/skills/model-selector/scripts/classify.sh"
+CLASSIFY="$REPO_ROOT/plugins/cstk/skills/model-selector/scripts/classify.sh"
 export CLASSIFY
 
 # Helper: extrai a linha "score=N modelo=X alternativa=Y" do stdout do

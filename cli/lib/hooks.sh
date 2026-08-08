@@ -7,10 +7,13 @@
 #      GuardHookRegistration} — apply_guard_hooks (US1)
 #
 # **CONFINAMENTO DE jq (Constitution 1.1.0 §Optional dependencies)**:
-# Este e o UNICO arquivo do toolkit autorizado a referenciar `jq`. A
-# condicao (b) do carve-out exige confinamento em um unico arquivo; o
-# resto do CLI MUST permanecer POSIX puro. Adicionar `jq` em qualquer
-# outro `.sh` viola o carve-out e exige nova amendment de constituicao.
+# A condicao (b) do carve-out exige que cada introducao de `jq` fique
+# confinada a UM arquivo fonte identificavel (nao que exista um unico
+# arquivo autorizado em todo o toolkit — varios ja usam jq sob a mesma
+# regra, ex. doctor.sh, recall.sh, plugin-detect.sh). Este arquivo e o
+# confinamento original da feature `cstk-cli` (merge de settings.json).
+# Adicionar jq num arquivo NOVO exige apenas declarar a dependencia no
+# spec/plan da feature que a introduz (condicao c) — nao uma amendment.
 #
 # Funcoes exportadas:
 #   detect_jq                          — exit 0 se jq disponivel, 1 se nao
@@ -58,6 +61,11 @@ _CSTK_HOOKS_LOADED=1
 
 # shellcheck source=/dev/null
 . "${CSTK_LIB:?CSTK_LIB must be set}/common.sh"
+# shellcheck source=./plugin-detect.sh
+# Dedup plugin-vence (FR-005, feature claude-plugin-packaging FASE 6):
+# hooks_main() consulta plugin_enabled/plugin_hooks_present antes de
+# provisionar o snippet classico. Ver contracts/cli-plugin-awareness.md.
+. "${CSTK_LIB}/plugin-detect.sh"
 
 # detect_jq: imprime nada; retorna 0 se jq esta no PATH, 1 se nao.
 detect_jq() {
@@ -617,6 +625,24 @@ hooks_main() {
   fi
 
   _hooks_dest="$_hooks_abs/.claude"
+
+  # Dedup plugin-vence (FR-005, contracts/cli-plugin-awareness.md
+  # §cstk hooks install): as TRES condicoes exigidas por F4 (dec-027) sao
+  # instalado + habilitado + hooks.json MATERIALIZADO. Faltando a terceira
+  # (plugin habilitado mas hooks.json ausente/instalacao parcial), o
+  # provisionamento classico segue normalmente com aviso de inconsistencia
+  # — nunca deixar o projeto sem NENHUMA guarda (o pior resultado possivel
+  # do dedup, e vem justamente do caminho feliz aparente).
+  if plugin_enabled cstk; then
+    if plugin_hooks_present cstk; then
+      log_warn "hooks install: plugin 'cstk' habilitado e ja provê hooks/hooks.json — pulando provisionamento classico (dedup, plugin vence)"
+      log_warn "hooks install: se houver registro classico pre-existente em $_hooks_dest/settings.json, remova-o (cstk doctor reporta 'duplicated-hooks' com a mesma remediacao)"
+      return 0
+    else
+      log_warn "hooks install: plugin 'cstk' habilitado mas hooks/hooks.json NAO encontrado no install path — instalacao do plugin parece incompleta"
+      log_warn "hooks install: provisionando o caminho classico por seguranca (achado F4 — habilitado nao implica funcional)"
+    fi
+  fi
 
   _hooks_state=$(apply_guard_hooks "$_hooks_src" "$_hooks_dest" "$_hooks_dry_run" "$_hooks_with_loose")
 

@@ -19,9 +19,9 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-AGENT="$REPO_ROOT/global/agents/data-veracity-verifier.md"
-ORCH_AGENTE="$REPO_ROOT/global/agents/agente-00c-orchestrator.md"
-ORCH_FEAT="$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md"
+AGENT="$REPO_ROOT/plugins/cstk/agents/data-veracity-verifier.md"
+ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
 
 # ==== Existencia + identidade ====
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_wave-usage-report.sh — cobre
-# global/skills/agente-00c-runtime/scripts/wave-usage-report.sh.
+# plugins/cstk/skills/agente-00c-runtime/scripts/wave-usage-report.sh.
 #
 # Feature: wave-token-metrics
 # Ref: docs/specs/wave-token-metrics/contracts/wave-usage-report.md §2/§3
@@ -61,7 +61,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/wave-usage-report.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/wave-usage-report.sh"
 
 # ---------- helpers locais ----------
 
@@ -370,7 +370,7 @@ _sha256_of() {
 # falha cedo se a SKILL.md for reformatada/perder a secao.
 
 scenario_skill_md_referencia_cruzamento_wave_usage() {
-  _skill="$REPO_ROOT/global/skills/review-task/SKILL.md"
+  _skill="$REPO_ROOT/plugins/cstk/skills/review-task/SKILL.md"
   [ -f "$_skill" ] || { _fail "SKILL.md ausente" "$_skill"; return 1; }
   grep -qF 'wave-usage-report.sh' "$_skill" \
     || { _fail "SKILL.md nao referencia wave-usage-report.sh" ""; return 1; }
@@ -388,7 +388,7 @@ scenario_skill_md_referencia_cruzamento_wave_usage() {
 scenario_composicao_com_model_routing_report_preserva_invariantes() {
   _wur_have_jq || { _error "jq ausente"; return 2; }
   mktemp_test || return 2
-  _mrr_script="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/model-routing-report.sh"
+  _mrr_script="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/model-routing-report.sh"
   [ -x "$_mrr_script" ] || { _error "model-routing-report.sh ausente/nao-executavel"; return 2; }
 
   cat > "$TMPDIR_TEST/state.json" <<'JSON'
@@ -774,7 +774,7 @@ scenario_backfill_tooluseresult_string_nao_derruba() {
 # (db-aware). Fixture: init sob config global state_backend=sqlite (HOME
 # sandbox) + injecao de .waves via read|jq|write (caminho canonico).
 
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 _sqlite3_adequate() {
   command -v sqlite3 >/dev/null 2>&1 || return 1

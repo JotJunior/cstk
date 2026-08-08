@@ -1,13 +1,13 @@
 #!/bin/sh
-# test_state-decisions.sh — cobre global/skills/agente-00c-runtime/scripts/state-decisions.sh.
+# test_state-decisions.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_state-decisions.sh: jq ausente — pulando suite\n'
@@ -440,8 +440,8 @@ scenario_ptbr_legado_register_helpers_via_fallback() {
 # (init nunca cria state.db — isso e a migracao, FASE 6, ainda nao
 # implementada).
 
-SCHEMA_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-db-schema.sh"
-SO="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
+SCHEMA_SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-db-schema.sh"
+SO="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
 
 if ! command -v sqlite3 >/dev/null 2>&1; then
   printf '# test_state-decisions.sh: sqlite3 ausente — pulando cenarios de backend SQLite\n'

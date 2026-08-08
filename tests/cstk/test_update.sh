@@ -354,4 +354,56 @@ scenario_update_espelha_mcp_state_server() {
     || { _fail "replace nao removeu conteudo stale" ""; return 1; }
 }
 
+# ==== FR-007 / task 6.4: nota de escopo quando o plugin "cstk" e detectado ====
+
+# _pu_enable_plugin HOME_DIR: registra "cstk@cstk" instalado+habilitado em
+# HOME_DIR/.claude/{plugins,settings.json} (mesmo fixture de test_doctor.sh
+# _dp_plugin_home, sem depender do skills/ real do plugin — a nota so
+# consulta plugin_enabled, nunca hash_dir).
+_pu_enable_plugin() {
+  _pue_home=$1
+  _pue_ip="$_pue_home/plugin-install"
+  mkdir -p "$_pue_home/.claude/plugins" "$_pue_ip"
+  cat > "$_pue_home/.claude/plugins/installed_plugins.json" <<EOF
+{"version":2,"plugins":{"cstk@cstk":[{"scope":"user","installPath":"$_pue_ip","installedAt":"2026-08-01T00:00:00.000Z","lastUpdated":"2026-08-08T00:00:00.000Z"}]}}
+EOF
+  cat > "$_pue_home/.claude/settings.json" <<'EOF'
+{"enabledPlugins": {"cstk@cstk": true}}
+EOF
+}
+
+scenario_update_nota_escopo_plugin_detectado() {
+  if ! command -v jq >/dev/null 2>&1; then _error "no_jq" "jq indisponivel"; return 2; fi
+  _h="$TMPDIR_TEST/h-plugin-note"
+  _r="$TMPDIR_TEST/r-plugin-note"
+  _make_release "$_r" v1.0 "foo" || { _error "fixture" ""; return 2; }
+  _url="file://$_r/cstk-v1.0.tar.gz"
+  _install_release "$_h" "$_url"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install setup" "$_CAPTURED_STDERR"; return 1; }
+  _pu_enable_plugin "$_h"
+
+  _run_update "$_h" --from "$_url"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "update exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "tambem esta disponivel via plugin" || return 1
+  assert_stderr_contains "cstk doctor" || return 1
+}
+
+scenario_update_sem_nota_escopo_sem_plugin() {
+  _h="$TMPDIR_TEST/h-no-plugin-note"
+  _r="$TMPDIR_TEST/r-no-plugin-note"
+  _make_release "$_r" v1.0 "foo" || { _error "fixture" ""; return 2; }
+  _url="file://$_r/cstk-v1.0.tar.gz"
+  _install_release "$_h" "$_url"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install setup" "$_CAPTURED_STDERR"; return 1; }
+
+  _run_update "$_h" --from "$_url"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "update exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"tambem esta disponivel via plugin"*)
+      _fail "nota nao deveria aparecer sem plugin (SC-006)" "$_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
 run_all_scenarios

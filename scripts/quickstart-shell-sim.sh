@@ -6,7 +6,7 @@
 #      docs/specs/agente-00c/tasks.md FASE 9.1
 #
 # Cada cenario compoe primitivas dos scripts em
-# global/skills/agente-00c-runtime/scripts/ e verifica que os exit codes +
+# plugins/cstk/skills/agente-00c-runtime/scripts/ e verifica que os exit codes +
 # mutacoes de estado batem com o esperado.
 #
 # E shell-level: NAO valida comportamento do LLM (heuristica score, qualidade
@@ -22,7 +22,7 @@
 set -eu
 
 REPO_ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-S="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
+S="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
 KEEP_TMP=0
 ONLY_SCENARIO=""
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_state-rw.sh — cobre global/skills/agente-00c-runtime/scripts/state-rw.sh.
+# test_state-rw.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh.
 #
 # Cobertura:
 #   - init cria state.json + sha256 + state-history/
@@ -17,7 +17,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 # Bloqueia toda a suite se jq ausente — esses testes pre-supoem ambiente
 # de desenvolvimento com jq (mesmo carve-out que cli/lib/hooks.sh).
@@ -619,7 +619,7 @@ scenario_init_atomic_commit_retro_compat() {
 # 2.1.8) e semeando a linha de execution minima via sqlite3, o mesmo padrao
 # usado por tests/test_state-db-schema.sh.
 
-SCHEMA_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-db-schema.sh"
+SCHEMA_SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-db-schema.sh"
 
 if ! command -v sqlite3 >/dev/null 2>&1; then
   printf '# test_state-rw.sh: sqlite3 ausente — pulando cenarios de backend SQLite\n'
@@ -664,7 +664,7 @@ scenario_sqlite_read_reconstroi_documento_valido_por_state_validate() {
   _validate_dir="$TMPDIR_TEST/validate-export"
   mkdir -p "$_validate_dir"
   printf '%s' "$_CAPTURED_STDOUT" > "$_validate_dir/state.json"
-  capture sh "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-validate.sh" --state-dir "$_validate_dir"
+  capture sh "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-validate.sh" --state-dir "$_validate_dir"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "export nao passa em state-validate.sh (E1)" "$_CAPTURED_STDERR"; return 1; }
 }
 

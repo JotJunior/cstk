@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_validate-sdd.sh — cobre global/skills/validate-documentation/scripts/validate-sdd.sh
+# test_validate-sdd.sh — cobre plugins/cstk/skills/validate-documentation/scripts/validate-sdd.sh
 #
 # Os 12 cenarios de docs/specs/validate-docs-sdd-profile/quickstart.md sao o
 # oraculo. Fixtures "boas" apontam para os artefatos REAIS e versionados de
@@ -13,7 +13,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/validate-documentation/scripts/validate-sdd.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/validate-documentation/scripts/validate-sdd.sh"
 EG="$REPO_ROOT/docs/specs/_archived/2026-07-28-enforced-guards"
 
 # ==== Cenario 1 — spec.md conformante (spec-profile, 0 erros) ====

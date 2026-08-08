@@ -4,7 +4,7 @@
 # Cobre subtarefas 1.2.4 e 1.2.5 da feature `model-selector` (FR-014,
 # CHK028, CHK029, CHK030, CHK031, SC-004).
 #
-# Contrato testado em global/skills/model-selector/SKILL.md:
+# Contrato testado em plugins/cstk/skills/model-selector/SKILL.md:
 #   1. Progressive disclosure: `wc -l SKILL.md` < 200 (limite operacional
 #      199, conforme tasks.md §1.2.4). Threshold de falha: >=200.
 #   2. Frontmatter contem description com trigger + anti-trigger via
@@ -19,7 +19,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SKILL_MD="$REPO_ROOT/global/skills/model-selector/SKILL.md"
+SKILL_MD="$REPO_ROOT/plugins/cstk/skills/model-selector/SKILL.md"
 export SKILL_MD
 
 scenario_skill_md_existe() {

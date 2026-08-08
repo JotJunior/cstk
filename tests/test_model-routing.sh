@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_model-routing.sh — cobre global/skills/agente-00c-runtime/scripts/model-routing.sh.
+# test_model-routing.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/model-routing.sh.
 #
 # Feature: agente-00c-model-routing
 # Ref: docs/specs/agente-00c-model-routing/contracts/model-routing-helper.md
@@ -49,7 +49,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/model-routing.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/model-routing.sh"
 
 # ==== F1.1.4: dispatch sem args ====
 
@@ -913,7 +913,7 @@ scenario_idempotent_check_f001_arg_quoting() {
 #     mudam state.json (INV-4 sob padrao de retomada).
 #
 # Garante o contrato documentado em
-# global/agents/agente-00c-orchestrator.md §5.e.bis "Invariante I2 —
+# plugins/cstk/agents/agente-00c-orchestrator.md §5.e.bis "Invariante I2 —
 # Retomada idempotente" e tasks.md F2.2 (subtask 2.2.3).
 
 _FIXTURE_RESUME="$REPO_ROOT/tests/fixtures/state-with-onda-002-decisao.json"
@@ -1232,7 +1232,7 @@ scenario_artifact_cache_compat_pipeline_sha256_cache_estavel() {
 # ==== F3.1.4: Patch documental — secao pre-spawn no feature-orchestrator ====
 #
 # Espelha F2.1.4 (sequencia pre-spawn no agente-00c-orchestrator.md), agora
-# para global/agents/agente-00c-feature-orchestrator.md. O patch documental
+# para plugins/cstk/agents/agente-00c-feature-orchestrator.md. O patch documental
 # adiciona a secao "## Sequencia pre-spawn de subagente (model-routing)"
 # com ordem canonica (8 passos) e subagent_types feature-00c-clarify-*.
 #
@@ -1245,7 +1245,7 @@ scenario_artifact_cache_compat_pipeline_sha256_cache_estavel() {
 #      feature-00c-clarify-answerer (cobre asker + answerer)
 
 scenario_doc_feature_orchestrator_sequencia_pre_spawn() {
-  _doc="$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md"
+  _doc="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
   [ -f "$_doc" ] || { _fail "feature-orchestrator.md existe" "nao encontrado em $_doc"; return 1; }
 
   # Match >= 1 de model-routing.sh invoke
@@ -1783,7 +1783,7 @@ scenario_f002_jq_arg_roundtrip_via_state_decisions_register() {
   # 3) Setup minimo de state.json para registrar.
   _SD="$TMPDIR_TEST/f002_state"
   mkdir -p "$_SD"
-  "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh" init \
+  "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh" init \
     --state-dir "$_SD" \
     --execucao-id "exec-f002-test" \
     --projeto-alvo-path "$_SD" \
@@ -1795,7 +1795,7 @@ scenario_f002_jq_arg_roundtrip_via_state_decisions_register() {
 
   # 4) Registrar Decisao com sinais literais (passos 5 dos orquestradores).
   # OBS: passa $_SINAIS com aspas duplas — forma canonica documentada.
-  _DEC=$("$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh" register \
+  _DEC=$("$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh" register \
     --state-dir "$_SD" \
     --agente "test-orchestrator" --etapa "clarify" \
     --contexto "Selecao de modelo para subagente agente-00c-clarify-asker" \
@@ -2081,7 +2081,7 @@ EOF
 #      FR-024 (path confinado, sem traversal)
 # ============================================================================
 
-PHASE_MAP="$REPO_ROOT/global/skills/agente-00c-runtime/references/phase-model-map.txt"
+PHASE_MAP="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/references/phase-model-map.txt"
 
 # Recorte default "3 faixas balanceado" — as 11 fases do enum (data-model).
 # Mantido como fonte de verdade do teste; se o mapa evoluir, atualizar aqui.
@@ -2588,7 +2588,7 @@ scenario_ws_c15_fase_vazia_stage_fallback() {
 # state.db); escritas (state-decisions.sh register) ja sao db-aware.
 # ============================================================================
 
-RW_SQLITE="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+RW_SQLITE="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 _sqlite3_adequate() {
   command -v sqlite3 >/dev/null 2>&1 || return 1

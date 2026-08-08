@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_validate.sh — cobre global/skills/validate-docs-rendered/scripts/validate.sh.
+# test_validate.sh — cobre plugins/cstk/skills/validate-docs-rendered/scripts/validate.sh.
 #
 # Contrato declarado no cabecalho do script:
 #   "Exit code: 0 se zero ERROs, 1 se houver ERROs."
@@ -22,7 +22,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/validate-docs-rendered/scripts/validate.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/validate-docs-rendered/scripts/validate.sh"
 
 # ==== 3.5.1 docs validos ====
 

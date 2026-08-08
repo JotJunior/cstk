@@ -1,8 +1,8 @@
 #!/bin/sh
 # collect.sh — monta o payload {catalog, queries} para o runner trigger-eval.
 #
-#   catalog : descriptions VIVAS de cada global/skills/<n>/SKILL.md (o artefato sob teste)
-#   queries : uniao de global/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+#   catalog : descriptions VIVAS de cada plugins/cstk/skills/<n>/SKILL.md (o artefato sob teste)
+#   queries : uniao de plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
 #
 # Saida: JSON compacto (uma linha) em stdout, pronto para virar o `args` do Workflow.
 # Requer jq. Uso:
@@ -21,7 +21,7 @@ q_tmp=$(mktemp)
 trap 'rm -f "$cat_tmp" "$q_tmp"' EXIT INT TERM
 
 # --- catalog: name + description de cada SKILL.md ---
-for f in global/skills/*/SKILL.md; do
+for f in plugins/cstk/skills/*/SKILL.md; do
   [ -f "$f" ] || continue
   name=$(basename "$(dirname "$f")")
   # primeira linha `description:` dentro do bloco de frontmatter (entre o 1o e o 2o '---')
@@ -36,7 +36,7 @@ done | jq -s '.' > "$cat_tmp"
 
 # --- queries: todas as triggers.jsonl + negatives.jsonl ---
 {
-  for f in global/skills/*/evals/triggers.jsonl tests/trigger-eval/negatives.jsonl; do
+  for f in plugins/cstk/skills/*/evals/triggers.jsonl tests/trigger-eval/negatives.jsonl; do
     [ -f "$f" ] || continue
     grep -v '^[[:space:]]*$' "$f" || true
   done

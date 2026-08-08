@@ -7,7 +7,7 @@
 #
 # Esta lib NAO reimplementa parsing de config nem logica de decisao de
 # backend: delega tudo a
-# global/skills/agente-00c-runtime/scripts/state-backend.sh (fonte unica de
+# plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh (fonte unica de
 # leitura/escrita, Decision 2). E essa unicidade que torna SC-004 (0% de
 # divergencia binario<->runtime) verdadeiro por construcao.
 #
@@ -15,7 +15,7 @@
 # cli/lib/state.sh) para localizar `state-backend.sh`:
 #   (1) PATH via `command -v`
 #   (2) layout de repo relativo a CSTK_LIB
-#       ($CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/)
+#       ($CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/)
 #   (3) layout instalado ($HOME/.claude/skills/agente-00c-runtime/scripts/)
 #
 # NOTA (nao confundir com P8): este resolvedor decide APENAS onde esta o
@@ -55,7 +55,7 @@ _config_state_backend_script_path() {
     return 0
   fi
   if [ -n "${CSTK_LIB:-}" ]; then
-    _cbs_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/state-backend.sh"
+    _cbs_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh"
     if [ -f "$_cbs_repo" ]; then
       printf '%s\n' "$_cbs_repo"
       return 0

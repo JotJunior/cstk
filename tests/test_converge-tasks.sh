@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_converge-tasks.sh — cobre global/skills/converge/scripts/converge-tasks.sh.
+# test_converge-tasks.sh — cobre plugins/cstk/skills/converge/scripts/converge-tasks.sh.
 #
 # Ref: docs/specs/skill-converge/tasks.md tarefa 2.5.7
 #      docs/specs/skill-converge/contracts/converge-interfaces.md §4
@@ -11,8 +11,8 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/converge/scripts/converge-tasks.sh"
-NEXT_TASK_ID="$REPO_ROOT/global/skills/create-tasks/scripts/next-task-id.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/converge/scripts/converge-tasks.sh"
+NEXT_TASK_ID="$REPO_ROOT/plugins/cstk/skills/create-tasks/scripts/next-task-id.sh"
 
 _write_tasks() {
   cat > "$TMPDIR_TEST/tasks.md"

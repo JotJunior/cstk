@@ -1,11 +1,11 @@
 #!/bin/sh
-# test_secrets-filter.sh — cobre global/skills/agente-00c-runtime/scripts/secrets-filter.sh.
+# test_secrets-filter.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/secrets-filter.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/secrets-filter.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/secrets-filter.sh"
 
 scenario_scrub_token_com_palavra_chave() {
   capture sh -c "printf '%s' 'api_key=\"abc1234567890123456789xyz\"' | '$SCRIPT' scrub"

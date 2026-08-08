@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_model-routing-report.sh — cobre
-# global/skills/agente-00c-runtime/scripts/model-routing-report.sh.
+# plugins/cstk/skills/agente-00c-runtime/scripts/model-routing-report.sh.
 #
 # Feature: agente-00c-model-routing
 # Ref: docs/specs/agente-00c-model-routing/spec.md FR-018, SC-003, US-3
@@ -43,7 +43,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/model-routing-report.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/model-routing-report.sh"
 
 # ---------- helpers locais ----------
 
@@ -628,7 +628,7 @@ scenario_integracao_review_task_contrato_documentado_existe() {
 scenario_integracao_review_task_skill_md_referencia_helper() {
   # Sanity: review-task/SKILL.md DEVE conter referencia explicita ao
   # helper + secao §4.5. Falha cedo se SKILL.md foi reformatada.
-  _skill="$REPO_ROOT/global/skills/review-task/SKILL.md"
+  _skill="$REPO_ROOT/plugins/cstk/skills/review-task/SKILL.md"
   [ -f "$_skill" ] || { _fail "SKILL.md ausente" "$_skill"; return 1; }
   grep -qF 'model-routing-report.sh' "$_skill" \
     || { _fail "SKILL.md nao referencia model-routing-report.sh" ""; return 1; }
@@ -801,7 +801,7 @@ scenario_fase6_idempotente_bloco_novo() {
 # aggregate le o documento materializado via _state-read.sh a partir de
 # state.db; paridade de agregados com o backend JSON (SC-003).
 
-RW_SQLITE="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+RW_SQLITE="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 _sqlite3_adequate() {
   command -v sqlite3 >/dev/null 2>&1 || return 1

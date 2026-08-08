@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_requirement-coverage.sh —
-# cobre global/skills/checklist/scripts/requirement-coverage.sh.
+# cobre plugins/cstk/skills/checklist/scripts/requirement-coverage.sh.
 #
 # Contrato: docs/specs/openspec-hygiene/contracts/requirement-coverage-cli.md
 #   requirement-coverage.sh FILE [--min-match N]
@@ -13,7 +13,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/checklist/scripts/requirement-coverage.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/checklist/scripts/requirement-coverage.sh"
 
 # Escreve uma fixture minima de spec.md em $TMPDIR_TEST/$1 com o corpo dado
 # em $2 (Functional Requirements) e $3 (Acceptance Scenarios + Edge Cases).

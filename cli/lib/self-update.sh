@@ -58,6 +58,29 @@ _CSTK_SU_LOADED=1
 . "${CSTK_LIB}/lock.sh"
 # shellcheck source=/dev/null
 . "${CSTK_LIB}/tarball.sh"
+# shellcheck source=./plugin-detect.sh
+# Nota de escopo (FR-007, feature claude-plugin-packaging FASE 6, task
+# 6.4): _su_maybe_print_plugin_note() consulta plugin_enabled para avisar
+# que `cstk self-update` so cobre o binario+lib classicos, mesmo quando o
+# plugin tambem esta presente. Ver contracts/cli-plugin-awareness.md
+# §cstk self-update.
+. "${CSTK_LIB}/plugin-detect.sh"
+
+# _su_maybe_print_plugin_note — emite a nota de escopo apenas quando o
+# plugin "cstk" esta detectado (SC-006: zero ruido sem plugin). Best-effort
+# (nao altera exit code); chamado nos dois caminhos de sucesso "de fato"
+# (ja na ultima versao / update concluido) — nunca em --check (saida
+# machine-friendly) nem --dry-run (nao mutou nada).
+_su_maybe_print_plugin_note() {
+  if plugin_enabled cstk; then
+    printf '\n' >&2
+    printf 'Nota: o catalogo tambem esta disponivel via plugin do Claude Code\n' >&2
+    printf '(habilitado neste ambiente). `cstk self-update` atualiza apenas o\n' >&2
+    printf 'binario+lib CLASSICOS; o formato de plugin nao instala binario\n' >&2
+    printf 'persistente no PATH. O catalogo do plugin e atualizado pelo\n' >&2
+    printf 'mecanismo nativo de plugins.\n' >&2
+  fi
+}
 
 _su_print_help() {
   cat >&2 <<'HELP'
@@ -139,6 +162,7 @@ self_update_main() {
   # (lib=latest, bin=outro) cai no caminho de swap para completar recovery.
   if [ "$_su_latest" = "$_su_current_lib" ] && [ "$_su_latest" = "$_su_current_bin" ]; then
     log_info "self-update: ja na versao $_su_current — nada a fazer"
+    _su_maybe_print_plugin_note
     return 0
   fi
   if [ "$_su_current_bin" != "$_su_current_lib" ]; then
@@ -232,6 +256,7 @@ self_update_main() {
     log_warn "self-update: nao consegui atualizar $_su_install_root/VERSION (display only)"
 
   log_info "self-update: $_su_current → $_su_latest concluido"
+  _su_maybe_print_plugin_note
   return 0
 }
 

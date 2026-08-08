@@ -30,12 +30,12 @@ apontando para ele.
 Há drift entre a documentação voltada ao usuário e o estado real do repositório:
 
 1. README.md (por volta da linha 23) afirma "20 skills globais", mas existem 23
-   pastas em global/skills/. A árvore listada no README também omite
+   pastas em plugins/cstk/skills/. A árvore listada no README também omite
    agente-00c-runtime, model-selector e decision-tree.
 2. CLAUDE.md afirma "~237 scenarios" na suíte de testes, mas `tests/run.sh --list`
    reporta 1052 cenários.
 
-Conte o número real de skills (pastas em global/skills/) e o número real de
+Conte o número real de skills (pastas em plugins/cstk/skills/) e o número real de
 cenários (`./tests/run.sh --list | grep -c "::"`), e corrija ambos os arquivos.
 Inclua as três skills ausentes na árvore do README. Não invente outros valores:
 derive tudo do repositório.
@@ -49,7 +49,7 @@ Critério de aceite: contagens no README.md e CLAUDE.md batem com a realidade;
 ```
 Para evitar que os números do README/CLAUDE.md voltem a divergir do repositório
 (ver P0.2), crie um teste no harness existente (tests/) que valide os valores
-derivados: contagem de skills em global/skills/ e contagem de cenários da suíte.
+derivados: contagem de skills em plugins/cstk/skills/ e contagem de cenários da suíte.
 O teste deve falhar (exit 1) se o número documentado divergir do real.
 
 Siga as convenções do harness em tests/lib/harness.sh e o mapeamento de cobertura
@@ -139,7 +139,7 @@ terceiro contribuir com segurança.
 Crie um CONTRIBUTING.md na raiz cobrindo:
 - Como o sistema "pensa": fluxo do pipeline SDD, papel do cstk, do recall e dos
   orquestradores, em alto nível e com diagramas (use mermaid).
-- Fluxo de desenvolvimento: editar fonte em global/skills ou cli/lib, rodar
+- Fluxo de desenvolvimento: editar fonte em plugins/cstk/skills ou cli/lib, rodar
   `cstk doctor` antes de editar, sincronizar com `cstk update`, regra de ouro
   dos testes 1:1 (já descrita em CLAUDE.md).
 - Como adicionar uma skill nova, um comando e um teste correspondente.

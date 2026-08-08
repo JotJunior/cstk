@@ -25,7 +25,7 @@ tests/cstk/fixtures/
 
 - Sempre que `tests/cstk/fixtures/releases/` estiver vazio (clone fresh,
   pos-`git clean`).
-- Quando `global/skills/`, `cli/lib/`, `cli/cstk` ou `language-related/`
+- Quando `plugins/cstk/skills/`, `cli/lib/`, `cli/cstk` ou `language-related/`
   mudar e voce quiser fixtures atualizadas.
 - O proprio `regen.sh` e idempotente; rodar 2x produz exatamente os mesmos
   bytes (build-release.sh garante determinismo).
@@ -39,12 +39,12 @@ sh tests/cstk/fixtures/regen.sh
 | Aspecto                       | v0.1.0           | v0.2.0                            |
 |-------------------------------|------------------|-----------------------------------|
 | `cli/` + lib                  | identico         | identico                          |
-| `global/skills/specify/`      | catalog atual    | catalog + sentinel HTML comment   |
+| `plugins/cstk/skills/specify/`      | catalog atual    | catalog + sentinel HTML comment   |
 | Demais skills + `language/`   | identico         | identico                          |
 | `catalog/VERSION`             | `0.1.0`          | `0.2.0`                           |
 
 A unica diferenca de **conteudo de skill** entre as duas e o sentinel
-appendado em `global/skills/specify/SKILL.md`. Isso simula uma release que
+appendado em `plugins/cstk/skills/specify/SKILL.md`. Isso simula uma release que
 modificou apenas a skill `specify` — habilita testes de:
 
 - Update detection (hash mismatch detectado em `specify`, demais clean)

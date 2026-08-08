@@ -1,11 +1,11 @@
 #!/bin/sh
-# test_path-guard.sh — cobre global/skills/agente-00c-runtime/scripts/path-guard.sh.
+# test_path-guard.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/path-guard.sh.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/path-guard.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/path-guard.sh"
 
 scenario_validate_target_dir_normal_passa() {
   _p="$TMPDIR_TEST/proj"

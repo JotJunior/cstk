@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_metrics.sh — cobre global/skills/review-task/scripts/metrics.sh.
+# test_metrics.sh — cobre plugins/cstk/skills/review-task/scripts/metrics.sh.
 # Inclui regressao explicita do bug historico (grep -c sem matches).
 #
 # NOTA: deliberadamente NAO usamos 'set -eu' — o harness sinaliza falha via
@@ -10,7 +10,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/review-task/scripts/metrics.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/review-task/scripts/metrics.sh"
 
 # ==== 3.1.1 tasks.md vazio ====
 

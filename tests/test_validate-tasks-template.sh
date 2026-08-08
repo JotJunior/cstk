@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_validate-tasks-template.sh —
-# cobre global/skills/create-tasks/scripts/validate-tasks-template.sh.
+# cobre plugins/cstk/skills/create-tasks/scripts/validate-tasks-template.sh.
 #
 # Contrato:
 #   validate-tasks-template.sh FILE [--phase-prefix PREFIX] [--config CONFIG_JSON]
@@ -13,7 +13,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/create-tasks/scripts/validate-tasks-template.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/create-tasks/scripts/validate-tasks-template.sh"
 
 # ==== documento conformante -> exit 0, sem findings ====
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_posttooluse-loose-usage.sh — cobre
-# global/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh
+# plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh
 # (hook PostToolUse OPT-IN de captura de consumo avulso).
 #
 # Contrato sob teste: docs/specs/loose-usage-capture/contracts/hook-loose-usage.md
@@ -19,7 +19,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh"
 
 # Endpoint que falha rapido (nada escuta) — nunca precisa de exporter real;
 # curl --max-time 3 contra porta fechada retorna connection-refused quase
@@ -280,6 +280,40 @@ scenario_permissoes_apos_captura() {
   [ "$(_file_mode "$_procdir/seg-001")" = "700" ] || { _fail "modo segmento" "esperado 700, obtido $(_file_mode "$_procdir/seg-001")"; return 1; }
   [ "$(_file_mode "$_meta")" = "600" ] || { _fail "modo meta.tsv" "esperado 600, obtido $(_file_mode "$_meta")"; return 1; }
   return 0
+}
+
+# ==== FASE 3.2 (claude-plugin-packaging) — candidato ${CLAUDE_PLUGIN_ROOT} ====
+#
+# Task 3.2.2: adotar `_resolve-root.sh` (Ordem A, fail-open). Isola o hook
+# num diretorio SEM sibling scripts/ algum, com ${CLAUDE_PLUGIN_ROOT}
+# apontando para uma raiz fake contendo o bootstrap (_resolve-root.sh) +
+# otel-usage.sh reais — confirma que a captura funciona mesmo quando o
+# runtime so e alcancavel via plugin.
+
+scenario_plugin_root_resolve_otel_usage_via_claude_plugin_root() {
+  _require_jq || return 2
+  _isolated="$TMPDIR_TEST/isolated-plugin/hooks"
+  mkdir -p "$_isolated"
+  cp "$SCRIPT" "$_isolated/posttooluse-loose-usage.sh"
+  chmod +x "$_isolated/posttooluse-loose-usage.sh"
+
+  _plugin_root="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/scripts"
+  mkdir -p "$_plugin_root"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_root/_resolve-root.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/otel-usage.sh" "$_plugin_root/otel-usage.sh"
+  chmod +x "$_plugin_root/otel-usage.sh"
+
+  export CSTK_OTEL_ENDPOINT="$_FAKE_ENDPOINT"
+  _proj="$TMPDIR_TEST/proj-plugin"
+  mkdir -p "$_proj"
+  _json=$(_json_for "$_proj" "Bash")
+  capture env HOME="$TMPDIR_TEST" CLAUDE_PLUGIN_ROOT="$TMPDIR_TEST/fake-plugin" \
+    sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$_isolated/posttooluse-loose-usage.sh"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout" "esperado vazio: $_CAPTURED_STDOUT"; return 1; }
+  [ -z "$_CAPTURED_STDERR" ] || { _fail "stderr" "esperado vazio: $_CAPTURED_STDERR"; return 1; }
+  _meta=$(_find_meta_files)
+  [ -n "$_meta" ] || { _fail "sidecar" "esperado meta.tsv (otel-usage.sh resolvido via plugin root)"; return 1; }
 }
 
 run_all_scenarios

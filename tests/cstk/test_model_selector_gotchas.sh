@@ -37,7 +37,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SKILL_MD="$REPO_ROOT/global/skills/model-selector/SKILL.md"
+SKILL_MD="$REPO_ROOT/plugins/cstk/skills/model-selector/SKILL.md"
 export SKILL_MD
 
 scenario_5_4_3_gotchas_tem_pelo_menos_5_subheadings() {

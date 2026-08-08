@@ -53,6 +53,12 @@ _CSTK_UPDATE_LOADED=1
 . "${CSTK_LIB}/ui.sh"
 # shellcheck source=/dev/null
 . "${CSTK_LIB}/hooks.sh"
+# shellcheck source=./plugin-detect.sh
+# Nota de escopo (FR-007, feature claude-plugin-packaging FASE 6, task
+# 6.4): _update_emit_summary() consulta plugin_enabled para avisar que
+# `cstk update` so cobre a instalacao classica quando o plugin tambem
+# esta presente. Ver contracts/cli-plugin-awareness.md §cstk update.
+. "${CSTK_LIB}/plugin-detect.sh"
 
 _update_print_help() {
   cat >&2 <<'HELP'
@@ -864,6 +870,13 @@ _update_emit_summary() {
        || [ "$_update_count_agents_preserved" -gt 0 ]; then
       printf '  note: %d third-party file(s) preserved; use --force to overwrite\n' \
         "$((_update_count_commands_preserved + _update_count_agents_preserved))"
+    fi
+    if plugin_enabled cstk; then
+      printf '\n'
+      printf 'Nota: o catalogo tambem esta disponivel via plugin do Claude Code\n'
+      printf '(habilitado neste ambiente). `cstk update` atualiza a instalacao\n'
+      printf 'CLASSICA em ~/.claude; o catalogo do plugin e atualizado pelo\n'
+      printf 'mecanismo nativo de plugins. Rode `cstk doctor` para comparar.\n'
     fi
   } >&2
 }

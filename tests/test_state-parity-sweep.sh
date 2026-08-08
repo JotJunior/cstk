@@ -21,7 +21,7 @@
 #     operacionalizacao mecanica do criterio codigo-real-vs-prosa de FR-010:
 #     mensagem voltada a humano cita "state.json" como palavra, sem barra;
 #     acesso real constroi "<dir>/state.json") sobre os scripts do runtime +
-#     cli/lib/00c-bootstrap.sh + global/skills/agente-00c-runtime/hooks/*.sh
+#     cli/lib/00c-bootstrap.sh + plugins/cstk/skills/agente-00c-runtime/hooks/*.sh
 #     (feature hooks-db-parity FASE 7, task 7.1.1 — a lacuna original que
 #     deixou a regressao de triplicacao dos hooks passar despercebida), com
 #     linhas de comentario descartadas ANTES do match. Hit em arquivo fora
@@ -40,7 +40,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-R="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
+R="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_state-parity-sweep.sh: jq ausente — pulando\n'
@@ -277,7 +277,7 @@ _static_hits() {
 scenario_estatica_sem_acesso_direto_fora_da_allowlist() {
   _viol=""
   for _f in "$R"/*.sh "$REPO_ROOT/cli/lib/00c-bootstrap.sh" \
-            "$REPO_ROOT/global/skills/agente-00c-runtime/hooks"/*.sh; do
+            "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks"/*.sh; do
     [ -f "$_f" ] || continue
     _base=$(basename "$_f")
     _hits=$(_static_hits "$_f")
@@ -338,7 +338,7 @@ scenario_estatica_allowlist_sem_entradas_mortas() {
   # Entrada morta (arquivo listado sem hit real) mascara regressao futura:
   # exigimos que cada entrada da allowlist ainda tenha pelo menos 1 hit.
   _dead=""
-  _hooks_dir="$REPO_ROOT/global/skills/agente-00c-runtime/hooks"
+  _hooks_dir="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks"
   for _entry in $(_static_allowlist | cut -d: -f1); do
     if [ "$_entry" = "00c-bootstrap.sh" ]; then
       _f="$REPO_ROOT/cli/lib/00c-bootstrap.sh"

@@ -6,13 +6,13 @@
 # CHK050, CHK051, CHK053).
 #
 # Objetivo: garantir que `jq` so aparece em CODIGO EXECUTAVEL de UM
-# UNICO arquivo da skill — `global/skills/model-selector/scripts/report.sh`.
+# UNICO arquivo da skill — `plugins/cstk/skills/model-selector/scripts/report.sh`.
 # Qualquer outro arquivo executavel (`*.sh`) que carregue `jq` em
 # linha NAO-comentario constitui violacao do carve-out 1.1.0 e falha
 # o teste.
 #
 # Definicao operacional de "codigo executavel":
-#   - Linha em arquivo `.sh` sob `global/skills/model-selector/`
+#   - Linha em arquivo `.sh` sob `plugins/cstk/skills/model-selector/`
 #   - QUE NAO comece com `#` (apos eventual whitespace), ou seja:
 #     `grep -nE '\bjq\b' <arquivos> | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'`
 #   - SKILL.md (markdown) e references/*.md (markdown) NAO contam como
@@ -52,7 +52,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SKILL_DIR="$REPO_ROOT/global/skills/model-selector"
+SKILL_DIR="$REPO_ROOT/plugins/cstk/skills/model-selector"
 export SKILL_DIR
 
 # ----------------------------------------------------------------------

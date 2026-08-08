@@ -16,7 +16,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 CSTK_BIN="$REPO_ROOT/cli/cstk"
 CSTK_LIB_DIR="$REPO_ROOT/cli/lib"
-STATE_RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+STATE_RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 # _cstk_state ARGS... -> roda `cstk state ARGS` com o layout de repo.
 _cstk_state() {

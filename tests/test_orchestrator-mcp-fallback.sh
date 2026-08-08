@@ -36,18 +36,18 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-CMD_INIT_AGENTE="$REPO_ROOT/global/commands/agente-00c.md"
-CMD_INIT_FEAT="$REPO_ROOT/global/commands/feature-00c.md"
-CMD_RES_AGENTE="$REPO_ROOT/global/commands/agente-00c-resume.md"
-CMD_RES_FEAT="$REPO_ROOT/global/commands/feature-00c-resume.md"
-AGENT_ORCH="$REPO_ROOT/global/agents/agente-00c-orchestrator.md"
-AGENT_FEAT_ORCH="$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md"
+CMD_INIT_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c.md"
+CMD_INIT_FEAT="$REPO_ROOT/plugins/cstk/commands/feature-00c.md"
+CMD_RES_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c-resume.md"
+CMD_RES_FEAT="$REPO_ROOT/plugins/cstk/commands/feature-00c-resume.md"
+AGENT_ORCH="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+AGENT_FEAT_ORCH="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
 
 CSTK_BIN="$REPO_ROOT/cli/cstk"
 CSTK_LIB_DIR="$REPO_ROOT/cli/lib"
-STATE_RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
-STATE_ONDAS="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
-STATE_DECISIONS="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
+STATE_RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
+STATE_ONDAS="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
+STATE_DECISIONS="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_orchestrator-mcp-fallback.sh: jq ausente — pulando suite\n'

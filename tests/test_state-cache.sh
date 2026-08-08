@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_state-cache.sh — cobre global/skills/agente-00c-runtime/scripts/state-cache.sh.
+# test_state-cache.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/state-cache.sh.
 #
 # Ref: docs/specs/_archived/agente-00c-artifact-cache/tasks.md T1.5
 #      docs/specs/_archived/agente-00c-artifact-cache/spec.md SC-005 (>= 15 cenarios)
@@ -9,8 +9,8 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-cache.sh"
-RW="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-cache.sh"
+RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_state-cache.sh: jq ausente — pulando suite\n'

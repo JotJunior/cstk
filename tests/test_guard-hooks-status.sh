@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_guard-hooks-status.sh — cobre
-# global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh
+# plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh
 #
 # Invariantes sob teste:
 #   INV-1: READ-ONLY — nenhuma invocacao cria/edita arquivo no projeto-alvo.
@@ -29,7 +29,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
 
 _HOOKS='pretooluse-bash-guard.sh
 posttooluse-tool-call-tick.sh
@@ -323,7 +323,10 @@ scenario_check_catalogo_ausente_da_unknown_e_nao_reprova() {
   _solto="$TMPDIR_TEST/script-solto"
   mkdir -p "$_solto"
   cp "$SCRIPT" "$_solto/guard-hooks-status.sh"
-  capture env HOME="$_vazio" CSTK_HOOKS_CATALOG_DIR="$_vazio" \
+  # CLAUDE_PLUGIN_ROOT explicitamente vazio: isolamento hermetico (nao
+  # herdar do ambiente do host) — as QUATRO pontas precisam falhar agora
+  # (override, sibling, plugin, HOME).
+  capture env HOME="$_vazio" CSTK_HOOKS_CATALOG_DIR="$_vazio" CLAUDE_PLUGIN_ROOT="" \
     sh "$_solto/guard-hooks-status.sh" check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 0 ] \
     || { _fail "exit" "catalogo irresolvivel nao pode reprovar (obtido $_CAPTURED_EXIT)"; return 1; }
@@ -490,12 +493,12 @@ scenario_loose_usage_sem_flag_saida_identica() {
 scenario_loose_usage_detection_stale_runtime() {
   _old="$TMPDIR_TEST/old-guard-hooks-status.sh"
   _intro=$(git -C "$REPO_ROOT" log -S'--include-loose-usage' --format=%H \
-    -- global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
+    -- plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
   if [ -z "$_intro" ]; then
     printf '# scenario_loose_usage_detection_stale_runtime: commit de introducao nao encontrado — pulando\n'
     return 0
   fi
-  if ! git -C "$REPO_ROOT" show "${_intro}~1:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
+  if ! git -C "$REPO_ROOT" show "${_intro}~1:plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
        > "$_old" 2>/dev/null; then
     printf '# scenario_loose_usage_detection_stale_runtime: sem versao anterior a introducao — pulando\n'
     return 0
@@ -630,12 +633,12 @@ scenario_minified_settings_indeterminate() {
 scenario_verify_registration_isolated_from_baseline() {
   _old="$TMPDIR_TEST/old-guard-hooks-status-verify.sh"
   _intro=$(git -C "$REPO_ROOT" log -S'--verify-registration' --format=%H \
-    -- global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
+    -- plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh | tail -1)
   if [ -z "$_intro" ]; then
     printf '# scenario_verify_registration_isolated_from_baseline: commit de introducao nao encontrado — pulando\n'
     return 0
   fi
-  if ! git -C "$REPO_ROOT" show "${_intro}~1:global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
+  if ! git -C "$REPO_ROOT" show "${_intro}~1:plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh" \
        > "$_old" 2>/dev/null; then
     printf '# scenario_verify_registration_isolated_from_baseline: sem versao anterior a introducao — pulando\n'
     return 0
@@ -656,6 +659,47 @@ scenario_verify_registration_isolated_from_baseline() {
 scenario_check_flag_ainda_rejeitada_apos_extensoes() {
   _p=$(_mkproj proj-flag-pos-extensao)
   assert_exit 2 sh "$SCRIPT" check --projeto-alvo-path "$_p" --flag-totalmente-inventada || return 1
+  return 0
+}
+
+# ==== FASE 3.2 (claude-plugin-packaging) — candidato ${CLAUDE_PLUGIN_ROOT} ====
+#
+# Task 3.2.5: adotar `_resolve-root.sh` (Ordem A, CLI comum). Isola o
+# script (sem sibling ../hooks, sem override de catalogo, HOME vazio) e
+# aponta ${CLAUDE_PLUGIN_ROOT} para uma raiz fake contendo o bootstrap
+# (_resolve-root.sh) + a MESMA copia do hook do projeto sob
+# `skills/agente-00c-runtime/hooks/` — confirma freshness "current"
+# resolvida via plugin (nao "unknown").
+scenario_plugin_root_resolve_catalogo_via_claude_plugin_root() {
+  _p=$(_mkproj proj-plugin-catalog)
+  _body='#!/bin/sh
+exit 0'
+  mkdir -p "$_p/.claude/hooks"
+  _plugin_scripts="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/scripts"
+  _plugin_hooks="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/hooks"
+  mkdir -p "$_plugin_scripts" "$_plugin_hooks"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_scripts/_resolve-root.sh"
+  for _h in $_HOOKS; do
+    printf '%s\n' "$_body" > "$_p/.claude/hooks/$_h"
+    chmod +x "$_p/.claude/hooks/$_h"
+    printf '%s\n' "$_body" > "$_plugin_hooks/$_h"
+  done
+  # shellcheck disable=SC2086
+  _register "$_p" $_HOOKS
+
+  _solto="$TMPDIR_TEST/script-solto-plugin"
+  mkdir -p "$_solto"
+  cp "$SCRIPT" "$_solto/guard-hooks-status.sh"
+  _vazio="$TMPDIR_TEST/home-vazio-plugin"
+  mkdir -p "$_vazio"
+
+  capture env HOME="$_vazio" CSTK_HOOKS_CATALOG_DIR="" \
+    CLAUDE_PLUGIN_ROOT="$TMPDIR_TEST/fake-plugin" \
+    sh "$_solto/guard-hooks-status.sh" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "exit" "esperado 0 (3 hooks current via plugin), obtido $_CAPTURED_EXIT; stdout=$_CAPTURED_STDOUT stderr=$_CAPTURED_STDERR"; return 1; }
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	present	registered	current$')
+  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas current (catalogo resolvido via plugin), stdout=$_CAPTURED_STDOUT"; return 1; }
   return 0
 }
 

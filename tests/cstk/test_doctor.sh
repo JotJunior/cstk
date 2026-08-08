@@ -292,4 +292,150 @@ scenario_doctor_deps_nao_interfere_com_fix_scope() {
   assert_stderr_contains "ok:      3" || return 1
 }
 
+# ==== Distribution Paths (feature claude-plugin-packaging FASE 6, task
+# 6.3.4) — os 6 estados + nao-regressao do caso classic-only (secao
+# omitida). ====
+
+# _run_doctor_in HOME PROJDIR ARGS...: variante de _run_doctor que RODA
+# doctor_main com cwd=PROJDIR (necessario p/ o check de duplicated-hooks,
+# que le ./.claude/settings.json relativo ao cwd).
+_run_doctor_in() {
+  _rdi_home=$1; shift
+  _rdi_proj=$1; shift
+  capture env HOME="$_rdi_home" CSTK_LIB="$CSTK_LIB" sh -c '
+    cd "$1" && shift && . "$CSTK_LIB/doctor.sh" && doctor_main "$@"
+  ' doctor_test "$_rdi_proj" "$@"
+}
+
+# _dp_plugin_home HOME_DIR: registra "cstk@cstk" instalado+habilitado em
+# HOME_DIR/.claude/{plugins,settings.json}; installPath aponta para
+# HOME_DIR/plugin-install (sem popular skills/ — cada scenario decide).
+_dp_plugin_home() {
+  _dph_home=$1
+  _dph_ip="$_dph_home/plugin-install"
+  mkdir -p "$_dph_home/.claude/plugins" "$_dph_ip"
+  cat > "$_dph_home/.claude/plugins/installed_plugins.json" <<EOF
+{"version":2,"plugins":{"cstk@cstk":[{"scope":"user","installPath":"$_dph_ip","installedAt":"2026-08-01T00:00:00.000Z","lastUpdated":"2026-08-08T00:00:00.000Z"}]}}
+EOF
+  cat > "$_dph_home/.claude/settings.json" <<'EOF'
+{"enabledPlugins": {"cstk@cstk": true}}
+EOF
+  printf '%s' "$_dph_ip"
+}
+
+# _dp_fill_skills DIR CONTENT_TAG: popula DIR/skills/foo/SKILL.md com
+# conteudo derivado de CONTENT_TAG (mesmo tag em 2 dirs -> mesmo hash_dir).
+_dp_fill_skills() {
+  mkdir -p "$1/skills/foo"
+  printf '# foo (%s)\n' "$2" > "$1/skills/foo/SKILL.md"
+}
+
+scenario_doctor_distribution_paths_omitida_sem_plugin() {
+  _h="$TMPDIR_TEST/dp-h-none"
+  mkdir -p "$_h/.claude/skills"
+  _proj="$TMPDIR_TEST/dp-proj-none"
+  mkdir -p "$_proj"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sem plugin exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"Distribution Paths"*) _fail "secao nao deveria aparecer sem plugin" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_doctor_distribution_paths_plugin_only() {
+  if ! command -v jq >/dev/null 2>&1; then _error "no_jq" "jq indisponivel"; return 2; fi
+  _h="$TMPDIR_TEST/dp-h-plugin-only"
+  _ip=$(_dp_plugin_home "$_h")
+  _dp_fill_skills "$_ip" "v1"
+  # SEM ~/.claude/skills classico.
+  _proj="$TMPDIR_TEST/dp-proj-plugin-only"
+  mkdir -p "$_proj"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "plugin-only exit" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[plugin-only]" || return 1
+}
+
+# _dp_mirror_classic_skills_into HOME_DIR TARGET_DIR: copia
+# HOME_DIR/.claude/skills/* (foo/bar/baz instalados por _install_v1, todos
+# "OK" no manifest) para TARGET_DIR/skills — usado para montar o lado
+# "plugin" com conteudo IDENTICO ao classico, sem incorrer em drift de
+# manifest (que geraria ORPHAN/EDITED incidental e confundiria o teste).
+_dp_mirror_classic_skills_into() {
+  mkdir -p "$2/skills"
+  cp -R "$1/.claude/skills/." "$2/skills/" 2>/dev/null || :
+}
+
+scenario_doctor_distribution_paths_aligned() {
+  if ! command -v jq >/dev/null 2>&1; then _error "no_jq" "jq indisponivel"; return 2; fi
+  _h="$TMPDIR_TEST/dp-h-aligned"
+  _r="$TMPDIR_TEST/dp-r-aligned"
+  _make_release "$_r" || { _error "fixture" ""; return 2; }
+  _install_v1 "$_h" "$_r"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install classico" "$_CAPTURED_EXIT"; return 1; }
+  _ip=$(_dp_plugin_home "$_h")
+  _dp_mirror_classic_skills_into "$_h" "$_ip"
+  _proj="$TMPDIR_TEST/dp-proj-aligned"
+  mkdir -p "$_proj"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "aligned exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[aligned]" || return 1
+}
+
+scenario_doctor_distribution_paths_diverged() {
+  if ! command -v jq >/dev/null 2>&1; then _error "no_jq" "jq indisponivel"; return 2; fi
+  _h="$TMPDIR_TEST/dp-h-diverged"
+  _r="$TMPDIR_TEST/dp-r-diverged"
+  _make_release "$_r" || { _error "fixture" ""; return 2; }
+  _install_v1 "$_h" "$_r"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install classico" "$_CAPTURED_EXIT"; return 1; }
+  _ip=$(_dp_plugin_home "$_h")
+  _dp_mirror_classic_skills_into "$_h" "$_ip"
+  # Diverge SO o lado plugin (classico permanece "OK" no manifest).
+  printf '# foo — versao diferente no plugin\n' > "$_ip/skills/foo/SKILL.md"
+  _proj="$TMPDIR_TEST/dp-proj-diverged"
+  mkdir -p "$_proj"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "diverged exit" "esperado 1, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[diverged]" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"[ORPHAN]"*|*"[EDITED]"*|*"[MISSING]"*)
+      _fail "diverged nao deveria ter drift classico incidental" "$_CAPTURED_STDERR"
+      return 1
+      ;;
+  esac
+}
+
+scenario_doctor_distribution_paths_duplicated_hooks() {
+  if ! command -v jq >/dev/null 2>&1; then _error "no_jq" "jq indisponivel"; return 2; fi
+  _h="$TMPDIR_TEST/dp-h-duplicated"
+  _ip=$(_dp_plugin_home "$_h")
+  _dp_fill_skills "$_ip" "same"
+  _dp_fill_skills "$_h/.claude" "same"
+  _proj="$TMPDIR_TEST/dp-proj-duplicated"
+  mkdir -p "$_proj/.claude"
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"pretooluse-bash-guard.sh"}]}]}}\n' \
+    > "$_proj/.claude/settings.json"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "duplicated-hooks exit" "esperado 1, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[duplicated-hooks]" || return 1
+}
+
+scenario_doctor_distribution_paths_undetermined_installed_json_corrompido() {
+  # Scenario 7 do quickstart: settings.json diz habilitado, mas
+  # installed_plugins.json esta corrompido -> secao MOSTRADA (gate e o
+  # sinal fraco), status=undetermined, exit 0 (aviso, nunca erro fatal).
+  if ! command -v jq >/dev/null 2>&1; then _error "no_jq" "jq indisponivel"; return 2; fi
+  _h="$TMPDIR_TEST/dp-h-undetermined"
+  mkdir -p "$_h/.claude/plugins" "$_h/.claude/skills"
+  printf '{' > "$_h/.claude/plugins/installed_plugins.json"
+  cat > "$_h/.claude/settings.json" <<'EOF'
+{"enabledPlugins": {"cstk@cstk": true}}
+EOF
+  _proj="$TMPDIR_TEST/dp-proj-undetermined"
+  mkdir -p "$_proj"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "undetermined exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[undetermined]" || return 1
+}
+
 run_all_scenarios

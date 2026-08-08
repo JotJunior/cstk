@@ -82,35 +82,47 @@ labels are stripped before touching disk.
 ## Structure
 
 ```
-├── global/                     # Global skills (language-independent)
-│   └── skills/                 # 22 global skills (each skill is a folder)
-│       ├── advisor/
-│       ├── agente-00c-runtime/ # internal POSIX runtime (not user-invocable)
-│       ├── analyze/
-│       ├── apply-insights/
-│       ├── briefing/
-│       ├── bugfix/
-│       ├── checklist/
-│       ├── clarify/
-│       ├── constitution/
-│       ├── converge/           # reconciles spec/plan/tasks vs actual code
-│       ├── create-tasks/
-│       ├── e2e-integration-flow/ # full-stack E2E integration tests (Playwright)
-│       ├── execute-task/
-│       ├── initialize-docs/
-│       ├── model-selector/     # model routing heuristic (suggester)
-│       ├── owasp-security/
-│       ├── plan/
-│       ├── review-features/
-│       ├── review-task/
-│       ├── specify/
-│       ├── validate-docs-rendered/
-│       └── validate-documentation/
-├── language-related/           # Language-specific skills and hooks
-│   └── go/                     # Go — ver docs/go-toolkit.md
-├── cli/                        # cstk binary + POSIX libs
-└── docs/                       # Topic-based documentation (see index below)
+├── plugins/                     # Catalog, packaged as installable Claude Code plugins
+│   ├── cstk/                    # Default plugin (marketplace entry "cstk")
+│   │   ├── commands/            # The 6 /agente-00c*, /feature-00c* slash commands
+│   │   ├── agents/              # Orchestrators, clarify asker/answerer, data-veracity
+│   │   ├── hooks/hooks.json     # 3 enforced guard hooks (bash-guard, tool-call-tick, agent-usage)
+│   │   └── skills/               # 22 global skills (each skill is a folder)
+│   │       ├── advisor/
+│   │       ├── agente-00c-runtime/ # internal POSIX runtime (not user-invocable)
+│   │       ├── analyze/
+│   │       ├── apply-insights/
+│   │       ├── briefing/
+│   │       ├── bugfix/
+│   │       ├── checklist/
+│   │       ├── clarify/
+│   │       ├── constitution/
+│   │       ├── converge/           # reconciles spec/plan/tasks vs actual code
+│   │       ├── create-tasks/
+│   │       ├── e2e-integration-flow/ # full-stack E2E integration tests (Playwright)
+│   │       ├── execute-task/
+│   │       ├── initialize-docs/
+│   │       ├── model-selector/     # model routing heuristic (suggester)
+│   │       ├── owasp-security/
+│   │       ├── plan/
+│   │       ├── review-features/
+│   │       ├── review-task/
+│   │       ├── specify/
+│   │       ├── validate-docs-rendered/
+│   │       └── validate-documentation/
+│   └── cstk-language-go/        # Go-profile plugin (marketplace entry "cstk-language-go")
+│       ├── hooks/                # Go-specific hooks
+│       └── skills/               # Go — see docs/go-toolkit.md
+├── .claude-plugin/marketplace.json  # Marketplace manifest (2 entries: cstk, cstk-language-go)
+├── cli/                          # cstk binary + POSIX libs (not shipped by the plugin — FR-006)
+└── docs/                         # Topic-based documentation (see index below)
 ```
+
+> Installed via the classic `cstk` CLI, this same content lands in
+> `~/.claude/skills/`, `~/.claude/commands/` and `~/.claude/agents/`
+> (flattened, no `plugins/cstk/` prefix). Installed via the native
+> Claude Code plugin, it materializes under the harness's own
+> `installPath` (see [Installation](#installation) for both paths).
 
 ### Anatomy of a skill
 
@@ -132,7 +144,7 @@ Not every skill uses all subfolders — simple skills are just a `SKILL.md`.
 
 ## Global Skills
 
-Skills in `global/skills/`, independent of language or framework.
+Skills in `plugins/cstk/skills/`, independent of language or framework.
 
 ### SDD Pipeline (Spec-Driven Development)
 
@@ -252,6 +264,51 @@ cstk install --scope project advisor owasp-security
 # language-* hooks ARE installed only in --scope project
 # (in --scope global, hooks are omitted with a warning in the summary — FR-009c)
 ```
+
+### Via Claude Code plugin (native, no binary)
+
+Since v6.9.0 the catalog is also distributable as a native [Claude Code
+plugin](https://docs.claude.com/en/docs/claude-code/plugins) — no `cstk`
+binary, no clone, no `curl` bootstrap:
+
+```text
+/plugin marketplace add JotJunior/cstk
+/plugin install cstk@cstk
+# optional, Go projects only:
+/plugin install cstk-language-go@cstk
+```
+
+Enable the plugin and open a new session in any project — skills, the 6
+`/agente-00c*`/`/feature-00c*` commands and the enforced guard hooks
+(`pretooluse-bash-guard`, `posttooluse-tool-call-tick`,
+`posttooluse-agent-usage`) activate automatically, with **no**
+`cstk hooks install` step (confirmed empirically — see
+[`docs/specs/claude-plugin-packaging/spec.md`](docs/specs/claude-plugin-packaging/spec.md)
+§Clarifications, assumption A1). `posttooluse-loose-usage.sh` (opt-in
+consumption capture) is deliberately **not** part of the plugin's
+`hooks.json` — it stays an explicit opt-in via `cstk hooks install
+--with-loose-usage`.
+
+**Choosing between the two paths:**
+
+| | Classic (`cstk` CLI) | Plugin (native) |
+|---|---|---|
+| Install step | bootstrap one-liner + `cstk install` | `/plugin marketplace add` + `/plugin install` |
+| Provides the `cstk` binary (`recall`, `usage`, `mcp`, `session`, `serve`, `self-update`) | Yes | **No** — the plugin format does not install a persistent binary on `PATH` (FR-006); use the classic bootstrap for these |
+| Guard hooks activation | Requires `cstk hooks install` per project | Automatic on session start, zero per-project step |
+| Integrity verification | SHA-256 of the tarball, fail-closed (`serve-integrity`), fixed trusted-host allowlist | Commit pin (`gitCommitSha`) recorded by the harness + its own "Will install" trust dialog |
+| Update propagation | `cstk update` (explicit, per invocation) | **Not automatic**: `claude plugin marketplace update` then `claude plugin update cstk --scope <scope>`, plus a session restart — the plugin CLI itself prints `Restart to apply changes.` |
+
+Both paths are equally official (no third, ungoverned distribution
+mechanism — see `FR-017` in
+[`docs/specs/current/guards-defense-in-depth.md`](docs/specs/current/guards-defense-in-depth.md))
+and deliver the same auditable content with **comparable protection, not
+identical mechanisms** — pick the plugin for the fastest zero-binary
+onboarding of skills + guard hooks, the classic CLI when you need
+`recall`/`usage`/`mcp`/`session`/`serve`, or **both together**: `cstk
+doctor`/`cstk hooks install` detect the plugin and automatically avoid
+double-registering the guard hooks (plugin wins; `cstk doctor` reports
+`aligned`/`diverged`/`duplicated-hooks` with an actionable fix for each).
 
 ### 00c runtime hooks (`cstk hooks`)
 
@@ -388,7 +445,7 @@ cstk update --dry-run
 
 ### Manual installation (deprecated, still supported)
 
-Directly copying the directories still works (`cp -r global/skills/
+Directly copying the directories still works (`cp -r plugins/cstk/skills/
 ~/.claude/skills/`), but **does not track versions or detect drift** — see
 [`CLAUDE.md`](./CLAUDE.md) §"Installed vs Source Drift". `cstk` solves
 this via manifest + hash_dir.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# test__state-read.sh — cobre global/skills/agente-00c-runtime/scripts/_state-read.sh
+# test__state-read.sh — cobre plugins/cstk/skills/agente-00c-runtime/scripts/_state-read.sh
 # (sibling sourceable de materializacao — feature state-db-runtime-parity,
 # FASE 1 task 1.2).
 #
@@ -24,8 +24,8 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-_R="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
-# shellcheck source=../global/skills/agente-00c-runtime/scripts/_state-read.sh
+_R="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
+# shellcheck source=../plugins/cstk/skills/agente-00c-runtime/scripts/_state-read.sh
 . "$_R/_state-read.sh"
 
 # Sourced a partir do teste, `dirname $0` apontaria para tests/ — usar o

@@ -3,7 +3,7 @@
 #
 # Cobre subtarefas 5.5.1 e 5.5.2 da feature `model-selector` (CHK022,
 # CHK060; resolvidos via onda-006 /analyze dec-029). Garante que
-# nenhum script em `global/skills/model-selector/scripts/` usa:
+# nenhum script em `plugins/cstk/skills/model-selector/scripts/` usa:
 #
 #   (1) `eval` em QUALQUER caminho de execucao — sem excecao. `eval`
 #       expande argumentos como comandos shell, e o input da skill
@@ -52,7 +52,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPTS_DIR="$REPO_ROOT/global/skills/model-selector/scripts"
+SCRIPTS_DIR="$REPO_ROOT/plugins/cstk/skills/model-selector/scripts"
 export SCRIPTS_DIR
 
 # Regex ERE (-E): `\b` e word boundary do GNU grep; em BSD/macOS,

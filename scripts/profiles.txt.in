@@ -3,11 +3,11 @@
 # Esta e a fonte de verdade para os profiles `sdd` e `complementary`. O script
 # scripts/build-release.sh copia este arquivo para catalog/profiles.txt no
 # tarball e anexa entradas auto-derivadas (`all:*` e `language-*:*`) a partir
-# das pastas em global/skills/ e language-related/.
+# das pastas em plugins/cstk/skills/ e language-related/ + plugins/cstk-language-*/.
 #
 # Formato: <profile>:<skill-or-profile>  (lido por cli/lib/profiles.sh)
 #
-# Quando adicionar uma nova skill em global/skills/, decidir aqui se ela
+# Quando adicionar uma nova skill em plugins/cstk/skills/, decidir aqui se ela
 # pertence a `sdd` ou `complementary`. O entry `all:*` e gerado automatico.
 
 # Spec-Driven Development pipeline (sequencial)

@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_aggregate.sh — cobre global/skills/review-features/scripts/aggregate.sh.
+# test_aggregate.sh — cobre plugins/cstk/skills/review-features/scripts/aggregate.sh.
 #
 # Cria fixtures inline em $TMPDIR_TEST (em vez de fixtures/<dir>) porque cada
 # scenario precisa de uma estrutura de subdirs dinamica com mtimes especificos.
@@ -12,7 +12,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/review-features/scripts/aggregate.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/review-features/scripts/aggregate.sh"
 
 # ==== helpers locais ====
 

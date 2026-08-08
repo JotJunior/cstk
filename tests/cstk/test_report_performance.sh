@@ -53,7 +53,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-REPORT="$REPO_ROOT/global/skills/model-selector/scripts/report.sh"
+REPORT="$REPO_ROOT/plugins/cstk/skills/model-selector/scripts/report.sh"
 FIXTURE_DIR="$REPO_ROOT/tests/fixtures/state-dirs-20"
 PERF_THRESHOLD_MS=500
 PERF_RUNS=5

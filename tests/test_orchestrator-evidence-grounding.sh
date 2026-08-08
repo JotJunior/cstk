@@ -22,10 +22,10 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-ORCH_AGENTE="$REPO_ROOT/global/agents/agente-00c-orchestrator.md"
-ORCH_FEAT="$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md"
-RES_AGENTE="$REPO_ROOT/global/commands/agente-00c-resume.md"
-RES_FEAT="$REPO_ROOT/global/commands/feature-00c-resume.md"
+ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
+RES_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c-resume.md"
+RES_FEAT="$REPO_ROOT/plugins/cstk/commands/feature-00c-resume.md"
 
 # Token-ancora ASCII da regra: a escolha score-0 que substitui a escalada.
 _assert_grounding_token() {

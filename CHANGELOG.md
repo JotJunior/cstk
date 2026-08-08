@@ -5,6 +5,91 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.0.0] - 2026-08-08
+
+**BREAKING** — feature `claude-plugin-packaging`. O catalogo do toolkit
+(skills, commands, agents, hooks) agora tambem e instalavel pelo mecanismo
+NATIVO de plugins do Claude Code — uma segunda forma OFICIAL de entrega,
+lado a lado com o caminho classico via `cstk` (nao um terceiro mecanismo
+paralelo). O layout de codigo-fonte do repositorio foi relocado para
+tornar isso possivel: `global/` → `plugins/cstk/` e
+`language-related/go/` → `plugins/cstk-language-go/`.
+
+Por que MAJOR: quem consome os diretorios do repositorio diretamente
+(scripts, CI, integracao propria fora do `cstk`) referenciando
+`global/skills/...` ou `language-related/go/...` **quebra** — os paths
+mudaram de lugar (git mv puro, conteudo interno inalterado). Quem instala
+via `cstk install`/`cstk update` **nao e afetado**: o binario resolve os
+paths novos internamente e a instalacao final em `~/.claude/` continua
+com a mesma estrutura flatten de sempre.
+
+### Added
+
+- **Distribuicao via plugin nativo do Claude Code** — `/plugin marketplace
+  add JotJunior/cstk` + `/plugin install cstk@cstk` (e opcionalmente
+  `cstk-language-go@cstk`) habilita skills, os 6 commands `/agente-00c*`/
+  `/feature-00c*`, agents e os 3 hooks de guarda enforced
+  (`pretooluse-bash-guard`, `posttooluse-tool-call-tick`,
+  `posttooluse-agent-usage`) **sem nenhum passo manual de `cstk hooks
+  install`** — confirmado empiricamente via spike descartavel isolado
+  (dec-037): uma sessao nova com o plugin ja habilitado dispara os hooks
+  na primeira tool call. `posttooluse-loose-usage.sh` (opt-in de
+  privacidade) foi deliberadamente deixado fora do `hooks.json` do
+  plugin — nunca vira default so por habilitar o plugin.
+- **`.claude-plugin/marketplace.json`** com 2 entradas (`cstk` — catalogo
+  default; `cstk-language-go` — perfil Go) e um `plugin.json` por plugin,
+  validados por gate de CI deterministico (invariantes MP-1..MP-6).
+- **`cli/lib/plugin-detect.sh`** — deteccao read-only do plugin
+  (instalado + habilitado, via `~/.claude/plugins/installed_plugins.json`
+  + `~/.claude/settings.json`), consumida por `hooks.sh`/`setup.sh`/
+  `doctor.sh`. Falha de deteccao (JSON ilegivel, `jq` ausente) degrada
+  sempre para "nao habilitado" — nunca suprime a camada classica de
+  guardas.
+- **Dedup em `cstk hooks install`/`cstk setup`**: quando o plugin esta
+  instalado, habilitado e com `hooks/hooks.json` materializado, o snippet
+  classico deixa de ser registrado em `settings.json` (evita duplicar o
+  efeito da guarda — "plugin vence"); faltando a materializacao, o
+  provisionamento classico segue normal com aviso de inconsistencia
+  (nunca deixar um projeto sem nenhuma guarda por um falso-positivo de
+  deteccao).
+- **Secao `Distribution Paths` em `cstk doctor`** (emitida somente quando
+  o plugin e detectado — zero ruido para quem nao usa plugin): 6 estados
+  (`classic-only`/`plugin-only`/`aligned`/`diverged`/`duplicated-hooks`/
+  `undetermined`) com remediacao acionavel por estado; criterio de
+  alinhamento e sempre `hash_dir` do conteudo, nunca o campo `version` do
+  registro nativo do harness (observado como `"unknown"` em registro
+  real).
+- **Nota de escopo em `cstk update`/`cstk self-update`** quando o plugin e
+  detectado, evitando que o operador suponha que um comando atualizou o
+  que pertence ao outro mecanismo.
+- **`_resolve-root.sh`** — helper dual-path que resolve a raiz do runtime
+  tanto via `${CLAUDE_PLUGIN_ROOT}` (consumidores gerais) quanto via
+  diretorio-irmao em modo `strict` fail-closed (`pretooluse-bash-guard.sh`),
+  adotado nos 6 scripts que hardcodavam o path do runtime.
+
+### Changed (BREAKING)
+
+- **Relocacao de diretorio-fonte**: `global/skills/` → `plugins/cstk/
+  skills/`, `global/commands/` → `plugins/cstk/commands/`,
+  `global/agents/` → `plugins/cstk/agents/`, `language-related/go/` →
+  `plugins/cstk-language-go/`. Todos os paths hardcoded em `.sh`/`.md` do
+  repositorio (scripts, testes, documentacao) foram atualizados;
+  `scripts/build-release.sh` e `scripts/profiles.txt.in` publicam o
+  tarball a partir do novo layout.
+- **Modelo de integridade documentado por caminho** (`spec.md` Delta
+  FR-017 de `guards-defense-in-depth`, achado `owasp-security` F1,
+  MEDIUM): os dois caminhos de distribuicao sao comparaveis em forca de
+  protecao, mas nao identicos em mecanismo (sha256 fail-closed + allowlist
+  fixa de host no classico vs pin de `gitCommitSha` + dialogo de confianca
+  do harness no plugin) — documentado explicitamente para nunca afirmar
+  equivalencia que o toolkit nao aplica (Principio VI).
+
+Migracao: quem so usa `cstk install`/`cstk update`/`cstk self-update` nao
+precisa fazer nada. Quem clona o repositorio e referencia `global/` ou
+`language-related/go/` diretamente deve atualizar para `plugins/cstk/` e
+`plugins/cstk-language-go/`. Spec completa em
+[`docs/specs/claude-plugin-packaging/`](docs/specs/claude-plugin-packaging/).
+
 ## [6.8.0] - 2026-08-07
 
 Ajuste de UX no `cstk setup` a pedido do operador: o wizard estava verboso
@@ -5183,6 +5268,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[7.0.0]: https://github.com/JotJunior/cstk/releases/tag/v7.0.0
 [6.8.0]: https://github.com/JotJunior/cstk/releases/tag/v6.8.0
 [6.7.0]: https://github.com/JotJunior/cstk/releases/tag/v6.7.0
 [6.6.0]: https://github.com/JotJunior/cstk/releases/tag/v6.6.0

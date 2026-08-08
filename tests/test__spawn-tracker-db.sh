@@ -1,6 +1,6 @@
 #!/bin/sh
 # test__spawn-tracker-db.sh — cobre
-# global/skills/agente-00c-runtime/scripts/_spawn-tracker-db.sh
+# plugins/cstk/skills/agente-00c-runtime/scripts/_spawn-tracker-db.sh
 # (implementacao do backend SQLite de spawn-tracker.sh — feature
 # state-db-foundation, FASE 3 task 3.6).
 #
@@ -28,12 +28,12 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-_R="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
-# shellcheck source=../global/skills/agente-00c-runtime/scripts/_state-db.sh
+_R="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
+# shellcheck source=../plugins/cstk/skills/agente-00c-runtime/scripts/_state-db.sh
 . "$_R/_state-db.sh"
-# shellcheck source=../global/skills/agente-00c-runtime/scripts/_state-rw-db.sh
+# shellcheck source=../plugins/cstk/skills/agente-00c-runtime/scripts/_state-rw-db.sh
 . "$_R/_state-rw-db.sh"
-# shellcheck source=../global/skills/agente-00c-runtime/scripts/_spawn-tracker-db.sh
+# shellcheck source=../plugins/cstk/skills/agente-00c-runtime/scripts/_spawn-tracker-db.sh
 . "$_R/_spawn-tracker-db.sh"
 
 SCHEMA_SCRIPT="$_R/state-db-schema.sh"

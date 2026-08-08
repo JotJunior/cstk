@@ -26,9 +26,9 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
 README="$REPO_ROOT/README.md"
-SKILLS_DIR="$REPO_ROOT/global/skills"
+SKILLS_DIR="$REPO_ROOT/plugins/cstk/skills"
 
-# _count_skills: numero de subdiretorios imediatos de global/skills/.
+# _count_skills: numero de subdiretorios imediatos de plugins/cstk/skills/.
 _count_skills() {
   find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '
 }
@@ -72,7 +72,7 @@ scenario_all_skills_referenced_in_readme() {
 
 # Os numeros da tabela de profiles do README ("N skills ...") batem com as
 # fontes reais: sdd/complementary contados de scripts/profiles.txt.in; `all`
-# derivado como pastas de global/skills/ + language-related/*/skills/*
+# derivado como pastas de plugins/cstk/skills/ + plugins/cstk-language-*/skills/*
 # (mesma derivacao do build-release.sh). Gap historico: README declarou
 # "10 sdd / 9 complementary / 29 all" com 16/12/30 reais e nada falhou.
 scenario_profile_counts_match_sources() {
@@ -82,8 +82,8 @@ scenario_profile_counts_match_sources() {
 
   _sdd_real=$(grep -c '^sdd:' "$_profiles_in")
   _comp_real=$(grep -c '^complementary:' "$_profiles_in")
-  _lang_real=$(find "$REPO_ROOT/language-related" -mindepth 3 -maxdepth 3 \
-    -type d -path '*/skills/*' | wc -l | tr -d ' ')
+  _lang_real=$(find "$REPO_ROOT/plugins" -mindepth 3 -maxdepth 3 \
+    -type d -path '*/cstk-language-*/skills/*' | wc -l | tr -d ' ')
   _all_real=$(( $(_count_skills) + _lang_real ))
 
   _rc=0

@@ -8,7 +8,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-DIAG_LIB="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_diag.sh"
+DIAG_LIB="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_diag.sh"
 
 # Sourcear o helper (nao e executavel)
 # shellcheck disable=SC1090

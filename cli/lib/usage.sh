@@ -131,7 +131,7 @@ _usage_runtime_script_path() {
     return 0
   fi
   if [ -n "${CSTK_LIB:-}" ]; then
-    _urs_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/$_urs_name"
+    _urs_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/$_urs_name"
     if [ -f "$_urs_repo" ]; then
       printf '%s\n' "$_urs_repo"
       return 0

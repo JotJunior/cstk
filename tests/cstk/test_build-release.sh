@@ -301,14 +301,14 @@ scenario_build_release_filtra_ds_store() {
   # Cria .DS_Store em uma skill source (tempdir override de REPO_ROOT)
   _fake_repo="$TMPDIR_TEST/fake-repo"
   mkdir -p "$_fake_repo/cli/lib" \
-           "$_fake_repo/global/skills/foo" \
-           "$_fake_repo/language-related/go/skills/bar"
+           "$_fake_repo/plugins/cstk/skills/foo" \
+           "$_fake_repo/plugins/cstk-language-go/skills/bar"
   cp "$REPO_ROOT/cli/cstk" "$_fake_repo/cli/cstk"
   cp "$REPO_ROOT/cli/lib/"*.sh "$_fake_repo/cli/lib/"
-  printf '# foo\n' > "$_fake_repo/global/skills/foo/SKILL.md"
-  printf '# bar\n' > "$_fake_repo/language-related/go/skills/bar/SKILL.md"
-  printf 'fake DS_Store\n' > "$_fake_repo/global/skills/foo/.DS_Store"
-  printf 'fake AppleDouble\n' > "$_fake_repo/global/skills/foo/._SKILL.md"
+  printf '# foo\n' > "$_fake_repo/plugins/cstk/skills/foo/SKILL.md"
+  printf '# bar\n' > "$_fake_repo/plugins/cstk-language-go/skills/bar/SKILL.md"
+  printf 'fake DS_Store\n' > "$_fake_repo/plugins/cstk/skills/foo/.DS_Store"
+  printf 'fake AppleDouble\n' > "$_fake_repo/plugins/cstk/skills/foo/._SKILL.md"
 
   _o="$TMPDIR_TEST/out"
   mkdir -p "$_o"
@@ -332,13 +332,13 @@ scenario_build_release_exclui_evals() {
   # confirma que a SKILL.md fica e a evals/ some.
   _fake_repo="$TMPDIR_TEST/fake-evals"
   mkdir -p "$_fake_repo/cli/lib" \
-           "$_fake_repo/global/skills/foo/evals" \
-           "$_fake_repo/language-related/go/skills/bar"
+           "$_fake_repo/plugins/cstk/skills/foo/evals" \
+           "$_fake_repo/plugins/cstk-language-go/skills/bar"
   cp "$REPO_ROOT/cli/cstk" "$_fake_repo/cli/cstk"
   cp "$REPO_ROOT/cli/lib/"*.sh "$_fake_repo/cli/lib/"
-  printf '# foo\n' > "$_fake_repo/global/skills/foo/SKILL.md"
-  printf '{"query":"x","expect":"foo"}\n' > "$_fake_repo/global/skills/foo/evals/triggers.jsonl"
-  printf '# bar\n' > "$_fake_repo/language-related/go/skills/bar/SKILL.md"
+  printf '# foo\n' > "$_fake_repo/plugins/cstk/skills/foo/SKILL.md"
+  printf '{"query":"x","expect":"foo"}\n' > "$_fake_repo/plugins/cstk/skills/foo/evals/triggers.jsonl"
+  printf '# bar\n' > "$_fake_repo/plugins/cstk-language-go/skills/bar/SKILL.md"
 
   _o="$TMPDIR_TEST/out"
   mkdir -p "$_o"

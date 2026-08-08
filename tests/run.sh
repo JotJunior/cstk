@@ -9,7 +9,7 @@
 #
 # Convencao de cobertura (FR-009): cada script tem um test_<nome>.sh
 # correspondente. Mapeamento por origem do script:
-#   global/skills/<skill>/scripts/<n>.sh  ->  tests/test_<n>.sh
+#   plugins/cstk/skills/<skill>/scripts/<n>.sh  ->  tests/test_<n>.sh
 #   cli/lib/<n>.sh                        ->  tests/cstk/test_<n>.sh
 #
 # Test files internos (sem script 1:1) sao excluidos do check de orfaos:
@@ -149,11 +149,11 @@ _find_test_files() {
 
 # _find_scripts
 # Imprime caminho absoluto de cada .sh sob teste:
-#   - global/skills/<any>/scripts/*.sh  (existente desde a v1)
+#   - plugins/cstk/skills/<any>/scripts/*.sh  (existente desde a v1)
 #   - cli/lib/*.sh                       (FASE 9.3 — extensao da CLI cstk)
 _find_scripts() {
   {
-    find "$REPO_ROOT/global/skills" -type f -path '*/scripts/*.sh' 2>/dev/null
+    find "$REPO_ROOT/plugins/cstk/skills" -type f -path '*/scripts/*.sh' 2>/dev/null
     find "$REPO_ROOT/cli/lib" -maxdepth 1 -type f -name '*.sh' 2>/dev/null
   } | sort
 }
@@ -164,7 +164,7 @@ _expected_test_for_script() {
   _ets_script=$1
   _ets_base=$(_script_basename "$_ets_script")
   case "$_ets_script" in
-    */global/skills/*/scripts/*) printf '%s\n' "$TESTS_ROOT/test_$_ets_base.sh" ;;
+    */plugins/cstk/skills/*/scripts/*) printf '%s\n' "$TESTS_ROOT/test_$_ets_base.sh" ;;
     */cli/lib/*)                 printf '%s\n' "$TESTS_ROOT/cstk/test_$_ets_base.sh" ;;
     *)                           printf '\n' ;;  # categoria nao esperada
   esac
@@ -185,7 +185,7 @@ _test_basename() {
 
 # _is_internal_test PATH -> exit 0 se e interno, 1 caso contrario.
 # "Interno" = nao mapeia 1:1 para um script sob a convencao de FASE 9.3
-# (cli/lib/ ou global/skills/<X>/scripts/). Esses tests rodam normalmente,
+# (cli/lib/ ou plugins/cstk/skills/<X>/scripts/). Esses tests rodam normalmente,
 # apenas sao excluidos do orphan-test check.
 _is_internal_test() {
   _name=$(basename "$1")
@@ -196,6 +196,16 @@ _is_internal_test() {
       # 1:1 para um script sob a convencao de FASE 9.3.
       return 0 ;;
     test_cstk-main.sh|test_bootstrap.sh|test_build-release.sh|test_hooks-integration.sh|test_quickstart-e2e.sh)
+      return 0 ;;
+    test_validate-plugin-manifests.sh)
+      # Cobre scripts/validate-plugin-manifests.sh (top-level scripts/, fora
+      # da convencao cli/lib | skills/*/scripts — mesmo tratamento de
+      # test_build-release.sh). FASE 5.1.3/5.1.4 de claude-plugin-packaging.
+      return 0 ;;
+    test_plugin-hooks-manifest.sh)
+      # Cobre plugins/cstk/hooks/hooks.json — manifesto de dados estatico,
+      # sem script .sh "dono" sob a convencao de FASE 9.3. FASE 5.3.4 de
+      # claude-plugin-packaging.
       return 0 ;;
     test_doc-counts.sh)
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
@@ -214,7 +224,7 @@ _is_internal_test() {
       # por onda, FASE 3 de model-routing-por-onda). Assert no .md, nao em
       # um unico script — existence-guarded ao command portador da instrucao
       # wave-select. Se a fonte sumir, volta a ser orfao real.
-      [ -f "$REPO_ROOT/global/commands/feature-00c.md" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
       return 1 ;;
     test_command-spawn-mcp-lifecycle.sh)
       # Smoke textual sobre os 4 commands de spawn/resume (ciclo de vida do
@@ -222,7 +232,7 @@ _is_internal_test() {
       # state-mcp-server). Assert no .md, nao em um unico script —
       # existence-guarded ao command portador da instrucao `cstk mcp`. Se a
       # fonte sumir, volta a ser orfao real.
-      [ -f "$REPO_ROOT/global/commands/feature-00c.md" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
       return 1 ;;
     test_orchestrator-mcp-fallback.sh)
       # Hibrido textual+funcional (FASE 6 task 6.3 de state-mcp-server,
@@ -233,7 +243,7 @@ _is_internal_test() {
       # runtime (state-rw.sh + state-ondas.sh + state-decisions.sh +
       # cli/lib/mcp.sh) — nao mapeia 1:1 para um unico script sob a
       # convencao de FASE 9.3.
-      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md" ] && return 0
       return 1 ;;
     test_orchestrator-spawn-model-apply.sh)
       # Smoke textual sobre os 2 orquestradores (model-routing por onda,
@@ -241,28 +251,28 @@ _is_internal_test() {
       # §5.e.bis / secao model-routing), nao em um unico script —
       # existence-guarded ao orquestrador portador da instrucao de aplicar
       # model no spawn de clarify. Se a fonte sumir, volta a ser orfao real.
-      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md" ] && return 0
       return 1 ;;
     test_orchestrator-turn-completion.sh)
       # Smoke textual sobre os 2 orquestradores (trava do "Contrato de
       # conclusao de turno" — anti-parada-cedo apos Skill retornar). Assert
       # no .md, nao em um unico script — existence-guarded ao orquestrador
       # portador do contrato. Se a fonte sumir, volta a ser orfao real.
-      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md" ] && return 0
       return 1 ;;
     test_orchestrator-evidence-grounding.sh)
       # Smoke textual sobre os 2 orquestradores + 2 resume (regra "aterramento
       # de evidencia em escalada de seguranca" — anti-confabulacao). Assert no
       # .md/.command, nao em um unico script — existence-guarded. Se a regra
       # sumir do prompt, o bug (escalar ameaca fabricada) volta silenciosamente.
-      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md" ] && return 0
       return 1 ;;
     test_data-veracity-verifier.sh)
       # Smoke textual sobre o agente data-veracity-verifier + a fiacao nos 2
       # orquestradores (Principio VI — Veracidade de Dados / Zero Fabricacao).
       # Assert no .md do agente, nao em um unico script — existence-guarded. Se
       # o contrato sumir, o "double check" anti-fabricacao some silenciosamente.
-      [ -f "$REPO_ROOT/global/agents/data-veracity-verifier.md" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/agents/data-veracity-verifier.md" ] && return 0
       return 1 ;;
     test_converge-orchestrator-gate.sh)
       # Smoke textual sobre os 2 orquestradores (gate incondicional
@@ -271,7 +281,7 @@ _is_internal_test() {
       # unico script — existence-guarded ao orquestrador portador do gate. Se
       # a secao sumir, a regressao (converge nunca invocada antes de
       # review-task) volta silenciosamente.
-      [ -f "$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md" ] && return 0
       return 1 ;;
     test_e2e_model_routing.sh)
       # Cobre fluxo end-to-end model-routing.sh + model-routing-report.sh +
@@ -299,7 +309,7 @@ _is_internal_test() {
       # SC-004 (feature state-backend-config, FASE 6, task 6.1.1): compara
       # EMPIRICAMENTE o backend resolvido pelo caminho do binario
       # (cli/lib/doctor.sh + cli/lib/config.sh) contra o arquivo criado pelo
-      # caminho do runtime (global/skills/agente-00c-runtime/scripts/
+      # caminho do runtime (plugins/cstk/skills/agente-00c-runtime/scripts/
       # state-rw.sh init) — composicao cross-cutting de 2+ scripts, nao
       # mapeia 1:1 para um unico script sob a convencao de FASE 9.3.
       return 0 ;;
@@ -310,11 +320,11 @@ _is_internal_test() {
     # _is_covered_by_named_test, do lado dos tests.
     test_model_selector_*.sh)
       # tests granulares da skill model-selector (classify.sh + report.sh)
-      [ -f "$REPO_ROOT/global/skills/model-selector/scripts/classify.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/model-selector/scripts/classify.sh" ] && return 0
       return 1 ;;
     test_report_jq_confinement.sh|test_report_performance.sh|test_report_read_only.sh|test_report_without_jq.sh)
       # cobrem model-selector/scripts/report.sh (geracao do relatorio)
-      [ -f "$REPO_ROOT/global/skills/model-selector/scripts/report.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/model-selector/scripts/report.sh" ] && return 0
       return 1 ;;
     test_update-extra-kinds.sh)
       # aspecto extra de cli/lib/update.sh (primario: tests/cstk/test_update.sh)
@@ -322,51 +332,51 @@ _is_internal_test() {
       return 1 ;;
     test_runtime-log-redaction.sh)
       # cobre agente-00c-runtime/scripts/_log.sh (redacao de log)
-      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_log.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_log.sh" ] && return 0
       return 1 ;;
     test_secrets-filter-backup.sh)
       # aspecto backup de secrets-filter.sh (primario: tests/test_secrets-filter.sh)
-      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/secrets-filter.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/secrets-filter.sh" ] && return 0
       return 1 ;;
     test_skills-cache-protocol.sh)
       # cobre state-cache.sh (protocolo de cache; primario: tests/test_state-cache.sh)
-      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-cache.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-cache.sh" ] && return 0
       return 1 ;;
     test_state-dir-parametrization.sh)
       # cobre agente-00c-runtime/scripts/_state-dir.sh (parametrizacao do state dir)
-      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_state-dir.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_state-dir.sh" ] && return 0
       return 1 ;;
     test_pretooluse-bash-guard.sh)
-      # cobre global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh
+      # cobre plugins/cstk/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh
       # (US1, enforced-guards). _find_scripts so escaneia */scripts/*.sh e
       # cli/lib/*.sh por convencao (FASE 9.3) — hooks/ e um diretorio novo
       # (harness-invoked, nao skill/cli-invoked, ver plan.md §Project
       # Structure de enforced-guards) fora desse escopo, entao o mapeamento
       # 1:1 nao enxerga o script mesmo com nome de teste identico. Existence-
       # guarded: se o hook sumir, volta a ser orfao real.
-      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh" ] && return 0
       return 1 ;;
     test_posttooluse-tool-call-tick.sh)
-      # cobre global/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh
+      # cobre plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh
       # (hook PostToolUse de metrica de tool calls por onda) — mesma razao
       # do test_pretooluse-bash-guard.sh acima: hooks/ esta fora do escaneio
       # por convencao. Existence-guarded.
-      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh" ] && return 0
       return 1 ;;
     test_posttooluse-agent-usage.sh)
-      # cobre global/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh
+      # cobre plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh
       # (hook PostToolUse/matcher "Agent" de metrica de uso de tokens por
       # spawn de subagente — wave-token-metrics FASE 2) — mesma razao dos
       # dois casos acima: hooks/ esta fora do escaneio por convencao.
       # Existence-guarded.
-      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh" ] && return 0
       return 1 ;;
     test_posttooluse-loose-usage.sh)
-      # cobre global/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh
+      # cobre plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh
       # (hook PostToolUse OPT-IN de captura de consumo avulso — feature
       # loose-usage-capture FASE 3) — mesma razao dos 3 casos acima: hooks/
       # esta fora do escaneio por convencao. Existence-guarded.
-      [ -f "$REPO_ROOT/global/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh" ] && return 0
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh" ] && return 0
       return 1 ;;
     *) return 1 ;;
   esac
@@ -524,7 +534,7 @@ _compute_orphans() {
   IFS='
 '
   # Scripts sem teste — usa _expected_test_for_script para roteamento por
-  # categoria (global/skills/.../scripts/ -> tests/, cli/lib/ -> tests/cstk/).
+  # categoria (plugins/cstk/skills/.../scripts/ -> tests/, cli/lib/ -> tests/cstk/).
   for _script in $_scripts; do
     [ -z "$_script" ] && continue
     # Isencao: script coberto por teste de nome nao-1:1 (verifica existencia).
@@ -577,7 +587,7 @@ mode_check_coverage() {
     _count_tests=$(printf '%s\n' "$_o_tests" | wc -l | tr -d ' ')
   fi
 
-  printf 'Cobertura de testes para scripts em global/skills/**/scripts/ + cli/lib/\n\n'
+  printf 'Cobertura de testes para scripts em plugins/cstk/skills/**/scripts/ + cli/lib/\n\n'
 
   if [ "$_count_scripts" -gt 0 ]; then
     printf 'Scripts sem teste correspondente (%d):\n' "$_count_scripts"

@@ -8,7 +8,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/secrets-filter.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/secrets-filter.sh"
 
 scenario_backup_envelope_tem_campos_obrigatorios() {
   # Snapshot em EN (schema canonico). status VALUE permanece pt (follow-up B).

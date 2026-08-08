@@ -39,7 +39,7 @@ STUB
 # para um diretorio de CSTK_LIB fabricado. Necessario porque `CSTK_LIB` e
 # usado tanto para localizar config.sh (`. "$CSTK_LIB/config.sh"`) quanto,
 # dentro dele, para computar o caminho de camada (2) relativo
-# (`$CSTK_LIB/../../global/skills/...`) — os cenarios de resolvedor
+# (`$CSTK_LIB/../../plugins/cstk/skills/...`) — os cenarios de resolvedor
 # precisam de um CSTK_LIB fabricado, entao a copia do arquivo real e o
 # jeito de exercitar o COMPORTAMENTO real sem depender da arvore do repo.
 _stage_config() {
@@ -56,14 +56,14 @@ _stage_config() {
 scenario_resolver_camada_repo_via_cstk_lib() {
   _repo="$TMPDIR_TEST/repo"
   _lib="$_repo/cli/lib"
-  _script="$_repo/global/skills/agente-00c-runtime/scripts/state-backend.sh"
+  _script="$_repo/plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh"
   _stage_config "$_lib" || { _error "fixture" "stage config falhou"; return 2; }
   _write_stub "$_script" || { _error "fixture" "stub falhou"; return 2; }
 
   # A funcao imprime o caminho RELATIVO nao-normalizado ($CSTK_LIB/../../...),
   # entao a expectativa e construida do mesmo jeito (mesmo padrao usado por
   # `_state_migrate_script_path`/test_state.sh para a camada repo).
-  _expected="$_lib/../../global/skills/agente-00c-runtime/scripts/state-backend.sh"
+  _expected="$_lib/../../plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh"
   _out=$(HOME="$TMPDIR_TEST/home-vazio" CSTK_LIB="$_lib" PATH="/usr/bin:/bin" sh -c '
     . "$CSTK_LIB/config.sh"
     _config_state_backend_script_path
@@ -98,7 +98,7 @@ scenario_resolver_camada_path_tem_prioridade() {
   # vence (ordem de prioridade: PATH > repo > instalado).
   _repo="$TMPDIR_TEST/repo2"
   _lib="$_repo/cli/lib"
-  _repo_script="$_repo/global/skills/agente-00c-runtime/scripts/state-backend.sh"
+  _repo_script="$_repo/plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh"
   _stage_config "$_lib" || { _error "fixture" "stage config falhou"; return 2; }
   _write_stub "$_repo_script" || { _error "fixture" "stub falhou"; return 2; }
 
@@ -132,7 +132,7 @@ scenario_resolver_nenhuma_camada_disponivel_falha_exit_1() {
 _setup_repo_stub() {
   _srs_repo="$TMPDIR_TEST/repo-deleg"
   _srs_lib="$_srs_repo/cli/lib"
-  _srs_script="$_srs_repo/global/skills/agente-00c-runtime/scripts/state-backend.sh"
+  _srs_script="$_srs_repo/plugins/cstk/skills/agente-00c-runtime/scripts/state-backend.sh"
   _stage_config "$_srs_lib" || return 1
   _write_stub "$_srs_script" || return 1
   return 0

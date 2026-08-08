@@ -20,7 +20,7 @@ protegido).
 Partes do pipeline de Spec-Driven Development deste toolkit — o vocabulário de
 etapas (`constitution` → `specify` → `clarify` → `plan` → `tasks` → `analyze`) e,
 em particular, o **template de constituição** em
-`global/skills/constitution/templates/constitution.md` (estrutura
+`plugins/cstk/skills/constitution/templates/constitution.md` (estrutura
 `## Core Principles` / `### [PRINCIPLE_N_NAME]`, rodapé
 `**Version** | **Ratified** | **Last Amended**`, marcadores `[NEEDS CLARIFICATION]`
 e "Sync Impact Report") — são **adaptados** do projeto **GitHub Spec Kit**.

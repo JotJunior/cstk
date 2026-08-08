@@ -1,6 +1,6 @@
 #!/bin/sh
 # test_delta-merge.sh —
-# cobre global/skills/review-features/scripts/delta-merge.sh.
+# cobre plugins/cstk/skills/review-features/scripts/delta-merge.sh.
 #
 # Contrato: docs/specs/living-specs/contracts/delta-merge-cli.md
 #   delta-merge.sh SPEC_MD --feature NAME [--corpus-dir DIR]
@@ -15,7 +15,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/review-features/scripts/delta-merge.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/review-features/scripts/delta-merge.sh"
 
 _write_spec() {
   _dest="$TMPDIR_TEST/spec.md"

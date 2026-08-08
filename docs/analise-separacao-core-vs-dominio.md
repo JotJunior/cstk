@@ -11,7 +11,7 @@
 **A premissa do pedido está desatualizada para o estado atual deste
 repositório.** Nenhuma das skills Fotus citadas existe aqui. O acoplamento de
 domínio real e remanescente é **outro**: 6 das 7 skills em
-`language-related/go/skills/` codificam o projeto-cliente **GOB**. Essas skills,
+`plugins/cstk-language-go/skills/` codificam o projeto-cliente **GOB**. Essas skills,
 porém, **já estão estruturalmente isoladas** (namespace `language-related/`,
 fora dos perfis default `sdd`/`complementary`). 
 
@@ -26,8 +26,8 @@ Inventário factual de skills no repositório (via `find . -name SKILL.md`):
 
 | Grupo | Local | Qtd | Natureza |
 |-------|-------|-----|----------|
-| Globais | `global/skills/` | 23 | Genéricas (pipeline SDD, cstk, orquestrador, utilidades) |
-| Go | `language-related/go/skills/` | 7 | Específicas de stack Go — 6 codificam "GOB" |
+| Globais | `plugins/cstk/skills/` | 23 | Genéricas (pipeline SDD, cstk, orquestrador, utilidades) |
+| Go | `plugins/cstk-language-go/skills/` | 7 | Específicas de stack Go — 6 codificam "GOB" |
 | .NET | `language-related/dotnet/skills/` | 8 | Específicas de stack .NET — **já deprecated** (v3.12.0, remoção v4.0.0) |
 
 ### 1.1 As skills Fotus não existem
@@ -35,7 +35,7 @@ Inventário factual de skills no repositório (via `find . -name SKILL.md`):
 Busca por `fotus|dimensionar|montar-kit|relatorio-descontos|fotus-predict|fotovolt`
 em todo o repositório retorna **apenas dois falsos/incidentais**:
 
-- `global/skills/model-selector/examples/good-opus.md` — casa por substring
+- `plugins/cstk/skills/model-selector/examples/good-opus.md` — casa por substring
   (`subdimensionar`), não é skill.
 - `docs/01-briefing-discovery/agente-00c-analise-licoes-aprendidas.md` — menção
   narrativa "DPO Fotus" num texto de lições aprendidas.
@@ -66,7 +66,7 @@ opt-in", não como core genérico.
 O acoplamento de domínio **não está misturado no core**. Há três camadas de
 isolamento já implementadas:
 
-1. **Namespace de diretório.** Core em `global/skills/`; stack-specific em
+1. **Namespace de diretório.** Core em `plugins/cstk/skills/`; stack-specific em
    `language-related/{go,dotnet}/`.
 2. **Perfis de instalação** (`scripts/profiles.txt.in` → `cli/lib/profiles.sh`).
    Os perfis default `sdd` e `complementary` **não incluem** nenhuma skill

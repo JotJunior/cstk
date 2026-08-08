@@ -8,7 +8,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPTS_DIR="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
+SCRIPTS_DIR="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
 HELPER="$SCRIPTS_DIR/_log.sh"
 export AGENTE_00C_RUNTIME_SCRIPTS_DIR="$SCRIPTS_DIR"
 

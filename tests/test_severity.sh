@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_severity.sh — cobre global/skills/converge/scripts/severity.sh.
+# test_severity.sh — cobre plugins/cstk/skills/converge/scripts/severity.sh.
 #
 # Ref: docs/specs/skill-converge/tasks.md tarefa 2.4.3
 #      docs/specs/skill-converge/contracts/converge-interfaces.md §5
@@ -10,7 +10,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/converge/scripts/severity.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/converge/scripts/severity.sh"
 
 # ---------- Tabela completa: must-violated=false (research.md §Decision 3) ----------
 # type|priority|must-violated|esperado

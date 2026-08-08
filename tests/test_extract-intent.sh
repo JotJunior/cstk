@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_extract-intent.sh — cobre global/skills/converge/scripts/extract-intent.sh.
+# test_extract-intent.sh — cobre plugins/cstk/skills/converge/scripts/extract-intent.sh.
 #
 # Ref: docs/specs/skill-converge/tasks.md tarefa 2.2.6
 #      docs/specs/skill-converge/contracts/converge-interfaces.md §2
@@ -8,7 +8,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/converge/scripts/extract-intent.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/converge/scripts/extract-intent.sh"
 
 # ---------- Helper: escreve um tasks.md minimo no TMPDIR_TEST ----------
 
@@ -226,7 +226,7 @@ scenario_plan_extrai_path_com_fr_na_mesma_linha() {
 ### Source Code
 
 ```
-global/skills/converge/
+plugins/cstk/skills/converge/
 ├── scripts/
 │   ├── state-decisions.sh     # [REAL] REUSO (FR-019)
 │   └── severity.sh            # sem FR nesta linha
@@ -256,7 +256,7 @@ scenario_plan_nao_herda_fr_de_linha_anterior() {
 ### Source Code
 
 ```
-global/skills/converge/
+plugins/cstk/skills/converge/
 ├── com-fr.sh                  # (FR-042)
 ├── sem-fr-mas-perto.sh
 ```

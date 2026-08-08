@@ -29,8 +29,8 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 . "$TESTS_ROOT/lib/harness.sh"
 
-ORCH_AGENTE="$REPO_ROOT/global/agents/agente-00c-orchestrator.md"
-ORCH_FEAT="$REPO_ROOT/global/agents/agente-00c-feature-orchestrator.md"
+ORCH_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
+ORCH_FEAT="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
 
 # ==== 5.1.1/5.1.2 / FR-003: passo 8 aplica model=$MODEL_APLICAR ====
 

@@ -588,4 +588,126 @@ scenario_hooks_main_idempotente() {
   return 0
 }
 
+# ==== Dedup plugin-vence (FR-005, contracts/cli-plugin-awareness.md) ====
+#
+# `_hooks_main_run` (acima) NAO sobrescreve HOME — corre sob o HOME real do
+# runner, o que ja cobre "sem plugin instalado" (SC-006, comportamento
+# identico ao historico, exercido pelos scenarios acima). Os 3 cenarios
+# abaixo controlam HOME explicitamente para simular os 3 ramos da regra.
+
+# _hooks_main_run_home HOME_DIR ARGS...: variante de _hooks_main_run com
+# HOME sob controle do teste (necessario p/ plugin_enabled/plugin_hooks_present
+# lerem <HOME>/.claude/plugins/installed_plugins.json e <HOME>/.claude/settings.json).
+_hooks_main_run_home() {
+  _hmrh_home=$1
+  shift
+  capture env HOME="$_hmrh_home" CSTK_LIB="$CSTK_LIB" sh -c \
+    '. "$CSTK_LIB/hooks.sh" && hooks_main "$@"' _ "$@"
+}
+
+# _plugin_home_fixture MODE -> stdout=HOME sandbox com registro nativo
+# "cstk@cstk" no estado pedido:
+#   enabled-with-hooks     instalado + habilitado + hooks/hooks.json presente
+#   enabled-without-hooks  instalado + habilitado + SEM hooks/hooks.json (F4)
+_plugin_home_fixture() {
+  _phf_mode=$1
+  _phf_home="$TMPDIR_TEST/plugin-home-$_phf_mode"
+  _phf_ip="$_phf_home/plugins/cache/cstk/6.8.0"
+  mkdir -p "$_phf_home/.claude/plugins" "$_phf_ip"
+  cat > "$_phf_home/.claude/plugins/installed_plugins.json" <<EOF
+{"version":2,"plugins":{"cstk@cstk":[{"scope":"user","installPath":"$_phf_ip","installedAt":"2026-08-01T00:00:00.000Z","lastUpdated":"2026-08-08T00:00:00.000Z"}]}}
+EOF
+  cat > "$_phf_home/.claude/settings.json" <<'EOF'
+{"enabledPlugins": {"cstk@cstk": true}}
+EOF
+  if [ "$_phf_mode" = "enabled-with-hooks" ]; then
+    mkdir -p "$_phf_ip/hooks"
+    printf '{"hooks":{}}\n' > "$_phf_ip/hooks/hooks.json"
+  fi
+  printf '%s' "$_phf_home"
+}
+
+# Condicao 1: plugin instalado+habilitado+hooks.json presente -> skip do
+# provisionamento classico, exit 0, settings.json do projeto NAO tocado.
+scenario_hooks_main_dedup_skip_quando_plugin_cobre() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-with-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-skip"
+  mkdir -p "$_proj"
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dedup skip exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  [ -f "$_proj/.claude/settings.json" ] \
+    && { _fail "dedup skip nao deveria escrever settings.json" ""; return 1; }
+  [ -x "$_proj/.claude/hooks/pretooluse-bash-guard.sh" ] \
+    && { _fail "dedup skip nao deveria copiar hooks classicos" ""; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"pulando provisionamento classico"*) ;;
+    *) _fail "dedup skip aviso" "esperava aviso de skip em stderr: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  return 0
+}
+
+# Condicao 2 (achado F4/dec-027): plugin habilitado mas hooks.json NAO
+# materializado -> provisiona classico normalmente + aviso de inconsistencia.
+scenario_hooks_main_dedup_provisiona_quando_plugin_incompleto() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-without-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-f4"
+  mkdir -p "$_proj"
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "F4 exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  [ -x "$_proj/.claude/hooks/pretooluse-bash-guard.sh" ] \
+    || { _fail "F4 deveria provisionar classico" "hook ausente apesar da inconsistencia"; return 1; }
+  jq -e '.hooks.PreToolUse[0].matcher == "Bash"' "$_proj/.claude/settings.json" >/dev/null \
+    || { _fail "F4 settings.json nao mesclado" ""; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"instalacao do plugin parece incompleta"*) ;;
+    *) _fail "F4 aviso de inconsistencia" "esperava aviso em stderr: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  return 0
+}
+
+# Nao-regressao explicita (SC-006): plugin NAO instalado (HOME sandboxado
+# sem registros nativos) -> comportamento identico ao caminho classico ja
+# coberto por scenario_hooks_main_install_provisiona_so_hooks.
+scenario_hooks_main_dedup_sem_plugin_comportamento_identico() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home="$TMPDIR_TEST/plugin-home-absent"
+  mkdir -p "$_home/.claude"
+  _proj="$TMPDIR_TEST/proj-dedup-absent"
+  mkdir -p "$_proj"
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sem-plugin exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  [ -x "$_proj/.claude/hooks/pretooluse-bash-guard.sh" ] \
+    || { _fail "sem-plugin deveria provisionar classico" ""; return 1; }
+  return 0
+}
+
+# Quickstart Scenario 7 (registros nativos ilegiveis): installed_plugins.json
+# corrompido -> plugin_enabled degrada para exit 2 (indeterminado), tratado
+# por hooks_main como "nao habilitado" (fail-closed do lado da guarda
+# classica) -> hooks install PROVISIONA o caminho classico normalmente,
+# exit 0, sem stack/erro fatal.
+scenario_hooks_main_dedup_registro_nativo_corrompido_provisiona_classico() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home="$TMPDIR_TEST/plugin-home-corrupted"
+  mkdir -p "$_home/.claude/plugins"
+  printf '{' > "$_home/.claude/plugins/installed_plugins.json"
+  cat > "$_home/.claude/settings.json" <<'EOF'
+{"enabledPlugins": {"cstk@cstk": true}}
+EOF
+  _proj="$TMPDIR_TEST/proj-dedup-corrupted"
+  mkdir -p "$_proj"
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "registro corrompido exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"Traceback"*|*"parse error"*) _fail "registro corrompido nao deveria vazar erro de parser" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+  return 0
+}
+
 run_all_scenarios

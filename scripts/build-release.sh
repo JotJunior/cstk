@@ -30,10 +30,10 @@
 #   ├── catalog/
 #   │   ├── VERSION
 #   │   ├── profiles.txt
-#   │   ├── skills/        (espelho de global/skills/)
-#   │   ├── commands/      (espelho de global/commands/ — opcional, .md soltos)
-#   │   ├── agents/        (espelho de global/agents/   — opcional, .md soltos)
-#   │   └── language/      (espelho de language-related/)
+#   │   ├── skills/        (espelho de plugins/cstk/skills/)
+#   │   ├── commands/      (espelho de plugins/cstk/commands/ — opcional, .md soltos)
+#   │   ├── agents/        (espelho de plugins/cstk/agents/   — opcional, .md soltos)
+#   │   └── language/      (skills+hooks de plugins/cstk-language-*/, settings.json de language-related/*/)
 #   └── CHANGELOG.md
 #
 # POSIX sh + tar/gzip/find/sort/touch/sha256sum|shasum.
@@ -157,9 +157,9 @@ if [ -f "$REPO_ROOT/cli/lib/README.md" ]; then
   cp -- "$REPO_ROOT/cli/lib/README.md" "$STAGE_ROOT/cli/lib/"
 fi
 
-# ==== 2. catalog/skills/ (mirror de global/skills/) ====
+# ==== 2. catalog/skills/ (mirror de plugins/cstk/skills/) ====
 mkdir -p -- "$STAGE_ROOT/catalog/skills"
-for _skdir in "$REPO_ROOT/global/skills/"*/; do
+for _skdir in "$REPO_ROOT/plugins/cstk/skills/"*/; do
   [ -d "$_skdir" ] || continue
   # Trailing slash em "$_skdir" faria cp -R copiar so o conteudo. Calculamos
   # explicitamente o destino para preservar o nome da skill como subdir.
@@ -167,13 +167,13 @@ for _skdir in "$REPO_ROOT/global/skills/"*/; do
   cp -R -- "${_skdir%/}" "$STAGE_ROOT/catalog/skills/$_skname"
 done
 
-# ==== 2b. catalog/commands/ (mirror de global/commands/, opcional) ====
+# ==== 2b. catalog/commands/ (mirror de plugins/cstk/commands/, opcional) ====
 # Commands sao .md soltos (1 arquivo = 1 command). Diretorio so e criado se
-# global/commands/ tiver pelo menos 1 .md — manter o tarball minimal quando o
+# plugins/cstk/commands/ tiver pelo menos 1 .md — manter o tarball minimal quando o
 # toolkit nao expoe commands.
-if [ -d "$REPO_ROOT/global/commands" ]; then
+if [ -d "$REPO_ROOT/plugins/cstk/commands" ]; then
   _has_cmd=0
-  for _f in "$REPO_ROOT/global/commands/"*.md; do
+  for _f in "$REPO_ROOT/plugins/cstk/commands/"*.md; do
     [ -f "$_f" ] || continue
     if [ "$_has_cmd" = 0 ]; then
       mkdir -p -- "$STAGE_ROOT/catalog/commands"
@@ -183,10 +183,10 @@ if [ -d "$REPO_ROOT/global/commands" ]; then
   done
 fi
 
-# ==== 2c. catalog/agents/ (mirror de global/agents/, opcional) ====
-if [ -d "$REPO_ROOT/global/agents" ]; then
+# ==== 2c. catalog/agents/ (mirror de plugins/cstk/agents/, opcional) ====
+if [ -d "$REPO_ROOT/plugins/cstk/agents" ]; then
   _has_agent=0
-  for _f in "$REPO_ROOT/global/agents/"*.md; do
+  for _f in "$REPO_ROOT/plugins/cstk/agents/"*.md; do
     [ -f "$_f" ] || continue
     if [ "$_has_agent" = 0 ]; then
       mkdir -p -- "$STAGE_ROOT/catalog/agents"
@@ -196,13 +196,47 @@ if [ -d "$REPO_ROOT/global/agents" ]; then
   done
 fi
 
-# ==== 3. catalog/language/ (mirror de language-related/) ====
+# ==== 3. catalog/language/ (skills+hooks de plugins/cstk-language-<lang>/, ====
+# ====    settings.json de language-related/<lang>/)                     ====
+# Desde a relocacao para plugin (claude-plugin-packaging FASE 4), skills/ e
+# hooks/ de cada perfil de linguagem moraram para uma raiz de plugin propria
+# (`plugins/cstk-language-<lang>/`, instalavel via `/plugin install`), mas
+# `settings.json` (snippet classico de hooks) nao e conteudo de skill/hook —
+# permanece em `language-related/<lang>/settings.json`. O tarball classico
+# ainda precisa dos DOIS num unico `catalog/language/<lang>/` (contrato lido
+# por `cli/lib/install.sh` §"catalog/language/<lang>/{hooks/,settings.json}").
 mkdir -p -- "$STAGE_ROOT/catalog/language"
+# Universo de linguagens = uniao de language-related/*/ (settings.json) e
+# plugins/cstk-language-*/ (skills+hooks) — nenhum dos dois lados e a fonte
+# unica, entao nao podemos iterar so por um deles sem arriscar perder um
+# perfil que so tenha um dos dois lados.
+_langs_file="${TMPDIR:-/tmp}/build-release-langs.$$"
+: > "$_langs_file"
 for _langdir in "$REPO_ROOT/language-related/"*/; do
   [ -d "$_langdir" ] || continue
-  _lang=$(basename -- "${_langdir%/}")
-  cp -R -- "${_langdir%/}" "$STAGE_ROOT/catalog/language/$_lang"
+  basename -- "${_langdir%/}" >> "$_langs_file"
 done
+for _plugin_langdir in "$REPO_ROOT/plugins/"cstk-language-*/; do
+  [ -d "$_plugin_langdir" ] || continue
+  _plugin_langname=$(basename -- "${_plugin_langdir%/}")
+  printf '%s\n' "${_plugin_langname#cstk-language-}" >> "$_langs_file"
+done
+for _lang in $(LC_ALL=C sort -u -- "$_langs_file"); do
+  [ -n "$_lang" ] || continue
+  _langdir="$REPO_ROOT/language-related/$_lang"
+  _plugin_langdir="$REPO_ROOT/plugins/cstk-language-$_lang"
+  mkdir -p -- "$STAGE_ROOT/catalog/language/$_lang"
+  if [ -d "$_plugin_langdir/skills" ]; then
+    cp -R -- "$_plugin_langdir/skills" "$STAGE_ROOT/catalog/language/$_lang/skills"
+  fi
+  if [ -d "$_plugin_langdir/hooks" ]; then
+    cp -R -- "$_plugin_langdir/hooks" "$STAGE_ROOT/catalog/language/$_lang/hooks"
+  fi
+  if [ -f "$_langdir/settings.json" ]; then
+    cp -- "$_langdir/settings.json" "$STAGE_ROOT/catalog/language/$_lang/settings.json"
+  fi
+done
+rm -f -- "$_langs_file"
 
 # ==== 3b. Remover fixtures dev-only (evals/) do catalogo distribuido ====
 # As evals/ vivem junto das skills (espelhando a convencao test_<n>.sh) mas sao

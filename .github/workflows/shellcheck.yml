@@ -1,9 +1,18 @@
-# shellcheck.yml — lint estatico (advisory) dos scripts shell do toolkit.
+# shellcheck.yml — lint estatico (advisory) dos scripts shell do toolkit,
+# MAIS o gate estrutural (nao-advisory) dos manifestos de plugin/marketplace.
 #
-# Proposito: capturar quebras de POSIX/sh cedo, em PR e push para main, SEM
-# bloquear merge ou release. O step roda com `continue-on-error: true` — os
-# achados aparecem no log e no Step Summary, mas o job nunca falha (gate fica
-# por conta de `tests/run.sh` no release.yml).
+# Proposito do lint: capturar quebras de POSIX/sh cedo, em PR e push para
+# main, SEM bloquear merge ou release. O step de shellcheck roda com
+# `continue-on-error: true` — os achados aparecem no log e no Step Summary,
+# mas o job nunca falha por causa dele (gate de lint fica por conta de
+# `tests/run.sh` no release.yml).
+#
+# Excecao deliberada (claude-plugin-packaging, FASE 5.4): o step "Validate
+# plugin manifests" NAO tem continue-on-error — MP-1..MP-4/MP-6
+# (contracts/plugin-artifacts.md) sao bugs reais de manifesto e devem
+# bloquear PR mesmo fora de release; so MP-5 (lockstep de versao com a tag)
+# e aviso aqui, porque nao ha tag corrente para comparar fora do release
+# (o gate estrito de MP-5 vive em release.yml).
 #
 # Config de severidade/ruido vem do .shellcheckrc na raiz (compartilhado com o
 # dev local). shellcheck ja vem instalado na imagem ubuntu-latest.
@@ -18,12 +27,18 @@ on:
       - '**/*.sh'
       - '.shellcheckrc'
       - '.github/workflows/shellcheck.yml'
+      - '.claude-plugin/**'
+      - 'plugins/*/.claude-plugin/**'
+      - 'plugins/cstk/hooks/hooks.json'
   push:
     branches: [main]
     paths:
       - '**/*.sh'
       - '.shellcheckrc'
       - '.github/workflows/shellcheck.yml'
+      - '.claude-plugin/**'
+      - 'plugins/*/.claude-plugin/**'
+      - 'plugins/cstk/hooks/hooks.json'
 
 permissions:
   contents: read
@@ -37,6 +52,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Validate plugin manifests (structural gate; version lockstep advisory)
+        # Ref: docs/specs/claude-plugin-packaging/contracts/plugin-artifacts.md
+        # Sem --version/--strict: MP-1..MP-4/MP-6 continuam bloqueantes (sao
+        # bugs reais de manifesto, nao licenca de versionamento) — SO MP-5
+        # (lockstep com a tag) vira aviso aqui, porque fora do release nao
+        # ha tag corrente para comparar. O gate estrito de MP-5 vive em
+        # release.yml (--version "$BARE" --strict).
+        run: ./scripts/validate-plugin-manifests.sh
 
       - name: Run shellcheck (non-gating)
         continue-on-error: true

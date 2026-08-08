@@ -35,13 +35,13 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-_R="$REPO_ROOT/global/skills/agente-00c-runtime/scripts"
+_R="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts"
 DEC="$_R/state-decisions.sh"
 BLQ="$_R/bloqueios.sh"
 ONDAS="$_R/state-ondas.sh"
 SCHEMA_SCRIPT="$_R/state-db-schema.sh"
 
-# shellcheck source=../global/skills/agente-00c-runtime/scripts/_state-db.sh
+# shellcheck source=../plugins/cstk/skills/agente-00c-runtime/scripts/_state-db.sh
 . "$_R/_state-db.sh"
 
 # _seed_sqlite_backend DIR -> cria state.db com uma execution minima

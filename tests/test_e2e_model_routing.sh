@@ -52,11 +52,11 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 # Caminhos canonicos dos scripts do runtime (versao do REPO, nao instalada
 # — isolamento de drift garantido pela CLAUDE.md).
-MR_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/model-routing.sh"
-MRR_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/model-routing-report.sh"
-SR_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-rw.sh"
-SD_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-decisions.sh"
-SO_SCRIPT="$REPO_ROOT/global/skills/agente-00c-runtime/scripts/state-ondas.sh"
+MR_SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/model-routing.sh"
+MRR_SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/model-routing-report.sh"
+SR_SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
+SD_SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
+SO_SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
 
 # ==== Helpers compartilhados ====
 

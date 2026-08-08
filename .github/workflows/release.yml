@@ -9,10 +9,13 @@
 # Etapas:
 #   1. Checkout do tag
 #   2. Validacao do formato da tag (vX.Y.Z[-suffix])
-#   3. Suite de testes do toolkit (`tests/run.sh` + `tests/cstk/test_*.sh`)
+#   3. Validacao dos manifestos de plugin/marketplace (MP-1..MP-6,
+#      `scripts/validate-plugin-manifests.sh --strict`) — ver
+#      docs/specs/claude-plugin-packaging/contracts/plugin-artifacts.md
+#   4. Suite de testes do toolkit (`tests/run.sh` + `tests/cstk/test_*.sh`)
 #      como pre-requisito — release falha se qualquer teste falhar
-#   4. Build deterministico do tarball via `scripts/build-release.sh <tag>`
-#   5. Criacao do GitHub Release com upload de:
+#   5. Build deterministico do tarball via `scripts/build-release.sh <tag>`
+#   6. Criacao do GitHub Release com upload de:
 #        - cstk-<bare-version>.tar.gz
 #        - cstk-<bare-version>.tar.gz.sha256
 #        - cli/install.sh        (asset standalone para one-liner FR-005a)
@@ -59,6 +62,14 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "bare=$BARE" >> "$GITHUB_OUTPUT"
           echo "Resolved tag: $TAG (bare: $BARE)"
+
+      - name: Validate plugin manifests (MP-1..MP-6, lockstep gate)
+        # Ref: docs/specs/claude-plugin-packaging/contracts/plugin-artifacts.md
+        # --strict torna MP-5 (lockstep de versao com a tag) bloqueante
+        # SOMENTE aqui, no release. Fora de release (shellcheck.yml) o
+        # mesmo script roda sem --version/--strict — MP-5 vira aviso, os
+        # demais invariantes (MP-1..4/6) continuam sempre bloqueantes.
+        run: ./scripts/validate-plugin-manifests.sh --version "${{ steps.tag.outputs.bare }}" --strict
 
       - name: Run test suite (main + cstk integrados)
         # FASE 9.3 integrou tests/cstk/ no runner principal; tests/run.sh

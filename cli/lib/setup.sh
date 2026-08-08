@@ -78,10 +78,16 @@ set -eu
 # shellcheck source=./ui.sh
 . "${CSTK_LIB}/ui.sh"
 # shellcheck source=./hooks.sh
-# hooks.sh e o UNICO arquivo autorizado a referenciar jq (Constitution
-# carve-out); setup.sh reusa hooks_main/apply_guard_hooks de la — nenhum
-# mecanismo de merge JSON novo (FASE 3, contracts/cli-setup.md §2.4).
+# hooks.sh referencia jq sob o carve-out da Constitution (amendment 1.1.0);
+# setup.sh reusa hooks_main/apply_guard_hooks de la — nenhum mecanismo de
+# merge JSON novo (FASE 3, contracts/cli-setup.md §2.4). hooks.sh ja
+# sourcea plugin-detect.sh (outro arquivo com uso confinado de jq, feature
+# claude-plugin-packaging FASE 6) — plugin_enabled/plugin_hooks_present
+# ficam disponiveis aqui transitivamente; sourceado de novo abaixo so por
+# clareza de dependencia direta (guard idempotente, no-op).
 . "${CSTK_LIB}/hooks.sh"
+# shellcheck source=./plugin-detect.sh
+. "${CSTK_LIB}/plugin-detect.sh"
 # shellcheck source=./config.sh
 # config.sh delega puramente a state-backend.sh (fonte unica de decisao de
 # backend, Decision 2 de state-backend-config) — setup.sh reusa
@@ -210,7 +216,7 @@ _setup_check_git_root() {
 # guard-hooks-status.sh. Mesmo padrao de 3 camadas de
 # _mcp_runtime_script_path (cli/lib/mcp.sh) / _state_migrate_script_path
 # (cli/lib/state.sh): (1) PATH; (2) layout de repo relativo a CSTK_LIB
-# (cli/lib -> ../../global/skills/agente-00c-runtime/scripts); (3) layout
+# (cli/lib -> ../../plugins/cstk/skills/agente-00c-runtime/scripts); (3) layout
 # instalado em ~/.claude. Necessario porque testes/CI rodam o CLI da
 # arvore do repo (CSTK_LIB=cli/lib) sem o runtime em ~/.claude.
 _setup_hooks_status_script_path() {
@@ -219,7 +225,7 @@ _setup_hooks_status_script_path() {
     return 0
   fi
   if [ -n "${CSTK_LIB:-}" ]; then
-    _shs_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
+    _shs_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
     if [ -f "$_shs_repo" ]; then
       printf '%s\n' "$_shs_repo"
       return 0
@@ -244,7 +250,7 @@ _setup_otel_script_path() {
     return 0
   fi
   if [ -n "${CSTK_LIB:-}" ]; then
-    _sot_repo="$CSTK_LIB/../../global/skills/agente-00c-runtime/scripts/otel-usage.sh"
+    _sot_repo="$CSTK_LIB/../../plugins/cstk/skills/agente-00c-runtime/scripts/otel-usage.sh"
     if [ -f "$_sot_repo" ]; then
       printf '%s\n' "$_sot_repo"
       return 0
@@ -483,6 +489,23 @@ _setup_run_hooks_area() {
   _srh_pap=$1
   _srh_mode=$2
   _srh_dry=$3
+
+  # Dedup plugin-vence (FR-005, contracts/cli-plugin-awareness.md §cstk
+  # setup) — MESMA regra de tres condicoes de hooks_main install (cli/lib/
+  # hooks.sh): so pula a etapa quando plugin_enabled E plugin_hooks_present
+  # (achado F4/dec-027: habilitado nao implica funcional). Roda ANTES da
+  # deteccao classica para nao gastar 3 chamadas a guard-hooks-status.sh
+  # quando o plugin ja resolve tudo.
+  if plugin_enabled cstk; then
+    if plugin_hooks_present cstk; then
+      _SU_HOOKS_OUTCOME="already-configured"
+      _SU_HOOKS_OUTCOME_REASON="plugin 'cstk' habilitado e ja provê hooks/hooks.json — etapa de hooks pulada (dedup, plugin vence)"
+      _setup_info "setup: [hooks] $_SU_HOOKS_OUTCOME_REASON"
+      return 0
+    else
+      _setup_info "setup: [hooks] plugin 'cstk' habilitado mas hooks/hooks.json NAO encontrado no install path — instalacao do plugin parece incompleta (F4); prosseguindo com deteccao classica"
+    fi
+  fi
 
   _setup_detect_hooks_area "$_srh_pap"
 

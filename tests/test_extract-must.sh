@@ -1,5 +1,5 @@
 #!/bin/sh
-# test_extract-must.sh — cobre global/skills/converge/scripts/extract-must.sh.
+# test_extract-must.sh — cobre plugins/cstk/skills/converge/scripts/extract-must.sh.
 #
 # Ref: docs/specs/skill-converge/tasks.md tarefa 2.3.4
 #      docs/specs/skill-converge/contracts/converge-interfaces.md §3
@@ -8,7 +8,7 @@ TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
-SCRIPT="$REPO_ROOT/global/skills/converge/scripts/extract-must.sh"
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/converge/scripts/extract-must.sh"
 
 _write_const() {
   cat > "$TMPDIR_TEST/constitution.md"
