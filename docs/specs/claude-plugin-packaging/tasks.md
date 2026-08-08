@@ -299,52 +299,52 @@ Ref: plan.md Fase 4; contracts/plugin-artifacts.md Artefatos 1-4
 
 Ref: contracts/plugin-artifacts.md Artefato 1; spec.md FR-003
 
-- [ ] 5.1.1 Criar o arquivo com exatamente 2 entradas (`cstk`,
+- [x] 5.1.1 Criar o arquivo com exatamente 2 entradas (`cstk`,
       `cstk-language-go`), `source` string relativa (`"./plugins/cstk"`,
       `"./plugins/cstk-language-go"`), `version` em lockstep com a tag
       SemVer corrente (sem prefixo `v`)
-- [ ] 5.1.2 Aplicar o fallback decidido na task 1.5.4 se A3/A4 tiverem
+- [x] 5.1.2 Aplicar o fallback decidido na task 1.5.4 se A3/A4 tiverem
       revelado comportamento diferente do assumido
-- [ ] 5.1.3 Escrever script determinístico de validacao dos invariantes
+- [x] 5.1.3 Escrever script determinístico de validacao dos invariantes
       MP-1..MP-6 (JSON parseavel; `.plugins | length == 2`; `source`
       resolve para diretorio existente; `source` aponta para diretorio com
       `.claude-plugin/plugin.json`; `version` == tag do release corrente
       fora de release apenas aviso; `name` unico)
-- [ ] 5.1.4 Escrever `tests/cstk/test_<script-mp>.sh` cobrindo os 6
+- [x] 5.1.4 Escrever `tests/cstk/test_<script-mp>.sh` cobrindo os 6
       invariantes MP-1..MP-6 em casos validos e invalidos
 
 ### 5.2 Criar os manifestos `plugin.json` dos 2 plugins `[A]`
 
 Ref: contracts/plugin-artifacts.md Artefatos 2-3
 
-- [ ] 5.2.1 Criar `plugins/cstk/.claude-plugin/plugin.json` (`name: cstk`,
+- [x] 5.2.1 Criar `plugins/cstk/.claude-plugin/plugin.json` (`name: cstk`,
       `description`, `author`) — sem campo de entry points (nota de
       veracidade do contrato: manifestos reais nao os declaram)
-- [ ] 5.2.2 Criar `plugins/cstk-language-go/.claude-plugin/plugin.json`
+- [x] 5.2.2 Criar `plugins/cstk-language-go/.claude-plugin/plugin.json`
       (`name: cstk-language-go`, `description`, `author`)
 
 ### 5.3 Criar `plugins/cstk/hooks/hooks.json` `[C]`
 
 Ref: contracts/plugin-artifacts.md Artefato 4; data-model.md Entity Hooks Registration
 
-- [ ] 5.3.1 Registrar os 3 hooks (PreToolUse/`Bash` →
+- [x] 5.3.1 Registrar os 3 hooks (PreToolUse/`Bash` →
       `pretooluse-bash-guard.sh`; PostToolUse/`*` →
       `posttooluse-tool-call-tick.sh`; PostToolUse/`Agent` →
       `posttooluse-agent-usage.sh`), cada `command` prefixado por
       `${CLAUDE_PLUGIN_ROOT}` e invocado via `sh "<path>"` (HK-3/HK-4),
       `timeout: 5` (HK-5)
-- [ ] 5.3.2 Confirmar a AUSENCIA deliberada de `posttooluse-loose-usage.sh`
+- [x] 5.3.2 Confirmar a AUSENCIA deliberada de `posttooluse-loose-usage.sh`
       (HK-2 — opt-in explicito nunca vira default)
-- [ ] 5.3.3 Validar a paridade de eventos/matchers (HK-1) contra
+- [x] 5.3.3 Validar a paridade de eventos/matchers (HK-1) contra
       `skills/agente-00c-runtime/hooks/settings.snippet.json` classico
-- [ ] 5.3.4 Atualizar `tests/test_hooks-integration.sh` (ou criar teste
+- [x] 5.3.4 Atualizar `tests/test_hooks-integration.sh` (ou criar teste
       dedicado) cobrindo a paridade HK-1 e a ausencia HK-2
 
 ### 5.4 Gate de CI para os manifestos `[A]`
 
-- [ ] 5.4.1 Adicionar a checagem MP-1..MP-6 (e HK-1..HK-5, se aplicavel) ao
+- [x] 5.4.1 Adicionar a checagem MP-1..MP-6 (e HK-1..HK-5, se aplicavel) ao
       workflow de release/CI existente (`.github/workflows/`)
-- [ ] 5.4.2 Confirmar que a checagem falha em release e apenas avisa fora
+- [x] 5.4.2 Confirmar que a checagem falha em release e apenas avisa fora
       dele (MP-5, conforme contrato)
 
 ---

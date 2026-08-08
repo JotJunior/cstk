@@ -1,3 +1,18 @@
+---
+name: go-add-test
+description: |
+  Add unit/integration tests to a GOB Go microservice following established project patterns.
+  Triggers: "add test", "add tests", "criar teste", "novo teste", "test coverage", "testar",
+  "write tests for", "escrever testes para".
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Bash
+---
+
 # go-add-test
 
 Add unit/integration tests to a GOB Go microservice following established project patterns.

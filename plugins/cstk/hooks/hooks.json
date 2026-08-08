@@ -1,0 +1,39 @@
+{
+  "description": "Guardas enforced do cstk: interceptacao de Bash + metricas de tool call",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/hooks/pretooluse-bash-guard.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/hooks/posttooluse-tool-call-tick.sh\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/hooks/posttooluse-agent-usage.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

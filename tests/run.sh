@@ -197,6 +197,16 @@ _is_internal_test() {
       return 0 ;;
     test_cstk-main.sh|test_bootstrap.sh|test_build-release.sh|test_hooks-integration.sh|test_quickstart-e2e.sh)
       return 0 ;;
+    test_validate-plugin-manifests.sh)
+      # Cobre scripts/validate-plugin-manifests.sh (top-level scripts/, fora
+      # da convencao cli/lib | skills/*/scripts — mesmo tratamento de
+      # test_build-release.sh). FASE 5.1.3/5.1.4 de claude-plugin-packaging.
+      return 0 ;;
+    test_plugin-hooks-manifest.sh)
+      # Cobre plugins/cstk/hooks/hooks.json — manifesto de dados estatico,
+      # sem script .sh "dono" sob a convencao de FASE 9.3. FASE 5.3.4 de
+      # claude-plugin-packaging.
+      return 0 ;;
     test_doc-counts.sh)
       # Guarda numeros derivados (skills/scenarios) na doc de entrada vs repo.
       # Teste de invariante do repositorio — nao mapeia 1:1 para um script.
