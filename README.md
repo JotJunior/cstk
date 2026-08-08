@@ -330,10 +330,16 @@ so `otel_usage` comes out `null` for **every wave** of that execution, with the
 panel showing no cost at all. Real case: a two-day-old `claude -c` from an
 unrelated project held the port and an entire 16-wave run measured nothing.
 
-The fix is a launcher function in your `~/.zshrc` that asks the OS for a free
-port at every launch (binding port `0` lets the kernel pick) and points the
-cstk scraper at it via `CSTK_OTEL_ENDPOINT` — hooks and runtime scripts run
-inside the Claude process, so they inherit both variables:
+The fix is a launcher function in your `~/.zshrc` (or `~/.bashrc`) that asks
+the OS for a free port at every launch (binding port `0` lets the kernel pick)
+and points the cstk scraper at it via `CSTK_OTEL_ENDPOINT` — hooks and runtime
+scripts run inside the Claude process, so they inherit both variables.
+
+> Since v6.9.0 you rarely need to do this by hand: `cstk install` offers this
+> wrapper as an **opt-in** on first install (writes it to your shell rc between
+> `# >>> cstk telemetry >>>` markers, only with explicit consent — never in
+> non-interactive environments), and `cstk help telemetry` prints the canonical
+> ready-to-paste block if you declined or want to set it up later.
 
 ```zsh
 # One OTel exporter per claude process: OS picks a free port at each launch.

@@ -13,14 +13,24 @@
 #      `~/.local/share/cstk/lib/`).
 #   4. Escreve `$INSTALL_LIB/VERSION` com a tag baixada.
 #   5. Avisa se `$INSTALL_BIN` nao esta no PATH (sem modificar shell rc).
+#   6. Oferece OPT-IN de telemetria local (medicao de custo/tokens por onda):
+#      com consentimento explicito, escreve um wrapper `claude()` no shell rc
+#      do usuario (~/.zshrc ou ~/.bashrc, conforme $SHELL), entre marcadores
+#      idempotentes. Sem consentimento (default, e sempre em ambiente
+#      nao-interativo), NADA e escrito — o caminho manual fica documentado em
+#      `cstk help telemetry`.
 #
-# NAO exige sudo, NAO baixa toolchain de build, NAO modifica shell rc do usuario.
+# NAO exige sudo, NAO baixa toolchain de build. So modifica o shell rc do
+# usuario mediante o opt-in explicito de telemetria do passo 6 (default: nao).
 #
 # Variaveis de ambiente honradas (todas opcionais):
 #   CSTK_RELEASE_URL  — URL exata do tarball (skipa GitHub API). Sha vem de URL+".sha256".
 #   CSTK_REPO         — owner/repo no GitHub. Default: JotJunior/cstk.
 #   INSTALL_BIN       — onde colocar o binario `cstk`. Default: ~/.local/bin.
 #   INSTALL_LIB       — onde colocar lib/+VERSION. Default: ~/.local/share/cstk.
+#   CSTK_INSTALL_TELEMETRY — "yes" aplica o opt-in de telemetria sem prompt;
+#                      "no" recusa sem prompt. Ausente: pergunta via /dev/tty
+#                      quando ha TTY; sem TTY, recusa (fail-safe).
 #
 # POSIX sh puro. Deps: curl, tar, mktemp, sha256sum OU shasum, sed, grep, head,
 # mkdir, mv, cp, rm, find, dirname, basename, command, printf, cat.
@@ -203,6 +213,140 @@ EOF
   esac
 }
 
+
+# ==== Telemetria (opt-in, passo 6) ====
+#
+# O exporter OTel do Claude Code vive DENTRO de cada processo `claude` e cada
+# processo precisa da propria porta. O wrapper abaixo sorteia uma porta livre
+# por lancamento e liga as variaveis SO no ambiente do processo `claude` —
+# nada fica exportado no shell (evita falso alarme "exporter-down" em
+# terminais sem sessao ativa). Snippet canonico: manter IDENTICO ao bloco de
+# `cstk help telemetry` em cli/cstk (teste de paridade em
+# tests/cstk/test_cstk-main.sh gateia o drift).
+
+TELEMETRY_MARK_BEGIN='# >>> cstk telemetry >>>'
+TELEMETRY_MARK_END='# <<< cstk telemetry <<<'
+
+telemetry_snippet() {
+  cat <<'SNIP'
+# >>> cstk telemetry >>>
+# Gerenciado por `cstk install` — medicao LOCAL de custo/tokens do Claude
+# Code (nada sai da maquina; exporter escuta so em 127.0.0.1, porta sorteada
+# por processo). Remova o bloco inteiro entre os marcadores para desativar.
+claude() {
+  local _otel_port
+  _otel_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()' 2>/dev/null)
+  if [ -n "$_otel_port" ]; then
+    CLAUDE_CODE_ENABLE_TELEMETRY=1 \
+    OTEL_METRICS_EXPORTER=prometheus \
+    OTEL_EXPORTER_PROMETHEUS_PORT=$_otel_port \
+    CSTK_OTEL_ENDPOINT="http://127.0.0.1:${_otel_port}/metrics" \
+    command claude "$@"
+  else
+    CLAUDE_CODE_ENABLE_TELEMETRY=1 \
+    OTEL_METRICS_EXPORTER=prometheus \
+    command claude "$@"
+  fi
+}
+# <<< cstk telemetry <<<
+SNIP
+}
+
+# telemetry_rc_file -> ecoa o rc alvo conforme $SHELL (zsh -> ~/.zshrc,
+# bash -> ~/.bashrc). Exit 1 para shell desconhecido/vazio — nesse caso
+# NUNCA escrevemos; o usuario recebe o caminho manual (cstk help telemetry).
+telemetry_rc_file() {
+  case "$(basename "${SHELL:-}" 2>/dev/null)" in
+    zsh)  printf '%s\n' "$HOME/.zshrc" ;;
+    bash) printf '%s\n' "$HOME/.bashrc" ;;
+    *) return 1 ;;
+  esac
+}
+
+telemetry_explain() {
+  cat >&2 <<EOF
+
+Telemetria local de consumo (opcional):
+  O cstk consegue medir o custo/tokens REAIS de cada onda dos orquestradores
+  lendo o exporter OTel local do Claude Code. Para isso, um wrapper
+  \`claude()\` precisa existir no seu shell rc, sorteando uma porta livre por
+  processo (mais de um Claude Code aberto = cada um com sua porta).
+
+  Se voce aceitar, este instalador vai:
+    - adicionar um bloco entre marcadores '$TELEMETRY_MARK_BEGIN' ... '$TELEMETRY_MARK_END'
+      ao SEU shell rc (~/.zshrc ou ~/.bashrc, conforme \$SHELL);
+    - o bloco define a funcao \`claude()\` que liga CLAUDE_CODE_ENABLE_TELEMETRY,
+      OTEL_METRICS_EXPORTER=prometheus e a porta sorteada SO no ambiente do
+      processo \`claude\`.
+  Nada sai da maquina: o exporter escuta apenas em 127.0.0.1. Para desfazer,
+  basta remover o bloco entre os marcadores. Se recusar agora, configure
+  depois com: cstk help telemetry
+EOF
+}
+
+# telemetry_apply RC_FILE -> escreve o snippet (idempotente por marcador).
+telemetry_apply() {
+  ta_rc=$1
+  if [ -f "$ta_rc" ] && grep -Fq "$TELEMETRY_MARK_BEGIN" "$ta_rc"; then
+    log_info "telemetria: bloco ja presente em $ta_rc — nada a fazer"
+    return 0
+  fi
+  if [ -f "$ta_rc" ] && grep -Eq '^[[:space:]]*claude[[:space:]]*\(\)' "$ta_rc"; then
+    log_warn "telemetria: $ta_rc ja define uma funcao claude() propria — NAO vou sobrescrever."
+    log_warn "telemetria: integre manualmente (instrucoes: cstk help telemetry)."
+    return 0
+  fi
+  { printf '\n'; telemetry_snippet; } >> "$ta_rc" \
+    || { log_warn "telemetria: falha ao escrever em $ta_rc — configure manualmente (cstk help telemetry)"; return 0; }
+  log_info "telemetria: wrapper claude() adicionado a $ta_rc"
+  log_info "telemetria: rode 'source $ta_rc' (ou abra um novo terminal) e use 'claude' normalmente."
+  return 0
+}
+
+telemetry_optin() {
+  to_answer="${CSTK_INSTALL_TELEMETRY:-}"
+  case "$to_answer" in
+    yes|y|YES|Y) to_answer=yes ;;
+    no|n|NO|N)   to_answer=no ;;
+    '')
+      # `curl | sh` consome o stdin com o proprio script — prompt interativo
+      # so via /dev/tty. Sem TTY (CI, pipe): fail-safe = nao (opt-in nunca
+      # e assumido em silencio).
+      # `-r /dev/tty` passa mesmo sem TTY de controle (o open e que falha);
+      # o teste honesto e tentar ABRIR o device.
+      if ( : < /dev/tty ) 2>/dev/null; then
+        telemetry_explain
+        printf 'Habilitar telemetria local agora? [y/N] ' >&2
+        if IFS= read -r to_reply < /dev/tty 2>/dev/null; then :; else to_reply=""; fi
+        case "$to_reply" in
+          y|Y|yes|YES|sim|s|S) to_answer=yes ;;
+          *) to_answer=no ;;
+        esac
+      else
+        to_answer=no
+        log_info "telemetria: ambiente nao-interativo — opt-in pulado (configure depois com: cstk help telemetry)"
+        return 0
+      fi
+      ;;
+    *)
+      log_warn "telemetria: CSTK_INSTALL_TELEMETRY='$to_answer' invalido (use yes|no) — tratando como no"
+      to_answer=no
+      ;;
+  esac
+
+  if [ "$to_answer" = no ]; then
+    log_info "telemetria: nao habilitada — quando quiser, veja: cstk help telemetry"
+    return 0
+  fi
+
+  if to_rc=$(telemetry_rc_file); then
+    telemetry_apply "$to_rc"
+  else
+    log_warn "telemetria: shell '$(basename "${SHELL:-desconhecido}")' sem rc suportado (zsh/bash) — configure manualmente: cstk help telemetry"
+  fi
+  return 0
+}
+
 # ==== Main ====
 
 main() {
@@ -214,6 +358,7 @@ main() {
   download_and_verify
   extract_and_install
   path_check
+  telemetry_optin
 
   log_info "bootstrap concluido. Teste com: $INSTALL_BIN/cstk --version"
 }
