@@ -1,18 +1,20 @@
 {
   "name": "cstk",
-  "owner": { "name": "JotJunior" },
-  "description": "Toolkit de documentacao e Spec-Driven Development para Claude Code",
+  "owner": {
+    "name": "JotJunior"
+  },
+  "description": "Spec-Driven Development toolkit for Claude Code",
   "plugins": [
     {
       "name": "cstk",
-      "description": "Pipeline SDD completa (briefing -> review-features), orquestradores autonomos 00c e guardas enforced",
+      "description": "Full SDD pipeline (briefing -> review-features), autonomous 00c orchestrators and enforced guard hooks",
       "source": "./plugins/cstk",
       "version": "7.0.0",
       "category": "development"
     },
     {
       "name": "cstk-language-go",
-      "description": "Perfil Go do cstk: skills e hooks especificos de linguagem",
+      "description": "Go language profile: Go-specific skills and hooks for the cstk toolkit",
       "source": "./plugins/cstk-language-go",
       "version": "7.0.0",
       "category": "development"

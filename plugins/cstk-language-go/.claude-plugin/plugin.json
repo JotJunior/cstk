@@ -1,6 +1,18 @@
 {
   "name": "cstk-language-go",
-  "description": "Perfil Go do cstk",
+  "description": "Go language profile for the cstk toolkit: Go-specific skills (add-entity, add-consumer, add-migration, add-test, review) and hooks",
   "version": "7.0.0",
-  "author": { "name": "JotJunior" }
+  "author": {
+    "name": "JotJunior",
+    "url": "https://github.com/JotJunior"
+  },
+  "homepage": "https://github.com/JotJunior/cstk",
+  "repository": "https://github.com/JotJunior/cstk",
+  "license": "MIT",
+  "keywords": [
+    "go",
+    "golang",
+    "sdd",
+    "scaffolding"
+  ]
 }
