@@ -90,6 +90,22 @@ precisa fazer nada. Quem clona o repositorio e referencia `global/` ou
 `plugins/cstk-language-go/`. Spec completa em
 [`docs/specs/claude-plugin-packaging/`](docs/specs/claude-plugin-packaging/).
 
+### Removed
+
+- **Skill `initialize-docs` removida** (deprecation cumprida — anunciada na
+  6.6.0 com remocao prevista para a v7). A hierarquia numerada 01-09 nao e
+  mais criavel pelo toolkit; o layout canonico e `docs/briefing.md` +
+  `docs/constitution.md` + `docs/specs/<feature>/`, criado pelas proprias
+  skills `briefing`/`constitution`/`specify`. **O fallback de LEITURA do
+  caminho legado `docs/01-briefing-discovery/briefing.md` permanece intacto**
+  (projetos antigos seguem funcionando; coberto por
+  `tests/test_pipeline.sh`). Removidos junto: o tip de deprecation em
+  `tips/catalog.md`, a entrada no profile `complementary`
+  (`scripts/profiles.txt.in`), `tests/test_scaffold.sh` e as mencoes em
+  README/conventions/briefing SKILL (contagem: 21 skills globais). O help do
+  `cli/lib/install.sh` (runtime) tambem foi atualizado — sync exige
+  `cstk self-update`.
+
 ## [6.8.0] - 2026-08-07
 
 Ajuste de UX no `cstk setup` a pedido do operador: o wizard estava verboso

@@ -132,7 +132,7 @@ scenario_detect_completion_briefing() {
   fi
 }
 
-# ==== Issue #3: briefing aceita path do /initialize-docs via --projeto-alvo-path ====
+# ==== Issue #3: briefing aceita path da hierarquia numerada legada via --projeto-alvo-path ====
 scenario_detect_completion_briefing_aceita_path_initialize_docs() {
   _fd="$TMPDIR_TEST/feat"
   _pap="$TMPDIR_TEST/pap"
@@ -146,7 +146,7 @@ scenario_detect_completion_briefing_aceita_path_initialize_docs() {
     return 1
   }
 
-  # Briefing SO no path do /initialize-docs -> exit 0 (com PAP)
+  # Briefing SO no path legado 01-briefing-discovery -> exit 0 (com PAP)
   _write_briefing_valido "$_pap/docs/01-briefing-discovery/briefing.md"
   capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage briefing \
     --projeto-alvo-path "$_pap"

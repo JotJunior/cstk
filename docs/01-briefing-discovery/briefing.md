@@ -31,7 +31,7 @@
 ### MVP (entregue)
 
 1. Pipeline SDD completo — 10 skills encadeaveis
-2. 8 skills complementares independentes do pipeline (advisor, bugfix, image-generation, apply-insights, initialize-docs, owasp-security, validate-documentation, validate-docs-rendered)
+2. 7 skills complementares independentes do pipeline (advisor, bugfix, image-generation, apply-insights, owasp-security, validate-documentation, validate-docs-rendered)
 3. Language-related skills e hooks para Go e .NET
 4. Documentacao padronizada — 9 niveis (01-briefing-discovery ... 09-entregaveis)
 5. CHANGELOG + SemVer + README com anatomia de skill

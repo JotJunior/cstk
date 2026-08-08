@@ -1,3 +1,0 @@
-{"query":"vou comecar um projeto novo do zero. preciso organizar tudo: onde vou guardar os requisitos, casos de uso, modelos de dados, decisoes de arquitetura, planos de teste... como monto isso?","expect":"initialize-docs","tier":"gen"}
-{"query":"antes de comecar a codar quero deixar arrumado o espaco de trabalho da documentacao. o que precisa existir? pastas, templates, readme de cada secao... me ajuda a preparar esse esqueleto","expect":"initialize-docs","tier":"gen"}
-{"query":"o time novo vai entrar semana que vem e quero que o repositorio ja tenha um lugar definido pra cada tipo de documento — specs, DERs, ADRs, runbooks, tudo. como estruturo isso de forma padrao?","expect":"initialize-docs","tier":"gen"}

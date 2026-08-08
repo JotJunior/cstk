@@ -86,7 +86,6 @@ tests/
 ├── test_smoke.sh            # Smoke test de descoberta (interno)
 ├── test_metrics.sh          # Cobre review-task/metrics.sh
 ├── test_next-task-id.sh     # Cobre create-tasks/next-task-id.sh
-├── test_scaffold.sh         # Cobre initialize-docs/scaffold.sh
 └── test_validate.sh         # Cobre validate-docs-rendered/validate.sh
 ```
 
