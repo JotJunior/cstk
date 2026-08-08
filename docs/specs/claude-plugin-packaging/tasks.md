@@ -396,40 +396,52 @@ Ref: contracts/cli-plugin-awareness.md §`cstk hooks install`; spec.md FR-005; F
 
 Ref: contracts/cli-plugin-awareness.md §`cstk doctor`; data-model.md Entity Installation Alignment Report
 
-- [ ] 6.3.1 Implementar os 6 estados (`classic-only`, `plugin-only`,
+- [x] 6.3.1 Implementar os 6 estados (`classic-only`, `plugin-only`,
       `aligned`, `diverged`, `duplicated-hooks`, `undetermined`) com
       criterio de alinhamento por `hash_dir` — **nunca** o campo `version`
       do registro nativo (S4 mostra `"unknown"`)
-- [ ] 6.3.2 Secao emitida apenas quando o plugin e detectado (SC-006 — sem
+- [x] 6.3.2 Secao emitida apenas quando o plugin e detectado (SC-006 — sem
       ruido novo para quem nao usa plugin)
-- [ ] 6.3.3 Remediacao acionavel por status (`diverged` classico stale →
+- [x] 6.3.3 Remediacao acionavel por status (`diverged` classico stale →
       `cstk update`; `diverged` plugin stale → `/plugin update cstk@cstk`;
       `duplicated-hooks` → remover o bloco classico de `settings.json`)
-- [ ] 6.3.4 Atualizar `tests/cstk/test_doctor.sh` cobrindo os 6 estados +
+- [x] 6.3.4 Atualizar `tests/cstk/test_doctor.sh` cobrindo os 6 estados +
       a nao-regressao do caso `classic-only` (secao omitida)
 
 ### 6.4 Mensagem de escopo em `cstk update`/`cstk self-update` `[M]`
 
 Ref: contracts/cli-plugin-awareness.md §`cstk update`/`cstk self-update`; spec.md FR-007
 
-- [ ] 6.4.1 Quando o plugin for detectado, emitir a nota de escopo
+- [x] 6.4.1 Quando o plugin for detectado, emitir a nota de escopo
       (binario/catalogo classico via `cstk update`; catalogo do plugin via
       mecanismo nativo) sem alterar comportamento funcional de nenhum
       comando
-- [ ] 6.4.2 Atualizar `tests/cstk/test_update.sh`/`tests/cstk/test_self-update.sh`
+- [x] 6.4.2 Atualizar `tests/cstk/test_update.sh`/`tests/cstk/test_self-update.sh`
       cobrindo a nota condicionada a deteccao
 
 ### 6.5 Nao-regressao do caminho classico (SC-006) `[C]`
 
 Ref: quickstart.md Scenarios 6 e 7
 
-- [ ] 6.5.1 Rodar Scenario 6 (ambiente sem plugin): `cstk doctor`,
+- [x] 6.5.1 Rodar Scenario 6 (ambiente sem plugin): `cstk doctor`,
       `hooks install`, `update`, `recall`, `usage`, `mcp status` — saida
-      identica ao estado anterior a esta feature
-- [ ] 6.5.2 Rodar Scenario 7 (registros nativos corrompidos): confirmar
+      identica ao estado anterior a esta feature. Coberto por
+      `scenario_doctor_distribution_paths_omitida_sem_plugin`,
+      `scenario_hooks_main_dedup_sem_plugin_comportamento_identico`,
+      `scenario_update_sem_nota_escopo_sem_plugin` +
+      `scenario_self_update_sem_nota_escopo_sem_plugin`; recall/usage/mcp
+      nao tocados por esta feature e verdes na suite completa (ver 6.5.3)
+- [x] 6.5.2 Rodar Scenario 7 (registros nativos corrompidos): confirmar
       degradacao graciosa sem falha fatal (`undetermined`, exit 0;
-      `hooks install` provisiona classico)
-- [ ] 6.5.3 Rodar `./tests/run.sh` completo e confirmar suite verde
+      `hooks install` provisiona classico). Coberto por
+      `scenario_doctor_distribution_paths_undetermined_installed_json_corrompido`
+      e `scenario_hooks_main_dedup_registro_nativo_corrompido_provisiona_classico`
+      (installed_plugins.json truncado `{` — exit 0, sem stack/erro fatal,
+      classico provisionado)
+- [x] 6.5.3 Rodar `./tests/run.sh` completo e confirmar suite verde.
+      Resultado literal (log:
+      /private/tmp/claude-502/-Users-jot-Projects--lab-Jot-misc-cstk/2e4bcce1-be73-4385-8b4b-35b3ed363ded/tasks/bnwpuu1ee.output):
+      `# PASS: 2612  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 752s`
 
 ---
 

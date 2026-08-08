@@ -686,4 +686,28 @@ scenario_hooks_main_dedup_sem_plugin_comportamento_identico() {
   return 0
 }
 
+# Quickstart Scenario 7 (registros nativos ilegiveis): installed_plugins.json
+# corrompido -> plugin_enabled degrada para exit 2 (indeterminado), tratado
+# por hooks_main como "nao habilitado" (fail-closed do lado da guarda
+# classica) -> hooks install PROVISIONA o caminho classico normalmente,
+# exit 0, sem stack/erro fatal.
+scenario_hooks_main_dedup_registro_nativo_corrompido_provisiona_classico() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home="$TMPDIR_TEST/plugin-home-corrupted"
+  mkdir -p "$_home/.claude/plugins"
+  printf '{' > "$_home/.claude/plugins/installed_plugins.json"
+  cat > "$_home/.claude/settings.json" <<'EOF'
+{"enabledPlugins": {"cstk@cstk": true}}
+EOF
+  _proj="$TMPDIR_TEST/proj-dedup-corrupted"
+  mkdir -p "$_proj"
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "registro corrompido exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"Traceback"*|*"parse error"*) _fail "registro corrompido nao deveria vazar erro de parser" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+  return 0
+}
+
 run_all_scenarios
