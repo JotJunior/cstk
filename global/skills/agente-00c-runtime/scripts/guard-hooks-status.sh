@@ -104,8 +104,10 @@
 #
 # Override do catalogo (so para teste/diagnostico):
 #   CSTK_HOOKS_CATALOG_DIR=<dir> — diretorio com as copias de referencia.
-#   Sem ele: sibling `<script_dir>/../hooks` e depois
-#   `$HOME/.claude/skills/agente-00c-runtime/hooks`.
+#   Sem ele: sibling `<script_dir>/../hooks`, depois
+#   `${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/hooks` (via
+#   `_resolve-root.sh`, Ordem A — feature claude-plugin-packaging, task
+#   3.2.5), depois `$HOME/.claude/skills/agente-00c-runtime/hooks`.
 #
 # Exit codes:
 #   0  check: tudo provisionado e atual | tick-mode: consulta respondida
@@ -123,6 +125,26 @@
 set -eu
 
 _GH_NAME="guard-hooks-status"
+
+# Bootstrap: localizar+sourcear `_resolve-root.sh` (feature
+# claude-plugin-packaging, task 3.2.5). Este script ja vive em
+# `scripts/agente-00c-runtime` — sibling de `_resolve-root.sh` e o proprio
+# diretorio (sem `../scripts`). Ordem A (CLI comum) — plugin/classico
+# resolvidos por `resolve_runtime_root` (default, sem `strict`) dentro de
+# `_gh_catalog_hook`; este bootstrap so localiza o ARQUIVO do helper.
+_GH_RR_SELF_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || _GH_RR_SELF_DIR=""
+_gh_rr_helper=""
+if [ -n "$_GH_RR_SELF_DIR" ] && [ -r "$_GH_RR_SELF_DIR/_resolve-root.sh" ]; then
+  _gh_rr_helper="$_GH_RR_SELF_DIR/_resolve-root.sh"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _gh_rr_helper="${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+elif [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _gh_rr_helper="$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+fi
+if [ -n "$_gh_rr_helper" ]; then
+  # shellcheck disable=SC1090 # caminho resolvido dinamicamente pela cadeia de candidatos acima
+  . "$_gh_rr_helper"
+fi
 
 _gh_die_usage() { printf '%s: %s\n' "$_GH_NAME" "$1" >&2; exit 2; }
 _gh_err()       { printf '%s: %s\n' "$_GH_NAME" "$1" >&2; }
@@ -169,8 +191,11 @@ _gh_catalog_hook() {
     printf '%s' "$_gh_ch_self/../hooks/$_gh_ch_h"
     return 0
   fi
-  if [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/hooks/$_gh_ch_h" ]; then
-    printf '%s' "$HOME/.claude/skills/agente-00c-runtime/hooks/$_gh_ch_h"
+  # Plugin/classico (Ordem A, CLI comum) via helper compartilhado (feature
+  # claude-plugin-packaging, task 3.2.5).
+  if _gh_ch_root=$(resolve_runtime_root 2>/dev/null) && [ -n "$_gh_ch_root" ] \
+     && [ -r "$_gh_ch_root/hooks/$_gh_ch_h" ]; then
+    printf '%s' "$_gh_ch_root/hooks/$_gh_ch_h"
     return 0
   fi
   return 1

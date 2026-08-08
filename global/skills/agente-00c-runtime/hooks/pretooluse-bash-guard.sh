@@ -32,13 +32,24 @@
 # artefatos de /plan — resolvido aqui, task 2.1): o hook e provisionado
 # standalone em <projeto>/.claude/hooks/ (data-model.md GuardHookRegistration),
 # desacoplado de onde a skill agente-00c-runtime foi instalada (escopo
-# project OU global). Candidatos tentados em ordem, primeiro
+# project, plugin OU global). Candidatos tentados em ordem, primeiro
 # existente+executavel vence:
 #   1. sibling relativo ao proprio hook (.../hooks/../scripts/*) — cobre
 #      invocacao direta a partir da arvore-fonte do repo (dev/testes: hooks/
 #      e scripts/ sao irmaos ali tambem)
 #   2. <cwd>/.claude/skills/agente-00c-runtime/scripts/* (escopo project)
-#   3. $HOME/.claude/skills/agente-00c-runtime/scripts/* (escopo global)
+#   3. ${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/* (escopo
+#      plugin — via `_resolve-root.sh` Ordem B, sibling ja tentado no
+#      passo 1 acima; dec-027/F3, feature claude-plugin-packaging)
+#   4. $HOME/.claude/skills/agente-00c-runtime/scripts/* (escopo global)
+#
+# Passos 3-4 delegados ao helper compartilhado `_resolve-root.sh`
+# (`resolve_runtime_root strict`) — ver bootstrap logo abaixo de
+# `_PBG_SELF_DIR`. Ordem B (sibling antes de `${CLAUDE_PLUGIN_ROOT}`) evita
+# que um processo pai externo, capaz de exportar essa variavel, redirecione
+# o guard fail-closed para um `bash-guard.sh` permissivo sem disparar erro
+# (achado de seguranca F3, MEDIUM, dec-027 — ver
+# contracts/plugin-artifacts.md Artefato 5).
 #
 # Deteccao de execucao ativa (feature hooks-db-parity, FASE 3): delegada ao
 # helper agnostico a backend `_hook-active-exec.sh`
@@ -59,6 +70,28 @@ set -eu
 _PBG_NAME="pretooluse-bash-guard"
 _PBG_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || _PBG_SELF_DIR=""
 
+# Bootstrap: localizar+sourcear `_resolve-root.sh` (feature
+# claude-plugin-packaging, task 3.2.1). Ordem B (sibling -> plugin ->
+# classico) — sibling primeiro por ser a ancora mais forte (o proprio
+# arquivo foi lancado pelo harness a partir de um path ja resolvido);
+# cobre tambem o hook standalone-provisionado (sem sibling scripts/) via
+# os fallbacks plugin/classico. Falha de bootstrap (nenhum candidato
+# legivel) deixa `resolve_runtime_root` indefinida — os chamadores abaixo
+# tratam isso como falha de resolucao (fail-closed, nunca erro do proprio
+# `set -eu`: a chamada ocorre sempre dentro de teste `if`).
+_pbg_rr_helper=""
+if [ -n "$_PBG_SELF_DIR" ] && [ -r "$_PBG_SELF_DIR/../scripts/_resolve-root.sh" ]; then
+  _pbg_rr_helper="$_PBG_SELF_DIR/../scripts/_resolve-root.sh"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _pbg_rr_helper="${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+elif [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _pbg_rr_helper="$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+fi
+if [ -n "$_pbg_rr_helper" ]; then
+  # shellcheck disable=SC1090 # caminho resolvido dinamicamente pela cadeia de candidatos acima
+  . "$_pbg_rr_helper"
+fi
+
 _pbg_has_jq() {
   command -v jq >/dev/null 2>&1
 }
@@ -75,8 +108,11 @@ _pbg_resolve_dep() {
     printf '%s' "$_PBG_CWD/.claude/skills/agente-00c-runtime/$_pbg_rel"
     return 0
   fi
-  if [ -n "${HOME:-}" ] && [ -x "$HOME/.claude/skills/agente-00c-runtime/$_pbg_rel" ]; then
-    printf '%s' "$HOME/.claude/skills/agente-00c-runtime/$_pbg_rel"
+  # Plugin (${CLAUDE_PLUGIN_ROOT}) -> classico ($HOME), via helper
+  # compartilhado (Ordem B; sibling ja tentado acima, dec-027).
+  if _pbg_root=$(resolve_runtime_root strict 2>/dev/null) && [ -n "$_pbg_root" ] \
+     && [ -x "$_pbg_root/$_pbg_rel" ]; then
+    printf '%s' "$_pbg_root/$_pbg_rel"
     return 0
   fi
   return 1
@@ -98,8 +134,12 @@ _pbg_resolve_dep_hae() {
     printf '%s' "$_PBG_SELF_DIR/../$_pbg_rel"
     return 0
   fi
-  if [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/$_pbg_rel" ]; then
-    printf '%s' "$HOME/.claude/skills/agente-00c-runtime/$_pbg_rel"
+  # Plugin (${CLAUDE_PLUGIN_ROOT}) -> classico ($HOME), via helper
+  # compartilhado (Ordem B; sibling ja tentado acima, dec-027). Classico
+  # continua antes de <cwd> (dec-026 — nao alterado por esta insercao).
+  if _pbg_root=$(resolve_runtime_root strict 2>/dev/null) && [ -n "$_pbg_root" ] \
+     && [ -r "$_pbg_root/$_pbg_rel" ]; then
+    printf '%s' "$_pbg_root/$_pbg_rel"
     return 0
   fi
   if [ -n "${_PBG_CWD:-}" ] && [ -r "$_PBG_CWD/.claude/skills/agente-00c-runtime/$_pbg_rel" ]; then

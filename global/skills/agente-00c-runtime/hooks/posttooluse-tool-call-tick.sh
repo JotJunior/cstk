@@ -65,6 +65,24 @@ set -u
 
 _PTT_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || _PTT_SELF_DIR=""
 
+# Bootstrap: localizar+sourcear `_resolve-root.sh` (feature
+# claude-plugin-packaging, task 3.2.4). Ordem A (fail-open, consumidor
+# geral) — ver mesmo bootstrap em posttooluse-loose-usage.sh. Falha aqui
+# deixa `resolve_runtime_root` indefinida; tratado como candidato
+# nao-resolvido pelos chamadores (fail-open, nunca aborta o hook).
+_ptt_rr_helper=""
+if [ -n "$_PTT_SELF_DIR" ] && [ -r "$_PTT_SELF_DIR/../scripts/_resolve-root.sh" ]; then
+  _ptt_rr_helper="$_PTT_SELF_DIR/../scripts/_resolve-root.sh"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _ptt_rr_helper="${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+elif [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _ptt_rr_helper="$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+fi
+if [ -n "$_ptt_rr_helper" ]; then
+  # shellcheck disable=SC1090 # caminho resolvido dinamicamente pela cadeia de candidatos acima
+  . "$_ptt_rr_helper"
+fi
+
 command -v jq >/dev/null 2>&1 || exit 0
 
 _PTT_INPUT=$(cat 2>/dev/null) || exit 0
@@ -118,8 +136,11 @@ _ptt_resolve_dep_hae() {
     printf '%s' "$_PTT_SELF_DIR/../$_ptt_rel"
     return 0
   fi
-  if [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/$_ptt_rel" ]; then
-    printf '%s' "$HOME/.claude/skills/agente-00c-runtime/$_ptt_rel"
+  # Plugin/classico (Ordem A, dec-006/fail-open) via helper compartilhado
+  # (feature claude-plugin-packaging, task 3.2.4).
+  if _ptt_root=$(resolve_runtime_root 2>/dev/null) && [ -n "$_ptt_root" ] \
+     && [ -r "$_ptt_root/$_ptt_rel" ]; then
+    printf '%s' "$_ptt_root/$_ptt_rel"
     return 0
   fi
   if [ -n "${_PTT_CWD:-}" ] && [ -r "$_PTT_CWD/.claude/skills/agente-00c-runtime/$_ptt_rel" ]; then

@@ -244,4 +244,83 @@ scenario_sqlite_dry_run_le_estado_do_state_db() {
   fi
 }
 
+# ==== FASE 3.2 (claude-plugin-packaging) — candidato ${CLAUDE_PLUGIN_ROOT} ====
+#
+# Task 3.2.6: `_ish_skills_base` (via `_resolve-root.sh`) substitui o
+# antigo `~/.claude/skills/$_skill/` hardcoded na secao "Caminho instalado"
+# do corpo da issue (Constitution VI — nunca fabricar path). Os scenarios
+# abaixo isolam issue.sh + _state-read.sh (unica dependencia real para
+# backend JSON) num diretorio SEM sibling `_resolve-root.sh` algum.
+
+# _copy_issue_isolated DEST_DIR -> copia issue.sh + _state-read.sh (unica
+# dep exercitada sob backend JSON) para DEST_DIR; ecoa o path do issue.sh
+# isolado.
+_copy_issue_isolated() {
+  mkdir -p "$1"
+  cp "$SCRIPT" "$1/issue.sh"
+  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_state-read.sh" "$1/_state-read.sh"
+  chmod +x "$1/issue.sh"
+  printf '%s/issue.sh' "$1"
+}
+
+scenario_caminho_instalado_reflete_raiz_resolvida() {
+  _sd="$TMPDIR_TEST/state"; _md="$TMPDIR_TEST/sug.md"
+  _setup "$_sd" "$_md" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" create --state-dir "$_sd" --suggestion-id "sug-001" \
+    --skill "clarify" \
+    --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 para o mesmo escopo" \
+    --proposta "fix proposta detalhada" \
+    --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run exit" "$_CAPTURED_STDERR"; return 1; }
+  # Rodando in-tree, o sibling de issue.sh resolve a raiz REAL do repo —
+  # o path nao pode mais ser o antigo literal fixo ~/.claude/skills/.
+  assert_stdout_contains "$REPO_ROOT/global/skills/clarify/" || return 1
+}
+
+scenario_plugin_root_resolve_caminho_instalado_via_claude_plugin_root() {
+  _sd="$TMPDIR_TEST/state"; _md="$TMPDIR_TEST/sug.md"
+  _setup "$_sd" "$_md" || { _error "fixture" ""; return 2; }
+
+  _isolated=$(_copy_issue_isolated "$TMPDIR_TEST/isolated-plugin")
+  _plugin_scripts="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/scripts"
+  mkdir -p "$_plugin_scripts"
+  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_scripts/_resolve-root.sh"
+  _fake_home="$TMPDIR_TEST/fake-home-plugin"
+  mkdir -p "$_fake_home"
+
+  capture env HOME="$_fake_home" CLAUDE_PLUGIN_ROOT="$TMPDIR_TEST/fake-plugin" \
+    "$_isolated" create --state-dir "$_sd" --suggestion-id "sug-001" \
+    --skill "clarify" \
+    --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 para o mesmo escopo" \
+    --proposta "fix proposta detalhada" \
+    --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run exit" "esperado 0 (resolvido via plugin), obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "$TMPDIR_TEST/fake-plugin/skills/clarify/" || return 1
+}
+
+# Prova o proprio objetivo da task 3.2.6 (Constitution VI): quando a raiz
+# de agente-00c-runtime e irresolvivel (sibling, plugin E classico
+# falham), issue.sh MUST falhar (CLI comum: exit != 0 + stderr) em vez de
+# fabricar um "Caminho instalado" adivinhado no corpo da issue.
+scenario_falha_caminho_instalado_irresolvivel_bloqueia_create() {
+  _sd="$TMPDIR_TEST/state"; _md="$TMPDIR_TEST/sug.md"
+  _setup "$_sd" "$_md" || { _error "fixture" ""; return 2; }
+
+  _isolated=$(_copy_issue_isolated "$TMPDIR_TEST/isolated-irresolvivel")
+  _fake_home="$TMPDIR_TEST/fake-home-irresolvivel"
+  mkdir -p "$_fake_home"
+
+  capture env HOME="$_fake_home" CLAUDE_PLUGIN_ROOT="" \
+    "$_isolated" create --state-dir "$_sd" --suggestion-id "sug-001" \
+    --skill "clarify" \
+    --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 para o mesmo escopo" \
+    --proposta "fix proposta detalhada" \
+    --dry-run
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "exit" "raiz irresolvivel deveria falhar (Constitution VI), obtido 0: $_CAPTURED_STDOUT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *"claude/skills"*) _fail "fabricacao" "corpo da issue nao deveria ter sido emitido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  assert_stderr_contains "irresolvivel" || return 1
+}
+
 run_all_scenarios

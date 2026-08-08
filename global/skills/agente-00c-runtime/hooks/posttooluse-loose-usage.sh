@@ -29,6 +29,27 @@ set -u
 
 _PLU_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || _PLU_SELF_DIR=""
 
+# Bootstrap: localizar+sourcear `_resolve-root.sh` (feature
+# claude-plugin-packaging, task 3.2.2). Ordem A (fail-open, consumidor
+# geral): plugin/sibling/classico resolvidos pela propria
+# `resolve_runtime_root` (default, sem `strict`) — este bootstrap so
+# precisa localizar o ARQUIVO do helper, entao tenta sibling primeiro
+# (ancora mais barata) com fallback plugin/classico. Falha aqui deixa
+# `resolve_runtime_root` indefinida; os chamadores tratam isso como
+# candidato nao-resolvido (fail-open, nunca aborta o hook).
+_plu_rr_helper=""
+if [ -n "$_PLU_SELF_DIR" ] && [ -r "$_PLU_SELF_DIR/../scripts/_resolve-root.sh" ]; then
+  _plu_rr_helper="$_PLU_SELF_DIR/../scripts/_resolve-root.sh"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _plu_rr_helper="${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+elif [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _plu_rr_helper="$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+fi
+if [ -n "$_plu_rr_helper" ]; then
+  # shellcheck disable=SC1090 # caminho resolvido dinamicamente pela cadeia de candidatos acima
+  . "$_plu_rr_helper"
+fi
+
 # ---------------------------------------------------------------------------
 # Passo 1: CSTK_OTEL_ENDPOINT presente? (ancora de identidade do processo)
 # ---------------------------------------------------------------------------
@@ -201,8 +222,11 @@ if _plu_precheck_active_scope; then
       printf '%s' "$_PLU_SELF_DIR/../$_plu_rel"
       return 0
     fi
-    if [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/$_plu_rel" ]; then
-      printf '%s' "$HOME/.claude/skills/agente-00c-runtime/$_plu_rel"
+    # Plugin/classico (Ordem A, dec-006/fail-open) via helper compartilhado
+    # (feature claude-plugin-packaging, task 3.2.2).
+    if _plu_root=$(resolve_runtime_root 2>/dev/null) && [ -n "$_plu_root" ] \
+       && [ -r "$_plu_root/$_plu_rel" ]; then
+      printf '%s' "$_plu_root/$_plu_rel"
       return 0
     fi
     if [ -n "${_PLU_CWD:-}" ] && [ -r "$_PLU_CWD/.claude/skills/agente-00c-runtime/$_plu_rel" ]; then
@@ -241,8 +265,11 @@ _plu_resolve_dep_otel() {
     printf '%s' "$_PLU_SELF_DIR/../$_plu_rel"
     return 0
   fi
-  if [ -n "${HOME:-}" ] && [ -x "$HOME/.claude/skills/agente-00c-runtime/$_plu_rel" ]; then
-    printf '%s' "$HOME/.claude/skills/agente-00c-runtime/$_plu_rel"
+  # Plugin/classico (Ordem A, fail-open) via helper compartilhado
+  # (feature claude-plugin-packaging, task 3.2.2).
+  if _plu_root=$(resolve_runtime_root 2>/dev/null) && [ -n "$_plu_root" ] \
+     && [ -x "$_plu_root/$_plu_rel" ]; then
+    printf '%s' "$_plu_root/$_plu_rel"
     return 0
   fi
   if [ -n "${_PLU_CWD:-}" ] && [ -x "$_PLU_CWD/.claude/skills/agente-00c-runtime/$_plu_rel" ]; then

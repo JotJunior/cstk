@@ -373,5 +373,38 @@ scenario_gate_latencia_mediana_tick_sob_state_db() {
     || { _fail "latencia" "mediana=${_mediana}ms excede teto de 150ms (FR-005/SC-003, research Decision 3)"; return 1; }
 }
 
+# ==== FASE 3.2 (claude-plugin-packaging) — candidato ${CLAUDE_PLUGIN_ROOT} ====
+#
+# Task 3.2.4: adotar `_resolve-root.sh` (Ordem A, fail-open). Isola o hook
+# num diretorio SEM sibling scripts/ algum, com ${CLAUDE_PLUGIN_ROOT}
+# apontando para uma raiz fake contendo o bootstrap (_resolve-root.sh) +
+# _hook-active-exec.sh reais — confirma que o tick funciona mesmo quando o
+# runtime so e alcancavel via plugin.
+
+scenario_plugin_root_resolve_hae_via_claude_plugin_root() {
+  _isolated="$TMPDIR_TEST/isolated-plugin/hooks"
+  mkdir -p "$_isolated"
+  cp "$SCRIPT" "$_isolated/posttooluse-tool-call-tick.sh"
+  chmod +x "$_isolated/posttooluse-tool-call-tick.sh"
+
+  _plugin_root="$TMPDIR_TEST/fake-plugin/skills/agente-00c-runtime/scripts"
+  mkdir -p "$_plugin_root"
+  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_resolve-root.sh" "$_plugin_root/_resolve-root.sh"
+  cp "$REPO_ROOT/global/skills/agente-00c-runtime/scripts/_hook-active-exec.sh" "$_plugin_root/_hook-active-exec.sh"
+
+  _fake_home="$TMPDIR_TEST/fake-home-plugin"
+  mkdir -p "$_fake_home"
+  _proj="$TMPDIR_TEST/project-plugin"
+  _active_feature "$_proj" "minha-feat" "em_andamento"
+
+  _json=$(_json_for "$_proj" "Bash")
+  capture env HOME="$_fake_home" CLAUDE_PLUGIN_ROOT="$TMPDIR_TEST/fake-plugin" \
+    sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$_isolated/posttooluse-tool-call-tick.sh"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout" "esperado vazio: $_CAPTURED_STDOUT"; return 1; }
+  _side="$_proj/.claude/feature-00c-state/minha-feat/tool-call-ticks.log"
+  [ "$(_ticks_count "$_side")" = 1 ] || { _fail "sidecar" "esperado 1 linha (hae resolvido via plugin root), obtido $(_ticks_count "$_side")"; return 1; }
+}
+
 run_all_scenarios
 exit $?

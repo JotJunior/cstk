@@ -213,27 +213,27 @@ Ref: contracts/plugin-artifacts.md Artefato 5
 
 Ref: research.md Decision 3 (15 linhas executaveis em 6 arquivos)
 
-- [ ] 3.2.1 `pretooluse-bash-guard.sh` (4 ocorrencias) — usar Ordem B
+- [x] 3.2.1 `pretooluse-bash-guard.sh` (4 ocorrencias) — usar Ordem B
       (`strict`), por ser o unico consumidor fail-closed (F3, dec-027)
-- [ ] 3.2.2 `posttooluse-loose-usage.sh` (4 ocorrencias) — Ordem A
+- [x] 3.2.2 `posttooluse-loose-usage.sh` (4 ocorrencias) — Ordem A
       (fail-open)
-- [ ] 3.2.3 `posttooluse-agent-usage.sh` (2 ocorrencias) — Ordem A
+- [x] 3.2.3 `posttooluse-agent-usage.sh` (2 ocorrencias) — Ordem A
       (fail-open)
-- [ ] 3.2.4 `posttooluse-tool-call-tick.sh` (2 ocorrencias) — Ordem A
+- [x] 3.2.4 `posttooluse-tool-call-tick.sh` (2 ocorrencias) — Ordem A
       (fail-open)
-- [ ] 3.2.5 `guard-hooks-status.sh` (2 ocorrencias) — Ordem A (CLI comum)
-- [ ] 3.2.6 `issue.sh` (1 ocorrencia) — Ordem A (CLI comum)
-- [ ] 3.2.7 Auditar manualmente que nenhuma polaridade fail-open/fail-closed
+- [x] 3.2.5 `guard-hooks-status.sh` (2 ocorrencias) — Ordem A (CLI comum)
+- [x] 3.2.6 `issue.sh` (1 ocorrencia) — Ordem A (CLI comum)
+- [x] 3.2.7 Auditar manualmente que nenhuma polaridade fail-open/fail-closed
       mudou: `pretooluse-bash-guard.sh` continua saindo com
       `MECANISMO_FALHOU` ao nao resolver; os 4 hooks de metrica continuam
       sempre exit 0
-- [ ] 3.2.8 Atualizar os testes existentes dos 6 arquivos (`tests/test_pretooluse-bash-guard.sh`,
+- [x] 3.2.8 Atualizar os testes existentes dos 6 arquivos (`tests/test_pretooluse-bash-guard.sh`,
       `tests/test_posttooluse-loose-usage.sh`,
       `tests/test_posttooluse-agent-usage.sh`,
       `tests/test_posttooluse-tool-call-tick.sh`,
       `tests/test_guard-hooks-status.sh`, `tests/cstk/test_issue.sh` ou
       equivalente) cobrindo a nova cascata com `${CLAUDE_PLUGIN_ROOT}`
-- [ ] 3.2.9 Rodar `./tests/run.sh` completo e confirmar suite verde antes
+- [x] 3.2.9 Rodar `./tests/run.sh` completo e confirmar suite verde antes
       de iniciar a FASE 4
 
 ---

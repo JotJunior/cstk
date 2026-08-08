@@ -52,8 +52,38 @@ _ISH_REPO="JotJunior/cstk"
 # materializa documento legivel por jq nos DOIS backends (json/sqlite).
 # issue.sh nao escreve estado diretamente — o registro da issue no state
 # delega a `suggestions.sh mark-issue` (ja portado, roteia por state-rw set).
-. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+_ISH_SELF_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+. "$_ISH_SELF_DIR/_state-read.sh"
 trap state_read_cleanup EXIT INT TERM
+
+# Bootstrap: localizar+sourcear `_resolve-root.sh` (feature
+# claude-plugin-packaging, task 3.2.6). Este script ja vive em
+# `scripts/agente-00c-runtime` — sibling e o proprio diretorio. Ordem A
+# (CLI comum) — plugin/classico resolvidos por `resolve_runtime_root`
+# (default) dentro de `_ish_skills_base`.
+_ish_rr_helper=""
+if [ -r "$_ISH_SELF_DIR/_resolve-root.sh" ]; then
+  _ish_rr_helper="$_ISH_SELF_DIR/_resolve-root.sh"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _ish_rr_helper="${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+elif [ -n "${HOME:-}" ] && [ -r "$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh" ]; then
+  _ish_rr_helper="$HOME/.claude/skills/agente-00c-runtime/scripts/_resolve-root.sh"
+fi
+if [ -n "$_ish_rr_helper" ]; then
+  # shellcheck disable=SC1090 # caminho resolvido dinamicamente pela cadeia de candidatos acima
+  . "$_ish_rr_helper"
+fi
+
+# _ish_skills_base -> stdout = path absoluto do diretorio pai de
+# `agente-00c-runtime` (i.e. `.../skills`, classico OU plugin) via
+# `resolve_runtime_root`; exit 1 se irresolvivel. "CLI comum" (Artefato 5)
+# — falha aqui MUST propagar (exit != 0 + stderr), nunca fabricar um
+# "Caminho instalado" adivinhado no corpo da issue (Constitution VI).
+_ish_skills_base() {
+  _ish_root=$(resolve_runtime_root 2>/dev/null) || return 1
+  [ -n "$_ish_root" ] || return 1
+  dirname -- "$_ish_root"
+}
 
 _ish_die_usage() { printf '%s: %s\n' "$_ISH_NAME" "$1" >&2; exit 2; }
 _ish_die()       { printf '%s: %s\n' "$_ISH_NAME" "$1" >&2; exit "${2:-1}"; }
@@ -140,6 +170,15 @@ _ish_build_body() {
     _imped="(orquestrador deve enriquecer com analise de impeditividade passando --por-que-impeditivo)"
   fi
 
+  # Caminho instalado da skill afetada: derivado da raiz REAL de
+  # agente-00c-runtime desta execucao (classico OU plugin), nunca
+  # hardcoded (task 3.2.6 — Constitution VI, "jamais inventar dados": o
+  # antigo `~/.claude/skills/$_skill/` fixo ficava FACTUALMENTE ERRADO sob
+  # instalacao via plugin). Falha de resolucao propaga (CLI comum,
+  # Artefato 5) — nunca fabrica um path adivinhado no corpo da issue.
+  _ish_base=$(_ish_skills_base) \
+    || _ish_die "raiz de agente-00c-runtime irresolvivel (classico/plugin) — nao e possivel montar 'Caminho instalado' sem inventar dado (Constitution VI)" 1
+
   cat <<BODY | _ish_apply_secrets "$_env"
 > Issue aberta automaticamente pelo agente-00C durante execucao
 > \`$_ISH_EXEC_ID\` em \`$_now\`.
@@ -147,7 +186,7 @@ _ish_build_body() {
 ## Skill afetada
 
 **Nome**: \`$_skill\`
-**Caminho instalado**: \`~/.claude/skills/$_skill/\`
+**Caminho instalado**: \`$_ish_base/$_skill/\`
 **Versao** (se identificavel via SKILL.md frontmatter): nao informada
 
 ## Diagnostico
