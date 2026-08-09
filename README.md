@@ -324,7 +324,18 @@ cd ~/projects/my-target-project
 cstk hooks install                    # touches .claude/hooks/ + settings.json only
 cstk hooks install --dry-run          # show the plan without writing
 cstk hooks install --project-path ../other-project
+cstk hooks install --remove-classic   # de-duplicate against the plugin, no prompt
 ```
+
+When the plugin already provides the hooks, `cstk hooks install` skips the
+classic provisioning (plugin wins) and, if the project **still** carries a
+classic registration in `settings.json`, both layers would fire. In that
+case it asks whether to remove the classic block, deleting only the 00c
+hook entries — third-party hooks and every other key in the file are
+preserved — and writing a backup to `settings.json.bak-pre-dedup`. Use
+`--remove-classic` to skip the prompt (scripts/CI). Without a TTY and
+without the flag the block is **kept**, with a warning: `settings.json`
+belongs to the operator and is never rewritten without explicit consent.
 
 Without this step the Bash guard is inert and `tool_calls`/`agent_usage`
 stay at zero for every wave. To check the current state without writing

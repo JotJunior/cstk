@@ -535,13 +535,138 @@ apply_guard_hooks() {
 #   1  falha de I/O, catalogo sem hooks, ou --project-path invalido
 #   2  uso incorreto
 
+# ---------------------------------------------------------------------------
+# Dedup ATIVO do registro classico quando o plugin ja proveu os hooks.
+#
+# Ate aqui o dedup era so PASSIVO: `hooks install` pulava o provisionamento
+# ("plugin vence") e mandava o operador remover o bloco classico na mao. Um
+# projeto que ja tinha o registro classico continuava com AS DUAS camadas
+# ativas — o `cstk doctor` reportava `duplicated-hooks` e a remocao ficava
+# como licao de casa manual, propensa a erro (editar settings.json a mao
+# arrisca levar junto hook de terceiro).
+#
+# REGRA DURA — remover APENAS o que e do cstk: `settings.json` e do
+# operador, nao do toolkit. O filtro casa exclusivamente os 4 hooks do
+# runtime 00c pelo caminho do comando; qualquer outra entrada (hook proprio
+# do time, telemetria da empresa, lint) e preservada, assim como todas as
+# demais chaves do arquivo (permissions, env, ...). Grupos que ficarem sem
+# nenhum hook sao podados, e `.hooks` inteiro so some se ficar vazio.
+_HOOKS_CLASSIC_RE='/\.claude/hooks/(pretooluse-bash-guard|posttooluse-tool-call-tick|posttooluse-agent-usage|posttooluse-loose-usage)\.sh$'
+
+# _hooks_classic_count SETTINGS -> imprime quantas entradas de hook do
+# runtime 00c existem no arquivo (0 se ausente/ilegivel/JSON invalido).
+_hooks_classic_count() {
+  [ -f "$1" ] || { printf '0'; return 0; }
+  jq --arg re "$_HOOKS_CLASSIC_RE" -r '
+    [ (.hooks // {}) | to_entries[] | .value[]? | .hooks[]?
+      | select((.command // "") | test($re)) ] | length
+  ' "$1" 2>/dev/null || printf '0'
+}
+
+# _hooks_strip_classic SETTINGS -> stdout: JSON sem as entradas do cstk.
+_hooks_strip_classic() {
+  jq --arg re "$_HOOKS_CLASSIC_RE" '
+    def is_cstk: (.command // "") | test($re);
+    if has("hooks") then
+      .hooks |= ( with_entries(
+                    .value |= ( map(.hooks |= map(select(is_cstk | not)))
+                              | map(select((.hooks | length) > 0)) ) )
+                | with_entries(select((.value | length) > 0)) )
+      | if (.hooks | length) == 0 then del(.hooks) else . end
+    else . end
+  ' "$1" 2>/dev/null
+}
+
+# _hooks_prompt_yn PERGUNTA -> 0 se y/Y/yes/sim; 1 caso contrario (inclusive
+# vazio/EOF). Mesmo padrao de _setup_prompt_yn / _session_prompt_yn — vazio
+# NAO remove: a acao destrutiva nunca e o default de um Enter distraido.
+_hooks_prompt_yn() {
+  printf '%s ' "$1" >&2
+  read -r _hpy_ans 2>/dev/null || _hpy_ans=""
+  case "$_hpy_ans" in
+    y | Y | yes | YES | sim | SIM) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# _hooks_dedup_classic DEST DRY_RUN AUTO_REMOVE -> best-effort; SEMPRE
+# retorna 0. Nenhuma falha desta rotina pode alterar o exit de
+# `hooks install`: o provisionamento (ou o skip dele) ja aconteceu, e o
+# dedup e higiene, nao pre-requisito.
+#
+# AUTO_REMOVE=1 (`--remove-classic`) remove sem perguntar — caminho para
+# script/CI. Sem ele: pergunta SE houver TTY; sem TTY, mantem e avisa
+# (jamais mutar settings.json de alguem sem confirmacao explicita).
+_hooks_dedup_classic() {
+  _hdc_dest=$1
+  _hdc_dry=$2
+  _hdc_auto=$3
+  _hdc_settings="$_hdc_dest/settings.json"
+
+  [ -f "$_hdc_settings" ] || return 0
+
+  if ! detect_jq; then
+    log_warn "hooks install: jq ausente — nao da para editar settings.json com seguranca."
+    log_warn "hooks install: se houver registro classico em $_hdc_settings, remova-o a mao (duplicidade com o plugin)."
+    return 0
+  fi
+
+  _hdc_n=$(_hooks_classic_count "$_hdc_settings")
+  case "$_hdc_n" in ''|0|*[!0-9]*) return 0 ;; esac
+
+  log_warn "hooks install: $_hdc_settings ainda registra $_hdc_n hook(s) 00c pelo caminho classico — duplicidade com o plugin."
+
+  if [ "$_hdc_dry" = 1 ]; then
+    log_info "hooks install: [dry-run] removeria $_hdc_n entrada(s) do bloco classico (hooks de terceiros e demais chaves preservados)"
+    return 0
+  fi
+
+  if [ "$_hdc_auto" != 1 ]; then
+    if [ ! -t 0 ] && [ "${CSTK_FORCE_INTERACTIVE:-0}" != 1 ]; then
+      log_warn "hooks install: sem TTY para confirmar — bloco classico MANTIDO."
+      log_warn "hooks install: rode 'cstk hooks install --remove-classic' para remove-lo sem prompt."
+      return 0
+    fi
+    if ! _hooks_prompt_yn "hooks install: remover o registro classico de $_hdc_settings? (y/N)"; then
+      log_info "hooks install: bloco classico mantido a pedido — 'cstk doctor' seguira reportando duplicated-hooks"
+      return 0
+    fi
+  fi
+
+  _hdc_new=$(_hooks_strip_classic "$_hdc_settings")
+  if [ -z "$_hdc_new" ]; then
+    log_warn "hooks install: falha ao reescrever $_hdc_settings — bloco classico MANTIDO (arquivo intacto)"
+    return 0
+  fi
+
+  # Backup antes de escrever, com o mesmo nome que o dedup manual ja usava.
+  if ! cp -- "$_hdc_settings" "$_hdc_settings.bak-pre-dedup" 2>/dev/null; then
+    log_warn "hooks install: nao consegui gravar backup — bloco classico MANTIDO (nada e removido sem backup)"
+    return 0
+  fi
+
+  _hdc_tmp=$(mktemp 2>/dev/null) || {
+    log_warn "hooks install: mktemp indisponivel — bloco classico MANTIDO"
+    return 0
+  }
+  printf '%s\n' "$_hdc_new" > "$_hdc_tmp" 2>/dev/null \
+    && mv -- "$_hdc_tmp" "$_hdc_settings" 2>/dev/null || {
+      rm -f -- "$_hdc_tmp" 2>/dev/null || :
+      log_warn "hooks install: escrita atomica falhou — bloco classico MANTIDO"
+      return 0
+    }
+
+  log_info "hooks install: registro classico removido de $_hdc_settings ($_hdc_n entrada(s)); backup em $_hdc_settings.bak-pre-dedup"
+  return 0
+}
+
 _hooks_print_help() {
   cat >&2 <<'HELP'
 cstk hooks — provisiona os hooks do runtime 00c num projeto-alvo.
 
 USO:
   cstk hooks install [--project-path PATH] [--catalog DIR] [--dry-run]
-                      [--with-loose-usage]
+                      [--with-loose-usage] [--remove-classic]
 
 Copia pretooluse-bash-guard.sh + posttooluse-tool-call-tick.sh +
 posttooluse-agent-usage.sh para <PATH>/.claude/hooks/ e mescla o bloco de
@@ -552,6 +677,17 @@ para colagem manual).
 posttooluse-loose-usage.sh, hook que captura consumo avulso (fora de
 execucoes agente-00c/feature-00c) num sidecar local. Sem a flag,
 comportamento identico a antes desta opcao existir.
+
+Quando o plugin 'cstk' ja prove os hooks, o provisionamento classico e
+pulado (dedup, plugin vence). Se AINDA houver registro classico no
+settings.json do projeto, os dois caminhos ficam ativos ao mesmo tempo;
+o comando entao PERGUNTA se pode remover o registro classico. Remove
+apenas as entradas dos hooks 00c — hooks de terceiros e demais chaves do
+arquivo sao preservados — e grava backup em settings.json.bak-pre-dedup.
+
+--remove-classic: remove sem perguntar (script/CI). Sem TTY e sem essa
+flag, o bloco e MANTIDO com aviso: settings.json e do operador e nao e
+alterado sem confirmacao explicita.
 
 Diferenca para `cstk install --scope project agente-00c-runtime`: aquele
 comando tambem duplica skill+commands+agents dentro do repo; este toca
@@ -583,6 +719,7 @@ hooks_main() {
   _hooks_catalog="${HOME:?HOME nao setado}/.claude"
   _hooks_dry_run=0
   _hooks_with_loose=0
+  _hooks_remove_classic=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -596,6 +733,7 @@ hooks_main() {
       --catalog=*) _hooks_catalog=${1#--catalog=}; shift ;;
       --dry-run) _hooks_dry_run=1; shift ;;
       --with-loose-usage) _hooks_with_loose=1; shift ;;
+      --remove-classic) _hooks_remove_classic=1; shift ;;
       -h|--help) _hooks_print_help; return 0 ;;
       *) log_error "hooks install: flag desconhecida: $1"; return 2 ;;
     esac
@@ -636,7 +774,9 @@ hooks_main() {
   if plugin_enabled cstk; then
     if plugin_hooks_present cstk; then
       log_warn "hooks install: plugin 'cstk' habilitado e ja provê hooks/hooks.json — pulando provisionamento classico (dedup, plugin vence)"
-      log_warn "hooks install: se houver registro classico pre-existente em $_hooks_dest/settings.json, remova-o (cstk doctor reporta 'duplicated-hooks' com a mesma remediacao)"
+      # Dedup ATIVO: havendo registro classico pre-existente, oferece a
+      # remocao em vez de so mandar o operador editar settings.json a mao.
+      _hooks_dedup_classic "$_hooks_dest" "$_hooks_dry_run" "$_hooks_remove_classic"
       return 0
     else
       log_warn "hooks install: plugin 'cstk' habilitado mas hooks/hooks.json NAO encontrado no install path — instalacao do plugin parece incompleta"

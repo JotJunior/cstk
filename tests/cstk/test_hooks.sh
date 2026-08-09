@@ -710,4 +710,196 @@ EOF
   return 0
 }
 
+# ==== Dedup ATIVO: remocao do registro classico quando o plugin cobre ====
+#
+# Antes, o dedup era so passivo (pular + avisar) e o registro classico
+# pre-existente ficava ativo junto com o do plugin — efeito duplo que o
+# operador tinha de desfazer editando settings.json a mao.
+
+# _settings_com_classico FILE -> settings.json com o bloco 00c classico E
+# hooks de TERCEIROS no mesmo arquivo (o caso que a remocao pode estragar).
+_settings_com_classico() {
+  mkdir -p "$(dirname "$1")"
+  cat > "$1" <<'EOF'
+{
+  "permissions": {"allow": ["Bash(ls:*)"]},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pretooluse-bash-guard.sh", "timeout": 5}]},
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "/opt/hook-do-time.sh"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "*", "hooks": [
+        {"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/posttooluse-tool-call-tick.sh"},
+        {"type": "command", "command": "/usr/local/bin/telemetria.sh"}
+      ]},
+      {"matcher": "Agent", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/posttooluse-agent-usage.sh"}]}
+    ]
+  }
+}
+EOF
+}
+
+# _n_hooks_cstk FILE -> quantas entradas 00c restam no settings.json.
+_n_hooks_cstk() {
+  jq '[ (.hooks // {}) | to_entries[] | .value[]? | .hooks[]?
+        | select((.command // "") | test("/\\.claude/hooks/(pretooluse-bash-guard|posttooluse-tool-call-tick|posttooluse-agent-usage|posttooluse-loose-usage)\\.sh$")) ] | length' "$1" 2>/dev/null
+}
+
+scenario_dedup_remove_classic_sem_prompt() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-with-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-remove"
+  _settings_com_classico "$_proj/.claude/settings.json"
+
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat" --remove-classic
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "0" ] \
+    || { _fail "remocao" "entradas 00c deveriam ter sumido, restaram $(_n_hooks_cstk "$_proj/.claude/settings.json")"; return 1; }
+  [ -f "$_proj/.claude/settings.json.bak-pre-dedup" ] \
+    || { _fail "backup" "backup nao foi gravado"; return 1; }
+  return 0
+}
+
+# O ponto mais perigoso da feature: settings.json e do operador.
+scenario_dedup_preserva_hooks_de_terceiros_e_demais_chaves() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-with-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-preserva"
+  _settings_com_classico "$_proj/.claude/settings.json"
+
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat" --remove-classic
+  _s="$_proj/.claude/settings.json"
+  grep -q "hook-do-time.sh" "$_s" || { _fail "terceiros" "hook de terceiro foi removido junto"; return 1; }
+  grep -q "telemetria.sh" "$_s" || { _fail "terceiros" "hook de telemetria foi removido junto"; return 1; }
+  [ "$(jq -r '.permissions.allow[0]' "$_s" 2>/dev/null)" = "Bash(ls:*)" ] \
+    || { _fail "chaves" "chave permissions foi perdida"; return 1; }
+  # Grupo que ficou sem nenhum hook (matcher Agent) deve ser podado.
+  [ "$(jq -r '[.hooks.PostToolUse[]? | select(.matcher=="Agent")] | length' "$_s" 2>/dev/null)" = "0" ] \
+    || { _fail "poda" "grupo vazio deveria ter sido podado"; return 1; }
+  return 0
+}
+
+scenario_dedup_prompt_negado_mantem_bloco() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-with-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-nao"
+  _settings_com_classico "$_proj/.claude/settings.json"
+
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" CSTK_FORCE_INTERACTIVE=1 sh -c \
+    'printf "n\n" | { . "$CSTK_LIB/hooks.sh" && hooks_main "$@"; }' _ \
+    install --project-path "$_proj" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "3" ] \
+    || { _fail "recusa" "resposta 'n' NAO pode remover nada"; return 1; }
+  [ -f "$_proj/.claude/settings.json.bak-pre-dedup" ] \
+    && { _fail "backup" "recusa nao deveria gerar backup"; return 1; }
+  return 0
+}
+
+scenario_dedup_prompt_aceito_remove() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-with-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-sim"
+  _settings_com_classico "$_proj/.claude/settings.json"
+
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" CSTK_FORCE_INTERACTIVE=1 sh -c \
+    'printf "y\n" | { . "$CSTK_LIB/hooks.sh" && hooks_main "$@"; }' _ \
+    install --project-path "$_proj" --catalog "$_cat"
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "0" ] \
+    || { _fail "aceite" "resposta 'y' deveria remover as entradas 00c"; return 1; }
+  return 0
+}
+
+# Enter distraido NAO pode disparar acao destrutiva.
+scenario_dedup_resposta_vazia_mantem_bloco() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-with-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-vazio"
+  _settings_com_classico "$_proj/.claude/settings.json"
+
+  capture env HOME="$_home" CSTK_LIB="$CSTK_LIB" CSTK_FORCE_INTERACTIVE=1 sh -c \
+    'printf "\n" | { . "$CSTK_LIB/hooks.sh" && hooks_main "$@"; }' _ \
+    install --project-path "$_proj" --catalog "$_cat"
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "3" ] \
+    || { _fail "default" "Enter vazio NAO pode remover"; return 1; }
+  return 0
+}
+
+# Sem TTY e sem --remove-classic: mantem e ensina a flag (nunca muta
+# settings.json de alguem sem confirmacao).
+scenario_dedup_sem_tty_mantem_e_orienta() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-with-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-sem-tty"
+  _settings_com_classico "$_proj/.claude/settings.json"
+
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat"
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "3" ] \
+    || { _fail "sem tty" "sem TTY nada pode ser removido"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"--remove-classic"*) ;;
+    *) _fail "orientacao" "stderr deveria citar --remove-classic: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  return 0
+}
+
+scenario_dedup_dry_run_nao_toca_arquivo() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-with-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-dry"
+  _settings_com_classico "$_proj/.claude/settings.json"
+  _antes=$(cat "$_proj/.claude/settings.json")
+
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat" --dry-run --remove-classic
+  [ "$(cat "$_proj/.claude/settings.json")" = "$_antes" ] \
+    || { _fail "dry-run" "arquivo foi modificado em --dry-run"; return 1; }
+  [ -f "$_proj/.claude/settings.json.bak-pre-dedup" ] \
+    && { _fail "dry-run" "dry-run nao deveria gerar backup"; return 1; }
+  return 0
+}
+
+# Projeto sem registro classico: nada a remover, nenhum ruido, nenhum backup.
+scenario_dedup_sem_registro_classico_e_noop() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-with-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-limpo"
+  mkdir -p "$_proj/.claude"
+  printf '{"permissions":{"allow":[]}}\n' > "$_proj/.claude/settings.json"
+
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat" --remove-classic
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -f "$_proj/.claude/settings.json.bak-pre-dedup" ] \
+    && { _fail "backup" "nao ha nada a remover: nao deveria gerar backup"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"caminho classico"*) _fail "ruido" "nao deveria avisar duplicidade em projeto limpo"; return 1 ;;
+  esac
+  return 0
+}
+
+# Plugin incompleto (hooks.json ausente): o classico e provisionado de
+# proposito (F4) — remover seria deixar o projeto SEM guarda nenhuma.
+scenario_dedup_nao_remove_quando_plugin_incompleto() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture)
+  _home=$(_plugin_home_fixture enabled-without-hooks)
+  _proj="$TMPDIR_TEST/proj-dedup-incompleto"
+  _settings_com_classico "$_proj/.claude/settings.json"
+
+  _hooks_main_run_home "$_home" install --project-path "$_proj" --catalog "$_cat" --remove-classic
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _n=$(_n_hooks_cstk "$_proj/.claude/settings.json")
+  [ "$_n" -ge 3 ] \
+    || { _fail "F4" "plugin incompleto NAO pode perder o registro classico (restaram $_n)"; return 1; }
+  return 0
+}
+
 run_all_scenarios
