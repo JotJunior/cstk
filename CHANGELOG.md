@@ -5,6 +5,67 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.0.1] - 2026-08-09
+
+Dois defeitos observados em campo no mesmo projeto-alvo, com o mesmo
+sintoma visivel (numero que some do painel) e causas sem nenhuma relacao
+entre si. O primeiro nao era so perda de metrica: deixou a guarda
+fail-closed inerte por ~25h.
+
+### Fixed
+
+- **Hooks 00c cegos por deriva de cwd.** O `.cwd` do payload do harness e
+  o diretorio corrente do shell da sessao, nao a raiz do projeto — e ele
+  gruda em qualquer subdiretorio assim que o agente roda `cd sub && ...`
+  (o cwd do Bash persiste entre tool calls) e nao volta sozinho. Enquanto
+  durava a deriva, o pre-check inline dos 4 hooks saia 1 em toda tool
+  call: `pretooluse-bash-guard.sh` (fail-closed POR DESENHO) ficava
+  inerte sem registrar nada no `enforcement-log.jsonl`, e as ondas
+  fechavam com `tool_calls=0`. O pre-check virou resolvedor de raiz
+  (builtins puros, preserva SEC-H1): cwd exato → ancestrais → para em
+  `$CLAUDE_PROJECT_DIR`, diretorio com `.git`, `/` ou teto de 16 niveis.
+  `$CLAUDE_PROJECT_DIR` e consultado como candidato POR ULTIMO — havendo
+  state alcancavel por cwd/ancestrais a env var nao consegue sombrea-lo
+  (numa guarda fail-closed, sombrear seria vetor de bypass); como
+  fronteira superior, so restringe. Passam a usar a raiz resolvida:
+  state-dir, whitelist do operador, `enforcement-log.jsonl` e resolucao
+  do catalogo `project`. Em `posttooluse-loose-usage.sh` a identidade
+  (`process_key` / `project_path`) usa ancora SEPARADA
+  (`$CLAUDE_PROJECT_DIR`), porque consumo avulso ocorre justamente onde
+  nao ha state 00c. Cobertura em `tests/test_pretooluse-bash-guard.sh`,
+  `test_posttooluse-tool-call-tick.sh`, `test_posttooluse-agent-usage.sh`
+  e `test_posttooluse-loose-usage.sh`.
+- **`otel_usage: null` deixa de ser mudo.** O motivo da ausencia sempre
+  foi conhecido no fechamento da onda e sempre foi descartado pelo
+  `2>/dev/null` com que `_so_otel_delta` invoca o `otel-usage.sh` — o
+  operador ficava com "s/ dado" no painel e nenhuma pista. `otel-usage.sh
+  delta` ganha `--reason-file PATH`, que deposita um slug estavel
+  (`exporter-trocou`, `sem-snapshot`, `sessoes-ambiguas`,
+  `formato-antigo`, `sem-crescimento`, `jq-ausente`, `falha-join`); sem a
+  flag, o comportamento e byte-a-byte o anterior. `state-ondas.sh end`
+  persiste o slug: chave achatada `.waves[-1].otel_absent_reason` no
+  backend JSON e catch-all `extra_fields` sob SQLite, sempre por MERGE
+  (o campo e compartilhado com `touched_key_aspects`). Cobertura em
+  `tests/test_otel-usage.sh` e `tests/test_state-ondas.sh`.
+
+### Changed
+
+- **A guarda de Bash passa a valer em subdiretorios do projeto-alvo.**
+  Consequencia direta do fix de escopo: comando que viola regra rodado de
+  um subdiretorio agora e negado, onde antes passava sem avaliacao. E o
+  comportamento pretendido desde a feature `enforced-guards`, mas aparece
+  como endurecimento para quem convivia com o defeito.
+
+### Nao incluido (deliberado)
+
+- **Motivo da ausencia OTel no painel.** Levar o slug ate o `cstk-panel`
+  exige coluna nova na `knowledge.db` (`RECALL_SCHEMA_VERSION` 13 → 14) e
+  o painel valida schema contra allowlist RIGIDA (`DEFAULT_SCHEMA_VERSIONS`
+  termina em `'13'`): bumpar sem release coordenada derruba o painel
+  inteiro com `schema-mismatch`. Fica para release conjunta, painel
+  primeiro. Nesta versao o motivo e legivel direto do `state.json` /
+  `state.db`.
+
 ## [7.0.0] - 2026-08-08
 
 **BREAKING** — feature `claude-plugin-packaging`. O catalogo do toolkit
@@ -5284,6 +5345,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[7.0.1]: https://github.com/JotJunior/cstk/releases/tag/v7.0.1
 [7.0.0]: https://github.com/JotJunior/cstk/releases/tag/v7.0.0
 [6.8.0]: https://github.com/JotJunior/cstk/releases/tag/v6.8.0
 [6.7.0]: https://github.com/JotJunior/cstk/releases/tag/v6.7.0

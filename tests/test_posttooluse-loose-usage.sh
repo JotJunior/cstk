@@ -316,5 +316,51 @@ scenario_plugin_root_resolve_otel_usage_via_claude_plugin_root() {
   [ -n "$_meta" ] || { _fail "sidecar" "esperado meta.tsv (otel-usage.sh resolvido via plugin root)"; return 1; }
 }
 
+# ==== Regressao: deriva de cwd (bug de campo) ====
+
+# Sob POLARIDADE INVERTIDA a deriva de cwd e pior que perda de metrica: o
+# pre-check falha, o hook conclui "sem execucao ativa" e CAPTURA consumo
+# que pertence a uma onda 00c — dupla contagem justamente do que
+# `cstk usage compare` promete separar.
+scenario_execucao_ativa_detectada_com_cwd_em_subdiretorio() {
+  _require_jq || return 2
+  export CSTK_OTEL_ENDPOINT="$_FAKE_ENDPOINT"
+  export CSTK_LOOSE_USAGE_INTERVAL_S=0
+  _proj="$TMPDIR_TEST/proj"
+  _active_agente_json "$_proj" "em_andamento"
+  mkdir -p "$_proj/host"
+
+  _run_hook "$(_json_for "$_proj/host" "Bash")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _meta=$(_find_meta_files)
+  [ -z "$_meta" ] || { _fail "captura indevida" "execucao 00c ativa na raiz deveria suprimir a captura mesmo com cwd em subdiretorio; meta=$_meta"; return 1; }
+  return 0
+}
+
+# Identidade (process_key + project_path) ancorada em CLAUDE_PROJECT_DIR:
+# ancora DIFERENTE da deteccao 00c — consumo avulso ocorre justamente em
+# projeto sem state nenhum, entao subir-ate-achar-state nao serve aqui.
+scenario_identidade_ancorada_em_claude_project_dir() {
+  _require_jq || return 2
+  export CSTK_OTEL_ENDPOINT="$_FAKE_ENDPOINT"
+  export CSTK_LOOSE_USAGE_INTERVAL_S=0
+  _proj="$TMPDIR_TEST/proj"
+  mkdir -p "$_proj/host"
+
+  _json=$(_json_for "$_proj/host" "Bash")
+  capture env HOME="$TMPDIR_TEST" CLAUDE_PROJECT_DIR="$_proj" \
+    sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$SCRIPT"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _meta=$(_find_meta_files)
+  [ -n "$_meta" ] || { _fail "sidecar" "esperado meta.tsv criado"; return 1; }
+  _pp=$(_meta_get "$_meta" project_path)
+  [ "$_pp" = "$_proj" ] || { _fail "project_path" "esperado a RAIZ ($_proj), obtido: $_pp"; return 1; }
+  case "$(dirname "$_meta")" in
+    */proj-*) : ;;
+    *) _fail "process_key" "key deveria derivar do basename da raiz (proj-*), obtido: $(basename "$(dirname "$_meta")")"; return 1 ;;
+  esac
+  return 0
+}
+
 run_all_scenarios
 exit $?

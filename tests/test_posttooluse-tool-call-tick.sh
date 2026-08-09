@@ -406,5 +406,85 @@ scenario_plugin_root_resolve_hae_via_claude_plugin_root() {
   [ "$(_ticks_count "$_side")" = 1 ] || { _fail "sidecar" "esperado 1 linha (hae resolvido via plugin root), obtido $(_ticks_count "$_side")"; return 1; }
 }
 
+# ==== Regressao: deriva de cwd (bug de campo) ====
+#
+# O `.cwd` do payload e o diretorio corrente do shell da sessao, nao a raiz
+# do projeto: um `cd sub && ...` do agente gruda nele e nao volta sozinho.
+# Antes do fix, TODA tool call subsequente era descartada pelo pre-check e a
+# onda fechava com `tool_calls=0` (observado em campo por ~25h seguidas).
+
+scenario_cwd_em_subdiretorio_resolve_raiz_do_projeto() {
+  _active_feature "$TMPDIR_TEST" "minha-feat" "em_andamento"
+  mkdir -p "$TMPDIR_TEST/host"
+  _run_hook "$(_json_for "$TMPDIR_TEST/host" "Bash")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _side="$TMPDIR_TEST/.claude/feature-00c-state/minha-feat/tool-call-ticks.log"
+  [ "$(_ticks_count "$_side")" = 1 ] || { _fail "sidecar" "tick deveria pousar no state-dir da RAIZ mesmo com cwd em subdiretorio; obtido $(_ticks_count "$_side") linha(s) em $_side"; return 1; }
+}
+
+scenario_cwd_em_subdiretorio_profundo_resolve_raiz() {
+  _active_agente "$TMPDIR_TEST" "em_andamento"
+  mkdir -p "$TMPDIR_TEST/a/b/c/d"
+  _run_hook "$(_json_for "$TMPDIR_TEST/a/b/c/d" "Read")"
+  _side="$TMPDIR_TEST/.claude/agente-00c-state/tool-call-ticks.log"
+  [ "$(_ticks_count "$_side")" = 1 ] || { _fail "sidecar" "esperado 1 tick apos subir 4 niveis, obtido $(_ticks_count "$_side")"; return 1; }
+}
+
+# Fronteira superior: CLAUDE_PROJECT_DIR delimita ate onde subir. State num
+# diretorio ACIMA da raiz da sessao nao pode ser adotado (seria contabilizar
+# tool call de um projeto na execucao de outro).
+scenario_nao_sobe_acima_de_claude_project_dir() {
+  _active_agente "$TMPDIR_TEST" "em_andamento"
+  _proj="$TMPDIR_TEST/proj"
+  mkdir -p "$_proj/sub"
+  _json=$(_json_for "$_proj/sub" "Bash")
+  capture env CLAUDE_PROJECT_DIR="$_proj" \
+    sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$SCRIPT"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _side="$TMPDIR_TEST/.claude/agente-00c-state/tool-call-ticks.log"
+  [ "$(_ticks_count "$_side")" = 0 ] || { _fail "sidecar" "NAO deveria adotar state acima de CLAUDE_PROJECT_DIR; obtido $(_ticks_count "$_side") tick(s)"; return 1; }
+}
+
+# Ultimo recurso: cwd fora da arvore do projeto (ex.: agente foi para /tmp);
+# subir nao alcanca a raiz, entao CLAUDE_PROJECT_DIR resgata.
+scenario_cwd_fora_da_arvore_resgatado_por_claude_project_dir() {
+  _proj="$TMPDIR_TEST/proj"
+  _active_feature "$_proj" "minha-feat" "em_andamento"
+  _fora="$TMPDIR_TEST/fora/daqui"
+  mkdir -p "$_fora"
+  _json=$(_json_for "$_fora" "Bash")
+  capture env CLAUDE_PROJECT_DIR="$_proj" \
+    sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$SCRIPT"
+  _side="$_proj/.claude/feature-00c-state/minha-feat/tool-call-ticks.log"
+  [ "$(_ticks_count "$_side")" = 1 ] || { _fail "sidecar" "esperado 1 tick via CLAUDE_PROJECT_DIR, obtido $(_ticks_count "$_side")"; return 1; }
+}
+
+# Precedencia de seguranca: havendo state alcancavel por cwd, a env var NAO
+# pode sombreá-lo (no guard fail-closed isso seria vetor de bypass —
+# apontar para execucao terminal faria a guarda sair 0).
+scenario_claude_project_dir_nao_sombreia_state_alcancavel_por_cwd() {
+  _proj="$TMPDIR_TEST/proj"
+  _active_feature "$_proj" "real" "em_andamento"
+  _outro="$TMPDIR_TEST/outro"
+  _active_feature "$_outro" "isca" "concluida"
+  _json=$(_json_for "$_proj" "Bash")
+  capture env CLAUDE_PROJECT_DIR="$_outro" \
+    sh -c 'printf "%s" "$1" | "$2"' _ "$_json" "$SCRIPT"
+  _side="$_proj/.claude/feature-00c-state/real/tool-call-ticks.log"
+  [ "$(_ticks_count "$_side")" = 1 ] || { _fail "sidecar" "state do cwd deve vencer CLAUDE_PROJECT_DIR; obtido $(_ticks_count "$_side")"; return 1; }
+}
+
+# Fronteira de repositorio: sem CLAUDE_PROJECT_DIR, um diretorio com `.git`
+# encerra a subida — nao vazar para o state de um projeto-pai.
+scenario_fronteira_git_nao_vaza_para_projeto_pai() {
+  _active_agente "$TMPDIR_TEST" "em_andamento"
+  _filho="$TMPDIR_TEST/filho"
+  mkdir -p "$_filho/.git" "$_filho/sub"
+  _run_hook "$(_json_for "$_filho/sub" "Bash")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _side="$TMPDIR_TEST/.claude/agente-00c-state/tool-call-ticks.log"
+  [ "$(_ticks_count "$_side")" = 0 ] || { _fail "sidecar" "subida deveria parar na raiz de repositorio; obtido $(_ticks_count "$_side") tick(s)"; return 1; }
+}
+
 run_all_scenarios
 exit $?

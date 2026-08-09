@@ -517,5 +517,22 @@ scenario_plugin_root_resolve_hae_via_claude_plugin_root() {
   [ "$(_lines_count "$_side")" = 1 ] || { _fail "sidecar" "esperado 1 linha (hae resolvido via plugin root), obtido $(_lines_count "$_side")"; return 1; }
 }
 
+# ==== Regressao: deriva de cwd (bug de campo) ====
+#
+# `.cwd` gruda em subdiretorio apos `cd sub && ...` do agente e nao volta
+# sozinho; enquanto durar, o spawn nao e contabilizado e a onda perde a
+# metrica de tokens por subagente. Cadeia de resolucao identica a dos
+# demais hooks (ver _pbg_precheck_active_scope).
+
+scenario_cwd_em_subdiretorio_resolve_raiz_do_projeto() {
+  _active_feature "$TMPDIR_TEST" "minha-feat" "em_andamento"
+  mkdir -p "$TMPDIR_TEST/host"
+  _tr='{"status":"completed","agentId":"a1b598e5d8f9a0318","resolvedModel":"claude-sonnet-5","totalTokens":131692,"totalDurationMs":681768,"totalToolUseCount":45,"usage":{"input_tokens":2,"output_tokens":1097,"cache_read_input_tokens":130176,"cache_creation_input_tokens":417}}'
+  _run_hook "$(_payload "$TMPDIR_TEST/host" "Agent" "$_tr")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _side=$(_sidecar_for "$TMPDIR_TEST" "minha-feat")
+  [ "$(_lines_count "$_side")" = 1 ] || { _fail "sidecar" "spawn deveria ser contabilizado no state-dir da RAIZ mesmo com cwd em subdiretorio; obtido $(_lines_count "$_side")"; return 1; }
+}
+
 run_all_scenarios
 exit $?

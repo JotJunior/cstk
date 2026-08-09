@@ -518,5 +518,118 @@ scenario_preflight_flag_desconhecida_exit2() {
   return 0
 }
 
+# ==== --reason-file: motivo da ausencia deixa de ser perdido ====
+#
+# O motivo do `null` sempre foi conhecido aqui e sempre morreu no aviso em
+# prosa (o chamador invoca este script com `2>/dev/null`). Cada caminho de
+# `null` MUST depositar seu slug; onda medida MUST NOT deixar motivo.
+
+# _reason_of FILE -> conteudo do reason-file, sem espacos (vazio se nao ha).
+_reason_of() {
+  [ -s "$1" ] || { printf ''; return 0; }
+  tr -d '[:space:]' < "$1"
+}
+
+scenario_reason_exporter_trocou() {
+  _sd="$TMPDIR_TEST/r-troca"; mkdir -p "$_sd"
+  _fs="$TMPDIR_TEST/r1-start.txt"; _fe="$TMPDIR_TEST/r1-end.txt"
+  _fixture "$_fs" "sess-AAA" 1.0 1.0 10 5
+  _fixture "$_fe" "sess-BBB" 9.0 9.0 90 50
+  _snap "$_sd" start "$_fs"
+  _snap "$_sd" end   "$_fe"
+  _rf="$TMPDIR_TEST/r1.reason"
+  capture sh "$SCRIPT" delta --state-dir "$_sd" --reason-file "$_rf"
+  [ "$(printf '%s' "$_CAPTURED_STDOUT" | tr -d '[:space:]')" = "null" ] \
+    || { _fail "null" "esperado null"; return 1; }
+  [ "$(_reason_of "$_rf")" = "exporter-trocou" ] \
+    || { _fail "reason" "esperado exporter-trocou, obtido: $(_reason_of "$_rf")"; return 1; }
+  return 0
+}
+
+scenario_reason_sem_snapshot() {
+  _sd="$TMPDIR_TEST/r-sem"; mkdir -p "$_sd"
+  _fe="$TMPDIR_TEST/r2-end.txt"
+  _fixture "$_fe" "sess-AAA" 1.0 1.0 10 5
+  _snap "$_sd" end "$_fe"
+  _rf="$TMPDIR_TEST/r2.reason"
+  capture sh "$SCRIPT" delta --state-dir "$_sd" --reason-file "$_rf"
+  [ "$(_reason_of "$_rf")" = "sem-snapshot" ] \
+    || { _fail "reason" "esperado sem-snapshot, obtido: $(_reason_of "$_rf")"; return 1; }
+  return 0
+}
+
+scenario_reason_sessoes_ambiguas() {
+  _sd="$TMPDIR_TEST/r-amb"; mkdir -p "$_sd"
+  _fs="$TMPDIR_TEST/r3-start.txt"; _fe="$TMPDIR_TEST/r3-end.txt"
+  { _cost_line "sess-A" main "claude-opus-5[1m]" 1.0
+    _cost_line "sess-B" main "claude-opus-5[1m]" 1.0; } > "$_fs"
+  { _cost_line "sess-A" main "claude-opus-5[1m]" 5.0
+    _cost_line "sess-B" main "claude-opus-5[1m]" 7.0; } > "$_fe"
+  _snap "$_sd" start "$_fs"
+  _snap "$_sd" end   "$_fe"
+  _rf="$TMPDIR_TEST/r3.reason"
+  capture sh "$SCRIPT" delta --state-dir "$_sd" --reason-file "$_rf"
+  [ "$(_reason_of "$_rf")" = "sessoes-ambiguas" ] \
+    || { _fail "reason" "esperado sessoes-ambiguas, obtido: $(_reason_of "$_rf")"; return 1; }
+  return 0
+}
+
+scenario_reason_sem_crescimento() {
+  _sd="$TMPDIR_TEST/r-parado"; mkdir -p "$_sd"
+  _fs="$TMPDIR_TEST/r4.txt"
+  _fixture "$_fs" "sess-AAA" 1.0 1.0 10 5
+  _snap "$_sd" start "$_fs"
+  _snap "$_sd" end   "$_fs"
+  _rf="$TMPDIR_TEST/r4.reason"
+  capture sh "$SCRIPT" delta --state-dir "$_sd" --reason-file "$_rf"
+  [ "$(_reason_of "$_rf")" = "sem-crescimento" ] \
+    || { _fail "reason" "esperado sem-crescimento, obtido: $(_reason_of "$_rf")"; return 1; }
+  return 0
+}
+
+scenario_reason_formato_antigo() {
+  _sd="$TMPDIR_TEST/r-legado"; mkdir -p "$_sd"
+  # Snapshot legado: 4 colunas (sem session_id por linha).
+  printf 'main\tclaude-opus-5[1m]\tcost\t1.0\n' > "$_sd/otel-start.tsv"
+  printf 'main\tclaude-opus-5[1m]\tcost\t9.0\n' > "$_sd/otel-end.tsv"
+  _rf="$TMPDIR_TEST/r5.reason"
+  capture sh "$SCRIPT" delta --state-dir "$_sd" --reason-file "$_rf"
+  [ "$(_reason_of "$_rf")" = "formato-antigo" ] \
+    || { _fail "reason" "esperado formato-antigo, obtido: $(_reason_of "$_rf")"; return 1; }
+  return 0
+}
+
+scenario_reason_vazio_quando_medido() {
+  _sd="$TMPDIR_TEST/r-ok"; mkdir -p "$_sd"
+  _fs="$TMPDIR_TEST/r6-start.txt"; _fe="$TMPDIR_TEST/r6-end.txt"
+  _fixture "$_fs" "sess-AAA" 1.0 1.0 10 5
+  _fixture "$_fe" "sess-AAA" 3.0 3.0 40 25
+  _snap "$_sd" start "$_fs"
+  _snap "$_sd" end   "$_fe"
+  _rf="$TMPDIR_TEST/r6.reason"
+  capture sh "$SCRIPT" delta --state-dir "$_sd" --reason-file "$_rf"
+  printf '%s' "$_CAPTURED_STDOUT" | jq -e '.total_tokens > 0' >/dev/null 2>&1 \
+    || { _fail "delta" "esperado delta medido, obtido: $_CAPTURED_STDOUT"; return 1; }
+  [ -z "$(_reason_of "$_rf")" ] \
+    || { _fail "reason" "onda medida NAO deve deixar motivo, obtido: $(_reason_of "$_rf")"; return 1; }
+  return 0
+}
+
+# Sem a flag, byte-a-byte o comportamento antigo (nenhum chamador legado
+# muda de contrato so porque a capacidade passou a existir).
+scenario_reason_file_ausente_nao_altera_saida() {
+  _sd="$TMPDIR_TEST/r-compat"; mkdir -p "$_sd"
+  _fs="$TMPDIR_TEST/r7-start.txt"; _fe="$TMPDIR_TEST/r7-end.txt"
+  _fixture "$_fs" "sess-AAA" 1.0 1.0 10 5
+  _fixture "$_fe" "sess-BBB" 9.0 9.0 90 50
+  _snap "$_sd" start "$_fs"
+  _snap "$_sd" end   "$_fe"
+  capture sh "$SCRIPT" delta --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$(printf '%s' "$_CAPTURED_STDOUT" | tr -d '[:space:]')" = "null" ] \
+    || { _fail "stdout" "esperado null sem a flag"; return 1; }
+  return 0
+}
+
 run_all_scenarios
 exit $?

@@ -595,5 +595,62 @@ scenario_sibling_beats_claude_plugin_root_env_shadow() {
   assert_stdout_contains "REGRA_VIOLADA" || return 1
 }
 
+# ==== Regressao: deriva de cwd (bug de campo) ====
+#
+# O `.cwd` do payload gruda em qualquer subdiretorio apos um `cd sub && ...`
+# do agente (cwd do Bash persiste entre tool calls) e nao volta sozinho.
+# Antes do fix, o pre-check saia 1 e a guarda fail-closed ficava INERTE —
+# nao e so perda de metrica: e a guarda desligada justamente enquanto o
+# agente mexe em codigo, sem nenhuma linha no enforcement-log denunciando.
+
+scenario_cwd_em_subdiretorio_guarda_permanece_ativa() {
+  _active_feature "$TMPDIR_TEST" "enforced-guards" "em_andamento"
+  mkdir -p "$TMPDIR_TEST/host"
+  _json='{"cwd":"'"$TMPDIR_TEST/host"'","tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
+  _run_hook "$_json"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (Decision 1), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains '"permissionDecision": "deny"' || return 1
+  assert_stdout_contains "REGRA_VIOLADA" || return 1
+}
+
+# O enforcement-log e a trilha de auditoria da execucao: precisa pousar na
+# RAIZ, nunca fatiado num `.claude/` criado dentro do subdiretorio.
+scenario_enforcement_log_gravado_na_raiz_com_cwd_em_subdiretorio() {
+  _active_feature "$TMPDIR_TEST" "enforced-guards" "em_andamento"
+  mkdir -p "$TMPDIR_TEST/host"
+  _json='{"cwd":"'"$TMPDIR_TEST/host"'","tool_name":"Bash","tool_input":{"command":"git push origin main"}}'
+  _run_hook "$_json"
+
+  _log=$(_enforcement_log "$TMPDIR_TEST")
+  case "$_log" in
+    *'"outcome":"blocked-by-rule"'*) : ;;
+    *) _fail "log raiz" "enforcement-log da RAIZ deveria registrar o bloqueio; log=$_log"; return 1 ;;
+  esac
+  [ -e "$TMPDIR_TEST/host/.claude" ] \
+    && { _fail "log paralelo" "NAO deveria criar .claude/ dentro do subdiretorio"; return 1; }
+  return 0
+}
+
+# A whitelist do operador vive na raiz: com cwd derivado, a guarda precisa
+# continuar enxergando-a, senao passa a negar URL que o operador liberou.
+scenario_whitelist_da_raiz_respeitada_com_cwd_em_subdiretorio() {
+  _active_feature "$TMPDIR_TEST" "enforced-guards" "em_andamento"
+  mkdir -p "$TMPDIR_TEST/host"
+  # Padrao com `**` (match ancorado em ^...$ — ver bash-guard.sh::
+  # _bg_url_matches_pattern; host cru nao casa URL com path).
+  printf 'https://api.example.com/**\n' > "$TMPDIR_TEST/.claude/agente-00c-whitelist"
+  _json='{"cwd":"'"$TMPDIR_TEST/host"'","tool_name":"Bash","tool_input":{"command":"curl https://api.example.com/v1/ping"}}'
+  _run_hook "$_json"
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout" "URL na whitelist da raiz nao deveria gerar decisao; obtido: $_CAPTURED_STDOUT"; return 1; }
+
+  # Prova de que a guarda REALMENTE avaliou (e nao apenas saiu cedo pelo
+  # pre-check, como fazia antes do fix): ha linha `allowed` no log da raiz.
+  _log=$(_enforcement_log "$TMPDIR_TEST")
+  case "$_log" in
+    *'"outcome":"allowed"'*) : ;;
+    *) _fail "log allowed" "esperado registro allowed na raiz (guarda ativa + whitelist lida); log=$_log"; return 1 ;;
+  esac
+}
+
 run_all_scenarios
 exit $?

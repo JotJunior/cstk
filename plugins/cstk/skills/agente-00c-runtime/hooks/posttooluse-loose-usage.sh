@@ -74,6 +74,19 @@ _PLU_TOOL_NAME=$(printf '%s' "$_PLU_INPUT" | jq -r '.tool_name // ""' 2>/dev/nul
 # tool_name vazio = payload anomalo do harness; nao inventa captura.
 [ -n "$_PLU_TOOL_NAME" ] || exit 0
 
+# Raiz do projeto para IDENTIDADE (process_key + project_path). Ancora
+# DIFERENTE da usada no Passo 5: aqui nao se pode exigir state 00c —
+# consumo avulso acontece justamente em projeto sem execucao nenhuma.
+# `$CLAUDE_PROJECT_DIR` e a raiz da sessao e nao se move com o `cd` do
+# agente; sem ela, uma unica sessao que derivou de cwd se fragmenta em
+# dois process_key (e grava `project_path` do subdiretorio, atribuindo o
+# consumo ao lugar errado). Sessao sem deriva: `CLAUDE_PROJECT_DIR` ==
+# `.cwd`, key byte-identica a atual — nenhum sidecar existente e orfanado.
+_PLU_PROJECT="${CLAUDE_PROJECT_DIR:-$_PLU_CWD}"
+# Raiz de escopo de deteccao 00c (Passo 5), resolvida por
+# _plu_precheck_active_scope; vazia ate la.
+_PLU_SCOPE=""
+
 [ -n "${HOME:-}" ] || exit 0
 
 # ---------------------------------------------------------------------------
@@ -117,8 +130,8 @@ if _PLU_EP_PORT=$(_plu_ep_port "$_PLU_ENDPOINT" 2>/dev/null); then
   fi
 fi
 
-_PLU_KEY_BASE=$(_plu_sanitize "$(basename "$_PLU_CWD" 2>/dev/null)")
-_PLU_KEY_HASH=$(_plu_hash "${_PLU_ENDPOINT}|${_PLU_CWD}")
+_PLU_KEY_BASE=$(_plu_sanitize "$(basename "$_PLU_PROJECT" 2>/dev/null)")
+_PLU_KEY_HASH=$(_plu_hash "${_PLU_ENDPOINT}|${_PLU_PROJECT}")
 [ -n "$_PLU_KEY_HASH" ] || exit 0
 if [ "$_PLU_OWNER_PID" != "unknown" ]; then
   _PLU_PROCESS_KEY="${_PLU_KEY_BASE}-${_PLU_KEY_HASH}-${_PLU_OWNER_PID}"
@@ -192,21 +205,66 @@ fi
 # captura. So quando o pre-check acha algum state presente e que vale a
 # pena sondar de fato via _hook-active-exec.sh.
 # ---------------------------------------------------------------------------
-_plu_precheck_active_scope() {
-  _plu_pa_agente="$_PLU_CWD/.claude/agente-00c-state"
-  if [ -f "$_plu_pa_agente/state.json" ] || [ -f "$_plu_pa_agente/state.db" ]; then
+_plu_scope_has_state() {
+  _plu_sh_dir=$1
+  [ -n "$_plu_sh_dir" ] || return 1
+
+  _plu_sh_agente="$_plu_sh_dir/.claude/agente-00c-state"
+  if [ -f "$_plu_sh_agente/state.json" ] || [ -f "$_plu_sh_agente/state.db" ]; then
     return 0
   fi
 
-  _plu_pa_froot="$_PLU_CWD/.claude/feature-00c-state"
-  if [ -d "$_plu_pa_froot" ]; then
-    for _plu_pa_d in "$_plu_pa_froot"/*/; do
-      [ -d "$_plu_pa_d" ] || continue
-      if [ -f "${_plu_pa_d}state.json" ] || [ -f "${_plu_pa_d}state.db" ]; then
+  _plu_sh_froot="$_plu_sh_dir/.claude/feature-00c-state"
+  if [ -d "$_plu_sh_froot" ]; then
+    for _plu_sh_d in "$_plu_sh_froot"/*/; do
+      [ -d "$_plu_sh_d" ] || continue
+      if [ -f "${_plu_sh_d}state.json" ] || [ -f "${_plu_sh_d}state.db" ]; then
         return 0
       fi
     done
   fi
+  return 1
+}
+
+# Assinala `_PLU_SCOPE` com a RAIZ do projeto-alvo (cadeia identica a do
+# pretooluse-bash-guard.sh). Sob POLARIDADE INVERTIDA a deriva de cwd e
+# especialmente traicoeira: o pre-check falha, o hook conclui "sem
+# execucao ativa" e CAPTURA consumo que na verdade pertence a uma onda
+# 00c — dupla contagem exatamente do que `cstk usage compare` promete
+# separar.
+_plu_precheck_active_scope() {
+  if _plu_scope_has_state "$_PLU_CWD"; then
+    _PLU_SCOPE="$_PLU_CWD"
+    return 0
+  fi
+
+  _plu_pa_cur="$_PLU_CWD"
+  _plu_pa_depth=0
+  while [ "$_plu_pa_depth" -lt 16 ]; do
+    if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ "$_plu_pa_cur" = "$CLAUDE_PROJECT_DIR" ]; then
+      break
+    fi
+
+    _plu_pa_parent="${_plu_pa_cur%/*}"
+    [ -n "$_plu_pa_parent" ] || _plu_pa_parent="/"
+    [ "$_plu_pa_parent" = "$_plu_pa_cur" ] && break
+    _plu_pa_cur="$_plu_pa_parent"
+
+    if _plu_scope_has_state "$_plu_pa_cur"; then
+      _PLU_SCOPE="$_plu_pa_cur"
+      return 0
+    fi
+
+    [ -e "$_plu_pa_cur/.git" ] && break
+    [ "$_plu_pa_cur" = "/" ] && break
+    _plu_pa_depth=$((_plu_pa_depth + 1))
+  done
+
+  if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && _plu_scope_has_state "$CLAUDE_PROJECT_DIR"; then
+    _PLU_SCOPE="$CLAUDE_PROJECT_DIR"
+    return 0
+  fi
+
   return 1
 }
 
@@ -229,8 +287,8 @@ if _plu_precheck_active_scope; then
       printf '%s' "$_plu_root/$_plu_rel"
       return 0
     fi
-    if [ -n "${_PLU_CWD:-}" ] && [ -r "$_PLU_CWD/.claude/skills/agente-00c-runtime/$_plu_rel" ]; then
-      printf '%s' "$_PLU_CWD/.claude/skills/agente-00c-runtime/$_plu_rel"
+    if [ -n "${_PLU_SCOPE:-}" ] && [ -r "$_PLU_SCOPE/.claude/skills/agente-00c-runtime/$_plu_rel" ]; then
+      printf '%s' "$_PLU_SCOPE/.claude/skills/agente-00c-runtime/$_plu_rel"
       return 0
     fi
     return 1
@@ -245,7 +303,7 @@ if _plu_precheck_active_scope; then
     HAE_BUSY_TIMEOUT_MS=50
     export HAE_BUSY_TIMEOUT_MS
 
-    if _PLU_HAE_OUT=$(hook_active_exec "$_PLU_CWD" 2>/dev/null); then
+    if _PLU_HAE_OUT=$(hook_active_exec "$_PLU_SCOPE" 2>/dev/null); then
       _PLU_HAE_RC=0
     else
       _PLU_HAE_RC=$?
@@ -272,8 +330,8 @@ _plu_resolve_dep_otel() {
     printf '%s' "$_plu_root/$_plu_rel"
     return 0
   fi
-  if [ -n "${_PLU_CWD:-}" ] && [ -x "$_PLU_CWD/.claude/skills/agente-00c-runtime/$_plu_rel" ]; then
-    printf '%s' "$_PLU_CWD/.claude/skills/agente-00c-runtime/$_plu_rel"
+  if [ -n "${_PLU_PROJECT:-}" ] && [ -x "$_PLU_PROJECT/.claude/skills/agente-00c-runtime/$_plu_rel" ]; then
+    printf '%s' "$_PLU_PROJECT/.claude/skills/agente-00c-runtime/$_plu_rel"
     return 0
   fi
   return 1
@@ -296,7 +354,7 @@ _plu_write_meta() {
   _plu_tmp="$_PLU_META.tmp.$$"
   {
     printf 'schema\t1\n'
-    printf 'project_path\t%s\n' "$_PLU_CWD"
+    printf 'project_path\t%s\n' "$_PLU_PROJECT"
     printf 'endpoint\t%s\n' "$_PLU_ENDPOINT"
     printf 'owner_pid\t%s\n' "$_PLU_OWNER_PID"
     printf 'created_at\t%s\n' "$_plu_created"

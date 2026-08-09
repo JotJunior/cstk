@@ -1295,6 +1295,77 @@ scenario_end_otel_usage_null_sem_telemetria() {
   return 0
 }
 
+# ==== Motivo da ausencia de medicao OTel persistido na onda ====
+#
+# `otel_usage: null` sozinho e mudo: o painel mostra "s/ dado" e o operador
+# nao tem como saber se a telemetria estava desligada, se o processo do
+# exporter trocou no meio da onda, ou se havia duas sessoes disputando. O
+# motivo SEMPRE foi conhecido no fechamento — e sempre foi descartado pelo
+# `2>/dev/null` de _so_otel_delta.
+
+# _otel_fixture_sess FILE SESSION COST -> fixture com session_id explicito
+# (o _otel_fixture padrao fixa "sess-w"; aqui o ponto e trocar a sessao).
+_otel_fixture_sess() {
+  printf 'claude_code_cost_usage_total{session_id="%s",terminal_type="ghostty",model="claude-opus-5[1m]",query_source="main"} %s\n' \
+    "$2" "$3" > "$1"
+}
+
+scenario_end_otel_absent_reason_exporter_trocou() {
+  _sd="$TMPDIR_TEST/otel-reason-troca"
+  _init_state "$_sd"
+  _fx="$TMPDIR_TEST/otel-troca.txt"
+  CSTK_OTEL_ENDPOINT="file://$_fx"; export CSTK_OTEL_ENDPOINT
+
+  _otel_fixture_sess "$_fx" "sess-antiga" 1.0
+  capture "$SCRIPT" start --state-dir "$_sd"
+  # Restart do Claude Code no MEIO da onda: exporter novo, sessao outra.
+  _otel_fixture_sess "$_fx" "sess-nova" 0.2
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  _e=$_CAPTURED_EXIT; _err=$_CAPTURED_STDERR
+  unset CSTK_OTEL_ENDPOINT
+  [ "$_e" = 0 ] || { _fail "end" "$_err"; return 1; }
+
+  _got=$(jq -r '.waves[-1].otel_usage' "$_sd/state.json")
+  [ "$_got" = "null" ] || { _fail "otel_usage" "esperado null, obtido '$_got'"; return 1; }
+  _reason=$(jq -r '.waves[-1].otel_absent_reason // ""' "$_sd/state.json")
+  [ "$_reason" = "exporter-trocou" ] \
+    || { _fail "otel_absent_reason" "esperado exporter-trocou, obtido '$_reason'"; return 1; }
+  return 0
+}
+
+scenario_end_otel_absent_reason_sem_telemetria() {
+  _sd="$TMPDIR_TEST/otel-reason-off"
+  _init_state "$_sd"
+  CSTK_OTEL_ENDPOINT="http://127.0.0.1:59999/metrics"; export CSTK_OTEL_ENDPOINT
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  unset CSTK_OTEL_ENDPOINT
+  _reason=$(jq -r '.waves[-1].otel_absent_reason // ""' "$_sd/state.json")
+  [ "$_reason" = "sem-snapshot" ] \
+    || { _fail "otel_absent_reason" "esperado sem-snapshot (telemetria off), obtido '$_reason'"; return 1; }
+  return 0
+}
+
+# Onda medida NAO ganha a chave — motivo so existe onde ha ausencia.
+scenario_end_onda_medida_nao_grava_motivo() {
+  _sd="$TMPDIR_TEST/otel-reason-ok"
+  _init_state "$_sd"
+  _fx="$TMPDIR_TEST/otel-ok.txt"
+  CSTK_OTEL_ENDPOINT="file://$_fx"; export CSTK_OTEL_ENDPOINT
+  _otel_fixture "$_fx" 1.0 0.5
+  capture "$SCRIPT" start --state-dir "$_sd"
+  _otel_fixture "$_fx" 4.0 3.5
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  unset CSTK_OTEL_ENDPOINT
+  _has=$(jq -r 'has("otel_absent_reason") | tostring' <<EOF
+$(jq -c '.waves[-1]' "$_sd/state.json")
+EOF
+)
+  [ "$_has" = "false" ] \
+    || { _fail "otel_absent_reason" "onda medida NAO deve carregar motivo"; return 1; }
+  return 0
+}
+
 scenario_end_otel_usage_captura_delta_da_onda() {
   _sd="$TMPDIR_TEST/state-otel"
   _init_state "$_sd"
@@ -1972,6 +2043,63 @@ scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
   _stale_now=$(cat "$_sd/state.json")
   [ "$_stale_now" = '{"waves":[]}' ] \
     || { _fail "c2: state.json coexistente foi modificado" "obtido: $_stale_now"; return 1; }
+}
+
+# ---- Motivo da ausencia OTel sob backend SQLite (paridade C1) ----
+#
+# Equivalente da chave achatada do path JSON: sob SQLite o motivo vai para
+# o catch-all `extra_fields`, que a view materializa como
+# `.waves[i].extra_fields`.
+
+scenario_sqlite_end_otel_absent_reason_exporter_trocou() {
+  _sd="$TMPDIR_TEST/sqlite-otel-reason"
+  _seed_sqlite_backend "$_sd" || return 1
+  _fx="$TMPDIR_TEST/otel-sqlite-troca.txt"
+  CSTK_OTEL_ENDPOINT="file://$_fx"; export CSTK_OTEL_ENDPOINT
+
+  _otel_fixture_sess "$_fx" "sess-antiga" 1.0
+  capture "$SCRIPT" start --state-dir "$_sd"
+  _otel_fixture_sess "$_fx" "sess-nova" 0.2
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  _e=$_CAPTURED_EXIT; _err=$_CAPTURED_STDERR
+  unset CSTK_OTEL_ENDPOINT
+  [ "$_e" = 0 ] || { _fail "sqlite end" "$_err"; return 1; }
+
+  _reason=$(sqlite3 "$_sd/state.db" \
+    "SELECT json_extract(extra_fields,'\$.otel_absent_reason') FROM wave WHERE seq=1;")
+  [ "$_reason" = "exporter-trocou" ] \
+    || { _fail "extra_fields" "esperado exporter-trocou em extra_fields, obtido '$_reason'"; return 1; }
+  _otel=$(sqlite3 "$_sd/state.db" "SELECT coalesce(otel_usage,'null') FROM wave WHERE seq=1;")
+  [ "$_otel" = "null" ] || { _fail "otel_usage" "esperado NULL, obtido '$_otel'"; return 1; }
+  return 0
+}
+
+# MERGE, nunca overwrite: `extra_fields` e catch-all compartilhado (ex.:
+# touched_key_aspects). Gravar o motivo NAO pode apagar o vizinho.
+scenario_sqlite_end_otel_reason_preserva_extra_fields() {
+  _sd="$TMPDIR_TEST/sqlite-otel-merge"
+  _seed_sqlite_backend "$_sd" || return 1
+  _fx="$TMPDIR_TEST/otel-sqlite-merge.txt"
+  CSTK_OTEL_ENDPOINT="file://$_fx"; export CSTK_OTEL_ENDPOINT
+
+  _otel_fixture_sess "$_fx" "sess-antiga" 1.0
+  capture "$SCRIPT" start --state-dir "$_sd"
+  sqlite3 "$_sd/state.db" \
+    "UPDATE wave SET extra_fields='{\"touched_key_aspects\":[\"auth\"]}' WHERE seq=1;" \
+    || { unset CSTK_OTEL_ENDPOINT; _fail "fixture" "UPDATE extra_fields falhou"; return 1; }
+  _otel_fixture_sess "$_fx" "sess-nova" 0.2
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  unset CSTK_OTEL_ENDPOINT
+
+  _asp=$(sqlite3 "$_sd/state.db" \
+    "SELECT json_extract(extra_fields,'\$.touched_key_aspects[0]') FROM wave WHERE seq=1;")
+  [ "$_asp" = "auth" ] \
+    || { _fail "merge" "extra_fields pre-existente foi sobrescrito (touched_key_aspects='$_asp')"; return 1; }
+  _reason=$(sqlite3 "$_sd/state.db" \
+    "SELECT json_extract(extra_fields,'\$.otel_absent_reason') FROM wave WHERE seq=1;")
+  [ "$_reason" = "exporter-trocou" ] \
+    || { _fail "merge" "motivo nao gravado junto do vizinho, obtido '$_reason'"; return 1; }
+  return 0
 }
 
 fi # sqlite3 disponivel

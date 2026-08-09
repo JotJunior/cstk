@@ -64,6 +64,9 @@
 set -u
 
 _PTT_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || _PTT_SELF_DIR=""
+# Raiz do projeto-alvo, resolvida por _ptt_precheck_active_scope a partir
+# do `.cwd` do payload (que pode estar num subdiretorio).
+_PTT_SCOPE=""
 
 # Bootstrap: localizar+sourcear `_resolve-root.sh` (feature
 # claude-plugin-packaging, task 3.2.4). Ordem A (fail-open, consumidor
@@ -95,26 +98,77 @@ _PTT_TOOL_NAME=$(printf '%s' "$_PTT_INPUT" | jq -r '.tool_name // ""' 2>/dev/nul
 # tool_name vazio = payload anomalo do harness; nao inventa tick.
 [ -n "$_PTT_TOOL_NAME" ] || exit 0
 
-# _ptt_precheck_active_scope -> 0 se ao menos um `state.json` OU `state.db`
-# existe sob `$_PTT_CWD/.claude/agente-00c-state/` ou
-# `$_PTT_CWD/.claude/feature-00c-state/*/` (SEC-H1, spec.md FR-008). Usa
-# EXCLUSIVAMENTE builtins do shell — nenhuma resolucao de dependencia nem
-# sourcing acontece antes desta checagem.
-_ptt_precheck_active_scope() {
-  _ptt_pa_agente="$_PTT_CWD/.claude/agente-00c-state"
-  if [ -f "$_ptt_pa_agente/state.json" ] || [ -f "$_ptt_pa_agente/state.db" ]; then
+# _ptt_scope_has_state DIR -> 0 se DIR abriga o state de uma execucao 00c
+# (`state.json` OU `state.db` sob `agente-00c-state/` ou
+# `feature-00c-state/*/`). Usa EXCLUSIVAMENTE builtins do shell — nenhuma
+# resolucao de dependencia nem sourcing acontece dentro nem antes desta
+# checagem (SEC-H1, spec.md FR-008).
+_ptt_scope_has_state() {
+  _ptt_sh_dir=$1
+  [ -n "$_ptt_sh_dir" ] || return 1
+
+  _ptt_sh_agente="$_ptt_sh_dir/.claude/agente-00c-state"
+  if [ -f "$_ptt_sh_agente/state.json" ] || [ -f "$_ptt_sh_agente/state.db" ]; then
     return 0
   fi
 
-  _ptt_pa_froot="$_PTT_CWD/.claude/feature-00c-state"
-  if [ -d "$_ptt_pa_froot" ]; then
-    for _ptt_pa_d in "$_ptt_pa_froot"/*/; do
-      [ -d "$_ptt_pa_d" ] || continue
-      if [ -f "${_ptt_pa_d}state.json" ] || [ -f "${_ptt_pa_d}state.db" ]; then
+  _ptt_sh_froot="$_ptt_sh_dir/.claude/feature-00c-state"
+  if [ -d "$_ptt_sh_froot" ]; then
+    for _ptt_sh_d in "$_ptt_sh_froot"/*/; do
+      [ -d "$_ptt_sh_d" ] || continue
+      if [ -f "${_ptt_sh_d}state.json" ] || [ -f "${_ptt_sh_d}state.db" ]; then
         return 0
       fi
     done
   fi
+  return 1
+}
+
+# _ptt_precheck_active_scope -> 0 assinalando `_PTT_SCOPE` com a RAIZ do
+# projeto-alvo; 1 se nenhum candidato abriga state.
+#
+# MOTIVO (deriva de cwd): o `.cwd` do payload e o diretorio corrente do
+# shell da sessao, nao a raiz do projeto — e ele gruda em qualquer
+# subdiretorio assim que o agente roda `cd sub && ...` (o cwd do Bash
+# persiste entre tool calls). Enquanto durar a deriva, TODO tick e
+# descartado e a onda fecha com `tool_calls=0` apesar de dezenas de calls
+# reais. Cadeia identica a do pretooluse-bash-guard.sh (mesma primitiva,
+# mesma ordem, mesmas fronteiras) — ver o cabecalho de
+# `_pbg_precheck_active_scope` para o racional de seguranca de manter
+# `$CLAUDE_PROJECT_DIR` como ULTIMO candidato.
+_ptt_precheck_active_scope() {
+  if _ptt_scope_has_state "$_PTT_CWD"; then
+    _PTT_SCOPE="$_PTT_CWD"
+    return 0
+  fi
+
+  _ptt_pa_cur="$_PTT_CWD"
+  _ptt_pa_depth=0
+  while [ "$_ptt_pa_depth" -lt 16 ]; do
+    if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ "$_ptt_pa_cur" = "$CLAUDE_PROJECT_DIR" ]; then
+      break
+    fi
+
+    _ptt_pa_parent="${_ptt_pa_cur%/*}"
+    [ -n "$_ptt_pa_parent" ] || _ptt_pa_parent="/"
+    [ "$_ptt_pa_parent" = "$_ptt_pa_cur" ] && break
+    _ptt_pa_cur="$_ptt_pa_parent"
+
+    if _ptt_scope_has_state "$_ptt_pa_cur"; then
+      _PTT_SCOPE="$_ptt_pa_cur"
+      return 0
+    fi
+
+    [ -e "$_ptt_pa_cur/.git" ] && break
+    [ "$_ptt_pa_cur" = "/" ] && break
+    _ptt_pa_depth=$((_ptt_pa_depth + 1))
+  done
+
+  if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && _ptt_scope_has_state "$CLAUDE_PROJECT_DIR"; then
+    _PTT_SCOPE="$CLAUDE_PROJECT_DIR"
+    return 0
+  fi
+
   return 1
 }
 
@@ -143,8 +197,8 @@ _ptt_resolve_dep_hae() {
     printf '%s' "$_ptt_root/$_ptt_rel"
     return 0
   fi
-  if [ -n "${_PTT_CWD:-}" ] && [ -r "$_PTT_CWD/.claude/skills/agente-00c-runtime/$_ptt_rel" ]; then
-    printf '%s' "$_PTT_CWD/.claude/skills/agente-00c-runtime/$_ptt_rel"
+  if [ -n "${_PTT_SCOPE:-}" ] && [ -r "$_PTT_SCOPE/.claude/skills/agente-00c-runtime/$_ptt_rel" ]; then
+    printf '%s' "$_PTT_SCOPE/.claude/skills/agente-00c-runtime/$_ptt_rel"
     return 0
   fi
   return 1
@@ -160,7 +214,7 @@ _PTT_HAE_HELPER=$(_ptt_resolve_dep_hae "scripts/_hook-active-exec.sh") || exit 0
 HAE_BUSY_TIMEOUT_MS=50
 export HAE_BUSY_TIMEOUT_MS
 
-if _PTT_HAE_OUT=$(hook_active_exec "$_PTT_CWD"); then
+if _PTT_HAE_OUT=$(hook_active_exec "$_PTT_SCOPE"); then
   _PTT_HAE_RC=0
 else
   _PTT_HAE_RC=$?

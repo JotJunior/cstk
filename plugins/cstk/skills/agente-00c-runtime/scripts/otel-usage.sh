@@ -70,13 +70,17 @@
 #         `type` = "cost" na linha de custo). Best-effort: endpoint fora
 #         do ar -> exit 0 sem escrever, a onda segue normal.
 #
-#   otel-usage.sh delta --state-dir DIR
+#   otel-usage.sh delta --state-dir DIR [--reason-file PATH]
 #       — end - start por chave (session, source, model, type), duplicatas
 #         SOMADAS, resultado atribuido a UNICA sessao que cresceu (ver
 #         bloco MULTIPLAS SESSOES). JSON no stdout. Sem os dois snapshots,
 #         mais de uma sessao ativa, processo trocado ou snapshot em
 #         formato antigo: imprime `null` e sai 0 (metrica ausente NUNCA e
 #         zero fabricado — Principio VI).
+#       — `--reason-file`: quando o resultado e `null`, grava nesse arquivo
+#         UM slug estavel explicando a ausencia (ver `_ou_reason`). Sem a
+#         flag, nada muda para o chamador. O arquivo NAO e tocado quando a
+#         medicao da certo — ausencia de conteudo significa "foi medido".
 #
 # MULTIPLAS SESSOES NO MESMO EXPORTER (bug real, 2026-07-28)
 # ----------------------------------------------------------
@@ -132,6 +136,36 @@ _OU_PII_LABELS="user_id user_email user_account_uuid user_account_id organizatio
 _ou_die_usage() { printf '%s: %s\n' "$_OU_NAME" "$1" >&2; exit 2; }
 _ou_die()       { printf '%s: %s\n' "$_OU_NAME" "$1" >&2; exit "${2:-1}"; }
 _ou_warn()      { printf '%s: %s\n' "$_OU_NAME" "$1" >&2; }
+
+# _ou_reason SLUG -> grava o motivo da AUSENCIA de medicao no arquivo
+# indicado por `--reason-file` (no-op quando a flag nao foi passada, o que
+# preserva byte-a-byte o comportamento de todo chamador antigo).
+#
+# Por que existe: o motivo do `null` sempre foi conhecido aqui e sempre foi
+# perdido — `_so_otel_delta` (state-ondas.sh) invoca este script com
+# `2>/dev/null`, entao o aviso em prosa morria no fechamento da onda. O
+# operador ficava com "s/ dado" no painel e nenhuma pista, apesar de o
+# sistema saber a resposta. Slug (kebab-case, estavel) em vez do texto do
+# aviso: prosa e para humano, motivo persistido e contrato de dado —
+# mesmo racional do `status=<estado>` do subcomando `preflight`.
+#
+# Vocabulario fechado (todo caminho de `null` do delta tem o seu):
+#   sem-snapshot      um dos TSV (start/end) ausente
+#   jq-ausente        dependencia opcional indisponivel
+#   formato-antigo    snapshot de 4 colunas, sem session_id por linha
+#   exporter-trocou   sessao do start sumiu no end (processo dono da porta
+#                     trocou — tipicamente restart do Claude Code no MEIO
+#                     da onda; contador cumulativo nunca some sozinho)
+#   sessoes-ambiguas  mais de uma sessao cresceu no mesmo exporter
+#   sem-crescimento   nenhuma sessao cresceu entre os snapshots
+#   falha-join        rc inesperado do awk
+# Falha de escrita e ignorada: isto e diagnostico best-effort e NUNCA pode
+# derrubar o fechamento de uma onda.
+_ou_reason() {
+  [ -n "${_ou_reason_file:-}" ] || return 0
+  printf '%s\n' "$1" > "$_ou_reason_file" 2>/dev/null || :
+  return 0
+}
 
 _ou_have_curl() { command -v curl >/dev/null 2>&1; }
 
@@ -284,10 +318,13 @@ _ou_cmd_snapshot() {
 
 _ou_cmd_delta() {
   _ou_sdir=""
+  _ou_reason_file=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir) [ "$#" -ge 2 ] || _ou_die_usage "delta: --state-dir exige valor"
                    _ou_sdir=$2; shift 2 ;;
+      --reason-file) [ "$#" -ge 2 ] || _ou_die_usage "delta: --reason-file exige valor"
+                   _ou_reason_file=$2; shift 2 ;;
       *) _ou_die_usage "delta: flag desconhecida: $1" ;;
     esac
   done
@@ -297,11 +334,12 @@ _ou_cmd_delta() {
   _ou_e="$_ou_sdir/otel-end.tsv"
   # Ausencia de qualquer um dos lados => metrica INDISPONIVEL, nao zero.
   if [ ! -f "$_ou_s" ] || [ ! -f "$_ou_e" ]; then
+    _ou_reason "sem-snapshot"
     printf 'null\n'
     return 0
   fi
 
-  command -v jq >/dev/null 2>&1 || { _ou_warn "delta: jq ausente"; printf 'null\n'; return 0; }
+  command -v jq >/dev/null 2>&1 || { _ou_warn "delta: jq ausente"; _ou_reason "jq-ausente"; printf 'null\n'; return 0; }
 
   # Join por chave COMPLETA (session, source, model, type), SOMANDO
   # duplicatas nos dois lados — o exporter emite linhas separadas por
@@ -355,15 +393,26 @@ _ou_cmd_delta() {
   case "$_ou_rc" in
     0) : ;;
     3) _ou_warn "delta: snapshot em formato antigo (sem session_id por linha) — delta descartado nesta onda"
+       _ou_reason "formato-antigo"
        rm -f -- "$_ou_rows"; printf 'null\n'; return 0 ;;
     4) _ou_warn "delta: sessao do snapshot inicial ausente no snapshot final — processo do exporter trocou, delta descartado"
+       _ou_reason "exporter-trocou"
        rm -f -- "$_ou_rows"; printf 'null\n'; return 0 ;;
     5) _ou_amb=$(awk -F'\t' '/^# ambiguous/{print $2; exit}' "$_ou_rows")
        _ou_warn "delta: mais de uma sessao ativa no exporter ($_ou_amb) — atribuicao ambigua, delta descartado"
+       _ou_reason "sessoes-ambiguas"
        rm -f -- "$_ou_rows"; printf 'null\n'; return 0 ;;
     *) _ou_warn "delta: falha inesperada no join (rc=$_ou_rc) — delta descartado"
+       _ou_reason "falha-join"
        rm -f -- "$_ou_rows"; printf 'null\n'; return 0 ;;
   esac
+
+  # rc=0 com `_ou_rows` sem nenhuma linha de dado = nenhuma sessao cresceu
+  # entre os snapshots (n==0 no awk). E ausencia legitima — a onda nao
+  # consumiu nada de medivel — mas continua sendo ausencia, nao zero.
+  if ! grep -qv '^#' "$_ou_rows" 2>/dev/null; then
+    _ou_reason "sem-crescimento"
+  fi
 
   _ou_sid=$(awk -F'\t' '/^# session_id/{print $2; exit}' "$_ou_rows")
   grep -v '^#' "$_ou_rows" \

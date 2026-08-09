@@ -69,6 +69,11 @@ set -eu
 
 _PBG_NAME="pretooluse-bash-guard"
 _PBG_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || _PBG_SELF_DIR=""
+# Raiz do projeto-alvo, resolvida por _pbg_precheck_active_scope a partir
+# do `.cwd` do payload (que pode estar num subdiretorio). Todo consumidor
+# de caminho do projeto — state-dir, whitelist, enforcement-log, catalogo
+# `project` — usa ESTA variavel, nunca `_PBG_CWD` cru.
+_PBG_SCOPE=""
 
 # Bootstrap: localizar+sourcear `_resolve-root.sh` (feature
 # claude-plugin-packaging, task 3.2.1). Ordem B (sibling -> plugin ->
@@ -104,8 +109,8 @@ _pbg_resolve_dep() {
     printf '%s' "$_PBG_SELF_DIR/../$_pbg_rel"
     return 0
   fi
-  if [ -n "${_PBG_CWD:-}" ] && [ -x "$_PBG_CWD/.claude/skills/agente-00c-runtime/$_pbg_rel" ]; then
-    printf '%s' "$_PBG_CWD/.claude/skills/agente-00c-runtime/$_pbg_rel"
+  if [ -n "${_PBG_SCOPE:-}" ] && [ -x "$_PBG_SCOPE/.claude/skills/agente-00c-runtime/$_pbg_rel" ]; then
+    printf '%s' "$_PBG_SCOPE/.claude/skills/agente-00c-runtime/$_pbg_rel"
     return 0
   fi
   # Plugin (${CLAUDE_PLUGIN_ROOT}) -> classico ($HOME), via helper
@@ -142,34 +147,105 @@ _pbg_resolve_dep_hae() {
     printf '%s' "$_pbg_root/$_pbg_rel"
     return 0
   fi
-  if [ -n "${_PBG_CWD:-}" ] && [ -r "$_PBG_CWD/.claude/skills/agente-00c-runtime/$_pbg_rel" ]; then
-    printf '%s' "$_PBG_CWD/.claude/skills/agente-00c-runtime/$_pbg_rel"
+  if [ -n "${_PBG_SCOPE:-}" ] && [ -r "$_PBG_SCOPE/.claude/skills/agente-00c-runtime/$_pbg_rel" ]; then
+    printf '%s' "$_PBG_SCOPE/.claude/skills/agente-00c-runtime/$_pbg_rel"
     return 0
   fi
   return 1
 }
 
-# _pbg_precheck_active_scope -> 0 (existe escopo a checar) se ao menos um
-# `state.json` OU `state.db` existe sob
-# `$_PBG_CWD/.claude/agente-00c-state/` ou
-# `$_PBG_CWD/.claude/feature-00c-state/*/` (SEC-H1, spec.md FR-008).
-# Usa EXCLUSIVAMENTE builtins do shell (`[ -f ]`, `[ -d ]`) — nenhuma
-# resolucao de dependencia nem sourcing acontece antes desta checagem.
-_pbg_precheck_active_scope() {
-  _pbg_pa_agente="$_PBG_CWD/.claude/agente-00c-state"
-  if [ -f "$_pbg_pa_agente/state.json" ] || [ -f "$_pbg_pa_agente/state.db" ]; then
+# _pbg_scope_has_state DIR -> 0 se DIR abriga o state de uma execucao 00c
+# (`state.json` OU `state.db` sob `agente-00c-state/` ou
+# `feature-00c-state/*/`). Usa EXCLUSIVAMENTE builtins do shell
+# (`[ -f ]`, `[ -d ]`) — nenhuma resolucao de dependencia nem sourcing
+# acontece dentro nem antes desta checagem (SEC-H1, spec.md FR-008).
+_pbg_scope_has_state() {
+  _pbg_sh_dir=$1
+  [ -n "$_pbg_sh_dir" ] || return 1
+
+  _pbg_sh_agente="$_pbg_sh_dir/.claude/agente-00c-state"
+  if [ -f "$_pbg_sh_agente/state.json" ] || [ -f "$_pbg_sh_agente/state.db" ]; then
     return 0
   fi
 
-  _pbg_pa_froot="$_PBG_CWD/.claude/feature-00c-state"
-  if [ -d "$_pbg_pa_froot" ]; then
-    for _pbg_pa_d in "$_pbg_pa_froot"/*/; do
-      [ -d "$_pbg_pa_d" ] || continue
-      if [ -f "${_pbg_pa_d}state.json" ] || [ -f "${_pbg_pa_d}state.db" ]; then
+  _pbg_sh_froot="$_pbg_sh_dir/.claude/feature-00c-state"
+  if [ -d "$_pbg_sh_froot" ]; then
+    for _pbg_sh_d in "$_pbg_sh_froot"/*/; do
+      [ -d "$_pbg_sh_d" ] || continue
+      if [ -f "${_pbg_sh_d}state.json" ] || [ -f "${_pbg_sh_d}state.db" ]; then
         return 0
       fi
     done
   fi
+  return 1
+}
+
+# _pbg_precheck_active_scope -> 0 (existe escopo a checar) assinalando
+# `_PBG_SCOPE` com a RAIZ do projeto-alvo; 1 se nenhum candidato abriga
+# state (100% das sessoes manuais do operador, FR-006). Substitui o
+# pre-check que testava exclusivamente `$_PBG_CWD`.
+#
+# MOTIVO (bug de deriva de cwd): o `.cwd` do payload NAO e a raiz do
+# projeto — e o diretorio corrente do shell da sessao, que gruda em
+# qualquer subdiretorio assim que o agente roda um `cd sub && ...` (o cwd
+# do Bash persiste entre tool calls). Observado em campo: uma sessao ficou
+# ~25h com `.cwd` num subdiretorio do projeto-alvo; o pre-check saiu 1 em
+# TODAS as tool calls e a guarda fail-closed ficou inerte justamente
+# enquanto o agente mexia em codigo (a metrica de tool_calls, que usa o
+# mesmo pre-check, zerou junto — sintoma visivel do mesmo defeito).
+#
+# Cadeia de candidatos, primeiro que abrigar state vence:
+#   1. `$_PBG_CWD` exato — comportamento historico, custo O(1);
+#   2. ancestrais de `$_PBG_CWD`, subindo ate a primeira fronteira:
+#      `$CLAUDE_PROJECT_DIR` (quando definido), diretorio com `.git`,
+#      `/`, ou o teto de 16 niveis;
+#   3. `$CLAUDE_PROJECT_DIR` direto — resgata o caso do cwd ter saido da
+#      arvore do projeto (ex.: `cd /tmp`), onde subir nao alcanca a raiz.
+#
+# ORDEM DELIBERADA (seguranca): `$CLAUDE_PROJECT_DIR` e consultado por
+# ULTIMO como candidato. Havendo state real alcancavel por cwd/ancestrais,
+# a env var nao consegue sombreá-lo — ela so amplia o alcance, nunca
+# redireciona a deteccao para outro state (o que, numa guarda fail-closed,
+# seria um vetor de bypass: apontar para uma execucao de status terminal
+# faria o helper responder "inativa" e a guarda sair 0). Como fronteira
+# superior do passo 2, a mesma variavel so RESTRINGE o alcance.
+_pbg_precheck_active_scope() {
+  if _pbg_scope_has_state "$_PBG_CWD"; then
+    _PBG_SCOPE="$_PBG_CWD"
+    return 0
+  fi
+
+  _pbg_pa_cur="$_PBG_CWD"
+  _pbg_pa_depth=0
+  while [ "$_pbg_pa_depth" -lt 16 ]; do
+    # Fronteira superior: nunca subir acima da raiz do projeto da sessao.
+    # Comparacao por igualdade literal (nunca `case`/glob) — um
+    # `CLAUDE_PROJECT_DIR` com `*`/`?`/`[` seria interpretado como padrao.
+    if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ "$_pbg_pa_cur" = "$CLAUDE_PROJECT_DIR" ]; then
+      break
+    fi
+
+    _pbg_pa_parent="${_pbg_pa_cur%/*}"
+    [ -n "$_pbg_pa_parent" ] || _pbg_pa_parent="/"
+    [ "$_pbg_pa_parent" = "$_pbg_pa_cur" ] && break
+    _pbg_pa_cur="$_pbg_pa_parent"
+
+    if _pbg_scope_has_state "$_pbg_pa_cur"; then
+      _PBG_SCOPE="$_pbg_pa_cur"
+      return 0
+    fi
+
+    # Raiz de repositorio sem state: parar (nao vazar para o projeto-pai).
+    [ -e "$_pbg_pa_cur/.git" ] && break
+    [ "$_pbg_pa_cur" = "/" ] && break
+    _pbg_pa_depth=$((_pbg_pa_depth + 1))
+  done
+
+  if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && _pbg_scope_has_state "$CLAUDE_PROJECT_DIR"; then
+    _PBG_SCOPE="$CLAUDE_PROJECT_DIR"
+    return 0
+  fi
+
   return 1
 }
 
@@ -262,8 +338,12 @@ _pbg_write_log() {
       detected_execution_path: (if $dpath == "" then null else $dpath end)}' \
     2>/dev/null) || return 0
 
-  mkdir -p "$_PBG_CWD/.claude" 2>/dev/null || :
-  printf '%s\n' "$_pbg_line" >>"$_PBG_CWD/.claude/enforcement-log.jsonl" 2>/dev/null \
+  # Raiz de escopo resolvida (nunca o cwd cru): sem isso, uma tool call
+  # disparada de um subdiretorio criaria um `.claude/enforcement-log.jsonl`
+  # paralelo la dentro, fatiando a trilha de auditoria da execucao.
+  _pbg_log_root="${_PBG_SCOPE:-$_PBG_CWD}"
+  mkdir -p "$_pbg_log_root/.claude" 2>/dev/null || :
+  printf '%s\n' "$_pbg_line" >>"$_pbg_log_root/.claude/enforcement-log.jsonl" 2>/dev/null \
     || printf '%s: aviso - falha ao gravar enforcement-log.jsonl\n' "$_PBG_NAME" >&2
   return 0
 }
@@ -330,7 +410,7 @@ export HAE_BUSY_TIMEOUT_MS
 # padrao ja usado neste arquivo em L189/L269): sob `set -e`, uma atribuicao
 # simples cujo command substitution falha aborta o script inteiro — aqui
 # exit 1/2 do helper sao caminhos de controle legitimos, nao erros.
-if _PBG_HAE_OUT=$(hook_active_exec "$_PBG_CWD"); then
+if _PBG_HAE_OUT=$(hook_active_exec "$_PBG_SCOPE"); then
   _PBG_HAE_RC=0
 else
   _PBG_HAE_RC=$?
@@ -377,9 +457,9 @@ fi
 # Whitelist file (Decision 8 — dois nomes legados coexistem no codebase;
 # tenta ambos, primeiro que existir vence; nenhum -> bash-guard.sh trata
 # como whitelist vazia, comportamento ja existente).
-_pbg_wl="$_PBG_CWD/.claude/agente-00c-whitelist"
+_pbg_wl="$_PBG_SCOPE/.claude/agente-00c-whitelist"
 if [ ! -f "$_pbg_wl" ]; then
-  _pbg_wl_alt="$_PBG_CWD/.agente-00c-whitelist.txt"
+  _pbg_wl_alt="$_PBG_SCOPE/.agente-00c-whitelist.txt"
   [ -f "$_pbg_wl_alt" ] && _pbg_wl="$_pbg_wl_alt"
 fi
 
