@@ -4,9 +4,9 @@
 # `~/.claude/skills` OU plugin nativo do Claude Code via
 # `${CLAUDE_PLUGIN_ROOT}`). Feature `claude-plugin-packaging`.
 #
-# Ref: docs/specs/claude-plugin-packaging/contracts/plugin-artifacts.md
+# Ref: docs/specs/_archived/2026-08-08-claude-plugin-packaging/contracts/plugin-artifacts.md
 #      Artefato 5 (interface, ordens de precedencia, politica de falha)
-#      docs/specs/claude-plugin-packaging/research.md Decision 3
+#      docs/specs/_archived/2026-08-08-claude-plugin-packaging/research.md Decision 3
 #      spec.md FR-009, FR-012
 #
 # NAO e executavel diretamente. Consumidores sourceiam este arquivo e

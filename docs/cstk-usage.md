@@ -60,7 +60,7 @@ on directories, `chmod 600` on files), same posture as `knowledge.db`.
 
 ## Full documentation
 
-- [`specs/loose-usage-capture/spec.md`](./specs/loose-usage-capture/spec.md) — user stories, FRs, success criteria
-- [`specs/loose-usage-capture/contracts/cli-usage.md`](./specs/loose-usage-capture/contracts/cli-usage.md) — flags, exit codes, output formats
-- [`specs/loose-usage-capture/contracts/hook-loose-usage.md`](./specs/loose-usage-capture/contracts/hook-loose-usage.md) — capture hook contract
-- [`specs/loose-usage-capture/data-model.md`](./specs/loose-usage-capture/data-model.md) — schema + retention policy
+- [`specs/_archived/2026-08-08-loose-usage-capture/spec.md`](./specs/_archived/2026-08-08-loose-usage-capture/spec.md) — user stories, FRs, success criteria
+- [`specs/_archived/2026-08-08-loose-usage-capture/contracts/cli-usage.md`](./specs/_archived/2026-08-08-loose-usage-capture/contracts/cli-usage.md) — flags, exit codes, output formats
+- [`specs/_archived/2026-08-08-loose-usage-capture/contracts/hook-loose-usage.md`](./specs/_archived/2026-08-08-loose-usage-capture/contracts/hook-loose-usage.md) — capture hook contract
+- [`specs/_archived/2026-08-08-loose-usage-capture/data-model.md`](./specs/_archived/2026-08-08-loose-usage-capture/data-model.md) — schema + retention policy

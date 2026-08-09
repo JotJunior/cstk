@@ -25,9 +25,10 @@ Quando um comando nao viola nenhuma regra, o sistema MUST permitir sua execucao 
 
 ### FR-004
 
-A interceptacao MUST ser provisionada automaticamente pelo fluxo normal de instalacao/atualizacao do toolkit em um projeto-alvo — o operador MUST NOT precisar de um passo manual nao-documentado para ativa-la depois de atualizar o toolkit.
+A interceptacao MUST ser provisionada automaticamente pelo fluxo normal de instalacao/atualizacao do toolkit em um projeto-alvo — seja pelo caminho classico (instalacao/atualizacao via `cstk install`/ `cstk update` com hooks provisionados por projeto) seja pelo caminho de plugin do Claude Code (hooks empacotados no plugin, ativos automaticamente em qualquer projeto onde o plugin esteja habilitado, sem passo de provisionamento por projeto). Em ambos os casos, o operador MUST NOT precisar de um passo manual nao-documentado para ativa-la depois de atualizar o toolkit; quando os dois caminhos estiverem presentes no mesmo projeto, o efeito MUST permanecer equivalente a uma unica camada de interceptacao (ver FR-005 desta feature).
 
 *Introduzida por: enforced-guards (2026-07-28)*
+*Ultima modificacao: claude-plugin-packaging (2026-08-09)*
 
 ### FR-005
 

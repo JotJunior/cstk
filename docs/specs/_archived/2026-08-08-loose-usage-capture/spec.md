@@ -255,9 +255,4 @@ consumo ate a ultima captura periodica permanece registrado.
 
 ## Delta Requirements
 
-**Skip**: feature adiciona uma capacidade inteiramente nova (captura de
-consumo avulso fora das execucoes de pipeline SDD); nao ha nenhuma
-capability documentada em `docs/specs/current/` referente a captura ou
-comparacao de telemetria de uso a ser alterada, removida ou renomeada — o
-corpus canonico atual cobre apenas atomic-commit-staging, guards e gates de
-delta/spec, sem sobreposicao com este escopo. — agente-00c-feature-orchestrator, 2026-08-06
+**Skip**: feature adiciona uma capacidade inteiramente nova (captura de consumo avulso fora das execucoes de pipeline SDD); nao ha nenhuma capability documentada em `docs/specs/current/` referente a captura ou comparacao de telemetria de uso a ser alterada, removida ou renomeada — o corpus canonico atual cobre apenas atomic-commit-staging, guards e gates de delta/spec, sem sobreposicao com este escopo — agente-00c-feature-orchestrator, 2026-08-06

@@ -1,7 +1,7 @@
 #!/bin/sh
 # test__resolve-root.sh — cobre _resolve-root.sh (resolucao dual-path da
 # raiz de agente-00c-runtime: classico vs plugin nativo do Claude Code).
-# Ref: docs/specs/claude-plugin-packaging/contracts/plugin-artifacts.md
+# Ref: docs/specs/_archived/2026-08-08-claude-plugin-packaging/contracts/plugin-artifacts.md
 #      Artefato 5; tasks.md 3.1.5.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
