@@ -5,6 +5,43 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.1.1] - 2026-08-09
+
+`~/.claude/skills/` e espaco COMPARTILHADO — plugins da Anthropic, skills
+de terceiros, skills locais do operador. O `cstk doctor` tratava tudo que
+estava la como potencialmente seu, e isso vazava em dois pontos que,
+somados, tornavam o comando inutil como gate: bastou 13 skills da
+Cloudflare aparecerem no disco para ele passar a sair `1`
+permanentemente, sem nenhuma acao possivel pelo operador.
+
+### Fixed
+
+- **`ORPHAN` deixa de contar como drift.** Continua LISTADO (some do
+  gate, nao da visibilidade), mas nao afeta o exit. Isso apenas alinha o
+  exit ao que o codigo ja fazia: `--fix` NUNCA teve reparo para `ORPHAN`
+  — sempre preservou — entao o gate cobrava do operador uma acao que nao
+  existia. `cstk doctor || exit 1` volta a ser utilizavel num
+  `~/.claude/skills` compartilhado.
+- **`Distribution Paths` para de hashear o diretorio inteiro.** A
+  comparacao entre catalogo classico e catalogo do plugin passa a usar
+  `hash_dir_catalog` (funcao NOVA em `cli/lib/hash.sh`), restrita aos
+  nomes do manifest do cstk e ignorando `evals/` e `.DS_Store`. As
+  `evals/` sao removidas do tarball por `scripts/build-release.sh`
+  ("Remover fixtures dev-only") mas existem no plugin, que vem do repo
+  git — verificado: zero entradas `evals/` no tarball oficial da v7.1.0.
+  Sem esse recorte a secao acusava `diverged` ETERNAMENTE, com os dois
+  catalogos identicos no que e do cstk.
+
+### Nao alterado (deliberado)
+
+- **`hash_dir` fica intocado.** Ele alimenta `source_sha256` no manifest;
+  mudar sua saida marcaria todas as skills instaladas como `EDITED` de
+  uma vez. `hash_dir_catalog` e aditiva e usada SO pela comparacao entre
+  caminhos de distribuicao.
+- **O sinal real segue gateando**: `EDITED`/`MISSING` continuam contando
+  como drift, e plugin (ou classico) genuinamente stale continua
+  reportando `diverged`. Ha cenario dedicado para cada caso.
+
 ## [7.1.0] - 2026-08-09
 
 O dedup entre o caminho classico e o plugin era PASSIVO: `cstk hooks
@@ -5385,6 +5422,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[7.1.1]: https://github.com/JotJunior/cstk/releases/tag/v7.1.1
 [7.1.0]: https://github.com/JotJunior/cstk/releases/tag/v7.1.0
 [7.0.1]: https://github.com/JotJunior/cstk/releases/tag/v7.0.1
 [7.0.0]: https://github.com/JotJunior/cstk/releases/tag/v7.0.0
