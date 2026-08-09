@@ -8,7 +8,7 @@
 # Chaves do state.json sao EN (schema-en-migration). Toda leitura/escrita passa
 # por _sr_canonicalize_file (rename pt-BR -> EN); states pt-BR vivos sao aceitos
 # na entrada e convergem para EN a cada write. Ver
-# docs/specs/schema-en-migration/migration-map.md.
+# docs/specs/_archived/2026-08-08-schema-en-migration/migration-map.md.
 #
 # Subcomandos:
 #   state-rw.sh init  --state-dir DIR --execucao-id ID
@@ -133,7 +133,7 @@ _sr_require_jq() {
 # pt-BR e aceito na entrada (states vivos), EN e canonico na saida; o arquivo
 # converge para EN a cada write. Remover este mapa + os fallbacks na proxima
 # MAJOR torna o schema EN-only.
-# Spec: docs/specs/schema-en-migration/migration-map.md
+# Spec: docs/specs/_archived/2026-08-08-schema-en-migration/migration-map.md
 #
 # Invariante: nenhum par pt->en colide entre containers (verificado no freeze).
 _SR_RENAME_MAP='{
