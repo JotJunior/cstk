@@ -251,16 +251,35 @@ _so_db_end() {
 
   # Consumo OTel — sidecares TSV, backend-agnosticos.
   _so_otel_snapshot "$_e_sdir" end
-  _e_otel=$(_so_otel_delta "$_e_sdir")
+  # Arquivo de motivo criado AQUI (fora do `$( )`) — ver _so_otel_delta.
+  _e_otel_rf=$(mktemp 2>/dev/null) || _e_otel_rf=""
+  _e_otel=$(_so_otel_delta "$_e_sdir" "$_e_otel_rf")
   case "$_e_otel" in ''|null) _e_otel="null" ;; esac
+  _e_otel_reason=$(_so_otel_reason_read "$_e_otel_rf")
+  [ -n "$_e_otel_rf" ] && rm -f -- "$_e_otel_rf" 2>/dev/null
 
   _e_spawns_sql="NULL"; [ "$_e_spawns" != "[]" ] && [ -n "$_e_spawns" ] && _e_spawns_sql=$(_sr_sql_quote "$_e_spawns")
   _e_au_sql="NULL"; [ "$_e_au" != "null" ] && _e_au_sql=$(_sr_sql_quote "$_e_au")
   _e_otel_sql="NULL"; [ "$_e_otel" != "null" ] && _e_otel_sql=$(_sr_sql_quote "$_e_otel")
 
+  # Motivo da ausencia de medicao OTel -> catch-all `extra_fields` (o
+  # equivalente sob SQLite da chave achatada que o path JSON grava na
+  # onda). MERGE, nunca overwrite: `extra_fields` e compartilhado com
+  # outros produtores (ex.: touched_key_aspects). So escreve quando ha
+  # motivo — onda medida nao ganha chave nenhuma.
+  _e_extra_sql=""
+  if [ "$_e_otel" = "null" ] && [ -n "$_e_otel_reason" ]; then
+    _e_extra_cur=$(_state_db_exec "$_e_db" \
+      "SELECT coalesce(extra_fields,'{}') FROM wave WHERE id=$(_sr_sql_quote "$_e_wid");")
+    case "$_e_extra_cur" in '') _e_extra_cur='{}' ;; esac
+    _e_extra_new=$(printf '%s' "$_e_extra_cur" \
+      | jq -c --arg r "$_e_otel_reason" '. + {otel_absent_reason: $r}' 2>/dev/null) || _e_extra_new=""
+    [ -n "$_e_extra_new" ] && _e_extra_sql=", extra_fields=$(_sr_sql_quote "$_e_extra_new")"
+  fi
+
   # C4: fechamento da onda + atualizacao de next_instruction na MESMA
   # transacao (paridade com o write atomico unico do path JSON).
-  _e_sql="BEGIN IMMEDIATE; UPDATE wave SET finished_at=$(_sr_sql_quote "$_e_now"), wallclock_seconds=$_e_wc, tool_calls=$_e_tc, termination_reason=$(_sr_sql_quote "$_e_motivo"), next_wave_scheduled_for=$_e_proxima_sql, executed_stages=$(_sr_sql_quote "$_e_stages_merged"), agent_usage=$_e_au_sql, agent_spawns=$_e_spawns_sql, otel_usage=$_e_otel_sql WHERE id=$(_sr_sql_quote "$_e_wid");"
+  _e_sql="BEGIN IMMEDIATE; UPDATE wave SET finished_at=$(_sr_sql_quote "$_e_now"), wallclock_seconds=$_e_wc, tool_calls=$_e_tc, termination_reason=$(_sr_sql_quote "$_e_motivo"), next_wave_scheduled_for=$_e_proxima_sql, executed_stages=$(_sr_sql_quote "$_e_stages_merged"), agent_usage=$_e_au_sql, agent_spawns=$_e_spawns_sql, otel_usage=$_e_otel_sql$_e_extra_sql WHERE id=$(_sr_sql_quote "$_e_wid");"
   if [ "$_e_next_set" = 1 ]; then
     _e_sql="$_e_sql UPDATE execution SET next_instruction=$_e_next_instr_sql WHERE id=$(_sr_sql_quote "$_e_exec_id");"
   fi

@@ -543,20 +543,57 @@ _so_otel_snapshot() {
   return 0
 }
 
-# _so_otel_delta DIR -> stdout: JSON do consumo da onda, ou `null`.
-# `null` significa AUSENTE (telemetria desligada, snapshot faltando,
-# processo trocou no meio) — nunca zero fabricado.
+# _so_otel_delta DIR [REASON_FILE] -> stdout: JSON do consumo da onda, ou
+# `null`. `null` significa AUSENTE (telemetria desligada, snapshot
+# faltando, processo trocou no meio) — nunca zero fabricado.
+#
+# REASON_FILE (opcional): caminho onde o motivo da ausencia e depositado
+# como slug de uma linha (vazio/intocado quando a onda foi medida). O
+# motivo sempre existiu, mas so no aviso em prosa que o `2>/dev/null`
+# abaixo descarta — o operador ficava com um "s/ dado" mudo no painel.
+#
+# O ARQUIVO E DO CHAMADOR, de proposito: `end` invoca esta funcao dentro de
+# `$( )`, ou seja, num SUBSHELL — qualquer variavel global assinalada aqui
+# morreria junto com ele. Arquivo atravessa a fronteira; variavel nao.
 _so_otel_delta() {
+  _od_dir=$1
+  _od_rf=${2:-}
+  [ -n "$_od_rf" ] && : > "$_od_rf" 2>/dev/null
+
+  # _od_reason SLUG -> deposita o motivo (no-op sem REASON_FILE).
+  _od_reason() { [ -n "$_od_rf" ] && printf '%s\n' "$1" > "$_od_rf" 2>/dev/null; return 0; }
+
   _ots=$(_so_otel_script)
-  [ -f "$_ots" ] || { printf 'null\n'; return 0; }
-  _od=$(sh "$_ots" delta --state-dir "$1" 2>/dev/null) || _od=""
+  [ -f "$_ots" ] || { _od_reason "sem-script"; printf 'null\n'; return 0; }
+
+  if [ -n "$_od_rf" ]; then
+    _od=$(sh "$_ots" delta --state-dir "$_od_dir" --reason-file "$_od_rf" 2>/dev/null) || _od=""
+  else
+    _od=$(sh "$_ots" delta --state-dir "$_od_dir" 2>/dev/null) || _od=""
+  fi
+
   # Valida como JSON com jq. NAO usar glob de printaveis (`*[!\ -~]*`):
   # ele casa newline, entao qualquer JSON multi-linha virava `null`.
   if [ -z "$_od" ] || ! printf '%s' "$_od" | jq -e . >/dev/null 2>&1; then
+    # `null` legitimo do delta ja depositou o slug; aqui cobrimos so a
+    # saida invalida (contrato quebrado), que o delta nao classifica.
+    [ -n "$_od_rf" ] && [ ! -s "$_od_rf" ] && _od_reason "saida-invalida"
     printf 'null\n'
-  else
-    printf '%s\n' "$_od"
+    return 0
   fi
+
+  case "$_od" in
+    null) [ -n "$_od_rf" ] && [ ! -s "$_od_rf" ] && _od_reason "nao-classificado" ;;
+    *) [ -n "$_od_rf" ] && : > "$_od_rf" 2>/dev/null ;;
+  esac
+  printf '%s\n' "$_od"
+}
+
+# _so_otel_reason_read FILE -> slug depositado (vazio se nao ha motivo).
+_so_otel_reason_read() {
+  [ -n "${1:-}" ] || return 0
+  [ -s "$1" ] || return 0
+  head -n 1 "$1" 2>/dev/null | tr -d '[:space:]'
 }
 
 # _so_otel_reset DIR — descarta os snapshots da onda encerrada para nao
@@ -766,8 +803,20 @@ $2"; shift 2 ;;
   # write — e enquanto o processo Claude Code ainda vive, ja que o exporter
   # Prometheus e in-process e some junto com ele.
   _so_otel_snapshot "$_sdir" end
-  _otel_json=$(_so_otel_delta "$_sdir")
+  # Arquivo de motivo criado AQUI (fora do `$( )`): a funcao roda em
+  # subshell e nao consegue devolver o slug por variavel.
+  _otel_rf=$(mktemp 2>/dev/null) || _otel_rf=""
+  _otel_json=$(_so_otel_delta "$_sdir" "$_otel_rf")
   case "$_otel_json" in ''|null) _otel_json="null" ;; esac
+  # Motivo da ausencia (vazio quando medido). Chave achatada na onda,
+  # mesmo padrao ja usado por `.waves[-1].touched_key_aspects` (drift.sh)
+  # — sob backend SQLite o equivalente vai para a coluna `extra_fields`.
+  _otel_reason=$(_so_otel_reason_read "$_otel_rf")
+  [ -n "$_otel_rf" ] && rm -f -- "$_otel_rf" 2>/dev/null
+  _otel_reason_json="null"
+  if [ "$_otel_json" = "null" ] && [ -n "$_otel_reason" ]; then
+    _otel_reason_json=$(printf '%s' "$_otel_reason" | jq -Rs .) || _otel_reason_json="null"
+  fi
 
   # .next_instruction gravado DENTRO do mesmo write atomico do fechamento
   # da onda. Antes exigia um `state-rw.sh set` separado, e como `end`
@@ -783,6 +832,7 @@ $2"; shift 2 ;;
   _new=$(mktemp) || _so_die "mktemp falhou" 1
   jq \
     --argjson otel "$_otel_json" \
+    --argjson otel_reason "$_otel_reason_json" \
     --argjson next_instr "$_next_instr_json" \
     --arg now "$_now" \
     --arg motivo "$_motivo" \
@@ -820,6 +870,7 @@ $2"; shift 2 ;;
         | .agent_usage = $au
         | .agent_spawns = $sp
         | .otel_usage = $otel
+        | (if $otel_reason != null then .otel_absent_reason = $otel_reason else . end)
       ))
       | .accumulated_metrics.waves_total = ((.accumulated_metrics.waves_total // 0) + 1)
       | .accumulated_metrics.tool_calls_total = ((.accumulated_metrics.tool_calls_total // 0) + $tc)
