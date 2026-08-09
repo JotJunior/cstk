@@ -5,6 +5,46 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.1.0] - 2026-08-09
+
+O dedup entre o caminho classico e o plugin era PASSIVO: `cstk hooks
+install` pulava o provisionamento ("plugin vence") e mandava o operador
+remover o registro classico na mao. Projeto que ja tinha esse registro
+seguia com AS DUAS camadas ativas, e desfazer isso significava editar
+`settings.json` a mao — arriscando levar junto hook de terceiro.
+
+### Added
+
+- **`cstk hooks install` remove o registro classico duplicado.** Quando o
+  plugin `cstk` ja prove os hooks E o projeto ainda tem registro classico
+  em `.claude/settings.json`, o comando detecta a duplicidade e PERGUNTA
+  se pode remover. Remove APENAS as entradas dos 4 hooks do runtime 00c
+  (casadas pelo caminho do comando): hooks de terceiros no mesmo bloco e
+  todas as demais chaves do arquivo (`permissions`, `env`, ...) sao
+  preservados; grupos que ficam sem hook nenhum sao podados e `.hooks` so
+  e removido se ficar vazio. Backup obrigatorio em
+  `settings.json.bak-pre-dedup` antes de qualquer escrita — falha ao
+  gravar o backup ABORTA a remocao. Escrita atomica (`mktemp` + `mv`).
+- **Flag `--remove-classic`** em `cstk hooks install`: remove sem
+  perguntar, para script/CI. Sem TTY e sem a flag, o bloco e MANTIDO com
+  aviso citando a flag — `settings.json` e do operador e nao e reescrito
+  sem consentimento explicito. Resposta vazia (Enter) tambem mantem: acao
+  destrutiva nunca e o default, mesmo padrao de `_setup_prompt_yn`.
+
+### Changed
+
+- **Remediacao de `duplicated-hooks` no `cstk doctor`** deixa de mandar
+  editar `settings.json` a mao e passa a apontar `cstk hooks install`
+  (com `--remove-classic` para o modo nao-interativo).
+
+### Nao alterado (deliberado)
+
+- **Plugin habilitado porem incompleto** (sem `hooks/hooks.json`
+  materializado) continua provisionando o caminho classico e NAO tem o
+  registro removido — remover ali deixaria o projeto sem guarda nenhuma,
+  o pior resultado possivel do dedup (achado F4 / dec-027 da feature
+  `claude-plugin-packaging`). Coberto por cenario dedicado.
+
 ## [7.0.1] - 2026-08-09
 
 Dois defeitos observados em campo no mesmo projeto-alvo, com o mesmo
@@ -5345,6 +5385,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[7.1.0]: https://github.com/JotJunior/cstk/releases/tag/v7.1.0
 [7.0.1]: https://github.com/JotJunior/cstk/releases/tag/v7.0.1
 [7.0.0]: https://github.com/JotJunior/cstk/releases/tag/v7.0.0
 [6.8.0]: https://github.com/JotJunior/cstk/releases/tag/v6.8.0

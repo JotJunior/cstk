@@ -493,8 +493,10 @@ _doctor_distribution_paths() {
       printf '\n==> Distribution Paths (plugin cstk)\n'
       printf '  [duplicated-hooks] plugin habilitado E registro classico de hooks\n'
       printf '                     presente em %s\n' "$_dp_project_settings"
-      printf '  remediacao: remova o bloco de hooks do cstk de %s\n' "$_dp_project_settings"
-      printf '              (o plugin ja os provê — mesma regra de "cstk hooks install").\n'
+      printf '  remediacao: rode `cstk hooks install` no projeto — ele oferece remover\n'
+      printf '              o registro classico (ou `--remove-classic` para nao perguntar).\n'
+      printf '              Remove apenas as entradas dos hooks 00c, preserva hooks de\n'
+      printf '              terceiros e grava backup em settings.json.bak-pre-dedup.\n'
     } >&2
     return 1
   fi
