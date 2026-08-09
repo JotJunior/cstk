@@ -527,10 +527,15 @@ Ref: checklists/requirements.md CHK019/CHK023 (fechados na FASE 1); tasks 1.5.3/
 
 Ref: escopo desta onda (item 5) — release/tag e decisao do operador
 
-- [ ] 7.5.1 Nota apenas: publicar a tag SemVer, abrir PR e mergear **nao**
+- [x] 7.5.1 Nota apenas: publicar a tag SemVer, abrir PR e mergear **nao**
       sao tasks executaveis deste backlog — ficam a cargo do operador via
       skill `release-wave`, apos as FASES 1-7 estarem concluidas e a suite
       completa verde. Nenhuma acao automatica deve disparar release.
+      <!-- cumprida pelo operador em 2026-08-08 via release-wave: tag v7.0.0
+           publicada (3 assets), PRs #88 (feature) + #89 (remocao
+           initialize-docs) + #90 (bump manifests MP-5) merged; suite
+           2606/0; sync self-update+update com doctor 0 orfaos -->
+
 
 ---
 
