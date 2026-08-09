@@ -21,7 +21,7 @@
 #
 # Schema EN (schema-en-migration): READ-ONLY sobre state.json — todas as
 # leituras usam chaves EN com fallback pt-BR (.en // .pt) para aceitar states
-# pt-BR vivos. NAO escreve state.json. Ver docs/specs/schema-en-migration/.
+# pt-BR vivos. NAO escreve state.json. Ver docs/specs/_archived/2026-08-08-schema-en-migration/.
 # VALORES de enum (status, etapa, strategy) permanecem pt-BR (follow-up B). As
 # folhas do subsistema de cache (§3.9d: estrategia->strategy, resumo_chars->
 # summary_chars, gerado_em->generated_at, gerado_na_onda->generated_in_wave)
