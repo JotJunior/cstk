@@ -17,7 +17,11 @@
 #        OK      — entry no manifest + dir em disco + hash match
 #        EDITED  — entry no manifest + dir em disco + hash mismatch
 #        MISSING — entry no manifest, mas dir ausente em disco
-#        ORPHAN  — dir em disco, mas sem entry no manifest (third-party)
+#        ORPHAN  — dir em disco, mas sem entry no manifest: NAO pertence a
+#                  colecao do cstk. Informativo, NAO conta como drift e
+#                  NAO afeta o exit (`~/.claude/skills/` e compartilhado
+#                  com plugins e skills de terceiros; cobrar do operador
+#                  algo que o cstk nem instalou e falso positivo).
 #   3. Reporta achados em stderr; resumo final
 #   4. --fix: remove entries MISSING; recalcula source_sha256 de skills OK
 #      (refresh, ainda que normalmente nao haja diff). NUNCA modifica
@@ -48,7 +52,9 @@
 # plugin_settings_enabled (sinal fraco, so settings.json — mantem a secao
 # visivel mesmo com installed_plugins.json corrompido, contrato Scenario
 # 7). Reporta o alinhamento entre o catalogo classico (~/.claude/skills) e
-# o catalogo do plugin (<installPath>/skills) por hash_dir (NUNCA pelo
+# o catalogo do plugin (<installPath>/skills) por hash de conteudo das
+# skills DO MANIFEST do cstk (NUNCA o diretorio inteiro — ~/.claude/skills
+# e compartilhado com plugins e skills de terceiros; NUNCA pelo
 # campo version do registro nativo — pode vir "unknown"). Nao interage com
 # --scope/--fix/--deps; roda sempre que aplicavel, independente das outras
 # flags (SC-006: ausencia de plugin = zero diferenca observavel).
@@ -95,7 +101,9 @@ CLASSIFICACAO:
   OK       entry + dir + hash batem
   EDITED   entry + dir, mas hash diverge (edit local — use cstk update --force)
   MISSING  entry sem dir (use --fix para limpar manifest)
-  ORPHAN   dir sem entry (skill third-party — preservada)
+  ORPHAN   dir sem entry — fora da colecao do cstk (plugin, skill de
+           terceiro, skill local). Informativo: NAO e drift, NAO afeta o
+           exit e nunca teve reparo associado (--fix sempre preservou).
 
 DISTRIBUTION PATHS (secao condicional, so quando o plugin "cstk" do
 Claude Code esta habilitado neste ambiente — sem plugin, zero saida
@@ -105,9 +113,12 @@ duplicated-hooks (hooks classicos registrados no projeto ALEM do
 plugin), undetermined (registros nativos ilegiveis — nunca fatal).
 
 EXIT:
-  0  sem drift, ou --fix executado (ou --deps sem anomalia)
-  1  drift detectado sem --fix (ou --deps com anomalia, ou Distribution
-     Paths reportando diverged/duplicated-hooks)
+  0  sem drift, ou --fix executado (ou --deps sem anomalia). Skills
+     ORPHAN nao afetam o exit — logo `cstk doctor || exit 1` segue
+     utilizavel como gate de CI num ~/.claude/skills compartilhado.
+  1  drift detectado sem --fix (EDITED/MISSING — apenas o que o cstk
+     instalou), ou --deps com anomalia, ou Distribution Paths
+     reportando diverged/duplicated-hooks
 HELP
 }
 
@@ -336,8 +347,17 @@ $_r_status	$_r_skill	$_r_detail	$_r_kind"
       _doctor_count_drift=$((_doctor_count_drift + 1))
       ;;
     ORPHAN)
+      # NAO conta como drift, de proposito: `~/.claude/skills/` e espaco
+      # COMPARTILHADO (plugins da Anthropic, skills de terceiros, skills
+      # locais do operador). Uma pasta que o cstk nunca instalou nao e
+      # "drift do cstk" — e simplesmente algo fora da colecao dele.
+      #
+      # Enquanto ORPHAN gateava, `cstk doctor || exit 1` virava falso
+      # positivo assim que qualquer skill de terceiro aparecia no disco, e
+      # o operador nao tinha acao nenhuma a tomar (o proprio `--fix`
+      # sempre preservou ORPHAN — nunca houve reparo associado). Continua
+      # LISTADO como informativo: some do gate, nao da visibilidade.
       _doctor_count_orphan=$((_doctor_count_orphan + 1))
-      _doctor_count_drift=$((_doctor_count_drift + 1))
       ;;
   esac
 }
@@ -408,7 +428,7 @@ _doctor_emit_report() {
           OK)      printf '  [OK]       %s\n' "$_label" ;;
           EDITED)  printf '  [EDITED]   %s    local edits detected\n' "$_label" ;;
           MISSING) printf '  [MISSING]  %s    in manifest, not on disk\n' "$_label" ;;
-          ORPHAN)  printf '  [ORPHAN]   %s    on disk, not in manifest (third-party)\n' "$_label" ;;
+          ORPHAN)  printf '  [ORPHAN]   %s    nao gerenciada pelo cstk (informativo)\n' "$_label" ;;
         esac
         IFS='
 '
@@ -419,7 +439,11 @@ _doctor_emit_report() {
     printf '  ok:      %d\n' "$_doctor_count_ok"
     printf '  edited:  %d\n' "$_doctor_count_edited"
     printf '  missing: %d\n' "$_doctor_count_missing"
-    printf '  orphan:  %d\n' "$_doctor_count_orphan"
+    if [ "$_doctor_count_orphan" -gt 0 ]; then
+      printf '  orphan:  %d  (nao gerenciadas pelo cstk — informativo, nao e drift)\n' "$_doctor_count_orphan"
+    else
+      printf '  orphan:  %d\n' "$_doctor_count_orphan"
+    fi
     if [ "$_doctor_count_drift" -gt 0 ]; then
       if [ "$_doctor_fix" = 1 ]; then
         printf '  --fix executado: entries MISSING removidas; EDITED/ORPHAN preservados.\n'
@@ -450,9 +474,11 @@ _doctor_emit_report() {
 #   2. settings.json DESTE PROJETO (./.claude/settings.json, cwd) ja tem o
 #      snippet classico de hooks registrado -> duplicated-hooks
 #   3. ~/.claude/skills ausente -> plugin-only
-#   4. hash_dir(~/.claude/skills) == hash_dir(<installPath>/skills) -> aligned
-#   5. hashes calculados mas diferentes -> diverged
-#   6. qualquer hash_dir falhar apos os checks acima -> undetermined
+#   4. hash_dir_catalog(classico) == hash_dir_catalog(plugin), ambos
+#      restritos aos nomes do manifest -> aligned
+#   5. hashes calculados mas diferentes -> diverged (divergencia REAL de
+#      conteudo do cstk; terceiros e `evals/` nao entram na conta)
+#   6. manifest vazio/ilegivel, ou qualquer hash falhar -> undetermined
 #
 # NOTA sobre "diverged" e ordenacao temporal (Constitution VI — nunca
 # inventar dado factual): o contrato pede para "apontar qual esta
@@ -509,8 +535,24 @@ _doctor_distribution_paths() {
     return 0
   fi
 
-  _dp_classic_hash=$(hash_dir "$_dp_classic_root" 2>/dev/null) || _dp_classic_hash=""
-  _dp_plugin_hash=$(hash_dir "$_dp_plugin_root/skills" 2>/dev/null) || _dp_plugin_hash=""
+  # Compara SO as skills que o cstk possui (nomes do manifest), nunca o
+  # diretorio inteiro: `~/.claude/skills/` e compartilhado, e hashear tudo
+  # fazia 13 skills de terceiro divergirem dois catalogos identicos no que
+  # e do cstk. `evals/` (removida do tarball por build-release.sh) e
+  # `.DS_Store` tambem saem — ver cabecalho de hash_dir_catalog.
+  _dp_names=$(read_manifest "$(manifest_default_path "$_doctor_scope" skills)" 2>/dev/null \
+    | awk -F'\t' '{print $1}' | grep -v '^#' | grep -v '^$')
+
+  if [ -z "$_dp_names" ]; then
+    {
+      printf '\n==> Distribution Paths (plugin cstk)\n'
+      printf '  [undetermined] manifest de skills vazio/ilegivel — sem base para comparar.\n'
+    } >&2
+    return 0
+  fi
+
+  _dp_classic_hash=$(printf '%s\n' "$_dp_names" | hash_dir_catalog "$_dp_classic_root" 2>/dev/null) || _dp_classic_hash=""
+  _dp_plugin_hash=$(printf '%s\n' "$_dp_names" | hash_dir_catalog "$_dp_plugin_root/skills" 2>/dev/null) || _dp_plugin_hash=""
 
   if [ -z "$_dp_classic_hash" ] || [ -z "$_dp_plugin_hash" ]; then
     {
@@ -523,7 +565,8 @@ _doctor_distribution_paths() {
   if [ "$_dp_classic_hash" = "$_dp_plugin_hash" ]; then
     {
       printf '\n==> Distribution Paths (plugin cstk)\n'
-      printf '  [aligned] OK: catalogo classico e plugin alinhados (mesmo hash_dir).\n'
+      printf '  [aligned] OK: catalogo classico e plugin alinhados (mesmo conteudo\n'
+      printf '            nas skills do manifest do cstk).\n'
     } >&2
     return 0
   fi
