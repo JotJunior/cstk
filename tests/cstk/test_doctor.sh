@@ -80,7 +80,58 @@ scenario_doctor_4_tipos_drift() {
   assert_stderr_contains "edited:  1" || return 1
   assert_stderr_contains "missing: 1" || return 1
   assert_stderr_contains "orphan:  1" || return 1
-  assert_stderr_contains "[DRIFT] 3" || return 1
+  # ORPHAN deixou de contar como drift: `~/.claude/skills/` e compartilhado
+  # (plugins, skills de terceiros, skills locais) e o cstk nao pode cobrar
+  # do operador algo que nunca instalou. Restam EDITED + MISSING = 2.
+  assert_stderr_contains "[DRIFT] 2" || return 1
+  # Exit segue 1 porque HA drift real (edited/missing) neste fixture.
+}
+
+# Skills de terceiros SOZINHAS nao podem gatear: e o caso que quebrava
+# `cstk doctor || exit 1` como gate de CI assim que um plugin da Anthropic
+# ou qualquer skill de terceiro aparecia em ~/.claude/skills.
+scenario_doctor_apenas_orphan_nao_gateia() {
+  _h="$TMPDIR_TEST/h-orphan"
+  _r="$TMPDIR_TEST/r-orphan"
+  _make_release "$_r" || { _error "fixture" ""; return 2; }
+  _install_v1 "$_h" "$_r"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install" ""; return 1; }
+
+  # Nenhum drift do cstk; so skills que ele nunca instalou.
+  for _n in cloudflare wrangler minha-skill-local; do
+    mkdir -p "$_h/.claude/skills/$_n"
+    printf '# nao e do cstk\n' > "$_h/.claude/skills/$_n/SKILL.md"
+  done
+
+  _run_doctor "$_h"
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "exit" "so orphan NAO pode gatear; esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "orphan:  3" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"[DRIFT]"*) _fail "drift" "nao deveria imprimir [DRIFT] sem drift real do cstk"; return 1 ;;
+  esac
+  # Some do gate, mas nao da visibilidade.
+  assert_stderr_contains "[ORPHAN]   cloudflare" || return 1
+  return 0
+}
+
+# --fix nunca teve reparo para ORPHAN (sempre preservou); com apenas
+# orphans nao ha o que reconciliar e as pastas continuam intactas.
+scenario_doctor_fix_preserva_orphan() {
+  _h="$TMPDIR_TEST/h-fix-orphan"
+  _r="$TMPDIR_TEST/r-fix-orphan"
+  _make_release "$_r" || { _error "fixture" ""; return 2; }
+  _install_v1 "$_h" "$_r"
+  mkdir -p "$_h/.claude/skills/de-terceiro"
+  printf '# terceiro\n' > "$_h/.claude/skills/de-terceiro/SKILL.md"
+
+  _run_doctor "$_h" --fix
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -f "$_h/.claude/skills/de-terceiro/SKILL.md" ] \
+    || { _fail "preservacao" "--fix NAO pode remover skill de terceiro"; return 1; }
+  grep -q "de-terceiro" "$_h/.claude/skills/.cstk-manifest" 2>/dev/null \
+    && { _fail "adocao" "--fix NAO pode adotar terceiro no manifest"; return 1; }
+  return 0
 }
 
 # ==== Tudo OK => exit 0 ====
@@ -379,6 +430,38 @@ scenario_doctor_distribution_paths_aligned() {
   _run_doctor_in "$_h" "$_proj"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "aligned exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
   assert_stderr_contains "[aligned]" || return 1
+}
+
+# Regressao do caso de campo: 13 skills da Cloudflare apareceram em
+# ~/.claude/skills (espaco COMPARTILHADO) e o Distribution Paths passou a
+# acusar `diverged` eternamente, gateando `cstk doctor` com exit 1 sem
+# nenhuma acao possivel — os catalogos estavam identicos no que e do cstk.
+scenario_doctor_dp_aligned_apesar_de_skills_de_terceiros() {
+  if ! command -v jq >/dev/null 2>&1; then _error "no_jq" "jq indisponivel"; return 2; fi
+  _h="$TMPDIR_TEST/dp-h-terceiros"
+  _r="$TMPDIR_TEST/dp-r-terceiros"
+  _make_release "$_r" || { _error "fixture" ""; return 2; }
+  _install_v1 "$_h" "$_r"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install classico" "$_CAPTURED_EXIT"; return 1; }
+  _ip=$(_dp_plugin_home "$_h")
+  _dp_mirror_classic_skills_into "$_h" "$_ip"
+
+  # Terceiros SO no classico (foi o que o plugin da Cloudflare fez).
+  for _n in cloudflare wrangler web-perf; do
+    mkdir -p "$_h/.claude/skills/$_n"
+    printf '# nao e do cstk\n' > "$_h/.claude/skills/$_n/SKILL.md"
+  done
+  # `evals/` SO no plugin (build-release.sh remove do tarball classico).
+  mkdir -p "$_ip/skills/foo/evals"
+  printf '# fixture dev-only\n' > "$_ip/skills/foo/evals/caso.md"
+
+  _proj="$TMPDIR_TEST/dp-proj-terceiros"
+  mkdir -p "$_proj"
+  _run_doctor_in "$_h" "$_proj"
+  assert_stderr_contains "[aligned]" || return 1
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "exit" "terceiros + evals NAO podem gatear; obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  return 0
 }
 
 scenario_doctor_distribution_paths_diverged() {

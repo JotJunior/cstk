@@ -109,4 +109,84 @@ scenario_hash_dir_dir_inexistente() {
   fi
 }
 
+# ==== hash_dir_catalog: hash COMPARAVEL entre caminhos de distribuicao ====
+#
+# Nomes das skills vem por stdin; so elas entram no hash. Existe porque
+# `~/.claude/skills/` e espaco compartilhado e `hash_dir` (que hasheia o
+# diretorio inteiro) fazia terceiros divergirem catalogos identicos.
+
+# _hdc DIR NOMES -> roda hash_dir_catalog com NOMES (separados por \n)
+# entregues via stdin, como o contrato exige.
+_hdc() {
+  capture sh -c '. "$1/hash.sh"; printf "%s\n" "$3" | hash_dir_catalog "$2"' \
+    _ "$CSTK_LIB" "$1" "$2"
+}
+
+scenario_hash_dir_catalog_ignora_nome_fora_da_lista() {
+  _a="$TMPDIR_TEST/cat-a"; _b="$TMPDIR_TEST/cat-b"
+  mkdir -p "$_a/foo" "$_b/foo"
+  printf 'igual\n' > "$_a/foo/SKILL.md"
+  printf 'igual\n' > "$_b/foo/SKILL.md"
+  # Skill de TERCEIRO so num dos lados: nao pode mudar o hash.
+  mkdir -p "$_a/cloudflare"
+  printf 'nao e do cstk\n' > "$_a/cloudflare/SKILL.md"
+
+  _hdc "$_a" "foo"; _ha=$_CAPTURED_STDOUT
+  _hdc "$_b" "foo"; _hb=$_CAPTURED_STDOUT
+  [ -n "$_ha" ] || { _fail "hash vazio" "$_CAPTURED_STDERR"; return 1; }
+  [ "$_ha" = "$_hb" ] \
+    || { _fail "terceiro" "skill fora da lista mudou o hash: $_ha vs $_hb"; return 1; }
+}
+
+scenario_hash_dir_catalog_ignora_evals_e_dsstore() {
+  _a="$TMPDIR_TEST/cat-ev-a"; _b="$TMPDIR_TEST/cat-ev-b"
+  mkdir -p "$_a/foo" "$_b/foo/evals"
+  printf 'igual\n' > "$_a/foo/SKILL.md"
+  printf 'igual\n' > "$_b/foo/SKILL.md"
+  # `evals/` existe so no plugin (build-release.sh remove do tarball) e
+  # `.DS_Store` aparece sozinho no macOS.
+  printf 'fixture dev-only\n' > "$_b/foo/evals/caso.md"
+  printf 'lixo do finder\n' > "$_a/foo/.DS_Store"
+
+  _hdc "$_a" "foo"; _ha=$_CAPTURED_STDOUT
+  _hdc "$_b" "foo"; _hb=$_CAPTURED_STDOUT
+  [ "$_ha" = "$_hb" ] \
+    || { _fail "ruido" "evals/.DS_Store mudaram o hash: $_ha vs $_hb"; return 1; }
+}
+
+# O sinal REAL nao pode ser perdido junto com o ruido.
+scenario_hash_dir_catalog_detecta_divergencia_real() {
+  _a="$TMPDIR_TEST/cat-real-a"; _b="$TMPDIR_TEST/cat-real-b"
+  mkdir -p "$_a/foo" "$_b/foo"
+  printf 'versao antiga\n' > "$_a/foo/SKILL.md"
+  printf 'versao NOVA\n'   > "$_b/foo/SKILL.md"
+
+  _hdc "$_a" "foo"; _ha=$_CAPTURED_STDOUT
+  _hdc "$_b" "foo"; _hb=$_CAPTURED_STDOUT
+  [ "$_ha" != "$_hb" ] \
+    || { _fail "sinal real" "conteudo diferente deveria mudar o hash"; return 1; }
+}
+
+# Skill do manifest presente de um lado e ausente do outro = divergencia.
+scenario_hash_dir_catalog_ausencia_de_skill_diverge() {
+  _a="$TMPDIR_TEST/cat-aus-a"; _b="$TMPDIR_TEST/cat-aus-b"
+  mkdir -p "$_a/foo" "$_a/bar" "$_b/foo"
+  printf 'x\n' > "$_a/foo/SKILL.md"
+  printf 'y\n' > "$_a/bar/SKILL.md"
+  printf 'x\n' > "$_b/foo/SKILL.md"
+
+  _nomes='foo
+bar'
+  _hdc "$_a" "$_nomes"; _ha=$_CAPTURED_STDOUT
+  _hdc "$_b" "$_nomes"; _hb=$_CAPTURED_STDOUT
+  [ "$_ha" != "$_hb" ] \
+    || { _fail "ausencia" "skill do manifest faltando de um lado deveria divergir"; return 1; }
+}
+
+scenario_hash_dir_catalog_dir_inexistente() {
+  _hdc "$TMPDIR_TEST/nao-existe" "foo"
+  [ "$_CAPTURED_EXIT" != 0 ] \
+    || { _fail "exit" "diretorio inexistente deveria falhar"; return 1; }
+}
+
 run_all_scenarios
