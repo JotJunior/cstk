@@ -73,6 +73,9 @@ set -u
 _PAU_CAP_LINES=500
 
 _PAU_SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || _PAU_SELF_DIR=""
+# Raiz do projeto-alvo, resolvida por _pau_precheck_active_scope a partir
+# do `.cwd` do payload (que pode estar num subdiretorio).
+_PAU_SCOPE=""
 
 # Bootstrap: localizar+sourcear `_resolve-root.sh` (feature
 # claude-plugin-packaging, task 3.2.3). Ordem A (fail-open, consumidor
@@ -105,26 +108,75 @@ _PAU_TOOL_NAME=$(printf '%s' "$_PAU_INPUT" | jq -r '.tool_name // ""' 2>/dev/nul
 # (contracts/hook-posttooluse-agent-usage.md §1.2).
 [ "$_PAU_TOOL_NAME" = "Agent" ] || exit 0
 
-# _pau_precheck_active_scope -> 0 se ao menos um `state.json` OU `state.db`
-# existe sob `$_PAU_CWD/.claude/agente-00c-state/` ou
-# `$_PAU_CWD/.claude/feature-00c-state/*/` (SEC-H1, spec.md FR-008). Usa
-# EXCLUSIVAMENTE builtins do shell — nenhuma resolucao de dependencia nem
-# sourcing acontece antes desta checagem.
-_pau_precheck_active_scope() {
-  _pau_pa_agente="$_PAU_CWD/.claude/agente-00c-state"
-  if [ -f "$_pau_pa_agente/state.json" ] || [ -f "$_pau_pa_agente/state.db" ]; then
+# _pau_scope_has_state DIR -> 0 se DIR abriga o state de uma execucao 00c
+# (`state.json` OU `state.db` sob `agente-00c-state/` ou
+# `feature-00c-state/*/`). Usa EXCLUSIVAMENTE builtins do shell — nenhuma
+# resolucao de dependencia nem sourcing acontece dentro nem antes desta
+# checagem (SEC-H1, spec.md FR-008).
+_pau_scope_has_state() {
+  _pau_sh_dir=$1
+  [ -n "$_pau_sh_dir" ] || return 1
+
+  _pau_sh_agente="$_pau_sh_dir/.claude/agente-00c-state"
+  if [ -f "$_pau_sh_agente/state.json" ] || [ -f "$_pau_sh_agente/state.db" ]; then
     return 0
   fi
 
-  _pau_pa_froot="$_PAU_CWD/.claude/feature-00c-state"
-  if [ -d "$_pau_pa_froot" ]; then
-    for _pau_pa_d in "$_pau_pa_froot"/*/; do
-      [ -d "$_pau_pa_d" ] || continue
-      if [ -f "${_pau_pa_d}state.json" ] || [ -f "${_pau_pa_d}state.db" ]; then
+  _pau_sh_froot="$_pau_sh_dir/.claude/feature-00c-state"
+  if [ -d "$_pau_sh_froot" ]; then
+    for _pau_sh_d in "$_pau_sh_froot"/*/; do
+      [ -d "$_pau_sh_d" ] || continue
+      if [ -f "${_pau_sh_d}state.json" ] || [ -f "${_pau_sh_d}state.db" ]; then
         return 0
       fi
     done
   fi
+  return 1
+}
+
+# _pau_precheck_active_scope -> 0 assinalando `_PAU_SCOPE` com a RAIZ do
+# projeto-alvo; 1 se nenhum candidato abriga state.
+#
+# MOTIVO (deriva de cwd): o `.cwd` do payload gruda em subdiretorios apos
+# um `cd sub && ...` do agente (o cwd do Bash persiste entre tool calls) e
+# nao volta sozinho. Enquanto durar a deriva, o spawn de subagente nao e
+# contabilizado e a onda perde a metrica de tokens por spawn. Cadeia
+# identica a do pretooluse-bash-guard.sh — ver o cabecalho de
+# `_pbg_precheck_active_scope` para o racional de seguranca de manter
+# `$CLAUDE_PROJECT_DIR` como ULTIMO candidato.
+_pau_precheck_active_scope() {
+  if _pau_scope_has_state "$_PAU_CWD"; then
+    _PAU_SCOPE="$_PAU_CWD"
+    return 0
+  fi
+
+  _pau_pa_cur="$_PAU_CWD"
+  _pau_pa_depth=0
+  while [ "$_pau_pa_depth" -lt 16 ]; do
+    if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ "$_pau_pa_cur" = "$CLAUDE_PROJECT_DIR" ]; then
+      break
+    fi
+
+    _pau_pa_parent="${_pau_pa_cur%/*}"
+    [ -n "$_pau_pa_parent" ] || _pau_pa_parent="/"
+    [ "$_pau_pa_parent" = "$_pau_pa_cur" ] && break
+    _pau_pa_cur="$_pau_pa_parent"
+
+    if _pau_scope_has_state "$_pau_pa_cur"; then
+      _PAU_SCOPE="$_pau_pa_cur"
+      return 0
+    fi
+
+    [ -e "$_pau_pa_cur/.git" ] && break
+    [ "$_pau_pa_cur" = "/" ] && break
+    _pau_pa_depth=$((_pau_pa_depth + 1))
+  done
+
+  if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && _pau_scope_has_state "$CLAUDE_PROJECT_DIR"; then
+    _PAU_SCOPE="$CLAUDE_PROJECT_DIR"
+    return 0
+  fi
+
   return 1
 }
 
@@ -152,8 +204,8 @@ _pau_resolve_dep_hae() {
     printf '%s' "$_pau_root/$_pau_rel"
     return 0
   fi
-  if [ -n "${_PAU_CWD:-}" ] && [ -r "$_PAU_CWD/.claude/skills/agente-00c-runtime/$_pau_rel" ]; then
-    printf '%s' "$_PAU_CWD/.claude/skills/agente-00c-runtime/$_pau_rel"
+  if [ -n "${_PAU_SCOPE:-}" ] && [ -r "$_PAU_SCOPE/.claude/skills/agente-00c-runtime/$_pau_rel" ]; then
+    printf '%s' "$_PAU_SCOPE/.claude/skills/agente-00c-runtime/$_pau_rel"
     return 0
   fi
   return 1
@@ -169,7 +221,7 @@ _PAU_HAE_HELPER=$(_pau_resolve_dep_hae "scripts/_hook-active-exec.sh") || exit 0
 HAE_BUSY_TIMEOUT_MS=50
 export HAE_BUSY_TIMEOUT_MS
 
-if _PAU_HAE_OUT=$(hook_active_exec "$_PAU_CWD"); then
+if _PAU_HAE_OUT=$(hook_active_exec "$_PAU_SCOPE"); then
   _PAU_HAE_RC=0
 else
   _PAU_HAE_RC=$?
