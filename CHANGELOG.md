@@ -5,6 +5,28 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.0.1] - 2026-08-09
+
+Corrige o `cstk serve` no Windows, onde o painel nunca chegava a subir: o
+build morria com `TS2307: Cannot find module '@cstk-panel/shared-types'`
+em 17 arquivos de `apps/server`. Mesma familia da #77 — codigo POSIX
+correto que assume semantica de link do Unix e encontra outra no Windows.
+
+### Fixed
+
+- **`cstk serve` reconcilia os links de workspace no destino final.** O
+  `npm install` da instalacao roda dentro do tmpdir e a arvore e movida
+  para `~/.local/share/cstk/panel` depois. Em POSIX o npm materializa os
+  workspaces como symlinks **relativos**, que sobrevivem intactos ao `mv`;
+  no Windows materializa como junctions de caminho **absoluto** apontando
+  para o tmpdir — que e removido em seguida, deixando `node_modules/
+  @cstk-panel/*` pendurado e o `tsc` sem os tipos compartilhados. A
+  instalacao agora reexecuta o install ja em `panel_dir`, reescrevendo os
+  links com o caminho real; se essa etapa falhar, o `panel_dir` e removido
+  para preservar a invariante de que instalacao detectada e instalacao
+  utilizavel. Em POSIX o passo extra e praticamente no-op (`node_modules`
+  ja populado) e roda uma vez por instalacao, nao por execucao.
+
 ## [7.0.0] - 2026-08-08
 
 **BREAKING** — feature `claude-plugin-packaging`. O catalogo do toolkit
@@ -5284,6 +5306,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[7.0.1]: https://github.com/JotJunior/cstk/releases/tag/v7.0.1
 [7.0.0]: https://github.com/JotJunior/cstk/releases/tag/v7.0.0
 [6.8.0]: https://github.com/JotJunior/cstk/releases/tag/v6.8.0
 [6.7.0]: https://github.com/JotJunior/cstk/releases/tag/v6.7.0
