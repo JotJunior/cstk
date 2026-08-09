@@ -61,7 +61,7 @@ postura do `knowledge.db`.
 
 ## Documentação completa
 
-- [`specs/loose-usage-capture/spec.md`](./specs/loose-usage-capture/spec.md) — user stories, FRs, success criteria
-- [`specs/loose-usage-capture/contracts/cli-usage.md`](./specs/loose-usage-capture/contracts/cli-usage.md) — flags, exit codes, formatos de saída
-- [`specs/loose-usage-capture/contracts/hook-loose-usage.md`](./specs/loose-usage-capture/contracts/hook-loose-usage.md) — contrato do hook de captura
-- [`specs/loose-usage-capture/data-model.md`](./specs/loose-usage-capture/data-model.md) — schema + política de retenção
+- [`specs/_archived/2026-08-08-loose-usage-capture/spec.md`](./specs/_archived/2026-08-08-loose-usage-capture/spec.md) — user stories, FRs, success criteria
+- [`specs/_archived/2026-08-08-loose-usage-capture/contracts/cli-usage.md`](./specs/_archived/2026-08-08-loose-usage-capture/contracts/cli-usage.md) — flags, exit codes, formatos de saída
+- [`specs/_archived/2026-08-08-loose-usage-capture/contracts/hook-loose-usage.md`](./specs/_archived/2026-08-08-loose-usage-capture/contracts/hook-loose-usage.md) — contrato do hook de captura
+- [`specs/_archived/2026-08-08-loose-usage-capture/data-model.md`](./specs/_archived/2026-08-08-loose-usage-capture/data-model.md) — schema + política de retenção

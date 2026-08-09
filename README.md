@@ -281,7 +281,7 @@ Enable the plugin and open a new session in any project — skills, the 6
 (`pretooluse-bash-guard`, `posttooluse-tool-call-tick`,
 `posttooluse-agent-usage`) activate automatically, with **no**
 `cstk hooks install` step (confirmed empirically — see
-[`docs/specs/claude-plugin-packaging/spec.md`](docs/specs/claude-plugin-packaging/spec.md)
+[`docs/specs/_archived/2026-08-08-claude-plugin-packaging/spec.md`](docs/specs/_archived/2026-08-08-claude-plugin-packaging/spec.md)
 §Clarifications, assumption A1). `posttooluse-loose-usage.sh` (opt-in
 consumption capture) is deliberately **not** part of the plugin's
 `hooks.json` — it stays an explicit opt-in via `cstk hooks install

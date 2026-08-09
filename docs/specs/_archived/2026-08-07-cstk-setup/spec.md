@@ -305,10 +305,4 @@ still applies the mandatory hooks.
 
 ## Delta Requirements
 
-**Skip**: Nova capacidade — nao existe entrada correspondente em
-`docs/specs/current/*.md` para um wizard consolidado de setup, nem para
-os passos individuais que ele orquestra (hooks/state-backend/mcp/otel)
-como capacidade documentada; a feature nao altera o comportamento ativo
-de nenhuma capability existente, apenas oferece um novo ponto de entrada
-guiado sobre comandos ja existentes — agente-00c-feature-orchestrator,
-2026-08-07.
+**Skip**: Nova capacidade — nao existe entrada correspondente em `docs/specs/current/*.md` para um wizard consolidado de setup, nem para os passos individuais que ele orquestra (hooks/state-backend/mcp/otel) como capacidade documentada; a feature nao altera o comportamento ativo de nenhuma capability existente, apenas oferece um novo ponto de entrada guiado sobre comandos ja existentes — agente-00c-feature-orchestrator, 2026-08-07

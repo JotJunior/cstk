@@ -4,8 +4,8 @@
 # segmentos otel-usage.sh persistidos em
 # ~/.claude/cstk/loose-usage/<process_key>/.
 #
-# Contrato: docs/specs/loose-usage-capture/contracts/hook-loose-usage.md
-# Data model: docs/specs/loose-usage-capture/data-model.md
+# Contrato: docs/specs/_archived/2026-08-08-loose-usage-capture/contracts/hook-loose-usage.md
+# Data model: docs/specs/_archived/2026-08-08-loose-usage-capture/data-model.md
 #
 # Molde: posttooluse-tool-call-tick.sh (EXISTENTE) — herda integralmente
 # as invariantes fail-open: sem `set -e`, cada passo trata a propria

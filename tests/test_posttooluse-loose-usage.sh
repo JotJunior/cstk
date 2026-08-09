@@ -3,7 +3,7 @@
 # plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh
 # (hook PostToolUse OPT-IN de captura de consumo avulso).
 #
-# Contrato sob teste: docs/specs/loose-usage-capture/contracts/hook-loose-usage.md
+# Contrato sob teste: docs/specs/_archived/2026-08-08-loose-usage-capture/contracts/hook-loose-usage.md
 #
 # Fail-OPEN absoluto (mesma politica do molde posttooluse-tool-call-tick.sh):
 # o hook NUNCA sai com exit != 0, NUNCA emite stdout/stderr, e o UNICO efeito
