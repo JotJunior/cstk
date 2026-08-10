@@ -26,8 +26,8 @@ FR-008/User Story 2).
 | `project_path` | TEXT | — | `workspace.current_dir` ou `workspace.project_dir` do payload (memoria linha 21) |
 | `session_id` | TEXT | NOT NULL | Copiado verbatim de `session_id` no topo do payload (memoria linha 19) — ver research.md Decision 5 para o porque do nome divergir de `session` |
 | `scope` | TEXT | NOT NULL, CHECK IN ('five_hour','seven_day') | FR-005: escopos tratados como series distintas, nunca mesclados |
-| `used_percentage` | REAL | — | **NULL quando `rate_limits` ausente** — jamais `0` fabricado (FR-002/FR-004/Principio VI). Persistido sem arredondar (FR-004), inclusive com ruido de float (`7.000000000000001`, memoria linha 32) |
-| `resets_at` | INTEGER | — | Epoch em SEGUNDOS (FR-003), **NULL quando `rate_limits` ausente**. Distinto de `captured_at`/`ingested_at` (ver abaixo) |
+| `used_percentage` | REAL | — | `NULL` quando o campo esta ausente/nulo dentro de um escopo PRESENTE (caso defensivo/malformado) — jamais `0` fabricado (FR-002/FR-004/Principio VI). Quando `rate_limits` esta ausente por completo, NENHUMA linha e inserida (dec-029) — este campo so existe em linhas ja inseridas. Persistido sem arredondar (FR-004), inclusive com ruido de float (`7.000000000000001`, memoria linha 32) |
+| `resets_at` | INTEGER | — | Epoch em SEGUNDOS (FR-003). `NULL` quando ausente/nulo dentro de um escopo presente (dec-029) — ausencia TOTAL de `rate_limits` nao gera linha. Distinto de `captured_at`/`ingested_at` (ver abaixo) |
 | `captured_at` | TEXT | NOT NULL | ISO 8601 (`2026-08-07T04:38:14Z`) — momento em que o hook processou o render (FR-014) |
 | `ingested_at` | TEXT | NOT NULL | ISO 8601 — momento da escrita no `knowledge.db` (FR-014); pode ser identico a `captured_at` porque nao ha camada intermediaria de sidecar (diferente de `loose_usage`, onde `captured_at` vem do sidecar e `ingested_at` do momento de leitura posterior) |
 
@@ -45,7 +45,18 @@ timestamp duplicado.
 execucao `agente-00c`/`feature-00c`, preencher esses campos seria
 fabricar dado, Constitution VI); `seven_day_opus`, `seven_day_sonnet`,
 `extra_usage` (FR-006 — exigem OAuth, fora de escopo; nenhuma coluna e
-criada para campos que a fonte nunca emite).
+criada para campos que a fonte nunca emite); `.cost`/`.context_window` e
+as colunas de custo/tokens de sessao correlatas (`session_cost_usd`,
+`session_input_tokens`, `session_output_tokens`,
+`cache_read_input_tokens`, `cache_creation_input_tokens`, `model_id` —
+presentes no rascunho de schema original do operador, anterior a esta
+feature) — corte de escopo CONFIRMADO (dec-030, CHK026): `plan_usage`
+cobre exclusivamente o gauge `rate_limits` da CONTA; custo/tokens de
+SESSAO ficam reservados para uma feature futura dedicada. Consequencia
+formal: a regra "cost/context_window sao cumulativos da SESSAO — agregar
+com MAX, jamais SUM" (memoria `reference_statusline_usage_payload.md`)
+fica **N/A para esta feature**, por ausencia de qualquer coluna
+cumulativa persistida por `plan_usage`.
 
 ### Relationships
 
@@ -66,15 +77,22 @@ criada para campos que a fonte nunca emite).
 `recall_schema_ddl`, sem `ALTER TABLE` e sem `DROP` — mesmo precedente
 literal de `loose_usage` na migracao v12->v13 (research.md Decision 7).
 
-### Ausencia explicita vs valor real (SC-002, FR-002)
+### Ausencia explicita vs valor real (SC-002, FR-002, dec-029)
 
-| Situacao | `used_percentage` | `resets_at` |
-|----------|--------------------|-------------|
-| `rate_limits` ausente do payload (nenhuma resposta de API completou) | `NULL` | `NULL` |
-| `rate_limits.<scope>` presente com uso genuinamente `0%` (hipotetico, nunca observado) | `0.0` (valor real medido) | epoch real |
-| Throttle descarta a captura (repeticao dentro de 2 casas decimais) | (nenhuma linha nova é inserida) | (idem) |
+| Situacao | Linha inserida? | `used_percentage` | `resets_at` |
+|----------|------------------|--------------------|-------------|
+| `rate_limits` ausente do payload inteiro (nenhuma resposta de API completou) | **Nao** — nenhum INSERT (dec-029) | n/a (sem linha) | n/a (sem linha) |
+| `rate_limits.<scope>` presente mas `used_percentage`/`resets_at` ausente dentro do escopo (defensivo/malformado) | Sim | `NULL` (se ausente) | `NULL` (se ausente) |
+| `rate_limits.<scope>` presente com uso genuinamente `0%` (hipotetico, nunca observado) | Sim | `0.0` (valor real medido) | epoch real |
+| Throttle descarta a captura (repeticao dentro de 2 casas decimais) | Nao — nenhuma linha nova e inserida | (idem) | (idem) |
 
-A distincao entre "sem linha nova por throttle" e "sem dado por
-ausencia de `rate_limits`" e estrutural: o primeiro caso nao gera INSERT
-algum (nenhuma linha, redundante por design); o segundo gera uma linha com
-`NULL` explicito (User Story 3 — nunca confundir "nao medido" com "zero").
+A distincao agora e tripla (dec-029, resolve CHK009/CHK010/CHK016):
+"sem linha nova por throttle" (repeticao redundante, by design), "sem
+linha por ausencia TOTAL de `rate_limits`" (nenhuma resposta de API
+completou — a ausencia de linha E o estado "nao medido"; a leitura via
+CLI MUST mostrar "nao medido", nunca `0%`) e "linha com `NULL` explicito
+por ausencia PARCIAL" (escopo presente mas um dos dois campos veio
+ausente/nulo dentro dele — caso defensivo, coluna permanece NULLABLE).
+Isto tambem resolve o gap de FR-010 (NULL-vs-NULL no throttle): como a
+ausencia total nunca gera INSERT, nao ha comparacao NULL-vs-NULL a fazer
+no caminho de throttle.

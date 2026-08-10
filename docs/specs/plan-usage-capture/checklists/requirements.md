@@ -59,7 +59,17 @@ um dominio unico dominante.
   de valor real, sem depender de termo vago tipo "indisponivel" sem
   definicao operacional? [Clareza, Spec §FR-002/FR-003/FR-004, Edge Cases
   linhas 113-125] {auto}
-- [ ] CHK009 - **[CRITICAL]** O comportamento para "rate_limits ausente do
+- [x] CHK009 - **RESOLVIDO (dec-029, onda-005)**: sistema MUST NOT
+  inserir linha quando `rate_limits` ausente por completo; ausencia de
+  linha E o estado "nao medido" (leitura, nao escrita). `spec.md`
+  FR-002/SC-002/User Story 3 (Independent Test + Acceptance Scenarios
+  1-2) corrigidos para alinhar a `contracts/statusline-hook.md` e
+  `quickstart.md` Cenario 2, que ja estavam certos. `data-model.md`
+  atualizado (tabela "Ausencia explicita vs valor real" agora tripla:
+  sem-linha-por-throttle / sem-linha-por-ausencia-total / NULL-por-
+  ausencia-parcial-dentro-de-escopo-presente). `plan.md` (linhas
+  Fio condutor, Constitution Check VI, Re-check, Riscos) tambem
+  corrigido. **[CRITICAL]** O comportamento para "rate_limits ausente do
   payload" e o MESMO em todos os artefatos que o descrevem? **Nao —
   CONFLITO real entre artefatos**:
   - `spec.md` FR-002 (linhas 147-150): "MUST persistir `NULL`... **nunca**
@@ -91,7 +101,23 @@ um dominio unico dominante.
   documentar a excecao em lugar nenhum. [Conflict, Spec §FR-002/SC-002/
   User-Story-3 vs Contract statusline-hook.md §linha 60 vs Quickstart.md
   §Cenario 2] {auto}
-- [ ] CHK010 - FR-010 (throttle) define o comportamento de comparacao
+- [x] CHK010 - **RESOLVIDO (dec-029, onda-005)**: pergunta ficou sem
+  objeto no caminho principal — como a ausencia TOTAL de `rate_limits`
+  nunca gera INSERT (CHK009), o throttle de FR-010 nunca precisa comparar
+  `used_percentage`/`resets_at` = `NULL` contra `NULL` no fluxo normal.
+  Resta um caso residual NAO coberto por dec-029 nem observado
+  empiricamente (memoria `reference_statusline_usage_payload.md` mostra
+  os dois campos sempre juntos quando o escopo esta presente): se um
+  escopo ja tiver uma linha com `NULL` persistido por ausencia PARCIAL
+  (defensivo) e a proxima captura do MESMO escopo repetir esse `NULL`,
+  o comportamento exato do throttle para esse par NULL-vs-NULL fica
+  indefinido — nenhuma implementacao concreta foi escrita ainda (feature
+  em `plan`/`checklist`). Marcado resolvido porque deixou de ser
+  CRITICAL/bloqueante (o caminho dominante — ausencia total — esta
+  coberto); `create-tasks` DEVE incluir uma task explicita para decidir e
+  implementar essa comparacao residual quando escrever
+  `cli/lib/plan-usage.sh` (nao inventar aqui, sem codigo, qual e o
+  comportamento certo). FR-010 (throttle) define o comportamento de comparacao
   quando o ULTIMO registro persistido do escopo tem `used_percentage`/
   `resets_at` = `NULL` e a nova captura tambem chega com `rate_limits`
   ausente (NULL vs NULL)? **Nao** — o texto de FR-010 so define a
@@ -130,7 +156,10 @@ um dominio unico dominante.
   5→SC-004, Cenario 6→SC-005) mais 2 cenarios adicionais de robustez
   (Cenario 3 throttle/FR-010, Cenario 7 deps ausentes)? [Traceability,
   Quickstart.md linhas 7-74] {auto}
-- [ ] CHK016 - O Cenario 2 do `quickstart.md`, que e o teste de aceite de
+- [x] CHK016 - **RESOLVIDO (dec-029, onda-005)**: `quickstart.md` Cenario
+  2 estava CERTO desde a onda-003; era `spec.md` (SC-002 + FR-002 + User
+  Story 3) que estava fora de linha, agora corrigida para "nenhuma linha
+  inserida" (mesmo texto do CHK009). O Cenario 2 do `quickstart.md`, que e o teste de aceite de
   SC-002, esta escrito de forma consistente com a redacao de SC-002 (ver
   CHK009 — mesmo conflito, agora do lado "teste de aceite")? **Nao** —
   mesma raiz do CHK009: o passo 2 do Cenario 2 ("nenhuma linha nova") nao
@@ -191,7 +220,17 @@ um dominio unico dominante.
 
 ## Ambiguidades e Conflitos — Decisao do Dono do Produto
 
-- [ ] CHK026 - **[Escopo / regressao de rascunho original]** A exclusao de
+- [x] CHK026 - **RESOLVIDO (dec-030, onda-005 — decisao consciente do
+  dono do produto)**: corte CONFIRMADO. Condicao do operador ("reincluir
+  so se houver perda de dado existente ou de funcionalidade do painel")
+  verificada empiricamente como FALSA nos dois lados: `plan_usage` e
+  tabela NOVA (`SELECT name FROM sqlite_master WHERE name='plan_usage'`
+  -> vazio, nada a perder) e a migracao e aditiva pura (`CREATE TABLE IF
+  NOT EXISTS`, v13->v14, sem `ALTER`/`DROP`); o dado de custo/token que o
+  painel consome vive em `waves` (1176 linhas), `wave_model_usage` (109)
+  e `loose_usage` (1), todas intocadas por esta feature. `data-model.md`
+  §Colunas deliberadamente AUSENTES agora documenta explicitamente o
+  corte e a regra (d) N/A. [Escopo / regressao de rascunho original] A exclusao de
   `.cost` e `.context_window` do payload (fora de escopo desde FR-006, sem
   coluna equivalente no schema — `data-model.md` nao lista nenhuma coluna
   `session_cost_usd`/`session_input_tokens`/etc.) e uma reducao deliberada
@@ -226,3 +265,21 @@ um dominio unico dominante.
   `/clarify` (ou correcao direta do plano, se o operador confirmar qual
   lado esta certo) ANTES de `create-tasks` decompor a tarefa de ingestao —
   as duas leituras geram implementacoes e testes de aceite incompativeis.
+- **Update onda-005**: CHK009/CHK010/CHK016 (conflito) e CHK026 ({humano})
+  RESOLVIDOS — ver dec-029/dec-030 e as citacoes `[x]` acima. Artefatos
+  corrigidos: `spec.md` (FR-002/FR-007/SC-002/User Story 3/Edge Case/
+  Clarifications), `data-model.md` (tabela de ausencia + colunas
+  ausentes), `plan.md` (Constitution Check/Re-check/Riscos/Fio condutor).
+  `contracts/statusline-hook.md` e `quickstart.md` nao precisaram de
+  mudanca — ja estavam corretos.
+- **Reavaliacao dos demais items abertos (onda-005)**: CHK002 (Ambiguity,
+  FR-006 nao lista literalmente os 8 campos excluidos que o contrato
+  cita), CHK003 (Gap, risco de sobrescrita de `statusLine.command`
+  customizado so no plan.md), CHK004 (Gap, fail-open best-effort so no
+  contrato/quickstart), CHK020 (Gap, concorrencia de escrita nao
+  coberta), CHK022 (Gap, sem budget numerico de latencia) permanecem
+  `[ ]` — nao afetados pelas duas decisoes desta onda (dec-029/dec-030),
+  todos sao gaps de completude de documentacao, nenhum e CRITICAL nem
+  {humano}, nenhum bloqueia `create-tasks` por si so. Ficam como debt
+  documentado; `create-tasks` PODE gerar tasks dedicadas para fecha-los
+  (ex.: adicionar FR/Edge Case faltante) a seu criterio.

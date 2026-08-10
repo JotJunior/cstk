@@ -14,6 +14,32 @@
 - Q: Qual o formato de `captured_at`/`ingested_at`? → A: TEXT ISO 8601 (ex.: `2026-08-07T04:38:14Z`), alinhado a convencao de toda a knowledge.db — nunca epoch segundos. Distinto de `resets_at` (FR-003), que permanece epoch segundos por ser assim que a statusline emite esse campo especifico; `captured_at`/`ingested_at` sao carimbos proprios da ingestao do cstk, nao um campo repassado do payload.
 - Q: A consulta de historico do FR-008 via CLI deve ter limite/janela padrao? → A: sim — reusar as flags ja existentes de `cstk usage` (`--limit N`, default 20; `--since ISO`), sem inventar convencao nova.
 
+### Session 2026-08-10 (integracao pos-checklist, dec-029/dec-030)
+
+- Q: Quando `rate_limits` esta AUSENTE do payload inteiro (sessao sem
+  nenhuma resposta de API completada), o sistema insere uma linha `NULL`
+  em `plan_usage` ou nao insere nada? → A: NAO insere linha (dec-029). A
+  ausencia de linha E o proprio estado "nao medido". O objetivo "nunca 0"
+  se cumpre na LEITURA (a CLI mostra "nao medido", nunca "0%"), nao
+  escrevendo uma linha `NULL` a cada render antes da 1a resposta de API
+  completar (o que tambem eliminaria o flooding da tabela e a
+  indefinicao de comparacao NULL-vs-NULL no throttle de FR-010). Ressalva:
+  a coluna `used_percentage`/`resets_at` continua NULLABLE — quando
+  `rate_limits` ESTA presente mas um campo especifico vem ausente/nulo
+  dentro de um escopo capturado (caso defensivo/malformado), a linha E
+  inserida com `NULL` nesse campo, nunca `0`.
+- Q: A feature deve incluir `.cost`/`.context_window` (e as colunas
+  correlatas de custo/tokens de sessao do rascunho original do operador
+  — `session_cost_usd`, `session_input_tokens`, `session_output_tokens`,
+  `cache_read_input_tokens`, `cache_creation_input_tokens`, `model_id`)
+  no escopo, alem de `rate_limits`? → A: NAO — corte confirmado
+  (dec-030). `plan_usage` cobre exclusivamente o gauge de uso do plano
+  (`rate_limits`); `.cost`/`.context_window` ficam fora de escopo,
+  reservados para uma feature futura dedicada a custo/tokens de sessao.
+  Consequencia formal: a regra "cost/context_window sao cumulativos da
+  SESSAO — agregar com MAX, jamais SUM" fica **N/A para esta feature**,
+  por ausencia de qualquer coluna cumulativa persistida por `plan_usage`.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Consultar o uso atual do plano sem credencial OAuth (Priority: P1)
@@ -93,26 +119,35 @@ Stories 1 e 2, testavel isoladamente simulando a ausencia do campo
 **Independent Test**: apresentar ao mecanismo de captura um payload de
 statusline em que a chave `rate_limits` esta ausente (sessao aberta e
 fechada sem nenhuma resposta de API) e verificar que a captura resultante
-grava ausencia explicita (NULL), nunca o valor `0`.
+NAO grava linha nova em `plan_usage` (dec-029) e que a consulta
+subsequente via CLI reporta "nao medido", nunca o valor `0`.
 
 **Acceptance Scenarios**:
 
 1. **Given** um payload de statusline sem a chave `rate_limits`, **When** a
-   captura processa esse payload, **Then** o registro persistido tem
-   percentual usado e horario de reset como ausentes (NULL), nao como zero.
-2. **Given** um historico com capturas mistas (algumas com dado real,
-   outras sem `rate_limits`), **When** o operador consulta o historico,
-   **Then** o sistema distingue visualmente/estruturalmente as capturas sem
-   dado das capturas com `0%` real (se algum dia existir esse valor
-   genuino).
+   captura processa esse payload, **Then** nenhuma linha nova e inserida em
+   `plan_usage` para aquela captura (dec-029) — a ausencia de linha e o
+   estado "nao medido", nunca uma linha com valor zero fabricado.
+2. **Given** um banco onde nenhuma captura de um escopo existe ainda
+   (nenhuma resposta de API completou em nenhuma sessao), **When** o
+   operador consulta o uso do plano via CLI, **Then** o sistema apresenta
+   esse escopo como "nao medido" explicito, distinto de qualquer `0%` real
+   que venha a existir no futuro.
 
 ---
 
 ### Edge Cases
 
 - O que acontece quando a chave `rate_limits` esta ausente do payload
-  (sessao sem nenhuma resposta de API completada)? O sistema MUST gravar
-  ausencia explicita (NULL), nunca `0` (Constitution VI; ver Story 3).
+  (sessao sem nenhuma resposta de API completada)? O sistema MUST NOT
+  inserir linha em `plan_usage` para aquela captura — a ausencia de linha
+  E o estado "nao medido" (dec-029). Na leitura (FR-007/FR-008), esse
+  estado MUST ser apresentado como "nao medido", nunca como `0`
+  (Constitution VI; ver Story 3). Ressalva: quando `rate_limits` estiver
+  presente mas um campo especifico (`used_percentage` ou `resets_at`)
+  vier ausente dentro de um escopo capturado, o sistema MUST persistir
+  `NULL` explicito somente para aquele campo — a coluna permanece
+  NULLABLE para esse caso defensivo.
 - Como o sistema trata `resets_at`, que chega como numero em epoch segundos
   na statusline mesmo o contrato do endpoint `/api/oauth/usage` declarando
   `string|null`? O sistema MUST tratar `resets_at` como epoch em segundos
@@ -145,9 +180,14 @@ grava ausencia explicita (NULL), nunca o valor `0`.
   comando de statusline e extrair `rate_limits.five_hour` e
   `rate_limits.seven_day` quando presentes.
 - **FR-002**: Quando a chave `rate_limits` estiver ausente do payload
-  (sessao sem nenhuma resposta de API completada), o sistema MUST persistir
-  `NULL` para percentual usado e horario de reset daquela captura — nunca
-  `0`.
+  (sessao sem nenhuma resposta de API completada), o sistema MUST NOT
+  inserir linha em `plan_usage` para aquela captura — a ausencia de linha
+  E o estado "nao medido" (dec-029); o sistema MUST NUNCA fabricar `0` nem
+  inserir uma linha `NULL` como substituta. Quando `rate_limits` estiver
+  presente mas `used_percentage` ou `resets_at` vier ausente/nulo dentro
+  de um escopo capturado (caso defensivo/malformado), o sistema MUST
+  persistir `NULL` explicito somente para o campo faltante (a coluna
+  permanece NULLABLE para esse caso), nunca `0`.
 - **FR-003**: O sistema MUST persistir `resets_at` como epoch em segundos
   (numero), sem reinterpretar ou converter como string ISO.
 - **FR-004**: O sistema MUST persistir `used_percentage` como valor real
@@ -161,7 +201,11 @@ grava ausencia explicita (NULL), nunca o valor `0`.
   (`extra_usage`), que exigem credencial OAuth e estao fora de escopo.
 - **FR-007**: Usuarios MUST ser capazes de consultar, via CLI `cstk`, a
   captura mais recente conhecida do uso do plano (percentual usado +
-  horario de reset) para `five_hour` e `seven_day`.
+  horario de reset) para `five_hour` e `seven_day`. Quando nao houver
+  nenhuma captura conhecida para um escopo (nenhuma linha em `plan_usage`
+  para ele, porque `rate_limits` nunca esteve presente numa resposta de
+  API completada), o sistema MUST apresentar esse escopo como "nao
+  medido" explicito, nunca como `0%` (Constitution VI; dec-029).
 - **FR-008**: Usuarios MUST ser capazes de consultar o historico de
   capturas de uso do plano ao longo do tempo (nao apenas a mais recente),
   em ordem cronologica, por escopo. A consulta MUST reusar as flags ja
@@ -235,9 +279,10 @@ grava ausencia explicita (NULL), nunca o valor `0`.
   a captura configurada, o operador consegue consultar via CLI o percentual
   mais recente de uso do plano para `five_hour` e `seven_day`, sem fornecer
   nenhuma credencial OAuth.
-- **SC-002**: Para 100% das capturas em que `rate_limits` estava ausente do
-  payload, o dado persistido e explicitamente ausente (NULL) — nenhuma
-  captura sem dado real e reportada como `0%`.
+- **SC-002**: Para 100% das capturas em que `rate_limits` esta ausente do
+  payload, nenhuma linha e inserida em `plan_usage` (dec-029) — e para
+  100% das consultas em que nao ha captura conhecida de um escopo, a
+  leitura via CLI reporta "nao medido", nunca `0%` nem um dado fabricado.
 - **SC-003**: A partir de pelo menos duas capturas consecutivas na mesma
   janela, o operador consegue visualizar a evolucao do uso do plano ao
   longo do tempo sem cruzar dados manualmente de fontes separadas.

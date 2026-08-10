@@ -28,10 +28,12 @@ caro — aqui o dado ja chega de graca a cada render):
    (unico arquivo autorizado a `sqlite3` — mesmo confinamento de
    `loose-usage-capture`).
 
-Fio condutor: **ausencia de `rate_limits` e sempre `NULL`, nunca `0`**
-(Constitution VI / User Story 3) — e toda ponta (captura sem `jq`,
-sem `sqlite3`, payload malformado) degrada em pass-through silencioso,
-jamais bloqueando a sessao do operador.
+Fio condutor: **ausencia TOTAL de `rate_limits` nunca gera linha em
+`plan_usage` (dec-029) — a ausencia de linha E o estado "nao medido",
+apresentado assim na leitura, nunca fabricado como `0`** (Constitution VI
+/ User Story 3) — e toda ponta (captura sem `jq`, sem `sqlite3`, payload
+malformado) degrada em pass-through silencioso, jamais bloqueando a
+sessao do operador.
 
 ## Technical Context
 
@@ -95,7 +97,7 @@ Constitution: `docs/constitution.md` **v1.3.0**.
 | III. Formato canonico de skill | N/A (com dever de doc) | Nao cria skill nova. Toca a skill interna `agente-00c-runtime` (script novo em `hooks/`) — documentado em `contracts/statusline-hook.md`, sem `SKILL.md` novo a produzir. |
 | IV. Zero coleta remota (MUST) | PASS — caso mais simples que `loose-usage-capture` | A fonte e o **stdin do proprio processo local** alimentado pelo harness — nao ha sequer um scrape loopback (`otel-usage.sh` le HTTP `127.0.0.1`; esta feature nao faz nenhuma chamada de rede, nem local). Nenhum artefato sai do filesystem local (`~/.claude/cstk/knowledge.db`). |
 | V. Profundidade sobre adocao (SHOULD) | PASS | Fecha o ponto cego de "quando vou bater o limite do plano" sem exigir OAuth — nenhum requisito de visibilidade externa. |
-| VI. Veracidade de dados / zero fabricacao (MUST) | PASS | Ausencia de `rate_limits` e SEMPRE `NULL` (FR-002); `resets_at` nunca reinterpretado como string (FR-003); `used_percentage` persistido sem arredondar (FR-004); nenhum campo alem de `five_hour`/`seven_day` e capturado (FR-006) — os campos que exigem OAuth simplesmente nao tem coluna. |
+| VI. Veracidade de dados / zero fabricacao (MUST) | PASS | Ausencia TOTAL de `rate_limits` nunca gera linha (dec-029, FR-002) — nenhum `0`/`NULL` fabricado; leitura mostra "nao medido". `resets_at` nunca reinterpretado como string (FR-003); `used_percentage` persistido sem arredondar (FR-004); nenhum campo alem de `five_hour`/`seven_day` e capturado (FR-006) — os campos que exigem OAuth simplesmente nao tem coluna. |
 
 **GATE**: nenhum FAIL em principio MUST. Prosseguir autorizado.
 
@@ -184,7 +186,7 @@ configuracao nova desta feature usa o prefixo `CSTK_`.
 |----------|----------|
 | O design introduziu complexidade nao justificada? | Nao. Zero servico novo, zero daemon, zero diretorio de topo, zero sidecar (mais simples que `loose-usage-capture` porque o dado ja chega pronto no stdin). |
 | Algum MUST deixou de ser respeitado apos o design? | Nao. O ponto de risco era `sqlite3`/`jq` escaparem do confinamento — resolvido pela delegacao a `recall.sh` e pelo confinamento por arquivo (research.md Decisions 3 e 6). |
-| O design criou caminho que fabrica dado? | Nao. `rate_limits` ausente ⇒ `NULL` em `used_percentage`/`resets_at`; nenhum campo fora de `five_hour`/`seven_day` ganha coluna. |
+| O design criou caminho que fabrica dado? | Nao. `rate_limits` ausente por completo ⇒ nenhuma linha inserida (dec-029); nenhum campo fora de `five_hour`/`seven_day` ganha coluna. |
 | O design mantem a sessao do operador intocada? | Sim — MAS com uma condicao nova em relacao ao molde `PostToolUse`: o pass-through obrigatorio de stdout (research.md Decision 2) e o mecanismo que garante isso aqui, porque `statusLine.command` (diferente de um hook) tem OUTPUT visivel ao operador a cada render; falhar em pass-through quebraria a UI, nao so a captura. |
 
 **Veredito do re-check**: PASS. Nenhuma linha de Complexity Tracking
@@ -229,5 +231,5 @@ respeitando um padrao ja existente, em vez de so reusar algo pronto).
 | Risco | Origem | Mitigacao no design |
 |-------|--------|-----------------------|
 | `statusLine.command` e uma chave UNICA no `settings.json` — instalar esta feature sem cuidado apaga a statusline customizada de quem ja tem uma | Observado nesta onda (nenhum precedente de codigo; so o GOTCHA da memoria) | Pass-through obrigatorio via `CSTK_STATUSLINE_INNER_COMMAND` (research.md Decision 2); mecanismo de instalacao exato fica para `create-tasks` decompor, mas o contrato de pass-through ja esta fixado aqui |
-| `rate_limits` so aparece apos 1a resposta de API completar — feature instalada numa sessao nova pode parecer "sem dado" por um tempo | Memoria, GOTCHA 1 | Documentado em `contracts/statusline-hook.md` e no Cenario 2 do `quickstart.md`; comportamento correto (NULL), nao um bug |
+| `rate_limits` so aparece apos 1a resposta de API completar — feature instalada numa sessao nova pode parecer "sem dado" por um tempo | Memoria, GOTCHA 1 | Documentado em `contracts/statusline-hook.md` e no Cenario 2 do `quickstart.md`; comportamento correto (nenhuma linha ate a 1a resposta completar, leitura mostra "nao medido"), nao um bug |
 | Testar exige fixture via stdin, nao sessao real (`claude -p` nao dispara statusline) | Memoria, GOTCHA 4 | research.md Decision 8; `tests/test_statusline-plan-usage.sh` segue o precedente de `test_posttooluse-loose-usage.sh` |
