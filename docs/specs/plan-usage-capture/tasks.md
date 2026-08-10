@@ -289,41 +289,41 @@ Ref: contracts/cli-plan-usage.md §`cstk plan-usage`, spec.md FR-007
       (`case "$1"`), delegando a `plan_usage_main()` novo em
       `cli/lib/plan-usage.sh` (paridade com `usage_main()` de
       `cli/lib/usage.sh`)
-- [ ] 4.1.2 Flags `--json`, `--db PATH` (paridade `cstk usage --db`)
-- [ ] 4.1.3 Saida texto: percentual + horario de reset (local time na
+- [x] 4.1.2 Flags `--json`, `--db PATH` (paridade `cstk usage --db`)
+- [x] 4.1.3 Saida texto: percentual + horario de reset (local time na
       apresentacao; persistencia continua epoch) por escopo; campo sem
       medicao imprime `nao medido`, nunca `0` (FR-002/SC-002, dec-029)
-- [ ] 4.1.4 Saida `--json`: `used_percentage`/`resets_at`/`captured_at`
+- [x] 4.1.4 Saida `--json`: `used_percentage`/`resets_at`/`captured_at`
       como `null` JSON quando o escopo nunca teve captura com
       `rate_limits` presente
-- [ ] 4.1.5 `knowledge.db` ausente: aviso em stderr + `nao medido` para
+- [x] 4.1.5 `knowledge.db` ausente: aviso em stderr + `nao medido` para
       os 2 escopos, exit `0`
-- [ ] 4.1.6 Tabela `plan_usage` vazia: `nao medido — nenhuma captura
+- [x] 4.1.6 Tabela `plan_usage` vazia: `nao medido — nenhuma captura
       registrada ainda`, exit `0`
-- [ ] 4.1.7 `sqlite3` ausente: aviso em stderr explicando a dep, exit `1`
-- [ ] 4.1.8 Flag desconhecida: uso em stderr, exit `2`
-- [ ] 4.1.9 Teste: os 8 subitens acima como casos de teste automatizados
-      via fixture (sem sessao real — FR-012)
+- [x] 4.1.7 `sqlite3` ausente: aviso em stderr explicando a dep, exit `1`
+- [x] 4.1.8 Flag desconhecida: uso em stderr, exit `2`
+- [x] 4.1.9 Teste: os 8 subitens acima como casos de teste automatizados
+      via fixture (sem sessao real — FR-012) <!-- tests/cstk/test_plan-usage.sh, 8/8 ok -->
 
 ### 4.2 `cstk plan-usage history` (serie temporal) `[A]`
 
 Ref: contracts/cli-plan-usage.md §`cstk plan-usage history`, spec.md
 FR-008, dec-014
 
-- [ ] 4.2.1 Flags `--scope five_hour|seven_day` (default: ambos,
+- [x] 4.2.1 Flags `--scope five_hour|seven_day` (default: ambos,
       separados — FR-005), `--limit N` (default `20`, reuso literal de
       `cstk usage --limit`), `--since ISO` (reuso literal de `cstk usage
       --since`) — SEM inventar convencao nova de paginacao (dec-014)
-- [ ] 4.2.2 Saida texto: uma secao por escopo, ate `--limit` linhas em
+- [x] 4.2.2 Saida texto: uma secao por escopo, ate `--limit` linhas em
       ordem cronologica
-- [ ] 4.2.3 Saida `--json`: chave presente so para escopo(s) pedido(s);
+- [x] 4.2.3 Saida `--json`: chave presente so para escopo(s) pedido(s);
       array vazio (nao `null`) quando o escopo existe mas nao tem
       captura no filtro
-- [ ] 4.2.4 Mesma tabela de comportamento sem dados de 4.1.5-4.1.8
-- [ ] 4.2.5 Teste: 3 capturas crescentes -> historico em ordem
+- [x] 4.2.4 Mesma tabela de comportamento sem dados de 4.1.5-4.1.8
+- [x] 4.2.5 Teste: 3 capturas crescentes -> historico em ordem
       cronologica (paridade quickstart.md Cenario 4)
-- [ ] 4.2.6 Teste: `--since`/`--limit` filtram identico a `cstk usage`
-      (mesmo parsing de flag, reuso de codigo se possivel)
+- [x] 4.2.6 Teste: `--since`/`--limit` filtram identico a `cstk usage`
+      (mesmo parsing de flag, reuso de codigo se possivel) <!-- tests/cstk/test_plan-usage.sh cenarios 9-14, 14/14 ok -->
 
 ### 4.3 `cstk plan-usage ingest --stdin` (interno) `[A]`
 

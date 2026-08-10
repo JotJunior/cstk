@@ -20,12 +20,13 @@
 # ausencia PARCIAL (escopo presente mas campo ausente dentro dele) ->
 # INSERT com NULL explicito, nunca 0 fabricado (Principio VI).
 #
-# `cstk plan-usage` (sem args) e `cstk plan-usage history` (consulta
-# publica, FASE 4.1/4.2) AINDA NAO IMPLEMENTADOS nesta onda — apenas o
-# subcomando interno `ingest --stdin` necessario para desbloquear FASE 2
-# (statusline-plan-usage.sh so consegue persistir via este subcomando,
-# research.md Decision 6 — o hook roda fora do processo `cstk` e nao tem
-# acesso direto a `cli/lib/recall.sh`).
+# `plan_usage_cmd_show` (task 4.1) e `plan_usage_cmd_history` (task 4.2)
+# sao a consulta PUBLICA (`cstk plan-usage` / `cstk plan-usage history`,
+# FASE 4.1/4.2) — leitura pura via recall_query_sql, sem sqlite3 direto
+# (Constitution II). NULL vira "nao medido" no texto e `null` JSON, nunca
+# `0` fabricado (Principio VI/dec-029/SC-002). `history` reusa
+# literalmente `--limit`/`--since` de `cstk usage` (dec-014, sem
+# convencao nova de paginacao).
 #
 # Despachado por cli/cstk: `cstk plan-usage ...` -> plan_usage_main "$@".
 #
@@ -179,10 +180,289 @@ cstk plan-usage — consulta o gauge de uso do plano (rate_limits/five_hour,
 seven_day) capturado via statusline (FASE 2, plan-usage-capture).
 
 USO:
-  cstk plan-usage                 uso mais recente por escopo [FASE 4 — pendente]
-  cstk plan-usage history         serie temporal por escopo   [FASE 4 — pendente]
+  cstk plan-usage [--json] [--db PATH]
+  cstk plan-usage history [--scope five_hour|seven_day] [--limit N]
+                           [--since ISO] [--json] [--db PATH]
   cstk plan-usage ingest --stdin  uso interno do hook statusline-plan-usage.sh
+
+  --json    saida maquina-legivel
+  --db PATH indice (default $CSTK_KNOWLEDGE_DB ou ~/.claude/cstk/knowledge.db)
 USAGE
+}
+
+# ==========================================================================
+# Task 4.1 — `cstk plan-usage` (uso mais recente)
+# ==========================================================================
+
+# _pu_local_time EPOCH -> horario local formatado (apresentacao apenas — a
+# persistencia continua epoch INTEGER, FR-003/Cenario 5). `date -r` e
+# BSD/macOS-first (ambiente-alvo desta feature); sem fallback GNU (`date -d
+# @EPOCH`) porque o CLI so precisa rodar no ambiente do operador (macOS/zsh,
+# Constitution). Se a conversao falhar (comando indisponivel/erro), imprime
+# o epoch cru — nunca fabrica um formato (Principio VI).
+_pu_local_time() {
+  [ -n "$1" ] || { printf ''; return 0; }
+  date -r "$1" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || printf '%s' "$1"
+}
+
+# _pu_row_field ROW INDEX -> campo INDEX (1-based) de uma linha
+# "used|resets|captured" (separador `|`, recall_query_sql .separator |).
+_pu_row_field() {
+  printf '%s' "$1" | awk -F '|' -v i="$2" '{print $i}'
+}
+
+# _pu_scope_text_line SCOPE ROW -> linha de texto para um escopo. ROW vazio
+# (sem captura) ou used_percentage vazio -> "nao medido" (nunca 0,
+# dec-029/SC-002).
+_pu_scope_text_line() {
+  _pstl_scope="$1"
+  _pstl_row="$2"
+  if [ -z "$_pstl_row" ]; then
+    printf '%s: nao medido\n' "$_pstl_scope"
+    return 0
+  fi
+  _pstl_used=$(_pu_row_field "$_pstl_row" 1)
+  _pstl_resets=$(_pu_row_field "$_pstl_row" 2)
+  if [ -z "$_pstl_used" ]; then
+    printf '%s: nao medido\n' "$_pstl_scope"
+    return 0
+  fi
+  _pstl_resets_disp="nao medido"
+  [ -n "$_pstl_resets" ] && _pstl_resets_disp=$(_pu_local_time "$_pstl_resets")
+  printf '%s: %s%% usado (reset: %s)\n' "$_pstl_scope" "$_pstl_used" "$_pstl_resets_disp"
+}
+
+# _pu_scope_json ROW -> objeto JSON {used_percentage,resets_at,captured_at}
+# para um escopo, com null explicito quando o campo/linha estiver ausente
+# (nunca 0 fabricado — SC-002).
+_pu_scope_json() {
+  _psj_row="$1"
+  if [ -z "$_psj_row" ]; then
+    printf '{"used_percentage":null,"resets_at":null,"captured_at":null}'
+    return 0
+  fi
+  _psj_used=$(_pu_row_field "$_psj_row" 1)
+  _psj_resets=$(_pu_row_field "$_psj_row" 2)
+  _psj_captured=$(_pu_row_field "$_psj_row" 3)
+  jq -n \
+    --arg used "$_psj_used" --arg resets "$_psj_resets" --arg captured "$_psj_captured" \
+    '{
+      used_percentage: (if $used == "" then null else ($used | tonumber) end),
+      resets_at: (if $resets == "" then null else ($resets | tonumber) end),
+      captured_at: (if $captured == "" then null else $captured end)
+    }' 2>/dev/null
+}
+
+plan_usage_cmd_show() {
+  _pcs_json=0
+  _pcs_db_flag=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --json) _pcs_json=1 ;;
+      --db) shift; _pcs_db_flag="${1:-}" ;;
+      -h|--help) _plan_usage_usage_text; return 0 ;;
+      *)
+        log_error "cstk plan-usage: flag desconhecida: $1"
+        return 2
+        ;;
+    esac
+    shift || break
+  done
+
+  if ! recall_have_sqlite3 2>/dev/null; then
+    log_warn "cstk plan-usage: sqlite3 nao instalado; consulta indisponivel"
+    return 1
+  fi
+
+  _pcs_db=$(recall_resolve_db "$_pcs_db_flag")
+
+  _pcs_row_5h=""
+  _pcs_row_7d=""
+  _pcs_have_data=0
+  if [ -f "$_pcs_db" ]; then
+    _pcs_row_5h=$(recall_query_sql "$_pcs_db" ".mode list
+.separator |
+SELECT used_percentage, resets_at, captured_at FROM plan_usage WHERE scope='five_hour' ORDER BY id DESC LIMIT 1;") || _pcs_row_5h=""
+    _pcs_row_7d=$(recall_query_sql "$_pcs_db" ".mode list
+.separator |
+SELECT used_percentage, resets_at, captured_at FROM plan_usage WHERE scope='seven_day' ORDER BY id DESC LIMIT 1;") || _pcs_row_7d=""
+    [ -n "$_pcs_row_5h" ] || [ -n "$_pcs_row_7d" ] && _pcs_have_data=1
+  else
+    log_warn "cstk plan-usage: indice ausente ($_pcs_db); nenhuma captura registrada ainda"
+  fi
+
+  if [ "$_pcs_json" -eq 1 ]; then
+    if recall_have_jq 2>/dev/null; then
+      _pcs_json_5h=$(_pu_scope_json "$_pcs_row_5h")
+      _pcs_json_7d=$(_pu_scope_json "$_pcs_row_7d")
+      [ -n "$_pcs_json_5h" ] || _pcs_json_5h='{"used_percentage":null,"resets_at":null,"captured_at":null}'
+      [ -n "$_pcs_json_7d" ] || _pcs_json_7d='{"used_percentage":null,"resets_at":null,"captured_at":null}'
+      jq -n --argjson five_hour "$_pcs_json_5h" --argjson seven_day "$_pcs_json_7d" \
+        '{five_hour: $five_hour, seven_day: $seven_day}'
+    else
+      log_warn "cstk plan-usage: jq ausente; --json indisponivel, usando texto"
+      if [ -f "$_pcs_db" ] && [ "$_pcs_have_data" -eq 0 ]; then
+        printf 'nao medido — nenhuma captura registrada ainda\n'
+      else
+        _pu_scope_text_line "five_hour" "$_pcs_row_5h"
+        _pu_scope_text_line "seven_day" "$_pcs_row_7d"
+      fi
+    fi
+  else
+    if [ -f "$_pcs_db" ] && [ "$_pcs_have_data" -eq 0 ]; then
+      printf 'nao medido — nenhuma captura registrada ainda\n'
+    else
+      _pu_scope_text_line "five_hour" "$_pcs_row_5h"
+      _pu_scope_text_line "seven_day" "$_pcs_row_7d"
+    fi
+  fi
+  return 0
+}
+
+# ==========================================================================
+# Task 4.2 — `cstk plan-usage history` (serie temporal)
+# ==========================================================================
+
+# _pu_history_rows DB SCOPE LIMIT SINCE -> ate LIMIT linhas
+# "used|resets|captured" das capturas MAIS RECENTES do escopo (respeitando
+# --since), em ORDEM CRONOLOGICA (a mais antiga primeiro). A query busca as
+# LIMIT mais recentes (ORDER BY id DESC LIMIT N) e entao inverte via o idioma
+# POSIX sed classico de reverse ('1!G;h;$!d') — portavel BSD/GNU, sem `tac`
+# (nao existe no macOS). DB ausente -> nenhuma linha (caller decide a
+# mensagem, paridade 4.1.5).
+_pu_history_rows() {
+  _phr_db="$1"; _phr_scope="$2"; _phr_limit="$3"; _phr_since="$4"
+  [ -f "$_phr_db" ] || return 0
+  _phr_where="WHERE scope='$(sql_escape "$_phr_scope")'"
+  [ -n "$_phr_since" ] && _phr_where="$_phr_where AND captured_at >= '$(sql_escape "$_phr_since")'"
+  recall_query_sql "$_phr_db" ".mode list
+.separator |
+SELECT used_percentage, resets_at, captured_at FROM plan_usage $_phr_where ORDER BY id DESC LIMIT $_phr_limit;" \
+    | sed '1!G;h;$!d'
+}
+
+# _pu_rows_to_json_array ROWS -> array JSON [{used_percentage,resets_at,
+# captured_at}]. ROWS vazio -> "[]" (array vazio, NUNCA null — contrato
+# 4.2.3: a chave do escopo pedido sempre existe, o array e que fica vazio
+# quando nao ha captura no filtro).
+_pu_rows_to_json_array() {
+  _prtja_rows="$1"
+  if [ -z "$_prtja_rows" ]; then
+    printf '[]'
+    return 0
+  fi
+  printf '%s\n' "$_prtja_rows" \
+    | awk -F '|' '{print $1"\t"$2"\t"$3}' \
+    | jq -R -s '
+        [ split("\n")[] | select(length>0) | split("\t")
+          | {used_percentage: (if .[0]=="" then null else (.[0]|tonumber) end),
+             resets_at: (if .[1]=="" then null else (.[1]|tonumber) end),
+             captured_at: (if .[2]=="" then null else .[2] end)}
+        ]
+      ' 2>/dev/null
+}
+
+# _pu_history_render_text DB SCOPES LIMIT SINCE DB_EXISTS -> uma secao de
+# texto por escopo (SCOPES separado por espaco), ate LIMIT linhas em ordem
+# cronologica. Mesma tabela de comportamento sem dados de 4.1.5/4.1.6
+# (4.2.4): DB_EXISTS=0 -> "nao medido" por escopo (paridade 4.1.5); DB
+# presente mas sem linha no filtro -> "nao medido — nenhuma captura
+# registrada ainda" por escopo (paridade 4.1.6).
+_pu_history_render_text() {
+  _phrt_db="$1"; _phrt_scopes="$2"; _phrt_limit="$3"; _phrt_since="$4"; _phrt_db_exists="$5"
+  for _phrt_s in $_phrt_scopes; do
+    printf '== %s ==\n' "$_phrt_s"
+    if [ "$_phrt_db_exists" -eq 0 ]; then
+      printf '  nao medido\n'
+      continue
+    fi
+    _phrt_rows=$(_pu_history_rows "$_phrt_db" "$_phrt_s" "$_phrt_limit" "$_phrt_since")
+    if [ -z "$_phrt_rows" ]; then
+      printf '  nao medido — nenhuma captura registrada ainda\n'
+      continue
+    fi
+    printf '%s\n' "$_phrt_rows" | while IFS= read -r _phrt_line; do
+      [ -n "$_phrt_line" ] || continue
+      _phrt_used=$(_pu_row_field "$_phrt_line" 1)
+      _phrt_captured=$(_pu_row_field "$_phrt_line" 3)
+      if [ -n "$_phrt_used" ]; then
+        printf '  %s  %s%%\n' "$_phrt_captured" "$_phrt_used"
+      else
+        printf '  %s  nao medido\n' "$_phrt_captured"
+      fi
+    done
+  done
+}
+
+plan_usage_cmd_history() {
+  _pch_scope=""
+  _pch_limit="20"
+  _pch_since=""
+  _pch_json=0
+  _pch_db_flag=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --scope) shift; _pch_scope="${1:-}" ;;
+      --limit) shift; _pch_limit="${1:-}" ;;
+      --since) shift; _pch_since="${1:-}" ;;
+      --json) _pch_json=1 ;;
+      --db) shift; _pch_db_flag="${1:-}" ;;
+      -h|--help) _plan_usage_usage_text; return 0 ;;
+      *)
+        log_error "cstk plan-usage history: flag desconhecida: $1"
+        return 2
+        ;;
+    esac
+    shift || break
+  done
+
+  case "$_pch_scope" in
+    ''|five_hour|seven_day) ;;
+    *)
+      log_error "cstk plan-usage history: --scope invalido (esperado five_hour|seven_day, recebido: '$_pch_scope')"
+      return 2
+      ;;
+  esac
+
+  if ! validate_limit "$_pch_limit"; then
+    log_error "cstk plan-usage history: --limit deve ser inteiro positivo (recebido: '$_pch_limit')"
+    return 2
+  fi
+
+  if ! recall_have_sqlite3 2>/dev/null; then
+    log_warn "cstk plan-usage history: sqlite3 nao instalado; consulta indisponivel"
+    return 1
+  fi
+
+  _pch_db=$(recall_resolve_db "$_pch_db_flag")
+  _pch_db_exists=0
+  [ -f "$_pch_db" ] && _pch_db_exists=1
+  [ "$_pch_db_exists" -eq 1 ] || log_warn "cstk plan-usage history: indice ausente ($_pch_db); nenhuma captura registrada ainda"
+
+  _pch_scopes="five_hour seven_day"
+  [ -n "$_pch_scope" ] && _pch_scopes="$_pch_scope"
+
+  if [ "$_pch_json" -eq 1 ]; then
+    if recall_have_jq 2>/dev/null; then
+      _pch_json_out="{}"
+      for _pch_s in $_pch_scopes; do
+        _pch_rows=""
+        [ "$_pch_db_exists" -eq 1 ] && _pch_rows=$(_pu_history_rows "$_pch_db" "$_pch_s" "$_pch_limit" "$_pch_since")
+        _pch_arr=$(_pu_rows_to_json_array "$_pch_rows")
+        [ -n "$_pch_arr" ] || _pch_arr="[]"
+        _pch_json_out=$(printf '%s' "$_pch_json_out" | jq --arg k "$_pch_s" --argjson v "$_pch_arr" '. + {($k): $v}' 2>/dev/null) || _pch_json_out="{}"
+      done
+      printf '%s\n' "$_pch_json_out"
+    else
+      log_warn "cstk plan-usage history: jq ausente; --json indisponivel, usando texto"
+      _pu_history_render_text "$_pch_db" "$_pch_scopes" "$_pch_limit" "$_pch_since" "$_pch_db_exists"
+    fi
+  else
+    _pu_history_render_text "$_pch_db" "$_pch_scopes" "$_pch_limit" "$_pch_since" "$_pch_db_exists"
+  fi
+  return 0
 }
 
 plan_usage_main() {
@@ -205,14 +485,14 @@ plan_usage_main() {
       _plan_usage_usage_text
       return 0
       ;;
-    '')
-      log_error "cstk plan-usage: consulta publica ainda nao implementada (FASE 4 desta feature)"
-      _plan_usage_usage_text
-      return 1
+    ''|--*)
+      plan_usage_cmd_show "$@"
+      return $?
       ;;
     history)
-      log_error "cstk plan-usage history: ainda nao implementada (FASE 4 desta feature)"
-      return 1
+      shift
+      plan_usage_cmd_history "$@"
+      return $?
       ;;
     *)
       log_error "cstk plan-usage: subcomando desconhecido: $_pum_sub"
