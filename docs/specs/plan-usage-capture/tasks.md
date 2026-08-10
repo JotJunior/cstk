@@ -231,26 +231,51 @@ Ref: contracts/statusline-hook.md linha 64, research.md Decision 6
 Ref: research.md Decision 2 (mecanismo exato deixado para esta fase),
 plan.md §Riscos conhecidos
 
-- [ ] 3.1.1 Decidir e implementar o mecanismo de instalacao: subcomando
+- [x] 3.1.1 Decidir e implementar o mecanismo de instalacao: subcomando
       novo `cstk statusline install` (paralelo a `cstk hooks install`,
       linha equivalente em `cli/cstk` dispatch) que escreve/atualiza a
       chave `statusLine.command` do `settings.json` do harness
-- [ ] 3.1.2 Se ja existir `statusLine.command` customizado: preservar o
+      <!-- cli/lib/statusline.sh (statusline_main/statusline_cmd_install);
+      cli/cstk dispatch registrado (COMANDOS, help switch, dispatch case,
+      2x "Comandos validos"); target = ${HOME}/.claude/settings.json
+      (statusLine e preferencia por-operador, nao por-projeto) -->
+- [x] 3.1.2 Se ja existir `statusLine.command` customizado: preservar o
       valor atual movendo-o para `CSTK_STATUSLINE_INNER_COMMAND` (nunca
       sobrescrever silenciosamente — mitigacao do risco documentado em
       `plan.md`)
-- [ ] 3.1.3 Idempotencia: rodar a instalacao 2x seguidas produz o mesmo
+      <!-- statusline_cmd_install: case "$_si_cur" com wrap
+      CSTK_STATUSLINE_INNER_COMMAND='<escaped>' <script>; escaping via
+      _sl_escape_single_quotes (' -> '\''); demais chaves do
+      settings.json preservadas via jq merge pontual (.statusLine.command
+      = $cmd) -->
+- [x] 3.1.3 Idempotencia: rodar a instalacao 2x seguidas produz o mesmo
       `settings.json` final (sem duplicar wrapper sobre wrapper)
-- [ ] 3.1.4 `cstk statusline status`/`--help` reportando se a captura
+      <!-- case "$_si_cur" detecta os 2 formatos ja instalados (script puro
+      OU wrapper com CSTK_STATUSLINE_INNER_COMMAND terminando no script) e
+      retorna no-op; testado em
+      scenario_install_idempotente_sem_customizacao +
+      scenario_install_idempotente_com_customizacao -->
+- [x] 3.1.4 `cstk statusline status`/`--help` reportando se a captura
       esta instalada e ativa (paridade com `cstk hooks status`, se
       existir precedente)
-- [ ] 3.1.5 Teste: instalacao em `settings.json` sem `statusLine.command`
+      <!-- sem precedente real (hooks_main so tem "install"); status
+      implementado do zero: statusline_cmd_status reporta nao-instalado
+      (exit 1), ativo sem/com customizacao previa (exit 0), ou apontando
+      p/ outro comando = captura NAO ativa (exit 1); --help via
+      _statusline_print_help -->
+- [x] 3.1.5 Teste: instalacao em `settings.json` sem `statusLine.command`
       previo -> chave criada apontando para
       `statusline-plan-usage.sh`
-- [ ] 3.1.6 Teste: instalacao em `settings.json` com `statusLine.command`
+      <!-- tests/cstk/test_statusline.sh ::
+      scenario_install_sem_statusline_previa_cria_chave -->
+- [x] 3.1.6 Teste: instalacao em `settings.json` com `statusLine.command`
       customizado previo -> valor original preservado em
       `CSTK_STATUSLINE_INNER_COMMAND`, nova chave aponta para o script
       desta feature
+      <!-- tests/cstk/test_statusline.sh ::
+      scenario_install_preserva_customizacao_previa +
+      scenario_install_preserva_customizacao_com_aspas (round-trip de
+      aspas duplas no comando original) -->
 
 ---
 

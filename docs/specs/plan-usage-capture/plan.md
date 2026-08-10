@@ -125,10 +125,11 @@ com marcacao do que muda:
 
 ```
 cli/
-├── cstk                                      # MODIFICA: dispatch + help do subcomando `plan-usage`
+├── cstk                                      # MODIFICA: dispatch + help dos subcomandos `plan-usage` e `statusline`
 └── lib/
     ├── recall.sh                             # MODIFICA: RECALL_SCHEMA_VERSION 13->14 + DDL de `plan_usage`
-    └── plan-usage.sh                         # NOVO: logica de `cstk plan-usage` (+ `history` + `ingest --stdin`), SQL delegado a recall.sh
+    ├── plan-usage.sh                         # NOVO: logica de `cstk plan-usage` (+ `history` + `ingest --stdin`), SQL delegado a recall.sh
+    └── statusline.sh                         # NOVO (FASE 3, dec-042): logica de `cstk statusline install`/`status` — escreve/inspeciona `statusLine.command` em ${HOME}/.claude/settings.json (jq, mesmo carve-out de merge_settings em hooks.sh)
 plugins/cstk/skills/agente-00c-runtime/
 └── hooks/
     ├── posttooluse-loose-usage.sh            # INTACTO (molde de referencia — disciplina fail-open/throttle)
@@ -139,8 +140,19 @@ tests/
 ├── test_statusline-plan-usage.sh             # NOVO (convencao de hooks/entry-points)
 └── cstk/
     ├── test_plan-usage.sh                    # NOVO (convencao cli/lib)
+    ├── test_statusline.sh                    # NOVO (FASE 3, convencao cli/lib): cobre install/status/idempotencia via HOME sandbox
     └── test_recall.sh                        # ESTENDE: migracao v14
 ```
+
+**Resolucao dec-042 (gate `analyze`, HIGH F2/E2)**: footprint da FASE 3
+(`cli/lib/statusline.sh` + `tests/cstk/test_statusline.sh` + wiring em
+`cli/cstk`) documentado acima. Sem contrato dedicado novo — mecanismo de
+instalacao e infraestrutura de CLI (paralelo direto a `cli/lib/hooks.sh`,
+que tambem nao tem `contracts/*.md` proprio, apenas `--help` inline + este
+Project Structure), nao um comportamento observavel do payload/schema da
+feature (esse ja esta coberto por `contracts/statusline-hook.md`). Sem FR
+numerado novo em `spec.md` — anotado como infraestrutura (mesmo tratamento
+de `FR-013-INFRA-SCHED`), ver `spec.md` `FR-016-INFRA-INSTALL`.
 
 **Structure Decision**: nenhum diretorio novo de topo. A feature se
 encaixa em duas superficies existentes (lib do CLI, indice

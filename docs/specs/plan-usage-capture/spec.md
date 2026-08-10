@@ -279,6 +279,18 @@ subsequente via CLI reporta "nao medido", nunca o valor `0`.
 > nao depende de token externo com TTL, e cada captura e um processo local
 > de vida curta (o comando de statusline) sem estado compartilhado entre
 > replicas.
+> **FR-016-INFRA-INSTALL** (dec-042, gate `analyze` HIGH F2/E2): o
+> mecanismo de instalacao do `statusLine.command` (Edge Case acima, linha
+> 174-183) e o subcomando `cstk statusline install`/`status`
+> (`cli/lib/statusline.sh`, ver `plan.md` Project Structure), paralelo de
+> infraestrutura de CLI a `cli/lib/hooks.sh` (`cstk hooks install`) — nao
+> um FR numerado porque nao introduz comportamento novo de captura, apenas
+> plumbing de escrita/inspecao de `${HOME}/.claude/settings.json`. O
+> requisito comportamental que este mecanismo PRECISA preservar
+> (pass-through via `CSTK_STATUSLINE_INNER_COMMAND`, nunca sobrescrever
+> customizacao previa) ja esta fixado em `research.md` Decision 2 e no
+> Edge Case acima; `cstk statusline install` e a implementacao MUST desse
+> requisito, testada em `tests/cstk/test_statusline.sh`.
 
 ### Key Entities
 
