@@ -5,6 +5,92 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.2.0] - 2026-08-10
+
+Captura do gauge de uso do plano (`/usage`) sem credencial OAuth: o
+harness ja envia `rate_limits.five_hour`/`seven_day` no payload da
+`statusLine.command` a cada render — a feature so precisava ler o que
+ja estava passando, persistir localmente e expor consulta (Constitution
+IV, 100% local).
+
+### Added
+
+- **`cstk statusline install`/`status`** (`cli/lib/statusline.sh`,
+  NOVO). `install` escreve/atualiza `statusLine.command` em
+  `${HOME}/.claude/settings.json` apontando para
+  `<catalog>/skills/agente-00c-runtime/hooks/statusline-plan-usage.sh`;
+  se ja existir um comando customizado, o valor original e preservado
+  em `CSTK_STATUSLINE_INNER_COMMAND` (nunca sobrescrito
+  silenciosamente) e encadeado como pass-through obrigatorio do
+  stdout. Idempotente — rodar `install` 2x nao aninha wrapper sobre
+  wrapper.
+- **`cstk plan-usage`** (`cli/lib/plan-usage.sh`, NOVO): uso mais
+  recente capturado, por escopo (`five_hour`/`seven_day`), com
+  `--json`/`--db PATH`. Campo sem medicao imprime `nao medido`
+  (texto) / `null` (JSON) — nunca `0` fabricado (Principio VI/dec-029).
+- **`cstk plan-usage history`** (mesmo arquivo): serie temporal por
+  escopo, reusando literalmente `--scope`/`--limit`/`--since` de `cstk
+  usage` (dec-014 — sem convencao nova de paginacao/cursor).
+- **Tabela `plan_usage`** no `knowledge.db` (migracao aditiva
+  `RECALL_SCHEMA_VERSION` 13→14, `cli/lib/recall.sh`): grava uma linha
+  por escopo (`five_hour`/`seven_day`) quando o hook novo
+  `statusline-plan-usage.sh` observa `rate_limits` no payload da
+  statusline. Ausencia TOTAL de `rate_limits` nunca gera linha
+  (dec-029); ausencia PARCIAL de um campo dentro de um escopo presente
+  grava `NULL` explicito, nunca `0`. Throttle descarta persistencia
+  redundante comparando sempre contra o ULTIMO registro persistido
+  daquele escopo, com tolerancia de 2 casas decimais em
+  `used_percentage` (ruido de ponto flutuante do harness nao gera
+  linha nova) — FR-010.
+
+Detalhes de contrato/schema: `docs/specs/plan-usage-capture/contracts/`
+e `docs/specs/plan-usage-capture/data-model.md`.
+
+### Fixed
+
+- **`tool_calls` era contado em DOBRO em projeto com o cstk instalado
+  como plugin.** `guard-hooks-status.sh` so procurava os hooks na copia
+  classica (`<projeto>/.claude/hooks/` + `settings.json`) e era cego ao
+  `hooks/hooks.json` do plugin — o caminho que a propria v7 tornou
+  canonico, e que `cstk hooks install` ja privilegia ao pular o
+  provisionamento classico por dedup ("plugin vence"). Consequencia
+  funcional: `tick-mode` devolvia `manual`, o orquestrador tickava na
+  mao, o hook do plugin tickava tambem, e `state-ondas.sh end` soma as
+  duas fontes (ticks manuais + linhas do sidecar). Toda onda fechava com
+  ~2x o numero real de tool calls, e o budget de onda disparava com
+  metade do trabalho feito. O `check` tambem acusava "3 de 3 hooks NAO
+  estao ativos" e mandava rodar `cstk hooks install`, que respondia
+  "plugin ja prove — pulando": um loop de remediacao que nao remediava
+  nada. Agora o script consulta o registro nativo (`CLAUDE_PLUGIN_ROOT`,
+  ou `installed_plugins.json` + `enabledPlugins` de `settings.json`,
+  espelhando `cli/lib/plugin-detect.sh`), reporta
+  `present/registered/current` para hook provido pelo plugin e devolve
+  `hook` no `tick-mode`. Degradacao assimetrica preservada: `jq` ausente,
+  registro ilegivel ou plugin desabilitado => "plugin nao prove", que e o
+  comportamento anterior byte-a-byte — nunca se afirma cobertura sem ter
+  lido o `hooks.json`. Novo alerta quando plugin E copia classica estao
+  ativos ao mesmo tempo (o hook roda duas vezes de verdade).
+  **Nao ha correcao retroativa**: `tool_calls` ja gravado na
+  `knowledge.db` de execucoes anteriores permanece inflado — nao ha como
+  separar tick manual de tick de hook depois do fato, e estimar seria
+  inventar dado.
+- **`test_setup.sh` reprovava por causa desta propria versao.** O cenario
+  `scenario_dispatch_setup_wiring` verificava o wiring de `setup` no case
+  generico de `cli/cstk` com a regex `\|setup\)$` — ancorada no FIM da
+  linha, o que exigia que `setup` fosse a ULTIMA alternativa. Isso nunca
+  foi invariante: bastou esta versao acrescentar `plan-usage` depois dela
+  para o cenario reprovar com o dispatch perfeitamente intacto. A regex
+  passa a aceitar `setup` em qualquer posicao (`\|setup[|)]`). Achado ao
+  rodar a suite completa antes do release — a pipeline da feature tinha
+  rodado `test_cstk-main.sh`, que nao cobre este cenario.
+- **`test_recall.sh` reprovava com `state_backend=sqlite`.** Os cenarios
+  `ctx_15`/`ctx_15b` chamavam `state-rw.sh init` e liam o resultado com
+  `jq` direto em `state.json` — arquivo que nao existe no backend SQLite,
+  default desde a v6. Passam a ler via `state-rw.sh read` (agnostico a
+  backend). O `ctx_15b` era o caso mais insidioso: o `jq` falhava, um
+  `|| _ndec=0` engolia o erro e a assercao `= 0` passava TRIVIALMENTE —
+  verde sem ter verificado nada. Falha de leitura agora reprova.
+
 ## [7.1.1] - 2026-08-09
 
 `~/.claude/skills/` e espaco COMPARTILHADO — plugins da Anthropic, skills
@@ -5422,6 +5508,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[7.2.0]: https://github.com/JotJunior/cstk/releases/tag/v7.2.0
 [7.1.1]: https://github.com/JotJunior/cstk/releases/tag/v7.1.1
 [7.1.0]: https://github.com/JotJunior/cstk/releases/tag/v7.1.0
 [7.0.1]: https://github.com/JotJunior/cstk/releases/tag/v7.0.1

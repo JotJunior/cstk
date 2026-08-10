@@ -147,6 +147,9 @@ COMANDOS:
   mcp           Servidor MCP de estado das execucoes 00c (mcp status)
   hooks         Provisiona os hooks do runtime 00c num projeto-alvo
                 (so hooks + settings.json; nao duplica skill/commands/agents)
+  statusline    Instala/inspeciona a captura de uso do plano via
+                statusLine.command (install/status); preserva customizacao
+                previa em CSTK_STATUSLINE_INNER_COMMAND
   usage         Consulta o consumo avulso (fora de execucoes 00c); tambem
                 `usage compare` (avulso vs pipeline) e `usage prune` (TTL)
   setup         Wizard guiado das 4 areas de configuracao recomendadas
@@ -184,6 +187,11 @@ HELP
     mcp)
       printf 'cstk help mcp: consulte docs/specs/state-mcp-server/contracts/mcp-session-lifecycle.md\n'
       printf 'Para help inline, rode: cstk mcp --help\n'
+      exit "$CSTK_EXIT_OK"
+      ;;
+    statusline)
+      printf 'cstk help statusline: consulte docs/specs/plan-usage-capture/contracts/statusline-hook.md\n'
+      printf 'Para help inline, rode: cstk statusline --help\n'
       exit "$CSTK_EXIT_OK"
       ;;
     install|update|self-update|list|doctor|session|serve)
@@ -267,7 +275,7 @@ TELHELP
       ;;
     *)
       printf 'cstk: comando desconhecido para help: %s\n' "$_sub" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, state, mcp, usage, setup, 00c, telemetry\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, statusline, state, mcp, usage, setup, 00c, telemetry\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac
@@ -300,7 +308,7 @@ _dispatch() {
       . "$_lib_file"
       serve_main "$@"
       ;;
-    install|update|self-update|list|doctor|session|recall|show-tip|hooks|state|mcp|usage|setup)
+    install|update|self-update|list|doctor|session|recall|show-tip|hooks|statusline|state|mcp|usage|setup|plan-usage)
       # Boot-check para todos exceto self-update (que e o caminho de recovery
       # da janela transiente — bloquea-lo aqui causaria deadlock).
       case "$_cmd" in
@@ -349,7 +357,7 @@ _dispatch() {
       ;;
     *)
       printf 'cstk: comando desconhecido: %s\n' "$_cmd" >&2
-      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, state, mcp, usage, setup, 00c, help, --version\n' >&2
+      printf 'Comandos validos: install, update, self-update, list, doctor, session, recall, show-tip, serve, hooks, statusline, state, mcp, usage, setup, 00c, help, --version\n' >&2
       exit "$CSTK_EXIT_USAGE"
       ;;
   esac

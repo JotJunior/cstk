@@ -24,12 +24,42 @@
 #   INV-7: tick-mode rebaixa para "manual" no par exato
 #          (copia cega a backend + projeto com state.db). Copia cega sobre
 #          backend JSON SEGUE "hook" — rebaixar ali daria contagem DUPLA.
+#   INV-8: hook provido pelo PLUGIN (v7+) conta como ativo, mesmo sem copia
+#          em <PAP>/.claude/hooks/ nem registro em settings.json — e
+#          tick-mode devolve "hook". Foi o 3o modo de falha de campo: o
+#          `check` mandava rodar `cstk hooks install` (que pula por dedup,
+#          "plugin vence") e o `tick-mode` dizia "manual", fazendo o
+#          orquestrador tickar EM PARALELO ao hook do plugin — `end` soma
+#          ticks manuais + sidecar, entao tool_calls saia em DOBRO.
+#          Degradacao assimetrica: hooks.json ilegivel/ausente => "plugin
+#          nao prove" (comportamento anterior), nunca o inverso.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
 SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-status.sh"
+
+# _ghs ARGS... -> invoca o SCRIPT com o ambiente NEUTRO quanto a plugin.
+#
+# Praticamente todos os cenarios deste arquivo simulam um projeto-alvo SEM o
+# plugin cstk: os fixtures materializam (ou omitem) copias classicas em
+# <PAP>/.claude/hooks/ e exigem veredito missing/stale/unregistered. Desde
+# que `guard-hooks-status.sh` passou a enxergar hooks providos pelo plugin,
+# o script consulta o registro NATIVO do Claude Code (~/.claude/plugins +
+# ~/.claude/settings.json) — que e do DESENVOLVEDOR, nao do fixture.
+#
+# Sem esta neutralizacao o teste vira dependente de ambiente do pior jeito
+# possivel: passa no CI (runner limpo, sem plugin) e falha so na maquina de
+# quem tem o cstk instalado como plugin — exatamente o inverso do modo de
+# falha que a memoria do projeto ja registra para helpers resolvidos via
+# ~/.claude. Cenarios que QUEREM testar o caminho do plugin setam as vars
+# explicitamente (ver scenario_check_plugin_*).
+_ghs() {
+  capture env HOME="$TMPDIR_TEST/.home-sem-plugin" CLAUDE_PLUGIN_ROOT='' \
+    CSTK_HOOKS_CATALOG_DIR="${CSTK_HOOKS_CATALOG_DIR:-}" \
+    sh "$SCRIPT" "$@"
+}
 
 _HOOKS='pretooluse-bash-guard.sh
 posttooluse-tool-call-tick.sh
@@ -130,7 +160,7 @@ _fully_provisioned() {
 scenario_check_completo_exit0() {
   _p=$(_mkproj proj-ok)
   _fully_provisioned "$_p"
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
   for _h in $_HOOKS; do
     printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered	current$" \
@@ -143,7 +173,7 @@ scenario_check_completo_exit0() {
 
 scenario_check_nenhum_hook_exit1() {
   _p=$(_mkproj proj-virgem)
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c 'missing	unregistered')
   [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas missing/unregistered, obtido $_n"; return 1; }
@@ -156,7 +186,7 @@ scenario_check_presente_sem_registro_exit1() {
   _p=$(_mkproj proj-sem-settings)
   for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
   # settings.json deliberadamente ausente
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q 'present	unregistered' \
     || { _fail "TSV" "esperado present+unregistered"; return 1; }
@@ -169,7 +199,7 @@ scenario_check_registrado_sem_arquivo_exit1() {
   _p=$(_mkproj proj-so-settings)
   # shellcheck disable=SC2086
   _register "$_p" $_HOOKS
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q 'missing	registered' \
     || { _fail "TSV" "esperado missing+registered"; return 1; }
@@ -182,7 +212,7 @@ scenario_check_hook_sem_exec_bit_nao_conta() {
   _p=$(_mkproj proj-noexec)
   _fully_provisioned "$_p"
   chmod -x "$_p/.claude/hooks/pretooluse-bash-guard.sh"
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^pretooluse-bash-guard.sh	missing' \
     || { _fail "TSV" "hook sem +x deve contar como missing"; return 1; }
@@ -195,7 +225,7 @@ scenario_check_parcial_exit1_com_alerta_da_guarda() {
   _p=$(_mkproj proj-parcial)
   _put_hook "$_p" "posttooluse-tool-call-tick.sh"
   _register "$_p" "posttooluse-tool-call-tick.sh"
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-tool-call-tick.sh	present	registered	current$' \
     || { _fail "TSV" "tick-hook ativo deveria aparecer como present/registered/current"; return 1; }
@@ -209,7 +239,7 @@ scenario_check_parcial_exit1_com_alerta_da_guarda() {
 
 scenario_check_stderr_cita_scope_project() {
   _p=$(_mkproj proj-remediacao)
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   printf '%s\n' "$_CAPTURED_STDERR" | grep -q -- '--scope project' \
     || { _fail "stderr" "remediacao deve citar 'cstk install --scope project'"; return 1; }
   return 0
@@ -219,7 +249,7 @@ scenario_check_stderr_cita_scope_project() {
 
 scenario_check_quiet_sem_stderr() {
   _p=$(_mkproj proj-quiet)
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --quiet
+  _ghs check --projeto-alvo-path "$_p" --quiet
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
   [ -z "$_CAPTURED_STDERR" ] || { _fail "stderr" "--quiet nao pode emitir stderr"; return 1; }
   [ -n "$_CAPTURED_STDOUT" ] || { _fail "stdout" "--quiet nao pode suprimir o TSV"; return 1; }
@@ -231,8 +261,8 @@ scenario_check_quiet_sem_stderr() {
 scenario_read_only_nao_cria_nada() {
   _p=$(_mkproj proj-readonly)
   _before=$(find "$_p" | sort)
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
-  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
+  _ghs tick-mode --projeto-alvo-path "$_p"
   _after=$(find "$_p" | sort)
   [ "$_before" = "$_after" ] \
     || { _fail "read-only" "arvore do projeto-alvo mudou apos as consultas"; return 1; }
@@ -244,7 +274,7 @@ scenario_read_only_nao_cria_nada() {
 scenario_tick_mode_hook_quando_ativo() {
   _p=$(_mkproj proj-tick-hook)
   _fully_provisioned "$_p"
-  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  _ghs tick-mode --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
   [ "$_CAPTURED_STDOUT" = "hook" ] \
     || { _fail "stdout" "esperado 'hook', obtido '$_CAPTURED_STDOUT'"; return 1; }
@@ -253,7 +283,7 @@ scenario_tick_mode_hook_quando_ativo() {
 
 scenario_tick_mode_manual_quando_ausente() {
   _p=$(_mkproj proj-tick-manual)
-  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  _ghs tick-mode --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
   [ "$_CAPTURED_STDOUT" = "manual" ] \
     || { _fail "stdout" "esperado 'manual', obtido '$_CAPTURED_STDOUT'"; return 1; }
@@ -271,7 +301,7 @@ scenario_tick_mode_exit0_mesmo_sem_hooks() {
 scenario_tick_mode_manual_sem_registro() {
   _p=$(_mkproj proj-tick-noreg)
   _put_hook "$_p" "posttooluse-tool-call-tick.sh"
-  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  _ghs tick-mode --projeto-alvo-path "$_p"
   [ "$_CAPTURED_STDOUT" = "manual" ] \
     || { _fail "stdout" "hook nao-registrado deve dar 'manual'"; return 1; }
   return 0
@@ -287,7 +317,7 @@ scenario_check_stale_exit1() {
   for _h in $_HOOKS; do _put_hook_stale "$_p" "$_h"; done
   # shellcheck disable=SC2086
   _register "$_p" $_HOOKS
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "copia stale deve reprovar (esperado 1, obtido $_CAPTURED_EXIT)"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	present	registered	stale$')
   [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas present/registered/stale, obtido $_n"; return 1; }
@@ -302,7 +332,7 @@ scenario_check_stale_da_guarda_tem_alerta_destacado() {
   _p=$(_mkproj proj-stale-guarda)
   _fully_provisioned "$_p"
   _put_hook_stale "$_p" "pretooluse-bash-guard.sh"
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'pretooluse-bash-guard.sh STALE' \
     || { _fail "stderr" "faltou alerta destacado da guarda stale"; return 1; }
@@ -339,7 +369,7 @@ scenario_check_catalogo_ausente_da_unknown_e_nao_reprova() {
 # o que reprova ali e o missing, nao o drift.
 scenario_check_hook_ausente_da_unknown() {
   _p=$(_mkproj proj-unknown-missing)
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	missing	unregistered	unknown$')
   [ "$_n" = 3 ] || { _fail "TSV" "hook ausente deve dar freshness unknown, obtido $_n linhas"; return 1; }
   return 0
@@ -354,7 +384,7 @@ scenario_tick_mode_manual_com_copia_cega_e_state_db() {
   _fully_provisioned "$_p"
   mkdir -p "$_p/.claude/feature-00c-state/demo"
   : > "$_p/.claude/feature-00c-state/demo/state.db"
-  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  _ghs tick-mode --projeto-alvo-path "$_p"
   [ "$_CAPTURED_STDOUT" = "manual" ] \
     || { _fail "stdout" "copia cega + state.db deve dar 'manual', obtido '$_CAPTURED_STDOUT'"; return 1; }
   return 0
@@ -366,7 +396,7 @@ scenario_tick_mode_manual_com_copia_cega_e_state_db_agente() {
   _fully_provisioned "$_p"
   mkdir -p "$_p/.claude/agente-00c-state"
   : > "$_p/.claude/agente-00c-state/state.db"
-  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  _ghs tick-mode --projeto-alvo-path "$_p"
   [ "$_CAPTURED_STDOUT" = "manual" ] \
     || { _fail "stdout" "copia cega + state.db (agente) deve dar 'manual', obtido '$_CAPTURED_STDOUT'"; return 1; }
   return 0
@@ -379,7 +409,7 @@ scenario_tick_mode_hook_com_copia_cega_e_backend_json() {
   _fully_provisioned "$_p"
   mkdir -p "$_p/.claude/feature-00c-state/demo"
   printf '{}\n' > "$_p/.claude/feature-00c-state/demo/state.json"
-  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  _ghs tick-mode --projeto-alvo-path "$_p"
   [ "$_CAPTURED_STDOUT" = "hook" ] \
     || { _fail "stdout" "copia cega + backend JSON deve seguir 'hook', obtido '$_CAPTURED_STDOUT'"; return 1; }
   return 0
@@ -396,7 +426,7 @@ scenario_tick_mode_hook_com_copia_atual_e_state_db() {
 exit 0'
   mkdir -p "$_p/.claude/feature-00c-state/demo"
   : > "$_p/.claude/feature-00c-state/demo/state.db"
-  capture sh "$SCRIPT" tick-mode --projeto-alvo-path "$_p"
+  _ghs tick-mode --projeto-alvo-path "$_p"
   [ "$_CAPTURED_STDOUT" = "hook" ] \
     || { _fail "stdout" "copia atual + state.db deve dar 'hook', obtido '$_CAPTURED_STDOUT'"; return 1; }
   return 0
@@ -460,7 +490,7 @@ scenario_funciona_sem_jq() {
 scenario_loose_usage_detection_current_runtime() {
   _p=$(_mkproj proj-loose-current)
   _fully_provisioned "$_p"
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --include-loose-usage
+  _ghs check --projeto-alvo-path "$_p" --include-loose-usage
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (hook opt-in ausente nao afeta exit), obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh	missing	unregistered	' \
     || { _fail "TSV" "esperado 4a linha posttooluse-loose-usage.sh missing/unregistered"; return 1; }
@@ -473,7 +503,7 @@ scenario_loose_usage_detection_current_runtime() {
 scenario_loose_usage_sem_flag_saida_identica() {
   _p=$(_mkproj proj-loose-sem-flag)
   _fully_provisioned "$_p"
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -l | tr -d ' ')
   [ "$_n" = 3 ] || { _fail "TSV" "sem a flag deve continuar 3 linhas, obtido $_n"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q 'loose-usage' \
@@ -523,7 +553,7 @@ scenario_verify_registration_canonical() {
   for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
   # shellcheck disable=SC2086
   _register_canonical "$_p" $_HOOKS
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration
+  _ghs check --projeto-alvo-path "$_p" --verify-registration
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "registro canonico deveria manter exit 0, obtido $_CAPTURED_EXIT"; return 1; }
   for _h in $_HOOKS; do
     printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered	current	canonical$" \
@@ -538,7 +568,7 @@ scenario_verify_registration_sem_flag_saida_identica() {
   for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
   # shellcheck disable=SC2086
   _register_canonical "$_p" $_HOOKS
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p"
+  _ghs check --projeto-alvo-path "$_p"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q 'canonical\|divergent\|indeterminate' \
     && { _fail "TSV" "sem a flag nao pode ter 5a coluna"; return 1; }
@@ -562,7 +592,7 @@ scenario_hook_redirected_reports_divergent() {
     printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-agent-usage.sh"\n'
     printf '          }\n        ]\n      }\n    ]\n  }\n}\n'
   } > "$_p/.claude/settings.json"
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration --quiet
+  _ghs check --projeto-alvo-path "$_p" --verify-registration --quiet
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "hook redirecionado deve reprovar com a flag, esperado 1 obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^pretooluse-bash-guard.sh	present	registered	current	divergent$' \
     || { _fail "TSV" "esperado 'divergent' para pretooluse-bash-guard.sh"; return 1; }
@@ -591,7 +621,7 @@ scenario_decoy_line_not_canonical() {
     printf '            "command": "\134\042$CLAUDE_PROJECT_DIR\134\042/.claude/hooks/posttooluse-agent-usage.sh"\n'
     printf '          }\n        ]\n      }\n    ]\n  }\n}\n'
   } > "$_p/.claude/settings.json"
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration --quiet
+  _ghs check --projeto-alvo-path "$_p" --verify-registration --quiet
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "decoy + command divergente deve reprovar, esperado 1 obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^pretooluse-bash-guard.sh	present	registered	current	divergent$' \
     || { _fail "TSV" "linha-isca nao pode contar como canonical (SEC-01)"; return 1; }
@@ -608,7 +638,7 @@ scenario_minified_settings_indeterminate() {
   # Colapsa para uma unica linha fisica preservando todo o conteudo textual.
   _minified=$(tr '\n' ' ' < "$_p/.claude/settings.json")
   printf '%s' "$_minified" > "$_p/.claude/settings.json"
-  capture sh "$SCRIPT" check --projeto-alvo-path "$_p" --verify-registration
+  _ghs check --projeto-alvo-path "$_p" --verify-registration
   for _h in $_HOOKS; do
     printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered	current	indeterminate$" \
       || { _fail "TSV" "settings.json minificado deveria dar 'indeterminate' para $_h"; return 1; }
@@ -700,6 +730,132 @@ exit 0'
     || { _fail "exit" "esperado 0 (3 hooks current via plugin), obtido $_CAPTURED_EXIT; stdout=$_CAPTURED_STDOUT stderr=$_CAPTURED_STDERR"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	present	registered	current$')
   [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas current (catalogo resolvido via plugin), stdout=$_CAPTURED_STDOUT"; return 1; }
+  return 0
+}
+
+# ==== INV-8: hooks providos pelo PLUGIN (v7+) ====
+#
+# Regressao do 3o modo de falha de campo: com o cstk instalado como plugin
+# nativo, os 3 hooks sao registrados pelo hooks.json do plugin e NAO existe
+# copia em <PAP>/.claude/hooks/ nem registro em <PAP>/.claude/settings.json.
+# Antes deste fix o `check` acusava "3 de 3 NAO estao ativos" e o
+# `tick-mode` devolvia "manual" — este ultimo fazendo o orquestrador tickar
+# em paralelo ao hook, com `state-ondas.sh end` somando as duas fontes
+# (tool_calls em DOBRO em toda onda).
+
+# _fake_plugin_hooks_json HOOK... -> materializa um hooks.json de plugin
+# citando os hooks passados e ecoa o path.
+_fake_plugin_hooks_json() {
+  _fpj_dir="$TMPDIR_TEST/fake-plugin-registry/hooks"
+  mkdir -p "$_fpj_dir"
+  {
+    printf '{"hooks":{"PostToolUse":['
+    _fpj_first=1
+    for _fpj_h in "$@"; do
+      [ "$_fpj_first" = 1 ] || printf ','
+      _fpj_first=0
+      printf '{"hooks":[{"type":"command","command":"sh \\"${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/hooks/%s\\""}]}' "$_fpj_h"
+    done
+    printf ']}}'
+  } > "$_fpj_dir/hooks.json"
+  printf '%s' "$_fpj_dir/hooks.json"
+}
+
+# _ghs_plugin HOOKS_JSON ARGS... -> invoca o SCRIPT com plugin simulado.
+_ghs_plugin() {
+  _gp_json=$1
+  shift
+  capture env HOME="$TMPDIR_TEST/.home-sem-plugin" CLAUDE_PLUGIN_ROOT='' \
+    CSTK_PLUGIN_HOOKS_JSON="$_gp_json" \
+    CSTK_HOOKS_CATALOG_DIR="${CSTK_HOOKS_CATALOG_DIR:-}" \
+    sh "$SCRIPT" "$@"
+}
+
+scenario_check_plugin_prove_hooks_exit0() {
+  _p=$(_mkproj proj-plugin-only)
+  # ZERO copia classica e ZERO settings.json — exatamente o layout v7+.
+  # shellcheck disable=SC2086
+  _pj=$(_fake_plugin_hooks_json $_HOOKS)
+  _ghs_plugin "$_pj" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "exit" "esperado 0 (hooks providos pelo plugin), obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	present	registered	current$')
+  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas present/registered/current, stdout=$_CAPTURED_STDOUT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'providos pelo PLUGIN' \
+    || { _fail "stderr" "esperado aviso de origem plugin, stderr=$_CAPTURED_STDERR"; return 1; }
+  # NAO pode mandar rodar `cstk hooks install` — o comando pula por dedup.
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'cstk hooks install' \
+    && { _fail "stderr" "nao deve sugerir remediacao quando o plugin ja prove"; return 1; }
+  return 0
+}
+
+scenario_tick_mode_plugin_devolve_hook() {
+  _p=$(_mkproj proj-plugin-tick)
+  _pj=$(_fake_plugin_hooks_json posttooluse-tool-call-tick.sh)
+  _ghs_plugin "$_pj" tick-mode --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_STDOUT" = "hook" ] \
+    || { _fail "tick-mode" "esperado 'hook' (senao o orquestrador ticka em paralelo ao hook => tool_calls em dobro), obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+scenario_tick_mode_sem_plugin_segue_manual() {
+  # Guarda de nao-regressao do default seguro: sem plugin E sem copia
+  # classica, continua "manual" (INV-4 intacto).
+  _p=$(_mkproj proj-sem-nada)
+  _pj="$TMPDIR_TEST/hooks-json-inexistente"
+  _ghs_plugin "$_pj" tick-mode --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_STDOUT" = "manual" ] \
+    || { _fail "tick-mode" "esperado 'manual', obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+scenario_check_plugin_mais_classico_alerta_duplicidade() {
+  # Plugin PROVE e a copia classica tambem esta registrada => o hook roda
+  # duas vezes e cada tool call e contado em dobro.
+  _p=$(_mkproj proj-dup)
+  _fully_provisioned "$_p"
+  # shellcheck disable=SC2086
+  _pj=$(_fake_plugin_hooks_json $_HOOKS)
+  _ghs_plugin "$_pj" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'contado em dobro' \
+    || { _fail "stderr" "esperado alerta de duplicidade, stderr=$_CAPTURED_STDERR"; return 1; }
+  return 0
+}
+
+scenario_check_plugin_quiet_sem_stderr() {
+  # --quiet cala tambem o aviso de origem plugin (INV: quiet e quiet).
+  _p=$(_mkproj proj-plugin-quiet)
+  # shellcheck disable=SC2086
+  _pj=$(_fake_plugin_hooks_json $_HOOKS)
+  _ghs_plugin "$_pj" check --projeto-alvo-path "$_p" --quiet
+  [ -z "$_CAPTURED_STDERR" ] \
+    || { _fail "stderr" "esperado stderr vazio com --quiet, obtido: $_CAPTURED_STDERR"; return 1; }
+  return 0
+}
+
+scenario_check_plugin_verify_registration_canonical() {
+  # Com --verify-registration, hook provido pelo plugin e canonical por
+  # construcao (o registro e o do proprio hooks.json do plugin).
+  _p=$(_mkproj proj-plugin-vr)
+  # shellcheck disable=SC2086
+  _pj=$(_fake_plugin_hooks_json $_HOOKS)
+  _ghs_plugin "$_pj" check --projeto-alvo-path "$_p" --verify-registration
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '	canonical$')
+  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 linhas canonical, stdout=$_CAPTURED_STDOUT"; return 1; }
+  return 0
+}
+
+scenario_plugin_hooks_json_ilegivel_degrada() {
+  # Override apontando para arquivo inexistente => "plugin nao prove",
+  # comportamento anterior preservado byte-a-byte. Na duvida NUNCA se
+  # afirma cobertura de plugin.
+  _p=$(_mkproj proj-plugin-ilegivel)
+  _ghs_plugin "$TMPDIR_TEST/nao-existe/hooks.json" check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1 (degrada p/ sem plugin), obtido $_CAPTURED_EXIT"; return 1; }
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c 'missing	unregistered')
+  [ "$_n" = 3 ] || { _fail "TSV" "esperado 3 missing/unregistered, stdout=$_CAPTURED_STDOUT"; return 1; }
   return 0
 }
 

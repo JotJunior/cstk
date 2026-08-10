@@ -133,7 +133,17 @@ RECALL_EXIT_USAGE=2
 # de `wave_model_usage` na v11->v12 (linhas 810-811 acima), CREATE TABLE IF
 # NOT EXISTS coberto pelo DDL. `cost_usd`/`total_tokens`/`model` NULL quando
 # nao medido, nunca 0 (Principio VI; data-model.md §Entity LooseUsageRecord).
-RECALL_SCHEMA_VERSION=13
+# v14 (plan-usage-capture): tabela nova `plan_usage` (grao escopo x momento
+# de captura; origem: hook `statusLine.command`, via `cstk plan-usage
+# ingest --stdin` — consumo AVULSO fora do fluxo state.json/onda, mesma
+# familia de `loose_usage`). Migracao v13->v14 e puramente aditiva: sem
+# ALTER TABLE, sem DROP — mesmo precedente literal de `loose_usage` acima.
+# Append-only, sem UNIQUE de chave natural (data-model.md §Entity Captura
+# de Uso do Plano). `used_percentage`/`resets_at` NULL quando ausentes
+# dentro de escopo presente, nunca 0/fabricado (Principio VI, dec-029) —
+# ausencia TOTAL de `rate_limits` nao gera nenhuma linha (decidido no
+# caller, nao no schema).
+RECALL_SCHEMA_VERSION=14
 # Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
 # DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
 RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
@@ -657,6 +667,17 @@ CREATE TABLE IF NOT EXISTS loose_usage (
   captured_at TEXT NOT NULL,
   ingested_at TEXT NOT NULL,
   UNIQUE(process_key, segment_id, model)
+);
+CREATE TABLE IF NOT EXISTS plan_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  project_path TEXT,
+  session_id TEXT NOT NULL,
+  scope TEXT NOT NULL CHECK (scope IN ('five_hour','seven_day')),
+  used_percentage REAL,
+  resets_at INTEGER,
+  captured_at TEXT NOT NULL,
+  ingested_at TEXT NOT NULL
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5 (
   body,
@@ -2455,6 +2476,60 @@ recall_prune_loose_usage() {
   recall_normalize_db_perms "$_plu_db"
   printf '%s\n' "$_plu_n"
   return 0
+}
+
+# recall_plan_usage_insert DB PROJECT PROJECT_PATH SESSION_ID SCOPE
+#   USED_PERCENTAGE RESETS_AT CAPTURED_AT INGESTED_AT
+# -> INSERT append-only em `plan_usage` (task 1.2, plan-usage-capture,
+# schema v14). Paridade com o INSERT de `loose_usage` dentro de
+# usage_map_sidecar_to_db() (cli/lib/usage.sh) — mesmo caminho de escrita
+# (sql_escape + recall_apply_sql_with_retry), sem UPSERT/UNIQUE (append-only
+# por design, data-model.md §Entity Captura de Uso do Plano).
+#
+# USED_PERCENTAGE/RESETS_AT: string vazia OU "null" (jq tostring de um
+# campo ausente/JSON null) viram literal SQL `NULL` via
+# recall_real_or_null/recall_int_or_null — NUNCA `0` fabricado
+# (Constitution VI, dec-029). CAPTURED_AT/INGESTED_AT sao TEXT NOT NULL
+# (FR-014): calculados pelo CALLER (`cstk plan-usage ingest --stdin`, task
+# 4.3.2) via `date -u +%Y-%m-%dT%H:%M:%SZ` — este helper NAO os infere.
+#
+# Retorna 0 em sucesso (via recall_apply_sql_with_retry), 1 em falha de
+# escrita apos esgotar retries. Best-effort pelo caller: nunca deve abortar
+# a captura da statusline (FR-011/Principio IV).
+recall_plan_usage_insert() {
+  _pui_db="$1"
+  _pui_project="$2"
+  _pui_project_path="$3"
+  _pui_session_id="$4"
+  _pui_scope="$5"
+  _pui_used_pct=$(recall_real_or_null "$6")
+  _pui_resets_at=$(recall_int_or_null "$7")
+  _pui_captured_at="$8"
+  _pui_ingested_at="$9"
+  _pui_sql="INSERT INTO plan_usage(project,project_path,session_id,scope,used_percentage,resets_at,captured_at,ingested_at) VALUES('$(sql_escape "$_pui_project")','$(sql_escape "$_pui_project_path")','$(sql_escape "$_pui_session_id")','$(sql_escape "$_pui_scope")',$_pui_used_pct,$_pui_resets_at,'$(sql_escape "$_pui_captured_at")','$(sql_escape "$_pui_ingested_at")');"
+  recall_apply_sql_with_retry "$_pui_db" "$_pui_sql" || return 1
+  recall_normalize_db_perms "$_pui_db"
+  return 0
+}
+
+# recall_plan_usage_last_scope_row DB SCOPE -> "used_percentage|resets_at"
+# do ULTIMO registro persistido daquele escopo (qualquer projeto —
+# rate_limits e gauge da CONTA, nao por-projeto; research.md Decision 4 da
+# feature plan-usage-capture), ou string vazia (+ exit 1) se nao houver
+# nenhum registro ainda. Colunas NULL viram string vazia no output do
+# sqlite3, distinguivel de "0" (nunca confundido com valor real zero).
+#
+# Confinamento sqlite3 (Constitution II / research.md Decision 6): unico
+# ponto de LEITURA do throttle de FR-010, usado por `cli/lib/plan-usage.sh`
+# (task 4.3), que NAO pode invocar `sqlite3` diretamente.
+recall_plan_usage_last_scope_row() {
+  _plsr_db="$1"
+  _plsr_scope="$2"
+  recall_have_sqlite3 || return 1
+  [ -f "$_plsr_db" ] || return 1
+  sqlite3 -separator '|' -- "$_plsr_db" \
+    "SELECT used_percentage, resets_at FROM plan_usage WHERE scope='$(sql_escape "$_plsr_scope")' ORDER BY id DESC LIMIT 1;" \
+    2>/dev/null
 }
 
 # ==========================================================================
