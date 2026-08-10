@@ -195,14 +195,27 @@ USAGE
 # ==========================================================================
 
 # _pu_local_time EPOCH -> horario local formatado (apresentacao apenas — a
-# persistencia continua epoch INTEGER, FR-003/Cenario 5). `date -r` e
-# BSD/macOS-first (ambiente-alvo desta feature); sem fallback GNU (`date -d
-# @EPOCH`) porque o CLI so precisa rodar no ambiente do operador (macOS/zsh,
-# Constitution). Se a conversao falhar (comando indisponivel/erro), imprime
-# o epoch cru — nunca fabrica um formato (Principio VI).
+# persistencia continua epoch INTEGER, FR-003/Cenario 5).
+#
+# PORTABILIDADE: `date -r EPOCH` e BSD/macOS. No GNU coreutils `-r` significa
+# "mtime deste ARQUIVO", entao `date -r 1786372200` falha com "No such file"
+# e a forma correta e `date -d @EPOCH`. A versao anterior so tinha o ramo BSD,
+# justificando que "o CLI so precisa rodar no ambiente do operador" — premissa
+# que nao se sustenta: o CI roda Ubuntu e o toolkit e distribuido via tarball.
+# Sintoma no Linux: `cstk plan-usage` imprimia o epoch cru (`reset: 1786372200`)
+# em vez da data. Tenta BSD, depois GNU; falhando as duas, imprime o epoch cru
+# — nunca fabrica um formato (Principio VI).
 _pu_local_time() {
   [ -n "$1" ] || { printf ''; return 0; }
-  date -r "$1" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || printf '%s' "$1"
+  if _pu_lt=$(date -r "$1" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null) && [ -n "$_pu_lt" ]; then
+    printf '%s' "$_pu_lt"
+    return 0
+  fi
+  if _pu_lt=$(date -d "@$1" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null) && [ -n "$_pu_lt" ]; then
+    printf '%s' "$_pu_lt"
+    return 0
+  fi
+  printf '%s' "$1"
 }
 
 # _pu_row_field ROW INDEX -> campo INDEX (1-based) de uma linha
