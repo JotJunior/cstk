@@ -4,6 +4,16 @@
 **Created**: 2026-08-10
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-10
+
+- Q: Qual a tolerancia de dedupe do throttle FR-010 para `used_percentage`? → A: tolerancia de 2 casas decimais — duas capturas so sao consideradas identicas (e descartaveis pelo throttle) se `used_percentage` bater ate a 2a casa decimal; alem disso conta como mudanca real.
+- Q: Qual a janela temporal do throttle FR-010 (ultimas N capturas ou so a ultima)? → A: sem janela temporal — o throttle compara sempre contra o ULTIMO registro persistido daquele escopo (`five_hour`/`seven_day`), nao uma janela de tempo.
+- Q: Qual a dimensao do schema `plan_usage` — global (so a conta) ou com dimensao de projeto/sessao? → A: manter dimensao de projeto/sessao (`project`, `project_path`, `session_id`), como as demais tabelas do knowledge.db (ex.: `loose_usage`); o gauge continua sendo da CONTA, a dimensao registra apenas DE ONDE a captura veio.
+- Q: Qual o formato de `captured_at`/`ingested_at`? → A: TEXT ISO 8601 (ex.: `2026-08-07T04:38:14Z`), alinhado a convencao de toda a knowledge.db — nunca epoch segundos. Distinto de `resets_at` (FR-003), que permanece epoch segundos por ser assim que a statusline emite esse campo especifico; `captured_at`/`ingested_at` sao carimbos proprios da ingestao do cstk, nao um campo repassado do payload.
+- Q: A consulta de historico do FR-008 via CLI deve ter limite/janela padrao? → A: sim — reusar as flags ja existentes de `cstk usage` (`--limit N`, default 20; `--since ISO`), sem inventar convencao nova.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Consultar o uso atual do plano sem credencial OAuth (Priority: P1)
@@ -154,15 +164,35 @@ grava ausencia explicita (NULL), nunca o valor `0`.
   horario de reset) para `five_hour` e `seven_day`.
 - **FR-008**: Usuarios MUST ser capazes de consultar o historico de
   capturas de uso do plano ao longo do tempo (nao apenas a mais recente),
-  em ordem cronologica, por escopo.
+  em ordem cronologica, por escopo. A consulta MUST reusar as flags ja
+  existentes de `cstk usage` (`--limit N`, default 20; `--since ISO`) para
+  limitar/janelar o resultado — sem introduzir uma convencao nova de
+  paginacao para esta feature.
 - **FR-009**: O sistema MUST persistir cada captura numa tabela dedicada
   (`plan_usage`) no repositorio de conhecimento local (mesmo indice ja
   usado por outras features de uso, ex.: `cstk recall`), com o
-  correspondente bump de versao de schema e migracao.
+  correspondente bump de versao de schema e migracao. A tabela MUST manter
+  dimensao de projeto/sessao (`project`, `project_path`, `session_id`),
+  na mesma convencao das demais tabelas do knowledge.db (ex.:
+  `loose_usage`) — o gauge medido continua sendo o da CONTA (nao do
+  projeto/sessao); a dimensao registra apenas a proveniencia da captura.
 - **FR-010**: O sistema MUST evitar persistir capturas redundantes
   identicas (mesmo escopo, mesmo percentual, mesmo horario de reset) em
   sucessao imediata, dado que a statusline renderiza por evento e nao por
-  polling controlado.
+  polling controlado. O throttle MUST comparar cada nova captura apenas
+  contra o ULTIMO registro persistido daquele escopo (`five_hour` ou
+  `seven_day`), sem janela temporal; duas capturas do mesmo escopo sao
+  consideradas identicas (e portanto descartadas) somente quando
+  `used_percentage` bate ate a 2a casa decimal e `resets_at` e igual —
+  qualquer diferenca alem da 2a casa decimal conta como mudanca real e
+  MUST ser persistida.
+- **FR-014**: O sistema MUST persistir `captured_at` (carimbo de quando a
+  captura foi processada) e `ingested_at` (carimbo de ingestao no
+  knowledge.db) como TEXT em formato ISO 8601 (ex.:
+  `2026-08-07T04:38:14Z`), na mesma convencao usada pelas demais tabelas
+  do knowledge.db — nunca como epoch. Isto e distinto de `resets_at`
+  (FR-003), que permanece epoch em segundos por ser o formato em que a
+  propria statusline emite esse campo.
 - **FR-011**: O sistema MUST permanecer 100% local — nenhuma captura de uso
   do plano e transmitida para fora do ambiente do operador (Principio IV da
   constitution do projeto).
@@ -189,7 +219,13 @@ grava ausencia explicita (NULL), nunca o valor `0`.
   `seven_day`), com percentual usado (ou ausencia explicita) e horario de
   reset (epoch segundos, ou ausencia explicita), capturado a partir de um
   render do comando de statusline. Persistido na tabela dedicada
-  `plan_usage` do repositorio de conhecimento local.
+  `plan_usage` do repositorio de conhecimento local, com dimensao de
+  proveniencia (`project`, `project_path`, `session_id`) na mesma
+  convencao das demais tabelas do knowledge.db — o gauge medido e sempre
+  da CONTA, a dimensao so registra a origem da captura. Carrega dois
+  carimbos de tempo proprios da ingestao, `captured_at` e `ingested_at`,
+  ambos TEXT em formato ISO 8601 — distintos de `resets_at`, que
+  permanece epoch em segundos por ser o formato emitido pela statusline.
 
 ## Success Criteria
 
