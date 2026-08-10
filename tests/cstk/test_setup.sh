@@ -215,8 +215,12 @@ scenario_dispatch_setup_wiring() {
     _fail "scenario_dispatch_setup_wiring" "case de help por subcomando: setup) ausente"
     return 1
   }
-  grep -qE '\|setup\)$' "$CSTK" || {
-    _fail "scenario_dispatch_setup_wiring" "case generico do dispatch: |setup) ausente"
+  # `setup` precisa ser UMA das alternativas do case generico — em qualquer
+  # posicao. A ancora `\|setup\)$` anterior exigia que fosse a ULTIMA, o que
+  # nunca foi invariante: bastou a v7.2.0 acrescentar `plan-usage` depois
+  # dela para o cenario reprovar com o wiring intacto.
+  grep -qE '\|setup[|)]' "$CSTK" || {
+    _fail "scenario_dispatch_setup_wiring" "case generico do dispatch: setup ausente das alternativas"
     return 1
   }
   _n_validos=$(grep -c "usage, setup, 00c" "$CSTK") || _n_validos=0
