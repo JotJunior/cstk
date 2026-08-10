@@ -127,19 +127,19 @@ Ref: checklists/requirements.md CHK002, CHK003, CHK004, CHK020, CHK022
 Ref: contracts/statusline-hook.md §Contrato de entrada, research.md
 Decision 1/3
 
-- [ ] 2.1.1 Criar
+- [x] 2.1.1 Criar
       `plugins/cstk/skills/agente-00c-runtime/hooks/statusline-plan-usage.sh`
       (shebang `#!/bin/sh`, Constitution II) lendo o payload JSON do
       stdin
-- [ ] 2.1.2 Extrair `.session_id`, `.workspace.current_dir` /
+- [x] 2.1.2 Extrair `.session_id`, `.workspace.current_dir` /
       `.workspace.project_dir` (fallback conforme contrato linha 29),
       `.rate_limits.five_hour.*`, `.rate_limits.seven_day.*` via `jq`
-- [ ] 2.1.3 `jq` ausente: captura pulada, pass-through preservado, exit
+- [x] 2.1.3 `jq` ausente: captura pulada, pass-through preservado, exit
       sempre `0` (research.md Decision 3, reuso do carve-out de
       `cli/lib/recall.sh`/`cli/lib/usage.sh`)
-- [ ] 2.1.4 Payload malformado (JSON invalido): captura pulada,
+- [x] 2.1.4 Payload malformado (JSON invalido): captura pulada,
       pass-through best-effort do stdin cru, exit `0`
-- [ ] 2.1.5 Teste: fixture com `rate_limits` completo extrai os 4 valores
+- [x] 2.1.5 Teste: fixture com `rate_limits` completo extrai os 4 valores
       corretamente (paridade com o schema OBSERVADO na memoria
       `reference_statusline_usage_payload.md`)
 
@@ -149,21 +149,21 @@ Ref: spec.md FR-002/Edge-Case/User-Story-3, data-model.md §Ausencia
 explicita vs valor real, contracts/statusline-hook.md §Comportamento de
 captura, Constitution VI (Zero Fabricacao)
 
-- [ ] 2.2.1 Quando a chave `.rate_limits` esta AUSENTE do payload
+- [x] 2.2.1 Quando a chave `.rate_limits` esta AUSENTE do payload
       inteiro: **NAO chamar** `recall_plan_usage_insert()` para nenhum
       escopo — nenhuma linha inserida (dec-029)
-- [ ] 2.2.2 Quando `.rate_limits.<scope>` esta presente mas
+- [x] 2.2.2 Quando `.rate_limits.<scope>` esta presente mas
       `used_percentage`/`resets_at` vem ausente/nulo dentro do escopo:
       chamar `recall_plan_usage_insert()` para aquele escopo com `NULL`
       no(s) campo(s) faltante(s) — caso defensivo/malformado, nunca
       observado empiricamente mas a coluna permanece NULLABLE para isso
-- [ ] 2.2.3 Em NENHUM caminho persistir `0` como substituto de dado
+- [x] 2.2.3 Em NENHUM caminho persistir `0` como substituto de dado
       ausente (Constitution VI — validar com teste dedicado, nao so
       inspecao)
-- [ ] 2.2.4 Teste: fixture SEM `rate_limits` -> zero linhas novas em
+- [x] 2.2.4 Teste: fixture SEM `rate_limits` -> zero linhas novas em
       `plan_usage` apos a execucao (nao apenas "sem erro" — checar
       `SELECT COUNT(*)` antes/depois)
-- [ ] 2.2.5 Teste: fixture com `rate_limits.five_hour` presente e
+- [x] 2.2.5 Teste: fixture com `rate_limits.five_hour` presente e
       `rate_limits.seven_day` ausente -> uma linha nova so para
       `five_hour`, nenhuma para `seven_day`
 
@@ -172,14 +172,14 @@ captura, Constitution VI (Zero Fabricacao)
 Ref: spec.md FR-010, data-model.md §Migracao/Ausencia, checklists/
 requirements.md CHK010 (residual documentado nesta onda)
 
-- [ ] 2.3.1 Antes de cada INSERT candidato, consultar o ULTIMO registro
+- [x] 2.3.1 Antes de cada INSERT candidato, consultar o ULTIMO registro
       persistido daquele escopo (`SELECT ... ORDER BY id DESC LIMIT 1
       WHERE scope = ?`), sem janela temporal
-- [ ] 2.3.2 Descartar (nao inserir) quando `used_percentage` bate ate a
+- [x] 2.3.2 Descartar (nao inserir) quando `used_percentage` bate ate a
       2a casa decimal E `resets_at` e igual ao ultimo registro
-- [ ] 2.3.3 Persistir quando a diferenca ultrapassa a 2a casa decimal OU
+- [x] 2.3.3 Persistir quando a diferenca ultrapassa a 2a casa decimal OU
       `resets_at` mudou
-- [ ] 2.3.4 **Decisao residual CHK010**: definir e implementar o
+- [x] 2.3.4 **Decisao residual CHK010**: definir e implementar o
       comportamento quando o ULTIMO registro do escopo tem
       `used_percentage`/`resets_at` = `NULL` (ausencia parcial
       persistida, 2.2.2) e a nova captura do MESMO escopo TAMBEM chega
@@ -187,7 +187,7 @@ requirements.md CHK010 (residual documentado nesta onda)
       Decisao auditavel (nao inventar sem registro) se NULL-vs-NULL conta
       como "identico" (descarta) ou "sempre persiste" (nunca descarta
       ausencia); documentar a escolha em `data-model.md` apos decidir
-- [ ] 2.3.5 Teste: duas capturas identicas em sequencia -> so 1 linha
+- [x] 2.3.5 Teste: duas capturas identicas em sequencia -> so 1 linha
       nova; 3a captura com mudanca na 3a casa decimal apenas -> ainda
       descartada; 4a captura com mudanca na 2a casa decimal -> nova linha
       (paridade com quickstart.md Cenario 3)
@@ -197,16 +197,16 @@ requirements.md CHK010 (residual documentado nesta onda)
 Ref: contracts/statusline-hook.md §Contrato de saida, research.md
 Decision 2
 
-- [ ] 2.4.1 Se `CSTK_STATUSLINE_INNER_COMMAND` definida: reencaminhar o
+- [x] 2.4.1 Se `CSTK_STATUSLINE_INNER_COMMAND` definida: reencaminhar o
       payload original (stdin intacto) para o comando dela, repassar
       stdout verbatim
-- [ ] 2.4.2 Senao: imprimir fallback minimo de 1 linha construido so a
+- [x] 2.4.2 Senao: imprimir fallback minimo de 1 linha construido so a
       partir de `model.display_name` + (quando presente) `used_percentage`
       de `five_hour` desta mesma captura — nunca inventar outro campo
-- [ ] 2.4.3 Erros de captura (jq ausente, sqlite3 ausente, INSERT falho)
+- [x] 2.4.3 Erros de captura (jq ausente, sqlite3 ausente, INSERT falho)
       NUNCA vao para stdout — descartados silenciosamente ou enviados so
       a stderr
-- [ ] 2.4.4 Teste: em NENHUM cenario (dep ausente, payload malformado,
+- [x] 2.4.4 Teste: em NENHUM cenario (dep ausente, payload malformado,
       throttle, INSERT ok) o script sai com exit != `0`, nem imprime erro
       de diagnostico em stdout
 
@@ -214,12 +214,12 @@ Decision 2
 
 Ref: contracts/statusline-hook.md linha 64, research.md Decision 6
 
-- [ ] 2.5.1 `sqlite3` ausente OU `knowledge.db` sem permissao de escrita:
+- [x] 2.5.1 `sqlite3` ausente OU `knowledge.db` sem permissao de escrita:
       captura pulada, pass-through intacto, exit `0`
-- [ ] 2.5.2 Confinar toda chamada a `sqlite3` a `cli/lib/recall.sh` —
+- [x] 2.5.2 Confinar toda chamada a `sqlite3` a `cli/lib/recall.sh` —
       `statusline-plan-usage.sh` MUST NOT invocar `sqlite3` diretamente
       (mesmo confinamento de `loose-usage-capture`)
-- [ ] 2.5.3 Teste: simular `sqlite3` ausente no PATH -> pass-through
+- [x] 2.5.3 Teste: simular `sqlite3` ausente no PATH -> pass-through
       normal, captura pulada, exit `0` (paridade quickstart.md Cenario 7)
 
 ---
@@ -260,7 +260,7 @@ plan.md §Riscos conhecidos
 
 Ref: contracts/cli-plan-usage.md §`cstk plan-usage`, spec.md FR-007
 
-- [ ] 4.1.1 Registrar subcomando `plan-usage` no dispatch de `cli/cstk`
+- [x] 4.1.1 Registrar subcomando `plan-usage` no dispatch de `cli/cstk`
       (`case "$1"`), delegando a `plan_usage_main()` novo em
       `cli/lib/plan-usage.sh` (paridade com `usage_main()` de
       `cli/lib/usage.sh`)
@@ -304,12 +304,12 @@ FR-008, dec-014
 
 Ref: contracts/cli-plan-usage.md §`ingest --stdin`
 
-- [ ] 4.3.1 Subcomando interno (nao listado em `--help` publico,
+- [x] 4.3.1 Subcomando interno (nao listado em `--help` publico,
       paridade com outros internos do dispatch) consumido exclusivamente
       por `statusline-plan-usage.sh`
-- [ ] 4.3.2 Recebe payload bruto via stdin, aplica throttle (2.3) e
+- [x] 4.3.2 Recebe payload bruto via stdin, aplica throttle (2.3) e
       delega a `recall_plan_usage_insert()` (1.2) quando aplicavel
-- [ ] 4.3.3 Exit sempre `0` mesmo em erro interno — nunca propaga falha
+- [x] 4.3.3 Exit sempre `0` mesmo em erro interno — nunca propaga falha
       para a sessao do operador (FR-011/Principio IV)
 
 ---

@@ -2512,6 +2512,26 @@ recall_plan_usage_insert() {
   return 0
 }
 
+# recall_plan_usage_last_scope_row DB SCOPE -> "used_percentage|resets_at"
+# do ULTIMO registro persistido daquele escopo (qualquer projeto —
+# rate_limits e gauge da CONTA, nao por-projeto; research.md Decision 4 da
+# feature plan-usage-capture), ou string vazia (+ exit 1) se nao houver
+# nenhum registro ainda. Colunas NULL viram string vazia no output do
+# sqlite3, distinguivel de "0" (nunca confundido com valor real zero).
+#
+# Confinamento sqlite3 (Constitution II / research.md Decision 6): unico
+# ponto de LEITURA do throttle de FR-010, usado por `cli/lib/plan-usage.sh`
+# (task 4.3), que NAO pode invocar `sqlite3` diretamente.
+recall_plan_usage_last_scope_row() {
+  _plsr_db="$1"
+  _plsr_scope="$2"
+  recall_have_sqlite3 || return 1
+  [ -f "$_plsr_db" ] || return 1
+  sqlite3 -separator '|' -- "$_plsr_db" \
+    "SELECT used_percentage, resets_at FROM plan_usage WHERE scope='$(sql_escape "$_plsr_scope")' ORDER BY id DESC LIMIT 1;" \
+    2>/dev/null
+}
+
 # ==========================================================================
 # FASE memories — Ingestao de arquivos .md de auto-memoria (recall-memory-mirror)
 # Aditivo ao recall_mode_ingest existente (CQ2). Lê arquivos .md do diretório

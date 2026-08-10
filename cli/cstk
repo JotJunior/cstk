@@ -300,7 +300,7 @@ _dispatch() {
       . "$_lib_file"
       serve_main "$@"
       ;;
-    install|update|self-update|list|doctor|session|recall|show-tip|hooks|state|mcp|usage|setup)
+    install|update|self-update|list|doctor|session|recall|show-tip|hooks|state|mcp|usage|setup|plan-usage)
       # Boot-check para todos exceto self-update (que e o caminho de recovery
       # da janela transiente — bloquea-lo aqui causaria deadlock).
       case "$_cmd" in

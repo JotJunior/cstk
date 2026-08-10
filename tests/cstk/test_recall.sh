@@ -4489,8 +4489,14 @@ scenario_pu4_null_vs_valor_presente() {
   # valores presentes: preservados sem arredondar (ruido de float, FR-004)
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_plan_usage_insert "$1" "p-val" "/p" "sess-val" "five_hour" "7.000000000000001" "1786372200" "2026-08-10T13:00:00Z" "2026-08-10T13:00:00Z"' \
     _ "$_pu4_db" || return 1
-  _pu4_used=$(sqlite3 "$_pu4_db" "SELECT used_percentage FROM plan_usage WHERE project='p-val';")
-  [ "$_pu4_used" = "7.000000000000001" ] || { _fail "pu4 ruido float" "esperado '7.000000000000001', obtido '$_pu4_used'"; return 1; }
+  # NB: o CLI sqlite3 formata REAL na saida padrao com %!.15g (exibe "7.0"),
+  # o que e um artefato de EXIBICAO — o valor ARMAZENADO preserva o ruido de
+  # float com precisao total. Afere-se o valor por comparacao numerica
+  # exata (nao por igualdade textual da saida formatada, dec-046).
+  _pu4_eq=$(sqlite3 "$_pu4_db" "SELECT used_percentage = 7.000000000000001 FROM plan_usage WHERE project='p-val';")
+  [ "$_pu4_eq" = "1" ] || { _fail "pu4 ruido float" "esperado used_percentage = 7.000000000000001 (comparacao numerica), obtido eq=$_pu4_eq"; return 1; }
+  _pu4_neq_rounded=$(sqlite3 "$_pu4_db" "SELECT used_percentage = 7.0 FROM plan_usage WHERE project='p-val';")
+  [ "$_pu4_neq_rounded" = "0" ] || { _fail "pu4 nao-arredondado" "esperado used_percentage != 7.0 (prova de nao-arredondamento), obtido eq=$_pu4_neq_rounded"; return 1; }
   _pu4_resets=$(sqlite3 "$_pu4_db" "SELECT resets_at FROM plan_usage WHERE project='p-val';")
   [ "$_pu4_resets" = "1786372200" ] || { _fail "pu4 resets_at" "esperado '1786372200', obtido '$_pu4_resets'"; return 1; }
   return 0

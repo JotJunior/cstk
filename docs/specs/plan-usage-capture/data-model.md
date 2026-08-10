@@ -86,16 +86,31 @@ literal de `loose_usage` na migracao v12->v13 (research.md Decision 7).
 | `rate_limits.<scope>` presente com uso genuinamente `0%` (hipotetico, nunca observado) | Sim | `0.0` (valor real medido) | epoch real |
 | Throttle descarta a captura (repeticao dentro de 2 casas decimais) | Nao — nenhuma linha nova e inserida | (idem) | (idem) |
 
-A distincao agora e tripla (dec-029, resolve CHK009/CHK010/CHK016):
+A distincao agora e tripla (dec-029, resolve CHK009/CHK016):
 "sem linha nova por throttle" (repeticao redundante, by design), "sem
 linha por ausencia TOTAL de `rate_limits`" (nenhuma resposta de API
 completou — a ausencia de linha E o estado "nao medido"; a leitura via
 CLI MUST mostrar "nao medido", nunca `0%`) e "linha com `NULL` explicito
 por ausencia PARCIAL" (escopo presente mas um dos dois campos veio
 ausente/nulo dentro dele — caso defensivo, coluna permanece NULLABLE).
-Isto tambem resolve o gap de FR-010 (NULL-vs-NULL no throttle): como a
-ausencia total nunca gera INSERT, nao ha comparacao NULL-vs-NULL a fazer
-no caminho de throttle.
+
+**Residual CHK010 — NULL-vs-NULL no throttle (dec-050, corrige F4/dec-043
+do gate analyze)**: o paragrafo acima resolve so a ausencia TOTAL (nenhum
+INSERT candidato existe, logo nao ha comparacao a fazer). Existe um
+segundo caso, distinto: o ULTIMO registro persistido do escopo tem
+`used_percentage`/`resets_at` = `NULL` (ausencia PARCIAL ja persistida,
+linha 85) e a NOVA captura do MESMO escopo TAMBEM chega com o campo
+ausente dentro do escopo presente (mesma condicao defensiva/malformada
+se repetindo). Decisao (dec-050): **NULL-vs-NULL conta como "identico"
+e a captura e descartada pelo throttle** — extensao natural da regra
+geral de 2.3.2 (compara via SQL `IS` em vez de `=`, de forma que
+`NULL IS NULL` avalie verdadeiro sem caso especial no codigo). A
+alternativa ("sempre persiste" ausencia) foi descartada porque geraria
+crescimento ilimitado da tabela caso a API mantenha o mesmo estado
+malformado a cada render — o que contraria o proprio proposito do
+FR-010. Nao ha fabricacao de dado envolvida: a ausencia ja foi
+persistida uma vez (`NULL` verdadeiro); repetir a mesma ausencia nao
+carrega informacao nova.
 
 ### Concorrencia (CHK020)
 
