@@ -171,6 +171,16 @@ subsequente via CLI reporta "nao medido", nunca o valor `0`.
   /api/oauth/usage` (`seven_day_opus`, `seven_day_sonnet`, creditos/
   `extra_usage`)? Estao fora de escopo desta feature — o sistema MUST NOT
   tentar captura-los a partir da statusline, que nunca os emite.
+- O que acontece quando o operador ja tem uma statusline customizada
+  configurada (`statusLine.command` no `settings.json` do harness)? Como
+  essa chave e UNICA, instalar esta feature sem cuidado sobrescreveria a
+  customizacao existente. O sistema MUST preservar a customizacao previa
+  via pass-through: quando a variavel de ambiente
+  `CSTK_STATUSLINE_INNER_COMMAND` estiver definida, `statusline-plan-usage.sh`
+  MUST reencaminhar o payload original (stdin, sem modificacao) para o
+  comando nela referenciado e repassar o stdout dele verbatim, capturando
+  o uso do plano como efeito colateral best-effort — nunca substituindo o
+  texto renderizado pela statusline customizada do operador.
 
 ## Requirements
 
@@ -199,6 +209,11 @@ subsequente via CLI reporta "nao medido", nunca o valor `0`.
   `seven_day` emitidos pela statusline; MUST NOT tentar capturar
   `seven_day_opus`, `seven_day_sonnet` ou dados de creditos
   (`extra_usage`), que exigem credencial OAuth e estao fora de escopo.
+  MUST NOT tambem capturar os demais campos do payload que a statusline
+  emite mas que nao pertencem ao gauge `rate_limits`: `.model`, `.cost`,
+  `.context_window`, `.exceeds_200k_tokens`, `.thinking`, `.effort`,
+  `.output_style`, `.version` (ver `contracts/statusline-hook.md`
+  §Contrato de entrada, "Campos NAO consumidos por esta feature").
 - **FR-007**: Usuarios MUST ser capazes de consultar, via CLI `cstk`, a
   captura mais recente conhecida do uso do plano (percentual usado +
   horario de reset) para `five_hour` e `seven_day`. Quando nao houver
@@ -244,8 +259,17 @@ subsequente via CLI reporta "nao medido", nunca o valor `0`.
   comportamento de ingestao usando um payload fixture apresentado via
   stdin, nunca dependendo de uma sessao interativa real (a statusline nao
   dispara em modo nao-interativo).
-
-> Decisoes de infraestrutura: aplica-se apenas cadencia de captura —
+- **FR-015**: A captura MUST ser fail-open/best-effort em qualquer cenario
+  de degradacao — `jq` ausente, `sqlite3` ausente, `knowledge.db`
+  inacessivel (sem permissao de escrita), ou payload JSON malformado. Em
+  TODOS esses cenarios o sistema MUST: (a) pular a captura silenciosamente
+  (sem inserir linha em `plan_usage`); (b) imprimir em stdout o texto de
+  fallback/pass-through normal da statusline, exatamente como se a captura
+  nao existisse; (c) sair sempre com exit code `0`. O sistema MUST NUNCA
+  imprimir erro de diagnostico da captura em stdout (contaminaria a UI
+  renderizada) nem atrasar perceptivelmente a renderizacao — erros, se
+  logados, vao para stderr ou sao descartados silenciosamente (mesma
+  disciplina fail-open de `posttooluse-loose-usage.sh`).
 > **FR-013-INFRA-SCHED**: a cadencia de captura e determinada por eventos
 > do harness (o comando de statusline e invocado a cada render de UI, nao
 > por um agendador externo tipo cron); o throttle mencionado em FR-010 e

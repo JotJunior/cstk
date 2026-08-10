@@ -26,78 +26,94 @@ credencial OAuth, 100% local (Constitution IV).
 Ref: spec.md FR-009/FR-014, data-model.md (tabela `plan_usage`, §Migracao),
 plan.md §Summary item 2, research.md Decision 7
 
-- [ ] 1.1.1 Bump `RECALL_SCHEMA_VERSION` de `13` para `14` em
-      `cli/lib/recall.sh` (linha 136)
-- [ ] 1.1.2 Adicionar `CREATE TABLE IF NOT EXISTS plan_usage (...)` em
+- [x] 1.1.1 Bump `RECALL_SCHEMA_VERSION` de `13` para `14` em
+      `cli/lib/recall.sh` (linha 136) <!-- verificado: grep RECALL_SCHEMA_VERSION cli/lib/recall.sh -> RECALL_SCHEMA_VERSION=14 -->
+- [x] 1.1.2 Adicionar `CREATE TABLE IF NOT EXISTS plan_usage (...)` em
       `recall_schema_ddl`, seguindo o schema de data-model.md (colunas
       `id`, `project`, `project_path`, `session_id`, `scope` com
       `CHECK IN ('five_hour','seven_day')`, `used_percentage` REAL
       NULLABLE, `resets_at` INTEGER NULLABLE, `captured_at` TEXT NOT NULL,
       `ingested_at` TEXT NOT NULL) — sem `ALTER`/`DROP`, mesmo precedente
-      literal de `loose_usage` (linha 647)
-- [ ] 1.1.3 Sem `UNIQUE` de chave natural (data-model.md linhas 34-41) —
-      confirmar que a DDL nao introduz constraint indevida
-- [ ] 1.1.4 Teste: migracao aditiva pura — banco com schema v13 existente
+      literal de `loose_usage` (linha 647) <!-- verificado empiricamente: recall_apply_schema em DB novo gera sqlite_master.sql identico ao DDL declarado (ver evidencia da Decisao) -->
+- [x] 1.1.3 Sem `UNIQUE` de chave natural (data-model.md linhas 34-41) —
+      confirmar que a DDL nao introduz constraint indevida <!-- confirmado por leitura direta do DDL: nenhum UNIQUE presente -->
+- [x] 1.1.4 Teste: migracao aditiva pura — banco com schema v13 existente
       recebe a migracao e ganha a tabela `plan_usage` sem perder nenhuma
       linha das tabelas existentes (`waves`, `wave_model_usage`,
-      `loose_usage`)
-- [ ] 1.1.5 Teste: `schema_meta.schema_version` reflete `14` apos a
-      migracao
+      `loose_usage`) <!-- tests/cstk/test_recall.sh scenario_pu2_migracao_v13_v14_real_idempotente -->
+- [x] 1.1.5 Teste: `schema_meta.schema_version` reflete `14` apos a
+      migracao <!-- tests/cstk/test_recall.sh scenario_pu1_fresh_db_tabela_e_versao + scenario_pu2 -->
 
 ### 1.2 Helper de escrita `plan_usage` (INSERT seguro) `[C]`
 
 Ref: plan.md §Revisao de Seguranca (gate owasp-security, achado A05
 Injection/SQL — MANDATORIO), spec.md FR-002/FR-009
 
-- [ ] 1.2.1 Implementar `recall_plan_usage_insert()` em `cli/lib/recall.sh`
+- [x] 1.2.1 Implementar `recall_plan_usage_insert()` em `cli/lib/recall.sh`
       (paridade com o helper equivalente de `loose_usage`), recebendo
       `project`, `project_path`, `session_id`, `scope`, `used_percentage`
-      (pode ser vazio/NULL), `resets_at` (pode ser vazio/NULL)
-- [ ] 1.2.2 **MANDATORIO**: escapar `session_id`/`project_path`/`project`
+      (pode ser vazio/NULL), `resets_at` (pode ser vazio/NULL),
+      `captured_at`, `ingested_at` — os dois ultimos sao TEXT NOT NULL
+      em data-model.md (FR-014) e devem ser calculados pelo CALLER (`cstk
+      plan-usage ingest --stdin`, task 4.3.2) via `date -u
+      +%Y-%m-%dT%H:%M:%SZ` e passados explicitos, mesmo padrao de
+      `usage_map_sidecar_to_db()` em `cli/lib/usage.sh` (`_umd_captured`/
+      `_umd_now` computados pelo caller antes do INSERT de
+      `loose_usage`, linha ~255) — nao inferidos dentro do helper <!-- verificado empiricamente via chamada direta da funcao (ver evidencia da Decisao) -->
+- [x] 1.2.2 **MANDATORIO**: escapar `session_id`/`project_path`/`project`
       via `sql_escape()` (linha 223) antes de compor qualquer `INSERT INTO
       plan_usage` — nenhum valor extraido do payload entra em SQL sem
-      passar por `sql_escape`
-- [ ] 1.2.3 **MANDATORIO**: usar `recall_apply_sql_with_retry()` (linha
+      passar por `sql_escape` <!-- confirmado por leitura direta do codigo + teste de injecao (1.2.5) -->
+- [x] 1.2.3 **MANDATORIO**: usar `recall_apply_sql_with_retry()` (linha
       2393) para o INSERT — mesmo caminho ja usado por `usage.sh` para
-      `loose_usage`, nao um mecanismo novo
-- [ ] 1.2.4 `used_percentage`/`resets_at` ausentes (string vazia/nao
+      `loose_usage`, nao um mecanismo novo <!-- confirmado por leitura direta do codigo -->
+- [x] 1.2.4 `used_percentage`/`resets_at` ausentes (string vazia/nao
       fornecidos) viram literal `NULL` no SQL, nunca `0` ou string vazia
       (Constitution VI, dec-029 — caso de ausencia PARCIAL dentro de
       escopo presente; ver 2.2 para a decisao de NAO chamar este helper
-      quando `rate_limits` esta ausente por completo)
-- [ ] 1.2.5 Teste de seguranca: payload com `session_id`/`project_path`
+      quando `rate_limits` esta ausente por completo) <!-- verificado empiricamente: SELECT (used_percentage IS NULL)||'|'||(resets_at IS NULL) -> '1|1' -->
+- [x] 1.2.5 Teste de seguranca: payload com `session_id`/`project_path`
       contendo aspas simples, `;`, `--`, e fragmento tipo
       `'; DROP TABLE plan_usage; --` — confirmar que o INSERT nao quebra
-      e o valor literal e persistido escapado (nao interpretado como SQL)
-- [ ] 1.2.6 Teste: INSERT com `used_percentage`/`resets_at` NULL persiste
-      `NULL` real na coluna (nao string `"NULL"`, nao `0`)
+      e o valor literal e persistido escapado (nao interpretado como SQL) <!-- tests/cstk/test_recall.sh scenario_pu3_injecao_no_insert; verificado tambem manualmente, tabela sobrevive e valor literal preservado -->
+- [x] 1.2.6 Teste: INSERT com `used_percentage`/`resets_at` NULL persiste
+      `NULL` real na coluna (nao string `"NULL"`, nao `0`) <!-- tests/cstk/test_recall.sh scenario_pu4_null_vs_valor_presente -->
+
+**Nota de verificacao (task 1.2)**: cobertura automatizada adicionada em
+`tests/cstk/test_recall.sh` (scenarios `pu1`-`pu4`). Execucao completa da
+suite `test_recall.sh` (regressao + novos scenarios) iniciada em background
+durante esta onda; resultado literal citado no relatorio de conclusao —
+verificacao manual direta das funcoes (`recall_apply_schema`,
+`recall_plan_usage_insert`) ja confirmou o comportamento esperado com
+output literal (schema_version=14, tabela criada com DDL exato, INSERT
+normal/NULL/injecao todos corretos).
 
 ### 1.3 Fechar gaps de documentacao do checklist `[M]`
 
 Ref: checklists/requirements.md CHK002, CHK003, CHK004, CHK020, CHK022
 (gaps nao-bloqueantes reavaliados na onda-005, nenhum CRITICAL/{humano})
 
-- [ ] 1.3.1 CHK002: editar `spec.md` FR-006 para listar explicitamente
+- [x] 1.3.1 CHK002: editar `spec.md` FR-006 para listar explicitamente
       (ou referenciar `contracts/statusline-hook.md` §linhas 34-36) os 8
       campos excluidos (`.model`, `.cost`, `.context_window`,
       `.exceeds_200k_tokens`, `.thinking`, `.effort`, `.output_style`,
       `.version`), nao so os 3 que exigem OAuth
-- [ ] 1.3.2 CHK003: adicionar Edge Case em `spec.md` cobrindo o risco de
+- [x] 1.3.2 CHK003: adicionar Edge Case em `spec.md` cobrindo o risco de
       sobrescrita de `statusLine.command` customizado (hoje so em
       `plan.md` §Riscos conhecidos), citando a mitigacao
       `CSTK_STATUSLINE_INNER_COMMAND`
-- [ ] 1.3.3 CHK004: adicionar FR ou Edge Case em `spec.md` declarando o
+- [x] 1.3.3 CHK004: adicionar FR ou Edge Case em `spec.md` declarando o
       comportamento fail-open/best-effort (jq ausente, sqlite3 ausente,
       payload malformado, nunca atrasar a statusline) como requisito
       testavel, hoje so em `contracts/statusline-hook.md`/`quickstart.md`
-      Cenario 7
-- [ ] 1.3.4 CHK020: decidir e documentar (spec.md Edge Case ou NOTE em
+      Cenario 7 <!-- adicionado como FR-015 -->
+- [x] 1.3.4 CHK020: decidir e documentar (spec.md Edge Case ou NOTE em
       `data-model.md`) o comportamento de concorrencia — duas invocacoes
       simultaneas de `statusline-plan-usage.sh` escrevendo em
       `plan_usage` ao mesmo tempo; `recall_apply_sql_with_retry` ja
       cobre retry de `SQLITE_BUSY`, documentar que isso e suficiente (ou
-      justificar mecanismo adicional)
-- [ ] 1.3.5 CHK022: adicionar numero/threshold verificavel de latencia
+      justificar mecanismo adicional) <!-- data-model.md secao Concorrencia -->
+- [x] 1.3.5 CHK022: adicionar numero/threshold verificavel de latencia
       adicional por render (ex.: "captura MUST adicionar no maximo Xms")
       em `contracts/statusline-hook.md`, substituindo a caracterizacao
       qualitativa atual ("throttle O(1)")

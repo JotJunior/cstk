@@ -96,3 +96,30 @@ ausente/nulo dentro dele — caso defensivo, coluna permanece NULLABLE).
 Isto tambem resolve o gap de FR-010 (NULL-vs-NULL no throttle): como a
 ausencia total nunca gera INSERT, nao ha comparacao NULL-vs-NULL a fazer
 no caminho de throttle.
+
+### Concorrencia (CHK020)
+
+`statusline-plan-usage.sh` e invocado pelo harness a cada render de UI —
+em teoria, duas invocacoes podem sobrepor (ex.: dois panes/sessoes do
+mesmo operador renderizando quase simultaneamente) e tentar `INSERT` em
+`plan_usage` ao mesmo tempo. `recall_apply_sql_with_retry()`
+(`cli/lib/recall.sh`) ja cobre esse caso: ate 4 tentativas com backoff +
+jitter por-PID em `SQLITE_BUSY`/`SQLITE_LOCKED` (mesmo mecanismo usado
+por TODAS as demais tabelas do `knowledge.db`, incluindo `loose_usage`).
+Isso e considerado SUFICIENTE para `plan_usage` sem mecanismo adicional,
+porque:
+
+- Append-only sem `UNIQUE`/`UPSERT` — nao ha janela de leitura-modificacao-
+  escrita a proteger (ao contrario de um contador ou upsert), so um
+  `INSERT` isolado por captura.
+- O throttle (FR-010) le o ultimo registro ANTES do `INSERT` (nao dentro
+  da mesma transacao) — na pior hipotese de corrida entre duas invocacoes
+  concorrentes, o resultado e no maximo uma linha redundante extra
+  persistida (nao um dado corrompido nem uma linha perdida), o que e
+  aceitavel para uma serie de observabilidade local de baixo volume.
+- Falha apos esgotar os 4 retries e fail-open (FR-015): a captura e
+  descartada silenciosamente, a statusline segue renderizando normalmente.
+
+Nenhum mutex/lock adicional (ex.: `state-lock.sh`) e introduzido para
+esta feature — seria over-engineering para um indice derivado de baixo
+volume onde a pior consequencia de corrida e uma linha redundante.

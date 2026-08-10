@@ -65,9 +65,23 @@ contaminaria a UI. Erros de captura, se logados, vao para stderr
 | Payload malformado (JSON invalido) | Pass-through normal (best-effort — tenta repassar stdin cru); captura pulada |
 
 Em NENHUM cenario o script sai com codigo diferente de `0`, nem atrasa a
-renderizacao da UI de forma perceptivel (mesmo teto implicito de
-`posttooluse-loose-usage.sh`: nenhuma chamada de rede, throttle O(1) no
-caminho de leitura).
+renderizacao da UI de forma perceptivel — nenhuma chamada de rede,
+throttle O(1) no caminho de leitura (`SELECT ... ORDER BY id DESC LIMIT 1`
+por escopo, mesmo custo de `recall_apply_sql_with_retry`).
+
+**Threshold verificavel (CHK022, politica de design — nao medicao
+empirica)**: a captura completa (parse do payload + throttle + INSERT,
+quando aplicavel) MUST adicionar no maximo **50ms** de latencia por
+render em relacao ao pass-through puro (sem captura). Este e um orcamento
+de design, na mesma ordem de grandeza do teto de 5s de timeout de hook do
+harness (`docs/specs/_archived/2026-08-08-loose-usage-capture/contracts/hook-loose-usage.md`,
+linha 22) dividido por um fator
+de folga generoso para uma operacao sincrona e visivel ao operador a cada
+render — nao uma medicao ja realizada nesta feature. FASE 5 (task 5.1)
+MUST validar esse orcamento empiricamente com `time` sobre o script com
+fixtures reais antes de declarar o requisito atendido; se a medicao real
+exceder 50ms de forma consistente, o numero MUST ser revisto via Decisao
+auditavel (nao silenciosamente ignorado).
 
 ## Teste (FR-012 — sem sessao interativa real)
 
