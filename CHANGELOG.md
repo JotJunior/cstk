@@ -5508,6 +5508,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[7.2.0]: https://github.com/JotJunior/cstk/releases/tag/v7.2.0
 [7.1.1]: https://github.com/JotJunior/cstk/releases/tag/v7.1.1
 [7.1.0]: https://github.com/JotJunior/cstk/releases/tag/v7.1.0
 [7.0.1]: https://github.com/JotJunior/cstk/releases/tag/v7.0.1
