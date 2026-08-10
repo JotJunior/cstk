@@ -1812,20 +1812,28 @@ scenario_ctx_15_auditabilidade_pre_decisao() {
 
   # 4.2.1 — Decisao existe com stage specify, context read-back, K e termos.
   # Leitura EN + fallback pt (state-decisions.sh escreve .decisions/.context/...).
-  _sj="$_osd/state.json"
-  _ndec=$(jq '[((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back PRE-DECISAO"))] | length' "$_sj")
+  #
+  # AGNOSTICO A BACKEND: le via `state-rw.sh read` em vez de `jq` direto no
+  # state.json. Com `state_backend=sqlite` (default desde a v6) o `init`
+  # acima materializa `state.db` e NAO existe state.json — o jq falhava com
+  # "No such file", o cenario reprovava, e a suite ficava vermelha para
+  # qualquer um no backend novo. Nao ha override por env: o backend sai so
+  # do config global, entao forcar JSON aqui nao e opcao.
+  _sj_json=$("$_RWSH" read --state-dir "$_osd" 2>/dev/null) || _sj_json=""
+  [ -n "$_sj_json" ] || { _fail "ctx-audit read" "state-rw.sh read nao devolveu o state (backend $(cat "$HOME/.claude/cstk/config" 2>/dev/null || echo '?'))"; return 1; }
+  _ndec=$(printf '%s' "$_sj_json" | jq '[((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back PRE-DECISAO"))] | length')
   [ "$_ndec" = "1" ] || { _fail "ctx-audit 4.2.1" "esperado 1 Decisao read-back, obtido $_ndec"; return 1; }
-  _etapa=$(jq -r '((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back")) | (.stage // .etapa)' "$_sj")
+  _etapa=$(printf '%s' "$_sj_json" | jq -r '((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back")) | (.stage // .etapa)')
   [ "$_etapa" = "specify" ] || { _fail "ctx-audit stage" "esperado specify, obtido $_etapa"; return 1; }
   # K e termos presentes (K no context, termos na rationale).
-  jq -e '((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back")) | select((.context // .contexto) | contains("K='"$K"'"))' "$_sj" >/dev/null \
+  printf '%s' "$_sj_json" | jq -e '((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back")) | select((.context // .contexto) | contains("K='"$K"'"))' >/dev/null \
     || { _fail "ctx-audit K" "context nao contem K=$K"; return 1; }
-  jq -e '((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back")) | select((.rationale // .justificativa) | contains("'"$TERMS"'"))' "$_sj" >/dev/null \
+  printf '%s' "$_sj_json" | jq -e '((.decisions // .decisoes) // [])[] | select((.context // .contexto) | startswith("read-back")) | select((.rationale // .justificativa) | contains("'"$TERMS"'"))' >/dev/null \
     || { _fail "ctx-audit termos" "rationale nao contem os termos"; return 1; }
 
-  # 4.2.3 — body bruto recuperado NAO foi persistido no state.json (CHK013).
+  # 4.2.3 — body bruto recuperado NAO foi persistido no state (CHK013).
   if [ -n "$_bruto" ]; then
-    case "$(cat "$_sj")" in
+    case "$_sj_json" in
       *"$_bruto"*) _fail "ctx-audit CHK013" "body bruto recuperado vazou para state.json"; return 1 ;;
     esac
   fi
@@ -1850,9 +1858,14 @@ scenario_ctx_15b_k0_sem_decisao() {
       --contexto "read-back PRE-DECISAO: nao deveria acontecer" \
       --opcoes '["a","b"]' --escolha a --justificativa "justificativa longa o suficiente" --score 2 >/dev/null 2>&1
   fi
-  _sj="$_osd/state.json"
-  _ndec=$(jq '[((.decisions // .decisoes) // [])[]? | select((.context // .contexto) | startswith("read-back"))] | length' "$_sj" 2>/dev/null) || _ndec=0
-  [ "${_ndec:-0}" = "0" ] || { _fail "ctx-audit 4.2.2" "K=0 nao deveria gerar Decisao read-back, obtido $_ndec"; return 1; }
+  # AGNOSTICO A BACKEND (mesma razao de ctx_15). Aqui o bug era PIOR que uma
+  # reprovacao: com sqlite o jq falhava no arquivo ausente, o `|| _ndec=0`
+  # engolia o erro e a assercao `= 0` passava TRIVIALMENTE — o cenario ficava
+  # verde sem ter verificado nada. Falha de leitura agora reprova.
+  _sj_json=$("$_RWSH" read --state-dir "$_osd" 2>/dev/null) || _sj_json=""
+  [ -n "$_sj_json" ] || { _fail "ctx-audit 4.2.2 read" "state-rw.sh read nao devolveu o state — assercao seria vacua"; return 1; }
+  _ndec=$(printf '%s' "$_sj_json" | jq '[((.decisions // .decisoes) // [])[]? | select((.context // .contexto) | startswith("read-back"))] | length') || _ndec=""
+  [ "$_ndec" = "0" ] || { _fail "ctx-audit 4.2.2" "K=0 nao deveria gerar Decisao read-back, obtido '$_ndec'"; return 1; }
 }
 
 # Cenario regressao — modos existentes (busca/ingest/reindex) intactos
