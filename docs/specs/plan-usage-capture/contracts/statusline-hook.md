@@ -13,7 +13,7 @@ O harness Claude Code invoca o comando configurado em
 **stdout** (memoria `reference_statusline_usage_payload.md`, schema
 completo).
 
-```
+```text
 <statusLine.command> < payload.json > texto_renderizado
 ```
 

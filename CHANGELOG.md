@@ -5,6 +5,47 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.2.0] - 2026-08-10
+
+Captura do gauge de uso do plano (`/usage`) sem credencial OAuth: o
+harness ja envia `rate_limits.five_hour`/`seven_day` no payload da
+`statusLine.command` a cada render — a feature so precisava ler o que
+ja estava passando, persistir localmente e expor consulta (Constitution
+IV, 100% local).
+
+### Added
+
+- **`cstk statusline install`/`status`** (`cli/lib/statusline.sh`,
+  NOVO). `install` escreve/atualiza `statusLine.command` em
+  `${HOME}/.claude/settings.json` apontando para
+  `<catalog>/skills/agente-00c-runtime/hooks/statusline-plan-usage.sh`;
+  se ja existir um comando customizado, o valor original e preservado
+  em `CSTK_STATUSLINE_INNER_COMMAND` (nunca sobrescrito
+  silenciosamente) e encadeado como pass-through obrigatorio do
+  stdout. Idempotente — rodar `install` 2x nao aninha wrapper sobre
+  wrapper.
+- **`cstk plan-usage`** (`cli/lib/plan-usage.sh`, NOVO): uso mais
+  recente capturado, por escopo (`five_hour`/`seven_day`), com
+  `--json`/`--db PATH`. Campo sem medicao imprime `nao medido`
+  (texto) / `null` (JSON) — nunca `0` fabricado (Principio VI/dec-029).
+- **`cstk plan-usage history`** (mesmo arquivo): serie temporal por
+  escopo, reusando literalmente `--scope`/`--limit`/`--since` de `cstk
+  usage` (dec-014 — sem convencao nova de paginacao/cursor).
+- **Tabela `plan_usage`** no `knowledge.db` (migracao aditiva
+  `RECALL_SCHEMA_VERSION` 13→14, `cli/lib/recall.sh`): grava uma linha
+  por escopo (`five_hour`/`seven_day`) quando o hook novo
+  `statusline-plan-usage.sh` observa `rate_limits` no payload da
+  statusline. Ausencia TOTAL de `rate_limits` nunca gera linha
+  (dec-029); ausencia PARCIAL de um campo dentro de um escopo presente
+  grava `NULL` explicito, nunca `0`. Throttle descarta persistencia
+  redundante comparando sempre contra o ULTIMO registro persistido
+  daquele escopo, com tolerancia de 2 casas decimais em
+  `used_percentage` (ruido de ponto flutuante do harness nao gera
+  linha nova) — FR-010.
+
+Detalhes de contrato/schema: `docs/specs/plan-usage-capture/contracts/`
+e `docs/specs/plan-usage-capture/data-model.md`.
+
 ## [7.1.1] - 2026-08-09
 
 `~/.claude/skills/` e espaco COMPARTILHADO — plugins da Anthropic, skills

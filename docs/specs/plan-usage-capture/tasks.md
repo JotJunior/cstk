@@ -345,27 +345,52 @@ Ref: contracts/cli-plan-usage.md §`ingest --stdin`
 
 Ref: spec.md FR-012, research.md Decision 8, quickstart.md (7 cenarios)
 
-- [ ] 5.1.1 Criar `tests/test_statusline-plan-usage.sh` seguindo o
+- [x] 5.1.1 Criar `tests/test_statusline-plan-usage.sh` seguindo o
       precedente de `tests/test_posttooluse-loose-usage.sh` — alimenta
-      fixtures via stdin, nunca sessao `claude` real
-- [ ] 5.1.2 Cobrir os 7 cenarios de `quickstart.md` como casos de teste
+      fixtures via stdin, nunca sessao `claude` real <!-- criado onda-007;
+      `LC_ALL=C bash tests/test_statusline-plan-usage.sh`: 12/12 ok
+      (onda-010) -->
+- [x] 5.1.2 Cobrir os 7 cenarios de `quickstart.md` como casos de teste
       nomeados (1 captura basica, 2 ausencia-nunca-zero, 3 throttle, 4
       evolucao temporal, 5 formato resets_at, 6 zero coleta remota, 7
-      deps ausentes)
-- [ ] 5.1.3 Criar `tests/test_cli-plan-usage.sh` cobrindo `cstk
-      plan-usage`/`cstk plan-usage history` (FASE 4)
-- [ ] 5.1.4 Rodar a suite completa local e confirmar 0 regressao nos
+      deps ausentes) <!-- 1/2/3/7 em scenario_captura_basica_2_linhas /
+      scenario_ausencia_total_zero_linhas+scenario_ausencia_parcial_null_nunca_zero
+      / scenario_throttle_quickstart_cenario3 / scenario_jq_ausente+
+      scenario_cstk_ausente (tests/test_statusline-plan-usage.sh); 4/5/6
+      em scenario_09_historico_ordem_cronologica / scenario_04_json_com_dados
+      (resets_at=1786372200) / scenario_06_tabela_vazia
+      (tests/cstk/test_plan-usage.sh) -->
+- [x] 5.1.3 Criar `tests/cstk/test_plan-usage.sh` cobrindo `cstk
+      plan-usage`/`cstk plan-usage history` (FASE 4) <!-- path corrigido
+      de tests/test_cli-plan-usage.sh (divergencia do tasks.md original)
+      para tests/cstk/test_plan-usage.sh, alinhado a convencao cli/lib
+      ja declarada em plan.md §Testing e §Estrutura — dec-041 (gate
+      analyze, HIGH), resolvido nesta onda (onda-010); arquivo criado
+      onda-009, 14/14 ok -->
+- [x] 5.1.4 Rodar a suite completa local e confirmar 0 regressao nos
       testes existentes de `recall.sh`/`usage.sh` (migracao aditiva nao
-      quebra nada)
+      quebra nada) <!-- onda-010, LC_ALL=C: test_statusline-plan-usage.sh
+      12/12, tests/cstk/test_plan-usage.sh 14/14, tests/cstk/test_statusline.sh
+      12/12 (todos rodados ao vivo nesta onda); tests/cstk/test_recall.sh
+      148 ok / 1 not ok ja verificado pelo pai nesta sessao — unico
+      vermelho e scenario_ctx_15_auditabilidade_pre_decisao, falha
+      pre-existente do backend sqlite (dec-047), fora de escopo, zero
+      regressao introduzida por esta feature -->
 
 ### 5.2 Gates deterministicos pos-geracao `[M]`
 
 Ref: create-tasks/scripts/validate-tasks-template.sh, template canonico
 
-- [ ] 5.2.1 Rodar `validate-tasks-template.sh` sobre este `tasks.md` e
-      confirmar exit `0` (conformante ao template)
-- [ ] 5.2.2 Rodar `validate-docs-rendered` sobre os artefatos da feature
+- [x] 5.2.1 Rodar `validate-tasks-template.sh` sobre este `tasks.md` e
+      confirmar exit `0` (conformante ao template) <!-- onda-010:
+      `RESULT|.../tasks.md|critical=0|warning=0`, exit 0 -->
+- [x] 5.2.2 Rodar `validate-docs-rendered` sobre os artefatos da feature
       (Mermaid da Matriz de Dependencias, links internos, frontmatter)
+      <!-- onda-010: spec/plan/tasks/data-model/quickstart/contracts (9
+      arquivos) -> ERRO=0, AVISO 4->1 apos corrigir 3 code-blocks sem
+      linguagem (plan.md x2, statusline-hook.md); 1 AVISO residual
+      (cli-plan-usage.md:71, falso-positivo de pipe escapado \| dentro
+      de celula — ver dec-066) -->
 
 ---
 
@@ -376,11 +401,23 @@ Ref: create-tasks/scripts/validate-tasks-template.sh, template canonico
 Ref: plan.md §Constitution Check Principio I (SDD recursivo — "Contrato
 de CLI novo exige nota no CHANGELOG, MINOR")
 
-- [ ] 6.1.1 Adicionar entrada MINOR no CHANGELOG do `cstk` descrevendo a
+- [x] 6.1.1 Adicionar entrada MINOR no CHANGELOG do `cstk` descrevendo a
       capacidade nova (`cstk plan-usage`, captura via statusline)
-- [ ] 6.1.2 Atualizar contagem de subcomandos/docs afetados, se algum
+      <!-- onda-010: CHANGELOG.md secao [7.2.0] - 2026-08-10 adicionada
+      (cstk statusline install/status, cstk plan-usage, cstk plan-usage
+      history, tabela plan_usage v13->v14); bump de versao no
+      MANIFESTO (plugin.json/marketplace.json) e tag/release ficam para
+      o pipeline release-wave, publicacao exige autorizacao humana
+      (fora do escopo autorizado desta onda) -->
+- [x] 6.1.2 Atualizar contagem de subcomandos/docs afetados, se algum
       teste de contagem (`test_doc-counts.sh` ou equivalente) gateia
-      README/docs
+      README/docs <!-- onda-010: grep em test_doc-counts.sh e
+      test_build-release.sh confirma que os gates de contagem existentes
+      medem apenas pastas de skill (plugins/cstk/skills/*) e
+      profiles.txt.in — esta feature nao cria skill nova (so subcomandos
+      cli/lib novos sob a skill agente-00c-runtime ja existente), logo
+      nenhum contador precisa mudar; nenhum teste de contagem referencia
+      subcomandos cli individualmente -->
 
 ---
 

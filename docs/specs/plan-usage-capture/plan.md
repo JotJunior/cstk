@@ -105,7 +105,7 @@ Constitution: `docs/constitution.md` **v1.3.0**.
 
 ### Documentation (this feature)
 
-```
+```text
 docs/specs/plan-usage-capture/
 ├── spec.md
 ├── plan.md          # This file
@@ -123,7 +123,7 @@ Arvore real do repositorio (`ls cli/lib/`, `ls
 plugins/cstk/skills/agente-00c-runtime/hooks/` verificados nesta onda),
 com marcacao do que muda:
 
-```
+```text
 cli/
 ├── cstk                                      # MODIFICA: dispatch + help dos subcomandos `plan-usage` e `statusline`
 └── lib/
