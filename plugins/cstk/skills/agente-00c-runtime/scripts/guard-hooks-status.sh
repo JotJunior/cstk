@@ -172,6 +172,104 @@ _gh_registered() {
   grep -Fq -- "$2" "$_gh_settings" 2>/dev/null
 }
 
+# ---------------------------------------------------------------------------
+# TERCEIRO MODO DE FALHA DE CAMPO: o hook vem do PLUGIN, nao do projeto
+# ---------------------------------------------------------------------------
+# Desde a v7 (feature claude-plugin-packaging) o cstk pode ser instalado como
+# plugin nativo do Claude Code. Nesse modo os 3 hooks sao registrados pelo
+# `hooks/hooks.json` do plugin, via ${CLAUDE_PLUGIN_ROOT} — e NAO existe
+# copia em <PAP>/.claude/hooks/ nem registro em <PAP>/.claude/settings.json.
+# `cstk hooks install` inclusive PULA o provisionamento classico nesse caso
+# (dedup "plugin vence", cli/lib/hooks.sh).
+#
+# Sem as duas funcoes abaixo, `_gh_present`/`_gh_registered` respondem
+# missing/unregistered para hooks que estao PERFEITAMENTE ATIVOS. Duas
+# consequencias, uma cosmetica e uma FUNCIONAL:
+#   - `check` acusa "3 de 3 hooks NAO estao ativos" e manda rodar
+#     `cstk hooks install`, que responde "plugin ja prove — pulando". O
+#     operador fica num loop de remediacao que nao remedia nada.
+#   - `tick-mode` devolve "manual", o orquestrador ticka na mao, o hook do
+#     plugin ticka tambem, e `state-ondas.sh end` SOMA as duas fontes
+#     (ticks manuais + linhas do sidecar) => `tool_calls` contado em DOBRO
+#     em toda onda. O budget de onda dispara com metade do trabalho real.
+#     Este e exatamente o cenario que o comentario de `tick-mode` ja
+#     antecipava ("devolver manual ali produziria contagem DUPLA"), so que
+#     pelo caminho do plugin, que nao existia quando aquilo foi escrito.
+#
+# Degradacao (mesma assimetria de cli/lib/plugin-detect.sh): na duvida o
+# resultado e "plugin nao prove", que preserva byte-a-byte o comportamento
+# anterior. Nunca se afirma cobertura de plugin sem ter lido o hooks.json.
+
+# _gh_plugin_hooks_json -> stdout: path do hooks.json do plugin cstk ATIVO,
+# ou vazio. SEMPRE exit 0 (consumido em $(...) sob `set -e`). Memoizado: a
+# resolucao envolve jq e e chamada uma vez por hook.
+_GH_PLUGIN_HJ_MEMO=''
+_gh_plugin_hooks_json() {
+  if [ -n "$_GH_PLUGIN_HJ_MEMO" ]; then
+    [ "$_GH_PLUGIN_HJ_MEMO" = '-' ] || printf '%s' "$_GH_PLUGIN_HJ_MEMO"
+    return 0
+  fi
+  _GH_PLUGIN_HJ_MEMO='-'
+
+  # (a) Override de teste — mesma disciplina de CSTK_HOOKS_CATALOG_DIR.
+  if [ -n "${CSTK_PLUGIN_HOOKS_JSON:-}" ]; then
+    if [ -r "$CSTK_PLUGIN_HOOKS_JSON" ]; then
+      _GH_PLUGIN_HJ_MEMO="$CSTK_PLUGIN_HOOKS_JSON"
+      printf '%s' "$_GH_PLUGIN_HJ_MEMO"
+    fi
+    return 0
+  fi
+
+  # (b) Sinal mais forte: estamos rodando DENTRO do plugin. Nao exige jq.
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -r "${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json" ]; then
+    _GH_PLUGIN_HJ_MEMO="${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json"
+    printf '%s' "$_GH_PLUGIN_HJ_MEMO"
+    return 0
+  fi
+
+  # (c) Registro nativo do Claude Code. Espelha plugin_enabled +
+  # plugin_install_path de cli/lib/plugin-detect.sh (instalado E habilitado),
+  # sem sourcear aquele arquivo: ele exige CSTK_LIB + common.sh, que podem
+  # nao existir no projeto-alvo que estamos diagnosticando. jq ausente =>
+  # indeterminado => "nao prove" (degradacao, nunca falso-positivo).
+  command -v jq >/dev/null 2>&1 || return 0
+  [ -n "${HOME:-}" ] || return 0
+  _gh_pj_inst="$HOME/.claude/plugins/installed_plugins.json"
+  _gh_pj_set="$HOME/.claude/settings.json"
+  [ -f "$_gh_pj_inst" ] || return 0
+  [ -f "$_gh_pj_set" ] || return 0
+
+  _gh_pj_on=$(jq -r '
+    (.enabledPlugins // {}) | to_entries
+    | map(select((.key | startswith("cstk@")) and .value == true)) | length
+  ' -- "$_gh_pj_set" 2>/dev/null) || return 0
+  case "$_gh_pj_on" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$_gh_pj_on" -gt 0 ] || return 0
+
+  _gh_pj_path=$(jq -r '
+    (.plugins // {}) | to_entries
+    | map(select(.key | startswith("cstk@"))) | map(.value) | flatten(1)
+    | sort_by(.lastUpdated // .installedAt // "") | last
+    | .installPath // empty
+  ' -- "$_gh_pj_inst" 2>/dev/null) || return 0
+  [ -n "$_gh_pj_path" ] || return 0
+  [ -r "$_gh_pj_path/hooks/hooks.json" ] || return 0
+
+  _GH_PLUGIN_HJ_MEMO="$_gh_pj_path/hooks/hooks.json"
+  printf '%s' "$_GH_PLUGIN_HJ_MEMO"
+  return 0
+}
+
+# _gh_plugin_provides HOOK -> 0 se o plugin ATIVO registra esse hook.
+# Busca textual pelo basename, mesma justificativa de `_gh_registered`: o
+# hooks.json referencia o hook como fragmento de linha de comando
+# (${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/hooks/X.sh).
+_gh_plugin_provides() {
+  _gh_pp_json=$(_gh_plugin_hooks_json)
+  [ -n "$_gh_pp_json" ] || return 1
+  grep -Fq -- "$1" "$_gh_pp_json" 2>/dev/null
+}
+
 # _gh_self_dir -> diretorio do proprio script (vazio se irresolvivel).
 _gh_self_dir() {
   (CDPATH='' cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || printf ''
@@ -324,6 +422,8 @@ _gh_cmd_check() {
   _guard_missing=0
   _guard_stale=0
   _guard_divergent=0
+  _plugin_hooks=0
+  _dup_hooks=0
   for _h in $_GH_HOOKS; do
     if _gh_present "$_pap" "$_h"; then
       _st_file="present"
@@ -338,6 +438,34 @@ _gh_cmd_check() {
     _st_fresh=$(_gh_freshness "$_pap" "$_h")
     if [ "$_verify_reg" = 1 ]; then
       _st_verify=$(_gh_verify_registration "$_pap" "$_h")
+    fi
+
+    # Hook provido pelo PLUGIN: roda de fato, independentemente de existir
+    # copia classica no projeto. As 3 dimensoes passam a descrever o que
+    # VAI EXECUTAR, que e o que o consumidor pergunta:
+    #   present   — o arquivo existe (no plugin)
+    #   registered— o hooks.json do plugin o registra
+    #   current   — e a propria copia do plugin; nao ha snapshot a envelhecer
+    #               (o plugin e versionado e atualizado como unidade)
+    # Os tokens NAO mudam: introduzir um valor novo quebraria consumidores
+    # que casam exatamente estes literais.
+    if _gh_plugin_provides "$_h"; then
+      _plugin_hooks=$((_plugin_hooks + 1))
+      # Copia classica registrada TAMBEM => o hook roda DUAS vezes (o mesmo
+      # caso que `cstk hooks install` ja alerta ao pular o provisionamento).
+      # Para metricas isso e contagem dupla; para a guarda de Bash, so custo.
+      if [ "$_st_file" = "present" ] && [ "$_st_reg" = "registered" ]; then
+        _dup_hooks=$((_dup_hooks + 1))
+      fi
+      _st_file="present"
+      _st_reg="registered"
+      _st_fresh="current"
+      if [ "$_verify_reg" = 1 ]; then
+        _st_verify="canonical"
+      fi
+    fi
+
+    if [ "$_verify_reg" = 1 ]; then
       printf '%s\t%s\t%s\t%s\t%s\n' "$_h" "$_st_file" "$_st_reg" "$_st_fresh" "$_st_verify"
     else
       printf '%s\t%s\t%s\t%s\n' "$_h" "$_st_file" "$_st_reg" "$_st_fresh"
@@ -381,6 +509,17 @@ _gh_cmd_check() {
     fi
   fi
 
+  # Origem plugin: informativo, nunca anomalia. Sem esta linha o operador ve
+  # "3/3 ativos" sem saber de onde vem, e nao entende por que nao ha nada em
+  # <PAP>/.claude/hooks/.
+  if [ "$_quiet" = 0 ] && [ "$_plugin_hooks" -gt 0 ]; then
+    _gh_err "$_plugin_hooks de 3 hooks 00c sao providos pelo PLUGIN cstk (hooks.json), nao pela copia classica em $_pap/.claude/hooks/ — ativos, nada a provisionar."
+  fi
+  if [ "$_quiet" = 0 ] && [ "$_dup_hooks" -gt 0 ]; then
+    _gh_err "ATENCAO: $_dup_hooks hook(s) registrados DUAS vezes (plugin + copia classica em $_pap/.claude/settings.json) — cada tool call e contado em dobro."
+    _gh_err "  Remediacao: remova o bloco classico de $_pap/.claude/settings.json (o plugin vence)."
+  fi
+
   [ "$_missing" -eq 0 ] && [ "$_stale" -eq 0 ] && [ "$_divergent" -eq 0 ] && return 0
 
   if [ "$_quiet" = 0 ]; then
@@ -420,6 +559,16 @@ _gh_cmd_tick_mode() {
     esac
   done
   [ -n "$_pap" ] || _gh_die_usage "tick-mode: --projeto-alvo-path obrigatorio"
+
+  # Provido pelo PLUGIN: o hook JA ticka. Devolver "manual" aqui faria o
+  # orquestrador tickar tambem, e `state-ondas.sh end` soma as duas fontes
+  # (ticks manuais + linhas do sidecar) => tool_calls em DOBRO. Este ramo vem
+  # ANTES do teste de copia classica porque no modo plugin ela nao existe —
+  # e a ausencia dela nao significa metrica ausente.
+  if _gh_plugin_provides "posttooluse-tool-call-tick.sh"; then
+    printf 'hook\n'
+    return 0
+  fi
 
   if ! _gh_present "$_pap" "posttooluse-tool-call-tick.sh" \
      || ! _gh_registered "$_pap" "posttooluse-tool-call-tick.sh"; then
