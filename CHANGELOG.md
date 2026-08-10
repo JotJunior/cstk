@@ -46,6 +46,51 @@ IV, 100% local).
 Detalhes de contrato/schema: `docs/specs/plan-usage-capture/contracts/`
 e `docs/specs/plan-usage-capture/data-model.md`.
 
+### Fixed
+
+- **`tool_calls` era contado em DOBRO em projeto com o cstk instalado
+  como plugin.** `guard-hooks-status.sh` so procurava os hooks na copia
+  classica (`<projeto>/.claude/hooks/` + `settings.json`) e era cego ao
+  `hooks/hooks.json` do plugin — o caminho que a propria v7 tornou
+  canonico, e que `cstk hooks install` ja privilegia ao pular o
+  provisionamento classico por dedup ("plugin vence"). Consequencia
+  funcional: `tick-mode` devolvia `manual`, o orquestrador tickava na
+  mao, o hook do plugin tickava tambem, e `state-ondas.sh end` soma as
+  duas fontes (ticks manuais + linhas do sidecar). Toda onda fechava com
+  ~2x o numero real de tool calls, e o budget de onda disparava com
+  metade do trabalho feito. O `check` tambem acusava "3 de 3 hooks NAO
+  estao ativos" e mandava rodar `cstk hooks install`, que respondia
+  "plugin ja prove — pulando": um loop de remediacao que nao remediava
+  nada. Agora o script consulta o registro nativo (`CLAUDE_PLUGIN_ROOT`,
+  ou `installed_plugins.json` + `enabledPlugins` de `settings.json`,
+  espelhando `cli/lib/plugin-detect.sh`), reporta
+  `present/registered/current` para hook provido pelo plugin e devolve
+  `hook` no `tick-mode`. Degradacao assimetrica preservada: `jq` ausente,
+  registro ilegivel ou plugin desabilitado => "plugin nao prove", que e o
+  comportamento anterior byte-a-byte — nunca se afirma cobertura sem ter
+  lido o `hooks.json`. Novo alerta quando plugin E copia classica estao
+  ativos ao mesmo tempo (o hook roda duas vezes de verdade).
+  **Nao ha correcao retroativa**: `tool_calls` ja gravado na
+  `knowledge.db` de execucoes anteriores permanece inflado — nao ha como
+  separar tick manual de tick de hook depois do fato, e estimar seria
+  inventar dado.
+- **`test_setup.sh` reprovava por causa desta propria versao.** O cenario
+  `scenario_dispatch_setup_wiring` verificava o wiring de `setup` no case
+  generico de `cli/cstk` com a regex `\|setup\)$` — ancorada no FIM da
+  linha, o que exigia que `setup` fosse a ULTIMA alternativa. Isso nunca
+  foi invariante: bastou esta versao acrescentar `plan-usage` depois dela
+  para o cenario reprovar com o dispatch perfeitamente intacto. A regex
+  passa a aceitar `setup` em qualquer posicao (`\|setup[|)]`). Achado ao
+  rodar a suite completa antes do release — a pipeline da feature tinha
+  rodado `test_cstk-main.sh`, que nao cobre este cenario.
+- **`test_recall.sh` reprovava com `state_backend=sqlite`.** Os cenarios
+  `ctx_15`/`ctx_15b` chamavam `state-rw.sh init` e liam o resultado com
+  `jq` direto em `state.json` — arquivo que nao existe no backend SQLite,
+  default desde a v6. Passam a ler via `state-rw.sh read` (agnostico a
+  backend). O `ctx_15b` era o caso mais insidioso: o `jq` falhava, um
+  `|| _ndec=0` engolia o erro e a assercao `= 0` passava TRIVIALMENTE —
+  verde sem ter verificado nada. Falha de leitura agora reprova.
+
 ## [7.1.1] - 2026-08-09
 
 `~/.claude/skills/` e espaco COMPARTILHADO — plugins da Anthropic, skills
