@@ -378,6 +378,13 @@ _is_internal_test() {
       # esta fora do escaneio por convencao. Existence-guarded.
       [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/posttooluse-loose-usage.sh" ] && return 0
       return 1 ;;
+    test_statusline-plan-usage.sh)
+      # cobre plugins/cstk/skills/agente-00c-runtime/hooks/statusline-plan-usage.sh
+      # (entry-point de statusLine.command que captura o gauge de plano —
+      # feature plan-usage-capture FASE 2) — mesma razao dos 4 casos acima:
+      # hooks/ esta fora do escaneio por convencao. Existence-guarded.
+      [ -f "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks/statusline-plan-usage.sh" ] && return 0
+      return 1 ;;
     *) return 1 ;;
   esac
 }
