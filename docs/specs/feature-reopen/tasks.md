@@ -292,19 +292,19 @@ exige teste correspondente)
 Ref: contracts/reopen-flow.md §Invocacao, §6.a; FR-001, FR-002, FR-003;
 research.md Decision 7, Decision 13
 
-- [ ] 3.1.1 Adicionar a sintaxe `/feature-00c --reopen <short-name>
+- [x] 3.1.1 Adicionar a sintaxe `/feature-00c --reopen <short-name>
       "<descricao do incremento>"` ao command, reaproveitando
       integralmente o pre-flight existente (itens 1..5: path-guard,
       sanitize, briefing, constitution, coexistencia agente-00c)
-- [ ] 3.1.2 Verificacao 1: `<state-dir>` existe **e** contem
+- [x] 3.1.2 Verificacao 1: `<state-dir>` existe **e** contem
       `state.json`/`state.db` na raiz — senao exit `4`, mensagem aponta a
       abertura normal (`/feature-00c <short-name> "<descricao>"`)
-- [ ] 3.1.3 Verificacao 1b: raiz vazia mas `rounds/<label>/` presente com
+- [x] 3.1.3 Verificacao 1b: raiz vazia mas `rounds/<label>/` presente com
       estado ⇒ NAO e recusa — ver conciliacao em 3.3.6
-- [ ] 3.1.4 Verificacao 2: `state-lock.sh check-execution-busy` — exit `3`
+- [x] 3.1.4 Verificacao 2: `state-lock.sh check-execution-busy` — exit `3`
       (`em_andamento`/`aguardando_humano`) ⇒ exit `5`, mensagem aponta
       `/feature-00c-resume` e `/feature-00c-abort`
-- [ ] 3.1.5 Garantir que nenhuma das duas verificacoes cria arquivo ou
+- [x] 3.1.5 Garantir que nenhuma das duas verificacoes cria arquivo ou
       diretorio (T-20: zero inode novo)
 
 ### 3.2 Sonda de trabalho pendente + parecer + bloqueio humano (6.b/6.c) `[A]`
@@ -312,20 +312,20 @@ research.md Decision 7, Decision 13
 Ref: contracts/reopen-flow.md §6.b/6.c; FR-004, FR-005, FR-006, FR-020,
 FR-021; research.md Decision 10; depende de FASE 4 (subcomando da sonda)
 
-- [ ] 3.2.1 Invocar o subcomando novo de `commit-mode.sh` (FASE 4.1) e
+- [x] 3.2.1 Invocar o subcomando novo de `commit-mode.sh` (FASE 4.1) e
       capturar o `PendingWorkProbe` resultante
-- [ ] 3.2.2 Montar o parecer em memoria (`recommendation`, `rationale`,
+- [x] 3.2.2 Montar o parecer em memoria (`recommendation`, `rationale`,
       `previous_status`, `pending_work`) ANTES de qualquer escrita em
       disco (FR-004, literal)
-- [ ] 3.2.3 Se `previous_status == abortada`, declarar explicitamente no
+- [x] 3.2.3 Se `previous_status == abortada`, declarar explicitamente no
       parecer que o round anterior nao chegou ao fim (FR-020)
-- [ ] 3.2.4 Apresentar como `bloqueios.sh register` com as duas opcoes
+- [x] 3.2.4 Apresentar como `bloqueios.sh register` com as duas opcoes
       (`reabrir`, `abortar-invocacao`); o aviso de trabalho pendente
       NUNCA bloqueia — e informativo
-- [ ] 3.2.5 Operador contraria a recomendacao ⇒ o fluxo prossegue
+- [x] 3.2.5 Operador contraria a recomendacao ⇒ o fluxo prossegue
       normalmente; `diverged=true` fica marcado para a Decisao (gravada
       so apos o `init`, tarefa 3.5)
-- [ ] 3.2.6 Recomendacao `abrir-feature-nova` NAO cria feature nova por
+- [x] 3.2.6 Recomendacao `abrir-feature-nova` NAO cria feature nova por
       conta propria — apenas instrui o operador de como faze-lo
 
 ### 3.3 Wiring de lock + `recover` + `rotate` (passos 7, 7.a, 7.b, 7.c) `[C]`
@@ -333,19 +333,19 @@ FR-021; research.md Decision 10; depende de FASE 4 (subcomando da sonda)
 Ref: contracts/reopen-flow.md §Ordem de execucao; FR-012; depende de
 FASE 2
 
-- [ ] 3.3.1 Passo 7: `state-lock.sh acquire` — primeira escrita possivel
+- [x] 3.3.1 Passo 7: `state-lock.sh acquire` — primeira escrita possivel
       do fluxo de reabertura
-- [ ] 3.3.2 Passo 7.a: re-verificacao pos-lock das pre-condicoes de 3.1
+- [x] 3.3.2 Passo 7.a: re-verificacao pos-lock das pre-condicoes de 3.1
       (fecha a janela TOCTOU residual)
-- [ ] 3.3.3 Passo 7.b: `state-rounds.sh recover` — journal invalido pelas
+- [x] 3.3.3 Passo 7.b: `state-rounds.sh recover` — journal invalido pelas
       regras J1..J7 ou `mv` de recuperacao falho ⇒ exit `6` sem
       rotacionar (T-36)
-- [ ] 3.3.4 Passo 7.c: `state-rounds.sh rotate --state-dir <SD>` — ponto
+- [x] 3.3.4 Passo 7.c: `state-rounds.sh rotate --state-dir <SD>` — ponto
       de commit da rotacao
-- [ ] 3.3.5 Lock permanece detido continuamente do passo 7 ate o Cleanup,
+- [x] 3.3.5 Lock permanece detido continuamente do passo 7 ate o Cleanup,
       cobrindo `recover`/`rotate`/restauracao de spec/`init`/gravacao do
       `.previous_round` (T-31)
-- [ ] 3.3.6 Conciliacao raiz-vazia × `rounds/` presente: pular o passo
+- [x] 3.3.6 Conciliacao raiz-vazia × `rounds/` presente: pular o passo
       7.c quando nao ha estado na raiz mas ha round consumado sem `init`
       ter rodado — nunca exit `4` nesse caso, a feature TEM execucao
       anterior, so esta preservada (T-37)
@@ -355,18 +355,18 @@ FASE 2
 Ref: contracts/reopen-flow.md §7.d; research.md Decision 8; FR-013;
 plan.md item 5
 
-- [ ] 3.4.1 Disparar apenas quando `docs/specs/<short>/spec.md` nao
+- [x] 3.4.1 Disparar apenas quando `docs/specs/<short>/spec.md` nao
       existe
-- [ ] 3.4.2 Resolver origem nesta ordem: 1) `docs/specs/_archived/<short>/`
+- [x] 3.4.2 Resolver origem nesta ordem: 1) `docs/specs/_archived/<short>/`
       (sem data); 2) `docs/specs/_archived/<YYYY-MM-DD>-<short>/` — maior
       prefixo de data vence; 3) nenhuma das duas ⇒ segue sem restauracao
-- [ ] 3.4.3 Copiar (nunca mover) a arvore inteira para
+- [x] 3.4.3 Copiar (nunca mover) a arvore inteira para
       `docs/specs/<short>/`; a origem sob `_archived/` permanece intacta
-- [ ] 3.4.4 `docs/specs/<short>/` ja existente e nao-vazio ⇒ NAO
+- [x] 3.4.4 `docs/specs/<short>/` ja existente e nao-vazio ⇒ NAO
       sobrescreve — o disco vence (Edge Case "spec editada a mao")
-- [ ] 3.4.5 Informar o operador do que foi restaurado e de onde (origem
+- [x] 3.4.5 Informar o operador do que foi restaurado e de onde (origem
       exata resolvida em 3.4.2)
-- [ ] 3.4.6 Considerar somente diretorios (`-type d`) na resolucao — a
+- [x] 3.4.6 Considerar somente diretorios (`-type d`) na resolucao — a
       41a entrada de `_archived/` e um arquivo solto
       (`review-features-report.md`), nao uma spec
 
@@ -375,18 +375,18 @@ plan.md item 5
 Ref: contracts/reopen-flow.md §3'/3''; research.md Decision 4, Decision
 12; FR-008, FR-022; depende de FASE 3.3 (rotacao consumada)
 
-- [ ] 3.5.1 Ler `.atomic_commit_enabled` do estado terminal ANTES da
+- [x] 3.5.1 Ler `.atomic_commit_enabled` do estado terminal ANTES da
       rotacao; ausencia, leitura falha ou valor nao reconhecido ⇒ `false`
-- [ ] 3.5.2 `state-rw.sh init` identico ao fluxo de abertura atual, com
+- [x] 3.5.2 `state-rw.sh init` identico ao fluxo de abertura atual, com
       `--atomic-commit "$_atomic_herdado"` (literal `true`/`false`) — sem
       re-perguntar ao operador (FR-022)
-- [ ] 3.5.3 Gravar `.previous_round` como objeto INTEIRO (`round`, `path`,
+- [x] 3.5.3 Gravar `.previous_round` como objeto INTEIRO (`round`, `path`,
       `execution_id`, `status`, `rotated_at`) via `state-rw.sh set` —
       nunca via path aninhado, rejeitado sob backend SQLite
-- [ ] 3.5.4 Gravar a Decisao do parecer (FR-006) via
+- [x] 3.5.4 Gravar a Decisao do parecer (FR-006) via
       `state-decisions.sh register`, com `escolha` = decisao do operador
       e `diverged` explicito quando houver
-- [ ] 3.5.5 Confirmar que nenhum `--force` e necessario nem existe — a
+- [x] 3.5.5 Confirmar que nenhum `--force` e necessario nem existe — a
       raiz do state-dir fica sem `state.json`/`state.db` apos a rotacao,
       logo as guardas L411-418 de `init` nao disparam
 
@@ -394,16 +394,16 @@ Ref: contracts/reopen-flow.md §3'/3''; research.md Decision 4, Decision
 
 Ref: contracts/reopen-flow.md §Correcao do item 6; FR-016, FR-017; SC-007
 
-- [ ] 3.6.1 FR-016: a opcao (a) do bloqueio existente ("retomar a partir
+- [x] 3.6.1 FR-016: a opcao (a) do bloqueio existente ("retomar a partir
       da spec existente") passa a acionar o fluxo de reabertura de fato
       — nunca mais inalcancavel
-- [ ] 3.6.2 FR-017: o item 6 passa a detectar tambem state-dir com estado
+- [x] 3.6.2 FR-017: o item 6 passa a detectar tambem state-dir com estado
       terminal (nao so `spec.md`) — caso mais comum no repo hoje (spec
       arquivada + estado no lugar, sem aviso nenhum)
-- [ ] 3.6.3 Mensagem corrigida cita `/feature-00c --reopen`,
+- [x] 3.6.3 Mensagem corrigida cita `/feature-00c --reopen`,
       `/feature-00c-resume` e `/feature-00c-abort` — nunca
       `/agente-00c-*`
-- [ ] 3.6.4 SC-007: nenhuma opcao oferecida pelo item 6 termina em aborto
+- [x] 3.6.4 SC-007: nenhuma opcao oferecida pelo item 6 termina em aborto
       do proprio fluxo que a ofereceu
 
 ### 3.7 `tests/test_feature-00c-preflight.sh` (T-20..T-37) `[A]`
@@ -411,31 +411,31 @@ Ref: contracts/reopen-flow.md §Correcao do item 6; FR-016, FR-017; SC-007
 Ref: contracts/reopen-flow.md §Invariantes de teste; regra de cobertura
 do repo
 
-- [ ] 3.7.1 T-20..T-22: short-name inexistente ⇒ exit `4` e zero arquivos
+- [x] 3.7.1 T-20..T-22: short-name inexistente ⇒ exit `4` e zero arquivos
       criados; execucao `em_andamento` ⇒ exit `5` com estado vivo
       byte-identico; execucao `aguardando_humano` ⇒ exit `5`
-- [ ] 3.7.2 T-23..T-26: parecer emitido antes de qualquer escrita (nenhum
+- [x] 3.7.2 T-23..T-26: parecer emitido antes de qualquer escrita (nenhum
       inode novo ate a confirmacao); operador contraria a recomendacao ⇒
       `diverged=true` na Decisao; recomendacao `abrir-feature-nova` NAO
       cria feature nova; round anterior `abortada` ⇒ parecer declara que
       nao chegou ao fim
-- [ ] 3.7.3 T-27/T-28: `.previous_round` legivel via `get` nos dois
+- [x] 3.7.3 T-27/T-28: `.previous_round` legivel via `get` nos dois
       backends; `atomic_commit_enabled` herdado sem prompt, ausencia ⇒
       `false`
-- [ ] 3.7.4 T-29/T-30: spec arquivada restaurada com `_archived/` intacto
+- [x] 3.7.4 T-29/T-30: spec arquivada restaurada com `_archived/` intacto
       (verificado via `cmp -r`); spec ativa pre-existente nao e
       sobrescrita pela restauracao
-- [ ] 3.7.5 T-31/T-32: lock detido continuamente do passo 7 ate o
+- [x] 3.7.5 T-31/T-32: lock detido continuamente do passo 7 ate o
       Cleanup; segunda sessao concorrente ⇒ exit `3`, sem tocar a
       rotacao em curso
-- [ ] 3.7.6 T-33/T-34: item 6 detecta state-dir terminal com spec
+- [x] 3.7.6 T-33/T-34: item 6 detecta state-dir terminal com spec
       arquivada e cita comandos de feature; nenhuma opcao oferecida
       termina em aborto do proprio fluxo
-- [ ] 3.7.7 T-35: backend da execucao nova segue a config global corrente
+- [x] 3.7.7 T-35: backend da execucao nova segue a config global corrente
       (mecanismo ja existente de `init`), independente do backend do
       round anterior — sem heranca, sem flag `--backend` (Decision 14,
       dec-022)
-- [ ] 3.7.8 T-36/T-37: `recover` exit `1` (journal invalido) ⇒ fluxo sai
+- [x] 3.7.8 T-36/T-37: `recover` exit `1` (journal invalido) ⇒ fluxo sai
       `6` sem rotacionar; raiz sem estado mas com `rounds/<label>/`
       presente ⇒ conciliado, nao recusado com exit `4`
 
