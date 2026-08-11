@@ -448,24 +448,24 @@ do repo
 Ref: research.md Decision 9; data-model.md::PendingWorkProbe; FR-021;
 contrato criado em 1.1; depende de FASE 1.1 e FASE 1.2 (decisao humana)
 
-- [ ] 4.1.1 Implementar o subcomando novo em `commit-mode.sh` seguindo
+- [x] 4.1.1 Implementar o subcomando novo em `commit-mode.sh` seguindo
       EXATAMENTE nome/flags/exit codes/stdout definidos em 1.1
-- [ ] 4.1.2 Resolucao de branch default: `git -C "$PAP" symbolic-ref
+- [x] 4.1.2 Resolucao de branch default: `git -C "$PAP" symbolic-ref
       refs/remotes/origin/HEAD` filtrado por
       `sed 's@^refs/remotes/origin/@@'`; sem remote, `main` **e**
       `master` tratados como default
-- [ ] 4.1.3 Consulta de PR: `command -v gh` + `gh auth status` antes de
+- [x] 4.1.3 Consulta de PR: `command -v gh` + `gh auth status` antes de
       `gh pr view "$branch" --json url,state`
-- [ ] 4.1.4 `--` como separador em toda invocacao que recebe nome de
+- [x] 4.1.4 `--` como separador em toda invocacao que recebe nome de
       branch — nome iniciado por `-` nao pode ser consumido como flag
       (T-52)
-- [ ] 4.1.5 I-P1 (Principio VI): `merged=unknown`/`pr_state=unknown`
+- [x] 4.1.5 I-P1 (Principio VI): `merged=unknown`/`pr_state=unknown`
       reportado como "nao verificado" — NUNCA "sem pendencia"; skip
       nao-fatal via `probe_status` (`skipped-gh-missing`,
       `skipped-gh-unauth`, `skipped-no-git`)
-- [ ] 4.1.6 Cada campo do `PendingWorkProbe` carrega `source` — o
+- [x] 4.1.6 Cada campo do `PendingWorkProbe` carrega `source` — o
       comando literal que o produziu (auditoria anti-fabricacao)
-- [ ] 4.1.7 Sonda NUNCA bloqueia: com pendencia detectada, a reabertura
+- [x] 4.1.7 Sonda NUNCA bloqueia: com pendencia detectada, a reabertura
       prossegue apos confirmacao do operador (T-53)
 
 ### 4.2 Heranca de `--atomic-commit` (wiring cruzado) `[A]`
@@ -473,10 +473,10 @@ contrato criado em 1.1; depende de FASE 1.1 e FASE 1.2 (decisao humana)
 Ref: plan.md item 4 (Escopo do trabalho); research.md Decision 12;
 FR-022
 
-- [ ] 4.2.1 Confirmar que a leitura de `.atomic_commit_enabled` (tarefa
+- [x] 4.2.1 Confirmar que a leitura de `.atomic_commit_enabled` (tarefa
       3.5.1) e a UNICA fonte — nenhuma logica duplicada dentro de
       `commit-mode.sh`
-- [ ] 4.2.2 Documentar no contrato de 1.1 que o subcomando novo NAO
+- [x] 4.2.2 Documentar no contrato de 1.1 que o subcomando novo NAO
       participa da heranca de `--atomic-commit` — e responsabilidade
       exclusiva do fluxo `--reopen` em `feature-00c.md`
 
@@ -484,13 +484,13 @@ FR-022
 
 Ref: plan.md §Invariantes de teste novos; regra de cobertura do repo
 
-- [ ] 4.3.1 T-50: branch nao mesclada ⇒ sonda reporta pendencia citando
+- [x] 4.3.1 T-50: branch nao mesclada ⇒ sonda reporta pendencia citando
       o comando fonte
-- [ ] 4.3.2 T-51: `gh` ausente/nao autenticado ⇒ `probe_status=skipped-*`
+- [x] 4.3.2 T-51: `gh` ausente/nao autenticado ⇒ `probe_status=skipped-*`
       e "nao verificado" — NUNCA "sem pendencia"
-- [ ] 4.3.3 T-52: branch com nome iniciado por `-` nao e consumida como
+- [x] 4.3.3 T-52: branch com nome iniciado por `-` nao e consumida como
       flag
-- [ ] 4.3.4 T-53: sonda nunca bloqueia — reabertura prossegue apos
+- [x] 4.3.4 T-53: sonda nunca bloqueia — reabertura prossegue apos
       confirmacao mesmo com pendencia detectada
 
 ---

@@ -504,6 +504,335 @@ scenario_fr015c_guard_branch_nao_default_nao_bloqueia() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "feat/: exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+# ==== probe-pending-work (feature reopen-flow: contracts/pending-work-probe.md, dec-038) ====
+#
+# T-50: branch nao mesclada reporta pendencia citando o comando
+# T-51: gh ausente/nao autenticado/falho => nunca infere merged/pr_state negativo
+# T-52: branch com nome iniciado por '-' nao e consumida como flag
+# T-53: sonda nunca bloqueia — exit permanece 0 com pendencia detectada
+
+# Repo com branch default "main" (sem remote — cai no fallback main/master de
+# guard-branch/finalize, task 4.1.2) e uma branch de feature com um commit
+# extra nao mesclado de volta em "main".
+_init_git_repo_probe() {
+  _gdir=$1
+  _feat=${2:-"feat/probe-x"}
+  mkdir -p "$_gdir"
+  git -C "$_gdir" init -q 2>/dev/null
+  git -C "$_gdir" config user.email "test@test.com" 2>/dev/null
+  git -C "$_gdir" config user.name "Test" 2>/dev/null
+  printf 'init\n' > "$_gdir/README.md"
+  git -C "$_gdir" add README.md 2>/dev/null
+  git -C "$_gdir" commit -q -m "init" 2>/dev/null
+  git -C "$_gdir" branch -m main 2>/dev/null || :
+  git -C "$_gdir" checkout -q -b "$_feat" 2>/dev/null
+  printf 'change\n' >> "$_gdir/README.md"
+  git -C "$_gdir" add README.md 2>/dev/null
+  git -C "$_gdir" commit -q -m "feat: change" 2>/dev/null
+}
+
+# ---- T-50: branch nao mesclada ⇒ merged=no citando o comando em source ----
+
+scenario_t50_probe_branch_nao_mesclada_reporta_pendencia() {
+  _gdir="$TMPDIR_TEST/repo-probe-t50"
+  _sd="$TMPDIR_TEST/probe-t50"
+  _init_git_repo_probe "$_gdir" "feat/probe-t50"
+
+  # Mascara gh do PATH: isola a assercao git-side (merged), sem gh interferir.
+  _orig_path="$PATH"
+  _stub_dir="$TMPDIR_TEST/stub-t50-nogh"
+  mkdir -p "$_stub_dir"
+  PATH="$_stub_dir:/usr/bin:/bin"
+  export PATH
+
+  capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- feat/probe-t50
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  IFS='|' read -r _tag _branch _dflt _merged _prst _prurl _src _pstat <<EOF
+$_CAPTURED_STDOUT
+EOF
+  [ "$_tag" = "PROBE" ] || { _fail "envelope esperado PROBE" "obtido '$_tag'"; return 1; }
+  [ "$_branch" = "feat/probe-t50" ] || { _fail "branch incorreto" "obtido '$_branch'"; return 1; }
+  [ "$_dflt" = "main" ] || { _fail "default_branch esperado main" "obtido '$_dflt'"; return 1; }
+  [ "$_merged" = "no" ] || { _fail "merged esperado 'no'" "obtido '$_merged'"; return 1; }
+  case "$_src" in
+    *'git merge-base --is-ancestor'*) : ;;
+    *) _fail "source deveria citar 'git merge-base --is-ancestor'" "obtido '$_src'"; return 1 ;;
+  esac
+}
+
+# ---- T-51: gh ausente/nao autenticado/falho apos auth ⇒ nunca infere negativo ----
+
+scenario_t51a_probe_gh_ausente_nunca_infere_negativo() {
+  _gdir="$TMPDIR_TEST/repo-probe-t51a"
+  _sd="$TMPDIR_TEST/probe-t51a"
+  _init_git_repo_probe "$_gdir" "feat/probe-t51a"
+
+  _orig_path="$PATH"
+  _stub_dir="$TMPDIR_TEST/stub-t51a-nogh"
+  mkdir -p "$_stub_dir"
+  PATH="$_stub_dir:/usr/bin:/bin"
+  export PATH
+
+  capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- feat/probe-t51a
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (gh ausente nao rebaixa)" "obtido $_CAPTURED_EXIT"; return 1; }
+  IFS='|' read -r _tag _branch _dflt _merged _prst _prurl _src _pstat <<EOF
+$_CAPTURED_STDOUT
+EOF
+  [ "$_pstat" = "skipped-gh-missing" ] || { _fail "probe_status esperado skipped-gh-missing" "obtido '$_pstat'"; return 1; }
+  [ "$_prst" = "unknown" ] || { _fail "pr_state deve ser unknown, nunca closed/merged" "obtido '$_prst'"; return 1; }
+  [ "$_prurl" = "-" ] || { _fail "pr_url deve ser '-' (null)" "obtido '$_prurl'"; return 1; }
+}
+
+scenario_t51b_probe_gh_nao_autenticado_nunca_infere_negativo() {
+  _gdir="$TMPDIR_TEST/repo-probe-t51b"
+  _sd="$TMPDIR_TEST/probe-t51b"
+  _init_git_repo_probe "$_gdir" "feat/probe-t51b"
+
+  _stub="$TMPDIR_TEST/stub-t51b-unauth"
+  mkdir -p "$_stub"
+  cat > "$_stub/gh" <<'GHEOF'
+#!/bin/sh
+case "$1" in
+  auth) exit 1 ;;
+  *)    exit 1 ;;
+esac
+GHEOF
+  chmod +x "$_stub/gh"
+
+  _orig_path="$PATH"
+  PATH="$_stub:/usr/bin:/bin"
+  export PATH
+
+  capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- feat/probe-t51b
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (gh unauth nao rebaixa)" "obtido $_CAPTURED_EXIT"; return 1; }
+  IFS='|' read -r _tag _branch _dflt _merged _prst _prurl _src _pstat <<EOF
+$_CAPTURED_STDOUT
+EOF
+  [ "$_pstat" = "skipped-gh-unauth" ] || { _fail "probe_status esperado skipped-gh-unauth" "obtido '$_pstat'"; return 1; }
+  [ "$_prst" = "unknown" ] || { _fail "pr_state deve ser unknown, nunca closed/merged" "obtido '$_prst'"; return 1; }
+}
+
+# Ponto central de dec-038: gh PRESENTE e AUTENTICADO, mas `gh pr view` falha
+# de fato (rede/timeout/rate-limit) — nao apenas ausencia do binario. Deve
+# manter pr_state=unknown/pr_url=null. E a regressao literal que o anti-padrao
+# de finalize (commit-mode.sh:726/:771, `cmd 2>/dev/null || var=""`) cometia:
+# tratar saida vazia como resposta negativa.
+
+scenario_t51c_probe_gh_pr_view_falha_apos_auth_nunca_infere_negativo() {
+  _gdir="$TMPDIR_TEST/repo-probe-t51c"
+  _sd="$TMPDIR_TEST/probe-t51c"
+  _init_git_repo_probe "$_gdir" "feat/probe-t51c"
+
+  _stub="$TMPDIR_TEST/stub-t51c-prfail"
+  mkdir -p "$_stub"
+  cat > "$_stub/gh" <<'GHEOF'
+#!/bin/sh
+case "$1" in
+  auth) exit 0 ;;
+  pr)   exit 1 ;;
+  *)    exit 1 ;;
+esac
+GHEOF
+  chmod +x "$_stub/gh"
+
+  _orig_path="$PATH"
+  PATH="$_stub:/usr/bin:/bin"
+  export PATH
+
+  capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- feat/probe-t51c
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  IFS='|' read -r _tag _branch _dflt _merged _prst _prurl _src _pstat <<EOF
+$_CAPTURED_STDOUT
+EOF
+  # merged (dado primario git-side) permanece corretamente determinado —
+  # a falha do gh NAO deve contaminar o campo git-side.
+  [ "$_merged" = "no" ] || { _fail "merged deveria permanecer 'no' (git-side, nao afetado por gh)" "obtido '$_merged'"; return 1; }
+  [ "$_prst" = "unknown" ] || { _fail "pr_state deve ser unknown — NUNCA closed/merged de saida vazia" "obtido '$_prst'"; return 1; }
+  [ "$_prurl" = "-" ] || { _fail "pr_url deve ser '-' (null), nunca inferido" "obtido '$_prurl'"; return 1; }
+}
+
+# ---- T-52: branch com nome iniciado por '-' nao e consumida como flag ----
+
+scenario_t52_probe_branch_com_dash_nao_e_consumida_como_flag() {
+  _gdir="$TMPDIR_TEST/repo-probe-t52"
+  _sd="$TMPDIR_TEST/probe-t52"
+  _init_git_repo_probe "$_gdir" "feat/probe-t52-base"
+
+  # `git branch --force` seria interpretado como flag pelo proprio git; a
+  # unica forma portavel de criar essa ref e via update-ref direto.
+  _sha=$(git -C "$_gdir" rev-parse feat/probe-t52-base)
+  git -C "$_gdir" update-ref refs/heads/--force "$_sha" 2>/dev/null
+
+  _orig_path="$PATH"
+  _stub_dir="$TMPDIR_TEST/stub-t52-nogh"
+  mkdir -p "$_stub_dir"
+  PATH="$_stub_dir:/usr/bin:/bin"
+  export PATH
+
+  capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- --force
+
+  PATH="$_orig_path"
+  export PATH
+
+  # Se '--force' tivesse sido consumido como flag, o resultado seria exit 2
+  # ("flag desconhecida"), nao o fluxo normal da sonda.
+  [ "$_CAPTURED_EXIT" != 2 ] \
+    || { _fail "branch '--force' foi consumida como flag (deveria exigir '--')" "stderr: $_CAPTURED_STDERR"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q '^PROBE|--force|' \
+    || { _fail "branch no envelope deveria ser '--force'" "stdout: $_CAPTURED_STDOUT"; return 1; }
+}
+
+# ---- T-53: sonda nunca bloqueia — exit permanece 0 com pendencia detectada ----
+
+scenario_t53_probe_nunca_bloqueia_com_pendencia_detectada() {
+  _gdir="$TMPDIR_TEST/repo-probe-t53"
+  _sd="$TMPDIR_TEST/probe-t53"
+  _init_git_repo_probe "$_gdir" "feat/probe-t53"
+
+  _orig_path="$PATH"
+  _stub_dir="$TMPDIR_TEST/stub-t53-nogh"
+  mkdir -p "$_stub_dir"
+  PATH="$_stub_dir:/usr/bin:/bin"
+  export PATH
+
+  capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- feat/probe-t53
+
+  PATH="$_orig_path"
+  export PATH
+
+  # Pendencia REAL detectada (merged=no) — mas a sonda e so-informativa
+  # (FR-021): exit permanece 0, nunca um codigo que sinalize bloqueio.
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "sonda nao deve bloquear mesmo com pendencia detectada" "exit obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q '|no|' \
+    || { _fail "esperava pendencia (merged=no) detectada" "stdout: $_CAPTURED_STDOUT"; return 1; }
+}
+
+# ---- uso incorreto: '--' ausente / BRANCH vazio ⇒ exit 2 ----
+
+scenario_probe_sem_separador_exit2() {
+  capture "$SCRIPT" probe-pending-work --state-dir "$TMPDIR_TEST/x" --projeto-alvo-path "$TMPDIR_TEST/y" feat/sem-separador
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (sem '--')" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_probe_branch_vazia_apos_separador_exit2() {
+  capture "$SCRIPT" probe-pending-work --state-dir "$TMPDIR_TEST/x" --projeto-alvo-path "$TMPDIR_TEST/y" --
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (BRANCH vazio)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ---- git ausente no PATH ⇒ skipped-no-git, exit 3 ----
+
+scenario_probe_git_ausente_skipped_no_git_exit3() {
+  # NAO reusar o padrao "PATH=$stub:/usr/bin:/bin" aqui: git mora em
+  # /usr/bin neste ambiente (e em muitos Ubuntu via usrmerge), entao
+  # prefixar um stub-dir vazio nao o esconde (feedback_test_path_stub_
+  # cannot_hide_usrbin). Em vez de mutar o PATH do processo de teste (o
+  # que quebraria o proprio mktemp usado por `capture`), isola o PATH so
+  # do processo filho (o SUT) via `env PATH=... "$SCRIPT" ...` — o
+  # harness continua enxergando o PATH ambiente intacto.
+  _stub_dir="$TMPDIR_TEST/stub-probe-nogit"
+  mkdir -p "$_stub_dir"
+
+  capture env PATH="$_stub_dir" "$SCRIPT" probe-pending-work \
+    --state-dir "$TMPDIR_TEST/x" --projeto-alvo-path "$TMPDIR_TEST/y" -- feat/sem-git
+
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit esperado 3 (git ausente)" "obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q 'skipped-no-git$' \
+    || { _fail "probe_status esperado skipped-no-git" "stdout: $_CAPTURED_STDOUT"; return 1; }
+}
+
+# ---- branch inexistente ⇒ skipped-no-git, exit 3 ----
+
+scenario_probe_branch_inexistente_skipped_no_git_exit3() {
+  _gdir="$TMPDIR_TEST/repo-probe-nobranch"
+  _sd="$TMPDIR_TEST/probe-nobranch"
+  _init_git_repo_probe "$_gdir" "feat/probe-existe"
+
+  capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- feat/nao-existe
+
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit esperado 3 (branch inexistente)" "obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q 'skipped-no-git$' \
+    || { _fail "probe_status esperado skipped-no-git" "stdout: $_CAPTURED_STDOUT"; return 1; }
+}
+
+# ---- branch mesclada ⇒ merged=yes ----
+
+scenario_probe_branch_mesclada_merged_yes() {
+  _gdir="$TMPDIR_TEST/repo-probe-merged"
+  _sd="$TMPDIR_TEST/probe-merged"
+  _init_git_repo_probe "$_gdir" "feat/probe-merged"
+  git -C "$_gdir" checkout -q main 2>/dev/null
+  git -C "$_gdir" merge -q feat/probe-merged --no-edit 2>/dev/null
+
+  _orig_path="$PATH"
+  _stub_dir="$TMPDIR_TEST/stub-merged-nogh"
+  mkdir -p "$_stub_dir"
+  PATH="$_stub_dir:/usr/bin:/bin"
+  export PATH
+
+  capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- feat/probe-merged
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q '|yes|' \
+    || { _fail "merged esperado 'yes'" "stdout: $_CAPTURED_STDOUT"; return 1; }
+}
+
+# ---- gh presente + autenticado + PR OPEN ⇒ checked, pr_state=open ----
+
+scenario_probe_gh_pr_open_checked() {
+  _gdir="$TMPDIR_TEST/repo-probe-propen"
+  _sd="$TMPDIR_TEST/probe-propen"
+  _init_git_repo_probe "$_gdir" "feat/probe-propen"
+
+  _stub="$TMPDIR_TEST/stub-probe-propen"
+  mkdir -p "$_stub"
+  cat > "$_stub/gh" <<'GHEOF'
+#!/bin/sh
+case "$1" in
+  auth) exit 0 ;;
+  pr)   printf '{"url":"https://example.test/pr/42","state":"OPEN"}\n'; exit 0 ;;
+  *)    exit 1 ;;
+esac
+GHEOF
+  chmod +x "$_stub/gh"
+
+  _orig_path="$PATH"
+  PATH="$_stub:/usr/bin:/bin"
+  export PATH
+
+  capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- feat/probe-propen
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  IFS='|' read -r _tag _branch _dflt _merged _prst _prurl _src _pstat <<EOF
+$_CAPTURED_STDOUT
+EOF
+  [ "$_pstat" = "checked" ] || { _fail "probe_status esperado checked" "obtido '$_pstat'"; return 1; }
+  [ "$_prst" = "open" ] || { _fail "pr_state esperado open" "obtido '$_prst'"; return 1; }
+  [ "$_prurl" = "https://example.test/pr/42" ] || { _fail "pr_url incorreto" "obtido '$_prurl'"; return 1; }
+}
+
 # ==== snapshot: grava baseline ordenado de untracked ====
 
 scenario_snapshot_grava_baseline_untracked_ordenado() {

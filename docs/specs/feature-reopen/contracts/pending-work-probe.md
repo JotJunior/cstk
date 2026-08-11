@@ -1,9 +1,11 @@
 # Contract: `commit-mode.sh probe-pending-work`
 
-**Status**: `[PROPOSTA — a validar na implementacao]` — subcomando **novo**.
-Nada neste arquivo descreve comportamento existente; e o desenho da interface a
-ser construida (task 4.1). Fecha o `[Gap]` CHK002 (`checklists/requirements.md`)
-e e o insumo direto de CHK009 (`checklists/security.md`, task 1.2).
+**Status**: `[IMPLEMENTADO — FASE 4, tasks 4.1..4.3]`. Subcomando implementado
+em `commit-mode.sh` (`_cm_cmd_probe_pending_work`) exatamente conforme este
+contrato; T-50..T-53 cobertos em `tests/test_commit-mode.sh`
+(`./tests/run.sh commit-mode` => `PASS: 53 FAIL: 0 ERROR: 0`). Fecha o
+`[Gap]` CHK002 (`checklists/requirements.md`) e e o insumo direto de CHK009
+(`checklists/security.md`, task 1.2).
 
 **Path do script**: `plugins/cstk/skills/agente-00c-runtime/scripts/commit-mode.sh`
 (subcomando novo — ver §Subcomandos no cabecalho do arquivo)
@@ -195,6 +197,18 @@ nao deixa-la aberta):
   degradado); mudar o schema seria alteracao fora do escopo de 1.1.
 
 Com isso, a implementacao de 4.1 esta LIBERADA (dec-038).
+
+## Heranca de `--atomic-commit` (task 4.2.2)
+
+`probe-pending-work` **NAO participa** da heranca de `.atomic_commit_enabled`.
+E uma sonda read-only invocada pelo fluxo `--reopen` de `feature-00c.md`
+(FASE 3.2, task 3.2.1) **antes** de qualquer `init` de execucao nova — nesse
+instante nao ha sessao de commit atomico corrente para herdar. A leitura de
+`.atomic_commit_enabled` continua com fonte unica (`_cm_cmd_is_enabled`,
+tarefa 3.5.1); `_cm_cmd_probe_pending_work` nao le nem escreve esse campo
+(confirmado por `grep atomic_commit_enabled commit-mode.sh` — nenhuma
+ocorrencia dentro da funcao). Ligar/desligar atomic-commit e responsabilidade
+exclusiva do fluxo `--reopen`, nao desta sonda.
 
 ## Errors
 
