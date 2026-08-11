@@ -10,7 +10,7 @@
  */
 import type Database from 'better-sqlite3';
 import { hasColumn } from '../columns.js';
-import { hasAgentUsage, hasOtelUsage } from './waves.js';
+import { hasAgentUsage, hasOtelUsage, hasOtelBreakdown } from './waves.js';
 
 /**
  * Colunas de consumo real de subagente para os rollups (schema v10). Sao
@@ -56,7 +56,7 @@ function agentUsageRollupSelect(db: Database.Database, scope: 'project' | 'featu
  * mapper nao precisa saber a versao do schema.
  */
 function otelUsageRollupSelect(db: Database.Database, scope: 'project' | 'feature'): string {
-  const fields: Array<[string, string]> = [
+  const v11Fields: Array<[string, string]> = [
     ['otel_cost_usd', 'sum(w.otel_cost_usd)'],
     ['otel_cost_main_usd', 'sum(w.otel_cost_main_usd)'],
     ['otel_cost_subagent_usd', 'sum(w.otel_cost_subagent_usd)'],
@@ -65,15 +65,33 @@ function otelUsageRollupSelect(db: Database.Database, scope: 'project' | 'featur
     ['otel_waves_with_usage', 'sum(CASE WHEN w.otel_cost_usd IS NOT NULL THEN 1 ELSE 0 END)'],
     ['otel_waves_total', 'count(*)'],
   ];
-  if (!hasOtelUsage(db)) {
-    return fields.map(([alias]) => `NULL as ${alias}`).join(',\n        ');
-  }
+  // Breakdown por fonte (v12) tem sonda PROPRIA: uma base pode ter as 5 colunas
+  // de custo (v11) sem as 8 de breakdown. Gatear os dois juntos projetaria NULL
+  // no custo so porque o breakdown falta — ou pior, quebraria a query no caso
+  // inverso.
+  const v12Fields: Array<[string, string]> = [
+    ['otel_main_input_tokens', 'sum(w.otel_main_input_tokens)'],
+    ['otel_main_output_tokens', 'sum(w.otel_main_output_tokens)'],
+    ['otel_main_cache_read_tokens', 'sum(w.otel_main_cache_read_tokens)'],
+    ['otel_main_cache_creation_tokens', 'sum(w.otel_main_cache_creation_tokens)'],
+    ['otel_subagent_input_tokens', 'sum(w.otel_subagent_input_tokens)'],
+    ['otel_subagent_output_tokens', 'sum(w.otel_subagent_output_tokens)'],
+    ['otel_subagent_cache_read_tokens', 'sum(w.otel_subagent_cache_read_tokens)'],
+    ['otel_subagent_cache_creation_tokens', 'sum(w.otel_subagent_cache_creation_tokens)'],
+    ['otel_waves_with_main_breakdown', 'sum(CASE WHEN w.otel_main_input_tokens IS NOT NULL THEN 1 ELSE 0 END)'],
+    ['otel_waves_with_subagent_breakdown', 'sum(CASE WHEN w.otel_subagent_input_tokens IS NOT NULL THEN 1 ELSE 0 END)'],
+  ];
   const corr = scope === 'project'
     ? 'w.project = e.project'
     : 'w.project = e.project AND w.feature = e.feature';
-  return fields
-    .map(([alias, expr]) => `(SELECT ${expr} FROM waves w WHERE ${corr}) as ${alias}`)
-    .join(',\n        ');
+  const project = (fields: Array<[string, string]>, present: boolean): string[] =>
+    present
+      ? fields.map(([alias, expr]) => `(SELECT ${expr} FROM waves w WHERE ${corr}) as ${alias}`)
+      : fields.map(([alias]) => `NULL as ${alias}`);
+  return [
+    ...project(v11Fields, hasOtelUsage(db)),
+    ...project(v12Fields, hasOtelBreakdown(db)),
+  ].join(',\n        ');
 }
 
 /**
@@ -162,6 +180,18 @@ export interface OtelUsageRollupRow {
   otel_subagent_tokens: number | null;
   otel_waves_with_usage: number | null;
   otel_waves_total: number | null;
+  // schema v12 — breakdown por fonte x tipo. Cobertura em dois denominadores
+  // porque main e subagente sao coletados independentemente (ver waves.ts).
+  otel_main_input_tokens: number | null;
+  otel_main_output_tokens: number | null;
+  otel_main_cache_read_tokens: number | null;
+  otel_main_cache_creation_tokens: number | null;
+  otel_subagent_input_tokens: number | null;
+  otel_subagent_output_tokens: number | null;
+  otel_subagent_cache_read_tokens: number | null;
+  otel_subagent_cache_creation_tokens: number | null;
+  otel_waves_with_main_breakdown: number | null;
+  otel_waves_with_subagent_breakdown: number | null;
 }
 
 export interface ExecutionRollupRow extends AgentUsageRollupRow, OtelUsageRollupRow {

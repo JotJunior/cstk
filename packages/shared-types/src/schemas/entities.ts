@@ -66,6 +66,17 @@ export const WaveDTOSchema = z.object({
   otelCostSubagentUsd: z.number().nullable(),
   otelTotalTokens: z.number().nullable(),
   otelSubagentTokens: z.number().nullable(),
+  // Breakdown de tokens por fonte x tipo (schema v12). Contagem de token e
+  // inteira, mas seguimos sem .int(): a borda nao deve rejeitar a leitura de
+  // uma base por causa do TIPO de um numero — a degradacao util aqui e null.
+  otelMainInputTokens: z.number().nullable(),
+  otelMainOutputTokens: z.number().nullable(),
+  otelMainCacheReadTokens: z.number().nullable(),
+  otelMainCacheCreationTokens: z.number().nullable(),
+  otelSubagentInputTokens: z.number().nullable(),
+  otelSubagentOutputTokens: z.number().nullable(),
+  otelSubagentCacheReadTokens: z.number().nullable(),
+  otelSubagentCacheCreationTokens: z.number().nullable(),
 });
 
 // ---------------------------------------------------------------------------
@@ -97,6 +108,17 @@ export const OtelUsageRollupSchema = z.object({
   subagentTokens: z.number().nullable(),
   wavesWithOtel: z.number().nullable(),
   wavesTotal: z.number().nullable(),
+  // Breakdown por fonte x tipo (schema v12) + as DUAS coberturas separadas.
+  mainInputTokens: z.number().nullable(),
+  mainOutputTokens: z.number().nullable(),
+  mainCacheReadTokens: z.number().nullable(),
+  mainCacheCreationTokens: z.number().nullable(),
+  subagentInputTokens: z.number().nullable(),
+  subagentOutputTokens: z.number().nullable(),
+  subagentCacheReadTokens: z.number().nullable(),
+  subagentCacheCreationTokens: z.number().nullable(),
+  wavesWithMainBreakdown: z.number().nullable(),
+  wavesWithSubagentBreakdown: z.number().nullable(),
 });
 
 // ---------------------------------------------------------------------------
@@ -180,6 +202,45 @@ export const LooseUsageResultSchema = z.object({
   byModel: z.array(LooseUsageModelEntrySchema),
   comparison: LooseUsageComparisonSchema,
   coverage: LooseUsageCoverageSchema,
+});
+
+// ---------------------------------------------------------------------------
+// PlanUsage DTOs schema (schema v14, `plan_usage`, cstk 7.2.0) — gauge
+// `rate_limits` da CONTA. Mesmo padrao dos demais: sem `.default(null)`.
+// ---------------------------------------------------------------------------
+export const PlanUsageScopeStateSchema = z.object({
+  // `scope` fica como z.string() e NAO como z.enum(['five_hour','seven_day']):
+  // o CHECK vive na origem, e um escopo novo do cstk deve aparecer na tela em
+  // vez de derrubar o parse da resposta inteira (Principio II).
+  scope: z.string(),
+  usedPercentage: z.number().nullable(),
+  // epoch em SEGUNDOS — nao converter para Date/ISO na borda de validacao.
+  resetsAt: z.number().nullable(),
+  capturedAt: z.string().nullable(),
+  peakUsedPercentage: z.number().nullable(),
+  captures: z.number(),
+});
+
+export const PlanUsagePointSchema = z.object({
+  scope: z.string(),
+  capturedAt: z.string(),
+  usedPercentage: z.number().nullable(),
+});
+
+export const PlanUsageCoverageSchema = z.object({
+  rowsTotal: z.number().nullable(),
+  scopes: z.number().nullable(),
+  sessions: z.number().nullable(),
+  projects: z.number().nullable(),
+  firstCapturedAt: z.string().nullable(),
+  lastCapturedAt: z.string().nullable(),
+});
+
+export const PlanUsageResultSchema = z.object({
+  byScope: z.array(PlanUsageScopeStateSchema),
+  series: z.array(PlanUsagePointSchema),
+  coverage: PlanUsageCoverageSchema,
+  seriesTruncated: z.boolean(),
 });
 
 // ---------------------------------------------------------------------------

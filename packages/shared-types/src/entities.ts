@@ -111,6 +111,22 @@ export interface WaveDTO {
   otelTotalTokens: number | null;
   /** tokens atribuidos a subagentes */
   otelSubagentTokens: number | null;
+
+  // --- Breakdown de tokens por FONTE x TIPO (schema v12 — cstk 5.33.0) ------
+  // Origem: `otel_usage.by_source.{main,subagent}.{input,output,cache_read,
+  // cache_creation}`. Refina (nao substitui) `otelTotalTokens`/
+  // `otelSubagentTokens`: responde quanto do consumo foi contexto RELIDO de
+  // cache e quanto foi token novo — a diferenca entre uma onda cara e uma onda
+  // longa. Os lados main e subagente sao coletados de forma INDEPENDENTE: onda
+  // com subagente preenchido e main null e caso real da base, nao anomalia.
+  otelMainInputTokens: number | null;
+  otelMainOutputTokens: number | null;
+  otelMainCacheReadTokens: number | null;
+  otelMainCacheCreationTokens: number | null;
+  otelSubagentInputTokens: number | null;
+  otelSubagentOutputTokens: number | null;
+  otelSubagentCacheReadTokens: number | null;
+  otelSubagentCacheCreationTokens: number | null;
 }
 
 /**
@@ -156,6 +172,24 @@ export interface OtelUsageRollup {
   wavesWithOtel: number | null;
   /** ondas consideradas no recorte (com ou sem metrica coletada) */
   wavesTotal: number | null;
+
+  // --- Breakdown por fonte x tipo (schema v12) ------------------------------
+  // Soma das 8 colunas `otel_{main,subagent}_*` das ondas do recorte.
+  mainInputTokens: number | null;
+  mainOutputTokens: number | null;
+  mainCacheReadTokens: number | null;
+  mainCacheCreationTokens: number | null;
+  subagentInputTokens: number | null;
+  subagentOutputTokens: number | null;
+  subagentCacheReadTokens: number | null;
+  subagentCacheCreationTokens: number | null;
+  /**
+   * DOIS denominadores separados, um por lado do breakdown — main e subagente
+   * sao coletas independentes e divergem na base real. Um unico numero de
+   * cobertura apresentaria como medido um lado que nunca foi coletado.
+   */
+  wavesWithMainBreakdown: number | null;
+  wavesWithSubagentBreakdown: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +327,70 @@ export interface LooseUsageResult {
   byModel: LooseUsageModelEntry[];
   comparison: LooseUsageComparison;
   coverage: LooseUsageCoverage;
+}
+
+// ---------------------------------------------------------------------------
+// PlanUsage DTOs — gauge `rate_limits` da CONTA (schema v14, tabela
+// `plan_usage`, cstk 7.2.0).
+//
+// Dimensao NOVA no painel: nao e custo (USD) nem consumo (tokens), e quanto do
+// PLANO ja foi gasto em duas janelas independentes. Um projeto pode custar
+// pouco em USD e ainda assim esgotar a janela de 5h — sao eixos diferentes.
+// Origem: hook `statusLine.command` (`cstk statusline install`), append-only,
+// fora de qualquer execucao 00c: sem feature/wave/execution_id por construcao.
+// Ref: ../cstk/docs/specs/plan-usage-capture/data-model.md.
+// ---------------------------------------------------------------------------
+
+/**
+ * Estado corrente de UMA janela do plano + extremos do recorte.
+ *
+ * `scope` chega como a string bruta da origem (`five_hour` | `seven_day`,
+ * garantidos pelo CHECK da tabela). As duas janelas sao series DISTINTAS:
+ * somar ou mediar uma com a outra nao produz numero com significado.
+ */
+export interface PlanUsageScopeState {
+  scope: string;
+  /** percentual (0..100) na captura mais recente; null = escopo sem valor */
+  usedPercentage: number | null;
+  /** epoch em SEGUNDOS do reset da janela (nao milissegundos, nao ISO) */
+  resetsAt: number | null;
+  /** ISO 8601 da captura mais recente */
+  capturedAt: string | null;
+  /** maior percentual observado no recorte; null se nenhuma captura tem valor */
+  peakUsedPercentage: number | null;
+  /** capturas no recorte — ja pos-throttle, entao conta MUDANCAS, nao renders */
+  captures: number;
+}
+
+/** Um ponto da serie temporal de um escopo. */
+export interface PlanUsagePoint {
+  scope: string;
+  capturedAt: string;
+  usedPercentage: number | null;
+}
+
+/**
+ * Cobertura da amostra. Tabela ausente (base v2-v13): TODOS os campos null,
+ * nunca 0. Tabela presente e vazia: contagens 0 legitimas — a captura e opt-in
+ * e "sem linha" significa sem medicao, jamais "plano em 0%".
+ */
+export interface PlanUsageCoverage {
+  rowsTotal: number | null;
+  scopes: number | null;
+  sessions: number | null;
+  projects: number | null;
+  firstCapturedAt: string | null;
+  lastCapturedAt: string | null;
+}
+
+/** Corpo de `data` de `GET /api/v1/metrics/plan-usage`. */
+export interface PlanUsageResult {
+  byScope: PlanUsageScopeState[];
+  /** ordenada por escopo e depois por `capturedAt` asc (ordem de plotagem) */
+  series: PlanUsagePoint[];
+  coverage: PlanUsageCoverage;
+  /** true quando a serie foi cortada no teto por escopo (mais recentes) */
+  seriesTruncated: boolean;
 }
 
 // ---------------------------------------------------------------------------

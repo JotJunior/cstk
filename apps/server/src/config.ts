@@ -36,11 +36,15 @@ import { resolve } from 'node:path';
  *  v13 (loose-usage-capture, cstk 6.6.0) adiciona a tabela `loose_usage`
  *  (consumo avulso: sessoes interativas FORA de execucoes 00c, grao
  *  processo/projeto — nao confundir com `wave_model_usage`, grao onda x
- *  modelo). O painel ainda nao exibe esses dados; aceitar a versao evita
- *  schema-mismatch em bases ja migradas pelo cstk >= 6.6.0.
+ *  modelo);
+ *  v14 (plan-usage-capture, cstk 7.2.0) adiciona a tabela `plan_usage`
+ *  (gauge `rate_limits` da CONTA por escopo `five_hour`/`seven_day`, capturado
+ *  pelo hook `statusLine.command` a cada render — append-only, grao escopo x
+ *  momento de captura). Fora do fluxo state.json/onda, mesma familia de
+ *  `loose_usage`: sem `feature`/`wave`/`execution_id` por construcao.
  *  Todas sao aditivas, entao as telas existentes seguem operando e os recursos
  *  novos aparecem so quando a tabela/coluna esta presente (Principio II). */
-export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13'] as const;
+export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14'] as const;
 
 export interface ServerConfig {
   /** Path absoluto canonicalizado para knowledge.db */

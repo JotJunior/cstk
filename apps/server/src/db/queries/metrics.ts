@@ -19,7 +19,7 @@
  */
 import type Database from 'better-sqlite3';
 import { hasColumn } from '../columns.js';
-import { hasAgentUsage, hasOtelUsage, hasModelUsage, hasLooseUsage } from './waves.js';
+import { hasAgentUsage, hasOtelUsage, hasOtelBreakdown, hasModelUsage, hasLooseUsage, hasPlanUsage } from './waves.js';
 
 export type MetricPeriod = '24h' | '7d' | '30d' | 'all';
 
@@ -518,6 +518,26 @@ export interface OtelUsageResult {
   wavesWithOtel: number | null;
   /** ondas no recorte, coletadas ou nao */
   wavesTotal: number | null;
+  // schema v12 — breakdown de tokens por fonte x tipo (by_source do OTel).
+  // Responde o que as 5 colunas de v11 nao respondiam: quanto do token foi
+  // cache read (barato, contexto relido) e quanto foi input/output novo.
+  mainInputTokens: number | null;
+  mainOutputTokens: number | null;
+  mainCacheReadTokens: number | null;
+  mainCacheCreationTokens: number | null;
+  subagentInputTokens: number | null;
+  subagentOutputTokens: number | null;
+  subagentCacheReadTokens: number | null;
+  subagentCacheCreationTokens: number | null;
+  /**
+   * Cobertura do breakdown em DOIS denominadores independentes — o lado main e
+   * o lado subagente sao coletados separadamente e divergem na base real
+   * (medido em ~/.claude/cstk/knowledge.db v14: 27 ondas com main contra 257
+   * com subagente, de 1182). Fundir os dois num numero so apresentaria como
+   * medido um lado que nunca foi.
+   */
+  wavesWithMainBreakdown: number | null;
+  wavesWithSubagentBreakdown: number | null;
 }
 
 const EMPTY_OTEL_USAGE: OtelUsageResult = {
@@ -528,6 +548,16 @@ const EMPTY_OTEL_USAGE: OtelUsageResult = {
   subagentTokens: null,
   wavesWithOtel: null,
   wavesTotal: null,
+  mainInputTokens: null,
+  mainOutputTokens: null,
+  mainCacheReadTokens: null,
+  mainCacheCreationTokens: null,
+  subagentInputTokens: null,
+  subagentOutputTokens: null,
+  subagentCacheReadTokens: null,
+  subagentCacheCreationTokens: null,
+  wavesWithMainBreakdown: null,
+  wavesWithSubagentBreakdown: null,
 };
 
 export function getOtelUsage(
@@ -538,6 +568,31 @@ export function getOtelUsage(
   // honesto (e nao quebra) do que consultar e explodir.
   if (!hasOtelUsage(db)) return { ...EMPTY_OTEL_USAGE };
   const { where, params } = waveScope(db, filters);
+  // Base v11 (custo sim, breakdown por fonte nao): as 8 somas e as 2 coberturas
+  // do breakdown viram NULL literal, mantendo a Row com forma unica.
+  const breakdownSelect = hasOtelBreakdown(db)
+    ? `
+        sum(otel_main_input_tokens)             as mainInputTokens,
+        sum(otel_main_output_tokens)            as mainOutputTokens,
+        sum(otel_main_cache_read_tokens)        as mainCacheReadTokens,
+        sum(otel_main_cache_creation_tokens)    as mainCacheCreationTokens,
+        sum(otel_subagent_input_tokens)         as subagentInputTokens,
+        sum(otel_subagent_output_tokens)        as subagentOutputTokens,
+        sum(otel_subagent_cache_read_tokens)    as subagentCacheReadTokens,
+        sum(otel_subagent_cache_creation_tokens) as subagentCacheCreationTokens,
+        sum(CASE WHEN otel_main_input_tokens IS NOT NULL THEN 1 ELSE 0 END)     as wavesWithMainBreakdown,
+        sum(CASE WHEN otel_subagent_input_tokens IS NOT NULL THEN 1 ELSE 0 END) as wavesWithSubagentBreakdown`
+    : `
+        NULL as mainInputTokens,
+        NULL as mainOutputTokens,
+        NULL as mainCacheReadTokens,
+        NULL as mainCacheCreationTokens,
+        NULL as subagentInputTokens,
+        NULL as subagentOutputTokens,
+        NULL as subagentCacheReadTokens,
+        NULL as subagentCacheCreationTokens,
+        NULL as wavesWithMainBreakdown,
+        NULL as wavesWithSubagentBreakdown`;
   // Sem coalesce de proposito: sum() devolve NULL quando nenhuma linha tem
   // valor, que e exatamente "nao coletado" — distinto de "coletado e zero".
   const row = db
@@ -549,7 +604,7 @@ export function getOtelUsage(
         sum(otel_total_tokens)        as totalTokens,
         sum(otel_subagent_tokens)     as subagentTokens,
         sum(CASE WHEN otel_cost_usd IS NOT NULL THEN 1 ELSE 0 END) as wavesWithOtel,
-        count(*)                      as wavesTotal
+        count(*)                      as wavesTotal,${breakdownSelect}
       FROM waves
       ${where}
     `)
@@ -1215,5 +1270,213 @@ export function getLooseUsage(
     byModel: getLooseUsageByModel(db, filters),
     comparison: getLooseUsageComparison(db, filters),
     coverage: getLooseUsageCoverage(db, filters),
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// 16. plan-usage — gauge `rate_limits` da CONTA (schema v14, `plan_usage`,
+//     cstk 7.2.0). Grao escopo x momento de captura, append-only, alimentado
+//     pelo hook `statusLine.command` a cada render de statusline.
+//
+//     NAO e custo nem token: e o PERCENTUAL do plano consumido em duas janelas
+//     independentes (`five_hour`, `seven_day`) mais o epoch de reset de cada
+//     uma. Nunca somar/mesclar os dois escopos — sao series distintas (FR-005
+//     do cstk). Captura opt-in (`cstk statusline install`): tabela presente e
+//     vazia = sem medicao, jamais "plano em 0%".
+//     Ref: ../cstk/docs/specs/plan-usage-capture/data-model.md.
+// ─────────────────────────────────────────────────────────
+
+/** Os dois escopos de janela do gauge — CHECK constraint da tabela de origem. */
+export const PLAN_USAGE_SCOPES = ['five_hour', 'seven_day'] as const;
+export type PlanUsageScope = (typeof PLAN_USAGE_SCOPES)[number];
+
+/** Teto de pontos por escopo devolvidos na serie (os mais RECENTES). */
+export const PLAN_USAGE_SERIES_LIMIT = 240;
+
+/**
+ * Filtros do gauge de plano — apenas `period`.
+ *
+ * SEM filtro `project`: o gauge mede a CONTA, nao o projeto. A tabela guarda
+ * `project`/`project_path` (de qual sessao partiu a captura), mas recortar por
+ * ele sugeriria "consumo do plano por projeto" — numero que a fonte nao
+ * produz. Mesma regra que faz `loose-usage` recusar `feature`.
+ */
+export interface PlanUsageFilters {
+  period?: MetricPeriod;
+}
+
+/** Estado corrente de UM escopo + extremos da janela consultada. */
+export interface PlanUsageScopeState {
+  scope: string;
+  /** percentual consumido na captura mais recente; null = capturado sem valor */
+  usedPercentage: number | null;
+  /** epoch em SEGUNDOS do reset da janela; null = ausente na origem */
+  resetsAt: number | null;
+  /** ISO 8601 da captura mais recente do escopo */
+  capturedAt: string | null;
+  /** maior percentual observado no recorte; null quando nenhuma captura tem valor */
+  peakUsedPercentage: number | null;
+  /** numero de capturas do escopo no recorte (pos-throttle: so mudancas) */
+  captures: number;
+}
+
+/** Um ponto da serie temporal de um escopo. */
+export interface PlanUsagePoint {
+  scope: string;
+  capturedAt: string;
+  usedPercentage: number | null;
+}
+
+export interface PlanUsageCoverage {
+  rowsTotal: number | null;
+  scopes: number | null;
+  sessions: number | null;
+  projects: number | null;
+  firstCapturedAt: string | null;
+  lastCapturedAt: string | null;
+}
+
+export interface PlanUsageResult {
+  byScope: PlanUsageScopeState[];
+  series: PlanUsagePoint[];
+  coverage: PlanUsageCoverage;
+  /** true quando a serie foi cortada em PLAN_USAGE_SERIES_LIMIT por escopo */
+  seriesTruncated: boolean;
+}
+
+const EMPTY_PLAN_USAGE_COVERAGE: PlanUsageCoverage = {
+  rowsTotal: null,
+  scopes: null,
+  sessions: null,
+  projects: null,
+  firstCapturedAt: null,
+  lastCapturedAt: null,
+};
+
+/** WHERE + params sobre `plan_usage`. Recorte temporal por `captured_at`. */
+function planUsageScope(
+  filters: PlanUsageFilters,
+): { where: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  const pf = periodToFilter(filters.period);
+  if (pf) conditions.push(`captured_at >= ${pf}`);
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  return { where, params };
+}
+
+/**
+ * Estado corrente por escopo. "Corrente" = maior `id` do escopo no recorte —
+ * a tabela e append-only com AUTOINCREMENT, e e por `id DESC` que o proprio
+ * throttle do cstk le o registro anterior. Ordenar por `captured_at` seria
+ * fragil: duas capturas podem cair no mesmo segundo ISO.
+ */
+export function getPlanUsageByScope(
+  db: Database.Database,
+  filters: PlanUsageFilters = {},
+): PlanUsageScopeState[] {
+  if (!hasPlanUsage(db)) return [];
+  const { where, params } = planUsageScope(filters);
+  const rows = db
+    .prepare(`
+      SELECT
+        p.scope                                    as scope,
+        p.used_percentage                          as usedPercentage,
+        p.resets_at                                as resetsAt,
+        p.captured_at                              as capturedAt,
+        agg.peakUsedPercentage                     as peakUsedPercentage,
+        agg.captures                               as captures
+      FROM plan_usage p
+      JOIN (
+        SELECT scope,
+               max(id)              as lastId,
+               max(used_percentage) as peakUsedPercentage,
+               count(*)             as captures
+        FROM plan_usage
+        ${where}
+        GROUP BY scope
+      ) agg ON agg.lastId = p.id
+      ORDER BY p.scope ASC
+    `)
+    .all(...params) as PlanUsageScopeState[];
+  return rows;
+}
+
+/**
+ * Serie temporal por escopo, do mais ANTIGO ao mais recente (ordem de plotagem).
+ *
+ * O corte de `PLAN_USAGE_SERIES_LIMIT` guarda os pontos mais RECENTES de cada
+ * escopo — a janela que interessa e a atual, nao o inicio do historico. Um
+ * escopo truncado nunca vira "sem dado": o corte e sinalizado em
+ * `seriesTruncated` para a UI dizer que a serie esta parcial.
+ */
+export function getPlanUsageSeries(
+  db: Database.Database,
+  filters: PlanUsageFilters = {},
+  limitPerScope = PLAN_USAGE_SERIES_LIMIT,
+): { points: PlanUsagePoint[]; truncated: boolean } {
+  if (!hasPlanUsage(db)) return { points: [], truncated: false };
+  const { where, params } = planUsageScope(filters);
+  // row_number() por escopo: SQLite >= 3.25 (better-sqlite3 embarca 3.4x).
+  const rows = db
+    .prepare(`
+      SELECT scope, capturedAt, usedPercentage, rn
+      FROM (
+        SELECT scope                as scope,
+               captured_at          as capturedAt,
+               used_percentage      as usedPercentage,
+               row_number() OVER (PARTITION BY scope ORDER BY id DESC) as rn
+        FROM plan_usage
+        ${where}
+      )
+      WHERE rn <= ?
+      ORDER BY scope ASC, capturedAt ASC
+    `)
+    .all(...params, limitPerScope) as Array<PlanUsagePoint & { rn: number }>;
+  const truncated = rows.some(r => r.rn === limitPerScope);
+  return {
+    points: rows.map(({ scope, capturedAt, usedPercentage }) => ({ scope, capturedAt, usedPercentage })),
+    truncated,
+  };
+}
+
+/**
+ * Cobertura da amostra. Tabela ausente (base v2-v13): tudo null, nunca 0.
+ * Tabela presente e vazia: contagens 0 legitimas — a captura e opt-in
+ * (`cstk statusline install`) e pode simplesmente nao estar ligada.
+ */
+export function getPlanUsageCoverage(
+  db: Database.Database,
+  filters: PlanUsageFilters = {},
+): PlanUsageCoverage {
+  if (!hasPlanUsage(db)) return { ...EMPTY_PLAN_USAGE_COVERAGE };
+  const { where, params } = planUsageScope(filters);
+  const row = db
+    .prepare(`
+      SELECT
+        count(*)                    as rowsTotal,
+        count(DISTINCT scope)       as scopes,
+        count(DISTINCT session_id)  as sessions,
+        count(DISTINCT project)     as projects,
+        min(captured_at)            as firstCapturedAt,
+        max(captured_at)            as lastCapturedAt
+      FROM plan_usage
+      ${where}
+    `)
+    .get(...params) as PlanUsageCoverage | undefined;
+  return row ?? { ...EMPTY_PLAN_USAGE_COVERAGE };
+}
+
+/** Agrega os recortes num unico `PlanUsageResult` (corpo de `data` do endpoint). */
+export function getPlanUsage(
+  db: Database.Database,
+  filters: PlanUsageFilters = {},
+): PlanUsageResult {
+  const series = getPlanUsageSeries(db, filters);
+  return {
+    byScope: getPlanUsageByScope(db, filters),
+    series: series.points,
+    coverage: getPlanUsageCoverage(db, filters),
+    seriesTruncated: series.truncated,
   };
 }

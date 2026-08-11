@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest';
 import {
   otelUsageState, isPartialOtelSample, otelCoverageLabel, fmtUsd,
   subagentCostShare, sumOtelUsage, waveOtelUsage,
+  hasOtelBreakdown, otelMainTokens, otelSubagentTokens,
+  otelSourceTotal, cacheReadShare,
 } from '@/components/OtelUsage.js';
 import { waveCostLabel, waveCostTip, waveUsageLabel, waveUsageTip } from '@/screens/ExecutionDetail.js';
 import type { WaveDTO, OtelUsageRollup } from '@cstk-panel/shared-types';
@@ -41,6 +43,15 @@ const BASE_WAVE: WaveDTO = {
   otelCostSubagentUsd: null,
   otelTotalTokens: null,
   otelSubagentTokens: null,
+  // schema v12 — breakdown por fonte ausente nesta onda
+  otelMainInputTokens: null,
+  otelMainOutputTokens: null,
+  otelMainCacheReadTokens: null,
+  otelMainCacheCreationTokens: null,
+  otelSubagentInputTokens: null,
+  otelSubagentOutputTokens: null,
+  otelSubagentCacheReadTokens: null,
+  otelSubagentCacheCreationTokens: null,
 };
 
 /** Valores reais de uma onda ingerida por `cstk recall --ingest` (5.30.0). */
@@ -109,6 +120,11 @@ describe('subagentCostShare', () => {
     const zeroed: OtelUsageRollup = {
       costUsd: 0, costMainUsd: 0, costSubagentUsd: 0,
       totalTokens: 0, subagentTokens: 0, wavesWithOtel: 1, wavesTotal: 1,
+      mainInputTokens: null, mainOutputTokens: null,
+      mainCacheReadTokens: null, mainCacheCreationTokens: null,
+      subagentInputTokens: null, subagentOutputTokens: null,
+      subagentCacheReadTokens: null, subagentCacheCreationTokens: null,
+      wavesWithMainBreakdown: null, wavesWithSubagentBreakdown: null,
     };
     expect(subagentCostShare(zeroed)).toBeNull();
   });
@@ -179,5 +195,109 @@ describe('celula de token da onda — fonte OTel', () => {
 
   it('sem nenhuma das duas fontes continua travessao, nunca 0', () => {
     expect(waveUsageLabel(BASE_WAVE)).toBe('—');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Breakdown por FONTE x TIPO (schema v12)
+//
+// As 5 colunas de v11 dizem quanto custou; estas 8 dizem de QUE TIPO era o
+// token. A leitura que so elas permitem: uma onda de milhoes de tokens sendo
+// quase toda cache read e uma onda LONGA, nao uma onda cara.
+//
+// Regra dura: main e subagente sao coletas INDEPENDENTES (na base real, 27
+// ondas com main contra 257 com subagente). Um lado ausente nunca pode ser
+// somado como 0 nem herdar a cobertura do outro.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Valores reais da onda-012 de esp32-c6/wifi-standalone (knowledge.db v14). */
+const WAVE_V12: WaveDTO = {
+  ...BASE_WAVE,
+  wave: 'onda-012',
+  otelCostUsd: 4.9554576,
+  otelCostMainUsd: 2.3303035,
+  otelCostSubagentUsd: 2.5170876,
+  otelTotalTokens: 8_782_315,
+  otelSubagentTokens: 4_840_515,
+  otelMainInputTokens: 34,
+  otelMainOutputTokens: 11_325,
+  otelMainCacheReadTokens: 3_709_177,
+  otelMainCacheCreationTokens: 19_242,
+  otelSubagentInputTokens: 88,
+  otelSubagentOutputTokens: 25_681,
+  otelSubagentCacheReadTokens: 4_615_562,
+  otelSubagentCacheCreationTokens: 199_184,
+};
+
+/** Caso MAJORITARIO da base real: subagente medido, orquestrador nao. */
+const WAVE_V12_SO_SUBAGENTE: WaveDTO = {
+  ...WAVE_V12,
+  wave: 'onda-013',
+  otelMainInputTokens: null,
+  otelMainOutputTokens: null,
+  otelMainCacheReadTokens: null,
+  otelMainCacheCreationTokens: null,
+};
+
+describe('hasOtelBreakdown', () => {
+  it('onda v11 (sem as 8 colunas) nao tem breakdown', () => {
+    expect(hasOtelBreakdown(waveOtelUsage(BASE_WAVE))).toBe(false);
+  });
+
+  it('basta UM lado medido para haver breakdown', () => {
+    expect(hasOtelBreakdown(waveOtelUsage(WAVE_V12_SO_SUBAGENTE))).toBe(true);
+  });
+});
+
+describe('otelSourceTotal / cacheReadShare', () => {
+  it('lado nao coletado devolve null, nunca 0', () => {
+    const main = otelMainTokens(waveOtelUsage(WAVE_V12_SO_SUBAGENTE));
+    // Somar 4 nulls como 0 diria "o orquestrador nao gastou token" — falso: o
+    // que houve foi ausencia de coleta.
+    expect(otelSourceTotal(main)).toBeNull();
+    expect(cacheReadShare(main)).toBeNull();
+  });
+
+  it('soma os 4 tipos do lado e calcula a fatia de cache read', () => {
+    const sub = otelSubagentTokens(waveOtelUsage(WAVE_V12));
+    const total = otelSourceTotal(sub);
+    expect(total).toBe(88 + 25_681 + 4_615_562 + 199_184);
+    const share = cacheReadShare(sub);
+    expect(share).not.toBeNull();
+    // ~95% do consumo do subagente e contexto RELIDO — o numero que muda a
+    // leitura da onda.
+    expect(share!).toBeGreaterThan(0.94);
+  });
+
+  it('denominador e o proprio lado, nao otelTotalTokens (que mistura fontes)', () => {
+    const main = otelMainTokens(waveOtelUsage(WAVE_V12));
+    const share = cacheReadShare(main);
+    expect(share!).toBeCloseTo(3_709_177 / (34 + 11_325 + 3_709_177 + 19_242), 6);
+    // Usar otelTotalTokens (8.78M) daria ~0.42 — subestimando pela metade.
+    expect(share!).toBeGreaterThan(0.9);
+  });
+});
+
+describe('sumOtelUsage — breakdown por fonte', () => {
+  it('cada lado conta SO as ondas que mediram aquele lado', () => {
+    const total = sumOtelUsage([WAVE_V12, WAVE_V12_SO_SUBAGENTE, BASE_WAVE]);
+    // 2 ondas mediram subagente, 1 mediu main, 3 ondas no recorte.
+    expect(total.wavesWithSubagentBreakdown).toBe(2);
+    expect(total.wavesWithMainBreakdown).toBe(1);
+    expect(total.wavesTotal).toBe(3);
+  });
+
+  it('soma preserva null quando nenhuma onda mediu o lado', () => {
+    const total = sumOtelUsage([WAVE_V12_SO_SUBAGENTE]);
+    expect(total.mainInputTokens).toBeNull();
+    expect(total.mainCacheReadTokens).toBeNull();
+    expect(total.subagentCacheReadTokens).toBe(4_615_562);
+  });
+
+  it('soma os lados medidos entre ondas', () => {
+    const total = sumOtelUsage([WAVE_V12, WAVE_V12_SO_SUBAGENTE]);
+    expect(total.subagentCacheReadTokens).toBe(4_615_562 * 2);
+    // Somente a onda-012 mediu o main: o total do lado main e o dela.
+    expect(total.mainCacheReadTokens).toBe(3_709_177);
   });
 });

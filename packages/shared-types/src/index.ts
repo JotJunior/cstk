@@ -43,6 +43,10 @@ export type {
   LooseUsageComparison,
   LooseUsageCoverage,
   LooseUsageResult,
+  PlanUsageScopeState,
+  PlanUsagePoint,
+  PlanUsageCoverage,
+  PlanUsageResult,
   PaginationParams,
   PeriodParam,
   ScoreParam,
@@ -89,6 +93,10 @@ export {
   LooseUsageComparisonSchema,
   LooseUsageCoverageSchema,
   LooseUsageResultSchema,
+  PlanUsageScopeStateSchema,
+  PlanUsagePointSchema,
+  PlanUsageCoverageSchema,
+  PlanUsageResultSchema,
 } from './schemas/entities.js';
 
 // Schemas Zod — params

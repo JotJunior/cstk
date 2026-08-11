@@ -66,6 +66,74 @@ export function subagentCostShare(u: OtelUsageRollup | null | undefined): number
   return u.costSubagentUsd / u.costUsd;
 }
 
+// ---------------------------------------------------------------------------
+// Breakdown por FONTE x TIPO (schema v12)
+// ---------------------------------------------------------------------------
+
+/** Um lado do breakdown (main ou subagente), ja somado no recorte. */
+export interface OtelSourceTokens {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheCreationTokens: number | null;
+  /** ondas com ESTE lado coletado — denominador proprio, nao compartilhado */
+  wavesWithBreakdown: number | null;
+}
+
+/** Extrai o lado `main` do rollup. */
+export function otelMainTokens(u: OtelUsageRollup | null | undefined): OtelSourceTokens {
+  return {
+    inputTokens: u?.mainInputTokens ?? null,
+    outputTokens: u?.mainOutputTokens ?? null,
+    cacheReadTokens: u?.mainCacheReadTokens ?? null,
+    cacheCreationTokens: u?.mainCacheCreationTokens ?? null,
+    wavesWithBreakdown: u?.wavesWithMainBreakdown ?? null,
+  };
+}
+
+/** Extrai o lado `subagent` do rollup. */
+export function otelSubagentTokens(u: OtelUsageRollup | null | undefined): OtelSourceTokens {
+  return {
+    inputTokens: u?.subagentInputTokens ?? null,
+    outputTokens: u?.subagentOutputTokens ?? null,
+    cacheReadTokens: u?.subagentCacheReadTokens ?? null,
+    cacheCreationTokens: u?.subagentCacheCreationTokens ?? null,
+    wavesWithBreakdown: u?.wavesWithSubagentBreakdown ?? null,
+  };
+}
+
+/** True quando ao menos UM lado do breakdown foi coletado no recorte. */
+export function hasOtelBreakdown(u: OtelUsageRollup | null | undefined): boolean {
+  if (!u) return false;
+  const main = otelMainTokens(u);
+  const sub = otelSubagentTokens(u);
+  return [main, sub].some(s =>
+    s.inputTokens != null || s.outputTokens != null ||
+    s.cacheReadTokens != null || s.cacheCreationTokens != null,
+  );
+}
+
+/** Soma dos 4 tipos de um lado; null quando nenhum tipo foi coletado. */
+export function otelSourceTotal(s: OtelSourceTokens): number | null {
+  const parts = [s.inputTokens, s.outputTokens, s.cacheReadTokens, s.cacheCreationTokens]
+    .filter((v): v is number => v != null);
+  return parts.length === 0 ? null : parts.reduce((a, b) => a + b, 0);
+}
+
+/**
+ * Fatia do consumo que foi contexto RELIDO de cache, em 0..1.
+ *
+ * E a leitura que os totais de v11 nao davam: uma onda de 8,7M tokens sendo
+ * 95% cache read e uma onda longa, nao uma onda cara. Denominador = a soma dos
+ * 4 tipos DESTE lado (nunca `otelTotalTokens`, que mistura as fontes e existe
+ * mesmo quando o breakdown do lado nao foi coletado).
+ */
+export function cacheReadShare(s: OtelSourceTokens): number | null {
+  const total = otelSourceTotal(s);
+  if (total == null || total === 0 || s.cacheReadTokens == null) return null;
+  return s.cacheReadTokens / total;
+}
+
 /** Converte os campos achatados de uma onda no formato do rollup. */
 export function waveOtelUsage(w: WaveDTO): OtelUsageRollup {
   return {
@@ -76,6 +144,17 @@ export function waveOtelUsage(w: WaveDTO): OtelUsageRollup {
     subagentTokens: w.otelSubagentTokens,
     wavesWithOtel: w.otelCostUsd == null ? null : 1,
     wavesTotal: 1,
+    mainInputTokens: w.otelMainInputTokens,
+    mainOutputTokens: w.otelMainOutputTokens,
+    mainCacheReadTokens: w.otelMainCacheReadTokens,
+    mainCacheCreationTokens: w.otelMainCacheCreationTokens,
+    subagentInputTokens: w.otelSubagentInputTokens,
+    subagentOutputTokens: w.otelSubagentOutputTokens,
+    subagentCacheReadTokens: w.otelSubagentCacheReadTokens,
+    subagentCacheCreationTokens: w.otelSubagentCacheCreationTokens,
+    // Denominador por LADO: a onda so conta para o lado que de fato mediu.
+    wavesWithMainBreakdown: w.otelMainInputTokens == null ? 0 : 1,
+    wavesWithSubagentBreakdown: w.otelSubagentInputTokens == null ? 0 : 1,
   };
 }
 
@@ -91,10 +170,27 @@ export function sumOtelUsage(waves: WaveDTO[]): OtelUsageRollup {
     subagentTokens: add(acc.subagentTokens, w.otelSubagentTokens),
     wavesWithOtel: add(acc.wavesWithOtel, w.otelCostUsd == null ? null : 1),
     wavesTotal: (acc.wavesTotal ?? 0) + 1,
+    mainInputTokens: add(acc.mainInputTokens, w.otelMainInputTokens),
+    mainOutputTokens: add(acc.mainOutputTokens, w.otelMainOutputTokens),
+    mainCacheReadTokens: add(acc.mainCacheReadTokens, w.otelMainCacheReadTokens),
+    mainCacheCreationTokens: add(acc.mainCacheCreationTokens, w.otelMainCacheCreationTokens),
+    subagentInputTokens: add(acc.subagentInputTokens, w.otelSubagentInputTokens),
+    subagentOutputTokens: add(acc.subagentOutputTokens, w.otelSubagentOutputTokens),
+    subagentCacheReadTokens: add(acc.subagentCacheReadTokens, w.otelSubagentCacheReadTokens),
+    subagentCacheCreationTokens: add(acc.subagentCacheCreationTokens, w.otelSubagentCacheCreationTokens),
+    // Cada lado conta so as ondas que mediram AQUELE lado (main e subagente
+    // sao coletas independentes — ver waves.ts no server).
+    wavesWithMainBreakdown: add(acc.wavesWithMainBreakdown, w.otelMainInputTokens == null ? null : 1),
+    wavesWithSubagentBreakdown: add(acc.wavesWithSubagentBreakdown, w.otelSubagentInputTokens == null ? null : 1),
   }), {
     costUsd: null, costMainUsd: null, costSubagentUsd: null,
     totalTokens: null, subagentTokens: null,
     wavesWithOtel: null, wavesTotal: 0,
+    mainInputTokens: null, mainOutputTokens: null,
+    mainCacheReadTokens: null, mainCacheCreationTokens: null,
+    subagentInputTokens: null, subagentOutputTokens: null,
+    subagentCacheReadTokens: null, subagentCacheCreationTokens: null,
+    wavesWithMainBreakdown: null, wavesWithSubagentBreakdown: null,
   });
 }
 
@@ -195,6 +291,122 @@ export function OtelUsageBreakdown({
   );
 }
 
+/**
+ * Barra de composicao de um lado (input / output / cache read / cache creation).
+ *
+ * Renderiza apenas os tipos MEDIDOS: um tipo null nao vira fatia de largura 0,
+ * some da barra e some da legenda. Lado inteiro nao coletado nao renderiza —
+ * quem informa isso e a linha de cobertura, nao uma barra vazia.
+ */
+function OtelSourceBar({ label, tokens, hint }: {
+  label: string;
+  tokens: OtelSourceTokens;
+  hint: string;
+}) {
+  const total = otelSourceTotal(tokens);
+  if (total == null || total === 0) {
+    return (
+      <div className="col gap-1">
+        <div className="row gap-2" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-1)' }}>{label}</span>
+          <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+            não coletado
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const slices = [
+    { key: 'cache read', value: tokens.cacheReadTokens, color: 'var(--info)' },
+    { key: 'cache write', value: tokens.cacheCreationTokens, color: 'var(--model-sonnet)' },
+    { key: 'input', value: tokens.inputTokens, color: 'var(--accent)' },
+    { key: 'output', value: tokens.outputTokens, color: 'var(--warning)' },
+  ].filter((s): s is { key: string; value: number; color: string } => s.value != null);
+
+  const share = cacheReadShare(tokens);
+
+  return (
+    <div className="col gap-1" title={hint}>
+      <div className="row gap-2" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-1)' }}>{label}</span>
+        <span className="tnum" style={{ fontSize: 10.5, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}>
+          {fmtTokens(total)}
+          {share != null && ` · ${(share * 100).toFixed(0)}% cache read`}
+        </span>
+      </div>
+      <div style={{ display: 'flex', height: 10, borderRadius: 3, overflow: 'hidden', background: 'var(--bg-3)' }}>
+        {slices.map(s => (
+          <div
+            key={s.key}
+            title={`${s.key}: ${fmtTokens(s.value)}`}
+            style={{ width: `${(s.value / total) * 100}%`, background: s.color }}
+          />
+        ))}
+      </div>
+      <div className="row gap-2" style={{ flexWrap: 'wrap', fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+        {slices.map(s => (
+          <span key={s.key} className="row gap-1" style={{ alignItems: 'center' }}>
+            <span style={{ width: 7, height: 7, borderRadius: 2, background: s.color, display: 'inline-block' }} />
+            {s.key} {fmtTokens(s.value)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Breakdown por fonte (schema v12) — main e subagente lado a lado.
+ *
+ * Cada lado carrega o PROPRIO denominador de cobertura. Na base real os dois
+ * divergem muito (27 ondas com main contra 257 com subagente); um unico rotulo
+ * de cobertura faria o lado do orquestrador parecer medido quando nao esta.
+ */
+export function OtelSourceBreakdown({ usage }: { usage: OtelUsageRollup | null | undefined }) {
+  if (!hasOtelBreakdown(usage)) return null;
+  const main = otelMainTokens(usage);
+  const sub = otelSubagentTokens(usage);
+  const cov = (s: OtelSourceTokens): string => {
+    if (s.wavesWithBreakdown == null) return 'sem cobertura informada';
+    const total = usage?.wavesTotal;
+    return total == null
+      ? `${fmtNum(s.wavesWithBreakdown)} onda(s) medida(s)`
+      : `${fmtNum(s.wavesWithBreakdown)} de ${fmtNum(total)} ondas medidas`;
+  };
+
+  return (
+    <div className="col gap-2">
+      <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+        Tokens por fonte e tipo
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+        <div className="col gap-1">
+          <OtelSourceBar
+            label="Loop principal"
+            tokens={main}
+            hint="query_source=main — o consumo do próprio orquestrador"
+          />
+          <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>{cov(main)}</div>
+        </div>
+        <div className="col gap-1">
+          <OtelSourceBar
+            label="Subagentes"
+            tokens={sub}
+            hint="query_source=subagent — tudo que rodou dentro de spawns"
+          />
+          <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>{cov(sub)}</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 10.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        Cache read é contexto <em>relido</em>, não token novo — uma onda pode somar milhões
+        de tokens sem ter gerado quase nada. As duas fontes têm coberturas independentes:
+        uma delas pode estar sem coleta enquanto a outra mede.
+      </div>
+    </div>
+  );
+}
+
 /** Bloco completo (breakdown + cobertura + estado vazio). */
 export function OtelUsagePanel({
   usage, columns = 4,
@@ -206,6 +418,7 @@ export function OtelUsagePanel({
   return (
     <div className="col gap-3">
       <OtelUsageBreakdown usage={usage} columns={columns} />
+      <OtelSourceBreakdown usage={usage} />
       <div className="row gap-2" style={{ justifyContent: 'flex-end' }}>
         <OtelCoverageBadge usage={usage} />
       </div>

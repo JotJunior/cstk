@@ -15,6 +15,12 @@ const NO_OTEL: OtelUsageRollup = {
   costUsd: null, costMainUsd: null, costSubagentUsd: null,
   totalTokens: null, subagentTokens: null,
   wavesWithOtel: null, wavesTotal: 1,
+  // schema v12 — breakdown por fonte nao coletado
+  mainInputTokens: null, mainOutputTokens: null,
+  mainCacheReadTokens: null, mainCacheCreationTokens: null,
+  subagentInputTokens: null, subagentOutputTokens: null,
+  subagentCacheReadTokens: null, subagentCacheCreationTokens: null,
+  wavesWithMainBreakdown: null, wavesWithSubagentBreakdown: null,
 };
 
 /** Valores reais da onda-022 de mcp-project-scafold (knowledge.db v11). */
@@ -22,6 +28,12 @@ const OTEL: OtelUsageRollup = {
   costUsd: 3.14147, costMainUsd: 0, costSubagentUsd: 3.14147,
   totalTokens: 7_228_603, subagentTokens: 7_224_500,
   wavesWithOtel: 1, wavesTotal: 1,
+  // schema v12 — breakdown por fonte nao coletado
+  mainInputTokens: null, mainOutputTokens: null,
+  mainCacheReadTokens: null, mainCacheCreationTokens: null,
+  subagentInputTokens: null, subagentOutputTokens: null,
+  subagentCacheReadTokens: null, subagentCacheCreationTokens: null,
+  wavesWithMainBreakdown: null, wavesWithSubagentBreakdown: null,
 };
 
 const NO_AGENT: AgentUsageRollup = {

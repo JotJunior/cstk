@@ -23,6 +23,19 @@ export function mapOtelUsageRollup(row: OtelUsageRollupRow): OtelUsageRollup {
     subagentTokens: row.otel_subagent_tokens,
     wavesWithOtel: row.otel_waves_with_usage,
     wavesTotal: row.otel_waves_total,
+    // schema v12 — breakdown por fonte x tipo (by_source do OTel). Mesma regra
+    // de nao-coalescencia; as duas coberturas sobem separadas porque main e
+    // subagente sao coletados de forma independente.
+    mainInputTokens: row.otel_main_input_tokens,
+    mainOutputTokens: row.otel_main_output_tokens,
+    mainCacheReadTokens: row.otel_main_cache_read_tokens,
+    mainCacheCreationTokens: row.otel_main_cache_creation_tokens,
+    subagentInputTokens: row.otel_subagent_input_tokens,
+    subagentOutputTokens: row.otel_subagent_output_tokens,
+    subagentCacheReadTokens: row.otel_subagent_cache_read_tokens,
+    subagentCacheCreationTokens: row.otel_subagent_cache_creation_tokens,
+    wavesWithMainBreakdown: row.otel_waves_with_main_breakdown,
+    wavesWithSubagentBreakdown: row.otel_waves_with_subagent_breakdown,
   };
 }
 

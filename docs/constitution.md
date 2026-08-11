@@ -1,4 +1,44 @@
 <!--
+Sync Impact Report (emenda 2026-08-10)
+- Version: 1.2.0 → 1.3.0
+- Bump rationale: MINOR — terceira expansao material do Principio III, mesmo
+  padrao das emendas 1.1.0 e 1.2.0, agora cobrindo DOIS dados novos da fonte,
+  mais uma correcao factual de lista.
+  (a) knowledge.db v12 (cstk 5.33.0, feature otel-model-breakdown) persiste 8
+  colunas `otel_{main,subagent}_{input,output,cache_read,cache_creation}_tokens`
+  em `waves` — breakdown de tokens por FONTE e por TIPO. O fato novo que
+  obriga a emenda: os lados main e subagente sao coletas INDEPENDENTES e
+  divergem materialmente na base real (medido em 2026-08-10 sobre
+  ~/.claude/cstk/knowledge.db v14: 27 ondas com `by_source.main` contra 257
+  com `by_source.subagent`, de 1182). A regra de cobertura de amostra das
+  emendas anteriores pressupunha UM denominador; aqui ela passa a exigir
+  denominadores SEPARADOS por lado.
+  (b) knowledge.db v14 (cstk 7.2.0, feature plan-usage-capture) persiste
+  `plan_usage` — o gauge `rate_limits` da CONTA por janela (`five_hour`,
+  `seven_day`). E uma grandeza NOVA: nao e esforco (tool_calls), nao e
+  dinheiro (USD) e nao e consumo (tokens) — e quota. Entra na lista de
+  grandezas que MUST NOT ser somadas entre si.
+  (c) Correcao factual: a lista de tabelas da knowledge.db no MUST NOT de
+  "campos que nao existem" estava defasada desde a v12 — omitia
+  `wave_model_usage` (lida desde a 0.20.x), `loose_usage` e `plan_usage`.
+  Lista incompleta num MUST NOT torna o gate inaplicavel: nao havia como
+  distinguir "campo inventado" de "tabela que a lista esqueceu".
+- Autorizacao: operador humano, 2026-08-10, em resposta ao relatorio de
+  adequacao ao schema v14 ("atualize o constitution").
+- Principios afetados: III. Honestidade de Metrica (expandido; nenhuma
+  clausula removida — a proibicao de metrica inventada/estimada segue
+  integral).
+- Artefatos atualizados nesta emenda:
+  - apps/server/src/config.ts (DEFAULT_SCHEMA_VERSIONS ate v14)
+  - apps/server/src/db/queries/{metrics,waves,executions}.ts
+  - apps/server/src/mappers/{wave,otel-usage}.ts
+  - apps/server/src/routes/metrics.ts (GET /metrics/plan-usage)
+  - packages/shared-types/src/{entities.ts,schemas/entities.ts}
+  - apps/web/src/components/{OtelUsage,PlanUsage}.tsx
+  - apps/web/src/lib/plan-usage-select.ts
+  - apps/web/src/screens/{Metrics,Overview}.tsx
+- Artefatos que permanecem validos sem mudanca: Principios I, II, IV, V, VI.
+
 Sync Impact Report (emenda 2026-07-28)
 - Version: 1.1.0 → 1.2.0
 - Bump rationale: MINOR — segunda expansao material do Principio III, mesmo
@@ -133,7 +173,11 @@ orquestrador continua sendo medido pelo proxy `tool_calls`, jamais inventado.
 - MUST NOT: inventar, estimar ou derivar campos que nao existem nas tabelas
   da knowledge.db (`executions`, `waves`, `decisions`, `tasks`, `events`,
   `alert_signals`, `blocks`, `skills`, `retros`, `suggestions`, `memories`,
-  `knowledge_fts`).
+  `wave_model_usage`, `loose_usage`, `plan_usage`, `knowledge_fts`).
+  A lista acompanha o schema da fonte: tabela nova aceita pelo guard de
+  abertura (`DEFAULT_SCHEMA_VERSIONS`) MUST entrar aqui na mesma emenda —
+  lista defasada torna este MUST NOT inaplicavel, porque deixa de distinguir
+  "campo inventado" de "tabela que a lista esqueceu" (emenda 1.3.0).
 - SHOULD: metricas aproximadas/derivadas (ex: clarify-resolution rate) sao
   rotuladas como derivadas/aproximadas no envelope ou na UI.
 
@@ -172,6 +216,47 @@ exibido em USD absoluto, sob as mesmas tres regras inegociaveis da secao
   monetario medido, esforco-proxy do orquestrador, consumo de tokens
   medido dos subagentes) e cada uma mantem seu proprio rotulo.
 
+**Breakdown de tokens por fonte (schema v12 — emenda 1.3.0)**: desde o cstk
+5.33.0 a fonte persiste 8 colunas
+`otel_{main,subagent}_{input,output,cache_read,cache_creation}_tokens` em
+`waves`, abrindo o total ja permitido pela emenda 1.2.0 por FONTE (loop
+principal x subagente) e por TIPO de token. O dado e MEDIDO e PODE ser
+exibido, sob as regras acima MAIS duas especificas desta grandeza:
+
+- MUST: usar denominadores de cobertura SEPARADOS por fonte. `main` e
+  `subagent` sao coletas independentes e divergem na base real (27 ondas
+  com main contra 257 com subagente, de 1182 — medicao de 2026-08-10). Um
+  denominador unico apresentaria como medido um lado que nunca foi coletado,
+  que e a mesma fabricacao que a regra de cobertura existe para impedir.
+- MUST NOT: usar `otel_total_tokens` como denominador ao derivar proporcoes
+  DENTRO de um lado (ex.: fatia de cache read do loop principal). Aquele
+  total mistura as duas fontes e existe mesmo quando o breakdown do lado nao
+  foi coletado — o denominador correto e a soma dos 4 tipos daquele lado.
+  Na pratica isto muda o numero pela metade, nao na terceira casa.
+- SHOULD: rotular cache read como contexto RELIDO, nao token novo. Uma onda
+  de milhoes de tokens sendo ~95% cache read e uma onda LONGA, nao uma onda
+  cara; apresentar o total sem essa distincao induz erro de leitura de uma
+  ordem de grandeza.
+
+**Cota do plano (schema v14 — emenda 1.3.0)**: desde o cstk 7.2.0 (feature
+`plan-usage-capture`) a fonte persiste `plan_usage` — o percentual da cota da
+CONTA ja consumido em duas janelas (`five_hour`, `seven_day`), capturado pelo
+hook `statusLine.command`. E uma QUARTA grandeza, distinta das tres acima:
+
+- MUST NOT: somar, mediar ou comparar `used_percentage` com custo, token ou
+  tool_calls — e quota de conta, nao consumo de execucao. Um projeto pode
+  custar pouco em USD e ainda assim esgotar a janela de 5h.
+- MUST NOT: mesclar os dois escopos num unico numero. `five_hour` e
+  `seven_day` sao series independentes por construcao na fonte (FR-005 do
+  cstk); a media entre elas nao descreve nada.
+- MUST NOT: renderizar ausencia de captura como `0%`. A captura e OPT-IN
+  (`cstk statusline install`) e a tabela vazia significa "hook desligado",
+  nunca "plano intocado" — os dois estados MUST permanecer distinguiveis na
+  tela, assim como `NULL` != `0` nas demais metricas.
+- MUST NOT: recortar o gauge por projeto. A tabela guarda de qual sessao
+  partiu a captura, mas o medidor e da credencial; um recorte por projeto
+  sugeriria "cota gasta por projeto", numero que a fonte nao produz.
+
 **Why**: honestidade de instrumentacao e pre-requisito de confianca numa
 ferramenta de observabilidade; metrica inventada e pior que metrica ausente —
 e uma metrica real apresentada como mais completa do que e tem o mesmo efeito.
@@ -179,9 +264,15 @@ e uma metrica real apresentada como mais completa do que e tem o mesmo efeito.
 retorna zero (uso de "USD"/"$" e permitido exclusivamente atrelado a
 `otel_cost_usd` medido, com cobertura de amostra visivel); todo numero
 exibido mapeia a uma coluna real do schema; nenhum caminho de codigo
-coalesce as colunas `agent_*` ou `otel_cost_usd` para 0 (coberto por
-`apps/server/test/lib/agent-usage.test.ts` e
-`apps/web/src/lib/agent-usage.test.ts`).
+coalesce as colunas `agent_*`, `otel_*` ou `plan_usage.used_percentage`
+para 0 (coberto por `apps/server/test/lib/{agent-usage,otel-usage,
+plan-usage}.test.ts` e `apps/web/src/lib/{agent-usage,otel-usage,
+plan-usage-select}.test.ts`). Para a emenda 1.3.0 especificamente: os dois
+denominadores de cobertura por fonte sao asseridos divergentes em
+`apps/web/src/lib/otel-usage.test.ts` (`sumOtelUsage` — cada lado conta so
+as ondas que mediram aquele lado), e a proibicao de `0%` fabricado em
+`apps/web/src/lib/plan-usage-select.test.ts` (`fmtPlanPct(null)` !=
+`fmtPlanPct(0)`).
 
 ### IV. Nao Reimplementar o que Tem Dono
 
@@ -303,4 +394,4 @@ dele e regressao de produto, nao liberdade de implementacao.
   rationale; uma violacao de MUST/NON-NEGOTIABLE invalida o artefato ate
   ser corrigida ou a constituicao ser emendada via SemVer.
 
-**Version**: 1.2.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-07-28
+**Version**: 1.3.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-08-10

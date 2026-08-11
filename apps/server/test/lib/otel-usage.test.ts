@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
 import { getOtelUsage, getOtelCostOverTime } from '../../src/db/queries/metrics.js';
-import { hasOtelUsage, listWavesByExecution } from '../../src/db/queries/waves.js';
+import { hasOtelUsage, hasOtelBreakdown, listWavesByExecution } from '../../src/db/queries/waves.js';
 import { mapWave } from '../../src/mappers/wave.js';
 
 const toClean: string[] = [];
@@ -233,5 +233,142 @@ describe('getOtelCostOverTime (schema v11)', () => {
     const db = mkDb(WAVES_FULL_V10);
     insertWave(db, { wave: 'onda-001', source_id: 's1', started_at: '2026-07-26T10:00:00Z' });
     expect(getOtelCostOverTime(db)).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Breakdown de tokens por FONTE x TIPO (schema v12 — cstk 5.33.0)
+//
+// As 5 colunas de v11 dizem QUANTO custou; estas 8 dizem DE QUE tipo era o
+// token. Sem elas, `otel_total_tokens: 8.7M` de uma onda real se le como 8,7M
+// de token novo, quando ~95% e contexto relido de cache — erro de leitura de
+// uma ordem de grandeza no custo por onda.
+//
+// A regra mais importante aqui: main e subagente sao coletas INDEPENDENTES.
+// Na base real (v14, 1182 ondas) 257 tem `by_source.subagent` e apenas 27 tem
+// `by_source.main`. Um denominador unico de cobertura apresentaria como medido
+// um lado que nunca foi coletado.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WAVES_V12 = `
+CREATE TABLE waves (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL,
+  execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL,
+  started_at TEXT, finished_at TEXT,
+  otel_cost_usd REAL, otel_cost_main_usd REAL, otel_cost_subagent_usd REAL,
+  otel_total_tokens INTEGER, otel_subagent_tokens INTEGER,
+  otel_main_input_tokens INTEGER, otel_main_output_tokens INTEGER,
+  otel_main_cache_read_tokens INTEGER, otel_main_cache_creation_tokens INTEGER,
+  otel_subagent_input_tokens INTEGER, otel_subagent_output_tokens INTEGER,
+  otel_subagent_cache_read_tokens INTEGER, otel_subagent_cache_creation_tokens INTEGER,
+  ingested_at TEXT NOT NULL
+);`;
+
+// Variante com o resto das colunas de `waves` — `listWavesByExecution` projeta
+// wallclock_seconds/tool_calls/n_skills sem guarda de coluna.
+const WAVES_FULL_V12 = WAVES_FULL_V11.replace(
+  '  ingested_at TEXT NOT NULL',
+  `  otel_main_input_tokens INTEGER, otel_main_output_tokens INTEGER,
+  otel_main_cache_read_tokens INTEGER, otel_main_cache_creation_tokens INTEGER,
+  otel_subagent_input_tokens INTEGER, otel_subagent_output_tokens INTEGER,
+  otel_subagent_cache_read_tokens INTEGER, otel_subagent_cache_creation_tokens INTEGER,
+  ingested_at TEXT NOT NULL`,
+);
+
+describe('getOtelUsage — breakdown por fonte (schema v12)', () => {
+  it('detecta a capacidade pela coluna otel_main_input_tokens', () => {
+    expect(hasOtelBreakdown(mkDb(WAVES_V12))).toBe(true);
+    // Base v11 tem custo mas nao tem breakdown — as duas sondas sao distintas.
+    expect(hasOtelBreakdown(mkDb(WAVES_V11))).toBe(false);
+    expect(hasOtelUsage(mkDb(WAVES_V11))).toBe(true);
+  });
+
+  it('base v11 mantem o custo e degrada SO o breakdown para null', () => {
+    const db = mkDb(WAVES_V11);
+    insertWave(db, { otel_cost_usd: 0.5, otel_total_tokens: 1000 });
+    const r = getOtelUsage(db);
+    // Gatear as duas coisas juntas apagaria o custo de uma base v11 inteira.
+    expect(r.costUsd).toBeCloseTo(0.5, 6);
+    expect(r.mainInputTokens).toBeNull();
+    expect(r.subagentCacheReadTokens).toBeNull();
+    expect(r.wavesWithMainBreakdown).toBeNull();
+    expect(r.wavesWithSubagentBreakdown).toBeNull();
+  });
+
+  it('soma os 8 campos e conta as DUAS coberturas separadamente', () => {
+    const db = mkDb(WAVES_V12);
+    // Onda com os dois lados coletados.
+    insertWave(db, {
+      wave: 'onda-001', source_id: 's1', otel_cost_usd: 1, otel_total_tokens: 100,
+      otel_main_input_tokens: 10, otel_main_output_tokens: 20,
+      otel_main_cache_read_tokens: 300, otel_main_cache_creation_tokens: 5,
+      otel_subagent_input_tokens: 1, otel_subagent_output_tokens: 2,
+      otel_subagent_cache_read_tokens: 30, otel_subagent_cache_creation_tokens: 4,
+    });
+    // Onda so com o lado subagente — caso MAJORITARIO na base real.
+    insertWave(db, {
+      wave: 'onda-002', source_id: 's2', otel_cost_usd: 2, otel_total_tokens: 200,
+      otel_subagent_input_tokens: 9, otel_subagent_output_tokens: 8,
+      otel_subagent_cache_read_tokens: 70, otel_subagent_cache_creation_tokens: 6,
+    });
+    // Onda sem telemetria nenhuma — entra so no denominador total.
+    insertWave(db, { wave: 'onda-003', source_id: 's3' });
+
+    const r = getOtelUsage(db);
+    expect(r.mainInputTokens).toBe(10);
+    expect(r.mainCacheReadTokens).toBe(300);
+    expect(r.subagentInputTokens).toBe(10);
+    expect(r.subagentCacheReadTokens).toBe(100);
+    // Os dois denominadores DIVERGEM — e e isso que a UI precisa mostrar.
+    expect(r.wavesWithMainBreakdown).toBe(1);
+    expect(r.wavesWithSubagentBreakdown).toBe(2);
+    expect(r.wavesTotal).toBe(3);
+  });
+
+  it('lado nao coletado permanece null, nunca 0 somado', () => {
+    const db = mkDb(WAVES_V12);
+    insertWave(db, {
+      otel_cost_usd: 1,
+      otel_subagent_input_tokens: 5, otel_subagent_output_tokens: 5,
+      otel_subagent_cache_read_tokens: 5, otel_subagent_cache_creation_tokens: 5,
+    });
+    const r = getOtelUsage(db);
+    // sum() sobre coluna 100% NULL devolve NULL — "orquestrador nao medido",
+    // que e diferente de "orquestrador nao gastou token".
+    expect(r.mainInputTokens).toBeNull();
+    expect(r.mainOutputTokens).toBeNull();
+    expect(r.subagentInputTokens).toBe(5);
+    expect(r.wavesWithMainBreakdown).toBe(0);
+  });
+
+  it('listWavesByExecution + mapWave levam as 8 colunas ate o DTO', () => {
+    const db = mkDb(WAVES_FULL_V12);
+    insertWave(db, {
+      wave: 'onda-001', source_id: 's1', execution_id: 'e1',
+      started_at: '2026-08-09T05:26:06Z',
+      otel_total_tokens: 8782315,
+      otel_main_input_tokens: 34, otel_main_output_tokens: 11325,
+      otel_main_cache_read_tokens: 3709177, otel_main_cache_creation_tokens: 19242,
+      otel_subagent_input_tokens: 88, otel_subagent_output_tokens: 25681,
+      otel_subagent_cache_read_tokens: 4615562, otel_subagent_cache_creation_tokens: 199184,
+    });
+    const [row] = listWavesByExecution(db, 'e1');
+    const dto = mapWave(row!);
+    expect(dto.otelMainCacheReadTokens).toBe(3709177);
+    expect(dto.otelSubagentCacheReadTokens).toBe(4615562);
+    // Invariante da onda real: cache read domina o total.
+    const cacheRead = (dto.otelMainCacheReadTokens ?? 0) + (dto.otelSubagentCacheReadTokens ?? 0);
+    expect(cacheRead / (dto.otelTotalTokens ?? 1)).toBeGreaterThan(0.9);
+  });
+
+  it('base v11 projeta as 8 colunas como null no DTO (sem "no such column")', () => {
+    const db = mkDb(WAVES_FULL_V11);
+    insertWave(db, { wave: 'onda-001', source_id: 's1', execution_id: 'e1', otel_cost_usd: 0.5 });
+    const [row] = listWavesByExecution(db, 'e1');
+    const dto = mapWave(row!);
+    expect(dto.otelCostUsd).toBeCloseTo(0.5, 6);
+    expect(dto.otelMainInputTokens).toBeNull();
+    expect(dto.otelSubagentCacheCreationTokens).toBeNull();
   });
 });

@@ -38,6 +38,17 @@ export function mapWave(row: WaveRow): WaveDTO {
     otelCostSubagentUsd: row.otel_cost_subagent_usd,
     otelTotalTokens: row.otel_total_tokens,
     otelSubagentTokens: row.otel_subagent_tokens,
+    // schema v12 — breakdown de tokens por fonte (main/subagente) x tipo
+    // (input/output/cache read/cache creation). Um lado pode vir null com o
+    // outro preenchido: sao coletas independentes, nao um par.
+    otelMainInputTokens: row.otel_main_input_tokens,
+    otelMainOutputTokens: row.otel_main_output_tokens,
+    otelMainCacheReadTokens: row.otel_main_cache_read_tokens,
+    otelMainCacheCreationTokens: row.otel_main_cache_creation_tokens,
+    otelSubagentInputTokens: row.otel_subagent_input_tokens,
+    otelSubagentOutputTokens: row.otel_subagent_output_tokens,
+    otelSubagentCacheReadTokens: row.otel_subagent_cache_read_tokens,
+    otelSubagentCacheCreationTokens: row.otel_subagent_cache_creation_tokens,
   };
 }
 
