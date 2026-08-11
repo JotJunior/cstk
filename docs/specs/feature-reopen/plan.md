@@ -117,7 +117,8 @@ docs/specs/feature-reopen/
 └── contracts/
     ├── state-rounds.md            # CLI do script novo (PROPOSTA)
     ├── reopen-flow.md             # fluxo do --reopen no command
-    └── recall-rounds.md           # ingestao de rounds no knowledge.db
+    ├── recall-rounds.md           # ingestao de rounds no knowledge.db
+    └── pending-work-probe.md      # CLI de commit-mode.sh probe-pending-work (PROPOSTA)
 ```
 
 ### Source Code (repository root)

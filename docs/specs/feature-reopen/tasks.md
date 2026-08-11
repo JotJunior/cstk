@@ -28,25 +28,42 @@ Ref: checklists/requirements.md CHK002 (`[Gap]`); checklists/security.md
 CHK009; research.md Decision 9; plan.md item 4 (Escopo do trabalho);
 contracts/state-rounds.md (espelhar formato)
 
-- [ ] 1.1.1 Criar `docs/specs/feature-reopen/contracts/pending-work-probe.md`
+- [x] 1.1.1 Criar `docs/specs/feature-reopen/contracts/pending-work-probe.md`
       espelhando a estrutura de `contracts/state-rounds.md` (secoes de exit
-      codes, request/response, errors)
-- [ ] 1.1.2 Definir nome exato do subcomando novo de `commit-mode.sh` e suas
+      codes, request/response, errors). **Concluido**: arquivo criado com as
+      mesmas secoes (Conformidade, Exit codes, Sequencia, Response, Errors,
+      Invariantes de teste), marcado `[PROPOSTA — a validar na
+      implementacao]`.
+- [x] 1.1.2 Definir nome exato do subcomando novo de `commit-mode.sh` e suas
       flags (`--state-dir`, forma de passar a branch — posicional ou
-      `--branch` — e `--` como separador)
-- [ ] 1.1.3 Definir exit codes uniformes (alinhados a `state-rounds.sh`: `0`
+      `--branch` — e `--` como separador). **Decidido**: subcomando
+      `probe-pending-work`; flags `--state-dir DIR --projeto-alvo-path PATH
+      -- BRANCH` (posicional apos `--`, nao `--branch`) — ver
+      `contracts/pending-work-probe.md` §Nome do subcomando e decisao de
+      flags.
+- [x] 1.1.3 Definir exit codes uniformes (alinhados a `state-rounds.sh`: `0`
       sucesso, `1` erro generico, `2` uso incorreto) e o exit especifico
-      para skip nao-fatal
-- [ ] 1.1.4 Definir formato de stdout parseavel (linha pipe-delimitada),
+      para skip nao-fatal. **Decidido**: `0` checked (merge determinado,
+      `gh` pode ou nao ter rodado), `3` skip total nao-fatal
+      (`skipped-no-git`), `1` erro generico, `2` uso incorreto — ver
+      contrato §Exit codes.
+- [x] 1.1.4 Definir formato de stdout parseavel (linha pipe-delimitada),
       mapeando 1:1 para os campos de `data-model.md::PendingWorkProbe`
       (`branch`, `default_branch`, `merged`, `pr_state`, `pr_url`,
-      `source`, `probe_status`)
-- [ ] 1.1.5 Documentar explicitamente que I-P1 (Principio VI) e satisfeito:
+      `source`, `probe_status`). **Concluido**: `PROBE|branch|default_branch|
+      merged|pr_state|pr_url|source|probe_status` — ver contrato §Response.
+- [x] 1.1.5 Documentar explicitamente que I-P1 (Principio VI) e satisfeito:
       nenhum caminho de erro (timeout de `gh`, git corrompido, ausencia de
       rede) pode emitir `merged=no`/`pr_state=closed` sem checagem real —
-      apenas `unknown` + `probe_status=skipped-*`
-- [ ] 1.1.6 Atualizar `plan.md` §Project Structure (lista de `contracts/`)
-      referenciando o novo contrato
+      apenas `unknown` + `probe_status=skipped-*`. **Concluido**: secao
+      dedicada "I-P1 (Principio VI, FR-021) — nota explicita" no contrato,
+      incluindo achado de precedente real (`finalize` em `commit-mode.sh`
+      trata `gh pr view` vazio como "sem PR" — anti-padrao que este
+      contrato explicitamente NAO herda).
+- [x] 1.1.6 Atualizar `plan.md` §Project Structure (lista de `contracts/`)
+      referenciando o novo contrato. **Concluido**: entrada
+      `pending-work-probe.md` adicionada a lista de `contracts/` em
+      `plan.md`.
 
 ### 1.2 Decisao humana: profundidade do contrato da sonda `[A]` `{humano}`
 
@@ -67,16 +84,30 @@ requirements.md)
 
 Ref: checklists/requirements.md CHK014
 
-- [ ] 1.3.1 Apresentar ao operador, via bloqueio humano, a pergunta de
+- [x] 1.3.1 Apresentar ao operador, via bloqueio humano, a pergunta de
       CHK014: existe leitor de estado fora de `agente-00c-runtime` (script
       de terceiros, integracao futura do painel) que varre
       `.claude/feature-00c-state/**/state.json` de forma recursiva e
-      poderia colidir com `rounds/`?
-- [ ] 1.3.2 Registrar a resposta como Decisao auditavel ANTES de iniciar
+      poderia colidir com `rounds/`? **Respondido (dec-032, onda-004)**:
+      somente os leitores do repositorio. Inventario FECHADO:
+      `cli/lib/recall.sh:3191` (`-path '*/.claude/feature-00c-state/*/state.json'`
+      — em `find`, `*` atravessa `/`, COLIDE, ja no escopo da FASE 5) e
+      `cli/lib/mcp.sh:280` (glob de shell `for _mda_d in
+      "$_mda_feat_root"/*/` — para em 1 nivel, SEGURO, nao enxerga
+      `rounds/`); `docs/cstk-panel/frontend-brief.md:39` confirma que o
+      painel le o indice `~/.claude/cstk/knowledge.db`, nao os state-dirs.
+- [x] 1.3.2 Registrar a resposta como Decisao auditavel ANTES de iniciar
       5.1/5.2 (mudancas em `cli/lib/recall.sh`) — este item bloqueia 5.1 e
-      5.2
-- [ ] 1.3.3 Se a resposta identificar leitor adicional, abrir Ref cruzada
-      em `research.md` Decision 5 documentando o leitor e seu tratamento
+      5.2. **Concluido**: `dec-032` (onda-004, score 3, evidencia empirica
+      anexada) registrada antes de qualquer mudanca em 5.1/5.2 — ver
+      `state.json`/`state.db` `.decisions[]`.
+- [x] 1.3.3 Se a resposta identificar leitor adicional, abrir Ref cruzada
+      em `research.md` Decision 5 documentando o leitor e seu tratamento.
+      **Nao se aplica**: dec-032 fechou o inventario sem identificar
+      nenhum leitor ADICIONAL alem dos dois ja mapeados em `research.md`
+      Decision 5 (`recall.sh` colide, `mcp.sh` seguro) — nenhuma Ref
+      cruzada nova e necessaria; registrado aqui explicitamente para nao
+      deixar o item ambiguo.
 
 ---
 
