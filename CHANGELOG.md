@@ -5,6 +5,41 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.2.1] - 2026-08-10
+
+`cstk statusline install` da 7.2.0 escrevia um `settings.json` que o Claude
+Code REJEITA — e o harness descarta o arquivo INTEIRO quando encontra uma
+chave invalida, nao so a chave. Quem rodou o comando ficou sem
+`permissions`, `mcpServers` e todo o resto das proprias configuracoes.
+
+### Fixed
+
+- **`statusLine.type` obrigatorio.** O instalador gravava
+  `{"statusLine": {"command": "..."}}`, e o schema do harness exige
+  `{"statusLine": {"type": "command", "command": "..."}}`. Sintoma no
+  proximo `claude`: `Settings Error — statusLine.type: Invalid value.
+  Expected one of: "command"` e o aviso de que "files with errors are
+  skipped entirely". A causa raiz foi inferir o contrato pelo nome do campo
+  em vez de verifica-lo — o mesmo erro que a Constitution VI proibe para
+  dado factual, aplicado a um schema. Corrigido nos TRES pontos de escrita:
+  merge em arquivo existente, criacao de arquivo novo, e a instrucao de
+  colagem manual usada quando `jq` esta ausente.
+- **`install` agora REPARA o estado quebrado.** O check de idempotencia
+  comparava so `statusLine.command`; com o comando ja correto e o `type`
+  ausente, saia por "ja instalado, nada a fazer" e deixava o operador
+  travado sem remediacao pelo proprio comando. Agora `type` correto e
+  pre-condicao do no-op. O reparo seta campo a campo (`.statusLine.type` e
+  `.statusLine.command`) em vez de substituir o objeto, entao subchaves do
+  operador como `padding` sobrevivem, e a customizacao previa em
+  `CSTK_STATUSLINE_INNER_COMMAND` e mantida sem aninhar wrapper.
+- **`status` reporta o estado invalido.** Antes dizia "ativo" para um
+  `settings.json` que o harness estava descartando. Agora imprime
+  `INVALIDO` com a remediacao, e sai 1.
+- **Permissao do `settings.json` preservada.** O `mv` do arquivo temporario
+  carregava o modo do `mktemp` para o destino. Agora o modo original e lido
+  antes (`stat -f %Lp` BSD, `stat -c %a` GNU) e reaplicado; sem nenhum dos
+  dois, cai em `0600` — o mais restritivo, nunca afrouxa por engano.
+
 ## [7.2.0] - 2026-08-10
 
 Captura do gauge de uso do plano (`/usage`) sem credencial OAuth: o
@@ -5508,6 +5543,7 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
+[7.2.1]: https://github.com/JotJunior/cstk/releases/tag/v7.2.1
 [7.2.0]: https://github.com/JotJunior/cstk/releases/tag/v7.2.0
 [7.1.1]: https://github.com/JotJunior/cstk/releases/tag/v7.1.1
 [7.1.0]: https://github.com/JotJunior/cstk/releases/tag/v7.1.0
