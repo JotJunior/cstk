@@ -821,3 +821,64 @@ flowchart TD
 | Migracao de `schema_version` | `.previous_round` usa o catch-all `execution.extra_fields` | `schema_version` permanece `"1.0.0"` e imutavel; nenhuma coluna nova (Decision 4) |
 | Mensagens pre-existentes do proprio `state-rw.sh init` (as 2 mensagens de "ja existe" — modo projeto e modo feature) | Nao corrigidas nesta feature | Ambas deixam de ser alcancaveis pelo caminho de reabertura, mas corrigi-las exige `init` distinguir modo projeto de modo feature — divida conhecida, fora do escopo dos FRs desta feature |
 | Liveness do lock (limite conhecido de G6) | `state-lock.sh acquire --force` so recusa quando o PID dono esta vivo; um `--force` concorrente pode legitimamente tomar o lock no meio da rotacao | Reduzir a janela exigiria um modelo de liveness que o runtime atual nao oferece — registrado em `plan.md` §Fora de escopo, nao resolvido aqui |
+
+## FASE 8 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 8.1 Path templado nao resolve dentro do blast radius (extracao de 3.4) `[C]`
+
+Ref: task 3.4 (FR-013) · tipo: `missing` · severidade: `HIGH`
+
+`extract-intent.sh` capturou o path `/spec.md` a partir da mencao
+templada `docs/specs/<short>/spec.md` na task 3.4.1 (`tasks.md`). O
+placeholder `<short>` nao e um path literal do repositorio, entao
+`path-contains.sh --path "/spec.md" --root <PAP>` resolve fora da raiz
+do projeto-alvo e falha (SEC-2, fail-closed) — classificado `missing`
+(inconclusivo) por design da skill `converge`, sem bypass manual.
+
+A capacidade REAL descrita por 3.4 (restauracao de spec arquivada) esta
+implementada e testada: `plugins/cstk/commands/feature-00c.md` passo
+7.d + `tests/test_feature-00c-preflight.sh` cenarios
+`scenario_T29_spec_arquivada_restaurada_archived_intacto`,
+`scenario_T29b_spec_arquivada_forma_com_data_maior_data_vence` e
+`scenario_T30_spec_ativa_pre_existente_nao_sobrescrita` — todos PASS na
+suite completa desta onda (2779 PASS). Este achado e um artefato do
+extrator (path templado, nao um path real ausente) — a acao abaixo e
+confirmar/documentar isso, nao reimplementar 3.4.
+
+- [x] 8.1.1 Confirmar (via leitura de `plugins/cstk/commands/feature-00c.md`
+      passo 7.d + os 3 cenarios T-29/T-29b/T-30 citados acima) que a
+      restauracao de spec arquivada esta implementada conforme FR-013; se
+      confirmado, marcar este achado como falso-positivo de extracao
+      (path templado) e fechar sem mudanca de codigo
+
+      **Confirmado (falso-positivo de extracao).** Evidencia:
+      - `plugins/cstk/commands/feature-00c.md` linhas 484-508 (`#### 7.d —
+        restauracao de spec arquivada (FR-013, so diretorios)`) implementa
+        exatamente o fluxo descrito na task 3.4: detecta `spec.md` ausente/
+        vazio, resolve origem em `_archived/<short>` OU `_archived/*-<short>`
+        (maior data vence), `cp -R` preservando a origem intacta, nunca
+        sobrescreve spec ativa ja existente.
+      - `tests/test_feature-00c-preflight.sh` contem replica fiel dessa
+        logica exercitada por 3 cenarios, confirmados PASS de forma isolada
+        nesta onda (`bash tests/test_feature-00c-preflight.sh`, exit 0,
+        32/32 `ok`, includindo `ok 22 scenario_T29_spec_arquivada_restaurada_archived_intacto`,
+        `ok 23 scenario_T29b_spec_arquivada_forma_com_data_maior_data_vence`,
+        `ok 24 scenario_T30_spec_ativa_pre_existente_nao_sobrescrita`).
+      - Causa raiz do disparo do gate `converge`: `extract-intent.sh` leu o
+        path templado `docs/specs/<short>/spec.md` da task 3.4.1 em
+        `tasks.md` como se fosse um path literal do repositorio; `<short>`
+        e um placeholder, entao `path-contains.sh --path "/spec.md" --root
+        <PAP>` resolve fora da raiz do projeto-alvo e falha fail-closed
+        (SEC-2) — a skill classifica como `missing` por design conservador,
+        nao porque a capacidade esteja de fato ausente.
+
+<!-- converge-key: bafc4d28dc64 -->
