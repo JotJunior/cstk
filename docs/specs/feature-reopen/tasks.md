@@ -78,12 +78,17 @@ requirements.md)
       secao "Aberto para 1.2" de `contracts/pending-work-probe.md`
       (ja escrita nesta mesma onda) + o precedente empirico do anti-padrao
       em `finalize` (`commit-mode.sh:726`).
-- [ ] 1.2.2 Registrar a resposta como Decisao auditavel ANTES de iniciar
-      4.1 (implementacao da sonda) — este item bloqueia 4.1. Aguardando
-      resposta humana a `block-002`.
-- [ ] 1.2.3 Se a resposta exigir profundidade adicional (ex.: matriz de
+- [x] 1.2.2 Registrar a resposta como Decisao auditavel ANTES de iniciar
+      4.1 (implementacao da sonda) — este item bloqueia 4.1. **Concluido**:
+      `dec-038` (onda-005, score 3) registrada com a resposta integral do
+      operador ao `block-002` — ver `state.json`/`state.db` `.decisions[]`.
+- [x] 1.2.3 Se a resposta exigir profundidade adicional (ex.: matriz de
       timeout por comando invocado), atualizar o contrato de 1.1 antes de
-      prosseguir. Condicional a resposta de `block-002`.
+      prosseguir. **Concluido**: `dec-038` exigiu regra estrutural
+      fail-closed (nao matriz de exit codes) — `contracts/pending-work-probe.md`
+      §"Resolucao de 1.2 (dec-038 — decisao do operador)" substitui a
+      antiga secao "Aberto para 1.2", documentando a regra + os 3
+      candidatos avaliados e descartados. Task 4.1 liberada.
 
 ### 1.3 Decisao humana: inventario de leitores externos ao runtime `[M]` `{humano}`
 
@@ -122,80 +127,114 @@ Ref: checklists/requirements.md CHK014
 
 Ref: contracts/state-rounds.md; FR-009; plan.md item 1
 
-- [ ] 2.1.1 Criar `plugins/cstk/skills/agente-00c-runtime/scripts/state-rounds.sh`
+- [x] 2.1.1 Criar `plugins/cstk/skills/agente-00c-runtime/scripts/state-rounds.sh`
       com shebang `#!/bin/sh` + `set -eu`, dispatcher de subcomandos e
-      exit codes uniformes (`0`/`1`/`2`/`3`)
-- [ ] 2.1.2 Implementar `next-label --state-dir DIR`: varredura de
+      exit codes uniformes (`0`/`1`/`2`/`3`). **Concluido**: arquivo
+      criado; dispatcher via `case "$_SR_SUBCMD"` para `next-label`,
+      `rotate`, `recover`, `list`.
+- [x] 2.1.2 Implementar `next-label --state-dir DIR`: varredura de
       `rounds/r??`, escolha do maior sucessor, zero-padding 2 digitos,
-      `r01` se `rounds/` ausente/vazio
-- [ ] 2.1.3 Tratar `rounds/` ilegivel como exit `1`; `--state-dir`
-      ausente/flag desconhecida como exit `2`
+      `r01` se `rounds/` ausente/vazio. **Concluido**: `_sr_next_label()`;
+      verificado `r01..r09` ⇒ `r10` (T-14).
+- [x] 2.1.3 Tratar `rounds/` ilegivel como exit `1`; `--state-dir`
+      ausente/flag desconhecida como exit `2`. **Concluido**: `ls -1 --`
+      com captura de falha ⇒ exit 1; `_sr_die_usage` para flags — coberto
+      por `scenario_bonus_uso_incorreto_exit2`.
 
 ### 2.2 Implementar subcomando `rotate` com guardas G1..G7 `[C]`
 
 Ref: contracts/state-rounds.md; research.md Decision 1, Decision 2,
 Decision 3; FR-007..FR-011
 
-- [ ] 2.2.1 Pre-condicoes (passos a-b do contrato): estado presente na
+- [x] 2.2.1 Pre-condicoes (passos a-b do contrato): estado presente na
       raiz, ausencia de journal pendente, status terminal delegado a
       `state-lock.sh check-execution-busy`, `PRAGMA integrity_check;` sob
-      backend sqlite
-- [ ] 2.2.2 G6: assere lock detido (`.lock/` presente + owner compativel)
-      antes de qualquer escrita — `rotate` e primitiva standalone,
-      invocavel diretamente
-- [ ] 2.2.3 G4: recusar se state-dir/`rounds/`/staging/alvo forem
+      backend sqlite. **Concluido**: as 4 pre-condicoes checadas ANTES de
+      qualquer escrita (linhas "Pre-condicao 1..4" do script) — T-01,
+      T-02, T-13.
+- [x] 2.2.2 G6: assere lock detido (`.lock/` presente) antes de qualquer
+      escrita — `rotate` e primitiva standalone, invocavel diretamente.
+      **Concluido**: `[ -d "$_SR_STATE_DIR/.lock" ] || _sr_die ... 3`
+      logo apos o calculo do label (interpretacao adotada: presenca do
+      `.lock/`, sem cross-check de owner especifico — `state-lock.sh
+      check`/`acquire` ja nao verificam identidade alem do dir, so
+      liveness em `--force`; `rotate` nao reimplementa isso).
+- [x] 2.2.3 G4: recusar se state-dir/`rounds/`/staging/alvo forem
       symlink (`[ -L ]`), com re-checagem imediatamente antes do commit
-      (passo h)
-- [ ] 2.2.4 G1+G2: checkpoint `PRAGMA wal_checkpoint(TRUNCATE);` validado
-      pela **coluna 1 (`busy`) == 0** — nunca pelo exit code, que sai `0`
-      mesmo sem checkpointar; `state.db-wal` ausente ou 0 bytes antes de
-      apagar sidecars (barreira independente do PRAGMA)
-- [ ] 2.2.5 Escrever `rounds/.rotate-journal` (`phase=staged`) e
+      (passo h). **Concluido**: checks no topo do bloco `rotate` +
+      re-assert antes do `h1. COMMIT`.
+- [x] 2.2.4 G1+G2: checkpoint `PRAGMA wal_checkpoint(TRUNCATE);` validado
+      pela **coluna 1 (`busy`) == 0** — nunca pelo exit code; `state.db-wal`
+      ausente ou 0 bytes antes de apagar sidecars. **Concluido**: spike
+      empirico confirmou formato de saida `busy|log|checkpointed`
+      (`0|0|0`) via `_state_db_exec`; `cut -d'|' -f1` extrai a coluna 1.
+      Verificado por T-05/T-06.
+- [x] 2.2.5 Escrever `rounds/.rotate-journal` (`phase=staged`) e
       `mkdir rounds/.<label>.staging` (`chmod 700` best-effort) ANTES de
-      mover qualquer arquivo
-- [ ] 2.2.6 Mover arquivos transacionais para staging com `--` em todo
-      `mv`/`rm`/`mkdir` (G5 — nomes iniciados por `-` nao viram flag);
-      atualizar journal para `phase=moving`
-- [ ] 2.2.7 Commit: `mv -- rounds/.<label>.staging rounds/<label>`
-      (rename atomico de diretorio, passo h1)
-- [ ] 2.2.8 G3: `PRAGMA integrity_check;` na copia dentro do round, apos o
-      commit; remover `rounds/.rotate-journal` so depois
-- [ ] 2.2.9 Implementar `--dry-run`: roda todas as verificacoes e imprime
-      a linha `ROUND|...` que seria produzida, sem criar journal/staging
-      nem mover arquivo
-- [ ] 2.2.10 Response `ROUND|<label>|<backend>|<state_file>|<execution_id>|<status>`
-      (pipe-delimitado, mesmo padrao de `delta-gate.sh`)
+      mover qualquer arquivo. **Concluido**: `_sr_write_journal` + `mkdir --`.
+- [x] 2.2.6 Mover arquivos transacionais para staging com `--` em todo
+      `mv`/`rm`/`mkdir` (G5); atualizar journal para `phase=moving`.
+      **Concluido**: loop `for _rt_f in $_RT_FILES_CSV` com `mv --`;
+      journal reescrito com `phase=moving` apos o loop.
+- [x] 2.2.7 Commit: `mv -- rounds/.<label>.staging rounds/<label>`
+      (rename atomico de diretorio, passo h1). **Concluido**.
+- [x] 2.2.8 G3: `PRAGMA integrity_check;` na copia dentro do round, apos o
+      commit; remover `rounds/.rotate-journal` so depois. **Concluido**
+      — com achado empirico adicional: uma conexao sqlite3 em banco WAL
+      recria `-shm`/`-wal` vazio so por abrir/ler (mesmo em PRAGMA
+      read-only), entao o proprio `integrity_check` pos-commit reintroduz
+      sidecars no round; script remove-os explicitamente logo apos (T-06
+      capturou a regressao, fix aplicado e reverificado — ver
+      `state-rounds.sh` comentario "T-06: uma conexao sqlite3...").
+- [x] 2.2.9 Implementar `--dry-run`: roda todas as verificacoes e imprime
+      a linha `ROUND|...` sem criar journal/staging nem mover arquivo.
+      **Concluido**: retorna logo apos calcular label/backend/metadados,
+      ANTES do G6/checkpoint/journal — T-12.
+- [x] 2.2.10 Response `ROUND|<label>|<backend>|<state_file>|<execution_id>|<status>`
+      (pipe-delimitado, mesmo padrao de `delta-gate.sh`). **Concluido**.
 
 ### 2.3 Implementar subcomando `recover` `[C]`
 
 Ref: contracts/state-rounds.md; data-model.md::RotationJournal; FR-011,
 SC-006
 
-- [ ] 2.3.1 Parser linha-a-linha proprio do journal — NUNCA `.`, `source`
-      ou `eval` (regra J1, mesmo padrao de `state-backend.sh`)
-- [ ] 2.3.2 Allowlist de chaves (J2: `label`, `backend`, `files`,
-      `staging`, `phase`, `started_at`) e validacao de formato (J3
-      `label`, J4 `files` fechado a `{state.json, state.json.sha256,
-      state.db}` sem `/`/`..`/`-` inicial, J6 nao-symlink, J7 enums)
-- [ ] 2.3.3 `staging` sempre DERIVADO de `label`
-      (`rounds/.<label>.staging`) — o valor lido do journal serve so
-      para conferencia, nunca e confiado (regra J5)
-- [ ] 2.3.4 Matriz de decisao: sem journal (no-op exit `0`); journal +
+- [x] 2.3.1 Parser linha-a-linha proprio do journal — NUNCA `.`, `source`
+      ou `eval` (regra J1). **Concluido**: `_sr_journal_field()` via `sed
+      -n 's/^KEY=\(.*\)$/\1/p'`.
+- [x] 2.3.2 Allowlist de chaves (J2) e validacao de formato (J3 `label`,
+      J4 `files` fechado, J6 nao-symlink, J7 enums). **Concluido**: cada
+      chave (`label`, `backend`, `files`, `phase`) validada
+      individualmente antes de qualquer decisao; `files` iterado com
+      `IFS=','` contra o conjunto fechado `{state.json,
+      state.json.sha256, state.db}`.
+- [x] 2.3.3 `staging` sempre DERIVADO de `label` — o valor lido do
+      journal serve so para conferencia, nunca e confiado (J5).
+      **Concluido**: `_rc_staging="$_SR_ROUNDS/.$_rc_label.staging"`
+      computado, nunca lido do journal (o campo `staging=` e escrito no
+      journal mas nunca parseado de volta).
+- [x] 2.3.4 Matriz de decisao: sem journal (no-op exit `0`); journal +
       round ja existe (roll-forward remove journal); staging completo
-      (roll-forward `mv` staging → `<label>`); staging incompleto
-      (roll-back devolve arquivos a raiz)
-- [ ] 2.3.5 Response `RECOVER|<none|forward|rollback>|<label>`; journal
-      ilegivel/malformado ou `mv` de recuperacao falho ⇒ exit `1`
+      (roll-forward `mv`); staging incompleto (roll-back devolve
+      arquivos). **Concluido** — T-08 (roll-forward), T-09 (roll-back),
+      T-10 (no-op).
+- [x] 2.3.5 Response `RECOVER|<none|forward|rollback>|<label>`; journal
+      ilegivel/malformado ou `mv` de recuperacao falho ⇒ exit `1`.
+      **Concluido**.
 
 ### 2.4 Implementar subcomando `list` `[M]`
 
 Ref: contracts/state-rounds.md
 
-- [ ] 2.4.1 Listar rounds em ordem lexicografica crescente:
-      `<label>|<backend>|<state_file>|<execution_id>|<status>|<finished_at>`
-- [ ] 2.4.2 Round com estado ilegivel ⇒ linha reportada com
-      `status=unknown`, sem abortar a listagem inteira
-- [ ] 2.4.3 Sem rounds no state-dir: stdout vazio, exit `0`
+- [x] 2.4.1 Listar rounds em ordem lexicografica crescente:
+      `<label>|<backend>|<state_file>|<execution_id>|<status>|<finished_at>`.
+      **Concluido**: `ls -1` (ordem lexicografica default) + filtro
+      `_sr_is_label_syntax_valid`.
+- [x] 2.4.2 Round com estado ilegivel ⇒ linha reportada com
+      `status=unknown`, sem abortar a listagem inteira; exit final `1` se
+      houve alguma linha ilegivel. **Concluido**: `_SL_ANY_ILLEGIBLE`
+      acumulado, checado so no fim (`exit 1` sem interromper o loop).
+- [x] 2.4.3 Sem rounds no state-dir: stdout vazio, exit `0`.
+      **Concluido** — `scenario_bonus_list_sem_rounds_stdout_vazio`.
 
 ### 2.5 `tests/test_state-rounds.sh` (T-01..T-16) `[C]`
 
@@ -203,28 +242,46 @@ Ref: contracts/state-rounds.md §Invariantes de teste; regra de cobertura
 do repo (CLAUDE.md — todo `.sh` novo em `plugins/cstk/skills/*/scripts/`
 exige teste correspondente)
 
-- [ ] 2.5.1 T-01..T-03: recusas de pre-condicao (sem estado ⇒ exit `3`;
-      `em_andamento` ⇒ exit `3` com estado vivo intocado; `abortada` ⇒
-      exit `0`, terminal legitimo)
-- [ ] 2.5.2 T-04/T-05: round preservado byte a byte identico ao estado
-      pre-rotacao (`cmp`), nos dois backends (`json` e `sqlite` apos
-      checkpoint)
-- [ ] 2.5.3 T-06: apos `rotate` sob sqlite, `rounds/<l>/` contem SO
-      `state.db` — nenhum `-wal`/`-shm` (regressao v6.4.0)
-- [ ] 2.5.4 T-07: `rotate` 2x ⇒ `r01` e `r02` coexistem, `r01` inalterado
-- [ ] 2.5.5 T-08..T-11: interrupcao apos staging (`recover` roll-forward,
-      1 tentativa); interrupcao no meio dos `mv` (`recover` roll-back);
-      `recover` sem journal (no-op idempotente); `rotate` com journal
-      pendente (exit `3`, nao inicia segunda rotacao)
-- [ ] 2.5.6 T-12/T-13: `--dry-run` nao cria journal/staging nem move
-      arquivo; `integrity_check != ok` ⇒ exit `1` sem mover nada
-- [ ] 2.5.7 T-14/T-15: `next-label` com `r01`..`r09` ⇒ `r10` (ordenacao
-      lexicografica preservada); artefatos nao-transacionais permanecem
-      na raiz apos `rotate`
-- [ ] 2.5.8 T-16: `shellcheck -s sh` sem erro; ausencia de bashismo
-- [ ] 2.5.9 Rodar `./tests/run.sh --check-coverage` e confirmar que
-      `tests/test_state-rounds.sh` fecha a exigencia de cobertura para o
-      script novo
+- [x] 2.5.1 T-01..T-03: recusas de pre-condicao. **Concluido** —
+      `scenario_T01_sem_estado_exit3_disco_intacto`,
+      `scenario_T02_em_andamento_exit3_estado_intocado`,
+      `scenario_T03_abortada_exit0_terminal_legitimo`.
+- [x] 2.5.2 T-04/T-05: round preservado byte a byte identico (`cmp`), nos
+      dois backends. **Concluido** —
+      `scenario_T04_round_identico_backend_json`,
+      `scenario_T05_round_identico_backend_sqlite_apos_checkpoint`
+      (compara contra checkpoint manual de referencia).
+- [x] 2.5.3 T-06: apos `rotate` sob sqlite, `rounds/<l>/` contem SO
+      `state.db`. **Concluido** —
+      `scenario_T06_round_sqlite_sem_sidecars` (achou e forcou o fix de
+      2.2.8 acima).
+- [x] 2.5.4 T-07: `rotate` 2x ⇒ `r01` e `r02` coexistem, `r01` inalterado.
+      **Concluido** — `scenario_T07_rotate_2x_coexistem_r01_inalterado`.
+- [x] 2.5.5 T-08..T-11: interrupcao apos staging/no meio dos `mv`/`recover`
+      sem journal/`rotate` com journal pendente. **Concluido** —
+      `scenario_T08_recover_roll_forward_staging_completo`,
+      `scenario_T09_recover_roll_back_staging_incompleto`,
+      `scenario_T10_recover_sem_journal_noop`,
+      `scenario_T11_rotate_com_journal_pendente_exit3`.
+- [x] 2.5.6 T-12/T-13: `--dry-run` sem efeitos colaterais;
+      `integrity_check != ok` ⇒ exit `1` sem mover nada. **Concluido** —
+      `scenario_T12_dry_run_sem_efeitos_colaterais`,
+      `scenario_T13_integrity_check_falho_exit1_nada_movido` (corrupcao
+      empirica via truncamento a 60% do tamanho — confirmado
+      `PRAGMA integrity_check` retorna `Error ... malformed (11)`).
+- [x] 2.5.7 T-14/T-15: `next-label` `r09`⇒`r10`; artefatos
+      nao-transacionais permanecem na raiz. **Concluido** —
+      `scenario_T14_next_label_r09_para_r10`,
+      `scenario_T15_artefatos_nao_transacionais_permanecem`.
+- [x] 2.5.8 T-16: `shellcheck -s sh` sem erro. **Concluido**:
+      `shellcheck -s sh plugins/cstk/skills/agente-00c-runtime/scripts/state-rounds.sh`
+      ⇒ exit 0 (0 findings); scenario dedicado
+      `scenario_T16_shellcheck_limpo` mantem a checagem na suite (skip
+      gracioso se `shellcheck` ausente).
+- [x] 2.5.9 Rodar `./tests/run.sh --check-coverage`. **Concluido**:
+      output literal `"Cobertura completa: zero orfaos."`;
+      `./tests/run.sh state-rounds` ⇒ `PASS: 18  FAIL: 0  ERROR: 0
+      ORPHANS: 0`.
 
 ---
 

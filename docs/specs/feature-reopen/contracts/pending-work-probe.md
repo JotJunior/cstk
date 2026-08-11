@@ -153,22 +153,48 @@ legitima de uma falha de execucao e `unknown` + o `probe_status=skipped-*`
 correspondente. O achado de precedente acima (`finalize`) documenta o
 anti-padrao que este contrato existe para NAO repetir.
 
-## Aberto para 1.2 (task 1.2 decide se resolve aqui)
+## Resolucao de 1.2 (dec-038 — decisao do operador)
 
-Os pontos abaixo sao os candidatos a "profundidade adicional" que a task 1.2.3
-pode exigir formalizar antes de 4.1:
+Task 1.2 decidiu por uma **regra estrutural fail-closed**, nao pela matriz de
+exit codes cogitada originalmente (ver historico abaixo). Registrada como
+`dec-038` (onda-005, score 3, evidencia: `commit-mode.sh:726`/`:771`).
 
-1. Matriz exata de exit codes/mensagens do `gh pr view` que distinguem "PR
-   nao existe" (positivo) de "gh falhou" (negativo/timeout) — o passo (h)
-   acima descreve a exigencia, nao a matriz.
-2. Se `git merge-base --is-ancestor` (ou equivalente) precisa de tratamento
-   de timeout proprio em repositorios muito grandes, ou se a ausencia de
-   `timeout(1)` portavel (POSIX puro nao garante) e aceitavel dado que a
-   operacao e local (sem rede).
-3. Se `probe_status` deveria carregar granularidade por-campo (2 valores,
-   um para `merged` outro para `pr_state`) em vez de um unico valor por
-   invocacao — o data-model atual define um enum unico; mudar isso e
-   alteracao de schema, fora do escopo de 1.1.
+**Regra** (aplica-se a TODO campo do `PendingWorkProbe`, nao so a `pr_state`):
+
+1. Um campo so recebe **valor concreto** quando a leitura que o produz foi
+   **bem-sucedida E parseada** (exit `0` do comando-fonte + saida no formato
+   esperado).
+2. Qualquer outro desfecho — `exit != 0`, stdout vazio, JSON nao-parseavel,
+   binario ausente — MUST manter o campo em `unknown` e marcar o
+   `probe_status` correspondente (`skipped-*`). Nunca um valor negativo
+   (`merged=no`, `pr_state=closed`) inferido de ausencia/erro.
+3. **PROIBIDO** o idioma `cmd 2>/dev/null || var=""` seguido de tratar
+   `var` vazio como resposta negativa — o anti-padrao identificado em
+   `commit-mode.sh:726` e `:771` (`finalize`), que descarta stderr e
+   colapsa o exit code, tornando timeout, `gh` nao-autenticado e ausencia
+   real de PR indistinguiveis.
+4. O teste (`tests/test_commit-mode.sh`, T-51) MUST incluir cenario que
+   simula **falha** do `gh` (nao so ausencia do binario) e AFIRMA que a
+   saida traz `unknown`/`skipped-*` — nunca `merged=no` nem
+   `pr_state=closed`.
+
+**Candidatos avaliados e DESCARTADOS** (registrados para fechar a pergunta,
+nao deixa-la aberta):
+
+- **Matriz de exit codes do `gh pr view`** (candidato 1): amarraria o
+  contrato a comportamento de ferramenta externa nao documentado
+  formalmente, exigindo supor comportamento nao verificado (Principio VI).
+  A regra estrutural acima e mais forte e mais barata: uma unica pergunta
+  por leitura de codigo ("existe caminho que atribui valor concreto sem
+  leitura verificada?") em vez de depender da tabela do `gh`.
+- **Timeout proprio para `git merge-base --is-ancestor`** (candidato 2):
+  operacao local sem rede; `timeout(1)` nao e POSIX-portavel nem existe
+  por padrao no macOS — introduziria dependencia nova sem ganho.
+- **Granularidade por-campo do `probe_status`** (candidato 3): o enum
+  unico ja basta sob a regra estrutural (nomeia o desfecho mais
+  degradado); mudar o schema seria alteracao fora do escopo de 1.1.
+
+Com isso, a implementacao de 4.1 esta LIBERADA (dec-038).
 
 ## Errors
 
