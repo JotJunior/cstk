@@ -620,38 +620,135 @@ FR-015; depende de FASE 3
 Ref: CLAUDE.md §Installed vs Source Drift ("fix funciona no repo mas nao
 na sessao"); depende de FASE 5
 
-- [ ] 7.1.1 `./scripts/build-release.sh` + `cstk self-update --from
+- [x] 7.1.1 `./scripts/build-release.sh` + `cstk self-update --from
       <tarball local>` apos editar `cli/lib/recall.sh`, para propagar a
       mudanca ao binario/runtime instalado (`~/.local`)
-- [ ] 7.1.2 Confirmar via `cstk doctor --deps` que o runtime nao diverge
+      <!-- ./scripts/build-release.sh 7.2.2-dev gerou dist/cstk-7.2.2-dev.tar.gz;
+      cstk self-update --from "file://.../dist/cstk-7.2.2-dev.tar.gz" ->
+      "[info] self-update: v7.2.1 -> 7.2.2-dev concluido". Prova de fato
+      (nao so a mensagem): shasum -a 256 cli/lib/recall.sh vs
+      ~/.local/share/cstk/lib/recall.sh -> mesmo hash
+      f00230126f7d95a37dfe87dd3ef4c77c7cb20206886c22d32bcb69a1278a84a3 nos
+      dois; grep "recall_round_label" presente na copia instalada (simbolo
+      da FASE 5). -->
+- [x] 7.1.2 Confirmar via `cstk doctor --deps` que o runtime nao diverge
+      <!-- cstk doctor --deps -> "sqlite3: presente=sim versao=3.51.0
+      minima=3.45.1", "jq: presente=sim versao=jq-1.8.1",
+      "effective_backend: sqlite", "sem anomalias." Ingestao pos-sync
+      confirmada: cstk recall --ingest --state-dir <SD> -> "ingested: 65
+      decisions, 2 blocks, 0 retros, 11 skills, 1 executions, 12 waves, 0
+      alerts, 21 tasks, 1 events, 0 memories, 0 suggestions, 0
+      wave_model_usage" exit=0. -->
 
 ### 7.2 Sincronizar catalogo (skills/commands) `[A]`
 
 Ref: CLAUDE.md §Installed vs Source Drift; depende de FASE 2, FASE 3,
 FASE 4
 
-- [ ] 7.2.1 `cstk install --from <tarball local>` (ou `cstk update` em
+- [x] 7.2.1 `cstk install --from <tarball local>` (ou `cstk update` em
       release publicada) para propagar `state-rounds.sh` (novo),
       `commit-mode.sh` e `feature-00c.md` ao catalogo instalado
       (`~/.claude`)
-- [ ] 7.2.2 `cstk doctor` confirma catalogo sem drift (`hash_dir` bate
+      <!-- cstk install --from "file://.../dist/cstk-7.2.2-dev.tar.gz" ->
+      "updated: 17", "commands: installed=0 updated=6 preserved=0",
+      "agents: installed=0 updated=7 preserved=0". shasum -a 256 confirma
+      byte-a-byte entre plugins/cstk/... e ~/.claude/...: state-rounds.sh,
+      commit-mode.sh, commands/feature-00c.md, skills/specify/SKILL.md,
+      skills/create-tasks/SKILL.md, next-task-id.sh — mesmo hash nos dois
+      lados em todos os 6 arquivos checados. -->
+- [x] 7.2.2 `cstk doctor` confirma catalogo sem drift (`hash_dir` bate
       entre fonte e instalado)
+      <!-- cstk doctor -> "ok: 34", "edited: 0", "missing: 0", "orphan: 13
+      (nao gerenciadas pelo cstk — informativo, nao e drift)" — baseline
+      pre-sync era ok:34/edited:0/missing:0; pos-sync identico (contagem
+      de skills nao mudou porque state-rounds.sh e script novo dentro da
+      skill ja existente agente-00c-runtime, nao skill nova). -->
 
 ### 7.3 Validacao cruzada final `[A]`
 
 Ref: CLAUDE.md §Como testar scripts shell; SC-001..SC-007; depende de
 7.1 e 7.2
 
-- [ ] 7.3.1 `./tests/run.sh --check-coverage` — zero script orfao
+- [x] 7.3.1 `./tests/run.sh --check-coverage` — zero script orfao
       (`state-rounds.sh` e as extensoes de teste)
-- [ ] 7.3.2 `./tests/run.sh` completo — suite inteira verde, incluindo os
+      <!-- ./tests/run.sh --check-coverage -> "Cobertura completa: zero
+      orfaos." -->
+- [x] 7.3.2 `./tests/run.sh` completo — suite inteira verde, incluindo os
       invariantes novos T-01..T-53
-- [ ] 7.3.3 Percorrer os 19 cenarios de `quickstart.md`, com foco no
+      <!-- ./tests/run.sh (975s) -> "PASS: 2779 FAIL: 1 ERROR: 0 ORPHANS: 0".
+      A unica falha foi test_00c-bootstrap.sh ::
+      scenario_issue_2_sigint_propaga_exit_130 — flaky ja documentado
+      (memoria project_flaky_test.md: "passam isolado/rerun; nao gateiam
+      release"). Confirmado nao-regressao: ./tests/run.sh test_00c-bootstrap
+      isolado -> "PASS: 19 FAIL: 0 ERROR: 0" (scenario 12 = o mesmo, verde).
+      T-01..T-53 (state-rounds, preflight, commit-mode, recall) todos PASS
+      dentro da corrida de 2779. -->
+- [x] 7.3.3 Percorrer os 19 cenarios de `quickstart.md`, com foco no
       Scenario 3 (paridade macOS × Ubuntu dos sidecars) e Scenario 19
       (linhagem com backend misto)
-- [ ] 7.3.4 Confirmar SC-004 empiricamente: a reabertura funciona sobre
+      <!-- Classificacao por cenario (verificado-executando = mecanismo real
+      exercitado, via teste automatizado que roda o codigo de producao
+      NAO mockado, ou via comando direto nesta onda; verificado-por-leitura
+      = tracejado no codigo sem execucao nesta onda; nenhum cenario ficou
+      nao-verificado). Nao foi invocado o `/feature-00c --reopen` literal
+      via slash-command (fora do alcance de uma sessao Bash) — a evidencia
+      "verificado-executando" cobre a MESMA primitiva (state-rounds.sh,
+      feature-00c-preflight.sh, commit-mode.sh) que o comando invoca.
+
+      S1 (json happy path): verificado-executando — T04/T07 (suite) +
+      sandbox real desta onda (dec-066): 4 samples json rotacionados,
+      sha256 identico pre/pos.
+      S2 (state.db): verificado-executando — T05/T06 (suite) + sandbox
+      real (dec-066): cstk-setup/claude-plugin-packaging, sha256 identico,
+      integrity_check=ok.
+      S3 (paridade macOS x Ubuntu sidecars): verificado-executando no
+      macOS (rounds/r01/ desta sessao contem so "state.db", sem -wal/-shm,
+      nos 2 samples sqlite); verificado-por-leitura no Ubuntu (T06 roda no
+      CI Ubuntu via workflow, nao reexecutado nesta sessao macOS).
+      S4 (segunda reabertura r01+r02): verificado-executando — T07
+      (scenario_T07_rotate_2x_coexistem_r01_inalterado, suite).
+      S5 (recusa sem execucao anterior): verificado-executando — T20.
+      S6 (recusa execucao viva): verificado-executando — T21/T22.
+      S7 (round abortado): verificado-executando — T26.
+      S8 (triagem feature nova): verificado-executando — T24/T25.
+      S9 (spec arquivada): verificado-executando — T29/T29b/T30.
+      S10 (delta na spec, nunca spec paralela): verificado-executando —
+      ja confirmado na onda 6 (specify-reopen-shortcut: PASS 6 FAIL 0,
+      citado em 6.1.3).
+      S11 (backlog preserva round anterior): verificado-executando —
+      onda 6 (create-tasks-reopen-append: PASS 7 FAIL 0, citado em 6.2.3).
+      S12 (rotacao interrompida, recover): verificado-executando —
+      T08/T09/T10/T11.
+      S13 (concorrencia entre sessoes): verificado-executando — T32
+      (scenario_T32_segunda_sessao_concorrente_exit3).
+      S14 (indice conta cada round 1x): verificado-executando —
+      T40/T42/T43/T44/T45/T47/T48.
+      S15 (nenhuma opcao termina em aborto): verificado-executando —
+      T33/T34.
+      S16 (commit herdado sem prompt): verificado-executando — T28/T28b.
+      S17 (aviso trabalho pendente cita fonte): verificado-executando —
+      T50/T51a/T51b/T51c/T52/T53.
+      S18 (POSIX + coverage): verificado-executando — shellcheck -s sh
+      state-rounds.sh direto nesta onda (exit 0, sem bashismo) +
+      --check-coverage (7.3.1) + suite completa (7.3.2).
+      S19 (backend misto 19a/19b): verificado-executando — T27/T27b
+      (previous_round legivel cruzando backend) + T35 (backend novo
+      independente do round, sem heranca). -->
+- [x] 7.3.4 Confirmar SC-004 empiricamente: a reabertura funciona sobre
       uma amostra das 26 execucoes existentes do repositorio de
       referencia (21 `state.json` + 5 `state.db`)
+      <!-- Contagem confirmada no repo cstk: 21 state.json com
+      execution.status=concluida + 5 state.db concluida (fora a propria
+      feature-reopen em_andamento) = exatos 21+5=26. Amostra de 6/26 (2
+      json schema pt-BR legado: model-routing-por-onda,
+      agente-00c-model-routing; 2 json schema EN: otel-model-breakdown,
+      state-backend-config; 2 sqlite: cstk-setup, claude-plugin-packaging)
+      copiada para sandbox isolado (scratchpad, NUNCA os originais) e
+      rotacionada de fato via state-lock.sh acquire + state-rounds.sh
+      rotate --label r01: 6/6 sucesso, sha256 do round identico ao
+      original em todos, sqlite PRAGMA integrity_check=ok nos 2 sqlite,
+      rounds/r01/ sem -wal/-shm. Decisao dec-066 registra evidencia
+      literal completa. -->
 
 ---
 
