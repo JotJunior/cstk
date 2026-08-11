@@ -5,6 +5,50 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.25.0] - 2026-08-10
+
+### Corrigido
+
+- **Painel voltava degradado inteiro contra `knowledge.db` v14**: o guard de
+  abertura (`DEFAULT_SCHEMA_VERSIONS`) parava na v13, então uma base já
+  migrada pelo cstk ≥ 7.2.0 respondia `schema-mismatch` em **todos** os
+  endpoints — não só nas features novas. A lista passa a aceitar até a v14.
+
+### Adicionado
+
+- **Breakdown de tokens por fonte e tipo (schema v12, cstk ≥ 5.33.0)**: as 8
+  colunas `otel_{main,subagent}_{input,output,cache_read,cache_creation}_tokens`
+  estavam no schema desde a v12 mas o painel nunca as lia — daquela migração
+  só a tabela `wave_model_usage` tinha sido adotada. Agora aparecem no card de
+  custo real (Métricas), nos rollups de projeto e feature e no detalhe da
+  onda, com barra de composição por tipo e a fatia de **cache read**.
+  A leitura que só elas permitem: uma onda de 8,78M tokens sendo ~95% contexto
+  relido é uma onda **longa**, não uma onda cara.
+- **Cobertura de amostra separada por fonte**: `main` e `subagent` são coletas
+  independentes e divergem materialmente na base real (27 ondas contra 257, de
+  1182). Cada lado exibe o próprio denominador — um número único apresentaria
+  como medido um lado que nunca foi coletado.
+- **Cota do plano (schema v14, `plan_usage`, cstk ≥ 7.2.0)**: nova métrica
+  `GET /metrics/plan-usage` e card em Métricas com o percentual consumido das
+  janelas de 5h e 7d, pico do recorte, reset e série temporal por janela. KPI
+  compacto na Visão Geral mostra a janela mais apertada, dizendo qual é.
+  É uma grandeza nova — quota da **conta**, não esforço, dinheiro ou token —
+  e por isso não se soma nem se compara com as demais.
+- **Estados honestos para as duas fontes novas**: "tabela ausente na base"
+  (v < 14) e "captura opt-in não ligada" (`cstk statusline install`) são
+  telas distintas, e nenhuma das duas renderiza `0%`.
+
+### Alterado
+
+- **Constituição 1.2.0 → 1.3.0** (emenda autorizada pelo operador em
+  2026-08-10): terceira expansão do Princípio III, cobrindo o breakdown por
+  fonte (denominadores separados; proibição de usar `otel_total_tokens` como
+  denominador dentro de um lado) e a cota do plano (quarta grandeza, escopos
+  nunca mesclados, ausência nunca renderizada como `0%`). Corrige também a
+  lista de tabelas da knowledge.db no `MUST NOT` de "campos que não existem",
+  defasada desde a v12 — faltavam `wave_model_usage`, `loose_usage` e
+  `plan_usage`.
+
 ## [0.24.0] - 2026-08-07
 
 ### Adicionado
@@ -1143,6 +1187,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.25.0]: https://github.com/JotJunior/cstk-panel/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/JotJunior/cstk-panel/compare/v0.23.1...v0.24.0
 [0.23.1]: https://github.com/JotJunior/cstk-panel/compare/v0.23.0...v0.23.1
 [0.23.0]: https://github.com/JotJunior/cstk-panel/compare/v0.22.1...v0.23.0
