@@ -20,8 +20,11 @@ export {
   OtelUsagePanel, OtelUsageBreakdown, OtelUsageEmpty, OtelCoverageBadge,
   otelUsageState, isPartialOtelSample, otelCoverageLabel, fmtUsd,
   subagentCostShare, waveOtelUsage, sumOtelUsage,
+  // schema v12 — breakdown de tokens por fonte (main x subagente) x tipo
+  OtelSourceBreakdown, otelMainTokens, otelSubagentTokens,
+  hasOtelBreakdown, otelSourceTotal, cacheReadShare,
 } from './OtelUsage.js';
-export type { OtelUsageState } from './OtelUsage.js';
+export type { OtelUsageState, OtelSourceTokens } from './OtelUsage.js';
 export {
   ModelUsageMiniList, ModelUsageEmpty, modelUsageColor,
   ModelUsageDetailPanel, ModelUsageStageBreakdown,
@@ -29,5 +32,6 @@ export {
 export {
   LooseUsageDetailPanel, LooseUsageEmpty, LooseUsageComparisonTable,
 } from './LooseUsage.js';
+export { PlanUsageDetailPanel, PlanUsageEmpty } from './PlanUsage.js';
 export { Sparkline, Donut, BarH, TruncatedBarH, Legend, StackedBars, StackedBarsH, Histogram, ScatterChart } from './charts.js';
 export type { DonutDatum, BarHDatum, LegendItem, StackedBarsProps, StackedBarsHProps, HistogramProps, ScatterDatum, TruncatedBarHProps } from './charts.js';

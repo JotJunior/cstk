@@ -115,6 +115,11 @@ describe('mapWave', () => {
       // base v<11 (colunas ausentes -> projetadas como NULL pela query)
       otel_cost_usd: null, otel_cost_main_usd: null, otel_cost_subagent_usd: null,
       otel_total_tokens: null, otel_subagent_tokens: null,
+      // base v<12 (8 colunas de breakdown ausentes -> NULL pela query)
+      otel_main_input_tokens: null, otel_main_output_tokens: null,
+      otel_main_cache_read_tokens: null, otel_main_cache_creation_tokens: null,
+      otel_subagent_input_tokens: null, otel_subagent_output_tokens: null,
+      otel_subagent_cache_read_tokens: null, otel_subagent_cache_creation_tokens: null,
     };
     const dto = mapWave(row);
     expect(typeof dto.stages).toBe('string');
@@ -134,6 +139,11 @@ describe('mapWave', () => {
       otel_cost_usd: 0.229038, otel_cost_main_usd: 0.130553,
       otel_cost_subagent_usd: 0.098485,
       otel_total_tokens: 648, otel_subagent_tokens: 648,
+      // schema v12 — so o lado subagente coletado (caso real majoritario)
+      otel_main_input_tokens: null, otel_main_output_tokens: null,
+      otel_main_cache_read_tokens: null, otel_main_cache_creation_tokens: null,
+      otel_subagent_input_tokens: 12, otel_subagent_output_tokens: 96,
+      otel_subagent_cache_read_tokens: 540, otel_subagent_cache_creation_tokens: 0,
     };
     const dto = mapWave(row);
     expect(dto.session).toBe('minha-feature');
@@ -154,6 +164,11 @@ describe('mapWave', () => {
       agent_tool_use_count: null, agent_duration_ms: null,
       otel_cost_usd: null, otel_cost_main_usd: null, otel_cost_subagent_usd: null,
       otel_total_tokens: null, otel_subagent_tokens: null,
+      // base v<12 (8 colunas de breakdown ausentes -> NULL pela query)
+      otel_main_input_tokens: null, otel_main_output_tokens: null,
+      otel_main_cache_read_tokens: null, otel_main_cache_creation_tokens: null,
+      otel_subagent_input_tokens: null, otel_subagent_output_tokens: null,
+      otel_subagent_cache_read_tokens: null, otel_subagent_cache_creation_tokens: null,
     };
     const dto = mapWave(row);
     expect(dto.agentSpawnsTotal).toBe(2);
@@ -177,6 +192,11 @@ describe('mapWave', () => {
       otel_cost_usd: 0.229038, otel_cost_main_usd: 0.130553,
       otel_cost_subagent_usd: 0.098485,
       otel_total_tokens: 648, otel_subagent_tokens: 648,
+      // schema v12 — so o lado subagente coletado (caso real majoritario)
+      otel_main_input_tokens: null, otel_main_output_tokens: null,
+      otel_main_cache_read_tokens: null, otel_main_cache_creation_tokens: null,
+      otel_subagent_input_tokens: 12, otel_subagent_output_tokens: 96,
+      otel_subagent_cache_read_tokens: 540, otel_subagent_cache_creation_tokens: 0,
     };
     const dto = mapWave(medida);
     expect(dto.otelCostUsd).toBeCloseTo(0.229038, 6);

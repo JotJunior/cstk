@@ -15,15 +15,17 @@ import {
   AgentUsagePanel, AgentUsageEmpty,
   OtelUsagePanel, OtelUsageEmpty, otelUsageState, otelCoverageLabel, fmtUsd,
   ModelUsageDetailPanel, LooseUsageDetailPanel, TruncatedBarH,
+  PlanUsageDetailPanel, PlanUsageEmpty,
 } from '@/components/index.js';
 import type { ScatterDatum, DonutDatum } from '@/components/index.js';
 import { fmtTokens } from '@/lib/format.js';
 import { pickTokens, tokenCoverageLabel } from '@/lib/token-source.js';
 import { selectModelUsage, groupModelUsageByStage } from '@/lib/model-usage-select.js';
 import { selectLooseUsage } from '@/lib/loose-usage-select.js';
+import { selectPlanUsage } from '@/lib/plan-usage-select.js';
 import { buildStageBars } from '@/lib/model-mix-by-stage-select.js';
 import { truncateBars } from '@/lib/truncate-bars.js';
-import type { PeriodParam, AgentUsageRollup, OtelUsageRollup, ModelUsageResult, LooseUsageResult } from '@cstk-panel/shared-types';
+import type { PeriodParam, AgentUsageRollup, OtelUsageRollup, ModelUsageResult, LooseUsageResult, PlanUsageResult } from '@cstk-panel/shared-types';
 
 // Cores por modelo (alinhado ao Overview)
 const MODEL_COLOR: Record<string, string> = {
@@ -442,6 +444,27 @@ export function Metrics({ period }: MetricsProps) {
           renderContent={(raw) => {
             const vm = selectLooseUsage(raw as LooseUsageResult | null);
             return <LooseUsageDetailPanel vm={vm} />;
+          }}
+        />
+      </div>
+
+      {/* Cota do plano (schema v14, plan_usage, cstk 7.2.0). Eixo distinto de
+          todo o resto desta tela: não é esforço, dinheiro nem token — é quanto
+          da cota da CONTA já foi gasto em cada janela. Captura opt-in via
+          `cstk statusline install`: sem hook não há medição, e ausência de
+          captura nunca é renderizada como 0%. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+        <MetricCard
+          name="plan-usage"
+          title="Cota do plano · por janela"
+          subtitle="medido (plan_usage) · janelas de 5h e 7d · gauge da conta, não do projeto"
+          period={period}
+          emptyFallback={<PlanUsageEmpty reason="degraded" />}
+          renderContent={(raw) => {
+            const vm = selectPlanUsage(raw as PlanUsageResult | null);
+            // `nowMs` injetado aqui (e nao lido dentro do modulo puro) para que
+            // o calculo de "reseta em" continue testavel sem mockar relogio.
+            return <PlanUsageDetailPanel vm={vm} nowMs={Date.now()} />;
           }}
         />
       </div>

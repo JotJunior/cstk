@@ -86,6 +86,21 @@ export function hasLooseUsage(db: Database.Database): boolean {
   return hasTable(db, 'loose_usage');
 }
 
+/**
+ * True quando a base tem a tabela `plan_usage` (schema v14, cstk 7.2.0) —
+ * gauge `rate_limits` da CONTA (percentual consumido do plano por janela
+ * `five_hour`/`seven_day`), capturado pelo hook `statusLine.command`.
+ *
+ * Nao e consumo de execucao: e o medidor do plano, sem
+ * `feature`/`wave`/`execution_id` por construcao (mesmo racional de
+ * `loose_usage`). Captura opt-in via `cstk statusline install` — tabela
+ * presente e vazia significa "sem captura", nunca "plano em 0%".
+ * Ref: ../cstk/docs/specs/plan-usage-capture/data-model.md.
+ */
+export function hasPlanUsage(db: Database.Database): boolean {
+  return hasTable(db, 'plan_usage');
+}
+
 /** As 5 colunas de consumo medido por telemetria introduzidas no schema v11. */
 export const OTEL_USAGE_COLUMNS = [
   'otel_cost_usd',
@@ -96,6 +111,54 @@ export const OTEL_USAGE_COLUMNS = [
 ] as const;
 
 export type OtelUsageColumn = (typeof OTEL_USAGE_COLUMNS)[number];
+
+/**
+ * As 8 colunas de breakdown de tokens por FONTE (main x subagente) e por TIPO
+ * (input/output/cache_read/cache_creation) introduzidas no schema v12.
+ *
+ * Distintas das 5 de v11: aquelas dao custo e total; estas abrem QUAL parte do
+ * token foi lida de cache — a diferenca entre uma onda cara e uma onda que
+ * apenas releu contexto. Origem: `otel_usage.by_source.{main,subagent}`.
+ *
+ * Coletadas de forma INDEPENDENTE do lado main e do lado subagente: na base
+ * real ha ondas com `by_source.subagent` e sem `by_source.main`. Por isso a
+ * cobertura tem dois denominadores separados (ver `OtelUsageResult`), nunca um.
+ */
+export const OTEL_BREAKDOWN_COLUMNS = [
+  'otel_main_input_tokens',
+  'otel_main_output_tokens',
+  'otel_main_cache_read_tokens',
+  'otel_main_cache_creation_tokens',
+  'otel_subagent_input_tokens',
+  'otel_subagent_output_tokens',
+  'otel_subagent_cache_read_tokens',
+  'otel_subagent_cache_creation_tokens',
+] as const;
+
+export type OtelBreakdownColumn = (typeof OTEL_BREAKDOWN_COLUMNS)[number];
+
+/**
+ * True quando a base tem o breakdown por fonte (schema >= v12). Sonda a coluna
+ * (nao a tabela `wave_model_usage`): as duas entram na mesma migracao v11->v12,
+ * mas sao dados diferentes e uma base pode ter sido tocada a mao.
+ */
+export function hasOtelBreakdown(db: Database.Database): boolean {
+  return hasColumn(db, 'waves', 'otel_main_input_tokens');
+}
+
+/**
+ * Projeta uma coluna v12 de `waves`, degradando para `NULL as <col>` em base
+ * v<12 — mesmo contrato de `agentUsageSelect`/`otelUsageSelect`.
+ */
+export function otelBreakdownSelect(
+  db: Database.Database,
+  column: OtelBreakdownColumn,
+  prefix = '',
+): string {
+  return hasColumn(db, 'waves', column)
+    ? `${prefix}${column}`
+    : `NULL as ${column}`;
+}
 
 /**
  * Projeta uma coluna v11 de `waves`, degradando para `NULL as <col>` em base
@@ -143,6 +206,17 @@ export interface WaveRow {
   otel_cost_subagent_usd: number | null;
   otel_total_tokens: number | null;
   otel_subagent_tokens: number | null;
+  // schema v12 — breakdown de tokens por fonte x tipo. Os dois lados sao
+  // coletados independentemente: onda com subagent preenchido e main NULL e
+  // caso REAL na base, nao anomalia.
+  otel_main_input_tokens: number | null;
+  otel_main_output_tokens: number | null;
+  otel_main_cache_read_tokens: number | null;
+  otel_main_cache_creation_tokens: number | null;
+  otel_subagent_input_tokens: number | null;
+  otel_subagent_output_tokens: number | null;
+  otel_subagent_cache_read_tokens: number | null;
+  otel_subagent_cache_creation_tokens: number | null;
 }
 
 /** Lista ondas de uma execucao, em ordem cronologica */
@@ -159,6 +233,7 @@ export function listWavesByExecution(
   const sessionCol = hasColumn(db, 'waves', 'session') ? 'session' : 'NULL as session';
   const usageCols = AGENT_USAGE_COLUMNS.map(c => agentUsageSelect(db, c)).join(',\n             ');
   const otelCols = OTEL_USAGE_COLUMNS.map(c => otelUsageSelect(db, c)).join(',\n             ');
+  const breakdownCols = OTEL_BREAKDOWN_COLUMNS.map(c => otelBreakdownSelect(db, c)).join(',\n             ');
   const orderCol = hasColumn(db, 'waves', 'started_at') ? 'started_at' : 'rowid';
   return db
     .prepare(`
@@ -166,7 +241,8 @@ export function listWavesByExecution(
              wallclock_seconds, tool_calls, ${terminationCol},
              ${nStagesCol}, n_skills, ${sessionCol},
              ${usageCols},
-             ${otelCols}
+             ${otelCols},
+             ${breakdownCols}
       FROM waves
       WHERE execution_id = ?
       ORDER BY ${orderCol} ASC

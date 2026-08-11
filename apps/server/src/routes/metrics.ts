@@ -34,9 +34,10 @@ import {
   getTokensByWave,
   getModelUsage,
   getLooseUsage,
+  getPlanUsage,
 } from '../db/queries/metrics.js';
-import type { AgentUsageFilters, LooseUsageFilters } from '../db/queries/metrics.js';
-import { hasModelUsage, hasLooseUsage } from '../db/queries/waves.js';
+import type { AgentUsageFilters, LooseUsageFilters, PlanUsageFilters } from '../db/queries/metrics.js';
+import { hasModelUsage, hasLooseUsage, hasPlanUsage } from '../db/queries/waves.js';
 
 const PeriodSchema = z.enum(['24h', '7d', '30d', 'all']).optional();
 const ProjectSchema = z.object({ project: z.string().optional() });
@@ -355,6 +356,42 @@ export async function metricsRoutes(server: FastifyInstance): Promise<void> {
       if (!hasLooseUsage(db)) {
         // Base v2-v12: `data` mantem o shape vazio explicito (arrays vazios,
         // coverage/comparison com todos os campos null) + degraded=true.
+        envelope.meta.degraded = true;
+        envelope.meta.reason = 'table-empty';
+      }
+      return reply.status(200).send(envelope);
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/plan-usage ──────────────────────────────────────────────
+  // Gauge `rate_limits` da CONTA (schema v14, `plan_usage`, cstk 7.2.0):
+  // percentual do plano consumido nas janelas `five_hour` e `seven_day`.
+  // SEM filtro `project`: o medidor e da conta, nao do projeto — recortar por
+  // projeto sugeriria um numero ("plano gasto por projeto") que a fonte nao
+  // produz, mesma regra que faz loose-usage recusar `feature`.
+  // Mesmo contrato de degradacao dos irmaos: excecao query-time nunca vira
+  // 5xx; tabela ausente -> shape vazio explicito + reason='table-empty'.
+  server.get('/metrics/plan-usage', async (request, reply) => {
+    const q = z.object({ period: PeriodSchema }).safeParse(request.query);
+    const filters: PlanUsageFilters = q.success && q.data.period !== undefined
+      ? { period: q.data.period as MetricPeriod }
+      : {};
+
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      let data;
+      try {
+        data = getPlanUsage(db, filters);
+      } catch {
+        // Principio II: excecao em query-time nunca escapa como 5xx.
+        return reply.status(200).send(wrapDegraded('db-corrupt', config.dbPath));
+      }
+      const envelope = wrap(data, {}, config.dbPath, db);
+      if (!hasPlanUsage(db)) {
+        // Base v2-v13: `data` mantem o shape vazio explicito (arrays vazios,
+        // coverage com todos os campos null) + degraded=true.
         envelope.meta.degraded = true;
         envelope.meta.reason = 'table-empty';
       }

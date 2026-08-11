@@ -39,6 +39,15 @@ const BASE_WAVE: WaveDTO = {
   otelCostSubagentUsd: null,
   otelTotalTokens: null,
   otelSubagentTokens: null,
+  // schema v12 — breakdown por fonte ausente nesta onda
+  otelMainInputTokens: null,
+  otelMainOutputTokens: null,
+  otelMainCacheReadTokens: null,
+  otelMainCacheCreationTokens: null,
+  otelSubagentInputTokens: null,
+  otelSubagentOutputTokens: null,
+  otelSubagentCacheReadTokens: null,
+  otelSubagentCacheCreationTokens: null,
 };
 
 /** Onda medida, cobertura parcial (3 de 4 spawns) — o caso mais comum. */

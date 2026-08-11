@@ -1,6 +1,6 @@
 {
   "name": "cstk-panel",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "private": true,
   "description": "Dashboard de Observabilidade Read-Only para execucoes agente-00c/feature-00c",
   "workspaces": [

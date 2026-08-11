@@ -22,12 +22,16 @@ import {
   KpiCard, StatusBadge, SeverityBadge, BudgetMini, PipelineProgress,
   Donut, Icon, MiniStat,
   agentUsageState, coverageLabel, fmtUsd, subagentCostShare,
+  cacheReadShare, otelSubagentTokens,
   ModelUsageMiniList,
 } from '@/components/index.js';
 import type { DonutDatum } from '@/components/index.js';
 import { selectOverview, type OverviewRaw } from '@/lib/overview-select.js';
 import { selectModelUsage } from '@/lib/model-usage-select.js';
-import type { ModelUsageResult } from '@cstk-panel/shared-types';
+import {
+  selectPlanUsage, tightestScope, scopeLabel, fmtPlanPct, fmtResetsIn, planUsageBand,
+} from '@/lib/plan-usage-select.js';
+import type { ModelUsageResult, PlanUsageResult } from '@cstk-panel/shared-types';
 import { fmtNum, fmtDur, fmtPct, fmtRelative, fmtTokens } from '@/lib/format.js';
 import type { PeriodParam } from '@cstk-panel/shared-types';
 
@@ -83,6 +87,9 @@ export function Overview({ period, project = '' }: OverviewProps) {
   // incondicionalmente (regra dos hooks do React), antes dos retornos
   // antecipados de loading/error/empty abaixo.
   const modelUsageQuery = useMetric('model-usage', period);
+  // Cota do plano (schema v14, plan_usage) — tambem fora do payload de
+  // /overview, pela mesma razao: e gauge da CONTA, nao rollup de execucao.
+  const planUsageQuery = useMetric('plan-usage', period);
   const { isLoading, isEmpty, isError, errorMessage, isDegraded } = useApiState(query);
 
   if (isLoading) return <LoadingState variant="kpi" />;
@@ -109,6 +116,16 @@ export function Overview({ period, project = '' }: OverviewProps) {
     : null;
   const share = subagentCostShare(otelUsage);
   const subagentShare = share != null ? Math.round(share * 100) : null;
+  // Breakdown por fonte (schema v12): a fatia de cache read do lado subagente.
+  // Denominador e a soma dos 4 tipos DAQUELE lado — usar `otelTotalTokens`
+  // misturaria as fontes e subestimaria pela metade (constituicao 1.3.0 §III).
+  const subagentCacheShare = cacheReadShare(otelSubagentTokens(otelUsage));
+
+  // Cota do plano (schema v14). O KPI compacto mostra a janela mais APERTADA
+  // e diz QUAL e — selecionar uma serie e permitido, fundir as duas nao.
+  const planVm = selectPlanUsage(planUsageQuery.data?.data as PlanUsageResult | null | undefined);
+  const planTightest = tightestScope(planVm.byScope);
+  const planBand = planUsageBand(planTightest?.usedPercentage);
 
   // KPIs derivados
   const nCriticos = (alertas as Record<string, unknown>[]).filter(a => deriveSeverity(a) === 'critical').length;
@@ -139,8 +156,8 @@ export function Overview({ period, project = '' }: OverviewProps) {
         </div>
       </div>
 
-      {/* KPI row — 7 cards (o de tokens entrou com o schema v10) */}
-      <div className="grid-7">
+      {/* KPI row — 8 cards (tokens entrou com o v10; cota do plano, com o v14) */}
+      <div className="grid-8">
         <KpiCard label="Projetos ativos" value={totalProjects} icon="folder" footnote={`${totalFeatures} features`} />
         <KpiCard
           label="Em andamento"
@@ -192,10 +209,17 @@ export function Overview({ period, project = '' }: OverviewProps) {
             : hasMeasuredTokens ? fmtTokens(agentUsage?.totalTokens) : '—'}
           icon="cpu"
           footnote={hasOtel
+            // A cobertura da amostra é MUST no rodapé (constituição §III): sem
+            // o denominador, um total parcial se apresenta como completo. O
+            // breakdown do v12 (cache read) entra no tip, não no lugar dela.
             ? (otelCoverage ?? 'telemetria OTel')
             : hasMeasuredTokens ? coverageLabel(agentUsage) : 'não coletado nesta fonte'}
           tip={hasOtel
-            ? 'Tokens de subagentes medidos pela telemetria OTel do Claude Code (label query_source=subagent). Contadores incrementados a cada requisição, então cobrem também o consumo do próprio orquestrador.'
+            ? `Tokens de subagentes medidos pela telemetria OTel do Claude Code (label query_source=subagent). Contadores incrementados a cada requisição, então cobrem também o consumo do próprio orquestrador.${
+                subagentCacheShare != null
+                  ? ` Destes, ${Math.round(subagentCacheShare * 100)}% são cache read — contexto relido, não token novo.`
+                  : ''
+              } Cobertura: ${otelCoverage ?? 'não informada'}.`
             : hasMeasuredTokens
               ? 'Tokens reportados pelo harness para cada subagente e agregados por onda. Medição real, mas parcial: spawns em background não reportam uso.'
               : 'Exige knowledge.db em schema v11 (cstk ≥ 5.30.0 para a ingestão) e telemetria ligada durante a execução: CLAUDE_CODE_ENABLE_TELEMETRY=1 + OTEL_METRICS_EXPORTER=prometheus.'}
@@ -214,6 +238,26 @@ export function Overview({ period, project = '' }: OverviewProps) {
           icon="check"
           footnote={testsTotal != null ? `${fmtNum(testsPassed)} / ${fmtNum(testsTotal)} testes` : 'sem testes'}
           accent={passRate != null && passRate >= 0.99 ? 'success' : passRate != null && passRate < 0.9 ? 'warning' : undefined}
+        />
+        {/* Cota do plano (schema v14). Quarta grandeza da tela: não é esforço,
+            dinheiro nem token — é quanto da cota da CONTA já foi gasto. Mostra
+            a janela mais apertada e diz QUAL é; fundir as duas é proibido
+            (constituição 1.3.0 §III). Sem captura, "—" e nunca "0%". */}
+        <KpiCard
+          label="Cota do plano"
+          value={planTightest ? fmtPlanPct(planTightest.usedPercentage) : '—'}
+          icon="wait"
+          footnote={planTightest
+            ? `${scopeLabel(planTightest.scope)} · reseta ${fmtResetsIn(planTightest.resetsAt, Date.now())}`
+            : planVm.state === 'degraded'
+              ? 'não coletado nesta base'
+              : 'captura não ligada'}
+          accent={planBand === 'critical' ? 'critical' : planBand === 'warn' ? 'warning' : undefined}
+          tip={planTightest
+            ? `Percentual da cota da CONTA já consumido na ${scopeLabel(planTightest.scope).toLowerCase()} — medido pelo Claude Code e capturado pelo hook de statusline. Pico do recorte: ${fmtPlanPct(planTightest.peakUsedPercentage)}. Não se soma nem se compara com custo/tokens: é outro eixo (quota, não consumo).`
+            : planVm.state === 'degraded'
+              ? 'Exige knowledge.db em schema v14 (cstk ≥ 7.2.0) com a tabela plan_usage.'
+              : 'A captura é opt-in: cstk statusline install. Sem o hook a cota não é medida — ausência de captura não significa plano livre.'}
         />
       </div>
 

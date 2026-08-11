@@ -91,6 +91,16 @@ const REAL_WAVE_PAYLOAD = {
   otelCostSubagentUsd: null,
   otelTotalTokens: null,
   otelSubagentTokens: null,
+  // schema v12 — mesma projecao NULL das 8 colunas de breakdown numa base
+  // v<12 (a rota degrada coluna ausente para `NULL as <col>`).
+  otelMainInputTokens: null,
+  otelMainOutputTokens: null,
+  otelMainCacheReadTokens: null,
+  otelMainCacheCreationTokens: null,
+  otelSubagentInputTokens: null,
+  otelSubagentOutputTokens: null,
+  otelSubagentCacheReadTokens: null,
+  otelSubagentCacheCreationTokens: null,
 };
 
 /**
@@ -126,6 +136,14 @@ const REAL_WAVE_V10_PAYLOAD = {
   otelCostSubagentUsd: null,
   otelTotalTokens: null,
   otelSubagentTokens: null,
+  otelMainInputTokens: null,
+  otelMainOutputTokens: null,
+  otelMainCacheReadTokens: null,
+  otelMainCacheCreationTokens: null,
+  otelSubagentInputTokens: null,
+  otelSubagentOutputTokens: null,
+  otelSubagentCacheReadTokens: null,
+  otelSubagentCacheCreationTokens: null,
 };
 
 /**
@@ -162,6 +180,15 @@ const REAL_WAVE_V11_PAYLOAD = {
   otelCostSubagentUsd: 0.098485,
   otelTotalTokens: 648,
   otelSubagentTokens: 648,
+  // Base v11 nao tem as colunas de breakdown: a rota projeta NULL nas 8.
+  otelMainInputTokens: null,
+  otelMainOutputTokens: null,
+  otelMainCacheReadTokens: null,
+  otelMainCacheCreationTokens: null,
+  otelSubagentInputTokens: null,
+  otelSubagentOutputTokens: null,
+  otelSubagentCacheReadTokens: null,
+  otelSubagentCacheCreationTokens: null,
 };
 
 /** Onda da MESMA execucao sem telemetria coletada — as 5 colunas vem null. */
@@ -187,6 +214,52 @@ const REAL_WAVE_V11_NO_OTEL_PAYLOAD = {
   otelCostSubagentUsd: null,
   otelTotalTokens: null,
   otelSubagentTokens: null,
+};
+
+/**
+ * WaveDTO real de base v12+ — payload capturado VERBATIM de
+ * `GET /api/v1/executions/feat-wifi-standalone-20260809T001804Z/waves` servido
+ * pelo proprio `apps/server` sobre `~/.claude/cstk/knowledge.db` em
+ * schema_version=14 (cstk 7.2.0). Fixture escrita a mao nao valeria: ela so
+ * provaria que o schema aceita o que o schema espera.
+ *
+ * Repare na proporcao: 8,78M de token total, dos quais ~8,3M sao cache READ.
+ * E exatamente essa distincao que as 5 colunas de v11 nao conseguiam expressar.
+ */
+const REAL_WAVE_V12_PAYLOAD = {
+  wave: 'onda-012',
+  executionId: 'feat-wifi-standalone-20260809T001804Z',
+  stages: '',
+  startedAt: '2026-08-09T05:26:06Z',
+  finishedAt: '2026-08-09T05:38:43Z',
+  wallclockSeconds: 757,
+  toolCalls: 49,
+  terminationReason: 'etapa_concluida_avancando',
+  nStages: 0,
+  nSkills: 1,
+  session: null,
+  agentSpawnsTotal: 1,
+  agentSpawnsWithUsage: 1,
+  agentTotalTokens: 127796,
+  agentInputTokens: 2,
+  agentOutputTokens: 73,
+  agentCacheReadTokens: 126850,
+  agentCacheCreationTokens: 871,
+  agentToolUseCount: 38,
+  agentDurationMs: 461630,
+  otelCostUsd: 4.9554576,
+  otelCostMainUsd: 2.3303035,
+  otelCostSubagentUsd: 2.5170876,
+  otelTotalTokens: 8782315,
+  otelSubagentTokens: 4840515,
+  otelMainInputTokens: 34,
+  otelMainOutputTokens: 11325,
+  otelMainCacheReadTokens: 3709177,
+  otelMainCacheCreationTokens: 19242,
+  otelSubagentInputTokens: 88,
+  otelSubagentOutputTokens: 25681,
+  otelSubagentCacheReadTokens: 4615562,
+  otelSubagentCacheCreationTokens: 199184,
 };
 
 /** Onda v10 com spawns observados mas NENHUM dado de uso (background). */
@@ -319,6 +392,45 @@ describe('7.4.1 Paridade shared-types ↔ payload real', () => {
       expect(r.data.otelTotalTokens).toBeNull();
       expect(r.data.otelSubagentTokens).toBeNull();
     }
+  });
+
+  it('WaveDTOSchema.safeParse(payload_real_v12) === true', () => {
+    const r = WaveDTOSchema.safeParse(REAL_WAVE_V12_PAYLOAD);
+    expect(r.success, `falhou: ${JSON.stringify(r.error?.issues?.slice(0, 3))}`).toBe(true);
+    if (r.success) {
+      // Invariante que so o breakdown por fonte revela: 98,6% dos tokens desta
+      // onda sao cache READ. Sem as 8 colunas, `otelTotalTokens: 8782315` daria
+      // a entender 8,7M de token NOVO — leitura errada de uma ordem de grandeza.
+      const cacheRead = (r.data.otelMainCacheReadTokens ?? 0) + (r.data.otelSubagentCacheReadTokens ?? 0);
+      expect(cacheRead / (r.data.otelTotalTokens ?? 1)).toBeGreaterThan(0.9);
+      // Input real e minusculo perto do cache — trava contra qualquer troca
+      // acidental entre as colunas de input e as de cache_read.
+      expect(r.data.otelMainInputTokens).toBe(34);
+      expect(r.data.otelSubagentInputTokens).toBe(88);
+    }
+  });
+
+  it('WaveDTO: payload sem os campos v12 e REJEITADO (drift de borda)', () => {
+    // Mesma regra dos blocos v10/v11: ausencia != null.
+    const { otelSubagentCacheReadTokens: _omit, ...semCampoV12 } = REAL_WAVE_V12_PAYLOAD;
+    const r = WaveDTOSchema.safeParse(semCampoV12);
+    expect(r.success).toBe(false);
+  });
+
+  it('WaveDTO v12: um lado do breakdown pode faltar com o outro presente', () => {
+    // Caso REAL da base (v14, 1182 ondas): 257 tem `by_source.subagent` e so 27
+    // tem `by_source.main`. Se algum dia o schema exigir os dois lados juntos,
+    // 230 ondas medidas parariam de parsear — este teste e o guarda-corpo.
+    const soSubagente = {
+      ...REAL_WAVE_V12_PAYLOAD,
+      otelMainInputTokens: null,
+      otelMainOutputTokens: null,
+      otelMainCacheReadTokens: null,
+      otelMainCacheCreationTokens: null,
+    };
+    const r = WaveDTOSchema.safeParse(soSubagente);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.otelSubagentCacheReadTokens).toBe(4615562);
   });
 
   it('WaveDTO: payload sem os campos v11 e REJEITADO (drift de borda)', () => {

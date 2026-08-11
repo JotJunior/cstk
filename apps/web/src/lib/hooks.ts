@@ -408,7 +408,9 @@ export function useMetric(
        // schema v12 — custo/tokens REAIS por modelo (wave_model_usage)
        | 'model-usage'
        // schema v13 — consumo avulso de sessões interativas (loose_usage)
-       | 'loose-usage',
+       | 'loose-usage'
+       // schema v14 — gauge de cota do plano por janela (plan_usage)
+       | 'plan-usage',
   period?: PeriodParam
 ) {
   const qs = period ? `?period=${period}` : '';

@@ -89,6 +89,16 @@ describe('Paridade schemas Zod — entidades', () => {
       otelCostSubagentUsd: 0.098485,
       otelTotalTokens: 648,
       otelSubagentTokens: 648,
+      // schema v12 — breakdown por fonte x tipo; so o lado subagente coletado
+      // (caso majoritario na base real: 257 ondas com subagent, 27 com main)
+      otelMainInputTokens: null,
+      otelMainOutputTokens: null,
+      otelMainCacheReadTokens: null,
+      otelMainCacheCreationTokens: null,
+      otelSubagentInputTokens: 12,
+      otelSubagentOutputTokens: 96,
+      otelSubagentCacheReadTokens: 540,
+      otelSubagentCacheCreationTokens: 0,
     };
     const r = WaveDTOSchema.safeParse(payload);
     expect(r.success).toBe(true);
