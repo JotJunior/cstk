@@ -503,14 +503,14 @@ Ref: contracts/recall-rounds.md §Mudanca 1; research.md Decision 5;
 FR-018; data-model.md::KnowledgeIngestProvenance; depende de FASE 1.3
 (decisao humana CHK014) e FASE 2 (rounds precisam existir)
 
-- [ ] 5.1.1 Ingestao de estado sob `rounds/<label>/` grava a linha de
+- [x] 5.1.1 Ingestao de estado sob `rounds/<label>/` grava a linha de
       `executions` com `wave=<label>` (em vez de `-`)
-- [ ] 5.1.2 Decisoes/bloqueios/skills do round gravam
+- [x] 5.1.2 Decisoes/bloqueios/skills do round gravam
       `wave=<label>/onda-NNN` (evita colisao de chave `dec-001` entre
       round e execucao viva)
-- [ ] 5.1.3 Campo `feature` permanece o `short_name` inalterado — as duas
+- [x] 5.1.3 Campo `feature` permanece o `short_name` inalterado — as duas
       rodadas sao a MESMA feature (I-K1, SC-003)
-- [ ] 5.1.4 Confirmar que a normalizacao existente
+- [x] 5.1.4 Confirmar que a normalizacao existente
       (`status=="concluida"` → `current_stage="concluido"`) cobre I-K2
       sem mudanca adicional; round `abortada` preserva o proprio status
       (FR-020)
@@ -521,15 +521,15 @@ Ref: contracts/recall-rounds.md §Mudanca 2; research.md Decision 6;
 FR-010, SC-003, SC-004; depende de FASE 1.3 (decisao humana CHK014) e
 FASE 2
 
-- [ ] 5.2.1 Acrescentar a `recall_mode_reindex` uma segunda varredura
+- [x] 5.2.1 Acrescentar a `recall_mode_reindex` uma segunda varredura
       ancorada para `state.db` (hoje so existe `find -name 'state.json'`
       — toda execucao SQLite e invisivel ao `--reindex`)
-- [ ] 5.2.2 Rotear a varredura nova para `recall_ingest_state_db` — a
+- [x] 5.2.2 Rotear a varredura nova para `recall_ingest_state_db` — a
       mesma funcao que o `--ingest` ja usa
-- [ ] 5.2.3 Precedencia quando `state.db` e `state.json` coexistem no
+- [x] 5.2.3 Precedencia quando `state.db` e `state.json` coexistem no
       mesmo diretorio: `state.db` vence (evita ingerir o mesmo round duas
       vezes, espelha a regra do `--ingest`)
-- [ ] 5.2.4 Estender a allowlist de `tests/test_state-parity-sweep.sh`
+- [x] 5.2.4 Estender a allowlist de `tests/test_state-parity-sweep.sh`
       para o leitor novo (nota de `plan.md` §Escopo do trabalho, item 6)
 
 ### 5.3 `tests/cstk/test_recall.sh` (T-40..T-49) `[A]`
@@ -537,21 +537,21 @@ FASE 2
 Ref: contracts/recall-rounds.md §Invariantes de teste; regra de
 cobertura do repo (`cli/lib/` exige `tests/cstk/`)
 
-- [ ] 5.3.1 T-40/T-41: feature com `r01` + execucao viva ⇒ `--reindex`
+- [x] 5.3.1 T-40/T-41: feature com `r01` + execucao viva ⇒ `--reindex`
       produz exatamente 2 linhas de `executions` para `(project,
       feature)`; `dec-001` de `r01` e `dec-001` da execucao viva
       coexistem sem sobrescrita
-- [ ] 5.3.2 T-42/T-43: nenhum round preservado aparece com etapa ativa
+- [x] 5.3.2 T-42/T-43: nenhum round preservado aparece com etapa ativa
       apos `--reindex`; round `abortada` preserva `status=abortada` e
       nao e ativo
-- [ ] 5.3.3 T-44/T-45: round com `state.db` e ingerido (hoje invisivel);
+- [x] 5.3.3 T-44/T-45: round com `state.db` e ingerido (hoje invisivel);
       rounds `json` e `sqlite` produzem o mesmo numero de linhas
-- [ ] 5.3.4 T-46: `state.db` + `state.json` no mesmo diretorio ⇒
+- [x] 5.3.4 T-46: `state.db` + `state.json` no mesmo diretorio ⇒
       ingerido uma vez, `state.db` vence
-- [ ] 5.3.5 T-47/T-48: `--reindex` 2x consecutivos ⇒ contagens
+- [x] 5.3.5 T-47/T-48: `--reindex` 2x consecutivos ⇒ contagens
       identicas (idempotencia); state-dir sem `rounds/` ⇒ comportamento
       identico ao atual (nao-regressao)
-- [ ] 5.3.6 T-49: `--reindex` nao escreve em nenhum `state.json`/
+- [x] 5.3.6 T-49: `--reindex` nao escreve em nenhum `state.json`/
       `state.db` — o indice e sempre derivado
 
 ---

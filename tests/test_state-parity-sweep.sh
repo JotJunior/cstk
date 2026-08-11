@@ -239,6 +239,21 @@ scenario_dinamica_15_leitores_sqlite_sem_degradacao() {
 #     _hook-active-exec.sh (SEC-H1/dec-006, polaridade invertida). Checagem
 #     SIMETRICA (nunca le/parseia conteudo, nunca so state.json) — nao
 #     quebra sob backend so-sqlite.
+#
+# Feature feature-reopen (FASE 2) adiciona:
+#   state-rounds.sh:codigo-real — os 3 hits remanescentes sao SO checagem
+#     de existencia (`[ -f DIR/state.json ]`), nunca leitura de conteudo:
+#     (a) list — determina o rotulo de backend impresso na linha de saida
+#     (b) rotate — pre-condicao 1 ("ha estado a rotacionar?", mesma familia
+#         do `[ -f state.json ] || [ -f state.db ]` dos hooks acima)
+#     (c) rotate — decide se `state.json.sha256` entra no conjunto de
+#         arquivos movidos (rotacao move arquivos, nao interpreta conteudo)
+#     As 2 leituras de CONTEUDO que existiam neste script (meta id/status
+#     em _sr_read_meta e finished_at em `list`) foram migradas para
+#     `state_read_materialize` (_state-read.sh) neste mesmo commit — nao
+#     restam mais leituras diretas de state.json. codigo-real fora do
+#     conjunto canonico coberto por `tests/test_state-rounds.sh` (18
+#     cenarios, inclusive backend sqlite e json).
 _static_allowlist() {
   cat <<'EOF'
 state-rw.sh:codigo-real
@@ -258,6 +273,7 @@ pretooluse-bash-guard.sh:codigo-real
 posttooluse-tool-call-tick.sh:codigo-real
 posttooluse-agent-usage.sh:codigo-real
 posttooluse-loose-usage.sh:codigo-real
+state-rounds.sh:codigo-real
 EOF
 }
 

@@ -192,14 +192,10 @@ _sr_read_meta() {
     printf 'unknown|unknown\n'
     return 1
   fi
-  _srm_file="$_srm_dir/state.json"
-  if [ -f "$_srm_dir/state.db" ]; then
-    _srm_tmp=$(state_read_materialize "$_srm_dir") || {
-      printf 'unknown|unknown\n'
-      return 1
-    }
-    _srm_file="$_srm_tmp"
-  fi
+  _srm_file=$(state_read_materialize "$_srm_dir") || {
+    printf 'unknown|unknown\n'
+    return 1
+  }
   [ -f "$_srm_file" ] || {
     printf 'unknown|unknown\n'
     return 1
@@ -292,11 +288,10 @@ if [ "$_SR_SUBCMD" = "list" ]; then
     _sl_status=${_sl_meta#*|}
     _sl_finished="unknown"
     if command -v jq >/dev/null 2>&1; then
-      _sl_meta_file="$_sl_round_dir/state.json"
-      if [ "$_sl_backend" = "sqlite" ]; then
-        _sl_meta_tmp=$(state_read_materialize "$_sl_round_dir" 2>/dev/null) && _sl_meta_file="$_sl_meta_tmp"
+      _sl_meta_file=$(state_read_materialize "$_sl_round_dir" 2>/dev/null) || _sl_meta_file=""
+      if [ -n "$_sl_meta_file" ] && [ -f "$_sl_meta_file" ]; then
+        _sl_finished=$(jq -r '.execution.finished_at // "unknown"' "$_sl_meta_file" 2>/dev/null) || :
       fi
-      [ -f "$_sl_meta_file" ] && _sl_finished=$(jq -r '.execution.finished_at // "unknown"' "$_sl_meta_file" 2>/dev/null) || :
       [ -n "$_sl_finished" ] || _sl_finished="unknown"
     fi
     printf '%s|%s|%s|%s|%s|%s\n' "$_sl_entry" "$_sl_backend" "$_sl_file" "$_sl_id" "$_sl_status" "$_sl_finished"
