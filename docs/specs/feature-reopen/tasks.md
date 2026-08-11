@@ -70,15 +70,20 @@ contracts/state-rounds.md (espelhar formato)
 Ref: checklists/security.md CHK009 (ligado ao `[Gap]` CHK002 de
 requirements.md)
 
-- [ ] 1.2.1 Apresentar ao operador, via bloqueio humano, a pergunta de
+- [x] 1.2.1 Apresentar ao operador, via bloqueio humano, a pergunta de
       CHK009: o contrato de 1.1 e suficiente para um revisor confirmar por
       leitura de codigo, apos implementado, que a sonda nunca infere
-      `merged=no` por timeout silencioso tratado como "no"?
+      `merged=no` por timeout silencioso tratado como "no"? **Apresentado**
+      (`block-002`, `dec-036`, onda-005), anexando o trecho literal da
+      secao "Aberto para 1.2" de `contracts/pending-work-probe.md`
+      (ja escrita nesta mesma onda) + o precedente empirico do anti-padrao
+      em `finalize` (`commit-mode.sh:726`).
 - [ ] 1.2.2 Registrar a resposta como Decisao auditavel ANTES de iniciar
-      4.1 (implementacao da sonda) — este item bloqueia 4.1
+      4.1 (implementacao da sonda) — este item bloqueia 4.1. Aguardando
+      resposta humana a `block-002`.
 - [ ] 1.2.3 Se a resposta exigir profundidade adicional (ex.: matriz de
       timeout por comando invocado), atualizar o contrato de 1.1 antes de
-      prosseguir
+      prosseguir. Condicional a resposta de `block-002`.
 
 ### 1.3 Decisao humana: inventario de leitores externos ao runtime `[M]` `{humano}`
 
