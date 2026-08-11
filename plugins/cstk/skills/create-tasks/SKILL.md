@@ -55,6 +55,62 @@ Analise o argumento fornecido. Ele pode ser:
 **Se chamado de forma isolada** (sem spec associada):
 - Manter o comportamento padrao: `docs/tasks-{nome-escopo}.md`
 
+### Deteccao de reabertura (feature-00c `--reopen`) — continuidade de backlog
+
+Aplicavel **somente** quando o state da execucao corrente tem
+`.previous_round` preenchido (contexto de reabertura via
+`/feature-00c --reopen` — mesma deteccao usada por
+`plugins/cstk/skills/specify/SKILL.md` §0.0/0.5) **e** o `tasks.md`-alvo
+(`docs/specs/{spec-name}/tasks.md`) **ja existe** (preservado/restaurado
+de round anterior, com fases/checkboxes concluidos). Fora desses dois
+criterios simultaneos, ignore esta secao e siga o fluxo normal
+(`feature-reopen` FR-015, Decision 11 de `research.md`: mesmo padrao ja
+praticado pela skill `converge` sobre `tasks.md` existente).
+
+`$SD` = `AGENTE_00C_STATE_DIR` (setada pelo orquestrador), ou
+`<projeto-alvo>/.claude/feature-00c-state/<short>/` quando a variavel nao
+estiver presente:
+
+```bash
+_PREV=$(~/.claude/skills/agente-00c-runtime/scripts/state-rw.sh get \
+  --state-dir "$SD" --field '.previous_round' 2>/dev/null) || _PREV="null"
+```
+
+Quando `_PREV` e diferente de `null`/vazio **e** o `tasks.md`-alvo existe:
+
+1. **NUNCA regenerar** o documento do zero. O `tasks.md` restaurado/
+   existente e preservado exatamente como esta — sem reescrever, sem
+   renumerar fases anteriores, sem alterar nenhuma marcacao `[x]` ja
+   concluida (6.2.1).
+2. **Decompor apenas o incremento**: o trabalho a decompor e o(s) novo(s)
+   `FR-NNN` que a §0.5 do `specify` acabou de apender a
+   `### Functional Requirements`/`## Delta Requirements` de `spec.md` —
+   nunca o escopo inteiro da feature de novo.
+3. **Idempotencia (6.2.3)**: antes de apender, `grep` o `tasks.md`-alvo
+   pelos IDs `FR-NNN` do incremento (ex: `Ref:.*FR-023`) — se ja
+   referenciados em alguma fase existente, a decomposicao ja rodou
+   (retomada apos onda interrompida); nao apendar de novo.
+4. **Calcular o proximo numero de FASE** de forma deterministica:
+   ```bash
+   NEXT_PHASE=$(bash skills/create-tasks/scripts/next-task-id.sh \
+     --phase "docs/specs/{spec-name}/tasks.md")
+   ```
+5. **Apender** (via Edit, ao final do arquivo, antes das secoes de rodape
+   Matriz/Resumo/Escopo se elas existirem no fim — ou apos, se essas
+   secoes forem regeneradas por ultimo) um bloco `## FASE {NEXT_PHASE} -
+   {Nome do incremento}` completo, seguindo as MESMAS regras de
+   Nomenclatura/Granularidade/Criticidade desta skill, com `Ref:
+   docs/specs/{spec-name}/spec.md FR-NNN..FR-MMM (incremento round N)` —
+   o mesmo padrao ja praticado pela skill `converge` ao apendar fase de
+   convergencia (6.2.2, nunca inventar um segundo mecanismo de
+   acrescimo).
+6. **Atualizar Resumo Quantitativo/Matriz de Dependencias** para refletir
+   a fase nova, preservando os totais das fases anteriores — nunca
+   subtraindo ou renumerando o que ja existia.
+7. Rodar `scripts/validate-tasks-template.sh` no `tasks.md` resultante
+   (mesmo pre-gate ja usado pelos orquestradores apos `create-tasks`) como
+   auto-checagem antes de reportar concluido.
+
 ### Consumir gaps abertos do checklist (origem SDD)
 
 Se a origem e uma spec, ANTES de decompor leia

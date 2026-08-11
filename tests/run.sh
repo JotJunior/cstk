@@ -215,6 +215,22 @@ _is_internal_test() {
       # Lint: refs `<helper>.sh <subcomando>` nos docs apontam p/ subcomando
       # real (case-label no dispatch). Invariante do repo — nao mapeia 1:1.
       return 0 ;;
+    test_specify-reopen-shortcut.sh)
+      # Guarda estrutural sobre plugins/cstk/skills/specify/SKILL.md
+      # §0.0/§0.4/§0.5 (feature-reopen FASE 6.1 / dec-058) — SKILL.md e
+      # prosa LLM, sem script .sh "dono" sob a convencao de FASE 9.3.
+      # Existence-guarded ao proprio SKILL.md; se a fonte sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/skills/specify/SKILL.md" ] && return 0
+      return 1 ;;
+    test_create-tasks-reopen-append.sh)
+      # Guarda estrutural sobre plugins/cstk/skills/create-tasks/SKILL.md
+      # §Deteccao de reabertura (feature-reopen FASE 6.2) — SKILL.md e
+      # prosa LLM, sem script .sh "dono" sob a convencao de FASE 9.3.
+      # Existence-guarded ao proprio SKILL.md; se a fonte sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/skills/create-tasks/SKILL.md" ] && return 0
+      return 1 ;;
     test_install-extra-kinds.sh)
       # Cobre interacao install.sh + manifest.sh + doctor.sh para os kinds
       # commands/agents (nao mapeia 1:1 para um unico script sob a convencao).

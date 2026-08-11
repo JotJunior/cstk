@@ -6,6 +6,9 @@
 #     PREFIX=<fase>         -> proxima tarefa (ex: 1.3)
 #     PREFIX=<fase>.<tarefa> -> proxima subtarefa (ex: 1.2.4)
 #     Prefix inexistente    -> {prefix}.1
+#   next-task-id.sh --phase FILE [PHASE_PREFIX]
+#     -> proximo numero de FASE (ex: 3); sem nenhuma FASE -> 1;
+#        PHASE_PREFIX customiza o heading (default "FASE")
 #   Exit: 0 sucesso; 1 arquivo inexistente; 2 uso incorreto.
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
@@ -59,6 +62,37 @@ scenario_sem_argumentos() {
 
 scenario_arquivo_inexistente() {
   assert_exit 1 sh "$SCRIPT" "1" "/caminho/inexistente.md" || return 1
+  assert_stderr_contains "nao encontrado" || return 1
+}
+
+# ==== 6.2 --phase: proximo numero de FASE (feature-reopen 6.2) ====
+
+scenario_phase_proxima_fase_existente() {
+  fixture "tasks-md" || return 2
+  # mixed.md tem FASE 1 e FASE 2 -> proxima FASE = 3
+  assert_exit 0 sh "$SCRIPT" --phase "$TMPDIR_TEST/mixed.md" || return 1
+  assert_stdout_contains "3" || return 1
+}
+
+scenario_phase_sem_nenhuma_fase() {
+  fixture "tasks-md" || return 2
+  # empty.md nao tem nenhuma "## FASE N" -> primeira fase apendada = 1
+  assert_exit 0 sh "$SCRIPT" --phase "$TMPDIR_TEST/empty.md" || return 1
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_phase_prefix_customizado() {
+  printf '# Tasks\n\n## PHASE 1 - Foo\n\n## PHASE 2 - Bar\n' > "$TMPDIR_TEST/custom.md"
+  assert_exit 0 sh "$SCRIPT" --phase "$TMPDIR_TEST/custom.md" PHASE || return 1
+  assert_stdout_contains "3" || return 1
+  # Sem o PHASE_PREFIX customizado, o default "FASE" nao casa nenhum heading
+  # "## PHASE N" -> nenhuma fase encontrada -> primeira fase = 1.
+  assert_exit 0 sh "$SCRIPT" --phase "$TMPDIR_TEST/custom.md" || return 1
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_phase_arquivo_inexistente() {
+  assert_exit 1 sh "$SCRIPT" --phase "/caminho/inexistente.md" || return 1
   assert_stderr_contains "nao encontrado" || return 1
 }
 

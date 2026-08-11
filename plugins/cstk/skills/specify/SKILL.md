@@ -137,6 +137,41 @@ o operador decidiu rodar a pipeline SDD completa quando invocou
    (`classificacao: bugfix — divergencia registrada para auditoria`) para
    aparecer no sumario da onda.
 
+   **Reabertura da PROPRIA feature** — alem da confirmacao de 0.3, checar
+   tambem se ha **contexto de reabertura** no state da execucao corrente:
+   campo `.previous_round` preenchido (nao-nulo), gravado pelo passo 3'' do
+   fluxo `/feature-00c --reopen`
+   (`docs/specs/feature-reopen/contracts/reopen-flow.md`):
+
+   ```bash
+   _PREV=$(~/.claude/skills/agente-00c-runtime/scripts/state-rw.sh get \
+     --state-dir "$SD" --field '.previous_round' 2>/dev/null) || _PREV="null"
+   ```
+
+   Se `_PREV` for diferente de `null`/vazio, a decisao da secao **0.4**
+   ("Atualizar spec existente vs abrir feature nova") TAMBEM ja foi tomada
+   — no gate humano do passo 6.c da reabertura o operador confirmou
+   explicitamente `reabrir`, que equivale a escolher "atualizar spec
+   existente" em 0.4 aplicado a PROPRIA feature que esta sendo reaberta
+   (nunca uma comparacao com outras specs do portfolio). Pular 0.4 sem
+   reperguntar; a spec-alvo e sempre `docs/specs/<short>/spec.md` da
+   propria feature. Registrar em uma linha:
+
+   ```
+   Triagem 0.4: contexto de reabertura detectado (.previous_round presente)
+   — decisao herdada do gate 6.c (reabrir); tratando como "atualizar spec
+   existente" da propria feature, sem reperguntar.
+   ```
+
+   Nesse caso, o incremento MUST ser aplicado como acrescimo na spec
+   EXISTENTE, nunca como spec nova (FR-014 de `feature-reopen`) — seguir o
+   procedimento descrito em "0.5 Modo de incremento (reabertura)" logo
+   apos 0.4, em vez de ETAPA 1-3 normais.
+
+   **Sem esse campo** (execucao autonoma normal, sem reabertura), a secao
+   0.4 continua sendo avaliada normalmente, exatamente como hoje — nenhuma
+   mudanca de comportamento no caminho sem `--reopen`.
+
 3. **Se NAO detectado**: seguir 0.1-0.3 normalmente (fluxo interativo).
 
 ### 0.1 Classificar o pedido
@@ -226,6 +261,80 @@ assim ou ainda quer uma feature nova separada?
 O mesmo criterio e aplicado pela skill `clarify` (ver
 `plugins/cstk/skills/clarify/SKILL.md` ETAPA 2) quando a ambiguidade levantada
 durante a clarificacao poderia, de fato, constituir uma feature nova.
+
+### 0.5 Modo de incremento — reabertura da propria feature
+
+Aplicavel **somente** quando 0.0 detectou contexto de reabertura
+(`.previous_round` preenchido) — no caminho sem `--reopen` esta secao nunca
+dispara e nenhuma outra ETAPA muda de comportamento (`feature-reopen`
+FR-014).
+
+O alvo e sempre `docs/specs/<short>/spec.md` da PROPRIA feature sendo
+reaberta (`<short>` = campo `.short_name` do state-dir corrente) — nunca
+uma spec nova, nunca outra feature do portfolio.
+
+1. **Pular ETAPA 2** (Criar Diretorio) — o diretorio e a spec ja existem
+   (restaurados pelo passo 7.d do fluxo `--reopen` quando estavam
+   arquivados).
+2. **Ler o incremento**: `.execution.target_project_description` da
+   execucao corrente e o texto passado a `--reopen "<descricao>"` — trate
+   como o `$ARGUMENTS` das ETAPAs 1/3 para este modo.
+3. **Numerar o(s) FR(s) novo(s)**: extraia o maior `FR-NNN` ja presente na
+   secao `### Functional Requirements` de `spec.md`
+   (`grep -oE '\*\*FR-[0-9]+\*\*'`, maior numero, `+1` em diante) — NUNCA
+   reusar um numero ja existente, mesmo que a fase/tarefa correspondente ja
+   tenha sido concluida em round anterior.
+4. **Escrever o(s) FR(s)** seguindo as mesmas regras de 3.2 (testavel, foco
+   no QUE, defaults razoaveis, jamais dado factual sem fonte — Principio
+   VI) e apende-los ao final de `### Functional Requirements` — sem tocar
+   em nenhum FR existente.
+5. **Resolver o capability-slug** (mesmo criterio de
+   `checklists/requirements.md` CHK005 de `feature-reopen`, reusar em vez
+   de fragmentar): `grep -l "Introduzida por: <short>" docs/specs/current/*.md
+   2>/dev/null`. Achou exatamente um arquivo → reuse o slug (basename sem
+   `.md`). Nao achou nenhum → use `<short>` como slug (ja e kebab-case
+   valido). Achou mais de um → escolha o mais proximo semanticamente do
+   incremento e registre a escolha (julgamento do autor, nao erro — a
+   validacao de FORMA do slug fica a cargo de `delta-gate.sh`).
+6. **Apender ao `## Delta Requirements`** (criar a secao no fim do arquivo
+   se ainda nao existir; se ja existir de um round anterior, apenas
+   apender um novo bloco `### Capability:` ao final — nunca reescrever ou
+   remover blocos anteriores):
+
+   ```markdown
+   ## Delta Requirements
+
+   ### Capability: <slug>
+
+   #### ADDED
+
+   - **FR-NNN**: <mesmo texto do passo 4>
+   ```
+
+   Os IDs `FR-NNN` DEVEM ser identicos aos gravados no passo 4 (regra 4 do
+   contrato `delta-section-format.md`) — a secao Delta Requirements REPETE
+   por contrato os mesmos IDs da secao Functional Requirements, nunca
+   inventa IDs novos so para o bloco.
+7. **Nunca criar um segundo `spec.md`** para a mesma feature — se por
+   qualquer motivo `docs/specs/<short>/spec.md` nao existir neste ponto, e
+   um bloqueio humano (a restauracao do passo 7.d deveria te-lo criado),
+   nao uma oportunidade de gerar um arquivo novo.
+8. **Pular ETAPA 1-3 normais** (ja cobertas pelos passos 2-6 acima) e ir
+   direto para ETAPA 4 (Validacao) sobre o `spec.md` atualizado, depois
+   ETAPA 6 (Salvamento/relatorio). ETAPA 5 (Clarificacao interativa) nao se
+   aplica em modo autonomo (0.0 ja cobre isso).
+
+Auto-checagem recomendada (best-effort, nunca bloqueia a pipeline — o gate
+`validate-documentation` ja roda depois de `specify` via Quality Gates do
+orquestrador):
+
+```bash
+~/.claude/skills/review-features/scripts/delta-gate.sh \
+  "docs/specs/<short>/spec.md"
+```
+
+Deve sair `0` com `RESULT|...|delta=present|errors=0|...` (Scenario 10 de
+`docs/specs/feature-reopen/quickstart.md`).
 
 ---
 

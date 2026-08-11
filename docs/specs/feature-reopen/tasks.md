@@ -563,28 +563,53 @@ cobertura do repo (`cli/lib/` exige `tests/cstk/`)
 Ref: plan.md item 8 (Escopo do trabalho); FR-014; depende de FASE 3
 (fluxo `--reopen` funcional)
 
-- [ ] 6.1.1 Apos a reabertura, o incremento (descricao passada ao
+- [x] 6.1.1 Apos a reabertura, o incremento (descricao passada ao
       `--reopen`) entra como `## Delta Requirements` apendado a
       `docs/specs/<short>/spec.md` — NUNCA como spec paralela
-- [ ] 6.1.2 Reusar capability-slug ja existente quando aplicavel, sem
+      <!-- specify/SKILL.md §0.0 estende a deteccao de .previous_round p/
+      herdar tambem a decisao 0.4; §0.5 "Modo de incremento" implementa o
+      acrescimo. tests/run.sh specify-reopen-shortcut: PASS 6 FAIL 0 -->
+- [x] 6.1.2 Reusar capability-slug ja existente quando aplicavel, sem
       fragmentar um conceito equivalente — mesmo padrao seguido por esta
       propria feature (checklists/requirements.md CHK005)
-- [ ] 6.1.3 Confirmar (quickstart.md Scenario 10) que o fluxo nunca cria
+      <!-- §0.5 passo 5: grep -l "Introduzida por: <short>"
+      docs/specs/current/*.md antes de cunhar slug novo -->
+- [x] 6.1.3 Confirmar (quickstart.md Scenario 10) que o fluxo nunca cria
       um segundo `spec.md` para a mesma feature
+      <!-- Confirmacao ESTRUTURAL/design-time (nao E2E ao vivo — FASE 7,
+      fora de escopo desta onda): §0.5 pula ETAPA 2 (Criar Diretorio) e
+      fixa o alvo em docs/specs/<short>/spec.md; passo 7 declara bloqueio
+      humano se o arquivo nao existir, nunca cria arquivo alternativo.
+      scenario_secao_05_modo_incremento_presente confirma a instrucao
+      "Nunca criar um segundo spec.md" no texto. PASS. -->
 
 ### 6.2 Continuidade de backlog por fase apendada `[A]`
 
 Ref: plan.md item 9 (Escopo do trabalho); research.md Decision 11;
 FR-015; depende de FASE 3
 
-- [ ] 6.2.1 `tasks.md` restaurado/existente e preservado como esta — sem
+- [x] 6.2.1 `tasks.md` restaurado/existente e preservado como esta — sem
       reescrever nem renumerar fases anteriores, sem alterar marcacoes
       `[x]` ja concluidas
-- [ ] 6.2.2 Trabalho novo entra como fase nova apendada ao final, mesmo
+      <!-- create-tasks/SKILL.md §Deteccao de reabertura passo 1: "NUNCA
+      regenerar o documento do zero... sem alterar nenhuma marcacao [x]
+      ja concluida". tests/run.sh create-tasks-reopen-append: PASS 7
+      FAIL 0 -->
+- [x] 6.2.2 Trabalho novo entra como fase nova apendada ao final, mesmo
       padrao ja praticado pela skill `converge` sobre `tasks.md`
       existente
-- [ ] 6.2.3 Confirmar idempotencia de `create-tasks` sobre backlog
+      <!-- passo 4/5 usa next-task-id.sh --phase (novo) p/ calcular o
+      proximo numero de FASE deterministicamente e apendar via Edit,
+      citando explicitamente o precedente da skill converge.
+      tests/run.sh next-task-id: PASS 9 FAIL 0 (3 scenarios novos p/
+      --phase: fase existente->3, sem fase->1, prefix customizado) -->
+- [x] 6.2.3 Confirmar idempotencia de `create-tasks` sobre backlog
       pre-existente (quickstart.md Scenario 11)
+      <!-- Confirmacao ESTRUTURAL/design-time (nao E2E ao vivo — FASE 7,
+      fora de escopo desta onda): passo 3 grep-a os FR-NNN do incremento
+      no tasks.md-alvo antes de apendar; se ja referenciados, nao apenda
+      de novo. scenario_idempotencia_referenciada confirma a instrucao no
+      texto. PASS. -->
 
 ---
 
