@@ -156,22 +156,30 @@ export function Overview({ period, project = '' }: OverviewProps) {
         </div>
       </div>
 
-      {/* KPI row — 8 cards (tokens entrou com o v10; cota do plano, com o v14) */}
-      <div className="grid-8">
-        <KpiCard label="Projetos ativos" value={totalProjects} icon="folder" footnote={`${totalFeatures} features`} />
+      {/* KPI row — 8 cards (tokens entrou com o v10; cota do plano, com o v14)
+          em 4 colunas x 2 linhas: a primeira linha e o eixo de consumo (cota,
+          custo, tokens, tempo); a segunda, o eixo de estado do portfolio
+          (projetos, execucoes, alertas, qualidade). */}
+      <div className="grid-kpi-4x2">
+        {/* Cota do plano (schema v14). Quarta grandeza da tela: não é esforço,
+            dinheiro nem token — é quanto da cota da CONTA já foi gasto. Mostra
+            a janela mais apertada e diz QUAL é; fundir as duas é proibido
+            (constituição 1.3.0 §III). Sem captura, "—" e nunca "0%". */}
         <KpiCard
-          label="Em andamento"
-          value={emAndamento}
-          icon="activity"
-          footnote={`${aguardando} aguardando humano`}
-          accent="accent"
-        />
-        <KpiCard
-          label="Alertas críticos"
-          value={totalAlertas}
-          icon="alert"
-          footnote={`${nCriticos} crítico${nCriticos !== 1 ? 's' : ''}`}
-          accent={nCriticos > 0 ? 'critical' : totalAlertas > 0 ? 'warning' : undefined}
+          label="Cota do plano"
+          value={planTightest ? fmtPlanPct(planTightest.usedPercentage) : '—'}
+          icon="wait"
+          footnote={planTightest
+            ? `${scopeLabel(planTightest.scope)} · reseta ${fmtResetsIn(planTightest.resetsAt, Date.now())}`
+            : planVm.state === 'degraded'
+              ? 'não coletado nesta base'
+              : 'captura não ligada'}
+          accent={planBand === 'critical' ? 'critical' : planBand === 'warn' ? 'warning' : undefined}
+          tip={planTightest
+            ? `Percentual da cota da CONTA já consumido na ${scopeLabel(planTightest.scope).toLowerCase()} — medido pelo Claude Code e capturado pelo hook de statusline. Pico do recorte: ${fmtPlanPct(planTightest.peakUsedPercentage)}. Não se soma nem se compara com custo/tokens: é outro eixo (quota, não consumo).`
+            : planVm.state === 'degraded'
+              ? 'Exige knowledge.db em schema v14 (cstk ≥ 7.2.0) com a tabela plan_usage.'
+              : 'A captura é opt-in: cstk statusline install. Sem o hook a cota não é medida — ausência de captura não significa plano livre.'}
         />
         {/* Custo. Com telemetria OTel (schema v11) o card exibe o valor REAL em
             USD — calculado pelo Claude Code, apenas somado aqui. Sem ela, cai
@@ -232,32 +240,27 @@ export function Overview({ period, project = '' }: OverviewProps) {
           icon="clock"
           footnote="wallclock acumulado"
         />
+        <KpiCard label="Projetos ativos" value={totalProjects} icon="folder" footnote={`${totalFeatures} features`} />
+        <KpiCard
+          label="Em andamento"
+          value={emAndamento}
+          icon="activity"
+          footnote={`${aguardando} aguardando humano`}
+          accent="accent"
+        />
+        <KpiCard
+          label="Alertas críticos"
+          value={totalAlertas}
+          icon="alert"
+          footnote={`${nCriticos} crítico${nCriticos !== 1 ? 's' : ''}`}
+          accent={nCriticos > 0 ? 'critical' : totalAlertas > 0 ? 'warning' : undefined}
+        />
         <KpiCard
           label="Test pass rate"
           value={passRate != null ? fmtPct(passRate, 1) : '—'}
           icon="check"
           footnote={testsTotal != null ? `${fmtNum(testsPassed)} / ${fmtNum(testsTotal)} testes` : 'sem testes'}
           accent={passRate != null && passRate >= 0.99 ? 'success' : passRate != null && passRate < 0.9 ? 'warning' : undefined}
-        />
-        {/* Cota do plano (schema v14). Quarta grandeza da tela: não é esforço,
-            dinheiro nem token — é quanto da cota da CONTA já foi gasto. Mostra
-            a janela mais apertada e diz QUAL é; fundir as duas é proibido
-            (constituição 1.3.0 §III). Sem captura, "—" e nunca "0%". */}
-        <KpiCard
-          label="Cota do plano"
-          value={planTightest ? fmtPlanPct(planTightest.usedPercentage) : '—'}
-          icon="wait"
-          footnote={planTightest
-            ? `${scopeLabel(planTightest.scope)} · reseta ${fmtResetsIn(planTightest.resetsAt, Date.now())}`
-            : planVm.state === 'degraded'
-              ? 'não coletado nesta base'
-              : 'captura não ligada'}
-          accent={planBand === 'critical' ? 'critical' : planBand === 'warn' ? 'warning' : undefined}
-          tip={planTightest
-            ? `Percentual da cota da CONTA já consumido na ${scopeLabel(planTightest.scope).toLowerCase()} — medido pelo Claude Code e capturado pelo hook de statusline. Pico do recorte: ${fmtPlanPct(planTightest.peakUsedPercentage)}. Não se soma nem se compara com custo/tokens: é outro eixo (quota, não consumo).`
-            : planVm.state === 'degraded'
-              ? 'Exige knowledge.db em schema v14 (cstk ≥ 7.2.0) com a tabela plan_usage.'
-              : 'A captura é opt-in: cstk statusline install. Sem o hook a cota não é medida — ausência de captura não significa plano livre.'}
         />
       </div>
 

@@ -5,6 +5,20 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.26.0] - 2026-08-10
+
+### Alterado
+
+- **KPI row da Visão Geral em 4 colunas × 2 linhas**: os 8 cards ficavam
+  lado a lado num grid de 8 colunas — em tela comum cada card era estreito
+  demais e o rodapé (cobertura da amostra, janela da cota) quebrava em
+  várias linhas. Passam a ocupar duas linhas de quatro.
+- **Ordem dos cards agrupada por eixo**, não pela ordem em que cada um
+  entrou no schema: a primeira linha é consumo (cota do plano, custo,
+  tokens de subagentes, tempo de parede) e a segunda é estado do portfólio
+  (projetos ativos, em andamento, alertas críticos, test pass rate).
+  Nenhum valor, rodapé ou tooltip mudou — só posição e layout.
+
 ## [0.25.0] - 2026-08-10
 
 ### Corrigido
@@ -1187,6 +1201,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.26.0]: https://github.com/JotJunior/cstk-panel/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/JotJunior/cstk-panel/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/JotJunior/cstk-panel/compare/v0.23.1...v0.24.0
 [0.23.1]: https://github.com/JotJunior/cstk-panel/compare/v0.23.0...v0.23.1
