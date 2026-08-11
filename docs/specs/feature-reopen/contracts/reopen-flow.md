@@ -212,7 +212,7 @@ exatamente o que devia (consultou e obedeceu), e nada foi escrito.
 | T-32 | segunda sessao concorrente ⇒ exit `3`, sem tocar a rotacao em curso | FR-012 |
 | T-33 | item 6 detecta state-dir terminal com spec arquivada e cita comandos de feature | FR-016, FR-017 |
 | T-34 | nenhuma opcao oferecida termina em aborto do proprio fluxo | SC-007 |
-| T-35 | backend do round anterior herdado pela execucao nova, mesmo com config global divergente | FR-010, Decision 14 |
+| T-35 | backend da execucao nova segue a config global corrente (mecanismo ja existente de `init`), independente do backend do round anterior — sem heranca, sem flag `--backend` | FR-010, Decision 14 |
 | T-36 | `recover` exit `1` (journal invalido) ⇒ fluxo sai `6` sem rotacionar | FR-011 |
 | T-37 | raiz sem estado mas com `rounds/<label>/` presente ⇒ conciliado, **nao** recusado com exit 4 | coerencia 6.a × `rotate` |
 

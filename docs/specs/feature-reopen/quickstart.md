@@ -1,7 +1,8 @@
 # Quickstart: feature-reopen
 
 Cenarios que validam a implementacao end-to-end. Um por fluxo critico, cobrindo
-as 3 user stories, os dois backends e os caminhos de erro.
+as 3 user stories, os dois backends (incluindo linhagem com backend misto —
+Scenario 19) e os caminhos de erro.
 
 Convencoes: `<PAP>` = raiz do projeto-alvo; `<SD>` =
 `<PAP>/.claude/feature-00c-state/<short>`; `RS` =
@@ -277,6 +278,49 @@ Tres injecoes de falha, cada uma partindo de um state-dir limpo:
    - `--check-coverage` sai `0` — `tests/test_state-rounds.sh` existe e cobre o
      script novo (orfao faria sair `1`);
    - suite verde nas duas plataformas.
+
+---
+
+## Scenario 19: Linhagem com backend misto e comportamento intencional (FR-010, Decision 14)
+
+Cobre a resolucao do "Decision 14 (FR-010)" registrada no `research.md`:
+a execucao nova **nao herda** o backend do round anterior nem existe flag
+`--backend` — ela usa a config global corrente, exatamente como qualquer
+`init` em state-dir limpo. Dois sub-cenarios, nas duas direcoes.
+
+### 19a — round `state.json` + execucao nova `state.db` (caso comum)
+
+1. Preparar state-dir com config global `state_backend=sqlite`
+   (`cstk state enable-sqlite`) e uma execucao anterior `concluida`
+   persistida em `state.json` (perfil das 21 execucoes legadas do repo de
+   referencia).
+2. `/feature-00c --reopen <short> "<incremento>"`, confirmar `reabrir`.
+3. **Expected**:
+   - `<SD>/rounds/r01/state.json` preservado (round permanece no formato em
+     que foi gravado — nunca convertido);
+   - `<SD>/state.db` novo existe (backend resolvido pela config global, nao
+     pelo round); `<SD>/state.json` novo **nao** existe;
+   - `state-rw.sh get --field '.previous_round'` (lido via backend `sqlite`
+     da execucao nova) devolve `round=r01`, `status=concluida` — a leitura
+     do ponteiro **atravessa** o backend do round sem tratamento especial
+     (paridade v6.3);
+   - nenhum erro, nenhum aviso de "backend divergente" — a divergencia e
+     silenciosamente correta, nao uma condicao de excecao.
+
+### 19b — round `state.db` + execucao nova `state.json` (inverso)
+
+1. Preparar state-dir com config global `state_backend=json` e uma execucao
+   anterior `concluida` persistida em `state.db` (uma das 5 execucoes SQLite
+   do repo de referencia).
+2. `/feature-00c --reopen <short> "<incremento>"`, confirmar `reabrir`.
+3. **Expected**: espelho do 19a — `<SD>/rounds/r01/state.db` preservado
+   intacto, `<SD>/state.json` novo criado pela config global, `.previous_round`
+   legivel normalmente apontando para `r01`.
+
+**Nao-objetivo explicito**: nenhum destes sub-cenarios espera migracao,
+conversao ou aviso de incompatibilidade — a mistura de backends dentro da
+mesma linhagem de feature e o comportamento default esperado desde que a
+config global e independente do historico de rounds (dec-022).
 
 ---
 

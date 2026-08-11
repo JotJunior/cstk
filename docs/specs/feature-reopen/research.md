@@ -485,51 +485,57 @@ unico jeito de herdar sem perguntar.
 
 ---
 
-## Decision 14: Backend da execucao NOVA apos a rotacao (FR-010)
+## Decision 14: Backend da execucao NOVA apos a rotacao (FR-010) — SEM heranca
 
-**Decision**: a execucao nova **herda o backend do round anterior**. Quando o
-round preservado e `state.db`, a execucao nova nasce em `state.db`; quando e
-`state.json`, nasce em `state.json` — independentemente da config global.
-`[PROPOSTA — a validar na implementacao]`
+**Decision**: a execucao nova **NAO herda** o backend do round anterior e **NAO
+ganha flag nova**. Ela usa o **backend global corrente**, exatamente como
+`state-rw.sh init` ja resolve hoje (via `state-backend.sh resolve`) para
+qualquer `init` em state-dir limpo — a reabertura nao e um caso especial desse
+mecanismo. Quando a config global diverge do backend do round preservado, a
+linhagem da feature fica com rounds em backends diferentes. **Isso e
+comportamento intencional**, nao um defeito a corrigir. Decisao do operador em
+resposta a `block-001` (dec-022), score 3.
 
-**Rationale**: lacuna real, apontada pelo gate de doc-quality e confirmada na
-fonte. `state-rw.sh init` resolve o backend a partir da **config global**, nao
-do estado anterior (L398-404, lido nesta onda):
+**Rationale**: a primeira redacao desta Decision tratou backend-misto-na-
+linhagem como quebra de FR-010 e propos heranca via flag `--backend` nova ou
+override implicito de config — ambas ampliariam o blast radius (flag nova em
+`init` toca o **runtime**, exigindo `self-update` em vez de so `install`) por
+um problema que, examinado de novo, nao existe:
 
-```sh
-_sr_effective_backend="json"
-if [ -f "$_SR_DIR/state-backend.sh" ]; then
-  if _sr_sb_out=$(sh "$_SR_DIR/state-backend.sh" resolve 2>/dev/null); then
-    _sr_sb_eb=$(printf '%s\n' "$_sr_sb_out" | grep '^effective_backend=' | head -n 1)
-    [ "$_sr_sb_eb" = "effective_backend=sqlite" ] && _sr_effective_backend="sqlite"
-  fi
-fi
-```
+- **FR-010** exige comportamento observavel **identico entre backends para a
+  MESMA operacao de rotacao** (Scenario 1 vs Scenario 2) — nao exige que os
+  ROUNDS de uma linhagem compartilhem formato de arquivo entre si. Nenhum FR
+  desta feature amarra o backend da execucao nova ao do round anterior.
+- **Desde v6.3 (`state-db-runtime-parity`)**, todos os leitores do runtime 00c
+  (15+, incluindo `_state-read.sh`, `report.sh`, `state-rw.sh get`) sao
+  **backend-agnosticos** — ler um round `state.json` seguido de outro
+  `state.db` na mesma feature ja funciona sem tratamento especial, porque cada
+  leitura resolve o backend do arquivo que tem na frente, nao de um estado
+  global da feature.
+- **Empiricamente, backend misto e o caso COMUM, nao o de canto**: das 26
+  execucoes existentes no repo de referencia, 21 sao `state.json` e a config
+  global corrente ja resolve `sqlite` — ou seja, a PRIMEIRA reabertura de
+  qualquer uma dessas 21 features ja produziria round `json` + execucao nova
+  `sqlite` mesmo com heranca ausente desde sempre. Herdar backend inverteria
+  essa maioria, nao a preservaria.
+- O paralelo com FR-022 (`atomic_commit_enabled` herdado) **nao se aplica
+  aqui**: aquele campo e uma preferencia comportamental do operador sem
+  equivalente em config global; backend de persistencia **ja tem** uma fonte
+  de verdade global (`cstk state enable-sqlite` / `state_backend=`) que a
+  reabertura deve respeitar como qualquer outro `init`, nao substituir.
 
-Sem decisao explicita, um operador com `state_backend=json` global reabriria uma
-feature cujo round e `state.db` e obteria execucao nova em `state.json` — duas
-rodadas da MESMA feature em backends diferentes. Isso quebraria:
-
-- **FR-010** e o Scenario 2 ("comportamento observavel identico");
-- a leitura da cadeia de rounds (`state-rounds.sh list` teria de lidar com
-  backends alternados dentro da mesma feature);
-- a simetria de `.previous_round`, que so foi verificada nos dois backends
-  isoladamente.
-
-O paralelo com FR-022 e direto: a politica de commit ja e **herdada** do round
-anterior em vez de re-decidida. O backend segue a mesma logica — continuidade da
-feature vence a config global, que governa execucoes **novas**, nao continuacoes.
-
-**Mecanismo**: a resolucao do backend do round acontece **antes** da rotacao
-(mesmo momento em que `.atomic_commit_enabled` e lido). Como `init` nao expoe
-flag de backend, a heranca exige uma das duas formas, a decidir na
-implementacao: (a) flag nova `--backend <json|sqlite>` em `init`, ou (b) o modo
-de reabertura setar a config efetiva para o escopo daquela invocacao. A opcao
-(a) e mais explicita e testavel; a (b) nao altera contrato existente. **Nenhuma
-das duas esta implementada hoje** — por isso a marcacao PROPOSTA.
+**Mecanismo**: nenhum novo. `state-rw.sh init` continua resolvendo o backend
+exatamente como faz hoje (linha ~400, `state-backend.sh resolve`), sem
+distinguir reabertura de abertura normal. Confirmado empiricamente:
+`grep -c -- "--backend" state-rw.sh` ⇒ `0` (flag nunca existiu). Esta feature
+nao adiciona esse grep como zero-a-preservar; ela **fecha** a lacuna deixando
+explicito que a ausencia e deliberada.
 
 **Alternatives considered**:
-- *Deixar a config global decidir*: quebra FR-010 exatamente como descrito.
+- *Herdar o backend do round anterior* (redacao original desta Decision):
+  rejeitada — exigiria flag nova em `init` (amplia o runtime, exige
+  `self-update`) ou um override implicito de config por invocacao, por um
+  ganho que os leitores backend-agnosticos da v6.3 ja tornam desnecessario.
 - *Forcar sempre `sqlite`*: converteria silenciosamente projetos que
   deliberadamente usam JSON.
 - *Bloquear a reabertura quando config global != backend do round*: transformaria

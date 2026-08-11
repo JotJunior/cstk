@@ -65,7 +65,7 @@ Constitution v1.3.0 (ratificada 2026-04-20, ultima emenda 2026-07-30).
 | Principio | Status | Notas |
 |-----------|--------|-------|
 | I. SDD recursivo (NON-NEGOTIABLE) | PASS | A propria feature roda a pipeline: `spec.md` + `clarify` + este `plan.md` antes de qualquer codigo. |
-| II. POSIX sh puro, zero dep externa (NON-NEGOTIABLE) | PASS | `state-rounds.sh` e `#!/bin/sh` + `set -eu`, sem bashismo e sem GNU-only. `sqlite3`/`jq` sao **obrigatorias mas licitas**: o script pertence a camada de estado transacional, coberta pelo carve-out do amendment 1.3.0 (4 condicoes atendidas — ver abaixo). `git`/`gh` sao **opcionais** com skip nao-fatal, sob o carve-out 1.1.0. |
+| II. POSIX sh puro, zero dep externa (NON-NEGOTIABLE) | **CONDICIONAL — desvio pre-existente declarado** | `state-rounds.sh` e `#!/bin/sh` + `set -eu`, sem bashismo e sem GNU-only. `sqlite3`/`jq` sao **obrigatorias mas licitas**: o script pertence a camada de estado transacional, coberta pelo carve-out do amendment 1.3.0 (4 condicoes atendidas — ver abaixo). `git`/`gh` sao **opcionais** com skip nao-fatal, sob o carve-out 1.1.0, mas a condicao (b) desse carve-out (confinamento a um arquivo) **nao esta satisfeita** — desvio pre-existente que esta feature toca, nao cria. Status nao e `PASS` puro; ver detalhamento abaixo e resolucao do operador em dec-022. |
 | III. Formato canonico de skill | N/A | Nenhuma skill nova. Muda-se um command (`feature-00c.md`), um script de runtime e `cli/lib/recall.sh` — nenhum SKILL.md e criado. |
 | IV. Zero coleta remota (NON-NEGOTIABLE) | PASS | Toda escrita e local ao projeto-alvo e a `~/.claude/cstk/`. O unico acesso externo e `gh pr view` — leitura do repo do proprio operador, opcional, ja praticada por `commit-mode.sh`. Nenhuma telemetria. |
 | V. Profundidade acima de metricas | PASS | Feature nasce de defeito observado (26 execucoes em beco sem saida) e resolve a causa, nao o sintoma: corrige tambem a opcao inalcancavel do pre-flight (FR-016) e a mensagem de escopo errado (FR-017). |
@@ -88,13 +88,15 @@ Constitution v1.3.0 (ratificada 2026-04-20, ultima emenda 2026-07-30).
 | (b) confinada a UM arquivo | **NAO SATISFEITA — desvio pre-existente, alheio a esta feature.** Medicao direta: `gh` e invocado em `commit-mode.sh`, `issue.sh` (L92-93, L241, L250, L333+) e `cli/lib/session.sh`. Ver Decision 9 §Correcao de premissa. A sonda de FR-021 vai para `commit-mode.sh` por razao tecnica (concentra os helpers `git`/`gh`), **nao** porque isso restaure um confinamento — ele ja nao existia. Esta feature **nao piora** o desvio, mas tambem **nao o corrige**. |
 | (c) declarada na feature | Esta secao + `research.md` Decision 9. |
 
-**Resultado do gate**: nenhum FAIL introduzido **por esta feature**. Ha, porem,
-um **desvio pre-existente do Principio II** (condicao (b) do carve-out 1.1.0
-para `gh`) que esta feature toca ao estender `commit-mode.sh` — descoberto pelo
-gate de veracidade e **registrado como bloqueio humano**, nao absorvido em
-silencio. A decisao de regularizar (amendment declarando `gh` como dep opcional
-multi-arquivo, ou consolidacao num unico adapter) e do operador e esta fora do
-escopo desta feature.
+**Resultado do gate**: **CONDICIONAL** — nenhum FAIL introduzido **por esta
+feature**, mas o gate nao fecha como `PASS` puro. Ha um **desvio pre-existente
+do Principio II** (condicao (b) do carve-out 1.1.0 para `gh`) que esta feature
+toca ao estender `commit-mode.sh` — descoberto pelo gate de veracidade e
+**registrado como bloqueio humano** (block-001), nao absorvido em silencio.
+**Resolucao do operador (dec-022)**: manter como divida declarada — sem
+amendment de constitution, sem consolidacao de adapter, sem tarefa de refactor
+aberta nesta feature. A execucao prossegue com o desvio explicitamente
+registrado, nao corrigido.
 
 **Honestidade sobre a versao anterior deste gate**: a primeira redacao marcou a
 condicao (b) como "resolvida" apoiada na premissa falsa de que `gh` estava
@@ -111,7 +113,7 @@ docs/specs/feature-reopen/
 ├── plan.md                        # este arquivo
 ├── research.md                    # Phase 0 — 13 decisions
 ├── data-model.md                  # Phase 1 — 6 entidades
-├── quickstart.md                  # Phase 1 — 18 cenarios
+├── quickstart.md                  # Phase 1 — 19 cenarios
 └── contracts/
     ├── state-rounds.md            # CLI do script novo (PROPOSTA)
     ├── reopen-flow.md             # fluxo do --reopen no command
@@ -199,7 +201,6 @@ portugues.
 | 7 | Extensao de `test_recall.sh` (T-40..T-49) | teste | SC-003 |
 | 8 | Delta na spec existente (`## Delta Requirements`) | `feature-00c.md` | FR-014 |
 | 9 | Continuidade de backlog por fase apendada | `feature-00c.md` | FR-015 |
-| 10 | **Heranca de backend do round anterior** (Decision 14) | `feature-00c.md` / `state-rw.sh` | FR-010 |
 
 Invariantes de teste novos exigidos pelos gates:
 
@@ -209,7 +210,7 @@ Invariantes de teste novos exigidos pelos gates:
 | T-51 | `gh` ausente/nao autenticado ⇒ `probe_status=skipped-*` e "nao verificado" — **nunca** "sem pendencia" | FR-021, I-P1 |
 | T-52 | branch com nome iniciado por `-` nao e consumida como flag (`--` separador) | gate security (LOW) |
 | T-53 | sonda nunca bloqueia: com pendencia detectada, a reabertura prossegue apos confirmacao | FR-021 |
-| T-35 | backend do round anterior e herdado pela execucao nova, contra config global divergente | FR-010, Decision 14 |
+| T-35 | backend da execucao nova e o backend global corrente, independente do backend do round anterior — sem heranca, sem flag `--backend` (linhagem mista e intencional) | FR-010, Decision 14 |
 
 ### Fora de escopo (registrado deliberadamente)
 
@@ -236,8 +237,17 @@ Invariantes de teste novos exigidos pelos gates:
 
 - **Regularizacao do `gh` perante a condicao (b) do carve-out 1.1.0** — desvio
   pre-existente (invocado em `commit-mode.sh`, `issue.sh` e `cli/lib/session.sh`).
-  Ver §Constitution Check e Decision 9. Requer decisao do operador
-  (amendment ou consolidacao num adapter unico).
+  Ver §Constitution Check e Decision 9. **Resolvido pelo operador (dec-022,
+  resposta ao block-001)**: manter como divida declarada — sem emenda de
+  constitution, sem consolidacao de adapter, sem tarefa de refactor aberta no
+  backlog desta feature. Esta feature nao criou o desvio e apenas o toca ao
+  estender `commit-mode.sh`.
+- **Flag `--backend` em `state-rw.sh init` / heranca de backend do round
+  anterior** — **resolvido pelo operador (dec-022)**: fora do escopo desta
+  feature. A execucao nova usa o backend global corrente (mecanismo ja
+  existente, sem mudanca); linhagem com rounds em backends diferentes e
+  comportamento intencional, nao defeito — ver Decision 14 (research.md,
+  redacao revisada) e Scenario 19 (quickstart.md).
 
 - **Liveness do lock (limite de G6)** — `state-lock.sh acquire --force` so
   recusa com owner **vivo**, e o owner gravado e o `$PPID` de um shell de tool
@@ -269,8 +279,13 @@ Revalidacao apos o design, conforme ETAPA 7 — **nao** por inercia:
 | Principio VI segue integro? | Sim. Contratos existentes citam arquivo e linha; contratos novos estao marcados `[PROPOSTA]`; FR-021 proibe explicitamente converter "nao verificado" em "sem pendencia". |
 | Algum amendment de constitution passou a ser necessario? | Nao — e esse foi um resultado do design, nao uma premissa. |
 
-**Resultado do re-check: PASS.** `## Complexity Tracking` fica **vazio** por
-ausencia de violacao a justificar.
+**Resultado do re-check: PASS para o design da Fase 1** — nenhuma violacao
+NOVA introduzida pelo desenho tecnico. Isso nao promove o Constitution Check
+inicial de `CONDICIONAL` para `PASS`: o desvio pre-existente do Principio II
+(condicao (b) do carve-out 1.1.0) permanece, declarado e nao corrigido por
+decisao do operador (dec-022). `## Complexity Tracking` fica **vazio** porque
+a violacao **existente** e uma divida pre-feature assumida explicitamente, nao
+uma complexidade nova a justificar.
 
 ## Complexity Tracking
 
