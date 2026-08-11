@@ -2,7 +2,7 @@
 # statusline.sh — subcomando `cstk statusline` (feature plan-usage-capture,
 # FASE 3 / tasks.md 3.1.1-3.1.6, dec-042).
 #
-# Provisiona a chave UNICA `statusLine.command` do settings.json do
+# Provisiona a chave `statusLine` (type+command) do settings.json do
 # harness (research.md Decision 2, plan.md linha 17-24) apontando para
 # `statusline-plan-usage.sh` (o entry-point de captura da FASE 2).
 #
@@ -78,8 +78,8 @@ USO:
   cstk statusline status  [--catalog DIR]
 
 install:
-  Escreve/atualiza a chave `statusLine.command` de
-  ${HOME}/.claude/settings.json apontando para
+  Escreve/atualiza a chave `statusLine` (com `type: "command"`, exigido
+  pelo schema do harness) de ${HOME}/.claude/settings.json apontando para
   <catalog>/skills/agente-00c-runtime/hooks/statusline-plan-usage.sh
   (catalog default: ${HOME}/.claude).
 
@@ -87,7 +87,8 @@ install:
   desta feature), o valor original e preservado movendo-o para a
   variavel de ambiente CSTK_STATUSLINE_INNER_COMMAND — NUNCA sobrescrito
   silenciosamente. Idempotente: rodar 2x seguidas nao aninha wrapper
-  sobre wrapper.
+  sobre wrapper. Repara `statusLine` sem `type` (estado escrito pela
+  v7.2.0, que fazia o harness descartar o settings.json inteiro).
 
 status:
   Reporta se a captura esta instalada e ativa em
@@ -130,14 +131,24 @@ statusline_cmd_install() {
   if ! _sl_detect_jq; then
     log_warn "statusline install: jq ausente — nao da para editar settings.json com seguranca."
     log_warn "statusline install: cole manualmente esta chave em $_si_settings:"
-    printf '  "statusLine": { "command": "%s" }\n' "$_si_script" >&2
+    printf '  "statusLine": { "type": "command", "command": "%s" }\n' "$_si_script" >&2
     return 1
   fi
 
   _si_cur=""
+  _si_type=""
   if [ -f "$_si_settings" ]; then
     _si_cur=$(jq -r '.statusLine.command // empty' -- "$_si_settings" 2>/dev/null) || _si_cur=""
+    _si_type=$(jq -r '.statusLine.type // empty' -- "$_si_settings" 2>/dev/null) || _si_type=""
   fi
+
+  # `type` correto e pre-condicao dos ramos de no-op abaixo. Um settings.json
+  # com o `command` JA apontando para o script certo mas SEM `type` esta
+  # QUEBRADO (o harness rejeita o arquivo inteiro) — sair por "nada a fazer"
+  # ali deixaria o operador travado sem remediacao possivel pelo proprio
+  # comando. Nesse estado seguimos para a escrita, que repara o campo.
+  _si_type_ok=0
+  [ "$_si_type" = "command" ] && _si_type_ok=1
 
   case "$_si_cur" in
     "")
@@ -145,12 +156,20 @@ statusline_cmd_install() {
       _si_msg="instalado (sem statusline previa)"
       ;;
     "$_si_script")
-      log_info "statusline install: ja instalado e atualizado em $_si_settings (nada a fazer)"
-      return 0
+      if [ "$_si_type_ok" = 1 ]; then
+        log_info "statusline install: ja instalado e atualizado em $_si_settings (nada a fazer)"
+        return 0
+      fi
+      _si_new="$_si_script"
+      _si_msg="reparado: statusLine.type ausente/invalido (settings.json era rejeitado inteiro pelo harness)"
       ;;
     *"CSTK_STATUSLINE_INNER_COMMAND="*"$_si_script")
-      log_info "statusline install: ja instalado (customizacao preservada) em $_si_settings (nada a fazer)"
-      return 0
+      if [ "$_si_type_ok" = 1 ]; then
+        log_info "statusline install: ja instalado (customizacao preservada) em $_si_settings (nada a fazer)"
+        return 0
+      fi
+      _si_new="$_si_cur"
+      _si_msg="reparado: statusLine.type ausente/invalido (customizacao previa mantida intacta)"
       ;;
     *)
       _si_escaped=$(_sl_escape_single_quotes "$_si_cur")
@@ -177,21 +196,44 @@ statusline_cmd_install() {
       log_error "statusline install: mktemp em $_si_settings_dir falhou"
       return 1
     }
-    if ! jq --arg cmd "$_si_new" '.statusLine.command = $cmd' -- "$_si_settings" > "$_si_tmp" 2>/dev/null; then
+    # `type` e OBRIGATORIO no schema de settings.json do Claude Code —
+    # `{"statusLine": {"command": ...}}` sem ele e recusado com
+    # `statusLine.type: Invalid value. Expected one of: "command"`, e o
+    # harness DESCARTA O ARQUIVO INTEIRO (nao so a chave invalida), deixando
+    # o operador sem permissions/mcpServers/tudo. Setar campo a campo, nao
+    # substituir o objeto, para preservar subchaves que o operador tenha
+    # (ex.: `padding`). Idempotente e auto-reparador: um settings.json que
+    # ja tenha `statusLine` SEM `type` (escrito por versao anterior a este
+    # fix) e consertado no proximo install.
+    if ! jq --arg cmd "$_si_new" '.statusLine.type = "command" | .statusLine.command = $cmd' -- "$_si_settings" > "$_si_tmp" 2>/dev/null; then
       log_error "statusline install: jq falhou ao mesclar $_si_settings (JSON invalido?)"
       rm -f -- "$_si_tmp"
       return 1
     fi
+    # `mv` carrega a permissao do TEMP para o destino — sem preservar o modo
+    # original, um settings.json 0644 vira o modo do mktemp (ou o inverso,
+    # conforme umask). `chmod --reference` e GNU-only; `stat` diverge entre
+    # BSD (-f %Lp) e GNU (-c %a), entao tenta os dois e cai em 0600 (o mais
+    # restritivo) se nenhum responder — nunca AFROUXA permissao por engano.
+    _si_mode=$(stat -f '%Lp' -- "$_si_settings" 2>/dev/null) || _si_mode=""
+    if [ -z "$_si_mode" ]; then
+      _si_mode=$(stat -c '%a' -- "$_si_settings" 2>/dev/null) || _si_mode=""
+    fi
+    case "$_si_mode" in
+      ''|*[!0-7]*) _si_mode=600 ;;
+    esac
+    chmod "$_si_mode" -- "$_si_tmp" 2>/dev/null || :
     if ! mv -f -- "$_si_tmp" "$_si_settings"; then
       log_error "statusline install: mv atomico falhou para $_si_settings"
       rm -f -- "$_si_tmp"
       return 1
     fi
   else
-    if ! jq -n --arg cmd "$_si_new" '{"statusLine": {"command": $cmd}}' > "$_si_settings" 2>/dev/null; then
+    if ! jq -n --arg cmd "$_si_new" '{"statusLine": {"type": "command", "command": $cmd}}' > "$_si_settings" 2>/dev/null; then
       log_error "statusline install: falha ao criar $_si_settings"
       return 1
     fi
+    chmod 600 -- "$_si_settings" 2>/dev/null || :
   fi
 
   log_info "statusline install: $_si_msg ($_si_settings)"
@@ -230,6 +272,19 @@ statusline_cmd_status() {
   _ss_cur=$(jq -r '.statusLine.command // empty' -- "$_ss_settings" 2>/dev/null) || _ss_cur=""
   if [ -z "$_ss_cur" ]; then
     printf 'statusline: nao instalado (statusLine.command ausente em %s)\n' "$_ss_settings"
+    return 1
+  fi
+
+  # `type` ausente = settings.json REJEITADO INTEIRO pelo harness
+  # ("statusLine.type: Invalid value"), nao so a chave. Reportar como
+  # INVALIDO, nao como ativo: com o arquivo descartado a captura nao roda,
+  # e o operador perde tambem permissions/mcpServers/o resto. Detecta o
+  # estado deixado por versoes anteriores a este fix.
+  _ss_type=$(jq -r '.statusLine.type // empty' -- "$_ss_settings" 2>/dev/null) || _ss_type=""
+  if [ "$_ss_type" != "command" ]; then
+    printf 'statusline: INVALIDO — statusLine.type ausente ou diferente de "command" em %s\n' "$_ss_settings"
+    printf '  o harness REJEITA o settings.json inteiro nesse estado (nao so a chave)\n'
+    printf '  remediacao: rode `cstk statusline install` (idempotente, conserta o campo)\n'
     return 1
   fi
 

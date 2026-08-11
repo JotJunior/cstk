@@ -186,7 +186,11 @@ scenario_status_ativo_apos_install() {
 scenario_status_aponta_para_outro_comando() {
   if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
   _home=$(_sl_home_fixture)
-  printf '{"statusLine":{"command":"~/totally-unrelated.sh"}}\n' > "$_home/.claude/settings.json"
+  # `type` incluso de proposito: uma statusline de terceiro que de fato
+  # FUNCIONA tem o campo (sem ele o harness rejeita o settings.json inteiro).
+  # Omiti-lo aqui testaria o estado invalido, nao o "aponta para outro
+  # comando" que este cenario existe para cobrir.
+  printf '{"statusLine":{"type":"command","command":"~/totally-unrelated.sh"}}\n' > "$_home/.claude/settings.json"
 
   _sl_run "$_home" status
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1 (nao ativo), obtido $_CAPTURED_EXIT"; return 1; }
@@ -256,6 +260,94 @@ scenario_help_imprime_uso() {
     *"cstk statusline"*) ;;
     *) _fail "help" "stderr deveria imprimir texto de uso: $_CAPTURED_STDERR"; return 1 ;;
   esac
+  return 0
+}
+
+# ==== `type` obrigatorio no schema do harness (regressao da v7.2.0) ====
+#
+# `{"statusLine": {"command": ...}}` sem `type` e recusado pelo Claude Code
+# com `statusLine.type: Invalid value. Expected one of: "command"`, e o
+# harness DESCARTA O ARQUIVO INTEIRO — o operador perde permissions,
+# mcpServers e tudo mais, nao so a statusline. A v7.2.0 saiu escrevendo
+# exatamente esse JSON invalido.
+
+scenario_install_grava_type_command() {
+  _home=$(_sl_home_fixture)
+  _sl_run "$_home" install
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _t=$(jq -r '.statusLine.type // empty' "$_home/.claude/settings.json" 2>/dev/null)
+  [ "$_t" = "command" ] \
+    || { _fail "type" "esperado statusLine.type=command (senao o harness rejeita o settings.json inteiro), obtido '$_t'"; return 1; }
+  return 0
+}
+
+scenario_install_repara_type_ausente() {
+  # Estado deixado pela v7.2.0: `command` correto, `type` ausente. O install
+  # NAO pode sair por "ja instalado, nada a fazer" — sem reparo o operador
+  # fica travado sem remediacao pelo proprio comando.
+  _home=$(_sl_home_fixture)
+  _scr=$(_sl_script_path_for "$_home")
+  jq -n --arg c "$_scr" '{"permissions":{"allow":["Bash"]},"statusLine":{"command":$c}}' \
+    > "$_home/.claude/settings.json"
+  _sl_run "$_home" install
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _t=$(jq -r '.statusLine.type // empty' "$_home/.claude/settings.json" 2>/dev/null)
+  [ "$_t" = "command" ] || { _fail "reparo" "type nao foi reparado, obtido '$_t'"; return 1; }
+  _c=$(jq -r '.statusLine.command // empty' "$_home/.claude/settings.json" 2>/dev/null)
+  [ "$_c" = "$_scr" ] || { _fail "command" "command alterado no reparo: $_c"; return 1; }
+  jq -e '.permissions.allow[0] == "Bash"' "$_home/.claude/settings.json" >/dev/null \
+    || { _fail "outras chaves" "reparo destruiu chaves nao relacionadas"; return 1; }
+  return 0
+}
+
+scenario_install_repara_type_preservando_customizacao() {
+  _home=$(_sl_home_fixture)
+  _scr=$(_sl_script_path_for "$_home")
+  _wrapped="CSTK_STATUSLINE_INNER_COMMAND='meu-tema' $_scr"
+  jq -n --arg c "$_wrapped" '{"statusLine":{"command":$c}}' > "$_home/.claude/settings.json"
+  _sl_run "$_home" install
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _t=$(jq -r '.statusLine.type // empty' "$_home/.claude/settings.json" 2>/dev/null)
+  [ "$_t" = "command" ] || { _fail "reparo" "type nao reparado, obtido '$_t'"; return 1; }
+  _c=$(jq -r '.statusLine.command // empty' "$_home/.claude/settings.json" 2>/dev/null)
+  [ "$_c" = "$_wrapped" ] \
+    || { _fail "customizacao" "reparo nao pode aninhar nem perder o wrapper; obtido: $_c"; return 1; }
+  return 0
+}
+
+scenario_install_preserva_subchaves_do_statusline() {
+  # `padding` (e afins) sao do operador — o reparo seta campo a campo em vez
+  # de substituir o objeto.
+  _home=$(_sl_home_fixture)
+  _scr=$(_sl_script_path_for "$_home")
+  jq -n --arg c "$_scr" '{"statusLine":{"command":$c,"padding":1}}' > "$_home/.claude/settings.json"
+  _sl_run "$_home" install
+  jq -e '.statusLine.padding == 1 and .statusLine.type == "command"' "$_home/.claude/settings.json" >/dev/null \
+    || { _fail "subchaves" "padding perdido no reparo: $(jq -c '.statusLine' "$_home/.claude/settings.json")"; return 1; }
+  return 0
+}
+
+scenario_install_idempotente_apos_reparo() {
+  _home=$(_sl_home_fixture)
+  _scr=$(_sl_script_path_for "$_home")
+  jq -n --arg c "$_scr" '{"statusLine":{"command":$c}}' > "$_home/.claude/settings.json"
+  _sl_run "$_home" install
+  _sl_run "$_home" install
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'nada a fazer' \
+    || { _fail "idempotencia" "2a rodada apos reparo deveria ser no-op; stderr=$_CAPTURED_STDERR"; return 1; }
+  return 0
+}
+
+scenario_status_reporta_type_ausente_como_invalido() {
+  _home=$(_sl_home_fixture)
+  _scr=$(_sl_script_path_for "$_home")
+  jq -n --arg c "$_scr" '{"statusLine":{"command":$c}}' > "$_home/.claude/settings.json"
+  _sl_run "$_home" status
+  [ "$_CAPTURED_EXIT" = 1 ] \
+    || { _fail "exit" "esperado 1 (estado invalido nao e 'ativo'), obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q 'INVALIDO' \
+    || { _fail "stdout" "status deveria reportar INVALIDO; obtido: $_CAPTURED_STDOUT"; return 1; }
   return 0
 }
 
