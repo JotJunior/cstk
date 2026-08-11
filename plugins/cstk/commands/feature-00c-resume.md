@@ -43,8 +43,13 @@ if [ ! -d "$AGENTE_00C_STATE_DIR" ]; then
   exit 6
 fi
 
-if [ ! -f "$AGENTE_00C_STATE_DIR/state.json" ]; then
-  stderr "state.json ausente em $AGENTE_00C_STATE_DIR"
+# Backend-agnostico (state-db-runtime-parity, v6.3): sob backend SQLite
+# NAO existe state.json — o estado transacional e state.db. Exigir
+# state.json aqui recusaria, com exit 6, toda execucao iniciada apos
+# `cstk state enable-sqlite`. Mesma forma ja usada em feature-00c.md.
+if [ ! -f "$AGENTE_00C_STATE_DIR/state.json" ] \
+   && [ ! -f "$AGENTE_00C_STATE_DIR/state.db" ]; then
+  stderr "estado ausente em $AGENTE_00C_STATE_DIR (nem state.json nem state.db)"
   exit 6
 fi
 ```
@@ -57,18 +62,31 @@ fi
 > `agente-00c-feature-orchestrator.md`.
 
 ```
-1. checar lock — se ocupado (PID vivo), abortar
-   if state-lock.sh check --state-dir "$AGENTE_00C_STATE_DIR"; then
-     stderr "outra sessao ativa para $SHORT"
-     exit 3
-   fi
+1. checar lock — ATENCAO a semantica REAL do script: `check` sai **0
+   quando o lock esta LIVRE** e **3 quando esta DETIDO**, e NAO distingue
+   dono vivo de morto (basta o diretorio `.lock` existir). Escrever
+   `if state-lock.sh check ...; then abortar` INVERTE a condicao: aborta
+   com lock livre e prossegue com lock ocupado.
+   state-lock.sh check --state-dir "$AGENTE_00C_STATE_DIR" || _lock_detido=1
 
-2. adquirir lock
-   state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" || {
-     stderr "falha ao adquirir lock"; exit 3;
-   }
+2. adquirir lock — lock ORFAO (dono morto) e o caso NORMAL entre ondas: o
+   processo que fez o `acquire` da onda anterior ja saiu. Quem distingue
+   vivo de morto e o `acquire --force`: readquire emitindo
+   `DIAG|warning|lock-force-acquired` quando o dono esta morto, e RECUSA
+   com exit 3 quando o dono esta VIVO.
+   state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" \
+     || state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" --force \
+     || { stderr "outra sessao ativa para $SHORT (dono do lock VIVO)"; exit 3; }
+
+   > Preferivel a `--force`: o command pai libera o lock ANTES de agendar a
+   > proxima onda (passo 5, Cleanup). Ai a retomada adquire limpo e o
+   > `--force` nunca precisa disparar.
 
 3. validar hash state.json contra .sha256 (FR-014)
+   NOTA (backend SQLite): `sha256-verify` e no-op e sai 0 — a integridade
+   do state.db vem de `PRAGMA integrity_check`, por desenho
+   (state-db-foundation). Exit 0 aqui NAO significa "hash conferido" sob
+   SQLite; significa "nao ha .sha256 a conferir".
    state-rw.sh sha256-verify --state-dir "$AGENTE_00C_STATE_DIR" || {
      # divergencia = bloqueio humano por tampering (gera relatorio parcial)
      bloqueios.sh register --state-dir "$AGENTE_00C_STATE_DIR" \

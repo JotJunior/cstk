@@ -36,7 +36,11 @@ Extrair `--projeto-alvo-path` (default = `cwd`). Defina:
 #### 2.a. Estado existe?
 
 ```bash
-[ -f <SD>/state.json ] || die "Nao ha execucao 00C em <PAP>."
+# Backend-agnostico (state-db-runtime-parity, v6.3): sob backend SQLite o
+# estado e state.db, nao state.json. Checar so state.json tornaria
+# impossivel abortar execucao iniciada apos `cstk state enable-sqlite`.
+[ -f <SD>/state.json ] || [ -f <SD>/state.db ] \
+  || die "Nao ha execucao 00C em <PAP>."
 ```
 
 Se nao existe, retorne mensagem clara e termine (exit 0 — operador pode
