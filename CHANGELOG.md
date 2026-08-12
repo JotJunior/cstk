@@ -5,6 +5,47 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.3.1] - 2026-08-12
+
+Fecha duas issues abertas automaticamente pelo agente-00C durante execucoes
+reais e confirmadas como defeitos vivos na triagem: o `drift.sh` nao
+funcionava sob o backend SQLite (hoje o default), e um fallback de branch
+default em `commit-mode.sh` era inalcancavel por semantica de exit status de
+pipe — fazendo o finalize pular push+PR em silencio.
+
+### Fixed
+
+- **`drift.sh` backend-agnostico (#101, supersede #81).** O script estava
+  cravado em `state.json` — o proprio cabecalho registrava o adiamento
+  ("mutadores fora do escopo do porte 2.1.3"), que virou defeito quando o
+  SQLite passou a backend default: `drift.sh init` abortava com "state.json
+  ausente" em qualquer projeto novo, derrubando a deteccao de drift do
+  agente-00c. Leitores (`aspectos`, `debug`) agora materializam via
+  `state_read_materialize` como o `check` ja fazia; `init` grava os 3 campos
+  num unico envelope multi-campo de `state-rw.sh set` (um set por campo
+  abriria tres transacoes sob SQLite, com janela de estado parcial);
+  `mark-touched` calcula o array novo do estado materializado e grava pela
+  interface canonica. Helpers JSON-only sem chamador removidos — o proprio
+  `test_state-parity-sweep` acusou a entrada morta da allowlist apos o
+  porte, e ela saiu junto. Travas de regressao: 2 cenarios novos em
+  `tests/test_drift.sh` sob `state_backend=sqlite`, incluindo o assert de
+  que o mutador nao cria `state.json` fantasma.
+- **Fallback de branch default alcancavel em `commit-mode.sh` (#98).**
+  `var=$(git symbolic-ref ... | sed ...) || var="main"` nunca cai no
+  fallback: o exit status de um pipe e o do ULTIMO comando, e o `sed` sai 0
+  com entrada vazia. Em repo sem `origin/HEAD`, `_default` ficava VAZIO,
+  `git rev-list "..branch" --count` degenerava para 0 e o `finalize`
+  concluia "sem commits novos" — pulando push+PR em silencio (mesma familia
+  dos sug-007/sug-008). As 3 ocorrencias reescritas com captura em duas
+  etapas, tornando o exit do `symbolic-ref` testavel e o fallback real.
+  Trava de regressao: guard estatico em `tests/test_commit-mode.sh` que
+  reprova o idioma de fallback-apos-pipe em qualquer ponto do script.
+
+### Changed
+
+- **`.gitignore`**: ignora `.mcp*` (config local de MCP, por maquina/sessao)
+  e `*.docx`/`*.pptx` em qualquer diretorio.
+
 ## [7.3.0] - 2026-08-11
 
 Uma feature concluída era um beco sem saída: reinvocar `/feature-00c` com o
@@ -5678,6 +5719,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.3.1]: https://github.com/JotJunior/cstk/releases/tag/v7.3.1
 [7.3.0]: https://github.com/JotJunior/cstk/releases/tag/v7.3.0
 [7.2.1]: https://github.com/JotJunior/cstk/releases/tag/v7.2.1
 [7.2.0]: https://github.com/JotJunior/cstk/releases/tag/v7.2.0
