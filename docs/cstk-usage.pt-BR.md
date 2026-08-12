@@ -59,6 +59,57 @@ de prompt/conversa no schema. Diretório/arquivos do sidecar usam permissão
 restritiva (`chmod 700` em diretórios, `chmod 600` em arquivos), mesma
 postura do `knowledge.db`.
 
+## Gauge de uso do plano (`cstk statusline` + `cstk plan-usage`)
+
+Desde a v7.2.0 o mesmo `knowledge.db` também guarda o **gauge de uso do
+plano** que você vê no `/usage` — sem credencial OAuth, sem API key: o
+Claude Code já envia `rate_limits.five_hour`/`seven_day` no payload da
+`statusLine.command` a cada render, então o hook de captura
+(`statusline-plan-usage.sh`) só lê o que já está passando e persiste na
+tabela `plan_usage` (migração aditiva de schema 13→14).
+
+```bash
+# Habilitar a captura (opt-in, default DESLIGADO)
+cstk statusline install
+
+# A captura está ativa (e o settings.json válido)?
+cstk statusline status
+
+# Captura mais recente por escopo (five_hour / seven_day)
+cstk plan-usage [--json] [--db PATH]
+
+# Série temporal por escopo
+cstk plan-usage history [--scope five_hour|seven_day] [--limit N] [--since ISO] [--json] [--db PATH]
+```
+
+- `statusline install` — escreve/atualiza `statusLine.command` em
+  `~/.claude/settings.json` apontando para o hook de captura. Um comando de
+  statusline customizado já existente é preservado em
+  `CSTK_STATUSLINE_INNER_COMMAND` e encadeado como pass-through obrigatório
+  do stdout — nunca sobrescrito em silêncio. Idempotente (rodar 2x não
+  aninha wrapper sobre wrapper); desde a v7.2.1 também **repara** estado
+  quebrado (`statusLine.type` ausente, que faz o harness descartar o arquivo
+  inteiro) e preserva a permissão original do arquivo.
+- `statusline status` — reporta o estado atual; imprime `INVALIDO` com a
+  remediação (exit 1) quando o `settings.json` está num estado que o
+  harness rejeitaria.
+- `plan-usage` / `plan-usage history` — captura mais recente por escopo /
+  série temporal; `history` reusa literalmente `--limit`/`--since` do
+  `cstk usage` (sem convenção nova de paginação). Escopo sem medição
+  imprime `nao medido` (texto) / `null` (`--json`) — nunca `0` fabricado.
+
+Semântica da captura (Princípio VI): ausência TOTAL de `rate_limits` no
+payload nunca gera linha; ausência PARCIAL de um campo dentro de um escopo
+presente grava `NULL` explícito, nunca `0`. O throttle compara sempre contra
+o **último registro persistido** daquele escopo, com tolerância de 2 casas
+decimais em `used_percentage` — ruído de ponto flutuante do harness não gera
+linha nova.
+
+Spec: [`specs/plan-usage-capture/`](./specs/plan-usage-capture/)
+([`contracts/cli-plan-usage.md`](./specs/plan-usage-capture/contracts/cli-plan-usage.md),
+[`contracts/statusline-hook.md`](./specs/plan-usage-capture/contracts/statusline-hook.md),
+[`data-model.md`](./specs/plan-usage-capture/data-model.md)).
+
 ## Documentação completa
 
 - [`specs/_archived/2026-08-08-loose-usage-capture/spec.md`](./specs/_archived/2026-08-08-loose-usage-capture/spec.md) — user stories, FRs, success criteria

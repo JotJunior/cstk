@@ -95,6 +95,7 @@ prerequisites validated in FR-PRE-001..004).
 | Command | When to use |
 |---------|-------------|
 | `/feature-00c "<descricao>" [<short-name>]` | Add a new feature to an existing project |
+| `/feature-00c "<incremento>" --reopen=<short-name>` | Reopen a completed feature to receive an increment (v7.3.0 — see below) |
 | `/feature-00c-resume <short-name> [--resposta-bloqueio "..."]` | Resume after a pause or schedule |
 | `/feature-00c-abort <short-name> [--purge-backups]` | Manual abort (SIGTERM + 60s grace period) |
 
@@ -104,6 +105,45 @@ in the same project are allowed; concurrency with an active agente-00c is
 blocked (FR-026). Full reuse of the shared POSIX runtime
 (`agente-00c-runtime`). Details in
 [`specs/_archived/feature-00c/`](./specs/_archived/feature-00c/).
+
+### Reopening a completed feature (`--reopen`)
+
+Until v7.3.0 a completed feature was a dead end: re-invoking `/feature-00c`
+with the same short-name died at init because the state already existed, and
+the only way out was editing state by hand or opening a parallel feature —
+fragmenting the spec and losing the identity of what is, conceptually, the
+same capability. `/feature-00c "<incremento>" --reopen=<short-name>` fixes
+that:
+
+- **The previous execution is preserved as an immutable round** and the new
+  execution starts pointing at it. Rotation primitive: `state-rounds.sh`
+  (`next-label`, `rotate`, `recover`, `list`); the rotation commit is a
+  single directory `mv` (POSIX's only atomic primitive) with journal +
+  staging, and `recover` resolves an interruption by command — no manual
+  file editing. Rounds are zero-padded (`r01`, `r02`) for correct
+  lexicographic ordering.
+- **The increment lands in the existing spec, not in a parallel one**: the
+  archived spec is restored and `specify` records the increment as
+  `## Delta Requirements`; `create-tasks` detects the reopening and
+  **appends** a new phase to `tasks.md`, preserving completed tasks
+  (phase number computed by `next-task-id.sh --phase`).
+- **Advisory opinion + human block before touching disk**: the command
+  issues a reopen-vs-new-feature opinion and pauses for the human decision
+  before any write.
+- **Pending-work probe fail-closed**: `commit-mode.sh probe-pending-work`
+  checks for non-integrated work (branch not merged into the default, open
+  PR). A field only receives a concrete value from a successful, parsed
+  read; any other outcome keeps `unknown` + `probe_status=skipped-*` — it
+  never infers `merged=no` from a failure.
+- **Round provenance in the knowledge index**: `cstk recall --reindex`
+  namespaces provenance per round, so preserved rounds are never counted as
+  active executions nor double-counted (including rounds on the SQLite
+  backend).
+
+Spec: [`specs/feature-reopen/`](./specs/feature-reopen/)
+([`contracts/reopen-flow.md`](./specs/feature-reopen/contracts/reopen-flow.md),
+[`contracts/state-rounds.md`](./specs/feature-reopen/contracts/state-rounds.md),
+[`contracts/pending-work-probe.md`](./specs/feature-reopen/contracts/pending-work-probe.md)).
 
 ## Per-wave model routing (model-routing)
 
@@ -185,7 +225,7 @@ depend on the orchestrator remembering):
 | Automatic provisioning | `apply_guard_hooks()` in `cli/lib/hooks.sh` (`project` scope) |
 | Shared host allowlist | `cli/lib/trusted-hosts.sh` |
 | Auditable log | `.claude/enforcement-log.jsonl` (per target project) |
-| Spec | [`specs/enforced-guards/`](./specs/enforced-guards/) |
+| Spec | [`specs/_archived/2026-07-28-enforced-guards/`](./specs/_archived/2026-07-28-enforced-guards/) |
 
 Runtime complements: `PostToolUse` tool-call metric hook (append-only sidecar,
 v5.21.0) and the `DIAG|severity|code|message|fix` diagnostic envelope in the

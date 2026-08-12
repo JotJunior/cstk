@@ -34,14 +34,21 @@ flowchart TD
         S[plugins/cstk/skills/*]
         C[plugins/cstk/commands/*]
         A[plugins/cstk/agents/*]
-        L[language-related/*]
+        L[plugins/cstk-language-go/*]
     end
     BR[scripts/build-release.sh] -->|tarball + SHA-256| REL[(GitHub Release)]
     Fonte --> BR
     REL -->|"curl | sh / cstk update"| INST["~/.claude/skills, commands, agents"]
+    Fonte -->|".claude-plugin/marketplace.json<br/>/plugin install cstk@cstk"| PLG["Plugin do Claude Code (installPath)"]
     INST -->|consumido por| CC[Claude Code]
+    PLG -->|consumido por| CC
     CC -.->|cstk doctor detecta drift| INST
 ```
+
+Desde a v6.9.0 o mesmo catálogo também é instalável como **plugin nativo do
+Claude Code** (`/plugin marketplace add JotJunior/cstk`) — um segundo caminho
+oficial de entrega ao lado do tarball clássico; o binário `cstk` em si não
+faz parte do plugin. Ver [README §Instalação](./README.pt-BR.md#instalação).
 
 ### 1.1 O pipeline SDD
 
@@ -112,7 +119,7 @@ cstk install --from "file://$PWD/dist/cstk-X.Y.Z.tar.gz"
 2. **`description` como trigger condition**, não resumo: "Use quando X, Y ou Z.
    NÃO use quando W."
 3. Documente **gotchas** — o conteúdo mais valioso.
-4. **Generalize**: skills em `plugins/cstk/skills/` ou `language-related/` **não podem
+4. **Generalize**: skills em `plugins/cstk/skills/` ou `plugins/cstk-language-go/` **não podem
    nomear clientes/empresas/projetos específicos** (ver o aviso em
    [README §Contribuindo](./README.pt-BR.md#contribuindo); caso histórico: remoção de
    `create-report` na v3.12.0). Se não generalizar, a skill pertence a

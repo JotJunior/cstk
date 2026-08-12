@@ -4,7 +4,7 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/JotJunior/cstk?label=latest%20release&color=blue)](https://github.com/JotJunior/cstk/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![SemVer](https://img.shields.io/badge/SemVer-5.x-orange.svg)](./CHANGELOG.md)
+[![SemVer](https://img.shields.io/badge/SemVer-7.x-orange.svg)](./CHANGELOG.md)
 [![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/cstk-blue?logo=readthedocs)](https://jotjunior.github.io/cstk/)
 [![Publish Site](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml)
 
@@ -82,34 +82,46 @@ descartados antes de tocar o disco.
 ## Estrutura
 
 ```
-├── global/                     # Skills globais (independentes de linguagem)
-│   └── skills/                 # 21 skills globais (cada skill é uma pasta)
-│       ├── advisor/
-│       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
-│       ├── analyze/
-│       ├── apply-insights/
-│       ├── briefing/
-│       ├── bugfix/
-│       ├── checklist/
-│       ├── clarify/
-│       ├── constitution/
-│       ├── converge/           # reconcilia spec/plan/tasks vs código real
-│       ├── create-tasks/
-│       ├── e2e-integration-flow/ # testes E2E de integração full-stack (Playwright)
-│       ├── execute-task/
-│       ├── model-selector/     # heurística de roteamento de modelo (sugestor)
-│       ├── owasp-security/
-│       ├── plan/
-│       ├── review-features/
-│       ├── review-task/
-│       ├── specify/
-│       ├── validate-docs-rendered/
-│       └── validate-documentation/
-├── language-related/           # Skills e hooks específicos por linguagem
-│   └── go/                     # Go — ver docs/go-toolkit.md
-├── cli/                        # Binário cstk + libs POSIX
-└── docs/                       # Documentação por tópicos (ver índice abaixo)
+├── plugins/                     # Catálogo, empacotado como plugins instaláveis do Claude Code
+│   ├── cstk/                    # Plugin default (entrada "cstk" no marketplace)
+│   │   ├── commands/            # Os 6 slash commands /agente-00c*, /feature-00c*
+│   │   ├── agents/              # Orquestradores, clarify asker/answerer, data-veracity
+│   │   ├── hooks/hooks.json     # 3 guard hooks enforced (bash-guard, tool-call-tick, agent-usage)
+│   │   └── skills/               # 21 skills globais (cada skill é uma pasta)
+│   │       ├── advisor/
+│   │       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
+│   │       ├── analyze/
+│   │       ├── apply-insights/
+│   │       ├── briefing/
+│   │       ├── bugfix/
+│   │       ├── checklist/
+│   │       ├── clarify/
+│   │       ├── constitution/
+│   │       ├── converge/           # reconcilia spec/plan/tasks vs código real
+│   │       ├── create-tasks/
+│   │       ├── e2e-integration-flow/ # testes E2E de integração full-stack (Playwright)
+│   │       ├── execute-task/
+│   │       ├── model-selector/     # heurística de roteamento de modelo (sugestor)
+│   │       ├── owasp-security/
+│   │       ├── plan/
+│   │       ├── review-features/
+│   │       ├── review-task/
+│   │       ├── specify/
+│   │       ├── validate-docs-rendered/
+│   │       └── validate-documentation/
+│   └── cstk-language-go/        # Plugin do perfil Go (entrada "cstk-language-go")
+│       ├── hooks/                # Hooks específicos de Go
+│       └── skills/               # Go — ver docs/go-toolkit.md
+├── .claude-plugin/marketplace.json  # Manifest do marketplace (2 entradas: cstk, cstk-language-go)
+├── cli/                          # Binário cstk + libs POSIX (não empacotado no plugin — FR-006)
+└── docs/                         # Documentação por tópicos (ver índice abaixo)
 ```
+
+> Instalado via CLI clássico `cstk`, esse mesmo conteúdo pousa em
+> `~/.claude/skills/`, `~/.claude/commands/` e `~/.claude/agents/`
+> (achatado, sem o prefixo `plugins/cstk/`). Instalado via plugin nativo do
+> Claude Code, materializa sob o `installPath` do próprio harness
+> (ver [Instalação](#instalação) para os dois caminhos).
 
 ### Anatomia de uma skill
 
@@ -178,6 +190,13 @@ atomic-commit (commits automáticos + push/PR no finalize), guardas enforced
 (hook fail-closed), sessões paralelas em worktrees e memória de conhecimento
 cross-feature consultada antes de decidir.
 
+Desde a v7.3.0 uma feature concluída deixou de ser beco sem saída:
+`/feature-00c "<incremento>" --reopen=<short-name>` preserva a execução
+anterior como round imutável, grava o incremento como `## Delta Requirements`
+na spec existente e apenda uma fase nova de tasks em vez de regenerar o
+backlog — com parecer advisory (reabrir vs criar feature nova) e bloqueio
+humano antes de tocar disco.
+
 | Tópico | Documento |
 |--------|-----------|
 | Orquestradores `/agente-00c` + `/feature-00c`, model-routing, atomic-commit, guardas | [docs/agente-00c.md](./docs/agente-00c.pt-BR.md) |
@@ -212,7 +231,7 @@ Depois disso, comandos típicos:
 ```bash
 cstk --version                       # confirma instalação
 cstk install                         # instala perfil 'sdd' em ~/.claude/skills/
-cstk install --profile all           # instala TODAS as 29 skills (inclui language-go)
+cstk install --profile all           # instala TODAS as 28 skills (inclui language-go)
 cstk install advisor bugfix          # cherry-pick por nome
 cstk update                          # aplica novas releases preservando edits locais
 cstk update --force                  # sobrescreve skills com edição local
@@ -250,6 +269,52 @@ cstk install --scope project advisor owasp-security
 # (em --scope global, hooks são omitidos com aviso no summary — FR-009c)
 ```
 
+### Via plugin do Claude Code (nativo, sem binário)
+
+Desde a v6.9.0 o catálogo também é distribuível como [plugin nativo do
+Claude Code](https://docs.claude.com/en/docs/claude-code/plugins) — sem
+binário `cstk`, sem clone, sem bootstrap via `curl`:
+
+```text
+/plugin marketplace add JotJunior/cstk
+/plugin install cstk@cstk
+# opcional, apenas projetos Go:
+/plugin install cstk-language-go@cstk
+```
+
+Habilite o plugin e abra uma sessão nova em qualquer projeto — as skills, os
+6 commands `/agente-00c*`/`/feature-00c*` e os guard hooks enforced
+(`pretooluse-bash-guard`, `posttooluse-tool-call-tick`,
+`posttooluse-agent-usage`) ativam automaticamente, **sem** o passo
+`cstk hooks install` (confirmado empiricamente — ver
+[`docs/specs/_archived/2026-08-08-claude-plugin-packaging/spec.md`](docs/specs/_archived/2026-08-08-claude-plugin-packaging/spec.md)
+§Clarifications, assumption A1). O `posttooluse-loose-usage.sh` (captura
+opt-in de consumo) deliberadamente **não** faz parte do `hooks.json` do
+plugin — segue sendo opt-in explícito via `cstk hooks install
+--with-loose-usage`.
+
+**Escolhendo entre os dois caminhos:**
+
+| | Clássico (CLI `cstk`) | Plugin (nativo) |
+|---|---|---|
+| Passo de instalação | one-liner de bootstrap + `cstk install` | `/plugin marketplace add` + `/plugin install` |
+| Fornece o binário `cstk` (`recall`, `usage`, `mcp`, `session`, `serve`, `self-update`) | Sim | **Não** — o formato de plugin não instala binário persistente no `PATH` (FR-006); use o bootstrap clássico para esses |
+| Ativação dos guard hooks | Exige `cstk hooks install` por projeto | Automática ao abrir a sessão, zero passo por projeto |
+| Verificação de integridade | SHA-256 do tarball, fail-closed (`serve-integrity`), allowlist fixa de hosts confiáveis | Pin de commit (`gitCommitSha`) registrado pelo harness + diálogo de confiança "Will install" do próprio harness |
+| Propagação de update | `cstk update` (explícito, por invocação) | **Não é automática**: `claude plugin marketplace update` e depois `claude plugin update cstk --scope <escopo>`, mais reinício de sessão — o próprio CLI de plugin imprime `Restart to apply changes.` |
+
+Os dois caminhos são igualmente oficiais (não há um terceiro mecanismo de
+distribuição sem governança — ver `FR-017` em
+[`docs/specs/current/guards-defense-in-depth.md`](docs/specs/current/guards-defense-in-depth.md))
+e entregam o mesmo conteúdo auditável com **proteção comparável, não
+mecanismos idênticos** — escolha o plugin para o onboarding mais rápido, sem
+binário, de skills + guard hooks; o CLI clássico quando precisar de
+`recall`/`usage`/`mcp`/`session`/`serve`; ou **os dois juntos**: `cstk
+doctor`/`cstk hooks install` detectam o plugin e automaticamente evitam
+registrar os guard hooks em dobro (o plugin vence; `cstk doctor` reporta
+`aligned`/`diverged`/`duplicated-hooks` com correção acionável para cada
+caso).
+
 ### Hooks do runtime 00c (`cstk hooks`)
 
 Os três hooks do runtime 00c — `pretooluse-bash-guard.sh` (guarda
@@ -267,7 +332,19 @@ cd ~/projects/meu-projeto-alvo
 cstk hooks install                    # toca só .claude/hooks/ + settings.json
 cstk hooks install --dry-run          # mostra o plano sem escrever
 cstk hooks install --project-path ../outro-projeto
+cstk hooks install --remove-classic   # deduplica contra o plugin, sem prompt
 ```
+
+Quando o plugin já fornece os hooks, o `cstk hooks install` pula o
+provisionamento clássico (plugin vence) e, se o projeto **ainda** carrega um
+registro clássico no `settings.json`, as duas camadas dispararam juntas.
+Nesse caso ele pergunta se pode remover o bloco clássico, apagando apenas as
+entradas dos hooks 00c — hooks de terceiros e todas as demais chaves do
+arquivo são preservados — e gravando backup em
+`settings.json.bak-pre-dedup`. Use `--remove-classic` para pular o prompt
+(scripts/CI). Sem TTY e sem a flag o bloco é **mantido**, com aviso: o
+`settings.json` é do operador e nunca é reescrito sem consentimento
+explícito.
 
 Sem esse passo a guarda de Bash fica inerte e `tool_calls`/`agent_usage`
 ficam zerados em todas as ondas. Para conferir o estado atual sem escrever
@@ -275,7 +352,19 @@ nada:
 
 ```bash
 guard-hooks-status.sh check --projeto-alvo-path .
+# <hook>  present|missing  registered|unregistered  current|stale|unknown
 ```
+
+Rode `cstk hooks install` de novo após todo upgrade do cstk que toque os
+hooks: as cópias em `.claude/hooks/` são snapshots e nada as reconcilia com o
+catálogo. Cópia **stale** é tão danosa quanto ausente — roda um conjunto de
+regras antigo. Isso é regressão real, não hipótese: depois do cutover
+`state.json` → `state.db`, projetos ficaram com um tick hook que só sabia ler
+`state.json`, então `tool_calls` saía 0 em toda onda enquanto o check ainda
+reportava "3/3 hooks ativos". A quarta coluna existe para tornar isso
+visível, e o `tick-mode` cai para `manual` exatamente nesse pareamento (cópia
+cega ao backend + `state.db`), para a métrica sobreviver até você
+reprovisionar.
 
 ### Custo real por onda (`otel-usage.sh`)
 
@@ -320,7 +409,14 @@ inteira de 16 ondas não mediu nada.
 A correção é uma função-launcher no seu `~/.zshrc` que pede ao OS uma porta
 livre a cada lançamento (bind na porta `0` deixa o kernel escolher) e aponta o
 scraper do cstk para ela via `CSTK_OTEL_ENDPOINT` — hooks e scripts do runtime
-rodam dentro do processo do Claude, então herdam as duas variáveis:
+rodam dentro do processo do Claude, então herdam as duas variáveis.
+
+> Desde a v6.9.0 raramente é preciso fazer isso à mão: o `cstk install`
+> oferece esse wrapper como **opt-in** na primeira instalação (escreve no rc
+> do seu shell entre marcadores `# >>> cstk telemetry >>>`, só com
+> consentimento explícito — nunca em ambiente não-interativo), e
+> `cstk help telemetry` imprime o bloco canônico pronto para colar se você
+> recusou ou quiser configurar depois.
 
 ```zsh
 # Um exporter OTel por processo do claude: OS sorteia porta livre a cada lancamento.
@@ -367,6 +463,27 @@ cstk install --interactive   # lista perfis + skills numerados; seleção via to
 cstk install --dry-run --profile all
 cstk update --dry-run
 ```
+
+### Gauge de uso do plano (`cstk statusline` + `cstk plan-usage`)
+
+Desde a v7.2.0 o toolkit também captura o gauge de uso do plano que você vê
+no `/usage` — sem credencial OAuth, sem API key: o Claude Code já envia
+`rate_limits.five_hour`/`seven_day` no payload da statusline a cada render, e
+o hook de captura só lê o que já está passando, persistindo localmente na
+tabela `plan_usage` do `~/.claude/cstk/knowledge.db`.
+
+```bash
+cstk statusline install    # registra o hook de captura em ~/.claude/settings.json
+cstk statusline status     # a captura está ativa (e o settings.json válido)?
+cstk plan-usage            # captura mais recente por escopo (five_hour / seven_day)
+cstk plan-usage history    # série temporal; reusa --scope/--limit/--since do cstk usage
+```
+
+Opt-in por construção — nada é capturado até você rodar `statusline
+install` — e 100% local. Um comando de statusline customizado já existente é
+preservado e encadeado como pass-through obrigatório do stdout, nunca
+sobrescrito em silêncio. Escopo sem medição imprime `nao medido` (`null` com
+`--json`) — nunca zero fabricado.
 
 ### Instalação manual (deprecated, ainda suportada)
 

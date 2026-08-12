@@ -58,6 +58,56 @@ Only cost/token/model metadata — `project`, `project_path`, `process_key`,
 the schema. Sidecar directory/files use restrictive permissions (`chmod 700`
 on directories, `chmod 600` on files), same posture as `knowledge.db`.
 
+## Plan usage gauge (`cstk statusline` + `cstk plan-usage`)
+
+Since v7.2.0 the same `knowledge.db` also stores the **plan usage gauge** you
+see in `/usage` — no OAuth credential, no API key: Claude Code already sends
+`rate_limits.five_hour`/`seven_day` in the `statusLine.command` payload on
+every render, so the capture hook (`statusline-plan-usage.sh`) just reads
+what is already passing by and persists it in the `plan_usage` table
+(additive schema migration 13→14).
+
+```bash
+# Enable the capture (opt-in, default OFF)
+cstk statusline install
+
+# Is the capture active (and settings.json still valid)?
+cstk statusline status
+
+# Latest capture per scope (five_hour / seven_day)
+cstk plan-usage [--json] [--db PATH]
+
+# Time series per scope
+cstk plan-usage history [--scope five_hour|seven_day] [--limit N] [--since ISO] [--json] [--db PATH]
+```
+
+- `statusline install` — writes/updates `statusLine.command` in
+  `~/.claude/settings.json` pointing at the capture hook. An existing custom
+  statusline command is preserved in `CSTK_STATUSLINE_INNER_COMMAND` and
+  chained as a mandatory stdout pass-through — never silently overwritten.
+  Idempotent (running it twice does not nest wrapper over wrapper); since
+  v7.2.1 it also **repairs** a broken state (missing `statusLine.type`, which
+  makes the harness discard the whole file) and preserves the file's
+  original permissions.
+- `statusline status` — reports the current state; prints `INVALIDO` with
+  the remediation (exit 1) when `settings.json` is in a state the harness
+  would reject.
+- `plan-usage` / `plan-usage history` — latest capture per scope / time
+  series; `history` literally reuses `--limit`/`--since` from `cstk usage`
+  (no new pagination convention). A scope with no measurement prints
+  `nao medido` (text) / `null` (`--json`) — never a fabricated `0`.
+
+Capture semantics (Principle VI): total absence of `rate_limits` in the
+payload never generates a row; partial absence of a field within a present
+scope writes an explicit `NULL`, never `0`. A throttle compares against the
+**last persisted record** of that scope with 2-decimal tolerance on
+`used_percentage`, so harness float noise does not create new rows.
+
+Spec: [`specs/plan-usage-capture/`](./specs/plan-usage-capture/)
+([`contracts/cli-plan-usage.md`](./specs/plan-usage-capture/contracts/cli-plan-usage.md),
+[`contracts/statusline-hook.md`](./specs/plan-usage-capture/contracts/statusline-hook.md),
+[`data-model.md`](./specs/plan-usage-capture/data-model.md)).
+
 ## Full documentation
 
 - [`specs/_archived/2026-08-08-loose-usage-capture/spec.md`](./specs/_archived/2026-08-08-loose-usage-capture/spec.md) — user stories, FRs, success criteria

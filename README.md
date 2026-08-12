@@ -4,7 +4,7 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/JotJunior/cstk?label=latest%20release&color=blue)](https://github.com/JotJunior/cstk/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![SemVer](https://img.shields.io/badge/SemVer-5.x-orange.svg)](./CHANGELOG.md)
+[![SemVer](https://img.shields.io/badge/SemVer-7.x-orange.svg)](./CHANGELOG.md)
 [![Docs Site](https://img.shields.io/badge/docs-jotjunior.github.io/cstk-blue?logo=readthedocs)](https://jotjunior.github.io/cstk/)
 [![Publish Site](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml/badge.svg?branch=main)](https://github.com/JotJunior/cstk/actions/workflows/publish-site.yml)
 
@@ -190,6 +190,13 @@ existing project. Subsystems: per-wave model routing, atomic-commit mode
 parallel sessions in worktrees, and cross-feature knowledge memory consulted
 before deciding.
 
+Since v7.3.0 a finished feature is no longer a dead end:
+`/feature-00c "<increment>" --reopen=<short-name>` preserves the previous
+execution as an immutable round, records the increment as
+`## Delta Requirements` in the existing spec, and appends a new task phase
+instead of regenerating the backlog — with an advisory opinion (reopen vs new
+feature) and a human block before anything touches disk.
+
 | Topic | Document |
 |--------|-----------|
 | `/agente-00c` + `/feature-00c` orchestrators, model-routing, atomic-commit, guards | [docs/agente-00c.md](./docs/agente-00c.md) |
@@ -225,7 +232,7 @@ After that, typical commands:
 ```bash
 cstk --version                       # confirms installation
 cstk install                         # installs the 'sdd' profile into ~/.claude/skills/
-cstk install --profile all           # installs ALL 29 skills (includes language-go)
+cstk install --profile all           # installs ALL 28 skills (includes language-go)
 cstk install advisor bugfix          # cherry-pick by name
 cstk update                          # applies new releases preserving local edits
 cstk update --force                  # overwrites locally edited skills
@@ -451,6 +458,28 @@ cstk install --interactive   # lists numbered profiles + skills; selection via t
 cstk install --dry-run --profile all
 cstk update --dry-run
 ```
+
+### Plan usage gauge (`cstk statusline` + `cstk plan-usage`)
+
+Since v7.2.0 the toolkit can also capture the plan usage gauge you see in
+`/usage` — no OAuth credential, no API key: Claude Code already sends
+`rate_limits.five_hour`/`seven_day` in the statusline payload on every
+render, so the capture hook just reads what is already passing by and
+persists it locally in the `plan_usage` table of
+`~/.claude/cstk/knowledge.db`.
+
+```bash
+cstk statusline install    # wires the capture hook into ~/.claude/settings.json
+cstk statusline status     # is the capture active (and settings.json still valid)?
+cstk plan-usage            # latest capture per scope (five_hour / seven_day)
+cstk plan-usage history    # time series; reuses --scope/--limit/--since from cstk usage
+```
+
+Opt-in by construction — nothing is captured until you run `statusline
+install` — and 100% local. An existing custom statusline command is preserved
+and chained as a mandatory stdout pass-through, never silently overwritten. A
+scope without measurement prints `nao medido` (`null` with `--json`) — never
+a fabricated zero.
 
 ### Manual installation (deprecated, still supported)
 
