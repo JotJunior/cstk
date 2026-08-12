@@ -72,10 +72,18 @@
 
 set -eu
 
-# Leitura de estado via interface canonica (state-db-runtime-parity FR-001):
-# usada pelos subcomandos LEITORES (check). Subcomandos mutadores (init,
-# mark-touched) seguem no builder direto — fora do escopo do porte 2.1.3.
-. "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/_state-read.sh"
+# Leitura de estado via interface canonica (state-db-runtime-parity FR-001).
+# LEITORES (check, debug, aspectos) materializam via state_read_materialize.
+# MUTADORES (init, mark-touched) leem materializado e escrevem via
+# `state-rw.sh set` — a interface canonica, valida nos dois backends.
+# HISTORICO (issue #101): os mutadores ficaram no builder direto sobre
+# state.json ("fora do escopo do porte 2.1.3"). O adiamento virou defeito
+# quando o SQLite passou a ser o backend default: `drift.sh init` abortava
+# com "state.json ausente" em qualquer projeto novo, derrubando a deteccao
+# de drift do agente-00c (invocada em agente-00c-orchestrator.md e
+# agente-00c-resume.md).
+_DR_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+. "$_DR_DIR/_state-read.sh"
 trap state_read_cleanup EXIT INT TERM
 
 _DR_NAME="drift"
@@ -89,26 +97,6 @@ _dr_die()       { printf '%s: %s\n' "$_DR_NAME" "$1" >&2; exit "${2:-1}"; }
 _dr_require_jq() {
   command -v jq >/dev/null 2>&1 \
     || _dr_die "jq nao encontrado no PATH" 1
-}
-
-_dr_state_file() { printf '%s/state.json\n' "$1"; }
-
-_dr_atomic_write() {
-  _dst=$1; _src=$2
-  _tmp=$(mktemp -- "${_dst}.XXXXXX") || _dr_die "mktemp falhou" 1
-  cp -- "$_src" "$_tmp" || { rm -f -- "$_tmp"; _dr_die "I/O cp" 1; }
-  mv -f -- "$_tmp" "$_dst" || { rm -f -- "$_tmp"; _dr_die "mv" 1; }
-}
-
-_dr_update_sha() {
-  _sf=$(_dr_state_file "$1")
-  _shf="$1/state.json.sha256"
-  if command -v sha256sum >/dev/null 2>&1; then
-    _h=$(sha256sum -- "$_sf" | awk '{print $1}')
-  else
-    _h=$(shasum -a 256 -- "$_sf" | awk '{print $1}')
-  fi
-  printf '%s\n' "$_h" > "$_shf"
 }
 
 # _dr_validate_aspectos_array JSON-STR MIN MAX LABEL
@@ -144,8 +132,8 @@ _dr_cmd_init() {
   [ -n "$_asp" ] || _dr_die_usage "init: --aspectos obrigatorio (JSON array de strings)"
   _dr_require_jq
 
-  _sf=$(_dr_state_file "$_sd")
-  [ -f "$_sf" ] || _dr_die "init: state.json ausente em $_sd" 1
+  _sf=$(state_read_materialize "$_sd")
+  [ -f "$_sf" ] || _dr_die "init: estado ausente em $_sd (nem state.json nem state.db)" 1
 
   _dr_validate_aspectos_array "$_asp" 3 7 "--aspectos"
   _dr_validate_aspectos_array "$_tec" 0 7 "--tecnicos"
@@ -158,22 +146,16 @@ _dr_cmd_init() {
     _dr_die "init: initial_key_aspects ja foi gravado ($_existing aspectos). Use --force para sobrescrever (relaxado para retomada de execucoes legadas com aspectos=null)." 1
   fi
 
-  # Writer (schema-en-migration): grava chaves EN. Confia em EN-on-disk
-  # (migrate defensivo do command-pai no inicio da onda).
-  _new_state=$(mktemp) || _dr_die "mktemp falhou" 1
-  jq \
-    --argjson a "$_asp" \
-    --argjson t "$_tec" \
-    --argjson o "$_ope" \
-    '
-    .initial_key_aspects     = $a
-    | .technical_key_aspects   = $t
-    | .operational_key_aspects = $o
-    ' "$_sf" > "$_new_state" \
-    || { rm -f -- "$_new_state"; _dr_die "jq update falhou" 1; }
-  _dr_atomic_write "$_sf" "$_new_state"
-  rm -f -- "$_new_state" 2>/dev/null || :
-  _dr_update_sha "$_sd"
+  # Writer backend-agnostico (issue #101): os 3 campos num UNICO envelope
+  # multi-campo de `state-rw.sh set` — sob SQLite um set por campo abriria
+  # tres transacoes e deixaria janela de estado parcial entre elas.
+  # Grava chaves EN (schema-en-migration); confia em EN-on-disk.
+  "$_DR_DIR/state-rw.sh" set --state-dir "$_sd" \
+    --field '.initial_key_aspects'     --value "$_asp" \
+    --field '.technical_key_aspects'   --value "$_tec" \
+    --field '.operational_key_aspects' --value "$_ope" \
+    >/dev/null \
+    || _dr_die "init: falha ao gravar aspectos via state-rw.sh set" 1
 }
 
 # Programa jq compartilhado pelas funcoes check/debug:
@@ -308,8 +290,8 @@ _dr_cmd_aspectos() {
   done
   [ -n "$_sd" ] || _dr_die_usage "aspectos: --state-dir obrigatorio"
   _dr_require_jq
-  _sf=$(_dr_state_file "$_sd")
-  [ -f "$_sf" ] || _dr_die "aspectos: state.json ausente" 1
+  _sf=$(state_read_materialize "$_sd")
+  [ -f "$_sf" ] || _dr_die "aspectos: estado ausente (nem state.json nem state.db)" 1
 
   # --camada VALUES (iniciais/tecnicos/operacionais) sao valores de flag (nao
   # migrados; follow-up B). Apenas as CHAVES JSON lidas viram EN (+fallback).
@@ -343,25 +325,25 @@ _dr_cmd_mark_touched() {
   [ -n "$_aspecto" ]   || _dr_die_usage "mark-touched: --aspecto obrigatorio"
   _dr_require_jq
 
-  _sf=$(_dr_state_file "$_sd")
-  [ -f "$_sf" ] || _dr_die "mark-touched: state.json ausente" 1
+  _sf=$(state_read_materialize "$_sd")
+  [ -f "$_sf" ] || _dr_die "mark-touched: estado ausente (nem state.json nem state.db)" 1
 
   _has_onda=$(jq -r '((.waves // .ondas) // []) | length' "$_sf")
   if [ "$_has_onda" -eq 0 ]; then
-    _dr_die "mark-touched: nenhuma onda existe em state.json (chame state-ondas.sh start primeiro)" 1
+    _dr_die "mark-touched: nenhuma onda existe no estado (chame state-ondas.sh start primeiro)" 1
   fi
 
-  # Writer (schema-en-migration): grava chave EN (.waves[-1].touched_key_aspects).
-  # Confia em EN-on-disk (migrate defensivo do command-pai).
-  _new_state=$(mktemp) || _dr_die "mktemp falhou" 1
-  jq --arg a "$_aspecto" '
-    .waves[-1].touched_key_aspects =
-      ((.waves[-1].touched_key_aspects // []) + [$a] | unique)
-  ' "$_sf" > "$_new_state" \
-    || { rm -f -- "$_new_state"; _dr_die "jq update falhou" 1; }
-  _dr_atomic_write "$_sf" "$_new_state"
-  rm -f -- "$_new_state" 2>/dev/null || :
-  _dr_update_sha "$_sd"
+  # Writer backend-agnostico (issue #101): calcula o array novo a partir do
+  # estado materializado e grava pela interface canonica. Grava chave EN
+  # (.waves[-1].touched_key_aspects); confia em EN-on-disk.
+  _novo=$(jq -c --arg a "$_aspecto" '
+    ((.waves[-1].touched_key_aspects // []) + [$a] | unique)
+  ' "$_sf") || _dr_die "mark-touched: jq falhou ao calcular o array" 1
+
+  "$_DR_DIR/state-rw.sh" set --state-dir "$_sd" \
+    --field '.waves[-1].touched_key_aspects' --value "$_novo" \
+    >/dev/null \
+    || _dr_die "mark-touched: falha ao gravar via state-rw.sh set" 1
 }
 
 _dr_cmd_debug() {
@@ -376,8 +358,8 @@ _dr_cmd_debug() {
   done
   [ -n "$_sd" ] || _dr_die_usage "debug: --state-dir obrigatorio"
   _dr_require_jq
-  _sf=$(_dr_state_file "$_sd")
-  [ -f "$_sf" ] || _dr_die "debug: state.json ausente" 1
+  _sf=$(state_read_materialize "$_sd")
+  [ -f "$_sf" ] || _dr_die "debug: estado ausente (nem state.json nem state.db)" 1
 
   _lib=$(_dr_jq_lib)
   jq -r --arg only "$_onda" "
