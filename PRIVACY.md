@@ -1,6 +1,6 @@
 # Privacy Policy — cstk
 
-**Effective date:** 2026-08-08 · **Applies to:** the `cstk` and `cstk-language-go`
+**Effective date:** 2026-08-12 · **Applies to:** the `cstk` and `cstk-language-go`
 Claude Code plugins, and the `cstk` command-line tool.
 
 ## Summary
@@ -20,6 +20,7 @@ All of it is local to your machine. Nothing is transmitted.
 | Knowledge index (decisions, blocks, retrospectives, skills used, memories) | `~/.claude/cstk/knowledge.db` (SQLite) | Lets past runs inform new work (`cstk recall`) |
 | Guard decisions (allowed/blocked commands) | `<project>/.claude/enforcement-log.jsonl` | Audit trail for the enforced Bash guard |
 | Loose usage counters (tokens/cost of interactive sessions) | `~/.claude/cstk/loose-usage/` | **Opt-in only** (`cstk hooks install --with-loose-usage`); off by default |
+| Plan usage gauge (rate-limit percentages Claude Code already sends in the statusline payload) | `~/.claude/cstk/knowledge.db` (`plan_usage` table) | **Opt-in only** (`cstk statusline install`); off by default |
 | Documentation artifacts (specs, plans, checklists, task backlogs) | `<project>/docs/` | The deliverables you asked the toolkit to produce |
 
 Everything above lives in ordinary files you own. Delete the directories and the
