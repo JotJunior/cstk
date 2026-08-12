@@ -566,6 +566,32 @@ EOF
 
 # ---- T-51: gh ausente/nao autenticado/falho apos auth ⇒ nunca infere negativo ----
 
+# ===== issue #98: fallback apos pipe nunca disparava =====
+
+# `var=$(cmd | sed ...) || var=FALLBACK` NUNCA cai no fallback: o exit status
+# de um pipe e o do ULTIMO comando, e o sed sai 0 mesmo com entrada vazia.
+# Em commit-mode.sh isso deixava `_default` VAZIO quando o repo nao tem
+# origin/HEAD; o `git rev-list "..branch" --count` seguinte degenerava para 0
+# e o finalize concluia "sem commits novos", pulando push+PR EM SILENCIO.
+# Guard estatico: o idioma nao pode reaparecer em lugar nenhum do script.
+scenario_issue98_idioma_de_fallback_apos_pipe_ausente() {
+  [ -f "$SCRIPT" ] || { _error "script ausente" "$SCRIPT"; return 2; }
+  if grep -nE "\| *sed [^)]*\) *\|\| *_[a-z_]+=" "$SCRIPT" >/dev/null 2>&1; then
+    _fail "idioma de fallback-apos-pipe reapareceu (issue #98)" \
+      "$(grep -nE "\| *sed [^)]*\) *\|\| *_[a-z_]+=" "$SCRIPT" | head -3)"
+    return 1
+  fi
+  return 0
+}
+
+# A captura em duas etapas (exit status do symbolic-ref testavel) tem de
+# estar presente — nao basta o idioma ruim ter sumido.
+scenario_issue98_captura_em_duas_etapas_presente() {
+  [ -f "$SCRIPT" ] || { _error "script ausente" "$SCRIPT"; return 2; }
+  assert_exit 0 grep -Fq 'symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || _sr=""' "$SCRIPT" || return 1
+  assert_exit 0 grep -Fq '[ -n "$_default" ] || _default="main"' "$SCRIPT" || return 1
+}
+
 # _make_shim_path_no_gh: PATH completo (symlinks) COM git mas SEM gh.
 # Armadilha conhecida do repositorio (memoria de projeto
 # feedback_test_path_stub_cannot_hide_usrbin.md) — PATH deve conter TODOS os

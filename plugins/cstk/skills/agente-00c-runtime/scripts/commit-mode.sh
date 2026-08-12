@@ -207,8 +207,11 @@ _cm_cmd_guard_branch() {
   # default de `git init` VARIA por ambiente (macOS default "main", muitos
   # Linux/CI default "master"), entao tratamos AMBOS como default — bloquear
   # commit/push tanto em "main" quanto em "master".
-  _default=$(git -C "$_pap" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's@^refs/remotes/origin/@@') || _default=""
+  # O exit status de um pipe e o do ULTIMO comando (o sed, que sai 0 mesmo
+  # com entrada vazia) — nesta forma o `|| ...` NUNCA dispara (issue #98).
+  # Captura em duas etapas para o fallback ser alcancavel.
+  _sr=$(git -C "$_pap" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || _sr=""
+  _default=$(printf '%s' "$_sr" | sed 's@^refs/remotes/origin/@@')
 
   printf '%s\n' "$_head"
 
@@ -319,8 +322,11 @@ _cm_cmd_probe_pending_work() {
   fi
 
   # Passo d: default_branch — mesmo padrao de guard-branch/finalize.
-  _dflt=$(git -C "$_pap" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's@^refs/remotes/origin/@@') || _dflt=""
+  # O exit status de um pipe e o do ULTIMO comando (o sed, que sai 0 mesmo
+  # com entrada vazia) — nesta forma o `|| ...` NUNCA dispara (issue #98).
+  # Captura em duas etapas para o fallback ser alcancavel.
+  _sr=$(git -C "$_pap" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || _sr=""
+  _dflt=$(printf '%s' "$_sr" | sed 's@^refs/remotes/origin/@@')
   _default_ref=""
   if [ -n "$_dflt" ]; then
     _default_branch="$_dflt"
@@ -871,8 +877,13 @@ _cm_cmd_finalize() {
   fi
 
   # Passo 3: verificar se tem commits novos vs default
-  _default=$(git -C "$_pap" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's@^refs/remotes/origin/@@') || _default="main"
+  # issue #98: nesta forma o `|| _default="main"` NUNCA disparava (exit do
+  # pipe = exit do sed = 0). _default virava "", o rev-list "..branch"
+  # degenerava para 0 e o finalize concluia "sem commits novos", pulando
+  # push+PR EM SILENCIO. Captura em duas etapas torna o fallback real.
+  _sr=$(git -C "$_pap" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || _sr=""
+  _default=$(printf '%s' "$_sr" | sed 's@^refs/remotes/origin/@@')
+  [ -n "$_default" ] || _default="main"
   _ahead=$(git -C "$_pap" rev-list "${_default}..$_curr_branch" --count 2>/dev/null) || _ahead="0"
   if [ "$_ahead" = "0" ]; then
     _cm_err "finalize: branch '$_curr_branch' nao tem commits novos vs '$_default' — skip (skipped-no-commits)"

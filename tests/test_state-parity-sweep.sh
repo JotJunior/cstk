@@ -206,10 +206,6 @@ scenario_dinamica_15_leitores_sqlite_sem_degradacao() {
 #   spawn-tracker.sh:codigo-real   — idem (dual-backend desde state-db-foundation)
 #   state-decisions.sh:codigo-real — idem
 #   state-ondas.sh:codigo-real     — idem
-#   drift.sh:codigo-real           — subcomandos mutadores (init/mark-touched)
-#                                    fora do escopo FR-001 por decisao 2.1.3;
-#                                    reader (check/extract) portado e coberto
-#                                    pelo manifest dinamico
 #   report.sh:prosa                — linha de texto markdown gerado (path de
 #                                    exemplo no corpo do relatorio)
 #   wave-usage-report.sh:prosa     — "transcript/state.json" em mensagem de erro
@@ -265,7 +261,6 @@ bloqueios.sh:codigo-real
 spawn-tracker.sh:codigo-real
 state-decisions.sh:codigo-real
 state-ondas.sh:codigo-real
-drift.sh:codigo-real
 report.sh:prosa
 wave-usage-report.sh:prosa
 _hook-active-exec.sh:codigo-real

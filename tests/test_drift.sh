@@ -24,6 +24,21 @@ _init() {
     --projeto-alvo-path "/tmp/p" --descricao "POC drift tests" >/dev/null 2>&1
 }
 
+# _init_sqlite: HOME sandbox COM `state_backend=sqlite` — o inverso de
+# _init. Trava de regressao da issue #101: os mutadores `init` e
+# `mark-touched` ficaram no builder direto sobre state.json ("fora do escopo
+# do porte 2.1.3") e abortavam com "state.json ausente" em qualquer projeto
+# criado com o backend SQLite, que hoje e o default global. Isso derrubava a
+# deteccao de drift do agente-00c (drift.sh init e invocado por
+# agente-00c-orchestrator.md e agente-00c-resume.md).
+_init_sqlite() {
+  _is_home="$TMPDIR_TEST/home-sqlite"
+  mkdir -p "$_is_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_is_home/.claude/cstk/config"
+  env HOME="$_is_home" "$RW" init --state-dir "$1" --execucao-id "x" \
+    --projeto-alvo-path "/tmp/p" --descricao "POC drift tests" >/dev/null 2>&1
+}
+
 # Cria 1 onda completa com 1 decisao tendo o contexto especificado
 _run_wave() {
   capture "$ON" start --state-dir "$1"
@@ -451,6 +466,53 @@ scenario_sqlite_check_onda_sem_aspecto_conta_um() {
     _fail "anti-mirror" "check criou state.json dentro do state-dir sqlite"
     return 1
   fi
+}
+
+# ===== Paridade de backend nos MUTADORES (issue #101) =====
+
+scenario_init_funciona_sob_backend_sqlite() {
+  command -v sqlite3 >/dev/null 2>&1 || return 0   # host sem sqlite3: nao exercitavel
+  _sd="$TMPDIR_TEST/state-sqlite-init"
+  _init_sqlite "$_sd"
+  [ -f "$_sd/state.db" ] || { _fail "pre-condicao" "esperado state.db, obtido: $(ls "$_sd" 2>/dev/null | tr '\n' ' ')"; return 1; }
+  # Forma `if`, nao `[ ... ] && { ... }`: um `&&` que avalia falso na ULTIMA
+  # linha faz a funcao retornar 1 sem nenhum assert ter falhado — a mesma
+  # armadilha de exit status que originou a issue #98.
+  if [ -f "$_sd/state.json" ]; then
+    _fail "pre-condicao" "state.json nao deveria existir sob backend sqlite"
+    return 1
+  fi
+
+  capture "$SCRIPT" init --state-dir "$_sd" --aspectos '["auth","cache","lock"]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init sob sqlite" "exit $_CAPTURED_EXIT; stderr: $_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" aspectos --state-dir "$_sd"
+  assert_stdout_contains "auth" || return 1
+  assert_stdout_contains "cache" || return 1
+  assert_stdout_contains "lock" || return 1
+  return 0
+}
+
+scenario_mark_touched_funciona_sob_backend_sqlite() {
+  command -v sqlite3 >/dev/null 2>&1 || return 0
+  _sd="$TMPDIR_TEST/state-sqlite-mt"
+  _init_sqlite "$_sd"
+  capture "$SCRIPT" init --state-dir "$_sd" --aspectos '["auth","cache","lock"]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init sob sqlite" "$_CAPTURED_STDERR"; return 1; }
+  capture "$ON" start --state-dir "$_sd"
+
+  capture "$SCRIPT" mark-touched --state-dir "$_sd" --aspecto cache
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "mark-touched sob sqlite" "exit $_CAPTURED_EXIT; stderr: $_CAPTURED_STDERR"; return 1; }
+
+  # Le de volta pela interface canonica: a escrita tem de ter persistido no
+  # state.db, nao num state.json fantasma.
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].touched_key_aspects'
+  assert_stdout_contains "cache" || return 1
+  if [ -f "$_sd/state.json" ]; then
+    _fail "efeito colateral" "mutador criou state.json sob backend sqlite"
+    return 1
+  fi
+  return 0
 }
 
 run_all_scenarios
