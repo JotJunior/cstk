@@ -37,7 +37,12 @@ _proj=$(realpath "$PROJETO")
 AGENTE_00C_STATE_DIR="$_proj/.claude/feature-00c-state/$SHORT"
 export AGENTE_00C_STATE_DIR
 
-if [ ! -d "$AGENTE_00C_STATE_DIR" ] || [ ! -f "$AGENTE_00C_STATE_DIR/state.json" ]; then
+# Backend-agnostico (state-db-runtime-parity, v6.3): sob backend SQLite o
+# estado e state.db, nao state.json — exigir state.json aqui tornaria
+# impossivel abortar uma execucao iniciada apos `cstk state enable-sqlite`.
+if [ ! -d "$AGENTE_00C_STATE_DIR" ] \
+   || { [ ! -f "$AGENTE_00C_STATE_DIR/state.json" ] \
+        && [ ! -f "$AGENTE_00C_STATE_DIR/state.db" ]; }; then
   stderr "feature-00c-state inexistente para '$SHORT' em $_proj — nada para abortar"
   exit 1
 fi

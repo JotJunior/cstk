@@ -235,6 +235,14 @@ _is_internal_test() {
       # Cobre interacao install.sh + manifest.sh + doctor.sh para os kinds
       # commands/agents (nao mapeia 1:1 para um unico script sob a convencao).
       return 0 ;;
+    test_00c-state-backend-contract.sh)
+      # Smoke textual sobre resume/abort dos 2 escopos: aceitacao de
+      # state.db (paridade de backend) + semantica correta do lock no
+      # resume da feature. Assert no .md, nao em um unico script —
+      # existence-guarded ao command portador das duas regras. Se a fonte
+      # sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c-resume.md" ] && return 0
+      return 1 ;;
     test_command-spawn-model-routing.sh)
       # Smoke textual sobre os 4 commands de spawn/resume (model-routing
       # por onda, FASE 3 de model-routing-por-onda). Assert no .md, nao em
