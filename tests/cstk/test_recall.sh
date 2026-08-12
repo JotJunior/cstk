@@ -4515,4 +4515,250 @@ scenario_pu4_null_vs_valor_presente() {
   return 0
 }
 
+# =========================================================================
+# Cenarios T-40..T-49 (feature-reopen FASE 5) — namespace de proveniencia
+# por round no --reindex (contract recall-rounds.md; FR-018, FR-010, SC-003).
+# Layout: <state-dir>/rounds/<label>/state.json|state.db, label ^r[0-9]{2,}$.
+# =========================================================================
+
+# _t5_state DIR EXEC_ID FEATURE PROJECT_PATH STATUS STAGE DEC_CTX -> state.json
+# EN minimo: 1 onda (onda-001), 1 decisao (dec-001), 1 bloqueio (bloq-001,
+# SEM wave_id -> exercita o default "bloq"), 1 skill (specify). Usado pelos
+# cenarios que NAO precisam de state.db (reindex puro, caminho JSON).
+_t5_state() {
+  _t5_dir="$1"; _t5_exec="$2"; _t5_feat="$3"; _t5_proj="$4"
+  _t5_status="$5"; _t5_stage="$6"; _t5_ctx="$7"
+  mkdir -p "$_t5_dir"
+  cat > "$_t5_dir/state.json" <<JSON
+{
+  "short_name": "$_t5_feat",
+  "execution": { "id": "$_t5_exec", "target_project_path": "$_t5_proj",
+    "status": "$_t5_status", "termination_reason": "motivo de teste com mais de vinte caracteres",
+    "started_at": "2026-01-01T00:00:00Z", "finished_at": "2026-01-01T01:00:00Z" },
+  "current_stage": "$_t5_stage",
+  "waves": [
+    { "id": "onda-001", "started_at": "2026-01-01T00:00:00Z", "finished_at": "2026-01-01T00:30:00Z",
+      "executed_stages": ["specify"], "tool_calls": 3, "wallclock_seconds": 30,
+      "termination_reason": "concluido",
+      "skills_invoked": [ { "skill": "specify", "timestamp": "2026-01-01T00:00:30Z", "decision_id": "dec-001", "kind": "skill" } ] }
+  ],
+  "decisions": [
+    { "id": "dec-001", "wave_id": "onda-001", "timestamp": "2026-01-01T00:00:20Z",
+      "agent": "orch", "stage": "specify", "choice": "iniciar", "justification_score": 2,
+      "options_considered": ["iniciar","adiar"],
+      "context": "$_t5_ctx", "rationale": "justificativa com mais de vinte caracteres", "evidence": null }
+  ],
+  "human_blocks": [
+    { "id": "bloq-001", "decision_id": "dec-001", "status": "respondido",
+      "question": "pergunta de bloqueio com mais de vinte caracteres?",
+      "context_for_answer": "contexto para resposta do bloqueio de teste",
+      "human_answer": "sim", "triggered_at": "2026-01-01T00:00:05Z", "answered_at": "2026-01-01T00:00:10Z" }
+  ]
+}
+JSON
+}
+
+# T-40 — feature com r01 + execucao viva ⇒ --reindex produz exatamente 2
+# linhas de executions para (project, feature) — SC-003.
+scenario_t40_reindex_conta_execucoes_por_round() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t40root"
+  _live="$_root/proj/.claude/feature-00c-state/reopent40"
+  _round="$_live/rounds/r01"
+  _t5_state "$_live"  "exec-t40-live" "reopent40" "/tmp/proj-t40" "em_andamento" "execute-task" "decisao ao vivo t40"
+  _t5_state "$_round" "exec-t40-r01"  "reopent40" "/tmp/proj-t40" "concluida"    "review-task"  "decisao do round r01 t40"
+  _db="$TMPDIR_TEST/t40.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _cnt=$(sqlite3 "$_db" "SELECT COUNT(*) FROM executions WHERE project='proj-t40' AND feature='reopent40';")
+  [ "$_cnt" = "2" ] || { _fail "T-40 executions por round" "esperado 2, obtido $_cnt"; return 1; }
+}
+
+# T-41 — dec-001 do round e dec-001 da execucao viva coexistem, nenhum
+# sobrescreve o outro (FR-018); extensao: bloqueios/skills tambem coexistem
+# (mesmo mecanismo, mesma prova).
+scenario_t41_dec_bloq_skill_coexistem_sem_sobrescrita() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t41root"
+  _live="$_root/proj/.claude/feature-00c-state/reopent41"
+  _round="$_live/rounds/r01"
+  _t5_state "$_live"  "exec-t41-live" "reopent41" "/tmp/proj-t41" "em_andamento" "execute-task" "decisao ao vivo t41"
+  _t5_state "$_round" "exec-t41-r01"  "reopent41" "/tmp/proj-t41" "concluida"    "review-task"  "decisao do round r01 t41"
+  _db="$TMPDIR_TEST/t41.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _cnt=$(sqlite3 "$_db" "SELECT COUNT(*) FROM decisions WHERE project='proj-t41' AND feature='reopent41' AND source_id='dec-001';")
+  [ "$_cnt" = "2" ] || { _fail "T-41 dec-001 coexiste" "esperado 2 linhas, obtido $_cnt"; return 1; }
+  _live_ctx=$(sqlite3 "$_db" "SELECT context FROM decisions WHERE project='proj-t41' AND feature='reopent41' AND source_id='dec-001' AND wave='onda-001';")
+  _r01_ctx=$(sqlite3 "$_db" "SELECT context FROM decisions WHERE project='proj-t41' AND feature='reopent41' AND source_id='dec-001' AND wave='r01/onda-001';")
+  [ "$_live_ctx" = "decisao ao vivo t41" ] || { _fail "T-41 wave live intacta" "obtido '$_live_ctx'"; return 1; }
+  [ "$_r01_ctx" = "decisao do round r01 t41" ] || { _fail "T-41 wave r01 intacta" "obtido '$_r01_ctx'"; return 1; }
+  _bcnt=$(sqlite3 "$_db" "SELECT COUNT(*) FROM blocks WHERE project='proj-t41' AND feature='reopent41' AND source_id='bloq-001';")
+  [ "$_bcnt" = "2" ] || { _fail "T-41 bloq-001 coexiste" "esperado 2 linhas, obtido $_bcnt"; return 1; }
+  _scnt=$(sqlite3 "$_db" "SELECT COUNT(*) FROM skills WHERE project='proj-t41' AND feature='reopent41' AND skill_name='specify';")
+  [ "$_scnt" = "2" ] || { _fail "T-41 skills coexistem" "esperado 2 linhas, obtido $_scnt"; return 1; }
+}
+
+# T-42 — nenhum round preservado aparece com etapa ativa apos --reindex
+# (FR-018): round com status=concluida normaliza current_stage='concluido'.
+scenario_t42_round_concluido_nao_e_ativo() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t42root"
+  _live="$_root/proj/.claude/feature-00c-state/reopent42"
+  _round="$_live/rounds/r01"
+  _t5_state "$_live"  "exec-t42-live" "reopent42" "/tmp/proj-t42" "em_andamento" "execute-task" "decisao ao vivo t42"
+  _t5_state "$_round" "exec-t42-r01"  "reopent42" "/tmp/proj-t42" "concluida"    "review-task"  "decisao do round r01 t42"
+  _db="$TMPDIR_TEST/t42.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _stage=$(sqlite3 "$_db" "SELECT current_stage FROM executions WHERE project='proj-t42' AND feature='reopent42' AND wave='r01';")
+  [ "$_stage" = "concluido" ] || { _fail "T-42 round concluida normaliza" "esperado 'concluido', obtido '$_stage'"; return 1; }
+}
+
+# T-43 — round abortada preserva o proprio status e current_stage (FR-020):
+# nao normaliza para concluido, nao aparece como ativo.
+scenario_t43_round_abortada_preserva_status() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t43root"
+  _live="$_root/proj/.claude/feature-00c-state/reopent43"
+  _round="$_live/rounds/r01"
+  _t5_state "$_live"  "exec-t43-live" "reopent43" "/tmp/proj-t43" "em_andamento" "execute-task" "decisao ao vivo t43"
+  _t5_state "$_round" "exec-t43-r01"  "reopent43" "/tmp/proj-t43" "abortada"     "plan"         "decisao do round r01 t43"
+  _db="$TMPDIR_TEST/t43.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _row=$(sqlite3 "$_db" "SELECT status||'|'||current_stage FROM executions WHERE project='proj-t43' AND feature='reopent43' AND wave='r01';")
+  [ "$_row" = "abortada|plan" ] || { _fail "T-43 round abortada preservado" "esperado 'abortada|plan', obtido '$_row'"; return 1; }
+}
+
+# T-44 — round com backend state.db e ingerido pelo --reindex (antes desta
+# mudanca: invisivel — nenhum find cobria state.db).
+scenario_t44_round_state_db_ingerido() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t44root"
+  _round="$_root/proj/.claude/feature-00c-state/reopent44/rounds/r01"
+  _seed_sql_equiv_state "$_round" 2 1
+  capture "$MIGRATE_00C" migrate --state-dir "$_round"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-44 migrate" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_round/state.db" ] || { _fail "T-44 pre-condicao" "state.db ausente pos-migracao"; return 1; }
+  _db="$TMPDIR_TEST/t44.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _cnt=$(sqlite3 "$_db" "SELECT COUNT(*) FROM executions WHERE feature='equiv-feat' AND wave='r01';")
+  [ "$_cnt" = "1" ] || { _fail "T-44 round SQLite ingerido" "esperado 1, obtido $_cnt"; return 1; }
+}
+
+# T-45 — rounds em state.json e em state.db produzem o mesmo numero de
+# linhas (I-K3/FR-010): r01 fica so com state.json, r02 vira SQLite-only
+# (migrado, state.json removido) — mesma feature/decisao/skill sintetica.
+scenario_t45_paridade_json_sqlite_por_round() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t45root"
+  _base="$_root/proj/.claude/feature-00c-state/reopent45"
+  _r01="$_base/rounds/r01"
+  _r02="$_base/rounds/r02"
+  _seed_sql_equiv_state "$_r01" 2 1
+  _seed_sql_equiv_state "$_r02" 2 1
+  capture "$MIGRATE_00C" migrate --state-dir "$_r02"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-45 migrate r02" "$_CAPTURED_STDERR"; return 1; }
+  rm -f "$_r02/state.json" "$_r02/state.json.sha256"
+  _db="$TMPDIR_TEST/t45.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _e01=$(sqlite3 "$_db" "SELECT COUNT(*) FROM executions WHERE wave='r01';")
+  _e02=$(sqlite3 "$_db" "SELECT COUNT(*) FROM executions WHERE wave='r02';")
+  [ "$_e01" = "$_e02" ] && [ "$_e01" = "1" ] || { _fail "T-45 executions paridade" "r01=$_e01 r02=$_e02"; return 1; }
+  _d01=$(sqlite3 "$_db" "SELECT COUNT(*) FROM decisions WHERE wave LIKE 'r01/%';")
+  _d02=$(sqlite3 "$_db" "SELECT COUNT(*) FROM decisions WHERE wave LIKE 'r02/%';")
+  [ "$_d01" = "$_d02" ] && [ "$_d01" = "2" ] || { _fail "T-45 decisions paridade" "r01=$_d01 r02=$_d02"; return 1; }
+  _s01=$(sqlite3 "$_db" "SELECT COUNT(*) FROM skills WHERE wave LIKE 'r01/%';")
+  _s02=$(sqlite3 "$_db" "SELECT COUNT(*) FROM skills WHERE wave LIKE 'r02/%';")
+  [ "$_s01" = "$_s02" ] || { _fail "T-45 skills paridade" "r01=$_s01 r02=$_s02"; return 1; }
+}
+
+# T-46/T-46b — state.db + state.json no mesmo diretorio ⇒ ingerido uma vez,
+# state.db vence (Decision 6); e um state.db FORA do layout ancorado (ex.:
+# fora de .claude/feature-00c-state|agente-00c-state/) nunca e ingerido —
+# achado do gate de seguranca, evita vazar dados de terceiros varrendo $HOME.
+scenario_t46_precedencia_state_db_e_anchoring() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t46root"
+  _round="$_root/proj/.claude/feature-00c-state/reopent46/rounds/r01"
+  _seed_sql_equiv_state "$_round" 2 1
+  capture "$MIGRATE_00C" migrate --state-dir "$_round"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-46 migrate" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_round/state.json" ] || { _fail "T-46 pre-condicao" "state.json deveria ter sido preservado (M6)"; return 1; }
+  [ -f "$_round/state.db" ]   || { _fail "T-46 pre-condicao" "state.db ausente"; return 1; }
+  # T-46b: isca fora do layout ancorado, mesma raiz de varredura.
+  _isca_dir="$_root/outra-app"
+  mkdir -p "$_isca_dir"
+  cp "$_round/state.db" "$_isca_dir/state.db"
+  _db="$TMPDIR_TEST/t46.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _cnt=$(sqlite3 "$_db" "SELECT COUNT(*) FROM executions WHERE feature='equiv-feat' AND wave='r01';")
+  [ "$_cnt" = "1" ] || { _fail "T-46 precedencia state.db" "esperado 1 (sem duplicar), obtido $_cnt"; return 1; }
+  _total=$(sqlite3 "$_db" "SELECT COUNT(*) FROM executions;")
+  [ "$_total" = "1" ] || { _fail "T-46b anchoring" "esperado 1 execucao no total (isca fora do layout ignorada), obtido $_total"; return 1; }
+}
+
+# T-47 — --reindex 2x consecutivos ⇒ contagens identicas, mesmo com rounds
+# presentes (SC-003, idempotencia).
+scenario_t47_reindex_idempotente_com_rounds() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t47root"
+  _live="$_root/proj/.claude/feature-00c-state/reopent47"
+  _round="$_live/rounds/r01"
+  _t5_state "$_live"  "exec-t47-live" "reopent47" "/tmp/proj-t47" "em_andamento" "execute-task" "decisao ao vivo t47"
+  _t5_state "$_round" "exec-t47-r01"  "reopent47" "/tmp/proj-t47" "concluida"    "review-task"  "decisao do round r01 t47"
+  _db="$TMPDIR_TEST/t47.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _c1=$(sqlite3 "$_db" "SELECT COUNT(*) FROM executions;")
+  _d1=$(sqlite3 "$_db" "SELECT COUNT(*) FROM decisions;")
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _c2=$(sqlite3 "$_db" "SELECT COUNT(*) FROM executions;")
+  _d2=$(sqlite3 "$_db" "SELECT COUNT(*) FROM decisions;")
+  if [ "$_c1" != "$_c2" ] || [ "$_d1" != "$_d2" ]; then
+    _fail "T-47 idempotencia" "executions $_c1->$_c2, decisions $_d1->$_d2"
+    return 1
+  fi
+  [ "$_c1" = "2" ] || { _fail "T-47 pre-condicao" "esperado 2 execucoes, obtido $_c1"; return 1; }
+}
+
+# T-48 — state-dir SEM rounds/ ⇒ comportamento identico ao atual (wave
+# permanece '-'/'onda-001', sem prefixo algum) — nao-regressao.
+scenario_t48_sem_rounds_sem_regressao() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t48root"
+  _live="$_root/proj/.claude/feature-00c-state/reopent48"
+  _t5_state "$_live" "exec-t48-live" "reopent48" "/tmp/proj-t48" "em_andamento" "execute-task" "decisao ao vivo t48"
+  _db="$TMPDIR_TEST/t48.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _ewave=$(sqlite3 "$_db" "SELECT wave FROM executions WHERE feature='reopent48';")
+  [ "$_ewave" = "-" ] || { _fail "T-48 sem-round executions.wave inalterado" "esperado '-', obtido '$_ewave'"; return 1; }
+  _dwave=$(sqlite3 "$_db" "SELECT wave FROM decisions WHERE feature='reopent48' AND source_id='dec-001';")
+  [ "$_dwave" = "onda-001" ] || { _fail "T-48 sem-round decisions.wave inalterado" "esperado 'onda-001', obtido '$_dwave'"; return 1; }
+}
+
+# T-49 — --reindex NUNCA escreve em state.json/state.db (o indice e sempre
+# derivado): hash das 3 fontes (live json, round json, round db) inalterado.
+scenario_t49_reindex_nao_escreve_fonte() {
+  _have_deps || return 0
+  _root="$TMPDIR_TEST/t49root"
+  _live="$_root/proj/.claude/feature-00c-state/reopent49"
+  _round="$_live/rounds/r01"
+  _t5_state "$_live" "exec-t49-live" "reopent49" "/tmp/proj-t49" "em_andamento" "execute-task" "decisao ao vivo t49"
+  _seed_sql_equiv_state "$_round" 1 1
+  capture "$MIGRATE_00C" migrate --state-dir "$_round"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-49 migrate" "$_CAPTURED_STDERR"; return 1; }
+  _h_live_before=$(sha256_file "$_live/state.json")
+  _h_round_json_before=$(sha256_file "$_round/state.json")
+  _h_round_db_before=$(sha256_file "$_round/state.db")
+  _db="$TMPDIR_TEST/t49.db"
+  assert_exit 0 _rc --reindex --states-root "$_root" --db "$_db" || return 1
+  _h_live_after=$(sha256_file "$_live/state.json")
+  _h_round_json_after=$(sha256_file "$_round/state.json")
+  _h_round_db_after=$(sha256_file "$_round/state.db")
+  if [ "$_h_live_before" != "$_h_live_after" ] \
+     || [ "$_h_round_json_before" != "$_h_round_json_after" ] \
+     || [ "$_h_round_db_before" != "$_h_round_db_after" ]; then
+    _fail "T-49 reindex nao-mutante" \
+      "live $_h_live_before->$_h_live_after; round.json $_h_round_json_before->$_h_round_json_after; round.db $_h_round_db_before->$_h_round_db_after"
+    return 1
+  fi
+}
+
 run_all_scenarios

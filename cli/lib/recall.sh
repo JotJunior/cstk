@@ -1075,6 +1075,33 @@ recall_derive_canonical_from_path() {
   return 0
 }
 
+# recall_round_label STATE_DIR -> stdout: label do round (ex. "r01") + exit 0
+# quando STATE_DIR (diretorio que contem state.json OU state.db) esta
+# imediatamente sob um diretorio `rounds/` (layout
+# `<feature-state-dir>/rounds/<label>/`). Caso contrario: stdout vazio,
+# exit 1 (execucao viva — layout normal, comportamento identico ao atual).
+# Label validado contra ^r[0-9]{2,}$ (mesmo padrao de
+# state-rounds.sh::_sr_is_label_syntax_valid) — um diretorio-filho de
+# `rounds/` com nome fora do padrao NAO e tratado como round (proveniencia
+# malformada nunca gravada; contract recall-rounds.md §Mudanca 2
+# "Validacao do label detectado por path"). Reusada pelos dois caminhos de
+# ingestao (JSON e SQL->SQL) e por --reindex.
+recall_round_label() {
+  _rrl_dir="$1"
+  _rrl_parent=$(dirname -- "$_rrl_dir" 2>/dev/null) || _rrl_parent=""
+  [ "$(basename -- "$_rrl_parent" 2>/dev/null)" = "rounds" ] || return 1
+  _rrl_label=$(basename -- "$_rrl_dir" 2>/dev/null) || _rrl_label=""
+  case "$_rrl_label" in
+    r[0-9][0-9]*) ;;
+    *) return 1 ;;
+  esac
+  case "${_rrl_label#r}" in
+    *[!0-9]*) return 1 ;;
+  esac
+  printf '%s' "$_rrl_label"
+  return 0
+}
+
 # recall_ingest_state_json STATE_JSON DB -> ingere um unico state.json no DB.
 # Best-effort: qualquer falha de extracao degrada gracioso (aviso + exit 0).
 # Reusado por --ingest (1 arquivo) e --reindex (N arquivos).
@@ -1127,6 +1154,19 @@ recall_ingest_state_json() {
     fi
   fi
   [ -n "$_isj_feature" ] || _isj_feature="unknown"
+  # Namespace de proveniencia por round (FR-018, contract recall-rounds.md
+  # Mudanca 1): quando o state.json vive sob `.../rounds/<label>/`, as
+  # linhas de wave (executions/decisions/blocks/skills) carregam <label>
+  # na proveniencia — evita que dec-001/onda-001 etc. de um round colidam
+  # com os da execucao viva na chave UNIQUE(project,feature,wave,source_id).
+  # feature permanece INALTERADO (I-K1/SC-003: mesma feature, N execucoes).
+  _isj_round_label=$(recall_round_label "$(dirname -- "$_isj_state" 2>/dev/null)") \
+    || _isj_round_label=""
+  if [ -n "$_isj_round_label" ]; then
+    _isj_wave_exec="$_isj_round_label"
+  else
+    _isj_wave_exec="-"
+  fi
   _isj_exec_id=$(jq -r '(.execution.id // .execucao.id) // ""' "$_isj_state" 2>/dev/null) || _isj_exec_id=""
   # session: campo congelado .execution.session_name (recall-worktree-identity
   # FR-005). Vazio/ausente -> literal SQL NULL (US2 AC2). Valor e UNTRUSTED:
@@ -1243,7 +1283,7 @@ recall_ingest_state_json() {
       _isj_it_sql=$(recall_int_or_null "$_f_it")
       _isj_sql="$_isj_sql
 INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,target_project_path,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,$_isj_session_sql,$_isj_proj_path_sql,'$(sql_escape "$_isj_now")')
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_isj_wave_exec")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_eid")','$(sql_escape "$_f_st")','$(sql_escape "$_f_mt")','$(sql_escape "$_f_ec")','$(sql_escape "$_f_ini")','$(sql_escape "$_f_ter")',$_isj_dur_sql,'$(sql_escape "$_f_stk")',$_isj_ot_sql,$_isj_tc_sql,$_isj_wt_sql,$_isj_ss_sql,$_isj_pm_sql,$_isj_dt_sql,$_isj_bt_sql,$_isj_sg_sql,$_isj_it_sql,$_isj_session_sql,$_isj_proj_path_sql,'$(sql_escape "$_isj_now")')
 ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,status=excluded.status,termination_reason=excluded.termination_reason,current_stage=excluded.current_stage,started_at=excluded.started_at,finished_at=excluded.finished_at,duration_seconds=excluded.duration_seconds,suggested_stack=excluded.suggested_stack,waves_total=excluded.waves_total,tool_calls_total=excluded.tool_calls_total,wallclock_total_seconds=excluded.wallclock_total_seconds,subagents_spawned=excluded.subagents_spawned,max_depth=excluded.max_depth,decisions_total=excluded.decisions_total,human_blocks_total=excluded.human_blocks_total,skill_suggestions_total=excluded.skill_suggestions_total,toolkit_issues_opened=excluded.toolkit_issues_opened,session=excluded.session,target_project_path=excluded.target_project_path,ingested_at=excluded.ingested_at;"
       _isj_n_exec=1
     fi
@@ -1626,6 +1666,10 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       # decoded e um array JSON; extrai cada campo via jq de novo (robusto a \n internos)
       _f_sid=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
       _f_wave=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      # Namespace de round (Mudanca 1): prefixa <label>/ quando o state.json
+      # vive sob rounds/<label>/ — evita colisao dec-001/onda-NNN entre
+      # round e execucao viva. source_id (_f_sid) fica INALTERADO.
+      [ -z "$_isj_round_label" ] || _f_wave="$_isj_round_label/$_f_wave"
       _f_ts=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
       _f_ag=$(printf '%s' "$_isj_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
       _f_et=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
@@ -1700,6 +1744,10 @@ VALUES('$(sql_escape "$_f_esc $_f_opt $_f_ctx $_f_just $_f_ev")','decision','$(s
       _isj_decoded=$(printf '%s' "$_isj_row" | base64 -d 2>/dev/null) || continue
       _f_sid=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
       _f_wave=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+      # Namespace de round (Mudanca 1): mesma regra de decisions — prefixa
+      # <label>/ (inclusive sobre o default literal "bloq", ja que
+      # bloqueios.sh nunca grava wave_id). source_id (_f_sid) inalterado.
+      [ -z "$_isj_round_label" ] || _f_wave="$_isj_round_label/$_f_wave"
       _f_ts=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
       _f_st=$(printf '%s' "$_isj_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
       _f_perg=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
@@ -1842,6 +1890,9 @@ VALUES('$(sql_escape "$_f_txt")','retro','$(sql_escape "$_isj_project")','$(sql_
       _f_ts=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
       [ -n "$_f_skn" ] || continue
       _f_sid="skill-$_f_wid-$_f_sidx"
+      # Namespace de round (Mudanca 1): prefixa <label>/ SO na coluna wave —
+      # _f_sid (source_id, ja composto acima) fica INALTERADO.
+      [ -z "$_isj_round_label" ] || _f_wid="$_isj_round_label/$_f_wid"
       _isj_sql="$_isj_sql
 INSERT INTO skills(project,feature,wave,execution_id,source_ts,source_id,skill_name,decision_id,ingested_at)
 VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wid")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_skn")','$(sql_escape "$_f_did")','$(sql_escape "$_isj_now")')
@@ -2112,6 +2163,22 @@ recall_ingest_state_db() {
   fi
   [ -n "$_isd_feature" ] || _isd_feature="unknown"
 
+  # Namespace de proveniencia por round (FR-018, contract recall-rounds.md
+  # Mudanca 1) — mesma regra do caminho JSON, aplicada sobre STATE_DIR
+  # (aqui ja e o diretorio que contem o state.db, sem dirname adicional).
+  # _isd_wave_exec_sql: literal SQL pronto para a coluna wave de executions.
+  # _isd_wave_prefix_sql: fragmento SQL "'<label>' || '/' || " para
+  # concatenar na FRENTE de qualquer expressao de wave (decisions/blocks/
+  # skills); vazio quando nao ha round (comportamento identico ao atual).
+  _isd_round_label=$(recall_round_label "$_isd_state_dir") || _isd_round_label=""
+  if [ -n "$_isd_round_label" ]; then
+    _isd_wave_exec_sql="'$(sql_escape "$_isd_round_label")'"
+    _isd_wave_prefix_sql="'$(sql_escape "$_isd_round_label")' || '/' || "
+  else
+    _isd_wave_exec_sql="'-'"
+    _isd_wave_prefix_sql=""
+  fi
+
   _isd_project_sql="'$(sql_escape "$_isd_project")'"
   _isd_feature_sql="'$(sql_escape "$_isd_feature")'"
   _isd_exec_id_sql="'$(sql_escape "$_isd_exec_id")'"
@@ -2151,7 +2218,7 @@ SELECT json_object(
   _isd_p1="ATTACH DATABASE '$_isd_attach_val' AS src;
 BEGIN;
 INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,subagents_spawned,max_depth,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,target_project_path,ingested_at)
-SELECT $_isd_project_sql,$_isd_feature_sql,'-',e.id,e.started_at,e.id,
+SELECT $_isd_project_sql,$_isd_feature_sql,$_isd_wave_exec_sql,e.id,e.started_at,e.id,
   e.status, e.termination_reason,
   CASE WHEN e.status='concluida' THEN 'concluido' ELSE e.current_stage END,
   e.started_at, e.finished_at,
@@ -2207,7 +2274,7 @@ WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN 
 ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,session=excluded.session,agent_spawns_total=excluded.agent_spawns_total,agent_spawns_with_usage=excluded.agent_spawns_with_usage,agent_total_tokens=excluded.agent_total_tokens,agent_input_tokens=excluded.agent_input_tokens,agent_output_tokens=excluded.agent_output_tokens,agent_cache_read_tokens=excluded.agent_cache_read_tokens,agent_cache_creation_tokens=excluded.agent_cache_creation_tokens,agent_tool_use_count=excluded.agent_tool_use_count,agent_duration_ms=excluded.agent_duration_ms,otel_cost_usd=excluded.otel_cost_usd,otel_cost_main_usd=excluded.otel_cost_main_usd,otel_cost_subagent_usd=excluded.otel_cost_subagent_usd,otel_total_tokens=excluded.otel_total_tokens,otel_subagent_tokens=excluded.otel_subagent_tokens,otel_main_input_tokens=excluded.otel_main_input_tokens,otel_main_output_tokens=excluded.otel_main_output_tokens,otel_main_cache_read_tokens=excluded.otel_main_cache_read_tokens,otel_main_cache_creation_tokens=excluded.otel_main_cache_creation_tokens,otel_subagent_input_tokens=excluded.otel_subagent_input_tokens,otel_subagent_output_tokens=excluded.otel_subagent_output_tokens,otel_subagent_cache_read_tokens=excluded.otel_subagent_cache_read_tokens,otel_subagent_cache_creation_tokens=excluded.otel_subagent_cache_creation_tokens,ingested_at=excluded.ingested_at;
 
 INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,agent,stage,choice,options,score,context,rationale,evidence,ingested_at)
-SELECT $_isd_project_sql,$_isd_feature_sql,coalesce(d.wave_id,'onda'),d.execution_id,d.timestamp,d.id,
+SELECT $_isd_project_sql,$_isd_feature_sql,${_isd_wave_prefix_sql}coalesce(d.wave_id,'onda'),d.execution_id,d.timestamp,d.id,
   d.agent,
   CASE WHEN d.stage='model-routing' AND substr(d.context,-1,1)=')' AND instr(d.context,'(fase ')>0
        THEN substr(d.context, instr(d.context,'(fase ')+6, length(d.context)-instr(d.context,'(fase ')-6)
@@ -2220,7 +2287,7 @@ WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN 
 ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agent=excluded.agent,stage=excluded.stage,choice=excluded.choice,options=excluded.options,score=excluded.score,context=excluded.context,rationale=excluded.rationale,evidence=excluded.evidence,ingested_at=excluded.ingested_at;
 
 INSERT INTO blocks(project,feature,wave,execution_id,source_ts,source_id,status,question,context_for_answer,answer,decision_id,triggered_at,answered_at,latency_seconds,ingested_at)
-SELECT $_isd_project_sql,$_isd_feature_sql,'bloq',h.execution_id,coalesce(h.answered_at,h.triggered_at),h.id,
+SELECT $_isd_project_sql,$_isd_feature_sql,${_isd_wave_prefix_sql}'bloq',h.execution_id,coalesce(h.answered_at,h.triggered_at),h.id,
   h.status, h.question, h.context_for_answer, h.human_answer, h.decision_id, h.triggered_at, h.answered_at,
   CASE WHEN h.triggered_at IS NOT NULL AND h.answered_at IS NOT NULL
        THEN CAST(unixepoch(h.answered_at) - unixepoch(h.triggered_at) AS INTEGER) ELSE NULL END,
@@ -2247,7 +2314,7 @@ WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN 
 ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,event_type=excluded.event_type,timestamp=excluded.timestamp,description=excluded.description,ingested_at=excluded.ingested_at;
 
 INSERT INTO skills(project,feature,wave,execution_id,source_ts,source_id,skill_name,decision_id,ingested_at)
-SELECT $_isd_project_sql,$_isd_feature_sql,si.wave_id,w2.execution_id,si.timestamp,
+SELECT $_isd_project_sql,$_isd_feature_sql,${_isd_wave_prefix_sql}si.wave_id,w2.execution_id,si.timestamp,
   'skill-' || si.wave_id || '-' || (ord.rn - 1),
   si.skill, si.decision_id, $_isd_now_sql
 FROM src.skill_invocation si
@@ -2275,12 +2342,12 @@ DETACH DATABASE src;"
   _isd_fix="BEGIN;"
 
   _isd_tr_json=$(recall_query_sql "$_isd_db" \
-    "SELECT json_object('tr',termination_reason) FROM executions WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql AND wave='-';")
+    "SELECT json_object('tr',termination_reason) FROM executions WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql AND wave=$_isd_wave_exec_sql;")
   _isd_tr=$(printf '%s' "$_isd_tr_json" | jq -r '.tr // empty' 2>/dev/null | strip_nul)
   if [ -n "$_isd_tr" ]; then
     _isd_tr=$(recall_scrub "$_isd_tr")
     _isd_fix="$_isd_fix
-UPDATE executions SET termination_reason='$(sql_escape "$_isd_tr")' WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql AND wave='-';"
+UPDATE executions SET termination_reason='$(sql_escape "$_isd_tr")' WHERE execution_id=$_isd_exec_id_sql AND project=$_isd_project_sql AND feature=$_isd_feature_sql AND wave=$_isd_wave_exec_sql;"
   fi
 
   _isd_dec_json=$(recall_query_sql "$_isd_db" \
@@ -3191,10 +3258,42 @@ recall_mode_reindex() {
       \( -path '*/.claude/feature-00c-state/*/state.json' \
          -o -path '*/.claude/agente-00c-state/state.json' \) \
       2>/dev/null) || :
+
+  # Paridade de backend (FR-010, contract recall-rounds.md Mudanca 2):
+  # varredura irma para state.db, com as MESMAS ancoras -path da varredura
+  # de state.json acima (so troca -name). A ancoragem e obrigatoria: sem
+  # ela, uma raiz ampla (--states-root tem $HOME como default) ingeriria o
+  # state.db de QUALQUER outra aplicacao no knowledge.db global — vazamento
+  # de dados de terceiros (achado do gate de seguranca; T-46b). Antes desta
+  # mudanca nenhuma execucao com backend SQLite era visivel ao --reindex.
+  _rx_dbs=$(find "$_rx_states_root" \
+      -type f -name 'state.db' \
+      \( -path '*/.claude/feature-00c-state/*/state.db' \
+         -o -path '*/.claude/agente-00c-state/state.db' \) \
+      2>/dev/null) || :
+  if [ -n "$_rx_dbs" ]; then
+    _rx_OLDIFS="$IFS"; IFS='
+'
+    for _rx_sd in $_rx_dbs; do
+      _rx_sd_dir=$(dirname -- "$_rx_sd" 2>/dev/null) || _rx_sd_dir=""
+      recall_ingest_state_db "$_rx_sd" "$_rx_sd_dir" "$_rx_db"
+      _rx_count=$((_rx_count + 1))
+    done
+    IFS="$_rx_OLDIFS"
+  fi
+
   if [ -n "$_rx_states" ]; then
     _rx_OLDIFS="$IFS"; IFS='
 '
     for _rx_sj in $_rx_states; do
+      # Precedencia (Mudanca 2): quando state.db e state.json coexistem no
+      # MESMO diretorio, state.db ja foi ingerido acima e vence — espelha a
+      # regra do --ingest (recall_mode_ingest). Evita ingerir o mesmo round
+      # duas vezes (T-46).
+      _rx_sj_dir=$(dirname -- "$_rx_sj" 2>/dev/null) || _rx_sj_dir=""
+      if [ -r "$_rx_sj_dir/state.db" ]; then
+        continue
+      fi
       recall_ingest_state_json "$_rx_sj" "$_rx_db"
       _rx_count=$((_rx_count + 1))
     done

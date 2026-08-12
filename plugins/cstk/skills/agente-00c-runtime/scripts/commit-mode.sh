@@ -11,6 +11,9 @@
 #   is-enabled   --state-dir DIR
 #   set-enabled  --state-dir DIR --value <true|false>
 #   guard-branch --state-dir DIR --projeto-alvo-path PATH
+#   probe-pending-work --state-dir DIR --projeto-alvo-path PATH -- BRANCH
+#                 Sonda READ-ONLY de trabalho nao integrado (feature
+#                 reopen-flow, FR-021). Ver contracts/pending-work-probe.md.
 #   stage-message --feature NAME --stage STAGE
 #   task-message  --feature NAME --task-ids "ID[,ID...]" [--brief TEXT]
 #   finalize     --state-dir DIR --projeto-alvo-path PATH [--session NAME]
@@ -223,6 +226,187 @@ _cm_cmd_guard_branch() {
     fi
   fi
 
+  return 0
+}
+
+# ---------- subcomando: probe-pending-work ----------
+# probe-pending-work --state-dir DIR --projeto-alvo-path PATH -- BRANCH
+#
+# Sonda READ-ONLY de trabalho nao integrado do round anterior (feature
+# reopen-flow, FR-021). Contrato:
+#   docs/specs/feature-reopen/contracts/pending-work-probe.md
+#
+# stdout: PROBE|<branch>|<default_branch>|<merged>|<pr_state>|<pr_url>|<source>|<probe_status>
+# exit: 0 checked (git respondeu; gh pode ou nao ter respondido)
+#       3 skipped-no-git (git ausente / PAP nao e repo / BRANCH inexistente)
+#       1 erro generico de IO/permissao nao coberto pelos casos acima
+#       2 uso incorreto
+#
+# Regra fail-closed (dec-038, task 1.2): um campo so recebe valor concreto
+# quando a leitura que o produz foi bem-sucedida E parseada. Qualquer outro
+# desfecho MUST manter o campo em "unknown" — PROIBIDO o idioma
+# `cmd 2>/dev/null || var=""` seguido de tratar vazio como resposta negativa
+# (anti-padrao ja presente em `finalize`, linhas ~726/771 deste arquivo;
+# esta sonda NAO o repete).
+_cm_cmd_probe_pending_work() {
+  _sdir=""
+  _pap=""
+  _branch=""
+  _seen_sep=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)         _sdir=$2; shift 2 ;;
+      --projeto-alvo-path) _pap=$2;  shift 2 ;;
+      --)
+        shift
+        _seen_sep=1
+        if [ "$#" -gt 0 ]; then
+          _branch=$1
+          shift
+        fi
+        break
+        ;;
+      *) _cm_die_usage "probe-pending-work: flag desconhecida: $1" ;;
+    esac
+  done
+  [ "$_seen_sep" = 1 ] || _cm_die_usage "probe-pending-work: '--' obrigatorio antes de BRANCH"
+  [ -n "$_sdir" ]   || _cm_die_usage "probe-pending-work: --state-dir obrigatorio"
+  [ -n "$_pap" ]    || _cm_die_usage "probe-pending-work: --projeto-alvo-path obrigatorio"
+  [ -n "$_branch" ] || _cm_die_usage "probe-pending-work: BRANCH obrigatorio apos --"
+
+  _default_branch="unknown"
+  _merged="unknown"
+  _pr_state="unknown"
+  _pr_url="-"
+  _source=""
+  _probe_status=""
+
+  _cm_probe_emit() {
+    printf 'PROBE|%s|%s|%s|%s|%s|%s|%s\n' \
+      "$_branch" "$_default_branch" "$_merged" "$_pr_state" "$_pr_url" "$_source" "$_probe_status"
+  }
+
+  # Passo b: git ausente no PATH -> skipped-no-git (T-51 style: nunca
+  # infere negativo de ausencia)
+  if ! command -v git >/dev/null 2>&1; then
+    _probe_status="skipped-no-git"
+    _source="command -v git"
+    _cm_probe_emit
+    return 3
+  fi
+
+  # PAP precisa ser um repositorio git valido
+  if ! git -C "$_pap" rev-parse --git-dir >/dev/null 2>&1; then
+    _probe_status="skipped-no-git"
+    _source="git -C $_pap rev-parse --git-dir"
+    _cm_probe_emit
+    return 3
+  fi
+
+  # Passo c: BRANCH precisa existir local ou como remote-tracking (origin).
+  # `--` ja separou BRANCH de flags (T-52); refs/heads/$_branch nunca
+  # comeca por '-' mesmo quando $_branch comeca, entao o comando abaixo e
+  # seguro sem separador adicional.
+  if git -C "$_pap" rev-parse --verify --quiet "refs/heads/$_branch" >/dev/null 2>&1; then
+    _branch_ref="refs/heads/$_branch"
+  elif git -C "$_pap" rev-parse --verify --quiet "refs/remotes/origin/$_branch" >/dev/null 2>&1; then
+    _branch_ref="refs/remotes/origin/$_branch"
+  else
+    _probe_status="skipped-no-git"
+    _source="git -C $_pap rev-parse --verify --quiet refs/heads/$_branch"
+    _cm_probe_emit
+    return 3
+  fi
+
+  # Passo d: default_branch — mesmo padrao de guard-branch/finalize.
+  _dflt=$(git -C "$_pap" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's@^refs/remotes/origin/@@') || _dflt=""
+  _default_ref=""
+  if [ -n "$_dflt" ]; then
+    _default_branch="$_dflt"
+    _default_ref="refs/remotes/origin/$_dflt"
+  elif git -C "$_pap" rev-parse --verify --quiet refs/heads/main >/dev/null 2>&1; then
+    _default_branch="main"
+    _default_ref="refs/heads/main"
+  elif git -C "$_pap" rev-parse --verify --quiet refs/heads/master >/dev/null 2>&1; then
+    _default_branch="master"
+    _default_ref="refs/heads/master"
+  fi
+
+  if [ -z "$_default_ref" ]; then
+    # Nem origin/HEAD nem main/master locais resolvem uma branch default —
+    # git nao consegue estabelecer o fato primario (merge). Dobra na mesma
+    # categoria de b/c (git nao pode responder): skipped-no-git.
+    _probe_status="skipped-no-git"
+    _source="git -C $_pap symbolic-ref refs/remotes/origin/HEAD"
+    _cm_probe_emit
+    return 3
+  fi
+
+  # Passo e: merged? `--is-ancestor` responde por exit code: 0=sim, 1=nao
+  # (resposta definitiva), >1=erro de execucao (nunca vira "no" — I-P1).
+  _merge_source="git merge-base --is-ancestor"
+  if git -C "$_pap" merge-base --is-ancestor "$_branch_ref" "$_default_ref" 2>/dev/null; then
+    _merged="yes"
+  else
+    _mb_rc=$?
+    if [ "$_mb_rc" = 1 ]; then
+      _merged="no"
+    else
+      # Falha de execucao do merge-base (ex: object store corrompido) —
+      # mesma categoria de "git nao pode responder".
+      _probe_status="skipped-no-git"
+      _source="$_merge_source"
+      _cm_probe_emit
+      return 3
+    fi
+  fi
+
+  # Passos f/g/h: gh e dependencia OPCIONAL (carve-out ja usado por
+  # `finalize`). merged (dado primario de FR-021) ja foi checado acima —
+  # o exit permanece 0 daqui em diante independente do desfecho de gh.
+  if ! command -v gh >/dev/null 2>&1; then
+    _probe_status="skipped-gh-missing"
+    _source="$_merge_source; command -v gh"
+    _cm_probe_emit
+    return 0
+  fi
+
+  if ! gh auth status >/dev/null 2>&1; then
+    _probe_status="skipped-gh-unauth"
+    _source="$_merge_source; gh auth status"
+    _cm_probe_emit
+    return 0
+  fi
+
+  # Passo h: gh pr view — exit code e stdout capturados SEPARADAMENTE
+  # (I-P1; PROIBIDO o idioma `cmd 2>/dev/null || var=""` que colapsa
+  # timeout/nao-autenticado/ausencia-real-de-PR em um unico "vazio").
+  # Qualquer desfecho que nao seja exit 0 + JSON reconhecido mantem
+  # pr_state=unknown/pr_url="-" — NUNCA "closed"/"merged" inferido.
+  _gh_source="gh pr view $_branch --json url,state"
+  _pr_rc=0
+  _pr_json=$(gh pr view "$_branch" --json url,state 2>/dev/null) || _pr_rc=$?
+  if [ "$_pr_rc" = 0 ] && [ -n "$_pr_json" ]; then
+    case "$_pr_json" in
+      *'"state":"OPEN"'*)   _pr_state="open" ;;
+      *'"state":"CLOSED"'*) _pr_state="closed" ;;
+      *'"state":"MERGED"'*) _pr_state="merged" ;;
+    esac
+    if [ "$_pr_state" != "unknown" ]; then
+      _pr_url=$(printf '%s' "$_pr_json" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
+      [ -n "$_pr_url" ] || _pr_url="-"
+    fi
+  fi
+
+  # probe_status: o enum (dec-038, candidato 3 descartado) nao distingue
+  # "sem PR"/"rede indisponivel"/"rate-limit" — todos colapsam em
+  # pr_state=unknown acima. O dado primario (merged) foi checado de fato
+  # (exit-codes table §0), entao "checked" e o valor correto mesmo quando
+  # pr_state permaneceu unknown.
+  _probe_status="checked"
+  _source="$_merge_source; $_gh_source"
+  _cm_probe_emit
   return 0
 }
 
@@ -827,21 +1011,22 @@ _cm_cmd_finalize() {
 
 # ---------- dispatch ----------
 
-[ "$#" -gt 0 ] || _cm_die_usage "subcomando obrigatorio: is-enabled|set-enabled|guard-branch|stage-message|task-message|finalize|snapshot|stage-derived"
+[ "$#" -gt 0 ] || _cm_die_usage "subcomando obrigatorio: is-enabled|set-enabled|guard-branch|probe-pending-work|stage-message|task-message|finalize|snapshot|stage-derived"
 
 _CM_CMD=$1
 shift
 
 case "$_CM_CMD" in
-  is-enabled)    _cm_cmd_is_enabled    "$@" ;;
-  set-enabled)   _cm_cmd_set_enabled   "$@" ;;
-  guard-branch)  _cm_cmd_guard_branch  "$@" ;;
-  stage-message) _cm_cmd_stage_message "$@" ;;
-  task-message)  _cm_cmd_task_message  "$@" ;;
-  finalize)      _cm_cmd_finalize      "$@" ;;
-  snapshot)      _cm_cmd_snapshot      "$@" ;;
-  stage-derived) _cm_cmd_stage_derived "$@" ;;
+  is-enabled)         _cm_cmd_is_enabled         "$@" ;;
+  set-enabled)        _cm_cmd_set_enabled        "$@" ;;
+  guard-branch)       _cm_cmd_guard_branch       "$@" ;;
+  probe-pending-work) _cm_cmd_probe_pending_work "$@" ;;
+  stage-message)      _cm_cmd_stage_message      "$@" ;;
+  task-message)       _cm_cmd_task_message       "$@" ;;
+  finalize)           _cm_cmd_finalize           "$@" ;;
+  snapshot)           _cm_cmd_snapshot           "$@" ;;
+  stage-derived)      _cm_cmd_stage_derived      "$@" ;;
   *)
-    _cm_die_usage "subcomando desconhecido: $_CM_CMD (validos: is-enabled|set-enabled|guard-branch|stage-message|task-message|finalize|snapshot|stage-derived)"
+    _cm_die_usage "subcomando desconhecido: $_CM_CMD (validos: is-enabled|set-enabled|guard-branch|probe-pending-work|stage-message|task-message|finalize|snapshot|stage-derived)"
     ;;
 esac

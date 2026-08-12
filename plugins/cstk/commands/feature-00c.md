@@ -92,6 +92,29 @@ Validar:
 - `descricao_curta` nao-vazio, <=500 chars
 - `short_name` (se fornecido) e kebab-case valido: `^[a-z][a-z0-9-]*$`
 
+#### Modo de reabertura (`--reopen`) — FR-001, FR-019
+
+```
+/feature-00c --reopen <short-name> "<descricao do incremento>"
+```
+
+Quando o **primeiro argumento** e literalmente `--reopen`, o parsing muda:
+
+```
+short_name       = segundo argumento (OBRIGATORIO, kebab-case — sem
+                   fallback via specify: a feature ja existe)
+descricao_curta  = terceiro argumento (string em quotes, OBRIGATORIO,
+                   <=500 chars) — descreve o INCREMENTO, nao a feature
+                   inteira
+--projeto PATH   = default = cwd (mesma semantica do modo normal)
+```
+
+Este modo se aplica **somente** a pipeline de feature individual —
+`/agente-00c` e seus resumes **nao sao tocados** (FR-019). Os itens 1-5
+do pre-flight abaixo sao **integralmente reaproveitados**; o modo de
+reabertura se insere como ramo entre os itens 6 e 7 — ver "### 2.bis Modo
+de reabertura (--reopen)" logo apos o pre-flight.
+
 ### 2. Pre-flight (ordem CRITICA — falhas abortam antes de tocar disco)
 
 Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
@@ -131,13 +154,48 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
      esac
    fi
 
-6. feature pre-existente (FR-006):
+6. deteccao de execucao pre-existente (FR-006, FR-016, FR-017) — **so
+   roda no modo de abertura NORMAL** (sem `--reopen`). Se a invocacao ja
+   comecou com `--reopen`, PULE este item inteiro e va direto para
+   "### 2.bis Modo de reabertura (--reopen)" abaixo, comecando em 6.a.
+
    _spec="$_proj/docs/specs/$SHORT/spec.md"
-   if [ -f "$_spec" ] && [ -s "$_spec" ]; then
-     - apresentar bloqueio humano in-band com 2 opcoes:
-       (a) retomar a partir da spec existente (entra direto em clarify)
+   _has_spec=false
+   [ -f "$_spec" ] && [ -s "$_spec" ] && _has_spec=true
+
+   # FR-017: o item 6 antigo so testava spec.md — o caso mais comum no
+   # repo (spec arquivada + estado terminal no lugar) nao disparava
+   # aviso nenhum. Detectar TAMBEM state-dir com estado terminal:
+   _has_terminal_state=false
+   if [ -d "$AGENTE_00C_STATE_DIR" ] && \
+      { [ -f "$AGENTE_00C_STATE_DIR/state.json" ] || [ -f "$AGENTE_00C_STATE_DIR/state.db" ]; }; then
+     if state-lock.sh check-execution-busy --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1; then
+       _has_terminal_state=true   # exit 0 = ''/abortada/concluida (terminal)
+     fi
+     # exit 3 (em_andamento/aguardando_humano): NAO e "pre-existente
+     # encerrada" — segue o pre-flight normal; o item 7 (lock) resolve
+     # a colisao de execucao viva na hora certa, sem passar por aqui
+   fi
+
+   if [ "$_has_spec" = true ] || [ "$_has_terminal_state" = true ]; then
+     - apresentar bloqueio humano IN-BAND (prosa — nenhuma escrita em
+       disco ainda, mesma disciplina do restante do pre-flight) com as
+       opcoes:
+       (a) reabrir a partir do estado existente — FR-016: esta opcao
+           MUST levar a uma execucao de fato, NUNCA a um aborto (o bug
+           antigo: `state-rw.sh init` morria contra o state.json/
+           state.db ja existente logo depois)
        (b) abortar a invocacao
+     - a mensagem MUST citar comandos do escopo de FEATURE, NUNCA
+       `/agente-00c-*` (FR-017): "/feature-00c --reopen $SHORT
+       \"<descricao>\"", "/feature-00c-resume $SHORT",
+       "/feature-00c-abort $SHORT"
      - aguardar resposta antes de prosseguir
+     - se (a): NAO chamar `state-rw.sh init` aqui. Prossiga para
+       "### 2.bis Modo de reabertura (--reopen)" abaixo, comecando em
+       6.a, com `_desc` = a descricao ja fornecida nesta invocacao
+       normal (tratada como o incremento) e `SHORT` inalterado
+     - se (b): abortar a invocacao, exit 0
    fi
 
 7. lock por short-name (FR-028) — o command PAI detem o lock; o
@@ -199,6 +257,316 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
      . NUNCA instalar sem consentimento: `cstk hooks install` escreve em
        <projeto-alvo>/.claude/settings.json, que pode estar versionado
 ```
+
+### 2.bis Modo de reabertura (`--reopen`) — passos 6.a..3''
+
+Ref: `docs/specs/feature-reopen/contracts/reopen-flow.md`.
+
+Executado quando: (a) a invocacao comecou com `--reopen`, OU (b) o item 6
+acima detectou execucao pre-existente e o operador escolheu a opcao
+"reabrir". Nos dois casos os itens 1-5 do pre-flight ja rodaram
+normalmente (path-guard, sanitize, briefing, constitution, coexistencia
+agente-00c) — este modo NAO os repete.
+
+Ordem normativa: **toda recusa acontece antes de qualquer escrita em
+disco**.
+
+```
+6.a   pre-condicoes de recusa       [NENHUMA ESCRITA ATE AQUI]
+6.b   sonda de trabalho pendente
+6.c   parecer + bloqueio humano     [aguarda operador]
+7     lock (acquire)                [primeira escrita possivel — item 7 acima]
+7.a   re-verificacao pos-lock       (fecha TOCTOU)
+7.b   state-rounds.sh recover       (limbo pendente?)
+7.c   state-rounds.sh rotate        [ponto de commit da rotacao]
+7.d   restauracao de spec arquivada (se aplicavel)
+8     diagnostico de consumo        (item 8 acima, sem mudanca)
+3'    state-rw.sh init              (secao 3 abaixo, com 1 flag derivada)
+3''   grava .previous_round + Decisao do parecer
+```
+
+#### 6.a — pre-condicoes de recusa (FR-002, FR-003)
+
+Nenhum comando abaixo escreve em disco.
+
+```
+_skip_rotate=false
+
+if [ ! -d "$AGENTE_00C_STATE_DIR" ] || \
+   { [ ! -f "$AGENTE_00C_STATE_DIR/state.json" ] && [ ! -f "$AGENTE_00C_STATE_DIR/state.db" ]; }; then
+  # raiz sem estado transacional — checar 1b antes de recusar
+  _has_round=false
+  if [ -d "$AGENTE_00C_STATE_DIR/rounds" ]; then
+    for _rd in "$AGENTE_00C_STATE_DIR"/rounds/r*/; do
+      [ -d "$_rd" ] || continue
+      { [ -f "${_rd}state.json" ] || [ -f "${_rd}state.db" ]; } && _has_round=true
+    done
+  fi
+  if [ "$_has_round" = false ]; then
+    stderr "feature '$SHORT' nao possui execucao anterior. Use a abertura normal: /feature-00c \"<descricao>\" $SHORT"
+    exit 4
+  fi
+  # 1b (T-37): rotacao ja consumada por uma invocacao anterior cujo init
+  # nunca rodou — NAO e recusa, e conciliacao (3.3.6): pular o passo 7.c,
+  # ir direto ao init usando o maior label existente
+  _skip_rotate=true
+else
+  _busy_err=$(state-lock.sh check-execution-busy --state-dir "$AGENTE_00C_STATE_DIR" 2>&1 1>/dev/null)
+  _busy_rc=$?
+  if [ "$_busy_rc" != 0 ]; then
+    if [ "$_busy_rc" = 3 ]; then
+      stderr "execucao anterior de '$SHORT' ainda ativa. Use /feature-00c-resume $SHORT para retomar, ou /feature-00c-abort $SHORT para abortar."
+      exit 5
+    fi
+    stderr "$_busy_err"
+    exit 1
+  fi
+fi
+```
+
+`check-execution-busy` e read-only; exit `0` cobre `''`/`abortada`/
+`concluida` (terminal ou vazio) — exatamente o que FR-003 e FR-020
+precisam.
+
+#### 6.b — sonda de trabalho pendente (FR-021, delegada a `commit-mode.sh`)
+
+```
+_branch=$(git -C "$_proj" branch --show-current 2>/dev/null) || _branch=""
+_pending_note="trabalho pendente: nao verificado (repositorio sem branch git detectavel)"
+if [ -n "$_branch" ]; then
+  _probe_line=$(commit-mode.sh probe-pending-work --state-dir "$AGENTE_00C_STATE_DIR" \
+    --projeto-alvo-path "$_proj" -- "$_branch" 2>/dev/null) || _probe_line=""
+  if [ -n "$_probe_line" ]; then
+    IFS='|' read -r _pw_tag _pw_branch _pw_default _pw_merged _pw_prstate \
+      _pw_prurl _pw_source _pw_status <<PROBE_EOF
+$_probe_line
+PROBE_EOF
+    case "$_pw_status" in
+      checked)
+        if [ "$_pw_merged" = "no" ]; then
+          _pending_note="trabalho pendente: branch '$_pw_branch' ainda nao mesclada em '$_pw_default'"
+          if [ "$_pw_prstate" != "unknown" ] && [ "$_pw_prstate" != "-" ]; then
+            _pending_note="$_pending_note; PR $_pw_prstate ($_pw_prurl)"
+          fi
+          _pending_note="$_pending_note (fonte: $_pw_source)"
+        else
+          _pending_note="sem trabalho pendente detectado (branch '$_pw_branch' ja mesclada em '$_pw_default'; fonte: $_pw_source)"
+        fi
+        ;;
+      *)
+        _pending_note="trabalho pendente: nao verificado (probe_status=$_pw_status; fonte: $_pw_source)"
+        ;;
+    esac
+  fi
+fi
+```
+
+Principio VI (I-P1): `_pending_note` NUNCA afirma "sem pendencia" quando
+o `probe_status` nao foi `checked` — sempre "nao verificado". O aviso e
+sempre informativo, nunca bloqueia (FR-021).
+
+#### 6.c — parecer + bloqueio humano (FR-004, FR-005, FR-006, FR-020, FR-021)
+
+Antes de qualquer escrita, monte e apresente ao operador (in-band, mesma
+disciplina do item 6):
+
+- **Recomendacao** (`reabrir` | `abrir-feature-nova`): leia a spec da
+  feature-alvo (path ativo se existir; senao a copia sob `_archived/`,
+  resolvida pela MESMA logica de 7.d abaixo — leitura, sem copiar ainda)
+  e compare com `_desc` (o incremento). Cite os pontos comparados na
+  justificativa. Esta comparacao e semantica — feita por voce, LLM
+  orquestrador, NUNCA por score automatico (restricao travada, Decision
+  10 de `research.md`).
+- **Status do round anterior**: se `abortada`, declare explicitamente que
+  o round anterior **nao chegou ao fim** (FR-020).
+- **`$_pending_note`** (passo 6.b) — informativo, nunca bloqueia.
+- Se a spec estiver arquivada (nao ha `docs/specs/$SHORT/spec.md` ativo e
+  nao-vazio), avise que ela sera restaurada de `_archived/...` na
+  confirmacao (FR-013).
+
+Apresente as duas opcoes ao operador:
+
+```
+(a) reabrir — prossegue com a reabertura (mesmo se contrariar a
+    recomendacao — FR-005)
+(b) abortar-invocacao — nada e escrito, exit 0
+```
+
+Se `abortar-invocacao`: exit `0` (deliberado — o fluxo consultou e
+obedeceu, nada foi escrito). Se o parecer recomendou `abrir-feature-nova`
+e o operador escolhe abortar, **nao** crie a feature nova por conta
+propria (FR-005) — apenas ja instruiu como faze-lo no parecer.
+
+Guarde em memoria `_recommendation`, `_operator_choice="reabrir"` e
+`_rationale` — a Decisao so pode ser gravada **depois** do init (passo
+3'', ela e "da execucao nova" — FR-006).
+
+#### 7 — lock (primeira escrita possivel)
+
+Reusar o item 7 do pre-flight acima (`state-lock.sh acquire --state-dir
+"$AGENTE_00C_STATE_DIR"`), sem mudanca.
+
+#### 7.a — re-verificacao pos-lock (fecha TOCTOU)
+
+```
+if [ "$_skip_rotate" = false ]; then
+  if ! state-lock.sh check-execution-busy --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1; then
+    state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"
+    stderr "execucao anterior de '$SHORT' ficou ativa entre a checagem e o lock. Use /feature-00c-resume $SHORT ou /feature-00c-abort $SHORT."
+    exit 5
+  fi
+  if [ ! -f "$AGENTE_00C_STATE_DIR/state.json" ] && [ ! -f "$AGENTE_00C_STATE_DIR/state.db" ]; then
+    state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"
+    stderr "estado de '$SHORT' desapareceu entre a checagem e o lock (janela TOCTOU rara)."
+    exit 4
+  fi
+fi
+```
+
+Janela remanescente entre 6.a e o `acquire` e aceitavel e documentada
+(Decision 7 de `research.md`).
+
+#### 7.b — `state-rounds.sh recover`
+
+```
+_rec_rc=0
+recover_line=$(state-rounds.sh recover --state-dir "$AGENTE_00C_STATE_DIR") || _rec_rc=$?
+if [ "$_rec_rc" != 0 ]; then
+  state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"
+  if [ "$_rec_rc" = 1 ]; then
+    stderr "rotacao pendente irrecuperavel automaticamente para '$SHORT' (journal invalido). Nada rotacionado."
+    exit 6
+  fi
+  stderr "erro inesperado em state-rounds.sh recover: $recover_line"
+  exit 1
+fi
+```
+
+`recover` e idempotente (sem journal ⇒ no-op exit `0`) e seguro de
+chamar mesmo quando `_skip_rotate=true`.
+
+#### 7.c — `state-rounds.sh rotate` (pulado se `_skip_rotate=true`)
+
+```
+if [ "$_skip_rotate" = false ]; then
+  _round_line=$(state-rounds.sh rotate --state-dir "$AGENTE_00C_STATE_DIR") || {
+    state-lock.sh release --state-dir "$AGENTE_00C_STATE_DIR"
+    stderr "erro inesperado em state-rounds.sh rotate: $_round_line"
+    exit 1
+  }
+  # ROUND|<label>|<backend>|<state_file>|<execution_id>|<status>
+  IFS='|' read -r _rl_tag _label _rl_backend _rl_state_file _prev_exec_id _prev_status <<ROUND_EOF
+$_round_line
+ROUND_EOF
+  _rotated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+else
+  # 1b: rotacao ja consumada em invocacao anterior — usar o maior label
+  # existente (state-rounds.sh list ordena lexicograficamente crescente)
+  _list_line=$(state-rounds.sh list --state-dir "$AGENTE_00C_STATE_DIR" | tail -1)
+  IFS='|' read -r _label _rl_backend _rl_state_file _prev_exec_id _prev_status _finished_at <<LIST_EOF
+$_list_line
+LIST_EOF
+  _round_dir="$AGENTE_00C_STATE_DIR/rounds/$_label"
+  _mtime_epoch=$(stat -c '%Y' -- "$_round_dir" 2>/dev/null) || \
+    _mtime_epoch=$(stat -f '%m' -- "$_round_dir" 2>/dev/null) || _mtime_epoch=""
+  _rotated_at=""
+  if [ -n "$_mtime_epoch" ]; then
+    _rotated_at=$(date -u -d "@$_mtime_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || \
+      _rotated_at=$(date -u -r "$_mtime_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _rotated_at=""
+  fi
+  [ -n "$_rotated_at" ] || _rotated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+fi
+```
+
+Ponto de commit da rotacao (quando nao pulada). `_label`/`_prev_exec_id`/
+`_prev_status` alimentam `.previous_round` no passo 3''.
+
+#### 7.d — restauracao de spec arquivada (FR-013, so diretorios)
+
+```
+_spec="$_proj/docs/specs/$SHORT/spec.md"
+_spec_dir="$_proj/docs/specs/$SHORT"
+if [ ! -s "$_spec" ] && { [ ! -d "$_spec_dir" ] || [ -z "$(ls -A "$_spec_dir" 2>/dev/null)" ]; }; then
+  _origin=""
+  if [ -d "$_proj/docs/specs/_archived/$SHORT" ]; then
+    _origin="$_proj/docs/specs/_archived/$SHORT"
+  else
+    _origin=$(find "$_proj/docs/specs/_archived" -maxdepth 1 -type d -name "*-$SHORT" 2>/dev/null | sort | tail -1)
+  fi
+  if [ -n "$_origin" ] && [ -d "$_origin" ]; then
+    mkdir -p "$_spec_dir"
+    cp -R "$_origin"/. "$_spec_dir"/
+    # informar ao operador: "spec restaurada de $_origin para $_spec_dir
+    # (origem sob _archived/ permanece intacta)"
+  fi
+fi
+```
+
+`_origin` permanece intacto (`cp`, nunca `mv` — a regra de imutabilidade
+de `_archived/` de `review-features/SKILL.md` e respeitada ao pe da
+letra). `docs/specs/$SHORT/` ja existente e nao-vazio ⇒ o bloco acima nem
+entra (o disco vence — Edge Case "spec editada a mao").
+
+Prossiga agora para o **item 8** do pre-flight acima (coleta de consumo,
+sem mudanca).
+
+#### 3' — init da execucao nova (herda `--atomic-commit`, FR-022)
+
+Repita a secao "### 3. Init do state.json" abaixo tal como esta descrita,
+com UMA diferenca: **pule o prompt interativo de atomic-commit** e derive
+`_atomic` do round anterior:
+
+```
+_atomic="false"
+if [ -n "$_label" ]; then
+  _v=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR/rounds/$_label" \
+    --field '.atomic_commit_enabled' 2>/dev/null) || _v=""
+  [ "$_v" = "true" ] && _atomic="true"
+fi
+```
+
+Ausencia, leitura falha ou valor nao reconhecido ⇒ `_atomic="false"`
+(default seguro, FR-022, literal). Nenhum `--force` e necessario nem
+existe: a raiz do state-dir esta sem `state.json`/`state.db` apos a
+rotacao (ou, no caso `_skip_rotate`, ja estava sem desde a rotacao
+anterior), entao as guardas de "state.json ja existe" do `init` nao
+disparam. O backend da execucao nova segue a config global corrente
+(mecanismo ja existente de `init`), independente do backend do round
+anterior — sem heranca, sem flag `--backend` (Decision 14, dec-022).
+
+#### 3'' — ponteiro `.previous_round` + Decisao do parecer (FR-006, FR-008)
+
+```
+_prev_round_json=$(jq -n \
+  --arg round "$_label" \
+  --arg path "rounds/$_label" \
+  --arg execution_id "$_prev_exec_id" \
+  --arg status "$_prev_status" \
+  --arg rotated_at "$_rotated_at" \
+  '{round:$round, path:$path, execution_id:$execution_id, status:$status, rotated_at:$rotated_at}')
+
+state-rw.sh set --state-dir "$AGENTE_00C_STATE_DIR" \
+  --field '.previous_round' --value "$_prev_round_json"
+
+_diverged="false"
+[ "$_operator_choice" != "$_recommendation" ] && _diverged="true"
+
+state-decisions.sh register --state-dir "$AGENTE_00C_STATE_DIR" \
+  --agente "feature-00c" --etapa "reopen" \
+  --contexto "Reabertura de '$SHORT': recomendacao=$_recommendation; round anterior=$_label ($_prev_status); $_pending_note" \
+  --opcoes '["reabrir","abrir-feature-nova"]' \
+  --escolha "$_operator_choice" \
+  --justificativa "diverged=$_diverged; $_rationale"
+```
+
+Objeto **inteiro** em `.previous_round` (path aninhado e rejeitado sob
+backend SQLite — Decision 4 de `research.md`). `--score` omitido de
+proposito: a decisao e humana, nunca pontuada por heuristica (registra
+como `null`).
+
+O lock so e liberado no Cleanup (item 6 da secao final abaixo) — nao
+antes: cobre a rotacao **inteira**, do `acquire` (item 7) ate ali
+(FR-012).
 
 ### 3. Init do state.json
 
@@ -465,10 +833,16 @@ esac
 
 | Exit | Significado |
 |------|-------------|
-| 0 | Sucesso |
+| 0 | Sucesso, ou modo `--reopen` com operador escolhendo abortar apos o parecer (deliberado — nada foi escrito) |
 | 1 | Erro geral / pre-flight falhou |
 | 2 | Coexistencia bloqueada (agente-00c ativo) |
 | 3 | Lock ocupado |
+| 4 | `--reopen`: short-name sem execucao anterior — usar abertura normal (FR-002) |
+| 5 | `--reopen`: execucao anterior nao-terminal — usar `/feature-00c-resume`/`/feature-00c-abort` (FR-003) |
+| 6 | `--reopen`: rotacao pendente irrecuperavel automaticamente (`state-rounds.sh recover` saiu `1`) — FR-011 |
+
+Exit codes `4`..`6` sao exclusivos do modo `--reopen`
+(`docs/specs/feature-reopen/contracts/reopen-flow.md`).
 
 ## Anti-padroes
 
@@ -478,3 +852,18 @@ esac
   concluido) — schedule e exclusivo para status `em_andamento`.
 - **NAO bypassar** o check de coexistencia (FR-026) — execucao
   concorrente com agente-00c quebra namespace isolation.
+- **`--reopen`: NAO escrever nada em disco antes do passo 7** (lock) —
+  os passos 6.a/6.b/6.c sao estritamente read-only; `state-rounds.sh
+  rotate`/`recover` e `state-rw.sh init` so rodam depois do `acquire`
+  (FR-002, FR-004, Decision 7).
+- **`--reopen`: NAO oferecer uma opcao que termina em aborto do proprio
+  fluxo que a ofereceu** (SC-007) — o bug fechado por FR-016 era
+  exatamente isso: a opcao (a) do item 6 antigo levava a um `init` que
+  morria.
+- **`--reopen`: NAO decidir `reabrir` vs `abrir-feature-nova` por score
+  automatico** — a comparacao e semantica (Decision 10), feita pelo
+  LLM orquestrador; o operador sempre confirma, mesmo contra a
+  recomendacao (FR-005).
+- **`--reopen`: NAO mover nem renomear** o diretorio sob
+  `docs/specs/_archived/` na restauracao de spec (7.d) — sempre `cp`,
+  nunca `mv` (FR-013).
