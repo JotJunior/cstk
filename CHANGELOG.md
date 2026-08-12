@@ -5,6 +5,76 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.3.0] - 2026-08-11
+
+Uma feature concluída era um beco sem saída: reinvocar `/feature-00c` com o
+mesmo short-name morria no init porque o estado já existia, e a única saída
+era editar estado à mão ou abrir uma feature paralela — fragmentando a spec e
+perdendo a identidade do que é, conceitualmente, a mesma capacidade. Esta
+release adiciona o modo de reabertura e corrige dois defeitos de contrato dos
+commands 00c que só apareciam sob backend SQLite.
+
+### Added
+
+- **Modo de reabertura: `/feature-00c "<incremento>" --reopen=<short-name>`.**
+  Preserva a execução anterior como round imutável, inicia execução nova
+  apontando para ela, restaura a spec arquivada para receber o incremento e
+  emite parecer advisory (reabrir vs criar feature nova) com bloqueio humano
+  antes de tocar disco.
+- **`state-rounds.sh`** (`next-label`, `rotate`, `recover`, `list`) — primitiva
+  de rotação. O commit da rotação é um único `mv` de diretório (o único
+  primitivo atômico do POSIX), com journal + staging; `recover` resolve
+  interrupção por comando, sem edição manual de arquivo. Rounds numerados com
+  zero-padding (`r01`, `r02`) para ordenação lexicográfica correta em POSIX.
+  Cobertura: `tests/test_state-rounds.sh` (18 cenários).
+- **`commit-mode.sh probe-pending-work`** — sonda de trabalho não integrado
+  (branch não mesclada na default, PR aberto). Fail-closed por contrato: um
+  campo só recebe valor concreto de leitura bem-sucedida e parseada; qualquer
+  outro desfecho mantém `unknown` + `probe_status=skipped-*`, nunca infere
+  `merged=no` a partir de falha.
+- **`next-task-id.sh --phase`** — calcula o próximo número de FASE, consumido
+  pelo append de backlog na reabertura.
+
+### Changed
+
+- **`specify`**: a §0.0 passa a herdar também a decisão da §0.4 quando há
+  contexto de reabertura (`.previous_round`), e a nova §0.5 grava o incremento
+  como `## Delta Requirements` na spec existente em vez de criar spec paralela.
+  Mudança aditiva e gated — o fluxo sem reabertura permanece idêntico (zero
+  linhas removidas no diff da skill).
+- **`create-tasks`**: detecta reabertura e APENDE uma fase nova ao `tasks.md`
+  em vez de regenerar, preservando as tarefas já concluídas.
+- **`cli/lib/recall.sh`**: namespace de proveniência por round no `--reindex`,
+  para que rounds preservados nunca sejam contados como execução ativa nem
+  dupliquem contagem, e varredura irmã para `state.db` (rounds em backend
+  SQLite eram invisíveis à reconstrução do índice).
+
+### Fixed
+
+- **O pre-flight do `/feature-00c` oferecia um caminho inalcançável.** O item 6
+  apresentava "(a) retomar a partir da spec existente", mas o init morria logo
+  depois — nenhuma opção oferecida ao operador pode terminar em aborto do
+  próprio fluxo que a ofereceu. A mensagem de erro também citava comandos do
+  escopo errado (`/agente-00c-*` em vez dos de feature).
+- **Semântica do lock invertida no `/feature-00c-resume`.** O texto mandava
+  `if state-lock.sh check ...; then abortar`, mas `check` sai `0` quando o lock
+  está LIVRE e `3` quando está DETIDO — abortava toda retomada com lock livre e
+  prosseguia com lock ocupado. Lock órfão (dono morto) é o caso normal entre
+  ondas, já que o processo do `acquire` anterior saiu; o caminho correto é
+  `acquire || acquire --force`, que só readquire com dono morto e recusa com
+  dono vivo.
+- **`/feature-00c-resume`, `/feature-00c-abort` e `/agente-00c-abort` recusavam
+  o backend SQLite.** Exigiam `state.json`, que não existe sob `state.db`:
+  qualquer execução iniciada após `cstk state enable-sqlite` era recusada com
+  exit 6 (resume) ou exit 1 (abort). Checagem obsoleta desde a v6.3
+  (`state-db-runtime-parity`); o `feature-00c.md` inicial já aceitava os dois
+  backends, resume e abort ficaram para trás. Trava de regressão em
+  `tests/test_00c-state-backend-contract.sh` (9 cenários).
+- **Nota de integridade sob SQLite.** `sha256-verify` é no-op quando o backend
+  é `state.db` (a integridade vem de `PRAGMA integrity_check`); o texto do
+  resume agora diz isso, para que exit `0` no passo 3 não seja lido como "hash
+  conferido".
+
 ## [7.2.1] - 2026-08-10
 
 `cstk statusline install` da 7.2.0 escrevia um `settings.json` que o Claude
@@ -5543,34 +5613,6 @@ nome — skills continuam respondendo aos mesmos triggers e argumentos.
   (Step 0..7) agora usam terminologia genérica de camadas ("server /
   backend", "client / frontend", "cross-boundary") em vez de listas
   específicas de Go/React. Comandos de build/test/lint apresentados em
-[7.2.1]: https://github.com/JotJunior/cstk/releases/tag/v7.2.1
-[7.2.0]: https://github.com/JotJunior/cstk/releases/tag/v7.2.0
-[7.1.1]: https://github.com/JotJunior/cstk/releases/tag/v7.1.1
-[7.1.0]: https://github.com/JotJunior/cstk/releases/tag/v7.1.0
-[7.0.1]: https://github.com/JotJunior/cstk/releases/tag/v7.0.1
-[7.0.0]: https://github.com/JotJunior/cstk/releases/tag/v7.0.0
-[6.8.0]: https://github.com/JotJunior/cstk/releases/tag/v6.8.0
-[6.7.0]: https://github.com/JotJunior/cstk/releases/tag/v6.7.0
-[6.6.0]: https://github.com/JotJunior/cstk/releases/tag/v6.6.0
-[6.5.1]: https://github.com/JotJunior/cstk/releases/tag/v6.5.1
-[6.5.0]: https://github.com/JotJunior/cstk/releases/tag/v6.5.0
-[6.4.1]: https://github.com/JotJunior/cstk/releases/tag/v6.4.1
-[6.4.0]: https://github.com/JotJunior/cstk/releases/tag/v6.4.0
-[6.3.0]: https://github.com/JotJunior/cstk/releases/tag/v6.3.0
-[6.2.2]: https://github.com/JotJunior/cstk/releases/tag/v6.2.2
-[6.2.1]: https://github.com/JotJunior/cstk/releases/tag/v6.2.1
-[6.2.0]: https://github.com/JotJunior/cstk/releases/tag/v6.2.0
-[6.1.0]: https://github.com/JotJunior/cstk/releases/tag/v6.1.0
-[6.0.0]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0
-[6.0.0-alpha.2]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.2
-[6.0.0-alpha.1]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.1
-[5.34.1]: https://github.com/JotJunior/cstk/releases/tag/v5.34.1
-[5.34.0]: https://github.com/JotJunior/cstk/releases/tag/v5.34.0
-[5.33.4]: https://github.com/JotJunior/cstk/releases/tag/v5.33.4
-[5.33.3]: https://github.com/JotJunior/cstk/releases/tag/v5.33.3
-[5.33.2]: https://github.com/JotJunior/cstk/releases/tag/v5.33.2
-[5.33.1]: https://github.com/JotJunior/cstk/releases/tag/v5.33.1
-[5.33.0]: https://github.com/JotJunior/cstk/releases/tag/v5.33.0
   tabela por stack.
 
 - **`execute-task` reescrita para ser stack-agnostic** — Etapa 7 (Lint) é
@@ -5636,6 +5678,35 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.3.0]: https://github.com/JotJunior/cstk/releases/tag/v7.3.0
+[7.2.1]: https://github.com/JotJunior/cstk/releases/tag/v7.2.1
+[7.2.0]: https://github.com/JotJunior/cstk/releases/tag/v7.2.0
+[7.1.1]: https://github.com/JotJunior/cstk/releases/tag/v7.1.1
+[7.1.0]: https://github.com/JotJunior/cstk/releases/tag/v7.1.0
+[7.0.1]: https://github.com/JotJunior/cstk/releases/tag/v7.0.1
+[7.0.0]: https://github.com/JotJunior/cstk/releases/tag/v7.0.0
+[6.8.0]: https://github.com/JotJunior/cstk/releases/tag/v6.8.0
+[6.7.0]: https://github.com/JotJunior/cstk/releases/tag/v6.7.0
+[6.6.0]: https://github.com/JotJunior/cstk/releases/tag/v6.6.0
+[6.5.1]: https://github.com/JotJunior/cstk/releases/tag/v6.5.1
+[6.5.0]: https://github.com/JotJunior/cstk/releases/tag/v6.5.0
+[6.4.1]: https://github.com/JotJunior/cstk/releases/tag/v6.4.1
+[6.4.0]: https://github.com/JotJunior/cstk/releases/tag/v6.4.0
+[6.3.0]: https://github.com/JotJunior/cstk/releases/tag/v6.3.0
+[6.2.2]: https://github.com/JotJunior/cstk/releases/tag/v6.2.2
+[6.2.1]: https://github.com/JotJunior/cstk/releases/tag/v6.2.1
+[6.2.0]: https://github.com/JotJunior/cstk/releases/tag/v6.2.0
+[6.1.0]: https://github.com/JotJunior/cstk/releases/tag/v6.1.0
+[6.0.0]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0
+[6.0.0-alpha.2]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.2
+[6.0.0-alpha.1]: https://github.com/JotJunior/cstk/releases/tag/v6.0.0-alpha.1
+[5.34.1]: https://github.com/JotJunior/cstk/releases/tag/v5.34.1
+[5.34.0]: https://github.com/JotJunior/cstk/releases/tag/v5.34.0
+[5.33.4]: https://github.com/JotJunior/cstk/releases/tag/v5.33.4
+[5.33.3]: https://github.com/JotJunior/cstk/releases/tag/v5.33.3
+[5.33.2]: https://github.com/JotJunior/cstk/releases/tag/v5.33.2
+[5.33.1]: https://github.com/JotJunior/cstk/releases/tag/v5.33.1
+[5.33.0]: https://github.com/JotJunior/cstk/releases/tag/v5.33.0
 [5.32.0]: https://github.com/JotJunior/cstk/releases/tag/v5.32.0
 [5.31.0]: https://github.com/JotJunior/cstk/releases/tag/v5.31.0
 [5.30.0]: https://github.com/JotJunior/cstk/releases/tag/v5.30.0
