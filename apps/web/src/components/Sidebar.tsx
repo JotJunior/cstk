@@ -27,6 +27,7 @@ const ROUTES: NavRoute[] = [
   { id: 'memories', label: 'Memórias', icon: 'doc', path: '/memories' },
   { id: 'search', label: 'Busca de Conhecimento', icon: 'search', path: '/search' },
   { id: 'cheatsheet', label: 'Cheat Sheet', icon: 'help', path: '/cheatsheet' },
+  { id: 'faq', label: 'FAQ', icon: 'faq', path: '/faq' },
 ];
 
 function isRouteActive(route: NavRoute, pathname: string): boolean {
