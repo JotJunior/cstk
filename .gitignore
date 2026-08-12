@@ -28,3 +28,10 @@ __pycache__/
 # Saidas HTML geradas pela skill decision-tree (arvore/fluxograma de decisoes)
 arvore-decisoes*.html
 fluxograma-decisoes*.html
+
+# Config local de MCP (por maquina/sessao — nunca versionar)
+.mcp*
+
+# Documentos binarios de escritorio, em qualquer diretorio
+*.docx
+*.pptx
