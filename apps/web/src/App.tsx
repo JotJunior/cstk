@@ -29,6 +29,7 @@ import { Incidents } from '@/screens/Incidents.js';
 import { Memories } from '@/screens/Memories.js';
 import { Source } from '@/screens/Source.js';
 import { CheatSheet } from '@/screens/CheatSheet.js';
+import { Faq } from '@/screens/Faq.js';
 import { Placeholder } from '@/screens/Placeholder.js';
 import { useHealth, useAlerts } from '@/lib/hooks.js';
 import { fmtRelative } from '@/lib/format.js';
@@ -137,6 +138,9 @@ export default function App() {
 
             {/* Cheat sheet do CLI (conteudo estatico) */}
             <Route path="/cheatsheet" element={<CheatSheet />} />
+
+            {/* FAQ passo-a-passo (conteudo estatico) */}
+            <Route path="/faq" element={<Faq />} />
 
             {/* Fallback */}
             <Route path="*" element={<Placeholder title="Pagina nao encontrada" description="A rota solicitada nao existe." />} />

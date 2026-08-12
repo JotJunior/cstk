@@ -5,6 +5,32 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.27.0] - 2026-08-12
+
+### Adicionado
+
+- **FAQ no menu lateral** (rota `/faq`): 10 perguntas em 6 categorias
+  (Instalação, Plugin do Claude Code, Painel, Tokens e custo, MCP e estado,
+  Manutenção) com respostas em passo-a-passo — mais fáceis de achar do que
+  varrer as tabelas de comandos do Cheat Sheet. Campo de filtro client-side
+  (ignora acentos, busca em pergunta + resposta; resultados já abrem
+  expandidos) e acordeão acessível por pergunta. Conteúdo estático derivado
+  de fontes reais: help do `cstk v7.3.1`, README/CHANGELOG do repo
+  JotJunior/cstk e docs oficiais do Claude Code sobre plugins; respostas
+  renderizadas pelo `MarkdownView` (renderer seguro do painel).
+
+### Alterado
+
+- **Cheat Sheet sincronizado com o `cstk v7.3.1`** (estava na v6.6.0):
+  seção nova do plugin nativo do Claude Code (v7.0.0) com o dedup de hooks
+  da v7.1.0 (`--remove-classic`, "plugin vence"); comandos novos `cstk
+  setup` (wizard das 4 áreas), `cstk statusline` e `cstk recall
+  --list-memories`; flags novas (`update --force/--keep/--prune`,
+  `self-update --check`, `list --available`, tipo `suggestion` no recall);
+  `initialize-docs` marcada como removida (a v6.6 ainda dizia
+  "deprecated"); schema da `knowledge.db` corrigido de v13 para v14; e
+  link cruzado para o FAQ novo.
+
 ## [0.26.0] - 2026-08-10
 
 ### Alterado
@@ -1201,6 +1227,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.27.0]: https://github.com/JotJunior/cstk-panel/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/JotJunior/cstk-panel/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/JotJunior/cstk-panel/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/JotJunior/cstk-panel/compare/v0.23.1...v0.24.0

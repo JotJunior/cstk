@@ -50,6 +50,7 @@ const ROUTES = [
   { id: 'memories', label: 'Memórias', icon: 'doc', path: '/memories' },
   { id: 'search', label: 'Busca de Conhecimento', icon: 'search', path: '/search' },
   { id: 'cheatsheet', label: 'Cheat Sheet', icon: 'help', path: '/cheatsheet' },
+  { id: 'faq', label: 'FAQ', icon: 'faq', path: '/faq' },
 ];
 
 // ─── Testes ───────────────────────────────────────────────────────────────────
@@ -122,7 +123,7 @@ describe('Sidebar — tema (FR-003, FR-004)', () => {
 
 describe('Sidebar — rotas de navegação (SC-005)', () => {
   it('4.2.3 todas as 10 rotas têm label para uso como data-tooltip no modo colapsado', () => {
-    expect(ROUTES).toHaveLength(11);
+    expect(ROUTES).toHaveLength(12);
     ROUTES.forEach((route) => {
       expect(typeof route.label).toBe('string');
       expect(route.label.length).toBeGreaterThan(0);

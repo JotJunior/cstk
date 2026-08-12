@@ -3,9 +3,12 @@
  * setup (completo: MCP + state.db | básico: Bash + state.json).
  *
  * Conteúdo ESTÁTICO (não consome API): derivado do help real do
- * `cstk v6.6.0` (2026-08-07). Ao mudar a superfície de comandos do CLI,
- * atualizar este texto junto (fonte de verdade: `cstk help [CMD]` e
- * docs/specs/cstk-cli/contracts/cli-commands.md no repo JotJunior/cstk).
+ * `cstk v7.3.1` (2026-08-12), do README e do CHANGELOG do repo
+ * JotJunior/cstk (v7.0.0 = empacotamento como plugin nativo do Claude
+ * Code + remoção da skill initialize-docs; profiles conferidos em
+ * scripts/profiles.txt.in). Ao mudar a superfície de comandos do CLI,
+ * atualizar este texto junto (fonte de verdade: `cstk help [CMD]` /
+ * `cstk <cmd> --help`).
  *
  * Renderizado via MarkdownView (renderer seguro do painel: GFM, sem HTML
  * bruto, allowlist de esquemas de URL) — mesmo caminho das docs SDD.
@@ -13,11 +16,13 @@
 import { MarkdownView } from '@/components/MarkdownView.js';
 
 const CHEATSHEET_MD = `
-# cstk cheat sheet (v6.6.0)
+# cstk cheat sheet (v7.3.1)
 
 Comandos do CLI e os dois caminhos de setup para rodar as pipelines
 autônomas 00c: **completo** (servidor MCP + state.db) ou **básico**
-(Bash + state.json).
+(Bash + state.json). Desde a v7.0.0 há **duas formas oficiais** de
+instalar o catálogo: o CLI clássico e o plugin nativo do Claude Code.
+Passo-a-passo mais mastigado por pergunta: veja o [FAQ](#/faq).
 
 ## Instalação e manutenção
 
@@ -28,22 +33,49 @@ Cada metade tem seu comando de atualização.
 | Comando | O que faz |
 | --- | --- |
 | \`curl -fsSL .../install.sh \\| sh\` | Instalação inicial (uma vez por máquina), da release mais recente |
-| \`cstk update\` | Atualiza o **catálogo**, preservando edits locais |
-| \`cstk self-update\` | Atualiza o **binário + runtime** — \`update\` NÃO faz isso |
+| \`cstk update\` | Atualiza o **catálogo**, preservando edits locais (\`--force\` sobrescreve, \`--keep\` silencia, \`--prune\` remove órfãs) |
+| \`cstk self-update\` | Atualiza o **binário + runtime** — \`update\` NÃO faz isso (\`--check\` só consulta) |
 | \`cstk install --from "file://...tar.gz"\` | Instala o catálogo de um tarball local (fluxo dev) |
-| \`cstk doctor\` | Detecta drift entre manifest e disco — rode **antes** de editar skill |
+| \`cstk setup\` | Wizard guiado das 4 áreas num projeto (hooks, backend de estado, MCP, telemetria); \`--dry-run\` / \`--yes\` |
+| \`cstk doctor\` | Detecta drift entre manifest e disco — rode **antes** de editar skill. Com o plugin habilitado, ganha a seção **Distribution Paths** (clássico vs plugin, por hash) |
 | \`cstk doctor --deps\` | Diagnóstico read-only: sqlite3/jq, backend efetivo e motivo |
-| \`cstk list\` | Lista skills instaladas (cheque \`grep -- -dev\` após tarball dev) |
+| \`cstk list\` | Lista skills instaladas (cheque \`grep -- -dev\` após tarball dev); \`--available --from URL\` lista o catálogo de uma release |
 
 > **GOTCHA**: \`install\`/\`update\` tocam só o catálogo. Um fix em
 > \`cli/lib/*.sh\` exige \`cstk self-update\` — senão o código velho continua
 > rodando ("o fix funciona no repo mas não na sessão").
 
+## Plugin nativo do Claude Code (desde a v7.0.0)
+
+Segunda forma oficial de entrega do catálogo — sem binário, sem \`curl\`:
+
+\`\`\`text
+/plugin marketplace add JotJunior/cstk
+/plugin install cstk@cstk
+# opcional, projetos Go: /plugin install cstk-language-go@cstk
+\`\`\`
+
+Habilitado o plugin, uma sessão nova já ativa skills, os 6 commands
+\`/agente-00c*\`/\`/feature-00c*\` e os 3 guard hooks **sem**
+\`cstk hooks install\` por projeto. O hook opt-in de consumo avulso
+(\`posttooluse-loose-usage\`) fica deliberadamente **fora** do plugin.
+
+| | CLI clássico | Plugin |
+| --- | --- | --- |
+| Traz o binário \`cstk\` (\`recall\`, \`usage\`, \`mcp\`, \`session\`, \`serve\`) | Sim | **Não** — para esses, instale também pelo one-liner |
+| Guard hooks no projeto | \`cstk hooks install\` | Automáticos no boot da sessão |
+| Atualização | \`cstk update\` | \`claude plugin marketplace update\` + \`claude plugin update cstk\` + reiniciar a sessão |
+
+Os dois caminhos convivem: \`cstk hooks install\`/\`cstk setup\` detectam o
+plugin e **não** registram a guarda em dobro ("plugin vence"); registro
+clássico remanescente gera prompt de remoção (\`--remove-classic\` para
+CI/script, backup em \`settings.json.bak-pre-dedup\`).
+
 ## Estado transacional 00c
 
-Desde a v6.3.0/v6.4.0 o cutover está completo: todos os leitores do
-runtime e os 3 hooks do harness funcionam contra os dois backends
-(\`state.json\` e \`state.db\`) — nenhum degrada mudo sob SQLite.
+Todos os leitores do runtime e os hooks do harness funcionam contra os
+dois backends (\`state.json\` e \`state.db\`) — nenhum degrada mudo sob
+SQLite.
 
 | Comando | O que faz |
 | --- | --- |
@@ -75,10 +107,10 @@ permanece de pé).
 ## Pipelines autônomas (slash commands no Claude Code)
 
 Pré-requisito do \`/feature-00c\`: briefing + constitution ratificados
-(sem eles, \`/agente-00c\` faz o bootstrap). Desde a v6.6.0 o briefing
-canônico vive em \`docs/briefing.md\` — o caminho legado
-\`docs/01-briefing-discovery/briefing.md\` é aceito só como fallback, e a
-skill \`initialize-docs\` está **deprecated** (remoção na v7): o layout SDD
+(sem eles, \`/agente-00c\` faz o bootstrap). O briefing canônico vive em
+\`docs/briefing.md\` — o caminho legado
+\`docs/01-briefing-discovery/briefing.md\` é aceito só como fallback. A
+skill \`initialize-docs\` foi **removida na v7.0.0**: o layout SDD
 (\`docs/briefing.md\` + \`docs/constitution.md\` + \`docs/specs/\`) é criado
 pelas próprias skills, sem scaffold prévio.
 
@@ -95,27 +127,30 @@ pelas próprias skills, sem scaffold prévio.
 | Comando | O que faz |
 | --- | --- |
 | \`cstk session start/list/pr/end <nome>\` | Worktree + branch isolada por feature (multi-sessão sem colisão de state) |
-| \`cstk recall "<query>"\` | Busca full-text na knowledge.db (\`--project\`, \`--type decision/block/retro/skill/memory\`, \`--limit\`) |
+| \`cstk recall "<query>"\` | Busca full-text na knowledge.db (\`--project\`, \`--type decision/block/retro/skill/memory/suggestion\`, \`--limit\`) |
 | \`cstk recall --context "<termos>"\` | Bloco markdown pronto para injetar em prompt (\`--exclude-feature\` evita eco) |
+| \`cstk recall --list-memories [--project P]\` | Lista as auto-memórias indexadas |
 | \`cstk recall --reindex --states-root ~/Projects\` | Reconstrói o índice (states-root explícito é bem mais rápido) |
 | \`cstk serve [--docker] [--update]\` | Este painel, em \`http://127.0.0.1:5173\` |
-| \`cstk hooks install [--project-path P]\` | Provisiona os 3 hooks: bash-guard fail-closed + tool-call-tick + agent-usage |
-| \`cstk hooks install --with-loose-usage\` | Também provisiona o hook opt-in de consumo avulso (default DESLIGADO; snippet separado dos 3 obrigatórios) |
+| \`cstk hooks install [--project-path P]\` | Provisiona os 3 hooks: bash-guard fail-closed + tool-call-tick + agent-usage (pulado se o plugin já os provê) |
+| \`cstk hooks install --with-loose-usage\` | Também provisiona o hook opt-in de consumo avulso (default DESLIGADO; nunca vem pelo plugin) |
+| \`cstk statusline install\` | Captura de uso do plano via \`statusLine.command\` no \`~/.claude/settings.json\` (preserva customização prévia em \`CSTK_STATUSLINE_INNER_COMMAND\`); \`status\` inspeciona |
 | \`cstk show-tip\` | Dica aleatória (ou por skill/fase) sobre o toolkit |
 
 > **GOTCHA**: cópias de hooks são snapshots — \`cstk update\` NÃO reconcilia
 > os hooks já copiados em \`<projeto>/.claude/hooks/\`. Cópia stale roda
 > regras antigas (sintoma real: \`tool_calls=0\` em todas as ondas sob
-> state.db). Desde a v6.5.0 o diagnóstico dos commands 00c acusa hook
-> \`stale\`; remediação: rodar \`cstk hooks install\` de novo em cada projeto.
+> state.db). O diagnóstico dos commands 00c acusa hook \`stale\`;
+> remediação: rodar \`cstk hooks install\` de novo em cada projeto (ou
+> migrar para o plugin, que ativa os hooks direto do catálogo).
 
-## Consumo avulso (\`cstk usage\`, v6.6.0)
+## Consumo avulso (\`cstk usage\`)
 
 Tokens/custo das sessões interativas comuns do Claude Code — invisíveis
 para o \`cstk recall\`, que só cobre ondas de orquestrador. Captura via
 hook opt-in (\`--with-loose-usage\`) em sidecar local; índice na
-\`knowledge.db\` schema v13 (tabela \`loose_usage\`). Campo sem medição
-imprime \`nao medido\` (\`null\` no \`--json\`) — nunca \`0\` fabricado.
+\`knowledge.db\` (tabela \`loose_usage\`; schema atual v14). Campo sem
+medição imprime \`nao medido\` (\`null\` no \`--json\`) — nunca \`0\` fabricado.
 
 | Comando | O que faz |
 | --- | --- |
@@ -129,6 +164,9 @@ imprime \`nao medido\` (\`null\` no \`--json\`) — nunca \`0\` fabricado.
 ---
 
 ## Passo a passo — setup COMPLETO (MCP + state.db)
+
+> **Atalho**: depois do passo 2, \`cstk setup\` no projeto-alvo cobre os
+> passos 3–5 de uma vez (wizard interativo; \`--yes\` aplica os defaults).
 
 1. **Toolkit + sanidade**
 
@@ -153,6 +191,10 @@ imprime \`nao medido\` (\`null\` no \`--json\`) — nunca \`0\` fabricado.
    commands e agents (\`/agente-00c\`, \`/feature-00c\`, subagentes) são
    instalados sempre, sem filtro de profile. \`cstk install --profile all\`
    instala também as complementares.
+
+   *Alternativa sem binário*: o plugin nativo (seção acima) ativa
+   skills + commands + guard hooks — mas não os comandos \`cstk\` deste
+   cheat sheet.
 
 3. **Backend SQLite global** — execuções novas nascem em \`state.db\`:
 
@@ -225,9 +267,9 @@ Docker indisponível em qualquer etapa? Nada quebra: o start grava
    \`mcp install\` não há container — tudo via Bash, comportamento clássico.
 
 **Upgrade do básico para o completo depois**: \`cstk state enable-sqlite\` +
-\`cstk mcp install\` + reiniciar a sessão. Execuções já iniciadas em
-\`state.json\` continuam nele; para converter uma específica:
-\`cstk state migrate --state-dir <dir>\`.
+\`cstk mcp install\` + reiniciar a sessão (ou \`cstk setup\` de uma vez).
+Execuções já iniciadas em \`state.json\` continuam nele; para converter uma
+específica: \`cstk state migrate --state-dir <dir>\`.
 `;
 
 export function CheatSheet() {
