@@ -566,16 +566,43 @@ EOF
 
 # ---- T-51: gh ausente/nao autenticado/falho apos auth ⇒ nunca infere negativo ----
 
+# _make_shim_path_no_gh: PATH completo (symlinks) COM git mas SEM gh.
+# Armadilha conhecida do repositorio (memoria de projeto
+# feedback_test_path_stub_cannot_hide_usrbin.md) — PATH deve conter TODOS os
+# binarios via symlink, exceto o suprimido, nunca um PATH minimo/stub.
+# Historico: `PATH="$stub:/usr/bin:/bin"` NAO esconde o gh no CI Ubuntu (o gh
+# mora em /usr/bin), so na maquina local (gh em /opt/homebrew/bin) — passava
+# local e queimou a 1a tag v7.3.0 no gate de release.
+# Espelha tests/test_posttooluse-tool-call-tick.sh::_make_shim_path_no_sqlite.
+_make_shim_path_no_gh() {
+  _shim="$TMPDIR_TEST/shimbin-no-gh"
+  mkdir -p "$_shim"
+  for _cmd in sh git jq mktemp awk sed grep find head printf cp mv rm mkdir \
+              chmod ls dirname basename tr cut wc env command sort \
+              uniq date cat; do
+    _src=$(command -v "$_cmd" 2>/dev/null) || continue
+    [ -n "$_src" ] || continue
+    ln -sf "$_src" "$_shim/$_cmd" 2>/dev/null || :
+  done
+  printf '%s' "$_shim"
+}
+
 scenario_t51a_probe_gh_ausente_nunca_infere_negativo() {
   _gdir="$TMPDIR_TEST/repo-probe-t51a"
   _sd="$TMPDIR_TEST/probe-t51a"
   _init_git_repo_probe "$_gdir" "feat/probe-t51a"
 
   _orig_path="$PATH"
-  _stub_dir="$TMPDIR_TEST/stub-t51a-nogh"
-  mkdir -p "$_stub_dir"
-  PATH="$_stub_dir:/usr/bin:/bin"
+  PATH="$(_make_shim_path_no_gh)"
   export PATH
+
+  # Auto-verificacao do sandbox: se o gh continuar visivel, o cenario nao esta
+  # testando o que promete. Falha explicita em vez de falso-positivo silencioso.
+  if command -v gh >/dev/null 2>&1; then
+    PATH="$_orig_path"; export PATH
+    _fail "sandbox de PATH nao suprimiu o gh" "command -v gh ainda resolve sob o shim"
+    return 1
+  fi
 
   capture "$SCRIPT" probe-pending-work --state-dir "$_sd" --projeto-alvo-path "$_gdir" -- feat/probe-t51a
 
