@@ -5,6 +5,47 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.3.2] - 2026-08-12
+
+Sincroniza a documentacao de entrada com o estado real do toolkit: o
+README.pt-BR estava varias versoes atras do ingles (nem mencionava a
+distribuicao via plugin nativo, v7.0.0), e as features 7.2.0 (plan-usage)
+e 7.3.0 (`--reopen`) nao apareciam em documentacao nenhuma fora do
+changelog. Release 100% docs — zero mudanca de codigo, skill ou contrato.
+
+### Changed
+
+- **README.pt-BR.md em paridade com o ingles.** §Estrutura atualizada para o
+  layout `plugins/` + `marketplace.json` (relocacao da v7.0.0, antes ainda
+  mostrava `global/`/`language-related/`); secao nova "Via plugin do Claude
+  Code (nativo, sem binario)" com a tabela comparativa classico × plugin;
+  secao de hooks com `--remove-classic`, dedup "plugin vence" e o paragrafo
+  de copia stale; nota do wrapper de telemetria opt-in do `cstk install`
+  (v6.9.0).
+- **Novidades 7.2.0/7.3.0 documentadas nos dois idiomas.** READMEs ganham a
+  subsecao do gauge de uso do plano (`cstk statusline` + `cstk plan-usage`)
+  e o paragrafo do modo `--reopen` na trilha avancada; `docs/cstk-usage*.md`
+  ganha a secao completa do plan-usage (flags conferidas contra
+  `cli/lib/plan-usage.sh`, semantica NULL-nunca-zero, throttle FR-010);
+  `docs/agente-00c*.md` ganha a subsecao "Reabrindo uma feature concluida
+  (`--reopen`)" + linha nova na tabela de comandos do feature-00c, com links
+  para `docs/specs/feature-reopen/` e seus contratos.
+- **CONTRIBUTING.md (2 idiomas).** Diagrama de distribuicao ganha o segundo
+  caminho oficial (marketplace → plugin nativo → Claude Code); referencias
+  stale a `language-related/` atualizadas para `plugins/cstk-language-go/`.
+- **PRIVACY.md.** Linha nova na tabela de dados para o gauge de plano
+  (tabela `plan_usage` no `knowledge.db`, opt-in via `cstk statusline
+  install`, default desligado); effective date 2026-08-12.
+
+### Fixed
+
+- **Contagem "29 skills" no comentario do `--profile all`** corrigida para
+  28 (21 globais + 7 Go) nos dois READMEs — a tabela de perfis ja dizia 28 e
+  o comentario divergia. Badge SemVer `5.x` → `7.x` tambem nos dois.
+- **Link quebrado da spec enforced-guards** em `docs/agente-00c*.md`:
+  apontava `specs/enforced-guards/`, que nao existe desde o archive —
+  corrigido para `specs/_archived/2026-07-28-enforced-guards/`.
+
 ## [7.3.1] - 2026-08-12
 
 Fecha duas issues abertas automaticamente pelo agente-00C durante execucoes
@@ -5719,6 +5760,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.3.2]: https://github.com/JotJunior/cstk/releases/tag/v7.3.2
 [7.3.1]: https://github.com/JotJunior/cstk/releases/tag/v7.3.1
 [7.3.0]: https://github.com/JotJunior/cstk/releases/tag/v7.3.0
 [7.2.1]: https://github.com/JotJunior/cstk/releases/tag/v7.2.1
