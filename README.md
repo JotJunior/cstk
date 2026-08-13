@@ -21,6 +21,12 @@ documentation, development, security and code quality.
 > · history in [CHANGELOG.md](./CHANGELOG.md). Installation recommended via
 > the `cstk` CLI (see [Installation](#installation)).
 
+![cstk panel — execution detail: 16-wave timeline with stage, tool calls, tokens, wallclock and real cost per wave, decisions by score and most-invoked skills](./docs/screenshots/panel-exec.png)
+
+*An autonomous `agente-00c` run seen from the [web panel](#screenshots): per-wave
+timeline with real cost, decision scores and invoked skills — every number
+measured locally, never fabricated. More shots in [Screenshots](#screenshots).*
+
 ## Start here
 
 Two tracks, depending on what you're looking for:
@@ -78,6 +84,14 @@ labels are stripped before touching disk.
 > `null` on every wave). Use the per-process port launcher shown in
 > [Real per-wave cost](#real-per-wave-cost-otel-usagesh) to give each process
 > its own exporter automatically.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Panel overview: plan quota, real cost, subagent tokens, active projects, running executions, model mix](./docs/screenshots/panel-home.png) *Panel overview (`cstk serve`): plan quota, real cost, running executions, model mix.* | ![Per-execution task list with outcome, tests and lint per task](./docs/screenshots/panel-tasks.png) *Tasks of an execution: outcome, tests and lint per task, 100% pass rate.* |
+| ![cstk recall searching the cross-project knowledge base from the terminal](./docs/screenshots/cstk-recall.png) *`cstk recall`: full-text memory across every past execution, with provenance (project/feature/wave/date).* | ![The review-features skill generating a feature portfolio report inside Claude Code](./docs/screenshots/cstk-review-features.png) *The `review-features` skill building a cross-feature portfolio report inside Claude Code.* |
+| ![cstk doctor reporting the installed catalog in sync, 32 OK, zero drift](./docs/screenshots/cstk-doctor.png) *`cstk doctor`: installed catalog audited against the manifest — zero drift.* | |
 
 ## Structure
 
@@ -520,6 +534,17 @@ Default profile when none is given: `sdd`. Details in `cstk install --help`.
 | Go skills and hooks | [docs/go-toolkit.md](./docs/go-toolkit.md) |
 | Naming conventions and docs hierarchy | [docs/conventions.md](./docs/conventions.md) |
 | Browsable manual (site) | [jotjunior.github.io/cstk](https://jotjunior.github.io/cstk/) |
+
+## Security
+
+cstk ships hooks that intercept tool calls (including one that matches
+**all** tools — a passive, silent, always-exit-0 local counter), a Bash
+guard that is fail-closed **only during autonomous 00c executions**, and a
+CLI that refuses unverified release downloads (sha256 + fixed host
+allowlist). Nothing cstk records ever leaves your machine.
+
+What each hook does, what the guard blocks, how release integrity works and
+how to report a vulnerability: **[SECURITY.md](./SECURITY.md)**.
 
 ## Contributing
 

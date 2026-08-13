@@ -66,7 +66,8 @@ const SERVER_NAME = "cstk-state";
 // 0.4.0: teto de chamadas por sessao (SEC-L1/LLM10, pos-MVP consumado) —
 // aditivo (novo codigo de erro TOOL_CALL_LIMIT_EXCEEDED + env
 // MCP_MAX_TOOL_CALLS; nenhum contrato existente alterado).
-const SERVER_VERSION = "0.4.0";
+// 0.5.0: close_wave ganha advance/terminal_phase (wave-close-advance FR-008)
+const SERVER_VERSION = "0.5.0";
 
 // SEC-L1 (LLM10 — consumo nao-limitado): teto de chamadas de tool por
 // sessao/processo. dec-093 ratificou o adiamento pos-MVP; consumado aqui.

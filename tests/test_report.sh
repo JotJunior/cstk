@@ -9,6 +9,7 @@ SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/report.sh"
 RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
 ON="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
 DEC="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
+BL="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/bloqueios.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_report.sh: jq ausente — pulando\n'
@@ -259,6 +260,40 @@ scenario_generate_referencias_objeto_estruturado_nao_quebra() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate com referencias objeto" "$_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "fonte=spec_corrente fr=FR-007" || return 1
   assert_stdout_contains "fonte=constitution principio=VI version=1.2.0" || return 1
+}
+
+# Regressao issue #115: o protocolo clarify-asker/answerer registra
+# BloqueioHumano com opcoes ESTRUTURADAS [{rotulo,descricao}] — a secao 4
+# assumia array de strings (`map("- " + .)`) e o emit inteiro morria com
+# exit 5 ("string and object cannot be added"), zerando o relatorio
+# terminal da onda. Os dois formatos sao validos (bloqueios.sh so exige
+# array) e devem renderizar.
+scenario_generate_opcoes_recomendadas_objeto_nao_quebra() {
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  capture "$ON" start --state-dir "$_sd"
+  capture "$DEC" register --state-dir "$_sd" \
+    --agente "feature-00c-clarify-asker" --etapa "clarify" \
+    --contexto "Pergunta Q1 com opcoes estruturadas do protocolo clarify" \
+    --opcoes '["A","B"]' --escolha "A" \
+    --justificativa "Justificativa de tamanho ok aqui sim para teste"
+  capture "$BL" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual conjunto de campos da secao 5 persistir?" \
+    --contexto-para-resposta "Contexto para o operador decidir" \
+    --opcoes-recomendadas '[{"rotulo":"A","descricao":"Somente nome e papel","default_sugerido":true},{"rotulo":"B","descricao":"Todos os campos"}]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "bloqueios register (objeto)" "$_CAPTURED_STDERR"; return 1; }
+  capture "$BL" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Segunda pergunta com opcoes em formato string?" \
+    --contexto-para-resposta "Contexto para o operador decidir" \
+    --opcoes-recomendadas '["op-string-1","op-string-2"]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "bloqueios register (string)" "$_CAPTURED_STDERR"; return 1; }
+  capture "$ON" end --state-dir "$_sd" --motivo-termino bloqueio_humano
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate com opcoes objeto (issue #115)" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "- (A) Somente nome e papel" || return 1
+  assert_stdout_contains "- (B) Todos os campos" || return 1
+  assert_stdout_contains "- op-string-1" || return 1
+  assert_stdout_contains "- op-string-2" || return 1
 }
 
 # ---------- emit (FR-018): resolve caminho por flavor + secrets-filter interno ----------

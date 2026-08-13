@@ -47,6 +47,7 @@ const F = {
   ondasNoOpenWave: join(FIXTURES_DIR, "fake-close-wave-ondas-no-open-wave.sh"),
   ondasEndFails: join(FIXTURES_DIR, "fake-close-wave-ondas-end-fails.sh"),
   ondasEndMutates: join(FIXTURES_DIR, "fake-close-wave-ondas-end-mutates.sh"),
+  ondasRequiresAdvance: join(FIXTURES_DIR, "fake-close-wave-ondas-requires-advance.sh"),
   stateRwHappy: join(FIXTURES_DIR, "fake-close-wave-state-rw-happy.sh"),
   stateRwReadFails: join(FIXTURES_DIR, "fake-close-wave-state-rw-read-fails.sh"),
   stateRwShaFails: join(FIXTURES_DIR, "fake-close-wave-state-rw-sha-fails.sh"),
@@ -143,6 +144,58 @@ test("handleCloseWave: happy path (backend json) fecha a onda, grava backup escr
     const backupContent = await readFile(join(stateDir, "backups", "wave-013.json"), "utf8");
     const envelope = JSON.parse(backupContent) as { wave_number: number };
     assert.equal(envelope.wave_number, 13);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("handleCloseWave: advance/terminal_phase sao repassados como --advance/--terminal-phase ao end (wave-close-advance FR-002)", async () => {
+  const stateDir = await makeStateDir();
+  try {
+    await writeFile(join(stateDir, "state.json"), '{"waves":[{"id":"onda-013"}]}', "utf8");
+    await writeFile(join(stateDir, "state.json.sha256"), "seedhash123\n", "utf8");
+
+    const input = parseOrThrow({
+      session_id: "synthetic-token-abc123",
+      termination_reason: "etapa_concluida_avancando",
+      advance: true,
+      terminal_phase: "review-task",
+    });
+    // O fixture SO aceita `end` quando --advance e --terminal-phase estao
+    // no argv — accepted aqui prova o passthrough em runtime.
+    const response = await handleCloseWave(input, {
+      session: sessionFor(stateDir),
+      ondasHelperPath: F.ondasRequiresAdvance,
+      stateRwHelperPath: F.stateRwHappy,
+      secretsFilterHelperPath: F.secretsFilterHappy,
+    });
+
+    assert.equal(response.outcome, "accepted");
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("handleCloseWave: sem advance no input, --advance NAO vai ao argv de end", async () => {
+  const stateDir = await makeStateDir();
+  try {
+    await writeFile(join(stateDir, "state.json"), '{"waves":[{"id":"onda-013"}]}', "utf8");
+    await writeFile(join(stateDir, "state.json.sha256"), "seedhash123\n", "utf8");
+
+    const input = parseOrThrow({
+      session_id: "synthetic-token-abc123",
+      termination_reason: "etapa_concluida_avancando",
+    });
+    // Mesmo fixture exigente: sem advance no input, o end recebe argv sem
+    // as flags e falha => rejected (prova que a flag nao vaza por default).
+    const response = await handleCloseWave(input, {
+      session: sessionFor(stateDir),
+      ondasHelperPath: F.ondasRequiresAdvance,
+      stateRwHelperPath: F.stateRwHappy,
+      secretsFilterHelperPath: F.secretsFilterHappy,
+    });
+
+    assert.equal(response.outcome, "rejected");
   } finally {
     await rm(stateDir, { recursive: true, force: true });
   }

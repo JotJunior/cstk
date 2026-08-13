@@ -380,6 +380,18 @@ Sequencia da onda corrente. Cada iteracao:
 9. recomputar hash:
    state-rw.sh sha256-update --state-dir $STATE_DIR
 10. state-ondas.sh end (com --motivo-termino: etapa_concluida_avancando|threshold_proxy_atingido|bloqueio_humano|aborto|concluido)
+    - Etapa CONCLUIDA nesta onda (motivo `etapa_concluida_avancando`):
+      OBRIGATORIO fechar com `--advance --terminal-phase review-task` —
+      `current_stage` E `next_instruction` avancam no MESMO write atomico
+      do fechamento (wave-close-advance FR-002/FR-007). NUNCA avance a
+      fase por `state-rw.sh set` avulso: o meio-avanco (fase avancada +
+      `next_instruction` stale) e invisivel ao reconcile-wave (que da
+      noop em onda fechada) e faz o resume re-executar etapa ja concluida
+      sobrescrevendo artefatos. `--next-instruction "..."` opcional
+      refina SO o texto da instrucao (o avanco de fase ocorre igual).
+    - Onda pausada NO MEIO da etapa (`threshold_proxy_atingido`,
+      `bloqueio_humano`): SEM `--advance`; use `--next-instruction
+      "Continuar etapa <fase corrente> — <de onde retomar>"`.
 10.bis (best-effort, ADITIVO — FASE 7 cstk-knowledge-db, FR-006/FR-018):
     ingerir o conhecimento da onda na memoria cross-feature APOS o end:
       cstk recall --ingest --state-dir $STATE_DIR 2>/dev/null || \

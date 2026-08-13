@@ -189,6 +189,19 @@ fi
 
      state-rw.sh migrate --state-dir "$AGENTE_00C_STATE_DIR"
 
+   Garantia de branch do modo atomic-commit (atomic-commit-ensure-branch
+   FR-005): se `commit-mode.sh is-enabled` retornar `true`, re-executar a
+   garantia ANTES do spawn — idempotente (`noop` quando ja fora da
+   default) e cobre o operador que voltou manualmente para `main` entre
+   ondas. Best-effort: falha vira aviso e a retomada segue (o
+   guard-branch por onda permanece como defesa):
+
+     if [ "$(commit-mode.sh is-enabled --state-dir "$AGENTE_00C_STATE_DIR")" = "true" ]; then
+       commit-mode.sh ensure-branch --projeto-alvo-path "$_proj" \
+         --short-name "$SHORT" \
+         || echo "ensure-branch falhou — commits por etapa serao pulados pelo guard-branch enquanto HEAD estiver na default" >&2
+     fi
+
    Antes de spawnar, compute o modelo a aplicar na onda de continuacao
    via `wave-select` (mapa fase→modelo + refino + override — FR-002,
    FR-009). Idempotente por onda (re-entrada apos retomada nao duplica

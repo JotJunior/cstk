@@ -5,6 +5,7 @@
 //   state-ondas.sh end --state-dir <SD> --motivo-termino <M>
 //     [--add-etapa <token>]* [--proxima-agendada-para <ISO>]
 //     [--next-instruction <texto>]
+//     [--advance [--terminal-phase <fase>]]  (wave-close-advance FR-002)
 //   secrets-filter.sh for-backup --wave-number <N> < (state-rw.sh read) \
 //     > <state-dir>/backups/wave-<NNN>.json
 //   state-rw.sh sha256-update --state-dir <SD>
@@ -118,6 +119,19 @@ export const closeWaveInputShape = {
     .optional(),
   next_scheduled_for: z.string().nullable().optional(),
   next_instruction: z.string().nullable().optional(),
+  // wave-close-advance FR-002: avanco atomico do ponteiro no mesmo write
+  // do fechamento (state-ondas.sh end --advance). So valido com
+  // termination_reason=etapa_concluida_avancando — a validacao semantica
+  // fica no helper (fail-closed, exit 2), paridade com o caminho Bash.
+  advance: z.boolean().nullable().optional(),
+  terminal_phase: z
+    .string()
+    .regex(
+      IDENTIFIER_PATTERN,
+      "terminal_phase deve casar com ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+    )
+    .nullable()
+    .optional(),
 } as const;
 
 const closeWaveInputSchema = z.object(closeWaveInputShape);
@@ -376,6 +390,12 @@ export async function handleCloseWave(
   }
   if (input.next_instruction) {
     endArgs.push("--next-instruction", input.next_instruction);
+  }
+  if (input.advance) {
+    endArgs.push("--advance");
+    if (input.terminal_phase) {
+      endArgs.push("--terminal-phase", input.terminal_phase);
+    }
   }
 
   try {

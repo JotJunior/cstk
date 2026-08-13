@@ -281,6 +281,9 @@ Quando habilitado, a pipeline cria um commit git a cada etapa concluida
 (specify, plan, checklist, create-tasks) e um commit agrupado ao final
 de cada onda de execute-task. Ao final da pipeline, faz push+PR
 automaticamente se houver branch nao-default.
+Se HEAD estiver na branch default, habilitar cria/troca para uma branch
+agente-00c/<nome> agora (senao TODO commit seria pulado pelo
+guard-branch, FR-005 — o modo nunca operaria).
 
 Habilitar o modo atomic-commit? [s/N]
 ```
@@ -290,6 +293,28 @@ Habilitar o modo atomic-commit? [s/N]
 
 > **Os commands de resume NAO re-promptam**: `/agente-00c-resume` le
 > `.atomic_commit_enabled` diretamente do `state.json` sem interacao.
+
+Garantia de branch (atomic-commit-ensure-branch FR-004): com
+`_atomic=true`, garantir HEAD fora da default ANTES do init — unico
+momento com humano presente para consentir/corrigir. O nome deriva do
+MESMO identificador ja usado pelo `stage-message` do orquestrador
+(descricao do projeto normalizada), com prefixo proprio:
+
+```bash
+if [ "$_atomic" = "true" ]; then
+  _name=$(printf '%s' "<descricao sanitizada>" | head -c 40 \
+          | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+  if ! commit-mode.sh ensure-branch --projeto-alvo-path "<PAP>" \
+       --short-name "$_name" --prefix agente-00c/; then
+    # Falha (git ausente / checkout conflitante): mostre a saida do git
+    # ao operador com a remediacao (resolver a working tree, ou
+    # `cstk session start <nome>`) e PERGUNTE: corrigir e tentar de novo,
+    # ou prosseguir SEM atomic-commit? Prosseguir => _atomic=false
+    # (o guard-branch por onda permanece como defesa em profundidade).
+    :
+  fi
+fi
+```
 
 - Inicializar `state.json` v1.0.0 via `state-rw.sh init`:
   - `--execucao-id "exec-$(date -u +%FT%H-%M-%SZ)-agente-00c-<slug>"`

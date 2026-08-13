@@ -18,7 +18,7 @@
 #   _so_db_start DIR                          -> INSERT de nova onda (C3:
 #                                                 onda ja aberta => exit 1,
 #                                                 via ux_wave_single_open)
-#   _so_db_end DIR MOTIVO PROXIMA ETAPAS_RAW NEXT_SET NEXT_RAW
+#   _so_db_end DIR MOTIVO PROXIMA ETAPAS_RAW NEXT_SET NEXT_RAW [ADV_STAGE]
 #                                              -> fecha a onda aberta (uma
 #                                                 unica transacao, C4). Apos
 #                                                 o COMMIT, dispara o export
@@ -205,7 +205,7 @@ _so_db_start() {
 
 _so_db_end() {
   _e_sdir="$1"; _e_motivo="$2"; _e_proxima="$3"; _e_etapas_raw="$4"
-  _e_next_set="$5"; _e_next_raw="$6"
+  _e_next_set="$5"; _e_next_raw="$6"; _e_adv="${7:-}"
 
   _e_db=$(_sr_db_file "$_e_sdir")
   [ -f "$_e_db" ] || _so_die "end: state.db ausente em $_e_sdir" 1
@@ -277,11 +277,15 @@ _so_db_end() {
     [ -n "$_e_extra_new" ] && _e_extra_sql=", extra_fields=$(_sr_sql_quote "$_e_extra_new")"
   fi
 
-  # C4: fechamento da onda + atualizacao de next_instruction na MESMA
+  # C4: fechamento da onda + atualizacao de next_instruction (e, com
+  # --advance, de current_stage — wave-close-advance FR-002) na MESMA
   # transacao (paridade com o write atomico unico do path JSON).
   _e_sql="BEGIN IMMEDIATE; UPDATE wave SET finished_at=$(_sr_sql_quote "$_e_now"), wallclock_seconds=$_e_wc, tool_calls=$_e_tc, termination_reason=$(_sr_sql_quote "$_e_motivo"), next_wave_scheduled_for=$_e_proxima_sql, executed_stages=$(_sr_sql_quote "$_e_stages_merged"), agent_usage=$_e_au_sql, agent_spawns=$_e_spawns_sql, otel_usage=$_e_otel_sql$_e_extra_sql WHERE id=$(_sr_sql_quote "$_e_wid");"
   if [ "$_e_next_set" = 1 ]; then
     _e_sql="$_e_sql UPDATE execution SET next_instruction=$_e_next_instr_sql WHERE id=$(_sr_sql_quote "$_e_exec_id");"
+  fi
+  if [ -n "$_e_adv" ]; then
+    _e_sql="$_e_sql UPDATE execution SET current_stage=$(_sr_sql_quote "$_e_adv") WHERE id=$(_sr_sql_quote "$_e_exec_id");"
   fi
   _e_sql="$_e_sql COMMIT;"
 
