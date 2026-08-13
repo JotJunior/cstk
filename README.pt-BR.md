@@ -21,6 +21,13 @@ documentação, desenvolvimento, segurança e qualidade de código.
 > · histórico no [CHANGELOG.md](./CHANGELOG.md). Instalação recomendada via
 > `cstk` CLI (ver [Instalação](#instalação)).
 
+![Painel do cstk — detalhe de execução: timeline de 16 ondas com etapa, tool calls, tokens, wallclock e custo real por onda, decisões por score e skills mais invocadas](./docs/screenshots/panel-exec.png)
+
+*Uma execução autônoma do `agente-00c` vista pelo [painel web](#screenshots):
+timeline por onda com custo real, scores de decisão e skills invocadas — todo
+número medido localmente, nunca fabricado. Mais imagens em
+[Screenshots](#screenshots).*
+
 ## Comece aqui
 
 Duas trilhas, dependendo do que você procura:
@@ -78,6 +85,14 @@ descartados antes de tocar o disco.
 > (`otel_usage` `null` em toda onda). Use o launcher de porta por processo
 > mostrado em [Custo real por onda](#custo-real-por-onda-otel-usagesh) para
 > cada processo ganhar seu próprio exporter automaticamente.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Visão geral do painel: cota do plano, custo real, tokens de subagentes, projetos ativos, execuções em andamento, mix de modelos](./docs/screenshots/panel-home.png) *Visão geral do painel (`cstk serve`): cota do plano, custo real, execuções em andamento, mix de modelos.* | ![Lista de tarefas de uma execução com outcome, testes e lint por tarefa](./docs/screenshots/panel-tasks.png) *Tarefas de uma execução: outcome, testes e lint por tarefa, pass rate 100%.* |
+| ![cstk recall buscando na base de conhecimento cross-projeto pelo terminal](./docs/screenshots/cstk-recall.png) *`cstk recall`: memória full-text de todas as execuções passadas, com proveniência (projeto/feature/onda/data).* | ![A skill review-features gerando relatório de portfólio de features dentro do Claude Code](./docs/screenshots/cstk-review-features.png) *A skill `review-features` montando o relatório cross-feature dentro do Claude Code.* |
+| ![cstk doctor reportando o catálogo instalado em sincronia, 32 OK, drift zero](./docs/screenshots/cstk-doctor.png) *`cstk doctor`: catálogo instalado auditado contra o manifest — drift zero.* | |
 
 ## Estrutura
 
@@ -524,6 +539,18 @@ Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --hel
 | Skills e hooks para Go | [docs/go-toolkit.md](./docs/go-toolkit.pt-BR.md) |
 | Convenções de nomenclatura e hierarquia de docs | [docs/conventions.md](./docs/conventions.pt-BR.md) |
 | Manual navegável (site) | [jotjunior.github.io/cstk](https://jotjunior.github.io/cstk/) |
+
+## Segurança
+
+O cstk instala hooks que interceptam tool calls (incluindo um que casa
+**todas** as tools — um contador local passivo, silencioso, sempre exit 0),
+um guard de Bash fail-closed **apenas durante execuções 00c autônomas**, e
+uma CLI que recusa downloads de release não verificados (sha256 + allowlist
+fixa de hosts). Nada que o cstk registra sai da sua máquina.
+
+O que cada hook faz, o que o guard bloqueia, como funciona a integridade de
+release e como reportar vulnerabilidade: **[SECURITY.md](./SECURITY.md)**
+(em inglês).
 
 ## Contribuindo
 
