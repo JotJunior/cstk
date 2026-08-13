@@ -5,6 +5,25 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.28.0] - 2026-08-13
+
+### Corrigido
+
+- **Instalação quebrada em Node 24** (`cstk serve --update`): bump do
+  `better-sqlite3` de `^9.6.0` para `^12.4.1` em `apps/server`. A linha
+  9.6.0 só publica prebuilds até ABI v120 (Node 21) e o código-fonte usa
+  APIs de V8 removidas no Node 24 (`CopyablePersistentTraits`,
+  `AccessorGetterCallback`) — o `node-gyp rebuild` falhava sem saída. A
+  linha 12.4+ publica prebuilds `linux-x64`/`darwin` para Node 20/22/23/24
+  (ABI v115/v127/v131/v137), eliminando a compilação nativa no usuário
+  final. Reportado em JotJunior/cstk#113.
+
+### Alterado
+
+- **`engines.node` honesto**: de `>=20.0.0` (otimista — o teto real era
+  Node 22, e só via compilação local) para `20.x || 22.x || 23.x || 24.x`,
+  espelhando o suporte declarado pelo próprio `better-sqlite3@12.x`.
+
 ## [0.27.0] - 2026-08-12
 
 ### Adicionado
@@ -1227,6 +1246,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.28.0]: https://github.com/JotJunior/cstk-panel/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/JotJunior/cstk-panel/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/JotJunior/cstk-panel/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/JotJunior/cstk-panel/compare/v0.24.0...v0.25.0
