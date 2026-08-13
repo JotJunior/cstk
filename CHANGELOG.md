@@ -5,6 +5,40 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.3.3] - 2026-08-13
+
+Defesa em profundidade do `cstk serve` para a issue
+[#113](https://github.com/JotJunior/cstk/issues/113) (painel nao
+instalava em Node 24): o fix de fato e o bump do `better-sqlite3` para
+`^12.4.1` no cstk-panel 0.28.0 (prebuilds para Node 20/22/23/24); aqui
+entram as guardas do lado do cstk para que a combinacao errada de Node
+falhe cedo e nunca destrua uma instalacao funcional.
+
+### Fixed
+
+- **`--update`/`--reinstall` sem janela de destruicao** (`cli/lib/serve.sh`):
+  o `--update` fazia `rm -rf` do painel instalado ANTES de instalar a versao
+  nova — se o `npm install` da nova falhasse (caso real da #113: Node 24 x
+  `better-sqlite3` 9.6.0), o usuario ficava sem painel nenhum. Agora a nova
+  e instalada em staging irmao e so entra no lugar apos sucesso; falha
+  mantem a instalada (aviso em stderr) e o painel ainda sobe. No
+  `--reinstall`, o preflight de Node roda ANTES do `rm -rf`.
+
+### Added
+
+- **Preflight de Node no install** (issue #113): antes de qualquer download,
+  `cstk serve` valida que o major do Node corrente esta na faixa suportada
+  pelo painel (20/22/23/24 — espelho dos engines do cstk-panel >= 0.28.0 /
+  prebuilds do better-sqlite3 12.x) e falha cedo com mensagem acionavel
+  (`use uma versao suportada (ex.: nvm use 22)`) em vez de vazar centenas de
+  linhas de node-gyp. Node indetectavel nao bloqueia (aviso + prossegue).
+- **Deteccao de mismatch de ABI** (sugestao da #113): o install grava o
+  major do Node usado em `.panel-node-major` (ao lado do `.panel-version`);
+  starts subsequentes sob major diferente falham cedo orientando `nvm use
+  <major>` ou `cstk serve --reinstall`, em vez de estourar erro cru de
+  dlopen do modulo nativo. Instalacoes antigas (sem o arquivo) seguem sem
+  checagem — o valor nunca e inferido.
+
 ## [7.3.2] - 2026-08-12
 
 Sincroniza a documentacao de entrada com o estado real do toolkit: o
@@ -5760,6 +5794,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.3.3]: https://github.com/JotJunior/cstk/releases/tag/v7.3.3
 [7.3.2]: https://github.com/JotJunior/cstk/releases/tag/v7.3.2
 [7.3.1]: https://github.com/JotJunior/cstk/releases/tag/v7.3.1
 [7.3.0]: https://github.com/JotJunior/cstk/releases/tag/v7.3.0

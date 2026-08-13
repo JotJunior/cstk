@@ -1879,4 +1879,242 @@ scenario_wsl_fluxo_completo_com_npm_da_distro_instala() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Issue #113 — preflight de Node no install, swap sem destruicao no --update,
+# e deteccao de mismatch de ABI via .panel-node-major.
+# ---------------------------------------------------------------------------
+
+# _stub_node_version BIN_DIR VERSION: stub de node que responde `node -v`
+# com VERSION (ex.: v18.20.0) e sai 0 para qualquer outro uso. Sombreia o
+# node real do PATH (o _STUB_BIN e prependado), permitindo simular majors
+# arbitrarios sem depender da versao instalada na maquina/CI.
+_stub_node_version() {
+  _snv_bin="$1"
+  _snv_version="$2"
+  cat > "$_snv_bin/node" <<STUB
+#!/bin/sh
+if [ "\$1" = "-v" ] || [ "\$1" = "--version" ]; then
+  printf '%s\n' "$_snv_version"
+  exit 0
+fi
+exit 0
+STUB
+  chmod +x "$_snv_bin/node"
+}
+
+scenario_node_preflight_major_nao_suportado_exit1() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _stub_node_version "$_STUB_BIN" "v18.20.0"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "preflight_18_exit" "esperado exit 1 (Node 18 fora da faixa), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'requer Node'; then
+    _fail "preflight_18_msg" "stderr nao traz mensagem acionavel de faixa de Node: $_CAPTURED_STDERR"
+    return 1
+  fi
+  # Falhou ANTES de qualquer download/instalacao: nada foi criado.
+  if [ -d "$CSTK_PANEL_DIR" ]; then
+    _fail "preflight_18_sem_efeito" "preflight deveria falhar antes de criar o panel dir"
+    return 1
+  fi
+}
+
+scenario_reinstall_node_nao_suportado_preserva_instalacao() {
+  _setup_serve_env
+  _make_bin_dir
+  # --reinstall com Node fora da faixa: o preflight roda ANTES do rm -rf —
+  # a instalacao existente e preservada (sem janela de destruicao).
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.1"}\n' > "$CSTK_PANEL_DIR/package.json"
+  : > "$CSTK_PANEL_DIR/SENTINELA"
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _stub_node_version "$_STUB_BIN" "v18.20.0"
+  _run_serve --reinstall
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "reinstall_preflight_exit" "esperado exit 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if [ ! -f "$CSTK_PANEL_DIR/SENTINELA" ]; then
+    _fail "reinstall_preflight_preserva" "--reinstall destruiu a instalacao antes do preflight de Node falhar"
+    return 1
+  fi
+}
+
+scenario_node_preflight_major_suportado_instala() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _stub_node_version "$_STUB_BIN" "v22.5.1"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "preflight_22_exit" "esperado exit 0 (Node 22 suportado), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ ! -f "$CSTK_PANEL_DIR/package.json" ]; then
+    _fail "preflight_22_instalou" "painel nao foi instalado com Node suportado"
+    return 1
+  fi
+}
+
+scenario_node_preflight_indetectavel_prossegue() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  # node com saida fora do formato vN.N.N: preflight avisa e prossegue
+  # (guard de UX, nao de seguranca — o npm install e o verificador final).
+  _stub_node_version "$_STUB_BIN" "saida-improvavel"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "preflight_indetectavel_exit" "esperado exit 0 (node indetectavel nao bloqueia), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'nao foi possivel detectar'; then
+    _fail "preflight_indetectavel_aviso" "stderr nao avisa que a versao do Node nao foi detectada: $_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_install_grava_panel_node_major() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _stub_node_version "$_STUB_BIN" "v22.5.1"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "grava_major_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ "$(cat "$CSTK_PANEL_DIR/.panel-node-major" 2>/dev/null | tr -d ' \n')" != "22" ]; then
+    _fail "grava_major_valor" ".panel-node-major deveria registrar 22 (obtido: '$(cat "$CSTK_PANEL_DIR/.panel-node-major" 2>/dev/null)')"
+    return 1
+  fi
+}
+
+scenario_node_major_mismatch_exit1() {
+  _setup_serve_env
+  _make_bin_dir
+  # Painel ja instalado, compilado com Node 20; Node corrente e 24.
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.1"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.1\n' > "$CSTK_PANEL_DIR/.panel-version"
+  printf '20\n' > "$CSTK_PANEL_DIR/.panel-node-major"
+  _stub_npm_ok "$_STUB_BIN"
+  _stub_node_version "$_STUB_BIN" "v24.19.0"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "mismatch_exit" "esperado exit 1 (ABI mismatch 20 vs 24), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -q -- '--reinstall'; then
+    _fail "mismatch_orientacao" "stderr nao sugere --reinstall: $_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_node_major_match_prossegue() {
+  _setup_serve_env
+  _make_bin_dir
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.1"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.1\n' > "$CSTK_PANEL_DIR/.panel-version"
+  printf '22\n' > "$CSTK_PANEL_DIR/.panel-node-major"
+  _stub_npm_ok "$_STUB_BIN"
+  _stub_node_version "$_STUB_BIN" "v22.9.0"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "match_exit" "esperado exit 0 (majors iguais), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_node_major_ausente_prossegue() {
+  _setup_serve_env
+  _make_bin_dir
+  # Instalacao anterior a este check: sem .panel-node-major -> sem checagem
+  # (nunca inferir o Node do install — Constitution VI).
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.1"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.1\n' > "$CSTK_PANEL_DIR/.panel-version"
+  _stub_npm_ok "$_STUB_BIN"
+  _stub_node_version "$_STUB_BIN" "v24.19.0"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "sem_arquivo_exit" "esperado exit 0 (sem .panel-node-major nao ha checagem), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_update_npm_install_falha_mantem_instalado() {
+  _setup_serve_env
+  _make_bin_dir
+  # Instalado v0.0.0 + sentinela; ha versao nova (v0.0.1), mas o npm install
+  # da nova falha -> a instalada NUNCA e destruida (issue #113: o rm -rf
+  # antecipado deixava o usuario sem painel nenhum).
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.0"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.0\n' > "$CSTK_PANEL_DIR/.panel-version"
+  : > "$CSTK_PANEL_DIR/SENTINELA"
+  _stub_curl_ok "$_STUB_BIN"
+  cat > "$_STUB_BIN/npm" <<'STUB'
+#!/bin/sh
+case "$1" in
+  install) exit 1 ;;
+  *) exit 0 ;;
+esac
+STUB
+  chmod +x "$_STUB_BIN/npm"
+  _run_serve --update
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "update_install_falha_exit" "esperado exit 0 (mantem instalada e sobe), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ ! -f "$CSTK_PANEL_DIR/SENTINELA" ]; then
+    _fail "update_install_falha_preserva" "instalacao existente foi destruida apesar da falha do npm install da versao nova"
+    return 1
+  fi
+  if [ "$(cat "$CSTK_PANEL_DIR/.panel-version" 2>/dev/null | tr -d ' \n')" != "v0.0.0" ]; then
+    _fail "update_install_falha_versao" ".panel-version deveria permanecer v0.0.0"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'mantendo a versao instalada'; then
+    _fail "update_install_falha_aviso" "stderr nao avisa que manteve a versao instalada: $_CAPTURED_STDERR"
+    return 1
+  fi
+}
+
+scenario_update_sucesso_sem_residuo_stage_old() {
+  _setup_serve_env
+  _make_bin_dir
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.0"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.0\n' > "$CSTK_PANEL_DIR/.panel-version"
+  _stub_curl_ok "$_STUB_BIN"
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve --update
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "update_residuo_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ "$(cat "$CSTK_PANEL_DIR/.panel-version" 2>/dev/null | tr -d ' \n')" != "v0.0.1" ]; then
+    _fail "update_residuo_versao" ".panel-version nao foi atualizada para v0.0.1"
+    return 1
+  fi
+  # Sem residuo de staging/backup ao lado do panel dir.
+  for _urso_d in "$CSTK_PANEL_DIR".stage.* "$CSTK_PANEL_DIR".old.*; do
+    if [ -e "$_urso_d" ]; then
+      _fail "update_residuo_dir" "residuo de swap deixado para tras: $_urso_d"
+      return 1
+    fi
+  done
+}
+
 run_all_scenarios

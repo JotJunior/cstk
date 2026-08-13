@@ -6,8 +6,10 @@
 #   serve_main [--port P] [--host H] [--reinstall] [--update]
 #              [--allow-unverified] [--help]
 #     exit 0  sucesso (painel rodando ou --help)
-#     exit 1  erro geral (prereq ausente, download falhou, instalacao
-#             corrompida, integridade nao confirmada sem bypass explicito)
+#     exit 1  erro geral (prereq ausente, Node major fora da faixa suportada
+#             para instalar, mismatch de ABI com o Node do install, download
+#             falhou, instalacao corrompida, integridade nao confirmada sem
+#             bypass explicito)
 #     exit 2  uso incorreto (porta invalida, flag desconhecida)
 #
 # Dependencias internas (sourced via $CSTK_LIB):
@@ -113,6 +115,63 @@ _serve_check_npm_interop() {
 _serve_is_installed() {
   _sii_dir="$1"
   [ -f "$_sii_dir/package.json" ]
+}
+
+# Majors de Node suportados pela instalacao do painel (issue #113).
+# Fonte: engines do cstk-panel >= 0.28.0 ("20.x || 22.x || 23.x || 24.x"),
+# que espelha o suporte declarado pelo better-sqlite3@12.x (prebuilds ABI
+# v115/v127/v131/v137 verificados nos assets das releases v12.4.1+ de
+# WiseLibs/better-sqlite3). Atualizar em sincronia quando o painel mudar a
+# faixa. Constante fixa, NAO overridable via env (mesmo racional de
+# CSTK_TRUSTED_RELEASE_HOSTS: muda so em release nova do cstk).
+_SERVE_SUPPORTED_NODE_MAJORS="20 22 23 24"
+
+# _serve_node_major
+# Ecoa o major da versao do node encontrado no PATH (ex.: "24" para
+# v24.19.0). exit 1 (sem eco) se node ausente ou saida fora do formato
+# vN.N.N — o caller decide o que fazer com "indetectavel".
+_serve_node_major() {
+  command -v node >/dev/null 2>&1 || return 1
+  _snm_v=$(node -v 2>/dev/null | head -1 | tr -d ' \r\n')
+  case "$_snm_v" in
+    v[0-9]*) ;;
+    *) return 1 ;;
+  esac
+  _snm_major="${_snm_v#v}"
+  _snm_major="${_snm_major%%.*}"
+  case "$_snm_major" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s\n' "$_snm_major"
+}
+
+# _serve_node_preflight
+# Gate de INSTALACAO (issue #113): valida que o major do Node corrente esta
+# na faixa suportada pelo painel ANTES de qualquer download/npm install —
+# falha cedo com mensagem acionavel em vez de vazar centenas de linhas de
+# node-gyp (better-sqlite3 sem prebuild para o ABI corrente cai em
+# compilacao nativa; na linha 9.6.0 do painel < 0.28.0, Node 24 nem
+# compilava — APIs de V8 removidas).
+# Node indetectavel NAO bloqueia (aviso + prossegue): este e um guard de UX
+# de instalacao, nao de seguranca — o npm install continua sendo o
+# verificador final. So roda nos caminhos que INSTALAM; servir um painel ja
+# instalado e coberto pelo check de mismatch de ABI (.panel-node-major).
+# exit 0 = prossegue; exit 1 = major fora da faixa (mensagem em stderr).
+_serve_node_preflight() {
+  _snp_major=$(_serve_node_major) || {
+    printf 'cstk serve: aviso: nao foi possivel detectar a versao do Node; prosseguindo com a instalacao\n' >&2
+    return 0
+  }
+  for _snp_ok in $_SERVE_SUPPORTED_NODE_MAJORS; do
+    if [ "$_snp_major" = "$_snp_ok" ]; then
+      return 0
+    fi
+  done
+  _snp_list=$(printf '%s' "$_SERVE_SUPPORTED_NODE_MAJORS" | tr ' ' '/')
+  printf 'cstk serve: erro: o painel requer Node %s (detectado: Node %s)\n' \
+    "$_snp_list" "$_snp_major" >&2
+  printf 'cstk serve: use uma versao suportada (ex.: nvm use 22) e tente novamente\n' >&2
+  return 1
 }
 
 # _serve_latest_tag
@@ -482,6 +541,15 @@ _serve_install() {
     return 1
   fi
 
+  # Registrar o major do Node que rodou o npm install: modulos nativos
+  # (better-sqlite3) ficam presos ao ABI desse Node. Consumido no start para
+  # detectar mismatch e sugerir --reinstall em vez de estourar erro cru de
+  # dlopen (issue #113). Best-effort: node indetectavel -> arquivo ausente
+  # -> check no start e pulado (nunca fabricar o valor — Constitution VI).
+  if _si_node_major=$(_serve_node_major); then
+    printf '%s\n' "$_si_node_major" > "$_si_extract/.panel-node-major"
+  fi
+
   # Move atomico para panel_dir (apos extrair + npm install)
   mkdir -p "$(dirname -- "$_si_panel_dir")"
   if ! mv -- "$_si_extract" "$_si_panel_dir"; then
@@ -549,7 +617,13 @@ Usage: cstk serve [--port PORT] [--host HOST] [--update] [--reinstall]
 
 Start the cstk panel web interface. On first run, downloads the latest
 release from GitHub and installs it locally. Subsequent runs reuse the
-cached installation. When the release publishes a <name>.tar.gz asset
+cached installation. Installing requires a supported Node major
+(20/22/23/24 — checked before any download; the panel's native modules
+must match better-sqlite3's prebuilt targets). The Node major used at
+install time is recorded (.panel-node-major) and checked on later runs:
+running under a different major would break the native modules' ABI, so
+cstk serve fails early and suggests --reinstall instead of crashing at
+startup. When the release publishes a <name>.tar.gz asset
 with a matching <name>.tar.gz.sha256, that verifiable asset is preferred
 and its SHA-256 is enforced; otherwise the API auto-tarball is used,
 whose integrity cannot be confirmed (see --allow-unverified).
@@ -569,7 +643,10 @@ Options:
                         reinstall only if one exists (otherwise reuse the
                         cached version). Best-effort: if it fails
                         (offline/API error), the installed version is kept
-                        and the panel still starts.
+                        and the panel still starts. The new version is
+                        staged in a sibling directory and only swapped in
+                        after its npm install succeeds — a failed update
+                        never destroys the working installation.
                         With --docker, rebuilds the local image instead of
                         the install directory (same "only if newer"
                         semantics).
@@ -612,7 +689,9 @@ Options:
 
 Exit codes:
   0   Panel started (or --help shown).
-  1   General error (prereq missing, download failed, install corrupt,
+  1   General error (prereq missing, unsupported Node major for install,
+      Node major differs from the one recorded at install time (native
+      ABI mismatch — use --reinstall), download failed, install corrupt,
       integrity unverified/mismatched without --allow-unverified; with
       --docker also: Docker not installed/daemon unreachable, image build
       failed, or a stale container could not be reconciled).
@@ -740,6 +819,17 @@ HELP
   # Resolver diretorio do painel (FR-007)
   _serve_panel_dir="${CSTK_PANEL_DIR:-${HOME}/.local/share/cstk/panel}"
 
+  # Preflight de Node ANTES de qualquer caminho que va instalar (issue #113):
+  # cobre a primeira instalacao e o --reinstall (checar DEPOIS do rm abaixo
+  # destruiria a instalacao antes de descobrir que o Node corrente nao
+  # consegue instalar a nova). O caminho --update faz o proprio preflight
+  # adiante, so quando existe versao nova de fato.
+  if [ "$_serve_reinstall" = "1" ] || ! _serve_is_installed "$_serve_panel_dir"; then
+    if ! _serve_node_preflight; then
+      return 1
+    fi
+  fi
+
   # --reinstall: remover instalacao existente antes de qualquer check
   if [ "$_serve_reinstall" = "1" ]; then
     rm -rf -- "$_serve_panel_dir"
@@ -749,6 +839,14 @@ HELP
   # se houver versao nova (comparando com .panel-version). Best-effort: se a
   # checagem falhar (offline/API), mantem a versao instalada. Sem efeito quando
   # combinado com --reinstall (o dir ja foi removido acima -> instala a latest).
+  #
+  # A versao instalada NUNCA e destruida antes de a nova estar completa
+  # (issue #113): a nova e instalada num diretorio staging IRMAO e so entra
+  # no lugar apos npm install bem-sucedido. Falha na instalacao da nova =>
+  # aviso + segue servindo a instalada (mesma semantica best-effort da
+  # checagem). O rm -rf antecipado anterior deixava o usuario sem painel
+  # nenhum quando o npm install da nova falhava (ex.: Node 24 x painel com
+  # better-sqlite3 9.6.0).
   if [ "$_serve_update" = "1" ] && _serve_is_installed "$_serve_panel_dir"; then
     printf 'cstk serve: verificando atualizacoes do painel...\n'
     _serve_latest=$(_serve_latest_tag)
@@ -757,7 +855,35 @@ HELP
       if [ "$_serve_latest" != "$_serve_current" ]; then
         printf 'cstk serve: atualizando painel: %s -> %s\n' \
           "${_serve_current:-desconhecida}" "$_serve_latest"
-        rm -rf -- "$_serve_panel_dir"
+        # Preflight de Node ANTES de baixar/instalar (issue #113): update
+        # explicito com Node fora da faixa e erro acionavel, nao um npm
+        # install fadado a falhar depois do download.
+        if ! _serve_node_preflight; then
+          return 1
+        fi
+        _serve_stage="${_serve_panel_dir}.stage.$$"
+        rm -rf -- "$_serve_stage"
+        if _serve_install "$_serve_stage" "$_serve_allow_unverified" "$_serve_bypass_method"; then
+          _serve_old="${_serve_panel_dir}.old.$$"
+          rm -rf -- "$_serve_old"
+          if mv -- "$_serve_panel_dir" "$_serve_old" \
+            && mv -- "$_serve_stage" "$_serve_panel_dir"; then
+            rm -rf -- "$_serve_old"
+          else
+            # Swap parou no meio: devolver a versao antiga ao lugar se ela
+            # saiu e a nova nao entrou.
+            if [ ! -d "$_serve_panel_dir" ] && [ -d "$_serve_old" ]; then
+              mv -- "$_serve_old" "$_serve_panel_dir" || :
+            fi
+            rm -rf -- "$_serve_stage"
+            printf 'cstk serve: aviso: falha ao trocar para a versao nova; mantendo a versao instalada (%s)\n' \
+              "${_serve_current:-desconhecida}" >&2
+          fi
+        else
+          rm -rf -- "$_serve_stage"
+          printf 'cstk serve: aviso: instalacao da versao nova falhou; mantendo a versao instalada (%s)\n' \
+            "${_serve_current:-desconhecida}" >&2
+        fi
       else
         printf 'cstk serve: painel ja esta na versao mais recente (%s)\n' "$_serve_current"
       fi
@@ -774,7 +900,9 @@ HELP
     return 1
   fi
 
-  # Lazy-install: so instalar se nao instalado
+  # Lazy-install: so instalar se nao instalado (o preflight de Node deste
+  # caminho ja rodou acima, antes do --reinstall poder destruir qualquer
+  # coisa).
   if ! _serve_is_installed "$_serve_panel_dir"; then
     if ! _serve_install "$_serve_panel_dir" "$_serve_allow_unverified" "$_serve_bypass_method"; then
       return 1
@@ -786,6 +914,26 @@ HELP
     _serve_version=$(cat "$_serve_panel_dir/.panel-version" 2>/dev/null)
     if [ -n "$_serve_version" ]; then
       printf 'cstk serve: usando painel ja instalado (%s)\n' "$_serve_version"
+    fi
+  fi
+
+  # Mismatch de ABI entre o Node do install e o Node corrente (issue #113):
+  # modulos nativos (better-sqlite3) ficam presos ao ABI do Node que rodou o
+  # npm install — cada major de Node tem NODE_MODULE_VERSION distinto, entao
+  # major divergente = dlopen falhando com erro criptico no start. Detectar
+  # aqui e orientar. So checa quando o install registrou .panel-node-major
+  # (instalacoes anteriores a este check nao tem o arquivo -> sem checagem,
+  # nunca inferir) e quando o Node corrente e detectavel.
+  if [ -f "$_serve_panel_dir/.panel-node-major" ]; then
+    _serve_inst_major=$(tr -d ' \n' < "$_serve_panel_dir/.panel-node-major" 2>/dev/null)
+    _serve_cur_major=$(_serve_node_major) || _serve_cur_major=""
+    if [ -n "$_serve_inst_major" ] && [ -n "$_serve_cur_major" ] \
+      && [ "$_serve_inst_major" != "$_serve_cur_major" ]; then
+      printf 'cstk serve: erro: o painel instalado foi compilado com Node %s, mas o Node corrente e o %s (modulos nativos sao incompativeis entre majors)\n' \
+        "$_serve_inst_major" "$_serve_cur_major" >&2
+      printf 'cstk serve: use o Node do install (ex.: nvm use %s) ou reinstale com o Node corrente: cstk serve --reinstall\n' \
+        "$_serve_inst_major" >&2
+      return 1
     fi
   fi
 
