@@ -274,7 +274,16 @@ _rp_render_secao_4() {
               "**Opcoes recomendadas**:",
               (((.recommended_options // .opcoes_recomendadas) // [])
                | if length == 0 then "- (sem opcoes especificas)"
-                 else (map("- " + .) | join("\n")) end),
+                 else (map(
+                     # Issue #115: o protocolo clarify-asker/answerer emite
+                     # opcoes estruturadas {rotulo, descricao} — somar
+                     # string+objeto quebrava o emit inteiro (exit 5).
+                     # Ambos os formatos sao validos no state (bloqueios.sh
+                     # so exige array).
+                     if type == "object"
+                     then "- (\((.rotulo // .label) // "?")) \((.descricao // .description) // "")"
+                     else "- \(tostring)" end
+                   ) | join("\n")) end),
               "",
               "**Status**: \(.status)",
               ""
