@@ -5,6 +5,78 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.4.0] - 2026-08-13
+
+Duas features nascidas de execucoes reais do mesmo dia — o modo
+atomic-commit habilitado em `main` nunca comitava (guard-branch pulava
+tudo, silenciosamente), e o orquestrador fechou uma onda com
+`current_stage` avancado mas `next_instruction` stale (um resume fiel ao
+contrato re-executaria a etapa concluida e sobrescreveria o `spec.md`) —
+mais o fix da issue [#115](https://github.com/JotJunior/cstk/issues/115)
+e o pacote Documentation/Trust do diretorio de plugins (SECURITY.md +
+screenshots).
+
+### Added
+
+- **`commit-mode.sh ensure-branch`** (feature `atomic-commit-ensure-branch`):
+  garante `HEAD` fora da branch default ANTES da execucao comecar —
+  cria/troca para `feature/<short-name>` (`--prefix agente-00c/` no
+  `/agente-00c`) quando `HEAD` esta na default; no-op observavel fora dela.
+  Wiring nos 4 commands: no prompt de opt-in (que agora avisa da criacao de
+  branch), no caminho `--reopen` e nos resumes (idempotente — cobre o
+  operador que voltou para `main` entre ondas). Fail-loud com remediacao
+  (`cstk session start`) e fallback honesto para `_atomic=false`; o
+  guard-branch por onda permanece como defesa em profundidade. Resolucao de
+  branch default fatorada em helper unico (`_cm_branch_is_default`)
+  compartilhado com o guard-branch. Testes: 9 cenarios `ensure_branch_*` em
+  `tests/test_commit-mode.sh`.
+- **`state-ondas.sh end --advance`** (feature `wave-close-advance`): avanca
+  o ponteiro INTEIRO (`current_stage` + `next_instruction`) no MESMO write
+  atomico do fechamento da onda (transacao C4 sob SQLite; jq+atomic-write
+  unico sob JSON), resolvendo a proxima fase via `pipeline.sh next-stage`.
+  Valida somente com `--motivo-termino etapa_concluida_avancando`
+  (fail-closed antes de qualquer write); `--terminal-phase` rejeita avanco
+  em fase terminal; `--next-instruction` sobrescreve so o texto;
+  `--advance-from` (uso interno) pina a fase de origem. Elimina a classe do
+  meio-avanco: fase avancada + instrucao stale era invisivel ao
+  `reconcile-wave` (noop em onda fechada) e fazia o resume re-executar etapa
+  concluida. Prosa dos dois orquestradores agora EXIGE `--advance` ao
+  concluir etapa. Testes: cenarios `end_advance_*` + `sqlite_end_advance_*`
+  em `tests/test_state-ondas.sh` (paridade de backend).
+- **Tool MCP `close_wave` com `advance`/`terminal_phase`** (FR-008 da
+  wave-close-advance): paridade Bash↔MCP — sem isso o caminho MCP nao
+  cumpriria o novo contrato de fechamento. Validacao semantica permanece no
+  helper (fonte unica de regra). Servidor `cstk-state` 0.4.0 → 0.5.0.
+- **`SECURITY.md` + secao Security nos READMEs (EN/pt-BR)**: politica de
+  seguranca consolidada — o que cada um dos 3 hooks faz (incluindo o porque
+  do matcher `*` do tick), o que o bash-guard bloqueia e quando, integridade
+  de release (sha256 fail-closed + allowlist fixa de hosts, tabela classico
+  vs plugin), manejo de dados 100% local e confinamento do servidor MCP.
+- **Screenshots no README (EN/pt-BR)**: hero (`panel-exec` — timeline de
+  ondas com custo real por onda) + galeria em `docs/screenshots/` (painel,
+  `cstk recall`, `review-features`, `cstk doctor`). Fecha o criterio
+  "Screenshots" de diretorios de plugins.
+
+### Changed
+
+- **`reconcile-wave` fecha e avanca num unico write** (FR-005 da
+  wave-close-advance): o ramo de recuperacao com proxima fase usa
+  `end --advance --advance-from` em vez de `end` + dois `set` separados —
+  um crash entre "fechar" e "avancar" nao pode mais produzir onda fechada
+  com ponteiro stale (exatamente a variante que a guarda de idempotencia
+  tornava invisivel). Semantica do `--phase` pinado preservada.
+
+### Fixed
+
+- **`report.sh` secao 4 quebrava com opcoes estruturadas** (issue #115): o
+  protocolo clarify-asker/answerer registra bloqueios humanos com
+  `--opcoes-recomendadas` em formato `[{rotulo, descricao}]`, e a renderizacao
+  assumia array de strings (`map("- " + .)`) — o `emit` inteiro morria com
+  exit 5 ("string and object cannot be added"), zerando o relatorio terminal
+  da onda. Agora ambos os formatos renderizam (`- (rotulo) descricao` /
+  `- texto`). Regressao em `tests/test_report.sh`, com bloqueios registrados
+  via `bloqueios.sh` real (mesma classe do fix anterior de `references`).
+
 ## [7.3.3] - 2026-08-13
 
 Defesa em profundidade do `cstk serve` para a issue
@@ -5794,6 +5866,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.4.0]: https://github.com/JotJunior/cstk/releases/tag/v7.4.0
 [7.3.3]: https://github.com/JotJunior/cstk/releases/tag/v7.3.3
 [7.3.2]: https://github.com/JotJunior/cstk/releases/tag/v7.3.2
 [7.3.1]: https://github.com/JotJunior/cstk/releases/tag/v7.3.1
