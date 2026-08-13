@@ -967,6 +967,117 @@ scenario_reconcile_wave_phase_override() {
   capture "$SCRIPT" start --state-dir "$_sd"
   capture "$SCRIPT" reconcile-wave --state-dir "$_sd" --phase plan
   assert_stdout_contains "next=checklist" || return 1
+  # O avanco respeita a fase PINADA (end --advance-from), nao .current_stage.
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "checklist" || return 1
+}
+
+scenario_reconcile_wave_next_instruction_coerente() {
+  # wave-close-advance SC-001: apos reconciliar, next_instruction referencia
+  # a MESMA etapa de current_stage (fechamento + ponteiro num write atomico).
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"specify"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd"
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "clarify" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "Iniciar etapa clarify" || return 1
+}
+
+# ==== end --advance (wave-close-advance FR-001..FR-004) ====
+# Avanco do ponteiro INTEIRO (current_stage + next_instruction) no MESMO
+# write atomico do fechamento — elimina a classe do meio-avanco (fase
+# avancada + next_instruction stale, invisivel ao reconcile-wave).
+
+scenario_end_advance_avanca_ponteiro_no_mesmo_write() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"specify"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end --advance" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "clarify" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "Iniciar etapa clarify" || return 1
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "closed" || return 1
+}
+
+scenario_end_advance_next_instruction_sobrescreve_so_texto() {
+  # FR-004: --next-instruction refina o TEXTO; o avanco de fase ocorre igual.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"clarify"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance \
+    --next-instruction "Iniciar etapa plan — priorizar o modelo de dados."
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end --advance custom" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "plan" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "priorizar o modelo de dados" || return 1
+}
+
+scenario_end_advance_motivo_incompativel_falha_sem_write() {
+  # FR-001/SC-002: --advance so com etapa_concluida_avancando; falha ANTES
+  # de qualquer write (onda segue aberta, ponteiro intacto).
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"specify"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino threshold_proxy_atingido --advance
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "specify" || return 1
+}
+
+scenario_end_advance_fase_terminal_falha_sem_write() {
+  # FR-003/SC-002: fase corrente == --terminal-phase => fail-closed; o
+  # fechamento terminal usa --motivo-termino concluido + promocao, nunca
+  # --advance.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"review-task"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance --terminal-phase review-task
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+}
+
+scenario_end_advance_fase_desconhecida_falha_sem_write() {
+  # pipeline.sh nao resolve proxima fase de token fora da lista => exit 2.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"fase-inexistente"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+}
+
+scenario_end_advance_flags_orfas_exit2() {
+  # --terminal-phase/--advance-from sem --advance sao erro de uso.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --terminal-phase review-task
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "terminal-phase orfa: exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance-from specify
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "advance-from orfa: exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
 }
 
 scenario_git_commit_worktree() {
@@ -1692,6 +1803,39 @@ scenario_sqlite_end_atualiza_onda_e_acumulados() {
   assert_stdout_contains "2" || return 1
   capture "$RW" get --state-dir "$_sd" --field '.waves[-1].executed_stages'
   assert_stdout_contains "briefing" || return 1
+}
+
+# ==== end --advance sob backend SQLite (wave-close-advance FR-006) ====
+# Paridade: mesmo comportamento do path JSON; avanco na MESMA transacao C4.
+
+scenario_sqlite_end_advance_avanca_ponteiro_na_mesma_transacao() {
+  _sd="$TMPDIR_TEST/sqlite-end-advance"
+  _seed_sqlite_backend "$_sd" || return 1   # seed: current_stage=execute-task
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite end --advance" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "review-task" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "Iniciar etapa review-task" || return 1
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "closed" || return 1
+}
+
+scenario_sqlite_end_advance_fase_terminal_falha_sem_write() {
+  # SC-002 sob SQLite: fail-closed ANTES da transacao; onda segue aberta e
+  # ponteiro intacto (seed: current_stage=execute-task, instrucao "faca algo").
+  _sd="$TMPDIR_TEST/sqlite-end-advance-terminal"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance --terminal-phase execute-task
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "faca algo" || return 1
 }
 
 # ---- FASE 5 (state-db-foundation): export derivado, contracts/export.md ----

@@ -24,6 +24,7 @@
 #                      [--proxima-agendada-para ISO]
 #                      [--add-etapa STAGE]
 #                      [--next-instruction TEXT]
+#                      [--advance [--advance-from PHASE] [--terminal-phase PHASE]]
 #       — Atualiza ultima Onda (.waves[-1]) com finished_at/wallclock_seconds/
 #         tool_calls/termination_reason/next_wave_scheduled_for. Atualiza
 #         accumulated_metrics (waves_total += 1, tool_calls_total +=
@@ -42,6 +43,22 @@
 #         --next-instruction grava .next_instruction NO MESMO write atomico
 #         (dispensa o `state-rw.sh set` separado ANTES de end — que deixava
 #         backup/sha defasados, ja que `end` tambem escreve no state.json).
+#         --advance (wave-close-advance FR-001..004) avanca o PONTEIRO
+#         INTEIRO no mesmo write atomico do fechamento: resolve a proxima
+#         fase de .current_stage via pipeline.sh next-stage e grava
+#         .current_stage = <proxima> + .next_instruction = "Iniciar etapa
+#         <proxima>." (template; --next-instruction sobrescreve so o
+#         TEXTO). --advance-from PHASE pina a fase de origem
+#         explicitamente (uso interno do reconcile-wave --phase; default
+#         = .current_stage). Valida SOMENTE com --motivo-termino
+#         etapa_concluida_avancando; --terminal-phase PHASE (mesma
+#         semantica do reconcile-wave: feature-00c=review-task,
+#         agente-00c=review-features) faz fase corrente == PHASE falhar
+#         fail-closed ANTES de qualquer write — fechamento terminal usa
+#         --motivo-termino concluido + promocao de status, nunca
+#         --advance. Elimina a classe do meio-avanco (current_stage
+#         avancado com next_instruction stale — invisivel ao
+#         reconcile-wave, que da noop em onda fechada).
 #         Tambem agrega o sidecar wave-agent-usage.jsonl (hook
 #         posttooluse-agent-usage.sh, wave-token-metrics FASE 3) em
 #         .waves[-1].agent_usage (WaveUsage: spawns_total/with_usage/
@@ -734,12 +751,18 @@ _so_cmd_end() {
   _etapas=""
   _next_instr=""
   _next_instr_set=0
+  _advance=0
+  _adv_from=""
+  _adv_terminal=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)             _sdir=$2; shift 2 ;;
       --motivo-termino)        _motivo=$2; shift 2 ;;
       --proxima-agendada-para) _proxima=$2; shift 2 ;;
       --next-instruction)      _next_instr=$2; _next_instr_set=1; shift 2 ;;
+      --advance)               _advance=1; shift ;;
+      --advance-from)          _adv_from=$2; shift 2 ;;
+      --terminal-phase)        _adv_terminal=$2; shift 2 ;;
       --add-etapa)
         _so_is_stage_token "$2" || _so_die_usage \
           "end: --add-etapa aceita token de etapa ([A-Za-z0-9._-], ate 64 chars, sem espaco/prosa); recebido: '$2'. Resumo de onda vai em Decisao (state-decisions.sh register), nao em executed_stages."
@@ -757,9 +780,51 @@ $2"; shift 2 ;;
     etapa_concluida_avancando|threshold_proxy_atingido|bloqueio_humano|aborto|concluido) ;;
     *) _so_die "end: motivo invalido: $_motivo" 2 ;;
   esac
+  if [ -n "$_adv_terminal" ] && [ "$_advance" = 0 ]; then
+    _so_die_usage "end: --terminal-phase so faz sentido junto de --advance"
+  fi
+  if [ -n "$_adv_from" ] && [ "$_advance" = 0 ]; then
+    _so_die_usage "end: --advance-from so faz sentido junto de --advance"
+  fi
+
+  # --advance (wave-close-advance FR-001..004): resolve a proxima fase
+  # ANTES de qualquer write (fail-closed) e injeta o avanco do ponteiro no
+  # mesmo write atomico do fechamento — os dois backends recebem
+  # _adv_next resolvido, nunca recalculam.
+  _adv_next=""
+  if [ "$_advance" = 1 ]; then
+    [ "$_motivo" = "etapa_concluida_avancando" ] || _so_die_usage \
+      "end: --advance so e valida com --motivo-termino etapa_concluida_avancando (recebido: $_motivo)"
+    _adv_selfdir=$(_so_self_dir) || _adv_selfdir="."
+    _adv_pipeline="$_adv_selfdir/pipeline.sh"
+    _adv_rw="$_adv_selfdir/state-rw.sh"
+    [ -f "$_adv_pipeline" ] || _so_die "end: pipeline.sh nao encontrado em $_adv_selfdir (necessario para --advance)" 1
+    [ -f "$_adv_rw" ]       || _so_die "end: state-rw.sh nao encontrado em $_adv_selfdir (necessario para --advance)" 1
+    # --advance-from pina a fase de origem explicitamente (reconcile-wave
+    # --phase, semantica "o pai fixa a fase"); default = .current_stage.
+    if [ -n "$_adv_from" ]; then
+      _adv_cur=$_adv_from
+    else
+      _adv_cur=$(sh "$_adv_rw" get --state-dir "$_sdir" --field '.current_stage' 2>/dev/null) || _adv_cur=""
+      case "$_adv_cur" in null) _adv_cur="" ;; esac
+      [ -n "$_adv_cur" ] || _so_die "end: --advance nao resolveu .current_stage (estado ausente/corrompido?)" 1
+    fi
+    if [ -n "$_adv_terminal" ] && [ "$_adv_cur" = "$_adv_terminal" ]; then
+      _so_die_usage "end: --advance em fase terminal '$_adv_cur' — fechamento terminal usa --motivo-termino concluido + promocao de status, nunca --advance"
+    fi
+    _adv_next=$(sh "$_adv_pipeline" next-stage --current "$_adv_cur" 2>/dev/null) || _adv_next=""
+    [ -n "$_adv_next" ] || _so_die_usage \
+      "end: --advance sem proxima etapa a partir de '$_adv_cur' (fase terminal ou desconhecida do pipeline)"
+    # Template deterministico; --next-instruction sobrescreve so o TEXTO
+    # (FR-004 — o avanco de current_stage ocorre do mesmo jeito).
+    if [ "$_next_instr_set" = 0 ]; then
+      _next_instr="Iniciar etapa $_adv_next."
+      _next_instr_set=1
+    fi
+  fi
   _so_require_jq
   if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
-    _so_db_end "$_sdir" "$_motivo" "$_proxima" "$_etapas" "$_next_instr_set" "$_next_instr"
+    _so_db_end "$_sdir" "$_motivo" "$_proxima" "$_etapas" "$_next_instr_set" "$_next_instr" "$_adv_next"
     return 0
   fi
   _sf=$(_so_state_file "$_sdir")
@@ -834,6 +899,7 @@ $2"; shift 2 ;;
     --argjson otel "$_otel_json" \
     --argjson otel_reason "$_otel_reason_json" \
     --argjson next_instr "$_next_instr_json" \
+    --arg adv "$_adv_next" \
     --arg now "$_now" \
     --arg motivo "$_motivo" \
     --argjson wc "$_wc" \
@@ -887,6 +953,7 @@ $2"; shift 2 ;;
       | .accumulated_metrics.agent_duration_ms_total =
           add_null(.accumulated_metrics.agent_duration_ms_total; $au.duration_ms)
       | (if $next_instr != null then .next_instruction = $next_instr else . end)
+      | (if $adv != "" then .current_stage = $adv else . end)
   ' "$_sf" > "$_new" || { rm -f -- "$_new"; _so_die "jq update falhou" 1; }
 
   _so_backup_current "$_sdir"
@@ -1531,23 +1598,25 @@ _so_cmd_reconcile_wave() {
   # 2. registrar a skill da fase (idempotente) — senao some do audit.
   _so_cmd_record_skill --state-dir "$_rcw_sdir" --skill "$_rcw_phase" >/dev/null 2>&1 || :
 
-  # 3. fechar a onda com motivo derivado (fail-loud: end usa _so_die/exit).
+  # 3+4. fechar a onda E avancar o ponteiro (fail-loud: end usa _so_die/exit).
+  # Ramo com proxima fase usa `end --advance` (wave-close-advance FR-005):
+  # fechamento + current_stage + next_instruction saem do MESMO write
+  # atomico — um crash entre "fechar" e "avancar" nao pode mais deixar
+  # onda fechada com ponteiro stale (a variante que a guarda de
+  # idempotencia acima tornaria invisivel). O texto proprio da rede de
+  # seguranca entra via --next-instruction (FR-004: sobrescreve so o
+  # texto; o avanco de fase ocorre igual).
   if [ -n "$_rcw_next" ]; then
     _rcw_motivo="etapa_concluida_avancando"
+    _rcw_instr=$(printf 'Iniciar etapa %s — retomada pela rede de seguranca do command pai (onda anterior fechada sem Schedule intent).' "$_rcw_next")
+    # --advance-from pina a MESMA fase ja resolvida acima (--phase do pai
+    # ou .current_stage) — garante next identico ao _rcw_next do stdout.
+    _so_cmd_end --state-dir "$_rcw_sdir" --motivo-termino "$_rcw_motivo" \
+      --advance --advance-from "$_rcw_phase" \
+      --next-instruction "$_rcw_instr" >/dev/null
   else
     _rcw_motivo="concluido"
-  fi
-  _so_cmd_end --state-dir "$_rcw_sdir" --motivo-termino "$_rcw_motivo" >/dev/null
-
-  # 4. avancar ponteiro (ou promover status terminal). end NAO faz isto.
-  # (state-rw.sh ja validado presente no inicio da funcao.)
-  if [ -n "$_rcw_next" ]; then
-    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" \
-      --field '.current_stage' --value "\"$_rcw_next\"" >/dev/null
-    _rcw_instr=$(printf 'Iniciar etapa %s — retomada pela rede de seguranca do command pai (onda anterior fechada sem Schedule intent).' "$_rcw_next" | jq -R .)
-    sh "$_rcw_rw" set --state-dir "$_rcw_sdir" \
-      --field '.next_instruction' --value "$_rcw_instr" >/dev/null
-  else
+    _so_cmd_end --state-dir "$_rcw_sdir" --motivo-termino "$_rcw_motivo" >/dev/null
     # Promocao a status terminal via read-patch-write ATOMICO (uma unica
     # transacao), NAO 5 `set` sequenciais: sob backend sqlite a CHECK de
     # execution (status IN ('abortada','concluida') <=> finished_at NOT

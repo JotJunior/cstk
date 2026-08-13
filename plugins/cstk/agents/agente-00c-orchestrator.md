@@ -1598,6 +1598,18 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    --motivo-termino <M> [--add-etapa <S>] [--proxima-agendada-para <ISO>]`.
    Motivos validos: `etapa_concluida_avancando`, `threshold_proxy_atingido`,
    `bloqueio_humano`, `aborto`, `concluido`.
+   - Etapa CONCLUIDA nesta onda (motivo `etapa_concluida_avancando`):
+     OBRIGATORIO fechar com `--advance --terminal-phase review-features`
+     — `current_stage` E `next_instruction` avancam no MESMO write
+     atomico do fechamento (wave-close-advance FR-002/FR-007). NUNCA
+     avance a fase por `state-rw.sh set` avulso: o meio-avanco (fase
+     avancada + `next_instruction` stale) e invisivel ao reconcile-wave
+     (noop em onda fechada) e faz o resume re-executar etapa ja concluida
+     sobrescrevendo artefatos. `--next-instruction "..."` opcional refina
+     SO o texto da instrucao (o avanco de fase ocorre igual).
+   - Onda pausada NO MEIO da etapa (`threshold_proxy_atingido`,
+     `bloqueio_humano`): SEM `--advance`; use `--next-instruction
+     "Continuar etapa <fase corrente> — <de onde retomar>"`.
    `--add-etapa` aceita SOMENTE token de etapa (`specify`, `plan`,
    `execute-task`, `execute-task-F3.1`... — `[A-Za-z0-9._-]`, sem espaco).
    NUNCA passe resumo/narrativa da onda: o knowledge.db deriva
