@@ -523,6 +523,15 @@ if [ -n "$_label" ]; then
     --field '.atomic_commit_enabled' 2>/dev/null) || _v=""
   [ "$_v" = "true" ] && _atomic="true"
 fi
+
+# Garantia de branch herdada (atomic-commit-ensure-branch FR-004): sem
+# prompt neste caminho, a garantia roda best-effort — falha vira aviso e
+# a execucao segue (guard-branch por onda permanece como defesa).
+if [ "$_atomic" = "true" ]; then
+  commit-mode.sh ensure-branch \
+    --projeto-alvo-path "$_proj" --short-name "$SHORT" \
+    || echo "ensure-branch falhou — commits por etapa serao pulados pelo guard-branch enquanto HEAD estiver na default" >&2
+fi
 ```
 
 Ausencia, leitura falha ou valor nao reconhecido ⇒ `_atomic="false"`
@@ -613,6 +622,9 @@ fi
 # (specify, plan, checklist, create-tasks) e um commit agrupado ao final
 # de cada onda de execute-task. Ao final da pipeline, faz push+PR
 # automaticamente se houver branch nao-default.
+# Se HEAD estiver na branch default, habilitar cria/troca para a branch
+# feature/<short-name> agora (senao TODO commit seria pulado pelo
+# guard-branch, FR-005 — o modo nunca operaria).
 #
 # Habilitar o modo atomic-commit? [s/N]
 # ---
@@ -620,6 +632,22 @@ fi
 # - Qualquer outra resposta (inclusive Enter): _atomic=false (default seguro)
 # Os commands de resume NAO re-promptam: /feature-00c-resume le
 # .atomic_commit_enabled diretamente do state.json sem interacao.
+
+# Garantia de branch (atomic-commit-ensure-branch FR-004): com
+# _atomic=true, garantir HEAD fora da default ANTES do init — e o unico
+# momento com humano presente para consentir/corrigir. Idempotente
+# (stdout: created|switched|noop <branch>).
+if [ "$_atomic" = "true" ]; then
+  if ! commit-mode.sh ensure-branch \
+       --projeto-alvo-path "$_proj" --short-name "$SHORT"; then
+    # Falha (git ausente / checkout conflitante): mostre a saida do git ao
+    # operador com a remediacao (resolver a working tree, ou isolamento
+    # total via `cstk session start $SHORT`) e PERGUNTE: corrigir e tentar
+    # de novo, ou prosseguir SEM atomic-commit? Prosseguir => _atomic=false
+    # (o guard-branch por onda permanece como defesa em profundidade).
+    :
+  fi
+fi
 
 state-rw.sh init --state-dir "$AGENTE_00C_STATE_DIR" \
   --short-name "$SHORT" \

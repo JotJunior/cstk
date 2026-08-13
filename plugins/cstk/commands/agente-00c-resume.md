@@ -234,6 +234,24 @@ nao gateia a retomada):
 state-rw.sh migrate --state-dir <SD>
 ```
 
+Garantia de branch do modo atomic-commit (atomic-commit-ensure-branch
+FR-005): se `commit-mode.sh is-enabled` retornar `true`, re-executar a
+garantia ANTES do spawn — idempotente (`noop` quando ja fora da default)
+e cobre o operador que voltou manualmente para a default entre ondas.
+Best-effort: falha vira aviso e a retomada segue (o guard-branch por
+onda permanece como defesa). O nome deriva do MESMO identificador do
+`stage-message` (descricao do projeto normalizada):
+
+```bash
+if [ "$(commit-mode.sh is-enabled --state-dir <SD>)" = "true" ]; then
+  _name=$(printf '%s' "<descricao sanitizada>" | head -c 40 \
+          | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+  commit-mode.sh ensure-branch --projeto-alvo-path "<PAP>" \
+    --short-name "$_name" --prefix agente-00c/ \
+    || echo "ensure-branch falhou — commits por etapa serao pulados pelo guard-branch enquanto HEAD estiver na default" >&2
+fi
+```
+
 Antes de spawnar, compute o modelo a aplicar na onda de continuacao via
 `wave-select` (mapa fase→modelo + refino + override — FR-002, FR-009).
 Idempotente por onda (re-entrada apos retomada nao duplica Decisao):

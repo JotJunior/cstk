@@ -11,6 +11,14 @@
 #   is-enabled   --state-dir DIR
 #   set-enabled  --state-dir DIR --value <true|false>
 #   guard-branch --state-dir DIR --projeto-alvo-path PATH
+#   ensure-branch --projeto-alvo-path PATH --short-name NAME
+#                 [--prefix PREFIX/]
+#                 Garante HEAD fora da branch default ANTES da execucao
+#                 comecar (atomic-commit-ensure-branch FR-001..003):
+#                 cria/troca para <prefix><short-name> (prefix default
+#                 "feature/") quando HEAD esta na default; no-op senao.
+#                 Nao substitui guard-branch (defesa em profundidade por
+#                 onda). Invocado pelos commands pai no opt-in/resume.
 #   probe-pending-work --state-dir DIR --projeto-alvo-path PATH -- BRANCH
 #                 Sonda READ-ONLY de trabalho nao integrado (feature
 #                 reopen-flow, FR-021). Ver contracts/pending-work-probe.md.
@@ -114,6 +122,36 @@ _cm_require_git() {
   return 0
 }
 
+# Token de nome ([A-Za-z0-9._-], 1..64 chars) — mesmo padrao fail-closed
+# do --add-etapa de state-ondas.sh. Usado por ensure-branch (FR-003).
+_cm_is_name_token() {
+  case "$1" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
+  [ "${#1}" -le 64 ]
+}
+
+# Resolve a branch default do repo em $1: origin/HEAD e autoritativo
+# quando ha remote. Sem remote (repo local / origin/HEAD nao setado),
+# imprime vazio — caso em que a convencao main/master vale como default.
+# O exit status de um pipe e o do ULTIMO comando (o sed, que sai 0 mesmo
+# com entrada vazia) — nesta forma o `|| ...` NUNCA dispara (issue #98).
+# Captura em duas etapas para o fallback ser alcancavel.
+_cm_resolve_default_branch() {
+  _rdb_sr=$(git -C "$1" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || _rdb_sr=""
+  printf '%s' "$_rdb_sr" | sed 's@^refs/remotes/origin/@@'
+}
+
+# _cm_branch_is_default PAP BRANCH — 0 se BRANCH e a default de PAP.
+# Sem remote, o nome do branch default de `git init` VARIA por ambiente
+# (macOS default "main", muitos Linux/CI default "master"): AMBOS contam.
+_cm_branch_is_default() {
+  _bid_default=$(_cm_resolve_default_branch "$1")
+  if [ -n "$_bid_default" ]; then
+    [ "$2" = "$_bid_default" ]
+  else
+    [ "$2" = "main" ] || [ "$2" = "master" ]
+  fi
+}
+
 # ---------- subcomando: is-enabled ----------
 # is-enabled --state-dir DIR
 # stdout: "true" ou "false"
@@ -202,33 +240,86 @@ _cm_cmd_guard_branch() {
     return 1
   }
 
-  # Resolver branch default: origin/HEAD e autoritativo quando ha remote.
-  # Sem remote (repo local / origin/HEAD nao setado), o nome do branch
-  # default de `git init` VARIA por ambiente (macOS default "main", muitos
-  # Linux/CI default "master"), entao tratamos AMBOS como default — bloquear
-  # commit/push tanto em "main" quanto em "master".
-  # O exit status de um pipe e o do ULTIMO comando (o sed, que sai 0 mesmo
-  # com entrada vazia) — nesta forma o `|| ...` NUNCA dispara (issue #98).
-  # Captura em duas etapas para o fallback ser alcancavel.
-  _sr=$(git -C "$_pap" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || _sr=""
-  _default=$(printf '%s' "$_sr" | sed 's@^refs/remotes/origin/@@')
-
   printf '%s\n' "$_head"
 
-  if [ -n "$_default" ]; then
-    # Remote resolvel: o default e unico e autoritativo.
-    if [ "$_head" = "$_default" ]; then
-      _cm_err "guard-branch: HEAD esta na branch default '$_default' — commit/push bloqueado (FR-005)"
-      return 3
-    fi
-  else
-    # Sem remote: bloquear a convencao default (main OU master).
-    if [ "$_head" = "main" ] || [ "$_head" = "master" ]; then
-      _cm_err "guard-branch: HEAD esta na branch default '$_head' — commit/push bloqueado (FR-005)"
-      return 3
-    fi
+  # Resolucao de default compartilhada com ensure-branch — regra UNICA
+  # (_cm_branch_is_default): origin/HEAD autoritativo com remote;
+  # convencao main/master sem remote.
+  if _cm_branch_is_default "$_pap" "$_head"; then
+    _default=$(_cm_resolve_default_branch "$_pap")
+    [ -n "$_default" ] || _default=$_head
+    _cm_err "guard-branch: HEAD esta na branch default '$_default' — commit/push bloqueado (FR-005)"
+    return 3
   fi
 
+  return 0
+}
+
+# ---------- subcomando: ensure-branch ----------
+# ensure-branch --projeto-alvo-path PATH --short-name NAME [--prefix PREFIX/]
+# Garante HEAD fora da branch default ANTES da execucao comecar
+# (atomic-commit-ensure-branch FR-001..003). Invocado pelos commands pai
+# no momento do opt-in de atomic-commit (e em resume/reopen, idempotente).
+# NAO substitui guard-branch — que permanece como defesa em profundidade
+# por onda (operador pode voltar para a default mid-execucao).
+# stdout: "noop <branch>" | "created <target>" | "switched <target>"
+# exit: 0 sucesso/no-op, 1 git ausente/nao-repo/checkout falhou, 2 uso
+_cm_cmd_ensure_branch() {
+  _pap=""
+  _short=""
+  _prefix="feature/"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --projeto-alvo-path) _pap=$2;    shift 2 ;;
+      --short-name)        _short=$2;  shift 2 ;;
+      --prefix)            _prefix=$2; shift 2 ;;
+      *) _cm_die_usage "ensure-branch: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_pap" ]   || _cm_die_usage "ensure-branch: --projeto-alvo-path obrigatorio"
+  [ -n "$_short" ] || _cm_die_usage "ensure-branch: --short-name obrigatorio"
+  _cm_is_name_token "$_short" || _cm_die_usage \
+    "ensure-branch: --short-name aceita token ([A-Za-z0-9._-], ate 64 chars, sem espaco/prosa); recebido: '$_short'"
+  case "$_prefix" in
+    */) _cm_is_name_token "${_prefix%/}" || _cm_die_usage \
+          "ensure-branch: --prefix aceita token terminado em '/'; recebido: '$_prefix'" ;;
+    *)  _cm_die_usage "ensure-branch: --prefix deve terminar em '/'; recebido: '$_prefix'" ;;
+  esac
+
+  if ! _cm_require_git; then
+    _cm_err "ensure-branch: git nao encontrado no PATH"
+    return 1
+  fi
+
+  _head=$(git -C "$_pap" rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+    _cm_err "ensure-branch: nao e um repositorio git ou git falhou em $_pap"
+    return 1
+  }
+
+  # Ja fora da default (inclui HEAD detached, que nunca casa main/master
+  # nem origin/HEAD): no-op observavel — mesmo criterio do guard-branch.
+  if ! _cm_branch_is_default "$_pap" "$_head"; then
+    printf 'noop %s\n' "$_head"
+    return 0
+  fi
+
+  _target="${_prefix}${_short}"
+  if git -C "$_pap" rev-parse --verify --quiet "refs/heads/$_target" >/dev/null 2>&1; then
+    # Branch da feature ja existe (resume/reopen, ou criada fora): trocar.
+    if ! git -C "$_pap" checkout "$_target" >/dev/null 2>&1; then
+      _cm_err "ensure-branch: git checkout $_target falhou (working tree conflita com a branch? resolva ou use cstk session start)"
+      return 1
+    fi
+    printf 'switched %s\n' "$_target"
+  else
+    # checkout -b preserva a working tree corrente (mudancas nao-comitadas
+    # migram junto — e o desejado no opt-in em cima de trabalho em curso).
+    if ! git -C "$_pap" checkout -b "$_target" >/dev/null 2>&1; then
+      _cm_err "ensure-branch: git checkout -b $_target falhou"
+      return 1
+    fi
+    printf 'created %s\n' "$_target"
+  fi
   return 0
 }
 
@@ -1022,7 +1113,7 @@ _cm_cmd_finalize() {
 
 # ---------- dispatch ----------
 
-[ "$#" -gt 0 ] || _cm_die_usage "subcomando obrigatorio: is-enabled|set-enabled|guard-branch|probe-pending-work|stage-message|task-message|finalize|snapshot|stage-derived"
+[ "$#" -gt 0 ] || _cm_die_usage "subcomando obrigatorio: is-enabled|set-enabled|guard-branch|ensure-branch|probe-pending-work|stage-message|task-message|finalize|snapshot|stage-derived"
 
 _CM_CMD=$1
 shift
@@ -1031,6 +1122,7 @@ case "$_CM_CMD" in
   is-enabled)         _cm_cmd_is_enabled         "$@" ;;
   set-enabled)        _cm_cmd_set_enabled        "$@" ;;
   guard-branch)       _cm_cmd_guard_branch       "$@" ;;
+  ensure-branch)      _cm_cmd_ensure_branch      "$@" ;;
   probe-pending-work) _cm_cmd_probe_pending_work "$@" ;;
   stage-message)      _cm_cmd_stage_message      "$@" ;;
   task-message)       _cm_cmd_task_message       "$@" ;;
@@ -1038,6 +1130,6 @@ case "$_CM_CMD" in
   snapshot)           _cm_cmd_snapshot           "$@" ;;
   stage-derived)      _cm_cmd_stage_derived      "$@" ;;
   *)
-    _cm_die_usage "subcomando desconhecido: $_CM_CMD (validos: is-enabled|set-enabled|guard-branch|probe-pending-work|stage-message|task-message|finalize|snapshot|stage-derived)"
+    _cm_die_usage "subcomando desconhecido: $_CM_CMD (validos: is-enabled|set-enabled|guard-branch|ensure-branch|probe-pending-work|stage-message|task-message|finalize|snapshot|stage-derived)"
     ;;
 esac

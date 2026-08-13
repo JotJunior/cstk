@@ -504,6 +504,102 @@ scenario_fr015c_guard_branch_nao_default_nao_bloqueia() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "feat/: exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+# ==== ensure-branch (atomic-commit-ensure-branch FR-001..FR-003) ====
+# Garante HEAD fora da default ANTES da execucao comecar; invocado pelos
+# commands pai no opt-in/resume. NAO substitui guard-branch.
+
+scenario_ensure_branch_cria_branch_quando_default() {
+  _gdir="$TMPDIR_TEST/repo-eb-create"
+  _init_git_repo "$_gdir" "main"
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" --short-name minha-feat
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "created feature/minha-feat" ] \
+    || { _fail "stdout esperado 'created feature/minha-feat'" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  _cur=$(git -C "$_gdir" rev-parse --abbrev-ref HEAD 2>/dev/null)
+  [ "$_cur" = "feature/minha-feat" ] || { _fail "HEAD esperado feature/minha-feat" "obtido '$_cur'"; return 1; }
+}
+
+scenario_ensure_branch_master_sem_remote_tambem_cria() {
+  # Sem remote, "master" tambem conta como default (paridade com o
+  # guard-branch no ambiente CI/Linux onde `git init` default e master).
+  _gdir="$TMPDIR_TEST/repo-eb-master"
+  _init_git_repo "$_gdir" "master"
+  git -C "$_gdir" checkout -q master 2>/dev/null || :
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" --short-name minha-feat
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "created feature/minha-feat" ] \
+    || { _fail "stdout esperado 'created feature/minha-feat'" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_ensure_branch_noop_fora_da_default() {
+  _gdir="$TMPDIR_TEST/repo-eb-noop"
+  _init_git_repo "$_gdir" "feat/ja-isolada"
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" --short-name minha-feat
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "noop feat/ja-isolada" ] \
+    || { _fail "stdout esperado 'noop feat/ja-isolada'" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  _cur=$(git -C "$_gdir" rev-parse --abbrev-ref HEAD 2>/dev/null)
+  [ "$_cur" = "feat/ja-isolada" ] || { _fail "HEAD nao deveria mudar" "obtido '$_cur'"; return 1; }
+}
+
+scenario_ensure_branch_troca_para_branch_existente() {
+  # Resume/reopen com a branch da feature ja criada: troca em vez de criar.
+  _gdir="$TMPDIR_TEST/repo-eb-switch"
+  _init_git_repo "$_gdir" "main"
+  git -C "$_gdir" branch feature/minha-feat 2>/dev/null
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" --short-name minha-feat
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "switched feature/minha-feat" ] \
+    || { _fail "stdout esperado 'switched feature/minha-feat'" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_ensure_branch_idempotente() {
+  # SC-002: duas invocacoes seguidas => mesmo estado final, exit 0.
+  _gdir="$TMPDIR_TEST/repo-eb-idem"
+  _init_git_repo "$_gdir" "main"
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" --short-name minha-feat
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "primeira invocacao" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" --short-name minha-feat
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "segunda invocacao" "$_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "noop feature/minha-feat" ] \
+    || { _fail "stdout esperado 'noop feature/minha-feat'" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_ensure_branch_prefix_custom() {
+  # /agente-00c usa --prefix agente-00c/ (FR-004 do spec).
+  _gdir="$TMPDIR_TEST/repo-eb-prefix"
+  _init_git_repo "$_gdir" "main"
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" \
+    --short-name meu-projeto --prefix agente-00c/
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "created agente-00c/meu-projeto" ] \
+    || { _fail "stdout esperado 'created agente-00c/meu-projeto'" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_ensure_branch_short_name_invalido_exit2() {
+  # FR-003: token fail-closed ANTES de qualquer invocacao git.
+  _gdir="$TMPDIR_TEST/repo-eb-token"
+  mkdir -p "$_gdir"
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" --short-name "com espaco"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_ensure_branch_prefix_sem_barra_exit2() {
+  _gdir="$TMPDIR_TEST/repo-eb-prefix-bad"
+  mkdir -p "$_gdir"
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" \
+    --short-name ok --prefix sem-barra
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_ensure_branch_nao_repo_exit1() {
+  # FR-002: fail-loud quando PATH nao e repositorio git.
+  _gdir="$TMPDIR_TEST/eb-nao-repo"
+  mkdir -p "$_gdir"
+  capture "$SCRIPT" ensure-branch --projeto-alvo-path "$_gdir" --short-name minha-feat
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit esperado 1" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
 # ==== probe-pending-work (feature reopen-flow: contracts/pending-work-probe.md, dec-038) ====
 #
 # T-50: branch nao mesclada reporta pendencia citando o comando
