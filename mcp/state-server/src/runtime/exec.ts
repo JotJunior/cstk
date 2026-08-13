@@ -280,6 +280,9 @@ export const FIELD_TO_FLAG_TABLE: readonly FieldFlagMapping[] = [
   { tool: "close_wave", field: "executed_stages", flag: "--add-etapa" },
   { tool: "close_wave", field: "next_scheduled_for", flag: "--proxima-agendada-para" },
   { tool: "close_wave", field: "next_instruction", flag: "--next-instruction" },
+  // wave-close-advance FR-002: avanco atomico do ponteiro no fechamento.
+  { tool: "close_wave", field: "advance", flag: "--advance" },
+  { tool: "close_wave", field: "terminal_phase", flag: "--terminal-phase" },
 ] as const;
 
 /**
