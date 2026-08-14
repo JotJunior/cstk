@@ -290,4 +290,78 @@ EOF
   assert_stderr_contains "token de depende-de descartado" || return 1
 }
 
+# quickstart.md Cenario 11 passo 3 (seguranca H2, gate FASE 6 6.3.3):
+# payload literal com '|' em depende-de (nao so via short-name, que a
+# regex de heading ja impede por construcao). Prova que o token e
+# descartado ANTES de alcancar a tabela markdown — nenhuma coluna extra,
+# nenhum '|' bruto na linha de dado.
+scenario_fail_closed_depende_de_com_pipe_nao_quebra_tabela() {
+  _rm="$TMPDIR_TEST/roadmap-dep-pipe.md"
+  cat > "$_rm" <<'EOF'
+# Roadmap: teste
+
+**Gerado por**: x
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+## Features
+
+### 1. feature-a
+
+- **short-name**: `feature-a`
+- **ordem**: 1
+- **depende-de**: `a|b|c`, `feature-b`
+
+**Descricao**: teste.
+
+**Justificativa**: teste.
+EOF
+  capture "$SCRIPT" --roadmap "$_rm" --specs-dir "$TMPDIR_TEST/specs-inexistente"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  _cols=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^| 1 |' | awk -F'|' '{print NF}')
+  [ "$_cols" = 6 ] || { _fail "tabela deveria ter 4 colunas (6 campos apos split por '|')" "obtido $_cols"; return 1; }
+  assert_stdout_contains 'feature-b' || return 1
+  assert_stderr_contains "token de depende-de descartado" || return 1
+}
+
+# quickstart.md Cenario 11 passo 4 (seguranca H2, gate FASE 6 6.3.3):
+# payload literal com '"' e '\' em depende-de, com --json. Prova que o
+# token e descartado ANTES do json_escape — a linha permanece parseavel
+# (aspas balanceadas) mesmo com o payload hostil na entrada bruta.
+scenario_fail_closed_depende_de_com_aspas_e_backslash_json_parseavel() {
+  _rm="$TMPDIR_TEST/roadmap-dep-aspas.md"
+  cat > "$_rm" <<'EOF'
+# Roadmap: teste
+
+**Gerado por**: x
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+## Features
+
+### 1. feature-a
+
+- **short-name**: `feature-a`
+- **ordem**: 1
+- **depende-de**: `a"b\c`, `feature-b`
+
+**Descricao**: teste.
+
+**Justificativa**: teste.
+EOF
+  capture "$SCRIPT" --roadmap "$_rm" --specs-dir "$TMPDIR_TEST/specs-inexistente" --json
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *'a"b\c'*) _fail "token hostil nao deveria ser emitido bruto no JSON" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  assert_stdout_contains '"depende_de":["feature-b"]' || return 1
+  # aspas duplas balanceadas na linha de saida da entrada (paridade par).
+  _linha=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '"short_name":"feature-a"')
+  _n_aspas=$(printf '%s' "$_linha" | tr -cd '"' | wc -c | tr -d ' ')
+  [ $((_n_aspas % 2)) -eq 0 ] || { _fail "aspas desbalanceadas no JSON" "$_linha"; return 1; }
+  assert_stderr_contains "token de depende-de descartado" || return 1
+}
+
 run_all_scenarios

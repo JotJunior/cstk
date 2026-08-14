@@ -396,9 +396,9 @@ Ref: `plan.md` §Abordagem de implementacao, Fase D
 
 Ref: `plan.md` Fase D passo 11
 
-- [ ] 6.1.1 Confirmar cobertura completa de `tests/test_roadmap-mode.sh`
+- [x] 6.1.1 Confirmar cobertura completa de `tests/test_roadmap-mode.sh`
   (criado em 2.2.3) via `./tests/run.sh --check-coverage`
-- [ ] 6.1.2 Confirmar cobertura completa de
+- [x] 6.1.2 Confirmar cobertura completa de
   `tests/test_roadmap-status.sh` (criado em 3.3.6) via `./tests/run.sh
   --check-coverage`
 
@@ -406,26 +406,26 @@ Ref: `plan.md` Fase D passo 11
 
 Ref: `plan.md` Fase D passo 12
 
-- [ ] 6.2.1 Confirmar que as extensoes de `tests/test_pipeline.sh`
+- [x] 6.2.1 Confirmar que as extensoes de `tests/test_pipeline.sh`
   (2.3.4, 2.4.4), `tests/test_state-ondas.sh` (2.5.4) e
   `tests/test_state-rw.sh` (2.1.4) sao puramente aditivas — nenhuma
   assercao existente foi editada
-- [ ] 6.2.2 Estender o prose-lint de `tests/test_command-spawn-*.sh`
+- [x] 6.2.2 Estender o prose-lint de `tests/test_command-spawn-*.sh`
   cobrindo o novo bloco de opt-in em `agente-00c.md` (5.1)
 
 ### 6.3 Gate de nao-regressao e cenarios criticos do quickstart `[C]`
 
 Ref: `quickstart.md` Cenarios 1, 7, 11, 12 `[CRITICO]`
 
-- [ ] 6.3.1 Executar Cenario 1 (nao-regressao SC-003: sem opt-in,
+- [x] 6.3.1 Executar Cenario 1 (nao-regressao SC-003: sem opt-in,
   pipeline identica) como gate obrigatorio antes de considerar a
   feature pronta
-- [ ] 6.3.2 Executar Cenario 7 (idempotencia da re-execucao SC-004)
-- [ ] 6.3.3 Executar Cenario 11 (validacao fail-closed no consumidor,
+- [x] 6.3.2 Executar Cenario 7 (idempotencia da re-execucao SC-004)
+- [x] 6.3.3 Executar Cenario 11 (validacao fail-closed no consumidor,
   seguranca H2)
-- [ ] 6.3.4 Executar Cenario 12 (ordem do finalize vs promocao
+- [x] 6.3.4 Executar Cenario 12 (ordem do finalize vs promocao
   terminal, seguranca M1)
-- [ ] 6.3.5 Rodar `./tests/run.sh` (suite completa) e confirmar zero
+- [x] 6.3.5 Rodar `./tests/run.sh` (suite completa) e confirmar zero
   regressao antes de fechar a feature
 
 ---

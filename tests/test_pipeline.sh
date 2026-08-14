@@ -798,6 +798,34 @@ scenario_stages_mode_default_explicito_igual_omitido() {
   assert_stdout_contains "specify" || return 1
 }
 
+# quickstart.md Cenario 1 passo 3 (SC-003, gate FASE 6 6.3.1): reforca a
+# assercao acima com comparacao BYTE-IDENTICA (nao so substring) entre
+# `stages` sem --mode e `stages --mode default` — prova que a lista nao
+# apenas contem os nomes esperados, mas e a MESMA string na MESMA ordem.
+scenario_stages_mode_default_byte_identico_a_sem_mode() {
+  capture "$SCRIPT" stages
+  _sem_mode="$_CAPTURED_STDOUT"
+  capture "$SCRIPT" stages --mode default
+  _com_mode_default="$_CAPTURED_STDOUT"
+  [ "$_sem_mode" = "$_com_mode_default" ] || {
+    _fail "stages vs stages --mode default" "divergente: [$_sem_mode] != [$_com_mode_default]"
+    return 1
+  }
+}
+
+# quickstart.md Cenario 1 passo 2 (SC-003, gate FASE 6 6.3.1): a etapa
+# SEGUINTE de constitution na pipeline DEFAULT (sem --mode) continua
+# `specify` — prova que o modo roadmap (que resolveria `roadmap` no
+# mesmo ponto) nao vazou para o caminho default.
+scenario_next_stage_constitution_sem_mode_retorna_specify() {
+  capture "$SCRIPT" next-stage --current constitution
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "next-stage --current constitution exit" "$_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "specify" ] || {
+    _fail "next-stage --current constitution" "esperado specify, obtido: $_CAPTURED_STDOUT"
+    return 1
+  }
+}
+
 scenario_stages_mode_roadmap_lista_escopada() {
   capture "$SCRIPT" stages --mode roadmap
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stages --mode roadmap exit" "$_CAPTURED_EXIT"; return 1; }
