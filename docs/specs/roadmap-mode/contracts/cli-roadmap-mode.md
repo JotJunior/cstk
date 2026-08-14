@@ -185,9 +185,12 @@ fim; nao executa o fim. O encerramento com sucesso e o §5.
 Sequencia contratada ao concluir a etapa `roadmap`:
 
 1. `state-ondas.sh end --state-dir DIR --motivo-termino concluido`
+   (valor da ONDA — enum fixo do helper, identico ao usado pela pipeline
+   completa; nao distingue o modo)
 2. promocao explicita de **5 campos**, no mesmo lote de escrita:
    - `.execution.status` = `concluida`
-   - `.execution.termination_reason` = `concluido`
+   - `.execution.termination_reason` = `concluido_roadmap` (valor da
+     EXECUCAO — ver §5.2; **distinto** do `--motivo-termino` da onda)
    - `.execution.finished_at` = timestamp ISO 8601 UTC
    - `.current_stage` = `concluida`
    - `.next_instruction` = texto de execucao encerrada
@@ -247,10 +250,21 @@ para os consumidores derivados (painel, `knowledge.db`, `recall`), o que
 tornaria impossivel medir SC-001 ("conclui em menos ondas que a pipeline
 completa") — nao ha como saber qual execucao foi qual.
 
-O modo roadmap grava `termination_reason` proprio (ex.:
-`concluido_roadmap`). `status` permanece `concluida` — e conclusao real,
-com sucesso, e nenhum consumidor que checa `status` deve precisar
-conhecer o modo.
+O modo roadmap grava `.execution.termination_reason` = `concluido_roadmap`
+— valor **normativo** (enum fechado), nao exemplificativo: todo
+consumidor derivado (painel, `knowledge.db`, `recall`) que precisa
+distinguir uma execucao em modo roadmap de uma pipeline completa DEVE
+casar essa string exata. `status` permanece `concluida` — e conclusao
+real, com sucesso, e nenhum consumidor que checa apenas `status` deve
+precisar conhecer o modo.
+
+> **Nota de escopo**: este `termination_reason` normativo e o do campo
+> **`.execution`** (nivel da execucao), promovido no passo 2 de §5 —
+> distinto do `--motivo-termino` passado a `state-ondas.sh end` no
+> passo 1 (nivel da **onda**), cujo enum (`etapa_concluida_avancando`,
+> `threshold_proxy_atingido`, `bloqueio_humano`, `aborto`, `concluido`)
+> e fixo no helper e compartilhado com a pipeline completa — o modo
+> roadmap nao introduz um valor novo nesse enum de onda.
 
 ---
 

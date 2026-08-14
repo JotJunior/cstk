@@ -97,6 +97,7 @@ plugins/cstk/
 └── skills/
     ├── agente-00c-runtime/scripts/
     │   ├── roadmap-mode.sh            # [NOVO] is-enabled | set-enabled
+    │   ├── roadmap-write.sh           # [NOVO] produtor: merge + secrets-filter + escrita (FR-009)
     │   ├── state-rw.sh                # [MOD] flag --roadmap-mode no init
     │   ├── pipeline.sh                # [MOD] --mode + arm detect-completion roadmap
     │   ├── state-ondas.sh             # [MOD] passthrough --mode em end --advance
@@ -108,6 +109,7 @@ plugins/cstk/
 
 tests/
 ├── test_roadmap-mode.sh               # [NOVO] regra de ouro
+├── test_roadmap-write.sh              # [NOVO] regra de ouro (FR-009)
 ├── test_roadmap-status.sh             # [NOVO] regra de ouro
 ├── test_pipeline.sh                   # [MOD] --mode; assercao das 10 etapas INTACTA
 ├── test_state-ondas.sh                # [MOD] passthrough --mode
@@ -160,8 +162,27 @@ Ordem sugerida, do nucleo testavel para a prosa que o consome.
 
 ### Fase B — Contrato do artefato
 
-6. Validador estrutural do roadmap (consumido pelo passo 4), com as 8
-   regras do contrato §6.
+6. Produtor do artefato + validador estrutural. Novo helper
+   `roadmap-write.sh` `[NOVO]` (mesmo diretorio de `roadmap-mode.sh`):
+   recebe o conteudo do roadmap redigido pelo orquestrador dentro da
+   onda `roadmap` (heading, metadado, blocos de prosa — gramatica de
+   §2-§3 do contrato), aplica a regra de merge idempotente por
+   `short-name` (§8) e a marcacao de entrada obsoleta (§8, campo
+   definido no passo 1.4.1 do backlog), roda `secrets-filter.sh` sobre
+   o resultado ANTES da escrita — fail-closed: aborta sem escrever se o
+   filtro estiver ausente, mesma politica ja aplicada por `report.sh` —
+   e grava `docs/roadmap.md` atomicamente (FR-009). **Gatilho**: unico
+   ponto de escrita do artefato, acionado pelo
+   `agente-00c-orchestrator.md` (Fase C passo 9) ao concluir a redacao
+   do conteudo dentro da onda `roadmap`, ANTES do fechamento terminal
+   (research.md Decision 3). A validacao estrutural COMPLETA do
+   artefato ja escrito (as regras do contrato §6, incluindo as
+   fechadas no passo 1.5 do backlog) e consumida pelo passo 4
+   (`pipeline.sh detect-completion --stage roadmap`) como gate de
+   conclusao da etapa — caminho distinto e posterior ao da escrita,
+   propositalmente (rigor fail-closed no gate de pipeline, independente
+   de o produtor ter corrido). Fecha a hipotese aberta em `plan.md:52`
+   (`checklists/requirements.md` CHK006/CHK007).
 7. `roadmap-status.sh` `[NOVO]`: cruzamento roadmap↔portfolio, POSIX
    puro, saida markdown + `--json`.
 

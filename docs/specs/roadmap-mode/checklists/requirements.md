@@ -42,22 +42,23 @@ re-consumido — entra como cluster proprio abaixo).
   — Evidencia: `data-model.md` §Enum `status` — `nao-iniciada` (dir
   ausente), `em-andamento` (dir existe, `tasks.md` ausente ou com
   pendentes), `concluida` (`tasks.md` sem pendentes).
-- [ ] CHK006 - Existe requisito que atribua a PRODUCAO do artefato (quem
+- [x] CHK006 - Existe requisito que atribua a PRODUCAO do artefato (quem
   gera `docs/roadmap.md`, com que gramatica e sob que gatilho)? [Gap,
   Spec §FR-003] {auto}
-  — Gap: `plan.md` §Abordagem de implementacao (passos 1-11) atribui dono a
-  estado, pipeline, validador, cruzamento, prosa de command/orquestrador e
-  relatorio — nenhum passo atribui a geracao/escrita do artefato. O
-  `plan.md:52` chega a tratar a hipotese ("se a geracao do roadmap vier a
-  ser extraida para skill propria"), confirmando que hoje ela nao tem dono
-  declarado. Sem dono, as regras normativas de §3 (gramatica), §8 (merge) e
-  §9.4 (filtragem) nao tem onde ser implementadas.
-- [ ] CHK007 - Existe requisito que atribua a filtragem de segredos ANTES
+  — Evidencia: `spec.md` FR-009 atribui a producao/escrita a um componente
+  dedicado (`roadmap-write.sh`), acionado ao concluir a redacao do
+  conteudo dentro da etapa `roadmap`, ANTES do encerramento terminal;
+  `plan.md` §Abordagem de implementacao Fase B passo 6 nomeia o script,
+  seu gatilho (`agente-00c-orchestrator.md` Fase C passo 9) e sua relacao
+  com o validador estrutural (passo 4), encerrando a hipotese de
+  `plan.md:52`.
+- [x] CHK007 - Existe requisito que atribua a filtragem de segredos ANTES
   da escrita do artefato versionado? [Gap, Contract §9.4] {auto}
-  — Gap: `contracts/roadmap-artifact.md` §9.4 declara MUST fail-closed, mas
-  nenhum FR da spec o exige e nenhum passo do plan o implementa (o passo 11
-  cobre o relatorio, que §9.4 explicita ser caminho DISTINTO do arquivo
-  versionado em git).
+  — Evidencia: `spec.md` FR-009 exige `secrets-filter.sh` imediatamente
+  antes da escrita, fail-closed (abortar sem escrever se o filtro estiver
+  ausente); `plan.md` §Abordagem de implementacao Fase B passo 6 implementa
+  a exigencia no mesmo componente que grava o arquivo (`roadmap-write.sh`),
+  caminho distinto do relatorio (passo 11), conforme a nota de §9.4.
 - [x] CHK008 - Sao os requisitos de retro-compatibilidade do campo de modo
   (ausencia = default) definidos? [Completude, Spec §SC-003] {auto}
   — Evidencia: `data-model.md` §ModoDeExecucao invariante "ausencia do campo
@@ -66,14 +67,13 @@ re-consumido — entra como cluster proprio abaixo).
 
 ## Clareza e Mensurabilidade
 
-- [ ] CHK009 - E SC-001 ("menos ondas que a pipeline completa atual do mesmo
+- [x] CHK009 - E SC-001 ("menos ondas que a pipeline completa atual do mesmo
   projeto") mensuravel sem exigir uma execucao de baseline que pode nao
   existir? [Ambiguity, Spec §SC-001] {auto}
-  — Ambiguidade: o criterio compara contra uma execucao completa do MESMO
-  projeto, que num projeto novo nunca ocorrera. O contrato §5.2 resolve
-  metade do problema (distinguir as duas execucoes por `termination_reason`),
-  mas nao define a baseline nem um limiar absoluto. Reformular como criterio
-  observavel (ex.: "a execucao nunca registra etapa posterior a `roadmap`").
+  — Evidencia: `spec.md` SC-001 reformulado como criterio observavel direto
+  no `state.json`/`state.db` da propria execucao ("nunca registra
+  `current_stage` posterior a `roadmap`"), sem exigir execucao de baseline
+  para comparacao.
 - [x] CHK010 - E "descricao acionavel" quantificado com criterio
   verificavel, em vez de adjetivo? [Clareza, Spec §FR-003] {auto}
   — Evidencia: `contracts/roadmap-artifact.md` §3.4 fixa "texto acionavel,
@@ -84,26 +84,27 @@ re-consumido — entra como cluster proprio abaixo).
   — Evidencia: `^[a-z][a-z0-9-]*$`, com fonte citada
   (`plugins/cstk/commands/feature-00c.md:93`) em `data-model.md` §Validacoes
   e `contracts/roadmap-artifact.md` §7.
-- [ ] CHK012 - E o valor de `termination_reason` do modo normativo, ou
+- [x] CHK012 - E o valor de `termination_reason` do modo normativo, ou
   apenas exemplificativo? [Ambiguity, Contract §5.2] {auto}
-  — Ambiguidade: §5.2 grafa `concluido_roadmap` precedido de "ex.:". Como o
-  proprio requisito existe para tornar as execucoes distinguiveis por
-  consumidores derivados (painel, `knowledge.db`, `recall`), um valor
-  exemplificativo nao serve — o consumidor precisa casar string exata.
+  — Evidencia: `contracts/cli-roadmap-mode.md` §5.2 remove o "ex.:" e
+  declara `concluido_roadmap` normativo (enum fechado) para
+  `.execution.termination_reason`, com nota de escopo distinguindo-o do
+  `--motivo-termino` de onda (§5 passo 1, enum fixo do helper); `spec.md`
+  FR-004 referencia o valor normativo e a razao (mensurabilidade de
+  SC-001).
 - [x] CHK013 - Sao os exit codes e o contrato de stdout dos helpers novos
   especificados por caso (incluindo estado ausente/ilegivel)? [Clareza,
   Contract §2] {auto}
   — Evidencia: `contracts/cli-roadmap-mode.md` §2 tabela — stdout
   `true|false` exato, "exit 0 sempre", campo ausente/nao-booleano/estado
   ilegivel ⇒ `false`, com a justificativa (`if` sob `set -e`).
-- [ ] CHK014 - E SC-004 ("nunca perdem status de features ja iniciadas")
+- [x] CHK014 - E SC-004 ("nunca perdem status de features ja iniciadas")
   consistente com o modelo, onde `status` nunca e persistido? [Ambiguity,
   Spec §SC-004] {auto}
-  — Ambiguidade terminologica: `contracts/roadmap-artifact.md` §2.2 e
-  `data-model.md` declaram que status e derivado na leitura e por isso "nao
-  existe status a sobrescrever ou perder". O que uma re-execucao pode de
-  fato perder e a IDENTIDADE/prosa da entrada, nao o status. Redigir SC-004
-  em termos de entradas preservadas torna o criterio testavel.
+  — Evidencia: `spec.md` SC-004 reformulado em termos de identidade
+  (`short-name`) e prosa (`Descricao`/`Justificativa`) preservadas —
+  zero duplicacao, zero sobrescrita silenciosa — e declara explicitamente
+  que `status` e derivado na leitura e fica fora do escopo do criterio.
 
 ## Consistencia entre Artefatos
 
@@ -124,21 +125,24 @@ re-consumido — entra como cluster proprio abaixo).
   {auto}
   — Evidencia: `research.md` D3 ↔ `plan.md` §Summary (c) ↔
   `contracts/cli-roadmap-mode.md` §4.1 e §5 (precedente do `reconcile-wave`).
-- [ ] CHK018 - Sao as regras de merge de FR-007 consistentes com a gramatica
+- [x] CHK018 - Sao as regras de merge de FR-007 consistentes com a gramatica
   do artefato, que nao possui campo de marcacao? [Conflict, Spec §FR-007]
   {auto}
-  — Conflito: `contracts/roadmap-artifact.md` §8 exige, para entrada
-  considerada desnecessaria, "nao apagar; **marcar** e reportar ao operador"
-  — mas §2.2 declara a ausencia deliberada de campo de status no artefato e
-  §3 nao define nenhum campo de marcacao/obsolescencia. Como marcar sem
-  campo nao esta definido.
-- [ ] CHK019 - Existe requisito que defina COMO detectar alteracao
+  — Evidencia: `contracts/roadmap-artifact.md` §3.2.1 define o campo
+  opcional `- **marcada-obsoleta**: <motivo>` (quarto prefixo, posicao
+  fixa apos as 3 linhas de metadado obrigatorias), DISTINTO do `status`
+  de §2.2 (que permanece nao-persistido); §8 atualizado para referenciar
+  o campo na regra "entrada antiga considerada desnecessaria". Resolve o
+  conflito conforme a decisao do operador (CHK036).
+- [x] CHK019 - Existe requisito que defina COMO detectar alteracao
   deliberada de descricao/justificativa para reporta-la? [Gap,
   Contract §8] {auto}
-  — Gap: §8 proibe sobrescrita silenciosa e exige que alteracao deliberada
-  "MUST ser reportada no relatorio final", mas nada define a fonte de
-  comparacao (o artefato nao versiona conteudo anterior; a deteccao
-  dependeria de diff do git, nao contratado).
+  — Evidencia: `contracts/roadmap-artifact.md` §8.1 define a fonte de
+  comparacao — o produtor (`roadmap-write.sh`) le `docs/roadmap.md` no
+  INICIO da onda `roadmap` e compara, por `short-name`, contra o
+  conteudo final antes da escrita; diferenca textual ⇒ alteracao
+  deliberada ⇒ reportada no relatorio final. Nao exige versionamento
+  novo (reusa o ciclo de vida da onda).
 - [x] CHK020 - Sao os requisitos de FR-002 (reuso de briefing/constitution)
   consistentes com o mecanismo ja existente, sem exigir logica nova?
   [Consistencia, Spec §FR-002] {auto}
@@ -170,21 +174,19 @@ re-consumido — entra como cluster proprio abaixo).
   ligados a um criterio de sucesso? [Cobertura, Spec §SC-003] {auto}
   — Evidencia: `quickstart.md` Cenarios 1, 7, 11 e 12 marcados `[CRITICO]`;
   Cenario 1 declarado gate de nao-regressao em `plan.md` Fase D passo 13.
-- [ ] CHK025 - Cobre a validacao estrutural (gate de conclusao) TODAS as
+- [x] CHK025 - Cobre a validacao estrutural (gate de conclusao) TODAS as
   invariantes declaradas como MUST no modelo? [Gap, Contract §6] {auto}
-  — Gap: as 8 regras de §6 nao cobrem (a) aciclicidade do grafo de
-  `depende-de`, (b) compatibilidade `ordem(B) < ordem(A)` quando A depende
-  de B, (c) unicidade de `ordem`, (d) limite de 200 entradas, (e) limite de
-  64 caracteres de `short-name` — todas declaradas MUST em `data-model.md`
-  §Validacoes, `contracts/roadmap-artifact.md` §3.3 e §9.3. O item 7 de §6
-  valida apenas EXISTENCIA da dependencia. Consequencia: o produtor pode
-  emitir artefato que o consumidor fail-closed (§9.2) rejeitara.
-- [ ] CHK026 - Valida o gate de conclusao as secoes obrigatorias de
+  — Evidencia: `contracts/roadmap-artifact.md` §6 itens 9-13 acrescentam
+  limite de `short-name` (<=64), unicidade de `ordem`, compatibilidade
+  `ordem(B) < ordem(A)`, aciclicidade do grafo `depende-de` e limite de
+  entradas (`<= 50`, CHK035/dec-026 — reduzido de 200). Gate agora cobre
+  as 13 regras declaradas MUST.
+- [x] CHK026 - Valida o gate de conclusao as secoes obrigatorias de
   proveniencia? [Gap, Contract §2.1] {auto}
-  — Gap: §2.1 marca `**Gerado por**:` / `**Atualizado em**:` como
-  obrigatorias, mas as 8 regras de §6 checam apenas o H1 `Roadmap`, a secao
-  `## Features` e as entradas — nem a proveniencia nem `## Ordem sugerida`
-  sao verificadas.
+  — Evidencia: `contracts/roadmap-artifact.md` §6 itens 14-15 acrescentam
+  a validacao de `**Gerado por**:`/`**Atualizado em**:` e da secao
+  `## Ordem sugerida` (presenca do heading + tabela, sem validar conteudo
+  — que e derivado do corpo, §2.1).
 - [x] CHK027 - E o comportamento definido para projeto-alvo sem
   `docs/roadmap.md` no consumidor de portfolio? [Cobertura, Contract §8]
   {auto}

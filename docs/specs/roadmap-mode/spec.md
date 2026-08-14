@@ -165,7 +165,11 @@ das 3 entradas (1 iniciada, 2 nao iniciadas) (FR-006).
   dependencias entre features e justificativa da necessidade.
 - **FR-004**: Apos gerar o roadmap, a execucao MUST encerrar em estado
   terminal de sucesso, com o roadmap incluso no relatorio final — o
-  encerramento e o resultado esperado do modo, nao um aborto.
+  encerramento e o resultado esperado do modo, nao um aborto. O
+  encerramento MUST ser distinguivel de uma conclusao de pipeline
+  completa por um `termination_reason` de execucao proprio e normativo
+  (`concluido_roadmap`, `contracts/cli-roadmap-mode.md` §5.2) — sem essa
+  distincao, SC-001 nao e mensuravel por consumidores derivados.
 - **FR-005**: Cada entrada do roadmap MUST ser consumivel diretamente
   pelo `/feature-00c`: nome curto valido como short-name e descricao
   suficiente para iniciar a feature sem reescrever contexto; nomes MUST
@@ -185,6 +189,14 @@ das 3 entradas (1 iniciada, 2 nao iniciadas) (FR-006).
   concreto (endpoints, assinaturas, valores) so aparece com fonte
   rastreavel — sem fonte, a entrada descreve a capacidade sem afirmar
   fatos externos.
+- **FR-009**: A producao/escrita de `docs/roadmap.md` MUST ser
+  responsabilidade de um componente dedicado (`roadmap-write.sh`),
+  acionado pelo `agente-00c-orchestrator` ao concluir a redacao do
+  conteudo do roadmap dentro da etapa `roadmap`, ANTES do encerramento
+  terminal da execucao. O conteudo MUST passar pelo filtro de segredos
+  do runtime (`secrets-filter.sh`) imediatamente antes da escrita, com
+  politica fail-closed: se o filtro estiver ausente, a escrita MUST ser
+  abortada — nunca escrever sem filtrar.
 
 > Decisoes de infraestrutura: N/A (o modo produz artefatos de
 > documentacao e encerra; sem scheduling, criptografia, tokens externos,
@@ -203,17 +215,25 @@ das 3 entradas (1 iniciada, 2 nao iniciadas) (FR-006).
 
 ### Measurable Outcomes
 
-- **SC-001**: Uma execucao em modo roadmap conclui (briefing +
-  constitution + roadmap) em menos ondas que a pipeline completa atual
-  do mesmo projeto — o modo nunca chega as etapas de implementacao.
+- **SC-001**: Uma execucao em modo roadmap nunca registra
+  `current_stage` posterior a `roadmap` — nenhuma onda avanca para
+  `specify`, `clarify`, `plan`, `checklist`, `create-tasks`,
+  `execute-task` ou `review-task`. Criterio observavel diretamente no
+  `state.json`/`state.db` da execucao, sem exigir uma execucao de
+  baseline da pipeline completa do mesmo projeto para comparacao.
 - **SC-002**: 100% das entradas de roadmap geradas sao aceitas pelo
   `/feature-00c` sem edicao de nome (short-name valido) e sem pedido de
   descricao adicional na pre-condicao.
 - **SC-003**: Zero regressao no default: execucao sem opt-in do modo
   produz pipeline identica a atual.
-- **SC-004**: Re-execucoes do modo roadmap nunca perdem status de
-  features ja iniciadas (zero entradas duplicadas ou sobrescritas em
-  re-execucao).
+- **SC-004**: Re-execucoes do modo roadmap preservam a identidade
+  (`short-name`) e a prosa (`Descricao`/`Justificativa`) de entradas ja
+  existentes: zero entradas duplicadas para o mesmo `short-name`, e zero
+  sobrescrita silenciosa de `Descricao`/`Justificativa` de entrada
+  preexistente (alteracao deliberada e permitida, mas MUST ser reportada
+  no relatorio final, conforme `contracts/roadmap-artifact.md` §8). O
+  campo `status` e derivado na leitura (nunca persistido) e portanto
+  fica fora do escopo deste criterio.
 
 ## Delta Requirements
 
@@ -236,4 +256,16 @@ das 3 entradas (1 iniciada, 2 nao iniciadas) (FR-006).
   dependencias entre features e justificativa da necessidade.
 - **FR-004**: Apos gerar o roadmap, a execucao MUST encerrar em estado
   terminal de sucesso, com o roadmap incluso no relatorio final — o
-  encerramento e o resultado esperado do modo, nao um aborto.
+  encerramento e o resultado esperado do modo, nao um aborto. O
+  encerramento MUST ser distinguivel de uma conclusao de pipeline
+  completa por um `termination_reason` de execucao proprio e normativo
+  (`concluido_roadmap`, `contracts/cli-roadmap-mode.md` §5.2) — sem essa
+  distincao, SC-001 nao e mensuravel por consumidores derivados.
+- **FR-009**: A producao/escrita de `docs/roadmap.md` MUST ser
+  responsabilidade de um componente dedicado (`roadmap-write.sh`),
+  acionado pelo `agente-00c-orchestrator` ao concluir a redacao do
+  conteudo do roadmap dentro da etapa `roadmap`, ANTES do encerramento
+  terminal da execucao. O conteudo MUST passar pelo filtro de segredos
+  do runtime (`secrets-filter.sh`) imediatamente antes da escrita, com
+  politica fail-closed: se o filtro estiver ausente, a escrita MUST ser
+  abortada — nunca escrever sem filtrar.

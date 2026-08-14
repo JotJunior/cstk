@@ -32,39 +32,44 @@ do operador (ver Escopo Excluido).
 Ref: `checklists/requirements.md` CHK006, CHK007; `spec.md` FR-003;
 `plan.md` §Abordagem de implementacao; `contracts/roadmap-artifact.md` §9.4
 
-- [ ] 1.1.1 Adicionar a `spec.md` um requisito (extensao de FR-003 ou novo
+- [x] 1.1.1 Adicionar a `spec.md` um requisito (extensao de FR-003 ou novo
   FR) atribuindo a producao/escrita de `docs/roadmap.md` a um componente
   dedicado, acionado ao concluir a etapa `roadmap`, e exigindo filtragem
   de segredos (`secrets-filter.sh`) ANTES da escrita, fail-closed
-- [ ] 1.1.2 Acrescentar passo explicito em `plan.md` §Abordagem de
+  <!-- FR-009 adicionado em spec.md (Functional Requirements + Delta Requirements) -->
+- [x] 1.1.2 Acrescentar passo explicito em `plan.md` §Abordagem de
   implementacao (Fase B) nomeando o script gerador do artefato e seu
   gatilho, encerrando a hipotese aberta em `plan.md:52`
-- [ ] 1.1.3 Atualizar `checklists/requirements.md` marcando CHK006 e
+  <!-- plan.md Fase B passo 6: roadmap-write.sh [NOVO] + Project Structure atualizada -->
+- [x] 1.1.3 Atualizar `checklists/requirements.md` marcando CHK006 e
   CHK007 como `[x]` com a evidencia (path:linha do novo requisito/passo)
 
 ### 1.2 Tornar SC-001 e SC-004 mensuraveis `[M]`
 
 Ref: `checklists/requirements.md` CHK009, CHK014; `spec.md` §Success Criteria
 
-- [ ] 1.2.1 Reformular SC-001 em `spec.md` como criterio observavel
+- [x] 1.2.1 Reformular SC-001 em `spec.md` como criterio observavel
   independente de baseline (ex.: "a execucao em modo roadmap nunca
   registra etapa posterior a `roadmap`"), preservando a intencao original
-- [ ] 1.2.2 Reformular SC-004 em `spec.md` em termos de entradas
+- [x] 1.2.2 Reformular SC-004 em `spec.md` em termos de entradas
   preservadas (identidade/prosa), nao de "status" (que e derivado e
   nunca persistido, conforme `data-model.md`)
-- [ ] 1.2.3 Atualizar `checklists/requirements.md` marcando CHK009 e
+- [x] 1.2.3 Atualizar `checklists/requirements.md` marcando CHK009 e
   CHK014 como `[x]` com a evidencia
 
 ### 1.3 Fechar valor normativo de `termination_reason` `[A]`
 
 Ref: `checklists/requirements.md` CHK012; `contracts/cli-roadmap-mode.md` §5.2
 
-- [ ] 1.3.1 Editar `contracts/cli-roadmap-mode.md` §5.2: remover "ex.:" e
+- [x] 1.3.1 Editar `contracts/cli-roadmap-mode.md` §5.2: remover "ex.:" e
   declarar `concluido_roadmap` como valor normativo (enum fechado) do
   `termination_reason` do modo roadmap
-- [ ] 1.3.2 Confirmar consistencia com `spec.md` FR-004 (encerramento
+- [x] 1.3.2 Confirmar consistencia com `spec.md` FR-004 (encerramento
   terminal) e ajustar se necessario
-- [ ] 1.3.3 Atualizar `checklists/requirements.md` marcando CHK012 como
+  <!-- FR-004 agora referencia concluido_roadmap; §5 passo 2 do contrato
+       corrigido de concluido para concluido_roadmap (era inconsistente
+       com §5.2) -->
+- [x] 1.3.3 Atualizar `checklists/requirements.md` marcando CHK012 como
   `[x]` com a evidencia
 
 ### 1.4 Definir gramatica de marcacao de entrada obsoleta e deteccao de alteracao deliberada `[A]`
@@ -72,34 +77,41 @@ Ref: `checklists/requirements.md` CHK012; `contracts/cli-roadmap-mode.md` §5.2
 Ref: `checklists/requirements.md` CHK018, CHK019;
 `contracts/roadmap-artifact.md` §3, §8
 
-- [ ] 1.4.1 Projetar e documentar em `contracts/roadmap-artifact.md` §3
+- [x] 1.4.1 Projetar e documentar em `contracts/roadmap-artifact.md` §3
   um campo de metadado novo e opcional para marcacao de obsolescencia,
   DISTINTO do status de progresso de §2.2 (ex.: linha
   `- **marcada-obsoleta**: sim`), preservando a regra "status nunca
   persistido"
-- [ ] 1.4.2 Atualizar `contracts/roadmap-artifact.md` §8 para referenciar
+  <!-- §3.2.1: campo `- **marcada-obsoleta**: <motivo>`, quarto prefixo opcional -->
+- [x] 1.4.2 Atualizar `contracts/roadmap-artifact.md` §8 para referenciar
   o campo novo na regra "entrada antiga considerada desnecessaria: nao
   apagar; marcar e reportar"
-- [ ] 1.4.3 Documentar em §8 a fonte de comparacao para detectar
+- [x] 1.4.3 Documentar em §8 a fonte de comparacao para detectar
   alteracao deliberada de Descricao/Justificativa (ex.: diff textual da
   entrada entre a leitura do artefato no INICIO da execucao corrente e a
   versao final antes da escrita, sem exigir versionamento novo)
-- [ ] 1.4.4 Atualizar `checklists/requirements.md` marcando CHK018 e
+  <!-- §8.1 novo -->
+- [x] 1.4.4 Atualizar `checklists/requirements.md` marcando CHK018 e
   CHK019 como `[x]` com a evidencia
+- [x] 1.4.5 (emergente, CHK035) Aplicar reducao do limite de entradas de
+  200 para 50 em `contracts/roadmap-artifact.md` §9.3, conforme decisao
+  do operador (dec-026) — mesmo contrato tocado por esta tarefa; a
+  aplicacao no gate estrutural (§6) fica para a tarefa 1.5 (CHK025)
 
 ### 1.5 Completar o gate de validacao estrutural `[A]`
 
 Ref: `checklists/requirements.md` CHK025, CHK026;
 `contracts/roadmap-artifact.md` §6
 
-- [ ] 1.5.1 Acrescentar a `contracts/roadmap-artifact.md` §6 as regras
+- [x] 1.5.1 Acrescentar a `contracts/roadmap-artifact.md` §6 as regras
   faltantes: aciclicidade do grafo `depende-de`, compatibilidade
   `ordem(B) < ordem(A)` quando A depende de B, unicidade de `ordem`,
-  limite de 200 entradas, limite de 64 caracteres em `short-name`
-- [ ] 1.5.2 Acrescentar a §6 a validacao das secoes obrigatorias de
+  limite de 50 entradas (CHK035, dec-026 — reduzido de 200), limite de
+  64 caracteres em `short-name`
+- [x] 1.5.2 Acrescentar a §6 a validacao das secoes obrigatorias de
   proveniencia (`**Gerado por**:`/`**Atualizado em**:`) e da secao
   `## Ordem sugerida`
-- [ ] 1.5.3 Atualizar `checklists/requirements.md` marcando CHK025 e
+- [x] 1.5.3 Atualizar `checklists/requirements.md` marcando CHK025 e
   CHK026 como `[x]` com a evidencia
 
 ---

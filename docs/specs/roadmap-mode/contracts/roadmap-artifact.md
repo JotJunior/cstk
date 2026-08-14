@@ -124,8 +124,9 @@ Padrao de reconhecimento (POSIX ERE):
 
 ### 3.2 Linhas de metadado
 
-Exatamente estes tres prefixos, nesta ordem, imediatamente apos o
-heading (linha em branco entre heading e bloco e permitida):
+Exatamente estes tres prefixos **obrigatorios**, nesta ordem,
+imediatamente apos o heading (linha em branco entre heading e bloco e
+permitida):
 
 | Prefixo literal | Valor | Regra |
 |---|---|---|
@@ -137,6 +138,48 @@ A duplicacao deliberada de `short-name`/`ordem` entre heading e
 metadado existe para que o parse seja robusto: um consumidor pode
 ancorar em qualquer um dos dois, e a divergencia entre eles e detectavel
 como erro de validacao (§6).
+
+Um quarto prefixo, **opcional** e de posicao fixa imediatamente apos os
+tres acima, existe para a marcacao de obsolescencia — ver §3.2.1.
+
+### 3.2.1 Marcacao de obsolescencia (opcional) — CHK018/CHK036
+
+Resolve o `[Conflict]` original entre §8 (regra de merge, "nao apagar;
+marcar e reportar") e a ausencia de qualquer campo de marcacao em §3: o
+`status` de progresso (`nao-iniciada`/`em-andamento`/`concluida`, §2.2)
+continua **deliberadamente ausente** do artefato — e derivado, nunca
+persistido. A marcacao de obsolescencia e um conceito **distinto**: uma
+decisao do produtor (nao do portfolio) de que uma entrada preexistente
+deixou de ser considerada necessaria numa re-geracao. Ela **e**
+persistida, porque nao ha como derivar essa opiniao de nenhuma fonte
+externa (ao contrario do `status`, que deriva de `docs/specs/`).
+
+Operador de decisao (CHK036, resolvido pelo dono do produto,
+2026-08-14): "marcacao EXPLICITA e visivel no proprio artefato (campo
+de marcacao com motivo — historico auditavel)" — nao arquivamento em
+arquivo separado, nao remocao.
+
+**Prefixo**: `- **marcada-obsoleta**: `
+
+**Valor**: `<motivo>` — texto livre de uma linha (mesma restricao de
+`depende-de`: uma linha, sem quebra, parseavel por `sed -n
+'s/^- \*\*marcada-obsoleta\*\*: //p'`).
+
+**Presenca**: campo **opcional**. Ausente em toda entrada nao marcada
+(comportamento por omissao, identico a hoje — retro-compativel com
+todo `docs/roadmap.md` ja gerado). Presente apenas em entradas que o
+produtor, numa re-geracao, concluiu nao serem mais necessarias.
+
+**Posicao**: quarta linha de metadado, imediatamente apos
+`- **depende-de**: `, antes da linha em branco que precede
+`**Descricao**:`.
+
+**Regra de escrita** (implementada pelo produtor, `roadmap-write.sh`,
+`plan.md` Fase B passo 6): a marcacao **nunca** e removida
+automaticamente numa re-geracao subsequente — apenas o operador,
+editando o artefato a mao, desfaz a marcacao. O produtor MUST reportar
+toda entrada marcada (nova ou preexistente) no relatorio final da
+execucao (`report.sh`, `plan.md` Fase C passo 11).
 
 ### 3.3 Dependencias
 
@@ -245,11 +288,40 @@ Um `docs/roadmap.md` e considerado **completo e valido** quando:
 6. todo `short-name` casa `^[a-z][a-z0-9-]*$` e e unico no documento;
 7. toda dependencia citada existe como entrada do documento;
 8. nao ha placeholder residual (`[TBD]`, `[A definir]`, `[FILL]`,
-   `TODO`) no corpo das entradas.
+   `TODO`) no corpo das entradas;
+9. `short-name` MUST ter <= 64 caracteres (§9.3);
+10. `ordem` e unico no documento — nenhum par de entradas compartilha o
+    mesmo valor de `ordem`;
+11. compatibilidade de precedencia: se a entrada `A` declara `B` em
+    `depende-de`, entao `ordem(B) < ordem(A)`;
+12. o grafo de `depende-de` e **aciclico** — nenhuma sequencia de
+    dependencias fecha um ciclo (a regra 11, aplicada transitivamente a
+    todas as arestas, ja garante aciclicidade por construcao: um ciclo
+    exigiria `ordem(X) < ordem(X)` para algum `X` na cadeia, o que e
+    impossivel para inteiros; o item existe como regra explicita e
+    independente para que o validador rejeite com diagnostico proprio
+    — "ciclo de dependencia" — em vez de um diagnostico generico de
+    ordem incompativel, mais dificil de depurar);
+13. o numero total de entradas e `<= 50` (§9.3, CHK035);
+14. as secoes de proveniencia `**Gerado por**:` e `**Atualizado em**:`
+    (§2.1) estao presentes, cada uma em linha propria, antes da secao
+    `## Features`;
+15. a secao `## Ordem sugerida` (§2.1) esta presente, com a tabela no
+    formato de §2 — validada apenas quanto a presenca do heading e da
+    tabela, nunca quanto ao conteudo (a tabela e derivada do corpo,
+    §2.1: "em caso de divergencia... o corpo vence").
 
 Falha em qualquer item ⇒ artefato incompleto; a etapa `roadmap` nao
 pode ser considerada concluida. Isto espelha o rigor ja aplicado a
 validacao estrutural do briefing pelo mesmo helper de pipeline.
+
+> Os itens 9-15 fecham o gap identificado em CHK025/CHK026: as regras 1-8
+> cobriam apenas os invariantes de heading/metadado/placeholder;
+> `data-model.md` §Validacoes e `contracts/roadmap-artifact.md` §3.3/§9.3
+> ja declaravam aciclicidade, `ordem(B) < ordem(A)`, unicidade de `ordem`,
+> limite de entradas e limite de `short-name` como MUST, mas o gate nao os
+> aplicava — um produtor podia emitir artefato que o consumidor
+> fail-closed (§9.2) rejeitaria.
 
 ---
 
@@ -282,12 +354,38 @@ Chave natural: `short-name`.
 | short-name ja existe no roadmap | preservar a entrada; nunca duplicar |
 | short-name novo | anexar como nova entrada |
 | short-name ja tem spec em `docs/specs/` | preservar; reportar como iniciada; nunca renomear nem re-sugerir sob outro nome |
-| entrada antiga considerada desnecessaria | **nao apagar**; marcar e reportar ao operador para decisao |
+| entrada antiga considerada desnecessaria | **nao apagar**; escrever/preservar a linha `- **marcada-obsoleta**: <motivo>` (§3.2.1) na entrada e reportar ao operador no relatorio final |
 | `ordem` mudou | permitido reordenar; a identidade nao depende da ordem |
 
 Sobrescrita silenciosa de descricao/justificativa de entrada existente e
 **proibida**: alteracao deliberada e permitida, mas MUST ser reportada
 no relatorio final da execucao.
+
+### 8.1 Fonte de comparacao para detectar alteracao deliberada (CHK019)
+
+"Alteracao deliberada" (linha acima) exige uma fonte de comparacao —
+sem ela, o produtor nao tem como distinguir "reescrevi a mesma ideia
+com outras palavras" de "nao toquei nesta entrada". O artefato **nao**
+versiona conteudo anterior (§1: um valor por linha, sem historico
+embutido), e exigir um mecanismo de versionamento novo so para isso
+contradiria a simplicidade POSIX do formato (research.md Decision 6).
+
+**Fonte MUST**: o proprio `roadmap-write.sh` (produtor, `plan.md` Fase
+B passo 6) le `docs/roadmap.md` **no INICIO** da onda `roadmap`
+corrente (antes de qualquer merge) e mantem esse conteudo em memoria de
+processo pelo tempo de vida da onda. Ao gravar a versao final (apos o
+merge com as entradas recem-redigidas), o produtor compara, entrada a
+entrada por `short-name`, o texto de `Descricao` + `Justificativa` LIDO
+no inicio contra o texto que sera ESCRITO. Diferenca textual (qualquer
+byte, sem normalizacao alem de trim de espaco em branco nas
+extremidades) ⇒ alteracao deliberada ⇒ MUST ser reportada no relatorio
+final com o `short-name` afetado.
+
+Isto nao exige versionamento novo: reusa o proprio ciclo de vida da
+onda (leitura no inicio, escrita no fim), o mesmo padrao ja aplicado
+pelo passo PRE-DECISAO (read-back loop) do orquestrador para outros
+artefatos. Uma entrada nunca antes existente (short-name novo) nao tem
+"antes" para comparar — nao pode disparar esta regra.
 
 ---
 
@@ -362,11 +460,19 @@ expansoes forem aspeadas.
 | Limite | Valor |
 |---|---|
 | comprimento de `short-name` | <= 64 caracteres |
-| numero de entradas por roadmap | <= 200 |
+| numero de entradas por roadmap | <= 50 |
 
 Ausencia de limite superior num campo derivado de geracao por LLM e
 superficie de exaustao de recurso para os consumidores POSIX (que fazem
 uma varredura de diretorio por entrada).
+
+> **CHK035 (resolvido pelo dono do produto, 2026-08-14)**: o limite foi
+> reduzido de 200 para **50** entradas. Justificativa registrada: um
+> roadmap maior que 50 entradas indica decomposicao errada do
+> projeto-alvo (a granularidade correta e feature, nao tarefa) — o
+> limite e deliberadamente conservador, nao uma estimativa de maior
+> projeto-alvo previsto. O gate estrutural (§6, regra de contagem)
+> aplica o mesmo valor.
 
 ### 9.4 Filtragem de segredos antes da escrita (MUST)
 
