@@ -245,19 +245,27 @@ por 2.4.2
 Ref: `checklists/requirements.md` CHK006 (dono definido em
 1.1.1/1.1.2); `contracts/roadmap-artifact.md` §2, §3, §8, §9.4
 
-- [ ] 3.2.1 Implementar a geracao/escrita de `docs/roadmap.md` seguindo
+- [x] 3.2.1 Implementar a geracao/escrita de `docs/roadmap.md` seguindo
   a gramatica de §2-§3 (heading, metadado, blocos de prosa), no
   componente e gatilho definidos em 1.1.2
-- [ ] 3.2.2 Filtrar segredos via `secrets-filter.sh` ANTES da escrita,
+  <!-- roadmap-write.sh [NOVO], subcomando write; parse via
+  _rw_parse_entries + render final ordenado por 'ordem' -->
+- [x] 3.2.2 Filtrar segredos via `secrets-filter.sh` ANTES da escrita,
   fail-closed (abortar se o filtro estiver ausente, nunca escrever sem
   filtrar) — CHK007
-- [ ] 3.2.3 Implementar a regra de merge idempotente da re-execucao
+  <!-- write() aborta exit 1 se secrets-filter.sh ausente/nao-executavel;
+  scrub aplicado sobre o documento final ANTES do mv atomico -->
+- [x] 3.2.3 Implementar a regra de merge idempotente da re-execucao
   (FR-007/§8): preservar entrada existente por `short-name`, anexar
   entrada nova, nunca duplicar nem sobrescrever silenciosamente
-- [ ] 3.2.4 Aplicar a marcacao de entrada obsoleta (campo definido em
+  <!-- identidade por short-name via final_order.txt (existente + novos
+  do candidato, sem duplicar); entradas nao tocadas preservadas as-is -->
+- [x] 3.2.4 Aplicar a marcacao de entrada obsoleta (campo definido em
   1.4.1) e reportar alteracao deliberada de Descricao/Justificativa
   (deteccao definida em 1.4.3) para consumo pelo relatorio final (5.4.3)
-- [ ] 3.2.5 Escrever teste cobrindo: geracao inicial, re-geracao
+  <!-- report ENTRY|obsolete|<short>|<motivo> e ENTRY|altered|<short>|
+  em stdout, diff via _rw_extract_desc_just + _rw_trim_blank_edges (§8.1) -->
+- [x] 3.2.5 Escrever teste cobrindo: geracao inicial, re-geracao
   idempotente (sem duplicar), colisao de `short-name` com spec
   existente (reuso, nao renomeacao), filtragem de segredo (fixture com
   valor sensivel nao aparece no artefato escrito)
@@ -267,23 +275,26 @@ Ref: `checklists/requirements.md` CHK006 (dono definido em
 Ref: `plan.md` Fase B passo 7; `contracts/cli-roadmap-mode.md` §6;
 `research.md` Decision 7
 
-- [ ] 3.3.1 Criar
+- [x] 3.3.1 Criar
   `plugins/cstk/skills/review-features/scripts/roadmap-status.sh` com
   flags `--roadmap`, `--specs-dir`, `--json`, POSIX puro (sem `jq`)
-- [ ] 3.3.2 Implementar a derivacao de status por entrada conforme
+- [x] 3.3.2 Implementar a derivacao de status por entrada conforme
   `contracts/roadmap-artifact.md` §5 (dir ausente / `tasks.md` ausente
   ou pendente / `tasks.md` sem pendentes)
-- [ ] 3.3.3 Implementar validacao fail-closed na leitura (§9.2):
+  <!-- derive_status(): nao-iniciada/em-andamento/concluida via grep
+  '^[[:space:]]*-[[:space:]]*\[[ ~]\]' (mesma marcacao do convergence) -->
+- [x] 3.3.3 Implementar validacao fail-closed na leitura (§9.2):
   descartar entrada com `short-name` invalido ou > 64 chars, descartar
   token de `depende-de` invalido apos remover crases, nunca emitir
   valor bruto
-- [ ] 3.3.4 Implementar escape obrigatorio: `"`/`\` em JSON, `|`
+- [x] 3.3.4 Implementar escape obrigatorio: `"`/`\` em JSON, `|`
   sanitizado (trocado por `/`) na tabela markdown, mesma funcao de
   escape do precedente `aggregate.sh`
-- [ ] 3.3.5 Implementar os 4 exit codes contratados (0 sucesso inclusive
+  <!-- json_escape/md_escape copiadas do precedente aggregate.sh -->
+- [x] 3.3.5 Implementar os 4 exit codes contratados (0 sucesso inclusive
   0 entradas com aviso; 1 roadmap ausente; 3 roadmap invalido/ilegivel;
   2 uso incorreto)
-- [ ] 3.3.6 Criar `tests/test_roadmap-status.sh` `[NOVO]` cobrindo:
+- [x] 3.3.6 Criar `tests/test_roadmap-status.sh` `[NOVO]` cobrindo:
   tabela markdown, `--json`, os 4 exit codes, escape de `|` e de
   aspas/backslash, fail-closed em `short-name`/`depende-de` invalidos
 
