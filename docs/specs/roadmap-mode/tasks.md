@@ -335,54 +335,54 @@ Ref: `plan.md` §Abordagem de implementacao, Fase C
 
 Ref: `plan.md` Fase C passo 8; `contracts/cli-roadmap-mode.md` §7
 
-- [ ] 5.1.1 Adicionar bloco de pergunta interativa (mesma posicao do
+- [x] 5.1.1 Adicionar bloco de pergunta interativa (mesma posicao do
   opt-in de atomic-commit), default seguro (Enter ou qualquer resposta
   nao-afirmativa = pipeline completa), afirmativas aceitas (`s`, `S`,
   `y`, `Y`, `sim`, `yes`)
-- [ ] 5.1.2 Garantir que execucao nao-interativa cai no default sem
+- [x] 5.1.2 Garantir que execucao nao-interativa cai no default sem
   bloquear (zero regressao)
-- [ ] 5.1.3 Repassar o valor coletado ao `init` como `--roadmap-mode
+- [x] 5.1.3 Repassar o valor coletado ao `init` como `--roadmap-mode
   "$_roadmap"`
-- [ ] 5.1.4 Confirmar (prosa) que `/agente-00c-resume` nunca
+- [x] 5.1.4 Confirmar (prosa) que `/agente-00c-resume` nunca
   re-pergunta — le `.roadmap_mode_enabled` do estado
 
 ### 5.2 `agente-00c-orchestrator.md`: condicionar pipeline e terminal ao modo `[A]`
 
 Ref: `plan.md` Fase C passo 9
 
-- [ ] 5.2.1 Condicionar a cadeia de etapas descrita na prosa do
+- [x] 5.2.1 Condicionar a cadeia de etapas descrita na prosa do
   orquestrador ao modo (`briefing → constitution → roadmap` quando
   `.roadmap_mode_enabled=true`)
-- [ ] 5.2.2 Ajustar o `--terminal-phase` hardcoded e o gatilho do hook
+- [x] 5.2.2 Ajustar o `--terminal-phase` hardcoded e o gatilho do hook
   de finalize (hoje amarrado a `review-features`) para tambem disparar
   ao concluir `roadmap` em modo roadmap
-- [ ] 5.2.3 Adicionar a prosa de promocao de status terminal do modo
+- [x] 5.2.3 Adicionar a prosa de promocao de status terminal do modo
   roadmap (sequencia definida em 4.1)
-- [ ] 5.2.4 Aplicar o rotulo UNTRUSTED (contract §9.1) ao reinjetar
+- [x] 5.2.4 Aplicar o rotulo UNTRUSTED (contract §9.1) ao reinjetar
   prosa de `docs/roadmap.md` preexistente no merge da re-execucao
 
 ### 5.3 `review-features/SKILL.md`: secao de cruzamento roadmap x portfolio `[A]`
 
 Ref: `plan.md` Fase C passo 10; `contracts/cli-roadmap-mode.md` §6, §8
 
-- [ ] 5.3.1 Invocar `roadmap-status.sh` de forma best-effort: projeto
+- [x] 5.3.1 Invocar `roadmap-status.sh` de forma best-effort: projeto
   sem `docs/roadmap.md` produz o relatorio atual, sem falhar
-- [ ] 5.3.2 Cercar como UNTRUSTED (§9.1) qualquer descricao do roadmap
+- [x] 5.3.2 Cercar como UNTRUSTED (§9.1) qualquer descricao do roadmap
   reproduzida no relatorio de portfolio
-- [ ] 5.3.3 Tratar exit 3 (roadmap presente mas invalido) com aviso
+- [x] 5.3.3 Tratar exit 3 (roadmap presente mas invalido) com aviso
   visivel, distinto do caso exit 1 (ausente, silencioso)
 
 ### 5.4 `report.sh`: secao de roadmap no relatorio final `[A]`
 
 Ref: `plan.md` Fase C passo 11; `spec.md` FR-004, FR-007
 
-- [ ] 5.4.1 Acrescentar a renderizacao do roadmap (features, ordem,
+- [x] 5.4.1 Acrescentar a renderizacao do roadmap (features, ordem,
   dependencias) condicionada ao modo — execucao fora do modo mantem o
   relatorio atual inalterado
-- [ ] 5.4.2 Emitir a sugestao explicita de considerar a pipeline
+- [x] 5.4.2 Emitir a sugestao explicita de considerar a pipeline
   completa quando o roadmap tem exatamente 1 entrada (FR-007, 2a
   clausula)
-- [ ] 5.4.3 Reportar no relatorio final qualquer alteracao deliberada
+- [x] 5.4.3 Reportar no relatorio final qualquer alteracao deliberada
   de Descricao/Justificativa detectada (mecanismo de 1.4.3) e qualquer
   entrada marcada obsoleta (mecanismo de 1.4.1)
 

@@ -316,6 +316,32 @@ if [ "$_atomic" = "true" ]; then
 fi
 ```
 
+#### Prompt opt-in do modo roadmap (FR-001 — roadmap-mode)
+
+Antes de inicializar o `state.json`, na MESMA janela do opt-in de
+atomic-commit acima, pergunte tambem se o operador deseja o modo roadmap
+(opt-in, default "nao" — pipeline completa):
+
+```
+Modo roadmap (opcional):
+Em vez da pipeline completa (briefing -> constitution -> specify -> ... ->
+review-features), a execucao para apos briefing + constitution + a
+redacao de um roadmap de features priorizadas (docs/roadmap.md) —
+util para so planejar o portfolio sem executar nenhuma feature ainda.
+
+Habilitar o modo roadmap? [s/N]
+```
+
+- Respostas afirmativas (`s`, `S`, `y`, `Y`, `sim`, `yes`): `_roadmap=true`
+- Qualquer outra resposta (inclusive Enter): `_roadmap=false` (default
+  seguro — pipeline completa, comportamento atual intacto)
+- **Nao-interativo**: cai no default sem bloquear — nenhuma execucao pode
+  travar esperando resposta (FR-001).
+
+> **Os commands de resume NAO re-promptam**: `/agente-00c-resume` le
+> `.roadmap_mode_enabled` diretamente do `state.json` sem interacao
+> (mesma paridade do opt-in de atomic-commit acima).
+
 - Inicializar `state.json` v1.0.0 via `state-rw.sh init`:
   - `--execucao-id "exec-$(date -u +%FT%H-%M-%SZ)-agente-00c-<slug>"`
   - `--projeto-alvo-path <PAP>` (resolvido)
@@ -325,6 +351,7 @@ fi
   - `${_canonical:+--canonical-project "$_canonical"}` (quando nao-vazio)
   - `${_session:+--session-name "$_session"}` (quando nao-vazio)
   - `--atomic-commit "$_atomic"` (valor capturado acima; `false` = comportamento atual intacto)
+  - `--roadmap-mode "$_roadmap"` (valor capturado acima; `false` = comportamento atual intacto)
 
   Status inicial: `em_andamento`, etapa `briefing`, `next_instruction`
   apontando para inicio do briefing.
