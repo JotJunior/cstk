@@ -235,19 +235,28 @@ re-consumido — entra como cluster proprio abaixo).
 
 ## Decisoes de Produto em Aberto
 
-- [ ] CHK034 - A priorizacao P1/P2/P3 (modo > consumo > acompanhamento)
+- [x] CHK034 - A priorizacao P1/P2/P3 (modo > consumo > acompanhamento)
   reflete o apetite do dono do produto para a primeira entrega? [Risco,
   Spec §User Scenarios] {humano}
-- [ ] CHK035 - O limite de 200 entradas por roadmap e adequado ao maior
+  — RESOLVIDO (operador, 2026-08-14): manter P1 > P2 > P3 como esta.
+- [x] CHK035 - O limite de 200 entradas por roadmap e adequado ao maior
   projeto-alvo previsto, ou e conservador/permissivo demais? [Risco,
   Contract §9.3] {humano}
-- [ ] CHK036 - Entrada obsoleta deve permanecer visivel no artefato
+  — RESOLVIDO (operador, 2026-08-14): REDUZIR para 50 entradas. Atualizar
+  Contract §9.3 e o gate estrutural (tarefa de CHK025, FASE 1) para o
+  teto 50; roadmap maior que 50 indica decomposicao errada do projeto.
+- [x] CHK036 - Entrada obsoleta deve permanecer visivel no artefato
   indefinidamente, ou o operador prefere um mecanismo de arquivamento?
   [Risco, Contract §8] {humano}
-  — Depende da resolucao de CHK018 (nao ha campo de marcacao definido).
-- [ ] CHK037 - A relacao com a feature irma `delivery-tier` (tier influencia
+  — RESOLVIDO (operador, 2026-08-14): marcacao EXPLICITA e visivel no
+  proprio artefato (campo de marcacao com motivo — historico auditavel).
+  Resolve a direcao do conflito CHK018: definir o campo de marcacao em
+  Contract §3/§2.2 (tarefa de CHK018, FASE 1).
+- [x] CHK037 - A relacao com a feature irma `delivery-tier` (tier influencia
   o tamanho do roadmap) deve ser requisito nesta entrega, ou fica como
   integracao futura? [Assumption, Spec §Contexto] {humano}
+  — RESOLVIDO (operador, 2026-08-14): integracao FUTURA; features seguem
+  independentes nesta entrega, como a spec declara.
   — A spec declara as duas features independentes ("nenhuma depende da outra
   para entregar valor"), mas nao ha FR cobrindo a interacao quando ambas
   existirem.
