@@ -153,6 +153,17 @@ _sr_db_insert_execution_from_doc_file() {
   _ie_atomic_sql="NULL"
   case "$_ie_atomic" in true) _ie_atomic_sql=1 ;; false) _ie_atomic_sql=0 ;; esac
 
+  # roadmap-mode (feature roadmap-mode, contracts/cli-roadmap-mode.md §1):
+  # sem coluna dedicada (research.md Decision 1) — pousa no catch-all
+  # `extra_fields`, sempre com o booleano explicito (true OU false) para
+  # espelhar o backend JSON, onde `.roadmap_mode_enabled` e sempre gravado
+  # (nunca ausente). `_sr_db_read` faz merge de extra_fields no documento
+  # (linha ~353), entao o campo reaparece no `read`/`get` identico aos dois
+  # backends.
+  _ie_roadmap=$(_sr_ie_jq_json "$_ie_doc" '.roadmap_mode_enabled')
+  case "$_ie_roadmap" in true) : ;; *) _ie_roadmap="false" ;; esac
+  _ie_extra_json=$(jq -cn --argjson v "$_ie_roadmap" '{roadmap_mode_enabled: $v}')
+
   _ie_sql="INSERT INTO execution (id,schema_version,short_name,target_project_path,\
 target_project_description,suggested_stack,status,termination_reason,started_at,\
 finished_at,canonical_project,session_name,current_stage,next_instruction,\
@@ -161,7 +172,7 @@ cycles_consumed_current_stage,max_cycles_per_stage,retro_executions_consumed,\
 max_retro_executions_per_feature,tool_calls_threshold_wave,\
 wallclock_threshold_seconds,state_size_threshold_bytes,external_urls_whitelist,\
 circular_movement_history,prerequisites,briefing_cache,constitution_cache,\
-push_pr_result) VALUES ("
+push_pr_result,extra_fields) VALUES ("
   _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.execution.id')"),"
   _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(jq -r '.schema_version // "1.0.0"' "$_ie_doc" 2>/dev/null || printf '1.0.0')"),"
   _ie_sql="$_ie_sql$(_sr_ie_lit_str "$(_sr_ie_jq_raw "$_ie_doc" '.short_name')"),"
@@ -192,7 +203,8 @@ push_pr_result) VALUES ("
   _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.prerequisites')"),"
   _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.briefing_cache')"),"
   _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.constitution_cache')"),"
-  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.push_pr_result')"));"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$(_sr_ie_jq_json "$_ie_doc" '.push_pr_result')"),"
+  _ie_sql="$_ie_sql$(_sr_ie_lit_json "$_ie_extra_json"));"
 
   _state_db_exec_with_retry "$_ie_db" "$_ie_sql" >/dev/null 2>&1 || return 1
   return 0

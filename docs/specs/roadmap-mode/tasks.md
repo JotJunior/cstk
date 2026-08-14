@@ -124,30 +124,30 @@ Ref: `plan.md` §Abordagem de implementacao, Fase A
 
 Ref: `plan.md` Fase A passo 1; `contracts/cli-roadmap-mode.md` §1
 
-- [ ] 2.1.1 Adicionar `--roadmap-mode true|false` ao loop de argumentos
+- [x] 2.1.1 Adicionar `--roadmap-mode true|false` ao loop de argumentos
   de `_sr_cmd_init` em `state-rw.sh`, espelhando `--atomic-commit`
   (mesma validacao, exit 2 se fora do dominio)
-- [ ] 2.1.2 Persistir `.roadmap_mode_enabled` no estado inicial
+- [x] 2.1.2 Persistir `.roadmap_mode_enabled` no estado inicial
   (top-level sob backend JSON; `extra_fields` sob backend SQLite) com
   default `false`
-- [ ] 2.1.3 Atualizar o header do script listando `--roadmap-mode` e, na
+- [x] 2.1.3 Atualizar o header do script listando `--roadmap-mode` e, na
   mesma passagem, `--atomic-commit` (hoje ausente)
-- [ ] 2.1.4 Escrever/estender `tests/test_state-rw.sh` cobrindo: default
+- [x] 2.1.4 Escrever/estender `tests/test_state-rw.sh` cobrindo: default
   `false`, valor `true` persistido, valor invalido → exit 2
 
 ### 2.2 `roadmap-mode.sh` `[NOVO]`: `is-enabled`/`set-enabled` com trava write-once `[A]`
 
 Ref: `plan.md` Fase A passo 2; `contracts/cli-roadmap-mode.md` §2
 
-- [ ] 2.2.1 Criar
+- [x] 2.2.1 Criar
   `plugins/cstk/skills/agente-00c-runtime/scripts/roadmap-mode.sh` com
   subcomando `is-enabled` (stdout `true|false`, exit 0 sempre, campo
   ausente/estado ilegivel/nao-booleano → `false`), espelhando
   `commit-mode.sh is-enabled`
-- [ ] 2.2.2 Implementar subcomando `set-enabled --value true|false`
+- [x] 2.2.2 Implementar subcomando `set-enabled --value true|false`
   (exit 0/1/2) com trava write-once: recusa (exit 2, sem escrever)
   quando ja existe onda registrada em fase posterior a `constitution`
-- [ ] 2.2.3 Criar `tests/test_roadmap-mode.sh` `[NOVO]` cobrindo
+- [x] 2.2.3 Criar `tests/test_roadmap-mode.sh` `[NOVO]` cobrindo
   `is-enabled` (ausencia/true/false/estado ilegivel) e `set-enabled`
   (sucesso, valor invalido, trava write-once apos `constitution`)
 
@@ -156,16 +156,16 @@ Ref: `plan.md` Fase A passo 2; `contracts/cli-roadmap-mode.md` §2
 Ref: `plan.md` Fase A passo 3; `contracts/cli-roadmap-mode.md` §3;
 `research.md` Decision 2
 
-- [ ] 2.3.1 Adicionar `--mode` (`default`|`roadmap`) a `stages`,
+- [x] 2.3.1 Adicionar `--mode` (`default`|`roadmap`) a `stages`,
   `next-stage` e `prev-stage`, com lista escopada
   `briefing constitution roadmap` quando `--mode roadmap`; qualquer
   outro valor → exit 2
-- [ ] 2.3.2 Garantir que `_PL_STAGES_LIST` permanece INALTERADA (nenhuma
+- [x] 2.3.2 Garantir que `_PL_STAGES_LIST` permanece INALTERADA (nenhuma
   edicao na lista global) e que `stages` sem `--mode` continua
   retornando as 10 etapas atuais, na ordem
-- [ ] 2.3.3 Implementar terminalidade: `next-stage --mode roadmap
+- [x] 2.3.3 Implementar terminalidade: `next-stage --mode roadmap
   --current roadmap` → stdout vazio + exit 0
-- [ ] 2.3.4 Estender `tests/test_pipeline.sh` com a assercao de
+- [x] 2.3.4 Estender `tests/test_pipeline.sh` com a assercao de
   regressao das 10 etapas INTACTA (sem editar a assercao existente) +
   novos cenarios de `--mode roadmap`
 
@@ -173,16 +173,25 @@ Ref: `plan.md` Fase A passo 3; `contracts/cli-roadmap-mode.md` §3;
 
 Ref: `plan.md` Fase A passo 4; `contracts/cli-roadmap-mode.md` §3.1
 
-- [ ] 2.4.1 Adicionar arm `roadmap` ao `case` de `detect-completion`,
+- [x] 2.4.1 Adicionar arm `roadmap` ao `case` de `detect-completion`,
   localizando `docs/roadmap.md` via `--projeto-alvo-path` (mesmo
   fallback PAP de `briefing`/`constitution`)
-- [ ] 2.4.2 Invocar o validador estrutural completo (produzido em 3.1) e
+- [x] 2.4.2 Invocar o validador estrutural (`_pl_validate_roadmap`) e
   propagar exit 0 (completo) / exit 1 (incompleto, diagnostico em
-  stderr apontando a regra que falhou)
-- [ ] 2.4.3 Tornar a validacao de `--stage` ciente do modo: `--stage
+  stderr apontando a regra que falhou). NOTA DE ESCOPO (F2-->F3 na
+  Matriz de Dependencias — o validador COMPLETO de §6/15 regras e
+  produzido pela task 3.1, que ainda nao rodou nesta execucao):
+  `_pl_validate_roadmap` cobre hoje as regras 1-3 (header, secao
+  `## Features`, >=1 heading de entrada) com diagnostico real em
+  stderr; a mecanica de invocacao/propagacao de exit code exigida por
+  2.4.2 esta completa e testada, mas a COBERTURA de regras (4-15:
+  metadado, short-name, dependencias/aciclicidade, limites,
+  proveniencia, Ordem sugerida) fica para 3.1, que estende o mesmo
+  corpo em vez de substituir a integracao
+- [x] 2.4.3 Tornar a validacao de `--stage` ciente do modo: `--stage
   roadmap` so e aceito com `--mode roadmap`; SEM alargar a lista global
   de etapas (Decision 2)
-- [ ] 2.4.4 Estender `tests/test_pipeline.sh` com a assercao de
+- [x] 2.4.4 Estender `tests/test_pipeline.sh` com a assercao de
   regressao obrigatoria: `--stage roadmap` sem `--mode roadmap`
   continua invalido (exit 2)
 

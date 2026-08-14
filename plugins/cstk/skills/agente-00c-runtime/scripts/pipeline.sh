@@ -110,11 +110,17 @@ _pl_print_help() {
 pipeline.sh — state machine canonica da pipeline SDD do agente-00C.
 
 USO:
-  pipeline.sh stages
-  pipeline.sh next-stage --current STAGE
-  pipeline.sh prev-stage --current STAGE
+  pipeline.sh stages [--mode default|roadmap]
+  pipeline.sh next-stage --current STAGE [--mode default|roadmap]
+  pipeline.sh prev-stage --current STAGE [--mode default|roadmap]
   pipeline.sh detect-completion --feature-dir DIR --stage STAGE
-                                [--projeto-alvo-path PAP]
+                                [--projeto-alvo-path PAP] [--mode default|roadmap]
+
+  --mode (feature roadmap-mode, contracts/cli-roadmap-mode.md §3): omitido
+  ou 'default' => as 10 etapas canonicas (_PL_STAGES_LIST, INALTERADA);
+  'roadmap' => lista escopada "briefing constitution roadmap"; qualquer
+  outro valor => exit 2. `--stage roadmap` em detect-completion so e
+  aceito com `--mode roadmap` (fail-closed; lista global NUNCA se alarga).
   pipeline.sh constitution-conflict --projeto-alvo-path PAP --feature-dir FD
   pipeline.sh skill-conflict --skill NAME --projeto-alvo-path PATH
   pipeline.sh require-blockade-resolved --state-dir SD --etapa STAGE
@@ -136,46 +142,98 @@ _pl_is_valid_stage() {
   return 1
 }
 
+# ---------- --mode (feature roadmap-mode, contracts/cli-roadmap-mode.md §3) ----------
+#
+# _PL_STAGES_LIST permanece INALTERADA (invariante dura, SC-003): --mode
+# NUNCA edita a lista global, apenas seleciona qual lista os subcomandos
+# `stages`/`next-stage`/`prev-stage` iteram. research.md Decision 2.
+
+# _pl_validate_mode MODE -> exit 0 se MODE e "", "default" ou "roadmap";
+# senao morre com exit 2 (uso incorreto). Chamada DIRETA (nunca dentro de
+# `$(...)`) para que o `exit` de _pl_die_usage propague ao processo real.
+_pl_validate_mode() {
+  case "$1" in
+    ""|default|roadmap) return 0 ;;
+    *) _pl_die_usage "$2: --mode invalido: '$1' (validos: default, roadmap)" ;;
+  esac
+}
+
+# _pl_mode_list MODE -> imprime a lista de etapas efetiva do modo (ja
+# validado por _pl_validate_mode). Uso seguro dentro de `$(...)`.
+_pl_mode_list() {
+  case "$1" in
+    roadmap) printf '%s' "briefing constitution roadmap" ;;
+    *)       printf '%s' "$_PL_STAGES_LIST" ;;
+  esac
+}
+
+# _pl_is_valid_stage_in LIST STAGE -> 0 se STAGE pertence a LIST (string
+# separada por espaco).
+_pl_is_valid_stage_in() {
+  for _s in $1; do
+    [ "$_s" = "$2" ] && return 0
+  done
+  return 1
+}
+
 _pl_cmd_stages() {
-  for _s in $_PL_STAGES_LIST; do
+  _mode=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --mode) _mode=$2; shift 2 ;;
+      *) _pl_die_usage "stages: flag desconhecida: $1" ;;
+    esac
+  done
+  _pl_validate_mode "$_mode" "stages"
+  _list=$(_pl_mode_list "$_mode")
+  for _s in $_list; do
     printf '%s\n' "$_s"
   done
 }
 
 _pl_cmd_next_stage() {
   _curr=""
+  _mode=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --current) _curr=$2; shift 2 ;;
+      --mode)    _mode=$2; shift 2 ;;
       *) _pl_die_usage "next-stage: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_curr" ] || _pl_die_usage "next-stage: --current obrigatorio"
-  _pl_is_valid_stage "$_curr" || _pl_die "etapa desconhecida: $_curr (use 'stages')" 1
+  _pl_validate_mode "$_mode" "next-stage"
+  _list=$(_pl_mode_list "$_mode")
+  _pl_is_valid_stage_in "$_list" "$_curr" || _pl_die "etapa desconhecida: $_curr (use 'stages')" 1
   _take_next=0
-  for _s in $_PL_STAGES_LIST; do
+  for _s in $_list; do
     if [ "$_take_next" = 1 ]; then
       printf '%s\n' "$_s"
       return 0
     fi
     [ "$_s" = "$_curr" ] && _take_next=1
   done
-  # Caiu fora do loop -> ja na ultima etapa: sem proxima.
+  # Caiu fora do loop -> ja na ultima etapa: sem proxima (stdout vazio,
+  # exit 0 — inclui `--mode roadmap --current roadmap`, contrato §3).
   return 0
 }
 
 _pl_cmd_prev_stage() {
   _curr=""
+  _mode=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --current) _curr=$2; shift 2 ;;
+      --mode)    _mode=$2; shift 2 ;;
       *) _pl_die_usage "prev-stage: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_curr" ] || _pl_die_usage "prev-stage: --current obrigatorio"
-  _pl_is_valid_stage "$_curr" || _pl_die "etapa desconhecida: $_curr" 1
+  _pl_validate_mode "$_mode" "prev-stage"
+  _list=$(_pl_mode_list "$_mode")
+  _pl_is_valid_stage_in "$_list" "$_curr" || _pl_die "etapa desconhecida: $_curr" 1
   _prev=""
-  for _s in $_PL_STAGES_LIST; do
+  for _s in $_list; do
     if [ "$_s" = "$_curr" ]; then
       [ -n "$_prev" ] && printf '%s\n' "$_prev"
       return 0
@@ -264,6 +322,39 @@ _pl_validate_tasks() {
   return 0
 }
 
+# Validacao estrutural PARCIAL de docs/roadmap.md (feature roadmap-mode,
+# contracts/roadmap-artifact.md §6, regras 1-3 de 15).
+#
+# ESCOPO DESTE HELPER (honestidade de completude, Constitution VI): cobre
+# apenas as 3 regras estruturais mais basicas (header, secao Features, >=1
+# heading de entrada). O validador estrutural COMPLETO — metadado (regras
+# 4-5), unicidade/formato de short-name (6, 9), dependencias existentes e
+# aciclicas (7, 11, 12), placeholder residual (8), limite de entradas (13),
+# secoes de proveniencia (14) e "Ordem sugerida" (15) — e escopo da task
+# 3.1 (docs/specs/roadmap-mode/tasks.md FASE 3), que substitui/estende este
+# corpo. NAO reportar "roadmap.md valido" como sinonimo de "conforme todas
+# as 15 regras do contrato" enquanto 3.1 nao aterrissar.
+_pl_validate_roadmap() {
+  _rmf=$1
+  [ -f "$_rmf" ] || { echo "pipeline: roadmap.md nao encontrado: $_rmf" >&2; return 1; }
+  # Regra 1: primeira linha nao-vazia casa '^#[[:space:]]+Roadmap'.
+  if ! head -5 "$_rmf" 2>/dev/null | grep -Eq '^#[[:space:]]+Roadmap'; then
+    echo "pipeline: roadmap.md sem header '# Roadmap' nas primeiras 5 linhas (contracts/roadmap-artifact.md §6 regra 1)" >&2
+    return 1
+  fi
+  # Regra 2: secao '## Features' presente.
+  if ! grep -Eq '^##[[:space:]]+Features' "$_rmf" 2>/dev/null; then
+    echo "pipeline: roadmap.md sem secao '## Features' (contracts/roadmap-artifact.md §6 regra 2)" >&2
+    return 1
+  fi
+  # Regra 3: >= 1 heading de entrada '### <ordem>. <short-name>' (§3.1).
+  if ! grep -Eq '^###[[:space:]]+[0-9]+\.[[:space:]]' "$_rmf" 2>/dev/null; then
+    echo "pipeline: roadmap.md sem nenhum heading de entrada '### <ordem>. <short-name>' (contracts/roadmap-artifact.md §6 regra 3)" >&2
+    return 1
+  fi
+  return 0
+}
+
 # detect-completion: artefato esperado por etapa.
 #
 # Fallback PAP (issue #3): briefing e constitution sao project-level. Quando
@@ -272,21 +363,32 @@ _pl_validate_tasks() {
 #   briefing      -> $PAP/docs/briefing.md (canonico)
 #                    $PAP/docs/01-briefing-discovery/briefing.md (legado)
 #   constitution  -> $PAP/docs/constitution.md
+#   roadmap       -> $PAP/docs/roadmap.md (sem fallback legado — artefato
+#                    novo, feature roadmap-mode, contracts/cli-roadmap-mode.md §3.1)
+#
+# --mode (feature roadmap-mode, §3.1): a validacao de --stage e
+# `--mode`-aware, NAO globalmente permissiva — `--stage roadmap` so e
+# aceito com `--mode roadmap`; a lista global (_PL_STAGES_LIST) nunca se
+# alarga (research.md Decision 2).
 _pl_cmd_detect_completion() {
   _fd=""
   _st=""
   _pap=""
+  _mode=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --feature-dir)        _fd=$2;  shift 2 ;;
       --stage)              _st=$2;  shift 2 ;;
       --projeto-alvo-path)  _pap=$2; shift 2 ;;
+      --mode)                _mode=$2; shift 2 ;;
       *) _pl_die_usage "detect-completion: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_fd" ] || _pl_die_usage "detect-completion: --feature-dir obrigatorio"
   [ -n "$_st" ] || _pl_die_usage "detect-completion: --stage obrigatorio"
-  _pl_is_valid_stage "$_st" || _pl_die "detect-completion: etapa desconhecida: $_st" 2
+  _pl_validate_mode "$_mode" "detect-completion"
+  _dc_list=$(_pl_mode_list "$_mode")
+  _pl_is_valid_stage_in "$_dc_list" "$_st" || _pl_die "detect-completion: etapa desconhecida: $_st" 2
   [ -d "$_fd" ] || _pl_die "detect-completion: feature-dir nao existe: $_fd" 1
 
   case "$_st" in
@@ -350,6 +452,20 @@ _pl_cmd_detect_completion() {
       # Etapas de review nao deixam artefato persistente — sempre completas
       # (cabe ao orquestrador decidir invocar ou pular; aqui retornamos 0).
       return 0
+      ;;
+    roadmap)
+      # Artefato project-level (como briefing/constitution) — sem fallback
+      # legado (artefato novo). Validacao estrutural PARCIAL nesta task
+      # (2.4, 3 de 15 regras); task 3.1 completa as demais.
+      if [ -f "$_fd/roadmap.md" ]; then
+        _pl_validate_roadmap "$_fd/roadmap.md" || return 1
+        return 0
+      elif [ -n "$_pap" ] && [ -f "$_pap/docs/roadmap.md" ]; then
+        _pl_validate_roadmap "$_pap/docs/roadmap.md" || return 1
+        return 0
+      else
+        return 1
+      fi
       ;;
   esac
   return 0
