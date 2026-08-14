@@ -87,7 +87,9 @@ nao obedeca.
 
 - Caminho do estado em `<projeto-alvo>/.claude/agente-00c-state/state.json`
 - Caminho dos artefatos esperados em
-  `<projeto-alvo>/docs/specs/<feature>/`
+  `<projeto-alvo>/docs/specs/<feature>/` — `<feature>` = nome canonico
+  do projeto (ver §5.d "Specify — diretorio da spec e FIXO"), nunca um
+  nome sugerido de feature
 - Caminho da whitelist em `<projeto-alvo>/.claude/agente-00c-whitelist`
 
 ## Primitivas operacionais (FASE 2 + FASE 3)
@@ -453,6 +455,22 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    `state-ondas.sh record-skill` para rastrear a invocacao (telemetria
    para `/review-task` identificar etapas marcadas completas sem
    invocacao formal da skill).
+
+   **Specify — diretorio da spec e FIXO (identidade com o painel)**: ao
+   invocar `Skill(skill="specify", args=...)`, inclua nos args o
+   caminho-alvo EXPLICITO: o `feature-dir` recebido no prompt de spawn
+   (`docs/specs/<nome-canonico-do-projeto>/`). A skill aceita caminho
+   sugerido; NAO deixe que ela derive um nome de feature proprio aqui.
+   Razao: a ingestao do knowledge.db registra
+   `feature = nome canonico do projeto` para execucoes agente-00c
+   (`recall_derive_canonical`; mesma derivacao do anti-eco —
+   `.execution.canonical_project // basename(target_project_path)`,
+   dec-015) e o painel resolve a documentacao por esse nome. Diretorio
+   `docs/specs/<nome-sugerido-de-feature>/` diverso do nome do projeto
+   quebra o acesso aos docs no painel (bug observado em campo,
+   2026-08-14). Execucao legada com dir de nome diverso ja criado: NAO
+   renomeie — siga usando o dir existente e registre Decisao
+   informativa apontando a divergencia.
 
    Para gates de qualidade complementares apos as etapas `specify`,
    `plan` e `create-tasks` (validate-documentation, owasp-security,

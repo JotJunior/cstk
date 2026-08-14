@@ -405,7 +405,14 @@ Spawnar agente custom `agente-00c-orchestrator` via tool Agent, passando
 no prompt:
 - `state-dir`: caminho do `.claude/agente-00c-state/`
 - `projeto-alvo-path`: PAP resolvido
-- `feature-dir`: `<PAP>/docs/specs/<feature>/`
+- `feature-dir`: `<PAP>/docs/specs/<NOME_CANONICO>/` — onde
+  `NOME_CANONICO` = `_canonical` (worktree detection da secao 3) quando
+  nao-vazio, senao `basename` do PAP. NUNCA um nome de feature derivado
+  da descricao: a ingestao do knowledge.db registra
+  `feature = nome canonico do projeto` para execucoes agente-00c
+  (`recall_derive_canonical`, paridade anti-eco dec-015) e o painel
+  resolve a documentacao por esse nome — diretorio com nome diverso
+  quebra o acesso aos docs no painel.
 - `whitelist`: path do whitelist file
 - `tipo_invocacao`: "primeira_invocacao"
 
