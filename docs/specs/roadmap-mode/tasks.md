@@ -309,18 +309,18 @@ Ref: `contracts/cli-roadmap-mode.md` §5
 Ref: `contracts/cli-roadmap-mode.md` §5, §5.1, §5.2 (valor normativo
 fechado em 1.3.1)
 
-- [ ] 4.1.1 Implementar a sequencia de 4 passos na prosa do
+- [x] 4.1.1 Implementar a sequencia de 4 passos na prosa do
   orquestrador: `detect-completion --stage roadmap` (artefato valido) →
   `commit-mode.sh finalize` (se atomic-commit habilitado; guarda AINDA
   ATIVA) → `state-ondas.sh end --motivo-termino concluido` → promocao
   dos 5 campos terminais, NESTA ORDEM
-- [ ] 4.1.2 Gravar `termination_reason=concluido_roadmap` (valor
+- [x] 4.1.2 Gravar `termination_reason=concluido_roadmap` (valor
   normativo fechado em 1.3.1) distinguindo o modo de uma conclusao de
   pipeline completa
-- [ ] 4.1.3 Promover os 5 campos (`status`, `termination_reason`,
+- [x] 4.1.3 Promover os 5 campos (`status`, `termination_reason`,
   `finished_at`, `current_stage`, `next_instruction`) em unico write
   multi-campo (mesmo lote transacional, obrigatorio sob backend SQLite)
-- [ ] 4.1.4 Escrever teste/cenario cobrindo a ordem
+- [x] 4.1.4 Escrever teste/cenario cobrindo a ordem
   finalize-antes-da-promocao (o `git push` roda com a guarda
   `PreToolUse` ainda ATIVA) — regressao de seguranca M1 do quickstart
   Cenario 12

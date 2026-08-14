@@ -1714,6 +1714,73 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
     (Nao fatal: `finalize` e sempre exit 0; falhas de push/PR sao
     registradas em `.push_pr_result` sem bloquear a conclusao.)
 
+9.quater. **Encerramento terminal do modo roadmap (FR-004,
+    `contracts/cli-roadmap-mode.md` §5)**: quando `.roadmap_mode_enabled`
+    = `true` e a etapa concluida NESTA onda for `roadmap` (fase terminal
+    do modo — NAO `review-features`), o fechamento da onda MUST seguir a
+    sequencia de 4 passos abaixo, NESTA ORDEM (contrato §5.1 — MUST,
+    jamais invertida):
+
+    ```
+    1. pipeline.sh detect-completion --stage roadmap   (artefato valido —
+       gate ja coberto por roadmap-write.sh/roadmap-status.sh; aqui e so
+       a confirmacao de conclusao da etapa)
+    2. commit-mode.sh finalize                          (se atomic-commit
+       habilitado; guarda enforced AINDA ATIVA)
+    3. state-ondas.sh end --motivo-termino concluido     (fecha a ONDA)
+    4. promocao dos 5 campos terminais                   (write multi-campo)
+    ```
+
+    **Passo 2 ANTES do passo 4 (MUST — risco de seguranca, nao
+    estetica)**: o hook `PreToolUse` de guarda de Bash so age quando ha
+    execucao ATIVA (`status: em_andamento`); execucao com status terminal
+    e tratada como inativa e o guard sai sem decidir. Se o
+    `commit-mode.sh finalize` (que executa `git push`) rodar DEPOIS da
+    promocao para `concluida`, o push roda com a guarda ja desligada —
+    perdendo justamente a protecao que confina esse comando na borda.
+    Regressao coberta pelo Cenario 12 do quickstart da feature
+    (`docs/specs/roadmap-mode/quickstart.md`).
+
+    O passo 4 grava os 5 campos terminais NUM UNICO write multi-campo
+    (mesmo lote transacional — obrigatorio sob backend SQLite: status
+    terminal exige `finished_at` no MESMO envelope; write parcial e
+    rejeitado com o estado intacto):
+
+    - `.execution.status` = `concluida`
+    - `.execution.termination_reason` = `concluido_roadmap` (valor
+      NORMATIVO da EXECUCAO — distinto do `--motivo-termino concluido`
+      do passo 3, que e o motivo da ONDA e e compartilhado com a
+      pipeline completa. `concluido_roadmap` e o que distingue esta
+      execucao de uma conclusao de pipeline completa para consumidores
+      derivados — painel, `knowledge.db`, `recall`: todo consumidor que
+      precisa diferenciar os dois casos DEVE casar esta string exata)
+    - `.execution.finished_at` = timestamp ISO 8601 UTC
+    - `.current_stage` = `concluida`
+    - `.next_instruction` = "Execucao concluida (modo roadmap) — nenhuma
+      proxima etapa."
+
+    Os 5 campos sao obrigatorios — 3 nao bastam: deixaria
+    `.current_stage` em `roadmap` com `.next_instruction` stale, a classe
+    de meio-avanco que `wave-close-advance` existe para eliminar
+    (invisivel ao `reconcile-wave`, que e no-op em onda ja fechada).
+
+    **Precedente seguido**: o branch terminal do `reconcile-wave`
+    (`state-ondas.sh reconcile-wave`, ramo com `next` vazio) ja aplica
+    exatamente este padrao de write multi-campo atomico; a diferenca aqui
+    e (a) o valor de `termination_reason` (`concluido_roadmap` em vez de
+    `concluido`) e (b) o disparo acontece na propria onda pelo
+    orquestrador, nao pela rede de seguranca do resume.
+
+    Consequencia: status `concluida` ⇒ `Schedule intent: none;
+    motivo=concluido` — a execucao para, sem reagendamento (mesma regra
+    ja vigente na tabela de decisao do orquestrador logo abaixo; nenhuma
+    mudanca adicional e necessaria ali).
+
+    A CONDICAO de disparo desta sequencia (a cadeia de etapas do modo
+    roadmap chegar em `roadmap` como fase terminal, em vez de
+    `review-features`) e wireada na secao de opt-in/condicionamento do
+    modo roadmap mais abaixo.
+
 10. **Persistencia + commit local**:
     `state-rw.sh sha256-update` (idempotente; ja chamado por write/set);
     `state-ondas.sh git-commit --state-dir <SD>
