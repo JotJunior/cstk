@@ -200,14 +200,14 @@ Ref: `plan.md` Fase A passo 4; `contracts/cli-roadmap-mode.md` §3.1
 Ref: `plan.md` Fase A passo 5; `contracts/cli-roadmap-mode.md` §4;
 `research.md` Decision 8
 
-- [ ] 2.5.1 Adicionar `--mode` opcional a `end`, repassado a
+- [x] 2.5.1 Adicionar `--mode` opcional a `end`, repassado a
   `pipeline.sh next-stage` quando presente junto de `--advance`
-- [ ] 2.5.2 `--mode` sem `--advance` → exit 2 (mesma politica de
+- [x] 2.5.2 `--mode` sem `--advance` → exit 2 (mesma politica de
   `--terminal-phase` e `--advance-from`)
-- [ ] 2.5.3 Confirmar que `--terminal-phase roadmap` continua
+- [x] 2.5.3 Confirmar que `--terminal-phase roadmap` continua
   fail-closed (morre com erro de uso quando a fase corrente ja e
   `roadmap`) — sem regressao
-- [ ] 2.5.4 Estender `tests/test_state-ondas.sh` cobrindo passthrough
+- [x] 2.5.4 Estender `tests/test_state-ondas.sh` cobrindo passthrough
   `--mode`, exit 2 sem `--advance`, e o cenario de `--terminal-phase`
   intacto
 
@@ -222,19 +222,23 @@ Ref: `plan.md` §Abordagem de implementacao, Fase B
 Ref: `contracts/roadmap-artifact.md` §6 (resolvido em 1.5); consumido
 por 2.4.2
 
-- [ ] 3.1.1 Implementar as 8 regras originais de §6 (H1 `Roadmap`, secao
+- [x] 3.1.1 Implementar as 8 regras originais de §6 (H1 `Roadmap`, secao
   `## Features`, >= 1 heading de entrada, 3 linhas de metadado,
   coincidencia short-name/ordem heading vs metadado, regex+unicidade de
   short-name, existencia de dependencias, ausencia de placeholder) em
   POSIX puro (`grep`/`sed`/`awk`)
-- [ ] 3.1.2 Implementar as regras adicionais fechadas em 1.5.1/1.5.2:
+- [x] 3.1.2 Implementar as regras adicionais fechadas em 1.5.1/1.5.2:
   aciclicidade do grafo `depende-de`, `ordem(B) < ordem(A)`, unicidade
-  de `ordem`, limite de 200 entradas, limite de 64 chars, secoes de
-  proveniencia, secao `## Ordem sugerida`
-- [ ] 3.1.3 Emitir diagnostico em stderr apontando exatamente qual regra
+  de `ordem`, limite de entradas (50 — contracts/roadmap-artifact.md §9.3
+  reduziu de 200 para 50 em CHK035/1.4.5, antes desta redacao ser
+  escrita; o contrato e a fonte de verdade), limite de 64 chars, secoes
+  de proveniencia, secao `## Ordem sugerida`
+- [x] 3.1.3 Emitir diagnostico em stderr apontando exatamente qual regra
   falhou, para uso por `detect-completion` (2.4.2)
-- [ ] 3.1.4 Escrever teste dedicado (fixture valida + fixtures invalidas,
-  uma por regra) cobrindo as 13 regras do gate
+- [x] 3.1.4 Escrever teste dedicado (fixture valida + fixtures invalidas,
+  uma por regra) cobrindo as 13 regras do gate (regra 12 nao tem fixture
+  dedicada: coberta por construcao pela regra 11, comentario em
+  `_pl_validate_roadmap` explica a demonstracao)
 
 ### 3.2 Implementar gerador do artefato `docs/roadmap.md` `[A]`
 

@@ -59,22 +59,39 @@ _write_roadmap_valido() {
   cat > "$_path" <<'EOF'
 # Roadmap: projeto foo
 
-**Gerado por**: agente-00c
+**Gerado por**: agente-00c (modo roadmap)
 **Atualizado em**: 2026-08-14
+
+Contexto curto do portfolio.
 
 ## Ordem sugerida
 
-| Ordem | Feature |
-|-------|---------|
+| # | Feature | Depende de | Descricao (resumo) |
+|---|---------|------------|---------------------|
+| 1 | `auth-basica` | - | Autenticacao de usuario |
+| 2 | `perfil-usuario` | `auth-basica` | Edicao de perfil |
 
 ## Features
 
 ### 1. auth-basica
-- **ordem**: 1
-- **status**: pendente
-- **depende-de**: (nenhuma)
 
-Descricao da feature.
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: Permite que o usuario autentique na plataforma.
+
+**Justificativa**: Pre-requisito de toda funcionalidade autenticada.
+
+### 2. perfil-usuario
+
+- **short-name**: `perfil-usuario`
+- **ordem**: 2
+- **depende-de**: `auth-basica`
+
+**Descricao**: Permite editar dados de perfil do usuario.
+
+**Justificativa**: Feature de retencao solicitada pelo dono do produto.
 EOF
 }
 
@@ -844,7 +861,7 @@ scenario_detect_completion_mode_roadmap_invalido_exit2() {
 
 # 2.4.1/2.4.2: --stage roadmap COM --mode roadmap localiza docs/roadmap.md
 # via PAP (project-level, como briefing/constitution) e valida a estrutura
-# parcial (3 de 15 regras — task 2.4; ver _pl_validate_roadmap).
+# completa (15 regras — task 3.1; ver _pl_validate_roadmap).
 scenario_detect_completion_stage_roadmap_com_mode_localiza_via_pap() {
   _fd="$TMPDIR_TEST/feat-roadmap-com-mode"
   _pap="$TMPDIR_TEST/pap-roadmap-com-mode"
@@ -887,6 +904,367 @@ scenario_detect_completion_stage_roadmap_sem_entrada_falha() {
   printf '# Roadmap: foo\n\n## Features\n\nnenhuma entrada ainda\n' > "$_pap/docs/roadmap.md"
   capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "roadmap sem entrada" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ==== 3.1: validador estrutural COMPLETO — 1 fixture invalida por regra ====
+# Regras 1-3 ja cobertas acima (sem_header/sem_features/sem_entrada). A
+# regra 12 (aciclicidade) nao tem fixture dedicada: e coberta por
+# construcao pela regra 11 (comentario em _pl_validate_roadmap explica por
+# que nao ha estado alcancavel em que 11 passa e 12 falha).
+
+scenario_roadmap_regra4_sem_metadado_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r4"
+  _pap="$TMPDIR_TEST/pap-roadmap-r4"
+  mkdir -p "$_fd" "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: foo
+
+**Gerado por**: agente-00c
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+| # | Feature |
+|---|---------|
+
+## Features
+
+### 1. auth-basica
+
+Descricao solta, sem as 3 linhas de metadado.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 4" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 4" || return 1
+}
+
+scenario_roadmap_regra5_metadado_diverge_heading_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r5"
+  _pap="$TMPDIR_TEST/pap-roadmap-r5"
+  mkdir -p "$_fd" "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: foo
+
+**Gerado por**: agente-00c
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+| # | Feature |
+|---|---------|
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `outro-nome`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 5" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 5" || return 1
+}
+
+scenario_roadmap_regra6_short_name_duplicado_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r6"
+  _pap="$TMPDIR_TEST/pap-roadmap-r6"
+  mkdir -p "$_fd" "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: foo
+
+**Gerado por**: agente-00c
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+| # | Feature |
+|---|---------|
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+
+### 2. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 2
+- **depende-de**: -
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 6" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 6" || return 1
+}
+
+scenario_roadmap_regra7_dependencia_inexistente_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r7"
+  _pap="$TMPDIR_TEST/pap-roadmap-r7"
+  mkdir -p "$_fd" "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: foo
+
+**Gerado por**: agente-00c
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+| # | Feature |
+|---|---------|
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: `fantasma`
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 7" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 7" || return 1
+}
+
+scenario_roadmap_regra8_placeholder_residual_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r8"
+  _pap="$TMPDIR_TEST/pap-roadmap-r8"
+  mkdir -p "$_fd" "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: foo
+
+**Gerado por**: agente-00c
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+| # | Feature |
+|---|---------|
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: [TBD]
+
+**Justificativa**: texto.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 8" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 8" || return 1
+}
+
+scenario_roadmap_regra9_short_name_muito_longo_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r9"
+  _pap="$TMPDIR_TEST/pap-roadmap-r9"
+  mkdir -p "$_fd" "$_pap/docs"
+  _long=$(printf 'a%.0s' $(seq 1 70))
+  cat > "$_pap/docs/roadmap.md" <<EOF
+# Roadmap: foo
+
+**Gerado por**: agente-00c
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+| # | Feature |
+|---|---------|
+
+## Features
+
+### 1. $_long
+
+- **short-name**: \`$_long\`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 9" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 9" || return 1
+}
+
+scenario_roadmap_regra10_ordem_duplicada_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r10"
+  _pap="$TMPDIR_TEST/pap-roadmap-r10"
+  mkdir -p "$_fd" "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: foo
+
+**Gerado por**: agente-00c
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+| # | Feature |
+|---|---------|
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+
+### 1. perfil-usuario
+
+- **short-name**: `perfil-usuario`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 10" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 10" || return 1
+}
+
+scenario_roadmap_regra11_precedencia_violada_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r11"
+  _pap="$TMPDIR_TEST/pap-roadmap-r11"
+  mkdir -p "$_fd" "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: foo
+
+**Gerado por**: agente-00c
+**Atualizado em**: 2026-08-14
+
+## Ordem sugerida
+
+| # | Feature |
+|---|---------|
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: `perfil-usuario`
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+
+### 2. perfil-usuario
+
+- **short-name**: `perfil-usuario`
+- **ordem**: 2
+- **depende-de**: -
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 11" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 11" || return 1
+}
+
+scenario_roadmap_regra13_limite_50_entradas_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r13"
+  _pap="$TMPDIR_TEST/pap-roadmap-r13"
+  mkdir -p "$_fd" "$_pap/docs"
+  {
+    printf '# Roadmap: foo\n\n**Gerado por**: agente-00c\n**Atualizado em**: 2026-08-14\n\n## Ordem sugerida\n\n| # | Feature |\n|---|---------|\n\n## Features\n\n'
+    _n=1
+    while [ "$_n" -le 51 ]; do
+      printf '### %d. feature-%d\n\n- **short-name**: `feature-%d`\n- **ordem**: %d\n- **depende-de**: -\n\n**Descricao**: texto.\n\n**Justificativa**: texto.\n\n' \
+        "$_n" "$_n" "$_n" "$_n"
+      _n=$((_n + 1))
+    done
+  } > "$_pap/docs/roadmap.md"
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 13" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 13" || return 1
+}
+
+scenario_roadmap_regra14_sem_provenencia_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r14"
+  _pap="$TMPDIR_TEST/pap-roadmap-r14"
+  mkdir -p "$_fd" "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: foo
+
+## Ordem sugerida
+
+| # | Feature |
+|---|---------|
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 14" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 14" || return 1
+}
+
+scenario_roadmap_regra15_sem_ordem_sugerida_falha() {
+  _fd="$TMPDIR_TEST/feat-roadmap-r15"
+  _pap="$TMPDIR_TEST/pap-roadmap-r15"
+  mkdir -p "$_fd" "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: foo
+
+**Gerado por**: agente-00c
+**Atualizado em**: 2026-08-14
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: texto.
+
+**Justificativa**: texto.
+EOF
+  capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage roadmap --mode roadmap --projeto-alvo-path "$_pap"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "regra 15" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "regra 15" || return 1
 }
 
 run_all_scenarios

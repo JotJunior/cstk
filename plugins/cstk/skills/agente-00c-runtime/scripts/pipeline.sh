@@ -322,36 +322,157 @@ _pl_validate_tasks() {
   return 0
 }
 
-# Validacao estrutural PARCIAL de docs/roadmap.md (feature roadmap-mode,
-# contracts/roadmap-artifact.md §6, regras 1-3 de 15).
+# Validacao estrutural COMPLETA de docs/roadmap.md (feature roadmap-mode,
+# contracts/roadmap-artifact.md §6, 15 regras — task 3.1).
 #
-# ESCOPO DESTE HELPER (honestidade de completude, Constitution VI): cobre
-# apenas as 3 regras estruturais mais basicas (header, secao Features, >=1
-# heading de entrada). O validador estrutural COMPLETO — metadado (regras
-# 4-5), unicidade/formato de short-name (6, 9), dependencias existentes e
-# aciclicas (7, 11, 12), placeholder residual (8), limite de entradas (13),
-# secoes de proveniencia (14) e "Ordem sugerida" (15) — e escopo da task
-# 3.1 (docs/specs/roadmap-mode/tasks.md FASE 3), que substitui/estende este
-# corpo. NAO reportar "roadmap.md valido" como sinonimo de "conforme todas
-# as 15 regras do contrato" enquanto 3.1 nao aterrissar.
+# POSIX puro (grep/sed/awk/wc/head/cut/tr/sort), sem jq (Principio II).
+# Fail-closed na primeira regra que falhar; diagnostico em stderr aponta a
+# regra exata do contrato (3.1.3). NUMERO DE ENTRADAS: o limite vigente e
+# 50 (contracts/roadmap-artifact.md §6 regra 13 + §9.3, CHK035 — reduzido
+# de 200 para 50 por decisao do operador, dec-026; docs/specs/roadmap-mode/
+# tasks.md 3.1.2 ainda cita "200" porque foi escrita antes de 1.4.5
+# aplicar a reducao no mesmo contrato — o contrato e a fonte de verdade).
+#
+# Regra 12 (aciclicidade do grafo depende-de) e coberta SEM checagem
+# algoritmica dedicada: o contrato (§6, nota apos a lista) demonstra que a
+# regra 11 (ordem(dependencia) < ordem(entrada), aplicada a toda aresta)
+# ja garante aciclicidade por construcao — um ciclo exigiria ordem(X) <
+# ordem(X) para algum X da cadeia, impossivel para inteiros. Portanto
+# aplicar a regra 11 em toda entrada SATISFAZ a regra 12; nao ha estado
+# alcancavel em que 11 passa e 12 falha.
 _pl_validate_roadmap() {
   _rmf=$1
   [ -f "$_rmf" ] || { echo "pipeline: roadmap.md nao encontrado: $_rmf" >&2; return 1; }
+
   # Regra 1: primeira linha nao-vazia casa '^#[[:space:]]+Roadmap'.
   if ! head -5 "$_rmf" 2>/dev/null | grep -Eq '^#[[:space:]]+Roadmap'; then
     echo "pipeline: roadmap.md sem header '# Roadmap' nas primeiras 5 linhas (contracts/roadmap-artifact.md §6 regra 1)" >&2
     return 1
   fi
-  # Regra 2: secao '## Features' presente.
-  if ! grep -Eq '^##[[:space:]]+Features' "$_rmf" 2>/dev/null; then
+
+  # Regra 2: secao '## Features' presente (ancora tambem usada pela regra 14).
+  _pv_features_line=$(grep -n '^##[[:space:]]*Features' "$_rmf" 2>/dev/null | head -1 | cut -d: -f1)
+  if [ -z "$_pv_features_line" ]; then
     echo "pipeline: roadmap.md sem secao '## Features' (contracts/roadmap-artifact.md §6 regra 2)" >&2
     return 1
   fi
+
   # Regra 3: >= 1 heading de entrada '### <ordem>. <short-name>' (§3.1).
-  if ! grep -Eq '^###[[:space:]]+[0-9]+\.[[:space:]]' "$_rmf" 2>/dev/null; then
+  if ! grep -Eq '^###[[:space:]]+[1-9][0-9]*\.[[:space:]]+[a-z][a-z0-9-]*$' "$_rmf" 2>/dev/null; then
     echo "pipeline: roadmap.md sem nenhum heading de entrada '### <ordem>. <short-name>' (contracts/roadmap-artifact.md §6 regra 3)" >&2
     return 1
   fi
+
+  # Regra 14: '**Gerado por**:'/'**Atualizado em**:' presentes, cada uma em
+  # linha propria, ANTES de '## Features'.
+  _pv_prefix=$(head -n "$((_pv_features_line - 1))" "$_rmf")
+  if ! printf '%s\n' "$_pv_prefix" | grep -Eq '^\*\*Gerado por\*\*:' \
+     || ! printf '%s\n' "$_pv_prefix" | grep -Eq '^\*\*Atualizado em\*\*:'; then
+    echo "pipeline: roadmap.md sem '**Gerado por**:'/'**Atualizado em**:' antes de '## Features' (contracts/roadmap-artifact.md §6 regra 14)" >&2
+    return 1
+  fi
+
+  # Regra 15: '## Ordem sugerida' presente, com tabela (>=1 linha '|').
+  _pv_os_line=$(grep -n '^##[[:space:]]*Ordem sugerida' "$_rmf" 2>/dev/null | head -1 | cut -d: -f1)
+  if [ -z "$_pv_os_line" ]; then
+    echo "pipeline: roadmap.md sem secao '## Ordem sugerida' (contracts/roadmap-artifact.md §6 regra 15)" >&2
+    return 1
+  fi
+  if ! sed -n "${_pv_os_line},${_pv_features_line}p" "$_rmf" | grep -Eq '^\|'; then
+    echo "pipeline: roadmap.md secao 'Ordem sugerida' sem tabela (contracts/roadmap-artifact.md §6 regra 15)" >&2
+    return 1
+  fi
+
+  # Pares "ordem<TAB>short-name" dos headings, na ordem em que aparecem
+  # (contracts/roadmap-artifact.md §4).
+  _pv_headings=$(sed -n 's/^### \([1-9][0-9]*\)\. \([a-z][a-z0-9-]*\)$/\1	\2/p' "$_rmf")
+
+  # Regra 13: numero total de entradas <= 50 (§9.3, CHK035).
+  _pv_n=$(printf '%s\n' "$_pv_headings" | sed '/^$/d' | wc -l | tr -d ' ')
+  if [ "$_pv_n" -gt 50 ]; then
+    echo "pipeline: roadmap.md com $_pv_n entradas, excede o limite de 50 (contracts/roadmap-artifact.md §6 regra 13, §9.3 CHK035)" >&2
+    return 1
+  fi
+
+  # Regra 9: short-name <= 64 chars.
+  _pv_bad_len=$(printf '%s\n' "$_pv_headings" | sed '/^$/d' | awk -F'\t' 'length($2) > 64 {print $2}')
+  if [ -n "$_pv_bad_len" ]; then
+    echo "pipeline: roadmap.md com short-name > 64 chars: $_pv_bad_len (contracts/roadmap-artifact.md §6 regra 9)" >&2
+    return 1
+  fi
+
+  # Regra 6: short-name unico no documento (regex ja imposta pelo padrao
+  # de heading da regra 3 — '^[a-z][a-z0-9-]*$').
+  _pv_dup_short=$(printf '%s\n' "$_pv_headings" | sed '/^$/d' | cut -f2 | sort | uniq -d)
+  if [ -n "$_pv_dup_short" ]; then
+    echo "pipeline: roadmap.md com short-name duplicado: $(printf '%s' "$_pv_dup_short" | tr '\n' ' ') (contracts/roadmap-artifact.md §6 regra 6)" >&2
+    return 1
+  fi
+
+  # Regra 10: ordem unica no documento.
+  _pv_dup_ordem=$(printf '%s\n' "$_pv_headings" | sed '/^$/d' | cut -f1 | sort -n | uniq -d)
+  if [ -n "$_pv_dup_ordem" ]; then
+    echo "pipeline: roadmap.md com ordem duplicada: $(printf '%s' "$_pv_dup_ordem" | tr '\n' ' ') (contracts/roadmap-artifact.md §6 regra 10)" >&2
+    return 1
+  fi
+
+  # Regras 4/5/8/7/11: por entrada — metadado completo, short-name/ordem
+  # batendo com o heading, sem placeholder residual, dependencias
+  # existentes e com precedencia de ordem correta.
+  _pv_heading_lines=$(grep -n '^###[[:space:]]\+[1-9][0-9]*\.[[:space:]]\+[a-z][a-z0-9-]*$' "$_rmf" | cut -d: -f1)
+  _pv_total=$(wc -l < "$_rmf" | tr -d ' ')
+  _pv_i=0
+  for _pv_hl in $_pv_heading_lines; do
+    _pv_i=$((_pv_i + 1))
+    _pv_hd=$(sed -n "${_pv_hl}p" "$_rmf")
+    _pv_hd_ordem=$(printf '%s' "$_pv_hd" | sed -n 's/^### \([1-9][0-9]*\)\..*/\1/p')
+    _pv_hd_short=$(printf '%s' "$_pv_hd" | sed -n 's/^### [1-9][0-9]*\. \(.*\)$/\1/p')
+    _pv_next_hl=$(printf '%s\n' "$_pv_heading_lines" | sed -n "$((_pv_i + 1))p")
+    if [ -n "$_pv_next_hl" ]; then _pv_end=$((_pv_next_hl - 1)); else _pv_end=$_pv_total; fi
+    _pv_block=$(sed -n "$((_pv_hl + 1)),${_pv_end}p" "$_rmf")
+
+    # Regra 4: as 3 linhas de metadado obrigatorias presentes.
+    _pv_m_short=$(printf '%s\n' "$_pv_block" | grep -m1 '^- \*\*short-name\*\*: ')
+    _pv_m_ordem=$(printf '%s\n' "$_pv_block" | grep -m1 '^- \*\*ordem\*\*: ')
+    _pv_m_dep=$(printf '%s\n' "$_pv_block" | grep -m1 '^- \*\*depende-de\*\*: ')
+    if [ -z "$_pv_m_short" ] || [ -z "$_pv_m_ordem" ] || [ -z "$_pv_m_dep" ]; then
+      echo "pipeline: roadmap.md entrada '$_pv_hd_short' sem as 3 linhas de metadado obrigatorias short-name/ordem/depende-de (contracts/roadmap-artifact.md §6 regra 4)" >&2
+      return 1
+    fi
+
+    # Regra 5: short-name/ordem do metadado coincidem com os do heading.
+    _pv_m_short_val=$(printf '%s' "$_pv_m_short" | sed -n 's/^- \*\*short-name\*\*: `\(.*\)`$/\1/p')
+    _pv_m_ordem_val=$(printf '%s' "$_pv_m_ordem" | sed -n 's/^- \*\*ordem\*\*: \(.*\)$/\1/p')
+    if [ "$_pv_m_short_val" != "$_pv_hd_short" ] || [ "$_pv_m_ordem_val" != "$_pv_hd_ordem" ]; then
+      echo "pipeline: roadmap.md entrada '$_pv_hd_short' com metadado divergente do heading (short-name/ordem) (contracts/roadmap-artifact.md §6 regra 5)" >&2
+      return 1
+    fi
+
+    # Regra 8: sem placeholder residual no corpo da entrada.
+    if printf '%s\n' "$_pv_block" | grep -Eq '\[TBD\]|\[A definir\]|\[FILL\]|TODO'; then
+      echo "pipeline: roadmap.md entrada '$_pv_hd_short' com placeholder residual ([TBD]/[A definir]/[FILL]/TODO) (contracts/roadmap-artifact.md §6 regra 8)" >&2
+      return 1
+    fi
+
+    # Regras 7/11: dependencias existem e precedem a entrada em 'ordem'.
+    _pv_dep_raw=$(printf '%s' "$_pv_m_dep" | sed -n 's/^- \*\*depende-de\*\*: //p')
+    if [ "$_pv_dep_raw" != "-" ] && [ -n "$_pv_dep_raw" ]; then
+      _pv_deps=$(printf '%s' "$_pv_dep_raw" | tr -d '`' | tr ',' '\n' | sed 's/^ *//; s/ *$//')
+      for _pv_d in $_pv_deps; do
+        [ -n "$_pv_d" ] || continue
+        _pv_d_ordem=$(printf '%s\n' "$_pv_headings" | awk -F'\t' -v s="$_pv_d" '$2==s{print $1; exit}')
+        if [ -z "$_pv_d_ordem" ]; then
+          echo "pipeline: roadmap.md entrada '$_pv_hd_short' depende de '$_pv_d', que nao existe como entrada do documento (contracts/roadmap-artifact.md §6 regra 7)" >&2
+          return 1
+        fi
+        if [ "$_pv_d_ordem" -ge "$_pv_hd_ordem" ]; then
+          echo "pipeline: roadmap.md entrada '$_pv_hd_short' (ordem $_pv_hd_ordem) depende de '$_pv_d' (ordem $_pv_d_ordem) — precedencia violada, ordem(dependencia) deve ser < ordem(entrada) (contracts/roadmap-artifact.md §6 regra 11)" >&2
+          return 1
+        fi
+      done
+    fi
+  done
+
   return 0
 }
 
@@ -455,8 +576,8 @@ _pl_cmd_detect_completion() {
       ;;
     roadmap)
       # Artefato project-level (como briefing/constitution) — sem fallback
-      # legado (artefato novo). Validacao estrutural PARCIAL nesta task
-      # (2.4, 3 de 15 regras); task 3.1 completa as demais.
+      # legado (artefato novo). Validacao estrutural COMPLETA (15 regras,
+      # task 3.1) via _pl_validate_roadmap.
       if [ -f "$_fd/roadmap.md" ]; then
         _pl_validate_roadmap "$_fd/roadmap.md" || return 1
         return 0

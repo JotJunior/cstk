@@ -1080,6 +1080,79 @@ scenario_end_advance_flags_orfas_exit2() {
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "advance-from orfa: exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+scenario_end_advance_mode_roadmap_passthrough() {
+  # 2.5.1: --mode roadmap e repassado a pipeline.sh next-stage; a lista
+  # escopada (briefing constitution roadmap) resolve constitution->roadmap,
+  # nao specify (contracts/cli-roadmap-mode.md §4).
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"constitution"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance --mode roadmap
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end --advance --mode roadmap" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "roadmap" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "Iniciar etapa roadmap" || return 1
+}
+
+scenario_end_advance_mode_omitido_usa_lista_completa() {
+  # Sem --mode, comportamento atual intacto: constitution->specify (lista
+  # completa), nao roadmap (contracts/cli-roadmap-mode.md §4 "Sem --mode, o
+  # comportamento e o atual").
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"constitution"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "end --advance sem mode" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "specify" || return 1
+}
+
+scenario_end_mode_sem_advance_exit2() {
+  # 2.5.2: --mode sem --advance e erro de uso, mesma politica de
+  # --terminal-phase/--advance-from.
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --mode roadmap
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "mode orfa: exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+}
+
+scenario_end_advance_terminal_phase_roadmap_intacto() {
+  # 2.5.3: --terminal-phase roadmap continua fail-closed quando a fase
+  # corrente ja e roadmap, mesmo com --mode roadmap presente (contracts/
+  # cli-roadmap-mode.md §4.1 — sem regressao no comportamento existente).
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"roadmap"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance --mode roadmap --terminal-phase roadmap
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || return 1
+}
+
+scenario_sqlite_end_advance_mode_roadmap_passthrough() {
+  # Paridade SQLite do passthrough --mode (2.5.1).
+  _sd="$TMPDIR_TEST/sqlite-end-advance-mode"
+  _seed_sqlite_backend "$_sd" || return 1   # seed: current_stage=execute-task
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"constitution"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" \
+    --motivo-termino etapa_concluida_avancando --advance --mode roadmap
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite end --advance --mode roadmap" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "roadmap" || return 1
+}
+
 scenario_git_commit_worktree() {
   # Regressao: em git worktree o `.git` e ARQUIVO (`gitdir: ...`), nao diretorio.
   # O check antigo `[ -d "$_pap/.git" ]` dava falso-negativo e quebrava commit
