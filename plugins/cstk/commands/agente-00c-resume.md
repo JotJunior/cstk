@@ -290,8 +290,12 @@ Agent(
     Context:
     - state-dir: <SD>
     - projeto-alvo-path: <PAP>
-    - feature-dir: <PAP>/docs/specs/<feature> (deduzir de
-      .current_stage e estrutura existente)
+    - feature-dir: <PAP>/docs/specs/<feature> — <feature> = nome
+      canonico do projeto (.execution.canonical_project //
+      basename(target_project_path) do state; paridade anti-eco
+      dec-015). Fallback SOMENTE para execucao legada cujo dir ja
+      existe em docs/specs/ com nome diverso: usar o dir existente
+      (deduzir de .current_stage e estrutura), sem renomear.
     - whitelist: <PAP>/.claude/agente-00c-whitelist
     - retomada_motivo: "<resume_after_block|resume_after_schedule>"
 
