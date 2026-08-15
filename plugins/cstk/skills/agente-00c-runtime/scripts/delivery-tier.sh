@@ -252,22 +252,89 @@ _dt_cmd_gate_mode() {
   return 0
 }
 
+# ---------- resolve-initial ----------
+#
+# Resolve o tier INICIAL do prompt de finalidade (FR-003). Existe para
+# tirar a regra da prosa do command e coloca-la em codigo testavel: antes
+# desta funcao, "execucao nao-interativa => cloud-public" era so uma
+# instrucao em linguagem natural, e um spike headless (2026-08-15)
+# mostrou um agente sobrepondo-a com raciocinio de Principio VI, gravando
+# `local` a partir do briefing.
+#
+# `--source` e OBRIGATORIO e nao tem default: quem chama DECLARA se houve
+# operador. Nao ha deteccao automatica porque nao existe sinal confiavel
+# no shell — `[ -t 0 ]` e falso mesmo em sessao interativa do harness
+# (o Bash tool roda sem tty), o que tornaria toda execucao "nao-interativa"
+# e forcaria cloud-public sempre.
+#
+#   --source absent    => cloud-public SEMPRE; --answer e ignorado por
+#                         completo (nem lido). E o fail-safe do FR-003.
+#   --source operator  => mapeia --answer 1..4 no enum; qualquer outra
+#                         coisa (vazio, fora de 1-4, lixo) => cloud-public.
+#
+# Consequencia deliberada: rebaixar o tier sem operador exige declarar
+# `--source operator` mentindo — acao explicita, visivel no
+# enforcement-log, e nao mais uma inferencia silenciosa.
+_dt_cmd_resolve_initial() {
+  _source=""
+  _answer=""
+  _saw_source=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --source) _source=${2:-}; _saw_source=1; shift 2 ;;
+      --answer) _answer=${2:-}; shift 2 ;;
+      *) _dt_die_usage "resolve-initial: flag desconhecida: $1" ;;
+    esac
+  done
+
+  [ "$_saw_source" = 1 ] \
+    || _dt_die_usage "resolve-initial: --source e obrigatorio (operator|absent)"
+
+  case "$_source" in
+    absent)
+      # FR-003 literal: sem operador o tier e cloud-public, ponto. NAO
+      # inferir de briefing/constitution/descricao — ver INV-4/ASI01.
+      printf 'cloud-public\n'
+      return 0
+      ;;
+    operator) : ;;
+    *)
+      _dt_die_usage "resolve-initial: --source aceita apenas operator|absent"
+      ;;
+  esac
+
+  # CRLF: entrada pode vir de arquivo/pipe com terminador Windows — `$()`
+  # NAO remove \r (mesma classe do bug corrigido no next-id em v7.5.1).
+  _answer=$(printf '%s' "$_answer" | tr -d '\r\n')
+
+  case "$_answer" in
+    1) printf 'local\n' ;;
+    2) printf 'internal-network\n' ;;
+    3) printf 'cloud-internal\n' ;;
+    4) printf 'cloud-public\n' ;;
+    # Enter, vazio, fora de 1-4, texto arbitrario: default seguro.
+    *) printf 'cloud-public\n' ;;
+  esac
+  return 0
+}
+
 # ---------- dispatch ----------
 
-[ "$#" -gt 0 ] || _dt_die_usage "subcomando obrigatorio: get|set|gate-mode"
+[ "$#" -gt 0 ] || _dt_die_usage "subcomando obrigatorio: get|set|gate-mode|resolve-initial"
 
 _DT_CMD=$1
 shift
 
 case "$_DT_CMD" in
-  get)       _dt_cmd_get       "$@" ;;
-  set)       _dt_cmd_set       "$@" ;;
-  gate-mode) _dt_cmd_gate_mode "$@" ;;
+  get)             _dt_cmd_get             "$@" ;;
+  set)             _dt_cmd_set             "$@" ;;
+  gate-mode)       _dt_cmd_gate_mode       "$@" ;;
+  resolve-initial) _dt_cmd_resolve_initial "$@" ;;
   -h|--help|help)
-    printf 'delivery-tier.sh get --state-dir DIR\ndelivery-tier.sh set --state-dir DIR --value <token> [--allow-downgrade]\ndelivery-tier.sh gate-mode --gate NOME [--tier TOKEN] [--state-dir DIR]\n'
+    printf 'delivery-tier.sh get --state-dir DIR\ndelivery-tier.sh set --state-dir DIR --value <token> [--allow-downgrade]\ndelivery-tier.sh gate-mode --gate NOME [--tier TOKEN] [--state-dir DIR]\ndelivery-tier.sh resolve-initial --source <operator|absent> [--answer RAW]\n'
     exit 0
     ;;
   *)
-    _dt_die_usage "subcomando desconhecido: $_DT_CMD (validos: get|set|gate-mode)"
+    _dt_die_usage "subcomando desconhecido: $_DT_CMD (validos: get|set|gate-mode|resolve-initial)"
     ;;
 esac

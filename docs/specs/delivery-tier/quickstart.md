@@ -251,7 +251,7 @@ Cobre a regra de ouro do repo.
 
 ---
 
-## Cenario 17 — Execucao nao-interativa nao trava `[ACEITACAO MANUAL]`
+## Cenario 17 — Execucao nao-interativa nao trava `[VERIFICADO 2026-08-15]`
 
 Cobre FR-003 e o Edge Case de ausencia de operador.
 
@@ -260,6 +260,92 @@ Cobre FR-003 e o Edge Case de ausencia de operador.
 2. **Expected**: o init **nao bloqueia** aguardando resposta; tier =
    `cloud-public`; execucao segue normalmente. Mesma clausula literal ja
    escrita para o opt-in do roadmap (`agente-00c.md:338-339`).
+
+### Execucao empirica (spike headless descartavel, 2026-08-15)
+
+Verificado com `claude -p` (CLI 2.1.233) sobre um projeto sandbox
+descartavel — CLI POSIX de conversao de temperatura, com `docs/briefing.md`
+e `docs/constitution.md` minimos ratificados. **Dois defeitos reais
+apareceram, ambos corrigidos na v7.6.1:**
+
+**Rodada 1 — o warm-up bloqueava antes da pergunta.** O command parou em
+`Continuar? [s/N]` do warm-up de permissoes e encerrou (`CLAUDE_EXIT=0`)
+**sem criar state-dir algum**. O caminho que o FR-003 protege era
+inalcancavel: um gargalo ANTERIOR, sem relacao com o tier, impedia
+qualquer execucao nao-interativa de comecar. O mesmo valia para
+`/feature-00c`.
+
+> Armadilha de leitura: consultar `delivery-tier.sh get` nesse estado
+> devolve `cloud-public` — mas pelo fail-safe de *state-dir inexistente*,
+> nao por uma execucao real. Conferir SEMPRE que o state-dir existe antes
+> de dar o cenario por verificado.
+
+**Rodada 2 (warm-up pre-confirmado) — o tier foi INFERIDO, nao
+defaultado.** Com o warm-up vencido, o init rodou e gravou
+`delivery_tier = local`, com Decisao auditavel citando o briefing:
+
+```
+dec-003 | etapa=briefing | escolha=local
+contexto: delivery-tier nao-interativo. Default contratual do command e
+  cloud-public, porem briefing.md ratificado declara secao 3 'Sem interface
+  grafica, sem API, sem persistencia' [...] secao 1 'Uso pessoal, offline,
+  sem rede'
+just: Fonte citavel e inequivoca [...] Adotar cloud-public injetaria
+  requisitos de deploy/exposicao publica inexistentes no briefing, violando
+  Principio II da constitution (nenhum valor factual inventado)
+```
+
+O agente reconheceu o default contratual e o sobrepos com raciocinio de
+Principio VI. Nao foi descuido — foi um conflito genuino de leitura, e
+por isso a clausula "default e caso de erro" sozinha nao bastava.
+
+**Resolucao (decisao do operador, 2026-08-15): FR-003 e literal.** Sem
+operador, o tier e `cloud-public` sempre, mesmo com briefing inequivoco —
+o tier e escolha de politica do operador, nao dado factual do projeto,
+entao o default conservador nao inventa nada. Inferir de prosa lida
+tornaria o rebaixamento alcancavel por injecao indireta (ASI01), o vetor
+que o INV-4 fecha.
+
+**Cobertura de regressao** (o cenario deixa de depender de execucao
+manual):
+
+| Verificacao | Onde |
+|---|---|
+| **A regra do FR-003 em CODIGO**, nao em prosa | `delivery-tier.sh resolve-initial` + `tests/test_delivery-tier.sh` (10 cenarios novos) |
+| **Lint de CLASSE**: todo prompt de todo command declara nao-interatividade | `tests/test_command-prompt-noninteractive-lint.sh` (7 cenarios) |
+| Clausula de nao-interatividade no warm-up dos 2 commands | `tests/test_command-warmup-noninteractive.sh` (16 cenarios) |
+| Proibicao de inferir o tier + racional anti-Principio-VI + vetor ASI01 | `tests/test_command-spawn-delivery-tier.sh` (5 cenarios novos) |
+| Default `cloud-public` no runtime, campo ausente | `tests/test_delivery-tier.sh::scenario_get_campo_ausente_retorna_cloud_public` |
+| **Obediencia em runtime** (fora do gate) | `tests/eval/eval_noninteractive-tier.sh` |
+
+### Como a cobertura deterministica foi de fato resolvida
+
+O ponto-chave nao foi escrever mais asserts sobre a prosa — foi **tirar a
+decisao da prosa**. Enquanto "nao-interativo => cloud-public" era so uma
+instrucao em linguagem natural, a unica verificacao possivel era eval. Com
+`delivery-tier.sh resolve-initial --source <operator|absent>`, o command
+deixou de decidir e passou a delegar: a regra virou codigo, e codigo se
+testa.
+
+Nao ha deteccao automatica de interatividade **por desenho**: `[ -t 0 ]` e
+falso mesmo em sessao interativa do harness (o Bash tool roda sem tty),
+entao detectar por tty forcaria `cloud-public` sempre, inclusive com
+operador presente. Quem chama DECLARA via `--source`, que e obrigatorio e
+sem default. Consequencia deliberada: rebaixar o tier sem operador exige
+declarar `--source operator` mentindo — acao explicita e auditavel, nao
+mais uma inferencia silenciosa.
+
+O lint de classe existe porque corrigir instancia a instancia e
+whack-a-mole: ao fechar o warm-up, a varredura revelou que o opt-in de
+`atomic-commit` tinha o MESMO buraco nos dois commands, e ninguem estava
+olhando para ele.
+
+**O que permanece fora do determinismo**: a obediencia do LLM em tempo de
+execucao. Isso e irredutivel — nenhum teste de shell alcanca. O que mudou
+e que quase nada depende dela agora: o mapeamento e o default vivem em
+codigo testado, e ao agente resta chamar o helper e usar o stdout.
+Reverificar = rodar `tests/eval/eval_noninteractive-tier.sh` apos mexer
+nos blocos de prompt.
 
 ---
 
