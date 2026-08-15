@@ -672,4 +672,24 @@ scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
 
 fi # sqlite3 disponivel
 
+# Paridade com o fix das issues #122/#123 (bloqueios.sh): _sd_next_dec_id ja
+# usava command substitution, mas sem strip de \r — jq Windows com CRLF
+# corromperia a aritmetica do mesmo jeito. Cobre o hardening (tr -d '\r' +
+# guard numerico) com um stub de jq que emite CRLF.
+scenario_next_id_tolera_jq_com_saida_crlf() {
+  _sd="$TMPDIR_TEST/state-crlf"
+  mkdir -p -- "$_sd"
+  printf '%s\n' '{"execution":{"id":"exec-1"},"decisions":[{"id":"dec-007"}]}' \
+    > "$_sd/state.json"
+  _bin="$TMPDIR_TEST/crlf-bin"
+  mkdir -p -- "$_bin"
+  _realjq=$(command -v jq) || { _error "jq ausente" ""; return 2; }
+  printf '#!/bin/sh\n%s "$@" | while IFS= read -r _l; do printf "%%s\\r\\n" "$_l"; done\n' \
+    "$_realjq" > "$_bin/jq"
+  chmod +x "$_bin/jq"
+  capture env PATH="$_bin:$PATH" "$SCRIPT" next-id --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "next-id com jq CRLF" "exit $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "dec-008" || return 1
+}
+
 run_all_scenarios
