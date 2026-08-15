@@ -110,11 +110,17 @@ _pl_print_help() {
 pipeline.sh — state machine canonica da pipeline SDD do agente-00C.
 
 USO:
-  pipeline.sh stages
-  pipeline.sh next-stage --current STAGE
-  pipeline.sh prev-stage --current STAGE
+  pipeline.sh stages [--mode default|roadmap]
+  pipeline.sh next-stage --current STAGE [--mode default|roadmap]
+  pipeline.sh prev-stage --current STAGE [--mode default|roadmap]
   pipeline.sh detect-completion --feature-dir DIR --stage STAGE
-                                [--projeto-alvo-path PAP]
+                                [--projeto-alvo-path PAP] [--mode default|roadmap]
+
+  --mode (feature roadmap-mode, contracts/cli-roadmap-mode.md §3): omitido
+  ou 'default' => as 10 etapas canonicas (_PL_STAGES_LIST, INALTERADA);
+  'roadmap' => lista escopada "briefing constitution roadmap"; qualquer
+  outro valor => exit 2. `--stage roadmap` em detect-completion so e
+  aceito com `--mode roadmap` (fail-closed; lista global NUNCA se alarga).
   pipeline.sh constitution-conflict --projeto-alvo-path PAP --feature-dir FD
   pipeline.sh skill-conflict --skill NAME --projeto-alvo-path PATH
   pipeline.sh require-blockade-resolved --state-dir SD --etapa STAGE
@@ -136,46 +142,98 @@ _pl_is_valid_stage() {
   return 1
 }
 
+# ---------- --mode (feature roadmap-mode, contracts/cli-roadmap-mode.md §3) ----------
+#
+# _PL_STAGES_LIST permanece INALTERADA (invariante dura, SC-003): --mode
+# NUNCA edita a lista global, apenas seleciona qual lista os subcomandos
+# `stages`/`next-stage`/`prev-stage` iteram. research.md Decision 2.
+
+# _pl_validate_mode MODE -> exit 0 se MODE e "", "default" ou "roadmap";
+# senao morre com exit 2 (uso incorreto). Chamada DIRETA (nunca dentro de
+# `$(...)`) para que o `exit` de _pl_die_usage propague ao processo real.
+_pl_validate_mode() {
+  case "$1" in
+    ""|default|roadmap) return 0 ;;
+    *) _pl_die_usage "$2: --mode invalido: '$1' (validos: default, roadmap)" ;;
+  esac
+}
+
+# _pl_mode_list MODE -> imprime a lista de etapas efetiva do modo (ja
+# validado por _pl_validate_mode). Uso seguro dentro de `$(...)`.
+_pl_mode_list() {
+  case "$1" in
+    roadmap) printf '%s' "briefing constitution roadmap" ;;
+    *)       printf '%s' "$_PL_STAGES_LIST" ;;
+  esac
+}
+
+# _pl_is_valid_stage_in LIST STAGE -> 0 se STAGE pertence a LIST (string
+# separada por espaco).
+_pl_is_valid_stage_in() {
+  for _s in $1; do
+    [ "$_s" = "$2" ] && return 0
+  done
+  return 1
+}
+
 _pl_cmd_stages() {
-  for _s in $_PL_STAGES_LIST; do
+  _mode=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --mode) _mode=$2; shift 2 ;;
+      *) _pl_die_usage "stages: flag desconhecida: $1" ;;
+    esac
+  done
+  _pl_validate_mode "$_mode" "stages"
+  _list=$(_pl_mode_list "$_mode")
+  for _s in $_list; do
     printf '%s\n' "$_s"
   done
 }
 
 _pl_cmd_next_stage() {
   _curr=""
+  _mode=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --current) _curr=$2; shift 2 ;;
+      --mode)    _mode=$2; shift 2 ;;
       *) _pl_die_usage "next-stage: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_curr" ] || _pl_die_usage "next-stage: --current obrigatorio"
-  _pl_is_valid_stage "$_curr" || _pl_die "etapa desconhecida: $_curr (use 'stages')" 1
+  _pl_validate_mode "$_mode" "next-stage"
+  _list=$(_pl_mode_list "$_mode")
+  _pl_is_valid_stage_in "$_list" "$_curr" || _pl_die "etapa desconhecida: $_curr (use 'stages')" 1
   _take_next=0
-  for _s in $_PL_STAGES_LIST; do
+  for _s in $_list; do
     if [ "$_take_next" = 1 ]; then
       printf '%s\n' "$_s"
       return 0
     fi
     [ "$_s" = "$_curr" ] && _take_next=1
   done
-  # Caiu fora do loop -> ja na ultima etapa: sem proxima.
+  # Caiu fora do loop -> ja na ultima etapa: sem proxima (stdout vazio,
+  # exit 0 — inclui `--mode roadmap --current roadmap`, contrato §3).
   return 0
 }
 
 _pl_cmd_prev_stage() {
   _curr=""
+  _mode=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --current) _curr=$2; shift 2 ;;
+      --mode)    _mode=$2; shift 2 ;;
       *) _pl_die_usage "prev-stage: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_curr" ] || _pl_die_usage "prev-stage: --current obrigatorio"
-  _pl_is_valid_stage "$_curr" || _pl_die "etapa desconhecida: $_curr" 1
+  _pl_validate_mode "$_mode" "prev-stage"
+  _list=$(_pl_mode_list "$_mode")
+  _pl_is_valid_stage_in "$_list" "$_curr" || _pl_die "etapa desconhecida: $_curr" 1
   _prev=""
-  for _s in $_PL_STAGES_LIST; do
+  for _s in $_list; do
     if [ "$_s" = "$_curr" ]; then
       [ -n "$_prev" ] && printf '%s\n' "$_prev"
       return 0
@@ -264,6 +322,160 @@ _pl_validate_tasks() {
   return 0
 }
 
+# Validacao estrutural COMPLETA de docs/roadmap.md (feature roadmap-mode,
+# contracts/roadmap-artifact.md §6, 15 regras — task 3.1).
+#
+# POSIX puro (grep/sed/awk/wc/head/cut/tr/sort), sem jq (Principio II).
+# Fail-closed na primeira regra que falhar; diagnostico em stderr aponta a
+# regra exata do contrato (3.1.3). NUMERO DE ENTRADAS: o limite vigente e
+# 50 (contracts/roadmap-artifact.md §6 regra 13 + §9.3, CHK035 — reduzido
+# de 200 para 50 por decisao do operador, dec-026; docs/specs/roadmap-mode/
+# tasks.md 3.1.2 ainda cita "200" porque foi escrita antes de 1.4.5
+# aplicar a reducao no mesmo contrato — o contrato e a fonte de verdade).
+#
+# Regra 12 (aciclicidade do grafo depende-de) e coberta SEM checagem
+# algoritmica dedicada: o contrato (§6, nota apos a lista) demonstra que a
+# regra 11 (ordem(dependencia) < ordem(entrada), aplicada a toda aresta)
+# ja garante aciclicidade por construcao — um ciclo exigiria ordem(X) <
+# ordem(X) para algum X da cadeia, impossivel para inteiros. Portanto
+# aplicar a regra 11 em toda entrada SATISFAZ a regra 12; nao ha estado
+# alcancavel em que 11 passa e 12 falha.
+_pl_validate_roadmap() {
+  _rmf=$1
+  [ -f "$_rmf" ] || { echo "pipeline: roadmap.md nao encontrado: $_rmf" >&2; return 1; }
+
+  # Regra 1: primeira linha nao-vazia casa '^#[[:space:]]+Roadmap'.
+  if ! head -5 "$_rmf" 2>/dev/null | grep -Eq '^#[[:space:]]+Roadmap'; then
+    echo "pipeline: roadmap.md sem header '# Roadmap' nas primeiras 5 linhas (contracts/roadmap-artifact.md §6 regra 1)" >&2
+    return 1
+  fi
+
+  # Regra 2: secao '## Features' presente (ancora tambem usada pela regra 14).
+  _pv_features_line=$(grep -n '^##[[:space:]]*Features' "$_rmf" 2>/dev/null | head -1 | cut -d: -f1)
+  if [ -z "$_pv_features_line" ]; then
+    echo "pipeline: roadmap.md sem secao '## Features' (contracts/roadmap-artifact.md §6 regra 2)" >&2
+    return 1
+  fi
+
+  # Regra 3: >= 1 heading de entrada '### <ordem>. <short-name>' (§3.1).
+  if ! grep -Eq '^###[[:space:]]+[1-9][0-9]*\.[[:space:]]+[a-z][a-z0-9-]*$' "$_rmf" 2>/dev/null; then
+    echo "pipeline: roadmap.md sem nenhum heading de entrada '### <ordem>. <short-name>' (contracts/roadmap-artifact.md §6 regra 3)" >&2
+    return 1
+  fi
+
+  # Regra 14: '**Gerado por**:'/'**Atualizado em**:' presentes, cada uma em
+  # linha propria, ANTES de '## Features'.
+  _pv_prefix=$(head -n "$((_pv_features_line - 1))" "$_rmf")
+  if ! printf '%s\n' "$_pv_prefix" | grep -Eq '^\*\*Gerado por\*\*:' \
+     || ! printf '%s\n' "$_pv_prefix" | grep -Eq '^\*\*Atualizado em\*\*:'; then
+    echo "pipeline: roadmap.md sem '**Gerado por**:'/'**Atualizado em**:' antes de '## Features' (contracts/roadmap-artifact.md §6 regra 14)" >&2
+    return 1
+  fi
+
+  # Regra 15: '## Ordem sugerida' presente, com tabela (>=1 linha '|').
+  _pv_os_line=$(grep -n '^##[[:space:]]*Ordem sugerida' "$_rmf" 2>/dev/null | head -1 | cut -d: -f1)
+  if [ -z "$_pv_os_line" ]; then
+    echo "pipeline: roadmap.md sem secao '## Ordem sugerida' (contracts/roadmap-artifact.md §6 regra 15)" >&2
+    return 1
+  fi
+  if ! sed -n "${_pv_os_line},${_pv_features_line}p" "$_rmf" | grep -Eq '^\|'; then
+    echo "pipeline: roadmap.md secao 'Ordem sugerida' sem tabela (contracts/roadmap-artifact.md §6 regra 15)" >&2
+    return 1
+  fi
+
+  # Pares "ordem<TAB>short-name" dos headings, na ordem em que aparecem
+  # (contracts/roadmap-artifact.md §4).
+  _pv_headings=$(sed -n 's/^### \([1-9][0-9]*\)\. \([a-z][a-z0-9-]*\)$/\1	\2/p' "$_rmf")
+
+  # Regra 13: numero total de entradas <= 50 (§9.3, CHK035).
+  _pv_n=$(printf '%s\n' "$_pv_headings" | sed '/^$/d' | wc -l | tr -d ' ')
+  if [ "$_pv_n" -gt 50 ]; then
+    echo "pipeline: roadmap.md com $_pv_n entradas, excede o limite de 50 (contracts/roadmap-artifact.md §6 regra 13, §9.3 CHK035)" >&2
+    return 1
+  fi
+
+  # Regra 9: short-name <= 64 chars.
+  _pv_bad_len=$(printf '%s\n' "$_pv_headings" | sed '/^$/d' | awk -F'\t' 'length($2) > 64 {print $2}')
+  if [ -n "$_pv_bad_len" ]; then
+    echo "pipeline: roadmap.md com short-name > 64 chars: $_pv_bad_len (contracts/roadmap-artifact.md §6 regra 9)" >&2
+    return 1
+  fi
+
+  # Regra 6: short-name unico no documento (regex ja imposta pelo padrao
+  # de heading da regra 3 — '^[a-z][a-z0-9-]*$').
+  _pv_dup_short=$(printf '%s\n' "$_pv_headings" | sed '/^$/d' | cut -f2 | sort | uniq -d)
+  if [ -n "$_pv_dup_short" ]; then
+    echo "pipeline: roadmap.md com short-name duplicado: $(printf '%s' "$_pv_dup_short" | tr '\n' ' ') (contracts/roadmap-artifact.md §6 regra 6)" >&2
+    return 1
+  fi
+
+  # Regra 10: ordem unica no documento.
+  _pv_dup_ordem=$(printf '%s\n' "$_pv_headings" | sed '/^$/d' | cut -f1 | sort -n | uniq -d)
+  if [ -n "$_pv_dup_ordem" ]; then
+    echo "pipeline: roadmap.md com ordem duplicada: $(printf '%s' "$_pv_dup_ordem" | tr '\n' ' ') (contracts/roadmap-artifact.md §6 regra 10)" >&2
+    return 1
+  fi
+
+  # Regras 4/5/8/7/11: por entrada — metadado completo, short-name/ordem
+  # batendo com o heading, sem placeholder residual, dependencias
+  # existentes e com precedencia de ordem correta.
+  _pv_heading_lines=$(grep -n '^###[[:space:]]\+[1-9][0-9]*\.[[:space:]]\+[a-z][a-z0-9-]*$' "$_rmf" | cut -d: -f1)
+  _pv_total=$(wc -l < "$_rmf" | tr -d ' ')
+  _pv_i=0
+  for _pv_hl in $_pv_heading_lines; do
+    _pv_i=$((_pv_i + 1))
+    _pv_hd=$(sed -n "${_pv_hl}p" "$_rmf")
+    _pv_hd_ordem=$(printf '%s' "$_pv_hd" | sed -n 's/^### \([1-9][0-9]*\)\..*/\1/p')
+    _pv_hd_short=$(printf '%s' "$_pv_hd" | sed -n 's/^### [1-9][0-9]*\. \(.*\)$/\1/p')
+    _pv_next_hl=$(printf '%s\n' "$_pv_heading_lines" | sed -n "$((_pv_i + 1))p")
+    if [ -n "$_pv_next_hl" ]; then _pv_end=$((_pv_next_hl - 1)); else _pv_end=$_pv_total; fi
+    _pv_block=$(sed -n "$((_pv_hl + 1)),${_pv_end}p" "$_rmf")
+
+    # Regra 4: as 3 linhas de metadado obrigatorias presentes.
+    _pv_m_short=$(printf '%s\n' "$_pv_block" | grep -m1 '^- \*\*short-name\*\*: ')
+    _pv_m_ordem=$(printf '%s\n' "$_pv_block" | grep -m1 '^- \*\*ordem\*\*: ')
+    _pv_m_dep=$(printf '%s\n' "$_pv_block" | grep -m1 '^- \*\*depende-de\*\*: ')
+    if [ -z "$_pv_m_short" ] || [ -z "$_pv_m_ordem" ] || [ -z "$_pv_m_dep" ]; then
+      echo "pipeline: roadmap.md entrada '$_pv_hd_short' sem as 3 linhas de metadado obrigatorias short-name/ordem/depende-de (contracts/roadmap-artifact.md §6 regra 4)" >&2
+      return 1
+    fi
+
+    # Regra 5: short-name/ordem do metadado coincidem com os do heading.
+    _pv_m_short_val=$(printf '%s' "$_pv_m_short" | sed -n 's/^- \*\*short-name\*\*: `\(.*\)`$/\1/p')
+    _pv_m_ordem_val=$(printf '%s' "$_pv_m_ordem" | sed -n 's/^- \*\*ordem\*\*: \(.*\)$/\1/p')
+    if [ "$_pv_m_short_val" != "$_pv_hd_short" ] || [ "$_pv_m_ordem_val" != "$_pv_hd_ordem" ]; then
+      echo "pipeline: roadmap.md entrada '$_pv_hd_short' com metadado divergente do heading (short-name/ordem) (contracts/roadmap-artifact.md §6 regra 5)" >&2
+      return 1
+    fi
+
+    # Regra 8: sem placeholder residual no corpo da entrada.
+    if printf '%s\n' "$_pv_block" | grep -Eq '\[TBD\]|\[A definir\]|\[FILL\]|TODO'; then
+      echo "pipeline: roadmap.md entrada '$_pv_hd_short' com placeholder residual ([TBD]/[A definir]/[FILL]/TODO) (contracts/roadmap-artifact.md §6 regra 8)" >&2
+      return 1
+    fi
+
+    # Regras 7/11: dependencias existem e precedem a entrada em 'ordem'.
+    _pv_dep_raw=$(printf '%s' "$_pv_m_dep" | sed -n 's/^- \*\*depende-de\*\*: //p')
+    if [ "$_pv_dep_raw" != "-" ] && [ -n "$_pv_dep_raw" ]; then
+      _pv_deps=$(printf '%s' "$_pv_dep_raw" | tr -d '`' | tr ',' '\n' | sed 's/^ *//; s/ *$//')
+      for _pv_d in $_pv_deps; do
+        [ -n "$_pv_d" ] || continue
+        _pv_d_ordem=$(printf '%s\n' "$_pv_headings" | awk -F'\t' -v s="$_pv_d" '$2==s{print $1; exit}')
+        if [ -z "$_pv_d_ordem" ]; then
+          echo "pipeline: roadmap.md entrada '$_pv_hd_short' depende de '$_pv_d', que nao existe como entrada do documento (contracts/roadmap-artifact.md §6 regra 7)" >&2
+          return 1
+        fi
+        if [ "$_pv_d_ordem" -ge "$_pv_hd_ordem" ]; then
+          echo "pipeline: roadmap.md entrada '$_pv_hd_short' (ordem $_pv_hd_ordem) depende de '$_pv_d' (ordem $_pv_d_ordem) — precedencia violada, ordem(dependencia) deve ser < ordem(entrada) (contracts/roadmap-artifact.md §6 regra 11)" >&2
+          return 1
+        fi
+      done
+    fi
+  done
+
+  return 0
+}
+
 # detect-completion: artefato esperado por etapa.
 #
 # Fallback PAP (issue #3): briefing e constitution sao project-level. Quando
@@ -272,21 +484,32 @@ _pl_validate_tasks() {
 #   briefing      -> $PAP/docs/briefing.md (canonico)
 #                    $PAP/docs/01-briefing-discovery/briefing.md (legado)
 #   constitution  -> $PAP/docs/constitution.md
+#   roadmap       -> $PAP/docs/roadmap.md (sem fallback legado — artefato
+#                    novo, feature roadmap-mode, contracts/cli-roadmap-mode.md §3.1)
+#
+# --mode (feature roadmap-mode, §3.1): a validacao de --stage e
+# `--mode`-aware, NAO globalmente permissiva — `--stage roadmap` so e
+# aceito com `--mode roadmap`; a lista global (_PL_STAGES_LIST) nunca se
+# alarga (research.md Decision 2).
 _pl_cmd_detect_completion() {
   _fd=""
   _st=""
   _pap=""
+  _mode=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --feature-dir)        _fd=$2;  shift 2 ;;
       --stage)              _st=$2;  shift 2 ;;
       --projeto-alvo-path)  _pap=$2; shift 2 ;;
+      --mode)                _mode=$2; shift 2 ;;
       *) _pl_die_usage "detect-completion: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_fd" ] || _pl_die_usage "detect-completion: --feature-dir obrigatorio"
   [ -n "$_st" ] || _pl_die_usage "detect-completion: --stage obrigatorio"
-  _pl_is_valid_stage "$_st" || _pl_die "detect-completion: etapa desconhecida: $_st" 2
+  _pl_validate_mode "$_mode" "detect-completion"
+  _dc_list=$(_pl_mode_list "$_mode")
+  _pl_is_valid_stage_in "$_dc_list" "$_st" || _pl_die "detect-completion: etapa desconhecida: $_st" 2
   [ -d "$_fd" ] || _pl_die "detect-completion: feature-dir nao existe: $_fd" 1
 
   case "$_st" in
@@ -350,6 +573,20 @@ _pl_cmd_detect_completion() {
       # Etapas de review nao deixam artefato persistente — sempre completas
       # (cabe ao orquestrador decidir invocar ou pular; aqui retornamos 0).
       return 0
+      ;;
+    roadmap)
+      # Artefato project-level (como briefing/constitution) — sem fallback
+      # legado (artefato novo). Validacao estrutural COMPLETA (15 regras,
+      # task 3.1) via _pl_validate_roadmap.
+      if [ -f "$_fd/roadmap.md" ]; then
+        _pl_validate_roadmap "$_fd/roadmap.md" || return 1
+        return 0
+      elif [ -n "$_pap" ] && [ -f "$_pap/docs/roadmap.md" ]; then
+        _pl_validate_roadmap "$_pap/docs/roadmap.md" || return 1
+        return 0
+      else
+        return 1
+      fi
       ;;
   esac
   return 0

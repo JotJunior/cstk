@@ -24,7 +24,7 @@
 #                      [--proxima-agendada-para ISO]
 #                      [--add-etapa STAGE]
 #                      [--next-instruction TEXT]
-#                      [--advance [--advance-from PHASE] [--terminal-phase PHASE]]
+#                      [--advance [--advance-from PHASE] [--terminal-phase PHASE] [--mode default|roadmap]]
 #       — Atualiza ultima Onda (.waves[-1]) com finished_at/wallclock_seconds/
 #         tool_calls/termination_reason/next_wave_scheduled_for. Atualiza
 #         accumulated_metrics (waves_total += 1, tool_calls_total +=
@@ -58,7 +58,12 @@
 #         --motivo-termino concluido + promocao de status, nunca
 #         --advance. Elimina a classe do meio-avanco (current_stage
 #         avancado com next_instruction stale — invisivel ao
-#         reconcile-wave, que da noop em onda fechada).
+#         reconcile-wave, que da noop em onda fechada). --mode
+#         default|roadmap (feature roadmap-mode, contracts/
+#         cli-roadmap-mode.md §4) e passthrough opcional repassado a
+#         pipeline.sh next-stage; omitido = comportamento atual (lista
+#         completa). SO faz sentido junto de --advance — sem --advance,
+#         erro de uso (mesma politica de --advance-from/--terminal-phase).
 #         Tambem agrega o sidecar wave-agent-usage.jsonl (hook
 #         posttooluse-agent-usage.sh, wave-token-metrics FASE 3) em
 #         .waves[-1].agent_usage (WaveUsage: spawns_total/with_usage/
@@ -754,6 +759,7 @@ _so_cmd_end() {
   _advance=0
   _adv_from=""
   _adv_terminal=""
+  _adv_mode=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)             _sdir=$2; shift 2 ;;
@@ -763,6 +769,7 @@ _so_cmd_end() {
       --advance)               _advance=1; shift ;;
       --advance-from)          _adv_from=$2; shift 2 ;;
       --terminal-phase)        _adv_terminal=$2; shift 2 ;;
+      --mode)                  _adv_mode=$2; shift 2 ;;
       --add-etapa)
         _so_is_stage_token "$2" || _so_die_usage \
           "end: --add-etapa aceita token de etapa ([A-Za-z0-9._-], ate 64 chars, sem espaco/prosa); recebido: '$2'. Resumo de onda vai em Decisao (state-decisions.sh register), nao em executed_stages."
@@ -785,6 +792,9 @@ $2"; shift 2 ;;
   fi
   if [ -n "$_adv_from" ] && [ "$_advance" = 0 ]; then
     _so_die_usage "end: --advance-from so faz sentido junto de --advance"
+  fi
+  if [ -n "$_adv_mode" ] && [ "$_advance" = 0 ]; then
+    _so_die_usage "end: --mode so faz sentido junto de --advance"
   fi
 
   # --advance (wave-close-advance FR-001..004): resolve a proxima fase
@@ -812,7 +822,11 @@ $2"; shift 2 ;;
     if [ -n "$_adv_terminal" ] && [ "$_adv_cur" = "$_adv_terminal" ]; then
       _so_die_usage "end: --advance em fase terminal '$_adv_cur' — fechamento terminal usa --motivo-termino concluido + promocao de status, nunca --advance"
     fi
-    _adv_next=$(sh "$_adv_pipeline" next-stage --current "$_adv_cur" 2>/dev/null) || _adv_next=""
+    if [ -n "$_adv_mode" ]; then
+      _adv_next=$(sh "$_adv_pipeline" next-stage --current "$_adv_cur" --mode "$_adv_mode" 2>/dev/null) || _adv_next=""
+    else
+      _adv_next=$(sh "$_adv_pipeline" next-stage --current "$_adv_cur" 2>/dev/null) || _adv_next=""
+    fi
     [ -n "$_adv_next" ] || _so_die_usage \
       "end: --advance sem proxima etapa a partir de '$_adv_cur' (fase terminal ou desconhecida do pipeline)"
     # Template deterministico; --next-instruction sobrescreve so o TEXTO

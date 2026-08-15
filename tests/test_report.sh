@@ -561,4 +561,210 @@ scenario_usage_exit_2_preservado_pos_fr008() {
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+# ==== Secao roadmap (opcional, task 5.4, FR-004 roadmap-mode) ====
+
+_write_roadmap_fixture() {
+  # $1 = diretorio docs/ do projeto-alvo; $2 = numero de entradas (1 ou 2)
+  mkdir -p "$1"
+  if [ "$2" = 1 ]; then
+    cat > "$1/roadmap.md" <<'EOF'
+# Roadmap: projeto-teste
+
+**Gerado por**: /agente-00c (modo roadmap)
+**Atualizado em**: 2026-08-14
+
+Contexto curto.
+
+## Ordem sugerida
+
+| # | Feature | Depende de | Descricao (resumo) |
+|---|---------|------------|--------------------|
+| 1 | `auth-basica` | - | Autenticacao de usuario |
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: Autenticacao de usuario via login/senha.
+
+**Justificativa**: Pre-requisito para as demais features.
+EOF
+  else
+    cat > "$1/roadmap.md" <<'EOF'
+# Roadmap: projeto-teste
+
+**Gerado por**: /agente-00c (modo roadmap)
+**Atualizado em**: 2026-08-14
+
+Contexto curto.
+
+## Ordem sugerida
+
+| # | Feature | Depende de | Descricao (resumo) |
+|---|---------|------------|--------------------|
+| 1 | `auth-basica` | - | Autenticacao de usuario |
+| 2 | `perfil-usuario` | `auth-basica` | Edicao de perfil |
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: Autenticacao de usuario via login/senha.
+
+**Justificativa**: Pre-requisito para as demais features.
+
+### 2. perfil-usuario
+
+- **short-name**: `perfil-usuario`
+- **ordem**: 2
+- **depende-de**: `auth-basica`
+
+**Descricao**: Edicao de dados de perfil.
+
+**Justificativa**: Segunda feature natural apos auth.
+EOF
+  fi
+}
+
+scenario_generate_sem_roadmap_mode_nao_emite_secao() {
+  _sd="$TMPDIR_TEST/state-rm-off"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  if printf '%s' "$_CAPTURED_STDOUT" | grep -q '## Roadmap'; then
+    _fail "secao roadmap NAO deveria aparecer com modo desabilitado" "" ; return 1
+  fi
+}
+
+scenario_generate_roadmap_mode_sem_artefato_emite_placeholder() {
+  _sd="$TMPDIR_TEST/state-rm-noartifact"
+  _pap="$TMPDIR_TEST/proj-noartifact"
+  mkdir -p "$_pap"
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-rm-1" \
+    --projeto-alvo-path "$_pap" --descricao "POC roadmap sem artefato" \
+    --roadmap-mode true
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "## Roadmap (modo roadmap" || return 1
+  assert_stdout_contains "ainda nao foi escrito" || return 1
+}
+
+scenario_generate_roadmap_mode_com_artefato_emite_tabela_e_untrusted() {
+  _sd="$TMPDIR_TEST/state-rm-2entries"
+  _pap="$TMPDIR_TEST/proj-2entries"
+  mkdir -p "$_pap/docs"
+  _write_roadmap_fixture "$_pap/docs" 2
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-rm-2" \
+    --projeto-alvo-path "$_pap" --descricao "POC roadmap com 2 entradas" \
+    --roadmap-mode true
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "## Roadmap (modo roadmap" || return 1
+  assert_stdout_contains "DADO produzido pelo" || return 1
+  assert_stdout_contains "## Ordem sugerida" || return 1
+  assert_stdout_contains "auth-basica" || return 1
+  assert_stdout_contains "perfil-usuario" || return 1
+  # 2 entradas -> NAO deve emitir a sugestao de entrada unica
+  if printf '%s' "$_CAPTURED_STDOUT" | grep -q 'roadmap com uma unica entrada'; then
+    _fail "sugestao de entrada unica NAO deveria aparecer com 2 entradas" ""; return 1
+  fi
+}
+
+scenario_generate_roadmap_mode_entrada_unica_sugere_pipeline_completa() {
+  _sd="$TMPDIR_TEST/state-rm-1entry"
+  _pap="$TMPDIR_TEST/proj-1entry"
+  mkdir -p "$_pap/docs"
+  _write_roadmap_fixture "$_pap/docs" 1
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-rm-3" \
+    --projeto-alvo-path "$_pap" --descricao "POC roadmap com 1 entrada" \
+    --roadmap-mode true
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "roadmap com uma unica entrada" || return 1
+  assert_stdout_contains "pipeline completa" || return 1
+}
+
+scenario_validate_ignora_secao_roadmap_extra() {
+  # A secao roadmap e OPCIONAL (nao uma das 6 fixas) — validate() so
+  # checa presenca das 6 obrigatorias, nao rejeita secoes extras.
+  _sd="$TMPDIR_TEST/state-rm-validate"
+  _pap="$TMPDIR_TEST/proj-validate"
+  mkdir -p "$_pap/docs"
+  _write_roadmap_fixture "$_pap/docs" 2
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-rm-4" \
+    --projeto-alvo-path "$_pap" --descricao "POC roadmap validate" \
+    --roadmap-mode true
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  _rf="$TMPDIR_TEST/relatorio-rm.md"
+  printf '%s' "$_CAPTURED_STDOUT" > "$_rf"
+  capture "$SCRIPT" validate --report-file "$_rf"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate deveria passar com secao extra" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_generate_roadmap_mode_deriva_entradas_obsoletas() {
+  _sd="$TMPDIR_TEST/state-rm-obsolete"
+  _pap="$TMPDIR_TEST/proj-obsolete"
+  mkdir -p "$_pap/docs"
+  cat > "$_pap/docs/roadmap.md" <<'EOF'
+# Roadmap: projeto-teste
+
+**Gerado por**: /agente-00c (modo roadmap)
+**Atualizado em**: 2026-08-14
+
+Contexto curto.
+
+## Ordem sugerida
+
+| # | Feature | Depende de | Descricao (resumo) |
+|---|---------|------------|--------------------|
+| 1 | `auth-basica` | - | Autenticacao de usuario |
+| 2 | `legado-x` | - | Feature descontinuada |
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: Autenticacao de usuario via login/senha.
+
+**Justificativa**: Pre-requisito para as demais features.
+
+### 2. legado-x
+
+- **short-name**: `legado-x`
+- **ordem**: 2
+- **depende-de**: -
+- **marcada-obsoleta**: substituida por auth-basica
+
+**Descricao**: Feature descontinuada.
+
+**Justificativa**: Nao se aplica mais.
+EOF
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-rm-5" \
+    --projeto-alvo-path "$_pap" --descricao "POC roadmap obsoleta" \
+    --roadmap-mode true
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "### Entradas marcadas obsoletas" || return 1
+  assert_stdout_contains "legado-x" || return 1
+  assert_stdout_contains "substituida por auth-basica" || return 1
+}
+
 run_all_scenarios

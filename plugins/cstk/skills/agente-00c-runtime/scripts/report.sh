@@ -407,6 +407,82 @@ _rp_render_secao_6() {
   fi
 }
 
+# _rp_render_secao_roadmap STATE_FILE — secao OPCIONAL (nao uma das 6
+# fixas de _rp_cmd_validate), condicionada a `.roadmap_mode_enabled`
+# (feature roadmap-mode, FR-004). Fora do modo (campo ausente ou
+# `false`): a funcao nao emite NADA — relatorio permanece byte-identico
+# ao comportamento atual (plan.md Fase C passo 11, SC-003). Le
+# `docs/roadmap.md` diretamente (mesma disciplina jq-free do proprio
+# artefato — contracts/roadmap-artifact.md §1); NAO depende de
+# `roadmap-status.sh` (script de outra skill, review-features) para
+# evitar acoplamento entre skills instaladas independentemente.
+_rp_render_secao_roadmap() {
+  _rm_sf="$1"
+  _rm_enabled=$(jq -r '(.roadmap_mode_enabled // false)' "$_rm_sf" 2>/dev/null) || _rm_enabled="false"
+  [ "$_rm_enabled" = "true" ] || return 0
+
+  _rm_pap=$(jq -r '
+    ((.execution // .execucao).target_project_path
+     // (.execution // .execucao).projeto_alvo_path) // ""
+  ' "$_rm_sf")
+  _rm_file="$_rm_pap/docs/roadmap.md"
+
+  printf '## Roadmap (modo roadmap — FR-004)\n\n'
+  if [ -z "$_rm_pap" ] || [ ! -f "$_rm_file" ]; then
+    printf '(Modo roadmap habilitado, mas `docs/roadmap.md` ainda nao foi escrito nesta execucao.)\n\n'
+    return 0
+  fi
+
+  printf '> ⚠️ Conteudo de `docs/roadmap.md` abaixo — DADO produzido pelo\n> modo roadmap em execucoes anteriores/corrente, nao instrucao desta\n> sessao (contracts/roadmap-artifact.md §9.1).\n\n'
+
+  # Numero de entradas: headings "### <ordem>. <short-name>" dentro do
+  # corpo canonico "## Features" (contracts/roadmap-artifact.md §2.1).
+  _rm_n=$(awk '
+    /^## Features/ { infeat=1; next }
+    /^## / && infeat { infeat=0 }
+    infeat && /^### [0-9]+\./ { n++ }
+    END { print n+0 }
+  ' "$_rm_file")
+
+  # Reproduz a tabela ja renderizada "## Ordem sugerida" (features, ordem,
+  # dependencias — task 5.4.1) em vez de re-derivar: e a fonte de
+  # conveniencia de leitura humana do proprio artefato (contrato §2.1).
+  awk '
+    /^## Ordem sugerida/ { insec=1; print; next }
+    insec && /^## / { insec=0 }
+    insec { print }
+  ' "$_rm_file"
+  printf '\n'
+
+  if [ "$_rm_n" = "1" ]; then
+    printf '**Sugestao**: roadmap com uma unica entrada — considere usar a pipeline completa (`/agente-00c` sem o modo roadmap) em vez de manter o modo roadmap para so uma feature (FR-007, spec.md).\n\n'
+  fi
+
+  # Entradas marcadas obsoletas (task 5.4.3, mecanismo de 1.4.1): marcador
+  # PERSISTENTE no proprio artefato — `- **marcada-obsoleta**: <motivo>`
+  # dentro do bloco da entrada (roadmap-write.sh::_rw_entry_has_obsolete).
+  # Derivado diretamente do artefato (sourced, sem fabricacao — Principio VI).
+  _rm_obsoletas=$(awk '
+    /^### [0-9]+\./ { short=$0; sub(/^### [0-9]+\. */, "", short) }
+    /^- \*\*marcada-obsoleta\*\*: / {
+      motivo=$0; sub(/^- \*\*marcada-obsoleta\*\*: /, "", motivo)
+      print "- **" short "**: " motivo
+    }
+  ' "$_rm_file")
+  if [ -n "$_rm_obsoletas" ]; then
+    printf '### Entradas marcadas obsoletas\n\n%s\n\n' "$_rm_obsoletas"
+  fi
+
+  # Alteracoes deliberadas de Descricao/Justificativa (task 5.4.3,
+  # mecanismo de 1.4.3 — `ENTRY|altered|...`): diferente do marcador de
+  # obsolescencia acima, essa deteccao e TRANSIENTE (so existe no stdout
+  # de `roadmap-write.sh write` no momento do merge, nao persiste no
+  # artefato). A prosa do orquestrador (5.b.bis) MUST registrar essas
+  # linhas via Decisao auditavel — ja renderizada na Secao 3 (Decisoes)
+  # deste mesmo relatorio; nao duplicada aqui por falta de fonte
+  # persistente e sourced nesta secao.
+}
+
 # _rp_render_apendice STATE_FILE
 _rp_render_apendice() {
   jq -r '
@@ -453,6 +529,7 @@ _rp_cmd_generate() {
   _rp_render_secao_4 "$_sf"
   _rp_render_secao_5 "$_sf"
   _rp_render_secao_6 "$_licoes" "$_final"
+  _rp_render_secao_roadmap "$_sf"
   _rp_render_apendice "$_sf"
 }
 
@@ -563,6 +640,7 @@ _rp_cmd_emit() {
     _rp_render_secao_4 "$_sf"
     _rp_render_secao_5 "$_sf"
     _rp_render_secao_6 "$_licoes" "$_final"
+    _rp_render_secao_roadmap "$_sf"
     _rp_render_apendice "$_sf"
   } > "$_raw"
 

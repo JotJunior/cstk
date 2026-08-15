@@ -604,6 +604,76 @@ scenario_init_atomic_commit_retro_compat() {
   [ "$_CAPTURED_STDOUT" = "false" ] || { _fail "legado sem campo: esperado false via jq fallback" "obtido $_CAPTURED_STDOUT"; return 1; }
 }
 
+# ==== Cenarios: --roadmap-mode flag (feature roadmap-mode, task 2.1) ====
+
+# Cenario: init --roadmap-mode true persiste roadmap_mode_enabled=true
+scenario_init_roadmap_mode_true() {
+  _sd="$TMPDIR_TEST/roadmap-true"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test roadmap true" \
+    --execucao-id "exec-roadmap-true-001" \
+    --roadmap-mode true
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.roadmap_mode_enabled'
+  [ "$_CAPTURED_STDOUT" = "true" ] || { _fail "roadmap_mode_enabled esperado true" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario: init --roadmap-mode false persiste roadmap_mode_enabled=false
+scenario_init_roadmap_mode_false() {
+  _sd="$TMPDIR_TEST/roadmap-false"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test roadmap false" \
+    --execucao-id "exec-roadmap-false-001" \
+    --roadmap-mode false
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.roadmap_mode_enabled'
+  [ "$_CAPTURED_STDOUT" = "false" ] || { _fail "roadmap_mode_enabled esperado false" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario: init sem --roadmap-mode => roadmap_mode_enabled=false (default seguro)
+scenario_init_roadmap_mode_default_false() {
+  _sd="$TMPDIR_TEST/roadmap-default"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test roadmap default" \
+    --execucao-id "exec-roadmap-default-001"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.roadmap_mode_enabled'
+  [ "$_CAPTURED_STDOUT" = "false" ] || { _fail "roadmap_mode_enabled esperado false (default)" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario: init --roadmap-mode valor invalido => exit 2
+scenario_init_roadmap_mode_invalid_value() {
+  _sd="$TMPDIR_TEST/roadmap-invalid"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test roadmap invalid" \
+    --execucao-id "exec-roadmap-invalid-001" \
+    --roadmap-mode yes
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 para valor invalido" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# Cenario: paridade SQLite — init --roadmap-mode true sob backend sqlite
+# persiste via extra_fields catch-all (contracts/cli-roadmap-mode.md §1;
+# research.md Decision 1: sem coluna dedicada, sem migracao de schema).
+scenario_init_sqlite_roadmap_mode_true_via_extra_fields() {
+  _sr_real_sqlite3_adequate || { printf '# skip: sqlite3 real >= %s indisponivel\n' "$MIN_SQLITE_VER_FASE5"; return 0; }
+  _home="$TMPDIR_TEST/home-roadmap-sqlite"
+  mkdir -p "$_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_home/.claude/cstk/config"
+  _sd="$TMPDIR_TEST/roadmap-sqlite-true"
+  capture env HOME="$_home" "$SCRIPT" init --state-dir "$_sd" \
+    --execucao-id "exec-roadmap-sqlite-1" --projeto-alvo-path "/tmp/p-roadmap" \
+    --descricao "descricao de teste com tamanho suficiente para validacao" \
+    --roadmap-mode true
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init sob config sqlite + roadmap-mode true" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/state.db" ] || { _fail "state.db nao foi criado" ""; return 1; }
+  capture env HOME="$_home" "$SCRIPT" get --state-dir "$_sd" --field '.roadmap_mode_enabled'
+  assert_stdout_contains "true" || return 1
+}
+
 # ==== Backend dual SQLite (feature state-db-foundation, FASE 3 task 3.2) ====
 #
 # Ref: docs/specs/state-db-foundation/contracts/primitives.md §C1 (paridade)

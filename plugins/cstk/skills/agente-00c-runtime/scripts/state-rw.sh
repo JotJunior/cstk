@@ -34,6 +34,12 @@
 #                       --session-name NAME — quando nao-vazio, grava
 #                         .execution.session_name no JSON. Omitido = chave ausente.
 #                         Requer --canonical-project (exit 2 se omitido).
+#                     Flags de modo opt-in (ambas aceitas nos dois modos, PROJETO e FEATURE):
+#                       --atomic-commit true|false — grava .atomic_commit_enabled
+#                         (default false; feature atomic-commit-pr).
+#                       --roadmap-mode true|false — grava .roadmap_mode_enabled
+#                         (default false; feature roadmap-mode). Valor fora de
+#                         true|false ⇒ exit 2, sem escrever estado.
 #   state-rw.sh read  --state-dir DIR
 #                     — imprime conteudo atual de state.json em stdout
 #   state-rw.sh write --state-dir DIR
@@ -331,6 +337,10 @@ _sr_cmd_init() {
   # Modo atomic-commit (feature atomic-commit-pr): opt-in para commit por etapa/task.
   # Omitido => false (retro-compativel). Valor deve ser "true" ou "false".
   _atomic_commit="false"
+  # Modo roadmap (feature roadmap-mode): opt-in para pipeline enxuta
+  # briefing->constitution->roadmap. Omitido => false (retro-compativel).
+  # Valor deve ser "true" ou "false" (espelha --atomic-commit).
+  _roadmap_mode="false"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)            _sd=$2;                   shift 2 ;;
@@ -352,6 +362,12 @@ _sr_cmd_init() {
         case "$2" in
           true|false) _atomic_commit=$2; shift 2 ;;
           *) _sr_die "init: --atomic-commit aceita apenas 'true' ou 'false'" 2 ;;
+        esac
+        ;;
+      --roadmap-mode)
+        case "$2" in
+          true|false) _roadmap_mode=$2; shift 2 ;;
+          *) _sr_die "init: --roadmap-mode aceita apenas 'true' ou 'false'" 2 ;;
         esac
         ;;
       *) _sr_die "init: flag desconhecida: $1" 2 ;;
@@ -440,6 +456,7 @@ _sr_cmd_init() {
     --arg canonical_project "$_canonical_project" \
     --arg session_name "$_session_name" \
     --argjson atomic_commit "$_atomic_commit" \
+    --argjson roadmap_mode "$_roadmap_mode" \
     '{ schema_version: "1.0.0" }
     + (if $short != "" then { short_name: $short } else {} end)
     + {
@@ -499,7 +516,8 @@ _sr_cmd_init() {
       external_urls_whitelist: $wl,
       circular_movement_history: [],
       initial_key_aspects: $ka,
-      atomic_commit_enabled: $atomic_commit
+      atomic_commit_enabled: $atomic_commit,
+      roadmap_mode_enabled: $roadmap_mode
     }' > "$_tmp" || { rm -f -- "$_tmp"; _sr_die "jq init falhou" 1; }
 
   # feature state-backend-config, FASE 5 (task 5.1.3/5.1.5): backend

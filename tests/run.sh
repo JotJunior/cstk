@@ -258,6 +258,14 @@ _is_internal_test() {
       # fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
       return 1 ;;
+    test_command-spawn-roadmap-mode.sh)
+      # Smoke textual sobre o prompt opt-in do modo roadmap (FASE 6 task
+      # 6.2.2 de roadmap-mode). Assert no .md, nao em um unico script —
+      # existence-guarded ao command portador do prompt
+      # (plugins/cstk/commands/agente-00c.md). Se a fonte sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
+      return 1 ;;
     test_orchestrator-mcp-fallback.sh)
       # Hibrido textual+funcional (FASE 6 task 6.3 de state-mcp-server,
       # SC-004): confirma que os 2 agentes orquestradores nao dependem de
