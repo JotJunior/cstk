@@ -40,6 +40,11 @@
 #                       --roadmap-mode true|false — grava .roadmap_mode_enabled
 #                         (default false; feature roadmap-mode). Valor fora de
 #                         true|false ⇒ exit 2, sem escrever estado.
+#                       --delivery-tier TOKEN — grava .delivery_tier, top-level,
+#                         sempre presente (default cloud-public; feature
+#                         delivery-tier). TOKEN fora do enum
+#                         local|internal-network|cloud-internal|cloud-public
+#                         ⇒ exit 2, sem escrever estado.
 #   state-rw.sh read  --state-dir DIR
 #                     — imprime conteudo atual de state.json em stdout
 #   state-rw.sh write --state-dir DIR
@@ -341,6 +346,11 @@ _sr_cmd_init() {
   # briefing->constitution->roadmap. Omitido => false (retro-compativel).
   # Valor deve ser "true" ou "false" (espelha --atomic-commit).
   _roadmap_mode="false"
+  # Tier de entrega (feature delivery-tier, contracts/cli-delivery-tier.md
+  # §5): finalidade declarada do produto, calibra profundidade da pipeline.
+  # Omitido => default cloud-public (profundidade plena, zero regressao).
+  # Valor fora do enum de 4 tokens => _sr_die exit 2 SEM escrever estado.
+  _delivery_tier="cloud-public"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)            _sd=$2;                   shift 2 ;;
@@ -368,6 +378,12 @@ _sr_cmd_init() {
         case "$2" in
           true|false) _roadmap_mode=$2; shift 2 ;;
           *) _sr_die "init: --roadmap-mode aceita apenas 'true' ou 'false'" 2 ;;
+        esac
+        ;;
+      --delivery-tier)
+        case "$2" in
+          local|internal-network|cloud-internal|cloud-public) _delivery_tier=$2; shift 2 ;;
+          *) _sr_die "init: --delivery-tier aceita apenas local|internal-network|cloud-internal|cloud-public" 2 ;;
         esac
         ;;
       *) _sr_die "init: flag desconhecida: $1" 2 ;;
@@ -457,6 +473,7 @@ _sr_cmd_init() {
     --arg session_name "$_session_name" \
     --argjson atomic_commit "$_atomic_commit" \
     --argjson roadmap_mode "$_roadmap_mode" \
+    --arg delivery_tier "$_delivery_tier" \
     '{ schema_version: "1.0.0" }
     + (if $short != "" then { short_name: $short } else {} end)
     + {
@@ -517,7 +534,8 @@ _sr_cmd_init() {
       circular_movement_history: [],
       initial_key_aspects: $ka,
       atomic_commit_enabled: $atomic_commit,
-      roadmap_mode_enabled: $roadmap_mode
+      roadmap_mode_enabled: $roadmap_mode,
+      delivery_tier: $delivery_tier
     }' > "$_tmp" || { rm -f -- "$_tmp"; _sr_die "jq init falhou" 1; }
 
   # feature state-backend-config, FASE 5 (task 5.1.3/5.1.5): backend

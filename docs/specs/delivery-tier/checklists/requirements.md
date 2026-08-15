@@ -99,17 +99,17 @@ consistencia e mensurabilidade dos requisitos funcionais de
   [Mensurabilidade, Spec §SC-004, FR-008] {auto} — Satisfeito: FR-008
   exige Decisao auditavel para toda escolha/skip, dado consultavel
   para calcular o 100% de SC-004.
-- [ ] CHK018 - Existe success criterion (ou Acceptance Scenario) que
+- [x] CHK018 - Existe success criterion (ou Acceptance Scenario) que
   meça especificamente a calibracao de profundidade nas etapas
   briefing/specify/plan (FR-004) — independente da contagem de fases do
   backlog, que e o que SC-003 mede (FR-006)? [Gap, Spec §FR-004,
-  SC-003] {auto} — **Nao satisfeito**: SC-003 mede apenas o efeito de
-  FR-006 no backlog (tarefas/fases/ondas). Nenhum SC ou Acceptance
-  Scenario mede o efeito de FR-004 no CONTEUDO de `spec.md`/`plan.md`
-  (ex.: menos secoes de arquitetura, menos NFRs detalhados para tier
-  `local`). Confirmado por varredura dos 23 cenarios de
-  `quickstart.md` (`grep -n 'Cenario'`): nenhum cobre profundidade de
-  artefato specify/plan, apenas estado/gates/backlog/seguranca.
+  SC-003] {auto} — **Satisfeito** (onda-007): `spec.md` §Success
+  Criteria ganhou SC-005 dedicado e User Story 2 ganhou o Acceptance
+  Scenario 5, ambos medindo o efeito de FR-004 no CONTEUDO de
+  `spec.md`/`plan.md` (contagem de secoes de arquitetura/NFRs
+  detalhados), independente da contagem de tarefas/fases/ondas do
+  backlog que SC-003 ja mede. `quickstart.md` Cenario 24 exercita o
+  cenario ponta-a-ponta.
 
 ## Cobertura de Edge Cases
 
@@ -128,13 +128,14 @@ consistencia e mensurabilidade dos requisitos funcionais de
 
 ## Ambiguidades, Conflitos e Riscos
 
-- [ ] CHK022 - Os itens CHK001-CHK021 acima apontam para um unico Gap
+- [x] CHK022 - Os itens CHK001-CHK021 acima apontam para um unico Gap
   real (CHK018: SC-003 nao mede profundidade de specify/plan, so
   backlog). Vale a pena o dono do produto exigir um SC/cenario
   dedicado para FR-004 antes de `/create-tasks`, ou o efeito agregado
   (menos ondas totais em SC-003) e aceito como proxy suficiente?
-  [Assumption, Risco] {humano} — depende de apetite de rigor de
-  medicao, nao decidivel so com os artefatos.
+  [Assumption, Risco] {humano} — **Decisao adotada** (onda-007, task
+  1.1): SC dedicado (SC-005) criado, nao apenas proxy agregado de
+  SC-003 — rigor de medicao maximo, ver CHK018.
 
 ## Notes
 

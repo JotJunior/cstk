@@ -32,20 +32,20 @@ fases, conforme FR-006).
 
 Ref: checklists/requirements.md CHK018 (Gap), CHK022 (humano) · dec-026
 
-- [ ] 1.1.1 Adicionar Acceptance Scenario dedicado a User Story 2 de
+- [x] 1.1.1 Adicionar Acceptance Scenario dedicado a User Story 2 de
       `spec.md` medindo o efeito de FR-004 no CONTEUDO de `spec.md`/
       `plan.md` (ex.: contagem de secoes de arquitetura/NFRs entre uma
       execucao tier `local` e uma `cloud-public` do mesmo
       produto-exemplo) — distinto do que SC-003 ja mede (efeito no
       backlog de FR-006)
-- [ ] 1.1.2 Adicionar Success Criterion dedicado (`SC-005`) em
+- [x] 1.1.2 Adicionar Success Criterion dedicado (`SC-005`) em
       `spec.md` §Success Criteria formalizando essa medicao,
       independente de SC-003
-- [ ] 1.1.3 Adicionar um cenario novo a `quickstart.md` (Cenario 24)
+- [x] 1.1.3 Adicionar um cenario novo a `quickstart.md` (Cenario 24)
       exercitando o novo Acceptance Scenario/SC-005 (specify/plan sob
       tier `local` produz artefato com menos secoes/NFRs detalhados que
       sob `cloud-public`)
-- [ ] 1.1.4 Marcar CHK018 `[x]` em `checklists/requirements.md` citando
+- [x] 1.1.4 Marcar CHK018 `[x]` em `checklists/requirements.md` citando
       SC-005/Cenario 24 como evidencia; resolver CHK022 registrando a
       decisao adotada (SC dedicado criado, nao apenas proxy agregado de
       SC-003)
@@ -55,31 +55,31 @@ Ref: checklists/requirements.md CHK018 (Gap), CHK022 (humano) · dec-026
 Ref: checklists/security.md CHK001, CHK005, CHK006, CHK007, CHK010,
 CHK011 · dec-026 · gate `owasp-security` findings F2/F3/F4/F5/F6
 
-- [ ] 1.2.1 `spec.md` FR-005: acrescentar clausula MUST cobrindo a
+- [x] 1.2.1 `spec.md` FR-005: acrescentar clausula MUST cobrindo a
       coercao de um modo PRESENTE mas invalido/corrompido/vazio ao
       enum fechado `completo|leve|skip` — nao apenas o caso de par
       ausente da matriz (fecha CHK001 / finding F2 HIGH)
-- [ ] 1.2.2 `spec.md` FR-009: qualificar a clausula de rebaixamento com
+- [x] 1.2.2 `spec.md` FR-009: qualificar a clausula de rebaixamento com
       "decisao manual **do operador**", em paridade textual com a
       clausula de elevacao que ja nomeia o autor (fecha CHK005 /
       finding F5 HIGH)
-- [ ] 1.2.3 `spec.md` FR-008/FR-009: acrescentar requisito testavel de
+- [x] 1.2.3 `spec.md` FR-008/FR-009: acrescentar requisito testavel de
       deteccao de tier alterado sem Decisao de operador correspondente
       (o finding `delivery-tier-unattended-change` do plano) (fecha
       CHK006 / finding F5 HIGH)
-- [ ] 1.2.4 `spec.md` FR-006: qualificar "observabilidade de producao"
+- [x] 1.2.4 `spec.md` FR-006: qualificar "observabilidade de producao"
       excluindo explicitamente log de autenticacao/autorizacao e
       trilha de auditoria do que pode ser omitido (fecha CHK007 /
       finding F4 MEDIUM, OWASP A09)
-- [ ] 1.2.5 `spec.md` FR-004: exigir que a leitura do tier propagado ao
+- [x] 1.2.5 `spec.md` FR-004: exigir que a leitura do tier propagado ao
       contexto de briefing/specify/plan venha de fonte coagida ao enum
       fechado (nunca texto livre interpolado no prompt) (fecha CHK010 /
       finding F6 MEDIUM, LLM01)
-- [ ] 1.2.6 Marcar CHK001, CHK005, CHK006, CHK007, CHK010 `[x]` em
+- [x] 1.2.6 Marcar CHK001, CHK005, CHK006, CHK007, CHK010 `[x]` em
       `checklists/security.md` citando as novas clausulas de `spec.md`;
       registrar CHK011 como risco tratado (nao mais pendencia
       `{humano}` em aberto)
-- [ ] 1.2.7 Rodar a skill `validate-documentation` sobre `spec.md`
+- [x] 1.2.7 Rodar a skill `validate-documentation` sobre `spec.md`
       apos as edicoes (subtarefa de verificacao do artefato, nao de
       codigo) e confirmar ausencia de findings `critical`
 
@@ -92,13 +92,13 @@ CHK011 · dec-026 · gate `owasp-security` findings F2/F3/F4/F5/F6
 Ref: plan.md Fase A item 1 · contracts/cli-delivery-tier.md §5 ·
 `state-rw.sh:361-372` (precedente `--atomic-commit`/`--roadmap-mode`)
 
-- [ ] 2.1.1 Adicionar parsing de `--delivery-tier <token>` ao case de
+- [x] 2.1.1 Adicionar parsing de `--delivery-tier <token>` ao case de
       flags do `init` (~`:361-372`), default `cloud-public`, valor fora
       do enum de 4 tokens ⇒ `_sr_die` exit 2 **sem escrever estado**
-- [ ] 2.1.2 Emitir a chave `delivery_tier` no template `jq` do `init`
+- [x] 2.1.2 Emitir a chave `delivery_tier` no template `jq` do `init`
       (~`:500-521`), **sempre presente** (nunca omitida), como irma de
       `.execution` (nivel top-level, nao aninhada)
-- [ ] 2.1.3 Teste: estender `tests/test_state-rw.sh` com os 4 eixos
+- [x] 2.1.3 Teste: estender `tests/test_state-rw.sh` com os 4 eixos
       (valor valido do enum / valor invalido ⇒ exit 2 sem escrita /
       flag omitida ⇒ default `cloud-public` / retro-compat com campo
       ausente), espelhando `:540-603` (cenarios de `--atomic-commit`)
@@ -108,15 +108,15 @@ Ref: plan.md Fase A item 1 · contracts/cli-delivery-tier.md §5 ·
 Ref: plan.md Fase A item 2 (risco Alto: "sem este passo o tier nao
 existe no init sob SQLite") · `_state-rw-db.sh:165`
 
-- [ ] 2.2.1 Modificar a linha ~165 de `_state-rw-db.sh` para compor
+- [x] 2.2.1 Modificar a linha ~165 de `_state-rw-db.sh` para compor
       `{roadmap_mode_enabled: $r, delivery_tier: $t}` no `_ie_extra_json`
       (hoje hardcoded com apenas a chave `roadmap_mode_enabled`),
       garantindo default `cloud-public` quando o valor de entrada for
       omitido
-- [ ] 2.2.2 Confirmar via probe SQL (`PRAGMA table_info(execution)` +
+- [x] 2.2.2 Confirmar via probe SQL (`PRAGMA table_info(execution)` +
       `SELECT extra_fields FROM execution`) que **nao ha** coluna
       dedicada nem alteracao de DDL — preserva research.md Decision 1
-- [ ] 2.2.3 Teste: estender `tests/test_state-rw.sh` (cenario SQLite)
+- [x] 2.2.3 Teste: estender `tests/test_state-rw.sh` (cenario SQLite)
       confirmando que o `init` sob backend SQLite grava `delivery_tier`
       em `extra_fields` e que `get`/`read` devolvem o mesmo valor que o
       backend JSON (paridade `_sr_db_read` merge `$ext + $core`,
@@ -127,22 +127,26 @@ existe no init sob SQLite") · `_state-rw-db.sh:165`
 Ref: plan.md Fase A item 3 · data-model.md §Validacao ·
 `state-validate.sh:193-201` (precedente `atomic_commit_enabled`)
 
-- [ ] 2.3.1 Adicionar bloco de validacao espelhando `atomic_commit_enabled`
+- [x] 2.3.1 Adicionar bloco de validacao espelhando `atomic_commit_enabled`
       (`:193-201`): tipo aceito e string dentre os 4 tokens do enum OU
       ausente (`null`)
-- [ ] 2.3.2 Qualquer valor fora do enum (nao-string, string fora dos 4
+- [x] 2.3.2 Qualquer valor fora do enum (nao-string, string fora dos 4
       tokens) produz erro de validacao explicito, com o valor obtido no
       texto do erro
-- [ ] 2.3.3 Teste: estender `tests/test_state-validate.sh` com os 3
+- [x] 2.3.3 Teste: estender `tests/test_state-validate.sh` com os 3
       eixos (enum valido / enum invalido / campo ausente ⇒ ok)
 
 ### 2.4 Verificacao ponta-a-ponta da Fase 2 (Fundacao de Estado) `[A]`
 
-- [ ] 2.4.1 Executar quickstart Cenario 4 (persistencia sem migracao de
+- [x] 2.4.1 Executar quickstart Cenario 4 (persistencia sem migracao de
       schema, paridade JSON/SQLite)
-- [ ] 2.4.2 Executar quickstart Cenario 5 (estado legado sem o campo ⇒
-      `cloud-public`)
-- [ ] 2.4.3 Rodar `tests/test_state-rw.sh` + `tests/test_state-validate.sh`
+- [x] 2.4.2 Executar quickstart Cenario 5 (estado legado sem o campo ⇒
+      `cloud-public`) — passos 1-4 verificados apos FASE 3 concluir
+      (`delivery-tier.sh` ja existe): `get`=`cloud-public`,
+      `gate-mode`=`completo`, `state-validate.sh` exit 0; passo 5
+      (retomar via `/agente-00c-resume` sem re-perguntar) fica para
+      apos FASE 4 (comando ainda nao consome o helper)
+- [x] 2.4.3 Rodar `tests/test_state-rw.sh` + `tests/test_state-validate.sh`
       atualizados isoladamente e confirmar todos os cenarios verdes
 
 ---
@@ -154,17 +158,17 @@ Ref: plan.md Fase A item 3 · data-model.md §Validacao ·
 Ref: plan.md Fase B item 5 · contracts/tier-gate-map.md §3 ·
 data-model.md §Entity MatrizTierGate · dec-012
 
-- [ ] 3.1.1 Escrever o arquivo
+- [x] 3.1.1 Escrever o arquivo
       `plugins/cstk/skills/agente-00c-runtime/references/tier-gate-map.txt`
       com o cabecalho de formato/regras e as 4 linhas de dados literais
       de `contracts/tier-gate-map.md` §3: `local|owasp-security|skip`,
       `internal-network|owasp-security|leve`,
       `cloud-internal|owasp-security|completo`,
       `cloud-public|owasp-security|completo`
-- [ ] 3.1.2 Incluir no cabecalho o comentario de escopo deliberado
+- [x] 3.1.2 Incluir no cabecalho o comentario de escopo deliberado
       (dec-012): a matriz cobre EXCLUSIVAMENTE `owasp-security`; os
       demais gates complementares nao tem linha de proposito
-- [ ] 3.1.3 Verificar por `grep` que ha exatamente 4 linhas de dados
+- [x] 3.1.3 Verificar por `grep` que ha exatamente 4 linhas de dados
       (descontando comentarios `#` e linhas vazias) — propriedade
       estrutural verificavel de dec-012
 
@@ -173,21 +177,21 @@ data-model.md §Entity MatrizTierGate · dec-012
 Ref: plan.md Fase B item 6 · contracts/cli-delivery-tier.md §1-3 ·
 gate `owasp-security` findings F1/F2/F3/F5/F6 (fail-safe de seguranca)
 
-- [ ] 3.2.1 Implementar `get --state-dir DIR`: delega a `state-rw.sh get
+- [x] 3.2.1 Implementar `get --state-dir DIR`: delega a `state-rw.sh get
       --field '.delivery_tier // "cloud-public"' 2>/dev/null`, degrada
       para `cloud-public` em QUALQUER falha (INV-1), exit 0 sempre
       (exceto uso incorreto)
-- [ ] 3.2.2 `get` coage a saida ao enum fechado de 4 tokens antes de
+- [x] 3.2.2 `get` coage a saida ao enum fechado de 4 tokens antes de
       emitir — nunca ecoa valor cru do estado (INV-5, finding F6 MEDIUM
       LLM01): token fora do enum ⇒ `cloud-public`
-- [ ] 3.2.3 Implementar `set --state-dir DIR --value <token>
+- [x] 3.2.3 Implementar `set --state-dir DIR --value <token>
       [--allow-downgrade]`: `--value` fora do enum ⇒ exit 2 sem
       escrever; ordinal novo > atual (elevacao) ⇒ grava exit 0; ordinal
       igual ⇒ no-op idempotente exit 0; ordinal novo < atual
       (rebaixamento) sem `--allow-downgrade` ⇒ exit 2 sem escrever; com
       a flag ⇒ grava. Delega a `state-rw.sh set --field '.delivery_tier'`
       (o helper NAO registra Decisao — quem registra e o chamador)
-- [ ] 3.2.4 Implementar `gate-mode --gate NOME [--tier TOKEN]
+- [x] 3.2.4 Implementar `gate-mode --gate NOME [--tier TOKEN]
       [--state-dir DIR]`: resolve o path da tabela relativo ao proprio
       script (tecnica de `model-routing.sh:1036-1043`); parser POSIX
       puro sem `jq`, primeiro match do par `(tier, gate)` vence
@@ -196,13 +200,13 @@ gate `owasp-security` findings F1/F2/F3/F5/F6 (fail-safe de seguranca)
       antes de comparar/emitir; par ausente ou tabela ilegivel ⇒
       `completo` (INV-2 — fail-safe nunca produz `skip` por
       degradacao)
-- [ ] 3.2.5 NUNCA usar `case ... esac` dentro de `$( ... )` no parser
+- [x] 3.2.5 NUNCA usar `case ... esac` dentro de `$( ... )` no parser
       (gotcha de portabilidade documentado em
       `model-routing.sh:1076-1082` — falha de parse em varios `sh`
       POSIX, inclusive bash em modo POSIX no macOS); cabecalho
       `#!/bin/sh`, `set -eu`; usage em stderr + exit 2 para flag
       desconhecida/omitida; exit codes conforme contrato §6
-- [ ] 3.2.6 Teste: criar `tests/test_delivery-tier.sh` cobrindo os 15
+- [x] 3.2.6 Teste: criar `tests/test_delivery-tier.sh` cobrindo os 15
       cenarios minimos do contrato §7 — `get` com/sem campo, com
       `--state-dir` inexistente, com token corrompido no estado; `set`
       elevacao / rebaixamento com e sem flag / valor fora do enum;
@@ -212,7 +216,7 @@ gate `owasp-security` findings F1/F2/F3/F5/F6 (fail-safe de seguranca)
       vence), `get` com texto arbitrario injetado no campo; paridade
       JSON/SQLite em `get`/`set` — sem `set -eu` no arquivo de teste
       (`tests/README.md:172-174`)
-- [ ] 3.2.7 Verificar (nao necessariamente modificar) se
+- [x] 3.2.7 Verificar (nao necessariamente modificar) se
       `delivery-tier.sh` aciona o grep estatico de `/state\.json` em
       `tests/test_state-parity-sweep.sh` — NAO deve, pois delega
       inteiramente a `state-rw.sh` (interface canonica); se acionar,
@@ -221,11 +225,17 @@ gate `owasp-security` findings F1/F2/F3/F5/F6 (fail-safe de seguranca)
 
 ### 3.3 Verificacao ponta-a-ponta da Fase 3 (Helper e matriz) `[A]`
 
-- [ ] 3.3.1 Executar quickstart Cenarios 6, 7, 12, 13, 16, 19, 20, 22
-- [ ] 3.3.2 Confirmar que nenhum caminho de degradacao testado produz
+- [x] 3.3.1 Executar quickstart Cenarios 6, 7, 12, 13, 16, 19, 20, 22 —
+      Cenario 22 parcial: passos 1-3+5 (get/gate-mode coagem) e passo 4
+      (grep zero ocorrencias) verificados; o restante do passo 5
+      ("nenhum consumidor fora de delivery-tier.sh") so fecha totalmente
+      apos FASE 5 existir (orquestrador ainda nao le o tier — nada a
+      grepar la ainda)
+- [x] 3.3.2 Confirmar que nenhum caminho de degradacao testado produz
       `skip` (INV-2) — toda degradacao converge para `completo`
-- [ ] 3.3.3 Rodar `tests/test_delivery-tier.sh` isoladamente e
-      confirmar os 15 cenarios verdes
+- [x] 3.3.3 Rodar `tests/test_delivery-tier.sh` isoladamente e
+      confirmar os 15 cenarios verdes (23/23 dos cenarios implementados,
+      acima do minimo)
 
 ---
 

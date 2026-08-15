@@ -121,6 +121,14 @@ pulado com Decisao registrada (FR-004, FR-005, FR-006).
 4. **Given** etapa specify/plan em execucao com tier registrado, **When**
    a skill correspondente e invocada, **Then** o contexto passado a skill
    inclui o tier vigente e a instrucao de calibrar profundidade (FR-004).
+5. **Given** o mesmo produto-exemplo executado sob `delivery_tier=local`
+   e sob `delivery_tier=cloud-public`, **When** `spec.md`/`plan.md` sao
+   gerados em cada execucao, **Then** a execucao `local` produz
+   `spec.md`/`plan.md` com contagem mensuravelmente menor de secoes de
+   arquitetura e de NFRs detalhados que a execucao `cloud-public` do
+   mesmo produto — medido no CONTEUDO do artefato, independente da
+   contagem de tarefas/fases/ondas do backlog que SC-003 ja mede
+   (FR-004, SC-005).
 
 ---
 
@@ -189,10 +197,17 @@ FR-009).
 - **FR-004**: O orquestrador MUST propagar o tier vigente no contexto
   das etapas briefing, specify e plan, com instrucao explicita de
   calibrar escopo e profundidade de arquitetura a finalidade declarada.
+  A leitura do tier propagado MUST vir de fonte coagida ao enum fechado
+  de 4 tokens — nunca texto livre interpolado diretamente no prompt da
+  skill.
 - **FR-005**: Os quality gates complementares MUST ser resolvidos por
   uma matriz tier×gate versionada no toolkit; gate ausente da matriz
   para um tier MUST rodar completo (fail-safe na direcao da
-  profundidade). A matriz cobre EXCLUSIVAMENTE o gate `owasp-security`
+  profundidade). O mesmo fail-safe MUST cobrir o caso de uma linha
+  PRESENTE na matriz com modo malformado, corrompido ou vazio — nao
+  apenas o caso de par ausente: qualquer modo lido fora do enum fechado
+  `completo|leve|skip` MUST ser coagido a `completo`, nunca propagado
+  verbatim. A matriz cobre EXCLUSIVAMENTE o gate `owasp-security`
   (revisao de seguranca) — matriz default: completa nos tiers
   `cloud-internal` e `cloud-public`, versao leve (checagens essenciais:
   auth, secrets, input) em `internal-network`, skip com Decisao em
@@ -204,11 +219,14 @@ FR-009).
 - **FR-006**: create-tasks MUST receber o tier e aplicar uma divisao
   BINARIA nuvem/nao-nuvem: os tiers `local` e `internal-network` MUST
   omitir do backlog as fases de infraestrutura de producao (deploy em
-  nuvem, escalabilidade e observabilidade de producao); os tiers
-  `cloud-internal` e `cloud-public` MUST gerar backlog completo com
-  essas fases. Nao ha lista de fases distinta por tier alem dessa
-  divisao binaria. create-tasks MUST registrar no proprio tasks.md o
-  tier usado na geracao.
+  nuvem, escalabilidade e observabilidade de producao — entendida aqui
+  como dashboards, SLO/SLI, APM/tracing, alertas e autoescala/
+  multi-regiao/CDN de escala operacional; log de autenticacao/
+  autorizacao e trilha de auditoria NUNCA entram nessa omissao, em
+  qualquer tier); os tiers `cloud-internal` e `cloud-public` MUST gerar
+  backlog completo com essas fases. Nao ha lista de fases distinta por
+  tier alem dessa divisao binaria. create-tasks MUST registrar no
+  proprio tasks.md o tier usado na geracao.
 - **FR-007**: O tier MUST calibrar somente profundidade e escopo; MUST
   NOT alterar, relaxar ou desativar o Principio VI (zero fabricacao de
   dados), as guardas enforced (bash-guard, path-guard, secrets-filter)
@@ -216,12 +234,15 @@ FR-009).
 - **FR-008**: A escolha do tier MUST ser registrada como Decisao
   auditavel (5 campos) na execucao, e o tier + consequencias aplicadas
   (gates pulados/versao leve) MUST constar no relatorio final e no
-  review-task.
+  review-task. O review-task MUST detectar e reportar como finding
+  qualquer mudanca do tier vigente sem Decisao de operador
+  correspondente na trilha de auditoria
+  (`delivery-tier-unattended-change`).
 - **FR-009**: Elevacao de tier mid-execucao MUST ser suportada via
   decisao manual do operador entre ondas, valendo das ondas seguintes em
   diante; rebaixamento mid-execucao MUST NOT ser aplicado sem decisao
-  manual explicita e MUST NOT reduzir retroativamente artefatos ja
-  gerados.
+  manual explicita **do operador** e MUST NOT reduzir retroativamente
+  artefatos ja gerados.
 - **FR-010**: Estado legado sem o campo `delivery_tier` MUST ser tratado
   como `cloud-public` em qualquer leitor (orquestrador, resume, report)
   — sem re-prompt, sem erro de validacao.
@@ -254,6 +275,11 @@ FR-009).
 - **SC-004**: 100% das execucoes novas registram o tier no estado e no
   relatorio final; 100% dos gates pulados/leves tem Decisao auditavel
   correspondente (zero skip silencioso).
+- **SC-005**: Para o mesmo produto-exemplo, a execucao em tier `local`
+  produz `spec.md`/`plan.md` com contagem mensuravelmente menor de
+  secoes de arquitetura e de NFRs detalhados que a execucao
+  `cloud-public` — medida independente da contagem de
+  tarefas/fases/ondas do backlog que SC-003 ja cobre.
 
 ## Delta Requirements
 
@@ -276,10 +302,17 @@ FR-009).
 - **FR-004**: O orquestrador MUST propagar o tier vigente no contexto
   das etapas briefing, specify e plan, com instrucao explicita de
   calibrar escopo e profundidade de arquitetura a finalidade declarada.
+  A leitura do tier propagado MUST vir de fonte coagida ao enum fechado
+  de 4 tokens — nunca texto livre interpolado diretamente no prompt da
+  skill.
 - **FR-005**: Os quality gates complementares MUST ser resolvidos por
   uma matriz tier×gate versionada no toolkit; gate ausente da matriz
   para um tier MUST rodar completo (fail-safe na direcao da
-  profundidade). A matriz cobre EXCLUSIVAMENTE o gate `owasp-security`
+  profundidade). O mesmo fail-safe MUST cobrir o caso de uma linha
+  PRESENTE na matriz com modo malformado, corrompido ou vazio — nao
+  apenas o caso de par ausente: qualquer modo lido fora do enum fechado
+  `completo|leve|skip` MUST ser coagido a `completo`, nunca propagado
+  verbatim. A matriz cobre EXCLUSIVAMENTE o gate `owasp-security`
   (revisao de seguranca) — matriz default: completa nos tiers
   `cloud-internal` e `cloud-public`, versao leve (checagens essenciais:
   auth, secrets, input) em `internal-network`, skip com Decisao em
@@ -291,11 +324,14 @@ FR-009).
 - **FR-006**: create-tasks MUST receber o tier e aplicar uma divisao
   BINARIA nuvem/nao-nuvem: os tiers `local` e `internal-network` MUST
   omitir do backlog as fases de infraestrutura de producao (deploy em
-  nuvem, escalabilidade e observabilidade de producao); os tiers
-  `cloud-internal` e `cloud-public` MUST gerar backlog completo com
-  essas fases. Nao ha lista de fases distinta por tier alem dessa
-  divisao binaria. create-tasks MUST registrar no proprio tasks.md o
-  tier usado na geracao.
+  nuvem, escalabilidade e observabilidade de producao — entendida aqui
+  como dashboards, SLO/SLI, APM/tracing, alertas e autoescala/
+  multi-regiao/CDN de escala operacional; log de autenticacao/
+  autorizacao e trilha de auditoria NUNCA entram nessa omissao, em
+  qualquer tier); os tiers `cloud-internal` e `cloud-public` MUST gerar
+  backlog completo com essas fases. Nao ha lista de fases distinta por
+  tier alem dessa divisao binaria. create-tasks MUST registrar no
+  proprio tasks.md o tier usado na geracao.
 - **FR-007**: O tier MUST calibrar somente profundidade e escopo; MUST
   NOT alterar, relaxar ou desativar o Principio VI (zero fabricacao de
   dados), as guardas enforced (bash-guard, path-guard, secrets-filter)
@@ -303,12 +339,15 @@ FR-009).
 - **FR-008**: A escolha do tier MUST ser registrada como Decisao
   auditavel (5 campos) na execucao, e o tier + consequencias aplicadas
   (gates pulados/versao leve) MUST constar no relatorio final e no
-  review-task.
+  review-task. O review-task MUST detectar e reportar como finding
+  qualquer mudanca do tier vigente sem Decisao de operador
+  correspondente na trilha de auditoria
+  (`delivery-tier-unattended-change`).
 - **FR-009**: Elevacao de tier mid-execucao MUST ser suportada via
   decisao manual do operador entre ondas, valendo das ondas seguintes em
   diante; rebaixamento mid-execucao MUST NOT ser aplicado sem decisao
-  manual explicita e MUST NOT reduzir retroativamente artefatos ja
-  gerados.
+  manual explicita **do operador** e MUST NOT reduzir retroativamente
+  artefatos ja gerados.
 - **FR-010**: Estado legado sem o campo `delivery_tier` MUST ser tratado
   como `cloud-public` em qualquer leitor (orquestrador, resume, report)
   — sem re-prompt, sem erro de validacao.

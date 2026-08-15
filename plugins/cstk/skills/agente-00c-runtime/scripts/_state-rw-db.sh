@@ -162,7 +162,21 @@ _sr_db_insert_execution_from_doc_file() {
   # backends.
   _ie_roadmap=$(_sr_ie_jq_json "$_ie_doc" '.roadmap_mode_enabled')
   case "$_ie_roadmap" in true) : ;; *) _ie_roadmap="false" ;; esac
-  _ie_extra_json=$(jq -cn --argjson v "$_ie_roadmap" '{roadmap_mode_enabled: $v}')
+
+  # delivery-tier (feature delivery-tier, contracts/cli-delivery-tier.md §5):
+  # mesmo padrao do roadmap-mode acima — sem coluna dedicada (research.md
+  # Decision 1), pousa no MESMO catch-all `extra_fields`. Sem compor as DUAS
+  # chaves aqui, o tier nao existiria no `init` sob SQLite (apenas apos um
+  # `set` posterior), violando FR-002 ("gravado no init") EM SILENCIO. Default
+  # cloud-public quando ausente/fora do enum (paridade com o default de
+  # `state-rw.sh init`, que ja recusa token invalido antes de chegar aqui).
+  _ie_delivery_tier=$(_sr_ie_jq_raw "$_ie_doc" '.delivery_tier')
+  case "$_ie_delivery_tier" in
+    local|internal-network|cloud-internal|cloud-public) : ;;
+    *) _ie_delivery_tier="cloud-public" ;;
+  esac
+  _ie_extra_json=$(jq -cn --argjson v "$_ie_roadmap" --arg t "$_ie_delivery_tier" \
+    '{roadmap_mode_enabled: $v, delivery_tier: $t}')
 
   _ie_sql="INSERT INTO execution (id,schema_version,short_name,target_project_path,\
 target_project_description,suggested_stack,status,termination_reason,started_at,\

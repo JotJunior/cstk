@@ -674,6 +674,85 @@ scenario_init_sqlite_roadmap_mode_true_via_extra_fields() {
   assert_stdout_contains "true" || return 1
 }
 
+# ==== Cenarios: --delivery-tier flag (feature delivery-tier, task 2.1) ====
+
+# Cenario: init --delivery-tier local persiste delivery_tier=local (valor
+# valido do enum de 4 tokens)
+scenario_init_delivery_tier_valid_value() {
+  _sd="$TMPDIR_TEST/delivery-tier-local"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test delivery tier local" \
+    --execucao-id "exec-delivery-local-001" \
+    --delivery-tier local
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.delivery_tier'
+  [ "$_CAPTURED_STDOUT" = "local" ] || { _fail "delivery_tier esperado local" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario: init --delivery-tier valor fora do enum => exit 2, SEM escrever estado
+scenario_init_delivery_tier_invalid_value_no_write() {
+  _sd="$TMPDIR_TEST/delivery-tier-invalid"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test delivery tier invalid" \
+    --execucao-id "exec-delivery-invalid-001" \
+    --delivery-tier saas
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 para valor invalido" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ ! -f "$_sd/state.json" ] || { _fail "estado NAO deveria ter sido escrito" "state.json existe"; return 1; }
+}
+
+# Cenario: init sem --delivery-tier => delivery_tier=cloud-public (default,
+# profundidade plena, zero regressao)
+scenario_init_delivery_tier_default_cloud_public() {
+  _sd="$TMPDIR_TEST/delivery-tier-default"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test delivery tier default" \
+    --execucao-id "exec-delivery-default-001"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.delivery_tier'
+  [ "$_CAPTURED_STDOUT" = "cloud-public" ] || { _fail "delivery_tier esperado cloud-public (default)" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario: retro-compat — state legado sem delivery_tier lido como cloud-public
+scenario_init_delivery_tier_retro_compat() {
+  _sd="$TMPDIR_TEST/delivery-tier-retro"
+  capture "$SCRIPT" init --state-dir "$_sd" \
+    --projeto-alvo-path "/tmp/cstk" \
+    --descricao "test delivery tier retro" \
+    --execucao-id "exec-delivery-retro-001"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  _sf="$_sd/state.json"
+  _tmp=$(mktemp)
+  jq 'del(.delivery_tier)' "$_sf" > "$_tmp" && mv "$_tmp" "$_sf"
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.delivery_tier // "cloud-public"'
+  [ "$_CAPTURED_STDOUT" = "cloud-public" ] || { _fail "legado sem campo: esperado cloud-public via jq fallback" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Cenario: paridade SQLite — init --delivery-tier internal-network sob backend
+# sqlite persiste via extra_fields catch-all (contracts/cli-delivery-tier.md
+# §5; _state-rw-db.sh compoe as DUAS chaves — roadmap_mode_enabled +
+# delivery_tier — no mesmo objeto de extra_fields)
+scenario_init_sqlite_delivery_tier_via_extra_fields() {
+  _sr_real_sqlite3_adequate || { printf '# skip: sqlite3 real >= %s indisponivel\n' "$MIN_SQLITE_VER_FASE5"; return 0; }
+  _home="$TMPDIR_TEST/home-delivery-tier-sqlite"
+  mkdir -p "$_home/.claude/cstk"
+  printf 'state_backend=sqlite\n' > "$_home/.claude/cstk/config"
+  _sd="$TMPDIR_TEST/delivery-tier-sqlite"
+  capture env HOME="$_home" "$SCRIPT" init --state-dir "$_sd" \
+    --execucao-id "exec-delivery-sqlite-1" --projeto-alvo-path "/tmp/p-delivery" \
+    --descricao "descricao de teste com tamanho suficiente para validacao" \
+    --delivery-tier internal-network
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init sob config sqlite + delivery-tier internal-network" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/state.db" ] || { _fail "state.db nao foi criado" ""; return 1; }
+  capture env HOME="$_home" "$SCRIPT" get --state-dir "$_sd" --field '.delivery_tier'
+  assert_stdout_contains "internal-network" || return 1
+  # paridade: get/read devolvem o mesmo valor via jq direto no SELECT (probe SQL)
+  _raw=$(sqlite3 "$_sd/state.db" "SELECT json_extract(extra_fields,'\$.delivery_tier') FROM execution LIMIT 1;")
+  [ "$_raw" = "internal-network" ] || { _fail "extra_fields.delivery_tier via SQL direto" "obtido '$_raw'"; return 1; }
+}
+
 # ==== Backend dual SQLite (feature state-db-foundation, FASE 3 task 3.2) ====
 #
 # Ref: docs/specs/state-db-foundation/contracts/primitives.md §C1 (paridade)

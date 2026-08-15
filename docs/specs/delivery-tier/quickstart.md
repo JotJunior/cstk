@@ -347,6 +347,25 @@ reducao de postura de seguranca.
 
 ---
 
+## Cenario 24 — Profundidade de specify/plan calibrada pelo tier (SC-005)
+
+Cobre o Gap CHK018/checklists/requirements.md — mede o efeito de FR-004
+diretamente no CONTEUDO de `spec.md`/`plan.md`, distinto do que SC-003
+(contagem de tarefas/fases/ondas do backlog) ja mede.
+
+1. Executar `/agente-00c` sobre o mesmo produto-exemplo simples duas
+   vezes: uma com `delivery_tier=local`, outra com
+   `delivery_tier=cloud-public`.
+2. Comparar `spec.md`/`plan.md` gerados nas duas execucoes: contar
+   secoes de arquitetura (`plan.md`) e NFRs detalhados (`spec.md`).
+3. **Expected**: a execucao `local` produz `spec.md`/`plan.md` com
+   contagem mensuravelmente menor de secoes de arquitetura e de NFRs
+   detalhados que a execucao `cloud-public` — efeito de FR-004 no
+   CONTEUDO do artefato, independente da contagem de
+   tarefas/fases/ondas do backlog que o Cenario 3 (SC-003) ja cobre.
+
+---
+
 ## Nota sobre roundtrip End-to-End backend<->frontend
 
 O cenario "Roundtrip End-to-End" do template de quickstart **nao se
