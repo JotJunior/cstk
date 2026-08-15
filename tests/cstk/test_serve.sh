@@ -2202,4 +2202,92 @@ scenario_update_sucesso_sem_residuo_stage_old() {
   done
 }
 
+# Mesma regressao de portabilidade Windows do
+# scenario_install_reconcilia_workspaces_no_destino, mas no caminho --update:
+# ali a arvore e movida DUAS vezes (tmpdir -> staging -> panel_dir), entao
+# reconciliar so no staging deixa os junctions apontando para um `.stage.$$`
+# que deixa de existir. O contrato observavel e que algum `npm install` roda
+# com cwd no panel_dir DEFINITIVO depois do swap.
+scenario_update_reconcilia_workspaces_apos_swap() {
+  _setup_serve_env
+  _make_bin_dir
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.0"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.0\n' > "$CSTK_PANEL_DIR/.panel-version"
+  _stub_curl_ok "$_STUB_BIN"
+  _urws_log="$TMPDIR_TEST/npm-calls-update.log"
+  _stub_npm_logs_cwd "$_STUB_BIN" "$_urws_log"
+  # Normalizar pelo mesmo caminho que o stub usa (`pwd`), para nao quebrar
+  # onde o tmpdir passa por symlink (ex.: /tmp no macOS).
+  _urws_final=$(cd "$CSTK_PANEL_DIR" 2>/dev/null && pwd)
+  _run_serve --update
+
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "update_reconcilia" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ "$(cat "$CSTK_PANEL_DIR/.panel-version" 2>/dev/null | tr -d ' \n')" != "v0.0.1" ]; then
+    _fail "update_reconcilia" ".panel-version nao foi atualizada para v0.0.1"
+    return 1
+  fi
+  if [ ! -f "$_urws_log" ]; then
+    _fail "update_reconcilia" "stub npm nao registrou nenhuma invocacao"
+    return 1
+  fi
+  if ! grep -q "^install ${_urws_final}$" "$_urws_log"; then
+    _fail "update_reconcilia" \
+      "nenhum 'npm install' rodou em ${_urws_final} apos o swap; invocacoes: $(tr '\n' ';' < "$_urws_log")"
+    return 1
+  fi
+}
+
+# Contrapartida: se a reconciliacao pos-swap falhar, a versao nova esta
+# incompleta — vale a mesma invariante da falha de instalacao (issue #113), a
+# instalada volta ao lugar em vez de o usuario ficar com uma arvore de links
+# quebrados (que `_serve_is_installed` daria por boa).
+scenario_update_reconciliacao_falha_mantem_instalado() {
+  _setup_serve_env
+  _make_bin_dir
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.0"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.0\n' > "$CSTK_PANEL_DIR/.panel-version"
+  : > "$CSTK_PANEL_DIR/SENTINELA"
+  _stub_curl_ok "$_STUB_BIN"
+  _urrf_final=$(cd "$CSTK_PANEL_DIR" 2>/dev/null && pwd)
+  # npm que aceita install no tmpdir e no staging, e falha SO no install do
+  # destino definitivo (a reconciliacao pos-swap).
+  cat > "$_STUB_BIN/npm" <<STUB
+#!/bin/sh
+if [ "\$1" = "install" ] && [ "\$(pwd)" = "${_urrf_final}" ]; then
+  exit 1
+fi
+exit 0
+STUB
+  chmod +x "$_STUB_BIN/npm"
+  _run_serve --update
+
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "update_reconcilia_falha" "esperado exit 0 (mantem instalada e sobe), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ ! -f "$CSTK_PANEL_DIR/SENTINELA" ]; then
+    _fail "update_reconcilia_falha" "instalacao existente foi destruida apesar da falha da reconciliacao"
+    return 1
+  fi
+  if [ "$(cat "$CSTK_PANEL_DIR/.panel-version" 2>/dev/null | tr -d ' \n')" != "v0.0.0" ]; then
+    _fail "update_reconcilia_falha" ".panel-version deveria permanecer v0.0.0"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'mantendo a versao instalada'; then
+    _fail "update_reconcilia_falha" "stderr nao avisa que manteve a versao instalada: $_CAPTURED_STDERR"
+    return 1
+  fi
+  for _urrf_d in "$CSTK_PANEL_DIR".stage.* "$CSTK_PANEL_DIR".old.*; do
+    if [ -e "$_urrf_d" ]; then
+      _fail "update_reconcilia_falha" "residuo de swap deixado para tras: $_urrf_d"
+      return 1
+    fi
+  done
+}
+
 run_all_scenarios
