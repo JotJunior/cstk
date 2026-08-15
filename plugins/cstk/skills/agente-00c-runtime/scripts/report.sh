@@ -100,6 +100,23 @@ _rp_wave_usage_json() {
   printf '%s' '{"metric_collected":false,"spawns_total":null,"spawns_with_usage":null,"spawns_unavailable":null,"total_tokens":null,"coverage_pct":null,"por_onda":[]}'
 }
 
+# _rp_delivery_tier STATE_DIR — le o tier de entrega vigente (FR-008 —
+# delivery-tier), EXCLUSIVAMENTE via delivery-tier.sh get (INV-5 —
+# contracts/cli-delivery-tier.md §1); nunca leitura crua de
+# '.delivery_tier'. Restrito a execucoes /agente-00c (dec-011) — o
+# caller so invoca esta funcao quando o flavor e agente-00c (ou no
+# `generate`, usado exclusivamente por agente-00c-orchestrator.md).
+# Best-effort: helper ausente/nao-executavel -> stdout vazio (secao 1
+# omite a linha, nunca fabrica um valor). Quando o helper roda, ele
+# proprio ja degrada campo ausente/estado ilegivel para `cloud-public`
+# (INV-1/FR-010) — nada a duplicar aqui.
+_rp_delivery_tier() {
+  _dt_script="$(dirname -- "$0")/delivery-tier.sh"
+  if [ -x "$_dt_script" ]; then
+    "$_dt_script" get --state-dir "$1" 2>/dev/null || printf ''
+  fi
+}
+
 # _rp_render_header STATE_FILE GERADO_EM
 # READER de state.json: paths EN + fallback (.en // .pt) (schema-en-migration).
 _rp_render_header() {
@@ -116,11 +133,15 @@ _rp_render_header() {
   ' "$1"
 }
 
-# _rp_render_secao_1 STATE_FILE PARAGRAFO WAVE_USAGE_JSON
+# _rp_render_secao_1 STATE_FILE PARAGRAFO WAVE_USAGE_JSON TIER
+# TIER (4o arg, opcional): token do enum ja resolvido por
+# _rp_delivery_tier (FR-008/INV-5 — delivery-tier). String vazia OMITE
+# a linha da tabela (feature-00c ou execucao sem o campo/helper) — nunca
+# renderiza um valor fabricado.
 _rp_render_secao_1() {
   _para=$2
   [ -n "$_para" ] || _para="(Paragrafo de resumo nao fornecido — orquestrador deve gerar via --paragrafo-resumo na invocacao final.)"
-  jq -r --arg para "$_para" --argjson wu "$3" '
+  jq -r --arg para "$_para" --argjson wu "$3" --arg tier "${4:-}" '
     def fmt_tokens_num(v):
       if v == null then null
       elif v >= 10000 then
@@ -142,6 +163,7 @@ _rp_render_secao_1() {
     "| Projeto-Alvo | \($exec.target_project_path // $exec.projeto_alvo_path) |",
     "| Descricao | \($exec.target_project_description // $exec.projeto_alvo_descricao) |",
     "| Stack final | \(($exec.suggested_stack // $exec.stack_sugerida) // (if (($exec.status // "") == "abortada") then "nao aplicavel — execucao abortada antes de definir" else "nao aplicavel (herdada do projeto / nao definida)" end)) |",
+    (if ($tier // "") == "" then empty else "| Tier de entrega | \($tier) |" end),
     "| Status | \($exec.status) |",
     "| Motivo termino | \(($exec.termination_reason // $exec.motivo_termino) // "(em andamento)") |",
     "| Iniciada em | \($exec.started_at // $exec.iniciada_em) |",
@@ -522,8 +544,11 @@ _rp_cmd_generate() {
 
   _now=$(_rp_iso_now)
   _wu_json=$(_rp_wave_usage_json "$_sd")
+  # generate() e usado EXCLUSIVAMENTE por agente-00c-orchestrator.md —
+  # tier de entrega sempre aplicavel aqui (dec-011).
+  _tier=$(_rp_delivery_tier "$_sd")
   _rp_render_header "$_sf" "$_now"
-  _rp_render_secao_1 "$_sf" "$_para" "$_wu_json"
+  _rp_render_secao_1 "$_sf" "$_para" "$_wu_json" "$_tier"
   _rp_render_secao_2 "$_sf" "$_wu_json"
   _rp_render_secao_3 "$_sf"
   _rp_render_secao_4 "$_sf"
@@ -632,9 +657,14 @@ _rp_cmd_emit() {
 
   _now=$(_rp_iso_now)
   _wu_json=$(_rp_wave_usage_json "$_sd")
+  # Tier de entrega (FR-008/dec-011): restrito ao flavor agente-00c —
+  # feature-00c nunca pergunta nem le o campo; omitir a linha por
+  # completo evita insinuar que a execucao tem um tier vigente.
+  _tier=""
+  [ "$_flavor" = "agente-00c" ] && _tier=$(_rp_delivery_tier "$_sd")
   {
     _rp_render_header "$_sf" "$_now"
-    _rp_render_secao_1 "$_sf" "$_para" "$_wu_json"
+    _rp_render_secao_1 "$_sf" "$_para" "$_wu_json" "$_tier"
     _rp_render_secao_2 "$_sf" "$_wu_json"
     _rp_render_secao_3 "$_sf"
     _rp_render_secao_4 "$_sf"

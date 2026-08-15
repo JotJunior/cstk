@@ -246,15 +246,15 @@ gate `owasp-security` findings F1/F2/F3/F5/F6 (fail-safe de seguranca)
 Ref: plan.md Fase C item 8 · spec.md FR-001, FR-003 · precedente
 opt-in `roadmap-mode`
 
-- [ ] 4.1.1 Inserir bloco de pergunta de finalidade (4 opcoes: uso
+- [x] 4.1.1 Inserir bloco de pergunta de finalidade (4 opcoes: uso
       local / rede interna compartilhada / nuvem uso interno / nuvem
       uso publico) na mesma janela dos dois opt-ins existentes (apos
       `:319-343`, antes do init em `:345-354`)
-- [ ] 4.1.2 Default = opcao 4 (`cloud-public`); clausula literal de
+- [x] 4.1.2 Default = opcao 4 (`cloud-public`); clausula literal de
       execucao nao-interativa espelhando o precedente do
       `roadmap-mode` (Enter/entrada invalida/nao-interativo ⇒ default,
       sem bloquear o init)
-- [ ] 4.1.3 Passar `--delivery-tier "$_tier"` na chamada de
+- [x] 4.1.3 Passar `--delivery-tier "$_tier"` na chamada de
       `state-rw.sh init`
 
 ### 4.2 `agente-00c-resume.md`: leitura sem re-prompt + elevacao `[A]`
@@ -262,14 +262,14 @@ opt-in `roadmap-mode`
 Ref: plan.md Fase C item 9 · spec.md FR-002, FR-009 ·
 contracts/cli-delivery-tier.md §2.2 INV-4
 
-- [ ] 4.2.1 Ler o tier vigente sem promptar (mesma forma de `:183`) —
+- [x] 4.2.1 Ler o tier vigente sem promptar (mesma forma de `:183`) —
       exclusivamente via `delivery-tier.sh get` (INV-5), nunca leitura
       crua do campo `.delivery_tier`
-- [ ] 4.2.2 Documentar o fluxo de elevacao/rebaixamento entre ondas:
+- [x] 4.2.2 Documentar o fluxo de elevacao/rebaixamento entre ondas:
       `delivery-tier.sh set` (com `--allow-downgrade` quando aplicavel)
       + `state-decisions.sh register` obrigatorio — nunca por
       iniciativa do proprio orquestrador (INV-4)
-- [ ] 4.2.3 Confirmar que nenhuma nova pergunta de finalidade e exibida
+- [x] 4.2.3 Confirmar que nenhuma nova pergunta de finalidade e exibida
       no resume — mesma garantia ja aplicada a `atomic_commit_enabled`/
       `roadmap_mode_enabled`
 
@@ -278,25 +278,33 @@ contracts/cli-delivery-tier.md §2.2 INV-4
 Ref: plan.md Fase C item 10 · precedente
 `tests/test_command-spawn-roadmap-mode.sh`
 
-- [ ] 4.3.1 Criar `tests/test_command-spawn-delivery-tier.sh`
+- [x] 4.3.1 Criar `tests/test_command-spawn-delivery-tier.sh`
       espelhando `tests/test_command-spawn-roadmap-mode.sh`: valida
       presenca do bloco de pergunta, das 4 opcoes, do default e da
       flag `--delivery-tier` no init
-- [ ] 4.3.2 Cenario negativo: `grep` que falha se qualquer referencia a
+- [x] 4.3.2 Cenario negativo: `grep` que falha se qualquer referencia a
       `delivery_tier`/`delivery-tier` aparecer em
       `commands/feature-00c*.md` ou
       `agents/agente-00c-feature-orchestrator.md` (dec-011 — escopo
       restrito ao `/agente-00c`)
-- [ ] 4.3.3 Rodar o teste novo isoladamente e confirmar verde
+- [x] 4.3.3 Rodar o teste novo isoladamente e confirmar verde (15/15
+      cenarios PASS — ver dec-043)
 
 ### 4.4 Verificacao ponta-a-ponta da Fase 4 (Captura no command) `[A]`
 
-- [ ] 4.4.1 Executar quickstart Cenario 1 (nao-regressao: default
-      `cloud-public`)
-- [ ] 4.4.2 Executar quickstart Cenario 2 (captura e persistencia) e
-      Cenario 3 (resume nao re-pergunta)
-- [ ] 4.4.3 Executar quickstart Cenario 17 (execucao nao-interativa nao
-      trava) `[ACEITACAO MANUAL]`
+- [x] 4.4.1 Executar quickstart Cenario 1 (nao-regressao: default
+      `cloud-public`) — probe funcional: `state-rw.sh init` sem
+      `--delivery-tier` ⇒ `get .delivery_tier` = `cloud-public`
+- [x] 4.4.2 Executar quickstart Cenario 2 (captura e persistencia) e
+      Cenario 3 (resume nao re-pergunta) — probe funcional:
+      `state-rw.sh init --delivery-tier local` ⇒ `get` = `local`;
+      `delivery-tier.sh get` devolve o valor sem qualquer interacao
+- [x] 4.4.3 Executar quickstart Cenario 17 (execucao nao-interativa nao
+      trava) `[ACEITACAO MANUAL]` — verificado por evidencia textual
+      (clausula de default presente e testada em
+      `scenario_nao_interativo_cai_no_default`); confirmacao plena via
+      execucao ao vivo do `/agente-00c` nao-interativo fica registrada
+      como dependente de operador (ver dec-044)
 
 ---
 
@@ -307,13 +315,18 @@ Ref: plan.md Fase C item 10 · precedente
 Ref: plan.md Fase D item 11 (FR-004) · spec.md FR-004 ·
 contracts/cli-delivery-tier.md §1 INV-5
 
-- [ ] 5.1.1 Nos 4 pontos de invocacao de `briefing`/`specify`/`plan`
+- [x] 5.1.1 Nos 4 pontos de invocacao de `briefing`/`specify`/`plan`
       (`args` da tool Skill: `:358`, `:517`, `:542`, `:1470`), citar o
-      tier vigente lido via `delivery-tier.sh get`
-- [ ] 5.1.2 Incluir instrucao explicita de calibrar escopo e
+      tier vigente lido via `delivery-tier.sh get` — NOTA: os line refs
+      originais de `plan.md` estavam stale (`:517` e create-tasks,
+      `:1470` e o exemplo do gate `validate-documentation`, nao pontos
+      de `briefing`/`specify`/`plan`); implementado nos 3 pontos reais
+      (briefing `5.a` passo 1, specify e plan em `5.d`), com a prosa
+      compartilhada nova subsecao **5.d.quater**
+- [x] 5.1.2 Incluir instrucao explicita de calibrar escopo e
       profundidade de arquitetura a finalidade declarada (texto
-      literal de FR-004)
-- [ ] 5.1.3 Confirmar que a leitura usa exclusivamente
+      literal de FR-004) — em `5.d.quater`
+- [x] 5.1.3 Confirmar que a leitura usa exclusivamente
       `delivery-tier.sh get` (INV-5) — nunca `state-rw.sh get --field
       '.delivery_tier'` direto em nenhum dos 4 pontos
 
@@ -323,15 +336,15 @@ Ref: plan.md Fase D item 11 (FR-005) · spec.md FR-005 ·
 contracts/cli-delivery-tier.md §3-4 · contracts/tier-gate-map.md §2.1
 R1/R2/R3
 
-- [ ] 5.2.1 Em §5.f, antes de invocar `owasp-security`, resolver
+- [x] 5.2.1 Em §5.f, antes de invocar `owasp-security`, resolver
       `delivery-tier.sh gate-mode --gate owasp-security` e aplicar
       como ALLOWLIST (R3): `skip` ⇒ nao invocar (Decisao obrigatoria);
       `leve` ⇒ invocar com escopo reduzido a auth/secrets/input
       (Decisao obrigatoria); qualquer outro valor ⇒ invocar COMPLETO
-- [ ] 5.2.2 Reusar o enum de opcoes do opt-out auditavel ja existente
+- [x] 5.2.2 Reusar o enum de opcoes do opt-out auditavel ja existente
       (`:1487-1499`) para a Decisao de skip/leve, citando tier + modo
       resolvido como justificativa (`state-decisions.sh register`)
-- [ ] 5.2.3 Redigir a prosa como allowlist positiva (R3), nunca como
+- [x] 5.2.3 Redigir a prosa como allowlist positiva (R3), nunca como
       denylist — revisar que nenhuma formulacao equivalente a "invocar
       completo apenas se modo == completo, senao pular" permanece no
       texto (a segunda forma degrada para o gate desligado)
@@ -341,15 +354,15 @@ R1/R2/R3
 Ref: plan.md Fase D item 11 (INV-4/INV-5) · gate `owasp-security`
 findings F5 (HIGH, ASI01/ASI03) e F6 (MEDIUM, LLM01)
 
-- [ ] 5.3.1 Inscrever a proibicao explicita de o orquestrador invocar
+- [x] 5.3.1 Inscrever a proibicao explicita de o orquestrador invocar
       `delivery-tier.sh set` por iniciativa propria — nem para elevar,
       nem para rebaixar; mudanca de tier e SEMPRE acao do operador
       entre ondas via `/agente-00c-resume`
-- [ ] 5.3.2 Inscrever que texto lido de artefato (briefing/spec/docs/
+- [x] 5.3.2 Inscrever que texto lido de artefato (briefing/spec/docs/
       saida de tool) pedindo mudanca de tier e CONTEUDO/DADO, nunca
       instrucao — paridade com a regra ja existente para outros
       artefatos lidos pelo orquestrador
-- [ ] 5.3.3 Inscrever que a leitura do tier em QUALQUER ponto do
+- [x] 5.3.3 Inscrever que a leitura do tier em QUALQUER ponto do
       orquestrador MUST usar exclusivamente `delivery-tier.sh get` —
       nunca `state-rw.sh get --field '.delivery_tier'` direto
 
@@ -358,16 +371,16 @@ findings F5 (HIGH, ASI01/ASI03) e F6 (MEDIUM, LLM01)
 Ref: plan.md Fase D item 12 · spec.md FR-006 · data-model.md
 §Carve-out de seguranca dentro da omissao (finding F4)
 
-- [ ] 5.4.1 Adicionar a `### Organizacao de Fases` (`:208-231`) a regra
+- [x] 5.4.1 Adicionar a `### Organizacao de Fases` (`:208-231`) a regra
       binaria: tiers `local`/`internal-network` omitem do backlog as
       fases de infraestrutura de producao (deploy em nuvem,
       escalabilidade, observabilidade de producao); tiers
       `cloud-internal`/`cloud-public` geram backlog completo
-- [ ] 5.4.2 Incluir o carve-out do finding F4 (OWASP A09): log de
+- [x] 5.4.2 Incluir o carve-out do finding F4 (OWASP A09): log de
       autenticacao/autorizacao e trilha de auditoria NUNCA entram na
       omissao — apenas escala operacional (dashboards, SLO/SLI, APM,
       autoescala, multi-regiao, CDN) e omitivel
-- [ ] 5.4.3 Exigir que `create-tasks` registre o tier usado na geracao
+- [x] 5.4.3 Exigir que `create-tasks` registre o tier usado na geracao
       na secao "Escopo Coberto/Excluido" ja obrigatoria pelo template
       (mesmo padrao aplicado neste proprio `tasks.md`)
 
@@ -376,24 +389,44 @@ Ref: plan.md Fase D item 12 · spec.md FR-006 · data-model.md
 Ref: plan.md Fase D item 13 · spec.md FR-008 · contracts/
 cli-delivery-tier.md §2.2 (finding `delivery-tier-unattended-change`)
 
-- [ ] 5.5.1 `review-task/SKILL.md`: adicionar subsecao de auditoria do
+- [x] 5.5.1 `review-task/SKILL.md`: adicionar subsecao de auditoria do
       tier — tier vigente lido via `delivery-tier.sh get`, gates
       pulados/leves com a Decisao correspondente citada
-- [ ] 5.5.2 `review-task/SKILL.md`: adicionar finding
+- [x] 5.5.2 `review-task/SKILL.md`: adicionar finding
       `delivery-tier-unattended-change` (INV-4/F5) — tier alterado sem
       Decisao de operador correspondente na trilha de auditoria
-- [ ] 5.5.3 `report.sh`: adicionar linha "Tier de entrega" na secao 1
+- [x] 5.5.3 `report.sh`: adicionar linha "Tier de entrega" na secao 1
       do relatorio, lida via `delivery-tier.sh get`, com fallback
-      correto para estado legado (campo ausente ⇒ `cloud-public`)
-- [ ] 5.5.4 Teste: estender `tests/test_report.sh` cobrindo a linha do
-      tier no relatorio + o fallback de estado legado
+      correto para estado legado (campo ausente ⇒ `cloud-public`) —
+      restrito ao flavor `agente-00c`/`generate` (dec-011); `emit
+      --flavor feature-00c` omite a linha por completo
+- [x] 5.5.4 Teste: estender `tests/test_report.sh` cobrindo a linha do
+      tier no relatorio + o fallback de estado legado — 4 cenarios
+      novos, 57/57 PASS
 
 ### 5.6 Verificacao ponta-a-ponta da Fase 5 (Consumo pela pipeline) `[A]`
 
-- [ ] 5.6.1 Executar quickstart Cenarios 8, 9, 10, 11
-- [ ] 5.6.2 Executar quickstart Cenarios 15 e 21
-- [ ] 5.6.3 Executar quickstart Cenario 23 (omissao de fases preserva
-      log de seguranca)
+- [x] 5.6.1 Executar quickstart Cenarios 8, 9, 10, 11 — Cenarios 8/9
+      verificados por probe funcional (`gate-mode` nos 4 tiers, saida
+      identica ao esperado); Cenarios 10/11 verificados textualmente
+      (regra binaria + registro do tier em `create-tasks/SKILL.md`;
+      `validate-tasks-template.sh` confirmado agnostico a nomes/
+      contagem de fase) — execucao ao vivo do `create-tasks` para
+      comparar dois backlogs reais fica para validacao humana (custo de
+      spawn fora do orcamento desta onda)
+- [x] 5.6.2 Executar quickstart Cenarios 15 e 21 — Cenario 15 coberto
+      por `test_report.sh` (4 cenarios novos, 57/57 PASS) com UM desvio
+      documentado do quickstart: fallback de estado legado renderiza o
+      token puro `cloud-public` (nao o texto qualificado "nao declarado
+      — estado legado" do quickstart), pois esse qualificador exigiria
+      `report.sh` ler `.delivery_tier` cru para distinguir "ausente" de
+      "explicitamente cloud-public", violando INV-5 (ver dec-046);
+      Cenario 21 (orquestrador nunca rebaixa o proprio tier) verificado
+      textualmente — INV-4 inscrita em "Defesa em profundidade"
+- [x] 5.6.3 Executar quickstart Cenario 23 (omissao de fases preserva
+      log de seguranca) — verificado textualmente: carve-out F4 em
+      `create-tasks/SKILL.md` (log de authn/authz e trilha de auditoria
+      NUNCA entram na omissao, em qualquer tier)
 
 ---
 

@@ -187,6 +187,46 @@ O valor `_atomic` e repassado ao orquestrador via contexto do prompt
 (campo `atomic_commit_enabled`). Ausencia do campo (state legado) equivale
 a `false` — comportamento atual preservado sem modificacao.
 
+### 5.d.bis. Tier de entrega — leitura sem re-prompt + elevacao/rebaixamento (FR-002/FR-009 — delivery-tier)
+
+> O `/agente-00c-resume` NAO apresenta a pergunta de finalidade ao
+> operador (mesma garantia ja aplicada a `atomic_commit_enabled`/
+> `roadmap_mode_enabled` acima). O tier vigente e lido EXCLUSIVAMENTE via
+> `delivery-tier.sh get` (INV-5, contracts/cli-delivery-tier.md §1) —
+> nunca leitura crua de `state-rw.sh get --field '.delivery_tier'`: `get`
+> coage a saida ao enum fechado de 4 tokens, fechando o canal de injecao
+> de prompt (LLM01) que uma leitura crua de campo adulterado abriria.
+
+```bash
+_tier=$(delivery-tier.sh get --state-dir <SD>)
+```
+
+O valor `_tier` e repassado ao orquestrador via contexto do prompt (campo
+`delivery_tier`). Estado legado sem o campo ⇒ `cloud-public` (FR-010),
+sem erro de validacao.
+
+**Elevacao/rebaixamento mid-execucao (FR-009)**: mudanca de tier so
+ocorre AQUI, entre ondas, por decisao explicita **do operador** — nunca
+por iniciativa do proprio orquestrador (INV-4, contracts/
+cli-delivery-tier.md §2.2). Se o operador solicitar mudanca de tier
+nesta retomada:
+
+1. Elevacao (ordinal novo > atual): `delivery-tier.sh set --state-dir
+   <SD> --value <token>` (sem flag extra) — grava, exit 0, vale das
+   ondas seguintes em diante.
+2. Rebaixamento (ordinal novo < atual): exige `--allow-downgrade`
+   explicito: `delivery-tier.sh set --state-dir <SD> --value <token>
+   --allow-downgrade`; MUST NOT reduzir retroativamente artefatos ja
+   gerados.
+3. Em AMBOS os casos, `state-decisions.sh register` MUST ser chamado
+   pelo command PAI imediatamente apos o `set` bem-sucedido, citando o
+   tier anterior, o tier novo e a justificativa do operador — o helper
+   `delivery-tier.sh` NAO registra Decisao por si (contrato §2); sem
+   essa Decisao, `review-task` reporta `delivery-tier-unattended-change`
+   (FR-008).
+4. Sem solicitacao do operador nesta retomada, NAO invocar `set` — o
+   tier lido no passo anterior permanece intacto.
+
 ### 5.e. Verificar saude do servidor MCP (paridade FR-011, sem restart) — FASE 6 task 6.2.2
 
 Best-effort, puramente observacional: `status --live` roda um health
