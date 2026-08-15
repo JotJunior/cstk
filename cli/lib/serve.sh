@@ -296,7 +296,8 @@ _serve_write_integrity_log() {
 # Extraido de _serve_install (ate a extracao) para ser reusado por DOIS
 # callers sem duplicar o mecanismo de download/verificacao (FR-007):
 #   (a) _serve_install (modo nativo, abaixo): apos extrair, roda `npm
-#       install` dentro de DEST_DIR e move atomicamente para PANEL_DIR.
+#       install` dentro de DEST_DIR, move atomicamente para PANEL_DIR e
+#       reconcilia os links de workspace ja no destino.
 #   (b) o ponto de entrada do modo alternativo baseado em container (vive
 #       no arquivo confinado pelo carve-out do Principio II condicao b,
 #       FASE 2 do backlog correspondente): apos extrair, usa DEST_DIR
@@ -500,7 +501,10 @@ _serve_download_verify_extract() {
 
 # _serve_install PANEL_DIR [ALLOW_UNVERIFIED] [BYPASS_METHOD]
 # Realiza o download e instalacao do painel em PANEL_DIR.
-# Usa tmpdir privado; move atomicamente para PANEL_DIR apos sucesso.
+# Usa tmpdir privado; move atomicamente para PANEL_DIR apos sucesso e entao
+# reconcilia os links de workspace no destino (necessario no Windows, onde o
+# npm materializa workspaces como junctions de caminho absoluto — ver o
+# comentario no ponto da reconciliacao).
 # ALLOW_UNVERIFIED: "1" bypassa o bloqueio fail-closed quando a integridade
 #   nao pode ser confirmada (default "0" — bloqueia). NUNCA bypassa
 #   divergencia de checksum (mismatch — regressao FR-010, task 3.4).
@@ -561,6 +565,26 @@ _serve_install() {
 
   # .panel-version ja foi escrito por _serve_download_verify_extract dentro
   # de _si_extract, que agora VIVE em _si_panel_dir (o mv leva o arquivo).
+
+  # Reconciliar os links de workspace no destino DEFINITIVO (portabilidade
+  # Windows). O `npm install` acima rodou dentro do tmpdir: em POSIX o npm
+  # cria symlinks RELATIVOS para os workspaces, que sobrevivem intactos ao
+  # mv; no Windows cria junctions com caminho ABSOLUTO para o tmpdir — que
+  # e removido logo abaixo. O resultado sao links pendurados e um build que
+  # morre com `TS2307: Cannot find module '@cstk-panel/shared-types'`.
+  # Reexecutar o install ja em _si_panel_dir reescreve os links apontando
+  # para o caminho real. Custo: em POSIX e praticamente no-op (node_modules
+  # ja esta populado) e roda uma vez por INSTALACAO, nao por execucao.
+  # Falha aqui remove o panel_dir para preservar a invariante do caller
+  # (`_serve_is_installed` verdadeiro => instalacao completa e utilizavel).
+  printf 'cstk serve: reconciliando workspaces em %s...\n' "$_si_panel_dir"
+  if ! (cd "$_si_panel_dir" && npm install) 2>&1; then
+    printf 'cstk serve: erro: reconciliacao dos workspaces falhou\n' >&2
+    [ -n "$_si_panel_dir" ] && rm -rf -- "$_si_panel_dir"
+    rm -rf -- "$_si_wrapper_tmp"
+    trap - EXIT INT TERM
+    return 1
+  fi
 
   # Limpar tmpdir (trap cuida de EXIT mas chamamos explicitamente aqui)
   rm -rf -- "$_si_wrapper_tmp"

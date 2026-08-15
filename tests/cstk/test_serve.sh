@@ -273,6 +273,22 @@ STUB
   chmod +x "$_sno_bin/npm"
 }
 
+# _stub_npm_logs_cwd: npm que aceita tudo (exit 0) e registra "<subcomando>
+# <cwd>" por invocacao no arquivo de log. Permite ao scenario afirmar ONDE o
+# install rodou — o que importa porque os links de workspace criados pelo npm
+# carregam o diretorio em que ele foi executado.
+# $1 = bin dir, $2 = arquivo de log
+_stub_npm_logs_cwd() {
+  _snlc_bin="$1"
+  _snlc_log="$2"
+  cat > "$_snlc_bin/npm" <<STUB
+#!/bin/sh
+printf '%s %s\n' "\$1" "\$(pwd)" >> "${_snlc_log}"
+exit 0
+STUB
+  chmod +x "$_snlc_bin/npm"
+}
+
 # _stub_npm_exit_code: npm que sai com o exit code especificado para `run
 # <script>` (ex.: `run dev`), aceitando `install` com 0 — simula saida
 # espontanea do painel.
@@ -999,6 +1015,75 @@ STUB
   _run_serve
   if [ "$_CAPTURED_EXIT" != "1" ]; then
     _fail "npm_install_falha" "esperado exit 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+}
+
+# Regressao de portabilidade Windows: o `npm install` da instalacao roda no
+# tmpdir e a arvore e movida depois. Em POSIX os links de workspace sao
+# relativos e sobrevivem ao mv; no Windows sao junctions de caminho ABSOLUTO
+# para o tmpdir removido, e o build morre com TS2307. O contrato observavel —
+# testavel em qualquer plataforma — e que algum `npm install` roda com cwd no
+# panel_dir DEFINITIVO, deixando os links apontando para o caminho real.
+scenario_install_reconcilia_workspaces_no_destino() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  _sirw_log="$TMPDIR_TEST/npm-calls.log"
+  _stub_npm_logs_cwd "$_STUB_BIN" "$_sirw_log"
+  _run_serve
+
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "reconcilia_workspaces" "esperado exit 0, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if [ ! -f "$_sirw_log" ]; then
+    _fail "reconcilia_workspaces" "stub npm nao registrou nenhuma invocacao"
+    return 1
+  fi
+  # Normalizar o path esperado pelo mesmo caminho que o stub usa (`pwd` apos
+  # cd), para nao quebrar onde o tmpdir passa por symlink (ex.: /tmp no macOS).
+  _sirw_expected=$(cd "$CSTK_PANEL_DIR" 2>/dev/null && pwd)
+  if [ -z "$_sirw_expected" ]; then
+    _fail "reconcilia_workspaces" "panel_dir nao existe apos a instalacao: $CSTK_PANEL_DIR"
+    return 1
+  fi
+  if ! grep -q "^install ${_sirw_expected}$" "$_sirw_log"; then
+    _fail "reconcilia_workspaces" \
+      "nenhum 'npm install' rodou em ${_sirw_expected}; invocacoes: $(tr '\n' ';' < "$_sirw_log")"
+    return 1
+  fi
+}
+
+# Contrapartida do scenario acima: se a reconciliacao falhar, o panel_dir NAO
+# pode sobreviver pela metade — senao `_serve_is_installed` fica verdadeiro
+# para uma arvore com links quebrados e a execucao seguinte falha no build com
+# uma mensagem que nao aponta para a causa.
+scenario_reconciliacao_falha_remove_panel_dir() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_ok "$_STUB_BIN"
+  # npm que aceita o primeiro install (no tmpdir) e falha no segundo (destino).
+  cat > "$_STUB_BIN/npm" <<STUB
+#!/bin/sh
+if [ "\$1" = "install" ]; then
+  if [ -f "${TMPDIR_TEST}/.first-install-done" ]; then
+    exit 1
+  fi
+  : > "${TMPDIR_TEST}/.first-install-done"
+fi
+exit 0
+STUB
+  chmod +x "$_STUB_BIN/npm"
+  _run_serve
+
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "reconciliacao_falha" "esperado exit 1, obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if [ -e "$CSTK_PANEL_DIR" ]; then
+    _fail "reconciliacao_falha" \
+      "panel_dir sobreviveu a falha da reconciliacao: $CSTK_PANEL_DIR"
     return 1
   fi
 }
