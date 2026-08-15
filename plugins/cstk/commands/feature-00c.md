@@ -78,6 +78,34 @@ Se confirmado, execute em sequencia (cada item dispara o prompt nativo):
 
 Se o operador NAO confirmar, abortar com exit 0 + mensagem instrutiva.
 
+**Nao-interativo**: PULE o warm-up inteiro e prossiga para o passo 1 —
+nunca aborte, nunca fique aguardando a confirmacao. Sem operador presente
+nao ha prompt de permissao a enfileirar (a politica ja esta resolvida por
+allowlist/settings do processo), entao o warm-up perde a funcao; abortar
+aqui inviabiliza toda automacao legitima (cron, CI, execucao agendada).
+Emita o aviso e registre a Decisao:
+
+```
+Warm-up pulado: execucao nao-interativa (nenhum operador para confirmar).
+Ferramentas sem permissao previa falharao pontualmente em vez de travar a
+onda.
+```
+
+`state-decisions.sh register --agente "feature-00c" --etapa "specify"
+--contexto "Warm-up de permissoes pulado: execucao nao-interativa"
+--opcoes '["proceder","abortar"]' --escolha "proceder" --justificativa
+"Sem operador para confirmar; warm-up nao tem funcao em execucao
+nao-interativa e abortar inviabilizaria automacao"`.
+
+> Esta clausula NAO afrouxa nenhuma guarda: `bash-guard.sh`,
+> `path-guard.sh` e `secrets-filter.sh` seguem enforced, e o hook
+> `PreToolUse` continua fail-closed. O que muda e apenas o enfileiramento
+> antecipado de prompts, que so faz sentido com humano presente.
+>
+> Paridade com `/agente-00c`: mesma clausula, mesmo motivo (achado do
+> spike headless de 2026-08-15, em que ambos os commands abortavam em
+> `Continuar? [s/N]` e nenhuma execucao agendada conseguia iniciar).
+
 ### 1. Parse de argumentos
 
 ```
@@ -630,6 +658,10 @@ fi
 # ---
 # - Respostas afirmativas (s/S/y/Y/sim/yes): _atomic=true
 # - Qualquer outra resposta (inclusive Enter): _atomic=false (default seguro)
+# - Nao-interativo: _atomic=false sem perguntar e sem aguardar — nunca
+#   travar esperando resposta. "Qualquer outra resposta" pressupoe que
+#   houve UMA resposta; sem operador nao ha resposta alguma, e o default
+#   seguro vale igual.
 # Os commands de resume NAO re-promptam: /feature-00c-resume le
 # .atomic_commit_enabled diretamente do state.json sem interacao.
 

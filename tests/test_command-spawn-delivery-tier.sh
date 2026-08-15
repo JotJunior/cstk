@@ -97,6 +97,41 @@ scenario_resume_documenta_decisao_obrigatoria_pos_set() {
   assert_exit 0 grep -Eiq 'state-decisions\.sh register.*MUST ser chamado' "$CMD_RESUME_AGENTE" || return 1
 }
 
+# ==== Nao-interativo NAO infere o tier de fonte nenhuma (FR-003 literal) ====
+#
+# Achado do spike headless de 2026-08-15 (quickstart Cenario 17): um agente
+# rodando `claude -p` leu o briefing ratificado, registrou Decisao citando as
+# secoes e gravou `local` em vez do default contratual `cloud-public`. O texto
+# do command precisa RECUSAR esse raciocinio explicitamente, senao ele se
+# repete — a clausula "default e caso de erro" sozinha nao bastou.
+
+scenario_nao_interativo_proibe_inferir_tier() {
+  assert_exit 0 grep -Eiq 'NAO infira o tier do briefing' "$CMD_INIT_AGENTE" || return 1
+}
+
+scenario_nao_interativo_recusa_briefing_inequivoco() {
+  # A proibicao precisa cobrir o caso "fonte citavel e inequivoca" — que foi
+  # exatamente a justificativa usada pelo agente no spike.
+  # NB: padrao de UMA linha — o texto do command quebra a frase entre
+  # "por mais" e "inequivoca", e grep nao cruza linhas.
+  assert_exit 0 grep -Eiq 'inequivoca e citavel que pareca' "$CMD_INIT_AGENTE" || return 1
+}
+
+scenario_nao_interativo_explica_por_que_nao_viola_principio_vi() {
+  # Sem esta racionalizacao explicita, o agente resolve o conflito
+  # aparente com o Principio VI a favor da inferencia.
+  assert_exit 0 grep -Eiq 'NAO viola o Principio VI' "$CMD_INIT_AGENTE" || return 1
+}
+
+scenario_nao_interativo_cita_vetor_asi01() {
+  assert_exit 0 grep -Eiq 'injecao indireta.*ASI01|ASI01.*INV-4|INV-4 fecha' "$CMD_INIT_AGENTE" || return 1
+}
+
+scenario_nao_interativo_aponta_caminho_legitimo_para_tier_menor() {
+  # Rebaixar continua possivel — via operador, com Decisao rastreavel.
+  assert_exit 0 grep -Eq 'delivery-tier\.sh set' "$CMD_INIT_AGENTE" || return 1
+}
+
 # ==== Confinamento de escopo (dec-011): restrito ao /agente-00c ====
 
 scenario_ausente_em_feature_00c_commands() {

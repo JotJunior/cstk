@@ -312,4 +312,91 @@ scenario_tier_gate_map_real_tem_4_linhas_de_dados() {
   [ "$_n" = 4 ] || { _fail "esperado exatamente 4 linhas de dados (dec-012)" "obtido $_n"; return 1; }
 }
 
+# ==== resolve-initial: FR-003 deixa de ser prosa e vira codigo ====
+#
+# MOTIVO (spike headless 2026-08-15, quickstart Cenario 17): a regra
+# "execucao nao-interativa => cloud-public" vivia SO como instrucao em
+# linguagem natural no command. Um agente headless leu o briefing
+# ratificado, registrou Decisao citando as secoes e gravou `local`. Com a
+# regra em codigo, ela passa a ser verificavel deterministicamente.
+#
+# NB: nao ha deteccao automatica de interatividade — `[ -t 0 ]` e falso
+# mesmo em sessao interativa do harness (Bash tool roda sem tty), entao
+# detectar por tty forcaria cloud-public sempre. Quem chama DECLARA via
+# --source.
+
+_ri() { "$SCRIPT" resolve-initial "$@" 2>/dev/null; }
+
+scenario_resolve_initial_absent_ignora_answer_valida() {
+  # O fail-safe do FR-003: mesmo com uma resposta sintaticamente valida,
+  # sem operador o tier e cloud-public.
+  for a in 1 2 3 4; do
+    _got=$(_ri --source absent --answer "$a")
+    [ "$_got" = "cloud-public" ] || {
+      _fail "absent com --answer $a deveria dar cloud-public" "obtido $_got"; return 1; }
+  done
+}
+
+scenario_resolve_initial_absent_ignora_texto_do_briefing() {
+  # Reproduz o raciocinio exato do spike: "o briefing diz uso local".
+  _got=$(_ri --source absent --answer "local")
+  [ "$_got" = "cloud-public" ] || { _fail "esperado cloud-public" "obtido $_got"; return 1; }
+}
+
+scenario_resolve_initial_absent_sem_answer() {
+  _got=$(_ri --source absent)
+  [ "$_got" = "cloud-public" ] || { _fail "esperado cloud-public" "obtido $_got"; return 1; }
+}
+
+scenario_resolve_initial_operator_mapeia_os_4_tokens() {
+  for pair in "1 local" "2 internal-network" "3 cloud-internal" "4 cloud-public"; do
+    _a=${pair%% *}; _want=${pair##* }
+    _got=$(_ri --source operator --answer "$_a")
+    [ "$_got" = "$_want" ] || { _fail "answer=$_a esperava $_want" "obtido $_got"; return 1; }
+  done
+}
+
+scenario_resolve_initial_operator_entrada_invalida_cai_no_default() {
+  for a in "" "0" "9" "42" "local" "abc" "  " "-1"; do
+    _got=$(_ri --source operator --answer "$a")
+    [ "$_got" = "cloud-public" ] || {
+      _fail "answer='$a' deveria cair em cloud-public" "obtido $_got"; return 1; }
+  done
+}
+
+scenario_resolve_initial_tolera_crlf() {
+  # `$()` NAO remove \r — mesma classe do bug do next-id (v7.5.1).
+  _got=$(_ri --source operator --answer "$(printf '2\r')")
+  [ "$_got" = "internal-network" ] || { _fail "esperado internal-network" "obtido $_got"; return 1; }
+}
+
+scenario_resolve_initial_source_obrigatorio() {
+  # Sem --source nao ha default silencioso: quem chama tem de DECLARAR.
+  "$SCRIPT" resolve-initial --answer 1 >/dev/null 2>&1
+  [ "$?" = 2 ] || { _fail "esperado exit 2 sem --source" "obtido $?"; return 1; }
+}
+
+scenario_resolve_initial_source_fora_do_enum_exit2() {
+  "$SCRIPT" resolve-initial --source talvez --answer 1 >/dev/null 2>&1
+  [ "$?" = 2 ] || { _fail "esperado exit 2 para --source invalido" "obtido $?"; return 1; }
+}
+
+scenario_resolve_initial_flag_desconhecida_exit2() {
+  "$SCRIPT" resolve-initial --source operator --tier local >/dev/null 2>&1
+  [ "$?" = 2 ] || { _fail "esperado exit 2 para flag desconhecida" "obtido $?"; return 1; }
+}
+
+scenario_resolve_initial_saida_e_sempre_token_do_enum() {
+  # Nenhuma combinacao pode produzir string fora do enum (INV-1).
+  for src in operator absent; do
+    for a in "" 1 2 3 4 9 "local" "cloud-public; rm -rf /" "$(printf 'x\ry')"; do
+      _got=$(_ri --source "$src" --answer "$a")
+      case "$_got" in
+        local|internal-network|cloud-internal|cloud-public) : ;;
+        *) _fail "saida fora do enum para src=$src answer='$a'" "obtido '$_got'"; return 1 ;;
+      esac
+    done
+  done
+}
+
 run_all_scenarios

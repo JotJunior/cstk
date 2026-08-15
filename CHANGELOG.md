@@ -5,6 +5,86 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.6.1] - 2026-08-15
+
+O quickstart Cenario 17 da feature `delivery-tier` (execucao
+nao-interativa) tinha ficado marcado `[ACEITACAO MANUAL]` — ninguem sabia
+como testa-lo. Ao executa-lo a mao num spike headless, ele achou **dois
+defeitos reais** que 2966 cenarios automatizados nao pegavam. Esta release
+corrige os dois e, mais importante, tira a regra da prosa: o que era
+instrucao em linguagem natural virou codigo testavel.
+
+### Fixed
+
+- **`/agente-00c` e `/feature-00c` abortavam em execucao nao-interativa.**
+  Ambos paravam no `Continuar? [s/N]` do warm-up de permissoes e
+  encerravam com exit 0 **sem criar state-dir algum** — nenhuma execucao
+  agendada, de CI ou headless conseguia iniciar. O prompt de finalidade e
+  o opt-in `roadmap-mode` ja tinham clausula de nao-interatividade; o
+  warm-up, que vem ANTES dos dois, nao tinha, logo o caminho que essas
+  clausulas protegiam era inalcancavel na pratica. Agora, sem operador, o
+  warm-up e PULADO (com aviso e Decisao auditavel) e a execucao segue.
+- **O opt-in de `atomic-commit` tinha o mesmo buraco, nos dois commands.**
+  Dizia "Qualquer outra resposta (inclusive Enter): `_atomic=false`" —
+  frase que pressupoe que houve UMA resposta e nada diz sobre a ausencia
+  de operador. Encontrado pelo lint novo, nao por leitura.
+- **O tier era INFERIDO do briefing em execucao nao-interativa, violando
+  FR-003.** Com o warm-up vencido, o agente headless leu o briefing
+  ratificado ("uso pessoal, offline, sem rede"), registrou Decisao citando
+  as secoes e gravou `local` em vez do default `cloud-public`. Nao foi
+  descuido: ele reconheceu o default contratual e o sobrepos com raciocinio
+  de Principio VI. Rebaixamento de tier sem supervisao e exatamente o vetor
+  que o INV-4 existe para fechar (ASI01, injecao indireta via artefato
+  lido).
+
+### Added
+
+- **`delivery-tier.sh resolve-initial --source <operator|absent>
+  [--answer RAW]`.** Move a resolucao do tier inicial da prosa do command
+  para codigo — a razao pela qual o FR-003 so era verificavel por eval.
+  `--source absent` devolve `cloud-public` e ignora `--answer` por
+  completo; `--source operator` mapeia `1..4` no enum e cai no default
+  para qualquer outra entrada (vazio, fora de faixa, lixo, CRLF).
+  `--source` e **obrigatorio e sem default**: quem chama DECLARA se havia
+  operador. Nao ha deteccao automatica por `[ -t 0 ]` por desenho — o
+  Bash tool roda sem tty mesmo em sessao interativa, entao detectar por
+  tty forcaria `cloud-public` sempre. Efeito colateral desejado: rebaixar
+  o tier sem operador passa a exigir declarar `--source operator`
+  mentindo — acao explicita e auditavel, nao inferencia silenciosa.
+- **`tests/test_command-prompt-noninteractive-lint.sh`** — lint de CLASSE
+  varrendo `plugins/cstk/commands/*.md`: todo prompt ao operador
+  (`[s/N]`, `[y/N]`, `Selecione [`) DEVE declarar, no proprio bloco, o
+  comportamento sem operador. Fecha a janela no proximo heading **ou** no
+  proximo prompt (sem isso, um prompt sem clausula passa "emprestando" a
+  do vizinho) e ignora blockquotes (citacao nao e prompt). Inclui
+  auto-teste do detector: um lint que nunca falha e indistinguivel de um
+  lint quebrado.
+- **`tests/eval/`** — evals de obediencia, deliberadamente FORA do gate de
+  release (prefixo `eval_` nao e coletado pelo runner). Medem o que
+  nenhum teste deterministico alcanca: se um agente real, lendo a prosa,
+  de fato obedece. `eval_noninteractive-tier.sh` cobre o Cenario 17
+  ponta-a-ponta. Nao gateiam release porque dependem de LLM
+  (nao-deterministico), custam tokens e exigem credencial no runner.
+- **`tests/test_command-warmup-noninteractive.sh`** (16 cenarios) e 5
+  cenarios novos em `test_command-spawn-delivery-tier.sh`, travando as
+  clausulas contra regressao nos dois commands.
+
+### Changed
+
+- **Quickstart Cenario 17: `[ACEITACAO MANUAL]` → `[VERIFICADO
+  2026-08-15]`**, com as duas rodadas do spike documentadas — incluindo a
+  armadilha de leitura que quase validou um falso positivo: consultar
+  `delivery-tier.sh get` com o state-dir inexistente devolve
+  `cloud-public` pelo fail-safe, e um aborto no warm-up passaria por
+  aprovacao. Confira SEMPRE que o state-dir existe antes de dar um eval
+  por conforme.
+- **O bloco de finalidade do `/agente-00c` delega ao helper** em vez de
+  mapear a resposta na prosa, e recusa nominalmente a inferencia — com o
+  racional de por que adotar o default NAO viola o Principio VI (o tier e
+  escolha de politica do operador, nao dado factual do projeto) e com o
+  caminho legitimo para tier menor (`delivery-tier.sh set` pelo operador,
+  com Decisao rastreavel).
+
 ## [7.6.0] - 2026-08-15
 
 Feedback recorrente de usuarios: o `agente-00c` desenvolvia todo produto
@@ -6042,6 +6122,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.6.1]: https://github.com/JotJunior/cstk/releases/tag/v7.6.1
 [7.6.0]: https://github.com/JotJunior/cstk/releases/tag/v7.6.0
 [7.5.1]: https://github.com/JotJunior/cstk/releases/tag/v7.5.1
 [7.5.0]: https://github.com/JotJunior/cstk/releases/tag/v7.5.0

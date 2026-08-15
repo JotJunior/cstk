@@ -274,6 +274,22 @@ _is_internal_test() {
       # portador do prompt. Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
       return 1 ;;
+    test_command-prompt-noninteractive-lint.sh)
+      # LINT DE CLASSE: varre plugins/cstk/commands/*.md exigindo clausula
+      # de nao-interatividade em todo prompt ao operador. Assert textual
+      # sobre um DIRETORIO — nao ha script unico sob teste.
+      # Existence-guarded ao diretorio de commands.
+      [ -d "$REPO_ROOT/plugins/cstk/commands" ] && return 0
+      return 1 ;;
+    test_command-warmup-noninteractive.sh)
+      # Smoke textual sobre a clausula de execucao nao-interativa do
+      # warm-up de permissoes, nos DOIS commands portadores
+      # (agente-00c.md + feature-00c.md). Assert no .md, nao em um unico
+      # script — existence-guarded a ambos. Se as fontes sumirem, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] \
+        && [ -f "$REPO_ROOT/plugins/cstk/commands/feature-00c.md" ] && return 0
+      return 1 ;;
     test_orchestrator-mcp-fallback.sh)
       # Hibrido textual+funcional (FASE 6 task 6.3 de state-mcp-server,
       # SC-004): confirma que os 2 agentes orquestradores nao dependem de
