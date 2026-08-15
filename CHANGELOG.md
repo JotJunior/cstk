@@ -5,6 +5,60 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.5.0] - 2026-08-14
+
+Release nascida de feedback direto de usuarios sobre a profundidade e a
+estrutura do agente-00c: o orquestrador tratava o projeto-alvo inteiro
+como UMA feature gigante, e criava a spec com um nome proprio de feature
+que quebrava o acesso a documentacao no painel. O modo roadmap vira modo
+oficial de execucao e o nome da spec do projeto passa a ser canonico.
+
+### Added
+
+- **Modo roadmap do `/agente-00c` (feature `roadmap-mode`).** Variante
+  opt-in por pergunta interativa no inicio (mesmo padrao do
+  atomic-commit; default e execucao nao-interativa = pipeline completa
+  atual, zero regressao): a pipeline executa briefing → constitution →
+  geracao de `docs/roadmap.md` (features sugeridas com short-name
+  kebab-case consumivel pelo `/feature-00c`, descricao, ordem e
+  dependencias) e ENCERRA como execucao concluida
+  (`termination_reason=concluido_roadmap`) — sem specify/plan/backlog do
+  projeto inteiro. Novos helpers no runtime `agente-00c-runtime`:
+  `roadmap-mode.sh` (opt-in write-once no state, campo
+  `roadmap_mode_enabled` via `extra_fields`, sem migracao de schema),
+  `roadmap-write.sh` (produtor unico do artefato: merge idempotente por
+  short-name, marcacao explicita `marcada-obsoleta` com motivo,
+  `secrets-filter.sh` fail-closed ANTES da escrita, escrita atomica) e
+  validador estrutural de 15 regras em `pipeline.sh detect-completion
+  --stage roadmap` (teto de 50 entradas, aciclicidade de `depende-de`,
+  proveniencia). `pipeline.sh --mode default|roadmap` com lista de
+  etapas ESCOPADA (`_PL_STAGES_LIST` global intacta — assercao das 10
+  etapas preservada sem edicao); `state-ondas.sh end --advance --mode`.
+  Cruzamento roadmap↔portfolio no `review-features`
+  (`roadmap-status.sh`, validacao fail-closed na leitura) e secao de
+  roadmap no relatorio final (`report.sh`). Conteudo do roadmap
+  re-consumido e cercado como UNTRUSTED (ASI01/LLM01) e o `finalize`
+  do atomic-commit roda ANTES da promocao terminal (guard de Bash ainda
+  ativo no push). Testes novos: `test_roadmap-mode.sh`,
+  `test_roadmap-write.sh`, `test_roadmap-status.sh`,
+  `test_command-spawn-roadmap-mode.sh` + extensoes aditivas em
+  `test_pipeline.sh`/`test_state-ondas.sh`/`test_state-rw.sh`/
+  `test_report.sh` (#125).
+
+### Fixed
+
+- **agente-00c criava a spec do projeto em `docs/specs/<nome-sugerido-
+  de-feature>`, quebrando o acesso aos docs no painel.** A skill
+  `specify` derivava nome proprio, mas a ingestao da knowledge.db
+  registra `feature = nome canonico do projeto` — e o painel resolve a
+  documentacao por esse nome. O feature-dir do agente-00c agora e FIXO
+  em `docs/specs/<nome-canonico-do-projeto>` (`_canonical` da worktree
+  detection `//` basename do projeto, paridade com o anti-eco dec-015)
+  nos commands `/agente-00c`/`/agente-00c-resume` e no orquestrador;
+  a skill `specify` recebe o caminho explicito (ja aceitava caminho
+  sugerido). Execucoes legadas com dir divergente NAO sao renomeadas
+  (#120).
+
 ## [7.4.0] - 2026-08-13
 
 Duas features nascidas de execucoes reais do mesmo dia — o modo
@@ -5866,6 +5920,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.5.0]: https://github.com/JotJunior/cstk/releases/tag/v7.5.0
 [7.4.0]: https://github.com/JotJunior/cstk/releases/tag/v7.4.0
 [7.3.3]: https://github.com/JotJunior/cstk/releases/tag/v7.3.3
 [7.3.2]: https://github.com/JotJunior/cstk/releases/tag/v7.3.2
