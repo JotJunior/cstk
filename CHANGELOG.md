@@ -5,6 +5,90 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.6.0] - 2026-08-15
+
+Feedback recorrente de usuarios: o `agente-00c` desenvolvia todo produto
+com profundidade UNIFORME — arquitetura, gates de seguranca e backlog
+dimensionados como se toda entrega fosse um sistema publico em nuvem,
+mesmo quando o pedido era uma ferramenta local de uso pessoal. A
+informacao que faltava e barata: UMA pergunta ao operador no inicio da
+execucao. Esta release introduz o **tier de entrega** (`delivery_tier`),
+que calibra profundidade e escopo da pipeline sem jamais relaxar o
+Principio VI nem as guardas enforced.
+
+### Added
+
+- **Pergunta de finalidade no inicio do `/agente-00c` (FR-001/FR-002).**
+  Antes do init do estado, o operador escolhe entre 4 tiers canonicos —
+  `local`, `internal-network`, `cloud-internal`, `cloud-public` —
+  espelhando o padrao ja consagrado do opt-in de atomic-commit. A escolha
+  persiste em `delivery_tier` e os resumes releem o campo sem re-promptar.
+  Ausencia de resposta, entrada invalida ou execucao nao-interativa
+  resultam no default `cloud-public` (profundidade plena, zero regressao
+  no caso base — SC-002).
+- **Helper `delivery-tier.sh` (`get` | `set` | `gate-mode`).** Le e grava
+  o tier e resolve o modo de execucao de um gate a partir da matriz.
+  Elevacao de tier e livre; rebaixamento exige `--allow-downgrade`
+  explicito, e ambos geram Decisao auditavel.
+- **Matriz `references/tier-gate-map.txt`.** Formato POSIX-puro versionado,
+  espelhando o precedente de `phase-model-map.txt`. Cobre exclusivamente o
+  gate `owasp-security`: `completo` em `cloud-internal`/`cloud-public`,
+  versao leve em `internal-network`, skip com Decisao em `local`. Gate
+  ausente da matriz roda COMPLETO (fail-safe na direcao da profundidade),
+  de modo que `checklist`, `validate-documentation`,
+  `validate-docs-rendered` e `analyze` seguem completos nos 4 tiers.
+- **Flag `--delivery-tier` em `state-rw.sh init`** e validacao do campo em
+  `state-validate.sh`.
+- **`tests/test_delivery-tier.sh`** (23 cenarios) e
+  **`tests/test_command-spawn-delivery-tier.sh`** (15 cenarios).
+
+### Changed
+
+- **`agente-00c-orchestrator.md` propaga o tier** as etapas `briefing`,
+  `specify` e `plan` com instrucao explicita de calibrar escopo e
+  profundidade de arquitetura (FR-004), e resolve `owasp-security` pela
+  matriz (FR-005). Skip ou versao leve SEMPRE geram Decisao citando o
+  tier — nunca skip silencioso.
+- **`create-tasks/SKILL.md` recebe o tier** e omite do backlog fases
+  incompativeis com a finalidade declarada (FR-006), por divisao binaria
+  nuvem/nao-nuvem: `local` e `internal-network` omitem fases de infra de
+  producao; os dois tiers `cloud-*` geram backlog completo. Um carve-out
+  preserva o log de authn/authz mesmo nos tiers que omitem escala
+  operacional — `internal-network` e multiusuario por definicao, e
+  rastreabilidade de seguranca nao e escala operacional (A09).
+- **`review-task/SKILL.md` + `report.sh` auditam o tier** e as
+  consequencias aplicadas (gates pulados ou em versao leve), com o finding
+  `delivery-tier-unattended-change` para mudanca nao supervisionada.
+- **`tests/run.sh`**: `test_command-spawn-delivery-tier.sh` entra na
+  allowlist `_is_internal_test` (assert em `.md`, nao em script), com
+  guarda de existencia — precedente `test_command-spawn-roadmap-mode.sh`.
+  Sem o case, `--check-coverage` acusava orfao falso.
+
+### Fixed
+
+- **`_state-rw-db.sh` montava `extra_fields` com chave hardcoded.** Sob
+  backend SQLite, um campo novo simplesmente NAO existia apos o `init` —
+  em silencio, sem erro. O `delivery_tier` teria violado FR-002 apenas
+  nesse backend. Agora o objeto compoe as duas chaves. Confirmado por
+  probe SQL real, nao por leitura do codigo.
+
+### Security
+
+- **Fail-safe da matriz e real, nao aparente.** O 3o campo do
+  `tier-gate-map.txt` e coagido ao enum antes de sair do helper (nunca
+  ecoado verbatim), tolera CRLF (`tr -d '\r'` — mesma classe do bug
+  corrigido no `next-id` na v7.5.1) e o consumidor usa ALLOWLIST, nunca
+  denylist. Sem isso, um modo malformado poderia DESLIGAR o gate de
+  seguranca num consumidor escrito como "pular a menos que `completo`".
+- **Protecao contra mudanca nao supervisionada do tier (ASI01/ASI03).** O
+  orquestrador tem `Bash` e poderia rebaixar o proprio tier que o
+  auditaria, via injecao indireta num artefato lido. Fechado com
+  invariantes INV-4/INV-5 e o finding dedicado no `review-task`.
+- **O tier NUNCA relaxa seguranca (FR-007).** Verificado
+  estruturalmente: `bash-guard.sh`, `path-guard.sh` e `secrets-filter.sh`
+  nao leem `delivery_tier`, e esta release nao adiciona essa leitura. O
+  Principio VI vale identico nos 4 tiers.
+
 ## [7.5.1] - 2026-08-14
 
 Release de correcao dirigida pelas issues #118-#124, abertas
@@ -5958,6 +6042,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.6.0]: https://github.com/JotJunior/cstk/releases/tag/v7.6.0
 [7.5.1]: https://github.com/JotJunior/cstk/releases/tag/v7.5.1
 [7.5.0]: https://github.com/JotJunior/cstk/releases/tag/v7.5.0
 [7.4.0]: https://github.com/JotJunior/cstk/releases/tag/v7.4.0
