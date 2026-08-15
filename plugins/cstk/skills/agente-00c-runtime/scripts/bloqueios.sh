@@ -111,12 +111,18 @@ _bl_backup_current() {
 
 _bl_next_block_id() {
   _sf=$(_bl_state_file "$1")
-  jq -r '
+  # Command substitution + strip de CR (issues #122/#123): o jq nativo do
+  # Windows emite CRLF e o antigo `| { read -r _max; ... }` preservava o \r
+  # residual, corrompendo a aritmetica ('invalid arithmetic operator').
+  # O tr remove o CR independente do jq do host; o case garante fallback 0
+  # para saida vazia/nao-numerica (jq ausente, state corrompido).
+  _max=$(jq -r '
     ((.human_blocks // .bloqueios_humanos) // []) as $hb
     | if ($hb | length) == 0 then 0
     else ([$hb[].id // ""] | map(sub("^block-0*"; "") | tonumber? // 0) | max)
-    end' "$_sf" 2>/dev/null \
-    | { read -r _max; printf 'block-%03d\n' "$((_max + 1))"; }
+    end' "$_sf" 2>/dev/null | tr -d '\r')
+  case "$_max" in '' | *[!0-9]*) _max=0 ;; esac
+  printf 'block-%03d\n' "$((_max + 1))"
 }
 
 # _bl_decisao_exists STATE_DIR DEC_ID -> 0 if exists, 1 otherwise

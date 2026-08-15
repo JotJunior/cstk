@@ -88,11 +88,15 @@ _sd_state_file() { printf '%s/state.json\n' "$1"; }
 _sd_next_dec_id() {
   _sf=$(_sd_state_file "$1")
   [ -f "$_sf" ] || _sd_die "next-id: state.json ausente em $1" 1
+  # Strip de CR + guard numerico (paridade com bloqueios.sh#_bl_next_block_id,
+  # issues #122/#123): jq nativo do Windows emite CRLF e o \r residual
+  # corromperia a aritmetica.
   _max=$(jq -r '
     ((.decisions // .decisoes) // []) as $d
     | if ($d | length) == 0 then 0
       else ([$d[].id // ""] | map(sub("^dec-0*"; "") | tonumber? // 0) | max)
-      end' "$_sf" 2>/dev/null) || _max=0
+      end' "$_sf" 2>/dev/null | tr -d '\r')
+  case "$_max" in '' | *[!0-9]*) _max=0 ;; esac
   _next=$((_max + 1))
   printf 'dec-%03d\n' "$_next"
 }

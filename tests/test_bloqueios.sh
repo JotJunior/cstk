@@ -648,4 +648,24 @@ scenario_c2_state_json_coexistente_ignorado_quando_state_db_presente() {
 
 fi # sqlite3 disponivel
 
+# Issues #122/#123: jq nativo do Windows emite CRLF; o antigo padrao
+# `jq | { read -r _max; ... }` preservava o \r residual e quebrava a
+# aritmetica do next-id ('invalid arithmetic operator'). Simula com um stub
+# de jq que reemite a saida do jq real com terminador CRLF.
+scenario_next_id_tolera_jq_com_saida_crlf() {
+  _sd="$TMPDIR_TEST/state-crlf"
+  mkdir -p -- "$_sd"
+  printf '%s\n' '{"execution":{"id":"exec-1"},"human_blocks":[{"id":"block-002","status":"aguardando"}]}' \
+    > "$_sd/state.json"
+  _bin="$TMPDIR_TEST/crlf-bin"
+  mkdir -p -- "$_bin"
+  _realjq=$(command -v jq) || { _error "jq ausente" ""; return 2; }
+  printf '#!/bin/sh\n%s "$@" | while IFS= read -r _l; do printf "%%s\\r\\n" "$_l"; done\n' \
+    "$_realjq" > "$_bin/jq"
+  chmod +x "$_bin/jq"
+  capture env PATH="$_bin:$PATH" "$SCRIPT" next-id --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "next-id com jq CRLF" "exit $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "block-003" || return 1
+}
+
 run_all_scenarios
