@@ -1,0 +1,33 @@
+# tier-gate-map v1
+#
+# Matriz tier x gate: resolve o modo de execucao de um quality gate
+# complementar em funcao do tier de entrega declarado (FR-005).
+# Consumido por `delivery-tier.sh gate-mode --tier <t> --gate <g>`
+# (POSIX-puro, sem jq).
+#
+# Formato de cada linha de dados (3 campos, separador '|'):
+#   tier|gate|modo
+#     tier  : local | internal-network | cloud-internal | cloud-public
+#     gate  : nome do quality gate complementar
+#     modo  : completo | leve | skip
+#
+# Regras de lookup (fail-safe na direcao da profundidade):
+#   - Linhas iniciadas por '#' e linhas vazias sao ignoradas.
+#   - Par (tier, gate) NAO listado -> 'completo' (exit 0). Nenhuma
+#     degradacao produz 'skip' — errar sempre para MAIS rigor.
+#   - Arquivo ausente/ilegivel -> 'completo' (exit 0).
+#   - Versionamento: a primeira linha declara a versao do mapa ('v1').
+#
+# ESCOPO DELIBERADO (decisao do operador, clarify 2026-08-15 / dec-012):
+# esta matriz cobre EXCLUSIVAMENTE o gate `owasp-security`. Os demais
+# gates complementares (checklist, validate-documentation,
+# validate-docs-rendered, analyze) NAO tem linha aqui de proposito —
+# rodam completos nos 4 tiers por consequencia do fail-safe acima.
+# Adicionar linha para outro gate e mudanca de politica: exige spec.
+#
+# Modo 'leve' de owasp-security = checagens essenciais apenas:
+# auth, secrets, input (literal de FR-005).
+local|owasp-security|skip
+internal-network|owasp-security|leve
+cloud-internal|owasp-security|completo
+cloud-public|owasp-security|completo

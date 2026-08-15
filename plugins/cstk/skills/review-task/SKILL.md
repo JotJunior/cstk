@@ -379,6 +379,44 @@ nao instalada) ou `tasks.md`/`state.json` nao resolvidos → pule o passo
 silenciosamente, sem bloquear o resto do review-task. Read-only no passo
 1, idempotente no passo 2 — seguro rodar a cada review.
 
+### 4.7 Auditoria do tier de entrega (delivery-tier — FR-008)
+
+> Origem: feature `delivery-tier`, Fase D item 13. Aplica-se SOMENTE a
+> execucoes `/agente-00c` (`<projeto>/.claude/agente-00c-state/`) — o
+> tier de entrega e restrito a esse orquestrador (dec-011); execucoes
+> `feature-00c` NAO tem este campo, pule silenciosamente.
+
+Quando `state.json`/`state.db` da execucao `/agente-00c` estiver
+disponivel:
+
+1. **Tier vigente**: leia exclusivamente via `delivery-tier.sh get
+   --state-dir <SD>` (INV-5) — nunca `state-rw.sh get --field
+   '.delivery_tier'` direto. Reporte na secao "Progresso por Fase" (ou
+   "Resumo Executivo") como "Tier de entrega: `<token>`".
+2. **Gates pulados/leves**: liste as Decisoes com
+   `context` iniciando em `"Gate owasp-security resolvido pela matriz
+   tier x gate"` (registradas pelo orquestrador em `5.f` de
+   `agente-00c-orchestrator.md`) e cite `escolha` (`rodar-gate` /
+   `rodar-leve` / `skip-com-justificativa`) + `justification` (tier +
+   modo resolvido) para cada uma. Ausencia de Decisao para um gate
+   `leve`/`skip` observado no comportamento da onda e o proprio finding
+   abaixo.
+3. **Finding `delivery-tier-unattended-change` (INV-4/F5, HIGH
+   ASI01/ASI03)**: compare o `delivery_tier` vigente lido no passo 1
+   contra o valor no INICIO da execucao (primeira onda que gravou o
+   campo, via `state-history`/backups de onda). Se o valor mudou SEM uma
+   Decisao correspondente do operador (`state-decisions.sh` com
+   `context` citando mudanca de tier, registrada em
+   `/agente-00c-resume` — nunca pelo orquestrador em onda autonoma),
+   reporte este finding com severidade `critical`: tier alterado por
+   fora do fluxo auditado e o padrao classico de auto-escalada de
+   agente (privilege abuse / goal hijack) que o INV-4 existe para
+   barrar.
+
+**Defesa em profundidade**: mesma da secao 4.6 — helper ausente ou
+state-dir nao resolvido → pule silenciosamente, sem bloquear o resto do
+review-task.
+
 ### 5. Acoes Automaticas
 
 Ao identificar inconsistencias:

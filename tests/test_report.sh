@@ -314,6 +314,54 @@ scenario_emit_feature00c_grava_arquivo_filtrado() {
   assert_stdout_contains "Apendice A" || return 1
 }
 
+scenario_generate_tier_linha_default_cloud_public() {
+  # FR-008/FR-010 (delivery-tier): init sem --delivery-tier ⇒ estado
+  # legado/default; generate() e usado exclusivamente por
+  # agente-00c-orchestrator.md, tier sempre aplicavel.
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "| Tier de entrega | cloud-public |" || return 1
+}
+
+scenario_generate_tier_linha_valor_explicito() {
+  _sd="$TMPDIR_TEST/state"
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-rep-tier" \
+    --projeto-alvo-path "/tmp/p" --descricao "POC report tier tests" \
+    --delivery-tier local
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  assert_stdout_contains "| Tier de entrega | local |" || return 1
+}
+
+scenario_emit_agente00c_inclui_tier() {
+  # dec-011: tier restrito ao flavor agente-00c.
+  _sd="$TMPDIR_TEST/proj/.claude/agente-00c-state"
+  mkdir -p "$_sd"
+  capture "$RW" init --state-dir "$_sd" --execucao-id "exec-rep-tier2" \
+    --projeto-alvo-path "/tmp/p" --descricao "POC report tier emit" \
+    --delivery-tier cloud-internal
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" emit --flavor agente-00c --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "emit agente tier" "$_CAPTURED_STDERR"; return 1; }
+  capture cat "$TMPDIR_TEST/proj/.claude/agente-00c-report.md"
+  assert_stdout_contains "| Tier de entrega | cloud-internal |" || return 1
+}
+
+scenario_emit_feature00c_omite_tier() {
+  # dec-011: /feature-00c nao pergunta nem le o tier — a linha inteira
+  # e omitida (nunca mostra um valor fabricado/fallback fora de escopo).
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" emit --flavor feature-00c --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "emit feature tier" "$_CAPTURED_STDERR"; return 1; }
+  capture cat "$_sd/feature-00c-report.md"
+  assert_stdout_not_contains "Tier de entrega" || return 1
+}
+
 scenario_emit_agente00c_resolve_caminho_pai() {
   # flavor agente-00c grava em <state-dir>/../agente-00c-report.md
   _sd="$TMPDIR_TEST/proj/.claude/agente-00c-state"

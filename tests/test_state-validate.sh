@@ -597,6 +597,54 @@ scenario_push_pr_result_ausente_valido() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate sem push_pr_result" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
 }
 
+# ==== Cenarios: delivery_tier (feature delivery-tier, task 2.3) ====
+
+# Cenario: delivery_tier com valor do enum e valido (os 4 tokens)
+scenario_delivery_tier_enum_valido() {
+  for _tok in local internal-network cloud-internal cloud-public; do
+    _sd="$TMPDIR_TEST/dt-valid-$_tok"
+    _make_valid_state "$_sd"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+    _patch_state "$_sd" ".delivery_tier = \"$_tok\""
+    capture "$SCRIPT" --state-dir "$_sd"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate delivery_tier=$_tok" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  done
+}
+
+# Cenario: delivery_tier fora do enum (string invalida) e invalido
+scenario_delivery_tier_string_fora_do_enum_invalido() {
+  _sd="$TMPDIR_TEST/dt-invalid-enum"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _patch_state "$_sd" '.delivery_tier = "saas"'
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "validate delivery_tier fora do enum" "esperado 1 (invalido), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "delivery_tier" || return 1
+}
+
+# Cenario: delivery_tier com tipo nao-string (numero/bool) e invalido
+scenario_delivery_tier_tipo_invalido() {
+  _sd="$TMPDIR_TEST/dt-invalid-type"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _patch_state "$_sd" '.delivery_tier = 42'
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "validate delivery_tier tipo invalido" "esperado 1 (invalido), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "delivery_tier" || return 1
+}
+
+# Cenario: delivery_tier ausente e valido (retro-compat, states pre-feature)
+scenario_delivery_tier_ausente_valido() {
+  _sd="$TMPDIR_TEST/dt-absent"
+  _make_valid_state "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "init" "$_CAPTURED_STDERR"; return 1; }
+  _sf="$_sd/state.json"
+  _tmp=$(mktemp)
+  jq 'del(.delivery_tier)' "$_sf" > "$_tmp" && mv "$_tmp" "$_sf"
+  capture "$SCRIPT" --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate sem delivery_tier" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
 # Cenario: push_pr_result como objeto e valido
 scenario_push_pr_result_objeto_valido() {
   _sd="$TMPDIR_TEST/ppr-obj"

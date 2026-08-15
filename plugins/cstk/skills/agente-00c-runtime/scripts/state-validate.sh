@@ -208,6 +208,26 @@ case "$_ppr" in
     ;;
 esac
 
+# 3d. Campo opcional da feature delivery-tier (contracts/cli-delivery-tier.md §5).
+# .delivery_tier: string dentre o enum fechado de 4 tokens, ou ausente. States
+# pre-feature nao tem o campo — retro-compativel por ausencia (FR-010).
+_dt_type=$(jq -r '.delivery_tier | type' "$_SV_FILE" 2>/dev/null) || _dt_type="null"
+case "$_dt_type" in
+  null) ;;  # ausente = ok (retro-compat)
+  string)
+    _dt_val=$(jq -r '.delivery_tier' "$_SV_FILE" 2>/dev/null) || _dt_val=""
+    case "$_dt_val" in
+      local|internal-network|cloud-internal|cloud-public) ;;
+      *)
+        _sv_add "delivery_tier fora do enum: esperado local|internal-network|cloud-internal|cloud-public, obtido '$_dt_val'"
+        ;;
+    esac
+    ;;
+  *)
+    _sv_add "delivery_tier com tipo invalido: esperado string ou ausente, obtido $_dt_type"
+    ;;
+esac
+
 # 4. status x finished_at
 # READER: chaves EN + fallback pt-BR. VALORES de status (enum) permanecem pt-BR.
 _st=$(jq -r '(.execution.status // .execucao.status) // ""' "$_SV_FILE")

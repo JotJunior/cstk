@@ -234,6 +234,43 @@ FASE 5 - Documentacao e release
 modulos/servicos em paralelo ao analisar o escopo. Isso economiza tempo ao
 gerar tarefas que cruzam fronteiras.
 
+### Divisao binaria nuvem/nao-nuvem por tier de entrega (FR-006 — delivery-tier)
+
+> Origem: feature `delivery-tier`, Fase D item 12. Aplica-se SOMENTE
+> quando o backlog e gerado no fluxo `/agente-00c` e o tier de entrega
+> vigente e citado nos `args` da invocacao (dec-011 — `/feature-00c`
+> nunca pergunta nem propaga o tier; sem o tier nos `args`, gere o
+> backlog completo, comportamento atual intacto).
+
+Quando o tier de entrega estiver presente nos `args` da invocacao,
+aplique a divisao BINARIA a seguir (nao ha lista de fases distinta por
+tier alem desta divisao — dec-013):
+
+| Tier | Fases de infra de producao no backlog |
+|---|---|
+| `local` | **omitidas** |
+| `internal-network` | **omitidas** |
+| `cloud-internal` | completo (todas as fases) |
+| `cloud-public` | completo (todas as fases) |
+
+**"Fases de infraestrutura de producao"** = deploy em nuvem,
+escalabilidade e observabilidade de producao — entendida aqui
+especificamente como dashboards, SLO/SLI, APM/tracing, alertas e
+autoescala/multi-regiao/CDN de escala operacional.
+
+**Carve-out obrigatorio (finding F4, OWASP A09 — NUNCA omitir)**: log de
+autenticacao/autorizacao e trilha de auditoria **NUNCA** entram nessa
+omissao, em qualquer tier — mesmo em `local`/`internal-network`, tarefas
+de logging de authn/authz e audit trail permanecem no backlog. A
+omissao cobre exclusivamente escala operacional, nunca rastreabilidade
+de seguranca.
+
+Ao aplicar a divisao, registre o tier usado na geracao na secao "Escopo
+Coberto/Excluido" (ja obrigatoria pelo template — ver
+`### Estrutura Obrigatoria` abaixo), mesmo padrao aplicado no proprio
+`tasks.md` desta feature (ex.: linha "Tier de entrega usado na geracao
+deste backlog").
+
 ### Matriz de Dependencias
 
 Use formato Mermaid ou ASCII para expressar dependencias:

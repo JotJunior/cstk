@@ -342,6 +342,34 @@ Habilitar o modo roadmap? [s/N]
 > `.roadmap_mode_enabled` diretamente do `state.json` sem interacao
 > (mesma paridade do opt-in de atomic-commit acima).
 
+#### Prompt de finalidade — tier de entrega (FR-001/FR-003 — delivery-tier)
+
+Antes de inicializar o `state.json`, na MESMA janela dos dois opt-ins
+acima, pergunte a finalidade de entrega do projeto (pergunta unica,
+default `cloud-public` — profundidade plena, comportamento atual):
+
+```
+Finalidade de entrega (calibra profundidade de arquitetura/seguranca):
+1) Uso local (script/ferramenta pessoal, sem rede exposta)
+2) Rede interna compartilhada (uso por um time, sem exposicao externa)
+3) Nuvem de uso interno (deploy em nuvem, acesso restrito a organizacao)
+4) Nuvem de uso publico (deploy em nuvem, acesso publico/externo)
+
+Selecione [1-4, Enter = 4]:
+```
+
+- Mapeamento das 4 opcoes aos tokens estaveis do enum: `1` → `local`,
+  `2` → `internal-network`, `3` → `cloud-internal`, `4` → `cloud-public`.
+- **Default e caso de erro** (Enter, entrada vazia, entrada fora de
+  `1-4`, ou execucao nao-interativa): `_tier="cloud-public"` — mesma
+  clausula literal do opt-in `roadmap-mode` acima ("cai no default sem
+  bloquear o init"; nenhuma execucao pode travar esperando resposta).
+
+> **Os commands de resume NAO re-promptam**: `/agente-00c-resume` le o
+> tier vigente exclusivamente via `delivery-tier.sh get` (nunca leitura
+> crua do campo `.delivery_tier`), sem interacao — mesma paridade dos
+> opt-ins acima.
+
 - Inicializar `state.json` v1.0.0 via `state-rw.sh init`:
   - `--execucao-id "exec-$(date -u +%FT%H-%M-%SZ)-agente-00c-<slug>"`
   - `--projeto-alvo-path <PAP>` (resolvido)
@@ -352,6 +380,7 @@ Habilitar o modo roadmap? [s/N]
   - `${_session:+--session-name "$_session"}` (quando nao-vazio)
   - `--atomic-commit "$_atomic"` (valor capturado acima; `false` = comportamento atual intacto)
   - `--roadmap-mode "$_roadmap"` (valor capturado acima; `false` = comportamento atual intacto)
+  - `--delivery-tier "$_tier"` (valor capturado acima; default `cloud-public` = comportamento atual intacto)
 
   Status inicial: `em_andamento`, etapa `briefing`, `next_instruction`
   apontando para inicio do briefing.
