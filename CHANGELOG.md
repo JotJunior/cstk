@@ -5,6 +5,44 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.5.1] - 2026-08-14
+
+Release de correcao dirigida pelas issues #118-#124, abertas
+automaticamente pelo proprio agente-00C em execucoes reais de usuarios:
+dois bugs do runtime `agente-00c-runtime` que quebravam a drift
+detection sob backend SQLite e o registro de BloqueioHumano em
+Windows/Git-Bash.
+
+### Fixed
+
+- **`state-rw.sh infer-aspectos` cego ao backend `state.db` (issues
+  #118/#119/#121/#124).** O subcomando checava `[ -f state.json ]`
+  hardcoded e morria com `state.json ausente` em qualquer execucao
+  migrada para SQLite — cegando o hook pos-deteccao de aspectos tocados
+  (drift detection, FR-027) do Loop principal do orquestrador, sem
+  fallback automatico. Agora materializa o documento uma unica vez de
+  forma backend-aware (`_sr_db_read` sob SQLite; canonicalizacao
+  pt-BR->EN com fallback raw sob JSON, mesmo contrato do `read`) e
+  resolve `execution.target_project_path` do documento materializado.
+  `state-rw.sh migrate` sob SQLite vira no-op exit 0 com aviso explicito
+  (nada a canonicalizar) em vez do erro enganoso. Cenarios novos em
+  `tests/test_state-rw.sh` (incl. assert anti-mirror FR-003) e
+  `infer-aspectos` promovido a 16o leitor do manifest dinamico de
+  `tests/test_state-parity-sweep.sh` — fecha a lacuna da rede de
+  seguranca que deixou o subcomando escapar da feature
+  state-db-runtime-parity.
+- **`bloqueios.sh next-id` quebrava em Windows/Git-Bash com jq CRLF
+  (issues #122/#123).** O padrao `jq | { read -r _max; ... }` em
+  `_bl_next_block_id` preservava o `\r` residual do jq nativo do Windows
+  e corrompia a aritmetica (`invalid arithmetic operator`), bloqueando
+  100% dos registros de BloqueioHumano (Pause-or-Decide) nesse ambiente.
+  Trocado por command substitution com `tr -d '\r'` + guard numerico
+  POSIX — command substitution sozinha, como proposto nas issues, NAO
+  remove o CR (reproduzido empiricamente com stub de jq CRLF). Mesmo
+  hardening preventivo em `state-decisions.sh#_sd_next_dec_id`
+  (vulnerabilidade latente identica). Cenarios de regressao com stub de
+  jq CRLF em `tests/test_bloqueios.sh` e `tests/test_state-decisions.sh`.
+
 ## [7.5.0] - 2026-08-14
 
 Release nascida de feedback direto de usuarios sobre a profundidade e a
@@ -5920,6 +5958,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.5.1]: https://github.com/JotJunior/cstk/releases/tag/v7.5.1
 [7.5.0]: https://github.com/JotJunior/cstk/releases/tag/v7.5.0
 [7.4.0]: https://github.com/JotJunior/cstk/releases/tag/v7.4.0
 [7.3.3]: https://github.com/JotJunior/cstk/releases/tag/v7.3.3
