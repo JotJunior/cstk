@@ -436,46 +436,91 @@ cli-delivery-tier.md §2.2 (finding `delivery-tier-unattended-change`)
 
 Ref: plan.md Fase E item 14 · CLAUDE.md §Como testar scripts shell
 
-- [ ] 6.1.1 Rodar `./tests/run.sh` completo (sem `--fast`) — todos os
-      testes novos/modificados verdes
-- [ ] 6.1.2 Rodar `./tests/run.sh --check-coverage` — zero script orfao
-      sem teste correspondente (regra de ouro do repo)
-- [ ] 6.1.3 Confirmar zero regressao nos testes pre-existentes tocados
+- [x] 6.1.1 Rodar `./tests/run.sh` completo (sem `--fast`) — todos os
+      testes novos/modificados verdes — `LC_ALL=C ./tests/run.sh` =>
+      `PASS: 2966  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 1110s`, exit 0.
+- [x] 6.1.2 Rodar `./tests/run.sh --check-coverage` — zero script orfao
+      sem teste correspondente (regra de ouro do repo) — 1a rodada
+      reprovou (exit 1: `test_command-spawn-delivery-tier.sh` sem case
+      na allowlist `_is_internal_test`); corrigido em `tests/run.sh`
+      (case existence-guarded, precedente
+      `test_command-spawn-roadmap-mode.sh`, dec-053); 2a rodada:
+      `Cobertura completa: zero orfaos.`, exit 0.
+- [x] 6.1.3 Confirmar zero regressao nos testes pre-existentes tocados
       indiretamente (`test_roadmap-mode.sh`, `test_commit-mode.sh`,
       `test_state-rw.sh`, `test_state-validate.sh`, `test_report.sh`)
-      apos as modificacoes desta feature
+      apos as modificacoes desta feature — todos presentes na suite
+      completa (linhas 1477/1620/2340/2410/2905/2984 do log) sem
+      nenhum `not ok`; `grep -c '^not ok'` sobre o log inteiro = 0.
 
 ### 6.2 Quickstart de fechamento (seguranca e escopo) `[C]`
 
 Ref: plan.md Fase E item 15 · spec.md FR-007 · gate `owasp-security`
 §Assimetria de projeto
 
-- [ ] 6.2.1 Executar quickstart Cenario 14 (tier NUNCA relaxa guarda
-      enforced nem Principio VI)
-- [ ] 6.2.2 Executar quickstart Cenario 18 (`/feature-00c` intocado —
+- [x] 6.2.1 Executar quickstart Cenario 14 (tier NUNCA relaxa guarda
+      enforced nem Principio VI) — `grep -n delivery_tier` sobre
+      `bash-guard.sh`/`pretooluse-bash-guard.sh` retorna zero linhas: o
+      hook `PreToolUse` nao consulta o tier, comando bloqueado
+      identicamente em qualquer tier (dec-050). Ausencia de fonte
+      continua gerando bloqueio humano (guarda geral, nao especifica
+      desta feature) e o backup da onda passa por
+      `secrets-filter.sh for-backup` sem branch por tier (mesmo grep,
+      zero match).
+- [x] 6.2.2 Executar quickstart Cenario 18 (`/feature-00c` intocado —
       grep que falha se qualquer referencia a `delivery_tier` aparecer
-      nos arquivos do `/feature-00c`)
-- [ ] 6.2.3 Confirmar por `grep` que nenhum dos 3 scripts de guarda
+      nos arquivos do `/feature-00c`) — `grep -rn 'delivery_tier|
+      delivery-tier' plugins/cstk/commands/feature-00c*.md
+      plugins/cstk/agents/agente-00c-feature-orchestrator.md` => exit 1
+      (zero ocorrencias). dec-011/dec-050 preservados.
+- [x] 6.2.3 Confirmar por `grep` que nenhum dos 3 scripts de guarda
       enforced (`bash-guard.sh`, `path-guard.sh`, `secrets-filter.sh`)
       ganhou leitura de `.delivery_tier` — nenhuma linha nova
-      referenciando o campo nesses arquivos (FR-007)
+      referenciando o campo nesses arquivos (FR-007) — `grep -n
+      delivery_tier` sobre os 3 scripts => exit 1 (zero linhas),
+      dec-050.
+
+**Desvio reconciliado (nao silenciado)**: `quickstart.md` Cenario 15
+pedia texto qualificado `cloud-public (nao declarado — estado legado)`
+no `report.sh`; a implementacao real (dec-046/onda-008) usa o **token
+puro** `cloud-public` para preservar INV-5 (nenhum consumidor le
+`.delivery_tier` fora de `delivery-tier.sh get`). `quickstart.md`
+atualizado nesta onda para refletir o comportamento implementado, com
+referencia explicita a dec-046 (dec-049). Cenario 17 ja carregava a tag
+`[ACEITACAO MANUAL]` desde a onda-008 (dec-044) — confirmado presente,
+nenhuma edicao necessaria.
 
 ### 6.3 Sincronizacao instalado-vs-fonte (catalogo) `[A]`
 
 Ref: CLAUDE.md §Installed vs Source Drift · §cstk install vs
 self-update
 
-- [ ] 6.3.1 Buildar tarball local via `./scripts/build-release.sh`
-      (versao `-dev`) apos as Fases 1-5 estarem verdes
-- [ ] 6.3.2 Atualizar o catalogo instalado via `cstk install --from
-      "file://.../dist/cstk-X.Y.Z-dev.tar.gz"` — a feature toca
-      EXCLUSIVAMENTE `plugins/cstk/` (commands/agents/skills); nenhum
-      arquivo sob `cli/lib/` e modificado (plan.md confirma
-      `cli/lib/recall.sh`, `model-routing.sh`,
-      `state-db-migrate.sh`/`state-db-schema.sh` explicitamente NAO
-      tocados), logo `cstk self-update` NAO e necessario nesta feature
-- [ ] 6.3.3 Rodar `cstk doctor` e confirmar catalogo sem drift apos o
-      `install`
+- [x] 6.3.1 Buildar tarball local via `./scripts/build-release.sh`
+      (versao `-dev`) apos as Fases 1-5 estarem verdes — executado:
+      `./scripts/build-release.sh 7.5.2-dev-delivery-tier` => exit 0,
+      `dist/cstk-7.5.2-dev-delivery-tier.tar.gz` (1057271 bytes) +
+      `.sha256` gerados.
+- [x] 6.3.2 `[ACEITACAO MANUAL]` Atualizar o catalogo instalado via
+      `cstk install --from "file://$PWD/dist/cstk-7.5.2-dev-delivery-tier.tar.gz"`
+      — caminho **verificado e registrado** (dec-051), NAO disparado
+      nesta onda por instrucao explicita do operador: a branch
+      `feature/delivery-tier` nao esta mesclada e instalar o catalogo
+      agora sobrescreveria o catalogo instalado do operador com
+      conteudo de uma branch nao mesclada. Evidencia via
+      `git diff --name-only <merge-base>...feature/delivery-tier`: os
+      24 arquivos tocados sao exclusivamente sob `docs/specs/`,
+      `plugins/cstk/{agents,commands,skills}/` e `tests/`; grep
+      `^cli/lib/|^cli/cstk$` sobre esse diff => exit 1 (zero match) —
+      confirma que **so** `cstk install --from` e exigido apos o
+      merge; `cstk self-update` NAO e necessario (nenhum arquivo de
+      `cli/lib/` ou o binario `cli/cstk` foi modificado).
+- [x] 6.3.3 `[ACEITACAO MANUAL]` Rodar `cstk doctor` e confirmar
+      catalogo sem drift apos o `install` — dependente de 6.3.2 ter
+      sido efetivamente disparado; como 6.3.2 foi deliberadamente
+      adiado para pos-merge (ver acima), este passo fica documentado
+      como proxima acao do operador (`cstk install --from <tarball> &&
+      cstk doctor`), nao executado nesta onda (dec-052, mesmo padrao
+      de caveat textual ja usado em 4.4/Cenario 17 — dec-044).
 
 ---
 

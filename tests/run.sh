@@ -266,6 +266,14 @@ _is_internal_test() {
       # ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
       return 1 ;;
+    test_command-spawn-delivery-tier.sh)
+      # Smoke textual sobre o prompt de finalidade (tier de entrega) em
+      # plugins/cstk/commands/agente-00c.md + leitura sem re-prompt em
+      # agente-00c-resume.md (FASE 4 task 4.3 de delivery-tier). Assert no
+      # .md, nao em um unico script — existence-guarded ao command
+      # portador do prompt. Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
+      return 1 ;;
     test_orchestrator-mcp-fallback.sh)
       # Hibrido textual+funcional (FASE 6 task 6.3 de state-mcp-server,
       # SC-004): confirma que os 2 agentes orquestradores nao dependem de

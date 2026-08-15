@@ -222,9 +222,19 @@ Cobre US3 cenario 1.
    consequencias (gate em modo leve) aparecem na secao `## 3. Decisoes`
    do mesmo relatorio.
 4. Repetir com estado legado (sem o campo).
-5. **Expected**: linha presente com o texto de fallback
-   `cloud-public (nao declarado — estado legado)` — nunca celula vazia,
-   nunca valor inventado.
+5. **Expected (implementado — dec-046/onda-008, diverge do rascunho
+   original deste cenario)**: linha `| Tier de entrega | cloud-public |`
+   — **token puro**, sem qualificador textual de origem
+   (`(nao declarado — estado legado)`). O `report.sh` le o tier
+   EXCLUSIVAMENTE via `delivery-tier.sh get` (contrato
+   `contracts/cli-delivery-tier.md`), que devolve so 1 dos 4 tokens do
+   enum sem metadado de proveniencia — produzir o texto qualificado
+   exigiria uma segunda leitura crua do campo `.delivery_tier`, violando
+   INV-5 (spec.md FR-010, MUST vinculante: nenhum consumidor le o campo
+   fora do helper). Nunca celula vazia, nunca valor inventado — o
+   default do proprio `delivery-tier.sh get` ja resolve estado legado
+   para `cloud-public` (FR-010), entao o relatorio nunca precisa
+   distinguir "declarado cloud-public" de "legado sem o campo".
 
 ---
 
