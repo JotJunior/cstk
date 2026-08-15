@@ -876,16 +876,40 @@ _sr_cmd_infer_aspectos() {
   command -v jq >/dev/null 2>&1 || _sr_die "infer-aspectos: jq ausente" 1
   command -v git >/dev/null 2>&1 || _sr_die "infer-aspectos: git ausente" 1
 
-  _sf="$_sd/state.json"
-  [ -f "$_sf" ] || _sr_die "infer-aspectos: state.json ausente em $_sd" 1
-
-  # Resolver projeto-alvo: flag explicita > execution.target_project_path
-  # (canonicaliza para ler tanto states EN quanto pt-BR vivos).
-  if [ -z "$_pap" ]; then
-    _pap=$(_sr_canonicalize_file "$_sf" 2>/dev/null | jq -r '.execution.target_project_path // ""')
+  # Materializa o documento de estado UMA vez, backend-aware (issues
+  # #118/#119/#121/#124: a checagem hardcoded de state.json deixava o
+  # subcomando cego ao backend state.db, enquanto get/set ja despacham).
+  # Sob SQLite o read ja devolve o documento canonico EN; sob JSON
+  # canonicaliza (fallback raw se jq/JSON falhar — mesmo contrato do read).
+  _sr_canon_state=$(mktemp) || _sr_die "infer-aspectos: mktemp falhou" 1
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    if ! _sr_db_read "$_sd" > "$_sr_canon_state"; then
+      rm -f -- "$_sr_canon_state" 2>/dev/null || :
+      _sr_die "infer-aspectos: falha lendo state.db em $_sd" 1
+    fi
+  else
+    _sf=$(_sr_state_file "$_sd")
+    if [ ! -f "$_sf" ]; then
+      rm -f -- "$_sr_canon_state" 2>/dev/null || :
+      _sr_die "infer-aspectos: state.json ausente em $_sd" 1
+    fi
+    if ! _sr_canonicalize_file "$_sf" > "$_sr_canon_state" 2>/dev/null; then
+      cp -- "$_sf" "$_sr_canon_state" 2>/dev/null || :
+    fi
   fi
-  [ -n "$_pap" ] || _sr_die "infer-aspectos: nao consegui resolver projeto-alvo-path" 1
-  [ -d "$_pap" ] || _sr_die "infer-aspectos: projeto-alvo nao e diretorio: $_pap" 1
+
+  # Resolver projeto-alvo: flag explicita > execution.target_project_path.
+  if [ -z "$_pap" ]; then
+    _pap=$(jq -r '.execution.target_project_path // ""' "$_sr_canon_state" 2>/dev/null)
+  fi
+  if [ -z "$_pap" ]; then
+    rm -f -- "$_sr_canon_state" 2>/dev/null || :
+    _sr_die "infer-aspectos: nao consegui resolver projeto-alvo-path" 1
+  fi
+  if [ ! -d "$_pap" ]; then
+    rm -f -- "$_sr_canon_state" 2>/dev/null || :
+    _sr_die "infer-aspectos: projeto-alvo nao e diretorio: $_pap" 1
+  fi
 
   # Coletar arquivos modificados nesta onda. Estrategia:
   #   1. Se HEAD~1 existe, usa `git diff --name-only HEAD~1..HEAD`
@@ -903,11 +927,7 @@ _sr_cmd_infer_aspectos() {
 
   # Aplicar matcher fuzzy: aspecto detectado se token-overlap com paths.
   # Reusa logica do drift.sh (matcher bidirecional + tokens >=3 chars).
-  # Le o state canonicalizado (EN) — fallback raw se jq/JSON falhar.
-  _sr_canon_state=$(mktemp) || _sr_die "infer-aspectos: mktemp falhou" 1
-  if ! _sr_canonicalize_file "$_sf" > "$_sr_canon_state" 2>/dev/null; then
-    cp -- "$_sf" "$_sr_canon_state" 2>/dev/null || :
-  fi
+  # Le o documento ja materializado (canonico EN) acima.
   printf '%s\n' "$_diff" | jq -R -s --slurpfile state "$_sr_canon_state" '
     def tokenize($s):
       ($s // "")
@@ -952,6 +972,13 @@ _sr_cmd_migrate() {
     esac
   done
   [ -n "$_sd" ] || _sr_die "migrate: --state-dir obrigatorio" 2
+  # Backend SQLite (issue #124): nao ha state.json pt-BR a canonicalizar —
+  # o schema do state.db ja e EN por construcao. No-op explicito em vez do
+  # erro enganoso "state.json ausente".
+  if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
+    _sr_log "migrate: backend sqlite (state.db) em $_sd — nada a canonicalizar, no-op"
+    return 0
+  fi
   _sr_require_jq
   _sr_sf=$(_sr_state_file "$_sd")
   [ -f "$_sr_sf" ] || _sr_die "migrate: state.json ausente em $_sd" 1

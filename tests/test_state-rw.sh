@@ -1250,6 +1250,38 @@ scenario_sqlite_set_multi_rejeita_resync_de_array_em_lote() {
   [ "$_v" = "specify" ] || { _fail "nada deveria ter sido escrito" "obtido '$_v'"; return 1; }
 }
 
+# Issues #118/#119/#121/#124: infer-aspectos checava state.json hardcoded e
+# morria com 'state.json ausente' sob backend state.db, enquanto get/set ja
+# despachavam. Deve materializar via read e aplicar o matcher normalmente,
+# resolvendo target_project_path do proprio documento (sem flag explicita).
+scenario_sqlite_infer_aspectos_funciona_sob_state_db() {
+  _sd="$TMPDIR_TEST/sq-infer"
+  _seed_sqlite_backend "$_sd" || return 1
+  _pap="$TMPDIR_TEST/sq-infer-pap"
+  _setup_pap_with_diff "$_pap" "README.md" "src/slack-handler.ts src/threads.ts"
+  sqlite3 "$_sd/state.db" "UPDATE execution SET target_project_path='$_pap', initial_key_aspects='[\"slack\",\"bot\",\"threads\"]' WHERE id='exec-1';" \
+    || { _fail "seed: update execution falhou" ""; return 1; }
+  capture "$SCRIPT" infer-aspectos --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "infer sob sqlite" "exit $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "slack" || return 1
+  assert_stdout_contains "threads" || return 1
+  # Anti-mirror (FR-003 da parity): nada pode ter materializado state.json
+  # dentro do state-dir.
+  [ ! -f "$_sd/state.json" ] || { _fail "infer nao pode criar state.json no state-dir" ""; return 1; }
+}
+
+# Issue #124: migrate (canonicalizacao pt-BR->EN de state.json) sob backend
+# sqlite nao tem o que migrar — deve ser no-op exit 0 com aviso explicito,
+# nao o erro enganoso 'state.json ausente'.
+scenario_sqlite_migrate_e_noop_exit_0() {
+  _sd="$TMPDIR_TEST/sq-migrate"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" migrate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "migrate sob sqlite deve ser no-op exit 0" "exit $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "no-op" || return 1
+  [ ! -f "$_sd/state.json" ] || { _fail "migrate nao pode criar state.json sob sqlite" ""; return 1; }
+}
+
 fi # sqlite3 disponivel
 
 # ==== set aceita literais JSON falsy (state-db-runtime-parity 2.4.3) ====
