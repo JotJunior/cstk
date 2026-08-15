@@ -35,6 +35,21 @@ o model-routing — o roteamento de modelo segue exclusivamente seu
 mecanismo proprio (mapa fase→modelo + refino model-selector). Economia
 de modelo por tier pode virar sugestao futura, fora desta feature.
 
+Tambem fora do escopo (decisao do operador, 2026-08-15): o tier fica
+RESTRITO ao `/agente-00c` nesta feature. `/feature-00c` NAO pergunta
+nem le o `delivery_tier` — FR-001/FR-002 permanecem exatamente como
+escritos, aplicaveis somente ao init do `/agente-00c`. Extensao do tier
+ao `/feature-00c` fica fora do escopo desta feature, candidata a
+feature futura.
+
+## Clarifications
+
+### Session 2026-08-15
+
+- Q: O tier de entrega (delivery_tier) se aplica tambem ao orquestrador `/feature-00c`, ou fica restrito a `/agente-00c` nesta feature? → A: restrito a `/agente-00c` nesta feature; FR-001/FR-002 permanecem exatamente como estao; `/feature-00c` nao pergunta nem le o tier; extensao futura fica fora do escopo (dec-011).
+- Q: A matriz tier×gate desta feature cobre explicitamente algum gate alem da revisao de seguranca, ou os demais gates ficam sob o fail-safe (sempre completos, em todos os tiers)? → A: cobre APENAS `owasp-security`; os demais gates complementares (`checklist`, `validate-documentation`, `validate-docs-rendered`, `analyze`) nao tem celula na matriz e ficam sob o fail-safe do FR-005, rodando completos nos 4 tiers (dec-012).
+- Q: A omissao de fases de infraestrutura de producao no backlog (FR-006) vale so para o tier `local`, ou cada tier intermediario (`internal-network`, `cloud-internal`) tem sua propria lista de fases omitidas? → A: divisao BINARIA nuvem/nao-nuvem — `local` e `internal-network` omitem do backlog as fases de infra de producao (deploy em nuvem, escalabilidade, observabilidade de producao); `cloud-internal` e `cloud-public` geram backlog completo. Nao ha lista por-tier alem dessa divisao (dec-013).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Operador informa a finalidade no inicio (Priority: P1)
@@ -177,15 +192,23 @@ FR-009).
 - **FR-005**: Os quality gates complementares MUST ser resolvidos por
   uma matriz tier×gate versionada no toolkit; gate ausente da matriz
   para um tier MUST rodar completo (fail-safe na direcao da
-  profundidade). Matriz default para a revisao de seguranca: completa
-  nos tiers `cloud-internal` e `cloud-public`, versao leve (checagens
-  essenciais: auth, secrets, input) em `internal-network`, skip com
-  Decisao em `local`. Skip ou versao leve de gate MUST gerar Decisao
+  profundidade). A matriz cobre EXCLUSIVAMENTE o gate `owasp-security`
+  (revisao de seguranca) — matriz default: completa nos tiers
+  `cloud-internal` e `cloud-public`, versao leve (checagens essenciais:
+  auth, secrets, input) em `internal-network`, skip com Decisao em
+  `local`. Os demais gates complementares (`checklist`,
+  `validate-documentation`, `validate-docs-rendered`, `analyze`) NAO tem
+  celula na matriz e MUST rodar completos nos 4 tiers, sob o mesmo
+  fail-safe. Skip ou versao leve de gate MUST gerar Decisao
   auditavel citando o tier — nunca skip silencioso.
-- **FR-006**: create-tasks MUST receber o tier e omitir do backlog fases
-  incompativeis com a finalidade declarada (ex.: deploy em nuvem,
-  escalabilidade e observabilidade de producao em tier `local`),
-  registrando no proprio tasks.md o tier usado na geracao.
+- **FR-006**: create-tasks MUST receber o tier e aplicar uma divisao
+  BINARIA nuvem/nao-nuvem: os tiers `local` e `internal-network` MUST
+  omitir do backlog as fases de infraestrutura de producao (deploy em
+  nuvem, escalabilidade e observabilidade de producao); os tiers
+  `cloud-internal` e `cloud-public` MUST gerar backlog completo com
+  essas fases. Nao ha lista de fases distinta por tier alem dessa
+  divisao binaria. create-tasks MUST registrar no proprio tasks.md o
+  tier usado na geracao.
 - **FR-007**: O tier MUST calibrar somente profundidade e escopo; MUST
   NOT alterar, relaxar ou desativar o Principio VI (zero fabricacao de
   dados), as guardas enforced (bash-guard, path-guard, secrets-filter)
@@ -256,15 +279,23 @@ FR-009).
 - **FR-005**: Os quality gates complementares MUST ser resolvidos por
   uma matriz tier×gate versionada no toolkit; gate ausente da matriz
   para um tier MUST rodar completo (fail-safe na direcao da
-  profundidade). Matriz default para a revisao de seguranca: completa
-  nos tiers `cloud-internal` e `cloud-public`, versao leve (checagens
-  essenciais: auth, secrets, input) em `internal-network`, skip com
-  Decisao em `local`. Skip ou versao leve de gate MUST gerar Decisao
+  profundidade). A matriz cobre EXCLUSIVAMENTE o gate `owasp-security`
+  (revisao de seguranca) — matriz default: completa nos tiers
+  `cloud-internal` e `cloud-public`, versao leve (checagens essenciais:
+  auth, secrets, input) em `internal-network`, skip com Decisao em
+  `local`. Os demais gates complementares (`checklist`,
+  `validate-documentation`, `validate-docs-rendered`, `analyze`) NAO tem
+  celula na matriz e MUST rodar completos nos 4 tiers, sob o mesmo
+  fail-safe. Skip ou versao leve de gate MUST gerar Decisao
   auditavel citando o tier — nunca skip silencioso.
-- **FR-006**: create-tasks MUST receber o tier e omitir do backlog fases
-  incompativeis com a finalidade declarada (ex.: deploy em nuvem,
-  escalabilidade e observabilidade de producao em tier `local`),
-  registrando no proprio tasks.md o tier usado na geracao.
+- **FR-006**: create-tasks MUST receber o tier e aplicar uma divisao
+  BINARIA nuvem/nao-nuvem: os tiers `local` e `internal-network` MUST
+  omitir do backlog as fases de infraestrutura de producao (deploy em
+  nuvem, escalabilidade e observabilidade de producao); os tiers
+  `cloud-internal` e `cloud-public` MUST gerar backlog completo com
+  essas fases. Nao ha lista de fases distinta por tier alem dessa
+  divisao binaria. create-tasks MUST registrar no proprio tasks.md o
+  tier usado na geracao.
 - **FR-007**: O tier MUST calibrar somente profundidade e escopo; MUST
   NOT alterar, relaxar ou desativar o Principio VI (zero fabricacao de
   dados), as guardas enforced (bash-guard, path-guard, secrets-filter)
