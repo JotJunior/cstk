@@ -25,6 +25,12 @@ fi
 
 # _write_descriptor STATE_DIR SESSION_ID CONTAINER MODE -> grava
 # mcp-server.json minimo (mesma forma dos demais testes de mcp-session).
+#
+# Grava tambem um `state.json` IRMAO com `.execution.status: em_andamento`
+# (dec-060/dec-061, mcp-direct-transport FASE 8): `mcp-session.sh` agora
+# consulta o status REAL da execucao (nao so o proxy `.stopped_at` do
+# proprio descritor) — sem esse arquivo, `state-rw.sh get` falha e o
+# fail-closed recusaria toda chamada, mesmo com `stopped_at: null`.
 _write_descriptor() {
   _wd_dir=$1; _wd_sid=$2; _wd_container=$3; _wd_mode=$4
   mkdir -p "$_wd_dir"
@@ -34,6 +40,7 @@ _write_descriptor() {
       container_name:$container, mode:$mode,
       started_at:"2026-08-01T00:00:00Z", stopped_at:null}' \
     > "$_wd_dir/mcp-server.json"
+  jq -n '{execution:{status:"em_andamento"}}' > "$_wd_dir/state.json"
 }
 
 # _stub_docker BIN_DIR -> stub minimo que so loga a invocacao (o

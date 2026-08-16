@@ -197,6 +197,19 @@ test("resolveSessionForCall: miss com SESSION_MISMATCH do helper rejeita e NAO p
 // rejeitada (research Decision 2 / K-2).
 // ---------------------------------------------------------------------------
 
+// dec-060/dec-061 (mcp-direct-transport FASE 8): o mcp-session.sh REAL
+// agora tambem consulta o status REAL da execucao (`.execution.status` via
+// `state-rw.sh get`, backend-agnostico) alem do proxy `.stopped_at` do
+// descritor — sem um `state.json` IRMAO com status ativo, toda chamada
+// fail-closed recusaria (SESSION_MISMATCH), mesmo com `stopped_at: null`.
+async function writeActiveState(dir: string, status = "em_andamento"): Promise<void> {
+  await writeFile(
+    join(dir, "state.json"),
+    JSON.stringify({ execution: { status } }),
+    "utf8",
+  );
+}
+
 async function makeDescriptorDir(sessionId: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "cstk-mcp-resolve-test-"));
   await writeFile(
@@ -212,6 +225,7 @@ async function makeDescriptorDir(sessionId: string): Promise<string> {
     }),
     "utf8",
   );
+  await writeActiveState(dir);
   return dir;
 }
 
@@ -279,4 +293,60 @@ test("resolveActiveSession (task 1.2.7, caminho feliz real): mcp-session.sh REAL
   assert.equal(session.token, token);
   assert.equal(session.executionKind, "feature-00c");
   assert.equal(session.mode, "direct");
+});
+
+// ---------------------------------------------------------------------------
+// dec-060/dec-061 (mcp-direct-transport FASE 8): status REAL da execucao,
+// nao so o proxy `.stopped_at` do descritor. Prova de ponta a ponta contra
+// o mcp-session.sh REAL: o proxy do descritor sozinho NAO basta mais.
+// ---------------------------------------------------------------------------
+
+test("resolveActiveSession (dec-060): descritor com stopped_at=null MAS execution.status=concluida no state.json irmao -> SessionMismatchError (proxy divergente do status real)", async () => {
+  const token = "synthetic-token-dec060-diverge";
+  const stateDir = await makeDescriptorDir(token);
+  // Sobrescreve o state.json ativo escrito por makeDescriptorDir: a
+  // execucao terminou de verdade (ex.: `cstk mcp stop` nunca rodou), mas o
+  // descritor continua com `stopped_at: null` (proxy desatualizado).
+  await writeActiveState(stateDir, "concluida");
+
+  await assert.rejects(
+    () =>
+      resolveActiveSession({
+        projectPath: "",
+        token,
+        stateDir,
+        helperPath: REAL_MCP_SESSION_SH,
+      }),
+    SessionMismatchError,
+  );
+});
+
+test("resolveActiveSession (dec-060): sem state.json ao lado do descritor -> fail-closed (SessionMismatchError), nunca tratado como ativa", async () => {
+  const token = "synthetic-token-dec060-nostate";
+  const dir = await mkdtemp(join(tmpdir(), "cstk-mcp-resolve-test-"));
+  await writeFile(
+    join(dir, "mcp-server.json"),
+    JSON.stringify({
+      session_id: token,
+      execution_kind: "feature-00c",
+      short_name: "state-mcp-server",
+      target_project_path: "/work",
+      mode: "direct",
+      container_name: null,
+      stopped_at: null,
+    }),
+    "utf8",
+  );
+  // Deliberadamente SEM state.json — leitura de status falha.
+
+  await assert.rejects(
+    () =>
+      resolveActiveSession({
+        projectPath: "",
+        token,
+        stateDir: dir,
+        helperPath: REAL_MCP_SESSION_SH,
+      }),
+    SessionMismatchError,
+  );
 });

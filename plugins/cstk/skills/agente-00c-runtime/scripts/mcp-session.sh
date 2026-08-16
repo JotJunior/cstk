@@ -7,6 +7,8 @@
 #      docs/specs/state-mcp-server/data-model.md
 #        §Entity: Orchestrator Server Session
 #      docs/specs/state-mcp-server/tasks.md FASE 1 task 1.3
+#      docs/specs/mcp-direct-transport/spec.md FR-003 (fail-closed em
+#        execucao terminal); tasks.md FASE 8 (dec-060/dec-061)
 #
 # Fail-closed por desenho (SEC-H3, finding HIGH do gate owasp-security,
 # onda-003/block-001/dec-021, ratificado em dec-023/onda-004): o
@@ -19,6 +21,15 @@
 # `cstk mcp start`) — nunca por heuristica de ambiente. Token
 # ausente/desconhecido/de execucao ja terminal ⇒ SESSION_MISMATCH, sem
 # fallback para "a execucao ativa mais provavel".
+#
+# "Execucao ja terminal" e aferido em DUAS camadas (dec-060/dec-061,
+# `mcp-direct-transport` FASE 8): (1) o proxy `.stopped_at` do proprio
+# descritor — barato, mas so reflete `cstk mcp stop`, chamado pelos
+# commands pai em best-effort; se `stop` nunca rodar (aborto/crash/sessao
+# interrompida), o proxy nunca acusa terminal; (2) o status REAL da
+# execucao (`.execution.status` via `state-rw.sh get`, backend-agnostico)
+# — `_ms_execution_active`. As duas camadas MUST concordar; qualquer uma
+# recusando e suficiente para SESSION_MISMATCH.
 #
 # Subcomandos:
 #   mcp-session.sh resolve --project-path PATH
@@ -115,10 +126,51 @@ _ms_resolve_token() {
   printf '%s' ""
 }
 
+# Diretorio do proprio script — resolve o script irmao state-rw.sh (mesmo
+# padrao de state-ondas.sh::_so_self_dir / model-routing.sh).
+_ms_self_dir() {
+  CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P
+}
+
+# _ms_execution_active EXEC_DIR -> exit 0 SOMENTE se o status REAL da
+# execucao (`.execution.status`, lido via `state-rw.sh get` — backend-
+# agnostico, funciona sob state.json OU state.db, nunca le state.json
+# direto) esta em {em_andamento, aguardando_humano}. Exit 1 em QUALQUER
+# outro caso: status terminal (concluida/abortada), status vazio/
+# desconhecido, ou falha de leitura (self-dir irresolvivel, state-rw.sh
+# ausente, state ausente/corrompido, jq/sqlite3 indisponivel).
+#
+# Fail-closed por desenho (mesmo principio de SEC-H3 no cabecalho deste
+# arquivo): uma leitura que FALHA nunca e tratada como "execucao ativa" —
+# equivale a dizer "nao consigo provar que esta ativa, logo recuso".
+#
+# Origem (dec-060/dec-061, feature `mcp-direct-transport` FASE 8):
+# `_ms_check_descriptor` so conferia `.stopped_at` do PROPRIO descritor
+# (proxy). Quem grava `stopped_at` e `cstk mcp stop`, chamado pelos
+# commands pai em best-effort (`|| :`) e somente quando o status ja e
+# concluida/abortada — se `stop` nao rodar (aborto, crash, sessao
+# interrompida, ou falha engolida pelo `|| :`), a execucao termina e o
+# token de capacidade permanecia valido indefinidamente (SESSION_MISMATCH
+# nunca disparava, violando FR-003 "pertenca a uma execucao em status
+# terminal"). Esta funcao consulta a fonte de verdade REAL alem do proxy.
+_ms_execution_active() {
+  _mea_dir=$1
+  _mea_selfdir=$(_ms_self_dir) || return 1
+  _mea_rw="$_mea_selfdir/state-rw.sh"
+  [ -f "$_mea_rw" ] || return 1
+  _mea_status=$(sh "$_mea_rw" get --state-dir "$_mea_dir" --field '.execution.status' 2>/dev/null) || return 1
+  case "$_mea_status" in
+    em_andamento | aguardando_humano) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # _ms_check_descriptor DESCRIPTOR_PATH TOKEN -> exit 0 SE o descritor
-# existe, `session_id` bate exatamente com TOKEN e `stopped_at` e nulo
-# (sessao ainda ativa); exit 1 caso contrario. Nunca imprime nada nem
-# aborta o script — quem decide o resultado agregado e o caller.
+# existe, `session_id` bate exatamente com TOKEN, `stopped_at` e nulo
+# (proxy do descritor) E o status REAL da execucao (state-rw.sh get,
+# dec-060/dec-061) esta em {em_andamento, aguardando_humano}; exit 1 caso
+# contrario. Nunca imprime nada nem aborta o script — quem decide o
+# resultado agregado e o caller.
 _ms_check_descriptor() {
   _desc=$1
   _token=$2
@@ -127,7 +179,8 @@ _ms_check_descriptor() {
   [ -n "$_sid" ] || return 1
   [ "$_sid" = "$_token" ] || return 1
   _stopped=$(jq -r '.stopped_at // ""' "$_desc" 2>/dev/null) || _stopped=""
-  [ -z "$_stopped" ] || return 1   # execucao ja terminal — nunca roteia (fail-closed)
+  [ -z "$_stopped" ] || return 1   # execucao ja terminal por PROXY — fail-closed
+  _ms_execution_active "$(dirname -- "$_desc")" || return 1   # status REAL — fail-closed
   return 0
 }
 

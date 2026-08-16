@@ -17,9 +17,19 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-# _write_descriptor PATH SESSION_ID EXEC_KIND SHORT_NAME STATE_DIR MODE STOPPED_AT
+# _write_descriptor PATH SESSION_ID EXEC_KIND SHORT_NAME STATE_DIR MODE STOPPED_AT [STATUS_REAL]
+#
+# Alem do descritor `mcp-server.json`, grava um `state.json` IRMAO (mesmo
+# diretorio de PATH — a fonte de verdade REAL que `_ms_execution_active`
+# consulta via `state-rw.sh get`, dec-060/dec-061) com `.execution.status`.
+# STATUS_REAL, se omitido, e DERIVADO de STOPPED_AT (reflete o caso comum
+# em que os dois proxies concordam): STOPPED_AT nao-vazio => "concluida";
+# STOPPED_AT vazio => "em_andamento". Passe STATUS_REAL explicitamente
+# para simular DIVERGENCIA entre o proxy do descritor e o status real
+# (exatamente o gap do dec-060: stopped_at=null + status=concluida).
 _write_descriptor() {
   _p=$1; _sid=$2; _kind=$3; _short=$4; _sdir=$5; _mode=$6; _stopped=$7
+  _status_real=${8:-}
   mkdir -p "$(dirname "$_p")"
   if [ -n "$_stopped" ]; then
     jq -n --arg sid "$_sid" --arg kind "$_kind" --arg short "$_short" \
@@ -28,6 +38,7 @@ _write_descriptor() {
         state_dir:$sdir, target_project_path:"/tmp/proj",
         container_name:"cstk-mcp-state-x", mode:$mode,
         started_at:"2026-08-01T00:00:00Z", stopped_at:$stopped}' > "$_p"
+    [ -n "$_status_real" ] || _status_real="concluida"
   else
     jq -n --arg sid "$_sid" --arg kind "$_kind" --arg short "$_short" \
       --arg sdir "$_sdir" --arg mode "$_mode" \
@@ -35,8 +46,12 @@ _write_descriptor() {
         state_dir:$sdir, target_project_path:"/tmp/proj",
         container_name:"cstk-mcp-state-x", mode:$mode,
         started_at:"2026-08-01T00:00:00Z", stopped_at:null}' > "$_p"
+    [ -n "$_status_real" ] || _status_real="em_andamento"
   fi
   chmod 600 "$_p"
+  jq -n --arg st "$_status_real" '{execution:{status:$st}}' \
+    > "$(dirname "$_p")/state.json"
+  chmod 600 "$(dirname "$_p")/state.json"
 }
 
 scenario_token_valido_resolve_agente00c() {
@@ -92,6 +107,84 @@ scenario_token_de_execucao_terminal_exit_3() {
 
   capture "$SCRIPT" resolve --project-path "$_proj" --token "tok-terminal"
   [ "$_CAPTURED_EXIT" = 3 ] || { _fail "token terminal exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "SESSION_MISMATCH" || return 1
+}
+
+# ---------- dec-060/dec-061 (mcp-direct-transport FASE 8): status REAL da
+# execucao, nao so o proxy `.stopped_at` do descritor ----------
+
+# Prova empirica do gap fechado: o descritor diz `stopped_at:null` (proxy
+# "ainda ativa"), mas o `state.json` IRMAO tem `.execution.status:
+# concluida` (execucao REALMENTE terminal — ex.: `cstk mcp stop` nunca
+# rodou, best-effort engolido). Antes da correcao, `_ms_check_descriptor`
+# so olhava o proxy e devolvia OK; agora deve recusar.
+scenario_status_real_terminal_diverge_do_proxy_exit_3() {
+  _proj="$TMPDIR_TEST/proj-dec060-a"
+  _sd="$_proj/.claude/agente-00c-state"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-diverge" "agente-00c" "" "$_sd" "direct" "" "concluida"
+
+  capture "$SCRIPT" resolve --project-path "$_proj" --token "tok-diverge"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "status real concluida (proxy null) exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "SESSION_MISMATCH" || return 1
+  assert_stdout_not_contains "state_dir=" || return 1
+}
+
+# Mesma divergencia, mas com `.execution.status: abortada` — segundo valor
+# terminal do enum (state-validate.sh: em_andamento|aguardando_humano|
+# abortada|concluida).
+scenario_status_real_abortada_diverge_do_proxy_exit_3() {
+  _proj="$TMPDIR_TEST/proj-dec060-b"
+  _sd="$_proj/.claude/agente-00c-state"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-abort" "agente-00c" "" "$_sd" "direct" "" "abortada"
+
+  capture "$SCRIPT" resolve --project-path "$_proj" --token "tok-abort"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "status real abortada (proxy null) exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "SESSION_MISMATCH" || return 1
+}
+
+# `aguardando_humano` MUST continuar autorizando (execucao pausada por
+# bloqueio humano nao e terminal) — nao pode virar falso-positivo da
+# correcao.
+scenario_status_real_aguardando_humano_ainda_ativa_exit_0() {
+  _proj="$TMPDIR_TEST/proj-dec060-c"
+  _sd="$_proj/.claude/agente-00c-state"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-pause" "agente-00c" "" "$_sd" "direct" "" "aguardando_humano"
+
+  capture "$SCRIPT" resolve --project-path "$_proj" --token "tok-pause"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "status real aguardando_humano exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "state_dir=$_sd" || return 1
+}
+
+# Fail-closed na leitura em si (nao so no VALOR do status): sem
+# `state.json`/`state.db` nenhum ao lado do descritor, `state-rw.sh get`
+# falha (exit != 0) e a funcao MUST recusar — nunca tratar "nao consigo
+# ler" como "esta ativa".
+scenario_state_json_ausente_fail_closed_exit_3() {
+  _proj="$TMPDIR_TEST/proj-dec060-d"
+  _sd="$_proj/.claude/agente-00c-state"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-nostate" "agente-00c" "" "$_sd" "direct" ""
+  rm -f "$_sd/state.json"
+
+  capture "$SCRIPT" resolve --project-path "$_proj" --token "tok-nostate"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "state.json ausente exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "SESSION_MISMATCH" || return 1
+}
+
+# Mesma divergencia no modo DIRETO (--state-dir, dentro do container) —
+# _ms_execution_active deve usar o dirname do DESCRITOR (o proprio
+# --state-dir), nunca o campo `.state_dir` do JSON (que no modo direto e
+# um valor decorativo do host, inutilizavel de dentro do container).
+scenario_state_dir_direto_status_real_terminal_exit_3() {
+  _sd="$TMPDIR_TEST/direct-dec060"
+  mkdir -p "$_sd"
+  _write_descriptor "$_sd/mcp-server.json" "tok-direct-diverge" "agente-00c" "" "/data/state" "direct" "" "concluida"
+
+  capture "$SCRIPT" resolve --state-dir "$_sd" --token "tok-direct-diverge"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "state-dir direto status real terminal exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
   assert_stderr_contains "SESSION_MISMATCH" || return 1
 }
 

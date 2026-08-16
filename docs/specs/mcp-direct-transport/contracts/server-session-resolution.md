@@ -87,13 +87,24 @@ Os passos 1, 2, 5 e 6 **ja existem**; 3 e 4 sao novos.
 |-------|-----------|------------|
 | A-1 | `session_id` ausente/vazio MUST ser rejeitado pelo schema Zod antes de qualquer I/O | [REAL] `z.string().min(1, "session_id obrigatorio")` |
 | A-2 | `session_id` que nao resolve para nenhuma sessao MUST ser rejeitado com motivo explicito | [REAL] `SESSION_MISMATCH` |
-| A-3 | `session_id` de execucao com `stopped_at` nao-nulo MUST ser rejeitado | [REAL] `mcp-session.sh:130` fail-closed |
+| A-3 | `session_id` de execucao com `stopped_at` nao-nulo MUST ser rejeitado | [REAL] `mcp-session.sh:~130` (proxy do descritor) |
+| A-3.1 | `session_id` de execucao cujo status REAL (`.execution.status` via `state-rw.sh get`, backend-agnostico) NAO esteja em `{em_andamento, aguardando_humano}` MUST ser rejeitado, MESMO que o proxy A-3 (`stopped_at`) ainda diga nulo | [REAL] `mcp-session.sh::_ms_execution_active`, dec-060/dec-061 — corrige gap: `stopped_at` so e gravado por `cstk mcp stop`, chamado em best-effort (`\|\| :`) pelos commands pai; se nunca rodar, A-3 sozinho nunca dispara |
+| A-3.2 | Falha ao LER o status real (self-dir irresolvivel, `state-rw.sh` ausente, state ausente/corrompido, `jq`/`sqlite3` indisponivel) MUST ser tratada como rejeicao, nunca como "ativa" | [REAL] `_ms_execution_active` retorna 1 em qualquer falha de leitura (fail-closed) |
 | A-4 | A resolucao MUST usar **exclusivamente** o `session_id` da propria chamada, nunca "a sessao ativa mais provavel" (FR-011) | [REAL] preservado |
 | A-5 | Hit de cache MUST revalidar via modo direto — **nunca** autorizar so pelo cache | **[PROPOSTA]** research Decision 2 |
 | A-6 | Rejeicao MUST NOT mutar estado algum | [REAL] guard precede a delegacao |
 
 **Mensagem de rejeicao** [REAL, preservada literalmente]:
 `"session_id nao corresponde ao token de capacidade desta sessao"`.
+
+> **A-3 vs A-3.1** (dec-060/dec-061): A-3 e um proxy barato (um campo do
+> proprio descritor); A-3.1 e a fonte de verdade (status real da execucao
+> no `state.json`/`state.db`). As duas camadas devem concordar — qualquer
+> uma recusando basta para SESSION_MISMATCH. Antes desta correcao, so A-3
+> existia, e o Edge Case "sessao terminal nunca autoriza mutacao" citado
+> em K-2 acima (§2.3) estava, na pratica, incompleto: uma execucao podia
+> terminar sem `cstk mcp stop` rodar e o token continuar autorizando
+> indefinidamente.
 
 ### 2.3 Contrato de cache [PROPOSTA — a validar na implementacao]
 

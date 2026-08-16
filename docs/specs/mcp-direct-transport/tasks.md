@@ -261,6 +261,36 @@ Ref: CLAUDE.md §"Servidor MCP de estado (`cstk mcp`)"; plan.md §Postura de Seg
 
 ---
 
+## FASE 8 - Correcao (dec-060/dec-061): status REAL da execucao no gate fail-closed de sessao MCP
+
+Achado de seguranca do command pai validando a FASE 1 empiricamente
+(onda-009): `_ms_check_descriptor` (`mcp-session.sh`) so conferia o proxy
+`.stopped_at` do proprio descritor, nunca o status REAL da execucao no
+`state.json`/`state.db`. `stopped_at` so e gravado por `cstk mcp stop`,
+chamado pelos commands pai em best-effort (`|| :`); se `stop` nao rodar
+(aborto/crash/sessao interrompida/falha engolida), o token de capacidade
+permanecia valido indefinidamente apos a execucao terminar — violando
+FR-003 ("pertenca a uma execucao em status terminal"). Gap pre-existente
+(nao introduzido pela FASE 1), mas so alcancavel depois que esta feature
+conserta o transporte (antes, sem tools expostas, nao havia o que chamar).
+Decisao do operador: corrigir NESTA feature (dec-060/dec-061), sem FR
+novo — FR-003 ja MUST-ava o comportamento; o gap era de implementacao
+(proxy incompleto), nao de requisito faltante.
+
+### 8.1 `_ms_execution_active`: consultar o status real via `state-rw.sh get` `[C]`
+
+Ref: spec.md FR-003, Clarifications "Session 2026-08-16 (execucao autonoma feature-00c, onda-009/onda-010)"; contracts/server-session-resolution.md §2.2 (A-3/A-3.1/A-3.2)
+
+- [x] 8.1.1 Implementar `_ms_self_dir`/`_ms_execution_active` em `mcp-session.sh`, delegando a `state-rw.sh get --state-dir <dirname do descritor> --field '.execution.status'` (backend-agnostico: state.json OU state.db, nunca le state.json direto) — aceita SOMENTE `em_andamento`/`aguardando_humano`; qualquer outro valor OU falha de leitura (self-dir irresolvivel, state-rw.sh ausente, state ausente/corrompido) recusa (fail-closed)
+- [x] 8.1.2 Chamar `_ms_execution_active` em `_ms_check_descriptor` APOS o proxy `.stopped_at` (as duas camadas devem concordar; qualquer uma recusando basta) — cobre os dois modos de resolucao (`--project-path` tree-walk e `--state-dir` direto), usando sempre o `dirname` do DESCRITOR resolvido, nunca o campo `.state_dir` do JSON (que no modo direto e um valor decorativo do host)
+- [x] 8.1.3 Atualizar os comentarios de cabecalho de `mcp-session.sh` para descrever o invariante em DUAS camadas (proxy + status real), referenciando dec-060/dec-061
+- [x] 8.1.4 Teste novo em `tests/test_mcp-session.sh`: descritor com `stopped_at: null` (proxy "ativa") + `state.json` irmao com `.execution.status: concluida`/`abortada` (status real terminal) => `resolve` recusa (`SESSION_MISMATCH`, exit 3), nos dois modos (`--project-path` e `--state-dir`); `aguardando_humano` continua autorizando; `state.json` ausente é fail-closed
+- [x] 8.1.5 Atualizar `_write_descriptor` (fixture) em `tests/test_mcp-session.sh` e `tests/test_mcp-launch.sh` para gravar um `state.json` irmao com status ativo — os cenarios "caminho feliz" pre-existentes passam a depender dele; sem o ajuste, todos regridem para `SESSION_MISMATCH` (fail-closed correto, mas fixture desatualizada)
+- [x] 8.1.6 Atualizar `mcp/state-server/test/resolve.test.ts` (`makeDescriptorDir`) para gravar o `state.json` irmao ativo, e adicionar 2 testes novos provando a divergencia proxy-vs-status-real e o fail-closed por ausencia de `state.json`, contra o `mcp-session.sh` REAL
+- [x] 8.1.7 `cd mcp/state-server && npm test` (125/125) + `LC_ALL=C ./tests/run.sh mcp-session` (23/23) + `LC_ALL=C ./tests/run.sh mcp` (165/165) todos verdes
+
+---
+
 ## Matriz de Dependencias
 
 ```mermaid
@@ -272,6 +302,7 @@ flowchart TD
     F5[FASE 5 - CUTOVER: launcher exec node]
     F6[FASE 6 - Testes + sync + E2E]
     F7[FASE 7 - Documentacao]
+    F8[FASE 8 - Correcao dec-060/dec-061: status real da sessao]
 
     F1 --> F5
     F2 --> F5
@@ -279,11 +310,15 @@ flowchart TD
     F4 --> F5
     F5 --> F6
     F6 --> F7
+    F1 --> F8
 ```
 
 **Nenhuma fase antes de F5 muda o comportamento observado pelo operador**
 (dec-035). F1-F4 sao paralelizaveis entre si (sem dependencia direta umas
-das outras), mas TODAS MUST concluir antes de F5.
+das outras), mas TODAS MUST concluir antes de F5. FASE 8 depende apenas de
+F1 (o arquivo que corrige, `mcp-session.sh`, e produto de F1) — nao
+depende de F5/F6/F7 nem bloqueia nenhuma delas; corrige um gap descoberto
+durante a validacao empirica da propria F1 (dec-060/dec-061).
 
 ## Resumo Quantitativo
 
@@ -296,7 +331,8 @@ das outras), mas TODAS MUST concluir antes de F5.
 | 5 - CUTOVER: launcher exec node | 3 | 6 | C |
 | 6 - Testes + sync + E2E | 5 | 9 | C |
 | 7 - Documentacao | 2 | 4 | A |
-| **Total** | **25** | **68** | - |
+| 8 - Correcao dec-060/dec-061: status real da sessao | 1 | 7 | C |
+| **Total** | **26** | **75** | - |
 
 ## Escopo Coberto
 
@@ -304,7 +340,7 @@ das outras), mas TODAS MUST concluir antes de F5.
 |------|-----------|------|
 | FR-001 | Tools registradas no boot independentemente de token | 1 |
 | FR-002 | Resolucao/validacao de sessao a cada chamada | 1 |
-| FR-003 | Rejeicao fail-closed preservada (ausente/invalida/terminal) | 1 |
+| FR-003 | Rejeicao fail-closed preservada (ausente/invalida/terminal) | 1, 8 |
 | FR-004 | Launcher sobe sem exigir token previo | 2, 5 |
 | FR-005 | Transporte deixa de depender de motor de containers | 2, 3, 5 |
 | FR-006 | `cstk mcp start` sem motor de containers | 3 |

@@ -37,6 +37,30 @@
   deixaria containers orfaos permanentes; recusar travaria execucao nova
   por causa de estado antigo (dec-015).
 
+### Session 2026-08-16 (execucao autonoma feature-00c, onda-009/onda-010)
+
+- Q: Validacao empirica pos-FASE-1 encontrou que o fail-closed "sessao
+  terminal nunca autoriza mutacao" (FR-003) e aferido apenas por PROXY —
+  `mcp-session.sh` so confere `.stopped_at` do proprio descritor, nunca o
+  status REAL da execucao no `state.json`/`state.db`. `stopped_at` so e
+  gravado por `cstk mcp stop`, chamado pelos commands pai em best-effort
+  (`|| :`); se `stop` nao rodar (aborto, crash, sessao interrompida, ou
+  falha engolida pelo `|| :`), a execucao termina e o token de capacidade
+  permanece valido indefinidamente — prova empirica: descritor com
+  `stopped_at: null` + `.execution.status: concluida` promovido via
+  `state-rw.sh set` ainda resolvia `OK` em vez de `SESSION_MISMATCH`. O
+  gap e pre-existente (nao introduzido pela FASE 1), mas estava mascarado
+  pela ausencia total de tools ate esta feature consertar o transporte.
+  Corrigir agora, ou tratar como risco documentado para feature separada?
+  → A: corrigir NESTA feature (dec-060/dec-061). E esta feature que torna
+  o gap alcancavel; entregar o transporte funcionando com um fail-closed
+  que nao fecha seria regressao efetiva de seguranca mesmo sem mudar o
+  codigo do check em si. FR-003 ja MUST cobria "pertenca a uma execucao em
+  status terminal" — o gap era de IMPLEMENTACAO (proxy incompleto), nao de
+  requisito faltante; nenhum FR novo foi necessario. Ver
+  `contracts/server-session-resolution.md` §2.2 (regras A-3/A-3.1/A-3.2) e
+  `tasks.md` FASE 8.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Tools MCP disponiveis assim que a sessao abre (Priority: P1)
