@@ -190,16 +190,29 @@ rejeicao.
   originada de um subagente orquestrador, de que o roteamento por token de
   sessao aceita chamadas com o token correto da propria execucao e
   rejeita chamadas com token ausente ou pertencente a outra execucao.
-- **FR-009**: Sistema MUST [NEEDS CLARIFICATION: existe um teto pratico
-  recomendado para o numero de tools `mcp__*` que podem coexistir na
-  allowlist `tools:` de um subagente sem degradar a resolucao/spawn? Se
-  existir, qual e como as sete operacoes do servidor de estado devem
-  respeita-lo?]
-- **FR-010**: Sistema MUST [NEEDS CLARIFICATION: qual e o comportamento
-  esperado de uma tool MCP do tipo elicitation/create quando invocada por
-  um subagente orquestrador dentro de uma execucao autonoma sem operador
-  humano presente para responder — timeout, fallback automatico para o
-  caminho nativo, ou bloqueio humano?]
+- **FR-009**: Resolvido por sondagem empirica (claude-code 2.1.233):
+  nenhum teto foi observado ate 25 tools `mcp__*` coexistindo com uma tool
+  nativa (`Bash`) na mesma allowlist — o subagente enxergou as 25 sem
+  lacunas e uma chamada real (`mcp__many__t17`) foi recebida e respondida
+  pelo servidor. As sete operacoes do servidor MCP de estado (~28% dessa
+  margem observada, folga de ~3,5x) MUST coexistir na allowlist sem
+  necessidade de mecanismo de rodizio/particionamento. Esta MUST NOT ser
+  lida como "sem limite" — 25 foi o maximo efetivamente testado, nao um
+  teto teorico do harness.
+- **FR-010**: **Deferred — fonte pendente.** O comportamento de uma tool
+  MCP do tipo elicitation/create invocada por um subagente orquestrador
+  sem operador humano presente para responder (timeout? fallback
+  automatico para o caminho nativo? bloqueio humano?) MUST ser definido
+  antes da implementacao desta requisito especifico, mas NAO MUST bloquear
+  as demais FRs desta feature — a sondagem empirica que mediria esse
+  comportamento esta em curso, fora do escopo desta execucao. Nenhum
+  comportamento MUST ser suposto sem essa fonte (Principio VI); quando a
+  medicao concluir, este FR MUST ser atualizado com a fonte e removido do
+  estado Deferred antes de `plan` assumir um comportamento concreto para
+  ele. Ate la, a orientacao de uso (FR-005/FR-006) MUST tratar
+  elicitation/create como fora de escopo de uso ativo pelos orquestradores
+  autonomos (eles nao devem invocar operacoes que dependam de elicitation
+  sem essa definicao).
 
 > Decisoes de infraestrutura: N/A (feature nao introduz scheduling, key
 > rotation, refresh de token externo, mutex multi-pod, backup/restore ou
