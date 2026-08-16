@@ -157,8 +157,8 @@ Ref: spec.md FR-015; contracts/cli-mcp-lifecycle.md §5 (G-1..G-3); quickstart.m
 
 Ref: spec.md FR-013; contracts/cli-mcp-lifecycle.md §7 (P-1, P-2); plan.md Project Structure (`plugins/cstk/commands/agente-00c.md:487`)
 
-- [ ] 4.1.1 Em `plugins/cstk/commands/agente-00c.md`, remover/generalizar o bloco `if [ "$_mcp_mode" = "docker" ]; then` (em torno da linha 487) — injetar o token sempre que o descritor existir e tiver `session_id` valido, independentemente do valor de `mode`
-- [ ] 4.1.2 Teste: estender `tests/test_command-spawn-mcp-lifecycle.sh` (ou adicionar cenario) cobrindo injecao do token com `mode=direct`
+- [x] 4.1.1 Em `plugins/cstk/commands/agente-00c.md`, remover/generalizar o bloco `if [ "$_mcp_mode" = "docker" ]; then` (em torno da linha 487) — injetar o token sempre que o descritor existir e tiver `session_id` valido, independentemente do valor de `mode`
+- [x] 4.1.2 Teste: estender `tests/test_command-spawn-mcp-lifecycle.sh` (ou adicionar cenario) cobrindo injecao do token com `mode=direct`
 
 ### 4.2 Remover a condicao `mode == "docker"` em `/feature-00c` `[C]`
 
@@ -166,8 +166,8 @@ Ref: spec.md FR-013; contracts/cli-mcp-lifecycle.md §7 (P-1, P-2, P-3); plan.md
 
 **MESMO commit da task 4.1** — deixar um dos dois commands desatualizado gera assimetria silenciosa entre `/agente-00c` e `/feature-00c` (P-3).
 
-- [ ] 4.2.1 Em `plugins/cstk/commands/feature-00c.md`, remover/generalizar o bloco equivalente (em torno da linha 728)
-- [ ] 4.2.2 Teste: cenario equivalente ao de 4.1.2, para o command `/feature-00c`
+- [x] 4.2.1 Em `plugins/cstk/commands/feature-00c.md`, remover/generalizar o bloco equivalente (em torno da linha 728)
+- [x] 4.2.2 Teste: cenario equivalente ao de 4.1.2, para o command `/feature-00c`
 
 ---
 

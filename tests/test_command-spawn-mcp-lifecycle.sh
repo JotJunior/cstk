@@ -173,6 +173,39 @@ scenario_token_fallback_sem_mcp_no_prompt() {
   done
 }
 
+# ==== mcp-direct-transport FASE 4 (FR-013): injecao generalizada, ====
+# ==== independente de `mode` — condicao antiga `mode == "docker"` removida ====
+# Ref: docs/specs/mcp-direct-transport/tasks.md 4.1/4.2;
+#      contracts/cli-mcp-lifecycle.md §7 (P-1, P-2, P-3).
+
+scenario_token_injecao_nao_condicionada_a_mode_nos_4_commands() {
+  # A variavel _mcp_mode existia SO para gatear a injecao do token a
+  # mode=="docker". Apos FR-013, a injecao le session_id direto do
+  # descritor — _mcp_mode nao deve mais aparecer em nenhum dos 4 commands.
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    if grep -Eq '_mcp_mode' "$_f"; then
+      _fail "_mcp_mode ainda presente (condicao docker nao removida)" "$_f"
+      return 1
+    fi
+  done
+}
+
+scenario_token_le_session_id_sem_guard_de_mode() {
+  # Leitura de _mcp_token deve ser incondicional (nao dentro de um
+  # `if [ ... = "docker" ]`) nos 4 commands.
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    assert_exit 0 grep -Eq '_mcp_token=\$\(jq -r .\.session_id' "$_f" || return 1
+  done
+}
+
+scenario_prosa_documenta_independencia_de_mode() {
+  # Cada bloco de injecao deve declarar explicitamente a independencia de
+  # `mode` (P-2 do contrato) — nao basta o codigo mudar silenciosamente.
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    assert_exit 0 grep -Eiq 'independentemente do valor de .mode.' "$_f" || return 1
+  done
+}
+
 # ==== Best-effort: chamadas MCP nunca abortam a pipeline (FR-007/FR-012) ====
 
 scenario_init_agente_mcp_best_effort() {

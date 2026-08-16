@@ -244,16 +244,16 @@ pausa), nenhuma acao adicional AQUI — o proximo spawn segue via caminho
 Bash. Esta etapa cobre so a verificacao de saude, nao a comutacao
 mid-onda (protocolo da task 5.5).
 
-**Injecao do token de capacidade (dec-043 / SEC-H3)**: apos a sonda, leia
-o descritor e injete o token no contexto do spawn (mesmo protocolo do
-/agente-00c inicial):
+**Injecao do token de capacidade (dec-043 / SEC-H3, generalizada FR-013)**:
+apos a sonda, leia o descritor e injete o token no contexto do spawn
+(mesmo protocolo do /agente-00c inicial) SEMPRE que `session_id` for
+nao-vazio, **independentemente do valor de `mode`** (contracts/
+cli-mcp-lifecycle.md §7, P-1/P-2 — a condicao antiga restrita a
+`mode == "docker"` foi removida: apos o cutover desta feature nenhuma
+sessao nova grava `mode=docker`):
 
 ```bash
-_mcp_mode=$(jq -r '.mode // "-"' "<SD>/mcp-server.json" 2>/dev/null) || _mcp_mode="-"
-_mcp_token=""
-if [ "$_mcp_mode" = "docker" ]; then
-  _mcp_token=$(jq -r '.session_id // ""' "<SD>/mcp-server.json" 2>/dev/null) || _mcp_token=""
-fi
+_mcp_token=$(jq -r '.session_id // ""' "<SD>/mcp-server.json" 2>/dev/null) || _mcp_token=""
 ```
 
 - Token NAO-vazio E sonda saudavel ⇒ linha no prompt do orquestrador:
