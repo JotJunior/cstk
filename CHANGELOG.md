@@ -5,6 +5,30 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.29.0] - 2026-08-15
+
+### Adicionado
+
+- **Tokens e Custo na lista de projetos** (`/projects`): duas colunas novas,
+  alimentadas pelo rollup que a rota `GET /projects` já retornava
+  (`otelUsage`/`agentUsage`) — sem mudança de backend. Tokens preferem a
+  telemetria OTel (schema v11) e caem para o hook `agent-usage` (v10)
+  quando não há OTel, com sub-rótulo indicando a fonte (`OTel` / `spawn`)
+  e aviso de amostra parcial; Custo vem só de OTel e é marcado como
+  `amostra` enquanto `wavesWithOtel < wavesTotal`. Princípio III
+  (Honestidade de Métrica) preservado: ausência de medição é `—`, nunca
+  `0`/`$0`, e os tooltips carregam cobertura e origem do número.
+
+### Alterado
+
+- **Colunas agrupadas na lista de projetos**: de 10 para 7 colunas, para
+  abrir espaço ao consumo sem alargar a tabela — alertas viram badge junto
+  do nome do projeto (mesmo tratamento que os cards do mobile já davam);
+  concluídas / em andamento / abortadas viram o mix dentro de `Features`
+  (só as fatias maiores que zero, coloridas, com tooltip); tool calls e
+  decisões viram `Atividade`. Os cards do mobile ganharam a mesma linha
+  de tokens e custo.
+
 ## [0.28.0] - 2026-08-13
 
 ### Corrigido
@@ -1246,6 +1270,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.29.0]: https://github.com/JotJunior/cstk-panel/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/JotJunior/cstk-panel/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/JotJunior/cstk-panel/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/JotJunior/cstk-panel/compare/v0.25.0...v0.26.0
