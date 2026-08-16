@@ -34,36 +34,36 @@ feature existe para restaurar.
 
 Ref: spec.md FR-001, FR-002, FR-004; contracts/server-session-resolution.md §1 (C-1..C-4)
 
-- [ ] 1.1.1 Remover a chamada a `resolveActiveSession` de `bootstrap()` (`mcp/state-server/src/index.ts:124`) — as 7 tools passam a ser registradas incondicionalmente, independentemente de existir token
-- [ ] 1.1.2 Remover/ajustar o `try/catch` de `SessionMismatchError` em `main()` (`index.ts:274-280`) que hoje aborta o processo com `exitCode=1` quando a sessao nao resolve no boot — ausencia de token deixa de impedir o processo de subir
-- [ ] 1.1.3 Atualizar o comentario fail-closed de `index.ts:120-123` ("sem sessao resolvida, o servidor nao registra NENHUMA tool") para refletir que o fail-closed passa a ser por-chamada, nao mais de boot — comentario desatualizado aqui mentiria sobre o invariante
-- [ ] 1.1.4 Teste: cobrir em `index.test.ts` que `bootstrap()` sem `MCP_SESSION_TOKEN` registra as 7 tools e nao lanca `SessionMismatchError`
+- [x] 1.1.1 Remover a chamada a `resolveActiveSession` de `bootstrap()` (`mcp/state-server/src/index.ts:124`) — as 7 tools passam a ser registradas incondicionalmente, independentemente de existir token
+- [x] 1.1.2 Remover/ajustar o `try/catch` de `SessionMismatchError` em `main()` (`index.ts:274-280`) que hoje aborta o processo com `exitCode=1` quando a sessao nao resolve no boot — ausencia de token deixa de impedir o processo de subir
+- [x] 1.1.3 Atualizar o comentario fail-closed de `index.ts:120-123` ("sem sessao resolvida, o servidor nao registra NENHUMA tool") para refletir que o fail-closed passa a ser por-chamada, nao mais de boot — comentario desatualizado aqui mentiria sobre o invariante
+- [x] 1.1.4 Teste: cobrir em `index.test.ts` que `bootstrap()` sem `MCP_SESSION_TOKEN` registra as 7 tools e nao lanca `SessionMismatchError`
 
 ### 1.2 Cache `token -> state_dir` com revalidacao integral por chamada `[C]`
 
 Ref: spec.md FR-002, FR-003, FR-011; contracts/server-session-resolution.md §2 (fluxo, A-1..A-6), §2.3 (K-1..K-5); data-model.md Entity "Cache de resolucao"
 
-- [ ] 1.2.1 Criar estrutura em memoria (`session_id -> state_dir`), escopada ao processo, sem TTL (K-1, K-3, K-4)
-- [ ] 1.2.2 Implementar a resolucao por chamada: hit de cache invoca `mcp-session.sh resolve --state-dir <cached>` (modo direto, revalida do disco); miss invoca `mcp-session.sh resolve --project-path <PP>` (tree-walk) e, em caso de sucesso, popula o cache (fluxo §2.1 do contrato)
-- [ ] 1.2.3 Garantir que o cache NUNCA armazena `stopped_at`, o descritor inteiro, ou qualquer veredito de autorizacao — apenas o par `session_id -> state_dir` (K-2, invariante de seguranca: cachear o descritor abriria janela de autorizacao para sessao terminal)
-- [ ] 1.2.4 Confirmar que a rejeicao Zod de `session_id` ausente/vazio antes de qualquer I/O nao regride (A-1) e que a mensagem literal `"session_id nao corresponde ao token de capacidade desta sessao"` e preservada (A-2)
-- [ ] 1.2.5 Chamar a resolucao por chamada nos 7 handlers de tool (`mcp/state-server/src/tools/*.ts`), substituindo a dependencia da sessao resolvida no boot
-- [ ] 1.2.6 Confirmar que a resolucao usa exclusivamente o `session_id` apresentado na propria chamada, nunca "a sessao ativa mais provavel", mesmo com multiplas execucoes ativas (A-4, FR-011)
-- [ ] 1.2.7 Teste: popular o cache com um hit, marcar `stopped_at` no descritor em disco, e confirmar que a chamada seguinte com o MESMO token e rejeitada — prova de que a revalidacao e integral, nao apenas o cache (research Decision 2)
+- [x] 1.2.1 Criar estrutura em memoria (`session_id -> state_dir`), escopada ao processo, sem TTL (K-1, K-3, K-4)
+- [x] 1.2.2 Implementar a resolucao por chamada: hit de cache invoca `mcp-session.sh resolve --state-dir <cached>` (modo direto, revalida do disco); miss invoca `mcp-session.sh resolve --project-path <PP>` (tree-walk) e, em caso de sucesso, popula o cache (fluxo §2.1 do contrato)
+- [x] 1.2.3 Garantir que o cache NUNCA armazena `stopped_at`, o descritor inteiro, ou qualquer veredito de autorizacao — apenas o par `session_id -> state_dir` (K-2, invariante de seguranca: cachear o descritor abriria janela de autorizacao para sessao terminal)
+- [x] 1.2.4 Confirmar que a rejeicao Zod de `session_id` ausente/vazio antes de qualquer I/O nao regride (A-1) e que a mensagem literal `"session_id nao corresponde ao token de capacidade desta sessao"` e preservada (A-2)
+- [x] 1.2.5 Chamar a resolucao por chamada nos 7 handlers de tool (`mcp/state-server/src/tools/*.ts`), substituindo a dependencia da sessao resolvida no boot
+- [x] 1.2.6 Confirmar que a resolucao usa exclusivamente o `session_id` apresentado na propria chamada, nunca "a sessao ativa mais provavel", mesmo com multiplas execucoes ativas (A-4, FR-011)
+- [x] 1.2.7 Teste: popular o cache com um hit, marcar `stopped_at` no descritor em disco, e confirmar que a chamada seguinte com o MESMO token e rejeitada — prova de que a revalidacao e integral, nao apenas o cache (research Decision 2)
 
 ### 1.3 Atualizar semantica de `maxToolCalls` `[A]`
 
 Ref: contracts/server-session-resolution.md §5 (T-1, T-2); data-model.md §Relacionamentos
 
-- [ ] 1.3.1 Atualizar o comentario `index.ts:128-131` ("sessao == processo, um container por execucao") para refletir a nova cardinalidade 1 processo : N sessoes — teto passa a ser por processo/sessao do harness, nao mais por execucao autonoma
-- [ ] 1.3.2 Confirmar que o texto de rejeicao `TOOL_CALL_LIMIT_EXCEEDED` (`index.ts:146`, instrui comutar para o caminho Bash) permanece acionavel sem alteracao de comportamento (T-2)
+- [x] 1.3.1 Atualizar o comentario `index.ts:128-131` ("sessao == processo, um container por execucao") para refletir a nova cardinalidade 1 processo : N sessoes — teto passa a ser por processo/sessao do harness, nao mais por execucao autonoma
+- [x] 1.3.2 Confirmar que o texto de rejeicao `TOOL_CALL_LIMIT_EXCEEDED` (`index.ts:146`, instrui comutar para o caminho Bash) permanece acionavel sem alteracao de comportamento (T-2)
 
 ### 1.4 Gate de aceite da fase `[A]`
 
 Ref: plan.md §Fases de Implementacao (gate obrigatorio por fase, R2); quickstart.md Cenario 0
 
-- [ ] 1.4.1 `cd mcp/state-server && npm ci && npm test` — os 15 `*.test.ts` compilam e passam
-- [ ] 1.4.2 `LC_ALL=C ./tests/run.sh --check-coverage` — exit 0 (nenhum arquivo removido/orfanado nesta fase)
+- [x] 1.4.1 `cd mcp/state-server && npm ci && npm test` — os 15 `*.test.ts` compilam e passam
+- [x] 1.4.2 `LC_ALL=C ./tests/run.sh --check-coverage` — exit 0 (nenhum arquivo removido/orfanado nesta fase)
 
 ---
 

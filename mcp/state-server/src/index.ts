@@ -1,27 +1,48 @@
 // index.ts — bootstrap do McpServer + transporte stdio (task 2.2.2).
 //
-// Um container por execucao (contracts/mcp-session-lifecycle.md §Contrato
-// do container). O servidor resolve, UMA vez no startup, a sessao a que
-// esta ligado (token de capacidade + project-path — SEC-H3) e recusa
-// subir (fail-closed) se a resolucao falhar: nao ha modo "sem sessao".
+// mcp-direct-transport (FASE 1, tasks 1.1/1.2): o servidor NAO resolve mais
+// sessao no boot — as 7 tools sao registradas incondicionalmente, mesmo sem
+// token algum presente (contracts/server-session-resolution.md §1, C-1..C-4).
+// O fail-closed (SEC-H3) nao foi relaxado: ele so MUDOU DE LUGAR — de uma
+// vez no startup para TODA chamada de tool (secao 2 do contrato). Cada
+// chamada resolve sua propria sessao a partir do `session_id` apresentado
+// (token de capacidade + `CSTK_MCP_PROJECT_PATH` — tree-walk no cache-miss,
+// modo direto revalidado no cache-hit; ver `session/resolve.ts`). Nunca ha
+// modo "autoriza sem token" — so deixou de haver modo "recusa subir sem
+// token".
 //
 // Entrada: variaveis de ambiente injetadas pelo processo que sobe este
-// container/processo (o launcher `mcp-launch.sh`, task 6.1/F6 — ainda nao
-// implementado nesta onda). "Deliberadamente sem env com valores
-// interpolados" no `.mcp.json` em si (contracts/mcp-session-lifecycle.md
-// §cstk mcp install) refere-se a ENTRADA ESTATICA do `.mcp.json` — nao
-// impede o launcher de setar env no processo filho que ele de fato spawna.
-//   MCP_SESSION_TOKEN     — token de capacidade (mesmo nome aceito como
-//                           fallback por mcp-session.sh resolve)
-//   CSTK_MCP_PROJECT_PATH — path do projeto-alvo (obrigatorio; mcp-session.sh
-//                           resolve nao tem fallback de env para --project-path)
-//   CSTK_MCP_SCRIPTS_DIR  — override do dir de scripts (default
-//                           /opt/cstk/scripts, o mount ro do container)
+// processo (o launcher `mcp-launch.sh`, task 6.1/F6 — ainda nao implementado
+// nesta onda). "Deliberadamente sem env com valores interpolados" no
+// `.mcp.json` em si (contracts/mcp-session-lifecycle.md §cstk mcp install)
+// refere-se a ENTRADA ESTATICA do `.mcp.json` — nao impede o launcher de
+// setar env no processo filho que ele de fato spawna.
+//   CSTK_MCP_PROJECT_PATH — path do projeto-alvo, usado no tree-walk de
+//                           cache-miss de CADA chamada (mantido; nao lido
+//                           mais so uma vez no boot)
+//   CSTK_MCP_SCRIPTS_DIR  — override do dir de scripts; obrigatoria na
+//                           pratica fora de container (default
+//                           /opt/cstk/scripts nao existe no host)
+//   MCP_MAX_TOOL_CALLS    — teto de chamadas por processo (inalterado)
+//
+// `MCP_SESSION_TOKEN` deixou de ser lida por este arquivo: o token de
+// capacidade agora chega por argumento de cada chamada de tool
+// (`input.session_id`), nao mais por env fixada no boot do processo
+// (contracts/server-session-resolution.md §3). `mcp-session.sh` continua
+// aceitando essa env como fallback proprio, mas este servidor sempre passa
+// `--token` explicito — nunca depende desse fallback.
 
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { resolveActiveSession, SessionMismatchError } from "./session/resolve.js";
+import {
+  createSessionCache,
+  resolveSessionForCall,
+  SessionMismatchError,
+  type ResolvedSession,
+  type SessionCache,
+} from "./session/resolve.js";
+import { sanitizeForLlmContext } from "./runtime/sanitize.js";
 import {
   recordSkillInputShape,
   handleRecordSkill,
@@ -111,24 +132,71 @@ function toCallToolResult(toolName: string, response: ToolEnvelope) {
   };
 }
 
+/** Teto de reason de SESSION_MISMATCH reinjetado no contexto do LLM (SEC-M1, mesmo padrao das tools). */
+const MAX_SESSION_MISMATCH_REASON_BYTES = 2048; // 2 KiB
+
+/**
+ * Resolve a sessao da chamada corrente (`resolveSessionForCall`) e traduz
+ * falha em rejeicao `SESSION_MISMATCH` formatada como `ToolEnvelope` — NUNCA
+ * lanca para fora deste helper. Compartilhado pelos 7 wrappers de tool
+ * abaixo (mcp-direct-transport FASE 1, task 1.2.5): cada chamada de CADA
+ * tool resolve sua propria sessao, em vez de reusar uma sessao unica
+ * resolvida no boot.
+ */
+async function resolveCallSession(
+  cache: SessionCache,
+  projectPath: string,
+  env: NodeJS.ProcessEnv,
+  sessionId: string,
+): Promise<{ session: ResolvedSession } | { envelope: ToolEnvelope }> {
+  try {
+    const session = await resolveSessionForCall(cache, {
+      projectPath,
+      token: sessionId,
+      env,
+    });
+    return { session };
+  } catch (err) {
+    const message =
+      err instanceof SessionMismatchError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    return {
+      envelope: {
+        outcome: "rejected",
+        reason: `SESSION_MISMATCH: ${sanitizeForLlmContext(message, MAX_SESSION_MISMATCH_REASON_BYTES)}`,
+        stage: "precondition",
+        result: null,
+      },
+    };
+  }
+}
+
 export async function bootstrap(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<McpServer> {
-  const token = env.MCP_SESSION_TOKEN ?? "";
   const projectPath = env.CSTK_MCP_PROJECT_PATH ?? "";
 
-  // Fail-closed (SEC-H3): sem sessao resolvida, o servidor nao registra
-  // NENHUMA tool de mutacao. Deixar o processo subir "vazio" seria pior do
-  // que recusar — o cliente MCP veria um servidor sem capacidades, e nao
-  // um erro diagnosticavel.
-  const session = await resolveActiveSession({ projectPath, token, env });
+  // mcp-direct-transport FASE 1 (C-1..C-4): as 7 tools registram
+  // INCONDICIONALMENTE, independente de existir token ou de qualquer sessao
+  // ja resolvida — nao ha mais resolucao no boot. O fail-closed (SEC-H3)
+  // continua valendo, so que por chamada (ver `resolveCallSession` acima):
+  // disponibilidade de tool nunca implicou, e continua nao implicando,
+  // permissao de mutacao.
+  const sessionCache = createSessionCache();
 
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
-  // SEC-L1: contador unico por processo (sessao == processo, um container
-  // por execucao). Excedeu ⇒ toda chamada subsequente e rejeitada com
-  // codigo enumerado — o cliente (orquestrador) trata como erro de tool e
-  // comuta para o caminho Bash (o teto NUNCA derruba o servidor).
+  // SEC-L1: contador unico por processo. Ate mcp-direct-transport, a
+  // cardinalidade era 1 processo : 1 sessao (um container por execucao);
+  // apos a FASE 1, um MESMO processo pode atender N sessoes (N tokens
+  // resolvidos por chamada) — o teto passou a ser por PROCESSO, nao mais
+  // por execucao autonoma (contracts/server-session-resolution.md §5, T-1).
+  // Excedeu ⇒ toda chamada subsequente e rejeitada com codigo enumerado — o
+  // cliente (orquestrador) trata como erro de tool e comuta para o caminho
+  // Bash (o teto NUNCA derruba o servidor; permanece acionavel — T-2).
   const maxToolCalls = parseMaxToolCalls(env.MCP_MAX_TOOL_CALLS);
   let toolCallsUsed = 0;
   let limitWarned = false;
@@ -160,7 +228,12 @@ export async function bootstrap(
     async (input) => {
       const limited = checkCallLimit();
       if (limited) return toCallToolResult("record_skill", limited);
-      const response: RecordSkillResponse = await handleRecordSkill(input, { session, env });
+      const resolved = await resolveCallSession(sessionCache, projectPath, env, input.session_id);
+      if ("envelope" in resolved) return toCallToolResult("record_skill", resolved.envelope);
+      const response: RecordSkillResponse = await handleRecordSkill(input, {
+        session: resolved.session,
+        env,
+      });
       return toCallToolResult("record_skill", response);
     },
   );
@@ -176,7 +249,12 @@ export async function bootstrap(
     async (input) => {
       const limited = checkCallLimit();
       if (limited) return toCallToolResult("record_decision", limited);
-      const response: RecordDecisionResponse = await handleRecordDecision(input, { session, env });
+      const resolved = await resolveCallSession(sessionCache, projectPath, env, input.session_id);
+      if ("envelope" in resolved) return toCallToolResult("record_decision", resolved.envelope);
+      const response: RecordDecisionResponse = await handleRecordDecision(input, {
+        session: resolved.session,
+        env,
+      });
       return toCallToolResult("record_decision", response);
     },
   );
@@ -192,7 +270,12 @@ export async function bootstrap(
     async (input) => {
       const limited = checkCallLimit();
       if (limited) return toCallToolResult("open_wave", limited);
-      const response: OpenWaveResponse = await handleOpenWave(input, { session, env });
+      const resolved = await resolveCallSession(sessionCache, projectPath, env, input.session_id);
+      if ("envelope" in resolved) return toCallToolResult("open_wave", resolved.envelope);
+      const response: OpenWaveResponse = await handleOpenWave(input, {
+        session: resolved.session,
+        env,
+      });
       return toCallToolResult("open_wave", response);
     },
   );
@@ -208,7 +291,12 @@ export async function bootstrap(
     async (input) => {
       const limited = checkCallLimit();
       if (limited) return toCallToolResult("record_task", limited);
-      const response: RecordTaskResponse = await handleRecordTask(input, { session, env });
+      const resolved = await resolveCallSession(sessionCache, projectPath, env, input.session_id);
+      if ("envelope" in resolved) return toCallToolResult("record_task", resolved.envelope);
+      const response: RecordTaskResponse = await handleRecordTask(input, {
+        session: resolved.session,
+        env,
+      });
       return toCallToolResult("record_task", response);
     },
   );
@@ -224,8 +312,10 @@ export async function bootstrap(
     async (input) => {
       const limited = checkCallLimit();
       if (limited) return toCallToolResult("register_human_block", limited);
+      const resolved = await resolveCallSession(sessionCache, projectPath, env, input.session_id);
+      if ("envelope" in resolved) return toCallToolResult("register_human_block", resolved.envelope);
       const response: RegisterHumanBlockResponse = await handleRegisterHumanBlock(input, {
-        session,
+        session: resolved.session,
         env,
       });
       return toCallToolResult("register_human_block", response);
@@ -243,7 +333,12 @@ export async function bootstrap(
     async (input) => {
       const limited = checkCallLimit();
       if (limited) return toCallToolResult("get_status", limited);
-      const response: GetStatusResponse = await handleGetStatus(input, { session, env });
+      const resolved = await resolveCallSession(sessionCache, projectPath, env, input.session_id);
+      if ("envelope" in resolved) return toCallToolResult("get_status", resolved.envelope);
+      const response: GetStatusResponse = await handleGetStatus(input, {
+        session: resolved.session,
+        env,
+      });
       return toCallToolResult("get_status", response);
     },
   );
@@ -259,7 +354,12 @@ export async function bootstrap(
     async (input) => {
       const limited = checkCallLimit();
       if (limited) return toCallToolResult("close_wave", limited);
-      const response: CloseWaveResponse = await handleCloseWave(input, { session, env });
+      const resolved = await resolveCallSession(sessionCache, projectPath, env, input.session_id);
+      if ("envelope" in resolved) return toCallToolResult("close_wave", resolved.envelope);
+      const response: CloseWaveResponse = await handleCloseWave(input, {
+        session: resolved.session,
+        env,
+      });
       return toCallToolResult("close_wave", response);
     },
   );
@@ -268,17 +368,13 @@ export async function bootstrap(
 }
 
 async function main(): Promise<void> {
-  let server: McpServer;
-  try {
-    server = await bootstrap();
-  } catch (err) {
-    if (err instanceof SessionMismatchError) {
-      process.stderr.write(`cstk-state: ${err.message}\n`);
-      process.exitCode = 1;
-      return;
-    }
-    throw err;
-  }
+  // mcp-direct-transport FASE 1 (C-2, task 1.1.2): bootstrap() nao resolve
+  // mais sessao alguma — nunca lanca `SessionMismatchError` no boot. Nao ha
+  // mais o try/catch dedicado que abortava o processo com exitCode=1 quando
+  // a sessao nao resolvia no startup; ausencia de token deixou de impedir o
+  // processo de subir. Qualquer excecao verdadeiramente inesperada aqui cai
+  // no `.catch` generico registrado abaixo, em `main().catch(...)`.
+  const server = await bootstrap();
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
