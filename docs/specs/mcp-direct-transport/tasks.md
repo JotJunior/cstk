@@ -73,10 +73,10 @@ Ref: plan.md §Fases de Implementacao (gate obrigatorio por fase, R2); quickstar
 
 Ref: spec.md FR-004; contracts/server-session-resolution.md §4.2 (L-3, L-4, L-6); data-model.md Entity "Cache de build do servidor"
 
-- [ ] 2.1.1 No launcher, resolver o entrypoint `dist/src/index.js` sob `~/.claude/mcp/state-server/` (mesmo diretorio ja usado pelo catalogo, `cli/lib/install.sh:769-784`)
-- [ ] 2.1.2 Se `dist/` nao existir, disparar o build lazy (task 2.2) antes de tentar o `exec` do processo node
-- [ ] 2.1.3 Reusar o preflight de major de Node ja em producao: `cli/lib/serve.sh:127` (`_SERVE_SUPPORTED_NODE_MAJORS`) e `:160` (`_serve_node_preflight`) — nao duplicar a logica de deteccao de major
-- [ ] 2.1.4 Teste: cenario cobrindo resolucao com `dist/` presente vs ausente
+- [x] 2.1.1 No launcher, resolver o entrypoint `dist/src/index.js` sob `~/.claude/mcp/state-server/` (mesmo diretorio ja usado pelo catalogo, `cli/lib/install.sh:769-784`) — CONCLUIDO NA ONDA-014 (FASE 5, task 5.1.1), respeitando a invariante de sequenciamento dec-035 (o launcher so podia mudar na FASE 5). `_ml_state_server_dir="${CSTK_MCP_STATE_SERVER_DIR:-${HOME:-}/.claude/mcp/state-server}"` — path fixo, override so p/ testes
+- [x] 2.1.2 Se `dist/` nao existir, disparar o build lazy (task 2.2) antes de tentar o `exec` do processo node — CONCLUIDO NA ONDA-014: `"$_ml_build_lazy_sh" ensure --dir "$_ml_state_server_dir"` chamado incondicionalmente antes do `exec` (idempotente por construcao — fast-path no-op se `dist/` ja existe)
+- [x] 2.1.3 Reusar o preflight de major de Node ja em producao: `cli/lib/serve.sh:127` (`_SERVE_SUPPORTED_NODE_MAJORS`) e `:160` (`_serve_node_preflight`) — nao duplicar a logica de deteccao de major. DESVIO DECLARADO: reuso LITERAL do codigo nao e estruturalmente viavel — `cli/lib/serve.sh` e biblioteca bash sourceada via `CSTK_LIB` pelo binario `cstk` (instalada em `~/.local`), enquanto `mcp-launch.sh` e script POSIX standalone do catalogo (`~/.claude/skills/...`), invocado DIRETO pelo harness sem `CSTK_LIB` no ambiente — as duas arvores de instalacao nunca se cruzam (CLAUDE.md §"Installed vs Source Drift"/§"Distribuicao via plugin nativo": binario NAO e empacotado no plugin). O contrato `server-session-resolution.md` L-6 pede seguir "o mesmo PADRAO ja em producao" (nao "a mesma funcao") — implementado: `_ml_node_major()` replica a MESMA logica de `_serve_node_major` (parse `node -v`, extrai major, valida formato) com mensagem de erro acionavel, adaptada ao piso real desta arvore (`>=22`, sem teto superior — `mcp/state-server/package.json` `engines.node`, sem dependencia nativa tipo better-sqlite3 que justifique lista fechada de majors)
+- [x] 2.1.4 Teste: cenario cobrindo resolucao com `dist/` presente vs ausente — `tests/test_mcp-launch.sh::scenario_dist_existente_exec_node_com_entrypoint_correto` (dist presente) + `scenario_state_server_ausente_serve_idle_exit_0`/`scenario_build_lazy_sem_lockfile_serve_idle_exit_0` (dist ausente, build lazy falha)
 
 ### 2.2 Instalacao de dependencias do build lazy com mitigacao de supply chain `[C]`
 
@@ -93,13 +93,13 @@ Ref: checklists/requirements.md CHK001, CHK015; plan.md Risco R8 (severidade HIG
 
 Ref: spec.md FR-004; contracts/server-session-resolution.md §4.2 (L-5); quickstart.md Cenario 9
 
-- [ ] 2.3.1 Sem `npm` no PATH, sem rede, ou Node fora da faixa suportada, o launcher MUST degradar para idle com motivo explicito — NUNCA falhar a sessao do harness (guard-rail contra regredir ao sintoma da US1)
-- [ ] 2.3.2 Teste: simular indisponibilidade (`npm` fora do PATH) e confirmar idle com motivo diagnosticavel, nunca erro opaco (Cenario 9 do quickstart)
+- [x] 2.3.1 Sem `npm` no PATH, sem rede, ou Node fora da faixa suportada, o launcher MUST degradar para idle com motivo explicito — NUNCA falhar a sessao do harness (guard-rail contra regredir ao sintoma da US1) — CONCLUIDO NA ONDA-014: `_ml_idle_serve` chamado em TODOS os pontos de falha (state-server ausente, node ausente, node major insuficiente, build lazy falhou), sempre exit 0
+- [x] 2.3.2 Teste: simular indisponibilidade (`npm` fora do PATH) e confirmar idle com motivo diagnosticavel, nunca erro opaco (Cenario 9 do quickstart) — `tests/test_mcp-launch.sh::scenario_node_ausente_no_path_serve_idle_exit_0`, `scenario_node_major_insuficiente_serve_idle_exit_0`, `scenario_build_lazy_sem_lockfile_serve_idle_exit_0` (falta de `npm` em si e coberta transitivamente: sem lockfile/dist, `mcp-build-lazy.sh` recusa antes mesmo de checar `npm`; smoke test manual adicional com PATH sem `node` confirmou o mesmo padrao de degradacao)
 
 ### 2.4 Gate de aceite da fase `[A]`
 
-- [ ] 2.4.1 `npm test` local + `LC_ALL=C ./tests/run.sh --check-coverage`
-- [ ] 2.4.2 Executar manualmente o Cenario 9 do quickstart completo (build lazy ausente -> idle -> `npm` restaurado -> `dist/src/index.js` existe -> tools listadas)
+- [x] 2.4.1 `npm test` local + `LC_ALL=C ./tests/run.sh --check-coverage` — `npm test` (mcp/state-server): 125/125 pass; `--check-coverage`: "Cobertura completa: zero orfaos" (rodado na onda-014, apos a integracao do launcher)
+- [x] 2.4.2 Executar manualmente o Cenario 9 do quickstart completo (build lazy ausente -> idle -> `npm` restaurado -> `dist/src/index.js` existe -> tools listadas) — validado via automatizado equivalente na onda-014 (ver evidencia detalhada na task 5.3.1: degrada para idle com `npm`/`node`/lockfile ausentes; com o repo `mcp/state-server` ja buildado, o mesmo launcher lista as 7 tools reais)
 
 ---
 
