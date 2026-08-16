@@ -4,6 +4,39 @@
 **Created**: 2026-08-16
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-16
+
+- Q: Sem motor de containers instalado, o `mcp-launch.sh` deve manter um
+  caminho de stub em shell para quando o token de capacidade ainda nao
+  existe, ou sempre fazer `exec` no processo node real (que resolve
+  idle-vs-autorizado por chamada)? → A: sempre `exec` no processo node
+  real, repassando `MCP_SESSION_TOKEN`/`CSTK_MCP_PROJECT_PATH`; o servidor
+  decide idle-vs-autorizado por chamada (FR-001/FR-002); elimina o stub em
+  shell (dec-010).
+- Q: A coordenacao cross-feature de injecao do token pelos commands
+  `/agente-00c`/`/feature-00c` (dec-043, hoje condicionada a
+  `mode == "docker"`) entra no escopo desta feature, ou continua fora dela
+  apos o cutover? → A: entra no escopo. `feature-00c.md:728` e o par
+  equivalente em `agente-00c.md:487` condicionam a injecao a
+  `mode == "docker"`; apos o cutover o modo deixa de ser `docker`, e sem
+  ajuste o orquestrador nunca receberia `session_id` — toda chamada
+  morreria em `SESSION_MISMATCH` (dec-014).
+- Q: Sem daemon/container de longa duracao, o que `cstk mcp
+  start`/`stop`/`gc` devem fazer? → A: `start` so grava/atualiza o
+  descritor (token+metadados, sem `mode=docker`/`container_name`); `stop`
+  so marca `stopped_at`; `gc` seria no-op documentado, sem
+  processo/container orfao a limpar (dec-011).
+- Q: Apos o cutover, como tratar descritores legados `mode=docker` (e
+  containers Docker eventualmente ainda vivos) e o `gc`? Sobrescrever em
+  silencio, recusar, ou detectar-e-avisar? → A: `cstk mcp start` detecta
+  descritor legado `mode=docker`, avisa em stderr e sobrescreve; `cstk mcp
+  gc` passa a recolher containers `cstk-mcp-state-*` remanescentes —
+  ajusta dec-011: `gc` NAO vira no-op puro. Sobrescrever em silencio
+  deixaria containers orfaos permanentes; recusar travaria execucao nova
+  por causa de estado antigo (dec-015).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Tools MCP disponiveis assim que a sessao abre (Priority: P1)
@@ -164,6 +197,22 @@ claro.
 - **FR-012**: O processo do servidor MCP MUST ser encerrado junto com a
   sessao do Claude Code que o hospeda, sem permanecer ativo como processo
   orfao apos o encerramento dessa sessao.
+- **FR-013**: Os commands `/agente-00c` e `/feature-00c` MUST injetar o
+  token de capacidade no prompt de spawn do orquestrador sempre que o
+  descritor de sessao (`mcp-server.json`) existir e tiver um `session_id`
+  valido, independentemente do valor de `mode` — a condicao anterior
+  restrita a `mode == "docker"` (`feature-00c.md:728` e
+  `agente-00c.md:487`) MUST ser removida/generalizada, pois apos o cutover
+  desta feature nenhuma sessao nova grava `mode=docker`.
+- **FR-014**: `cstk mcp start` MUST detectar um descritor de sessao
+  existente com `mode=docker` (formato legado, pre-cutover), emitir um
+  aviso explicito em stderr, e sobrescreve-lo com o novo descritor de
+  transporte direto — nunca falhar nem recusar por causa de estado legado.
+- **FR-015**: `cstk mcp gc` MUST continuar detectando e removendo
+  containers Docker orfaos com o padrao de nome `cstk-mcp-state-*`
+  remanescentes de sessoes criadas antes do cutover — `gc` NAO se torna
+  no-op apos esta feature; apenas deixa de ter containers NOVOS para
+  gerenciar (toda sessao criada apos o cutover usa transporte direto).
 
 > Decisoes de infraestrutura: a unica politica aplicavel e idempotencia de
 > `cstk mcp start`/`stop` (FR-010, FR-008) — chamadas repetidas nao devem
@@ -171,7 +220,10 @@ claro.
 > (scheduling periodico, rotacao de chave de criptografia, refresh de token
 > externo, mutex multi-pod, backup/restore) sao N/A: a sessao MCP e um
 > processo local de vida curta, sem estado persistente proprio alem do
-> descritor de sessao, e sem coordenacao entre replicas.
+> descritor de sessao, e sem coordenacao entre replicas. Excecao: FR-015
+> mantem uma rotina de limpeza (`gc`) para o passivo Docker legado deixado
+> pela feature anterior — nao e um mecanismo novo, e a continuidade de um
+> ja existente ate os containers remanescentes serem coletados.
 
 ### Key Entities
 
