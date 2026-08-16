@@ -128,6 +128,17 @@ _classify_allowlist() {
   return 0
 }
 
+# _guidance_block FILE
+# Imprime o conteudo entre os marcadores MCP-VS-BASH:BEGIN/END (exclusive).
+# Vazio se os marcadores estiverem ausentes ou o corpo estiver vazio.
+_guidance_block() {
+  awk '
+    /^<!-- MCP-VS-BASH:BEGIN -->[[:space:]]*$/ { f = 1; next }
+    /^<!-- MCP-VS-BASH:END -->[[:space:]]*$/ { f = 0 }
+    f { print }
+  ' "$1"
+}
+
 # _list_orchestrator_targets
 # Emite (uma por linha) os paths absolutos casados pelo glob canonico.
 _list_orchestrator_targets() {
@@ -421,6 +432,114 @@ scenario_prova_deteccao_forma_inline() {
     return 1
   fi
 
+  return 0
+}
+
+# ---------- Scenarios do bloco de orientacao MCP-vs-Bash (FASE 4, FR-005/FR-006/FR-011) ----------
+
+# scenario_guidance_block_presente (FR-005)
+scenario_guidance_block_presente() {
+  _targets=$(_list_orchestrator_targets)
+  if [ -z "$_targets" ]; then
+    _error "sem_alvos" "nenhum orquestrador encontrado para avaliar"
+    return 2
+  fi
+  _old_ifs="$IFS"
+  IFS='
+'
+  for _t in $_targets; do
+    IFS="$_old_ifs"
+    _body=$(_guidance_block "$_t")
+    if [ -z "$_body" ]; then
+      _fail "guidance_block_ausente" "$_t: marcadores MCP-VS-BASH:BEGIN/END ausentes ou corpo vazio"
+      return 1
+    fi
+  done
+  IFS="$_old_ifs"
+  return 0
+}
+
+# scenario_guidance_block_conteudo_minimo (FR-006)
+# Grep por trecho-chave estavel de cada um dos 9 itens obrigatorios de
+# data-model.md secao "Conteudo minimo obrigatorio do body".
+scenario_guidance_block_conteudo_minimo() {
+  _targets=$(_list_orchestrator_targets)
+  if [ -z "$_targets" ]; then
+    _error "sem_alvos" "nenhum orquestrador encontrado para avaliar"
+    return 2
+  fi
+  _old_ifs="$IFS"
+  IFS='
+'
+  for _t in $_targets; do
+    IFS="$_old_ifs"
+    _body=$(_guidance_block "$_t")
+    if [ -z "$_body" ]; then
+      _fail "guidance_block_ausente" "$_t: corpo vazio ao checar conteudo minimo"
+      return 1
+    fi
+    _missing_items=""
+    printf '%s\n' "$_body" | grep -qF 'Quando preferir MCP' || _missing_items="$_missing_items item1"
+    printf '%s\n' "$_body" | grep -qF 'da PROPRIA execucao' || _missing_items="$_missing_items item2"
+    printf '%s\n' "$_body" | grep -qF 'Deteccao de indisponibilidade' || _missing_items="$_missing_items item3"
+    printf '%s\n' "$_body" | grep -qF '0 retries' || _missing_items="$_missing_items item4"
+    printf '%s\n' "$_body" | grep -qF 'va direto pelo caminho Bash' || _missing_items="$_missing_items item5"
+    printf '%s\n' "$_body" | grep -qF 'NUNCA pausa a onda' || _missing_items="$_missing_items item6"
+    printf '%s\n' "$_body" | grep -qF 'Mapa operacao MCP' || _missing_items="$_missing_items item7"
+    printf '%s\n' "$_body" | grep -qF 'elicitation/create' || _missing_items="$_missing_items item8"
+    printf '%s\n' "$_body" | grep -qF 'Nao-exfiltracao do' || _missing_items="$_missing_items item9"
+    if [ -n "$_missing_items" ]; then
+      _fail "conteudo_minimo_incompleto" "$_t: itens ausentes =>$_missing_items"
+      return 1
+    fi
+  done
+  IFS="$_old_ifs"
+  return 0
+}
+
+# scenario_guidance_block_regra_nao_exfiltracao (gate owasp-security F1)
+scenario_guidance_block_regra_nao_exfiltracao() {
+  _targets=$(_list_orchestrator_targets)
+  if [ -z "$_targets" ]; then
+    _error "sem_alvos" "nenhum orquestrador encontrado para avaliar"
+    return 2
+  fi
+  _old_ifs="$IFS"
+  IFS='
+'
+  for _t in $_targets; do
+    IFS="$_old_ifs"
+    _body=$(_guidance_block "$_t")
+    printf '%s\n' "$_body" | grep -qF 'NUNCA e escrito em artefato, log, mensagem' || {
+      _fail "regra_nao_exfiltracao_ausente" "$_t: regra de nao-exfiltracao do session_id ausente ou incompleta"
+      return 1
+    }
+  done
+  IFS="$_old_ifs"
+  return 0
+}
+
+# scenario_guidance_block_paridade (FR-011)
+# body dos 2 alvos e byte-identico apos trim de whitespace terminal de
+# linha. Falha com diff apontando a linha divergente se nao for.
+scenario_guidance_block_paridade() {
+  _targets=$(_list_orchestrator_targets)
+  _n=$(printf '%s\n' "$_targets" | wc -l | tr -d ' ')
+  if [ -z "$_targets" ] || [ "$_n" -lt 2 ]; then
+    _error "alvos_insuficientes" "paridade exige >= 2 alvos, encontrados: $_n"
+    return 2
+  fi
+  _first=$(printf '%s\n' "$_targets" | sed -n '1p')
+  _second=$(printf '%s\n' "$_targets" | sed -n '2p')
+  _body1_file="$TMPDIR_TEST/guidance-body-1.txt"
+  _body2_file="$TMPDIR_TEST/guidance-body-2.txt"
+  _guidance_block "$_first" | sed -e 's/[[:space:]]*$//' > "$_body1_file"
+  _guidance_block "$_second" | sed -e 's/[[:space:]]*$//' > "$_body2_file"
+  if ! diff -q "$_body1_file" "$_body2_file" >/dev/null 2>&1; then
+    _diff_out=$(diff "$_body1_file" "$_body2_file" 2>&1 | head -20)
+    _fail "guidance_block_diverge" "$_first vs $_second divergem: $_diff_out"
+    return 1
+  fi
   return 0
 }
 

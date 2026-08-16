@@ -161,7 +161,7 @@ Ref: data-model.md secao "Conteudo minimo obrigatorio do body" (9 itens);
 spec.md FR-005/FR-006/FR-007; plan.md gate `owasp-security` finding F1
 (nao-exfiltracao do `session_id`)
 
-- [ ] 4.1.1 Inserir bloco delimitado por `<!-- MCP-VS-BASH:BEGIN -->` /
+- [x] 4.1.1 Inserir bloco delimitado por `<!-- MCP-VS-BASH:BEGIN -->` /
   `<!-- MCP-VS-BASH:END -->` em `plugins/cstk/agents/agente-00c-orchestrator.md`
   cobrindo os 9 itens obrigatorios de data-model.md: (1) quando preferir
   MCP — `session_id` presente no prompt de spawn e tool visivel; (2) toda
@@ -178,12 +178,12 @@ spec.md FR-005/FR-006/FR-007; plan.md gate `owasp-security` finding F1
   do `session_id` (nunca em artefato, log, mensagem de commit, relatorio,
   Decisao, nem argumento de qualquer tool que nao seja a propria chamada
   `mcp__cstk-state__*`)
-- [ ] 4.1.2 Copiar o MESMO bloco, byte-identico e SEM nenhuma referencia a
+- [x] 4.1.2 Copiar o MESMO bloco, byte-identico e SEM nenhuma referencia a
   um orquestrador especifico (nome do agente, layout de state-dir, command
   pai — invariante `self_contained` de data-model.md), para
   `plugins/cstk/agents/agente-00c-feature-orchestrator.md`, entre os
   mesmos marcadores
-- [ ] 4.1.3 Revisar visualmente os 2 blocos lado a lado confirmando
+- [x] 4.1.3 Revisar visualmente os 2 blocos lado a lado confirmando
   byte-identidade antes de rodar o teste automatizado de 4.2
 
 ### 4.2 Testes de paridade e conteudo do bloco de orientacao (FR-011) `[A]`
@@ -193,19 +193,19 @@ Ref: contracts/orchestrator-allowlist-guard.md scenarios
 `scenario_guidance_block_regra_nao_exfiltracao`,
 `scenario_guidance_block_paridade`; spec.md FR-011
 
-- [ ] 4.2.1 Implementar `scenario_guidance_block_presente` em
+- [x] 4.2.1 Implementar `scenario_guidance_block_presente` em
   `tests/test_orchestrator-allowlist-guard.sh`: para cada alvo do glob
   `*-orchestrator.md`, o par de marcadores `MCP-VS-BASH:BEGIN`/
   `MCP-VS-BASH:END` existe e o corpo entre eles nao e vazio
-- [ ] 4.2.2 Implementar `scenario_guidance_block_conteudo_minimo`: o body
+- [x] 4.2.2 Implementar `scenario_guidance_block_conteudo_minimo`: o body
   cobre os 9 itens obrigatorios (grep por trecho-chave estavel de cada um
   dos 9 pontos listados em 4.1.1)
-- [ ] 4.2.3 Implementar `scenario_guidance_block_regra_nao_exfiltracao`:
+- [x] 4.2.3 Implementar `scenario_guidance_block_regra_nao_exfiltracao`:
   body contem a regra do item 9 (nao-exfiltracao do `session_id`)
-- [ ] 4.2.4 Implementar `scenario_guidance_block_paridade`: body dos 2
+- [x] 4.2.4 Implementar `scenario_guidance_block_paridade`: body dos 2
   arquivos e byte-identico apos trim de whitespace terminal de linha;
   falha com diff apontando a linha divergente se nao for
-- [ ] 4.2.5 Rodar `./tests/run.sh orchestrator-allowlist` e confirmar os 8
+- [x] 4.2.5 Rodar `./tests/run.sh orchestrator-allowlist` e confirmar os 8
   scenarios do contrato verdes (4 de allowlist da FASE 1 + 4 de guidance
   desta fase)
 
@@ -215,12 +215,12 @@ Ref: checklists/requirements.md CHK025 (linhas 216-223); spec.md "Why this
 priority" de User Story 3 (linhas 90-92: "instrumental para a Story 2 ter
 efeito pratico")
 
-- [ ] 4.3.1 Adicionar linha na secao "Escopo Coberto" deste `tasks.md`
+- [x] 4.3.1 Adicionar linha na secao "Escopo Coberto" deste `tasks.md`
   (ja presente abaixo) documentando explicitamente que US3
   (FR-005/FR-006/FR-011) e instrumental para US2 e nao recebe Success
   Criterion dedicado nesta rodada — decisao consciente ja justificada em
   `spec.md`, nao descuido — `Ref: checklists/requirements.md CHK025`
-- [ ] 4.3.2 Registrar Decisao auditavel (`state-decisions.sh register
+- [x] 4.3.2 Registrar Decisao auditavel (`state-decisions.sh register
   --score 2`) durante a execucao desta tarefa, citando CHK025 e a
   justificativa da spec, fechando formalmente o Gap sem criar SC novo
   fora do escopo desta rodada
@@ -229,13 +229,13 @@ efeito pratico")
 
 Ref: checklists/requirements.md CHK023 (linhas 198-207)
 
-- [ ] 4.4.1 Confirmar que o item 3 do bloco de orientacao (tarefa 4.1.1)
+- [x] 4.4.1 Confirmar que o item 3 do bloco de orientacao (tarefa 4.1.1)
   registra explicitamente a ausencia de SLA/timeout definido para
   delimitar "chamada pendente" vs. "chamada falhou", e o destino declarado
   (reabrir via `/clarify` numa proxima rodada se producao revelar chamadas
   penduradas sem timeout) — NAO implementar nenhum valor numerico de
   timeout nesta tarefa (seria suposicao sem fonte, violaria Principio VI)
-- [ ] 4.4.2 Adicionar linha na secao "Escopo Excluido" deste `tasks.md`
+- [x] 4.4.2 Adicionar linha na secao "Escopo Excluido" deste `tasks.md`
   (ja presente abaixo): "Definicao de SLA/timeout de chamada MCP — Ref:
   checklists/requirements.md CHK023 — motivo: nao bloqueante nesta rodada,
   sem fonte para um valor concreto (Principio VI); destino: `/clarify`
