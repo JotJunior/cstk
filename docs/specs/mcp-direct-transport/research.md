@@ -267,6 +267,17 @@ seja, o tarball ja distribui **fonte, nunca build**, o que torna o build
 lazy a continuacao natural do que ja existe (e nao uma mudanca de
 politica de distribuicao).
 
+**Nota de correcao (dec-041, onda-006)**: o precedente `cli/lib/serve.sh:574`
+acima serve **apenas** para justificar o padrao de engenharia "instalar
+pacotes no host de forma preguicosa" (tamanho de tarball, preflight de
+Node) — **nao** e evidencia de postura de seguranca segura. Essa mesma
+linha invoca o gerenciador de pacotes **sem** `--ignore-scripts`, logo
+carrega exatamente o mesmo risco de supply chain (lifecycle scripts com
+privilegios do usuario) descrito no Risco R8 de `plan.md`. Uma decisao
+anterior (dec-039) citou esta mesma linha como precedente para rebaixar a
+severidade de R8 a MEDIUM — citacao invertida, corrigida em dec-041: R8
+volta a HIGH. Ver `plan.md` §Riscos e Mitigacoes, linha R8.
+
 ---
 
 ## Decision 6 — A feature toca as DUAS metades da instalacao

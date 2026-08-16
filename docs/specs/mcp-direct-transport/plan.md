@@ -205,7 +205,7 @@ gate automatico em CI** (Risco R2).
 | **R5** | `cli/lib/mcp.sh` viola o proprio cabecalho sobre confinamento de `jq` (carve-out II-b) | Constitution Check do arquivo sob edicao seria falso se marcado PASS silencioso | **Declarado** no Constitution Check. Correcao **fora de escopo** (refatoracao sem FR); registrada como recomendacao ao mantenedor (dec-036) |
 | **R6** | Recorte entre "codigo Docker que `gc` ainda usa" (FR-015) e "codigo que so o `start` usava" nao foi verificado linha a linha | F3 pode remover demais (quebra `gc`) ou de menos (mantem codigo morto) | Marcado **[PROPOSTA]** em `contracts/cli-mcp-lifecycle.md` §5.1; MUST ser validado com o codigo em maos antes de executar F3 |
 | **R7** | Primeira execucao numa maquina exige `npm` + rede (build lazy) | Sessao sem tools ate o build concluir | Contrato **L-5**: launcher degrada para **idle** com motivo explicito, nunca falha a sessao. Cenario 9 do quickstart valida |
-| **R8** | **Supply chain do build lazy** (A03 / ASI04 / LLM03): `npm ci` no host executa lifecycle scripts (`postinstall`) de toda a arvore transitiva **com os privilegios do usuario**. Antes, o `npm ci` rodava dentro do `docker build` — script malicioso ficava confinado a imagem; agora alcanca `$HOME` (incl. `~/.claude`, credenciais) | Comprometimento de dependencia vira execucao de codigo no host | **[PROPOSTA — a validar na implementacao]** usar `npm ci --ignore-scripts` no build lazy (as 2 deps diretas sao JS puro — **a validar** que nenhuma dep transitiva exige build nativo) e fixar a instalacao pelo `package-lock.json` ja versionado. **Severidade avaliada MEDIUM, nao HIGH**, por precedente: `cstk serve` ja executa install de pacotes no host em producao (`cli/lib/serve.sh:574`) — esta feature **segue** uma postura ja aceita pelo toolkit, nao a inaugura |
+| **R8** | **Supply chain do build lazy** (A03 / ASI04 / LLM03): `npm ci` no host executa lifecycle scripts (`postinstall`) de toda a arvore transitiva **com os privilegios do usuario**. Antes, o `npm ci` rodava dentro do `docker build` — script malicioso ficava confinado a imagem; agora alcanca `$HOME` (incl. `~/.claude`, credenciais) | Comprometimento de dependencia vira execucao de codigo no host | **[PROPOSTA — a validar na implementacao]** usar `npm ci --ignore-scripts` no build lazy (as 2 deps diretas sao JS puro — **a validar** que nenhuma dep transitiva exige build nativo) e fixar a instalacao pelo `package-lock.json` ja versionado. **Severidade: HIGH** (corrigido em dec-041, onda-006 — o rebaixamento original a MEDIUM citava `cli/lib/serve.sh:574` como precedente de "postura ja aceita", mas essa linha **tambem** invoca o gerenciador de pacotes **sem** `--ignore-scripts`; verificado por grep no repo inteiro, a UNICA ocorrencia real da flag hoje e `cli/lib/mcp-docker.sh:169`, dentro do Dockerfile que **esta propria feature remove**. Nao ha controle equivalente em producao hoje, e a remocao do Dockerfile **elimina a unica ocorrencia atual da protecao no repo** ate a mitigacao proposta acima ser implementada e validada) |
 | **R9** | **Confusao de sessao por descritor deslocado** (A01 / ASI03): o cache `token -> state_dir` e revalidado, mas a revalidacao compara `session_id`; se um descritor for **copiado/restaurado de backup** para outro state-dir, um token legitimo poderia autorizar mutacao no state-dir errado | Mutacao no state-dir nao pretendido | **[PROPOSTA — a validar na implementacao]** na revalidacao, conferir tambem que o campo `state_dir` **de dentro** do descritor bate com o diretorio de onde ele foi lido. O campo ja existe ([REAL] `mcp.sh:461`), o custo e uma comparacao de string, e detecta descritor deslocado |
 | **R10** | **DoS cross-sessao pelo teto de chamadas** (LLM10 / ASI08): com 1 processo : N sessoes, uma execucao ruidosa esgota `maxToolCalls` e as **demais sessoes do mesmo processo** passam a ser rejeitadas — impossivel no modelo 1:1 anterior | Degradacao que atinge execucao inocente | Impacto limitado a **degradacao**, nao falha: a rejeicao ja instrui comutar para o caminho Bash ([REAL] `index.ts:146`), que continua funcional. MUST ser documentado junto com T-1; contador por sessao segue fora de escopo (research Decision 1) |
 
@@ -230,18 +230,26 @@ Revisao do desenho (nao do codigo — ele ainda nao existe) sob OWASP Top
 | Finding | Categoria | Severidade | Tratamento |
 |---------|-----------|------------|------------|
 | Perda de confinamento por montagens | ASI02/ASI03 | **MEDIUM** | ja declarado (tabela acima); autorizacao por token permanece como controle |
-| Supply chain do `npm ci` no host | A03 / ASI04 / LLM03 | **MEDIUM** | **R8** — novo, mitigacao proposta |
+| Supply chain do `npm ci` no host | A03 / ASI04 / LLM03 | **HIGH** | **R8** — corrigido em dec-041 (precedente citado estava invertido); mitigacao proposta, ainda nao implementada |
 | Descritor deslocado / restaurado de backup | A01 / ASI03 | **MEDIUM** | **R9** — novo, mitigacao proposta |
 | DoS cross-sessao pelo teto de chamadas | LLM10 / ASI08 | **MEDIUM** | **R10** — novo, degradacao com fallback |
 | Token em identificador observavel | ASI03 | **RESOLVIDO** | FR-009 elimina o vetor |
 | Fail-closed por chamada | A01/A10 | **PASS** | preservado e com escopo mais fino |
 | Ausencia de gate de CI no caminho de autorizacao | CICD-SEC-1 | **MEDIUM** | **R2** — `resolve.test.ts` e justamente um dos que nao rodam em CI |
 
-**Nenhum finding CRITICAL ou HIGH.** O unico candidato a HIGH (supply
-chain do build lazy) foi avaliado como MEDIUM por precedente explicito:
-`cstk serve` ja executa install de pacotes no host em producao. Este
-rebaixamento e uma decisao registrada e auditavel, nao uma omissao — se o
-precedente for revisto no futuro, R8 sobe junto.
+**Um finding HIGH: R8** (corrigido em dec-041, onda-006; nenhum CRITICAL).
+A avaliacao original desta gate (dec-039, onda-005) rebaixou o supply
+chain do build lazy para MEDIUM citando `cli/lib/serve.sh:574` como
+precedente de "postura ja aceita pelo toolkit". **A citacao estava
+invertida**: verificado por grep no repo inteiro (`cli/`, `scripts/`,
+`.github/`), essa mesma linha invoca o gerenciador de pacotes **sem**
+`--ignore-scripts` — nao ha protecao equivalente em producao hoje. A
+UNICA ocorrencia real da flag no repo e `cli/lib/mcp-docker.sh:169`, no
+Dockerfile que **esta propria feature remove** (F3) — ou seja, a feature
+nao "segue uma postura ja protegida", ela **elimina a unica instancia da
+protecao que existe hoje** ate a mitigacao proposta em R8 ser implementada
+e validada. O rebaixamento foi revertido; R8 volta a HIGH. Ver dec-039
+(decisao original, agora corrigida) e dec-041 (correcao, com evidencia).
 
 **Mudanca de eixo do modelo de ameaca**: o confinamento deixa de ser do
 **PROCESSO** e passa a ser da **AUTORIZACAO** — todo caminho de mutacao
