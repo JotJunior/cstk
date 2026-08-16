@@ -5,6 +5,39 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [7.6.2] - 2026-08-15
+
+Corrige o `cstk serve` no Windows, onde o painel nunca chegava a subir: o
+build morria com `TS2307: Cannot find module '@cstk-panel/shared-types'`
+em 17 arquivos de `apps/server`. Mesma familia da #77 — codigo POSIX
+correto que assume semantica de link do Unix e encontra outra no Windows.
+Baseado na PR #97 (@renatoalcantara), estendida para o caminho `--update`
+introduzido depois pelo fix da issue #113.
+
+### Fixed
+
+- **`cstk serve` reconcilia os links de workspace no destino final.** O
+  `npm install` da instalacao roda dentro do tmpdir e a arvore e movida
+  para `~/.local/share/cstk/panel` depois. Em POSIX o npm materializa os
+  workspaces como symlinks **relativos**, que sobrevivem intactos ao `mv`;
+  no Windows materializa como junctions de caminho **absoluto** apontando
+  para o tmpdir — que e removido em seguida, deixando `node_modules/
+  @cstk-panel/*` pendurado e o `tsc` sem os tipos compartilhados. A
+  instalacao agora reexecuta o install ja em `panel_dir`, reescrevendo os
+  links com o caminho real; se essa etapa falhar, o `panel_dir` e removido
+  para preservar a invariante de que instalacao detectada e instalacao
+  utilizavel. Em POSIX o passo extra e praticamente no-op (`node_modules`
+  ja populado) e roda uma vez por instalacao, nao por execucao.
+- **`cstk serve --update` tambem reconcilia, depois do swap.** O update
+  sem janela de destruicao (issue #113) instala num staging IRMAO e so
+  entao move para `panel_dir` — ou seja, a arvore e movida DUAS vezes.
+  Reconciliar apenas dentro do staging deixaria os junctions apontando
+  para um `.stage.$$` que deixa de existir, reproduzindo o mesmo TS2307 no
+  update. A reconciliacao agora roda tambem apos o swap; se falhar, a
+  versao nova (incompleta) e descartada e a instalada volta ao lugar,
+  mantendo a invariante da #113 de que a instalada so e destruida quando a
+  nova esta pronta.
+
 ## [7.6.1] - 2026-08-15
 
 O quickstart Cenario 17 da feature `delivery-tier` (execucao
@@ -6122,6 +6155,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[7.6.2]: https://github.com/JotJunior/cstk/releases/tag/v7.6.2
 [7.6.1]: https://github.com/JotJunior/cstk/releases/tag/v7.6.1
 [7.6.0]: https://github.com/JotJunior/cstk/releases/tag/v7.6.0
 [7.5.1]: https://github.com/JotJunior/cstk/releases/tag/v7.5.1

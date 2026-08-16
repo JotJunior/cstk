@@ -296,7 +296,8 @@ _serve_write_integrity_log() {
 # Extraido de _serve_install (ate a extracao) para ser reusado por DOIS
 # callers sem duplicar o mecanismo de download/verificacao (FR-007):
 #   (a) _serve_install (modo nativo, abaixo): apos extrair, roda `npm
-#       install` dentro de DEST_DIR e move atomicamente para PANEL_DIR.
+#       install` dentro de DEST_DIR, move atomicamente para PANEL_DIR e
+#       reconcilia os links de workspace ja no destino.
 #   (b) o ponto de entrada do modo alternativo baseado em container (vive
 #       no arquivo confinado pelo carve-out do Principio II condicao b,
 #       FASE 2 do backlog correspondente): apos extrair, usa DEST_DIR
@@ -498,9 +499,45 @@ _serve_download_verify_extract() {
   return 0
 }
 
+# _serve_reconcile_workspaces DIR
+# Reexecuta `npm install` em DIR para reescrever os links de workspace
+# apontando para o caminho REAL da arvore (portabilidade Windows).
+#
+# Por que: o `npm install` da instalacao roda dentro do tmpdir de extracao e
+# a arvore e movida depois. Em POSIX o npm materializa os workspaces como
+# symlinks RELATIVOS, que sobrevivem intactos ao `mv`; no Windows materializa
+# como junctions de caminho ABSOLUTO para o diretorio de origem — que e
+# removido em seguida, deixando `node_modules/@cstk-panel/*` pendurado e o
+# build morrendo com `TS2307: Cannot find module '@cstk-panel/shared-types'`.
+#
+# TODO caminho que MOVE a arvore precisa chamar isto DEPOIS do ultimo `mv`:
+# a instalacao nova (`_serve_install`, um mv) e o `--update`, que move duas
+# vezes (tmpdir -> staging dentro de `_serve_install`, staging -> panel_dir
+# no swap). Reconciliar so no staging deixaria os junctions apontando para um
+# caminho `.stage.$$` que deixa de existir — o mesmo bug, so que no update.
+#
+# Custo em POSIX: praticamente no-op (node_modules ja populado) e roda uma
+# vez por INSTALACAO, nao por execucao.
+#
+# NAO remove DIR em caso de falha — a politica de cleanup/rollback e do
+# caller (a instalacao nova descarta o dir; o update devolve a versao antiga).
+# exit 0 = ok; exit 1 = falha.
+_serve_reconcile_workspaces() {
+  _srw_dir="$1"
+  printf 'cstk serve: reconciliando workspaces em %s...\n' "$_srw_dir"
+  if ! (cd "$_srw_dir" && npm install) 2>&1; then
+    printf 'cstk serve: erro: reconciliacao dos workspaces falhou\n' >&2
+    return 1
+  fi
+  return 0
+}
+
 # _serve_install PANEL_DIR [ALLOW_UNVERIFIED] [BYPASS_METHOD]
 # Realiza o download e instalacao do painel em PANEL_DIR.
-# Usa tmpdir privado; move atomicamente para PANEL_DIR apos sucesso.
+# Usa tmpdir privado; move atomicamente para PANEL_DIR apos sucesso e entao
+# reconcilia os links de workspace no destino (necessario no Windows, onde o
+# npm materializa workspaces como junctions de caminho absoluto — ver o
+# comentario no ponto da reconciliacao).
 # ALLOW_UNVERIFIED: "1" bypassa o bloqueio fail-closed quando a integridade
 #   nao pode ser confirmada (default "0" — bloqueia). NUNCA bypassa
 #   divergencia de checksum (mismatch — regressao FR-010, task 3.4).
@@ -561,6 +598,17 @@ _serve_install() {
 
   # .panel-version ja foi escrito por _serve_download_verify_extract dentro
   # de _si_extract, que agora VIVE em _si_panel_dir (o mv leva o arquivo).
+
+  # Reconciliar os links de workspace no diretorio onde a arvore acabou de
+  # pousar (ver cabecalho de _serve_reconcile_workspaces). Falha aqui remove
+  # o panel_dir para preservar a invariante do caller (`_serve_is_installed`
+  # verdadeiro => instalacao completa e utilizavel).
+  if ! _serve_reconcile_workspaces "$_si_panel_dir"; then
+    [ -n "$_si_panel_dir" ] && rm -rf -- "$_si_panel_dir"
+    rm -rf -- "$_si_wrapper_tmp"
+    trap - EXIT INT TERM
+    return 1
+  fi
 
   # Limpar tmpdir (trap cuida de EXIT mas chamamos explicitamente aqui)
   rm -rf -- "$_si_wrapper_tmp"
@@ -868,7 +916,22 @@ HELP
           rm -rf -- "$_serve_old"
           if mv -- "$_serve_panel_dir" "$_serve_old" \
             && mv -- "$_serve_stage" "$_serve_panel_dir"; then
-            rm -rf -- "$_serve_old"
+            # A arvore acabou de ser movida do staging para o destino: os
+            # links de workspace criados dentro de `.stage.$$` precisam ser
+            # reescritos para o caminho definitivo (ver
+            # _serve_reconcile_workspaces). Sem isto, o update reproduz no
+            # Windows exatamente o TS2307 que a instalacao nova ja corrige.
+            if _serve_reconcile_workspaces "$_serve_panel_dir"; then
+              rm -rf -- "$_serve_old"
+            else
+              # Mesma invariante da falha de instalacao (issue #113): a
+              # versao instalada so e descartada quando a nova esta pronta.
+              # Nova incompleta => descartar a nova e devolver a antiga.
+              rm -rf -- "$_serve_panel_dir"
+              mv -- "$_serve_old" "$_serve_panel_dir" || :
+              printf 'cstk serve: aviso: reconciliacao da versao nova falhou; mantendo a versao instalada (%s)\n' \
+                "${_serve_current:-desconhecida}" >&2
+            fi
           else
             # Swap parou no meio: devolver a versao antiga ao lugar se ela
             # saiu e a nova nao entrou.
