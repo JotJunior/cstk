@@ -30,36 +30,36 @@ Ref: contracts/orchestrator-allowlist-guard.md; plan.md Fase A; spec.md
 FR-002, FR-004, FR-012. Arquivo **AINDA NAO EXISTE** no repo — esta tarefa
 CRIA, nao edita.
 
-- [ ] 1.1.1 Criar `tests/test_orchestrator-allowlist-guard.sh` (POSIX sh
+- [x] 1.1.1 Criar `tests/test_orchestrator-allowlist-guard.sh` (POSIX sh
   puro, sem `jq` — research.md Decision 4) com um parser de frontmatter
   que delimita o bloco entre a 1a e a 2a linha `---` e le SOMENTE dentro
   dele (nunca a prosa do agente), conforme contracts/orchestrator-allowlist-guard.md
   secao "Contrato de parsing"
-- [ ] 1.1.2 Implementar o parser cobrindo as DUAS formas de `tools:`:
+- [x] 1.1.2 Implementar o parser cobrindo as DUAS formas de `tools:`:
   inline (`tools: A, B` na mesma linha) e lista YAML (`tools:` seguido de
   linhas `- A`) — normalizar entradas (trim, descartar vazias) e
   classificar por prefixo `mcp__` em `mcp_entries`/`native_entries`
-- [ ] 1.1.3 Implementar `scenario_orchestrator_glob_nao_vazio`: o glob
+- [x] 1.1.3 Implementar `scenario_orchestrator_glob_nao_vazio`: o glob
   `plugins/cstk/agents/*-orchestrator.md` deve casar >= 1 arquivo; falha
   com violacao `no_orchestrator_found` se 0 (anti-ponto-cego, research.md
   Decision 3)
-- [ ] 1.1.4 Implementar `scenario_allowlist_nunca_vazia_nem_so_mcp`: para
+- [x] 1.1.4 Implementar `scenario_allowlist_nunca_vazia_nem_so_mcp`: para
   cada alvo do glob, `tools:` presente (senao `tools_key_absent`) E
   `entries` nao-vazio (senao `empty_allowlist`) E `native_entries`
   nao-vazio (senao `mcp_only_allowlist`) — tabela de decisao completa em
   data-model.md secao "State transitions"
-- [ ] 1.1.5 Implementar `scenario_allowlist_declara_as_7_tools_mcp`: para
+- [x] 1.1.5 Implementar `scenario_allowlist_declara_as_7_tools_mcp`: para
   cada alvo, as 7 entradas exatas
   `mcp__cstk-state__{open_wave,record_decision,record_skill,record_task,register_human_block,close_wave,get_status}`
   presentes — comparar contra lista literal, nunca regex `mcp__cstk-state__.*`
   (plan.md secao "Convencoes de Borda" — protege contra typo silencioso)
-- [ ] 1.1.6 Implementar `scenario_allowlist_preserva_bash`: para cada
+- [x] 1.1.6 Implementar `scenario_allowlist_preserva_bash`: para cada
   alvo, `Bash` presente em `native_entries`
-- [ ] 1.1.7 Criar as 7 fixtures sinteticas em `mktemp -d` (NUNCA editar os
+- [x] 1.1.7 Criar as 7 fixtures sinteticas em `mktemp -d` (NUNCA editar os
   agentes reais): so-MCP inline, so-MCP lista, vazia, ausente, mista
   inline, mista lista, so-nativa — vereditos esperados na tabela "Casos
   negativos exercitados por fixture" de contracts/orchestrator-allowlist-guard.md
-- [ ] 1.1.8 PROVA EXPLICITA de deteccao da forma inline (o guard antigo em
+- [x] 1.1.8 PROVA EXPLICITA de deteccao da forma inline (o guard antigo em
   `tests/test_orchestrator-mcp-fallback.sh:61` e `:70`, regex
   `^\s*-\s*mcp__`, so casava a forma de lista YAML e por isso nunca
   detectou a forma inline realmente usada nos 7 arquivos de
@@ -67,7 +67,7 @@ CRIA, nao edita.
   "so-MCP inline" falha com `mcp_only_allowlist` E que a fixture "mista
   inline" passa. Teste dedicado que reproduziria o bug antigo se
   reintroduzido
-- [ ] 1.1.9 Terminar o arquivo com `run_all_scenarios "$0"` (mesmo padrao
+- [x] 1.1.9 Terminar o arquivo com `run_all_scenarios "$0"` (mesmo padrao
   de `tests/test_orchestrator-mcp-fallback.sh:245`) para descoberta
   automatica das funcoes `scenario_*` pelo harness
 
@@ -78,14 +78,14 @@ existence-guarded ja usado por `test_command-spawn-mcp-lifecycle.sh`);
 contracts/orchestrator-allowlist-guard.md secao "Integracao com o
 harness"; plan.md linhas 136-143 (item mais facil de esquecer da feature)
 
-- [ ] 1.2.1 Adicionar um ramo em `tests/run.sh::_is_internal_test` para
+- [x] 1.2.1 Adicionar um ramo em `tests/run.sh::_is_internal_test` para
   `test_orchestrator-allowlist-guard.sh`, existence-guarded ao diretorio
   `plugins/cstk/agents` (mesmo padrao do ramo `test_command-spawn-mcp-lifecycle.sh`)
   — sem esse ramo, `--check-coverage` reporta o arquivo como "test sem
   script" e sai com `1`
-- [ ] 1.2.2 Rodar `./tests/run.sh --check-coverage` e confirmar exit 0
+- [x] 1.2.2 Rodar `./tests/run.sh --check-coverage` e confirmar exit 0
   (nenhum script nem teste orfao)
-- [ ] 1.2.3 Rodar `./tests/run.sh orchestrator-allowlist` contra o estado
+- [x] 1.2.3 Rodar `./tests/run.sh orchestrator-allowlist` contra o estado
   ATUAL dos 2 agentes (ainda sem as 7 tools MCP, FASE 3 nao aplicada) e
   confirmar que `scenario_orchestrator_glob_nao_vazio`,
   `scenario_allowlist_nunca_vazia_nem_so_mcp` e
