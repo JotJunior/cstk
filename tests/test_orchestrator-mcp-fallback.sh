@@ -18,15 +18,21 @@
 # script sob a convencao de FASE 9.3 — registrado interno em
 # tests/run.sh::_is_internal_test.
 #
-# 6.3.1: confirma, por CONSTRUCAO, que `cstk mcp status`/`start`
-#   indisponivel nao afeta o caminho Bash: os 2 agentes orquestradores
-#   (agente-00c-orchestrator.md, agente-00c-feature-orchestrator.md) nao
-#   listam NENHUMA tool `mcp__*` no frontmatter `tools:` — o pipeline
-#   inteiro roda hoje via Bash (state-*.sh), zero dependencia de MCP
-#   (a injecao de tools MCP no orquestrador e a task 1.2, cross-feature,
-#   explicitamente fora do escopo desta feature — 6.2.4). Os 4 commands
-#   pai chamam `cstk mcp status`/`start`/`stop` sempre em modo best-effort
-#   (`|| :` / redirecionados, nunca gateando o fluxo).
+# 6.3.1: REVOGADO (feature orchestrator-mcp-allowlist, FR-001, tarefa 2.1).
+#   Cobria por CONSTRUCAO que os 2 agentes orquestradores nao listavam
+#   NENHUMA tool `mcp__*` no frontmatter `tools:` — premissa que deixou de
+#   valer quando a FASE 3 dessa feature passou a expor as 7 tools
+#   `mcp__cstk-state__*` nos 2 orquestradores (FR-003/FR-004/FR-009). A
+#   regex antiga (`^\s*-\s*mcp__`) tambem so casava a forma de LISTA YAML,
+#   nunca a forma INLINE realmente usada — cobertura estrutural inerte
+#   mesmo antes da revogacao (research.md Decision 1 da feature). A
+#   garantia real (Bash continua funcionando com MCP ausente, SC-004) e
+#   coberta hoje por `tests/test_orchestrator-allowlist-guard.sh`
+#   (`scenario_allowlist_nunca_vazia_nem_so_mcp` +
+#   `scenario_allowlist_preserva_bash`) e pelos scenarios 6.3.2 abaixo. Os
+#   4 commands pai continuam chamando `cstk mcp status`/`start`/`stop`
+#   sempre em modo best-effort (`|| :` / redirecionados, nunca gateando o
+#   fluxo).
 # 6.3.2: prova FUNCIONAL de SC-004 — com docker ausente do PATH, uma
 #   execucao completa (init + start onda + decisao + end onda) roda ate o
 #   fim identica ao caminho com Docker disponivel.
@@ -53,26 +59,6 @@ if ! command -v jq >/dev/null 2>&1; then
   printf '# test_orchestrator-mcp-fallback.sh: jq ausente — pulando suite\n'
   exit 0
 fi
-
-# ---------- 6.3.1: prova estrutural (textual) ----------
-
-scenario_orchestrator_agente_nao_lista_tool_mcp() {
-  [ -f "$AGENT_ORCH" ] || { _error "arquivo ausente" "$AGENT_ORCH"; return 2; }
-  if grep -Eq '^\s*-\s*mcp__' "$AGENT_ORCH"; then
-    _fail "tool_mcp_listada" "agente-00c-orchestrator.md lista tool mcp__* no frontmatter — dependencia de MCP quebraria SC-004"
-    return 1
-  fi
-  return 0
-}
-
-scenario_orchestrator_feature_nao_lista_tool_mcp() {
-  [ -f "$AGENT_FEAT_ORCH" ] || { _error "arquivo ausente" "$AGENT_FEAT_ORCH"; return 2; }
-  if grep -Eq '^\s*-\s*mcp__' "$AGENT_FEAT_ORCH"; then
-    _fail "tool_mcp_listada" "agente-00c-feature-orchestrator.md lista tool mcp__* no frontmatter — dependencia de MCP quebraria SC-004"
-    return 1
-  fi
-  return 0
-}
 
 # `cstk mcp status`/`start`/`stop` nos 4 commands: nunca sem uma forma de
 # supressao de erro (`|| :`, `>/dev/null 2>&1 || :`, `2>/dev/null || :`)

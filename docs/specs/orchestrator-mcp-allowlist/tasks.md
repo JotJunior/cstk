@@ -106,17 +106,17 @@ Ref: `tests/test_orchestrator-mcp-fallback.sh:59-66`
 plan.md Fase C (depende da FASE 1 ja existir — nunca ficar sem protecao
 sobre a composicao da allowlist)
 
-- [ ] 2.1.1 Remover a funcao `scenario_orchestrator_agente_nao_lista_tool_mcp`
+- [x] 2.1.1 Remover a funcao `scenario_orchestrator_agente_nao_lista_tool_mcp`
   (`tests/test_orchestrator-mcp-fallback.sh:59-66`)
-- [ ] 2.1.2 Remover a funcao `scenario_orchestrator_feature_nao_lista_tool_mcp`
+- [x] 2.1.2 Remover a funcao `scenario_orchestrator_feature_nao_lista_tool_mcp`
   (`tests/test_orchestrator-mcp-fallback.sh:68-75`)
-- [ ] 2.1.3 Atualizar o comentario de cabecalho do arquivo
+- [x] 2.1.3 Atualizar o comentario de cabecalho do arquivo
   (`tests/test_orchestrator-mcp-fallback.sh` linhas 1-30, item "6.3.1")
   removendo a descricao dos 2 scenarios revogados e da premissa que eles
   verificavam ("os 2 agentes orquestradores ... nao listam NENHUMA tool
   mcp__* no frontmatter"), deixando explicito que essa garantia passou a
   ser do guard novo (`tests/test_orchestrator-allowlist-guard.sh`, FASE 1)
-- [ ] 2.1.4 Rodar `./tests/run.sh orchestrator-mcp-fallback` e confirmar
+- [x] 2.1.4 Rodar `./tests/run.sh orchestrator-mcp-fallback` e confirmar
   verde apos a remocao — os scenarios restantes (6.3.2, prova funcional
   com `docker` ausente do PATH) continuam intactos e nao dependem dos 2
   removidos
@@ -132,7 +132,7 @@ Ref: `plugins/cstk/agents/agente-00c-orchestrator.md:4`,
 `tools: Agent, Skill, Bash, Read, Write, Edit, Glob, Grep`); data-model.md
 secao "Estado alvo (apos FR-003)"; spec.md FR-003/FR-004/FR-009
 
-- [ ] 3.1.1 Editar `plugins/cstk/agents/agente-00c-orchestrator.md:4` —
+- [x] 3.1.1 Editar `plugins/cstk/agents/agente-00c-orchestrator.md:4` —
   acrescentar ao final da linha `tools:`:
   `, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision,
   mcp__cstk-state__record_skill, mcp__cstk-state__record_task,
@@ -140,13 +140,13 @@ secao "Estado alvo (apos FR-003)"; spec.md FR-003/FR-004/FR-009
   mcp__cstk-state__get_status`, preservando as 8 entradas nativas atuais
   (`Agent, Skill, Bash, Read, Write, Edit, Glob, Grep`) inalteradas e na
   mesma ordem (FR-003: "em adicao, nunca em substituicao")
-- [ ] 3.1.2 Editar `plugins/cstk/agents/agente-00c-feature-orchestrator.md:4`
+- [x] 3.1.2 Editar `plugins/cstk/agents/agente-00c-feature-orchestrator.md:4`
   com a MESMA composicao (as 7 tools MCP identicas, nativas preservadas)
-- [ ] 3.1.3 Rodar `./tests/run.sh orchestrator-allowlist` e confirmar que
+- [x] 3.1.3 Rodar `./tests/run.sh orchestrator-allowlist` e confirmar que
   `scenario_allowlist_declara_as_7_tools_mcp` e
   `scenario_allowlist_preserva_bash` agora passam para os 2 arquivos reais
   (nao apenas fixtures)
-- [ ] 3.1.4 Rodar `./tests/run.sh orchestrator-mcp-fallback` (scenarios
+- [x] 3.1.4 Rodar `./tests/run.sh orchestrator-mcp-fallback` (scenarios
   6.3.2, prova funcional best-effort) e confirmar que continuam verdes com
   as novas tools MCP no frontmatter — prova empirica de que a allowlist
   mista nao quebra o fallback (User Story 1, Acceptance Scenario 3)
