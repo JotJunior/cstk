@@ -249,11 +249,11 @@ Ref: checklists/requirements.md CHK023 (linhas 198-207)
 
 Ref: plan.md Fase F; CLAUDE.md secao "Como testar scripts shell"
 
-- [ ] 5.1.1 Rodar `LC_ALL=C ./tests/run.sh` completo (nao apenas os
+- [x] 5.1.1 Rodar `LC_ALL=C ./tests/run.sh` completo (nao apenas os
   patterns `orchestrator`/`orchestrator-allowlist`) e confirmar 100% verde
-- [ ] 5.1.2 Rodar `./tests/run.sh --check-coverage` novamente (pos
+- [x] 5.1.2 Rodar `./tests/run.sh --check-coverage` novamente (pos
   FASE 1-4) e confirmar exit 0 (nenhum script nem teste orfao)
-- [ ] 5.1.3 Rodar `shellcheck` (config `.shellcheckrc` do repo) sobre
+- [x] 5.1.3 Rodar `shellcheck` (config `.shellcheckrc` do repo) sobre
   `tests/test_orchestrator-allowlist-guard.sh` como lint advisory
   (nao-gateante — CI roda isso via `.github/workflows/shellcheck.yml`);
   registrar achados se houver, sem bloquear
@@ -326,6 +326,69 @@ trafego observado 2026-08-16 03:37:08Z)
 
 ---
 
+## FASE 7 - Alcancabilidade real do caminho MCP (FR-013, FR-014, FR-015)
+
+Motivo da fase: a validacao empirica da FASE 6 provou que FR-001..FR-012,
+embora corretos, nao tornam o caminho MCP alcancavel — o launcher serve
+zero tools para TODOS os consumidores antes de a allowlist do frontmatter
+sequer entrar em jogo. Expansao de escopo decidida pelo operador
+(onda-010), registrada em `spec.md` §Delta Requirements.
+
+### 7.1 Fixar a evidencia da causa raiz e a ordem causal (FR-014) `[C]`
+
+Ref: spec.md FR-013, FR-014; evidencia colhida na onda-010
+
+- [x] 7.1.1 Colher e registrar como Decisao auditavel, com `--evidencia`
+  LITERAL, o handshake do launcher invocado exatamente como o `.mcp.json`
+  o invoca (sem args, sem env): resposta
+  `"serverInfo":{"name":"cstk-state-idle","version":"idle"}` seguida de
+  `"result":{"tools":[]}`, com a execucao corrente ATIVA
+  (`cstk mcp status --live` => `status=active`, `mode=docker`)
+- [x] 7.1.2 Confirmar na fonte as duas pecas da causa (1): `.mcp.json`
+  registra o launcher com `"args": []` e SEM bloco `env`; e
+  `mcp-launch.sh:128` testa SOMENTE `MCP_SESSION_TOKEN` antes de
+  `_ml_idle_serve` (verificado identico entre a copia instalada em
+  `~/.claude/skills/` e a fonte em `plugins/cstk/skills/`)
+- [x] 7.1.3 Apender FR-013/FR-014/FR-015 a `spec.md` e atualizar a secao
+  `## Delta Requirements`, declarando sem eufemismo que FR-001..FR-012
+  sao necessarios porem NAO suficientes
+
+### 7.2 Resolver o canal de entrega do token (FR-015) `[C]`
+
+Ref: spec.md FR-015; `docs/specs/_archived/2026-08-03-state-mcp-server/
+contracts/mcp-session-lifecycle.md` §SEC-H3 (linha 361, tabela do
+contrato corrigido); `mcp-launch.sh:21-25` (dec-043)
+
+- [!] 7.2.1 BLOQUEADO por decisao/fonte ausente: definir POR QUAL CANAL o
+  token de capacidade da execucao corrente alcanca o PROCESSO do launcher,
+  preservando simultaneamente (i) SEC-H3 — roteamento por posse de token,
+  nunca por precedencia nem por "execucao ativa mais provavel" — e (ii) o
+  fato de o servidor stdio ser conectado no boot da sessao, antes de o
+  token existir. Nenhuma reconciliacao MUST ser suposta aqui; reabrir via
+  `/clarify` quando houver decisao do operador ou fonte nova
+- [ ] 7.2.2 Depende de 7.2.1: atualizar `spec.md` removendo o
+  `[NEEDS CLARIFICATION]` de FR-015 e registrando a fonte da decisao,
+  ANTES de qualquer `plan` assumir um mecanismo concreto (Principio VI)
+- [ ] 7.2.3 Depende de 7.2.2: submeter o mecanismo escolhido ao gate
+  `owasp-security` com foco em confused deputy (ASI03) e em vazamento do
+  token pelo canal escolhido, antes de qualquer implementacao
+
+### 7.3 Revalidar a alcancabilidade e so entao declarar os SCs `[A]`
+
+Ref: spec.md FR-013, FR-014; quickstart.md Cenarios 5-7
+
+- [ ] 7.3.1 Depende de 7.2.3: repetir o handshake do launcher e confirmar
+  que `tools/list` devolve as SETE tools `mcp__cstk-state__*` (lista vazia
+  com servidor "conectado" NAO conta — FR-013)
+- [ ] 7.3.2 Depende de 7.3.1: reexecutar as tarefas 6.1, 6.2 e 6.3 da
+  FASE 6, agora que existe tool real para invocar
+- [ ] 7.3.3 Depende de 7.3.2: so entao declarar SC-002 e SC-004
+  satisfeitos, com `--evidencia` literal das chamadas observadas; sem
+  saida literal, registrar `--score 0` e NAO afirmar satisfacao
+  (Principio VI)
+
+---
+
 ## Matriz de Dependencias
 
 ```mermaid
@@ -336,6 +399,7 @@ flowchart TD
     F4[FASE 4 - Orientacao MCP-vs-Bash + paridade + rastreabilidade]
     F5[FASE 5 - Suite completa verde]
     F6[FASE 6 - Validacao manual]
+    F7[FASE 7 - Alcancabilidade real do caminho MCP]
 
     F1 --> F2
     F1 --> F4
@@ -344,7 +408,13 @@ flowchart TD
     F4 --> F5
     F3 --> F6
     F4 --> F6
+    F6 --> F7
 ```
+
+> A aresta `F6 --> F7` e o achado: a FASE 6 revelou a causa que a FASE 7
+> enderecar. O grafo permanece aciclico de proposito — os cenarios 5-7 da
+> FASE 6, que dependem de uma tool MCP real, sao reexecutados DENTRO da
+> FASE 7 (tarefa 7.3.2), e nao por um retorno a FASE 6.
 
 ## Resumo Quantitativo
 
@@ -356,7 +426,8 @@ flowchart TD
 | 4 - Orientacao MCP-vs-Bash + paridade + rastreabilidade | 4 | 12 | A |
 | 5 - Suite completa verde | 1 | 3 | A |
 | 6 - Validacao manual | 4 | 12 | C |
-| **Total** | **13** | **47** | - |
+| 7 - Alcancabilidade real do caminho MCP | 3 | 9 | C |
+| **Total** | **16** | **56** | - |
 
 ## Escopo Coberto
 
@@ -372,6 +443,9 @@ flowchart TD
 | CHK023 | Lacuna de SLA/timeout DOCUMENTADA explicitamente (nao implementada — sem fonte para valor concreto) | 4 |
 | CHK025 | Rastreabilidade formal de US3 sem SC dedicado (decisao consciente, nao descuido) | 4 |
 | SC-005 | Suite completa do harness verde apos a mudanca de guard | 5 |
+| FR-013 | Caminho MCP alcancavel de fato numa execucao 00c normal, sem intervencao manual do operador (medido por `tools/list` devolvendo as 7 tools) | 7 |
+| FR-014 | Ordem causal registrada sem eufemismo: launcher idle (causa 1) precede a allowlist do frontmatter (causa 2); FR-001..FR-012 sao necessarios porem NAO suficientes | 7 |
+| FR-015 | Canal de entrega do token ao processo do launcher levantado como `[NEEDS CLARIFICATION]`, com os dois invariantes que qualquer resposta deve preservar (SEC-H3 + momento de existencia do token) | 7 |
 
 ## Escopo Excluido
 
@@ -382,4 +456,5 @@ flowchart TD
 | Alteracao do servidor MCP (`mcp/state-server/`) | Nenhuma tool nova, nenhum schema alterado | Feature so consome as 7 tools ja existentes (plan.md "Fora de escopo explicito") |
 | Definicao de SLA/timeout de chamada MCP (valor numerico concreto) | Nenhum teto de latencia e definido para delimitar "pendente" vs. "falhou" | CHK023 — sem fonte rastreavel para um valor concreto (Principio VI); destino: `/clarify` futuro se producao revelar chamadas penduradas sem timeout |
 | Success Criterion dedicado para US3 | Nenhum SC novo e criado para a orientacao MCP-vs-nativo nesta rodada | CHK025 — tratamento consciente ja justificado em `spec.md` ("Why this priority": instrumental para US2), nao descuido |
+| Mitigacao do finding do nome do container (dec-060) | Nenhuma mudanca em `cli/lib/mcp-docker.sh` nem no que `cstk mcp status` imprime | Decisao explicita do operador (onda-010): tratar em trabalho separado; o token desta execucao ja foi rotacionado. Registrado aqui para nao virar divida silenciosa |
 | Mitigacao do finding F2 (comparacao de token nao constant-time) | Nenhuma mudanca em `mcp/state-server/src/session/resolve.ts` | plan.md gate `owasp-security`: pre-existente, esta feature nao o introduz; explorabilidade baixa (stdio local, token 256 bits); registrado como follow-up conhecido, nao divida silenciosa |

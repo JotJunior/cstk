@@ -286,6 +286,70 @@ rejeicao.
   automatizado dentro de `tests/` (nao um script separado fora do
   harness), integrado a `./tests/run.sh` e ao `--check-coverage`
   (ver `## Clarifications`, convergente com dec-011).
+- **FR-013**: Numa execucao autonoma normal (`/feature-00c` ou
+  `/agente-00c`) cujo servidor MCP de estado esteja ativo, as sete
+  operacoes de estado MUST estar efetivamente disponiveis como tools no
+  contexto do orquestrador, **sem nenhuma intervencao manual do
+  operador** — sem exportar variavel de ambiente a mao, sem editar
+  `.mcp.json` por execucao e sem qualquer passo fora do fluxo ja
+  executado pelos commands pai. "Disponivel" MUST ser medido no
+  servidor registrado em `.mcp.json`, por um `tools/list` que devolva as
+  sete tools; um servidor que apenas figure como conectado, devolvendo
+  lista vazia, MUST NOT ser contado como disponivel.
+- **FR-014**: A ordem causal do bloqueio MUST ser tratada como parte do
+  requisito, nesta ordem: **(1)** enquanto o processo do launcher servir
+  zero tools, o caminho MCP e inalcancavel para **todos** os
+  consumidores — main loop inclusive —, e **(2)** so entao a allowlist
+  do frontmatter (FR-003) passa a decidir se um subagente orquestrador
+  enxerga aquelas tools. Consequencia que MUST constar sem eufemismo: o
+  trabalho de FR-001 a FR-012 (guard, revogacao do guard antigo,
+  allowlist, bloco de orientacao) esta correto e e **necessario**, mas
+  **nao e suficiente** — sozinho ele nao produz nenhuma mudanca
+  observavel, porque a causa (1) o precede. Enquanto (1) nao for
+  resolvida, SC-002 e SC-004 MUST NOT ser declarados satisfeitos com
+  base na conclusao de FR-003.
+  Evidencia direta da causa (1), colhida nesta feature (onda-010):
+  o `.mcp.json` do projeto registra o launcher com `"args": []` e **sem
+  bloco `env`**; `mcp-launch.sh:128` (`if [ -z "${MCP_SESSION_TOKEN:-}"
+  ]; then` / `_ml_idle_serve "nenhuma execucao 00c ativa nesta sessao
+  (sem token)"`) testa **apenas** a variavel de ambiente antes de cair em
+  modo idle; e o handshake manual do launcher, invocado como o
+  `.mcp.json` o invoca, respondeu
+  `"serverInfo":{"name":"cstk-state-idle","version":"idle"}` seguido de
+  `"result":{"tools":[]}` — com a execucao corrente **ativa**
+  (`cstk mcp status --live` => `status=active`, `mode=docker`,
+  `stopped_at: null`).
+- **FR-015**: [NEEDS CLARIFICATION: qual canal entrega o token de
+  capacidade ao processo do launcher?] Para satisfazer FR-013, o token
+  da execucao corrente precisa alcancar o processo que serve o stdio do
+  MCP. Qualquer resposta MUST preservar **simultaneamente** os dois
+  invariantes abaixo, e nenhuma reconciliacao entre eles MUST ser
+  suposta sem fonte:
+  1. **SEC-H3** (`docs/specs/_archived/2026-08-03-state-mcp-server/
+     contracts/mcp-session-lifecycle.md` §SEC-H3): o roteamento de
+     mutacao e por **posse de token de capacidade**, "**nunca** por
+     precedencia" e "**sem** fallback para 'a execucao ativa mais
+     provavel'". Um launcher que descubra sozinho a execucao ativa e se
+     auto-autorize reintroduz exatamente o confused deputy (ASI03) que
+     SEC-H3 existe para impedir — com duas execucoes ativas, ele teria
+     de eleger uma, violando FR-008.
+  2. **Momento de existencia do token**: o servidor stdio e conectado
+     pelo harness no **boot da sessao**, e o token so passa a existir
+     quando `cstk mcp start` roda, ja dentro de uma sessao em pe. O
+     mesmo contrato SEC-H3 preve, na linha "Entrega", que "o **command
+     pai** injeta o token no prompt de spawn do orquestrador" — canal
+     que entrega o token ao **orquestrador**, mas **nao** ao processo do
+     launcher, que nao e spawnado pelo command pai. Essa lacuna de canal
+     e reconhecida na fonte: `mcp-launch.sh:21-25` registra (dec-043)
+     que "a geracao/injecao REAL do token pelos commands pai
+     (/agente-00c, /feature-00c) fica FORA do escopo desta feature" e que
+     ate la um "token SINTETICO exportado na mesma env" cobre o
+     roteamento.
+  Nota factual relevante para quem responder (nao e a resposta):
+  `mcp-session.sh resolve` ja aceita o token por tres fontes — `--token`,
+  `--token-file` e a env `MCP_SESSION_TOKEN`, nessa precedencia —
+  enquanto `mcp-launch.sh:128` consulta somente a env antes de cair em
+  idle.
 
 > Decisoes de infraestrutura: N/A (feature nao introduz scheduling, key
 > rotation, refresh de token externo, mutex multi-pod, backup/restore ou
@@ -321,3 +385,5 @@ rejeicao.
 ## Delta Requirements
 
 **Skip**: nenhuma capability documentada em docs/specs/current/ cobre a allowlist tools: dos orquestradores 00c ou o guard que a protege; feature introduz capability nova sem substituir comportamento hoje registrado no corpus canonico — agente-00c-feature-orchestrator, 2026-08-15
+
+**Delta**: expansao de escopo (FR-013, FR-014, FR-015) decidida pelo operador apos a validacao empirica da FASE 6 provar que a feature, como especificada em FR-001..FR-012, nao torna o caminho MCP alcancavel: o launcher serve zero tools para todos os consumidores porque so le o token da env, ausente no processo que o harness conecta no boot. MODIFICA o alcance desta feature (o escopo passa a incluir a alcancabilidade do caminho MCP, antes pressuposta), NAO substitui nem revoga FR-001..FR-012, que permanecem corretos e necessarios. FR-015 fica com [NEEDS CLARIFICATION] em aberto: o canal de entrega do token ao processo do launcher nao pode ser definido sem violar SEC-H3 ou sem fonte nova, e nenhuma reconciliacao foi suposta — agente-00c-feature-orchestrator, 2026-08-16
