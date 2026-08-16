@@ -36,6 +36,17 @@
 # 6.3.2: prova FUNCIONAL de SC-004 — com docker ausente do PATH, uma
 #   execucao completa (init + start onda + decisao + end onda) roda ate o
 #   fim identica ao caminho com Docker disponivel.
+#
+# AMENDADO pela feature `mcp-direct-transport` (cutover, FR-006): `cstk mcp
+# start` deixou de depender de Docker para qualquer coisa — a premissa
+# original "docker ausente => mcp start falha => Bash segue mesmo assim"
+# nao existe mais, porque `start` **sempre** sucede (mode=direct) mesmo sem
+# motor de containers. Os scenarios abaixo foram ajustados para provar a
+# garantia squivalente pos-cutover: `start` funciona SEM Docker (nao mais
+# "falha e o resto segue"), e o pipeline Bash (ondas/decisoes) continua
+# funcionando de forma totalmente independente do resultado de `mcp start`
+# (a garantia SC-004 original — Bash nunca gateado por MCP — permanece
+# valida, so a causa raiz que a exercitava mudou).
 
 TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
@@ -162,7 +173,10 @@ scenario_status_sem_docker_reporta_unavailable_exit_0() {
   assert_stdout_contains "status=unavailable" || return 1
 }
 
-scenario_start_sem_docker_reporta_bash_fallback_exit_3() {
+# mcp-direct-transport FR-006: `start` MUST concluir com sucesso mesmo sem
+# motor de containers — nao ha mais motivo de fallback especifico de
+# Docker (os 5 antigos "docker-absent" etc. saem junto do cutover).
+scenario_start_sem_docker_funciona_mode_direct_exit_0() {
   _sd="$TMPDIR_TEST/sd-sc004-start"
   mkdir -p "$_sd"
   capture env HOME="$TMPDIR_TEST/home" "$STATE_RW" init --state-dir "$_sd" \
@@ -171,17 +185,18 @@ scenario_start_sem_docker_reporta_bash_fallback_exit_3() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _error "init falhou" "$_CAPTURED_STDERR"; return 2; }
 
   capture _cstk_mcp_no_docker start --state-dir "$_sd"
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "start exit" "esperado 3, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
-  assert_stdout_contains "reason=docker-absent" || return 1
-  assert_stdout_contains "mode=bash-fallback" || return 1
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start exit" "esperado 0 (FR-006, nao depende de Docker), obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
+  assert_stdout_contains "mode=direct" || return 1
+  assert_stdout_contains "container=-" || return 1
 }
 
-# Prova central de SC-004: com `start` ja tendo falhado (docker ausente),
-# uma execucao "headless/cron" completa via Bash puro — inicia onda,
-# registra uma decisao, fecha a onda — SEM qualquer intervencao manual e
-# SEM checar o resultado do mcp start (nunca gateia). Simula fielmente o
-# que um command pai + orquestrador fariam numa maquina sem Docker.
-scenario_execucao_headless_completa_via_bash_apos_start_falho() {
+# Prova central de SC-004 (equivalente pos-cutover): o pipeline Bash puro
+# (ondas/decisoes) funciona de forma totalmente independente do resultado
+# de `mcp start` — inicia onda, registra uma decisao, fecha a onda — SEM
+# qualquer intervencao manual e SEM checar o resultado do mcp start (nunca
+# gateia). Simula fielmente o que um command pai + orquestrador fariam,
+# com ou sem Docker disponivel (agora irrelevante para o MCP).
+scenario_execucao_headless_completa_via_bash_independente_de_mcp_start() {
   _sd="$TMPDIR_TEST/sd-sc004-headless"
   mkdir -p "$_sd"
   capture env HOME="$TMPDIR_TEST/home" "$STATE_RW" init --state-dir "$_sd" \
@@ -189,8 +204,9 @@ scenario_execucao_headless_completa_via_bash_apos_start_falho() {
     --descricao "SC-004 headless completion fixture"
   [ "$_CAPTURED_EXIT" = 0 ] || { _error "init falhou" "$_CAPTURED_STDERR"; return 2; }
 
-  # 1. mcp start falha (docker ausente) — resultado IGNORADO deliberadamente,
-  #    espelhando `|| :` dos commands (best-effort, nunca gateia).
+  # 1. mcp start roda sem Docker no PATH — resultado IGNORADO
+  #    deliberadamente, espelhando `|| :` dos commands (best-effort, nunca
+  #    gateia), mesmo sabendo que hoje ele sucede (mode=direct, FR-006).
   _cstk_mcp_no_docker start --state-dir "$_sd" >/dev/null 2>&1 || :
 
   # 2. onda inicia normalmente via Bash, independente do passo 1
@@ -213,9 +229,9 @@ scenario_execucao_headless_completa_via_bash_apos_start_falho() {
     --motivo-termino etapa_concluida_avancando
   [ "$_CAPTURED_EXIT" = 0 ] || { _error "state-ondas end falhou" "$_CAPTURED_STDERR"; return 1; }
 
-  # 5. resultado funcional identico ao caminho com Docker: onda registrada,
-  #    decisao persistida, mode continua bash-fallback no descritor mcp
-  #    (nenhuma mutacao espuria por causa da falha do passo 1)
+  # 5. resultado funcional: onda registrada, decisao persistida, e o
+  #    descritor mcp reflete o sucesso de fato do passo 1 (mode=direct,
+  #    FR-006) — nenhuma mutacao espuria.
   _n_ondas=$(jq -r '.waves | length' "$_sd/state.json" 2>/dev/null) || _n_ondas="0"
   [ "$_n_ondas" -ge 1 ] || { _fail "onda_nao_persistida" "esperado >=1 onda, obtido $_n_ondas"; return 1; }
 
@@ -223,7 +239,7 @@ scenario_execucao_headless_completa_via_bash_apos_start_falho() {
   [ "$_n_dec" = "1" ] || { _fail "decisao_nao_persistida" "esperado 1 decisao SC-004, obtido $_n_dec"; return 1; }
 
   _mode=$(jq -r '.mode // "-"' "$_sd/mcp-server.json" 2>/dev/null) || _mode="-"
-  [ "$_mode" = "bash-fallback" ] || { _fail "descritor_mode" "esperado bash-fallback, obtido $_mode"; return 1; }
+  [ "$_mode" = "direct" ] || { _fail "descritor_mode" "esperado direct, obtido $_mode"; return 1; }
 
   return 0
 }

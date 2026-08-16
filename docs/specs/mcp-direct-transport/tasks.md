@@ -111,21 +111,21 @@ Ref: checklists/requirements.md CHK003; contracts/cli-mcp-lifecycle.md §5.1; pl
 
 **MUST ser concluida antes da task 3.3 (remocao)** — e a decisao de fronteira mais delicada da implementacao e nao foi verificada linha a linha nas fases anteriores.
 
-- [ ] 3.1.1 Ler `cli/lib/mcp-docker.sh` e `cli/lib/mcp.sh` e listar as funcoes/blocos que `_mcp_cmd_gc` de fato invoca (preflight Docker + listagem/remocao de containers pelo padrao de nome `cstk-mcp-state-*`)
-- [ ] 3.1.2 Listar separadamente o codigo usado SOMENTE por `_mcp_cmd_start` (build de imagem, `docker run` com montagens, healthcheck) — candidato a remocao total
-- [ ] 3.1.3 Documentar o recorte resultante (no commit da task 3.3) substituindo o rotulo `[PROPOSTA — a validar na implementacao]` de `contracts/cli-mcp-lifecycle.md §5.1` pelo recorte real verificado
+- [x] 3.1.1 Ler `cli/lib/mcp-docker.sh` e `cli/lib/mcp.sh` e listar as funcoes/blocos que `_mcp_cmd_gc` de fato invoca (preflight Docker + listagem/remocao de containers pelo padrao de nome `cstk-mcp-state-*`) — `gc` usa `_mcp_docker_preflight`/`_mcp_docker_list_managed`/`_mcp_docker_reconcile_container`; **recorte ampliado** (dec-070): `status --live` tambem usa `_mcp_docker_healthcheck` (mcp.sh:349-351) e `stop` usa `_mcp_docker_stop` (mcp.sh:731-732, **sem** guard `command -v` — `cli/cstk` roda `set -eu`, remocao quebraria `cstk mcp stop` para sessao legada com exit 127) para sessoes legadas `mode=docker`, nao so `gc`
+- [x] 3.1.2 Listar separadamente o codigo usado SOMENTE por `_mcp_cmd_start` (build de imagem, `docker run` com montagens, healthcheck) — candidato a remocao total — `_mcp_docker_image_name`/`_mcp_docker_image_tag`/`_mcp_docker_container_name`/`_mcp_docker_write_dockerfile`/`_mcp_docker_build_image`/`_mcp_docker_ensure_enforcement_log_file`/`_mcp_docker_run` (todas em `mcp-docker.sh`) + `_mcp_context_dir` (em `mcp.sh`, resolucao do contexto de build) removidos; nenhum consumidor restante fora do antigo `_mcp_cmd_start`
+- [x] 3.1.3 Documentar o recorte resultante (no commit da task 3.3) substituindo o rotulo `[PROPOSTA — a validar na implementacao]` de `contracts/cli-mcp-lifecycle.md §5.1` pelo recorte real verificado — feito (tabela das 5 funcoes preservadas + lista das removidas); §2.2/§2.3 do mesmo contrato e `data-model.md`/`quickstart.md` tambem atualizados de PROPOSTA para VALIDADO onde esta task implementou o comportamento
 
 ### 3.2 `cstk mcp start` sem motor de containers `[C]`
 
 Ref: spec.md FR-006, FR-010, FR-014; contracts/cli-mcp-lifecycle.md §2.2 (S-1..S-5), §2.3 (S-6, S-7)
 
-- [ ] 3.2.1 Substituir o fluxo `preflight docker -> build imagem -> docker run -> healthcheck` por `resolver state-dir -> gerar/reusar token -> gravar descritor mode=direct -> exit 0`
-- [ ] 3.2.2 Gravar o descritor sem `mode=docker` nem `container_name` preenchido, reusando o schema existente de `_mcp_write_descriptor` (`cli/lib/mcp.sh:446-469`) com `container_name: null`
-- [ ] 3.2.3 Preservar idempotencia: chamada repetida para execucao com sessao ja ativa reusa o `session_id` existente, nunca duplica processo nem invalida a sessao em curso (S-3, FR-010)
-- [ ] 3.2.4 Detectar descritor legado `mode=docker`, emitir aviso explicito em stderr e sobrescrever com o novo formato — nunca falhar nem recusar por causa de estado legado (S-4, FR-014, clarify dec-015)
-- [ ] 3.2.5 Confirmar que `start` NAO inicia processo algum — nenhum `docker run`/spawn de processo sobra no caminho novo; quem cria o processo do servidor e o harness, ao conectar o `.mcp.json` (S-5, FR-012)
-- [ ] 3.2.6 Preservar integralmente o contrato de exit code (0/1/2/3) e os motivos de fallback NAO especificos de Docker (S-6, S-7)
-- [ ] 3.2.7 Teste: cenario de idempotencia (chamar `start` duas vezes, confirmar `session_id` identico) e cenario de descritor legado sobrescrito com aviso em stderr (Cenarios 4 e 5 do quickstart)
+- [x] 3.2.1 Substituir o fluxo `preflight docker -> build imagem -> docker run -> healthcheck` por `resolver state-dir -> gerar/reusar token -> gravar descritor mode=direct -> exit 0` — `_mcp_cmd_start` reescrito em `cli/lib/mcp.sh`
+- [x] 3.2.2 Gravar o descritor sem `mode=docker` nem `container_name` preenchido, reusando o schema existente de `_mcp_write_descriptor` (`cli/lib/mcp.sh:446-469`) com `container_name: null` — verificado por `scenario_start_happy_path_mode_direct_sem_docker_no_path`
+- [x] 3.2.3 Preservar idempotencia: chamada repetida para execucao com sessao ja ativa reusa o `session_id` existente, nunca duplica processo nem invalida a sessao em curso (S-3, FR-010) — verificado por `scenario_start_idempotente_reusa_session_id`
+- [x] 3.2.4 Detectar descritor legado `mode=docker`, emitir aviso explicito em stderr e sobrescrever com o novo formato — nunca falhar nem recusar por causa de estado legado (S-4, FR-014, clarify dec-015) — verificado por `scenario_start_descritor_legado_mode_docker_sobrescreve_com_aviso`
+- [x] 3.2.5 Confirmar que `start` NAO inicia processo algum — nenhum `docker run`/spawn de processo sobra no caminho novo; quem cria o processo do servidor e o harness, ao conectar o `.mcp.json` (S-5, FR-012) — grep confirma zero `docker run`/spawn em `_mcp_cmd_start`
+- [x] 3.2.6 Preservar integralmente o contrato de exit code (0/1/2/3) e os motivos de fallback NAO especificos de Docker (S-6, S-7) — exits 0/1/2 preservados; exit 3 documentado como reservado/sem caminho de codigo atual (5 motivos especificos de Docker removidos)
+- [x] 3.2.7 Teste: cenario de idempotencia (chamar `start` duas vezes, confirmar `session_id` identico) e cenario de descritor legado sobrescrito com aviso em stderr (Cenarios 4 e 5 do quickstart) — `tests/cstk/test_mcp.sh::scenario_start_idempotente_reusa_session_id` + `::scenario_start_descritor_legado_mode_docker_sobrescreve_com_aviso`, ambos green
 
 ### 3.3 Remover `cli/lib/mcp-docker.sh` e seu teste no MESMO commit `[C]`
 
@@ -133,21 +133,21 @@ Ref: plan.md Risco R1 (dec-033); quickstart.md Cenario 0 passo 3
 
 **Depende de**: task 3.1 concluida (recorte validado) e task 3.4 preservando o que `gc` precisa.
 
-- [ ] 3.3.1 Remover `cli/lib/mcp-docker.sh`, preservando em `cli/lib/mcp.sh` apenas o minimo identificado em 3.1.1
-- [ ] 3.3.2 Remover `tests/cstk/test_mcp-docker.sh` no MESMO commit da 3.3.1 — NUNCA via allowlist de "internos" em `_is_internal_test` (mentiria sobre a natureza do arquivo e corromperia o sinal do `--check-coverage`)
-- [ ] 3.3.3 `LC_ALL=C ./tests/run.sh --check-coverage` MUST sair 0 apos a remocao — gate obrigatorio antes do commit
+- [x] 3.3.1 Remover `cli/lib/mcp-docker.sh`, preservando em `cli/lib/mcp.sh` apenas o minimo identificado em 3.1.1 — `git rm cli/lib/mcp-docker.sh`; 5 funcoes preservadas inline em `mcp.sh` (recorte ampliado, ver 3.1.1). Consequencia direta descoberta em teste: `tests/cstk/test_serve-docker.sh::scenario_docker_mentions_confined_to_serve_docker_lib` (confinamento do Principio II, dec-074) exemptava so `serve-docker.sh`/`mcp-docker.sh` da checagem de invocacao FUNCIONAL — atualizado para exemptar `mcp.sh` no lugar de `mcp-docker.sh`, verde
+- [x] 3.3.2 Remover `tests/cstk/test_mcp-docker.sh` no MESMO commit da 3.3.1 — NUNCA via allowlist de "internos" em `_is_internal_test` (mentiria sobre a natureza do arquivo e corromperia o sinal do `--check-coverage`) — `git rm tests/cstk/test_mcp-docker.sh`
+- [x] 3.3.3 `LC_ALL=C ./tests/run.sh --check-coverage` MUST sair 0 apos a remocao — gate obrigatorio antes do commit — "Cobertura completa: zero orfaos."
 
 ### 3.4 `cstk mcp gc` continua recolhendo o passivo Docker legado `[C]`
 
 Ref: spec.md FR-015; contracts/cli-mcp-lifecycle.md §5 (G-1..G-3); quickstart.md Cenario 6
 
-- [ ] 3.4.1 Confirmar que `_mcp_cmd_gc` continua detectando e removendo containers `cstk-mcp-state-*` apos a remocao da task 3.3 (usa exclusivamente o codigo preservado em 3.1.1/3.3.1) — `gc` NAO vira no-op, apenas deixa de ter containers NOVOS para gerenciar
-- [ ] 3.4.2 Confirmar que a degradacao com `summary=docker-indisponivel examined:0 removed:0 kept:0 skipped:0` + exit 0 (`cli/lib/mcp.sh:806`) permanece intacta quando Docker esta ausente da maquina
-- [ ] 3.4.3 Teste: `cstk mcp gc --dry-run` lista candidatos sem remover; `cstk mcp gc` remove e reporta contagem; `cstk mcp gc` sem Docker degrada com exit 0 (Cenario 6 do quickstart)
+- [x] 3.4.1 Confirmar que `_mcp_cmd_gc` continua detectando e removendo containers `cstk-mcp-state-*` apos a remocao da task 3.3 (usa exclusivamente o codigo preservado em 3.1.1/3.3.1) — `gc` NAO vira no-op, apenas deixa de ter containers NOVOS para gerenciar — codigo de `_mcp_cmd_gc` intocado; `scenario_gc_*` (14 scenarios) green
+- [x] 3.4.2 Confirmar que a degradacao com `summary=docker-indisponivel examined:0 removed:0 kept:0 skipped:0` + exit 0 (`cli/lib/mcp.sh:806`) permanece intacta quando Docker esta ausente da maquina — codigo intocado (so a mensagem de erro do guard `command -v` acima foi ajustada, texto nao testado por conteudo)
+- [x] 3.4.3 Teste: `cstk mcp gc --dry-run` lista candidatos sem remover; `cstk mcp gc` remove e reporta contagem; `cstk mcp gc` sem Docker degrada com exit 0 (Cenario 6 do quickstart) — `tests/cstk/test_mcp.sh` scenarios `gc_*`, todos green
 
 ### 3.5 Gate de aceite da fase `[A]`
 
-- [ ] 3.5.1 `npm test` + `LC_ALL=C ./tests/run.sh --check-coverage` + `LC_ALL=C ./tests/run.sh mcp`
+- [x] 3.5.1 `npm test` + `LC_ALL=C ./tests/run.sh --check-coverage` + `LC_ALL=C ./tests/run.sh mcp` — `npm test` (mcp/state-server): 125/125 pass; `--check-coverage`: "Cobertura completa: zero orfaos"; `run.sh mcp`: PASS 137 FAIL 0 ERROR 0 ORPHANS 0. Blast radius real desta fase, alem do previsto em tasks.md: `cli/lib/setup.sh` (removido aviso obsoleto "Docker nao encontrado" na area mcp — pos-cutover FR-006 o registro nunca depende de Docker, avisar seria informacao falsa) + `tests/cstk/test_setup.sh` (scenario correspondente atualizado) + `tests/test_orchestrator-mcp-fallback.sh` (2 scenarios que fixavam o contrato ANTIGO `start` sem Docker = exit 3/mode=bash-fallback, reescritos para a garantia SC-004 equivalente pos-cutover) + `cli/lib/install.sh` (2 comentarios desatualizados apos remocao de `_mcp_context_dir`)
 
 ---
 

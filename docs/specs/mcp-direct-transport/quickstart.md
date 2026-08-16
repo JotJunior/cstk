@@ -82,9 +82,7 @@ so** metade da instalacao (research Decision 6).
    exit 3 com `mode=bash-fallback` por motivo de Docker.
 2. `cat <SD>/mcp-server.json`
    → **Expected**: `session_id` preenchido, `container_name: null`,
-   `stopped_at: null`. O valor de `mode` e
-   **[PROPOSTA — a validar na implementacao]** (`direct` e o literal
-   proposto em `data-model.md`; confirmar o valor efetivamente adotado).
+   `stopped_at: null`, `mode: "direct"` **[VALIDADO — task 3.2]**.
 3. `cstk mcp status --state-dir <SD>`
    → **Expected**: `status=active`, `session_id=<id>`, `container=-`.
 4. `cstk mcp status --state-dir <SD> --live`

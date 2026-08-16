@@ -53,7 +53,7 @@ Motivos de fallback gravados hoje [REAL]: `mcp.sh:583` (preflight),
 `:601` (`server-source-missing`), `:615` (`image-build-failed`), `:656`
 (`container-start-failed`), `:671` (`health-timeout`).
 
-### 2.2 Fluxo contratado [PROPOSTA — a validar na implementacao]
+### 2.2 Fluxo contratado [VALIDADO — implementacao task 3.2]
 
 ```
 resolver state-dir → gerar/reusar token → gravar descritor mode=direct → exit 0
@@ -72,7 +72,7 @@ resolver state-dir → gerar/reusar token → gravar descritor mode=direct → e
 > (descritor + token). Quem cria o processo e o harness. E por isso que
 > S-1 e satisfeito trivialmente — nao ha nada para subir.
 
-### 2.3 Exit code 3 apos o cutover [PROPOSTA]
+### 2.3 Exit code 3 apos o cutover [VALIDADO — implementacao task 3.2]
 
 O `bash-fallback` **nao desaparece**: continua sendo o caminho quando a
 sessao nao pode ser preparada (ex.: `state-dir` invalido, IO). O que
@@ -140,16 +140,39 @@ desaparece sao os 5 motivos **especificos de Docker** listados em 2.1.
 | FR-015 exige que `gc` continue removendo containers | `gc` **precisa** de codigo Docker |
 | research Decision 11 remove `cli/lib/mcp-docker.sh` | onde vive o codigo Docker que `gc` ainda usa? |
 
-**[PROPOSTA — a validar na implementacao]**: preservar em `mcp.sh` **apenas**
-o minimo que `gc` consome (preflight + listagem/remocao por padrao de nome),
-e remover de `mcp-docker.sh` o que so servia ao `start` (build de imagem,
-`docker run` com montagens, healthcheck). A alternativa — manter
-`mcp-docker.sh` inteiro so pelo `gc` — conservaria justamente o codigo de
-`run`/`build` que o cutover existe para eliminar.
+**[VALIDADO — implementacao task 3.1/3.3, dec-070]**: o recorte binario
+"gc vs start" da proposta original estava INCOMPLETO. Leitura linha a linha
+de `mcp.sh` (grep `_mcp_docker_`) revelou que **status `--live`** (mcp.sh:349-351,
+guardado por `command -v`) e **stop** (mcp.sh:731-732, **sem** guard —
+`cli/cstk` roda com `set -eu`, entao remover a funcao quebraria `cstk mcp
+stop` com "command not found"/exit 127 para QUALQUER sessao legada
+`mode=docker` ainda nao sobrescrita por um novo `start`) tambem consomem
+codigo Docker, alem de `gc`. O recorte real e por 5 funcoes, nao 3:
 
-> Esta e a decisao de fronteira mais delicada da implementacao e MUST ser
-> validada com o codigo em maos: o recorte exato entre "o que `gc` usa" e
-> "o que so o `start` usava" nao foi verificado linha a linha nesta fase.
+| Funcao preservada (inline em `mcp.sh`) | Consumidor |
+|------------------------------------------|------------|
+| `_mcp_docker_preflight` | `gc` |
+| `_mcp_docker_list_managed` | `gc` |
+| `_mcp_docker_reconcile_container` | `gc` |
+| `_mcp_docker_healthcheck` | `status --live` (sessao legada `mode=docker`) |
+| `_mcp_docker_stop` | `stop` (sessao legada `mode=docker`) |
+
+Removidas por so servirem ao antigo build/run do `start` (build de imagem,
+`docker run` com montagens, Dockerfile, image-tag/nome, container-name,
+ensure-enforcement-log-file): `_mcp_docker_image_name`,
+`_mcp_docker_image_tag`, `_mcp_docker_container_name`,
+`_mcp_docker_write_dockerfile`, `_mcp_docker_build_image`,
+`_mcp_docker_ensure_enforcement_log_file`, `_mcp_docker_run`.
+`_mcp_context_dir` (resolucao do contexto de build, so em `mcp.sh`, nao em
+`mcp-docker.sh`) tambem saiu — start deixou de precisar da arvore-fonte.
+
+`cli/lib/mcp-docker.sh` foi removido por completo (research Decision 11);
+as 5 funcoes sobreviventes migraram INLINE para `cli/lib/mcp.sh`, que passa
+a ser o arquivo confinado do par (docker, mcp) no carve-out do Principio II
+(amenda dec-074) — `tests/cstk/test_serve-docker.sh::
+scenario_docker_mentions_confined_to_serve_docker_lib` foi atualizado para
+refletir isso (exempta `mcp.sh` tambem da checagem de invocacao FUNCIONAL,
+nao so de mencao).
 
 ---
 

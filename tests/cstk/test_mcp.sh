@@ -191,23 +191,14 @@ STUB
   chmod +x "$_sdck_bin/docker"
 }
 
-# _fake_context DIR -> escreve um package.json minimo em DIR (contexto de
-# build sintetico — o stub `docker build` nunca le o conteudo de verdade).
-_fake_context() {
-  mkdir -p "$1"
-  printf '{"name":"cstk-mcp-state-fixture","version":"9.9.9"}\n' >"$1/package.json"
-}
-
 # _setup_start_fixture -> prepara projeto+state-dir reais e exporta
-# _SF_PROJECT / _SF_STATE_DIR / _SF_CONTEXT (via CSTK_MCP_CONTEXT_DIR).
+# _SF_PROJECT / _SF_STATE_DIR. Pos mcp-direct-transport, `start` nao builda
+# nada — nao ha mais contexto de build sintetico (CSTK_MCP_CONTEXT_DIR
+# deixou de ter efeito algum em mcp.sh apos a remocao de _mcp_context_dir).
 _setup_start_fixture() {
   _SF_PROJECT="$TMPDIR_TEST/proj"
   _SF_STATE_DIR="$_SF_PROJECT/.claude/feature-00c-state/demo"
-  _SF_CONTEXT="$TMPDIR_TEST/context"
   mkdir -p "$_SF_STATE_DIR"
-  _fake_context "$_SF_CONTEXT"
-  CSTK_MCP_CONTEXT_DIR="$_SF_CONTEXT"
-  export CSTK_MCP_CONTEXT_DIR
   _init_active_exec_at "$_SF_PROJECT" "$_SF_STATE_DIR"
 }
 
@@ -466,110 +457,20 @@ scenario_stop_state_dir_inexistente_exit_1() {
   [ "$_CAPTURED_EXIT" = 1 ] || { _fail "stop state-dir inexistente exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
-# ---------- start: caminho bash-fallback (FR-007, nunca aborta) ----------
+# ---------- start: caminho feliz sem motor de containers (mode=direct, ----
+# mcp-direct-transport S-1..S-5) ----------
 
-scenario_start_docker_ausente_bash_fallback_exit_3() {
+# S-1 (FR-006): `start` MUST concluir com sucesso em maquina SEM Docker no
+# PATH — prova o fim do bash-fallback especifico de Docker.
+scenario_start_happy_path_mode_direct_sem_docker_no_path() {
   _setup_start_fixture
   _MCP_INNER_PATH=$(_path_without_docker)
   capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
   unset _MCP_INNER_PATH
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "start docker ausente exit" "esperado 3, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
-  assert_stdout_contains "status=unavailable" || return 1
-  assert_stdout_contains "reason=docker-absent" || return 1
-  assert_stdout_contains "mode=bash-fallback" || return 1
-  _mode=$(jq -r '.mode' "$_SF_STATE_DIR/mcp-server.json")
-  [ "$_mode" = "bash-fallback" ] || { _fail "descritor mode" "esperado bash-fallback, obtido $_mode"; return 1; }
-  _reason=$(jq -r '.unavailable_reason' "$_SF_STATE_DIR/mcp-server.json")
-  [ "$_reason" = "docker-absent" ] || { _fail "descritor unavailable_reason" "esperado docker-absent, obtido $_reason"; return 1; }
-}
-
-scenario_start_daemon_down_bash_fallback_exit_3() {
-  _setup_start_fixture
-  _make_bin_dir
-  _stub_docker "$_STUB_BIN"
-  mkdir -p "$TMPDIR_TEST/docker-stub"
-  : >"$TMPDIR_TEST/docker-stub/daemon-down"
-  capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "start daemon down exit" "esperado 3, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
-  assert_stdout_contains "reason=daemon-unreachable" || return 1
-}
-
-scenario_start_build_falha_bash_fallback_exit_3() {
-  _setup_start_fixture
-  _make_bin_dir
-  _stub_docker "$_STUB_BIN"
-  mkdir -p "$TMPDIR_TEST/docker-stub"
-  : >"$TMPDIR_TEST/docker-stub/build-fails"
-  capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "start build falha exit" "esperado 3, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
-  assert_stdout_contains "reason=image-build-failed" || return 1
-}
-
-scenario_start_run_falha_bash_fallback_exit_3() {
-  _setup_start_fixture
-  _make_bin_dir
-  _stub_docker "$_STUB_BIN"
-  mkdir -p "$TMPDIR_TEST/docker-stub"
-  : >"$TMPDIR_TEST/docker-stub/run-fails"
-  capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "start run falha exit" "esperado 3, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
-  assert_stdout_contains "reason=container-start-failed" || return 1
-}
-
-scenario_start_healthcheck_falha_bash_fallback_para_container() {
-  _setup_start_fixture
-  _make_bin_dir
-  _stub_docker "$_STUB_BIN"
-  mkdir -p "$TMPDIR_TEST/docker-stub"
-  : >"$TMPDIR_TEST/docker-stub/exec-fails"
-  capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "start healthcheck falha exit" "esperado 3, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
-  assert_stdout_contains "reason=health-timeout" || return 1
-  # health check falho DEVE derrubar o container recem-subido (evita
-  # orfao saudavel-de-mentirinha) — confirma que `docker stop` foi chamado.
-  _log=$(_docker_calls_log)
-  case "$_log" in
-    *"stop "*) : ;;
-    *) _fail "docker stop nao chamado apos healthcheck falho" "$_log"; return 1 ;;
-  esac
-}
-
-scenario_start_contexto_ausente_bash_fallback_exit_3() {
-  _SF_PROJECT="$TMPDIR_TEST/proj2"
-  _SF_STATE_DIR="$_SF_PROJECT/.claude/feature-00c-state/demo2"
-  mkdir -p "$_SF_STATE_DIR"
-  _init_active_exec_at "$_SF_PROJECT" "$_SF_STATE_DIR"
-  _make_bin_dir
-  _stub_docker "$_STUB_BIN"
-  # CSTK_MCP_CONTEXT_DIR aponta para path SEM package.json — forca a
-  # resolucao a nao cair no fallback real do repo (relativo a CSTK_LIB),
-  # que existiria de verdade nesta arvore de dev.
-  CSTK_MCP_CONTEXT_DIR="$TMPDIR_TEST/nao-existe-context"
-  export CSTK_MCP_CONTEXT_DIR
-  CSTK_LIB="$TMPDIR_TEST/lib-sem-contexto"
-  mkdir -p "$CSTK_LIB"
-  cp "$CSTK_LIB_DIR"/mcp.sh "$CSTK_LIB_DIR"/mcp-docker.sh "$CSTK_LIB_DIR"/common.sh "$CSTK_LIB" 2>/dev/null
-  export CSTK_LIB
-  capture sh "$CSTK_BIN" mcp start --state-dir "$_SF_STATE_DIR"
-  unset CSTK_LIB
-  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "start contexto ausente exit" "esperado 3, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
-  # Reason DISTINTO de image-build-failed (fix pos-6.2.1): fonte do servidor
-  # nao instalada => server-source-missing (aponta `cstk update`), nunca o
-  # reason de build que mascarava o gap de distribuicao.
-  assert_stdout_contains "reason=server-source-missing" || return 1
-  assert_stderr_contains "cstk update" || return 1
-}
-
-# ---------- start: caminho feliz (mode=docker) ----------
-
-scenario_start_happy_path_mode_docker() {
-  _setup_start_fixture
-  _make_bin_dir
-  _stub_docker "$_STUB_BIN"
-  capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start happy path exit" "esperado 0, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
   assert_stdout_contains "status=active" || return 1
-  assert_stdout_contains "mode=docker" || return 1
+  assert_stdout_contains "mode=direct" || return 1
+  assert_stdout_contains "container=-" || return 1
 
   [ -f "$_SF_STATE_DIR/mcp-server.json" ] || { _fail "descritor nao gravado" ""; return 1; }
   # GNU (-c) primeiro, fallback BSD (-f) — mesmo padrao de
@@ -591,41 +492,64 @@ scenario_start_happy_path_mode_docker() {
   _short=$(jq -r '.short_name' "$_SF_STATE_DIR/mcp-server.json")
   [ "$_short" = "demo" ] || { _fail "short_name" "esperado demo, obtido $_short"; return 1; }
   _mode=$(jq -r '.mode' "$_SF_STATE_DIR/mcp-server.json")
-  [ "$_mode" = "docker" ] || { _fail "mode" "esperado docker, obtido $_mode"; return 1; }
+  [ "$_mode" = "direct" ] || { _fail "mode" "esperado direct, obtido $_mode"; return 1; }
+  # S-2: sem mode=docker nem container_name.
   _container=$(jq -r '.container_name' "$_SF_STATE_DIR/mcp-server.json")
-  case "$_container" in
-    cstk-mcp-state-*) : ;;
-    *) _fail "container_name inesperado" "$_container"; return 1 ;;
-  esac
+  [ "$_container" = "null" ] || { _fail "container_name deveria ser null (S-2)" "$_container"; return 1; }
   _stopped=$(jq -r '.stopped_at' "$_SF_STATE_DIR/mcp-server.json")
   [ "$_stopped" = "null" ] || { _fail "stopped_at deveria ser null" "$_stopped"; return 1; }
-
-  # healthcheck (docker exec) MUST ter sido chamado ANTES de reportar
-  # sucesso (FR-011).
-  _log=$(_docker_calls_log)
-  case "$_log" in
-    *"exec "*) : ;;
-    *) _fail "docker exec (healthcheck) nao chamado" "$_log"; return 1 ;;
-  esac
 }
 
 scenario_start_agente00c_execution_kind() {
   _SF_PROJECT="$TMPDIR_TEST/proj-a"
   _SF_STATE_DIR="$_SF_PROJECT/.claude/agente-00c-state"
-  _SF_CONTEXT="$TMPDIR_TEST/context-a"
   mkdir -p "$_SF_STATE_DIR"
-  _fake_context "$_SF_CONTEXT"
-  CSTK_MCP_CONTEXT_DIR="$_SF_CONTEXT"
-  export CSTK_MCP_CONTEXT_DIR
   _init_active_exec_at "$_SF_PROJECT" "$_SF_STATE_DIR"
-  _make_bin_dir
-  _stub_docker "$_STUB_BIN"
   capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start agente-00c exit" "esperado 0, obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
   _kind=$(jq -r '.execution_kind' "$_SF_STATE_DIR/mcp-server.json")
   [ "$_kind" = "agente-00c" ] || { _fail "execution_kind" "esperado agente-00c, obtido $_kind"; return 1; }
   _short=$(jq -r '.short_name' "$_SF_STATE_DIR/mcp-server.json")
   [ "$_short" = "null" ] || { _fail "short_name deveria ser null" "$_short"; return 1; }
+}
+
+# ---------- start: idempotencia (S-3, FR-010, Cenario 4 do quickstart) ----
+
+scenario_start_idempotente_reusa_session_id() {
+  _setup_start_fixture
+  capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "1a chamada exit" "$_CAPTURED_STDERR"; return 1; }
+  _sid_a=$(jq -r '.session_id' "$_SF_STATE_DIR/mcp-server.json")
+  _started_a=$(jq -r '.started_at' "$_SF_STATE_DIR/mcp-server.json")
+
+  capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "2a chamada exit" "$_CAPTURED_STDERR"; return 1; }
+  _sid_b=$(jq -r '.session_id' "$_SF_STATE_DIR/mcp-server.json")
+  _started_b=$(jq -r '.started_at' "$_SF_STATE_DIR/mcp-server.json")
+
+  [ "$_sid_a" = "$_sid_b" ] || { _fail "session_id nao reusado (S-3)" "A=$_sid_a B=$_sid_b"; return 1; }
+  [ "$_started_a" = "$_started_b" ] || { _fail "started_at mudou numa chamada idempotente" "A=$_started_a B=$_started_b"; return 1; }
+  assert_stdout_contains "session_id=$_sid_a" || return 1
+  assert_stdout_contains "mode=direct" || return 1
+}
+
+# ---------- start: descritor legado mode=docker (S-4, FR-014, dec-015, ----
+# Cenario 5 do quickstart) ----------
+
+scenario_start_descritor_legado_mode_docker_sobrescreve_com_aviso() {
+  _setup_start_fixture
+  _write_descriptor "$_SF_STATE_DIR" "tok-legado-docker" "docker" ""
+  capture _cstk_mcp start --state-dir "$_SF_STATE_DIR"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start sobre legado exit" "esperado 0 (nunca falha por legado), obtido $_CAPTURED_EXIT ($_CAPTURED_STDERR)"; return 1; }
+  assert_stderr_contains "legado" || return 1
+  assert_stdout_contains "mode=direct" || return 1
+
+  _mode=$(jq -r '.mode' "$_SF_STATE_DIR/mcp-server.json")
+  [ "$_mode" = "direct" ] || { _fail "descritor nao sobrescrito" "$_mode"; return 1; }
+  _container=$(jq -r '.container_name' "$_SF_STATE_DIR/mcp-server.json")
+  [ "$_container" = "null" ] || { _fail "container_name deveria virar null" "$_container"; return 1; }
+  _sid=$(jq -r '.session_id' "$_SF_STATE_DIR/mcp-server.json")
+  [ "$_sid" != "tok-legado-docker" ] || { _fail "session_id legado nao deveria ser reusado" "$_sid"; return 1; }
 }
 
 # ---------- stop ----------

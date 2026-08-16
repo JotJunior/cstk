@@ -49,8 +49,8 @@ MCP e sobrevive ao processo do servidor (Decision 10).
 
 | Campo | Mudanca | Etiqueta |
 |-------|---------|----------|
-| `mode` | ganha o valor `direct` para toda sessao criada apos o cutover; `docker` deixa de ser gravado por sessoes novas (FR-014 trata as legadas) | **[PROPOSTA — a validar na implementacao]** — o literal `direct` e proposta de nomenclatura, nao valor existente |
-| `container_name` | passa a ser `null` em toda sessao nova (nao ha container) | **[PROPOSTA]** — decorre de FR-005/FR-009; o campo permanece no schema por retro-compatibilidade com descritores legados que `gc` ainda precisa ler (FR-015) |
+| `mode` | ganha o valor `direct` para toda sessao criada apos o cutover; `docker` deixa de ser gravado por sessoes novas (FR-014 trata as legadas) | **[VALIDADO — task 3.2]** — `mcp.sh::_mcp_cmd_start` grava `direct` literal |
+| `container_name` | passa a ser `null` em toda sessao nova (nao ha container) | **[VALIDADO — task 3.2]** — decorre de FR-005/FR-009; o campo permanece no schema por retro-compatibilidade com descritores legados que `gc`/`status --live`/`stop` ainda precisam ler (FR-015) |
 | demais 8 campos | **sem mudanca** | [REAL] |
 
 **Invariante preservado**: nenhum campo e removido do schema. Descritores
