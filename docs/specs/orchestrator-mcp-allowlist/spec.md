@@ -286,16 +286,28 @@ rejeicao.
   automatizado dentro de `tests/` (nao um script separado fora do
   harness), integrado a `./tests/run.sh` e ao `--check-coverage`
   (ver `## Clarifications`, convergente com dec-011).
-- **FR-013**: Numa execucao autonoma normal (`/feature-00c` ou
-  `/agente-00c`) cujo servidor MCP de estado esteja ativo, as sete
-  operacoes de estado MUST estar efetivamente disponiveis como tools no
-  contexto do orquestrador, **sem nenhuma intervencao manual do
-  operador** — sem exportar variavel de ambiente a mao, sem editar
-  `.mcp.json` por execucao e sem qualquer passo fora do fluxo ja
-  executado pelos commands pai. "Disponivel" MUST ser medido no
-  servidor registrado em `.mcp.json`, por um `tools/list` que devolva as
-  sete tools; um servidor que apenas figure como conectado, devolvendo
-  lista vazia, MUST NOT ser contado como disponivel.
+- **FR-013**: **FORA DO ESCOPO desta feature** (movido na onda-011,
+  `dec-067`). O requisito continua VALIDO como objetivo e NAO esta
+  revogado — apenas nao e alcancavel por nenhuma mudanca contida no
+  escopo desta feature, e por isso passa a ser trabalho de uma feature
+  separada sobre o **transporte** do servidor MCP.
+  Enunciado preservado (para nao virar divida invisivel): "numa execucao
+  autonoma normal (`/feature-00c` ou `/agente-00c`) cujo servidor MCP de
+  estado esteja ativo, as sete operacoes de estado devem estar
+  efetivamente disponiveis como tools no contexto do orquestrador, sem
+  nenhuma intervencao manual do operador; 'disponivel' medido por um
+  `tools/list` que devolva as sete tools no servidor registrado em
+  `.mcp.json` — um servidor que apenas figure como conectado, devolvendo
+  lista vazia, nao conta como disponivel."
+  Motivo da saida de escopo, **medido e nao inferido** (ver `dec-067` e
+  o bloco "Estado conhecido ao fim desta feature" abaixo): o transporte
+  docker nao entrega tool a sessao **nenhuma** — nem ao main loop, nem a
+  um subagente, com OU sem token. A hipotese da onda-010 (o bloqueio
+  seria a entrega do token) foi testada e **refutada**: com o token
+  presente no boot e o container vivo, o resultado medido continuou
+  `NENHUMA_MCP`, e o attach ainda **destruiu** o container. Fechar
+  FR-013 exigiria redesenhar o transporte, escopo que excede esta
+  feature.
 - **FR-014**: A ordem causal do bloqueio MUST ser tratada como parte do
   requisito, nesta ordem: **(1)** enquanto o processo do launcher servir
   zero tools, o caminho MCP e inalcancavel para **todos** os
@@ -319,12 +331,36 @@ rejeicao.
   `"result":{"tools":[]}` — com a execucao corrente **ativa**
   (`cstk mcp status --live` => `status=active`, `mode=docker`,
   `stopped_at: null`).
-- **FR-015**: [NEEDS CLARIFICATION: qual canal entrega o token de
-  capacidade ao processo do launcher?] Para satisfazer FR-013, o token
-  da execucao corrente precisa alcancar o processo que serve o stdio do
-  MCP. Qualquer resposta MUST preservar **simultaneamente** os dois
-  invariantes abaixo, e nenhuma reconciliacao entre eles MUST ser
-  suposta sem fonte:
+  **Reforco da onda-011** (`dec-067`): a sondagem seguinte mediu o
+  caminho completo e mostrou que a causa (1) e ainda mais ampla do que
+  o registrado acima — ela **nao depende do token**. Com
+  `MCP_SESSION_TOKEN` presente no boot da sessao, execucao ativa e
+  container vivo (`status=active`), o resultado medido continuou
+  `NENHUMA_MCP`; e o attach do launcher **destruiu** o container
+  (medicao controlada sobre o mesmo container: antes `Up About a
+  minute`; apos sessao SEM token `Up About a minute`; apos sessao COM
+  token, ausente). Consequencia para a leitura deste FR: a ordem causal
+  permanece exatamente como enunciada, mas a causa (1) NAO e removivel
+  pela entrega do token — ela pertence ao transporte, tratado como
+  feature separada (ver FR-013/FR-015, fora de escopo).
+- **FR-015**: **FORA DO ESCOPO desta feature** (movido na onda-011,
+  `dec-067`). O `[NEEDS CLARIFICATION]` **nao foi respondido** e nao e
+  declarado resolvido — ele sai de escopo junto com FR-013, para a mesma
+  feature separada de transporte, e a pergunta permanece aberta e
+  registrada abaixo para nao virar divida invisivel.
+  Motivo especifico da saida de escopo: a onda-010 levantou este FR sob
+  a premissa de que a entrega do token ao launcher **destravaria** o
+  caminho MCP. A onda-011 mediu essa premissa e a **refutou** — com o
+  token entregue no boot e o container vivo, o resultado continuou
+  `NENHUMA_MCP` (`dec-067`). Responder FR-015 portanto **nao** produziria
+  FR-013; seria condicao nem necessaria nem suficiente enquanto o
+  transporte nao entregar tool alguma. Levar a discussao de canal adiante
+  aqui gastaria decisao de seguranca (SEC-H3) sobre um mecanismo cujo
+  efeito ja foi medido como nulo.
+  Enunciado original preservado — para satisfazer FR-013, o token da
+  execucao corrente precisaria alcancar o processo que serve o stdio do
+  MCP, e qualquer resposta teria de preservar **simultaneamente** os dois
+  invariantes abaixo, sem supor reconciliacao sem fonte:
   1. **SEC-H3** (`docs/specs/_archived/2026-08-03-state-mcp-server/
      contracts/mcp-session-lifecycle.md` §SEC-H3): o roteamento de
      mutacao e por **posse de token de capacidade**, "**nunca** por
@@ -351,6 +387,60 @@ rejeicao.
   enquanto `mcp-launch.sh:128` consulta somente a env antes de cair em
   idle.
 
+### Estado conhecido ao fim desta feature (medido, nao omitido)
+
+Esta secao existe para que o resultado seja lido sem eufemismo e sem
+que a lacuna vire divida silenciosa.
+
+**O caminho MCP permanece INALCANCAVEL apos esta feature.** Isso e um
+fato **conhecido e medido**, nao uma omissao nem uma pendencia
+esquecida. Nenhuma das sete operacoes de estado do servidor `cstk-state`
+chega ao contexto de um orquestrador — nem de qualquer outro consumidor.
+
+O que foi medido (onda-011, 2026-08-16, claude-code 2.1.233; registrado
+com evidencia literal em `dec-067` e `dec-068`):
+
+1. **Sem token, o launcher serve zero tools — sempre.** `.mcp.json`
+   registra o launcher com `"args": []` e **sem bloco `env`**, e
+   `mcp-launch.sh:128` (`if [ -z "${MCP_SESSION_TOKEN:-}" ]; then` /
+   `_ml_idle_serve`) testa somente a env antes de cair em modo idle. O
+   handshake responde
+   `"serverInfo":{"name":"cstk-state-idle","version":"idle"}` e
+   `"result":{"tools":[]}`. `claude mcp get cstk-state` reporta
+   `Status: Connected` — **"Connected" nao implica tool alguma**.
+2. **Com token, tambem zero tools.** Sessao com `MCP_SESSION_TOKEN`
+   presente no boot, execucao ativa, container vivo,
+   `cstk mcp status --live` => `status=active`: resultado medido
+   `NENHUMA_MCP`.
+3. **O attach destroi o container.** Medicao controlada sobre o mesmo
+   container: antes `Up About a minute`; apos sessao SEM token
+   `Up About a minute`; apos sessao COM token, **ausente**. Sem attach
+   ele sobrevive indefinidamente.
+4. **O descritor pode afirmar sessao ativa sem container existente.**
+   Apos `stop`+`start`, o descritor trazia `mode=docker`,
+   `stopped_at: null` e um `session_id`, mas `docker ps -a` nao tinha
+   container correspondente; `cstk mcp status --live` revelou
+   `status=unavailable reason=health-timeout`, com o `start` tendo
+   retornado `rc=0`.
+
+**O que esta feature entregou, e o que nao entregou.** FR-001 a FR-012
+estao concluidos, sao corretos e **necessarios**: o guard cerimonial foi
+revogado, o guard que protege a garantia real existe, a allowlist mista
+esta declarada nos dois orquestradores e a orientacao MCP-vs-Bash esta
+autocontida e com paridade testada. Nada disso, porem, **e suficiente**
+para tornar o caminho MCP alcancavel, pela ordem causal de FR-014: a
+allowlist do frontmatter so passa a decidir algo **depois** que o
+launcher servir ao menos uma tool. Enquanto isso nao ocorrer, o efeito
+observavel desta feature sobre o consumo de MCP e **nulo** — por
+desenho conhecido, nao por falha de execucao.
+
+**Consequencia para os criterios de sucesso**: SC-002 e SC-004 **nao
+sao declarados satisfeitos** por esta feature (ver as notas na secao
+"Success Criteria"). Nenhuma afirmacao de que o MCP "funciona", ou de
+que "vai funcionar apos a proxima feature", e feita aqui: a unica
+afirmacao sustentada pela medicao e a de que hoje ele nao entrega tool
+alguma.
+
 > Decisoes de infraestrutura: N/A (feature nao introduz scheduling, key
 > rotation, refresh de token externo, mutex multi-pod, backup/restore ou
 > idempotencia novos — reusa o mecanismo de sessao ja existente do
@@ -371,12 +461,23 @@ rejeicao.
   bloqueio humano, fechar onda, consultar status) ficam acessiveis a
   partir de dentro de uma execucao autonoma quando o servidor MCP esta
   ativo, cada uma verificavel por uma chamada real bem-sucedida.
+  **NAO SATISFEITO por esta feature** (onda-011, `dec-067`): zero
+  chamadas reais foram possiveis porque nenhuma tool chega ao contexto
+  — medido em `NENHUMA_MCP` com e sem token. Depende de FR-013, agora
+  fora de escopo. Este SC permanece **em aberto**, transferido para a
+  feature de transporte; nao e declarado satisfeito nem parcialmente.
 - **SC-003**: Um guard automatizado bloqueia 100% das configuracoes de
   allowlist que deixem um orquestrador sem nenhuma tool de fallback
   nativo, antes que a mudanca seja aceita.
 - **SC-004**: Uma chamada de operacao de estado feita com o token de
   sessao correto e aceita, e uma chamada com token ausente ou divergente
   e rejeitada — validado por pelo menos um caso real de cada categoria.
+  **NAO SATISFEITO por esta feature** (onda-011, `dec-068`): a validacao
+  do Cenario 6 foi tentada e reportou, literalmente, `get_status` com
+  `session_id` real "NAO EXECUTADA" e com token zerado "NAO EXECUTADA",
+  por inexistencia da tool no contexto. Nao ha payload de aceitacao nem
+  codigo de rejeicao a citar, e nenhum foi suposto (Principio VI).
+  Permanece **em aberto**, transferido para a feature de transporte.
 - **SC-005**: A suite de testes do toolkit permanece 100% verde apos a
   mudanca de guard, sem perda de cobertura sobre o comportamento que
   continua valido (allowlist nunca vazia, fallback nativo sempre
@@ -387,3 +488,5 @@ rejeicao.
 **Skip**: nenhuma capability documentada em docs/specs/current/ cobre a allowlist tools: dos orquestradores 00c ou o guard que a protege; feature introduz capability nova sem substituir comportamento hoje registrado no corpus canonico — agente-00c-feature-orchestrator, 2026-08-15
 
 **Delta**: expansao de escopo (FR-013, FR-014, FR-015) decidida pelo operador apos a validacao empirica da FASE 6 provar que a feature, como especificada em FR-001..FR-012, nao torna o caminho MCP alcancavel: o launcher serve zero tools para todos os consumidores porque so le o token da env, ausente no processo que o harness conecta no boot. MODIFICA o alcance desta feature (o escopo passa a incluir a alcancabilidade do caminho MCP, antes pressuposta), NAO substitui nem revoga FR-001..FR-012, que permanecem corretos e necessarios. FR-015 fica com [NEEDS CLARIFICATION] em aberto: o canal de entrega do token ao processo do launcher nao pode ser definido sem violar SEC-H3 ou sem fonte nova, e nenhuma reconciliacao foi suposta — agente-00c-feature-orchestrator, 2026-08-16
+
+**Delta**: REVERSAO da expansao de escopo acima (`dec-067`), decidida pelo operador apos sondagem do caminho completo: FR-013 e FR-015 saem do escopo desta feature e passam a trabalho de uma feature separada sobre o transporte do servidor MCP; FR-014 PERMANECE em escopo e sai reforcado. Motivo medido: a premissa que sustentava a expansao — de que o bloqueio era a ENTREGA DO TOKEN ao launcher — foi testada e refutada; o transporte docker nao entrega tool a sessao nenhuma, com OU sem token (`NENHUMA_MCP` em ambos), e o attach com token ainda destroi o container. Responder FR-015 nao produziria FR-013, e nenhum dos dois e alcancavel sem redesenhar o transporte. NAO substitui nem revoga FR-001..FR-012 (concluidos, corretos, necessarios e insuficientes por FR-014); NAO deleta FR-013/FR-015, que ficam declarados fora de escopo com enunciado preservado. SC-002 e SC-004 ficam explicitamente NAO satisfeitos e transferidos junto. O estado medido esta consolidado na secao "Estado conhecido ao fim desta feature" — agente-00c-feature-orchestrator, 2026-08-16

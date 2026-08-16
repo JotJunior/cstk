@@ -260,51 +260,80 @@ Ref: plan.md Fase F; CLAUDE.md secao "Como testar scripts shell"
 
 ---
 
-## FASE 6 - Validacao manual (FR-006, FR-007, FR-008, FR-010, SC-001, SC-004)
+## FASE 6 - Validacao manual + evidencia da ordem causal (FR-006, FR-007, FR-008, FR-010, FR-014, SC-001, SC-004)
+
+> **Resultado da fase (onda-011, `dec-067`/`dec-068`)**: as tarefas 6.1,
+> 6.2 e 6.3 FORAM EXECUTADAS pelo operador. Resultado: 6.1 **confirmou**
+> a degradacao graciosa; 6.2 e 6.3 **reprovaram** — nao por defeito do
+> que esta feature entregou, mas porque nao existe tool MCP alguma a
+> invocar: o transporte docker nao entrega tool a sessao nenhuma, com ou
+> sem token (medicao literal em `spec.md` §"Estado conhecido ao fim
+> desta feature"). A causa foi declarada **fora do escopo** desta feature
+> (FR-013/FR-015) e transferida para a feature de transporte.
+>
+> **Nota sobre a legenda**: o backlog nao tem simbolo para "executada,
+> resultado negativo, causa fora de escopo". As subtarefas nessa
+> situacao ficam `[!]` (o mais honesto disponivel — nao concluidas, e
+> bloqueadas por causa externa ja identificada), **nunca** `[x]`.
+> Marca-las `[x]` afirmaria uma validacao que reprovou (`dec-068`).
 
 ### 6.1 Cenario 5 — Degradacao graciosa com MCP ausente (FR-007, SC-001) `[C]`
 
 Ref: quickstart.md Cenario 5 (linhas 79-93)
 
-- [ ] 6.1.1 Parar o servidor MCP (`cstk mcp stop --state-dir <SD>` ou
+- [x] 6.1.1 Parar o servidor MCP (`cstk mcp stop --state-dir <SD>` ou
   garantir Docker parado)
-- [ ] 6.1.2 Iniciar/observar uma onda de execucao autonoma real
+- [x] 6.1.2 Iniciar/observar uma onda de execucao autonoma real
   (`/feature-00c` ou `/agente-00c`) e confirmar que o prompt de spawn sem
   token nao menciona MCP
-- [ ] 6.1.3 Confirmar que a onda completa normalmente via helpers Bash,
+- [x] 6.1.3 Confirmar que a onda completa normalmente via helpers Bash,
   sem bloqueio humano nem mensagem de erro de MCP visivel ao operador
+  — **CONFIRMADO**, com a ressalva de que a confirmacao e trivial: como
+  nenhuma tool MCP e servida a sessao alguma, o caminho Bash nao e o
+  caminho degradado, e o **unico** caminho. A garantia de FR-007/SC-001
+  se sustenta; ela apenas nao foi exercitada contra um MCP que
+  funcionasse antes de sumir
 
 ### 6.2 Cenario 6 — Roteamento por token no caminho real (FR-008, SC-004) `[C]`
 
 Ref: quickstart.md Cenario 6 (linhas 97-138); research.md Decision 10 (nao
 automatizavel na suite POSIX — exige spawn real + Docker)
 
-- [ ] 6.2.1 Com Docker disponivel e `cstk mcp status --live` reportando
-  `mode=docker`/`status=active`, preparar DUAS execucoes 00c ativas com
-  state-dirs distintos (A e B)
-- [ ] 6.2.2 Cenario 6a: chamar `mcp__cstk-state__get_status` a partir do
-  orquestrador de A apresentando o `session_id` de A; confirmar aceitacao
-  e que o state-dir de B permanece intocado (comparar sha256 antes/depois)
-- [ ] 6.2.3 Cenario 6b: repetir apresentando o `session_id` de B a partir
-  do orquestrador de A; confirmar `SESSION_MISMATCH` e nenhum state-dir
-  alterado
-- [ ] 6.2.4 Cenario 6c: repetir sem `session_id`; confirmar rejeicao
-  (schema exige `session_id` nao-vazio) e nenhum state-dir alterado
-- [ ] 6.2.5 Registrar o resultado como Decisao auditavel
-  (`state-decisions.sh register --score 3`) com `--evidencia` contendo a
-  saida LITERAL observada das tres chamadas (6a/6b/6c) — sem saida
-  literal, registrar `--score 0` e NAO afirmar FR-008 satisfeito
-  (Principio VI, guard anti-confabulacao — quickstart.md linhas 133-138)
+- [!] 6.2.1 BLOQUEADO por causa fora de escopo (FR-013): a preparacao de
+  DUAS execucoes 00c ativas com state-dirs distintos (A e B) nao chegou a
+  ser exercida como cenario de teste, porque a etapa seguinte ja era
+  inexecutavel. Nao ha registro de que A e B tenham sido preparadas, e
+  isso NAO e afirmado aqui
+- [!] 6.2.2 BLOQUEADO — Cenario 6a NAO EXECUTADO. Saida literal do
+  validador: "`get_status` com session_id real: **NAO EXECUTADA**. A tool
+  nao existe no meu contexto. Nao ha payload; nao invento nomes de
+  campos." Sem aceitacao observada, FR-008 nao e afirmado (`dec-068`)
+- [!] 6.2.3 BLOQUEADO — Cenario 6b NAO EXECUTADO. Saida literal:
+  "`get_status` com token zerado: **NAO EXECUTADA**. Nao ha erro literal
+  para reportar. Nao invento `SESSION_MISMATCH` nem qualquer codigo."
+  Nenhum codigo de rejeicao foi observado nem suposto (`dec-068`)
+- [!] 6.2.4 BLOQUEADO — Cenario 6c NAO EXECUTADO, mesma causa: sem tool
+  no contexto nao ha chamada a fazer, com ou sem `session_id`
+- [x] 6.2.5 Resultado registrado como Decisao auditavel `dec-068` com
+  `--score 0`, exatamente conforme a clausula de escape desta subtarefa e
+  quickstart.md linhas 133-138: **sem** saida literal das tres chamadas,
+  registrar `--score 0` e **NAO** afirmar FR-008 satisfeito. A subtarefa
+  esta concluida (o registro honesto foi feito); FR-008 e SC-004
+  permanecem NAO satisfeitos (Principio VI, guard anti-confabulacao)
 
 ### 6.3 Cenario 7 — Erro pontual com servidor ativo, fallback sem retry (FR-006, dec-018) `[A]`
 
 Ref: quickstart.md Cenario 7 (linhas 142-150)
 
-- [ ] 6.3.1 Com o servidor ativo, provocar falha de UMA chamada (ex.:
-  parar o container entre duas chamadas da mesma onda)
-- [ ] 6.3.2 Confirmar que o orquestrador NAO tenta novamente, faz 1
-  confirmacao via `cstk mcp status --live` e comuta para Bash pelo resto
-  da onda, com a onda fechando normalmente sem bloqueio humano
+- [!] 6.3.1 BLOQUEADO por causa fora de escopo (FR-013): nao ha como
+  provocar a falha de UMA chamada quando nenhuma chamada e possivel. O
+  servidor esteve ativo (`status=active`, `mode=docker`, container
+  `Up 2 hours`) e ainda assim nenhuma tool chegou ao contexto
+- [!] 6.3.2 BLOQUEADO — o comportamento de fallback-sem-retry
+  (0 retries + 1 confirmacao via `cstk mcp status --live` + Bash pelo
+  resto da onda) permanece **documentado e nao exercitado**. A regra
+  esta redigida e testada por paridade (FASE 4), mas nunca foi observada
+  em execucao real, e isso NAO e afirmado como validado
 
 ### 6.4 Registro da lacuna FR-010 (elicitation/create) `[M]`
 
@@ -319,73 +348,35 @@ trafego observado 2026-08-16 03:37:08Z)
   quando a fonte existir, reabrir FR-010 via `/clarify`, atualizar
   `spec.md` removendo o estado Deferred, ANTES de qualquer `plan` assumir
   um comportamento concreto para ele
-- [ ] 6.4.2 Confirmar (leitura do bloco de orientacao, item 8 — tarefa
+- [x] 6.4.2 Confirmar (leitura do bloco de orientacao, item 8 — tarefa
   4.1.1) que os 2 orquestradores autonomos permanecem instruidos a NAO
   invocar nenhuma tool que dependa de elicitation enquanto FR-010
-  permanecer Deferred
+  permanecer Deferred — CONFIRMADO: o item 8 ("`elicitation/create`
+  permanece FORA de escopo de uso ativo enquanto...") esta presente
+  dentro do bloco `MCP-VS-BASH` dos dois arquivos
 
----
+### 6.5 Fixar a evidencia da causa raiz e a ordem causal (FR-014) `[C]`
 
-## FASE 7 - Alcancabilidade real do caminho MCP (FR-013, FR-014, FR-015)
+Ref: spec.md FR-014; evidencia colhida na onda-010 e reforcada na
+onda-011 (`dec-067`). Tarefa originalmente numerada 7.1; realocada para a
+FASE 6 na onda-011 (`dec-069`) quando a FASE 7 saiu do backlog ativo —
+FR-014 PERMANECE em escopo, e mover para "Escopo Excluido" uma tarefa
+concluida afirmaria falsamente que ela foi excluida.
 
-Motivo da fase: a validacao empirica da FASE 6 provou que FR-001..FR-012,
-embora corretos, nao tornam o caminho MCP alcancavel — o launcher serve
-zero tools para TODOS os consumidores antes de a allowlist do frontmatter
-sequer entrar em jogo. Expansao de escopo decidida pelo operador
-(onda-010), registrada em `spec.md` §Delta Requirements.
-
-### 7.1 Fixar a evidencia da causa raiz e a ordem causal (FR-014) `[C]`
-
-Ref: spec.md FR-013, FR-014; evidencia colhida na onda-010
-
-- [x] 7.1.1 Colher e registrar como Decisao auditavel, com `--evidencia`
+- [x] 6.5.1 Colher e registrar como Decisao auditavel, com `--evidencia`
   LITERAL, o handshake do launcher invocado exatamente como o `.mcp.json`
   o invoca (sem args, sem env): resposta
   `"serverInfo":{"name":"cstk-state-idle","version":"idle"}` seguida de
   `"result":{"tools":[]}`, com a execucao corrente ATIVA
   (`cstk mcp status --live` => `status=active`, `mode=docker`)
-- [x] 7.1.2 Confirmar na fonte as duas pecas da causa (1): `.mcp.json`
+- [x] 6.5.2 Confirmar na fonte as duas pecas da causa (1): `.mcp.json`
   registra o launcher com `"args": []` e SEM bloco `env`; e
   `mcp-launch.sh:128` testa SOMENTE `MCP_SESSION_TOKEN` antes de
   `_ml_idle_serve` (verificado identico entre a copia instalada em
   `~/.claude/skills/` e a fonte em `plugins/cstk/skills/`)
-- [x] 7.1.3 Apender FR-013/FR-014/FR-015 a `spec.md` e atualizar a secao
-  `## Delta Requirements`, declarando sem eufemismo que FR-001..FR-012
-  sao necessarios porem NAO suficientes
-
-### 7.2 Resolver o canal de entrega do token (FR-015) `[C]`
-
-Ref: spec.md FR-015; `docs/specs/_archived/2026-08-03-state-mcp-server/
-contracts/mcp-session-lifecycle.md` §SEC-H3 (linha 361, tabela do
-contrato corrigido); `mcp-launch.sh:21-25` (dec-043)
-
-- [!] 7.2.1 BLOQUEADO por decisao/fonte ausente: definir POR QUAL CANAL o
-  token de capacidade da execucao corrente alcanca o PROCESSO do launcher,
-  preservando simultaneamente (i) SEC-H3 — roteamento por posse de token,
-  nunca por precedencia nem por "execucao ativa mais provavel" — e (ii) o
-  fato de o servidor stdio ser conectado no boot da sessao, antes de o
-  token existir. Nenhuma reconciliacao MUST ser suposta aqui; reabrir via
-  `/clarify` quando houver decisao do operador ou fonte nova
-- [ ] 7.2.2 Depende de 7.2.1: atualizar `spec.md` removendo o
-  `[NEEDS CLARIFICATION]` de FR-015 e registrando a fonte da decisao,
-  ANTES de qualquer `plan` assumir um mecanismo concreto (Principio VI)
-- [ ] 7.2.3 Depende de 7.2.2: submeter o mecanismo escolhido ao gate
-  `owasp-security` com foco em confused deputy (ASI03) e em vazamento do
-  token pelo canal escolhido, antes de qualquer implementacao
-
-### 7.3 Revalidar a alcancabilidade e so entao declarar os SCs `[A]`
-
-Ref: spec.md FR-013, FR-014; quickstart.md Cenarios 5-7
-
-- [ ] 7.3.1 Depende de 7.2.3: repetir o handshake do launcher e confirmar
-  que `tools/list` devolve as SETE tools `mcp__cstk-state__*` (lista vazia
-  com servidor "conectado" NAO conta — FR-013)
-- [ ] 7.3.2 Depende de 7.3.1: reexecutar as tarefas 6.1, 6.2 e 6.3 da
-  FASE 6, agora que existe tool real para invocar
-- [ ] 7.3.3 Depende de 7.3.2: so entao declarar SC-002 e SC-004
-  satisfeitos, com `--evidencia` literal das chamadas observadas; sem
-  saida literal, registrar `--score 0` e NAO afirmar satisfacao
-  (Principio VI)
+- [x] 6.5.3 Apender FR-014 a `spec.md` e manter a secao
+  `## Delta Requirements` atualizada, declarando sem eufemismo que
+  FR-001..FR-012 sao necessarios porem NAO suficientes
 
 ---
 
@@ -398,8 +389,7 @@ flowchart TD
     F3[FASE 3 - Expor 7 tools MCP no frontmatter]
     F4[FASE 4 - Orientacao MCP-vs-Bash + paridade + rastreabilidade]
     F5[FASE 5 - Suite completa verde]
-    F6[FASE 6 - Validacao manual]
-    F7[FASE 7 - Alcancabilidade real do caminho MCP]
+    F6[FASE 6 - Validacao manual + evidencia da ordem causal]
 
     F1 --> F2
     F1 --> F4
@@ -408,13 +398,14 @@ flowchart TD
     F4 --> F5
     F3 --> F6
     F4 --> F6
-    F6 --> F7
 ```
 
-> A aresta `F6 --> F7` e o achado: a FASE 6 revelou a causa que a FASE 7
-> enderecar. O grafo permanece aciclico de proposito — os cenarios 5-7 da
-> FASE 6, que dependem de uma tool MCP real, sao reexecutados DENTRO da
-> FASE 7 (tarefa 7.3.2), e nao por um retorno a FASE 6.
+> A FASE 7 (alcancabilidade real do caminho MCP) foi **removida do
+> backlog ativo** na onda-011 (`dec-067`) e esta em "Escopo Excluido".
+> A tarefa 7.1, ja concluida e responsavel por FR-014 — que permanece em
+> escopo —, foi realocada como 6.5 (`dec-069`), preservando o trabalho
+> feito. As arestas remanescentes nao mudaram: a FASE 6 continua sendo o
+> ponto onde a validacao empirica ocorre, e o grafo permanece aciclico.
 
 ## Resumo Quantitativo
 
@@ -425,9 +416,23 @@ flowchart TD
 | 3 - Expor 7 tools MCP no frontmatter | 1 | 4 | C |
 | 4 - Orientacao MCP-vs-Bash + paridade + rastreabilidade | 4 | 12 | A |
 | 5 - Suite completa verde | 1 | 3 | A |
-| 6 - Validacao manual | 4 | 12 | C |
-| 7 - Alcancabilidade real do caminho MCP | 3 | 9 | C |
-| **Total** | **16** | **56** | - |
+| 6 - Validacao manual + evidencia da ordem causal | 5 | 15 | C |
+| **Total** | **14** | **50** | - |
+
+### Estado de conclusao do backlog ativo
+
+| Estado | Subtarefas | Onde |
+|--------|------------|------|
+| `[x]` Concluidas | 43 | FASES 1-5 (35) + 6.1.x, 6.2.5, 6.4.2, 6.5.x (8) |
+| `[!]` Bloqueadas por causa fora de escopo | 7 | 6.2.1-6.2.4, 6.3.1-6.3.2 (FR-013, transporte MCP) e 6.4.1 (FR-010, fonte externa) |
+| `[ ]` Pendentes | 0 | — |
+| **Total** | **50** | — |
+
+> Nenhuma subtarefa pendente permanece. As 7 bloqueadas nao sao
+> executaveis dentro desta feature: 6 dependem de um caminho MCP que
+> nao entrega tool alguma (FR-013, fora de escopo) e 1 depende de uma
+> sondagem externa que nunca foi disparada (FR-010, Deferred). Nenhuma
+> delas foi marcada como concluida.
 
 ## Escopo Coberto
 
@@ -438,19 +443,18 @@ flowchart TD
 | FR-003, FR-009 | As 7 tools `mcp__cstk-state__*` expostas nos 2 orquestradores, tools nativas preservadas | 3 |
 | FR-005, FR-006, FR-007 | Bloco de orientacao MCP-vs-Bash autocontido e duplicado nos 2 agentes | 4 |
 | FR-011 | Teste de paridade byte-identica do bloco de orientacao | 4 |
-| FR-008, SC-004 | Validacao manual do roteamento por token no caminho real (spawn real, Docker) | 6 |
-| FR-006, SC-001 | Validacao manual de degradacao graciosa com MCP ausente e de fallback sem retry em erro pontual | 6 |
+| FR-008, SC-004 | Validacao manual do roteamento por token no caminho real (spawn real, Docker) — **TENTADA, REPROVADA**: nenhuma chamada foi possivel (sem tool no contexto); FR-008 e SC-004 NAO declarados satisfeitos (`dec-068`) | 6 |
+| FR-006, SC-001 | Validacao manual de degradacao graciosa com MCP ausente (**CONFIRMADA**) e de fallback sem retry em erro pontual (**NAO exercitado** — documentado, nunca observado em execucao real) | 6 |
 | CHK023 | Lacuna de SLA/timeout DOCUMENTADA explicitamente (nao implementada — sem fonte para valor concreto) | 4 |
 | CHK025 | Rastreabilidade formal de US3 sem SC dedicado (decisao consciente, nao descuido) | 4 |
 | SC-005 | Suite completa do harness verde apos a mudanca de guard | 5 |
-| FR-013 | Caminho MCP alcancavel de fato numa execucao 00c normal, sem intervencao manual do operador (medido por `tools/list` devolvendo as 7 tools) | 7 |
-| FR-014 | Ordem causal registrada sem eufemismo: launcher idle (causa 1) precede a allowlist do frontmatter (causa 2); FR-001..FR-012 sao necessarios porem NAO suficientes | 7 |
-| FR-015 | Canal de entrega do token ao processo do launcher levantado como `[NEEDS CLARIFICATION]`, com os dois invariantes que qualquer resposta deve preservar (SEC-H3 + momento de existencia do token) | 7 |
+| FR-014 | Ordem causal registrada sem eufemismo: launcher idle (causa 1) precede a allowlist do frontmatter (causa 2); FR-001..FR-012 sao necessarios porem NAO suficientes. Reforcado na onda-011 com a medicao de que a causa (1) nao depende do token (`dec-067`) | 6 |
 
 ## Escopo Excluido
 
 | Item | Descricao | Motivo |
 |------|-----------|--------|
+| **FASE 7 inteira — FR-013 e FR-015** (ex-tarefas 7.2 e 7.3; a 7.1, concluida, foi realocada como 6.5) | Alcancabilidade real do caminho MCP (`tools/list` devolvendo as 7 tools numa execucao 00c normal) e definicao do canal de entrega do token de capacidade ao processo do launcher | **Reversao de expansao de escopo decidida pelo operador na onda-011 (`dec-067`)**. A onda-010 expandiu o escopo supondo que o bloqueio fosse a ENTREGA DO TOKEN; a sondagem do caminho completo mediu e **refutou** essa premissa: o transporte docker nao entrega tool a sessao nenhuma, com OU sem token (`NENHUMA_MCP` em ambos os casos), o attach com token ainda **destroi** o container, e o descritor pode afirmar sessao ativa sem container existente. Responder FR-015 portanto nao produziria FR-013. Corrigir exige redesenhar o transporte — tratado como **feature separada**. FR-014 (ordem causal) NAO sai de escopo e permanece na FASE 6. Evidencia consolidada em `spec.md` §"Estado conhecido ao fim desta feature"; SC-002 e SC-004 saem junto, declarados NAO satisfeitos |
 | FR-010 (`elicitation/create`) | Comportamento de uma tool MCP elicitation/create invocada sem operador humano presente | Deferred — sondagem empirica externa em curso, fora do escopo desta execucao (Principio VI: nenhum comportamento suposto sem fonte). Nenhuma das 7 tools do `cstk-state` depende de elicitation (research.md Decision 9), entao FR-010 nao bloqueia as demais FRs |
 | Alteracao de `agente-00c.md`/`feature-00c.md` (commands pai) | Nenhuma mudanca nos 2 commands que spawnam os orquestradores | Ja carregam o contrato correto ("Prefira as tools mcp__cstk-state__*"); esta feature alinha o AGENTE ao contrato ja documentado, nao o contrario (plan.md "Fora de escopo explicito") |
 | Alteracao do servidor MCP (`mcp/state-server/`) | Nenhuma tool nova, nenhum schema alterado | Feature so consome as 7 tools ja existentes (plan.md "Fora de escopo explicito") |
