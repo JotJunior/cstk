@@ -139,18 +139,68 @@ rejeicao.
 
 ### Edge Cases
 
-- O que acontece quando o servidor MCP esta ativo mas retorna erro para
-  uma chamada especifica (nao indisponibilidade total, mas falha de uma
-  operacao)? A orientacao de uso (Story 3) deve cobrir esse caso, nao
-  apenas "servidor ausente".
-- Como o guard (Story 1) deve reagir se um terceiro arquivo de agente
-  orquestrador for adicionado no futuro com uma allowlist somente-MCP?
-  Deve generalizar para qualquer agente que siga o mesmo padrao, nao
-  hardcodear apenas os dois arquivos atuais.
+- **Resolvido (clarify)**: quando o servidor MCP esta ativo mas retorna
+  erro para uma chamada especifica (nao indisponibilidade total), o
+  orquestrador NAO tenta novamente — aplica fallback imediato uniforme
+  para o caminho nativo, no mesmo contrato de queda mid-onda ja vigente
+  em `plugins/cstk/commands/feature-00c.md:738` e
+  `plugins/cstk/commands/agente-00c.md:497` (ver `## Clarifications`).
+  A orientacao de uso (Story 3 / FR-005/FR-006) cobre este caso
+  explicitamente, nao apenas "servidor ausente".
+- **Resolvido (clarify)**: o guard (Story 1) reage a um terceiro arquivo
+  de agente orquestrador futuro por deteccao de padrao de nome (sufixo
+  `-orchestrator.md`) em `plugins/cstk/agents/`, nunca por lista
+  hardcodeada dos dois arquivos atuais (ver `## Clarifications` e
+  FR-002).
 - O que acontece quando o conjunto de tools exposto pelo servidor MCP
   mudar (uma operacao for renomeada ou removida) e o frontmatter ainda
   referenciar o nome antigo? A chamada deve degradar para o caminho
   nativo, nunca travar a onda.
+
+## Clarifications
+
+### Session 2026-08-16
+
+- Q: Como o guard deve identificar quais arquivos de agente sao
+  "orquestradores autonomos" sujeitos a regra (allowlist nunca
+  vazia/nunca somente-MCP), de forma que generalize para um terceiro
+  orquestrador futuro sem edicao manual do guard? → A: deteccao por
+  padrao de nome (sufixo `-orchestrator`) em `plugins/cstk/agents/`.
+  Verificacao empirica (`ls plugins/cstk/agents/ | grep 'orchestrator\.md$'`):
+  o padrao casa exatamente 2 dos 7 arquivos de agente
+  (`agente-00c-orchestrator.md`, `agente-00c-feature-orchestrator.md`) e
+  nenhum outro (`agente-00c-clarify-asker.md`,
+  `agente-00c-clarify-answerer.md`, `feature-00c-clarify-asker.md`,
+  `feature-00c-clarify-answerer.md`, `data-veracity-verifier.md`).
+  Generaliza para um terceiro orquestrador futuro sem edicao manual do
+  guard.
+- Q: Onde e em que formato a orientacao de uso MCP-vs-nativo (Story 3)
+  deve viver dentro da definicao de cada orquestrador? → A: secao
+  dedicada autocontida em CADA um dos 2 arquivos de orquestrador
+  (`plugins/cstk/agents/agente-00c-orchestrator.md` e
+  `plugins/cstk/agents/agente-00c-feature-orchestrator.md`), nao um
+  ponteiro para doc externo — o agente le a propria definicao no spawn e
+  um ponteiro custaria um Read adicional, podendo ser ignorado em
+  runtime. A duplicacao (~10 linhas x2) e mitigada por um teste de
+  paridade entre os dois blocos (novo requisito FR-011).
+- Q: Quando o servidor MCP esta ativo mas uma chamada especifica retorna
+  erro (nao indisponibilidade total), o orquestrador deve tentar
+  novamente antes de cair para o caminho nativo, ou tratar como
+  qualquer outra forma de indisponibilidade? → A: fallback imediato
+  uniforme, sem retry — alinhado ao contrato ja vigente no repo, nao uma
+  preferencia nova. Fonte literal:
+  `plugins/cstk/commands/feature-00c.md:738` e
+  `plugins/cstk/commands/agente-00c.md:497` especificam, ambos, o mesmo
+  texto: "em erro de transporte, contrato de queda mid-onda (0 retries +
+  1 confirmacao via `cstk mcp status --live`) e comutacao para Bash no
+  resto da onda." Retry exigiria emendar os dois commands e
+  contradiria o contrato ja documentado.
+- Q: O guard novo (FR-002) deve ser implementado como teste automatizado
+  em `tests/` (harness) ou script separado? → A: teste em `tests/`,
+  integrado a `./tests/run.sh` e ao gate de release — convergencia entre
+  briefing.md ("Testes para scripts shell") e constitution.md v1.3.0
+  ("Scripts tem teste automatizado ... detectavel via
+  `tests/run.sh --check-coverage`").
 
 ## Requirements
 
@@ -163,7 +213,11 @@ rejeicao.
   deterministico que falha quando, e somente quando, o frontmatter
   `tools:` de um orquestrador resolve para conjunto vazio OU e composto
   exclusivamente por entradas `mcp__*` (nenhuma tool nativa de fallback
-  presente).
+  presente). O guard MUST identificar "orquestrador" por deteccao de
+  padrao de nome (arquivo `*-orchestrator.md` em `plugins/cstk/agents/`),
+  nunca por lista hardcodeada dos dois arquivos atuais — generaliza sem
+  edicao manual para um terceiro orquestrador futuro que siga o mesmo
+  padrao (ver `## Clarifications`).
 - **FR-003**: Os dois orquestradores autonomos (raiz e de feature
   individual) MUST listar, no proprio frontmatter `tools:`, as operacoes
   de estado expostas pelo servidor MCP de estado, em adicao as (nunca em
@@ -173,13 +227,23 @@ rejeicao.
   proprio frontmatter `tools:` a qualquer momento, de forma que um
   subagente nunca seja recusado por allowlist somente-MCP nem spawnado
   sem nenhuma tool utilizavel.
-- **FR-005**: A definicao de cada um dos dois orquestradores MUST incluir
-  orientacao explicita sobre quando preferir uma chamada via MCP e quando
-  usar o caminho nativo equivalente para a mesma operacao de estado.
+- **FR-005**: A definicao de cada um dos dois orquestradores MUST incluir,
+  em uma secao dedicada e autocontida DENTRO do proprio arquivo de
+  definicao do agente (nunca uma referencia/ponteiro a um doc externo
+  compartilhado — ver `## Clarifications`), orientacao explicita sobre
+  quando preferir uma chamada via MCP e quando usar o caminho nativo
+  equivalente para a mesma operacao de estado.
 - **FR-006**: Essa orientacao MUST descrever como o orquestrador detecta
   que uma operacao via MCP nao esta disponivel (servidor ausente, tool
-  nao resolvida, sessao nao autenticada) e confirmar que o caminho nativo
-  permanece disponivel como alternativa em todos esses casos.
+  nao resolvida, sessao nao autenticada, OU erro pontual de uma chamada
+  especifica com o servidor ativo) e confirmar que o caminho nativo
+  permanece disponivel como alternativa em todos esses casos. Para erro
+  pontual de chamada (servidor ativo, uma operacao falha), a orientacao
+  MUST prescrever fallback imediato para o caminho nativo, sem retry —
+  o mesmo contrato de queda mid-onda ja documentado em
+  `plugins/cstk/commands/feature-00c.md:738` e
+  `plugins/cstk/commands/agente-00c.md:497` (0 retries + 1 confirmacao
+  via `cstk mcp status --live` + comutacao para Bash no resto da onda).
 - **FR-007**: O sistema MUST preservar, sem enfraquecer, a garantia de
   que a indisponibilidade do servidor MCP de estado nunca degrada a
   funcionalidade da execucao autonoma nem exige intervencao manual — esta
@@ -213,6 +277,15 @@ rejeicao.
   elicitation/create como fora de escopo de uso ativo pelos orquestradores
   autonomos (eles nao devem invocar operacoes que dependam de elicitation
   sem essa definicao).
+- **FR-011**: O sistema MUST fornecer um teste automatizado de PARIDADE
+  entre a secao de orientacao MCP-vs-nativo (FR-005/FR-006) dos dois
+  arquivos de orquestrador, garantindo que a duplicacao deliberada
+  (ver `## Clarifications`) nao diverge silenciosamente entre
+  `agente-00c-orchestrator.md` e `agente-00c-feature-orchestrator.md`.
+- **FR-012**: O guard de FR-002 MUST ser implementado como teste
+  automatizado dentro de `tests/` (nao um script separado fora do
+  harness), integrado a `./tests/run.sh` e ao `--check-coverage`
+  (ver `## Clarifications`, convergente com dec-011).
 
 > Decisoes de infraestrutura: N/A (feature nao introduz scheduling, key
 > rotation, refresh de token externo, mutex multi-pod, backup/restore ou
