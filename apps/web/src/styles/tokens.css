@@ -253,6 +253,16 @@ input, select, textarea { font-family: inherit; }
   gap: 10px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  /* Link para a Visao Geral: sem estilo de ancora, feedback discreto */
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.sidebar .brand:hover { background: var(--bg-hover); }
+.sidebar .brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .brand-mark {
   width: 26px; height: 26px;

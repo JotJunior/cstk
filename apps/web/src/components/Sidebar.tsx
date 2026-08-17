@@ -4,7 +4,7 @@
  * Ref: spec.md FR-007 a FR-016; plan.md §Sidebar.tsx
  */
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Icon } from './Icon.js';
 
 interface NavRoute {
@@ -96,16 +96,23 @@ export function Sidebar({
 
   return (
     <aside className={cls.join(' ')}>
-      {/* Brand */}
-      <div className="brand">
-        <img className="brand-logo" src="/cstk-logo.png" alt="cstk-panel" width={28} height={28} />
+      {/* Brand — link para a Visao Geral (rota raiz); no mobile fecha o drawer
+          como os demais itens de navegacao. */}
+      <Link
+        className="brand"
+        to="/"
+        title="Ir para a Visão Geral"
+        aria-label="cstk-panel — ir para a Visão Geral"
+        onClick={() => { if (isMobile) onClose?.(); }}
+      >
+        <img className="brand-logo" src="/cstk-logo.png" alt="" width={28} height={28} />
         {!drawerCollapsed && (
           <div>
             <div className="brand-name">cstk-panel</div>
             <div className="brand-tag">observabilidade · v{__APP_VERSION__}</div>
           </div>
         )}
-      </div>
+      </Link>
 
       {/* Botão de colapso/expansão (FR-013, FR-016 — acessível).
           Oculto no mobile (em drawer não faz sentido recolher). */}
