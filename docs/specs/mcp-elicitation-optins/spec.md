@@ -243,12 +243,24 @@ introduzidos pela tentativa de usar o mecanismo novo primeiro.
   interpretado — o modelo NAO MUST decidir, a partir de uma leitura de
   texto, qual flag corresponde a resposta.
 - **FR-004**: O sistema MUST distinguir, no registro de auditoria da
-  execucao, tres desfechos possiveis para o formulario estruturado: o
-  operador respondeu e aceitou (valor aplicado = resposta), o operador
-  recusou explicitamente (valor aplicado = default seguro, registrado
-  como recusa), e nao houve operador disponivel para responder (valor
-  aplicado = default seguro, registrado como ausencia). Os ultimos dois
-  desfechos MUST permanecer distinguiveis um do outro no registro.
+  execucao, os **seis** desfechos possiveis do enum `outcome`
+  (`data-model.md` §Enum `outcome`): `accepted` (operador respondeu e
+  aceitou, valor aplicado = resposta), `declined` (operador recusou
+  explicitamente, valor aplicado = default seguro), `absent` (envelope
+  retornado sem operador disponivel para responder, valor aplicado =
+  default seguro), `timeout` (teto de tempo do formulario esgotado sem
+  resposta, valor aplicado = default seguro), `unavailable` (pre-requisito
+  do mecanismo estruturado nunca satisfeito antes da chamada, valor
+  aplicado = default seguro) e `failed` (a chamada estruturada quebrou
+  depois de iniciada, valor aplicado = default seguro). Esta granularidade
+  NAO e detalhe de implementacao: a distincao `unavailable`/`failed`
+  alimenta o gatilho do aviso em stderr de FR-009 (silencioso para
+  `unavailable`, exatamente uma linha para `failed`), a distincao
+  `absent`/`timeout` alimenta SC-004, e o conjunto completo dos seis
+  valores e a evidencia de consentimento consumida pela emenda a
+  Invariante 4 do `delivery-tier` (M8 do gate de seguranca, `plan.md`
+  linhas 279-282). Todos os seis desfechos MUST permanecer distinguiveis
+  entre si no registro.
 - **FR-005**: Quando o pre-requisito do mecanismo estruturado nao estiver
   satisfeito (servidor de estado indisponivel para a execucao, ou sessao
   sem suporte ao mecanismo), o sistema MUST usar o caminho de blocos de
@@ -327,6 +339,17 @@ introduzidos pela tentativa de usar o mecanismo novo primeiro.
   esta feature e de **ORDEM de chamada** (mover a escrita para depois do
   init minimo, dentro da etapa (2)), NAO de introduzir um mecanismo novo
   (dec-018/dec-035, implicacao de escrita).
+- **FR-014**: A tool estruturada de coleta (`collect_optins`) MUST ser
+  invocada no maximo **uma vez por execucao para fins de COLETA**
+  (dec-057, CHK028): a chamada inicial dispara o formulario e persiste as
+  respostas; qualquer chamada subsequente da mesma execucao MUST reusar a
+  resposta ja registrada (FR-011/dec-017), sem re-disparar o formulario
+  estruturado. Uma segunda tentativa de **coleta** dentro da mesma
+  execucao (distinta de uma leitura de estado via `get_status`, que
+  permanece livre de limite) MUST ser recusada pela tool e registrada no
+  historico de auditoria da execucao como sinal de anomalia (indicativo de
+  injecao indireta ou de bug no chamador) — nunca apenas ignorada em
+  silencio.
 
 > Decisoes de infraestrutura: N/A (feature nao introduz scheduling, key
 > rotation, refresh de token externo, lock multi-pod, backup ou
@@ -370,6 +393,14 @@ introduzidos pela tentativa de usar o mecanismo novo primeiro.
   ocorrencias em que o mecanismo nunca esteve disponivel (US3 Acceptance
   Scenario 1), nenhuma linha de aviso e emitida — os dois casos permanecem
   distinguiveis na saida observada pelo operador.
+- **SC-006**: Quando o mecanismo estruturado estava disponivel no inicio
+  da chamada mas falha NO MEIO dela (US3 Acceptance Scenario 2, Quickstart
+  Scenario 6), a captura subsequente por prosa produz o **mesmo resultado
+  observavel** (mesmas perguntas, mesmos valores-padrao quando o campo nao
+  e respondido, mesmo registro em `.optin_responses[]`) que a captura por
+  prosa hoje documentada para sessoes sem o mecanismo estruturado
+  disponivel (SC-003) — eleva `contracts/optin-capture-order.md` §3.3(b)
+  de nivel de design a requisito com eco em `spec.md`.
 
 ## Delta Requirements
 

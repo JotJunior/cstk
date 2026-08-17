@@ -30,15 +30,15 @@ Ref: `checklists/requirements.md` CHK005, CHK018; `plan.md` §Resultado dos
 gates linhas 271, 339-343 (M6 elevado de LOW para MEDIUM); dec-057
 (decisao do operador ja registrada no state: "1 por execucao").
 
-- [ ] 1.1.1 Adicionar clausula/FR nova a `spec.md` (`## Requirements`)
+- [x] 1.1.1 Adicionar clausula/FR nova a `spec.md` (`## Requirements`)
       declarando: `collect_optins` MUST ser chamada no maximo **1 vez por
       execucao**; chamadas subsequentes MUST reusar a resposta ja registrada
       (dec-017/FR-011), sem re-disparar o formulario
-- [ ] 1.1.2 Declarar explicitamente que uma **segunda tentativa de COLETA**
+- [x] 1.1.2 Declarar explicitamente que uma **segunda tentativa de COLETA**
       (nao de leitura via `get_status`) dentro da mesma execucao MUST ser
       recusada pela tool e registrada como sinal de anomalia (injecao
       indireta ou bug de chamador) — nao apenas ignorada em silencio
-- [ ] 1.1.3 Rodar `~/.claude/skills/checklist/scripts/requirement-coverage.sh
+- [x] 1.1.3 Rodar `~/.claude/skills/checklist/scripts/requirement-coverage.sh
       docs/specs/mcp-elicitation-optins/spec.md` apos a edicao; `errors=0`
       obrigatorio antes de fechar a tarefa
 
@@ -50,10 +50,10 @@ Ref: `checklists/requirements.md` CHK014; `data-model.md` linhas 136-149
 granularidade como evidencia de consentimento para a emenda ao INV-4
 (FASE 8)
 
-- [ ] 1.2.1 Emendar FR-004 de `spec.md` (hoje exige distinguir apenas
+- [x] 1.2.1 Emendar FR-004 de `spec.md` (hoje exige distinguir apenas
       **tres** desfechos) para exigir a distincao completa de 6 valores no
       registro de auditoria, alinhada a `data-model.md` §Enum `outcome`
-- [ ] 1.2.2 Citar explicitamente que a distincao `unavailable`/`failed`
+- [x] 1.2.2 Citar explicitamente que a distincao `unavailable`/`failed`
       alimenta FR-009 (aviso em stderr) e que `absent`/`timeout` alimenta
       SC-004; nao deixar a granularidade como "detalhe de implementacao"
 
@@ -63,14 +63,14 @@ Ref: `checklists/requirements.md` CHK022; `quickstart.md` Scenario 6
 (US3 Acceptance Scenario 2); SC-003 (hoje escopado so ao Scenario 5,
 "sessoes SEM o mecanismo") e SC-005 (so mede contagem de linhas de aviso)
 
-- [ ] 1.3.1 Adicionar Success Criteria novo (ou emendar SC-003) a `spec.md`
+- [x] 1.3.1 Adicionar Success Criteria novo (ou emendar SC-003) a `spec.md`
       afirmando que a captura por prosa **apos** uma falha no meio da
       chamada estruturada (Scenario 6) produz o **mesmo resultado
       observavel** (mesmas perguntas, mesmos valores-padrao, mesma
       auditoria em `.optin_responses[]`) que a captura por prosa de hoje —
       elevando `contracts/optin-capture-order.md` §3.3(b) de nivel de
       design a requisito com eco em `spec.md`
-- [ ] 1.3.2 Rodar `requirement-coverage.sh` de novo apos 1.2 + 1.3;
+- [x] 1.3.2 Rodar `requirement-coverage.sh` de novo apos 1.2 + 1.3;
       `errors=0` obrigatorio
 
 ---
