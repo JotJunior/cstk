@@ -8,11 +8,25 @@
 // chamada — `resolveSessionForCall` + `createSessionCache` — incluindo o
 // teste central da FASE (task 1.2.7): hit de cache revalida INTEGRALMENTE
 // contra o disco, nunca autoriza so pelo valor cacheado.
+//
+// mcp-direct-transport FASE 6 (tasks 6.1.2 + 6.2.1): fecha 2 lacunas
+// deixadas pelos testes acima (todos usam fixtures stub OU um unico
+// token/execucao):
+//   6.1.2 — o fluxo miss->hit de `resolveSessionForCall` nunca foi
+//     exercitado ponta-a-ponta contra o mcp-session.sh REAL (so contra
+//     fixtures fake-mcp-session-ok.sh); o teste 1.2.7 usa o helper real,
+//     mas so testa revalidacao apos terminar, nao a transicao miss->hit.
+//   6.2.1 — nenhum teste cobre DUAS execucoes ativas simultaneas
+//     (cardinalidade 1 processo : N sessoes, FR-011): dois tokens
+//     distintos, dois projetos tmpdir descartaveis (NUNCA a execucao real
+//     desta feature — dec-075), compartilhando o MESMO SessionCache, para
+//     provar ausencia de cross-talk na resolucao (o que os handlers de
+//     tool usam para decidir QUAL state-dir mutar).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import {
   resolveActiveSession,
@@ -349,4 +363,151 @@ test("resolveActiveSession (dec-060): sem state.json ao lado do descritor -> fai
       }),
     SessionMismatchError,
   );
+});
+
+// ---------------------------------------------------------------------------
+// task 6.1.2 (FASE 6): resolucao por chamada, cache hit + miss, contra o
+// mcp-session.sh REAL (nao um stub) — a mesma dupla hit/miss ja coberta
+// acima (linha ~141) so exercita fixtures fake; aqui o tree-walk
+// `--project-path` REAL sobre um layout de projeto de verdade
+// (`.claude/agente-00c-state/mcp-server.json`) e o modo direto
+// `--state-dir` REAL sao os dois lados da transicao.
+// ---------------------------------------------------------------------------
+
+/**
+ * Monta um projeto tmpdir descartavel com o layout real de uma execucao
+ * (agente-00c ou feature-00c) + descritor ATIVO + state.json irmao com
+ * `.execution.status = em_andamento` (dec-060/061 — exigido pelo
+ * mcp-session.sh REAL, nao so o proxy `stopped_at`).
+ */
+async function makeProjectWithExecution(
+  kind: "agente-00c" | "feature-00c",
+  sessionId: string,
+  shortName = "outra-feature",
+): Promise<{ projectPath: string; stateDir: string }> {
+  const projectPath = await mkdtemp(join(tmpdir(), "cstk-mcp-multi-session-test-"));
+  const stateDir =
+    kind === "agente-00c"
+      ? join(projectPath, ".claude", "agente-00c-state")
+      : join(projectPath, ".claude", "feature-00c-state", shortName);
+  await mkdir(stateDir, { recursive: true });
+  await writeFile(
+    join(stateDir, "mcp-server.json"),
+    JSON.stringify({
+      session_id: sessionId,
+      state_dir: stateDir,
+      execution_kind: kind,
+      short_name: kind === "feature-00c" ? shortName : null,
+      target_project_path: projectPath,
+      mode: "direct",
+      container_name: null,
+      stopped_at: null,
+    }),
+    "utf8",
+  );
+  await writeActiveState(stateDir);
+  return { projectPath, stateDir };
+}
+
+test("resolveSessionForCall (task 6.1.2, mcp-session.sh REAL): 1a chamada (miss) resolve via tree-walk --project-path real e POPULA o cache; 2a chamada com o MESMO token (hit) usa --state-dir direto, sem tree-walk", async () => {
+  const token = "synthetic-token-real-miss-then-hit";
+  const { projectPath, stateDir } = await makeProjectWithExecution("agente-00c", token);
+  const cache = createSessionCache();
+
+  assert.equal(cache.get(token), undefined);
+
+  const first = await resolveSessionForCall(cache, {
+    projectPath,
+    token,
+    helperPath: REAL_MCP_SESSION_SH,
+  });
+  assert.equal(first.stateDir, stateDir);
+  assert.equal(first.executionKind, "agente-00c");
+  assert.equal(cache.get(token), stateDir);
+
+  // 2a chamada: passa um projectPath INEXISTENTE/errado deliberadamente —
+  // se o hit reexecutasse o tree-walk em vez de usar o cache (--state-dir
+  // direto), esta chamada falharia. Ela nao falha, provando o caminho A-5.
+  const second = await resolveSessionForCall(cache, {
+    projectPath: "/nao/existe/nao/deveria/ser/lido",
+    token,
+    helperPath: REAL_MCP_SESSION_SH,
+  });
+  assert.equal(second.stateDir, stateDir);
+  assert.equal(second.executionKind, "agente-00c");
+});
+
+// ---------------------------------------------------------------------------
+// task 6.2.1 (FASE 6, FR-011): duas execucoes ativas simultaneas
+// (agente-00c + feature-00c) com tokens distintos, MESMO SessionCache
+// compartilhado (1 processo : N sessoes) — nenhum cross-talk: apresentar o
+// token de A jamais resolve o state-dir de B, nem vice-versa. E o exato
+// mecanismo que os handlers de tool (record_decision, open_wave, ...)
+// usam para decidir qual state-dir mutar — cobrir a resolucao cobre a
+// garantia de isolamento de mutacao por construcao.
+// ---------------------------------------------------------------------------
+
+test("resolveSessionForCall (task 6.2.1, FR-011): duas execucoes ativas simultaneas com tokens distintos e cache compartilhado — nenhum cross-talk", async () => {
+  const tokenA = "synthetic-token-multi-agente-A";
+  const tokenB = "synthetic-token-multi-feature-B";
+  const { projectPath: projA, stateDir: sdA } = await makeProjectWithExecution(
+    "agente-00c",
+    tokenA,
+  );
+  const { projectPath: projB, stateDir: sdB } = await makeProjectWithExecution(
+    "feature-00c",
+    tokenB,
+    "mcp-direct-transport-fixture",
+  );
+  assert.notEqual(sdA, sdB);
+
+  const cache = createSessionCache();
+
+  // 1a chamada (miss) para A: tree-walk real sobre o projeto A, popula o
+  // cache compartilhado.
+  const sessionA1 = await resolveSessionForCall(cache, {
+    projectPath: projA,
+    token: tokenA,
+    helperPath: REAL_MCP_SESSION_SH,
+  });
+  assert.equal(sessionA1.stateDir, sdA);
+  assert.equal(cache.get(tokenA), sdA);
+
+  // 1a chamada (miss) para B: projeto DIFERENTE, token DIFERENTE, mesmo
+  // objeto de cache — simula o mesmo processo servidor atendendo as duas
+  // execucoes.
+  const sessionB1 = await resolveSessionForCall(cache, {
+    projectPath: projB,
+    token: tokenB,
+    helperPath: REAL_MCP_SESSION_SH,
+  });
+  assert.equal(sessionB1.stateDir, sdB);
+  assert.equal(cache.get(tokenB), sdB);
+
+  // A entrada de A sobrevive intacta a insercao de B (sem colisao de
+  // chave no Map).
+  assert.equal(cache.get(tokenA), sdA);
+
+  // 2a chamada (hit) para A e para B, em sequencia intercalada — cada uma
+  // usa --state-dir direto com o proprio valor cacheado, isolada da
+  // outra.
+  const sessionA2 = await resolveSessionForCall(cache, {
+    projectPath: "/nao/deveria/ser/usado",
+    token: tokenA,
+    helperPath: REAL_MCP_SESSION_SH,
+  });
+  const sessionB2 = await resolveSessionForCall(cache, {
+    projectPath: "/nao/deveria/ser/usado",
+    token: tokenB,
+    helperPath: REAL_MCP_SESSION_SH,
+  });
+
+  assert.equal(sessionA2.stateDir, sdA);
+  assert.equal(sessionB2.stateDir, sdB);
+  assert.notEqual(sessionA2.stateDir, sessionB2.stateDir);
+
+  // A garantia central de FR-011: apresentar o token de A NUNCA resolve o
+  // state-dir de B, e vice-versa.
+  assert.notEqual(sessionA2.stateDir, sdB);
+  assert.notEqual(sessionB2.stateDir, sdA);
 });

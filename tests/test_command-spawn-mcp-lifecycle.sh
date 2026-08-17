@@ -116,14 +116,28 @@ scenario_resume_feat_instrui_mcp_stop_terminal() {
   assert_exit 0 grep -Eq 'cstk mcp stop --state-dir' "$CMD_RES_FEAT" || return 1
 }
 
-# aguardando_humano NAO deve disparar stop (FR-010: sessao coextensiva com
-# a execucao inteira, sobrevive a pausas entre ondas).
+# aguardando_humano NAO deve disparar stop. Reescrito na FASE 6
+# (mcp-direct-transport task 6.1.1, plan.md "Mudanca de contrato
+# (BREAKING)"): a versao anterior deste teste so checava a presenca da
+# frase "NAO e terminal", cuja JUSTIFICATIVA no doc afirmava que "o
+# servidor" (leia-se: o PROCESSO) permanece coextensivo com a execucao e
+# ativo durante a pausa — verdade sob o contrato Docker antigo (FR-010 da
+# feature-base), MENTIRA sob o contrato novo (FR-012): quem sobrevive a
+# pausa e a SESSAO MCP (descritor+token em disco), nao o processo, que
+# agora e coextensivo com a sessao do harness. Assert dupla: (a) o
+# comportamento operacional continua correto ("NAO e terminal"); (b) a
+# distincao processo-vs-sessao esta documentada, para que uma futura
+# reversao ao texto antigo falhe aqui.
 scenario_resume_agente_nao_para_em_aguardando_humano() {
   assert_exit 0 grep -Eq 'aguardando_humano.*NAO e terminal|NAO e terminal' "$CMD_RES_AGENTE" || return 1
+  assert_exit 0 grep -Eiq 'SESSAO MCP' "$CMD_RES_AGENTE" || return 1
+  assert_exit 0 grep -Eiq 'processo.*coextensivo.*sessao do harness|processo.*e coextensivo com a.*sessao do harness' "$CMD_RES_AGENTE" || return 1
 }
 
 scenario_resume_feat_nao_para_em_aguardando_humano() {
   assert_exit 0 grep -Eq 'aguardando_humano.*NAO e terminal|NAO e terminal' "$CMD_RES_FEAT" || return 1
+  assert_exit 0 grep -Eiq 'SESSAO MCP' "$CMD_RES_FEAT" || return 1
+  assert_exit 0 grep -Eiq 'processo.*coextensivo.*sessao do harness|processo.*e coextensivo com a.*sessao do harness' "$CMD_RES_FEAT" || return 1
 }
 
 # ==== dec-043 (consumada): injecao do token de capacidade no spawn ====

@@ -438,9 +438,17 @@ case "$_status_final" in
 esac
 ```
 
-> Estado `aguardando_humano` NAO e terminal (FR-010: a sessao do servidor
-> e coextensiva com a execucao inteira) — o servidor MUST permanecer
-> ativo durante a pausa; `stop` so dispara em `concluida`/`abortada`.
+> Estado `aguardando_humano` NAO e terminal — `stop` so dispara em
+> `concluida`/`abortada`. Precisao pos-FASE 6 (mcp-direct-transport,
+> FR-012 revoga a leitura antiga de FR-010): quem permanece coextensiva
+> com a execucao inteira e sobrevive a pausas entre ondas e a **SESSAO
+> MCP** (descritor `mcp-server.json` + token, no disco), NAO o processo.
+> O **processo** do servidor e coextensivo com a **sessao do harness**
+> (pode nao ser o mesmo PID de uma onda para outra; nada precisa
+> "permanecer rodando" durante a pausa). A resolucao por chamada
+> (`token -> state_dir`, sem TTL, revalidada a cada chamada contra o
+> disco) e quem garante que uma nova instancia do processo retoma a
+> **SESSAO MCP** correta a partir do descritor persistido.
 
 ### 9. Apresentar resultado ao operador
 
