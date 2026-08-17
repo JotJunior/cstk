@@ -404,14 +404,20 @@ disponivel:
 3. **Finding `delivery-tier-unattended-change` (INV-4/F5, HIGH
    ASI01/ASI03)**: compare o `delivery_tier` vigente lido no passo 1
    contra o valor no INICIO da execucao (primeira onda que gravou o
-   campo, via `state-history`/backups de onda). Se o valor mudou SEM uma
-   Decisao correspondente do operador (`state-decisions.sh` com
-   `context` citando mudanca de tier, registrada em
-   `/agente-00c-resume` — nunca pelo orquestrador em onda autonoma),
-   reporte este finding com severidade `critical`: tier alterado por
-   fora do fluxo auditado e o padrao classico de auto-escalada de
-   agente (privilege abuse / goal hijack) que o INV-4 existe para
-   barrar.
+   campo, via `state-history`/backups de onda). Se o valor mudou,
+   verifique se ha consentimento correspondente do operador — satisfeito
+   por QUALQUER UM dos dois (emenda dec-048/dec-053, `cli-delivery-tier.md`
+   §2.2 regra 3): (a) Decisao correspondente (`state-decisions.sh` com
+   `context` citando mudanca de tier, registrada em `/agente-00c-resume`);
+   ou (b) entrada em `.optin_responses[]` com `channel: "structured"` e
+   `outcome: "accepted"` para o campo de tier (coleta mediada de inicio de
+   execucao, `mcp-elicitation-optins` FASE 5). SEM NENHUMA das duas
+   evidencias — inclusive um `set` disparado pelo orquestrador por conta
+   propria — reporte este finding com severidade `critical`: tier
+   alterado por fora do fluxo auditado e o padrao classico de
+   auto-escalada de agente (privilege abuse / goal hijack) que o INV-4
+   existe para barrar. A emenda reconhece uma segunda fonte legitima de
+   evidencia; NAO afrouxa a deteccao quando nenhuma das duas existe.
 
 **Defesa em profundidade**: mesma da secao 4.6 — helper ausente ou
 state-dir nao resolvido → pule silenciosamente, sem bloquear o resto do

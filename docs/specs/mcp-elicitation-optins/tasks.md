@@ -541,32 +541,32 @@ linhas 286-365 (proposta completa de reescrita, H2/dec-048);
 `tests/test_command-spawn-delivery-tier.sh` linhas 87-90
 (`scenario_resume_documenta_inv4_operador`)
 
-- [ ] 8.1.1 Editar `docs/specs/delivery-tier/contracts/cli-delivery-tier.md`
+- [x] 8.1.1 Editar `docs/specs/delivery-tier/contracts/cli-delivery-tier.md`
       §2.2 regra 1 (linhas 141-142): de "o orquestrador NUNCA invoca
       `delivery-tier.sh set` por conta propria" para "o orquestrador nunca
       **escolhe** o valor do tier, e nunca invoca `set` com valor de
       origem propria — permitido: disparar coleta mediada pelo operador
       (`collect_optins` → `elicitation/create`), valor escolhido pelo
       operador no cliente, gravado pelo servidor"
-- [ ] 8.1.2 Editar regra 2 (mudanca de tier "so ocorre entre ondas, via
+- [x] 8.1.2 Editar regra 2 (mudanca de tier "so ocorre entre ondas, via
       `/agente-00c-resume`"): admitir explicitamente a coleta de **inicio
       de execucao** (etapa 2 do init em duas etapas, FASE 5) como segunda
       janela legitima, ao lado de "entre ondas"
-- [ ] 8.1.3 Editar regra 3 (`review-task` reporta
+- [x] 8.1.3 Editar regra 3 (`review-task` reporta
       `delivery-tier-unattended-change` para "qualquer alteracao... sem
       Decisao de operador correspondente"): reconhecer explicitamente
       `.optin_responses[]` com `channel: "structured"` e `outcome:
       "accepted"` como evidencia de consentimento equivalente a Decisao —
       **depende** da FASE 1.2 (FR-004 ancorando os 6 valores do enum
       `outcome`, ja que a distincao e o que sustenta essa evidencia)
-- [ ] 8.1.4 Regra 4 (elevacao nao-solicitada proibida) permanece
+- [x] 8.1.4 Regra 4 (elevacao nao-solicitada proibida) permanece
       INALTERADA — nao editar
-- [ ] 8.1.5 Ajustar `tests/test_command-spawn-delivery-tier.sh:87-90`
+- [x] 8.1.5 Ajustar `tests/test_command-spawn-delivery-tier.sh:87-90`
       (`scenario_resume_documenta_inv4_operador`) para cobrir a distincao
       **escolha/set direto** (proibido) x **disparo de coleta mediada**
       (permitido), em vez de casar apenas a frase antiga `'por iniciativa
       do proprio orquestrador'`
-- [ ] 8.1.6 `./tests/run.sh test_command-spawn-delivery-tier` verde antes
+- [x] 8.1.6 `./tests/run.sh test_command-spawn-delivery-tier` verde antes
       de fechar a tarefa
 
 ---
