@@ -989,8 +989,10 @@ cstk recall --ingest --state-dir "$AGENTE_00C_STATE_DIR" 2>/dev/null \
 Best-effort, roda apos 5.bis, ANTES do cleanup (passo 6). `cstk mcp stop`
 e idempotente (parar o que ja esta parado, ou `--state-dir` sem descritor
 algum, e exit 0) — chamar mesmo quando o servidor nunca chegou a subir
-(mode=bash-fallback ou init sem Docker) e seguro. Raro na primeira
-invocacao (normalmente termina em `em_andamento` com Schedule intent),
+(init sem Docker, token nunca cunhado — dec-034: o modo reservado para
+fallback nunca e de fato escrito pelo `start`; discriminador real e
+token vazio/descritor ausente) e seguro. Raro na primeira invocacao
+(normalmente termina em `em_andamento` com Schedule intent),
 mas cobre o caso de uma execucao curta que ja fecha terminal na propria
 primeira onda:
 

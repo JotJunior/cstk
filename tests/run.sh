@@ -283,6 +283,18 @@ _is_internal_test() {
       # ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
       return 1 ;;
+    test_command-spawn-optin-elicitation.sh)
+      # Smoke textual sobre a FASE 10 (task 10.1) de mcp-elicitation-optins:
+      # ordem do ramo estruturado, preservacao do ramo legado, correcao dos
+      # comentarios stale sobre mode=bash-fallback, condicionalidade de
+      # --allow-downgrade e escopo negativo feature-00c*. Assert sobre os 4
+      # commands + 2 agents + mcp/state-server/src/tools/collect_optins.ts —
+      # nao em um unico script sob a convencao de FASE 9.3 —
+      # existence-guarded ao command portador do ramo estruturado
+      # (plugins/cstk/commands/agente-00c.md). Se a fonte sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
+      return 1 ;;
     test_command-prompt-noninteractive-lint.sh)
       # LINT DE CLASSE: varre plugins/cstk/commands/*.md exigindo clausula
       # de nao-interatividade em todo prompt ao operador. Assert textual

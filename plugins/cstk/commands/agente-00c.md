@@ -763,7 +763,9 @@ cstk recall --ingest --state-dir <SD> 2>/dev/null \
 Best-effort, roda apos 5.bis, ANTES de liberar o lock (5.ter). `cstk mcp
 stop` e idempotente (parar o que ja esta parado, ou `--state-dir` sem
 descritor algum, e exit 0) — chamar mesmo quando o servidor nunca chegou
-a subir (mode=bash-fallback ou init sem Docker) e seguro. Raro na
+a subir (init sem Docker, token nunca cunhado — dec-034: o modo
+reservado para fallback nunca e de fato escrito pelo `start`;
+discriminador real e token vazio/descritor ausente) e seguro. Raro na
 primeira invocacao (normalmente termina em `em_andamento` com Schedule
 intent), mas cobre o caso de uma execucao curta que ja fecha terminal na
 propria primeira onda:

@@ -317,7 +317,9 @@ Best-effort, roda apos 4.ter/4.bis, ANTES do cleanup (passo 5). `cstk mcp
 stop` e idempotente (parar o que ja esta parado, ou `--state-dir` sem
 descritor algum, e exit 0 — contracts/mcp-session-lifecycle.md
 "`cstk mcp stop`") — chamar mesmo quando o servidor nunca chegou a subir
-(mode=bash-fallback ou init sem Docker) e seguro.
+(init sem Docker, token nunca cunhado — dec-034: o modo reservado para
+fallback nunca e de fato escrito pelo `start`; discriminador real e
+token vazio/descritor ausente) e seguro.
 
 ```bash
 _status_final=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" \

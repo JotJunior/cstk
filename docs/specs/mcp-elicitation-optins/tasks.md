@@ -517,8 +517,9 @@ Ref: `tests/test_orchestrator-allowlist-guard.sh` linhas 269-310
       onda-013
 - [x] 7.2.4 Confirmado: `scenario_allowlist_preserva_bash` continua verde
       (`Bash` preservado no roster dos dois orquestradores) — 17/17
-- [ ] 7.2.5 `./tests/run.sh test_orchestrator-allowlist-guard` verde antes
-      de fechar a tarefa
+- [x] 7.2.5 `./tests/run.sh test_orchestrator-allowlist-guard` verde antes
+      de fechar a tarefa. Confirmado onda-016: LC_ALL=C
+      ./tests/run.sh orchestrator-allowlist-guard => 17/17 PASS
 
 ---
 
@@ -631,29 +632,91 @@ Ref: `plan.md` §Estrategia de Testes linhas 191-216; precedentes
 `test_command-spawn-delivery-tier.sh`, `test_command-spawn-roadmap-mode.sh`,
 `test_command-spawn-mcp-lifecycle.sh:62-68`
 
-- [ ] 10.1.1 Cenario de ordem do ramo estruturado (assercao por numero de
+- [x] 10.1.1 Cenario de ordem do ramo estruturado (assercao por numero de
       linha): `init` < `mcp start` < spawn < `collect_optins` <
-      `state-ondas.sh start`
-- [ ] 10.1.2 Cenario de ramo legado preservado: prosa ANTES do init nos
+      `state-ondas.sh start`. Feito: `scenario_ordem_agente_init_mcpstart_spawn`
+      + `scenario_ordem_feature_init_mcpstart_spawn` (init < mcp-start REAL —
+      ultima ocorrencia de `cstk mcp start --state-dir`, secao 3.quater/3.bis
+      de ciclo-de-vida, NAO o probe de 2.bis que roda antes do proprio init
+      so para decidir o ramo — < cabecalho da secao de spawn) +
+      `scenario_ordem_agente_collect_optins_antes_de_state_ondas_start` +
+      `scenario_ordem_feature_collect_optins_antes_de_state_ondas_start`
+      (bloco 1.bis/3.bis de `collect_optins` < chamada literal de
+      `state-ondas.sh start` nos 2 agents orquestradores)
+- [x] 10.1.2 Cenario de ramo legado preservado: prosa ANTES do init nos
       4 commands (`agente-00c.md`, `agente-00c-resume.md`,
-      `feature-00c.md`, `feature-00c-resume.md`)
-- [ ] 10.1.3 Cenario de ausencia da string `mode=bash-fallback` como
+      `feature-00c.md`, `feature-00c-resume.md`). Feito:
+      `scenario_ramo_legado_prosa_antes_do_init_agente` +
+      `scenario_ramo_legado_prosa_antes_do_init_feature` (ordem por numero
+      de linha nos 2 commands de init) + `scenario_resume_nunca_reintroduziu_init_nem_prompt`
+      (nos 2 commands de resume a preservacao e estrutural — nunca tiveram
+      `state-rw.sh init` nem prompt de opt-in antes desta feature,
+      FASE 5.2/5.4 — confirma ausencia continua)
+- [x] 10.1.3 Cenario de ausencia da string `mode=bash-fallback` como
       assercao NEGATIVA (A5) — grep NAO deve encontrar o literal em
-      lugar nenhum dos 4 commands
-- [ ] 10.1.4 Cenario cobrindo a correcao dos comentarios stale
+      lugar nenhum dos 4 commands. **Ajuste de escopo registrado em
+      dec-101/onda-016**: a assercao literal-global colidiria com o
+      precedente textual que a propria task 5.3.2 manda preservar
+      (`_mcp_token` vazio "bash-fallback"/sem descritor,
+      `agente-00c.md:558`/`feature-00c.md:795`) e com a explicacao
+      CORRECAO (dec-034) escrita por 5.1.4/5.3.2, que cita o literal
+      DENTRO de uma negacao ("nao ha caminho de codigo que produza
+      mode=bash-fallback"). O invariante real de A5 (plan.md linha 38:
+      "nenhum teste pode asseri-lo" como VALOR observado — ja coberto
+      funcionalmente por
+      `test_orchestrator-mcp-fallback.sh::scenario_start_sem_docker_funciona_mode_direct_exit_0`)
+      e "nenhum command trata bash-fallback como desfecho alcancavel", nao
+      "a substring nunca aparece em lugar nenhum". Implementado como:
+      (a) ausencia da CLAIM antiga (`degrada sozinho para mode=bash-fallback`)
+      nos 2 commands de init — `scenario_stale_claim_ausente_agente/_feature`;
+      (b) ausencia da variante solta `(mode=bash-fallback ou init sem
+      Docker)` nos 4 commands (corrigida na propria onda-016, ver 10.1.4) —
+      idem + `scenario_stale_claim_ausente_nos_resumes`; (c) presenca do
+      precedente textual legitimo intacto —
+      `scenario_precedente_mcp_token_vazio_intacto`
+- [x] 10.1.4 Cenario cobrindo a correcao dos comentarios stale
       (`feature-00c.md` ~linha 711, `agente-00c.md` linha 470) — texto
-      antigo ausente, novo discriminador presente
-- [ ] 10.1.5 Cenario de condicionalidade de `--allow-downgrade` (A2 +
+      antigo ausente, novo discriminador presente. Feito: coberto pelos
+      mesmos scenarios de 10.1.3 (`scenario_stale_claim_ausente_agente/_feature`
+      asserem AUSENCIA de `degrada sozinho para mode=bash-fallback` E
+      PRESENCA de `CORRECAO (dec-034)`). **Achado adicional durante a
+      onda-016**: 4 OUTRAS mencoes stale de `(mode=bash-fallback ou init
+      sem Docker)` sobreviviam fora do escopo de 5.1.4/5.3.2 — nos blocos
+      de `mcp stop` em estado terminal (FASE 6 task 6.2.3, escritos ANTES
+      de dec-034 existir) de `agente-00c.md:766`, `feature-00c.md:992`,
+      `agente-00c-resume.md:442`, `feature-00c-resume.md:320`. Corrigidas
+      nesta onda (dec-101) para o mesmo discriminador (token vazio/
+      descritor ausente, sem repetir o literal reservado) — cobertas por
+      `scenario_stale_claim_ausente_nos_resumes`
+- [x] 10.1.5 Cenario de condicionalidade de `--allow-downgrade` (A2 +
       dec-047): presente SO no rebaixamento aceito; ausente na
       elevacao/no-op; NENHUMA chamada de `set` nos desfechos degradados
-      (assercao sobre argv capturado, `quickstart.md` Scenario 1b)
-- [ ] 10.1.6 Cenario de escopo negativo: `feature-00c*` NAO oferece campo
-      de `delivery_tier`
-- [ ] 10.1.7 Registrar em `tests/run.sh::_is_internal_test` (nao ha
+      (assercao sobre argv capturado, `quickstart.md` Scenario 1b). Feito:
+      assercao sobre o CODIGO-FONTE que decide o argv (unico ponto que
+      monta a chamada de `delivery-tier.sh set` — nao ha teste Node
+      gateado, dec-027) — `scenario_allow_downgrade_condicional_no_source`
+      (guard `tierOrdinal(wireValue) < tierOrdinal(currentTier)` + push
+      unico da flag) + `scenario_allow_downgrade_ausente_em_desfechos_degradados`
+      (Invariante C-3: `writeDeliveryTier` tem exatamente 1 call-site, no
+      ramo `outcome === "accepted"` — decline/cancel/absent/failed-allowlist
+      gravam `SAFE_DEFAULTS` diretamente e nunca chamam a funcao que monta
+      o argv)
+- [x] 10.1.6 Cenario de escopo negativo: `feature-00c*` NAO oferece campo
+      de `delivery_tier`. Feito: `scenario_escopo_feature00c_sem_delivery_tier_no_source`
+      (`FIELDS_BY_EXECUTION_KIND["feature-00c"] === ["atomic_commit"]`) +
+      `scenario_escopo_feature00c_sem_delivery_tier_no_orquestrador`
+      (`agente-00c-feature-orchestrator.md` nunca menciona `delivery_tier`)
+- [x] 10.1.7 Registrar em `tests/run.sh::_is_internal_test` (nao ha
       script `.sh` de skill correspondente — evita falso positivo no
-      `--check-coverage`)
-- [ ] 10.1.8 Atencao ao lint de classe
-      `test_command-prompt-noninteractive-lint.sh` — rodar antes de fechar
+      `--check-coverage`). Feito: entrada `test_command-spawn-optin-elicitation.sh`
+      em `_is_internal_test` (existence-guarded a `agente-00c.md`,
+      mesmo padrao das 4 entradas `test_command-spawn-*` irmas). Confirmado:
+      `--check-coverage` => "Cobertura completa: zero orfaos"
+- [x] 10.1.8 Atencao ao lint de classe
+      `test_command-prompt-noninteractive-lint.sh` — rodar antes de fechar.
+      Confirmado onda-016: LC_ALL=C ./tests/run.sh
+      command-prompt-noninteractive-lint => 7/7 PASS (as edicoes de prosa
+      desta onda nao tocaram nenhum prompt ao operador)
 
 ### 10.2 Suite completa verde `[A]`
 
