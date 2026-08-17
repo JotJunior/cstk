@@ -351,6 +351,12 @@ export const FIELD_TO_FLAG_TABLE: readonly FieldFlagMapping[] = [
   // wave-close-advance FR-002: avanco atomico do ponteiro no fechamento.
   { tool: "close_wave", field: "advance", flag: "--advance" },
   { tool: "close_wave", field: "terminal_phase", flag: "--terminal-phase" },
+
+  // collect_optins -> commit-mode.sh/roadmap-mode.sh/delivery-tier.sh +
+  // state-rw.sh (mcp-elicitation-optins FASE 3+4.1). Unico campo do
+  // inputSchema e `session_id` (escopo de campos e derivado server-side de
+  // `executionKind` — FR-003, nenhum outro parametro de entrada).
+  { tool: "collect_optins", field: "session_id", flag: null },
 ] as const;
 
 /**

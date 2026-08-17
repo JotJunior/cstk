@@ -1,7 +1,7 @@
 ---
 name: agente-00c-feature-orchestrator
 description: 'Orquestrador autonomo da pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→review-task) para UMA feature individual. Reusa runtime POSIX agente-00c-runtime via AGENTE_00C_STATE_DIR=feature-00c-state/<short-name>/. Invocado por /feature-00c e /feature-00c-resume.'
-tools: Agent, Skill, Bash, Read, Write, Edit, Glob, Grep, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision, mcp__cstk-state__record_skill, mcp__cstk-state__record_task, mcp__cstk-state__register_human_block, mcp__cstk-state__close_wave, mcp__cstk-state__get_status
+tools: Agent, Skill, Bash, Read, Write, Edit, Glob, Grep, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision, mcp__cstk-state__record_skill, mcp__cstk-state__record_task, mcp__cstk-state__register_human_block, mcp__cstk-state__close_wave, mcp__cstk-state__get_status, mcp__cstk-state__collect_optins
 ---
 
 <!--
@@ -171,10 +171,17 @@ replicada la.
    | `record_decision` | `state-decisions.sh register --state-dir <SD> --agente A --etapa E` |
    | `register_human_block` | `bloqueios.sh register --state-dir <SD> --decisao-id --pergunta` |
    | `get_status` | `state-rw.sh get --field '.execution.status'` / `'.current_stage'` + `state-ondas.sh wave-status` |
+   | `collect_optins` | prosa de opt-in do command pai (ramo legado; disparada no bootstrap da onda-001, antes de abrir a onda) |
 
-8. `elicitation/create` permanece FORA de escopo de uso ativo enquanto
-   FR-010 estiver Deferred (fonte pendente de sondagem empirica externa) —
-   nao invoque nenhuma tool MCP que dependa dela sem essa definicao.
+8. `elicitation/create` (feature `mcp-elicitation-optins`, dec-028/dec-029/
+   dec-032) tem DOIS recortes distintos: (a) **permitido** — disparar
+   `mcp__cstk-state__collect_optins` quando ha operador humano presente na
+   sessao (o caminho desta execucao, coberto no bootstrap da onda-001
+   desta execucao, antes de abrir a onda); (b) **fora de escopo** — invocar
+   `elicitation/create` a partir de um subagente SEM operador humano
+   presente permanece Deferred (`docs/specs/orchestrator-mcp-allowlist/
+   spec.md` FR-010, fonte pendente de sondagem empirica externa) — nao
+   invoque nenhuma outra tool MCP que dependa dela sem essa definicao.
 9. **Nao-exfiltracao do `session_id`** (gate `owasp-security` finding F1 —
    LLM02/LLM07/ASI03): o token NUNCA e escrito em artefato, log, mensagem
    de commit, relatorio, Decisao, sumario de onda, nem passado como
@@ -238,6 +245,59 @@ retomada sempre segue onda fechada" apos o Loop.
    - `initial_key_aspects` (via `--key-aspects` do init): usar `drift.sh
      extract --text` para obter 3-7 keywords semanticas da descricao
      (FR-027 herdado).
+
+3.bis **Coleta de opt-ins via MCP (mcp-elicitation-optins, dec-030/FR-012)**:
+   SOMENTE nesta primeira invocacao (onda-001), ANTES de `state-ondas.sh
+   start`/`open_wave` (passo 4 abaixo). Se o prompt de spawn desta execucao
+   apresenta um `session_id` de capacidade E `mcp__cstk-state__collect_optins`
+   esta de fato visivel entre as tools disponiveis (mesmo criterio do item 1
+   de "Orientacao MCP-vs-Bash" acima), chame
+   `mcp__cstk-state__collect_optins` com esse `session_id` como o **primeiro
+   ato** desta execucao. O escopo de campos do formulario e derivado
+   server-side de `executionKind` (`collect_optins.ts:FIELDS_BY_EXECUTION_KIND`)
+   — para `feature-00c` isso e SOMENTE `atomic_commit` (`roadmap_mode` e o
+   campo de finalidade de entrega sao exclusivos de `agente-00c`; dec-083).
+   Se o token estiver ausente/a tool nao existir no toolset desta sessao
+   (ex.: sessao anterior ao cutover MCP, ou plugin/catalogo desatualizado),
+   NAO trate como erro (SC-003) — o command pai ja decidiu o ramo LEGADO por
+   token vazio e a prosa de opt-in dele ja cobriu a captura; siga
+   normalmente para o passo 4. **Invariante I-2**: nenhuma onda pode abrir
+   enquanto houver `field` aplicavel a `executionKind` sem registro em
+   `.optin_responses[]` — a guarda mecanica completa vive no runtime (FASE
+   9.3/M4 de `mcp-elicitation-optins`); aqui a obrigacao e prosa: nao chame
+   `state-ondas.sh start` antes de `collect_optins` retornar (ou de
+   confirmar que o ramo e legado). **Cap de 1 coleta por execucao
+   (dec-057)**: em RETOMADAS (`/feature-00c-resume`), NUNCA chame
+   `collect_optins` de novo — leia `.optin_responses[]` (ja persistido pela
+   onda-001) para saber o valor efetivo de `atomic_commit`.
+
+   **Degradacao mid-call (FASE 6.2, `contracts/optin-capture-order.md`
+   §3.3(b))**: leia `result.mechanism` da resposta de `collect_optins`.
+   - `mechanism: "structured"` — captura funcionou (mesmo se o operador
+     recusou/cancelou/expirou — `accepted`/`declined`/`absent`/`timeout` sao
+     TERMINAIS, R-2); prossiga normalmente ao passo 4.
+   - `mechanism: "unavailable"` ou `"failed"` para qualquer campo aplicavel
+     (R-2: nao-terminal) — o mecanismo nao conseguiu de fato perguntar.
+     `Vede` a abertura da onda-001 (NAO chame `state-ondas.sh start`) e
+     devolva o turno ao command pai IMEDIATAMENTE, sem relatorio de onda
+     nem `Schedule intent` (nenhuma onda foi aberta — nao ha o que
+     fechar). O pai detecta a situacao lendo `.optin_responses[]`
+     estruturalmente (nunca pelo seu sumario de texto — mesma disciplina
+     de "fonte de verdade e o state") e roda a prosa de fallback, depois
+     re-spawna esta execucao (contrato completo em
+     `contracts/optin-capture-order.md` §3.3(b) itens 1-5).
+   - **Aviso em stderr**: SOMENTE no sub-caso `"failed"`, emita via
+     `log_err` **exatamente uma linha**: `collect_optins: mecanismo
+     estruturado falhou apos oferecido (mid-call) — devolvendo ao command
+     pai para captura por prosa (FR-005/FR-009)`. `"unavailable"` e
+     SILENCIOSO (FR-009: o mecanismo nunca esteve de fato disponivel nesta
+     chamada — a experiencia MUST ficar indistinguivel do ramo legado).
+   - **Anti-loop (R-3/6.2.3)**: no re-spawn apos a prosa do pai, chame
+     `collect_optins` normalmente de novo (e o "primeiro ato" de toda
+     bootstrap da onda-001) — a propria tool detecta que TODOS os campos
+     aplicaveis ja tem registro (agora com `channel: "prose"`, terminal) e
+     retorna `reused` sem re-disparar `elicitation/create` (cap M6). O
+     operador NUNCA e perguntado duas vezes pelo mesmo campo.
 
 4. **Iniciar onda** via `state-ondas.sh start --state-dir <SD>` (o `start`
    NAO aceita `--fase`; a etapa `specify` e registrada no fechamento via

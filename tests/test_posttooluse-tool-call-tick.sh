@@ -337,7 +337,18 @@ scenario_db_roundtrip_state_ondas_contabiliza_ticks() {
     || { _error "init_falhou" "state-rw.sh init nao inicializou o state-dir de fixture"; return 2; }
   [ -f "$_sd/state.db" ] || { _error "backend_nao_sqlite" "fixture nao produziu state.db"; return 2; }
 
-  "$_RUNTIME_SCRIPTS/state-ondas.sh" start --state-dir "$_sd" >/dev/null 2>&1
+  # mcp-elicitation-optins FASE 9 (M4, task 9.3.1): `state-ondas.sh start`
+  # agora recusa onda-001 sob o layout real `.../feature-00c-state/<nome>`
+  # sem registro em `.optin_responses[]` (Invariante I-2). Este fixture
+  # simula uma execucao feature-00c de verdade — precisa do mesmo registro
+  # que o orquestrador real teria feito via collect_optins/prosa ANTES da
+  # primeira onda, senao o proprio roundtrip que este teste mede nunca abre.
+  env HOME="$_home" "$_RUNTIME_SCRIPTS/state-rw.sh" set --state-dir "$_sd" \
+    --field '.optin_responses' \
+    --value '[{"field":"atomic_commit","channel":"structured","outcome":"accepted","applied_value":"true","recorded_at":"2026-08-17T00:00:00Z","reason":null}]' \
+    >/dev/null 2>&1
+
+  env HOME="$_home" "$_RUNTIME_SCRIPTS/state-ondas.sh" start --state-dir "$_sd" >/dev/null 2>&1
 
   _i=1
   while [ "$_i" -le 4 ]; do

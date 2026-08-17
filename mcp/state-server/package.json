@@ -1,6 +1,6 @@
 {
   "name": "@cstk/state-mcp-server",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "MCP server exposing state.json/state.db mutation tools to the cstk 00c orchestrators (stdio transport, one container per execution).",
   "type": "module",

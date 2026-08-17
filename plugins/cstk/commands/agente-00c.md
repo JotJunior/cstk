@@ -294,7 +294,66 @@ state-lock.sh acquire --state-dir <SD> || {
   # .git diretorio (projeto raiz): _canonical e _session permanecem vazios (flags omitidas).
   ```
 
+#### 2.bis Decisao de ramo: MCP estruturado vs prosa legada (FASE 5 — mcp-elicitation-optins, dec-080)
+
+Antes de qualquer prompt de opt-in, decida o ramo de captura via um probe
+best-effort do mecanismo MCP — NUNCA bloqueia a pipeline (FR-005/FR-012):
+
+```bash
+mkdir -p "<SD>" 2>/dev/null || :
+# Provisionamento idempotente do .mcp.json do projeto-alvo (dec-107,
+# FASE 12/mcp-elicitation-optins). Sem isto, o ramo estruturado so
+# funcionava quando o projeto-alvo JA tinha cstk-state registrado (ex.:
+# o proprio repo cstk) — em qualquer OUTRO projeto-alvo, `cstk mcp start`
+# mintava um token normalmente (nao depende do .mcp.json), mas o HARNESS
+# desta sessao NUNCA teria a tool collect_optins de fato disponivel (o
+# .mcp.json e lido no BOOT da sessao, nao em tempo real) — a onda-001
+# abria sem opt-ins coletados e o guard M4/I-2 travava mudo (dec-107,
+# achado do E2E Scenario 1). Best-effort: falha nunca bloqueia a
+# pipeline, so cai no ramo legado normalmente.
+_optin_mcpjson_pre=""
+if [ -f "<PAP>/.mcp.json" ] && grep -q '"cstk-state"' "<PAP>/.mcp.json" 2>/dev/null; then
+  _optin_mcpjson_pre="1"
+fi
+cstk mcp install --project-path "<PAP>" >/dev/null 2>&1 || :
+_optin_branch="legado"
+_optin_probe_rc=1
+# So tenta o probe estruturado quando `.mcp.json` JA tinha cstk-state
+# ANTES desta invocacao — se acabou de ser registrado agora (linha
+# acima), esta sessao (harness ja bootada) nao tem a tool de qualquer
+# forma; a proxima sessao neste projeto-alvo ja nasce com o ramo
+# estruturado disponivel.
+if [ -n "$_optin_mcpjson_pre" ] && cstk mcp status --state-dir "<SD>" >/dev/null 2>&1; then
+  cstk mcp start --state-dir "<SD>" >/dev/null 2>&1; _optin_probe_rc=$? || :
+fi
+if [ "$_optin_probe_rc" -eq 0 ]; then
+  _optin_token=$(jq -r '.session_id // ""' "<SD>/mcp-server.json" 2>/dev/null) || _optin_token=""
+  [ -n "$_optin_token" ] && _optin_branch="estruturado"
+fi
+```
+
+- `_optin_branch = "legado"` (subcomando `mcp` ausente, `start` falhou, ou
+  token vazio): siga os 3 prompts de prosa abaixo **exatamente como hoje**
+  (byte-a-byte, FR-005) — nenhuma mencao ao MCP, nenhum aviso.
+- `_optin_branch = "estruturado"`: **pule os 3 prompts de prosa abaixo** —
+  a captura acontece via `collect_optins` dentro do turno do orquestrador
+  (ver secao "Injecao do token de capacidade", mais abaixo).
+  `_atomic`/`_roadmap`/`_tier` permanecem NAO-DEFINIDOS neste ramo; o init
+  (secao seguinte) omite as 3 flags correspondentes.
+
+> Este probe reusa o MESMO mecanismo do bloco "Ciclo de vida do servidor
+> MCP" (secao 3.quater, mais abaixo). Chamar `cstk mcp start` de novo
+> depois do init e seguro e idempotente — reusa o `session_id` ja cunhado
+> aqui e apenas refresca `target_project_path` no descritor (dec-080;
+> `mcp.sh:_mcp_cmd_start` sempre re-grava o descritor, mesmo em reuse).
+> `state-rw.sh init` tambem faz `mkdir -p` no state-dir por conta propria
+> — o `mkdir -p` acima e so para o probe rodar ANTES do init existir.
+
 #### Prompt opt-in de commit atomico (FR-001/FR-002 — atomic-commit-pr)
+
+> Aplica-se **apenas** quando `_optin_branch = "legado"` (ver 2.bis acima).
+> No ramo `"estruturado"`, pule este prompt e os dois seguintes por
+> completo — a captura acontece via `collect_optins`.
 
 Antes de inicializar o `state.json`, pergunte ao operador se deseja
 habilitar o modo de commit atomico (opt-in, default "nao"):
@@ -446,12 +505,55 @@ Selecione [1-4, Enter = 4]:
   - `--whitelist-urls <JSON-arr>`
   - `${_canonical:+--canonical-project "$_canonical"}` (quando nao-vazio)
   - `${_session:+--session-name "$_session"}` (quando nao-vazio)
+  - As 3 flags a seguir aplicam-se **apenas** ao ramo `_optin_branch =
+    "legado"` (2.bis acima). No ramo `"estruturado"` as 3 sao **OMITIDAS**
+    por completo — o init grava os defaults seguros do proprio
+    `state-rw.sh` (`false`/`false`/`cloud-public`, FR-012 etapa 1); a
+    captura real acontece depois, via `collect_optins` no primeiro ato do
+    orquestrador
   - `--atomic-commit "$_atomic"` (valor capturado acima; `false` = comportamento atual intacto)
   - `--roadmap-mode "$_roadmap"` (valor capturado acima; `false` = comportamento atual intacto)
   - `--delivery-tier "$_tier"` (valor capturado acima; default `cloud-public` = comportamento atual intacto)
 
   Status inicial: `em_andamento`, etapa `briefing`, `next_instruction`
-  apontando para inicio do briefing.
+  apontando para inicio do briefing. **Pre-requisito duro (dec-031)**: e
+  exatamente este `.execution.status = em_andamento` que habilita as
+  chamadas de tool no ramo estruturado — sem ele, toda chamada retorna
+  `SESSION_MISMATCH` (`mcp-session.sh:25-32`).
+
+### 3.ter Persistir opt-ins do ramo legado em `.optin_responses[]` (FASE 12/dec-107)
+
+Aplica-se **apenas** quando `_optin_branch = "legado"` (2.bis acima).
+Fecha a Invariante I-2 (guard M4, `_so_check_optin_invariant`) tambem
+para o ramo legado: sem este passo, a prosa "desde o inicio" (2.bis com
+mecanismo indisponivel) nunca gravava nada em `.optin_responses[]` — so
+a degradacao MID-CALL (4.bis) persistia. Onda-001 ficava presa no guard
+mesmo com a prosa ja tendo rodado e o `state.json` ja tendo os 3 valores
+aplicados via flags de `init`. Mesmo padrao de append de 4.bis
+(`channel: "prose"`), rodando logo apos o `state-rw.sh init` acima:
+
+```bash
+if [ "$_optin_branch" = "legado" ]; then
+  _now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  _cur=$(state-rw.sh get --state-dir <SD> --field '.optin_responses // []')
+  for _pair in "atomic_commit:$_atomic" "roadmap_mode:$_roadmap" "delivery_tier:$_tier"; do
+    _f=${_pair%%:*}
+    _v=${_pair#*:}
+    case "$_f" in
+      delivery_tier) _out="accepted" ;;   # sempre resolvido pelo helper (operador ou default absent)
+      *) [ "$_v" = "true" ] && _out="accepted" || _out="declined" ;;
+    esac
+    _cur=$(printf '%s' "$_cur" | jq -c \
+      --arg f "$_f" --arg v "$_v" --arg o "$_out" --arg ts "$_now" \
+      '. + [{field: $f, channel: "prose", outcome: $o, applied_value: $v, recorded_at: $ts, reason: null}]')
+  done
+  state-rw.sh set --state-dir <SD> --field '.optin_responses' --value "$_cur"
+fi
+```
+
+Ramo `_optin_branch = "estruturado"`: pule este passo por completo — a
+persistencia acontece via `collect_optins` no primeiro ato do
+orquestrador (ou via 4.bis se degradar no meio da chamada).
 
 ### 3.quater Ciclo de vida do servidor MCP (status/start) — FASE 6 task 6.2.1
 
@@ -465,10 +567,13 @@ if cstk mcp status --state-dir <SD> >/dev/null 2>&1; then
   # nesta instalacao (nao que o Docker esteja de pe — status=unavailable
   # com reason=no-active-execution E ESPERADO neste ponto, ja que o
   # descritor mcp-server.json ainda nao existe para uma execucao recem-
-  # inicializada; cli/lib/mcp.sh::_mcp_print_status_from_descriptor). A
-  # decisao real de disponibilidade de Docker fica DENTRO de `start`, que
-  # faz seu proprio preflight e degrada sozinho para mode=bash-fallback
-  # sem abortar (dec-099, feature state-mcp-server).
+  # inicializada; cli/lib/mcp.sh::_mcp_print_status_from_descriptor).
+  # CORRECAO (dec-034): `start` grava SEMPRE `mode=direct` — nao ha
+  # caminho de codigo que produza `mode=bash-fallback` (mcp.sh:100-107,
+  # :708-709 VERIFICADO; o valor e reservado pelo contrato, nunca emitido
+  # de fato). O discriminador real de indisponibilidade e token vazio /
+  # descritor ausente (`_mcp_token`, mais abaixo), nunca o literal
+  # `mode=bash-fallback`.
   cstk mcp start --state-dir <SD> >/dev/null 2>&1 || :
 else
   : # subcomando `mcp` ausente (instalacao sem self-update recente) ou
@@ -497,8 +602,18 @@ fi
 >   apresentando ESTE session_id em cada chamada; em erro de transporte,
 >   contrato de queda mid-onda (0 retries + 1 confirmacao via cstk mcp
 >   status --live) e comutacao para Bash no resto da onda.`
+> - **Ramo `_optin_branch = "estruturado"` (2.bis acima, task 5.1.5/5.5.1 —
+>   mcp-elicitation-optins)**: acrescente TAMBEM, na mesma injecao, a linha:
+>   `MCP: ramo estruturado de opt-ins ativo (dec-080). Chame
+>   mcp__cstk-state__collect_optins como o PRIMEIRO ato desta execucao,
+>   ANTES de qualquer state-ondas.sh start/open_wave da onda-001 (FR-012,
+>   Invariante O-1 — nenhuma onda pode abrir com campo aplicavel sem
+>   registro em .optin_responses[]).`
 > - `_mcp_token` vazio (`bash-fallback` / sem descritor) ⇒ NAO mencione MCP
 >   no prompt; o orquestrador segue o caminho Bash (zero regressao, SC-004).
+>   Neste caso `_optin_branch` ja e `"legado"` por construcao (2.bis acima
+>   testa o MESMO `_mcp_token`), entao os opt-ins ja foram capturados por
+>   prosa ANTES do init — nao ha nada pendente para o orquestrador.
 > - O token NUNCA e ecoado em stdout/stderr/logs do command — vive apenas
 >   no descritor (`chmod 600`) e no prompt do spawn (SEC-H3: roteamento por
 >   capacidade, nunca por precedencia).
@@ -553,6 +668,79 @@ Aplique o param `model` no spawn SOMENTE quando `MODEL != manter-atual`
 
 Aguarde retorno do orquestrador (uma mensagem de sumario contendo, entre
 outras linhas, um campo `Schedule intent: ...`).
+
+### 4.bis Degradacao mid-call do MCP: fallback por prosa + re-spawn (FASE 6.2, `mcp-elicitation-optins`)
+
+Aplica-se SOMENTE quando `_optin_branch = "estruturado"` (secao 3 acima) E
+`tipo_invocacao = "primeira_invocacao"` (retomadas nunca chamam
+`collect_optins` de novo — 1.bis do orquestrador, cap M6/dec-057).
+
+Apos o retorno do spawn acima, ANTES de `reconcile-wave` (5.pre), verifique
+se o orquestrador devolveu o turno sem abrir NENHUMA onda por degradacao
+mid-call do mecanismo estruturado (`contracts/optin-capture-order.md`
+§3.3(b)). **Sinal estrutural, nunca o sumario de texto do subagente**
+(mesma disciplina de "fonte de verdade e o state"):
+
+```bash
+_optin_degraded=""
+for _f in atomic_commit roadmap_mode delivery_tier; do
+  _last=$(state-rw.sh get --state-dir "$STATE_DIR" \
+    --field "[.optin_responses[]? | select(.field == \"$_f\")] | last // {}")
+  _last_ch=$(printf '%s' "$_last" | jq -r '.channel // ""')
+  _last_out=$(printf '%s' "$_last" | jq -r '.outcome // ""')
+  case "$_last_ch:$_last_out" in
+    structured:unavailable|structured:failed) _optin_degraded="$_optin_degraded $_f" ;;
+  esac
+done
+```
+
+Se `_optin_degraded` vazio: nada a fazer — prossiga normalmente a
+`5.pre` (caminho comum: captura funcionou ou o ramo ja era legado).
+
+Se `_optin_degraded` NAO-vazio (R-2: registro **nao-terminal** para ao
+menos 1 campo aplicavel), rode — SOMENTE para os campos listados —
+EXATAMENTE os mesmos blocos de prosa da secao 3 acima ("Prompt opt-in de
+commit atomico", "Prompt opt-in do modo roadmap", "Prompt de finalidade —
+tier de entrega"): mesmo texto, mesmos defaults, zero mencao ao MCP (o
+operador nao percebe que o mecanismo estruturado chegou a existir). Para
+cada resposta obtida:
+
+1. persista via o setter especifico do campo (**nunca** por flag de init
+   — o `state.json` ja existe):
+   - `atomic_commit` → `commit-mode.sh set-enabled --state-dir "$STATE_DIR" --value <true|false>`
+   - `roadmap_mode` → `roadmap-mode.sh set-enabled --state-dir "$STATE_DIR" --value <true|false>`
+   - `delivery_tier` → `delivery-tier.sh set --state-dir "$STATE_DIR" --value <token>
+     [--allow-downgrade]` — mesma regra condicional C-2/dec-047: SOMENTE
+     quando o ordinal novo e estritamente menor que o vigente, lido
+     IMEDIATAMENTE antes da escrita (`delivery-tier.sh get`)
+2. acrescente o registro em `.optin_responses[]` com `channel: "prose"`
+   (append-only; NUNCA sobrescreva os registros `structured` ja
+   existentes — R-1, vale o mais recente):
+   ```bash
+   _now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   _cur=$(state-rw.sh get --state-dir "$STATE_DIR" --field '.optin_responses // []')
+   _new=$(printf '%s' "$_cur" | jq -c --arg f "$_f" --arg v "$_applied_value" --arg ts "$_now" \
+     '. + [{field: $f, channel: "prose", outcome: "accepted", applied_value: $v, recorded_at: $ts, reason: null}]')
+   state-rw.sh set --state-dir "$STATE_DIR" --field '.optin_responses' --value "$_new"
+   ```
+   Sem operador para responder (execucao nao-interativa): grave
+   `outcome: "absent"` em vez de `"accepted"` — mesmo default seguro do
+   ramo legado, nunca `"declined"` (nao houve recusa explicita, so
+   ausencia de quem decida).
+3. **Anti-loop (R-3)**: este passo roda **no maximo uma vez** por campo
+   por execucao. Um registro mais recente que JA tenha `channel: "prose"`
+   encerra o campo qualquer que seja o `outcome` — nunca rode a prosa de
+   novo para ele (nao deveria acontecer nesta secao, ja que ela so roda
+   uma vez por spawn, mas e a mesma regra que a tool aplica no lado MCP).
+
+Depois de persistir TODOS os campos degradados, **re-spawne o
+orquestrador** (repita o bloco de spawn de "4." acima, com
+`tipo_invocacao: "primeira_invocacao"` — a onda-001 ainda nao abriu, nao
+ha ponteiro para avancar). No re-spawn, `collect_optins` (1.bis do
+orquestrador) detecta que TODOS os campos aplicaveis ja tem registro
+(agora terminal, `channel: "prose"`) e retorna `reused` sem re-disparar
+`elicitation/create` (cap M6) — o operador NUNCA e perguntado duas vezes
+pelo mesmo campo. So entao prossiga normalmente a `5.pre`.
 
 ### 5.pre Rede de seguranca de fechamento de onda (OBRIGATORIO — antes do schedule)
 
@@ -629,7 +817,9 @@ cstk recall --ingest --state-dir <SD> 2>/dev/null \
 Best-effort, roda apos 5.bis, ANTES de liberar o lock (5.ter). `cstk mcp
 stop` e idempotente (parar o que ja esta parado, ou `--state-dir` sem
 descritor algum, e exit 0) — chamar mesmo quando o servidor nunca chegou
-a subir (mode=bash-fallback ou init sem Docker) e seguro. Raro na
+a subir (init sem Docker, token nunca cunhado — dec-034: o modo
+reservado para fallback nunca e de fato escrito pelo `start`;
+discriminador real e token vazio/descritor ausente) e seguro. Raro na
 primeira invocacao (normalmente termina em `em_andamento` com Schedule
 intent), mas cobre o caso de uma execucao curta que ja fecha terminal na
 propria primeira onda:

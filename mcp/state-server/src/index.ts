@@ -78,6 +78,12 @@ import {
   handleCloseWave,
   type CloseWaveResponse,
 } from "./tools/close_wave.js";
+import {
+  collectOptinsInputShape,
+  handleCollectOptins,
+  type CollectOptinsResponse,
+} from "./tools/collect_optins.js";
+import { grantElicitationAccess } from "./runtime/elicitation-gate.js";
 
 const SERVER_NAME = "cstk-state";
 // F3 (task 3.6-3.9 + tool get_status/dec-064): 5 tools novas registradas —
@@ -88,7 +94,9 @@ const SERVER_NAME = "cstk-state";
 // aditivo (novo codigo de erro TOOL_CALL_LIMIT_EXCEEDED + env
 // MCP_MAX_TOOL_CALLS; nenhum contrato existente alterado).
 // 0.5.0: close_wave ganha advance/terminal_phase (wave-close-advance FR-008)
-const SERVER_VERSION = "0.5.0";
+// 0.6.0: 8a tool `collect_optins` (mcp-elicitation-optins FASE 3+4.1) —
+// aditiva (nenhuma tool/campo existente removido ou redefinido).
+const SERVER_VERSION = "0.6.0";
 
 // SEC-L1 (LLM10 — consumo nao-limitado): teto de chamadas de tool por
 // sessao/processo. dec-093 ratificou o adiamento pos-MVP; consumado aqui.
@@ -361,6 +369,36 @@ export async function bootstrap(
         env,
       });
       return toCallToolResult("close_wave", response);
+    },
+  );
+
+  server.registerTool(
+    "collect_optins",
+    {
+      title: "Collect execution opt-ins",
+      description:
+        "Oferece UM formulario estruturado com os opt-ins de inicio de " +
+        "execucao aplicaveis ao orquestrador corrente e persiste as " +
+        "respostas via os helpers POSIX de escrita. Idempotente por campo " +
+        "(cap M6: no maximo 1 coleta por execucao).",
+      inputSchema: collectOptinsInputShape,
+    },
+    async (input) => {
+      const limited = checkCallLimit();
+      if (limited) return toCallToolResult("collect_optins", limited);
+      const resolved = await resolveCallSession(sessionCache, projectPath, env, input.session_id);
+      if ("envelope" in resolved) return toCallToolResult("collect_optins", resolved.envelope);
+      const response: CollectOptinsResponse = await handleCollectOptins(input, {
+        session: resolved.session,
+        env,
+        // Acesso a elicitInput/getClientCapabilities MUST vir do `Server`
+        // bruto, nao do `McpServer` [VERIFICADO: server/mcp.d.ts:18 `readonly
+        // server: Server`]. `grantElicitationAccess` e o UNICO ponto
+        // autorizado a conceder isso (SEC L3, runtime/elicitation-gate.ts) —
+        // nenhuma outra tool deve receber `server.server` diretamente.
+        elicitationServer: grantElicitationAccess("collect_optins", server.server),
+      });
+      return toCallToolResult("collect_optins", response);
     },
   );
 

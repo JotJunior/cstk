@@ -23,6 +23,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 CMD_INIT_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c.md"
 CMD_RESUME_AGENTE="$REPO_ROOT/plugins/cstk/commands/agente-00c-resume.md"
+CT_DELIVERY_TIER="$REPO_ROOT/docs/specs/delivery-tier/contracts/cli-delivery-tier.md"
 
 # ==== Prompt de finalidade presente, com as 4 opcoes e default cloud-public (FR-001) ====
 
@@ -85,8 +86,38 @@ scenario_resume_proibe_leitura_crua_do_campo() {
 }
 
 scenario_resume_documenta_inv4_operador() {
-  # INV-4: set e sempre acao do operador, nunca iniciativa do orquestrador.
+  # INV-4: o path de `set` manual via resume segue sendo acao do
+  # operador, nunca iniciativa do orquestrador (narrower, ainda valido
+  # apos a emenda dec-048/dec-053 — essa janela nao mudou).
   assert_exit 0 grep -Eiq 'por iniciativa do proprio orquestrador' "$CMD_RESUME_AGENTE" || return 1
+}
+
+scenario_inv4_distingue_escolha_de_disparo_mediado() {
+  # Emenda dec-048/dec-053 (feature mcp-elicitation-optins FASE 8, regra 1
+  # do INV-4): o contrato precisa distinguir escolha/set direto (proibido)
+  # de disparo de coleta mediada pelo operador via collect_optins
+  # (permitido) — em vez de proibir todo e qualquer envolvimento do
+  # orquestrador com o tier.
+  [ -f "$CT_DELIVERY_TIER" ] || { _error "arquivo ausente" "$CT_DELIVERY_TIER"; return 2; }
+  assert_exit 0 sh -c "grep -Eiq 'nunca escolhe.*o valor do tier' '$CT_DELIVERY_TIER' \
+    && grep -Eiq 'set direto' '$CT_DELIVERY_TIER' \
+    && grep -Eiq 'coleta mediada' '$CT_DELIVERY_TIER' \
+    && grep -Eq 'collect_optins' '$CT_DELIVERY_TIER'" || return 1
+}
+
+scenario_inv4_set_direto_sem_consentimento_continua_detectado() {
+  # Regra 3 emendada: consentimento estruturado (.optin_responses[] com
+  # channel=structured/outcome=accepted) passa a ser reconhecido, mas um
+  # set SEM nenhuma das duas evidencias (nem Decisao do resume, nem
+  # consentimento estruturado) — inclusive um set direto por iniciativa
+  # propria do orquestrador — MUST continuar sendo detectado e reportado
+  # como delivery-tier-unattended-change severidade critical. A emenda
+  # nao pode afrouxar o controle de deteccao do finding F5.
+  [ -f "$CT_DELIVERY_TIER" ] || { _error "arquivo ausente" "$CT_DELIVERY_TIER"; return 2; }
+  assert_exit 0 sh -c "grep -Fq 'channel: \"structured\"' '$CT_DELIVERY_TIER' \
+    && grep -Fq 'outcome: \"accepted\"' '$CT_DELIVERY_TIER' \
+    && grep -Eiq 'NENHUMA das duas evidencias' '$CT_DELIVERY_TIER' \
+    && grep -Eiq 'continua sendo detectada' '$CT_DELIVERY_TIER'" || return 1
 }
 
 scenario_resume_documenta_allow_downgrade() {
