@@ -4,6 +4,56 @@
 **Created**: 2026-08-16
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-17
+
+- Q: O formulario estruturado dispara antes da inicializacao do estado
+  (como os blocos de prosa hoje) ou apenas depois, quando o servidor MCP
+  de estado ja esta ativo para a execucao? → A: apenas depois — o
+  pre-requisito do mecanismo (FR-001) exige servidor de estado ativo, que
+  so existe apos `state-rw.sh init`; a arquitetura documentada torna
+  estruturalmente inviavel dispara-lo antes do init (dec-014). Isso exige
+  um modelo de init em duas etapas para preservar a garantia de "nenhuma
+  onda opera sob valor nao confirmado" (ver decisao seguinte).
+- Q: Quando a tentativa de usar o formulario estruturado falha NO MEIO da
+  chamada (servidor marcado ativo, mas `elicitation/create` falha), o
+  fallback de prosa deve ser totalmente silencioso (como e hoje) ou
+  avisar o operador? → A: aviso minimo — uma linha em stderr informando
+  que o formulario falhou e que a execucao seguiu com os defaults
+  seguros, SOMENTE quando o mecanismo estava ativo e falhou (US3
+  Acceptance Scenario 2); permanece silencioso quando o mecanismo nunca
+  esteve disponivel (US3 Acceptance Scenario 1). Justificativa do
+  operador: silencio total reproduziria a patologia que esta linha de
+  trabalho combateu — o MCP reportou `status=active` servindo zero tools
+  por meses sem que nada avisasse (dec-015, resposta ao bloqueio
+  block-001).
+- Q: O que acontece quando o tempo-limite de resposta ao formulario se
+  esgota (sessao interativa presente, mas sem resposta do operador)? →
+  A: a execucao aplica os mesmos valores-padrao seguros do cenario
+  sem-operador e prossegue; o tempo-limite e imposto pelo lado SERVIDOR
+  da chamada `elicitation/create`, entao deixa de ser necessario medir se
+  o cliente/modelo pendura o formulario indefinidamente — isso desbloqueia
+  o item antes marcado `[NEEDS CLARIFICATION]` em US2 Acceptance Scenario
+  2 (dec-016).
+- Q: O que acontece se o mesmo formulario for disparado mais de uma vez
+  na mesma execucao (ex: numa retomada)? → A: reusa a resposta ja
+  registrada no estado, em vez de perguntar de novo — paridade com o
+  comportamento ja vigente dos opt-ins de prosa, cujos commands de resume
+  nao re-promptam e leem o valor do state (dec-017).
+- Q: Como reconciliar o pre-requisito estrutural do mecanismo (servidor
+  ativo, que so existe apos o init) com o requisito vigente em
+  `docs/specs/delivery-tier/spec.md` (Draft, ainda nao mergeado no corpus
+  canonico) de que a pergunta de finalidade seja respondida "antes da
+  inicializacao do estado"? → A: init em duas etapas — o init cria o
+  estado minimo (com os defaults seguros de todos os opt-ins aplicaveis),
+  o servidor MCP sobe, o formulario pergunta, e as respostas sao gravadas
+  ANTES de qualquer onda comecar. Preserva o requisito MATERIAL ("nenhuma
+  onda opera sob valor nao confirmado") mesmo alterando a letra ("antes
+  do init"). Descartada a opcao pos-init-puro, que abriria uma janela em
+  que `.delivery_tier` afirma `cloud-public` sem o operador ter
+  respondido — e ele governa a matriz tier x gate de seguranca (dec-018).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Operador respondendo dita o valor sem passar pelo texto do modelo (Priority: P1)
@@ -15,6 +65,15 @@ estruturado (com os campos e opcoes ja tipados) para os opt-ins de inicio
 de execucao, responde, e o valor digitado vai direto para o estado da
 execucao — sem que o modelo precise interpretar a resposta em texto e
 montar a flag correspondente manualmente.
+
+> Nota de ordenacao (dec-014, dec-018): o formulario dispara apos o
+> servidor de estado subir — nunca antes do init do estado, que e
+> estruturalmente impossivel para uma tool MCP. Para preservar a
+> garantia de que nenhuma onda opera sob valor nao confirmado, o init
+> passa a ocorrer em duas etapas: o estado minimo e criado primeiro (com
+> os defaults seguros de todos os opt-ins aplicaveis), o servidor de
+> estado sobe, o formulario pergunta, e as respostas sao gravadas antes
+> de qualquer onda comecar (ver FR-012, FR-013).
 
 **Why this priority**: e o nucleo do problema que a feature resolve —
 elimina os tres pontos de nao-determinismo hoje existentes (o modelo le
@@ -71,12 +130,13 @@ finalidade de entrega no nivel mais restritivo).
    valores-padrao seguros e a execucao prossegue sem qualquer pausa
    aguardando resposta.
 2. **Given** sessao interativa presente mas sem resposta do operador
-   dentro do tempo em que a execucao pode aguardar, **When** a ausencia de
-   resposta e detectada, **Then** a execucao aplica os mesmos
-   valores-padrao seguros do cenario sem-operador e prossegue — este
-   comportamento fica sujeito ao item `[NEEDS CLARIFICATION: sessao
-   interativa com formulario pendurado sem operador — ver observacao
-   abaixo]`.
+   dentro do tempo-limite que o SERVIDOR aplica a chamada
+   `elicitation/create`, **When** o tempo-limite se esgota, **Then** a
+   execucao aplica os mesmos valores-padrao seguros do cenario
+   sem-operador e prossegue. O tempo-limite e imposto pelo lado servidor
+   da propria chamada, portanto nao depende de o cliente/modelo
+   orquestrador ter ou nao um mecanismo proprio de timeout — resolvido,
+   dec-016 (ver Clarifications; FR-010).
 
 ---
 
@@ -127,13 +187,30 @@ introduzidos pela tentativa de usar o mecanismo novo primeiro.
   existe hoje — a paridade de escopo entre os dois orquestradores para
   esse campo especifico e preservada.
 - O que acontece se a mesma execucao tentar disparar o formulario
-  estruturado mais de uma vez (ex: em uma retomada)? Fica sujeito ao
-  item `[NEEDS CLARIFICATION: retomada re-pergunta ou reusa a resposta ja
-  registrada — ver observacao abaixo]` — o comportamento de hoje (blocos
-  de prosa) e reusar a resposta ja gravada no estado sem re-perguntar em
-  retomadas; o mecanismo novo deve preservar essa mesma garantia, mas o
-  ponto exato onde a checagem acontece nao foi coberto pela medicao desta
-  linha de trabalho.
+  estruturado mais de uma vez (ex: em uma retomada)? Resolvido (dec-017):
+  reusa a resposta ja registrada no estado, sem re-perguntar — mesma
+  garantia hoje aplicada aos blocos de prosa. A checagem acontece ANTES
+  do dispatch da tool estruturada: se o campo ja tem uma
+  `RespostaDeOptIn` registrada no estado (por qualquer canal, estruturado
+  ou prosa), o formulario NAO MUST ser invocado de novo para aquele campo
+  (FR-011).
+- O que acontece se o servidor MCP falhar ao subir (ex: Docker
+  indisponivel, `mode=bash-fallback`) DEPOIS que a etapa 1 do init em
+  duas etapas (FR-012) ja criou o estado minimo? A execucao cai para o
+  caminho de prosa de FR-005, agora necessariamente executado apos o
+  init minimo (em vez de antes, como no caminho single-step legado sem o
+  mecanismo estruturado envolvido) — a garantia que FR-005 protege
+  (mesmas perguntas, mesmos valores-padrao, zero pausa adicional) MUST
+  permanecer intacta; o que muda e apenas a posicao relativa ao init, uma
+  consequencia estrutural do bash-fallback ja documentado (`cstk mcp
+  start`: "Docker indisponivel ... start grava mode=bash-fallback e os
+  commands pai seguem pelo caminho Bash existente — zero regressao
+  funcional"), nao uma decisao nova desta feature (dec-020, engenharia).
+- Elicitation disparada a partir de um subagente orquestrador (sem
+  operador humano presente) permanece **Deferred, fora do escopo desta
+  feature** — tratado em `docs/specs/orchestrator-mcp-allowlist/spec.md`
+  FR-010 ("Deferred — fonte pendente"). Esta feature nao assume nenhum
+  comportamento para esse cenario e nao o resolve.
 
 ## Requirements
 
@@ -188,6 +265,54 @@ introduzidos pela tentativa de usar o mecanismo novo primeiro.
   execucao — mesma garantia hoje aplicada aos blocos de prosa, preservada
   independentemente de qual dos dois mecanismos (estruturado ou prosa) foi
   usado na resposta original.
+- **FR-009**: Quando o pre-requisito do mecanismo estruturado estava
+  satisfeito no INICIO da chamada (servidor de estado marcado ativo) mas
+  a chamada `elicitation/create` falhar durante a propria pergunta (US3
+  Acceptance Scenario 2), o sistema MUST emitir exatamente UMA linha de
+  aviso em stderr informando que o formulario estruturado falhou e que a
+  execucao seguiu com os valores-padrao seguros, antes de cair no bloco
+  de prosa correspondente. Este aviso MUST NUNCA ser emitido quando o
+  mecanismo estruturado nunca esteve disponivel desde o inicio (US3
+  Acceptance Scenario 1, FR-005) — os dois casos MUST permanecer
+  distinguiveis na experiencia observada pelo operador (dec-015).
+- **FR-010**: O tempo-limite de espera por resposta ao formulario
+  estruturado MUST ser imposto pelo lado SERVIDOR da chamada
+  `elicitation/create`, nunca por uma medicao de quanto tempo o
+  cliente/modelo orquestrador tolera aguardar — ao esgotar, o sistema
+  MUST aplicar os mesmos valores-padrao seguros do cenario sem-operador
+  (FR-006) e prosseguir, sem depender de o cliente possuir mecanismo de
+  timeout proprio (dec-016).
+- **FR-011**: Antes de disparar o formulario estruturado para um campo
+  especifico, o sistema MUST checar se ja existe uma `RespostaDeOptIn`
+  registrada para aquele campo na execucao corrente (por qualquer canal,
+  estruturado ou prosa); se existir, o sistema MUST reusar o valor ja
+  registrado e MUST NOT invocar a tool estruturada de novo para aquele
+  campo — vale tanto para retomadas quanto para qualquer outra tentativa
+  de disparo repetido dentro da mesma execucao (dec-017, refina FR-008).
+- **FR-012**: A inicializacao do estado da execucao MUST ocorrer em duas
+  etapas quando o pre-requisito de FR-001 estiver satisfeito: (1) o
+  estado minimo e criado com os valores-padrao seguros de todos os
+  opt-ins aplicaveis (equivalente ao `state-rw.sh init` hoje existente,
+  sem aguardar nenhuma resposta — `--atomic-commit`/`--roadmap-mode`/
+  `--delivery-tier` omitidos defaultam para `false`/`cloud-public`); (2)
+  o servidor de estado sobe, o formulario estruturado e oferecido, e as
+  respostas (aceitas, recusadas, ou resolvidas por timeout via FR-010)
+  sao persistidas. A etapa (2) MUST concluir — com resposta do operador
+  ou com o timeout resolvendo para o default — ANTES de qualquer onda da
+  pipeline comecar. Nenhuma onda MUST operar sob um opt-in cujo valor
+  ainda nao foi confirmado (aceito, recusado ou defaultado) (dec-018). Se
+  o servidor falhar ao subir apos a etapa (1) (`mode=bash-fallback`), o
+  sistema MUST cair para o caminho de prosa de FR-005 (ver Edge Cases).
+- **FR-013**: A persistencia da etapa (2) de FR-012 MUST usar as
+  primitivas de escrita pos-init ja existentes no runtime para cada
+  opt-in — `commit-mode.sh set-enabled`, `roadmap-mode.sh set-enabled` e
+  `delivery-tier.sh set` (esta ultima apenas no orquestrador de projeto
+  completo, ver FR-001) — em vez do caminho hoje usado de flags passadas
+  ao `state-rw.sh init` no momento da criacao do estado. Essas primitivas
+  ja existem no runtime instalado (`plugins/cstk/skills/
+  agente-00c-runtime/scripts/`) mas ate esta feature nao tinham chamador
+  ativo; esta feature MUST ser o primeiro caller de fato de cada uma
+  delas para o caminho estruturado (dec-018, implicacao de escrita).
 
 > Decisoes de infraestrutura: N/A (feature nao introduz scheduling, key
 > rotation, refresh de token externo, lock multi-pod, backup ou
@@ -225,7 +350,33 @@ introduzidos pela tentativa de usar o mecanismo novo primeiro.
 - **SC-004**: 100% das recusas explicitas do operador ficam registradas
   no historico de auditoria da execucao de forma distinguivel de uma
   ausencia de operador, para qualquer um dos campos do formulario.
+- **SC-005**: Em 100% das ocorrencias em que o mecanismo estruturado
+  estava ativo e falhou no meio da chamada (US3 Acceptance Scenario 2),
+  exatamente UMA linha de aviso e emitida em stderr; em 100% das
+  ocorrencias em que o mecanismo nunca esteve disponivel (US3 Acceptance
+  Scenario 1), nenhuma linha de aviso e emitida — os dois casos permanecem
+  distinguiveis na saida observada pelo operador.
 
 ## Delta Requirements
 
 **Skip**: feature aditiva que introduz um novo canal de captura de resposta humana sem alterar nenhum FR ativo do corpus canonico — os blocos de prosa existentes permanecem intocados como fallback, e a unica capability tematicamente proxima em docs/specs/current/ (atomic-commit-staging.md, FR-014/015) cobre staging de arquivos, nao captura de opt-in — agente-00c-feature-orchestrator, 2026-08-16
+
+**Delta**: sessao de clarify (2026-08-17) resolveu o ovo-e-galinha entre
+o pre-requisito estrutural do mecanismo (servidor de estado ativo, que so
+existe apos `state-rw.sh init`) e o requisito vigente, ainda em
+`docs/specs/delivery-tier/spec.md` (Draft, NAO mergeado em
+`docs/specs/current/`), de que a pergunta de finalidade seja respondida
+"antes da inicializacao do estado" (US1 daquela feature). Decisao do
+operador (dec-018): init em duas etapas — o init cria o estado minimo com
+os defaults seguros, o servidor de estado sobe, o formulario estruturado
+pergunta, e as respostas sao gravadas ANTES de qualquer onda comecar
+(FR-012). Isso preserva o requisito MATERIAL de delivery-tier ("nenhuma
+onda opera sob valor nao confirmado") sem preservar a letra ("antes do
+init"); NAO ha edicao a `delivery-tier/spec.md` nesta sessao — aquela
+feature ainda esta em Draft e nao mergeada no corpus canonico, entao nao
+ha capability ativa para deltar formalmente ali; a reconciliacao textual
+fica marcada como trabalho pendente para quando `delivery-tier` avancar
+de fase. A persistencia pos-init passa a usar primitivas ja existentes no
+runtime, ate esta feature sem chamador ativo (`commit-mode.sh
+set-enabled`, `roadmap-mode.sh set-enabled`, `delivery-tier.sh set` —
+FR-013) — agente-00c-feature-orchestrator, 2026-08-17
