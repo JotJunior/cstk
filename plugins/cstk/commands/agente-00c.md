@@ -302,8 +302,11 @@ best-effort do mecanismo MCP — NUNCA bloqueia a pipeline (FR-005/FR-012):
 ```bash
 mkdir -p "<SD>" 2>/dev/null || :
 _optin_branch="legado"
-if cstk mcp status --state-dir "<SD>" >/dev/null 2>&1 \
-   && cstk mcp start --state-dir "<SD>" >/dev/null 2>&1; then
+_optin_probe_rc=1
+if cstk mcp status --state-dir "<SD>" >/dev/null 2>&1; then
+  cstk mcp start --state-dir "<SD>" >/dev/null 2>&1; _optin_probe_rc=$? || :
+fi
+if [ "$_optin_probe_rc" -eq 0 ]; then
   _optin_token=$(jq -r '.session_id // ""' "<SD>/mcp-server.json" 2>/dev/null) || _optin_token=""
   [ -n "$_optin_token" ] && _optin_branch="estruturado"
 fi

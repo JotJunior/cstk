@@ -652,8 +652,11 @@ fi
 # nada muda aqui alem do que ja e omitido hoje.
 mkdir -p "$AGENTE_00C_STATE_DIR" 2>/dev/null || :
 _optin_branch="legado"
-if cstk mcp status --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1 \
-   && cstk mcp start --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1; then
+_optin_probe_rc=1
+if cstk mcp status --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1; then
+  cstk mcp start --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1; _optin_probe_rc=$? || :
+fi
+if [ "$_optin_probe_rc" -eq 0 ]; then
   _optin_token=$(jq -r '.session_id // ""' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _optin_token=""
   [ -n "$_optin_token" ] && _optin_branch="estruturado"
 fi
