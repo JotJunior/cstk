@@ -301,9 +301,29 @@ best-effort do mecanismo MCP — NUNCA bloqueia a pipeline (FR-005/FR-012):
 
 ```bash
 mkdir -p "<SD>" 2>/dev/null || :
+# Provisionamento idempotente do .mcp.json do projeto-alvo (dec-107,
+# FASE 12/mcp-elicitation-optins). Sem isto, o ramo estruturado so
+# funcionava quando o projeto-alvo JA tinha cstk-state registrado (ex.:
+# o proprio repo cstk) — em qualquer OUTRO projeto-alvo, `cstk mcp start`
+# mintava um token normalmente (nao depende do .mcp.json), mas o HARNESS
+# desta sessao NUNCA teria a tool collect_optins de fato disponivel (o
+# .mcp.json e lido no BOOT da sessao, nao em tempo real) — a onda-001
+# abria sem opt-ins coletados e o guard M4/I-2 travava mudo (dec-107,
+# achado do E2E Scenario 1). Best-effort: falha nunca bloqueia a
+# pipeline, so cai no ramo legado normalmente.
+_optin_mcpjson_pre=""
+if [ -f "<PAP>/.mcp.json" ] && grep -q '"cstk-state"' "<PAP>/.mcp.json" 2>/dev/null; then
+  _optin_mcpjson_pre="1"
+fi
+cstk mcp install --project-path "<PAP>" >/dev/null 2>&1 || :
 _optin_branch="legado"
 _optin_probe_rc=1
-if cstk mcp status --state-dir "<SD>" >/dev/null 2>&1; then
+# So tenta o probe estruturado quando `.mcp.json` JA tinha cstk-state
+# ANTES desta invocacao — se acabou de ser registrado agora (linha
+# acima), esta sessao (harness ja bootada) nao tem a tool de qualquer
+# forma; a proxima sessao neste projeto-alvo ja nasce com o ramo
+# estruturado disponivel.
+if [ -n "$_optin_mcpjson_pre" ] && cstk mcp status --state-dir "<SD>" >/dev/null 2>&1; then
   cstk mcp start --state-dir "<SD>" >/dev/null 2>&1; _optin_probe_rc=$? || :
 fi
 if [ "$_optin_probe_rc" -eq 0 ]; then
@@ -500,6 +520,40 @@ Selecione [1-4, Enter = 4]:
   exatamente este `.execution.status = em_andamento` que habilita as
   chamadas de tool no ramo estruturado — sem ele, toda chamada retorna
   `SESSION_MISMATCH` (`mcp-session.sh:25-32`).
+
+### 3.ter Persistir opt-ins do ramo legado em `.optin_responses[]` (FASE 12/dec-107)
+
+Aplica-se **apenas** quando `_optin_branch = "legado"` (2.bis acima).
+Fecha a Invariante I-2 (guard M4, `_so_check_optin_invariant`) tambem
+para o ramo legado: sem este passo, a prosa "desde o inicio" (2.bis com
+mecanismo indisponivel) nunca gravava nada em `.optin_responses[]` — so
+a degradacao MID-CALL (4.bis) persistia. Onda-001 ficava presa no guard
+mesmo com a prosa ja tendo rodado e o `state.json` ja tendo os 3 valores
+aplicados via flags de `init`. Mesmo padrao de append de 4.bis
+(`channel: "prose"`), rodando logo apos o `state-rw.sh init` acima:
+
+```bash
+if [ "$_optin_branch" = "legado" ]; then
+  _now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  _cur=$(state-rw.sh get --state-dir <SD> --field '.optin_responses // []')
+  for _pair in "atomic_commit:$_atomic" "roadmap_mode:$_roadmap" "delivery_tier:$_tier"; do
+    _f=${_pair%%:*}
+    _v=${_pair#*:}
+    case "$_f" in
+      delivery_tier) _out="accepted" ;;   # sempre resolvido pelo helper (operador ou default absent)
+      *) [ "$_v" = "true" ] && _out="accepted" || _out="declined" ;;
+    esac
+    _cur=$(printf '%s' "$_cur" | jq -c \
+      --arg f "$_f" --arg v "$_v" --arg o "$_out" --arg ts "$_now" \
+      '. + [{field: $f, channel: "prose", outcome: $o, applied_value: $v, recorded_at: $ts, reason: null}]')
+  done
+  state-rw.sh set --state-dir <SD> --field '.optin_responses' --value "$_cur"
+fi
+```
+
+Ramo `_optin_branch = "estruturado"`: pule este passo por completo — a
+persistencia acontece via `collect_optins` no primeiro ato do
+orquestrador (ou via 4.bis se degradar no meio da chamada).
 
 ### 3.quater Ciclo de vida do servidor MCP (status/start) — FASE 6 task 6.2.1
 
