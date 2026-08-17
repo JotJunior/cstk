@@ -5,6 +5,22 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.29.1] - 2026-08-17
+
+### Corrigido
+
+- **`model-routing` aparecia como etapa no "Mix de modelos por etapa"**
+  (Métricas): decisões de roteamento legadas do runtime agente-00c
+  gravaram `stage='model-routing'` com a fase real codificada no lead do
+  contexto (`Selecao de modelo para onda <N> (fase <f>)`), enquanto as
+  novas gravam `stage=<fase>`. O card somava 719 decisões sob uma barra
+  `model-routing` — mais que todas as etapas reais juntas. Agora
+  `GET /metrics/model-mix-by-stage` reatribui as linhas legadas à etapa
+  SDD extraída do contexto (mesma regra do relatório canônico
+  `model-routing-report.sh`) e soma às nativas; linha sem `(fase …)`
+  parseável mantém o stage original (nunca inventa etapa). Contrato de
+  saída (`stage`/`modelo`/`n`) inalterado; total preservado.
+
 ## [0.29.0] - 2026-08-15
 
 ### Adicionado
@@ -1270,6 +1286,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.29.1]: https://github.com/JotJunior/cstk-panel/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/JotJunior/cstk-panel/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/JotJunior/cstk-panel/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/JotJunior/cstk-panel/compare/v0.26.0...v0.27.0
