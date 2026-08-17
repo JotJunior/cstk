@@ -4102,9 +4102,25 @@ _seed_sql_equiv_state() {
     _ses_i=$((_ses_i + 1))
   done
 
+  # Sugestoes (FR-020): 2 quando ha decisoes (1 com issue aberta, 1 com
+  # segredo plantado no diagnostico para checar scrub nos DOIS caminhos);
+  # 0 no cenario vazio (exercita array ausente/vazio -> 0 linhas, sem erro).
+  # No state.db o array vive em execution.extra_fields.suggestions (catch-all,
+  # sem tabela propria) — a ingestao SQL->SQL precisa le-lo de la
+  # (fix-recall-sqlite-suggestions-ingest).
+  if [ "$_ses_ndec" -gt 0 ]; then
+    _ses_suggs='[{"id":"sug-001","affected_skill":"agente-00c-runtime","severity":"aviso","diagnosis":"commit-mode.sh stage-derived exclui untracked capturado no baseline sem aviso visivel","proposal":"documentar ordem start-antes-de-editar ou oferecer --refresh-baseline","references":["scripts/commit-mode.sh"],"issue_opened":"https://github.com/JotJunior/cstk/issues/999","created_at":"2026-01-01T00:00:50Z"},{"id":"sug-002","affected_skill":"create-tasks","severity":"informativa","diagnosis":"vazamento com token=ghp_abcdefghijklmnopqrstuvwxyz0123456789 no diagnostico de equivalencia","proposal":"scrub obrigatorio antes da FTS","references":[],"issue_opened":null,"created_at":"2026-01-01T00:00:55Z"}]'
+    _ses_nsug=2; _ses_nissue=1
+  else
+    _ses_suggs='[]'
+    _ses_nsug=0; _ses_nissue=0
+  fi
+
   jq -n \
     --argjson waves "$_ses_waves" --argjson decisions "$_ses_decs" \
     --argjson blocks "$_ses_blocks" --argjson tasks "$_ses_tasks" \
+    --argjson suggestions "$_ses_suggs" \
+    --argjson nsug "$_ses_nsug" --argjson nissue "$_ses_nissue" \
     --argjson ndec "$_ses_ndec" --argjson nwave "$_ses_nwave" '
     {
       schema_version: "1.0.0", short_name: "equiv-feat",
@@ -4130,9 +4146,10 @@ _seed_sql_equiv_state() {
         waves_total:$nwave, tool_calls_total:(5*$nwave), wallclock_total_seconds:(30*$nwave),
         max_depth_reached:1, subagents_spawned:0, decisions_total:$ndec,
         human_blocks_total:(if $ndec>0 then 1 else 0 end),
-        global_skill_suggestions_total:0, toolkit_issues_opened:0
+        global_skill_suggestions_total:$nsug, toolkit_issues_opened:$nissue
       },
       waves:$waves, decisions:$decisions, human_blocks:$blocks, tasks:$tasks,
+      suggestions:$suggestions,
       events: [
         {event_type:"schedule_wait", timestamp:"2026-01-01T00:00:15Z", description:"aguardando wakeup do equivalence test"},
         {event_type:"recall_consulted", timestamp:"2026-01-01T00:00:16Z"}
@@ -4143,11 +4160,14 @@ _seed_sql_equiv_state() {
 
 # _assert_sql_json_equivalent DIR LABEL -> ingere DIR (state.json presente,
 # state.db ausente) via caminho JSON em k-json.db, migra DIR para state.db,
-# ingere de novo (agora via SQL->SQL) em k-sql.db, e compara as 7 tabelas de
+# ingere de novo (agora via SQL->SQL) em k-sql.db, e compara as 8 tabelas de
 # entidade linha-a-linha (ORDER BY source_id), ignorando as colunas
-# `ingested_at` (wall-clock, nunca igual) e as 3 colunas de executions sem
-# fonte em state.db (subagents_spawned/skill_suggestions_total/
-# toolkit_issues_opened — NULL no SQL->SQL vs 0 fabricado no export JSON).
+# `ingested_at` (wall-clock, nunca igual) e a coluna executions.
+# subagents_spawned, sem fonte em state.db (NULL no SQL->SQL vs 0 fabricado
+# no export JSON). skill_suggestions_total/toolkit_issues_opened SAO
+# comparados: sob SQLite derivam de execution.extra_fields.suggestions
+# (mesma derivacao de _state-rw-db.sh read), sob JSON do contador de
+# accumulated_metrics — o seed mantem os dois coerentes.
 _assert_sql_json_equivalent() {
   _aje_dir="$1"; _aje_label="$2"
   _aje_kjson="$TMPDIR_TEST/${_aje_label}-json.db"
@@ -4161,15 +4181,16 @@ _assert_sql_json_equivalent() {
 
   assert_exit 0 _rc --ingest --state-dir "$_aje_dir" --db "$_aje_ksql" || return 1
 
-  for _aje_t in executions waves decisions blocks tasks events skills; do
+  for _aje_t in executions waves decisions blocks tasks events skills suggestions; do
     case "$_aje_t" in
-      executions) _aje_cols="project,feature,wave,execution_id,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,decisions_total,human_blocks_total,session,target_project_path" ;;
+      executions) _aje_cols="project,feature,wave,execution_id,source_id,status,termination_reason,current_stage,started_at,finished_at,duration_seconds,suggested_stack,waves_total,tool_calls_total,wallclock_total_seconds,decisions_total,human_blocks_total,skill_suggestions_total,toolkit_issues_opened,session,target_project_path" ;;
       waves) _aje_cols="project,feature,wave,execution_id,source_id,stages,started_at,finished_at,wallclock_seconds,tool_calls,termination_reason,n_stages,n_skills,session" ;;
       decisions) _aje_cols="project,feature,wave,execution_id,source_id,agent,stage,choice,options,score,context,rationale,evidence" ;;
       blocks) _aje_cols="project,feature,wave,execution_id,source_id,status,question,context_for_answer,answer,decision_id,triggered_at,answered_at,latency_seconds" ;;
       tasks) _aje_cols="project,feature,wave,execution_id,source_id,title,outcome,tests_run,tests_passed,lint_ok,touched_files" ;;
       events) _aje_cols="project,feature,wave,execution_id,source_id,event_type,timestamp,description" ;;
       skills) _aje_cols="project,feature,wave,execution_id,source_id,skill_name,decision_id" ;;
+      suggestions) _aje_cols="project,feature,wave,execution_id,source_ts,source_id,affected_skill,severity,diagnosis,proposal,\"references\",issue_opened" ;;
     esac
     _aje_a=$(sqlite3 "$_aje_kjson" "SELECT $_aje_cols FROM $_aje_t ORDER BY source_id;")
     _aje_b=$(sqlite3 "$_aje_ksql" "SELECT $_aje_cols FROM $_aje_t ORDER BY source_id;")
@@ -4226,6 +4247,73 @@ scenario_sqldb_json_path_preservado_sem_migracao() {
   assert_exit 0 _rc --ingest --state-dir "$_d" --db "$TMPDIR_TEST/no-migrate.db" || return 1
   assert_stdout_contains "3 decisions" || return 1
   [ ! -f "$_d/state.db" ] || { _fail "no-migrate: state.db nao deveria existir" ""; return 1; }
+  return 0
+}
+
+# Cenario sqldb-suggestions (bugfix fix-recall-sqlite-suggestions-ingest):
+# `.suggestions[]` vive em execution.extra_fields no state.db (sem tabela
+# propria) e ficava FORA da ingestao SQL->SQL — nenhuma sugestao registrada
+# apos o cutover para state.db chegava ao knowledge.db (painel/`recall
+# --type suggestion` cegos). Ingere um state-dir SO com state.db (state.json
+# removido apos migrar, para garantir que o caminho exercitado e o sqlite) e
+# verifica: linhas em suggestions, FTS type='suggestion', contadores de
+# executions derivados do array, scrub aplicado, busca por --type
+# suggestion encontra, e re-ingestao e idempotente.
+scenario_sqldb_suggestions_ingeridas_do_extra_fields() {
+  _have_deps || return 0
+  _d="$TMPDIR_TEST/sqldb-sugg"
+  _seed_sql_equiv_state "$_d" 2 1
+  capture "$MIGRATE_00C" migrate --state-dir "$_d"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqldb-sugg: migrate" "$_CAPTURED_STDERR"; return 1; }
+  rm -f "$_d/state.json"
+  _db="$TMPDIR_TEST/sqldb-sugg.db"
+  assert_exit 0 _rc --ingest --state-dir "$_d" --db "$_db" || return 1
+  assert_stdout_contains "2 suggestions" || return 1
+  _n=$(sqlite3 "$_db" "SELECT count(*) FROM suggestions WHERE project='equiv-proj' AND feature='equiv-feat' AND wave='-'" 2>/dev/null)
+  [ "$_n" = "2" ] || { _fail "sqldb-sugg: linhas em suggestions" "esperado 2, obtido '$_n'"; return 1; }
+  _row=$(sqlite3 "$_db" "SELECT source_id||'|'||affected_skill||'|'||severity||'|'||coalesce(issue_opened,'NULL')||'|'||\"references\"||'|'||source_ts FROM suggestions WHERE source_id='sug-001'" 2>/dev/null)
+  [ "$_row" = "sug-001|agente-00c-runtime|aviso|https://github.com/JotJunior/cstk/issues/999|scripts/commit-mode.sh|2026-01-01T00:00:50Z" ] \
+    || { _fail "sqldb-sugg: colunas estruturadas de sug-001" "obtido '$_row'"; return 1; }
+  _fts=$(sqlite3 "$_db" "SELECT count(*) FROM knowledge_fts WHERE type='suggestion' AND project='equiv-proj' AND feature='equiv-feat'" 2>/dev/null)
+  [ "$_fts" = "2" ] || { _fail "sqldb-sugg: FTS type=suggestion" "esperado 2, obtido '$_fts'"; return 1; }
+  _cnt=$(sqlite3 "$_db" "SELECT skill_suggestions_total||'|'||toolkit_issues_opened FROM executions WHERE execution_id='exec-equiv-001'" 2>/dev/null)
+  [ "$_cnt" = "2|1" ] || { _fail "sqldb-sugg: contadores derivados em executions" "esperado '2|1', obtido '$_cnt'"; return 1; }
+  # Scrub: segredo plantado em sug-002 nao pode sobreviver nem na tabela nem na FTS.
+  _leak=$(sqlite3 "$_db" "SELECT count(*) FROM suggestions WHERE diagnosis LIKE '%ghp_abcdefghij%'" 2>/dev/null)
+  [ "$_leak" = "0" ] || { _fail "sqldb-sugg: scrub em suggestions.diagnosis" "segredo sobreviveu"; return 1; }
+  _leak=$(sqlite3 "$_db" "SELECT count(*) FROM knowledge_fts WHERE type='suggestion' AND body LIKE '%ghp_abcdefghij%'" 2>/dev/null)
+  [ "$_leak" = "0" ] || { _fail "sqldb-sugg: scrub na FTS" "segredo sobreviveu"; return 1; }
+  # Busca por tipo encontra a sugestao (proveniencia + id).
+  assert_exit 0 _rc "stage-derived" --type suggestion --db "$_db" || return 1
+  assert_stdout_contains "sug-001" || return 1
+  assert_stdout_contains "equiv-feat" || return 1
+  # Idempotencia: re-ingestao do MESMO state.db nao duplica.
+  assert_exit 0 _rc --ingest --state-dir "$_d" --db "$_db" || return 1
+  _n2=$(sqlite3 "$_db" "SELECT count(*) FROM suggestions" 2>/dev/null)
+  _f2=$(sqlite3 "$_db" "SELECT count(*) FROM knowledge_fts WHERE type='suggestion'" 2>/dev/null)
+  [ "$_n2" = "2" ] && [ "$_f2" = "2" ] \
+    || { _fail "sqldb-sugg: idempotencia" "suggestions=$_n2 fts=$_f2 (esperado 2/2)"; return 1; }
+  return 0
+}
+
+# Cenario sqldb-suggestions-ausente: state.db cujo execution.extra_fields
+# nao tem `.suggestions` (ou e NULL) -> 0 sugestoes, contadores 0 (mesma
+# semantica de _state-rw-db.sh read: json_array_length(coalesce(...,'[]'))),
+# ingestao segue sem erro.
+scenario_sqldb_suggestions_ausentes_zero() {
+  _have_deps || return 0
+  _d="$TMPDIR_TEST/sqldb-nosugg"
+  _seed_sql_equiv_state "$_d" 0 1
+  capture "$MIGRATE_00C" migrate --state-dir "$_d"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqldb-nosugg: migrate" "$_CAPTURED_STDERR"; return 1; }
+  rm -f "$_d/state.json"
+  _db="$TMPDIR_TEST/sqldb-nosugg.db"
+  assert_exit 0 _rc --ingest --state-dir "$_d" --db "$_db" || return 1
+  assert_stdout_contains "0 suggestions" || return 1
+  _n=$(sqlite3 "$_db" "SELECT count(*) FROM suggestions" 2>/dev/null)
+  [ "$_n" = "0" ] || { _fail "sqldb-nosugg: suggestions" "esperado 0, obtido '$_n'"; return 1; }
+  _cnt=$(sqlite3 "$_db" "SELECT coalesce(skill_suggestions_total,'NULL')||'|'||coalesce(toolkit_issues_opened,'NULL') FROM executions WHERE execution_id='exec-equiv-001'" 2>/dev/null)
+  [ "$_cnt" = "0|0" ] || { _fail "sqldb-nosugg: contadores" "esperado '0|0', obtido '$_cnt'"; return 1; }
   return 0
 }
 
