@@ -197,14 +197,17 @@ renderizacao a confirmar no Scenario 0, ver §Campo `message`).
 
 ### Teto de tempo
 
-**[PROPOSTA]**: `{ timeout: MCP_ELICIT_TIMEOUT_MS }`, default `120000` ms.
+`{ timeout: MCP_ELICIT_TIMEOUT_MS }`, default `300000` ms / 5 min
+(dec-058, decisao do operador — CHK029; substitui a proposta original de
+`120000` ms deste contrato).
 
 - Satisfaz FR-010 **literalmente**: quem arma o relogio e quem envia a
   requisicao — o servidor.
 - Override por env, espelhando o precedente VERIFICADO `MCP_MAX_TOOL_CALLS`
   (`index.ts:200`).
-- O valor `120000` e **politica de design** (Constitution VI permite default
-  razoavel para politica; nao para dado factual externo).
+- O valor `300000` e **politica de design** (Constitution VI permite default
+  razoavel para politica; nao para dado factual externo). Ao esgotar, os
+  defaults seguros se aplicam e a execucao segue (dec-016) — nunca trava.
 
 ### Mapeamento resultado → desfecho
 

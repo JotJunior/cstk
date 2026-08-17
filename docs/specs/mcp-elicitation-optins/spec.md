@@ -195,17 +195,23 @@ introduzidos pela tentativa de usar o mecanismo novo primeiro.
   ou prosa), o formulario NAO MUST ser invocado de novo para aquele campo
   (FR-011).
 - O que acontece se o servidor MCP falhar ao subir (ex: Docker
-  indisponivel, `mode=bash-fallback`) DEPOIS que a etapa 1 do init em
-  duas etapas (FR-012) ja criou o estado minimo? A execucao cai para o
-  caminho de prosa de FR-005, agora necessariamente executado apos o
-  init minimo (em vez de antes, como no caminho single-step legado sem o
-  mecanismo estruturado envolvido) — a garantia que FR-005 protege
-  (mesmas perguntas, mesmos valores-padrao, zero pausa adicional) MUST
-  permanecer intacta; o que muda e apenas a posicao relativa ao init, uma
-  consequencia estrutural do bash-fallback ja documentado (`cstk mcp
-  start`: "Docker indisponivel ... start grava mode=bash-fallback e os
-  commands pai seguem pelo caminho Bash existente — zero regressao
-  funcional"), nao uma decisao nova desta feature (dec-020, engenharia).
+  indisponivel, token vazio / descritor ausente) DEPOIS que a etapa 1 do
+  init em duas etapas (FR-012) ja criou o estado minimo? A execucao cai
+  para o caminho de prosa de FR-005, agora necessariamente executado
+  apos o init minimo (em vez de antes, como no caminho single-step
+  legado sem o mecanismo estruturado envolvido) — a garantia que FR-005
+  protege (mesmas perguntas, mesmos valores-padrao, zero pausa
+  adicional) MUST permanecer intacta; o que muda e apenas a posicao
+  relativa ao init, uma consequencia estrutural do fallback ja
+  documentado (`cstk mcp start`: "Docker indisponivel ... o pai segue
+  pelo caminho Bash existente — zero regressao funcional"). O
+  discriminador que o pai usa para escolher o ramo (VERIFICADO,
+  `optin-capture-order.md` §2 / dec-034) e o **token vazio / descritor
+  ausente** — o valor `mode=bash-fallback` citado em versoes anteriores
+  desta spec nunca e de fato gravado por nenhum caminho de codigo
+  (`mcp.sh:708-709`, `:100-107`); nenhum teste MUST assert-lo. Nao e
+  decisao nova desta feature (dec-020, engenharia; dec-034, correcao de
+  premissa).
 - Elicitation disparada a partir de um subagente orquestrador (sem
   operador humano presente) permanece **Deferred, fora do escopo desta
   feature** — tratado em `docs/specs/orchestrator-mcp-allowlist/spec.md`
@@ -301,8 +307,10 @@ introduzidos pela tentativa de usar o mecanismo novo primeiro.
   ou com o timeout resolvendo para o default — ANTES de qualquer onda da
   pipeline comecar. Nenhuma onda MUST operar sob um opt-in cujo valor
   ainda nao foi confirmado (aceito, recusado ou defaultado) (dec-018). Se
-  o servidor falhar ao subir apos a etapa (1) (`mode=bash-fallback`), o
-  sistema MUST cair para o caminho de prosa de FR-005 (ver Edge Cases).
+  o servidor falhar ao subir apos a etapa (1) (sinal: token vazio /
+  descritor ausente — NUNCA o literal `mode=bash-fallback`, que nenhum
+  caminho de codigo emite, ver Edge Cases), o sistema MUST cair para o
+  caminho de prosa de FR-005 (ver Edge Cases).
 - **FR-013**: A persistencia da etapa (2) de FR-012 MUST usar as
   primitivas de escrita pos-init ja existentes no runtime para cada
   opt-in — `commit-mode.sh set-enabled`, `roadmap-mode.sh set-enabled` e
@@ -310,9 +318,15 @@ introduzidos pela tentativa de usar o mecanismo novo primeiro.
   completo, ver FR-001) — em vez do caminho hoje usado de flags passadas
   ao `state-rw.sh init` no momento da criacao do estado. Essas primitivas
   ja existem no runtime instalado (`plugins/cstk/skills/
-  agente-00c-runtime/scripts/`) mas ate esta feature nao tinham chamador
-  ativo; esta feature MUST ser o primeiro caller de fato de cada uma
-  delas para o caminho estruturado (dec-018, implicacao de escrita).
+  agente-00c-runtime/scripts/`), mas o estado de cada uma diverge:
+  `commit-mode.sh set-enabled` e `roadmap-mode.sh set-enabled` ate esta
+  feature NAO tinham chamador ativo — esta feature MUST ser o primeiro
+  caller de fato das duas para o caminho estruturado; `delivery-tier.sh
+  set` **ja tem** chamador ativo hoje (`agente-00c.md:433`,
+  `agente-00c-resume.md:214/218`) — para o tier a mudanca exigida por
+  esta feature e de **ORDEM de chamada** (mover a escrita para depois do
+  init minimo, dentro da etapa (2)), NAO de introduzir um mecanismo novo
+  (dec-018/dec-035, implicacao de escrita).
 
 > Decisoes de infraestrutura: N/A (feature nao introduz scheduling, key
 > rotation, refresh de token externo, lock multi-pod, backup ou
@@ -377,6 +391,24 @@ feature ainda esta em Draft e nao mergeada no corpus canonico, entao nao
 ha capability ativa para deltar formalmente ali; a reconciliacao textual
 fica marcada como trabalho pendente para quando `delivery-tier` avancar
 de fase. A persistencia pos-init passa a usar primitivas ja existentes no
-runtime, ate esta feature sem chamador ativo (`commit-mode.sh
-set-enabled`, `roadmap-mode.sh set-enabled`, `delivery-tier.sh set` —
-FR-013) — agente-00c-feature-orchestrator, 2026-08-17
+runtime (`commit-mode.sh set-enabled`, `roadmap-mode.sh set-enabled`,
+`delivery-tier.sh set` — FR-013); `commit-mode.sh set-enabled` e
+`roadmap-mode.sh set-enabled` ate esta feature nao tinham chamador ativo,
+mas `delivery-tier.sh set` **ja tem** (`agente-00c.md:433`,
+`agente-00c-resume.md:214/218`) — para o tier a mudanca e de ORDEM de
+chamada, nao de mecanismo novo (dec-035) — agente-00c-feature-orchestrator, 2026-08-17
+
+**Delta**: correcao de Principio VI (revisao create-tasks, onda-008,
+2026-08-17) — FR-013 e o Edge Case de falha do servidor apos a etapa 1 de
+FR-012 continham duas afirmacoes factualmente incorretas ja identificadas
+por `checklists/requirements.md` CHK012/CHK013 e corrigidas em
+`plan.md` §Correcoes de premissa (itens 1 e 3): (a) FR-013 generalizava
+"sem chamador ativo" para as tres primitivas de escrita quando
+`delivery-tier.sh set` ja e chamada hoje — corrigido para distinguir as
+duas primitivas orfas (`commit-mode.sh`/`roadmap-mode.sh set-enabled`) do
+tier (mudanca de ORDEM); (b) o Edge Case citava `mode=bash-fallback` como
+sinal de falha do servidor — VERIFICADO (`mcp.sh:708-709`, `:100-107`,
+`optin-capture-order.md` §2/§5, dec-034) que nenhum caminho de codigo
+emite esse literal; o discriminador real e token vazio / descritor
+ausente. Nenhum FR novo, apenas correcao de fato em FR-013 e no Edge
+Case — agente-00c-feature-orchestrator, 2026-08-17

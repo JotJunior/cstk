@@ -151,8 +151,8 @@ final nao distingue "gravou com flag" de "gravou sem flag".
 ## Scenario 4: Teto de tempo (US2-2, FR-007, FR-010)
 
 1. Sessao interativa; formulario aparece; **nao responder**
-2. Aguardar `MCP_ELICIT_TIMEOUT_MS` (default 120000 ms; reduzir por env para
-   tornar o teste rapido)
+2. Aguardar `MCP_ELICIT_TIMEOUT_MS` (default 300000 ms / 5 min, dec-058;
+   reduzir por env para tornar o teste rapido)
 3. **Expected**:
    - a execucao **prossegue** — nao trava (SC-002)
    - registros com `outcome: "timeout"`, defaults seguros

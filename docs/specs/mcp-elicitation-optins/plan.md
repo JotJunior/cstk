@@ -56,8 +56,9 @@ Node — este ultimo **sem gate** hoje (ver §Estrategia de Testes)
 **Project Type**: toolkit CLI + skills + servidor MCP stdio
 **Performance Goals**: N/A — captura de resposta humana, uma vez por execucao
 **Constraints**: nenhuma execucao pode travar aguardando resposta (FR-007,
-SC-002); teto de tempo default `120000` ms (politica de design); nenhum default
-seguro muda (FR-006)
+SC-002); teto de tempo default `300000` ms / 5 min (politica de design,
+dec-058 — decisao do operador que substitui a proposta original de
+`120000` ms); nenhum default seguro muda (FR-006)
 **Scale/Scope**: 1 formulario por execucao, <= 3 campos, <= 1 chamada de
 elicitation por execucao (retomadas reusam — FR-011)
 
