@@ -6,10 +6,10 @@ Zero Duplicacao).
 
 Categorias geradas (paths virtuais sob `docs-site/`):
 
-  - `skills/<slug>.md`          <- global/skills/<slug>/SKILL.md
-  - `skills/<lang>/<slug>.md`   <- language-related/<lang>/skills/<slug>/SKILL.md
-  - `agents/<stem>.md`          <- global/agents/<stem>.md
-  - `commands/<stem>.md`        <- global/commands/<stem>.md
+  - `skills/<slug>.md`          <- plugins/cstk/skills/<slug>/SKILL.md
+  - `skills/<lang>/<slug>.md`   <- plugins/cstk-language-<lang>/skills/<slug>/SKILL.md
+  - `agents/<stem>.md`          <- plugins/cstk/agents/<stem>.md
+  - `commands/<stem>.md`        <- plugins/cstk/commands/<stem>.md
   - `skills/index.md`           <- index agrupado (global / go / dotnet)
   - `agents/index.md`           <- index agents
   - `commands/index.md`         <- index commands
@@ -17,7 +17,7 @@ Categorias geradas (paths virtuais sob `docs-site/`):
 Cada pagina gerada e um shim minimo contendo apenas a diretiva snippets
 `--8<--` referenciando o arquivo fonte (resolvido a partir da raiz do
 repo via `base_path: ['..', 'docs-site']` no `mkdocs.yml`). Isso garante
-que QUALQUER edicao em `global/skills/<X>/SKILL.md` se reflete no site
+que QUALQUER edicao em `plugins/cstk/skills/<X>/SKILL.md` se reflete no site
 sem mudanca aqui.
 
 Pass-through de frontmatter Claude (FR-024):
@@ -35,7 +35,7 @@ Edit links (FR-017):
   do repositorio quando combinado com `edit_uri` do mkdocs.yml.
 
 Extensibilidade (D-I, FR-016):
-  Para adicionar uma linguagem nova (ex: `language-related/python/`),
+  Para adicionar uma linguagem nova (ex: `plugins/cstk-language-python/`),
   basta colocar os SKILL.md no path canonico. Este hook descobre via
   glob — zero edits aqui.
 
@@ -71,10 +71,39 @@ import mkdocs_gen_files
 # parents[0] = hooks/, parents[1] = docs-site/, parents[2] = repo root.
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 
-GLOBAL_SKILLS_DIR: Path = REPO_ROOT / "global" / "skills"
-GLOBAL_AGENTS_DIR: Path = REPO_ROOT / "global" / "agents"
-GLOBAL_COMMANDS_DIR: Path = REPO_ROOT / "global" / "commands"
-LANG_RELATED_DIR: Path = REPO_ROOT / "language-related"
+# Layout de plugin nativo (feature claude-plugin-packaging, v7.0.0): o catalogo
+# foi movido por `git mv` de `global/{skills,agents,commands}` para
+# `plugins/cstk/{skills,agents,commands}`, e `language-related/<lang>/` para
+# `plugins/cstk-language-<lang>/`. Este hook apontava para os paths antigos
+# e o site publicava catalogo VAZIO sem falhar o build (diretorio ausente nao
+# e erro para o glob) — bugfix 8.1.1. O guard `_assert_catalog_nonempty`
+# abaixo impede a recorrencia silenciosa.
+PLUGINS_DIR: Path = REPO_ROOT / "plugins"
+GLOBAL_SKILLS_DIR: Path = PLUGINS_DIR / "cstk" / "skills"
+GLOBAL_AGENTS_DIR: Path = PLUGINS_DIR / "cstk" / "agents"
+GLOBAL_COMMANDS_DIR: Path = PLUGINS_DIR / "cstk" / "commands"
+# Prefixo dos plugins de linguagem: `plugins/cstk-language-<lang>/skills/`.
+# A linguagem e o sufixo apos o prefixo (ex.: `cstk-language-go` -> `go`).
+LANG_PLUGIN_PREFIX: str = "cstk-language-"
+
+
+def _iter_lang_plugin_dirs() -> Iterator[tuple[str, Path]]:
+    """Enumera `(lang, plugin_dir)` para cada `plugins/cstk-language-<lang>/`.
+
+    Descoberta dinamica preservada (FR-016, D-I): adicionar
+    `plugins/cstk-language-python/skills/` funciona sem edits aqui.
+    """
+    if not PLUGINS_DIR.is_dir():
+        return
+    for plugin_dir in sorted(PLUGINS_DIR.iterdir()):
+        if not plugin_dir.is_dir():
+            continue
+        name = plugin_dir.name
+        if not name.startswith(LANG_PLUGIN_PREFIX):
+            continue
+        lang = name[len(LANG_PLUGIN_PREFIX):]
+        if lang:
+            yield lang, plugin_dir
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +280,7 @@ def _iter_skill_dirs(base_dir: Path) -> Iterator[Path]:
 def gen_skill_pages_global() -> int:
     """Gera paginas virtuais para skills globais.
 
-    Fonte: `global/skills/<slug>/SKILL.md`
+    Fonte: `plugins/cstk/skills/<slug>/SKILL.md`
     Destino: `skills/<slug>.md` (sob docs-site/)
     """
     count = 0
@@ -266,20 +295,14 @@ def gen_skill_pages_global() -> int:
 def gen_skill_pages_lang() -> dict[str, int]:
     """Gera paginas virtuais para skills por linguagem.
 
-    Fonte: `language-related/<lang>/skills/<slug>/SKILL.md`
+    Fonte: `plugins/cstk-language-<lang>/skills/<slug>/SKILL.md`
     Destino: `skills/<lang>/<slug>.md`
 
-    Descoberto via glob — adicionar `language-related/python/skills/`
+    Descoberto via glob — adicionar `plugins/cstk-language-python/skills/`
     funciona sem edits aqui (FR-016, D-I).
     """
     counts: dict[str, int] = {}
-    if not LANG_RELATED_DIR.is_dir():
-        return counts
-
-    for lang_dir in sorted(LANG_RELATED_DIR.iterdir()):
-        if not lang_dir.is_dir():
-            continue
-        lang = lang_dir.name
+    for lang, lang_dir in _iter_lang_plugin_dirs():
         skills_base = lang_dir / "skills"
         if not skills_base.is_dir():
             continue
@@ -298,7 +321,7 @@ def gen_skill_pages_lang() -> dict[str, int]:
 def gen_agent_pages() -> int:
     """Gera paginas virtuais para agents.
 
-    Fonte: `global/agents/<stem>.md`
+    Fonte: `plugins/cstk/agents/<stem>.md`
     Destino: `agents/<stem>.md`
     """
     if not GLOBAL_AGENTS_DIR.is_dir():
@@ -318,7 +341,7 @@ def gen_agent_pages() -> int:
 def gen_command_pages() -> int:
     """Gera paginas virtuais para slash commands.
 
-    Fonte: `global/commands/<stem>.md`
+    Fonte: `plugins/cstk/commands/<stem>.md`
     Destino: `commands/<stem>.md`
     """
     if not GLOBAL_COMMANDS_DIR.is_dir():
@@ -379,23 +402,20 @@ def gen_skill_index() -> int:
         sections.append(("Skills Globais", global_items))
 
     # Skills por linguagem (descoberta dinamica)
-    if LANG_RELATED_DIR.is_dir():
-        for lang_dir in sorted(LANG_RELATED_DIR.iterdir()):
-            if not lang_dir.is_dir():
-                continue
-            skills_base = lang_dir / "skills"
-            if not skills_base.is_dir():
-                continue
-            lang_items: list[tuple[str, str, str]] = []
-            for skill_md in _iter_skill_dirs(skills_base):
-                slug = skill_md.parent.name
-                link = f"./{lang_dir.name}/{slug}.md"
-                desc = _extract_description(skill_md)
-                lang_items.append((slug, link, desc))
-            if lang_items:
-                # Titulo capitalizado: "Skills Go", "Skills Dotnet"
-                title = f"Skills {lang_dir.name.capitalize()}"
-                sections.append((title, lang_items))
+    for lang, lang_dir in _iter_lang_plugin_dirs():
+        skills_base = lang_dir / "skills"
+        if not skills_base.is_dir():
+            continue
+        lang_items: list[tuple[str, str, str]] = []
+        for skill_md in _iter_skill_dirs(skills_base):
+            slug = skill_md.parent.name
+            link = f"./{lang}/{slug}.md"
+            desc = _extract_description(skill_md)
+            lang_items.append((slug, link, desc))
+        if lang_items:
+            # Titulo capitalizado: "Skills Go", "Skills Dotnet"
+            title = f"Skills {lang.capitalize()}"
+            sections.append((title, lang_items))
 
     # Renderizar markdown
     lines: list[str] = [
@@ -433,7 +453,7 @@ def gen_skill_index() -> int:
 def gen_agent_index() -> int:
     """Gera `agents/index.md` virtual com listagem alfabetica.
 
-    Lista todos os arquivos `global/agents/*.md`, com descricao curta
+    Lista todos os arquivos `plugins/cstk/agents/*.md`, com descricao curta
     extraida do frontmatter `description:`.
 
     Retorna numero de itens listados.
@@ -479,7 +499,7 @@ def gen_agent_index() -> int:
 def gen_command_index() -> int:
     """Gera `commands/index.md` virtual com listagem alfabetica.
 
-    Lista todos os arquivos `global/commands/*.md`, com descricao curta
+    Lista todos os arquivos `plugins/cstk/commands/*.md`, com descricao curta
     extraida do frontmatter `description:`.
 
     Retorna numero de itens listados.
@@ -527,6 +547,30 @@ def gen_command_index() -> int:
 # ---------------------------------------------------------------------------
 
 
+def _assert_catalog_nonempty(n_skills: int, n_agents: int, n_commands: int) -> None:
+    """Falha o build se alguma categoria GLOBAL do catalogo saiu vazia.
+
+    Um catalogo vazio nunca e estado legitimo do toolkit (ha >20 skills,
+    7 agents e 6 commands versionados). Zero paginas significa que
+    GLOBAL_*_DIR aponta para um path que nao existe mais — exatamente o
+    que aconteceu quando `global/` virou `plugins/cstk/` (v7.0.0) e o site
+    ficou sem catalogo sem ninguem perceber. Skills por linguagem NAO
+    entram no guard: sao opcionais por desenho (FR-016).
+    """
+    empty = [
+        name
+        for name, n in (("skills", n_skills), ("agents", n_agents), ("commands", n_commands))
+        if n == 0
+    ]
+    if empty:
+        raise RuntimeError(
+            "[gen_pages] catalogo VAZIO em: "
+            + ", ".join(empty)
+            + f" — verifique os paths-fonte (GLOBAL_*_DIR sob {PLUGINS_DIR}). "
+            "Um catalogo vazio e bug de path, nao estado valido do site."
+        )
+
+
 def main() -> None:
     """Orquestra a geracao de todas as categorias.
 
@@ -543,6 +587,13 @@ def main() -> None:
 
     total_lang = sum(n_lang.values())
     detail_total = n_global + total_lang + n_agents + n_commands
+
+    # Guard anti-regressao (bugfix 8.1.1): o site publicou catalogo VAZIO por
+    # semanas apos a v7.0.0 porque os paths-fonte mudaram e o glob sobre
+    # diretorio ausente devolve 0 sem erro. Catalogo vazio em qualquer
+    # categoria global e SEMPRE bug de path, nunca estado legitimo — falhar
+    # o build (strict) e a unica forma de tornar isso visivel em CI.
+    _assert_catalog_nonempty(n_global, n_agents, n_commands)
 
     # FASE 3 — paginas-index (catalogos)
     n_skill_idx = gen_skill_index()

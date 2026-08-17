@@ -26,10 +26,10 @@ on:
     branches:
       - main
     paths:
-      - 'global/skills/**'
-      - 'language-related/**'
-      - 'global/agents/**'
-      - 'global/commands/**'
+      - 'plugins/cstk/skills/**'
+      - 'plugins/cstk-language-*/**'
+      - 'plugins/cstk/agents/**'
+      - 'plugins/cstk/commands/**'
       - 'docs-site/**'
       - 'mkdocs.yml'
       - 'requirements-docs.txt'
@@ -39,10 +39,10 @@ on:
       - '.github/workflows/publish-site.yml'
   pull_request:
     paths:
-      - 'global/skills/**'
-      - 'language-related/**'
-      - 'global/agents/**'
-      - 'global/commands/**'
+      - 'plugins/cstk/skills/**'
+      - 'plugins/cstk-language-*/**'
+      - 'plugins/cstk/agents/**'
+      - 'plugins/cstk/commands/**'
       - 'docs-site/**'
       - 'mkdocs.yml'
       - 'requirements-docs.txt'
@@ -91,6 +91,23 @@ jobs:
         env:
           NO_MKDOCS_2_WARNING: "1"
         run: mkdocs build --strict
+
+      - name: Assert catalog pages were generated
+        # Bugfix 8.1.1: apos a v7.0.0 (global/ -> plugins/cstk/) o hook
+        # gen_pages.py apontava para paths inexistentes e o site foi ao ar
+        # com catalogo VAZIO — mkdocs --strict nao reclama de diretorio-fonte
+        # ausente. Este step e a segunda linha de defesa (a primeira e o
+        # RuntimeError dentro do proprio hook): conta paginas geradas por
+        # categoria e falha se alguma zerar. Nunca deve passar com 0.
+        run: |
+          set -eu
+          n_skills=$(find site/skills -mindepth 1 -name 'index.html' -not -path 'site/skills/index.html' | wc -l | tr -d ' ')
+          n_agents=$(find site/agents -mindepth 2 -name 'index.html' | wc -l | tr -d ' ')
+          n_cmds=$(find site/commands -mindepth 2 -name 'index.html' | wc -l | tr -d ' ')
+          echo "catalog pages: skills=$n_skills agents=$n_agents commands=$n_cmds"
+          test "$n_skills" -ge 20 || { echo "::error::site/skills com $n_skills paginas (esperado >=20) — catalogo vazio ou paths-fonte errados"; exit 1; }
+          test "$n_agents" -ge 5  || { echo "::error::site/agents com $n_agents paginas (esperado >=5)"; exit 1; }
+          test "$n_cmds"   -ge 5  || { echo "::error::site/commands com $n_cmds paginas (esperado >=5)"; exit 1; }
 
       - name: Upload Pages artifact
         # So produz artifact em push/dispatch — em PR o build serve como quality gate.
