@@ -720,25 +720,43 @@ Ref: `plan.md` §Estrategia de Testes linhas 191-216; precedentes
 
 ### 10.2 Suite completa verde `[A]`
 
-- [ ] 10.2.1 `./tests/run.sh` completo (nao so os arquivos tocados) —
-      nenhuma regressao introduzida nas familias `test_command-spawn-*`
+- [x] 10.2.1 `./tests/run.sh` completo (nao so os arquivos tocados) —
+      nenhuma regressao introduzida nas familias `test_command-spawn-*`.
+      Confirmado onda-016 (rodado em foreground/background aguardado, NUNCA
+      lancado e abandonado): `LC_ALL=C ./tests/run.sh` completo =>
+      `PASS: 3047  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 874s`. **Nota de
+      concorrencia (dec-104/block-004)**: durante esta rodada, `ps aux`
+      revelou uma SEGUNDA execucao de `tests/run.sh` ativa no mesmo working
+      tree (pid distinto, mesma sessao Claude ancestral) — bloqueio humano
+      registrado para o operador confirmar se e seguro prosseguir antes de
+      qualquer commit adicional desta onda.
 
 ### 10.3 Sincronizar as duas metades ANTES de qualquer E2E `[C]`
 
 Ref: CLAUDE.md §Installed vs Source Drift (GOTCHA "fix funciona no repo
 mas nao na sessao" — ja custou ciclo de bugfix em features anteriores)
 
-- [ ] 10.3.1 Build local: `./scripts/build-release.sh X.Y.Z-dev` gerando
-      `dist/cstk-X.Y.Z-dev.tar.gz`
-- [ ] 10.3.2 `cstk install --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"`
+- [x] 10.3.1 Build local: `./scripts/build-release.sh X.Y.Z-dev` gerando
+      `dist/cstk-X.Y.Z-dev.tar.gz`. Feito onda-016:
+      `./scripts/build-release.sh 8.0.1-dev` (tag atual `v8.0.0`) =>
+      `dist/cstk-8.0.1-dev.tar.gz` + `.sha256`, flavor `bsd`. So escreve em
+      `dist/` (dentro do repo) — nenhum sync com `~/.local`/`~/.claude`.
+- [!] 10.3.2 `cstk install --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"`
       — atualiza o CATALOGO (`~/.claude`, skills/commands/agents: os 4
-      commands + os 2 agents editados nas FASES 5/7)
-- [ ] 10.3.3 `cstk self-update --from
+      commands + os 2 agents editados nas FASES 5/7). **Requer autorizacao
+      do operador** — escreve em `~/.claude`, ambiente GLOBAL fora do
+      blast radius do orquestrador (Principio IV/FR-035). Comando exato
+      pronto (rodar do root do repo, apos 10.3.1):
+      `cstk install --from "file://$PWD/dist/cstk-8.0.1-dev.tar.gz"`
+- [!] 10.3.3 `cstk self-update --from
       "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"` — atualiza o RUNTIME
       (`cli/lib/*.sh` + binario; nenhum `cli/lib` foi tocado nesta
-      feature, mas rodar por disciplina/paridade)
-- [ ] 10.3.4 `cstk doctor` — confirmar catalogo sem drift antes de
-      qualquer validacao end-to-end (FASE 11)
+      feature, mas rodar por disciplina/paridade). **Requer autorizacao do
+      operador** — escreve em `~/.local`. Comando exato pronto:
+      `cstk self-update --from "file://$PWD/dist/cstk-8.0.1-dev.tar.gz"`
+- [!] 10.3.4 `cstk doctor` — confirmar catalogo sem drift antes de
+      qualquer validacao end-to-end (FASE 11). **Requer 10.3.2/10.3.3
+      primeiro** (executados pelo operador). Comando exato: `cstk doctor`
 
 ---
 
