@@ -92,18 +92,75 @@ _run_ensure() {
   fi
 }
 
-scenario_entrypoint_ja_existe_e_noop_nao_chama_npm() {
-  _dir="$TMPDIR_TEST/proj-cached"
+# Bugfix 8.1.1 (dec-106): o fast-path deixou de ser "entrypoint existe =>
+# no-op" e passou a exigir que a FONTE nao tenha mudado desde o ultimo build
+# (stamp em dist/.source-stamp). Os 3 cenarios abaixo substituem o antigo
+# `entrypoint_ja_existe_e_noop_nao_chama_npm`, que fixava justamente o bug.
+# Deteccao de chamada ao npm: stub que LOGA em npm-calls.log (o cenario
+# antigo prefixava um bin vazio ao PATH — o npm real seguia acessivel).
+
+# 1) build inicial grava o stamp; 2a chamada com fonte IGUAL e no-op.
+scenario_stamp_gravado_no_build_e_fonte_igual_e_noop() {
+  _dir="$TMPDIR_TEST/proj-stamp"
+  _make_pkg_dir "$_dir"
+  _bin="$TMPDIR_TEST/stubs-stamp"
+  mkdir -p "$_bin"
+  _stub_npm_builds_entrypoint "$_bin" "$_dir"
+  rm -f "$TMPDIR_TEST/npm-calls.log"
+  _run_ensure "$_dir" "$_bin"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "build inicial" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  [ -f "$_dir/dist/.source-stamp" ] || { _fail "stamp ausente" "build nao gravou dist/.source-stamp"; return 1; }
+  _n1=$(grep -c 'run build' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null || echo 0)
+  # 2a chamada, fonte identica: nao pode chamar npm de novo
+  _run_ensure "$_dir" "$_bin"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "noop exit" "exit $_CAPTURED_EXIT"; return 1; }
+  _n2=$(grep -c 'run build' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null || echo 0)
+  [ "$_n1" = "$_n2" ] || { _fail "noop chamou npm" "builds antes=$_n1 depois=$_n2 (fonte igual devia ser no-op)"; return 1; }
+  assert_stdout_contains "$_dir/dist/src/index.js" || return 1
+}
+
+# Fonte MUDOU (release nova via cstk install) com entrypoint presente:
+# DEVE reconstruir — e o cenario exato do dec-106 (dist/ da 8.0.0 + fonte da 8.1.0).
+scenario_fonte_mudou_com_entrypoint_presente_reconstroi() {
+  _dir="$TMPDIR_TEST/proj-stale"
+  _make_pkg_dir "$_dir"
+  _bin="$TMPDIR_TEST/stubs-stale"
+  mkdir -p "$_bin"
+  _stub_npm_builds_entrypoint "$_bin" "$_dir"
+  rm -f "$TMPDIR_TEST/npm-calls.log"
+  _run_ensure "$_dir" "$_bin"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "build inicial" "exit $_CAPTURED_EXIT"; return 1; }
+  _n1=$(grep -c 'run build' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null || echo 0)
+  # simula a release nova: fonte muda, dist/ velho continua no lugar
+  mkdir -p "$_dir/src/tools"
+  printf 'export const collect_optins = 1;
+' > "$_dir/src/tools/collect_optins.ts"
+  _run_ensure "$_dir" "$_bin"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "rebuild exit" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  _n2=$(grep -c 'run build' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null || echo 0)
+  [ "$_n2" -gt "$_n1" ] || { _fail "nao reconstruiu" "fonte mudou mas builds antes=$_n1 depois=$_n2 — e o bug dec-106"; return 1; }
+}
+
+# dist/ herdado de versao ANTERIOR ao fix (entrypoint existe, SEM stamp):
+# reconstroi UMA vez e grava o stamp — migracao transparente.
+scenario_dist_legado_sem_stamp_reconstroi_uma_vez() {
+  _dir="$TMPDIR_TEST/proj-legacy"
   _make_pkg_dir "$_dir"
   mkdir -p "$_dir/dist/src"
-  printf 'module.exports={};\n' > "$_dir/dist/src/index.js"
-  _bin="$TMPDIR_TEST/stubs-noop"
+  printf 'module.exports={};\n' > "$_dir/dist/src/index.js"   # dist velho, sem stamp
+  _bin="$TMPDIR_TEST/stubs-legacy"
   mkdir -p "$_bin"
-  # npm ausente do PATH restrito de proposito: se o script chamar npm
-  # aqui, falharia por "nao encontrado" e o teste pegaria a regressao.
+  _stub_npm_builds_entrypoint "$_bin" "$_dir"
+  rm -f "$TMPDIR_TEST/npm-calls.log"
   _run_ensure "$_dir" "$_bin"
-  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "noop exit" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
-  assert_stdout_contains "$_dir/dist/src/index.js" || return 1
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "rebuild legado" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  grep -q 'run build' "$TMPDIR_TEST/npm-calls.log" 2>/dev/null || { _fail "nao reconstruiu" "dist sem stamp devia reconstruir uma vez"; return 1; }
+  [ -f "$_dir/dist/.source-stamp" ] || { _fail "stamp" "apos reconstruir devia gravar o stamp"; return 1; }
+  # e agora e no-op
+  _n1=$(grep -c 'run build' "$TMPDIR_TEST/npm-calls.log")
+  _run_ensure "$_dir" "$_bin"
+  _n2=$(grep -c 'run build' "$TMPDIR_TEST/npm-calls.log")
+  [ "$_n1" = "$_n2" ] || { _fail "2a chamada" "devia ser no-op apos gravar stamp"; return 1; }
 }
 
 scenario_lockfile_ausente_falha_fail_closed() {
