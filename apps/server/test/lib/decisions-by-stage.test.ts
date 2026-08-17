@@ -8,10 +8,12 @@
  * (719 decisoes na base real) em vez de soma-las a etapa SDD correspondente.
  * Regra espelhada do dono canonico do relatorio (model-routing-report.sh,
  * `etapa_of_onda`): sem `(fase …)` parseavel, o stage original e mantido.
+ * A mesma normalizacao vale para `getThroughputByStage` (card "Throughput
+ * por etapa"), que contava 726 decisoes sob `model-routing`.
  */
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { getModelMixByStage, stageFromRoutingContext } from '../../src/db/queries/metrics.js';
+import { getModelMixByStage, getThroughputByStage, stageFromRoutingContext } from '../../src/db/queries/metrics.js';
 
 function makeDb(): Database.Database {
   const db = new Database(':memory:');
@@ -44,6 +46,9 @@ function makeDb(): Database.Database {
   ins.run('init', 'dec-07', 'model-routing', 'model:sonnet', 'Selecao de modelo para subagente X');
   // Nao-roteamento (choice sem prefixo model:) — fora do mix.
   ins.run('onda-001', 'dec-08', 'clarify', 'opcao-a', 'qualquer');
+  // Roteamento legado com choice manter-atual: fora do mix, mas conta no
+  // throughput na etapa do contexto.
+  ins.run('onda-009', 'dec-09', 'model-routing', 'manter-atual', 'Selecao de modelo para onda 9 (fase review-features)');
   return db;
 }
 
@@ -93,5 +98,32 @@ describe('getModelMixByStage — model-routing nao e etapa', () => {
       { stage: 'model-routing', modelo: 'sonnet', n: 1 },
       { stage: 'plan', modelo: 'opus', n: 1 },
     ]);
+  });
+});
+
+describe('getThroughputByStage — model-routing nao e etapa', () => {
+  it('reatribui linhas legadas a etapa do contexto, soma as nativas e ordena por count desc', () => {
+    const db = makeDb();
+    const rows = getThroughputByStage(db);
+    db.close();
+    expect(rows).toEqual([
+      { stage: 'execute-task', count: 3 },     // 2 nativas + 1 legada
+      { stage: 'plan', count: 2 },             // 1 nativa + 1 legada
+      { stage: 'clarify', count: 1 },
+      { stage: 'model-routing', count: 1 },    // legada sem fase parseavel: preservada
+      { stage: 'review-features', count: 1 },  // legada manter-atual
+      { stage: 'review-task', count: 1 },      // legada haiku
+    ]);
+  });
+
+  it('degrada sem a coluna context: mantem o stage original', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE decisions (id INTEGER PRIMARY KEY, stage TEXT, choice TEXT);
+      INSERT INTO decisions (stage, choice) VALUES ('model-routing', 'model:sonnet'), ('model-routing', 'x'), ('plan', 'model:opus');
+    `);
+    const rows = getThroughputByStage(db);
+    db.close();
+    expect(rows).toEqual([{ stage: 'model-routing', count: 2 }, { stage: 'plan', count: 1 }]);
   });
 });
