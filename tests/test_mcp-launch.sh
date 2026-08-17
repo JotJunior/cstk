@@ -51,6 +51,20 @@ _make_state_server_dir_with_dist() {
   _make_state_server_dir "$_mssdwd_dir"
   mkdir -p "$_mssdwd_dir/dist/src"
   printf 'module.exports = {};\n' > "$_mssdwd_dir/dist/src/index.js"
+  # Bugfix 8.1.1 (dec-106): "dist pronto" passou a significar "dist cujo
+  # stamp bate com a fonte" — o build lazy reconstroi qualquer dist/ sem
+  # stamp (era assim que um dist/ da 8.0.0 ficava para tras). Esta fixture
+  # representa um dist LEGITIMO de sessao anterior, entao grava o stamp
+  # com o MESMO fingerprint que mcp-build-lazy.sh calcula (reusa a funcao
+  # do proprio script, extraida por `sed`; se o algoritmo mudar la, muda
+  # aqui junto — nunca duplicar a formula).
+  _mssdwd_bl="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/mcp-build-lazy.sh"
+  _mssdwd_fp=$(
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^_mbl_source_fingerprint()/,/^}/p;/^_mbl_sha256()/,/^}/p' "$_mssdwd_bl")"
+    _mbl_source_fingerprint "$_mssdwd_dir"
+  )
+  printf '%s\n' "$_mssdwd_fp" > "$_mssdwd_dir/dist/.source-stamp"
 }
 
 # _stub_node BIN_DIR [MAJOR] -> stub `node` que responde `-v` com o major
