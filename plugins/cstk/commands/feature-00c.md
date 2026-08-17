@@ -846,6 +846,70 @@ Spawne aplicando o param `model` SOMENTE quando `MODEL != manter-atual`
 > ondas. O prompt do orquestrador NÃO muda — só o invólucro do spawn
 > ganha o param `model`.
 
+### 4.bis Degradacao mid-call do MCP: fallback por prosa + re-spawn (FASE 6.2, `mcp-elicitation-optins`)
+
+Aplica-se SOMENTE quando `_optin_branch = "estruturado"` (secao 3 acima) E
+esta e a primeira invocacao (`tipo_invocacao=primeira_invocacao` no spawn
+acima) — retomadas nunca chamam `collect_optins` de novo (3.bis do
+orquestrador, cap M6/dec-057). Escopo de campos de `feature-00c`: SOMENTE
+`atomic_commit` (os demais campos do formulario MCP de `agente-00c` nao se
+aplicam aqui — dec-083; mesmo confinamento ja vigente na secao 3 acima).
+
+Apos o retorno do spawn acima, ANTES da rede de seguranca da secao 5,
+verifique se o orquestrador devolveu o turno sem abrir NENHUMA onda por
+degradacao mid-call do mecanismo estruturado
+(`contracts/optin-capture-order.md` §3.3(b)). **Sinal estrutural, nunca o
+sumario de texto do subagente** (mesma disciplina de "fonte de verdade e
+o state"):
+
+```bash
+_last=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" \
+  --field '[.optin_responses[]? | select(.field == "atomic_commit")] | last // {}')
+_last_ch=$(printf '%s' "$_last" | jq -r '.channel // ""')
+_last_out=$(printf '%s' "$_last" | jq -r '.outcome // ""')
+_optin_degraded="false"
+case "$_last_ch:$_last_out" in
+  structured:unavailable|structured:failed) _optin_degraded="true" ;;
+esac
+```
+
+Se `_optin_degraded = "false"`: nada a fazer — prossiga normalmente a
+`5.` (caminho comum: captura funcionou ou o ramo ja era legado).
+
+Se `_optin_degraded = "true"` (R-2: registro **nao-terminal**), rode
+EXATAMENTE o mesmo bloco de prosa da secao 3 acima ("Prompt opt-in de
+commit atomico"): mesmo texto, mesmo default, zero mencao ao MCP (o
+operador nao percebe que o mecanismo estruturado chegou a existir).
+
+1. Persista via `commit-mode.sh set-enabled --state-dir
+   "$AGENTE_00C_STATE_DIR" --value <true|false>` (**nunca** por flag de
+   init — o `state.json` ja existe).
+2. Acrescente o registro em `.optin_responses[]` com `channel: "prose"`
+   (append-only; NUNCA sobrescreva o registro `structured` ja existente —
+   R-1, vale o mais recente):
+   ```bash
+   _now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   _cur=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.optin_responses // []')
+   _new=$(printf '%s' "$_cur" | jq -c --arg v "$_atomic" --arg ts "$_now" \
+     '. + [{field: "atomic_commit", channel: "prose", outcome: "accepted", applied_value: $v, recorded_at: $ts, reason: null}]')
+   state-rw.sh set --state-dir "$AGENTE_00C_STATE_DIR" --field '.optin_responses' --value "$_new"
+   ```
+   Sem operador para responder (execucao nao-interativa): grave
+   `outcome: "absent"` em vez de `"accepted"` — mesmo default seguro do
+   ramo legado, nunca `"declined"` (nao houve recusa explicita, so
+   ausencia de quem decida).
+3. **Anti-loop (R-3)**: este passo roda **no maximo uma vez** por campo
+   por execucao — um registro mais recente com `channel: "prose"` encerra
+   o campo qualquer que seja o `outcome`.
+
+Depois de persistir, **re-spawne o orquestrador** (repita o bloco de
+spawn acima, ainda com `tipo_invocacao=primeira_invocacao` — a onda-001
+nao abriu, nao ha ponteiro para avancar). No re-spawn, `collect_optins`
+(3.bis do orquestrador) detecta que `atomic_commit` ja tem registro
+(agora terminal, `channel: "prose"`) e retorna `reused` sem re-disparar
+`elicitation/create` (cap M6) — o operador NUNCA e perguntado duas vezes
+pelo mesmo campo. So entao prossiga normalmente a `5.`.
+
 ### 5. Pos-orquestrador: rede de seguranca de fechamento de onda (OBRIGATORIO)
 
 > **Bug recorrente**: o orquestrador frequentemente RETORNA sem fechar a

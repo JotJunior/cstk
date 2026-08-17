@@ -274,6 +274,15 @@ _is_internal_test() {
       # portador do prompt. Se a fonte sumir, volta a ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
       return 1 ;;
+    test_command-spawn-optin-degradation.sh)
+      # Smoke textual sobre a FASE 6 (fallback integral para prosa) de
+      # mcp-elicitation-optins: convergencia legado x degradacao mid-call
+      # nos 2 commands + 2 agents de spawn. Assert no .md, nao em um unico
+      # script — existence-guarded ao command portador do ramo legado
+      # (plugins/cstk/commands/agente-00c.md). Se a fonte sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
+      return 1 ;;
     test_command-prompt-noninteractive-lint.sh)
       # LINT DE CLASSE: varre plugins/cstk/commands/*.md exigindo clausula
       # de nao-interatividade em todo prompt ao operador. Assert textual

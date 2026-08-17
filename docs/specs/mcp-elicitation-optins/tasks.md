@@ -401,17 +401,26 @@ Depende de: FASE 5.
 Ref: `contracts/optin-capture-order.md` §4 ("legado byte-a-byte
 inalterado"); `quickstart.md` Scenario 5; FR-005
 
-- [ ] 6.1.1 Confirmar (diff textual) que o ramo legado dos 4 commands
+- [x] 6.1.1 Confirmar (diff textual) que o ramo legado dos 4 commands
       (prosa antes do init + flags `--atomic-commit` etc.) permanece
       byte-a-byte identico ao comportamento pre-feature quando o
-      pre-requisito do mecanismo estruturado nao esta satisfeito
-- [ ] 6.1.2 Escrever teste cobrindo AS DUAS TRILHAS num unico cenario:
+      pre-requisito do mecanismo estruturado nao esta satisfeito. Feito:
+      `git diff --stat` da onda-013 mostra SOMENTE insercoes (novas
+      secoes `4.bis`) nos 4 arquivos — zero linha da secao 3/legado
+      tocada; confirmado via leitura da secao 3 (linhas 671-731 de
+      `feature-00c.md`, 297-500 de `agente-00c.md`), inalterada
+- [x] 6.1.2 Escrever teste cobrindo AS DUAS TRILHAS num unico cenario:
       (a) ramo legado quando o MCP nunca esteve disponivel (token
       vazio desde o inicio) e (b) ramo legado quando o MCP existe mas
       degrada mid-call (ver 6.2) — as duas trilhas MUST convergir para o
       mesmo comportamento observavel pelo operador (mesmas perguntas,
       mesmos defaults), distinguindo-se apenas pela linha de aviso em
-      stderr (FR-009, presente so na trilha b)
+      stderr (FR-009, presente so na trilha b). Feito:
+      `tests/test_command-spawn-optin-degradation.sh` (16 scenarios) —
+      `scenario_degradacao_reusa_prompt_legado` +
+      `scenario_degradacao_zero_mencao_mcp` provam a convergencia;
+      `scenario_aviso_stderr_somente_failed` prova a unica diferenca
+      observavel
 
 ### 6.2 Degradacao mid-call: pai reprocessa prosa + re-spawn `[C]`
 
@@ -419,15 +428,29 @@ Ref: `quickstart.md` Scenario 6; FR-009; `data-model.md` §State
 Transitions (ramo `unavailable|failed` → `accepted|declined|absent`
 canal `prose`)
 
-- [ ] 6.2.1 Quando `collect_optins` retornar `mechanism: "failed"` para
+- [x] 6.2.1 Quando `collect_optins` retornar `mechanism: "failed"` para
       QUALQUER campo, o orquestrador MUST emitir exatamente 1 linha em
-      stderr, NAO abrir onda, e devolver o turno ao command pai
-- [ ] 6.2.2 O command pai le `.optin_responses[]`, identifica campos com
+      stderr, NAO abrir onda, e devolver o turno ao command pai. Feito:
+      prosa nova em `agente-00c-orchestrator.md` (1.bis) e
+      `agente-00c-feature-orchestrator.md` (3.bis) — le
+      `result.mechanism`; `unavailable`/`failed` (R-2 nao-terminal)
+      bloqueiam `state-ondas.sh start`; `log_err` 1 linha SOMENTE em
+      `failed` (FR-009), `unavailable` silencioso
+- [x] 6.2.2 O command pai le `.optin_responses[]`, identifica campos com
       ultimo registro `failed`/`unavailable` (nao-terminais, R-2), roda os
       blocos de prosa correspondentes SOMENTE para esses campos, persiste
-      com `channel: "prose"` e re-spawna o orquestrador
-- [ ] 6.2.3 Garantir que o operador NUNCA e perguntado duas vezes pelo
-      mesmo campo (R-3, anti-loop) mesmo se a prosa tambem degradar
+      com `channel: "prose"` e re-spawna o orquestrador. Feito: secao
+      `4.bis` nova em `agente-00c.md` (3 campos) e `feature-00c.md` (so
+      `atomic_commit`, dec-083) — leitura estrutural de
+      `.optin_responses[]`, reuso literal dos prompts da secao 3, setters
+      especificos por campo, append `channel: "prose"`, re-spawn
+- [x] 6.2.3 Garantir que o operador NUNCA e perguntado duas vezes pelo
+      mesmo campo (R-3, anti-loop) mesmo se a prosa tambem degradar.
+      Satisfeito pelo cap M6 ja existente em `collect_optins.ts`
+      (`mostRecent.size === applicableFields.length` → `reused`, sem
+      re-disparar `elicitation/create`) — documentado explicitamente nos
+      2 orquestradores ("Anti-loop (R-3/6.2.3)") para que o re-spawn
+      pos-prosa nunca duplique a pergunta
 
 ---
 
@@ -472,26 +495,28 @@ Ref: `tests/test_orchestrator-allowlist-guard.sh` linhas 269-310
 (assercao textual do item 8 por presenca literal de `elicitation/create`);
 `quickstart.md` Scenario 9; `plan.md` §Riscos R3
 
-- [ ] 7.2.1 Adicionar `mcp__cstk-state__collect_optins` a `_required` em
+- [x] 7.2.1 Adicionar `mcp__cstk-state__collect_optins` a `_required` em
       `scenario_allowlist_declara_as_7_tools_mcp` (linhas 275-284);
-      renomear o cenario para refletir **8** tools
-- [ ] 7.2.2 Fortalecer a assercao do item 8 (linha 489) alem da mera
-      presenca literal de `elicitation/create` — hoje `grep -qF
-      'elicitation/create'` casa tanto o texto antigo (proibicao total)
-      quanto uma reescrita que INVERTESSE a semantica mantendo o mesmo
-      literal. Adicionar assercoes que distingam os dois recortes de 7.1.1:
-      (i) presenca do literal `elicitation/create`; (ii) presenca de texto
-      que amarre o uso permitido a presenca de operador humano; (iii)
-      presenca do encaminhamento a `FR-010`/Deferred para o caso sem
-      operador
-- [ ] 7.2.3 **Teste de mutacao obrigatorio** (Scenario 9.3): inverter a
-      semantica do item 8 num dos dois orquestradores MANTENDO o literal
-      `elicitation/create` (ex.: reescrever para "SEMPRE permitido, mesmo
-      sem operador"), rodar a suite, e confirmar que ela fica VERMELHA. Se
-      ficar verde, a assercao continua cega e esta subtarefa NAO esta
-      cumprida — reverter a mutacao apos confirmar
-- [ ] 7.2.4 Confirmar que `scenario_allowlist_preserva_bash` (linha ~317)
-      continua verde (`Bash` preservado no roster dos dois orquestradores)
+      renomear o cenario para refletir **8** tools. Feito: cenario
+      renomeado para `scenario_allowlist_declara_as_8_tools_mcp`, 8a
+      entrada `mcp__cstk-state__collect_optins` no `_required`
+- [x] 7.2.2 Fortalecer a assercao do item 8 alem da mera presenca literal
+      de `elicitation/create`. Feito: `scenario_guidance_block_conteudo_minimo`
+      agora exige 3 sub-checks (item8a/8b/8c): (i) literal
+      `elicitation/create`; (ii) `quando ha operador humano presente`
+      (amarra uso permitido a operador humano); (iii) `permanece Deferred`
+      (encaminhamento do caso sem-operador a FR-010/Deferred)
+- [x] 7.2.3 **Teste de mutacao obrigatorio** (Scenario 9.3): cenario
+      permanente `scenario_prova_mutacao_item8_inverte_semantica` (fixtures
+      sinteticas item8-correto/item8-invertido) PLUS mutacao manual real em
+      `agente-00c-orchestrator.md` (semantica invertida mantendo o literal
+      `elicitation/create`) — suite ficou VERMELHA
+      (`conteudo_minimo_incompleto: item8b item8c` +
+      `guidance_block_diverge`), mutacao revertida (`git diff --stat`
+      vazio), suite verde de novo (17/17). Outputs literais citados na
+      onda-013
+- [x] 7.2.4 Confirmado: `scenario_allowlist_preserva_bash` continua verde
+      (`Bash` preservado no roster dos dois orquestradores) — 17/17
 - [ ] 7.2.5 `./tests/run.sh test_orchestrator-allowlist-guard` verde antes
       de fechar a tarefa
 

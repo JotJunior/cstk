@@ -385,6 +385,33 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    NUNCA chame `collect_optins` de novo — leia `.optin_responses[]` (ja
    persistido pela onda-001) para saber os valores efetivos.
 
+   **Degradacao mid-call (FASE 6.2, `contracts/optin-capture-order.md`
+   §3.3(b))**: leia `result.mechanism` da resposta de `collect_optins`.
+   - `mechanism: "structured"` — captura funcionou (mesmo se o operador
+     recusou/cancelou/expirou — `accepted`/`declined`/`absent`/`timeout` sao
+     TERMINAIS, R-2); prossiga normalmente ao passo 2.
+   - `mechanism: "unavailable"` ou `"failed"` para qualquer campo aplicavel
+     (R-2: nao-terminal) — o mecanismo nao conseguiu de fato perguntar.
+     NAO chame `state-ondas.sh start` e devolva o turno ao command pai
+     IMEDIATAMENTE, sem relatorio de onda nem `Schedule intent` (nenhuma
+     onda foi aberta — nao ha o que fechar). O pai detecta a situacao
+     lendo `.optin_responses[]` estruturalmente (nunca pelo seu sumario de
+     texto — mesma disciplina de "fonte de verdade e o state") e roda a
+     prosa de fallback, depois re-spawna esta execucao (contrato completo
+     em `contracts/optin-capture-order.md` §3.3(b) itens 1-5).
+   - **Aviso em stderr**: SOMENTE no sub-caso `"failed"`, emita via
+     `log_err` **exatamente uma linha**: `collect_optins: mecanismo
+     estruturado falhou apos oferecido (mid-call) — devolvendo ao command
+     pai para captura por prosa (FR-005/FR-009)`. `"unavailable"` e
+     SILENCIOSO (FR-009: o mecanismo nunca esteve de fato disponivel nesta
+     chamada — a experiencia MUST ficar indistinguivel do ramo legado).
+   - **Anti-loop (R-3/6.2.3)**: no re-spawn apos a prosa do pai, chame
+     `collect_optins` normalmente de novo (e o "primeiro ato" de toda
+     bootstrap da onda-001) — a propria tool detecta que TODOS os campos
+     aplicaveis ja tem registro (agora com `channel: "prose"`, terminal) e
+     retorna `reused` sem re-disparar `elicitation/create` (cap M6). O
+     operador NUNCA e perguntado duas vezes pelo mesmo campo.
+
 2. **Onda nova**: `state-ondas.sh start --state-dir <SD>`. A metrica de
    tool calls da onda e registrada AUTOMATICAMENTE pelo hook PostToolUse
    `posttooluse-tool-call-tick.sh` — mas SO se ele estiver de fato

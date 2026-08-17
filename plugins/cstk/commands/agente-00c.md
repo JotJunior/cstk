@@ -612,6 +612,79 @@ Aplique o param `model` no spawn SOMENTE quando `MODEL != manter-atual`
 Aguarde retorno do orquestrador (uma mensagem de sumario contendo, entre
 outras linhas, um campo `Schedule intent: ...`).
 
+### 4.bis Degradacao mid-call do MCP: fallback por prosa + re-spawn (FASE 6.2, `mcp-elicitation-optins`)
+
+Aplica-se SOMENTE quando `_optin_branch = "estruturado"` (secao 3 acima) E
+`tipo_invocacao = "primeira_invocacao"` (retomadas nunca chamam
+`collect_optins` de novo — 1.bis do orquestrador, cap M6/dec-057).
+
+Apos o retorno do spawn acima, ANTES de `reconcile-wave` (5.pre), verifique
+se o orquestrador devolveu o turno sem abrir NENHUMA onda por degradacao
+mid-call do mecanismo estruturado (`contracts/optin-capture-order.md`
+§3.3(b)). **Sinal estrutural, nunca o sumario de texto do subagente**
+(mesma disciplina de "fonte de verdade e o state"):
+
+```bash
+_optin_degraded=""
+for _f in atomic_commit roadmap_mode delivery_tier; do
+  _last=$(state-rw.sh get --state-dir "$STATE_DIR" \
+    --field "[.optin_responses[]? | select(.field == \"$_f\")] | last // {}")
+  _last_ch=$(printf '%s' "$_last" | jq -r '.channel // ""')
+  _last_out=$(printf '%s' "$_last" | jq -r '.outcome // ""')
+  case "$_last_ch:$_last_out" in
+    structured:unavailable|structured:failed) _optin_degraded="$_optin_degraded $_f" ;;
+  esac
+done
+```
+
+Se `_optin_degraded` vazio: nada a fazer — prossiga normalmente a
+`5.pre` (caminho comum: captura funcionou ou o ramo ja era legado).
+
+Se `_optin_degraded` NAO-vazio (R-2: registro **nao-terminal** para ao
+menos 1 campo aplicavel), rode — SOMENTE para os campos listados —
+EXATAMENTE os mesmos blocos de prosa da secao 3 acima ("Prompt opt-in de
+commit atomico", "Prompt opt-in do modo roadmap", "Prompt de finalidade —
+tier de entrega"): mesmo texto, mesmos defaults, zero mencao ao MCP (o
+operador nao percebe que o mecanismo estruturado chegou a existir). Para
+cada resposta obtida:
+
+1. persista via o setter especifico do campo (**nunca** por flag de init
+   — o `state.json` ja existe):
+   - `atomic_commit` → `commit-mode.sh set-enabled --state-dir "$STATE_DIR" --value <true|false>`
+   - `roadmap_mode` → `roadmap-mode.sh set-enabled --state-dir "$STATE_DIR" --value <true|false>`
+   - `delivery_tier` → `delivery-tier.sh set --state-dir "$STATE_DIR" --value <token>
+     [--allow-downgrade]` — mesma regra condicional C-2/dec-047: SOMENTE
+     quando o ordinal novo e estritamente menor que o vigente, lido
+     IMEDIATAMENTE antes da escrita (`delivery-tier.sh get`)
+2. acrescente o registro em `.optin_responses[]` com `channel: "prose"`
+   (append-only; NUNCA sobrescreva os registros `structured` ja
+   existentes — R-1, vale o mais recente):
+   ```bash
+   _now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   _cur=$(state-rw.sh get --state-dir "$STATE_DIR" --field '.optin_responses // []')
+   _new=$(printf '%s' "$_cur" | jq -c --arg f "$_f" --arg v "$_applied_value" --arg ts "$_now" \
+     '. + [{field: $f, channel: "prose", outcome: "accepted", applied_value: $v, recorded_at: $ts, reason: null}]')
+   state-rw.sh set --state-dir "$STATE_DIR" --field '.optin_responses' --value "$_new"
+   ```
+   Sem operador para responder (execucao nao-interativa): grave
+   `outcome: "absent"` em vez de `"accepted"` — mesmo default seguro do
+   ramo legado, nunca `"declined"` (nao houve recusa explicita, so
+   ausencia de quem decida).
+3. **Anti-loop (R-3)**: este passo roda **no maximo uma vez** por campo
+   por execucao. Um registro mais recente que JA tenha `channel: "prose"`
+   encerra o campo qualquer que seja o `outcome` — nunca rode a prosa de
+   novo para ele (nao deveria acontecer nesta secao, ja que ela so roda
+   uma vez por spawn, mas e a mesma regra que a tool aplica no lado MCP).
+
+Depois de persistir TODOS os campos degradados, **re-spawne o
+orquestrador** (repita o bloco de spawn de "4." acima, com
+`tipo_invocacao: "primeira_invocacao"` — a onda-001 ainda nao abriu, nao
+ha ponteiro para avancar). No re-spawn, `collect_optins` (1.bis do
+orquestrador) detecta que TODOS os campos aplicaveis ja tem registro
+(agora terminal, `channel: "prose"`) e retorna `reused` sem re-disparar
+`elicitation/create` (cap M6) — o operador NUNCA e perguntado duas vezes
+pelo mesmo campo. So entao prossiga normalmente a `5.pre`.
+
 ### 5.pre Rede de seguranca de fechamento de onda (OBRIGATORIO — antes do schedule)
 
 > **Bug recorrente**: o orquestrador frequentemente RETORNA sem fechar a

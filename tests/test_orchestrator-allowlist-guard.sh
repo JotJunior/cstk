@@ -233,6 +233,42 @@ EOF
   printf '%s\n' "$TMPDIR_TEST/so-nativa.md"
 }
 
+# _fixture_item8_correto / _fixture_item8_invertido (FASE 7.2.3, dec-089)
+# Fixtures MINIMAS com marcadores MCP-VS-BASH reais, isolando so o item 8
+# (nao os demais 8 itens de conteudo minimo). A versao "invertido" mantem
+# o literal `elicitation/create` (para provar que uma assercao so por esse
+# literal e cega) mas reescreve a semantica para "sempre permitido" —
+# removendo as duas frases que amarram o recorte (b) da FASE 7.1.1.
+_fixture_item8_correto() {
+  cat > "$TMPDIR_TEST/item8-correto.md" <<'EOF'
+---
+name: fixture-item8-correto
+tools: Bash
+---
+<!-- MCP-VS-BASH:BEGIN -->
+8. `elicitation/create` tem dois recortes: (a) permitido — disparar
+   collect_optins quando ha operador humano presente na sessao; (b) fora
+   de escopo — sem operador humano presente permanece Deferred (FR-010).
+<!-- MCP-VS-BASH:END -->
+EOF
+  printf '%s\n' "$TMPDIR_TEST/item8-correto.md"
+}
+
+_fixture_item8_invertido() {
+  cat > "$TMPDIR_TEST/item8-invertido.md" <<'EOF'
+---
+name: fixture-item8-invertido
+tools: Bash
+---
+<!-- MCP-VS-BASH:BEGIN -->
+8. `elicitation/create` e SEMPRE permitido, independente de operador
+   humano estar presente na sessao. Nao ha excecao: nada fica pendente
+   nem aguardando definicao futura.
+<!-- MCP-VS-BASH:END -->
+EOF
+  printf '%s\n' "$TMPDIR_TEST/item8-invertido.md"
+}
+
 # ---------- Scenarios sobre os alvos REAIS (glob) ----------
 
 # scenario_orchestrator_glob_nao_vazio (anti-ponto-cego, research Decision 3)
@@ -267,12 +303,18 @@ scenario_allowlist_nunca_vazia_nem_so_mcp() {
   return 0
 }
 
-# scenario_allowlist_declara_as_7_tools_mcp (FR-003)
-# Comparacao LITERAL contra as 7 entradas exatas — nunca regex
+# scenario_allowlist_declara_as_8_tools_mcp (FR-003 + FASE 7.2/dec-087,
+# dec-089)
+# Comparacao LITERAL contra as 8 entradas exatas — nunca regex
 # `mcp__cstk-state__.*` (plan.md "Convencoes de Borda", protege contra
-# typo silencioso). ESPERADO FALHAR ate a FASE 3 desta feature aplicar as
-# 7 tools MCP no frontmatter dos 2 orquestradores reais (tasks.md 1.2.3).
-scenario_allowlist_declara_as_7_tools_mcp() {
+# typo silencioso). A 8a tool (`collect_optins`, feature
+# `mcp-elicitation-optins`) foi incluida no required set porque e o
+# PRIMEIRO ato do orquestrador (bootstrap da onda-001) — sem este scenario
+# exigindo-a, a tool pode ser removida do frontmatter sem que o guard
+# acuse (mesma classe do guard inerte revogado em
+# orchestrator-mcp-allowlist). Prova por mutacao em
+# scenario_prova_deteccao_mutacao_collect_optins abaixo.
+scenario_allowlist_declara_as_8_tools_mcp() {
   _targets=$(_list_orchestrator_targets)
   if [ -z "$_targets" ]; then
     _error "sem_alvos" "nenhum orquestrador encontrado para avaliar"
@@ -284,7 +326,8 @@ mcp__cstk-state__record_skill
 mcp__cstk-state__record_task
 mcp__cstk-state__register_human_block
 mcp__cstk-state__close_wave
-mcp__cstk-state__get_status"
+mcp__cstk-state__get_status
+mcp__cstk-state__collect_optins"
   _old_ifs="$IFS"
   IFS='
 '
@@ -435,6 +478,47 @@ scenario_prova_deteccao_forma_inline() {
   return 0
 }
 
+# scenario_prova_mutacao_item8_inverte_semantica (tasks.md 7.2.3, Scenario
+# 9.3) PROVA de que a assercao de item8 (8a/8b/8c em
+# scenario_guidance_block_conteudo_minimo) NAO e cega a uma reescrita que
+# inverte a semantica do item 8 mantendo o literal `elicitation/create`.
+# A fixture invertida mantem 8a mas remove 8b ("quando ha operador humano
+# presente") e 8c ("permanece Deferred") — reproduzindo em miniatura o que
+# aconteceria se um dos 2 orquestradores reais fosse mutado dessa forma.
+scenario_prova_mutacao_item8_inverte_semantica() {
+  _correto=$(_fixture_item8_correto)
+  _body_correto=$(_guidance_block "$_correto")
+  printf '%s\n' "$_body_correto" | grep -qF 'elicitation/create' || {
+    _fail "fixture_correta_sem_8a" "fixture item8-correto deveria conter o literal elicitation/create"
+    return 1
+  }
+  printf '%s\n' "$_body_correto" | grep -qF 'quando ha operador humano presente' || {
+    _fail "fixture_correta_sem_8b" "fixture item8-correto deveria conter 'quando ha operador humano presente'"
+    return 1
+  }
+  printf '%s\n' "$_body_correto" | grep -qF 'permanece Deferred' || {
+    _fail "fixture_correta_sem_8c" "fixture item8-correto deveria conter 'permanece Deferred'"
+    return 1
+  }
+
+  _invertido=$(_fixture_item8_invertido)
+  _body_invertido=$(_guidance_block "$_invertido")
+  printf '%s\n' "$_body_invertido" | grep -qF 'elicitation/create' || {
+    _fail "fixture_invertida_sem_literal" "fixture item8-invertido deveria PRESERVAR o literal elicitation/create (senao a mutacao nao e representativa do risco descrito em 7.2.2)"
+    return 1
+  }
+  if printf '%s\n' "$_body_invertido" | grep -qF 'quando ha operador humano presente'; then
+    _fail "mutacao_nao_detectada_8b" "fixture invertida NAO deveria conter 'quando ha operador humano presente' — se contem, a fixture nao reproduz a inversao de semantica"
+    return 1
+  fi
+  if printf '%s\n' "$_body_invertido" | grep -qF 'permanece Deferred'; then
+    _fail "mutacao_nao_detectada_8c" "fixture invertida NAO deveria conter 'permanece Deferred' — se contem, a fixture nao reproduz a inversao de semantica"
+    return 1
+  fi
+
+  return 0
+}
+
 # ---------- Scenarios do bloco de orientacao MCP-vs-Bash (FASE 4, FR-005/FR-006/FR-011) ----------
 
 # scenario_guidance_block_presente (FR-005)
@@ -462,6 +546,18 @@ scenario_guidance_block_presente() {
 # scenario_guidance_block_conteudo_minimo (FR-006)
 # Grep por trecho-chave estavel de cada um dos 9 itens obrigatorios de
 # data-model.md secao "Conteudo minimo obrigatorio do body".
+#
+# item8 (FASE 7.2.2/dec-089): a mera presenca literal de
+# 'elicitation/create' e uma assercao FRACA — casaria tanto o texto ANTIGO
+# (proibicao total, item 8 pre-revogacao) quanto uma reescrita futura que
+# INVERTESSE a semantica (ex.: "SEMPRE permitido, mesmo sem operador")
+# mantendo o mesmo literal. Por isso item8 exige TRES sub-checks
+# independentes que juntos amarram os dois recortes de 7.1.1: (8a) o
+# literal em si; (8b) o uso permitido condicionado a presenca de operador
+# humano ("quando ha operador humano presente"); (8c) o encaminhamento do
+# caso sem-operador a FR-010/Deferred ("permanece Deferred"). Prova de que
+# 8b/8c realmente detectam inversao de semantica:
+# scenario_prova_mutacao_item8_inverte_semantica abaixo.
 scenario_guidance_block_conteudo_minimo() {
   _targets=$(_list_orchestrator_targets)
   if [ -z "$_targets" ]; then
@@ -486,7 +582,9 @@ scenario_guidance_block_conteudo_minimo() {
     printf '%s\n' "$_body" | grep -qF 'va direto pelo caminho Bash' || _missing_items="$_missing_items item5"
     printf '%s\n' "$_body" | grep -qF 'NUNCA pausa a onda' || _missing_items="$_missing_items item6"
     printf '%s\n' "$_body" | grep -qF 'Mapa operacao MCP' || _missing_items="$_missing_items item7"
-    printf '%s\n' "$_body" | grep -qF 'elicitation/create' || _missing_items="$_missing_items item8"
+    printf '%s\n' "$_body" | grep -qF 'elicitation/create' || _missing_items="$_missing_items item8a"
+    printf '%s\n' "$_body" | grep -qF 'quando ha operador humano presente' || _missing_items="$_missing_items item8b"
+    printf '%s\n' "$_body" | grep -qF 'permanece Deferred' || _missing_items="$_missing_items item8c"
     printf '%s\n' "$_body" | grep -qF 'Nao-exfiltracao do' || _missing_items="$_missing_items item9"
     if [ -n "$_missing_items" ]; then
       _fail "conteudo_minimo_incompleto" "$_t: itens ausentes =>$_missing_items"
