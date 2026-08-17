@@ -642,12 +642,14 @@ fi
 # Decisao de ramo: MCP estruturado vs prosa legada (FASE 5 — mcp-elicitation-optins,
 # dec-080). Probe best-effort ANTES do prompt de opt-in — NUNCA bloqueia (FR-005/FR-012).
 # Escopo de campos do formulario MCP (servidor-side, ja implementado em
-# collect_optins.ts:APPLICABLE_FIELDS_BY_KIND, task 3.1.2): atomic_commit +
-# roadmap_mode (task 5.3.1). O campo de finalidade de entrega e exclusivo
-# de agente-00c (feature-00c roda dentro de um projeto ja calibrado). O
-# ramo LEGADO deste command so tem prosa/flag para atomic_commit
-# (feature-00c nunca ofereceu roadmap-mode por prosa) — nada muda aqui
-# alem do que ja e omitido hoje.
+# collect_optins.ts:APPLICABLE_FIELDS_BY_KIND, task 3.1.2): SOMENTE
+# atomic_commit. roadmap_mode e o campo de finalidade de entrega sao
+# exclusivos de agente-00c (feature-00c roda dentro de um projeto ja
+# calibrado; contrato vigente, ver
+# tests/test_command-spawn-roadmap-mode.sh scenario_ausente_em_feature_00c
+# e dec-010). O ramo LEGADO deste command so tem prosa/flag para
+# atomic_commit (feature-00c nunca ofereceu roadmap-mode por prosa) —
+# nada muda aqui alem do que ja e omitido hoje.
 mkdir -p "$AGENTE_00C_STATE_DIR" 2>/dev/null || :
 _optin_branch="legado"
 if cstk mcp status --state-dir "$AGENTE_00C_STATE_DIR" >/dev/null 2>&1 \

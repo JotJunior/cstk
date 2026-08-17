@@ -143,7 +143,8 @@ handler → `toCallToolResult`)
 - [x] 3.1.2 Implementar a tabela de escopo por `executionKind`
       (`contracts/mcp-tool-collect-optins.md` linhas 48-55):
       `agente-00c` → `atomic_commit` + `roadmap_mode` + `delivery_tier`;
-      `feature-00c` → `atomic_commit` + `roadmap_mode` (sem tier)
+      `feature-00c` → SOMENTE `atomic_commit` (sem roadmap_mode, sem tier —
+      corrigido pela dec-083; `roadmap_mode` e exclusivo de `agente-00c`)
 - [x] 3.1.3 Montar `ElicitRequestFormParams` com os 3 campos (properties
       `atomic_commit`/`roadmap_mode` enum `["nao","sim"]` com
       `default: "nao"`; `delivery_tier` enum de 4 tokens **sem** `default`
@@ -348,8 +349,9 @@ Ref: mesmo padrao de 5.1, escopo reduzido (sem `delivery_tier`);
 start` + injecao de token); linha ~711 (comentario stale)
 
 - [x] 5.3.1 Replicar 5.1.1-5.1.3 em `feature-00c.md`, com escopo de campos
-      restrito a `atomic_commit` + `roadmap_mode` (paridade de escopo
-      preservada, `executionKind === "feature-00c"` nunca oferece tier)
+      restrito a SOMENTE `atomic_commit` (corrigido pela dec-083 —
+      `roadmap_mode` e exclusivo de `agente-00c`;
+      `executionKind === "feature-00c"` nunca oferece tier nem roadmap)
 - [x] 5.3.2 Corrigir o comentario stale em `plugins/cstk/commands/
       feature-00c.md` (~linha 711: "degrada sozinho para
       mode=bash-fallback") — mesma correcao de 5.1.4. **NAO** tocar a
@@ -367,14 +369,26 @@ Ref: mesmo padrao de 5.2
 
 Ref: `plan.md` Summary item 2; `data-model.md` Invariante I-2
 
-- [ ] 5.5.1 Em `plugins/cstk/agents/agente-00c-orchestrator.md` e
-      `plugins/cstk/agents/agente-00c-feature-orchestrator.md`: quando o
-      token MCP estiver presente no prompt de spawn, o orquestrador MUST
-      chamar `mcp__cstk-state__collect_optins` como o **primeiro ato** da
-      execucao, ANTES de `state-ondas.sh start`/`open_wave` da onda-001
-- [ ] 5.5.2 Implementar Invariante I-2: nenhuma onda pode abrir enquanto
-      houver `field` aplicavel ao `executionKind` sem registro em
-      `.optin_responses[]` (guarda mecanica completa em FASE 9.3/M4)
+- [x] 5.5.1 Em `plugins/cstk/agents/agente-00c-orchestrator.md` (passo
+      1.bis de "Loop principal de uma onda") e
+      `plugins/cstk/agents/agente-00c-feature-orchestrator.md` (passo
+      3.bis de "Pre-flight da execucao"): quando o token MCP estiver
+      presente no prompt de spawn E `mcp__cstk-state__collect_optins`
+      estiver visivel no toolset da sessao, o orquestrador MUST chamar
+      `mcp__cstk-state__collect_optins` como o **primeiro ato** da
+      execucao, ANTES de `state-ondas.sh start`/`open_wave` da onda-001,
+      SOMENTE nessa primeira invocacao (retomadas leem
+      `.optin_responses[]`, cap M6/dec-057). Pre-requisito nao previsto
+      pela ordem original do backlog: exigiu revogar o item 8 (clausula
+      `elicitation/create`) e declarar `mcp__cstk-state__collect_optins`
+      no frontmatter `tools:` dos 2 orquestradores — puxado da FASE 7.1
+      para esta onda (ver 7.1.1/7.1.2 abaixo), senao a prosa nova
+      contradiria o item 8 vigente
+- [x] 5.5.2 Implementar Invariante I-2 (prosa): nenhuma onda pode abrir
+      enquanto houver `field` aplicavel ao `executionKind` sem registro em
+      `.optin_responses[]` — documentado nos dois orquestradores junto do
+      passo do item 5.5.1 (guarda MECANICA completa permanece em FASE
+      9.3/M4, nao implementada aqui)
 
 ---
 
@@ -432,7 +446,7 @@ Ref: `plugins/cstk/agents/agente-00c-orchestrator.md` linha 187 (item 8);
 (item 8); `contracts/mcp-tool-collect-optins.md` §Gate de composicao;
 dec-028/dec-029/dec-032
 
-- [ ] 7.1.1 Reescrever o item 8 nos DOIS orquestradores: de "permanece
+- [x] 7.1.1 Reescrever o item 8 nos DOIS orquestradores: de "permanece
       FORA de escopo de uso ativo enquanto FR-010 estiver Deferred... nao
       invoque nenhuma tool MCP que dependa dela sem essa definicao" para
       um texto que distinga os DOIS recortes: (a) **permitido** — disparar
@@ -440,10 +454,16 @@ dec-028/dec-029/dec-032
       (caminho desta feature); (b) **fora de escopo** — invocar
       `elicitation/create` a partir de um subagente SEM operador humano
       presente permanece Deferred (`docs/specs/orchestrator-mcp-allowlist/
-      spec.md` FR-010), inalterado por esta feature
-- [ ] 7.1.2 Adicionar `mcp__cstk-state__collect_optins` a frontmatter
+      spec.md` FR-010), inalterado por esta feature. Puxada para a onda de
+      5.5 (pre-requisito funcional — 5.5 nao pode instruir uma chamada que
+      o proprio item 8 vigente proibia). Texto MANTIDO byte-identico entre
+      os dois orquestradores (bloco `MCP-VS-BASH:BEGIN/END`,
+      `scenario_guidance_block_paridade`) — referencias a passo numerado
+      evitadas de proposito (numeracao diverge entre os 2 arquivos)
+- [x] 7.1.2 Adicionar `mcp__cstk-state__collect_optins` a frontmatter
       `tools:` dos dois orquestradores (`agente-00c-orchestrator.md`,
-      `agente-00c-feature-orchestrator.md`)
+      `agente-00c-feature-orchestrator.md`). MESMO commit/onda de 7.1.1
+      (gate de composicao respeitado)
 
 ### 7.2 Fortalecer o guard `test_orchestrator-allowlist-guard.sh` + mutacao `[C]`
 

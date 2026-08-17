@@ -134,7 +134,11 @@ export interface CollectOptinsDeps {
 
 const FIELDS_BY_EXECUTION_KIND: Readonly<Record<string, readonly FieldName[]>> = {
   "agente-00c": ["atomic_commit", "roadmap_mode", "delivery_tier"],
-  "feature-00c": ["atomic_commit", "roadmap_mode"],
+  // feature-00c so oferece atomic_commit — roadmap_mode e exclusivo de
+  // agente-00c (contrato vigente, ver tests/test_command-spawn-roadmap-mode.sh
+  // scenario_ausente_em_feature_00c; dec-083 corrige regressao introduzida
+  // na onda-011).
+  "feature-00c": ["atomic_commit"],
 };
 
 function applicableFieldsFor(executionKind: string): readonly FieldName[] {

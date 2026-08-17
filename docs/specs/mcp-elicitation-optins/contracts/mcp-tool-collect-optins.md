@@ -56,7 +56,7 @@ comprometido na propria borda de entrada.
 | `executionKind` | `atomic_commit` | `roadmap_mode` | `delivery_tier` |
 |-----------------|-----------------|----------------|-----------------|
 | `agente-00c` | sim | sim | **sim** |
-| `feature-00c` | sim | sim | **nao** (paridade de escopo preservada) |
+| `feature-00c` | sim | **nao** (exclusivo de `agente-00c`; contrato vigente, `tests/test_command-spawn-roadmap-mode.sh` `scenario_ausente_em_feature_00c`, dec-010/dec-083) | **nao** |
 
 ### Response (envelope de tool)
 

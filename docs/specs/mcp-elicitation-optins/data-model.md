@@ -192,7 +192,8 @@ R-2), o formulario estruturado MUST NOT ser invocado de novo para aquele campo
 
 **Invariante I-2 (FR-012)**: nenhuma onda pode ser aberta enquanto houver
 `field` aplicavel ao `executionKind` corrente **sem** registro. "Aplicavel"
-exclui `delivery_tier` quando `executionKind === "feature-00c"`.
+exclui `delivery_tier` **e** `roadmap_mode` quando `executionKind ===
+"feature-00c"` (dec-083 — `roadmap_mode` e exclusivo de `agente-00c`).
 
 **Invariante I-3 (FR-006)**: em **todo** desfecho que nao seja `accepted`, o
 `applied_value` MUST ser identico ao default seguro ja gravado pela etapa (1)

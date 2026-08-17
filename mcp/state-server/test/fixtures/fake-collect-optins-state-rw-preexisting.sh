@@ -1,7 +1,9 @@
 #!/bin/sh
 # Fixture: simula state-rw.sh get/set para `.optin_responses` ja com registro
-# para os 2 campos aplicaveis a feature-00c (atomic_commit + roadmap_mode) —
-# usado pelo teste do cap M6 (task 3.3.1: 2a coleta recusada, reuso).
+# para atomic_commit + roadmap_mode. Usada pelo teste do cap M6 (task 3.3.1:
+# 2a coleta recusada, reuso) sob FEATURE_SESSION, onde SOMENTE atomic_commit
+# e aplicavel (dec-083) — o registro extra de roadmap_mode existe so para
+# comprovar que campos nao-aplicaveis sao ignorados no calculo de `reused`.
 set -eu
 _cmd="${1:-}"
 shift || true

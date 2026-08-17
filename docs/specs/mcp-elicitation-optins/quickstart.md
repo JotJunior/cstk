@@ -116,11 +116,13 @@ final nao distingue "gravou com flag" de "gravou sem flag".
 ## Scenario 2: Escopo por orquestrador (FR-001, Edge Case)
 
 1. Iniciar `/feature-00c` (nao `/agente-00c`) no ramo ESTRUTURADO
-2. **Expected**: o formulario tem **2** campos — `atomic_commit` e
-   `roadmap_mode`. O campo de finalidade de entrega **NAO** aparece.
+2. **Expected**: o formulario tem **1** campo — `atomic_commit`. Nem
+   `roadmap_mode` nem o campo de finalidade de entrega aparecem (ambos
+   exclusivos de `agente-00c`; dec-083).
 3. `delivery-tier.sh get --state-dir "$SD"` → `cloud-public` (default do init,
-   intocado)
-4. `.optin_responses[]` tem **2** entradas; nenhuma para `delivery_tier`
+   intocado); `roadmap-mode.sh get --state-dir "$SD"` → default intocado
+4. `.optin_responses[]` tem **1** entrada; nenhuma para `roadmap_mode`/
+   `delivery_tier`
 
 > Derivado de `ResolvedSession.executionKind` (VERIFICADO), nao de heuristica
 > de path.

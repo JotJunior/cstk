@@ -105,59 +105,80 @@ test("handleCollectOptins: capability elicitation ausente => outcome unavailable
     },
   };
 
-  const response = await handleCollectOptins(input, baseDeps(server));
+  // AGENTE_SESSION (3 campos aplicaveis): feature-00c so tem atomic_commit
+  // (dec-083) — o cenario de 2+ campos exercita agente-00c.
+  const response = await handleCollectOptins(input, { ...baseDeps(server), session: AGENTE_SESSION });
 
   assert.equal(response.outcome, "accepted");
   assert.equal(response.result?.mechanism, "unavailable");
   assert.equal(called, false);
   assert.deepEqual(
     response.result?.fields.map((f) => f.outcome),
-    ["unavailable", "unavailable"],
+    ["unavailable", "unavailable", "unavailable"],
   );
 });
 
-test("handleCollectOptins: action=accept com os 2 campos presentes => outcome accepted, escreve via commit-mode/roadmap-mode", async () => {
+test("handleCollectOptins: action=accept com os 2 campos presentes (agente-00c) => outcome accepted, escreve via commit-mode/roadmap-mode", async () => {
   const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
   const server: ElicitationServer = {
     getClientCapabilities: () => ({ elicitation: {} }),
     elicitInput: async () => ({
       action: "accept",
-      content: { atomic_commit: "sim", roadmap_mode: "nao" },
+      content: { atomic_commit: "sim", roadmap_mode: "nao", delivery_tier: "cloud-public" },
     }),
   };
 
-  const response = await handleCollectOptins(input, baseDeps(server));
+  // roadmap_mode e exclusivo de agente-00c (dec-083) — usa AGENTE_SESSION.
+  const response = await handleCollectOptins(input, { ...baseDeps(server), session: AGENTE_SESSION });
 
   assert.equal(response.outcome, "accepted");
-  assert.equal(response.result?.mechanism, "structured");
   assert.deepEqual(response.result?.fields, [
     { field: "atomic_commit", outcome: "accepted", applied_value: "true" },
     { field: "roadmap_mode", outcome: "accepted", applied_value: "false" },
+    { field: "delivery_tier", outcome: "accepted", applied_value: "cloud-public" },
   ]);
 });
 
-test("handleCollectOptins: action=accept com campo ausente em content => outcome absent (default seguro, sem escrita)", async () => {
+test("handleCollectOptins (feature-00c, dec-083): escopo restrito a SOMENTE atomic_commit — roadmap_mode/delivery_tier nao aparecem", async () => {
+  const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
+  const server: ElicitationServer = {
+    getClientCapabilities: () => ({ elicitation: {} }),
+    elicitInput: async () => ({
+      action: "accept",
+      content: { atomic_commit: "sim", roadmap_mode: "sim", delivery_tier: "local" },
+    }),
+  };
+
+  const response = await handleCollectOptins(input, baseDeps(server)); // FEATURE_SESSION (default)
+
+  assert.equal(response.outcome, "accepted");
+  assert.deepEqual(response.result?.fields, [
+    { field: "atomic_commit", outcome: "accepted", applied_value: "true" },
+  ]);
+});
+
+test("handleCollectOptins: action=accept com campo ausente em content (agente-00c) => outcome absent (default seguro, sem escrita)", async () => {
   const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
   const server: ElicitationServer = {
     getClientCapabilities: () => ({ elicitation: {} }),
     elicitInput: async () => ({ action: "accept", content: { atomic_commit: "sim" } }),
   };
 
-  const response = await handleCollectOptins(input, baseDeps(server));
+  const response = await handleCollectOptins(input, { ...baseDeps(server), session: AGENTE_SESSION });
 
   assert.equal(response.outcome, "accepted");
   const roadmap = response.result?.fields.find((f) => f.field === "roadmap_mode");
   assert.deepEqual(roadmap, { field: "roadmap_mode", outcome: "absent", applied_value: "false" });
 });
 
-test("handleCollectOptins: action=decline => outcome declined para todos os campos, default seguro", async () => {
+test("handleCollectOptins: action=decline (agente-00c) => outcome declined para todos os campos, default seguro", async () => {
   const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
   const server: ElicitationServer = {
     getClientCapabilities: () => ({ elicitation: {} }),
     elicitInput: async () => ({ action: "decline", content: {} }),
   };
 
-  const response = await handleCollectOptins(input, baseDeps(server));
+  const response = await handleCollectOptins(input, { ...baseDeps(server), session: AGENTE_SESSION });
 
   assert.equal(response.outcome, "accepted");
   assert.deepEqual(
@@ -165,6 +186,7 @@ test("handleCollectOptins: action=decline => outcome declined para todos os camp
     [
       { field: "atomic_commit", outcome: "declined", applied_value: "false" },
       { field: "roadmap_mode", outcome: "declined", applied_value: "false" },
+      { field: "delivery_tier", outcome: "declined", applied_value: "cloud-public" },
     ],
   );
 });
@@ -258,9 +280,12 @@ test("handleCollectOptins (cap M6, task 3.3.1): todos os campos aplicaveis ja re
 
   const response = await handleCollectOptins(input, deps);
 
+  // FEATURE_SESSION so tem 1 campo aplicavel (atomic_commit, dec-083) — a
+  // fixture devolve registro tambem para roadmap_mode, mas esse campo nao e
+  // aplicavel a feature-00c e portanto e ignorado no calculo de `reused`.
   assert.equal(called, false);
   assert.equal(response.outcome, "accepted");
-  assert.deepEqual(response.result?.reused, ["atomic_commit", "roadmap_mode"]);
+  assert.deepEqual(response.result?.reused, ["atomic_commit"]);
 });
 
 test("handleCollectOptins (C-2, dec-047): delivery_tier — rebaixamento passa --allow-downgrade; elevacao/no-op NAO passa", async () => {
