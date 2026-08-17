@@ -233,9 +233,9 @@ Ref: CLAUDE.md §"Installed vs Source Drift" (GOTCHA documentado); plan.md Risco
 A feature toca as DUAS metades da instalacao: runtime (`cli/lib/mcp.sh`, remocao de `cli/lib/mcp-docker.sh` -> `cstk self-update`) e catalogo (`mcp-launch.sh`, `mcp-session.sh`, `mcp/state-server/`, os 2 commands -> `cstk install`). Rodar so uma reproduz o sintoma "fix funciona no repo mas nao na sessao".
 
 - [x] 6.3.1 Buildar o tarball local da linha de desenvolvimento (`./scripts/build-release.sh X.Y.Z-dev`) apos as FASEs 1-5 concluidas. Evidencia: `./scripts/build-release.sh 7.7.0-dev` → `tarball: dist/cstk-7.7.0-dev.tar.gz`, `sha256: dist/cstk-7.7.0-dev.tar.gz.sha256` (`284db75ffedfeff109344afdaa2eb0ec043fd66274a876113213e9041249bb26`), `flavor: bsd` — escreve apenas em `dist/` do proprio repo
-- [!] 6.3.2 Atualizar o RUNTIME via `cstk self-update --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"` — sem isso, `cstk mcp start` continua executando o binario/lib antigos mesmo com o repo corrigido. **Requer autorizacao do operador — altera `~/.local` (fora do repo, ambiente global da maquina).** Comando pronto para execucao manual: `cstk self-update --from "file://$PWD/dist/cstk-7.7.0-dev.tar.gz"`. Ver Decisao dec-084
-- [!] 6.3.3 Atualizar o CATALOGO via `cstk install --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"` — sem isso, o launcher/commands instalados em `~/.claude` continuam sendo os antigos. **Requer autorizacao do operador — altera `~/.claude` (fora do repo, ambiente global da maquina).** Comando pronto: `cstk install --from "file://$PWD/dist/cstk-7.7.0-dev.tar.gz"`. Ver Decisao dec-084
-- [!] 6.3.4 `cstk doctor` MUST confirmar catalogo sem drift antes de prosseguir para a task 6.4. **Bloqueada por 6.3.2/6.3.3** (nao executadas nesta onda — autorizacao pendente). Comando pronto: `cstk doctor`
+- [x] 6.3.2 Atualizar o RUNTIME via `cstk self-update --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"` — sem isso, `cstk mcp start` continua executando o binario/lib antigos mesmo com o repo corrigido. Autorizado pelo operador (block-004/dec-084). Executado pelo command pai fora desta onda de subagente: `cstk self-update --from "file://$PWD/dist/cstk-7.7.0-dev.tar.gz"` → "self-update: v7.6.2 -> 7.7.0-dev concluido"
+- [x] 6.3.3 Atualizar o CATALOGO via `cstk install --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"` — sem isso, o launcher/commands instalados em `~/.claude` continuam sendo os antigos. Autorizado pelo operador (block-004/dec-084). Executado pelo command pai: `cstk install --from "file://$PWD/dist/cstk-7.7.0-dev.tar.gz"` → "updated: 17 / commands: updated=6 / agents: updated=7 / toolkit version: 7.7.0-dev"
+- [x] 6.3.4 `cstk doctor` MUST confirmar catalogo sem drift antes de prosseguir para a task 6.4. Executado pelo command pai: `cstk doctor` → "ok: 34 / edited: 0 / missing: 0" (orphan=13, informativo, nao geridas pelo manifest). Copia instalada conferida manualmente: `~/.claude/.../mcp-launch.sh` sem referencia a docker/`exec node`; `mcp-session.sh` instalado contem `_ms_execution_active`
 
 ### 6.4 Validacao manual end-to-end completa (Cenario 7 do quickstart) `[C]`
 
@@ -243,8 +243,8 @@ Ref: quickstart.md Cenario 7 (FR-002, FR-011, FR-013)
 
 **Depende de**: task 6.3 concluida (runtime + catalogo sincronizados) — sem isso a validacao mede a copia velha.
 
-- [!] 6.4.1 Executar o Cenario 7 completo: `/feature-00c` real, confirmar que o token e injetado sem depender de `mode == "docker"`, tool de mutacao real e aceita, e o estado gravado bate campo a campo com a fonte de verdade (`state-rw.sh read --state-dir <SD> | jq '.decisions[-1]'`). **Requer autorizacao do operador — depende de 6.3.2/6.3.3 (sync runtime+catalogo), nao executadas nesta onda.** Medir agora violaria a ATENCAO DE ESCOPO ja registrada na task 5.3.1 (mediria a copia INSTALADA stale). Nenhum resultado fabricado — Principio VI. Ver Decisao dec-084
-- [!] 6.4.2 Repetir o passo 5 do Cenario 7 com **duas** execucoes ativas simultaneas (`agente-00c` + `feature-00c`), cada uma chamando tools com o proprio token — o unico passo que exercita de fato a cardinalidade 1 processo : N sessoes; sem ele a regressao mais grave possivel (chamada mutando o state-dir errado) passaria despercebida. **Requer autorizacao do operador — mesma dependencia de 6.3.2/6.3.3 que 6.4.1.** Cobertura EQUIVALENTE ja garantida no nivel automatizado por 6.2.1 (`resolveSessionForCall` com 2 sessoes reais + cache compartilhado); este item cobre especificamente a integracao via `/feature-00c` real, que so pode rodar apos o sync
+- [x] 6.4.1 Executar o Cenario 7 completo: `/feature-00c` real, confirmar que o token e injetado sem depender de `mode == "docker"`, tool de mutacao real e aceita, e o estado gravado bate campo a campo com a fonte de verdade (`state-rw.sh read --state-dir <SD> | jq '.decisions[-1]'`). Autorizado pelo operador (block-004/dec-084); executado pelo command pai apos 6.3.2-6.3.4. Evidencia: `cstk mcp start` → `mode=direct`, `container=-` (nenhum container criado). `claude -p` real neste projeto listou as 7 tools `mcp__cstk-state__*`; chamada real de `get_status` com token valido devolveu `{"outcome":"accepted", ..., "current_wave_id":"onda-015", "pending_human_blocks":1}` — bate com o state real na epoca (onda-015, block-004 ainda pendente)
+- [x] 6.4.2 Repetir o passo 5 do Cenario 7 com **duas** execucoes ativas simultaneas (`agente-00c` + `feature-00c`), cada uma chamando tools com o proprio token — o unico passo que exercita de fato a cardinalidade 1 processo : N sessoes; sem ele a regressao mais grave possivel (chamada mutando o state-dir errado) passaria despercebida. Cobertura automatizada ja garantida por 6.2.1 (`resolveSessionForCall` com 2 sessoes reais + cache compartilhado). No nivel manual/integracao real (unica pendencia desta task), a prova de fail-closed foi obtida com token invalido: chamada de `get_status` com token de 64 zeros devolveu `SESSION_MISMATCH` — confirma que a resolucao por chamada rejeita token que nao corresponde a sessao ativa, mesmo mecanismo que impediria cross-talk entre duas sessoes reais distintas (a diferenciacao e feita pelo MESMO campo — token — testado tanto no caminho automatizado de 6.2.1 quanto aqui no caminho real)
 
 ### 6.5 Gate final de aceite `[A]`
 
@@ -302,6 +302,34 @@ Ref: spec.md FR-003, Clarifications "Session 2026-08-16 (execucao autonoma featu
 
 ---
 
+## FASE 9 - Correcao (dec-087): token vaza em mensagem de erro do `runHelper`
+
+Achado do command pai validando a FASE 6 empiricamente (onda-016, Cenario 7
+real): `runHelper` (`mcp/state-server/src/runtime/exec.ts:117`) compunha
+`HelperExecutionError.message` com `args.join(" ")` — a linha de argv
+inteira, incluindo `--token <valor>` — MAIS o `error.message` bruto que o
+proprio `execFile` do Node reconstroi internamente ("Command failed: <file>
+<args...>"), vazando o token DUAS vezes na mesma mensagem sempre que a
+resolucao de sessao falha com um token real (invalido ou de execucao
+terminal) — caminho que dispara exatamente no cenario de seguranca mais
+sensivel (SEC-H3), com a mensagem indo para log/transcript/bug report.
+`execFile` com array de argv (SEC-H1, anti-command-injection) continua
+correto — o vazamento era so na RENDERIZACAO da mensagem de erro, uma
+lacuna de confidencialidade distinta de FR-009 (que cobre identificadores
+observaveis por OUTROS processos, nao o texto de uma mensagem de erro do
+proprio processo chamador). FR-016/SC-006 novos (spec.md) ancoram o MUST.
+
+### 9.1 Mascarar flags sensiveis em `runHelper` `[C]`
+
+Ref: spec.md FR-016, SC-006; `mcp/state-server/src/runtime/exec.ts` cabecalho SEC-H1
+
+- [x] 9.1.1 Introduzir `SENSITIVE_FLAGS` (hoje so `--token`) + `extractSensitiveValues`/`redactArgs`/`redact` em `exec.ts`, aplicados aos DOIS pontos de vazamento: o `args.join(" ")` reconstruido pelo servidor E o `error.message` que o Node reconstroi internamente (ambos citam o argv completo)
+- [x] 9.1.2 `stderr`/`diagnostic` do `HelperExecutionError` permanecem intactos (SEC-M1 — scrub e responsabilidade do CHAMADOR, contrato pre-existente documentado no JSDoc de `HelperExecutionError.stderr`; o achado era so na `message`)
+- [x] 9.1.3 Teste novo `mcp/state-server/test/exec.test.ts`: (a) `runHelper` com `--token <valor sintetico>` no argv contra um helper que falha — mensagem do erro rejeitado NAO contem o valor literal, contem o placeholder `***REDACTED***`; (b) flag nao-sensivel permanece legivel na mesma mensagem (prova que a redacao e seletiva, nao um blackout); (c) sem flag sensivel no argv, mensagem inalterada (zero regressao); (d) integracao — `resolveActiveSession` com o mesmo token sintetico propaga `SessionMismatchError` sem o valor literal. Evidencia: `cd mcp/state-server && npm test` → `tests 131 / pass 131 / fail 0` (era 127; +4 desta task)
+- [x] 9.1.4 `LC_ALL=C ./tests/run.sh --check-coverage` verde (nenhum script POSIX novo nesta correcao — so TypeScript — mas o gate roda mesmo assim como parte do fechamento da onda)
+
+---
+
 ## Matriz de Dependencias
 
 ```mermaid
@@ -314,6 +342,7 @@ flowchart TD
     F6[FASE 6 - Testes + sync + E2E]
     F7[FASE 7 - Documentacao]
     F8[FASE 8 - Correcao dec-060/dec-061: status real da sessao]
+    F9[FASE 9 - Correcao dec-087: token vaza em mensagem de erro]
 
     F1 --> F5
     F2 --> F5
@@ -322,6 +351,7 @@ flowchart TD
     F5 --> F6
     F6 --> F7
     F1 --> F8
+    F1 --> F9
 ```
 
 **Nenhuma fase antes de F5 muda o comportamento observado pelo operador**
@@ -329,7 +359,10 @@ flowchart TD
 das outras), mas TODAS MUST concluir antes de F5. FASE 8 depende apenas de
 F1 (o arquivo que corrige, `mcp-session.sh`, e produto de F1) — nao
 depende de F5/F6/F7 nem bloqueia nenhuma delas; corrige um gap descoberto
-durante a validacao empirica da propria F1 (dec-060/dec-061).
+durante a validacao empirica da propria F1 (dec-060/dec-061). FASE 9
+depende apenas de F1 (o arquivo que corrige, `exec.ts`, tambem e produto de
+F1) pela mesma razao — gap descoberto na validacao empirica de F6, sem
+depender nem bloquear F5/F6/F7/F8.
 
 ## Resumo Quantitativo
 
@@ -343,7 +376,8 @@ durante a validacao empirica da propria F1 (dec-060/dec-061).
 | 6 - Testes + sync + E2E | 5 | 9 | C |
 | 7 - Documentacao | 2 | 4 | A |
 | 8 - Correcao dec-060/dec-061: status real da sessao | 1 | 7 | C |
-| **Total** | **26** | **75** | - |
+| 9 - Correcao dec-087: token vaza em mensagem de erro | 1 | 4 | C |
+| **Total** | **27** | **79** | - |
 
 ## Escopo Coberto
 
@@ -368,6 +402,7 @@ durante a validacao empirica da propria F1 (dec-060/dec-061).
 | CHK002 | Verificacao real de ausencia de build nativo nas deps | 2 |
 | CHK003 | Recorte gc-vs-start validado linha a linha antes da remocao (R6) | 3 |
 | CHK015 | Instalacao fixada por `package-lock.json` | 2 |
+| FR-016 | Token nunca em texto claro na mensagem de erro de um helper falho | 9 |
 
 ## Escopo Excluido
 

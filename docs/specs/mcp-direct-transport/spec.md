@@ -237,6 +237,16 @@ claro.
   remanescentes de sessoes criadas antes do cutover — `gc` NAO se torna
   no-op apos esta feature; apenas deixa de ter containers NOVOS para
   gerenciar (toda sessao criada apos o cutover usa transporte direto).
+- **FR-016**: Quando uma chamada de helper POSIX falhar, a mensagem de erro
+  resultante (`HelperExecutionError.message`, propagada por
+  `resolveActiveSession`/`SessionMismatchError` e por qualquer chamador que
+  a logue/serialize) MUST nunca conter o token de capacidade em texto
+  claro — nem via reconstrucao do argv feita pelo servidor, nem via
+  reconstrucao interna que o runtime do Node faca da linha de comando.
+  Achado do command pai na validacao e2e real desta feature (dec-087):
+  distinto de FR-009 (identificador observavel por outros processos) — o
+  vetor aqui e o texto de uma mensagem de erro que chega a log/transcript/
+  bug report do proprio processo que fez a chamada.
 
 > Decisoes de infraestrutura: a unica politica aplicavel e idempotencia de
 > `cstk mcp start`/`stop` (FR-010, FR-008) — chamadas repetidas nao devem
@@ -284,6 +294,10 @@ claro.
 - **SC-005**: Chamar `cstk mcp start` duas vezes seguidas para a mesma
   execucao nao produz um segundo processo nem interrompe chamadas de tool
   que ja estivessem em curso contra a sessao existente.
+- **SC-006**: Uma chamada de helper POSIX que falha com um token real
+  (invalido ou de execucao terminal) presente no argv produz uma mensagem
+  de erro que NAO contem o token em texto claro, verificado por teste
+  automatizado contra o valor literal do token sintetico usado no cenario.
 
 ## Delta Requirements
 
