@@ -5,6 +5,50 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.1.1] - 2026-08-17
+
+Três bugfixes com causa-raiz já diagnosticada e evidência registrada — dois
+deles descobertos ao validar a 8.1.0 de verdade na máquina do operador, o
+terceiro visível a qualquer visitante do site. Cada um vem com teste que
+prova o comportamento novo **e** foi verificado por mutação (o teste fica
+vermelho se o fix for revertido).
+
+### Fixed
+
+- **Site do GitHub Pages sem skills, agents e commands desde a v7.0.0.**
+  `docs-site/hooks/gen_pages.py` apontava para `global/` e
+  `language-related/`, movidos por `git mv` para `plugins/cstk/` e
+  `plugins/cstk-language-<lang>/` na feature `claude-plugin-packaging`. Glob
+  sobre diretório ausente devolve 0 sem erro, então `mkdocs --strict`
+  publicava o site com catálogo vazio há semanas. Os `paths:` do trigger de
+  `publish-site.yml` também eram os antigos — editar uma skill nem
+  redisparava o deploy. Agora: descoberta de linguagens por prefixo
+  `cstk-language-` (extensibilidade FR-016 preservada), `RuntimeError` no
+  hook se qualquer categoria global sair vazia, triggers em `plugins/**`, e
+  um step no workflow que conta páginas geradas por categoria e falha em
+  zero — duas linhas de defesa para o que antes não tinha nenhuma.
+- **`mcp-build-lazy.sh` não recompilava com fonte nova** (dec-106). O
+  fast-path era "entrypoint existe ⇒ no-op"; um `dist/` da 8.0.0 cacheado
+  em `~/.claude/mcp/state-server/` nunca era reconstruído quando o
+  `cstk install` trazia a 8.1.0 — o operador ficava com o catálogo novo e o
+  servidor velho, sem a 8ª tool e sem aviso. Agora o no-op exige que a
+  impressão digital da fonte (`package.json` + `package-lock.json` + `src/`,
+  sha256 portável) bata com o stamp gravado no último build
+  (`dist/.source-stamp`). Fonte nova ⇒ rebuild; `dist/` herdado sem stamp ⇒
+  rebuild uma vez. Idempotência preservada quando nada mudou. **Quem
+  atualizar de 8.0.x/8.1.0 é reconstruído automaticamente na primeira
+  chamada** — a limitação declarada em 8.1.0 deixa de existir.
+- **`state-ondas.sh reconcile-wave` avançava a fase `execute-task` com
+  backlog aberto** (dec-098; 4 ocorrências na mesma linha de trabalho).
+  `pipeline.sh next-stage` avança linearmente sem consultar completude, e a
+  rede de segurança do command pai chegava com dezenas de subtarefas
+  pendentes e promovia para `review-task`. Sem tratamento, `next` vazio
+  cairia no ramo terminal e promoveria a execução a `concluida` — desfecho
+  pior que avançar fase. Agora, em `execute-task` com `--tasks-md`, só
+  avança se não restar nenhum `- [ ]`; senão **HOLD**: fecha a onda sem
+  tocar `current_stage` nem `status`, e a `next_instruction` registra o
+  motivo. `--dry-run` reporta o HOLD sem escrever.
+
 ## [8.1.0] - 2026-08-17
 
 Feature `mcp-elicitation-optins`. Os três opt-ins do início de uma execução
@@ -6406,6 +6450,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.1.1]: https://github.com/JotJunior/cstk/releases/tag/v8.1.1
 [8.1.0]: https://github.com/JotJunior/cstk/releases/tag/v8.1.0
 [8.0.1]: https://github.com/JotJunior/cstk/releases/tag/v8.0.1
 [8.0.0]: https://github.com/JotJunior/cstk/releases/tag/v8.0.0
