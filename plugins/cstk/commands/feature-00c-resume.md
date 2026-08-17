@@ -179,6 +179,19 @@ fi
    - Token vazio ou sonda unavailable ⇒ NAO mencione MCP no prompt
      (caminho Bash, zero regressao). Token NUNCA ecoado em stdout/logs.
 
+   **Idempotencia dos opt-ins em retomada (task 5.4.1 — mcp-elicitation-optins,
+   FR-008/FR-011)**: este resume NUNCA re-pergunta o opt-in de atomic-commit
+   por prosa (ja garantido — le `.atomic_commit_enabled` diretamente do
+   state). No ramo estruturado, a mesma garantia vale para `collect_optins`:
+   este command **nao precisa** de logica extra alem da injecao
+   incondicional de token acima — a Invariante I-2 (nenhuma onda abre com
+   campo aplicavel sem registro) e a checagem I-1 (campo com registro
+   terminal nunca re-dispara `elicitation/create`, retorna `reused`) vivem
+   no **orquestrador**/**tool**, nao no command
+   (contracts/optin-capture-order.md §3.2). Injetar o token normalmente e
+   suficiente para permitir a chamada de `reused` se o orquestrador
+   precisar confirmar o estado apos uma retomada.
+
 7. selecionar modelo da onda + delegar ao orquestrador
 
    Migrate defensivo (best-effort): canonicaliza um `state.json` pt-BR

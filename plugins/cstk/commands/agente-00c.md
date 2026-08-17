@@ -294,7 +294,43 @@ state-lock.sh acquire --state-dir <SD> || {
   # .git diretorio (projeto raiz): _canonical e _session permanecem vazios (flags omitidas).
   ```
 
+#### 2.bis Decisao de ramo: MCP estruturado vs prosa legada (FASE 5 — mcp-elicitation-optins, dec-080)
+
+Antes de qualquer prompt de opt-in, decida o ramo de captura via um probe
+best-effort do mecanismo MCP — NUNCA bloqueia a pipeline (FR-005/FR-012):
+
+```bash
+mkdir -p "<SD>" 2>/dev/null || :
+_optin_branch="legado"
+if cstk mcp status --state-dir "<SD>" >/dev/null 2>&1 \
+   && cstk mcp start --state-dir "<SD>" >/dev/null 2>&1; then
+  _optin_token=$(jq -r '.session_id // ""' "<SD>/mcp-server.json" 2>/dev/null) || _optin_token=""
+  [ -n "$_optin_token" ] && _optin_branch="estruturado"
+fi
+```
+
+- `_optin_branch = "legado"` (subcomando `mcp` ausente, `start` falhou, ou
+  token vazio): siga os 3 prompts de prosa abaixo **exatamente como hoje**
+  (byte-a-byte, FR-005) — nenhuma mencao ao MCP, nenhum aviso.
+- `_optin_branch = "estruturado"`: **pule os 3 prompts de prosa abaixo** —
+  a captura acontece via `collect_optins` dentro do turno do orquestrador
+  (ver secao "Injecao do token de capacidade", mais abaixo).
+  `_atomic`/`_roadmap`/`_tier` permanecem NAO-DEFINIDOS neste ramo; o init
+  (secao seguinte) omite as 3 flags correspondentes.
+
+> Este probe reusa o MESMO mecanismo do bloco "Ciclo de vida do servidor
+> MCP" (secao 3.quater, mais abaixo). Chamar `cstk mcp start` de novo
+> depois do init e seguro e idempotente — reusa o `session_id` ja cunhado
+> aqui e apenas refresca `target_project_path` no descritor (dec-080;
+> `mcp.sh:_mcp_cmd_start` sempre re-grava o descritor, mesmo em reuse).
+> `state-rw.sh init` tambem faz `mkdir -p` no state-dir por conta propria
+> — o `mkdir -p` acima e so para o probe rodar ANTES do init existir.
+
 #### Prompt opt-in de commit atomico (FR-001/FR-002 — atomic-commit-pr)
+
+> Aplica-se **apenas** quando `_optin_branch = "legado"` (ver 2.bis acima).
+> No ramo `"estruturado"`, pule este prompt e os dois seguintes por
+> completo — a captura acontece via `collect_optins`.
 
 Antes de inicializar o `state.json`, pergunte ao operador se deseja
 habilitar o modo de commit atomico (opt-in, default "nao"):
@@ -446,12 +482,21 @@ Selecione [1-4, Enter = 4]:
   - `--whitelist-urls <JSON-arr>`
   - `${_canonical:+--canonical-project "$_canonical"}` (quando nao-vazio)
   - `${_session:+--session-name "$_session"}` (quando nao-vazio)
+  - As 3 flags a seguir aplicam-se **apenas** ao ramo `_optin_branch =
+    "legado"` (2.bis acima). No ramo `"estruturado"` as 3 sao **OMITIDAS**
+    por completo — o init grava os defaults seguros do proprio
+    `state-rw.sh` (`false`/`false`/`cloud-public`, FR-012 etapa 1); a
+    captura real acontece depois, via `collect_optins` no primeiro ato do
+    orquestrador
   - `--atomic-commit "$_atomic"` (valor capturado acima; `false` = comportamento atual intacto)
   - `--roadmap-mode "$_roadmap"` (valor capturado acima; `false` = comportamento atual intacto)
   - `--delivery-tier "$_tier"` (valor capturado acima; default `cloud-public` = comportamento atual intacto)
 
   Status inicial: `em_andamento`, etapa `briefing`, `next_instruction`
-  apontando para inicio do briefing.
+  apontando para inicio do briefing. **Pre-requisito duro (dec-031)**: e
+  exatamente este `.execution.status = em_andamento` que habilita as
+  chamadas de tool no ramo estruturado — sem ele, toda chamada retorna
+  `SESSION_MISMATCH` (`mcp-session.sh:25-32`).
 
 ### 3.quater Ciclo de vida do servidor MCP (status/start) — FASE 6 task 6.2.1
 
@@ -465,10 +510,13 @@ if cstk mcp status --state-dir <SD> >/dev/null 2>&1; then
   # nesta instalacao (nao que o Docker esteja de pe — status=unavailable
   # com reason=no-active-execution E ESPERADO neste ponto, ja que o
   # descritor mcp-server.json ainda nao existe para uma execucao recem-
-  # inicializada; cli/lib/mcp.sh::_mcp_print_status_from_descriptor). A
-  # decisao real de disponibilidade de Docker fica DENTRO de `start`, que
-  # faz seu proprio preflight e degrada sozinho para mode=bash-fallback
-  # sem abortar (dec-099, feature state-mcp-server).
+  # inicializada; cli/lib/mcp.sh::_mcp_print_status_from_descriptor).
+  # CORRECAO (dec-034): `start` grava SEMPRE `mode=direct` — nao ha
+  # caminho de codigo que produza `mode=bash-fallback` (mcp.sh:100-107,
+  # :708-709 VERIFICADO; o valor e reservado pelo contrato, nunca emitido
+  # de fato). O discriminador real de indisponibilidade e token vazio /
+  # descritor ausente (`_mcp_token`, mais abaixo), nunca o literal
+  # `mode=bash-fallback`.
   cstk mcp start --state-dir <SD> >/dev/null 2>&1 || :
 else
   : # subcomando `mcp` ausente (instalacao sem self-update recente) ou
@@ -497,8 +545,18 @@ fi
 >   apresentando ESTE session_id em cada chamada; em erro de transporte,
 >   contrato de queda mid-onda (0 retries + 1 confirmacao via cstk mcp
 >   status --live) e comutacao para Bash no resto da onda.`
+> - **Ramo `_optin_branch = "estruturado"` (2.bis acima, task 5.1.5/5.5.1 —
+>   mcp-elicitation-optins)**: acrescente TAMBEM, na mesma injecao, a linha:
+>   `MCP: ramo estruturado de opt-ins ativo (dec-080). Chame
+>   mcp__cstk-state__collect_optins como o PRIMEIRO ato desta execucao,
+>   ANTES de qualquer state-ondas.sh start/open_wave da onda-001 (FR-012,
+>   Invariante O-1 — nenhuma onda pode abrir com campo aplicavel sem
+>   registro em .optin_responses[]).`
 > - `_mcp_token` vazio (`bash-fallback` / sem descritor) ⇒ NAO mencione MCP
 >   no prompt; o orquestrador segue o caminho Bash (zero regressao, SC-004).
+>   Neste caso `_optin_branch` ja e `"legado"` por construcao (2.bis acima
+>   testa o MESMO `_mcp_token`), entao os opt-ins ja foram capturados por
+>   prosa ANTES do init — nao ha nada pendente para o orquestrador.
 > - O token NUNCA e ecoado em stdout/stderr/logs do command — vive apenas
 >   no descritor (`chmod 600`) e no prompt do spawn (SEC-H3: roteamento por
 >   capacidade, nunca por precedencia).

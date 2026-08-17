@@ -286,12 +286,15 @@ Ref: `data-model.md` linhas 86-101 (catch-all `execution.extra_fields`,
 precedente `.suggestions` em `_state-rw-db.sh:25-37`); `quickstart.md`
 Scenario 8
 
-- [ ] 4.2.1 Confirmar empiricamente `set` → `read` de `.optin_responses`
+- [x] 4.2.1 Confirmar empiricamente `set` → `read` de `.optin_responses`
       sob `state.db` (backend SQLite) ANTES de depender do campo em
       producao — sem edicao a `_state-rw-db.sh` esperada (catch-all ja
       cobre o caso, mesmo padrao de `.suggestions`); se o roundtrip
       divergir do esperado, essa e uma descoberta a registrar, nao a
-      presumir
+      presumir. **Confirmado** (dec-079, execucao descartavel em tmpdir,
+      removida apos o teste): `set` grava via catch-all
+      `execution.extra_fields`, `get`/`read` reconciliam `.optin_responses`
+      no topo do documento identico ao gravado — zero edicao necessaria.
 
 ---
 
@@ -306,26 +309,26 @@ premissa item 3; `research.md` Decision 2 e Decision 10;
 `plugins/cstk/commands/agente-00c.md` linha 470 (comentario stale
 "degrada sozinho para mode=bash-fallback")
 
-- [ ] 5.1.1 Implementar a decisao de ramo ANTES do init: descritor
+- [x] 5.1.1 Implementar a decisao de ramo ANTES do init: descritor
       ausente / `_mcp_token` vazio ⇒ ramo LEGADO (prosa, comportamento
       hoje intacto); token presente ⇒ ramo ESTRUTURADO — discriminador
       real e token vazio/descritor ausente, NUNCA o literal
       `mode=bash-fallback` (`mcp.sh:708-709`, `:100-107` gravam sempre
       `direct`)
-- [ ] 5.1.2 Etapa (1) do init no ramo estruturado: `state-rw.sh init`
+- [x] 5.1.2 Etapa (1) do init no ramo estruturado: `state-rw.sh init`
       **sem** `--atomic-commit`/`--roadmap-mode`/`--delivery-tier`
       (defaults seguros `false`/`false`/`cloud-public`); `.execution.status
       = em_andamento` MUST estar ativo no MESMO init — pre-requisito duro
       (dec-031): sem status ativo, toda chamada de tool retorna
       `SESSION_MISMATCH` (`mcp-session.sh:25-32`)
-- [ ] 5.1.3 `cstk mcp start --state-dir <SD>` cunha o token (NAO sobe
+- [x] 5.1.3 `cstk mcp start --state-dir <SD>` cunha o token (NAO sobe
       processo — o processo Node e criado pelo HARNESS ao conectar
       `.mcp.json`, `mcp.sh:22-30`)
-- [ ] 5.1.4 Corrigir o comentario stale em `plugins/cstk/commands/
+- [x] 5.1.4 Corrigir o comentario stale em `plugins/cstk/commands/
       agente-00c.md:470` — remover a afirmacao de que o sistema "degrada
       sozinho para mode=bash-fallback"; substituir pela descricao correta
       do discriminador (token vazio/descritor ausente)
-- [ ] 5.1.5 Injetar o token no prompt de spawn do orquestrador SOMENTE
+- [x] 5.1.5 Injetar o token no prompt de spawn do orquestrador SOMENTE
       quando `_mcp_token` for nao-vazio (padrao ja existente,
       dec-043/SEC-H3)
 
@@ -333,7 +336,7 @@ premissa item 3; `research.md` Decision 2 e Decision 10;
 
 Ref: FR-008/FR-011; `data-model.md` §Retro-compatibilidade
 
-- [ ] 5.2.1 Garantir que retomadas NUNCA re-disparam `collect_optins` para
+- [x] 5.2.1 Garantir que retomadas NUNCA re-disparam `collect_optins` para
       campos com registro terminal — o resume delega a checagem I-1 ao
       proprio handler da tool (3.3.1), mas o command MUST injetar o token
       normalmente para permitir a chamada de `reused`
@@ -344,10 +347,10 @@ Ref: mesmo padrao de 5.1, escopo reduzido (sem `delivery_tier`);
 `plugins/cstk/commands/feature-00c.md` linhas 700-742 (bloco `cstk mcp
 start` + injecao de token); linha ~711 (comentario stale)
 
-- [ ] 5.3.1 Replicar 5.1.1-5.1.3 em `feature-00c.md`, com escopo de campos
+- [x] 5.3.1 Replicar 5.1.1-5.1.3 em `feature-00c.md`, com escopo de campos
       restrito a `atomic_commit` + `roadmap_mode` (paridade de escopo
       preservada, `executionKind === "feature-00c"` nunca oferece tier)
-- [ ] 5.3.2 Corrigir o comentario stale em `plugins/cstk/commands/
+- [x] 5.3.2 Corrigir o comentario stale em `plugins/cstk/commands/
       feature-00c.md` (~linha 711: "degrada sozinho para
       mode=bash-fallback") — mesma correcao de 5.1.4. **NAO** tocar a
       linha ~741-742 (`_mcp_token vazio (bash-fallback / sem descritor)`)
@@ -358,7 +361,7 @@ start` + injecao de token); linha ~711 (comentario stale)
 
 Ref: mesmo padrao de 5.2
 
-- [ ] 5.4.1 Replicar 5.2.1 em `feature-00c-resume.md`
+- [x] 5.4.1 Replicar 5.2.1 em `feature-00c-resume.md`
 
 ### 5.5 Orquestrador chama `collect_optins` como PRIMEIRO ato `[C]`
 
