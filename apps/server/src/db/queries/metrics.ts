@@ -73,6 +73,39 @@ export function getCostOverTime(
     .all(...params) as CostOverTimeRow[];
 }
 
+/**
+ * Recupera a etapa SDD de uma decisao de roteamento LEGADA.
+ *
+ * Duas geracoes de DecisaoDeRoteamentoPorOnda coexistem na knowledge.db
+ * (runtime agente-00c, model-routing.sh — dec-006/FR-021): as novas gravam
+ * `stage=<fase da onda>`; as legadas gravaram `stage='model-routing'` e
+ * codificaram a fase no lead do contexto
+ * `"Selecao de modelo para onda <N> (fase <f>)"`. O dono canonico do
+ * relatorio (model-routing-report.sh, `etapa_of_onda`) extrai a etapa desse
+ * mesmo lead — replicamos a mesma regra aqui, sem heuristica adicional.
+ * Sem `(fase …)` parseavel, devolve `null` (a linha mantem o stage
+ * original — nunca inventamos etapa).
+ */
+const LEGACY_ROUTING_STAGE = 'model-routing';
+const CONTEXT_FASE_RE = /\(fase ([^)]*)\)/;
+
+export function stageFromRoutingContext(context: string | null | undefined): string | null {
+  if (!context) return null;
+  const m = CONTEXT_FASE_RE.exec(context);
+  const fase = m?.[1]?.trim();
+  return fase ? fase : null;
+}
+
+/**
+ * Stage efetivo de uma decisao para agrupamentos "por etapa": linhas legadas
+ * `stage='model-routing'` viram a etapa SDD do contexto quando parseavel;
+ * qualquer outro caso preserva o stage original.
+ */
+export function normalizeRoutingStage(stage: string, context: string | null | undefined): string {
+  if (stage !== LEGACY_ROUTING_STAGE) return stage;
+  return stageFromRoutingContext(context) ?? stage;
+}
+
 // ─────────────────────────────────────────────────────────
 // 2. throughput-by-stage — decisoes por stage
 // ─────────────────────────────────────────────────────────
@@ -82,17 +115,33 @@ export interface ThroughputByStageRow {
   count: number;
 }
 
+/**
+ * Decisoes por etapa SDD. `model-routing` NAO e uma etapa: linhas legadas
+ * com esse stage sao reatribuidas a etapa codificada no contexto (ver
+ * `normalizeRoutingStage`) e somadas as nativas.
+ */
 export function getThroughputByStage(db: Database.Database): ThroughputByStageRow[] {
   const stageCol = hasColumn(db, 'decisions', 'stage') ? 'stage' : 'NULL';
-  return db
+  const contextCol = hasColumn(db, 'decisions', 'context') ? 'context' : 'NULL';
+  const raw = db
     .prepare(`
-      SELECT ${stageCol} as stage, count(*) as count
+      SELECT ${stageCol} as stage,
+             CASE WHEN ${stageCol} = '${LEGACY_ROUTING_STAGE}' THEN ${contextCol} ELSE NULL END as context,
+             count(*) as count
       FROM decisions
       WHERE ${stageCol} IS NOT NULL
-      GROUP BY ${stageCol}
-      ORDER BY count DESC
+      GROUP BY stage, context
     `)
-    .all() as ThroughputByStageRow[];
+    .all() as { stage: string; context: string | null; count: number }[];
+
+  const acc = new Map<string, number>();
+  for (const r of raw) {
+    const stage = normalizeRoutingStage(r.stage, r.context);
+    acc.set(stage, (acc.get(stage) ?? 0) + r.count);
+  }
+  return [...acc.entries()]
+    .map(([stage, count]) => ({ stage, count }))
+    .sort((a, b) => b.count - a.count || (a.stage < b.stage ? -1 : a.stage > b.stage ? 1 : 0));
 }
 
 // ─────────────────────────────────────────────────────────
@@ -366,29 +415,6 @@ export function getModelMix(db: Database.Database): ModelMixRow[] {
 }
 
 /**
- * Recupera a etapa SDD de uma decisao de roteamento LEGADA.
- *
- * Duas geracoes de DecisaoDeRoteamentoPorOnda coexistem na knowledge.db
- * (runtime agente-00c, model-routing.sh — dec-006/FR-021): as novas gravam
- * `stage=<fase da onda>`; as legadas gravaram `stage='model-routing'` e
- * codificaram a fase no lead do contexto
- * `"Selecao de modelo para onda <N> (fase <f>)"`. O dono canonico do
- * relatorio (model-routing-report.sh, `etapa_of_onda`) extrai a etapa desse
- * mesmo lead — replicamos a mesma regra aqui, sem heuristica adicional.
- * Sem `(fase …)` parseavel, devolve `null` (a linha mantem o stage
- * original — nunca inventamos etapa).
- */
-const LEGACY_ROUTING_STAGE = 'model-routing';
-const CONTEXT_FASE_RE = /\(fase ([^)]*)\)/;
-
-export function stageFromRoutingContext(context: string | null | undefined): string | null {
-  if (!context) return null;
-  const m = CONTEXT_FASE_RE.exec(context);
-  const fase = m?.[1]?.trim();
-  return fase ? fase : null;
-}
-
-/**
  * Mix de modelos por stage SDD (barras empilhadas).
  *
  * `model-routing` NAO e uma etapa: linhas legadas com esse stage sao
@@ -412,9 +438,7 @@ export function getModelMixByStage(db: Database.Database): ModelMixByStageRow[] 
 
   const acc = new Map<string, ModelMixByStageRow>();
   for (const r of raw) {
-    const stage = r.stage === LEGACY_ROUTING_STAGE
-      ? (stageFromRoutingContext(r.context) ?? r.stage)
-      : r.stage;
+    const stage = normalizeRoutingStage(r.stage, r.context);
     const key = `${stage}\u0000${r.modelo}`;
     const row = acc.get(key);
     if (row) row.n += r.n;
