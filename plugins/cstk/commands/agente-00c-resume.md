@@ -244,16 +244,16 @@ pausa), nenhuma acao adicional AQUI — o proximo spawn segue via caminho
 Bash. Esta etapa cobre so a verificacao de saude, nao a comutacao
 mid-onda (protocolo da task 5.5).
 
-**Injecao do token de capacidade (dec-043 / SEC-H3)**: apos a sonda, leia
-o descritor e injete o token no contexto do spawn (mesmo protocolo do
-/agente-00c inicial):
+**Injecao do token de capacidade (dec-043 / SEC-H3, generalizada FR-013)**:
+apos a sonda, leia o descritor e injete o token no contexto do spawn
+(mesmo protocolo do /agente-00c inicial) SEMPRE que `session_id` for
+nao-vazio, **independentemente do valor de `mode`** (contracts/
+cli-mcp-lifecycle.md §7, P-1/P-2 — a condicao antiga restrita a
+`mode == "docker"` foi removida: apos o cutover desta feature nenhuma
+sessao nova grava `mode=docker`):
 
 ```bash
-_mcp_mode=$(jq -r '.mode // "-"' "<SD>/mcp-server.json" 2>/dev/null) || _mcp_mode="-"
-_mcp_token=""
-if [ "$_mcp_mode" = "docker" ]; then
-  _mcp_token=$(jq -r '.session_id // ""' "<SD>/mcp-server.json" 2>/dev/null) || _mcp_token=""
-fi
+_mcp_token=$(jq -r '.session_id // ""' "<SD>/mcp-server.json" 2>/dev/null) || _mcp_token=""
 ```
 
 - Token NAO-vazio E sonda saudavel ⇒ linha no prompt do orquestrador:
@@ -438,9 +438,17 @@ case "$_status_final" in
 esac
 ```
 
-> Estado `aguardando_humano` NAO e terminal (FR-010: a sessao do servidor
-> e coextensiva com a execucao inteira) — o servidor MUST permanecer
-> ativo durante a pausa; `stop` so dispara em `concluida`/`abortada`.
+> Estado `aguardando_humano` NAO e terminal — `stop` so dispara em
+> `concluida`/`abortada`. Precisao pos-FASE 6 (mcp-direct-transport,
+> FR-012 revoga a leitura antiga de FR-010): quem permanece coextensiva
+> com a execucao inteira e sobrevive a pausas entre ondas e a **SESSAO
+> MCP** (descritor `mcp-server.json` + token, no disco), NAO o processo.
+> O **processo** do servidor e coextensivo com a **sessao do harness**
+> (pode nao ser o mesmo PID de uma onda para outra; nada precisa
+> "permanecer rodando" durante a pausa). A resolucao por chamada
+> (`token -> state_dir`, sem TTL, revalidada a cada chamada contra o
+> disco) e quem garante que uma nova instancia do processo retoma a
+> **SESSAO MCP** correta a partir do descritor persistido.
 
 ### 9. Apresentar resultado ao operador
 

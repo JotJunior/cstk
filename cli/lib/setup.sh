@@ -864,9 +864,10 @@ _setup_run_state_backend_area() {
 #      SOBREVIVE a um novo install — contracts/cli-setup.md §4.1)
 #   5. `not-configured` -> decide (prompt interativo ou default de --yes,
 #      que SEMPRE aplica — FR-015, sem opt-in distinto como state-backend);
-#      aplica `cstk mcp install` MESMO sem Docker detectado, emitindo
-#      aviso claro (task 5.2.3) — o registro fica inerte sem Docker, mas
-#      o start das execucoes ja degrada sozinho para bash-fallback
+#      aplica `cstk mcp install` independentemente de Docker estar presente
+#      — desde mcp-direct-transport (cutover), `cstk mcp start` NUNCA
+#      depende de motor de containers (FR-006), entao nao ha mais aviso de
+#      Docker aqui (avisar seria informacao falsa)
 #
 # Preenche _SU_MCP_OUTCOME (already-configured|applied|skipped|failed) e
 # _SU_MCP_OUTCOME_REASON (motivo legivel; nao vazio em failed e nos
@@ -926,14 +927,12 @@ _setup_run_mcp_area() {
     return 0
   fi
 
-  # FR-015/task 5.2.3 — SOMENTE `command -v docker` para o TEXTO do
-  # aviso; NUNCA invocar docker funcionalmente aqui (mcp-docker.sh e o
-  # UNICO ponto autorizado, e nao e chamado por esta area).
-  _srm_docker_warning=""
-  if ! command -v docker >/dev/null 2>&1; then
-    _srm_docker_warning="Docker nao encontrado no PATH — o registro ficara INERTE ate Docker estar disponivel; execucoes 00c degradam sozinhas para bash-fallback nesse meio-tempo."
-  fi
-
+  # Desde a feature mcp-direct-transport (cutover, FR-006), o registro
+  # mcpServers.cstk-state NUNCA depende de Docker — `cstk mcp start` grava
+  # mode=direct independentemente de motor de containers estar presente.
+  # O antigo aviso "Docker nao encontrado" (task 5.2.3, pre-cutover) foi
+  # removido: avisar sobre Docker aqui seria informacao FALSA (o registro
+  # nao fica mais "inerte" sem Docker).
   if _srm_install_out=$(_mcp_cmd_install --project-path "$_srm_pap" 2>&1); then
     _srm_rc=0
   else
@@ -956,14 +955,6 @@ _setup_run_mcp_area() {
         ;;
     esac
 
-    if [ -n "$_srm_docker_warning" ]; then
-      if [ -n "$_SU_MCP_OUTCOME_REASON" ]; then
-        _SU_MCP_OUTCOME_REASON="$_SU_MCP_OUTCOME_REASON; $_srm_docker_warning"
-      else
-        _SU_MCP_OUTCOME_REASON="$_srm_docker_warning"
-      fi
-      log_warn "setup: [mcp] $_srm_docker_warning"
-    fi
   else
     _SU_MCP_OUTCOME="failed"
     _SU_MCP_OUTCOME_REASON="cstk mcp install falhou (exit $_srm_rc): $_srm_install_out"

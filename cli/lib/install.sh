@@ -214,9 +214,10 @@ install_main() {
   _install_apply_extra_kinds
 
   # state-mcp-server: fonte de build do servidor MCP (catalog/mcp/state-server
-  # -> ~/.claude/mcp/state-server, caminho 3 de _mcp_context_dir em
-  # cli/lib/mcp.sh). Sem isto, `cstk mcp start` em ambiente instalado nunca
-  # acha o contexto de build e degrada sempre para bash-fallback.
+  # -> ~/.claude/mcp/state-server), consumida pelo build lazy do launcher
+  # (mcp-build-lazy.sh, feature mcp-direct-transport) — nao mais por
+  # `cstk mcp start` (que desde o cutover so grava descritor, sem build).
+  # Sem isto, o launcher nunca acha a arvore-fonte para compilar dist/.
   _install_apply_mcp_server
 
   _install_emit_summary
@@ -760,11 +761,11 @@ _install_apply_extra_kinds() {
 # identico ao de skills, reaproveitando manifest.sh sem alteracao.
 # _install_apply_mcp_server: espelha catalog/mcp/state-server no destino
 # instalado (~/.claude/mcp/state-server). Conteudo versionado com a release
-# (fonte de build da imagem do servidor, consumida pelo helper confinado de
-# container + npm ci dentro da imagem);
+# (fonte-fonte compilada lazy pelo launcher via mcp-build-lazy.sh + npm ci/
+# npm run build, sem container/imagem desde o cutover mcp-direct-transport);
 # sem manifest por arquivo: replace atomico do diretorio inteiro (rm+cp),
 # mesmo espirito do provisionamento de hooks. Escopo global apenas — o
-# resolve de _mcp_context_dir so olha ~/.claude. Catalogo sem mcp/ (release
+# build lazy do launcher so olha ~/.claude. Catalogo sem mcp/ (release
 # antiga) = no-op silencioso.
 _install_apply_mcp_server() {
   _iams_src="$_install_catalog_dir/mcp/state-server"

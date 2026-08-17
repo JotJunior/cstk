@@ -843,9 +843,9 @@ scenario_state_backend_doctor_diagnostic_surfaced() {
 # _make_shim_path_no_docker -> mesmo padrao de _make_shim_path_no_jq /
 # _make_shim_path_no_sqlite3: PATH curado incluindo jq E sqlite3 (para
 # isolar a area mcp de efeitos colaterais nas outras 3 areas) mas
-# deliberadamente SEM docker, para exercitar o aviso de Docker ausente
-# (task 5.2.3/5.2.5) sem depender de o Docker estar instalado ou nao na
-# maquina que roda a suite.
+# deliberadamente SEM docker — prova que a area mcp aplica normalmente
+# mesmo sem Docker no PATH (mcp-direct-transport, FR-006), sem depender
+# de o Docker estar instalado ou nao na maquina que roda a suite.
 _make_shim_path_no_docker() {
   _msnd_dir=$(mktemp -d "$TMPDIR_TEST/shimbin-nodocker.XXXXXX")
   for _msnd_c in sh mktemp awk sed grep find head printf cp mv rm mkdir \
@@ -898,9 +898,11 @@ scenario_mcp_status_displayed_before_action() {
   fi
 }
 
-# ==== 5.2.5 --yes sem Docker aplica mesmo assim e avisa (FR-015) ====
+# ==== 5.2.5 --yes sem Docker aplica normalmente, sem aviso de Docker
+# (mcp-direct-transport, FR-006: MCP nunca depende de motor de
+# containers) ====
 
-scenario_mcp_applied_without_docker_warns() {
+scenario_mcp_applied_without_docker_no_warning() {
   if ! command -v jq >/dev/null 2>&1; then
     _error "no_jq" "jq nao disponivel no ambiente — cenario exige jq presente no PATH real para o merge de verdade ocorrer"
   fi
@@ -916,21 +918,23 @@ scenario_mcp_applied_without_docker_warns() {
   case "$_CAPTURED_STDERR" in
     *"[mcp] outcome=applied"*) : ;;
     *)
-      _fail "scenario_mcp_applied_without_docker_warns" \
-        "area mcp nao ficou applied mesmo sem Docker (FR-015): $_CAPTURED_STDERR"
+      _fail "scenario_mcp_applied_without_docker_no_warning" \
+        "area mcp nao ficou applied mesmo sem Docker (FR-006): $_CAPTURED_STDERR"
       return 1
       ;;
   esac
+  # Pos-cutover: Docker e irrelevante para o registro mcp — nenhum aviso
+  # sobre Docker deve ser emitido (avisar seria informacao FALSA).
   case "$_CAPTURED_STDERR" in
-    *"Docker nao encontrado"*) : ;;
-    *)
-      _fail "scenario_mcp_applied_without_docker_warns" \
-        "aviso claro de Docker ausente nao foi emitido: $_CAPTURED_STDERR"
+    *"Docker nao encontrado"*)
+      _fail "scenario_mcp_applied_without_docker_no_warning" \
+        "aviso obsoleto de Docker ausente foi emitido (mcp nao depende mais de Docker): $_CAPTURED_STDERR"
       return 1
       ;;
+    *) : ;;
   esac
   if ! grep -Fq -- '"cstk-state"' "$_repo/.mcp.json" 2>/dev/null; then
-    _fail "scenario_mcp_applied_without_docker_warns" \
+    _fail "scenario_mcp_applied_without_docker_no_warning" \
       ".mcp.json nao foi escrito com a entrada mcpServers.cstk-state"
     return 1
   fi

@@ -20,22 +20,36 @@
 # contracts/mcp-session-lifecycle.md §SEC-H3).
 #
 # `start`/`stop`: invocados PELO COMMAND PAI (nao pelo operador no caminho
-# normal). Este arquivo apenas ORQUESTRA — toda invocacao FUNCIONAL de
-# `docker` fica confinada em cli/lib/mcp-docker.sh (Principio II carve-out
-# condicao b, dec-074). `start` gera o token de capacidade (session_id,
-# CSPRNG >= 128 bits), builda/reusa a imagem, sobe o container e roda o
-# health check ANTES de reportar sucesso (FR-011); qualquer falha (docker
-# ausente, daemon fora do ar, build/run falho, health check falho) grava
-# `mode=bash-fallback` e retorna exit 3 SEM abortar a execucao (FR-007).
-# O descritor e escrito ANTES do `docker run` (nao depois): o processo PID1
-# do servidor (mcp/state-server/src/index.ts::bootstrap) resolve a propria
-# sessao no startup e precisa achar `<state-dir>/mcp-server.json` com o
-# `session_id` ja no disco.
+# normal). Desde a feature `mcp-direct-transport` (cutover, dec-011/dec-070),
+# `start` **NAO** builda/sobe container algum — apenas resolve o state-dir,
+# gera/reusa o token de capacidade (session_id, CSPRNG >= 128 bits) e grava
+# o descritor `mode=direct` (S-1..S-5, contracts/mcp-direct-transport/
+# cli-mcp-lifecycle.md §2.2). O processo do servidor MCP passa a ser criado
+# pelo HARNESS ao conectar o `.mcp.json` (research Decision 10), nunca por
+# `cstk mcp start`. Descritor legado `mode=docker` (pre-cutover) e detectado,
+# avisado em stderr e sobrescrito — nunca falha por causa de estado legado
+# (FR-014, dec-015).
+#
+# `cli/lib/mcp-docker.sh` foi REMOVIDO nesta feature (research Decision 11,
+# dec-033): o build/run/healthcheck/image-tag que so `start` usava saiu
+# junto. Cinco funcoes que `gc`/`status --live`/`stop` AINDA precisam para
+# tratar sessoes **legadas** `mode=docker` (dec-070, recorte validado em
+# `cli-mcp-lifecycle.md §5.1`) foram preservadas INLINE logo abaixo:
+# `_mcp_docker_preflight`, `_mcp_docker_list_managed`,
+# `_mcp_docker_reconcile_container`, `_mcp_docker_healthcheck`,
+# `_mcp_docker_stop`. Isso AMENDA o carve-out do Principio II (dec-074): o
+# par (docker, mcp) deixa de apontar para `cli/lib/mcp-docker.sh` e passa a
+# apontar para `cli/lib/mcp.sh` — unico arquivo, unica feature dona,
+# continua valendo a condicao b (identificavel por par dependencia+feature).
+# `cli/lib/serve-docker.sh` (par `docker`+`panel-docker`) e INDEPENDENTE,
+# nenhuma consolidacao entre os dois foi exigida.
 #
 # `status --live` (task 5.3.3, FR-010): quando a sessao esta ativa e
-# mode=docker, roda um health check DE VERDADE (mesmo handshake MCP real de
-# `start`) em vez de so ecoar o descritor — usado pelo command pai em cada
-# `-resume` para reverificar saude SEM reiniciar o container.
+# mode=docker (legado), roda um health check DE VERDADE (`_mcp_docker_
+# healthcheck` abaixo) em vez de so ecoar o descritor — usado pelo command
+# pai em cada `-resume` para reverificar saude SEM reiniciar o container.
+# Para `mode=direct` (toda sessao criada apos o cutover), `--live` e no-op
+# (ST-3): o guard `mode = "docker"` simplesmente nunca casa.
 #
 # `gc` (task 5.4, CHK064): detecta e remove containers gerenciados cujo
 # state-dir dono esta em estado terminal ou nao existe mais — ver comentario
@@ -72,7 +86,7 @@
 #   reason=<motivo>            # presente quando != active
 #   container=<nome>|-
 #   session_id=<id>|-
-#   mode=docker|bash-fallback|-
+#   mode=direct|docker|bash-fallback|-   # docker: apenas descritor legado
 #
 # Exit codes (status):
 #   0 consulta bem-sucedida (inclusive status=unavailable — NAO e erro)
@@ -80,11 +94,16 @@
 #   2 uso incorreto
 #
 # Exit codes (start/stop):
-#   0 sucesso (start: mode=docker ativo; stop: parado ou ja estava parado)
-#   1 erro inesperado (jq ausente, --state-dir invalido, IO)
+#   0 sucesso (start: mode=direct ativo/reusado; stop: parado ou ja estava
+#     parado)
+#   1 erro inesperado (jq ausente, --state-dir invalido, IO, /dev/urandom
+#     indisponivel)
 #   2 uso incorreto
-#   3 indisponivel (start): mode=bash-fallback gravado, NAO e erro fatal —
-#     o pai deve seguir com o caminho Bash de hoje (FR-007)
+#   3 indisponivel: reservado pelo contrato (S-6) para eventual
+#     mode=bash-fallback — apos o cutover `start` nao builda/sobe motor de
+#     containers algum, entao os 5 motivos especificos de Docker que
+#     produziam este exit code desapareceram (S-7); nao ha caminho de codigo
+#     atual que o produza
 #
 # Exit codes (install):
 #   0 entrada mcpServers.cstk-state criada/ja presente (idempotente), ou
@@ -107,14 +126,129 @@ if [ -n "${CSTK_LIB:-}" ] && [ -f "$CSTK_LIB/common.sh" ]; then
   . "$CSTK_LIB/common.sh"
 fi
 
-# mcp-docker.sh: UNICO arquivo autorizado a invocar `docker` funcionalmente
-# (dec-074). Sourced aqui (nao so dentro de start/stop) porque `status` nao
-# precisa dele, mas start/stop sempre precisam e o custo de source e
-# desprezivel (guard _CSTK_MCP_DOCKER_LOADED evita dupla-carga).
-if [ -n "${CSTK_LIB:-}" ] && [ -f "$CSTK_LIB/mcp-docker.sh" ]; then
-  # shellcheck source=./mcp-docker.sh
-  . "$CSTK_LIB/mcp-docker.sh"
-fi
+# ---------- funcoes Docker preservadas p/ sessoes LEGADAS mode=docker ----------
+# cli/lib/mcp-docker.sh foi removido (mcp-direct-transport, dec-033/dec-070).
+# `gc` continua limpando o passivo `cstk-mcp-state-*` (FR-015); `status --live`
+# e `stop` continuam operando containers de descritores legados pre-cutover
+# (FR-007/FR-008, "no-change funcional" — cli-mcp-lifecycle.md §3/§4). Nenhuma
+# sessao NOVA (mode=direct) passa por qualquer funcao abaixo.
+
+_MD_MANAGEMENT_LABEL="cstk.managed=mcp-state"
+_MD_STOP_GRACE_SECONDS="5"
+# Calibrado empiricamente na task 5.5/onda 16 da feature state-mcp-server
+# (ver git blame de mcp-docker.sh): 10s cobre folga de 10x sobre o roundtrip
+# normal (<1s) sem chegar perto do teto de UX de 30s do contrato.
+_MD_HEALTHCHECK_TIMEOUT_DEFAULT="10"
+
+# _mcp_docker_preflight -> exit 0 = docker no PATH + daemon acessivel;
+# exit 1 = bloqueado (mensagem acionavel ja emitida em stderr). Consumido
+# por `gc` (preflight antes de listar/remover).
+_mcp_docker_preflight() {
+  if ! command -v docker >/dev/null 2>&1; then
+    printf 'cstk mcp: erro: docker nao encontrado no PATH; instale o Docker Engine ou o Docker Desktop (https://docs.docker.com/get-docker/) e tente novamente\n' >&2
+    return 1
+  fi
+
+  if ! docker info >/dev/null 2>&1; then
+    printf 'cstk mcp: erro: docker esta instalado mas o daemon nao esta acessivel (parado, sem permissao, ou contexto invalido); inicie o Docker (Docker Desktop, ou "systemctl start docker" no Linux), confirme que seu usuario tem permissao (grupo "docker" no Linux) e tente novamente\n' >&2
+    return 1
+  fi
+
+  return 0
+}
+
+# _mcp_docker_list_managed -> uma linha por container (rodando ou parado)
+# com o label $_MD_MANAGEMENT_LABEL, formato TSV `name<TAB>state_dir_label`.
+# exit 0 sempre (best-effort de leitura); consumido por `gc`.
+_mcp_docker_list_managed() {
+  _mdlm_tab=$(printf '\t')
+  docker ps -a --filter "label=${_MD_MANAGEMENT_LABEL}" \
+    --format "{{.Names}}${_mdlm_tab}{{.Label \"cstk.mcp.state_dir\"}}" 2>/dev/null || :
+  return 0
+}
+
+# _mcp_docker_reconcile_container NAME -> `docker rm -f` idempotente
+# (tolera "No such container"). Consumido por `gc`.
+_mcp_docker_reconcile_container() {
+  _mdrc_name="$1"
+
+  _mdrc_out=$(docker rm -f "$_mdrc_name" 2>&1)
+  _mdrc_exit=$?
+
+  if [ "$_mdrc_exit" -eq 0 ]; then
+    return 0
+  fi
+
+  case "$_mdrc_out" in
+    *"No such container"*)
+      return 0
+      ;;
+    *)
+      printf 'cstk mcp: erro: nao foi possivel reconciliar (remover) o container remanescente "%s"; verifique se seu usuario tem permissao para acessar o daemon Docker e se o daemon nao caiu no meio da operacao, depois tente novamente\n' \
+        "$_mdrc_name" >&2
+      return 1
+      ;;
+  esac
+}
+
+# _mcp_docker_healthcheck CONTAINER_NAME [TIMEOUT_SECONDS] -> `docker exec
+# CONTAINER_NAME node dist/src/healthcheck.js` com watcher de timeout POSIX
+# portavel (sem `timeout(1)`). exit 0 = saudavel; exit 1 = falhou; exit 124
+# = timeout. Consumido por `status --live` para sessoes mode=docker legadas.
+_mcp_docker_healthcheck() {
+  _mdh_name="$1"
+  _mdh_timeout="${2:-$_MD_HEALTHCHECK_TIMEOUT_DEFAULT}"
+
+  _mdh_outfile=$(mktemp 2>/dev/null) || {
+    printf 'cstk mcp: erro: nao foi possivel criar arquivo temporario para o health check\n' >&2
+    return 1
+  }
+
+  (
+    set +e
+    docker exec "$_mdh_name" node dist/src/healthcheck.js \
+      >"$_mdh_outfile" 2>&1 &
+    _mdh_child=$!
+
+    (
+      sleep "$_mdh_timeout"
+      kill -TERM "$_mdh_child" 2>/dev/null
+      sleep 1
+      kill -KILL "$_mdh_child" 2>/dev/null
+    ) </dev/null >/dev/null 2>&1 &
+    _mdh_watcher=$!
+
+    wait "$_mdh_child" 2>/dev/null
+    _mdh_rc=$?
+
+    kill "$_mdh_watcher" 2>/dev/null
+
+    if [ "$_mdh_rc" -ne 0 ] && [ -f "$_mdh_outfile" ]; then
+      cat "$_mdh_outfile" >&2
+    fi
+
+    if [ "$_mdh_rc" -gt 128 ]; then
+      printf 'cstk mcp: erro: health check do servidor MCP de estado estourou o tempo limite (%ss) — container "%s" pode estar sobrecarregado ou travado\n' \
+        "$_mdh_timeout" "$_mdh_name" >&2
+      exit 124
+    fi
+    if [ "$_mdh_rc" -ne 0 ]; then
+      printf 'cstk mcp: erro: health check do servidor MCP de estado falhou (container "%s"); ver diagnostico acima\n' \
+        "$_mdh_name" >&2
+    fi
+    exit "$_mdh_rc"
+  )
+  _mdh_result=$?
+  rm -f "$_mdh_outfile"
+  return "$_mdh_result"
+}
+
+# _mcp_docker_stop CONTAINER_NAME -> `docker stop -t 5`, idempotente/
+# best-effort. Consumido por `stop` para sessoes mode=docker legadas.
+_mcp_docker_stop() {
+  docker stop -t "$_MD_STOP_GRACE_SECONDS" "$1" >/dev/null 2>&1 || :
+  return 0
+}
 
 # hooks.sh: UNICO arquivo do toolkit autorizado a referenciar `jq`
 # (Constitution carve-out condicao b). `install` reusa merge_settings/
@@ -397,34 +531,6 @@ _mcp_resolve_execution_kind() {
   printf 'agente-00c%s-\n' "$_mrek_tab"
 }
 
-# _mcp_context_dir -> imprime o path do contexto de build (arvore-fonte
-# mcp/state-server/, com package.json) em stdout; exit 1 se nao encontrado.
-# Mesmo padrao de resolucao em 3 camadas de _mcp_runtime_script_path:
-#   1. override explicito $CSTK_MCP_CONTEXT_DIR (testes/dev)
-#   2. layout de repo relativo a CSTK_LIB (cli/lib -> ../../mcp/state-server)
-#   3. layout instalado (~/.claude/mcp/state-server) — reservado para
-#      quando o build/instalacao passar a empacotar a arvore-fonte; ainda
-#      nao provisionado por install.sh/build-release.sh nesta fase.
-_mcp_context_dir() {
-  if [ -n "${CSTK_MCP_CONTEXT_DIR:-}" ] && [ -f "${CSTK_MCP_CONTEXT_DIR}/package.json" ]; then
-    printf '%s\n' "$CSTK_MCP_CONTEXT_DIR"
-    return 0
-  fi
-  if [ -n "${CSTK_LIB:-}" ]; then
-    _mcd_repo="$CSTK_LIB/../../mcp/state-server"
-    if [ -f "$_mcd_repo/package.json" ]; then
-      printf '%s\n' "$_mcd_repo"
-      return 0
-    fi
-  fi
-  _mcd_default="${HOME:-/tmp}/.claude/mcp/state-server"
-  if [ -f "$_mcd_default/package.json" ]; then
-    printf '%s\n' "$_mcd_default"
-    return 0
-  fi
-  return 1
-}
-
 # _mcp_write_descriptor STATE_DIR SESSION_ID KIND SHORT_NAME TARGET_PATH \
 #                        CONTAINER MODE UNAVAIL_REASON STARTED_AT STOPPED_AT
 # Escreve <STATE_DIR>/mcp-server.json (chmod 600 — data-model.md). Campos
@@ -515,14 +621,21 @@ _mcp_cmd_status() {
 
 # _mcp_cmd_start --state-dir DIR
 #
-# Ciclo completo (contracts/mcp-session-lifecycle.md §`cstk mcp start`):
-#   preflight docker -> build/reuso de imagem -> reconcile de container
-#   remanescente -> docker run -> health check ANTES de reportar sucesso
-#   (FR-011) -> grava mcp-server.json.
+# Fluxo pos-cutover (mcp-direct-transport, contracts/cli-mcp-lifecycle.md
+# §2.2, S-1..S-5): resolver state-dir -> gerar/reusar token -> gravar
+# descritor mode=direct -> exit 0. NENHUM motor de containers e envolvido
+# (S-1 trivialmente satisfeito); o processo do servidor MCP e criado pelo
+# HARNESS ao conectar o `.mcp.json`, nunca por este comando (S-5).
 #
-# Qualquer etapa que falhar grava mode=bash-fallback + unavailable_reason
-# e retorna exit 3 (indisponivel, NAO e erro fatal — FR-007): o command pai
-# segue com o caminho Bash de hoje, zero regressao.
+# Idempotencia (S-3, FR-010, Cenario 4 do quickstart): se ja existe um
+# descritor com mode=direct e sessao ainda ativa (stopped_at nulo), REUSA o
+# session_id/started_at existentes em vez de gerar um token novo — chamadas
+# repetidas nunca invalidam chamadas de tool em curso.
+#
+# Descritor legado mode=docker (S-4, FR-014, dec-015, Cenario 5): avisa em
+# stderr e sobrescreve incondicionalmente com um token NOVO e mode=direct —
+# nunca falha por causa de estado legado (o container Docker eventualmente
+# ainda vivo fica para o `gc` recolher, FR-015).
 _mcp_cmd_start() {
   _mst_state_dir=""
   while [ "$#" -gt 0 ]; do
@@ -546,10 +659,6 @@ _mcp_cmd_start() {
     printf 'cstk mcp start: jq nao encontrado no PATH; instale jq (brew install jq | apt install jq)\n' >&2
     return 1
   fi
-  if ! command -v _mcp_docker_preflight >/dev/null 2>&1; then
-    printf 'cstk mcp start: mcp-docker.sh nao carregado (CSTK_LIB invalido?)\n' >&2
-    return 1
-  fi
 
   # path absoluto — mesma convencao do resto do descritor (state.json).
   _mst_state_dir=$(cd "$_mst_state_dir" && pwd) || {
@@ -568,122 +677,41 @@ _mcp_cmd_start() {
   _mst_kind=$(printf '%s' "$_mst_kind_line" | cut -f1)
   _mst_short=$(printf '%s' "$_mst_kind_line" | cut -f2)
 
-  _mst_token=$(_mcp_gen_token) || return 1
-  _mst_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _mst_started_at="1970-01-01T00:00:00Z"
-  _mst_container=$(_mcp_docker_container_name "$_mst_token")
-
-  # preflight (docker no PATH + daemon acessivel) — falha => bash-fallback.
-  if ! _mcp_docker_preflight; then
-    if command -v docker >/dev/null 2>&1; then
-      _mst_reason="daemon-unreachable"
-    else
-      _mst_reason="docker-absent"
+  # Idempotencia (S-3) + deteccao de legado (S-4): inspeciona o descritor
+  # existente, se houver, ANTES de decidir se gera um token novo.
+  _mst_desc="$_mst_state_dir/mcp-server.json"
+  _mst_reuse_sid=""
+  _mst_reuse_started_at=""
+  if [ -f "$_mst_desc" ]; then
+    _mst_existing_mode=$(jq -r '.mode // "-"' "$_mst_desc" 2>/dev/null) || _mst_existing_mode="-"
+    _mst_existing_stopped=$(jq -r '.stopped_at // ""' "$_mst_desc" 2>/dev/null) || _mst_existing_stopped=""
+    _mst_existing_sid=$(jq -r '.session_id // "-"' "$_mst_desc" 2>/dev/null) || _mst_existing_sid="-"
+    if [ "$_mst_existing_mode" = "docker" ]; then
+      printf 'cstk mcp start: aviso: descritor legado mode=docker detectado em %s (formato pre-cutover) — sobrescrevendo com transporte direto; eventual container Docker remanescente sera recolhido por `cstk mcp gc`\n' \
+        "$_mst_desc" >&2
+    elif [ "$_mst_existing_mode" = "direct" ] && [ -z "$_mst_existing_stopped" ] \
+         && [ "$_mst_existing_sid" != "-" ] && [ -n "$_mst_existing_sid" ]; then
+      _mst_reuse_sid="$_mst_existing_sid"
+      _mst_reuse_started_at=$(jq -r '.started_at // ""' "$_mst_desc" 2>/dev/null) || _mst_reuse_started_at=""
     fi
-    _mcp_write_descriptor "$_mst_state_dir" "$_mst_token" "$_mst_kind" "$_mst_short" \
-      "$_mst_target_path" "-" "bash-fallback" "$_mst_reason" "$_mst_started_at" "-"
-    printf 'status=unavailable\n'
-    printf 'reason=%s\n' "$_mst_reason"
-    printf 'container=-\n'
-    printf 'session_id=%s\n' "$_mst_token"
-    printf 'mode=bash-fallback\n'
-    return 3
   fi
 
-  # contexto de build (arvore-fonte mcp/state-server/). Reason DISTINTO de
-  # image-build-failed: aqui nada chegou a buildar — a fonte do servidor nao
-  # esta instalada (fix pos-6.2.1: o tarball passou a empacotar
-  # catalog/mcp/state-server e o install/update a espelhar em
-  # ~/.claude/mcp/state-server; reason server-source-missing indica
-  # instalacao antiga => rode `cstk update`).
-  if ! _mst_context=$(_mcp_context_dir); then
-    printf 'cstk mcp start: aviso: fonte do servidor (mcp/state-server/) nao instalada — rode `cstk update`; mode=bash-fallback\n' >&2
-    _mcp_write_descriptor "$_mst_state_dir" "$_mst_token" "$_mst_kind" "$_mst_short" \
-      "$_mst_target_path" "-" "bash-fallback" "server-source-missing" "$_mst_started_at" "-"
-    printf 'status=unavailable\n'
-    printf 'reason=server-source-missing\n'
-    printf 'container=-\n'
-    printf 'session_id=%s\n' "$_mst_token"
-    printf 'mode=bash-fallback\n'
-    return 3
-  fi
-
-  _mst_version=$(jq -r '.version // "0.0.0"' "$_mst_context/package.json" 2>/dev/null) || _mst_version="0.0.0"
-  _mst_image=$(_mcp_docker_image_tag "$_mst_version")
-
-  if ! _mcp_docker_build_image "$_mst_context" "$_mst_image"; then
-    _mcp_write_descriptor "$_mst_state_dir" "$_mst_token" "$_mst_kind" "$_mst_short" \
-      "$_mst_target_path" "-" "bash-fallback" "image-build-failed" "$_mst_started_at" "-"
-    printf 'status=unavailable\n'
-    printf 'reason=image-build-failed\n'
-    printf 'container=-\n'
-    printf 'session_id=%s\n' "$_mst_token"
-    printf 'mode=bash-fallback\n'
-    return 3
-  fi
-
-  # reconcilia eventual container remanescente do mesmo nome (colisao
-  # praticamente impossivel com token CSPRNG, mas barato e seguro).
-  _mcp_docker_reconcile_container "$_mst_container" || :
-
-  _mst_scripts_dir=$(_mcp_runtime_script_path state-rw.sh 2>/dev/null) || _mst_scripts_dir=""
-  if [ -n "$_mst_scripts_dir" ]; then
-    _mst_scripts_dir=$(dirname -- "$_mst_scripts_dir")
+  if [ -n "$_mst_reuse_sid" ]; then
+    _mst_token="$_mst_reuse_sid"
+    _mst_started_at="$_mst_reuse_started_at"
+    [ -n "$_mst_started_at" ] || _mst_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _mst_started_at="1970-01-01T00:00:00Z"
   else
-    _mst_scripts_dir="${HOME:-/tmp}/.claude/skills/agente-00c-runtime/scripts"
-  fi
-  _mst_enforcement_log="${_mst_target_path}/.claude/enforcement-log.jsonl"
-
-  # GRAVA O DESCRITOR ANTES do `docker run` (achado empirico validado nesta
-  # task, sonda: `docker logs` do container recem-subido acusando
-  # "mcp-session: resolve: SESSION_MISMATCH" quando a escrita acontecia
-  # DEPOIS): o processo PID1 (mcp/state-server/src/index.ts::bootstrap) faz
-  # `resolveActiveSession` UMA vez no proprio startup, fail-closed — ele
-  # PRECISA encontrar `<state-dir>/mcp-server.json` com o `session_id`
-  # batendo o token ja no disco no instante em que o container sobe. Se o
-  # descritor so existisse apos o `docker run` retornar, o servidor real
-  # (e a instancia efemera do healthcheck) sempre veriam SESSION_MISMATCH.
-  # mode=docker gravado aqui reflete a fase "starting" do ciclo de vida
-  # (data-model.md §State Transitions) — nao ha valor de enum dedicado
-  # para "starting"; o campo `mode` so distingue transporte final
-  # (docker|bash-fallback), e o status derivado (active/stopped) vem de
-  # `stopped_at`, nao de `mode`.
-  _mcp_write_descriptor "$_mst_state_dir" "$_mst_token" "$_mst_kind" "$_mst_short" \
-    "$_mst_target_path" "$_mst_container" "docker" "-" "$_mst_started_at" "-"
-
-  if ! _mcp_docker_run "$_mst_container" "$_mst_image" "$_mst_state_dir" \
-        "$_mst_scripts_dir" "$_mst_enforcement_log" "$_mst_target_path" "$_mst_token"; then
-    _mcp_write_descriptor "$_mst_state_dir" "$_mst_token" "$_mst_kind" "$_mst_short" \
-      "$_mst_target_path" "-" "bash-fallback" "container-start-failed" "$_mst_started_at" "-"
-    printf 'status=unavailable\n'
-    printf 'reason=container-start-failed\n'
-    printf 'container=-\n'
-    printf 'session_id=%s\n' "$_mst_token"
-    printf 'mode=bash-fallback\n'
-    return 3
-  fi
-
-  # health check ANTES de reportar sucesso (FR-011: "antes da primeira
-  # chamada de ferramenta"). Falha => derruba o container recem-subido
-  # (evita orfao saudavel-de-mentirinha) e cai para bash-fallback.
-  if ! _mcp_docker_healthcheck "$_mst_container"; then
-    _mcp_docker_stop "$_mst_container"
-    _mcp_write_descriptor "$_mst_state_dir" "$_mst_token" "$_mst_kind" "$_mst_short" \
-      "$_mst_target_path" "-" "bash-fallback" "health-timeout" "$_mst_started_at" "-"
-    printf 'status=unavailable\n'
-    printf 'reason=health-timeout\n'
-    printf 'container=-\n'
-    printf 'session_id=%s\n' "$_mst_token"
-    printf 'mode=bash-fallback\n'
-    return 3
+    _mst_token=$(_mcp_gen_token) || return 1
+    _mst_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _mst_started_at="1970-01-01T00:00:00Z"
   fi
 
   _mcp_write_descriptor "$_mst_state_dir" "$_mst_token" "$_mst_kind" "$_mst_short" \
-    "$_mst_target_path" "$_mst_container" "docker" "-" "$_mst_started_at" "-"
+    "$_mst_target_path" "-" "direct" "-" "$_mst_started_at" "-"
   printf 'status=active\n'
   printf 'reason=-\n'
-  printf 'container=%s\n' "$_mst_container"
+  printf 'container=-\n'
   printf 'session_id=%s\n' "$_mst_token"
-  printf 'mode=docker\n'
+  printf 'mode=direct\n'
   return 0
 }
 
@@ -798,7 +826,7 @@ _mcp_cmd_gc() {
   done
 
   if ! command -v _mcp_docker_list_managed >/dev/null 2>&1; then
-    printf 'cstk mcp gc: mcp-docker.sh nao carregado (CSTK_LIB invalido?)\n' >&2
+    printf 'cstk mcp gc: erro interno: funcoes docker preservadas nao carregadas\n' >&2
     return 1
   fi
 
@@ -1006,24 +1034,28 @@ USO:
       reverificar saude SEM reiniciar o container.
 
   cstk mcp start --state-dir DIR
-      Invocado PELO COMMAND PAI (nao pelo operador). Builda/reusa a
-      imagem, sobe o container dedicado e roda o health check ANTES de
-      reportar sucesso (FR-011). Falha em qualquer etapa (docker ausente,
-      daemon fora do ar, build/run falho, health timeout) grava
-      mode=bash-fallback em mcp-server.json e retorna exit 3 — NAO e erro
-      fatal, o pai segue com o caminho Bash de hoje (FR-007).
+      Invocado PELO COMMAND PAI (nao pelo operador). Nao builda nem sobe
+      motor de containers algum (cutover mcp-direct-transport) — apenas
+      gera/reusa o token de capacidade e grava mode=direct em
+      mcp-server.json; o processo do servidor e criado pelo HARNESS ao
+      conectar o .mcp.json. Idempotente (FR-010): sessao ja ativa reusa o
+      session_id. Descritor legado mode=docker (pre-cutover) e sobrescrito
+      com aviso em stderr, nunca falha por estado legado (FR-014).
 
   cstk mcp stop --state-dir DIR
-      Invocado PELO COMMAND PAI. Para o container (grace 5s) e preenche
-      stopped_at. Idempotente: parar o que ja esta parado, ou --state-dir
-      sem descritor algum, e exit 0.
+      Invocado PELO COMMAND PAI. Preenche stopped_at; para o container
+      legado (grace 5s) apenas quando o descritor ainda for mode=docker.
+      Idempotente: parar o que ja esta parado, ou --state-dir sem
+      descritor algum, e exit 0.
 
   cstk mcp gc [--dry-run]
-      GC de containers orfaos (task 5.4, CHK064): remove containers
-      gerenciados cujo state-dir esta em estado terminal
-      (concluida/abortada) ou nao existe mais. Container sem label de
-      state-dir NUNCA e removido (fail-safe). --dry-run so reporta, sem
-      remover. Best-effort: docker indisponivel e exit 0, nao erro.
+      Recolhe o passivo Docker LEGADO (task 5.4, CHK064, FR-015): remove
+      containers `cstk-mcp-state-*` gerenciados cujo state-dir esta em
+      estado terminal (concluida/abortada) ou nao existe mais — sessoes
+      novas (mode=direct) nunca criam containers para o gc gerenciar.
+      Container sem label de state-dir NUNCA e removido (fail-safe).
+      --dry-run so reporta, sem remover. Best-effort: docker indisponivel
+      e exit 0, nao erro.
 
   cstk mcp install [--project-path PATH] [--dry-run]
       Registra a entrada estatica mcpServers.cstk-state em
@@ -1038,14 +1070,15 @@ EXIT CODES (status):
   2 uso incorreto
 
 EXIT CODES (start/stop):
-  0 sucesso
+  0 sucesso (start: mode=direct ativo/reusado)
   1 erro inesperado (jq ausente, --state-dir invalido, IO)
   2 uso incorreto
-  3 indisponivel (so em start): mode=bash-fallback gravado, nao fatal
+  3 reservado pelo contrato para bash-fallback; nenhum caminho de codigo
+    atual de `start` o produz (motivos especificos de Docker removidos)
 
 EXIT CODES (gc):
   0 sempre (best-effort; ver linha summary= no stdout)
-  1 erro inesperado (mcp-docker.sh nao carregado, IO de tmpfile)
+  1 erro inesperado (funcoes docker preservadas nao carregadas, IO de tmpfile)
   2 uso incorreto
 
 EXIT CODES (install):

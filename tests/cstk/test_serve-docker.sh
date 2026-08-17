@@ -576,19 +576,23 @@ scenario_docker_mentions_confined_to_serve_docker_lib() {
     return 1
   fi
 
-  # Leitura ratificada do carve-out (dec-074, feature state-mcp-server):
+  # Leitura ratificada do carve-out (dec-074, feature state-mcp-server),
+  # AMENDADA pela feature mcp-direct-transport (dec-070, dec-033):
   # confinamento por PAR (dependencia, feature) — cada feature que orquestra
-  # docker tem UM arquivo confinado com a invocacao funcional:
-  #   (docker, serve) -> cli/lib/serve-docker.sh
-  #   (docker, mcp)   -> cli/lib/mcp-docker.sh
-  # cli/lib/mcp.sh e cli/lib/setup.sh sao exemptados da checagem de MENCAO
-  # (mcp.sh: comentarios, strings de modo "docker|bash-fallback", sourcing e
-  # chamadas _mcp_docker_*; setup.sh: `command -v docker` para TEXTO de aviso
-  # em FR-015, nunca invocacao funcional), mas a checagem de INVOCACAO
-  # FUNCIONAL abaixo continua cobrindo ambos.
+  # docker tem arquivo(s) confinado(s) com a invocacao funcional:
+  #   (docker, panel-docker)      -> cli/lib/serve-docker.sh
+  #   (docker, mcp-direct-transport, legado mode=docker) -> cli/lib/mcp.sh
+  # `cli/lib/mcp-docker.sh` foi REMOVIDO nesta feature (research Decision 11)
+  # — as 5 funcoes que `gc`/`status --live`/`stop` ainda precisam para
+  # sessoes LEGADAS (`_mcp_docker_preflight`, `_mcp_docker_list_managed`,
+  # `_mcp_docker_reconcile_container`, `_mcp_docker_healthcheck`,
+  # `_mcp_docker_stop`) migraram INLINE para `cli/lib/mcp.sh`, que passa a
+  # ser um dos arquivos confinados (nao mais exempto de invocacao
+  # funcional). `cli/lib/setup.sh` continua exempto so da checagem de
+  # MENCAO (`command -v docker` para TEXTO/detecao, nunca invocacao
+  # funcional).
   _hits=$(grep -rniE 'docker' "$REPO_ROOT/cli" 2>/dev/null \
             | grep -v '/cli/lib/serve-docker\.sh:' \
-            | grep -v '/cli/lib/mcp-docker\.sh:' \
             | grep -v '/cli/lib/mcp\.sh:' \
             | grep -v '/cli/lib/setup\.sh:' \
             | grep -vE '/cli/lib/serve\.sh:[0-9]+: *-*-docker\)[[:space:]]*$' \
@@ -601,21 +605,20 @@ scenario_docker_mentions_confined_to_serve_docker_lib() {
               ' \
           || :)
   if [ -n "$_hits" ]; then
-    _fail "docker_confinement" "mencoes a 'docker' fora dos arquivos confinados por par dependencia+feature (serve-docker.sh, mcp-docker.sh; dec-074) ou dos padroes exemptados de serve.sh/mcp.sh: $_hits"
+    _fail "docker_confinement" "mencoes a 'docker' fora dos arquivos confinados por par dependencia+feature (serve-docker.sh, mcp.sh; dec-074/dec-070) ou do padrao exemptado de setup.sh: $_hits"
     return 1
   fi
 
   # Invocacao FUNCIONAL de docker (docker <subcomando>) em cli/ so pode
-  # existir nos 2 arquivos confinados — pega inclusive o que a exempcao de
-  # mencao acima deixaria passar em mcp.sh/serve.sh.
+  # existir nos 2 arquivos confinados.
   _func_hits=$(grep -rnE '(^|[^_[:alnum:]-])docker[[:space:]]+(run|build|ps|stop|rm|rmi|inspect|exec|images|pull|push|network|volume|cp|kill|logs|start|create|wait)([[:space:]]|$)' \
                  "$REPO_ROOT/cli" 2>/dev/null \
                | grep -v '/cli/lib/serve-docker\.sh:' \
-               | grep -v '/cli/lib/mcp-docker\.sh:' \
+               | grep -v '/cli/lib/mcp\.sh:' \
                | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
           || :)
   if [ -n "$_func_hits" ]; then
-    _fail "docker_functional_confinement" "invocacao funcional de docker fora de serve-docker.sh/mcp-docker.sh: $_func_hits"
+    _fail "docker_functional_confinement" "invocacao funcional de docker fora de serve-docker.sh/mcp.sh: $_func_hits"
     return 1
   fi
 }

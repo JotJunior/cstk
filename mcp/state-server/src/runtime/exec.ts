@@ -93,6 +93,66 @@ export interface RunHelperOptions {
 }
 
 /**
+ * Placeholder que substitui um valor sensivel na mensagem de erro do
+ * `HelperExecutionError`. Nunca vazio — precisa continuar visivelmente
+ * distinto de um valor real ao ler o erro em log/transcript/bug report.
+ */
+const REDACTED_PLACEHOLDER = "***REDACTED***";
+
+/**
+ * Flags de argv cujo VALOR (o argumento imediatamente seguinte) e sensivel
+ * e MUST nunca aparecer em texto plano numa mensagem de erro. Hoje so
+ * `--token` (session/resolve.ts, SEC-H3): o token de capacidade e um
+ * segredo de curta duracao que autoriza mutacao de uma execucao inteira —
+ * ver dec-087. Lista deliberadamente pequena e explicita (nao heuristica
+ * por nome de campo) para nao mascarar por engano texto livre legitimo
+ * (evidence/rationale/etc. nunca chegam aqui como flag reconhecida).
+ */
+const SENSITIVE_FLAGS: ReadonlySet<string> = new Set(["--token"]);
+
+/** Extrai os valores sensiveis presentes em `args` (o token(s) de fato passados). */
+function extractSensitiveValues(args: readonly string[]): readonly string[] {
+  const values: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const flag = args[i] ?? "";
+    const value = args[i + 1];
+    if (SENSITIVE_FLAGS.has(flag) && value !== undefined) {
+      values.push(value);
+    }
+  }
+  return values;
+}
+
+/** Copia de `args` com o valor de cada flag sensivel substituido pelo placeholder. */
+function redactArgs(args: readonly string[]): string[] {
+  const redacted = [...args];
+  for (let i = 0; i < redacted.length; i++) {
+    const flag = redacted[i] ?? "";
+    if (SENSITIVE_FLAGS.has(flag) && i + 1 < redacted.length) {
+      redacted[i + 1] = REDACTED_PLACEHOLDER;
+    }
+  }
+  return redacted;
+}
+
+/**
+ * Substitui toda ocorrencia literal de cada `sensitiveValues[i]` em `text`
+ * pelo placeholder. Usado tanto no argv reconstruido por nos (`args.join`)
+ * quanto no `error.message` que o proprio Node reconstroi internamente
+ * (`execFile` monta `Command failed: <file> <args...>` — a MESMA fronteira
+ * onde o token vazaria de novo, mesmo depois de `redactArgs` cuidar da
+ * nossa reconstrucao — dec-087).
+ */
+function redact(text: string, sensitiveValues: readonly string[]): string {
+  let result = text;
+  for (const value of sensitiveValues) {
+    if (value.length === 0) continue;
+    result = result.split(value).join(REDACTED_PLACEHOLDER);
+  }
+  return result;
+}
+
+/**
  * Invoca um helper POSIX por argv puro. `args` MUST ser um array literal —
  * nunca uma string interpolada. Rejeita a Promise em qualquer saida !== 0.
  */
@@ -112,9 +172,17 @@ export function runHelper(
         if (error) {
           const exitCode =
             typeof error.code === "number" ? error.code : null;
+          // dec-087: `args.join(" ")` e `error.message` (o Node reconstroi a
+          // linha de comando internamente em execFile) MUST nunca ecoar um
+          // valor sensivel (ex.: `--token <valor>`) em texto plano — a
+          // mensagem chega a log/transcript/bug report exatamente quando ha
+          // token real invalido ou de execucao terminal.
+          const sensitiveValues = extractSensitiveValues(args);
+          const safeArgs = redactArgs(args).join(" ");
+          const safeErrorMessage = redact(error.message, sensitiveValues);
           reject(
             new HelperExecutionError(
-              `runHelper: ${helperPath} ${args.join(" ")} falhou: ${error.message}`,
+              `runHelper: ${helperPath} ${safeArgs} falhou: ${safeErrorMessage}`,
               exitCode,
               stderr,
               parseDiagnosticEnvelope(stderr),

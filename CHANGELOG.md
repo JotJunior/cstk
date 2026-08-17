@@ -5,6 +5,117 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.0.0] - 2026-08-16
+
+**BREAKING** — duas features encadeadas que, juntas, fazem o caminho MCP
+funcionar pela primeira vez: `orchestrator-mcp-allowlist` (expõe as tools
+aos orquestradores) e `mcp-direct-transport` (faz o transporte entregá-las).
+A primeira é pré-requisito da segunda e sozinha não tem efeito observável.
+
+O transporte MCP dos orquestradores autônomos deixa de usar um container
+Docker por execução: `cstk mcp start` agora resolve a sessão sob demanda a
+cada chamada e grava um descritor `mode=direct` (sem `container_name`);
+`cli/lib/mcp-docker.sh` foi **removido**.
+
+**Isto é correção de defeito, não apenas refactor.** Antes desta versão o
+caminho MCP não entregava tool alguma a nenhuma sessão do harness — o
+launcher servia um stub ocioso sem token, e a UI mostrava "connected - no
+tools". "MCP ativo" nas versões anteriores era aparência; nenhuma execução
+chegou a usar as 7 tools reais (`open_wave`, `record_decision`,
+`record_skill`, `record_task`, `register_human_block`, `close_wave`,
+`get_status`) por este caminho.
+
+### Added
+
+- **Tools MCP expostas aos orquestradores** (`orchestrator-mcp-allowlist`).
+  O frontmatter de `agente-00c-orchestrator` e `agente-00c-feature-orchestrator`
+  passa a declarar as 7 tools `mcp__cstk-state__*`. Sem isso um subagente
+  não as enxerga, por mais que o servidor as sirva.
+- **Guard de composição de allowlist** (`tests/test_orchestrator-allowlist-guard.sh`,
+  16 cenários): a allowlist de um orquestrador nunca pode resolver para
+  conjunto vazio nem conter apenas tools MCP — allowlist só-MCP faz o
+  harness recusar o spawn antes de iniciar. O parser cobre **as duas
+  formas** de `tools:` (inline e lista YAML).
+- **Bloco de orientação MCP-vs-Bash** autocontido em cada orquestrador,
+  com cenário de paridade que falha se os dois divergirem. Inclui a regra
+  de não ecoar o `session_id` e a de não pressupor a tool: usar se existir,
+  cair no caminho Bash se não, sem tratar a ausência como erro.
+
+### Removed
+
+- **Guard inerte** (`scenario_orchestrator_agente_nao_lista_tool_mcp` e
+  `scenario_orchestrator_feature_nao_lista_tool_mcp` em
+  `tests/test_orchestrator-mcp-fallback.sh`). Eles proibiam declarar
+  `mcp__*` no frontmatter, mas a ERE `^\s*-\s*mcp__` só casava forma de
+  **lista** YAML e os agentes usam forma **inline** — a proibição nunca
+  teria disparado. Substituídos pelo guard de composição acima, que é o
+  que de fato protege o invariante (SC-004: MCP indisponível nunca degrada
+  funcionalidade).
+
+### Changed (BREAKING)
+
+- **Injeção do token nos commands**: `agente-00c`, `feature-00c` e seus
+  dois resumes injetavam o `session_id` no prompt de spawn do orquestrador
+  apenas quando `mode == "docker"`. Com `mode=direct` a condição nunca
+  seria satisfeita e o orquestrador veria as 7 tools sem token para
+  apresentar — toda chamada morreria em `SESSION_MISMATCH`. A leitura passa
+  a ser incondicional (FR-013).
+- **Vida do processo**: deixa de ser coextensiva com a execução
+  (sobrevivia a pausas — FR-010 da feature-base `state-mcp-server`) e
+  passa a ser coextensiva com a **sessão do harness** (FR-012 desta
+  feature). A vida da *sessão* MCP (descritor + token) fica inalterada —
+  continua sobrevivendo a pausas no disco.
+- **Cardinalidade processo:sessão** muda de 1:1 (um container por
+  execução) para **1:N** — um processo resolve chamadas de múltiplas
+  sessões, cada uma autorizada pelo próprio token apresentado na chamada.
+  `maxToolCalls` passa a ser teto por processo/sessão do harness, não mais
+  por execução.
+
+### Security
+
+- **Regressão declarada, sem alegação de paridade (Princípio VI)**:
+  SEC-H2 (confinamento por filesystem, antes garantido pelas montagens
+  `docker run` — `/data/state`, scripts `:ro`, `enforcement-log.jsonl`)
+  **perde o mecanismo de enforcement** quando o container sai; não há
+  montagem seletiva equivalente para um processo direto no host. O modelo
+  de ameaça muda de eixo: o confinamento deixa de ser do *processo* e
+  passa a ser da *autorização* — toda mutação continua passando pelos
+  helpers POSIX, que só tocam o `state_dir` resolvido pelo token
+  apresentado.
+- **Ganho**: o token de capacidade deixa de aparecer como sufixo de nome
+  de container (antes legível via `docker ps` por qualquer processo da
+  máquina — FR-009).
+- **Fix**: o token também vazava na mensagem de erro do `runHelper`
+  (`mcp/state-server/src/runtime/exec.ts`) — o `args.join(" ")` do próprio
+  servidor e o `error.message` reconstruído internamente pelo `execFile`
+  do Node repetiam a flag `--token <valor>` em texto claro (achado de
+  validação e2e real). Corrigido com máscara seletiva das flags sensíveis
+  na renderização (FR-016/SC-006) — `execFile` com array de argv (SEC-H1,
+  anti-command-injection) já estava correto; o vazamento era só na
+  mensagem.
+- **Fail-closed reforçado**: o gate de sessão checava só o proxy
+  `.stopped_at` do próprio descritor — gravado apenas quando `cstk mcp
+  stop` chega a rodar, em best-effort. Se `stop` não rodar (aborto, crash,
+  sessão interrompida), o token de uma execução já terminal permanecia
+  válido indefinidamente. Agora o gate também consulta o status real da
+  execução (`.execution.status` via `state-rw.sh get`, backend-agnóstico)
+  e recusa quando não é `em_andamento`/`aguardando_humano`, mesmo que
+  `cstk mcp stop` nunca tenha rodado.
+- **Instalação de dependências no host** (`mcp-build-lazy.sh`) passa a
+  usar `npm ci --ignore-scripts` contra o `package-lock.json` já
+  versionado — lockfile determinístico, scripts de ciclo de vida
+  desativados.
+
+### Operacional
+
+- Requer **Node >= 22** na máquina do operador (`mcp/state-server/
+  package.json` `engines.node`; verificado por `mcp-launch.sh` antes de
+  qualquer chamada).
+- `cstk mcp gc` continua detectando e removendo containers Docker órfãos
+  (`cstk-mcp-state-*`) remanescentes de sessões criadas antes deste
+  cutover — não vira no-op, só deixa de ter containers novos para
+  gerenciar.
+
 ## [7.6.2] - 2026-08-15
 
 Corrige o `cstk serve` no Windows, onde o painel nunca chegava a subir: o
@@ -6155,6 +6266,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.0.0]: https://github.com/JotJunior/cstk/releases/tag/v8.0.0
 [7.6.2]: https://github.com/JotJunior/cstk/releases/tag/v7.6.2
 [7.6.1]: https://github.com/JotJunior/cstk/releases/tag/v7.6.1
 [7.6.0]: https://github.com/JotJunior/cstk/releases/tag/v7.6.0

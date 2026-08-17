@@ -1,9 +1,12 @@
 #!/bin/sh
-# Fixture de teste: simula mcp-session.sh resolve --state-dir (modo direto,
-# dec-081/task 5.3) com sucesso, mas so se `--state-dir` de fato aparecer no
-# argv (prova que resolveActiveSession usou o locator certo quando
-# CSTK_MCP_STATE_DIR esta presente, em vez de --project-path). Usado apenas
-# por test/resolve.test.ts via injecao de --helperPath.
+# Fixture de teste: simula mcp-session.sh resolve --state-dir (modo direto)
+# com sucesso, mas so se `--state-dir` de fato aparecer no argv (prova que
+# resolveActiveSession usou o locator certo quando a opcao `stateDir` e
+# passada explicitamente, em vez de --project-path). Ate mcp-direct-transport
+# FASE 1, `stateDir` vinha de CSTK_MCP_STATE_DIR (modo container, dec-081);
+# apos a FASE 1, vem do cache `token -> state_dir` de `resolveSessionForCall`
+# (cache-hit). Usado apenas por test/resolve.test.ts via injecao de
+# --helperPath.
 set -eu
 
 _has_state_dir=0

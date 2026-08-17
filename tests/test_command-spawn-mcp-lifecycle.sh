@@ -116,14 +116,28 @@ scenario_resume_feat_instrui_mcp_stop_terminal() {
   assert_exit 0 grep -Eq 'cstk mcp stop --state-dir' "$CMD_RES_FEAT" || return 1
 }
 
-# aguardando_humano NAO deve disparar stop (FR-010: sessao coextensiva com
-# a execucao inteira, sobrevive a pausas entre ondas).
+# aguardando_humano NAO deve disparar stop. Reescrito na FASE 6
+# (mcp-direct-transport task 6.1.1, plan.md "Mudanca de contrato
+# (BREAKING)"): a versao anterior deste teste so checava a presenca da
+# frase "NAO e terminal", cuja JUSTIFICATIVA no doc afirmava que "o
+# servidor" (leia-se: o PROCESSO) permanece coextensivo com a execucao e
+# ativo durante a pausa — verdade sob o contrato Docker antigo (FR-010 da
+# feature-base), MENTIRA sob o contrato novo (FR-012): quem sobrevive a
+# pausa e a SESSAO MCP (descritor+token em disco), nao o processo, que
+# agora e coextensivo com a sessao do harness. Assert dupla: (a) o
+# comportamento operacional continua correto ("NAO e terminal"); (b) a
+# distincao processo-vs-sessao esta documentada, para que uma futura
+# reversao ao texto antigo falhe aqui.
 scenario_resume_agente_nao_para_em_aguardando_humano() {
   assert_exit 0 grep -Eq 'aguardando_humano.*NAO e terminal|NAO e terminal' "$CMD_RES_AGENTE" || return 1
+  assert_exit 0 grep -Eiq 'SESSAO MCP' "$CMD_RES_AGENTE" || return 1
+  assert_exit 0 grep -Eiq 'processo.*coextensivo.*sessao do harness|processo.*e coextensivo com a.*sessao do harness' "$CMD_RES_AGENTE" || return 1
 }
 
 scenario_resume_feat_nao_para_em_aguardando_humano() {
   assert_exit 0 grep -Eq 'aguardando_humano.*NAO e terminal|NAO e terminal' "$CMD_RES_FEAT" || return 1
+  assert_exit 0 grep -Eiq 'SESSAO MCP' "$CMD_RES_FEAT" || return 1
+  assert_exit 0 grep -Eiq 'processo.*coextensivo.*sessao do harness|processo.*e coextensivo com a.*sessao do harness' "$CMD_RES_FEAT" || return 1
 }
 
 # ==== dec-043 (consumada): injecao do token de capacidade no spawn ====
@@ -170,6 +184,39 @@ scenario_token_fallback_sem_mcp_no_prompt() {
   for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
     grep -Eiq 'NAO mencione MCP' "$_f" \
       || { _fail "instrucao de fallback sem-MCP ausente" "$_f"; return 1; }
+  done
+}
+
+# ==== mcp-direct-transport FASE 4 (FR-013): injecao generalizada, ====
+# ==== independente de `mode` — condicao antiga `mode == "docker"` removida ====
+# Ref: docs/specs/mcp-direct-transport/tasks.md 4.1/4.2;
+#      contracts/cli-mcp-lifecycle.md §7 (P-1, P-2, P-3).
+
+scenario_token_injecao_nao_condicionada_a_mode_nos_4_commands() {
+  # A variavel _mcp_mode existia SO para gatear a injecao do token a
+  # mode=="docker". Apos FR-013, a injecao le session_id direto do
+  # descritor — _mcp_mode nao deve mais aparecer em nenhum dos 4 commands.
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    if grep -Eq '_mcp_mode' "$_f"; then
+      _fail "_mcp_mode ainda presente (condicao docker nao removida)" "$_f"
+      return 1
+    fi
+  done
+}
+
+scenario_token_le_session_id_sem_guard_de_mode() {
+  # Leitura de _mcp_token deve ser incondicional (nao dentro de um
+  # `if [ ... = "docker" ]`) nos 4 commands.
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    assert_exit 0 grep -Eq '_mcp_token=\$\(jq -r .\.session_id' "$_f" || return 1
+  done
+}
+
+scenario_prosa_documenta_independencia_de_mode() {
+  # Cada bloco de injecao deve declarar explicitamente a independencia de
+  # `mode` (P-2 do contrato) — nao basta o codigo mudar silenciosamente.
+  for _f in "$CMD_INIT_AGENTE" "$CMD_INIT_FEAT" "$CMD_RES_AGENTE" "$CMD_RES_FEAT"; do
+    assert_exit 0 grep -Eiq 'independentemente do valor de .mode.' "$_f" || return 1
   done
 }
 

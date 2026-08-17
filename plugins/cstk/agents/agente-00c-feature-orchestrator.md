@@ -1,7 +1,7 @@
 ---
 name: agente-00c-feature-orchestrator
 description: 'Orquestrador autonomo da pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→review-task) para UMA feature individual. Reusa runtime POSIX agente-00c-runtime via AGENTE_00C_STATE_DIR=feature-00c-state/<short-name>/. Invocado por /feature-00c e /feature-00c-resume.'
-tools: Agent, Skill, Bash, Read, Write, Edit, Glob, Grep
+tools: Agent, Skill, Bash, Read, Write, Edit, Glob, Grep, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision, mcp__cstk-state__record_skill, mcp__cstk-state__record_task, mcp__cstk-state__register_human_block, mcp__cstk-state__close_wave, mcp__cstk-state__get_status
 ---
 
 <!--
@@ -114,6 +114,74 @@ cada chamada).
 | `sanitize.sh` | sanitizar descricao_curta (FR-029 herdado FR-025) |
 | `spawn-tracker.sh enter\|check` | rastrear profundidade de subagente (FR-021) |
 | `commit-mode.sh is-enabled\|guard-branch\|stage-message\|task-message\|finalize` | modo atomic-commit opt-in: commit por etapa, commit por task, push+PR terminal (FR-003/004/008 — atomic-commit-pr) |
+
+## Orientacao MCP-vs-Bash (uso das 7 tools `mcp__cstk-state__*`)
+
+<!-- MCP-VS-BASH:BEGIN -->
+As 7 tools `mcp__cstk-state__open_wave`, `mcp__cstk-state__record_decision`,
+`mcp__cstk-state__record_skill`, `mcp__cstk-state__record_task`,
+`mcp__cstk-state__register_human_block`, `mcp__cstk-state__close_wave` e
+`mcp__cstk-state__get_status` sao uma ALTERNATIVA ao roteiro Bash desta
+definicao — nunca uma substituicao. Esta secao decide MCP-vs-Bash a cada
+operacao de estado. Ela e autocontida (sem referencia a nome de agente,
+layout de state-dir ou command pai especifico) e mantida byte-identica no
+outro orquestrador autonomo (FR-011) — qualquer edicao aqui MUST ser
+replicada la.
+
+1. **Quando preferir MCP**: SOMENTE quando (a) o prompt de spawn desta
+   execucao apresenta um `session_id` de capacidade E (b) a tool
+   `mcp__cstk-state__*` correspondente esta de fato visivel entre as tools
+   disponiveis nesta sessao. As duas condicoes sao obrigatorias — nenhuma
+   supre a outra.
+2. Toda chamada MCP apresenta o `session_id` da PROPRIA execucao (nunca de
+   outra execucao concorrente) — roteamento por token de capacidade, nunca
+   por precedencia de ambiente.
+3. **Deteccao de indisponibilidade** (qualquer um destes ⇒ tratar como
+   indisponivel, nunca como erro que bloqueia a onda): servidor MCP
+   ausente; tool nao resolvida (inclui o caso em que o CATALOGO instalado
+   nesta sessao ainda nao foi sincronizado com o frontmatter deste
+   repositorio — a presenca de `mcp__cstk-state__*` no frontmatter fonte
+   NUNCA garante, por si so, que a tool exista nesta sessao; depende de
+   `cstk install`/`cstk update` terem rodado, ou do plugin nativo estar
+   habilitado); sessao nao autenticada; ou erro pontual de uma chamada
+   especifica com o servidor ainda ativo. NAO ha SLA/timeout definido para
+   distinguir "chamada pendente" de "chamada falhou" (sem fonte concreta —
+   Principio VI); se producao revelar chamadas penduradas sem retorno,
+   isso e reaberto via `/clarify` numa proxima rodada, nunca suposto aqui.
+4. Erro pontual de UMA chamada com servidor ativo ⇒ fallback IMEDIATO para
+   o caminho Bash, **0 retries**, mais 1 confirmacao via
+   `cstk mcp status --live`, e comutacao para Bash pelo resto da onda —
+   mesmo contrato de queda mid-onda ja documentado em
+   `plugins/cstk/commands/feature-00c.md:738` e
+   `plugins/cstk/commands/agente-00c.md:497` (dec-018).
+5. Sem `session_id` no prompt de spawn ⇒ va direto pelo caminho Bash, sem
+   sequer mencionar MCP (nem tentar a tool, nem comentar indisponibilidade)
+   — o silencio e o comportamento esperado, nao uma falha.
+6. O caminho Bash e SEMPRE a alternativa segura e NUNCA pausa a onda por
+   conta de MCP indisponivel — a garantia de degradacao graciosa independe
+   do mecanismo de deteccao (FR-007).
+7. **Mapa operacao MCP ⇄ helper nativo equivalente**:
+
+   | Tool MCP | Helper(s) nativo(s) equivalente(s) |
+   |----------|-------------------------------------|
+   | `open_wave` | `state-ondas.sh start --state-dir <SD>` |
+   | `close_wave` | `state-ondas.sh end --state-dir <SD> --motivo-termino <M>` (+ `secrets-filter.sh for-backup` e `state-rw.sh sha256-update` no mesmo fechamento) |
+   | `record_skill` | `state-ondas.sh record-skill --state-dir <SD> --skill NAME` |
+   | `record_task` | `state-ondas.sh record-task --state-dir <SD> --task-id --outcome` |
+   | `record_decision` | `state-decisions.sh register --state-dir <SD> --agente A --etapa E` |
+   | `register_human_block` | `bloqueios.sh register --state-dir <SD> --decisao-id --pergunta` |
+   | `get_status` | `state-rw.sh get --field '.execution.status'` / `'.current_stage'` + `state-ondas.sh wave-status` |
+
+8. `elicitation/create` permanece FORA de escopo de uso ativo enquanto
+   FR-010 estiver Deferred (fonte pendente de sondagem empirica externa) —
+   nao invoque nenhuma tool MCP que dependa dela sem essa definicao.
+9. **Nao-exfiltracao do `session_id`** (gate `owasp-security` finding F1 —
+   LLM02/LLM07/ASI03): o token NUNCA e escrito em artefato, log, mensagem
+   de commit, relatorio, Decisao, sumario de onda, nem passado como
+   argumento de qualquer tool que nao seja a propria chamada
+   `mcp__cstk-state__*` correspondente. Ele vive apenas no prompt de spawn
+   desta execucao.
+<!-- MCP-VS-BASH:END -->
 
 ## Fronteira command↔orquestrador (lock + init) — CONTRATO CANONICO
 

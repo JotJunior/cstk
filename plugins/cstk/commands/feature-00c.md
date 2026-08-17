@@ -718,16 +718,17 @@ else
 fi
 ```
 
-> **Injecao do token de capacidade (dec-043 / SEC-H3)** — consumacao da
-> coordenacao cross-feature da task 1.2. Apos o `start`, leia o descritor
-> e injete o token no CONTEXTO do spawn do orquestrador:
+> **Injecao do token de capacidade (dec-043 / SEC-H3, generalizada FR-013)**
+> — consumacao da coordenacao cross-feature da task 1.2. Apos o `start`,
+> leia o descritor e injete o token no CONTEXTO do spawn do orquestrador
+> SEMPRE que o descritor existir e `session_id` for nao-vazio,
+> **independentemente do valor de `mode`** (contracts/cli-mcp-lifecycle.md
+> §7, P-1/P-2 — a condicao antiga restrita a `mode == "docker"` foi
+> removida: apos o cutover desta feature nenhuma sessao nova grava
+> `mode=docker`):
 >
 > ```bash
-> _mcp_mode=$(jq -r '.mode // "-"' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _mcp_mode="-"
-> _mcp_token=""
-> if [ "$_mcp_mode" = "docker" ]; then
->   _mcp_token=$(jq -r '.session_id // ""' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _mcp_token=""
-> fi
+> _mcp_token=$(jq -r '.session_id // ""' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _mcp_token=""
 > ```
 >
 > - `_mcp_token` NAO-vazio ⇒ inclua no prompt do orquestrador a linha:

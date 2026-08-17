@@ -330,6 +330,18 @@ _is_internal_test() {
       # o contrato sumir, o "double check" anti-fabricacao some silenciosamente.
       [ -f "$REPO_ROOT/plugins/cstk/agents/data-veracity-verifier.md" ] && return 0
       return 1 ;;
+    test_orchestrator-allowlist-guard.sh)
+      # Guard de composicao de allowlist dos orquestradores (feature
+      # orchestrator-mcp-allowlist, FASE 1 task 1.1/1.2, FR-002/FR-003/
+      # FR-004/FR-012): parseia frontmatter (forma inline + forma lista)
+      # dos alvos casados por `plugins/cstk/agents/*-orchestrator.md` e
+      # garante allowlist nunca vazia/nunca-so-MCP. Assert sobre um
+      # DIRETORIO via glob dinamico, nao em um unico script — existence-
+      # guarded ao diretorio de agentes. Se ele sumir, volta a ser orfao
+      # real. Ver contracts/orchestrator-allowlist-guard.md secao
+      # "Integracao com o harness".
+      [ -d "$REPO_ROOT/plugins/cstk/agents" ] && return 0
+      return 1 ;;
     test_converge-orchestrator-gate.sh)
       # Smoke textual sobre os 2 orquestradores (gate incondicional
       # `convergence` na fronteira execute-task -> review-task, feature
