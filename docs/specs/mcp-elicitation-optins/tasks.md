@@ -741,22 +741,31 @@ mas nao na sessao" — ja custou ciclo de bugfix em features anteriores)
       `./scripts/build-release.sh 8.0.1-dev` (tag atual `v8.0.0`) =>
       `dist/cstk-8.0.1-dev.tar.gz` + `.sha256`, flavor `bsd`. So escreve em
       `dist/` (dentro do repo) — nenhum sync com `~/.local`/`~/.claude`.
-- [!] 10.3.2 `cstk install --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"`
+- [x] 10.3.2 `cstk install --from "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"`
       — atualiza o CATALOGO (`~/.claude`, skills/commands/agents: os 4
       commands + os 2 agents editados nas FASES 5/7). **Requer autorizacao
       do operador** — escreve em `~/.claude`, ambiente GLOBAL fora do
-      blast radius do orquestrador (Principio IV/FR-035). Comando exato
-      pronto (rodar do root do repo, apos 10.3.1):
-      `cstk install --from "file://$PWD/dist/cstk-8.0.1-dev.tar.gz"`
-- [!] 10.3.3 `cstk self-update --from
+      blast radius do orquestrador (Principio IV/FR-035). Executado pelo
+      OPERADOR (via command pai) na onda-016/17: `cstk install --from
+      "file://$PWD/dist/cstk-8.0.1-dev.tar.gz"` => updated 17, agents 7,
+      commands 6 (dec-106).
+- [x] 10.3.3 `cstk self-update --from
       "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"` — atualiza o RUNTIME
       (`cli/lib/*.sh` + binario; nenhum `cli/lib` foi tocado nesta
       feature, mas rodar por disciplina/paridade). **Requer autorizacao do
-      operador** — escreve em `~/.local`. Comando exato pronto:
-      `cstk self-update --from "file://$PWD/dist/cstk-8.0.1-dev.tar.gz"`
-- [!] 10.3.4 `cstk doctor` — confirmar catalogo sem drift antes de
-      qualquer validacao end-to-end (FASE 11). **Requer 10.3.2/10.3.3
-      primeiro** (executados pelo operador). Comando exato: `cstk doctor`
+      operador** — escreve em `~/.local`. Executado pelo OPERADOR na
+      onda-016/17: `cstk self-update --from
+      "file://$PWD/dist/cstk-8.0.1-dev.tar.gz"` (v8.0.1 -> 8.0.1-dev,
+      dec-106).
+- [x] 10.3.4 `cstk doctor` — confirmar catalogo sem drift antes de
+      qualquer validacao end-to-end (FASE 11). Executado apos 10.3.2/10.3.3:
+      `cstk doctor` => `ok:34 edited:0 missing:0` (dec-106). Achado no
+      caminho (NAO desta task, registrado como divida em FASE 11/dec-106):
+      o `dist/` do servidor MCP cacheado no host era da v8.0.0 (sem
+      `collect_optins`) e o build lazy nao recompila quando o entrypoint
+      ja existe; o operador removeu o entrypoint cacheado para forcar
+      rebuild (8 tools, `SERVER_VERSION` 0.6.0) — ver nota de escopo apos
+      FASE 11.
 
 ---
 
@@ -768,42 +777,213 @@ Depende de: FASES 2-10 completas + sincronizadas (10.3).
 
 Ref: `quickstart.md` Scenarios 1, 1b, 2, 3, 4, 5, 6, 7, 8, 9
 
-- [ ] 11.1.1 Scenario 1 (happy path `/agente-00c`, 3 campos, `message`
-      com advertencia de rebaixamento)
-- [ ] 11.1.2 Scenario 1b (as 3 faces de `--allow-downgrade` condicional,
-      assercao sobre argv capturado)
-- [ ] 11.1.3 Scenario 2 (escopo `/feature-00c`, 2 campos, sem tier)
-- [ ] 11.1.4 Scenario 3 (3a recusa explicita / 3b ausencia headless,
-      `declined` x `absent` distinguiveis, SC-004)
-- [ ] 11.1.5 Scenario 4 (teto de tempo 300000ms/dec-058, `outcome:
-      "timeout"` nunca `absent`)
-- [ ] 11.1.6 Scenario 5 (mecanismo nunca disponivel, ramo legado, zero
-      avisos em stderr, SC-005)
-- [ ] 11.1.7 Scenario 6 (mecanismo falha no meio, 1 aviso, re-spawn,
-      operador nao perguntado 2x, SC-005)
-- [ ] 11.1.8 Scenario 7 (idempotencia em retomada via
-      `/agente-00c-resume`, `reused`, zero requisicoes novas, repetivel)
-- [ ] 11.1.9 Scenario 8 (roundtrip envelope real x contrato — nomes de
-      campo, tokens de enum, `applied_value` batendo com os helpers)
-- [ ] 11.1.10 Scenario 9 (guard de composicao — ja coberto por FASE 7.2,
-      confirmar aqui como parte do E2E)
+- [x] 11.1.1 Scenario 1 (happy path `/agente-00c`, 3 campos, `message`
+      com advertencia de rebaixamento). **E2E REAL** (dec-108): operador
+      rodou `/agente-00c` num projeto-alvo descartavel apos provisionar
+      `cstk-state` no `.mcp.json`; formulario apareceu, disparado pelo
+      orquestrador via `collect_optins`. Relato literal: "O formulario
+      apareceu."
+- [x] 11.1.2 Scenario 1b (as 3 faces de `--allow-downgrade` condicional,
+      assercao sobre argv capturado). O proprio `quickstart.md` prescreve
+      instrumentacao por wrapper/stub de argv em teste Node (nao UI ao
+      vivo) — satisfeito por `collect_optins.test.ts:291-364` (rebaixamento
+      COM flag) e `:331-364` (elevacao/no-op SEM flag), usando o fixture
+      `fake-collect-optins-delivery-tier-captures-argv.sh`. Confirmado
+      nesta onda: `npm test` em `mcp/state-server` => 157/157 pass.
+- [!] 11.1.3 Scenario 2 (escopo `/feature-00c`, 1 campo `atomic_commit`,
+      sem tier). Logica de restricao de escopo unit-testada
+      (`collect_optins.test.ts:142`, `feature-00c` restrito a
+      `atomic_commit`) — mas a execucao E2E ao vivo com `/feature-00c` real
+      (formulario com 1 campo observado por um operador) NAO foi rodada
+      nesta linha; so `/agente-00c` foi validado ao vivo (11.1.1/dec-108).
+      Requer sessao interativa; nao rodada — nao invento o resultado.
+- [x] 11.1.4 Scenario 3 (3a recusa explicita / 3b ausencia headless,
+      `declined` x `absent` distinguiveis, SC-004). Unit-testado:
+      `collect_optins.test.ts:174` (`action=decline` => `declined` em
+      todos os campos, default seguro) e `:194` (`cancel` retornado =>
+      `absent`, discriminador vs timeout). Os dois desfechos sao
+      distinguiveis por construcao (branches separados no handler).
+      `npm test` 157/157 pass nesta onda.
+- [x] 11.1.5 Scenario 4 (teto de tempo 300000ms/dec-058, `outcome:
+      "timeout"` nunca `absent`). Assercao central do cenario (discriminar
+      por MECANISMO — `McpError RequestTimeout` lancado vs `cancel`
+      retornado — nao por tempo decorrido) unit-testada em
+      `collect_optins.test.ts:207`. A espera real de 5min (ou reduzida por
+      env) em sessao interativa nao foi executada nesta linha; o mecanismo
+      que produz o `outcome` correto esta verificado.
+- [!] 11.1.6 Scenario 5 (mecanismo nunca disponivel, ramo legado, zero
+      avisos em stderr, SC-005). Cobertura ESTRUTURAL apenas: `tests/
+      test_command-spawn-optin-elicitation.sh::scenario_ramo_legado_prosa_antes_do_init_agente/_feature`
+      confirma que os 3 blocos de prosa e a ordem no SOURCE dos 4 commands
+      estao intactos. A observacao COMPORTAMENTAL ao vivo (rodar
+      `/agente-00c` sem `cstk mcp start`, confirmar zero linhas em stderr)
+      nao foi executada nesta linha. Requer sessao interativa; nao rodada.
+- [!] 11.1.7 Scenario 6 (mecanismo falha no meio, 1 aviso, re-spawn,
+      operador nao perguntado 2x, SC-005). Parcial: o desfecho `failed`
+      no NIVEL da tool MCP (excecao generica => `outcome failed`,
+      `mechanism failed`, 1 linha stderr) esta unit-testado em
+      `collect_optins.test.ts:223`. O comportamento de ORQUESTRADOR
+      (nao abrir onda, devolver turno, pai ler `.optin_responses[]`,
+      rodar prosa nos campos degradados, persistir `channel: "prose"`,
+      re-spawnar sem perguntar 2x) nao tem automatizacao equivalente e
+      nao foi observado ao vivo nesta linha. Requer sessao interativa com
+      falha induzida a meio da chamada; nao rodada.
+- [!] 11.1.8 Scenario 7 (idempotencia em retomada via
+      `/agente-00c-resume`, `reused`, zero requisicoes novas, repetivel).
+      O mecanismo de reuso (cap M6) esta unit-testado —
+      `collect_optins.test.ts:266`: todos os campos aplicaveis ja
+      registrados => `reused`, `elicitInput` NAO chamado. O fluxo E2E
+      completo (interromper apos Scenario 1, `/agente-00c-resume` real,
+      confirmar zero formularios e repetir 2x) nao foi executado nesta
+      linha. Requer sessao interativa; nao rodada.
+- [!] 11.1.9 Scenario 8 (roundtrip envelope real x contrato — nomes de
+      campo, tokens de enum, `applied_value` batendo com os helpers). O
+      proprio cenario exige explicitamente "sem mock, sem fixture" —
+      subir o servidor de fato e comparar o envelope retornado contra
+      `contracts/mcp-tool-collect-optins.md`. O E2E do Scenario 1
+      (dec-108) invocou a tool de fato e obteve um envelope real, mas o
+      relato do operador ("o formulario apareceu") nao registra a
+      comparacao campo-a-campo do envelope contra o contrato — nao posso
+      afirmar "zero divergencia" sem essa evidencia. Nao rodada nesta
+      linha; nao invento o resultado.
+- [x] 11.1.10 Scenario 9 (guard de composicao — ja coberto por FASE 7.2).
+      `./tests/run.sh test_orchestrator-allowlist-guard` executado nesta
+      onda: `PASS: 17 FAIL: 0 ERROR: 0 ORPHANS: 0` — inclui
+      `scenario_allowlist_declara_as_8_tools_mcp` e
+      `scenario_prova_mutacao_item8_inverte_semantica` (teste de mutacao
+      do proprio cenario: inverter o item 8 mantendo o literal
+      `elicitation/create` deixa a suite VERMELHA).
 
 ### 11.2 Scenario 10 — lacuna de gate Node declarada honestamente `[M]`
 
 Ref: `quickstart.md` Scenario 10; `research.md` Decision 12; `plan.md`
 §Camada NAO gateada (Node) linhas 223-239; dec-027
 
-- [ ] 11.2.1 Confirmar que `grep -rin node .github/workflows/` continua
+- [x] 11.2.1 Confirmar que `grep -rin node .github/workflows/` continua
       sem match e `grep -nE "mcp/state-server|npm test|node --test"
       tests/run.sh` continua sem match — declarar explicitamente no
       relatorio final desta feature que a logica de elicitation
       (`collect_optins.ts`) roda sob `npm test` MANUAL, nao sob gate de
       CI (`collect_optins.test.ts` de 3.1.6 e "intencao verificavel", nao
-      cobertura)
-- [ ] 11.2.2 Registrar como decisao de escopo SEPARADA (nao desta
+      cobertura). Reconfirmado nesta onda: `grep -rin node
+      .github/workflows/` => 0 linhas. `grep -nE "mcp/state-server|npm
+      test|node --test" tests/run.sh` => 1 linha, mas e um COMENTARIO
+      (`tests/run.sh:291`, referencia textual a
+      `mcp/state-server/src/tools/collect_optins.ts` dentro de uma nota
+      de escopo do allowlist guard) — nenhum wiring funcional de
+      `npm test`/`node --test` na suite. Conclusao da Scenario 10
+      permanece valida: nenhum gate de CI cobre a logica de elicitation.
+- [x] 11.2.2 Registrar como decisao de escopo SEPARADA (nao desta
       feature): abrir `.github/workflows/node.yml` OU wirar `npm test`
       em `tests/run.sh` — nao implementar aqui, apenas recomendar como
-      feature propria (mesma recomendacao de `plan.md` linha 239)
+      feature propria (mesma recomendacao de `plan.md` linha 239).
+      Registrado em dec-027 (arquitetural, ja ratificada); reafirmado
+      nesta onda sem mudanca de escopo.
+
+---
+
+## FASE 12 - Provisionamento automatico do `.mcp.json` + guard M4 nao-mudo (dec-107)
+
+Depende de: FASE 5 (init em duas etapas), FASE 6 (fallback prosa), FASE 9
+(guard M4/`_so_check_optin_invariant`). Motivada pelo achado do E2E
+Scenario 1 (dec-107): sem provisionamento automatico, o ramo estruturado
+so funcionava quando o projeto-alvo JA tinha `cstk-state` registrado em
+`.mcp.json` (ex.: o proprio repo cstk) — em qualquer outro projeto-alvo,
+`cstk mcp start` mintava um token normalmente (nao depende de
+`.mcp.json`), mas o HARNESS da sessao nunca tinha a tool `collect_optins`
+de fato disponivel (`.mcp.json` e lido no BOOT da sessao, nao em tempo
+real), e a onda-001 abria sem opt-ins coletados — o guard M4 travava mudo
+a execucao.
+
+### 12.1 Pre-flight garante `.mcp.json` OU cai no ramo legado explicitamente `[C]`
+
+- [x] 12.1.1 `agente-00c.md` (secao "2.bis Decisao de ramo"): antes do
+      probe, checar se `.mcp.json` do projeto-alvo JA tinha `cstk-state`
+      registrado (`grep -q '"cstk-state"'`); chamar `cstk mcp install
+      --project-path <PAP>` (idempotente, best-effort, nunca bloqueia);
+      SO tentar `cstk mcp status`/`start` (ramo estruturado) quando o
+      registro JA existia ANTES desta invocacao — senao o ramo e
+      "legado" para esta sessao (a proxima sessao neste projeto-alvo ja
+      nasce provisionada). Implementado.
+- [x] 12.1.2 `feature-00c.md` (mesma secao, dentro de "3. Init do
+      state.json"): mesmo tratamento, com `$_proj` no lugar de `<PAP>` e
+      `$AGENTE_00C_STATE_DIR` no lugar de `<SD>`. Implementado.
+- [x] 12.1.3 Cobertura: `tests/test_command-spawn-optin-elicitation.sh`
+      novos scenarios `scenario_provisionamento_mcp_install_agente/
+      _feature` (ordem: `cstk mcp install` antes do probe estruturado) e
+      `scenario_probe_gated_por_mcpjson_pre_agente/_feature` (probe
+      condicionado ao registro PRE-existente). `./tests/run.sh
+      test_command-spawn-optin-elicitation` => 21/21 PASS (era 15/15
+      antes desta fase).
+
+### 12.2 Guard M4 nunca trava mudo uma execucao sem como coletar `[C]`
+
+- [x] 12.2.1 Raiz do problema identificada: a prosa do ramo legado
+      "desde o inicio" (2.bis com mecanismo indisponivel, ANTES do
+      init) NUNCA escrevia `.optin_responses[]` — so a degradacao
+      MID-CALL (4.bis) persistia (`channel: "prose"`). Guard M4
+      (`_so_check_optin_invariant`) exige registro para TODO campo
+      aplicavel independentemente do canal — logo travava toda execucao
+      legada-desde-o-inicio, nao so a "esquecida". Optou-se por corrigir
+      a RAIZ (prosa passa a persistir sempre) em vez de enfraquecer o
+      guard globalmente: `state-ondas.sh`/`_so_check_optin_invariant`
+      NAO foi alterado — os testes existentes
+      (`scenario_start_onda001_recusada_sem_optin_feature00c` e a
+      variante SQLite) continuam validos e verdes, porque agora a
+      precondicao deles (chamar `state-ondas.sh start` sem NENHUMA
+      prosa ter rodado) so ocorre quando algo *de fato* pulou a prosa —
+      exatamente o caso que MUST continuar sendo um erro duro.
+- [x] 12.2.2 `agente-00c.md`: nova secao "3.ter Persistir opt-ins do
+      ramo legado em `.optin_responses[]`", rodando logo apos o `init`,
+      SOMENTE quando `_optin_branch = "legado"` — acrescenta os 3
+      registros (`atomic_commit`, `roadmap_mode`, `delivery_tier`) com
+      `channel: "prose"`, mesmo padrao de append de 4.bis. Mapeamento de
+      outcome: `atomic_commit`/`roadmap_mode` => `accepted` quando
+      `true`, `declined` quando `false`; `delivery_tier` => `accepted`
+      sempre (helper `delivery-tier.sh resolve-initial` ja resolve um
+      valor, operador ou default `absent`-source). Implementado.
+- [x] 12.2.3 `feature-00c.md`: mesma secao "3.ter", restrita a
+      `atomic_commit` (dec-083 — feature-00c nunca ofereceu
+      roadmap-mode/delivery-tier). Implementado; escopo negativo
+      confirmado por `scenario_persistencia_legado_optin_responses_feature`
+      (o bloco entre 3.ter e 3.bis nao contem `field: "roadmap_mode"`
+      nem `field: "delivery_tier"`).
+- [x] 12.2.4 Cobertura: novos scenarios
+      `scenario_persistencia_legado_optin_responses_agente/_feature`
+      (ordem init < persistencia < ciclo-de-vida MCP + presenca dos
+      literais de append). Guard M4 em si permanece coberto pelos testes
+      pre-existentes de `tests/test_state-ondas.sh` (nao alterado, nao
+      regredido — reconfirmado nesta onda).
+
+### 12.3 Teste dos dois caminhos `[C]`
+
+- [x] 12.3.1 Caminho A (ramo estruturado, `.mcp.json` ja provisionado):
+      coberto pelo E2E real do Scenario 1 (dec-108) — formulario
+      apareceu, `collect_optins` disparou, onda-001 abriu com 3
+      registros `channel: "structured"`.
+- [x] 12.3.2 Caminho B (ramo legado, `.mcp.json` ausente/nao
+      pre-registrado): coberto estruturalmente por
+      `scenario_persistencia_legado_optin_responses_agente/_feature`
+      (a prosa persiste `.optin_responses[]` com `channel: "prose"`,
+      satisfazendo o guard M4 sem exigir MCP algum) — nao ha E2E ao vivo
+      deste caminho especifico nesta onda (equivalente automatizado
+      aceito, mesma disciplina aplicada em 11.1.2/11.1.4/11.1.5/11.1.10).
+- [x] 12.3.3 `npm test` (mcp/state-server) => 157/157 PASS;
+      `./tests/run.sh test_command-spawn-optin-elicitation` => 21/21
+      PASS; `./tests/run.sh test_orchestrator-mcp-fallback` => 11/11
+      PASS; `./tests/run.sh test_orchestrator-allowlist-guard` => 17/17
+      PASS; `./tests/run.sh test_command-spawn-delivery-tier` => 22/22
+      PASS (achada e corrigida nesta onda: comentario novo mencionando
+      `delivery_tier` vazava a assercao negativa de escopo do
+      feature-00c — reescrito sem o literal); `./tests/run.sh
+      test_command-spawn-roadmap-mode` => 8/8 PASS;
+      `./tests/run.sh test_command-spawn-mcp-lifecycle` => 27/27 PASS;
+      `./tests/run.sh test_command-spawn-model-routing` => 21/21 PASS;
+      `./tests/run.sh test_command-spawn-optin-degradation` => 16/16
+      PASS; `./tests/run.sh test_command-warmup-noninteractive` =>
+      16/16 PASS; `./tests/run.sh test_feature-00c-preflight` => 32/32
+      PASS; `./tests/run.sh command-prompt-noninteractive-lint` => 7/7
+      PASS; `./tests/run.sh --check-coverage` => zero orfaos.
 
 ---
 

@@ -54,6 +54,38 @@
   que `.delivery_tier` afirma `cloud-public` sem o operador ter
   respondido — e ele governa a matriz tier x gate de seguranca (dec-018).
 
+### Session 2026-08-17 (E2E real, onda-017) — achados registrados como limitacao/divida
+
+- Q: O harness renderiza os 3 formatos de enum suportados pelo SDK (`enum`
+  + `enumNames`; `oneOf` const+title —
+  `TitledSingleSelectEnumSchema`; `anyOf` multi-select) com as opcoes
+  expostas, sem exigir interacao extra do operador? → A: **nao** — as 3
+  formas foram testadas lado a lado no MESMO formulario (claude-code
+  2.1.233, dec-109) e **todas colapsam identicamente**, exigindo clique
+  na seta para expandir (relato literal do operador: "ainda nao trouxe
+  aberto"). E limitacao do **widget do harness**, nao do schema JSON
+  emitido por `collect_optins.ts` — **fora de escopo** desta feature
+  corrigir a renderizacao do cliente MCP. **Decisao**: manter o schema
+  atual (`enum` + `enumNames`, mais simples dos 3 formatos testados, sem
+  diferenca de UX entre eles). **Mitigacao vigente**: o campo `message`
+  do formulario ja adverte sobre a seta de expansao
+  (`contracts/mcp-tool-collect-optins.md` §Campo `message`) — nenhuma
+  acao de codigo adicional prevista.
+- Q: [dec-106] O que se descobriu ao sincronizar catalogo/runtime
+  (`cstk install`/`self-update`) imediatamente antes do E2E? → A:
+  **divida tecnica EXTERNA a esta feature**, nao um FR pendente aqui — o
+  build lazy do servidor MCP (`mcp-build-lazy.sh`) e no-op quando
+  `dist/src/index.js` ja existe no cache do host, entao NUNCA recompila
+  com fonte nova mesmo apos `cstk install --from` atualizar o catalogo;
+  contornado manualmente nesta execucao (o operador removeu o entrypoint
+  cacheado para forcar o rebuild, resultando em 8 tools/`SERVER_VERSION`
+  0.6.0 corretos). Sem essa intervencao, o E2E teria rodado contra o
+  servidor VELHO (sem `collect_optins`) e produzido uma conclusao
+  errada ("a tool nao funciona"). **Acao recomendada**: abrir feature de
+  bugfix propria para o mecanismo de lazy-build do servidor MCP
+  (`cli/lib/mcp.sh`/`mcp-build-lazy.sh`) invalidar o cache quando a
+  fonte instalada mudar — nao implementado aqui.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Operador respondendo dita o valor sem passar pelo texto do modelo (Priority: P1)
