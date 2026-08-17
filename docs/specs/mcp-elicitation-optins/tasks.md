@@ -790,13 +790,14 @@ Ref: `quickstart.md` Scenarios 1, 1b, 2, 3, 4, 5, 6, 7, 8, 9
       COM flag) e `:331-364` (elevacao/no-op SEM flag), usando o fixture
       `fake-collect-optins-delivery-tier-captures-argv.sh`. Confirmado
       nesta onda: `npm test` em `mcp/state-server` => 157/157 pass.
-- [!] 11.1.3 Scenario 2 (escopo `/feature-00c`, 1 campo `atomic_commit`,
+- [x] 11.1.3 Scenario 2 (escopo `/feature-00c`, 1 campo `atomic_commit`,
       sem tier). Logica de restricao de escopo unit-testada
       (`collect_optins.test.ts:142`, `feature-00c` restrito a
       `atomic_commit`) — mas a execucao E2E ao vivo com `/feature-00c` real
       (formulario com 1 campo observado por um operador) NAO foi rodada
       nesta linha; so `/agente-00c` foi validado ao vivo (11.1.1/dec-108).
       Requer sessao interativa; nao rodada — nao invento o resultado.
+  <!-- VALIDADO 2026-08-17 pelo OPERADOR em sessao interativa nova, catalogo 8.1.0 oficial: Scenario 2 — /feature-00c em projeto novo com .mcp.json: formulario com UM campo (atomic-commit), sem tier e sem roadmap. Relato literal: "mostrou somente o modo atomic-commit". Escopo por executionKind confirmado (dec-083). -->
 - [x] 11.1.4 Scenario 3 (3a recusa explicita / 3b ausencia headless,
       `declined` x `absent` distinguiveis, SC-004). Unit-testado:
       `collect_optins.test.ts:174` (`action=decline` => `declined` em
@@ -818,6 +819,7 @@ Ref: `quickstart.md` Scenarios 1, 1b, 2, 3, 4, 5, 6, 7, 8, 9
       estao intactos. A observacao COMPORTAMENTAL ao vivo (rodar
       `/agente-00c` sem `cstk mcp start`, confirmar zero linhas em stderr)
       nao foi executada nesta linha. Requer sessao interativa; nao rodada.
+  <!-- PARCIALMENTE VALIDADO 2026-08-17 pelo OPERADOR (sessao interativa nova, catalogo 8.1.0 oficial), projeto SEM .mcp.json: o ramo LEGADO entrou — opt-in de atomic-commit em PROSA nativa, sem TUI, sem mencao a MCP (relato literal: "abriu a opcao do atomic-commit nativo (sem TUI)"). PORÉM o command pai verificou o projeto depois: NENHUM state-dir, NENHUM .mcp.json provisionado — a execucao nao chegou ao init (o operador encerrou apos o 1o prompt; roadmap e tier vem em sequencia e nao foram alcancados). Provado: ramo legado entra silenciosamente (SC-003). NAO provado: os 3 opt-ins em prosa + init com as flags + persistencia channel:prose (FASE 12/3.ter). Repetir ate o init concluir. -->
 - [!] 11.1.7 Scenario 6 (mecanismo falha no meio, 1 aviso, re-spawn,
       operador nao perguntado 2x, SC-005). Parcial: o desfecho `failed`
       no NIVEL da tool MCP (excecao generica => `outcome failed`,
@@ -828,7 +830,8 @@ Ref: `quickstart.md` Scenarios 1, 1b, 2, 3, 4, 5, 6, 7, 8, 9
       re-spawnar sem perguntar 2x) nao tem automatizacao equivalente e
       nao foi observado ao vivo nesta linha. Requer sessao interativa com
       falha induzida a meio da chamada; nao rodada.
-- [!] 11.1.8 Scenario 7 (idempotencia em retomada via
+  <!-- PARCIALMENTE VALIDADO 2026-08-17 pelo command pai (metade SERVIDOR, automatizada, servidor do repo dist 0.6.0): cliente respondeu erro JSON-RPC -32603 a elicitation/create => envelope {mechanism:failed, fields[*].outcome:failed, applied_value=defaults seguros false/false/cloud-public}, persistido em .optin_responses[] com outcome failed. Zero linhas em stderr do SERVIDOR — CORRETO: o aviso de 1 linha e do ORQUESTRADOR (agente-00c-orchestrator.md:402-403, log_err), que le mechanism:failed. A metade orquestrador (aviso, nao abrir onda, re-spawn pelo pai) segue [!]: exige execucao real; a prosa e coberta por test_command-spawn-optin-degradation.sh (16). -->
+- [x] 11.1.8 Scenario 7 (idempotencia em retomada via
       `/agente-00c-resume`, `reused`, zero requisicoes novas, repetivel).
       O mecanismo de reuso (cap M6) esta unit-testado —
       `collect_optins.test.ts:266`: todos os campos aplicaveis ja
@@ -836,7 +839,8 @@ Ref: `quickstart.md` Scenarios 1, 1b, 2, 3, 4, 5, 6, 7, 8, 9
       completo (interromper apos Scenario 1, `/agente-00c-resume` real,
       confirmar zero formularios e repetir 2x) nao foi executado nesta
       linha. Requer sessao interativa; nao rodada.
-- [!] 11.1.9 Scenario 8 (roundtrip envelope real x contrato — nomes de
+  <!-- VALIDADO 2026-08-17 pelo OPERADOR em sessao interativa nova, catalogo 8.1.0 oficial: Scenario 7 — /agente-00c-resume no projeto E2E que ja tinha as 3 respostas do Scenario 1, rodado DUAS vezes: nenhum formulario apareceu, execucao retomou normalmente nas duas. Relato literal: "carregado duas vezes, nas duas nao abriu TUI e continuou normal". Idempotencia confirmada (nao apenas uma-vez-a-menos). -->
+- [x] 11.1.9 Scenario 8 (roundtrip envelope real x contrato — nomes de
       campo, tokens de enum, `applied_value` batendo com os helpers). O
       proprio cenario exige explicitamente "sem mock, sem fixture" —
       subir o servidor de fato e comparar o envelope retornado contra
@@ -846,6 +850,7 @@ Ref: `quickstart.md` Scenarios 1, 1b, 2, 3, 4, 5, 6, 7, 8, 9
       comparacao campo-a-campo do envelope contra o contrato — nao posso
       afirmar "zero divergencia" sem essa evidencia. Nao rodada nesta
       linha; nao invento o resultado.
+  <!-- VALIDADO 2026-08-17 pelo command pai, servidor do repo (dist 0.6.0), execucao descartavel: envelope real {mechanism:structured, fields[{field,outcome,applied_value}], reused[]} — campos batem com o contrato (snake_case, sem coercao); outcome=absent e um dos tokens do data-model; applied_value false/false/cloud-public == commit-mode is-enabled / roadmap-mode is-enabled / delivery-tier get. Zero divergencia. -->
 - [x] 11.1.10 Scenario 9 (guard de composicao — ja coberto por FASE 7.2).
       `./tests/run.sh test_orchestrator-allowlist-guard` executado nesta
       onda: `PASS: 17 FAIL: 0 ERROR: 0 ORPHANS: 0` — inclui
