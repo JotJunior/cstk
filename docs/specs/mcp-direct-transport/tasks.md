@@ -260,15 +260,15 @@ Ref: plan.md Risco R2 (CI nao roda os testes do servidor — este e o unico gate
 
 Ref: plan.md §Mudanca de contrato (BREAKING); Constitution Principio I (SDD recursivo — mudanca de contrato exige nota de BREAKING)
 
-- [ ] 7.1.1 Adicionar entrada no `CHANGELOG.md` documentando a mudanca de contrato: FR-012 (processo coextensivo com a sessao do harness) revoga FR-010 da feature-base `state-mcp-server` (processo coextensivo com a execucao, sobrevivendo a pausas)
-- [ ] 7.1.2 Conferir que a nova versao tem a entrada correspondente no bloco de link references no rodape do `CHANGELOG.md` (regra do repo — numero de versao sem link e sintoma de esquecimento; usar o comando `comm` documentado em `CLAUDE.md`)
+- [x] 7.1.1 Adicionar entrada no `CHANGELOG.md` documentando a mudanca de contrato: FR-012 (processo coextensivo com a sessao do harness) revoga FR-010 da feature-base `state-mcp-server` (processo coextensivo com a execucao, sobrevivendo a pausas)
+- [x] 7.1.2 Conferir que a nova versao tem a entrada correspondente no bloco de link references no rodape do `CHANGELOG.md` (regra do repo — numero de versao sem link e sintoma de esquecimento; usar o comando `comm` documentado em `CLAUDE.md`)
 
 ### 7.2 Atualizar `CLAUDE.md` §"Servidor MCP de estado (`cstk mcp`)" `[A]`
 
 Ref: CLAUDE.md §"Servidor MCP de estado (`cstk mcp`)"; plan.md §Postura de Seguranca
 
-- [ ] 7.2.1 Atualizar a secao para refletir: sem container Docker no caminho critico, resolucao por chamada (nao mais no boot), cardinalidade 1 processo : N sessoes, e a regressao declarada de confinamento por filesystem (SEC-H2) — sem alegar paridade com o comportamento anterior
-- [ ] 7.2.2 Registrar, se ainda nao coberta explicitamente para este fluxo, a nota GOTCHA de sincronizacao dupla (runtime + catalogo) usada na task 6.3
+- [x] 7.2.1 Atualizar a secao para refletir: sem container Docker no caminho critico, resolucao por chamada (nao mais no boot), cardinalidade 1 processo : N sessoes, e a regressao declarada de confinamento por filesystem (SEC-H2) — sem alegar paridade com o comportamento anterior
+- [x] 7.2.2 Registrar, se ainda nao coberta explicitamente para este fluxo, a nota GOTCHA de sincronizacao dupla (runtime + catalogo) usada na task 6.3
 
 ---
 
