@@ -5,6 +5,16 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.30.0] - 2026-08-17
+
+### Adicionado
+
+- **Logo e nome no topo do menu são clicáveis** e levam à Visão Geral
+  (rota raiz). O bloco de marca da sidebar virou link (com `title` e
+  `aria-label`), sem mudança visual em repouso, com hover discreto e
+  contorno de foco no teclado; funciona também com o menu recolhido (só
+  a logo) e, no mobile, fecha o drawer ao navegar como os demais itens.
+
 ## [0.29.2] - 2026-08-17
 
 ### Corrigido
@@ -1298,6 +1308,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.30.0]: https://github.com/JotJunior/cstk-panel/compare/v0.29.2...v0.30.0
 [0.29.2]: https://github.com/JotJunior/cstk-panel/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/JotJunior/cstk-panel/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/JotJunior/cstk-panel/compare/v0.28.0...v0.29.0
