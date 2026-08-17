@@ -40,10 +40,16 @@ local (0) → internal-network (1) → cloud-internal (2) → cloud-public (3)
 `cloud-public` = maior ordinal = **maior profundidade de gate** = o valor
 seguro/restritivo de FR-006 (ver `research.md` Decision 3).
 
-**Regra de escrita derivada (dec-037)**: como o init grava o ordinal 3,
-qualquer resposta do operador diferente de `cloud-public` e **rebaixamento** e
-exige `--allow-downgrade`, senao `set` retorna exit 2 **sem escrever**
-(VERIFICADO: `delivery-tier.sh:22-27`).
+**Regra de escrita derivada (dec-037, emendada por dec-047)**: como o init
+grava o ordinal 3, qualquer resposta do operador diferente de `cloud-public` e
+**rebaixamento** e exige `--allow-downgrade`, senao `set` retorna exit 2 **sem
+escrever** (VERIFICADO: `delivery-tier.sh:22-27`). A flag e **condicional**, e
+nao incondicional: passa **somente** quando `outcome === "accepted"` **e**
+`ordinal(resposta) < ordinal(tier vigente)`. Resposta de ordinal igual ou maior
+grava sem flag; `declined`/`absent`/`timeout`/`unavailable`/`failed` nao
+emitem escrita nenhuma (I-3), logo **nenhum desfecho degradado rebaixa o
+tier** — os defaults seguros nao sao rebaixamento. Contrato completo em
+`contracts/mcp-tool-collect-optins.md` §Invariante contratual C-2.
 
 ---
 

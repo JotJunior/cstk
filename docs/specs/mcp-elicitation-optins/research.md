@@ -104,10 +104,22 @@ rejeitada apos leitura da fonte; *reescrever FR-006* — desnecessario.
 
 ---
 
-## Decision 4: `delivery-tier.sh set` exige `--allow-downgrade` no caminho estruturado
+## Decision 4: `delivery-tier.sh set` exige `--allow-downgrade` no caminho estruturado — **condicionalmente**
 
 **Decision**: a chamada de persistencia do tier no caminho estruturado MUST
-passar `--allow-downgrade`.
+passar `--allow-downgrade` **somente** quando o operador escolheu
+explicitamente (`outcome === "accepted"`) um token de ordinal **menor** que o
+tier vigente.
+
+> **Emenda (dec-047, resposta humana ao `block-002` / H1)**: a formulacao
+> original desta decisao era "passa `--allow-downgrade`" de forma
+> **incondicional**. O gate `owasp-security` da onda-005 classificou isso como
+> finding **HIGH** (consentimento): a flag incondicional deixaria o caminho de
+> rebaixamento sempre armado, inclusive nos desfechos em que o operador **nao**
+> escolheu nada. Passou a valer a regra condicional acima — ver
+> `contracts/mcp-tool-collect-optins.md` §Invariante contratual C-2. O
+> **rationale** abaixo permanece integralmente valido: e o que justifica a
+> flag ser necessaria no caso majoritario.
 
 **Rationale** (dec-037, score 3, corolario da Decision 3). Evidencia literal
 `delivery-tier.sh:22-27`: "`set --value <token> [--allow-downgrade]` ...

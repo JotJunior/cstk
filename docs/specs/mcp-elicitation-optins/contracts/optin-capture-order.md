@@ -102,8 +102,12 @@ nao consegue resposta interativa dentro do proprio turno, a prosa MUST rodar no
    state");
 3. o pai executa os blocos de prosa existentes (FR-005, texto inalterado);
 4. o pai persiste via `commit-mode.sh set-enabled` / `roadmap-mode.sh set-enabled`
-   / `delivery-tier.sh set --allow-downgrade` (**nao** por flags de init — o
-   estado ja existe), e grava os registros com `channel: "prose"`;
+   / `delivery-tier.sh set [--allow-downgrade]` (**nao** por flags de init — o
+   estado ja existe), e grava os registros com `channel: "prose"`. A flag do
+   tier segue a **mesma regra condicional** da invariante C-2
+   (`mcp-tool-collect-optins.md`, dec-047): so quando o operador escolheu
+   explicitamente um tier de ordinal **menor** que o vigente. O canal muda
+   (`prose` em vez de `structured`); a regra de consentimento, nao;
 5. o pai re-spawna o orquestrador; a onda-001 comeca com todos os valores
    confirmados.
 

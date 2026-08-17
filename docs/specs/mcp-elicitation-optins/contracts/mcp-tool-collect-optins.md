@@ -135,6 +135,52 @@ derivados dos blocos de prosa existentes (FR-002), nao redigidos do zero:
 Uso de `enum` de string (nao `boolean`) para os dois primeiros: o que esta
 **medido** e que `enum` vira picker. `boolean` → checkbox **nao** esta medido.
 
+### Campo `message` — aviso de risco de rebaixamento (H1, dec-047)
+
+**[PROPOSTA]**, obrigatorio quando `delivery_tier` entra no formulario
+(portanto: `executionKind === "agente-00c"`).
+
+O texto que adverte sobre o efeito de escolher um tier **menor** MUST viver no
+campo `message` do `ElicitRequestFormParams`, **nao** em `title`/`description`
+das propriedades. Razao (dec-047), separando o que e **VERIFICADO** do que
+**nao** e:
+
+- **VERIFICADO**: `message` e campo **obrigatorio e nao-opcional** do schema —
+  `message: z.ZodString` em `types.d.ts:4983`, dentro de
+  `ElicitRequestFormParamsSchema` (`:4966`). Nao ha formulario valido sem ele.
+  `title`/`description` das propriedades sao opcionais e estao na secao
+  "Nao medido" acima.
+- **NAO medido**: que o cliente *renderize* `message` ao operador. Nenhuma
+  fonte citavel foi produzida ate aqui para essa afirmacao (ver §Pendencia de
+  medicao abaixo).
+
+O argumento que sustenta a escolha nao depende do segundo ponto: entre um campo
+que o protocolo **obriga** a existir e campos que ele torna **opcionais** e cuja
+renderizacao esta explicitamente listada como nao medida, `message` e o portador
+estritamente menos improvavel do aviso. Um aviso de consentimento alojado em
+campo opcional pode simplesmente nao chegar ao operador.
+
+Requisitos do texto (o conteudo exato e derivado da prosa existente, FR-002):
+
+1. nomear o tier **vigente** no estado (`delivery-tier.sh get`) e o eixo do
+   enum (menor ordinal = menos rigor de gate — `data-model.md` §Ordinal);
+2. dizer explicitamente que escolher um tier menor **reduz a profundidade dos
+   gates** que auditam a propria execucao;
+3. nao conter instrucao ao modelo — e texto para o **operador**, transportado
+   pelo servidor, nunca reinterpretado pelo orquestrador (FR-003).
+
+**Pendencia de medicao (Constitution VI)**: `quickstart.md` Scenario 0 MUST
+registrar, alem dos tres itens ja listados, **se `message` e exibido ao
+operador**. E a unica premissa nao medida de que a mitigacao de H1 depende.
+Se o Scenario 0 mostrar que `message` **nao** e exibido, o consentimento
+informado de FR-002 nao tem portador e a decisao volta ao operador — **nao**
+se contorna migrando o aviso de volta para `title`/`description`, que sao
+igualmente nao medidos e ainda opcionais.
+
+Consequencia de contrato no caso favoravel: se o Scenario 0 mostrar que
+`title`/`description` nao renderizam mas `message` sim, o desenho continua
+correto sem nenhuma mudanca — o aviso ja nasceu no campo obrigatorio.
+
 **Nao medido — marcar como [PROPOSTA — a validar na implementacao]**:
 
 - `title` virar label do campo na UI
@@ -146,7 +192,8 @@ O desenho **nao depende** de nenhum dos quatro: os defaults seguros sao
 aplicados pelo **servidor** (nao pelo widget), e a ausencia de resposta cai em
 `absent`/`timeout`. Se a validacao empirica mostrar que `title`/`description`
 nao renderizam, o texto explicativo de FR-002 MUST migrar integralmente para o
-campo `message` do formulario (que **e** medido como renderizado).
+campo `message` do formulario (campo **obrigatorio** do schema — `types.d.ts:4983`;
+renderizacao a confirmar no Scenario 0, ver §Campo `message`).
 
 ### Teto de tempo
 
@@ -186,12 +233,32 @@ campo `message` do formulario (que **e** medido como renderizado).
 |-------|---------|-------|
 | `atomic_commit` | `commit-mode.sh set-enabled --state-dir <SD> --value <true\|false>` | `commit-mode.sh:184` |
 | `roadmap_mode` | `roadmap-mode.sh set-enabled --state-dir <SD> --value <true\|false>` | `roadmap-mode.sh:15` |
-| `delivery_tier` | `delivery-tier.sh set --state-dir <SD> --value <token> --allow-downgrade` | `delivery-tier.sh:22-27` |
+| `delivery_tier` | `delivery-tier.sh set --state-dir <SD> --value <token> [--allow-downgrade]` | `delivery-tier.sh:22-27` |
 
-**Invariante contratual C-2 (dec-037)**: a flag `--allow-downgrade` e
-**obrigatoria** na chamada do tier. Sem ela, toda resposta diferente de
-`cloud-public` e rebaixamento e retorna exit 2 **sem escrever**
-(`delivery-tier.sh:22-27`).
+**Invariante contratual C-2 (dec-037, emendada por dec-047 / H1)**: a flag
+`--allow-downgrade` e **condicional**, nunca incondicional. Regra exata:
+
+```
+passa --allow-downgrade  ⟺  outcome === "accepted"
+                         E  ordinal(resposta) < ordinal(tier vigente)
+```
+
+- **Necessaria** no caso majoritario: como a etapa (1) do init grava o maior
+  ordinal (`cloud-public`), toda resposta diferente de `cloud-public` e
+  rebaixamento e, **sem** a flag, retorna exit 2 **sem escrever**
+  (`delivery-tier.sh:22-27`) — o defeito silencioso de R2.
+- **Proibida** fora desse caso: resposta de ordinal igual (no-op idempotente)
+  ou maior (elevacao) grava **sem** a flag; e para
+  `outcome ∈ {declined, absent, timeout, unavailable, failed}` **nenhuma**
+  chamada de escrita e emitida (C-3), logo nao ha flag a passar.
+
+Consequencia de seguranca (dec-047): **os defaults seguros nao sao
+rebaixamento**. Cancelamento por ausencia de operador, cancelamento por teto de
+tempo e recusa explicita jamais produzem um `set` de rebaixamento — o unico
+caminho que rebaixa o tier e a **escolha explicita** do operador no formulario.
+O tier vigente para a comparacao de ordinal e lido de
+`delivery-tier.sh get --state-dir <SD>` (nunca do campo cru — mesma disciplina
+de `cli-delivery-tier.md`), imediatamente antes da escrita.
 
 **Invariante contratual C-3 (I-3 de `data-model.md`)**: para
 `outcome != accepted`, **nenhuma** chamada de escrita e emitida — o default
@@ -210,6 +277,89 @@ disparar a guarda write-once de `roadmap-mode.sh:142` sem necessidade.
 Exit != 0 em qualquer escrita ⇒ `outcome = failed` para aquele campo, `reason`
 saneado via `sanitizeForLlmContext` (padrao VERIFICADO em
 `get_status.ts:31-34`, teto `MAX_REASON_BYTES = 2048`).
+
+---
+
+## [PROPOSTA — emenda a `cli-delivery-tier.md` INV-4] (H2, dec-048)
+
+> **Escopo**: isto e mudanca em contrato de **outra** feature
+> (`docs/specs/delivery-tier/contracts/cli-delivery-tier.md` §2.2). Nada dela
+> foi aplicado nesta onda — a edicao do arquivo alheio e **tarefa de
+> `execute-task`**, e MUST ir junto do ajuste do teste no **mesmo commit**
+> (ver `plan.md` §Resultado dos gates).
+
+**Texto vigente** (`cli-delivery-tier.md:141-142`, regra 1 do MUST):
+
+> 1. O orquestrador **nunca** invoca `delivery-tier.sh set` por conta propria
+>    — nem para elevar, nem para rebaixar.
+
+**Problema**: a regra proibe o **ato de invocar**, mas o invariante material
+que o finding F5 (ASI03 Privilege Abuse + ASI01 Goal Hijack) protege e outro —
+que o orquestrador **nao escolha o valor** do tier. Esta feature poe o
+orquestrador como *chamador* de uma coleta em que o valor nasce **fora** do
+contexto do modelo: a tool pede, o servidor emite `elicitation/create`, o
+**cliente** renderiza, o **operador** escolhe, o **servidor** grava. O vetor
+que o proprio §2.2 nomeia (injecao indireta por texto plantado em artefato
+lido) pode, no maximo, fazer o orquestrador **disparar a pergunta** — nunca
+**responde-la**.
+
+**Reescrita proposta** da regra 1:
+
+> 1. O orquestrador **nunca escolhe** o valor do tier, e **nunca** invoca
+>    `delivery-tier.sh set` com um valor de origem propria — nem para elevar,
+>    nem para rebaixar. Permitido: **disparar coleta mediada pelo operador**
+>    (`collect_optins` → `elicitation/create`), em que o valor e escolhido pelo
+>    operador no cliente e gravado pelo servidor. O que a regra proibe e o
+>    **set direto**; nao o pedido de decisao ao humano.
+
+**As regras 2-4 NAO seguem todas inalteradas** — duas entram em tensao com
+este desenho e a emenda MUST trata-las, sob pena de deixar o contrato
+emendado auto-contraditorio:
+
+- **Regra 2** ("mudanca de tier so ocorre **entre ondas**, por acao do
+  operador via `/agente-00c-resume`, sempre precedida de Decisao auditavel"):
+  o caminho estruturado grava o tier **no init, antes da onda-001**, e **nao**
+  via `/agente-00c-resume`. Emenda proposta: admitir explicitamente a **coleta
+  de inicio de execucao** como segunda janela legitima, ao lado de "entre
+  ondas" — ambas mantendo o requisito de que a escolha seja do operador e
+  fique registrada.
+- **Regra 3** (`review-task` reporta `delivery-tier-unattended-change` para
+  "qualquer alteracao do tier sem Decisao de operador correspondente"): no
+  caminho estruturado nao existe a Decisao classica de operador registrada
+  pelo resume — o registro de consentimento e a entrada em
+  `.optin_responses[]` com `channel: "structured"` e `outcome: "accepted"`.
+  Emenda proposta: nomear essa entrada como evidencia de consentimento
+  **aceita** pela regra 3.
+
+> **Por que isto importa mais do que parece**: a regra 3 e o **controle de
+> deteccao** que o proprio §2.1 aponta como o controle real do F5 ("o plano nao
+> deve prometer que o rebaixamento e impedido; ele e **detectavel**"). Deixar
+> a regra 3 sem reconhecer a nova evidencia produz alarme falso em **toda**
+> captura estruturada — e a saida provavel sob pressao seria **afrouxar a
+> regra 3**, que e exatamente o controle que nao pode ser afrouxado. A emenda
+> preserva o alarme e apenas ensina a ele qual evidencia conta.
+
+**Regra 4 segue inalterada**: elevacao nao-solicitada continua proibida — a
+coleta mediada nao e "nao-solicitada", e o operador escolhe a direcao.
+
+**Por que esta emenda nao afrouxa F5**: sob o caminho mediado, um texto
+plantado em artefato so consegue induzir uma **pergunta ao operador** — e uma
+pergunta a mais e visivel, auditavel (`.optin_responses[]` com
+`channel: "structured"`) e reversivel. O caminho que F5 barra — o modelo
+resolvendo sozinho para `local` a partir de texto lido — continua barrado, e
+inclusive **mais** barrado que no caminho de prosa atual, onde o modelo
+interpreta texto livre do operador.
+
+**Entregaveis acoplados** (mesmo commit, senao a emenda vira texto sem gate):
+
+1. reescrita das regras **1, 2 e 3** em `cli-delivery-tier.md` §2.2 (regra 4
+   inalterada);
+2. ajuste do cenario que a assere hoje —
+   `tests/test_command-spawn-delivery-tier.sh:87-90`
+   (`scenario_resume_documenta_inv4_operador`, assercao textual
+   `'por iniciativa do proprio orquestrador'`) — para cobrir a distincao
+   **escolha/set direto** x **disparo de coleta mediada**, em vez de casar so
+   a frase antiga.
 
 ---
 

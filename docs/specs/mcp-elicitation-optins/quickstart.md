@@ -31,6 +31,16 @@ vira subtexto? `default` vem pre-aplicado? O resultado decide se o texto
 explicativo de FR-002 pode ficar nas propriedades ou MUST migrar para
 `message`.
 
+**Quarto item obrigatorio (H1, dec-047)**: **`message` e exibido ao
+operador?** E a unica premissa nao medida de que a mitigacao do finding H1
+depende — o aviso de risco de rebaixamento do `delivery_tier` vive nesse
+campo. VERIFICADO e apenas que o schema o torna **obrigatorio**
+(`types.d.ts:4983`); que o cliente o **renderize** nao esta medido. Se a
+sondagem mostrar que nao e exibido, **parar e escalar ao operador**: o
+consentimento informado de FR-002 fica sem portador, e migrar o aviso de volta
+para `title`/`description` **nao** e contorno valido (sao opcionais e
+igualmente nao medidos).
+
 ---
 
 ## Scenario 1: Happy path — operador responde (US1, FR-001/002/003)
@@ -53,6 +63,53 @@ explicativo de FR-002 pode ficar nas propriedades ou MUST migrar para
 > implementacao esquecer `--allow-downgrade`, `delivery-tier.sh set` retorna
 > exit 2 **sem escrever** e o passo 5 mostra `cloud-public`. Este cenario e o
 > detector primario desse defeito.
+
+6. **Expected (H1, dec-047)**: o campo `message` do formulario exibido contem
+   a advertencia de risco de rebaixamento e nomeia o tier **vigente**. Assercao
+   sobre `message` — **nao** sobre `title`/`description`, cuja renderizacao nao
+   esta medida (`contracts/mcp-tool-collect-optins.md` §Campo `message`).
+
+---
+
+## Scenario 1b: `--allow-downgrade` e condicional (H1, dec-047, Invariante C-2)
+
+Prova as tres faces da regra condicional. Instrumentacao: capturar o argv real
+de cada invocacao de `delivery-tier.sh set` (wrapper/stub no `PATH` do teste
+Node, ou `set -x` do helper), **nao** apenas o valor final gravado — o valor
+final nao distingue "gravou com flag" de "gravou sem flag".
+
+**1b-1 — resposta MENOR que o vigente ⇒ set COM flag**
+
+1. Tier vigente `cloud-public` (ordinal 3, gravado pelo init); operador escolhe
+   `local` (ordinal 0)
+2. **Expected**: argv contem `--allow-downgrade`; exit 0;
+   `delivery-tier.sh get` → `local`
+
+**1b-2 — resposta IGUAL ou MAIOR que o vigente ⇒ set SEM flag**
+
+1. Ajustar o tier vigente para `local` (ordinal 0) antes do formulario;
+   operador escolhe `cloud-internal` (ordinal 2 — elevacao)
+2. **Expected**: argv **nao** contem `--allow-downgrade`; exit 0;
+   `delivery-tier.sh get` → `cloud-internal`
+3. Repetir com resposta **igual** ao vigente: argv sem a flag, exit 0 (no-op
+   idempotente — `delivery-tier.sh:22-27`)
+
+**1b-3 — `cancel` / `decline` / `timeout` ⇒ NENHUM set de rebaixamento**
+
+1. Tier vigente `cloud-public`; provocar, em execucoes separadas, os tres
+   desfechos degradados (`absent` via cancel headless, `declined` via recusa,
+   `timeout` via teto de tempo — Scenarios 3a, 3b e 4)
+2. **Expected nos tres**: **zero** invocacoes de `delivery-tier.sh set`
+   (assercao sobre o argv capturado, nao sobre o valor); `delivery-tier.sh get`
+   → `cloud-public` intacto; registro em `.optin_responses[]` com o `outcome`
+   correspondente e `applied_value: "cloud-public"`
+
+> **Por que este cenario existe**: a formulacao original passava
+> `--allow-downgrade` incondicionalmente, o que o gate `owasp-security` marcou
+> HIGH. A assercao que fecha o finding e negativa — "nao houve `set` quando o
+> operador nao escolheu" — e assercao negativa so e verificavel observando o
+> argv. Um teste que checasse apenas o valor final passaria mesmo com a flag
+> incondicional de volta.
 
 ---
 
