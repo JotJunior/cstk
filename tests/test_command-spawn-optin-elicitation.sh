@@ -239,4 +239,93 @@ scenario_escopo_feature00c_sem_delivery_tier_no_orquestrador() {
   return 0
 }
 
+# ---------- FASE 12 (dec-107): provisionamento de .mcp.json no pre-flight ----------
+#
+# Sem isto o ramo estruturado so funcionava quando o projeto-alvo JA tinha
+# cstk-state registrado (ex.: o proprio repo cstk) — em qualquer OUTRO
+# projeto-alvo, `cstk mcp start` mintava um token normalmente mas o HARNESS
+# desta sessao nunca teria a tool `collect_optins` de fato disponivel,
+# porque `.mcp.json` e lido no BOOT da sessao (achado do E2E Scenario 1,
+# dec-107). Os 2 commands de INIT agora chamam `cstk mcp install
+# --project-path` (idempotente, best-effort) ANTES do probe, e so tratam o
+# ramo como "estruturado" quando `.mcp.json` JA tinha `cstk-state` ANTES
+# desta invocacao.
+
+scenario_provisionamento_mcp_install_agente() {
+  _l_install=$(_first_line_of "$CMD_AGENTE" 'cstk mcp install --project-path')
+  _l_probe=$(_first_line_of "$CMD_AGENTE" 'cstk mcp status --state-dir "<SD>" >/dev/null 2>&1; then')
+  [ -n "$_l_install" ] && [ -n "$_l_probe" ] \
+    || { _error "ancora ausente" "install=$_l_install probe=$_l_probe"; return 2; }
+  [ "$_l_install" -lt "$_l_probe" ] \
+    || { _fail "ordem" "mcp install ($_l_install) deveria vir antes do probe estruturado ($_l_probe)"; return 1; }
+  return 0
+}
+
+scenario_provisionamento_mcp_install_feature() {
+  _l_install=$(_first_line_of "$CMD_FEATURE" 'cstk mcp install --project-path')
+  _l_probe=$(_first_line_of "$CMD_FEATURE" 'cstk mcp status --state-dir "\$AGENTE_00C_STATE_DIR" >/dev/null 2>&1; then')
+  [ -n "$_l_install" ] && [ -n "$_l_probe" ] \
+    || { _error "ancora ausente" "install=$_l_install probe=$_l_probe"; return 2; }
+  [ "$_l_install" -lt "$_l_probe" ] \
+    || { _fail "ordem" "mcp install ($_l_install) deveria vir antes do probe estruturado ($_l_probe)"; return 1; }
+  return 0
+}
+
+scenario_probe_gated_por_mcpjson_pre_agente() {
+  assert_exit 0 grep -Fq 'if [ -n "$_optin_mcpjson_pre" ] && cstk mcp status --state-dir "<SD>"' "$CMD_AGENTE" || return 1
+  assert_exit 0 grep -Fq 'grep -q '"'"'"cstk-state"'"'"' "<PAP>/.mcp.json"' "$CMD_AGENTE" || return 1
+  return 0
+}
+
+scenario_probe_gated_por_mcpjson_pre_feature() {
+  assert_exit 0 grep -Fq 'if [ -n "$_optin_mcpjson_pre" ] && cstk mcp status --state-dir "$AGENTE_00C_STATE_DIR"' "$CMD_FEATURE" || return 1
+  assert_exit 0 grep -Fq 'grep -q '"'"'"cstk-state"'"'"' "$_proj/.mcp.json"' "$CMD_FEATURE" || return 1
+  return 0
+}
+
+# ---------- FASE 12 (dec-107): prosa legada persiste .optin_responses[] ----------
+#
+# Sem isto o guard M4 (`_so_check_optin_invariant`) travava mudo TODA
+# execucao no ramo legado desde o inicio (nunca so a degradacao mid-call de
+# 4.bis persistia) — mesmo com a prosa tendo rodado e o `state.json` ja
+# tendo os valores aplicados via flags de `init`. Ordem: bloco de
+# persistencia (3.ter) vem DEPOIS do `init` e ANTES do ciclo de vida do
+# servidor MCP (3.quater/3.bis).
+
+scenario_persistencia_legado_optin_responses_agente() {
+  _l_init=$(_first_line_of "$CMD_AGENTE" 'Inicializar .state\.json. v1\.0\.0 via')
+  _l_persist=$(_first_line_of "$CMD_AGENTE" '### 3\.ter Persistir opt-ins do ramo legado')
+  _l_mcp_lifecycle=$(_first_line_of "$CMD_AGENTE" '^### 3\.quater Ciclo de vida do servidor MCP')
+  [ -n "$_l_init" ] && [ -n "$_l_persist" ] && [ -n "$_l_mcp_lifecycle" ] \
+    || { _error "ancora ausente" "init=$_l_init persist=$_l_persist mcp=$_l_mcp_lifecycle"; return 2; }
+  [ "$_l_init" -lt "$_l_persist" ] \
+    || { _fail "ordem" "init ($_l_init) deveria vir antes da persistencia (3.ter, $_l_persist)"; return 1; }
+  [ "$_l_persist" -lt "$_l_mcp_lifecycle" ] \
+    || { _fail "ordem" "persistencia (3.ter, $_l_persist) deveria vir antes do ciclo de vida MCP (3.quater, $_l_mcp_lifecycle)"; return 1; }
+  assert_exit 0 grep -Fq 'channel: "prose", outcome: $o, applied_value: $v' "$CMD_AGENTE" || return 1
+  assert_exit 0 grep -Fq 'for _pair in "atomic_commit:$_atomic" "roadmap_mode:$_roadmap" "delivery_tier:$_tier"' "$CMD_AGENTE" || return 1
+  return 0
+}
+
+scenario_persistencia_legado_optin_responses_feature() {
+  _l_init=$(_first_line_of "$CMD_FEATURE" 'state-rw\.sh init --state-dir')
+  _l_persist=$(_first_line_of "$CMD_FEATURE" '### 3\.ter Persistir opt-in do ramo legado')
+  _l_mcp_lifecycle=$(_first_line_of "$CMD_FEATURE" '^### 3\.bis Ciclo de vida do servidor MCP')
+  [ -n "$_l_init" ] && [ -n "$_l_persist" ] && [ -n "$_l_mcp_lifecycle" ] \
+    || { _error "ancora ausente" "init=$_l_init persist=$_l_persist mcp=$_l_mcp_lifecycle"; return 2; }
+  [ "$_l_init" -lt "$_l_persist" ] \
+    || { _fail "ordem" "init ($_l_init) deveria vir antes da persistencia (3.ter, $_l_persist)"; return 1; }
+  [ "$_l_persist" -lt "$_l_mcp_lifecycle" ] \
+    || { _fail "ordem" "persistencia (3.ter, $_l_persist) deveria vir antes do ciclo de vida MCP (3.bis, $_l_mcp_lifecycle)"; return 1; }
+  assert_exit 0 grep -Fq 'field: "atomic_commit", channel: "prose", outcome: $o' "$CMD_FEATURE" || return 1
+  # escopo negativo: feature-00c nunca persiste roadmap_mode/delivery_tier
+  # nesta secao (so entre a ancora 3.ter e a proxima secao 3.bis)
+  _block=$(sed -n "${_l_persist},${_l_mcp_lifecycle}p" "$CMD_FEATURE")
+  case "$_block" in
+    *'field: "roadmap_mode"'*|*'field: "delivery_tier"'*)
+      _fail "escopo_vazado" "3.ter de feature-00c nao deveria persistir roadmap_mode/delivery_tier"; return 1 ;;
+  esac
+  return 0
+}
+
 run_all_scenarios "$@"
