@@ -5,6 +5,18 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.29.2] - 2026-08-17
+
+### Corrigido
+
+- **`model-routing` aparecia como etapa no "Throughput por etapa"**
+  (Métricas): mesma causa e mesma correção da 0.29.1, agora em
+  `GET /metrics/throughput-by-stage` — 724 das 726 decisões legadas sob
+  `model-routing` reatribuídas à etapa SDD codificada no contexto (as 2
+  restantes são overrides do operador sem fase, preservadas). Total
+  preservado. Helper `normalizeRoutingStage` compartilhado pelas duas
+  queries.
+
 ## [0.29.1] - 2026-08-17
 
 ### Corrigido
@@ -1286,6 +1298,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.29.2]: https://github.com/JotJunior/cstk-panel/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/JotJunior/cstk-panel/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/JotJunior/cstk-panel/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/JotJunior/cstk-panel/compare/v0.27.0...v0.28.0
