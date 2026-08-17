@@ -624,6 +624,72 @@ _so_otel_reset() {
   rm -f -- "$1/otel-start.tsv" "$1/otel-end.tsv" 2>/dev/null || :
 }
 
+# _so_check_optin_invariant DIR — guarda mecanica da Invariante I-2
+# (mcp-elicitation-optins FASE 9, task 9.3.1; plan.md linha 334;
+# data-model.md "Invariante I-2 (FR-012): nenhuma onda pode ser aberta
+# enquanto houver `field` aplicavel ao `executionKind` corrente **sem**
+# registro"). So se aplica a onda-001 (a PRIMEIRA onda da execucao) —
+# depois dela, os opt-ins ja foram oferecidos (aceitos, recusados ou
+# ausentes) e o campo esta resolvido para o resto da execucao.
+#
+# `executionKind` nao esta disponivel aqui (state-ondas.sh so recebe
+# --state-dir, nunca o descritor mcp-server.json) — derivado do PATH do
+# state-dir, mesmo padrao ja usado por _hook-active-exec.sh/mcp-session.sh
+# (presenca de `/feature-00c-state/` ou `/agente-00c-state`). "Aplicavel" e
+# QUALQUER registro (terminal ou nao — unavailable/failed tambem contam: o
+# mecanismo TENTOU), nao so os terminais da Invariante I-1 — I-2 e mais
+# frouxa por desenho.
+#
+# State-dirs que NAO casam nenhum dos 2 layouts canonicos (ex.: paths
+# sinteticos de teste, chamadas diretas do runtime fora do fluxo dos 2
+# orquestradores) sao NO-OP aqui: sem como derivar `executionKind` com
+# confianca, adivinhar violaria o mesmo principio de nao-fabricacao que a
+# propria Invariante I-2 protege (Constitution VI) — a guarda so age quando
+# tem certeza de QUAL conjunto de campos e aplicavel.
+#
+# Falha explicita (diag_emit + _so_die), nunca silenciosa — nunca deixa a
+# onda abrir com um campo aplicavel jamais oferecido ao operador.
+_so_check_optin_invariant() {
+  _coi_sdir="$1"
+  _coi_rw="$_SO_DIR/state-rw.sh"
+  # Best-effort de resolucao (nao de decisao): sem state-rw.sh irmao, a
+  # guarda nao tem como ler `.optin_responses[]` — degrada para no-op em vez
+  # de bloquear `start` por um problema de instalacao alheio a esta feature.
+  [ -f "$_coi_rw" ] || return 0
+
+  # So se aplica quando esta prestes a nascer a onda-001 (nenhuma wave
+  # ainda existe). `state-rw.sh get` e backend-agnostico (JSON/SQLite) —
+  # ver contract data-model.md §Retro-compatibilidade + task 4.2.2.
+  _coi_wc=$(sh "$_coi_rw" get --state-dir "$_coi_sdir" --field '((.waves // []) | length)' 2>/dev/null) || _coi_wc=""
+  case "$_coi_wc" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$_coi_wc" -eq 0 ] || return 0
+
+  # Campos aplicaveis por executionKind (dec-083: feature-00c so oferece
+  # atomic_commit; agente-00c oferece os 3 — mesma tabela de
+  # collect_optins.ts::FIELDS_BY_EXECUTION_KIND). Layout nao reconhecido =
+  # no-op (ver nota acima).
+  case "$_coi_sdir" in
+    */feature-00c-state/*) _coi_fields="atomic_commit" ;;
+    */agente-00c-state | */agente-00c-state/*) _coi_fields="atomic_commit roadmap_mode delivery_tier" ;;
+    *) return 0 ;;
+  esac
+
+  _coi_responses=$(sh "$_coi_rw" get --state-dir "$_coi_sdir" --field '.optin_responses // []' 2>/dev/null) || _coi_responses="[]"
+  _coi_missing=""
+  for _coi_f in $_coi_fields; do
+    _coi_has=$(printf '%s' "$_coi_responses" \
+      | jq -r --arg f "$_coi_f" '([.[] | select(.field == $f)] | length) > 0' 2>/dev/null) || _coi_has="false"
+    [ "$_coi_has" = "true" ] || _coi_missing="$_coi_missing $_coi_f"
+  done
+
+  [ -z "$_coi_missing" ] && return 0
+
+  diag_emit error optin-invariant-i2 \
+    "start: onda-001 recusada — campo(s) aplicavel(is) sem registro em .optin_responses[]:$_coi_missing" \
+    "colete os opt-ins de inicio (tool collect_optins ou o fallback de prosa) antes de abrir a primeira onda" || :
+  _so_die "start: Invariante I-2 violada — campo(s) aplicavel(is) sem registro em .optin_responses[]:$_coi_missing" 1
+}
+
 # ---------- Subcomandos ----------
 
 _so_cmd_start() {
@@ -636,6 +702,7 @@ _so_cmd_start() {
   done
   [ -n "$_sdir" ] || _so_die_usage "start: --state-dir obrigatorio"
   _so_require_jq
+  _so_check_optin_invariant "$_sdir"
   if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
     _so_db_start "$_sdir"
     return 0

@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
@@ -385,4 +385,169 @@ test("handleCollectOptins: executionKind desconhecido => nenhum campo aplicavel,
   assert.equal(response.result?.mechanism, "unavailable");
   assert.deepEqual(response.result?.fields, []);
   assert.equal(called, false);
+});
+
+// ---------------------------------------------------------------------------
+// FASE 9 (gate owasp-security, MEDIUM/LOW remanescentes) — tasks 9.1-9.5.
+// ---------------------------------------------------------------------------
+
+const REAL_SCRUB = join(FIXTURES_DIR, "fake-secrets-filter-scrub.sh");
+const CAPTURES_SET_STATE_RW = join(FIXTURES_DIR, "fake-collect-optins-state-rw-captures-set.sh");
+const COMMIT_MODE_FAILS_WITH_SECRET = join(
+  FIXTURES_DIR,
+  "fake-collect-optins-commit-mode-fails-with-secret.sh",
+);
+
+test("handleCollectOptins (M1, task 9.1.1): message inclui identidade da execucao (executionKind:shortName)", async () => {
+  const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
+  let capturedMessage = "";
+  const server: ElicitationServer = {
+    getClientCapabilities: () => ({ elicitation: {} }),
+    elicitInput: async (params) => {
+      capturedMessage = params.message;
+      return { action: "cancel", content: {} };
+    },
+  };
+
+  // FEATURE_SESSION: shortName = "mcp-elicitation-optins" (nao "-").
+  await handleCollectOptins(input, baseDeps(server));
+
+  assert.match(capturedMessage, /^\[Execucao: feature-00c:mcp-elicitation-optins\] /);
+});
+
+test("handleCollectOptins (M1, task 9.1.1): shortName '-' (agente-00c) cai no basename de targetProjectPath", async () => {
+  const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
+  let capturedMessage = "";
+  const server: ElicitationServer = {
+    getClientCapabilities: () => ({ elicitation: {} }),
+    elicitInput: async (params) => {
+      capturedMessage = params.message;
+      return { action: "cancel", content: {} };
+    },
+  };
+  const sessionNoShortName: ResolvedSession = {
+    ...AGENTE_SESSION,
+    shortName: "-",
+    targetProjectPath: "/work/my-project",
+  };
+
+  await handleCollectOptins(input, { ...baseDeps(server), session: sessionNoShortName });
+
+  assert.match(capturedMessage, /^\[Execucao: agente-00c:my-project\] /);
+});
+
+test("handleCollectOptins (M2, task 9.2.1): 1 linha em enforcement-log.jsonl por FieldOutcome persistido", async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "collect-optins-enforcement-log-"));
+  const logPath = join(tmpDir, "nested", "enforcement-log.jsonl");
+  try {
+    const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
+    const server: ElicitationServer = {
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput: async () => ({
+        action: "accept",
+        content: { atomic_commit: "sim", roadmap_mode: "nao", delivery_tier: "cloud-public" },
+      }),
+    };
+    const deps = {
+      ...baseDeps(server),
+      session: AGENTE_SESSION,
+      env: { CSTK_MCP_ENFORCEMENT_LOG_PATH: logPath },
+    };
+
+    const response = await handleCollectOptins(input, deps);
+    assert.equal(response.outcome, "accepted");
+
+    const lines = readFileSync(logPath, "utf8").trim().split("\n");
+    // 3 campos aplicaveis (agente-00c) => 3 linhas, uma por FieldOutcome.
+    assert.equal(lines.length, 3);
+    const entries = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
+    const byField = Object.fromEntries(entries.map((e) => [e.field as string, e]));
+
+    for (const e of entries) {
+      assert.equal(e.source, "mcp-collect-optins");
+      assert.equal(e.session_id, "synthetic-token-abc123");
+      assert.equal(e.channel, "structured");
+    }
+    assert.equal(byField.atomic_commit?.outcome, "accepted");
+    assert.equal(byField.atomic_commit?.applied_value, "true");
+    assert.equal(byField.roadmap_mode?.outcome, "accepted");
+    assert.equal(byField.roadmap_mode?.applied_value, "false");
+    assert.equal(byField.delivery_tier?.outcome, "accepted");
+    assert.equal(byField.delivery_tier?.applied_value, "cloud-public");
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("handleCollectOptins (M2, task 9.2.1): reuso via cap M6 NAO persiste nada -> nenhuma linha nova em enforcement-log.jsonl", async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "collect-optins-enforcement-log-m6-"));
+  const logPath = join(tmpDir, "enforcement-log.jsonl");
+  try {
+    const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
+    let called = false;
+    const server: ElicitationServer = {
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput: async () => {
+        called = true;
+        throw new Error("nao deveria ser chamado (cap M6)");
+      },
+    };
+    const deps = {
+      ...baseDeps(server),
+      stateRwHelperPath: join(FIXTURES_DIR, "fake-collect-optins-state-rw-preexisting.sh"),
+      env: { CSTK_MCP_ENFORCEMENT_LOG_PATH: logPath },
+    };
+
+    const response = await handleCollectOptins(input, deps);
+
+    assert.equal(called, false);
+    assert.deepEqual(response.result?.reused, ["atomic_commit"]);
+    assert.equal(existsSync(logPath), false, "cap M6 (reuso) nao deve gerar nenhuma linha nova de auditoria");
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("handleCollectOptins (L1, task 9.4.1): reason PERSISTIDO em .optin_responses[] passa por secrets-filter.sh scrub antes do write", async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "collect-optins-scrub-"));
+  const setValueFile = join(tmpDir, "set-values.log");
+  try {
+    const input = parseOrThrow({ session_id: "synthetic-token-abc123" });
+    const server: ElicitationServer = {
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput: async () => ({ action: "accept", content: { atomic_commit: "sim" } }),
+    };
+    const deps = {
+      ...baseDeps(server),
+      // FEATURE_SESSION: so atomic_commit e aplicavel (dec-083).
+      commitModeHelperPath: COMMIT_MODE_FAILS_WITH_SECRET,
+      stateRwHelperPath: CAPTURES_SET_STATE_RW,
+      scrubHelperPath: REAL_SCRUB,
+    };
+
+    const originalEnvValue = process.env.FAKE_SET_VALUE_FILE;
+    process.env.FAKE_SET_VALUE_FILE = setValueFile;
+    let response;
+    try {
+      response = await handleCollectOptins(input, deps);
+    } finally {
+      if (originalEnvValue === undefined) delete process.env.FAKE_SET_VALUE_FILE;
+      else process.env.FAKE_SET_VALUE_FILE = originalEnvValue;
+    }
+
+    // camada 1 falhou (fixture sempre rejeita set-enabled) => outcome failed.
+    assert.equal(response.result?.fields[0]?.outcome, "failed");
+
+    const setLines = readFileSync(setValueFile, "utf8").trim().split("\n");
+    // 1 unica chamada de `set` de .optin_responses (append da camada 2).
+    assert.equal(setLines.length, 1);
+    const persisted = JSON.parse(setLines[0] ?? "[]") as Array<{ field: string; reason: string | null }>;
+    const atomicCommitEntry = persisted.find((e) => e.field === "atomic_commit");
+
+    assert.ok(atomicCommitEntry, "entrada de atomic_commit deve existir em .optin_responses[]");
+    assert.match(atomicCommitEntry?.reason ?? "", /\[REDACTED\]/);
+    assert.doesNotMatch(atomicCommitEntry?.reason ?? "", /SECRETXYZ789/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

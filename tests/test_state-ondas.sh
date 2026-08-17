@@ -71,6 +71,80 @@ scenario_start_apos_onda_fechada_reseta_wallclock() {
   assert_stdout_not_contains "2020-01-01" || return 1
 }
 
+# ==== mcp-elicitation-optins FASE 9 (M4, task 9.3.1): guarda mecanica da
+# Invariante I-2 — `start` recusa abrir onda-001 se houver `field`
+# aplicavel ao executionKind (derivado do LAYOUT do state-dir — mesmo
+# padrao de _hook-active-exec.sh/mcp-session.sh) sem NENHUM registro em
+# `.optin_responses[]`. Onda-002+ nunca e gateada (o campo so precisa ser
+# resolvido uma vez, no nascimento da execucao). ====
+
+scenario_start_onda001_recusada_sem_optin_feature00c() {
+  _sd="$TMPDIR_TEST/feature-00c-state/demo-feature/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "start deveria recusar onda-001 sem optin" "obtido exit 0"; return 1; }
+  assert_stderr_contains "optin-invariant-i2" || return 1
+  assert_stderr_contains "atomic_commit" || return 1
+}
+
+scenario_start_onda001_aceita_com_optin_feature00c() {
+  _sd="$TMPDIR_TEST/feature-00c-state/demo-feature/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.optin_responses' \
+    --value '[{"field":"atomic_commit","channel":"structured","outcome":"accepted","applied_value":"true","recorded_at":"2026-08-17T00:00:00Z","reason":null}]'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-001" || return 1
+}
+
+scenario_start_onda001_recusada_agente00c_faltam_2_de_3_campos() {
+  _sd="$TMPDIR_TEST/agente-00c-state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.optin_responses' \
+    --value '[{"field":"atomic_commit","channel":"structured","outcome":"accepted","applied_value":"true","recorded_at":"2026-08-17T00:00:00Z","reason":null}]'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "start deveria recusar" "obtido exit 0"; return 1; }
+  assert_stderr_contains "roadmap_mode" || return 1
+  assert_stderr_contains "delivery_tier" || return 1
+}
+
+# Prova que "aplicavel" e QUALQUER registro (nao so terminal — Regra R-2 de
+# data-model.md e sobre a Invariante I-1, nao I-2): unavailable/failed
+# (o mecanismo TENTOU) tambem satisfazem a guarda.
+scenario_start_onda001_aceita_agente00c_com_registro_nao_terminal() {
+  _sd="$TMPDIR_TEST/agente-00c-state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.optin_responses' \
+    --value '[{"field":"atomic_commit","channel":"structured","outcome":"accepted","applied_value":"true","recorded_at":"2026-08-17T00:00:00Z","reason":null},{"field":"roadmap_mode","channel":"structured","outcome":"declined","applied_value":"false","recorded_at":"2026-08-17T00:00:01Z","reason":null},{"field":"delivery_tier","channel":"structured","outcome":"unavailable","applied_value":"cloud-public","recorded_at":"2026-08-17T00:00:02Z","reason":null}]'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-001" || return 1
+}
+
+scenario_start_onda002_nao_e_gateada_pela_invariante_i2() {
+  _sd="$TMPDIR_TEST/feature-00c-state/demo-feature/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.optin_responses' \
+    --value '[{"field":"atomic_commit","channel":"structured","outcome":"accepted","applied_value":"true","recorded_at":"2026-08-17T00:00:00Z","reason":null}]'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start onda-002" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-002" || return 1
+}
+
+# Layout sinteticos/nao-canonicos (sem /feature-00c-state/ nem
+# /agente-00c-state) sao NO-OP — sem como derivar executionKind com
+# confianca, a guarda nao adivinha (evita falso-positivo generalizado, ex.:
+# state-dirs de teste com paths arbitrarios).
+scenario_start_onda001_layout_desconhecido_nao_e_gateado() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start (layout desconhecido)" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "onda-001" || return 1
+}
+
 scenario_tool_call_tick_incrementa() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
@@ -1824,6 +1898,29 @@ scenario_sqlite_start_onda_ja_aberta_falha() {
   capture "$SCRIPT" wave-status --state-dir "$_sd"
   assert_stdout_contains "open" || return 1
   capture "$SCRIPT" current-id --state-dir "$_sd"
+  assert_stdout_contains "onda-001" || return 1
+}
+
+# mcp-elicitation-optins FASE 9 (M4, task 9.3.1) sob backend SQLite —
+# `.optin_responses` idem sob backend JSON (via extra_fields, task 4.2.2 —
+# state-rw.sh get e backend-agnostico, a guarda nao precisa de branch por
+# backend).
+scenario_sqlite_start_onda001_recusada_sem_optin_feature00c() {
+  _sd="$TMPDIR_TEST/feature-00c-state/demo-feature/sqlite-optin"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "sqlite start deveria recusar onda-001 sem optin" "obtido exit 0"; return 1; }
+  assert_stderr_contains "optin-invariant-i2" || return 1
+  assert_stderr_contains "atomic_commit" || return 1
+}
+
+scenario_sqlite_start_onda001_aceita_com_optin_feature00c() {
+  _sd="$TMPDIR_TEST/feature-00c-state/demo-feature/sqlite-optin-ok"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$RW" set --state-dir "$_sd" --field '.optin_responses' \
+    --value '[{"field":"atomic_commit","channel":"structured","outcome":"accepted","applied_value":"true","recorded_at":"2026-08-17T00:00:00Z","reason":null}]'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite start" "$_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "onda-001" || return 1
 }
 

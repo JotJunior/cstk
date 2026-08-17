@@ -579,7 +579,7 @@ Depende de: FASE 3, FASE 5.
 
 Ref: `plan.md` linha 333
 
-- [ ] 9.1.1 Incluir no `message` (3.2) um identificador da execucao
+- [x] 9.1.1 Incluir no `message` (3.2) um identificador da execucao
       corrente (short-name/state-dir) para reduzir o risco de o operador
       confundir qual execucao esta perguntando
 
@@ -588,7 +588,7 @@ Ref: `plan.md` linha 333
 Ref: `plan.md` linha 333; padrao existente de
 `enforcement-log.jsonl` (hook `pretooluse-bash-guard.sh`)
 
-- [ ] 9.2.1 Emitir uma linha em `<projeto-alvo>/.claude/
+- [x] 9.2.1 Emitir uma linha em `<projeto-alvo>/.claude/
       enforcement-log.jsonl` por `FieldOutcome` persistido (mesmo padrao
       de scrub via `secrets-filter.sh` ja usado pelo hook de bash-guard)
 
@@ -596,7 +596,7 @@ Ref: `plan.md` linha 333; padrao existente de
 
 Ref: `plan.md` linha 334; `data-model.md` Invariante I-2
 
-- [ ] 9.3.1 Implementar checagem mecanica (nao so prosa) em
+- [x] 9.3.1 Implementar checagem mecanica (nao so prosa) em
       `state-ondas.sh start`/na tool `open_wave`: recusar abrir onda-001
       se houver `field` aplicavel ao `executionKind` sem registro em
       `.optin_responses[]` — falha explicita, nunca silenciosa
@@ -606,7 +606,7 @@ Ref: `plan.md` linha 334; `data-model.md` Invariante I-2
 Ref: `plan.md` linha 338; `contracts/mcp-tool-collect-optins.md` linhas
 280-282 (`sanitizeForLlmContext`, `MAX_REASON_BYTES`)
 
-- [ ] 9.4.1 Confirmar que o `reason` gravado em `.optin_responses[]`
+- [x] 9.4.1 Confirmar que o `reason` gravado em `.optin_responses[]`
       (nao so o retornado no envelope da tool) passa por
       `secrets-filter.sh scrub` antes de persistir — mesma disciplina do
       backup de onda (`secrets-filter.sh for-backup`)
@@ -615,7 +615,7 @@ Ref: `plan.md` linha 338; `contracts/mcp-tool-collect-optins.md` linhas
 
 Ref: `plan.md` linha 343-344
 
-- [ ] 9.5.1 Restringir, no servidor, quais tools podem chamar
+- [x] 9.5.1 Restringir, no servidor, quais tools podem chamar
       `server.server.elicitInput` — apenas `collect_optins`, nenhuma das
       outras 7 tools existentes nem futuras sem allowlist explicita
 

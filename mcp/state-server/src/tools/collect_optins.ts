@@ -27,7 +27,7 @@
 //   delivery-tier.sh get --state-dir <SD>  (tier vigente p/ mensagem + ordinal)
 //   state-rw.sh get/set --field '.optin_responses' (camada 2, append-only)
 
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { z } from "zod";
 import { McpError, ErrorCode, type ElicitRequestFormParams, type ElicitResult } from "@modelcontextprotocol/sdk/types.js";
 import {
@@ -37,6 +37,8 @@ import {
   formatToolError,
 } from "../runtime/exec.js";
 import { sanitizeForLlmContext } from "../runtime/sanitize.js";
+import { scrubText, appendOptinDecisionRecord } from "../audit/log.js";
+import type { ElicitationServer } from "../runtime/elicitation-gate.js";
 import {
   matchesResolvedSession,
   type ResolvedSession,
@@ -101,22 +103,19 @@ export interface CollectOptinsResponse {
 
 // ---------------------------------------------------------------------------
 // Deps — inclui o "server" com acesso a elicitInput/getClientCapabilities
-// [VERIFICADO: server/index.d.ts:158, server/index.d.ts:121]. Tipo estrutural
-// minimo (nao o `Server` completo do SDK) para manter os testes de unidade
-// sem precisar instanciar um McpServer real.
+// [VERIFICADO: server/index.d.ts:158, server/index.d.ts:121]. O TIPO
+// estrutural minimo agora vive em `../runtime/elicitation-gate.ts` (SEC L3,
+// task 9.5.1) — unica fonte, reusada tambem por `index.ts` na fronteira que
+// CONCEDE esse acesso (`grantElicitationAccess`), para nao divergir de uma
+// copia local. Mantido re-exportado aqui por retrocompatibilidade de import
+// (testes existentes importam `ElicitationServer` deste modulo).
 // ---------------------------------------------------------------------------
 
-export interface ElicitationServer {
-  getClientCapabilities(): { readonly elicitation?: unknown } | undefined;
-  elicitInput(
-    params: ElicitRequestFormParams,
-    options?: { readonly timeout?: number },
-  ): Promise<ElicitResult>;
-}
+export type { ElicitationServer };
 
 export interface CollectOptinsDeps {
   readonly session: ResolvedSession;
-  readonly env?: NodeJS.ProcessEnv;
+  readonly env?: NodeJS.ProcessEnv | undefined;
   readonly elicitationServer: ElicitationServer;
   /** Override do path de `commit-mode.sh`. */
   readonly commitModeHelperPath?: string;
@@ -126,6 +125,10 @@ export interface CollectOptinsDeps {
   readonly deliveryTierHelperPath?: string;
   /** Override do path de `state-rw.sh` (leitura/escrita de `.optin_responses`). */
   readonly stateRwHelperPath?: string;
+  /** Override do path de `secrets-filter.sh` (L1 — scrub do `reason` persistido; testes). */
+  readonly scrubHelperPath?: string;
+  /** Relogio injetavel (testes deterministicos do `enforcement-log.jsonl`, M2). */
+  readonly now?: (() => Date) | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,20 +267,44 @@ function buildProperties(fields: readonly FieldName[]): Record<string, StringEnu
 }
 
 /**
+ * Binding de identidade da execucao (M1 — gate owasp-security, plan.md linha
+ * 333; tasks.md FASE 9, task 9.1.1): reduz o risco do OPERADOR confundir
+ * qual execucao esta perguntando quando ha mais de uma sessao 00c ativa em
+ * paralelo (ex.: `cstk session`, FASE multi-worktree). `session.shortName`
+ * e `"-"` para `agente-00c` [VERIFICADO: cli/lib/mcp.sh:566
+ * `short_name: (if $short == "-" then null else $short end)`] — nesse caso
+ * cai no basename de `targetProjectPath`, sempre presente.
+ */
+function executionIdentityLabel(session: ResolvedSession): string {
+  const label =
+    session.shortName && session.shortName !== "-"
+      ? session.shortName
+      : basename(session.targetProjectPath || "") || "?";
+  return `${session.executionKind}:${label}`;
+}
+
+/**
  * `message` (task 3.2.1 + requisito (a) derivado do Scenario 0, dec-071):
  * campo obrigatorio do schema, MEDIDO como renderizado integralmente
  * (contracts/mcp-tool-collect-optins.md §Campo `message`). Quando
  * `delivery_tier` entra no formulario, nomeia o tier vigente + eixo do enum
  * (H1, dec-047) e avisa que os campos de enum estao colapsados (seta para
- * expandir — item 4 do contrato, dec-071).
+ * expandir — item 4 do contrato, dec-071). Prefixo `[Execucao: ...]` (M1)
+ * identifica QUAL execucao esta perguntando.
  */
-function buildMessage(fields: readonly FieldName[], currentTier: string | null): string {
+function buildMessage(
+  fields: readonly FieldName[],
+  currentTier: string | null,
+  identity: string,
+): string {
   const expandWarning =
     "Os campos de opcoes (enum) aparecem colapsados — use a seta " +
     "(→ to expand) para ver todas as opcoes antes de responder.";
+  const prefix = `[Execucao: ${identity}] `;
 
   if (!fields.includes("delivery_tier")) {
     return (
+      prefix +
       "Formulario de opt-ins de inicio de execucao: modo atomic-commit e " +
       `modo roadmap (ambos opcionais, default 'nao'). ${expandWarning}`
     );
@@ -285,6 +312,7 @@ function buildMessage(fields: readonly FieldName[], currentTier: string | null):
 
   const tier = currentTier ?? "cloud-public";
   return (
+    prefix +
     `Formulario de opt-ins de inicio de execucao. Tier de entrega vigente: ` +
     `'${tier}' (eixo local < internal-network < cloud-internal < ` +
     `cloud-public, do menor para o maior rigor de gates). ATENCAO: escolher ` +
@@ -346,16 +374,45 @@ function mostRecentByField(
   return map;
 }
 
+/** Contexto de auditoria threaded pelas 4 chamadas de `appendOptinResponses` (M2/L1). */
+interface OptinAuditContext {
+  readonly sessionId: string;
+  readonly env?: NodeJS.ProcessEnv | undefined;
+  readonly scrubHelperPath?: string | undefined;
+  readonly now?: (() => Date) | undefined;
+}
+
 async function appendOptinResponses(
   stateRwHelperPath: string,
   stateDir: string,
   entries: readonly { field: FieldName; outcome: FieldOutcomeValue; applied_value: string; reason: string | null }[],
+  auditCtx: OptinAuditContext,
 ): Promise<void> {
   const existing = await readOptinResponses(stateRwHelperPath, stateDir);
   const now = new Date().toISOString();
+
+  // L1 (gate owasp-security, plan.md linha 338; tasks.md FASE 9, task
+  // 9.4.1): `reason` MUST passar por `secrets-filter.sh scrub` ANTES de
+  // persistir em `.optin_responses[]` — mesma disciplina do backup de onda
+  // (`secrets-filter.sh for-backup`). O `reason` que chega aqui ja passou
+  // por `sanitizeHelperReason` (SEC-M1: strip de controle + truncamento) no
+  // call-site — scrub e uma camada ADICIONAL contra segredo literal (ex.:
+  // stderr de um helper ecoando uma env var ou path com token). Aplicado
+  // UMA vez; o valor ja escrubado tambem alimenta a linha de
+  // enforcement-log.jsonl (M2) abaixo, sem rodar um segundo subprocesso.
+  const scrubbed = await Promise.all(
+    entries.map(async (e) => ({
+      ...e,
+      reason:
+        e.reason !== null
+          ? await scrubText(e.reason, { scrubHelperPath: auditCtx.scrubHelperPath, env: auditCtx.env })
+          : null,
+    })),
+  );
+
   const appended: StoredOptinResponse[] = [
     ...existing,
-    ...entries.map((e) => ({
+    ...scrubbed.map((e) => ({
       field: e.field,
       channel: "structured" as const,
       outcome: e.outcome,
@@ -373,6 +430,27 @@ async function appendOptinResponses(
     "--value",
     JSON.stringify(appended),
   ]);
+
+  // M2 (gate owasp-security, plan.md linha 333; tasks.md FASE 9, task
+  // 9.2.1): 1 linha em enforcement-log.jsonl por FieldOutcome PERSISTIDO —
+  // best-effort (nunca lanca, mesmo contrato de appendAuditRecord). Este e
+  // o UNICO ponto de escrita de `.optin_responses[]` (todas as 4 chamadas
+  // de `appendOptinResponses` passam por aqui), entao cobre os 4 desfechos
+  // (unavailable / timeout-ou-failed / accept normal / cap M6 nao chega
+  // aqui pois nao persiste nada novo).
+  for (const e of scrubbed) {
+    await appendOptinDecisionRecord(
+      {
+        sessionId: auditCtx.sessionId,
+        field: e.field,
+        channel: "structured",
+        outcome: e.outcome,
+        appliedValue: e.applied_value,
+        reason: e.reason,
+      },
+      { env: auditCtx.env, now: auditCtx.now },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -458,6 +536,13 @@ export async function handleCollectOptins(
   const roadmapModeHelperPath = deps.roadmapModeHelperPath ?? join(scriptsDir, "roadmap-mode.sh");
   const deliveryTierHelperPath = deps.deliveryTierHelperPath ?? join(scriptsDir, "delivery-tier.sh");
   const stateRwHelperPath = deps.stateRwHelperPath ?? join(scriptsDir, "state-rw.sh");
+  const scrubHelperPath = deps.scrubHelperPath ?? join(scriptsDir, "secrets-filter.sh");
+  const auditCtx: OptinAuditContext = {
+    sessionId: session.token,
+    env,
+    scrubHelperPath,
+    now: deps.now,
+  };
 
   const applicableFields = applicableFieldsFor(session.executionKind);
   if (applicableFields.length === 0) {
@@ -517,6 +602,7 @@ export async function handleCollectOptins(
         stateRwHelperPath,
         session.stateDir,
         fields.map((f) => ({ ...f, reason: null })),
+        auditCtx,
       );
     } catch (err) {
       const message = err instanceof HelperExecutionError ? (err.diagnostic?.message ?? err.stderr) : String(err);
@@ -545,7 +631,7 @@ export async function handleCollectOptins(
       currentTierForMessage = null; // buildMessage cai no default seguro para exibicao
     }
   }
-  const message = buildMessage(applicableFields, currentTierForMessage);
+  const message = buildMessage(applicableFields, currentTierForMessage, executionIdentityLabel(session));
   const properties = buildProperties(applicableFields);
   const timeoutMs = parseElicitTimeoutMs(env.MCP_ELICIT_TIMEOUT_MS);
 
@@ -584,6 +670,7 @@ export async function handleCollectOptins(
         stateRwHelperPath,
         session.stateDir,
         fieldsOnError.map((f) => ({ ...f, reason: mechanismOnError === "failed" ? "elicitInput lancou excecao" : null })),
+        auditCtx,
       );
     } catch (persistErr) {
       const pMessage =
@@ -655,6 +742,7 @@ export async function handleCollectOptins(
       stateRwHelperPath,
       session.stateDir,
       fields.map((f, idx) => ({ ...f, reason: persistedReasons[idx] ?? null })),
+      auditCtx,
     );
   } catch (err) {
     const message = err instanceof HelperExecutionError ? (err.diagnostic?.message ?? err.stderr) : String(err);

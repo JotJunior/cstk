@@ -83,6 +83,7 @@ import {
   handleCollectOptins,
   type CollectOptinsResponse,
 } from "./tools/collect_optins.js";
+import { grantElicitationAccess } from "./runtime/elicitation-gate.js";
 
 const SERVER_NAME = "cstk-state";
 // F3 (task 3.6-3.9 + tool get_status/dec-064): 5 tools novas registradas —
@@ -392,8 +393,10 @@ export async function bootstrap(
         env,
         // Acesso a elicitInput/getClientCapabilities MUST vir do `Server`
         // bruto, nao do `McpServer` [VERIFICADO: server/mcp.d.ts:18 `readonly
-        // server: Server`].
-        elicitationServer: server.server,
+        // server: Server`]. `grantElicitationAccess` e o UNICO ponto
+        // autorizado a conceder isso (SEC L3, runtime/elicitation-gate.ts) —
+        // nenhuma outra tool deve receber `server.server` diretamente.
+        elicitationServer: grantElicitationAccess("collect_optins", server.server),
       });
       return toCallToolResult("collect_optins", response);
     },

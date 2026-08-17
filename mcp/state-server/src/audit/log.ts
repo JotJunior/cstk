@@ -51,12 +51,12 @@ export interface ToolInvocationAuditInput {
 
 export interface AppendAuditRecordDeps {
   /** Override do path do arquivo de log (testes; producao usa `resolveEnforcementLogPath`). */
-  readonly logPath?: string;
+  readonly logPath?: string | undefined;
   /** Override do path do helper `secrets-filter.sh` (testes). */
-  readonly scrubHelperPath?: string;
-  readonly env?: NodeJS.ProcessEnv;
+  readonly scrubHelperPath?: string | undefined;
+  readonly env?: NodeJS.ProcessEnv | undefined;
   /** Relogio injetavel (testes deterministicos). */
-  readonly now?: () => Date;
+  readonly now?: (() => Date) | undefined;
 }
 
 /** `cut -c1-500` do precedente `pretooluse-bash-guard.sh` — 500 CODE POINTS, nao bytes. */
@@ -142,6 +142,71 @@ export async function appendAuditRecord(
       reason: scrubbedReason,
       stage: input.stage,
       arguments_digest: argumentsDigest,
+    });
+
+    const logPath = deps.logPath ?? resolveEnforcementLogPath(deps.env);
+    await mkdir(dirname(logPath), { recursive: true });
+    await appendFile(logPath, `${line}\n`, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// M2 (gate owasp-security, plan.md linha 333; docs/specs/mcp-elicitation-optins
+// /tasks.md FASE 9, task 9.2.1): 1 linha em enforcement-log.jsonl por
+// FieldOutcome PERSISTIDO por `collect_optins` — mais granular que
+// `appendAuditRecord` (que audita a chamada de tool INTEIRA, nao cada campo
+// decidido dentro dela). MESMO arquivo, `source` proprio ("mcp-collect-optins")
+// para distinguir de "mcp-state-tool" (appendAuditRecord) e
+// "pretooluse-bash-guard" (hook de guarda de Bash).
+// ---------------------------------------------------------------------------
+
+export interface OptinDecisionAuditInput {
+  readonly sessionId: string;
+  readonly field: string;
+  readonly channel: string;
+  readonly outcome: string;
+  readonly appliedValue: string;
+  /**
+   * Reason JA escrubado pelo chamador (L1 — task 9.4.1: `collect_optins`
+   * aplica `secrets-filter.sh scrub` UMA UNICA vez, no ponto onde o valor e
+   * persistido em `.optin_responses[]`; esta funcao reusa o MESMO resultado
+   * para a linha de log, em vez de rodar um segundo subprocesso de scrub
+   * por FieldOutcome). Ainda assim, strip de caracteres de controle +
+   * truncamento (SEC-M1) sao aplicados aqui, como em `appendAuditRecord`.
+   */
+  readonly reason: string | null;
+}
+
+/**
+ * Monta e persiste UMA linha JSONL por FieldOutcome — mesmo contrato
+ * best-effort de `appendAuditRecord` (falha ao escrever NUNCA lanca; a
+ * mutacao que este registro documenta ja aconteceu independentemente de
+ * conseguirmos persistir o rastro).
+ */
+export async function appendOptinDecisionRecord(
+  input: OptinDecisionAuditInput,
+  deps: Pick<AppendAuditRecordDeps, "logPath" | "env" | "now"> = {},
+): Promise<boolean> {
+  try {
+    const reason =
+      input.reason !== null
+        ? truncateUtf8ByteBudget(stripControlChars(input.reason).trim(), REASON_MAX_BYTES)
+        : null;
+
+    // Serialize (SEC-M3): JSON.stringify real — mesmo racional de
+    // appendAuditRecord (texto livre em `reason` nao pode quebrar a linha).
+    const line = JSON.stringify({
+      source: "mcp-collect-optins",
+      timestamp: isoTimestamp(deps.now),
+      session_id: input.sessionId,
+      field: input.field,
+      channel: input.channel,
+      outcome: input.outcome,
+      applied_value: input.appliedValue,
+      reason,
     });
 
     const logPath = deps.logPath ?? resolveEnforcementLogPath(deps.env);
