@@ -7,11 +7,15 @@ este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [8.0.0] - 2026-08-16
 
-**BREAKING** — feature `mcp-direct-transport`. O transporte MCP dos
-orquestradores autônomos deixa de usar um container Docker por execução:
-`cstk mcp start` agora resolve a sessão sob demanda a cada chamada e grava
-um descritor `mode=direct` (sem `container_name`); `cli/lib/mcp-docker.sh`
-foi **removido**.
+**BREAKING** — duas features encadeadas que, juntas, fazem o caminho MCP
+funcionar pela primeira vez: `orchestrator-mcp-allowlist` (expõe as tools
+aos orquestradores) e `mcp-direct-transport` (faz o transporte entregá-las).
+A primeira é pré-requisito da segunda e sozinha não tem efeito observável.
+
+O transporte MCP dos orquestradores autônomos deixa de usar um container
+Docker por execução: `cstk mcp start` agora resolve a sessão sob demanda a
+cada chamada e grava um descritor `mode=direct` (sem `container_name`);
+`cli/lib/mcp-docker.sh` foi **removido**.
 
 **Isto é correção de defeito, não apenas refactor.** Antes desta versão o
 caminho MCP não entregava tool alguma a nenhuma sessão do harness — o
@@ -21,8 +25,41 @@ chegou a usar as 7 tools reais (`open_wave`, `record_decision`,
 `record_skill`, `record_task`, `register_human_block`, `close_wave`,
 `get_status`) por este caminho.
 
+### Added
+
+- **Tools MCP expostas aos orquestradores** (`orchestrator-mcp-allowlist`).
+  O frontmatter de `agente-00c-orchestrator` e `agente-00c-feature-orchestrator`
+  passa a declarar as 7 tools `mcp__cstk-state__*`. Sem isso um subagente
+  não as enxerga, por mais que o servidor as sirva.
+- **Guard de composição de allowlist** (`tests/test_orchestrator-allowlist-guard.sh`,
+  16 cenários): a allowlist de um orquestrador nunca pode resolver para
+  conjunto vazio nem conter apenas tools MCP — allowlist só-MCP faz o
+  harness recusar o spawn antes de iniciar. O parser cobre **as duas
+  formas** de `tools:` (inline e lista YAML).
+- **Bloco de orientação MCP-vs-Bash** autocontido em cada orquestrador,
+  com cenário de paridade que falha se os dois divergirem. Inclui a regra
+  de não ecoar o `session_id` e a de não pressupor a tool: usar se existir,
+  cair no caminho Bash se não, sem tratar a ausência como erro.
+
+### Removed
+
+- **Guard inerte** (`scenario_orchestrator_agente_nao_lista_tool_mcp` e
+  `scenario_orchestrator_feature_nao_lista_tool_mcp` em
+  `tests/test_orchestrator-mcp-fallback.sh`). Eles proibiam declarar
+  `mcp__*` no frontmatter, mas a ERE `^\s*-\s*mcp__` só casava forma de
+  **lista** YAML e os agentes usam forma **inline** — a proibição nunca
+  teria disparado. Substituídos pelo guard de composição acima, que é o
+  que de fato protege o invariante (SC-004: MCP indisponível nunca degrada
+  funcionalidade).
+
 ### Changed (BREAKING)
 
+- **Injeção do token nos commands**: `agente-00c`, `feature-00c` e seus
+  dois resumes injetavam o `session_id` no prompt de spawn do orquestrador
+  apenas quando `mode == "docker"`. Com `mode=direct` a condição nunca
+  seria satisfeita e o orquestrador veria as 7 tools sem token para
+  apresentar — toda chamada morreria em `SESSION_MISMATCH`. A leitura passa
+  a ser incondicional (FR-013).
 - **Vida do processo**: deixa de ser coextensiva com a execução
   (sobrevivia a pausas — FR-010 da feature-base `state-mcp-server`) e
   passa a ser coextensiva com a **sessão do harness** (FR-012 desta
