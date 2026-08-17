@@ -42,11 +42,13 @@ antes dessa chamada, portanto nenhuma onda esta aberta.
 - *Disparar dentro da onda-001 ja aberta* — rejeitada: violaria a letra de
   FR-012 ("antes de qualquer onda comecar").
 
-**[PROPOSTA — a validar na implementacao]**: que o harness renderize um
-`elicitation/create` originado de uma tool chamada por um **subagente**. O
-que esta medido e que o cliente declara a capability e que `enum` vira picker;
-nao esta medido que a origem-subagente preserve esse comportamento. Task de
-validacao obrigatoria antes de qualquer outra (ver `plan.md` §Riscos).
+**MEDIDO (dec-071, `quickstart.md` Scenario 0)**: o harness renderiza
+`elicitation/create` originado de uma tool chamada por um **subagente** — o
+formulario apareceu, com `message` renderizando integralmente. Premissa
+confirmada; risco R1 (`plan.md` §Riscos) encerrado. Consequencia derivada nao
+prevista: `enum` renderiza **colapsado** (exige seta para expandir), o que
+motivou dois ajustes de contrato aplicados na FASE 3 (`contracts/
+mcp-tool-collect-optins.md` §Campo `message` item 4 + §Formulario proposto).
 
 ---
 

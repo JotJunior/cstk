@@ -91,24 +91,34 @@ desenho"); `contracts/mcp-tool-collect-optins.md` §Campo `message`
 > aqui sem operador disponivel, `execute-task` MUST registrar bloqueio
 > humano e parar — nao inventar o resultado.
 
-- [ ] 2.1.1 Implementar uma versao minima/stub de `collect_optins` (schema
+- [x] 2.1.1 Implementar uma versao minima/stub de `collect_optins` (schema
       reduzido, sem persistencia ainda) suficiente para disparar
       `elicitInput` a partir de uma tool chamada por subagente
-- [ ] 2.1.2 Rodar Scenario 0 completo com operador humano: registrar se o
+- [x] 2.1.2 Rodar Scenario 0 completo com operador humano: registrar se o
       formulario aparece, e se `title`/`description`/`default`/`message`
       renderizam (4 itens, `contracts/mcp-tool-collect-optins.md` linhas
-      28-42 e 172-178)
-- [ ] 2.1.3 Se o formulario NAO aparecer: PARAR, registrar bloqueio humano
+      28-42 e 172-178) — **RESULTADO (dec-071)**: formulario aparece;
+      `message` renderiza integral (linha 1 do formulario, PREMISSA H1
+      CONFIRMADA); `title` vira rotulo; `description` vira subtexto;
+      `default` e pre-aplicado; `required` so fica visivel (`* not set`
+      vermelho) quando o campo NAO tem default; `enum` renderiza
+      **colapsado** (exige seta para expandir — dificuldade de usabilidade
+      reportada pelo operador)
+- [x] 2.1.3 Se o formulario NAO aparecer: PARAR, registrar bloqueio humano
       citando `plan.md` §Riscos R1, e escalar decisao de voltar a fase
-      `plan` — nao prosseguir para FASE 3 com suposicao
-- [ ] 2.1.4 Se `message` NAO for exibido ao operador: PARAR e escalar —
+      `plan` — nao prosseguir para FASE 3 com suposicao. **N/A**: guarda nao
+      disparou — o formulario apareceu (dec-071)
+- [x] 2.1.4 Se `message` NAO for exibido ao operador: PARAR e escalar —
       `contracts/mcp-tool-collect-optins.md` linhas 172-178 e explicito que
       migrar o aviso de volta para `title`/`description` NAO e contorno
-      valido (campos opcionais e igualmente nao medidos)
-- [ ] 2.1.5 Registrar o resultado da sondagem (paths/comportamento
+      valido (campos opcionais e igualmente nao medidos). **N/A**: guarda
+      nao disparou — `message` renderizou integralmente (dec-071)
+- [x] 2.1.5 Registrar o resultado da sondagem (paths/comportamento
       observado, nao presuncao) em `research.md` ou `plan.md`, substituindo
       os marcadores `[PROPOSTA — a validar na implementacao]` pelos itens
-      confirmados
+      confirmados — ver `research.md` Decision 1, `plan.md` §Riscos R4 e
+      `contracts/mcp-tool-collect-optins.md` §Campo `message` +
+      §Formulario proposto (dec-071)
 
 ---
 
@@ -125,57 +135,64 @@ VERIFICADO em `mcp/state-server/src/tools/get_status.ts` (envelope
 (`registerTool`, sequencia `checkCallLimit` → `resolveCallSession` →
 handler → `toCallToolResult`)
 
-- [ ] 3.1.1 Criar `mcp/state-server/src/tools/collect_optins.ts` `[NOVO]`:
+- [x] 3.1.1 Criar `mcp/state-server/src/tools/collect_optins.ts` `[NOVO]`:
       `inputSchema` so com `session_id` (`z.string().min(1)`, espelha
       `get_status.ts` linhas 35-36); nenhum outro parametro de entrada
       (escopo de campos e derivado server-side de
       `ResolvedSession.executionKind`, `session/resolve.ts` linhas 29-38)
-- [ ] 3.1.2 Implementar a tabela de escopo por `executionKind`
+- [x] 3.1.2 Implementar a tabela de escopo por `executionKind`
       (`contracts/mcp-tool-collect-optins.md` linhas 48-55):
       `agente-00c` → `atomic_commit` + `roadmap_mode` + `delivery_tier`;
       `feature-00c` → `atomic_commit` + `roadmap_mode` (sem tier)
-- [ ] 3.1.3 Montar `ElicitRequestFormParams` com os 3 campos (properties
-      `atomic_commit`/`roadmap_mode` enum `["nao","sim"]`, `delivery_tier`
-      enum de 4 tokens) — texto de `title`/`description` derivado dos
+- [x] 3.1.3 Montar `ElicitRequestFormParams` com os 3 campos (properties
+      `atomic_commit`/`roadmap_mode` enum `["nao","sim"]` com
+      `default: "nao"`; `delivery_tier` enum de 4 tokens **sem** `default`
+      no schema — dec-071/req. (b), ver `contracts/mcp-tool-collect-optins.md`
+      §Formulario proposto) — texto de `title`/`description` derivado dos
       blocos de prosa hoje existentes em `agente-00c.md`/`feature-00c.md`
       (FR-002), nao redigido do zero
-- [ ] 3.1.4 Implementar mapeamento resultado → `outcome`
+- [x] 3.1.4 Implementar mapeamento resultado → `outcome`
       (`contracts/mcp-tool-collect-optins.md` linhas 217-225): capability
       ausente → `unavailable`; `accept`+campo presente → `accepted`;
       `accept`+campo ausente → `absent`; `decline` → `declined`; `cancel`
       (retornado) → `absent`; `McpError RequestTimeout` (lancado) →
       `timeout`; qualquer outra excecao → `failed` (1 linha stderr)
-- [ ] 3.1.5 Implementar Invariante C-1: `unavailable`/`timeout`/`absent`/
+- [x] 3.1.5 Implementar Invariante C-1: `unavailable`/`timeout`/`absent`/
       `declined`/`failed` retornam `outcome: "accepted"` no envelope da
       TOOL (nunca erro de tool) — so `SESSION_MISMATCH`/
       `TOOL_CALL_LIMIT_EXCEEDED` sao `rejected`
-- [ ] 3.1.6 Escrever `mcp/state-server/test/collect_optins.test.ts` `[NOVO]`
+- [x] 3.1.6 Escrever `mcp/state-server/test/collect_optins.test.ts` `[NOVO]`
       cobrindo os 6 desfechos + os 2 erros de precondicao (sem gate ainda —
-      ver FASE 11.2/dec-027)
+      ver FASE 11.2/dec-027) — 17 testes novos, `npm test` verde (147/147)
 
 ### 3.2 Campo `message` — advertencia de rebaixamento (H1) `[C]`
 
 Ref: `contracts/mcp-tool-collect-optins.md` §Campo `message` linhas
 138-196; dec-047
 
-- [ ] 3.2.1 Implementar `message` obrigatorio quando `delivery_tier` entra
+- [x] 3.2.1 Implementar `message` obrigatorio quando `delivery_tier` entra
       no formulario (`executionKind === "agente-00c"`): nomear o tier
       vigente (via `delivery-tier.sh get`, nunca leitura crua) + o eixo do
       enum (menor ordinal = menos rigor de gate)
-- [ ] 3.2.2 Garantir que o texto do `message` nao contem instrucao ao
+- [x] 3.2.2 Garantir que o texto do `message` nao contem instrucao ao
       modelo — e texto para o operador, nunca reinterpretado pelo
       orquestrador (FR-003)
+- [x] 3.2.3 **[NOVO — dec-071]** Incluir no `message` um aviso de que
+      `delivery_tier` tem opcoes a **expandir** (`enum` colapsado, seta
+      `→ to expand` — medido no Scenario 0); texto deriva do requisito (a)
+      registrado em `contracts/mcp-tool-collect-optins.md` §Campo `message`
+      item 4
 
 ### 3.3 Cap M6 — 1 chamada de coleta por execucao `[C]`
 
 Ref: `plan.md` linhas 271, 339-343; dec-057; task 1.1 (FR novo em spec.md)
 
-- [ ] 3.3.1 Implementar o cap no handler de `collect_optins`: se ja existe
+- [x] 3.3.1 Implementar o cap no handler de `collect_optins`: se ja existe
       QUALQUER registro (terminal ou nao) em `.optin_responses[]` para
       TODOS os campos aplicaveis ao `executionKind`, recusar nova COLETA
       (retornar `reused`, nunca re-disparar `elicitInput`) — reusa a
       logica de Invariante I-1 (`data-model.md` linha 181-183)
-- [ ] 3.3.2 Se uma segunda tentativa de coleta acontecer FORA do padrao
+- [x] 3.3.2 Se uma segunda tentativa de coleta acontecer FORA do padrao
       normal de retomada (ex.: mesma sessao, sem `state-ondas.sh start`
       entre as duas chamadas), registrar linha em stderr sinalizando
       anomalia — nao apenas silenciar
@@ -185,13 +202,16 @@ Ref: `plan.md` linhas 271, 339-343; dec-057; task 1.1 (FR novo em spec.md)
 Ref: `plan.md` linhas 335-337 (M5, M3); `contracts/mcp-tool-collect-optins.md`
 §Teto de tempo (default `300000` ms, dec-058)
 
-- [ ] 3.4.1 Implementar clamp de `MCP_ELICIT_TIMEOUT_MS` no servidor.
+- [x] 3.4.1 Implementar clamp de `MCP_ELICIT_TIMEOUT_MS` no servidor.
       **ATENCAO**: o exemplo do plan (5s-300s) coloca o novo default de
       dec-058 (300000 ms = 300s) exatamente no TETO do clamp — se essa
       faixa for adotada literalmente, override por env acima do default
       fica impossivel. Escolher faixa que acomode o default como valor
-      **interno** a faixa (ex.: 5s-600s), documentando a escolha
-- [ ] 3.4.2 Implementar allowlist explicita de tokens aceitos no mapper
+      **interno** a faixa (ex.: 5s-600s), documentando a escolha —
+      implementado 5000-600000ms (fallback-ao-default fora da faixa, mesmo
+      padrao de `parseMaxToolCalls`), `parseElicitTimeoutMs` em
+      `collect_optins.ts`
+- [x] 3.4.2 Implementar allowlist explicita de tokens aceitos no mapper
       (`collect_optins.ts`, camada wire→helper) ANTES de montar o argv dos
       helpers POSIX — nenhum valor fora de `["nao","sim"]` /
       `["local","internal-network","cloud-internal","cloud-public"]` chega
@@ -202,12 +222,13 @@ Ref: `plan.md` linhas 335-337 (M5, M3); `contracts/mcp-tool-collect-optins.md`
 Ref: `mcp/state-server/src/index.ts` linhas 220-346 (7 `registerTool` ja
 existentes)
 
-- [ ] 3.5.1 Adicionar o 8o `registerTool("collect_optins", ...)` em
+- [x] 3.5.1 Adicionar o 8o `registerTool("collect_optins", ...)` em
       `mcp/state-server/src/index.ts`, mesmo padrao das 7 tools existentes
       (`title`/`description`/`inputSchema`, `checkCallLimit` →
       `resolveCallSession` → handler → `toCallToolResult`)
-- [ ] 3.5.2 Atualizar comentario de cabecalho do arquivo se necessario
-      (contagem de tools, se documentada em prosa)
+- [x] 3.5.2 Atualizar comentario de cabecalho do arquivo se necessario
+      (contagem de tools, se documentada em prosa) — `SERVER_VERSION`
+      0.5.0 → 0.6.0 (aditiva), `test/index.test.ts` `ALL_EIGHT_TOOLS`
 
 ---
 
@@ -215,35 +236,49 @@ existentes)
 
 Depende de: FASE 3.
 
+> **Nota de escopo (execucao real, dec-074)**: `data-model.md` §Primitiva de
+> escrita e explicito que E `collect_optins.ts` quem chama os 3 helpers de
+> camada 1 e o `state-rw.sh set` de camada 2 — sem essas escritas a tool
+> nao cumpre a Invariante I-2. A task 4.1 (integra na tool) foi implementada
+> JUNTO com a FASE 3, na mesma onda (`collect_optins.ts` ja inclui
+> `writeBooleanField`/`writeDeliveryTier`/`appendOptinResponses`). A FASE
+> 4.2 (round-trip empirico sob backend SQLite) permanece pendente — e
+> validacao, nao codigo.
+
 ### 4.1 Escrita via helpers POSIX + regras de terminalidade `[C]`
 
 Ref: `data-model.md` §Entity RespostaDeOptIn, §Primitiva de escrita,
 §Registros terminais x nao-terminais (R-1/R-2/R-3)
 
-- [ ] 4.1.1 Persistencia da camada 1 (valor efetivo) delegada aos 3
+- [x] 4.1.1 Persistencia da camada 1 (valor efetivo) delegada aos 3
       helpers existentes: `commit-mode.sh set-enabled --state-dir <SD>
       --value <true|false>` (`commit-mode.sh:184`), `roadmap-mode.sh
       set-enabled --state-dir <SD> --value <true|false>`
       (`roadmap-mode.sh:15`), `delivery-tier.sh set --state-dir <SD>
       --value <token> [--allow-downgrade]` (`delivery-tier.sh:22-27`) —
       chamados de `runtime/exec.ts` (`runHelper`, `execFile shell:false`)
-- [ ] 4.1.2 Implementar Invariante contratual C-2 (flag `--allow-downgrade`
+- [x] 4.1.2 Implementar Invariante contratual C-2 (flag `--allow-downgrade`
       **condicional**): passar a flag SOMENTE quando
       `outcome === "accepted"` E `ordinal(resposta) < ordinal(tier
       vigente)` (tier vigente lido via `delivery-tier.sh get`, nunca campo
-      cru, IMEDIATAMENTE antes da escrita)
-- [ ] 4.1.3 Implementar Invariante C-3: para `outcome != accepted`, NENHUMA
+      cru, IMEDIATAMENTE antes da escrita) — coberto por 2 testes com
+      captura de argv (`collect_optins.test.ts`)
+- [x] 4.1.3 Implementar Invariante C-3: para `outcome != accepted`, NENHUMA
       chamada de escrita da camada 1 e emitida (o default seguro ja foi
       gravado na etapa 1 do init)
-- [ ] 4.1.4 Persistencia da camada 2 (`.optin_responses[]`): append via
+- [x] 4.1.4 Persistencia da camada 2 (`.optin_responses[]`): append via
       `state-rw.sh set --state-dir <SD> --field '.optin_responses' --value
       <json-array>` (le `.optin_responses // []`, reescreve) — mesmo padrao
       ja usado por `.events[]` na instrumentacao de camada B
-- [ ] 4.1.5 Implementar regras R-1 (precedencia: vale o registro mais
+- [x] 4.1.5 Implementar regras R-1 (precedencia: vale o registro mais
       recente por `field`), R-2 (terminalidade: `unavailable`/`failed` sao
       NAO-terminais; os demais 4 valores sao terminais) e R-3 (anti-loop:
       re-pergunta por prosa no maximo 1x por campo por execucao) — chave
-      natural `(execution, field)`
+      natural `(execution, field)`. **Nota**: R-3 (re-pergunta por prosa no
+      PAI apos `unavailable`/`failed`) e responsabilidade do ORQUESTRADOR
+      (FASE 6, ramo degradado), nao de `collect_optins.ts` — a tool grava
+      o registro `unavailable`/`failed` (R-2) que habilita R-3 no pai; a
+      logica de re-pergunta em si ainda nao existe (fica para FASE 6)
 
 ### 4.2 Round-trip empirico sob backend SQLite `[A]`
 

@@ -21,6 +21,7 @@ import { recordTaskInputShape } from "../src/tools/record_task.js";
 import { registerHumanBlockInputShape } from "../src/tools/register_human_block.js";
 import { getStatusInputShape } from "../src/tools/get_status.js";
 import { closeWaveInputShape } from "../src/tools/close_wave.js";
+import { collectOptinsInputShape } from "../src/tools/collect_optins.js";
 
 const SRC_TOOLS_DIR = join(process.cwd(), "src", "tools");
 
@@ -41,6 +42,7 @@ const SCHEMA_SHAPES: Readonly<Record<string, Readonly<Record<string, unknown>>>>
   register_human_block: registerHumanBlockInputShape,
   get_status: getStatusInputShape,
   close_wave: closeWaveInputShape,
+  collect_optins: collectOptinsInputShape,
 };
 
 test("exec-mapper-parity: FIELD_TO_FLAG_TABLE nao esta vazia", () => {

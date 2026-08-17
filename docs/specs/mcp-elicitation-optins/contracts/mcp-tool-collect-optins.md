@@ -8,7 +8,11 @@ Contrato da 8a tool do servidor `cstk-state`. Nome MCP exposto ao orquestrador:
 > **[PROPOSTA — a validar na implementacao]**. O que e **VERIFICADO** e (a) o
 > padrao de registro e envelope das 7 tools existentes, (b) a superficie do SDK
 > (`elicitInput`, `ElicitResult`, `RequestOptions`), (c) os contratos dos
-> helpers POSIX chamados. Cada bloco esta rotulado.
+> helpers POSIX chamados, (d) desde `quickstart.md` Scenario 0 (dec-071), o
+> **comportamento de renderizacao no cliente** — `message` integral, `title`
+> como rotulo, `description` como subtexto, `default` pre-aplicado, `required`
+> so visivel sem `default`, `enum` colapsado atras de seta — via um stub
+> minimo do formulario, medido fora do schema final. Cada bloco esta rotulado.
 
 ---
 
@@ -124,41 +128,52 @@ faria o orquestrador tratar como falha e potencialmente reter/repetir.
 ### Formulario proposto
 
 **[PROPOSTA]** para a montagem; os **nomes de campo** e o **texto** MUST ser
-derivados dos blocos de prosa existentes (FR-002), nao redigidos do zero:
+derivados dos blocos de prosa existentes (FR-002), nao redigidos do zero.
 
-| Property | `type` | `enum` | Default seguro |
-|----------|--------|--------|----------------|
+**Ajuste de contrato pos-Scenario 0 (dec-071)**: `delivery_tier` **NAO** carrega
+`default` no `requestedSchema` — diferente de `atomic_commit`/`roadmap_mode`,
+que mantem `default: "nao"` (desmarcado/negativo ja e a resposta segura).
+Racional: separa "valor seguro quando ninguem responde" (aplicado pelo
+**servidor** em cancel/decline/timeout — ver §Persistencia) de "valor
+pre-selecionado na tela" (schema). Para o dado que governa gate de seguranca,
+o segundo nao deve existir — sem `default`, `delivery_tier` nasce com
+`required` **visivel** (`* not set`, vermelho — medido no Scenario 0),
+forcando escolha explicita em vez de deixar `accept` no default passar
+despercebido como se fosse escolha.
+
+| Property | `type` | `enum` | Default seguro no schema |
+|----------|--------|--------|---------------------------|
 | `atomic_commit` | string | `["nao", "sim"]` | `nao` |
 | `roadmap_mode` | string | `["nao", "sim"]` | `nao` |
-| `delivery_tier` | string | `["local","internal-network","cloud-internal","cloud-public"]` | `cloud-public` |
+| `delivery_tier` | string | `["local","internal-network","cloud-internal","cloud-public"]` | **nenhum** (aplicado pelo servidor, nao pelo schema) |
 
-Uso de `enum` de string (nao `boolean`) para os dois primeiros: o que esta
-**medido** e que `enum` vira picker. `boolean` → checkbox **nao** esta medido.
+Uso de `enum` de string (nao `boolean`) para os tres, preservando a escolha
+original: **medido** (Scenario 0, dec-071) que `enum` vira picker, porem
+**colapsado** — exige a seta (`→ to expand`) para o operador ver as opcoes.
+Isso alimenta o novo requisito do `message` abaixo.
 
 ### Campo `message` — aviso de risco de rebaixamento (H1, dec-047)
 
-**[PROPOSTA]**, obrigatorio quando `delivery_tier` entra no formulario
-(portanto: `executionKind === "agente-00c"`).
+**Obrigatorio quando `delivery_tier` entra no formulario** (portanto:
+`executionKind === "agente-00c"`) — **renderizacao confirmada** (dec-071,
+ver abaixo).
 
 O texto que adverte sobre o efeito de escolher um tier **menor** MUST viver no
 campo `message` do `ElicitRequestFormParams`, **nao** em `title`/`description`
-das propriedades. Razao (dec-047), separando o que e **VERIFICADO** do que
-**nao** e:
+das propriedades. Razao (dec-047):
 
 - **VERIFICADO**: `message` e campo **obrigatorio e nao-opcional** do schema —
   `message: z.ZodString` em `types.d.ts:4983`, dentro de
   `ElicitRequestFormParamsSchema` (`:4966`). Nao ha formulario valido sem ele.
-  `title`/`description` das propriedades sao opcionais e estao na secao
-  "Nao medido" acima.
-- **NAO medido**: que o cliente *renderize* `message` ao operador. Nenhuma
-  fonte citavel foi produzida ate aqui para essa afirmacao (ver §Pendencia de
-  medicao abaixo).
+- **MEDIDO (dec-071, Scenario 0)**: o cliente **renderiza** `message`
+  integralmente, como primeira linha do formulario — ver bloco "Medido" abaixo.
 
-O argumento que sustenta a escolha nao depende do segundo ponto: entre um campo
-que o protocolo **obriga** a existir e campos que ele torna **opcionais** e cuja
-renderizacao esta explicitamente listada como nao medida, `message` e o portador
-estritamente menos improvavel do aviso. Um aviso de consentimento alojado em
-campo opcional pode simplesmente nao chegar ao operador.
+O argumento que sustentava a escolha antes da medicao permanece valido a
+fortiori agora que ambos os pontos estao confirmados: `message` e ao mesmo
+tempo o campo que o protocolo **obriga** a existir e o campo cuja renderizacao
+foi **medida** — o portador mais confiavel do aviso, frente a `title`/
+`description` (opcionais, tambem medidos, mas nao carregam a obrigatoriedade
+do schema).
 
 Requisitos do texto (o conteudo exato e derivado da prosa existente, FR-002):
 
@@ -167,33 +182,41 @@ Requisitos do texto (o conteudo exato e derivado da prosa existente, FR-002):
 2. dizer explicitamente que escolher um tier menor **reduz a profundidade dos
    gates** que auditam a propria execucao;
 3. nao conter instrucao ao modelo — e texto para o **operador**, transportado
-   pelo servidor, nunca reinterpretado pelo orquestrador (FR-003).
+   pelo servidor, nunca reinterpretado pelo orquestrador (FR-003);
+4. **[NOVO — dec-071, requisito derivado do Scenario 0]** avisar
+   explicitamente que o campo `delivery_tier` tem opcoes a **expandir**
+   (`enum` colapsado atras da seta `→ to expand`). Motivo: com o ajuste (b)
+   acima (`delivery_tier` sem `default`), o campo nasce `* not set`/vermelho
+   quando colapsado — sem o aviso, o operador pode nao perceber que ha 4
+   opcoes navegaveis atras da seta e simplesmente dar `Accept` deixando o
+   campo sem valor, caindo no default seguro do servidor **por omissao**, em
+   vez de fazer a escolha informada que o formulario existe para coletar.
 
-**Pendencia de medicao (Constitution VI)**: `quickstart.md` Scenario 0 MUST
-registrar, alem dos tres itens ja listados, **se `message` e exibido ao
-operador**. E a unica premissa nao medida de que a mitigacao de H1 depende.
-Se o Scenario 0 mostrar que `message` **nao** e exibido, o consentimento
-informado de FR-002 nao tem portador e a decisao volta ao operador — **nao**
-se contorna migrando o aviso de volta para `title`/`description`, que sao
-igualmente nao medidos e ainda opcionais.
+**Medido (Constitution VI) — Scenario 0 executado pelo operador, dec-071**:
+`message` **e exibido integralmente** ao operador, como primeira linha do
+formulario ("MESSAGE_FIELD: ... ATENCAO: escolher um tier abaixo de
+cloud-public reduz os gates de seguranca."). A premissa de H1 esta
+**confirmada** — o consentimento informado de FR-002 tem portador no campo
+obrigatorio do schema, sem depender de `title`/`description`.
 
-Consequencia de contrato no caso favoravel: se o Scenario 0 mostrar que
-`title`/`description` nao renderizam mas `message` sim, o desenho continua
-correto sem nenhuma mudanca — o aviso ja nasceu no campo obrigatorio.
+**Medido — os quatro itens antes `[PROPOSTA]` (dec-071, Scenario 0)**:
 
-**Nao medido — marcar como [PROPOSTA — a validar na implementacao]**:
+| Item | Resultado medido |
+|------|-------------------|
+| `title` | vira **rotulo** do campo na UI (ex.: `TITLE_tier`) |
+| `description` | vira **subtexto** (ex.: `DESC_tier`) |
+| `default` | **pre-aplicado** no widget (campo aparece com valor inicial + check verde) |
+| `required` | **so fica visivel** (`* not set`, em vermelho) quando o campo **nao** tem `default`; campos com `default` nao sinalizam obrigatoriedade mesmo se `required` |
 
-- `title` virar label do campo na UI
-- `description` virar subtexto/ajuda
-- `required` marcar asterisco de obrigatoriedade
-- `default` ser pre-aplicado no widget
-
-O desenho **nao depende** de nenhum dos quatro: os defaults seguros sao
-aplicados pelo **servidor** (nao pelo widget), e a ausencia de resposta cai em
-`absent`/`timeout`. Se a validacao empirica mostrar que `title`/`description`
-nao renderizam, o texto explicativo de FR-002 MUST migrar integralmente para o
-campo `message` do formulario (campo **obrigatorio** do schema — `types.d.ts:4983`;
-renderizacao a confirmar no Scenario 0, ver §Campo `message`).
+**Consequencia de desenho nova, derivada da medicao (nao estava prevista)**:
+`enum` renderiza **colapsado** — exige a seta (`→ to expand`) para o operador
+ver as opcoes; o operador reportou dificuldade de usabilidade nesse passo.
+Isso implica dois ajustes de contrato aplicados na FASE 3 (ver §Formulario
+proposto e §Campo `message` abaixo): (a) o `message` passa a avisar
+explicitamente que ha opcoes a expandir; (b) `delivery_tier` **nao** carrega
+`default` no schema — assim ele nasce visivelmente obrigatorio (`* not set`),
+e o default seguro `cloud-public` e aplicado pelo **servidor** em
+cancel/decline/timeout, nunca pre-marcado na tela.
 
 ### Teto de tempo
 
