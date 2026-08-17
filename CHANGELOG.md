@@ -5,6 +5,46 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.0.1] - 2026-08-17
+
+Bugfix de paridade da ingestão do `knowledge.db` com o backend SQLite: as
+sugestões para skills globais (`suggestions.sh register`, FR-020) eram
+gravadas corretamente no `state.db` (em `execution.extra_fields.suggestions`,
+sem tabela própria) mas nunca chegavam ao índice — o caminho SQL→SQL
+(`recall_ingest_state_db`, `state-db-foundation`) só copiava as 7 entidades
+com tabela dedicada. Desde o cutover para `state.db` (v6.x), nenhuma sugestão
+nova aparecia no painel nem em `cstk recall --type suggestion` (última
+ingerida em 2026-08-04; caso real: `sug-001` da feature `mcp-scaffold-padrao`
+do projeto `wp-intel`, presente no `.md` e no `state.db`, ausente no índice).
+
+### Fixed
+
+- **`cli/lib/recall.sh` — ingestão SQL→SQL passa a espelhar `.suggestions[]`.**
+  Nova função `recall_suggestions_sql` (UPSERT em `suggestions` + corpo na
+  `knowledge_fts` com `type='suggestion'`, scrub de `diagnosis`/`proposal`/
+  `references` via `secrets-filter.sh`) compartilhada pelos DOIS caminhos:
+  o JSON (que já a fazia inline) e o SQL→SQL, que agora lê o array de
+  `execution.extra_fields` (JSON1, `mode=ro`) no PASS 2. `--ingest` e
+  `--reindex` cobertos pelo mesmo código; contador `N suggestions` do sumário
+  passa a refletir o backend SQLite.
+- **`executions.skill_suggestions_total`/`toolkit_issues_opened` sob SQLite.**
+  Deixam de ser `NULL` no PASS 1 e passam a derivar de
+  `extra_fields.suggestions` (`json_array_length` / contagem de
+  `issue_opened IS NOT NULL`) — a MESMA derivação que `_state-rw-db.sh read`
+  já materializa para o documento lido pelo runtime, portanto paridade e não
+  valor fabricado (Princípio VI).
+
+### Tests
+
+- `tests/cstk/test_recall.sh`: fixture de equivalência JSON↔SQL
+  (`_seed_sql_equiv_state`) passa a semear 2 sugestões (1 com issue aberta,
+  1 com segredo plantado) e a comparação linha-a-linha inclui a tabela
+  `suggestions` + os 2 contadores; cenários novos
+  `scenario_sqldb_suggestions_ingeridas_do_extra_fields` (state-dir SÓ com
+  `state.db`: linhas, FTS, contadores, scrub, busca `--type suggestion`,
+  idempotência) e `scenario_sqldb_suggestions_ausentes_zero`. Ambos falham
+  contra o `recall.sh` anterior (mutation-check executado).
+
 ## [8.0.0] - 2026-08-16
 
 **BREAKING** — duas features encadeadas que, juntas, fazem o caminho MCP
@@ -6266,6 +6306,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.0.1]: https://github.com/JotJunior/cstk/releases/tag/v8.0.1
 [8.0.0]: https://github.com/JotJunior/cstk/releases/tag/v8.0.0
 [7.6.2]: https://github.com/JotJunior/cstk/releases/tag/v7.6.2
 [7.6.1]: https://github.com/JotJunior/cstk/releases/tag/v7.6.1

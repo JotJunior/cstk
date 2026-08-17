@@ -1102,6 +1102,73 @@ recall_round_label() {
   return 0
 }
 
+# recall_suggestions_sql ARRAY_JSON PROJECT FEATURE EXEC_ID NOW
+#   -> RECALL_SUGG_SQL (statements SQL, cada um precedido de newline; vazio
+#      quando nao ha sugestao) + RECALL_SUGG_N (sugestoes processadas).
+#
+# Gera o SQL de espelho de `.suggestions[]` (tabela suggestions + corpo na
+# knowledge_fts, type='suggestion') a partir do ARRAY JSON — a MESMA rotina
+# para os dois backends de estado: no JSON o array e `.suggestions` do
+# state.json; no SQLite e `execution.extra_fields.suggestions` (catch-all,
+# ver _state-rw-db.sh), que nao tem tabela propria no state.db e portanto
+# ficava FORA do PASS 1 (INSERT...SELECT) da ingestao SQL->SQL. Sem esta
+# partilha, nenhuma sugestao registrada apos o cutover para state.db chegava
+# ao knowledge.db (painel/`recall --type suggestion` cegos).
+#
+# Grao = sugestao por execucao; wave='-' (top-level, como executions);
+# source_id=<id da sugestao> (chave natural estavel, ex. sug-001);
+# source_ts=created_at. diagnosis+proposal sao texto livre -> filtro de
+# segredo (FR-006) e formam o body da FTS. affected_skill/severity/
+# issue_opened sao estruturados (sem filtro). references (array de paths)
+# -> join "," + scrub (paths podem embutir segredo). Aceita chaves EN e
+# legado pt-BR. Sem `id` -> pula (nao ha como deduplicar).
+recall_suggestions_sql() {
+  _rss_arr="$1"; _rss_project="$2"; _rss_feature="$3"
+  _rss_exec_id="$4"; _rss_now="$5"
+  RECALL_SUGG_SQL=""
+  RECALL_SUGG_N=0
+  _rss_lines=$(printf '%s' "$_rss_arr" | jq -r '
+    (. // [] | .[]? // empty)
+    | [(.id // ""),
+       ((.affected_skill // .skill_afetada) // ""),
+       ((.severity // .severidade) // ""),
+       ((.diagnosis // .diagnostico) // ""),
+       ((.proposal // .proposta) // ""),
+       (((.references // .referencias) // []) | join(",")),
+       (((.issue_opened // .issue_aberta) // "") | tostring),
+       ((.created_at // .criada_em) // "")]
+    | @base64' 2>/dev/null) || _rss_lines=""
+  [ -n "$_rss_lines" ] || return 0
+  _rss_OLDIFS="$IFS"; IFS='
+'
+  for _rss_row in $_rss_lines; do
+    _rss_decoded=$(printf '%s' "$_rss_row" | base64 -d 2>/dev/null) || continue
+    _rss_id=$(printf '%s' "$_rss_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
+    _rss_sk=$(printf '%s' "$_rss_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
+    _rss_sv=$(printf '%s' "$_rss_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
+    _rss_dg=$(printf '%s' "$_rss_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
+    _rss_pr=$(printf '%s' "$_rss_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
+    _rss_rf=$(printf '%s' "$_rss_decoded" | jq -r '.[5]' 2>/dev/null | strip_nul)
+    _rss_ia=$(printf '%s' "$_rss_decoded" | jq -r '.[6]' 2>/dev/null | strip_nul)
+    _rss_ts=$(printf '%s' "$_rss_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
+    [ -n "$_rss_id" ] || continue
+    _rss_dg=$(recall_scrub "$_rss_dg")
+    _rss_pr=$(recall_scrub "$_rss_pr")
+    _rss_rf=$(recall_scrub "$_rss_rf")
+    _rss_body=$(printf '%s %s' "$_rss_dg" "$_rss_pr")
+    RECALL_SUGG_SQL="$RECALL_SUGG_SQL
+INSERT INTO suggestions(project,feature,wave,execution_id,source_ts,source_id,affected_skill,severity,diagnosis,proposal,\"references\",issue_opened,ingested_at)
+VALUES('$(sql_escape "$_rss_project")','$(sql_escape "$_rss_feature")','-','$(sql_escape "$_rss_exec_id")','$(sql_escape "$_rss_ts")','$(sql_escape "$_rss_id")','$(sql_escape "$_rss_sk")','$(sql_escape "$_rss_sv")','$(sql_escape "$_rss_dg")','$(sql_escape "$_rss_pr")','$(sql_escape "$_rss_rf")','$(sql_escape "$_rss_ia")','$(sql_escape "$_rss_now")')
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,affected_skill=excluded.affected_skill,severity=excluded.severity,diagnosis=excluded.diagnosis,proposal=excluded.proposal,\"references\"=excluded.\"references\",issue_opened=excluded.issue_opened,ingested_at=excluded.ingested_at;
+DELETE FROM knowledge_fts WHERE type='suggestion' AND project='$(sql_escape "$_rss_project")' AND feature='$(sql_escape "$_rss_feature")' AND wave='-' AND source_id='$(sql_escape "$_rss_id")';
+INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
+VALUES('$(sql_escape "$_rss_body")','suggestion','$(sql_escape "$_rss_project")','$(sql_escape "$_rss_feature")','-','$(sql_escape "$_rss_id")','$(sql_escape "$_rss_ts")');"
+    RECALL_SUGG_N=$((RECALL_SUGG_N + 1))
+  done
+  IFS="$_rss_OLDIFS"
+  return 0
+}
+
 # recall_ingest_state_json STATE_JSON DB -> ingere um unico state.json no DB.
 # Best-effort: qualquer falha de extracao degrada gracioso (aviso + exit 0).
 # Reusado por --ingest (1 arquivo) e --reindex (N arquivos).
@@ -2004,50 +2071,16 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
   # o body da FTS (type='suggestion'). affected_skill/severity/issue_opened sao
   # estruturados (sem filtro). references (array de paths) -> join "," + scrub
   # (paths podem embutir segredo). Retro-compat: .sugestoes[]? // empty -> 0.
-  _isj_n_suggestion=0
-  _isj_sug_lines=$(jq -r '
-    ((.suggestions // .sugestoes) // [] | .[]? // empty)
-    | [(.id // ""),
-       ((.affected_skill // .skill_afetada) // ""),
-       ((.severity // .severidade) // ""),
-       ((.diagnosis // .diagnostico) // ""),
-       ((.proposal // .proposta) // ""),
-       (((.references // .referencias) // []) | join(",")),
-       (((.issue_opened // .issue_aberta) // "") | tostring),
-       ((.created_at // .criada_em) // "")]
-    | @base64' "$_isj_state" 2>/dev/null) || _isj_sug_lines=""
-  if [ -n "$_isj_sug_lines" ]; then
-    _isj_OLDIFS="$IFS"; IFS='
-'
-    for _isj_row in $_isj_sug_lines; do
-      _isj_decoded=$(printf '%s' "$_isj_row" | base64 -d 2>/dev/null) || continue
-      _f_sgid=$(printf '%s' "$_isj_decoded" | jq -r '.[0]' 2>/dev/null | strip_nul)
-      _f_sgsk=$(printf '%s' "$_isj_decoded" | jq -r '.[1]' 2>/dev/null | strip_nul)
-      _f_sgsv=$(printf '%s' "$_isj_decoded" | jq -r '.[2]' 2>/dev/null | strip_nul)
-      _f_sgdg=$(printf '%s' "$_isj_decoded" | jq -r '.[3]' 2>/dev/null | strip_nul)
-      _f_sgpr=$(printf '%s' "$_isj_decoded" | jq -r '.[4]' 2>/dev/null | strip_nul)
-      _f_sgrf=$(printf '%s' "$_isj_decoded" | jq -r '.[5]' 2>/dev/null | strip_nul)
-      _f_sgia=$(printf '%s' "$_isj_decoded" | jq -r '.[6]' 2>/dev/null | strip_nul)
-      _f_sgts=$(printf '%s' "$_isj_decoded" | jq -r '.[7]' 2>/dev/null | strip_nul)
-      # id e a chave natural; sem ele -> pula (nao ha como deduplicar).
-      [ -n "$_f_sgid" ] || continue
-      # Texto livre -> filtro de segredo; estruturados (sk/sv/issue) sem filtro.
-      _f_sgdg=$(recall_scrub "$_f_sgdg")
-      _f_sgpr=$(recall_scrub "$_f_sgpr")
-      _f_sgrf=$(recall_scrub "$_f_sgrf")
-      # Body da FTS: diagnostico + proposta (ja scrubbed).
-      _f_sgbody=$(printf '%s %s' "$_f_sgdg" "$_f_sgpr")
-      _isj_sql="$_isj_sql
-INSERT INTO suggestions(project,feature,wave,execution_id,source_ts,source_id,affected_skill,severity,diagnosis,proposal,\"references\",issue_opened,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_sgts")','$(sql_escape "$_f_sgid")','$(sql_escape "$_f_sgsk")','$(sql_escape "$_f_sgsv")','$(sql_escape "$_f_sgdg")','$(sql_escape "$_f_sgpr")','$(sql_escape "$_f_sgrf")','$(sql_escape "$_f_sgia")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,affected_skill=excluded.affected_skill,severity=excluded.severity,diagnosis=excluded.diagnosis,proposal=excluded.proposal,\"references\"=excluded.\"references\",issue_opened=excluded.issue_opened,ingested_at=excluded.ingested_at;
-DELETE FROM knowledge_fts WHERE type='suggestion' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='-' AND source_id='$(sql_escape "$_f_sgid")';
-INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
-VALUES('$(sql_escape "$_f_sgbody")','suggestion','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','-','$(sql_escape "$_f_sgid")','$(sql_escape "$_f_sgts")');"
-      _isj_n_suggestion=$((_isj_n_suggestion + 1))
-    done
-    IFS="$_isj_OLDIFS"
-  fi
+  # Geracao do SQL compartilhada com o caminho SQL->SQL (state.db guarda o
+  # MESMO array em execution.extra_fields.suggestions) — ver
+  # recall_suggestions_sql. Sem essa partilha o caminho sqlite ficou cego
+  # para sugestoes desde o cutover para state.db (bug corrigido em
+  # fix-recall-sqlite-suggestions-ingest).
+  _isj_sug_arr=$(jq -c '((.suggestions // .sugestoes) // [])' "$_isj_state" 2>/dev/null) \
+    || _isj_sug_arr='[]'
+  recall_suggestions_sql "$_isj_sug_arr" "$_isj_project" "$_isj_feature" "$_isj_exec_id" "$_isj_now"
+  _isj_n_suggestion=$RECALL_SUGG_N
+  [ -z "$RECALL_SUGG_SQL" ] || _isj_sql="$_isj_sql$RECALL_SUGG_SQL"
 
   _isj_sql="$_isj_sql
 COMMIT;"
@@ -2103,7 +2136,10 @@ COMMIT;"
 #     context_for_answer/answer; tasks.title; events.description) sao lidos
 #     de volta (JSON via json_group_array, mesmo idioma de
 #     recall_ingest_state_json), filtrados via recall_scrub e regravados via
-#     UPDATE ... WHERE id=<pk interno>. Encerra reconstruindo knowledge_fts
+#     UPDATE ... WHERE id=<pk interno>. Tambem ingere `.suggestions[]`
+#     (que vive em execution.extra_fields, sem tabela propria no state.db —
+#     logo fora do PASS 1) via recall_suggestions_sql, a mesma rotina do
+#     caminho JSON. Encerra reconstruindo knowledge_fts
 #     (decisions/blocks) so com o corpo ja filtrado, escopado por
 #     execution_id (nunca apaga FTS de outras execucoes da mesma feature).
 #
@@ -2230,7 +2266,8 @@ SELECT $_isd_project_sql,$_isd_feature_sql,$_isd_wave_exec_sql,e.id,e.started_at
   NULL, e.subagent_depth,
   (SELECT count(*) FROM src.decision WHERE execution_id=e.id),
   (SELECT count(*) FROM src.human_block WHERE execution_id=e.id),
-  NULL, NULL,
+  json_array_length(coalesce(json_extract(e.extra_fields,'\$.suggestions'),'[]')),
+  (SELECT count(*) FROM json_each(coalesce(json_extract(e.extra_fields,'\$.suggestions'),'[]')) AS je WHERE json_extract(je.value,'\$.issue_opened') IS NOT NULL),
   $_isd_session_sql,$_isd_path_sql,$_isd_now_sql
 FROM src.execution e
 WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
@@ -2432,6 +2469,22 @@ UPDATE events SET description='$(sql_escape "$_isd_desc")' WHERE id=$_isd_rid;"
     IFS="$_isd_OLDIFS"
   fi
 
+  # ---- suggestions: `.suggestions[]` vive no catch-all
+  # execution.extra_fields (sem tabela propria no state.db), logo nao entra
+  # no INSERT...SELECT do PASS 1. Le o array (JSON1, mode=ro) e reusa a MESMA
+  # rotina do caminho JSON (recall_suggestions_sql: scrub + UPSERT + FTS
+  # type='suggestion'). Sem isto, toda sugestao registrada sob backend
+  # SQLite ficava invisivel no knowledge.db (painel/`recall --type
+  # suggestion`). ----
+  _isd_n_suggestion=0
+  _isd_sug_arr=$(recall_query_sql_ro "$_isd_state_db" \
+    "SELECT coalesce(json_extract(extra_fields,'\$.suggestions'),'[]') FROM execution WHERE id=$_isd_exec_id_sql LIMIT 1;") \
+    || _isd_sug_arr='[]'
+  [ -n "$_isd_sug_arr" ] || _isd_sug_arr='[]'
+  recall_suggestions_sql "$_isd_sug_arr" "$_isd_project" "$_isd_feature" "$_isd_exec_id" "$_isd_now"
+  _isd_n_suggestion=$RECALL_SUGG_N
+  [ -z "$RECALL_SUGG_SQL" ] || _isd_fix="$_isd_fix$RECALL_SUGG_SQL"
+
   # Reconstrucao de knowledge_fts (decisions/blocks) com o corpo ja
   # filtrado — escopada por execution_id (nunca apaga FTS de outras
   # execucoes da mesma feature/projeto). Ordem do corpo espelha
@@ -2461,6 +2514,7 @@ COMMIT;"
   RECALL_TOTAL_TASK=$((${RECALL_TOTAL_TASK:-0} + _isd_n_task))
   RECALL_TOTAL_EVENT=$((${RECALL_TOTAL_EVENT:-0} + _isd_n_event))
   RECALL_TOTAL_SKILL=$((${RECALL_TOTAL_SKILL:-0} + _isd_n_skill))
+  RECALL_TOTAL_SUGGESTION=$((${RECALL_TOTAL_SUGGESTION:-0} + _isd_n_suggestion))
   return "$RECALL_EXIT_OK"
 }
 
