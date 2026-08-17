@@ -12,8 +12,9 @@
 #
 # PAPEL: garante que <dir>/dist/src/index.js exista, instalando as
 # dependencias declaradas em <dir>/package.json e compilando o
-# TypeScript quando necessario. Idempotente — se o entrypoint ja existe,
-# e um no-op imediato (nem instala nem builda de novo).
+# TypeScript quando necessario. Idempotente — se o entrypoint ja existe E a
+# fonte nao mudou desde o ultimo build (stamp em dist/.source-stamp), e um
+# no-op imediato; fonte nova (release via `cstk install`) => reconstroi.
 #
 # MITIGACAO DE SUPPLY CHAIN (R8): o Dockerfile removido nesta feature
 # (cli/lib/mcp-docker.sh, FASE 3) tinha a UNICA ocorrencia real, ate
@@ -73,8 +74,10 @@ uso: $_MBL_NAME.sh ensure --dir <path>
 
 Garante que <path>/dist/src/index.js exista: instala as dependencias de
 <path> (fixadas por package-lock.json, sem scripts de ciclo de vida) e
-roda o build (npm run build) quando o entrypoint ainda nao existe.
-Idempotente — no-op se o entrypoint ja existe.
+roda o build (npm run build) quando o entrypoint ainda nao existe OU quando
+a fonte (package.json, package-lock.json, src/) mudou desde o ultimo build.
+Idempotente — no-op se entrypoint existe e o stamp em dist/.source-stamp
+bate com a fonte atual.
 EOF
 }
 
@@ -101,10 +104,55 @@ done
 [ -d "$_mbl_dir" ] || _mbl_die "diretorio nao encontrado: $_mbl_dir" 2
 
 _mbl_entrypoint="$_mbl_dir/dist/src/index.js"
+_mbl_stamp="$_mbl_dir/dist/.source-stamp"
 
-# Fast path idempotente: build ja pronto (cache de sessoes anteriores em
-# ~/.claude/mcp/state-server/) — nem instala, nem builda de novo.
-if [ -f "$_mbl_entrypoint" ]; then
+# _mbl_source_fingerprint DIR -> imprime uma impressao digital da FONTE que
+# alimenta o build: package.json + package-lock.json + todo src/ (paths
+# relativos, ordenados, com o conteudo). Muda sempre que a release nova do
+# servidor chega via `cstk install` — que copia a fonte mas NAO o dist/.
+#
+# Bugfix 8.1.1 (dec-106 da feature mcp-elicitation-optins): o fast-path
+# antigo era "entrypoint existe => no-op", entao um dist/ da 8.0.0 cacheado
+# em ~/.claude/mcp/state-server/ NUNCA era recompilado quando a 8.1.0
+# trouxe a 8a tool — o operador ficava com o catalogo novo e o servidor
+# velho, sem aviso. Agora o no-op exige que a fonte nao tenha mudado desde
+# o ultimo build (stamp gravado em dist/.source-stamp).
+_mbl_source_fingerprint() {
+  _mbl_sf_dir=$1
+  # `find | sort` garante ordem estavel entre execucoes; sha256 do
+  # conteudo concatenado (path + bytes) — o proprio hash da lista de
+  # arquivos ja captura rename/adicao/remocao.
+  (
+    cd "$_mbl_sf_dir" || exit 1
+    {
+      for _f in package.json package-lock.json; do
+        [ -f "$_f" ] && { printf '%s\n' "$_f"; cat "$_f"; }
+      done
+      if [ -d src ]; then
+        find src -type f | LC_ALL=C sort | while IFS= read -r _f; do
+          printf '%s\n' "$_f"; cat "$_f"
+        done
+      fi
+    } | _mbl_sha256
+  )
+}
+
+# sha256 portavel: sha256sum (Linux/coreutils) ou shasum -a 256 (macOS/BSD).
+_mbl_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  else
+    shasum -a 256 | awk '{print $1}'
+  fi
+}
+
+_mbl_current_fp=$(_mbl_source_fingerprint "$_mbl_dir") || _mbl_current_fp=""
+
+# Fast path idempotente: build ja pronto E a fonte nao mudou desde ele.
+# Sem stamp (dist/ de versao anterior a este fix) => trata como fonte
+# desconhecida e reconstroi UMA vez, gravando o stamp.
+if [ -f "$_mbl_entrypoint" ] && [ -n "$_mbl_current_fp" ] \
+   && [ -f "$_mbl_stamp" ] && [ "$(cat "$_mbl_stamp" 2>/dev/null)" = "$_mbl_current_fp" ]; then
   printf '%s\n' "$_mbl_entrypoint"
   exit 0
 fi
@@ -133,5 +181,10 @@ fi
 
 [ -f "$_mbl_entrypoint" ] \
   || _mbl_die "build concluido mas entrypoint ainda ausente: $_mbl_entrypoint"
+
+# Grava o stamp da fonte que ACABOU de ser compilada — e o que permite o
+# fast-path da proxima chamada ser um no-op honesto. Best-effort: falha ao
+# gravar so significa que a proxima chamada reconstroi de novo (seguro).
+[ -n "$_mbl_current_fp" ] && printf '%s\n' "$_mbl_current_fp" > "$_mbl_stamp" 2>/dev/null || :
 
 printf '%s\n' "$_mbl_entrypoint"

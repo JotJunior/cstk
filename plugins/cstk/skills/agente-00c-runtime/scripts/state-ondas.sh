@@ -1662,7 +1662,31 @@ _so_cmd_reconcile_wave() {
     _rcw_next=""
   fi
 
+  # Bugfix 8.1.1 (dec-098 de mcp-elicitation-optins; tambem dec-053 de
+  # orchestrator-mcp-allowlist e dec-068 de mcp-direct-transport — 4
+  # ocorrencias na mesma linha de trabalho): pipeline.sh next-stage avanca
+  # LINEARMENTE, sem saber se o backlog da fase execute-task acabou. A rede
+  # de seguranca do pai chegava aqui com 26/92 subtarefas pendentes e
+  # promovia current_stage para review-task, declarando revisavel uma
+  # feature cujo cutover nem tinha acontecido. Regra: em execute-task, so
+  # avanca se NENHUM checkbox `- [ ]` restar no tasks.md fornecido. Sem
+  # --tasks-md nao ha como saber — mantem o comportamento antigo (o pai e
+  # instruido a sempre passar --tasks-md nessa fase).
+  if [ "$_rcw_phase" = "execute-task" ] && [ -n "$_rcw_md" ] && [ -f "$_rcw_md" ] \
+     && [ -n "$_rcw_next" ]; then
+    _rcw_pending=$(grep -cE '^[[:space:]]*- \[ \]' "$_rcw_md" 2>/dev/null) || _rcw_pending=0
+    case "$_rcw_pending" in ''|*[!0-9]*) _rcw_pending=0 ;; esac
+    if [ "$_rcw_pending" -gt 0 ]; then
+      _rcw_next=""
+      _rcw_hold_reason="backlog incompleto: $_rcw_pending subtarefa(s) pendente(s) em $_rcw_md"
+    fi
+  fi
+
   if [ "$_rcw_dry" = "yes" ]; then
+    if [ -n "${_rcw_hold_reason:-}" ]; then
+      printf 'would reconcile: phase=%s (HOLD, %s) -> fecha onda sem avancar\n' "$_rcw_phase" "$_rcw_hold_reason"
+      return 0
+    fi
     if [ -n "$_rcw_next" ]; then
       printf 'would reconcile: phase=%s -> next=%s motivo=etapa_concluida_avancando\n' "$_rcw_phase" "$_rcw_next"
     else
@@ -1687,6 +1711,20 @@ _so_cmd_reconcile_wave() {
   # idempotencia acima tornaria invisivel). O texto proprio da rede de
   # seguranca entra via --next-instruction (FR-004: sobrescreve so o
   # texto; o avanco de fase ocorre igual).
+  if [ -n "${_rcw_hold_reason:-}" ]; then
+    # HOLD (bugfix 8.1.1, dec-098): backlog de execute-task ainda tem
+    # subtarefas pendentes. Fecha a onda SEM avancar a fase e SEM promover
+    # a terminal — o proximo resume continua em execute-task. E o unico
+    # ramo que nao toca current_stage; a next_instruction registra o
+    # motivo para o pai/operador nao confundirem com onda perdida.
+    _rcw_motivo="etapa_concluida_avancando"
+    _rcw_instr=$(printf 'Continuar etapa execute-task — %s (rede de seguranca do command pai NAO avancou a fase).' "$_rcw_hold_reason")
+    _so_cmd_end --state-dir "$_rcw_sdir" --motivo-termino "$_rcw_motivo" \
+      --next-instruction "$_rcw_instr" >/dev/null
+    printf 'reconciled (phase=%s motivo=%s HOLD: %s)\n' "$_rcw_phase" "$_rcw_motivo" "$_rcw_hold_reason"
+    return 0
+  fi
+
   if [ -n "$_rcw_next" ]; then
     _rcw_motivo="etapa_concluida_avancando"
     _rcw_instr=$(printf 'Iniciar etapa %s — retomada pela rede de seguranca do command pai (onda anterior fechada sem Schedule intent).' "$_rcw_next")

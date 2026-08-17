@@ -986,6 +986,64 @@ scenario_reconcile_wave_idempotente_nao_double_conta() {
   assert_stdout_contains "clarify" || return 1
 }
 
+# Bugfix 8.1.1 (dec-098 de mcp-elicitation-optins; dec-053/dec-068 antes):
+# em execute-task, reconcile-wave so pode avancar a fase se o tasks.md nao
+# tiver NENHUM `- [ ]`. Sem isso o pai chegava com 26/92 pendentes e
+# promovia para review-task (4 ocorrencias na mesma linha de trabalho).
+scenario_reconcile_wave_execute_task_backlog_aberto_nao_avanca() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"execute-task"'
+  _md="$TMPDIR_TEST/tasks-aberto.md"
+  printf '## FASE 1\n### 1.1 Tarefa `[A]`\n- [x] 1.1.1 feita\n- [ ] 1.1.2 pendente\n- [ ] 1.1.3 pendente\n' > "$_md"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd" --terminal-phase review-task --tasks-md "$_md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile hold" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "HOLD" || return 1
+  # fase NAO avancou
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "execute-task" || { _fail "fase avancou" "esperado execute-task, obtido: $_CAPTURED_STDOUT"; return 1; }
+  # e NAO promoveu a terminal (o pior desfecho: _rcw_next vazio caindo no ramo terminal)
+  capture "$RW" get --state-dir "$_sd" --field '.execution.status'
+  assert_stdout_contains "em_andamento" || { _fail "promoveu terminal" "status: $_CAPTURED_STDOUT"; return 1; }
+  # onda foi fechada mesmo assim (nao fica aberta)
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].finished_at'
+  case "$_CAPTURED_STDOUT" in null|"") _fail "onda aberta" "hold devia fechar a onda"; return 1;; esac
+  # next_instruction registra o motivo
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "pendente" || return 1
+}
+
+# Negativo do hold: backlog SEM `- [ ]` (tudo [x] e [!]) => avanca normalmente.
+scenario_reconcile_wave_execute_task_backlog_completo_avanca() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"execute-task"'
+  _md="$TMPDIR_TEST/tasks-completo.md"
+  printf '## FASE 1\n### 1.1 Tarefa `[A]`\n- [x] 1.1.1 feita\n- [!] 1.1.2 bloqueada com motivo\n' > "$_md"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd" --terminal-phase review-task --tasks-md "$_md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile avanca" "$_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDOUT" in *HOLD*) _fail "hold indevido" "backlog completo nao pode dar HOLD: $_CAPTURED_STDOUT"; return 1;; esac
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "review-task" || { _fail "nao avancou" "esperado review-task, obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+# --dry-run reporta o HOLD sem escrever nada.
+scenario_reconcile_wave_dry_run_reporta_hold() {
+  _sd="$TMPDIR_TEST/state"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"execute-task"'
+  _md="$TMPDIR_TEST/tasks-dry.md"
+  printf -- '- [ ] 1.1.1 pendente\n' > "$_md"
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture "$SCRIPT" reconcile-wave --state-dir "$_sd" --terminal-phase review-task --tasks-md "$_md" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "HOLD" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.waves[-1].finished_at'
+  case "$_CAPTURED_STDOUT" in null|"") : ;; *) _fail "dry-run escreveu" "onda foi fechada em dry-run"; return 1;; esac
+}
+
 scenario_reconcile_wave_terminal_promove_status_feature00c() {
   # feature-00c: review-task e terminal. --terminal-phase review-task evita
   # que pipeline.sh avance erroneamente para review-features. Deve promover
