@@ -5,6 +5,106 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.1.0] - 2026-08-17
+
+Feature `mcp-elicitation-optins`. Os três opt-ins do início de uma execução
+00c (`atomic-commit`, `roadmap-mode`, `delivery-tier`) deixam de ser blocos
+de prosa que o modelo pergunta, lê e transforma em flag: passam a ser um
+formulário nativo da TUI do Claude Code, via MCP elicitation — o servidor
+pergunta, o operador responde em schema fechado, o servidor grava no estado.
+A resposta nunca passa pelo contexto do modelo. Verificado num `/agente-00c`
+real na máquina do operador; a prosa continua valendo integralmente quando o
+MCP não está disponível (zero regressão).
+
+Fecha a linha de trabalho iniciada com `orchestrator-mcp-allowlist` e
+`mcp-direct-transport` (8.0.0): a primeira expôs as tools ao orquestrador, a
+segunda fez o transporte entregá-las, esta as usa para o que motivou tudo.
+
+### Added
+
+- **8ª tool `collect_optins` no servidor `cstk-state`** (`mcp/state-server/
+  src/tools/collect_optins.ts`; `SERVER_VERSION` 0.5.0 → 0.6.0). Dispara
+  `elicitation/create` com o formulário dos opt-ins aplicáveis ao
+  `executionKind` (`agente-00c`: 3 campos; `feature-00c`: só
+  `atomic_commit`), mapeia o desfecho num `outcome` de 6 valores
+  (`accepted`/`declined`/`cancelled_absent`/`cancelled_timeout`/`unavailable`/
+  `failed`) e persiste em `.optin_responses[]` (`channel: "structured"`) além
+  de escrever pelas primitivas já existentes (`commit-mode.sh set-enabled`,
+  `roadmap-mode.sh set-enabled`, `delivery-tier.sh set`).
+- **Init em duas etapas nos 4 commands** (`agente-00c`, `feature-00c` e os
+  dois resumes). O estado mínimo nasce, o orquestrador chama `collect_optins`
+  como **primeiro ato** (antes de `state-ondas.sh start`), as respostas são
+  gravadas, e só então a onda-001 abre. Nenhuma onda opera sob valor de
+  opt-in não confirmado. Cap de **1 coleta por execução** — segunda tentativa
+  é recusada e registrada; retomadas leem `.optin_responses[]` e não
+  reperguntam.
+- **Provisionamento idempotente do `.mcp.json` no pré-flight** (`cstk mcp
+  install --project-path`, best-effort). Achado do E2E: sem isso a feature só
+  funcionava quando o projeto-alvo era o próprio repo cstk.
+- **Timeout do servidor** (`MCP_ELICIT_TIMEOUT_MS`, default 300000 ms). Ao
+  esgotar, aplica os mesmos defaults seguros do cenário sem operador e segue
+  — nenhuma execução trava esperando resposta. `cancel` por timeout e `cancel`
+  por ausência de operador são discriminados pelo mecanismo (`McpError`
+  vs envelope), e `decline` explícito é registrado como recusa, distinto de
+  ausência.
+- **Guard de composição do allowlist** passa a exigir a 8ª tool
+  (`tests/test_orchestrator-allowlist-guard.sh`, provado por mutação) e a
+  cláusula "elicitation/create fora de escopo" dos dois orquestradores foi
+  revogada com a assertion fortalecida (`scenario_prova_mutacao_item8_
+  inverte_semantica`).
+- **Bloco de orientação MCP-vs-Bash** ganha o passo `3.bis`/`1.bis`
+  (`collect_optins` como primeiro ato) e regra de não pressupor a tool: usar
+  se existir, cair no caminho Bash se não, sem tratar ausência como erro.
+- `elicitation-gate.ts`: allowlist compile-time + runtime restringe
+  `elicitInput` a `collect_optins`. Uma linha em `enforcement-log.jsonl` por
+  desfecho persistido; `secrets-filter.sh scrub` no `reason` antes de gravar.
+
+### Changed
+
+- **INV-4 do `delivery-tier` emendado** (`docs/specs/delivery-tier/contracts/
+  cli-delivery-tier.md` §2.2, regras 1-3; aprovado pelo operador). O
+  invariante material sempre foi "o orquestrador não **escolhe** o valor do
+  tier"; o texto proibia o *set*. A emenda distingue **set direto** (proibido,
+  valor auto-originado) de **coleta mediada** (`collect_optins` →
+  `elicitation/create`, permitida — o valor nasce do operador, fora do
+  contexto do modelo; injeção indireta pode disparar a pergunta, nunca
+  respondê-la). O detector `delivery-tier-unattended-change` reconhece
+  `.optin_responses[]` `channel:"structured"` como consentimento **mas** set
+  direto sem consentimento continua `critical` — cenário negativo preservado
+  por teste (`scenario_inv4_set_direto_sem_consentimento_continua_detectado`).
+- **Guard M4 em `state-ondas.sh start`**: recusa abrir a onda-001 quando há
+  opt-in aplicável sem registro em `.optin_responses[]` (Invariante I-2). O
+  ramo legado (prosa) passa a persistir `channel: "prose"` para que o guard
+  tenha o que ler — antes, a prosa nunca escrevia nesse array e o guard
+  travava mudo em projeto sem MCP.
+- **`--allow-downgrade` condicional**: passado ao `delivery-tier.sh set`
+  **somente** quando a resposta do operador é menor que o tier vigente. Sem
+  escolha explícita (`cancel`/`decline`/timeout) nunca rebaixa. O aviso de
+  risco vai no campo `message` da elicitation — o único cuja renderização foi
+  medida (Scenario 0, screenshot do operador).
+- **Schema do formulário**: `delivery_tier` **sem** `default` (aparece como
+  `* not set`, obrigando o toque); o `cloud-public` continua sendo o default
+  seguro, aplicado pelo servidor em `cancel`/`decline`/timeout, nunca
+  pré-marcado na tela. Separa "valor seguro quando ninguém responde" (servidor)
+  de "valor pré-selecionado" (schema).
+
+### Known limitations (medidas, não omitidas)
+
+- **Enum renderiza colapsado** no widget do Claude Code — exige `→` para
+  expandir — nas **três** formas de schema que o SDK aceita
+  (`enum+enumNames`, `oneOf const+title`, `anyOf`). Medido lado a lado; é
+  limitação do harness, fora do alcance do cstk. Mitigação: o `message`
+  avisa sobre a seta.
+- **`mcp-build-lazy.sh` não recompila com fonte nova**: é no-op quando
+  `dist/src/index.js` existe. Release nova do servidor não chega ao operador
+  enquanto o `dist/` velho existir. Dívida para bugfix 8.1.x — nesta feature
+  o E2E só rodou porque o entrypoint foi apagado à mão.
+- Os testes do servidor Node (`mcp/state-server/test/`, 157) continuam **sem
+  gate em CI**; o único gate é `npm test` local.
+- **`elicitation/create` disparada de dentro de subagente com operador
+  ausente em sessão interativa** segue não medida (Deferred desde a feature
+  anterior).
+
 ## [8.0.1] - 2026-08-17
 
 Bugfix de paridade da ingestão do `knowledge.db` com o backend SQLite: as
@@ -6306,6 +6406,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.1.0]: https://github.com/JotJunior/cstk/releases/tag/v8.1.0
 [8.0.1]: https://github.com/JotJunior/cstk/releases/tag/v8.0.1
 [8.0.0]: https://github.com/JotJunior/cstk/releases/tag/v8.0.0
 [7.6.2]: https://github.com/JotJunior/cstk/releases/tag/v7.6.2
