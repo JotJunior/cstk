@@ -365,19 +365,63 @@ export function getModelMix(db: Database.Database): ModelMixRow[] {
     .all() as ModelMixRow[];
 }
 
-/** Mix de modelos por stage SDD (barras empilhadas). */
+/**
+ * Recupera a etapa SDD de uma decisao de roteamento LEGADA.
+ *
+ * Duas geracoes de DecisaoDeRoteamentoPorOnda coexistem na knowledge.db
+ * (runtime agente-00c, model-routing.sh — dec-006/FR-021): as novas gravam
+ * `stage=<fase da onda>`; as legadas gravaram `stage='model-routing'` e
+ * codificaram a fase no lead do contexto
+ * `"Selecao de modelo para onda <N> (fase <f>)"`. O dono canonico do
+ * relatorio (model-routing-report.sh, `etapa_of_onda`) extrai a etapa desse
+ * mesmo lead — replicamos a mesma regra aqui, sem heuristica adicional.
+ * Sem `(fase …)` parseavel, devolve `null` (a linha mantem o stage
+ * original — nunca inventamos etapa).
+ */
+const LEGACY_ROUTING_STAGE = 'model-routing';
+const CONTEXT_FASE_RE = /\(fase ([^)]*)\)/;
+
+export function stageFromRoutingContext(context: string | null | undefined): string | null {
+  if (!context) return null;
+  const m = CONTEXT_FASE_RE.exec(context);
+  const fase = m?.[1]?.trim();
+  return fase ? fase : null;
+}
+
+/**
+ * Mix de modelos por stage SDD (barras empilhadas).
+ *
+ * `model-routing` NAO e uma etapa: linhas legadas com esse stage sao
+ * reatribuidas a etapa SDD codificada no contexto (ver
+ * `stageFromRoutingContext`) e somadas as linhas nativas da mesma etapa.
+ */
 export function getModelMixByStage(db: Database.Database): ModelMixByStageRow[] {
   const choiceCol = hasColumn(db, 'decisions', 'choice') ? 'choice' : 'NULL';
   const stageCol = hasColumn(db, 'decisions', 'stage') ? 'stage' : 'NULL';
-  return db
+  const contextCol = hasColumn(db, 'decisions', 'context') ? 'context' : 'NULL';
+  const raw = db
     .prepare(`
-      SELECT ${stageCol} as stage, replace(${choiceCol}, 'model:', '') as modelo, count(*) as n
+      SELECT ${stageCol} as stage, replace(${choiceCol}, 'model:', '') as modelo,
+             CASE WHEN ${stageCol} = '${LEGACY_ROUTING_STAGE}' THEN ${contextCol} ELSE NULL END as context,
+             count(*) as n
       FROM decisions
       WHERE ${choiceCol} LIKE 'model:%' AND ${stageCol} IS NOT NULL
-      GROUP BY ${stageCol}, modelo
-      ORDER BY ${stageCol} ASC
+      GROUP BY stage, modelo, context
     `)
-    .all() as ModelMixByStageRow[];
+    .all() as { stage: string; modelo: string; context: string | null; n: number }[];
+
+  const acc = new Map<string, ModelMixByStageRow>();
+  for (const r of raw) {
+    const stage = r.stage === LEGACY_ROUTING_STAGE
+      ? (stageFromRoutingContext(r.context) ?? r.stage)
+      : r.stage;
+    const key = `${stage}\u0000${r.modelo}`;
+    const row = acc.get(key);
+    if (row) row.n += r.n;
+    else acc.set(key, { stage, modelo: r.modelo, n: r.n });
+  }
+  return [...acc.values()].sort((a, b) =>
+    a.stage < b.stage ? -1 : a.stage > b.stage ? 1 : a.modelo < b.modelo ? -1 : a.modelo > b.modelo ? 1 : 0);
 }
 
 // ─────────────────────────────────────────────────────────
