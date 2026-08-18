@@ -328,4 +328,79 @@ scenario_persistencia_legado_optin_responses_feature() {
   return 0
 }
 
+# ---------- bugfix 8.3.1: token cunhado != tool visivel no harness ----------
+#
+# Caso real 2026-08-18 (/agente-00c em projeto-alvo, cstk 8.3.0): `/mcp`
+# mostrava `cstk-state · connected · no tools` (launcher em modo IDLE), mas
+# o pai decidia "estruturado" so pelo token de `cstk mcp start`, spawnava o
+# orquestrador (que devolvia o turno sem abrir onda, pois a tool nao
+# existia) e so entao caia na prosa. Tres camadas corrigidas:
+#   (1) 2.bis do pai: token vira "candidato"; estruturado exige preflight
+#       `ready` do launcher + tool visivel no toolset do pai;
+#   (2) 4.bis do pai: campo aplicavel SEM registro + zero ondas = degradado
+#       (a tool que nunca rodou nao escreve `unavailable`);
+#   (3) 1.bis/3.bis dos orquestradores: discriminador e a LINHA do ramo
+#       estruturado no spawn, nunca o token; linha presente + tool ausente
+#       => devolve o turno em vez de "seguir para o passo 2/4".
+
+_scenario_gate_toolset_cmd() {
+  # $1=arquivo $2=regex do prompt de prosa (ancora de ordem)
+  _l_cand=$(_first_line_of "$1" '_optin_branch="candidato"')
+  _l_pf=$(_first_line_of "$1" 'mcp-launch\.sh preflight 2>/dev/null')
+  _l_ts=$(_first_line_of "$1" 'select:mcp__cstk-state__collect_optins')
+  _l_prompt=$(_first_line_of "$1" "$2")
+  [ -n "$_l_cand" ] && [ -n "$_l_pf" ] && [ -n "$_l_ts" ] && [ -n "$_l_prompt" ] \
+    || { _fail "ancora ausente" "candidato=$_l_cand preflight=$_l_pf toolset=$_l_ts prompt=$_l_prompt"; return 1; }
+  [ "$_l_cand" -lt "$_l_pf" ] && [ "$_l_pf" -lt "$_l_ts" ] && [ "$_l_ts" -lt "$_l_prompt" ] \
+    || { _fail "ordem" "esperado candidato($_l_cand) < preflight($_l_pf) < toolset($_l_ts) < prompt de prosa($_l_prompt)"; return 1; }
+  # o token sozinho NUNCA mais promove a estruturado
+  if grep -Fq '[ -n "$_optin_token" ] && _optin_branch="estruturado"' "$1"; then
+    _fail "token promove estruturado" "$1 ainda promove _optin_branch=estruturado so pelo token"; return 1
+  fi
+  # ready gate literal + linha unica de diagnostico ao operador
+  assert_exit 0 grep -Fq 'ready\|*) : ;;' "$1" || return 1
+  assert_exit 0 grep -Fq 'MCP cstk-state: servidor registrado, mas sem tools nesta sessao' "$1" || return 1
+  return 0
+}
+
+scenario_gate_toolset_agente() {
+  _scenario_gate_toolset_cmd "$CMD_AGENTE" '^#### Prompt opt-in de commit atomico'
+}
+
+scenario_gate_toolset_feature() {
+  _scenario_gate_toolset_cmd "$CMD_FEATURE" '^# Prompt opt-in de commit atomico'
+}
+
+scenario_4bis_sem_registro_e_zero_ondas_degradado() {
+  for _f in "$CMD_AGENTE" "$CMD_FEATURE"; do
+    assert_exit 0 grep -Fq ":) [ \"\${_waves_n:-0}\" -eq 0 ] && _optin_degraded=" "$_f" || return 1
+    assert_exit 0 grep -Fq -e "--field '.waves | length'" "$_f" || return 1
+    # o caso original (unavailable/failed) permanece
+    assert_exit 0 grep -Fq 'structured:unavailable|structured:failed) _optin_degraded=' "$_f" || return 1
+  done
+  return 0
+}
+
+scenario_orquestradores_discriminador_e_linha_nao_token() {
+  for _a in "$AGENT_AGENTE" "$AGENT_FEATURE"; do
+    # premissa falsa removida: "tool ausente => pai decidiu legado por token vazio"
+    if grep -Fq 'ja decidiu o ramo LEGADO por token vazio' "$_a"; then
+      _fail "premissa stale" "$_a ainda infere ramo legado a partir do token"; return 1
+    fi
+    assert_exit 0 grep -Fq 'Linha presente E tool NAO visivel no toolset' "$_a" || return 1
+    assert_exit 0 grep -Fq 'devolva o turno ao pai' "$_a" || return 1
+    # sem escrever em .optin_responses[] (INV-4) — a deteccao e do pai
+    assert_exit 0 grep -Fq 'escrever em `.optin_responses[]` — INV-4' "$_a" || return 1
+  done
+  return 0
+}
+
+scenario_injecao_token_com_ramo_legado_documentada() {
+  for _f in "$CMD_AGENTE" "$CMD_FEATURE"; do
+    assert_exit 0 grep -Fq 'NAO-vazio **com** `_optin_branch = "legado"`' "$_f" || return 1
+    assert_exit 0 grep -Fq '**NAO** injete a linha do ramo estruturado' "$_f" || return 1
+  done
+  return 0
+}
+
 run_all_scenarios "$@"

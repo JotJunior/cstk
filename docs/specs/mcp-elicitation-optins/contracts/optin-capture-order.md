@@ -39,7 +39,19 @@ token vazio / descritor ausente, **nunca** o literal `mode=bash-fallback`
 | Sinal | Ramo | Comportamento observado pelo operador |
 |-------|------|----------------------------------------|
 | descritor ausente / `_mcp_token` vazio | **LEGADO** (§4) | identico a hoje; **nenhum** aviso (FR-005, US3-1, SC-005) |
-| token presente | **ESTRUTURADO** (§3) | formulario, com degradacao conforme §3.3 |
+| token presente **E** `mcp-launch.sh preflight` = `ready` **E** `mcp__cstk-state__collect_optins` visivel no toolset do pai | **ESTRUTURADO** (§3) | formulario, com degradacao conforme §3.3 |
+| token presente, mas preflight `idle` **ou** tool nao visivel | **LEGADO** (§4) + **1 linha** de diagnostico | prosa byte-a-byte; a linha explica o motivo (`idle|<motivo>` do preflight, ou "tool nao visivel — sessao bootada antes do .mcp.json / servidor nao aprovado") |
+
+**Emenda (bugfix 8.3.1, caso real 2026-08-18)**: o token cunhado por `cstk mcp
+start` NAO prova que a tool existe no harness da sessao — `/mcp` mostrava
+`cstk-state · connected · no tools` (launcher em modo IDLE), o pai declarava
+ESTRUTURADO, o orquestrador devolvia o turno sem abrir onda e so entao a
+prosa rodava. A premissa "o pai so tem o token como sinal" era falsa: o pai
+E a sessao principal e enxerga o proprio toolset. Duas confirmacoes passam a
+ser exigidas alem do token (o preflight explica o IDLE ao operador; a
+visibilidade da tool e a unica prova real). A linha de diagnostico e a unica
+excecao ao "nenhum aviso" do ramo LEGADO — so quando o operador registrou o
+`.mcp.json` e o mecanismo esta meio-configurado.
 
 O padrao de leitura do token ja existe e e VERIFICADO:
 `feature-00c.md:741-742` — "`_mcp_token` vazio (bash-fallback / sem descritor)
@@ -96,10 +108,16 @@ nao consegue resposta interativa dentro do proprio turno, a prosa MUST rodar no
 **pai**. Protocolo de retorno:
 
 1. o orquestrador **nao abre onda**, encerra o turno imediatamente;
-2. o pai le o estado — `.optin_responses[]` com `outcome ∈ {unavailable, failed}` —
+2. o pai le o estado — `.optin_responses[]` com `outcome ∈ {unavailable, failed}`,
+   **ou** (bugfix 8.3.1) campo aplicavel **sem nenhum registro** com
+   `.waves | length == 0` (a tool nem chegou a rodar: nao visivel no toolset
+   do subagente, servidor IDLE — ninguem escreve nada nesse caso; onda aberta
+   prova captura por outro caminho, pois M4/I-2 impede abrir sem registro) —
    via `state-rw.sh get`. **Sinal estrutural, nao texto**: o pai nunca
    interpreta o sumario do subagente (mesma disciplina de "fonte de verdade e o
-   state");
+   state"). O orquestrador, no sub-caso "tool nao visivel", devolve o turno
+   sem escrever nada (INV-4) — o discriminador dele e a linha
+   `MCP: ramo estruturado de opt-ins ativo` no prompt de spawn, nunca o token;
 3. o pai executa os blocos de prosa existentes (FR-005, texto inalterado);
 4. o pai persiste via `commit-mode.sh set-enabled` / `roadmap-mode.sh set-enabled`
    / `delivery-tier.sh set [--allow-downgrade]` (**nao** por flags de init — o

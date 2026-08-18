@@ -370,12 +370,26 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
    e derivado server-side de `executionKind`
    (`collect_optins.ts:FIELDS_BY_EXECUTION_KIND`) — para `agente-00c` isso
    e `atomic_commit` + `roadmap_mode` + `delivery_tier` (os 3 campos; ver
-   tabela completa no contrato da feature). Se o token estiver
-   ausente/a tool nao existir no toolset desta sessao (sessao anterior ao
-   cutover MCP, ou plugin/catalogo desatualizado), NAO trate como erro
-   (SC-003) — o command pai ja decidiu o ramo LEGADO por token vazio e a
-   prosa de opt-in dele ja cobriu a captura; siga normalmente para o passo
-   2. **Invariante I-2**: nenhuma onda pode abrir enquanto houver `field`
+   tabela completa no contrato da feature). O discriminador do ramo e a
+   PRESENCA, no prompt de spawn, da linha `MCP: ramo estruturado de
+   opt-ins ativo` — nunca o token (bugfix 8.3.1: o pai pode injetar token
+   com ramo LEGADO quando o servidor esta registrado mas sem tools nesta
+   sessao). Tres casos:
+   - **Linha ausente** (ramo legado, com ou sem token): NAO trate como
+     erro (SC-003) — a prosa de opt-in do pai ja cobriu a captura e
+     persistiu `.optin_responses[]`; siga normalmente para o passo 2.
+   - **Linha presente E tool visivel**: chame `collect_optins` (acima).
+   - **Linha presente E tool NAO visivel no toolset** (servidor IDLE, nao
+     carregado nesta sessao, plugin/catalogo desatualizado): trate
+     EXATAMENTE como `mechanism: "unavailable"` abaixo — NAO chame
+     `state-ondas.sh start`, devolva o turno ao pai IMEDIATAMENTE, em
+     silencio (sem relatorio de onda, sem `Schedule intent`, sem
+     escrever em `.optin_responses[]` — INV-4). O pai detecta pelo sinal
+     estrutural "campo aplicavel sem registro + zero ondas" (4.bis dele),
+     roda a prosa e re-spawna. NUNCA "siga para o passo 2" nesse caso: o
+     guard M4/I-2 travaria a onda-001 e o turno seria queimado a toa (caso
+     real 2026-08-18, `cstk-state · connected · no tools`).
+   **Invariante I-2**: nenhuma onda pode abrir enquanto houver `field`
    aplicavel a `executionKind` sem registro em `.optin_responses[]` — a
    guarda mecanica completa vive no runtime (FASE 9.3/M4 de
    `mcp-elicitation-optins`); aqui a obrigacao e prosa: nao chame

@@ -251,4 +251,102 @@ scenario_exec_sem_fork_mesmo_pid_do_launcher() {
   [ "$_node_pid" = "$_launcher_pid" ] || { _fail "exec-mesmo-pid" "esperado node PID == launcher PID ($_launcher_pid), obtido $_node_pid — indica fork em vez de exec (viola L-7/FR-012)"; return 1; }
 }
 
+# ---------- bugfix 8.3.1: `mcp-launch.sh preflight` (diagnostico read-only) ----------
+# Caso real 2026-08-18: `/mcp` mostrava `cstk-state · connected · no tools`
+# (stub IDLE) e o command pai, decidindo o ramo de opt-ins so pelo token
+# de `cstk mcp start`, declarava "estruturado" e queimava a onda-001. O
+# preflight reproduz as MESMAS checagens do boot sem `exec node` e sem
+# rodar build (nunca invoca npm), reportando `ready|<entrypoint>` (exit 0)
+# ou `idle|<motivo>` (exit 3) — o motivo e o mesmo texto que o boot
+# escreve em stderr, para o operador corrigir a causa.
+
+# _run_preflight STATE_SERVER_DIR [NODE_MAJOR] -> roda `preflight` com o
+# stub de node no PATH (mesmo padrao de _run_launch).
+_run_preflight() {
+  _rp_ssd="$1"
+  _rp_major="${2:-24}"
+  _rp_bin="$TMPDIR_TEST/stubs-pf"
+  mkdir -p "$_rp_bin"
+  _stub_node "$_rp_bin" "$_rp_major"
+  capture env PATH="$_rp_bin:$PATH" CSTK_MCP_STATE_SERVER_DIR="$_rp_ssd" "$SCRIPT" preflight < /dev/null
+}
+
+scenario_preflight_ready_quando_dist_presente() {
+  _ssd="$TMPDIR_TEST/ssd-pf-ready"
+  _make_state_server_dir_with_dist "$_ssd"
+  _run_preflight "$_ssd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "preflight ready exit" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "ready|$_ssd/dist/src/index.js" || return 1
+  # nunca exec'a node nem serve nada: stdout e UMA linha, node so respondeu -v
+  [ "$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -l | tr -d ' ')" = 1 ] \
+    || { _fail "preflight stdout" "esperado 1 linha, obtido: $_CAPTURED_STDOUT"; return 1; }
+  case "$(_node_calls)" in
+    *pid=*) _fail "preflight nao deveria exec'ar node" "$(_node_calls)"; return 1 ;;
+  esac
+}
+
+scenario_preflight_idle_state_server_ausente_exit_3() {
+  _run_preflight "$TMPDIR_TEST/nao-existe-pf"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "preflight idle exit" "esperado 3, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "idle|mcp/state-server nao instalado" || return 1
+  # em preflight NAO serve o stub: sem "modo IDLE" em stderr
+  case "$_CAPTURED_STDERR" in
+    *"modo IDLE"*) _fail "preflight nao deveria servir o stub idle" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_preflight_idle_node_major_insuficiente_exit_3() {
+  _ssd="$TMPDIR_TEST/ssd-pf-node18"
+  _make_state_server_dir_with_dist "$_ssd"
+  _run_preflight "$_ssd" 18
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "preflight node18 exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "idle|Node 18 detectado" || return 1
+}
+
+scenario_preflight_idle_dist_ausente_nunca_roda_build() {
+  _ssd="$TMPDIR_TEST/ssd-pf-sem-dist"
+  _make_state_server_dir "$_ssd"
+  printf '{}\n' > "$_ssd/package-lock.json"
+  # stub de npm que registra qualquer invocacao — preflight NUNCA pode
+  # dispara-lo (npm ci/npm run build podem pendurar sem rede)
+  _bin="$TMPDIR_TEST/stubs-pf-npm"
+  mkdir -p "$_bin"
+  _stub_node "$_bin" 24
+  printf '#!/bin/sh\necho "npm $*" >> "$TMPDIR_TEST/npm-pf.log"\nexit 0\n' > "$_bin/npm"
+  chmod +x "$_bin/npm"
+  capture env PATH="$_bin:$PATH" CSTK_MCP_STATE_SERVER_DIR="$_ssd" "$SCRIPT" preflight < /dev/null
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "preflight sem dist exit" "esperado 3, obtido $_CAPTURED_EXIT: $_CAPTURED_STDOUT"; return 1; }
+  assert_stdout_contains "idle|dist/src/index.js ausente" || return 1
+  assert_stdout_contains "build lazy nao concluiu" || return 1
+  [ ! -f "$TMPDIR_TEST/npm-pf.log" ] || { _fail "preflight invocou npm" "$(cat "$TMPDIR_TEST/npm-pf.log")"; return 1; }
+}
+
+scenario_preflight_idle_dist_ausente_sem_lockfile_cita_cstk_install() {
+  _ssd="$TMPDIR_TEST/ssd-pf-sem-lock"
+  _make_state_server_dir "$_ssd"
+  _run_preflight "$_ssd"
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "package-lock.json ausente; rode: cstk install" || return 1
+}
+
+scenario_argumento_desconhecido_exit_2_sem_servir() {
+  _ssd="$TMPDIR_TEST/ssd-pf-arg"
+  _make_state_server_dir_with_dist "$_ssd"
+  capture env CSTK_MCP_STATE_SERVER_DIR="$_ssd" "$SCRIPT" bogus < /dev/null
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "arg desconhecido exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "argumento desconhecido: bogus" || return 1
+}
+
+# ---------- fonte: mensagem stale do header corrigida (8.3.1) ----------
+
+scenario_header_nao_afirma_que_pai_decide_via_cstk_mcp_status() {
+  # A frase antiga "o command pai segue decidindo (via `cstk mcp status`)"
+  # documentava exatamente a premissa que causou o bug (token/status nao
+  # enxergam o modo IDLE). O header agora aponta para o toolset + preflight.
+  if grep -Fq 'segue decidindo (via `cstk mcp status`)' "$SCRIPT"; then
+    _fail "header stale" "mcp-launch.sh ainda afirma que o pai decide via cstk mcp status"; return 1
+  fi
+  assert_exit 0 grep -Fq 'mcp-launch.sh preflight' "$SCRIPT" || return 1
+}
+
 run_all_scenarios
