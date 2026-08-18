@@ -43,6 +43,15 @@ cstk session end iniciacao-membro --force
 
 **Requisitos**: `git >= 2.36`, `gh` (obrigatório só para `pr`; opcional em `end`).
 
+> **Consumidor programático (desde 8.2.0)**: a leva paralela oferecida pelo
+> `/agente-00c` após o modo roadmap compõe `cstk session start <short>` via
+> `plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh emit`
+> (ele imprime os comandos; quem executa é o command pai). O script espelha a
+> derivação de worktree de `cli/lib/session.sh` (`<pai-do-repo>/<repo>-<short>`)
+> mas nunca o carrega nem edita — se mudar a assinatura de `start` ou o nome
+> da worktree, atualize também o compositor e `tests/test_parallel-launch.sh`.
+> Ver [docs/agente-00c.md](./agente-00c.pt-BR.md#modo-roadmap-e-levas-paralelas-de-features).
+
 ## Documentação completa
 
 - [`specs/_archived/cstk-session/spec.md`](./specs/_archived/cstk-session/spec.md) — user stories, FRs, success criteria

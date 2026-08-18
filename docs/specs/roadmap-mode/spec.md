@@ -58,6 +58,9 @@ execucao e terminal com sucesso (FR-001, FR-002, FR-004).
    `/agente-00c` em modo roadmap e conclui briefing + constitution,
    **Then** a pipeline gera o artefato de roadmap e encerra a execucao
    como concluida, sem passar por specify/plan/create-tasks/execute-task
+   (desde a feature `roadmap-parallel-launch` o command pai pode, em
+   seguida e opcionalmente, oferecer uma leva paralela de features a
+   partir do roadmap — fora do escopo desta spec)
    (FR-001, FR-002, FR-004).
 2. **Given** execucao em modo roadmap concluida, **When** o operador
    abre o relatorio final, **Then** o roadmap completo (features,

@@ -198,6 +198,59 @@ commits automáticos.
 | Testes | `tests/test_commit-mode.sh` |
 | Spec | [`specs/_archived/atomic-commit-pr/`](./specs/_archived/atomic-commit-pr/) |
 
+## Modo roadmap e levas paralelas de features
+
+O modo roadmap (opt-in no início do `/agente-00c`) encurta a cadeia para
+`briefing → constitution → roadmap`: o orquestrador escreve `docs/roadmap.md`
+(entradas ordenadas com `depende-de`, um DAG acíclico de dependências) e a
+execução termina com `termination_reason=concluido_roadmap`. Desde a feature
+`roadmap-parallel-launch` a **sessão coordenadora não para aí**: o command
+pai (`agente-00c.md` §6.ter / resume §9.ter) computa a *fronteira* — entradas
+`nao-iniciada` cujas dependências estão todas `concluida`, status derivado de
+`docs/specs/` por `roadmap-status.sh`, nunca de um campo `status` no roadmap
+— e oferece uma **leva paralela**:
+
+1. `roadmap-frontier.sh --specs-dir docs/specs [--json]
+   [--exclude-active-from-repo <repo>]` lista as candidatas elegíveis
+   (worktrees já ativas são filtradas); um *indício de sobreposição* ("as
+   entradas X e Y mencionam ambas `<token>`") pode ser impresso a partir da
+   prosa do roadmap, sanitizado e rotulado `roadmap-prose-untrusted` — nunca
+   redigido como conflito confirmado.
+2. O operador é perguntado se quer lançar, com **teto default de 2** features
+   por leva (também limite de blast radius — worktree é isolamento de
+   filesystem, **não** sandbox de segurança: as filhas compartilham `.git`,
+   `$HOME`, `~/.claude` e credenciais) e, acima do teto, quais.
+3. `parallel-launch.sh emit --repo <repo> --feature <short> [...]` **só
+   imprime** os comandos de lançamento por feature — `cstk session start
+   <short>` + `tmux new-window ... claude --name ... "/feature-00c <short>"`,
+   ou a forma degradada `cd ... && claude ...` quando `check-tmux` diz que o
+   tmux está ausente (exit 3). Quem executa é o pai; o script nunca executa
+   nada e nunca toca `cli/lib/session.sh`.
+4. Quando uma execução-filha chega a estado terminal (`concluida`, `abortada`
+   ou `aguardando_humano`), `feature-00c.md` §5.quater envia, best-effort via
+   a tool `SendMessage` do Claude Code, o gatilho opaco
+   `[cstk-parallel] feature=<short> outcome=<...> repo=<repo>`. A
+   coordenadora (`agente-00c.md` §6.quater) faz o parse fail-closed com
+   `parallel-notification-parse.sh check` (regex ancorada na mensagem
+   inteira; qualquer sobra ⇒ exit 1) e **recomputa a fronteira** antes de
+   oferecer a próxima leva — uma notificação forjada causa, no máximo, um
+   recálculo redundante (INV-8).
+
+Verificado empiricamente (dec-037 da feature): uma sessão Claude Code ociosa
+há 13 h acordou ao receber `SendMessage` e respondeu em ~30 s sem intervenção
+humana. Kill switch: `tmux kill-window -t <pane>` + `cstk session end
+<short>`. Via manual de verificação: `cstk session list`,
+`roadmap-status.sh --json`, `tmux list-panes -a` (§6.bis).
+
+| Componente | Localização |
+|-----------|-------------|
+| Fronteira + indício de sobreposição | `plugins/cstk/skills/review-features/scripts/roadmap-frontier.sh` |
+| Composição do lançamento (`emit`, `check-tmux`) | `plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh` |
+| Parser da notificação (fail-closed) | `plugins/cstk/skills/agente-00c-runtime/scripts/parallel-notification-parse.sh` |
+| Prosa dos commands pai | `plugins/cstk/commands/agente-00c.md` §6.ter/§6.quater, `agente-00c-resume.md` §9.ter/§9.quater, `feature-00c.md` §5.quater |
+| Testes | `tests/test_roadmap-frontier.sh`, `tests/test_parallel-launch.sh`, `tests/test_parallel-notification-parse.sh`, `tests/test_command-spawn-parallel-launch.sh` |
+| Specs | [`specs/roadmap-mode/`](./specs/roadmap-mode/), [`specs/roadmap-parallel-launch/`](./specs/roadmap-parallel-launch/) |
+
 ## Guardas enforced (hook PreToolUse + integridade + allowlist de hosts)
 
 As guardas de segurança do runtime (`bash-guard.sh`, checksum do painel,

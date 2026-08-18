@@ -33,7 +33,8 @@ segue o principio de "nao commita sem teste para script novo".
 ./tests/run.sh --help
 ```
 
-**Tempo tipico**: alguns minutos para a suite completa (~1100 scenarios; o
+**Tempo tipico**: alguns minutos para a suite completa (~3160 scenarios em
+~170 arquivos em 2026-08-18 — `--fast` levou ~530s nessa data; o
 numero exato e nao-deterministico porque alguns tests sao gerados sob demanda
 — rode `./tests/run.sh --list | grep -c "::"` para o total atual, ou
 `./tests/run.sh --stats` para a quebra por arquivo). A contagem de **skills**
@@ -45,7 +46,11 @@ numero exato e nao-deterministico porque alguns tests sao gerados sob demanda
 No dev-loop, `--fast` pula a **allowlist de tests lentos** e roda em ~1/3 do
 tempo. A allowlist vive em `run.sh::_is_slow_test` e foi **derivada de medicao**
 (nao de categoria): cada `test_*.sh` foi cronometrado e os com tempo de parede
-> ~5s entraram. Em 2026-05-24 eram 11 (somando ~177s de ~260s da suite):
+> ~5s entraram. Em 2026-05-24 eram 11 (somando ~177s de ~260s da suite);
+em 2026-08-18 sao 12 (entrou `test_pretooluse-bash-guard.sh`). Candidatos
+no limiar medidos em 2026-08-18 e ainda FORA da allowlist:
+`test_parallel-launch.sh` (~7s) e `test_roadmap-frontier.sh` (~6s) —
+reavaliar na proxima medicao:
 
 | Test | ~Tempo | Por que e lento |
 |------|--------|-----------------|
@@ -60,6 +65,7 @@ tempo. A allowlist vive em `run.sh::_is_slow_test` e foi **derivada de medicao**
 | `test_e2e_model_routing.sh` | ~5s | e2e do pipeline agente-00c |
 | `test_update.sh` | ~5s | update.sh + doctor |
 | `test_model_selector_corpus.sh` | ~5s | corpus de 45 entradas |
+| `test_pretooluse-bash-guard.sh` | ~7s | gate de latencia N=20+warmup (hooks-db-parity) |
 
 > **Importante**: `--fast` e atalho de dev-loop, NAO substitui a suite completa.
 > O gate de release (`.github/workflows/release.yml`) roda `./tests/run.sh`
@@ -86,8 +92,18 @@ tests/
 ├── test_smoke.sh            # Smoke test de descoberta (interno)
 ├── test_metrics.sh          # Cobre review-task/metrics.sh
 ├── test_next-task-id.sh     # Cobre create-tasks/next-task-id.sh
-└── test_validate.sh         # Cobre validate-docs-rendered/validate.sh
+├── test_validate.sh         # Cobre validate-docs-rendered/validate.sh
+└── test_command-spawn-*.sh  # Smoke textual sobre a PROSA dos commands (interno,
+                             # listado em run.sh::_is_internal_test — ex.:
+                             # test_command-spawn-roadmap-mode.sh,
+                             # test_command-spawn-parallel-launch.sh)
 ```
+
+A lista acima e ilustrativa (a suite tem ~170 arquivos). Duas categorias
+sem `.sh` de origem 1:1 sao registradas explicitamente em
+`run.sh::_is_internal_test` para nao falsear o `--check-coverage`: os
+tests de infraestrutura do proprio harness e os `test_command-spawn-*.sh`,
+que fazem grep estatico na prosa de `plugins/cstk/commands/*.md`.
 
 ## Saida (formato TAP-like)
 

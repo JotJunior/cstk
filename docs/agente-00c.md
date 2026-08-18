@@ -198,6 +198,58 @@ commits.
 | Tests | `tests/test_commit-mode.sh` |
 | Spec | [`specs/_archived/atomic-commit-pr/`](./specs/_archived/atomic-commit-pr/) |
 
+## Roadmap mode and parallel feature waves
+
+Roadmap mode (opt-in at `/agente-00c` start) shortens the chain to
+`briefing → constitution → roadmap`: the orchestrator writes
+`docs/roadmap.md` (ordered entries with `depende-de`, an acyclic dependency
+DAG) and the execution ends with `termination_reason=concluido_roadmap`.
+Since the `roadmap-parallel-launch` feature the **coordinator session does
+not stop there**: the parent command (`agente-00c.md` §6.ter / resume §9.ter)
+computes the *frontier* — entries `nao-iniciada` whose dependencies are all
+`concluida`, status derived from `docs/specs/` by `roadmap-status.sh`, never
+from a `status` field in the roadmap — and offers a **parallel wave**:
+
+1. `roadmap-frontier.sh --specs-dir docs/specs [--json]
+   [--exclude-active-from-repo <repo>]` lists eligible candidates (worktrees
+   already active are filtered out); an *overlap hint* ("entries X and Y both
+   mention `<token>`") may be printed from the roadmap prose, sanitized and
+   labelled `roadmap-prose-untrusted` — never phrased as a confirmed conflict.
+2. The operator is asked whether to launch, with the **default cap of 2**
+   features per wave (also a blast-radius limit — a worktree is filesystem
+   isolation, **not** a security sandbox: children share `.git`, `$HOME`,
+   `~/.claude` and credentials) and, above the cap, which ones.
+3. `parallel-launch.sh emit --repo <repo> --feature <short> [...]` **only
+   prints** the launch commands per feature — `cstk session start <short>` +
+   `tmux new-window ... claude --name ... "/feature-00c <short>"`, or the
+   degraded `cd ... && claude ...` form when `check-tmux` says tmux is
+   absent (exit 3). The parent runs them; the script never executes anything
+   and never touches `cli/lib/session.sh`.
+4. When a child execution reaches a terminal state (`concluida`, `abortada`
+   or `aguardando_humano`) `feature-00c.md` §5.quater sends, best-effort via
+   the Claude Code `SendMessage` tool, the opaque trigger
+   `[cstk-parallel] feature=<short> outcome=<...> repo=<repo>`. The
+   coordinator (`agente-00c.md` §6.quater) parses it fail-closed with
+   `parallel-notification-parse.sh check` (whole-message anchored regex,
+   any extra text ⇒ exit 1) and **recomputes the frontier** before offering
+   the next wave — a forged notification can at most cause a redundant
+   recompute (INV-8).
+
+Empirically verified (dec-037 of the feature): an idle Claude Code session
+(13 h idle) woke up on `SendMessage` and answered in ~30 s without human
+intervention. Kill switch: `tmux kill-window -t <pane>` + `cstk session end
+<short>`. Manual verification path: `cstk session list`,
+`roadmap-status.sh --json`, `tmux list-panes -a` (§6.bis).
+
+| Component | Location |
+|-----------|----------|
+| Frontier + overlap hint | `plugins/cstk/skills/review-features/scripts/roadmap-frontier.sh` |
+| Launch composition (`emit`, `check-tmux`) | `plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh` |
+| Notification parser (fail-closed) | `plugins/cstk/skills/agente-00c-runtime/scripts/parallel-notification-parse.sh` |
+| Parent-command prose | `plugins/cstk/commands/agente-00c.md` §6.ter/§6.quater, `agente-00c-resume.md` §9.ter/§9.quater, `feature-00c.md` §5.quater |
+| Tests | `tests/test_roadmap-frontier.sh`, `tests/test_parallel-launch.sh`, `tests/test_parallel-notification-parse.sh`, `tests/test_command-spawn-parallel-launch.sh` |
+| Specs | [`specs/roadmap-mode/`](./specs/roadmap-mode/), [`specs/roadmap-parallel-launch/`](./specs/roadmap-parallel-launch/) |
+
 ## Enforced guards (PreToolUse hook + integrity + host allowlist)
 
 The runtime's security guards (`bash-guard.sh`, panel checksum, URL scheme)

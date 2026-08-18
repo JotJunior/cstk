@@ -44,6 +44,16 @@ cstk session end iniciacao-membro --force
 
 **Requirements**: `git >= 2.36`, `gh` (required only for `pr`; optional for `end`).
 
+> **Programmatic consumer (since 8.2.0)**: the parallel wave offered by
+> `/agente-00c` after roadmap mode composes `cstk session start <short>`
+> through `plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh
+> emit` (it prints the commands; the parent command runs them). The script
+> mirrors the worktree derivation of `cli/lib/session.sh`
+> (`<parent-of-repo>/<repo>-<short>`) but never sources or edits it — if you
+> change `start`'s signature or the worktree naming, update the composer and
+> `tests/test_parallel-launch.sh` too. See
+> [docs/agente-00c.md](./agente-00c.md#roadmap-mode-and-parallel-feature-waves).
+
 ## Full documentation
 
 - [`specs/_archived/cstk-session/spec.md`](./specs/_archived/cstk-session/spec.md) — user stories, FRs, success criteria

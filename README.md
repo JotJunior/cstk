@@ -201,8 +201,13 @@ Details, flow diagram and shortcuts in
 only on real blockers; `/feature-00c` does the same for ONE feature in an
 existing project. Subsystems: per-wave model routing, atomic-commit mode
 (automatic commits + push/PR at finalize), enforced guards (fail-closed hook),
-parallel sessions in worktrees, and cross-feature knowledge memory consulted
-before deciding.
+parallel sessions in worktrees, roadmap mode (briefing → constitution →
+`docs/roadmap.md` with a dependency DAG) that can end by **offering a
+parallel wave** of independent features — each opened as a `cstk session`
+worktree + named `claude` session (tmux pane when available), with the child
+sessions notifying the coordinator via cross-session messaging so the next
+wave is offered as soon as the frontier moves — and cross-feature knowledge
+memory consulted before deciding.
 
 Since v7.3.0 a finished feature is no longer a dead end:
 `/feature-00c "<increment>" --reopen=<short-name>` preserves the previous
@@ -215,6 +220,7 @@ feature) and a human block before anything touches disk.
 |--------|-----------|
 | `/agente-00c` + `/feature-00c` orchestrators, model-routing, atomic-commit, guards | [docs/agente-00c.md](./docs/agente-00c.md) |
 | Parallel sessions (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.md) |
+| Roadmap mode + parallel wave of features (post-roadmap offer, notification, next wave) | [docs/agente-00c.md](./docs/agente-00c.md#roadmap-mode-and-parallel-feature-waves) |
 | Knowledge memory (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.md) |
 | Loose usage tracking (`cstk usage`) | [docs/cstk-usage.md](./docs/cstk-usage.md) |
 | Web metrics panel (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.md) |
@@ -528,6 +534,7 @@ Default profile when none is given: `sdd`. Details in `cstk install --help`.
 | SDD Pipeline: full flow, when to use each skill, shortcuts, living specs | [docs/sdd-pipeline.md](./docs/sdd-pipeline.md) |
 | Autonomous orchestrator (agente-00c / feature-00c) | [docs/agente-00c.md](./docs/agente-00c.md) |
 | Parallel sessions (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.md) |
+| Roadmap mode + parallel wave of features (post-roadmap offer, notification, next wave) | [docs/agente-00c.md](./docs/agente-00c.md#roadmap-mode-and-parallel-feature-waves) |
 | Knowledge memory (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.md) |
 | Loose usage tracking (`cstk usage`) | [docs/cstk-usage.md](./docs/cstk-usage.md) |
 | Web panel (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.md) |
