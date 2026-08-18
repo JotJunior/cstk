@@ -98,7 +98,7 @@ labels are stripped before touching disk.
 ```
 ├── plugins/                     # Catalog, packaged as installable Claude Code plugins
 │   ├── cstk/                    # Default plugin (marketplace entry "cstk")
-│   │   ├── commands/            # The 6 /agente-00c*, /feature-00c* slash commands
+│   │   ├── commands/            # The 7 /agente-00c*, /feature-00c*, /roadmap-wave slash commands
 │   │   ├── agents/              # Orchestrators, clarify asker/answerer, data-veracity
 │   │   ├── hooks/hooks.json     # 3 enforced guard hooks (bash-guard, tool-call-tick, agent-usage)
 │   │   └── skills/               # 21 global skills (each skill is a folder)
@@ -303,8 +303,8 @@ binary, no clone, no `curl` bootstrap:
 /plugin install cstk-language-go@cstk
 ```
 
-Enable the plugin and open a new session in any project — skills, the 6
-`/agente-00c*`/`/feature-00c*` commands and the enforced guard hooks
+Enable the plugin and open a new session in any project — skills, the 7
+`/agente-00c*`/`/feature-00c*`/`/roadmap-wave` commands and the enforced guard hooks
 (`pretooluse-bash-guard`, `posttooluse-tool-call-tick`,
 `posttooluse-agent-usage`) activate automatically, with **no**
 `cstk hooks install` step (confirmed empirically — see
@@ -343,7 +343,7 @@ guard), `posttooluse-tool-call-tick.sh` and `posttooluse-agent-usage.sh`
 `.claude/hooks/` **and** registered in `.claude/settings.json`.
 
 `cstk install --scope project agente-00c-runtime` does that, but it also
-copies the skill, 6 commands and 7 agents into the repo. When you only want
+copies the skill, 7 commands and 7 agents into the repo. When you only want
 the hooks, use:
 
 ```bash

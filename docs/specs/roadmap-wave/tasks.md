@@ -207,10 +207,12 @@ Ref: contract §1 (Superficie do command).
   efeito colateral, (3) executar os passos 1-9 de `agente-00c.md` §6.ter
   **por referencia** (delegacao, nao copia — precedente vinculante
   `agente-00c-resume.md:496-517` §9.ter "sem duplicar o fluxo completo")
-- [ ] 2.1.4 Teste: `test_command-spawn-roadmap-wave.sh` (ver FASE 3)
+- [x] 2.1.4 Teste: `test_command-spawn-roadmap-wave.sh` (ver FASE 3)
   assercao negativa de que o command NAO contem copia dos 9 passos.
-  **Diferido para FASE 3** (task 3.1) — depende de `run.sh::_is_internal_test`
-  (task 3.2), fora do escopo desta onda (FASE 2).
+  **Concluido na FASE 3** (tasks 3.1/3.2, onda-008): cenario
+  `scenario_ausente_pergunta_literal_lancar_leva` +
+  `scenario_ausente_marcadores_prompt_inline` cobrem a assercao negativa
+  aqui referenciada; `PASS: 12 FAIL: 0`.
 
 **Concluido (2.1.1-2.1.3)**: `plugins/cstk/commands/roadmap-wave.md`
 criado — frontmatter `allowed-tools: [Bash, Read]` (sem Agent/
@@ -315,26 +317,47 @@ grep).
 Ref: precedentes `test_command-spawn-roadmap-mode.sh`,
 `test_command-spawn-parallel-launch.sh` (`tests/run.sh:261-276`).
 
-- [ ] 3.1.1 Assercoes positivas: o command referencia `agente-00c.md`
+- [x] 3.1.1 Assercoes positivas: o command referencia `agente-00c.md`
   §6.ter (delegacao), cita `resolve-offer`, cita a declaracao de blast
   radius e o rotulo UNTRUSTED
-- [ ] 3.1.2 Assercao negativa (C14): o command NAO contem copia inline
+- [x] 3.1.2 Assercao negativa (C14): o command NAO contem copia inline
   dos 9 passos de §6.ter (grep pelos marcadores dos passos, ausencia
   esperada)
-- [ ] 3.1.3 Assercao de nao-interatividade (C12): toda pergunta ao
+- [x] 3.1.3 Assercao de nao-interatividade (C12): toda pergunta ao
   operador tem a clausula obrigatoria no mesmo bloco
+
+**Concluido**: `tests/test_command-spawn-roadmap-wave.sh` criado com 12
+cenarios — 4 assercoes positivas (3.1.1: referencia a `agente-00c.md`
+§6.ter, `resolve-offer`, declaracao de blast radius, rotulo UNTRUSTED), 4
+assercoes negativas (3.1.2: ausencia de `Lancar leva paralela agora?`,
+ausencia de `Quantas features rodar simultaneamente`, ausencia dos
+marcadores `[s/N]`/`[y/N]`/`Selecione [`, presenca da declaracao textual
+"NAO duplicar os 9 passos"), 2 assercoes de nao-interatividade (3.1.3: a
+clausula esta presente e `--yes` documentado como o atalho de confirmacao
+ja obtida no mesmo bloco da secao §5.4) + 2 cenarios extra de
+`allowed-tools` (so `Bash`/`Read`, sem `Agent`/`ScheduleWakeup`/
+`SendMessage`). Execucao isolada: `PASS: 12 FAIL: 0 ERROR: 0 ORPHANS: 0`.
 
 ### 3.2 Registrar o `case`-label em `tests/run.sh` `[A]`
 
 Ref: `tests/run.sh::_is_internal_test` (`:246-300`, labels literais sem
 glob).
 
-- [ ] 3.2.1 Adicionar `test_command-spawn-roadmap-wave.sh)` ao `case` de
+- [x] 3.2.1 Adicionar `test_command-spawn-roadmap-wave.sh)` ao `case` de
   `_is_internal_test`, com existence-guard ao command
   (`plugins/cstk/commands/roadmap-wave.md`), espelhando o padrao de
   `run.sh:261-276`
-- [ ] 3.2.2 `./tests/run.sh --check-coverage` apos o registro — confirma
+- [x] 3.2.2 `./tests/run.sh --check-coverage` apos o registro — confirma
   que o teste novo nao aparece como orfao
+
+**Concluido**: label adicionado em `tests/run.sh::_is_internal_test`
+logo antes de `test_command-prompt-noninteractive-lint.sh)`, com
+existence-guard a `plugins/cstk/commands/roadmap-wave.md`. `./tests/run.sh
+--check-coverage`: "Cobertura completa: zero orfaos." Reconfirmado
+tambem `./tests/run.sh test_doc-subcommands` (`PASS: 4 FAIL: 0`) e
+`./tests/run.sh test_command-prompt-noninteractive-lint` (`PASS: 7 FAIL:
+0`) — nenhuma regressao. `shellcheck -x tests/test_command-spawn-roadmap-wave.sh`:
+sem findings (exit 0).
 
 ---
 
@@ -353,32 +376,72 @@ skills, confirmado em `tests/test_doc-counts.sh:28-33`); `profiles.txt.in`
 NAO precisa mudar (commands instalam sem filtro de profile, confirmado em
 `scripts/profiles.txt.in:6-10`).
 
-- [ ] 4.1.1 `README.md`: `6` → `7` nas duas ocorrencias, listar
+- [x] 4.1.1 `README.md`: `6` → `7` nas duas ocorrencias, listar
   `/roadmap-wave` explicitamente onde os demais commands sao nomeados
-- [ ] 4.1.2 `README.pt-BR.md`: `6` → `7` nas tres ocorrencias, mesma
+- [x] 4.1.2 `README.pt-BR.md`: `6` → `7` nas tres ocorrencias, mesma
   listagem em pt-BR
+
+**Concluido**: README.md tinha na verdade 3 ocorrencias de "6" ligadas a
+commands (linha 101 no bloco de estrutura, linhas 305-306 no bloco "Enable
+the plugin", linha 346 no bloco `cstk install --scope project`) — todas
+`6`→`7`, com `/roadmap-wave` nomeado explicitamente nas duas primeiras
+(a terceira ja e generica "7 commands e 7 agents"). README.pt-BR.md:
+mesmas 3 ocorrencias (linhas 102, 306, 348), mesmo tratamento em pt-BR.
+`CLAUDE.md` (gitignored, nao versionado) tambem atualizado por
+consistencia local: `plugins/cstk/commands/` §Commands passou a listar
+`/roadmap-wave` com uma linha descritiva. `./tests/run.sh test_doc-counts`:
+`PASS: 3 FAIL: 0` (gate so conta skills — confirmado nao regredir).
+`grep -rn "6 commands\|6 slash commands\|6 /agente-00c"
+README.md README.pt-BR.md`: zero ocorrencias remanescentes.
 
 ### 4.2 Entrada de CHANGELOG `[A]`
 
-- [ ] 4.2.1 Nova entrada `## [X.Y.Z]` (bump conforme SemVer — contrato
+- [x] 4.2.1 Nova entrada `## [X.Y.Z]` (bump conforme SemVer — contrato
   publico novo, command adicional) descrevendo `/roadmap-wave` +
   `resolve-offer`
-- [ ] 4.2.2 Link de referencia no rodape (`[X.Y.Z]:
+- [x] 4.2.2 Link de referencia no rodape (`[X.Y.Z]:
   https://github.com/JotJunior/cstk/releases/tag/vX.Y.Z`) — gotcha ja
   documentado no CLAUDE.md, checar com o comando `comm` la descrito
   antes de fechar a tarefa
 
+**Concluido**: `## [8.3.0] - 2026-08-18` inserida no topo do CHANGELOG
+(tag `v8.2.0` era a mais recente publicada, confirmado por `git tag
+--sort=-creatordate | head -5`; `git tag -l "v8.3.0"` vazio — versao
+nao publicada ainda). Bump MINOR (contrato publico novo: command +
+subcomando `resolve-offer`). Secoes `### Added` (3 itens: `/roadmap-wave`,
+`resolve-offer`, contencao tecnica real de path) + `### Changed` (contagem
+de commands nos READMEs), todos os fatos citados (contagem de cenarios,
+flags, exit codes) verificados por grep nesta onda, nao de memoria. Link
+de referencia `[8.3.0]` adicionado no rodape, imediatamente acima de
+`[8.2.0]`. `comm -23` entre headers e refs (comando exato do CLAUDE.md):
+saida vazia, exit 0 — nenhum header orfao.
+
 ### 4.3 Rodar suite completa e confirmar portoes de empacotamento `[A]`
 
 - [ ] 4.3.1 `./tests/run.sh` completo (nao so `--fast`) — gate de release
-  real
-- [ ] 4.3.2 Confirmar (grep, nao suposicao) que `tests/cstk/
+  real. **Em andamento nesta onda** (PID 14104, disparado em foreground,
+  auto-backgrounded pelo harness apos 600s — log em
+  `/private/tmp/claude-502/.../tasks/b5lkcnv2f.output`); nao coube no
+  orcamento desta onda, continua na proxima (ver next_instruction).
+- [x] 4.3.2 Confirmar (grep, nao suposicao) que `tests/cstk/
   test_build-release.sh` e `tests/cstk/test_quickstart-e2e.sh` continuam
   sem exigir mudanca (o `17` hardcoded neles e de skills do profile
   `sdd`, nao de commands — plan.md ja verificou, esta subtarefa e a
   reconfirmacao empirica antes do release)
-- [ ] 4.3.3 `tests/cstk/fixtures/regen.sh` — opcional, so se as fixtures
+- [x] 4.3.3 `tests/cstk/fixtures/regen.sh` — opcional, so se as fixtures
   gitignored estiverem ausentes localmente
+
+**Parcial (4.3.2, 4.3.3)**: `4.3.2` confirmado por grep literal —
+`tests/cstk/test_build-release.sh:175-186` e
+`tests/cstk/test_quickstart-e2e.sh:214-225` citam `17` referindo-se a
+skills do profile `sdd` (comentario explicito no proprio teste), nao a
+commands; `scripts/profiles.txt.in` nao lista commands (instalam sem
+filtro de profile) — nenhuma mudanca necessaria, reconfirmado
+empiricamente nesta onda. `4.3.3` verificado dispensavel: `ls
+tests/cstk/fixtures/` mostra `releases/`, `serve/`, `show-tip/` ja
+presentes localmente (nao gitignored-ausentes) — `regen.sh` nao
+executado por nao ser necessario. `4.3.1` (suite completa) NAO coube no
+orcamento desta onda — ver estado acima e Schedule intent ao final.
 
 ---
 

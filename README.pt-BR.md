@@ -99,7 +99,7 @@ descartados antes de tocar o disco.
 ```
 ├── plugins/                     # Catálogo, empacotado como plugins instaláveis do Claude Code
 │   ├── cstk/                    # Plugin default (entrada "cstk" no marketplace)
-│   │   ├── commands/            # Os 6 slash commands /agente-00c*, /feature-00c*
+│   │   ├── commands/            # Os 7 slash commands /agente-00c*, /feature-00c*, /roadmap-wave
 │   │   ├── agents/              # Orquestradores, clarify asker/answerer, data-veracity
 │   │   ├── hooks/hooks.json     # 3 guard hooks enforced (bash-guard, tool-call-tick, agent-usage)
 │   │   └── skills/               # 21 skills globais (cada skill é uma pasta)
@@ -304,7 +304,7 @@ binário `cstk`, sem clone, sem bootstrap via `curl`:
 ```
 
 Habilite o plugin e abra uma sessão nova em qualquer projeto — as skills, os
-6 commands `/agente-00c*`/`/feature-00c*` e os guard hooks enforced
+7 commands `/agente-00c*`/`/feature-00c*`/`/roadmap-wave` e os guard hooks enforced
 (`pretooluse-bash-guard`, `posttooluse-tool-call-tick`,
 `posttooluse-agent-usage`) ativam automaticamente, **sem** o passo
 `cstk hooks install` (confirmado empiricamente — ver
@@ -345,7 +345,7 @@ depois de copiados para `.claude/hooks/` **e** registrados em
 `.claude/settings.json`.
 
 O `cstk install --scope project agente-00c-runtime` faz isso, mas também
-copia a skill, 6 commands e 7 agents para dentro do repo. Quando você quer
+copia a skill, 7 commands e 7 agents para dentro do repo. Quando você quer
 apenas os hooks:
 
 ```bash
