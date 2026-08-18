@@ -418,7 +418,7 @@ saida vazia, exit 0 — nenhum header orfao.
 
 ### 4.3 Rodar suite completa e confirmar portoes de empacotamento `[A]`
 
-- [ ] 4.3.1 `./tests/run.sh` completo (nao so `--fast`) — gate de release
+- [x] 4.3.1 `./tests/run.sh` completo (nao so `--fast`) — gate de release <!-- executado pelo command pai 2026-08-18: `# PASS: 3194  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 901s`, exit=0 -->
   real. **Em andamento nesta onda** (PID 14104, disparado em foreground,
   auto-backgrounded pelo harness apos 600s — log em
   `/private/tmp/claude-502/.../tasks/b5lkcnv2f.output`); nao coube no
