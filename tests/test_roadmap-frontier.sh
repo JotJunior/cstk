@@ -329,6 +329,14 @@ scenario_exclude_active_from_repo_worktree_ativa_bloqueia() {
   _rm="$TMPDIR_TEST/roadmap.md"
   _roadmap_2_standalone > "$_rm"
 
+  # Contencao tecnica real (dec-031, task 1.3): --exclude-active-from-repo
+  # so e aceito se resolver DENTRO da raiz do repo coordenador (PWD, git
+  # rev-parse --show-toplevel). Em producao PWD == PAP == --exclude-
+  # active-from-repo (agente-00c.md §6.ter usa paths default relativos);
+  # aqui replicamos isso via cd, ja que o scenario roda em subshell
+  # proprio (run_all_scenarios) — nao vaza CWD para os demais.
+  cd "$_repo" || { _fail "cd para repo de teste falhou" "$_repo"; return 2; }
+
   capture "$SCRIPT" --roadmap "$_rm" --specs-dir "$TMPDIR_TEST/specs-inexistente" --json \
     --exclude-active-from-repo "$_repo"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
@@ -355,6 +363,10 @@ scenario_exclude_active_from_repo_worktree_encerrada_libera() {
   _rm="$TMPDIR_TEST/roadmap.md"
   _roadmap_2_standalone > "$_rm"
 
+  # Contencao tecnica real (dec-031, task 1.3) — ver comentario no
+  # scenario acima.
+  cd "$_repo" || { _fail "cd para repo de teste falhou" "$_repo"; return 2; }
+
   # Sem worktree ativa para feature-ativa (nunca foi criada, ou ja foi
   # removida via `cstk session end`) — ambas devem estar elegiveis.
   capture "$SCRIPT" --roadmap "$_rm" --specs-dir "$TMPDIR_TEST/specs-inexistente" --json \
@@ -373,6 +385,107 @@ scenario_exclude_active_from_repo_path_invalido_nao_e_erro_fatal() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "path invalido nao deveria ser erro fatal" "obtido $_CAPTURED_EXIT"; return 1; }
   assert_stdout_contains '"short_name":"feature-ativa"' || return 1
   assert_stdout_contains '"short_name":"feature-livre"' || return 1
+}
+
+# ==== Contencao tecnica REAL de path (dec-031/dec-033, feature
+# roadmap-wave, task 1.3, contract roadmap-wave-command.md §5.3 item 4;
+# quickstart.md C18) ====
+#
+# _rf_reject_dotdot (acima) so cobre ".." sintatico. Estes scenarios
+# cobrem a resolucao REAL do path contra a raiz do repo coordenador
+# (PWD, git rev-parse --show-toplevel) — sem depender de "..".
+
+scenario_exclude_active_from_repo_fora_do_repo_coordenador_rejeitado() {
+  # C18: path absoluto SEM ".." que resolve para fora do repo coordenador
+  # ⇒ exit 2, git -C jamais executado (nenhum efeito colateral de git).
+  command -v git >/dev/null 2>&1 || { _fail "pre-requisito ausente" "git nao encontrado"; return 2; }
+
+  _coord="$TMPDIR_TEST/coord"
+  _outside="$TMPDIR_TEST/outside"
+  mkdir -p "$_coord" "$_outside"
+  (
+    cd "$_coord" || exit 1
+    git init -q .
+    git config user.email "test@test.local"
+    git config user.name "cstk test"
+    git commit -q --allow-empty -m init
+  ) || { _fail "setup git falhou (coord)" ""; return 2; }
+  (
+    cd "$_outside" || exit 1
+    git init -q .
+    git config user.email "test@test.local"
+    git config user.name "cstk test"
+    git commit -q --allow-empty -m init
+  ) || { _fail "setup git falhou (outside)" ""; return 2; }
+
+  _rm="$TMPDIR_TEST/roadmap.md"
+  _roadmap_2_standalone > "$_rm"
+
+  cd "$_coord" || { _fail "cd para repo coordenador falhou" "$_coord"; return 2; }
+
+  capture "$SCRIPT" --roadmap "$_rm" --specs-dir "$TMPDIR_TEST/specs-inexistente" --json \
+    --exclude-active-from-repo "$_outside"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "esperado exit 2 (path fora do repo coordenador)" "obtido $_CAPTURED_EXIT; stdout=$_CAPTURED_STDOUT"; return 1; }
+  assert_stderr_contains "resolve para fora do repo coordenador" || return 1
+  # stdout deve ficar vazio: nenhuma fronteira computada apos rejeicao.
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout deveria estar vazio apos exit 2" "$_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_exclude_active_from_repo_subdir_do_coordenador_aceito() {
+  # Path DENTRO da raiz do repo coordenador (nested) deve ser aceito
+  # normalmente — a contencao e "dentro da raiz", nao "raiz exata".
+  command -v git >/dev/null 2>&1 || { _fail "pre-requisito ausente" "git nao encontrado"; return 2; }
+
+  _coord="$TMPDIR_TEST/coord2"
+  mkdir -p "$_coord/sub"
+  (
+    cd "$_coord" || exit 1
+    git init -q .
+    git config user.email "test@test.local"
+    git config user.name "cstk test"
+    git commit -q --allow-empty -m init
+  ) || { _fail "setup git falhou" ""; return 2; }
+
+  _rm="$TMPDIR_TEST/roadmap.md"
+  _roadmap_2_standalone > "$_rm"
+
+  cd "$_coord" || { _fail "cd para repo coordenador falhou" "$_coord"; return 2; }
+
+  capture "$SCRIPT" --roadmap "$_rm" --specs-dir "$TMPDIR_TEST/specs-inexistente" --json \
+    --exclude-active-from-repo "$_coord/sub"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "subdir do coordenador deveria ser aceito" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_exclude_active_from_repo_pwd_fora_de_repo_git_degrada() {
+  # PWD nao e um repo git => sem referencia de contencao => degrada
+  # graciosamente (nao bloqueia por conta desta checagem especifica;
+  # comportamento pre-existente do restante do fluxo se aplica).
+  command -v git >/dev/null 2>&1 || { _fail "pre-requisito ausente" "git nao encontrado"; return 2; }
+
+  _notgit="$TMPDIR_TEST/notgit"
+  _outside="$TMPDIR_TEST/outside2"
+  mkdir -p "$_notgit" "$_outside"
+  (
+    cd "$_outside" || exit 1
+    git init -q .
+    git config user.email "test@test.local"
+    git config user.name "cstk test"
+    git commit -q --allow-empty -m init
+  ) || { _fail "setup git falhou" ""; return 2; }
+
+  _rm="$TMPDIR_TEST/roadmap.md"
+  _roadmap_2_standalone > "$_rm"
+
+  cd "$_notgit" || { _fail "cd falhou" "$_notgit"; return 2; }
+
+  capture "$SCRIPT" --roadmap "$_rm" --specs-dir "$TMPDIR_TEST/specs-inexistente" --json \
+    --exclude-active-from-repo "$_outside"
+  # Nao deve ser rejeitado por ESTA checagem (sem repo git de referencia).
+  case "${_CAPTURED_STDERR:-}" in
+    *"resolve para fora do repo coordenador"*)
+      _fail "nao deveria emitir diagnostico de contencao sem repo git de referencia" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
 }
 
 # ==== -h/--help ====

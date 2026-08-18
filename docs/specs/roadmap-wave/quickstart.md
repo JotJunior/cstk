@@ -165,6 +165,24 @@ repo do proprio operador e que o path NUNCA e derivado de conteudo lido
 
 **Expected**: `launch=no` + diagnostico em stderr, exit `0`.
 
+## C18 — Contencao tecnica REAL de path (dec-031/dec-033, contract §5.3
+item 4, revisa F3)
+
+1. Repo coordenador `C` (git init, ao menos um commit).
+2. Repo `H` fora da arvore de `C` (git init proprio, sem relacao de
+   ancestralidade de diretorios com `C`).
+3. A partir de `C` (PWD == C): `roadmap-frontier.sh
+   --exclude-active-from-repo <path de H>`.
+
+**Expected**: exit `2`, diagnostico em stderr identificando que o path
+resolve para fora do repo coordenador; `git -C <H> worktree list`
+**nunca executado** (a checagem roda ANTES, sem tocar `H` com git).
+Path DENTRO da arvore de `C` (mesmo repo, ou subdiretorio) continua
+aceito normalmente — a contencao e "dentro da raiz", nao "raiz exata".
+Fecha a lacuna que C16 nao cobria: C16 so verificava a declaracao PROSA
+da premissa de confianca no command; C18 verifica a validacao TECNICA
+no helper.
+
 ---
 
 ## Mapa cenario → Success Criteria
@@ -177,4 +195,4 @@ repo do proprio operador e que o path NUNCA e derivado de conteudo lido
 | SC-004 (toda leva respeita o teto) | C5, C9, C10 |
 | FR-012/013/014 (modo nao-interativo) | C8, C9, C10, C11, C12 |
 | Constitution I/II (DRY + POSIX) | C13, C14 |
-| Gate `owasp-security` (F1/F2/F3) | C15, C16, C17 |
+| Gate `owasp-security` (F1/F2/F3) | C15, C16, C17, C18 |

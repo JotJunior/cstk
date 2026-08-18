@@ -36,7 +36,7 @@ Esta tarefa NAO tem subtarefa de implementacao — e um gate de decisao.
 produto como Decisao auditavel (`state-decisions.sh register`), nunca em
 supor a resposta. A tarefa 1.3 abaixo depende desta.
 
-- [!] 1.1.1 Confirmar com o dono do produto: a contencao tecnica real do
+- [x] 1.1.1 Confirmar com o dono do produto: a contencao tecnica real do
   projeto-alvo (rejeitar path que resolva para FORA do repo coordenador,
   nao so a checagem sintatica de `..` que `roadmap-frontier.sh:121-136`
   ja faz) e requisito BLOQUEANTE da FASE 2 desta feature — conforme a
@@ -46,25 +46,31 @@ supor a resposta. A tarefa 1.3 abaixo depende desta.
   tecnica do projeto-alvo (real vs. prosa-only) esta ratificada pelo dono
   do produto, ou ainda depende de confirmacao humana antes de
   `/create-tasks` gerar a tarefa correspondente?")
-- [!] 1.1.2 Se a resposta a 1.1.1 for "real": confirmar ONDE a contencao e
+  **RATIFICADO (dec-031/dec-033): contencao REAL, requisito BLOQUEANTE da
+  FASE 2.**
+- [x] 1.1.2 Se a resposta a 1.1.1 for "real": confirmar ONDE a contencao e
   implementada, dado que `plan.md` (Project Structure) marca
   `roadmap-frontier.sh` como "CONSUMIDO tal-e-qual — nao alterar"
   (helper pertence a feature irma `roadmap-parallel-launch`). Duas
   opcoes em aberto (CHK008, verbatim): (a) alterar `roadmap-frontier.sh`
   — contradiz o plano atual "nao alterar"; ou (b) implementar uma
   segunda checagem REDUNDANTE dentro do `resolve-offer` novo desta
-  feature (path novo, sem tocar o helper existente). Precedente
-  estrutural ja existente que aponta para (b), citado aqui apenas como
-  CONTEXTO — nao como resposta assumida: contract
-  `roadmap-wave-command.md` §5.3 ja redige o MUST atual como "mitigacao
-  no ponto de entrada, **sem alterar o helper**"; `plan.md` Project
-  Structure ja lista `roadmap-frontier.sh` como "nao alterar" e
-  `parallel-launch.sh` como "ALTERADO: + subcomando resolve-offer".
-- [ ] 1.1.3 Registrar a decisao ratificada (respostas de 1.1.1 e 1.1.2)
+  feature (path novo, sem tocar o helper existente).
+  **RATIFICADO (dec-031/dec-033): opcao (a) — alterar `roadmap-frontier.sh`
+  diretamente (o defeito e do proprio helper: seu contrato
+  `roadmap-parallel-launch/contracts/roadmap-frontier.md` §3.1 ja exige
+  rejeitar path fora do repo coordenador; hoje so rejeita `..` sintatico).
+  `resolve-offer`/`/roadmap-wave` HERDAM a protecao ao chamar o helper —
+  nao implementam checagem redundante propria. Isto revisa
+  deliberadamente `plan.md` Project Structure e `contracts/
+  roadmap-wave-command.md` §5.3 (atualizados nesta onda, ver 1.3.1).**
+- [x] 1.1.3 Registrar a decisao ratificada (respostas de 1.1.1 e 1.1.2)
   via `state-decisions.sh register --score 3` com evidencia literal da
   resposta do operador, ANTES de iniciar a tarefa 1.3. Se a resposta for
   "prosa-only" (nao-bloqueante), a tarefa 1.3 e re-classificada para
   `[M]` e a Decisao de re-classificacao referencia esta subtarefa.
+  **Concluido: dec-031 (command pai) + dec-033 (esta onda, evidencia
+  literal citada acima).**
 
 ### 1.2 Implementar subcomando `resolve-offer` `[C]`
 
@@ -72,11 +78,11 @@ Ref: contracts/roadmap-wave-command.md §3 (Subcomando `parallel-launch.sh
 resolve-offer`); precedente real `delivery-tier.sh resolve-initial`
 (`plugins/cstk/skills/agente-00c-runtime/scripts/delivery-tier.sh:278-319`).
 
-- [ ] 1.2.1 Adicionar o `case`-label `resolve-offer)` em
+- [x] 1.2.1 Adicionar o `case`-label `resolve-offer)` em
   `plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh`,
   com flags `--source <operator|absent>` (obrigatoria, sem default —
   contract §3.1), `--confirm <RAW>` e `--max <RAW>` (opcionais)
-- [ ] 1.2.2 Implementar a tabela de resolucao do contract §3.2: `source
+- [x] 1.2.2 Implementar a tabela de resolucao do contract §3.2: `source
   absent` ⇒ `launch=no`/`max=2` (FR-014); `source operator` + `confirm`
   em `s|S|y|Y|sim|yes` + `max` ausente ⇒ `launch=yes`/`max=2` (FR-007,
   FR-013); `max` inteiro em `1..8` ⇒ `launch=yes`/`max=<N>` (FR-013);
@@ -84,60 +90,96 @@ resolve-offer`); precedente real `delivery-tier.sh resolve-initial`
   fail-closed (FR-007); `confirm` fora do enum (inclusive vazio/Enter) ⇒
   `launch=no` (FR-007). Teto `8` e politica de design ja fixada no
   contract (F2 do gate owasp-security) — nao reabrir esse numero
-- [ ] 1.2.3 Higiene de entrada (contract §3.4): remover `\r`/`\n` de
+- [x] 1.2.3 Higiene de entrada (contract §3.4): remover `\r`/`\n` de
   `--confirm`/`--max` ANTES de comparar (`$()` nao remove `\r` —
   gotcha ja documentado em `delivery-tier.sh:306-307`)
-- [ ] 1.2.4 Saida em `chave=valor` (`launch=<yes|no>` + `max=<inteiro>`)
+- [x] 1.2.4 Saida em `chave=valor` (`launch=<yes|no>` + `max=<inteiro>`)
   em stdout, diagnosticos em stderr, exit `0` (inclusive `launch=no`) ou
   `2` (uso incorreto) — sem `jq` (Constitution II)
-- [ ] 1.2.5 Testes: cenarios C8-C11 do quickstart.md em
+- [x] 1.2.5 Testes: cenarios C8-C11 do quickstart.md em
   `tests/test_parallel-launch.sh` (nao-interativo sem confirmacao
   explicita FR-014, nao-interativo com teto explicito FR-012/FR-013,
   teto mal-formado fail-closed FR-007, higiene de CRLF contract §3.4)
 
-### 1.3 Contencao tecnica real do projeto-alvo em `resolve-offer` `[C]`
+**Concluido**: `_pl_cmd_resolve_offer` implementado em
+`parallel-launch.sh` (dispatch `resolve-offer)`). 17 cenarios novos em
+`tests/test_parallel-launch.sh` (C8/C9/C10/C11/C17 + variacoes de
+adversarial/formato) — suite completa do arquivo: `PASS: 40 FAIL: 0
+ERROR: 0 ORPHANS: 0`. `shellcheck -x` limpo nos dois arquivos.
+`./tests/run.sh --check-coverage`: "Cobertura completa: zero orfaos."
+
+### 1.3 Contencao tecnica real do projeto-alvo `[C]`
 
 Ref: checklists/security.md CHK006/CHK007/CHK008, checklists/requirements.md
-CHK005/CHK020. **Depende de 1.1** (nao iniciar sem a Decisao ratificada em
-1.1.3). Se 1.1 concluir com "prosa-only", esta tarefa e re-classificada
-`[M]` e suas subtarefas de implementacao (1.3.2/1.3.3/1.3.4) sao
-substituidas por uma unica subtarefa "registrar risco aceito no plan.md
-Riscos Conhecidos com data e Decisao".
+CHK005/CHK020. **Depende de 1.1** (Decisao ratificada em 1.1.3: dec-031/
+dec-033). Escopo REVISADO por dec-031: a checagem tecnica vive no proprio
+`roadmap-frontier.sh` (protegendo `--exclude-active-from-repo` antes de
+`git -C`), nao numa checagem redundante em `resolve-offer` — ambos os
+consumidores (`/roadmap-wave` via `resolve-offer`/`emit`, `agente-00c.md`
+§6.ter, uso manual) herdam a protecao por chamarem o mesmo helper.
 
-- [ ] 1.3.1 Atualizar `contracts/roadmap-wave-command.md` §5.3: acrescentar
-  um MUST tecnico (nao so declarativo) exigindo que `resolve-offer`
-  valide que o `--repo`/projeto-alvo resolve para dentro da raiz do repo
-  coordenador antes de qualquer `git -C`/`emit`. Materializa CHK007
-  (hoje "NAO materializada nos artefatos: spec.md nao tem FR sobre
-  contencao de path; contract §5.3 continua descrevendo mitigacao
-  prosa-only")
-- [ ] 1.3.2 Implementar a checagem tecnica em `resolve-offer`
-  (`parallel-launch.sh`): resolver o path real do projeto-alvo (POSIX,
-  sem depender de `realpath`/`readlink -f` GNU-only — checar
-  disponibilidade ou usar equivalente portavel, regra global do
-  CLAUDE.md) e compara-lo contra a raiz do repo coordenador; fora dela ⇒
-  `launch=no` + diagnostico fail-closed. **Sem alterar
-  `roadmap-frontier.sh`** (fica fora do escopo desta feature, pertence a
-  `roadmap-parallel-launch`) — a checagem e redundante e vive so no
-  `resolve-offer` novo, exceto se 1.1.2 tiver ratificado o contrario
-- [ ] 1.3.3 Adicionar cenario(s) novo(s) em `tests/test_parallel-launch.sh`
-  cobrindo "projeto-alvo resolve para fora do repo coordenador ⇒
-  `launch=no`" — nenhum dos 17 cenarios atuais de `quickstart.md` (C1-C17)
-  cobre este caso; C16 so cobre a declaracao prosa da premissa de
-  confianca (contract §5.3), nao a validacao tecnica
-- [ ] 1.3.4 Adicionar o cenario novo (C18) a `quickstart.md`, com o
+- [x] 1.3.1 Atualizar `contracts/roadmap-wave-command.md` §5.3 (e
+  `plan.md` Project Structure/Riscos Conhecidos): acrescentar um MUST
+  tecnico (nao so declarativo) exigindo que `roadmap-frontier.sh` valide
+  que `--exclude-active-from-repo` resolve para dentro da raiz do repo
+  coordenador antes de qualquer `git -C`. Materializa CHK007 (hoje "NAO
+  materializada nos artefatos: spec.md nao tem FR sobre contencao de
+  path; contract §5.3 continua descrevendo mitigacao prosa-only") —
+  concluido nesta onda (dec-033), ver plan.md/contract atualizados.
+- [x] 1.3.2 Implementar a checagem tecnica em `roadmap-frontier.sh`
+  (funcao `_rf_reject_dotdot`/novo helper irmao): resolver o path real
+  do projeto-alvo (POSIX, sem depender de `realpath`/`readlink -f`
+  GNU-only — checar disponibilidade ou usar equivalente portavel, regra
+  global do CLAUDE.md) e compara-lo contra a raiz do repo coordenador
+  (`git rev-parse --show-toplevel` do diretorio corrente, ja que o
+  helper roda dentro do repo coordenador); fora dela ⇒ exit `2` +
+  diagnostico fail-closed, ANTES de `git -C "$EXCLUDE_ACTIVE_REPO"
+  worktree list` (`roadmap-frontier.sh:219`). **Alterando
+  `roadmap-frontier.sh`** (dec-031/1.1.2 revisa deliberadamente o
+  "nao alterar" original do plan.md) — feature irma
+  `roadmap-parallel-launch` fica automaticamente protegida tambem
+  (mesmo helper, mesma chamada). `resolve-offer`/`parallel-launch.sh
+  emit` NAO implementam checagem redundante propria.
+- [x] 1.3.3 Adicionar cenario(s) novo(s) em `tests/test_roadmap-frontier.sh`
+  (nao `test_parallel-launch.sh` — a checagem vive no helper, dec-031)
+  cobrindo "`--exclude-active-from-repo` resolve para fora do repo
+  coordenador ⇒ exit 2 + diagnostico, `git -C` jamais executado" —
+  nenhum dos 17 cenarios atuais de `quickstart.md` (C1-C17) cobre este
+  caso; C16 so cobre a declaracao prosa da premissa de confianca
+  (contract §5.3), nao a validacao tecnica
+- [x] 1.3.4 Adicionar o cenario novo (C18) a `quickstart.md`, com o
   mapeamento correspondente na tabela "Mapa cenario → Success Criteria"
 
-### 1.4 Testes de contrato do subcomando `resolve-offer` `[A]`
+**Concluido**: `_rf_reject_outside_coordinator` implementado em
+`roadmap-frontier.sh`, chamado ANTES de qualquer `git -C
+"$EXCLUDE_ACTIVE_REPO"`. Resolve o path real (cd+`pwd -P`, sem
+realpath/readlink -f GNU-only) e compara contra `git rev-parse
+--show-toplevel` do PWD (nunca `git -C` sobre o path nao-confiavel).
+3 cenarios novos + 2 cenarios pre-existentes ajustados (precisavam `cd`
+para o repo de teste, replicando o uso real onde PWD == PAP ==
+--exclude-active-from-repo) em `tests/test_roadmap-frontier.sh` — suite
+completa: `PASS: 27 FAIL: 0 ERROR: 0 ORPHANS: 0`. `shellcheck -x` limpo.
 
-- [ ] 1.4.1 Rodar `./tests/run.sh test_parallel-launch` isolado apos 1.2 e
-  1.3 e confirmar os 25+ cenarios existentes continuam verdes (nenhuma
-  regressao nos cenarios C1-C7 de anti-duplicidade/guarda de worktree ja
-  cobertos por `scenario_guarda_worktree_*`)
-- [ ] 1.4.2 `./tests/run.sh --check-coverage` — `resolve-offer` vive em
-  `parallel-launch.sh`, ja coberto por `tests/test_parallel-launch.sh`
-  (regra de ouro do CLAUDE.md: script novo exige `test_<nome>.sh`, mas
-  aqui e subcomando de script existente, sem arquivo novo)
+### 1.4 Testes de contrato do subcomando `resolve-offer` + `roadmap-frontier.sh` `[A]`
+
+- [x] 1.4.1 Rodar `./tests/run.sh test_parallel-launch` e
+  `./tests/run.sh test_roadmap-frontier` isolados apos 1.2 e 1.3 e
+  confirmar os cenarios existentes continuam verdes (nenhuma regressao
+  nos cenarios C1-C7 de anti-duplicidade/guarda de worktree ja cobertos
+  por `scenario_guarda_worktree_*`, nem nos cenarios pre-existentes de
+  `test_roadmap-frontier.sh`)
+- [x] 1.4.2 `./tests/run.sh --check-coverage` — `resolve-offer` vive em
+  `parallel-launch.sh` (ja coberto por `tests/test_parallel-launch.sh`)
+  e a contencao tecnica vive em `roadmap-frontier.sh` (ja coberto por
+  `tests/test_roadmap-frontier.sh`) — regra de ouro do CLAUDE.md: script
+  novo exige `test_<nome>.sh`, mas aqui sao subcomando/funcao de scripts
+  existentes, sem arquivo novo
+
+**Concluido**: ja verificado nas tasks 1.2/1.3 desta mesma onda —
+`test_parallel-launch` PASS 40/40, `test_roadmap-frontier` PASS 27/27,
+`--check-coverage` "Cobertura completa: zero orfaos." (evidencias literais
+acima, nao repetidas para nao gastar orcamento de onda em re-execucao
+identica).
 
 ---
 
@@ -333,7 +375,7 @@ flowchart TD
 | Item | Descricao | Fase |
 |------|-----------|------|
 | resolve-offer | Subcomando novo em `parallel-launch.sh`, espelha `delivery-tier.sh resolve-initial` | 1 |
-| Contencao tecnica de path | Rejeitar projeto-alvo fora do repo coordenador (nao so sintaxe `..`) — gap CHK005/006/007/008/020 | 1 |
+| Contencao tecnica de path | `roadmap-frontier.sh` rejeita `--exclude-active-from-repo` fora do repo coordenador (nao so sintaxe `..`) — gap CHK005/006/007/008/020; herdado por `resolve-offer`/`emit` e por `agente-00c.md` §6.ter (dec-031) | 1 |
 | `/roadmap-wave` | Command novo, delega por referencia a `agente-00c.md` §6.ter | 2 |
 | Modelo de ameaca F1/F3/F4 | UNTRUSTED, premissa de confianca, eco de resolucao | 2 |
 | FR-015 (rastreabilidade) | Formaliza NFR de conteudo untrusted ja mitigado — gap CHK017 | 2 |
@@ -344,7 +386,6 @@ flowchart TD
 
 | Item | Descricao | Motivo |
 |------|-----------|--------|
-| Alterar `roadmap-frontier.sh` | Modificar o helper consumido (`--roadmap`/`--specs-dir`/`--exclude-active-from-repo`) | Pertence a feature irma `roadmap-parallel-launch`; plan.md marca "CONSUMIDO tal-e-qual — nao alterar". Só reabre se a tarefa 1.1.2 ratificar a opcao (a) |
 | Reescrever os 9 passos de §6.ter | Duplicar o fluxo de lancamento dentro do command novo | Precedente vinculante `agente-00c-resume.md` §9.ter: reuso por referencia, nunca copia |
 | Eliminar o residual TOCTOU (F5) | Fechar totalmente a janela de concorrencia entre duas invocacoes simultaneas | plan.md "Riscos conhecidos" e contract §5.5 documentam como risco residual aceito, nao "resolvido" — NUNCA afirmar eliminacao total |
 | Modo interativo via `[ -t 0 ]` | Detectar automaticamente se ha operador presente | Gotcha ja documentado no precedente `delivery-tier.sh:265-269`: falso mesmo em sessao interativa do harness; `--source` é sempre explicito |

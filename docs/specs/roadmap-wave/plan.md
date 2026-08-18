@@ -66,7 +66,7 @@ docs/specs/roadmap-wave/
 ├── plan.md          # este arquivo
 ├── research.md      # Phase 0 — 7 decisoes
 ├── data-model.md    # Phase 1
-├── quickstart.md    # Phase 1 — 14 cenarios
+├── quickstart.md    # Phase 1 — 18 cenarios (C18 acrescentado na task 1.3.4)
 └── contracts/
     └── roadmap-wave-command.md   # Phase 1 [PROPOSTA]
 ```
@@ -81,7 +81,11 @@ plugins/cstk/
 │   └── roadmap-wave.md            # NOVO  [PROPOSTA]
 └── skills/
     ├── review-features/scripts/
-    │   ├── roadmap-frontier.sh    # CONSUMIDO tal-e-qual — nao alterar
+    │   ├── roadmap-frontier.sh    # ALTERADO (dec-031): contencao real de path
+    │   │                          # em --exclude-active-from-repo, antes de
+    │   │                          # git -C (revisa a marcacao original
+    │   │                          # "nao alterar" — o defeito e do proprio
+    │   │                          # helper, seu contrato ja exige a checagem)
     │   └── roadmap-status.sh      # dependencia indireta — nao alterar
     └── agente-00c-runtime/scripts/
         └── parallel-launch.sh     # ALTERADO: + subcomando resolve-offer
@@ -197,6 +201,6 @@ ressalva ja registrada: por alterar o contrato publico do toolkit
 | Divergencia futura entre §6.ter e o novo command | reuso por referencia + assercao negativa em C14 (o command NAO pode conter copia dos 9 passos) |
 | Teste novo virar "orfao" no orphan-check | `run.sh::_is_internal_test` usa labels literais sem glob — FASE 3 inclui o registro explicito |
 | Operador supor que o teto e fronteira de seguranca | a declaracao de blast radius de §6.ter e reusada tal-e-qual (requisito de blast radius da feature irma `roadmap-parallel-launch`, `agente-00c.md:958-965`) |
-| Projeto-alvo parametrizavel apontado para repo hostil ⇒ `git -C` executa codigo via `.git/config` | contract §5.3: premissa de confianca declarada no command + INV-6 (path nunca derivado de conteudo lido). **Nao ha mitigacao tecnica no helper** — a contencao ao repo coordenador exigida pelo §3.1 do contrato irmao nunca foi implementada (`roadmap-frontier.sh:121-136` so rejeita `..`) |
+| Projeto-alvo parametrizavel apontado para repo hostil ⇒ `git -C` executa codigo via `.git/config` | contract §5.3: premissa de confianca declarada no command + INV-6 (path nunca derivado de conteudo lido) **+ mitigacao tecnica real no helper (dec-031, task 1.3)**: `roadmap-frontier.sh` passa a validar que `--exclude-active-from-repo` resolve para dentro da raiz do repo coordenador ANTES de `git -C`, nao so a rejeicao sintatica de `..` (`roadmap-frontier.sh:121-136`). Herdado por todo consumidor do helper (`resolve-offer`/`emit`, `agente-00c.md` §6.ter, uso manual) |
 | Prosa do roadmap de terceiro carregando diretiva de injecao | contract §5.1: rotulo UNTRUSTED obrigatorio ao injetar a saida no turno |
 | `--max` scriptado com valor absurdo em modo nao-interativo | contract §3.2: faixa `1..8`, fail-closed acima |

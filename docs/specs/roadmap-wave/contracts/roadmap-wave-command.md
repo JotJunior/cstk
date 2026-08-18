@@ -7,7 +7,11 @@
 > (`roadmap-frontier.sh`, `parallel-launch.sh emit|check-tmux`) sao
 > REAIS e estao contratados em
 > `docs/specs/roadmap-parallel-launch/contracts/` — este contrato nao os
-> redefine, so os consome.
+> redefine, so os consome, **exceto** a contencao tecnica de path em
+> §5.3 item 4 (dec-031/dec-033): `roadmap-frontier.sh` ganha uma
+> validacao nova para cumprir o que seu proprio contrato irmao ja exigia
+> e nunca foi implementado — mudanca minima e aditiva, sem alterar a
+> interface publica do helper.
 
 ---
 
@@ -189,7 +193,9 @@ hostil clonado localmente faz `git -C` rodar la, e `git` executa codigo
 via `.git/config` (`core.fsmonitor`) — o vetor exato que o §3.1 do
 contrato irmao cita.
 
-**MUST** (mitigacao no ponto de entrada, sem alterar o helper):
+**MUST** (revisado por dec-031/dec-033 — o command combina declaracao
+E mitigacao tecnica REAL, esta ultima implementada no proprio helper,
+nao "sem alterar o helper" como redigido originalmente):
 
 1. O command declara, no proprio texto, a premissa de confianca: o
    projeto-alvo MUST ser repo do proprio operador. Apontar para repo de
@@ -200,6 +206,17 @@ contrato irmao cita.
 3. A declaracao de blast radius (§6.ter passo 4) MUST **nomear o
    projeto-alvo resolvido**, para o operador nao confirmar leva no repo
    errado quando usa `--projeto-alvo-path`.
+4. **`roadmap-frontier.sh` MUST validar tecnicamente** (nao so
+   declarar) que `--exclude-active-from-repo` resolve para dentro da
+   raiz do repo coordenador ANTES de `git -C "$EXCLUDE_ACTIVE_REPO"
+   worktree list` (`roadmap-frontier.sh:219`); fora dela ⇒ exit `2` +
+   diagnostico, `git -C` nunca executado. Task 1.3 desta feature.
+   Alterar o helper aqui e deliberado (dec-031): o defeito e do proprio
+   `roadmap-frontier.sh` — seu contrato irmao
+   (`roadmap-parallel-launch/contracts/roadmap-frontier.md` §3.1) ja
+   exige essa contencao, so a metade sintatica (`..`) foi implementada.
+   `resolve-offer`/`emit` e `agente-00c.md` §6.ter herdam a protecao por
+   chamarem o mesmo helper — nenhuma checagem redundante propria.
 
 ### 5.4 F4 (LOW, A09) — decisao de lancamento sem trilha persistente
 
