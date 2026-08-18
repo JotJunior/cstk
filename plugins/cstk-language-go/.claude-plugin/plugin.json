@@ -1,7 +1,7 @@
 {
   "name": "cstk-language-go",
   "description": "Go language profile for the cstk toolkit: Go-specific skills (add-entity, add-consumer, add-migration, add-test, review) and hooks",
-  "version": "8.3.0",
+  "version": "8.3.1",
   "author": {
     "name": "JotJunior",
     "url": "https://github.com/JotJunior"

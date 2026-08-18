@@ -5,6 +5,95 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.3.1] - 2026-08-18
+
+Bugfix do ramo de captura de opt-ins dos commands `/agente-00c` e
+`/feature-00c` (feature `mcp-elicitation-optins`, 8.1.0). Caso real em
+projeto-alvo com cstk 8.3.0: `/mcp` mostrava `cstk-state · connected · no
+tools` (o launcher `mcp-launch.sh` servia o stub IDLE porque o processo
+`node` real não podia subir), mas o command pai declarava "ramo
+estruturado (MCP ativo)" só porque `cstk mcp start` cunhou um token,
+spawnava o orquestrador — que devolvia o turno sem abrir onda, pois a
+tool `mcp__cstk-state__collect_optins` não existia no harness — e só
+então caía na prosa de opt-in. A premissa do contrato ("o pai só tem o
+token como sinal") era falsa: o pai É a sessão principal e enxerga o
+próprio toolset. Sem breaking; sem skill nova.
+
+### Added
+
+- **`mcp-launch.sh preflight`** (`plugins/cstk/skills/agente-00c-runtime/
+  scripts/mcp-launch.sh`): diagnóstico READ-ONLY que reproduz as mesmas
+  checagens do boot (state-server instalado, Node >= 22,
+  `mcp-build-lazy.sh` presente, `dist/src/index.js` construído) SEM
+  `exec node` e SEM rodar build (nunca invoca `npm` — `npm ci` pode
+  pendurar sem rede). Imprime `ready|<entrypoint>` (exit 0) ou
+  `idle|<motivo>` (exit 3), onde `<motivo>` é o mesmo texto que o boot
+  escreve em stderr ao servir o stub IDLE — permite ao operador descobrir
+  POR QUE o servidor aparece "conectado sem tools". Argumento desconhecido
+  → exit 2; invocação sem argumentos (a registrada no `.mcp.json`) segue
+  idêntica. 7 cenários novos em `tests/test_mcp-launch.sh` (16 no total).
+
+### Fixed
+
+- **Decisão do ramo de opt-ins (2.bis de `agente-00c.md` / bloco
+  equivalente de `feature-00c.md`)**: o token cunhado por `cstk mcp
+  start` passa a promover o ramo apenas a `candidato`; o ramo
+  `estruturado` exige DUAS confirmações adicionais — `mcp-launch.sh
+  preflight` = `ready` E a tool `mcp__cstk-state__collect_optins` visível
+  no toolset do próprio command pai (em dúvida, `ToolSearch` com
+  `select:mcp__cstk-state__collect_optins`). `.mcp.json` presente, `cstk
+  mcp status`/`start` OK e até `preflight=ready` NÃO substituem a checagem
+  do toolset (cobre sessão bootada antes do `.mcp.json` e servidor de
+  projeto não aprovado, invisíveis a qualquer probe de disco). Única
+  exceção ao "nenhum aviso" do ramo legado (FR-005): quando o token FOI
+  cunhado mas o ramo caiu para legado, o pai imprime UMA linha de
+  diagnóstico (`MCP cstk-state: servidor registrado, mas sem tools nesta
+  sessao (<motivo>) — opt-ins seguem por prosa; a onda usa Bash.`) — os
+  prompts em si permanecem byte-a-byte. O bullet de injeção do token
+  cobre o caso novo "token não-vazio com ramo legado": injeta a linha do
+  token (o orquestrador decide MCP-vs-Bash tool a tool), NÃO injeta a
+  linha do ramo estruturado.
+- **Detecção de degradação no pai (4.bis dos dois commands)**: além de
+  `structured:unavailable|failed` (registros que a PRÓPRIA tool escreve),
+  campo aplicável SEM NENHUM registro em `.optin_responses[]` após o
+  primeiro spawn, com `.waves | length == 0`, também é degradação — a
+  tool que nunca chegou a rodar não escreve nada, e o pai ficava cego.
+  Onda aberta prova captura por outro caminho (guard M4/I-2 impede abrir
+  sem registro), então o sinal só conta com zero ondas.
+- **Orquestradores (`agente-00c-orchestrator.md` §1.bis /
+  `agente-00c-feature-orchestrator.md` §3.bis)**: removida a premissa
+  falsa "tool ausente ⇒ o pai decidiu legado por token vazio; siga para o
+  passo 2/4" (com token presente e tool ausente, o guard M4/I-2 travaria a
+  onda-001 e o turno era queimado à toa). O discriminador do ramo passa a
+  ser a PRESENÇA da linha `MCP: ramo estruturado de opt-ins ativo` no
+  prompt de spawn, nunca o token. Três casos: linha ausente → legado,
+  segue; linha presente + tool visível → `collect_optins`; linha presente
+  + tool NÃO visível → tratar como `mechanism: "unavailable"` (não abre
+  onda, devolve o turno em silêncio, sem escrever em `.optin_responses[]`
+  — INV-4). Bloco compartilhado "Orientação MCP-vs-Bash" intocado
+  (byte-idêntico entre os dois orquestradores, FR-011).
+- **Header stale do `mcp-launch.sh`** afirmava "o command pai segue
+  decidindo (via `cstk mcp status`) se a onda usa MCP ou Bash" —
+  exatamente a premissa que causou o bug; corrigido para toolset +
+  preflight (gateado por cenário em `tests/test_mcp-launch.sh`).
+
+### Changed
+
+- **`docs/specs/mcp-elicitation-optins/contracts/optin-capture-order.md`**
+  §2 (tabela de decisão de ramo: token E preflight `ready` E tool visível;
+  linha nova "token presente mas preflight idle ou tool não visível →
+  LEGADO + 1 linha de diagnóstico") e §3.3(b) (sinal estrutural "sem
+  registro + zero ondas"; orquestrador não escreve nada nesse sub-caso).
+- **`plugins/cstk/skills/agente-00c-runtime/SKILL.md`**: parágrafo do
+  `mcp-launch.sh` ainda descrevia o modo Docker pré-cutover (`docker exec
+  -i` attach, exit 3 em bash-fallback); reescrito para o transporte
+  direto (8.0.0), stub IDLE e `preflight`.
+- **`tests/test_command-spawn-optin-elicitation.sh`**: +5 cenários (ordem
+  `candidato` < preflight < toolset < prompt de prosa nos dois commands;
+  o token sozinho nunca mais promove a `estruturado`; 4.bis com "sem
+  registro"; orquestradores sem a premissa stale; bullet do token com
+  ramo legado) — 26 no total.
+
 ## [8.3.0] - 2026-08-18
 
 A oferta de leva paralela pós-roadmap (`8.2.0`) só acontecia automaticamente
@@ -6576,6 +6665,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.3.1]: https://github.com/JotJunior/cstk/releases/tag/v8.3.1
 [8.3.0]: https://github.com/JotJunior/cstk/releases/tag/v8.3.0
 [8.2.0]: https://github.com/JotJunior/cstk/releases/tag/v8.2.0
 [8.1.1]: https://github.com/JotJunior/cstk/releases/tag/v8.1.1
