@@ -1,0 +1,334 @@
+#!/bin/sh
+# test_parallel-launch.sh — cobre
+# plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh (tasks
+# 2.3-2.5, feature roadmap-parallel-launch). Regra de ouro (tasks.md 2.5.4).
+#
+# Cobertura:
+#   check-tmux: presente / ausente (exit 0 / exit 3)
+#   emit: composicao automatica (com tmux) e degradada (sem tmux),
+#         byte-comparabilidade do trecho `claude --name ... "..."` entre
+#         os dois caminhos (contract §4, decisao de desenho)
+#   emit: revalidacao de --feature (defesa em profundidade, contract §4.2)
+#   emit: validacao de --coordinator-name (allowlist, nao afeta composicao)
+#   emit: uso incorreto (--repo/--feature ausentes, flag desconhecida,
+#         subcomando desconhecido)
+#   guarda anti-duplicidade (TOCTOU-recompute, contract §4.2/2.6.4):
+#         worktree ativa bloqueia (outcome=blocked-duplicate, feature
+#         omitida da composicao); worktree encerrada libera
+#   enforcement-log.jsonl: schema CHK125, scrub aplicado, best-effort
+#   testes adversariais (2.7): nome de repo com espaco/aspa (quoting),
+#         short-name malicioso (injecao) rejeitado pela revalidacao
+#   -h/--help
+
+TESTS_ROOT="${TESTS_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
+REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
+
+. "$TESTS_ROOT/lib/harness.sh"
+
+SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh"
+
+# _pl_path_without_tmux: PATH atual menos o(s) diretorio(s) que contem
+# `tmux` — preserva mktemp/git/cat/etc (usados pelo proprio harness) em vez
+# de zerar o PATH inteiro, o que quebraria `capture`/`mktemp_test`.
+_pl_path_without_tmux() {
+  _tmux_bin=$(command -v tmux 2>/dev/null) || { printf '%s' "$PATH"; return 0; }
+  _tmux_dir=$(dirname -- "$_tmux_bin")
+  _new_path=""
+  _old_ifs=$IFS
+  IFS=:
+  for _seg in $PATH; do
+    [ "$_seg" = "$_tmux_dir" ] && continue
+    if [ -z "$_new_path" ]; then _new_path="$_seg"; else _new_path="$_new_path:$_seg"; fi
+  done
+  IFS=$_old_ifs
+  printf '%s' "$_new_path"
+}
+
+# _pl_git_repo DIR: inicializa repo git minimo em DIR (commit inicial).
+_pl_git_repo() {
+  _d="$1"
+  mkdir -p "$_d"
+  (
+    cd "$_d" || exit 1
+    git init -q .
+    git commit -q --allow-empty -m init
+  )
+}
+
+# ==== check-tmux ====
+
+scenario_check_tmux_presente() {
+  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado nesta maquina — scenario pulado via ERROR"; return 2; }
+  capture "$SCRIPT" check-tmux
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (tmux presente)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_check_tmux_ausente() {
+  _fake=$(_pl_path_without_tmux)
+  _old_path=$PATH
+  PATH="$_fake"
+  capture "$SCRIPT" check-tmux
+  PATH=$_old_path
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit esperado 3 (tmux ausente)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ==== emit: composicao automatica (tmux) ====
+
+scenario_emit_composicao_com_tmux() {
+  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado"; return 2; }
+  _repo="$TMPDIR_TEST/repo-tmux"
+  mkdir -p "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "cstk session start auth-basica" || return 1
+  assert_stdout_contains "tmux new-window -c \"$_repo-auth-basica\" -n \"auth-basica\" -P -F '#{pane_id}'" || return 1
+  assert_stdout_contains 'claude --name "cstk-feature/auth-basica" "/feature-00c auth-basica"' || return 1
+}
+
+scenario_emit_multiplas_features_em_ordem() {
+  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado"; return 2; }
+  _repo="$TMPDIR_TEST/repo-multi"
+  mkdir -p "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature primeira --feature segunda
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  _pos_primeira=$(printf '%s' "$_CAPTURED_STDOUT" | grep -n "session start primeira" | cut -d: -f1)
+  _pos_segunda=$(printf '%s' "$_CAPTURED_STDOUT" | grep -n "session start segunda" | cut -d: -f1)
+  [ -n "$_pos_primeira" ] && [ -n "$_pos_segunda" ] || { _fail "ambas as features deveriam aparecer" "$_CAPTURED_STDOUT"; return 1; }
+  [ "$_pos_primeira" -lt "$_pos_segunda" ] || { _fail "ordem das features deveria ser preservada" "$_CAPTURED_STDOUT"; return 1; }
+}
+
+# ==== emit: composicao degradada (sem tmux) + byte-comparabilidade ====
+
+scenario_emit_composicao_degradada_sem_tmux() {
+  _fake=$(_pl_path_without_tmux)
+  _repo="$TMPDIR_TEST/repo-degradado"
+  mkdir -p "$_repo"
+
+  _old_path=$PATH
+  PATH="$_fake"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  PATH=$_old_path
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "cstk session start auth-basica" || return 1
+  assert_stdout_not_contains "tmux new-window" || return 1
+  assert_stdout_contains "cd \"$_repo-auth-basica\" && claude --name \"cstk-feature/auth-basica\" \"/feature-00c auth-basica\"" || return 1
+}
+
+scenario_emit_trecho_claude_identico_com_e_sem_tmux() {
+  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado"; return 2; }
+  _repo="$TMPDIR_TEST/repo-comparavel"
+  mkdir -p "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (com tmux)" "obtido $_CAPTURED_EXIT"; return 1; }
+  _com_tmux_trecho=$(printf '%s' "$_CAPTURED_STDOUT" | grep -o 'claude --name.*$')
+
+  _fake=$(_pl_path_without_tmux)
+  _old_path=$PATH
+  PATH="$_fake"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  PATH=$_old_path
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (sem tmux)" "obtido $_CAPTURED_EXIT"; return 1; }
+  _sem_tmux_trecho=$(printf '%s' "$_CAPTURED_STDOUT" | grep -o 'claude --name.*$')
+
+  [ "$_com_tmux_trecho" = "$_sem_tmux_trecho" ] || {
+    _fail "trecho claude --name deveria ser byte-identico" "com-tmux=[$_com_tmux_trecho] sem-tmux=[$_sem_tmux_trecho]"
+    return 1
+  }
+}
+
+# ==== emit: revalidacao de --feature (defesa em profundidade) ====
+
+scenario_emit_feature_maiuscula_rejeitada() {
+  _repo="$TMPDIR_TEST/repo-inv1"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --feature "Auth-Basica"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (feature maiuscula)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "invalido" || return 1
+}
+
+scenario_emit_feature_vazia_apos_flag_falta_valor() {
+  _repo="$TMPDIR_TEST/repo-inv2"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --feature
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (--feature sem valor)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_emit_feature_maior_que_64_chars_rejeitada() {
+  _repo="$TMPDIR_TEST/repo-inv3"
+  mkdir -p "$_repo"
+  _longo=$(printf 'a%.0s' $(seq 1 65))
+  capture "$SCRIPT" emit --repo "$_repo" --feature "$_longo"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (feature > 64 chars)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ==== emit: --coordinator-name ====
+
+scenario_emit_coordinator_name_valido_nao_altera_composicao() {
+  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado"; return 2; }
+  _repo="$TMPDIR_TEST/repo-coord-ok"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --coordinator-name "cstk-coord/meu-repo"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_not_contains "cstk-coord/meu-repo" || return 1
+}
+
+scenario_emit_coordinator_name_invalido_rejeitado() {
+  _repo="$TMPDIR_TEST/repo-coord-bad"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --coordinator-name "nome-qualquer"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (coordinator-name mal-formado)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "coordinator-name" || return 1
+}
+
+# ==== emit: uso incorreto ====
+
+scenario_emit_sem_repo_exit2() {
+  capture "$SCRIPT" emit --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (--repo ausente)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_emit_sem_feature_exit2() {
+  _repo="$TMPDIR_TEST/repo-sem-feature"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (--feature ausente)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_emit_flag_desconhecida_exit2() {
+  _repo="$TMPDIR_TEST/repo-flag"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --bogus-flag
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (flag desconhecida)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_subcomando_desconhecido_exit2() {
+  capture "$SCRIPT" bogus-subcommand
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (subcomando desconhecido)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_sem_subcomando_exit2() {
+  capture "$SCRIPT"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (sem subcomando)" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ==== guarda anti-duplicidade (TOCTOU-recompute, contract §4.2/2.6.4) ====
+
+scenario_guarda_worktree_ativa_bloqueia() {
+  command -v git >/dev/null 2>&1 || { _fail "pre-requisito ausente" "git nao encontrado"; return 2; }
+  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado"; return 2; }
+  _repo="$TMPDIR_TEST/repo-guarda-ativa"
+  _pl_git_repo "$_repo"
+  (
+    cd "$_repo" || exit 1
+    git branch feature-ativa
+    git worktree add -q "../repo-guarda-ativa-feature-ativa" feature-ativa
+  )
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature feature-ativa --feature feature-livre
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (guarda bloqueia, nao aborta)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_not_contains "session start feature-ativa" || return 1
+  assert_stdout_contains "session start feature-livre" || return 1
+  assert_stderr_contains "feature-ativa" || return 1
+  assert_stderr_contains "bloqueado" || return 1
+
+  _log="$_repo/.claude/enforcement-log.jsonl"
+  [ -f "$_log" ] || { _fail "enforcement-log.jsonl deveria existir" ""; return 1; }
+  grep -q '"short_name":"feature-ativa".*"outcome":"blocked-duplicate"' "$_log" \
+    || { _fail "log deveria conter outcome=blocked-duplicate para feature-ativa" "$(cat "$_log")"; return 1; }
+  grep -q '"short_name":"feature-livre".*"outcome":"launched"' "$_log" \
+    || { _fail "log deveria conter outcome=launched para feature-livre" "$(cat "$_log")"; return 1; }
+
+  git -C "$_repo" worktree remove --force "../repo-guarda-ativa-feature-ativa" >/dev/null 2>&1 || :
+}
+
+scenario_guarda_worktree_encerrada_libera() {
+  command -v git >/dev/null 2>&1 || { _fail "pre-requisito ausente" "git nao encontrado"; return 2; }
+  _repo="$TMPDIR_TEST/repo-guarda-livre"
+  _pl_git_repo "$_repo"
+  # Nenhuma worktree criada para "feature-recuperada" — simula recuperacao
+  # apos `cstk session end` (CHK006): a feature volta a ser candidata.
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature feature-recuperada
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "session start feature-recuperada" || return 1
+}
+
+scenario_guarda_repo_invalido_nao_e_erro_fatal() {
+  capture "$SCRIPT" emit --repo "$TMPDIR_TEST/repo-nao-existe" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "repo invalido nao deveria ser erro fatal" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "session start auth-basica" || return 1
+}
+
+# ==== enforcement-log.jsonl ====
+
+scenario_enforcement_log_registra_launched() {
+  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado"; return 2; }
+  _repo="$TMPDIR_TEST/repo-log-ok"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  _log="$_repo/.claude/enforcement-log.jsonl"
+  [ -f "$_log" ] || { _fail "enforcement-log.jsonl deveria ter sido criado" ""; return 1; }
+  grep -q '"source":"parallel-launch"' "$_log" || { _fail "campo source ausente" "$(cat "$_log")"; return 1; }
+  grep -q '"outcome":"launched"' "$_log" || { _fail "outcome=launched ausente" "$(cat "$_log")"; return 1; }
+  grep -q '"short_name":"auth-basica"' "$_log" || { _fail "short_name ausente" "$(cat "$_log")"; return 1; }
+}
+
+scenario_enforcement_log_registra_blocked_invalid_feature() {
+  _repo="$TMPDIR_TEST/repo-log-invalid"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --feature "INVALIDO"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2" "obtido $_CAPTURED_EXIT"; return 1; }
+
+  _log="$_repo/.claude/enforcement-log.jsonl"
+  [ -f "$_log" ] || { _fail "enforcement-log.jsonl deveria ter sido criado mesmo em recusa" ""; return 1; }
+  grep -q '"outcome":"blocked-invalid-feature"' "$_log" \
+    || { _fail "outcome=blocked-invalid-feature ausente" "$(cat "$_log")"; return 1; }
+}
+
+# ==== testes adversariais de injecao (2.7) ====
+
+scenario_adversarial_nome_de_repo_com_espaco_e_aspa() {
+  command -v tmux >/dev/null 2>&1 || { _fail "pre-requisito ausente" "tmux nao instalado"; return 2; }
+  _repo="$TMPDIR_TEST/repo com espaco e \"aspa\""
+  mkdir -p "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (repo com espaco/aspa e valor legitimo, nao ataque de sintaxe)" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  # <WORKTREE> MUST estar entre aspas duplas (contract §4.1, INV-7) — a
+  # aspa interna do nome do repo NAO deve fechar a aspa do -c prematuramente:
+  # a linha inteira continua sendo um UNICO argumento entre -c "..." e -n.
+  assert_stdout_match '\-c "[^"]*repo com espaco e .aspa.[^"]*-auth-basica" -n "auth-basica"' || return 1
+}
+
+scenario_adversarial_short_name_malicioso_rejeitado() {
+  _repo="$TMPDIR_TEST/repo-adv-short"
+  mkdir -p "$_repo"
+
+  for _malicioso in '$(rm -rf /)' 'auth; rm -rf /' 'auth`whoami`' '../../etc/passwd' 'auth basica' 'AUTH-BASICA'; do
+    capture "$SCRIPT" emit --repo "$_repo" --feature "$_malicioso"
+    [ "$_CAPTURED_EXIT" = 2 ] || { _fail "short-name malicioso deveria ser rejeitado (exit 2)" "valor=[$_malicioso] obtido=$_CAPTURED_EXIT stdout=$_CAPTURED_STDOUT"; return 1; }
+    assert_stdout_not_contains "$_malicioso" || { _fail "valor malicioso nao deveria vazar para stdout" "$_malicioso"; return 1; }
+  done
+}
+
+# ==== -h/--help ====
+
+scenario_help_exit0() {
+  capture "$SCRIPT" -h
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "Uso: parallel-launch.sh emit" || return 1
+}
+
+scenario_help_declara_superficie_real_sem_exec() {
+  capture "$SCRIPT" --help
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "check-tmux" || return 1
+  assert_stdout_not_contains "--exec" || return 1
+}
+
+run_all_scenarios

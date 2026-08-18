@@ -2108,6 +2108,17 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
     ja vigente na tabela de decisao do orquestrador logo abaixo; nenhuma
     mudanca adicional e necessaria ali).
 
+    **A EXECUCAO para; a SESSAO do command pai nao** (feature
+    `roadmap-parallel-launch`): apos esta promocao com
+    `termination_reason=concluido_roadmap`, o `/agente-00c` (`§6.ter`,
+    resume `§9.ter`) computa a fronteira do DAG (`roadmap-frontier.sh`)
+    e OFERECE ao operador uma leva paralela de features (`cstk session`
+    + tmux + `parallel-launch.sh emit`). Este agente NAO participa disso:
+    nao computa fronteira, nao pergunta, nao lanca sessao, nao envia
+    `SendMessage` (fronteira command↔orquestrador, FR-012 daquela
+    feature). Referencia reciproca: `agente-00c.md` §6.ter cita esta
+    §9.quater como a sequencia MUST que dispara o gatilho.
+
     A CONDICAO de disparo desta sequencia (a cadeia de etapas do modo
     roadmap chegar em `roadmap` como fase terminal, em vez de
     `review-features`) e wireada na secao de opt-in/condicionamento do

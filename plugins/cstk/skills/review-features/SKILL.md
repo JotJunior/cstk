@@ -167,6 +167,30 @@ Nunca reescrever nem "corrigir" `docs/roadmap.md` a partir desta skill —
 `roadmap-write.sh` continua sendo o UNICO ponto de escrita do artefato
 (feature `roadmap-mode`, Fase B).
 
+**Fronteira do DAG (consumidor derivado — feature `roadmap-parallel-launch`)**:
+`scripts/roadmap-frontier.sh` NAO le o roadmap por conta propria — delega o
+parse e a derivacao de status a `roadmap-status.sh --json` (INV-3) e devolve
+so as entradas `nao-iniciada` cujas dependencias estao todas `concluida`.
+Read-only: nunca escreve, nunca lanca sessao, nunca interage com o operador.
+
+```bash
+bash skills/review-features/scripts/roadmap-frontier.sh --specs-dir docs/specs/ [--json] \
+  [--exclude-active-from-repo <repo>]   # remove short-names com worktree ativa (git worktree list)
+```
+
+Exit codes: `0` sucesso (inclusive fronteira vazia — distinto de roadmap
+ausente), `1` roadmap ausente (propagado de `roadmap-status.sh`), `2` uso
+incorreto (inclui path com `..`), `3` roadmap invalido, `4`
+`roadmap-status.sh` nao encontrado. Quem consome a fronteira para OFERTAR a
+leva paralela e o command pai `/agente-00c` (§6.ter), nunca esta skill.
+
+O aviso opcional de **sobreposicao de artefatos** que ele emite ("as entradas
+X e Y mencionam ambas `<token>`", rotulo `roadmap-prose-untrusted`) e derivado
+da prosa do roadmap: tokens passam por allowlist `^[A-Za-z0-9._/-]{1,64}$`,
+truncamento e escaping — a MESMA regra de rotulo UNTRUSTED acima se aplica se
+esta skill algum dia reproduzir esse aviso; e indicio, nunca conflito
+confirmado (Principio VI).
+
 ---
 
 ## ETAPA 3: ANALISE
@@ -292,6 +316,9 @@ Apos rodar o script, destacar no relatorio:
       ausente (exit 1), omiti a secao sem erro; se invalido (exit 3),
       emiti aviso visivel em vez de omitir em silencio; conteudo
       reproduzido do roadmap veio rotulado UNTRUSTED
+- [ ] Nao invoquei `roadmap-frontier.sh` para lancar nada — a fronteira e
+      insumo do command pai (`/agente-00c` §6.ter); se reproduzi um aviso
+      de sobreposicao, veio como indicio rotulado, nunca como conflito
 
 ---
 

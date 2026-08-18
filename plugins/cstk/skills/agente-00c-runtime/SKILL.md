@@ -211,3 +211,43 @@ nenhum leitor constroi o path `state.json` na mao:
   lendo `state.json` direto falha a suite.
 
 Spec: `docs/specs/state-db-runtime-parity/` (contracts/runtime-interfaces.md).
+
+### Scripts parallel-launch.sh e parallel-notification-parse.sh (feature roadmap-parallel-launch)
+
+Consumidos SOMENTE pelos commands pai (`agente-00c.md` §6.ter/§6.quater,
+`feature-00c.md` §5.quater) — o orquestrador-subagente nunca oferta, lanca
+nem notifica (nao tem `SendMessage`/`ListAgents`; FR-012).
+
+- **`parallel-launch.sh emit --repo PATH --feature SHORT [...]
+  [--coordinator-name NAME]`** compoe e **so imprime** os comandos de
+  lancamento por feature (`cstk session start <SHORT>` + `tmux new-window ...
+  claude --name ... "/feature-00c <SHORT>"`, ou `cd ... && claude ...`
+  quando `check-tmux` sai 3). NUNCA executa nada e NUNCA toca
+  `cli/lib/session.sh` (que faz `exec claude` sem argumentos — por isso a
+  composicao e externa). Revalida o short-name (`^[a-z][a-z0-9-]*$`,
+  <=64), quoting + allowlist de `<WORKTREE>`/`<CHILD_NAME>`, recomputa a
+  guarda anti-duplicidade (`git worktree list --porcelain`, iterar TODAS as
+  entradas — nunca `| head -1`) imediatamente antes de compor (TOCTOU) e
+  registra linha em `<repo>/.claude/enforcement-log.jsonl`
+  (`source: "parallel-launch"`, `command` via `secrets-filter.sh scrub`,
+  best-effort). `--coordinator-name` e validado
+  (`^cstk-coord/[A-Za-z0-9._-]{1,64}$`) mas NAO entra na composicao (dec-052:
+  o endereco da coordenadora e resolvido por convencao via git-common-dir).
+- **`parallel-notification-parse.sh check "<msg>"`** casa a mensagem
+  INTEIRA contra a regex ancorada do contrato
+  (`^\[cstk-parallel\] feature=([a-z][a-z0-9-]{0,63}) outcome=(concluida|abortada|aguardando_humano) repo=([A-Za-z0-9._-]{1,64})$`);
+  match ⇒ imprime `feature=`/`outcome=`/`repo=` (uma por linha), exit 0;
+  qualquer sobra, enum fora do conjunto ou newline embutida ⇒ exit 1 SEM
+  stdout (fail-closed — GOTCHA: `grep -E`/`sed -E` ancoram por LINHA, por
+  isso ha guarda anti-multilinha antes do regex). O resultado e **gatilho
+  opaco** (INV-8): o receptor recalcula a fronteira com
+  `roadmap-frontier.sh` e nunca deriva comando/caminho da mensagem.
+- Portabilidade (dec-044/dec-046): trim de colchete via `sed -n
+  's/^\[\(.*\)\]$/\1/p'` (parameter expansion `${x#[}` diverge dash/bash);
+  JSON-escaping via `awk` (idioma `sed ':a;N;$!ba'` falha no BSD sed em
+  input de 1 linha); `$(...)` remove newlines finais — sentinela de lista
+  nao pode ser `\n`.
+- Testes: `tests/test_parallel-launch.sh` (25), `tests/test_parallel-notification-parse.sh` (15),
+  `tests/test_command-spawn-parallel-launch.sh` (interno, 40).
+
+Spec: `docs/specs/roadmap-parallel-launch/` (contracts/parallel-launch.md §4/§6).

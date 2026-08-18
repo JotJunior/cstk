@@ -7,6 +7,7 @@ allowed-tools:
   - Write
   - Bash
   - ScheduleWakeup
+  - SendMessage
 ---
 
 # /feature-00c-resume
@@ -342,6 +343,51 @@ esac
 > (`token -> state_dir`, sem TTL, revalidada a cada chamada contra o
 > disco) e quem garante que uma nova instancia do processo retoma a
 > **SESSAO MCP** correta a partir do descritor persistido.
+
+### 4.quinquies Notificacao de leva paralela a sessao coordenadora (US2 — FR-008/FR-015, `roadmap-parallel-launch`)
+
+Best-effort, roda apos 4.quater, ANTES do cleanup (passo 5). Mesmo
+contrato do lado EMISSOR descrito em `feature-00c.md` §5.quater
+(`docs/specs/roadmap-parallel-launch/contracts/parallel-launch.md` §6) —
+aplicavel aqui porque um resume tambem pode ser o turno em que a execucao
+alcanca um dos 3 estados terminais notificaveis (`concluida`, `abortada`,
+`aguardando_humano` — **REAL**,
+`plugins/cstk/skills/agente-00c-runtime/scripts/state-validate.sh:250`).
+`em_andamento` NUNCA notifica.
+
+`--coordinator-name` de `parallel-launch.sh emit` **nunca** e injetado no
+comando de lancamento (confirmado em
+`tests/test_parallel-launch.sh::scenario_emit_coordinator_name_valido_nao_altera_composicao`)
+— o endereçamento e por CONVENCAO, `cstk-coord/<nome-do-repo>`, com
+`<nome-do-repo>` derivado da MESMA tecnica de
+`cli/lib/session.sh::_session_resolve_repo` (git-common-dir ->
+path absoluto do repo principal -> `basename`), reusando `$_proj`.
+
+```bash
+case "$_status_final" in
+  concluida|abortada|aguardando_humano)
+    _gcd=$(git -C "$_proj" rev-parse --git-common-dir 2>/dev/null) || _gcd=""
+    _repo_name=""
+    if [ -n "$_gcd" ]; then
+      _main_repo=$(cd -- "$_proj/$(dirname -- "$_gcd")" 2>/dev/null && pwd -P) || _main_repo=""
+      [ -n "$_main_repo" ] && _repo_name=$(basename -- "$_main_repo")
+    fi
+    if [ -n "$_repo_name" ]; then
+      _notify_payload="[cstk-parallel] feature=$SHORT outcome=$_status_final repo=$_repo_name"
+      _notify_target="cstk-coord/$_repo_name"
+      # invoque a tool SendMessage enderecada a $_notify_target com o
+      # payload $_notify_payload — BEST-EFFORT (FR-015): qualquer falha
+      # (sessao coordenadora inexistente, sem nome conhecido, erro da
+      # tool) NUNCA bloqueia nem altera o passo 5 (Cleanup); apenas log
+      # local.
+    fi
+    ;;
+esac
+```
+
+Regras duras: imediato (sem intervalo/timeout configuravel); best-effort
+(FR-015); esta sessao-filha nunca calcula fronteira nem lanca outra sessao
+(FR-012).
 
 ### 5. Cleanup
 
