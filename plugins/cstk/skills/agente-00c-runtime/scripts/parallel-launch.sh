@@ -2,16 +2,27 @@
 # parallel-launch.sh — compoe (nunca executa) os comandos de lancamento de
 # uma leva paralela de sessoes-filha em worktrees dedicadas (FR-005, FR-006).
 #
-# Feature: roadmap-parallel-launch
+# Feature: roadmap-parallel-launch (emit, check-tmux) + roadmap-wave
+# (resolve-offer)
 # Ref: docs/specs/roadmap-parallel-launch/contracts/parallel-launch.md §4
 #      docs/specs/roadmap-parallel-launch/spec.md FR-005, FR-006, FR-007,
 #      FR-011, FR-017, FR-018
+#      docs/specs/roadmap-wave/contracts/roadmap-wave-command.md §3
 #
 # Uso:
 #   parallel-launch.sh emit --repo PATH --feature SHORT [--feature SHORT ...]
 #                            [--coordinator-name NAME]
 #   parallel-launch.sh check-tmux
+#   parallel-launch.sh resolve-offer --source <operator|absent>
+#                                    [--confirm RAW] [--max RAW]
 #   parallel-launch.sh -h | --help
+#
+# `resolve-offer` (feature roadmap-wave, contract roadmap-wave-command.md
+# §3): espelha em codigo testavel a decisao hoje descrita so em prosa nos
+# passos 4-5 de agente-00c.md §6.ter — se a leva paralela deve ser lancada
+# e com qual teto. Precedente real: `delivery-tier.sh resolve-initial
+# --source <operator|absent> [--answer RAW]`. So compoe/decide, nunca
+# executa nem lanca nada.
 #
 # Decisao de desenho (contract §4): `emit` SOMENTE compoe e imprime os
 # comandos — NUNCA executa. Quem executa e o command pai (/agente-00c,
@@ -38,10 +49,10 @@
 # POSIX sh puro, sem `jq` (Principio II).
 #
 # Exit codes:
-#   0  sucesso
+#   0  sucesso (resolve-offer: inclusive launch=no — recusar nao e erro)
 #   2  uso incorreto (subcomando desconhecido, flag sem valor, --repo
 #      ausente, nenhum --feature, --feature ou --coordinator-name
-#      mal-formado)
+#      mal-formado; resolve-offer: --source ausente ou fora do enum)
 #   3  check-tmux: tmux ausente
 
 set -eu
@@ -58,6 +69,8 @@ print_usage() {
 Uso: parallel-launch.sh emit --repo PATH --feature SHORT [--feature SHORT ...]
                               [--coordinator-name NAME]
      parallel-launch.sh check-tmux
+     parallel-launch.sh resolve-offer --source <operator|absent>
+                                      [--confirm RAW] [--max RAW]
      parallel-launch.sh -h | --help
 
 `emit` compoe e IMPRIME (nunca executa) o par de comandos de lancamento de
@@ -94,6 +107,38 @@ Cada lancamento (ou recusa por --feature invalido) e registrado em
 <PATH>/.claude/enforcement-log.jsonl (source: "parallel-launch"), com o
 campo `command` filtrado por secrets-filter.sh scrub — best-effort, falha
 de log NUNCA aborta o emit.
+
+`resolve-offer` (feature roadmap-wave, contract roadmap-wave-command.md
+§3): decide se a leva paralela deve ser lancada (`launch=yes|no`) e com
+qual teto (`max=<inteiro>`), sem executar nada.
+
+  --source <operator|absent>  OBRIGATORIO, sem default. Quem chama
+                               DECLARA se houve operador — nao ha
+                               deteccao automatica de interatividade
+                               (`[ -t 0 ]` e falso mesmo em sessao
+                               interativa do harness).
+  --confirm RAW                Resposta do operador (opcional). Valida
+                                contra o enum `s|S|y|Y|sim|yes`; qualquer
+                                outra coisa (inclusive vazio/Enter)
+                                ⇒ launch=no.
+  --max RAW                    Teto desejado (opcional). Inteiro em
+                                1..8 ⇒ usado tal-e-qual; ausente/vazio
+                                com --confirm valido ⇒ default 2;
+                                mal-formado/0/negativo/>8 ⇒ launch=no
+                                (fail-closed).
+
+`--source absent` ignora --confirm/--max por completo (nem le) e sempre
+resolve `launch=no`/`max=2` (FR-014) — fail-safe: sem operador, sem
+lancamento algum.
+
+`--confirm`/`--max` tem `\r`/`\n` removidos ANTES de comparar (mesma
+classe de bug corrigida em delivery-tier.sh:306-307 — `$()` NAO remove
+`\r`).
+
+Saida (stdout, chave=valor, sem jq):
+  launch=<yes|no>
+  max=<inteiro>
+Diagnosticos em stderr.
 
 Exit codes: 0 sucesso; 2 uso incorreto; 3 (check-tmux) tmux ausente.
 EOF
@@ -335,11 +380,106 @@ _pl_cmd_emit() {
   done
 }
 
+# ==== resolve-offer (feature roadmap-wave, contract
+# roadmap-wave-command.md §3) ====
+#
+# Espelha em codigo testavel a decisao hoje descrita so em prosa nos
+# passos 4-5 de agente-00c.md §6.ter. Precedente real:
+# delivery-tier.sh resolve-initial --source <operator|absent> [--answer].
+#
+# _pl_strip_crlf STRING -> STRING sem \r/\n (contract §3.4). `$()` NAO
+# remove \r — mesma classe do bug corrigido em delivery-tier.sh:306-307.
+_pl_strip_crlf() {
+  printf '%s' "$1" | tr -d '\r\n'
+}
+
+# _pl_is_int_1_8 STRING -> exit 0 se STRING e um inteiro decimal (sem
+# sinal, sem espacos) em 1..8. POSIX puro, sem depender de `expr`/`bc`.
+_pl_is_int_1_8() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$1" -ge 1 ] && [ "$1" -le 8 ]
+}
+
+_pl_cmd_resolve_offer() {
+  _pl_ro_source=""
+  _pl_ro_saw_source=0
+  _pl_ro_confirm=""
+  _pl_ro_max=""
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --source)
+        [ $# -ge 2 ] || { printf '%s: --source exige valor\n' "$_PL_NAME" >&2; exit 2; }
+        _pl_ro_source=$2; _pl_ro_saw_source=1; shift 2 ;;
+      --confirm)
+        [ $# -ge 2 ] || { printf '%s: --confirm exige valor\n' "$_PL_NAME" >&2; exit 2; }
+        _pl_ro_confirm=$2; shift 2 ;;
+      --max)
+        [ $# -ge 2 ] || { printf '%s: --max exige valor\n' "$_PL_NAME" >&2; exit 2; }
+        _pl_ro_max=$2; shift 2 ;;
+      *)
+        printf '%s: resolve-offer: flag desconhecida: %s\n' "$_PL_NAME" "$1" >&2
+        exit 2 ;;
+    esac
+  done
+
+  [ "$_pl_ro_saw_source" = 1 ] \
+    || { printf '%s: resolve-offer: --source e obrigatorio (operator|absent)\n' "$_PL_NAME" >&2; exit 2; }
+
+  case "$_pl_ro_source" in
+    absent)
+      # FR-014: sem operador, sem lancamento — --confirm/--max NEM SAO
+      # lidos (fail-safe, paridade com delivery-tier.sh resolve-initial
+      # --source absent).
+      printf 'launch=no\nmax=2\n'
+      return 0 ;;
+    operator) : ;;
+    *)
+      printf '%s: resolve-offer: --source aceita apenas operator|absent\n' "$_PL_NAME" >&2
+      exit 2 ;;
+  esac
+
+  # Higiene de entrada (contract §3.4) — ANTES de qualquer comparacao.
+  _pl_ro_confirm=$(_pl_strip_crlf "$_pl_ro_confirm")
+  _pl_ro_max=$(_pl_strip_crlf "$_pl_ro_max")
+
+  case "$_pl_ro_confirm" in
+    s|S|y|Y|sim|yes) : ;;
+    *)
+      # Fora do enum, inclusive vazio/Enter ⇒ launch=no (FR-007).
+      printf 'launch=no\nmax=2\n'
+      return 0 ;;
+  esac
+
+  if [ -z "$_pl_ro_max" ]; then
+    # confirm valido + max ausente/vazio ⇒ default 2 (FR-007, FR-013).
+    printf 'launch=yes\nmax=2\n'
+    return 0
+  fi
+
+  if _pl_is_int_1_8 "$_pl_ro_max"; then
+    printf 'launch=yes\nmax=%s\n' "$_pl_ro_max"
+    return 0
+  fi
+
+  # max mal-formado/0/negativo/>8 ⇒ launch=no + diagnostico, fail-closed
+  # (FR-007). Teto 8 e politica de design ja fixada no contract (F2 do
+  # gate owasp-security) — nao reabrir esse numero.
+  printf '%s: resolve-offer: --max invalido (esperado inteiro 1..8): %s\n' \
+    "$_PL_NAME" "$_pl_ro_max" >&2
+  printf 'launch=no\nmax=2\n'
+  return 0
+}
+
 case "$_PL_SUBCOMMAND" in
   emit)
     _pl_cmd_emit "$@" ;;
   check-tmux)
     _pl_cmd_check_tmux ;;
+  resolve-offer)
+    _pl_cmd_resolve_offer "$@" ;;
   -h|--help)
     print_usage; exit 0 ;;
   *)

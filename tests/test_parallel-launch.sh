@@ -344,4 +344,140 @@ scenario_help_declara_superficie_real_sem_exec() {
   assert_stdout_not_contains "--exec" || return 1
 }
 
+# ==== resolve-offer (feature roadmap-wave, contract roadmap-wave-command.md
+# §3; quickstart.md C8-C11, C17) ====
+
+scenario_resolve_offer_absent_ignora_confirm_e_max() {
+  # C8 (FR-014): sem operador, sem lancamento — --confirm/--max ignorados
+  # por completo, mesmo com valores sintaticamente validos.
+  capture "$SCRIPT" resolve-offer --source absent --confirm sim --max 5
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "launch=no
+max=2" ] || { _fail "esperado launch=no/max=2" "obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_resolve_offer_absent_sem_flags() {
+  capture "$SCRIPT" resolve-offer --source absent
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "launch=no
+max=2" ] || { _fail "esperado launch=no/max=2" "obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_resolve_offer_operator_confirm_valido_max_explicito() {
+  # C9 (FR-012/FR-013)
+  capture "$SCRIPT" resolve-offer --source operator --confirm sim --max 3
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "launch=yes
+max=3" ] || { _fail "esperado launch=yes/max=3" "obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_resolve_offer_operator_confirm_valido_max_omitido_default_2() {
+  capture "$SCRIPT" resolve-offer --source operator --confirm sim
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "launch=yes
+max=2" ] || { _fail "esperado launch=yes/max=2" "obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_resolve_offer_todos_os_tokens_do_enum_de_confirmacao() {
+  for _c in s S y Y sim yes; do
+    capture "$SCRIPT" resolve-offer --source operator --confirm "$_c"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 para confirm=$_c" "obtido $_CAPTURED_EXIT"; return 1; }
+    case "$_CAPTURED_STDOUT" in
+      "launch=yes"*) : ;;
+      *) _fail "confirm=$_c deveria dar launch=yes" "obtido: $_CAPTURED_STDOUT"; return 1 ;;
+    esac
+  done
+}
+
+scenario_resolve_offer_max_mal_formado_fail_closed() {
+  # C10 (FR-007)
+  for _m in abc 0 -1; do
+    capture "$SCRIPT" resolve-offer --source operator --confirm sim --max "$_m"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (recusar nao e erro) para max=$_m" "obtido $_CAPTURED_EXIT"; return 1; }
+    case "$_CAPTURED_STDOUT" in
+      "launch=no"*) : ;;
+      *) _fail "max=$_m deveria dar launch=no" "obtido: $_CAPTURED_STDOUT"; return 1 ;;
+    esac
+    assert_stderr_contains "--max invalido" || return 1
+  done
+}
+
+scenario_resolve_offer_max_fora_da_faixa_999() {
+  # C17
+  capture "$SCRIPT" resolve-offer --source operator --confirm sim --max 999
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    "launch=no"*) : ;;
+    *) _fail "max=999 deveria dar launch=no" "obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  assert_stderr_contains "--max invalido" || return 1
+}
+
+scenario_resolve_offer_max_limite_superior_8_aceito() {
+  capture "$SCRIPT" resolve-offer --source operator --confirm sim --max 8
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "launch=yes
+max=8" ] || { _fail "esperado launch=yes/max=8" "obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_resolve_offer_higiene_crlf_no_confirm() {
+  # C11 (contract §3.4) — mesma classe de bug corrigida em
+  # delivery-tier.sh:306-307: $() nao remove \r.
+  capture "$SCRIPT" resolve-offer --source operator --confirm "$(printf 'sim\r')"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    "launch=yes"*) : ;;
+    *) _fail "confirm=sim\\r deveria dar launch=yes (CRLF removido)" "obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+scenario_resolve_offer_higiene_crlf_no_max() {
+  capture "$SCRIPT" resolve-offer --source operator --confirm sim --max "$(printf '4\r')"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "launch=yes
+max=4" ] || { _fail "esperado launch=yes/max=4 (CRLF removido)" "obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_resolve_offer_confirm_fora_do_enum_inclusive_vazio() {
+  for _c in "" "n" "N" "nao" "talvez" "  "; do
+    capture "$SCRIPT" resolve-offer --source operator --confirm "$_c"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 para confirm='$_c'" "obtido $_CAPTURED_EXIT"; return 1; }
+    case "$_CAPTURED_STDOUT" in
+      "launch=no"*) : ;;
+      *) _fail "confirm='$_c' deveria dar launch=no" "obtido: $_CAPTURED_STDOUT"; return 1 ;;
+    esac
+  done
+}
+
+scenario_resolve_offer_source_obrigatorio_exit2() {
+  capture "$SCRIPT" resolve-offer --confirm sim
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "esperado exit 2 sem --source" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_resolve_offer_source_fora_do_enum_exit2() {
+  capture "$SCRIPT" resolve-offer --source talvez
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "esperado exit 2 para --source invalido" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_resolve_offer_flag_desconhecida_exit2() {
+  capture "$SCRIPT" resolve-offer --source operator --bogus x
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "esperado exit 2 para flag desconhecida" "obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_resolve_offer_saida_e_sempre_duas_linhas_chave_valor() {
+  # Formato contrato §3.3: sem jq, sempre launch=<yes|no> + max=<inteiro>.
+  for _src in operator absent; do
+    for _c in "" sim nao "rm -rf /"; do
+      capture "$SCRIPT" resolve-offer --source "$_src" --confirm "$_c"
+      [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (src=$_src confirm='$_c')" "obtido $_CAPTURED_EXIT"; return 1; }
+      _n_linhas=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -l | tr -d ' ')
+      [ "$_n_linhas" = 2 ] || { _fail "esperado exatamente 2 linhas (src=$_src confirm='$_c')" "obtido $_n_linhas: $_CAPTURED_STDOUT"; return 1; }
+      printf '%s\n' "$_CAPTURED_STDOUT" | grep -qE '^launch=(yes|no)$' \
+        || { _fail "linha 1 fora do formato launch=<yes|no> (src=$_src confirm='$_c')" "obtido: $_CAPTURED_STDOUT"; return 1; }
+      printf '%s\n' "$_CAPTURED_STDOUT" | grep -qE '^max=[0-9]+$' \
+        || { _fail "linha 2 fora do formato max=<inteiro> (src=$_src confirm='$_c')" "obtido: $_CAPTURED_STDOUT"; return 1; }
+    done
+  done
+}
+
 run_all_scenarios

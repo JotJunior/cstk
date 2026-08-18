@@ -5,6 +5,50 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.3.0] - 2026-08-18
+
+A oferta de leva paralela pós-roadmap (`8.2.0`) só acontecia automaticamente
+ao fim de uma execução `/agente-00c` que terminasse em `concluido_roadmap`.
+Esta versão adiciona um ponto de entrada **avulso**: `/roadmap-wave`
+recalcula a fronteira de elegibilidade do roadmap e, mediante confirmação
+(interativa ou `--yes`), lança a próxima leva a qualquer momento — sem
+precisar rodar a pipeline completa de novo. Feature `roadmap-wave` — 8
+ondas de `/feature-00c`, 42/42 tasks.
+
+### Added
+
+- **`/roadmap-wave`** (`plugins/cstk/commands/roadmap-wave.md`): novo slash
+  command com `allowed-tools: [Bash, Read]` (sem `Agent`/`ScheduleWakeup`/
+  `SendMessage`). Flags `--projeto-alvo-path`, `--roadmap`, `--specs-dir`,
+  `--max`, `--yes`, `--coordinator-name`. Fluxo: (1) parse de argumentos,
+  (2) resolve a decisão de lançamento via `resolve-offer` ANTES de
+  qualquer efeito colateral, (3) executa os passos 1-9 de `agente-00c.md`
+  §6.ter **por referência** (delegação, nunca cópia — DRY verificado por
+  `tests/test_command-spawn-roadmap-wave.sh`, 12 cenários). A saída
+  injetada de `roadmap-frontier.sh` (tabela + seção `### Avisos`) é
+  rotulada explicitamente **UNTRUSTED** (FR-015 novo em `spec.md`); o
+  projeto-alvo só pode vir do argumento explícito ou do diretório
+  corrente, nunca de conteúdo lido.
+- **`parallel-launch.sh resolve-offer`** (`plugins/cstk/skills/
+  agente-00c-runtime/scripts/`): helper testável que centraliza a decisão
+  `launch=<yes|no>`/`max=<inteiro>` a partir de `--source
+  <operator|absent>` `[--confirm RAW] [--max RAW]` — sem inferência
+  ad-hoc de interatividade (mesmo princípio já usado em
+  `delivery-tier.sh`). `--source absent` sempre cai em `launch=no`
+  (modo não-interativo nunca lança sem confirmação explícita — FR-014).
+  Higiene de entrada (`\r`/`\n` removidos), `--max` fora da faixa
+  1..8 rejeitado fail-closed. 15 cenários novos em
+  `tests/test_parallel-launch.sh`.
+- **Contenção técnica real de path** (`roadmap-frontier.sh
+  _rf_reject_outside_coordinator`): `--exclude-active-from-repo` fora do
+  repo coordenador agora rejeita com exit `2`, fechando a lacuna que
+  antes era só documental. Cenário C18 novo em `quickstart.md`.
+
+### Changed
+
+- `README.md`/`README.pt-BR.md`: contagem de commands do catálogo `6` →
+  `7`, com `/roadmap-wave` nomeado explicitamente junto dos demais.
+
 ## [8.2.0] - 2026-08-18
 
 O modo roadmap deixou de ser um beco sem saída: quando o `/agente-00c`
@@ -6532,6 +6576,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.3.0]: https://github.com/JotJunior/cstk/releases/tag/v8.3.0
 [8.2.0]: https://github.com/JotJunior/cstk/releases/tag/v8.2.0
 [8.1.1]: https://github.com/JotJunior/cstk/releases/tag/v8.1.1
 [8.1.0]: https://github.com/JotJunior/cstk/releases/tag/v8.1.0

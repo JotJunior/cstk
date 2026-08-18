@@ -303,6 +303,15 @@ _is_internal_test() {
       # ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
       return 1 ;;
+    test_command-spawn-roadmap-wave.sh)
+      # Smoke textual sobre o ponto de entrada avulso /roadmap-wave (FASE 3
+      # task 3.1 de roadmap-wave), que reusa por referencia o fluxo de
+      # agente-00c.md §6.ter sem duplicar. Assert no .md, nao em um unico
+      # script — existence-guarded ao command portador
+      # (plugins/cstk/commands/roadmap-wave.md). Se a fonte sumir, volta a
+      # ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/roadmap-wave.md" ] && return 0
+      return 1 ;;
     test_command-prompt-noninteractive-lint.sh)
       # LINT DE CLASSE: varre plugins/cstk/commands/*.md exigindo clausula
       # de nao-interatividade em todo prompt ao operador. Assert textual

@@ -37,8 +37,20 @@
 # Premissa de confianca (contract §3.1): docs/roadmap.md, docs/specs e o
 # repositorio corrente sao do proprio operador (repo coordenador confiavel).
 # Paths recebidos por flag com componente ".." sao rejeitados (exit 2) como
-# defesa em profundidade, mesmo quando este script nao invoca `git -C`
-# diretamente sobre eles.
+# defesa em profundidade.
+#
+# ATENCAO — este script INVOCA `git -C "$EXCLUDE_ACTIVE_REPO" worktree list`
+# (ver a secao da guarda anti-duplicidade abaixo). `git -C` sobre um repo
+# hostil pode executar codigo via `.git/config` (ex.: `core.fsmonitor`),
+# entao a premissa de confianca acima NAO e decorativa: o path passado em
+# `--exclude-active-from-repo` deve ser do proprio operador.
+# RESOLVIDO (feature roadmap-wave, dec-031/dec-033, task 1.3):
+# `contracts/roadmap-frontier.md` §3.1 exige rejeitar tambem path que
+# "resolva para fora do repo coordenador" — alem da checagem sintatica de
+# ".." (`_rf_reject_dotdot`), `_rf_reject_outside_coordinator` (abaixo)
+# resolve o path real de `--exclude-active-from-repo` e confirma
+# contencao dentro da raiz do repo onde este script roda, ANTES de
+# qualquer `git -C` sobre o path nao-confiavel.
 #
 # Exit codes:
 #   0  sucesso (inclusive fronteira vazia — nao e erro)
@@ -84,8 +96,13 @@ Opcoes:
   -h, --help        Mostra esta ajuda
 
 Premissa de confianca: docs/roadmap.md, docs/specs e o repositorio corrente
-sao do proprio operador (repo coordenador confiavel). Paths com componente
-".." sao rejeitados (exit 2).
+sao do proprio operador (repo coordenador confiavel). Com
+--exclude-active-from-repo este script roda `git -C <PATH> worktree list`;
+`git -C` sobre repo hostil pode executar codigo via .git/config, entao NAO
+aponte a flag para repositorio de terceiros. Paths com componente
+".." sao rejeitados (exit 2); alem disso, --exclude-active-from-repo que
+resolva (path real, symlinks incluidos) para FORA da raiz do repo
+coordenador tambem e rejeitado (exit 2), antes de qualquer `git -C`.
 
 Exit codes: 0 sucesso (inclusive fronteira vazia); 1 roadmap ausente;
 2 uso incorreto; 3 roadmap presente mas invalido/ilegivel; 4 roadmap-status.sh
@@ -134,6 +151,41 @@ _rf_reject_dotdot() {
 _rf_reject_dotdot "--roadmap" "$ROADMAP"
 _rf_reject_dotdot "--specs-dir" "$SPECS_DIR"
 [ -z "$EXCLUDE_ACTIVE_REPO" ] || _rf_reject_dotdot "--exclude-active-from-repo" "$EXCLUDE_ACTIVE_REPO"
+
+# ==== Contencao tecnica REAL de path (dec-031/dec-033, feature
+# roadmap-wave, task 1.3; contract roadmap-wave-command.md §5.3 item 4,
+# contract roadmap-frontier.md §3.1) ====
+#
+# `_rf_reject_dotdot` acima so cobre a METADE sintatica (".."): um path
+# absoluto ou com symlink pode apontar para fora do repo coordenador sem
+# conter ".." algum. Esta checagem resolve o path REAL de
+# `--exclude-active-from-repo` (cd+`pwd -P`, POSIX puro, sem depender de
+# `realpath`/`readlink -f` GNU-only) e confirma que ele fica DENTRO da
+# raiz do repo coordenador — a arvore onde o proprio script roda
+# (`git rev-parse --show-toplevel` sobre o PWD, NUNCA sobre
+# EXCLUDE_ACTIVE_REPO: derivar a raiz confiavel exige nao tocar o path
+# nao-confiavel com git antes de valida-lo). Fora dela ⇒ exit 2, ANTES
+# de qualquer `git -C "$EXCLUDE_ACTIVE_REPO"` (linha ~232). Path
+# inexistente/nao resolvivel ou PWD fora de um repo git preserva o
+# comportamento pre-existente (nenhuma exclusao + aviso, best-effort,
+# tratado mais abaixo) — nao sao casos de seguranca, sao limitacoes
+# operacionais ja cobertas.
+_rf_reject_outside_coordinator() {
+  _rf_target=$1
+  _rf_real_target=$(cd "$_rf_target" 2>/dev/null && pwd -P) || return 0
+  command -v git >/dev/null 2>&1 || return 0
+  _rf_coord_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+
+  case "$_rf_real_target" in
+    "$_rf_coord_root"|"$_rf_coord_root"/*)
+      return 0 ;;
+  esac
+
+  printf '%s: --exclude-active-from-repo resolve para fora do repo coordenador (%s): %s\n' \
+    "$_RF_NAME" "$_rf_coord_root" "$_rf_target" >&2
+  exit 2
+}
+[ -z "$EXCLUDE_ACTIVE_REPO" ] || _rf_reject_outside_coordinator "$EXCLUDE_ACTIVE_REPO"
 
 [ -x "$_RF_STATUS_SCRIPT" ] || [ -f "$_RF_STATUS_SCRIPT" ] || {
   printf '%s: roadmap-status.sh nao encontrado no diretorio irmao: %s\n' \
