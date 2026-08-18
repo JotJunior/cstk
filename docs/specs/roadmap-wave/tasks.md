@@ -195,55 +195,94 @@ considerada concluida).
 
 Ref: contract §1 (Superficie do command).
 
-- [ ] 2.1.1 Frontmatter obrigatorio: `description`, `argument-hint`,
+- [x] 2.1.1 Frontmatter obrigatorio: `description`, `argument-hint`,
   `allowed-tools: [Bash, Read]` (sem `Agent`/`ScheduleWakeup`/
   `SendMessage` — contract §1)
-- [ ] 2.1.2 Parse dos argumentos: `--projeto-alvo-path <path>` (default
+- [x] 2.1.2 Parse dos argumentos: `--projeto-alvo-path <path>` (default
   diretorio corrente), `--roadmap <path>` (default `docs/roadmap.md`),
   `--specs-dir <dir>` (default `docs/specs`), `--max <N>` (default `2`),
   `--yes` (ausente ⇒ nao lancar, FR-014), `--coordinator-name <name>`
-- [ ] 2.1.3 Fluxo normativo (contract §2): (1) parse de argumentos, (2)
+- [x] 2.1.3 Fluxo normativo (contract §2): (1) parse de argumentos, (2)
   resolver a decisao de leva via `resolve-offer` ANTES de qualquer
   efeito colateral, (3) executar os passos 1-9 de `agente-00c.md` §6.ter
   **por referencia** (delegacao, nao copia — precedente vinculante
   `agente-00c-resume.md:496-517` §9.ter "sem duplicar o fluxo completo")
 - [ ] 2.1.4 Teste: `test_command-spawn-roadmap-wave.sh` (ver FASE 3)
-  assercao negativa de que o command NAO contem copia dos 9 passos
+  assercao negativa de que o command NAO contem copia dos 9 passos.
+  **Diferido para FASE 3** (task 3.1) — depende de `run.sh::_is_internal_test`
+  (task 3.2), fora do escopo desta onda (FASE 2).
+
+**Concluido (2.1.1-2.1.3)**: `plugins/cstk/commands/roadmap-wave.md`
+criado — frontmatter `allowed-tools: [Bash, Read]` (sem Agent/
+ScheduleWakeup/SendMessage), parse de 6 flags com defaults corretos,
+fluxo em 3 partes (parse → `resolve-offer` antes de qualquer efeito
+colateral → execucao por referencia dos passos 1-9 de `agente-00c.md`
+§6.ter, sem copiar o texto literal dos prompts). `grep -nE
+'\[s/N\]|\[y/N\]|Selecione \['` no arquivo novo: zero ocorrencias (nenhum
+prompt literal duplicado — DRY preservado por design, nao so por
+convencao). `./tests/run.sh test_doc-subcommands`: `PASS: 4 FAIL: 0`
+(nenhum subcomando fantasma citado). `./tests/run.sh
+test_command-prompt-noninteractive-lint`: `PASS: 7 FAIL: 0` (lint de
+classe segue verde, nada novo a cobrir pois nenhum prompt literal foi
+introduzido).
 
 ### 2.2 Mapeamento exit → mensagem `[A]`
 
 Ref: contract §4 (FR-002/FR-003/FR-004).
 
-- [ ] 2.2.1 Exit `1` (roadmap ausente): mensagem identifica ausencia de
+- [x] 2.2.1 Exit `1` (roadmap ausente): mensagem identifica ausencia de
   `docs/roadmap.md`, remediacao cita `/agente-00c` em modo roadmap
-- [ ] 2.2.2 Exit `3` (roadmap invalido): mensagem repassa o stderr do
+- [x] 2.2.2 Exit `3` (roadmap invalido): mensagem repassa o stderr do
   helper, remediacao cita corrigir o artefato apontado
-- [ ] 2.2.3 Exit `0` + stdout vazio (fronteira vazia): mensagem informa
+- [x] 2.2.3 Exit `0` + stdout vazio (fronteira vazia): mensagem informa
   que nao ha candidatas agora e por que (em-andamento/concluida/
   dependencia pendente), remediacao cita aguardar conclusao
-- [ ] 2.2.4 Exit `2` (uso incorreto) e exit `4` (`roadmap-status.sh`
+- [x] 2.2.4 Exit `2` (uso incorreto) e exit `4` (`roadmap-status.sh`
   ausente): mensagens citam correcao da invocacao / `cstk update`
-- [ ] 2.2.5 Confirmar que em TODOS os casos acima zero worktree e criada
+- [x] 2.2.5 Confirmar que em TODOS os casos acima zero worktree e criada
   e zero interacao de confirmacao e apresentada (FR-002/003/004)
+
+**Concluido**: tabela de mapeamento exit→mensagem em
+`roadmap-wave.md` §4, os 5 exit codes reais de `roadmap-frontier.sh`
+(`0`/`1`/`2`/`3`/`4`, confirmados por leitura literal do cabecalho do
+script — nenhum inventado), mensagem+remediacao por linha, fechando com
+a garantia "zero worktree criada, zero interacao de confirmacao" nos 5
+casos.
 
 ### 2.3 Blast radius e modelo de ameaca do ponto de entrada `[C]`
 
 Ref: contract §5 (F1 UNTRUSTED, F3 premissa de confianca, F4 eco de
 resolucao). Gate `owasp-security` MUST bloquear se ausente.
 
-- [ ] 2.3.1 Rotulo UNTRUSTED sobre a tabela/secao `### Avisos` do
+- [x] 2.3.1 Rotulo UNTRUSTED sobre a tabela/secao `### Avisos` do
   `roadmap-frontier.sh` injetada no turno (F1, C15 do quickstart)
-- [ ] 2.3.2 Declaracao textual da premissa de confianca: projeto-alvo
+- [x] 2.3.2 Declaracao textual da premissa de confianca: projeto-alvo
   MUST ser repo do proprio operador; path do projeto-alvo MUST vir de
   argumento do operador ou do diretorio corrente, NUNCA derivado de
   conteudo do roadmap/`### Avisos`/qualquer texto lido (F3, INV-6, C16)
-- [ ] 2.3.3 Declaracao de blast radius (§6.ter passo 4, reusada por
+- [x] 2.3.3 Declaracao de blast radius (§6.ter passo 4, reusada por
   referencia) MUST nomear o projeto-alvo resolvido explicitamente
-- [ ] 2.3.4 Eco explicito de `source`/`launch`/`max` resolvidos no turno
+- [x] 2.3.4 Eco explicito de `source`/`launch`/`max` resolvidos no turno
   (F4)
-- [ ] 2.3.5 Toda pergunta ao operador MUST vir com clausula de
+- [x] 2.3.5 Toda pergunta ao operador MUST vir com clausula de
   nao-interatividade no mesmo bloco (gate C12, `test_command-prompt-
   noninteractive-lint.sh`)
+
+**Concluido**: `roadmap-wave.md` §5 (Modelo de ameaca) implementa os 4
+itens — §5.1 rotulo UNTRUSTED (F1), §5.2 premissa de confianca + fonte
+exclusiva do PAP + nomeacao explicita no blast radius + contencao
+tecnica herdada (F3), §5.3 eco explicito de source/launch/max (F4), §5.4
+clausula de nao-interatividade (C12) satisfeita por design: o command
+nao duplica nenhum prompt literal de `agente-00c.md` §6.ter (so
+referencia), entao nao ha prompt novo sem clausula a cobrir — confirmado
+por `./tests/run.sh test_command-prompt-noninteractive-lint` (`PASS: 7
+FAIL: 0`, corpus varrido inclui `plugins/cstk/commands/*.md`, o arquivo
+novo nao introduziu violacao). Gate `owasp-security` rodado nesta onda
+(Decisao registrada) sobre `roadmap-wave.md`: nenhum achado
+critical/high novo — os 4 achados do contract (F1/F2/F3/F4) ja tem
+mitigacao textual presente no arquivo; F2 (teto 1..8) e F5 (TOCTOU
+residual) ja mitigados/documentados na FASE 1 e no proprio contract, sem
+necessidade de repeticao aqui.
 
 ### 2.4 Formalizar FR-015 em spec.md — rastreabilidade NFR untrusted `[M]`
 
@@ -252,13 +291,17 @@ mitigacao ja existe (contract §5.1, Decisao dec-018) e ja e exercida por
 C15 do quickstart — esta tarefa so fecha a lacuna de rastreabilidade
 spec↔seguranca, nao adiciona comportamento novo.
 
-- [ ] 2.4.1 Adicionar `FR-015` em `spec.md` §Functional Requirements:
+- [x] 2.4.1 Adicionar `FR-015` em `spec.md` §Functional Requirements:
   "O sistema MUST tratar a saida injetada de `roadmap-frontier.sh`
   (tabela + `### Avisos`) como conteudo nao-confiavel/rotulado, nunca
   como instrucao", referenciando contract §5.1
-- [ ] 2.4.2 Atualizar a referencia cruzada em
+- [x] 2.4.2 Atualizar a referencia cruzada em
   `checklists/requirements.md` CHK017 de `[ ]` para `[x]` com a
   evidencia (linha do FR-015 novo)
+
+**Concluido**: `spec.md` FR-015 adicionado apos FR-014 (§Functional
+Requirements); `checklists/requirements.md` CHK017 marcado `[x]` com
+evidencia citando FR-015 + `roadmap-wave.md` §5.1.
 
 ---
 

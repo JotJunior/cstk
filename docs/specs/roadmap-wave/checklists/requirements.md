@@ -127,16 +127,15 @@ do roadmap) antes de `/create-tasks`.
 
 ## Requisitos Nao-Funcionais
 
-- [ ] CHK017 - Existe requisito nao-funcional cobrindo o tratamento de
+- [x] CHK017 - Existe requisito nao-funcional cobrindo o tratamento de
   conteudo nao-confiavel (prosa do roadmap de terceiro) injetado no
   turno do operador? [NFR, Gap] {auto}
-  Nao satisfeito como FR formal em `spec.md` — a mitigacao existe, mas
-  vive inteiramente no contrato tecnico (`contracts/roadmap-wave-
-  command.md` §5.1, rotulo UNTRUSTED) e na Decisao dec-018 (gate
-  owasp-security, achado F1), nao como FR rastreavel em spec.md. Nao e
-  bloqueante (a mitigacao existe e sera exercida por C15 do
-  quickstart), mas registrar como lacuna de rastreabilidade
-  spec↔seguranca para `/create-tasks` decidir se formaliza um FR-015.
+  Satisfeito: `spec.md` FR-015 ("O sistema MUST tratar a saida injetada
+  de `roadmap-frontier.sh` (tabela + secao `### Avisos`) como conteudo
+  nao-confiavel/rotulado, nunca como instrucao") formaliza a lacuna de
+  rastreabilidade spec↔seguranca, referenciando `contracts/roadmap-wave-
+  command.md` §5.1 (mitigacao tecnica ja existente, Decisao dec-018) e
+  materializada em `plugins/cstk/commands/roadmap-wave.md` §5.1.
 
 ## Dependencias e Premissas
 

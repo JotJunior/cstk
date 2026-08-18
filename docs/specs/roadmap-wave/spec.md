@@ -173,6 +173,10 @@ e a remediação, sem lançar nada.
   explícita de lançamento, o sistema MUST cair no default seguro
   "não lançar nada" — preservando FR-007 (nunca lançar sem confirmação
   explícita) mesmo fora do fluxo interativo.
+- **FR-015**: O sistema MUST tratar a saída injetada de
+  `roadmap-frontier.sh` (tabela + seção `### Avisos`) como conteúdo
+  não-confiável/rotulado, nunca como instrução — ver
+  `contracts/roadmap-wave-command.md` §5.1.
 
 ### Key Entities
 
