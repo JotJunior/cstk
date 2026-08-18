@@ -37,8 +37,18 @@
 # Premissa de confianca (contract §3.1): docs/roadmap.md, docs/specs e o
 # repositorio corrente sao do proprio operador (repo coordenador confiavel).
 # Paths recebidos por flag com componente ".." sao rejeitados (exit 2) como
-# defesa em profundidade, mesmo quando este script nao invoca `git -C`
-# diretamente sobre eles.
+# defesa em profundidade.
+#
+# ATENCAO — este script INVOCA `git -C "$EXCLUDE_ACTIVE_REPO" worktree list`
+# (ver a secao da guarda anti-duplicidade abaixo). `git -C` sobre um repo
+# hostil pode executar codigo via `.git/config` (ex.: `core.fsmonitor`),
+# entao a premissa de confianca acima NAO e decorativa: o path passado em
+# `--exclude-active-from-repo` deve ser do proprio operador.
+# DIVERGENCIA CONHECIDA (v8.2.0): `contracts/roadmap-frontier.md` §3.1 exige
+# rejeitar tambem path que "resolva para fora do repo coordenador" — hoje so
+# a checagem sintatica de ".." esta implementada. A contencao real entra com
+# a feature `roadmap-wave` (que torna o alvo um argumento de rotina); ate la,
+# este comentario e a unica declaracao honesta do estado do codigo.
 #
 # Exit codes:
 #   0  sucesso (inclusive fronteira vazia — nao e erro)
@@ -84,7 +94,10 @@ Opcoes:
   -h, --help        Mostra esta ajuda
 
 Premissa de confianca: docs/roadmap.md, docs/specs e o repositorio corrente
-sao do proprio operador (repo coordenador confiavel). Paths com componente
+sao do proprio operador (repo coordenador confiavel). Com
+--exclude-active-from-repo este script roda `git -C <PATH> worktree list`;
+`git -C` sobre repo hostil pode executar codigo via .git/config, entao NAO
+aponte a flag para repositorio de terceiros. Paths com componente
 ".." sao rejeitados (exit 2).
 
 Exit codes: 0 sucesso (inclusive fronteira vazia); 1 roadmap ausente;
