@@ -679,10 +679,48 @@ if [ -n "$_optin_mcpjson_pre" ] && cstk mcp status --state-dir "$AGENTE_00C_STAT
 fi
 if [ "$_optin_probe_rc" -eq 0 ]; then
   _optin_token=$(jq -r '.session_id // ""' "$AGENTE_00C_STATE_DIR/mcp-server.json" 2>/dev/null) || _optin_token=""
-  [ -n "$_optin_token" ] && _optin_branch="estruturado"
+  [ -n "$_optin_token" ] && _optin_branch="candidato"
 fi
+# Bugfix 8.3.1 — o token cunhado por `cstk mcp start` NAO prova que a tool
+# existe no harness DESTA sessao (caso real no /agente-00c: `/mcp` mostrava
+# `cstk-state · connected · no tools` — launcher em modo IDLE por Node/npm/
+# build — e o pai declarava "estruturado", queimava a onda-001 e so entao
+# caia na prosa; mesma logica aqui). O ramo estruturado exige DUAS
+# confirmacoes alem do token:
+#   (b) preflight do launcher — explica ao operador o motivo do IDLE;
+#   (c) a tool visivel no SEU toolset — unica prova real (cobre tambem
+#       sessao bootada antes do .mcp.json e servidor de projeto nao
+#       aprovado, que nenhum probe de disco enxerga).
+_optin_preflight=""
+if [ "$_optin_branch" = "candidato" ]; then
+  _optin_preflight=$(mcp-launch.sh preflight 2>/dev/null) || :
+  case "$_optin_preflight" in
+    ready\|*) : ;;                       # servidor real serviria as tools
+    *)        _optin_branch="legado" ;;  # `idle|<motivo>` ou helper ausente
+  esac
+fi
+# Se _optin_branch = "candidato" apos o preflight, aplique a confirmacao (c)
+# VOCE MESMO, sem script: mcp__cstk-state__collect_optins consta entre as
+# tools desta sessao (carregada ou deferred)? Em duvida, ToolSearch com
+# `select:mcp__cstk-state__collect_optins` — resultado sem a tool = ausente.
+# Presente => _optin_branch="estruturado". Ausente => _optin_branch="legado".
+# .mcp.json presente, `cstk mcp status`/`start` OK e ate preflight=ready NAO
+# substituem esta checagem (o .mcp.json e lido no boot da sessao; a
+# aprovacao do servidor de projeto e do operador). Nunca chame a tool "para
+# testar" — a chamada real e o primeiro ato do orquestrador.
+#
 # _optin_branch = "legado": siga o prompt de prosa abaixo exatamente como
 #   hoje (byte-a-byte, FR-005) — nenhuma mencao ao MCP.
+#   Excecao unica (bugfix 8.3.1): se o token FOI cunhado (_optin_token
+#   nao-vazio) e o ramo caiu para legado por (b) ou (c), imprima ANTES do
+#   prompt UMA linha de diagnostico ao operador — ele registrou o .mcp.json
+#   de proposito e precisa saber por que o formulario nao vem:
+#   `MCP cstk-state: servidor registrado, mas sem tools nesta sessao
+#   (<motivo>) — opt-ins seguem por prosa; a onda usa Bash.` onde <motivo> e
+#   o texto apos `idle|` do preflight, ou, com preflight=ready, `tool
+#   collect_optins nao visivel no toolset — sessao bootada antes do
+#   .mcp.json ou servidor de projeto nao aprovado; reinicie a sessao /
+#   aprove em /mcp`. O prompt em si permanece byte-a-byte.
 # _optin_branch = "estruturado": pule o prompt de prosa abaixo por
 #   completo — _atomic permanece NAO-DEFINIDO; a flag --atomic-commit do
 #   init (mais abaixo) e OMITIDA; a captura acontece via collect_optins
@@ -848,6 +886,12 @@ fi
 >   Neste caso `_optin_branch` ja e `"legado"` por construcao (mesmo
 >   `_mcp_token` testado na decisao de ramo acima) — o opt-in ja foi
 >   capturado por prosa ANTES do init; nada pendente para o orquestrador.
+> - `_mcp_token` NAO-vazio **com** `_optin_branch = "legado"` (bugfix 8.3.1:
+>   token cunhado, mas preflight `idle` ou tool ausente no toolset) ⇒ injete
+>   a linha do token normalmente (o orquestrador decide MCP-vs-Bash tool a
+>   tool) e **NAO** injete a linha do ramo estruturado — o opt-in ja foi
+>   capturado por prosa e persistido em 3.ter. O discriminador do
+>   orquestrador (3.bis) e a PRESENCA dessa linha, nunca o token.
 > - O token NUNCA e ecoado em stdout/stderr/logs do command — vive apenas
 >   no descritor (`chmod 600`) e no prompt do spawn (SEC-H3: roteamento por
 >   capacidade, nunca por precedencia).
@@ -921,9 +965,16 @@ _last=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" \
   --field '[.optin_responses[]? | select(.field == "atomic_commit")] | last // {}')
 _last_ch=$(printf '%s' "$_last" | jq -r '.channel // ""')
 _last_out=$(printf '%s' "$_last" | jq -r '.outcome // ""')
+# Bugfix 8.3.1: campo SEM NENHUM registro apos o primeiro spawn tambem e
+# degradacao — a tool nem chegou a rodar (nao visivel no toolset do
+# subagente, servidor IDLE, ...) e ninguem escreve nada nesse caso. So
+# conta quando NENHUMA onda abriu (o guard M4/I-2 impede abrir onda sem
+# registro, entao onda aberta prova captura por outro caminho).
+_waves_n=$(state-rw.sh get --state-dir "$AGENTE_00C_STATE_DIR" --field '.waves | length' 2>/dev/null) || _waves_n=0
 _optin_degraded="false"
 case "$_last_ch:$_last_out" in
   structured:unavailable|structured:failed) _optin_degraded="true" ;;
+  :) [ "${_waves_n:-0}" -eq 0 ] && _optin_degraded="true" ;;
 esac
 ```
 

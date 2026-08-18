@@ -166,12 +166,17 @@ pelo servidor MCP de estado (`mcp/state-server/src/session/resolve.ts`) e
 pelo `mcp-launch.sh` (abaixo).
 
 `mcp-launch.sh` e o comando registrado em `.mcp.json` (via `cstk mcp
-install`) que o Claude Code invoca ao conectar ao servidor MCP `cstk-state`:
-resolve a sessao ativa do projeto-alvo (delegando a `mcp-session.sh
-resolve`) e, se `mode=docker`, faz `docker exec -i` attach ao container
-ja rodando (subido por `cstk mcp start`); nunca sobe um container novo.
-Sessao `bash-fallback`, token ausente/invalido, ou Docker indisponivel ⇒
-exit 3 sem tentar `docker exec` (mesmo padrao fail-closed do resolve).
+install`) que o Claude Code invoca ao conectar ao servidor MCP `cstk-state`.
+Desde o cutover `mcp-direct-transport` (v8.0.0) ele faz `exec node
+dist/src/index.js` direto (build lazy via `mcp-build-lazy.sh`; a sessao e
+resolvida por chamada pelo token). Quando o processo real NAO pode subir
+(Node < 22/ausente, build lazy falhou), serve um stub IDLE com 0 tools —
+no `/mcp` aparece `connected · no tools`. `mcp-launch.sh preflight`
+(bugfix 8.3.1) reproduz as mesmas checagens sem servir nem buildar e
+imprime `ready|<entrypoint>` (exit 0) ou `idle|<motivo>` (exit 3); os
+commands `/agente-00c` e `/feature-00c` o usam para decidir o ramo de
+opt-ins e explicar o IDLE ao operador — a prova final de que a tool existe
+segue sendo o toolset do proprio command pai.
 
 Ambos POSIX puros + `jq`, seguem a mesma convencao `--state-dir` do resto
 do runtime. Detalhes completos: `docs/specs/state-mcp-server/`

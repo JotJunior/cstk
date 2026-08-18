@@ -50,8 +50,10 @@
 # exit != 0 faria o harness reportar "Failed to reconnect to cstk-state:
 # -32000" em toda sessao normal — em vez disso, servimos o stub idle com
 # motivo explicito em stderr; o `/mcp` mostra o servidor conectado, sem
-# erro, e o command pai segue decidindo (via `cstk mcp status`) se a onda
-# usa o caminho MCP ou o Bash.
+# erro (`connected · no tools`), e o command pai decide se a onda usa o
+# caminho MCP ou o Bash olhando o PROPRIO toolset (tool visivel?) — nunca
+# so por `cstk mcp status`/token, que nao enxergam o modo IDLE (bugfix
+# 8.3.1; `mcp-launch.sh preflight` explica o motivo ao operador).
 #
 # `exec node <entrypoint>` substitui o PROCESSO deste script (nao um
 # subshell/fork em background) — o processo do servidor MORRE junto com
@@ -63,12 +65,37 @@
 # POSIX sh puro. Deps: node (>=22), npm (so no caminho de build), o
 # proprio mcp-build-lazy.sh (script irmao).
 #
+# Uso:
+#   mcp-launch.sh              # entrypoint stdio (registrado no .mcp.json)
+#   mcp-launch.sh preflight    # diagnostico READ-ONLY (bugfix 8.3.1)
+#
+# `preflight` (bugfix 8.3.1 — caso real: `/mcp` mostrava `cstk-state ·
+# connected · no tools` e o command pai, decidindo o ramo de opt-ins so pelo
+# token cunhado por `cstk mcp start`, declarava "estruturado" e queimava a
+# onda-001 antes de cair na prosa): reproduz EXATAMENTE as mesmas checagens
+# 1-3 do boot, sem `exec node`, sem rodar o build (nunca dispara `npm`), e
+# reporta numa linha em stdout se ESTE launcher serviria o servidor real ou
+# o stub IDLE (0 tools) nesta maquina:
+#   `ready|<entrypoint>`   exit 0  — o boot serviria as tools reais
+#   `idle|<motivo>`        exit 3  — o boot serviria o stub IDLE (0 tools);
+#                                    <motivo> e o MESMO texto que o boot
+#                                    escreve em stderr, para o operador
+#                                    corrigir a causa
+# NAO prova que o harness desta sessao carregou o servidor (o `.mcp.json`
+# e lido no boot da sessao; aprovacao do servidor de projeto e do
+# operador) — quem decide "a tool esta visivel?" e o proprio command pai,
+# olhando o proprio toolset. O preflight so explica o caso "conectado sem
+# tools".
+#
 # Exit codes:
 #   0  modo IDLE encerrado por EOF do harness (sessao fechou), ou node
 #      encerrado normalmente (nao deveria acontecer via exec, mas o
-#      codigo de saida do exec e propagado se acontecer)
+#      codigo de saida do exec e propagado se acontecer); ou `preflight`
+#      concluiu `ready`
 #   1  falha de MECANISMO barulhenta (mcp-build-lazy.sh/jq ausentes no
 #      idle, `node` desaparece do PATH entre o preflight e o exec)
+#   2  uso incorreto (argumento desconhecido)
+#   3  `preflight` concluiu `idle|<motivo>`
 
 set -eu
 
@@ -77,6 +104,31 @@ _ML_NAME="mcp-launch"
 _ml_die() {
   printf '%s: %s\n' "$_ML_NAME" "$1" >&2
   exit "${2:-1}"
+}
+
+# Modo de operacao: "serve" (default, entrypoint stdio do harness) ou
+# "preflight" (diagnostico read-only). Qualquer outro argumento e uso
+# incorreto — o harness invoca SEM argumentos, entao nada quebra no boot.
+_ml_mode="serve"
+case "${1:-}" in
+  "") ;;
+  preflight) _ml_mode="preflight" ;;
+  -h|--help)
+    printf 'uso: %s.sh [preflight]\n' "$_ML_NAME"
+    exit 0
+    ;;
+  *) _ml_die "argumento desconhecido: $1 (aceito: preflight)" 2 ;;
+esac
+
+# _ml_unavailable MOTIVO — sink unico das causas de "servidor real nao pode
+# subir". Em modo serve vira o stub IDLE (abaixo); em modo preflight vira a
+# linha `idle|<motivo>` em stdout + exit 3, SEM servir nada.
+_ml_unavailable() {
+  if [ "$_ml_mode" = "preflight" ]; then
+    printf 'idle|%s\n' "$1"
+    exit 3
+  fi
+  _ml_idle_serve "$1"
 }
 
 # Stub MCP idle: JSON-RPC newline-delimited (framing VERIFICADO em
@@ -139,7 +191,7 @@ _ml_project_path="${CSTK_MCP_PROJECT_PATH:-$(pwd)}"
 _ml_state_server_dir="${CSTK_MCP_STATE_SERVER_DIR:-${HOME:-}/.claude/mcp/state-server}"
 
 if [ ! -d "$_ml_state_server_dir" ] || [ ! -f "$_ml_state_server_dir/package.json" ]; then
-  _ml_idle_serve "mcp/state-server nao instalado em $_ml_state_server_dir (rode: cstk install)"
+  _ml_unavailable "mcp/state-server nao instalado em $_ml_state_server_dir (rode: cstk install)"
 fi
 
 # Preflight de Node (L-6, mesmo padrao de cli/lib/serve.sh
@@ -166,10 +218,10 @@ _ml_node_major() {
 }
 
 if ! _ml_major=$(_ml_node_major); then
-  _ml_idle_serve "node nao encontrado no PATH (servidor MCP requer Node >= $_ML_MIN_NODE_MAJOR)"
+  _ml_unavailable "node nao encontrado no PATH (servidor MCP requer Node >= $_ML_MIN_NODE_MAJOR)"
 fi
 if [ "$_ml_major" -lt "$_ML_MIN_NODE_MAJOR" ]; then
-  _ml_idle_serve "Node $_ml_major detectado; servidor MCP requer Node >= $_ML_MIN_NODE_MAJOR"
+  _ml_unavailable "Node $_ml_major detectado; servidor MCP requer Node >= $_ML_MIN_NODE_MAJOR"
 fi
 
 # Build lazy (L-4): idempotente — no-op imediato se dist/src/index.js ja
@@ -179,7 +231,30 @@ fi
 # sessao do harness.
 _ml_build_lazy_sh="$_ml_script_dir/mcp-build-lazy.sh"
 if [ ! -x "$_ml_build_lazy_sh" ]; then
-  _ml_idle_serve "mcp-build-lazy.sh nao encontrado/sem permissao de execucao em $_ml_script_dir"
+  _ml_unavailable "mcp-build-lazy.sh nao encontrado/sem permissao de execucao em $_ml_script_dir"
+fi
+
+# preflight NUNCA dispara o build (npm ci/npm run build podem demorar ou
+# pendurar sem rede): o boot do harness ja rodou o `ensure` real ao subir a
+# sessao — se o entrypoint NAO existe agora, o build falhou (ou nunca rodou
+# nesta maquina), e e isso que o motivo reporta. Diagnostico refinado
+# read-only para as causas mais comuns (mesmos pre-requisitos que
+# mcp-build-lazy.sh exige, sem executa-los).
+if [ "$_ml_mode" = "preflight" ]; then
+  _ml_pf_entry="$_ml_state_server_dir/dist/src/index.js"
+  if [ ! -f "$_ml_pf_entry" ]; then
+    _ml_pf_why="dist/src/index.js ausente em $_ml_state_server_dir — build lazy nao concluiu nesta maquina"
+    if [ ! -f "$_ml_state_server_dir/package-lock.json" ]; then
+      _ml_pf_why="$_ml_pf_why (package-lock.json ausente; rode: cstk install)"
+    elif ! command -v npm >/dev/null 2>&1; then
+      _ml_pf_why="$_ml_pf_why (npm nao encontrado no PATH)"
+    else
+      _ml_pf_why="$_ml_pf_why (npm ci/npm run build falharam ou nunca rodaram — ver stderr do launcher; causa tipica: sem acesso ao registry npm)"
+    fi
+    _ml_unavailable "$_ml_pf_why"
+  fi
+  printf 'ready|%s\n' "$_ml_pf_entry"
+  exit 0
 fi
 
 if _ml_entrypoint=$("$_ml_build_lazy_sh" ensure --dir "$_ml_state_server_dir"); then
@@ -189,7 +264,7 @@ else
 fi
 
 if [ "$_ml_build_rc" -ne 0 ] || [ -z "$_ml_entrypoint" ] || [ ! -f "$_ml_entrypoint" ]; then
-  _ml_idle_serve "build lazy do servidor MCP falhou (exit ${_ml_build_rc}) — ver mensagem acima em stderr"
+  _ml_unavailable "build lazy do servidor MCP falhou (exit ${_ml_build_rc}) — ver mensagem acima em stderr"
 fi
 
 # exec: substitui este processo pelo processo node real — o stdio do
