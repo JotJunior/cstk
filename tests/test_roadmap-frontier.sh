@@ -317,6 +317,10 @@ scenario_exclude_active_from_repo_worktree_ativa_bloqueia() {
   (
     cd "$_repo" || exit 1
     git init -q .
+    # Identidade LOCAL: o runner de CI nao tem ~/.gitconfig (ver
+    # test_commit-mode.sh / test_state-rw.sh).
+    git config user.email "test@test.local"
+    git config user.name "cstk test"
     git commit -q --allow-empty -m init
     git branch feature-ativa
     git worktree add -q "../repo-guarda-feature-ativa" feature-ativa
@@ -341,6 +345,10 @@ scenario_exclude_active_from_repo_worktree_encerrada_libera() {
   (
     cd "$_repo" || exit 1
     git init -q .
+    # Identidade LOCAL: o runner de CI nao tem ~/.gitconfig (ver
+    # test_commit-mode.sh / test_state-rw.sh).
+    git config user.email "test@test.local"
+    git config user.name "cstk test"
     git commit -q --allow-empty -m init
   ) || { _fail "setup git falhou" ""; return 2; }
 
