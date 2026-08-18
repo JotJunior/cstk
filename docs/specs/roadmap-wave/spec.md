@@ -4,6 +4,14 @@
 **Created**: 2026-08-18
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-18
+
+- Q: O ponto de entrada exige que o projeto tenha briefing e constitution ratificados antes de oferecer a leva (mesma pré-condição que as features-filhas exigem para sua própria pipeline individual), ou basta o roadmap existir e ser válido? → A: Basta o roadmap (`docs/roadmap.md`) existir e ser válido. `docs/roadmap.md` só é produzido tardiamente por `/agente-00c`, etapa que já pressupõe briefing+constitution ratificados; a existência de um roadmap válido já é prova indireta da pré-condição. Cada feature-filha lançada roda seu próprio `/feature-00c`, que reaplica sua própria pré-condição individualmente antes de avançar de specify para plan — checagem redundante no ponto de entrada não reduz risco novo.
+- Q: O ponto de entrada opera sempre sobre o projeto corrente (diretório de trabalho), ou o operador pode apontar explicitamente para outro projeto-alvo ao invocá-lo? → A: Ambos. Default é o diretório de trabalho corrente; o operador MAY apontar explicitamente para outro projeto-alvo via parâmetro de path, reaproveitando o mecanismo já existente nos helpers subjacentes (`roadmap-frontier.sh --exclude-active-from-repo PATH`/`--roadmap PATH`/`--specs-dir DIR`, `parallel-launch.sh emit --repo PATH`).
+- Q: Além do fluxo interativo (perguntar e aguardar confirmação), existe um modo não-interativo/automatizável para este ponto de entrada — e, se sim, o teto de quantas features lançar por leva pode ser informado explicitamente em vez de usar sempre o default? → A: Sim. O ponto de entrada MUST suportar um modo não-interativo, em paridade com os demais opt-ins da mesma pipeline (atomic_commit/roadmap_mode/delivery_tier): o teto pode ser informado explicitamente via parâmetro (default continua 2, mesmo default já estabelecido em `agente-00c.md` §6.ter passo 5); ausência de confirmação explícita de lançamento em modo não-interativo cai no default seguro "não lançar" (preserva FR-007 — nunca lançar sem confirmação explícita).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Reoferecer a leva paralela para um roadmap já existente (Priority: P1)
@@ -108,9 +116,18 @@ e a remediação, sem lançar nada.
 ### Functional Requirements
 
 - **FR-001**: O sistema MUST oferecer, mediante invocação explícita do
-  operador, o cálculo da fronteira de features do roadmap do projeto
-  corrente que estão prontas para começar (sem dependência pendente,
+  operador, o cálculo da fronteira de features do roadmap do
+  projeto-alvo (default: diretório de trabalho corrente; MAY ser
+  apontado explicitamente para outro projeto-alvo via parâmetro de
+  path) que estão prontas para começar (sem dependência pendente,
   ainda não iniciadas e sem execução ativa em andamento).
+- **FR-001A**: O sistema MUST considerar suficiente, como pré-condição
+  para oferecer a leva, que `docs/roadmap.md` do projeto-alvo exista e
+  seja válido — o sistema MUST NOT exigir checagem própria de
+  briefing/constitution ratificados no ponto de entrada (a validade do
+  roadmap já pressupõe pipeline avançada o bastante para produzi-lo; a
+  pré-condição individual de cada feature-filha é reaplicada pelo seu
+  próprio `/feature-00c`).
 - **FR-002**: O sistema MUST recusar a oferta com uma mensagem
   específica e uma remediação concreta quando o projeto não possui
   roadmap ratificado.
@@ -145,6 +162,17 @@ e a remediação, sem lançar nada.
 - **FR-011**: O sistema MUST informar ao operador, ao final do
   lançamento, quais features foram de fato lançadas em ambiente
   isolado e quais não foram (e por quê).
+- **FR-012**: O sistema MUST suportar um modo não-interativo/
+  automatizável para este ponto de entrada, em paridade com os demais
+  opt-ins da mesma pipeline (atomic_commit/roadmap_mode/delivery_tier).
+- **FR-013**: Em modo não-interativo, o sistema MUST permitir que o
+  operador informe explicitamente, via parâmetro, o teto de quantas
+  features lançar por leva — na ausência do parâmetro, o teto default
+  (2, mesmo valor do fluxo interativo) MUST ser usado.
+- **FR-014**: Em modo não-interativo, na ausência de confirmação
+  explícita de lançamento, o sistema MUST cair no default seguro
+  "não lançar nada" — preservando FR-007 (nunca lançar sem confirmação
+  explícita) mesmo fora do fluxo interativo.
 
 ### Key Entities
 
@@ -167,21 +195,6 @@ e a remediação, sem lançar nada.
 > mecanismo de cálculo de fronteira, oferta e lançamento isolado já
 > existentes; não introduz scheduling, criptografia, refresh de token
 > externo, mutex multi-processo nem backup novos).
-
-[NEEDS CLARIFICATION: o ponto de entrada exige que o projeto tenha
-briefing e constitution ratificados antes de oferecer a leva (mesma
-pré-condição que as features-filhas exigem para sua própria pipeline
-individual), ou basta o roadmap existir e ser válido?]
-
-[NEEDS CLARIFICATION: o ponto de entrada opera sempre sobre o projeto
-corrente (diretório de trabalho), ou o operador pode apontar
-explicitamente para outro projeto-alvo ao invocá-lo?]
-
-[NEEDS CLARIFICATION: além do fluxo interativo (perguntar e aguardar
-confirmação), existe um modo não-interativo/automatizável para este
-ponto de entrada — e, se sim, o teto de quantas features lançar por
-leva pode ser informado explicitamente em vez de usar sempre o
-default?]
 
 ## Success Criteria
 
