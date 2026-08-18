@@ -218,6 +218,13 @@ roadmap difere apenas na fase terminal (`roadmap` em vez de
 reagendamento. Isso ja e a regra vigente da tabela de decisao do
 orquestrador; nenhuma mudanca e necessaria ali.
 
+> **Nota (feature `roadmap-parallel-launch`, 8.2.0)**: "a execucao para" vale
+> para a EXECUCAO 00c. A sessao do command pai NAO para: com
+> `termination_reason=concluido_roadmap` promovido por esta sequencia, o
+> `/agente-00c` (`§6.ter`) computa a fronteira do DAG e oferece uma leva
+> paralela de features. Este contrato nao muda; o gatilho e consumido a
+> jusante — ver `docs/specs/roadmap-parallel-launch/contracts/parallel-launch.md` §2.
+
 ### 5.1 Ordem obrigatoria: `finalize` ANTES da promocao terminal (MUST)
 
 Sob modo atomic-commit, o hook de finalize (push + PR) MUST rodar

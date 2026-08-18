@@ -266,6 +266,14 @@ _is_internal_test() {
       # ser orfao real.
       [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
       return 1 ;;
+    test_command-spawn-parallel-launch.sh)
+      # Smoke textual sobre a oferta de leva paralela pos-roadmap (FASE 2
+      # tasks 2.8/2.9 de roadmap-parallel-launch) embutida em
+      # agente-00c.md §6.ter / agente-00c-resume.md §9.ter. Assert no .md,
+      # nao em um unico script — existence-guarded aos 2 commands
+      # portadores da oferta. Se a fonte sumir, volta a ser orfao real.
+      [ -f "$REPO_ROOT/plugins/cstk/commands/agente-00c.md" ] && return 0
+      return 1 ;;
     test_command-spawn-delivery-tier.sh)
       # Smoke textual sobre o prompt de finalidade (tier de entrega) em
       # plugins/cstk/commands/agente-00c.md + leitura sem re-prompt em

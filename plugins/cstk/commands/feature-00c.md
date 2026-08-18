@@ -8,6 +8,7 @@ allowed-tools:
   - Bash
   - Glob
   - ScheduleWakeup
+  - SendMessage
 ---
 
 # /feature-00c
@@ -1055,6 +1056,63 @@ case "$_status_final" in
     ;;
 esac
 ```
+
+### 5.quater Notificacao de leva paralela a sessao coordenadora (US2 — FR-008/FR-015, `roadmap-parallel-launch`)
+
+Best-effort, roda apos 5.ter, ANTES do cleanup (passo 6). Fecha o lado
+EMISSOR do contrato `docs/specs/roadmap-parallel-launch/contracts/parallel-launch.md`
+§6. Esta secao **so** produz efeito quando esta sessao alcancou um estado
+terminal notificavel — as mesmas 3 transicoes cobertas pelo enum de
+`.execution.status` (**REAL**,
+`plugins/cstk/skills/agente-00c-runtime/scripts/state-validate.sh:250`):
+`concluida`, `abortada`, `aguardando_humano`. `em_andamento` NUNCA notifica.
+
+**Achado grounded (nao redundante com §6.ter do `agente-00c.md`)**: o
+`parallel-launch.sh emit --coordinator-name` (contract §4) valida o nome
+mas **deliberadamente nunca o injeta** na composicao do comando emitido —
+confirmado por `tests/test_parallel-launch.sh::
+scenario_emit_coordinator_name_valido_nao_altera_composicao`
+(`assert_stdout_not_contains "cstk-coord/..."`). Esta sessao-filha, portanto,
+**nao recebe** o nome da coordenadora via prompt de lancamento. O
+endereçamento e por **CONVENCAO**: a coordenadora que lanca uma leva so
+recebe notificacoes se tiver sido nomeada `cstk-coord/<nome-do-repo>` (o
+operador ja e avisado disso em `agente-00c.md` §6.ter passo 7). A
+sessao-filha deriva o MESMO `<nome-do-repo>` que a coordenadora usaria,
+pela mesma tecnica de `cli/lib/session.sh::_session_resolve_repo`
+(linhas 181-193): resolver `git rev-parse --git-common-dir` para o path
+absoluto do repositorio principal (funciona de qualquer worktree, inclusive
+a worktree isolada desta sessao-filha) e tomar o `basename`.
+
+```bash
+case "$_status_final" in
+  concluida|abortada|aguardando_humano)
+    _gcd=$(git -C "$_proj" rev-parse --git-common-dir 2>/dev/null) || _gcd=""
+    _repo_name=""
+    if [ -n "$_gcd" ]; then
+      _main_repo=$(cd -- "$_proj/$(dirname -- "$_gcd")" 2>/dev/null && pwd -P) || _main_repo=""
+      [ -n "$_main_repo" ] && _repo_name=$(basename -- "$_main_repo")
+    fi
+    if [ -n "$_repo_name" ]; then
+      _notify_payload="[cstk-parallel] feature=$SHORT outcome=$_status_final repo=$_repo_name"
+      _notify_target="cstk-coord/$_repo_name"
+      # invoque a tool SendMessage enderecada a $_notify_target com o
+      # payload $_notify_payload — BEST-EFFORT (FR-015): sessao
+      # coordenadora inexistente, sem nome conhecido, ou qualquer erro da
+      # tool NUNCA bloqueia nem altera o ciclo de vida desta sessao-filha;
+      # apenas log local (best-effort, nunca aborta o cleanup).
+    fi
+    ;;
+esac
+```
+
+Regras duras (contract §6):
+- **Imediato**: dispara no instante em que o estado terminal e alcancado
+  nesta mesma onda de fechamento — sem intervalo/timeout configuravel.
+- **Best-effort (FR-015)**: falha de envio, coordenadora inexistente, ou
+  ausencia de confirmacao de entrega MUST NOT impedir o passo 6 (Cleanup)
+  de rodar normalmente.
+- Esta sessao-filha **nunca** calcula fronteira, nunca oferece leva, nunca
+  lanca outra sessao (FR-012) — a notificacao e puramente informativa.
 
 ### 6. Cleanup
 

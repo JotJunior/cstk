@@ -16,6 +16,10 @@ Fontes (extraídas, sem invenção):
 
 Pipeline completo: `briefing → constitution → specify → clarify → plan →
 checklist → create-tasks → execute-task → review-task → review-features`.
+Em **modo roadmap** (opt-in no início) a cadeia é `briefing → constitution
+→ roadmap` e a execução termina em `concluido_roadmap`; a partir daí o
+**command pai** (não o orquestrador) oferece a leva paralela de features
+(§6.ter, feature `roadmap-parallel-launch`) — ver nó `parallelWave` abaixo.
 
 ```mermaid
 flowchart TD
@@ -39,7 +43,7 @@ flowchart TD
         rb --> p5["P5: avanca UMA etapa = invoca Skill<br/>+ state-ondas record-skill"]
 
         p5 --> stageKind{Qual etapa?}
-        stageKind -->|"briefing / constitution<br/>specify / plan / checklist<br/>create-tasks / execute-task<br/>review-task / review-features"| p5done["skill retorna = MEIO da onda<br/>(NAO encerra)"]
+        stageKind -->|"briefing / constitution<br/>specify / plan / checklist<br/>create-tasks / execute-task<br/>review-task / review-features<br/>roadmap (modo roadmap: fase terminal)"| p5done["skill retorna = MEIO da onda<br/>(NAO encerra)"]
         stageKind -->|clarify| CLARIFY
 
         CLARIFY --> p5done
@@ -97,6 +101,8 @@ flowchart TD
     abort["ABORTO<br/>status = abortada<br/>termination_reason"] --> p9
 
     terminal(["FIM · review-features concluido<br/>ou abortado/bloqueado<br/>(finalize: push+PR se atomic-commit)"])
+    terminal -.->|"termination_reason =<br/>concluido_roadmap"| parallelWave["§6.ter (command pai): roadmap-frontier.sh<br/>oferta de leva paralela (teto default 2)<br/>parallel-launch.sh emit → cstk session + tmux + claude --name<br/>filhas notificam via SendMessage → §6.quater recalcula fronteira"]
+    parallelWave -.->|"proxima leva<br/>(operador confirma)"| parallelWave
 ```
 
 ---

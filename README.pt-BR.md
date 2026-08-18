@@ -202,8 +202,13 @@ O `/agente-00c` conduz a pipeline SDD inteira sobre um projeto-alvo, pausando
 apenas em bloqueios reais; o `/feature-00c` faz o mesmo para UMA feature em
 projeto existente. Subsistemas: roteamento de modelos por onda, modo
 atomic-commit (commits automáticos + push/PR no finalize), guardas enforced
-(hook fail-closed), sessões paralelas em worktrees e memória de conhecimento
-cross-feature consultada antes de decidir.
+(hook fail-closed), sessões paralelas em worktrees, modo roadmap (briefing →
+constitution → `docs/roadmap.md` com DAG de dependências) que pode terminar
+**oferecendo uma leva paralela** de features independentes — cada uma aberta
+como worktree `cstk session` + sessão `claude` nomeada (pane tmux quando
+disponível), com as sessões-filhas notificando a coordenadora por mensagem
+entre sessões para que a próxima leva seja oferecida assim que a fronteira
+avançar — e memória de conhecimento cross-feature consultada antes de decidir.
 
 Desde a v7.3.0 uma feature concluída deixou de ser beco sem saída:
 `/feature-00c "<incremento>" --reopen=<short-name>` preserva a execução
@@ -216,6 +221,7 @@ humano antes de tocar disco.
 |--------|-----------|
 | Orquestradores `/agente-00c` + `/feature-00c`, model-routing, atomic-commit, guardas | [docs/agente-00c.md](./docs/agente-00c.pt-BR.md) |
 | Sessões paralelas (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.pt-BR.md) |
+| Modo roadmap + leva paralela de features (oferta pós-roadmap, notificação, próxima leva) | [docs/agente-00c.md](./docs/agente-00c.pt-BR.md#modo-roadmap-e-levas-paralelas-de-features) |
 | Memória de conhecimento (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.pt-BR.md) |
 | Consumo avulso (`cstk usage`) | [docs/cstk-usage.md](./docs/cstk-usage.pt-BR.md) |
 | Painel web de métricas (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.pt-BR.md) |
@@ -533,6 +539,7 @@ Profile padrão quando nada é informado: `sdd`. Detalhes em `cstk install --hel
 | Pipeline SDD: fluxo completo, quando usar cada skill, atalhos, specs vivas | [docs/sdd-pipeline.md](./docs/sdd-pipeline.pt-BR.md) |
 | Orquestrador autônomo (agente-00c / feature-00c) | [docs/agente-00c.md](./docs/agente-00c.pt-BR.md) |
 | Sessões paralelas (`cstk session`) | [docs/cstk-session.md](./docs/cstk-session.pt-BR.md) |
+| Modo roadmap + leva paralela de features (oferta pós-roadmap, notificação, próxima leva) | [docs/agente-00c.md](./docs/agente-00c.pt-BR.md#modo-roadmap-e-levas-paralelas-de-features) |
 | Memória de conhecimento (`cstk recall`) | [docs/cstk-recall.md](./docs/cstk-recall.pt-BR.md) |
 | Consumo avulso (`cstk usage`) | [docs/cstk-usage.md](./docs/cstk-usage.pt-BR.md) |
 | Painel web (`cstk serve`) | [docs/cstk-serve.md](./docs/cstk-serve.pt-BR.md) |
