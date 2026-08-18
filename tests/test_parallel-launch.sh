@@ -27,21 +27,29 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh"
 
-# _pl_path_without_tmux: PATH atual menos o(s) diretorio(s) que contem
-# `tmux` — preserva mktemp/git/cat/etc (usados pelo proprio harness) em vez
-# de zerar o PATH inteiro, o que quebraria `capture`/`mktemp_test`.
+# _pl_path_without_tmux: PATH com APENAS um diretorio de shims contendo
+# symlinks para os comandos que o SUT e o harness precisam — `tmux`
+# deliberadamente de fora.
+#
+# GOTCHA (queimou a tag v8.2.0 no CI): a versao anterior removia do PATH o
+# diretorio onde `command -v tmux` resolvia. Isso funciona no macOS
+# (`/opt/homebrew/bin`), mas NAO no Ubuntu do runner: la `tmux` esta em
+# `/usr/bin` e `/bin` e symlink de `/usr/bin`, entao remover um segmento
+# deixa o outro resolvendo o mesmo binario — o cenario "sem tmux" media, na
+# verdade, o caminho COM tmux. Allowlist explicita e a unica forma portatil
+# de garantir ausencia (mesmo racional de
+# `feedback_test_path_stub_cannot_hide_usrbin`).
 _pl_path_without_tmux() {
-  _tmux_bin=$(command -v tmux 2>/dev/null) || { printf '%s' "$PATH"; return 0; }
-  _tmux_dir=$(dirname -- "$_tmux_bin")
-  _new_path=""
-  _old_ifs=$IFS
-  IFS=:
-  for _seg in $PATH; do
-    [ "$_seg" = "$_tmux_dir" ] && continue
-    if [ -z "$_new_path" ]; then _new_path="$_seg"; else _new_path="$_new_path:$_seg"; fi
+  _shim="$TMPDIR_TEST/nobin"
+  mkdir -p "$_shim"
+  # Comandos externos usados por parallel-launch.sh (git/sed/awk/grep/date/
+  # dirname/basename/mkdir/cat) + os que o harness usa dentro de `capture`
+  # (mktemp/rm/sh/env). `tmux` NUNCA entra nesta lista.
+  for _c in sh env git sed awk grep date dirname basename mkdir rm cat mktemp chmod ln find sort head tail tr wc; do
+    _p=$(command -v "$_c" 2>/dev/null) || continue
+    [ -e "$_shim/$_c" ] || ln -s "$_p" "$_shim/$_c" 2>/dev/null || :
   done
-  IFS=$_old_ifs
-  printf '%s' "$_new_path"
+  printf '%s' "$_shim"
 }
 
 # _pl_git_repo DIR: inicializa repo git minimo em DIR (commit inicial).
@@ -51,6 +59,11 @@ _pl_git_repo() {
   (
     cd "$_d" || exit 1
     git init -q .
+    # Identidade LOCAL do repo: o runner de CI nao tem ~/.gitconfig, e sem
+    # isso `git commit` aborta com "Author identity unknown" (mesmo padrao
+    # ja usado por test_commit-mode.sh / test_state-rw.sh).
+    git config user.email "test@test.local"
+    git config user.name "cstk test"
     git commit -q --allow-empty -m init
   )
 }
