@@ -5,6 +5,88 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.2.0] - 2026-08-18
+
+O modo roadmap deixou de ser um beco sem saída: quando o `/agente-00c`
+termina em `concluido_roadmap`, o command pai agora oferece uma **leva
+paralela** de features independentes, cada uma numa worktree `cstk session`
+com sessão `claude` nomeada (pane tmux quando disponível), e as filhas avisam a
+coordenadora ao terminar para que a próxima leva seja oferecida assim que a
+fronteira do DAG avançar. Feature `roadmap-parallel-launch` — 14 ondas de
+`/feature-00c`, 85/85 tasks, gate `converge` limpo, suite `--fast` 2638 PASS.
+
+### Added
+
+- **`roadmap-frontier.sh`** (`plugins/cstk/skills/review-features/scripts/`):
+  fronteira de elegibilidade do `docs/roadmap.md` — entradas `nao-iniciada`
+  cujas dependências (`depende-de`) estão todas `concluida`, status derivado
+  de `docs/specs/` por `roadmap-status.sh --json` (INV-3: nunca lê o
+  roadmap por conta própria; nunca campo `status` no artefato). Flags
+  `--roadmap`, `--specs-dir`, `--json`, `--exclude-active-from-repo PATH`
+  (remove short-names com worktree ativa via `git worktree list
+  --porcelain`, fail-open com aviso). Aviso de **sobreposição de artefatos**
+  como indício, extraído da prosa do roadmap com allowlist
+  `^[A-Za-z0-9._/-]{1,64}$`, truncamento, teto de 10 tokens por par,
+  escaping json/md e rótulo `roadmap-prose-untrusted` — redação obrigatória
+  "as entradas X e Y mencionam ambas `<token>`", nunca "vão conflitar".
+  Exit codes 0 (inclusive fronteira vazia) / 1 roadmap ausente / 2 uso /
+  3 roadmap inválido / 4 `roadmap-status.sh` ausente. Paths com `..`
+  rejeitados. `tests/test_roadmap-frontier.sh` (24 cenários, inclusive
+  prosa adversarial).
+- **`parallel-launch.sh`** (`plugins/cstk/skills/agente-00c-runtime/scripts/`):
+  `emit --repo PATH --feature SHORT [...] [--coordinator-name NAME]` compõe e
+  **só imprime** os comandos de lançamento por feature (`cstk session start
+  <SHORT>` + `tmux new-window ... claude --name ... "/feature-00c <SHORT>"`,
+  ou a forma degradada `cd ... && claude ...` sem tmux); `check-tmux` exit 3
+  se tmux ausente. Nunca executa nada e não toca `cli/lib/session.sh`
+  (`session.sh:543` faz `exec claude` sem argumentos, por isso a composição
+  é externa). Quoting + allowlist de `<WORKTREE>`/`<CHILD_NAME>`,
+  revalidação do short-name no emit, recomputação da guarda anti-duplicidade
+  imediatamente antes de compor (TOCTOU) e linha em
+  `enforcement-log.jsonl` (`source: "parallel-launch"`, `command` filtrado
+  por `secrets-filter.sh scrub`). `tests/test_parallel-launch.sh` (25
+  cenários: nome de repo com espaço/aspa, short-name malicioso, `..`).
+- **`parallel-notification-parse.sh`** (`agente-00c-runtime/scripts/`):
+  `check "<mensagem>"` casa a mensagem INTEIRA contra
+  `^\[cstk-parallel\] feature=([a-z][a-z0-9-]{0,63}) outcome=(concluida|abortada|aguardando_humano) repo=([A-Za-z0-9._-]{1,64})$`;
+  qualquer sobra, enum fora do conjunto ou newline embutida ⇒ exit 1 sem
+  stdout (fail-closed). Resultado é **gatilho opaco** (INV-8): nunca deriva
+  comando/caminho do conteúdo. `tests/test_parallel-notification-parse.sh`
+  (15 cenários, inclusive notificação forjada).
+- **Prosa dos commands**: `agente-00c.md` §6.ter (oferta de leva paralela
+  pós-`concluido_roadmap`: fronteira → pergunta de lançamento com declaração
+  explícita de que worktree **não é sandbox** → teto default **2** → seleção
+  acima do teto → `emit`), §6.quater (receptor: parse fail-closed +
+  recálculo incondicional da fronteira antes de reofertar), §6.bis (via
+  manual: `cstk session list`, `roadmap-status.sh --json`, `tmux list-panes
+  -a`); `agente-00c-resume.md` §9.ter/§9.quater/§9.bis (referenciam sem
+  duplicar); `feature-00c.md` §5.quater e `feature-00c-resume.md`
+  §4.quinquies (notificação terminal via `SendMessage`, best-effort, imediata
+  — falha nunca impede o ciclo da filha). Coberto por
+  `tests/test_command-spawn-parallel-launch.sh` (40 cenários, interno em
+  `run.sh::_is_internal_test`).
+- **Validação empírica registrada** (dec-037): sessão Claude Code ociosa há
+  13 h acorda ao receber `SendMessage` e responde em ~30 s sem intervenção
+  humana — US2 (próxima leva automática) deixou de ser premissa. Limites
+  declarados: N=1; não testado bg/Remote-Control-only nem no meio de tool
+  call longa.
+
+### Changed
+
+- `docs/specs/roadmap-parallel-launch/`: spec (18 FRs, 5 SCs), plan, research,
+  data-model, quickstart (11 cenários, C7b adversarial), contratos
+  `roadmap-frontier.md` e `parallel-launch.md` (rotulados `[PROPOSTA]` /
+  `REAL` conforme fonte), checklists `requirements.md`/`security.md`. Gate
+  `owasp-security` no plan achou 2 HIGH (LLM01/ASI01 prosa do roadmap perto
+  de composição de shell; ASI07 `SendMessage` sem autenticação de remetente)
+  — mitigados por contrato e código antes de qualquer implementação,
+  ratificados por bloqueio humano.
+- `docs/agente-00c.md` (+ pt-BR): nova seção "Roadmap mode and parallel
+  feature waves"; `README.md` (+ pt-BR): subsistemas do `/agente-00c` e
+  tabelas de docs; `docs/cstk-session.md`, `docs/fluxo-orquestradores-00c.md`,
+  `tests/README.md` e os `SKILL.md` de `review-features`/`agente-00c-runtime`
+  atualizados para citar os helpers novos.
+
 ## [8.1.1] - 2026-08-17
 
 Três bugfixes com causa-raiz já diagnosticada e evidência registrada — dois
@@ -6450,6 +6532,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.2.0]: https://github.com/JotJunior/cstk/releases/tag/v8.2.0
 [8.1.1]: https://github.com/JotJunior/cstk/releases/tag/v8.1.1
 [8.1.0]: https://github.com/JotJunior/cstk/releases/tag/v8.1.0
 [8.0.1]: https://github.com/JotJunior/cstk/releases/tag/v8.0.1
