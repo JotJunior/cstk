@@ -519,8 +519,11 @@ _serve_docker_kdb_host_dir() {
 _serve_docker_reconcile_container() {
   _sdrc_name="$1"
 
-  _sdrc_out=$(docker rm -f "$_sdrc_name" 2>&1)
-  _sdrc_exit=$?
+  # `|| _sdrc_exit=$?`: sob o `set -eu` do binario, `_x=$(cmd)` herda o exit
+  # de `cmd` — sem isso um "No such container" abortaria a funcao quando
+  # chamada fora de contexto condicional (classe da issue #139).
+  _sdrc_exit=0
+  _sdrc_out=$(docker rm -f "$_sdrc_name" 2>&1) || _sdrc_exit=$?
 
   if [ "$_sdrc_exit" -eq 0 ]; then
     return 0

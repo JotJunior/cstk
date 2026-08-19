@@ -880,6 +880,45 @@ STUBGH
   assert_stderr_contains "gh auth login" || return 1
 }
 
+# ==== FR-017 (falha parcial): gh pr create falha => exit 1 + orientacao ====
+# Regressao (classe da issue #139): `_create_out=$(gh pr create ...)` herda o
+# exit do gh e, sob o `set -eu` do binario, abortava _session_pr ANTES do
+# `_create_rc=$?` — o ramo de falha parcial (push feito, PR nao) era codigo
+# morto e o operador so via o exit cru do gh, sem retry/desfazer.
+scenario_pr_gh_create_falha_reporta_falha_parcial_exit_1() {
+  _src="$TMPDIR_TEST/repo-pr-cfail"
+  _make_repo "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  # origin local (bare) para o `git push -u origin` do passo 5 ter sucesso.
+  _bare="$TMPDIR_TEST/repo-pr-cfail-origin.git"
+  git init -q --bare "$_bare"
+  ( cd "$_src" && git remote add origin "$_bare" && git push -q -u origin main 2>/dev/null )
+  ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start cfail-x >/dev/null )
+  _wt="$_phys/repo-pr-cfail-cfail-x"
+  ( cd "$_wt" && git commit -q --allow-empty -m "test commit" )
+  # Stub gh: auth ok, pr view "nao existe", pr create FALHA.
+  _stub_dir="$TMPDIR_TEST/stub-gh-cfail"
+  mkdir -p "$_stub_dir"
+  cat > "$_stub_dir/gh" <<'STUBGH'
+#!/bin/sh
+case "$1 $2" in
+  "auth status") exit 0 ;;
+  "pr view") exit 1 ;;
+  "pr create") printf 'GraphQL: stub falhou de proposito\n'; exit 1 ;;
+  *) exit 0 ;;
+esac
+STUBGH
+  chmod +x "$_stub_dir/gh"
+  capture sh -c "cd '$_src' && PATH='$_stub_dir:/usr/bin:/bin' CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session pr cfail-x"
+  if [ "$_CAPTURED_EXIT" != 1 ]; then
+    _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"
+    return 1
+  fi
+  assert_stderr_contains "'gh pr create' falhou (push ja foi feito)" || return 1
+  assert_stderr_contains "para desfazer push" || return 1
+  assert_stderr_contains "stub falhou de proposito" || return 1
+}
+
 scenario_pr_unknown_flag_exit_2() {
   _src="$TMPDIR_TEST/repo-pr-flag"
   _make_repo "$_src"

@@ -172,8 +172,11 @@ _mcp_docker_list_managed() {
 _mcp_docker_reconcile_container() {
   _mdrc_name="$1"
 
-  _mdrc_out=$(docker rm -f "$_mdrc_name" 2>&1)
-  _mdrc_exit=$?
+  # `|| _mdrc_exit=$?`: sob o `set -eu` do binario, `_x=$(cmd)` herda o exit
+  # de `cmd` — sem isso um "No such container" abortaria a funcao quando
+  # chamada fora de contexto condicional (classe da issue #139).
+  _mdrc_exit=0
+  _mdrc_out=$(docker rm -f "$_mdrc_name" 2>&1) || _mdrc_exit=$?
 
   if [ "$_mdrc_exit" -eq 0 ]; then
     return 0
