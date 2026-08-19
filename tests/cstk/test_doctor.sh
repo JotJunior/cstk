@@ -503,6 +503,27 @@ scenario_doctor_distribution_paths_duplicated_hooks() {
   assert_stderr_contains "[duplicated-hooks]" || return 1
 }
 
+# issue #135: registro classico em settings.local.json (`cstk hooks install
+# --local`) tambem duplica com o plugin — doctor precisa enxergar os DOIS
+# arquivos, senao reporta "aligned" com hook rodando em dobro.
+scenario_doctor_distribution_paths_duplicated_hooks_via_settings_local() {
+  if ! command -v jq >/dev/null 2>&1; then _error "no_jq" "jq indisponivel"; return 2; fi
+  _h="$TMPDIR_TEST/dp-h-duplicated-local"
+  _ip=$(_dp_plugin_home "$_h")
+  _dp_fill_skills "$_ip" "same"
+  _dp_fill_skills "$_h/.claude" "same"
+  _proj="$TMPDIR_TEST/dp-proj-duplicated-local"
+  mkdir -p "$_proj/.claude"
+  # settings.json do time SEM hooks do cstk; registro so no arquivo local.
+  printf '{"permissions":{"allow":["Bash(ls:*)"]}}\n' > "$_proj/.claude/settings.json"
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"pretooluse-bash-guard.sh"}]}]}}\n' \
+    > "$_proj/.claude/settings.local.json"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "duplicated-hooks (local) exit" "esperado 1, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[duplicated-hooks]" || return 1
+  assert_stderr_contains "settings.local.json" || return 1
+}
+
 scenario_doctor_distribution_paths_undetermined_installed_json_corrompido() {
   # Scenario 7 do quickstart: settings.json diz habilitado, mas
   # installed_plugins.json esta corrompido -> secao MOSTRADA (gate e o

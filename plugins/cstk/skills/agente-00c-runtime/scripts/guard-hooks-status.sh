@@ -52,6 +52,9 @@
 #         --verify-registration):
 #             <arquivo>\t<present|missing>\t<registered|unregistered>\t<current|stale|unknown>[\t<canonical|divergent|indeterminate>]
 #         "registered" = o basename aparece em <PAP>/.claude/settings.json
+#         OU em <PAP>/.claude/settings.local.json (`cstk hooks install
+#         --local`, issue #135 — hooks SOMAM entre escopos no Claude Code,
+#         entao qualquer um dos dois arquivos ativa o hook).
 #         (o hook so roda de fato se estiver copiado E registrado).
 #         "current"/"stale" = comparacao byte-a-byte (cmp) da copia do
 #         projeto com a do catalogo; "unknown" = hook ausente ou catalogo
@@ -160,16 +163,34 @@ _gh_present() {
   [ -f "$1/.claude/hooks/$2" ] && [ -x "$1/.claude/hooks/$2" ]
 }
 
-# _gh_registered PAP HOOK -> 0 se o basename aparece no settings.json.
-# Busca textual (grep -F) em vez de parse: o hook e registrado como
-# fragmento de linha de comando ("$CLAUDE_PROJECT_DIR"/.claude/hooks/X.sh),
-# entao a presenca do basename e condicao necessaria e suficiente na
-# pratica — e mantem o script sem dependencia de jq (que pode faltar
-# justamente no projeto-alvo mal provisionado que estamos diagnosticando).
+# _gh_registered PAP HOOK -> 0 se o basename aparece em settings.json OU em
+# settings.local.json. Busca textual (grep -F) em vez de parse: o hook e
+# registrado como fragmento de linha de comando
+# ("$CLAUDE_PROJECT_DIR"/.claude/hooks/X.sh), entao a presenca do basename
+# e condicao necessaria e suficiente na pratica — e mantem o script sem
+# dependencia de jq (que pode faltar justamente no projeto-alvo mal
+# provisionado que estamos diagnosticando).
 _gh_registered() {
-  _gh_settings="$1/.claude/settings.json"
-  [ -f "$_gh_settings" ] || return 1
-  grep -Fq -- "$2" "$_gh_settings" 2>/dev/null
+  for _gh_settings in "$1/.claude/settings.json" "$1/.claude/settings.local.json"; do
+    [ -f "$_gh_settings" ] || continue
+    grep -Fq -- "$2" "$_gh_settings" 2>/dev/null && return 0
+  done
+  return 1
+}
+
+# _gh_registered_in PAP HOOK -> stdout: "settings.json", "settings.local.json",
+# "both" ou "" (nao registrado). Diagnostico legivel para o operador saber
+# QUAL arquivo carrega o registro (issue #135).
+_gh_registered_in() {
+  _gh_ri_p=0
+  _gh_ri_l=0
+  [ -f "$1/.claude/settings.json" ] && grep -Fq -- "$2" "$1/.claude/settings.json" 2>/dev/null && _gh_ri_p=1
+  [ -f "$1/.claude/settings.local.json" ] && grep -Fq -- "$2" "$1/.claude/settings.local.json" 2>/dev/null && _gh_ri_l=1
+  if [ "$_gh_ri_p" = 1 ] && [ "$_gh_ri_l" = 1 ]; then printf 'both'
+  elif [ "$_gh_ri_p" = 1 ]; then printf 'settings.json'
+  elif [ "$_gh_ri_l" = 1 ]; then printf 'settings.local.json'
+  fi
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -362,31 +383,38 @@ _gh_backend_blind() {
 _gh_verify_registration() {
   _gh_vr_pap="$1"
   _gh_vr_hook="$2"
-  _gh_vr_settings="$_gh_vr_pap/.claude/settings.json"
 
-  [ -f "$_gh_vr_settings" ] || { printf 'indeterminate'; return 0; }
-
-  # Layout minificado (uma unica linha fisica) impede atribuicao por linha.
-  _gh_vr_nr=$(awk 'END{print NR}' "$_gh_vr_settings" 2>/dev/null || printf '0')
-  case "$_gh_vr_nr" in '' | 0 | 1) printf 'indeterminate'; return 0 ;; esac
-
+  # Percorre settings.json E settings.local.json (issue #135): o veredito e
+  # "divergent" se QUALQUER linha de QUALQUER arquivo que cite o basename
+  # falhar a regra; "indeterminate" se nenhum arquivo existe, nenhum cita o
+  # hook, ou o unico que cita esta minificado numa linha.
   _gh_vr_canonical="\\\"\$CLAUDE_PROJECT_DIR\\\"/.claude/hooks/$_gh_vr_hook"
   _gh_vr_matched=0
   _gh_vr_all_ok=1
-  while IFS= read -r _gh_vr_line; do
-    [ -n "$_gh_vr_line" ] || continue
-    _gh_vr_matched=1
-    _gh_vr_has_cmd=0
-    _gh_vr_has_canon=0
-    case "$_gh_vr_line" in *'"command"'*) _gh_vr_has_cmd=1 ;; esac
-    case "$_gh_vr_line" in *"$_gh_vr_canonical"*) _gh_vr_has_canon=1 ;; esac
-    if [ "$_gh_vr_has_cmd" = 0 ] || [ "$_gh_vr_has_canon" = 0 ]; then
-      _gh_vr_all_ok=0
-    fi
-  done <<GHVR
+  _gh_vr_any_file=0
+  for _gh_vr_settings in "$_gh_vr_pap/.claude/settings.json" "$_gh_vr_pap/.claude/settings.local.json"; do
+    [ -f "$_gh_vr_settings" ] || continue
+    _gh_vr_any_file=1
+    grep -Fq -- "$_gh_vr_hook" "$_gh_vr_settings" 2>/dev/null || continue
+    # Layout minificado (uma unica linha fisica) impede atribuicao por linha.
+    _gh_vr_nr=$(awk 'END{print NR}' "$_gh_vr_settings" 2>/dev/null || printf '0')
+    case "$_gh_vr_nr" in '' | 0 | 1) continue ;; esac
+    while IFS= read -r _gh_vr_line; do
+      [ -n "$_gh_vr_line" ] || continue
+      _gh_vr_matched=1
+      _gh_vr_has_cmd=0
+      _gh_vr_has_canon=0
+      case "$_gh_vr_line" in *'"command"'*) _gh_vr_has_cmd=1 ;; esac
+      case "$_gh_vr_line" in *"$_gh_vr_canonical"*) _gh_vr_has_canon=1 ;; esac
+      if [ "$_gh_vr_has_cmd" = 0 ] || [ "$_gh_vr_has_canon" = 0 ]; then
+        _gh_vr_all_ok=0
+      fi
+    done <<GHVR
 $(grep -F -- "$_gh_vr_hook" "$_gh_vr_settings" 2>/dev/null)
 GHVR
+  done
 
+  [ "$_gh_vr_any_file" -eq 1 ] || { printf 'indeterminate'; return 0; }
   if [ "$_gh_vr_matched" -eq 0 ]; then
     printf 'indeterminate'
     return 0
@@ -516,8 +544,8 @@ _gh_cmd_check() {
     _gh_err "$_plugin_hooks de 3 hooks 00c sao providos pelo PLUGIN cstk (hooks.json), nao pela copia classica em $_pap/.claude/hooks/ — ativos, nada a provisionar."
   fi
   if [ "$_quiet" = 0 ] && [ "$_dup_hooks" -gt 0 ]; then
-    _gh_err "ATENCAO: $_dup_hooks hook(s) registrados DUAS vezes (plugin + copia classica em $_pap/.claude/settings.json) — cada tool call e contado em dobro."
-    _gh_err "  Remediacao: remova o bloco classico de $_pap/.claude/settings.json (o plugin vence)."
+    _gh_err "ATENCAO: $_dup_hooks hook(s) registrados DUAS vezes (plugin + copia classica em $_pap/.claude/settings.json ou settings.local.json) — cada tool call e contado em dobro."
+    _gh_err "  Remediacao: remova o bloco classico (o plugin vence) — 'cstk hooks install --project-path $_pap' oferece a remocao."
   fi
 
   [ "$_missing" -eq 0 ] && [ "$_stale" -eq 0 ] && [ "$_divergent" -eq 0 ] && return 0
@@ -530,7 +558,7 @@ _gh_cmd_check() {
       _gh_err "$_stale de 3 hooks 00c estao STALE em $_pap/.claude/hooks/ (copia diverge do catalogo)"
     fi
     if [ "$_divergent" -gt 0 ]; then
-      _gh_err "$_divergent de 3 hooks 00c estao com registro DIVERGENTE (settings.json aponta para outro comando)"
+      _gh_err "$_divergent de 3 hooks 00c estao com registro DIVERGENTE (settings.json/settings.local.json aponta para outro comando)"
     fi
     if [ "$_guard_missing" = 1 ]; then
       _gh_err "ATENCAO: pretooluse-bash-guard.sh inativo — a guarda fail-closed de Bash NAO esta enforced nesta execucao."

@@ -859,5 +859,71 @@ scenario_plugin_hooks_json_ilegivel_degrada() {
   return 0
 }
 
+# ==== issue #135: registro em settings.local.json (`cstk hooks install --local`) ====
+#
+# Hooks SOMAM entre escopos no Claude Code — registro em
+# <PAP>/.claude/settings.local.json ativa o hook exatamente como o
+# settings.json. Se estes leitores ignorassem o arquivo local, `check`
+# diria "unregistered" (falso), `tick-mode` diria "manual" e o orquestrador
+# tickaria NA MAO por cima do hook ativo => contagem DUPLA de tool calls.
+
+scenario_local_check_registrado_via_settings_local_exit0() {
+  _p=$(_mkproj proj-local-ok)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  # shellcheck disable=SC2086
+  _register "$_p" $_HOOKS
+  mv "$_p/.claude/settings.json" "$_p/.claude/settings.local.json"
+  _ghs check --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (registro local vale), obtido $_CAPTURED_EXIT"; return 1; }
+  for _h in $_HOOKS; do
+    printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered	current$" \
+      || { _fail "TSV" "esperado '$_h present registered current' via settings.local.json"; return 1; }
+  done
+  return 0
+}
+
+scenario_local_tick_mode_hook_via_settings_local() {
+  _p=$(_mkproj proj-local-tick)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  # shellcheck disable=SC2086
+  _register "$_p" $_HOOKS
+  mv "$_p/.claude/settings.json" "$_p/.claude/settings.local.json"
+  _ghs tick-mode --projeto-alvo-path "$_p"
+  [ "$_CAPTURED_STDOUT" = "hook" ] \
+    || { _fail "stdout" "esperado 'hook' (registro local ativa o tick), obtido '$_CAPTURED_STDOUT'"; return 1; }
+  return 0
+}
+
+scenario_local_verify_registration_canonical_via_settings_local() {
+  _p=$(_mkproj proj-local-verify)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  # shellcheck disable=SC2086
+  _register_canonical "$_p" $_HOOKS
+  mv "$_p/.claude/settings.json" "$_p/.claude/settings.local.json"
+  _ghs check --projeto-alvo-path "$_p" --verify-registration
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  for _h in $_HOOKS; do
+    printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^$_h	present	registered	current	canonical$" \
+      || { _fail "TSV" "esperado 'canonical' via settings.local.json para $_h"; return 1; }
+  done
+  return 0
+}
+
+# Registro divergente no arquivo LOCAL tambem reprova (a regra vale para os
+# dois arquivos — um local desviando o command e a mesma linha-isca).
+scenario_local_verify_registration_divergent_no_local_reprova() {
+  _p=$(_mkproj proj-local-divergent)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  # shellcheck disable=SC2086
+  _register_canonical "$_p" $_HOOKS
+  printf '{\n  "hooks": {\n    "PreToolUse": [\n      {\n        "hooks": [\n          {\n            "type": "command",\n            "command": "/tmp/evil/pretooluse-bash-guard.sh"\n          }\n        ]\n      }\n    ]\n  }\n}\n' \
+    > "$_p/.claude/settings.local.json"
+  _ghs check --projeto-alvo-path "$_p" --verify-registration
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1 (divergent no local), obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q "^pretooluse-bash-guard.sh	present	registered	current	divergent$" \
+    || { _fail "TSV" "esperado divergent para o guard: $_CAPTURED_STDOUT"; return 1; }
+  return 0
+}
+
 run_all_scenarios
 exit $?
