@@ -935,6 +935,46 @@ scenario_sqlite_set_campo_aninhado_nao_modelado_falha_alto() {
   [ "$_CAPTURED_EXIT" != 0 ] || { _fail "set aninhado nao modelado deveria falhar" "obtido exit 0"; return 1; }
 }
 
+# Anti-sucesso-falso (Principio VI): container/derivado MODELADO nao pode
+# cair em extra_fields e ser sombreado na leitura com "atualizado" no
+# stderr. Casos reais (knowledge.db): `.execution` inteiro (sug-003
+# wp-intel/mcp-server-host) e `.waves[-1].skills_invoked` (sug-001 idem;
+# sug-002 cstk/mcp-direct-transport) — exit 0, valor antigo na releitura.
+scenario_sqlite_set_execution_inteiro_falha_alto_e_nao_sombreia() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.execution' --value '{"status":"concluida"}'
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "set .execution inteiro deveria falhar" "obtido exit 0"; return 1; }
+  assert_stderr_contains "container modelado" || return 1
+  _ef=$(sqlite3 "$_sd/state.db" "SELECT coalesce(extra_fields,'{}') FROM execution;")
+  case "$_ef" in *'"execution"'*) _fail "extra_fields.execution gravado" "$_ef"; return 1 ;; esac
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.execution.status'
+  [ "$_CAPTURED_STDOUT" != "concluida" ] || { _fail "status nao deveria mudar" ""; return 1; }
+  # Lote multi-campo com o container no meio: rejeitado inteiro, estado intacto.
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.current_stage' --value '"plan"' \
+    --field '.execution' --value '{"status":"concluida"}'
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "lote com .execution deveria falhar" "obtido exit 0"; return 1; }
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.current_stage'
+  [ "$_CAPTURED_STDOUT" = "specify" ] || { _fail "lote parcial aplicado" "current_stage='$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_sqlite_set_waves_skills_invoked_falha_alto_e_nao_sombreia() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "INSERT INTO wave (id,execution_id,seq,started_at) VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z');" \
+    || { _fail "seed wave falhou" ""; return 1; }
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.waves[-1].skills_invoked' \
+    --value '[{"skill":"briefing","decision_id":"dec-001","timestamp":"2026-07-30T00:00:01Z"}]'
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "set .waves[-1].skills_invoked deveria falhar" "obtido exit 0"; return 1; }
+  assert_stderr_contains "record-skill" || return 1
+  _ef=$(sqlite3 "$_sd/state.db" "SELECT coalesce(extra_fields,'{}') FROM wave WHERE id='onda-001';")
+  case "$_ef" in *skills_invoked*) _fail "wave.extra_fields.skills_invoked gravado" "$_ef"; return 1 ;; esac
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.waves[-1].skills_invoked | length'
+  [ "$_CAPTURED_STDOUT" = "0" ] || { _fail "skills_invoked deveria seguir vazio" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.waves[-1].id' --value '"onda-999"'
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "set .waves[-1].id deveria falhar" "obtido exit 0"; return 1; }
+}
+
 scenario_sqlite_set_events_substitui_array_completo() {
   _sd="$TMPDIR_TEST/migrated"
   _seed_sqlite_backend "$_sd" || return 1
