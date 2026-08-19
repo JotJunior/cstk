@@ -252,7 +252,12 @@ _rp_render_secao_3() {
             "",
             "**Contexto**: \(.context // .contexto)",
             "",
-            "**Opcoes consideradas**: \(((.options_considered // .opcoes_consideradas) // []) | join(" / "))",
+            # Issue #141: o clarify autonomo emite opcoes estruturadas
+            # {rotulo, descricao} (clarify-asker) e a prosa do orquestrador as
+            # passa verbatim em --opcoes — `join` sobre objeto quebrava o
+            # generate inteiro (exit 5, .md truncado sem secoes 4/5/6). Mesmo
+            # tratamento ja dado a recommended_options dos bloqueios (#115).
+            "**Opcoes consideradas**: \(((.options_considered // .opcoes_consideradas) // []) | map(if type == "object" then "(\((.rotulo // .label) // "?")) \((.descricao // .description) // "")" else tostring end) | join(" / "))",
             "",
             "**Escolha**: \(.choice // .escolha)",
             "",

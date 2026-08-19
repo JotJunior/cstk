@@ -195,8 +195,26 @@ _sd_cmd_register() {
   if ! printf '%s' "$_ops" | jq -e 'type == "array" and length >= 1' >/dev/null 2>&1; then
     _sd_die "register: violacao Principio I — opcoes_consideradas precisa ser JSON array com >=1 item" 1
   fi
+  # Issue #141: forma de cada elemento. Aceita string nao-vazia OU objeto
+  # estruturado {rotulo|label: string nao-vazia, descricao?} — o formato que
+  # o clarify-asker emite em opcoes_recomendadas e que a prosa do
+  # orquestrador passa verbatim em --opcoes. Qualquer outra coisa (numero,
+  # null, array, objeto sem rotulo) e rejeitada aqui, com mensagem clara, em
+  # vez de ser gravada e quebrar o report.sh generate depois.
+  if ! printf '%s' "$_ops" | jq -e '
+        all(.[];
+          (type == "string" and length > 0)
+          or (type == "object" and (((.rotulo // .label) | type) == "string") and (((.rotulo // .label) | length) > 0)))
+      ' >/dev/null 2>&1; then
+    _sd_die "register: violacao Principio I — cada item de --opcoes precisa ser string nao-vazia ou objeto {rotulo|label: string nao-vazia, descricao?}" 1
+  fi
   if ! printf '%s' "$_refs" | jq -e 'type == "array"' >/dev/null 2>&1; then
     _sd_die "register: --referencias precisa ser JSON array" 2
+  fi
+  # Mesma regra de forma para --referencias (report.sh ja renderiza string
+  # ou objeto chave=valor; numero/null/array quebrariam o to_entries).
+  if ! printf '%s' "$_refs" | jq -e 'all(.[]; (type == "string" and length > 0) or (type == "object" and length > 0))' >/dev/null 2>&1; then
+    _sd_die "register: cada item de --referencias precisa ser string nao-vazia ou objeto nao-vazio" 2
   fi
   # score aceita "null" ou numero 0..3
   case "$_score" in

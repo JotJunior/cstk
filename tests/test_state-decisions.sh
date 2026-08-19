@@ -692,4 +692,56 @@ scenario_next_id_tolera_jq_com_saida_crlf() {
   assert_stdout_contains "dec-008" || return 1
 }
 
+# ==== issue #141: forma dos itens de --opcoes / --referencias ====
+scenario_issue141_register_aceita_opcoes_objeto_com_rotulo() {
+  _sd="$TMPDIR_TEST/state-141-ok"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "clarify-answerer" --etapa "clarify" \
+    --contexto "Pergunta sobre stakeholders do projeto-alvo" \
+    --opcoes '[{"rotulo":"A","descricao":"opcao A","default_sugerido":true},{"label":"B"},"C"]' \
+    --escolha "A" \
+    --justificativa "Briefing do 00C marca uso pessoal sem stakeholders externos" --score 2
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[0].options_considered[0].rotulo'
+  [ "$_CAPTURED_STDOUT" = "A" ] || { _fail "objeto preservado no state" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_issue141_register_rejeita_forma_invalida_em_opcoes() {
+  _sd="$TMPDIR_TEST/state-141-bad"
+  _init_state "$_sd"
+  for _bad in '[1]' '[null]' '[""]' '[{"descricao":"sem rotulo"}]' '[{"rotulo":""}]' '[["A"]]'; do
+    capture "$SCRIPT" register --state-dir "$_sd" \
+      --agente "x" --etapa "clarify" \
+      --contexto "Pergunta sobre stakeholders do projeto-alvo" \
+      --opcoes "$_bad" --escolha "A" \
+      --justificativa "Briefing do 00C marca uso pessoal sem stakeholders externos"
+    [ "$_CAPTURED_EXIT" = 1 ] || { _fail "deveria rejeitar $_bad com exit 1" "obtido $_CAPTURED_EXIT"; return 1; }
+    assert_stderr_contains "cada item de --opcoes" || return 1
+  done
+  capture "$RW" get --state-dir "$_sd" --field '.decisions | length'
+  [ "$_CAPTURED_STDOUT" = "0" ] || { _fail "nenhuma decisao deveria ter sido gravada" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_issue141_register_rejeita_forma_invalida_em_referencias() {
+  _sd="$TMPDIR_TEST/state-141-refs"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "clarify" \
+    --contexto "Pergunta sobre stakeholders do projeto-alvo" \
+    --opcoes '["A"]' --escolha "A" \
+    --justificativa "Briefing do 00C marca uso pessoal sem stakeholders externos" \
+    --referencias '[1, null]'
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "referencias invalidas deveriam dar exit 2" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "cada item de --referencias" || return 1
+  # string e objeto chave=valor continuam aceitos (report.sh ja renderiza os dois).
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "clarify" \
+    --contexto "Pergunta sobre stakeholders do projeto-alvo" \
+    --opcoes '["A"]' --escolha "A" \
+    --justificativa "Briefing do 00C marca uso pessoal sem stakeholders externos" \
+    --referencias '["docs/spec.md", {"arquivo":"spec.md","linha":"12"}]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "referencias validas" "$_CAPTURED_STDERR"; return 1; }
+}
+
 run_all_scenarios

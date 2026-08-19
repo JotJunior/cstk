@@ -123,7 +123,7 @@ infraestrutura interna deste agente.
 | `secrets-filter.sh` | scrub/check | FR-030 (filtro de secrets antes de gravar report/suggestions/issue) |
 | `sanitize.sh` | limit-length/check-length/escape-{commit-msg,issue-body,path} | FR-025 (sanitizacao de descricao_curta) |
 | `whitelist-validate.sh` | check/list | FR-031 (rejeita patterns overly broad como `**`, `*://*`, `https://*`) |
-| `report.sh` | generate/validate | FR-011 + SC-001 (relatorio com 6 secoes; validate por regex de headings) |
+| `report.sh` | emit --flavor agente-00c/validate | FR-011 + SC-001 (relatorio com 6 secoes; validate por regex de headings) |
 | `suggestions.sh` | register/list/count/next-id/mark-issue/render-md | FR-020 (sugestoes para skills globais — 3 severidades) |
 | `issue.sh` | create/check-duplicate/hash | FR-021 (abertura automatica de issue no toolkit, com dedup + secrets-filter 2x) |
 
@@ -2227,20 +2227,27 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
     (< 5s tipico); se o pai falhar em agendar, ele atualiza o estado para
     null e emite aviso.
 
-12. **Relatorio parcial** (FR-011, SC-001): gerar via `report.sh
-    generate` aplicando filtro de secrets em pipe; validar via
-    `report.sh validate` apos gravar.
+12. **Relatorio parcial** (FR-011, SC-001): gerar via `report.sh emit
+    --flavor agente-00c` (secrets-filter INTERNO e obrigatorio; grava em
+    `<SD>/../agente-00c-report.md` = `<PAP>/.claude/agente-00c-report.md`);
+    validar via `report.sh validate` apos gravar.
 
     ```bash
-    report.sh generate --state-dir <SD> \
+    report.sh emit --flavor agente-00c --state-dir <SD> \
         [--final --licoes-aprendidas "<texto>"] \
         --paragrafo-resumo "<resumo de 3-5 linhas escrito por voce>" \
-      | secrets-filter.sh scrub --env-file <PAP>/.env \
-      > <PAP>/.claude/agente-00c-report.md
+        --env-file <PAP>/.env \
+      || registrar Decisao (exit + stderr literal) — NAO prosseguir com .md truncado
 
     report.sh validate --report-file <PAP>/.claude/agente-00c-report.md \
       || retentar 1x; falha persistente = registrar Decisao + bloqueio
     ```
+
+    NAO use a forma antiga `report.sh generate ... | secrets-filter.sh scrub
+    ... > arquivo`: num pipe o exit e o do `scrub`, e uma falha do `generate`
+    (ex.: exit 5 por jq) vira `.md` truncado com exit 0 — foi assim que a
+    issue #141 passou despercebida ate o `validate`. O `emit` propaga o exit
+    do render e nunca grava relatorio nao-filtrado ou incompleto.
 
     `--final` apenas no termino da execucao (status `concluida` ou
     `abortada`); em ondas intermediarias, gera relatorio parcial com

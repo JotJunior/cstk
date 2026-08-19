@@ -815,4 +815,54 @@ EOF
   assert_stdout_contains "substituida por auth-basica" || return 1
 }
 
+# ==== issue #141: Decisao com opcoes estruturadas {rotulo, descricao} ====
+# O clarify autonomo emite opcoes_recomendadas como objetos e a prosa do
+# orquestrador as passa verbatim em --opcoes; `join` sobre objeto quebrava o
+# generate inteiro (exit 5, .md truncado sem secoes 4/5/6, validate exit 1).
+scenario_issue141_generate_com_opcoes_objeto_rende_6_secoes() {
+  _sd="$TMPDIR_TEST/state-141"
+  _init "$_sd"
+  capture "$ON" start --state-dir "$_sd"
+  capture "$DEC" register --state-dir "$_sd" \
+    --agente "clarify-answerer" --etapa "clarify" \
+    --contexto "Pergunta de clarify com opcoes estruturadas do asker" \
+    --opcoes '[{"rotulo":"A","descricao":"Comando slash no canal","default_sugerido":true},{"rotulo":"B","descricao":"Mention na thread"},"C-string-solta"]' \
+    --escolha "A" \
+    --justificativa "Justificativa de tamanho ok aqui sim para teste" --score 2
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register com opcoes-objeto deveria passar" "$_CAPTURED_STDERR"; return 1; }
+  capture "$ON" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+
+  capture "$SCRIPT" generate --state-dir "$_sd" --paragrafo-resumo "x"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "**Opcoes consideradas**: (A) Comando slash no canal / (B) Mention na thread / C-string-solta" || return 1
+  for _h in "## 4. Bloqueios Humanos" "## 5. Sugestoes para Skills Globais" "## 6. Licoes Aprendidas"; do
+    assert_stdout_contains "$_h" || return 1
+  done
+  # validate sobre o artefato gravado tambem passa.
+  _out="$TMPDIR_TEST/out-141.md"
+  printf '%s\n' "$_CAPTURED_STDOUT" > "$_out"
+  capture "$SCRIPT" validate --report-file "$_out"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+}
+
+# O emit propaga falha do render (nao e pipe): contrato que a prosa do
+# orquestrador passa a usar em vez de `generate | scrub > arquivo`.
+scenario_issue141_emit_agente_00c_grava_relatorio_completo() {
+  _sd="$TMPDIR_TEST/pap-141/.claude/agente-00c-state"
+  mkdir -p "$_sd"
+  _init "$_sd"
+  capture "$ON" start --state-dir "$_sd"
+  capture "$DEC" register --state-dir "$_sd" \
+    --agente "clarify-answerer" --etapa "clarify" \
+    --contexto "Pergunta de clarify com opcoes estruturadas do asker" \
+    --opcoes '[{"rotulo":"A","descricao":"opcao A"}]' --escolha "A" \
+    --justificativa "Justificativa de tamanho ok aqui sim para teste" --score 2
+  capture "$ON" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  capture "$SCRIPT" emit --flavor agente-00c --state-dir "$_sd" --paragrafo-resumo "x"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "emit exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ -f "$TMPDIR_TEST/pap-141/.claude/agente-00c-report.md" ] || { _fail "relatorio nao gravado em <SD>/../agente-00c-report.md" ""; return 1; }
+  capture "$SCRIPT" validate --report-file "$TMPDIR_TEST/pap-141/.claude/agente-00c-report.md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate" "$_CAPTURED_STDERR"; return 1; }
+}
+
 run_all_scenarios
