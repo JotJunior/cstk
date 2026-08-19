@@ -8,6 +8,7 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 
 SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh"
 RW="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh"
+BL="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/bloqueios.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   printf '# test_state-decisions.sh: jq ausente — pulando suite\n'
@@ -811,5 +812,392 @@ scenario_issue144_sqlite_mark_invalid_backend_agnostico() {
   [ -e "$_sd/state.json" ] && { _fail "anti-mirror" "mark-invalid criou state.json no state-dir sqlite"; return 1; }
   return 0
 }
+
+# ==== structural-decision-human-gate (FASE 2, task 2.1.10): trava R1..R3, R6 ====
+#
+# Ref: docs/specs/structural-decision-human-gate/data-model.md §Regras de
+#      integridade; contracts/cli-structural-class.md §state-decisions.sh
+#      register (extensao)
+
+# _patch_human_block_subject_key_json STATE_DIR BLOCK_ID SUBJECT -> fixture
+# helper (nao passa por bloqueios.sh — --chave-assunto e FASE 2.4, ainda nao
+# implementada nesta onda). Mesma logica de fixture direta ja usada por
+# _seed_sqlite_backend para o backend SQLite.
+_patch_human_block_subject_key_json() {
+  _phb_sd="$1"; _phb_id="$2"; _phb_subj="$3"
+  _phb_tmp=$(mktemp) || return 1
+  jq --arg id "$_phb_id" --arg subj "$_phb_subj" '
+    .human_blocks |= map(if .id == $id then .subject_key = $subj else . end)
+  ' "$_phb_sd/state.json" > "$_phb_tmp" && mv "$_phb_tmp" "$_phb_sd/state.json"
+}
+
+scenario_sdhg_r1_opcoes_bloqueio_sem_classe_falha() {
+  _sd="$TMPDIR_TEST/sdhg-r1"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime","manter-atual"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "R1 sem --classe" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "classe-obrigatoria" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "0" || return 1
+}
+
+scenario_sdhg_r1_opcoes_bloqueio_via_rotulo_objeto_sem_classe_falha() {
+  # Familia avaliada pelo `rotulo`/`label` quando o item de --opcoes e objeto.
+  _sd="$TMPDIR_TEST/sdhg-r1-objeto"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher persistencia principal do sistema" \
+    --opcoes '[{"rotulo":"pause-humano","descricao":"aguardar decisao"},"seguir"]' \
+    --escolha "pause-humano" \
+    --justificativa "Persistencia ainda nao decidida pelo dono do produto" \
+    --score 0
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "R1 objeto sem --classe" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "classe-obrigatoria" || return 1
+}
+
+scenario_sdhg_classe_invalida_falha() {
+  _sd="$TMPDIR_TEST/sdhg-classe-invalida"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Decisao operacional qualquer, so pra testar --classe" \
+    --opcoes '["A","B"]' --escolha "A" \
+    --justificativa "Justificativa generica com 20+ chars aqui" \
+    --classe "invalida-mesmo"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "classe invalida" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "classe-invalida" || return 1
+}
+
+scenario_sdhg_r3_eixo_ausente_falha() {
+  _sd="$TMPDIR_TEST/sdhg-r3-ausente"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "R3 eixo ausente" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "eixo-invalido" || return 1
+}
+
+scenario_sdhg_r3_eixo_fora_do_enum_falha() {
+  _sd="$TMPDIR_TEST/sdhg-r3-fora"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural --eixo "cor-do-logo"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "R3 eixo fora do enum" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "eixo-invalido" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "0" || return 1
+}
+
+scenario_sdhg_r2_escolha_concreta_sem_consentimento_falha() {
+  _sd="$TMPDIR_TEST/sdhg-r2-escolha"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Decidir a linguagem/runtime sozinho, sem gate" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Acho que Go e melhor pra esse caso de uso" \
+    --score 0 --classe estrutural --eixo linguagem-runtime
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "R2 escolha concreta" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "estrutural-exige-bloqueio" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "0" || return 1
+}
+
+scenario_sdhg_r2_score_nao_zero_sem_consentimento_falha() {
+  _sd="$TMPDIR_TEST/sdhg-r2-score"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 2 --classe estrutural --eixo linguagem-runtime
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "R2 score != 0" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "estrutural-exige-bloqueio" || return 1
+}
+
+scenario_sdhg_estrutural_sem_consentimento_pausa_humano_persiste() {
+  _sd="$TMPDIR_TEST/sdhg-pausa-ok"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime","manter-atual"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural --eixo linguagem-runtime
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "pausa estrutural" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "dec-001" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[0].decision_class'
+  [ "$_CAPTURED_STDOUT" = "estrutural" ] || { _fail "decision_class" "obtido $_CAPTURED_STDOUT"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[0].structural_axis'
+  [ "$_CAPTURED_STDOUT" = "linguagem-runtime" ] || { _fail "structural_axis" "obtido $_CAPTURED_STDOUT"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[0].human_consent_block_id'
+  [ "$_CAPTURED_STDOUT" = "null" ] || { _fail "human_consent_block_id deveria ser null" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+# Fixture comum aos cenarios de R6: registra a decisao de pausa (dec-001),
+# abre o bloqueio (block-001), responde e injeta subject_key='axis:<eixo>'
+# (fixture direta — --chave-assunto e FASE 2.4).
+_sdhg_seed_consent_json() {
+  _ssc_sd="$1"; _ssc_eixo="${2:-linguagem-runtime}"
+  _init_state "$_ssc_sd"
+  capture "$SCRIPT" register --state-dir "$_ssc_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime","manter-atual"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural --eixo "$_ssc_eixo"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed: register pausa" "$_CAPTURED_STDERR"; return 1; }
+  capture "$BL" register --state-dir "$_ssc_sd" --decisao-id dec-001 \
+    --pergunta "Qual linguagem/runtime devemos usar no backend?" \
+    --contexto-para-resposta "Ver opcoes tecnicas avaliadas no plan.md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed: bloqueio register" "$_CAPTURED_STDERR"; return 1; }
+  capture "$BL" respond --state-dir "$_ssc_sd" --block-id block-001 --resposta "Decidido: Go 1.22"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed: bloqueio respond" "$_CAPTURED_STDERR"; return 1; }
+  _patch_human_block_subject_key_json "$_ssc_sd" block-001 "axis:$_ssc_eixo" \
+    || { _fail "seed: patch subject_key" ""; return 1; }
+}
+
+scenario_sdhg_r6_consentimento_valido_libera_escolha_concreta() {
+  _sd="$TMPDIR_TEST/sdhg-r6-ok"
+  _sdhg_seed_consent_json "$_sd" linguagem-runtime || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "operador" --etapa "plan" \
+    --contexto "Registrar a decisao final de linguagem/runtime" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Bloqueio humano respondido autoriza esta escolha" \
+    --score 2 --classe estrutural --eixo linguagem-runtime --consentimento block-001
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "R6 valido" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "dec-002" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[1] | [.choice, .decision_class, .structural_axis, .human_consent_block_id, (.justification_score|tostring)] | join("|")'
+  [ "$_CAPTURED_STDOUT" = "Go 1.22|estrutural|linguagem-runtime|block-001|2" ] \
+    || { _fail "campos persistidos" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_sdhg_r6_consentimento_inexistente_falha() {
+  _sd="$TMPDIR_TEST/sdhg-r6-inexistente"
+  _sdhg_seed_consent_json "$_sd" linguagem-runtime || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "operador" --etapa "plan" \
+    --contexto "Registrar a decisao final de linguagem/runtime" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Tentando citar um bloqueio que nao existe" \
+    --score 2 --classe estrutural --eixo linguagem-runtime --consentimento block-999
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "R6 inexistente" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "consentimento-invalido" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_sdhg_r6_consentimento_aguardando_falha() {
+  _sd="$TMPDIR_TEST/sdhg-r6-aguardando"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural --eixo linguagem-runtime
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed register" "$_CAPTURED_STDERR"; return 1; }
+  capture "$BL" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual linguagem/runtime devemos usar no backend?" \
+    --contexto-para-resposta "Ver opcoes tecnicas avaliadas no plan.md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed bloqueio" "$_CAPTURED_STDERR"; return 1; }
+  # Nao responde — permanece 'aguardando'.
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "operador" --etapa "plan" \
+    --contexto "Registrar a decisao final de linguagem/runtime" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Tentando usar consentimento ainda pendente" \
+    --score 2 --classe estrutural --eixo linguagem-runtime --consentimento block-001
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "R6 aguardando" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "consentimento-invalido" || return 1
+}
+
+scenario_sdhg_r6_consentimento_outro_assunto_falha() {
+  _sd="$TMPDIR_TEST/sdhg-r6-outro-assunto"
+  _sdhg_seed_consent_json "$_sd" persistencia || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "operador" --etapa "plan" \
+    --contexto "Registrar a decisao final de linguagem/runtime" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Consentimento e de outro eixo (persistencia), nao linguagem" \
+    --score 2 --classe estrutural --eixo linguagem-runtime --consentimento block-001
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "R6 outro assunto" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "consentimento-de-outro-assunto" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "1" || return 1
+}
+
+scenario_sdhg_inv_c5_agente_nao_participa_da_regra() {
+  _sd_a="$TMPDIR_TEST/sdhg-invc5-a"
+  _sd_b="$TMPDIR_TEST/sdhg-invc5-b"
+  _init_state "$_sd_a"
+  _init_state "$_sd_b"
+  capture "$SCRIPT" register --state-dir "$_sd_a" \
+    --agente "agente-00c-orchestrator" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural --eixo "cor-do-logo"
+  _exit_a="$_CAPTURED_EXIT"; _err_a="$_CAPTURED_STDERR"
+  capture "$SCRIPT" register --state-dir "$_sd_b" \
+    --agente "operador" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural --eixo "cor-do-logo"
+  _exit_b="$_CAPTURED_EXIT"; _err_b="$_CAPTURED_STDERR"
+  [ "$_exit_a" = "$_exit_b" ] || { _fail "INV-C5 exit diverge" "a=$_exit_a b=$_exit_b"; return 1; }
+  [ "$_err_a" = "$_err_b" ] || { _fail "INV-C5 mensagem diverge" "a='$_err_a' b='$_err_b'"; return 1; }
+}
+
+scenario_sdhg_inv_c1_sem_classe_comportamento_identico() {
+  # Ausencia de --classe e byte-a-byte o comportamento atual — mesmo quando
+  # a Decisao teria sido estrutural (nenhum caminho novo dispara sem a flag,
+  # exceto R1, que exige a flag so quando --opcoes contem o token de
+  # bloqueio humano — nao e o caso aqui).
+  _sd="$TMPDIR_TEST/sdhg-invc1"
+  _init_state "$_sd"
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Decisao sem classe declarada, comportamento legado" \
+    --score 2
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sem --classe deveria passar" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[0].decision_class'
+  [ "$_CAPTURED_STDOUT" = "null" ] || { _fail "decision_class deveria ser null" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+if command -v sqlite3 >/dev/null 2>&1; then
+
+# _patch_human_block_subject_key_sqlite DIR BLOCK_ID SUBJECT -> fixture
+# helper equivalente ao patch JSON, para o backend SQLite.
+_patch_human_block_subject_key_sqlite() {
+  sqlite3 "$1/state.db" \
+    "UPDATE human_block SET subject_key='$3' WHERE id='$2';"
+}
+
+_sdhg_seed_consent_sqlite() {
+  _ssc_sd="$1"; _ssc_eixo="${2:-linguagem-runtime}"
+  _seed_sqlite_backend "$_ssc_sd" || return 1
+  capture "$SCRIPT" register --state-dir "$_ssc_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime","manter-atual"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural --eixo "$_ssc_eixo"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed sqlite: register pausa" "$_CAPTURED_STDERR"; return 1; }
+  capture "$BL" register --state-dir "$_ssc_sd" --decisao-id dec-001 \
+    --pergunta "Qual linguagem/runtime devemos usar no backend?" \
+    --contexto-para-resposta "Ver opcoes tecnicas avaliadas no plan.md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed sqlite: bloqueio register" "$_CAPTURED_STDERR"; return 1; }
+  capture "$BL" respond --state-dir "$_ssc_sd" --block-id block-001 --resposta "Decidido: Go 1.22"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed sqlite: bloqueio respond" "$_CAPTURED_STDERR"; return 1; }
+  _patch_human_block_subject_key_sqlite "$_ssc_sd" block-001 "axis:$_ssc_eixo"
+}
+
+scenario_sdhg_sqlite_r1_opcoes_bloqueio_sem_classe_falha() {
+  _sd="$TMPDIR_TEST/sdhg-sqlite-r1"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "sqlite R1" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "classe-obrigatoria" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "0" || return 1
+}
+
+scenario_sdhg_sqlite_r3_eixo_invalido_falha() {
+  _sd="$TMPDIR_TEST/sdhg-sqlite-r3"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural --eixo "cor-do-logo"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "sqlite R3" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "eixo-invalido" || return 1
+}
+
+scenario_sdhg_sqlite_r2_estrutural_sem_consentimento_falha() {
+  _sd="$TMPDIR_TEST/sdhg-sqlite-r2"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "x" --etapa "plan" \
+    --contexto "Decidir a linguagem/runtime sozinho, sem gate" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Acho que Go e melhor pra esse caso de uso" \
+    --score 0 --classe estrutural --eixo linguagem-runtime
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "sqlite R2" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "estrutural-exige-bloqueio" || return 1
+}
+
+# Task 2.2.3: SELECT direto confirma as 3 colunas novas persistidas.
+scenario_sdhg_sqlite_2_2_3_colunas_novas_persistidas() {
+  _sd="$TMPDIR_TEST/sdhg-sqlite-cols"
+  _sdhg_seed_consent_sqlite "$_sd" linguagem-runtime || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "operador" --etapa "plan" \
+    --contexto "Registrar a decisao final de linguagem/runtime" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Bloqueio humano respondido autoriza esta escolha" \
+    --score 2 --classe estrutural --eixo linguagem-runtime --consentimento block-001
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite R6 valido" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "dec-002" || return 1
+  _row=$(sqlite3 "$_sd/state.db" \
+    "SELECT decision_class||'|'||structural_axis||'|'||human_consent_block_id FROM decision WHERE id='dec-002';")
+  [ "$_row" = "estrutural|linguagem-runtime|block-001" ] \
+    || { _fail "colunas novas" "obtido '$_row'"; return 1; }
+}
+
+scenario_sdhg_sqlite_r6_consentimento_outro_assunto_falha() {
+  _sd="$TMPDIR_TEST/sdhg-sqlite-r6-outro"
+  _sdhg_seed_consent_sqlite "$_sd" persistencia || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --agente "operador" --etapa "plan" \
+    --contexto "Registrar a decisao final de linguagem/runtime" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Consentimento e de outro eixo (persistencia), nao linguagem" \
+    --score 2 --classe estrutural --eixo linguagem-runtime --consentimento block-001
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "sqlite R6 outro assunto" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "consentimento-de-outro-assunto" || return 1
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "1" || return 1
+}
+
+fi # sqlite3 disponivel
 
 run_all_scenarios

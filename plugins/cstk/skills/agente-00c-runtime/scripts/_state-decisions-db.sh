@@ -16,7 +16,8 @@
 # Funcoes expostas (todas exigem STATE_DIR ja resolvido para backend sqlite
 # pelo caller via _sr_backend, e state.db existente):
 #   _sd_db_register DIR AGENT STAGE CTX OPTS_JSON CHOICE RATIONALE \
-#                    SCORE EVIDENCE REFS_JSON ORIG_ARTIFACT
+#                    SCORE EVIDENCE REFS_JSON ORIG_ARTIFACT \
+#                    CLASSE EIXO CONSENTIMENTO
 #                                              -> INSERT do dec-NNN novo numa
 #                                                 unica transacao (C4), com o
 #                                                 numero calculado por
@@ -135,6 +136,10 @@ _sd_db_register() {
   _sdb_evi="$9"
   shift 9
   _sdb_refs="$1"; _sdb_orig="$2"
+  # feature structural-decision-human-gate (task 2.2.1): 3 colunas novas,
+  # sempre presentes na chamada (string vazia = NULL); R1..R3/R6 ja foram
+  # validadas pelo caller (state-decisions.sh) antes do dispatch.
+  _sdb_classe="${3:-}"; _sdb_eixo="${4:-}"; _sdb_consent="${5:-}"
 
   _sdb_db=$(_sr_db_file "$_sdb_sdir")
   [ -f "$_sdb_db" ] || _sd_die "register: state.db ausente em $_sdb_sdir" 1
@@ -164,6 +169,14 @@ _sd_db_register() {
   _sdb_orig_sql="NULL"
   [ -n "$_sdb_orig" ] && [ "$_sdb_orig" != "null" ] && _sdb_orig_sql=$(_sr_sql_quote "$_sdb_orig")
 
+  # feature structural-decision-human-gate (task 2.2.1): string vazia = NULL.
+  _sdb_classe_sql="NULL"
+  [ -n "$_sdb_classe" ] && _sdb_classe_sql=$(_sr_sql_quote "$_sdb_classe")
+  _sdb_eixo_sql="NULL"
+  [ -n "$_sdb_eixo" ] && _sdb_eixo_sql=$(_sr_sql_quote "$_sdb_eixo")
+  _sdb_consent_sql="NULL"
+  [ -n "$_sdb_consent" ] && _sdb_consent_sql=$(_sr_sql_quote "$_sdb_consent")
+
   # options_considered/references ja foram validados como JSON array pelo
   # caller (state-decisions.sh, antes do dispatch de backend) — compactamos
   # aqui so por higiene de armazenamento (paridade com _sr_db_upsert_decision,
@@ -180,7 +193,7 @@ _sd_db_register() {
   # que garante nao colidir sob concorrencia (task 3.4.3): um segundo
   # escritor so consegue seu proprio BEGIN IMMEDIATE apos o primeiro
   # COMMITar, e nesse momento seu MAX(...) ja enxerga a linha do primeiro.
-  _sdb_sql="BEGIN IMMEDIATE; INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score,evidence,\"references\",originating_artifact) VALUES ('dec-' || printf('%03d',$_sdb_id_expr),$_sdb_exec_id_sql,$_sdb_wid_sql,$(_sr_sql_quote "$_sdb_now"),$(_sr_sql_quote "$_sdb_agent"),$(_sr_sql_quote "$_sdb_stage"),$(_sr_sql_quote "$_sdb_ctx"),$(_sr_sql_quote "$_sdb_opts_c"),$(_sr_sql_quote "$_sdb_choice"),$(_sr_sql_quote "$_sdb_rationale"),$_sdb_score_sql,$_sdb_evi_sql,$(_sr_sql_quote "$_sdb_refs_c"),$_sdb_orig_sql); SELECT id FROM decision WHERE rowid=last_insert_rowid(); COMMIT;"
+  _sdb_sql="BEGIN IMMEDIATE; INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score,evidence,\"references\",originating_artifact,decision_class,structural_axis,human_consent_block_id) VALUES ('dec-' || printf('%03d',$_sdb_id_expr),$_sdb_exec_id_sql,$_sdb_wid_sql,$(_sr_sql_quote "$_sdb_now"),$(_sr_sql_quote "$_sdb_agent"),$(_sr_sql_quote "$_sdb_stage"),$(_sr_sql_quote "$_sdb_ctx"),$(_sr_sql_quote "$_sdb_opts_c"),$(_sr_sql_quote "$_sdb_choice"),$(_sr_sql_quote "$_sdb_rationale"),$_sdb_score_sql,$_sdb_evi_sql,$(_sr_sql_quote "$_sdb_refs_c"),$_sdb_orig_sql,$_sdb_classe_sql,$_sdb_eixo_sql,$_sdb_consent_sql); SELECT id FROM decision WHERE rowid=last_insert_rowid(); COMMIT;"
 
   _sdb_id=$(_sd_db_exec_capture "$_sdb_db" "$_sdb_sql") \
     || _sd_die "register: INSERT falhou (backend sqlite) — ver stderr acima" 1

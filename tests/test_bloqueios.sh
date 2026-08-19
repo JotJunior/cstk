@@ -668,4 +668,172 @@ scenario_next_id_tolera_jq_com_saida_crlf() {
   assert_stdout_contains "block-003" || return 1
 }
 
+# ==== structural-decision-human-gate (FASE 2, task 2.4.5): --chave-assunto ====
+#
+# Ref: docs/specs/structural-decision-human-gate/data-model.md §Enum de
+#      prefixo de subject_key; contracts/cli-structural-class.md §bloqueios.sh
+#      register/list (extensao)
+
+scenario_sdhg_register_com_chave_assunto_briefing_item() {
+  _sd="$TMPDIR_TEST/sdhg-chave-briefing"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual stack escolher para a feature, Go ou Node?" \
+    --contexto-para-resposta "Briefing nao define; stack-sugerida vazia" \
+    --chave-assunto "briefing-item:linguagem-e-runtime-do-backend-abc123"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register com chave-assunto" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.human_blocks[0].subject_key'
+  [ "$_CAPTURED_STDOUT" = "briefing-item:linguagem-e-runtime-do-backend-abc123" ] \
+    || { _fail "subject_key persistido" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_sdhg_register_sem_chave_assunto_fica_null() {
+  _sd="$TMPDIR_TEST/sdhg-chave-null"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  _register_block_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register sem chave-assunto" "$_CAPTURED_STDERR"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.human_blocks[0].subject_key'
+  [ "$_CAPTURED_STDOUT" = "null" ] || { _fail "subject_key deveria ser null" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_sdhg_register_chave_assunto_prefixo_invalido_falha() {
+  _sd="$TMPDIR_TEST/sdhg-chave-prefixo-invalido"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual stack escolher para a feature, Go ou Node?" \
+    --contexto-para-resposta "Briefing nao define; stack-sugerida vazia" \
+    --chave-assunto "milestone:retro-25-ondas"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "prefixo invalido" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "0" || return 1
+}
+
+scenario_sdhg_register_chave_assunto_sufixo_vazio_falha() {
+  _sd="$TMPDIR_TEST/sdhg-chave-sufixo-vazio"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual stack escolher para a feature, Go ou Node?" \
+    --contexto-para-resposta "Briefing nao define; stack-sugerida vazia" \
+    --chave-assunto "axis:"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "sufixo vazio" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_sdhg_list_chave_assunto_filtra_por_igualdade_exata() {
+  _sd="$TMPDIR_TEST/sdhg-list-filtro"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual linguagem/runtime devemos usar no backend?" \
+    --contexto-para-resposta "Ver plan.md" \
+    --chave-assunto "axis:linguagem-runtime"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed bloqueio 1" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual banco de dados devemos usar?" \
+    --contexto-para-resposta "Ver plan.md" \
+    --chave-assunto "axis:persistencia"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed bloqueio 2" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd" --chave-assunto "axis:linguagem-runtime"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list --chave-assunto" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "block-001" || return 1
+  assert_stdout_not_contains "block-002" || return 1
+  # TSV nao ganha coluna nova (5 campos: id/decision_id/status/triggered_at/pergunta)
+  _ncols=$(printf '%s' "$_CAPTURED_STDOUT" | head -1 | awk -F'\t' '{print NF}')
+  [ "$_ncols" = "5" ] || { _fail "TSV mudou de colunas" "obtido $_ncols campos"; return 1; }
+}
+
+scenario_sdhg_dedup_fr008_vazio_significa_nao_decidido() {
+  _sd="$TMPDIR_TEST/sdhg-dedup"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual linguagem/runtime devemos usar no backend?" \
+    --contexto-para-resposta "Ver plan.md" \
+    --chave-assunto "axis:linguagem-runtime"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed bloqueio" "$_CAPTURED_STDERR"; return 1; }
+  # Ainda aguardando -> dedup (status=respondido) nao encontra nada.
+  capture "$SCRIPT" list --state-dir "$_sd" --status respondido --chave-assunto "axis:linguagem-runtime"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dedup query" "$_CAPTURED_STDERR"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "deveria estar vazio (ainda nao decidido)" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id block-001 --resposta "Go 1.22"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "respond" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd" --status respondido --chave-assunto "axis:linguagem-runtime"
+  assert_stdout_contains "block-001" || return 1
+}
+
+scenario_sdhg_bloqueios_legados_subject_key_null_nunca_casa() {
+  # INV-K1: bloqueios anteriores a esta feature tem subject_key NULL e nunca
+  # casam com chave alguma, nem para dedup nem para consentimento.
+  _sd="$TMPDIR_TEST/sdhg-legado"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  _register_block_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register legado (sem chave)" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" respond --state-dir "$_sd" --block-id block-001 --resposta "Go 1.22"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "respond" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd" --status respondido --chave-assunto "axis:linguagem-runtime"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list filtro legado" "$_CAPTURED_STDERR"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "bloqueio legado nao deveria casar com chave alguma" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+if command -v sqlite3 >/dev/null 2>&1; then
+
+scenario_sdhg_sqlite_register_com_chave_assunto_persiste_coluna() {
+  _sd="$TMPDIR_TEST/sdhg-sqlite-chave"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual linguagem/runtime devemos usar no backend?" \
+    --contexto-para-resposta "Ver plan.md" \
+    --chave-assunto "axis:linguagem-runtime"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite register com chave" "$_CAPTURED_STDERR"; return 1; }
+  _val=$(sqlite3 "$_sd/state.db" "SELECT subject_key FROM human_block WHERE id='block-001';")
+  [ "$_val" = "axis:linguagem-runtime" ] || { _fail "coluna subject_key" "obtido '$_val'"; return 1; }
+}
+
+scenario_sdhg_sqlite_register_chave_assunto_prefixo_invalido_falha() {
+  _sd="$TMPDIR_TEST/sdhg-sqlite-chave-invalida"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual linguagem/runtime devemos usar no backend?" \
+    --contexto-para-resposta "Ver plan.md" \
+    --chave-assunto "nao-e-um-prefixo-valido"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "sqlite prefixo invalido" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" count --state-dir "$_sd"
+  assert_stdout_contains "0" || return 1
+}
+
+scenario_sdhg_sqlite_list_chave_assunto_filtra() {
+  _sd="$TMPDIR_TEST/sdhg-sqlite-list-filtro"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual linguagem/runtime devemos usar no backend?" \
+    --contexto-para-resposta "Ver plan.md" \
+    --chave-assunto "axis:linguagem-runtime"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite seed bloqueio" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd" --chave-assunto "axis:persistencia"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite list filtro (sem match)" "$_CAPTURED_STDERR"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "nao deveria casar com axis:persistencia" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd" --chave-assunto "axis:linguagem-runtime"
+  assert_stdout_contains "block-001" || return 1
+}
+
+# Banco pre-feature (sem `ensure` aplicado): list --chave-assunto NUNCA
+# invoca `ensure` (INV-E3, caminho de leitura) — resolve via table_info e
+# trata coluna ausente como "nenhuma linha casa", sem erro "no such column".
+scenario_sdhg_sqlite_list_chave_assunto_banco_legado_sem_coluna_nao_falha() {
+  _sd="$TMPDIR_TEST/sdhg-sqlite-legado-sem-coluna"
+  mkdir -p "$_sd"
+  "$SCHEMA_SCRIPT" create --db "$_sd/state.db" >/dev/null 2>&1 \
+    || { _fail "seed: schema create" ""; return 1; }
+  sqlite3 "$_sd/state.db" "
+    PRAGMA foreign_keys=ON;
+    INSERT INTO execution (id,schema_version,target_project_path,target_project_description,status,started_at,current_stage,next_instruction,external_urls_whitelist,circular_movement_history,initial_key_aspects,atomic_commit_enabled)
+    VALUES ('exec-1','1.0.0','/tmp/p','desc de teste com detalhe','em_andamento','2026-07-30T00:00:00Z','execute-task','faca algo','[]','[]','[]',0);
+    INSERT INTO decision (id,execution_id,timestamp,agent,stage,context,options_considered,choice,rationale)
+    VALUES ('dec-001','exec-1','2026-07-30T00:00:00Z','x','clarify','contexto de teste com detalhe suficiente','[\"a\"]','a','justificativa de teste com detalhe suficiente');
+    ALTER TABLE human_block DROP COLUMN subject_key;
+  " || { _fail "seed: insert + drop coluna" ""; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd" --chave-assunto "axis:linguagem-runtime"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list em banco legado nao deveria falhar" "$_CAPTURED_STDERR"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "banco legado nunca deveria casar" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+fi # sqlite3 disponivel
+
 run_all_scenarios

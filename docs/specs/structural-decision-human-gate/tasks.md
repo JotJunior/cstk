@@ -86,7 +86,7 @@ Decision 4 (mesmo padrao de `tier-gate-map.txt`/`phase-model-map.txt`)
       **rejeitado** (exit 2 no consumidor), diferente do fail-safe de
       `tier-gate-map.txt` — aceitar um eixo desconhecido permitiria burlar o
       enum por texto livre
-- [ ] 1.3.3 Teste (smoke, coberto por `tests/test_state-decisions.sh` na
+- [x] 1.3.3 Teste (smoke, coberto por `tests/test_state-decisions.sh` na
       FASE 2): lookup de eixo valido retorna o rotulo; eixo fora da lista
       retorna erro sem gravar nada
 
@@ -103,22 +103,22 @@ de qualquer INSERT/leitura das colunas novas).
 Ref: FR-001, FR-002, FR-003; `data-model.md` regras R1, R2, R3, R6;
 `contracts/cli-structural-class.md` §`state-decisions.sh register`
 
-- [ ] 2.1.1 Parsear `--classe {estrutural|operacional}`, `--eixo <token>`,
+- [x] 2.1.1 Parsear `--classe {estrutural|operacional}`, `--eixo <token>`,
       `--consentimento <block-NNN>` no `case` do parser existente (flags
       portugues, kebab-case — Convencoes de Borda do plan.md)
-- [ ] 2.1.2 R1 (pre-dispatch, pura de entrada — INV-C2): `--opcoes` contendo
+- [x] 2.1.2 R1 (pre-dispatch, pura de entrada — INV-C2): `--opcoes` contendo
       token da familia `bloqueio-humano*`/`pause-humano` (avaliado pelo
       `rotulo` quando o item e objeto) e `--classe` ausente => exit 1
       `classe-obrigatoria`, nada gravado
-- [ ] 2.1.3 R3 (pre-dispatch): `--classe estrutural` sem `--eixo`, ou `--eixo`
+- [x] 2.1.3 R3 (pre-dispatch): `--classe estrutural` sem `--eixo`, ou `--eixo`
       fora do enum de `structural-axis-map.txt` => exit 2 `eixo-invalido`;
       `--classe` fora de `{estrutural,operacional}` => exit 2
       `classe-invalida`
-- [ ] 2.1.4 R2 (pre-dispatch quando NAO ha `--consentimento`): `--classe
+- [x] 2.1.4 R2 (pre-dispatch quando NAO ha `--consentimento`): `--classe
       estrutural` com `--escolha` fora da familia de bloqueio humano, ou
       `--score` != 0 => exit 1 `estrutural-exige-bloqueio`, mensagem cita
       classe + eixo + caminho correto, nada gravado
-- [ ] 2.1.5 R6 (dentro de cada branch de backend, antes de qualquer escrita —
+- [x] 2.1.5 R6 (dentro de cada branch de backend, antes de qualquer escrita —
       INV-C2/INV-C4): quando `--consentimento` presente, ler o
       `human_block` citado no backend corrente (JSON ou SQLite) e verificar
       `execution_id` da execucao corrente, `status = respondido` e
@@ -127,18 +127,18 @@ Ref: FR-001, FR-002, FR-003; `data-model.md` regras R1, R2, R3, R6;
       status ok mas `subject_key` divergente => exit 1
       `consentimento-de-outro-assunto` (mensagem cita os dois assuntos lado a
       lado); nada gravado em ambos os casos
-- [ ] 2.1.6 Com `--consentimento` valido (R6 satisfeita), a regua de score
+- [x] 2.1.6 Com `--consentimento` valido (R6 satisfeita), a regua de score
       atual volta a valer integralmente para a escolha concreta (data-model
       R2, segunda frase)
-- [ ] 2.1.7 INV-C1: ausencia de `--classe` e byte-a-byte identica ao
+- [x] 2.1.7 INV-C1: ausencia de `--classe` e byte-a-byte identica ao
       comportamento atual (inclusive a trava de constitution-conflict
       existente, preservada sem reescrita de mensagem)
-- [ ] 2.1.8 INV-C5: `--agente` nao participa de nenhuma regra nova — mesmo
+- [x] 2.1.8 INV-C5: `--agente` nao participa de nenhuma regra nova — mesmo
       input com `--agente agente-00c-orchestrator` e `--agente operador`
       produz identico exit e mensagem
-- [ ] 2.1.9 Invocar `state-db-schema.sh ensure` no inicio do branch SQLite
+- [x] 2.1.9 Invocar `state-db-schema.sh ensure` no inicio do branch SQLite
       de `_sd_db_register`, antes do INSERT (task 1.2.4)
-- [ ] 2.1.10 Teste: `tests/test_state-decisions.sh` — cenarios R1..R3, R6
+- [x] 2.1.10 Teste: `tests/test_state-decisions.sh` — cenarios R1..R3, R6
       (bloqueio inexistente/outra execucao/aguardando/outro assunto),
       INV-C1..C6, paridade backend JSON vs SQLite
 
@@ -146,12 +146,12 @@ Ref: FR-001, FR-002, FR-003; `data-model.md` regras R1, R2, R3, R6;
 
 Ref: `data-model.md` entidade Decisao; `plan.md` §Project Structure
 
-- [ ] 2.2.1 Estender a `INSERT INTO decision (...)` com `decision_class`,
+- [x] 2.2.1 Estender a `INSERT INTO decision (...)` com `decision_class`,
       `structural_axis`, `human_consent_block_id` (NULL por default quando
       as flags novas nao forem passadas)
-- [ ] 2.2.2 Confirmar que o subquery de geracao do `dec-NNN` (proximo id) nao
+- [x] 2.2.2 Confirmar que o subquery de geracao do `dec-NNN` (proximo id) nao
       e afetado pela mudanca de colunas
-- [ ] 2.2.3 Teste: cenario dedicado em `tests/test_state-decisions.sh`
+- [x] 2.2.3 Teste: cenario dedicado em `tests/test_state-decisions.sh`
       (task 2.1.10) faz `sqlite3 <db> "SELECT decision_class, structural_axis,
       human_consent_block_id FROM decision WHERE id = 'dec-NNN'"` e confirma
       os valores gravados
@@ -161,18 +161,18 @@ Ref: `data-model.md` entidade Decisao; `plan.md` §Project Structure
 Ref: FR-013 (retrocompatibilidade); `contracts/cli-structural-class.md`
 §`state-db-schema.sh ensure` INV-E3 (caminho de leitura nunca emite DDL)
 
-- [ ] 2.3.1 No export de `.decisions[]`, consultar `PRAGMA
+- [x] 2.3.1 No export de `.decisions[]`, consultar `PRAGMA
       table_info(decision)` uma vez e escolher entre duas consultas SQL
       literais fixas: a que projeta as 3 colunas novas, e a que projeta
       `NULL` no lugar delas (banco legado sem `ensure` ainda aplicado) — o
       caminho de leitura nunca invoca `ensure` nem emite `ALTER`
-- [ ] 2.3.2 Atualizar o caminho de upsert usado pela migracao json->db para
+- [x] 2.3.2 Atualizar o caminho de upsert usado pela migracao json->db para
       gravar `decision_class`/`structural_axis`/`human_consent_block_id`
       quando presentes no `state.json` de origem, NULL quando ausentes
       (registro legado, FR-013)
-- [ ] 2.3.3 Fazer o mesmo para `subject_key` no export/upsert de
+- [x] 2.3.3 Fazer o mesmo para `subject_key` no export/upsert de
       `.human_blocks[]`
-- [ ] 2.3.4 Teste: `tests/test_state-rw.sh` — projecao das colunas novas
+- [x] 2.3.4 Teste: `tests/test_state-rw.sh` — projecao das colunas novas
       (presentes e NULL), banco sem `ensure` aplicado ainda exporta sem erro
 
 ### 2.4 `bloqueios.sh` + `_bloqueios-db.sh`: `--chave-assunto` `[A]`
@@ -180,21 +180,21 @@ Ref: FR-013 (retrocompatibilidade); `contracts/cli-structural-class.md`
 Ref: FR-008; `data-model.md` entidade BloqueioHumano, §Enum de prefixo;
 `contracts/cli-structural-class.md` §`bloqueios.sh register`/`list`
 
-- [ ] 2.4.1 `register`: parsear `--chave-assunto <token>` (opcional); validar
+- [x] 2.4.1 `register`: parsear `--chave-assunto <token>` (opcional); validar
       prefixo em `{briefing-item:, axis:}` e sufixo nao-vazio — prefixo fora
       do enum ou sufixo vazio => exit 2; ausente => `subject_key` NULL
       (comportamento atual integral)
-- [ ] 2.4.2 `list`: aceitar `--chave-assunto <token>` (filtro por igualdade
+- [x] 2.4.2 `list`: aceitar `--chave-assunto <token>` (filtro por igualdade
       exata, combinavel com `--status`); TSV de saida **nao muda de
       colunas** (`id`, `decision_id`, `status`, `triggered_at`, `pergunta`)
-- [ ] 2.4.3 `_bloqueios-db.sh`: estender INSERT com `subject_key`; estender
+- [x] 2.4.3 `_bloqueios-db.sh`: estender INSERT com `subject_key`; estender
       SELECT do `list` com filtro `WHERE subject_key = ?` quando a flag for
       passada; invocar `state-db-schema.sh ensure` antes do INSERT no
       backend SQLite
-- [ ] 2.4.4 Confirmar a consulta de dedup do FR-008 funciona literalmente:
+- [x] 2.4.4 Confirmar a consulta de dedup do FR-008 funciona literalmente:
       `bloqueios.sh list --state-dir "$SD" --status respondido
       --chave-assunto "briefing-item:$KEY"` vazio = ainda nao decidido
-- [ ] 2.4.5 Teste: `tests/test_bloqueios.sh` — register com/sem
+- [x] 2.4.5 Teste: `tests/test_bloqueios.sh` — register com/sem
       `--chave-assunto`, prefixo invalido (exit 2), sufixo vazio (exit 2),
       `list --chave-assunto` filtra corretamente, dedup por
       status=respondido, bloqueios legados com `subject_key` NULL nunca
