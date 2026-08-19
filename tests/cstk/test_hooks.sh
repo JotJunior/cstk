@@ -902,4 +902,213 @@ scenario_dedup_nao_remove_quando_plugin_incompleto() {
   return 0
 }
 
+# ==== `--local` + `hooks status` (issue #135) ====
+
+# _hooks_catalog_fixture_real: catalogo com os hooks + snippets REAIS do repo
+# (a fixture sintetica acima registra comandos "x"/"y"/"z", que nao casam o
+# basename do hook — inutil para verificar EM QUAL arquivo o registro esta).
+_hooks_catalog_fixture_real() {
+  _hcfr_cat="$TMPDIR_TEST/catalog-real"
+  _hcfr_hooks="$_hcfr_cat/skills/agente-00c-runtime/hooks"
+  mkdir -p "$_hcfr_hooks"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks"/*.sh "$_hcfr_hooks/" 2>/dev/null || :
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/hooks"/settings*.json "$_hcfr_hooks/" 2>/dev/null || :
+  chmod +x "$_hcfr_hooks"/*.sh 2>/dev/null || :
+  printf '%s' "$_hcfr_cat"
+}
+#
+# Repos de terceiros versionam .claude/settings.json de proposito; o registro
+# dos hooks do cstk (ferramenta pessoal) nao pode pousar la. `--local` grava
+# o registro em settings.local.json (hooks SOMAM entre escopos no Claude
+# Code) e o settings.json do time fica byte-a-byte intacto. Os scripts
+# continuam em .claude/hooks/.
+
+scenario_local_registra_em_settings_local_e_preserva_settings_json() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_real)
+  _proj="$TMPDIR_TEST/proj-local"
+  mkdir -p "$_proj/.claude"
+  printf '{\n  "permissions": {"allow": ["Bash(ls:*)"]}\n}\n' > "$_proj/.claude/settings.json"
+  cp "$_proj/.claude/settings.json" "$TMPDIR_TEST/settings.json.team-orig"
+
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local --with-loose-usage
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  # settings.json do time: byte-a-byte intacto (o ponto inteiro da flag).
+  cmp -s "$_proj/.claude/settings.json" "$TMPDIR_TEST/settings.json.team-orig" \
+    || { _fail "settings.json do time foi tocado" "$(cat "$_proj/.claude/settings.json")"; return 1; }
+  [ -f "$_proj/.claude/settings.json.bak" ] \
+    && { _fail "settings.json.bak criado" "--local nao pode sujar o git status do cliente"; return 1; }
+  # Registro (3 obrigatorios + opt-in) no arquivo local.
+  [ -f "$_proj/.claude/settings.local.json" ] || { _fail "settings.local.json ausente" ""; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "4" ] \
+    || { _fail "registro local" "esperado 4 entradas 00c, obtido $(_n_hooks_cstk "$_proj/.claude/settings.local.json")"; return 1; }
+  # Scripts continuam em .claude/hooks/ (o registro local aponta para la).
+  for _h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh posttooluse-loose-usage.sh; do
+    [ -x "$_proj/.claude/hooks/$_h" ] || { _fail "hook ausente" "$_h"; return 1; }
+  done
+  # (path via pwd -P pode diferir de $_proj em symlinks de TMPDIR — casa so o sufixo)
+  assert_stderr_contains "provisionados e registrados em " || return 1
+  assert_stderr_contains "/.claude/settings.local.json" || return 1
+  return 0
+}
+
+scenario_local_idempotente() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_real)
+  _proj="$TMPDIR_TEST/proj-local-idem"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local
+  _n1=$(_n_hooks_cstk "$_proj/.claude/settings.local.json")
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "2a run exit" "$_CAPTURED_EXIT"; return 1; }
+  _n2=$(_n_hooks_cstk "$_proj/.claude/settings.local.json")
+  [ "$_n1" = "3" ] && [ "$_n1" = "$_n2" ] \
+    || { _fail "idempotencia" "entradas 00c: $_n1 -> $_n2 (esperado 3 -> 3)"; return 1; }
+  [ -e "$_proj/.claude/settings.json" ] \
+    && { _fail "settings.json criado" "--local nunca deve criar settings.json"; return 1; }
+  return 0
+}
+
+scenario_local_dry_run_nao_escreve_e_cita_arquivo_local() {
+  _cat=$(_hooks_catalog_fixture_real)
+  _proj="$TMPDIR_TEST/proj-local-dry"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -e "$_proj/.claude" ] && { _fail "dry-run escreveu" ".claude nao deveria existir"; return 1; }
+  assert_stderr_contains "settings.local.json" || return 1
+  return 0
+}
+
+# Registro nos DOIS arquivos = cada tool call contada em dobro. Sem TTY e
+# sem --remove-classic o outro arquivo e MANTIDO com aviso (settings.json e
+# do operador/time; nada e removido sem confirmacao explicita).
+scenario_local_dedup_sem_tty_avisa_e_mantem_settings_json() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_real)
+  _proj="$TMPDIR_TEST/proj-local-dedup-keep"
+  _settings_com_classico "$_proj/.claude/settings.json"
+  _n_before=$(_n_hooks_cstk "$_proj/.claude/settings.json")
+
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local </dev/null
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "duplicidade com o registro em settings.local.json" || return 1
+  assert_stderr_contains "MANTIDO" || return 1
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "$_n_before" ] \
+    || { _fail "settings.json alterado sem confirmacao" ""; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "3" ] \
+    || { _fail "registro local" "esperado 3, obtido $(_n_hooks_cstk "$_proj/.claude/settings.local.json")"; return 1; }
+  return 0
+}
+
+scenario_local_dedup_remove_classic_limpa_settings_json_preservando_terceiros() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_real)
+  _proj="$TMPDIR_TEST/proj-local-dedup-rm"
+  _settings_com_classico "$_proj/.claude/settings.json"
+
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local --remove-classic
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "0" ] \
+    || { _fail "remocao" "entradas 00c deveriam ter sumido de settings.json"; return 1; }
+  jq -e '.permissions.allow[0] == "Bash(ls:*)"
+         and ([.hooks.PreToolUse[].hooks[].command] | index("/opt/hook-do-time.sh") != null)
+         and ([.hooks.PostToolUse[].hooks[].command] | index("/usr/local/bin/telemetria.sh") != null)' \
+    "$_proj/.claude/settings.json" >/dev/null \
+    || { _fail "hooks de terceiros/chaves perdidos" "$(cat "$_proj/.claude/settings.json")"; return 1; }
+  [ -f "$_proj/.claude/settings.json.bak-pre-dedup" ] || { _fail "backup" "backup nao gravado"; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "3" ] \
+    || { _fail "registro local" "esperado 3"; return 1; }
+  return 0
+}
+
+# Direcao inversa: instalar CLASSICO num projeto que ja tem registro local
+# tambem e duplicidade — mesmo aviso, mesma guarda.
+scenario_classico_sobre_local_avisa_duplicidade() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_real)
+  _proj="$TMPDIR_TEST/proj-classic-over-local"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" </dev/null
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "settings.local.json ainda registra 3 hook(s) 00c" || return 1
+  assert_stderr_contains "duplicidade com o registro em settings.json" || return 1
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.local.json")" = "3" ] \
+    || { _fail "settings.local.json alterado sem confirmacao" ""; return 1; }
+  return 0
+}
+
+# Sem --local o comportamento e byte-a-byte o historico: settings.json.
+scenario_sem_local_comportamento_identico() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_real)
+  _proj="$TMPDIR_TEST/proj-no-local"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  [ "$(_n_hooks_cstk "$_proj/.claude/settings.json")" = "3" ] || { _fail "settings.json" "esperado 3"; return 1; }
+  [ -e "$_proj/.claude/settings.local.json" ] && { _fail "settings.local.json criado sem --local" ""; return 1; }
+  return 0
+}
+
+scenario_apply_guard_hooks_settings_basename_invalido_exit2() {
+  _src=$(_guard_src_fixture)
+  capture sh -c '. "$CSTK_LIB/hooks.sh" && apply_guard_hooks "$1" "$2" 0 0 "settings.evil.json"' _ "$_src" "$TMPDIR_TEST/dest-evil"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "error" || return 1
+  [ -e "$TMPDIR_TEST/dest-evil" ] && { _fail "escreveu" "basename invalido nao pode provisionar"; return 1; }
+  return 0
+}
+
+# --- cstk hooks status ---
+
+scenario_status_reporta_registro_local() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_real)
+  _proj="$TMPDIR_TEST/proj-status-local"
+  mkdir -p "$_proj"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local --with-loose-usage
+  _hooks_main_run status --project-path "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  for _h in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh posttooluse-loose-usage.sh; do
+    printf '%s\n' "$_CAPTURED_STDOUT" | grep -E "^  $_h +script=present +registro=settings.local.json" >/dev/null \
+      || { _fail "linha de $_h" "$_CAPTURED_STDOUT"; return 1; }
+  done
+  case "$_CAPTURED_STDERR" in *"MAIS de um lugar"*|*"sem registro algum"*) _fail "aviso indevido" "$_CAPTURED_STDERR"; return 1 ;; esac
+  return 0
+}
+
+scenario_status_reporta_both_e_avisa_dobro() {
+  if ! _has_jq; then _error "no_jq" "skip"; return 2; fi
+  _cat=$(_hooks_catalog_fixture_real)
+  _proj="$TMPDIR_TEST/proj-status-both"
+  _settings_com_classico "$_proj/.claude/settings.json"
+  _hooks_main_run install --project-path "$_proj" --catalog "$_cat" --local </dev/null
+  _hooks_main_run status --project-path "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (diagnostico), obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -E "^  pretooluse-bash-guard.sh +script=present +registro=both" >/dev/null \
+    || { _fail "esperado registro=both" "$_CAPTURED_STDOUT"; return 1; }
+  assert_stderr_contains "3 hook(s) registrados em MAIS de um lugar" || return 1
+  return 0
+}
+
+scenario_status_sem_nada_reporta_none_e_orienta() {
+  _proj="$TMPDIR_TEST/proj-status-none"
+  mkdir -p "$_proj"
+  _hooks_main_run status --project-path "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -E "^  pretooluse-bash-guard.sh +script=missing +registro=none" >/dev/null \
+    || { _fail "esperado script=missing registro=none" "$_CAPTURED_STDOUT"; return 1; }
+  assert_stderr_contains "sem registro algum" || return 1
+  [ -e "$_proj/.claude" ] && { _fail "status escreveu" ".claude nao deveria existir (read-only)"; return 1; }
+  return 0
+}
+
+scenario_status_flag_desconhecida_exit2() {
+  _hooks_main_run status --xyz
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "flag desconhecida" || return 1
+}
+
 run_all_scenarios
