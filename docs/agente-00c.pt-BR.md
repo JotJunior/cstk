@@ -53,8 +53,10 @@ de etapas.
 
 - **Claude Code** (Opus 4.x ou Sonnet 4.6 recomendado), **Auto mode**
   ativo para reduzir interrupções.
-- **`gh` CLI autenticado** (necessário para abertura automática de issue
-  no toolkit em caso de bug em skill global — FR-021).
+- **`gh` CLI autenticado** (só necessário quando *você* publica um bug
+  report do toolkit — FR-021: o orquestrador apenas **rascunha** a issue em
+  `<alvo>/.claude/agente-00c-issues/<sug>.md`, com o contexto do projeto
+  redigido; você revisa e roda `issue.sh publish --from <arquivo>`).
 - **`git` no PATH** (commit local entre ondas).
 - **Docker local** (apenas se a stack-sugerida usar containers; orquestrador
   recusa qualquer `docker push`/deploy externo — Princípio V da feature).

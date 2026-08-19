@@ -14,9 +14,20 @@
 #   issue.sh create --state-dir DIR --suggestion-id SUG
 #       --skill SKILL --diagnostico TEXT --proposta TEXT
 #       [--por-que-impeditivo TEXT] [--reproducao TEXT]
-#       [--env-file FILE] [--dry-run]
+#       [--env-file FILE] [--dry-run] [--draft FILE]
+#       [--include-project-context]
 #       — Aplica template de issue-template.md, abre issue via gh,
 #         atualiza state via suggestions.sh mark-issue.
+#       — PRIVACIDADE (issue #143, Principio IV): por DEFAULT o corpo e
+#         REDIGIDO — omite descricao do projeto-alvo, ID da execucao,
+#         trechos de Decisoes e paths absolutos da maquina (o
+#         secrets-filter so cobre credenciais, nao contexto de negocio).
+#         `--include-project-context` restaura o corpo completo (opt-in
+#         explicito do operador, nunca do orquestrador).
+#       — `--draft FILE`: grava title+body FINAIS (ja filtrados, exatamente
+#         o que seria publicado) em FILE e NAO abre issue (exit 0, imprime
+#         FILE). E o caminho que o orquestrador autonomo usa: quem publica
+#         e o operador, depois de ler, via `issue.sh publish --from FILE`.
 #       — Defesa em profundidade: secrets-filter aplicado 2x
 #         (no build do body + antes do gh create).
 #       — Dedup via gh issue list --search com hash 8-chars do diagnostico
@@ -25,6 +36,14 @@
 #         existirem, cria-as antes do issue create.
 #       — `--dry-run` imprime body + comando que SERIA executado, NAO
 #         abre issue real.
+#
+#   issue.sh publish --from FILE [--state-dir DIR --suggestion-id SUG]
+#       [--env-file FILE] [--dry-run]
+#       — Publica um rascunho gerado por `create --draft` (linha 1
+#         `Title: ...`, linha em branco, corpo). Reaplica secrets-filter,
+#         dedup por hash (do titulo), labels, e `suggestions.sh mark-issue`
+#         quando --state-dir/--suggestion-id forem passados. Acao do
+#         OPERADOR — o orquestrador autonomo nunca a invoca.
 #
 #   issue.sh check-duplicate --skill SKILL --diagnostico TEXT
 #       — Calcula hash, faz gh issue list --search, retorna URL da issue
@@ -145,22 +164,37 @@ _ish_apply_secrets() {
   fi
 }
 
-# _ish_build_body STATE_DIR SUGID SKILL DIAG PROP IMPED REP ENV
+# _ish_build_body STATE_DIR SUGID SKILL DIAG PROP IMPED REP ENV [CTX]
 # Imprime corpo da issue em stdout (com filtro de secrets aplicado 1x).
 # Caller aplica filtro novamente antes do gh create (defense in depth).
+# CTX=1 (--include-project-context) inclui descricao do projeto-alvo, ID da
+# execucao, trechos de Decisoes e paths absolutos; CTX=0 (default, issue
+# #143) REDIGE tudo isso — so o conteudo tecnico escrito pelo orquestrador
+# (diagnostico/reproducao/impeditivo/proposta) e a skill afetada saem.
 _ish_build_body() {
   _sd=$1; _sug=$2; _skill=$3; _diag=$4; _prop=$5; _imped=$6; _rep=$7; _env=$8
+  _ctx=${9:-0}
   _ish_get_state "$_sd"
   _now=$(date -u +%FT%TZ)
 
-  # Sumario das decisoes recentes que evidenciam o bug (max 5) — le do
-  # documento materializado por _ish_get_state (interface canonica).
-  _rel_decs=$(jq -r '
-    ((.decisions // .decisoes) // []) | reverse | .[0:5]
-    | map("- Decisao `\(.id)`: \((.context // .contexto) | .[0:100])")
-    | join("\n")
-  ' "$_ISH_SF")
-  [ -z "$_rel_decs" ] && _rel_decs="- (nenhuma decisao registrada ainda)"
+  if [ "$_ctx" = 1 ]; then
+    _show_exec="$_ISH_EXEC_ID"
+    _show_desc="$_ISH_PROJ_DESC"
+    _show_pap="$_ISH_PAP"
+    # Sumario das decisoes recentes que evidenciam o bug (max 5) — le do
+    # documento materializado por _ish_get_state (interface canonica).
+    _rel_decs=$(jq -r '
+      ((.decisions // .decisoes) // []) | reverse | .[0:5]
+      | map("- Decisao `\(.id)`: \((.context // .contexto) | .[0:100])")
+      | join("\n")
+    ' "$_ISH_SF")
+    [ -z "$_rel_decs" ] && _rel_decs="- (nenhuma decisao registrada ainda)"
+  else
+    _show_exec="(omitido — privacidade do projeto-alvo; issue #143)"
+    _show_desc="(omitido — descricao do projeto-alvo nao e publicada por default; passe --include-project-context para incluir)"
+    _show_pap="<projeto-alvo>"
+    _rel_decs="- (omitidas — trechos de Decisoes do projeto-alvo nao sao publicados por default; passe --include-project-context para incluir)"
+  fi
 
   # Reproducao default — orquestrador pode passar via --reproducao
   if [ -z "$_rep" ]; then
@@ -178,10 +212,18 @@ _ish_build_body() {
   # Artefato 5) — nunca fabrica um path adivinhado no corpo da issue.
   _ish_base=$(_ish_skills_base) \
     || _ish_die "raiz de agente-00c-runtime irresolvivel (classico/plugin) — nao e possivel montar 'Caminho instalado' sem inventar dado (Constitution VI)" 1
+  # Redigido: o caminho do catalogo comeca pelo $HOME do operador (usuario da
+  # maquina) — troca o prefixo por `~` sem perder a informacao util
+  # (classico vs plugin, versao do layout).
+  if [ "$_ctx" != 1 ] && [ -n "${HOME:-}" ]; then
+    case "$_ish_base" in
+      "$HOME"/*) _ish_base="~${_ish_base#"$HOME"}" ;;
+    esac
+  fi
 
   cat <<BODY | _ish_apply_secrets "$_env"
 > Issue aberta automaticamente pelo agente-00C durante execucao
-> \`$_ISH_EXEC_ID\` em \`$_now\`.
+> \`$_show_exec\` em \`$_now\`.
 
 ## Skill afetada
 
@@ -197,8 +239,8 @@ $_diag
 
 A execucao do agente-00C que detectou o bug:
 
-- ID: \`$_ISH_EXEC_ID\`
-- Projeto-alvo: $_ISH_PROJ_DESC
+- ID: \`$_show_exec\`
+- Projeto-alvo: $_show_desc
 - Etapa: \`$_ISH_ETAPA\`
 - Onda: \`$_ISH_ONDA\`
 
@@ -219,11 +261,11 @@ $_prop
 ## Anexos
 
 - Path do relatorio (no projeto-alvo, NAO anexado a esta issue):
-  \`$_ISH_PAP/.claude/agente-00c-report.md\`
+  \`$_show_pap/.claude/agente-00c-report.md\`
 - Path da sugestao detalhada:
-  \`$_ISH_PAP/.claude/agente-00c-suggestions.md#$_sug\`
+  \`$_show_pap/.claude/agente-00c-suggestions.md#$_sug\`
 - Path do estado no momento da deteccao (backup):
-  \`$_ISH_PAP/.claude/agente-00c-state/state-history/$_ISH_ONDA-<timestamp>.json\`
+  \`$_show_pap/.claude/agente-00c-state/state-history/$_ISH_ONDA-<timestamp>.json\`
 
 > Estes anexos vivem na maquina do operador. Esta issue NAO uploada o
 > relatorio nem o estado — alinhado com Principio IV do toolkit (zero
@@ -271,6 +313,8 @@ _ish_cmd_create() {
   _rep=""
   _env=""
   _dry=0
+  _draft=""
+  _ctx=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)            _sd=$2;    shift 2 ;;
@@ -282,6 +326,8 @@ _ish_cmd_create() {
       --reproducao)           _rep=$2;   shift 2 ;;
       --env-file)             _env=$2;   shift 2 ;;
       --dry-run)              _dry=1;    shift ;;
+      --draft)                _draft=$2; shift 2 ;;
+      --include-project-context) _ctx=1; shift ;;
       *) _ish_die_usage "create: flag desconhecida: $1" ;;
     esac
   done
@@ -292,11 +338,14 @@ _ish_cmd_create() {
   [ -n "$_prop" ]  || _ish_die_usage "create: --proposta obrigatorio"
   _ish_require_jq
 
-  # Dedup check
-  if _existing=$(_ish_check_duplicate "$_skill" "$_diag"); then
-    printf '%s: duplicata encontrada — %s\n' "$_ISH_NAME" "$_existing" >&2
-    printf '%s\n' "$_existing"
-    return 0
+  # Dedup check — so quando vai de fato tocar o GitHub (draft e local e
+  # pode ser produzido offline; o publish re-checa).
+  if [ -z "$_draft" ]; then
+    if _existing=$(_ish_check_duplicate "$_skill" "$_diag"); then
+      printf '%s: duplicata encontrada — %s\n' "$_ISH_NAME" "$_existing" >&2
+      printf '%s\n' "$_existing"
+      return 0
+    fi
   fi
 
   # Build title (skill + hash + resumo curto da diag — primeiras palavras)
@@ -305,7 +354,7 @@ _ish_cmd_create() {
   _title="[agente-00C] Bug em $_skill ($_hash): $_resumo"
 
   # Build body (com filtro de secrets aplicado 1x via _ish_apply_secrets)
-  _body=$(_ish_build_body "$_sd" "$_sug" "$_skill" "$_diag" "$_prop" "$_imped" "$_rep" "$_env")
+  _body=$(_ish_build_body "$_sd" "$_sug" "$_skill" "$_diag" "$_prop" "$_imped" "$_rep" "$_env" "$_ctx")
   # Trunca body se ultrapassar limite (~4000 chars)
   _bsize=$(printf '%s' "$_body" | wc -c | tr -d ' ')
   if [ "$_bsize" -gt 4000 ]; then
@@ -327,13 +376,44 @@ _ish_cmd_create() {
     return 0
   fi
 
+  # --draft: grava o rascunho FINAL (exatamente o que seria publicado) e
+  # para. Publicar e acao do operador (`issue.sh publish --from FILE`).
+  if [ -n "$_draft" ]; then
+    _ish_write_draft "$_draft" "$_title" "$_body_safe"
+    printf '%s: rascunho gravado (NAO publicado) — revise e publique com: issue.sh publish --from %s\n' "$_ISH_NAME" "$_draft" >&2
+    printf '%s\n' "$_draft"
+    return 0
+  fi
+
+  _ish_publish_body "$_title" "$_body_safe" "$_sd" "$_sug"
+}
+
+# _ish_write_draft FILE TITLE BODY — formato do rascunho: `Title: <t>`, linha
+# em branco, corpo. Escrita atomica (mktemp + mv) no diretorio de destino;
+# cria o diretorio se faltar.
+_ish_write_draft() {
+  _wd_file=$1; _wd_title=$2; _wd_body=$3
+  _wd_dir=$(dirname -- "$_wd_file")
+  mkdir -p -- "$_wd_dir" 2>/dev/null || _ish_die "draft: nao consegui criar $_wd_dir" 1
+  _wd_tmp=$(mktemp "$_wd_dir/.issue-draft.XXXXXX") || _ish_die "draft: mktemp falhou em $_wd_dir" 1
+  {
+    printf 'Title: %s\n\n' "$_wd_title"
+    printf '%s\n' "$_wd_body"
+  } > "$_wd_tmp" || { rm -f -- "$_wd_tmp"; _ish_die "draft: escrita falhou" 1; }
+  mv -- "$_wd_tmp" "$_wd_file" || { rm -f -- "$_wd_tmp"; _ish_die "draft: mv falhou" 1; }
+}
+
+# _ish_publish_body TITLE BODY_SAFE [STATE_DIR SUGID] — gh issue create +
+# mark-issue. Fatorado para ser compartilhado por create e publish.
+_ish_publish_body() {
+  _pb_title=$1; _pb_body=$2; _pb_sd=${3:-}; _pb_sug=${4:-}
   _ish_require_gh
   _ish_ensure_labels
 
   # gh issue create. Captura URL retornado.
-  _url=$(printf '%s' "$_body_safe" \
+  _url=$(printf '%s' "$_pb_body" \
     | gh issue create --repo "$_ISH_REPO" \
-        --title "$_title" \
+        --title "$_pb_title" \
         --label "agente-00c,bug,skill-global" \
         --body-file - 2>&1) || {
     printf '%s: gh issue create falhou:\n%s\n' "$_ISH_NAME" "$_url" >&2
@@ -342,12 +422,63 @@ _ish_cmd_create() {
 
   # Atualiza state via suggestions.sh mark-issue
   _sg_script="$(dirname -- "$0")/suggestions.sh"
-  if [ -x "$_sg_script" ]; then
-    "$_sg_script" mark-issue --state-dir "$_sd" --suggestion-id "$_sug" \
+  if [ -n "$_pb_sd" ] && [ -n "$_pb_sug" ] && [ -x "$_sg_script" ]; then
+    "$_sg_script" mark-issue --state-dir "$_pb_sd" --suggestion-id "$_pb_sug" \
       --issue "$_url" >/dev/null 2>&1 || :
   fi
 
   printf '%s\n' "$_url"
+}
+
+# publish --from FILE [--state-dir DIR --suggestion-id SUG] [--env-file F] [--dry-run]
+_ish_cmd_publish() {
+  _from=""; _sd=""; _sug=""; _env=""; _dry=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --from)          _from=$2; shift 2 ;;
+      --state-dir)     _sd=$2;   shift 2 ;;
+      --suggestion-id) _sug=$2;  shift 2 ;;
+      --env-file)      _env=$2;  shift 2 ;;
+      --dry-run)       _dry=1;   shift ;;
+      *) _ish_die_usage "publish: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_from" ] || _ish_die_usage "publish: --from FILE obrigatorio"
+  [ -f "$_from" ] || _ish_die "publish: rascunho nao encontrado: $_from" 1
+  _ish_require_jq
+
+  _title=$(sed -n '1s/^Title: //p' "$_from")
+  [ -n "$_title" ] || _ish_die "publish: rascunho invalido — linha 1 deve ser 'Title: ...' (gerado por issue.sh create --draft)" 1
+  # Corpo = tudo apos a primeira linha em branco. Re-scrub: o rascunho pode
+  # ter sido editado a mao entre o draft e o publish.
+  _body_safe=$(awk 'f{print} /^$/ && !f{f=1}' "$_from" | _ish_apply_secrets "$_env")
+  [ -n "$_body_safe" ] || _ish_die "publish: rascunho sem corpo" 1
+
+  # Dedup pelo hash que o create embutiu no titulo ("... (<hash>): ...").
+  _hash=$(printf '%s' "$_title" | sed -n 's/.*(\([0-9a-f]\{8\}\)):.*/\1/p')
+  _skill=$(printf '%s' "$_title" | sed -n 's/^\[agente-00C\] Bug em \([^ ]*\) (.*/\1/p')
+  if [ -n "$_hash" ] && [ -n "$_skill" ] && [ "$_dry" = 0 ]; then
+    _ish_require_gh
+    _existing=$(gh issue list --repo "$_ISH_REPO" --state open \
+      --search "agente-00C $_skill $_hash" --json number,url,title 2>/dev/null \
+      | jq -r --arg s "$_skill" --arg h "$_hash" '.[] | select(.title | (contains($s) and contains($h))) | .url' 2>/dev/null | head -1) || _existing=""
+    if [ -n "$_existing" ]; then
+      printf '%s: duplicata encontrada — %s\n' "$_ISH_NAME" "$_existing" >&2
+      printf '%s\n' "$_existing"
+      return 0
+    fi
+  fi
+
+  if [ "$_dry" = 1 ]; then
+    printf '=== DRY-RUN ===\n'
+    printf 'Title: %s\n' "$_title"
+    printf 'Repo: %s\n' "$_ISH_REPO"
+    printf 'Labels: agente-00c,bug,skill-global\n'
+    printf '\n=== BODY ===\n%s\n' "$_body_safe"
+    return 0
+  fi
+
+  _ish_publish_body "$_title" "$_body_safe" "$_sd" "$_sug"
 }
 
 _ish_cmd_check_duplicate() {
@@ -391,12 +522,20 @@ USO:
   issue.sh create --state-dir DIR --suggestion-id SUG --skill SKILL \
     --diagnostico TEXT --proposta TEXT \
     [--por-que-impeditivo TEXT] [--reproducao TEXT] \
+    [--env-file FILE] [--dry-run] [--draft FILE] [--include-project-context]
+  issue.sh publish --from FILE [--state-dir DIR --suggestion-id SUG] \
     [--env-file FILE] [--dry-run]
   issue.sh check-duplicate --skill SKILL --diagnostico TEXT
   issue.sh hash --diagnostico TEXT
 
 Toolkit-repo hardcoded: JotJunior/cstk (excecao escopada ao
 Principio V — bug report curado, sem upload de relatorio/estado).
+
+Privacidade (issue #143): por default o corpo e REDIGIDO (sem descricao
+do projeto-alvo, ID da execucao, trechos de Decisoes ou paths absolutos);
+--include-project-context restaura. O orquestrador autonomo usa
+--draft FILE (nada publicado); o operador revisa e publica com
+`issue.sh publish --from FILE`.
 
 EXIT:
   0 sucesso (issue criada OU duplicata encontrada)
@@ -411,6 +550,7 @@ shift
 
 case "$_ISH_SUBCMD" in
   create)            _ish_cmd_create "$@" ;;
+  publish)           _ish_cmd_publish "$@" ;;
   check-duplicate)   _ish_cmd_check_duplicate "$@" ;;
   hash)              _ish_cmd_hash "$@" ;;
   -h|--help|help)    exit 0 ;;

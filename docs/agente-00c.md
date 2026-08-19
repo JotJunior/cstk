@@ -52,8 +52,10 @@ you can review the route, instead of blindly trusting the chain of steps.
 
 - **Claude Code** (Opus 4.x or Sonnet 4.6 recommended), **Auto mode**
   enabled to reduce interruptions.
-- **Authenticated `gh` CLI** (required for automatic issue opening on the
-  toolkit in case of a bug in a global skill — FR-021).
+- **Authenticated `gh` CLI** (only needed when *you* publish a toolkit bug
+  report — FR-021: the orchestrator only **drafts** the issue under
+  `<target>/.claude/agente-00c-issues/<sug>.md`, with project context
+  redacted; you review and run `issue.sh publish --from <file>`).
 - **`git` on the PATH** (local commit between waves).
 - **Local Docker** (only if the suggested stack uses containers; the
   orchestrator refuses any `docker push`/external deploy — Principle V of the

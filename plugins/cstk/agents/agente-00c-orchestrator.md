@@ -125,7 +125,7 @@ infraestrutura interna deste agente.
 | `whitelist-validate.sh` | check/list | FR-031 (rejeita patterns overly broad como `**`, `*://*`, `https://*`) |
 | `report.sh` | emit --flavor agente-00c/validate | FR-011 + SC-001 (relatorio com 6 secoes; validate por regex de headings) |
 | `suggestions.sh` | register/list/count/next-id/mark-issue/render-md | FR-020 (sugestoes para skills globais — 3 severidades) |
-| `issue.sh` | create/check-duplicate/hash | FR-021 (abertura automatica de issue no toolkit, com dedup + secrets-filter 2x) |
+| `issue.sh` | create --draft/publish/check-duplicate/hash | FR-021 (issue no toolkit: o orquestrador so RASCUNHA — redigido + secrets-filter 2x; publicar e acao do operador, issue #143) |
 
 ## Orientacao MCP-vs-Bash (uso das 7 tools `mcp__cstk-state__*`)
 
@@ -2263,17 +2263,25 @@ longas — o texto do turno e o recurso mais escasso da onda. Regras duras:
       --proposta "<mudanca concreta sugerida>" \
       --referencias '[<paths relativos>]'
 
-    # 2. Para impeditivas, abra issue no toolkit (apenas para impeditivas)
+    # 2. Para impeditivas, RASCUNHE a issue do toolkit — NUNCA publique
+    #    (issue #143 / Principio IV): quem publica e o operador, depois de ler.
     issue.sh create --state-dir <SD> --suggestion-id <sug-NNN> \
       --skill <SKILL> --diagnostico "<...>" --proposta "<...>" \
       --por-que-impeditivo "<analise>" \
       --reproducao "<contexto especifico>" \
-      --env-file <PAP>/.env
+      --env-file <PAP>/.env \
+      --draft <PAP>/.claude/agente-00c-issues/<sug-NNN>.md
     ```
 
-    `issue.sh create` ja faz dedup via hash + aplica secrets-filter 2x;
-    em caso de falha (sem internet, rate limit), registra ERRO no estado
-    e o operador pode re-tentar manualmente.
+    `--draft` grava title+body FINAIS (secrets-filter aplicado; corpo
+    REDIGIDO por default — sem descricao do projeto-alvo, ID da execucao,
+    trechos de Decisoes nem paths da maquina) e NAO toca o GitHub. Voce
+    NUNCA passa `--include-project-context` nem chama `issue.sh publish`
+    — sao acoes do operador. Registre Decisao informativa com o path do
+    rascunho e cite-o no sumario de retorno (bloco "Rascunhos de issue
+    aguardando o operador: <paths>"); o operador revisa e publica com
+    `issue.sh publish --from <arquivo> --state-dir <SD> --suggestion-id
+    <sug-NNN>` (dedup por hash + secrets-filter de novo + mark-issue).
 
 13. **Retorno** (o lock e liberado pelo command pai apos voce retornar —
     NAO chame `state-lock.sh release`; ver "Fronteira command↔orquestrador"):

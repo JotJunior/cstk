@@ -104,7 +104,7 @@ cada chamada).
 | `retro.sh consume\|check` | controle de retro-execucoes (FR-010, limite 2) |
 | `report.sh emit --flavor feature-00c --state-dir DIR` | gerar relatorio (FR-018; resolve path por flavor + secrets-filter interno) |
 | `suggestions.sh register` | registrar sugestao p/ skill global (FR-020) |
-| `issue.sh create` | abrir issue no toolkit (apenas severidade=impeditiva — FR-035) |
+| `issue.sh create --draft` | RASCUNHAR issue do toolkit (apenas severidade=impeditiva — FR-035; publicar e do operador, issue #143) |
 | `feature-00c-preflight.sh check --state-dir DIR` | gate spec→plan (FR-010A) |
 | `secrets-filter.sh for-backup --wave-number N` | gerar backup filtrado (FR-029 §extensao + FR-034) |
 | `_log.sh` (sourceable) | log_err / log_out com filtro de stderr/stdout (FR-036) |
@@ -1633,16 +1633,27 @@ Quando uma sugestao para skill global e classificada como
    repo = registrar decisao "violacao blast radius" + abortar.
 
 2. Filtrar conteudo: corpo da issue passa por `secrets-filter.sh scrub`
-   ANTES de invocar `gh`. Body inclui apenas:
+   (o `issue.sh` faz isso internamente, 2x). Por default (issue #143 /
+   Principio IV) o corpo e REDIGIDO — inclui apenas:
    - skill afetada
-   - diagnostico (filtrado)
-   - proposta (filtrada)
-   - link LOCAL ao relatorio (NAO upload do relatorio)
+   - diagnostico / reproducao / por-que-impeditivo / proposta (filtrados)
+   - link LOCAL ao relatorio com path GENERICO `<projeto-alvo>/...` (NAO
+     upload do relatorio; NAO descricao do projeto-alvo, NAO ID da
+     execucao, NAO trechos de Decisoes, NAO paths da maquina)
 
-3. Invocar `issue.sh create --suggestion-id <SUG> --state-dir
-   $STATE_DIR --flavor feature-00c`.
+3. RASCUNHAR, nunca publicar:
+   `issue.sh create --state-dir $STATE_DIR --suggestion-id <SUG>
+   --skill <SKILL> --diagnostico "<...>" --proposta "<...>"
+   --por-que-impeditivo "<...>" --reproducao "<...>" --env-file <PAP>/.env
+   --draft <PAP>/.claude/agente-00c-issues/<SUG>.md`. Voce NUNCA passa
+   `--include-project-context` nem chama `issue.sh publish` — sao acoes
+   do operador.
 
-4. Registrar a issue criada no state.json (numero + URL).
+4. Registrar Decisao informativa com o path do rascunho e cita-lo no
+   sumario de retorno ("Rascunhos de issue aguardando o operador"). O
+   operador revisa e publica com `issue.sh publish --from <arquivo>
+   --state-dir $STATE_DIR --suggestion-id <SUG>` (dedup por hash,
+   secrets-filter de novo, `mark-issue` no state).
 
 Severidade `informativa` ou `aviso` NAO abre issue — apenas
 registrada via `suggestions.sh register` (ver "## Sugestoes para skills
