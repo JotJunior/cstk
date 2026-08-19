@@ -57,6 +57,37 @@ test("inputSchema (FR-002): rejeita options_considered vazio", () => {
   assert.equal(parsed.success, false);
 });
 
+// Issue #141: paridade com state-decisions.sh — opcoes estruturadas
+// {rotulo, descricao} (formato do clarify-asker) sao aceitas; forma invalida
+// (objeto sem rotulo, string vazia, numero) e rejeitada no schema.
+test("inputSchema (#141): aceita opcoes estruturadas {rotulo, descricao} misturadas com strings", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    options_considered: [{ rotulo: "A", descricao: "opcao A" }, "B", { label: "C" }],
+  });
+  assert.equal(parsed.success, true);
+});
+
+test("inputSchema (#141): rejeita objeto sem rotulo/label, string vazia e numero", () => {
+  for (const bad of [[{ descricao: "sem rotulo" }], [""], [1], [null]]) {
+    const parsed = inputSchema.safeParse({ ...VALID_PAYLOAD, options_considered: bad });
+    assert.equal(parsed.success, false, `deveria rejeitar ${JSON.stringify(bad)}`);
+  }
+});
+
+test("inputSchema (#141): objeto com rotulo igual a opcao canonica NAO dispara CONSTITUTION_CONFLICT_SCORE", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    options_considered: [
+      { rotulo: "atualizar-global-via-bump-SemVer" },
+      { rotulo: "criar-feature-delta-com-sync-impact-report" },
+      { rotulo: "abortar-feature-sem-principios-proprios" },
+    ],
+    justification_score: 2,
+  });
+  assert.equal(parsed.success, true);
+});
+
 test("inputSchema (EVIDENCE_REQUIRED): score 3 sem evidence e rejeitado", () => {
   const parsed = inputSchema.safeParse({ ...VALID_PAYLOAD, justification_score: 3 });
   assert.equal(parsed.success, false);

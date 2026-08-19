@@ -195,7 +195,7 @@ Registra Decisao auditavel. **Delega para** [VERIFICADO]:
 | `agent` | string | yes | min 1 |
 | `stage` | string | yes | Etapa SDD corrente |
 | `context` | string | yes | **min 20 chars** [VERIFICADO: `state-decisions.sh:185-189`] |
-| `options_considered` | string[] | yes | min 1 item |
+| `options_considered` | (string \| {rotulo\|label: string, descricao?: string})[] | yes | min 1 item; cada item string nao-vazia OU objeto com rotulo/label nao-vazio (issue #141 — paridade com `state-decisions.sh register`; formato do clarify-asker) |
 | `choice` | string | yes | min 1 |
 | `rationale` | string | yes | **min 20 chars** [VERIFICADO: mesma linha] |
 | `justification_score` | integer \| null | no | `null \| 0 \| 1 \| 2 \| 3` [VERIFICADO: `state-decisions.sh:198-201`] |

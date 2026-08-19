@@ -47,8 +47,32 @@ const CONSTITUTION_CONFLICT_OPTIONS = [
   "abortar-feature-sem-principios-proprios",
 ] as const;
 
-function isConstitutionConflictOptionSet(options: readonly string[]): boolean {
-  return CONSTITUTION_CONFLICT_OPTIONS.every((opt) => options.includes(opt));
+// Issue #141: o clarify autonomo emite opcoes estruturadas {rotulo, descricao}
+// (clarify-asker) e a prosa do orquestrador as passa verbatim — o helper
+// shell aceita string nao-vazia OU objeto com rotulo/label nao-vazio
+// [VERIFICADO: state-decisions.sh register, validacao de forma de --opcoes].
+// Paridade aqui; `label`/`description` sao os aliases EN aceitos pelo report.
+const decisionOptionSchema = z.union([
+  z.string().min(1, "opcao (string) nao pode ser vazia"),
+  z
+    .object({
+      rotulo: z.string().min(1).optional(),
+      label: z.string().min(1).optional(),
+      descricao: z.string().optional(),
+      description: z.string().optional(),
+    })
+    .passthrough()
+    .refine((o) => Boolean(o.rotulo || o.label), {
+      message: "opcao estruturada exige rotulo (ou label) nao-vazio",
+    }),
+]);
+type DecisionOption = z.infer<typeof decisionOptionSchema>;
+
+function isConstitutionConflictOptionSet(options: readonly DecisionOption[]): boolean {
+  // So strings participam da deteccao — as 3 opcoes canonicas sao strings por
+  // protocolo (orchestrator.md secao 5.b); um objeto nunca casa.
+  const asStrings = options.filter((o): o is string => typeof o === "string");
+  return CONSTITUTION_CONFLICT_OPTIONS.every((opt) => asStrings.includes(opt));
 }
 
 export const recordDecisionInputShape = {
@@ -58,7 +82,7 @@ export const recordDecisionInputShape = {
   // min 20 chars [VERIFICADO: state-decisions.sh:184-186].
   context: z.string().min(20, "context deve ter >= 20 chars (Principio I)"),
   options_considered: z
-    .array(z.string())
+    .array(decisionOptionSchema)
     .min(1, "options_considered precisa de >= 1 item"),
   choice: z.string().min(1, "choice obrigatorio"),
   // min 20 chars [VERIFICADO: state-decisions.sh:187-189].
