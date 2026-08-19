@@ -34,6 +34,24 @@
 #   state-decisions.sh list --state-dir DIR [--agente A] [--etapa S]
 #       — Lista TSV: id\twave_id\tagent\tstage\tchoice
 #
+#   state-decisions.sh mark-invalid --state-dir DIR --decisao-id dec-NNN
+#       --motivo TEXT(>=20) [--agente A]
+#       — Issue #144: caminho SUPORTADO para desautorizar uma Decisao
+#         malformada/errada SEM tocar a linha original (Decisoes sao
+#         append-only — Principio I). Registra uma NOVA Decisao via
+#         `register` com a convencao deterministica:
+#           contexto   = "INVALIDACAO de dec-NNN: <motivo>"
+#           opcoes     = ["manter-dec-NNN","invalidar-dec-NNN"]
+#           escolha    = "invalidar-dec-NNN"
+#           justif.    = <motivo>
+#           artefato-originador = "dec-NNN"   (score ausente = humano)
+#         Leitores (report.sh secao 3) detectam o par
+#         (originating_artifact == dec-NNN AND choice == invalidar-dec-NNN)
+#         e renderizam a original como INVALIDADA. Backend-agnostico
+#         (passa por register => state-rw). Recusa: decisao inexistente,
+#         ja invalidada, ou que e ela mesma uma invalidacao (exit 1).
+#         stdout: id da Decisao de invalidacao.
+#
 # Exit codes:
 #   0 sucesso
 #   1 violacao Principio I OU erro generico
@@ -381,6 +399,57 @@ _sd_cmd_list() {
   ' "$_sf"
 }
 
+# ---------- subcomando: mark-invalid (issue #144) ----------
+_sd_cmd_mark_invalid() {
+  _sdir=""
+  _did=""
+  _motivo=""
+  _ag="operador"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --state-dir)  _sdir=$2;   shift 2 ;;
+      --decisao-id) _did=$2;    shift 2 ;;
+      --motivo)     _motivo=$2; shift 2 ;;
+      --agente)     _ag=$2;     shift 2 ;;
+      *) _sd_die_usage "mark-invalid: flag desconhecida: $1" ;;
+    esac
+  done
+  [ -n "$_sdir" ]   || _sd_die_usage "mark-invalid: --state-dir obrigatorio"
+  [ -n "$_did" ]    || _sd_die_usage "mark-invalid: --decisao-id obrigatorio"
+  [ -n "$_motivo" ] || _sd_die_usage "mark-invalid: --motivo obrigatorio"
+  case "$_did" in dec-[0-9][0-9][0-9]*) ;; *) _sd_die_usage "mark-invalid: --decisao-id invalido (esperado dec-NNN): '$_did'" ;; esac
+  if [ "$(printf '%s' "$_motivo" | wc -c | tr -d ' ')" -lt 20 ]; then
+    _sd_die "mark-invalid: --motivo < 20 chars (Principio I — justificativa auditavel)" 1
+  fi
+  _sd_require_jq
+
+  # Documento materializado nos dois backends (interface canonica de leitura).
+  _mi_doc=$(sh "$_SD_DIR/state-rw.sh" read --state-dir "$_sdir") \
+    || _sd_die "mark-invalid: falha ao ler estado em $_sdir" 1
+  _mi_orig=$(printf '%s' "$_mi_doc" | jq -c --arg id "$_did" '
+    ((.decisions // .decisoes) // []) | map(select(.id == $id)) | .[0] // empty')
+  [ -n "$_mi_orig" ] || _sd_die "mark-invalid: decisao '$_did' nao encontrada" 1
+  _mi_orig_choice=$(printf '%s' "$_mi_orig" | jq -r '(.choice // .escolha) // ""')
+  case "$_mi_orig_choice" in
+    invalidar-dec-*) _sd_die "mark-invalid: '$_did' e ela mesma uma invalidacao (escolha '$_mi_orig_choice') — invalidacao nao se encadeia; registre nova Decisao normal se a invalidacao foi indevida" 1 ;;
+  esac
+  _mi_prev=$(printf '%s' "$_mi_doc" | jq -r --arg id "$_did" '
+    ((.decisions // .decisoes) // [])
+    | map(select(((.originating_artifact // .artefato_originador) == $id)
+                 and ((.choice // .escolha) == ("invalidar-" + $id))))
+    | .[0].id // empty')
+  [ -z "$_mi_prev" ] || _sd_die "mark-invalid: '$_did' ja invalidada por $_mi_prev" 1
+  _mi_stage=$(printf '%s' "$_mi_orig" | jq -r '(.stage // .etapa) // "desconhecida"')
+
+  _sd_cmd_register --state-dir "$_sdir" \
+    --agente "$_ag" --etapa "$_mi_stage" \
+    --contexto "INVALIDACAO de $_did: $_motivo" \
+    --opcoes "[\"manter-$_did\",\"invalidar-$_did\"]" \
+    --escolha "invalidar-$_did" \
+    --justificativa "$_motivo" \
+    --artefato-originador "$_did"
+}
+
 # ---------- Dispatch ----------
 
 if [ "$#" -lt 1 ]; then
@@ -395,6 +464,8 @@ USO:
   state-decisions.sh count --state-dir DIR [--agente A]
   state-decisions.sh next-id --state-dir DIR
   state-decisions.sh list --state-dir DIR [--agente A] [--etapa S]
+  state-decisions.sh mark-invalid --state-dir DIR --decisao-id dec-NNN \
+    --motivo TEXT(>=20) [--agente A]     # issue #144: invalidacao append-only
 
 NOTA: --score 3 EXIGE --evidencia (>=20 chars) com comando empirico
 executado + fragmento literal do output. Sem evidencia empirica,
@@ -416,6 +487,7 @@ case "$_SD_SUBCMD" in
   count)           _sd_cmd_count "$@" ;;
   next-id)         _sd_cmd_next_id "$@" ;;
   list)            _sd_cmd_list "$@" ;;
+  mark-invalid)    _sd_cmd_mark_invalid "$@" ;;
   -h|--help|help)  exec sh -c "exit 0" ;;
   *) _sd_die_usage "subcomando desconhecido: $_SD_SUBCMD" ;;
 esac

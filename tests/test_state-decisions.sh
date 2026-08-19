@@ -744,4 +744,72 @@ scenario_issue141_register_rejeita_forma_invalida_em_referencias() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "referencias validas" "$_CAPTURED_STDERR"; return 1; }
 }
 
+# ==== issue #144: mark-invalid (invalidacao append-only) ====
+scenario_issue144_mark_invalid_registra_nova_decisao_e_preserva_original() {
+  _sd="$TMPDIR_TEST/state-144"
+  _init_state "$_sd"
+  _register_default "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register" "$_CAPTURED_STDERR"; return 1; }
+  _orig_before=$(capture "$RW" get --state-dir "$_sd" --field '.decisions[0]'; printf '%s' "$_CAPTURED_STDOUT")
+
+  capture "$SCRIPT" mark-invalid --state-dir "$_sd" --decisao-id dec-001 \
+    --motivo "escolha registrada com typo, decisao real foi Time pequeno"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "mark-invalid" "$_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "dec-002" ] || { _fail "stdout" "esperado dec-002, obtido '$_CAPTURED_STDOUT'"; return 1; }
+
+  # Original INTACTA (append-only — Principio I).
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[0]'
+  [ "$_CAPTURED_STDOUT" = "$_orig_before" ] || { _fail "dec-001 foi alterada" "$_CAPTURED_STDOUT"; return 1; }
+  # Nova Decisao com a convencao deterministica.
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[1] | [.choice, .originating_artifact, .stage, .agent, (.options_considered|join(","))] | join("|")'
+  [ "$_CAPTURED_STDOUT" = "invalidar-dec-001|dec-001|briefing|operador|manter-dec-001,invalidar-dec-001" ] \
+    || { _fail "convencao da invalidacao" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.decisions[1].context'
+  case "$_CAPTURED_STDOUT" in "INVALIDACAO de dec-001: escolha registrada"*) ;; *) _fail "contexto" "$_CAPTURED_STDOUT"; return 1 ;; esac
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.decisions_total'
+  [ "$_CAPTURED_STDOUT" = "2" ] || { _fail "decisions_total" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_issue144_mark_invalid_recusa_inexistente_duplicada_encadeada_e_motivo_curto() {
+  _sd="$TMPDIR_TEST/state-144-bad"
+  _init_state "$_sd"
+  _register_default "$_sd"
+  capture "$SCRIPT" mark-invalid --state-dir "$_sd" --decisao-id dec-077 --motivo "decisao que nao existe para testar erro"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "inexistente" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "nao encontrada" || return 1
+  capture "$SCRIPT" mark-invalid --state-dir "$_sd" --decisao-id dec-001 --motivo "curto"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "motivo curto" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "< 20 chars" || return 1
+  capture "$SCRIPT" mark-invalid --state-dir "$_sd" --decisao-id dec-001 --motivo "primeira invalidacao valida com motivo longo"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "1a invalidacao" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" mark-invalid --state-dir "$_sd" --decisao-id dec-001 --motivo "segunda tentativa de invalidar a mesma decisao"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "duplicada" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "ja invalidada por dec-002" || return 1
+  # Invalidar a propria invalidacao nao se encadeia.
+  capture "$SCRIPT" mark-invalid --state-dir "$_sd" --decisao-id dec-002 --motivo "tentando invalidar a invalidacao dec-002"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "encadeada" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "ela mesma uma invalidacao" || return 1
+  capture "$SCRIPT" mark-invalid --state-dir "$_sd" --decisao-id dec-001
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "sem --motivo" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.decisions | length'
+  [ "$_CAPTURED_STDOUT" = "2" ] || { _fail "so 2 decisoes deveriam existir" "obtido $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_issue144_sqlite_mark_invalid_backend_agnostico() {
+  _sd="$TMPDIR_TEST/state-144-sqlite"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "INSERT INTO wave (id,execution_id,seq,started_at) VALUES ('onda-001','exec-1',1,'2026-07-30T00:00:00Z');" \
+    || { _fail "seed wave" ""; return 1; }
+  _register_default "$_sd" "orquestrador-00c" "plan"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "register sqlite" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" mark-invalid --state-dir "$_sd" --decisao-id dec-001 \
+    --motivo "invalidacao sob backend sqlite para teste de paridade" --agente "revisor"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "mark-invalid sqlite" "$_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "dec-002" ] || { _fail "id" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  _row=$(sqlite3 "$_sd/state.db" "SELECT choice||'|'||originating_artifact||'|'||stage||'|'||agent FROM decision WHERE id='dec-002';")
+  [ "$_row" = "invalidar-dec-001|dec-001|plan|revisor" ] || { _fail "linha sqlite" "obtido '$_row'"; return 1; }
+  [ -e "$_sd/state.json" ] && { _fail "anti-mirror" "mark-invalid criou state.json no state-dir sqlite"; return 1; }
+  return 0
+}
+
 run_all_scenarios
