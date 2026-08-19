@@ -5,6 +5,79 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.5.0] - 2026-08-19
+
+Dois desdobramentos da #141: o bug report automático do toolkit deixa de
+publicar contexto do projeto-alvo sem consentimento (#143, Princípio IV), e
+uma Decisão errada ganha um caminho suportado e auditável para ser
+desautorizada sem SQL cru no `state.db` (#144, Princípio I). Sem breaking;
+sem skill nova. Subcomando novo (`mark-invalid`) → MINOR.
+
+### Added
+
+- **`state-decisions.sh mark-invalid --state-dir DIR --decisao-id dec-NNN
+  --motivo TEXT(>=20) [--agente A]`** (#144): invalidação **append-only**.
+  Nunca altera a linha original (Decisões são imutáveis por desenho);
+  registra, via `register` (backend-agnóstico — JSON e SQLite —, backup +
+  `sha256`), uma NOVA Decisão com convenção determinística: contexto
+  `INVALIDACAO de dec-NNN: <motivo>`, opções `["manter-dec-NNN",
+  "invalidar-dec-NNN"]`, escolha `invalidar-dec-NNN`, justificativa = motivo,
+  `originating_artifact = dec-NNN`, score ausente (humano). Recusa com
+  exit 1: Decisão inexistente, já invalidada, ou que é ela mesma uma
+  invalidação (não se encadeia); motivo < 20 chars. Imprime o id da
+  invalidação. É a alternativa menor da issue — o "amend" completo fica
+  para quando houver demanda além do caso da #141.
+- **`report.sh` (seção 3)** detecta o par (`originating_artifact == dec-NNN`
+  ∧ `choice == invalidar-dec-NNN`) e renderiza a original com
+  `— **INVALIDADA por dec-MMM**` no heading + blockquote com timestamp e
+  motivo ("conteúdo histórico, NÃO decisão vigente"); a invalidação aparece
+  como Decisão normal. `recall` a ingere como qualquer Decisão (sem schema
+  novo).
+- **`issue.sh create --draft FILE`** (#143): grava `Title: …` + corpo FINAL
+  (secrets-filter aplicado; exatamente o que seria publicado) e NÃO toca o
+  GitHub (sem dedup remoto; exit 0; imprime o path). É o único caminho que o
+  orquestrador autônomo usa a partir desta release.
+- **`issue.sh publish --from FILE [--state-dir DIR --suggestion-id SUG]
+  [--env-file F] [--dry-run]`** (#143): ação do **operador** — lê o rascunho,
+  re-aplica o secrets-filter (o arquivo pode ter sido editado à mão), dedup
+  pelo hash embutido no título, labels, `suggestions.sh mark-issue` quando
+  `--state-dir/--suggestion-id` forem passados. Rascunho sem `Title:` →
+  exit 1.
+
+### Changed
+
+- **`issue.sh create` redige o corpo por default** (#143): descrição do
+  projeto-alvo, ID da execução, trechos de Decisões e paths absolutos da
+  máquina viram `(omitido — …)` / `<projeto-alvo>/…`; o prefixo `$HOME` do
+  "Caminho instalado" vira `~`. O secrets-filter continua 2x (credenciais),
+  mas ele nunca cobriu contexto de negócio nem paths — caso real: a #141
+  precisou ser editada à mão DEPOIS de publicada.
+  `--include-project-context` restaura o corpo completo (opt-in explícito do
+  operador; o orquestrador nunca o passa).
+- **Prosa dos orquestradores** (`agente-00c-orchestrator.md` passo 12;
+  `agente-00c-feature-orchestrator.md` §Gh issue exclusivo — que ainda citava
+  `--flavor feature-00c`, flag inexistente): sugestão `impeditiva` →
+  `issue.sh create … --draft <PAP>/.claude/agente-00c-issues/<sug>.md`,
+  Decisão informativa com o path e bloco "Rascunhos de issue aguardando o
+  operador" no sumário; nunca `publish` nem `--include-project-context`.
+  Tabelas de helpers atualizadas (`issue.sh create --draft/publish`,
+  `state-decisions.sh … mark-invalid`).
+- **`docs/agente-00c.md` / `.pt-BR.md`**: `gh` autenticado só é exigido de
+  quem publica o bug report; o orquestrador apenas rascunha.
+
+### Tests
+
+- `tests/test_issue.sh`: 5 cenários novos (redação default; `--include-
+  project-context`; `--draft` grava redigido e não chama `gh` — stub que
+  falha se invocado; `publish --dry-run` lê rascunho e re-scruba token
+  inserido à mão; rascunho inválido/sem `--from`). Os 2 cenários de leitor
+  (pt-BR legado / SQLite) passam `--include-project-context` porque testam
+  que o contexto flui pelo reader.
+- `tests/test_state-decisions.sh`: 3 cenários (JSON: original intacta +
+  convenção + `decisions_total`; recusas; SQLite: paridade + anti-mirror).
+  `tests/test_report.sh`: 1 cenário (heading INVALIDADA + motivo; a
+  invalidação não é marcada; relatório completo).
+
 ## [8.4.1] - 2026-08-19
 
 Bugfix da issue #141 (aberta pelo próprio agente-00C): uma Decisão com
@@ -6805,6 +6878,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.5.0]: https://github.com/JotJunior/cstk/releases/tag/v8.5.0
 [8.4.1]: https://github.com/JotJunior/cstk/releases/tag/v8.4.1
 [8.4.0]: https://github.com/JotJunior/cstk/releases/tag/v8.4.0
 [8.3.1]: https://github.com/JotJunior/cstk/releases/tag/v8.3.1

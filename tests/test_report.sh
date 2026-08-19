@@ -865,4 +865,26 @@ scenario_issue141_emit_agente_00c_grava_relatorio_completo() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "validate" "$_CAPTURED_STDERR"; return 1; }
 }
 
+# ==== issue #144: Decisao invalidada via mark-invalid aparece como INVALIDADA ====
+scenario_issue144_generate_marca_decisao_invalidada() {
+  _sd="$TMPDIR_TEST/state-144"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$DEC" mark-invalid --state-dir "$_sd" --decisao-id dec-001 \
+    --motivo "decisao registrada com a escolha errada por engano"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "mark-invalid" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" generate --state-dir "$_sd" --paragrafo-resumo "x"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^#### dec-001 — .* — \*\*INVALIDADA por dec-002\*\*$' \
+    || { _fail "heading da original" "$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^#### dec-001')"; return 1; }
+  assert_stdout_contains "> **INVALIDADA** por dec-002" || return 1
+  assert_stdout_contains "motivo: decisao registrada com a escolha errada por engano" || return 1
+  # A invalidacao em si e uma Decisao normal (nao marcada como invalidada).
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^#### dec-002 — .*INVALIDADA' \
+    && { _fail "dec-002 nao deveria aparecer como invalidada" ""; return 1; }
+  assert_stdout_contains "**Escolha**: invalidar-dec-001" || return 1
+  # Relatorio segue completo.
+  assert_stdout_contains "## 6. Licoes Aprendidas" || return 1
+}
+
 run_all_scenarios

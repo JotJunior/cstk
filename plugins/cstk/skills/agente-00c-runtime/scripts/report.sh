@@ -248,7 +248,22 @@ _rp_render_secao_3() {
           "(Nenhuma decisao registrada nesta execucao.)"
         else
           ($decs[] |
-            "#### \(.id) — \(.stage // .etapa) — \(.agent // .agente) — \(.timestamp)",
+            # Issue #144: invalidacao append-only — a Decisao dec-MMM com
+            # originating_artifact == dec-NNN e escolha "invalidar-dec-NNN"
+            # (state-decisions.sh mark-invalid) marca a original como
+            # INVALIDADA sem tocar a linha dela.
+            (.id as $oid
+              | ($decs | map(select(((.originating_artifact // .artefato_originador) == $oid)
+                                    and ((.choice // .escolha) == ("invalidar-" + $oid))))
+                 | .[0]) as $inv
+              | if $inv == null then "#### \(.id) — \(.stage // .etapa) — \(.agent // .agente) — \(.timestamp)"
+                else "#### \(.id) — \(.stage // .etapa) — \(.agent // .agente) — \(.timestamp) — **INVALIDADA por \($inv.id)**" end),
+            (.id as $oid
+              | ($decs | map(select(((.originating_artifact // .artefato_originador) == $oid)
+                                    and ((.choice // .escolha) == ("invalidar-" + $oid))))
+                 | .[0]) as $inv
+              | if $inv == null then empty
+                else "", "> **INVALIDADA** por \($inv.id) (\($inv.timestamp)) — motivo: \($inv.rationale // $inv.justificativa). O conteudo abaixo e historico e NAO deve ser lido como decisao vigente." end),
             "",
             "**Contexto**: \(.context // .contexto)",
             "",

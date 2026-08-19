@@ -167,6 +167,9 @@ _write_legacy_ptbr_state() {
 PTBR
 }
 
+# (Os dois cenarios de leitor abaixo testam que o contexto do projeto-alvo
+# FLUI pelo reader — por isso passam --include-project-context; o default
+# redigido e coberto em scenario_issue143_*.)
 scenario_ptbr_legado_reader_fallback() {
   # _ish_get_state le execucao.id / projeto_alvo_descricao / etapa_corrente /
   # ondas[-1].id via fallback; _ish_build_body le decisoes[].contexto via
@@ -177,7 +180,7 @@ scenario_ptbr_legado_reader_fallback() {
     --skill "clarify" \
     --diagnostico "Skill clarify falhou em estado legado pt-BR para validar fallback" \
     --proposta "fix proposta detalhada" \
-    --dry-run
+    --dry-run --include-project-context
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run pt-BR" "$_CAPTURED_STDERR"; return 1; }
   # execucao.id (fallback) aparece no cabecalho do body
   assert_stdout_contains "exec-legado-ptbr" || return 1
@@ -229,7 +232,7 @@ scenario_sqlite_dry_run_le_estado_do_state_db() {
     --skill "clarify" \
     --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 no cenario sqlite" \
     --proposta "Adicionar etapa de cross-check entre perguntas" \
-    --dry-run
+    --dry-run --include-project-context
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run sqlite" "exit $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
   case "$_CAPTURED_STDERR" in
     *"state.json ausente"*) _fail "dry-run sqlite" "degradou com 'state.json ausente'"; return 1 ;;
@@ -321,6 +324,99 @@ scenario_falha_caminho_instalado_irresolvivel_bloqueia_create() {
     *"claude/skills"*) _fail "fabricacao" "corpo da issue nao deveria ter sido emitido: $_CAPTURED_STDOUT"; return 1 ;;
   esac
   assert_stderr_contains "irresolvivel" || return 1
+}
+
+# ==== issue #143: privacidade por default + draft/publish ====
+scenario_issue143_default_redige_contexto_do_projeto() {
+  _sd="$TMPDIR_TEST/state"; _md="$TMPDIR_TEST/sug.md"
+  _setup "$_sd" "$_md" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" create --state-dir "$_sd" --suggestion-id "sug-001" \
+    --skill "clarify" \
+    --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 para o mesmo escopo de armazenamento" \
+    --proposta "Adicionar etapa de cross-check entre perguntas" \
+    --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run exit" "$_CAPTURED_STDERR"; return 1; }
+  # Conteudo tecnico continua la...
+  assert_stdout_contains "## Diagnostico" || return 1
+  assert_stdout_contains "Skill clarify gerou opcoes contraditorias" || return 1
+  assert_stdout_contains "Etapa: \`" || return 1
+  # ...mas descricao do projeto, ID da execucao, Decisoes e path absoluto NAO.
+  case "$_CAPTURED_STDOUT" in
+    *"POC issue tests"*) _fail "descricao do projeto vazou" ""; return 1 ;;
+    *"exec-issue-test"*) _fail "ID da execucao vazou" ""; return 1 ;;
+    *"Tentou avancar pipeline"*) _fail "trecho de Decisao vazou" ""; return 1 ;;
+    *"/tmp/p/.claude"*) _fail "path absoluto do projeto vazou" ""; return 1 ;;
+  esac
+  assert_stdout_contains "omitid" || return 1
+  assert_stdout_contains "<projeto-alvo>/.claude/agente-00c-report.md" || return 1
+}
+
+scenario_issue143_include_project_context_restaura_corpo_completo() {
+  _sd="$TMPDIR_TEST/state"; _md="$TMPDIR_TEST/sug.md"
+  _setup "$_sd" "$_md" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" create --state-dir "$_sd" --suggestion-id "sug-001" \
+    --skill "clarify" \
+    --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 para o mesmo escopo de armazenamento" \
+    --proposta "Adicionar etapa de cross-check entre perguntas" \
+    --dry-run --include-project-context
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run exit" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "POC issue tests" || return 1
+  assert_stdout_contains "exec-issue-test" || return 1
+  assert_stdout_contains "Tentou avancar pipeline" || return 1
+  assert_stdout_contains "/tmp/p/.claude/agente-00c-report.md" || return 1
+}
+
+scenario_issue143_draft_grava_arquivo_e_nao_publica() {
+  _sd="$TMPDIR_TEST/state"; _md="$TMPDIR_TEST/sug.md"
+  _setup "$_sd" "$_md" || { _error "fixture" ""; return 2; }
+  _draft="$TMPDIR_TEST/pap/.claude/agente-00c-issues/sug-001.md"
+  # gh stub que FALHA se for chamado: draft nunca pode tocar o GitHub.
+  _stub="$TMPDIR_TEST/stub-gh-draft"; mkdir -p "$_stub"
+  printf '#!/bin/sh\necho "gh NAO deveria ser chamado: $*" >&2; exit 99\n' > "$_stub/gh"; chmod +x "$_stub/gh"
+  capture env PATH="$_stub:$PATH" "$SCRIPT" create --state-dir "$_sd" --suggestion-id "sug-001" \
+    --skill "clarify" \
+    --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 para o mesmo escopo de armazenamento" \
+    --proposta "Adicionar etapa de cross-check entre perguntas" \
+    --draft "$_draft"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "draft exit" "$_CAPTURED_STDERR"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "$_draft" ] || { _fail "stdout deveria ser o path do rascunho" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+  assert_stderr_contains "NAO publicado" || return 1
+  [ -f "$_draft" ] || { _fail "rascunho nao gravado" ""; return 1; }
+  head -1 "$_draft" | grep -q '^Title: \[agente-00C\] Bug em clarify (' || { _fail "linha 1 do rascunho" "$(head -1 "$_draft")"; return 1; }
+  grep -q '^## Diagnostico' "$_draft" || { _fail "corpo do rascunho" ""; return 1; }
+  # Default redigido tambem no draft.
+  if grep -q "POC issue tests" "$_draft"; then _fail "descricao do projeto vazou no draft" ""; return 1; fi
+  case "$_CAPTURED_STDERR" in *"gh NAO deveria"*) _fail "draft chamou gh" ""; return 1 ;; esac
+}
+
+scenario_issue143_publish_dry_run_le_rascunho_e_rescruba() {
+  _sd="$TMPDIR_TEST/state"; _md="$TMPDIR_TEST/sug.md"
+  _setup "$_sd" "$_md" || { _error "fixture" ""; return 2; }
+  _draft="$TMPDIR_TEST/drafts/sug-001.md"
+  capture "$SCRIPT" create --state-dir "$_sd" --suggestion-id "sug-001" \
+    --skill "clarify" \
+    --diagnostico "Skill clarify gerou opcoes contraditorias entre perguntas Q3 e Q5 para o mesmo escopo de armazenamento" \
+    --proposta "Adicionar etapa de cross-check entre perguntas" \
+    --draft "$_draft"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "draft" "$_CAPTURED_STDERR"; return 1; }
+  # Operador edita o rascunho a mao e deixa escapar um token: publish re-scruba.
+  printf '\nNota do operador: api_key=abcdef1234567890123456789xyz\n' >> "$_draft"
+  capture "$SCRIPT" publish --from "$_draft" --dry-run
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "publish dry-run" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "Title: [agente-00C] Bug em clarify (" || return 1
+  assert_stdout_contains "## Diagnostico" || return 1
+  case "$_CAPTURED_STDOUT" in *abcdef1234567890123456789xyz*) _fail "publish nao re-scrubou" ""; return 1 ;; esac
+  assert_stdout_contains "REDACTED" || return 1
+}
+
+scenario_issue143_publish_rascunho_invalido_falha() {
+  _bad="$TMPDIR_TEST/bad-draft.md"
+  printf 'sem linha Title\n\ncorpo\n' > "$_bad"
+  capture "$SCRIPT" publish --from "$_bad" --dry-run
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "rascunho invalido" || return 1
+  capture "$SCRIPT" publish --dry-run
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit sem --from" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
 run_all_scenarios
