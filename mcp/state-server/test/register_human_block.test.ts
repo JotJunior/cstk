@@ -53,6 +53,31 @@ test("inputSchema (correcao empirica): rejeita question < 20 chars (helper real 
   assert.equal(parsed.success, false);
 });
 
+// structural-decision-human-gate FASE 4 (FR-008), contracts/cli-structural-class.md
+// §bloqueios.sh register --chave-assunto.
+test("inputSchema (FR-008): aceita subject_key com prefixo briefing-item:", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    subject_key: "briefing-item:linguagem-e-runtime-do-backend-123456",
+  });
+  assert.equal(parsed.success, true);
+});
+
+test("inputSchema (FR-008): aceita subject_key com prefixo axis:", () => {
+  const parsed = inputSchema.safeParse({ ...VALID_PAYLOAD, subject_key: "axis:persistencia" });
+  assert.equal(parsed.success, true);
+});
+
+test("inputSchema (FR-008): rejeita subject_key com prefixo fora do enum", () => {
+  const parsed = inputSchema.safeParse({ ...VALID_PAYLOAD, subject_key: "outro-prefixo:foo" });
+  assert.equal(parsed.success, false);
+});
+
+test("inputSchema (FR-008): rejeita subject_key com sufixo vazio", () => {
+  const parsed = inputSchema.safeParse({ ...VALID_PAYLOAD, subject_key: "axis:" });
+  assert.equal(parsed.success, false);
+});
+
 test("inputSchema: rejeita context_for_answer vazio", () => {
   const parsed = inputSchema.safeParse({ ...VALID_PAYLOAD, context_for_answer: "" });
   assert.equal(parsed.success, false);

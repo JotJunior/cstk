@@ -109,7 +109,14 @@ scenario_c06_spec_avisos_nao_bloqueiam() {
 scenario_c07_plan_conformante() {
   assert_exit 0 sh "$SCRIPT" "$EG/plan.md" || return 1
   assert_stdout_not_contains 'FINDING|error|' || return 1
-  assert_stdout_contains 'profile=plan|errors=0|warnings=0' || return 1
+  # 0 erros continua o oraculo do cenario 7 (12 cenarios de
+  # quickstart.md). warnings deixou de ser 0 apos structural-decision-
+  # human-gate (task 5.1): o Target Platform deste plan.md arquivado nao
+  # cita briefing/constitution/dec-NNN por perto, entao dispara
+  # target-platform-unsourced (warning, INV-V3 — nunca error). Fixture
+  # arquivada, fora de escopo para editar; exit continua 0 (so warning).
+  assert_stdout_contains 'profile=plan|errors=0|' || return 1
+  assert_stdout_contains 'FINDING|warning|target-platform-unsourced|' || return 1
 }
 
 # ==== Cenario 8 — plan.md com placeholder de template residual ====
@@ -356,6 +363,68 @@ scenario_sc_com_tps_e_paint_time_ainda_dispara() {
 EOF
   capture sh "$SCRIPT" "$TMPDIR_TEST/sc-perf.md" --sdd-spec
   assert_stdout_contains 'FINDING|error|sc-not-measurable|' || return 1
+}
+
+# ==== structural-decision-human-gate FASE 5 (task 5.1.5, FR-010) ====
+# target-platform-unresolved (error) / target-platform-unsourced (warning),
+# so em plan.md (INV-V2 — guarda _is_plan_md pelo basename literal).
+
+_tp_minimal_sections() {
+  printf '## Summary\n\ntexto\n\n## Technical Context\n\ntexto\n\n## Constitution Check\n\ntexto\n\n## Project Structure\n\ntexto\n'
+}
+
+scenario_tp_ausente_dispara_unresolved_error() {
+  mkdir -p "$TMPDIR_TEST/tp_ausente"
+  _tp_minimal_sections > "$TMPDIR_TEST/tp_ausente/plan.md"
+  assert_exit 1 sh "$SCRIPT" "$TMPDIR_TEST/tp_ausente/plan.md" --sdd-plan || return 1
+  assert_stdout_contains 'FINDING|error|target-platform-unresolved|' || return 1
+}
+
+scenario_tp_needs_clarification_dispara_unresolved_error() {
+  mkdir -p "$TMPDIR_TEST/tp_needs"
+  { _tp_minimal_sections; printf '\n**Target Platform**: NEEDS CLARIFICATION\n'; } \
+    > "$TMPDIR_TEST/tp_needs/plan.md"
+  assert_exit 1 sh "$SCRIPT" "$TMPDIR_TEST/tp_needs/plan.md" --sdd-plan || return 1
+  assert_stdout_contains 'FINDING|error|target-platform-unresolved|' || return 1
+}
+
+scenario_tp_preenchido_sem_fonte_dispara_unsourced_warning_sem_error() {
+  mkdir -p "$TMPDIR_TEST/tp_unsourced"
+  { _tp_minimal_sections; printf '\n**Target Platform**: Kubernetes\n'; } \
+    > "$TMPDIR_TEST/tp_unsourced/plan.md"
+  assert_exit 0 sh "$SCRIPT" "$TMPDIR_TEST/tp_unsourced/plan.md" --sdd-plan || return 1
+  assert_stdout_not_contains 'FINDING|error|target-platform' || return 1
+  assert_stdout_contains 'FINDING|warning|target-platform-unsourced|' || return 1
+}
+
+scenario_tp_preenchido_com_fonte_sem_nenhum_finding_novo() {
+  mkdir -p "$TMPDIR_TEST/tp_sourced"
+  { _tp_minimal_sections; printf '\n**Target Platform**: Kubernetes. Fonte: briefing.\n'; } \
+    > "$TMPDIR_TEST/tp_sourced/plan.md"
+  assert_exit 0 sh "$SCRIPT" "$TMPDIR_TEST/tp_sourced/plan.md" --sdd-plan || return 1
+  assert_stdout_not_contains 'target-platform' || return 1
+}
+
+scenario_tp_fonte_em_dec_id_na_linha_adjacente_nao_dispara_warning() {
+  mkdir -p "$TMPDIR_TEST/tp_dec"
+  {
+    _tp_minimal_sections
+    printf '\n**Target Platform**: Kubernetes.\n'
+    printf 'Decisao dec-042 fixou este eixo apos bloqueio humano.\n'
+  } > "$TMPDIR_TEST/tp_dec/plan.md"
+  assert_exit 0 sh "$SCRIPT" "$TMPDIR_TEST/tp_dec/plan.md" --sdd-plan || return 1
+  assert_stdout_not_contains 'target-platform-unsourced' || return 1
+}
+
+# INV-V2: os dois checks novos so rodam quando o arquivo se chama
+# literalmente plan.md — nao afetam research.md/data-model.md/quickstart.md.
+scenario_tp_nao_dispara_fora_de_plan_md() {
+  mkdir -p "$TMPDIR_TEST/tp_naoplan"
+  _tp_minimal_sections > "$TMPDIR_TEST/tp_naoplan/research.md"
+  capture sh "$SCRIPT" "$TMPDIR_TEST/tp_naoplan/research.md" --sdd-plan
+  case "$_CAPTURED_STDOUT" in
+    *target-platform*) _fail "INV-V2" "target-platform disparou fora de plan.md: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
 }
 
 run_all_scenarios

@@ -244,7 +244,16 @@ export type McpToolErrorCode =
   | "CONSTITUTION_CONFLICT_SCORE"
   | "INVALID_TERMINATION_REASON"
   | "INVALID_STAGE_TOKEN"
-  | "CLOSE_ROLLED_BACK";
+  | "CLOSE_ROLLED_BACK"
+  // structural-decision-human-gate FASE 4 (FR-004), paridade com R1/R2/R3/R6
+  // de state-decisions.sh register [VERIFICADO: state-decisions.sh linhas
+  // 373-395, tags [classe-obrigatoria]/[classe-invalida]/[eixo-invalido]/
+  // [estrutural-exige-bloqueio]/[consentimento-invalido]/
+  // [consentimento-de-outro-assunto]].
+  | "STRUCTURAL_CLASS_REQUIRED"
+  | "STRUCTURAL_REQUIRES_HUMAN_BLOCK"
+  | "STRUCTURAL_AXIS_INVALID"
+  | "HUMAN_CONSENT_INVALID";
 
 /**
  * Erro tipado comum reutilizado por todas as tools (`code` enumerado +
@@ -315,6 +324,11 @@ export const FIELD_TO_FLAG_TABLE: readonly FieldFlagMapping[] = [
   { tool: "record_decision", field: "evidence", flag: "--evidencia" },
   { tool: "record_decision", field: "references", flag: "--referencias" },
   { tool: "record_decision", field: "originating_artifact", flag: "--artefato-originador" },
+  // structural-decision-human-gate FASE 4 (FR-004), contracts/mcp-record-decision.md
+  // §Mapeamento campo -> flag.
+  { tool: "record_decision", field: "decision_class", flag: "--classe" },
+  { tool: "record_decision", field: "structural_axis", flag: "--eixo" },
+  { tool: "record_decision", field: "human_consent_block_id", flag: "--consentimento" },
 
   // open_wave -> state-ondas.sh start (task 3.7)
   { tool: "open_wave", field: "session_id", flag: null },
@@ -338,6 +352,9 @@ export const FIELD_TO_FLAG_TABLE: readonly FieldFlagMapping[] = [
   { tool: "register_human_block", field: "question", flag: "--pergunta" },
   { tool: "register_human_block", field: "context_for_answer", flag: "--contexto-para-resposta" },
   { tool: "register_human_block", field: "recommended_options", flag: "--opcoes-recomendadas" },
+  // structural-decision-human-gate FASE 4 (FR-008), contracts/cli-structural-class.md
+  // §bloqueios.sh register/list.
+  { tool: "register_human_block", field: "subject_key", flag: "--chave-assunto" },
 
   // get_status -> read-only, nenhum campo alem de session_id (task 3.11)
   { tool: "get_status", field: "session_id", flag: null },

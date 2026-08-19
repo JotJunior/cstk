@@ -35,6 +35,11 @@ function sanitizeHelperReason(stderr: string): string {
   return sanitizeForLlmContext(stderr, MAX_REASON_BYTES);
 }
 
+// structural-decision-human-gate FASE 4 (FR-008), contracts/cli-structural-class.md
+// §bloqueios.sh register: prefixo fechado {briefing-item:, axis:} + sufixo
+// nao-vazio [VERIFICADO: bloqueios.sh register, --chave-assunto].
+const SUBJECT_KEY_PATTERN = /^(briefing-item|axis):.+$/;
+
 export const registerHumanBlockInputShape = {
   session_id: z.string().min(1, "session_id obrigatorio"),
   decision_id: z
@@ -44,6 +49,14 @@ export const registerHumanBlockInputShape = {
   question: z.string().min(20, "question deve ter >= 20 chars (humano precisa entender sem releitura)"),
   context_for_answer: z.string().min(1, "context_for_answer obrigatorio"),
   recommended_options: z.array(z.string()).nullable().optional(),
+  // Espelha a validacao de FORMA do helper (prefixo fechado + sufixo
+  // nao-vazio); a semantica de dedup (FR-008) e responsabilidade de quem
+  // deriva a chave (briefing-items.sh), nao desta tool.
+  subject_key: z
+    .string()
+    .regex(SUBJECT_KEY_PATTERN, "subject_key deve ter prefixo briefing-item: ou axis: seguido de sufixo nao-vazio")
+    .nullable()
+    .optional(),
 } as const;
 
 const registerHumanBlockInputSchema = z.object(registerHumanBlockInputShape);
@@ -112,6 +125,9 @@ export async function handleRegisterHumanBlock(
   ];
   if (input.recommended_options) {
     args.push("--opcoes-recomendadas", JSON.stringify(input.recommended_options));
+  }
+  if (input.subject_key) {
+    args.push("--chave-assunto", input.subject_key);
   }
 
   try {

@@ -213,33 +213,33 @@ Ref: FR-007; `data-model.md` entidade Item a Definir, §Derivacao da chave,
 §Distincao "sem itens" != "sem briefing"; `contracts/cli-structural-class.md`
 §`briefing-items.sh list-high`
 
-- [ ] 3.1.1 Implementar `--briefing <path>` (obrigatoria); aceitar briefing
+- [x] 3.1.1 Implementar `--briefing <path>` (obrigatoria); aceitar briefing
       canonico (`docs/briefing.md`) e legado
       (`docs/01-briefing-discovery/briefing.md`) — resolucao do path e do
       chamador (P6)
-- [ ] 3.1.2 Parser tolerante do heading `## Itens a Definir` (caixa/espacos
+- [x] 3.1.2 Parser tolerante do heading `## Itens a Definir` (caixa/espacos
       extras, P1) e da tabela (cabecalho/separadora descartados, P2);
       impacto casado pelo **token inicial** da celula (`Alto — ...`, `Medio
       (...)`, P3)
-- [ ] 3.1.3 Saneamento por celula ANTES de compor a linha de saida: NUL, TAB,
+- [x] 3.1.3 Saneamento por celula ANTES de compor a linha de saida: NUL, TAB,
       CR, LF removidos, whitespace colapsado (P7, finding L1 — impede que uma
       celula com TAB forje coluna extra na saida TSV)
-- [ ] 3.1.4 Derivacao de `item_key` (funcao pura, ordem fixa): caixa baixa;
+- [x] 3.1.4 Derivacao de `item_key` (funcao pura, ordem fixa): caixa baixa;
       `[^a-z0-9]` vira `-`; `-` repetidos colapsam; `-` das pontas removidos;
       trunca em 48 chars; sufixo `-<cksum do texto integral normalizado>`
       (data-model.md §Derivacao da chave — usar `cksum`, nao hash
       criptografico, conforme declarado)
-- [ ] 3.1.5 Saida: uma linha `item_key<TAB>item<TAB>dimensao` por item Alto,
+- [x] 3.1.5 Saida: uma linha `item_key<TAB>item<TAB>dimensao` por item Alto,
       seguida **sempre** de `STATUS<TAB><token>` em
       `{ok, sem-itens-alto, tabela-irreconhecivel, briefing-ausente}` como
       ultima linha de stdout (finding M2 — "sem itens" != "sem briefing")
-- [ ] 3.1.6 Heading presente sem tabela reconhecivel (ex.: lista numerada) =>
+- [x] 3.1.6 Heading presente sem tabela reconhecivel (ex.: lista numerada) =>
       zero itens + aviso em stderr + `STATUS tabela-irreconhecivel`, exit 0
       (P4); briefing ausente/ilegivel => zero itens + aviso + `STATUS
       briefing-ausente`, exit 0 (P5) — nunca falha a onda por parse
-- [ ] 3.1.7 POSIX puro, sem `jq` (INV-B1); flag ausente/desconhecida => exit
+- [x] 3.1.7 POSIX puro, sem `jq` (INV-B1); flag ausente/desconhecida => exit
       2 (uso incorreto)
-- [ ] 3.1.8 Teste: `tests/test_briefing-items.sh` (**obrigatorio**, gateado
+- [x] 3.1.8 Teste: `tests/test_briefing-items.sh` (**obrigatorio**, gateado
       por `--check-coverage`) — cada um dos P1..P7, os 4 tokens de `STATUS`,
       determinismo de `item_key` (mesma entrada => mesma chave, INV-B5),
       truncagem + cksum evitando colisao de itens longos com prefixo comum,
@@ -256,20 +256,20 @@ que o helper POSIX passa a emitir.
 
 Ref: FR-004; `contracts/mcp-record-decision.md` §Request, §Error Responses
 
-- [ ] 4.1.1 Adicionar `decision_class` (`enum(["estrutural","operacional"])`,
+- [x] 4.1.1 Adicionar `decision_class` (`enum(["estrutural","operacional"])`,
       nullable), `structural_axis` (string, nullable) e
       `human_consent_block_id` (string, nullable — zod valida so o
       **formato**, nunca a autoridade; INV-M4) ao schema zod da tool
-- [ ] 4.1.2 Passthrough condicional das 3 flags (`--classe`, `--eixo`,
+- [x] 4.1.2 Passthrough condicional das 3 flags (`--classe`, `--eixo`,
       `--consentimento`) apenas quando o campo vier definido e nao-nulo,
       no mesmo padrao de `--score`/`--evidencia`/`--artefato-originador`;
       execucao continua via `execFile` com argv array (nenhum campo novo
       atravessa shell)
-- [ ] 4.1.3 Adicionar 4 codigos ao union `McpToolErrorCode` em
+- [x] 4.1.3 Adicionar 4 codigos ao union `McpToolErrorCode` em
       `mcp/state-server/src/runtime/exec.ts`: `STRUCTURAL_CLASS_REQUIRED`,
       `STRUCTURAL_REQUIRES_HUMAN_BLOCK`, `STRUCTURAL_AXIS_INVALID`,
       `HUMAN_CONSENT_INVALID`
-- [ ] 4.1.4 `classifyHelperError()`: mapear as novas mensagens de stderr do
+- [x] 4.1.4 `classifyHelperError()`: mapear as novas mensagens de stderr do
       helper (`classe-obrigatoria`, `estrutural-exige-bloqueio`,
       `eixo-invalido`/`classe-invalida`, `consentimento-invalido`/
       `consentimento-de-outro-assunto`) para os codigos novos — mesmo padrao
@@ -283,31 +283,31 @@ Ref: FR-004; `contracts/mcp-record-decision.md` §Request, §Error Responses
 Ref: `contracts/cli-structural-class.md` §`bloqueios.sh register`;
 `contracts/mcp-record-decision.md` §Mapeamento campo -> flag
 
-- [ ] 4.2.1 Adicionar `subject_key` (string, nullable; validar prefixo
+- [x] 4.2.1 Adicionar `subject_key` (string, nullable; validar prefixo
       `briefing-item:`/`axis:` no zod, espelhando a validacao de forma do
       helper) ao schema da tool `register_human_block`
-- [ ] 4.2.2 Adicionar entrada em `FIELD_TO_FLAG_TABLE`
+- [x] 4.2.2 Adicionar entrada em `FIELD_TO_FLAG_TABLE`
       (`mcp/state-server/src/runtime/exec.ts`): `{ tool:
       "register_human_block", field: "subject_key", flag:
       "--chave-assunto" }`
-- [ ] 4.2.3 Passthrough condicional (campo nao-nulo) no mapper da tool,
+- [x] 4.2.3 Passthrough condicional (campo nao-nulo) no mapper da tool,
       mesmo padrao de 4.1.2
 
 ### 4.3 Testes MCP `[C]`
 
 Ref: `contracts/mcp-record-decision.md` §Invariantes INV-M1, INV-M2
 
-- [ ] 4.3.1 `mcp/state-server/test/record_decision.test.ts`: cenarios R1..R3
+- [x] 4.3.1 `mcp/state-server/test/record_decision.test.ts`: cenarios R1..R3
       (rejeicao no `superRefine`, `stage = "schema"`) e R6 (rejeicao vinda do
       helper via `classifyHelperError`, incluindo bloqueio inexistente, de
       outra execucao, `aguardando`, e de outro `subject_key`)
-- [ ] 4.3.2 `mcp/state-server/test/exec-mapper-parity.test.ts`: estender o
+- [x] 4.3.2 `mcp/state-server/test/exec-mapper-parity.test.ts`: estender o
       gate de paridade (INV-M2) para os 3 campos novos de `record_decision`
       e o campo novo de `register_human_block` — campo orfao no schema sem
       entrada em `FIELD_TO_FLAG_TABLE` falha o teste, e vice-versa; flag
       literal entre aspas duplas no arquivo-fonte da tool (comentario nao
       conta)
-- [ ] 4.3.3 `npm test` em `mcp/state-server/` verde (node:test)
+- [x] 4.3.3 `npm test` em `mcp/state-server/` verde (node:test)
 
 ---
 
@@ -321,22 +321,22 @@ Independente das FASES 1-4 (opera sobre texto de `plan.md`, sem tocar
 Ref: FR-010; `contracts/cli-structural-class.md` §`validate-sdd.sh
 --sdd-plan`; `data-model.md` (Constitution VI — nunca fabricar fonte)
 
-- [ ] 5.1.1 Finding `target-platform-unresolved` (`error`, so em `plan.md`,
+- [x] 5.1.1 Finding `target-platform-unresolved` (`error`, so em `plan.md`,
       guarda `_is_plan_md`): linha `**Target Platform**:` ausente, com valor
       vazio, ou contendo `NEEDS CLARIFICATION`
-- [ ] 5.1.2 Finding `target-platform-unsourced` (`warning`): campo
+- [x] 5.1.2 Finding `target-platform-unsourced` (`warning`): campo
       preenchido, porem sem marcador de fonte (`briefing`, `constitution` ou
       `dec-NNN`) na linha ou linha adjacente — o validador **nao resolve
       link/anchor** (INV-V3): "com fonte" = "fonte declarada", nao "fonte
       verificada"; por isso `warning`, nunca `error`
-- [ ] 5.1.3 Preservar formato de saida (`FINDING|<severity>|<code>|<msg>` +
+- [x] 5.1.3 Preservar formato de saida (`FINDING|<severity>|<code>|<msg>` +
       `RESULT|...`) e exit codes (`0` zero errors, `1` >=1 error, `2` uso
       incorreto); `target-platform-unresolved` muda o exit de um `plan.md`
       que hoje passaria — efeito desejado (SC-003)
-- [ ] 5.1.4 INV-V1/INV-V2: nenhum finding existente muda de codigo/severidade/
+- [x] 5.1.4 INV-V1/INV-V2: nenhum finding existente muda de codigo/severidade/
       mensagem; os dois checks so rodam para `plan.md` (nao afetam
       `research.md`, `data-model.md`, `quickstart.md`, `contracts/*.md`)
-- [ ] 5.1.5 Teste: `tests/test_validate-sdd.sh` — `plan.md` sem o campo,
+- [x] 5.1.5 Teste: `tests/test_validate-sdd.sh` — `plan.md` sem o campo,
       com `NEEDS CLARIFICATION`, preenchido sem fonte (warning, exit ainda 0
       se nao houver outro error), preenchido com fonte (sem finding novo)
 
