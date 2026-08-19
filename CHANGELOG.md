@@ -5,6 +5,53 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.4.1] - 2026-08-19
+
+Bugfix da issue #141 (aberta pelo próprio agente-00C): uma Decisão com
+`options_considered` em forma estruturada truncava o relatório de auditoria
+no meio, e o pipe da prosa escondia a falha. A causa raiz é nossa: o
+`clarify-asker` emite `opcoes_recomendadas` como objetos `{rotulo,
+descricao}` e o orquestrador passa isso verbatim em `--opcoes` — ou seja,
+TODA Decisão do clarify autônomo quebrava o `report.sh generate`. Mesmo
+defeito da #115, que foi corrigido só para os bloqueios. Sem breaking.
+
+### Fixed
+
+- **`report.sh` renderiza `options_considered` com string OU objeto**
+  (`(rotulo) descricao`, mesmo tratamento já dado a `recommended_options`
+  dos bloqueios). Antes: `jq: string and object cannot be added`, `generate`
+  exit 5, `.md` só com as seções 1-3 e `validate` exit 1 (seções 4/5/6
+  ausentes).
+- **`state-decisions.sh register` valida a FORMA de cada item de
+  `--opcoes`**: string não-vazia OU objeto com `rotulo`/`label` string
+  não-vazia (o formato do clarify-asker). Número, `null`, array, string
+  vazia ou objeto sem rótulo → exit 1 com mensagem clara, nada gravado.
+  Deliberadamente NÃO rejeita objetos (item 1 da issue) — isso quebraria o
+  clarify autônomo. `--referencias`: string não-vazia ou objeto não-vazio
+  (o `report.sh` já renderiza os dois) → senão exit 2.
+- **MCP `record_decision` em paridade** (`mcp/state-server/src/tools/
+  record_decision.ts`): `options_considered` aceita `string |
+  {rotulo|label, descricao?}`; objetos não participam da detecção de
+  `CONSTITUTION_CONFLICT_SCORE` (as 3 opções canônicas são strings por
+  protocolo). Contrato `contracts/mcp-tools.md` atualizado. 3 testes node
+  novos (160/160).
+- **Prosa do orquestrador (passo 12 de `agente-00c-orchestrator.md`)**:
+  o relatório passa a ser gerado por `report.sh emit --flavor agente-00c`
+  (secrets-filter interno e obrigatório; PROPAGA o exit do render; grava em
+  `<SD>/../agente-00c-report.md`) em vez de `generate | secrets-filter.sh
+  scrub > arquivo` — num pipe o exit é o do `scrub`, e foi assim que o
+  `.md` truncado saiu com exit 0 até o `validate` reclamar. Verificado:
+  `emit` com o `report.sh` antigo sai 5, não mascara.
+- Testes: 2 cenários em `tests/test_report.sh` (`generate` e `emit` com
+  opções-objeto → 6 seções + `validate` 0), 3 em
+  `tests/test_state-decisions.sh` (objeto com rótulo aceito e preservado no
+  state; formas inválidas rejeitadas sem gravar; referências). Todos falham
+  sem o fix (mutation check).
+
+Desdobramentos abertos como issues separadas: #143 (`issue.sh` publica
+descrição do projeto-alvo/Decisões/paths sem consentimento — redação por
+default + opt-in) e #144 (amend auditável de Decisão; hoje só SQL cru).
+
 ## [8.4.0] - 2026-08-19
 
 Release de manutenção com uma feature pequena pedida por quem usa o cstk em
@@ -6758,6 +6805,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.4.1]: https://github.com/JotJunior/cstk/releases/tag/v8.4.1
 [8.4.0]: https://github.com/JotJunior/cstk/releases/tag/v8.4.0
 [8.3.1]: https://github.com/JotJunior/cstk/releases/tag/v8.3.1
 [8.3.0]: https://github.com/JotJunior/cstk/releases/tag/v8.3.0
