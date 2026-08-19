@@ -34,6 +34,7 @@ tool, `jq -e` no helper).
 | `originating_artifact` | string, nullable | no | [EXISTENTE] |
 | `decision_class` | `"estrutural" \| "operacional"`, nullable | condicional | **[PROPOSTA]** obrigatorio quando R1 dispara |
 | `structural_axis` | string, nullable | condicional | **[PROPOSTA]** obrigatorio quando `decision_class = "estrutural"`; validado contra o enum de eixos |
+| `human_consent_block_id` | string, nullable | condicional | **[PROPOSTA]** id `block-NNN`; unica forma de registrar estrutural com escolha concreta. `zod` valida o **formato**; a existencia e o `status = respondido` sao verificados no helper, contra o estado (R6) |
 
 ### Mapeamento campo -> flag
 
@@ -44,6 +45,14 @@ tool `record_decision`:
 |-------|------|
 | `decision_class` | `--classe` |
 | `structural_axis` | `--eixo` |
+| `human_consent_block_id` | `--consentimento` |
+
+Entrada nova em `FIELD_TO_FLAG_TABLE` para a tool `register_human_block`
+(vizinha, atingida pelo FR-008):
+
+| Field | Flag |
+|-------|------|
+| `subject_key` | `--chave-assunto` |
 
 O mapper local da tool passa cada flag **condicionalmente** (apenas quando o
 campo vier definido e nao-nulo), no mesmo padrao ja usado por `--score`,
@@ -74,8 +83,9 @@ Inalterada:
 | `STRUCTURAL_CLASS_REQUIRED` | **[PROPOSTA]** | R1: token de bloqueio humano nas opcoes e `decision_class` ausente |
 | `STRUCTURAL_REQUIRES_HUMAN_BLOCK` | **[PROPOSTA]** | R2: classe estrutural com `choice` fora da familia de bloqueio ou score != 0 |
 | `STRUCTURAL_AXIS_INVALID` | **[PROPOSTA]** | R3: eixo ausente com classe estrutural, ou fora do enum |
+| `HUMAN_CONSENT_INVALID` | **[PROPOSTA]** | R6: `human_consent_block_id` aponta bloqueio inexistente, de outra execucao, ou com `status != respondido` |
 
-Os tres codigos novos entram no union `McpToolErrorCode` de
+Os quatro codigos novos entram no union `McpToolErrorCode` de
 `mcp/state-server/src/runtime/exec.ts`. Envelope de erro preservado:
 `{ outcome: "rejected", reason: "<CODE>: <mensagem>", stage, result: null }`,
 com `isError = true` na serializacao MCP.
@@ -88,7 +98,13 @@ com `isError = true` na serializacao MCP.
 | 2 | Validacao no `state-decisions.sh` | Rejeita mesmo se a tool for contornada (chamada direta ao helper, ou tool desatualizada) |
 
 A barreira 2 e a que garante FR-003 de fato: a tool e uma porta conveniente, o
-helper e a porta **autoritativa**. `classifyHelperError()` ganha o match das
+helper e a porta **autoritativa**. Para R6 a assimetria e ainda mais nitida — a
+tool nao le o estado, entao **nao pode** validar consentimento; ela so verifica
+o formato do id. Toda a forca da regra vive na barreira 2. Consequencia direta
+para o teste de paridade: `HUMAN_CONSENT_INVALID` e produzido por
+`classifyHelperError()` a partir do stderr do helper, **nunca** pelo
+`superRefine` — diferente de `STRUCTURAL_CLASS_REQUIRED`, que existe nas duas
+barreiras. `classifyHelperError()` ganha o match das
 mensagens novas do helper para traduzir stderr em codigo tipado, no mesmo padrao
 ja usado para `violacao protocolo constitution-conflict`.
 
@@ -102,5 +118,15 @@ ja usado para `violacao protocolo constitution-conflict`.
   `FIELD_TO_FLAG_TABLE` (checagem reciproca: campo orfao e entrada orfa ambos
   falham) e (b) a flag literal entre aspas duplas no arquivo-fonte da tool —
   comentario nao conta.
-- **INV-M3**: nenhum campo novo e texto livre; ambos sao enum fechado. Nao ha
-  superficie nova de injecao via conteudo (LLM01).
+- **INV-M3**: nenhum campo novo e texto livre. `decision_class` e
+  `structural_axis` sao enum fechado; `human_consent_block_id` e um id
+  `block-NNN` gerado pelo runtime; `subject_key` tem prefixo fechado e sufixo
+  derivado por funcao pura. Nao ha superficie nova de injecao via conteudo
+  (LLM01).
+- **INV-M4**: a barreira do `zod` sobre `human_consent_block_id` valida
+  **forma**, nunca autoridade. A verificacao que importa — o bloqueio existe,
+  pertence a esta execucao e esta `respondido` — e feita pelo helper contra o
+  estado. Uma tool desatualizada que aceitasse qualquer string continuaria
+  barrada na porta autoritativa.
+- **INV-M5**: o campo `agent` nao participa de nenhuma regra nova, aqui como no
+  helper (paridade da INV-C5). A tool nao tem conceito de "agente humano".

@@ -84,10 +84,40 @@ Sem tratamento explicito, o primeiro `register --classe` falharia com
 **Decision**: novo subcomando `state-db-schema.sh ensure --db PATH`, idempotente
 e **fail-hard**, que consulta `PRAGMA table_info(decision)` e aplica
 `ALTER TABLE decision ADD COLUMN ...` somente para as colunas ausentes.
-Invocado nos dois pontos de contato com a coluna nova: no ramo sqlite de
-`_sd_db_register` (antes do `BEGIN IMMEDIATE`) e em `_sr_db_read` (antes da
-projecao). Custo: um `PRAGMA` por operacao que ja paga o spawn de um processo
-`sqlite3` — irrelevante frente ao custo existente (SC-005).
+Invocado **apenas em caminhos de escrita**: no ramo sqlite de `_sd_db_register`
+(antes do `BEGIN IMMEDIATE`), no `init` e na migracao json->db. Custo: um
+`PRAGMA` por operacao que ja paga o spawn de um processo `sqlite3` — irrelevante
+frente ao custo existente (SC-005).
+
+**Emenda (finding M3 do gate de seguranca — leitura nao muta schema)**: a versao
+anterior desta decisao invocava `ensure` tambem em `_sr_db_read`, o que fazia um
+caminho declaradamente read-only emitir `ALTER TABLE`. Consequencias reais:
+`report.sh`, `review-task` e qualquer auditoria passariam a exigir permissao de
+escrita e a poder alterar schema sob um lock que nao pediram; e uma execucao
+abortada seria mutada so por ser inspecionada. Corrigido: **o leitor nunca
+altera**. Ele consulta `PRAGMA table_info(decision)` (read-only) e escolhe entre
+**duas consultas literais fixas** — a que projeta as colunas novas e a que
+projeta `NULL` no lugar delas. Nao ha montagem dinamica de SQL: e uma selecao
+binaria entre dois textos constantes, escolhida por um booleano.
+
+Isso e seguro por construcao porque a unica forma de existir uma linha com valor
+nas colunas novas e ter passado pelo caminho de escrita, que ja garantiu o
+`ensure`. Um banco sem as colunas so pode conter Decisoes legadas, cuja
+projecao correta e exatamente `NULL` (FR-013).
+
+**Emenda 2 (estado parcial de migracao — finding do gate de seguranca sobre a
+emenda)**: sao **tres** colunas novas em `decision` e uma em `human_block`, logo
+`ensure` emite varios `ALTER TABLE`. Se a escolha do leitor entre as duas
+consultas fixas fosse feita testando **uma** coluna, um banco a meio caminho
+(processo morto entre dois ALTERs) faria o leitor escolher a consulta "nova" e
+quebrar com `no such column` — falha de leitura causada por uma migracao
+incompleta que ele proprio nao pode corrigir. Duas regras fecham isso:
+(1) `ensure` aplica **todos** os `ALTER TABLE` dentro de uma unica transacao
+(SQLite aceita DDL transacional), de modo que o estado parcial nao seja
+observavel; (2) o leitor testa a presenca de **todas** as colunas novas e so
+escolhe a consulta nova quando todas estao presentes — na duvida, projeta
+`NULL`. As duas juntas tornam a leitura correta sob qualquer estado do banco,
+inclusive um produzido por versao antiga do proprio `ensure`.
 
 **Rationale**: o padrao `PRAGMA table_info` + `ALTER TABLE ADD COLUMN`
 idempotente ja e o precedente do repo (`recall_apply_schema`,
@@ -105,9 +135,11 @@ propagar (contrato de `_state_db_exec_with_retry`), nunca silenciar.
   neste escopo — e uma feature propria (divida tecnica ja conhecida do
   `state.db`), e resolve-la aqui triplicaria o blast radius. Registrada como
   divida explicita na secao Complexity Tracking do `plan.md`.
-- *Coluna opcional lida com `SELECT ... FROM pragma_table_info` condicional em
-  cada leitura*: rejeitado — SQL dinamico por leitura, muito mais fragil que um
-  ALTER idempotente unico.
+- *Montar o `SELECT` dinamicamente por leitura, concatenando nomes de coluna*:
+  rejeitado — SQL construido por string e fragil e cria superficie de erro; a
+  escolha entre duas consultas constantes obtem o mesmo efeito sem montar SQL.
+- *Manter o `ensure` tambem na leitura* (versao anterior desta decisao):
+  rejeitado pelo finding M3 — vide emenda acima.
 
 ## Decision 4: Representacao do eixo estrutural (lista fechada)
 
@@ -132,7 +164,10 @@ um arquivo unico evita tres copias divergentes.
 
 **Decision**: novo helper `briefing-items.sh` com subcomando
 `list-high --briefing PATH`, POSIX puro (awk/sed, sem jq), saida uma linha por
-item no formato `item<TAB>dimensao`, **exit 0 sempre** exceto uso incorreto (2).
+item no formato `item_key<TAB>item<TAB>dimensao` seguida de uma linha final
+`STATUS<TAB><token>`, **exit 0 sempre** exceto uso incorreto (2). As emendas 1 e
+2 abaixo detalham `STATUS` e `item_key`, ambos acrescentados apos os findings do
+gate de seguranca e do gate documental.
 
 **Rationale — regras derivadas de dados REAIS, nao do template**: o template
 (`plugins/cstk/skills/briefing/templates/briefing.md:88-92`) declara heading
@@ -157,9 +192,35 @@ comportamento atual e nunca falha a onda.
 todos `Medio`/`Baixo` e **nenhum `Alto`** — ou seja, ativar o gate FR-008 nao
 auto-bloqueia esta propria execucao. Fato relevante para o rollout.
 
+**Emenda 1 (finding M2 — fail-open invisivel)**: exit 0 com stdout vazio nao
+distingue "briefing tem zero itens Alto" de "briefing nao existe". Sao situacoes
+opostas do ponto de vista do gate: a primeira e o caminho feliz, a segunda e
+ausencia total de informacao — e ambas passavam calado. O parser passa a emitir
+como ultima linha `STATUS<TAB><token>` com quatro valores fechados (`ok`,
+`sem-itens-alto`, `tabela-irreconhecivel`, `briefing-ausente`), detalhados no
+`data-model.md`. O exit continua 0 nos quatro casos: a spec exige nao falhar a
+onda por parse, e a correcao pedida nao e "falhar", e "parar de ser invisivel" —
+o orquestrador leva o estado degradado ao sumario da onda.
+
+**Emenda 2 (chave de assunto, FR-008)**: a saida ganha uma primeira coluna
+`item_key`, derivada por funcao pura do texto do item (regra literal no
+`data-model.md`). E ela que vira o `subject_key` do BloqueioHumano e permite que
+"ja decidido" seja igualdade exata de string em vez de casamento sobre prosa —
+o finding H1 do gate documental. A derivacao vive no parser, e nao no
+orquestrador, justamente para que nao seja o agente a escolher a chave.
+
+**Emenda 3 (finding L1 — celula forjando coluna)**: como a saida e TSV, uma
+celula do briefing contendo TAB, CR ou LF acrescentaria colunas a linha e
+desalinharia todo o consumo a jusante. O parser saneia cada celula antes de
+compor a linha (remove NUL/TAB/CR/LF, colapsa whitespace). E a aplicacao
+concreta do FR-014 nesta borda: o texto do briefing e conteudo, e conteudo nao
+pode alterar a estrutura da saida.
+
 **Alternatives considered**: exigir formato estrito e falhar em divergencia —
 rejeitado por contradizer a spec e por quebrar 3 dos briefings existentes;
-parser em jq apos converter markdown — rejeitado (dependencia desnecessaria).
+parser em jq apos converter markdown — rejeitado (dependencia desnecessaria);
+emitir o STATUS em stderr em vez de stdout — rejeitado: stderr ja carrega os
+avisos livres, e o consumidor precisa de um token posicional estavel.
 
 ## Decision 6: Onde ancorar o gate de ambiente alvo (FR-010)
 
@@ -233,14 +294,21 @@ entidade tipada no backlog, o que e feature propria e nao esta na spec.
 **Decision**: tres leitores recebem os campos novos, cada um pelo seu caminho ja
 existente:
 1. `report.sh` `_rp_render_secao_3` — exibe `**Classe**` / `**Eixo estrutural**`
-   e marca **anomalia de governanca** de forma **derivada** (nunca gravada),
-   pelo mesmo padrao ja usado para INVALIDADA.
+   / `**Consentimento**` (o `block-NNN` que autorizou, ou `nenhum`) e marca
+   **anomalia de governanca** de forma **derivada** (nunca gravada), pelo mesmo
+   padrao ja usado para INVALIDADA. O predicado consultado e o do
+   `data-model.md` §Predicado de consentimento humano — o campo de agente **nao**
+   participa dele.
 2. `review-task/SKILL.md` — nova secao de contagens (estruturais, anomalias),
    ao lado das secoes de model-routing ja existentes.
 3. `cli/lib/recall.sh` — `RECALL_SCHEMA_VERSION` de 14 para 15, com
    `ALTER TABLE decisions ADD COLUMN` idempotente nos dois caminhos de ingestao
    (JSON->SQL linha 1763 e SQL->SQL linha 2313), que hoje compartilham o mesmo
-   tuple de colunas.
+   tuple de colunas. Tres colunas, nao duas: sem `human_consent_block_id` o
+   indice nao consegue avaliar o predicado de anomalia e o painel exibiria uma
+   contagem que diverge do relatorio. `subject_key` fica **fora** do indice
+   (unico campo novo derivado de texto de projeto; nenhum consumidor atual
+   precisa dele fora da execucao corrente).
 
 **Rationale**: anomalia derivada, nunca persistida, e a mesma escolha
 arquitetural ja validada para a invalidacao de Decisao — mantem `.decisions[]`
@@ -264,3 +332,76 @@ implementacao / escolha DENTRO de uma stack ja decidida por humano" — o exempl
 que a spec da para decisao operacional. Registrado aqui porque a alternativa
 (classificar tudo que toca schema como estrutural) transformaria o gate em ruido
 e destruiria SC-006.
+
+## Decision 11: Onde ancorar o predicado de consentimento humano (emenda dec-024)
+
+**Decision**: o consentimento humano e **uma referencia verificavel a um
+BloqueioHumano `respondido`**, gravada na propria Decisao na coluna aditiva
+`human_consent_block_id`. O campo `agent` deixa de ter qualquer papel normativo.
+
+**Origem**: resposta do operador ao `block-001` (`dec-024`, escolha
+`so-H2-ampliado`). A versao anterior do desenho usava "agente nao-humano" como
+condicao da trava R2 **e** do predicado de anomalia — convergencia de tres
+findings HIGH independentes (H2 do `owasp-security`, H2 do
+`validate-documentation`, e o proprio bloqueio).
+
+**Rationale — verificado, nao presumido**: na tabela `decision` o unico
+constraint sobre o decisor e `CHECK (length(agent)   > 0)`
+(`references/state-db-schema.sql`, bloco `CREATE TABLE IF NOT EXISTS decision`):
+`agent` e TEXT livre, escrito pelo mesmo agente cuja autoridade se pretendia
+aferir; `--agente operador` bastaria para satisfazer a trava e zerar SC-002 num
+cenario de bypass. Na tabela `human_block`, ao contrario, existe
+`CHECK (status IN ('aguardando','respondido'))` — enum fechado — e a transicao
+para `respondido` e feita por `bloqueios.sh respond`, invocado pelo command pai
+ao processar a resposta do operador no resume. Trocamos, portanto, uma
+auto-declaracao textual por um evento de estado com forma fechada.
+
+**O que isto NAO resolve (declarado, nao mitigado)**: um agente que possa
+invocar `bloqueios.sh respond` diretamente ainda pode fabricar o evento. Isso e
+o finding H3 (portas de escrita sem guarda), explicitamente excluido desta
+feature pela mesma resposta `dec-024` e registrado como limitacao L2 na spec. O
+ganho medido e de degrau, nao de eliminacao: sai de "escrever qualquer string
+num campo" para "produzir um evento de bloqueio respondido".
+
+**Alternatives considered**:
+- *Enum de agentes conhecidos (`operador` vs lista de agentes)*: rejeitado —
+  continua sendo auto-declaracao, so que com vocabulario menor; o agente escolhe
+  o valor do mesmo jeito.
+- *Assinatura/segredo do operador na Decisao*: rejeitado — introduziria material
+  criptografico e gestao de segredo numa camada que hoje nao tem nenhum, muito
+  alem do escopo de `so-H2-ampliado`.
+- *Inferir consentimento pela proximidade temporal de um bloqueio respondido*:
+  rejeitado — heuristica; casaria qualquer decisao registrada apos qualquer
+  resposta.
+
+## Decision 12: Chave de dedup do FR-008 e onde ela vive
+
+**Decision**: coluna aditiva `subject_key` no **BloqueioHumano** (nao na
+Decisao), preenchida com um token de prefixo fechado (`briefing-item:` /
+`axis:`) cujo sufixo e derivado por funcao pura do texto do item pelo proprio
+`briefing-items.sh`. "Ja decidido" = existe bloqueio com aquela chave e
+`status = 'respondido'` na execucao corrente.
+
+**Rationale**: o finding H1 do gate documental observou que `list-high` emitia
+`item + dimensao` e que casar item com Decisao viraria heuristica sobre prosa —
+o mesmo modo de falha da #146, so que do outro lado. A resposta `dec-024`
+determina que "a mesma chave (bloqueio resolvido)" seja o mecanismo dos dois
+requisitos, e o BloqueioHumano e a entidade que literalmente representa "a
+pergunta feita ao humano": e nela que a identidade do assunto pertence. Colocar
+a chave na Decisao exigiria dois saltos (Decisao -> bloqueio -> Decisao) para
+responder "isto ja foi perguntado?".
+
+**Por que a derivacao fica no parser e nao no orquestrador**: se o agente
+escolhesse a chave, ele poderia — por engano ou nao — reusar a chave de um
+assunto ja respondido e suprimir a propria pergunta. Derivando no parser, a
+chave e funcao do briefing, que o agente nao controla nessa borda.
+
+**Alternatives considered**:
+- *Chave = eixo estrutural do item*: rejeitado — exigiria classificar cada item
+  Alto num dos 6 eixos, que e precisamente o julgamento sobre prosa que o H1
+  aponta; e dois itens Alto distintos do mesmo eixo colidiriam.
+- *Marcador textual embutido na `question` do bloqueio*: rejeitado — casar por
+  substring dentro de campo de prosa livre; funciona, mas reintroduz parsing de
+  texto onde cabe uma coluna.
+- *Sem dedup, confiando no orquestrador lembrar*: rejeitado — e a definicao do
+  problema, nao uma solucao.

@@ -236,8 +236,17 @@ pendente coloca a task de gate de dependencias DEPOIS da resolucao da stack;
   humana E o consentimento; o orquestrador registra a Decisao com referencia
   ao bloqueio respondido e prossegue — o que se exige e o consentimento
   rastreavel, nao que o humano escolha a opcao.
-- **Mesmo eixo perguntado duas vezes** (ex.: `specify` e `plan`): a segunda
-  etapa reconhece a Decisao humana anterior pelo eixo e nao re-pergunta.
+- **Mesmo item Alto reaparece em `specify` e em `plan`**: a segunda etapa
+  encontra o BloqueioHumano `respondido` com a mesma chave de assunto e nao
+  re-pergunta. Se o texto do item mudar no briefing entre uma etapa e outra, a
+  chave muda e o item **e** re-perguntado — deliberado: item reescrito e item
+  novo, e presumir equivalencia seria justamente a heuristica sobre prosa que a
+  chave existe para eliminar.
+- **Agente tenta forjar consentimento**: registrar uma Decisao estrutural
+  apontando um bloqueio inexistente, de outra execucao ou ainda `aguardando` e
+  recusado no proprio registro. O que o desenho **nao** impede e um agente
+  chamar diretamente o helper que marca um bloqueio como respondido — ver
+  limitacao declarada abaixo.
 - **Feature-00c em projeto cuja constitution ja fixa a stack**: a constitution
   e fonte humana ratificada — nao ha bloqueio; a Decisao cita a constitution.
 
@@ -253,11 +262,20 @@ pendente coloca a task de gate de dependencias DEPOIS da resolucao da stack;
   opcoes consideradas contiverem um token da familia de bloqueio humano
   (`bloqueio-humano*` / `pause-humano`); registro sem classe nesse caso e
   recusado como uso incorreto, sem gravar nada.
-- **FR-003**: Uma Decisao de classe `estrutural` registrada por agente
-  automatico MUST ter escolha = o token de bloqueio humano e score 0; qualquer
+- **FR-003**: Uma Decisao de classe `estrutural` **sem consentimento humano
+  rastreavel** MUST ter escolha = o token de bloqueio humano e score 0; qualquer
   outra combinacao (inclusive score 3 com evidencia) e recusada com mensagem
   que cita a classe, o eixo e o caminho correto — mesma mecanica da regra de
-  constitution-conflict ja existente.
+  constitution-conflict ja existente. **Consentimento humano rastreavel** e
+  definido **exclusivamente** como uma referencia, gravada na propria Decisao, a
+  um BloqueioHumano da mesma execucao que esteja `respondido` **e que trate do
+  mesmo eixo estrutural** da Decisao; a referencia MUST ser verificada contra o
+  estado no momento do registro (bloqueio inexistente, de outra execucao, ainda
+  pendente, ou de outro assunto = recusa). O vinculo de assunto e obrigatorio:
+  sem ele, um consentimento dado sobre um eixo autorizaria decisao sobre
+  qualquer outro. O campo
+  que identifica o agente decisor MUST NOT ter qualquer papel nessa
+  determinacao — emenda decidida pelo operador (dec-024).
 - **FR-004**: A regra FR-002/FR-003 MUST valer identicamente no caminho MCP
   (`record_decision`), com erro tipado e contrato atualizado — paridade
   helper/tool.
@@ -274,10 +292,16 @@ pendente coloca a task de gate de dependencias DEPOIS da resolucao da stack;
   tabela ausente/irreconhecivel = zero itens com aviso) e disponibiliza-los ao
   orquestrador em forma deterministica (lista).
 - **FR-008**: No inicio das etapas `specify` e `plan` em modo autonomo, para
-  cada item Alto sem Decisao humana rastreavel na execucao, o orquestrador MUST
+  cada item Alto ainda nao decidido por humano na execucao, o orquestrador MUST
   registrar um bloqueio humano e encerrar a onda em `bloqueio_humano` antes de
   invocar a skill da etapa; item ja decidido por humano MUST NOT ser
-  re-perguntado.
+  re-perguntado. "Ja decidido" MUST ser avaliado por **chave de assunto
+  deterministica**: cada item Alto tem uma chave derivada por funcao pura do seu
+  texto, gravada no BloqueioHumano que o apresenta ao operador; o item e
+  considerado decidido quando existe, na mesma execucao, um BloqueioHumano com
+  aquela chave e status `respondido`. O casamento MUST ser igualdade exata de
+  string — nunca correspondencia por prosa, por similaridade de texto ou por
+  julgamento do agente.
 - **FR-009**: A skill `plan`, em modo autonomo, MUST NOT resolver por
   inferencia um `NEEDS CLARIFICATION` de classe estrutural no Phase 0; em modo
   interativo o comportamento atual e preservado.
@@ -290,9 +314,13 @@ pendente coloca a task de gate de dependencias DEPOIS da resolucao da stack;
   DEPOIS da decisao humana de stack quando a execucao tiver uma decisao
   estrutural de stack registrada ou pendente.
 - **FR-012**: O relatorio de auditoria MUST identificar cada Decisao estrutural
-  com seu agente decisor e marcar como **anomalia de governanca** toda
-  estrutural cuja escolha nao seja o bloqueio humano e cujo agente nao seja
-  humano; `review-task` MUST reportar as contagens (estruturais, anomalias).
+  com seu eixo e com o bloqueio humano que a autorizou (quando houver), e marcar
+  como **anomalia de governanca** toda estrutural cuja escolha nao seja o token
+  de bloqueio humano e que nao possua referencia a um BloqueioHumano
+  `respondido` da mesma execucao; `review-task` MUST reportar as contagens
+  (estruturais, anomalias). O predicado de anomalia MUST NOT consultar o campo
+  de agente decisor — ele e exibido como informacao, nunca usado como
+  autoridade.
 - **FR-013**: Registros de Decisao anteriores a esta feature (sem classe) MUST
   continuar validos e legiveis (classe ausente = nao declarada), sem migracao
   obrigatoria de estado.
@@ -306,16 +334,54 @@ pendente coloca a task de gate de dependencias DEPOIS da resolucao da stack;
 ### Key Entities
 
 - **Decisao (classe)**: atributo novo da Decisao auditavel — `estrutural` |
-  `operacional` | ausente (legado). Relaciona-se ao eixo estrutural (texto no
-  contexto) e ao bloqueio humano que a resolveu.
+  `operacional` | ausente (legado). Relaciona-se ao eixo estrutural e ao
+  BloqueioHumano que a autorizou.
+- **Consentimento humano**: referencia, gravada na Decisao, a um BloqueioHumano
+  `respondido` da mesma execucao **e do mesmo assunto**. E o **unico** portador de autoridade humana
+  reconhecido pelo sistema: verificavel contra o estado, produzido por um evento
+  que so o operador origina (a resposta ao bloqueio) e imune a auto-declaracao
+  em texto livre. Substitui, para todo efeito de trava e de auditoria, qualquer
+  leitura do campo de agente decisor (dec-024).
+- **Chave de assunto**: identificador deterministico daquilo que foi perguntado
+  ao humano, derivado por funcao pura do texto do item e gravado no
+  BloqueioHumano. Une o item Alto do briefing, a pergunta feita e a resposta
+  obtida por igualdade exata de string; e o mecanismo de "nao re-perguntar" do
+  FR-008.
 - **Item a Definir (briefing)**: linha da tabela "Itens a Definir" — item,
   dimensao, impacto (Alto/Medio/Baixo). Consumido pela primeira vez por esta
-  feature; relaciona-se a zero ou uma Decisao humana na execucao.
+  feature; relaciona-se a zero ou um BloqueioHumano na execucao, pela chave de
+  assunto.
 - **Eixo estrutural**: categoria fechada (linguagem/runtime, stack,
   arquitetura, persistencia, ambiente alvo, tier); usada na prosa, na mensagem
-  de recusa e na deteccao de "ja decidido".
+  de recusa e no relatorio.
 - **Anomalia de governanca**: Decisao estrutural sem consentimento humano
   rastreavel; derivada (nunca gravada), reportada por relatorio/review-task.
+
+### Limitacoes declaradas (escopo decidido pelo operador em dec-024)
+
+Registradas aqui para que o artefato nao seja lido como mais forte do que e
+(Principio VI). Nao sao lacunas descobertas tarde: sao exclusoes conscientes,
+respondidas pelo operador no bloqueio `block-001`, com hardening rascunhado como
+issue propria do toolkit.
+
+- **L1 — Cobertura deterministica parcial dos eixos**: os gates deterministicos
+  desta feature cobrem `ambiente-alvo` (pelo gate do plano) e qualquer eixo que
+  o briefing marque como item `Alto`. Os eixos `stack-frameworks`, `arquitetura`
+  e `persistencia` **nao** ganham detector proprio: fora do caminho do briefing,
+  sua deteccao continua dependendo de o agente declarar a classe. A trava de
+  registro e forte contra consentimento forjado, e fraca contra omissao.
+- **L2 — Portas de escrita sem guarda**: o estado tambem e alcancavel por
+  escrita direta em arquivo e por cliente SQL direto sobre o banco, caminhos que
+  nao passam pelo helper nem pelo guard de comandos. Um agente com essas
+  ferramentas pode gravar uma Decisao ou marcar um bloqueio como respondido sem
+  atravessar nenhuma das regras acima. Fechar isso exige guarda nas ferramentas
+  de escrita de arquivo, nao apenas nas de shell — fora do escopo desta feature.
+
+Consequencia honesta: esta feature eleva o custo de contornar o gate de
+"escrever uma string qualquer no campo de agente" para "produzir um evento de
+bloqueio respondido"; ela nao torna o contorno impossivel. O ganho e real e
+mensuravel (SC-002 deixa de ser satisfativel por texto livre), o residual esta
+declarado acima.
 
 ## Success Criteria
 
@@ -325,9 +391,12 @@ pendente coloca a task de gate de dependencias DEPOIS da resolucao da stack;
   item Alto de stack), a execucao autonoma pausa **antes** de `plan.md` existir
   em 100% das execucoes; nenhuma Decisao estrutural com escolha != bloqueio e
   sem agente humano e gravada.
-- **SC-002**: 100% das Decisoes estruturais registradas em execucoes autonomas
-  apos a feature tem consentimento humano rastreavel (bloqueio respondido ou
-  Decisao de operador) — verificavel pelo relatorio (0 anomalias).
+- **SC-002**: 100% das Decisoes estruturais com escolha concreta registradas em
+  execucoes autonomas apos a feature referenciam um BloqueioHumano `respondido`
+  da mesma execucao — verificavel pelo relatorio (0 anomalias). A medicao NAO
+  admite o campo de agente decisor como evidencia de consentimento: uma Decisao
+  estrutural com escolha concreta e sem referencia a bloqueio conta como
+  anomalia mesmo que o agente se declare operador.
 - **SC-003**: 0 `plan.md` com ambiente de execucao alvo ausente/pendente passa o
   gate de qualidade do plano (finding critico em 100% dos casos de teste).
 - **SC-004**: Regressao zero: toda a suite existente de Decisoes operacionais,

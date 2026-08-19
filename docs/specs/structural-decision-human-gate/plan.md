@@ -12,10 +12,14 @@ opcoes nao significa nada; (2) o Phase 0 da skill `plan` resolve
 `Impacto` da tabela "Itens a Definir" do briefing e decorativa; (4) o campo
 `Target Platform` do plano aceita pendencia sem gate.
 
-**Abordagem tecnica**: estender a entidade Decisao com duas colunas aditivas
-(`decision_class`, `structural_axis`) e transformar a regra R2 numa trava de
+**Abordagem tecnica**: estender a entidade Decisao com tres colunas aditivas
+(`decision_class`, `structural_axis`, `human_consent_block_id`) e o
+BloqueioHumano com uma (`subject_key`), e transformar a regra R2 numa trava de
 runtime nas duas portas de escrita (helper POSIX + tool MCP), reusando
-exatamente a mecanica ja provada da trava de constitution-conflict. Somam-se
+exatamente a mecanica ja provada da trava de constitution-conflict. O
+consentimento humano e uma **referencia verificavel a um bloqueio respondido** —
+nunca o campo de agente, que e texto livre (emenda `dec-024`, resposta ao
+`block-001`). Somam-se
 dois gates deterministicos e independentes — extracao dos itens de impacto
 `Alto` do briefing e verificacao do ambiente alvo no `plan.md` — mais duas
 regras de prosa nas skills `plan` e `create-tasks`. As mudancas de leitura
@@ -23,17 +27,30 @@ regras de prosa nas skills `plan` e `create-tasks`. As mudancas de leitura
 persistida.
 
 **Alcance real da trava (declarado para o artefato nao ler mais forte do que e)**:
-R1 so dispara quando `options_considered` **ja** contem token de bloqueio humano,
-e classe ausente e no-op (R4). Um agente que fixe linguagem/runtime **sem** listar
-`bloqueio-humano` entre as opcoes — a forma exata da #146 — nao aciona R1, logo
-nunca precisa de `--classe` e R2/R3 nao rodam. A spec assume essa limitacao
-(Edge Cases: "parcialmente dependente da honestidade do agente") e delega a
-garantia dura aos gates deterministicos de US2/US3 — que hoje cobrem apenas dois
-dos seis eixos (`ambiente-alvo` pelo plano, e o que estiver marcado como item
-`Alto` no briefing). Os eixos `stack-frameworks`, `arquitetura` e `persistencia`
-ficam sem detector deterministico. Ver `block-001`.
+a feature e forte contra **consentimento forjado** e fraca contra **omissao**.
 
-Ver [research.md](./research.md) (10 decisoes de Phase 0),
+- *Forte*: uma vez que a classe `estrutural` esteja declarada, nao ha como
+  registrar escolha concreta sem apontar um BloqueioHumano `respondido` da mesma
+  execucao **e do mesmo eixo**, verificado contra o estado no momento do
+  registro. Nenhuma string escrita pelo agente satisfaz a condicao — foi
+  exatamente o buraco fechado pela emenda `dec-024`. O vinculo de assunto veio
+  de uma segunda passada do gate de seguranca sobre a propria emenda (`dec-030`):
+  sem ele, o consentimento seria um cheque em branco reaproveitavel entre eixos.
+- *Fraca*: R1 so dispara quando `options_considered` **ja** contem token de
+  bloqueio humano, e classe ausente e no-op (R4). Um agente que fixe
+  linguagem/runtime **sem** listar `bloqueio-humano` entre as opcoes — a forma
+  exata da #146 — nao aciona R1, logo nunca precisa de `--classe` e R2/R3 nao
+  rodam.
+
+A garantia dura contra omissao vem dos gates deterministicos de US2/US3, que
+cobrem `ambiente-alvo` (pelo plano) e o que o briefing marcar como item `Alto`.
+Os eixos `stack-frameworks`, `arquitetura` e `persistencia` seguem **sem**
+detector proprio — limitacao L1 da spec, excluida desta feature por decisao
+explicita do operador em `dec-024` (resposta ao `block-001`), com hardening
+rascunhado como issue propria do toolkit. Ver tambem L2 (portas de escrita sem
+guarda) na mesma secao da spec.
+
+Ver [research.md](./research.md) (12 decisoes de Phase 0),
 [data-model.md](./data-model.md) e [contracts/](./contracts/).
 
 ## Technical Context
@@ -96,8 +113,10 @@ plugins/cstk/
     │   ├── references/
     │   │   └── structural-axis-map.txt         # NOVO — enum de eixos (FR-006)
     │   └── scripts/
-    │       ├── state-decisions.sh              # --classe/--eixo + regras R1..R3 (FR-001..FR-003)
+    │       ├── state-decisions.sh              # --classe/--eixo/--consentimento + R1..R3, R6 (FR-001..FR-003)
     │       ├── _state-decisions-db.sh          # INSERT com as colunas novas
+    │       ├── bloqueios.sh                    # --chave-assunto no register + filtro no list (FR-008)
+    │       ├── _bloqueios-db.sh                # INSERT/SELECT com subject_key
     │       ├── _state-rw-db.sh                 # export e upsert das colunas novas
     │       ├── state-db-schema.sh              # NOVO subcomando `ensure` (Decision 3)
     │       ├── briefing-items.sh               # NOVO — extrator de itens Alto (FR-007)
@@ -122,7 +141,8 @@ mcp/state-server/
 cli/lib/recall.sh                               # schema 14 -> 15, 2 colunas (FR-012)
 
 tests/
-├── test_state-decisions.sh                     # cenarios das regras R1..R3
+├── test_state-decisions.sh                     # cenarios das regras R1..R3 e R6 (consentimento)
+├── test_bloqueios.sh                           # subject_key: register, filtro, dedup, legado NULL
 ├── test_briefing-items.sh                      # NOVO — obrigatorio por --check-coverage
 ├── test_state-db-schema.sh                     # cenarios de `ensure`: idempotencia, fail-hard, banco pre-feature
 ├── test_state-rw.sh                            # projecao das colunas novas no export
@@ -148,16 +168,18 @@ explicita para nao repetir o modo de falha de drift tardio:
 
 | Camada | Case style | Validacao | Fonte da verdade |
 |--------|------------|-----------|------------------|
-| Flags do helper POSIX | kebab-case, **portugues** (`--classe`, `--eixo`) | parser `case` do proprio script | `plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh` |
-| Colunas do `state.db` | snake_case, **ingles** (`decision_class`, `structural_axis`) | DDL; regras R1..R3 no helper (nao como CHECK — vide data-model) | `plugins/cstk/skills/agente-00c-runtime/references/state-db-schema.sql` |
+| Flags do helper POSIX | kebab-case, **portugues** (`--classe`, `--eixo`, `--consentimento`, `--chave-assunto`) | parser `case` do proprio script | `plugins/cstk/skills/agente-00c-runtime/scripts/state-decisions.sh`, `bloqueios.sh` |
+| Colunas do `state.db` | snake_case, **ingles** (`decision_class`, `structural_axis`, `human_consent_block_id`, `subject_key`) | DDL; regras R1..R3 e R6 no helper (nao como CHECK — vide data-model) | `plugins/cstk/skills/agente-00c-runtime/references/state-db-schema.sql` |
 | Campos do `state.json` / export | snake_case, **ingles** (identicos as colunas) | `state-validate.sh` | `_state-rw-db.sh` (projecao de `.decisions[]`) |
 | Campos da tool MCP | snake_case, **ingles** (identicos as colunas) | `zod` + `superRefine` | `mcp/state-server/src/tools/record_decision.ts` |
 | Valores dos enums | kebab-case, **portugues** (`estrutural`, `linguagem-runtime`) | lista fechada em arquivo de referencia | `references/structural-axis-map.txt` |
-| Colunas da knowledge.db | snake_case, **ingles** (espelham o state) | migracao idempotente por `PRAGMA table_info` | `cli/lib/recall.sh` |
+| Colunas da knowledge.db | snake_case, **ingles** (espelham o state; `subject_key` **nao** e propagado) | migracao idempotente por `PRAGMA table_info` | `cli/lib/recall.sh` |
 
 **Mapper layer (flag <-> campo <-> coluna)**: a traducao flag-portuguesa para
 campo-ingles ja existe e e explicita na constante `FIELD_TO_FLAG_TABLE` de
-`mcp/state-server/src/runtime/exec.ts`; os dois campos novos entram nela.
+`mcp/state-server/src/runtime/exec.ts`; os tres campos novos de
+`record_decision` entram nela (`--chave-assunto` pertence a
+`register_human_block`, nao a `record_decision`).
 ORM auto-mapping: **NAO** — todo o mapeamento e explicito, em SQL escrito a mao.
 
 **Validacao**: em ambas as bordas, deliberadamente. `zod` na tool (rejeita antes
@@ -174,10 +196,24 @@ compartilhado; e essa e a razao de INV-M1 ser explicito.
 | Violacao | Por Que Necessario | Alternativa Simples Rejeitada Porque |
 |----------|-------------------|--------------------------------------|
 | Migracao de schema no `state.db` sem existir mecanismo de migracao | Verificado: `state-db-schema.sh` so tem `create`, todo o DDL e `CREATE TABLE IF NOT EXISTS`, e e invocado em apenas dois pontos (`state-rw.sh:553` no `init` e `state-db-migrate.sh:260` na migracao json->db). Sem tratamento, toda execucao ja em andamento quebraria com `no such column` na primeira decisao classificada | Exigir migracao manual do operador foi rejeitado: interromperia execucoes em curso e a feature e nao-retroativa, nao "nao-instalavel a quente". Construir um migrador versionado completo (`user_version`) foi rejeitado por escopo: e divida tecnica propria do `state.db`, e resolve-la aqui triplicaria o blast radius |
-| Duas colunas novas em vez de uma | O eixo estrutural e exigido pela spec em tres pontos distintos (mensagem de recusa, Key Entities e a regra de nao re-perguntar o mesmo eixo). Deriva-lo do texto de `context` seria heuristica — exatamente o modo de falha da #146 | Coluna unica com valor composto (`estrutural:linguagem-runtime`) foi rejeitada: exigiria parsing em todo leitor e impediria filtro por eixo no indice |
+| Quatro colunas novas (tres em `decision`, uma em `human_block`) | Cada uma responde uma pergunta distinta que a spec exige responder sem heuristica: `decision_class` (esta decisao e estrutural?), `structural_axis` (qual eixo?), `human_consent_block_id` (quem autorizou?) e `subject_key` (isto ja foi perguntado?). As duas ultimas sao a emenda `dec-024`; sem elas, consentimento e dedup voltariam a ser casamento sobre texto livre, que e o modo de falha da #146 | Coluna unica com valor composto (`estrutural:linguagem-runtime`) foi rejeitada: exigiria parsing em todo leitor e impediria filtro por eixo no indice. Derivar consentimento do campo `agent` foi rejeitado pela propria resposta `dec-024` — e auto-declaracao. Guardar a chave de assunto na Decisao em vez do bloqueio foi rejeitado: exigiria dois saltos para responder "ja perguntei isto?" |
 | Regras R1..R3 duplicadas em POSIX e em TypeScript | FR-004 exige paridade helper/tool; a #146 provou que uma unica porta destravada basta para a decisao passar. O helper e a porta autoritativa, a tool e a conveniente | Validar so na tool MCP foi rejeitado: o helper e chamado diretamente pelos orquestradores quando o toolset MCP nao esta disponivel — que e, inclusive, o caso desta propria execucao |
 
 **Divida tecnica registrada (fora de escopo)**: o `state.db` segue sem
 versionamento de schema. O `ensure` desta feature e uma migracao pontual
 idempotente, nao um migrador geral. Um mecanismo versionado (`user_version` +
 migracoes ordenadas) permanece pendente e deve ser feature propria.
+
+**Limitacoes de seguranca declaradas (fora de escopo por decisao do operador)**:
+`dec-024`, respondendo ao `block-001`, manteve os 14 FRs como escopo e excluiu
+dois findings HIGH desta feature. Ambos estao registrados como L1 e L2 na secao
+"Limitacoes declaradas" da spec e rascunhados como issue de hardening do
+toolkit, para o operador revisar e publicar:
+
+| Item | O que fica em aberto | Por que nao entra aqui |
+|------|----------------------|------------------------|
+| L1 | `stack-frameworks`, `arquitetura` e `persistencia` sem detector deterministico proprio — deteccao segue dependendo de o agente declarar a classe quando o eixo nao passa pelo briefing nem pelo plano | Exigiria projetar tres gates novos, cada um com sua fonte de verdade; e feature propria, nao emenda. `dec-024` foi explicito em "emenda, nao expansao" |
+| L2 | Escrita direta em arquivo de estado e cliente SQL direto sobre o banco nao passam pelo helper nem pelo guard de comandos; nesse caminho ate a transicao de bloqueio para `respondido` e fabricavel | Fechar exige guarda nas ferramentas de escrita de arquivo (nao so nas de shell), o que muda o modelo de enforcement do toolkit inteiro — blast radius muito alem desta feature |
+
+Registrar assim, e nao "resolver na surdina", e o proprio Principio VI aplicado
+ao artefato: o plano declara o que a implementacao vai de fato garantir.

@@ -33,6 +33,7 @@ duas flags novas `[PROPOSTA — a validar na implementacao]`.
 | `--artefato-originador` | string | no | [EXISTENTE] |
 | `--classe` | `estrutural\|operacional` | condicional | **[PROPOSTA]** obrigatoria quando R1 dispara |
 | `--eixo` | token do enum de eixos | condicional | **[PROPOSTA]** obrigatoria quando `--classe estrutural` |
+| `--consentimento` | id `block-NNN` | condicional | **[PROPOSTA]** unica forma de registrar estrutural com escolha concreta; validada contra o estado — existencia, execucao, `status = respondido` e `subject_key` do **mesmo eixo** (R6) |
 
 ### Response
 
@@ -44,7 +45,9 @@ e ecoado — nunca fornecido pelo chamador.
 | Exit | Code (texto na mensagem) | Descricao |
 |------|--------------------------|-----------|
 | 1 | `classe-obrigatoria` | R1: `--opcoes` contem token da familia de bloqueio humano e `--classe` foi omitida. Nada e gravado. |
-| 1 | `estrutural-exige-bloqueio` | R2: `--classe estrutural` com `--escolha` fora da familia de bloqueio humano ou `--score` != 0. Mensagem cita a classe, o eixo e a sequencia correta. Nada e gravado. |
+| 1 | `estrutural-exige-bloqueio` | R2: `--classe estrutural` **sem `--consentimento` valido** e com `--escolha` fora da familia de bloqueio humano, ou `--score` != 0. Mensagem cita a classe, o eixo e a sequencia correta. Nada e gravado. |
+| 1 | `consentimento-invalido` | R6: `--consentimento` aponta bloqueio inexistente, de outra execucao, ou com `status != respondido`. Mensagem cita o id apresentado e o status encontrado (ou "ausente"). Nada e gravado. |
+| 1 | `consentimento-de-outro-assunto` | R6: o bloqueio esta respondido, porem seu `subject_key` nao e `axis:<eixo desta Decisao>`. Mensagem cita os dois assuntos, lado a lado. Nada e gravado. Fecha o confused deputy: consentimento dado para um eixo nao autoriza outro. |
 | 2 | `eixo-invalido` | R3: `--eixo` ausente com classe estrutural, ou fora do enum de `structural-axis-map.txt`. |
 | 2 | `classe-invalida` | `--classe` fora de `{estrutural, operacional}`. |
 
@@ -56,11 +59,27 @@ permanecem literais e com o mesmo exit — nenhuma mensagem atual e reescrita.
 - **INV-C1**: sem `--classe`, o comportamento e byte-a-byte o atual (FR-005,
   FR-013). A ausencia da flag nunca dispara caminho novo, exceto quando R1
   torna a flag obrigatoria.
-- **INV-C2**: a validacao ocorre **antes** do dispatch de backend
-  (mesmo ponto onde a trava de constitution-conflict ja vive), portanto vale
-  identicamente para `state.json` e `state.db`.
+- **INV-C2**: R1..R3 sao validacao **pura de entrada** (nao leem estado) e
+  ocorrem antes do dispatch de backend, no mesmo ponto onde a trava de
+  constitution-conflict ja vive. **R6 e diferente por natureza**: precisa
+  consultar o BloqueioHumano citado, logo depende do backend. Ela roda no inicio
+  do ramo de cada backend, usando o leitor ja existente daquele backend, e antes
+  de qualquer escrita. O contrato observavel e o mesmo nos dois backends (mesmo
+  exit, mesma mensagem, nada gravado); o que difere e so o mecanismo de leitura.
+  Declarar isso evita a armadilha de tentar implementar R6 no ponto pre-dispatch,
+  onde nao ha como ler estado.
 - **INV-C3**: recusa e sempre "nada gravado" — nunca gravacao parcial seguida de
   erro.
+- **INV-C4**: o valor de `--consentimento` e **sempre verificado contra o
+  estado**, jamais aceito como declaracao. O helper le o bloqueio citado e
+  confere `execution_id`, `status` e `subject_key`; nao ha caminho em que a mera
+  presenca da flag satisfaca R2.
+- **INV-C6**: um consentimento so vale para o eixo que o originou. Nao existe
+  bloqueio "curinga": `subject_key` NULL ou de outro prefixo nunca satisfaz R6.
+- **INV-C5**: o campo `--agente` **nao** participa de nenhuma das regras novas.
+  Trocar `--agente` de `agente-00c-orchestrator` para `operador` nao muda o
+  resultado de nenhuma validacao (verificavel por teste: mesmo input com os dois
+  valores produz o mesmo exit e a mesma mensagem).
 
 ---
 
@@ -94,9 +113,14 @@ ja esta atualizado **ou** quando as colunas ausentes foram acrescentadas.
   `ALTER TABLE` para coluna de fato ausente. Reexecutar e no-op.
 - **INV-E2**: puramente aditivo — jamais `DROP`, jamais recriacao de tabela,
   jamais reescrita de linha existente.
-- **INV-E3**: chamado nos dois pontos de contato com as colunas novas (escrita
-  em `_sd_db_register`, leitura em `_sr_db_read`), de modo que uma execucao ja em
-  andamento continue operavel sem acao do operador.
+- **INV-E3**: chamado **apenas em caminhos de escrita** (`_sd_db_register`,
+  `init`, migracao json->db), de modo que uma execucao ja em andamento continue
+  operavel sem acao do operador. O caminho de leitura **nunca** invoca `ensure`
+  e **nunca** emite DDL (correcao do finding M3): ele consulta
+  `PRAGMA table_info(decision)` e escolhe entre duas consultas literais fixas —
+  a que projeta as colunas novas e a que projeta `NULL` no lugar delas.
+- **INV-E4**: nenhuma operacao declarada read-only (relatorio, auditoria,
+  `review-task`) requer permissao de escrita no banco por causa desta feature.
 
 ---
 
@@ -115,14 +139,24 @@ gateada por `--check-coverage`).
 
 ### Response
 
-Uma linha por item de impacto `Alto`, formato `item<TAB>dimensao`. Nenhum item =
-stdout vazio. Exit 0.
+Uma linha por item de impacto `Alto`, formato `item_key<TAB>item<TAB>dimensao`,
+seguida **sempre** de uma linha final `STATUS<TAB><token>` com `<token>` em
+`{ok, sem-itens-alto, tabela-irreconhecivel, briefing-ausente}`. Exit 0.
+
+Nenhum item **nao** produz stdout vazio: produz a linha `STATUS` sozinha. Essa e
+a correcao do finding M2 — antes, "briefing ausente" e "briefing sem itens Alto"
+eram indistinguiveis (ambos stdout vazio + exit 0), e o gate de governanca
+passava silenciosamente exatamente no caso de menor informacao.
+
+`item_key` e derivado por funcao pura do texto do item (regra literal em
+`data-model.md` §Derivacao da chave); e o sufixo do `subject_key` gravado no
+BloqueioHumano.
 
 ### Error Responses
 
 | Exit | Descricao |
 |------|-----------|
-| 0 | Sempre, inclusive briefing ausente/ilegivel/sem tabela — aviso em stderr, zero itens (spec, Edge Cases: nunca falha a onda por parse) |
+| 0 | Sempre, inclusive briefing ausente/ilegivel/sem tabela — aviso em stderr, zero itens e `STATUS` correspondente em stdout (spec, Edge Cases: nunca falha a onda por parse). Quem decide o que fazer com o estado degradado e o orquestrador, nao o parser |
 | 2 | uso incorreto (flag ausente/desconhecida) |
 
 ### Invariantes
@@ -135,6 +169,71 @@ stdout vazio. Exit 0.
 - **INV-B3**: so `Alto` e consumido. `Medio` e `Baixo` sao ignorados por
   desenho — a coluna Impacto passa a ter efeito apenas no degrau que a spec
   autoriza.
+- **INV-B4**: cada celula e saneada (NUL/TAB/CR/LF removidos, whitespace
+  colapsado) **antes** de compor a linha TSV. Nenhum conteudo de briefing pode
+  acrescentar colunas a saida (finding L1).
+- **INV-B5**: mesma entrada produz sempre a mesma `item_key`; entradas
+  diferentes produzem chaves diferentes. Sem estado, sem rede, sem lista de
+  sinonimos.
+
+---
+
+## Command: `bloqueios.sh register` / `list` (extensao — chave de assunto)
+
+**Arquivo**: `plugins/cstk/skills/agente-00c-runtime/scripts/bloqueios.sh`
+**Status**: `[EXISTENTE]` — as flags atuais de `register` (`--state-dir`,
+`--decisao-id`, `--pergunta`, `--contexto-para-resposta`,
+`--opcoes-recomendadas`) e a saida de `list` sao preservadas.
+Uma flag nova em cada, `[PROPOSTA — a validar na implementacao]`.
+
+### Request — `register`
+
+| Flag | Type | Required | Validation |
+|------|------|----------|------------|
+| `--chave-assunto` | token com prefixo fechado | no | **[PROPOSTA]** `briefing-item:<slug>` ou `axis:<eixo>`; prefixo fora do enum = exit 2 |
+
+Ausente = `subject_key` NULL, comportamento atual integral (bloqueios que nao
+representam um assunto deduplicavel).
+
+### Request — `list`
+
+| Flag | Type | Required | Validation |
+|------|------|----------|------------|
+| `--chave-assunto` | token | no | **[PROPOSTA]** filtra por igualdade exata; combinavel com `--status` |
+
+### Response
+
+`register`: inalterada (`block-NNN` em stdout, exit 0).
+`list`: o TSV atual (`id`, `decision_id`, `status`, `triggered_at`, `pergunta`)
+**nao muda de colunas** — a flag apenas filtra linhas. Manter a largura do TSV
+evita quebrar todo consumidor existente por um campo que so o gate FR-008 le.
+
+### Consulta de dedup (FR-008)
+
+```sh
+# vazio => ainda nao decidido => registrar bloqueio
+bloqueios.sh list --state-dir "$SD" --status respondido \
+  --chave-assunto "briefing-item:$KEY"
+```
+
+### Error Responses
+
+| Exit | Descricao |
+|------|-----------|
+| 2 | `--chave-assunto` com prefixo fora de `{briefing-item:, axis:}` ou sufixo vazio |
+
+Demais exits inalterados.
+
+### Invariantes
+
+- **INV-K1**: bloqueios anteriores a esta feature tem `subject_key` NULL e nunca
+  casam com chave alguma. A degradacao e sempre no sentido de **perguntar de
+  novo**, jamais de presumir decidido.
+- **INV-K2**: a chave nunca e escolhida pelo orquestrador quando origina do
+  briefing — vem de `briefing-items.sh`. Isso impede que um agente suprima a
+  propria pergunta reusando a chave de um assunto ja respondido.
+- **INV-K3**: `subject_key` nao e propagado a knowledge.db (unico campo novo
+  derivado de texto de projeto; a dedup e sempre avaliada na execucao corrente).
 
 ---
 
