@@ -452,30 +452,30 @@ normativo)
 
 Ref: FR-012, SC-002
 
-- [ ] 7.2.1 Adicionar ao relatorio agregado de `review-task` a contagem de
+- [x] 7.2.1 Adicionar ao relatorio agregado de `review-task` a contagem de
       Decisoes estruturais e a contagem de anomalias de governanca (esperado
       0 numa execucao saudavel pos-feature)
-- [ ] 7.2.2 Reusar o mesmo predicado normativo da task 7.1.2 (nao
+- [x] 7.2.2 Reusar o mesmo predicado normativo da task 7.1.2 (nao
       reimplementar heuristica propria)
 
 ### 7.3 `cli/lib/recall.sh`: schema 14 -> 15 (knowledge.db) `[A]`
 
 Ref: `data-model.md` §Entity `decisions` na knowledge.db
 
-- [ ] 7.3.1 Bump `RECALL_SCHEMA_VERSION` de `14` para `15`
-- [ ] 7.3.2 Migracao aditiva idempotente (`PRAGMA table_info` + `ALTER TABLE
+- [x] 7.3.1 Bump `RECALL_SCHEMA_VERSION` de `14` para `15`
+- [x] 7.3.2 Migracao aditiva idempotente (`PRAGMA table_info` + `ALTER TABLE
       ADD COLUMN`) adicionando `decision_class`, `structural_axis`,
       `human_consent_block_id` a tabela `decisions` — mesmo padrao ja
       existente no arquivo
-- [ ] 7.3.3 Aplicar aos DOIS caminhos de ingestao (JSON->SQL e SQL->SQL),
+- [x] 7.3.3 Aplicar aos DOIS caminhos de ingestao (JSON->SQL e SQL->SQL),
       que compartilham o mesmo tuple de colunas
-- [ ] 7.3.4 Confirmar que nenhum dos 3 campos passa por `recall_scrub`
+- [x] 7.3.4 Confirmar que nenhum dos 3 campos passa por `recall_scrub`
       (enum fechado / id gerado pelo runtime, sem texto livre — mesma
       classe de `choice`, que ja nao passa); `subject_key` NAO e propagado a
       knowledge.db nesta feature (unico campo novo derivado de texto de
       projeto — a dedup do FR-008 e sempre avaliada contra a execucao
       corrente, nunca contra o indice global)
-- [ ] 7.3.5 Teste: `tests/cstk/test_recall.sh` — migracao v14->v15 idempotente
+- [x] 7.3.5 Teste: `tests/cstk/test_recall.sh` — migracao v14->v15 idempotente
       sobre banco existente, ingestao JSON->SQL e SQL->SQL populam as 3
       colunas, `--reindex` reconstroi identico a partir do zero
 
@@ -489,36 +489,36 @@ Depende de TODAS as fases anteriores.
 
 Ref: FR-005, SC-004
 
-- [ ] 8.1.1 Rodar `./tests/run.sh --check-coverage` — confirma que
+- [x] 8.1.1 Rodar `./tests/run.sh --check-coverage` — confirma que
       `tests/test_briefing-items.sh` (task 3.1.8) esta presente e nenhum
       script novo ficou orfao
-- [ ] 8.1.2 Rodar `./tests/run.sh` completo (todos os arquivos tocados nas
+- [x] 8.1.2 Rodar `./tests/run.sh` completo (todos os arquivos tocados nas
       FASES 1-7 + suite existente) — 0 regressao em Decisoes operacionais,
       clarify, gates ja existentes (SC-004); Decisoes legadas sem
       `decision_class` continuam legiveis por relatorio e indice (FR-013)
-- [ ] 8.1.3 Rodar `npm test` em `mcp/state-server/` (paridade das tasks
+- [x] 8.1.3 Rodar `npm test` em `mcp/state-server/` (paridade das tasks
       4.3.1/4.3.2/4.3.3)
-- [ ] 8.1.4 Corrigir qualquer regressao encontrada antes de prosseguir —
+- [x] 8.1.4 Corrigir qualquer regressao encontrada antes de prosseguir —
       nenhuma FASE anterior e considerada concluida com suite vermelha
 
 ### 8.2 Validacao end-to-end via `quickstart.md` `[A]`
 
 Ref: `quickstart.md`; spec SC-001, SC-002, SC-003, SC-005, SC-006
 
-- [ ] 8.2.1 Executar os cenarios de `quickstart.md` sobre um projeto de
+- [x] 8.2.1 Executar os cenarios de `quickstart.md` sobre um projeto de
       teste, reproduzindo o cenario da #146 (briefing com item Alto de
       stack) — confirmar que a execucao autonoma pausa **antes** de
       `plan.md` existir (SC-001)
-- [ ] 8.2.2 Confirmar SC-002 (100% das Decisoes estruturais com escolha
+- [x] 8.2.2 Confirmar SC-002 (100% das Decisoes estruturais com escolha
       concreta referenciam BloqueioHumano `respondido` da mesma execucao —
       0 anomalias no relatorio) e SC-003 (0 `plan.md` com ambiente alvo
       ausente/pendente passa o gate)
-- [ ] 8.2.3 Confirmar SC-005 (extracao dos itens Alto imperceptivel — sem
+- [x] 8.2.3 Confirmar SC-005 (extracao dos itens Alto imperceptivel — sem
       chamada de rede, mesma ordem de grandeza dos gates existentes) e
       SC-006 (numero de bloqueios humanos por execucao nao aumenta para
       decisoes operacionais, medido num projeto de referencia antes x
       depois)
-- [ ] 8.2.4 Registrar qualquer desvio encontrado como Decisao auditavel
+- [x] 8.2.4 Registrar qualquer desvio encontrado como Decisao auditavel
       (nao como edicao silenciosa do artefato)
 
 ---

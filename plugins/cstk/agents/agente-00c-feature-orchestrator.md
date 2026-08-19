@@ -1797,11 +1797,19 @@ STATUS_TOKEN=$(printf '%s' "$STATUS_LINE" | cut -f2)
 JA_RESPONDIDO=$("$RUNTIME_SCRIPTS"/bloqueios.sh list --state-dir "$SD" \
   --status respondido --chave-assunto "briefing-item:$ITEM_KEY")
 if [ -z "$JA_RESPONDIDO" ]; then
+  # --classe operacional (OBRIGATORIO): o token "bloqueio-humano-item-briefing"
+  # em --opcoes casa a familia "bloqueio-humano*"/"pause-humano" (R1 da trava
+  # de classe estrutural, state-decisions.sh) — sem --classe, o register FALHA
+  # com [classe-obrigatoria] e a Decisao/bloqueio nunca sao gravados (achado
+  # de validacao 8.2 da feature structural-decision-human-gate). Este gate
+  # (FR-008) e distinto do gate de eixo estrutural (FR-001..FR-006): nao tem
+  # --eixo, por isso "operacional", nao "estrutural".
   DEC=$("$RUNTIME_SCRIPTS"/state-decisions.sh register --state-dir "$SD" \
     --agente "agente-00c-feature-orchestrator" --etapa "<specify|plan>" \
     --contexto "Item Alto do briefing ainda sem decisao: $ITEM_TEXT" \
     --opcoes '["bloqueio-humano-item-briefing"]' \
     --escolha "bloqueio-humano-item-briefing" --score 0 \
+    --classe operacional \
     --justificativa "Item de impacto Alto (coluna Impacto de docs/briefing.md) nunca foi decidido nesta execucao")
   "$RUNTIME_SCRIPTS"/bloqueios.sh register --state-dir "$SD" --decisao-id "$DEC" \
     --chave-assunto "briefing-item:$ITEM_KEY" \

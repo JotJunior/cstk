@@ -423,6 +423,47 @@ disponivel:
 state-dir nao resolvido → pule silenciosamente, sem bloquear o resto do
 review-task.
 
+### 4.8 Decisoes estruturais e anomalias de governanca (structural-decision-human-gate — FR-012, SC-002)
+
+> Origem: feature `structural-decision-human-gate`, FASE 7. Aplica-se a
+> QUALQUER execucao (`agente-00c` ou `feature-00c`) cujo `state.json`/
+> `state.db` contenha Decisoes com `decision_class`.
+
+**Nao reimplemente a heuristica de anomalia aqui.** O predicado normativo
+ja existe em `agente-00c-runtime/scripts/report.sh`, funcao
+`_rp_render_secao_estrutural` (task 7.1.2): `decision_class == "estrutural"`
+E `choice` fora da familia de token de bloqueio humano (`pause-humano` ou
+prefixo `bloqueio-humano`) E sem `human_consent_block_id` referenciando um
+`human_block` com `status == "respondido"` e
+`subject_key == "axis:" || structural_axis`. `agent`/`agente` e so
+proveniencia informativa, nunca entra no predicado.
+
+Para reusar esse mesmo calculo sem duplicar a query jq:
+
+1. Rode `report.sh generate --state-dir <SD>` (mesmo `<SD>` resolvido no
+   passo 1 desta skill — `agente-00c-state/` ou
+   `feature-00c-state/<short>/`). O relatorio gerado ja inclui a secao
+   `## Decisoes Estruturais e Anomalias de Governanca` (renderizada por
+   `_rp_render_secao_estrutural`, chamada tanto em `generate` quanto em
+   `emit`, para os dois flavors).
+2. Extraia dessa secao as duas contagens: "Total de decisoes estruturais:
+   N" e o "Total: M (esperado 0 em execucao saudavel — SC-002)" da
+   subsecao "Anomalias de Governanca".
+3. Reporte as duas contagens no relatorio agregado do review-task (bloco
+   "Decisoes Estruturais e Anomalias de Governanca" no formato abaixo).
+   Zero decisoes estruturais e uma execucao normal (nao e finding); M > 0
+   anomalias E finding — liste os ids das Decisoes anomalas (presentes na
+   propria secao gerada) em "Recomendacoes" com severidade alta, pois
+   representa decisao estrutural aplicada sem consentimento humano
+   auditavel (violacao do gate desta feature).
+
+**Defesa em profundidade**: `report.sh` ausente/nao-executavel ou
+state-dir sem `decisions[].decision_class` (execucao anterior a esta
+feature, ou execucoes 100% operacionais) → secao aparece com contagem "0"
+(nunca omitida por `report.sh`) ou, se o proprio `report.sh` falhar, pule
+esta subsecao do review-task silenciosamente sem bloquear o restante do
+relatorio.
+
 ### 5. Acoes Automaticas
 
 Ao identificar inconsistencias:
@@ -526,6 +567,17 @@ Ordene tarefas pendentes por:
 | onda | etapa | sugerido | aplicado | origem | tokens | tool-uses | duracao | divergente+alto-consumo |
 |------|-------|----------|----------|--------|--------|-----------|---------|--------------------------|
 | ...  | ...   | ...      | ...      | ...    | ...    | ...       | ...     | ...                      |
+
+---
+
+<!-- INSERIR AQUI quando aplicavel — vide §4.8 (Decisoes estruturais e anomalias de governanca) -->
+## Decisoes Estruturais e Anomalias de Governanca
+
+Total de decisoes estruturais: N
+Total de anomalias: M (esperado 0 — SC-002)
+
+<!-- se M > 0, listar ids + eixo + escolha, mesmos dados da secao
+     gerada por report.sh; tratar como finding de severidade alta -->
 
 ---
 

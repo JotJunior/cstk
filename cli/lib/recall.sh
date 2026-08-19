@@ -143,7 +143,22 @@ RECALL_EXIT_USAGE=2
 # dentro de escopo presente, nunca 0/fabricado (Principio VI, dec-029) —
 # ausencia TOTAL de `rate_limits` nao gera nenhuma linha (decidido no
 # caller, nao no schema).
-RECALL_SCHEMA_VERSION=14
+# v15 (structural-decision-human-gate): 3 colunas aditivas TEXT em decisions
+# — decision_class, structural_axis, human_consent_block_id — espelhando as
+# colunas homonimas ja existentes na tabela `decision` de state.db (FASE 1
+# desta feature). Origem: `.decisions[].decision_class` /
+# `.structural_axis` / `.human_consent_block_id` do state.json, ou colunas
+# `d.decision_class`/`d.structural_axis`/`d.human_consent_block_id` de
+# `src.decision` no caminho SQL->SQL. Migracao v14->v15 = ALTER TABLE ADD
+# COLUMN idempotente guardado por PRAGMA table_info (mesmo padrao
+# v2/v5/v8/v9/v10/v12), aplicada aos dois caminhos de ingestao (JSON->SQL e
+# SQL->SQL). Nenhum dos 3 campos passa por `recall_scrub`: dois sao tokens
+# de enum fechado e o terceiro e um id `block-NNN` gerado pelo runtime —
+# mesmo tratamento de `choice`, que ja nao passa (data-model.md §Entity
+# decisions na knowledge.db). Decisao legada sem os 3 campos -> NULL, nunca
+# fabricado (Principio VI, FR-013). `subject_key` NAO e propagado ao
+# indice nesta feature (unico campo novo derivado de texto de projeto).
+RECALL_SCHEMA_VERSION=15
 # Enum interno (canonico): valores EN. 'bloqueio' permanece aceito como ALIAS
 # DEPRECADO em --type (normalizado para 'block' com aviso) — ver recall_normalize_type.
 RECALL_TYPE_ENUM="decision block retro skill memory suggestion"
@@ -449,6 +464,9 @@ CREATE TABLE IF NOT EXISTS decisions (
   rationale TEXT,
   evidence TEXT,
   ingested_at TEXT NOT NULL,
+  decision_class TEXT,
+  structural_axis TEXT,
+  human_consent_block_id TEXT,
   UNIQUE(project, feature, wave, source_id)
 );
 CREATE TABLE IF NOT EXISTS blocks (
@@ -863,6 +881,19 @@ ALTER TABLE waves ADD COLUMN otel_subagent_input_tokens INTEGER;
 ALTER TABLE waves ADD COLUMN otel_subagent_output_tokens INTEGER;
 ALTER TABLE waves ADD COLUMN otel_subagent_cache_read_tokens INTEGER;
 ALTER TABLE waves ADD COLUMN otel_subagent_cache_creation_tokens INTEGER;" ;;
+      esac
+      # ---- Migracao v14->v15 (structural-decision-human-gate): 3 colunas
+      # aditivas TEXT em decisions (decision_class, structural_axis,
+      # human_consent_block_id). Reusa _as_dcols (mesmo PRAGMA ja lido
+      # antes de qualquer ALTER neste batch, junto do ALTER de `options`
+      # v5->v6 acima). Sem DEFAULT -> NULL, coerente com Decisao legada sem
+      # os 3 campos (Principio VI, FR-013).
+      case "$_as_dcols" in
+        ''|*'|decision_class|'*) : ;;
+        *) _as_extra="$_as_extra
+ALTER TABLE decisions ADD COLUMN decision_class TEXT;
+ALTER TABLE decisions ADD COLUMN structural_axis TEXT;
+ALTER TABLE decisions ADD COLUMN human_consent_block_id TEXT;" ;;
       esac
     fi
   fi
@@ -1723,7 +1754,10 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
        (($d.context // $d.contexto) // ""),
        (($d.rationale // $d.justificativa) // ""),
        (($d.evidence // $d.evidencia) // ""),
-       ((($d.options_considered // $d.opcoes_consideradas) // []) | tojson)]
+       ((($d.options_considered // $d.opcoes_consideradas) // []) | tojson),
+       ($d.decision_class // ""),
+       ($d.structural_axis // ""),
+       ($d.human_consent_block_id // "")]
     | @base64' "$_isj_state" 2>/dev/null) || _isj_dec_lines=""
   if [ -n "$_isj_dec_lines" ]; then
     _isj_OLDIFS="$IFS"; IFS='
@@ -1749,6 +1783,16 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
       # Estruturado (espelha choice, que tambem nao passa por scrub) — guarda
       # o array integro; scrub poderia mutilar a sintaxe JSON.
       _f_opt=$(printf '%s' "$_isj_decoded" | jq -r '.[10]' 2>/dev/null | strip_nul)
+      # decision_class/structural_axis/human_consent_block_id (schema v15):
+      # tokens de enum fechado / id gerado pelo runtime — NAO passam por
+      # recall_scrub (mesmo tratamento de choice). Ausente/vazio -> NULL
+      # (Principio VI, FR-013 — Decisao legada nunca vira "" fabricado).
+      _f_dc=$(printf '%s' "$_isj_decoded" | jq -r '.[11]' 2>/dev/null | strip_nul)
+      _f_sa=$(printf '%s' "$_isj_decoded" | jq -r '.[12]' 2>/dev/null | strip_nul)
+      _f_hc=$(printf '%s' "$_isj_decoded" | jq -r '.[13]' 2>/dev/null | strip_nul)
+      if [ -n "$_f_dc" ]; then _isj_dc_sql="'$(sql_escape "$_f_dc")'"; else _isj_dc_sql="NULL"; fi
+      if [ -n "$_f_sa" ]; then _isj_sa_sql="'$(sql_escape "$_f_sa")'"; else _isj_sa_sql="NULL"; fi
+      if [ -n "$_f_hc" ]; then _isj_hc_sql="'$(sql_escape "$_f_hc")'"; else _isj_hc_sql="NULL"; fi
       # Texto livre passa por secrets-filter (FR-017); estruturado nao.
       _f_ctx=$(recall_scrub "$_f_ctx")
       _f_just=$(recall_scrub "$_f_just")
@@ -1760,9 +1804,9 @@ ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.sou
         *) _isj_score_sql="$_f_sc" ;;
       esac
       _isj_sql="$_isj_sql
-INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,agent,stage,choice,options,score,context,rationale,evidence,ingested_at)
-VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ag")','$(sql_escape "$_f_et")','$(sql_escape "$_f_esc")','$(sql_escape "$_f_opt")',$_isj_score_sql,'$(sql_escape "$_f_ctx")','$(sql_escape "$_f_just")','$(sql_escape "$_f_ev")','$(sql_escape "$_isj_now")')
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agent=excluded.agent,stage=excluded.stage,choice=excluded.choice,options=excluded.options,score=excluded.score,context=excluded.context,rationale=excluded.rationale,evidence=excluded.evidence,ingested_at=excluded.ingested_at;
+INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,agent,stage,choice,options,score,context,rationale,evidence,ingested_at,decision_class,structural_axis,human_consent_block_id)
+VALUES('$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_isj_exec_id")','$(sql_escape "$_f_ts")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ag")','$(sql_escape "$_f_et")','$(sql_escape "$_f_esc")','$(sql_escape "$_f_opt")',$_isj_score_sql,'$(sql_escape "$_f_ctx")','$(sql_escape "$_f_just")','$(sql_escape "$_f_ev")','$(sql_escape "$_isj_now")',$_isj_dc_sql,$_isj_sa_sql,$_isj_hc_sql)
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agent=excluded.agent,stage=excluded.stage,choice=excluded.choice,options=excluded.options,score=excluded.score,context=excluded.context,rationale=excluded.rationale,evidence=excluded.evidence,ingested_at=excluded.ingested_at,decision_class=excluded.decision_class,structural_axis=excluded.structural_axis,human_consent_block_id=excluded.human_consent_block_id;
 DELETE FROM knowledge_fts WHERE type='decision' AND project='$(sql_escape "$_isj_project")' AND feature='$(sql_escape "$_isj_feature")' AND wave='$(sql_escape "$_f_wave")' AND source_id='$(sql_escape "$_f_sid")';
 INSERT INTO knowledge_fts(body,type,project,feature,wave,source_id,source_ts)
 VALUES('$(sql_escape "$_f_esc $_f_opt $_f_ctx $_f_just $_f_ev")','decision','$(sql_escape "$_isj_project")','$(sql_escape "$_isj_feature")','$(sql_escape "$_f_wave")','$(sql_escape "$_f_sid")','$(sql_escape "$_f_ts")');"
@@ -2249,6 +2293,24 @@ SELECT json_object(
   _isd_n_event=$(printf '%s' "$_isd_counts_json" | jq -r '.n_event // 0' 2>/dev/null)
   _isd_n_skill=$(printf '%s' "$_isd_counts_json" | jq -r '.n_skill // 0' 2>/dev/null)
 
+  # decision_class/structural_axis/human_consent_block_id (schema v15):
+  # colunas presentes em `decision` de QUALQUER state.db escrito depois de
+  # FASE 1 desta feature (state-db-schema.sh ensure roda em todo caminho de
+  # escrita — register/set). Um state.db mais antigo, nunca re-escrito
+  # apos essa migracao, pode nao te-las: como o ATTACH e mode=ro (FR-009),
+  # este caminho NUNCA pode rodar `ensure` sobre a fonte — checa via
+  # PRAGMA table_info (mesma tecnica ja usada em recall_apply_sql; read-only,
+  # seguro) e degrada para NULL explicito (Principio VI) em vez de falhar a
+  # query inteira com "no such column".
+  _isd_dec_class_present=$(recall_query_sql_ro "$_isd_state_db" \
+    "SELECT count(*) FROM pragma_table_info('decision') WHERE name='decision_class';" \
+    2>/dev/null) || _isd_dec_class_present="0"
+  if [ "$_isd_dec_class_present" = "1" ]; then
+    _isd_dec_class_select="d.decision_class, d.structural_axis, d.human_consent_block_id"
+  else
+    _isd_dec_class_select="NULL, NULL, NULL"
+  fi
+
   # ==== PASS 1: ATTACH + INSERT...SELECT em bloco (texto livre AINDA cru) ====
   _isd_attach_val="$(sql_escape "$(recall_sqlite_ro_uri "$_isd_state_db")")"
   _isd_p1="ATTACH DATABASE '$_isd_attach_val' AS src;
@@ -2310,7 +2372,7 @@ FROM src.wave w
 WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
 ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,stages=excluded.stages,started_at=excluded.started_at,finished_at=excluded.finished_at,wallclock_seconds=excluded.wallclock_seconds,tool_calls=excluded.tool_calls,termination_reason=excluded.termination_reason,n_stages=excluded.n_stages,n_skills=excluded.n_skills,session=excluded.session,agent_spawns_total=excluded.agent_spawns_total,agent_spawns_with_usage=excluded.agent_spawns_with_usage,agent_total_tokens=excluded.agent_total_tokens,agent_input_tokens=excluded.agent_input_tokens,agent_output_tokens=excluded.agent_output_tokens,agent_cache_read_tokens=excluded.agent_cache_read_tokens,agent_cache_creation_tokens=excluded.agent_cache_creation_tokens,agent_tool_use_count=excluded.agent_tool_use_count,agent_duration_ms=excluded.agent_duration_ms,otel_cost_usd=excluded.otel_cost_usd,otel_cost_main_usd=excluded.otel_cost_main_usd,otel_cost_subagent_usd=excluded.otel_cost_subagent_usd,otel_total_tokens=excluded.otel_total_tokens,otel_subagent_tokens=excluded.otel_subagent_tokens,otel_main_input_tokens=excluded.otel_main_input_tokens,otel_main_output_tokens=excluded.otel_main_output_tokens,otel_main_cache_read_tokens=excluded.otel_main_cache_read_tokens,otel_main_cache_creation_tokens=excluded.otel_main_cache_creation_tokens,otel_subagent_input_tokens=excluded.otel_subagent_input_tokens,otel_subagent_output_tokens=excluded.otel_subagent_output_tokens,otel_subagent_cache_read_tokens=excluded.otel_subagent_cache_read_tokens,otel_subagent_cache_creation_tokens=excluded.otel_subagent_cache_creation_tokens,ingested_at=excluded.ingested_at;
 
-INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,agent,stage,choice,options,score,context,rationale,evidence,ingested_at)
+INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,agent,stage,choice,options,score,context,rationale,evidence,ingested_at,decision_class,structural_axis,human_consent_block_id)
 SELECT $_isd_project_sql,$_isd_feature_sql,${_isd_wave_prefix_sql}coalesce(d.wave_id,'onda'),d.execution_id,d.timestamp,d.id,
   d.agent,
   CASE WHEN d.stage='model-routing' AND substr(d.context,-1,1)=')' AND instr(d.context,'(fase ')>0
@@ -2318,10 +2380,11 @@ SELECT $_isd_project_sql,$_isd_feature_sql,${_isd_wave_prefix_sql}coalesce(d.wav
        ELSE d.stage END,
   d.choice, d.options_considered, d.justification_score,
   d.context, d.rationale, d.evidence,
-  $_isd_now_sql
+  $_isd_now_sql,
+  $_isd_dec_class_select
 FROM src.decision d
 WHERE 1=1 -- disambigua parser INSERT...SELECT...ON CONFLICT apos FROM sem JOIN (empirico)
-ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agent=excluded.agent,stage=excluded.stage,choice=excluded.choice,options=excluded.options,score=excluded.score,context=excluded.context,rationale=excluded.rationale,evidence=excluded.evidence,ingested_at=excluded.ingested_at;
+ON CONFLICT(project,feature,wave,source_id) DO UPDATE SET source_ts=excluded.source_ts,agent=excluded.agent,stage=excluded.stage,choice=excluded.choice,options=excluded.options,score=excluded.score,context=excluded.context,rationale=excluded.rationale,evidence=excluded.evidence,ingested_at=excluded.ingested_at,decision_class=excluded.decision_class,structural_axis=excluded.structural_axis,human_consent_block_id=excluded.human_consent_block_id;
 
 INSERT INTO blocks(project,feature,wave,execution_id,source_ts,source_id,status,question,context_for_answer,answer,decision_id,triggered_at,answered_at,latency_seconds,ingested_at)
 SELECT $_isd_project_sql,$_isd_feature_sql,${_isd_wave_prefix_sql}'bloq',h.execution_id,coalesce(h.answered_at,h.triggered_at),h.id,
