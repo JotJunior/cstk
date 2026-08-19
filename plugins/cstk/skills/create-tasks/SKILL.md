@@ -271,6 +271,26 @@ Coberto/Excluido" (ja obrigatoria pelo template — ver
 `tasks.md` desta feature (ex.: linha "Tier de entrega usado na geracao
 deste backlog").
 
+### Ordenacao do gate de dependencias apos decisao estrutural de stack (FR-011 — structural-decision-human-gate)
+
+> Origem: feature `structural-decision-human-gate`, issue #146 (agravante:
+> "aprovar biblioteca == aprovar linguagem" — um gate humano de escolha de
+> dependencia foi aprovado ANTES de a linguagem/stack estar decidida,
+> fazendo a aprovacao da biblioteca valer, na pratica, como aprovacao
+> silenciosa da stack inteira).
+
+Quando a execucao tiver uma decisao estrutural de stack registrada OU
+pendente (`structural_axis` em `{linguagem-runtime, stack-frameworks}` —
+ver `## Definicao: classe estrutural` da spec desta feature), qualquer gate
+humano de dependencias no backlog gerado (task/subtarefa que pede aprovacao
+de biblioteca, framework ou pacote) MUST ser ordenado — na Matriz de
+Dependencias Mermaid e na numeracao de FASE/task — DEPOIS da task/decisao
+que fixa a stack, nunca antes. Concretamente: se o backlog inclui uma FASE
+de "Fundacao"/"Setup" com a escolha de linguagem/stack ainda em aberto
+(`NEEDS CLARIFICATION` no `plan.md`, ou Decisao com `--classe estrutural`
+ainda sem `--consentimento`), nenhuma task de aprovacao de dependencia pode
+apontar como pre-requisito satisfeito antes dessa FASE.
+
 ### Matriz de Dependencias
 
 Use formato Mermaid ou ASCII para expressar dependencias:
@@ -481,3 +501,14 @@ deterministico `validate-tasks-template.sh` (ver Scripts auxiliares). Rode-o
 sempre que gerar um tasks.md fora do fluxo interativo da skill; sem ele o
 backlog malformado segue para `execute-task`/`review-task` e quebra a contagem
 de metricas (subtarefas sem checkbox contam 0).
+
+### Gate de dependencias antes da stack decidida reproduz o agravante da #146
+
+Gerar o gate humano de aprovacao de biblioteca/framework ANTES (na Matriz de
+Dependencias ou na numeracao de FASE) da task/decisao que fixa
+linguagem/stack faz a aprovacao da dependencia valer, na pratica, como
+aprovacao silenciosa da stack inteira — "aprovar biblioteca == aprovar
+linguagem", o defeito central da issue #146. Ver "### Ordenacao do gate de
+dependencias apos decisao estrutural de stack" acima: sempre que houver
+decisao estrutural de `linguagem-runtime`/`stack-frameworks` registrada ou
+pendente, o gate de dependencias fica depois dela, nunca antes.

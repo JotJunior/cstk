@@ -183,6 +183,37 @@ Antes de marcar NEEDS CLARIFICATION, tentar inferir de:
 
 ## ETAPA 4: PHASE 0 — RESEARCH
 
+### 4.0 Modo autonomo: NEEDS CLARIFICATION estrutural NAO se resolve aqui (FR-009)
+
+Antes de resolver qualquer unknown, detecte execucao autonoma pelo mesmo
+criterio da secao "Leitura de artefatos foundational" acima: variavel
+`AGENTE_00C_STATE_DIR` setada, OU
+`<projeto-alvo>/.claude/agente-00c-state/state.json` existente, OU
+`<projeto-alvo>/.claude/feature-00c-state/<short>/state.json` existente.
+
+**Fora de execucao autonoma** (uso interativo direto da skill): comportamento
+atual preservado, sem mudanca — siga para 4.1 normalmente.
+
+**Em execucao autonoma**: para cada `NEEDS CLARIFICATION` do Technical
+Context que corresponda a um dos eixos estruturais (linguagem/runtime, stack/
+frameworks, arquitetura de alto nivel, persistencia principal, ambiente de
+execucao alvo, tier de entrega — ver `## Definicao: classe estrutural` da
+spec `structural-decision-human-gate`), o Phase 0 desta skill **NAO o
+resolve por inferencia**: deixe o campo como `NEEDS CLARIFICATION` em
+`research.md`/no Technical Context e retorne o controle ao orquestrador. Nao
+e responsabilidade desta skill decidir por conta propria uma stack, arquitetura
+ou plataforma-alvo — isso e responsabilidade do operador via bloqueio humano
+(`state-decisions.sh register --classe estrutural --eixo <token>` +
+`bloqueios.sh register`, ver a prosa do orquestrador). O gate de qualidade
+ja existente da tabela de gates (`## Quality Gates complementares`, secao
+`plan`/`owasp-security`+`doc-quality`) barra o artefato se um eixo
+estrutural ficar sem consentimento registrado — esta skill nao precisa
+implementar o gate, so **nao antecipar** a resolucao.
+
+NEEDS CLARIFICATION fora dos eixos estruturais (detalhe de implementacao,
+biblioteca dentro de uma stack ja decidida, nome de convencao) seguem
+normalmente para 4.1 — a excecao e so para os 6 eixos fechados.
+
 ### 4.1 Resolver Unknowns
 
 Para cada NEEDS CLARIFICATION no Technical Context:

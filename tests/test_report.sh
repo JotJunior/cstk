@@ -887,4 +887,193 @@ scenario_issue144_generate_marca_decisao_invalidada() {
   assert_stdout_contains "## 6. Licoes Aprendidas" || return 1
 }
 
+# --- structural-decision-human-gate FASE 7.1 (task 7.1.3) ---
+# Secao "## Decisoes Estruturais e Anomalias de Governanca" — predicado
+# EXATO de data-model.md §Entity Anomalia de Governanca.
+
+scenario_generate_estrutural_zero_e_legado_nao_conta() {
+  # (a) 0 decisoes estruturais nesta execucao (fixture operacional, sem
+  #     --classe) -> secao presente com "Total: 0", nunca omitida.
+  _sd="$TMPDIR_TEST/state"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "## Decisoes Estruturais e Anomalias de Governanca" || return 1
+  assert_stdout_contains "Total de decisoes estruturais: 0." || return 1
+  assert_stdout_contains "(Nenhuma decisao estrutural registrada nesta execucao.)" || return 1
+  assert_stdout_contains "Total: 0 (esperado 0 em execucao saudavel" || return 1
+
+  # (b) Decisao LEGADA (schema pt-BR pre-migracao, decision_class ausente
+  #     por completo — nao apenas null) NUNCA aparece como estrutural nem
+  #     como anomalia (FR-013).
+  _sd2="$TMPDIR_TEST/legacy-structural"
+  mkdir -p "$_sd2"
+  cat > "$_sd2/state.json" <<'JSON'
+{
+  "schema_version": 6,
+  "execucao": {
+    "id": "exec-legado-estrutural",
+    "projeto_alvo_path": "/tmp/legado2",
+    "projeto_alvo_descricao": "Execucao legada sem decision_class",
+    "status": "concluida",
+    "motivo_termino": "pipeline_completa",
+    "iniciada_em": "2025-01-01T00:00:00Z",
+    "terminada_em": "2025-01-02T00:00:00Z"
+  },
+  "metricas_acumuladas": {
+    "ondas_total": 1,
+    "tool_calls_total": 1,
+    "decisoes_total": 1,
+    "bloqueios_humanos_total": 0,
+    "sugestoes_skills_globais_total": 0,
+    "issues_toolkit_abertas": 0,
+    "profundidade_max_atingida": 1
+  },
+  "ondas": [
+    {
+      "id": "onda-001",
+      "inicio": "2025-01-01T00:00:00Z",
+      "fim": "2025-01-01T01:00:00Z",
+      "etapas_executadas": ["plan"],
+      "tool_calls": 1,
+      "wallclock_seconds": 60,
+      "motivo_termino": "etapa_concluida_avancando"
+    }
+  ],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "onda_id": "onda-001",
+      "timestamp": "2025-01-01T00:30:00Z",
+      "etapa": "plan",
+      "agente": "orquestrador-00c",
+      "contexto": "Decisao de stack registrada antes da feature existir",
+      "opcoes_consideradas": ["Go", "Node"],
+      "escolha": "Go",
+      "justificativa": "Decisao legada, sem campos de classe estrutural",
+      "score_justificativa": 2
+    }
+  ],
+  "bloqueios_humanos": []
+}
+JSON
+  capture "$SCRIPT" generate --state-dir "$_sd2"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate legado estrutural" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "Total de decisoes estruturais: 0." || return 1
+  assert_stdout_contains "Total: 0 (esperado 0 em execucao saudavel" || return 1
+}
+
+scenario_generate_estrutural_consentimento_valido_zero_anomalias() {
+  _sd="$TMPDIR_TEST/state-consent-ok"
+  _init "$_sd"
+  capture "$ON" start --state-dir "$_sd"
+  capture "$DEC" register --state-dir "$_sd" \
+    --agente "agente-00c-orchestrator" --etapa "plan" \
+    --contexto "Escolher linguagem e runtime do backend do projeto" \
+    --opcoes '["bloqueio-humano-linguagem-runtime","manter-atual"]' \
+    --escolha "bloqueio-humano-linguagem-runtime" \
+    --justificativa "Sem consenso sobre linguagem, precisa de decisao humana" \
+    --score 0 --classe estrutural --eixo linguagem-runtime
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed dec-001" "$_CAPTURED_STDERR"; return 1; }
+  capture "$BL" register --state-dir "$_sd" --decisao-id dec-001 \
+    --pergunta "Qual linguagem/runtime devemos usar?" \
+    --contexto-para-resposta "Ver opcoes tecnicas avaliadas no plan.md" \
+    --chave-assunto "axis:linguagem-runtime"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed bloqueio" "$_CAPTURED_STDERR"; return 1; }
+  capture "$BL" respond --state-dir "$_sd" --block-id block-001 --resposta "Decidido: Go 1.22"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed respond" "$_CAPTURED_STDERR"; return 1; }
+  capture "$DEC" register --state-dir "$_sd" \
+    --agente "operador" --etapa "plan" \
+    --contexto "Registrar a decisao final de linguagem/runtime" \
+    --opcoes '["Go 1.22","Node 22"]' --escolha "Go 1.22" \
+    --justificativa "Bloqueio humano respondido autoriza esta escolha" \
+    --score 2 --classe estrutural --eixo linguagem-runtime --consentimento block-001
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed dec-002" "$_CAPTURED_STDERR"; return 1; }
+  capture "$ON" end --state-dir "$_sd" --motivo-termino etapa_concluida_avancando
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "Total de decisoes estruturais: 2." || return 1
+  assert_stdout_contains "dec-002" || return 1
+  assert_stdout_contains "consentimento: block-001" || return 1
+  assert_stdout_contains "Total: 0 (esperado 0 em execucao saudavel" || return 1
+  assert_stdout_contains "(Nenhuma anomalia detectada.)" || return 1
+}
+
+# Anomalia: decisao estrutural com escolha CONCRETA e human_consent_block_id
+# apontando para um bloqueio que nunca foi respondido — a trava R2/R6 de
+# `state-decisions.sh register` IMPEDE criar este estado via CLI (e
+# exatamente essa trava que a feature adiciona); o predicado de anomalia
+# existe para pegar estado legado/bypass (data-model.md linha 325), por
+# isso a fixture escreve o state.json diretamente, sem passar por register.
+scenario_generate_estrutural_sem_consentimento_uma_anomalia() {
+  _sd="$TMPDIR_TEST/state-consent-bad"
+  mkdir -p "$_sd"
+  cat > "$_sd/state.json" <<'JSON'
+{
+  "schema_version": 6,
+  "execution": {
+    "id": "exec-anomalia",
+    "target_project_path": "/tmp/anomalia",
+    "target_project_description": "Execucao com bypass de consentimento",
+    "status": "em_andamento",
+    "started_at": "2025-01-01T00:00:00Z"
+  },
+  "accumulated_metrics": {
+    "waves_total": 1,
+    "tool_calls_total": 1,
+    "decisions_total": 1,
+    "human_blocks_total": 1,
+    "global_skill_suggestions_total": 0,
+    "toolkit_issues_open": 0,
+    "max_depth_reached": 1
+  },
+  "waves": [
+    {
+      "id": "onda-001",
+      "started_at": "2025-01-01T00:00:00Z",
+      "ended_at": "2025-01-01T01:00:00Z",
+      "stages_executed": ["plan"],
+      "tool_calls": 1,
+      "wallclock_seconds": 60,
+      "termination_reason": "etapa_concluida_avancando"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "dec-001",
+      "wave_id": "onda-001",
+      "timestamp": "2025-01-01T00:30:00Z",
+      "stage": "plan",
+      "agent": "operador",
+      "context": "Decisao de persistencia registrada por bypass do estado",
+      "options_considered": ["SQLite", "Postgres"],
+      "choice": "SQLite",
+      "rationale": "Fixture simula estado legado/bypass (nao criavel via register atual)",
+      "justification_score": 2,
+      "decision_class": "estrutural",
+      "structural_axis": "persistencia",
+      "human_consent_block_id": "block-001"
+    }
+  ],
+  "human_blocks": [
+    {
+      "id": "block-001",
+      "status": "aguardando",
+      "triggered_at": "2025-01-01T00:10:00Z",
+      "question": "Qual mecanismo de persistencia?",
+      "context_for_answer": "Ver opcoes no plan.md",
+      "recommended_options": ["SQLite"],
+      "subject_key": "axis:persistencia"
+    }
+  ]
+}
+JSON
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate anomalia" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "Total de decisoes estruturais: 1." || return 1
+  assert_stdout_contains "Total: 1 (esperado 0 em execucao saudavel" || return 1
+  assert_stdout_contains "**dec-001** — eixo \`persistencia\` — escolha \`SQLite\` sem consentimento humano valido" || return 1
+}
+
 run_all_scenarios

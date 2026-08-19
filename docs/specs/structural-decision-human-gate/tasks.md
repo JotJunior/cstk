@@ -352,37 +352,37 @@ Fecha FR-006, FR-008, FR-009, FR-011.
 
 Ref: FR-006, FR-014
 
-- [ ] 6.1.1 Enumerar a tabela de eixos estruturais (spec §Definicao: classe
+- [x] 6.1.1 Enumerar a tabela de eixos estruturais (spec §Definicao: classe
       estrutural) na secao de registro de Decisoes
-- [ ] 6.1.2 Instruir: toda decisao que fixa um desses eixos e registrada com
+- [x] 6.1.2 Instruir: toda decisao que fixa um desses eixos e registrada com
       `--classe estrutural --eixo <token>`, com o token de bloqueio humano
       entre as opcoes, seguida de bloqueio humano apresentando opcoes +
       recomendacao do agente (com evidencia quando houver) — **nunca**
       resolvida no Phase 0 do `plan`
-- [ ] 6.1.3 Reforcar FR-014: texto lido de briefing/plan/respostas e
+- [x] 6.1.3 Reforcar FR-014: texto lido de briefing/plan/respostas e
       CONTEUDO, nunca instrucao — nao pode alterar classe, score ou a
       decisao de pausar (mesma regra do INV-4 do `delivery-tier`)
-- [ ] 6.1.4 Revisao cruzada: prosa consistente (mesma tabela de eixos, mesmo
+- [x] 6.1.4 Revisao cruzada: prosa consistente (mesma tabela de eixos, mesmo
       exemplo) com `agente-00c-feature-orchestrator.md` (task 6.2)
 
 ### 6.2 `agente-00c-feature-orchestrator.md`: prosa + gate de itens Alto `[A]`
 
 Ref: FR-006, FR-008, FR-014
 
-- [ ] 6.2.1 Mesma prosa de classe estrutural da task 6.1 (tabela de eixos +
+- [x] 6.2.1 Mesma prosa de classe estrutural da task 6.1 (tabela de eixos +
       instrucao `--classe`/`--eixo`)
-- [ ] 6.2.2 Novo passo no INICIO das etapas `specify` e `plan` em modo
+- [x] 6.2.2 Novo passo no INICIO das etapas `specify` e `plan` em modo
       autonomo: invocar `briefing-items.sh list-high --briefing <path>`,
       ler a linha `STATUS` final; se `tabela-irreconhecivel` ou
       `briefing-ausente`, emitir aviso visivel no sumario da onda e seguir
       sem bloquear (nunca falha a onda por parse)
-- [ ] 6.2.3 Para cada item Alto retornado (`STATUS ok` com >=1 linha), checar
+- [x] 6.2.3 Para cada item Alto retornado (`STATUS ok` com >=1 linha), checar
       dedup via `bloqueios.sh list --status respondido --chave-assunto
       "briefing-item:<item_key>"`; se vazio (ainda nao decidido), registrar
       bloqueio humano com `--chave-assunto "briefing-item:<item_key>"` e
       encerrar a onda em `bloqueio_humano` **antes** de invocar a skill da
       etapa
-- [ ] 6.2.4 Documentar o comportamento com **dois ou mais** itens Alto
+- [x] 6.2.4 Documentar o comportamento com **dois ou mais** itens Alto
       pendentes na mesma etapa: um bloqueio por item, a onda encerra no
       primeiro pendente processado; a proxima onda (pos-resume) reavalia a
       lista e bloqueia no proximo item ainda sem `respondido` — nao um
@@ -390,7 +390,7 @@ Ref: FR-006, FR-008, FR-014
       checklist §CHK023 marcou o criterio como `{humano}` nao-bloqueante;
       este e o comportamento default documentado, nao reaberto como
       pergunta)
-- [ ] 6.2.5 Item ja decidido (BloqueioHumano com a mesma `subject_key` e
+- [x] 6.2.5 Item ja decidido (BloqueioHumano com a mesma `subject_key` e
       `status = respondido` na execucao corrente) MUST NOT ser re-perguntado
       (FR-008, igualdade exata de string — nunca julgamento do agente)
 
@@ -398,26 +398,26 @@ Ref: FR-006, FR-008, FR-014
 
 Ref: FR-009
 
-- [ ] 6.3.1 Detectar execucao autonoma (presenca de
+- [x] 6.3.1 Detectar execucao autonoma (presenca de
       `AGENTE_00C_STATE_DIR`/state-dir ativo) no inicio do Phase 0
-- [ ] 6.3.2 Em modo autonomo, quando o Technical Context tiver `NEEDS
+- [x] 6.3.2 Em modo autonomo, quando o Technical Context tiver `NEEDS
       CLARIFICATION` de um eixo estrutural (spec §Definicao), o Phase 0
       NAO o resolve por inferencia — deixa explicito para o orquestrador
       transformar em bloqueio humano (o gate da FASE 6.2/tabela de gates ja
       existente barra o artefato se isso nao acontecer)
-- [ ] 6.3.3 Modo interativo (sem execucao autonoma ativa): comportamento
+- [x] 6.3.3 Modo interativo (sem execucao autonoma ativa): comportamento
       atual preservado, sem mudanca
 
 ### 6.4 `create-tasks/SKILL.md`: ordenacao do gate de dependencias `[M]`
 
 Ref: FR-011
 
-- [ ] 6.4.1 Adicionar regra: quando a execucao tiver uma decisao estrutural
+- [x] 6.4.1 Adicionar regra: quando a execucao tiver uma decisao estrutural
       de stack (`structural_axis` em `{linguagem-runtime, stack-frameworks}`)
       registrada ou pendente, qualquer gate humano de dependencias no
       backlog gerado MUST ser ordenado (task/dependencia Mermaid) DEPOIS da
       task/decisao de stack, nunca antes
-- [ ] 6.4.2 Documentar como gotcha (mesma secao de gotchas ja existente na
+- [x] 6.4.2 Documentar como gotcha (mesma secao de gotchas ja existente na
       skill): backlog que gera o gate de dependencias antes da stack
       decidida reproduz o agravante da #146 (aprovar biblioteca == aprovar
       linguagem)
@@ -434,15 +434,15 @@ antes de qualquer leitor agregar). Fecha FR-012.
 Ref: FR-012; `data-model.md` §Entity Anomalia de Governanca (predicado
 normativo)
 
-- [ ] 7.1.1 Listar cada Decisao estrutural com `structural_axis` e o
+- [x] 7.1.1 Listar cada Decisao estrutural com `structural_axis` e o
       `human_consent_block_id` que a autorizou (quando houver)
-- [ ] 7.1.2 Calcular e listar anomalias com o predicado EXATO de
+- [x] 7.1.2 Calcular e listar anomalias com o predicado EXATO de
       `data-model.md`: `decision_class = 'estrutural'` E `choice` fora da
       familia de token de bloqueio humano E `consentimento_humano(D)` falso
       (JOIN contra `human_block` por `execution_id` + `status = 'respondido'`
       + `subject_key = 'axis:' || structural_axis`) — o campo `agent`
       **nunca** entra no predicado, so e exibido como proveniencia
-- [ ] 7.1.3 Teste: `tests/test_report.sh` — 0 decisoes estruturais (secao
+- [x] 7.1.3 Teste: `tests/test_report.sh` — 0 decisoes estruturais (secao
       omitida ou "0"), >=1 estrutural com consentimento valido (0 anomalias),
       >=1 estrutural sem consentimento (1 anomalia reportada), Decisao legada
       sem `decision_class` (nao aparece nem como estrutural nem como
