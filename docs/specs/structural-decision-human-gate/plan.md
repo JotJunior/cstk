@@ -22,6 +22,17 @@ regras de prosa nas skills `plan` e `create-tasks`. As mudancas de leitura
 (relatorio, `review-task`, knowledge.db) sao derivadas: nenhuma anomalia e
 persistida.
 
+**Alcance real da trava (declarado para o artefato nao ler mais forte do que e)**:
+R1 so dispara quando `options_considered` **ja** contem token de bloqueio humano,
+e classe ausente e no-op (R4). Um agente que fixe linguagem/runtime **sem** listar
+`bloqueio-humano` entre as opcoes — a forma exata da #146 — nao aciona R1, logo
+nunca precisa de `--classe` e R2/R3 nao rodam. A spec assume essa limitacao
+(Edge Cases: "parcialmente dependente da honestidade do agente") e delega a
+garantia dura aos gates deterministicos de US2/US3 — que hoje cobrem apenas dois
+dos seis eixos (`ambiente-alvo` pelo plano, e o que estiver marcado como item
+`Alto` no briefing). Os eixos `stack-frameworks`, `arquitetura` e `persistencia`
+ficam sem detector deterministico. Ver `block-001`.
+
 Ver [research.md](./research.md) (10 decisoes de Phase 0),
 [data-model.md](./data-model.md) e [contracts/](./contracts/).
 
@@ -35,7 +46,7 @@ Ver [research.md](./research.md) (10 decisoes de Phase 0),
 **Project Type**: cli — toolkit de skills/commands/agents distribuido como plugin do Claude Code, com binario `cstk` complementar
 **Performance Goals**: overhead adicional por `register` limitado a um `PRAGMA table_info` numa operacao que ja paga o spawn de um processo `sqlite3`; extracao dos itens do briefing sem chamada de rede (SC-005)
 **Constraints**: POSIX puro nos scripts novos (sem `jq` no parser de briefing e no lookup de eixos); regressao zero na suite existente (FR-005, SC-004); mudanca estritamente aditiva no estado, sem migracao obrigatoria para o operador (FR-013)
-**Scale/Scope**: 4 user stories, 14 requisitos funcionais; ~8 arquivos de codigo alterados, 2 arquivos novos de script, 1 tabela de referencia nova, 2 arquivos de prosa de skill e 2 de prosa de orquestrador
+**Scale/Scope**: 4 user stories, 14 requisitos funcionais; ~8 arquivos de codigo alterados, 1 script novo, 1 tabela de referencia nova, 2 arquivos de prosa de skill e 2 de prosa de orquestrador
 
 ## Constitution Check
 
@@ -44,7 +55,7 @@ Ver [research.md](./research.md) (10 decisoes de Phase 0),
 | Principio | Status | Notas |
 |-----------|--------|-------|
 | I. SDD aplica-se recursivamente (NON-NEGOTIABLE) | PASS | A feature tem spec ratificada, este plano e backlog subsequente; a propria mudanca de runtime e desenvolvida pela pipeline que ela governa |
-| II. Scripts POSIX sh puros, zero dependencia externa (NON-NEGOTIABLE) | PASS | Os dois scripts novos (`briefing-items.sh`, lookup de eixos) sao POSIX puros e **sem** `jq`, seguindo o precedente de `delivery-tier.sh` e `model-routing.sh phase-model-lookup`. O uso de `jq`/`sqlite3` nos arquivos ja existentes permanece dentro do carve-out do amendment 1.3.0; nenhuma dependencia nova e adicionada |
+| II. Scripts POSIX sh puros, zero dependencia externa (NON-NEGOTIABLE) | PASS | O script novo (`briefing-items.sh`) e o lookup de eixos (funcao interna de `state-decisions.sh`, sem arquivo proprio) sao POSIX puros e **sem** `jq`, seguindo o precedente de `delivery-tier.sh` e `model-routing.sh phase-model-lookup`. O uso de `jq`/`sqlite3` nos arquivos ja existentes permanece dentro do carve-out do amendment 1.3.0; nenhuma dependencia nova e adicionada |
 | III. Formato canonico de skill: progressive disclosure, gotchas, description-como-trigger | PASS | As edicoes em `plan/SKILL.md` e `create-tasks/SKILL.md` entram como regra na etapa correspondente e como gotcha; nenhum `description` muda, portanto nenhum trigger de skill e afetado |
 | IV. Zero coleta remota de uso ou dados (NON-NEGOTIABLE) | PASS | Nenhuma chamada de rede. O parser de briefing e o gate de plano sao locais e read-only; a knowledge.db permanece local |
 | V. Profundidade e reducao de retrabalho acima de metricas de adocao | PASS | A feature **adiciona atrito deliberado** (pausa a execucao) em troca de eliminar o retrabalho de roadmap/briefing/constitution observado na #146. SC-006 protege o outro lado: decisoes operacionais nao podem ganhar bloqueios novos |
@@ -113,6 +124,8 @@ cli/lib/recall.sh                               # schema 14 -> 15, 2 colunas (FR
 tests/
 ├── test_state-decisions.sh                     # cenarios das regras R1..R3
 ├── test_briefing-items.sh                      # NOVO — obrigatorio por --check-coverage
+├── test_state-db-schema.sh                     # cenarios de `ensure`: idempotencia, fail-hard, banco pre-feature
+├── test_state-rw.sh                            # projecao das colunas novas no export
 ├── test_validate-sdd.sh                        # cenarios do ambiente alvo
 ├── test_report.sh                              # render de classe/eixo/anomalia
 └── cstk/test_recall.sh                         # migracao v15 e ingestao
@@ -160,7 +173,7 @@ compartilhado; e essa e a razao de INV-M1 ser explicito.
 
 | Violacao | Por Que Necessario | Alternativa Simples Rejeitada Porque |
 |----------|-------------------|--------------------------------------|
-| Migracao de schema no `state.db` sem existir mecanismo de migracao | Verificado: `state-db-schema.sh` so tem `create`, todo o DDL e `CREATE TABLE IF NOT EXISTS` e e invocado apenas no `init`. Sem tratamento, toda execucao ja em andamento quebraria com `no such column` na primeira decisao classificada | Exigir migracao manual do operador foi rejeitado: interromperia execucoes em curso e a feature e nao-retroativa, nao "nao-instalavel a quente". Construir um migrador versionado completo (`user_version`) foi rejeitado por escopo: e divida tecnica propria do `state.db`, e resolve-la aqui triplicaria o blast radius |
+| Migracao de schema no `state.db` sem existir mecanismo de migracao | Verificado: `state-db-schema.sh` so tem `create`, todo o DDL e `CREATE TABLE IF NOT EXISTS`, e e invocado em apenas dois pontos (`state-rw.sh:553` no `init` e `state-db-migrate.sh:260` na migracao json->db). Sem tratamento, toda execucao ja em andamento quebraria com `no such column` na primeira decisao classificada | Exigir migracao manual do operador foi rejeitado: interromperia execucoes em curso e a feature e nao-retroativa, nao "nao-instalavel a quente". Construir um migrador versionado completo (`user_version`) foi rejeitado por escopo: e divida tecnica propria do `state.db`, e resolve-la aqui triplicaria o blast radius |
 | Duas colunas novas em vez de uma | O eixo estrutural e exigido pela spec em tres pontos distintos (mensagem de recusa, Key Entities e a regra de nao re-perguntar o mesmo eixo). Deriva-lo do texto de `context` seria heuristica — exatamente o modo de falha da #146 | Coluna unica com valor composto (`estrutural:linguagem-runtime`) foi rejeitada: exigiria parsing em todo leitor e impediria filtro por eixo no indice |
 | Regras R1..R3 duplicadas em POSIX e em TypeScript | FR-004 exige paridade helper/tool; a #146 provou que uma unica porta destravada basta para a decisao passar. O helper e a porta autoritativa, a tool e a conveniente | Validar so na tool MCP foi rejeitado: o helper e chamado diretamente pelos orquestradores quando o toolset MCP nao esta disponivel — que e, inclusive, o caso desta propria execucao |
 

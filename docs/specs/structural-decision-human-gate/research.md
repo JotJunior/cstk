@@ -71,8 +71,10 @@ migracao de schema**. `state-db-schema.sh` expoe unicamente `create --db PATH`
 em apenas dois pontos: `state-rw.sh:553` (durante `init`) e
 `state-db-migrate.sh:260` (migracao de DADOS json->db, nao de schema). Grep por
 `ALTER TABLE`, `user_version` e `PRAGMA table_info` em `plugins/`, `cli/`,
-`mcp/` e `tests/` retorna hits **apenas** em `cli/lib/recall.sh` — que e indice
-DERIVADO e reconstruivel, nao fonte de verdade.
+`mcp/` e `tests/` nao retorna hit algum na camada de estado transacional. Os unicos hits reais
+sao `cli/lib/recall.sh` e seu teste — indice DERIVADO e reconstruivel, nao
+fonte de verdade — mais prosa do perfil Go
+(`plugins/cstk-language-go/skills/go-add-migration/SKILL.md`), fora desta camada.
 
 Consequencia direta e concreta: uma execucao ja em andamento (inclusive a que
 esta produzindo este plano) tem um `state.db` criado antes da coluna existir.
@@ -167,7 +169,7 @@ por `_is_plan_md` (so `plan.md`): codigo `target-platform-unresolved`
 (severidade `error`) e `target-platform-unsourced` (severidade `warning`).
 
 **Lacuna verificada que justifica o check proprio**: o check FR-011 ja existente
-conta `count_matches '\[NEEDS CLARIFICATION'` (linha 325). A linha do template
+conta `count_matches '\[NEEDS CLARIFICATION'` (linha 323). A linha do template
 e `**Target Platform**: [ex: Kubernetes, Vercel, mobile ou NEEDS CLARIFICATION]`
 — o marcador aparece **sem** o colchete imediatamente antes, portanto o regex
 atual **nao casa**. Um `plan.md` com o Technical Context inteiro por preencher
