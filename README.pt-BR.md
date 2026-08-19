@@ -354,7 +354,29 @@ cstk hooks install                    # toca só .claude/hooks/ + settings.json
 cstk hooks install --dry-run          # mostra o plano sem escrever
 cstk hooks install --project-path ../outro-projeto
 cstk hooks install --remove-classic   # deduplica contra o plugin, sem prompt
+cstk hooks install --local            # registra em settings.local.json (repos de terceiros)
+cstk hooks status                     # read-only: onde cada hook esta registrado?
 ```
+
+**Repos de terceiros** (`--local`, issue #135): quando o time do cliente
+versiona `.claude/settings.json` de propósito, uma ferramenta pessoal não
+tem o que fazer lá dentro. `--local` grava o *registro* em
+`.claude/settings.local.json` — o Claude Code **soma** hooks entre escopos
+e o arquivo local costuma estar gitignored — então os hooks disparam só
+para você e o arquivo do time fica byte a byte intacto. Os scripts
+continuam em `.claude/hooks/`; para não sujar o `git status` do cliente
+sem mexer no `.gitignore` dele:
+
+```bash
+printf '.claude/hooks/\n.claude/settings.local.json\n' >> .git/info/exclude
+```
+
+Idempotente como o fluxo padrão. Se o *outro* arquivo já registrar os
+hooks 00c (os dois disparariam, contando cada tool call em dobro) o comando
+avisa e oferece a mesma remoção do dedup do plugin (`--remove-classic`
+pula o prompt). `cstk hooks status` e `guard-hooks-status.sh check` leem
+os dois arquivos, então o `tick-mode` continua respondendo `hook` e o
+orquestrador não ticka na mão por cima de um hook ativo.
 
 Quando o plugin já fornece os hooks, o `cstk hooks install` pula o
 provisionamento clássico (plugin vence) e, se o projeto **ainda** carrega um

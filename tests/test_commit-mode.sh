@@ -1417,4 +1417,45 @@ GHEOF
     || { _fail "status esperado pr-opened" "stdout: $_fin_out"; return 1; }
 }
 
+# ==== issue #139: guard-branch != 0 dentro do finalize NAO pode vazar ====
+# `_branch_out=$(_cm_cmd_guard_branch ...)` herda o exit do guard; sob
+# `set -eu` o finalize abortava ANTES de `_guard_rc=$?` e os ramos
+# skipped-default-branch (exit 3) / error (exit 1) eram codigo morto.
+# Caso real: projeto-alvo recem `git init` (HEAD unborn) na 1a execucao do
+# agente-00c — finalize vazava exit 1 com stderr do guard-branch.
+
+scenario_issue139_finalize_repo_sem_commits_exit0_status_error() {
+  _gdir="$TMPDIR_TEST/repo-unborn-139"
+  _sd="$TMPDIR_TEST/fin-unborn-139"
+  _init_state "$_sd" true
+  mkdir -p "$_gdir"
+  git -C "$_gdir" init -q 2>/dev/null
+  # ZERO commits: HEAD unborn — `rev-parse --abbrev-ref HEAD` falha.
+
+  capture "$SCRIPT" finalize --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (contrato finalize)" "obtido $_CAPTURED_EXIT; stderr: $_CAPTURED_STDERR"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q '"status":"error"' \
+    || { _fail "status esperado error" "stdout: $_CAPTURED_STDOUT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q '"reason":"guard-branch exit 1"' \
+    || { _fail "reason esperado 'guard-branch exit 1'" "stdout: $_CAPTURED_STDOUT"; return 1; }
+  _status=$(jq -r '.push_pr_result.status // "absent"' "$_sd/state.json" 2>/dev/null)
+  [ "$_status" = "error" ] || { _fail "push_pr_result.status no state" "obtido '$_status'"; return 1; }
+}
+
+scenario_issue139_finalize_head_na_default_exit0_skipped_default_branch() {
+  _gdir="$TMPDIR_TEST/repo-default-139"
+  _sd="$TMPDIR_TEST/fin-default-139"
+  _init_state "$_sd" true
+  _init_git_repo "$_gdir" "main"
+
+  capture "$SCRIPT" finalize --state-dir "$_sd" --projeto-alvo-path "$_gdir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (contrato finalize)" "obtido $_CAPTURED_EXIT; stderr: $_CAPTURED_STDERR"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q '"status":"skipped-default-branch"' \
+    || { _fail "status esperado skipped-default-branch" "stdout: $_CAPTURED_STDOUT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -q '"branch":"main"' \
+    || { _fail "branch esperado main" "stdout: $_CAPTURED_STDOUT"; return 1; }
+  _status=$(jq -r '.push_pr_result.status // "absent"' "$_sd/state.json" 2>/dev/null)
+  [ "$_status" = "skipped-default-branch" ] || { _fail "push_pr_result.status no state" "obtido '$_status'"; return 1; }
+}
+
 run_all_scenarios

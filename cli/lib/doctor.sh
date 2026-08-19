@@ -513,16 +513,24 @@ _doctor_distribution_paths() {
   fi
 
   # duplicated-hooks tem precedencia — checagem barata (grep -F, sem jq).
-  if [ -f "$_dp_project_settings" ] \
-     && grep -qF "pretooluse-bash-guard.sh" "$_dp_project_settings" 2>/dev/null; then
+  # Olha os DOIS arquivos de registro do projeto (issue #135, `cstk hooks
+  # install --local`): settings.json e settings.local.json somam.
+  _dp_dup_files=""
+  for _dp_f in "$_dp_project_settings" "./.claude/settings.local.json"; do
+    if [ -f "$_dp_f" ] && grep -qF "pretooluse-bash-guard.sh" "$_dp_f" 2>/dev/null; then
+      _dp_dup_files="${_dp_dup_files:+$_dp_dup_files, }$_dp_f"
+    fi
+  done
+  if [ -n "$_dp_dup_files" ]; then
     {
       printf '\n==> Distribution Paths (plugin cstk)\n'
       printf '  [duplicated-hooks] plugin habilitado E registro classico de hooks\n'
-      printf '                     presente em %s\n' "$_dp_project_settings"
+      printf '                     presente em %s\n' "$_dp_dup_files"
       printf '  remediacao: rode `cstk hooks install` no projeto — ele oferece remover\n'
       printf '              o registro classico (ou `--remove-classic` para nao perguntar).\n'
       printf '              Remove apenas as entradas dos hooks 00c, preserva hooks de\n'
-      printf '              terceiros e grava backup em settings.json.bak-pre-dedup.\n'
+      printf '              terceiros e grava backup em <arquivo>.bak-pre-dedup.\n'
+      printf '              `cstk hooks status` mostra em qual arquivo esta cada registro.\n'
     } >&2
     return 1
   fi

@@ -490,6 +490,16 @@ _sr_db_wave_field_resolve() {
     agent_usage)                _sr_wfr_col=agent_usage; _sr_wfr_type=json ;;
     agent_spawns)               _sr_wfr_col=agent_spawns; _sr_wfr_type=json ;;
     otel_usage)                _sr_wfr_col=otel_usage; _sr_wfr_type=json ;;
+    # Campos MODELADOS fora de wave.<coluna> — o fallback extra_fields seria
+    # SOMBREADO pela reconstrucao real na leitura (skills_invoked vem da
+    # tabela skill_invocation; id/started_at sao identidade da linha) e o
+    # `set` reportaria "atualizado" sem efeito observavel (caso real:
+    # sugestoes wp-intel/mcp-server-host sug-001, cstk/mcp-direct-transport
+    # sug-002). Falhar alto, apontando o caminho certo — nunca sucesso falso.
+    skills_invoked)
+      _sr_die "set: '.$_wfr_bare' e derivado da tabela skill_invocation sob backend SQLite (extra_fields seria sombreado na leitura) — use 'state-ondas.sh record-skill' (ou 'state-rw.sh write' com o documento inteiro)" 1 ;;
+    id|started_at)
+      _sr_die "set: '.$_wfr_bare' e identidade da onda sob backend SQLite (imutavel via set) — use 'state-ondas.sh start' / 'state-rw.sh write'" 1 ;;
     *) : ;;
   esac
 }
@@ -771,6 +781,15 @@ _sr_db_set() {
           *.*|*\[*)
             _sr_die "set: campo nao suportado sob backend SQLite (path aninhado nao modelado): '$_sds_field' — so campos de topo simples tem fallback para extra_fields" 1
             ;;
+          execution|accumulated_metrics)
+            # Objeto inteiro de um container MODELADO (colunas da tabela
+            # execution / metricas derivadas): cair em extra_fields.execution
+            # seria sombreado pela reconstrucao real na leitura — o `set`
+            # reportaria sucesso e `.execution.status` continuaria o antigo
+            # (caso real: sugestao wp-intel/mcp-server-host sug-003). Falhar
+            # alto e apontar o caminho por campo.
+            _sr_die "set: '$_sds_field' e um container modelado sob backend SQLite (extra_fields seria sombreado na leitura) — atualize campo a campo ('.execution.status', ...) ou use 'state-rw.sh write' com o documento inteiro" 1
+            ;;
         esac
         _sds_cur_extra=$(_state_db_exec "$_sds_db" "SELECT coalesce(extra_fields,'{}') FROM execution LIMIT 1;")
         _sds_new_extra=$(printf '%s' "$_sds_cur_extra" | jq -c --argjson v "$_sds_value" "$_sds_field = \$v") \
@@ -871,6 +890,11 @@ _sr_db_set_multi() {
           case "$_sm_bare" in
             *.*|*\[*)
               _sr_die "set: campo nao suportado sob backend SQLite (path aninhado nao modelado): '$_sm_f' — so campos de topo simples tem fallback para extra_fields" 1
+              ;;
+            execution|accumulated_metrics)
+              # Mesma regra do set simples (container modelado nunca cai em
+              # extra_fields sombreado) — lote inteiro rejeitado, estado intacto.
+              _sr_die "set: '$_sm_f' e um container modelado sob backend SQLite (extra_fields seria sombreado na leitura) — atualize campo a campo ('.execution.status', ...) ou use 'state-rw.sh write' com o documento inteiro" 1
               ;;
           esac
           [ -n "$_sm_extra" ] || _sm_extra=$(_state_db_exec "$_sm_db" "SELECT coalesce(extra_fields,'{}') FROM execution LIMIT 1;")

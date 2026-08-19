@@ -145,8 +145,8 @@ COMANDOS:
   serve         Inicia o painel web cstk; baixa e instala na primeira execucao
   state         Operacoes sobre o estado transacional 00c (state migrate)
   mcp           Servidor MCP de estado das execucoes 00c (mcp status)
-  hooks         Provisiona os hooks do runtime 00c num projeto-alvo
-                (so hooks + settings.json; nao duplica skill/commands/agents)
+  hooks         Provisiona (install) / diagnostica (status) os hooks do runtime 00c
+                (so hooks + settings.json, ou settings.local.json com --local)
   statusline    Instala/inspeciona a captura de uso do plano via
                 statusLine.command (install/status); preserva customizacao
                 previa em CSTK_STATUSLINE_INNER_COMMAND
@@ -176,6 +176,8 @@ HELP
       printf 'cstk help hooks: provisiona os hooks do runtime 00c num projeto-alvo.\n'
       printf 'Toca apenas .claude/hooks/ + .claude/settings.json — nao duplica\n'
       printf 'skill/commands/agents como "cstk install --scope project".\n'
+      printf 'Flag --local registra em .claude/settings.local.json (repos de terceiros);\n'
+      printf '"cstk hooks status" mostra em qual arquivo esta cada registro.\n'
       printf 'Para help inline, rode: cstk hooks --help\n'
       exit "$CSTK_EXIT_OK"
       ;;

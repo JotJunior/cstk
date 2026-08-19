@@ -1008,8 +1008,12 @@ _session_pr() {
   fi
 
   # Capturar URL do gh pr create. gh imprime URL em stdout em caso de sucesso.
-  _create_out=$( cd -- "$_wt_path" && gh pr create "$@" 2>&1 )
-  _create_rc=$?
+  # `|| _create_rc=$?` e OBRIGATORIO: session_main roda sob o `set -eu` do
+  # binario e `_x=$(cmd)` herda o exit de `cmd` — sem isso a falha do gh
+  # abortava aqui e o ramo de falha parcial (FR-017) abaixo era codigo
+  # morto (mesma classe da issue #139 em commit-mode.sh finalize).
+  _create_rc=0
+  _create_out=$( cd -- "$_wt_path" && gh pr create "$@" 2>&1 ) || _create_rc=$?
   if [ "$_create_rc" != 0 ]; then
     # 7. Falha parcial (FR-017): push ja foi feito, mas create falhou
     log_error "session pr: 'gh pr create' falhou (push ja foi feito)"

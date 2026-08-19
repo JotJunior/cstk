@@ -31,7 +31,7 @@
 #                                         no array .hooks.PostToolUse[]
 #                                         ja populado pelo merge_settings
 #                                         base (loose-usage-capture task 3.3).
-#   apply_guard_hooks <src_dir> <dest_claude_root> <dry_run> [with_loose_usage]
+#   apply_guard_hooks <src_dir> <dest_claude_root> <dry_run> [with_loose_usage] [settings_basename]
 #                                       — provisiona o hook PreToolUse/Bash
 #                                         de enforced-guards (US1): copia
 #                                         pretooluse-bash-guard.sh para
@@ -324,8 +324,8 @@ print_paste_block() {
 #                      trouxe hooks/ nesta instalacao — nao e erro)
 #   error            — falha de I/O (mkdir/cp/merge)
 apply_guard_hooks() {
-  if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
-    log_error "hooks: apply_guard_hooks espera 3 ou 4 argumentos (src_dir, dest_claude_root, dry_run, [with_loose_usage])"
+  if [ "$#" -lt 3 ] || [ "$#" -gt 5 ]; then
+    log_error "hooks: apply_guard_hooks espera 3 a 5 argumentos (src_dir, dest_claude_root, dry_run, [with_loose_usage], [settings_basename])"
     printf '%s' "error"
     return 2
   fi
@@ -333,6 +333,22 @@ apply_guard_hooks() {
   _agh_dest_root=$2
   _agh_dry_run=$3
   _agh_with_loose=${4:-0}
+  # 5o arg (issue #135): basename do arquivo de REGISTRO dentro de
+  # <dest_claude_root>. Default `settings.json` (comportamento historico);
+  # `settings.local.json` via `cstk hooks install --local` — o Claude Code
+  # SOMA hooks entre escopos e o arquivo local costuma estar gitignored,
+  # entao o registro liga os hooks so para o operador sem tocar o
+  # settings.json versionado do time. Os SCRIPTS continuam em
+  # <dest_claude_root>/hooks/ nos dois casos.
+  _agh_settings_name=${5:-settings.json}
+  case "$_agh_settings_name" in
+    settings.json|settings.local.json) ;;
+    *)
+      log_error "hooks: settings_basename invalido: $_agh_settings_name (use settings.json ou settings.local.json)"
+      printf '%s' "error"
+      return 2
+      ;;
+  esac
 
   if [ ! -d "$_agh_src" ]; then
     log_warn "hooks: guard-hooks source ausente: $_agh_src"
@@ -343,7 +359,7 @@ apply_guard_hooks() {
   _agh_hook_script="$_agh_src/pretooluse-bash-guard.sh"
   _agh_snippet="$_agh_src/settings.snippet.json"
   _agh_hooks_dst="$_agh_dest_root/hooks"
-  _agh_settings_dst="$_agh_dest_root/settings.json"
+  _agh_settings_dst="$_agh_dest_root/$_agh_settings_name"
 
   if [ ! -f "$_agh_hook_script" ]; then
     log_warn "hooks: pretooluse-bash-guard.sh ausente em $_agh_src"
@@ -597,24 +613,32 @@ _hooks_prompt_yn() {
 # AUTO_REMOVE=1 (`--remove-classic`) remove sem perguntar — caminho para
 # script/CI. Sem ele: pergunta SE houver TTY; sem TTY, mantem e avisa
 # (jamais mutar settings.json de alguem sem confirmacao explicita).
+#
+# 4o arg (opcional, issue #135): basename do arquivo a limpar (default
+# `settings.json`). 5o arg (opcional): quem "vence" na mensagem — default
+# "o plugin"; `hooks install --local` passa "o registro em
+# settings.local.json" (e vice-versa) para o dedup entre os DOIS arquivos
+# de registro do projeto, que tambem somam e contariam cada tool call em
+# dobro.
 _hooks_dedup_classic() {
   _hdc_dest=$1
   _hdc_dry=$2
   _hdc_auto=$3
-  _hdc_settings="$_hdc_dest/settings.json"
+  _hdc_settings="$_hdc_dest/${4:-settings.json}"
+  _hdc_winner=${5:-o plugin}
 
   [ -f "$_hdc_settings" ] || return 0
 
   if ! detect_jq; then
     log_warn "hooks install: jq ausente — nao da para editar settings.json com seguranca."
-    log_warn "hooks install: se houver registro classico em $_hdc_settings, remova-o a mao (duplicidade com o plugin)."
+    log_warn "hooks install: se houver registro classico em $_hdc_settings, remova-o a mao (duplicidade com $_hdc_winner)."
     return 0
   fi
 
   _hdc_n=$(_hooks_classic_count "$_hdc_settings")
   case "$_hdc_n" in ''|0|*[!0-9]*) return 0 ;; esac
 
-  log_warn "hooks install: $_hdc_settings ainda registra $_hdc_n hook(s) 00c pelo caminho classico — duplicidade com o plugin."
+  log_warn "hooks install: $_hdc_settings ainda registra $_hdc_n hook(s) 00c pelo caminho classico — duplicidade com $_hdc_winner."
 
   if [ "$_hdc_dry" = 1 ]; then
     log_info "hooks install: [dry-run] removeria $_hdc_n entrada(s) do bloco classico (hooks de terceiros e demais chaves preservados)"
@@ -628,7 +652,7 @@ _hooks_dedup_classic() {
       return 0
     fi
     if ! _hooks_prompt_yn "hooks install: remover o registro classico de $_hdc_settings? (y/N)"; then
-      log_info "hooks install: bloco classico mantido a pedido — 'cstk doctor' seguira reportando duplicated-hooks"
+      log_info "hooks install: bloco classico mantido a pedido — 'cstk doctor'/'cstk hooks status' seguirao reportando duplicidade"
       return 0
     fi
   fi
@@ -662,16 +686,33 @@ _hooks_dedup_classic() {
 
 _hooks_print_help() {
   cat >&2 <<'HELP'
-cstk hooks — provisiona os hooks do runtime 00c num projeto-alvo.
+cstk hooks — provisiona (install) e diagnostica (status) os hooks do runtime 00c.
 
 USO:
   cstk hooks install [--project-path PATH] [--catalog DIR] [--dry-run]
-                      [--with-loose-usage] [--remove-classic]
+                      [--with-loose-usage] [--remove-classic] [--local]
+  cstk hooks status  [--project-path PATH]
 
 Copia pretooluse-bash-guard.sh + posttooluse-tool-call-tick.sh +
 posttooluse-agent-usage.sh para <PATH>/.claude/hooks/ e mescla o bloco de
 registro em <PATH>/.claude/settings.json (via jq; sem jq, imprime o bloco
 para colagem manual).
+
+--local: grava o REGISTRO em <PATH>/.claude/settings.local.json em vez de
+settings.json (os scripts continuam em .claude/hooks/). Para repos de
+terceiros em que settings.json e versionado pelo time: o Claude Code SOMA
+hooks entre escopos, entao o arquivo local (normalmente gitignored) liga
+os hooks so para o operador sem tocar o arquivo compartilhado. Idempotente
+como o fluxo padrao. Se o OUTRO arquivo (settings.json sem --local;
+settings.local.json com --local) ja registrar os hooks 00c, os dois ficam
+ativos e cada tool call e contada em dobro — o comando avisa e oferece a
+remocao (mesmo dedup do plugin; --remove-classic remove sem perguntar).
+Dica para nao sujar o git status do cliente com os scripts:
+  printf '.claude/hooks/\n.claude/settings.local.json\n' >> .git/info/exclude
+
+status: diagnostico READ-ONLY (exit 0 sempre) — para cada hook 00c,
+script presente em .claude/hooks/ e em QUAL arquivo esta o registro
+(settings.json | settings.local.json | both | plugin | none).
 
 --with-loose-usage (opt-in, default DESLIGADA): tambem provisiona
 posttooluse-loose-usage.sh, hook que captura consumo avulso (fora de
@@ -698,6 +739,84 @@ Para conferir o estado atual sem escrever nada:
 HELP
 }
 
+# ============================================================================
+# _hooks_status_main — comando `cstk hooks status` (issue #135)
+# ============================================================================
+# Diagnostico READ-ONLY do provisionamento classico + registro num projeto:
+# para cada hook 00c (3 obrigatorios + loose-usage opt-in), se o script
+# esta em <PATH>/.claude/hooks/ e em QUAL arquivo esta o registro —
+# settings.json, settings.local.json, both (duplicado: cada tool call
+# contada em dobro), plugin (hooks.json do plugin cstk habilitado) ou
+# none. Existe porque `--local` cria um segundo lugar possivel para o
+# registro e o operador precisa enxergar onde ele esta sem abrir JSON na
+# mao. Nunca escreve nada; exit 0 sempre (consulta respondida, nao
+# veredito) — exit 2 so em uso incorreto.
+_hooks_status_main() {
+  _hs_project_path="."
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --project-path)
+        [ "$#" -ge 2 ] || { log_error "hooks status: --project-path exige valor"; return 2; }
+        _hs_project_path=$2; shift 2 ;;
+      --project-path=*) _hs_project_path=${1#--project-path=}; shift ;;
+      -h|--help) _hooks_print_help; return 0 ;;
+      *) log_error "hooks status: flag desconhecida: $1"; return 2 ;;
+    esac
+  done
+  if [ ! -d "$_hs_project_path" ]; then
+    log_error "hooks status: --project-path nao e diretorio: $_hs_project_path"
+    return 1
+  fi
+  _hs_abs=$(CDPATH= cd -- "$_hs_project_path" 2>/dev/null && pwd -P) \
+    || { log_error "hooks status: nao consegui resolver $_hs_project_path"; return 1; }
+  _hs_dest="$_hs_abs/.claude"
+  _hs_settings="$_hs_dest/settings.json"
+  _hs_local="$_hs_dest/settings.local.json"
+
+  _hs_plugin=0
+  if plugin_enabled cstk && plugin_hooks_present cstk; then
+    _hs_plugin=1
+  fi
+
+  printf 'hooks status: %s\n' "$_hs_dest"
+  printf '  plugin cstk (hooks.json): %s\n' "$([ "$_hs_plugin" = 1 ] && printf 'habilitado' || printf 'nao')"
+  printf '  arquivo settings.json:        %s\n' "$([ -f "$_hs_settings" ] && printf 'presente' || printf 'ausente')"
+  printf '  arquivo settings.local.json:  %s\n' "$([ -f "$_hs_local" ] && printf 'presente' || printf 'ausente')"
+
+  _hs_dup=0
+  _hs_none=0
+  for _hs_hook in pretooluse-bash-guard.sh posttooluse-tool-call-tick.sh posttooluse-agent-usage.sh posttooluse-loose-usage.sh; do
+    if [ -f "$_hs_dest/hooks/$_hs_hook" ]; then _hs_script="present"; else _hs_script="missing"; fi
+    _hs_in_p=0; _hs_in_l=0
+    [ -f "$_hs_settings" ] && grep -Fq -- "$_hs_hook" "$_hs_settings" 2>/dev/null && _hs_in_p=1
+    [ -f "$_hs_local" ] && grep -Fq -- "$_hs_hook" "$_hs_local" 2>/dev/null && _hs_in_l=1
+    if [ "$_hs_in_p" = 1 ] && [ "$_hs_in_l" = 1 ]; then
+      _hs_reg="both"; _hs_dup=$((_hs_dup + 1))
+    elif [ "$_hs_in_p" = 1 ]; then _hs_reg="settings.json"
+    elif [ "$_hs_in_l" = 1 ]; then _hs_reg="settings.local.json"
+    elif [ "$_hs_plugin" = 1 ] && [ "$_hs_hook" != "posttooluse-loose-usage.sh" ]; then _hs_reg="plugin"
+    else
+      _hs_reg="none"
+      [ "$_hs_hook" != "posttooluse-loose-usage.sh" ] && _hs_none=$((_hs_none + 1))
+    fi
+    if [ "$_hs_plugin" = 1 ] && [ "$_hs_hook" != "posttooluse-loose-usage.sh" ] \
+       && { [ "$_hs_in_p" = 1 ] || [ "$_hs_in_l" = 1 ]; }; then
+      _hs_reg="$_hs_reg+plugin"; _hs_dup=$((_hs_dup + 1))
+    fi
+    _hs_tag=""
+    [ "$_hs_hook" = "posttooluse-loose-usage.sh" ] && _hs_tag=" (opt-in)"
+    printf '  %-32s script=%-7s registro=%s%s\n' "$_hs_hook" "$_hs_script" "$_hs_reg" "$_hs_tag"
+  done
+
+  if [ "$_hs_dup" -gt 0 ]; then
+    log_warn "hooks status: $_hs_dup hook(s) registrados em MAIS de um lugar — cada tool call e contada em dobro. Rode 'cstk hooks install' (ou --local) no projeto: ele oferece remover o registro redundante."
+  fi
+  if [ "$_hs_none" -gt 0 ]; then
+    log_warn "hooks status: $_hs_none hook(s) obrigatorio(s) sem registro algum — a guarda NAO esta enforced. Rode 'cstk hooks install --project-path $_hs_abs' (ou --local)."
+  fi
+  return 0
+}
+
 hooks_main() {
   _hooks_sub="${1:-}"
   [ "$#" -ge 1 ] && shift || :
@@ -709,8 +828,9 @@ hooks_main() {
       return 0
       ;;
     install) ;;
+    status) _hooks_status_main "$@"; return $? ;;
     *)
-      log_error "hooks: subcomando desconhecido: $_hooks_sub (use: install)"
+      log_error "hooks: subcomando desconhecido: $_hooks_sub (use: install, status)"
       return 2
       ;;
   esac
@@ -720,6 +840,7 @@ hooks_main() {
   _hooks_dry_run=0
   _hooks_with_loose=0
   _hooks_remove_classic=0
+  _hooks_settings_name="settings.json"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -734,6 +855,7 @@ hooks_main() {
       --dry-run) _hooks_dry_run=1; shift ;;
       --with-loose-usage) _hooks_with_loose=1; shift ;;
       --remove-classic) _hooks_remove_classic=1; shift ;;
+      --local) _hooks_settings_name="settings.local.json"; shift ;;
       -h|--help) _hooks_print_help; return 0 ;;
       *) log_error "hooks install: flag desconhecida: $1"; return 2 ;;
     esac
@@ -777,6 +899,7 @@ hooks_main() {
       # Dedup ATIVO: havendo registro classico pre-existente, oferece a
       # remocao em vez de so mandar o operador editar settings.json a mao.
       _hooks_dedup_classic "$_hooks_dest" "$_hooks_dry_run" "$_hooks_remove_classic"
+      _hooks_dedup_classic "$_hooks_dest" "$_hooks_dry_run" "$_hooks_remove_classic" "settings.local.json"
       return 0
     else
       log_warn "hooks install: plugin 'cstk' habilitado mas hooks/hooks.json NAO encontrado no install path — instalacao do plugin parece incompleta"
@@ -784,19 +907,31 @@ hooks_main() {
     fi
   fi
 
-  _hooks_state=$(apply_guard_hooks "$_hooks_src" "$_hooks_dest" "$_hooks_dry_run" "$_hooks_with_loose")
+  _hooks_state=$(apply_guard_hooks "$_hooks_src" "$_hooks_dest" "$_hooks_dry_run" "$_hooks_with_loose" "$_hooks_settings_name")
 
   case "$_hooks_state" in
     merged)
       if [ "$_hooks_dry_run" = 1 ]; then
-        log_info "hooks install: [dry-run] provisionaria os hooks 00c em $_hooks_dest"
+        log_info "hooks install: [dry-run] provisionaria os hooks 00c em $_hooks_dest (registro em $_hooks_settings_name)"
       else
-        log_info "hooks install: hooks 00c provisionados e registrados em $_hooks_dest"
+        log_info "hooks install: hooks 00c provisionados e registrados em $_hooks_dest/$_hooks_settings_name"
+      fi
+      # Dedup entre os DOIS arquivos de registro do projeto (issue #135):
+      # settings.json e settings.local.json SOMAM no Claude Code — registro
+      # nos dois = cada tool call contada em dobro. O arquivo recem-escrito
+      # vence; o outro e oferecido para remocao (mesma rotina, mesmas
+      # guardas: so entradas do cstk, backup, prompt/--remove-classic).
+      if [ "$_hooks_settings_name" = "settings.local.json" ]; then
+        _hooks_dedup_classic "$_hooks_dest" "$_hooks_dry_run" "$_hooks_remove_classic" \
+          "settings.json" "o registro em settings.local.json (--local)"
+      else
+        _hooks_dedup_classic "$_hooks_dest" "$_hooks_dry_run" "$_hooks_remove_classic" \
+          "settings.local.json" "o registro em settings.json"
       fi
       return 0
       ;;
     paste-instructed)
-      log_warn "hooks install: jq ausente — hooks copiados, mas o REGISTRO em settings.json"
+      log_warn "hooks install: jq ausente — hooks copiados, mas o REGISTRO em $_hooks_settings_name"
       log_warn "hooks install: precisa ser colado manualmente (bloco impresso acima)."
       log_warn "hooks install: sem o registro os hooks NAO rodam."
       return 0

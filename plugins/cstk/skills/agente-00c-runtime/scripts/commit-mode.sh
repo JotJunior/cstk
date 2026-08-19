@@ -952,8 +952,15 @@ _cm_cmd_finalize() {
   fi
 
   # Passo 2: guard-branch
-  _branch_out=$(_cm_cmd_guard_branch --state-dir "$_sdir" --projeto-alvo-path "$_pap")
-  _guard_rc=$?
+  # issue #139: `_x=$(cmd)` herda o exit de `cmd`; sob `set -eu` (topo do
+  # script) um exit != 0 aqui ABORTAVA o finalize ANTES do `_guard_rc=$?`,
+  # e os dois ramos abaixo (skipped-default-branch / error) eram codigo
+  # morto — o finalize vazava exit 1 (repo sem commits, HEAD unborn) ou
+  # exit 3 (HEAD na default) em vez do contrato "sempre exit 0 +
+  # .push_pr_result registrado". Mesmo padrao ja aplicado ao `cstk session
+  # pr` mais abaixo (`|| _cstk_rc=$?`).
+  _guard_rc=0
+  _branch_out=$(_cm_cmd_guard_branch --state-dir "$_sdir" --projeto-alvo-path "$_pap") || _guard_rc=$?
   _curr_branch=$(printf '%s' "$_branch_out" | head -1)
 
   if [ "$_guard_rc" = 3 ]; then
