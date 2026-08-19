@@ -5,6 +5,99 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.4.0] - 2026-08-19
+
+Release de manutenção com uma feature pequena pedida por quem usa o cstk em
+repositório de terceiro (issue #135) e dois fixes de "sucesso falso" — um
+contrato `sempre exit 0` que vazava exit 1/3 (issue #139, aberta pelo
+próprio agente-00C) e um `state-rw.sh set` que reportava `atualizado` sem
+efeito observável sob SQLite (3 sugestões da knowledge.db reproduzidas).
+Sem breaking; sem skill nova.
+
+### Added
+
+- **`cstk hooks install --local`** (#135): grava o REGISTRO dos hooks 00c em
+  `.claude/settings.local.json` em vez de `.claude/settings.json`. Para
+  repos em que o time versiona `settings.json` de propósito: o Claude Code
+  SOMA hooks entre escopos e o arquivo local costuma estar gitignored, então
+  os hooks disparam só para o operador e o arquivo do time fica byte a byte
+  intacto (nem `settings.json.bak` é criado). Scripts continuam em
+  `.claude/hooks/` (dica no help/README: `.git/info/exclude`). Idempotente
+  como o fluxo padrão; `apply_guard_hooks()` ganha 5º argumento opcional
+  (basename do arquivo de registro, validado — `settings.json` default,
+  comportamento histórico intacto em `install.sh`/`setup.sh`).
+- **Dedup entre os dois arquivos de registro**: registro em `settings.json`
+  E `settings.local.json` = cada tool call contada em dobro. O arquivo
+  recém-escrito vence e o outro é oferecido para remoção com as MESMAS
+  guardas do dedup do plugin (`_hooks_dedup_classic` generalizada: só
+  entradas do cstk, hooks de terceiros e demais chaves preservados, backup
+  `.bak-pre-dedup`, prompt com TTY / `--remove-classic` sem prompt / sem TTY
+  mantém e avisa). O ramo plugin-vence também limpa o arquivo local.
+- **`cstk hooks status [--project-path PATH]`**: diagnóstico READ-ONLY (exit
+  0 sempre; 2 em uso incorreto) que imprime, por hook 00c (3 obrigatórios +
+  `posttooluse-loose-usage.sh` opt-in), se o script está em
+  `.claude/hooks/` e em QUAL arquivo está o registro — `settings.json` |
+  `settings.local.json` | `both` | `plugin` | `none` — com aviso de
+  duplicidade e de ausência. Nasce porque `--local` cria um segundo lugar
+  possível para o registro e o operador precisa enxergar onde ele está sem
+  abrir JSON na mão.
+- Testes: 12 cenários novos em `tests/cstk/test_hooks.sh` (com fixture de
+  catálogo REAL — a sintética registra comandos `x`/`y`/`z` e não serve para
+  verificar registro por basename), 4 em `tests/test_guard-hooks-status.sh`,
+  1 em `tests/cstk/test_doctor.sh`, 2 em `tests/test_commit-mode.sh`, 1 em
+  `tests/cstk/test_session.sh`, 2 em `tests/test_state-rw.sh`. Todos os
+  cenários de regressão falham sem o fix correspondente (mutation check
+  feito antes de commitar).
+
+### Changed
+
+- **`guard-hooks-status.sh` (runtime) lê os dois arquivos de registro**:
+  `_gh_registered`, `--verify-registration` e a detecção de duplicidade com
+  o plugin consideram `settings.json` E `settings.local.json`. Sem isso,
+  registro local faria `check` responder `unregistered`, `tick-mode`
+  responder `manual` e o orquestrador tickar NA MÃO por cima de um hook
+  ativo (contagem dupla de `tool_calls`). `verify-registration`: "divergent"
+  se QUALQUER linha de QUALQUER dos dois arquivos que cite o basename falhar
+  a regra canônica; sem `settings.local.json` a saída é byte a byte a
+  histórica.
+- **`cstk doctor` (`Distribution Paths`)**: o estado `duplicated-hooks`
+  olha também `./.claude/settings.local.json` e cita os arquivos onde o
+  registro clássico foi encontrado; remediação menciona `cstk hooks status`.
+- Help de `cstk hooks --help` / `cstk help hooks` e `README.md` /
+  `README.pt-BR.md` (§hooks do runtime 00c) documentam `--local` e `status`.
+
+### Fixed
+
+- **`commit-mode.sh finalize` honra "sempre exit 0" quando `guard-branch`
+  falha (#139)**. `_branch_out=$(_cm_cmd_guard_branch …)` herda o exit do
+  guard e, sob o `set -eu` do script, abortava o finalize ANTES do
+  `_guard_rc=$?` — os dois ramos seguintes (`skipped-default-branch` para
+  exit 3 e `error` para exit 1) eram código morto e sem teste. Caso real da
+  issue: projeto-alvo recém `git init` (HEAD unborn) na 1ª execução do
+  agente-00c vazava exit 1 com o stderr do guard-branch e sem
+  `.push_pr_result`; HEAD na branch default vazava exit 3 (nunca gravou
+  `skipped-default-branch`). Fix: `|| _guard_rc=$?` (o mesmo padrão já
+  aplicado ao `cstk session pr` mais abaixo no arquivo).
+- **Mesma classe (`var=$(cmd)` seguido de `rc=$?` sob `set -eu`) nos irmãos
+  do binário**: `cli/lib/session.sh` — `gh pr create` falhando abortava
+  `_session_pr` antes do ramo de falha parcial FR-017 (o operador via o
+  exit cru do gh, sem as instruções de retry/desfazer push; agora exit 1 +
+  orientação, cenário `scenario_pr_gh_create_falha_reporta_falha_parcial_exit_1`);
+  `cli/lib/mcp.sh` e `cli/lib/serve-docker.sh` — `docker rm -f` capturado
+  com `|| rc=$?` (defensivo: hoje só chamados em contexto condicional).
+- **`state-rw.sh set` sob SQLite deixa de reportar sucesso sem efeito**:
+  `.execution` / `.accumulated_metrics` inteiros e
+  `.waves[N].{skills_invoked,id,started_at}` caíam no fallback
+  `extra_fields`, eram sombreados pela reconstrução real na leitura (colunas
+  da tabela `execution`; tabela `skill_invocation`) e o comando imprimia
+  `atualizado (backend sqlite)` com exit 0 — `.execution.status` seguia o
+  antigo, `.waves[-1].skills_invoked` seguia `[]` (sugestões
+  wp-intel/mcp-server-host sug-001/sug-003 e cstk/mcp-direct-transport
+  sug-002, reproduzidas). Agora exit 1 com mensagem apontando o caminho
+  certo (campo a campo, `state-ondas.sh record-skill`, `state-rw.sh write`),
+  no set simples e no lote multi-campo (rejeição all-or-nothing, estado
+  intacto). Campos extra genuínos seguem no fallback (round-trip C1).
+
 ## [8.3.1] - 2026-08-18
 
 Bugfix do ramo de captura de opt-ins dos commands `/agente-00c` e
@@ -6665,6 +6758,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.4.0]: https://github.com/JotJunior/cstk/releases/tag/v8.4.0
 [8.3.1]: https://github.com/JotJunior/cstk/releases/tag/v8.3.1
 [8.3.0]: https://github.com/JotJunior/cstk/releases/tag/v8.3.0
 [8.2.0]: https://github.com/JotJunior/cstk/releases/tag/v8.2.0
