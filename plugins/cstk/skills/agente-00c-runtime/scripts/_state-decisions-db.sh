@@ -138,6 +138,14 @@ _sd_db_register() {
 
   _sdb_db=$(_sr_db_file "$_sdb_sdir")
   [ -f "$_sdb_db" ] || _sd_die "register: state.db ausente em $_sdb_sdir" 1
+
+  # feature structural-decision-human-gate (task 1.2.4, INV-E3): garante as
+  # colunas [NOVO] antes de qualquer INSERT, para uma execucao ja em
+  # andamento (state.db criado antes desta feature) nao quebrar com
+  # "no such column" na primeira Decisao registrada apos o upgrade.
+  "$_SD_DIR/state-db-schema.sh" ensure --db "$_sdb_db" \
+    || _sd_die "register: falha ao garantir schema aditivo (state-db-schema.sh ensure) em $_sdb_db" 1
+
   _sdb_exec_id=$(_sr_exec_id "$_sdb_db")
   [ -n "$_sdb_exec_id" ] || _sd_die "register: execution ausente em $_sdb_db" 1
 

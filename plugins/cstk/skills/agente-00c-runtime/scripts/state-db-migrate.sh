@@ -260,6 +260,14 @@ _sdm_cmd_migrate() {
   "$_SDM_SELF_DIR/state-db-schema.sh" create --db "$_sdm_tmpdb" >/dev/null 2>&1 \
     || _sdm_abort_build "migrate: falha ao aplicar o schema no temporario"
 
+  # feature structural-decision-human-gate (task 1.2.4, INV-E3): defesa em
+  # profundidade — `create` ja materializa as colunas [NOVO] via o DDL
+  # atualizado, mas `ensure` e idempotente/barato e fecha o mesmo dos tres
+  # pontos de escrita citados no contrato, sem depender de o DDL nunca
+  # divergir do que `ensure` sabe adicionar.
+  "$_SDM_SELF_DIR/state-db-schema.sh" ensure --db "$_sdm_tmpdb" >/dev/null 2>&1 \
+    || _sdm_abort_build "migrate: falha ao garantir schema aditivo (ensure) no temporario"
+
   # M2.3 — insercao na ordem imposta pelas FKs:
   #   execution -> wave -> decision -> human_block/skill_invocation/task/event
   #

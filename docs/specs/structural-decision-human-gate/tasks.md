@@ -35,19 +35,19 @@ andamento nao quebre com `no such column` na primeira decisao classificada
 Ref: `plan.md` §Project Structure (`state-db-schema.sql`); `data-model.md`
 entidades Decisao e BloqueioHumano
 
-- [ ] 1.1.1 Adicionar `decision_class TEXT NULL` a `decision` em
+- [x] 1.1.1 Adicionar `decision_class TEXT NULL` a `decision` em
       `plugins/cstk/skills/agente-00c-runtime/references/state-db-schema.sql`
       (comentario com o enum `estrutural|operacional`)
-- [ ] 1.1.2 Adicionar `structural_axis TEXT NULL` a `decision` (comentario:
+- [x] 1.1.2 Adicionar `structural_axis TEXT NULL` a `decision` (comentario:
       obrigatorio quando `decision_class = 'estrutural'`; NAO e `CHECK` —
       validado nas portas de escrita, vide data-model.md §Regras de
       integridade)
-- [ ] 1.1.3 Adicionar `human_consent_block_id TEXT NULL` a `decision`
+- [x] 1.1.3 Adicionar `human_consent_block_id TEXT NULL` a `decision`
       (comentario: NAO e FK — verificado contra o estado no momento do
       registro, R6)
-- [ ] 1.1.4 Adicionar `subject_key TEXT NULL` a `human_block` (comentario:
+- [x] 1.1.4 Adicionar `subject_key TEXT NULL` a `human_block` (comentario:
       prefixo fechado `briefing-item:` | `axis:`)
-- [ ] 1.1.5 Teste: `sqlite3 <db> "PRAGMA table_info(decision)"` /
+- [x] 1.1.5 Teste: `sqlite3 <db> "PRAGMA table_info(decision)"` /
       `PRAGMA table_info(human_block)` confirmam as 4 colunas novas num banco
       criado do zero (coberto por `tests/test_state-db-schema.sh`, task 1.2)
 
@@ -56,19 +56,19 @@ entidades Decisao e BloqueioHumano
 Ref: FR-013; `contracts/cli-structural-class.md` §`state-db-schema.sh ensure`;
 `research.md` Decision 3
 
-- [ ] 1.2.1 Implementar `ensure --db <path>`: `PRAGMA table_info(decision)` /
+- [x] 1.2.1 Implementar `ensure --db <path>`: `PRAGMA table_info(decision)` /
       `PRAGMA table_info(human_block)` e `ALTER TABLE ... ADD COLUMN` apenas
       para coluna de fato ausente (INV-E1, idempotente)
-- [ ] 1.2.2 Fail-hard: `sqlite3` ausente, banco ilegivel ou `ALTER TABLE`
+- [x] 1.2.2 Fail-hard: `sqlite3` ausente, banco ilegivel ou `ALTER TABLE`
       falho => exit 1 sem degradar para best-effort (INV-E3: fonte de
       verdade transacional); uso incorreto => exit 2
-- [ ] 1.2.3 Puramente aditivo — nunca `DROP`, nunca recriacao de tabela,
+- [x] 1.2.3 Puramente aditivo — nunca `DROP`, nunca recriacao de tabela,
       nunca reescrita de linha existente (INV-E2)
-- [ ] 1.2.4 Invocar `ensure` nos tres pontos de escrita: `_sd_db_register`
+- [x] 1.2.4 Invocar `ensure` nos tres pontos de escrita: `_sd_db_register`
       (`state-decisions.sh`, antes de qualquer INSERT), `state-rw.sh init`,
       migracao json->db (`state-db-migrate.sh`) — nunca no caminho de leitura
       (INV-E3)
-- [ ] 1.2.5 Teste: `tests/test_state-db-schema.sh` — idempotencia (2a chamada
+- [x] 1.2.5 Teste: `tests/test_state-db-schema.sh` — idempotencia (2a chamada
       e no-op), fail-hard (banco inexistente/corrompido), banco pre-feature
       (sem as 4 colunas) ganha-as apos `ensure` sem perder linhas existentes
 
@@ -77,12 +77,12 @@ Ref: FR-013; `contracts/cli-structural-class.md` §`state-db-schema.sh ensure`;
 Ref: FR-006; `data-model.md` §Enum `structural_axis`; `research.md`
 Decision 4 (mesmo padrao de `tier-gate-map.txt`/`phase-model-map.txt`)
 
-- [ ] 1.3.1 Criar
+- [x] 1.3.1 Criar
       `plugins/cstk/skills/agente-00c-runtime/references/structural-axis-map.txt`
       com linha de versao + 6 linhas `eixo|rotulo` (`linguagem-runtime`,
       `stack-frameworks`, `arquitetura`, `persistencia`, `ambiente-alvo`,
       `tier-entrega`), linhas `#`/vazias ignoradas
-- [ ] 1.3.2 Documentar no cabecalho do arquivo: eixo fora da lista e
+- [x] 1.3.2 Documentar no cabecalho do arquivo: eixo fora da lista e
       **rejeitado** (exit 2 no consumidor), diferente do fail-safe de
       `tier-gate-map.txt` — aceitar um eixo desconhecido permitiria burlar o
       enum por texto livre
