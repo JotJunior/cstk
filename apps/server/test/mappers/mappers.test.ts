@@ -240,6 +240,7 @@ describe('mapDecision', () => {
       wave: 'onda-001', execution_id: 'e1', stage: 'execute-task',
       agent: 'orquestrador', choice: 'ok', options: null, score: 1,
       context: 'ctx', rationale: 'just', evidence: null,
+      decision_class: null, structural_axis: null, human_consent_block_id: null,
     };
     expect(mapDecision(row).options).toBeNull();
   });
@@ -249,6 +250,7 @@ describe('mapDecision', () => {
     const row = {
       wave: 'onda-001', execution_id: 'e1', stage: null, agent: null,
       choice: null, options: null, score: 0, context: HOSTIL, rationale: HOSTIL, evidence: null,
+      decision_class: null, structural_axis: null, human_consent_block_id: null,
     };
     const dto = mapDecision(row);
     // Mapper NAO sanitiza — preserva cru para FE renderizar via textContent
@@ -261,6 +263,7 @@ describe('mapDecision', () => {
       wave: 'onda-001', execution_id: 'e1', stage: 'execute-task',
       agent: 'agente', choice: 'ok', options: '["ok","cancelar"]', score: 3,
       context: 'ctx', rationale: 'just', evidence: 'ev',
+      decision_class: 'estrutural', structural_axis: 'stack', human_consent_block_id: 'block-001',
     };
     const r = DecisionDTOSchema.safeParse(mapDecision(row));
     expect(r.success).toBe(true);

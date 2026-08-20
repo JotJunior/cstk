@@ -15,7 +15,7 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
-/** Default quando CSTK_SCHEMA_VERSIONS nao esta definido — aceita v2..v13.
+/** Default quando CSTK_SCHEMA_VERSIONS nao esta definido — aceita v2..v15.
  *  v4 (recall-memory-mirror) adiciona a tabela `memories`; v5 (recall-suggestions)
  *  adiciona a tabela `suggestions`; v6 adiciona a coluna `decisions.options`;
  *  v7 (new-schema) migra todas as colunas pt-BR→EN snake_case;
@@ -42,9 +42,15 @@ import { resolve } from 'node:path';
  *  pelo hook `statusLine.command` a cada render — append-only, grao escopo x
  *  momento de captura). Fora do fluxo state.json/onda, mesma familia de
  *  `loose_usage`: sem `feature`/`wave`/`execution_id` por construcao.
+ *  v15 (structural-decision-human-gate, cstk 8.6.0) adiciona 3 colunas TEXT
+ *  aditivas em `decisions` — `decision_class` (enum fechado
+ *  `estrutural`/`operacional`; NULL = nao declarada), `structural_axis`
+ *  (enum fechado de eixos estruturais) e `human_consent_block_id`
+ *  (id `block-NNN` do BloqueioHumano respondido que consente a decisao).
+ *  Decisao legada sem os campos → NULL, nunca fabricado.
  *  Todas sao aditivas, entao as telas existentes seguem operando e os recursos
  *  novos aparecem so quando a tabela/coluna esta presente (Principio II). */
-export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14'] as const;
+export const DEFAULT_SCHEMA_VERSIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'] as const;
 
 export interface ServerConfig {
   /** Path absoluto canonicalizado para knowledge.db */

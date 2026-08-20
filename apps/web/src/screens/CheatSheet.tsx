@@ -149,7 +149,7 @@ pelas próprias skills, sem scaffold prévio.
 Tokens/custo das sessões interativas comuns do Claude Code — invisíveis
 para o \`cstk recall\`, que só cobre ondas de orquestrador. Captura via
 hook opt-in (\`--with-loose-usage\`) em sidecar local; índice na
-\`knowledge.db\` (tabela \`loose_usage\`; schema atual v14). Campo sem
+\`knowledge.db\` (tabela \`loose_usage\`; schema atual v15). Campo sem
 medição imprime \`nao medido\` (\`null\` no \`--json\`) — nunca \`0\` fabricado.
 
 | Comando | O que faz |

@@ -229,6 +229,46 @@ export function DecisionDetailPane({
         {/* Score — 2.3.6 */}
         <ScoreChip score={decision.score} />
 
+        {/* Classe da decisão (schema v15) — estrutural destacada; ausente = não declarada */}
+        {decision.decisionClass && (
+          <span
+            title="classe da decisão (gate estrutural)"
+            style={{
+              fontFamily: 'var(--font-mono, monospace)',
+              fontSize: 11,
+              padding: '2px 6px',
+              borderRadius: 4,
+              background:
+                decision.decisionClass === 'estrutural'
+                  ? 'var(--warning-soft, rgba(245,158,11,0.12))'
+                  : 'var(--bg-2, #1e293b)',
+              color:
+                decision.decisionClass === 'estrutural'
+                  ? 'var(--warning, #f59e0b)'
+                  : 'var(--text-2, #94a3b8)',
+            }}
+          >
+            <TextRaw value={decision.decisionClass} maxLength={24} />
+          </span>
+        )}
+
+        {/* Eixo estrutural (schema v15) — somente se presente */}
+        {decision.structuralAxis && (
+          <span
+            title="eixo estrutural"
+            style={{
+              fontFamily: 'var(--font-mono, monospace)',
+              fontSize: 11,
+              color: 'var(--text-2, #94a3b8)',
+              background: 'var(--bg-2, #1e293b)',
+              padding: '2px 6px',
+              borderRadius: 4,
+            }}
+          >
+            <TextRaw value={decision.structuralAxis} maxLength={32} />
+          </span>
+        )}
+
         {/* Agente — UNTRUSTED, somente se presente — 2.3.6 */}
         {decision.agent && (
           <span
@@ -327,6 +367,14 @@ export function DecisionDetailPane({
             >
               <TextRaw value={decision.evidencia} mono />
             </div>
+          </div>
+        )}
+
+        {/* Consentimento humano (schema v15) — id do BloqueioHumano respondido */}
+        {decision.humanConsentBlockId && (
+          <div>
+            <SectionLabel>consentimento humano</SectionLabel>
+            <TextRaw value={decision.humanConsentBlockId} mono />
           </div>
         )}
       </div>

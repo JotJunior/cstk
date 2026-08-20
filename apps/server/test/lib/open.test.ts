@@ -278,12 +278,21 @@ describe('openDb — versoes de schema aceitas (FR-V3-001/002)', () => {
     if (result.ok) result.db.close();
   });
 
-  it("DEFAULT_SCHEMA_VERSIONS inclui '12', '13' e '14' — guard contra remocao acidental", () => {
+  it('aceita schema_version=15 por default (structural-decision-human-gate — colunas em decisions)', () => {
+    const path = tmpFile('.db');
+    makeDbWithVersion(path, '15');
+    const result = openDb(path);
+    expect(result.ok).toBe(true);
+    if (result.ok) result.db.close();
+  });
+
+  it("DEFAULT_SCHEMA_VERSIONS inclui '12', '13', '14' e '15' — guard contra remocao acidental", () => {
     // O teste acima passaria por engano se alguem trocasse a lista inteira;
     // este assere o conteudo, nao so o efeito.
     expect([...DEFAULT_SCHEMA_VERSIONS]).toContain('12');
     expect([...DEFAULT_SCHEMA_VERSIONS]).toContain('13');
     expect([...DEFAULT_SCHEMA_VERSIONS]).toContain('14');
+    expect([...DEFAULT_SCHEMA_VERSIONS]).toContain('15');
   });
 
   it('versao fora do conjunto aceito (ex.: 99) degrada como schema-mismatch', () => {

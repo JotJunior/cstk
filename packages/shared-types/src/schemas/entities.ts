@@ -257,6 +257,9 @@ export const DecisionDTOSchema = z.object({
   context: z.string().nullable(),
   rationale: z.string().nullable(),
   evidencia: z.string().nullable(),
+  decisionClass: z.string().nullable(),
+  structuralAxis: z.string().nullable(),
+  humanConsentBlockId: z.string().nullable(),
 });
 
 // ---------------------------------------------------------------------------

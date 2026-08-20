@@ -30,6 +30,10 @@ export function mapDecision(row: DecisionRow): DecisionDTO {
     context: row.context,
     rationale: row.rationale,
     evidencia: row.evidence,
+    // Gate estrutural (schema v15) — enums fechados + id block-NNN; NULL em legado
+    decisionClass: row.decision_class,
+    structuralAxis: row.structural_axis,
+    humanConsentBlockId: row.human_consent_block_id,
   };
 }
 

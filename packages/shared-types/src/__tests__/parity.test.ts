@@ -116,6 +116,9 @@ describe('Paridade schemas Zod — entidades', () => {
       context: 'Verificar npm install',
       rationale: 'Dependencias instaladas com sucesso',
       evidencia: null,
+      decisionClass: null,
+      structuralAxis: null,
+      humanConsentBlockId: null,
     };
     const r = DecisionDTOSchema.safeParse(payload);
     expect(r.success).toBe(true);
@@ -136,6 +139,9 @@ describe('Paridade schemas Zod — entidades', () => {
       context: null,
       rationale: null,
       evidencia: null,
+      decisionClass: null,
+      structuralAxis: null,
+      humanConsentBlockId: null,
     };
     const r = DecisionDTOSchema.safeParse(payload);
     expect(r.success).toBe(true);

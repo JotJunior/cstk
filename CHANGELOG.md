@@ -5,6 +5,31 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.31.0] - 2026-08-20
+
+### Adicionado
+
+- **Suporte ao schema v15 da `knowledge.db`** (cstk 8.6.0, feature
+  `structural-decision-human-gate`): a allowlist `DEFAULT_SCHEMA_VERSIONS`
+  passa a aceitar `15` — sem isso, qualquer base nova degradava o painel
+  inteiro com `schema-mismatch`. Os 3 campos aditivos de `decisions` são
+  expostos fim-a-fim (query → DTO/Zod → API → UI): `decision_class`
+  (enum `estrutural`/`operacional`; `null` = não declarada),
+  `structural_axis` (enum fechado de eixos estruturais) e
+  `human_consent_block_id` (id `block-NNN` do BloqueioHumano respondido
+  que consente a decisão). No detalhe da decisão, a classe vira chip
+  (com destaque quando `estrutural`), o eixo vira chip e o consentimento
+  ganha seção própria — tudo renderizado via `TextRaw` e somente quando
+  presente. Bases v<15 seguem funcionando com projeção tolerante
+  (`hasColumn` → `NULL`), e decisão legada sem os campos sai como `null`
+  explícito, nunca fabricado.
+
+### Corrigido
+
+- **Cheat Sheet dizia "schema atual v14"** — atualizado para v15; README
+  também atualizado (faixa de schemas aceitos, `CSTK_SCHEMA_VERSIONS`,
+  exemplo de envelope e contagem de testes).
+
 ## [0.30.0] - 2026-08-17
 
 ### Adicionado
@@ -1308,6 +1333,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.31.0]: https://github.com/JotJunior/cstk-panel/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/JotJunior/cstk-panel/compare/v0.29.2...v0.30.0
 [0.29.2]: https://github.com/JotJunior/cstk-panel/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/JotJunior/cstk-panel/compare/v0.29.0...v0.29.1

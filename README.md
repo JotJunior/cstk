@@ -1,9 +1,9 @@
 # cstk-panel — Dashboard de Observabilidade Read-Only
 
 Dashboard de observabilidade sobre as execuções dos orquestradores `agente-00c` / `feature-00c` (pipeline SDD do CLI `cstk`).
-Lê diretamente da `knowledge.db` (SQLite + FTS5, schemas **v2 a v14**) — **não escreve, não muta, não reconstrói o índice**.
+Lê diretamente da `knowledge.db` (SQLite + FTS5, schemas **v2 a v15**) — **não escreve, não muta, não reconstrói o índice**.
 
-Além das execuções (ondas, decisões, tarefas, skills, eventos, alertas, bloqueios, memórias), o painel expõe o consumo medido pela telemetria do Claude Code (tokens e custo real em USD por onda/modelo, schema v11/v12), o consumo avulso fora de execuções (`loose_usage`, v13) e o gauge de rate limits da conta (`plan_usage`, v14) — sempre que a base contiver essas tabelas.
+Além das execuções (ondas, decisões, tarefas, skills, eventos, alertas, bloqueios, memórias), o painel expõe o consumo medido pela telemetria do Claude Code (tokens e custo real em USD por onda/modelo, schema v11/v12), o consumo avulso fora de execuções (`loose_usage`, v13), o gauge de rate limits da conta (`plan_usage`, v14) e os campos do gate de decisão estrutural (`decision_class`/`structural_axis`/`human_consent_block_id` em `decisions`, v15 — cstk 8.6.0) — sempre que a base contiver essas tabelas/colunas.
 
 ## Como o painel é distribuído
 
@@ -49,7 +49,7 @@ Em produção o servidor Fastify serve o bundle de `apps/web/dist` via `@fastify
 | `PORT` | `3001` | Porta do servidor HTTP (bind **sempre** em `127.0.0.1`) |
 | `CORS_ORIGIN` | `http://localhost:5173` | Origem permitida pelo CORS |
 | `LOG_LEVEL` | `info` | Nível de log do Fastify (`trace`/`debug`/`info`/`warn`/`error`) |
-| `CSTK_SCHEMA_VERSIONS` | `2,3,…,14` | CSV de versões de `schema_meta.schema_version` aceitas na abertura (allowlist; versão fora da lista → painel degradado) |
+| `CSTK_SCHEMA_VERSIONS` | `2,3,…,15` | CSV de versões de `schema_meta.schema_version` aceitas na abertura (allowlist; versão fora da lista → painel degradado) |
 | `CSTK_WEB_DIR` | `apps/web/dist` | Diretório do SPA buildado servido pelo `npm start` |
 | `CSTK_PROJECT_PATHS` | *(vazio)* | Mapa `nome=/abs/path;outro=/abs/path` de projetos observáveis — usado pelo watcher (descoberta via filesystem) e pelas rotas de docs; desde o schema v9 há fallback automático via `executions.target_project_path` |
 | `CSTK_WATCH_INTERVAL_MS` | `5000` | Cadência do watcher de ingestão |
@@ -102,7 +102,7 @@ Toda resposta usa o envelope padrão (`packages/shared-types`):
     "degraded": false,           // true quando base ausente/corrompida/schema não aceito
     "reason": null,              // motivo da degradação
     "freshness": { "mtime": "…", "maxIngestedAt": "…" },
-    "schemaVersion": "14"
+    "schemaVersion": "15"
   },
   "error": null
 }
@@ -150,7 +150,7 @@ Cada DTO existe em dois lugares que devem andar juntos: a interface em `packages
 
 ## Testes
 
-57 arquivos / **754 testes** (Vitest), rodando em ~4s:
+57 arquivos / **756 testes** (Vitest), rodando em ~4s:
 
 - **Server** (`apps/server/test/`) — saúde e headers, abertura da base e motivos de degradação, freshness/ETag, roundtrip com payload real, todas as rotas GET, degradação por endpoint, ausência de mutação + payloads hostis FTS5, mappers, watcher, docs.
 - **Web** (`apps/web/src/**/*.test.ts`) — lógica de telas/componentes (formatação, filtros, navegação).
