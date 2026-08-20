@@ -303,6 +303,10 @@ const REAL_DECISION_PAYLOAD = {
   context: 'Tipo incompativel em src/foo.ts',
   rationale: 'tsc indica TS2322',
   evidencia: 'npx tsc --noEmit: src/foo.ts:12 error TS2322',
+  // Gate estrutural (schema v15) — NULL em toda a base real ate a feature ser exercida
+  decisionClass: null,
+  structuralAxis: null,
+  humanConsentBlockId: null,
 };
 
 // FtsHitDTO real (shape da rota GET /search)

@@ -23,6 +23,9 @@ export interface DecisionRow {
   context: string | null;     // @untrusted
   rationale: string | null;   // @untrusted
   evidence: string | null;    // @untrusted
+  decision_class: string | null;          // schema v15; enum fechado estrutural|operacional; NULL em bases v<15/legado
+  structural_axis: string | null;         // schema v15; enum fechado de eixos; NULL quando nao estrutural
+  human_consent_block_id: string | null;  // schema v15; id block-NNN do BloqueioHumano que consente
 }
 
 /**
@@ -39,6 +42,17 @@ function optionsSelect(db: Database.Database): string {
  */
 function evidenceSelect(db: Database.Database): string {
   return hasColumn(db, 'decisions', 'evidence') ? 'evidence' : 'NULL as evidence';
+}
+
+/**
+ * Projecao das colunas do gate estrutural (schema v15) tolerante a bases v<15:
+ * coluna ausente → `NULL AS <col>`, mantendo uma unica forma de Row
+ * (Principio II — degradar em vez de quebrar; mesmo padrao de `options`).
+ */
+function structuralGateSelect(db: Database.Database): string {
+  return ['decision_class', 'structural_axis', 'human_consent_block_id']
+    .map((col) => (hasColumn(db, 'decisions', col) ? col : `NULL as ${col}`))
+    .join(', ');
 }
 
 export interface DecisionFilters {
@@ -79,7 +93,7 @@ export function listDecisions(
   return db
     .prepare(`
       SELECT wave, execution_id, stage, agent, choice, ${optionsSelect(db)}, score,
-             context, rationale, ${evidenceSelect(db)}
+             context, rationale, ${evidenceSelect(db)}, ${structuralGateSelect(db)}
       FROM decisions
       WHERE ${where}
       ORDER BY rowid ASC

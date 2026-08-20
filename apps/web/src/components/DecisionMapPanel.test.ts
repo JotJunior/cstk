@@ -38,6 +38,9 @@ function mkDecision(wave: string, overrides: Partial<DecisionDTO> = {}): Decisio
     context: null,
     rationale: null,
     evidencia: null,
+    decisionClass: null,
+    structuralAxis: null,
+    humanConsentBlockId: null,
     ...overrides,
   };
 }

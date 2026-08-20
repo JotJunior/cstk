@@ -417,6 +417,23 @@ export interface DecisionDTO {
   rationale: string | null;
   /** @untrusted — renderizar via elemento mono/pre, nunca innerHTML */
   evidencia: string | null;
+  /**
+   * Decision class (schema v15 — structural-decision-human-gate, cstk 8.6.0).
+   * Closed enum `estrutural` | `operacional`; `null` = not declared (legacy
+   * rows and bases v<15). Rendered defensively via textContent anyway.
+   */
+  decisionClass: string | null;
+  /**
+   * Structural axis (schema v15). Closed enum of structural axes (language/
+   * runtime, stack, architecture, persistence, target environment, tier);
+   * `null` when the decision is not structural or in bases v<15.
+   */
+  structuralAxis: string | null;
+  /**
+   * Id (`block-NNN`) of the answered human block that consents a structural
+   * decision taken by an automated agent (schema v15); `null` otherwise.
+   */
+  humanConsentBlockId: string | null;
 }
 
 // ---------------------------------------------------------------------------
