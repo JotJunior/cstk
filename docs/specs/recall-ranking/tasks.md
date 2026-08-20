@@ -35,19 +35,19 @@ permanece `15`).
 Ref: quickstart.md "Fixture comum (Scenarios 1-7)"; contrato §3.1 (Opcao B
 ratificada, dec-021 — sem override de relogio)
 
-- [ ] 1.1.1 Implementar helper de deslocamento de data portavel em
+- [x] 1.1.1 Implementar helper de deslocamento de data portavel em
       `tests/cstk/test_recall.sh`, testando as duas formas (BSD/macOS
       `date -u -v-Nd` e GNU `date -u -d 'N days ago'`) — paridade com o
       GOTCHA de `stat` GNU-first ja praticado no harness
-- [ ] 1.1.2 Estender a fixture (`_write_state`, `_write_memory_dir`,
+- [x] 1.1.2 Estender a fixture (`_write_state`, `_write_memory_dir`,
       `_write_suggestions_state`) para popular no minimo 1 `decision`, 1
       `block`, 1 `skill`, 1 `retro`, 1 `suggestion` e 1 `memory` casando o
       mesmo termo de busca, com corpos de comprimento comparavel (para
       manter `bm25()` proximo entre eles)
-- [ ] 1.1.3 Gerar os `source_ts` como deslocamentos com **ordens de
+- [x] 1.1.3 Gerar os `source_ts` como deslocamentos com **ordens de
       grandeza** de diferenca entre si (ex.: `now-5d`, `now-200d`,
       `now-400d`) — nunca timestamps absolutos hardcoded que envelhecem
-- [ ] 1.1.4 Teste smoke: confirmar que a fixture nova nao quebra
+- [x] 1.1.4 Teste smoke: confirmar que a fixture nova nao quebra
       `scenario_04_limite_e_bm25` (asserção de **contagem**, nao de ordem —
       plan.md L139)
 
@@ -58,13 +58,13 @@ Ref: `checklists/requirements.md` CHK020; `checklists/security.md` CHK003
 checklist); `plan.md` §Riscos finding F2 (gate `owasp-security`, HIGH);
 contrato §1.2 ("o `max(0.0, ...)` e **normativo**")
 
-- [ ] 1.2.1 Escrever o Scenario 12 do quickstart em `test_recall.sh`:
+- [x] 1.2.1 Escrever o Scenario 12 do quickstart em `test_recall.sh`:
       fixture com um `decision` (`source_ts` no passado) e um `skill`
       (`source_ts` `now+80d`), `bm25()` comparavel
-- [ ] 1.2.2 Assertar que o `skill` futuro **nao** ultrapassa o `decision`
+- [x] 1.2.2 Assertar que o `skill` futuro **nao** ultrapassa o `decision`
       e que, com `--explain`, `recencia=` fica dentro de `[0.0000, 0.1000]`
       — nunca acima do teto
-- [ ] 1.2.3 Mutation test: comentario no proprio cenario registrando os
+- [x] 1.2.3 Mutation test: comentario no proprio cenario registrando os
       valores medidos SEM o clamp (`-80d` -> bonus `0.9`; `-89.99d` ->
       `~900`) como evidencia de que o cenario de fato exercita o clamp —
       fecha CHK020/CHK003 (item [Gap] das duas checklists)
@@ -79,38 +79,38 @@ Ref: `plan.md` Summary; contrato §1.2; `cli/lib/recall.sh`
 `recall_mode_search()` L2977, `ORDER BY bm25(knowledge_fts) LIMIT
 $_se_limit` L3067; FR-001/FR-003/FR-008/FR-009/FR-010
 
-- [ ] 2.1.1 Resolver `<instante_ref>` **uma unica vez** via
+- [x] 2.1.1 Resolver `<instante_ref>` **uma unica vez** via
       `date -u +%Y-%m-%dT%H:%M:%SZ`, com fallback `1970-01-01T00:00:00Z`
       (paridade com L1273/L2203/L2803/L2866) — **nunca**
       `julianday('now')` inline na consulta (I-5)
-- [ ] 2.1.2 Escapar o `<instante_ref>` via `sql_escape()` antes de
+- [x] 2.1.2 Escapar o `<instante_ref>` via `sql_escape()` antes de
       interpolar (precedente L1384, `sql_escape "$_isj_now"` — contrato
       §3.1 "Escaping cumulativo do literal": todo valor interpolado passa
       por `sql_escape`, mesmo de origem interna)
-- [ ] 2.1.3 Adicionar `<bonus_autoridade>`: `CASE type WHEN 'decision'
+- [x] 2.1.3 Adicionar `<bonus_autoridade>`: `CASE type WHEN 'decision'
       THEN 0.30 WHEN 'block' THEN 0.30 WHEN 'memory' THEN 0.15 WHEN
       'retro' THEN 0.00 WHEN 'skill' THEN 0.00 ELSE 0.15 END`
-- [ ] 2.1.4 Adicionar `<idade_dias>` com clamp `max(0.0,
+- [x] 2.1.4 Adicionar `<idade_dias>` com clamp `max(0.0,
       julianday(<instante_ref>) - julianday(nullif(source_ts,'')))` e
       `<bonus_recencia>` `coalesce(0.10 * (90.0 / (90.0 +
       <idade_dias>)), 0.0)` — `coalesce` **externo** ao produto inteiro,
       nunca dentro do denominador (contrato §1.2, nota normativa)
-- [ ] 2.1.5 Substituir `ORDER BY bm25(knowledge_fts) LIMIT $_se_limit` por
+- [x] 2.1.5 Substituir `ORDER BY bm25(knowledge_fts) LIMIT $_se_limit` por
       `ORDER BY <score> ASC, source_ts DESC, type ASC, source_id ASC
       LIMIT $_se_limit`, onde `<score> = bm25(knowledge_fts) -
       <bonus_autoridade> - <bonus_recencia>`
-- [ ] 2.1.6 Teste: Scenario 1 (autoridade promove `decision`/`block`
+- [x] 2.1.6 Teste: Scenario 1 (autoridade promove `decision`/`block`
       sobre `retro`/`skill` de relevancia comparavel — SC-001, FR-001)
-- [ ] 2.1.7 Teste: Scenario 2 (tier intermediario de `memory`: ordem
+- [x] 2.1.7 Teste: Scenario 2 (tier intermediario de `memory`: ordem
       `decision` -> `memory` -> `skill`, FR-010)
-- [ ] 2.1.8 Teste: Scenario 3 (recencia desempata dentro do mesmo tier —
+- [x] 2.1.8 Teste: Scenario 3 (recencia desempata dentro do mesmo tier —
       SC-003, FR-003)
-- [ ] 2.1.9 Teste: Scenario 4 (recencia **nao** inverte autoridade — I-2
+- [x] 2.1.9 Teste: Scenario 4 (recencia **nao** inverte autoridade — I-2
       do contrato, FR-003: teto de recencia `0.10` < menor degrau de
       autoridade `0.15`)
-- [ ] 2.1.10 Teste: Scenario 5 (`source_ts` ausente nao quebra nem
+- [x] 2.1.10 Teste: Scenario 5 (`source_ts` ausente nao quebra nem
       exclui — FR-008; com `--explain`, `recencia=0.0000`/`idade=n/d`)
-- [ ] 2.1.11 Teste: Scenario 6 (determinismo — SC-006 parcial, FR-009:
+- [x] 2.1.11 Teste: Scenario 6 (determinismo — SC-006 parcial, FR-009:
       mesma consulta 2x com `<instante_ref>` avancando entre execucoes,
       stdout byte-identico; desempate total exercitado com 2 achados de
       score exatamente igual)
@@ -120,17 +120,17 @@ $_se_limit` L3067; FR-001/FR-003/FR-008/FR-009/FR-010
 Ref: contrato §1.2.bis; gate `owasp-security` finding F5 (`body`
 falsificando a linha `score=`)
 
-- [ ] 2.2.1 Quando `--explain` estiver ativo, projetar as colunas de
+- [x] 2.2.1 Quando `--explain` estiver ativo, projetar as colunas de
       score (`<score>`, `<bm25>`, `<bonus_autoridade>`, `<bonus_recencia>`,
       `<idade_dias>`) **antes** de `body` no `SELECT`
-- [ ] 2.2.2 Manter `body` como **ultima** coluna em ambos os casos (com e
+- [x] 2.2.2 Manter `body` como **ultima** coluna em ambos os casos (com e
       sem `--explain`), preservando os indices fixos do
       `awk -F '\|@\|'` existente
-- [ ] 2.2.3 Teste: Scenario 13 (`body` contendo o separador literal
+- [x] 2.2.3 Teste: Scenario 13 (`body` contendo o separador literal
       `|@|` nao falsifica a explicacao — a linha `score=` exibe numeros,
       a identidade `score = bm25 - autoridade - recencia` continua
       fechando)
-- [ ] 2.2.4 Teste de regressao: sem `--explain`, o mesmo `body` com
+- [x] 2.2.4 Teste de regressao: sem `--explain`, o mesmo `body` com
       `|@|` continua produzindo apenas a truncagem visual ja existente
       hoje (comportamento inalterado)
 
@@ -144,21 +144,21 @@ Ref: contrato §2.1/§2.2; `cli/lib/recall.sh` `recall_mode_context()`
 L3106, `ORDER BY bm25(knowledge_fts) LIMIT $_cx_limit` L3216;
 FR-002/FR-003/FR-004; SC-002
 
-- [ ] 3.1.1 Replicar a mesma expressao de `<score>` e o mesmo desempate
+- [x] 3.1.1 Replicar a mesma expressao de `<score>` e o mesmo desempate
       total (tarefa 2.1) no `ORDER BY` de `recall_mode_context` —
       duplicacao **deliberada** dentro do mesmo arquivo (`plan.md`
       Structure Decision: extrair um helper espalharia a dependencia de
       `sqlite3` para um 2o arquivo e quebraria o carve-out 1.1.0)
-- [ ] 3.1.2 Confirmar que `--explain` continua rejeitada no modo
+- [x] 3.1.2 Confirmar que `--explain` continua rejeitada no modo
       `--context` (cai no ramo existente de flag invalida, exit 2) — zero
       mudanca de parser neste modo
-- [ ] 3.1.3 Confirmar que nenhuma coluna de score e projetada nem aparece
+- [x] 3.1.3 Confirmar que nenhuma coluna de score e projetada nem aparece
       no bloco de contexto renderizado (I-8 do contrato)
-- [ ] 3.1.4 Teste: Scenario 11 (cabecalho UNTRUSTED integral, formato de
+- [x] 3.1.4 Teste: Scenario 11 (cabecalho UNTRUSTED integral, formato de
       achado, teto `--max-bytes` e ordem por autoridade —
       `decision`/`block` antes de `retro`/`skill` de relevancia
       comparavel — SC-002, FR-004)
-- [ ] 3.1.5 Teste de regressao: `K=0` continua stdout vazio/exit 0;
+- [x] 3.1.5 Teste de regressao: `K=0` continua stdout vazio/exit 0;
       `--max-bytes` pequeno demais para o 1o achado continua stdout
       vazio/exit 0 (contrato §2.2, comportamento [ATUAL] preservado)
 
@@ -170,14 +170,14 @@ FR-002/FR-003/FR-004; SC-002
 
 Ref: contrato §1.1; `spec.md` FR-005/FR-006; `recall_usage()` L183
 
-- [ ] 4.1.1 Adicionar `--explain` ao parser de `recall_mode_search`:
+- [x] 4.1.1 Adicionar `--explain` ao parser de `recall_mode_search`:
       booleana, nao consome o proximo argv, idempotente em repeticoes
-- [ ] 4.1.2 Documentar `--explain` em `recall_usage()`
-- [ ] 4.1.3 Teste: Scenario 9 partes 1 e 3 (`--explaain` — typo — vira
+- [x] 4.1.2 Documentar `--explain` em `recall_usage()`
+- [x] 4.1.3 Teste: Scenario 9 partes 1 e 3 (`--explaain` — typo — vira
       exit 2 com mensagem em stderr; `--explain --limit abc` continua
       exit 2 pela validacao de `--limit` ja existente, que precede
       qualquer efeito da flag nova)
-- [ ] 4.1.4 Teste: Scenario 9 parte 2 (`--context --explain` vira exit 2
+- [x] 4.1.4 Teste: Scenario 9 parte 2 (`--context --explain` vira exit 2
       — coberto tambem por 3.1.2; referenciado aqui para completude do
       cenario de erro)
 
@@ -185,16 +185,16 @@ Ref: contrato §1.1; `spec.md` FR-005/FR-006; `recall_usage()` L183
 
 Ref: contrato §1.4; SC-004
 
-- [ ] 4.2.1 Reusar a projecao de colunas de score da tarefa 2.2 quando
+- [x] 4.2.1 Reusar a projecao de colunas de score da tarefa 2.2 quando
       `--explain` estiver presente
-- [ ] 4.2.2 Renderizar a linha
+- [x] 4.2.2 Renderizar a linha
       `  score=<S> = bm25=<B> - autoridade=<A> - recencia=<R>
       (idade=<D>d)` apos o `body`, com 2 espacos de indentacao e **sem**
       iniciar com `[` (C-2 do contrato — preserva `grep -c '^\['`)
-- [ ] 4.2.3 Formatar `<S>`/`<B>` com 4 casas decimais, `<A>` com 2 casas,
+- [x] 4.2.3 Formatar `<S>`/`<B>` com 4 casas decimais, `<A>` com 2 casas,
       `<R>` com 4 casas, `<D>` com 1 casa ou `n/d` quando `source_ts`
       vazio
-- [ ] 4.2.4 Teste: Scenario 7 (sem `--explain` nenhuma linha `score=`;
+- [x] 4.2.4 Teste: Scenario 7 (sem `--explain` nenhuma linha `score=`;
       com `--explain` exatamente 1 linha `score=` por resultado — 100%,
       SC-004; identidade `score = bm25 - autoridade - recencia` fecha —
       C-3; `grep -c '^\['` identico entre as duas execucoes — C-2)
@@ -207,14 +207,14 @@ Ref: contrato §1.4; SC-004
 
 Ref: contrato §1.5 I-10; gate `owasp-security` finding F7
 
-- [ ] 5.1.1 Capturar o exit code do `sqlite3` **separadamente** do
+- [x] 5.1.1 Capturar o exit code do `sqlite3` **separadamente** do
       resultado vazio (hoje `recall_query_sql` descarta stderr e ambos os
       callers mapeiam falha para string vazia via `|| _out=""`), sem
       alterar o contrato de stdout/exit 0 (I-7 preservada)
-- [ ] 5.1.2 Emitir `log_warn` em **stderr** quando a consulta falhar,
+- [x] 5.1.2 Emitir `log_warn` em **stderr** quando a consulta falhar,
       distinguindo "consulta falhou" de "nenhum resultado", nos dois
       modos (busca e `--context`)
-- [ ] 5.1.3 Teste: Scenario 14 (forcar falha de consulta — ex.: `--db`
+- [x] 5.1.3 Teste: Scenario 14 (forcar falha de consulta — ex.: `--db`
       apontando para um SQLite valido sem a tabela `knowledge_fts` —
       exit 0 nos dois modos, stdout inalterado, linha de aviso em stderr
       distinguindo os dois casos)
@@ -223,12 +223,12 @@ Ref: contrato §1.5 I-10; gate `owasp-security` finding F7
 
 Ref: contrato §1.5 I-7; I-11 (revisada apos ratificacao dec-021)
 
-- [ ] 5.2.1 Teste de regressao: Scenario 10 partes 1-2 (`--db`
+- [x] 5.2.1 Teste de regressao: Scenario 10 partes 1-2 (`--db`
       inexistente -> exit 0, aviso sugerindo `cstk recall --reindex`,
       stdout sem resultados)
-- [ ] 5.2.2 Teste de regressao: Scenario 10 partes 3-4 (DB corrompido ->
+- [x] 5.2.2 Teste de regressao: Scenario 10 partes 3-4 (DB corrompido ->
       exit 0, aviso de indice ilegivel/corrompido)
-- [ ] 5.2.3 Teste de regressao: Scenario 10 partes 5-6 (`sqlite3` ausente
+- [x] 5.2.3 Teste de regressao: Scenario 10 partes 5-6 (`sqlite3` ausente
       do `PATH` -> exit 0, aviso de memoria indisponivel)
 
 ### 5.3 Regressao de ausencia de superficie de override de relogio `[C]`
@@ -237,13 +237,13 @@ Ref: contrato §3.1/§3.3 I-12/I-13; `dec-021`/`block-002`; gate
 `owasp-security` findings F1/F3/F4 (inaplicaveis por construcao apos a
 Opcao B ratificada)
 
-- [ ] 5.3.1 Teste: Scenario 15 parte 1 — `grep -oE 'CSTK_[A-Z_]+'
+- [x] 5.3.1 Teste: Scenario 15 parte 1 — `grep -oE 'CSTK_[A-Z_]+'
       cli/lib/recall.sh | sort -u` MUST retornar **exatamente**
       `CSTK_COMMON_LOADED`, `CSTK_KNOWLEDGE_DB`, `CSTK_LIB` (allowlist
       exata, **nao** padrao negativo — I-12)
-- [ ] 5.3.2 Teste: Scenario 15 parte 2 — inspecao estatica confirmando
+- [x] 5.3.2 Teste: Scenario 15 parte 2 — inspecao estatica confirmando
       que `julianday('now')` **nao** aparece na consulta (I-5)
-- [ ] 5.3.3 Teste: Scenario 15 partes 3-4 — rodar a mesma consulta 2x, a
+- [x] 5.3.3 Teste: Scenario 15 partes 3-4 — rodar a mesma consulta 2x, a
       2a com `CSTK_RECALL_REF_INSTANT`/`CSTK_RECALL_CLOCK` definidas no
       ambiente com payload de injecao; stdout **byte-identico**, exit 0
       nas duas, **nenhum** arquivo criado em `/tmp/evil.db`, nenhuma
@@ -259,26 +259,26 @@ Ref: quickstart.md Scenario 8; contrato §4 (restricoes negativas
 verificaveis); CLAUDE.md "Como testar scripts shell" / "Installed vs
 Source Drift"
 
-- [ ] 6.1.1 Buildar tarball local (`./scripts/build-release.sh
+- [x] 6.1.1 Buildar tarball local (`./scripts/build-release.sh
       X.Y.Z-dev`) e aplicar via `cstk self-update --from
       "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"` (GOTCHA: `cstk
       install`/`cstk update` **nao** tocam `cli/lib/`)
-- [ ] 6.1.2 Reproduzir manualmente as 2 consultas do Scenario 8 contra o
+- [x] 6.1.2 Reproduzir manualmente as 2 consultas do Scenario 8 contra o
       indice real (`~/.claude/cstk/knowledge.db`): distribuicao de
       `length(source_ts)` (linha `20|<N>` e `0|1`) e dispersao de
       `bm25()` (`gap_medio` uma ordem de grandeza menor que `amplitude`)
-- [ ] 6.1.3 Confirmar que a expressao de score completa executa sem erro
+- [x] 6.1.3 Confirmar que a expressao de score completa executa sem erro
       contra o indice real e retorna resultados ordenados (nenhuma
       extensao `exp()`/`ln()` necessaria — research.md D6)
-- [ ] 6.1.4 Rodar `bash skills/create-tasks/scripts/validate-tasks-template.sh
+- [x] 6.1.4 Rodar `bash skills/create-tasks/scripts/validate-tasks-template.sh
       docs/specs/recall-ranking/tasks.md --config
       skills/create-tasks/config.json` como pre-gate deterministico
       deste `tasks.md`
-- [ ] 6.1.5 Rodar a suite completa `LC_ALL=C ./tests/run.sh test_recall`
+- [x] 6.1.5 Rodar a suite completa `LC_ALL=C ./tests/run.sh test_recall`
       (locale importa — `pt_BR` produz FAIL falso) e confirmar 100%
       verde, incluindo os cenarios 1-15 novos e as asserções de formato
       pre-existentes (SC-002/SC-006) sem alteracao
-- [ ] 6.1.6 Confirmar as restricoes negativas do contrato §4: nenhum
+- [x] 6.1.6 Confirmar as restricoes negativas do contrato §4: nenhum
       arquivo alem de `cli/lib/recall.sh` e `tests/cstk/test_recall.sh`
       alterado; `RECALL_SCHEMA_VERSION` permanece `15`;
       `mcp/state-server/` intocado
