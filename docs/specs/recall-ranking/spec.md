@@ -4,6 +4,12 @@
 **Created**: 2026-08-20
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-20
+
+- Q: Em que nivel de autoridade de ranking o tipo "memoria" (memory) deve entrar na hierarquia composta de FR-001/FR-010? A) mesmo nivel de alta autoridade de decisao/bloqueio; B) mesmo nivel de baixa autoridade de retro/skill; C) nivel intermediario proprio, entre decisao/bloqueio e retro/skill. → A: C — tier intermediario proprio: type=memory entra entre decision/block (alta autoridade) e retro/skill (baixa autoridade) na hierarquia do ranking composto (dec-012).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Achados de alta autoridade nao ficam soterrados (Priority: P1)
@@ -145,11 +151,10 @@ formaram sua posicao final.
   na mesma ordem.
 - **FR-010**: O nivel de autoridade do tipo "memoria" (registro de
   conhecimento de longo prazo, distinto de decisao/bloqueio e de
-  retro/skill) [NEEDS CLARIFICATION: a descricao original define
-  explicitamente decision/bloqueio > retro/skill, mas nao posiciona o tipo
-  "memoria" nessa hierarquia — deve ficar no mesmo nivel de alta autoridade
-  de decisao/bloqueio, no mesmo nivel de retro/skill, ou em um nivel
-  intermediario proprio?]
+  retro/skill) MUST ocupar um tier intermediario proprio na hierarquia de
+  autoridade do ranking composto: abaixo de decisao/bloqueio (alta
+  autoridade) e acima de retro/skill (baixa autoridade) — ver
+  Clarifications, Session 2026-08-20.
 - **FR-011**: O sistema MUST NOT implementar, como parte desta feature,
   fusao por reciprocal-rank (RRF) nem ranking baseado em grafo de links entre
   achados — esse escopo fica explicitamente deferido a uma feature futura.
