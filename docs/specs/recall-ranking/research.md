@@ -310,9 +310,10 @@ nunca explica sozinho uma inversao entre tiers.
    aparece na consulta.
 2. **Desempate estavel e total** apos o score:
    `ORDER BY score ASC, source_ts DESC, type ASC, source_id ASC`.
-3. **Override do relogio para teste** — mecanismo **PENDENTE DE
-   RATIFICACAO HUMANA**, ver D13. Necessario para a suite fixar o instante
-   de referencia e assertar ordem por recencia.
+3. **Nenhum override do relogio** — o instante de referencia vem
+   **sempre** do relogio real (`date -u`), em producao e em teste. A suite
+   assere ordem por recencia gerando `source_ts` de fixture **relativos** ao
+   instante corrente (`now-5d`, `now-200d`). Ratificado em D13.
 
 **Rationale**: `julianday('now')` re-avalia por linha e por execucao,
 tornando o score irreprodutivel entre runs — incompativel com FR-009 e
@@ -321,14 +322,27 @@ toda a consulta. O desempate por `source_ts DESC` reforca a intencao de
 recencia no empate exato de score; `type` e `source_id` fecham a ordem
 total, pois `(project, feature, wave, source_id)` e a chave natural do
 indice — sem eles, dois achados com score identico ficariam a merce da
-ordem de varredura do SQLite. O mecanismo de override do relogio para teste esta
-isolado em D13, porque a forma mais obvia (variavel de ambiente) carrega
-risco de seguranca proprio que nao pode ser decidido por inercia.
+ordem de varredura do SQLite. O mecanismo de asserção de recencia em teste esta
+isolado em D13, porque a forma mais obvia (variavel de ambiente que fixa o
+relogio) carregava risco de seguranca proprio — e foi rejeitada la.
 
-Verificado empiricamente: com instante de referencia fixo, duas execucoes
-consecutivas da mesma consulta retornaram a mesma sequencia de
-`source_id` (`dec-021, block-004, dec-052, dec-018, dec-022, dec-056,
-dec-072, dec-012, dec-090, dec-041`).
+Verificado empiricamente (medicao 1, instante fixo): com o
+`<instante_ref>` fixado, duas execucoes consecutivas da mesma consulta
+retornaram a mesma sequencia de `source_id` (`dec-021, block-004, dec-052,
+dec-018, dec-022, dec-056, dec-072, dec-012, dec-090, dec-041`).
+
+Verificado empiricamente (medicao 2, 2026-08-20T17:08Z — **instante
+avancando com o relogio real**, como exige o mecanismo ratificado em D13):
+a mesma consulta (`MATCH 'lock OR contention'`, `LIMIT 10`, expressao de
+score completa da secao 1.2 do contrato) executada contra o indice real
+(`~/.claude/cstk/knowledge.db`, aberto em `mode=ro`) com tres instantes de
+referencia distintos — `2026-08-20T17:08:05Z`, `+5min` e `+1h` — retornou a
+**mesma sequencia** nos tres casos:
+`dec-028, dec-037, dec-007, dec-134, dec-005, dec-014, dec-054, dec-005,
+dec-041, dec-006`. Duas invocacoes consecutivas reais (cada uma resolvendo
+seu proprio `date -u`) tambem coincidiram. Isto aterra I-13: o avanco do
+relogio entre invocacoes e desprezivel frente a meia-vida de 90 dias, e a
+ordem nao depende de relogio congelado.
 
 **Alternatives considered**:
 - *Manter `julianday('now')` inline*: rejeitado — viola FR-009 e impede
@@ -435,26 +449,31 @@ como cenarios em `tests/cstk/test_recall.sh`, que ja existe.
   ganho algum (a logica e uma unica expressao SQL usada em dois pontos do
   mesmo arquivo).
 
-## Decision 13: Mecanismo de override do relogio para teste — ABERTO, requer ratificacao humana
+## Decision 13: Asserção deterministica de recencia em teste — **RATIFICADA (Opcao B)**
 
-**Decision**: **PENDENTE**. O gate `owasp-security` sobre este plano
-levantou 2 findings HIGH cuja raiz comum e o mecanismo de override do
-relogio proposto em D8 (variavel de ambiente interpolada na SQL). A escolha
-tem trade-off de seguranca real e **nao e decidida por esta skill** — vai a
-bloqueio humano.
+**Decision**: **nenhum mecanismo de override do relogio**. A suite gera os
+`source_ts` da fixture **relativos ao relogio real** (`now-5d`, `now-200d`,
+`now-400d`) e assere **ordem relativa** de idades. O `<instante_ref>` da
+consulta e sempre o instante corrente, resolvido uma vez por invocacao.
 
-### Contexto de risco (medido, nao suposto)
+**Ratificacao**: bloqueio humano `block-002`, resposta do operador
+registrada em `dec-021` (2026-08-20) — escolha **B**, confirmando a
+recomendacao tecnica desta analise. O contrato §3 foi reescrito como secao
+normativa (clausulas 3.1, invariantes I-12 e I-13); a Opcao A foi
+**descartada**, nao adiada.
+
+### Contexto de risco que motivou o bloqueio (medido, nao suposto)
 
 O caminho de leitura `recall_query_sql()` (`cli/lib/recall.sh` L916) invoca
 `sqlite3 -cmd '.timeout 5000' -- "$DB"` — **sem `mode=ro`**. O helper
 read-only existe (`recall_query_sql_ro`, L964) mas hoje so e usado na
-ingestao SQL->SQL. Portanto uma injecao nesse ponto **nao e apenas leitura**:
-o CLI do `sqlite3` aceita multiplos statements, e `');` fecha o statement
-corrente e executa o resto — habilitando `UPDATE`/`DROP` no indice e
-`ATTACH` para escrita de arquivo arbitrario com os privilegios do usuario.
+ingestao SQL->SQL. Portanto uma injecao nesse ponto **nao seria apenas
+leitura**: o CLI do `sqlite3` aceita multiplos statements, e `');` fecha o
+statement corrente e executa o resto — habilitando `UPDATE`/`DROP` no indice
+e `ATTACH` para escrita de arquivo arbitrario com os privilegios do usuario.
 Alem disso, `value_has_nul` hoje cobre **apenas argv** (L3011-3017 no modo
-busca, L3147-3153 no `--context`) — nenhum valor vindo de ambiente passa por
-ele.
+busca, L3147-3153 no `--context`) — nenhum valor vindo de ambiente passaria
+por ele.
 
 Agravante de contexto: o `bash-guard.sh` do toolkit e **denylist por
 categoria sobre o texto do comando**, nao allowlist de programas. Um
@@ -463,49 +482,49 @@ negada — logo a variavel viraria um caminho de escrita **atraves de um
 comando permitido**, o que e bypass de guarda, e nao meramente "quem
 controla o ambiente ja controla tudo".
 
-### Opcao A — variavel de ambiente, com hardening completo
+**Este paragrafo permanece no documento como registro do risco evitado.**
+Com a Opcao B ratificada, ele descreve uma superficie que **deixou de ser
+criada** — nao um risco residual desta feature.
 
-Mantem D8 como proposto, condicionado a **todas** as defesas abaixo:
+### Rationale da escolha
 
-- Nome explicito com prefixo `CSTK_` (greppavel), ex.: `CSTK_RECALL_REF_INSTANT`.
-- Validacao por **allowlist ancorada na string inteira** via `case` com
-  classes de digito literais
-  (`[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z`).
-  Nunca `grep`/substring/glob frouxo — `*T*Z*` deixaria payload passar.
-- `sql_escape` **cumulativo e obrigatorio** mesmo apos a validacao (defesa em
-  profundidade, mesma politica ja aplicada a todo valor interpolado).
-- `value_has_nul` sobre o valor **antes** de qualquer uso.
-- **Uma linha em stderr** quando o override e efetivamente honrado (sinal
-  auditavel; silencio apenas quando a variavel esta ausente).
-- Cenario adversarial obrigatorio no quickstart, com mutation test:
-  desabilitar a validacao **deve** fazer o cenario falhar.
+A Opcao B satisfaz a mesma necessidade de teste sem adicionar superficie de
+ataque a um canal que alimenta prompt de agente autonomo. F1, F3 e F4 do
+gate `owasp-security` tornam-se **inaplicaveis por construcao** em vez de
+mitigados por vigilancia: nao ha valor externo interpolado, nao ha validacao
+a manter correta, nao ha hardening que possa regredir numa refatoracao
+futura. O que se assere em teste — ordem relativa de idades — e exatamente o
+que FR-003 exige; o valor absoluto do instante nunca foi o requisito.
 
-*Custo*: superficie de configuracao nova num binario de producao que
-alimenta prompts de agentes autonomos.
+O determinismo **por invocacao** (FR-009) permanece integralmente garantido
+pelos outros dois mecanismos de D8, que sao independentes desta escolha:
+instante resolvido uma unica vez no shell e interpolado como literal
+(`julianday('now')` ausente da consulta), mais desempate total
+`source_ts DESC, type ASC, source_id ASC`.
 
-### Opcao B — sem variavel: fixture com datas relativas ao relogio real
+### Custo aceito, declarado
 
-A suite gera os `source_ts` da fixture **relativos ao instante corrente**
-(ex.: `now-5d`, `now-200d`) em vez de congelar o relogio. A ordem por
-recencia passa a ser asserivel sem nenhum override, porque o que importa e
-a **ordem relativa** das idades, nao o valor absoluto.
+- Os cenarios de recencia passam a depender de aritmetica de data no teste
+  (deslocamento em dias a partir do instante corrente).
+- A igualdade **byte-a-byte** entre duas execucoes consecutivas
+  (quickstart Scenario 6) deixa de ser garantida por relogio congelado e
+  passa a depender de as idades da fixture ficarem afastadas de fronteiras
+  de arredondamento dos campos de `--explain`. Escopo formalizado em I-13
+  do contrato — declarado como limite, nao mascarado como garantia.
+- Um achado exatamente na fronteira de meia-vida teria margem menor; os
+  cenarios usam deslocamentos com ordens de grandeza de diferenca para que
+  a passagem do tempo durante o run seja irrelevante.
 
-*Ganho*: elimina por completo a superficie de F1/F3/F4 — nao ha valor
-externo interpolado na SQL, nao ha configuracao nova, nao ha invariante a
-enfraquecer.
-*Custo*: os cenarios de recencia passam a depender de aritmetica de data no
-teste; um achado exatamente na fronteira de meia-vida teria margem menor.
-O determinismo **por execucao** (FR-009) permanece garantido pelos outros
-dois mecanismos de D8 (instante resolvido uma vez + desempate total), que
-sao independentes desta escolha.
-
-**Recomendacao tecnica desta analise**: **Opcao B**. Ela satisfaz a mesma
-necessidade de teste sem adicionar superficie de ataque a um canal que
-alimenta prompt de agente autonomo, e torna F1/F3/F4 inaplicaveis por
-construcao em vez de mitigados por vigilancia. A Opcao A permanece viavel
-**se e somente se** todas as defesas listadas forem implementadas.
-
-**Alternatives considered**: flag de CLI oculta (`--ref-instant`) — mesma
-superficie de injecao da Opcao A, porem exposta a qualquer chamador, sem o
-beneficio de ser "invisivel"; congelar o relogio do sistema no teste —
-rejeitada por exigir privilegio e afetar o host inteiro.
+**Alternatives considered**:
+- *Opcao A — variavel de ambiente com hardening completo* (nome com prefixo
+  `CSTK_`, allowlist ancorada na string inteira via `case` com classes de
+  digito, `sql_escape` cumulativo, `value_has_nul` sobre o valor, aviso em
+  stderr quando honrada, cenario adversarial com mutation test):
+  **rejeitada pelo operador**. Viavel tecnicamente, mas troca uma superficie
+  de ataque permanente num binario de producao por uma conveniencia de teste
+  que a Opcao B entrega sem custo de seguranca.
+- *Flag de CLI oculta (`--ref-instant`)*: rejeitada — mesma superficie de
+  injecao da Opcao A, porem exposta a qualquer chamador, sem o beneficio de
+  ser "invisivel".
+- *Congelar o relogio do sistema no teste*: rejeitada — exige privilegio e
+  afeta o host inteiro.

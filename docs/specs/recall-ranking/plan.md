@@ -183,7 +183,7 @@ esta feature e estao declaradas no contrato:
 | Validacao manual passar em codigo velho por sync incompleto | GOTCHA destacado no topo do quickstart: `cli/lib/` exige `cstk self-update --from`, nunca `cstk install` |
 | `--explain` quebrar a contagem de blocos de teste existente | Contrato C-2 exige que a linha nao comece com `[`; cenario 7 assere `grep -c '^\['` igual com e sem a flag |
 | **`source_ts` no futuro estourar o teto do bonus de recencia** (gate security F2, HIGH) | Clamp normativo `max(0.0, ...)` na idade (contrato §1.2, research.md D6). Sem ele, `-89.99d` produz bonus `~900` e fixa o achado em 1o lugar em qualquer consulta. `source_ts` nao e validado na ingestao, e clock skew basta para materializar |
-| **Injecao SQL pelo override de relogio** (gate security F1, HIGH) | Item **bloqueado** aguardando ratificacao humana (contrato §3, research.md D13). O caminho de leitura abre o DB em read-write, entao injecao aqui e escrita, nao leitura |
+| **Injecao SQL pelo override de relogio** (gate security F1, HIGH) | **ELIMINADO por construcao** — ratificado pelo operador em `block-002`/`dec-021`: nao ha variavel de ambiente nem override algum do `<instante_ref>` (contrato §3.1, I-12; research.md D13). A fixture de teste usa `source_ts` relativos ao relogio real. Sem valor externo interpolado, nao ha injecao a mitigar; o fato de o caminho de leitura abrir o DB em read-write permanece uma aspereza **preexistente**, fora do escopo desta feature |
 | **Falha de SQL indistinguivel de "nenhum resultado"** (gate security F7) | Invariante I-10 do contrato: checar exit do `sqlite3` separadamente e emitir `log_warn`. Sem isso, o read-back loop pode sumir em silencio e a pipeline decide sem memoria achando que nao havia o que recuperar |
 | **`body` com `\|@\|` falsificar a linha `score=`** (gate security F5) | Contrato §1.2.bis: colunas de score **antes** de `body` no SELECT, mantendo `body` como ultima coluna |
 | **Bonus de autoridade amplificar memory poisoning** (gate security F6) — **RISCO ACEITO** | O `type` e escolhivel por quem escreve o `state.json`, e `+0.30` promove justamente o tipo mais facil de forjar, num canal com `--limit 4` que alimenta prompt de agente autonomo. E **amplificacao de um vetor preexistente**, nao vetor novo: o achado ja era elegivel. Controles compensatorios reais: rotulo UNTRUSTED emitido em **nivel de codigo** (nao so instrucao ao LLM) e `body` ja passado por `secrets-filter` na ingestao. **Limite honesto desses controles**: o rotulo sinaliza, mas nao impede a selecao. Mitigacao mais forte (condicionar o tier alto a proveniencia, e nao ao `type` sozinho) fica **fora do escopo** desta feature e registrada para avaliacao futura |
@@ -196,7 +196,36 @@ empirica (leitura do codigo real + reexecucao das consultas contra o indice).
 | Gate | Veredito | critical | high | medium | low |
 |------|----------|----------|------|--------|-----|
 | doc-quality (`validate-documentation`, plan-profile) | PASS_COM_RESSALVAS | 0 | 1 | 4 | 5 |
-| security (`owasp-security`) | PASS_COM_RESSALVAS (condicionado) | 0 | 2 | 5 | 2 |
+| security (`owasp-security`) — 1a rodada | PASS_COM_RESSALVAS (condicionado) | 0 | 2 | 5 | 2 |
+| security (`owasp-security`) — 2a rodada, pos-ratificacao | **PASS** | 0 | **0** | 3 | 1 |
+
+**2a rodada (2026-08-20, apos `dec-021`)**: re-execucao sobre o plano
+corrigido, verificando (a) HIGH remanescente, (b) completude da remocao da
+env var e (c) honestidade das afirmacoes do contrato §3.2.
+
+- **Zero HIGH remanescente.** F1 fechado por **eliminacao de superficie**
+  (nao por mitigacao); F2 fechado pelo clamp normativo, com mutation test no
+  quickstart Scenario 12.
+- **Remocao completa e verificada**: `grep -oE 'CSTK_[A-Z_]+' cli/lib/recall.sh
+  | sort -u` = `CSTK_COMMON_LOADED`, `CSTK_KNOWLEDGE_DB`, `CSTK_LIB` — nenhum
+  nome novo; nenhum artefato prescreve leitura de ambiente. As mencoes
+  residuais a "variavel de ambiente" nos 4 artefatos sao **historicas**
+  (registro do risco evitado), nunca prescritivas.
+- **Findings novos da 2a rodada, todos aplicados nesta mesma revisao**:
+
+| # | Sev | Finding | Tratamento |
+|---|-----|---------|------------|
+| F10 | MEDIUM | O literal `<instante_ref>` seria o **unico** valor interpolado do arquivo sem `sql_escape`, quebrando a politica cumulativa vigente (precedente medido: L1384 escapa ate timestamp interno) | Clausula normativa "Escaping cumulativo do literal" no contrato §3.1 |
+| F11 | MEDIUM | Comportamento em **falha do `date -u`** nao especificado; interpolar vazio deixaria a degradacao ao acaso do implementador | Clausula normativa "Falha do `date`" (§3.1): fallback `1970-01-01T00:00:00Z`, ja usado em L1273/L2203/L2803/L2866; degradacao **uniforme** preserva I-1/I-2/I-7 |
+| F12 | MEDIUM | O teste de regressao de I-12 usava **padrao negativo** que casa `CSTK_KNOWLEDGE_DB` (`NOW` dentro de `KNOWLEDGE`) — reprovaria hoje, sem uma linha de implementacao, e so seria "resolvido" enfraquecendo o proprio teste. Medido: 4 linhas casadas (168, 175, 176, 201) | I-12 e Scenario 15 reescritos como **allowlist exata** do conjunto de `CSTK_*` lidos |
+| F13 | LOW | §3.2 afirmava ausencia de superficie externa em termos absolutos, quando o `date` ainda e resolvido via `PATH` herdado | Nota "Limite honesto destas afirmacoes" no §3.2, estreitando a afirmacao ao que e verificavel |
+
+- **Risco aceito reafirmado (nao re-escalado)**: F6 (bonus de autoridade
+  amplificando memory poisoning, ASI06/LLM04) permanece **MEDIUM aceito**.
+  A 2a rodada confirmou que o plano **nao superestima** os controles — ele
+  declara explicitamente que "o rotulo sinaliza, mas nao impede a selecao".
+  A aceitacao foi promovida a Decisao auditavel propria nesta onda, em vez
+  de viver apenas na prosa do plano.
 
 **Zero findings CRITICAL nos dois gates.** Nenhuma citacao de codigo
 divergente, nenhuma divergencia numerica entre artefatos, nenhum erro
@@ -208,9 +237,9 @@ aritmetico — o gate documental reproduziu M1-M4 linha a linha, confirmou os
 
 | # | Gate | Finding | Tratamento |
 |---|------|---------|------------|
-| F1 | security | Env var de relogio interpolada na SQL com validacao subespecificada; DB aberto read-write torna a injecao **escrita**, nao leitura | **Bloqueio humano** — contrato §3 reescrito com 2 opcoes; research.md D13 |
+| F1 | security | Env var de relogio interpolada na SQL com validacao subespecificada; DB aberto read-write torna a injecao **escrita**, nao leitura | **RESOLVIDO — superficie eliminada.** Bloqueio humano `block-002` respondido em `dec-021`: opcao B (sem env var; fixture com `source_ts` relativos). Contrato §3 reescrito como secao normativa ratificada (§3.1/§3.2, I-12/I-13); research.md D13 fechada |
 | F2 | security | `source_ts` futuro torna o bonus de recencia **ilimitado** (medido: `~900`), quebrando I-1/I-2 | Clamp `max(0.0, ...)` normativo; I-1 reescrita para valer no dominio inteiro |
-| F3-doc | doc-quality | A variavel test-only **nunca era nomeada** em nenhum artefato — 3 cenarios dependiam dela | Resolvido junto de F1: nomeacao explicita virou clausula normativa da Opcao A |
+| F3-doc | doc-quality | A variavel test-only **nunca era nomeada** em nenhum artefato — 3 cenarios dependiam dela | **RESOLVIDO por remocao**: a variavel deixou de existir. Os cenarios 3, 4 e 6 do quickstart passaram a depender apenas da fixture com datas relativas; o Scenario 15 virou regressao de **ausencia** de superficie (I-12) |
 
 **Findings MEDIUM/LOW aplicados**: intervalo do bonus corrigido para
 `[0, 0.10]` com diferenca maxima **atingivel** (D7); mediana da amostra
@@ -246,12 +275,14 @@ Revalidacao apos o design (data-model + contratos + quickstart):
   mais forte** apos o design: a escolha da forma hiperbolica (D6) foi feita
   precisamente para evitar dependencia de extensao matematica do SQLite que
   o design exponencial teria introduzido.
-- **Superficie test-only introduzida?** Sim, uma variavel de ambiente para
-  fixar o relogio (contrato §3), necessaria para asserção deterministica de
-  recencia. Declarada explicitamente como test-only, fora do `--help`, sem
-  garantia de estabilidade, e incapaz de alterar formato, exit code ou
-  conteudo (invariante I-9). Nao constitui contrato publico nem viola
-  principio algum.
+- **Superficie test-only introduzida?** **Nao — nenhuma.** A proposta
+  anterior (variavel de ambiente para fixar o relogio) foi **descartada** na
+  ratificacao do `block-002` (`dec-021`): a asserção deterministica de
+  recencia passa a usar `source_ts` de fixture relativos ao relogio real,
+  sem override. O contrato §3.1 torna a ausencia de configuracao **clausula
+  normativa** (I-12), e o quickstart Scenario 15 testa essa ausencia por
+  inspecao estatica + comportamento. Superficie de configuracao adicionada
+  por esta feature: **zero**.
 - **Veracidade (VI) apos design?** Reforcada: o contrato separa
   **[ATUAL]** de **[PROPOSTA]** item a item, e o quickstart publica as
   consultas de medicao para que a calibracao seja reproduzivel por terceiros

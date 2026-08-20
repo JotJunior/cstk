@@ -216,58 +216,102 @@ secao 1.2, aplicada em `cli/lib/recall.sh` linha 3216.
 **I-8**: nenhum componente de score aparece no bloco de contexto. O
 orcamento de bytes e integralmente gasto com conteudo, como hoje.
 
-## 3. Relogio de referencia para teste — **BLOQUEADO, aguarda ratificacao humana**
+## 3. Relogio de referencia para teste — **RATIFICADO: sem variavel de ambiente**
 
-> **Status**: esta secao **NAO esta ratificada**. O gate `owasp-security`
-> classificou o mecanismo originalmente proposto (variavel de ambiente
-> interpolada na SQL) como **HIGH** em dois findings independentes. A escolha
-> entre as duas opcoes abaixo e do operador — ver research.md D13.
-> **Nenhuma task de implementacao deste item pode ser aberta antes da
-> ratificacao.**
+> **Status**: **RATIFICADO** pelo operador (bloqueio `block-002`, decisao
+> `dec-021`, 2026-08-20). O gate `owasp-security` classificou o mecanismo
+> originalmente proposto — variavel de ambiente interpolada na SQL — como
+> **HIGH** em dois findings independentes (F1/F3/F4). A escolha ratificada
+> foi **eliminar a superficie**, nao blinda-la. Ver research.md D13.
 
-Necessidade a atender: fixar o `<instante_ref>` da secao 1.2 para que a
-suite possa assertar ordem por recencia de forma deterministica.
+Necessidade a atender: tornar a ordem por recencia (secao 1.2) asserivel de
+forma deterministica pela suite.
 
-### Opcao A — variavel de ambiente, com hardening completo
+### 3.1 Mecanismo normativo
 
-Se ratificada, **todas** as clausulas abaixo sao normativas:
+A suite gera os `source_ts` da fixture **relativos ao relogio real** no
+momento em que a fixture e montada (ex.: `now-5d`, `now-200d`, `now-400d`) e
+assere a **ordem relativa** das idades. O `<instante_ref>` da secao 1.2
+permanece sendo **sempre** o instante corrente resolvido uma unica vez por
+invocacao (I-5), em producao e em teste, sem excecao.
+
+Clausulas normativas:
 
 | Aspecto | Definicao normativa |
 |---------|---------------------|
-| Nome | explicito, prefixo `CSTK_` (greppavel), ex.: `CSTK_RECALL_REF_INSTANT` |
-| Validacao | **allowlist ancorada na string inteira** via `case` com classes de digito literais (`[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z`). Proibido `grep`, substring ou glob frouxo (`*T*Z*` deixa payload passar) |
-| Escaping | `sql_escape` **cumulativo e obrigatorio**, mesmo apos a validacao |
-| NUL | `value_has_nul` sobre o valor **antes** de qualquer uso (hoje `value_has_nul` cobre apenas argv) |
-| Ausente | usa o instante corrente (`date -u`), silenciosamente |
-| Invalida | descarta, usa o instante corrente, **e emite aviso em stderr** |
-| Honrada | emite **uma linha em stderr** registrando que o relogio de referencia foi sobrescrito |
-| `--help` | nao documentada |
-| Teste | cenario adversarial obrigatorio + **mutation test**: desabilitar a validacao MUST fazer o cenario falhar |
+| Origem do `<instante_ref>` | **exclusivamente** o relogio real, via `date -u`, resolvido uma vez por invocacao (I-5) |
+| Configurabilidade | **nenhuma**. Nao ha variavel de ambiente, flag de CLI, arquivo de config nem argumento que altere o `<instante_ref>` |
+| Interpolacao na SQL | o unico valor de instante interpolado e o produzido internamente por `date -u`; **nenhum valor de origem externa** (ambiente, argv, arquivo, indice) entra na expressao de idade |
+| Fixture de teste | `source_ts` calculados como deslocamentos do instante corrente no proprio teste; asserção sobre **ordem relativa**, nunca sobre valor absoluto |
+| Tolerancia de fronteira | cenarios de recencia MUST usar deslocamentos com folga ampla entre si (ordens de grandeza de dias), de modo que a passagem do tempo durante o run nao altere a ordem esperada |
+| Escaping cumulativo do literal | o valor produzido por `date -u` MUST passar por `sql_escape()` antes de ser interpolado, **mesmo sendo de origem interna**. Nao e defesa contra o `date`: e conformidade com a politica cumulativa ja vigente no arquivo, onde **todo** valor interpolado — inclusive timestamps internos — passa por `sql_escape` (precedente: `cli/lib/recall.sh` L1384, `'$(sql_escape "$_isj_now")'`). Sem isso, a expressao de score seria o unico ponto do arquivo a interpolar valor cru |
+| Falha do `date` | se `date -u` falhar ou retornar vazio, o `<instante_ref>` MUST cair no fallback ja usado no arquivo (`1970-01-01T00:00:00Z`, L1273/L2203/L2803/L2866). Consequencia deliberada: todas as idades ficam enormes, `<bonus_recencia>` tende a `0` para todas as linhas e o ranking degrada para `bm25 - autoridade` — degradacao **uniforme**, que preserva I-1/I-2/I-7 e nunca promove um achado sobre outro. **Proibido** interpolar string vazia sem clausula explicita |
+| Fronteira de arredondamento | cenarios que assertam **igualdade byte-a-byte** de stdout entre duas execucoes consecutivas (Scenario 6) MUST usar idades afastadas de fronteiras de arredondamento dos campos de `--explain` (`recencia` 4 casas, `idade` 1 casa). Ver I-13 |
 
-**Por que o hardening e denso**: `recall_query_sql()` abre o DB em
-**read-write** (`sqlite3 -cmd '.timeout 5000' -- "$DB"`, sem `mode=ro`), e o
-CLI do `sqlite3` aceita multiplos statements — logo uma injecao aqui permite
-`UPDATE`/`DROP` no indice e `ATTACH` para escrita de arquivo arbitrario, nao
-apenas leitura indevida.
+**I-12 [nova, normativa]**: `cli/lib/recall.sh` **MUST NOT** ler nenhuma
+variavel de ambiente nova para compor a expressao de score. Verificavel por
+inspecao estatica **por allowlist exata**: o conjunto de nomes casados por
+`grep -oE 'CSTK_[A-Z_]+' cli/lib/recall.sh | sort -u` MUST permanecer
+`CSTK_COMMON_LOADED`, `CSTK_KNOWLEDGE_DB`, `CSTK_LIB` — o conjunto medido
+antes desta feature. Allowlist, e nao padrao negativo: um padrao como
+`CSTK_[A-Z_]*(REF|INSTANT|CLOCK|NOW)` casa `CSTK_KNOWLEDGE_DB` por acidente
+lexico (`NOW` dentro de `KNOWLEDGE`) e reprovaria antes de qualquer
+implementacao. Ver quickstart Scenario 15.
 
-### Opcao B — sem variavel: fixture com datas relativas ao relogio real
+**I-13 [nova, normativa — escopo do determinismo]**: o determinismo exigido
+por FR-009 e garantido **por construcao dentro de uma invocacao** (I-5: um
+unico `<instante_ref>` para todas as linhas). **Entre** invocacoes
+separadas, o `<instante_ref>` avanca com o relogio real; a ordem permanece
+estavel porque o deslocamento (segundos) e desprezivel frente a meia-vida de
+90 dias, e a saida default (secao 1.3) nao expoe valor algum de score. A
+igualdade **byte-a-byte** entre duas execucoes so e assegurada quando as
+idades da fixture nao caem em fronteira de arredondamento dos campos de
+`--explain`. Esta e uma afirmacao de escopo, nao uma garantia absoluta: a
+redacao anterior, que dependia de um relogio congelado por variavel de
+ambiente, deixou de existir junto com a variavel.
 
-A suite gera os `source_ts` da fixture relativos ao instante corrente
-(`now-5d`, `now-200d`), assertando **ordem relativa** de idades. Nenhum valor
-externo e interpolado na SQL; a superficie de F1/F3/F4 deixa de existir.
+### 3.2 Consequencias de seguranca (por construcao, nao por vigilancia)
 
-**Recomendacao tecnica**: Opcao B (research.md D13).
+Com a Opcao B ratificada, os findings F1, F3 e F4 do gate `owasp-security`
+tornam-se **inaplicaveis por construcao**, e nao "mitigados":
 
-### Invariantes validas em qualquer das opcoes
+- Nao existe valor de origem externa interpolado no caminho de leitura,
+  logo nao existe a injecao que tornava relevante o fato de
+  `recall_query_sql()` abrir o DB em **read-write** (`sqlite3 -cmd '.timeout
+  5000' -- "$DB"`, sem `mode=ro`).
+- Nao existe configuracao nova a validar, escapar ou auditar; nenhum
+  hardening precisa ser mantido correto ao longo do tempo.
+- Nao existe bypass da denylist do `bash-guard.sh` via `VAR=<payload> cstk
+  recall ...`, porque nenhuma variavel de ambiente influencia a consulta.
 
-- **I-9 [corrigida]**: o mecanismo **nao altera formato de saida nem exit
-  code**; **altera a ordenacao e, portanto, pode alterar quais achados entram
-  sob `LIMIT`**. A redacao anterior ("nunca altera ... conteudo") era
-  factualmente falsa: sob `LIMIT N` a ordenacao determina o conjunto
-  retornado, e no modo `--context` (default `--limit 4`) esse conjunto e
-  injetado no prompt de agentes autonomos.
-- **I-11**: valor invalido **nunca** produz erro nem exit != 0 — degrada para
-  o relogio real, preservando I-7.
+> **Limite honesto destas afirmacoes (escopo declarado)**: elas valem para
+> **a superficie que esta feature adicionaria**. O `<instante_ref>` continua
+> sendo produzido por um `date` resolvido via `PATH`, e o processo herda o
+> ambiente do usuario — quem ja controla `PATH` do processo nao precisa
+> desta feature para nada. O que se afirma e mais estreito e verificavel:
+> **nenhum canal de configuracao novo** e criado, e o unico valor
+> interpolado na expressao de idade e produzido internamente e escapado
+> (§3.1). Nao se afirma que o caminho de leitura do `recall` como um todo
+> esteja endurecido — ele nao esta, e a linha abaixo diz por que.
+
+> **Observacao registrada, fora do escopo desta feature**: o fato de
+> `recall_query_sql()` abrir o DB em read-write enquanto
+> `recall_query_sql_ro()` ja existe permanece uma aspereza preexistente do
+> caminho de leitura. Esta feature **nao** a corrige e **nao** a agrava —
+> apenas deixa de adicionar superficie sobre ela.
+
+### 3.3 Invariantes desta secao
+
+- **I-9 [corrigida]**: a ordenacao composta **nao altera formato de saida
+  nem exit code**; **altera a ordenacao e, portanto, pode alterar quais
+  achados entram sob `LIMIT`**. A redacao anterior ("nunca altera ...
+  conteudo") era factualmente falsa: sob `LIMIT N` a ordenacao determina o
+  conjunto retornado, e no modo `--context` (default `--limit 4`) esse
+  conjunto e injetado no prompt de agentes autonomos.
+- **I-11 [revisada apos ratificacao]**: nao ha valor externo de relogio a
+  ser invalido. A degradacao graciosa exigida (`exit 0`, stdout intacto)
+  permanece coberta por I-7 para os caminhos que de fato existem —
+  `source_ts` vazio, malformado ou no futuro (I-1/I-4 + clamp da secao 1.2).
 
 ## 4. Fora de escopo (restricoes negativas verificaveis)
 
@@ -279,3 +323,4 @@ externo e interpolado na SQL; a superficie de F1/F3/F4 deixa de existir.
 | Nenhuma alteracao de DDL; `RECALL_SCHEMA_VERSION` permanece `15` | FR-007 |
 | Nenhum reindex/migracao exigido do operador | SC-005 |
 | Nenhum arquivo alem de `cli/lib/recall.sh` e `tests/cstk/test_recall.sh` | Constitution II |
+| **Nenhuma variavel de ambiente nova** lida por `cli/lib/recall.sh`; nenhum override do `<instante_ref>` (secao 3.1, I-12) | dec-021 / block-002 |

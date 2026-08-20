@@ -29,7 +29,8 @@ mapeia para um Success Criterion da spec e vira cenario automatizado em
 
 ## Fixture comum (Scenarios 1-7)
 
-Indice sintetico com clock fixo, para ordem asserivel:
+Indice sintetico com `source_ts` **relativos ao relogio real**, para ordem
+asserivel sem override de clock (contrato §3.1, research.md D13):
 
 1. Criar DB temporario via `--ingest` de um state sintetico (padrao ja
    usado por `_write_state` em `tests/cstk/test_recall.sh`).
@@ -41,14 +42,18 @@ Indice sintetico com clock fixo, para ordem asserivel:
    (decisions/blocks/retros/skills), `_write_memory_dir` (linhas `memory`,
    junto de `_rc_home`, ~L2197) e `_write_suggestions_state` (linhas
    `suggestion`, ~L2793).
-3. Fixar o instante de referencia — **mecanismo pendente de ratificacao
-   humana**, ver `contracts/cstk-recall-ranking.md` §3 e research.md D13. Os
-   cenarios 3, 4 e 6 dependem desta escolha:
-   - **Opcao A** (env var, ex.: `CSTK_RECALL_REF_INSTANT`): fixar o instante
-     absoluto.
-   - **Opcao B** (recomendada): gerar os `source_ts` da fixture **relativos
-     ao instante corrente** (`now-5d`, `now-200d`) e assertar apenas a
-     **ordem relativa** — nenhum override necessario.
+3. Gerar os `source_ts` como **deslocamentos do instante corrente** no
+   proprio teste (ex.: `now-5d`, `now-200d`, `now-400d`), e assertar apenas
+   a **ordem relativa** das idades. **Nao ha override de relogio** — nenhuma
+   variavel de ambiente, flag ou config altera o `<instante_ref>` (contrato
+   §3.1, I-12; research.md D13). Os cenarios 3, 4 e 6 usam esta fixture.
+   - Calculo portavel dos deslocamentos: `date -u -v-5d` (BSD/macOS) e
+     `date -u -d '5 days ago'` (GNU) divergem — o helper de fixture MUST
+     testar as duas formas, como ja e pratica no harness (ver o GOTCHA de
+     `stat` GNU-first em `tests/`).
+   - Usar deslocamentos com **ordens de grandeza de diferenca** entre si:
+     assim a passagem do tempo durante o run nao pode alterar a ordem
+     esperada (contrato §3.1, linha "Tolerancia de fronteira").
 
 ## Scenario 1: Autoridade promove decisao/bloqueio (SC-001, FR-001)
 
@@ -69,10 +74,11 @@ Indice sintetico com clock fixo, para ordem asserivel:
 ## Scenario 3: Recencia desempata dentro do mesmo tier (SC-003, FR-003)
 
 1. Fixture com **dois achados do mesmo `type`** e corpos de relevancia
-   comparavel, com `source_ts` separados por meses.
-2. Fixar o instante de referencia.
-3. Rodar a busca.
-4. **Expected**: o achado mais recente vem primeiro.
+   comparavel, com `source_ts` separados por meses (ex.: `now-5d` e
+   `now-200d`).
+2. Rodar a busca.
+3. **Expected**: o achado mais recente vem primeiro. A asserção e sobre
+   **ordem relativa** — nenhum valor absoluto de data e comparado.
 
 ## Scenario 4: Recencia NAO inverte autoridade (I-2 do contrato, FR-003)
 
@@ -95,11 +101,21 @@ Indice sintetico com clock fixo, para ordem asserivel:
 
 ## Scenario 6: Determinismo (SC-006 parcial, FR-009)
 
-1. Com a fixture e o instante de referencia fixos, rodar **a mesma consulta
-   duas vezes**, capturando stdout.
+1. Com a fixture comum, rodar **a mesma consulta duas vezes**, capturando
+   stdout. O `<instante_ref>` **avanca** entre as duas execucoes (relogio
+   real) — e exatamente esse o cenario de producao.
 2. **Expected**: os dois stdout sao **byte-identicos**. Reforco: incluir na
    fixture dois achados de score exatamente igual, para exercitar o
    desempate `source_ts DESC, type ASC, source_id ASC`.
+3. **Escopo declarado (contrato I-13)**: a igualdade byte-a-byte vale porque
+   as idades da fixture estao afastadas de fronteiras de arredondamento dos
+   campos de `--explain` (`recencia` 4 casas, `idade` 1 casa). O cenario
+   MUST escolher deslocamentos com essa folga; nao e uma garantia absoluta
+   para qualquer fixture.
+4. **Aterramento** (research.md D8, medicao 2): contra o indice real, a mesma
+   consulta com `<instante_ref>` em `now`, `now+5min` e `now+1h` retornou a
+   mesma sequencia de `source_id` — o avanco do relogio entre invocacoes e
+   desprezivel frente a meia-vida de 90 dias.
 
 ## Scenario 7: `--explain` (SC-004, FR-005) e identidade default (SC-002/SC-006, FR-006)
 
@@ -202,7 +218,7 @@ Cenario de regressao do clamp `max(0.0, ...)` (contrato I-1, research.md D6).
 
 1. Fixture com dois achados de `bm25()` comparavel: um `decision` com
    `source_ts` normal (passado) e um `skill` com `source_ts` **no futuro**
-   (ex.: `<ref> + 80 dias`).
+   (ex.: `now+80d`, relativo ao instante corrente como toda a fixture).
 2. Rodar a busca.
 3. **Expected**: o `skill` futuro **nao** ultrapassa o `decision`. Com
    `--explain`, seu `recencia=` fica dentro de `[0.0000, 0.1000]` — nunca
@@ -235,19 +251,44 @@ Cenario de regressao do clamp `max(0.0, ...)` (contrato I-1, research.md D6).
    e a pipeline segue decidindo sem memoria acreditando que nao havia
    aprendizado a recuperar.
 
-## Scenario 15 (adversarial): override de relogio invalido degrada, nunca executa
+## Scenario 15 (regressao de seguranca): nenhuma superficie de override de relogio (I-12, dec-021)
 
-**Aplicavel somente se a Opcao A de §3 for ratificada.** Se a Opcao B for
-escolhida, este cenario e dispensado (a superficie deixa de existir).
+Substitui o cenario adversarial de env var previsto antes da ratificacao. A
+Opcao A foi **descartada** (block-002 / dec-021), entao o que se testa nao e
+mais "a validacao do valor externo funciona", e sim **que nao existe valor
+externo algum** — F1/F3/F4 do gate `owasp-security` sao inaplicaveis por
+construcao (contrato §3.2).
 
-1. Definir a variavel de relogio com payload de injecao, ex.:
-   `2026-01-01T00:00:00Z'); ATTACH DATABASE '/tmp/evil.db' AS e; --`
-2. Rodar o modo busca e o modo `--context`.
-3. **Expected**: a consulta usa o **relogio real**, exit `0`, nenhum arquivo
-   criado, nenhum statement extra executado, e um aviso em stderr indicando
-   valor invalido descartado.
-4. Repetir com: valor contendo byte NUL; valor `*T*Z*`-like que passaria por
-   glob frouxo mas nao pela allowlist ancorada; string vazia.
-5. **Mutation test**: desabilitar a validacao MUST fazer este cenario falhar.
-   Um cenario adversarial que passa com a defesa desligada nao esta testando
-   a defesa.
+1. **Inspecao estatica** (I-12) — **allowlist exata**, nao padrao negativo:
+
+   ```sh
+   grep -oE 'CSTK_[A-Z_]+' cli/lib/recall.sh | sort -u
+   ```
+
+   MUST retornar **exatamente** `CSTK_COMMON_LOADED`, `CSTK_KNOWLEDGE_DB`,
+   `CSTK_LIB` — o conjunto medido em `cli/lib/recall.sh` **antes** desta
+   feature (2026-08-20). Qualquer nome novo reprova o cenario.
+
+   > **Por que allowlist e nao `grep -E 'CSTK_[A-Z_]*(REF|INSTANT|CLOCK|NOW)'`**:
+   > o padrao negativo casa `CSTK_KNOWLEDGE_DB` (a substring `NOW` esta
+   > dentro de `KNOWLEDGE`) e reprovaria **hoje**, sem nenhuma linha de
+   > implementacao escrita — um falso positivo que so poderia ser
+   > "resolvido" enfraquecendo o proprio teste. Verificado empiricamente:
+   > o padrao negativo retorna 4 linhas (168, 175, 176, 201) no arquivo
+   > atual. A allowlist e insensivel a esse acidente lexico.
+2. **Inspecao estatica** (I-5): `julianday('now')` **nao** aparece na
+   consulta; o unico instante interpolado provem de `date -u` resolvido no
+   shell, uma vez por invocacao.
+3. **Comportamental**: rodar a mesma consulta duas vezes, a segunda com
+   variaveis de ambiente de nome plausivel definidas com payload de injecao
+   — ex.: `CSTK_RECALL_REF_INSTANT="2026-01-01T00:00:00Z'); ATTACH DATABASE '/tmp/evil.db' AS e; --"`
+   e `CSTK_RECALL_CLOCK` com o mesmo valor.
+4. **Expected**: stdout **byte-identico** entre as duas execucoes, exit `0`
+   nas duas, **nenhum** arquivo criado em `/tmp/evil.db`, nenhum statement
+   extra executado, nenhuma linha nova em stderr. As variaveis sao
+   simplesmente ignoradas porque nada as le.
+5. **Nota de escopo (honestidade do teste)**: este cenario prova a
+   **ausencia da superficie introduzida por esta feature**. Ele nao afirma
+   nada sobre a aspereza preexistente de `recall_query_sql()` abrir o DB em
+   read-write enquanto `recall_query_sql_ro()` ja existe — registrada em
+   research.md D13 e contrato §3.2 como **fora do escopo** desta feature.
