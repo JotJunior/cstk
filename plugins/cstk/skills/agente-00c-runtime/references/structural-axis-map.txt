@@ -1,0 +1,29 @@
+# structural-axis-map v1
+#
+# Enum fechado de eixos estruturais (FR-006). Consumido pela trava de
+# `state-decisions.sh register --classe estrutural --eixo <token>` (R3) e
+# pela tool MCP `record_decision` (paridade FR-004) para validar
+# `structural_axis` ANTES de qualquer gravacao.
+#
+# Formato de cada linha de dados (2 campos, separador '|'):
+#   eixo|rotulo
+#     eixo   : token kebab-case, valor persistido em decision.structural_axis
+#     rotulo : descricao curta em portugues, so para exibicao (relatorio/painel)
+#
+# Regras de lookup (DIFERENTE de tier-gate-map.txt/phase-model-map.txt —
+# ver docs/specs/structural-decision-human-gate/data-model.md §Enum
+# structural_axis, research.md Decision 4):
+#   - Linhas iniciadas por '#' e linhas vazias sao ignoradas.
+#   - Eixo NAO listado -> REJEITADO (exit 2 no consumidor). Nao ha
+#     fail-safe aqui: aceitar eixo desconhecido permitiria burlar o enum
+#     por texto livre, que e exatamente o buraco que R3 fecha (issue #146).
+#   - Versionamento: a primeira linha declara a versao do mapa ('v1').
+#
+# Lista fechada nesta versao — adicionar/remover eixo e mudanca de
+# governanca (exige spec), nao um ajuste de config solto.
+linguagem-runtime|Linguagem / runtime e versao minima
+stack-frameworks|Stack e frameworks principais; reuso de legado vs reescrita
+arquitetura|Arquitetura de alto nivel (monolito / hibrido / servicos)
+persistencia|Persistencia principal
+ambiente-alvo|Ambiente de execucao onde o entregavel roda
+tier-entrega|Tier de entrega (ja coberto por delivery-tier, INV-4)

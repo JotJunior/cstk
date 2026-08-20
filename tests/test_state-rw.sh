@@ -1401,6 +1401,100 @@ scenario_sqlite_migrate_e_noop_exit_0() {
   [ ! -f "$_sd/state.json" ] || { _fail "migrate nao pode criar state.json sob sqlite" ""; return 1; }
 }
 
+# ==== structural-decision-human-gate (FASE 2, task 2.3.4): export das 3/1
+#      colunas novas (decision_class/structural_axis/human_consent_block_id,
+#      subject_key) ====
+#
+# Ref: docs/specs/structural-decision-human-gate/contracts/cli-structural-class.md
+#      §state-db-schema.sh ensure INV-E3; data-model.md §Entity Decisao/BloqueioHumano
+
+scenario_sdhg_sqlite_read_projeta_colunas_novas_presentes() {
+  _sd="$TMPDIR_TEST/sdhg-read-presentes"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "
+    INSERT INTO decision (id,execution_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score,decision_class,structural_axis,human_consent_block_id)
+      VALUES ('dec-001','exec-1','2026-07-30T00:01:00Z','operador','plan','contexto de teste com pelo menos vinte caracteres','[\"Go\",\"Node\"]','Go','justificativa de teste com pelo menos vinte caracteres',2,'estrutural','linguagem-runtime','block-001');
+    INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,status,triggered_at,answered_at,human_answer,subject_key)
+      VALUES ('block-001','exec-1','dec-001','pergunta de teste com pelo menos vinte caracteres','contexto para resposta','respondido','2026-07-30T00:00:30Z','2026-07-30T00:00:45Z','Go 1.22','axis:linguagem-runtime');
+  " || { _fail "seed decision/human_block com colunas novas" ""; return 1; }
+
+  capture "$SCRIPT" read --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "read exit" "$_CAPTURED_STDERR"; return 1; }
+  _doc="$_CAPTURED_STDOUT"
+  printf '%s' "$_doc" | jq -e . >/dev/null || { _fail "read produz JSON invalido" "$_doc"; return 1; }
+
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].decision_class')" = "estrutural" ] \
+    || { _fail "decisions[0].decision_class" "$(printf '%s' "$_doc" | jq -r '.decisions[0].decision_class')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].structural_axis')" = "linguagem-runtime" ] \
+    || { _fail "decisions[0].structural_axis" "$(printf '%s' "$_doc" | jq -r '.decisions[0].structural_axis')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].human_consent_block_id')" = "block-001" ] \
+    || { _fail "decisions[0].human_consent_block_id" "$(printf '%s' "$_doc" | jq -r '.decisions[0].human_consent_block_id')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.human_blocks[0].subject_key')" = "axis:linguagem-runtime" ] \
+    || { _fail "human_blocks[0].subject_key" "$(printf '%s' "$_doc" | jq -r '.human_blocks[0].subject_key')"; return 1; }
+
+  # round-trip continua valido por state-validate.sh (E1)
+  _validate_dir="$TMPDIR_TEST/sdhg-validate-export"
+  mkdir -p "$_validate_dir"
+  printf '%s' "$_doc" > "$_validate_dir/state.json"
+  capture sh "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-validate.sh" --state-dir "$_validate_dir"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "export com colunas novas nao passa em state-validate.sh" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_sdhg_sqlite_read_colunas_novas_null_quando_ausentes() {
+  # Decisao/bloqueio sem os campos novos setados (default da coluna) -> null.
+  _sd="$TMPDIR_TEST/sdhg-read-ausentes"
+  _seed_sqlite_backend "$_sd" || return 1
+  sqlite3 "$_sd/state.db" "
+    INSERT INTO decision (id,execution_id,timestamp,agent,stage,context,options_considered,choice,rationale)
+      VALUES ('dec-001','exec-1','2026-07-30T00:01:00Z','x','plan','contexto de teste com pelo menos vinte caracteres','[\"a\"]','a','justificativa de teste com pelo menos vinte caracteres');
+    INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,status,triggered_at)
+      VALUES ('block-001','exec-1','dec-001','pergunta de teste com pelo menos vinte caracteres','contexto para resposta','aguardando','2026-07-30T00:02:00Z');
+  " || { _fail "seed sem colunas novas" ""; return 1; }
+
+  capture "$SCRIPT" read --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "read exit" "$_CAPTURED_STDERR"; return 1; }
+  _doc="$_CAPTURED_STDOUT"
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].decision_class')" = "null" ] \
+    || { _fail "decision_class deveria ser null" "$(printf '%s' "$_doc" | jq -r '.decisions[0].decision_class')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].structural_axis')" = "null" ] \
+    || { _fail "structural_axis deveria ser null" "$(printf '%s' "$_doc" | jq -r '.decisions[0].structural_axis')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].human_consent_block_id')" = "null" ] \
+    || { _fail "human_consent_block_id deveria ser null" "$(printf '%s' "$_doc" | jq -r '.decisions[0].human_consent_block_id')"; return 1; }
+  [ "$(printf '%s' "$_doc" | jq -r '.human_blocks[0].subject_key')" = "null" ] \
+    || { _fail "subject_key deveria ser null" "$(printf '%s' "$_doc" | jq -r '.human_blocks[0].subject_key')"; return 1; }
+}
+
+# Banco pre-feature (sem `ensure` aplicado, colunas de fato ausentes) ainda
+# exporta sem erro "no such column" — INV-E3, caminho de leitura NUNCA
+# invoca `ensure`/ALTER, so escolhe a consulta literal fixa sem as colunas.
+scenario_sdhg_sqlite_read_banco_legado_sem_colunas_exporta_sem_erro() {
+  _sd="$TMPDIR_TEST/sdhg-read-legado"
+  mkdir -p "$_sd"
+  "$SCHEMA_SCRIPT" create --db "$_sd/state.db" >/dev/null 2>&1 \
+    || { _fail "seed: schema create" ""; return 1; }
+  sqlite3 "$_sd/state.db" "
+    PRAGMA foreign_keys=ON;
+    INSERT INTO execution (id,schema_version,target_project_path,target_project_description,status,started_at,current_stage,next_instruction,external_urls_whitelist,circular_movement_history,initial_key_aspects,atomic_commit_enabled)
+    VALUES ('exec-1','1.0.0','/tmp/proj','desc de teste com detalhe','em_andamento','2026-07-30T00:00:00Z','specify','faca algo','[]','[]','[]',0);
+    INSERT INTO decision (id,execution_id,timestamp,agent,stage,context,options_considered,choice,rationale)
+      VALUES ('dec-001','exec-1','2026-07-30T00:01:00Z','x','plan','contexto de teste com pelo menos vinte caracteres','[\"a\"]','a','justificativa de teste com pelo menos vinte caracteres');
+    ALTER TABLE decision DROP COLUMN decision_class;
+    ALTER TABLE decision DROP COLUMN structural_axis;
+    ALTER TABLE decision DROP COLUMN human_consent_block_id;
+    ALTER TABLE human_block DROP COLUMN subject_key;
+  " || { _fail "seed: simular banco pre-feature" ""; return 1; }
+
+  capture "$SCRIPT" read --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "read em banco pre-feature nao deveria falhar" "$_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"no such column"*) _fail "vazou erro de coluna ausente" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+  _doc="$_CAPTURED_STDOUT"
+  [ "$(printf '%s' "$_doc" | jq -r '.decisions[0].decision_class')" = "null" ] \
+    || { _fail "decision_class deveria ser null (banco legado)" "$(printf '%s' "$_doc" | jq -r '.decisions[0].decision_class')"; return 1; }
+  printf '%s' "$_doc" | jq -e . >/dev/null || { _fail "read produz JSON invalido" "$_doc"; return 1; }
+}
+
 fi # sqlite3 disponivel
 
 # ==== set aceita literais JSON falsy (state-db-runtime-parity 2.4.3) ====

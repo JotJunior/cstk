@@ -14,7 +14,7 @@
 #
 # Funcoes expostas (todas exigem STATE_DIR ja resolvido para backend sqlite
 # pelo caller via _sr_backend, e state.db existente):
-#   _bl_db_register DIR DEC_ID PERGUNTA CONTEXTO OPCOES_JSON
+#   _bl_db_register DIR DEC_ID PERGUNTA CONTEXTO OPCOES_JSON SUBJECT_KEY
 #                                              -> C4: grava o bloqueio E muda
 #                                                 .execution.status para
 #                                                 "aguardando_humano" na
@@ -46,10 +46,12 @@
 #                                                 execution.status para
 #                                                 "em_andamento" — mesma
 #                                                 transacao.
-#   _bl_db_list DIR [STATUS]                  -> TSV id/decision_id/status/
+#   _bl_db_list DIR [STATUS] [SUBJECT_KEY]    -> TSV id/decision_id/status/
 #                                                 triggered_at/question
 #                                                 (paridade com o formato do
-#                                                 path JSON)
+#                                                 path JSON); SUBJECT_KEY
+#                                                 filtra por igualdade exata
+#                                                 quando nao-vazio
 #   _bl_db_count DIR [PENDING]                -> imprime o total (inteiro);
 #                                                 PENDING="1" filtra
 #                                                 status='aguardando'
@@ -128,9 +130,17 @@ _bl_db_exec_capture() {
 
 _bl_db_register() {
   _bdr_sdir="$1"; _bdr_dec="$2"; _bdr_perg="$3"; _bdr_ctx="$4"; _bdr_opcoes="$5"
+  _bdr_subj="${6:-}"
 
   _bdr_db=$(_sr_db_file "$_bdr_sdir")
   [ -f "$_bdr_db" ] || _bl_die "register: state.db ausente em $_bdr_sdir" 1
+
+  # feature structural-decision-human-gate (task 2.4.3, INV-E3): garante a
+  # coluna subject_key [NOVO] antes de qualquer INSERT — paridade com
+  # _sd_db_register (state-decisions.sh, task 1.2.4).
+  "$_BL_DIR/state-db-schema.sh" ensure --db "$_bdr_db" \
+    || _bl_die "register: falha ao garantir schema aditivo (state-db-schema.sh ensure) em $_bdr_db" 1
+
   _bdr_exec_id=$(_sr_exec_id "$_bdr_db")
   [ -n "$_bdr_exec_id" ] || _bl_die "register: execution ausente em $_bdr_db" 1
 
@@ -142,6 +152,9 @@ _bl_db_register() {
     _bdr_opts_sql=$(_sr_sql_quote "$_bdr_opts_c")
   fi
 
+  _bdr_subj_sql="NULL"
+  [ -n "$_bdr_subj" ] && _bdr_subj_sql=$(_sr_sql_quote "$_bdr_subj")
+
   _bdr_exec_id_sql=$(_sr_sql_quote "$_bdr_exec_id")
   _bdr_dec_sql=$(_sr_sql_quote "$_bdr_dec")
   _bdr_id_expr=$(_bl_db_next_block_num_expr "$_bdr_exec_id_sql")
@@ -150,7 +163,7 @@ _bl_db_register() {
   # transacao. O id novo e lido de volta via last_insert_rowid() ANTES do
   # COMMIT (isolado por conexao, nunca enxerga commit de outro escritor) —
   # mesmo padrao de _sd_db_register para evitar colisao sob concorrencia.
-  _bdr_sql="BEGIN IMMEDIATE; INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,recommended_options,status,human_answer,triggered_at,answered_at) VALUES ('block-' || printf('%03d',$_bdr_id_expr),$_bdr_exec_id_sql,$_bdr_dec_sql,$(_sr_sql_quote "$_bdr_perg"),$(_sr_sql_quote "$_bdr_ctx"),$_bdr_opts_sql,'aguardando',NULL,$(_sr_sql_quote "$_bdr_now"),NULL); UPDATE execution SET status='aguardando_humano' WHERE id=$_bdr_exec_id_sql; SELECT id FROM human_block WHERE rowid=last_insert_rowid(); COMMIT;"
+  _bdr_sql="BEGIN IMMEDIATE; INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,recommended_options,status,human_answer,triggered_at,answered_at,subject_key) VALUES ('block-' || printf('%03d',$_bdr_id_expr),$_bdr_exec_id_sql,$_bdr_dec_sql,$(_sr_sql_quote "$_bdr_perg"),$(_sr_sql_quote "$_bdr_ctx"),$_bdr_opts_sql,'aguardando',NULL,$(_sr_sql_quote "$_bdr_now"),NULL,$_bdr_subj_sql); UPDATE execution SET status='aguardando_humano' WHERE id=$_bdr_exec_id_sql; SELECT id FROM human_block WHERE rowid=last_insert_rowid(); COMMIT;"
 
   # Chamada DIRETA (nunca dentro de $(...)) — ver nota de cabecalho de
   # _bl_db_exec_capture: e so assim que $_bl_db_last_err sobrevive a
@@ -210,7 +223,7 @@ _bl_db_respond() {
 # ---------- list ----------
 
 _bl_db_list() {
-  _bdl_sdir="$1"; _bdl_status="$2"
+  _bdl_sdir="$1"; _bdl_status="$2"; _bdl_subj="${3:-}"
   _bdl_db=$(_sr_db_file "$_bdl_sdir")
   [ -f "$_bdl_db" ] || _bl_die "list: state.db ausente em $_bdl_sdir" 1
   _bdl_exec_id=$(_sr_exec_id "$_bdl_db")
@@ -218,6 +231,22 @@ _bl_db_list() {
 
   _bdl_where="execution_id=$(_sr_sql_quote "$_bdl_exec_id")"
   [ -n "$_bdl_status" ] && _bdl_where="$_bdl_where AND status=$(_sr_sql_quote "$_bdl_status")"
+
+  # feature structural-decision-human-gate (task 2.4.3): filtro por
+  # subject_key SEM invocar `ensure` no caminho de leitura (INV-E3 — mesmo
+  # racional de _sr_db_read/task 2.3.1). Banco pre-feature (coluna ausente)
+  # nao pode ter nenhum bloqueio com subject_key setado — equivalente a
+  # "nenhuma linha casa", resolvido com uma condicao sempre-falsa em vez de
+  # referenciar a coluna (que faria o SELECT falhar com "no such column").
+  if [ -n "$_bdl_subj" ]; then
+    _bdl_has_col=$(_state_db_exec "$_bdl_db" \
+      "SELECT count(*) FROM pragma_table_info('human_block') WHERE name='subject_key';")
+    if [ "$_bdl_has_col" = "1" ]; then
+      _bdl_where="$_bdl_where AND subject_key=$(_sr_sql_quote "$_bdl_subj")"
+    else
+      _bdl_where="$_bdl_where AND 1=0"
+    fi
+  fi
 
   _state_db_exec "$_bdl_db" \
     "SELECT id || char(9) || decision_id || char(9) || status || char(9) || triggered_at || char(9) || question FROM human_block WHERE $_bdl_where ORDER BY rowid;"

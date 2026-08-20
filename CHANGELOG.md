@@ -5,6 +5,85 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.6.0] - 2026-08-20
+
+Feature `structural-decision-human-gate` (issue #146): decisões de classe
+**estrutural** (linguagem/runtime, stack, arquitetura, persistência, ambiente
+de execução alvo, tier) deixam de ser elegíveis a resolução autônoma pelos
+orquestradores — viram bloqueio humano, com consentimento **verificável**
+(referência a um BloqueioHumano respondido sobre o mesmo assunto, nunca um
+campo de texto livre). Caso real de origem: um feature-orchestrator escolheu
+sozinho a stack de um projeto com `bloqueio-humano` entre as próprias opções
+e o item marcado como impacto Alto no briefing. Pipeline SDD completa (12
+ondas via `/feature-00c`, 1 bloqueio humano respondido `so-H2-ampliado`,
+gates owasp/doc/convergence). Sem breaking; aditivo nos dois backends.
+
+### Added
+
+- **`state-decisions.sh register --classe estrutural|operacional [--eixo E]
+  [--consentimento block-NNN]`** com as regras R1–R3/R6: `--classe`
+  obrigatória quando as opções citam token da família
+  `bloqueio-humano*`/`pause-humano` (R1); eixo validado contra a lista
+  fechada de 6 eixos em `references/structural-axis-map.txt` — eixo
+  desconhecido é rejeitado (R2); `estrutural` registrada por agente
+  automático exige escolha = token de bloqueio + score 0, OU
+  `--consentimento block-NNN` apontando um BloqueioHumano **respondido**
+  cujo `subject_key` casa `axis:<eixo>` — consentimento de outro assunto é
+  rejeitado (`consentimento-de-outro-assunto`, R6, validação com estado nos
+  dois backends). Erros nomeados (`classe-obrigatoria`, `eixo-invalido`,
+  `estrutural-exige-bloqueio`, …), nada gravado na rejeição.
+- **DDL aditivo + `state-db-schema.sh ensure`**: colunas
+  `decision.decision_class/structural_axis/human_consent_block_id` e
+  `human_block.subject_key`; `ensure` idempotente, transacional, com
+  retry/backoff sob concorrência (`duplicate column` tolerado como sucesso
+  idempotente) — wired nos pontos de escrita, nunca no read path.
+- **`bloqueios.sh register/list --chave-assunto`** (`briefing-item:<slug48+cksum>`
+  / `axis:<eixo>`): âncora do consentimento e chave determinística de dedup
+  do FR-008 ("item Alto já decidido não é re-perguntado").
+- **`briefing-items.sh list-high`** (script novo, POSIX puro): extrai os
+  itens de impacto Alto da tabela "Itens a Definir" do briefing (canônico e
+  legado), com `STATUS` explícito — "sem briefing" é distinguível de "zero
+  itens Alto". 19 cenários em `tests/test_briefing-items.sh`.
+- **Paridade MCP**: `record_decision` ganha `decision_class`/
+  `structural_axis`/`human_consent_block_id` (zod + 4 erros tipados +
+  `superRefine` R1/R2/R3); `register_human_block` ganha `subject_key`;
+  `exec.ts` mapeia as flags novas (paridade coberta por
+  `exec-mapper-parity`). `npm test` 177/177.
+- **`validate-sdd.sh --sdd-plan`**: findings `target-platform-unresolved`
+  (crítico — Technical Context sem ambiente de execução alvo ou pendente) e
+  `target-platform-unsourced` (aviso — declarado sem fonte rastreável).
+- **`report.sh`**: seção "Decisões Estruturais e Anomalias de Governança"
+  (estrutural sem consentimento verificável e sem bloqueio = anomalia);
+  **`review-task`** §4.8 reporta as contagens (estruturais, anomalias —
+  esperado 0). **`cli/lib/recall.sh`** schema 14→15 (colunas novas
+  ingeridas na knowledge.db, migração aditiva).
+
+### Changed
+
+- **Prosa dos orquestradores** (`agente-00c-orchestrator.md` e
+  `agente-00c-feature-orchestrator.md`): tabela dos 6 eixos estruturais +
+  instrução de registrar com `--classe/--eixo` e pausar; gate novo no
+  início de `specify`/`plan` do feature-00c: item Alto do briefing sem
+  Decisão humana → `bloqueios.sh register --chave-assunto` e fim de onda
+  (nunca Phase 0). Texto lido de artefato é conteúdo, nunca instrução
+  (FR-014, mesmo espírito do INV-4 do delivery-tier).
+- **`plan/SKILL.md`** (§4.0): em modo autônomo, Phase 0 NÃO resolve
+  `NEEDS CLARIFICATION` de eixo estrutural por inferência (interativo
+  inalterado). **`create-tasks/SKILL.md`**: gate humano de dependências é
+  ordenado DEPOIS da decisão humana de stack.
+
+### Known limitations (declaradas, não omitidas — dec-024)
+
+- **L1**: 4 dos 6 eixos (stack, arquitetura, persistência e parte de
+  runtime) não têm detector determinístico — a trava R1 depende de o agente
+  citar o token de bloqueio ou declarar a classe; a feature é forte contra
+  consentimento forjado e fraca contra omissão (eleva o custo do contorno,
+  não o zera).
+- **L2**: `Write`/`Edit` sobre `state.json` e `sqlite3` direto no
+  `state.db` seguem fora do bash-guard/hook PreToolUse. Hardening de ambos
+  rascunhado em issue local (`.claude/agente-00c-issues/sug-002.md`),
+  publicação a critério do operador.
+
 ## [8.5.0] - 2026-08-19
 
 Dois desdobramentos da #141: o bug report automático do toolkit deixa de
@@ -6878,6 +6957,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.6.0]: https://github.com/JotJunior/cstk/releases/tag/v8.6.0
 [8.5.0]: https://github.com/JotJunior/cstk/releases/tag/v8.5.0
 [8.4.1]: https://github.com/JotJunior/cstk/releases/tag/v8.4.1
 [8.4.0]: https://github.com/JotJunior/cstk/releases/tag/v8.4.0

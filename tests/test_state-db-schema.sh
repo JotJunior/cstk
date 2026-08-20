@@ -156,6 +156,104 @@ scenario_execution_subagent_depth_acima_do_teto_e_rejeitado() {
   [ "$_CAPTURED_EXIT" != 0 ] || { _fail "depth=4 (> teto)" "deveria ser rejeitado pelo CHECK (subagent_depth <= max_recursion)"; return 1; }
 }
 
+scenario_create_gera_4_colunas_novas_structural_gate() {
+  # feature structural-decision-human-gate, task 1.1.5: banco criado do
+  # zero (DDL ja atualizado) ja nasce com as 4 colunas [NOVO].
+  _db="$TMPDIR_TEST/state.db"
+  "$SCRIPT" create --db "$_db" >/dev/null
+  _cols_decision=$(sqlite3 "$_db" "SELECT group_concat(name) FROM pragma_table_info('decision');")
+  for _c in decision_class structural_axis human_consent_block_id; do
+    case ",$_cols_decision," in
+      *",$_c,"*) : ;;
+      *) _fail "decision.$_c" "coluna ausente apos create: $_cols_decision"; return 1 ;;
+    esac
+  done
+  _cols_hb=$(sqlite3 "$_db" "SELECT group_concat(name) FROM pragma_table_info('human_block');")
+  case ",$_cols_hb," in
+    *",subject_key,"*) : ;;
+    *) _fail "human_block.subject_key" "coluna ausente apos create: $_cols_hb"; return 1 ;;
+  esac
+}
+
+scenario_ensure_e_idempotente() {
+  _db="$TMPDIR_TEST/state.db"
+  "$SCRIPT" create --db "$_db" >/dev/null
+  capture "$SCRIPT" ensure --db "$_db"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ensure1" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" ensure --db "$_db"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ensure2 (reexecucao)" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_ensure_fail_hard_banco_inexistente() {
+  _db="$TMPDIR_TEST/nao-existe.db"
+  capture "$SCRIPT" ensure --db "$_db"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "ensure banco ausente" "esperado exit 1, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_ensure_uso_incorreto_sem_flag_db() {
+  capture "$SCRIPT" ensure
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "ensure sem --db" "esperado exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_ensure_banco_pre_feature_ganha_colunas_sem_perder_linhas() {
+  # Simula um state.db criado ANTES desta feature: aplica so as CREATE
+  # TABLE originais (sem as 4 colunas novas), popula uma linha em cada
+  # tabela afetada, roda `ensure` e confirma que as colunas aparecem SEM
+  # perder as linhas existentes (INV-E1/INV-E2).
+  _db="$TMPDIR_TEST/state.db"
+  sqlite3 "$_db" <<'EOF'
+PRAGMA foreign_keys = ON;
+CREATE TABLE execution (
+  id TEXT PRIMARY KEY, schema_version TEXT NOT NULL,
+  target_project_path TEXT NOT NULL, target_project_description TEXT NOT NULL,
+  status TEXT NOT NULL, started_at TEXT NOT NULL,
+  current_stage TEXT NOT NULL, next_instruction TEXT NOT NULL
+);
+CREATE TABLE decision (
+  id TEXT PRIMARY KEY, execution_id TEXT NOT NULL REFERENCES execution(id),
+  wave_id TEXT, timestamp TEXT NOT NULL, agent TEXT NOT NULL, stage TEXT NOT NULL,
+  context TEXT NOT NULL, options_considered TEXT NOT NULL, choice TEXT NOT NULL,
+  rationale TEXT NOT NULL, justification_score INTEGER, evidence TEXT,
+  "references" TEXT, originating_artifact TEXT
+);
+CREATE TABLE human_block (
+  id TEXT PRIMARY KEY, execution_id TEXT NOT NULL REFERENCES execution(id),
+  decision_id TEXT NOT NULL REFERENCES decision(id), question TEXT NOT NULL,
+  context_for_answer TEXT NOT NULL, recommended_options TEXT, status TEXT NOT NULL,
+  human_answer TEXT, triggered_at TEXT NOT NULL, answered_at TEXT
+);
+EOF
+  [ -f "$_db" ] || { _fail "seed banco pre-feature" "banco nao criado"; return 1; }
+  _seed_execution "$_db"
+  sqlite3 "$_db" "INSERT INTO decision (id,execution_id,timestamp,agent,stage,context,options_considered,choice,rationale) VALUES ('dec-001','exec-1','2026-08-19T00:00:00Z','agente','etapa','contexto com pelo menos 20 chars','[\"a\"]','a','justificativa com pelo menos 20 chars');"
+  sqlite3 "$_db" "INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,status,triggered_at) VALUES ('block-001','exec-1','dec-001','pergunta com pelo menos 20 chars','contexto','aguardando','2026-08-19T00:00:00Z');"
+
+  capture "$SCRIPT" ensure --db "$_db"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ensure banco pre-feature" "$_CAPTURED_STDERR"; return 1; }
+
+  _cols_decision=$(sqlite3 "$_db" "SELECT group_concat(name) FROM pragma_table_info('decision');")
+  for _c in decision_class structural_axis human_consent_block_id; do
+    case ",$_cols_decision," in
+      *",$_c,"*) : ;;
+      *) _fail "decision.$_c pos-ensure" "coluna ausente: $_cols_decision"; return 1 ;;
+    esac
+  done
+  _cols_hb=$(sqlite3 "$_db" "SELECT group_concat(name) FROM pragma_table_info('human_block');")
+  case ",$_cols_hb," in
+    *",subject_key,"*) : ;;
+    *) _fail "human_block.subject_key pos-ensure" "coluna ausente: $_cols_hb"; return 1 ;;
+  esac
+
+  # Linhas existentes preservadas.
+  _n_dec=$(sqlite3 "$_db" "SELECT count(*) FROM decision WHERE id='dec-001';")
+  [ "$_n_dec" = 1 ] || { _fail "decision preservada" "esperado 1, obtido $_n_dec"; return 1; }
+  _n_hb=$(sqlite3 "$_db" "SELECT count(*) FROM human_block WHERE id='block-001';")
+  [ "$_n_hb" = 1 ] || { _fail "human_block preservado" "esperado 1, obtido $_n_hb"; return 1; }
+  # Colunas novas nulas por default nas linhas pre-existentes.
+  _dc=$(sqlite3 "$_db" "SELECT ifnull(decision_class,'NULL') FROM decision WHERE id='dec-001';")
+  [ "$_dc" = "NULL" ] || { _fail "decision_class default" "esperado NULL, obtido $_dc"; return 1; }
+}
+
 scenario_task_outcome_pk_composta_upsert_idempotente() {
   _db="$TMPDIR_TEST/state.db"
   "$SCRIPT" create --db "$_db" >/dev/null

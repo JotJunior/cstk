@@ -138,6 +138,119 @@ test("inputSchema (CONSTITUTION_CONFLICT_SCORE): as 3 opcoes canonicas com score
   assert.equal(parsed.success, true);
 });
 
+// structural-decision-human-gate FASE 4 (task 4.3.1): R1..R3 rejeitadas no
+// superRefine (barreira 1, ANTES de qualquer chamada ao helper — nenhum
+// stage="delegation" e alcancado nestes cenarios). R6 depende de estado
+// (INV-M4) e so e testavel via handleRecordDecision + fixture (abaixo).
+
+test("inputSchema (R1/STRUCTURAL_CLASS_REQUIRED): opcao 'pause-humano' sem decision_class e rejeitada", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    options_considered: ["pause-humano", "prosseguir"],
+    choice: "pause-humano",
+    justification_score: 0,
+  });
+  assert.equal(parsed.success, false);
+});
+
+test("inputSchema (R1): token 'bloqueio-humano*' avaliado pelo ROTULO quando a opcao e objeto (#141)", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    options_considered: [{ rotulo: "bloqueio-humano-eixo-stack" }, "prosseguir"],
+    choice: "bloqueio-humano-eixo-stack",
+    justification_score: 0,
+  });
+  assert.equal(parsed.success, false);
+});
+
+test("inputSchema (R1): opcao de bloqueio humano COM decision_class presente e aceita (nao dispara R1)", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    options_considered: ["pause-humano", "prosseguir"],
+    choice: "pause-humano",
+    justification_score: 0,
+    decision_class: "estrutural",
+    structural_axis: "stack-frameworks",
+  });
+  assert.equal(parsed.success, true);
+});
+
+test("inputSchema (R3/STRUCTURAL_AXIS_INVALID): decision_class=estrutural sem structural_axis e rejeitada", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    decision_class: "estrutural",
+    choice: "pause-humano",
+    justification_score: 0,
+  });
+  assert.equal(parsed.success, false);
+});
+
+test("inputSchema (R3): decision_class fora do enum {estrutural,operacional} e rejeitada pelo proprio zod", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    decision_class: "outra-coisa",
+  });
+  assert.equal(parsed.success, false);
+});
+
+test("inputSchema (R2/STRUCTURAL_REQUIRES_HUMAN_BLOCK): estrutural sem consentimento e com choice fora da familia de bloqueio e rejeitada", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    decision_class: "estrutural",
+    structural_axis: "stack-frameworks",
+    choice: "usar-typescript",
+    justification_score: 2,
+  });
+  assert.equal(parsed.success, false);
+});
+
+test("inputSchema (R2): estrutural sem consentimento e com score != 0 e rejeitada mesmo com choice de bloqueio", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    decision_class: "estrutural",
+    structural_axis: "stack-frameworks",
+    choice: "pause-humano",
+    justification_score: 2,
+  });
+  assert.equal(parsed.success, false);
+});
+
+test("inputSchema (R2): estrutural COM human_consent_block_id valido dispensa a familia de bloqueio/score 0 (R2 nao se aplica)", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    decision_class: "estrutural",
+    structural_axis: "stack-frameworks",
+    choice: "usar-typescript",
+    justification_score: 2,
+    human_consent_block_id: "block-007",
+  });
+  assert.equal(parsed.success, true);
+});
+
+test("inputSchema: human_consent_block_id fora do formato block-NNN e rejeitado (INV-M4: so forma)", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    decision_class: "estrutural",
+    structural_axis: "stack-frameworks",
+    choice: "usar-typescript",
+    justification_score: 2,
+    human_consent_block_id: "not-a-block-id",
+  });
+  assert.equal(parsed.success, false);
+});
+
+test("inputSchema: decisao estrutural completa e valida (classe+eixo+bloqueio) e aceita", () => {
+  const parsed = inputSchema.safeParse({
+    ...VALID_PAYLOAD,
+    decision_class: "estrutural",
+    structural_axis: "persistencia",
+    choice: "usar-postgres",
+    justification_score: 2,
+    human_consent_block_id: "block-042",
+  });
+  assert.equal(parsed.success, true);
+});
+
 function parseOrThrow(raw: unknown): RecordDecisionInput {
   return inputSchema.parse(raw);
 }
@@ -192,4 +305,57 @@ test("handleRecordDecision: helper rejeita por CONSTITUTION_CONFLICT_SCORE (defe
   assert.equal(response.outcome, "rejected");
   assert.equal(response.stage, "delegation");
   assert.match(response.reason ?? "", /CONSTITUTION_CONFLICT_SCORE/);
+});
+
+// structural-decision-human-gate FASE 4 (task 4.3.1): R6 depende de estado
+// (bloqueio existe? pertence a esta execucao? status=respondido? mesmo
+// subject_key do eixo?) — o schema NAO le estado (INV-M4), entao so o
+// helper (via classifyHelperError) pode rejeitar. Payload valido no schema
+// (decision_class=estrutural + structural_axis + human_consent_block_id
+// bem-formado) chega ao handler; quem rejeita e o helper fake.
+const STRUCTURAL_PAYLOAD_WITH_CONSENT = {
+  ...VALID_PAYLOAD,
+  decision_class: "estrutural" as const,
+  structural_axis: "persistencia",
+  choice: "usar-postgres",
+  justification_score: 2 as const,
+  human_consent_block_id: "block-999",
+};
+
+test("handleRecordDecision: helper rejeita por HUMAN_CONSENT_INVALID (R6 — bloqueio inexistente/outra execucao/aguardando)", async () => {
+  const input = parseOrThrow(STRUCTURAL_PAYLOAD_WITH_CONSENT);
+
+  const response = await handleRecordDecision(input, {
+    session: FAKE_SESSION,
+    helperPath: join(FIXTURES_DIR, "fake-record-decision-consent-invalid.sh"),
+  });
+
+  assert.equal(response.outcome, "rejected");
+  assert.equal(response.stage, "delegation");
+  assert.match(response.reason ?? "", /HUMAN_CONSENT_INVALID/);
+});
+
+test("handleRecordDecision: helper rejeita por HUMAN_CONSENT_INVALID (R6 — consentimento de outro assunto)", async () => {
+  const input = parseOrThrow(STRUCTURAL_PAYLOAD_WITH_CONSENT);
+
+  const response = await handleRecordDecision(input, {
+    session: FAKE_SESSION,
+    helperPath: join(FIXTURES_DIR, "fake-record-decision-consent-wrong-subject.sh"),
+  });
+
+  assert.equal(response.outcome, "rejected");
+  assert.equal(response.stage, "delegation");
+  assert.match(response.reason ?? "", /HUMAN_CONSENT_INVALID/);
+});
+
+test("handleRecordDecision: decisao estrutural com consentimento valido delega ao helper e devolve decision_id (happy path)", async () => {
+  const input = parseOrThrow(STRUCTURAL_PAYLOAD_WITH_CONSENT);
+
+  const response = await handleRecordDecision(input, {
+    session: FAKE_SESSION,
+    helperPath: join(FIXTURES_DIR, "fake-record-decision-ok.sh"),
+  });
+
+  assert.equal(response.outcome, "accepted");
+  assert.deepEqual(response.result, { decision_id: "dec-042" });
 });

@@ -148,6 +148,16 @@ CREATE TABLE IF NOT EXISTS decision (
   "references"          TEXT,   -- JSON array
   originating_artifact  TEXT,
 
+  -- Colunas [NOVO] (feature structural-decision-human-gate): gate humano
+  -- para decisao de classe estrutural (linguagem/runtime, stack,
+  -- arquitetura, persistencia, ambiente-alvo, tier-entrega). Aditivas
+  -- (FR-005/FR-013): NULL = nao declarada, comportamento atual integral.
+  -- Regras R1..R6 vivem nas portas de escrita (helper + tool MCP), NAO
+  -- como CHECK aqui — ver data-model.md §Regras de integridade.
+  decision_class        TEXT,   -- enum: estrutural | operacional (NULL = nao declarada)
+  structural_axis       TEXT,   -- enum em references/structural-axis-map.txt; obrigatorio quando decision_class='estrutural'
+  human_consent_block_id TEXT,  -- id de human_block (mesma execucao, status='respondido'); NAO e FK — verificado em runtime (R6)
+
   -- Os 5 campos obrigatorios (Principio I)
   CHECK (length(agent)   > 0),
   CHECK (length(stage)   > 0),
@@ -178,6 +188,12 @@ CREATE TABLE IF NOT EXISTS human_block (
   human_answer          TEXT,
   triggered_at          TEXT NOT NULL,
   answered_at           TEXT,
+
+  -- Coluna [NOVO] (feature structural-decision-human-gate): chave de
+  -- assunto para dedup (FR-008). Prefixo fechado 'briefing-item:' |
+  -- 'axis:'; NULL = bloqueios anteriores a esta feature (nunca casam com
+  -- chave alguma, degradacao sempre no sentido de perguntar de novo).
+  subject_key           TEXT,
 
   CHECK (status IN ('aguardando','respondido')),
   CHECK ((status = 'aguardando'  AND answered_at IS NULL)

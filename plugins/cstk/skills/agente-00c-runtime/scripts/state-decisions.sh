@@ -102,6 +102,108 @@ _sd_iso_now() { date -u +%FT%TZ; }
 
 _sd_state_file() { printf '%s/state.json\n' "$1"; }
 
+# ---------- structural-decision-human-gate (FASE 2): trava R1..R3, R6 ----------
+# Ref: docs/specs/structural-decision-human-gate/data-model.md §Regras de
+#      integridade; contracts/cli-structural-class.md §state-decisions.sh
+#      register (extensao)
+
+_SD_AXIS_MAP="$_SD_DIR/../references/structural-axis-map.txt"
+
+# _sd_axis_valid TOKEN -> exit 0 se TOKEN existe no enum fechado de
+# structural-axis-map.txt (linhas 'eixo|rotulo'; '#' e vazias ignoradas).
+# Eixo fora da lista e SEMPRE rejeitado — sem fail-safe (diferente de
+# tier-gate-map.txt), pois aceitar eixo desconhecido burlaria o enum.
+_sd_axis_valid() {
+  _sav_tok="$1"
+  [ -n "$_sav_tok" ] || return 1
+  [ -f "$_SD_AXIS_MAP" ] || return 1
+  while IFS='|' read -r _sav_eixo _sav_rot || [ -n "$_sav_eixo" ]; do
+    case "$_sav_eixo" in
+      ''|'#'*) continue ;;
+    esac
+    if [ "$_sav_eixo" = "$_sav_tok" ]; then
+      return 0
+    fi
+  done < "$_SD_AXIS_MAP"
+  return 1
+}
+
+# _sd_opcoes_contains_bloqueio OPCOES_JSON -> exit 0 se algum item (string ou
+# objeto {rotulo|label}) pertence a familia de token de bloqueio humano
+# (data-model.md §Familia de token de bloqueio humano): prefixo
+# 'bloqueio-humano' ou token literal 'pause-humano'.
+_sd_opcoes_contains_bloqueio() {
+  printf '%s' "$1" | jq -e '
+    any(.[];
+      (if type == "object" then (.rotulo // .label) else . end) as $t
+      | ($t == "pause-humano") or ($t | test("^bloqueio-humano"))
+    )
+  ' >/dev/null 2>&1
+}
+
+# _sd_escolha_is_bloqueio ESCOLHA -> exit 0 se ESCOLHA (string simples de
+# --escolha) pertence a mesma familia de token.
+_sd_escolha_is_bloqueio() {
+  case "$1" in
+    pause-humano|bloqueio-humano*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# _sd_verify_consent_json STATE_DIR CONSENT_ID EIXO -> R6 sob backend JSON.
+# Le .human_blocks[] direto do state.json (uma unica execucao por state-dir
+# nesse backend, logo nao ha campo execution_id a comparar). _sd_die (exit 1)
+# se o bloqueio nao existir, nao estiver respondido, ou tiver subject_key
+# diferente de 'axis:<EIXO>'. Nada e gravado antes desta chamada (INV-C3).
+_sd_verify_consent_json() {
+  _svj_sdir="$1"; _svj_id="$2"; _svj_eixo="$3"
+  _svj_sf=$(_sd_state_file "$_svj_sdir")
+  [ -f "$_svj_sf" ] || _sd_die "register: state.json ausente em $_svj_sdir" 1
+  _svj_blk=$(jq -c --arg id "$_svj_id" '
+    ((.human_blocks // .bloqueios_humanos) // []) | map(select(.id == $id)) | .[0] // empty
+  ' "$_svj_sf")
+  if [ -z "$_svj_blk" ]; then
+    _sd_die "register: --consentimento $_svj_id nao encontrado nesta execucao (status: ausente) [consentimento-invalido]" 1
+  fi
+  _svj_status=$(printf '%s' "$_svj_blk" | jq -r '.status')
+  if [ "$_svj_status" != "respondido" ]; then
+    _sd_die "register: --consentimento $_svj_id existe mas status=$_svj_status (esperado respondido) [consentimento-invalido]" 1
+  fi
+  _svj_subj=$(printf '%s' "$_svj_blk" | jq -r '.subject_key // empty')
+  _svj_want="axis:$_svj_eixo"
+  if [ "$_svj_subj" != "$_svj_want" ]; then
+    _sd_die "register: --consentimento $_svj_id respondido para o assunto '$_svj_subj' mas esta Decisao e do eixo '$_svj_want' — consentimento de um eixo nao autoriza outro [consentimento-de-outro-assunto]" 1
+  fi
+}
+
+# _sd_verify_consent_sqlite STATE_DIR CONSENT_ID EIXO -> R6 sob backend
+# SQLite. Garante o schema aditivo (ensure — INV-E3, caminho de escrita) e
+# consulta human_block filtrado por execution_id da execucao corrente. Mesmos
+# 3 desfechos de _sd_verify_consent_json.
+_sd_verify_consent_sqlite() {
+  _svs_sdir="$1"; _svs_id="$2"; _svs_eixo="$3"
+  _svs_db=$(_sr_db_file "$_svs_sdir")
+  [ -f "$_svs_db" ] || _sd_die "register: state.db ausente em $_svs_sdir" 1
+  "$_SD_DIR/state-db-schema.sh" ensure --db "$_svs_db" \
+    || _sd_die "register: falha ao garantir schema aditivo (state-db-schema.sh ensure) em $_svs_db" 1
+  _svs_exec_id=$(_sr_exec_id "$_svs_db")
+  [ -n "$_svs_exec_id" ] || _sd_die "register: execution ausente em $_svs_db" 1
+  _svs_row=$(_state_db_exec "$_svs_db" \
+    "SELECT status || char(9) || coalesce(subject_key,'') FROM human_block WHERE id=$(_sr_sql_quote "$_svs_id") AND execution_id=$(_sr_sql_quote "$_svs_exec_id");")
+  if [ -z "$_svs_row" ]; then
+    _sd_die "register: --consentimento $_svs_id nao encontrado nesta execucao (status: ausente) [consentimento-invalido]" 1
+  fi
+  _svs_status=$(printf '%s' "$_svs_row" | cut -f1)
+  _svs_subj=$(printf '%s' "$_svs_row" | cut -f2-)
+  if [ "$_svs_status" != "respondido" ]; then
+    _sd_die "register: --consentimento $_svs_id existe mas status=$_svs_status (esperado respondido) [consentimento-invalido]" 1
+  fi
+  _svs_want="axis:$_svs_eixo"
+  if [ "$_svs_subj" != "$_svs_want" ]; then
+    _sd_die "register: --consentimento $_svs_id respondido para o assunto '$_svs_subj' mas esta Decisao e do eixo '$_svs_want' — consentimento de um eixo nao autoriza outro [consentimento-de-outro-assunto]" 1
+  fi
+}
+
 # _sd_next_dec_id STATE_DIR -> proximo dec-NNN baseado em max(.decisions[].id)
 _sd_next_dec_id() {
   _sf=$(_sd_state_file "$1")
@@ -176,6 +278,9 @@ _sd_cmd_register() {
   _refs="[]"
   _arto="null"
   _evi=""
+  _classe=""
+  _eixo=""
+  _consent=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)            _sdir=$2; shift 2 ;;
@@ -189,6 +294,9 @@ _sd_cmd_register() {
       --evidencia)            _evi=$2;  shift 2 ;;
       --referencias)          _refs=$2;  shift 2 ;;
       --artefato-originador)  _arto=$2;  shift 2 ;;
+      --classe)               _classe=$2; shift 2 ;;
+      --eixo)                 _eixo=$2;   shift 2 ;;
+      --consentimento)        _consent=$2; shift 2 ;;
       *) _sd_die_usage "register: flag desconhecida: $1" ;;
     esac
   done
@@ -254,6 +362,41 @@ _sd_cmd_register() {
     fi
   fi
 
+  # ---------- structural-decision-human-gate: R1..R3 (pre-dispatch, pura de
+  # entrada — INV-C2). R6 (consentimento) depende do backend e roda dentro de
+  # cada branch, antes de qualquer escrita — vide _sd_verify_consent_json/
+  # _sd_verify_consent_sqlite mais abaixo. INV-C1: sem --classe, nenhum
+  # caminho abaixo dispara (exceto R1, que torna a flag obrigatoria).
+  if [ -n "$_classe" ]; then
+    case "$_classe" in
+      estrutural|operacional) ;;
+      *) _sd_die "register: --classe invalida (esperado estrutural|operacional, recebido '$_classe') [classe-invalida]" 2 ;;
+    esac
+  fi
+
+  # R1: --opcoes contem token da familia de bloqueio humano e --classe ausente.
+  if [ -z "$_classe" ] && _sd_opcoes_contains_bloqueio "$_ops"; then
+    _sd_die "register: --opcoes contem token da familia de bloqueio humano (bloqueio-humano*/pause-humano) — --classe (estrutural|operacional) e obrigatoria nesse caso [classe-obrigatoria]" 1
+  fi
+
+  if [ "$_classe" = "estrutural" ]; then
+    # R3: --eixo obrigatorio e dentro do enum de structural-axis-map.txt.
+    if ! _sd_axis_valid "$_eixo"; then
+      _sd_die "register: --classe estrutural exige --eixo dentro do enum de structural-axis-map.txt (recebido '${_eixo:-<ausente>}') [eixo-invalido]" 2
+    fi
+
+    # R2 (pre-dispatch, apenas quando --consentimento NAO foi passado):
+    # --escolha precisa ser da familia de bloqueio humano E --score = 0. Com
+    # --consentimento presente, esta checagem e pulada aqui — a validade dele
+    # e verificada por R6 (dentro do branch de backend) e, se satisfeita, a
+    # regua de score atual volta a valer integralmente (data-model.md R2).
+    if [ -z "$_consent" ]; then
+      if ! _sd_escolha_is_bloqueio "$_esc" || [ "$_score" != 0 ]; then
+        _sd_die "register: decisao estrutural (classe=estrutural, eixo=$_eixo) sem --consentimento valido exige --escolha da familia de bloqueio humano E --score 0 (pause-humano) — registre o bloqueio via bloqueios.sh, aguarde a resposta do operador e reapresente com --consentimento block-NNN [estrutural-exige-bloqueio]" 1
+      fi
+    fi
+  fi
+
   # Trava FR-CONST-PREFLIGHT: decisao pre-flight de constitution-conflict
   # (exit=2 do pipeline.sh) e identificada pela presenca das 3 opcoes
   # canonicas em --opcoes. Quando detectada, exige score=0 (pause-humano)
@@ -275,13 +418,23 @@ _sd_cmd_register() {
   fi
 
   if [ "$(_sr_backend "$_sdir")" = "sqlite" ]; then
+    # R6 (INV-C2/INV-C4): valida o consentimento contra o estado ANTES de
+    # qualquer escrita, so quando --consentimento foi passado.
+    if [ -n "$_consent" ]; then
+      _sd_verify_consent_sqlite "$_sdir" "$_consent" "$_eixo"
+    fi
     _sd_db_register "$_sdir" "$_ag" "$_et" "$_ctx" "$_ops" "$_esc" "$_just" \
-      "$_score" "$_evi" "$_refs" "$_arto"
+      "$_score" "$_evi" "$_refs" "$_arto" "$_classe" "$_eixo" "$_consent"
     return 0
   fi
 
   _sf=$(_sd_state_file "$_sdir")
   [ -f "$_sf" ] || _sd_die "register: state.json ausente em $_sdir" 1
+
+  # R6 (INV-C2/INV-C4), backend JSON — mesma regra, antes de qualquer escrita.
+  if [ -n "$_consent" ]; then
+    _sd_verify_consent_json "$_sdir" "$_consent" "$_eixo"
+  fi
 
   _id=$(_sd_next_dec_id "$_sdir")
   _onda=$(_sd_current_onda_id "$_sdir")
@@ -303,6 +456,9 @@ _sd_cmd_register() {
     --argjson score "$_score" \
     --arg arto "$_arto" \
     --arg evi "$_evi" \
+    --arg classe "$_classe" \
+    --arg eixo "$_eixo" \
+    --arg consent "$_consent" \
     '
     .decisions += [{
       id: $id,
@@ -317,7 +473,10 @@ _sd_cmd_register() {
       justification_score: $score,
       evidence: (if $evi == "" then null else $evi end),
       references: $refs,
-      originating_artifact: (if $arto == "null" then null else $arto end)
+      originating_artifact: (if $arto == "null" then null else $arto end),
+      decision_class: (if $classe == "" then null else $classe end),
+      structural_axis: (if $eixo == "" then null else $eixo end),
+      human_consent_block_id: (if $consent == "" then null else $consent end)
     }]
     | .accumulated_metrics.decisions_total = ((.accumulated_metrics.decisions_total // 0) + 1)
     ' "$_sf" > "$_new_state" || { rm -f -- "$_new_state"; _sd_die "jq update falhou" 1; }
@@ -460,7 +619,9 @@ USO:
   state-decisions.sh register --state-dir DIR --agente A --etapa S \
     --contexto T --opcoes JSON-ARR --escolha STR --justificativa STR \
     [--score N] [--evidencia STR] [--referencias JSON-ARR] \
-    [--artefato-originador STR]
+    [--artefato-originador STR] \
+    [--classe estrutural|operacional] [--eixo TOKEN] \
+    [--consentimento block-NNN]     # structural-decision-human-gate: R1..R3, R6
   state-decisions.sh count --state-dir DIR [--agente A]
   state-decisions.sh next-id --state-dir DIR
   state-decisions.sh list --state-dir DIR [--agente A] [--etapa S]

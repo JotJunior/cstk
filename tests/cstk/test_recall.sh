@@ -608,7 +608,7 @@ SQL
     _fail "apply schema v7" "recall_apply_schema falhou"; return 1; }
   # (a) schema_version virou a corrente (14 — v14 plan-usage-capture).
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "14" ] || { _fail "schema_version" "esperado 14, obtido $_sv"; return 1; }
+  [ "$_sv" = "15" ] || { _fail "schema_version" "esperado 15, obtido $_sv"; return 1; }
   # (b) tabela bloqueios DROPADA; blocks (EN) criada no lugar.
   _hasbloq=$(sqlite3 "$_mdb" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='bloqueios'")
   [ "$_hasbloq" = "0" ] || { _fail "bloqueios dropada" "tabela pt-BR bloqueios sobreviveu"; return 1; }
@@ -653,7 +653,7 @@ scenario_m11b_v7_reindex_repopula() {
   _v7db="$TMPDIR_TEST/v7.db"
   _rc --reindex --states-root "$TMPDIR_TEST/rxv7" --db "$_v7db" >/dev/null 2>&1
   _sv=$(sqlite3 "$_v7db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "14" ] || { _fail "reindex schema corrente" "esperado schema_version 14, obtido $_sv"; return 1; }
+  [ "$_sv" = "15" ] || { _fail "reindex schema corrente" "esperado schema_version 15, obtido $_sv"; return 1; }
   # decisions repopuladas em EN (2 decisoes do _write_state).
   _n=$(sqlite3 "$_v7db" "SELECT count(*) FROM decisions WHERE feature='featV7'")
   [ "$_n" = "2" ] || { _fail "reindex repopula" "esperado 2 decisoes, obtido $_n"; return 1; }
@@ -675,7 +675,7 @@ scenario_m12_ddl_idempotente() {
   sqlite3 "$_mdb" "INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('p','f','w','e','t','dec-keep','keep','now')"
   assert_exit 0 sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_mdb" || return 1
   _sv=$(sqlite3 "$_mdb" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "14" ] || { _fail "schema estavel" "esperado 14 apos 2x, obtido $_sv"; return 1; }
+  [ "$_sv" = "15" ] || { _fail "schema estavel" "esperado 15 apos 2x, obtido $_sv"; return 1; }
   _keep=$(sqlite3 "$_mdb" "SELECT count(*) FROM decisions WHERE source_id='dec-keep'")
   [ "$_keep" = "1" ] || { _fail "idempotente sem re-drop" "linha sumiu: 2o apply re-dropou ($_keep)"; return 1; }
 }
@@ -1926,7 +1926,7 @@ scenario_b11_ddl_tasks_events() {
   # v9 executions-target-path: coluna target_project_path em executions; v8
   # recall-worktree-identity: coluna session em executions/waves).
   _sv=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT value FROM schema_meta WHERE key='schema_version'")
-  [ "$_sv" = "14" ] || { _fail "schema_version" "esperado 14, obtido $_sv"; return 1; }
+  [ "$_sv" = "15" ] || { _fail "schema_version" "esperado 15, obtido $_sv"; return 1; }
   # tasks tem a coluna title (EN, DDL fresco).
   _hascol=$(sqlite3 "$TMPDIR_TEST/k.db" "SELECT count(*) FROM pragma_table_info('tasks') WHERE name='title'")
   [ "$_hascol" = "1" ] || { _fail "coluna title" "esperado 1, obtido $_hascol"; return 1; }
@@ -2242,7 +2242,7 @@ scenario_m1_schema_memories_table_exists() {
   # schema_version deve ser 10 (wave-token-metrics: colunas agent_* em waves)
   _ver=$(sqlite3 "$TMPDIR_TEST/m1.db" \
     "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "14" ] || { _fail "schema_version errado" "esperado 14, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "15" ] || { _fail "schema_version errado" "esperado 15, obtido '$_ver'"; return 1; }
 }
 
 # M1-enum — RECALL_TYPE_ENUM inclui 'memory' apos bump.
@@ -2332,7 +2332,7 @@ scenario_m1_migration_v3_to_current() {
   # session/target_project_path de executions e agent_* de waves vem do DDL
   # fresco pos-drop v7)
   _ver=$(sqlite3 "$_v3db" "SELECT value FROM schema_meta WHERE key='schema_version';" 2>/dev/null)
-  [ "$_ver" = "14" ] || { _fail "migration: schema_version errado" "esperado 14, obtido '$_ver'"; return 1; }
+  [ "$_ver" = "15" ] || { _fail "migration: schema_version errado" "esperado 15, obtido '$_ver'"; return 1; }
   # decisions repopuladas pelo ingest (>=1; o derivado v3 foi descartado, o
   # state.json o reconstroi em EN).
   _n=$(sqlite3 "$_v3db" "SELECT count(*) FROM decisions;" 2>/dev/null)
@@ -3082,7 +3082,7 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,stages,i
     *) _fail "W5 waves.session" "coluna session ausente em waves pos-migracao"; return 1 ;;
   esac
   _w5_ver=$(sqlite3 "$_w5_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_w5_ver" = "14" ] || { _fail "W5 schema_version" "esperado '14' (corrente pos-v14), obtido '$_w5_ver'"; return 1; }
+  [ "$_w5_ver" = "15" ] || { _fail "W5 schema_version" "esperado '15' (corrente pos-v15), obtido '$_w5_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/w5/sd" --db "$_w5_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "W5 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3208,7 +3208,7 @@ JSON
     *) _fail "TP1d shape v9" "coluna target_project_path ausente em executions"; return 1 ;;
   esac
   _tp1_ver=$(sqlite3 "$_tp1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp1_ver" = "14" ] || { _fail "TP1d schema_version" "esperado 14, obtido '$_tp1_ver'"; return 1; }
+  [ "$_tp1_ver" = "15" ] || { _fail "TP1d schema_version" "esperado 15, obtido '$_tp1_ver'"; return 1; }
 }
 
 # Cenario TP2 — re-ingestao idempotente + backfill: DB v8 preexistente com
@@ -3263,7 +3263,7 @@ INSERT INTO executions(project,feature,wave,execution_id,source_ts,source_id,ses
   _tp3_new=$(sqlite3 "$_tp3_db" "SELECT target_project_path FROM executions WHERE feature='feat-tp3';")
   [ "$_tp3_new" = "/nonexistent/tp3proj" ] || { _fail "TP3 linha nova" "esperado '/nonexistent/tp3proj', obtido '$_tp3_new'"; return 1; }
   _tp3_ver=$(sqlite3 "$_tp3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_tp3_ver" = "14" ] || { _fail "TP3 schema_version" "esperado '14', obtido '$_tp3_ver'"; return 1; }
+  [ "$_tp3_ver" = "15" ] || { _fail "TP3 schema_version" "esperado '15', obtido '$_tp3_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/tp3/sd" --db "$_tp3_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "TP3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3312,7 +3312,7 @@ JSON
     *) _fail "WT1 shape v10" "coluna agent_spawns_total ausente em waves"; return 1 ;;
   esac
   _wt1_ver=$(sqlite3 "$_wt1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wt1_ver" = "14" ] || { _fail "WT1 schema_version" "esperado 14, obtido '$_wt1_ver'"; return 1; }
+  [ "$_wt1_ver" = "15" ] || { _fail "WT1 schema_version" "esperado 15, obtido '$_wt1_ver'"; return 1; }
 }
 
 # Cenario WT2 — onda SEM .agent_usage: as 9 colunas ficam NULL, nunca 0
@@ -3384,7 +3384,7 @@ JSON
   _wt3_new=$(sqlite3 "$_wt3_db" "SELECT agent_spawns_total||'|'||agent_duration_ms FROM waves WHERE feature='feat-wt3';")
   [ "$_wt3_new" = "3|4321" ] || { _fail "WT3 linha nova" "esperado '3|4321', obtido '$_wt3_new'"; return 1; }
   _wt3_ver=$(sqlite3 "$_wt3_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wt3_ver" = "14" ] || { _fail "WT3 schema_version" "esperado '14', obtido '$_wt3_ver'"; return 1; }
+  [ "$_wt3_ver" = "15" ] || { _fail "WT3 schema_version" "esperado '15', obtido '$_wt3_ver'"; return 1; }
   # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
   capture _rc --ingest --state-dir "$TMPDIR_TEST/wt3/sd" --db "$_wt3_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "WT3 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
@@ -3521,7 +3521,7 @@ INSERT INTO waves(project,feature,wave,execution_id,source_ts,source_id,session,
   capture _rc --ingest --state-dir "$_sd" --db "$_ot_db"
   [ "$_CAPTURED_EXIT" = "0" ] || { _fail "ingest#1" "$_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
   _v=$(sqlite3 "$_ot_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_v" = "14" ] || { _fail "schema_version" "esperado 14, obtido '$_v'"; return 1; }
+  [ "$_v" = "15" ] || { _fail "schema_version" "esperado 15, obtido '$_v'"; return 1; }
 
   # linha v10 intacta: session preservada, coluna nova NULL (nao 0)
   _leg=$(sqlite3 "$_ot_db" "SELECT session||'|'||COALESCE(otel_cost_usd,-999) FROM waves WHERE project='legacyp10';")
@@ -3571,7 +3571,7 @@ scenario_wmu1_fresh_db_colunas_e_tabela() {
   _wmu1_tbl=$(sqlite3 "$_wmu1_db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='wave_model_usage'")
   [ "$_wmu1_tbl" = "1" ] || { _fail "wmu1 tabela" "wave_model_usage ausente em banco novo"; return 1; }
   _wmu1_ver=$(sqlite3 "$_wmu1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wmu1_ver" = "14" ] || { _fail "wmu1 schema_version" "esperado 14, obtido '$_wmu1_ver'"; return 1; }
+  [ "$_wmu1_ver" = "15" ] || { _fail "wmu1 schema_version" "esperado 15, obtido '$_wmu1_ver'"; return 1; }
   return 0
 }
 
@@ -3601,7 +3601,7 @@ INSERT INTO tasks(project,feature,wave,execution_id,source_ts,source_id,title,ou
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_wmu2_db" || {
     _fail "wmu2 apply#1" "recall_apply_schema falhou"; return 1; }
   _wmu2_ver=$(sqlite3 "$_wmu2_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_wmu2_ver" = "14" ] || { _fail "wmu2 schema_version" "esperado 14, obtido '$_wmu2_ver'"; return 1; }
+  [ "$_wmu2_ver" = "15" ] || { _fail "wmu2 schema_version" "esperado 15, obtido '$_wmu2_ver'"; return 1; }
 
   # linha v11 intacta: session/otel_cost_usd preservados, colunas novas NULL (nao 0)
   _wmu2_leg=$(sqlite3 "$_wmu2_db" "SELECT session||'|'||otel_cost_usd||'|'||COALESCE(otel_main_input_tokens,-999) FROM waves WHERE project='p11';")
@@ -4336,7 +4336,7 @@ scenario_lu1_fresh_db_tabela_e_versao() {
   _lu1_tbl=$(sqlite3 "$_lu1_db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='loose_usage'")
   [ "$_lu1_tbl" = "1" ] || { _fail "lu1 tabela" "loose_usage ausente em banco novo"; return 1; }
   _lu1_ver=$(sqlite3 "$_lu1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_lu1_ver" = "14" ] || { _fail "lu1 schema_version" "esperado 14, obtido '$_lu1_ver'"; return 1; }
+  [ "$_lu1_ver" = "15" ] || { _fail "lu1 schema_version" "esperado 15, obtido '$_lu1_ver'"; return 1; }
   return 0
 }
 
@@ -4367,7 +4367,7 @@ INSERT INTO tasks(project,feature,wave,execution_id,source_ts,source_id,title,ou
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_lu2_db" || {
     _fail "lu2 apply#1" "recall_apply_schema falhou"; return 1; }
   _lu2_ver=$(sqlite3 "$_lu2_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_lu2_ver" = "14" ] || { _fail "lu2 schema_version" "esperado 14, obtido '$_lu2_ver'"; return 1; }
+  [ "$_lu2_ver" = "15" ] || { _fail "lu2 schema_version" "esperado 15, obtido '$_lu2_ver'"; return 1; }
 
   # linha v12 intacta
   _lu2_leg=$(sqlite3 "$_lu2_db" "SELECT session||'|'||otel_cost_usd FROM waves WHERE project='p12';")
@@ -4480,7 +4480,7 @@ scenario_pu1_fresh_db_tabela_e_versao() {
   _pu1_tbl=$(sqlite3 "$_pu1_db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='plan_usage'")
   [ "$_pu1_tbl" = "1" ] || { _fail "pu1 tabela" "plan_usage ausente em banco novo"; return 1; }
   _pu1_ver=$(sqlite3 "$_pu1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_pu1_ver" = "14" ] || { _fail "pu1 schema_version" "esperado 14, obtido '$_pu1_ver'"; return 1; }
+  [ "$_pu1_ver" = "15" ] || { _fail "pu1 schema_version" "esperado 15, obtido '$_pu1_ver'"; return 1; }
   return 0
 }
 
@@ -4512,7 +4512,7 @@ INSERT INTO loose_usage(project,project_path,process_key,segment_id,model,cost_u
   sh -c '. "$CSTK_LIB/common.sh"; . "$CSTK_LIB/recall.sh"; recall_apply_schema "$1"' _ "$_pu2_db" || {
     _fail "pu2 apply#1" "recall_apply_schema falhou"; return 1; }
   _pu2_ver=$(sqlite3 "$_pu2_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
-  [ "$_pu2_ver" = "14" ] || { _fail "pu2 schema_version" "esperado 14, obtido '$_pu2_ver'"; return 1; }
+  [ "$_pu2_ver" = "15" ] || { _fail "pu2 schema_version" "esperado 15, obtido '$_pu2_ver'"; return 1; }
 
   # linha v13 intacta (waves e loose_usage, a tabela mais recente antes desta)
   _pu2_leg=$(sqlite3 "$_pu2_db" "SELECT session||'|'||otel_cost_usd FROM waves WHERE project='p13';")
@@ -4847,6 +4847,141 @@ scenario_t49_reindex_nao_escreve_fonte() {
       "live $_h_live_before->$_h_live_after; round.json $_h_round_json_before->$_h_round_json_after; round.db $_h_round_db_before->$_h_round_db_after"
     return 1
   fi
+}
+
+# =========================================================================
+# Cenarios SDHG1-SDHG3 — knowledge.db v14 -> v15 (structural-decision-human-gate,
+# task 7.3): 3 colunas aditivas TEXT em decisions (decision_class,
+# structural_axis, human_consent_block_id), espelhando as colunas
+# homonimas ja existentes em `decision` no state.db (FASE 1 desta
+# feature). Migracao idempotente (ALTER guardado por PRAGMA, mesmo padrao
+# TP3/WT3), NULL != "" fabricado (Principio VI/FR-013), aplicada aos dois
+# caminhos de ingestao (JSON->SQL e SQL->SQL).
+# =========================================================================
+
+# Cenario SDHG1 — migracao v14->v15 idempotente (espelho de TP3/WT3 para a
+# tabela decisions): fixture DB v14 (decisions shape v14, SEM as 3 colunas
+# novas + schema_version=14 + 1 linha legada) -> ingest adiciona as 3
+# colunas via ALTER guardado por PRAGMA; linha legada INTACTA (choice
+# preservado, colunas novas NULL nela); nova decisao (via state.json, COM
+# decision_class/structural_axis/human_consent_block_id) populada
+# corretamente; schema_version=15; 2a rodada idempotente (sem erro de
+# coluna duplicada, sem duplicata).
+scenario_sdhg1_migracao_v14_v15_idempotente() {
+  _have_deps || return 0
+  _sdhg1_db="$TMPDIR_TEST/sdhg1/k.db"
+  mkdir -p "$TMPDIR_TEST/sdhg1"
+  sqlite3 "$_sdhg1_db" "
+CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, feature TEXT NOT NULL, wave TEXT NOT NULL, execution_id TEXT NOT NULL, source_ts TEXT NOT NULL, source_id TEXT NOT NULL, agent TEXT, stage TEXT, choice TEXT, options TEXT, score INTEGER, context TEXT, rationale TEXT, evidence TEXT, ingested_at TEXT NOT NULL, UNIQUE(project, feature, wave, source_id));
+CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT);
+INSERT INTO schema_meta VALUES('schema_version','14');
+INSERT INTO decisions(project,feature,wave,execution_id,source_ts,source_id,choice,ingested_at) VALUES('legacyp14','legacyf14','onda-legacy','e-v14','t','dec-legacy','keep','t');
+" || { _fail "SDHG1 fixture" "criacao do DB v14 falhou"; return 1; }
+  mkdir -p "$TMPDIR_TEST/sdhg1/sd"
+  cat > "$TMPDIR_TEST/sdhg1/sd/state.json" <<'JSON'
+{
+  "short_name": "feat-sdhg1",
+  "execution": { "id": "exec-feat-sdhg1", "target_project_path": "/home/u/proj-sdhg1" },
+  "waves": [
+    { "id": "onda-001", "started_at": "t", "finished_at": "t", "executed_stages": [],
+      "tool_calls": 0, "wallclock_seconds": 0, "termination_reason": "ok" }
+  ],
+  "decisions": [
+    { "id": "dec-1", "wave_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "agent": "agente-00c-feature-orchestrator", "stage": "plan",
+      "context": "escolha de stack estrutural para o projeto sdhg1",
+      "options_considered": ["go", "node"], "choice": "go",
+      "rationale": "go ja e o padrao dos demais servicos do projeto sdhg1",
+      "justification_score": 3,
+      "decision_class": "estrutural", "structural_axis": "stack-frameworks",
+      "human_consent_block_id": "block-001" }
+  ]
+}
+JSON
+  # 1a rodada: migra v14->v15
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/sdhg1/sd" --db "$_sdhg1_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "SDHG1 ingest#1 exit" "$_CAPTURED_EXIT"; return 1; }
+  _sdhg1_leg=$(sqlite3 "$_sdhg1_db" "SELECT choice||'|'||COALESCE(decision_class,'NULL')||'|'||COALESCE(structural_axis,'NULL')||'|'||COALESCE(human_consent_block_id,'NULL') FROM decisions WHERE project='legacyp14';")
+  [ "$_sdhg1_leg" = "keep|NULL|NULL|NULL" ] || { _fail "SDHG1 linha v14 intacta" "esperado 'keep|NULL|NULL|NULL', obtido '$_sdhg1_leg'"; return 1; }
+  _sdhg1_new=$(sqlite3 "$_sdhg1_db" "SELECT decision_class||'|'||structural_axis||'|'||human_consent_block_id FROM decisions WHERE feature='feat-sdhg1';")
+  [ "$_sdhg1_new" = "estrutural|stack-frameworks|block-001" ] || { _fail "SDHG1 linha nova" "esperado 'estrutural|stack-frameworks|block-001', obtido '$_sdhg1_new'"; return 1; }
+  _sdhg1_ver=$(sqlite3 "$_sdhg1_db" "SELECT value FROM schema_meta WHERE key='schema_version';")
+  [ "$_sdhg1_ver" = "15" ] || { _fail "SDHG1 schema_version" "esperado '15', obtido '$_sdhg1_ver'"; return 1; }
+  # 2a rodada: idempotente (sem erro de coluna duplicada, sem duplicata)
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/sdhg1/sd" --db "$_sdhg1_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "SDHG1 ingest#2 exit (idempotencia)" "$_CAPTURED_EXIT"; return 1; }
+  _sdhg1_cnt=$(sqlite3 "$_sdhg1_db" "SELECT COUNT(*) FROM decisions;")
+  [ "$_sdhg1_cnt" = "2" ] || { _fail "SDHG1 count pos-2a-rodada" "esperado '2', obtido '$_sdhg1_cnt'"; return 1; }
+}
+
+# Cenario SDHG2 — ingestao JSON->SQL popula as 3 colunas: dec-1 tem
+# decision_class/structural_axis/human_consent_block_id no state.json ->
+# valores exatos na tabela decisions; dec-2 (legada, sem os 3 campos) ->
+# NULL nas 3 colunas (Principio VI/FR-013 — nunca fabricar "").
+scenario_sdhg2_json_populates_3_cols() {
+  _have_deps || return 0
+  _sdhg2_db="$TMPDIR_TEST/sdhg2.db"
+  mkdir -p "$TMPDIR_TEST/sdhg2sd"
+  cat > "$TMPDIR_TEST/sdhg2sd/state.json" <<'JSON'
+{
+  "short_name": "feat-sdhg2",
+  "execution": { "id": "exec-feat-sdhg2", "target_project_path": "/home/u/proj-sdhg2" },
+  "waves": [
+    { "id": "onda-001", "started_at": "t", "finished_at": "t", "executed_stages": [],
+      "tool_calls": 0, "wallclock_seconds": 0, "termination_reason": "ok" }
+  ],
+  "decisions": [
+    { "id": "dec-1", "wave_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "agent": "agente-00c-feature-orchestrator", "stage": "plan",
+      "context": "escolha de persistencia estrutural para o projeto sdhg2",
+      "options_considered": ["postgres", "sqlite"], "choice": "postgres",
+      "rationale": "postgres ja e usado pelos servicos irmaos do sdhg2",
+      "justification_score": 3,
+      "decision_class": "estrutural", "structural_axis": "persistencia",
+      "human_consent_block_id": "block-002" },
+    { "id": "dec-2", "wave_id": "onda-001", "timestamp": "2026-01-01T00:01:00Z",
+      "agent": "agente-00c-feature-orchestrator", "stage": "execute-task",
+      "context": "decisao operacional legada sem decision_class no sdhg2",
+      "options_considered": ["a", "b"], "choice": "a",
+      "rationale": "decisao operacional comum, fora do gate estrutural",
+      "justification_score": 2 }
+  ]
+}
+JSON
+  capture _rc --ingest --state-dir "$TMPDIR_TEST/sdhg2sd" --db "$_sdhg2_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "SDHG2 ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  _sdhg2_d1=$(sqlite3 "$_sdhg2_db" "SELECT decision_class||'|'||structural_axis||'|'||human_consent_block_id FROM decisions WHERE source_id='dec-1';")
+  [ "$_sdhg2_d1" = "estrutural|persistencia|block-002" ] || { _fail "SDHG2 dec-1" "esperado 'estrutural|persistencia|block-002', obtido '$_sdhg2_d1'"; return 1; }
+  _sdhg2_d2=$(sqlite3 "$_sdhg2_db" "SELECT COALESCE(decision_class,'NULL')||'|'||COALESCE(structural_axis,'NULL')||'|'||COALESCE(human_consent_block_id,'NULL') FROM decisions WHERE source_id='dec-2';")
+  [ "$_sdhg2_d2" = "NULL|NULL|NULL" ] || { _fail "SDHG2 dec-2 legada" "esperado 'NULL|NULL|NULL', obtido '$_sdhg2_d2'"; return 1; }
+}
+
+# Cenario SDHG3 — ingestao SQL->SQL (state.db real, via state-db-migrate.sh
+# migrate) popula as mesmas 3 colunas a partir de `src.decision`: mesmo par
+# dec-1 (estrutural, com consentimento)/dec-2 (legada) do SDHG2, agora
+# passando pelo caminho ATTACH DATABASE mode=ro (recall_ingest_state_db).
+scenario_sdhg3_sqldb_populates_3_cols() {
+  _have_deps || return 0
+  _sdhg3_d="$TMPDIR_TEST/sdhg3"
+  _seed_sql_equiv_state "$_sdhg3_d" 2 1
+  jq '.decisions[0].decision_class = "estrutural"
+      | .decisions[0].structural_axis = "arquitetura"
+      | .decisions[0].human_consent_block_id = "block-003"' \
+    "$_sdhg3_d/state.json" > "$_sdhg3_d/state.json.tmp" \
+    && mv "$_sdhg3_d/state.json.tmp" "$_sdhg3_d/state.json"
+  "$STATE_RW_00C" sha256-update --state-dir "$_sdhg3_d" >/dev/null 2>&1
+
+  capture "$MIGRATE_00C" migrate --state-dir "$_sdhg3_d"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "SDHG3 migrate" "$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sdhg3_d/state.db" ] || { _fail "SDHG3 state.db ausente pos-migracao" ""; return 1; }
+
+  _sdhg3_db="$TMPDIR_TEST/sdhg3.db"
+  capture _rc --ingest --state-dir "$_sdhg3_d" --db "$_sdhg3_db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "SDHG3 ingest exit" "$_CAPTURED_EXIT"; return 1; }
+  _sdhg3_d1=$(sqlite3 "$_sdhg3_db" "SELECT decision_class||'|'||structural_axis||'|'||human_consent_block_id FROM decisions WHERE source_id='dec-1';")
+  [ "$_sdhg3_d1" = "estrutural|arquitetura|block-003" ] || { _fail "SDHG3 dec-1" "esperado 'estrutural|arquitetura|block-003', obtido '$_sdhg3_d1'"; return 1; }
+  _sdhg3_d2=$(sqlite3 "$_sdhg3_db" "SELECT COALESCE(decision_class,'NULL')||'|'||COALESCE(structural_axis,'NULL')||'|'||COALESCE(human_consent_block_id,'NULL') FROM decisions WHERE source_id='dec-2';")
+  [ "$_sdhg3_d2" = "NULL|NULL|NULL" ] || { _fail "SDHG3 dec-2 legada" "esperado 'NULL|NULL|NULL', obtido '$_sdhg3_d2'"; return 1; }
 }
 
 run_all_scenarios

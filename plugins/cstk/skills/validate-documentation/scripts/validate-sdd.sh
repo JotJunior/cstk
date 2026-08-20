@@ -356,6 +356,37 @@ validate_plan_profile() {
       fi
     fi
   fi
+
+  # target-platform-unresolved / target-platform-unsourced (feature
+  # structural-decision-human-gate, FR-010, task 5.1) — so em plan.md
+  # (INV-V2, guarda _is_plan_md), gate do ambiente de execucao alvo
+  # [VERIFICADO: docs/specs/structural-decision-human-gate/
+  # contracts/cli-structural-class.md §validate-sdd.sh --sdd-plan].
+  # unresolved (error): linha ausente, valor vazio, ou NEEDS CLARIFICATION.
+  # unsourced (warning, INV-V3 — nunca error: o validador NAO resolve
+  # link/anchor, "com fonte" so significa "fonte DECLARADA" na linha ou
+  # numa linha adjacente): valor preenchido sem marcador briefing/
+  # constitution/dec-NNN por perto.
+  if [ "$_is_plan_md" -eq 1 ]; then
+    _tp_line_no=$(grep -nE '^\*\*Target Platform\*\*:' "$FILE" 2>/dev/null | head -n 1 | cut -d: -f1)
+    if [ -z "$_tp_line_no" ]; then
+      emit error target-platform-unresolved "Linha '**Target Platform**:' ausente em plan.md"
+    else
+      _tp_line=$(sed -n "${_tp_line_no}p" "$FILE")
+      _tp_value=$(printf '%s' "$_tp_line" | sed -E 's/^\*\*Target Platform\*\*:[[:space:]]*//')
+      if [ -z "$_tp_value" ] || printf '%s' "$_tp_value" | grep -q 'NEEDS CLARIFICATION'; then
+        emit error target-platform-unresolved "Target Platform ausente, vazio ou com NEEDS CLARIFICATION (linha ${_tp_line_no})"
+      else
+        _tp_ctx_start=$((_tp_line_no - 1))
+        [ "$_tp_ctx_start" -lt 1 ] && _tp_ctx_start=1
+        _tp_ctx_end=$((_tp_line_no + 1))
+        _tp_ctx=$(sed -n "${_tp_ctx_start},${_tp_ctx_end}p" "$FILE")
+        if ! printf '%s' "$_tp_ctx" | grep -qiE '\<(briefing|constitution|dec-[0-9]+)\>'; then
+          emit warning target-platform-unsourced "Target Platform preenchido sem marcador de fonte (briefing/constitution/dec-NNN) na linha ou linha adjacente (linha ${_tp_line_no})"
+        fi
+      fi
+    fi
+  fi
 }
 
 # ==========================================================================

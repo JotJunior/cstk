@@ -9,10 +9,15 @@
 #   bloqueios.sh register --state-dir DIR --decisao-id DEC
 #       --pergunta TEXT --contexto-para-resposta TEXT
 #       [--opcoes-recomendadas JSON-ARR]
+#       [--chave-assunto briefing-item:SLUG|axis:EIXO]
 #       — Cria BloqueioHumano com id `block-NNN` sequencial.
 #       — Atualiza .execution.status = "aguardando_humano" (FR-016).
 #       — Incrementa .accumulated_metrics.human_blocks_total.
 #       — Stdout: id do bloqueio criado.
+#       — --chave-assunto (feature structural-decision-human-gate, FR-008):
+#         opcional; prefixo fechado {briefing-item:, axis:} + sufixo
+#         nao-vazio, senao exit 2. Ausente = subject_key NULL (comportamento
+#         atual). Usada para dedup de FR-008 (ver `list` abaixo).
 #
 #   bloqueios.sh respond --state-dir DIR --block-id ID --resposta TEXT
 #       — Marca bloqueio como `respondido`, registra human_answer e
@@ -20,8 +25,12 @@
 #       — Se NAO restar nenhum bloqueio com status=aguardando, atualiza
 #         .execution.status para "em_andamento".
 #
-#   bloqueios.sh list --state-dir DIR [--status STATUS]
-#       — TSV: id\tdecision_id\tstatus\ttriggered_at\tpergunta
+#   bloqueios.sh list --state-dir DIR [--status STATUS] [--chave-assunto TOKEN]
+#       — TSV: id\tdecision_id\tstatus\ttriggered_at\tpergunta (colunas
+#         inalteradas — --chave-assunto so filtra por igualdade exata,
+#         combinavel com --status; dedup FR-008: lista vazia com
+#         --status respondido --chave-assunto X = assunto X ainda nao
+#         decidido nesta execucao)
 #
 #   bloqueios.sh count --state-dir DIR [--pending-only]
 #       — Imprime total (ou total pendente).
@@ -141,6 +150,7 @@ _bl_cmd_register() {
   _perg=""
   _ctx=""
   _opcoes="null"
+  _subj=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --state-dir)              _sd=$2;     shift 2 ;;
@@ -148,6 +158,7 @@ _bl_cmd_register() {
       --pergunta)               _perg=$2;   shift 2 ;;
       --contexto-para-resposta) _ctx=$2;    shift 2 ;;
       --opcoes-recomendadas)    _opcoes=$2; shift 2 ;;
+      --chave-assunto)          _subj=$2;   shift 2 ;;
       *) _bl_die_usage "register: flag desconhecida: $1" ;;
     esac
   done
@@ -176,8 +187,18 @@ _bl_cmd_register() {
       ;;
   esac
 
+  # feature structural-decision-human-gate (task 2.4.1): --chave-assunto e
+  # opcional; quando presente, exige prefixo fechado {briefing-item:, axis:}
+  # e sufixo nao-vazio. Ausente = subject_key NULL (comportamento atual).
+  if [ -n "$_subj" ]; then
+    case "$_subj" in
+      briefing-item:?*|axis:?*) ;;
+      *) _bl_die "register: --chave-assunto invalida (esperado prefixo briefing-item: ou axis: com sufixo nao-vazio, recebido '$_subj')" 2 ;;
+    esac
+  fi
+
   if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
-    _bl_db_register "$_sd" "$_dec" "$_perg" "$_ctx" "$_opcoes"
+    _bl_db_register "$_sd" "$_dec" "$_perg" "$_ctx" "$_opcoes" "$_subj"
     return 0
   fi
 
@@ -200,7 +221,8 @@ _bl_cmd_register() {
     --arg perg "$_perg" \
     --arg ctx "$_ctx" \
     --arg now "$_now" \
-    --argjson opcoes "$_opcoes" '
+    --argjson opcoes "$_opcoes" \
+    --arg subj "$_subj" '
     .human_blocks += [{
       id: $id,
       decision_id: $dec,
@@ -210,7 +232,8 @@ _bl_cmd_register() {
       status: "aguardando",
       human_answer: null,
       answered_at: null,
-      triggered_at: $now
+      triggered_at: $now,
+      subject_key: (if $subj == "" then null else $subj end)
     }]
     | .execution.status = "aguardando_humano"
     | .accumulated_metrics.human_blocks_total =
@@ -290,24 +313,27 @@ _bl_cmd_respond() {
 _bl_cmd_list() {
   _sd=""
   _st=""
+  _subj=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --state-dir) _sd=$2; shift 2 ;;
-      --status)    _st=$2; shift 2 ;;
+      --state-dir)     _sd=$2;   shift 2 ;;
+      --status)        _st=$2;   shift 2 ;;
+      --chave-assunto) _subj=$2; shift 2 ;;
       *) _bl_die_usage "list: flag desconhecida: $1" ;;
     esac
   done
   [ -n "$_sd" ] || _bl_die_usage "list: --state-dir obrigatorio"
   _bl_require_jq
   if [ "$(_sr_backend "$_sd")" = "sqlite" ]; then
-    _bl_db_list "$_sd" "$_st"
+    _bl_db_list "$_sd" "$_st" "$_subj"
     return 0
   fi
   _sf=$(_bl_state_file "$_sd")
   [ -f "$_sf" ] || _bl_die "list: state.json ausente" 1
-  jq -r --arg s "$_st" '
+  jq -r --arg s "$_st" --arg subj "$_subj" '
     ((.human_blocks // .bloqueios_humanos) // [])
     | map(select($s == "" or .status == $s))
+    | map(select($subj == "" or .subject_key == $subj))
     | .[]
     | [.id, (.decision_id // .decisao_id), .status, (.triggered_at // .disparado_em), (.question // .pergunta)] | @tsv
   ' "$_sf"
@@ -393,9 +419,10 @@ bloqueios.sh — ciclo de vida de BloqueioHumano (FASE 4.4).
 
 USO:
   bloqueios.sh register --state-dir DIR --decisao-id DEC \
-    --pergunta TEXT --contexto-para-resposta TEXT [--opcoes-recomendadas JSON-ARR]
+    --pergunta TEXT --contexto-para-resposta TEXT [--opcoes-recomendadas JSON-ARR] \
+    [--chave-assunto briefing-item:SLUG|axis:EIXO]   # structural-decision-human-gate FR-008
   bloqueios.sh respond  --state-dir DIR --block-id ID --resposta TEXT
-  bloqueios.sh list     --state-dir DIR [--status STATUS]
+  bloqueios.sh list     --state-dir DIR [--status STATUS] [--chave-assunto TOKEN]
   bloqueios.sh count    --state-dir DIR [--pending-only]
   bloqueios.sh next-id  --state-dir DIR
   bloqueios.sh get      --state-dir DIR --block-id ID

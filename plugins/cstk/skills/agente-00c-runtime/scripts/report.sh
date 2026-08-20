@@ -525,6 +525,65 @@ _rp_render_secao_roadmap() {
   # persistente e sourced nesta secao.
 }
 
+# _rp_render_secao_estrutural STATE_FILE — secao OPCIONAL (nao uma das 6
+# fixas de _rp_cmd_validate), feature structural-decision-human-gate
+# (FR-012). Lista cada Decisao com decision_class="estrutural" + o
+# human_consent_block_id que a autorizou, e calcula anomalias com o
+# predicado EXATO de data-model.md §Entity Anomalia de Governanca:
+# decision_class='estrutural' E choice fora da familia de token de
+# bloqueio humano E consentimento_humano(D) falso (JOIN contra
+# human_blocks por subject_key = 'axis:' || structural_axis + status =
+# 'respondido' — execution_id implicito: .decisions/.human_blocks ja
+# sao escopados a uma unica execucao dentro do state-dir). O campo
+# `agent` NUNCA entra no predicado — so exibido como proveniencia
+# (emenda dec-024). Zero decisoes estruturais: secao presente com
+# contagem "0", nunca omitida (facilita grep/parse downstream).
+_rp_render_secao_estrutural() {
+  jq -r '
+    ((.decisions // .decisoes) // []) as $decs
+    | ((.human_blocks // .bloqueios_humanos) // []) as $blocks
+    | def is_bloqueio_familia:
+        (. == "pause-humano") or (test("^bloqueio-humano"));
+      def consentimento_humano:
+        (.human_consent_block_id // null) as $cid
+        | (.structural_axis // "") as $axis
+        | ($cid != null) and
+          ($blocks | any(.id == $cid and .status == "respondido"
+                          and .subject_key == ("axis:" + $axis)));
+      ($decs | map(select((.decision_class // .classe) == "estrutural"))) as $struct
+    | "## Decisoes Estruturais e Anomalias de Governanca",
+      "",
+      "Total de decisoes estruturais: \($struct | length).",
+      "",
+      (if ($struct | length) == 0 then
+         "(Nenhuma decisao estrutural registrada nesta execucao.)"
+       else
+         ($struct[] |
+           "- **\(.id)** — eixo `\((.structural_axis // .eixo) // "?")` — escolha: \(.choice // .escolha) — consentimento: \((.human_consent_block_id // "(nenhum)")) — agente (informativo): \(.agent // .agente // "?")"
+         )
+       end),
+      "",
+      "### Anomalias de Governanca",
+      "",
+      (
+        ($struct | map(select(
+          ((.choice // .escolha) | is_bloqueio_familia | not)
+          and (consentimento_humano | not)
+        ))) as $anom
+        | "Total: \($anom | length) (esperado 0 em execucao saudavel — SC-002).",
+          "",
+          (if ($anom | length) == 0 then
+             "(Nenhuma anomalia detectada.)"
+           else
+             ($anom[] |
+               "- **\(.id)** — eixo `\((.structural_axis // .eixo) // "?")` — escolha `\(.choice // .escolha)` sem consentimento humano valido (agente informativo: \(.agent // .agente // "?"))"
+             )
+           end)
+      ),
+      ""
+  ' "$1"
+}
+
 # _rp_render_apendice STATE_FILE
 _rp_render_apendice() {
   jq -r '
@@ -575,6 +634,7 @@ _rp_cmd_generate() {
   _rp_render_secao_5 "$_sf"
   _rp_render_secao_6 "$_licoes" "$_final"
   _rp_render_secao_roadmap "$_sf"
+  _rp_render_secao_estrutural "$_sf"
   _rp_render_apendice "$_sf"
 }
 
@@ -691,6 +751,7 @@ _rp_cmd_emit() {
     _rp_render_secao_5 "$_sf"
     _rp_render_secao_6 "$_licoes" "$_final"
     _rp_render_secao_roadmap "$_sf"
+    _rp_render_secao_estrutural "$_sf"
     _rp_render_apendice "$_sf"
   } > "$_raw"
 

@@ -554,6 +554,14 @@ _sr_cmd_init() {
       rm -f -- "$_tmp"
       _sr_die "init: falha ao criar schema em $_sr_db_target" 1
     fi
+    # feature structural-decision-human-gate (task 1.2.4, INV-E3): `create`
+    # e CREATE TABLE IF NOT EXISTS — nao acrescenta coluna [NOVO] a uma
+    # tabela ja existente. `ensure` cobre o caso de `init` apontar para um
+    # state.db pre-existente criado antes desta feature.
+    if ! "$_SR_DIR/state-db-schema.sh" ensure --db "$_sr_db_target" >/dev/null 2>&1; then
+      rm -f -- "$_tmp"
+      _sr_die "init: falha ao garantir schema aditivo (ensure) em $_sr_db_target" 1
+    fi
     if ! _sr_db_insert_execution_from_doc_file "$_sr_db_target" "$_tmp"; then
       rm -f -- "$_tmp" "$_sr_db_target" 2>/dev/null || :
       _sr_die "init: INSERT da execution falhou em $_sr_db_target" 1

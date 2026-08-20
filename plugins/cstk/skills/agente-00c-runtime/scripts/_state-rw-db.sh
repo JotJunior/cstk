@@ -253,6 +253,99 @@ _sr_db_read() {
   _sdbr_db=$(_sr_db_file "$_sdbr_sd")
   [ -f "$_sdbr_db" ] || _sr_die "read: state.db ausente em $_sdbr_sd" 1
 
+  # feature structural-decision-human-gate (task 2.3.1/2.3.3, INV-E3): o
+  # caminho de leitura NUNCA invoca `state-db-schema.sh ensure` nem emite
+  # ALTER TABLE. Consulta PRAGMA table_info uma unica vez por tabela e
+  # escolhe entre duas consultas SQL literais fixas (subselects abaixo) —
+  # a que projeta as 3/1 colunas novas, e a que projeta NULL no lugar delas
+  # (banco legado, sem `ensure` ainda aplicado nesta execucao).
+  _sdbr_has_decision_cols=$(_state_db_exec "$_sdbr_db" \
+    "SELECT count(*) FROM pragma_table_info('decision') WHERE name='decision_class';") \
+    || _sr_die "read: falha ao consultar table_info(decision)" 1
+  _sdbr_has_hb_cols=$(_state_db_exec "$_sdbr_db" \
+    "SELECT count(*) FROM pragma_table_info('human_block') WHERE name='subject_key';") \
+    || _sr_die "read: falha ao consultar table_info(human_block)" 1
+
+  if [ "$_sdbr_has_decision_cols" = "1" ]; then
+    _sdbr_decision_subsel=$(cat <<'SQLEOF'
+(SELECT coalesce(json_group_array(json_object(
+        'id', d.id,
+        'wave_id', d.wave_id,
+        'timestamp', d.timestamp,
+        'agent', d.agent,
+        'stage', d.stage,
+        'context', d.context,
+        'options_considered', json(d.options_considered),
+        'choice', d.choice,
+        'rationale', d.rationale,
+        'justification_score', d.justification_score,
+        'evidence', d.evidence,
+        'references', json(coalesce(d."references",'null')),
+        'originating_artifact', d.originating_artifact,
+        'decision_class', d.decision_class,
+        'structural_axis', d.structural_axis,
+        'human_consent_block_id', d.human_consent_block_id
+      )),'[]') FROM (SELECT * FROM decision WHERE execution_id = execution.id ORDER BY rowid) d)
+SQLEOF
+    )
+  else
+    _sdbr_decision_subsel=$(cat <<'SQLEOF'
+(SELECT coalesce(json_group_array(json_object(
+        'id', d.id,
+        'wave_id', d.wave_id,
+        'timestamp', d.timestamp,
+        'agent', d.agent,
+        'stage', d.stage,
+        'context', d.context,
+        'options_considered', json(d.options_considered),
+        'choice', d.choice,
+        'rationale', d.rationale,
+        'justification_score', d.justification_score,
+        'evidence', d.evidence,
+        'references', json(coalesce(d."references",'null')),
+        'originating_artifact', d.originating_artifact,
+        'decision_class', NULL,
+        'structural_axis', NULL,
+        'human_consent_block_id', NULL
+      )),'[]') FROM (SELECT * FROM decision WHERE execution_id = execution.id ORDER BY rowid) d)
+SQLEOF
+    )
+  fi
+
+  if [ "$_sdbr_has_hb_cols" = "1" ]; then
+    _sdbr_hb_subsel=$(cat <<'SQLEOF'
+(SELECT coalesce(json_group_array(json_object(
+        'id', h.id,
+        'decision_id', h.decision_id,
+        'question', h.question,
+        'context_for_answer', h.context_for_answer,
+        'recommended_options', json(coalesce(h.recommended_options,'null')),
+        'status', h.status,
+        'human_answer', h.human_answer,
+        'triggered_at', h.triggered_at,
+        'answered_at', h.answered_at,
+        'subject_key', h.subject_key
+      )),'[]') FROM (SELECT * FROM human_block WHERE execution_id = execution.id ORDER BY rowid) h)
+SQLEOF
+    )
+  else
+    _sdbr_hb_subsel=$(cat <<'SQLEOF'
+(SELECT coalesce(json_group_array(json_object(
+        'id', h.id,
+        'decision_id', h.decision_id,
+        'question', h.question,
+        'context_for_answer', h.context_for_answer,
+        'recommended_options', json(coalesce(h.recommended_options,'null')),
+        'status', h.status,
+        'human_answer', h.human_answer,
+        'triggered_at', h.triggered_at,
+        'answered_at', h.answered_at,
+        'subject_key', NULL
+      )),'[]') FROM (SELECT * FROM human_block WHERE execution_id = execution.id ORDER BY rowid) h)
+SQLEOF
+    )
+  fi
+
   _sdbr_sql="SELECT json_object(
     'schema_version', schema_version,
     'short_name', short_name,
@@ -291,32 +384,8 @@ _sr_db_read() {
         'otel_usage', json(coalesce(w.otel_usage,'null')),
         'extra_fields', json(coalesce(w.extra_fields,'{}'))
       )),'[]') FROM (SELECT * FROM wave WHERE execution_id = execution.id ORDER BY seq) w),
-    'decisions', (SELECT coalesce(json_group_array(json_object(
-        'id', d.id,
-        'wave_id', d.wave_id,
-        'timestamp', d.timestamp,
-        'agent', d.agent,
-        'stage', d.stage,
-        'context', d.context,
-        'options_considered', json(d.options_considered),
-        'choice', d.choice,
-        'rationale', d.rationale,
-        'justification_score', d.justification_score,
-        'evidence', d.evidence,
-        'references', json(coalesce(d.\"references\",'null')),
-        'originating_artifact', d.originating_artifact
-      )),'[]') FROM (SELECT * FROM decision WHERE execution_id = execution.id ORDER BY rowid) d),
-    'human_blocks', (SELECT coalesce(json_group_array(json_object(
-        'id', h.id,
-        'decision_id', h.decision_id,
-        'question', h.question,
-        'context_for_answer', h.context_for_answer,
-        'recommended_options', json(coalesce(h.recommended_options,'null')),
-        'status', h.status,
-        'human_answer', h.human_answer,
-        'triggered_at', h.triggered_at,
-        'answered_at', h.answered_at
-      )),'[]') FROM (SELECT * FROM human_block WHERE execution_id = execution.id ORDER BY rowid) h),
+    'decisions', $_sdbr_decision_subsel,
+    'human_blocks', $_sdbr_hb_subsel,
     'budgets', json_object(
       'max_recursion', max_recursion,
       'current_subagent_depth', subagent_depth,
@@ -637,8 +706,13 @@ _sr_db_upsert_decision() {
   _ud_evid=$(printf '%s' "$_ud_row" | jq -r '.evidence // empty')
   _ud_refs=$(printf '%s' "$_ud_row" | jq -c '.references // null')
   _ud_origin=$(printf '%s' "$_ud_row" | jq -r '.originating_artifact // empty')
+  # feature structural-decision-human-gate (task 2.3.2): NULL quando ausente
+  # (registro legado, FR-013) ou quando presente-mas-JSON-null.
+  _ud_classe=$(printf '%s' "$_ud_row" | jq -r '.decision_class // empty')
+  _ud_eixo=$(printf '%s' "$_ud_row" | jq -r '.structural_axis // empty')
+  _ud_consent=$(printf '%s' "$_ud_row" | jq -r '.human_consent_block_id // empty')
 
-  printf 'INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score,evidence,"references",originating_artifact) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET wave_id=excluded.wave_id, timestamp=excluded.timestamp, agent=excluded.agent, stage=excluded.stage, context=excluded.context, options_considered=excluded.options_considered, choice=excluded.choice, rationale=excluded.rationale, justification_score=excluded.justification_score, evidence=excluded.evidence, "references"=excluded."references", originating_artifact=excluded.originating_artifact;' \
+  printf 'INSERT INTO decision (id,execution_id,wave_id,timestamp,agent,stage,context,options_considered,choice,rationale,justification_score,evidence,"references",originating_artifact,decision_class,structural_axis,human_consent_block_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET wave_id=excluded.wave_id, timestamp=excluded.timestamp, agent=excluded.agent, stage=excluded.stage, context=excluded.context, options_considered=excluded.options_considered, choice=excluded.choice, rationale=excluded.rationale, justification_score=excluded.justification_score, evidence=excluded.evidence, "references"=excluded."references", originating_artifact=excluded.originating_artifact, decision_class=excluded.decision_class, structural_axis=excluded.structural_axis, human_consent_block_id=excluded.human_consent_block_id;' \
     "$(_sr_sql_quote "$_ud_id")" \
     "$(_sr_sql_quote "$_ud_exec_id")" \
     "$([ -n "$_ud_wid" ] && _sr_sql_quote "$_ud_wid" || printf NULL)" \
@@ -652,7 +726,10 @@ _sr_db_upsert_decision() {
     "$([ -n "$_ud_score" ] && printf '%s' "$_ud_score" || printf NULL)" \
     "$([ -n "$_ud_evid" ] && _sr_sql_quote "$_ud_evid" || printf NULL)" \
     "$(_sr_sql_quote "$_ud_refs")" \
-    "$([ -n "$_ud_origin" ] && _sr_sql_quote "$_ud_origin" || printf NULL)"
+    "$([ -n "$_ud_origin" ] && _sr_sql_quote "$_ud_origin" || printf NULL)" \
+    "$([ -n "$_ud_classe" ] && _sr_sql_quote "$_ud_classe" || printf NULL)" \
+    "$([ -n "$_ud_eixo" ] && _sr_sql_quote "$_ud_eixo" || printf NULL)" \
+    "$([ -n "$_ud_consent" ] && _sr_sql_quote "$_ud_consent" || printf NULL)"
 }
 
 _sr_db_upsert_human_block() {
@@ -666,8 +743,11 @@ _sr_db_upsert_human_block() {
   _uh_ans=$(printf '%s' "$_uh_row" | jq -r '.human_answer // empty')
   _uh_trig=$(printf '%s' "$_uh_row" | jq -r '.triggered_at')
   _uh_answ_at=$(printf '%s' "$_uh_row" | jq -r '.answered_at // empty')
+  # feature structural-decision-human-gate (task 2.3.3): NULL quando ausente
+  # (registro legado, FR-013).
+  _uh_subj=$(printf '%s' "$_uh_row" | jq -r '.subject_key // empty')
 
-  printf 'INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,recommended_options,status,human_answer,triggered_at,answered_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET decision_id=excluded.decision_id, question=excluded.question, context_for_answer=excluded.context_for_answer, recommended_options=excluded.recommended_options, status=excluded.status, human_answer=excluded.human_answer, triggered_at=excluded.triggered_at, answered_at=excluded.answered_at;' \
+  printf 'INSERT INTO human_block (id,execution_id,decision_id,question,context_for_answer,recommended_options,status,human_answer,triggered_at,answered_at,subject_key) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET decision_id=excluded.decision_id, question=excluded.question, context_for_answer=excluded.context_for_answer, recommended_options=excluded.recommended_options, status=excluded.status, human_answer=excluded.human_answer, triggered_at=excluded.triggered_at, answered_at=excluded.answered_at, subject_key=excluded.subject_key;' \
     "$(_sr_sql_quote "$_uh_id")" \
     "$(_sr_sql_quote "$_uh_exec_id")" \
     "$(_sr_sql_quote "$_uh_decid")" \
@@ -677,7 +757,8 @@ _sr_db_upsert_human_block() {
     "$(_sr_sql_quote "$_uh_status")" \
     "$([ -n "$_uh_ans" ] && _sr_sql_quote "$_uh_ans" || printf NULL)" \
     "$(_sr_sql_quote "$_uh_trig")" \
-    "$([ -n "$_uh_answ_at" ] && _sr_sql_quote "$_uh_answ_at" || printf NULL)"
+    "$([ -n "$_uh_answ_at" ] && _sr_sql_quote "$_uh_answ_at" || printf NULL)" \
+    "$([ -n "$_uh_subj" ] && _sr_sql_quote "$_uh_subj" || printf NULL)"
 }
 
 _sr_db_upsert_task() {
@@ -738,6 +819,16 @@ _sr_db_set() {
       _state_db_exec_with_retry "$_sds_db" "$_sds_sql" || _sr_die "set: resync de '.waves' falhou" 1
       ;;
     decisions|human_blocks|tasks)
+      # feature structural-decision-human-gate (task 2.3.2/2.3.3, INV-E3):
+      # write path — garante as colunas novas de decision/human_block antes
+      # do upsert, para um resync de array (`.decisions`/`.human_blocks`)
+      # contra um state.db pre-feature nao quebrar com "no such column".
+      case "$_sds_bare" in
+        decisions|human_blocks)
+          "$_SR_DIR/state-db-schema.sh" ensure --db "$_sds_db" \
+            || _sr_die "set: falha ao garantir schema aditivo (state-db-schema.sh ensure) em $_sds_db" 1
+          ;;
+      esac
       _sds_tmp=$(mktemp) || _sr_die "set: mktemp falhou" 1
       printf '%s' "$_sds_value" | jq -c '.[]' > "$_sds_tmp" 2>/dev/null \
         || { rm -f -- "$_sds_tmp"; _sr_die "set: --value de '.$_sds_bare' nao e array JSON valido" 1; }
