@@ -5,6 +5,43 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.7.0] - 2026-08-20
+
+Feature `recall-ranking`: o `cstk recall` deixa de ranquear por bm25 puro e
+passa a usar score composto (relevância léxica + autoridade por tipo +
+recência), computado inteiramente na consulta — índice intocado, schema segue
+15, sem migração. Inspirado no retrieval híbrido do projeto
+`akitaonrails/ai-memory`; RRF/grafo de `[[links]]` ficou para feature futura
+(`recall-hybrid-rrf`).
+
+### Added
+
+- **Score composto no `cstk recall` (busca e `--context`).** Ranking
+  `bm25 - bônus_autoridade - bônus_recência` em `recall_mode_search` e
+  `recall_mode_context` (`cli/lib/recall.sh`): autoridade por tipo em 3
+  tiers (`decision`/`block` alta; `memory` intermediária — decisão do
+  operador no block-001; `retro`/`skill` baixa) e desconto de recência por
+  idade via `julianday(source_ts)`, com clamp `max(0.0, ...)` normativo
+  contra `source_ts` no futuro (finding F2 do gate `owasp-security`).
+- **Flag `--explain` no modo busca.** Uma linha extra por resultado
+  detalhando os componentes do score (bm25, bônus de autoridade, desconto
+  de recência, idade). Rejeitada no modo `--context` (bloco injetado em
+  prompt permanece com formato/teto/rótulo UNTRUSTED inalterados — só a
+  ordem dos achados muda).
+- **22 cenários novos em `tests/cstk/test_recall.sh`** (`scenario_rk_*`),
+  mapeando os 15 Scenarios do quickstart; fixtures de recência com
+  `source_ts` relativos ao relógio real (decisão do operador no block-002:
+  nenhuma env var de clock interpolada na SQL — superfície eliminada, não
+  mitigada). Suite focada: PASS 184 / FAIL 0.
+
+### Fixed
+
+- **Locale pinado em `cli/lib/recall.sh`** (`LC_ALL=C`): printf de floats
+  do score quebrava sob locale pt_BR — mesma classe do bug já corrigido em
+  `usage.sh`.
+- **Falha de consulta distinta de "nenhum resultado" (I-10).** Erro real de
+  leitura do índice não se disfarça mais de resultado vazio no modo busca.
+
 ## [8.6.0] - 2026-08-20
 
 Feature `structural-decision-human-gate` (issue #146): decisões de classe
@@ -6957,6 +6994,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.7.0]: https://github.com/JotJunior/cstk/releases/tag/v8.7.0
 [8.6.0]: https://github.com/JotJunior/cstk/releases/tag/v8.6.0
 [8.5.0]: https://github.com/JotJunior/cstk/releases/tag/v8.5.0
 [8.4.1]: https://github.com/JotJunior/cstk/releases/tag/v8.4.1
