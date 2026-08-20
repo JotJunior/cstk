@@ -4984,4 +4984,512 @@ scenario_sdhg3_sqldb_populates_3_cols() {
   [ "$_sdhg3_d2" = "NULL|NULL|NULL" ] || { _fail "SDHG3 dec-2 legada" "esperado 'NULL|NULL|NULL', obtido '$_sdhg3_d2'"; return 1; }
 }
 
+# =========================================================================
+# recall-ranking — FASE 1: Fundacao de teste (fixture com source_ts
+# relativos ao relogio real, dec-021 Opcao B; ver quickstart.md).
+# =========================================================================
+
+# _date_offset N -> imprime timestamp ISO 8601 UTC deslocado de N dias a
+# partir de AGORA (N negativo = passado, positivo = futuro). Portavel
+# GNU-first (paridade com _file_mode acima): GNU `date -u -d 'N days'`
+# primeiro; no BSD/macOS a flag -d nao aceita offsets relativos e a
+# chamada falha, caindo no fallback `-v[+-]Nd` (sinal embutido no valor,
+# sem espaco). Usado para gerar source_ts de fixture SEM override de
+# clock (contrato §3.1, I-12) — tarefa 1.1.1.
+_date_offset() {
+  _do_n="$1"
+  date -u -d "${_do_n} days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null && return 0
+  case "$_do_n" in
+    -*) _do_v="${_do_n}d" ;;
+    *) _do_v="+${_do_n}d" ;;
+  esac
+  date -u -v"$_do_v" +%Y-%m-%dT%H:%M:%SZ
+}
+
+# Tarefa 1.1.1/1.1.4 — smoke test do helper de deslocamento portavel.
+# Nao depende de qual forma (GNU -d ou BSD -v) o SO local implementa: a
+# suite roda em ambos ao longo do tempo (macOS local + CI Linux),
+# cobrindo as duas formas por ambiente, nao por branch explicito.
+scenario_rk_00_date_offset_helper() {
+  _now_epoch=$(date -u +%s)
+  _past=$(_date_offset -5)
+  _future=$(_date_offset 80)
+  case "$_past" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;;
+    *) _fail "date_offset formato (passado)" "esperado ISO8601, obtido '$_past'"; return 1 ;;
+  esac
+  case "$_future" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;;
+    *) _fail "date_offset formato (futuro)" "esperado ISO8601, obtido '$_future'"; return 1 ;;
+  esac
+  _past_epoch=$(date -u -d "$_past" +%s 2>/dev/null) \
+    || _past_epoch=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_past" +%s 2>/dev/null)
+  _future_epoch=$(date -u -d "$_future" +%s 2>/dev/null) \
+    || _future_epoch=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$_future" +%s 2>/dev/null)
+  [ -n "$_past_epoch" ] && [ "$_past_epoch" -lt "$_now_epoch" ] \
+    || { _fail "date_offset -5 dias" "esperado epoch < now, obtido '$_past_epoch' vs '$_now_epoch'"; return 1; }
+  [ -n "$_future_epoch" ] && [ "$_future_epoch" -gt "$_now_epoch" ] \
+    || { _fail "date_offset +80 dias" "esperado epoch > now, obtido '$_future_epoch' vs '$_now_epoch'"; return 1; }
+}
+
+# _write_dbs_fixture DIR PROJ FEAT TERM DEC_TS BLOCK_TS RETRO_TS SKILL_TS ->
+# escreve (sem ingerir) um state.json com ate 4 achados (decision/block/
+# retro/skill), todos casando TERM em corpos de comprimento comparavel
+# (bm25() proximo entre eles — quickstart "Fixture comum"). Qualquer *_TS
+# vazio ("") omite aquele tipo. TS deve vir de _date_offset (ISO8601 UTC,
+# relativo ao relogio real — sem override de clock, contrato §3.1).
+# Tarefas 1.1.2/1.1.3.
+_write_dbs_fixture() {
+  _wdf_dir="$1"; _wdf_proj="$2"; _wdf_feat="$3"; _wdf_term="$4"
+  _wdf_dec_ts="$5"; _wdf_block_ts="$6"; _wdf_retro_ts="$7"; _wdf_skill_ts="$8"
+  mkdir -p "$_wdf_dir"
+
+  if [ -n "$_wdf_dec_ts" ]; then
+    _wdf_dec='[ { "id": "dec-'"$_wdf_feat"'", "onda_id": "onda-001", "timestamp": "'"$_wdf_dec_ts"'",
+      "etapa": "specify", "agente": "orch", "escolha": "aplicar", "score_justificativa": 2,
+      "opcoes_consideradas": ["aplicar","adiar"],
+      "contexto": "decisao envolvendo '"$_wdf_term"' no fluxo principal",
+      "justificativa": "necessario para '"$_wdf_term"' operar direito", "evidencia": null } ]'
+  else
+    _wdf_dec="[]"
+  fi
+  if [ -n "$_wdf_block_ts" ]; then
+    _wdf_block='[ { "id": "block-'"$_wdf_feat"'", "onda_id": "onda-001", "status": "pendente",
+      "pergunta": "avancamos com '"$_wdf_term"' no fluxo principal agora?",
+      "contexto_para_resposta": "'"$_wdf_term"' impacta producao direto",
+      "disparado_em": "'"$_wdf_block_ts"'" } ]'
+  else
+    _wdf_block="[]"
+  fi
+  if [ -n "$_wdf_retro_ts" ]; then
+    _wdf_retro='[ { "texto": "retrospectiva cobrindo '"$_wdf_term"' no fluxo principal do time",
+      "timestamp": "'"$_wdf_retro_ts"'" } ]'
+  else
+    _wdf_retro="[]"
+  fi
+  if [ -n "$_wdf_skill_ts" ]; then
+    _wdf_ondas='[ { "id": "onda-001", "skills_invoked": [
+        { "skill": "'"$_wdf_term"'-skill-no-fluxo-principal-do-time", "timestamp": "'"$_wdf_skill_ts"'", "decisao_id": null } ] } ]'
+  else
+    _wdf_ondas="[]"
+  fi
+
+  cat > "$_wdf_dir/state.json" <<JSON
+{
+  "short_name": "$_wdf_feat",
+  "execucao": { "id": "exec-$_wdf_feat", "projeto_alvo_path": "$_wdf_proj" },
+  "decisoes": $_wdf_dec,
+  "bloqueios_humanos": $_wdf_block,
+  "retros": $_wdf_retro,
+  "ondas": $_wdf_ondas
+}
+JSON
+}
+
+# Tarefa 1.2 — Fecha CHK020/CHK003: `source_ts` no FUTURO nao pode dominar
+# o ranking (clamp `max(0.0, ...)` normativo, contrato §1.2). Mirror do
+# quickstart Scenario 12.
+scenario_rk_12_clamp_recencia_futuro() {
+  _have_deps || return 0
+  _write_dbs_fixture "$TMPDIR_TEST/rk12" "/tmp/projRk12" "rk12feat" "zephyrclampterm" \
+    "$(_date_offset -30)" "" "" "$(_date_offset 80)"
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk12" --db "$TMPDIR_TEST/rk12.db" >/dev/null 2>&1
+  capture _rc "zephyrclampterm" --explain --db "$TMPDIR_TEST/rk12.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk12 exit" "$_CAPTURED_EXIT"; return 1; }
+  # decision (antigo) MUST vir antes do skill (futuro) — o clamp impede o
+  # bonus de recencia do skill futuro de superar o degrau de autoridade.
+  _first_type=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -m1 '^\[' | sed 's/^\[\([a-z]*\)\].*/\1/')
+  [ "$_first_type" = "decision" ] || { _fail "rk12 ordem" "esperado decision primeiro, obtido '$_first_type'"; return 1; }
+  # recencia do skill (futuro) MUST estar em [0.0000, 0.1000] (nunca acima
+  # do teto). Mutation test (evidencia documentada, tarefa 1.2.3): SEM o
+  # clamp, o bonus medido para -80d e 0.9 (9x o teto) e para -89.99d e
+  # ~900 — se este cenario passasse sem o clamp, nao estaria testando o
+  # que diz testar.
+  _rec_skill=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -A1 '^\[skill\]' | grep 'score=' \
+    | sed 's/.*recencia=\([0-9.]*\).*/\1/')
+  awk -v r="$_rec_skill" 'BEGIN{ if (r+0 < 0.0 || r+0 > 0.1000) exit 1; exit 0 }' \
+    || { _fail "rk12 recencia fora do teto" "obtido '$_rec_skill'"; return 1; }
+}
+
+# =========================================================================
+# recall-ranking — FASE 2: ordenacao composta no modo busca. Mirror dos
+# quickstart Scenarios 1-6.
+# =========================================================================
+
+# Scenario 1 — autoridade promove decision/block sobre retro/skill de
+# relevancia comparavel (SC-001, FR-001).
+scenario_rk_01_autoridade_promove_decision_block() {
+  _have_deps || return 0
+  _write_dbs_fixture "$TMPDIR_TEST/rk01" "/tmp/projRk01" "rk01feat" "quokkarankterm" \
+    "$(_date_offset -10)" "$(_date_offset -10)" "$(_date_offset -10)" "$(_date_offset -10)"
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk01" --db "$TMPDIR_TEST/rk01.db" >/dev/null 2>&1
+  capture _rc "quokkarankterm" --limit 10 --db "$TMPDIR_TEST/rk01.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk01 exit" "$_CAPTURED_EXIT"; return 1; }
+  _order=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^\[' | sed 's/^\[\([a-z]*\)\].*/\1/' | tr '\n' ',')
+  case "$_order" in
+    decision,block,*|block,decision,*) : ;;
+    *) _fail "rk01 ordem" "esperado decision/block primeiro, obtido '$_order'"; return 1 ;;
+  esac
+  case "$_order" in
+    *retro*decision*|*skill*decision*|*retro*block*|*skill*block*)
+      _fail "rk01 retro/skill antes de decision/block" "$_order"; return 1 ;;
+  esac
+  # Nenhum achado omitido — apenas reordenado (4 blocos no total).
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '^\[')
+  [ "$_n" = "4" ] || { _fail "rk01 contagem" "esperado 4, obtido $_n"; return 1; }
+}
+
+# Scenario 2 — tier intermediario de `memory` (FR-010): decision -> memory
+# -> skill. bm25 comparavel garantido por corpos de comprimento similar;
+# a separacao de TIER (0.30/0.15/0.00, gap 0.15 > teto de recencia 0.10)
+# garante a ordem independente do source_ts exato de cada achado (I-2).
+scenario_rk_02_tier_intermediario_memory() {
+  _have_deps || return 0
+  _wrk02_proj="/tmp/projRk02"
+  _write_dbs_fixture "$TMPDIR_TEST/rk02" "$_wrk02_proj" "rk02feat" "narwhalrankterm" \
+    "$(_date_offset -10)" "" "" "$(_date_offset -10)"
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk02" --db "$TMPDIR_TEST/rk02.db" >/dev/null 2>&1
+  _wrk02_enc=$(printf '%s' "$_wrk02_proj" | sed 's|^/||; s|[/_]|-|g; s|^|-|')
+  mkdir -p "$TMPDIR_TEST/.claude/projects/$_wrk02_enc/memory"
+  # Corpo de UMA linha (sem \n embutido): body com newline interno quebra o
+  # parsing por linha do .mode list na renderizacao (aspereza preexistente,
+  # fora do escopo desta feature — nao relacionada ao separador |@| do
+  # contrato §1.2.bis). A fixture evita o caso para nao confundir a asserção
+  # de ordenacao com esse comportamento pre-existente.
+  printf 'Nota sobre narwhalrankterm no fluxo principal.' \
+    > "$TMPDIR_TEST/.claude/projects/$_wrk02_enc/memory/feedback_rk02.md"
+  _rc_home "$TMPDIR_TEST" --ingest --state-dir "$TMPDIR_TEST/rk02" --db "$TMPDIR_TEST/rk02.db" >/dev/null 2>&1
+  capture _rc "narwhalrankterm" --limit 10 --db "$TMPDIR_TEST/rk02.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk02 exit" "$_CAPTURED_EXIT"; return 1; }
+  _order=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep '^\[' | sed 's/^\[\([a-z]*\)\].*/\1/' | tr '\n' ',')
+  [ "$_order" = "decision,memory,skill," ] \
+    || { _fail "rk02 ordem" "esperado decision,memory,skill,, obtido '$_order'"; return 1; }
+}
+
+# Scenario 3 — recencia desempata dentro do MESMO tier (SC-003, FR-003).
+scenario_rk_03_recencia_desempata_mesmo_tier() {
+  _have_deps || return 0
+  mkdir -p "$TMPDIR_TEST/rk03"
+  cat > "$TMPDIR_TEST/rk03/state.json" <<JSON
+{
+  "short_name": "rk03feat",
+  "execucao": { "id": "exec-rk03", "projeto_alvo_path": "/tmp/projRk03" },
+  "decisoes": [
+    { "id": "dec-rk03-recente", "onda_id": "onda-001", "timestamp": "$(_date_offset -5)",
+      "etapa": "specify", "agente": "orch", "escolha": "aplicar", "score_justificativa": 2,
+      "opcoes_consideradas": ["aplicar"],
+      "contexto": "decisao recente sobre platypusrankterm no fluxo principal",
+      "justificativa": "necessario para platypusrankterm operar direito", "evidencia": null },
+    { "id": "dec-rk03-antiga", "onda_id": "onda-001", "timestamp": "$(_date_offset -200)",
+      "etapa": "specify", "agente": "orch", "escolha": "aplicar", "score_justificativa": 2,
+      "opcoes_consideradas": ["aplicar"],
+      "contexto": "decisao antiga sobre platypusrankterm no fluxo principal",
+      "justificativa": "necessario para platypusrankterm operar direito", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "retros": [], "ondas": []
+}
+JSON
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk03" --db "$TMPDIR_TEST/rk03.db" >/dev/null 2>&1
+  capture _rc "platypusrankterm" --limit 10 --db "$TMPDIR_TEST/rk03.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk03 exit" "$_CAPTURED_EXIT"; return 1; }
+  _first_sid=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -m1 '^\[' | sed 's/.*(\(.*\))$/\1/')
+  [ "$_first_sid" = "dec-rk03-recente" ] \
+    || { _fail "rk03 ordem" "esperado dec-rk03-recente primeiro, obtido '$_first_sid'"; return 1; }
+}
+
+# Scenario 4 — recencia NAO inverte autoridade (I-2 do contrato, FR-003):
+# skill muito recente MUST continuar atras de decision antigo.
+scenario_rk_04_recencia_nao_inverte_autoridade() {
+  _have_deps || return 0
+  _write_dbs_fixture "$TMPDIR_TEST/rk04" "/tmp/projRk04" "rk04feat" "wombatrankterm" \
+    "$(_date_offset -300)" "" "" "$(_date_offset -1)"
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk04" --db "$TMPDIR_TEST/rk04.db" >/dev/null 2>&1
+  capture _rc "wombatrankterm" --limit 10 --db "$TMPDIR_TEST/rk04.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk04 exit" "$_CAPTURED_EXIT"; return 1; }
+  _first_type=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -m1 '^\[' | sed 's/^\[\([a-z]*\)\].*/\1/')
+  [ "$_first_type" = "decision" ] \
+    || { _fail "rk04 ordem" "esperado decision (antigo) primeiro, obtido '$_first_type'"; return 1; }
+}
+
+# Scenario 5 — `source_ts` ausente nao quebra nem exclui (FR-008).
+scenario_rk_05_source_ts_ausente_nao_exclui() {
+  _have_deps || return 0
+  mkdir -p "$TMPDIR_TEST/rk05"
+  cat > "$TMPDIR_TEST/rk05/state.json" <<'JSON'
+{
+  "short_name": "rk05feat",
+  "execucao": { "id": "exec-rk05", "projeto_alvo_path": "/tmp/projRk05" },
+  "decisoes": [], "retros": [], "ondas": [],
+  "bloqueios_humanos": [
+    { "id": "block-rk05", "onda_id": "onda-001", "status": "pendente",
+      "pergunta": "avancamos com zircontermrank no fluxo principal agora?",
+      "contexto_para_resposta": "zircontermrank impacta producao direto" }
+  ]
+}
+JSON
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk05" --db "$TMPDIR_TEST/rk05.db" >/dev/null 2>&1
+  capture _rc "zircontermrank" --explain --db "$TMPDIR_TEST/rk05.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk05 exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "[block]" || return 1
+  assert_stdout_contains "recencia=0.0000" || return 1
+  assert_stdout_contains "idade=n/d" || return 1
+}
+
+# Scenario 6 — Determinismo (SC-006 parcial, FR-009): mesma consulta 2x,
+# stdout byte-identico; exercita o desempate total com 2 achados de score
+# EXATAMENTE igual (mesmo type/body/source_ts, source_id diferente).
+scenario_rk_06_determinismo_desempate_total() {
+  _have_deps || return 0
+  mkdir -p "$TMPDIR_TEST/rk06"
+  _rk06_ts="$(_date_offset -50)"
+  cat > "$TMPDIR_TEST/rk06/state.json" <<JSON
+{
+  "short_name": "rk06feat",
+  "execucao": { "id": "exec-rk06", "projeto_alvo_path": "/tmp/projRk06" },
+  "decisoes": [
+    { "id": "dec-rk06-a", "onda_id": "onda-001", "timestamp": "$_rk06_ts",
+      "etapa": "specify", "agente": "orch", "escolha": "aplicar", "score_justificativa": 2,
+      "opcoes_consideradas": ["aplicar"],
+      "contexto": "decisao empatada sobre yakrankterm no fluxo principal",
+      "justificativa": "necessario para yakrankterm operar direito", "evidencia": null },
+    { "id": "dec-rk06-b", "onda_id": "onda-001", "timestamp": "$_rk06_ts",
+      "etapa": "specify", "agente": "orch", "escolha": "aplicar", "score_justificativa": 2,
+      "opcoes_consideradas": ["aplicar"],
+      "contexto": "decisao empatada sobre yakrankterm no fluxo principal",
+      "justificativa": "necessario para yakrankterm operar direito", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "retros": [], "ondas": []
+}
+JSON
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk06" --db "$TMPDIR_TEST/rk06.db" >/dev/null 2>&1
+  capture _rc "yakrankterm" --limit 10 --db "$TMPDIR_TEST/rk06.db"
+  _out1="$_CAPTURED_STDOUT"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk06 exit#1" "$_CAPTURED_EXIT"; return 1; }
+  capture _rc "yakrankterm" --limit 10 --db "$TMPDIR_TEST/rk06.db"
+  _out2="$_CAPTURED_STDOUT"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk06 exit#2" "$_CAPTURED_EXIT"; return 1; }
+  [ "$_out1" = "$_out2" ] || { _fail "rk06 determinismo" "stdout divergiu entre 2 execucoes"; return 1; }
+  # Desempate por source_id ASC (score/source_ts/type todos iguais).
+  _first_sid=$(printf '%s\n' "$_out1" | grep -m1 '^\[' | sed 's/.*(\(.*\))$/\1/')
+  [ "$_first_sid" = "dec-rk06-a" ] \
+    || { _fail "rk06 desempate source_id" "esperado dec-rk06-a primeiro, obtido '$_first_sid'"; return 1; }
+}
+
+# Tarefa 2.2 — body contendo o separador literal `|@|` nao falsifica a
+# explicacao (gate security F5). Mirror do quickstart Scenario 13.
+scenario_rk_13_body_com_separador_nao_falsifica_explain() {
+  _have_deps || return 0
+  mkdir -p "$TMPDIR_TEST/rk13"
+  cat > "$TMPDIR_TEST/rk13/state.json" <<'JSON'
+{
+  "short_name": "rk13feat",
+  "execucao": { "id": "exec-rk13", "projeto_alvo_path": "/tmp/projRk13" },
+  "decisoes": [
+    { "id": "dec-rk13", "onda_id": "onda-001", "timestamp": "2020-06-01T00:00:00Z",
+      "etapa": "specify", "agente": "orch", "escolha": "aplicar", "score_justificativa": 2,
+      "opcoes_consideradas": ["aplicar"],
+      "contexto": "decisao sobre iguanarankterm |@| corpo malicioso",
+      "justificativa": "necessario para iguanarankterm |@| operar direito", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "retros": [], "ondas": []
+}
+JSON
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk13" --db "$TMPDIR_TEST/rk13.db" >/dev/null 2>&1
+  capture _rc "iguanarankterm" --explain --db "$TMPDIR_TEST/rk13.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk13 exit" "$_CAPTURED_EXIT"; return 1; }
+  # A linha score= exibe NUMEROS, nao fragmento do corpo.
+  _score_line=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep 'score=')
+  case "$_score_line" in
+    *"score="[0-9-]*"= bm25="*"- autoridade="*"- recencia="*"(idade="*) : ;;
+    *) _fail "rk13 formato score" "$_score_line"; return 1 ;;
+  esac
+  # Identidade score = bm25 - autoridade - recencia continua fechando.
+  _s=$(printf '%s' "$_score_line" | sed 's/.*score=\(-\{0,1\}[0-9.]*\) =.*/\1/')
+  _b=$(printf '%s' "$_score_line" | sed 's/.*bm25=\(-\{0,1\}[0-9.]*\) -.*/\1/')
+  _a=$(printf '%s' "$_score_line" | sed 's/.*autoridade=\([0-9.]*\) -.*/\1/')
+  _r=$(printf '%s' "$_score_line" | sed 's/.*recencia=\([0-9.]*\).*/\1/')
+  awk -v s="$_s" -v b="$_b" -v a="$_a" -v r="$_r" \
+    'BEGIN{ d = (b - a - r) - s; if (d < 0) d = -d; exit (d < 0.001) ? 0 : 1 }' \
+    || { _fail "rk13 identidade score" "s=$_s b=$_b a=$_a r=$_r"; return 1; }
+  # Regressao: sem --explain, comportamento identico ao atual (truncagem
+  # visual ja existente, sem quebrar).
+  capture _rc "iguanarankterm" --db "$TMPDIR_TEST/rk13.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk13 regressao exit" "$_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *"score="*) _fail "rk13 regressao" "linha score= vazou sem --explain"; return 1 ;;
+  esac
+}
+
+# =========================================================================
+# recall-ranking — FASE 3: ordenacao composta no modo --context. Mirror do
+# quickstart Scenario 11.
+# =========================================================================
+
+scenario_rk_11_context_preserva_contrato_muda_ordem() {
+  _have_deps || return 0
+  _write_dbs_fixture "$TMPDIR_TEST/rk11" "/tmp/projRk11" "rk11feat" "octopusrankterm" \
+    "$(_date_offset -10)" "" "" "$(_date_offset -10)"
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk11" --db "$TMPDIR_TEST/rk11.db" >/dev/null 2>&1
+  capture _rc --context "octopusrankterm" --limit 4 --max-bytes 2000 --db "$TMPDIR_TEST/rk11.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk11 exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "Aprendizado recuperado (read-back loop)" || return 1
+  assert_stdout_contains "**[decision]**" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *score=*|*bm25=*|*autoridade=*|*recencia=*)
+      _fail "rk11 vazamento de score no --context" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+  # decision aparece ANTES do skill de relevancia comparavel.
+  _dec_pos=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -n '\*\*\[decision\]\*\*' | head -1 | cut -d: -f1)
+  _skill_pos=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -n '\*\*\[skill\]\*\*' | head -1 | cut -d: -f1)
+  [ -n "$_dec_pos" ] && [ -n "$_skill_pos" ] && [ "$_dec_pos" -lt "$_skill_pos" ] \
+    || { _fail "rk11 ordem" "decision ($_dec_pos) deveria vir antes de skill ($_skill_pos)"; return 1; }
+  # --explain continua rejeitada neste modo (regressao explicita, alem de
+  # scenario_rk_09b abaixo).
+  capture _rc --context "octopusrankterm" --explain --db "$TMPDIR_TEST/rk11.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "rk11 --explain no --context" "esperado exit 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# =========================================================================
+# recall-ranking — FASE 4: flag --explain. Mirror do quickstart Scenario 7
+# (identidade default + explain) e Scenario 9 (casos de erro).
+# =========================================================================
+
+scenario_rk_07_explain_identidade_e_default_inalterado() {
+  _have_deps || return 0
+  _write_dbs_fixture "$TMPDIR_TEST/rk07" "/tmp/projRk07" "rk07feat" "toucanrankterm" \
+    "$(_date_offset -10)" "$(_date_offset -20)" "" ""
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk07" --db "$TMPDIR_TEST/rk07.db" >/dev/null 2>&1
+  capture _rc "toucanrankterm" --limit 5 --db "$TMPDIR_TEST/rk07.db"
+  _a="$_CAPTURED_STDOUT"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk07 exit A" "$_CAPTURED_EXIT"; return 1; }
+  case "$_a" in
+    *score=*) _fail "rk07: A contem linha score= sem --explain" "$_a"; return 1 ;;
+  esac
+  _blocks_a=$(printf '%s\n' "$_a" | grep -c '^\[')
+  capture _rc "toucanrankterm" --explain --limit 5 --db "$TMPDIR_TEST/rk07.db"
+  _b="$_CAPTURED_STDOUT"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk07 exit B" "$_CAPTURED_EXIT"; return 1; }
+  _blocks_b=$(printf '%s\n' "$_b" | grep -c '^\[')
+  _score_lines_b=$(printf '%s\n' "$_b" | grep -c 'score=')
+  [ "$_blocks_a" = "$_blocks_b" ] \
+    || { _fail "rk07 C-2 contagem de blocos" "A=$_blocks_a B=$_blocks_b"; return 1; }
+  [ "$_score_lines_b" = "$_blocks_b" ] \
+    || { _fail "rk07 SC-004 100% explicado" "blocos=$_blocks_b linhas-score=$_score_lines_b"; return 1; }
+}
+
+# Scenario 9 (error case): flag invalida e modos sem --explain.
+scenario_rk_09a_typo_flag_explain() {
+  _have_deps || return 0
+  mkdir -p "$TMPDIR_TEST/rk09"
+  capture _rc "termo" --explaain --db "$TMPDIR_TEST/rk09.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "rk09a exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "rk09a stdout" "esperado vazio, obtido '$_CAPTURED_STDOUT'"; return 1; }
+  [ -n "$_CAPTURED_STDERR" ] || { _fail "rk09a stderr" "esperado mensagem de flag invalida"; return 1; }
+}
+
+scenario_rk_09b_context_explain_rejeitado() {
+  _have_deps || return 0
+  capture _rc --context "termo" --explain --db "$TMPDIR_TEST/rk09b.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "rk09b exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_rk_09c_explain_com_limit_invalido() {
+  _have_deps || return 0
+  capture _rc "termo" --explain --limit abc --db "$TMPDIR_TEST/rk09c.db"
+  [ "$_CAPTURED_EXIT" = "2" ] || { _fail "rk09c exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# =========================================================================
+# recall-ranking — FASE 5: robustez e seguranca (regressao).
+# =========================================================================
+
+# Tarefa 5.1 — falha de consulta AVISA em vez de silenciar (gate security
+# F7, contrato I-10). Mirror do quickstart Scenario 14.
+scenario_rk_14_falha_consulta_avisa_stderr() {
+  _have_deps || return 0
+  mkdir -p "$TMPDIR_TEST/rk14"
+  cat > "$TMPDIR_TEST/rk14/state.json" <<'JSON'
+{
+  "short_name": "rk14feat",
+  "execucao": { "id": "exec-rk14", "projeto_alvo_path": "/tmp/projRk14" },
+  "decisoes": [
+    { "id": "dec-rk14", "onda_id": "onda-001", "timestamp": "2020-01-01T00:00:00Z",
+      "etapa": "specify", "agente": "orch", "escolha": "aplicar", "score_justificativa": 2,
+      "opcoes_consideradas": ["aplicar"], "contexto": "decisao sobre lemurrankterm",
+      "justificativa": "necessario para lemurrankterm", "evidencia": null }
+  ],
+  "bloqueios_humanos": [], "retros": [], "ondas": []
+}
+JSON
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk14" --db "$TMPDIR_TEST/rk14.db" >/dev/null 2>&1
+  sqlite3 "$TMPDIR_TEST/rk14.db" "DROP TABLE knowledge_fts;" 2>/dev/null
+  # Modo busca: exit 0, stdout "nenhum resultado", aviso distinto em stderr.
+  capture _rc "lemurrankterm" --db "$TMPDIR_TEST/rk14.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk14 busca exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "nenhum resultado" || return 1
+  assert_stderr_contains "consulta falhou" || return 1
+  # Modo --context: exit 0, stdout vazio, aviso distinto em stderr.
+  capture _rc --context "lemurrankterm" --db "$TMPDIR_TEST/rk14.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk14 context exit" "$_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "rk14 context stdout" "esperado vazio, obtido '$_CAPTURED_STDOUT'"; return 1; }
+  assert_stderr_contains "consulta falhou" || return 1
+}
+
+# Tarefas 5.2.1/5.2.3 — regressao de degradacao graciosa no MODO BUSCA
+# (5.2.2 ja coberta por scenario_11_indice_corrompido, que exercita o
+# mesmo caminho de indice corrompido no modo busca).
+scenario_rk_10a_db_ausente_busca() {
+  _have_deps || return 0
+  capture _rc "qualquer" --db "$TMPDIR_TEST/nao-existe-rk10.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk10a exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "reindex" || return 1
+  # DB ausente retorna ANTES do "nenhum resultado" (gate dedicado, stdout
+  # vazio) — distinto do caso "DB existe mas a busca nao casou nada".
+  [ -z "$_CAPTURED_STDOUT" ] \
+    || { _fail "rk10a stdout" "esperado vazio, obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
+scenario_rk_10c_sqlite3_ausente_busca() {
+  _bin="$TMPDIR_TEST/bin_rk10c"
+  mkdir -p "$_bin"
+  for _t in tr wc printf sed grep awk basename dirname date find mkdir rm cat head sleep cp jq base64; do
+    _p=$(command -v "$_t" 2>/dev/null) && ln -sf "$_p" "$_bin/$_t"
+  done
+  capture sh -c 'PATH="'"$_bin"'"; export PATH; . "'"$CSTK_LIB"'/common.sh"; . "'"$CSTK_LIB"'/recall.sh"; recall_main "qualquer" --db "'"$TMPDIR_TEST"'/rk10c.db"'
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "rk10c exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "sqlite3" || return 1
+}
+
+# Tarefa 5.3 — regressao de ausencia de superficie de override de relogio
+# (I-12/I-13, dec-021/block-002). Mirror do quickstart Scenario 15.
+scenario_rk_15a_allowlist_exata_env_vars() {
+  _rk15_vars=$(grep -oE 'CSTK_[A-Z_]+' "$CSTK_LIB/recall.sh" | sort -u | tr '\n' ',')
+  [ "$_rk15_vars" = "CSTK_COMMON_LOADED,CSTK_KNOWLEDGE_DB,CSTK_LIB," ] \
+    || { _fail "rk15a allowlist I-12" "obtido '$_rk15_vars'"; return 1; }
+}
+
+scenario_rk_15b_sem_julianday_now_inline() {
+  grep -qF "julianday('now')" "$CSTK_LIB/recall.sh" \
+    && { _fail "rk15b I-5" "julianday('now') apareceu na consulta"; return 1; }
+  return 0
+}
+
+scenario_rk_15c_env_vars_ignoradas_stdout_identico() {
+  _have_deps || return 0
+  _write_dbs_fixture "$TMPDIR_TEST/rk15c" "/tmp/projRk15c" "rk15cfeat" "gazellerankterm" \
+    "$(_date_offset -10)" "" "" ""
+  _rc --ingest --state-dir "$TMPDIR_TEST/rk15c" --db "$TMPDIR_TEST/rk15c.db" >/dev/null 2>&1
+  capture _rc "gazellerankterm" --db "$TMPDIR_TEST/rk15c.db"
+  _out1="$_CAPTURED_STDOUT"
+  _rc1="$_CAPTURED_EXIT"
+  _payload="2026-01-01T00:00:00Z'); ATTACH DATABASE '/tmp/evil-rk15.db' AS e; --"
+  capture env CSTK_RECALL_REF_INSTANT="$_payload" CSTK_RECALL_CLOCK="$_payload" \
+    sh -c '. "'"$CSTK_LIB"'/common.sh"; . "'"$CSTK_LIB"'/recall.sh"; recall_main "gazellerankterm" --db "'"$TMPDIR_TEST"'/rk15c.db"'
+  _out2="$_CAPTURED_STDOUT"
+  _rc2="$_CAPTURED_EXIT"
+  [ "$_rc1" = "0" ] && [ "$_rc2" = "0" ] || { _fail "rk15c exit" "rc1=$_rc1 rc2=$_rc2"; return 1; }
+  [ "$_out1" = "$_out2" ] || { _fail "rk15c stdout divergiu" "com env vars de payload de injecao"; return 1; }
+  [ ! -f "/tmp/evil-rk15.db" ] || { _fail "rk15c" "arquivo /tmp/evil-rk15.db foi criado"; rm -f "/tmp/evil-rk15.db"; return 1; }
+}
+
 run_all_scenarios

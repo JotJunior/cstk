@@ -50,6 +50,15 @@ fi
 RECALL_EXIT_OK=0
 RECALL_EXIT_USAGE=2
 
+# Locale pinado: a partir da feature recall-ranking este arquivo formata
+# float (awk printf de score/bm25/autoridade/recencia/idade em --explain).
+# Sob locale pt_BR o printf de float produz virgula decimal ("0,3000") em
+# vez de ponto — mesmo bug real ja corrigido em usage.sh/otel-usage.sh.
+# Pinar aqui protege PRODUCAO (CLI rodando no shell do operador), nao so os
+# testes; nao interfere no escaping SQL (byte-oriented, ja robusto a locale).
+LC_ALL=C
+export LC_ALL
+
 # ==== Mix de roteamento de modelos: delegacao, NUNCA reimplementacao ====
 #
 # (knowledge-db-metrics, task 2.4 / FR-017 / contract §6) A MetricaDerivada
@@ -199,6 +208,9 @@ MODO BUSCA (default):
                      ('bloqueio' aceito como alias DEPRECADO de 'block')
   --limit N          maximo de resultados (default 20; inteiro positivo)
   --db PATH          indice (default $CSTK_KNOWLEDGE_DB ou ~/.claude/cstk/knowledge.db)
+  --explain          adiciona 1 linha por resultado detalhando o score composto
+                     (bm25 + bonus de autoridade - desconto de recencia);
+                     nao aceita nos demais modos (--context/--ingest/--reindex)
 
 MODO CONTEXT (--context): leitura-para-contexto (read-back loop). Retorna um
   bloco markdown enxuto pronto para injecao em prompt. Read-only, best-effort:
@@ -2981,6 +2993,9 @@ recall_mode_search() {
   _se_limit="20"
   _se_db_flag=""
   _se_have_query=0
+  # --explain: booleana (nao consome argv), idempotente em repeticoes
+  # (recall-ranking FR-005/FR-006; contrato §1.1).
+  _se_explain=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -2988,6 +3003,7 @@ recall_mode_search() {
       --type) shift; _se_type="${1:-}" ;;
       --limit) shift; _se_limit="${1:-}" ;;
       --db) shift; _se_db_flag="${1:-}" ;;
+      --explain) _se_explain=1 ;;
       -h|--help) recall_usage; return "$RECALL_EXIT_OK" ;;
       --*) log_error "recall: flag invalida: $1"; return "$RECALL_EXIT_USAGE" ;;
       *)
@@ -3061,14 +3077,54 @@ recall_mode_search() {
   if [ -n "$_se_type" ]; then
     _se_where="$_se_where AND type = '$(sql_escape "$_se_type")'"
   fi
-  # Separador 0x1F (unit separator) entre colunas: improvavel no conteudo.
-  _se_sql="SELECT type, project, feature, wave, source_ts, source_id, body
-FROM knowledge_fts $_se_where
-ORDER BY bm25(knowledge_fts) LIMIT $_se_limit;"
+  # ---- Score composto (recall-ranking: contrato §1.2) ----
+  # <instante_ref> resolvido UMA UNICA VEZ por invocacao (I-5), com o mesmo
+  # fallback ja usado no arquivo (precedente L1273/L2203/L2803/L2866).
+  # NUNCA a string magica do SQLite para "instante corrente" (a que o
+  # julianday() aceitaria) interpolada inline na consulta. Escaping cumulativo (§3.1):
+  # o literal produzido internamente por `date -u` passa por sql_escape()
+  # como qualquer outro valor interpolado.
+  _se_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _se_now="1970-01-01T00:00:00Z"
+  _se_now_esc=$(sql_escape "$_se_now")
+  _se_auth_expr="CASE type WHEN 'decision' THEN 0.30 WHEN 'block' THEN 0.30 WHEN 'memory' THEN 0.15 WHEN 'retro' THEN 0.00 WHEN 'skill' THEN 0.00 ELSE 0.15 END"
+  # max(0.0, ...) e NORMATIVO (contrato §1.2, nota): sem o clamp, source_ts no
+  # futuro produz idade negativa e o bonus de recencia excede o teto em ordens
+  # de grandeza (CHK020/CHK003).
+  _se_age_expr="max(0.0, julianday('$_se_now_esc') - julianday(nullif(source_ts,'')))"
+  # coalesce EXTERNO ao produto inteiro (contrato §1.2): garante bonus 0.0
+  # quando source_ts e vazio/ausente (FR-008), sem inverter FR-008 dando
+  # bonus MAXIMO ao achado sem source_ts.
+  _se_rec_expr="coalesce(0.10 * (90.0 / (90.0 + $_se_age_expr)), 0.0)"
+  _se_score_expr="(bm25(knowledge_fts) - ($_se_auth_expr) - ($_se_rec_expr))"
 
+  # Ordem das colunas projetadas (contrato §1.2.bis, normativa): quando
+  # --explain, as colunas de score vem ANTES de body — body permanece a
+  # ULTIMA coluna nos dois casos, preservando os indices fixos do awk.
+  if [ "$_se_explain" -eq 1 ]; then
+    _se_cols="type, project, feature, wave, source_ts, source_id,
+       $_se_score_expr AS rk_score, bm25(knowledge_fts) AS rk_bm25,
+       ($_se_auth_expr) AS rk_auth, ($_se_rec_expr) AS rk_rec,
+       ($_se_age_expr) AS rk_age, body"
+  else
+    _se_cols="type, project, feature, wave, source_ts, source_id, body"
+  fi
+
+  # Separador 0x1F (unit separator) entre colunas: improvavel no conteudo.
+  _se_sql="SELECT $_se_cols
+FROM knowledge_fts $_se_where
+ORDER BY $_se_score_expr ASC, source_ts DESC, type ASC, source_id ASC LIMIT $_se_limit;"
+
+  # I-10 (contrato §1.5): falha de EXECUCAO da consulta MUST ser distinguivel
+  # de "nenhum resultado" — exit do sqlite3 capturado SEPARADAMENTE do
+  # resultado vazio, sem alterar o contrato de stdout/exit 0 (I-7 preservada).
   _se_out=$(recall_query_sql "$_se_db" ".mode list
 .separator |@|
-$_se_sql") || _se_out=""
+$_se_sql")
+  _se_query_rc=$?
+  if [ "$_se_query_rc" -ne 0 ]; then
+    log_warn "recall: consulta falhou (sqlite3 exit $_se_query_rc); tratando como nenhum resultado"
+    _se_out=""
+  fi
 
   if [ -z "$_se_out" ]; then
     printf "nenhum resultado para '%s'\n" "$_se_query"
@@ -3084,10 +3140,32 @@ $_se_sql") || _se_out=""
     _r_wave=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $4}')
     _r_ts=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $5}')
     _r_sid=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $6}')
-    _r_body=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $7}')
+    if [ "$_se_explain" -eq 1 ]; then
+      _r_score=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $7}')
+      _r_bm25=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $8}')
+      _r_auth=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $9}')
+      _r_rec=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $10}')
+      _r_age=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $11}')
+      _r_body=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $12}')
+    else
+      _r_body=$(printf '%s' "$_se_line" | awk -F '\\|@\\|' '{print $7}')
+    fi
     printf '[%s] %s / %s / %s / %s (%s)\n' \
       "$_r_type" "$_r_proj" "$_r_feat" "$_r_wave" "$_r_ts" "$_r_sid"
-    printf '  %s\n\n' "$_r_body"
+    printf '  %s\n' "$_r_body"
+    if [ "$_se_explain" -eq 1 ]; then
+      # C-2: 2 espacos de indentacao, NUNCA comeca com '[' — preserva
+      # `grep -c '^\['`. C-3: identidade score = bm25 - autoridade - recencia
+      # verificavel na saida. idade=n/d quando source_ts vazio (rk_age NULL
+      # -> string vazia em .mode list).
+      awk -v s="$_r_score" -v b="$_r_bm25" -v au="$_r_auth" \
+          -v re="$_r_rec" -v ad="$_r_age" 'BEGIN {
+            if (ad == "") { agestr = "n/d" } else { agestr = sprintf("%.1fd", ad) }
+            printf "  score=%.4f = bm25=%.4f - autoridade=%.2f - recencia=%.4f (idade=%s)\n", \
+              s, b, au, re, agestr
+          }'
+    fi
+    printf '\n'
   done
   return "$RECALL_EXIT_OK"
 }
@@ -3210,18 +3288,40 @@ recall_mode_context() {
   if [ -n "$_cx_project" ]; then
     _cx_where="$_cx_where AND project = '$(sql_escape "$_cx_project")'"
   fi
-  # SEM piso de bm25 (FR-007). bm25 ASC (mais relevante primeiro), LIMIT N.
+  # Score composto (recall-ranking: contrato §2.1) — mesma expressao e mesmo
+  # desempate total da secao 1.2, aplicada aqui SO na ordenacao. Duplicacao
+  # DELIBERADA (plan.md Structure Decision: extrair um helper espalharia a
+  # dependencia de sqlite3 para um 2o arquivo). --explain NAO e aceito neste
+  # modo (cai no ramo de flag invalida acima, exit 2); nenhuma coluna de
+  # score e projetada aqui (I-8).
+  _cx_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _cx_now="1970-01-01T00:00:00Z"
+  _cx_now_esc=$(sql_escape "$_cx_now")
+  _cx_auth_expr="CASE type WHEN 'decision' THEN 0.30 WHEN 'block' THEN 0.30 WHEN 'memory' THEN 0.15 WHEN 'retro' THEN 0.00 WHEN 'skill' THEN 0.00 ELSE 0.15 END"
+  _cx_age_expr="max(0.0, julianday('$_cx_now_esc') - julianday(nullif(source_ts,'')))"
+  _cx_rec_expr="coalesce(0.10 * (90.0 / (90.0 + $_cx_age_expr)), 0.0)"
+  _cx_score_expr="(bm25(knowledge_fts) - ($_cx_auth_expr) - ($_cx_rec_expr))"
+
+  # SEM piso de bm25 (FR-007). Ordenacao pelo score composto + desempate
+  # total, LIMIT N.
   _cx_sql="SELECT type, project, feature, wave, source_ts, source_id, body
 FROM knowledge_fts $_cx_where
-ORDER BY bm25(knowledge_fts) LIMIT $_cx_limit;"
+ORDER BY $_cx_score_expr ASC, source_ts DESC, type ASC, source_id ASC LIMIT $_cx_limit;"
 
   # Executa SOMENTE via recall_query_sql (leitura). NUNCA recall_run_sql /
   # recall_apply_schema (escrita) — read-only (FR-014). database is locked
   # durante ingestao concorrente => .timeout 5000 (em recall_query_sql); se
-  # ainda falhar, resultado vazio => no-op (nunca propaga erro).
+  # ainda falhar, resultado vazio => no-op (nunca propaga erro). I-10: exit
+  # do sqlite3 capturado SEPARADAMENTE do resultado vazio, com aviso em
+  # stderr distinguindo falha de "nenhum achado" (I-7 preservada: exit 0 e
+  # stdout continuam iguais em ambos os casos).
   _cx_out=$(recall_query_sql "$_cx_db" ".mode list
 .separator |@|
-$_cx_sql") || _cx_out=""
+$_cx_sql")
+  _cx_query_rc=$?
+  if [ "$_cx_query_rc" -ne 0 ]; then
+    log_warn "recall --context: consulta falhou (sqlite3 exit $_cx_query_rc); tratando como no-op"
+    _cx_out=""
+  fi
 
   # ---- Render do ContextBlock (markdown enxuto, teto duro de bytes) ----
   # K=0 (zero rows apos anti-eco/filtros) => stdout VAZIO (FR-017 distingue
