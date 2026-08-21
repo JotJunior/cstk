@@ -351,15 +351,20 @@ JA implementado, nunca proposta nao verificada — Principio VI).
 Ref: `plan.md` §Ordem de implementacao item 7; `CLAUDE.md` §Como testar
 scripts shell
 
-- [ ] 5.2.1 Rodar `./tests/run.sh test_state-rounds` isolado e confirmar
-  T-01..T-28 (com T-15 emendado) 100% verdes
-- [ ] 5.2.2 Rodar `./tests/run.sh --check-coverage` e confirmar que
+- [x] 5.2.1 Rodar `./tests/run.sh test_state-rounds` isolado e confirmar
+  T-01..T-28 (com T-15 emendado) 100% verdes (onda-006)
+- [x] 5.2.2 Rodar `./tests/run.sh --check-coverage` e confirmar que
   `state-rounds.sh` continua mapeado para `tests/test_state-rounds.sh` sem
-  orfaos
-- [ ] 5.2.3 Rodar a suite completa (`./tests/run.sh`, sem filtro) para
+  orfaos (onda-006)
+- [x] 5.2.3 Rodar a suite completa (`./tests/run.sh`, sem filtro) para
   garantir zero regressao em consumidores indiretos (`feature-00c.md`
   §2.bis/7.c, `feature-00c-abort.md` §8) que dependem do formato `ROUND|...`
-  e do comportamento de purge
+  e do comportamento de purge — resultado (onda-007, `LC_ALL=C`, 1015s):
+  `# PASS: 3342  FAIL: 1  ERROR: 0  ORPHANS: 0`. O unico FAIL
+  (`test_00c-bootstrap.sh :: scenario_issue_2_sigint_propaga_exit_130`) e
+  flaky conhecido do repo (nao gateia; passa isolado — ver
+  `CLAUDE.md`/memoria `project_flaky_test.md`), sem relacao com esta
+  feature. Zero regressao em `feature-00c.md`/`feature-00c-abort.md`.
 
 ---
 
