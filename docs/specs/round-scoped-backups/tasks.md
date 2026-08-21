@@ -34,14 +34,18 @@ backfill), mas a aceitacao formal de que a perda dos snapshots das ondas 1-11
 sem expectativa futura de reparo — e julgamento de apetite de risco do dono
 do produto, nao verificavel apenas com os artefatos.
 
-- [ ] 0.1.1 Apresentar ao dono do produto o gap documentado em `spec.md`
+- [x] 0.1.1 Apresentar ao dono do produto o gap documentado em `spec.md`
   §Edge Cases ("rounds que ja foram rotacionados antes desta correcao
   existir") e `plan.md` §Fora de escopo ("Backfill/reparo de rounds ja
   rotacionados sem snapshots")
-- [ ] 0.1.2 Obter aceite explicito (registro escrito — comentario na issue
+- [x] 0.1.2 Obter aceite explicito (registro escrito — comentario na issue
   #150, ADR ou equivalente) de que a perda historica das ondas 1-11 e
   permanente e nenhum mecanismo de backfill sera construido
-- [ ] 0.1.3 Marcar CHK027 como `[x]` em
+  <!-- aceite do dono do produto em 2026-08-21, via prompt interativo do
+  command pai /feature-00c; registrado como dec-036 no state auditavel da
+  execucao round-scoped-backups (ingerido na knowledge.db); este commit e o
+  registro escrito equivalente -->
+- [x] 0.1.3 Marcar CHK027 como `[x]` em
   `docs/specs/round-scoped-backups/checklists/requirements.md` citando a
   evidencia do aceite (link/data), **somente apos** o registro do item 0.1.2
   existir

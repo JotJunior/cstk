@@ -188,7 +188,7 @@ agregaria: nao ha superficie nova a auditar alem do que o gate ja cobriu.
 
 ## Decisao de risco/negocio pendente
 
-- [ ] CHK027 - A perda historica irrecuperavel dos snapshots de rounds
+- [x] CHK027 - A perda historica irrecuperavel dos snapshots de rounds
   ja rotacionados antes desta correcao (issue #150, ondas 1-11) foi
   formalmente aceita pelo dono do produto como permanente, sem
   expectativa futura de mecanismo de backfill? [Risco, Spec
@@ -196,6 +196,10 @@ agregaria: nao ha superficie nova a auditar alem do que o gate ja cobriu.
   clarify, mas a aceitacao de que a perda e definitiva (vs. "ainda
   nao decidimos investir em backfill") e julgamento de apetite de
   risco do dono do produto, nao verificavel so com os artefatos.
+  **Resolvido 2026-08-21**: dono do produto aceitou formalmente via
+  prompt interativo do command pai (/feature-00c) — perda historica
+  permanente, sem backfill futuro. Evidencia: dec-036 no state da
+  execucao round-scoped-backups + commit desta marcacao.
 
 ## Notes
 
