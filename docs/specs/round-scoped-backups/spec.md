@@ -4,6 +4,12 @@
 **Created**: 2026-08-21
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-21
+
+- Q: Rounds ja rotacionados antes desta correcao existir, sem snapshots de onda dentro de si (perda historica pre-existente, issue #150) devem ganhar mecanismo de backfill/reparo, ou o gap fica documentado como perda irrecuperavel fora de escopo? → A: Fora de escopo — perda irrecuperavel documentada, sem mecanismo de backfill (rotacao de `backups/` e capacidade nova; nao ha snapshot de origem para recuperar).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Preservar snapshots de onda de rounds anteriores (Priority: P1)
@@ -106,10 +112,12 @@ com sucesso, sem erro por causa da ausencia.
 - O que acontece com rounds que ja foram rotacionados **antes** desta
   correcao existir, e que portanto nao tem snapshots de onda dentro de
   si (o caso real relatado na issue #150, com ondas 1-11 ja perdidas)?
-  [NEEDS CLARIFICATION: os rounds ja rotacionados sem snapshots (perda
-  historica pre-existente) devem ganhar algum mecanismo de backfill/
-  reparo, ou o gap fica documentado como perda irrecuperavel e fora de
-  escopo desta correcao?]
+  Fora de escopo: os snapshots dessas ondas nunca foram movidos para
+  dentro do round (a rotacao de `backups/` e uma capacidade nova,
+  introduzida por esta propria correcao) e nao existem em nenhuma
+  outra fonte recuperavel — nao ha de onde "reparar". O gap fica
+  documentado como perda historica irrecuperavel; nenhum mecanismo de
+  backfill/reconstrucao e construido.
 - O que acontece se o operador pedir purge dos snapshots acumulados numa
   execucao que ainda nao foi rotacionada nenhuma vez (sem nenhum round
   preservado ainda)? Deve continuar removendo apenas os snapshots da
