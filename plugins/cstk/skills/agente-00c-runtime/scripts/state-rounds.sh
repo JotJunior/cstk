@@ -582,8 +582,9 @@ for _rt_f in $_RT_FILES_CSV; do
     || _sr_die "mv falhou: $_rt_f -> $_RT_STAGING" 1
   if [ "$_rt_f" = "backups" ]; then
     # G8 (pos-mv): staging deve conter um diretorio real, nunca um symlink.
-    [ -d "$_RT_STAGING/backups" ] && [ ! -L "$_RT_STAGING/backups" ] \
-      || _sr_die "backups/ no staging invalido apos mv (nao-diretorio ou symlink)" 1
+    if [ ! -d "$_RT_STAGING/backups" ] || [ -L "$_RT_STAGING/backups" ]; then
+      _sr_die "backups/ no staging invalido apos mv (nao-diretorio ou symlink)" 1
+    fi
   fi
   IFS=','
 done
