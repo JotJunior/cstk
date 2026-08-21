@@ -5,6 +5,45 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [8.8.0] - 2026-08-21
+
+Feature `round-scoped-backups` (issue #150): os snapshots de onda
+(`backups/wave-NNN.json`) deixam de ser sobrescritos a cada `--reopen` — a
+rotacao de round passa a preservar o diretorio `backups/` junto com o estado
+transacional, dentro de `rounds/rNN/`.
+
+### Fixed
+
+- **`state-rounds.sh rotate` escopa `backups/` por round (issue #150).** O
+  diretorio `backups/` agora entra no MESMO staging atomico do conjunto
+  transacional e e movido para `rounds/rNN/backups/` no commit da rotacao —
+  a numeracao de onda reiniciada pelo round novo nao colide mais com os
+  snapshots do round anterior. `backups/` ausente ou vazio segue nao-bloqueante
+  e o formato de saida `ROUND|...` e preservado.
+- **`recover` tipo-consciente para diretorios.** Roll-forward/roll-back do
+  journal (J4 admite a entrada `backups`) tratam diretorio inteiro; roll-back
+  exige destino inexistente — sem isso, `mv` de diretorio sobre diretorio
+  existente aninha silenciosamente (`backups/backups/`) com exit 0, corrompendo
+  o state-dir (verificado empiricamente em Darwin).
+
+### Added
+
+- **Guardas G8/G9 na rotacao.** Re-assercao anti-TOCTOU/anti-symlink de
+  `backups/` imediatamente antes do `mv` (G8) e `chmod 700` no `backups/` do
+  staging (G9) — findings LOW do gate `owasp-security` incorporados.
+- **Cobertura nova em `tests/test_state-rounds.sh`.** Cenarios T-17..T-28
+  (happy path, nao-colisao pos-reopen, staging completo, journal, roll-back
+  anti-aninhamento, purge restrito ao round corrente, list, POSIX/shellcheck)
+  — suite do arquivo em 30 cenarios.
+
+### Changed
+
+- **Contrato `docs/specs/feature-reopen/contracts/state-rounds.md` emendado.**
+  Round preservado passa a conter `state.db` (ou `state.json[.sha256]`) E
+  `backups/`; a regra antiga "round contem so state.db" foi revogada de forma
+  aditiva. `feature-00c-abort --purge-backups` permanece restrito ao `backups/`
+  da execucao corrente — nunca toca rounds preservados.
+
 ## [8.7.0] - 2026-08-20
 
 Feature `recall-ranking`: o `cstk recall` deixa de ranquear por bm25 puro e
@@ -6994,6 +7033,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[8.8.0]: https://github.com/JotJunior/cstk/releases/tag/v8.8.0
 [8.7.0]: https://github.com/JotJunior/cstk/releases/tag/v8.7.0
 [8.6.0]: https://github.com/JotJunior/cstk/releases/tag/v8.6.0
 [8.5.0]: https://github.com/JotJunior/cstk/releases/tag/v8.5.0

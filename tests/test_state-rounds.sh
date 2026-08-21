@@ -179,6 +179,59 @@ scenario_T07_rotate_2x_coexistem_r01_inalterado() {
 }
 
 # ---------------------------------------------------------------------------
+# T-17 — rotate move backups/ para dentro do round (happy path, sqlite)
+# ---------------------------------------------------------------------------
+scenario_T17_rotate_move_backups_happy_path() {
+  command -v sqlite3 >/dev/null 2>&1 || { printf '# T-17: sqlite3 ausente — pulando\n'; return 0; }
+  _sd="$TMPDIR_TEST/t17-sd"
+  _mk_state_dir "$_sd" sqlite abortada || { _error "fixture" "_mk_state_dir falhou"; return 2; }
+  _acquire_lock "$_sd" || { _error "fixture" "acquire lock falhou"; return 2; }
+  mkdir -p "$_sd/backups"
+  printf '{"wave":1,"marker":"um"}' > "$_sd/backups/wave-001.json"
+  printf '{"wave":2,"marker":"dois"}' > "$_sd/backups/wave-002.json"
+  cp "$_sd/backups/wave-001.json" "$TMPDIR_TEST/t17-w1-snapshot.json"
+  cp "$_sd/backups/wave-002.json" "$TMPDIR_TEST/t17-w2-snapshot.json"
+  capture "$SCRIPT" rotate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-17" "rotate falhou: $_CAPTURED_STDERR"; return 1; }
+  cmp -s "$TMPDIR_TEST/t17-w1-snapshot.json" "$_sd/rounds/r01/backups/wave-001.json" \
+    || { _fail "T-17" "wave-001.json diverge do original"; return 1; }
+  cmp -s "$TMPDIR_TEST/t17-w2-snapshot.json" "$_sd/rounds/r01/backups/wave-002.json" \
+    || { _fail "T-17" "wave-002.json diverge do original"; return 1; }
+  [ ! -e "$_sd/backups" ] || { _fail "T-17" "SD/backups ainda existe apos rotate"; return 1; }
+  [ -f "$_sd/rounds/r01/state.db" ] || { _fail "T-17" "state.db ausente do round"; return 1; }
+  # regressao do consumidor feature-00c.md §2.bis/7.c: formato exato, sem campo novo.
+  assert_stdout_match '^ROUND\|r01\|sqlite\|state\.db\|[^|]*\|[^|]*$' || return 1
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-18 — nao-colisao entre rounds sucessivos (backups/ por round)
+# ---------------------------------------------------------------------------
+scenario_T18_backups_nao_colisao_entre_rounds() {
+  _sd="$TMPDIR_TEST/t18-sd"
+  _mk_state_dir "$_sd" json abortada || { _error "fixture" "_mk_state_dir falhou"; return 2; }
+  _acquire_lock "$_sd" || { _error "fixture" "acquire lock falhou"; return 2; }
+  mkdir -p "$_sd/backups"
+  printf 'A' > "$_sd/backups/wave-001.json"
+  cp "$_sd/backups/wave-001.json" "$TMPDIR_TEST/t18-A-snapshot.json"
+  capture "$SCRIPT" rotate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-18" "1a rotate falhou: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_match '^ROUND\|r01\|' || return 1
+  _mk_state_dir "$_sd" json abortada || { _error "fixture" "2a _mk_state_dir falhou"; return 2; }
+  mkdir -p "$_sd/backups"
+  printf 'B' > "$_sd/backups/wave-001.json"
+  cp "$_sd/backups/wave-001.json" "$TMPDIR_TEST/t18-B-snapshot.json"
+  capture "$SCRIPT" rotate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-18" "2a rotate falhou: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_match '^ROUND\|r02\|' || return 1
+  cmp -s "$TMPDIR_TEST/t18-A-snapshot.json" "$_sd/rounds/r01/backups/wave-001.json" \
+    || { _fail "T-18" "r01/backups/wave-001.json foi sobrescrito (esperado A)"; return 1; }
+  cmp -s "$TMPDIR_TEST/t18-B-snapshot.json" "$_sd/rounds/r02/backups/wave-001.json" \
+    || { _fail "T-18" "r02/backups/wave-001.json diverge do esperado (B)"; return 1; }
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # T-08 — interrupcao apos staging (staging completo, journal presente,
 # target ainda nao criado) ⇒ recover roll-forward, 1 tentativa
 # ---------------------------------------------------------------------------
@@ -236,6 +289,150 @@ scenario_T09_recover_roll_back_staging_incompleto() {
   [ ! -e "$_sd/rounds/.r01.staging" ] || { _fail "T-09" "staging remanescente apos roll-back"; return 1; }
   [ ! -f "$_sd/rounds/.rotate-journal" ] || { _fail "T-09" "journal remanescente apos roll-back"; return 1; }
   [ ! -d "$_sd/rounds/r01" ] || { _fail "T-09" "round r01 foi criado indevidamente no roll-back"; return 1; }
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-21 — interrupcao apos staging completo (incluindo backups/) ⇒ roll-forward
+# ---------------------------------------------------------------------------
+scenario_T21_recover_roll_forward_com_backups() {
+  _sd="$TMPDIR_TEST/t21-sd"
+  mkdir -p "$_sd/rounds/.r01.staging/backups"
+  printf '{"execution":{"id":"exec-t21","status":"abortada"}}' > "$_sd/rounds/.r01.staging/state.json"
+  printf '{}' > "$_sd/rounds/.r01.staging/backups/wave-001.json"
+  {
+    printf 'label=r01\n'
+    printf 'backend=json\n'
+    printf 'files=state.json,backups\n'
+    printf 'staging=rounds/.r01.staging\n'
+    printf 'phase=moving\n'
+    printf 'started_at=2026-01-01T00:00:00Z\n'
+  } > "$_sd/rounds/.rotate-journal"
+  capture "$SCRIPT" recover --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-21" "recover falhou: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "RECOVER|forward|r01" || return 1
+  [ -f "$_sd/rounds/r01/state.json" ] || { _fail "T-21" "state.json ausente do round"; return 1; }
+  [ -d "$_sd/rounds/r01/backups" ] || { _fail "T-21" "backups/ ausente do round"; return 1; }
+  [ -f "$_sd/rounds/r01/backups/wave-001.json" ] || { _fail "T-21" "backups/wave-001.json ausente do round"; return 1; }
+  [ ! -e "$_sd/rounds/.r01.staging" ] || { _fail "T-21" "staging remanescente apos roll-forward"; return 1; }
+  [ ! -f "$_sd/rounds/.rotate-journal" ] || { _fail "T-21" "journal remanescente apos roll-forward"; return 1; }
+  # segunda invocacao -- idempotente, no-op.
+  capture "$SCRIPT" recover --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-21" "segunda recover (idempotente) falhou"; return 1; }
+  assert_stdout_contains "RECOVER|none|-" || return 1
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-22 — interrupcao no meio dos mv (state.db em staging, backups/ ainda na
+# raiz) ⇒ roll-back; backups/ intacto na raiz, conjunto volta ao original
+# ---------------------------------------------------------------------------
+scenario_T22_recover_roll_back_backups_intacto() {
+  command -v sqlite3 >/dev/null 2>&1 || { printf '# T-22: sqlite3 ausente — pulando\n'; return 0; }
+  _sd="$TMPDIR_TEST/t22-sd"
+  _mk_state_dir "$_sd" sqlite abortada || { _error "fixture" "_mk_state_dir falhou"; return 2; }
+  mkdir -p "$_sd/backups"
+  printf '{}' > "$_sd/backups/wave-001.json"
+  cp "$_sd/state.db" "$TMPDIR_TEST/t22-statedb-snapshot.db"
+  cp "$_sd/backups/wave-001.json" "$TMPDIR_TEST/t22-backups-w1-snapshot.json"
+  # simula interrupcao ENTRE mover state.db (ja em staging) e mover
+  # backups/ (ainda na raiz) -- staging incompleto.
+  mkdir -p "$_sd/rounds/.r01.staging"
+  mv "$_sd/state.db" "$_sd/rounds/.r01.staging/state.db"
+  {
+    printf 'label=r01\n'
+    printf 'backend=sqlite\n'
+    printf 'files=state.db,backups\n'
+    printf 'staging=rounds/.r01.staging\n'
+    printf 'phase=moving\n'
+    printf 'started_at=2026-01-01T00:00:00Z\n'
+  } > "$_sd/rounds/.rotate-journal"
+  capture "$SCRIPT" recover --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-22" "recover falhou: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "RECOVER|rollback|r01" || return 1
+  cmp -s "$TMPDIR_TEST/t22-statedb-snapshot.db" "$_sd/state.db" \
+    || { _fail "T-22" "state.db nao voltou identico para a raiz"; return 1; }
+  [ -d "$_sd/backups" ] || { _fail "T-22" "backups/ desapareceu da raiz"; return 1; }
+  cmp -s "$TMPDIR_TEST/t22-backups-w1-snapshot.json" "$_sd/backups/wave-001.json" \
+    || { _fail "T-22" "backups/wave-001.json diverge apos rollback"; return 1; }
+  [ ! -e "$_sd/rounds/.r01.staging" ] || { _fail "T-22" "staging remanescente apos roll-back"; return 1; }
+  [ ! -f "$_sd/rounds/.rotate-journal" ] || { _fail "T-22" "journal remanescente apos roll-back"; return 1; }
+  [ ! -d "$_sd/rounds/r01" ] || { _fail "T-22" "round r01 foi criado indevidamente no roll-back"; return 1; }
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-23 — roll-back com backups/ preexistente na raiz (estado anomalo) ⇒
+# exit 1, recusa explicita, anti-aninhamento (sem SD/backups/backups/)
+# ---------------------------------------------------------------------------
+scenario_T23_recover_roll_back_backups_preexistente_anti_aninhamento() {
+  _sd="$TMPDIR_TEST/t23-sd"
+  # staging INCOMPLETO (falta state.json) para forcar acao=rollback -- so
+  # backups/ ja foi movido para staging quando a interrupcao ocorreu.
+  mkdir -p "$_sd/rounds/.r01.staging/backups"
+  printf 'staging-content' > "$_sd/rounds/.r01.staging/backups/wave-001.json"
+  # state.json ainda na raiz (nao movido) + backups/ ja existe na raiz
+  # (estado anomalo: nunca deveria coexistir com o staging tendo backups/).
+  printf '{"execution":{"id":"exec-t23","status":"abortada"}}' > "$_sd/state.json"
+  mkdir -p "$_sd/backups"
+  printf 'root-content' > "$_sd/backups/wave-999.json"
+  {
+    printf 'label=r01\n'
+    printf 'backend=json\n'
+    printf 'files=state.json,backups\n'
+    printf 'staging=rounds/.r01.staging\n'
+    printf 'phase=moving\n'
+    printf 'started_at=2026-01-01T00:00:00Z\n'
+  } > "$_sd/rounds/.rotate-journal"
+  capture "$SCRIPT" recover --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "T-23" "esperado exit=1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "ja existe" || return 1
+  [ ! -e "$_sd/backups/backups" ] || { _fail "T-23" "aninhamento SD/backups/backups/ foi criado"; return 1; }
+  [ -f "$_sd/backups/wave-999.json" ] || { _fail "T-23" "conteudo original de SD/backups foi perdido"; return 1; }
+  [ -d "$_sd/rounds/.r01.staging/backups" ] || { _fail "T-23" "staging foi removido apesar da recusa"; return 1; }
+  [ -f "$_sd/rounds/.rotate-journal" ] || { _fail "T-23" "journal foi removido apesar da recusa"; return 1; }
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-24 — J4: fechado admite `backups` por literal; rejeita caminho arbitrario
+# ---------------------------------------------------------------------------
+scenario_T24_j4_admite_backups_rejeita_arbitrario() {
+  # controle negativo: caminho fora do fechado ⇒ exit 1, nada movido
+  _sd="$TMPDIR_TEST/t24-neg-sd"
+  mkdir -p "$_sd/rounds/.r01.staging"
+  printf '{}' > "$_sd/rounds/.r01.staging/state.db"
+  {
+    printf 'label=r01\n'
+    printf 'backend=sqlite\n'
+    printf 'files=state.db,../../etc/passwd\n'
+    printf 'staging=rounds/.r01.staging\n'
+    printf 'phase=moving\n'
+    printf 'started_at=2026-01-01T00:00:00Z\n'
+  } > "$_sd/rounds/.rotate-journal"
+  capture "$SCRIPT" recover --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "T-24" "controle negativo: esperado exit=1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "arquivo fora do fechado" || return 1
+  [ ! -d "$_sd/rounds/r01" ] || { _fail "T-24" "controle negativo: round foi criado apesar da recusa"; return 1; }
+  [ -f "$_sd/rounds/.rotate-journal" ] || { _fail "T-24" "controle negativo: journal foi removido apesar da recusa"; return 1; }
+
+  # controle positivo: files=state.db,backups ⇒ aceito (ampliacao por literal)
+  _sd2="$TMPDIR_TEST/t24-pos-sd"
+  mkdir -p "$_sd2/rounds/.r01.staging/backups"
+  printf '{}' > "$_sd2/rounds/.r01.staging/state.db"
+  printf '{}' > "$_sd2/rounds/.r01.staging/backups/wave-001.json"
+  {
+    printf 'label=r01\n'
+    printf 'backend=sqlite\n'
+    printf 'files=state.db,backups\n'
+    printf 'staging=rounds/.r01.staging\n'
+    printf 'phase=moving\n'
+    printf 'started_at=2026-01-01T00:00:00Z\n'
+  } > "$_sd2/rounds/.rotate-journal"
+  capture "$SCRIPT" recover --state-dir "$_sd2"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-24" "controle positivo: recover falhou: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "RECOVER|forward|r01" || return 1
+  [ -d "$_sd2/rounds/r01/backups" ] || { _fail "T-24" "controle positivo: backups/ ausente do round"; return 1; }
   return 0
 }
 
@@ -334,10 +531,132 @@ scenario_T15_artefatos_nao_transacionais_permanecem() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-15" "rotate falhou: $_CAPTURED_STDERR"; return 1; }
   [ -f "$_sd/enforcement-log.jsonl" ] || { _fail "T-15" "enforcement-log.jsonl foi movido"; return 1; }
   [ -f "$_sd/commit-baseline.txt" ] || { _fail "T-15" "commit-baseline.txt foi movido"; return 1; }
-  [ -f "$_sd/backups/wave-001.json" ] || { _fail "T-15" "backups/ foi movido"; return 1; }
   [ -d "$_sd/state-history" ] || { _fail "T-15" "state-history/ foi movido"; return 1; }
   [ -d "$_sd/.lock" ] || { _fail "T-15" ".lock/ foi movido"; return 1; }
   [ ! -f "$_sd/rounds/r01/enforcement-log.jsonl" ] || { _fail "T-15" "enforcement-log.jsonl vazou para o round"; return 1; }
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-19 — backups/ ausente: rotacao normal, rounds/r01/backups nao existe
+# ---------------------------------------------------------------------------
+scenario_T19_backups_ausente_rotacao_normal() {
+  _sd="$TMPDIR_TEST/t19-sd"
+  _mk_state_dir "$_sd" json abortada || { _error "fixture" "_mk_state_dir falhou"; return 2; }
+  _acquire_lock "$_sd" || { _error "fixture" "acquire lock falhou"; return 2; }
+  [ ! -e "$_sd/backups" ] || { _error "fixture" "backups/ nao deveria existir na fixture"; return 2; }
+  capture "$SCRIPT" rotate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-19" "rotate falhou: $_CAPTURED_STDERR"; return 1; }
+  [ -z "$_CAPTURED_STDERR" ] || { _fail "T-19" "stderr nao deveria conter nada, obtido: $_CAPTURED_STDERR"; return 1; }
+  [ ! -e "$_sd/rounds/r01/backups" ] || { _fail "T-19" "rounds/r01/backups foi criado apesar da ausencia"; return 1; }
+  [ -f "$_sd/rounds/r01/state.json" ] || { _fail "T-19" "state.json ausente do round"; return 1; }
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-20 — backups/ vazio: nao vira dir vazio no round; permanece na raiz
+# ---------------------------------------------------------------------------
+scenario_T20_backups_vazio_permanece_na_raiz() {
+  _sd="$TMPDIR_TEST/t20-sd"
+  _mk_state_dir "$_sd" json abortada || { _error "fixture" "_mk_state_dir falhou"; return 2; }
+  _acquire_lock "$_sd" || { _error "fixture" "acquire lock falhou"; return 2; }
+  mkdir -p "$_sd/backups"
+  capture "$SCRIPT" rotate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-20" "rotate falhou: $_CAPTURED_STDERR"; return 1; }
+  [ ! -e "$_sd/rounds/r01/backups" ] || { _fail "T-20" "rounds/r01/backups foi criado a partir de backups/ vazio"; return 1; }
+  [ -d "$_sd/backups" ] || { _fail "T-20" "backups/ vazio deveria permanecer na raiz"; return 1; }
+  capture "$SCRIPT" recover --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-20" "recover pos-rotate falhou: $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "RECOVER|none|-" || return 1
+  return 0
+}
+
+# _perm PATH -> stdout: modo octal (GNU-first, fallback BSD/macOS).
+_perm() {
+  stat -c '%a' -- "$1" 2>/dev/null || stat -f '%Lp' -- "$1" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# T-28 — backups/ preservado com permissoes 700 (G9), best-effort
+# ---------------------------------------------------------------------------
+scenario_T28_backups_preservado_permissao_700() {
+  _sd="$TMPDIR_TEST/t28-sd"
+  _mk_state_dir "$_sd" json abortada || { _error "fixture" "_mk_state_dir falhou"; return 2; }
+  _acquire_lock "$_sd" || { _error "fixture" "acquire lock falhou"; return 2; }
+  mkdir -p "$_sd/backups"
+  printf '{}' > "$_sd/backups/wave-001.json"
+  chmod 755 "$_sd/backups" 2>/dev/null || :
+  capture "$SCRIPT" rotate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-28" "rotate falhou: $_CAPTURED_STDERR"; return 1; }
+  [ -d "$_sd/rounds/r01/backups" ] || { _fail "T-28" "backups/ nao foi movido para o round"; return 1; }
+  _t28_perm=$(_perm "$_sd/rounds/r01/backups")
+  if [ -n "$_t28_perm" ]; then
+    [ "$_t28_perm" = "700" ] || { _fail "T-28" "modo esperado 700, obtido $_t28_perm"; return 1; }
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-26 — purge do abort (feature-00c-abort.md §8) nao toca rounds preservados
+# ---------------------------------------------------------------------------
+scenario_T26_purge_abort_nao_toca_rounds_preservados() {
+  _sd="$TMPDIR_TEST/t26-sd"
+  _mk_state_dir "$_sd" json abortada || { _error "fixture" "_mk_state_dir falhou"; return 2; }
+  _acquire_lock "$_sd" || { _error "fixture" "acquire lock falhou"; return 2; }
+  mkdir -p "$_sd/backups"
+  printf '{}' > "$_sd/backups/wave-001.json"
+  capture "$SCRIPT" rotate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-26" "rotate falhou: $_CAPTURED_STDERR"; return 1; }
+  [ -f "$_sd/rounds/r01/backups/wave-001.json" ] || { _fail "T-26" "fixture: backups nao foi rotacionado"; return 1; }
+  cp "$_sd/rounds/r01/backups/wave-001.json" "$TMPDIR_TEST/t26-round-snapshot.json"
+  # backups/ da execucao corrente (pos-rotate, nova onda em andamento)
+  mkdir -p "$_sd/backups"
+  printf '{}' > "$_sd/backups/wave-002.json"
+  # purge exatamente como feature-00c-abort.md §8: rm -rf -- "$SD/backups"
+  rm -rf -- "$_sd/backups"
+  [ ! -e "$_sd/backups" ] || { _fail "T-26" "SD/backups nao foi removido pelo purge"; return 1; }
+  [ -f "$_sd/rounds/r01/backups/wave-001.json" ] || { _fail "T-26" "round preservado foi afetado pelo purge"; return 1; }
+  cmp -s "$TMPDIR_TEST/t26-round-snapshot.json" "$_sd/rounds/r01/backups/wave-001.json" \
+    || { _fail "T-26" "conteudo do round preservado diverge apos purge"; return 1; }
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-27 — list inalterado com round contendo backups/
+# ---------------------------------------------------------------------------
+scenario_T27_list_inalterado_com_backups_no_round() {
+  _sd="$TMPDIR_TEST/t27-sd"
+  _mk_state_dir "$_sd" json abortada || { _error "fixture" "_mk_state_dir falhou"; return 2; }
+  _acquire_lock "$_sd" || { _error "fixture" "acquire lock falhou"; return 2; }
+  mkdir -p "$_sd/backups"
+  printf '{}' > "$_sd/backups/wave-001.json"
+  capture "$SCRIPT" rotate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-27" "rotate falhou: $_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" list --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "T-27" "list falhou: $_CAPTURED_STDERR"; return 1; }
+  _t27_lines=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c '^r01|')
+  [ "$_t27_lines" = "1" ] || { _fail "T-27" "esperado exatamente 1 linha r01|..., obtido $_t27_lines"; return 1; }
+  assert_stdout_match '^r01\|json\|state\.json\|[^|]*\|[^|]*\|[^|]*$' || return 1
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# T-25 — backups/ symlink ⇒ rotate recusa (G8), nada escrito
+# ---------------------------------------------------------------------------
+scenario_T25_backups_symlink_recusa_g8() {
+  _sd="$TMPDIR_TEST/t25-sd"
+  _mk_state_dir "$_sd" json abortada || { _error "fixture" "_mk_state_dir falhou"; return 2; }
+  _acquire_lock "$_sd" || { _error "fixture" "acquire lock falhou"; return 2; }
+  mkdir -p "$TMPDIR_TEST/t25-alvo-symlink"
+  printf 'nao deveria sumir\n' > "$TMPDIR_TEST/t25-alvo-symlink/marcador.txt"
+  ln -s "$TMPDIR_TEST/t25-alvo-symlink" "$_sd/backups"
+  capture "$SCRIPT" rotate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "T-25" "esperado exit=1, obtido $_CAPTURED_EXIT"; return 1; }
+  [ ! -e "$_sd/rounds" ] || { _fail "T-25" "rounds/ foi criado apesar do symlink"; return 1; }
+  [ ! -f "$_sd/rounds/.rotate-journal" ] || { _fail "T-25" "journal foi escrito apesar do symlink"; return 1; }
+  [ -f "$_sd/state.json" ] || { _fail "T-25" "state.json foi movido/removido"; return 1; }
+  [ -L "$_sd/backups" ] || { _fail "T-25" "symlink backups/ foi alterado"; return 1; }
+  [ -f "$TMPDIR_TEST/t25-alvo-symlink/marcador.txt" ] || { _fail "T-25" "alvo do symlink foi afetado"; return 1; }
   return 0
 }
 

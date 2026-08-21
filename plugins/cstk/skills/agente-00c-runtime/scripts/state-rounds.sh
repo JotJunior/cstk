@@ -158,7 +158,8 @@ _sr_journal_field() {
 
 # ---------------------------------------------------------------------------
 # _sr_staging_complete STAGING_DIR FILES_CSV -> exit 0 se todos os nomes de
-# FILES_CSV existem em STAGING_DIR (via [ -f ]).
+# FILES_CSV existem em STAGING_DIR. Dispatch por nome literal (sem inferencia
+# de tipo por stat): "backups" checa [ -d ], os demais nomes checam [ -f ].
 # ---------------------------------------------------------------------------
 _sr_staging_complete() {
   _ssc_staging="$1"
@@ -169,7 +170,12 @@ _sr_staging_complete() {
   for _ssc_f in $_ssc_files; do
     IFS="$_ssc_saved_ifs"
     [ -n "$_ssc_f" ] || continue
-    if [ ! -f "$_ssc_staging/$_ssc_f" ]; then
+    if [ "$_ssc_f" = "backups" ]; then
+      if [ ! -d "$_ssc_staging/$_ssc_f" ]; then
+        IFS="$_ssc_saved_ifs"
+        return 1
+      fi
+    elif [ ! -f "$_ssc_staging/$_ssc_f" ]; then
       IFS="$_ssc_saved_ifs"
       return 1
     fi
@@ -328,14 +334,16 @@ if [ "$_SR_SUBCMD" = "recover" ]; then
     staged|moving) ;;
     *) _sr_die "journal malformado: phase invalido '$_rc_phase'" 1 ;;
   esac
-  # J4: files fechado a {state.json, state.json.sha256, state.db}
+  # J4: files fechado a {state.json, state.json.sha256, state.db, backups}
+  # -- ampliacao SEMPRE por literal explicito, NUNCA por padrao/glob (guarda
+  # contra journal adulterado apontando para caminhos arbitrarios).
   [ -n "$_rc_files" ] || _sr_die "journal malformado: files vazio" 1
   _rc_saved_ifs=$IFS
   IFS=','
   for _rc_f in $_rc_files; do
     IFS="$_rc_saved_ifs"
     case "$_rc_f" in
-      state.json|state.json.sha256|state.db) ;;
+      state.json|state.json.sha256|state.db|backups) ;;
       *) _sr_die "journal malformado: arquivo fora do fechado: '$_rc_f'" 1 ;;
     esac
     IFS=','
@@ -382,7 +390,20 @@ if [ "$_SR_SUBCMD" = "recover" ]; then
         IFS=','
         for _rc_f in $_rc_files; do
           IFS="$_rc_saved_ifs"
-          if [ -f "$_rc_staging/$_rc_f" ]; then
+          if [ "$_rc_f" = "backups" ]; then
+            if [ -d "$_rc_staging/backups" ]; then
+              # Anti-aninhamento (research.md Decision 5): `mv` de diretorio
+              # sobre destino existente aninha silenciosamente com exit 0 em
+              # Darwin -- um sucesso falso que corromperia o state-dir. Merge
+              # e `rm -rf` do destino sao proibidos por contrato; recusa
+              # explicita, staging e journal preservados para inspecao.
+              if [ -e "$_SR_STATE_DIR/backups" ]; then
+                _sr_die "recover: roll-back de backups/ recusado -- destino ja existe (sem merge, sem rm -rf): $_SR_STATE_DIR/backups" 1
+              fi
+              mv -- "$_rc_staging/backups" "$_SR_STATE_DIR/backups" 2>/dev/null \
+                || _sr_die "recover: mv (roll-back) falhou: backups" 1
+            fi
+          elif [ -f "$_rc_staging/$_rc_f" ]; then
             mv -- "$_rc_staging/$_rc_f" "$_SR_STATE_DIR/$_rc_f" 2>/dev/null \
               || _sr_die "recover: mv (roll-back) falhou: $_rc_f" 1
           fi
@@ -405,6 +426,14 @@ fi
 [ ! -L "$_SR_STATE_DIR" ] || _sr_die "state-dir e symlink: $_SR_STATE_DIR" 1
 if [ -e "$_SR_ROUNDS" ]; then
   [ ! -L "$_SR_ROUNDS" ] || _sr_die "rounds/ e symlink: $_SR_ROUNDS" 1
+fi
+
+# G8 (pre): backups/ nao-symlink -- recusa ANTES de qualquer escrita
+# (journal, staging). Um backups/ symlinkado moveria o link para dentro do
+# round, quebrando o confinamento ao state-dir (achado owasp-security, low,
+# defesa em profundidade).
+if [ -L "$_SR_STATE_DIR/backups" ]; then
+  _sr_die "backups/ e symlink: $_SR_STATE_DIR/backups" 1
 fi
 
 # Pre-condicao 1: estado presente na raiz
@@ -441,6 +470,20 @@ else
     _RT_FILES_CSV="state.json,state.json.sha256"
   else
     _RT_FILES_CSV="state.json"
+  fi
+fi
+
+# Elegibilidade de backups/ (FR-001, FR-006): existe && nao-symlink (a
+# guarda G8 acima ja recusou symlink antes de chegar aqui, esta e
+# defesa-em-profundidade) && nao-vazio. Quando elegivel, anexa AO FIM do
+# CSV -- itens transacionais primeiro, backups por ultimo (ordem
+# normativa do data-model.md). Ausente ou vazio: NAO anexa, rotate
+# conclui exit 0 sem tratar como erro (FR-006); dir vazio permanece
+# intocado na raiz.
+if [ -e "$_SR_STATE_DIR/backups" ] && [ ! -L "$_SR_STATE_DIR/backups" ]; then
+  _RT_BACKUPS_LISTING=$(ls -A -- "$_SR_STATE_DIR/backups" 2>/dev/null)
+  if [ -n "$_RT_BACKUPS_LISTING" ]; then
+    _RT_FILES_CSV="$_RT_FILES_CSV,backups"
   fi
 fi
 
@@ -529,8 +572,19 @@ _RT_SAVED_IFS=$IFS
 IFS=','
 for _rt_f in $_RT_FILES_CSV; do
   IFS="$_RT_SAVED_IFS"
+  if [ "$_rt_f" = "backups" ]; then
+    # G8 (re-assert): fecha a janela TOCTOU entre a avaliacao de
+    # elegibilidade (P1) e o deslocamento de fato.
+    [ ! -L "$_SR_STATE_DIR/backups" ] \
+      || _sr_die "backups/ tornou-se symlink entre elegibilidade e mv (TOCTOU)" 1
+  fi
   mv -- "$_SR_STATE_DIR/$_rt_f" "$_RT_STAGING/$_rt_f" 2>/dev/null \
     || _sr_die "mv falhou: $_rt_f -> $_RT_STAGING" 1
+  if [ "$_rt_f" = "backups" ]; then
+    # G8 (pos-mv): staging deve conter um diretorio real, nunca um symlink.
+    [ -d "$_RT_STAGING/backups" ] && [ ! -L "$_RT_STAGING/backups" ] \
+      || _sr_die "backups/ no staging invalido apos mv (nao-diretorio ou symlink)" 1
+  fi
   IFS=','
 done
 IFS="$_RT_SAVED_IFS"
@@ -540,6 +594,12 @@ _sr_write_journal "$_RT_JOURNAL" "$_RT_LABEL" "$_RT_BACKEND" "$_RT_FILES_CSV" "m
 # g. sqlite: remove sidecars residuais (T-06 — round jamais contem -wal/-shm)
 if [ "$_RT_BACKEND" = "sqlite" ]; then
   rm -f -- "$_SR_STATE_DIR/state.db-wal" "$_SR_STATE_DIR/state.db-shm" 2>/dev/null || :
+fi
+
+# g1. G9 — chmod 700 best-effort sobre backups/ no staging, antes do commit
+# (paridade com G7: nao falha a rotacao se o filesystem nao suportar chmod).
+if [ -d "$_RT_STAGING/backups" ]; then
+  chmod 700 -- "$_RT_STAGING/backups" 2>/dev/null || :
 fi
 
 # h. re-ASSERT nao-symlink do alvo, imediatamente antes do commit
@@ -568,8 +628,10 @@ if [ "$_RT_BACKEND" = "sqlite" ]; then
   # T-06: uma conexao sqlite3 em banco WAL recria -shm (e possivelmente um
   # -wal vazio) so por abrir/ler, mesmo em PRAGMA read-only como
   # integrity_check -- efeito colateral do proprio check acima, nao do
-  # commit. Round preservado MUST conter so state.db (Conjunto movido por
-  # backend, contrato); remove os sidecars reintroduzidos pela verificacao.
+  # commit. Round preservado NUNCA contem sidecars WAL divergentes entre
+  # macOS/Ubuntu (invariante T-06 -- nao "round contem so state.db", que
+  # deixou de ser verdade com backups/ tambem sendo movido pelo P1/P2);
+  # remove os sidecars reintroduzidos pela verificacao.
   rm -f -- "$_RT_TARGET/state.db-wal" "$_RT_TARGET/state.db-shm" 2>/dev/null || :
 fi
 
