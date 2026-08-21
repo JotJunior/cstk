@@ -67,16 +67,16 @@ profundidade): um `backups/` symlinkado moveria o link para dentro do round,
 quebrando o confinamento ao state-dir. Criticidade `[C]` porque a janela
 TOCTOU e o vetor de ataque identificado no plan.
 
-- [ ] 1.1.1 No bloco de guardas pre-escrita do `rotate` (junto de `# G4
+- [x] 1.1.1 No bloco de guardas pre-escrita do `rotate` (junto de `# G4
   (pre): state-dir nao-symlink`), adicionar checagem `[ -L
   "$_RT_STATE_DIR/backups" ]` ⇒ recusar com exit `1` antes de qualquer
   escrita (journal, staging)
-- [ ] 1.1.2 Adicionar re-assercao `[ ! -L ]` imediatamente antes do `mv` do
+- [x] 1.1.2 Adicionar re-assercao `[ ! -L ]` imediatamente antes do `mv` do
   item `backups` no passo `f` (laco de `mv`) — fecha a janela TOCTOU entre
   avaliacao de elegibilidade (1.2) e o deslocamento
-- [ ] 1.1.3 Apos o `mv`, assertar no staging `[ -d
+- [x] 1.1.3 Apos o `mv`, assertar no staging `[ -d
   "$_RT_STAGING/backups" ] && [ ! -L "$_RT_STAGING/backups" ]`
-- [ ] 1.1.4 Escrever cenario T-25 em `tests/test_state-rounds.sh`
+- [x] 1.1.4 Escrever cenario T-25 em `tests/test_state-rounds.sh`
   (`backups/` symlink ⇒ `rotate` recusa; nenhum journal, nenhum staging,
   `rounds/r01` inexistente, `SD/state.db` intocado, alvo do symlink
   intocado) conforme `quickstart.md` T-25
@@ -87,19 +87,19 @@ Ref: `plan.md` §Pontos de mudanca P1; `contracts/state-rounds-backups.md` §2
 (tabela Elegibilidade); `data-model.md` Entity ConjuntoMovido;
 `state-rounds.sh` bloco `# backend + arquivos transacionais` (linha ~432)
 
-- [ ] 1.2.1 Apos montar `_RT_FILES_CSV` transacional (json/sqlite), avaliar
+- [x] 1.2.1 Apos montar `_RT_FILES_CSV` transacional (json/sqlite), avaliar
   elegibilidade de `backups`: existe (`[ -e ]`) && nao-symlink (`[ ! -L ]`,
   reusa a guarda de 1.1.1) && `ls -A1` no-vazio
-- [ ] 1.2.2 Quando elegivel, anexar `backups` ao **fim** do CSV
+- [x] 1.2.2 Quando elegivel, anexar `backups` ao **fim** do CSV
   `_RT_FILES_CSV` (itens transacionais primeiro, `backups` por ultimo —
   ordem normativa do data-model.md)
-- [ ] 1.2.3 Quando ausente ou vazio, NAO anexar — `rotate` conclui exit `0`
+- [x] 1.2.3 Quando ausente ou vazio, NAO anexar — `rotate` conclui exit `0`
   sem tratar a ausencia/vazio como erro (FR-006); dir vazio permanece
   intocado na raiz
-- [ ] 1.2.4 Escrever cenario T-19 (`backups/` ausente: rotacao normal,
+- [x] 1.2.4 Escrever cenario T-19 (`backups/` ausente: rotacao normal,
   `rounds/r01/backups` nao existe, nenhum erro em stderr) conforme
   `quickstart.md` T-19
-- [ ] 1.2.5 Escrever cenario T-20 (`backups/` vazio: nao vira dir vazio no
+- [x] 1.2.5 Escrever cenario T-20 (`backups/` vazio: nao vira dir vazio no
   round; `SD/backups` permanece na raiz; `recover` pos-rotate ⇒
   `RECOVER|none|-`) conforme `quickstart.md` T-20
 
@@ -108,10 +108,10 @@ Ref: `plan.md` §Pontos de mudanca P1; `contracts/state-rounds-backups.md` §2
 Ref: `plan.md` §Pontos de mudanca P2; `contracts/state-rounds-backups.md` §6
 (G9); `data-model.md` Entity RoundPreservado
 
-- [ ] 1.3.1 Adicionar `chmod 700` best-effort (paridade com G7 — nao falhar
+- [x] 1.3.1 Adicionar `chmod 700` best-effort (paridade com G7 — nao falhar
   a rotacao se `chmod` nao for suportado pelo filesystem) sobre
   `"$_RT_STAGING/backups"` apos o `mv`, antes do commit (passo `h1`)
-- [ ] 1.3.2 Escrever cenario T-28 (`SD/backups` com permissoes permissivas
+- [x] 1.3.2 Escrever cenario T-28 (`SD/backups` com permissoes permissivas
   `755`/`644` pre-existentes ⇒ apos `rotate`, `rounds/r01/backups` com modo
   `700`; degrada sem falhar em filesystem sem suporte a `chmod`) conforme
   `quickstart.md` T-28
@@ -126,15 +126,15 @@ Ref: `quickstart.md` §"T-15 (existente) — emenda, nao cenario novo";
 subtarefa MUST rodar antes de 2.1, senao a suite fica vermelha durante toda
 a FASE 1/2 restante e perde valor de sinal.
 
-- [ ] 1.4.1 Remover as duas linhas de `scenario_T15_artefatos_nao_transacionais_permanecem`
+- [x] 1.4.1 Remover as duas linhas de `scenario_T15_artefatos_nao_transacionais_permanecem`
   que asserta `[ -f "$_sd/backups/wave-001.json" ]` apos `rotate` (o oposto
   de FR-001) — preservar `mkdir -p "$_sd/backups"` + `printf` da fixture
   como carga do cenario
-- [ ] 1.4.2 Manter integralmente as demais assercoes do cenario
+- [x] 1.4.2 Manter integralmente as demais assercoes do cenario
   (`enforcement-log.jsonl`, `commit-baseline.txt`, `state-history/`,
   `.lock/`, e a assercao de nao-vazamento `[ ! -f
   "$_sd/rounds/r01/enforcement-log.jsonl" ]`)
-- [ ] 1.4.3 Rodar `./tests/run.sh test_state-rounds` isoladamente e
+- [x] 1.4.3 Rodar `./tests/run.sh test_state-rounds` isoladamente e
   confirmar T-15 verde apos a emenda (ainda sem P1/P2 implementados —
   cenario deve continuar passando pois so deixou de negar o comportamento
   novo, nao passou a exigi-lo)
@@ -150,17 +150,17 @@ implementacao item 3
 
 Depende de: 1.1, 1.2, 1.4 (guardas montadas + T-15 corrigido).
 
-- [ ] 2.1.1 Confirmar que o passo `f` (laco de `mv` sobre `_RT_FILES_CSV`)
+- [x] 2.1.1 Confirmar que o passo `f` (laco de `mv` sobre `_RT_FILES_CSV`)
   ja move `backups` corretamente sem mudanca estrutural (o mesmo `mv --`
   move diretorio tao bem quanto arquivo quando o destino nao existe) — se
   precisar de ajuste (ex: `mv --` recusando por algum motivo especifico de
   diretorio), aplicar aqui
-- [ ] 2.1.2 Escrever cenario T-17: montar `SD` terminal (backend `sqlite`)
+- [x] 2.1.2 Escrever cenario T-17: montar `SD` terminal (backend `sqlite`)
   com `backups/wave-001.json` e `wave-002.json` de conteudos distintos;
   `rotate`; assertar exit `0`, `rounds/r01/backups/wave-00{1,2}.json`
   `cmp`-identicos aos originais, `SD/backups` **nao existe mais**,
   `rounds/r01/state.db` presente
-- [ ] 2.1.3 No mesmo cenario T-17, assertar que stdout casa **exatamente**
+- [x] 2.1.3 No mesmo cenario T-17, assertar que stdout casa **exatamente**
   `ROUND|r01|sqlite|state.db|<id>|<status>` — regressao do consumidor
   `plugins/cstk/commands/feature-00c.md` §2.bis/7.c (nenhum campo novo)
 
@@ -171,13 +171,13 @@ Ref: `spec.md` FR-002, SC-001; `quickstart.md` T-18
 Impacto financeiro/auditoria direto — e o proprio defeito da issue #150;
 criticidade `[C]`.
 
-- [ ] 2.2.1 Escrever cenario T-18: rotacionar um `SD` com
+- [x] 2.2.1 Escrever cenario T-18: rotacionar um `SD` com
   `backups/wave-001.json` conteudo `A` ⇒ `r01`; recriar estado terminal +
   `backups/wave-001.json` conteudo `B`; `rotate` ⇒ `r02`
-- [ ] 2.2.2 Assertar `rounds/r01/backups/wave-001.json` continua com `A`
+- [x] 2.2.2 Assertar `rounds/r01/backups/wave-001.json` continua com `A`
   (`cmp` contra fixture original) e `rounds/r02/backups/wave-001.json` tem
   `B` — zero sobrescrita entre rounds
-- [ ] 2.2.3 Rodar `./tests/run.sh test_state-rounds` e confirmar T-17/T-18
+- [x] 2.2.3 Rodar `./tests/run.sh test_state-rounds` e confirmar T-17/T-18
   verdes junto com toda a suite existente (T-01..T-16 emendado)
 
 ---
@@ -193,10 +193,10 @@ no staging"); `state-rounds.sh` `_sr_staging_complete` (linha ~163)
 Criticidade `[C]`: base da recuperacao de rotacao interrompida — falha aqui
 corrompe o layout do state-dir (FR-004, FR-008).
 
-- [ ] 3.1.1 Em `_sr_staging_complete`, alterar a iteracao sobre `FILES_CSV`
+- [x] 3.1.1 Em `_sr_staging_complete`, alterar a iteracao sobre `FILES_CSV`
   para checar `backups` com `[ -d ]` e os demais nomes com `[ -f ]`
   (dispatch por nome literal, sem inferencia de tipo por `stat`)
-- [ ] 3.1.2 Escrever cenario T-21 (interrupcao apos staging completo,
+- [x] 3.1.2 Escrever cenario T-21 (interrupcao apos staging completo,
   incluindo `backups/` completo no staging, `rounds/r01/` ainda inexistente
   ⇒ `recover` produz `RECOVER|forward|r01` exit `0`; segunda invocacao ⇒
   `RECOVER|none|-`, idempotente) conforme `quickstart.md` T-21
@@ -211,10 +211,10 @@ Criticidade `[C]`: guarda contra journal adulterado apontando para caminhos
 arbitrarios — regressao de seguranca se relaxada incorretamente (ver Risco
 "J4 relaxada por engano" no plan.md).
 
-- [ ] 3.2.1 Adicionar `backups` ao `case` de validacao do conjunto fechado
+- [x] 3.2.1 Adicionar `backups` ao `case` de validacao do conjunto fechado
   de `files` em `recover`, mantendo os literais existentes (`state.json`,
   `state.json.sha256`, `state.db`) — **nunca** substituir por padrao/glob
-- [ ] 3.2.2 Escrever cenario T-24: journal a mao com
+- [x] 3.2.2 Escrever cenario T-24: journal a mao com
   `files=state.db,../../etc/passwd` ⇒ exit `1`, mensagem "arquivo fora do
   fechado", nada movido (controle negativo); e journal com
   `files=state.db,backups` ⇒ **aceito** (controle positivo, prova que a
@@ -232,20 +232,20 @@ que `mv` de diretorio sobre destino existente **aninha silenciosamente com
 exit 0** — um sucesso falso que corromperia o state-dir numa rotina de
 recuperacao. Merge e `rm -rf` do destino sao proibidos por contrato.
 
-- [ ] 3.3.1 No ramo `rollback`, antes de mover `backups` do staging de
+- [x] 3.3.1 No ramo `rollback`, antes de mover `backups` do staging de
   volta para a raiz, assertar `[ ! -e "$_RT_STATE_DIR/backups" ]`
-- [ ] 3.3.2 Se o destino esta ausente: `mv -- "<staging>/backups"
+- [x] 3.3.2 Se o destino esta ausente: `mv -- "<staging>/backups"
   "<state-dir>/backups"` (comportamento normal)
-- [ ] 3.3.3 Se o destino existe (qualquer tipo): **exit `1`** com
+- [x] 3.3.3 Se o destino existe (qualquer tipo): **exit `1`** com
   diagnostico em stderr citando o destino existente; nada movido; staging
   e journal preservados para inspecao (nunca merge, nunca `rm -rf`)
-- [ ] 3.3.4 Escrever cenario T-22 (interrupcao no meio dos `mv`: `state.db`
+- [x] 3.3.4 Escrever cenario T-22 (interrupcao no meio dos `mv`: `state.db`
   ja no staging, `backups/` ainda na raiz, journal `phase=moving` com
   `files=state.db,backups` ⇒ `RECOVER|rollback|r01` exit `0`; `SD/state.db`
   de volta na raiz; `SD/backups/` intacto; staging e journal removidos;
   `rounds/r01` inexistente; conjunto na raiz `cmp`-identico ao pre-rotacao)
   conforme `quickstart.md` T-22
-- [ ] 3.3.5 Escrever cenario T-23 (roll-back com `backups/` preexistente na
+- [x] 3.3.5 Escrever cenario T-23 (roll-back com `backups/` preexistente na
   raiz — estado anomalo — ⇒ exit `1` com diagnostico citando destino
   existente; **nenhum** `SD/backups/backups/` criado — assercao explicita
   anti-aninhamento; staging e journal preservados) conforme `quickstart.md`
@@ -265,13 +265,13 @@ nao alcanca `rounds/`)
 Criticidade `[C]`: e a User Story 2 da spec — sem esta garantia explicita, a
 correcao da FASE 1-3 criaria um risco novo de perda de dados mais ampla.
 
-- [ ] 4.1.1 Escrever cenario T-26: montar `SD` com
+- [x] 4.1.1 Escrever cenario T-26: montar `SD` com
   `rounds/r01/backups/wave-001.json` **e** `SD/backups/wave-001.json`
   (execucao corrente); executar o purge exatamente como
   `plugins/cstk/commands/feature-00c-abort.md` §8 faz (`rm -rf -- "$SD/backups"`)
-- [ ] 4.1.2 Assertar `SD/backups` removido e
+- [x] 4.1.2 Assertar `SD/backups` removido e
   `rounds/r01/backups/wave-001.json` **intacto**, `cmp`-identico a fixture
-- [ ] 4.1.3 Confirmar (leitura, sem alterar codigo) que
+- [x] 4.1.3 Confirmar (leitura, sem alterar codigo) que
   `plugins/cstk/commands/feature-00c-abort.md` §8 continua escopado a
   `"$AGENTE_00C_STATE_DIR/backups"` — nenhuma mudanca de codigo requerida
   nesta subtarefa, apenas o teste de regressao
@@ -281,7 +281,7 @@ correcao da FASE 1-3 criaria um risco novo de perda de dados mais ampla.
 Ref: `contracts/state-rounds-backups.md` §1 (assinaturas de CLI
 inalteradas); `quickstart.md` T-27
 
-- [ ] 4.2.1 Escrever cenario T-27: rotacionar um `SD` com snapshots (⇒
+- [x] 4.2.1 Escrever cenario T-27: rotacionar um `SD` com snapshots (⇒
   `rounds/r01/backups/`); `SR list --state-dir "$SD"`; assertar exit `0` e
   exatamente uma linha no formato
   `r01|sqlite|state.db|<id>|<status>|<finished_at>` — presenca de
@@ -292,11 +292,11 @@ inalteradas); `quickstart.md` T-27
 Ref: `contracts/state-rounds-backups.md` §7; `state-rounds.sh` bloco `# T-06:`
 que precede `rm -f -- "$_RT_TARGET/state.db-wal" ...` (linha ~568)
 
-- [ ] 4.3.1 Reescrever o comentario `# T-06:` em `state-rounds.sh` para
+- [x] 4.3.1 Reescrever o comentario `# T-06:` em `state-rounds.sh` para
   refletir a intencao real (impedir sidecars WAL divergentes entre
   macOS/Ubuntu de entrar no round), nao mais "round contem so state.db"
   (que deixou de ser verdade com `backups/` sendo movido)
-- [ ] 4.3.2 Confirmar que o cenario T-06 existente em
+- [x] 4.3.2 Confirmar que o cenario T-06 existente em
   `tests/test_state-rounds.sh` continua verde com a formulacao "nao contem
   `state.db-wal` nem `state.db-shm`" (sem mudanca de asserts necessaria, so
   validacao de que a semantica bate)
@@ -307,10 +307,10 @@ Ref: `plan.md` Constitution Check Principio II; `quickstart.md` §"T-16
 (existente) — cobre a conformidade POSIX"; `docs/constitution.md`
 Principio II
 
-- [ ] 4.4.1 Rodar `shellcheck -s sh
+- [x] 4.4.1 Rodar `shellcheck -s sh
   plugins/cstk/skills/agente-00c-runtime/scripts/state-rounds.sh` e
   confirmar zero erro/warning novo introduzido pelas mudancas das FASE 1-3
-- [ ] 4.4.2 Confirmar ausencia de bashismo/GNU-only nas linhas novas
+- [x] 4.4.2 Confirmar ausencia de bashismo/GNU-only nas linhas novas
   (`local`, arrays, `[[ ]]`, `ls --` flags GNU-only) — cenario T-16
   existente cobre isso automaticamente via `shellcheck -s sh`
 
@@ -326,19 +326,19 @@ secoes 1-7); `plan.md` §Ordem de implementacao item 6
 Depende de: FASE 1-4 concluidas (o contrato deve refletir o comportamento
 JA implementado, nunca proposta nao verificada — Principio VI).
 
-- [ ] 5.1.1 Aplicar a emenda da tabela "Conjunto movido por backend"
+- [x] 5.1.1 Aplicar a emenda da tabela "Conjunto movido por backend"
   (§2 do delta): `backups/` entra como item movido para ambos os backends,
   com a tabela de elegibilidade
-- [ ] 5.1.2 Aplicar a emenda da lista "Nunca movidos" (§3 do delta):
+- [x] 5.1.2 Aplicar a emenda da lista "Nunca movidos" (§3 do delta):
   remover `backups/` dessa lista, mantendo os outros nove itens
-- [ ] 5.1.3 Aplicar a emenda da sequencia do `rotate` (§4 do delta): passos
+- [x] 5.1.3 Aplicar a emenda da sequencia do `rotate` (§4 do delta): passos
   b2 (G8), b3 (elegibilidade), d/f (journal/mv incluindo backups)
-- [ ] 5.1.4 Aplicar a emenda de `recover` (§5 do delta): J4, staging
+- [x] 5.1.4 Aplicar a emenda de `recover` (§5 do delta): J4, staging
   completo, roll-back de `backups`, matriz de decisao
-- [ ] 5.1.5 Aplicar a emenda de guardas (§6 do delta): adicionar G8 e G9 a
+- [x] 5.1.5 Aplicar a emenda de guardas (§6 do delta): adicionar G8 e G9 a
   tabela G1..G7 do contrato base
-- [ ] 5.1.6 Aplicar a emenda do invariante T-06 (§7 do delta)
-- [ ] 5.1.7 Remover as marcacoes `[PROPOSTA]` do texto copiado — no
+- [x] 5.1.6 Aplicar a emenda do invariante T-06 (§7 do delta)
+- [x] 5.1.7 Remover as marcacoes `[PROPOSTA]` do texto copiado — no
   contrato base emendado, o comportamento e REAL/em vigor, nao mais
   proposta
 
