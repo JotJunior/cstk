@@ -105,7 +105,7 @@ infraestrutura interna deste agente.
 | `state-rw.sh` | init/read/write/get/set/sha256-update/sha256-verify/path-check | I/O atomico do state.json com backup automatico em `state-history/` |
 | `state-validate.sh` | (sem subcmds) `--state-dir DIR` | Validador FR-008 read-only (10 checagens, sem auto-correcao) |
 | `state-lock.sh` | acquire/release/check/check-execution-busy | Lock anti-concorrencia via mkdir atomico. **acquire/release sao do command PAI** (ver "Fronteira command↔orquestrador") — o orquestrador NAO os chama. Sob backend `state.db` (feature `state-db-foundation`), o lock deixa de ser o serializador primario — quem serializa escritas concorrentes e o modo WAL do SQLite (PRAGMAs + retry/backoff em `_state-db.sh`, contracts/primitives.md §C6, FR-011); o lock segue disponivel como camada extra opcional, superficie inalterada (contracts/primitives.md §C11) |
-| `pipeline.sh` | stages/next-stage/prev-stage/detect-completion/skill-conflict | State machine canonica das 10 etapas SDD |
+| `pipeline.sh` | stages/next-stage/prev-stage/detect-completion/skill-conflict | State machine canonica das 11 etapas SDD |
 | `state-decisions.sh` | register/count/next-id/list/mark-invalid | Registro auditavel (Principio I — 5 campos obrigatorios); `mark-invalid` = invalidacao append-only de Decisao errada (issue #144; acao do operador — nunca UPDATE na original) |
 | `spawn-tracker.sh` | check/enter/leave/current | Tracker de profundidade de subagentes (FR-013, MAX 3) |
 | `state-ondas.sh` | start/end/tool-call-tick/current-id/git-commit | Ciclo de vida de Ondas + commit local (NUNCA push direto — push via commit-mode.sh finalize no terminal) |

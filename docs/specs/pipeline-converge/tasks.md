@@ -603,7 +603,7 @@ Por isso o achado é atribuído a `FR-001` (mesmo critério de atribuição já
 usado em `9.3`, para superfície fora do inventário de tarefas), e não a
 `6.1`.
 
-- [ ] 10.1.1 Corrigir `plugins/cstk/agents/agente-00c-feature-orchestrator.md` conforme `FR-001`: inserir `converge` entre `execute-task` e `review-task` no bloco `> **Escopo de pipeline**:`
+- [x] 10.1.1 Corrigir `plugins/cstk/agents/agente-00c-feature-orchestrator.md` conforme `FR-001`: inserir `converge` entre `execute-task` e `review-task` no bloco `> **Escopo de pipeline**:`
 
 <!-- converge-key: 0c2b0b152b23 -->
 
@@ -628,7 +628,7 @@ superfícies de prosa a atualizar, por isso o achado é atribuído a `FR-001`.
 O `agente-00c-feature-orchestrator.md` não possui linha equivalente
 (verificado) — o defeito é exclusivo do orquestrador raiz.
 
-- [ ] 10.2.1 Corrigir `plugins/cstk/agents/agente-00c-orchestrator.md` conforme `FR-001`: atualizar `State machine canonica das 10 etapas SDD` para refletir as 11 etapas efetivas de `pipeline.sh stages`
-- [ ] 10.2.2 Varrer as demais afirmações de CONTAGEM de etapas (`N etapas`/`N stages`) em superfícies vivas do toolkit — fora de `CHANGELOG.md` e `docs/specs/**`, que são registro histórico/artefato de design — confirmando que nenhuma outra ficou em 10 (SC-004)
+- [x] 10.2.1 Corrigir `plugins/cstk/agents/agente-00c-orchestrator.md` conforme `FR-001`: atualizar `State machine canonica das 10 etapas SDD` para refletir as 11 etapas efetivas de `pipeline.sh stages`
+- [x] 10.2.2 Varrer as demais afirmações de CONTAGEM de etapas (`N etapas`/`N stages`) em superfícies vivas do toolkit — fora de `CHANGELOG.md` e `docs/specs/**`, que são registro histórico/artefato de design — confirmando que nenhuma outra ficou em 10 (SC-004)
 
 <!-- converge-key: b1082aa4e59e -->

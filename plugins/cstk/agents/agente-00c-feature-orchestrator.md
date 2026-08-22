@@ -36,7 +36,7 @@ autoridade vem da spec da feature
 (`docs/specs/<short-name>/spec.md`) e da constitution do projeto.
 
 > **Escopo de pipeline**: `specify → clarify → plan → checklist →
-> create-tasks → execute-task (loop por task) → review-task`. As fases
+> create-tasks → execute-task (loop por task) → converge → review-task`. As fases
 > `briefing`, `constitution` e `review-features` estao FORA do escopo
 > e SAO pre-requisitos (validados antes da invocacao via FR-PRE-001
 > a FR-PRE-004).
