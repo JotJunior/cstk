@@ -503,3 +503,66 @@ flowchart TD
 | `tips/catalog.md` entrada `skill: converge` | aditivo opcional citado em `research.md` Decision 16 | nao e pre-requisito da feature (gap pre-existente, todas as superficies tem fallback) |
 | Reclassificacao arquitetural de `analyze` (inclui-lo em `_PL_STAGES_LIST`) | decisao arquitetural nova, sem respaldo em requisito desta spec | fora do escopo (`research.md` Decision 15) — so a REPRESENTACAO nas superficies tocadas e normalizada (FASE 8), nao o papel do `analyze` |
 | Fases de infraestrutura de producao (dashboards, SLO/SLI, autoescala) | divisao binaria por `delivery_tier` (create-tasks §FR-006) | N/A — feature-00c nao propaga tier nos `args`; plan.md confirma que a feature nao introduz infra de producao alguma |
+
+## FASE 9 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 9.1 Frontmatter de `agente-00c-orchestrator.md` declara sequência SDD sem `converge` `[C]`
+
+Ref: 6.1 · tipo: `contradicts` · severidade: `HIGH`
+
+A tarefa 6.1 atualizou a PROSA de `plugins/cstk/agents/agente-00c-orchestrator.md`
+(Loop principal, `--kind gate`, etapa regular), mas o campo `description` do
+frontmatter (linha 3) continua afirmando a sequência oficial antiga:
+`briefing→constitution→specify→clarify→plan→checklist→create-tasks→execute-task→review-task→review-features`
+— encadeando `execute-task` direto em `review-task` e omitindo `converge`.
+Esse campo é superfície de usuário (aparece no seletor de subagentes e no
+prompt de sistema de quem invoca o orquestrador), logo é "documentação que
+descreve a sequência oficial de etapas" no sentido de FR-001, e quebra
+SC-004 (lista idêntica em todos os pontos do toolkit).
+
+- [ ] 9.1.1 Corrigir `plugins/cstk/agents/agente-00c-orchestrator.md` conforme `6.1`: inserir `converge` entre `execute-task` e `review-task` na `description` do frontmatter
+
+<!-- converge-key: 10b2a1b6034f -->
+
+### 9.2 Frontmatter de `agente-00c-feature-orchestrator.md` declara sequência SDD sem `converge` `[C]`
+
+Ref: 6.1 · tipo: `contradicts` · severidade: `HIGH`
+
+Mesmo defeito de 9.1 no par `plugins/cstk/agents/agente-00c-feature-orchestrator.md`:
+a prosa foi atualizada pela tarefa 6.1, mas a `description` do frontmatter
+(linha 3) segue declarando a pipeline reduzida como
+`specify→clarify→plan→checklist→create-tasks→execute-task→review-task`,
+sem `converge`. Contradiz FR-001 (etapa nomeada e ordenada entre
+`execute-task` e `review-task` em qualquer documentação que descreva a
+sequência oficial) e SC-004.
+
+- [ ] 9.2.1 Corrigir `plugins/cstk/agents/agente-00c-feature-orchestrator.md` conforme `6.1`: inserir `converge` entre `execute-task` e `review-task` na `description` do frontmatter
+
+<!-- converge-key: f113d5608d93 -->
+
+### 9.3 `description` do comando `/feature-00c` declara sequência SDD sem `converge` `[C]`
+
+Ref: FR-001 · tipo: `contradicts` · severidade: `HIGH`
+
+`plugins/cstk/commands/feature-00c.md` (linha 2) descreve a pipeline delegada
+ao orquestrador como
+`specify→clarify→plan→checklist→create-tasks→execute-task→review-task`,
+omitindo `converge`. A `description` de um slash command é superfície de
+usuário direta (aparece na lista de comandos), e a FASE 8 (tarefa 8.1)
+enumerou apenas superfícies de documentação em `docs/`, `README*` e
+`CONTRIBUTING*` — os frontmatters de `plugins/cstk/commands/` ficaram fora
+do inventário. Quebra FR-001 e SC-004.
+
+- [ ] 9.3.1 Corrigir `plugins/cstk/commands/feature-00c.md` conforme `FR-001`: inserir `converge` entre `execute-task` e `review-task` na `description` do frontmatter
+- [ ] 9.3.2 Varrer os demais frontmatters de `plugins/cstk/commands/` e `plugins/cstk/agents/` em busca de outras sequências SDD desatualizadas (SC-004)
+
+<!-- converge-key: b6d1cc660c1f -->
