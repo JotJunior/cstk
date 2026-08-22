@@ -195,16 +195,16 @@ Ref: plan.md `tests/test_pipeline.sh` ALTERADO; `quickstart.md` Cenarios 1, 2, 1
 Ref: plan.md `skills/converge/SKILL.md` ALTERADO; `research.md` Decision 9;
 plan.md §Revisao de seguranca F8
 
-- [ ] 4.1.1 Adicionar flag `--provenance gate|standalone` (default
+- [x] 4.1.1 Adicionar flag `--provenance gate|standalone` (default
       `standalone`) a invocacao documentada da skill — parametro explicito,
       nunca inferido de variavel de ambiente (Decision 9)
-- [ ] 4.1.2 Apos a ETAPA 6 (classificacao de achados), invocar
+- [x] 4.1.2 Apos a ETAPA 6 (classificacao de achados), invocar
       `converge-status.sh record` com `outcome` derivado (`clean` quando
       zero achados acionaveis pela regra da tarefa 1.1; `actionable` caso
       contrario) e `--provenance` recebido
-- [ ] 4.1.3 Aplicar a regra da tarefa 1.1 (CHK002): achados classificados
+- [x] 4.1.3 Aplicar a regra da tarefa 1.1 (CHK002): achados classificados
       so como `unrequested` NAO elevam `outcome` para `actionable`
-- [ ] 4.1.4 Documentar Gotcha no `SKILL.md`: aceite de risco e SEMPRE do
+- [x] 4.1.4 Documentar Gotcha no `SKILL.md`: aceite de risco e SEMPRE do
       OPERADOR (F8) — a skill `converge` nunca invoca `accept-risk` por
       conta propria, mesmo em modo autonomo
 
@@ -212,13 +212,13 @@ plan.md §Revisao de seguranca F8
 
 Ref: `quickstart.md` Cenario 11
 
-- [ ] 4.2.1 Estender `tests/test_converge-status.sh` (ou fixture dedicada)
+- [x] 4.2.1 Estender `tests/test_converge-status.sh` (ou fixture dedicada)
       cobrindo a integracao: apos classificacao de achados, `record` e
       chamado com o `outcome` correto
-- [ ] 4.2.2 Validar Cenario 11 (proveniencia gate vs avulsa): uma invocacao
+- [x] 4.2.2 Validar Cenario 11 (proveniencia gate vs avulsa): uma invocacao
       com `--provenance gate` e outra `standalone`, confirmando o campo
       gravado no marcador
-- [ ] 4.2.3 Validar a regra da tarefa 1.1.2: fixture com achados
+- [x] 4.2.3 Validar a regra da tarefa 1.1.2: fixture com achados
       exclusivamente `unrequested` confirma `outcome=clean`
 
 ---
@@ -229,11 +229,11 @@ Ref: `quickstart.md` Cenario 11
 
 Ref: plan.md `execute-task/SKILL.md` ALTERADO; `quickstart.md` Cenario 3; FR-002
 
-- [ ] 5.1.1 Atualizar secao "Proximos passos" de
+- [x] 5.1.1 Atualizar secao "Proximos passos" de
       `plugins/cstk/skills/execute-task/SKILL.md`: ao esgotar o backlog
       (todas as tarefas concluidas), orientar o operador a rodar `converge`
       — nao mais `review-task` diretamente
-- [ ] 5.1.2 Preservar o comportamento atual para FR-005 (feature sem
+- [x] 5.1.2 Preservar o comportamento atual para FR-005 (feature sem
       `tasks.md`/backlog vazio): nenhuma orientacao nova nesse caso
 
 ### 5.2 `review-task`: soft gate de convergencia pendente `[A]`
@@ -241,28 +241,28 @@ Ref: plan.md `execute-task/SKILL.md` ALTERADO; `quickstart.md` Cenario 3; FR-002
 Ref: plan.md `review-task/SKILL.md` ALTERADO; `research.md` Decision 8;
 `quickstart.md` Cenarios 4, 5, 6, 7, 8; FR-004
 
-- [ ] 5.2.1 Invocar `converge-status.sh check --feature-dir DIR` no inicio
+- [x] 5.2.1 Invocar `converge-status.sh check --feature-dir DIR` no inicio
       do relatorio de `review-task`
-- [ ] 5.2.2 Veredito `pending`/`stale` (com `tasks.md` nao-vazio) ⇒ finding
+- [x] 5.2.2 Veredito `pending`/`stale` (com `tasks.md` nao-vazio) ⇒ finding
       `converge-pending` no relatorio; **nunca bloqueia** (soft gate, FR-004
       — a clarificacao da spec fixou isso explicitamente)
-- [ ] 5.2.3 Instruir o aceite de risco pelo caminho correto: execucao
+- [x] 5.2.3 Instruir o aceite de risco pelo caminho correto: execucao
       autonoma ⇒ `state-decisions.sh register` + `converge-status.sh
       accept-risk --decisao-id <dec-NNN>`; execucao manual ⇒
       `converge-status.sh accept-risk --justificativa "..."` apenas
-- [ ] 5.2.4 Documentar Gotcha F8 no `SKILL.md`: o orquestrador NUNCA invoca
+- [x] 5.2.4 Documentar Gotcha F8 no `SKILL.md`: o orquestrador NUNCA invoca
       `accept-risk` sozinho — sempre emite bloqueio humano e so registra
       apos resposta
 
 ### 5.3 Testes de `execute-task`/`review-task` `[A]`
 
-- [ ] 5.3.1 Cenario 4: convergencia limpa libera a revisao (fixture com
+- [x] 5.3.1 Cenario 4: convergencia limpa libera a revisao (fixture com
       `outcome=clean`, finding `converge-pending` ausente do relatorio)
-- [ ] 5.3.2 Cenario 5: divergencia reconduz a execucao (fase residual
+- [x] 5.3.2 Cenario 5: divergencia reconduz a execucao (fase residual
       apendada por `converge`, `current_stage` retorna a `execute-task`)
-- [ ] 5.3.3 Cenario 6: soft gate nunca bloqueia (relatorio de `review-task`
+- [x] 5.3.3 Cenario 6: soft gate nunca bloqueia (relatorio de `review-task`
       completa normalmente mesmo com finding `converge-pending` presente)
-- [ ] 5.3.4 Cenarios 7 e 8: aceite de risco explicito libera a revisao, e
+- [x] 5.3.4 Cenarios 7 e 8: aceite de risco explicito libera a revisao, e
       caduca automaticamente quando o `tasks-digest` diverge apos edicao do
       backlog
 

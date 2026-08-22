@@ -30,8 +30,13 @@ Localizacoes suportadas: `docs/specs/*/tasks.md` (SDD), `docs/tasks.md`,
 ## Proximos passos
 
 1. `/execute-task {proxima-id}` — continuar com a proxima tarefa pendente
-2. `/review-task` — revisar progresso e identificar dependencias desbloqueadas
-3. `/analyze` — se suspeita de drift entre implementacao e spec
+2. Backlog esgotado (nenhuma tarefa `- [ ]`/`- [~]` remanescente)? Rode
+   `/converge <feature-dir>` **antes** de `/review-task` — reconcilia
+   spec/plano/codigo com o estado atual do codigo (ETAPA 8.3, FR-002 da
+   feature `pipeline-converge`). Excecao: feature sem `tasks.md`/backlog
+   (nunca passou por `create-tasks`) — nenhuma orientacao nova (FR-005)
+3. `/review-task` — revisar progresso e identificar dependencias desbloqueadas
+4. `/analyze` — se suspeita de drift entre implementacao e spec
 
 ## Tarefa Solicitada
 
@@ -482,6 +487,9 @@ esses — nao inventar comandos fora da convencao do projeto.
 - [x] Qualidade verificada
 - [x] Consistencia verificada
 - [x] Lint executado
+
+## Proximos passos
+[ver ETAPA 8.3 — conteudo condicional segundo o estado do backlog]
 ```
 
 ### 8.2 Gate de evidencia — o relatorio NAO e a prova
@@ -496,6 +504,29 @@ code do build). Se nao rodou, escreva "nao executado: <motivo>" — nunca um
 > **Violar a letra do gate e violar o espirito do gate.** "Provavelmente passa"
 > nao e evidencia; o sumario que voce escreve nao prova nada — o output do
 > comando prova.
+
+### 8.3 Orientar proximos passos (FR-002 da feature `pipeline-converge`)
+
+Depois de marcar a tarefa concluida (ETAPA 9), verifique se o backlog **da
+feature inteira** (nao so desta tarefa) foi esgotado, e preencha a secao
+`## Proximos passos` do relatorio (§8.1) de acordo:
+
+```bash
+grep -cE '^[[:space:]]*-[[:space:]]*\[[ ~]\]' "$TASKS_MD" 2>/dev/null || echo 0
+```
+
+- **`0`** (nenhuma linha `- [ ]`/`- [~]` remanescente em `$TASKS_MD`) ⇒
+  backlog esgotado. Recomende **`/converge <feature-dir>`** como PRIMEIRO
+  proximo passo, **antes** de `/review-task` — nunca oriente o operador
+  direto para `/review-task` quando o backlog acabou de esgotar (Cenario 3
+  de `docs/specs/pipeline-converge/quickstart.md`).
+- **`>= 1`** (ainda ha tarefas pendentes) ⇒ recomende `/execute-task
+  {proxima-id}` normalmente; **nao** mencione `/converge` ainda — so faz
+  sentido apos o backlog fechar.
+- **Feature sem `tasks.md`/backlog** (fluxo que nunca passou por
+  `create-tasks`) ⇒ preserve o comportamento atual, sem orientacao nova de
+  convergencia (FR-005 — nao exigir convergencia artificialmente onde
+  nunca houve backlog).
 
 ---
 

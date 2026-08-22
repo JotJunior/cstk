@@ -11,6 +11,8 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$TESTS_ROOT/.." && pwd)}"
 . "$TESTS_ROOT/lib/harness.sh"
 
 SCRIPT="$REPO_ROOT/plugins/cstk/skills/converge/scripts/converge-status.sh"
+CONVERGE_TASKS="$REPO_ROOT/plugins/cstk/skills/converge/scripts/converge-tasks.sh"
+NEXT_TASK_ID="$REPO_ROOT/plugins/cstk/skills/create-tasks/scripts/next-task-id.sh"
 
 # ---------- Helpers ----------
 
@@ -392,6 +394,179 @@ scenario_audit_specs_root_ausente_exit2() {
   _repo=$(_cs_make_repo)
   _cs_run "$_repo" audit --specs-root "$_repo/docs/specs-nao-existe"
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# ---------- Integracao classificacao -> record (FASE 4, tarefa 4.2) ----------
+# Reproduz o padrao real da skill converge: ETAPA 6 (apendar fase via
+# converge-tasks.sh) seguida da ETAPA 7 (converge-status.sh record), com o
+# outcome derivado da contagem de achados acionaveis. Ver SKILL.md ETAPA 7
+# e docs/specs/pipeline-converge/quickstart.md Cenario 11.
+
+# _cs_apenda_fase FD TASK1_HEADER TASK2_HEADER ... -> apenda uma fase nova a
+# $FD/tasks.md com uma tarefa por HEADER (ja incluindo tag de criticidade),
+# cada uma com converge-key unica. Reusa next-task-id.sh iterativamente
+# contra o phase-file em construcao, mesmo padrao de test_converge-tasks.sh.
+_cs_apenda_fase() {
+  _fd=$1
+  shift
+  _phase_n=$(sh "$CONVERGE_TASKS" next-phase --tasks "$_fd/tasks.md")
+  _phase_file="$TMPDIR_TEST/phase-integra-$$.md"
+  printf '## FASE %s - Convergência\n\n' "$_phase_n" > "$_phase_file"
+  _i=0
+  for _header in "$@"; do
+    _i=$((_i + 1))
+    _tid=$(sh "$NEXT_TASK_ID" "$_phase_n" "$_phase_file")
+    printf '### %s %s\n- [ ] %s.1 item\n<!-- converge-key: %012d -->\n\n' \
+      "$_tid" "$_header" "$_tid" "$_i" >> "$_phase_file"
+  done
+  capture "$CONVERGE_TASKS" append-phase --tasks "$_fd/tasks.md" --phase-file "$_phase_file"
+}
+
+scenario_integracao_record_exclui_unrequested_da_contagem() {
+  _repo=$(_cs_make_repo)
+  _fd=$(_cs_make_feature "$_repo" feat-integra-mista)
+  # ETAPA 6: 2 achados acionaveis (missing/partial->kind implementar) + 1
+  # unrequested (kind=revisar) apendados na mesma invocacao.
+  _cs_apenda_fase "$_fd" 'Corrigir A `[A]`' 'Completar B `[A]`' 'Revisar C `[M]`'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "setup" "append-phase falhou: $_CAPTURED_STDERR"; return 1; }
+
+  # ETAPA 7: N=2 (Corrigir A + Completar B) — "Revisar C" (unrequested) NAO
+  # entra na contagem, mesmo tendo sido apendada nesta mesma invocacao.
+  _cs_run "$_repo" record --feature-dir "$_fd" --outcome actionable --provenance gate --actionable 2
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "record" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+
+  _cs_run "$_repo" check --feature-dir "$_fd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "check exit" "esperado 1 (pendente), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "pending actionable=2" || return 1
+}
+
+# ---------- Cenario 11: proveniencia gate vs avulsa distinguivel ----------
+
+scenario_provenance_gate_vs_standalone_distinguivel_no_marcador() {
+  _repo=$(_cs_make_repo)
+  _fd_gate=$(_cs_make_feature "$_repo" feat-prov-gate)
+  _cs_run "$_repo" record --feature-dir "$_fd_gate" --outcome actionable --provenance gate --actionable 1
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "gate" "record --provenance gate falhou"; return 1; }
+  grep -q '^<!-- converge-status: outcome=actionable; provenance=gate;' "$_fd_gate/converge-report.md" \
+    || { _fail "gate-format" "marcador nao registrou provenance=gate"; return 1; }
+
+  _fd_standalone=$(_cs_make_feature "$_repo" feat-prov-standalone)
+  _cs_run "$_repo" record --feature-dir "$_fd_standalone" --outcome actionable --provenance standalone --actionable 1
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "standalone" "record --provenance standalone falhou"; return 1; }
+  grep -q '^<!-- converge-status: outcome=actionable; provenance=standalone;' "$_fd_standalone/converge-report.md" \
+    || { _fail "standalone-format" "marcador nao registrou provenance=standalone"; return 1; }
+}
+
+# ---------- Tarefa 1.1.2 (CHK002): so unrequested -> outcome=clean ----------
+
+scenario_integracao_so_unrequested_produz_outcome_clean() {
+  _repo=$(_cs_make_repo)
+  _fd=$(_cs_make_feature "$_repo" feat-so-revisar)
+  # ETAPA 6: unico achado da invocacao e unrequested (kind=revisar).
+  _cs_apenda_fase "$_fd" 'Revisar D `[M]`'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "setup" "append-phase falhou: $_CAPTURED_STDERR"; return 1; }
+  grep -q '### .* Revisar D' "$_fd/tasks.md" || { _fail "setup" "fase de revisao nao foi apendada"; return 1; }
+
+  # ETAPA 7: N=0 (unrequested nunca conta) -> outcome=clean, mesmo com a
+  # fase [Revisar] nova presente no tasks.md.
+  _cs_run "$_repo" record --feature-dir "$_fd" --outcome clean --provenance standalone --actionable 0
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "record" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+
+  _cs_run "$_repo" check --feature-dir "$_fd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "check exit" "esperado 0 (converged), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "converged" || return 1
+}
+
+# ---------- FASE 5 (tarefa 5.3): integracao execute-task / review-task ----------
+#
+# execute-task/SKILL.md e review-task/SKILL.md sao skills prose-driven, sem
+# harness automatizado proprio (mesmo padrao ja usado em
+# test_model-routing-report.sh::scenario_integracao_review_task_skill_md_referencia_helper
+# e test_wave-usage-report.sh — grep-based, falha cedo se a SKILL.md for
+# reformatada/perder a secao). A camada mecanica (converge-status.sh) que
+# sustenta cada promessa de prosa ja tem cobertura dedicada acima; aqui o
+# alvo e a promessa em si, rastreada Cenario-a-Cenario
+# (docs/specs/pipeline-converge/quickstart.md).
+
+EXECUTE_TASK_SKILL="$REPO_ROOT/plugins/cstk/skills/execute-task/SKILL.md"
+REVIEW_TASK_SKILL="$REPO_ROOT/plugins/cstk/skills/review-task/SKILL.md"
+
+# Cenario 4 — convergencia limpa libera a revisao (nenhum finding pendente)
+scenario_cenario4_convergencia_limpa_sem_finding() {
+  [ -f "$REVIEW_TASK_SKILL" ] || { _fail "SKILL.md ausente" "$REVIEW_TASK_SKILL"; return 1; }
+  grep -qF 'vereditos `pending`, `stale` **e** `never`' "$REVIEW_TASK_SKILL" \
+    || { _fail "regra ausente" "SKILL.md nao delimita quais vereditos geram converge-pending"; return 1; }
+
+  # Mecanica: outcome=clean -> check=converged (nenhum dos vereditos que
+  # disparam o finding, per a regra acima).
+  _repo=$(_cs_make_repo)
+  _fd=$(_cs_make_feature "$_repo" feat-cenario4)
+  _cs_run "$_repo" record --feature-dir "$_fd" --outcome clean --provenance gate --actionable 0
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "setup" "record falhou"; return 1; }
+  _cs_run "$_repo" check --feature-dir "$_fd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "check" "esperado 0 (converged), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "converged" || return 1
+}
+
+# Cenario 5 — divergencia acionavel: veredito pendente aciona o finding
+# (a reconducao a execucao de tarefas em si e mecanica de converge/SKILL.md
+# ETAPA 6, ja coberta pelos scenarios de integracao da FASE 4 acima)
+scenario_cenario5_divergencia_produz_pending() {
+  [ -f "$REVIEW_TASK_SKILL" ] || { _fail "SKILL.md ausente" "$REVIEW_TASK_SKILL"; return 1; }
+  grep -qF 'converge-pending' "$REVIEW_TASK_SKILL" \
+    || { _fail "finding ausente" "SKILL.md nao referencia o finding converge-pending"; return 1; }
+
+  _repo=$(_cs_make_repo)
+  _fd=$(_cs_make_feature "$_repo" feat-cenario5)
+  _cs_run "$_repo" record --feature-dir "$_fd" --outcome actionable --provenance gate --actionable 2
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "setup" "record falhou"; return 1; }
+  _cs_run "$_repo" check --feature-dir "$_fd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "check" "esperado 1 (pending), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "pending actionable=2" || return 1
+}
+
+# Cenario 6 — soft gate nunca bloqueia: review-task e explicitamente
+# READ-ONLY (nao aborta, nao escreve) mesmo com convergencia pendente.
+scenario_cenario6_soft_gate_nunca_bloqueia() {
+  [ -f "$REVIEW_TASK_SKILL" ] || { _fail "SKILL.md ausente" "$REVIEW_TASK_SKILL"; return 1; }
+  grep -qF 'soft gate, NUNCA bloqueia' "$REVIEW_TASK_SKILL" \
+    || { _fail "clausula ausente" "SKILL.md nao afirma soft gate nunca bloqueia"; return 1; }
+  grep -qF 'READ-ONLY' "$REVIEW_TASK_SKILL" \
+    || { _fail "contrato read-only ausente" "SKILL.md perdeu o contrato read-only de saida"; return 1; }
+}
+
+# Cenarios 7 e 8 — aceite de risco explicito libera a revisao, e caduca
+# ao mexer no backlog (digest diverge -> stale)
+scenario_cenario7e8_accept_risk_libera_e_caduca() {
+  [ -f "$REVIEW_TASK_SKILL" ] || { _fail "SKILL.md ausente" "$REVIEW_TASK_SKILL"; return 1; }
+  grep -qF -- '--decisao-id <dec-NNN>' "$REVIEW_TASK_SKILL" \
+    || { _fail "caminho autonomo ausente" "SKILL.md nao documenta accept-risk --decisao-id (execucao autonoma)"; return 1; }
+  grep -qF -- '--justificativa "<motivo>"' "$REVIEW_TASK_SKILL" \
+    || { _fail "caminho manual ausente" "SKILL.md nao documenta accept-risk --justificativa (execucao manual)"; return 1; }
+
+  _repo=$(_cs_make_repo)
+  _fd=$(_cs_make_feature "$_repo" feat-cenario78)
+  _cs_run "$_repo" accept-risk --feature-dir "$_fd" --justificativa "divergencia conhecida, tratada na feature X"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "accept-risk" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _cs_run "$_repo" check --feature-dir "$_fd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "check pos-aceite" "esperado 0 (risk-accepted), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "risk-accepted" || return 1
+
+  # Cenario 8: mexer no backlog depois do aceite caduca o veredito.
+  printf -- '- [x] 1.2 novo apos aceite\n' >> "$_fd/tasks.md"
+  _cs_run "$_repo" check --feature-dir "$_fd"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "check pos-edicao" "esperado 1 (stale), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "stale" || return 1
+}
+
+# Sanity adicional: execute-task/SKILL.md orienta /converge ANTES de
+# /review-task ao esgotar o backlog (Cenario 3, FR-002).
+scenario_execute_task_skill_md_orienta_converge_antes_review() {
+  [ -f "$EXECUTE_TASK_SKILL" ] || { _fail "SKILL.md ausente" "$EXECUTE_TASK_SKILL"; return 1; }
+  grep -qF 'ETAPA 8.3' "$EXECUTE_TASK_SKILL" \
+    || { _fail "etapa ausente" "SKILL.md nao referencia a ETAPA 8.3 (orientar proximos passos)"; return 1; }
+  grep -qF '/converge <feature-dir>' "$EXECUTE_TASK_SKILL" \
+    || { _fail "orientacao ausente" "SKILL.md nao orienta /converge ao esgotar o backlog"; return 1; }
 }
 
 # ---------- Uso geral ----------
