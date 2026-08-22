@@ -4,6 +4,28 @@
 **Created**: 2026-08-21
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-21
+
+- Q: Como registrar o aceite explícito de risco ao pular a correção de
+  divergências apontadas pela convergência? → A: Como decisão auditável no
+  histórico de execução (não apenas um campo flag simples).
+- Q: O escopo da exigência de convergência obrigatória entre `execute-task`
+  e `review-task` se aplica a quais modos de execução? → A: A ambos os
+  orquestradores autônomos (`agente-00c` e `feature-00c`) e também à
+  execução manual pelo operador.
+- Q: O histórico de execução precisa distinguir uma convergência disparada
+  como gate obrigatório de uma convergência invocada avulsamente pelo
+  operador? → A: Sim — o registro da invocação carrega a proveniência (gate
+  obrigatório vs. avulsa), no mesmo padrão usado por `record-skill --kind
+  gate`.
+- Q: Quando a convergência não está limpa, a etapa de revisão de tarefas
+  deve bloquear (hard gate) ou apenas avisar (soft gate)? → A: Soft gate —
+  a revisão de tarefas reporta as divergências como finding e exige uma
+  decisão auditável de aceite de risco para prosseguir; nunca bloqueia a
+  execução por si só.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Operador manual é guiado à convergência antes de revisar tarefas (Priority: P1)
@@ -91,9 +113,10 @@ não aponta mais divergências acionáveis.
    **When** o operador consulta os próximos passos, **Then** a revisão de
    tarefas é o próximo passo recomendado.
 3. **Given** divergências acionáveis que o operador decide não corrigir,
-   **When** ele registra explicitamente a decisão de aceitar o risco,
-   **Then** o pipeline segue liberado para a revisão de tarefas sem exigir
-   nova convergência.
+   **When** ele registra explicitamente, como decisão auditável no
+   histórico de execução, a decisão de aceitar o risco, **Then** o
+   pipeline segue liberado para a revisão de tarefas sem exigir nova
+   convergência.
 
 ---
 
@@ -152,8 +175,8 @@ marcação especial que a distinga das demais.
   descreva a sequência oficial de etapas.
 - **FR-002**: Sistema MUST, ao esgotar o backlog de tarefas de uma feature
   (todas as tarefas concluídas), orientar o operador — em execução
-  autônoma ou manual — a rodar a convergência antes de prosseguir para a
-  revisão de tarefas.
+  autônoma (`agente-00c` e `feature-00c`) ou manual — a rodar a
+  convergência antes de prosseguir para a revisão de tarefas.
 - **FR-003**: Quando a convergência apontar divergências acionáveis entre o
   documentado e o código atual, Sistema MUST apender uma fase de tarefas
   residual e reconduzir o fluxo à execução de tarefas antes de permitir
@@ -161,7 +184,11 @@ marcação especial que a distinga das demais.
 - **FR-004**: Sistema MUST só apresentar a revisão de tarefas como próximo
   passo recomendado quando a convergência mais recente não apontar
   divergências acionáveis pendentes, ou quando o operador tiver registrado
-  explicitamente a decisão de aceitar o risco de prosseguir sem corrigi-las.
+  explicitamente, como decisão auditável no histórico de execução, a
+  decisão de aceitar o risco de prosseguir sem corrigi-las. Esta exigência
+  é soft gate: a etapa de revisão de tarefas reporta as divergências
+  pendentes como finding e exige essa decisão auditável para prosseguir,
+  mas nunca bloqueia a execução por si só.
 - **FR-005**: Sistema MUST manter, para features sem artefato de backlog de
   tarefas (fluxo que nunca passou por criação/execução de tarefas), o
   comportamento atual sem exigir convergência artificialmente.
@@ -179,6 +206,10 @@ marcação especial que a distinga das demais.
   voltada ao usuário do toolkit, como etapa da sequência oficial do
   pipeline SDD — não mais apenas como capacidade complementar "usável a
   qualquer momento".
+- **FR-010**: Sistema MUST registrar, no histórico de execução de cada
+  invocação da convergência, a proveniência da invocação — etapa
+  obrigatória do gate `execute-task → review-task` ou invocação avulsa
+  pelo operador — permitindo distinguir os dois casos na auditoria.
 
 > Decisoes de infraestrutura: N/A (feature normativa/de fluxo de pipeline;
 > nao introduz scheduling, rotacao de chaves, refresh de token externo,
