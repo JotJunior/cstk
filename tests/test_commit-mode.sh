@@ -305,6 +305,15 @@ scenario_inv6_stage_message_conventional_commit() {
   done
 }
 
+# 7.3.2 (pipeline-converge): stage=converge tem case explicito no mapeamento
+# stage->scope (nao mais o fallback generico `*) _scope="$_stage"`).
+scenario_stage_message_converge_scope_explicito() {
+  capture "$SCRIPT" stage-message --feature "test-feat" --stage "converge"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stage-message exit para converge" "obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s' "$_CAPTURED_STDOUT" | grep -qE '^docs\(converge\): converge test-feat$' \
+    || { _fail "stage-message converge: scope explicito" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
 # ==== INV-7: task-message — range vs lista ====
 
 scenario_inv7_task_message_ids_contiguos_range() {

@@ -19,7 +19,7 @@
 `agente-00C` is an **autonomous orchestrator** of the toolkit's SDD pipeline:
 you invoke `/agente-00c` with a short POC/MVP description and it runs
 `briefing → constitution → specify → clarify → plan → checklist →
-create-tasks → execute-task → review-task → review-features`, **pausing only
+create-tasks → execute-task → converge → review-task → review-features`, **pausing only
 on real blocks** (decisions that require a human) and between scheduled waves
 — it is **not** "fire-and-forget". The primary deliverable is an **auditable
 report** rich in decisions, blocks and lessons learned: it exists precisely so
@@ -91,7 +91,7 @@ Since v3.13.0, the toolkit offers `/feature-00c` as a variant of agente-00c
 focused on **one feature** within a project that ALREADY has ratified
 `briefing.md` + `docs/constitution.md`. Reduced pipeline:
 `specify → clarify → plan → checklist → create-tasks → execute-task →
-review-task` (without briefing/constitution/review-features, which are
+converge → review-task` (without briefing/constitution/review-features, which are
 prerequisites validated in FR-PRE-001..004).
 
 | Command | When to use |
@@ -160,7 +160,7 @@ model on the orchestrator's spawn. The base is a deterministic phase→model map
 
 | Phase | Tier | Floor model |
 |-------|------|-------------|
-| `plan`, `analyze`, `constitution` | deep | **opus** |
+| `plan`, `analyze`, `constitution`, `converge` | deep | **opus** |
 | `specify`, `clarify`, `checklist`, `create-tasks`, `briefing` | medium | **sonnet** |
 | `execute-task` | shallow | **sonnet** (floor; refinable ↑opus / ↓haiku) |
 | `validate-docs`, `review-task` | shallow | **haiku** |

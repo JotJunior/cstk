@@ -19,7 +19,7 @@
 O `agente-00C` é um **orquestrador autônomo** da pipeline SDD do toolkit:
 você invoca `/agente-00c` com uma descrição curta de POC/MVP e ele conduz
 `briefing → constitution → specify → clarify → plan → checklist →
-create-tasks → execute-task → review-task → review-features`, **pausando
+create-tasks → execute-task → converge → review-task → review-features`, **pausando
 apenas em bloqueios reais** (decisões que exigem um humano) e entre ondas
 agendadas — **não** é "dispare-e-esqueça". O entregável-mor é um **relatório
 auditável** rico em decisões, bloqueios e lições aprendidas: ele existe
@@ -91,7 +91,7 @@ A partir de v3.13.0, o toolkit oferece `/feature-00c` como variante do
 agente-00c focada em **uma feature** dentro de projeto que JÁ possui
 `briefing.md` + `docs/constitution.md` ratificados. Pipeline reduzida:
 `specify → clarify → plan → checklist → create-tasks → execute-task →
-review-task` (sem briefing/constitution/review-features, que são
+converge → review-task` (sem briefing/constitution/review-features, que são
 pré-requisitos validados em FR-PRE-001..004).
 
 | Comando | Quando usar |
@@ -160,7 +160,7 @@ spawn do orquestrador. A base é um mapa determinístico fase→modelo
 
 | Fase | Faixa | Modelo-piso |
 |------|-------|-------------|
-| `plan`, `analyze`, `constitution` | profunda | **opus** |
+| `plan`, `analyze`, `constitution`, `converge` | profunda | **opus** |
 | `specify`, `clarify`, `checklist`, `create-tasks`, `briefing` | média | **sonnet** |
 | `execute-task` | rasa | **sonnet** (piso; refinável ↑opus / ↓haiku) |
 | `validate-docs`, `review-task` | rasa | **haiku** |

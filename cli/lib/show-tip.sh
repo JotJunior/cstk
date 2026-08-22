@@ -324,6 +324,7 @@ _st_phase_to_skill() {
     plan)         printf 'plan\n'         ;;
     create-tasks) printf 'create-tasks\n' ;;
     execute-task) printf 'execute-task\n' ;;
+    converge)     printf 'converge\n'     ;;
     review-task)  printf 'review-task\n'  ;;
     checklist)    printf 'checklist\n'    ;;
     *)            printf '\n'             ;;
@@ -557,7 +558,7 @@ ARGUMENTOS:
 
 FLAGS:
   --phase FASE    fase corrente do pipeline (specify|clarify|plan|
-                  create-tasks|execute-task|review-task|checklist)
+                  create-tasks|execute-task|converge|review-task|checklist)
   --audit         valida cobertura do catalogo (nao exibe dica)
   --catalog PATH  override do caminho do catalogo (padrao: tips/catalog.md)
   -h, --help      esta mensagem

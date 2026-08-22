@@ -533,6 +533,7 @@ _cm_cmd_stage_message() {
     create-tasks) _scope="tasks" ;;
     briefing)     _scope="briefing" ;;
     constitution) _scope="constitution" ;;
+    converge)     _scope="converge" ;;
     review-task)  _scope="review" ;;
     *)            _scope="$_stage" ;;
   esac

@@ -13,7 +13,7 @@
 Um **dashboard de observabilidade read-only** para acompanhar o andamento de
 projetos e features executados pelos orquestradores autônomos `agente-00c` /
 `feature-00c` (pipeline SDD: specify → clarify → plan → checklist → create-tasks
-→ execute-task → review-task).
+→ execute-task → converge → review-task).
 
 - **Persona**: engenheiro/tech-lead que dispara execuções autônomas e precisa
   ver, num relance, **progresso, custo, alertas críticos e qualidade**.
@@ -111,7 +111,7 @@ seleção de modelo por subagente — `haiku` / `sonnet` / `opus` / `manter-atua
 - **Status de execução**: `em_andamento`, `aguardando_humano`, `concluida`,
   `abortada`.
 - **Etapas (pipeline SDD)**: `briefing`, `constitution`, `specify`, `clarify`,
-  `plan`, `checklist`, `create-tasks`, `execute-task`, `review-task`.
+  `plan`, `checklist`, `create-tasks`, `execute-task`, `converge`, `review-task`.
 - **Motivo de término de onda**: `etapa_concluida_avancando`,
   `threshold_proxy_atingido`, `bloqueio_humano`, `aborto`, `concluido`.
 - **Score de decisão**: 0 (pausa/humano) · 1 (pausa) · 2 (decide por contexto) ·

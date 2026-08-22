@@ -15,7 +15,7 @@ Fontes (extraídas, sem invenção):
 ## 1. agente-00c — orquestrador raiz (projeto)
 
 Pipeline completo: `briefing → constitution → specify → clarify → plan →
-checklist → create-tasks → execute-task → review-task → review-features`.
+checklist → create-tasks → execute-task → converge → review-task → review-features`.
 Em **modo roadmap** (opt-in no início) a cadeia é `briefing → constitution
 → roadmap` e a execução termina em `concluido_roadmap`; a partir daí o
 **command pai** (não o orquestrador) oferece a leva paralela de features
@@ -43,7 +43,7 @@ flowchart TD
         rb --> p5["P5: avanca UMA etapa = invoca Skill<br/>+ state-ondas record-skill"]
 
         p5 --> stageKind{Qual etapa?}
-        stageKind -->|"briefing / constitution<br/>specify / plan / checklist<br/>create-tasks / execute-task<br/>review-task / review-features<br/>roadmap (modo roadmap: fase terminal)"| p5done["skill retorna = MEIO da onda<br/>(NAO encerra)"]
+        stageKind -->|"briefing / constitution<br/>specify / plan / checklist<br/>create-tasks / execute-task / converge<br/>review-task / review-features<br/>roadmap (modo roadmap: fase terminal)"| p5done["skill retorna = MEIO da onda<br/>(NAO encerra)"]
         stageKind -->|clarify| CLARIFY
 
         CLARIFY --> p5done
@@ -111,7 +111,7 @@ flowchart TD
 
 Pipeline reduzido (sem briefing/constitution/review-features, que são
 pré-requisitos): `specify → clarify → plan → checklist → create-tasks →
-execute-task → review-task`. State isolado em
+execute-task → converge → review-task`. State isolado em
 `.claude/feature-00c-state/<short-name>/`.
 
 ```mermaid
@@ -144,7 +144,7 @@ flowchart TD
         fstageKind -->|clarify| FCLARIFY
         fstageKind -->|"transicao clarify->plan"| fpreflight["P6: feature-00c-preflight.sh check<br/>exit 1 -> bloqueio humano"]
         fstageKind -->|execute-task| fexec["P7: loop por TASK<br/>record-task (pass/fail) + touched_files"]
-        fstageKind -->|"specify/plan/checklist<br/>create-tasks/review-task"| fgates
+        fstageKind -->|"specify/plan/checklist<br/>create-tasks/converge/review-task"| fgates
 
         FCLARIFY --> fgates
         fpreflight --> fgates

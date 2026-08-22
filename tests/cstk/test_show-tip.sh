@@ -167,6 +167,25 @@ scenario_527_phase_inexistente_fallback_exit_0() {
 }
 
 # =========================================================================
+# 7.3.3 (pipeline-converge) — --phase converge mapeia para skill converge
+# (nao para o fallback aleatorio global); converge nao esta no
+# catalog_minimal.md, entao o comportamento espelha o cenario 5.2.4
+# (skill ausente do catalogo em modo automatico = stdout vazio, exit 0).
+# =========================================================================
+scenario_733_phase_converge_mapeia_skill_converge() {
+  capture _st --catalog "$FIXTURES_DIR/catalog_minimal.md" --phase converge
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "exit esperado 0" "got $_CAPTURED_EXIT; stderr: $_CAPTURED_STDERR"
+    return 1
+  fi
+  if [ -n "$_CAPTURED_STDOUT" ]; then
+    _fail "stdout esperado vazio (converge ausente do catalog_minimal.md)" \
+      "$_CAPTURED_STDOUT"
+    return 1
+  fi
+}
+
+# =========================================================================
 # Cenario 5.2.8 — 3 invocacoes com N>1 entradas produzem variacao RNG
 # =========================================================================
 scenario_528_rng_variacao_multiplas_invocacoes() {

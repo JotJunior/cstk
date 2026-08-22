@@ -5,7 +5,7 @@ title: Fluxo SDD
 # Fluxo Spec-Driven Development
 
 O **Spec-Driven Development** (SDD) e o fluxo principal do toolkit:
-transforma uma ideia em codigo passando por 10 etapas auditaveis, cada uma
+transforma uma ideia em codigo passando por 11 etapas auditaveis, cada uma
 materializada como uma skill independente. O `agente-00C` orquestra essas
 etapas autonomamente; voce tambem pode rodar cada uma manualmente via slash
 command.
@@ -37,17 +37,25 @@ command.
 [7] create-tasks ------> docs/specs/<feature>/tasks.md
      |                   (decomposicao em FASES com [C]/[A]/[M])
      v
-[8] analyze -----------> relatorio cross-artifact (read-only)
-     |                   (deteca duplicacao, gaps, drift entre artefatos)
-     v
-[9] execute-task ------> codigo + testes + checkbox [x] em tasks.md
+[8] execute-task ------> codigo + testes + checkbox [x] em tasks.md
      |                   (1 tarefa por invocacao, com fluxo de 9 etapas)
+     v
+[9] converge -----------> gaps acionaveis apendados como nova fase de tasks
+     |                   (reconcilia spec/plan/tasks contra o codigo real)
      v
 [10] review-task ------> dashboard de progresso + proxima tarefa sugerida
      |
      v
+[11] review-features --> relatorio de portfolio (so no agente-00C)
+     |                   (sugere arquivar/abandonar/priorizar entre features)
+     v
    pronto
 ```
+
+`analyze` **nao** e uma etapa sequencial numerada — e um **cross-check
+read-only lateral** (spec/plan/tasks/constitution), disponivel a qualquer
+momento a partir de `create-tasks`, do mesmo jeito que o `CONTRIBUTING.md`
+diagrama (`analyze -. read-only cross-check .-> specify`).
 
 ## Etapas em detalhe
 
@@ -99,18 +107,21 @@ Decomposicao em FASES numeradas, com criticidade `[C]` (critical),
 `[A]` (alta), `[M]` (media). Inclui Matriz de Dependencias, Resumo
 Quantitativo, Escopo Coberto e Escopo Excluido.
 
-### 8. [`analyze`](../skills/analyze/) — Auditoria cross-artifact
-
-Read-only. Compara `spec.md`, `plan.md`, `tasks.md` e `constitution.md`,
-sinaliza duplicacoes, ambiguidades, gaps de cobertura e drift entre
-artefatos. Roda antes de comecar a execucao (ou periodicamente durante).
-
-### 9. [`execute-task`](../skills/execute-task/) — Implementar
+### 8. [`execute-task`](../skills/execute-task/) — Implementar
 
 Uma tarefa por invocacao, com 9 etapas obrigatorias (analise, localizacao,
 planejamento, implementacao, testes, validacao, lint, conclusao,
 atualizacao). Marca `[x]` no `tasks.md` ao final — gate critico contra
 drift documental.
+
+### 9. [`converge`](../skills/converge/) — Reconciliar spec com codigo
+
+Compara a intencao documentada (spec/plan/tasks) contra o estado ATUAL do
+codigo nos paths declarados, classifica cada divergencia
+(missing/partial/contradicts/unrequested) e apenda os gaps acionaveis como
+nova fase de `tasks.md`. Roda ao final de `execute-task`, antes de
+`review-task` — anti-drift entre o que foi pedido e o que foi de fato
+implementado.
 
 ### 10. [`review-task`](../skills/review-task/) — Status + proxima tarefa
 
@@ -118,9 +129,19 @@ Dashboard de progresso (concluidas / pendentes / bloqueadas), proxima
 tarefa sugerida com base em dependencias resolvidas, alerta sobre drift
 entre `git diff` e checkboxes do `tasks.md`.
 
+### 11. [`review-features`](../skills/review-features/) — Portfolio de features
+
+So no `agente-00C` (fora do escopo do `feature-00c`, que cobre uma unica
+feature). Relatorio de portfolio entre features do mesmo projeto, com
+sugestoes de arquivar/abandonar/priorizar.
+
+`analyze` (auditoria cross-artifact read-only de `spec.md`/`plan.md`/
+`tasks.md`/`constitution.md`) nao entra nessa contagem — ver nota logo
+apos o diagrama.
+
 ## Quando usar o agente-00C
 
-Voce pode rodar as 10 etapas manualmente (via slash commands / skills)
+Voce pode rodar as 11 etapas manualmente (via slash commands / skills)
 ou delegar tudo ao `agente-00C` — um orquestrador autonomo que executa o
 pipeline em **ondas**, persistindo estado em `state.json` e fazendo commit
 local apos cada onda. Ideal para POCs/MVPs longos ou quando voce quer

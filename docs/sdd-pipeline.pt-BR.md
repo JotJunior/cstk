@@ -62,16 +62,21 @@ próximo.
    ⑦ create-tasks      Plan → Backlog de tarefas estruturado por fases
         │                Tarefas com IDs, criticidade e matriz de dependências.
         ▼
-   ⑧ analyze           Spec + Plan + Tasks + Constitution → Relatório de consistência
-        │                Detecta duplicações, ambiguidades, gaps de cobertura
-        │                e violações de princípios. Estritamente READ-ONLY.
-        ▼
-   ⑨ execute-task      Task → Código implementado (workflow de 9 etapas)
+   ⑧ execute-task      Task → Código implementado (workflow de 9 etapas)
         │                Análise → Localização → Planejamento → Implementação →
         │                Testes → Validação → Lint → Conclusão → Atualização.
         ▼
+   ⑨ converge          Spec + Plan + Tasks + código real → Relatório de reconciliação
+        │                Reconcilia a intenção documentada contra o estado atual
+        │                do código; anexa gaps acionáveis como nova fase de tasks.
+        ▼
    ⑩ review-task       Tasks → Relatório de status com métricas e próximas ações
 ```
+
+> `analyze` não é uma etapa sequencial numerada — é um **cross-check lateral
+> read-only** (consistência spec/plan/tasks/constitution) utilizável a
+> qualquer momento após `create-tasks`, do mesmo jeito que o `CONTRIBUTING.md`
+> diagrama (`analyze -. read-only cross-check .-> specify`).
 
 ## Quando usar cada skill
 

@@ -100,8 +100,11 @@ escolha o nivel, copie a receita e cozinhe.
 
     ```text
     briefing → constitution → specify → clarify → plan
-             → checklist → create-tasks → analyze → execute-task → review-task
+             → checklist → create-tasks → execute-task → converge → review-task
     ```
+
+    (`analyze` e um cross-check read-only lateral, disponivel a qualquer
+    momento a partir de `create-tasks` — nao uma etapa sequencial.)
 
     > 📖 Cada etapa, o que produz e quando pular: [Fluxo SDD](manual/fluxo-sdd.md).
 

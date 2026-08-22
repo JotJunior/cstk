@@ -322,32 +322,32 @@ Ref: plan.md `test_state-ondas.sh`, `test_converge-orchestrator-gate.sh` ALTERAD
 
 Ref: `research.md` Decision 10
 
-- [ ] 7.1.1 Adicionar linha `converge|profunda|opus` a
+- [x] 7.1.1 Adicionar linha `converge|profunda|opus` a
       `plugins/cstk/skills/agente-00c-runtime/references/phase-model-map.txt`
-- [ ] 7.1.2 Atualizar o comentario de enum do arquivo de "(11)" para "(12)"
-- [ ] 7.1.3 Confirmar via `model-routing.sh phase-model-lookup --stage
+- [x] 7.1.2 Atualizar o comentario de enum do arquivo de "(11)" para "(12)"
+- [x] 7.1.3 Confirmar via `model-routing.sh phase-model-lookup --stage
       converge` que o lookup retorna `opus`
 
 ### 7.2 `commit-mode.sh` e `show-tip.sh` `[M]`
 
 Ref: `research.md` Decision 16
 
-- [ ] 7.2.1 `commit-mode.sh:527-538`: adicionar `converge) _scope="converge"`
+- [x] 7.2.1 `commit-mode.sh:527-538`: adicionar `converge) _scope="converge"`
       explicito no `case` stage->scope (hoje cai no fallback `*)`)
-- [ ] 7.2.2 `show-tip.sh:320-331` `_st_phase_to_skill()`: adicionar
+- [x] 7.2.2 `show-tip.sh:320-331` `_st_phase_to_skill()`: adicionar
       `converge` ao `case` fechado (hoje cai no fallback de dica aleatoria)
-- [ ] 7.2.3 `show-tip.sh --help` (`:559-560`): adicionar `converge` ao texto
+- [x] 7.2.3 `show-tip.sh --help` (`:559-560`): adicionar `converge` ao texto
       de fases suportadas
 
 ### 7.3 Testes de superficies auxiliares `[M]`
 
 Ref: plan.md `test_model-routing.sh` ALTERADO (`_PML_EXPECTED` 11 -> 12)
 
-- [ ] 7.3.1 Atualizar `tests/test_model-routing.sh`: `_PML_EXPECTED` de 11
+- [x] 7.3.1 Atualizar `tests/test_model-routing.sh`: `_PML_EXPECTED` de 11
       para 12
-- [ ] 7.3.2 Adicionar cenario de cobertura para `commit-mode.sh` com
+- [x] 7.3.2 Adicionar cenario de cobertura para `commit-mode.sh` com
       `stage=converge`
-- [ ] 7.3.3 Adicionar cenario de cobertura para `show-tip.sh --phase
+- [x] 7.3.3 Adicionar cenario de cobertura para `show-tip.sh --phase
       converge`
 
 ---
@@ -358,30 +358,30 @@ Ref: plan.md `test_model-routing.sh` ALTERADO (`_PML_EXPECTED` 11 -> 12)
 
 Ref: plan.md §Project Structure (lista completa de superficies); FR-009; SC-004
 
-- [ ] 8.1.1 `docs/sdd-pipeline.md` + `.pt-BR.md`: diagrama e tabela com
+- [x] 8.1.1 `docs/sdd-pipeline.md` + `.pt-BR.md`: diagrama e tabela com
       `converge` entre `execute-task` e `review-task`
-- [ ] 8.1.2 `docs/agente-00c.md` + `.pt-BR.md`: sequencia atualizada
-- [ ] 8.1.3 `docs/fluxo-orquestradores-00c.md`: texto + os 2 blocos mermaid
-- [ ] 8.1.4 `docs/cstk-panel/frontend-brief.md`: sequencia de `feature-00c`
-- [ ] 8.1.5 `docs-site/index.md` e `docs-site/manual/{fluxo-sdd.md,profiles.md}`:
+- [x] 8.1.2 `docs/agente-00c.md` + `.pt-BR.md`: sequencia atualizada
+- [x] 8.1.3 `docs/fluxo-orquestradores-00c.md`: texto + os 2 blocos mermaid
+- [x] 8.1.4 `docs/cstk-panel/frontend-brief.md`: sequencia de `feature-00c`
+- [x] 8.1.5 `docs-site/index.md` e `docs-site/manual/{fluxo-sdd.md,profiles.md}`:
       "10 etapas" -> "11 etapas"
-- [ ] 8.1.6 `README.md` / `README.pt-BR.md`: mover `converge` da secao
+- [x] 8.1.6 `README.md` / `README.pt-BR.md`: mover `converge` da secao
       "Complementary" para a sequencia SDD oficial
-- [ ] 8.1.7 `CONTRIBUTING.md` / `CONTRIBUTING.pt-BR.md`: atualizar o
+- [x] 8.1.7 `CONTRIBUTING.md` / `CONTRIBUTING.pt-BR.md`: atualizar o
       diagrama mermaid
-- [ ] 8.1.8 `CLAUDE.md` (deste repo): bloco "SDD Pipeline" atualizado com
+- [x] 8.1.8 `CLAUDE.md` (deste repo): bloco "SDD Pipeline" atualizado com
       11 etapas
 
 ### 8.2 Normalizar divergencia pre-existente do `analyze` (CHK024) `[M]`
 
 Ref: `research.md` Decision 15; `checklists/requirements.md` CHK024
 
-- [ ] 8.2.1 Em cada superficie tocada na tarefa 8.1 que menciona `analyze`,
+- [x] 8.2.1 Em cada superficie tocada na tarefa 8.1 que menciona `analyze`,
       normalizar para a forma "cross-check read-only lateral" ja adotada em
       `CONTRIBUTING.md:61-63` (`analyze -. read-only cross-check .-> specify`)
-- [ ] 8.2.2 Verificar via `grep` que nenhuma superficie tocada em 8.1 lista
+- [x] 8.2.2 Verificar via `grep` que nenhuma superficie tocada em 8.1 lista
       `analyze` como etapa sequencial numerada junto das demais
-- [ ] 8.2.3 Registrar no `CHANGELOG.md` que a divergencia geral do
+- [x] 8.2.3 Registrar no `CHANGELOG.md` que a divergencia geral do
       `analyze` (fora das superficies tocadas nesta feature) permanece como
       achado conhecido, sem expandir o escopo para reclassifica-lo
       (Decision 15) — Ref: CHK024
@@ -391,16 +391,16 @@ Ref: `research.md` Decision 15; `checklists/requirements.md` CHK024
 Ref: Constitution I (bump obrigatorio por mudanca de contrato de skill);
 plan.md §Complexity Tracking
 
-- [ ] 8.3.1 Definir e aplicar bump de versao (mudanca de contrato de
+- [x] 8.3.1 Definir e aplicar bump de versao (mudanca de contrato de
       `converge`/`execute-task`/`review-task`/`pipeline.sh` e BREAKING para
       qualquer consumidor que hardcode 10 etapas)
-- [ ] 8.3.2 Entrada no `CHANGELOG.md`: nova etapa `converge` na pipeline
+- [x] 8.3.2 Entrada no `CHANGELOG.md`: nova etapa `converge` na pipeline
       oficial, revogando explicitamente a Decision 5 da feature
       `skill-converge` (que a manteve fora da `_PL_STAGES_LIST`)
-- [ ] 8.3.3 Adicionar o link de referencia da nova versao no rodape do
+- [x] 8.3.3 Adicionar o link de referencia da nova versao no rodape do
       `CHANGELOG.md` (ver `CLAUDE.md` §"CHANGELOG: link de referencia por
       versao")
-- [ ] 8.3.4 Atualizar manifests de plugin
+- [x] 8.3.4 Atualizar manifests de plugin
       (`plugins/cstk/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
       se versionado) conforme padrao do repo
 
@@ -408,10 +408,10 @@ plan.md §Complexity Tracking
 
 Ref: `research.md` Decision 11 ("verificavel por `grep`")
 
-- [ ] 8.4.1 Rodar `grep` de verificacao cruzada nas superficies tocadas em
+- [x] 8.4.1 Rodar `grep` de verificacao cruzada nas superficies tocadas em
       8.1, confirmando lista identica (mesma ordem, mesmos nomes) em todos
       os pontos
-- [ ] 8.4.2 Rodar `./tests/run.sh --check-coverage` (script novo
+- [x] 8.4.2 Rodar `./tests/run.sh --check-coverage` (script novo
       `converge-status.sh` mapeado ao teste correspondente, sem orfaos)
 - [ ] 8.4.3 Rodar `./tests/run.sh` completo (gate de release)
 - [ ] 8.4.4 Rodar `validate-tasks-template.sh` e a skill
