@@ -413,10 +413,23 @@ Ref: `research.md` Decision 11 ("verificavel por `grep`")
       os pontos
 - [x] 8.4.2 Rodar `./tests/run.sh --check-coverage` (script novo
       `converge-status.sh` mapeado ao teste correspondente, sem orfaos)
-- [ ] 8.4.3 Rodar `./tests/run.sh` completo (gate de release)
-- [ ] 8.4.4 Rodar `validate-tasks-template.sh` e a skill
+- [x] 8.4.3 Rodar `./tests/run.sh` completo (gate de release) — evidencia:
+      `LC_ALL=C ./tests/run.sh` em background (onda-011), log
+      `full-suite-onda011.log`: `# PASS: 3406  FAIL: 0  ERROR: 0  ORPHANS: 0
+      TIME: 981s` / `SUITE_EXIT=0`
+- [x] 8.4.4 Rodar `validate-tasks-template.sh` e a skill
       `validate-docs-rendered` sobre este `tasks.md` e sobre a documentacao
-      alterada (pre-gates ja usados pelos orquestradores 00c)
+      alterada (pre-gates ja usados pelos orquestradores 00c) — evidencia:
+      `validate-tasks-template.sh` -> `critical=0|warning=0`;
+      `validate-docs-rendered` sobre os 27 arquivos `.md` tocados pela
+      feature (onda-011) -> zero ERRO/AVISO nos artefatos proprios da
+      feature (spec/plan/tasks/contracts, `docs/sdd-pipeline*.md`,
+      `docs/agente-00c*.md`, skills `converge`/`execute-task`/`review-task`,
+      agents `agente-00c-*-orchestrator.md`); os ERROs remanescentes em
+      `docs/fluxo-orquestradores-00c.md`, `CONTRIBUTING(.pt-BR).md`,
+      `CHANGELOG.md`, `docs-site/manual/fluxo-sdd.md` sao pre-existentes —
+      confirmados identicos rodando o validador contra `git show main:<f>`
+      (mesmas linhas/mensagens) — fora do escopo desta feature
 
 ---
 
