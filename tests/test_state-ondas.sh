@@ -25,6 +25,22 @@ _init_state() {
     --execucao-id "exec-onda-test" --projeto-alvo-path "$_init_pap" --descricao "POC ondas"
 }
 
+# _rcw_sq VALUE -> imprime VALUE entre aspas simples (idioma padrao
+# 'foo'\''bar') para montar comandos `sh -c` com segurança — mesmo padrao
+# de _cs_quote em test_converge-status.sh.
+_rcw_sq() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+# _rcw_converge_repo NAME -> cria repo sintetico com marcador .git/ em
+# $TMPDIR_TEST/NAME (necessario para o path-guard de converge-status.sh
+# resolver --root por ascensao a partir do CWD) e imprime o path.
+_rcw_converge_repo() {
+  _r="$TMPDIR_TEST/$1"
+  mkdir -p "$_r/.git"
+  printf '%s\n' "$_r"
+}
+
 scenario_start_cria_onda_001() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
@@ -1015,6 +1031,8 @@ scenario_reconcile_wave_execute_task_backlog_aberto_nao_avanca() {
 }
 
 # Negativo do hold: backlog SEM `- [ ]` (tudo [x] e [!]) => avanca normalmente.
+# pipeline-converge: execute-task -> converge (nao mais -> review-task
+# diretamente — converge foi inserida entre as duas na lista canonica).
 scenario_reconcile_wave_execute_task_backlog_completo_avanca() {
   _sd="$TMPDIR_TEST/state"
   _init_state "$_sd"
@@ -1026,7 +1044,7 @@ scenario_reconcile_wave_execute_task_backlog_completo_avanca() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile avanca" "$_CAPTURED_STDERR"; return 1; }
   case "$_CAPTURED_STDOUT" in *HOLD*) _fail "hold indevido" "backlog completo nao pode dar HOLD: $_CAPTURED_STDOUT"; return 1;; esac
   capture "$RW" get --state-dir "$_sd" --field '.current_stage'
-  assert_stdout_contains "review-task" || { _fail "nao avancou" "esperado review-task, obtido: $_CAPTURED_STDOUT"; return 1; }
+  assert_stdout_contains "converge" || { _fail "nao avancou" "esperado converge, obtido: $_CAPTURED_STDOUT"; return 1; }
 }
 
 # --dry-run reporta o HOLD sem escrever nada.
@@ -1042,6 +1060,73 @@ scenario_reconcile_wave_dry_run_reporta_hold() {
   assert_stdout_contains "HOLD" || return 1
   capture "$RW" get --state-dir "$_sd" --field '.waves[-1].finished_at'
   case "$_CAPTURED_STDOUT" in null|"") : ;; *) _fail "dry-run escreveu" "onda foi fechada em dry-run"; return 1;; esac
+}
+
+# pipeline-converge FASE 6.2 (research.md Decision 14, "Resolucao"): aviso
+# SOFT, nao bloqueante. Sem converge-report.md (veredito "never"), a fase
+# AVANCA mesmo assim para review-task, mas a next_instruction/stdout carrega
+# um AVISO de convergencia pendente.
+scenario_reconcile_wave_converge_pending_avanca_com_aviso() {
+  _repo=$(_rcw_converge_repo "cvg-repo-pending")
+  _fd="$_repo/docs/specs/feat-x"
+  mkdir -p "$_fd"
+  _md="$_fd/tasks.md"
+  printf -- '- [x] 1.1.1 feita\n' > "$_md"
+  _sd="$TMPDIR_TEST/state-cvg-pending"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"converge"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture sh -c "cd $(_rcw_sq "$_repo") && $(_rcw_sq "$SCRIPT") reconcile-wave --state-dir $(_rcw_sq "$_sd") --terminal-phase review-task --tasks-md $(_rcw_sq "$_md")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile converge pending" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "AVISO" || return 1
+  assert_stdout_contains "next=review-task" || return 1
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "review-task" || { _fail "nao avancou" "$_CAPTURED_STDOUT"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  assert_stdout_contains "AVISO" || return 1
+}
+
+# Negativo do aviso: converge-status.sh ja reportou outcome=clean com digest
+# batendo o tasks.md atual (converged) — advanca SEM AVISO.
+scenario_reconcile_wave_converge_convergida_sem_aviso() {
+  _repo=$(_rcw_converge_repo "cvg-repo-clean")
+  _fd="$_repo/docs/specs/feat-y"
+  mkdir -p "$_fd"
+  _md="$_fd/tasks.md"
+  printf -- '- [x] 1.1.1 feita\n' > "$_md"
+  _cvg_status="$REPO_ROOT/plugins/cstk/skills/converge/scripts/converge-status.sh"
+  capture sh -c "cd $(_rcw_sq "$_repo") && $(_rcw_sq "$_cvg_status") record --feature-dir $(_rcw_sq "$_fd") --outcome clean --provenance standalone --actionable 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed converge-report" "$_CAPTURED_STDERR"; return 1; }
+  _sd="$TMPDIR_TEST/state-cvg-clean"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"converge"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture sh -c "cd $(_rcw_sq "$_repo") && $(_rcw_sq "$SCRIPT") reconcile-wave --state-dir $(_rcw_sq "$_sd") --terminal-phase review-task --tasks-md $(_rcw_sq "$_md")"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "reconcile converge clean" "$_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDOUT" in *AVISO*) _fail "aviso indevido" "converge convergida nao deveria emitir AVISO: $_CAPTURED_STDOUT"; return 1;; esac
+  capture "$RW" get --state-dir "$_sd" --field '.current_stage'
+  assert_stdout_contains "review-task" || { _fail "nao avancou" "$_CAPTURED_STDOUT"; return 1; }
+  capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
+  case "$_CAPTURED_STDOUT" in *AVISO*) _fail "aviso indevido em next_instruction" "$_CAPTURED_STDOUT"; return 1;; esac
+}
+
+# --dry-run tambem reporta o AVISO soft (sem escrever nada).
+scenario_reconcile_wave_converge_dry_run_reporta_aviso() {
+  _repo=$(_rcw_converge_repo "cvg-repo-dry")
+  _fd="$_repo/docs/specs/feat-z"
+  mkdir -p "$_fd"
+  _md="$_fd/tasks.md"
+  printf -- '- [x] 1.1.1 feita\n' > "$_md"
+  _sd="$TMPDIR_TEST/state-cvg-dry"
+  _init_state "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"converge"'
+  capture "$SCRIPT" start --state-dir "$_sd"
+  capture sh -c "cd $(_rcw_sq "$_repo") && $(_rcw_sq "$SCRIPT") reconcile-wave --state-dir $(_rcw_sq "$_sd") --terminal-phase review-task --tasks-md $(_rcw_sq "$_md") --dry-run"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "dry-run converge pending" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "AVISO" || return 1
+  case "$_CAPTURED_STDOUT" in *HOLD*) _fail "hold indevido" "aviso soft nao pode virar HOLD: $_CAPTURED_STDOUT"; return 1;; esac
+  capture "$SCRIPT" wave-status --state-dir "$_sd"
+  assert_stdout_contains "open" || { _fail "dry-run escreveu" "onda foi fechada em dry-run"; return 1; }
 }
 
 scenario_reconcile_wave_terminal_promove_status_feature00c() {
@@ -2037,6 +2122,8 @@ scenario_sqlite_end_atualiza_onda_e_acumulados() {
 # Paridade: mesmo comportamento do path JSON; avanco na MESMA transacao C4.
 
 scenario_sqlite_end_advance_avanca_ponteiro_na_mesma_transacao() {
+  # pipeline-converge: execute-task -> converge (etapa nova inserida antes de
+  # review-task em _PL_STAGES_LIST), nao mais execute-task -> review-task.
   _sd="$TMPDIR_TEST/sqlite-end-advance"
   _seed_sqlite_backend "$_sd" || return 1   # seed: current_stage=execute-task
   capture "$SCRIPT" start --state-dir "$_sd"
@@ -2044,9 +2131,9 @@ scenario_sqlite_end_advance_avanca_ponteiro_na_mesma_transacao() {
     --motivo-termino etapa_concluida_avancando --advance
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sqlite end --advance" "$_CAPTURED_STDERR"; return 1; }
   capture "$RW" get --state-dir "$_sd" --field '.current_stage'
-  assert_stdout_contains "review-task" || return 1
+  assert_stdout_contains "converge" || return 1
   capture "$RW" get --state-dir "$_sd" --field '.next_instruction'
-  assert_stdout_contains "Iniciar etapa review-task" || return 1
+  assert_stdout_contains "Iniciar etapa converge" || return 1
   capture "$SCRIPT" wave-status --state-dir "$_sd"
   assert_stdout_contains "closed" || return 1
 }
@@ -2352,8 +2439,9 @@ scenario_sqlite_reconcile_wave_fecha_e_avanca_ponteiro() {
   # current_stage=execute-task (default do seed): terminal-phase precisa
   # casar com a fase CORRENTE para acionar o ramo terminal — se nao, a
   # fase corrente possui proxima real no pipeline (execute-task ->
-  # review-task) e reconcile-wave apenas avanca o ponteiro (ramo nao-
-  # terminal), que e o comportamento correto (nao um bug).
+  # converge, pipeline-converge) e reconcile-wave apenas avanca o
+  # ponteiro (ramo nao-terminal), que e o comportamento correto (nao um
+  # bug).
   capture "$RW" set --state-dir "$_sd" --field '.current_stage' --value '"review-task"'
   capture "$SCRIPT" start --state-dir "$_sd"
   capture "$SCRIPT" reconcile-wave --state-dir "$_sd" --terminal-phase review-task

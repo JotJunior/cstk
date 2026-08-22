@@ -413,7 +413,14 @@ state-decisions.sh register --state-dir <SD> \
   --escolha "<aceitar|escalar-para-humano>" \
   --justificativa "<...>" --score <0|2|3>
 
-state-ondas.sh record-skill --state-dir <SD> --skill converge --decisao-id <dec-NNN>
+# --kind reflete a MESMA PROVENANCE resolvida na ETAPA 1 (pipeline-converge
+# Decision 9): gate quando disparada pela fronteira execute-task ->
+# review-task, skill (default, pode omitir) quando invocacao avulsa.
+if [ "$PROVENANCE" = "gate" ]; then
+  state-ondas.sh record-skill --state-dir <SD> --skill converge --kind gate --decisao-id <dec-NNN>
+else
+  state-ondas.sh record-skill --state-dir <SD> --skill converge --decisao-id <dec-NNN>
+fi
 ```
 
 Two-step atômico-lógico: `record-skill` roda imediatamente após `register`,

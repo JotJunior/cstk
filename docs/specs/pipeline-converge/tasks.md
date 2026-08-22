@@ -274,15 +274,15 @@ Ref: plan.md `review-task/SKILL.md` ALTERADO; `research.md` Decision 8;
 
 Ref: plan.md ambos ALTERADO; `research.md` Decision 9; FR-006
 
-- [ ] 6.1.1 Remover o bloco especial "Gate incondicional `convergence`" da
+- [x] 6.1.1 Remover o bloco especial "Gate incondicional `convergence`" da
       prosa dos dois orquestradores (FR-006) — `converge` passa a ser etapa
       regular do Loop principal, registrada com o mesmo nivel de
       auditoria/rastreabilidade das demais (`state-decisions.sh register` +
       `state-ondas.sh record-skill`)
-- [ ] 6.1.2 Ajustar a prosa do Loop principal: apos esgotar o backlog de
+- [x] 6.1.2 Ajustar a prosa do Loop principal: apos esgotar o backlog de
       `execute-task`, `state-ondas.sh end --advance` avanca automaticamente
       para `converge` (via `pipeline.sh next-stage`, sem logica nova)
-- [ ] 6.1.3 Documentar `record-skill --skill converge --kind gate` quando
+- [x] 6.1.3 Documentar `record-skill --skill converge --kind gate` quando
       disparado pela fronteira `execute-task -> review-task`, e `--kind
       skill` (default) quando avulso (Decision 9)
 
@@ -291,14 +291,14 @@ Ref: plan.md ambos ALTERADO; `research.md` Decision 9; FR-006
 Ref: `research.md` Decision 14 "Verificacao pendente na implementacao";
 `state-ondas.sh:1675`
 
-- [ ] 6.2.1 Avaliar a necessidade de um hold simetrico ao ja existente para
+- [x] 6.2.1 Avaliar a necessidade de um hold simetrico ao ja existente para
       `execute-task` — sem ele, `reconcile-wave` avancaria
       `converge -> review-task` mesmo com convergencia pendente
-- [ ] 6.2.2 Se necessario, implementar o hold consultando
+- [x] 6.2.2 Se necessario, implementar o hold consultando
       `converge-status.sh check` antes de `reconcile-wave` avancar de
       `converge` para `review-task` (soft — so registra aviso; o soft gate
       de `review-task` permanece como rede)
-- [ ] 6.2.3 Documentar a decisao tomada (hold implementado ou dispensado,
+- [x] 6.2.3 Documentar a decisao tomada (hold implementado ou dispensado,
       com justificativa) em `research.md`/`CHANGELOG.md`
 
 ### 6.3 Testes de orquestradores `[A]`
@@ -306,11 +306,11 @@ Ref: `research.md` Decision 14 "Verificacao pendente na implementacao";
 Ref: plan.md `test_state-ondas.sh`, `test_converge-orchestrator-gate.sh` ALTERADOS;
 `quickstart.md` Cenario 13
 
-- [ ] 6.3.1 Atualizar `tests/test_state-ondas.sh`: cenarios `end_advance_*`/
+- [x] 6.3.1 Atualizar `tests/test_state-ondas.sh`: cenarios `end_advance_*`/
       reconcile contemplando `converge` na sequencia
-- [ ] 6.3.2 Atualizar `tests/test_converge-orchestrator-gate.sh`: regex da
+- [x] 6.3.2 Atualizar `tests/test_converge-orchestrator-gate.sh`: regex da
       fronteira ajustada a nova prosa (sem o bloco "incondicional" antigo)
-- [ ] 6.3.3 Cenario 13: execucao autonoma trata `converge` como etapa
+- [x] 6.3.3 Cenario 13: execucao autonoma trata `converge` como etapa
       regular — `state.json`/`state.db` mostra Decisao + `skills_invoked`
       para `converge` no mesmo padrao das demais etapas
 

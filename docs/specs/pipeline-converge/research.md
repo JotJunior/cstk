@@ -453,6 +453,28 @@ com convergencia pendente. A tarefa correspondente deve avaliar um hold
 simetrico consultando `converge-status.sh check`, respeitando o carater soft
 gate (avanca, mas o finding de `review-task` permanece).
 
+**Resolucao (FASE 6, tarefa 6.2)**: implementado como **aviso soft, NAO
+bloqueante** — `reconcile-wave` (`state-ondas.sh:_so_cmd_reconcile_wave`)
+consulta `pipeline.sh detect-completion --feature-dir <dirname
+--tasks-md> --stage converge` (mesma resolucao de `converge-status.sh` que a
+propria etapa ja usa — sem logica nova, conforme a Decision acima) IMEDIATAMENTE
+antes da transicao `converge -> review-task`. Quando o veredito nao e
+converged/risk-accepted/not-applicable (exit != 0), a fase avanca **do mesmo
+jeito** para `review-task`, mas a `next_instruction` grava um sufixo
+`AVISO: convergencia pendente em <feature-dir> (...) — revisar em review-task
+antes de finalizar.`; o mesmo aviso aparece no stdout de `reconciled (...)` e
+`would reconcile (...)` (`--dry-run`). Deliberadamente **nao** um hold
+bloqueante (ao contrario do hold de `execute-task`): FR-019 estabelece que
+`converge` nunca trava sozinha — quem decide bloqueio e o
+orquestrador/operador, e o soft gate ja existente em `review-task` (finding
+`converge-pending`) permanece como a rede real. Um hold duro em
+`reconcile-wave` duplicaria esse gate num caminho mecanico de baixo nivel
+(safety net do command pai, nao o fluxo de decisao do orquestrador) e criaria
+risco de a feature ficar presa em `converge` indefinidamente se o veredito
+nunca virar `converged`/`risk-accepted` (ex.: `converge-status.sh` ausente por
+drift de instalacao). Cobertura: `tests/test_state-ondas.sh` cenarios
+`reconcile_wave_converge_*`.
+
 **Alternatives considered**:
 - Passar `--terminal-phase converge` em algum caminho: mudaria a semantica de
   "ultima etapa do escopo" e travaria `review-task`.
