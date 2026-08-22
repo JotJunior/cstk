@@ -1,6 +1,6 @@
 ---
 name: agente-00c-feature-orchestrator
-description: 'Orquestrador autonomo da pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→review-task) para UMA feature individual. Reusa runtime POSIX agente-00c-runtime via AGENTE_00C_STATE_DIR=feature-00c-state/<short-name>/. Invocado por /feature-00c e /feature-00c-resume.'
+description: 'Orquestrador autonomo da pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→converge→review-task) para UMA feature individual. Reusa runtime POSIX agente-00c-runtime via AGENTE_00C_STATE_DIR=feature-00c-state/<short-name>/. Invocado por /feature-00c e /feature-00c-resume.'
 tools: Agent, Skill, Bash, Read, Write, Edit, Glob, Grep, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision, mcp__cstk-state__record_skill, mcp__cstk-state__record_task, mcp__cstk-state__register_human_block, mcp__cstk-state__close_wave, mcp__cstk-state__get_status, mcp__cstk-state__collect_optins
 ---
 

@@ -529,7 +529,7 @@ prompt de sistema de quem invoca o orquestrador), logo é "documentação que
 descreve a sequência oficial de etapas" no sentido de FR-001, e quebra
 SC-004 (lista idêntica em todos os pontos do toolkit).
 
-- [ ] 9.1.1 Corrigir `plugins/cstk/agents/agente-00c-orchestrator.md` conforme `6.1`: inserir `converge` entre `execute-task` e `review-task` na `description` do frontmatter
+- [x] 9.1.1 Corrigir `plugins/cstk/agents/agente-00c-orchestrator.md` conforme `6.1`: inserir `converge` entre `execute-task` e `review-task` na `description` do frontmatter
 
 <!-- converge-key: 10b2a1b6034f -->
 
@@ -545,7 +545,7 @@ sem `converge`. Contradiz FR-001 (etapa nomeada e ordenada entre
 `execute-task` e `review-task` em qualquer documentação que descreva a
 sequência oficial) e SC-004.
 
-- [ ] 9.2.1 Corrigir `plugins/cstk/agents/agente-00c-feature-orchestrator.md` conforme `6.1`: inserir `converge` entre `execute-task` e `review-task` na `description` do frontmatter
+- [x] 9.2.1 Corrigir `plugins/cstk/agents/agente-00c-feature-orchestrator.md` conforme `6.1`: inserir `converge` entre `execute-task` e `review-task` na `description` do frontmatter
 
 <!-- converge-key: f113d5608d93 -->
 
@@ -562,7 +562,7 @@ enumerou apenas superfícies de documentação em `docs/`, `README*` e
 `CONTRIBUTING*` — os frontmatters de `plugins/cstk/commands/` ficaram fora
 do inventário. Quebra FR-001 e SC-004.
 
-- [ ] 9.3.1 Corrigir `plugins/cstk/commands/feature-00c.md` conforme `FR-001`: inserir `converge` entre `execute-task` e `review-task` na `description` do frontmatter
-- [ ] 9.3.2 Varrer os demais frontmatters de `plugins/cstk/commands/` e `plugins/cstk/agents/` em busca de outras sequências SDD desatualizadas (SC-004)
+- [x] 9.3.1 Corrigir `plugins/cstk/commands/feature-00c.md` conforme `FR-001`: inserir `converge` entre `execute-task` e `review-task` na `description` do frontmatter
+- [x] 9.3.2 Varrer os demais frontmatters de `plugins/cstk/commands/` e `plugins/cstk/agents/` em busca de outras sequências SDD desatualizadas (SC-004)
 
 <!-- converge-key: b6d1cc660c1f -->

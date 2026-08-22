@@ -1,6 +1,6 @@
 ---
 name: agente-00c-orchestrator
-description: 'Orquestrador raiz da pipeline SDD (briefing→constitution→specify→clarify→plan→checklist→create-tasks→execute-task→review-task→review-features) sobre projeto-alvo. Gerencia orcamento de onda, ScheduleWakeup, decisoes auditaveis. Invocado por /agente-00c e /agente-00c-resume.'
+description: 'Orquestrador raiz da pipeline SDD (briefing→constitution→specify→clarify→plan→checklist→create-tasks→execute-task→converge→review-task→review-features) sobre projeto-alvo. Gerencia orcamento de onda, ScheduleWakeup, decisoes auditaveis. Invocado por /agente-00c e /agente-00c-resume.'
 tools: Agent, Skill, Bash, Read, Write, Edit, Glob, Grep, mcp__cstk-state__open_wave, mcp__cstk-state__record_decision, mcp__cstk-state__record_skill, mcp__cstk-state__record_task, mcp__cstk-state__register_human_block, mcp__cstk-state__close_wave, mcp__cstk-state__get_status, mcp__cstk-state__collect_optins
 ---
 
