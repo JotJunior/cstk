@@ -30,6 +30,14 @@ converge-status.sh record --feature-dir DIR --outcome clean|actionable \
 Apenda uma linha `ConvergenceStatusRecord` (ver `data-model.md`). Calcula
 `at` (UTC agora) e `tasks-digest` a partir de `<DIR>/tasks.md`.
 
+**Semantica de `--actionable N` (fecha CHK002)**: `N` conta apenas achados
+`missing`/`partial`/`contradicts` da invocacao. Achados classificados **so**
+como `unrequested` (achado de revisao — SKILL.md ETAPA 6, "MUST virar tarefa
+`kind=revisar`") NAO entram nessa contagem e NAO impedem `--outcome clean`,
+mesmo quando a invocacao apendou uma fase de revisao ao `tasks.md`. Quem
+monta a chamada (a skill `converge`) e responsavel por excluir os
+`unrequested` do `N` passado.
+
 | Situacao | Exit | stdout |
 |----------|------|--------|
 | gravado | 0 | (vazio) |
@@ -70,10 +78,13 @@ converge-status.sh check --feature-dir DIR [--quiet]
 | `outcome=actionable` (ultimo registro) | 1 | `pending actionable=N` |
 | `outcome=clean\|risk-accepted` mas digest divergente | 1 | `stale` |
 | nenhum registro / arquivo ausente | 3 | `never` |
-| `<DIR>/tasks.md` ausente | 0 | `not-applicable` |
+| `<DIR>/tasks.md` ausente OU sem nenhuma linha de tarefa | 0 | `not-applicable` |
 
 A ultima linha da tabela implementa FR-005: feature sem backlog nao e travada
-por uma etapa que nao se aplica a ela.
+por uma etapa que nao se aplica a ela. **Decisao de definicao (fecha
+CHK004, paridade com `contracts/pipeline-stage-machine.md` §D2)**:
+`tasks.md` presente mas sem nenhuma linha `- [ ]`/`- [~]`/`- [x]`/`- [!]` e
+tratado identicamente a `tasks.md` ausente.
 
 ## `accept-risk`
 
@@ -92,6 +103,51 @@ Apenda registro `outcome=risk-accepted` com o digest corrente do `tasks.md`.
 
 O aceite vale apenas para o digest corrente (ver `data-model.md`
 §State transitions).
+
+## `audit` (fecha CHK016)
+
+Mecanismo de auditoria agregada que comprova objetivamente SC-002/SC-003
+("100% das execucoes autonomas concluidas passam por convergencia" / "100%
+das reaberturas exigem novo veredito") — sem ele, os dois Success Criteria
+eram aspiracionais, sem instrumento de medicao (gap do CHK016).
+
+```
+converge-status.sh audit --specs-root DIR [--json]
+```
+
+`DIR` e a raiz de specs (ex.: `docs/specs`). Para CADA subdiretorio
+imediato `DIR/<feature>/` que contem `<feature>/tasks.md` **totalmente
+concluido** (zero linhas `- [ ]`/`- [~]` — o mesmo criterio de "backlog
+esgotado" usado pelo gate `execute-task`→`converge`), o subcomando aplica a
+MESMA logica de veredito do subcomando `check` (nao reimplementa: reusa o
+parse ancorado + comparacao de `tasks-digest`) e classifica a feature como:
+
+- **conforme**: ultimo registro tem `outcome=clean` OU
+  `outcome=risk-accepted`, com `tasks-digest` batendo o `tasks.md` atual
+  (equivalente aos vereditos `converged`/`risk-accepted` de `check`, exit 0);
+- **nao-conforme**: qualquer outro veredito de `check` (`never`,
+  `pending actionable=N`, `stale`) — feature com backlog esgotado que nao
+  comprova convergencia para o estado corrente do codigo.
+
+Features cujo `tasks.md` esta ausente, vazio (regra do 1.2) ou ainda com
+tarefas pendentes NAO entram na auditoria (nao sao "execucoes concluidas" —
+fora do escopo de SC-002/SC-003).
+
+| Situacao | Exit | stdout (sem `--json`) |
+|----------|------|------------------------|
+| todas as features com backlog esgotado sao conformes (inclui zero features elegiveis) | 0 | `conformant=N non-conformant=0` |
+| ao menos uma feature com backlog esgotado e nao-conforme | 1 | `conformant=N non-conformant=M` seguido de uma linha `<feature>: <veredito>` por nao-conforme (veredito no mesmo vocabulario fechado de `check`) |
+| `--specs-root` ausente ou nao e diretorio | 2 | — |
+
+Com `--json`, stdout e um array `[{"feature":"<nome>","veredito":"<check-vocab>"}, ...]`
+contendo **apenas** as features nao-conformes (lista vazia `[]` quando
+`exit=0`) — evita depender de `jq` no proprio script (Constitution II) ao
+mesmo tempo em que oferece saida parseavel para o consumidor.
+
+`audit` e read-only: nunca grava em `converge-report.md`, nunca chama
+`record`/`accept-risk`. E o instrumento de medicao citado no fechamento do
+CHK016; `quickstart.md` Cenario 21 exercita sobre um conjunto sintetico de
+features conformes e nao-conformes.
 
 ## Requisitos de seguranca do script (plan.md §Revisao de seguranca)
 

@@ -21,7 +21,7 @@ Formato literal (comentario HTML de linha unica):
 | `outcome` | enum | sim | `clean` \| `actionable` \| `risk-accepted` | conjunto fechado |
 | `provenance` | enum | sim | `gate` \| `standalone` | FR-010; parametro explicito, nunca inferido |
 | `at` | string | sim | ISO 8601 UTC (`%Y-%m-%dT%H:%M:%SZ`) | ordem cronologica = ordem de append |
-| `actionable` | int | sim | `>= 0` | achados acionaveis da invocacao; `0` quando `outcome=clean` |
+| `actionable` | int | sim | `>= 0` | achados acionaveis da invocacao; `0` quando `outcome=clean`. **Decisao de definicao (fecha CHK002)**: achados classificados **so** como `unrequested` NAO contam nesta contagem nem impedem `outcome=clean` — `unrequested` e achado de revisao (SKILL.md ETAPA 6: "MUST virar tarefa `kind=revisar`", nunca "implementar"), distinto por natureza de `missing`/`partial`/`contradicts`, que sao os unicos tipos que compoem `actionable`. Uma invocacao com achados so `unrequested` registra `outcome=clean; actionable=0`, mesmo apendando fase de revisao ao `tasks.md` |
 | `tasks-digest` | string | sim | 12 hex minusculos | digest do `tasks.md` no momento do registro (Decision 6) |
 | `decision-id` | string | nao | `dec-NNN` | so em `outcome=risk-accepted` sob execucao autonoma |
 | `note` | string | nao | texto livre sem `;` nem `-->` | justificativa curta do aceite de risco |

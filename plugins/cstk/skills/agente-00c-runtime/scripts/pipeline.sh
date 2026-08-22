@@ -7,7 +7,8 @@
 #
 # Subcomandos:
 #   pipeline.sh stages
-#       — imprime as 10 etapas canonicas (uma por linha)
+#       — imprime as 11 etapas canonicas (uma por linha, D1: feature
+#         pipeline-converge insere `converge` entre execute-task e review-task)
 #   pipeline.sh next-stage --current STAGE
 #       — imprime proxima etapa em ordem linear (vazio se ja na ultima)
 #   pipeline.sh prev-stage --current STAGE
@@ -93,7 +94,7 @@ trap state_read_cleanup EXIT INT TERM
 _PL_NAME="pipeline"
 
 # Lista canonica em ordem (FR-004; tasks.md 3.1.1).
-_PL_STAGES_LIST="briefing constitution specify clarify plan checklist create-tasks execute-task review-task review-features"
+_PL_STAGES_LIST="briefing constitution specify clarify plan checklist create-tasks execute-task converge review-task review-features"
 
 _pl_die_usage() {
   printf '%s: %s\n' "$_PL_NAME" "$1" >&2
@@ -117,7 +118,8 @@ USO:
                                 [--projeto-alvo-path PAP] [--mode default|roadmap]
 
   --mode (feature roadmap-mode, contracts/cli-roadmap-mode.md §3): omitido
-  ou 'default' => as 10 etapas canonicas (_PL_STAGES_LIST, INALTERADA);
+  ou 'default' => as 11 etapas canonicas (_PL_STAGES_LIST, D1: inclui
+  `converge` entre execute-task e review-task);
   'roadmap' => lista escopada "briefing constitution roadmap"; qualquer
   outro valor => exit 2. `--stage roadmap` em detect-completion so e
   aceito com `--mode roadmap` (fail-closed; lista global NUNCA se alarga).
@@ -144,9 +146,15 @@ _pl_is_valid_stage() {
 
 # ---------- --mode (feature roadmap-mode, contracts/cli-roadmap-mode.md §3) ----------
 #
-# _PL_STAGES_LIST permanece INALTERADA (invariante dura, SC-003): --mode
-# NUNCA edita a lista global, apenas seleciona qual lista os subcomandos
-# `stages`/`next-stage`/`prev-stage` iteram. research.md Decision 2.
+# O invariante duro (SC-003, research.md Decision 2) e sobre `--mode`, NAO
+# sobre o CONTEUDO de _PL_STAGES_LIST: `--mode` NUNCA edita a lista global
+# dinamicamente, apenas seleciona qual lista os subcomandos
+# `stages`/`next-stage`/`prev-stage` iteram (`default` -> _PL_STAGES_LIST
+# tal como declarada; `roadmap` -> lista escopada `briefing constitution
+# roadmap`). Isso NAO significa que o CONTEUDO de _PL_STAGES_LIST e
+# permanentemente imutavel entre features do produto — evolucao do produto
+# ja alterou seu conteudo (pipeline-converge, D1: insercao de `converge`
+# entre execute-task e review-task) sem violar este invariante.
 
 # _pl_validate_mode MODE -> exit 0 se MODE e "", "default" ou "roadmap";
 # senao morre com exit 2 (uso incorreto). Chamada DIRETA (nunca dentro de
@@ -489,8 +497,11 @@ _pl_validate_roadmap() {
 #
 # --mode (feature roadmap-mode, §3.1): a validacao de --stage e
 # `--mode`-aware, NAO globalmente permissiva — `--stage roadmap` so e
-# aceito com `--mode roadmap`; a lista global (_PL_STAGES_LIST) nunca se
-# alarga (research.md Decision 2).
+# aceito com `--mode roadmap`; `--mode` em si nunca alarga dinamicamente a
+# lista global (_PL_STAGES_LIST) (research.md Decision 2). Distinto de
+# mudanca de PRODUTO no conteudo declarado de _PL_STAGES_LIST (ex.:
+# pipeline-converge D1, insercao de `converge`) — essa e uma decisao
+# separada, nao uma violacao deste invariante de `--mode`.
 _pl_cmd_detect_completion() {
   _fd=""
   _st=""
@@ -568,6 +579,62 @@ _pl_cmd_detect_completion() {
       # Pelo menos 1 marcacao [x] em tasks.md
       [ -f "$_fd/tasks.md" ] || return 1
       grep -q '^[[:space:]]*-[[:space:]]*\[x\]' "$_fd/tasks.md" 2>/dev/null || return 1
+      ;;
+    converge)
+      # docs/specs/pipeline-converge/contracts/pipeline-stage-machine.md §D2
+      # (tarefa 3.2). Ordem das checagens e deliberada:
+      #   1. tasks.md ausente OU sem nenhuma linha de tarefa (qualquer
+      #      estado [ ]/[~]/[x]/[!]) -> etapa nao se aplica (FR-005 + regra
+      #      da tarefa 1.2, fecha CHK004) -> exit 0, sem consultar a skill.
+      #   2. skill `converge` nao instalada (diretorio ausente) -> exit 0 +
+      #      aviso — degradacao aceitavel, pipeline.sh pertence a
+      #      agente-00c-runtime e precisa funcionar sem a skill converge.
+      #   3. skill instalada mas converge-status.sh ausente/nao-executavel/
+      #      falho -> exit 1 (fail-closed, F1) + diagnostico — catalogo
+      #      corrompido NAO pode virar "converge concluida" silenciosa.
+      #   4. skill instalada e script ok -> delega a `converge-status.sh
+      #      check` e propaga o veredito (exit 0 convergida/risk-accepted;
+      #      exit 1 ou 3 (pendente/stale/nunca-convergiu) -> nao completa).
+      if [ ! -f "$_fd/tasks.md" ] \
+        || ! grep -qE '^[[:space:]]*-[[:space:]]*\[[ x~!]\]' "$_fd/tasks.md" 2>/dev/null; then
+        return 0
+      fi
+
+      _pl_cvg_self_dir=${0%/*}
+      _pl_cvg_dir_dev="$_pl_cvg_self_dir/../../converge"
+      _pl_cvg_dir_install="${HOME}/.claude/skills/converge"
+      if [ -d "$_pl_cvg_dir_dev" ]; then
+        _pl_cvg_dir=$_pl_cvg_dir_dev
+      elif [ -d "$_pl_cvg_dir_install" ]; then
+        _pl_cvg_dir=$_pl_cvg_dir_install
+      else
+        echo "pipeline: skill 'converge' nao instalada — etapa 'converge' tratada como nao-aplicavel (exit 0)" >&2
+        return 0
+      fi
+
+      _pl_cvg_status="$_pl_cvg_dir/scripts/converge-status.sh"
+      if [ ! -x "$_pl_cvg_status" ]; then
+        echo "pipeline: skill 'converge' instalada MAS converge-status.sh ausente/nao-executavel em $_pl_cvg_status (catalogo corrompido, fail-closed F1)" >&2
+        return 1
+      fi
+
+      # NAO usar `if cmd; then ...; fi` sem `else` para capturar $? depois —
+      # POSIX define o exit status do `if` sem `else` como 0 quando a
+      # condicao falha (nao o exit status real do comando testado). O
+      # `else` explicito abaixo e obrigatorio para `_pl_cvg_exit=$?`
+      # capturar o exit code verdadeiro de converge-status.sh.
+      if "$_pl_cvg_status" check --feature-dir "$_fd" --quiet; then
+        return 0
+      else
+        _pl_cvg_exit=$?
+      fi
+      case "$_pl_cvg_exit" in
+        1 | 3) return 1 ;;
+        *)
+          echo "pipeline: converge-status.sh check falhou de forma inesperada (exit $_pl_cvg_exit) em $_pl_cvg_status — fail-closed (F1)" >&2
+          return 1
+          ;;
+      esac
       ;;
     review-task|review-features)
       # Etapas de review nao deixam artefato persistente — sempre completas

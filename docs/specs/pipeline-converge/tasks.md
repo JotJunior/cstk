@@ -30,17 +30,17 @@ desenho) e nos gaps `{auto}` abertos de `checklists/requirements.md`
 Ref: `checklists/requirements.md` CHK002; `data-model.md` campo `actionable`;
 skill `converge` SKILL.md ETAPA 6 (comportamento pre-existente)
 
-- [ ] 1.1.1 Ler `plugins/cstk/skills/converge/SKILL.md` ETAPA 6 e confirmar,
+- [x] 1.1.1 Ler `plugins/cstk/skills/converge/SKILL.md` ETAPA 6 e confirmar,
       no codigo/prosa existente, como `unrequested` e hoje diferenciado de
       `missing`/`partial`/`contradicts`
-- [ ] 1.1.2 Registrar a decisao no `data-model.md` (campo `actionable` do
+- [x] 1.1.2 Registrar a decisao no `data-model.md` (campo `actionable` do
       `ConvergenceStatusRecord`): achados classificados **so** como
       `unrequested` NAO contam em `actionable` nem impedem `outcome=clean`
       — `unrequested` e achado de revisao, nunca acionavel na definicao de
       FR-003/FR-004
-- [ ] 1.1.3 Atualizar `contracts/converge-status-cli.md` (subcomando
+- [x] 1.1.3 Atualizar `contracts/converge-status-cli.md` (subcomando
       `record`) citando explicitamente a regra acima
-- [ ] 1.1.4 Ref cruzada: marcar CHK002 como fechado em
+- [x] 1.1.4 Ref cruzada: marcar CHK002 como fechado em
       `checklists/requirements.md` apos a atualizacao dos artefatos
 
 ### 1.2 Definir `tasks.md` vazio vs ausente para `detect-completion`/`check` `[A]`
@@ -48,33 +48,33 @@ skill `converge` SKILL.md ETAPA 6 (comportamento pre-existente)
 Ref: `checklists/requirements.md` CHK004; `contracts/pipeline-stage-machine.md`
 §D2; `contracts/converge-status-cli.md` subcomando `check`
 
-- [ ] 1.2.1 Decidir a regra: `tasks.md` presente mas sem nenhuma linha de
+- [x] 1.2.1 Decidir a regra: `tasks.md` presente mas sem nenhuma linha de
       tarefa (0 checkboxes) e tratado **igual** a `tasks.md` ausente — etapa
       `converge` nao se aplica (FR-005), mesmo veredito `not-applicable`
-- [ ] 1.2.2 Atualizar `contracts/pipeline-stage-machine.md` §D2, linha
+- [x] 1.2.2 Atualizar `contracts/pipeline-stage-machine.md` §D2, linha
       "`DIR/tasks.md` ausente" -> "`DIR/tasks.md` ausente OU sem nenhuma
       linha de tarefa"
-- [ ] 1.2.3 Atualizar `contracts/converge-status-cli.md` tabela de `check`
+- [x] 1.2.3 Atualizar `contracts/converge-status-cli.md` tabela de `check`
       na mesma linha, mantendo consistencia entre os dois contratos
-- [ ] 1.2.4 Ref cruzada: marcar CHK004 como fechado apos a atualizacao
+- [x] 1.2.4 Ref cruzada: marcar CHK004 como fechado apos a atualizacao
 
 ### 1.3 Especificar mecanismo de auditoria agregada para SC-002/SC-003 `[M]`
 
 Ref: `checklists/requirements.md` CHK016; spec.md SC-002/SC-003
 
-- [ ] 1.3.1 Especificar subcomando novo `converge-status.sh audit
+- [x] 1.3.1 Especificar subcomando novo `converge-status.sh audit
       --specs-root DIR [--json]`: para cada `DIR/<feature>/tasks.md`
       totalmente concluido (zero linhas `- [ ]`/`- [~]`), verifica se ha
       registro `outcome=clean|risk-accepted` com `tasks-digest` batendo o
       atual; agrega contagem conforme/nao-conforme e emite exit 1 se houver
       pelo menos um nao-conforme (mecanismo objetivo e automatizavel,
       fechando o gap "aspiracional sem instrumento" do CHK016)
-- [ ] 1.3.2 Adicionar a secao `audit` em `contracts/converge-status-cli.md`
+- [x] 1.3.2 Adicionar a secao `audit` em `contracts/converge-status-cli.md`
       com a tabela de exit codes/stdout, no mesmo padrao das demais
-- [ ] 1.3.3 Adicionar cenario de validacao dedicado em `quickstart.md`
+- [x] 1.3.3 Adicionar cenario de validacao dedicado em `quickstart.md`
       (Cenario 21) exercitando `audit` sobre um conjunto sintetico de
       features conformes e nao-conformes
-- [ ] 1.3.4 Ref cruzada: marcar CHK016 como fechado apos a atualizacao
+- [x] 1.3.4 Ref cruzada: marcar CHK016 como fechado apos a atualizacao
 
 ---
 
@@ -86,58 +86,58 @@ Ref: `contracts/converge-status-cli.md`; `data-model.md`
 `ConvergenceStatusRecord`; plan.md Faseamento F1; plan.md §Revisao de
 seguranca F1-F8
 
-- [ ] 2.1.1 Criar `plugins/cstk/skills/converge/scripts/converge-status.sh`
+- [x] 2.1.1 Criar `plugins/cstk/skills/converge/scripts/converge-status.sh`
       (`#!/bin/sh`, `set -eu`), dispatch de subcomandos
       `record|latest|check|accept-risk|audit`, sem `jq` (Constitution II)
-- [ ] 2.1.2 Implementar `record`: valida coerencia `outcome=clean` <=>
+- [x] 2.1.2 Implementar `record`: valida coerencia `outcome=clean` <=>
       `actionable=0` e `outcome=actionable` <=> `actionable>=1`; calcula
       `at` (UTC `%Y-%m-%dT%H:%M:%SZ`) e `tasks-digest` reusando o helper
       `sha256-12` ja usado por `converge-tasks.sh gap-key`
-- [ ] 2.1.3 Implementar escrita atomica: `mktemp -- "<DIR>/converge-report.md.XXXXXX"`
+- [x] 2.1.3 Implementar escrita atomica: `mktemp -- "<DIR>/converge-report.md.XXXXXX"`
       no MESMO diretorio do destino + `mv -f` (mesmo padrao de
       `converge-tasks.sh:303`), preservando integralmente o conteudo anterior
-- [ ] 2.1.4 Implementar contencao de `--feature-dir` reusando
+- [x] 2.1.4 Implementar contencao de `--feature-dir` reusando
       `plugins/cstk/skills/converge/scripts/path-contains.sh` (F3) — fora da
       raiz do repo ⇒ exit 2, sem escrita
-- [ ] 2.1.5 Implementar rejeicao de destino-symlink (F6): `converge-report.md`
+- [x] 2.1.5 Implementar rejeicao de destino-symlink (F6): `converge-report.md`
       existente e symlink ⇒ exit 2, sem escrita
-- [ ] 2.1.6 Implementar rejeicao de metacaracteres do formato (F7): valor de
+- [x] 2.1.6 Implementar rejeicao de metacaracteres do formato (F7): valor de
       qualquer campo (`--note`, `--justificativa`) contendo `;`, `-->` ou
       newline ⇒ exit 2; valores sempre por argv, nunca `eval`
-- [ ] 2.1.7 Implementar `latest`: imprime a ultima linha literal do arquivo
+- [x] 2.1.7 Implementar `latest`: imprime a ultima linha literal do arquivo
       (exit 0 com registro, exit 1 sem arquivo/sem registro)
-- [ ] 2.1.8 Implementar `check`: parse ancorado por regex
+- [x] 2.1.8 Implementar `check`: parse ancorado por regex
       `^<!-- converge-status: .* -->$` (F2, ignora toda prosa do arquivo),
       vocabulario de saida fechado (`converged`/`risk-accepted`/
       `pending actionable=N`/`stale`/`never`/`not-applicable`), aplicando a
       regra do 1.2 para `tasks.md` ausente/vazio
-- [ ] 2.1.9 Implementar `accept-risk`: grava `outcome=risk-accepted` com
+- [x] 2.1.9 Implementar `accept-risk`: grava `outcome=risk-accepted` com
       `tasks-digest` corrente; exige `--justificativa` OU `--decisao-id`
       (nunca aceite mudo); documentar no cabecalho do script que a
       invocacao e sempre do OPERADOR (F8) — nenhum outro consumidor deste
       script deve chamar este subcomando por conta propria
-- [ ] 2.1.10 Implementar `audit` conforme especificado na tarefa 1.3.1
+- [x] 2.1.10 Implementar `audit` conforme especificado na tarefa 1.3.1
 
 ### 2.2 Testes de `converge-status.sh` `[C]`
 
 Ref: regra de ouro `CLAUDE.md` (todo `.sh` novo em `plugins/cstk/skills/*/scripts/`
 exige `tests/test_<nome>.sh`); `quickstart.md` Cenarios 10, 16, 17, 18, 19, 20, 21
 
-- [ ] 2.2.1 Criar `tests/test_converge-status.sh` cobrindo `record` (clean,
+- [x] 2.2.1 Criar `tests/test_converge-status.sh` cobrindo `record` (clean,
       actionable, risk-accepted, e as 4 rejeicoes de coerencia/formato da
       tabela do contrato)
-- [ ] 2.2.2 Cobrir `check` nos 6 vereditos de `data-model.md` §State
+- [x] 2.2.2 Cobrir `check` nos 6 vereditos de `data-model.md` §State
       transitions (nunca convergiu, pending, clean+digest-bate,
       clean+digest-diverge/stale, risk-accepted+digest-bate,
       risk-accepted+digest-diverge/stale)
-- [ ] 2.2.3 Cobrir seguranca: contencao de path traversal (Cenario 16),
+- [x] 2.2.3 Cobrir seguranca: contencao de path traversal (Cenario 16),
       rejeicao de `;`/`-->`/newline (Cenario 17), prosa hostil no arquivo
       ignorada pelo parse ancorado (Cenario 18), destino-symlink recusado
       (Cenario 19)
-- [ ] 2.2.4 Cobrir Cenario 20 (aceite de risco so via chamada explicita a
+- [x] 2.2.4 Cobrir Cenario 20 (aceite de risco so via chamada explicita a
       `accept-risk`, nunca inferido de outro subcomando) e o novo
       subcomando `audit` (Cenario 21, tarefa 1.3.3)
-- [ ] 2.2.5 Rodar `./tests/run.sh --check-coverage` confirmando o teste
+- [x] 2.2.5 Rodar `./tests/run.sh --check-coverage` confirmando o teste
       mapeado corretamente (sem orfaos)
 
 ---
@@ -149,12 +149,12 @@ exige `tests/test_<nome>.sh`); `quickstart.md` Cenarios 10, 16, 17, 18, 19, 20, 
 Ref: `contracts/pipeline-stage-machine.md` §D1;
 `plugins/cstk/skills/agente-00c-runtime/scripts/pipeline.sh:96`
 
-- [ ] 3.1.1 Inserir `converge` entre `execute-task` e `review-task` em
+- [x] 3.1.1 Inserir `converge` entre `execute-task` e `review-task` em
       `_PL_STAGES_LIST` (linha 96)
-- [ ] 3.1.2 Reescrever os comentarios de `~linha 147` e `~490-492` para
+- [x] 3.1.2 Reescrever os comentarios de `~linha 147` e `~490-492` para
       afirmar exatamente o que e verdade — `--mode` nao altera a lista
       global — em vez de sugerir imutabilidade permanente do conteudo
-- [ ] 3.1.3 Confirmar (leitura + teste manual) que `--mode roadmap` continua
+- [x] 3.1.3 Confirmar (leitura + teste manual) que `--mode roadmap` continua
       devolvendo literalmente `briefing constitution roadmap`
 
 ### 3.2 Implementar `detect-completion --stage converge` `[C]`
@@ -162,28 +162,28 @@ Ref: `contracts/pipeline-stage-machine.md` §D1;
 Ref: `contracts/pipeline-stage-machine.md` §D2 (com a extensao da tarefa
 1.2 para `tasks.md` vazio); plan.md §Revisao de seguranca F1
 
-- [ ] 3.2.1 `tasks.md` ausente OU sem nenhuma linha de tarefa ⇒ exit 0
+- [x] 3.2.1 `tasks.md` ausente OU sem nenhuma linha de tarefa ⇒ exit 0
       (etapa nao se aplica, FR-005 + regra da tarefa 1.2)
-- [ ] 3.2.2 skill `converge` **nao instalada** (`skills/converge/` ausente)
+- [x] 3.2.2 skill `converge` **nao instalada** (`skills/converge/` ausente)
       ⇒ exit 0 + aviso em stderr (degradacao aceitavel, catalogo parcial)
-- [ ] 3.2.3 skill instalada mas `converge-status.sh` ausente/nao-executavel/
+- [x] 3.2.3 skill instalada mas `converge-status.sh` ausente/nao-executavel/
       falho ⇒ **exit 1 (fail-closed)** + diagnostico em stderr (F1 —
       catalogo corrompido nao pode virar "converge concluida" silenciosa)
-- [ ] 3.2.4 skill instalada e script ok ⇒ delega a `converge-status.sh check`
+- [x] 3.2.4 skill instalada e script ok ⇒ delega a `converge-status.sh check`
       e propaga o exit code (0 convergida/risk-accepted, 1 pendente/stale)
 
 ### 3.3 Testes de `pipeline.sh` `[A]`
 
 Ref: plan.md `tests/test_pipeline.sh` ALTERADO; `quickstart.md` Cenarios 1, 2, 14
 
-- [ ] 3.3.1 Atualizar `tests/test_pipeline.sh`: `stages`/`next-stage`/
+- [x] 3.3.1 Atualizar `tests/test_pipeline.sh`: `stages`/`next-stage`/
       `prev-stage` de 10 para 11 etapas
-- [ ] 3.3.2 Adicionar cenario: `next-stage --current execute-task` ==
+- [x] 3.3.2 Adicionar cenario: `next-stage --current execute-task` ==
       `converge`; `next-stage --current converge` == `review-task`;
       `prev-stage --current review-task` == `converge`
-- [ ] 3.3.3 Adicionar Cenario 14: distinguir skill-nao-instalada (exit 0)
+- [x] 3.3.3 Adicionar Cenario 14: distinguir skill-nao-instalada (exit 0)
       de script-corrompido-em-skill-instalada (exit 1 fail-closed)
-- [ ] 3.3.4 Regressao Cenario 2: `--mode roadmap` continua com exatamente 3
+- [x] 3.3.4 Regressao Cenario 2: `--mode roadmap` continua com exatamente 3
       etapas, inalterado
 
 ---

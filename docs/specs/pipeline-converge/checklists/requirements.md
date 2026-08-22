@@ -17,19 +17,17 @@ implementação proposta em `plan.md`/`research.md`/`data-model.md`/
   (`tasks.md` sem linha `- [ ]`/`- [~]` pendente) — sem espaço para
   interpretação concorrente.
 
-- [ ] CHK002 - O que conta como "divergência acionável" (FR-003/FR-004) está
+- [x] CHK002 - O que conta como "divergência acionável" (FR-003/FR-004) está
   definido na spec, inclusive o tratamento de achados classificados como
   `unrequested`? [Completude, Ambiguity, Spec §FR-003, FR-004] {auto}
-  `[Ambiguity]`: `spec.md` não define "acionável". A skill `converge`
-  pré-existente já distingue achados **acionáveis** (`missing`/`partial`/
-  `contradicts`) de achados de **revisão** (`unrequested`) — ambos disparam
-  apêndice de fase (SKILL.md ETAPA 6), mas só os primeiros são chamados
-  "acionáveis" nessa fonte. Nem `spec.md`, nem `data-model.md` (campo
-  `actionable`, inteiro) reconciliam explicitamente se um achado
-  `unrequested`-only entra na contagem de `actionable` do
-  `ConvergenceStatusRecord`. Sem essa reconciliação, dois avaliadores podem
-  divergir sobre se uma feature com só achados `unrequested` deve registrar
-  `outcome=clean` (0 achados acionáveis) ou `outcome=actionable`.
+  Evidência (fechado na tarefa 1.1): `data-model.md` campo `actionable` do
+  `ConvergenceStatusRecord` e `contracts/converge-status-cli.md` §`record`
+  agora declaram explicitamente que achados classificados **só** como
+  `unrequested` NÃO contam em `actionable` nem impedem `outcome=clean` —
+  `unrequested` é achado de revisão (SKILL.md ETAPA 6: "MUST virar tarefa
+  `kind=revisar`"), nunca "implementar", distinto por natureza de
+  `missing`/`partial`/`contradicts`, os únicos tipos que compõem
+  `actionable`.
 
 - [x] CHK003 - Estão delimitadas as superfícies de documentação que precisam
   refletir a etapa nova (FR-001/FR-009), evitando lista incompleta que
@@ -38,15 +36,15 @@ implementação proposta em `plan.md`/`research.md`/`data-model.md`/
   (docs, docs-site, README, CONTRIBUTING, CLAUDE.md, CHANGELOG) e
   `research.md` Decision 11 justifica cada superfície individualmente.
 
-- [ ] CHK004 - FR-005 ("fluxo que nunca passou por criação/execução de
+- [x] CHK004 - FR-005 ("fluxo que nunca passou por criação/execução de
   tarefas") delimita precisamente os casos-fronteira — `tasks.md` ausente
   vs. `tasks.md` presente porém vazio (0 tarefas)? [Completude, Gap, Spec
   §FR-005] {auto}
-  `[Gap]`: FR-005 e o Edge Case correspondente só descrevem a AUSÊNCIA do
-  artefato de backlog. O contrato `pipeline-stage-machine.md` §D2 resolve
-  apenas `DIR/tasks.md ausente`. Nenhum requisito ou contrato cobre
-  explicitamente `tasks.md` existente mas sem nenhuma tarefa (backlog
-  esvaziado por edição manual) — comportamento nesse caso fica indefinido.
+  Evidência (fechado na tarefa 1.2): `contracts/pipeline-stage-machine.md`
+  §D2 e `contracts/converge-status-cli.md` §`check` agora declaram
+  explicitamente que `tasks.md` presente mas sem nenhuma linha de tarefa é
+  tratado **igual** a `tasks.md` ausente — mesmo veredito `not-applicable`/
+  exit 0 nos dois casos, paridade mantida entre os dois contratos.
 
 - [x] CHK005 - FR-010 (proveniência) define um conjunto fechado de valores
   possíveis para o rótulo, sem terceiro caso ambíguo? [Completude, Spec
@@ -140,18 +138,17 @@ implementação proposta em `plan.md`/`research.md`/`data-model.md`/
   ou contagem de re-leituras definidos). Julgamento do dono do produto
   sobre se o texto de próximos passos gerado é suficientemente inequívoco.
 
-- [ ] CHK016 - Existe mecanismo de auditoria declarado (ex.: query
+- [x] CHK016 - Existe mecanismo de auditoria declarado (ex.: query
   cross-execução) que permita comprovar objetivamente os "100%" de
   SC-002/SC-003, ou a métrica é aspiracional sem instrumento de medição?
   [Mensurabilidade, Gap, Spec §SC-002, SC-003] {auto}
-  `[Gap]`: nem `plan.md` nem `quickstart.md` descrevem um mecanismo de
-  auditoria agregada (ex.: query na `knowledge.db`, relatório de portfólio)
-  capaz de comprovar "100% das execuções autônomas concluídas" ou "100% das
-  reaberturas". O `quickstart.md` cobre os comportamentos UNITÁRIOS
-  (Cenários 4/5/7/8/13 — uma execução de cada vez), mas nenhum cenário
-  valida a agregação declarada nos dois Success Criteria. Sem instrumento de
-  medição, SC-002/SC-003 são verificáveis apenas por auditoria manual
-  amostral, não por "100%" comprovável.
+  Evidência (fechado na tarefa 1.3): `contracts/converge-status-cli.md`
+  §`audit` especifica `converge-status.sh audit --specs-root DIR [--json]`
+  — para cada feature com backlog esgotado, verifica se o último registro é
+  `outcome=clean|risk-accepted` com `tasks-digest` batendo o atual; agrega
+  conforme/não-conforme e sai `1` havendo ao menos um não-conforme. Mecanismo
+  objetivo e automatizável, exercitado em `quickstart.md` Cenário 21 sobre um
+  conjunto sintético de 4+1 features.
 
 - [x] CHK017 - SC-004 ("lista idêntica em todos os pontos") é verificável por
   meio automatizável, não apenas por inspeção manual? [Mensurabilidade, Spec

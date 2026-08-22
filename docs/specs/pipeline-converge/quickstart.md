@@ -199,3 +199,34 @@ Convencao: `FD` = diretorio da feature (ex.: `docs/specs/minha-feature`);
    de risco e encerra a onda — **nao** invoca `accept-risk` por conta propria.
 3. **Expected**: o registro `outcome=risk-accepted` so aparece no artefato
    apos resposta humana ao bloqueio, com `decision-id` vinculado.
+
+## Cenario 21 — Auditoria agregada `audit` (SC-002/SC-003, CHK016)
+
+1. Montar um `--specs-root` sintetico com 4 features:
+   - `feat-a/tasks.md` totalmente concluido + `converge-report.md` com
+     ultimo registro `outcome=clean` e `tasks-digest` batendo o `tasks.md`
+     atual (conforme);
+   - `feat-b/tasks.md` totalmente concluido + `converge-report.md` com
+     ultimo registro `outcome=risk-accepted` e digest batendo (conforme);
+   - `feat-c/tasks.md` totalmente concluido, SEM `converge-report.md`
+     (nunca convergiu — nao-conforme, veredito `never`);
+   - `feat-d/tasks.md` totalmente concluido + `converge-report.md` com
+     `outcome=clean` mas `tasks-digest` desatualizado (backlog mudou depois
+     do registro — nao-conforme, veredito `stale`).
+2. Rodar `converge-status.sh audit --specs-root <root>`.
+   **Expected**: exit 1, stdout `conformant=2 non-conformant=2` seguido de
+   `feat-c: never` e `feat-d: stale` (uma linha por nao-conforme).
+3. Rodar `converge-status.sh audit --specs-root <root> --json`.
+   **Expected**: exit 1, stdout
+   `[{"feature":"feat-c","veredito":"never"},{"feature":"feat-d","veredito":"stale"}]`
+   (so as nao-conformes; ordem determinada pela ordem lexicografica dos
+   diretorios).
+4. Remover `feat-c` e `feat-d` do `--specs-root` (deixar so `feat-a`/`feat-b`)
+   e rodar `audit` de novo.
+   **Expected**: exit 0, stdout `conformant=2 non-conformant=0`,
+   `--json` imprime `[]`.
+5. Adicionar `feat-e/tasks.md` com tarefas AINDA pendentes (`- [ ]`) e rodar
+   `audit` mais uma vez.
+   **Expected**: `feat-e` NAO entra na contagem (nem conforme, nem
+   nao-conforme) — resultado identico ao passo 4, pois `feat-e` nao tem
+   backlog esgotado.

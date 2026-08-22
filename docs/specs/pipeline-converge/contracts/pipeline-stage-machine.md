@@ -62,11 +62,19 @@ pipeline.sh detect-completion --feature-dir DIR --stage converge
 
 | Situacao | Exit |
 |----------|------|
-| `DIR/tasks.md` ausente | 0 (FR-005 — etapa nao se aplica) |
+| `DIR/tasks.md` ausente OU sem nenhuma linha de tarefa | 0 (FR-005 — etapa nao se aplica) |
 | `converge-status.sh check` exit 0 | 0 |
 | `converge-status.sh check` exit 1 ou 3 | 1 |
 | skill `converge` **nao instalada** (diretorio `skills/converge/` ausente) | 0 + aviso em stderr — etapa nao se aplica |
 | skill `converge` instalada mas `converge-status.sh` ausente/nao-executavel/falho | **1 (fail-closed)** + diagnostico em stderr |
+
+**Decisao de definicao (fecha CHK004)**: `tasks.md` presente mas sem
+nenhuma linha de tarefa (0 checkboxes `- [ ]`/`- [~]`/`- [x]`/`- [!]`) e
+tratado **igual** a `tasks.md` ausente — a etapa `converge` nao se aplica
+(FR-005), mesmo veredito `not-applicable`/exit 0 nos dois casos. Um backlog
+esvaziado por edicao manual nao tem nada para reconciliar contra codigo, o
+mesmo raciocinio de FR-005 para features que nunca passaram por
+criacao/execucao de tarefas.
 
 A distincao das duas ultimas linhas e deliberada e e um requisito de
 seguranca (plan.md §Revisao de seguranca, F1). `pipeline.sh` pertence a skill
