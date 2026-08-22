@@ -566,3 +566,69 @@ do inventário. Quebra FR-001 e SC-004.
 - [x] 9.3.2 Varrer os demais frontmatters de `plugins/cstk/commands/` e `plugins/cstk/agents/` em busca de outras sequências SDD desatualizadas (SC-004)
 
 <!-- converge-key: b6d1cc660c1f -->
+
+## FASE 10 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 10.1 `Escopo de pipeline` do `agente-00c-feature-orchestrator.md` omite `converge` `[C]`
+
+Ref: FR-001 · tipo: `contradicts` · severidade: `HIGH`
+
+O frontmatter de `plugins/cstk/agents/agente-00c-feature-orchestrator.md` foi
+corrigido pela tarefa `9.2` (linha 3 hoje declara
+`...create-tasks→execute-task→converge→review-task`), mas o bloco de prosa
+`> **Escopo de pipeline**:` (linhas 38-42 do mesmo arquivo) continua
+enumerando a sequência oficial da feature-00c como
+`specify → clarify → plan → checklist → create-tasks → execute-task (loop
+por task) → review-task` — encadeando `execute-task` direto em `review-task`
+e omitindo `converge`. É o mesmo defeito de 9.1/9.2/9.3 numa superfície
+distinta do mesmo arquivo: o bloco é o enunciado de escopo do system prompt
+do orquestrador (logo, "documentação que descreve a sequência oficial de
+etapas" no sentido literal de FR-001) e diverge de `pipeline.sh stages`, que
+imprime 11 etapas com `converge` entre `execute-task` e `review-task`.
+Quebra FR-001 e SC-004 (lista idêntica em todos os pontos do toolkit).
+
+A tarefa `6.1` não cobriu este bloco: seus subitens enumeraram apenas a
+remoção do bloco "Gate incondicional", o ajuste do Loop principal para
+`end --advance` e o `--kind gate` — nenhum deles toca o enunciado de escopo.
+Por isso o achado é atribuído a `FR-001` (mesmo critério de atribuição já
+usado em `9.3`, para superfície fora do inventário de tarefas), e não a
+`6.1`.
+
+- [ ] 10.1.1 Corrigir `plugins/cstk/agents/agente-00c-feature-orchestrator.md` conforme `FR-001`: inserir `converge` entre `execute-task` e `review-task` no bloco `> **Escopo de pipeline**:`
+
+<!-- converge-key: 0c2b0b152b23 -->
+
+### 10.2 Tabela de primitivas do `agente-00c-orchestrator.md` declara "10 etapas SDD" `[C]`
+
+Ref: FR-001 · tipo: `contradicts` · severidade: `HIGH`
+
+`plugins/cstk/agents/agente-00c-orchestrator.md` (linha 108), na tabela de
+primitivas operacionais, descreve `pipeline.sh` como
+`State machine canonica das 10 etapas SDD`. A contagem contradiz o estado
+presente do código: `pipeline.sh stages` imprime **11** etapas
+(`briefing constitution specify clarify plan checklist create-tasks
+execute-task converge review-task review-features`) desde que esta feature
+promoveu `converge` a etapa regular de `_PL_STAGES_LIST` (FASE 3). A linha
+descreve a máquina de etapas oficial, logo cai em FR-001 ("qualquer
+mecanismo ou documentação que determine ou descreva a sequência oficial de
+etapas"), e corrigi-la exige **alterar** o número já escrito — não apenas
+acrescentar texto (rubrica `contradicts`).
+
+Assim como em `10.1`, a tarefa `6.1` não enumerou esta linha entre as
+superfícies de prosa a atualizar, por isso o achado é atribuído a `FR-001`.
+O `agente-00c-feature-orchestrator.md` não possui linha equivalente
+(verificado) — o defeito é exclusivo do orquestrador raiz.
+
+- [ ] 10.2.1 Corrigir `plugins/cstk/agents/agente-00c-orchestrator.md` conforme `FR-001`: atualizar `State machine canonica das 10 etapas SDD` para refletir as 11 etapas efetivas de `pipeline.sh stages`
+- [ ] 10.2.2 Varrer as demais afirmações de CONTAGEM de etapas (`N etapas`/`N stages`) em superfícies vivas do toolkit — fora de `CHANGELOG.md` e `docs/specs/**`, que são registro histórico/artefato de design — confirmando que nenhuma outra ficou em 10 (SC-004)
+
+<!-- converge-key: b1082aa4e59e -->
