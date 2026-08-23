@@ -175,17 +175,21 @@ Detalhes, diagrama do fluxo e atalhos em
 | **plan** | "plan", "plano técnico" | Plano de implementação: pesquisa, modelo de dados, contratos |
 | **checklist** | "checklist", "quality gate" | "Unit Tests for English" — valida qualidade dos REQUISITOS; gaps viram tarefas |
 | **create-tasks** | "criar tarefas", "criar backlog" | Backlog de tarefas por fases com dependências e criticidade |
-| **analyze** | "analyze", "analisar consistência" | Análise read-only de consistência cross-artifact |
 | **execute-task** | "executar tarefa", "execute task" | Executa tarefa seguindo workflow obrigatório de 9 etapas |
+| **converge** | "converge", "o código bate com a spec?" | Reconcilia spec/plan/tasks contra o código ATUAL e apenda gaps como nova fase de tasks. Etapa regular do pipeline entre execute-task e review-task nos orquestradores |
 | **review-task** | "revisar tarefas", "status das tarefas" | Relatório de status com progresso e recomendações |
+
+> `analyze` não é uma etapa sequencial numerada — é um **cross-check lateral
+> read-only** (spec/plan/tasks/constitution), utilizável a qualquer momento
+> a partir de `create-tasks`.
 
 ### Skills Complementares
 
 | Skill | Trigger | Descrição |
 |-------|---------|-----------|
 | **advisor** | "me aconselhe", "analise estratégica" | Conselheiro brutalmente honesto que disseca raciocínio e gera planos de ação |
+| **analyze** | "analyze", "analisar consistência" | Análise read-only de consistência cross-artifact |
 | **bugfix** | "bugfix", "fix bug", "debug" | Protocolo estruturado de correção de bugs multi-camada |
-| **converge** | "converge", "o código bate com a spec?" | Reconcilia spec/plan/tasks contra o código ATUAL e apenda gaps como nova fase de tasks. Gate incondicional entre execute-task e review-task nos orquestradores |
 | **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Testes E2E de integração full-stack (UI → API → banco → fila → efeitos colaterais) |
 | **apply-insights** | "aplicar insights", "melhorar claude.md" | Aplica insights de uso comprovados ao CLAUDE.md, hooks e workflows — ver [Insights de uso](#insights-de-uso) |
 | **owasp-security** | Ao revisar segurança | Revisão guiada por checklist (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Não substitui auditoria/pentest |

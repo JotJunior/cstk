@@ -2083,11 +2083,12 @@ EOF
 
 PHASE_MAP="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/references/phase-model-map.txt"
 
-# Recorte default "3 faixas balanceado" — as 11 fases do enum (data-model).
+# Recorte default "3 faixas balanceado" — as 12 fases do enum (data-model).
 # Mantido como fonte de verdade do teste; se o mapa evoluir, atualizar aqui.
 _PML_EXPECTED='plan|profunda|opus
 analyze|profunda|opus
 constitution|profunda|opus
+converge|profunda|opus
 specify|media|sonnet
 clarify|media|sonnet
 checklist|media|sonnet
@@ -2114,7 +2115,7 @@ scenario_fase1_map_existe_e_tem_header_versao() {
   esac
 }
 
-scenario_fase1_map_cobre_as_11_fases_do_recorte() {
+scenario_fase1_map_cobre_as_12_fases_do_recorte() {
   [ -f "$PHASE_MAP" ] || { _error "map ausente"; return 2; }
   # Para cada fase esperada, o lookup deve devolver faixa|modelo exatos.
   _ok=1
@@ -2126,7 +2127,7 @@ scenario_fase1_map_cobre_as_11_fases_do_recorte() {
     fi
   done > "$TMPDIR_TEST/pml_mismatch.txt" 2>/dev/null || true
   if [ -s "$TMPDIR_TEST/pml_mismatch.txt" ]; then
-    _fail "11 fases parseiam com faixa|modelo corretos" \
+    _fail "12 fases parseiam com faixa|modelo corretos" \
       "$(cat "$TMPDIR_TEST/pml_mismatch.txt")"
     return 1
   fi

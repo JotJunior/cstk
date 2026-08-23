@@ -1682,13 +1682,36 @@ _so_cmd_reconcile_wave() {
     fi
   fi
 
+  # Aviso SOFT para converge -> review-task (pipeline-converge, tarefa 6.2 /
+  # research.md Decision 14). Deliberadamente NAO e um hold bloqueante: a
+  # etapa `converge` nunca trava sozinha (FR-019 — "converge nao trava
+  # sozinha"; quem decide bloqueio e o orquestrador/operador). Reusa
+  # `pipeline.sh detect-completion --stage converge` (mesma resolucao de
+  # converge-status.sh que a etapa ja usa — sem logica nova) so para
+  # ANOTAR um aviso na next_instruction quando o veredito nao for
+  # converged/risk-accepted/not-applicable. A fase avanca normalmente; o
+  # gate real que de fato pode reter a feature e o soft gate ja existente
+  # em `review-task` (finding converge-pending), que permanece como rede.
+  _rcw_cvg_warn=""
+  if [ "$_rcw_phase" = "converge" ] && [ -n "$_rcw_md" ] && [ -n "$_rcw_next" ] \
+     && [ -f "$_rcw_pipeline" ]; then
+    _rcw_cvg_fd=$(dirname -- "$_rcw_md")
+    if ! sh "$_rcw_pipeline" detect-completion --feature-dir "$_rcw_cvg_fd" --stage converge >/dev/null 2>&1; then
+      _rcw_cvg_warn="AVISO: convergencia pendente em $_rcw_cvg_fd (converge-status.sh nao reportou converged/risk-accepted) — revisar em review-task antes de finalizar."
+    fi
+  fi
+
   if [ "$_rcw_dry" = "yes" ]; then
     if [ -n "${_rcw_hold_reason:-}" ]; then
       printf 'would reconcile: phase=%s (HOLD, %s) -> fecha onda sem avancar\n' "$_rcw_phase" "$_rcw_hold_reason"
       return 0
     fi
     if [ -n "$_rcw_next" ]; then
-      printf 'would reconcile: phase=%s -> next=%s motivo=etapa_concluida_avancando\n' "$_rcw_phase" "$_rcw_next"
+      if [ -n "$_rcw_cvg_warn" ]; then
+        printf 'would reconcile: phase=%s -> next=%s motivo=etapa_concluida_avancando (%s)\n' "$_rcw_phase" "$_rcw_next" "$_rcw_cvg_warn"
+      else
+        printf 'would reconcile: phase=%s -> next=%s motivo=etapa_concluida_avancando\n' "$_rcw_phase" "$_rcw_next"
+      fi
     else
       printf 'would reconcile: phase=%s (terminal) -> status=concluida motivo=concluido\n' "$_rcw_phase"
     fi
@@ -1718,7 +1741,7 @@ _so_cmd_reconcile_wave() {
     # ramo que nao toca current_stage; a next_instruction registra o
     # motivo para o pai/operador nao confundirem com onda perdida.
     _rcw_motivo="etapa_concluida_avancando"
-    _rcw_instr=$(printf 'Continuar etapa execute-task — %s (rede de seguranca do command pai NAO avancou a fase).' "$_rcw_hold_reason")
+    _rcw_instr=$(printf 'Continuar etapa %s — %s (rede de seguranca do command pai NAO avancou a fase).' "$_rcw_phase" "$_rcw_hold_reason")
     _so_cmd_end --state-dir "$_rcw_sdir" --motivo-termino "$_rcw_motivo" \
       --next-instruction "$_rcw_instr" >/dev/null
     printf 'reconciled (phase=%s motivo=%s HOLD: %s)\n' "$_rcw_phase" "$_rcw_motivo" "$_rcw_hold_reason"
@@ -1728,6 +1751,9 @@ _so_cmd_reconcile_wave() {
   if [ -n "$_rcw_next" ]; then
     _rcw_motivo="etapa_concluida_avancando"
     _rcw_instr=$(printf 'Iniciar etapa %s — retomada pela rede de seguranca do command pai (onda anterior fechada sem Schedule intent).' "$_rcw_next")
+    if [ -n "$_rcw_cvg_warn" ]; then
+      _rcw_instr="$_rcw_instr $_rcw_cvg_warn"
+    fi
     # --advance-from pina a MESMA fase ja resolvida acima (--phase do pai
     # ou .current_stage) — garante next identico ao _rcw_next do stdout.
     _so_cmd_end --state-dir "$_rcw_sdir" --motivo-termino "$_rcw_motivo" \
@@ -1760,7 +1786,11 @@ _so_cmd_reconcile_wave() {
   fi
 
   if [ -n "$_rcw_next" ]; then
-    printf 'reconciled (phase=%s motivo=%s next=%s)\n' "$_rcw_phase" "$_rcw_motivo" "$_rcw_next"
+    if [ -n "$_rcw_cvg_warn" ]; then
+      printf 'reconciled (phase=%s motivo=%s next=%s %s)\n' "$_rcw_phase" "$_rcw_motivo" "$_rcw_next" "$_rcw_cvg_warn"
+    else
+      printf 'reconciled (phase=%s motivo=%s next=%s)\n' "$_rcw_phase" "$_rcw_motivo" "$_rcw_next"
+    fi
   else
     printf 'reconciled (phase=%s motivo=%s terminal)\n' "$_rcw_phase" "$_rcw_motivo"
   fi

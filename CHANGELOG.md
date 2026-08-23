@@ -5,6 +5,64 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [9.0.0] - 2026-08-22
+
+Feature `pipeline-converge`: a skill `converge` deixa de ser um gate
+incondicional isolado entre `execute-task` e `review-task` e passa a ser
+**etapa regular da pipeline SDD oficial** (`_PL_STAGES_LIST`, `pipeline.sh`),
+de 10 para 11 etapas. **BREAKING** para qualquer consumidor (script, doc,
+integração externa) que hardcode a contagem/sequência antiga de 10 etapas —
+revoga explicitamente a Decision 5 da feature `skill-converge`, que mantinha
+`converge` fora de `_PL_STAGES_LIST`.
+
+### Changed
+
+- **`pipeline.sh`: `_PL_STAGES_LIST` ganha `converge`** entre `execute-task`
+  e `review-task` (10 → 11 etapas canônicas). `next-stage`/`prev-stage`/
+  `stages`/`detect-completion` continuam funcionando sem lógica nova —
+  `converge` passa pelo mesmo mecanismo genérico das demais etapas.
+- **Orquestradores (`agente-00c-orchestrator.md` /
+  `agente-00c-feature-orchestrator.md`): `converge` vira etapa regular do
+  Loop principal.** Removido o bloco de prosa "Gate incondicional
+  `convergence`" — a etapa agora é registrada com o mesmo nível de
+  auditoria/rastreabilidade das demais (`state-decisions.sh register` +
+  `state-ondas.sh record-skill`). `state-ondas.sh end --advance` avança
+  automaticamente de `execute-task` para `converge` via `pipeline.sh
+  next-stage`, sem lógica especial.
+- **`skill converge` ganha modo autônomo + provenance.** Ao rodar sob
+  `AGENTE_00C_STATE_DIR` (orquestradores autônomos), a skill se
+  auto-registra (two-step Decisão + `record-skill`) na sua ETAPA 7/8, sem
+  exigir que o orquestrador repita o registro.
+- **`execute-task`/`review-task`: soft gate de convergência (não-bloqueante).**
+  `review-task` reporta finding `converge-pending` quando há divergência
+  não-reconciliada, sem nunca travar a conclusão do relatório; aceite de
+  risco explícito libera a revisão e caduca quando o `tasks-digest` diverge
+  após edição do backlog.
+- **`phase-model-map.txt`: `converge|profunda|opus`** — mesmo piso de
+  `analyze`/`plan`/`constitution` (leitura semântica de código +
+  classificação de divergência é carga equivalente).
+- **`commit-mode.sh`/`show-tip.sh` reconhecem `converge` explicitamente**
+  (scope de commit `docs(converge): ...`, dica de fase, `--help`).
+- **Documentação da sequência oficial atualizada em todos os pontos**
+  (`docs/sdd-pipeline.md`, `docs/agente-00c.md`, `docs/fluxo-orquestradores-00c.md`,
+  `docs/cstk-panel/frontend-brief.md`, `docs-site/`, `README.md`,
+  `CONTRIBUTING.md` — bilingues onde aplicável) — `converge` sai da seção
+  "Complementary"/"Skills Complementares" e entra na sequência oficial do
+  pipeline SDD.
+
+### Fixed
+
+- **Divergência pré-existente do `analyze` na documentação (achado, não
+  nova decisão).** Vários pontos já descreviam `analyze` como etapa
+  sequencial numerada, quando `_PL_STAGES_LIST` nunca o incluiu — normalizado
+  para a representação de **cross-check read-only lateral** já adotada em
+  `CONTRIBUTING.md` (`analyze -. read-only cross-check .-> specify`) em
+  todos os pontos tocados por esta feature. Achado geral do `analyze` fora
+  das superfícies tocadas (ex.: `cli/lib/install.sh`,
+  `docs/01-briefing-discovery/briefing.md`, legado) permanece como
+  divergência conhecida — fora do escopo desta feature reclassificá-lo
+  (CHK024).
+
 ## [8.8.0] - 2026-08-21
 
 Feature `round-scoped-backups` (issue #150): os snapshots de onda
@@ -7033,6 +7091,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[9.0.0]: https://github.com/JotJunior/cstk/releases/tag/v9.0.0
 [8.8.0]: https://github.com/JotJunior/cstk/releases/tag/v8.8.0
 [8.7.0]: https://github.com/JotJunior/cstk/releases/tag/v8.7.0
 [8.6.0]: https://github.com/JotJunior/cstk/releases/tag/v8.6.0

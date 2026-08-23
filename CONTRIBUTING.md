@@ -59,7 +59,7 @@ Each skill consumes the artifact from the previous one:
 ```mermaid
 flowchart LR
     briefing --> constitution --> specify --> clarify --> plan
-    plan --> checklist --> create-tasks --> execute-task --> review-task
+    plan --> checklist --> create-tasks --> execute-task --> converge --> review-task
     analyze -. read-only cross-check .-> specify
 ```
 

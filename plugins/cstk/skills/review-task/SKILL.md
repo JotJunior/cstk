@@ -464,6 +464,68 @@ feature, ou execucoes 100% operacionais) → secao aparece com contagem "0"
 esta subsecao do review-task silenciosamente sem bloquear o restante do
 relatorio.
 
+### 4.9 Convergencia pendente — soft gate (pipeline-converge — FR-004)
+
+> Origem: feature `pipeline-converge`, FASE 5 (tarefa 5.2). Aplica-se a
+> QUALQUER feature SDD (`docs/specs/<feature>/tasks.md`) que tenha
+> `spec.md` E `tasks.md` — os dois pre-requisitos da skill `converge`.
+> Feature sem `tasks.md` (nunca passou por `create-tasks`) esta fora do
+> escopo (FR-005) — pule esta subsecao silenciosamente.
+
+**1. Consultar o veredito** — sempre no INICIO do relatorio, antes de
+priorizar tarefas pendentes (§6):
+
+```bash
+FD="$(dirname "$TASKS_MD")"   # docs/specs/<feature> — o mesmo resolvido na secao 2
+~/.claude/skills/converge/scripts/converge-status.sh check --feature-dir "$FD"
+# exit 0 stdout converged|risk-accepted   -> sem pendencia, siga normalmente
+# exit 1 stdout "pending actionable=N"    -> pendencia acionavel
+# exit 1 stdout stale                     -> aceite/limpeza anterior caducou (backlog mudou desde entao)
+# exit 3 stdout never                     -> convergencia nunca rodou para esta feature
+# exit 0 stdout not-applicable            -> tasks.md ausente/vazio (FR-005), pule esta subsecao
+```
+
+**2. Finding `converge-pending` — soft gate, NUNCA bloqueia (FR-004)**:
+vereditos `pending`, `stale` **e** `never` (os tres agrupados como
+"nao-conforme" pelo proprio `converge-status.sh audit` — contrato
+`converge-status-cli.md` §audit) viram o finding `converge-pending` no
+relatorio quando `tasks.md` **nao esta vazio**. O relatorio **e produzido
+normalmente** e a revisao de tarefas completa sem abortar — soft gate
+significa avisar, nunca travar (Cenario 6 de `quickstart.md`). `never` MUST
+entrar no mesmo finding que `pending`/`stale`: e o caso mais comum na
+pratica — a primeira vez que o backlog de uma feature termina, a
+convergencia tipicamente ainda nao rodou nenhuma vez.
+
+**3. Instruir o caminho correto de aceite de risco** (nunca execute
+nenhum dos dois voce mesmo — esta skill e READ-ONLY, §Contrato de saida):
+
+- **Execucao autonoma** (`state.json`/`state.db` de `feature-00c`/
+  `agente-00c` presente): instrua o orquestrador a (a) registrar
+  `state-decisions.sh register` descrevendo a decisao de aceitar o risco,
+  e (b) so ENTAO `converge-status.sh accept-risk --feature-dir "$FD"
+  --decisao-id <dec-NNN>` — nessa ordem, nunca o inverso.
+- **Execucao manual** (sem `state.json` ativo): instrua o operador humano
+  a rodar diretamente `converge-status.sh accept-risk --feature-dir "$FD"
+  --justificativa "<motivo>"` (sem `--decisao-id`, nao ha Decisao
+  auditavel a referenciar fora de execucao autonoma).
+- Em ambos os casos, apos o aceite, uma nova chamada a `check` (passo 1)
+  deve retornar `risk-accepted` — reexecute o `review-task` para confirmar
+  que o finding `converge-pending` some do relatorio (Cenario 7).
+
+**Gotcha F8 (herdado de `converge/SKILL.md`)**: o `review-task` — e
+qualquer orquestrador que o invoque — **nunca** chama `accept-risk` por
+conta propria, mesmo em modo autonomo. Um agente se auto-liberando do
+soft gate que a propria feature existe para criar esvaziaria o gate
+(ASI02/LLM06). O `review-task` so **reporta** e **instrui**; o aceite em
+si e sempre um ato do operador (via Decisao auditavel + confirmacao
+humana em execucao autonoma, ou diretamente pelo humano em execucao
+manual).
+
+**Defesa em profundidade**: `converge-status.sh` ausente (skill
+`converge` nao instalada) ou `$FD` nao resolvido → pule esta subsecao
+silenciosamente, sem bloquear o restante do `review-task` — mesmo padrao
+das secoes 4.6/4.7/4.8.
+
 ### 5. Acoes Automaticas
 
 Ao identificar inconsistencias:
@@ -581,6 +643,19 @@ Total de anomalias: M (esperado 0 — SC-002)
 
 ---
 
+<!-- INSERIR AQUI quando aplicavel — vide §4.9 (Convergencia pendente) -->
+## Convergencia
+
+Veredito (`converge-status.sh check`): `<converged|risk-accepted|pending actionable=N|stale|never|not-applicable>`
+
+<!-- se pending/stale/never (com tasks.md nao-vazio): finding
+     `converge-pending` — soft gate, NUNCA bloqueia o relatorio. Instruir
+     o caminho de aceite (Decisao auditavel + accept-risk --decisao-id em
+     execucao autonoma; accept-risk --justificativa direto em execucao
+     manual) — ver §4.9. -->
+
+---
+
 ## Recomendacoes
 
 ### Acoes Imediatas
@@ -601,6 +676,8 @@ Antes de finalizar o relatorio:
 - [ ] Analisei dependencias entre tarefas
 - [ ] Priorizei tarefas pendentes
 - [ ] Forneci top 3 recomendacoes acionaveis
+- [ ] Consultei o veredito de convergencia (`converge-status.sh check`,
+      §4.9) quando a feature tem `spec.md` + `tasks.md`
 - [ ] Relatorio esta claro e objetivo
 
 ---

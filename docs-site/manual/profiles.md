@@ -14,8 +14,10 @@ Spec-Driven Development.
 
 - **`sdd`** — voce esta comecando uma feature do zero e quer o pipeline
   completo (`briefing` -> `constitution` -> `specify` -> `clarify` -> `plan`
-  -> `checklist` -> `create-tasks` -> `analyze` -> `execute-task` ->
-  `review-task`). Default global, suficiente para 80% dos casos.
+  -> `checklist` -> `create-tasks` -> `execute-task` -> `converge` ->
+  `review-task`). `analyze` tambem faz parte do perfil, mas como cross-check
+  read-only lateral (nao etapa sequencial). Default global, suficiente para
+  80% dos casos.
 - **`complementary`** — voce ja tem o `sdd` instalado e quer skills
   ortogonais (`advisor`, `bugfix`, `owasp-security`, `apply-insights`,
   `validate-docs-rendered`, etc).

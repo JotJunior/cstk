@@ -174,17 +174,21 @@ Details, flow diagram and shortcuts in
 | **plan** | "plan", "plano técnico" | Implementation plan: research, data model, contracts |
 | **checklist** | "checklist", "quality gate" | "Unit Tests for English" — validates REQUIREMENT quality; gaps become tasks |
 | **create-tasks** | "criar tarefas", "criar backlog" | Task backlog by phases with dependencies and criticality |
-| **analyze** | "analyze", "analisar consistência" | Read-only cross-artifact consistency analysis |
 | **execute-task** | "executar tarefa", "execute task" | Executes a task following the mandatory 9-step workflow |
+| **converge** | "converge", "o código bate com a spec?" | Reconciles spec/plan/tasks against the CURRENT code and appends gaps as a new task phase. Regular pipeline stage between execute-task and review-task in the orchestrators |
 | **review-task** | "revisar tarefas", "status das tarefas" | Status report with progress and recommendations |
+
+> `analyze` is not a numbered sequential step — it is a **read-only lateral
+> cross-check** (spec/plan/tasks/constitution), usable at any point from
+> `create-tasks` onward.
 
 ### Complementary Skills
 
 | Skill | Trigger | Description |
 |-------|---------|-----------|
 | **advisor** | "me aconselhe", "analise estratégica" | Brutally honest advisor that dissects reasoning and generates action plans |
+| **analyze** | "analyze", "analisar consistência" | Read-only cross-artifact consistency analysis |
 | **bugfix** | "bugfix", "fix bug", "debug" | Structured multi-layer bug-fixing protocol |
-| **converge** | "converge", "o código bate com a spec?" | Reconciles spec/plan/tasks against the CURRENT code and appends gaps as a new task phase. Unconditional gate between execute-task and review-task in the orchestrators |
 | **e2e-integration-flow** | "e2e", "playwright", "validar fluxo completo" | Full-stack E2E integration tests (UI → API → database → queue → side effects) |
 | **apply-insights** | "aplicar insights", "melhorar claude.md" | Applies proven usage insights to CLAUDE.md, hooks and workflows — see [Usage insights](#usage-insights) |
 | **owasp-security** | When reviewing security | Checklist-guided review (OWASP Top 10:2025, ASVS 5.0, LLM/Agentic, NIST, OAuth 2.1...). Does not replace audit/pentest |

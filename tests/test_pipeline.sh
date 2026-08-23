@@ -95,7 +95,7 @@ Contexto curto do portfolio.
 EOF
 }
 
-scenario_stages_lista_10_etapas_em_ordem() {
+scenario_stages_lista_11_etapas_em_ordem() {
   capture "$SCRIPT" stages
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stages exit" "$_CAPTURED_EXIT"; return 1; }
   _expected="briefing
@@ -106,6 +106,7 @@ plan
 checklist
 create-tasks
 execute-task
+converge
 review-task
 review-features"
   if [ "$_CAPTURED_STDOUT" != "$_expected" ]; then
@@ -123,6 +124,28 @@ scenario_next_stage_avanca_linear() {
   assert_stdout_contains "constitution" || return 1
   capture "$SCRIPT" next-stage --current plan
   assert_stdout_contains "checklist" || return 1
+}
+
+# tarefa 3.3.2 (contracts/pipeline-stage-machine.md §D1): a insercao de
+# `converge` entre execute-task e review-task reflete nos 3 subcomandos
+# lineares sem nenhuma linha de codigo adicional (efeito automatico da
+# lista, tabela do contrato).
+scenario_next_stage_execute_task_aponta_converge() {
+  capture "$SCRIPT" next-stage --current execute-task
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "converge" ] || { _fail "next-stage execute-task" "esperado converge, obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_next_stage_converge_aponta_review_task() {
+  capture "$SCRIPT" next-stage --current converge
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "review-task" ] || { _fail "next-stage converge" "esperado review-task, obtido: $_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_prev_stage_review_task_aponta_converge() {
+  capture "$SCRIPT" prev-stage --current review-task
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "converge" ] || { _fail "prev-stage review-task" "esperado converge, obtido: $_CAPTURED_STDOUT"; return 1; }
 }
 
 scenario_next_stage_na_ultima_imprime_vazio() {
@@ -299,6 +322,145 @@ scenario_detect_completion_review_sempre_passa() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "review-task" "$_CAPTURED_EXIT"; return 1; }
   capture "$SCRIPT" detect-completion --feature-dir "$_fd" --stage review-features
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "review-features" "$_CAPTURED_EXIT"; return 1; }
+}
+
+# ---------- detect-completion --stage converge (tarefa 3.2, §D2) ----------
+#
+# converge-status.sh (delegado por esta etapa) resolve --root via
+# path-contains.sh ascendendo a partir do CWD (nao do --path) — precisa
+# rodar com CWD DENTRO de um repo sintetico (marcador .git/) que contenha
+# o feature-dir, senao a resolucao automatica encontra o .git do PROPRIO
+# repo cstk (CWD real dos testes) e rejeita o feature-dir em /tmp como
+# "fora da raiz" (F3), mascarando o veredito que o cenario quer exercitar.
+# Helpers espelham _cs_quote/_cs_run de tests/test_converge-status.sh.
+_pl_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+_pl_run_cwd() {
+  _cwd=$1
+  shift
+  _cmd="cd $(_pl_quote "$_cwd") && $(_pl_quote "$SCRIPT")"
+  for _a in "$@"; do
+    _cmd="$_cmd $(_pl_quote "$_a")"
+  done
+  capture env -i PATH="$PATH" HOME="$HOME" sh -c "$_cmd"
+}
+
+_pl_make_repo() {
+  _repo="$TMPDIR_TEST/repo"
+  mkdir -p "$_repo/.git"
+  printf '%s\n' "$_repo"
+}
+
+scenario_detect_completion_converge_tasks_ausente_exit0() {
+  _repo=$(_pl_make_repo)
+  _fd="$_repo/docs/specs/feat"
+  mkdir -p "$_fd"
+  _pl_run_cwd "$_repo" detect-completion --feature-dir "$_fd" --stage converge
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_detect_completion_converge_tasks_vazio_exit0() {
+  _repo=$(_pl_make_repo)
+  _fd="$_repo/docs/specs/feat"
+  mkdir -p "$_fd"
+  printf 'so prosa, nenhuma tarefa\n' > "$_fd/tasks.md"
+  _pl_run_cwd "$_repo" detect-completion --feature-dir "$_fd" --stage converge
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_detect_completion_converge_pendente_exit1() {
+  _repo=$(_pl_make_repo)
+  _fd="$_repo/docs/specs/feat"
+  mkdir -p "$_fd"
+  printf -- '- [x] 1.1 done\n' > "$_fd/tasks.md"
+  _pl_run_cwd "$_repo" detect-completion --feature-dir "$_fd" --stage converge
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1 (nunca convergiu), obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_detect_completion_converge_convergida_exit0() {
+  _repo=$(_pl_make_repo)
+  _fd="$_repo/docs/specs/feat"
+  mkdir -p "$_fd"
+  printf -- '- [x] 1.1 done\n' > "$_fd/tasks.md"
+  _cs="$REPO_ROOT/plugins/cstk/skills/converge/scripts/converge-status.sh"
+  capture env -i PATH="$PATH" HOME="$HOME" sh -c \
+    "cd $(_pl_quote "$_repo") && $(_pl_quote "$_cs") record --feature-dir $(_pl_quote "$_fd") --outcome clean --provenance gate --actionable 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "setup" "record falhou: $_CAPTURED_STDERR"; return 1; }
+  _pl_run_cwd "$_repo" detect-completion --feature-dir "$_fd" --stage converge
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_detect_completion_converge_stale_exit1() {
+  _repo=$(_pl_make_repo)
+  _fd="$_repo/docs/specs/feat"
+  mkdir -p "$_fd"
+  printf -- '- [x] 1.1 done\n' > "$_fd/tasks.md"
+  _cs="$REPO_ROOT/plugins/cstk/skills/converge/scripts/converge-status.sh"
+  capture env -i PATH="$PATH" HOME="$HOME" sh -c \
+    "cd $(_pl_quote "$_repo") && $(_pl_quote "$_cs") record --feature-dir $(_pl_quote "$_fd") --outcome clean --provenance gate --actionable 0"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "setup" "record falhou: $_CAPTURED_STDERR"; return 1; }
+  printf -- '- [x] 1.2 novo\n' >> "$_fd/tasks.md"
+  _pl_run_cwd "$_repo" detect-completion --feature-dir "$_fd" --stage converge
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1 (stale), obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+# Cenario 14 do quickstart.md (tarefa 3.3.3): distingue skill `converge`
+# NAO instalada (degradacao aceitavel, exit 0) de catalogo corrompido —
+# skill instalada mas converge-status.sh ausente (fail-closed, exit 1,
+# F1). Roda uma COPIA de pipeline.sh fora da arvore do repo (para que a
+# resolucao DEV `${0%/*}/../../converge` nao encontre a skill real) com
+# HOME isolado (para controlar a resolucao de instalacao
+# `${HOME}/.claude/skills/converge`).
+_pl_make_fake_catalog() {
+  _fake_rt="$TMPDIR_TEST/fake-catalog/agente-00c-runtime/scripts"
+  mkdir -p "$_fake_rt"
+  cp "$SCRIPT" "$_fake_rt/pipeline.sh"
+  cp "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/_state-read.sh" "$_fake_rt/_state-read.sh"
+  printf '%s\n' "$_fake_rt/pipeline.sh"
+}
+
+scenario_detect_completion_converge_skill_nao_instalada_exit0() {
+  _fake_pipeline=$(_pl_make_fake_catalog)
+  _fake_home="$TMPDIR_TEST/fakehome-none"
+  mkdir -p "$_fake_home"
+  _fd="$TMPDIR_TEST/feat-nao-instalada"
+  mkdir -p "$_fd"
+  printf -- '- [x] 1.1 done\n' > "$_fd/tasks.md"
+  capture env -i PATH="$PATH" HOME="$_fake_home" sh "$_fake_pipeline" \
+    detect-completion --feature-dir "$_fd" --stage converge
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "nao instalada" || return 1
+}
+
+scenario_detect_completion_converge_catalogo_corrompido_exit1() {
+  _fake_pipeline=$(_pl_make_fake_catalog)
+  _fake_home="$TMPDIR_TEST/fakehome-corrompido"
+  mkdir -p "$_fake_home/.claude/skills/converge/scripts"
+  # skill "instalada" (diretorio existe) mas SEM converge-status.sh — o
+  # catalogo esta corrompido/incompleto (falta o script deterministico).
+  _fd="$TMPDIR_TEST/feat-corrompida"
+  mkdir -p "$_fd"
+  printf -- '- [x] 1.1 done\n' > "$_fd/tasks.md"
+  capture env -i PATH="$PATH" HOME="$_fake_home" sh "$_fake_pipeline" \
+    detect-completion --feature-dir "$_fd" --stage converge
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1 (fail-closed), obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "corrompido" || return 1
+}
+
+scenario_detect_completion_converge_script_nao_executavel_exit1() {
+  _fake_pipeline=$(_pl_make_fake_catalog)
+  _fake_home="$TMPDIR_TEST/fakehome-perm"
+  mkdir -p "$_fake_home/.claude/skills/converge/scripts"
+  printf '#!/bin/sh\nexit 0\n' > "$_fake_home/.claude/skills/converge/scripts/converge-status.sh"
+  chmod -x "$_fake_home/.claude/skills/converge/scripts/converge-status.sh"
+  _fd="$TMPDIR_TEST/feat-perm"
+  mkdir -p "$_fd"
+  printf -- '- [x] 1.1 done\n' > "$_fd/tasks.md"
+  capture env -i PATH="$PATH" HOME="$_fake_home" sh "$_fake_pipeline" \
+    detect-completion --feature-dir "$_fd" --stage converge
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1 (fail-closed), obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
 }
 
 scenario_skill_conflict_local_vence() {
@@ -774,8 +936,10 @@ scenario_sqlite_require_blockade_sem_decisao_falha_e_sem_mirror() {
 # ==== --mode (feature roadmap-mode, tasks 2.3/2.4) ====
 
 # 2.3.4: assercao de regressao — stages SEM --mode continua retornando as
-# 10 etapas INTACTAS, na mesma ordem (_PL_STAGES_LIST nao editada).
-scenario_stages_sem_mode_permanece_10_etapas_intacta() {
+# 11 etapas INTACTAS, na mesma ordem (_PL_STAGES_LIST, D1: pipeline-converge
+# insere `converge` entre execute-task e review-task; --mode em si NUNCA
+# altera a lista dinamicamente).
+scenario_stages_sem_mode_permanece_11_etapas_intacta() {
   capture "$SCRIPT" stages
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "stages sem --mode exit" "$_CAPTURED_EXIT"; return 1; }
   _expected="briefing
@@ -786,6 +950,7 @@ plan
 checklist
 create-tasks
 execute-task
+converge
 review-task
 review-features"
   [ "$_CAPTURED_STDOUT" = "$_expected" ] || { _fail "stages sem --mode" "divergente: $_CAPTURED_STDOUT"; return 1; }

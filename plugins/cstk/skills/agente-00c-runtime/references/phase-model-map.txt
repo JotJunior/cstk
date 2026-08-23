@@ -22,12 +22,13 @@
 # elevar para opus (tarefa profunda) ou baixar para haiku (tarefa trivial)
 # conforme a descricao da tarefa.
 #
-# Enum de fases cobertas (11): specify, clarify, plan, checklist,
-# create-tasks, analyze, execute-task, validate-docs, review-task,
+# Enum de fases cobertas (12): specify, clarify, plan, checklist,
+# create-tasks, analyze, execute-task, converge, validate-docs, review-task,
 # briefing, constitution.
 plan|profunda|opus
 analyze|profunda|opus
 constitution|profunda|opus
+converge|profunda|opus
 specify|media|sonnet
 clarify|media|sonnet
 checklist|media|sonnet

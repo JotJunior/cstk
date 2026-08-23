@@ -58,7 +58,7 @@ skill consome o artefato da anterior:
 ```mermaid
 flowchart LR
     briefing --> constitution --> specify --> clarify --> plan
-    plan --> checklist --> create-tasks --> execute-task --> review-task
+    plan --> checklist --> create-tasks --> execute-task --> converge --> review-task
     analyze -. read-only cross-check .-> specify
 ```
 

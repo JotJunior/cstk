@@ -62,16 +62,21 @@ feeds the next.
    ⑦ create-tasks      Plan → Task backlog structured by phases
         │                Tasks with IDs, criticality and dependency matrix.
         ▼
-   ⑧ analyze           Spec + Plan + Tasks + Constitution → Consistency report
-        │                Detects duplications, ambiguities, coverage gaps
-        │                and principle violations. Strictly READ-ONLY.
-        ▼
-   ⑨ execute-task      Task → Implemented code (9-step workflow)
+   ⑧ execute-task      Task → Implemented code (9-step workflow)
         │                Analysis → Localization → Planning → Implementation →
         │                Tests → Validation → Lint → Conclusion → Update.
         ▼
+   ⑨ converge          Spec + Plan + Tasks + real code → Reconciliation report
+        │                Reconciles documented intent against the current code
+        │                state; appends actionable gaps as a new task phase.
+        ▼
    ⑩ review-task       Tasks → Status report with metrics and next actions
 ```
+
+> `analyze` is not a numbered sequential step — it is a **read-only lateral
+> cross-check** (spec/plan/tasks/constitution consistency) usable at any point
+> after `create-tasks`, the same way `CONTRIBUTING.md` diagrams it
+> (`analyze -. read-only cross-check .-> specify`).
 
 ## When to use each skill
 
