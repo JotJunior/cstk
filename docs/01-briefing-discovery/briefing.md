@@ -8,7 +8,7 @@
 
 ## 1. Visao e Proposito
 
-**O que e**: Toolkit de skills, hooks e insights para [Claude Code](https://claude.ai/code), composto por um pipeline Spec-Driven Development (SDD) completo (briefing → constitution → specify → clarify → plan → checklist → create-tasks → analyze → execute-task → review-task), skills complementares (advisor, bugfix, owasp-security, etc.) e skills especificas por linguagem (Go, .NET).
+**O que e**: Toolkit de skills, hooks e insights para [Claude Code](https://claude.ai/code), composto por um pipeline Spec-Driven Development (SDD) completo (briefing → constitution → specify → clarify → plan → checklist → create-tasks → execute-task → converge → review-task, com analyze como cross-check lateral read-only), skills complementares (advisor, bugfix, owasp-security, etc.) e skills especificas por linguagem (Go, .NET).
 
 **Problema que resolve**: garantir que o fluxo de desenvolvimento seja documentado desde o d0, que o codigo seja escrito com qualidade, e que futuras correcoes sejam especificacoes validadas — nao edicoes improvisadas.
 
