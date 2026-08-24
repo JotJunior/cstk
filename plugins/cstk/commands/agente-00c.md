@@ -942,6 +942,17 @@ trivial se necessario: `tmux kill-window -t <pane_id>` + `cstk session end
 ter disparado ou nao (FR-013) — nao depende do resultado do experimento da
 FASE 0.
 
+**Preservacao de state ao fechar worktrees**: `.claude/` e gitignored, entao
+o `state.db`/`state.json` da execucao filha (com rounds, backups, report e
+`enforcement-log.jsonl`) NAO chega a branch principal pelo merge do PR — so
+existe no filesystem da worktree. Por isso o `cstk session end` copia
+automaticamente esses artefatos 00c para o `.claude/` do checkout principal
+ANTES de remover a worktree (colisao vai para
+`.claude/session-state-backup/<short>/`, nunca sobrescreve; falha de copia
+bloqueia a remocao). Nao remova worktrees de leva paralela por
+`git worktree remove` cru — sempre via `cstk session end`; descarte
+deliberado do state exige a flag explicita `--discard-state`.
+
 ### 6.ter Oferta de leva paralela pos-roadmap (US1 — FR-002/FR-003/FR-004/FR-006/FR-011/FR-012/FR-014/FR-018, `roadmap-parallel-launch`)
 
 **Gatilho**: apos o orquestrador retornar desta onda, se

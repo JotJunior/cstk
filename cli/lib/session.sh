@@ -63,9 +63,18 @@ CSTK_SESSION_MIN_GIT_MINOR=36
 # que so aceita lowercase). Lista hardcoded conforme spec FR-003.
 _CSTK_SESSION_BLOCKLIST="main master trunk head default origin"
 
-# Lista de exclusoes ao copiar .claude/ para a sessao (FR-002).
+# Lista de exclusoes ao copiar .claude/ para a sessao (FR-002 + extensao
+# 2026-08-24: feature-00c-state — state de execucao e per-worktree; copiar
+# states do checkout principal para a sessao confundia a precedencia do
+# pretooluse-guard e gerava colisao no `session end`).
 # Caminhos/nomes relativos a .claude/ — separados por espaco.
-_CSTK_SESSION_CLAUDE_EXCLUDES="agente-00c-state agente-00c-archive agente-00c-report.md agente-00c-suggestions.md settings.local.json agente-00c-whitelist .agente-00c-state.lock insights"
+_CSTK_SESSION_CLAUDE_EXCLUDES="agente-00c-state feature-00c-state agente-00c-archive agente-00c-report.md agente-00c-suggestions.md settings.local.json agente-00c-whitelist .agente-00c-state.lock insights"
+
+# Artefatos 00c preservados pelo `session end` ANTES de remover a worktree
+# (alem de .claude/feature-00c-state/<short>/, tratado por-feature).
+# .claude/ e tipicamente gitignored: os guards dirty/unpushed NAO enxergam
+# esses artefatos, e a remocao os destruiria em silencio.
+_CSTK_SESSION_STATE_ARTIFACTS="agente-00c-state agente-00c-archive agente-00c-report.md agente-00c-suggestions.md enforcement-log.jsonl"
 
 # ==== Help ====
 
@@ -77,7 +86,7 @@ USO:
   cstk session start <name> [--reset|--reuse] [--force] [--claude]
   cstk session list [--json]
   cstk session pr <name> [--draft] [--title TITLE] [--body BODY] [--reviewer USER]
-  cstk session end <name> [--force]
+  cstk session end <name> [--force] [--discard-state]
 
 SUBCOMANDOS:
   start    Cria worktree + branch + copia .claude/ filtrado.
@@ -93,6 +102,13 @@ SUBCOMANDOS:
 
   end      Remove worktree + branch local com guards (prompts para dirty,
            commits nao pushados, PR aberto). --force pula prompts.
+           Antes da remocao, PRESERVA os artefatos 00c da worktree
+           (.claude/feature-00c-state/<short>/ com state.db/state.json,
+           agente-00c-state, report, enforcement-log) copiando-os para o
+           .claude/ do checkout principal — colisao vai para
+           .claude/session-state-backup/<name>/, nunca sobrescreve.
+           Falha de copia bloqueia a remocao (fail-closed).
+           --discard-state: descarta deliberadamente esses artefatos.
 
   pr       Abre PR da branch para default branch via gh. Idempotente:
            se PR existe, retorna URL existente. Flags --draft/--title/
@@ -343,7 +359,7 @@ _session_prompt_yn() {
 }
 
 # _session_copy_claude_filtered <src> <dst>: copia <src>/.claude/ para <dst>
-# excluindo os 8 artefatos runtime/per-env listados em FR-002.
+# excluindo os 9 artefatos runtime/per-env listados em FR-002 (+extensao).
 # Estrategia: `cp -R` (POSIX) seguido de `rm -rf` da blocklist. Custo de
 # copiar arquivos que serao removidos e baixo (.claude/ tipicamente <50MB).
 # Sem rsync (nao POSIX em macOS antigo).
@@ -385,7 +401,7 @@ _session_copy_claude_filtered() {
 #   5. Local + --reset + commits    → prompt p/ confirmar descarte;
 #      nao-mergeados                  --force bypassa
 #
-# Apos worktree criada, copia .claude/ filtrado (FR-002, 8 exclusoes).
+# Apos worktree criada, copia .claude/ filtrado (FR-002, 9 exclusoes).
 # Falha parcial (cp falhou apos worktree criada): stderr orientativo,
 # exit 1 (FR-017).
 _session_start() {
@@ -748,15 +764,83 @@ _session_list() {
 #   5. Detecta PR aberto via gh (opcional — pula se gh ausente/unauth, FR-005)
 #   6. Se --force NAO passado E (dirty OR unpushed > 0 OR PR aberto):
 #      prompt interativo; cancelar = exit 10
-#   7. Executa git worktree remove + git branch -D
-#   8. Falha parcial (FR-006): se worktree remove succeed mas branch -D
+#   7. Preserva artefatos 00c da worktree (.claude/feature-00c-state/*,
+#      agente-00c-state, report, enforcement-log) copiando para o .claude/
+#      do checkout principal ANTES da remocao. Fail-closed: falha de copia
+#      aborta sem remover. --discard-state pula (descarte deliberado).
+#   8. Executa git worktree remove + git branch -D
+#   9. Falha parcial (FR-006): se worktree remove succeed mas branch -D
 #      falhou, stderr indica estado residual
+# ==== Preservacao de state 00c no `end` ====
+#
+# `.claude/` e tipicamente gitignored: state.db/state.json, rounds, backups,
+# report e enforcement-log de execucoes 00c rodadas na worktree nao tem
+# rastro no git — `git worktree remove` os destruiria em silencio. Antes da
+# remocao, copia esses artefatos para o .claude/ do checkout principal:
+#   - .claude/feature-00c-state/<short>/   (granularidade por feature)
+#   - itens de _CSTK_SESSION_STATE_ARTIFACTS
+# Colisao (destino ja existe) NUNCA sobrescreve: a copia vai para
+# .claude/session-state-backup/<session>/<relpath>. Falha de copia BLOQUEIA
+# a remocao (fail-closed) — worktree residual e recuperavel, state deletado
+# nao. Descarte deliberado exige --discard-state.
+_session_preserve_state() {
+  _ps_wt=$1
+  _ps_repo=$2
+  _ps_session=$3
+  _CSTK_SESSION_PRESERVED_COUNT=0
+  _ps_src="$_ps_wt/.claude"
+  [ -d "$_ps_src" ] || return 0
+  if [ -d "$_ps_src/feature-00c-state" ]; then
+    for _ps_dir in "$_ps_src/feature-00c-state"/*/; do
+      [ -d "$_ps_dir" ] || continue
+      _ps_short=$(basename "${_ps_dir%/}")
+      _session_preserve_one "${_ps_dir%/}" "feature-00c-state/$_ps_short" \
+        "$_ps_repo" "$_ps_session" || return 1
+    done
+  fi
+  for _ps_item in $_CSTK_SESSION_STATE_ARTIFACTS; do
+    [ -e "$_ps_src/$_ps_item" ] || continue
+    _session_preserve_one "$_ps_src/$_ps_item" "$_ps_item" \
+      "$_ps_repo" "$_ps_session" || return 1
+  done
+  return 0
+}
+
+# _session_preserve_one <src-path> <relpath> <repo> <session>
+# Copia 1 artefato para <repo>/.claude/<relpath>; se ja existe, para
+# <repo>/.claude/session-state-backup/<session>/<relpath>.
+_session_preserve_one() {
+  _po_src=$1
+  _po_rel=$2
+  _po_dest="$3/.claude/$_po_rel"
+  _po_session=$4
+  if [ -e "$_po_dest" ]; then
+    _po_dest="$3/.claude/session-state-backup/$_po_session/$_po_rel"
+    if [ -e "$_po_dest" ]; then
+      log_error "session end: destino de preservacao ja existe: $_po_dest"
+      log_error "session end: mova/remova o backup anterior e rode de novo, ou use --discard-state para descartar o state da worktree"
+      return 1
+    fi
+    log_warn "session end: '.claude/$_po_rel' ja existe no checkout principal — copia preservada em $_po_dest"
+  fi
+  _po_parent=$(dirname "$_po_dest")
+  if ! mkdir -p -- "$_po_parent" || ! cp -R -- "$_po_src" "$_po_dest"; then
+    log_error "session end: falha ao preservar '.claude/$_po_rel' — worktree NAO sera removida"
+    log_error "session end: copie manualmente ou rode com --discard-state (descarta o state)"
+    return 1
+  fi
+  _CSTK_SESSION_PRESERVED_COUNT=$((_CSTK_SESSION_PRESERVED_COUNT + 1))
+  return 0
+}
+
 _session_end() {
   _name=""
   _force=0
+  _discard_state=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --force) _force=1; shift ;;
+      --discard-state) _discard_state=1; shift ;;
       --) shift; break ;;
       -*) log_error "session end: flag desconhecida: $1"; return 2 ;;
       *)
@@ -852,6 +936,19 @@ _session_end() {
     }
   fi
 
+  # Preservar artefatos 00c ANTES da remocao (fail-closed). --discard-state
+  # pula deliberadamente — unica forma de remover a worktree sem trazer o
+  # state para o checkout principal.
+  _CSTK_SESSION_PRESERVED_COUNT=0
+  if [ "$_discard_state" = 1 ]; then
+    if [ -d "$_wt_path/.claude/feature-00c-state" ] \
+       || [ -d "$_wt_path/.claude/agente-00c-state" ]; then
+      log_warn "session end: --discard-state — artefatos 00c da worktree serao DESCARTADOS"
+    fi
+  elif [ -d "$_wt_path" ]; then
+    _session_preserve_state "$_wt_path" "$_repo" "$_name" || return 1
+  fi
+
   # Remover worktree (com --force se dirty/unpushed e --force foi passado;
   # OU se path nao existe mais — stale precisa de --force)
   _wtr_flags=""
@@ -877,6 +974,10 @@ _session_end() {
   worktree: $_wt_path (removida)
   branch:   $_wt_branch (deletada)
 EOF
+  if [ "${_CSTK_SESSION_PRESERVED_COUNT:-0}" -gt 0 ]; then
+    printf '  state:    %s artefato(s) 00c preservado(s) em %s/.claude\n' \
+      "$_CSTK_SESSION_PRESERVED_COUNT" "$_repo"
+  fi
   return 0
 }
 
