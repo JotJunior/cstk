@@ -5,6 +5,43 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [9.1.0] - 2026-08-24
+
+Fecha o vazamento silencioso de state no fechamento de worktrees de leva
+paralela (modo roadmap): `.claude/` é gitignored, então o `state.db`/
+`state.json` da execução filha nunca chega à branch principal pelo merge do
+PR — e o `cstk session end` destruía esses artefatos sem aviso, invisíveis
+aos guards de dirty/unpushed.
+
+### Added
+
+- **`cstk session end` preserva artefatos 00c antes de remover a worktree.**
+  Copia `.claude/feature-00c-state/<short>/` (granularidade por feature,
+  incluindo `state.db`/`state.json`, rounds e backups) e os itens de
+  `_CSTK_SESSION_STATE_ARTIFACTS` (`agente-00c-state`, `agente-00c-archive`,
+  `agente-00c-report.md`, `agente-00c-suggestions.md`,
+  `enforcement-log.jsonl`) para o `.claude/` do checkout principal ANTES do
+  `git worktree remove`. Colisão nunca sobrescreve: a cópia vai para
+  `.claude/session-state-backup/<sessão>/<relpath>`. Falha de cópia bloqueia
+  a remoção (fail-closed) — worktree residual é recuperável, state deletado
+  não. Helpers `_session_preserve_state`/`_session_preserve_one` em
+  `cli/lib/session.sh`; 3 cenários novos em `tests/cstk/test_session.sh`.
+- **Flag `--discard-state` no `session end`.** Única forma de remover a
+  worktree descartando os artefatos 00c (aviso explícito em stderr);
+  `--force` continua pulando só os prompts, nunca a preservação.
+
+### Changed
+
+- **`session start` deixa de copiar `feature-00c-state` para a worktree.**
+  `feature-00c-state` entra em `_CSTK_SESSION_CLAUDE_EXCLUDES` (8 → 9
+  exclusões): state de execução é per-worktree; copiar states do checkout
+  principal para a sessão confundia a precedência do pretooluse-guard e
+  gerava colisão artificial na preservação do `end`.
+- **Prosa do modo roadmap (`agente-00c.md` §6.bis + `docs/agente-00c.md`)**
+  documenta que worktrees de leva paralela fecham SEMPRE via `cstk session
+  end` (nunca `git worktree remove` cru), explicitando a preservação de
+  state e o `--discard-state`.
+
 ## [9.0.0] - 2026-08-22
 
 Feature `pipeline-converge`: a skill `converge` deixa de ser um gate
@@ -7091,6 +7128,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[9.1.0]: https://github.com/JotJunior/cstk/releases/tag/v9.1.0
 [9.0.0]: https://github.com/JotJunior/cstk/releases/tag/v9.0.0
 [8.8.0]: https://github.com/JotJunior/cstk/releases/tag/v8.8.0
 [8.7.0]: https://github.com/JotJunior/cstk/releases/tag/v8.7.0
