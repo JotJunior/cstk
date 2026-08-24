@@ -243,6 +243,16 @@ intervention. Kill switch: `tmux kill-window -t <pane>` + `cstk session end
 <short>`. Manual verification path: `cstk session list`,
 `roadmap-status.sh --json`, `tmux list-panes -a` (§6.bis).
 
+When closing a wave's worktrees, `.claude/` is gitignored — the child
+execution's `state.db`/`state.json` (rounds, backups, report,
+`enforcement-log.jsonl`) never reaches the main branch through the PR merge.
+`cstk session end` therefore copies those 00c artifacts into the main
+checkout's `.claude/` BEFORE removing the worktree (collisions land in
+`.claude/session-state-backup/<short>/`, never overwritten; a copy failure
+blocks removal). Always close worktrees via `cstk session end`, never raw
+`git worktree remove`; deliberately discarding the state requires the
+explicit `--discard-state` flag.
+
 | Component | Location |
 |-----------|----------|
 | Frontier + overlap hint | `plugins/cstk/skills/review-features/scripts/roadmap-frontier.sh` |

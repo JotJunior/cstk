@@ -278,6 +278,8 @@ _make_repo_with_claude() {
     && mkdir -p .claude/agente-00c-state .claude/agente-00c-archive \
                 .claude/skills .claude/insights .claude/commands \
     && echo '{"id":"x"}' > .claude/agente-00c-state/state.json \
+    && mkdir -p .claude/feature-00c-state/feat-x \
+    && echo '{"id":"fx"}' > .claude/feature-00c-state/feat-x/state.json \
     && echo "archived" > .claude/agente-00c-archive/old.md \
     && echo "report" > .claude/agente-00c-report.md \
     && echo "suggestions" > .claude/agente-00c-suggestions.md \
@@ -307,17 +309,18 @@ scenario_start_happy_path() {
   [ -f "$_wt/.claude/settings.json" ] || { _fail "settings.json" "perdido"; return 1; }
 }
 
-scenario_start_claude_excludes_validate_all_8() {
+scenario_start_claude_excludes_validate_all_9() {
   _src="$TMPDIR_TEST/repo-excl"
   _make_repo_with_claude "$_src"
   _phys=$( cd "$TMPDIR_TEST" && pwd -P )
   capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session start excl-feat"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "start" "$_CAPTURED_STDERR"; return 1; }
   _wt="$_phys/repo-excl-excl-feat"
-  # Cada uma das 8 exclusoes deve estar ausente
-  for _excl in agente-00c-state agente-00c-archive agente-00c-report.md \
-               agente-00c-suggestions.md settings.local.json \
-               agente-00c-whitelist .agente-00c-state.lock insights; do
+  # Cada uma das 9 exclusoes deve estar ausente
+  for _excl in agente-00c-state feature-00c-state agente-00c-archive \
+               agente-00c-report.md agente-00c-suggestions.md \
+               settings.local.json agente-00c-whitelist \
+               .agente-00c-state.lock insights; do
     if [ -e "$_wt/.claude/$_excl" ]; then
       _fail "exclusao" "'$_excl' deveria estar excluido em $_wt/.claude/"
       return 1
@@ -787,6 +790,88 @@ scenario_end_session_not_found_exit_9() {
   fi
   assert_stderr_contains "nao encontrada" || return 1
   assert_stderr_contains "cstk session list" || return 1
+}
+
+# ==== Preservacao de state 00c no `end` ====
+
+# Fixture: repo com .gitignore cobrindo .claude/ (convencao dos projetos
+# 00c) — evita que artefatos de state disparem o guard de dirty.
+_make_repo_ignoring_claude() {
+  _mric_dir=$1
+  _make_repo "$_mric_dir"
+  ( cd "$_mric_dir" \
+    && printf '.claude/\n' > .gitignore \
+    && git add .gitignore && git commit -q -m "gitignore .claude" )
+}
+
+scenario_end_preserves_00c_state_to_root() {
+  _src="$TMPDIR_TEST/repo-end-keep"
+  _make_repo_ignoring_claude "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start keep >/dev/null )
+  _wt="$_phys/repo-end-keep-keep"
+  mkdir -p "$_wt/.claude/feature-00c-state/keep/rounds/r01"
+  echo "db" > "$_wt/.claude/feature-00c-state/keep/state.db"
+  echo "round" > "$_wt/.claude/feature-00c-state/keep/rounds/r01/x"
+  echo "report" > "$_wt/.claude/agente-00c-report.md"
+  echo "{}" > "$_wt/.claude/enforcement-log.jsonl"
+  capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session end keep"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ ! -d "$_wt" ] || { _fail "worktree" "ainda existe apos end"; return 1; }
+  [ -f "$_src/.claude/feature-00c-state/keep/state.db" ] \
+    || { _fail "state" "state.db nao preservado no checkout principal"; return 1; }
+  [ -f "$_src/.claude/feature-00c-state/keep/rounds/r01/x" ] \
+    || { _fail "state" "rounds/ nao preservado"; return 1; }
+  [ -f "$_src/.claude/agente-00c-report.md" ] \
+    || { _fail "state" "report nao preservado"; return 1; }
+  [ -f "$_src/.claude/enforcement-log.jsonl" ] \
+    || { _fail "state" "enforcement-log nao preservado"; return 1; }
+  assert_stdout_contains "preservado" || return 1
+}
+
+scenario_end_preserve_collision_goes_to_backup() {
+  _src="$TMPDIR_TEST/repo-end-coll"
+  _make_repo_ignoring_claude "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  # State pre-existente no checkout principal (gitignored, so filesystem)
+  mkdir -p "$_src/.claude/feature-00c-state/foo"
+  echo "root-version" > "$_src/.claude/feature-00c-state/foo/state.db"
+  ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start coll >/dev/null )
+  _wt="$_phys/repo-end-coll-coll"
+  # Worktree diverge do principal (simula execucao rodada na sessao)
+  mkdir -p "$_wt/.claude/feature-00c-state/foo"
+  echo "wt-version" > "$_wt/.claude/feature-00c-state/foo/state.db"
+  capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session end coll"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  # Original do principal intacto (nunca sobrescreve)
+  _orig=$(cat "$_src/.claude/feature-00c-state/foo/state.db")
+  [ "$_orig" = "root-version" ] \
+    || { _fail "collision" "state do principal foi sobrescrito: $_orig"; return 1; }
+  # Copia da worktree foi para o backup por-sessao
+  _bkp="$_src/.claude/session-state-backup/coll/feature-00c-state/foo/state.db"
+  [ -f "$_bkp" ] || { _fail "collision" "backup nao criado em $_bkp"; return 1; }
+  _bkp_content=$(cat "$_bkp")
+  [ "$_bkp_content" = "wt-version" ] \
+    || { _fail "collision" "conteudo do backup errado: $_bkp_content"; return 1; }
+  assert_stderr_contains "ja existe no checkout principal" || return 1
+}
+
+scenario_end_discard_state_skips_preservation() {
+  _src="$TMPDIR_TEST/repo-end-disc"
+  _make_repo_ignoring_claude "$_src"
+  _phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  ( cd "$_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start disc >/dev/null )
+  _wt="$_phys/repo-end-disc-disc"
+  mkdir -p "$_wt/.claude/feature-00c-state/disc"
+  echo "db" > "$_wt/.claude/feature-00c-state/disc/state.db"
+  capture sh -c "cd '$_src' && CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session end disc --discard-state"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  [ ! -d "$_wt" ] || { _fail "worktree" "ainda existe apos end"; return 1; }
+  if [ -e "$_src/.claude/feature-00c-state/disc" ]; then
+    _fail "discard" "state copiado apesar de --discard-state"
+    return 1
+  fi
+  assert_stderr_contains "DESCARTADOS" || return 1
 }
 
 # ====================================================================
