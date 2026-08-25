@@ -5,6 +5,60 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [9.2.1] - 2026-08-25
+
+Corrige dois bugs abertos automaticamente pelo agente-00C rodando em
+Windows/Git-Bash, ambos impeditivos e sem workaround dentro dos limites das
+proprias skills. Em cada um, o defeito real era mais amplo do que o relato:
+`validate.sh` tinha um segundo bug de contagem escondido atras do primeiro,
+e o `case` de SO do sha256 estava replicado em quatro sitios, nao um.
+
+### Fixed
+
+- **`validate-docs-rendered`: `subgraph`...`end` nao e mais contado como
+  `end` orfao (#156).** A checagem 1b de
+  `plugins/cstk/skills/validate-docs-rendered/scripts/validate.sh` roda para
+  TODO bloco ` ```mermaid `, nao so para `sequenceDiagram`, mas so
+  reconhecia `alt|loop|par|opt|critical|rect` como abridores enquanto
+  contava qualquer `end` isolado como fechador — um flowchart com N
+  subgraphs validos reportava "0 abertos, N fechados" e bloqueava o
+  documento com ERRO falso (exit 1). Medido em docs deste proprio
+  repositorio, que a propria skill rejeitava:
+  `docs/fluxo-orquestradores-00c.md` (2 falsos), `CONTRIBUTING.md` (1) e
+  `CONTRIBUTING.pt-BR.md` (1) — os tres passam a sair exit 0.
+- **Contagem de blocos mermaid passa a ser linha-a-linha (#156).** O idioma
+  anterior `gsub(/(^|\n)...(\n|$)/)` consumia o `\n` terminal do match, e
+  `^` em awk casa inicio da STRING e nao de linha — entao linhas ADJACENTES
+  eram contadas uma unica vez (medido: `end\n  end` contava 1). Esse segundo
+  defeito subcontava o `end` de `subgraph` ANINHADO, e teria mantido o
+  falso-positivo mesmo apos incluir `subgraph` na lista de abridores.
+  `else` e `and` seguem deliberadamente fora da lista: sao continuacoes, nao
+  abrem novo `end`.
+- **sha256 volta a funcionar em Windows/Git-Bash (#157).** O `case
+  "$(uname -s)"` dos helpers de digest so reconhecia `Linux|Darwin`; sob
+  `MINGW64_NT-*` caia no ramo `*)` e abortava, mesmo com `sha256sum`
+  presente e funcional em `/usr/bin`. Ramo `Linux|MINGW*|MSYS*|CYGWIN*`
+  adicionado nos QUATRO sitios afetados:
+  `converge/scripts/converge-status.sh` (`_cs_tasks_digest`),
+  `converge/scripts/converge-tasks.sh` (`_ct_sha256_12`) e
+  `agente-00c-runtime/scripts/_hash.sh` (`_hash_sha256_file` e
+  `_hash_sha256_stdin`). A issue citava apenas o primeiro, mas `_hash.sh`
+  esta no caminho de TODO write de state 00c — corrigir so o sitio relatado
+  faria a onda travar um passo adiante. O fail-closed do ramo `*)` foi
+  PRESERVADO: SO genuinamente desconhecido continua falhando com "SO nao
+  suportado para sha256", sem degradacao silenciosa por `command -v`.
+
+### Added
+
+- **12 cenarios de regressao** nos testes ja existentes: 5 em
+  `tests/test_validate.sh` (subgraphs irmaos, aninhado e sem titulo; mais
+  dois contratos negativos garantindo que desbalanco real de `subgraph` e de
+  `alt` continua ERRO) e 7 em `tests/test__hash.sh`,
+  `tests/test_converge-status.sh` e `tests/test_converge-tasks.sh`, que
+  shadowam `uname` via stub no PATH para exercitar MINGW/MSYS/CYGWIN e
+  confirmar que `Plan9` continua falhando. Mutation test executado:
+  revertendo os fixes, os 12 cenarios falham.
+
 ## [9.2.0] - 2026-08-25
 
 Harness e2e em 3 camadas para a orquestracao paralela (roadmap-wave /
@@ -7175,6 +7229,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[9.2.1]: https://github.com/JotJunior/cstk/releases/tag/v9.2.1
 [9.2.0]: https://github.com/JotJunior/cstk/releases/tag/v9.2.0
 [9.1.0]: https://github.com/JotJunior/cstk/releases/tag/v9.1.0
 [9.0.0]: https://github.com/JotJunior/cstk/releases/tag/v9.0.0
