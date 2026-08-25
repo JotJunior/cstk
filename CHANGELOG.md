@@ -5,6 +5,48 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [9.2.2] - 2026-08-25
+
+Corrige o `cstk session pr` e o `commit-mode.sh finalize`, que montavam um
+`gh pr create` sem titulo nem corpo e por isso falhavam de forma
+nao-interativa DEPOIS de ja terem empurrado a branch — o operador ficava com
+push feito e PR nao criado, vendo apenas o help do `gh`. Defeito observado ao
+abrir o PR #158 desta mesma linha de trabalho.
+
+### Fixed
+
+- **`cstk session pr`: `--fill` de fallback no `gh pr create`.** O
+  `gh pr create` nao-interativo exige titulo E corpo; `_session_pr`
+  (`cli/lib/session.sh`) montava apenas `--base`/`--head` e so acrescentava
+  `--title`/`--body` quando o operador os passava. Regra do `gh` medida
+  empiricamente na versao 2.67.0, usando `--head` de branch inexistente para
+  isolar a validacao de flags de qualquer operacao git: sem flags e com
+  `--title` sozinho o `gh` responde o mesmo FlagError ("must provide
+  `--title` and `--body` (or `--fill` or `fill-first` or `--fillverbose`)
+  when not running interactively"); `--fill` e aceito e combina com
+  `--title`, `--body` e `--draft`. O gatilho do fallback e, portanto,
+  "faltou titulo OU corpo" — nao "faltaram os dois".
+- **`commit-mode.sh finalize`: mesmo buraco no gatilho da sug-007.** O
+  `--fill` ja existia ali, mas so era injetado quando titulo E corpo
+  faltavam (`||`), entao `finalize --title X` sem `--body` reproduzia
+  exatamente o defeito que a sug-007 deveria ter fechado. Corrigido na mesma
+  release: corrigir so o sitio observado repetiria a licao da #157.
+- **Aborto silencioso da classe da issue #139 no mesmo bloco.** Em
+  `commit-mode.sh`, `[ -n "$_body" ] && _gh_args=...` era o ULTIMO comando de
+  um ramo do `if`: com corpo vazio o teste falso virava exit 1 do `if` e, sob
+  o `set -eu` do script, abortava o `finalize`. Reescrito com blocos `if`
+  explicitos, sem `&&` terminal.
+
+### Added
+
+- **5 cenarios de regressao** — 4 em `tests/cstk/test_session.sh` (sem flags,
+  so `--title`, so `--body`, e o contrato negativo de que titulo + corpo NAO
+  injeta `--fill`) e 1 em `tests/test_commit-mode.sh` (`finalize --title` sem
+  `--body`). Os stubs de `gh` APLICAM a regra de flags do gh 2.67.0 em vez de
+  apenas gravar argv, entao falham pre-fix pelo mesmo motivo que o `gh` real
+  falhava. Mutation test executado: revertendo o fix, 4 dos 5 falham (o 5o e
+  o contrato negativo, inalterado por desenho).
+
 ## [9.2.1] - 2026-08-25
 
 Corrige dois bugs abertos automaticamente pelo agente-00C rodando em
@@ -7229,6 +7271,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[9.2.2]: https://github.com/JotJunior/cstk/releases/tag/v9.2.2
 [9.2.1]: https://github.com/JotJunior/cstk/releases/tag/v9.2.1
 [9.2.0]: https://github.com/JotJunior/cstk/releases/tag/v9.2.0
 [9.1.0]: https://github.com/JotJunior/cstk/releases/tag/v9.1.0
