@@ -1467,4 +1467,81 @@ scenario_issue139_finalize_head_na_default_exit0_skipped_default_branch() {
   [ "$_status" = "skipped-default-branch" ] || { _fail "push_pr_result.status no state" "obtido '$_status'"; return 1; }
 }
 
+# ==== --fill tambem quando SO o titulo foi dado (buraco do `||`) ====
+#
+# A sug-007 injetava --fill so quando title E body faltavam. Medido em gh
+# 2.67.0, `--title` SOZINHO produz o MESMO FlagError que nenhuma flag
+# ("must provide `--title` and `--body` (or `--fill` ...)"), entao
+# `finalize --title X` sem --body reproduzia exatamente o defeito que a
+# sug-007 deveria ter fechado.
+#
+# Havia ainda um segundo problema no mesmo bloco, da classe da issue #139:
+# `[ -n "$_body" ] && _gh_args=...` era o ULTIMO comando do ramo — com body
+# vazio o teste falso virava exit 1 do `if`, e sob `set -eu` abortava o
+# finalize. Por isso este cenario assere exit 0 alem do --fill.
+scenario_finalize_so_titulo_ainda_usa_fill() {
+  _gdir="$TMPDIR_TEST/repo-fill-t"
+  _sd="$TMPDIR_TEST/fin-fill-t"
+  _init_state "$_sd" true
+  _init_git_repo "$_gdir" "feat/fill-t"
+
+  git -C "$_gdir" branch main 2>/dev/null || :
+  git -C "$_gdir" update-ref refs/remotes/origin/main "$(git -C "$_gdir" rev-parse main)" 2>/dev/null || :
+  git -C "$_gdir" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main 2>/dev/null || :
+
+  _bare="$TMPDIR_TEST/origin-fill-t.git"
+  git init -q --bare "$_bare" 2>/dev/null
+  git -C "$_gdir" remote add origin "$_bare" 2>/dev/null
+
+  printf 'change\n' >> "$_gdir/README.md"
+  git -C "$_gdir" add README.md 2>/dev/null
+  git -C "$_gdir" commit -q -m "feat: change" 2>/dev/null
+
+  # gh stub que APLICA a regra de flags do gh 2.67.0, em vez de so gravar
+  # argv: assim o cenario falha pre-fix pelo mesmo motivo que o gh real.
+  _stub="$TMPDIR_TEST/stub-fill-t"
+  mkdir -p "$_stub"
+  cat > "$_stub/gh" <<GHEOF
+#!/bin/sh
+case "\$1 \$2" in
+  "auth status") exit 0 ;;
+  "pr view")     exit 1 ;;
+  "pr create")
+    printf '%s\n' "\$*" > "$_stub/pr-create-args"
+    case "\$*" in
+      *--fill*) : ;;
+      *--title*) case "\$*" in
+                   *--body*) : ;;
+                   *) printf 'must provide \`--title\` and \`--body\` (or \`--fill\`)\n'; exit 1 ;;
+                 esac ;;
+      *) printf 'must provide \`--title\` and \`--body\` (or \`--fill\`)\n'; exit 1 ;;
+    esac
+    printf 'https://example.test/pr/3\n'; exit 0 ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$_stub/gh"
+
+  _orig_path="$PATH"
+  PATH="$_stub:$_orig_path"
+  export PATH
+
+  capture "$SCRIPT" finalize --state-dir "$_sd" --projeto-alvo-path "$_gdir" --title "Meu titulo"
+  _fin_exit=$_CAPTURED_EXIT
+  _fin_out=$_CAPTURED_STDOUT
+
+  PATH="$_orig_path"
+  export PATH
+
+  [ "$_fin_exit" = 0 ] || { _fail "exit esperado 0" "obtido $_fin_exit; stderr=$_CAPTURED_STDERR"; return 1; }
+  [ -f "$_stub/pr-create-args" ] \
+    || { _fail "gh pr create nao foi invocado" "stdout: $_fin_out"; return 1; }
+  grep -q -- '--fill' "$_stub/pr-create-args" \
+    || { _fail "esperado --fill com titulo sozinho" "args: $(cat "$_stub/pr-create-args")"; return 1; }
+  grep -q -- '--title' "$_stub/pr-create-args" \
+    || { _fail "titulo do operador nao foi repassado" "args: $(cat "$_stub/pr-create-args")"; return 1; }
+  printf '%s' "$_fin_out" | grep -q '"status":"pr-opened"' \
+    || { _fail "status esperado pr-opened" "stdout: $_fin_out"; return 1; }
+}
+
 run_all_scenarios

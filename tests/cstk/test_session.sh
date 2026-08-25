@@ -1251,4 +1251,137 @@ $_files"
   fi
 }
 
+# ==== `--fill` de fallback no gh pr create (bug observado 2026-08-25) ====
+#
+# `gh pr create` nao-interativo EXIGE titulo E corpo. `_session_pr` montava
+# `--base/--head` e so acrescentava --title/--body se o operador os passasse
+# — entao `cstk session pr <n>` sem flags falhava com FlagError e o gh
+# cuspia o help, DEPOIS do push (sintoma: "push feito, PR nao criado").
+#
+# Medido em gh 2.67.0 (com --head de branch inexistente, para isolar a
+# validacao de flags de qualquer operacao git):
+#   (sem flags)        -> FlagError "must provide `--title` and `--body` ..."
+#   --title T          -> MESMO FlagError (titulo sozinho NAO basta)
+#   --title T --body B -> aceito
+#   --fill             -> aceito; combina com --title/--body/--draft
+#
+# O stub abaixo REPRODUZ essa regra em vez de so gravar argumentos: assim o
+# cenario falha pre-fix pelo mesmo motivo que o gh real falhava.
+
+# _pr_stub_gh DIR ARGFILE -> cria stub de `gh` em DIR que aplica a regra de
+# flags do gh 2.67.0 em `pr create` e grava os argumentos recebidos em
+# ARGFILE (um por linha).
+_pr_stub_gh() {
+  mkdir -p "$1"
+  cat > "$1/gh" <<STUBGH
+#!/bin/sh
+case "\$1 \$2" in
+  "auth status") exit 0 ;;
+  "pr view") exit 1 ;;
+  "pr create")
+    shift 2
+    for _a in "\$@"; do printf '%s\n' "\$_a" >> '$2'; done
+    _has_title=0; _has_body=0; _has_fill=0
+    for _a in "\$@"; do
+      case "\$_a" in
+        --title) _has_title=1 ;;
+        --body) _has_body=1 ;;
+        --fill|--fill-first|--fillverbose) _has_fill=1 ;;
+      esac
+    done
+    if [ "\$_has_fill" = 0 ] && { [ "\$_has_title" = 0 ] || [ "\$_has_body" = 0 ]; }; then
+      printf 'must provide \`--title\` and \`--body\` (or \`--fill\` or \`fill-first\` or \`--fillverbose\`) when not running interactively\n'
+      exit 1
+    fi
+    printf 'https://github.com/stub/repo/pull/1\n'
+    exit 0
+    ;;
+  *) exit 0 ;;
+esac
+STUBGH
+  chmod +x "$1/gh"
+}
+
+# _pr_setup SLUG -> monta repo + origin bare + sessao com 1 commit a frente;
+# imprime "<src>|<stub_dir>|<argfile>".
+_pr_setup() {
+  _ps_src="$TMPDIR_TEST/repo-$1"
+  _make_repo "$_ps_src"
+  _ps_bare="$TMPDIR_TEST/repo-$1-origin.git"
+  git init -q --bare "$_ps_bare"
+  ( cd "$_ps_src" && git remote add origin "$_ps_bare" && git push -q -u origin main 2>/dev/null )
+  ( cd "$_ps_src" && CSTK_LIB="$CSTK_LIB" sh "$CSTK_BIN" session start "$1" >/dev/null )
+  _ps_phys=$( cd "$TMPDIR_TEST" && pwd -P )
+  ( cd "$_ps_phys/repo-$1-$1" && git commit -q --allow-empty -m "test commit" )
+  _ps_stub="$TMPDIR_TEST/stub-gh-$1"
+  _ps_argf="$TMPDIR_TEST/gh-args-$1.txt"
+  : > "$_ps_argf"
+  _pr_stub_gh "$_ps_stub" "$_ps_argf"
+  printf '%s|%s|%s\n' "$_ps_src" "$_ps_stub" "$_ps_argf"
+}
+
+scenario_pr_sem_flags_usa_fill() {
+  _r=$(_pr_setup fillnone); _src=${_r%%|*}; _rest=${_r#*|}
+  _stub=${_rest%%|*}; _argf=${_rest#*|}
+  capture sh -c "cd '$_src' && PATH='$_stub:/usr/bin:/bin' CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session pr fillnone"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! grep -qx -- '--fill' "$_argf"; then
+    _fail "fill" "esperado --fill nos args do gh; recebidos: $(tr '\n' ' ' < "$_argf")"
+    return 1
+  fi
+  assert_stdout_contains "PR criado" || return 1
+}
+
+# Caso que o padrao antigo (`--fill` so quando AMBOS faltam) deixava passar.
+scenario_pr_so_title_ainda_usa_fill() {
+  _r=$(_pr_setup filltitle); _src=${_r%%|*}; _rest=${_r#*|}
+  _stub=${_rest%%|*}; _argf=${_rest#*|}
+  capture sh -c "cd '$_src' && PATH='$_stub:/usr/bin:/bin' CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session pr filltitle --title 'Meu titulo'"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! grep -qx -- '--fill' "$_argf"; then
+    _fail "fill" "esperado --fill com titulo sozinho; recebidos: $(tr '\n' ' ' < "$_argf")"
+    return 1
+  fi
+  if ! grep -qx -- 'Meu titulo' "$_argf"; then
+    _fail "title" "titulo do operador nao foi repassado"
+    return 1
+  fi
+}
+
+scenario_pr_so_body_ainda_usa_fill() {
+  _r=$(_pr_setup fillbody); _src=${_r%%|*}; _rest=${_r#*|}
+  _stub=${_rest%%|*}; _argf=${_rest#*|}
+  capture sh -c "cd '$_src' && PATH='$_stub:/usr/bin:/bin' CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session pr fillbody --body 'Meu corpo'"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! grep -qx -- '--fill' "$_argf"; then
+    _fail "fill" "esperado --fill com corpo sozinho; recebidos: $(tr '\n' ' ' < "$_argf")"
+    return 1
+  fi
+}
+
+# Contrato negativo: com title E body o operador esta no controle — nao
+# injetar --fill (senao o corpo derivado dos commits competiria com o dele).
+scenario_pr_title_e_body_nao_injeta_fill() {
+  _r=$(_pr_setup fillboth); _src=${_r%%|*}; _rest=${_r#*|}
+  _stub=${_rest%%|*}; _argf=${_rest#*|}
+  capture sh -c "cd '$_src' && PATH='$_stub:/usr/bin:/bin' CSTK_LIB='$CSTK_LIB' sh '$CSTK_BIN' session pr fillboth --title T --body B"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then
+    _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if grep -qx -- '--fill' "$_argf"; then
+    _fail "fill" "--fill NAO deveria ser injetado com title+body; recebidos: $(tr '\n' ' ' < "$_argf")"
+    return 1
+  fi
+}
+
 run_all_scenarios

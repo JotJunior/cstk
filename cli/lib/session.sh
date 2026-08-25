@@ -1092,9 +1092,30 @@ _session_pr() {
   # Sempre: --base <default> --head <branch>
   # Opcionais: --draft, --title, --body, --reviewer (multiplo)
   # Estrategia POSIX: usar `set --` para construir array de args.
+  #
+  # `--fill` de fallback: o `gh pr create` nao-interativo EXIGE titulo E
+  # corpo. Medido em gh 2.67.0 — com `--head` de branch inexistente, para
+  # isolar a validacao de flags de qualquer operacao git:
+  #
+  #   (sem flags)        -> "must provide `--title` and `--body` (or `--fill`
+  #                          or `fill-first` or `--fillverbose`) when not
+  #                          running interactively"  [FlagError]
+  #   --title T          -> MESMO FlagError (titulo sozinho NAO basta)
+  #   --title T --body B -> aceito
+  #   --fill             -> aceito (falha so depois, ao computar defaults)
+  #   --fill + --title/--body/--draft -> aceito (combinam)
+  #
+  # Por isso o gatilho e "faltou title OU body", nao "faltaram os dois":
+  # `cstk session pr <n> --title foo` cai na MESMA falha do caso sem flag
+  # nenhuma. Sem esse fallback o sintoma era push feito + PR nao criado,
+  # com o gh cuspindo o help (mesma classe da sug-007 em commit-mode.sh
+  # finalize, que so cobria o caso de ambos ausentes).
   set -- --base "$_default" --head "$_wt_branch"
   if [ "$_draft" = 1 ]; then
     set -- "$@" --draft
+  fi
+  if [ -z "$_title" ] || [ -z "$_body" ]; then
+    set -- "$@" --fill
   fi
   if [ -n "$_title" ]; then
     set -- "$@" --title "$_title"
