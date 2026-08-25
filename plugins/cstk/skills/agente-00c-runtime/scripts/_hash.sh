@@ -32,14 +32,17 @@ _hash_sha256_file() {
   fi
   _hash_os=$(uname -s 2>/dev/null)
   case "$_hash_os" in
-    Linux)
+    # MINGW*/MSYS*/CYGWIN* (Git Bash & cia no Windows) reusam o mesmo
+    # sha256sum do Linux — presente e funcional nesses ambientes (issue
+    # #157). Sem esse ramo, todo write de state falhava exit 2 no Windows.
+    Linux|MINGW*|MSYS*|CYGWIN*)
       sha256sum -- "$_hash_path" | awk '{print $1}'
       ;;
     Darwin)
       shasum -a 256 -- "$_hash_path" | awk '{print $1}'
       ;;
     *)
-      printf 'erro: SO nao suportado para sha256: %s (esperado: Linux|Darwin)\n' "$_hash_os" >&2
+      printf 'erro: SO nao suportado para sha256: %s (esperado: Linux|Darwin|MINGW*|MSYS*|CYGWIN*)\n' "$_hash_os" >&2
       return 2
       ;;
   esac
@@ -50,7 +53,8 @@ _hash_sha256_file() {
 _hash_sha256_stdin() {
   _hash_os=$(uname -s 2>/dev/null)
   case "$_hash_os" in
-    Linux)  sha256sum | awk '{print $1}' ;;
+    # Ver comentario em _hash_sha256_file sobre MINGW*/MSYS*/CYGWIN*.
+    Linux|MINGW*|MSYS*|CYGWIN*) sha256sum | awk '{print $1}' ;;
     Darwin) shasum -a 256 | awk '{print $1}' ;;
     *)
       printf 'erro: SO nao suportado para sha256: %s\n' "$_hash_os" >&2

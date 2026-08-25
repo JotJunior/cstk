@@ -377,4 +377,53 @@ scenario_next_phase_sem_flag_tasks_exit2() {
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+# ==== Issue #157: sha256 em Windows/Git-Bash (MINGW*/MSYS*/CYGWIN*) ====
+#
+# _ct_sha256_12 (usado por gap-key) tinha o mesmo case Linux|Darwin de
+# converge-status.sh: sob `uname -s` = MINGW64_NT-* caia no ramo `*)` e
+# abortava exit 1, mesmo com sha256sum presente. O stub shadowa `uname`
+# via PATH (o SUT o invoca sem qualificar path); PATH original preservado
+# a direita para sha256sum/awk continuarem resolvendo.
+
+# _ct_stub_uname VALOR -> cria stub de `uname -s` e o poe na frente do
+# PATH. Escopo: subshell do scenario corrente.
+_ct_stub_uname() {
+  mkdir -p "$TMPDIR_TEST/stubbin" || return 1
+  {
+    printf '#!/bin/sh\n'
+    printf 'if [ "$1" = "-s" ]; then\n'
+    printf "  printf '%%s\\\\n' '%s'\n" "$1"
+    printf '  exit 0\n'
+    printf 'fi\n'
+    printf 'exec /usr/bin/uname "$@"\n'
+  } >"$TMPDIR_TEST/stubbin/uname"
+  chmod +x "$TMPDIR_TEST/stubbin/uname" || return 1
+  PATH="$TMPDIR_TEST/stubbin:$PATH"
+  export PATH
+}
+
+scenario_gap_key_funciona_sob_mingw() {
+  _ct_stub_uname "MINGW64_NT-10.0-26200" || return 2
+  capture "$SCRIPT" gap-key --path "scripts/foo.sh" --type missing --origin "FR-007"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 sob MINGW64, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) : ;;
+    *) _fail "formato" "esperado 12 chars hex sob MINGW64, obtido: $_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+scenario_gap_key_funciona_sob_msys() {
+  _ct_stub_uname "MSYS_NT-10.0-26200" || return 2
+  capture "$SCRIPT" gap-key --path "scripts/foo.sh" --type missing --origin "FR-007"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 sob MSYS, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+# Contrato negativo: o fail-closed do ramo `*)` NAO foi afrouxado.
+scenario_gap_key_so_desconhecido_ainda_falha() {
+  _ct_stub_uname "Plan9" || return 2
+  capture "$SCRIPT" gap-key --path "scripts/foo.sh" --type missing --origin "FR-007"
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "exit" "esperado falha em SO desconhecido, obtido 0"; return 1; }
+  assert_stderr_contains "SO nao suportado para sha256" || return 1
+}
+
 run_all_scenarios

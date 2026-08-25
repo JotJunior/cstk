@@ -172,14 +172,16 @@ _ct_sha256_12() {
   # Imprime 12 chars hex minusculos. Exit 1 se SO nao suportado.
   _ct_os=$(uname -s 2>/dev/null)
   case "$_ct_os" in
-    Linux)
+    # MINGW*/MSYS*/CYGWIN* (Git Bash & cia no Windows) reusam o mesmo
+    # sha256sum do Linux — presente e funcional nesses ambientes (issue #157).
+    Linux|MINGW*|MSYS*|CYGWIN*)
       printf '%s' "$1" | sha256sum | awk '{print substr($1,1,12)}'
       ;;
     Darwin)
       printf '%s' "$1" | shasum -a 256 | awk '{print substr($1,1,12)}'
       ;;
     *)
-      _ct_die_io "SO nao suportado para sha256: $_ct_os (esperado Linux|Darwin)"
+      _ct_die_io "SO nao suportado para sha256: $_ct_os (esperado Linux|Darwin|MINGW*|MSYS*|CYGWIN*)"
       ;;
   esac
 }
