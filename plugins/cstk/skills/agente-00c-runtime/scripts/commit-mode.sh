@@ -1094,12 +1094,26 @@ _cm_cmd_finalize() {
   # sug-007: sem --title/--body o gh nao-interativo FALHA (era a causa de
   # "push feito, PR nao criado" — caso real state-mcp-server). Default:
   # --fill (titulo/corpo derivados dos commits da branch).
+  #
+  # O gatilho do --fill era `||` (so quando AMBOS faltavam) e deixava um
+  # buraco: medido em gh 2.67.0, `--title` SOZINHO produz o mesmo FlagError
+  # que nenhuma flag ("must provide `--title` and `--body` ..."), entao
+  # `finalize --title X` sem --body reproduzia o defeito que a sug-007
+  # deveria ter fechado. Gatilho corrigido para `-z title OU -z body`;
+  # --fill combina com --title/--body (medido). Mesmo fix aplicado em
+  # cli/lib/session.sh (_session_pr), onde o sintoma foi observado.
+  # NOTA set -eu (issue #139): nada de `[ -n "$x" ] && _gh_args=...` como
+  # ULTIMO comando de um ramo — o teste falso vira exit 1 do `if` inteiro e
+  # aborta a funcao. Blocos `if` explicitos, sem `&&` terminal.
   _gh_args="--base $_default --head $_curr_branch"
-  if [ -n "$_title" ] || [ -n "$_body" ]; then
-    [ -n "$_title" ] && _gh_args="$_gh_args --title $_title"
-    [ -n "$_body" ]  && _gh_args="$_gh_args --body $_body"
-  else
+  if [ -z "$_title" ] || [ -z "$_body" ]; then
     _gh_args="$_gh_args --fill"
+  fi
+  if [ -n "$_title" ]; then
+    _gh_args="$_gh_args --title $_title"
+  fi
+  if [ -n "$_body" ]; then
+    _gh_args="$_gh_args --body $_body"
   fi
 
   _pr_url=$(eval "cd $_pap && gh pr create $_gh_args" 2>/dev/null) || _pr_url=""
