@@ -49,7 +49,8 @@ tempo. A allowlist vive em `run.sh::_is_slow_test` e foi **derivada de medicao**
 > ~5s entraram. Em 2026-05-24 eram 11 (somando ~177s de ~260s da suite);
 em 2026-08-18 sao 12 (entrou `test_pretooluse-bash-guard.sh`). Candidatos
 no limiar medidos em 2026-08-18 e ainda FORA da allowlist:
-`test_parallel-launch.sh` (~7s) e `test_roadmap-frontier.sh` (~6s) —
+`test_parallel-launch.sh` (~7s), `test_roadmap-frontier.sh` (~6s) e
+`test_e2e_roadmap_wave.sh` (~6s, medido 2026-08-25 na criacao) —
 reavaliar na proxima medicao:
 
 | Test | ~Tempo | Por que e lento |

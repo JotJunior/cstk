@@ -5,6 +5,53 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [9.2.0] - 2026-08-25
+
+Harness e2e em 3 camadas para a orquestracao paralela (roadmap-wave /
+roadmap-parallel-launch / cstk-session): a corrente inteira — fronteira →
+emit → session start → filha na worktree → notificacao → session end →
+fronteira recalculada — so tinha cobertura elo a elo. Release de tooling
+de testes (precedente v4.1.0): nada muda no tarball de catalogo instalado.
+
+### Added
+
+- **Camada B — `tests/test_e2e_roadmap_wave.sh` (gateante, interno).** E2e
+  deterministico da cadeia completa da leva paralela: executa as linhas de
+  `parallel-launch.sh emit` tal-e-qual impressas (`cstk session start`
+  real), filha simulada por stub de `claude` que dirige o `state-rw.sh
+  init` REAL (modo-feature) na worktree, parse fail-closed da notificacao
+  `[cstk-parallel]` (inclusive forjada), merge + `cstk session end`
+  preservando o state 00c no checkout principal e fronteira recalculada
+  desbloqueando a entrada dependente. Cobre a guarda TOCTOU (re-emit
+  bloqueado com auditoria no enforcement-log), a exclusao de worktrees
+  ativas (FR-011) e um cenario com tmux REAL em socket privado (`-L` +
+  `-f /dev/null`) validando janela nomeada + kill switch. Verde sob `sh`
+  e `dash`; registrado em `run.sh::_is_internal_test`.
+- **Camada C — `tests/eval/eval_roadmap-wave-frontier.sh` (fora do
+  gate).** Eval de obediencia headless do `/roadmap-wave`, validado com
+  execucoes reais (`conforme`): (A) sem `--yes`/operador obedece o
+  fail-safe FR-014 (nada lancado, nenhum estado 00c, fim silencioso);
+  (B) com `--yes` e fronteira vazia roda `roadmap-frontier.sh` de verdade
+  e reporta o vazio com motivo — probe do calculo real sem risco de
+  lancar sessao. A primeira versao do eval assertava report de fronteira
+  no cenario (A); a execucao real mostrou que a prosa manda encerrar em
+  silencio ANTES de calcular — o assert e que estava errado.
+- **Camada D — `tests/eval/rehearsal_roadmap-wave.sh` (supervisionado).**
+  Runbook executavel do ensaio com filhas reais (tmux + `claude` rodando
+  `/feature-00c`): `setup` monta o projeto de brinquedo (2 features
+  triviais) e imprime os passos do operador; `status` da o snapshot
+  mecanico mid-flight; `verify` faz as assercoes finais (worktrees
+  zeradas, branches removidas, roadmap 100% concluido, state 00c de cada
+  feature preservado, main limpa). Rodar 1x por release que toque
+  orquestracao paralela.
+
+### Changed
+
+- **`tests/eval/README.md`** ganha a tabela do novo eval e a secao
+  "Ensaio geral supervisionado (`rehearsal_*`)"; **`tests/README.md`**
+  registra `test_e2e_roadmap_wave.sh` (~6s) entre os candidatos no limiar
+  da allowlist de lentos.
+
 ## [9.1.0] - 2026-08-24
 
 Fecha o vazamento silencioso de state no fechamento de worktrees de leva
@@ -7128,6 +7175,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[9.2.0]: https://github.com/JotJunior/cstk/releases/tag/v9.2.0
 [9.1.0]: https://github.com/JotJunior/cstk/releases/tag/v9.1.0
 [9.0.0]: https://github.com/JotJunior/cstk/releases/tag/v9.0.0
 [8.8.0]: https://github.com/JotJunior/cstk/releases/tag/v8.8.0
