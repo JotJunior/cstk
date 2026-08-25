@@ -31,6 +31,18 @@ Um eval vermelho é **sinal para investigar**, nunca um bloqueio automático.
 | Script | O que mede | Origem |
 |---|---|---|
 | `eval_noninteractive-tier.sh` | `/agente-00c` headless: não trava no warm-up **e** resolve `cloud-public` sem operador | quickstart Cenário 17 |
+| `eval_roadmap-wave-frontier.sh` | `/roadmap-wave` headless: (A) sem `--yes` obedece o fail-safe FR-014 (nada lançado, fim silencioso); (B) com `--yes` e fronteira vazia roda o frontier de verdade e reporta o vazio sem lançar | Camada C do plano de e2e da leva paralela (complementa `tests/test_e2e_roadmap_wave.sh`) |
+
+## Ensaio geral supervisionado (`rehearsal_*`)
+
+`rehearsal_roadmap-wave.sh` é a Camada D do mesmo plano: o fluxo COMPLETO
+com sessões-filha **reais** (tmux + `claude` de verdade rodando
+`/feature-00c`). Não é um eval automático — é um runbook executável com
+bookends mecânicos: `setup` monta o projeto de brinquedo e imprime os
+passos do operador; `status` dá o snapshot mecânico mid-flight; `verify`
+faz as asserções finais (worktrees zeradas, states preservados, roadmap
+100% concluído, main limpa). Rodar 1x por release que toque orquestração
+paralela. Custa tokens reais e horas de parede — jamais em CI.
 
 ## Como rodar
 

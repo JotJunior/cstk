@@ -396,6 +396,15 @@ _is_internal_test() {
       # script sob a convencao de FASE 9.3). Equivalente ao
       # test_quickstart-e2e.sh para o pipeline do agente-00c.
       return 0 ;;
+    test_e2e_roadmap_wave.sh)
+      # Cadeia end-to-end da leva paralela pos-roadmap (Camada B do plano
+      # de e2e): roadmap-frontier.sh + parallel-launch.sh + roadmap-status.sh
+      # + parallel-notification-parse.sh + cli/lib/session.sh + state-rw.sh
+      # compostos num fluxo real com worktrees, tmux em socket privado e
+      # stub de claude — nao mapeia 1:1 para um unico script sob a
+      # convencao de FASE 9.3. Equivalente ao test_e2e_model_routing.sh
+      # para a orquestracao paralela.
+      return 0 ;;
     test_state-parity-sweep.sh)
       # Varredura anti-regressao da paridade runtime x backend SQLite
       # (feature state-db-runtime-parity, FR-009, FASE 6.1): camada dinamica
