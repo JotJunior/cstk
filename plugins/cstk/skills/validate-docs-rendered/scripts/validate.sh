@@ -111,11 +111,36 @@ check_mermaid() {
           }
         }
       }
-      # Checagem 1b: alt/else/loop/par sem end correspondente
-      opens = gsub(/(^|\n)[[:space:]]*(alt|loop|par|opt|critical|rect)[[:space:]]/, "&", block)
-      closes = gsub(/(^|\n)[[:space:]]*end[[:space:]]*(\n|$)/, "&", block)
+      # Checagem 1b: bloco abridor sem `end` correspondente.
+      #
+      # ATENCAO: esta checagem roda para TODO bloco mermaid, nao so para
+      # sequenceDiagram — logo a lista de abridores precisa cobrir tambem os
+      # de flowchart/graph. `subgraph` fecha com `end` exatamente como
+      # alt/loop/par (issue #156: flowchart valido com N subgraphs contava
+      # 0 abertos / N fechados e bloqueava o doc com ERRO falso).
+      # `else` e `and` NAO entram: sao continuacoes, nao abrem novo `end`.
+      #
+      # Contagem linha-a-linha, NAO gsub sobre o blob: o idioma anterior
+      # (/(^|\n)...(\n|$)/) consome o \n terminal do match, entao duas linhas
+      # ADJACENTES so eram contadas uma vez (`^` em awk casa inicio da string,
+      # nao inicio de linha). Isso subcontava `end` de subgraph aninhado —
+      # a mesma falsa acusacao da issue #156 por outro caminho.
+      nb = split(block, blines, "\n")
+      opens = 0
+      closes = 0
+      for (bi = 1; bi <= nb; bi++) {
+        bline = blines[bi]
+        sub(/^[[:space:]]+/, "", bline)
+        sub(/[[:space:]]+$/, "", bline)
+        # Sufixo ([[:space:]]|$): `subgraph` sem titulo e sintaxe valida.
+        if (bline ~ /^(alt|loop|par|opt|critical|rect|subgraph)([[:space:]]|$)/) {
+          opens++
+        } else if (bline ~ /^end$/) {
+          closes++
+        }
+      }
       if (opens != closes) {
-        printf "%s\t%d\tERRO\tMermaid\tbloco alt/loop/par/opt/rect sem `end` correspondente (%d abertos, %d fechados)\n", file, start, opens, closes
+        printf "%s\t%d\tERRO\tMermaid\tbloco alt/loop/par/opt/rect/subgraph sem `end` correspondente (%d abertos, %d fechados)\n", file, start, opens, closes
       }
       block = ""
       next

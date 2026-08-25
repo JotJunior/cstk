@@ -145,14 +145,19 @@ _cs_tasks_digest() {
   _f=$1
   _os=$(uname -s 2>/dev/null)
   case "$_os" in
-    Linux)
+    # MINGW*/MSYS*/CYGWIN* (Git Bash & cia no Windows) reusam o mesmo
+    # sha256sum do Linux — presente e funcional nesses ambientes (issue
+    # #157). Sem esse ramo, a ETAPA 7 da skill converge (gravar o
+    # ConvergenceStatusRecord) era inexecutavel no Windows, sem workaround:
+    # o marcador so pode ser escrito por este script.
+    Linux|MINGW*|MSYS*|CYGWIN*)
       sha256sum -- "$_f" | awk '{print substr($1,1,12)}'
       ;;
     Darwin)
       shasum -a 256 -- "$_f" | awk '{print substr($1,1,12)}'
       ;;
     *)
-      _cs_die_io "SO nao suportado para sha256: $_os (esperado Linux|Darwin)"
+      _cs_die_io "SO nao suportado para sha256: $_os (esperado Linux|Darwin|MINGW*|MSYS*|CYGWIN*)"
       ;;
   esac
 }

@@ -80,4 +80,90 @@ scenario_sha256_file_deterministico() {
   fi
 }
 
+# ==== Issue #157: sha256 em Windows/Git-Bash (MINGW*/MSYS*/CYGWIN*) ====
+#
+# Antes do fix, `uname -s` = MINGW64_NT-* caia no ramo `*)` e devolvia exit 2
+# ("SO nao suportado"), mesmo com sha256sum presente e funcional — o que
+# inviabilizava TODO write de state no Windows.
+#
+# Os scenarios abaixo shadowam `uname` via PATH stub (o SUT invoca `uname`
+# sem qualificar path, entao o stub vence). PATH original preservado a
+# direita para que sha256sum/shasum/awk continuem resolvendo.
+
+# _hash_stub_uname VALOR -> cria stub de `uname -s` em $TMPDIR_TEST/bin e
+# exporta PATH com ele na frente. Escopo: subshell do scenario corrente.
+_hash_stub_uname() {
+  mkdir -p "$TMPDIR_TEST/bin" || return 1
+  cat >"$TMPDIR_TEST/bin/uname" <<EOF
+#!/bin/sh
+if [ "\$1" = "-s" ]; then
+  printf '%s\\n' '$1'
+  exit 0
+fi
+exec /usr/bin/uname "\$@"
+EOF
+  chmod +x "$TMPDIR_TEST/bin/uname" || return 1
+  PATH="$TMPDIR_TEST/bin:$PATH"
+  export PATH
+}
+
+scenario_sha256_file_mingw_suportado() {
+  _hash_stub_uname "MINGW64_NT-10.0-26200" || return 2
+  _f="$TMPDIR_TEST/w.txt"
+  printf 'hello world\n' >"$_f"
+  _h=$(_hash_sha256_file "$_f")
+  _rc=$?
+  _expected="a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447"
+  if [ "$_rc" != "0" ]; then
+    _fail "exit esperado 0 sob MINGW64, got $_rc"
+    return 1
+  fi
+  if [ "$_h" != "$_expected" ]; then
+    _fail "hash inesperado sob MINGW64: $_h (esperado $_expected)"
+    return 1
+  fi
+}
+
+scenario_sha256_stdin_mingw_suportado() {
+  _hash_stub_uname "MINGW64_NT-10.0-26200" || return 2
+  _h=$(printf 'hello world\n' | _hash_sha256_stdin)
+  _expected="a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447"
+  if [ "$_h" != "$_expected" ]; then
+    _fail "hash inesperado sob MINGW64 (stdin): $_h (esperado $_expected)"
+    return 1
+  fi
+}
+
+scenario_sha256_stdin_msys_suportado() {
+  _hash_stub_uname "MSYS_NT-10.0-26200" || return 2
+  _h=$(printf 'hello world\n' | _hash_sha256_stdin)
+  _expected="a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447"
+  if [ "$_h" != "$_expected" ]; then
+    _fail "hash inesperado sob MSYS: $_h (esperado $_expected)"
+    return 1
+  fi
+}
+
+scenario_sha256_stdin_cygwin_suportado() {
+  _hash_stub_uname "CYGWIN_NT-10.0" || return 2
+  _h=$(printf 'hello world\n' | _hash_sha256_stdin)
+  _expected="a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447"
+  if [ "$_h" != "$_expected" ]; then
+    _fail "hash inesperado sob CYGWIN: $_h (esperado $_expected)"
+    return 1
+  fi
+}
+
+# Contrato negativo: o fail-closed do ramo `*)` NAO foi afrouxado — um SO
+# genuinamente desconhecido continua exit 2, sem degradar mudo.
+scenario_sha256_stdin_so_desconhecido_exit_2() {
+  _hash_stub_uname "Plan9" || return 2
+  printf 'x\n' | _hash_sha256_stdin >/dev/null 2>&1
+  _rc=$?
+  if [ "$_rc" != "2" ]; then
+    _fail "exit esperado 2 em SO desconhecido, got $_rc"
+    return 1
+  fi
+}
+
 run_all_scenarios

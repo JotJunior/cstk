@@ -129,4 +129,83 @@ scenario_stderr_limpo_em_docs_validos() {
   esac
 }
 
+# ==== Issue #156: subgraph...end em flowchart/graph ====
+#
+# A checagem 1b (balanco de blocos) roda para TODO bloco mermaid, nao so
+# para sequenceDiagram. Antes do fix ela so reconhecia alt|loop|par|opt|
+# critical|rect como abridores, mas contava QUALQUER `end` isolado como
+# fechador — logo um flowchart com N subgraphs validos reportava
+# "0 abertos, N fechados" e bloqueava o doc com ERRO falso (exit 1).
+#
+# Um segundo defeito, da mesma checagem, foi encontrado ao corrigir o
+# primeiro: o idioma gsub(/(^|\n)...(\n|$)/) consumia o \n terminal do
+# match, entao linhas ADJACENTES so contavam uma vez (`^` em awk casa
+# inicio da STRING, nao de linha). Isso subcontava o `end` de subgraph
+# ANINHADO. Por isso ha scenario dedicado para o caso aninhado.
+
+# _vd_write_mermaid ARQUIVO CORPO -> escreve um .md com um unico bloco
+# ```mermaid contendo CORPO em $TMPDIR_TEST.
+_vd_write_mermaid() {
+  {
+    printf '# Doc\n\n'
+    printf '```mermaid\n'
+    printf '%s\n' "$2"
+    printf '```\n'
+  } >"$TMPDIR_TEST/$1"
+}
+
+scenario_mermaid_flowchart_subgraph_valido() {
+  _vd_write_mermaid "flow.md" 'flowchart TD
+  subgraph A[Front]
+    A1[UI] --> A2[API]
+  end
+  subgraph B[Back]
+    B1[svc] --> B2[db]
+  end
+  A2 --> B1'
+  assert_exit 0 sh "$SCRIPT" "$TMPDIR_TEST/flow.md" || return 1
+  assert_stdout_not_contains "sem \`end\` correspondente" || return 1
+}
+
+scenario_mermaid_subgraph_aninhado_valido() {
+  _vd_write_mermaid "nested.md" 'flowchart TD
+  subgraph Out[Externo]
+    subgraph In[Interno]
+      X --> Y
+    end
+  end'
+  assert_exit 0 sh "$SCRIPT" "$TMPDIR_TEST/nested.md" || return 1
+  assert_stdout_not_contains "sem \`end\` correspondente" || return 1
+}
+
+scenario_mermaid_subgraph_sem_titulo_valido() {
+  _vd_write_mermaid "bare.md" 'graph LR
+  subgraph
+    X --> Y
+  end'
+  assert_exit 0 sh "$SCRIPT" "$TMPDIR_TEST/bare.md" || return 1
+  assert_stdout_not_contains "sem \`end\` correspondente" || return 1
+}
+
+# Contratos negativos: o fix NAO pode cegar a checagem. Desbalanco real
+# — em subgraph ou em alt — continua sendo ERRO com exit 1.
+
+scenario_mermaid_subgraph_sem_end_ainda_erro() {
+  _vd_write_mermaid "unclosed-subgraph.md" 'flowchart TD
+  subgraph A[Front]
+    X --> Y'
+  assert_exit 1 sh "$SCRIPT" "$TMPDIR_TEST/unclosed-subgraph.md" || return 1
+  assert_stdout_contains "sem \`end\` correspondente" || return 1
+}
+
+scenario_mermaid_alt_sem_end_ainda_erro() {
+  _vd_write_mermaid "unclosed-alt.md" 'sequenceDiagram
+  participant A
+  participant B
+  alt caso
+    A->>B: x'
+  assert_exit 1 sh "$SCRIPT" "$TMPDIR_TEST/unclosed-alt.md" || return 1
+  assert_stdout_contains "sem \`end\` correspondente" || return 1
+}
+
 run_all_scenarios

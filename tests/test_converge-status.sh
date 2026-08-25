@@ -590,4 +590,62 @@ scenario_help_exit0() {
   assert_stderr_contains "Uso:" || return 1
 }
 
+# ==== Issue #157: sha256 em Windows/Git-Bash (MINGW*/MSYS*/CYGWIN*) ====
+#
+# Antes do fix, `uname -s` = MINGW64_NT-* caia no ramo `*)` do case de
+# sha256 e abortava exit 1 ("SO nao suportado"), mesmo com sha256sum
+# presente e funcional. No converge isso tornava a ETAPA 7 (gravar o
+# ConvergenceStatusRecord) INEXECUTAVEL no Windows, sem workaround: o
+# marcador so pode ser escrito por este script.
+#
+# O stub shadowa `uname` via PATH (o SUT o invoca sem qualificar path).
+# PATH original preservado a direita para sha256sum/awk continuarem
+# resolvendo. _cs_run repassa $PATH para o `env -i`, entao exportar PATH
+# no scenario basta.
+
+# _cs_stub_uname VALOR -> cria stub de `uname -s` e o poe na frente
+# do PATH. Escopo: subshell do scenario corrente.
+_cs_stub_uname() {
+  mkdir -p "$TMPDIR_TEST/stubbin" || return 1
+  {
+    printf '#!/bin/sh\n'
+    printf 'if [ "$1" = "-s" ]; then\n'
+    printf "  printf '%%s\\\\n' '%s'\n" "$1"
+    printf '  exit 0\n'
+    printf 'fi\n'
+    printf 'exec /usr/bin/uname "$@"\n'
+  } >"$TMPDIR_TEST/stubbin/uname"
+  chmod +x "$TMPDIR_TEST/stubbin/uname" || return 1
+  PATH="$TMPDIR_TEST/stubbin:$PATH"
+  export PATH
+}
+
+scenario_record_funciona_sob_mingw() {
+  _cs_stub_uname "MINGW64_NT-10.0-26200" || return 2
+  _repo=$(_cs_make_repo)
+  _fd=$(_cs_make_feature "$_repo" feat-mingw)
+  _cs_run "$_repo" record --feature-dir "$_fd" --outcome clean --provenance gate --actionable 0
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 sob MINGW64, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  grep -Eq '^<!-- converge-status: outcome=clean; provenance=gate; at=.*; actionable=0; tasks-digest=[0-9a-f]{12} -->$' \
+    "$_fd/converge-report.md" || { _fail "format" "marcador nao gravado/malformado sob MINGW64"; return 1; }
+}
+
+scenario_record_funciona_sob_cygwin() {
+  _cs_stub_uname "CYGWIN_NT-10.0" || return 2
+  _repo=$(_cs_make_repo)
+  _fd=$(_cs_make_feature "$_repo" feat-cygwin)
+  _cs_run "$_repo" record --feature-dir "$_fd" --outcome clean --provenance gate --actionable 0
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 sob CYGWIN, obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+}
+
+# Contrato negativo: o fail-closed do ramo `*)` NAO foi afrouxado.
+scenario_record_so_desconhecido_ainda_falha() {
+  _cs_stub_uname "Plan9" || return 2
+  _repo=$(_cs_make_repo)
+  _fd=$(_cs_make_feature "$_repo" feat-plan9)
+  _cs_run "$_repo" record --feature-dir "$_fd" --outcome clean --provenance gate --actionable 0
+  [ "$_CAPTURED_EXIT" != 0 ] || { _fail "exit" "esperado falha em SO desconhecido, obtido 0"; return 1; }
+  assert_stderr_contains "SO nao suportado para sha256" || return 1
+}
+
 run_all_scenarios
