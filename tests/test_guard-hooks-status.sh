@@ -55,9 +55,24 @@ SCRIPT="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/guard-hooks-st
 # falha que a memoria do projeto ja registra para helpers resolvidos via
 # ~/.claude. Cenarios que QUEREM testar o caminho do plugin setam as vars
 # explicitamente (ver scenario_check_plugin_*).
+# CSTK_OTEL_ENDPOINT e pinada VAZIA por default (issue #162): a 5a coluna
+# de gate le o ambiente da invocacao, entao herdar a variavel do shell de
+# quem roda a suite tornaria os cenarios nao-deterministicos (verdes na
+# maquina sem wrapper `claude()`, vermelhos na maquina com ele).
 _ghs() {
   capture env HOME="$TMPDIR_TEST/.home-sem-plugin" CLAUDE_PLUGIN_ROOT='' \
     CSTK_HOOKS_CATALOG_DIR="${CSTK_HOOKS_CATALOG_DIR:-}" \
+    CSTK_OTEL_ENDPOINT='' \
+    sh "$SCRIPT" "$@"
+}
+
+# _ghs_endpoint URL ARGS... -> mesma invocacao com CSTK_OTEL_ENDPOINT setada.
+_ghs_endpoint() {
+  _ge_url=$1
+  shift
+  capture env HOME="$TMPDIR_TEST/.home-sem-plugin" CLAUDE_PLUGIN_ROOT='' \
+    CSTK_HOOKS_CATALOG_DIR="${CSTK_HOOKS_CATALOG_DIR:-}" \
+    CSTK_OTEL_ENDPOINT="$_ge_url" \
     sh "$SCRIPT" "$@"
 }
 
@@ -494,6 +509,12 @@ scenario_loose_usage_detection_current_runtime() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0 (hook opt-in ausente nao afeta exit), obtido $_CAPTURED_EXIT"; return 1; }
   printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh	missing	unregistered	' \
     || { _fail "TSV" "esperado 4a linha posttooluse-loose-usage.sh missing/unregistered"; return 1; }
+  # 5a coluna = gate de ambiente (issue #162); _ghs pina a variavel vazia.
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh	missing	unregistered	unknown	endpoint-unset$' \
+    || { _fail "TSV" "esperado 5a coluna endpoint-unset na linha loose: $_CAPTURED_STDOUT"; return 1; }
+  # Hook ausente = opt-in nao exercido: NAO ha o que avisar sobre o gate.
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'CSTK_OTEL_ENDPOINT' \
+    && { _fail "stderr" "hook ausente nao deveria disparar aviso de gate"; return 1; }
   _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | wc -l | tr -d ' ')
   [ "$_n" = 4 ] || { _fail "TSV" "esperado 4 linhas com --include-loose-usage, obtido $_n"; return 1; }
   return 0
@@ -543,6 +564,83 @@ scenario_loose_usage_detection_stale_runtime() {
   capture sh "$_old" check --projeto-alvo-path "$_p" --quiet
   [ "$_CAPTURED_EXIT" = 0 ] \
     || { _fail "exit" "baseline no runtime antigo deveria seguir exit 0, obtido $_CAPTURED_EXIT"; return 1; }
+  return 0
+}
+
+# ==== 5a coluna de GATE na linha de loose-usage (issue #162) ====
+#
+# Motivacao (issue #162): o hook gateia duro em CSTK_OTEL_ENDPOINT
+# (posttooluse-loose-usage.sh, Passo 1) e sai 0 mudo sem ela. Antes desta
+# coluna, present+registered+current descrevia um hook que capturava ZERO,
+# sem nenhuma superficie para o operador enxergar isso — a mesma classe de
+# falha silenciosa que motivou a 3a coluna (stale reportado como ativo).
+
+# _provision_loose PAP -> hook opt-in presente E registrado (alem dos 3).
+_provision_loose() {
+  _pl_p=$1
+  for _pl_h in $_HOOKS; do _put_hook "$_pl_p" "$_pl_h"; done
+  _put_hook "$_pl_p" posttooluse-loose-usage.sh
+  # shellcheck disable=SC2086
+  _register "$_pl_p" $_HOOKS posttooluse-loose-usage.sh
+}
+
+# Hook provisionado + variavel AUSENTE => endpoint-unset + aviso no stderr,
+# sem mexer no exit (opt-in nunca reprova a area).
+scenario_loose_gate_endpoint_unset_avisa() {
+  _p=$(_mkproj proj-loose-gate-unset)
+  _provision_loose "$_p"
+  _ghs check --projeto-alvo-path "$_p" --include-loose-usage
+  [ "$_CAPTURED_EXIT" = 0 ] \
+    || { _fail "exit" "gate inerte NAO pode mudar o exit (hook opt-in), obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh	present	registered	current	endpoint-unset$' \
+    || { _fail "TSV" "esperado endpoint-unset: $_CAPTURED_STDOUT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'CSTK_OTEL_ENDPOINT' \
+    || { _fail "stderr" "esperado aviso citando CSTK_OTEL_ENDPOINT: $_CAPTURED_STDERR"; return 1; }
+  # O aviso precisa dizer o que o operador perde, nao so o nome da variavel.
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'INERTE' \
+    || { _fail "stderr" "aviso deveria explicitar que a captura fica INERTE"; return 1; }
+  return 0
+}
+
+# Mesma provisao, variavel PRESENTE => endpoint-set e nenhum aviso.
+scenario_loose_gate_endpoint_set_silencioso() {
+  _p=$(_mkproj proj-loose-gate-set)
+  _provision_loose "$_p"
+  _ghs_endpoint 'http://127.0.0.1:41234/metrics' check --projeto-alvo-path "$_p" --include-loose-usage
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh	present	registered	current	endpoint-set$' \
+    || { _fail "TSV" "esperado endpoint-set: $_CAPTURED_STDOUT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'CSTK_OTEL_ENDPOINT' \
+    && { _fail "stderr" "com a variavel setada nao pode haver aviso de gate"; return 1; }
+  return 0
+}
+
+# --quiet suprime o aviso (contrato geral do subcomando), mas NUNCA a coluna:
+# o consumidor programatico (cli/lib/setup.sh) chama sempre com --quiet.
+scenario_loose_gate_quiet_preserva_coluna() {
+  _p=$(_mkproj proj-loose-gate-quiet)
+  _provision_loose "$_p"
+  _ghs check --projeto-alvo-path "$_p" --include-loose-usage --quiet
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '	endpoint-unset$' \
+    || { _fail "TSV" "--quiet nao pode suprimir a coluna de gate: $_CAPTURED_STDOUT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDERR" | grep -q 'CSTK_OTEL_ENDPOINT' \
+    && { _fail "stderr" "--quiet deveria suprimir o aviso"; return 1; }
+  return 0
+}
+
+# --verify-registration continua NAO emitindo canonical/divergent para a
+# linha de loose-usage: a 5a posicao dessa linha e, e segue sendo, o gate.
+scenario_loose_gate_nao_vira_canonical_com_verify() {
+  _p=$(_mkproj proj-loose-gate-verify)
+  for _h in $_HOOKS; do _put_hook "$_p" "$_h"; done
+  _put_hook "$_p" posttooluse-loose-usage.sh
+  # shellcheck disable=SC2086
+  _register_canonical "$_p" $_HOOKS posttooluse-loose-usage.sh
+  _ghs check --projeto-alvo-path "$_p" --include-loose-usage --verify-registration
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh	present	registered	current	endpoint-unset$' \
+    || { _fail "TSV" "linha loose deveria manter o gate na 5a coluna: $_CAPTURED_STDOUT"; return 1; }
+  printf '%s\n' "$_CAPTURED_STDOUT" | grep -q '^posttooluse-loose-usage.sh.*canonical' \
+    && { _fail "TSV" "linha loose nao pode ganhar canonical/divergent"; return 1; }
   return 0
 }
 

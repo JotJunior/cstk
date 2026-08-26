@@ -65,14 +65,35 @@
 #         (inclui stale e divergent).
 #
 #       --include-loose-usage (feature cstk-setup, FASE 2.1, FR-002/FR-008):
-#         extensao ADITIVA — acrescenta uma 4a linha TSV para
-#         posttooluse-loose-usage.sh (mesmo formato de 4 colunas; NUNCA
-#         ganha a 5a coluna mesmo com --verify-registration — ver abaixo).
+#         extensao ADITIVA — acrescenta uma 4a LINHA TSV para
+#         posttooluse-loose-usage.sh, com 5 COLUNAS (issue #162):
+#             <arquivo>\t<present|missing>\t<registered|unregistered>\t
+#             <current|stale|unknown>\t<endpoint-set|endpoint-unset>
 #         NAO altera o exit code (hook opt-in, ausencia nunca e anomalia).
 #         Sem a flag, saida byte-a-byte identica a atual. Runtime instalado
 #         anterior a esta extensao rejeita a flag em _gh_die_usage com
 #         exit 2 — o consumidor MUST tratar como
 #         loose_usage_status=indeterminate, nunca como falha da area.
+#
+#         5a coluna = GATE (issue #162). Semantica DIFERENTE da 5a coluna
+#         de --verify-registration (que NUNCA e emitida para esta linha):
+#         aqui reporta apenas se `CSTK_OTEL_ENDPOINT` esta setado e
+#         nao-vazio no ambiente DESTA invocacao. Por que existe: o hook
+#         gateia duro nessa variavel (posttooluse-loose-usage.sh, Passo 1)
+#         e sai 0 mudo sem ela — present+registered+current descrevia um
+#         hook que capturava ZERO, sem nenhuma superficie para enxergar
+#         isso. Mesma classe do caso que motivou a 3a coluna (hook stale
+#         reportado como "3/3 ativos" com tool_calls zerado por 15 ondas).
+#
+#         LIMITE DA OBSERVACAO (nao e veredito, e por isso os tokens sao
+#         `endpoint-set`/`endpoint-unset` e nao `armed`/`inert`): o
+#         ambiente que decide o gate e o do processo `claude` que hospeda
+#         o hook, NAO necessariamente o desta invocacao. Rodado de um
+#         terminal comum enquanto o wrapper `claude()` exporta a variavel
+#         so dentro do processo, o resultado honesto e `endpoint-unset`
+#         para ESTE ambiente — e o stderr diz exatamente isso. Rodado de
+#         dentro da sessao (Bash tool do orquestrador, `cstk setup` no
+#         mesmo shell), o ambiente e o mesmo e a leitura e direta.
 #
 #       --verify-registration (feature cstk-setup, FASE 2.2, FR-016):
 #         extensao ADITIVA — acrescenta uma 5a coluna TSV
@@ -529,11 +550,28 @@ _gh_cmd_check() {
       _lst_reg="unregistered"
     fi
     _lst_fresh=$(_gh_freshness "$_pap" "$_lh")
-    if [ "$_verify_reg" = 1 ]; then
-      _lst_verify=$(_gh_verify_registration "$_pap" "$_lh")
-      printf '%s\t%s\t%s\t%s\t%s\n' "$_lh" "$_lst_file" "$_lst_reg" "$_lst_fresh" "$_lst_verify"
+    # 5a coluna: GATE de ambiente (issue #162). Observacao pura sobre o
+    # ambiente DESTA invocacao — nunca o veredito "o hook captura/nao
+    # captura", que depende do ambiente do processo `claude`. Ver o bloco
+    # LIMITE DA OBSERVACAO no cabecalho.
+    if [ -n "${CSTK_OTEL_ENDPOINT:-}" ]; then
+      _lst_gate="endpoint-set"
     else
-      printf '%s\t%s\t%s\t%s\n' "$_lh" "$_lst_file" "$_lst_reg" "$_lst_fresh"
+      _lst_gate="endpoint-unset"
+    fi
+    # --verify-registration NUNCA emite a coluna canonical/divergent para
+    # esta linha (contrato original preservado): a 5a posicao aqui e, e
+    # continua sendo, a dimensao de gate.
+    printf '%s\t%s\t%s\t%s\t%s\n' "$_lh" "$_lst_file" "$_lst_reg" "$_lst_fresh" "$_lst_gate"
+
+    # Diagnostico: so quando o hook de fato RODARIA (present+registered) e
+    # ainda assim capturaria zero. Hook ausente/nao registrado ja e opt-in
+    # nao exercido — nada a dizer.
+    if [ "$_quiet" = 0 ] && [ "$_lst_file" = "present" ] && [ "$_lst_reg" = "registered" ] \
+       && [ "$_lst_gate" = "endpoint-unset" ]; then
+      _gh_err "posttooluse-loose-usage.sh esta present+registered, mas CSTK_OTEL_ENDPOINT esta AUSENTE no ambiente desta invocacao — o hook gateia nessa variavel (Passo 1) e sai 0 mudo, entao a captura de consumo avulso fica INERTE e 'cstk usage' responde 'nao medido'."
+      _gh_err "  Remediacao: exportar CSTK_OTEL_ENDPOINT no ambiente do processo 'claude' — o wrapper 'claude()' de 'cstk help telemetry' (README.md, secao de telemetria) faz isso a cada lancamento."
+      _gh_err "  Se o wrapper JA estiver instalado, esta leitura pode ser um falso alarme: o ambiente que conta e o do processo 'claude', nao o deste terminal."
     fi
   fi
 
@@ -639,9 +677,13 @@ USO:
 
 check     TSV <hook>\t<present|missing>\t<registered|unregistered>\t<current|stale|unknown>;
           exit 0 se os 3 ativos E atuais, 1 caso contrario.
-          --include-loose-usage acrescenta 4a linha (posttooluse-loose-usage.sh),
-          nao afeta o exit. --verify-registration acrescenta 5a coluna
-          (canonical|divergent|indeterminate); "divergent" muda exit p/ 1.
+          --include-loose-usage acrescenta 4a linha (posttooluse-loose-usage.sh)
+          com 5a coluna de GATE (endpoint-set|endpoint-unset: CSTK_OTEL_ENDPOINT
+          setado no ambiente DESTA invocacao? sem ele o hook sai 0 mudo e a
+          captura fica inerte — issue #162); nao afeta o exit.
+          --verify-registration acrescenta 5a coluna
+          (canonical|divergent|indeterminate) aos 3 hooks obrigatorios — nunca
+          a linha de loose-usage; "divergent" muda exit p/ 1.
           Invoque cada flag SEPARADA da chamada baseline (nunca combinadas).
 tick-mode "hook" ou "manual" — o orquestrador so ticka na mao em "manual".
           "manual" tambem quando a copia do hook e cega a backend (pre

@@ -319,7 +319,14 @@ _setup_area_ok() {
 #   _SU_HOOKS_MANDATORY_STATUS  configured|not-configured|divergent|unavailable
 #   _SU_HOOKS_MANDATORY_REASON  motivo legivel (vazio quando configured)
 #   _SU_HOOKS_DIVERGENT_NAMES   basenames divergentes, espaco-separado
-#   _SU_HOOKS_LOOSE_STATUS      configured|not-configured|indeterminate
+#   _SU_HOOKS_LOOSE_STATUS      configured|configured-inert|not-configured|
+#                               indeterminate
+#     `configured-inert` (issue #162): hook present+registered+nao-stale,
+#     mas a 5a coluna do TSV reporta `endpoint-unset` — o hook gateia duro
+#     em CSTK_OTEL_ENDPOINT e sai 0 mudo sem ela, entao a captura nao
+#     acontece. Reportar isso como `configured` era dizer "ok" para um
+#     caminho que grava zero. Runtime antigo (4 colunas, sem gate) devolve
+#     coluna vazia -> preserva `configured`, nunca inventa `-inert`.
 #
 # Regra de escalada (I5 do data-model, achados SEC-01/SEC-02): a chamada
 # --verify-registration so pode ESCALAR o veredito da baseline, nunca
@@ -425,8 +432,14 @@ SDHVR
       _sdh_l_present=$(printf '%s' "$_sdh_loose_line" | awk -F'\t' '{print $2}')
       _sdh_l_reg=$(printf '%s' "$_sdh_loose_line" | awk -F'\t' '{print $3}')
       _sdh_l_fresh=$(printf '%s' "$_sdh_loose_line" | awk -F'\t' '{print $4}')
+      # 5a coluna (gate de ambiente, issue #162). Vazia em runtime antigo.
+      _sdh_l_gate=$(printf '%s' "$_sdh_loose_line" | awk -F'\t' '{print $5}')
       if [ "$_sdh_l_present" = "present" ] && [ "$_sdh_l_reg" = "registered" ] && [ "$_sdh_l_fresh" != "stale" ]; then
-        _SU_HOOKS_LOOSE_STATUS="configured"
+        if [ "$_sdh_l_gate" = "endpoint-unset" ]; then
+          _SU_HOOKS_LOOSE_STATUS="configured-inert"
+        else
+          _SU_HOOKS_LOOSE_STATUS="configured"
+        fi
       else
         _SU_HOOKS_LOOSE_STATUS="not-configured"
       fi
@@ -514,6 +527,9 @@ _setup_run_hooks_area() {
     _setup_info "setup: [hooks] motivo: $_SU_HOOKS_MANDATORY_REASON"
   fi
   _setup_info "setup: [hooks] loose usage (opt-in, escolha distinta — FR-008): $_SU_HOOKS_LOOSE_STATUS"
+  if [ "$_SU_HOOKS_LOOSE_STATUS" = "configured-inert" ]; then
+    _setup_info "setup: [hooks] loose usage INERTE: hook provisionado, mas CSTK_OTEL_ENDPOINT ausente no ambiente desta invocacao — o hook gateia nessa variavel e sai 0 mudo, entao 'cstk usage' vai responder 'nao medido' (issue #162). Remediacao: wrapper 'claude()' de 'cstk help telemetry'."
+  fi
 
   case "$_SU_HOOKS_MANDATORY_STATUS" in
     configured)
@@ -998,7 +1014,7 @@ _setup_show_telemetry_instructions() {
   _setup_info "setup: [telemetry]   export CLAUDE_CODE_ENABLE_TELEMETRY=1"
   _setup_info "setup: [telemetry]   export OTEL_METRICS_EXPORTER=prometheus"
   _setup_info "setup: [telemetry] o exporter local escuta em 127.0.0.1:9464 por padrao — nada sai da maquina."
-  _setup_info "setup: [telemetry] mais de um processo Claude Code ao mesmo tempo? So UM pode usar a porta fixa 9464. De a cada processo sua propria porta com OTEL_EXPORTER_PROMETHEUS_PORT (porta sorteada) + CSTK_OTEL_ENDPOINT (URL correspondente) — README.md documenta um wrapper 'claude()' de exemplo para ~/.zshrc que sorteia porta livre a cada lancamento."
+  _setup_info "setup: [telemetry] mais de um processo Claude Code ao mesmo tempo? So UM pode usar a porta fixa 9464. De a cada processo sua propria porta com OTEL_EXPORTER_PROMETHEUS_PORT (porta sorteada) + CSTK_OTEL_ENDPOINT (URL correspondente) — README.md documenta um wrapper 'claude()' de exemplo para ~/.zshrc que sorteia porta livre a cada lancamento. CSTK_OTEL_ENDPOINT tambem e requisito DURO da captura de consumo avulso (issue #162) — sem ela o hook opt-in fica inerte, mesmo provisionado."
   _setup_info "setup: [telemetry] este wizard NAO escreve nada disso por voce (FR-012) — a ativacao e sempre manual, fora do diretorio do projeto."
 }
 

@@ -425,6 +425,102 @@ STUB
   }
 }
 
+# ==== 5a coluna de gate na linha de loose-usage (issue #162) ====
+#
+# O hook opt-in gateia em CSTK_OTEL_ENDPOINT e sai 0 mudo sem ela: provisionado
+# porem inerte. `configured` para esse caso era dizer "ok" a um caminho que
+# grava zero — dai `configured-inert`. Runtime antigo (4 colunas, sem gate)
+# devolve $5 vazio e MUST preservar `configured`, nunca inventar `-inert`.
+
+# _stub_ghs_loose DIR GATE_TOKEN -> stub com a linha loose present/registered
+# e a 5a coluna sendo GATE_TOKEN (string vazia = runtime antigo, 4 colunas).
+_stub_ghs_loose() {
+  _sgl_dir=$1
+  _sgl_gate=$2
+  mkdir -p "$_sgl_dir"
+  if [ -n "$_sgl_gate" ]; then
+    _sgl_loose_line="posttooluse-loose-usage.sh\\tpresent\\tregistered\\tcurrent\\t$_sgl_gate\\n"
+  else
+    _sgl_loose_line="posttooluse-loose-usage.sh\\tpresent\\tregistered\\tcurrent\\n"
+  fi
+  cat > "$_sgl_dir/guard-hooks-status.sh" <<STUB
+#!/bin/sh
+case "\$*" in
+  *--verify-registration*)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\tcanonical\n'
+    printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\tcanonical\n'
+    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\tcanonical\n'
+    exit 0 ;;
+  *--include-loose-usage*)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
+    printf '$_sgl_loose_line'
+    exit 0 ;;
+  *)
+    printf 'pretooluse-bash-guard.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-tool-call-tick.sh\tpresent\tregistered\tcurrent\n'
+    printf 'posttooluse-agent-usage.sh\tpresent\tregistered\tcurrent\n'
+    exit 0 ;;
+esac
+STUB
+  chmod +x "$_sgl_dir/guard-hooks-status.sh"
+}
+
+# _run_setup_loose NAME GATE_TOKEN -> roda `cstk setup --dry-run --verbose`
+# com o stub acima; deixa a saida combinada em $_CAPTURED_STDOUT/_STDERR.
+_run_setup_loose() {
+  _rsl_repo="$TMPDIR_TEST/repo-$1"
+  _make_repo "$_rsl_repo"
+  _rsl_home="$TMPDIR_TEST/home-$1"
+  mkdir -p "$_rsl_home"
+  _stub_ghs_loose "$TMPDIR_TEST/stubbin-$1" "$2"
+  capture env PATH="$TMPDIR_TEST/stubbin-$1:$PATH" HOME="$_rsl_home" CSTK_LIB="$CSTK_LIB" \
+    sh "$CSTK" setup --project-path "$_rsl_repo" --dry-run --verbose
+}
+
+scenario_loose_gate_inert_reportado() {
+  _run_setup_loose loose-inert endpoint-unset
+  if ! printf '%s\n%s\n' "$_CAPTURED_STDOUT" "$_CAPTURED_STDERR" | grep -q 'configured-inert'; then
+    _fail "scenario_loose_gate_inert_reportado" \
+      "esperava loose_usage_status=configured-inert; obtido: $_CAPTURED_STDOUT $_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! printf '%s\n%s\n' "$_CAPTURED_STDOUT" "$_CAPTURED_STDERR" | grep -q 'CSTK_OTEL_ENDPOINT'; then
+    _fail "scenario_loose_gate_inert_reportado" \
+      "esperava explicacao citando CSTK_OTEL_ENDPOINT"
+    return 1
+  fi
+  return 0
+}
+
+scenario_loose_gate_armed_segue_configured() {
+  _run_setup_loose loose-armed endpoint-set
+  if ! printf '%s\n%s\n' "$_CAPTURED_STDOUT" "$_CAPTURED_STDERR" | grep -q 'loose usage.*: configured$'; then
+    _fail "scenario_loose_gate_armed_segue_configured" \
+      "esperava loose_usage_status=configured; obtido: $_CAPTURED_STDOUT $_CAPTURED_STDERR"
+    return 1
+  fi
+  return 0
+}
+
+# Runtime antigo: 4 colunas, $5 vazio => preserva `configured` (o gate e
+# desconhecido, nao "ausente"); jamais fabrica `-inert`.
+scenario_loose_gate_runtime_antigo_preserva_configured() {
+  _run_setup_loose loose-old ''
+  if printf '%s\n%s\n' "$_CAPTURED_STDOUT" "$_CAPTURED_STDERR" | grep -q 'configured-inert'; then
+    _fail "scenario_loose_gate_runtime_antigo_preserva_configured" \
+      "runtime sem a coluna de gate nao pode virar configured-inert"
+    return 1
+  fi
+  if ! printf '%s\n%s\n' "$_CAPTURED_STDOUT" "$_CAPTURED_STDERR" | grep -q 'loose usage.*: configured$'; then
+    _fail "scenario_loose_gate_runtime_antigo_preserva_configured" \
+      "esperava configured; obtido: $_CAPTURED_STDOUT $_CAPTURED_STDERR"
+    return 1
+  fi
+  return 0
+}
+
 # ==== 3.2.4 status=configured -> zero chamadas de aplicacao (I1) ====
 
 scenario_hooks_second_run_zero_calls() {
