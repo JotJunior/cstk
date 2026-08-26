@@ -708,7 +708,12 @@ settings.local.json com --local) ja registrar os hooks 00c, os dois ficam
 ativos e cada tool call e contada em dobro — o comando avisa e oferece a
 remocao (mesmo dedup do plugin; --remove-classic remove sem perguntar).
 Dica para nao sujar o git status do cliente com os scripts:
-  printf '.claude/hooks/\n.claude/settings.local.json\n' >> .git/info/exclude
+  printf '.claude/hooks/\n.claude/settings.local.json\n.claude/*.bak\n.claude/*.bak-pre-dedup\n' >> .git/info/exclude
+Os dois padroes .bak cobrem os backups que o PROPRIO comando gera: ao
+mesclar o registro (settings.json.bak / settings.local.json.bak) e ao
+deduplicar (settings.json.bak-pre-dedup). Sem eles o backup fica visivel no
+git status do cliente e entra num `git add -A` distraido — exatamente o que
+a dica existe para evitar (issue #163).
 
 status: diagnostico READ-ONLY (exit 0 sempre) — para cada hook 00c,
 script presente em .claude/hooks/ e em QUAL arquivo esta o registro
@@ -718,6 +723,14 @@ script presente em .claude/hooks/ e em QUAL arquivo esta o registro
 posttooluse-loose-usage.sh, hook que captura consumo avulso (fora de
 execucoes agente-00c/feature-00c) num sidecar local. Sem a flag,
 comportamento identico a antes desta opcao existir.
+ATENCAO (issue #162): provisionar o hook NAO basta — ele gateia em
+CSTK_OTEL_ENDPOINT (Passo 1) e sai 0 mudo sem ela, entao a captura fica
+INERTE e `cstk usage` responde "nao medido". A variavel precisa existir no
+ambiente do processo `claude` (wrapper de `cstk help telemetry`, ou export
+manual). Diferente do custo por onda, aqui NAO ha porta default de
+fallback. Para conferir:
+  guard-hooks-status.sh check --projeto-alvo-path PATH --include-loose-usage
+  -> 5a coluna endpoint-set (armado) | endpoint-unset (inerte)
 
 Quando o plugin 'cstk' ja prove os hooks, o provisionamento classico e
 pulado (dedup, plugin vence). Se AINDA houver registro classico no

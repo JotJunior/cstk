@@ -267,6 +267,24 @@ Verificacao (de dentro de uma sessao claude lancada pelo wrapper):
   ~/.claude/skills/agente-00c-runtime/scripts/otel-usage.sh preflight
   # esperado: status=ok  (fora de sessao: disabled e normal)
 
+CSTK_OTEL_ENDPOINT e requisito DURO da captura de consumo avulso
+(`cstk usage`, issue #162), nao so conveniencia para multi-processo: o hook
+posttooluse-loose-usage.sh gateia nessa variavel e sai 0 mudo sem ela.
+Diferente do custo por onda — que cai na porta default fixa 9464 e continua
+medindo — a captura avulsa NAO tem fallback: sem a variavel ela fica inerte
+e `cstk usage` responde "nao medido".
+
+  ATENCAO ao ramo sem python3 do wrapper acima: ele liga
+  CLAUDE_CODE_ENABLE_TELEMETRY + OTEL_METRICS_EXPORTER mas NAO define
+  CSTK_OTEL_ENDPOINT. Nessa maquina o custo por onda funciona (default) e a
+  captura avulsa NAO — instalar o wrapper nao e, por si so, garantia.
+
+Conferir se a captura esta armada (de dentro da sessao, ou do shell de onde
+voce lanca o claude):
+  ~/.claude/skills/agente-00c-runtime/scripts/guard-hooks-status.sh check \
+    --projeto-alvo-path . --include-loose-usage
+  # 5a coluna: endpoint-set (armado) | endpoint-unset (inerte)
+
 Snippet canonico: identico ao de cli/install.sh (telemetry_snippet) —
 teste de paridade em tests/cstk/test_cstk-main.sh gateia drift entre os dois.
 TELHELP

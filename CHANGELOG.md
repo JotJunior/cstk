@@ -5,6 +5,78 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [9.2.3] - 2026-08-26
+
+Fecha duas issues de **diagnostico e documentacao enganosos** — nenhuma das
+duas quebrava codigo, as duas faziam o toolkit afirmar "ok" para um estado
+que nao era ok. Mesma classe da 3a coluna do `guard-hooks-status.sh`
+(hook stale reportado como "3/3 ativos" com `tool_calls` zerado por 15
+ondas): ausencia tem que aparecer como ausencia, nunca como zero fabricado
+nem como "configurado".
+
+### Fixed
+
+- **Issue #162 — captura de consumo avulso inerte reportada como
+  `current`.** O `posttooluse-loose-usage.sh` gateia duro em
+  `CSTK_OTEL_ENDPOINT` (Passo 1) e sai `0` mudo sem ela; o
+  `guard-hooks-status.sh --include-loose-usage` respondia
+  `present registered current` para um hook que capturava ZERO, e a doc
+  afirmava o contrario ("no second toggle" / "sem um segundo toggle").
+  Assimetria que fazia o setup pela metade passar despercebido: o caminho de
+  custo por onda (`otel-usage.sh`) cai no default
+  `http://127.0.0.1:9464/metrics` e continua medindo, entao o painel dava a
+  impressao de telemetria configurada.
+  - **Diagnostico**: a linha de `posttooluse-loose-usage.sh` ganhou uma 5a
+    coluna TSV de GATE — `endpoint-set` | `endpoint-unset` — mais aviso em
+    stderr quando o hook esta present+registered e ainda assim capturaria
+    nada. Nao afeta o exit code (hook opt-in, ausencia nunca e anomalia) nem
+    a saida sem a flag. Os tokens sao OBSERVACAO, nao veredito: o ambiente
+    que decide o gate e o do processo `claude`, e nao necessariamente o da
+    invocacao do diagnostico — rodado de um terminal comum com o wrapper
+    `claude()` instalado, `endpoint-unset` e honesto sobre aquele terminal,
+    e o stderr diz exatamente isso.
+  - **Divergencia pre-existente contrato-vs-codigo, corrigida no mesmo
+    ponto**: o cabecalho do `guard-hooks-status.sh` ja afirmava que a linha
+    de loose-usage "NUNCA ganha a 5a coluna mesmo com
+    `--verify-registration`", mas o codigo emitia
+    `canonical`/`divergent` ali quando as duas flags eram combinadas. Caminho
+    na pratica morto — as duas flags nunca sao combinadas (achado SEC-03,
+    gateado por teste) e o unico consumidor (`cli/lib/setup.sh`) le so as
+    colunas 2..4 — mas era o contrato mentindo sobre o codigo. Agora a 5a
+    posicao dessa linha e, e so e, a dimensao de gate.
+  - **`cstk setup`**: `loose_usage_status` ganhou o valor `configured-inert`
+    para esse estado. Runtime antigo (4 colunas, 5a vazia) preserva
+    `configured` — o gate fica desconhecido, jamais fabricado.
+  - **Doc**: `docs/cstk-usage.md`/`.pt-BR.md` perderam a afirmacao "no
+    second toggle" e ganharam uma secao Requisitos listando as DUAS
+    condicoes (hook instalado + `CSTK_OTEL_ENDPOINT` no ambiente do processo
+    `claude`), o motivo de o gate ser deliberado, a assimetria com o caminho
+    de onda e como conferir se a captura esta armada. Nos READMEs, o wrapper
+    `claude()` deixou de ser apresentado so como conveniencia para
+    multi-processo e passou a constar como requisito duro do loose-usage.
+    Mesmo aviso no `--help` de `cstk hooks install`.
+- **Issue #163 — a dica de `.git/info/exclude` nao cobria o `.bak` que o
+  proprio comando cria.** Seguindo a dica ao pe da letra, o
+  `.claude/settings.local.json.bak` gerado pelo merge do snippet aparecia no
+  `git status` do cliente e entrava num `git add -A` distraido — exatamente o
+  que a #135 quis eliminar. A dica passou a incluir `.claude/*.bak` e
+  `.claude/*.bak-pre-dedup` (este ultimo cobre o backup do dedup do
+  `--remove-classic`, que o glob `.bak` nao casa), com a explicacao de que os
+  backups sao do proprio fluxo. Corrigido nos tres sitios: `--help` de
+  `cstk hooks install` (`cli/lib/hooks.sh`), `README.md` e `README.pt-BR.md`.
+
+### Tests
+
+- `tests/test_guard-hooks-status.sh`: 4 cenarios novos de gate
+  (`endpoint-unset` avisa, `endpoint-set` silencioso, `--quiet` suprime o
+  aviso mas nunca a coluna, `--verify-registration` nao transforma a 5a
+  coluna da linha loose em `canonical`/`divergent`). O helper `_ghs` passou a
+  pinar `CSTK_OTEL_ENDPOINT` vazia — sem isso os cenarios ficariam verdes na
+  maquina sem o wrapper e vermelhos na maquina com ele.
+- `tests/cstk/test_setup.sh`: 3 cenarios novos (`configured-inert`,
+  `configured` com a variavel setada, e runtime antigo sem a coluna
+  preservando `configured`).
+
 ## [9.2.2] - 2026-08-25
 
 Corrige o `cstk session pr` e o `commit-mode.sh finalize`, que montavam um
@@ -7271,6 +7343,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[9.2.3]: https://github.com/JotJunior/cstk/releases/tag/v9.2.3
 [9.2.2]: https://github.com/JotJunior/cstk/releases/tag/v9.2.2
 [9.2.1]: https://github.com/JotJunior/cstk/releases/tag/v9.2.1
 [9.2.0]: https://github.com/JotJunior/cstk/releases/tag/v9.2.0

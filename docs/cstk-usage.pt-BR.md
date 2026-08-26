@@ -6,15 +6,21 @@
 
 Rastreia o consumo de tokens/custo do Claude Code que acontece **fora** de
 qualquer execução `agente-00c`/`feature-00c` — sessões interativas comuns.
-Opt-in via a mesma configuração nativa de telemetria local que o Claude Code
-já usa (sem um segundo toggle): um hook `PostToolUse` escreve um sidecar TSV
-local por processo/segmento, com throttle e silencioso por design (nunca
-bloqueia nem atrasa a sessão). O `cstk usage` lê esse sidecar mais a tabela
+Um hook `PostToolUse` escreve um sidecar TSV local por processo/segmento, com
+throttle e silencioso por design (nunca bloqueia nem atrasa a sessão). O `cstk usage` lê esse sidecar mais a tabela
 `loose_usage` do `knowledge.db` para reportar consumo por projeto/modelo, e
 para comparar com o consumo de pipeline (orquestrador).
 
+A captura exige **duas** coisas — instalar o hook não basta:
+
+1. o hook em si, opt-in e default DESLIGADO:
+   `cstk hooks install --with-loose-usage`;
+2. **`CSTK_OTEL_ENDPOINT` exportada no ambiente do processo `claude`.** O
+   hook gateia duro nessa variável e sai `0` mudo sem ela — ver
+   [Requisitos](#requisitos) abaixo.
+
 ```bash
-# Habilitar o hook de captura (opt-in, default DESLIGADO)
+# 1. Habilitar o hook de captura (opt-in, default DESLIGADO)
 cstk hooks install --with-loose-usage
 
 # Listar consumo avulso por projeto/modelo
@@ -46,9 +52,60 @@ cstk usage prune --older-than-days 30
   `loose_usage` correspondentes. Segmentos abertos nunca são elegíveis.
   `--dry-run` reporta a mesma seleção sem nenhum efeito colateral.
 
-**Requisitos**: `sqlite3`, `jq`. A captura exige o hook instalado
-(`cstk hooks install --with-loose-usage`, opt-in, default DESLIGADO — nunca
-empacotado junto dos guard hooks obrigatórios).
+## Requisitos
+
+`sqlite3`, `jq`, **mais as duas** condições abaixo:
+
+- o hook instalado: `cstk hooks install --with-loose-usage` (opt-in, default
+  DESLIGADO — nunca empacotado junto dos guard hooks obrigatórios);
+- **`CSTK_OTEL_ENDPOINT` setada e não-vazia no ambiente do processo
+  `claude`.**
+
+A segunda é requisito duro, não conveniência para cenário multi-processo. O
+`posttooluse-loose-usage.sh` a lê como primeiro passo e sai `0` em silêncio
+quando ela está vazia:
+
+```sh
+_PLU_ENDPOINT="${CSTK_OTEL_ENDPOINT:-}"
+[ -n "$_PLU_ENDPOINT" ] || exit 0
+```
+
+A variável é a âncora de identidade de processo do hook, e o gate é
+*deliberado*: `OTEL_METRICS_EXPORTER` e `OTEL_EXPORTER_PROMETHEUS_PORT`
+foram observadas **ausentes** no ambiente do subprocesso do hook, então
+gatear por elas capturaria zero.
+
+Vale notar a assimetria com o caminho de pipeline (custo por onda), que é o
+motivo de um setup pela metade passar despercebido: o `otel-usage.sh` cai no
+default `http://127.0.0.1:9464/metrics` quando `CSTK_OTEL_ENDPOINT` está
+ausente, então o painel continua mostrando custo por onda normalmente — o
+que dá a impressão de telemetria configurada — enquanto a captura avulsa
+fica inerte.
+
+A forma suportada de setá-la é o wrapper `claude()` de lançamento (`cstk
+help telemetry` imprime o bloco pronto; ver a seção de telemetria do
+[README.pt-BR.md](../README.pt-BR.md)), que a exporta a cada lançamento.
+Exportar à mão no rc do shell também funciona, desde que chegue ao processo
+`claude`.
+
+### Como conferir se a captura está de fato armada
+
+O `guard-hooks-status.sh check --include-loose-usage` reporta o gate numa
+5ª coluna TSV (issue #162):
+
+```console
+$ guard-hooks-status.sh check --projeto-alvo-path . --include-loose-usage
+posttooluse-loose-usage.sh	present	registered	current	endpoint-unset
+```
+
+`endpoint-unset` significa hook provisionado que capturaria nada. O `cstk
+setup` reporta a mesma condição como `loose usage: configured-inert`.
+
+A leitura descreve o ambiente *daquela invocação*: rodando de um terminal
+comum enquanto o wrapper exporta a variável só dentro do processo `claude`,
+`endpoint-unset` é honesto sobre o seu terminal, mas não sobre o hook. Rode
+de dentro da sessão (ou do mesmo shell de onde você lança o `claude`) para
+uma leitura direta.
 
 ## Dados capturados
 

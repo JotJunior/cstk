@@ -5,16 +5,22 @@
 > **Advanced track** — opt-in, complements [Knowledge memory](./cstk-recall.md).
 
 Tracks Claude Code token/cost consumption that happens **outside** any
-`agente-00c`/`feature-00c` execution — regular interactive sessions. Opt-in via
-the same native local telemetry configuration Claude Code already uses (no
-second toggle): a `PostToolUse` hook writes a local TSV sidecar per
-process/segment, throttled and silent by design (never blocks or slows down
-the session). `cstk usage` reads that sidecar plus the `loose_usage` table in
+`agente-00c`/`feature-00c` execution — regular interactive sessions. A
+`PostToolUse` hook writes a local TSV sidecar per process/segment, throttled
+and silent by design (never blocks or slows down the session). `cstk usage` reads that sidecar plus the `loose_usage` table in
 `knowledge.db` to report consumption by project/model, and to compare it
 against pipeline (orchestrator) consumption.
 
+Capture needs **two** things — installing the hook is not enough:
+
+1. the hook itself, opt-in and default OFF:
+   `cstk hooks install --with-loose-usage`;
+2. **`CSTK_OTEL_ENDPOINT` exported in the environment of the `claude`
+   process.** The hook gates hard on this variable and exits `0` silently
+   without it — see [Requirements](#requirements) below.
+
 ```bash
-# Enable the capture hook (opt-in, default OFF)
+# 1. Enable the capture hook (opt-in, default OFF)
 cstk hooks install --with-loose-usage
 
 # List loose consumption by project/model
@@ -46,9 +52,58 @@ cstk usage prune --older-than-days 30
   `loose_usage` rows. Open segments are never eligible. `--dry-run` reports
   the same selection without any side effect.
 
-**Requirements**: `sqlite3`, `jq`. Capture requires the hook to be installed
-(`cstk hooks install --with-loose-usage`, opt-in, default OFF — never bundled
-with the mandatory guard hooks).
+## Requirements
+
+`sqlite3`, `jq`, **plus both** of the following:
+
+- the hook installed: `cstk hooks install --with-loose-usage` (opt-in,
+  default OFF — never bundled with the mandatory guard hooks);
+- **`CSTK_OTEL_ENDPOINT` set and non-empty in the environment of the
+  `claude` process.**
+
+The second one is a hard requirement, not a convenience for multi-process
+setups. `posttooluse-loose-usage.sh` reads it as its very first step and
+exits `0` in silence when it is empty:
+
+```sh
+_PLU_ENDPOINT="${CSTK_OTEL_ENDPOINT:-}"
+[ -n "$_PLU_ENDPOINT" ] || exit 0
+```
+
+The variable is the hook's anchor of process identity, and it is gated on
+*deliberately*: `OTEL_METRICS_EXPORTER` and `OTEL_EXPORTER_PROMETHEUS_PORT`
+were observed **absent** in the hook subprocess's environment, so gating on
+those would capture nothing at all.
+
+Note the asymmetry with the per-wave (pipeline) path, which is why a
+half-configured setup is easy to miss: `otel-usage.sh` falls back to
+`http://127.0.0.1:9464/metrics` when `CSTK_OTEL_ENDPOINT` is unset, so the
+panel keeps showing per-wave cost normally — giving the impression that
+telemetry is fully configured — while loose capture stays inert.
+
+The supported way to set it is the `claude()` launcher wrapper (`cstk help
+telemetry` prints the ready-to-paste block; see the telemetry section of
+[README.md](../README.md)), which exports it at every launch. Exporting it by
+hand in your shell rc works too, as long as it reaches the `claude` process.
+
+### Checking whether capture is actually armed
+
+`guard-hooks-status.sh check --include-loose-usage` reports the gate as a
+5th TSV column (issue #162):
+
+```console
+$ guard-hooks-status.sh check --projeto-alvo-path . --include-loose-usage
+posttooluse-loose-usage.sh	present	registered	current	endpoint-unset
+```
+
+`endpoint-unset` means the hook is provisioned but would capture nothing.
+`cstk setup` reports the same condition as `loose usage: configured-inert`.
+
+The reading describes the environment of *that invocation*: if you run it
+from a plain terminal while the wrapper exports the variable only inside the
+`claude` process, `endpoint-unset` is honest about your terminal but not
+about the hook. Run it from inside the session (or from the same shell you
+launch `claude` from) for a direct reading.
 
 ## Data captured
 

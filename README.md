@@ -316,7 +316,9 @@ Enable the plugin and open a new session in any project — skills, the 7
 §Clarifications, assumption A1). `posttooluse-loose-usage.sh` (opt-in
 consumption capture) is deliberately **not** part of the plugin's
 `hooks.json` — it stays an explicit opt-in via `cstk hooks install
---with-loose-usage`.
+--with-loose-usage`, and it also needs `CSTK_OTEL_ENDPOINT` in the `claude`
+process environment or it captures nothing
+([docs/cstk-usage.md](./docs/cstk-usage.md#requirements)).
 
 **Choosing between the two paths:**
 
@@ -370,8 +372,14 @@ keep them out of the client's `git status` without touching their
 `.gitignore`:
 
 ```bash
-printf '.claude/hooks/\n.claude/settings.local.json\n' >> .git/info/exclude
+printf '.claude/hooks/\n.claude/settings.local.json\n.claude/*.bak\n.claude/*.bak-pre-dedup\n' >> .git/info/exclude
 ```
+
+The two `.bak` patterns cover the backups the command **itself** writes —
+`settings.json.bak` / `settings.local.json.bak` when it merges the
+registration, and `settings.json.bak-pre-dedup` when it removes a duplicate
+classic block. Without them the backup shows up in the client's
+`git status` and rides along in a distracted `git add -A` (issue #163).
 
 Idempotent like the default flow. If the *other* file already registers
 the 00c hooks (both would fire, double-counting every tool call) the
@@ -475,6 +483,15 @@ claude() {
   fi
 }
 ```
+
+> **The wrapper is also a hard requirement for loose-usage capture**
+> (`cstk usage`, issue #162), not just a multi-process convenience:
+> `posttooluse-loose-usage.sh` gates on `CSTK_OTEL_ENDPOINT` and exits `0`
+> in silence without it. Unlike the per-wave path — which falls back to the
+> fixed default port — loose capture has **no** fallback, so without the
+> variable (or an equivalent manual `export`) it stays inert and `cstk usage`
+> answers `nao medido`. See
+> [docs/cstk-usage.md](./docs/cstk-usage.md#requirements).
 
 Zero per-session configuration: each `claude` you type gets an isolated
 exporter and an isolated measurement. As a bonus, the delta's

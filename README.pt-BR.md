@@ -316,7 +316,9 @@ Habilite o plugin e abra uma sessão nova em qualquer projeto — as skills, os
 §Clarifications, assumption A1). O `posttooluse-loose-usage.sh` (captura
 opt-in de consumo) deliberadamente **não** faz parte do `hooks.json` do
 plugin — segue sendo opt-in explícito via `cstk hooks install
---with-loose-usage`.
+--with-loose-usage`, e ainda exige `CSTK_OTEL_ENDPOINT` no ambiente do
+processo `claude`, senão não captura nada
+([docs/cstk-usage.pt-BR.md](./docs/cstk-usage.pt-BR.md#requisitos)).
 
 **Escolhendo entre os dois caminhos:**
 
@@ -372,8 +374,14 @@ continuam em `.claude/hooks/`; para não sujar o `git status` do cliente
 sem mexer no `.gitignore` dele:
 
 ```bash
-printf '.claude/hooks/\n.claude/settings.local.json\n' >> .git/info/exclude
+printf '.claude/hooks/\n.claude/settings.local.json\n.claude/*.bak\n.claude/*.bak-pre-dedup\n' >> .git/info/exclude
 ```
+
+Os dois padrões `.bak` cobrem os backups que o **próprio comando** grava —
+`settings.json.bak` / `settings.local.json.bak` ao mesclar o registro, e
+`settings.json.bak-pre-dedup` ao remover um bloco clássico duplicado. Sem
+eles o backup aparece no `git status` do cliente e pega carona num
+`git add -A` distraído (issue #163).
 
 Idempotente como o fluxo padrão. Se o *outro* arquivo já registrar os
 hooks 00c (os dois disparariam, contando cada tool call em dobro) o comando
@@ -479,6 +487,14 @@ claude() {
   fi
 }
 ```
+
+> **O wrapper também é requisito duro da captura de consumo avulso**
+> (`cstk usage`, issue #162), não só conveniência para multi-processo: o
+> `posttooluse-loose-usage.sh` gateia em `CSTK_OTEL_ENDPOINT` e sai `0` mudo
+> sem ela. Diferente do caminho por onda — que cai na porta default fixa — a
+> captura avulsa **não** tem fallback: sem a variável (ou um `export`
+> equivalente à mão) ela fica inerte e o `cstk usage` responde `nao medido`.
+> Ver [docs/cstk-usage.pt-BR.md](./docs/cstk-usage.pt-BR.md#requisitos).
 
 Zero configuração por sessão: cada `claude` que você digita ganha um exporter
 isolado e uma medição isolada. De bônus, o guard "exatamente uma sessão

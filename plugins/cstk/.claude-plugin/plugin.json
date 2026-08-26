@@ -1,7 +1,7 @@
 {
   "name": "cstk",
   "description": "Spec-Driven Development toolkit for Claude Code: full SDD pipeline (briefing -> review-features), autonomous 00c orchestrators with auditable state, enforced guard hooks and cross-feature knowledge base",
-  "version": "9.2.2",
+  "version": "9.2.3",
   "author": {
     "name": "JotJunior",
     "url": "https://github.com/JotJunior"
