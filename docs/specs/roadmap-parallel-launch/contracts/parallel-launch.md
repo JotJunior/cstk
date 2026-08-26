@@ -81,8 +81,9 @@ roadmap.
 ## 4. `parallel-launch.sh` — uso proposto
 
 ```
-parallel-launch.sh emit  --repo PATH --feature SHORT [--feature SHORT ...]
-                         [--coordinator-name NAME]
+parallel-launch.sh emit  --repo PATH --feature SHORT [--description TEXT]
+                         [--feature SHORT [--description TEXT] ...]
+                         [--roadmap PATH] [--coordinator-name NAME]
 parallel-launch.sh check-tmux
 parallel-launch.sh -h | --help
 ```
@@ -102,9 +103,47 @@ assercao verificavel em vez de promessa.
 
 ```
 cstk session start <SHORT>
-tmux new-window -c "<WORKTREE>" -n "<SHORT>" -P -F '#{pane_id}' \
-  claude --name "<CHILD_NAME>" "/feature-00c <SHORT>"
+tmux split-window -c "<WORKTREE>" -P -F '#{pane_id}' \
+  claude --name "<CHILD_NAME>" '/feature-00c "<DESCRICAO>" <SHORT>'
 ```
+
+**Sempre `split-window`, nunca `new-window`** (revisao 2026-08-26): a
+sessao-filha entra como **pane irmao no window da coordenadora**, mantendo
+a leva inteira visivel de uma vez. Consequencias diretas, verificadas em
+`tmux list-commands` (tmux 3.5a): `split-window` **nao tem `-n`** (nao
+nomeia window), entao a identificacao da filha passa a ser exclusivamente
+`claude --name "<CHILD_NAME>"` + o `pane_id` devolvido por `-P -F
+'#{pane_id}'` — que e tambem o endereco do kill switch
+(`tmux kill-pane -t <pane_id>`, §8.bis). `split-window` exige contexto de
+sessao tmux (o pai roda dentro do tmux); quando nao ha, vale a forma
+degradada do fim de §4.2.
+
+**Prompt no formato REAL de `/feature-00c`** (revisao 2026-08-26): o
+primeiro posicional e a **DESCRICAO** e o segundo e o **short-name**
+(`plugins/cstk/commands/feature-00c.md:113-115` — **REAL**, lido no
+proprio command). A forma anterior (`"/feature-00c <SHORT>"`) fazia o
+command ler o short-name como descricao e re-derivar um short-name novo
+via `specify`, divergindo da worktree/branch criada por `cstk session
+start <SHORT>` e do `feature=<short>` da notificacao (contract §6).
+
+### 4.1a Origem e sanitizacao de `<DESCRICAO>`
+
+Precedencia (primeira fonte nao-vazia vence):
+
+| # | Fonte | Observacao |
+|---|---|---|
+| 1 | `--description TEXT` | pareia com o `--feature` IMEDIATAMENTE anterior; sem `--feature` antes => exit `2` |
+| 2 | `**Descricao**:` da entrada `### N. <SHORT>` em `--roadmap` | default do `--roadmap`: `<repo>/docs/roadmap.md` (`contracts/roadmap-artifact.md` §2); linhas de continuacao juntadas por espaco |
+| 3 | o proprio `<SHORT>` | fallback degradado, com aviso em stderr. Ausencia de descricao **NUNCA** e erro (best-effort) |
+
+**Sanitizacao obrigatoria** — a prosa do roadmap e UNTRUSTED (mesmo rotulo
+`roadmap-prose-untrusted` de `roadmap-frontier.sh` §6) e `--description`
+pode vir de texto arbitrario. Antes de entrar na composicao, a descricao
+**MUST**: virar uma unica linha (newline/CR/TAB => espaco), perder todo
+caractere de controle, perder aspa simples, aspa dupla, crase, `\`, `$`,
+`;`, `&`, `|`, `<`, `>`, `!`, `#`, ter espacos colapsados/aparados e ser
+truncada a **300 chars**. E a remocao das aspas que torna seguro o
+envelope de aspas simples `'/feature-00c "<DESCRICAO>" <SHORT>'`.
 
 **Regras de quoting (obrigatorias — gate `owasp-security`, finding MEDIUM
 "argument/command injection")**: `<WORKTREE>` e `<CHILD_NAME>` **MUST** ser
@@ -115,7 +154,7 @@ aspa. `<CHILD_NAME>` MUST ser validado por allowlist
 `^cstk-feature/[a-z][a-z0-9-]*$` antes de entrar na linha, e
 `--coordinator-name` por `^cstk-coord/[A-Za-z0-9._-]{1,64}$`.
 
-Note que o `shell-command` do `tmux new-window` e passado como **argv
+Note que o `shell-command` do `tmux split-window` e passado como **argv
 separado**, nao como string unica entre aspas simples: a forma
 `'claude --name <X> "..."'` (string unica) faria uma aspa simples em `<X>`
 escapar do literal. tmux aceita argv multiplo nessa posicao, o que remove a
@@ -131,9 +170,13 @@ Elementos **REAIS** (verificados, nao supostos):
   `exec claude` sem argumento algum — nao aceita prompt nem nome.
 - `claude [options] [command] [prompt]` e `-n, --name <name>` — saida real de
   `claude --help` (versao `2.1.234`), prompt e POSICIONAL.
-- `new-window [-abdkPS] [-c start-directory] ... [-n window-name] ... [shell-command]`
-  — saida real de `tmux list-commands` (tmux 3.5a). `-P -F '#{pane_id}'`
-  imprime o identificador do pane criado.
+- `split-window [-bdefhIPvZ] [-c start-directory] [-e environment] [-F format] [-l size] [-t target-pane][shell-command]`
+  — saida real de `tmux list-commands` (tmux 3.5a). Note a AUSENCIA de
+  `-n`: `split-window` nao nomeia window. `-P -F '#{pane_id}'` imprime o
+  identificador do pane criado.
+- `"<descricao-curta>" [<short-name>] [--projeto <path>] [--whitelist <urls>]`
+  — `argument-hint` real de `plugins/cstk/commands/feature-00c.md:3`, com
+  o parse dos dois posicionais em `:113-115`.
 
 ### 4.2 Defesa em profundidade no `emit`
 
@@ -184,7 +227,7 @@ Em ambiente **sem tmux** (`check-tmux` exit `3`), `emit` imprime a segunda
 linha em forma manual equivalente (FR-007 / US3):
 
 ```
-cd <WORKTREE> && claude --name <CHILD_NAME> "/feature-00c <SHORT>"
+cd "<WORKTREE>" && claude --name "<CHILD_NAME>" '/feature-00c "<DESCRICAO>" <SHORT>'
 ```
 
 Nunca aguardar por tmux, nunca falhar silenciosamente (SC-003).
@@ -347,7 +390,7 @@ FR-017/FR-018 — CHK101/CHK103):
   fluxo de oferta (§3).
 - O teto de concorrencia (FR-003, default 2) e tambem um limite de blast
   radius, nao so de rate-limit (FR-018).
-- MUST existir kill switch trivial: `tmux kill-window -t <pane_id>` +
+- MUST existir kill switch trivial: `tmux kill-pane -t <pane_id>` +
   `cstk session end <SHORT>` (ambos **REAIS**), documentados junto da via
   manual (§7). `cstk session end <SHORT>` tem um segundo papel, alem de
   kill switch: e o pre-requisito de recuperacao (FR-016) apos uma
@@ -374,3 +417,9 @@ FR-017/FR-018 — CHK101/CHK103):
   aspas e revalidado por allowlist no ponto de uso (§4.1, §4.2).
 - **INV-8**: notificacao recebida e gatilho opaco; nenhuma acao e derivada
   do seu conteudo sem reconfirmacao pela fronteira recalculada (§6, §8).
+- **INV-9**: o prompt da filha carrega SEMPRE descricao (1o posicional) +
+  short-name (2o posicional) — o short-name lancado e o mesmo da worktree,
+  da branch e do `feature=<short>` da notificacao, nunca re-derivado
+  (§4.1).
+- **INV-10**: texto de descricao (roadmap ou `--description`) e UNTRUSTED:
+  entra na composicao apenas sanitizado por §4.1a, jamais bruto.

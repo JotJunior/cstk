@@ -43,9 +43,9 @@ _pl_path_without_tmux() {
   _shim="$TMPDIR_TEST/nobin"
   mkdir -p "$_shim"
   # Comandos externos usados por parallel-launch.sh (git/sed/awk/grep/date/
-  # dirname/basename/mkdir/cat) + os que o harness usa dentro de `capture`
+  # dirname/basename/mkdir/cat/tr/cut) + os que o harness usa dentro de `capture`
   # (mktemp/rm/sh/env). `tmux` NUNCA entra nesta lista.
-  for _c in sh env git sed awk grep date dirname basename mkdir rm cat mktemp chmod ln find sort head tail tr wc; do
+  for _c in sh env git sed awk grep date dirname basename mkdir rm cat mktemp chmod ln find sort head tail tr wc cut; do
     _p=$(command -v "$_c" 2>/dev/null) || continue
     [ -e "$_shim/$_c" ] || ln -s "$_p" "$_shim/$_c" 2>/dev/null || :
   done
@@ -95,8 +95,10 @@ scenario_emit_composicao_com_tmux() {
   capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "cstk session start auth-basica" || return 1
-  assert_stdout_contains "tmux new-window -c \"$_repo-auth-basica\" -n \"auth-basica\" -P -F '#{pane_id}'" || return 1
-  assert_stdout_contains 'claude --name "cstk-feature/auth-basica" "/feature-00c auth-basica"' || return 1
+  assert_stdout_contains "tmux split-window -c \"$_repo-auth-basica\" -P -F '#{pane_id}'" || return 1
+  assert_stdout_contains "claude --name \"cstk-feature/auth-basica\" '/feature-00c \"auth-basica\" auth-basica'" || return 1
+  # nunca new-window: a leva paralela vive em panes do window da coordenadora
+  assert_stdout_not_contains "tmux new-window" || return 1
 }
 
 scenario_emit_multiplas_features_em_ordem() {
@@ -126,7 +128,8 @@ scenario_emit_composicao_degradada_sem_tmux() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
   assert_stdout_contains "cstk session start auth-basica" || return 1
   assert_stdout_not_contains "tmux new-window" || return 1
-  assert_stdout_contains "cd \"$_repo-auth-basica\" && claude --name \"cstk-feature/auth-basica\" \"/feature-00c auth-basica\"" || return 1
+  assert_stdout_not_contains "tmux split-window" || return 1
+  assert_stdout_contains "cd \"$_repo-auth-basica\" && claude --name \"cstk-feature/auth-basica\" '/feature-00c \"auth-basica\" auth-basica'" || return 1
 }
 
 scenario_emit_trecho_claude_identico_com_e_sem_tmux() {
@@ -303,6 +306,159 @@ scenario_enforcement_log_registra_blocked_invalid_feature() {
     || { _fail "outcome=blocked-invalid-feature ausente" "$(cat "$_log")"; return 1; }
 }
 
+# ==== emit: prompt no formato REAL de /feature-00c (descricao + short) ====
+#
+# Defeito corrigido: `/feature-00c <SHORT>` fazia o short-name ser lido
+# como DESCRICAO pelo command (feature-00c.md:113-115) e o short-name real
+# ser re-derivado pelo specify — divergindo da worktree/branch criada por
+# `cstk session start <SHORT>`.
+
+# Cria um roadmap minimo (contracts/roadmap-artifact.md §2) em REPO/docs.
+_pl_write_roadmap() {
+  mkdir -p "$1/docs"
+  cat >"$1/docs/roadmap.md" <<'EOF'
+# Roadmap: teste
+
+## Features
+
+### 1. auth-basica
+
+- **short-name**: `auth-basica`
+- **ordem**: 1
+- **depende-de**: -
+
+**Descricao**: Autenticacao por e-mail e senha, com sessao assinada
+e recuperacao por link expiravel.
+
+**Justificativa**: base das demais.
+
+### 2. perfil-usuario
+
+- **short-name**: `perfil-usuario`
+- **ordem**: 2
+- **depende-de**: `auth-basica`
+
+**Descricao**: Edicao de perfil com "aspas", $VAR, `crase`, ; e | para
+exercitar a sanitizacao.
+EOF
+}
+
+scenario_emit_prompt_traz_descricao_do_roadmap() {
+  _repo="$TMPDIR_TEST/repo-desc-roadmap"
+  mkdir -p "$_repo"
+  _pl_write_roadmap "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains '/feature-00c "Autenticacao por e-mail e senha, com sessao assinada e recuperacao por link expiravel." auth-basica' || return 1
+}
+
+scenario_emit_prompt_pina_short_name_posicional() {
+  _repo="$TMPDIR_TEST/repo-desc-pin"
+  mkdir -p "$_repo"
+  _pl_write_roadmap "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  # o short-name DEVE ser o ultimo token do prompt (2o posicional), nunca
+  # o unico argumento
+  assert_stdout_match "/feature-00c \"[^\"]+\" auth-basica'" || return 1
+  assert_stdout_not_contains "/feature-00c auth-basica" || return 1
+}
+
+scenario_emit_description_explicita_vence_roadmap() {
+  _repo="$TMPDIR_TEST/repo-desc-explicita"
+  mkdir -p "$_repo"
+  _pl_write_roadmap "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --description "Descricao vinda do operador"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains '/feature-00c "Descricao vinda do operador" auth-basica' || return 1
+  assert_stdout_not_contains "Autenticacao por e-mail" || return 1
+}
+
+scenario_emit_description_pareia_com_a_feature_anterior() {
+  _repo="$TMPDIR_TEST/repo-desc-pareia"
+  mkdir -p "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" \
+    --feature primeira --description "Desc da primeira" \
+    --feature segunda --description "Desc da segunda"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains '/feature-00c "Desc da primeira" primeira' || return 1
+  assert_stdout_contains '/feature-00c "Desc da segunda" segunda' || return 1
+}
+
+scenario_emit_description_sem_feature_antes_exit2() {
+  _repo="$TMPDIR_TEST/repo-desc-orfa"
+  mkdir -p "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --description "orfa" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "exit esperado 2 (--description sem --feature antes)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "--description" || return 1
+}
+
+scenario_emit_sem_roadmap_cai_no_short_name_com_aviso() {
+  _repo="$TMPDIR_TEST/repo-desc-ausente"
+  mkdir -p "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (ausencia de descricao NAO e erro)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains '/feature-00c "auth-basica" auth-basica' || return 1
+  assert_stderr_contains "descricao ausente" || return 1
+}
+
+scenario_emit_roadmap_explicito_inexistente_nao_aborta() {
+  _repo="$TMPDIR_TEST/repo-desc-roadmap-inexistente"
+  mkdir -p "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --roadmap "$TMPDIR_TEST/nao-existe.md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (roadmap inexistente e best-effort)" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains '/feature-00c "auth-basica" auth-basica' || return 1
+}
+
+scenario_adversarial_descricao_do_roadmap_sanitizada() {
+  _repo="$TMPDIR_TEST/repo-desc-adversarial"
+  mkdir -p "$_repo"
+  _pl_write_roadmap "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature perfil-usuario
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  # nenhuma aspa (simples ou dupla), crase, $ ou metacaractere de shell
+  # pode sobreviver dentro do envelope '/feature-00c "..." <short>'
+  _prompt=$(printf '%s' "$_CAPTURED_STDOUT" | sed -n "s/.*'\\/feature-00c \"\\(.*\\)\" perfil-usuario'.*/\\1/p")
+  [ -n "$_prompt" ] || { _fail "prompt nao casou o envelope esperado" "$_CAPTURED_STDOUT"; return 1; }
+  case "$_prompt" in
+    *'"'*|*"'"*|*'`'*|*'$'*|*';'*|*'|'*|*'&'*|*'<'*|*'>'*|*"\\"*)
+      _fail "descricao do roadmap deveria estar sanitizada" "[$_prompt]"; return 1 ;;
+  esac
+}
+
+scenario_adversarial_descricao_explicita_com_injecao_sanitizada() {
+  _repo="$TMPDIR_TEST/repo-desc-inj"
+  mkdir -p "$_repo"
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica \
+    --description "fecha'; rm -rf / #\$(whoami) \`id\`"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_not_contains "\$(whoami)" || return 1
+  assert_stdout_not_contains '`id`' || return 1
+  # o envelope de aspas simples permanece integro (fecha so no fim)
+  assert_stdout_match "claude --name \"cstk-feature/auth-basica\" '/feature-00c \"[^']*\" auth-basica'" || return 1
+}
+
+scenario_emit_descricao_truncada_em_300_chars() {
+  _repo="$TMPDIR_TEST/repo-desc-longa"
+  mkdir -p "$_repo"
+  _longa=$(printf 'a%.0s' $(seq 1 400))
+
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica --description "$_longa"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0" "obtido $_CAPTURED_EXIT"; return 1; }
+  _prompt=$(printf '%s' "$_CAPTURED_STDOUT" | sed -n "s/.*'\\/feature-00c \"\\(.*\\)\" auth-basica'.*/\\1/p")
+  _len=$(printf '%s' "$_prompt" | wc -c | tr -d ' ')
+  [ "$_len" = 300 ] || { _fail "descricao deveria ser truncada a 300 chars" "obtido $_len"; return 1; }
+}
+
 # ==== testes adversariais de injecao (2.7) ====
 
 scenario_adversarial_nome_de_repo_com_espaco_e_aspa() {
@@ -314,8 +470,8 @@ scenario_adversarial_nome_de_repo_com_espaco_e_aspa() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit esperado 0 (repo com espaco/aspa e valor legitimo, nao ataque de sintaxe)" "obtido $_CAPTURED_EXIT; stderr=$_CAPTURED_STDERR"; return 1; }
   # <WORKTREE> MUST estar entre aspas duplas (contract §4.1, INV-7) — a
   # aspa interna do nome do repo NAO deve fechar a aspa do -c prematuramente:
-  # a linha inteira continua sendo um UNICO argumento entre -c "..." e -n.
-  assert_stdout_match '\-c "[^"]*repo com espaco e .aspa.[^"]*-auth-basica" -n "auth-basica"' || return 1
+  # a linha inteira continua sendo um UNICO argumento entre -c "..." e -P.
+  assert_stdout_match '\-c "[^"]*repo com espaco e .aspa.[^"]*-auth-basica" -P -F' || return 1
 }
 
 scenario_adversarial_short_name_malicioso_rejeitado() {

@@ -10,8 +10,9 @@
 #      docs/specs/roadmap-wave/contracts/roadmap-wave-command.md §3
 #
 # Uso:
-#   parallel-launch.sh emit --repo PATH --feature SHORT [--feature SHORT ...]
-#                            [--coordinator-name NAME]
+#   parallel-launch.sh emit --repo PATH --feature SHORT [--description TEXT]
+#                            [--feature SHORT [--description TEXT] ...]
+#                            [--roadmap PATH] [--coordinator-name NAME]
 #   parallel-launch.sh check-tmux
 #   parallel-launch.sh resolve-offer --source <operator|absent>
 #                                    [--confirm RAW] [--max RAW]
@@ -30,6 +31,11 @@
 # operador. Isso torna o caminho automatico (com tmux) e o degradado (sem
 # tmux) comparaveis byte a byte na parte `claude --name ... "..."` — mesma
 # composicao, so envolvida de forma diferente (§4, decisao de desenho).
+#
+# Wrapper tmux: SEMPRE `split-window` (pane irmao no window da
+# coordenadora), nunca `new-window`. O prompt da filha e sempre
+# `/feature-00c "<DESCRICAO>" <SHORT>` — formato REAL do command
+# (feature-00c.md:113-115), com o short-name POSICIONAL pinando a feature.
 # INALTERADO por este script: cli/lib/session.sh.
 #
 # --coordinator-name NAME: aceito e validado por allowlist
@@ -60,21 +66,24 @@ set -eu
 _PL_NAME="parallel-launch"
 _PL_DIR=$(cd "$(dirname "$0")" && pwd)
 
+_PL_TAB=$(printf '\t')
+
 _PL_SHORT_RE='^[a-z][a-z0-9-]*$'
 _PL_CHILD_RE='^cstk-feature/[a-z][a-z0-9-]*$'
 _PL_COORD_RE='^cstk-coord/[A-Za-z0-9._-]{1,64}$'
 
 print_usage() {
   cat <<'EOF'
-Uso: parallel-launch.sh emit --repo PATH --feature SHORT [--feature SHORT ...]
-                              [--coordinator-name NAME]
+Uso: parallel-launch.sh emit --repo PATH --feature SHORT [--description TEXT]
+                              [--feature SHORT [--description TEXT] ...]
+                              [--roadmap PATH] [--coordinator-name NAME]
      parallel-launch.sh check-tmux
      parallel-launch.sh resolve-offer --source <operator|absent>
                                       [--confirm RAW] [--max RAW]
      parallel-launch.sh -h | --help
 
 `emit` compoe e IMPRIME (nunca executa) o par de comandos de lancamento de
-cada --feature: `cstk session start <SHORT>` + `tmux new-window ...` (ou a
+cada --feature: `cstk session start <SHORT>` + `tmux split-window ...` (ou a
 forma degradada `cd ... && claude ...` quando tmux esta ausente). Quem
 executa e o chamador (command pai) — este script nunca invoca cli/lib/
 session.sh nem qualquer outro comando de efeito colateral.
@@ -87,6 +96,16 @@ Opcoes de `emit`:
                            Revalidado contra ^[a-z][a-z0-9-]*$ (<=64 chars)
                            no momento do emit — defesa em profundidade
                            (exit 2 se nao casar).
+  --description TEXT      Descricao da feature imediatamente anterior
+                           (opcional). Vence o roadmap. Sanitizada
+                           (sem aspas nem metacaractere de shell) e
+                           truncada a 300 chars. Exit 2 se vier sem um
+                           --feature antes.
+  --roadmap PATH          Roadmap de onde extrair `**Descricao**:` quando
+                           --description nao foi informado. Default:
+                           <PATH-do---repo>/docs/roadmap.md. Ausente ou
+                           sem a entrada => fallback para o proprio
+                           short-name (aviso em stderr), NUNCA erro.
   --coordinator-name NAME Nome da sessao coordenadora (opcional), validado
                            contra ^cstk-coord/[A-Za-z0-9._-]{1,64}$ se
                            informado (exit 2 se mal-formado). Nao altera a
@@ -273,13 +292,118 @@ _pl_write_log() {
   return 0
 }
 
+# ==== Descricao da feature (contract §4.1a) ====
+#
+# O prompt da sessao-filha precisa casar o contrato REAL de /feature-00c
+# (plugins/cstk/commands/feature-00c.md:113-115): primeiro argumento
+# posicional = DESCRICAO (string em quotes), segundo = short-name
+# (opcional, kebab-case). Emitir so `/feature-00c <SHORT>` fazia o
+# short-name ser lido como descricao e o short-name REAL ser re-derivado
+# pelo specify — divergindo da worktree/branch ja criada por
+# `cstk session start <SHORT>` e do `feature=<short>` da notificacao.
+#
+# Fonte da descricao, em ordem de precedencia:
+#   1. --description TEXT (explicito, pareado com o --feature anterior)
+#   2. bloco `**Descricao**:` da entrada em docs/roadmap.md
+#      (contracts/roadmap-artifact.md §2)
+#   3. fallback = o proprio SHORT (degradado, com aviso em stderr)
+#
+# Conteudo do roadmap e UNTRUSTED (mesmo rotulo `roadmap-prose-untrusted`
+# ja usado por roadmap-frontier.sh §6): NUNCA entra bruto na composicao —
+# passa sempre por _pl_sanitize_desc.
+
+# _pl_sanitize_desc TEXT -> texto de uma linha, sem metacaractere de shell
+# nem aspa (de qualquer especie), colapsado e truncado a 300 chars.
+# A remocao de `'` e `"` e o que torna seguro o envelope
+# `'/feature-00c "<DESC>" <SHORT>'` da composicao (§4.1).
+_pl_sanitize_desc() {
+  printf '%s' "$1" \
+    | tr '\n\r\t' '   ' \
+    | tr -d '[:cntrl:]' \
+    | tr -d "\"\`\\\\\$;&|<>!#" \
+    | tr -d "'" \
+    | tr -s ' ' \
+    | sed 's/^ *//; s/ *$//' \
+    | cut -c1-300
+}
+
+# _pl_desc_from_roadmap ROADMAP SHORT -> texto do paragrafo
+# `**Descricao**:` da entrada `### N. SHORT` (linhas de continuacao
+# juntadas por espaco). Vazio se o arquivo, a entrada ou o campo nao
+# existirem — ausencia NUNCA e erro (best-effort, mesma politica do aviso
+# de sobreposicao de roadmap-frontier.sh).
+_pl_desc_from_roadmap() {
+  [ -f "$1" ] || return 0
+  awk -v target="$2" '
+    /^###[[:space:]]+[0-9]+\.[[:space:]]+/ {
+      hdr = $0
+      sub(/^###[[:space:]]+[0-9]+\.[[:space:]]+/, "", hdr)
+      sub(/[[:space:]]+$/, "", hdr)
+      inblock = (hdr == target)
+      collecting = 0
+      next
+    }
+    !inblock { next }
+    /^\*\*Descri[^*]*\*\*:/ {
+      line = $0
+      sub(/^\*\*Descri[^*]*\*\*:[[:space:]]*/, "", line)
+      out = line
+      collecting = 1
+      next
+    }
+    collecting {
+      if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*[*-]/ || $0 ~ /^#/) {
+        collecting = 0
+        next
+      }
+      out = out " " $0
+    }
+    END { printf "%s", out }
+  ' "$1" 2>/dev/null || :
+}
+
+# _pl_resolve_desc SHORT EXPLICIT_DESC -> descricao final ja sanitizada.
+# Aplica a precedencia acima e avisa (stderr) quando cai no fallback.
+_pl_resolve_desc() {
+  _pl_rd_short=$1
+  _pl_rd_explicit=$2
+
+  _pl_rd_out=$(_pl_sanitize_desc "$_pl_rd_explicit")
+  if [ -z "$_pl_rd_out" ] && [ -n "$_pl_roadmap" ]; then
+    _pl_rd_out=$(_pl_sanitize_desc "$(_pl_desc_from_roadmap "$_pl_roadmap" "$_pl_rd_short")")
+  fi
+  if [ -z "$_pl_rd_out" ]; then
+    _pl_rd_out=$_pl_rd_short
+    printf '%s: descricao ausente para %s (nem --description nem **Descricao**: em %s) — usando o short-name como descricao\n' \
+      "$_PL_NAME" "$_pl_rd_short" "${_pl_roadmap:-<sem roadmap>}" >&2
+  fi
+  printf '%s' "$_pl_rd_out"
+}
+
+# _pl_flush_pending: fecha o par (--feature, --description) corrente na
+# lista `_pl_features`, uma entrada por linha no formato
+# `SHORT<TAB>DESC_BRUTA`. O TAB e separador seguro porque a descricao so
+# entra na composicao depois de _pl_sanitize_desc (que ja remove TAB).
+_pl_flush_pending() {
+  [ -n "$_pl_pending_short" ] || return 0
+  _pl_features=$(printf '%s%s\t%s\n' "$_pl_features" "$_pl_pending_short" "$_pl_pending_desc")
+  _pl_features="${_pl_features}
+"
+  _pl_pending_short=""
+  _pl_pending_desc=""
+}
+
 # ==== emit ====
 
 _pl_cmd_emit() {
   _pl_repo=""
   _pl_coordinator=""
+  _pl_roadmap=""
+  _pl_saw_roadmap=0
   _pl_features=""
   _pl_n_features=0
+  _pl_pending_short=""
+  _pl_pending_desc=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -288,10 +412,22 @@ _pl_cmd_emit() {
         _pl_repo=$2; shift 2 ;;
       --feature)
         [ $# -ge 2 ] || { printf '%s: --feature exige valor\n' "$_PL_NAME" >&2; exit 2; }
-        _pl_features="${_pl_features}${2}
-"
+        _pl_flush_pending
+        _pl_pending_short=$2
+        _pl_pending_desc=""
         _pl_n_features=$((_pl_n_features + 1))
         shift 2 ;;
+      --description)
+        [ $# -ge 2 ] || { printf '%s: --description exige valor\n' "$_PL_NAME" >&2; exit 2; }
+        [ -n "$_pl_pending_short" ] || {
+          printf '%s: --description exige um --feature imediatamente antes\n' "$_PL_NAME" >&2
+          exit 2
+        }
+        _pl_pending_desc=$2
+        shift 2 ;;
+      --roadmap)
+        [ $# -ge 2 ] || { printf '%s: --roadmap exige valor\n' "$_PL_NAME" >&2; exit 2; }
+        _pl_roadmap=$2; _pl_saw_roadmap=1; shift 2 ;;
       --coordinator-name)
         [ $# -ge 2 ] || { printf '%s: --coordinator-name exige valor\n' "$_PL_NAME" >&2; exit 2; }
         _pl_coordinator=$2; shift 2 ;;
@@ -301,8 +437,19 @@ _pl_cmd_emit() {
     esac
   done
 
+  _pl_flush_pending
+
   [ -n "$_pl_repo" ] || { printf '%s: --repo obrigatorio\n' "$_PL_NAME" >&2; exit 2; }
   [ "$_pl_n_features" -ge 1 ] || { printf '%s: pelo menos um --feature obrigatorio\n' "$_PL_NAME" >&2; exit 2; }
+
+  # Default do roadmap: <repo>/docs/roadmap.md (contract §4.1a). Ausente =>
+  # nenhuma descricao vinda do roadmap, NUNCA erro. `--roadmap` explicito
+  # com path inexistente tambem nao aborta (best-effort), so nao rende
+  # descricao.
+  if [ "$_pl_saw_roadmap" = 0 ]; then
+    _pl_roadmap="$_pl_repo/docs/roadmap.md"
+  fi
+  [ -f "$_pl_roadmap" ] || _pl_roadmap=""
 
   if [ -n "$_pl_coordinator" ] && ! _pl_valid_coordinator "$_pl_coordinator"; then
     printf '%s: --coordinator-name invalido (esperado ^cstk-coord/[A-Za-z0-9._-]{1,64}$): %s\n' \
@@ -328,8 +475,14 @@ _pl_cmd_emit() {
 
   IFS='
 '
-  for _pl_short in $_pl_features; do
+  for _pl_entry in $_pl_features; do
     unset IFS
+    [ -n "$_pl_entry" ] || continue
+    # TAB literal via variavel: em sh o padrao `\t` dentro de ${v%%...} e
+    # um `t` escapado, NAO um tab.
+    _pl_short=${_pl_entry%%"$_PL_TAB"*}
+    _pl_desc_raw=${_pl_entry#*"$_PL_TAB"}
+    [ "$_pl_desc_raw" != "$_pl_entry" ] || _pl_desc_raw=""
     [ -n "$_pl_short" ] || continue
 
     if ! _pl_valid_short "$_pl_short"; then
@@ -363,12 +516,26 @@ _pl_cmd_emit() {
     # Composicao compartilhada (byte a byte identica nos dois caminhos —
     # contract §4, decisao de desenho: US1 automatico e US3 degradado
     # comparaveis).
-    _pl_claude_argv=$(printf 'claude --name "%s" "/feature-00c %s"' "$_pl_child" "$_pl_short")
+    # Prompt da filha no formato REAL de /feature-00c: "<DESCRICAO>" <SHORT>
+    # (feature-00c.md:113-115). O short-name posicional PINA a feature —
+    # sem ele o specify re-derivaria um short-name possivelmente diferente
+    # da worktree/branch criada por `cstk session start <SHORT>`.
+    # Envelope em aspas SIMPLES para caber as aspas duplas da descricao;
+    # seguro porque _pl_sanitize_desc remove aspa simples, aspa dupla,
+    # crase, `\`, `$` e demais metacaracteres (§4.1).
+    _pl_desc=$(_pl_resolve_desc "$_pl_short" "$_pl_desc_raw")
+    _pl_prompt=$(printf "'/feature-00c \"%s\" %s'" "$_pl_desc" "$_pl_short")
+    _pl_claude_argv=$(printf 'claude --name "%s" %s' "$_pl_child" "$_pl_prompt")
 
     _pl_line1=$(printf 'cstk session start %s' "$_pl_short")
     if $_pl_have_tmux; then
-      _pl_line2=$(printf 'tmux new-window -c "%s" -n "%s" -P -F '"'"'#{pane_id}'"'"' \\\n  %s' \
-        "$_pl_worktree" "$_pl_short" "$_pl_claude_argv")
+      # SEMPRE split-window (nunca new-window): a leva paralela fica no
+      # MESMO window da coordenadora, em panes irmaos. `split-window` nao
+      # tem `-n` (nao nomeia window) — a identificacao da filha continua
+      # sendo `claude --name "<CHILD_NAME>"` + o pane_id devolvido por
+      # `-P -F '#{pane_id}'`.
+      _pl_line2=$(printf 'tmux split-window -c "%s" -P -F '"'"'#{pane_id}'"'"' \\\n  %s' \
+        "$_pl_worktree" "$_pl_claude_argv")
     else
       _pl_line2=$(printf 'cd "%s" && %s' "$_pl_worktree" "$_pl_claude_argv")
     fi

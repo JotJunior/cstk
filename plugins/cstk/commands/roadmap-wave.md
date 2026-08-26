@@ -35,7 +35,7 @@ $ARGUMENTS
 | Flag | Default se ausente | Destino |
 |---|---|---|
 | `--projeto-alvo-path <path>` | diretorio de trabalho corrente (`pwd`) | `<PAP>` — `roadmap-frontier.sh --exclude-active-from-repo` + `parallel-launch.sh emit --repo` |
-| `--roadmap <path>` | omitido (helper usa `docs/roadmap.md`) | `roadmap-frontier.sh --roadmap` (passthrough, so quando informado) |
+| `--roadmap <path>` | omitido (helpers usam `docs/roadmap.md`) | `roadmap-frontier.sh --roadmap` **e** `parallel-launch.sh emit --roadmap` (passthrough, so quando informado — o `emit` le dali a `**Descricao**:` que vai no prompt da filha) |
 | `--specs-dir <dir>` | omitido (helper usa `docs/specs`) | `roadmap-frontier.sh --specs-dir` (passthrough, so quando informado) |
 | `--max <N>` | omitido (`resolve-offer` aplica default `2`) | `resolve-offer --max` |
 | `--yes` | ausente | ver passo 2 — atalho de confirmacao ja obtida |

@@ -223,10 +223,14 @@ from a `status` field in the roadmap — and offers a **parallel wave**:
    `~/.claude` and credentials) and, above the cap, which ones.
 3. `parallel-launch.sh emit --repo <repo> --feature <short> [...]` **only
    prints** the launch commands per feature — `cstk session start <short>` +
-   `tmux new-window ... claude --name ... "/feature-00c <short>"`, or the
-   degraded `cd ... && claude ...` form when `check-tmux` says tmux is
-   absent (exit 3). The parent runs them; the script never executes anything
-   and never touches `cli/lib/session.sh`.
+   `tmux split-window ... claude --name ... '/feature-00c "<description>"
+   <short>'`, or the degraded `cd ... && claude ...` form when `check-tmux`
+   says tmux is absent (exit 3). Children always open as sibling **panes**
+   in the coordinator's window (`split-window`, never `new-window`), and
+   the prompt always carries the description as the first positional
+   argument and the short-name as the second — the exact `/feature-00c`
+   contract. The parent runs them; the script never executes anything and
+   never touches `cli/lib/session.sh`.
 4. When a child execution reaches a terminal state (`concluida`, `abortada`
    or `aguardando_humano`) `feature-00c.md` §5.quater sends, best-effort via
    the Claude Code `SendMessage` tool, the opaque trigger
@@ -239,7 +243,7 @@ from a `status` field in the roadmap — and offers a **parallel wave**:
 
 Empirically verified (dec-037 of the feature): an idle Claude Code session
 (13 h idle) woke up on `SendMessage` and answered in ~30 s without human
-intervention. Kill switch: `tmux kill-window -t <pane>` + `cstk session end
+intervention. Kill switch: `tmux kill-pane -t <pane_id>` + `cstk session end
 <short>`. Manual verification path: `cstk session list`,
 `roadmap-status.sh --json`, `tmux list-panes -a` (§6.bis).
 

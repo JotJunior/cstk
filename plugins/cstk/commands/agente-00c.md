@@ -937,7 +937,7 @@ tmux list-panes -a                                 # panes vivos (so quando lanc
 
 Interpretacao: worktree presente + status `em-andamento` + nenhuma
 notificacao recebida => filha possivelmente morta abruptamente. Kill switch
-trivial se necessario: `tmux kill-window -t <pane_id>` + `cstk session end
+trivial se necessario: `tmux kill-pane -t <pane_id>` + `cstk session end
 <SHORT>`. Esta via manual funciona independentemente de o wake-up automatico
 ter disparado ou nao (FR-013) — nao depende do resultado do experimento da
 FASE 0.
@@ -1076,8 +1076,20 @@ uma sessao-filha — so a coordenadora interage com o operador e lanca.
    ~/.claude/skills/agente-00c-runtime/scripts/parallel-launch.sh emit \
      --repo <PAP> \
      --feature <short-1> --feature <short-2> \
+     [--description "<texto>"]  # opcional, pareado com o --feature anterior
+     [--roadmap <path>]         # default: <PAP>/docs/roadmap.md
      [--coordinator-name <NAME_DO_PASSO_7>]
    ```
+
+   O prompt da filha e SEMPRE `/feature-00c "<DESCRICAO>" <SHORT>` — o
+   formato REAL do command (descricao no 1o posicional, short-name no 2o).
+   O `emit` resolve a `<DESCRICAO>` sozinho: `--description` explicito
+   vence; senao le o paragrafo `**Descricao**:` da entrada em
+   `docs/roadmap.md`; sem nenhum dos dois, cai no proprio short-name e
+   avisa em stderr. NUNCA lance `/feature-00c <short>` na mao: o command
+   leria o short-name como DESCRICAO e o specify re-derivaria um
+   short-name possivelmente diferente do da worktree/branch ja criada por
+   `cstk session start <SHORT>` (e do `feature=<short>` da notificacao).
 
    `emit` recomputa a guarda anti-duplicidade (TOCTOU, FR-011) IMEDIATAMENTE
    antes de compor — pula (nao imprime) qualquer `--feature` ja com
@@ -1085,11 +1097,23 @@ uma sessao-filha — so a coordenadora interage com o operador e lanca.
    (`outcome=blocked-invalid-feature`); reporte essas exclusoes ao
    operador, nunca falhe silenciosamente. Para cada par de comandos
    emitido, execute na ordem: primeiro `cstk session start <SHORT>`,
-   depois a segunda linha — `tmux new-window ...` quando `check-tmux`
+   depois a segunda linha — `tmux split-window ...` quando `check-tmux`
    (mesmo helper, subcomando `check-tmux`) reporta tmux disponivel, ou a
-   forma degradada `cd <WORKTREE> && claude --name ... "/feature-00c
-   <SHORT>"` (FR-007/SC-003) impressa para o operador copiar/colar
-   quando nao ha tmux ou a execucao nao pode abrir pane automaticamente.
+   forma degradada `cd <WORKTREE> && claude --name ... '/feature-00c
+   "<DESCRICAO>" <SHORT>'` (FR-007/SC-003) impressa para o operador
+   copiar/colar quando nao ha tmux ou a execucao nao pode abrir pane
+   automaticamente.
+
+   **Sempre split, nunca janela nova**: cada filha entra como pane irmao
+   no MESMO window da coordenadora (`tmux split-window -c <WORKTREE> -P -F
+   '#{pane_id}'`), o que mantem a leva inteira visivel de uma vez.
+   `split-window` nao aceita `-n` (nao nomeia window) — a identificacao da
+   filha e `claude --name "cstk-feature/<SHORT>"` + o `pane_id` devolvido
+   pelo `-P -F`. Guarde esse `pane_id`: e o endereco do kill switch
+   (`tmux kill-pane -t <pane_id>`). Com 3+ features o layout pode ficar
+   apertado — `tmux select-layout tiled` reequilibra (opcional, nunca
+   automatico). Se o `split-window` falhar por nao haver sessao tmux ativa
+   (coordenadora fora do tmux), use a forma degradada acima.
 
 9. **Reportar o que foi de fato aberto** (short-names lancados,
    worktrees, pane ids do tmux ou os comandos manuais impressos) na

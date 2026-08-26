@@ -224,10 +224,14 @@ pai (`agente-00c.md` §6.ter / resume §9.ter) computa a *fronteira* — entrada
    `$HOME`, `~/.claude` e credenciais) e, acima do teto, quais.
 3. `parallel-launch.sh emit --repo <repo> --feature <short> [...]` **só
    imprime** os comandos de lançamento por feature — `cstk session start
-   <short>` + `tmux new-window ... claude --name ... "/feature-00c <short>"`,
-   ou a forma degradada `cd ... && claude ...` quando `check-tmux` diz que o
-   tmux está ausente (exit 3). Quem executa é o pai; o script nunca executa
-   nada e nunca toca `cli/lib/session.sh`.
+   <short>` + `tmux split-window ... claude --name ...
+   '/feature-00c "<descricao>" <short>'`, ou a forma degradada
+   `cd ... && claude ...` quando `check-tmux` diz que o tmux está ausente
+   (exit 3). As filhas abrem sempre como **panes** irmãos no window da
+   coordenadora (`split-window`, nunca `new-window`), e o prompt sempre
+   leva a descrição como primeiro posicional e o short-name como segundo —
+   o contrato exato de `/feature-00c`. Quem executa é o pai; o script nunca
+   executa nada e nunca toca `cli/lib/session.sh`.
 4. Quando uma execução-filha chega a estado terminal (`concluida`, `abortada`
    ou `aguardando_humano`), `feature-00c.md` §5.quater envia, best-effort via
    a tool `SendMessage` do Claude Code, o gatilho opaco
@@ -240,7 +244,7 @@ pai (`agente-00c.md` §6.ter / resume §9.ter) computa a *fronteira* — entrada
 
 Verificado empiricamente (dec-037 da feature): uma sessão Claude Code ociosa
 há 13 h acordou ao receber `SendMessage` e respondeu em ~30 s sem intervenção
-humana. Kill switch: `tmux kill-window -t <pane>` + `cstk session end
+humana. Kill switch: `tmux kill-pane -t <pane_id>` + `cstk session end
 <short>`. Via manual de verificação: `cstk session list`,
 `roadmap-status.sh --json`, `tmux list-panes -a` (§6.bis).
 

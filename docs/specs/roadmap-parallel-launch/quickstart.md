@@ -88,7 +88,7 @@ travamento aguardando confirmacao de entrega. Falha registrada em log local.
 
 **Expected**: exit `0`; para cada feature escolhida, saida contem os comandos
 completos e executaveis (`cstk session start <SHORT>` e
-`cd <worktree> && claude --name … "/feature-00c <SHORT>"`); zero prompt
+`cd "<worktree>" && claude --name … '/feature-00c "<DESCRICAO>" <SHORT>'`); zero prompt
 pendente, zero espera por recurso ausente, zero falha silenciosa.
 
 **Assercao de paridade (AC2 da US3)**: os comandos impressos aqui sao
