@@ -5,6 +5,67 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [9.3.0] - 2026-08-26
+
+Corrige o lancamento das sessoes-filha da leva paralela do roadmap. O
+`parallel-launch.sh emit` compunha `/feature-00c <SHORT>`, mas o contrato
+REAL do command sao DOIS posicionais — `"<descricao>" [<short-name>]`
+(`plugins/cstk/commands/feature-00c.md:113-115`). A filha lia o short-name
+como DESCRICAO e re-derivava um short-name novo pelo `specify`, que podia
+divergir da worktree/branch ja criada por `cstk session start <SHORT>` e do
+`feature=<short>` da notificacao de volta. Na mesma release, o wrapper tmux
+passa a ser SEMPRE `split-window` (pane irmao no window da coordenadora) em
+vez de `new-window`.
+
+### Changed
+
+- **BREAKING para quem consome a saida do `emit` (a prosa do proprio
+  toolkit): prompt da filha agora e `/feature-00c "<DESCRICAO>" <SHORT>`.**
+  O short-name POSICIONAL pina a feature — nada mais e re-derivado, e o
+  short-name lancado passa a ser o mesmo da worktree, da branch e do
+  `feature=<short>` da notificacao (novo INV-9 do contrato). A descricao
+  entra sempre entre aspas duplas, dentro de um envelope de aspas simples.
+- **Wrapper tmux: `split-window`, nunca `new-window`.** Cada filha abre
+  como pane irmao no MESMO window da coordenadora, mantendo a leva inteira
+  visivel de uma vez. Consequencia verificada em `tmux list-commands`
+  (3.5a): `split-window` **nao tem `-n`**, entao o `-n "<SHORT>"` saiu da
+  composicao e a identificacao da filha passa a ser exclusivamente
+  `claude --name "cstk-feature/<SHORT>"` + o `pane_id` devolvido por
+  `-P -F '#{pane_id}'`.
+- **Kill switch de uma filha: `tmux kill-pane -t <pane_id>`** (antes
+  `tmux kill-window`), atualizado em `agente-00c.md` §6.bis, `docs/
+  agente-00c.md` (+ pt-BR), contrato §8.bis e no ensaio
+  `tests/eval/rehearsal_roadmap-wave.sh`. `cstk session end <short>`
+  continua sendo a outra metade (nunca `git worktree remove` cru).
+
+### Added
+
+- **`emit --description TEXT`** — descricao explicita da feature, pareada
+  com o `--feature` IMEDIATAMENTE anterior; vence o roadmap. Sem um
+  `--feature` antes => exit `2`.
+- **`emit --roadmap PATH`** — de onde extrair o paragrafo `**Descricao**:`
+  da entrada `### N. <SHORT>` quando `--description` nao foi informado.
+  Default `<repo>/docs/roadmap.md`; `/roadmap-wave` repassa o proprio
+  `--roadmap` tambem ao `emit`. Arquivo ausente ou entrada sem o campo =>
+  fallback para o proprio short-name com aviso em stderr, NUNCA erro
+  (best-effort, mesma politica do aviso de sobreposicao do
+  `roadmap-frontier.sh`).
+- **Sanitizacao da descricao (novo §4.1a do contrato + INV-10)**: prosa de
+  roadmap e UNTRUSTED (`roadmap-prose-untrusted`) e `--description` pode vir
+  de texto arbitrario, entao a descricao vira uma unica linha, perde
+  caracteres de controle, aspa simples, aspa dupla, crase, `\`, `$`, `;`,
+  `&`, `|`, `<`, `>`, `!`, `#`, tem espacos colapsados/aparados e e truncada
+  a 300 chars ANTES de entrar na composicao. E a remocao das aspas que torna
+  seguro o envelope de aspas simples.
+- **Cobertura**: 10 cenarios novos em `tests/test_parallel-launch.sh`
+  (descricao vinda do roadmap, precedencia do `--description`, pareamento
+  com o `--feature` anterior, `--description` orfa => exit 2, fallback com
+  aviso, roadmap inexistente nao aborta, truncamento em 300, 2 adversariais
+  de injecao). O stub de `claude` do e2e `tests/test_e2e_roadmap_wave.sh`
+  agora EXIGE o formato novo (`exit 64` no formato antigo — regressao para
+  `/feature-00c <short>` quebra o e2e), e o cenario de tmux real valida pane
+  irmao + `kill-pane` + assert de que nenhum window novo e criado.
+
 ## [9.2.3] - 2026-08-26
 
 Fecha duas issues de **diagnostico e documentacao enganosos** — nenhuma das
@@ -7343,6 +7404,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[9.3.0]: https://github.com/JotJunior/cstk/releases/tag/v9.3.0
 [9.2.3]: https://github.com/JotJunior/cstk/releases/tag/v9.2.3
 [9.2.2]: https://github.com/JotJunior/cstk/releases/tag/v9.2.2
 [9.2.1]: https://github.com/JotJunior/cstk/releases/tag/v9.2.1
