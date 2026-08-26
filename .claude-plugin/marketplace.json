@@ -9,14 +9,14 @@
       "name": "cstk",
       "description": "Full SDD pipeline (briefing -> review-features), autonomous 00c orchestrators and enforced guard hooks",
       "source": "./plugins/cstk",
-      "version": "9.2.2",
+      "version": "9.2.3",
       "category": "development"
     },
     {
       "name": "cstk-language-go",
       "description": "Go language profile: Go-specific skills and hooks for the cstk toolkit",
       "source": "./plugins/cstk-language-go",
-      "version": "9.2.2",
+      "version": "9.2.3",
       "category": "development"
     }
   ]
