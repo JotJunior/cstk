@@ -223,11 +223,16 @@ Consumidos SOMENTE pelos commands pai (`agente-00c.md` §6.ter/§6.quater,
 `feature-00c.md` §5.quater) — o orquestrador-subagente nunca oferta, lanca
 nem notifica (nao tem `SendMessage`/`ListAgents`; FR-012).
 
-- **`parallel-launch.sh emit --repo PATH --feature SHORT [...]
-  [--coordinator-name NAME]`** compoe e **so imprime** os comandos de
-  lancamento por feature (`cstk session start <SHORT>` + `tmux new-window ...
-  claude --name ... "/feature-00c <SHORT>"`, ou `cd ... && claude ...`
-  quando `check-tmux` sai 3). NUNCA executa nada e NUNCA toca
+- **`parallel-launch.sh emit --repo PATH --feature SHORT [--description
+  TEXT] [--roadmap PATH] [--coordinator-name NAME]`** compoe e **so
+  imprime** os comandos de lancamento por feature (`cstk session start
+  <SHORT>` + `tmux split-window ... claude --name ... '/feature-00c
+  "<DESCRICAO>" <SHORT>'`, ou `cd ... && claude ...` quando `check-tmux`
+  sai 3). O wrapper tmux e SEMPRE `split-window` (pane irmao no window da
+  coordenadora), nunca `new-window`. A `<DESCRICAO>` vem de
+  `--description`, senao do `**Descricao**:` do roadmap, senao do proprio
+  short-name (aviso em stderr); e sempre sanitizada (sem aspas nem
+  metacaractere de shell) e truncada a 300 chars. NUNCA executa nada e NUNCA toca
   `cli/lib/session.sh` (que faz `exec claude` sem argumentos — por isso a
   composicao e externa). Revalida o short-name (`^[a-z][a-z0-9-]*$`,
   <=64), quoting + allowlist de `<WORKTREE>`/`<CHILD_NAME>`, recomputa a

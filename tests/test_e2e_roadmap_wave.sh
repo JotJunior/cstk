@@ -130,7 +130,10 @@ EOF
 
   # stub `claude`: simula a sessao-filha /feature-00c dirigindo o runtime
   # REAL. Composicao invocante (contract §4.1, byte-identica tmux/degradado):
-  #   claude --name "cstk-feature/<short>" "/feature-00c <short>"
+  #   claude --name "cstk-feature/<short>" '/feature-00c "<DESCRICAO>" <short>'
+  # O short-name e o SEGUNDO posicional (o primeiro e a descricao) — o stub
+  # so aceita esse formato: se o emit regredir para `/feature-00c <short>`,
+  # o parse falha (exit 64) e o e2e quebra, que e o efeito desejado.
   cat > "$_STUB_BIN/claude" <<'EOF'
 #!/bin/sh
 set -eu
@@ -141,7 +144,18 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || exit 64
       shift 2 ;;
     "/feature-00c "*)
-      short=${1#/feature-00c }
+      # prompt = /feature-00c "<DESCRICAO>" <short>
+      _rest=${1#/feature-00c }
+      case "$_rest" in
+        '"'*)
+          _rest=${_rest#\"}       # remove aspa inicial da descricao
+          desc=${_rest%%\"*}      # descricao (nao usada pelo stub)
+          _rest=${_rest#*\"}      # sobra: ` <short>`
+          short=${_rest# }
+          ;;
+        *) exit 64 ;;             # formato antigo (`/feature-00c <short>`)
+      esac
+      [ -n "${desc:-}" ] || exit 64
       shift ;;
     *) shift ;;
   esac
@@ -378,16 +392,17 @@ scenario_corrente_completa_leva_paralela() {
   assert_stdout_not_contains '"short_name":"feat-beta"' || return 1
 }
 
-# ==== Cenario 3: janela tmux REAL (condicional) ====
+# ==== Cenario 3: pane tmux REAL (condicional) ====
 #
-# Valida o caminho automatico (US1): a linha `tmux new-window ...` emitida
+# Valida o caminho automatico (US1): a linha `tmux split-window ...` emitida
 # e executada DENTRO de um servidor tmux privado (-L socket proprio,
 # -f /dev/null — nunca toca o servidor do operador), a filha roda o stub
 # de claude ate produzir o marker, e o kill switch documentado
-# (`tmux kill-window`) encerra a janela. Sem tmux no ambiente: PASS com
+# (`tmux kill-pane -t <pane_id>`) encerra o pane. A filha entra como pane
+# irmao no window ja existente — nenhum window novo e criado. Sem tmux no ambiente: PASS com
 # aviso (a composicao claude ja foi validada no cenario 2, que e
 # forma-agnostica por contrato).
-scenario_tmux_janela_real_e_kill_switch() {
+scenario_tmux_pane_real_e_kill_switch() {
   if ! command -v tmux >/dev/null 2>&1; then
     printf '  # tmux ausente — cenario condicional pulado (composicao coberta pelo cenario 2)\n'
     return 0
@@ -400,7 +415,8 @@ scenario_tmux_janela_real_e_kill_switch() {
   capture sh "$PLAUNCH" emit --repo "$_REPO" --feature feat-alpha
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "emit: exit $_CAPTURED_EXIT"; return 1; }
   _emit_out=$_CAPTURED_STDOUT
-  assert_stdout_contains 'tmux new-window' || return 1
+  assert_stdout_contains 'tmux split-window' || return 1
+  assert_stdout_not_contains 'tmux new-window' || return 1
   _l1=$(printf '%s\n' "$_emit_out" | grep '^cstk session start ')
   env PATH="$_STUB_BIN:$PATH" HOME="$E2E_HOME" sh -c "cd '$_REPO' && $_l1" >/dev/null 2>&1 \
     || { _fail "session-start" "session start feat-alpha falhou"; return 1; }
@@ -419,6 +435,10 @@ scenario_tmux_janela_real_e_kill_switch() {
     tmux -L "$_SOCK" -f /dev/null new-session -d -s boot /bin/sh \
     || { _fail "tmux" "nao consegui subir servidor tmux privado"; return 1; }
 
+  # Panes ANTES do split (a filha entra como pane irmao no MESMO window —
+  # `split-window`, nunca `new-window`).
+  _panes_before=$(tmux -L "$_SOCK" list-panes -t boot -F '#{pane_id}' 2>/dev/null)
+
   tmux -L "$_SOCK" send-keys -t boot "sh '$_PHYS/launch.sh'" Enter \
     || { _tmux_kill; _fail "tmux" "send-keys falhou"; return 1; }
 
@@ -428,17 +448,30 @@ scenario_tmux_janela_real_e_kill_switch() {
     return 1
   fi
 
-  # Janela nomeada com o short (linger mantem viva) + kill switch.
+  # Pane novo no MESMO window (linger mantem vivo) + kill switch por pane.
+  # `split-window` nao nomeia window (nao tem `-n`): a identificacao e o
+  # pane_id, que e justamente o que `-P -F '#{pane_id}'` devolve.
+  _panes_after=$(tmux -L "$_SOCK" list-panes -t boot -F '#{pane_id}' 2>/dev/null)
+  _pane_novo=$(printf '%s\n' "$_panes_after" | grep -vxF "$_panes_before" | head -1)
+  [ -n "$_pane_novo" ] || {
+    _tmux_kill
+    _fail "tmux" "nenhum pane novo no window boot (antes=[$_panes_before] depois=[$_panes_after])"
+    return 1
+  }
   _wins=$(tmux -L "$_SOCK" list-windows -t boot -F '#{window_name}' 2>/dev/null)
-  case "$_wins" in
-    *feat-alpha*) : ;;
-    *) _tmux_kill; _fail "tmux" "janela feat-alpha nao listada: [$_wins]"; return 1 ;;
-  esac
-  tmux -L "$_SOCK" kill-window -t "boot:feat-alpha" 2>/dev/null \
-    || { _tmux_kill; _fail "tmux" "kill-window falhou"; return 1; }
-  _wins=$(tmux -L "$_SOCK" list-windows -t boot -F '#{window_name}' 2>/dev/null)
-  case "$_wins" in
-    *feat-alpha*) _tmux_kill; _fail "tmux" "janela sobreviveu ao kill switch"; return 1 ;;
+  _n_wins=$(printf '%s\n' "$_wins" | grep -c . || :)
+  [ "$_n_wins" = 1 ] || {
+    _tmux_kill
+    _fail "tmux" "split-window nao deveria criar window nova: [$_wins]"
+    return 1
+  }
+  tmux -L "$_SOCK" kill-pane -t "$_pane_novo" 2>/dev/null \
+    || { _tmux_kill; _fail "tmux" "kill-pane falhou"; return 1; }
+  _panes_final=$(tmux -L "$_SOCK" list-panes -t boot -F '#{pane_id}' 2>/dev/null)
+  case "$(printf '\n%s\n.' "$_panes_final")" in
+    *"
+$_pane_novo
+"*) _tmux_kill; _fail "tmux" "pane sobreviveu ao kill switch"; return 1 ;;
   esac
   _tmux_kill
 

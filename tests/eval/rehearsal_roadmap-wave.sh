@@ -166,7 +166,7 @@ RUNBOOK (operador no comando; cada passo abaixo e manual de proposito):
  5. Bookend final (mecanico, exit 0/1):
         $0 verify --dir $_DIR
 
-Kill switch de uma filha: tmux kill-window -t <janela> +
+Kill switch de uma filha: tmux kill-pane -t <pane_id> +
 cstk session end <short>.
 EOF
 }

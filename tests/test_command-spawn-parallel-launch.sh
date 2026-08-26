@@ -186,7 +186,7 @@ scenario_emit_nunca_executa_documentado() {
 
 scenario_degradacao_sem_tmux_documentada() {
   # FR-007/SC-003: forma degradada exata do contrato §4.2.
-  assert_exit 0 grep -Fq 'cd <WORKTREE> && claude --name ... "/feature-00c' "$CMD_INIT_AGENTE" || return 1
+  assert_exit 0 grep -Fq "cd <WORKTREE> && claude --name ... '/feature-00c" "$CMD_INIT_AGENTE" || return 1
 }
 
 # ==== Guarda anti-duplicidade / TOCTOU (FR-011) ====
