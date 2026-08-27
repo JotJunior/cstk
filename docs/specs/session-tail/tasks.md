@@ -512,35 +512,119 @@ Depende de: FASE 1-6 completas
 
 ### 7.1 Roundtrip e paridade de tipos (gate obrigatorio) `[C]`
 
-- [ ] 7.1.1 Executar Scenario 9 do quickstart (roundtrip backend↔frontend)
-      contra o servidor real — unico ponto que pega drift `snake_case`/
-      `camelCase` que `tsc`+`vitest` sozinhos nao pegam (plan.md §Risco
-      residual)
-- [ ] 7.1.2 Teste: `npm run typecheck` + `npm test` verdes, mais a
-      confirmacao manual/scriptada do payload real do Scenario 9
+- [x] 7.1.1 Executado Scenario 9 contra servidor real (`tsx apps/server/src/index.ts`,
+      porta 3001 — unica permitida pela whitelist `.claude/agente-00c-whitelist`),
+      `CSTK_SESSIONS_ROOT` apontado para fixture isolada em scratchpad (jamais
+      `~/.claude/projects` real — confirmado sem escrita: `find ~/.claude/projects
+      -name '*.jsonl' -newermt '-5 minutes'` vazio). Payload real capturado de
+      `GET /sessions` e `GET /sessions/:id/tail`: chaves 100% camelCase
+      (`sessionId`, nao `session_id`, apesar de a linha `.jsonl` conter as duas
+      formas), tipos corretos (`sizeBytes`/`returnedLines`/`skippedLines` number,
+      `live`/`textTruncated`/`truncatedByBytes` boolean), zero ocorrencia de
+      `[object Promise]` em qualquer payload (funcoes de leitura assincronas
+      desde onda-014)
+- [x] 7.1.2 `npm run typecheck` rc=0; `npm test` → Test Files 66 passed | 1
+      skipped (67), Tests 886 passed | 1 skipped (887) — baseline mantido.
+      Confirmacao scriptada do payload real: script Node parseou
+      `/sessions` e `/sessions/:id/tail` reais com `ApiEnvelopeSchema` +
+      `SessionSummaryDTOSchema`/`SessionTailEntryDTOSchema` **de producao**
+      (`packages/shared-types/dist`), compondo os mesmos objetos que
+      `apps/web/src/lib/hooks.ts` usa (`SessionsListDataSchema`/
+      `SessionTailDataSchema`) — `safeParse` OK nos dois payloads. Confirmada
+      tambem a chamada real de `fetchApi` (`apps/web/src/lib/api.ts:48`,
+      `ApiEnvelopeSchema(dataSchema).parse(json)`), provando que o parse feito
+      aqui e byte-a-byte o mesmo caminho que o navegador executa — cobre o
+      passo 7/8 do Scenario 9 sem exigir sessao de browser separada. Paridade
+      interface-manual vs schema Zod confirmada por leitura direta
+      (`entities.ts:728-741`/`746-756` vs `schemas/entities.ts:469-488`, 1-para-1)
+      e pela suite `packages/shared-types` (`parity.test.ts` 36 + `parity-real.test.ts`
+      40, ambas verdes). NOTA (doc, nao-bloqueante): `quickstart.md` Scenario 9
+      passo 5 referencia `SessionsListDTOSchema`/`SessionTailDTOSchema` como
+      exportados de `shared-types` — esses nomes nao existem; a composicao real
+      vive em `hooks.ts` sobre os DTOs de campo exportados. Sugerido fix de doc,
+      nao afeta o codigo entregue.
 
 ### 7.2 Invariantes de seguranca e read-only `[C]`
 
-- [ ] 7.2.1 Executar Scenario 8 (path traversal rejeitado), Scenario 11
-      (nada foi escrito — FR-009/FR-010/Principio I) e Scenario 12 (segredo
-      nao chega ao navegador, incluindo a matriz de 0.4)
-- [ ] 7.2.2 Rodar `npm run lint:readonly-check` confirmando zero ocorrencias
-      de `insert|update|delete|create|drop|alter` seguido de espaco em
-      `apps/server/src` (dec-023 — o gate e lexical/cego, cuidado com
-      comentarios e strings)
-- [ ] 7.2.3 Teste: suite completa de scrub (3.1.3, 3.2.7) mais os 3 cenarios
-      acima documentados como passando nesta onda
+- [x] 7.2.1 Scenario 8: `curl .../sessions/..%2F..%2F..%2F..%2Fetc%2Fpasswd/tail`
+      → `200`, `data: null`, `reason: "session-rejected"`. Scenario 11: rota
+      sessions sem verbo de escrita (`grep -n "'POST'\|'PUT'\|'PATCH'"
+      apps/server/src/routes/sessions.ts` → vazio, exit 1) e nenhum `.jsonl`
+      real tocado durante o exercicio (find `-newermt '-5 minutes'` vazio).
+      Scenario 12: fixture com `AKIAIOSFODNN7EXAMPLE` + `password=hunter2`
+      (valor curto, <20 chars — so o redactor interno pega) devolvida via
+      `GET /tail` como `[REDACTED-AWS-KEY] e password=[REDACTED]`, `scrubMode:
+      "internal"` (Ramo B, `CSTK_SECRETS_FILTER` apontado para path inexistente);
+      Ramo A (cstk presente) ja coberto por `secret-scrub.test.ts` (14 testes,
+      mock de subprocesso); Ramo E confirmado por `grep -rn "REDACTED"
+      apps/web/src/` vazio (scrub e so do servidor)
+- [x] 7.2.2 `npm run lint:readonly-check` → `OK: no mutation verbs`
+- [x] 7.2.3 `npx vitest run apps/server/test/lib/secret-scrub.test.ts
+      apps/server/test/lib/session-tail.test.ts` → 2 arquivos, 35 testes,
+      todos verdes. Scenarios 8/11/12 documentados acima como passando
+      nesta onda (onda-018)
 
 ### 7.3 Constitution re-check final `[A]`
 
-- [ ] 7.3.1 Revisitar a tabela do Constitution Check (plan.md) contra o
-      codigo entregue: cada Principio (I-VI + Padroes de Seguranca +
-      Fidelidade de Design) confirmado PASS pela implementacao, nao apenas
-      pelo design
-- [ ] 7.3.2 Teste: gate `owasp-security` re-executado sobre o codigo final
-      (nao apenas o plano) — qualquer achado novo `critical`/`high` volta
-      para bloqueio humano; achados residuais ja conhecidos (FASE 0/3) devem
-      aparecer como mitigados, nao como novos
+- [x] 7.3.1 Constitution v2.0.0 lida integralmente (nao memoria de versao
+      anterior); tabela de plan.md §Constitution Check reconfirmada contra o
+      codigo entregue, PASS por implementacao (nao so design):
+      **I. Read-Only sobre o Corpus** — nenhum arquivo novo (`sessions-root.ts`,
+      `session-scan.ts`, `session-tail.ts`, `secret-scrub.ts`, `routes/sessions.ts`,
+      `watchers/sessions-watcher.ts`) referencia `knowledge.db`/`openDb`/
+      `better-sqlite3` fora de comentarios explicando que NAO abrem o corpus
+      (grep confirmado); unica conexao SQLite do processo continua em
+      `apps/server/src/db/open.ts:100` (`mode=ro&immutable=1`); `grep -rniE
+      "method:\s*['\"](POST|PUT|PATCH|DELETE)|\.(post|put|patch|delete)\("
+      apps/server/src` re-executado de forma independente (nao so a alegacao
+      do operador) → unico hit `inFlightStateDirs.delete(stateDir)` em
+      `ingest-watcher.ts:528`, confirmado `Map.delete()` em memoria (falso-positivo,
+      nao verbo HTTP/SQL). **II. Degradar, Nunca Quebrar** — todo branch de
+      `routes/sessions.ts` responde `200`+`DegradedReason` tipado, nunca
+      lanca/4xx/5xx por condicao de dado (confirmado por leitura linha-a-linha
+      da rota). **III. Honestidade de Metrica** — nenhum campo `$`/token exibido;
+      `skippedLines`/`truncatedByBytes`/`windowTruncated` explicitos; nenhum
+      vinculo sessao→execucao fabricado. **IV. Nao Reimplementar** — reusa
+      `wrap`/`wrapDegraded`, padrao do `ingest-watcher` em instancia separada
+      (justificada em `sessions-watcher.ts:4-11`). **V. UNTRUSTED** — scrub
+      obrigatorio confirmado (`secret-scrub.ts`) antes de `TextBlockRaw`
+      (children React, sem `dangerouslySetInnerHTML` — grep confirmado vazio em
+      `Sessions.tsx`/`SessionDetail.tsx`, so comentario o menciona). **VI.
+      Snapshot que muda** — leitura via `openSync`/`fstatSync`/`readSync`/
+      `closeSync` num unico fd (sem TOCTOU), watcher reconsulta `statSync` por
+      ciclo. **Padroes de Seguranca**: bind `127.0.0.1` hardcoded
+      (`config.ts:168`, nao configuravel por env — sem exposicao LAN), rate-limit
+      leve confirmado registrado em `routes/sessions.ts:106-111`. **Fidelidade
+      de Design**: telas com 4 estados (Loading/Empty/Error/Degraded) — ja
+      confirmado nos testes de FASE 6.
+- [x] 7.3.2 Gate `owasp-security` (skill) re-executado sobre o CODIGO final
+      (nao o plano) — arquivos lidos integralmente: `secret-scrub.ts`,
+      `sessions-root.ts`, `routes/sessions.ts`, `session-scan.ts`,
+      `sessions-watcher.ts`, `TextBlockRaw.tsx`. Achado **HIGH** da onda-004
+      (subprocesso do scrub externo) **confirmado mitigado no codigo**:
+      `execFile` (nunca `exec`/shell), argumentos fixos `['scrub']`, conteudo
+      via stdin (nunca argv), `timeout`/`killSignal` do proprio Node
+      (`secret-scrub.ts:206-227`), path do executavel exigido **absoluto**
+      (`resolveSecretsFilterPathFromEnv`, rejeita relativo → `null` → cai em
+      `scrubMode: 'internal'`, nunca resolve por `PATH`). **MEDIUM ReDoS**
+      mitigado: padroes ancorados (`ASSIGNMENT_PATTERN`/`BEARER_PATTERN`/
+      `AWS_KEY_PATTERN`, um quantificador por grupo, zero aninhamento) +
+      maquina de estados linha-a-linha para blocos `BEGIN...PRIVATE KEY`
+      (`scrubPrivateKeyBlocks`) — sem regex guloso multi-linha; medicao
+      empirica em quickstart.md Scenario 12.1. **MEDIUM amplificacao de
+      spawn** mitigado: deteccao de disponibilidade cacheada
+      (`cachedResolution`, uma vez), `scrubTextBatch` une multiplos textos em
+      UM subprocesso via `BATCH_JOIN_MARKER` (fallback per-item defensivo se
+      o marcador nao sobreviver 1:1), rate-limit leve 30/min por IP
+      registrado nas duas rotas. **LOW vazamento por log** mitigado:
+      `defaultFailureLogger` loga exclusivamente `{exitCode, timedOut}`
+      (`secret-scrub.ts:131-134`), nunca stdin/stdout/stderr. **LOW resolucao
+      por PATH** mitigado: path relativo/nao-absoluto tratado como
+      indisponivel. **Nenhum achado NOVO critical/high**: guard de path
+      traversal valida UUID via Zod ANTES do path-join + `realpathSync` +
+      checagem `isUnderRoot` + leitura por fd unico (sem TOCTOU); XSS no
+      transcript coberto por `TextBlockRaw` (children React puro); bind
+      `127.0.0.1` hardcoded elimina exposicao de rede. Onda-018/dec-079.
 
 ---
 
