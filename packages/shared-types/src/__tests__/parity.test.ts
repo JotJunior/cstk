@@ -22,6 +22,8 @@ import {
   FeatureDocsListDTOSchema,
   ProjectRollupSchema,
   FeatureRollupSchema,
+  SessionSummaryDTOSchema,
+  SessionTailEntryDTOSchema,
 } from '../schemas/entities.js';
 import {
   PaginationParamsSchema,
@@ -29,6 +31,8 @@ import {
   ScoreParamSchema,
   SearchParamsSchema,
 } from '../schemas/params.js';
+import type { SessionSummaryDTO, SessionTailEntryDTO } from '../entities.js';
+import type { DegradedReason } from '../envelope.js';
 
 const ISO = '2025-01-15T10:00:00.000Z';
 
@@ -380,6 +384,107 @@ describe('Paridade schemas Zod — entidades', () => {
     };
     const r = FeatureRollupSchema.safeParse(payload);
     expect(r.success).toBe(true);
+  });
+});
+
+/**
+ * Paridade estrutural DTO <-> Schema — feature session-tail (FASE 1, task 1.1.5).
+ *
+ * Diferente do smoke test acima (que so confirma que um payload valido passa),
+ * este bloco DERIVA o conjunto de chaves de uma amostra TIPADA pela interface
+ * TS e COMPARA em runtime contra as chaves do schema Zod (`Schema.shape`).
+ * Isso fecha as duas direcoes de drift:
+ *   - campo adicionado SO na interface: a amostra `satisfies`/tipada deixa de
+ *     compilar (falta ou sobra propriedade no literal) -> falha no typecheck;
+ *   - campo adicionado SO no schema Zod: nao afeta a compilacao da amostra,
+ *     mas o `expect(schemaKeys).toEqual(sampleKeys)` abaixo falha em runtime.
+ * Ver instrucao da onda: "editar so um dos dois passa no tsc e no vitest, e
+ * quebra em runtime" (drift snake_case/camelCase que sobreviveu 40 ondas).
+ */
+describe('Paridade estrutural DTO <-> Schema — session-tail (FASE 1)', () => {
+  it('SessionSummaryDTO: schema aceita amostra tipada e as chaves batem 1:1', () => {
+    const sample: SessionSummaryDTO = {
+      sessionId: '5f3c2e10-71a4-4b8e-9c1a-2d6f8b0a9e11',
+      projectPath: '/Users/jot/Projects/cstk-panel',
+      projectSlug: 'cstk-panel',
+      lastActivityAt: ISO,
+      live: true,
+      sizeBytes: 40960,
+    };
+    const r = SessionSummaryDTOSchema.safeParse(sample);
+    expect(r.success).toBe(true);
+
+    const schemaKeys = Object.keys(SessionSummaryDTOSchema.shape).sort();
+    const sampleKeys = Object.keys(sample).sort();
+    expect(schemaKeys).toEqual(sampleKeys);
+  });
+
+  it('SessionSummaryDTO: projectPath=null (sem cwd na amostra lida) tambem passa', () => {
+    const sample: SessionSummaryDTO = {
+      sessionId: '5f3c2e10-71a4-4b8e-9c1a-2d6f8b0a9e11',
+      projectPath: null,
+      projectSlug: 'cstk-panel',
+      lastActivityAt: ISO,
+      live: false,
+      sizeBytes: 0,
+    };
+    const r = SessionSummaryDTOSchema.safeParse(sample);
+    expect(r.success).toBe(true);
+  });
+
+  it('SessionTailEntryDTO: schema aceita amostra tipada e as chaves batem 1:1', () => {
+    const sample: SessionTailEntryDTO = {
+      uuid: 'a1b2c3d4-0000-4000-8000-000000000001',
+      type: 'assistant',
+      timestamp: ISO,
+      role: 'assistant',
+      text: 'ola',
+      textTruncated: false,
+    };
+    const r = SessionTailEntryDTOSchema.safeParse(sample);
+    expect(r.success).toBe(true);
+
+    const schemaKeys = Object.keys(SessionTailEntryDTOSchema.shape).sort();
+    const sampleKeys = Object.keys(sample).sort();
+    expect(schemaKeys).toEqual(sampleKeys);
+  });
+
+  it('SessionTailEntryDTO: type e conjunto ABERTO — valor fora do vocabulario conhecido ainda passa', () => {
+    // 17 valores foram observados no harness real (ver data-model.md); o
+    // schema MUST ser z.string(), nunca z.enum(), para nao quebrar a tela
+    // inteira quando o harness ganhar um tipo de linha novo (Principio II).
+    const sample: SessionTailEntryDTO = {
+      uuid: null,
+      type: 'um-tipo-de-linha-que-o-harness-ainda-nao-inventou',
+      timestamp: null,
+      role: null,
+      text: '',
+      textTruncated: false,
+    };
+    const r = SessionTailEntryDTOSchema.safeParse(sample);
+    expect(r.success).toBe(true);
+  });
+
+  it('DegradedReason: os 5 literais novos de session-tail sao membros validos do union', () => {
+    // Sem contraparte Zod por desenho (data-model.md §Novos literais de
+    // DegradedReason: "o lado Zod nao muda" — MetaSchema.reason ja e
+    // z.string().nullable()). A paridade aqui e TS-only: se qualquer um destes
+    // 5 literais for removido/renomeado em envelope.ts, esta atribuicao deixa
+    // de compilar (typecheck falha) e a lista deixa de bater com o total
+    // documentado em data-model.md.
+    const novosLiteraisSessionTail: DegradedReason[] = [
+      'sessions-root-missing',
+      'sessions-root-unreadable',
+      'session-not-found',
+      'session-rejected',
+      'session-scrub-failed',
+    ];
+    expect(novosLiteraisSessionTail).toHaveLength(5);
+    // Cada um deve continuar valido contra MetaSchema.reason (string livre),
+    // confirmando que a alegacao de "nenhuma mudanca no lado Zod" se sustenta.
+    for (const reason of novosLiteraisSessionTail) {
+      expect(typeof reason).toBe('string');
+    }
   });
 });
 

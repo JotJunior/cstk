@@ -139,19 +139,19 @@ Borda, data-model.md
 
 ### 1.1 Definir DTOs de sessao em `packages/shared-types` `[C]`
 
-- [ ] 1.1.1 Adicionar `SessionSummaryDTO` e `SessionTailEntryDTO` (interface
+- [x] 1.1.1 Adicionar `SessionSummaryDTO` e `SessionTailEntryDTO` (interface
       manual) em `packages/shared-types/src/entities.ts`, campos exatos por
       `data-model.md` e `contracts/sessions-api.md` (`sessionId`,
       `projectPath`, `projectSlug`, `lastActivityAt`, `live`, `sizeBytes` /
       `uuid`, `type`, `timestamp`, `role`, `text`, `textTruncated`)
-- [ ] 1.1.2 Adicionar os schemas Zod gemeos em
+- [x] 1.1.2 Adicionar os schemas Zod gemeos em
       `packages/shared-types/src/schemas/entities.ts`, mesmos campos e tipos
-- [ ] 1.1.3 Adicionar os 4 literais novos de `DegradedReason`
+- [x] 1.1.3 Adicionar os 4 literais novos de `DegradedReason`
       (`sessions-root-missing`, `sessions-root-unreadable`,
       `session-not-found`, `session-rejected`, `session-scrub-failed` — 5 no
       total) em `packages/shared-types/src/envelope.ts`
-- [ ] 1.1.4 Re-exportar tipo e schema em `packages/shared-types/src/index.ts`
-- [ ] 1.1.5 Teste: estender
+- [x] 1.1.4 Re-exportar tipo e schema em `packages/shared-types/src/index.ts`
+- [x] 1.1.5 Teste: estender
       `packages/shared-types/src/__tests__/parity.test.ts` cobrindo os 2 DTOs
       novos (paridade interface↔schema, mesmo padrao dos DTOs existentes)
 

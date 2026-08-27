@@ -462,3 +462,27 @@ export const SearchParamsSchema = PaginationParamsSchema.extend({
   project: z.string().optional(),
   feature: z.string().optional(),
 });
+
+// ---------------------------------------------------------------------------
+// SessionSummaryDTO schema (feature session-tail, data-model.md)
+// ---------------------------------------------------------------------------
+export const SessionSummaryDTOSchema = z.object({
+  sessionId: z.string(),
+  projectPath: z.string().nullable(),
+  projectSlug: z.string(),
+  lastActivityAt: z.string(),
+  live: z.boolean(),
+  sizeBytes: z.number(),
+});
+
+// ---------------------------------------------------------------------------
+// SessionTailEntryDTO schema (feature session-tail, data-model.md)
+// ---------------------------------------------------------------------------
+export const SessionTailEntryDTOSchema = z.object({
+  uuid: z.string().nullable(),
+  type: z.string(), // conjunto ABERTO (harness do Claude Code) — NUNCA z.enum()
+  timestamp: z.string().nullable(),
+  role: z.string().nullable(),
+  text: z.string(),
+  textTruncated: z.boolean(),
+});

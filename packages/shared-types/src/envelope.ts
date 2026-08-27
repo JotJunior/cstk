@@ -53,4 +53,10 @@ export type DegradedReason =
   | 'watcher-ingestion-failed'   // ultimo `cstk recall --ingest` do watcher falhou (2.4)
   // feature state-watchers-and-docs, task 3.3/3.4 (research.md Decision 7, FR-009):
   | 'artifact-too-large'         // artefato existe mas excede o cap de leitura (confinement.ts)
-  | 'artifact-rejected';         // artefato existe mas guard de confinamento rejeitou (symlink/escape de raiz)
+  | 'artifact-rejected'          // artefato existe mas guard de confinamento rejeitou (symlink/escape de raiz)
+  // feature session-tail, task 1.1.3 (data-model.md §Novos literais de DegradedReason):
+  | 'sessions-root-missing'      // `~/.claude/projects` (CSTK_SESSIONS_ROOT) nao existe
+  | 'sessions-root-unreadable'   // raiz existe, mas `readdirSync` falha (permissao)
+  | 'session-not-found'          // `:sessionId` nao resolve para arquivo sob a raiz
+  | 'session-rejected'           // guard de confinamento rejeitou o caminho (symlink/escape)
+  | 'session-scrub-failed';      // cadeia de scrub nao pode ser concluida; degrada em vez de servir texto cru
