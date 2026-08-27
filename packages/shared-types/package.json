@@ -1,6 +1,6 @@
 {
   "name": "@cstk-panel/shared-types",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "description": "DTOs, envelope padrao e schemas Zod compartilhados entre apps/server e apps/web",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

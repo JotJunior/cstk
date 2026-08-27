@@ -5,6 +5,83 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.32.0] - 2026-08-27
+
+### Adicionado
+
+- **Tail ao vivo das sessões do Claude Code** (feature `session-tail`): duas
+  telas novas no painel — listagem das sessões vivas e leitura do transcript
+  de uma delas — sobre `GET /api/v1/sessions` e
+  `GET /api/v1/sessions/:sessionId/tail`. A descoberta varre
+  `~/.claude/projects/**/*.jsonl` (raiz configurável por `CSTK_SESSIONS_ROOT`)
+  e usa `mtime` como proxy de liveness; a `knowledge.db` não é aberta em
+  nenhum ponto do caminho. O tail é lido posicionalmente a partir do EOF, com
+  teto duplo — 200 linhas por padrão **e** orçamento de bytes na resposta,
+  porque uma única linha `.jsonl` pode ter megabytes quando carrega o dump de
+  um arquivo. Linha malformada é pulada com a contagem sinalizada, nunca
+  aborta a leitura. A listagem se auto-atualiza pelo `refetchInterval` do
+  react-query já usado no painel, e o frescor reaproveita o `FreshnessLabel`
+  existente.
+- **Scrub de segredos obrigatório antes de servir transcript.** O conteúdo é
+  lido direto do disco, fora do pipeline de ingestão do cstk — então a
+  premissa do Princípio V ("o conteúdo já passou por scrub na ingestão") não
+  vale para esta feature. A cadeia encadeia o `secrets-filter.sh` do cstk com
+  um redator interno que roda **sempre**, nunca só como fallback: medido, o
+  filtro do cstk deixa passar `password=<valor curto>` (a regra exige 20+
+  caracteres) e não tem regra alguma para blocos `BEGIN PRIVATE KEY`. O
+  critério de aceite cobre os dois sentidos — o que precisa ser redigido e o
+  que **não pode** ser, já que transcript é prosa e "o campo password é
+  obrigatório" não pode virar `[REDACTED]`.
+- **Guard de confinamento de path próprio** para `~/.claude/projects`, sem
+  afrouxar o `project-root.ts` (que mantém `~/.claude` como zona proibida —
+  afrouxá-lo abriria caminho para state, credenciais e settings). UUID
+  validado com Zod antes de qualquer path-join, caixa normalizada,
+  confinamento por realpath, e leitura em `open`/`fstat`/`read`/`close` num
+  único descritor, fechando a janela de TOCTOU.
+- **Watcher de sessões em instância separada** do `ingest-watcher`, seguindo o
+  mesmo padrão de código. A separação é deliberada: uma falha na descoberta de
+  sessões não pode degradar a ingestão da `knowledge.db`, que é função central
+  do painel.
+- **Teste de roundtrip contra servidor real**, que sobe a aplicação, faz a
+  requisição nas duas rotas e parseia o payload com o schema Zod
+  **compartilhado** — nunca fixture escrita à mão, que nunca falha porque foi
+  escrita para casar. Cobre caminho feliz e degradado, e verifica que nenhum
+  campo contém `[object Promise]`.
+
+### Alterado
+
+- **Constituição do projeto: 1.3.0 → 2.0.1.** A 2.0.0 é MAJOR e redefine o
+  Princípio I de "Read-Only Absoluto" para "Read-Only sobre o Corpus": abre
+  uma superfície de escrita para a Ponte (responder no painel perguntas que
+  uma sessão do Claude Code parou para esperar), confinada a `bridge.db` e a
+  rotas sob `/api/v1/bridge/*`. O corpus segue intocável, e a cláusula que
+  sustenta a fronteira é dura: o painel **transporta** a resposta e nunca a
+  persiste como verdade — quem grava continua sendo o agente. A 2.0.1 é PATCH
+  e nomeia os dois portadores possíveis (painel direto ou hook local), sem
+  mudar obrigação alguma. `session-tail` **não** usa essa exceção: é
+  estritamente read-only.
+- **`lint:readonly-check` passou a declarar cobertura.** Antes imprimia
+  `OK: no mutation verbs` sem dizer quantos arquivos leu — o que não
+  distingue "varri tudo e não achei" de "não varri nada". Agora reporta os
+  arquivos varridos e quantas ocorrências ignorou por estarem em linha de
+  comentário. O escopo e a lista de verbos não mudaram: o estreitamento para
+  `db/queries/**` espera o primeiro código de `bridge/`, porque um gate não
+  afrouxa antes de existir o que ele passa a permitir.
+
+### Corrigido
+
+- **Falso-positivo do `lint:readonly-check`**: um comentário contendo a
+  palavra "update" reprovava o gate. Comentário não executa SQL, e um gate que
+  reprova por prosa treina a equipe a ignorar sua saída. Ocorrência em linha
+  de comentário passa a ser reportada e ignorada; comentário no fim da linha
+  continua reprovando, de propósito.
+- **Constituição afirmava uma DSN que o código nunca usou**: a cláusula da
+  conexão descrevia `mode=ro&immutable=1`, enquanto `apps/server/src/db/open.ts`
+  sempre abriu com `readonly: true` do better-sqlite3. Pior, `immutable=1`
+  contradiz o Princípio VI ("Snapshot que Muda"), porque declararia ao SQLite
+  que o arquivo não muda justamente enquanto ele muda sob o painel. O texto
+  agora descreve o mecanismo real e proíbe `immutable=1` com o motivo.
+
 ## [0.31.0] - 2026-08-20
 
 ### Adicionado
@@ -1333,6 +1410,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.32.0]: https://github.com/JotJunior/cstk-panel/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/JotJunior/cstk-panel/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/JotJunior/cstk-panel/compare/v0.29.2...v0.30.0
 [0.29.2]: https://github.com/JotJunior/cstk-panel/compare/v0.29.1...v0.29.2

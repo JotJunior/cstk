@@ -1,6 +1,6 @@
 {
   "name": "cstk-panel",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "private": true,
   "description": "Dashboard de Observabilidade Read-Only para execucoes agente-00c/feature-00c",
   "workspaces": [
@@ -13,7 +13,7 @@
     "start": "node apps/server/dist/index.js",
     "test": "vitest run",
     "lint": "eslint .",
-    "lint:readonly-check": "grep -rniE '\\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)[[:space:]]' apps/server/src && echo 'FAIL: mutation verbs found' && exit 1 || echo 'OK: no mutation verbs'",
+    "lint:readonly-check": "sh scripts/readonly-check.sh",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {

@@ -1,4 +1,45 @@
 <!--
+Sync Impact Report (emenda 2026-08-27)
+- Version: 2.0.0 -> 2.0.1
+- Bump rationale: PATCH — tres clarificacoes/correcoes de texto no Principio I,
+  nenhuma mudanca semantica. Nenhum consumidor precisa releitura para
+  continuar conforme; quem ja seguia a 2.0.0 segue conforme a 2.0.1.
+  (a) CORRECAO FACTUAL: a clausula da conexao afirmava DSN
+      `mode=ro&immutable=1`, que o codigo NUNCA usou — `apps/server/src/db/
+      open.ts:100` abre com `new Database(path, { readonly: true,
+      fileMustExist: false, timeout })`. Pior: `immutable=1` CONTRADIZ o
+      Principio VI ("Snapshot que Muda"), porque declara ao SQLite que o
+      arquivo nao muda enquanto o painel roda justamente sobre um arquivo que
+      muda. O texto agora descreve o mecanismo real e proibe `immutable=1`
+      explicitamente, com o motivo. Drift anterior a 2.0.0, herdado sem
+      revisao na emenda passada.
+  (b) O PORTADOR da resposta da Ponte passa a ser nomeado. A 2.0.0 dizia
+      "o painel entrega a resposta" e nao previa intermediario. Medicao de
+      2026-08-27 (spike executado, nao inferido): o cliente MCP NAO anuncia a
+      capability de elicitation em modo `url` — capabilities reais
+      `{"elicitation":{"form":{}},"roots":{"listChanged":true}}` — entao um
+      hook local e o unico caminho para perguntas que nao nascem de uma tool
+      do cstk-state. A clausula agora admite os dois portadores (painel direto
+      ou hook local) e mantem a regra dura sobre ambos: nenhum persiste, quem
+      grava e sempre o agente.
+  (c) A clausula Testavel passa a exigir DECLARACAO DE COBERTURA do gate, e
+      descreve o escopo REAL varrido hoje. Motivo: o gate anterior imprimia
+      "OK: no mutation verbs" sem dizer quantos arquivos leu — nao distinguia
+      "varri tudo e nao achei" de "nao varri nada". Media da classe de defeito
+      mais recorrente encontrada neste toolkit em 2026-08-27 (4 instancias:
+      `cstk doctor` cego ao `.cstk-manifest`, `bloqueios.sh register` cego ao
+      `structural-axis-map.txt`, o proprio Principio V afirmando scrub sem
+      verificar, e `extract-must.sh` lendo 0 de 13 regras MUST deste arquivo).
+- Autorizacao: operador humano, 2026-08-27.
+- Principios afetados: I (texto; sem mudanca de obrigacao). II-VI intactos.
+- Artefatos atualizados nesta emenda:
+  - package.json (script `lint:readonly-check` -> `sh scripts/readonly-check.sh`)
+  - scripts/readonly-check.sh (novo — declara cobertura; ignora ocorrencia em
+    linha de comentario, que nao executa; mantem escopo e lista de verbos)
+- Fecha o item "package.json, script lint:readonly-check" listado como artefato
+  a atualizar no Sync Impact Report da 2.0.0 — SEM estreitar o escopo, que
+  segue esperando o primeiro codigo de `bridge/`.
+
 Sync Impact Report (emenda 2026-08-26)
 - Version: 1.3.0 → 2.0.0
 - Bump rationale: MAJOR — redefinicao incompativel do Principio I. A regra
@@ -173,8 +214,15 @@ O painel e seu back-end **nao mutam o corpus derivado**. Nenhum caminho de
 codigo emite `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP` ou qualquer
 mutacao sobre a `knowledge.db`.
 
-- MUST: a conexao com a `knowledge.db` e aberta com `mode=ro&immutable=1`
-  (DSN: `file:/abs/path/knowledge.db?mode=ro&immutable=1&_busy_timeout=5000`).
+- MUST: a conexao com a `knowledge.db` e aberta em modo somente-leitura —
+  hoje `new Database(path, { readonly: true, fileMustExist: false, timeout })`
+  do better-sqlite3 (`apps/server/src/db/open.ts`), com `timeout` honrando o
+  busy-timeout de 5000ms.
+  MUST NOT usar `immutable=1`: a `knowledge.db` MUDA sob o painel enquanto ele
+  roda, e declarar imutabilidade ao SQLite contradiz o Principio VI ("Snapshot
+  que Muda") e pode servir dado obsoleto de cache. (Ate a 2.0.0 esta clausula
+  descrevia uma DSN `mode=ro&immutable=1` que o codigo nunca usou — correcao
+  factual, ver Sync Impact Report da 2.0.1.)
 - MUST NOT: tocar `state.json` (fonte da verdade transacional) nem
   reconstruir o indice (`cstk recall --reindex` tem dono fora do painel).
 - MUST NOT: existir formulario de mutacao, endpoint nao-`GET`, ou rota que
@@ -197,6 +245,14 @@ mutacao sobre a `knowledge.db`.
   `execution_id` nao e unico entre projetos, e rotear por ele entrega a
   resposta a sessao errada. Alinhado a regra A-4 de
   `mcp-direct-transport/contracts/server-session-resolution.md`.
+- MUST: o PORTADOR da resposta pode ser o painel (entregando direto ao
+  servidor cstk) OU um hook local na maquina do operador (que consulta o
+  painel e devolve a resposta ao agente). Os dois sao caminhos legitimos —
+  medido em 2026-08-27: o cliente MCP nao anuncia a capability de elicitation
+  em modo `url`, entao o hook e o unico caminho para perguntas que nao nascem
+  de uma tool do cstk-state. A clausula anterior vale para QUALQUER portador:
+  nenhum deles persiste, quem grava e sempre o agente. Um hook que gravasse
+  estado por conta propria violaria este principio tanto quanto o painel.
 
 **Why**: o painel e um consumidor derivado. Escrever no corpus corromperia a
 separacao fonte-da-verdade ↔ indice e violaria o contrato com `cstk recall`.
@@ -204,8 +260,16 @@ A Ponte nao rompe essa separacao porque nao escreve no corpus: ela transporta
 uma resposta humana ate o agente, que segue sendo o unico autor do estado.
 
 **Testavel**:
-- grep por verbos de mutacao SQL em `apps/server/src/db/queries/**` retorna
-  zero ocorrencias;
+- `npm run lint:readonly-check` (`scripts/readonly-check.sh`) retorna zero
+  verbos de mutacao EM CODIGO e **declara a cobertura** — quantos arquivos
+  varreu e quantas ocorrencias ignorou por estarem em linha de comentario.
+  Um gate que responde apenas "OK", sem dizer o que leu, nao distingue "varri
+  tudo e nao achei" de "nao varri nada"; a declaracao de cobertura e parte do
+  teste, nao enfeite.
+  Escopo atual: `apps/server/src` INTEIRO — mais restritivo do que esta
+  clausula exigiria. O estreitamento para `db/queries/**` acontece JUNTO com
+  o primeiro codigo de `bridge/`, nunca antes: o gate nao afrouxa enquanto
+  nao existe o que ele passa a permitir;
 - a unica conexao read-write do processo aponta para `bridge.db`;
 - toda rota fora de `/api/v1/bridge/*` responde exclusivamente a `GET`.
 
@@ -468,4 +532,4 @@ dele e regressao de produto, nao liberdade de implementacao.
   rationale; uma violacao de MUST/NON-NEGOTIABLE invalida o artefato ate
   ser corrigida ou a constituicao ser emendada via SemVer.
 
-**Version**: 2.0.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-08-26
+**Version**: 2.0.1 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-08-27
