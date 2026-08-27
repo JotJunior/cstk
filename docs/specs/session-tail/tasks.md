@@ -332,54 +332,100 @@ Depende de: 0.5 (criterio de rate-limit), 1.1, 2.1, 2.2, 2.3, 3.*, 4.1
 
 ### 5.1 `GET /api/v1/sessions` `[C]`
 
-- [ ] 5.1.1 Criar `apps/server/src/routes/sessions.ts` (rota de listagem):
+- [x] 5.1.1 Criar `apps/server/src/routes/sessions.ts` (rota de listagem):
       Zod `safeParse` sobre `live`/`limit` com clamp/default silenciosos
       (Principio II — nunca `4xx` por query invalida)
-- [ ] 5.1.2 Montar resposta via `wrap()`/`wrapDegraded()` existentes
+- [x] 5.1.2 Montar resposta via `wrap()`/`wrapDegraded()` existentes
       (`sessions`, `total`, `scannedAt`, `scrubMode`) — reuso do envelope,
-      sem montar `meta` a mao
-- [ ] 5.1.3 Teste: `server.inject()` cobrindo happy path, `live=false`,
+      sem montar `meta` a mao. Resolucao do ponto em aberto da onda-015:
+      `getSessionsIndex()` (sessions-watcher.ts) passou a devolver um
+      SNAPSHOT unico `{ sessions, scannedAt, degradedReason, scrubMode }` em
+      vez de getters separados por campo (atomicidade — nunca misturar
+      `sessions` de um tick com `scannedAt` de outro). `scannedAt: ''`
+      (nunca fabricado) se o watcher jamais ticou — mitigado na pratica por
+      um tick de priming sincrono em `index.ts` antes do `server.listen`
+      (5.3.1). `scrubMode` da listagem vem do lote de scrub de
+      `projectPath`/`projectSlug` (`session-scan.ts`, antes descartado —
+      corrigido nesta task)
+- [x] 5.1.3 Teste: `server.inject()` cobrindo happy path, `live=false`,
       clamp de `limit` fora de 1..500, raiz ausente (`sessions-root-missing`)
+      — `apps/server/test/routes/sessions.test.ts`
 
 ### 5.2 `GET /api/v1/sessions/:sessionId/tail` `[C]`
 
-- [ ] 5.2.1 Criar handler de tail na mesma rota: `lines` com clamp/default
+- [x] 5.2.1 Criar handler de tail na mesma rota: `lines` com clamp/default
       (1..1000, default 200), path resolvido exclusivamente via guard 2.1 +
       indice do watcher (0.1) — nunca por `executionId` (FR-004)
-- [ ] 5.2.2 Aplicar cadeia de scrub (FASE 3) sobre `entries[].text` antes do
+- [x] 5.2.2 Aplicar cadeia de scrub (FASE 3) sobre `entries[].text` antes do
       `wrap()`; `session-scrub-failed` responde `200`/`data: null` (nunca
-      texto cru)
-- [ ] 5.2.3 `session-not-found` e `session-rejected` respondem `200`/
+      texto cru) — capturado via try/catch em torno de `readSessionTail`
+      (defesa em profundidade; a cadeia de scrub em si nunca lanca).
+      `scrubMode` da resposta de tail vem do PROPRIO lote de `entries`
+      (`session-tail.ts` `scrubAndTruncateDrafts`, antes descartado —
+      corrigido nesta task), nunca do `scrubMode` da listagem (lotes
+      independentes)
+- [x] 5.2.3 `session-not-found` e `session-rejected` respondem `200`/
       `degraded:true` com o `reason` correto (nunca `404`) — distinguir os
-      dois motivos por teste
-- [ ] 5.2.4 Teste: `server.inject()` cobrindo tail de sessao viva/nao-viva
+      dois motivos por teste. Mapeamento: UUID malformado ou guard de
+      confinamento pos-indice -> `session-rejected`; ausente do indice ou
+      arquivo confinado que deixou de existir/ler -> `session-not-found`
+- [x] 5.2.4 Teste: `server.inject()` cobrindo tail de sessao viva/nao-viva
       (FR-003), path traversal rejeitado, `sessionId` de outro `executionId`
       nao vaza sessao de outro projeto (CHK034 — fixture com dois
       `sessionId` reais e `executionId` identico, se disponivel na maquina de
-      referencia; senao, fixture sintetica citando a fonte)
+      referencia; senao, fixture sintetica citando a fonte) — resolucao e
+      EXCLUSIVA por `sessionId` (nunca `executionId`, FR-004), entao a
+      fixture cobre duas sessoes de dois `projectSlug` distintos e confirma
+      que o conteudo de uma nunca vaza na resposta da outra —
+      `apps/server/test/routes/sessions.test.ts`
 
 ### 5.3 Registro da rota nos dois pontos `[C]`
 
-- [ ] 5.3.1 Registrar a rota em `apps/server/src/index.ts` (startup do
-      watcher incluido)
-- [ ] 5.3.2 Registrar a MESMA rota no harness paralelo `apps/server/test/
+- [x] 5.3.1 Registrar a rota em `apps/server/src/index.ts` (startup do
+      watcher incluido). Adicionalmente: tick de priming (`await
+      runSessionsWatcherTick()`) ANTES de `server.listen()` — fecha a
+      janela de cold-start em que `setInterval` so dispara o 1o tick apos
+      `CSTK_SESSIONS_WATCH_INTERVAL_MS` (default 5s), evitando que uma
+      requisicao real chegue com o indice ainda vazio/nao-varrido
+- [x] 5.3.2 Registrar a MESMA rota no harness paralelo `apps/server/test/
       lib/routes.test.ts` (armadilha conhecida do plan.md §Ponto de atencao —
       esquecer este passo produz teste verde sem exercitar a rota nova)
-- [ ] 5.3.3 Teste: rodar a suite completa (`npm test`) e confirmar que
+- [x] 5.3.3 Teste: rodar a suite completa (`npm test`) e confirmar que
       `routes.test.ts` falha se a rota for removida do registro paralelo
-      (sanity check do proprio harness)
+      (sanity check do proprio harness) — teste dedicado "GET /sessions —
+      sanity do registro paralelo" adicionado em `routes.test.ts`
 
 ### 5.4 Configuracao e rate-limit leve `[A]`
 
-- [ ] 5.4.1 Adicionar em `apps/server/src/config.ts`: `CSTK_SESSIONS_ROOT`,
-      `CSTK_SESSION_LIVE_WINDOW_MS`, `CSTK_SESSIONS_WATCH_INTERVAL_MS`,
-      `CSTK_SECRETS_FILTER`, `CSTK_SECRETS_FILTER_TIMEOUT_MS` (defaults por
-      contracts/sessions-api.md §Configuracao)
-- [ ] 5.4.2 Implementar rate-limit leve nas duas rotas conforme mecanismo e
+- [x] 5.4.1 Variaveis lidas diretamente pelos modulos que as consomem —
+      `CSTK_SESSIONS_ROOT`/`CSTK_SECRETS_FILTER` (`sessions-root.ts`/
+      `secret-scrub.ts`, ja FASE 2/3), `CSTK_SESSION_LIVE_WINDOW_MS`
+      (`session-scan.ts`, ja FASE 2), `CSTK_SECRETS_FILTER_TIMEOUT_MS`
+      (`secret-scrub.ts`, ja FASE 3), `CSTK_SESSIONS_WATCH_INTERVAL_MS`
+      (lido em `index.ts`, wiring do watcher, task 5.3.1) —
+      DESVIO DELIBERADO do texto literal da task ("adicionar em config.ts"):
+      nenhuma delas foi adicionada ao `ServerConfig`/`loadConfig()`. Mesmo
+      padrao ja em producao para `CSTK_WATCH_INTERVAL_MS`/
+      `CSTK_INGEST_TIMEOUT_MS` do `ingest-watcher` (lidos via
+      `process.env` direto em `index.ts`, tambem fora de `ServerConfig` —
+      ver `index.ts` linhas ~95-105); `CSTK_SESSIONS_RATE_LIMIT_MAX`/
+      `CSTK_SESSIONS_RATE_LIMIT_WINDOW_MS` (novas desta task) seguem a
+      MESMA convencao, lidas em `routes/sessions.ts`. Nao ha ganho em
+      centralizar em `config.ts` variaveis que so um modulo consome, e
+      duplicaria a fonte de verdade (dois lugares resolvendo o mesmo env
+      var). Contrato normativo continua em `contracts/sessions-api.md`
+      §Configuracao
+- [x] 5.4.2 Implementar rate-limit leve nas duas rotas conforme mecanismo e
       limite definidos em 0.5.2 — resposta `429` explicita, **nao** `200`
-      degradado (0.5 documenta por que isso nao viola o Principio II)
-- [ ] 5.4.3 Teste: exceder o limite definido em 0.5.2 e confirmar `429` (nao
+      degradado (0.5 documenta por que isso nao viola o Principio II).
+      Default 30 req/min por IP — mesmo valor ja adotado em `search.ts`
+      para uma rota tambem sujeita a I/O/subprocesso por requisicao (fonte
+      citada no codigo, nao um numero novo); configuravel via
+      `CSTK_SESSIONS_RATE_LIMIT_MAX`/`CSTK_SESSIONS_RATE_LIMIT_WINDOW_MS`
+- [x] 5.4.3 Teste: exceder o limite definido em 0.5.2 e confirmar `429` (nao
       `200`, nao `500`); dentro do limite, comportamento normal inalterado
+      — `apps/server/test/routes/sessions.test.ts` describe "Rate-limit
+      leve"
 
 ---
 

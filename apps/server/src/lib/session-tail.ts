@@ -27,7 +27,7 @@
 import { statSync } from 'node:fs';
 import type { SessionTailEntryDTO } from '@cstk-panel/shared-types';
 import { readConfinedSessionFile } from './sessions-root.js';
-import { scrubTextBatch } from './secret-scrub.js';
+import { scrubTextBatch, type ScrubMode } from './secret-scrub.js';
 
 /**
  * Decision 8 (research.md) — janela maxima lida do disco a partir do fim do
@@ -73,6 +73,11 @@ export interface SessionTailReadResult {
   windowTruncated: boolean;
   /** ISO 8601 — `mtime` do arquivo no momento da leitura. */
   lastActivityAt: string;
+  /** Qual cadeia de scrub produziu `entries[].text` (contracts/sessions-api.md
+   *  `scrubMode`, achado onda-015 — antes descartado pelo chamador). Quando
+   *  a janela nao tem nenhuma entrada (`entries: []`), `'internal'` e o
+   *  default conservador: nenhum lote de fato passou pela cadeia. */
+  scrubMode: ScrubMode;
 }
 
 function clampLines(raw: number | undefined): number {
@@ -160,18 +165,34 @@ function parseLineDraft(parsed: Record<string, unknown>): ParsedLineDraft {
   return { uuid, type, timestamp, role, rawText: flattenContent(rawContent) };
 }
 
+/** Resultado do lote de scrub+truncamento das entradas da janela (achado onda-015). */
+interface ScrubbedTailDrafts {
+  entries: SessionTailEntryDTO[];
+  scrubMode: ScrubMode;
+}
+
 /**
  * Aplica a cadeia de scrub a TODOS os rascunhos da janela em UMA UNICA
  * invocacao de subprocesso (`scrubTextBatch` — "um spawn por requisicao
  * de tail", plan.md §Custo e mitigacao), e SO DEPOIS trunca cada entrada
  * individualmente (task 3.3.1 — scrub antes do corte, nunca depois).
+ *
+ * Devolve tambem `scrubMode` (antes descartado aqui — achado onda-015): a
+ * rota HTTP (FASE 5) precisa reportar qual cadeia de fato produziu
+ * `entries[].text`, nao a cadeia usada em outro lote (ex.: o scrub de
+ * `projectPath`/`projectSlug` da rota de listagem, um lote INDEPENDENTE).
+ * Janela vazia (`drafts: []`) nunca invoca `scrubTextBatch` — `'internal'`
+ * e a leitura conservadora, nunca afirma `'cstk+internal'` para um lote que
+ * nao rodou.
  */
-async function scrubAndTruncateDrafts(drafts: ParsedLineDraft[]): Promise<SessionTailEntryDTO[]> {
-  const { texts: scrubbedTexts } = await scrubTextBatch(drafts.map((d) => d.rawText));
-  return drafts.map((draft, i) => {
+async function scrubAndTruncateDrafts(drafts: ParsedLineDraft[]): Promise<ScrubbedTailDrafts> {
+  if (drafts.length === 0) return { entries: [], scrubMode: 'internal' };
+  const { texts: scrubbedTexts, scrubMode } = await scrubTextBatch(drafts.map((d) => d.rawText));
+  const entries = drafts.map((draft, i) => {
     const { text, textTruncated } = truncateEntryText(scrubbedTexts[i]!);
     return { uuid: draft.uuid, type: draft.type, timestamp: draft.timestamp, role: draft.role, text, textTruncated };
   });
+  return { entries, scrubMode };
 }
 
 /**
@@ -246,7 +267,7 @@ export async function readSessionTail(
 
   // Scrub em lote (UM subprocesso para a janela inteira) + truncamento
   // por entrada, nesta ordem (task 3.3.1).
-  const parsedEntries = await scrubAndTruncateDrafts(drafts);
+  const { entries: parsedEntries, scrubMode } = await scrubAndTruncateDrafts(drafts);
 
   // Seleciona do mais recente para o mais antigo, parando no primeiro teto
   // atingido — linhas (`requestedLines`) ou orcamento de bytes
@@ -275,5 +296,6 @@ export async function readSessionTail(
     truncatedByBytes,
     windowTruncated,
     lastActivityAt,
+    scrubMode,
   };
 }

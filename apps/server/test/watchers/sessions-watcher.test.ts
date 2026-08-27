@@ -68,7 +68,7 @@ describe('runSessionsWatcherTick — raiz ausente', () => {
     expect(result.reason).toBe('sessions-root-missing');
     expect(result.sessionCount).toBe(0);
     expect(typeof result.scannedAt).toBe('string');
-    expect(getSessionsIndex()).toEqual([]);
+    expect(getSessionsIndex().sessions).toEqual([]);
   });
 });
 
@@ -83,12 +83,12 @@ describe('runSessionsWatcherTick — erro inesperado do scanImpl (defesa em prof
     expect(result.degraded).toBe(true);
     expect(result.reason).toBeNull();
     expect(result.sessionCount).toBe(0);
-    expect(getSessionsIndex()).toEqual([]);
+    expect(getSessionsIndex().sessions).toEqual([]);
   });
 });
 
 // ─────────────────────────────────────────────────────────
-// getSessionsIndex reflete o ultimo tick
+// getSessionsIndex reflete o ultimo tick (snapshot atomico — achado onda-015)
 // ─────────────────────────────────────────────────────────
 
 describe('getSessionsIndex — reflete o ultimo tick', () => {
@@ -96,12 +96,17 @@ describe('getSessionsIndex — reflete o ultimo tick', () => {
     const okScan: () => Promise<SessionScanResult> = async () => ({
       degraded: false,
       sessions: [SAMPLE_SESSION],
+      scrubMode: 'internal',
     });
 
     const okResult = await runSessionsWatcherTick({ scanImpl: okScan });
     expect(okResult.degraded).toBe(false);
     expect(okResult.sessionCount).toBe(1);
-    expect(getSessionsIndex()).toEqual([SAMPLE_SESSION]);
+    const okSnapshot = getSessionsIndex();
+    expect(okSnapshot.sessions).toEqual([SAMPLE_SESSION]);
+    expect(okSnapshot.scannedAt).toBe(okResult.scannedAt);
+    expect(okSnapshot.degradedReason).toBeNull();
+    expect(okSnapshot.scrubMode).toBe('internal');
 
     const degradedScan: () => Promise<SessionScanResult> = async () => ({
       degraded: true,
@@ -111,7 +116,12 @@ describe('getSessionsIndex — reflete o ultimo tick', () => {
     expect(degradedResult.degraded).toBe(true);
     expect(degradedResult.reason).toBe('sessions-root-unreadable');
     // Nao serve indice stale apos degradacao (Principio III) — zera.
-    expect(getSessionsIndex()).toEqual([]);
+    const degradedSnapshot = getSessionsIndex();
+    expect(degradedSnapshot.sessions).toEqual([]);
+    expect(degradedSnapshot.degradedReason).toBe('sessions-root-unreadable');
+    // scrubMode volta ao default conservador — nao reafirma cobertura obtida
+    // por um tick anterior ja invalidado (Principio III).
+    expect(degradedSnapshot.scrubMode).toBe('internal');
   });
 
   it('diretorio raiz presente e vazio nao e degradacao — indice fica []', async () => {
@@ -121,7 +131,27 @@ describe('getSessionsIndex — reflete o ultimo tick', () => {
 
     expect(result.degraded).toBe(false);
     expect(result.sessionCount).toBe(0);
-    expect(getSessionsIndex()).toEqual([]);
+    expect(getSessionsIndex().sessions).toEqual([]);
+  });
+
+  it('snapshot e um objeto unico e coerente (sessions+scannedAt+scrubMode do MESMO tick)', async () => {
+    const scanImpl: () => Promise<SessionScanResult> = async () => ({
+      degraded: false,
+      sessions: [SAMPLE_SESSION],
+      scrubMode: 'cstk+internal',
+    });
+
+    const tickResult = await runSessionsWatcherTick({ scanImpl });
+    const snapshot = getSessionsIndex();
+
+    // As 3 chaves vem da MESMA leitura atomica de indexState — nunca
+    // getters separados que poderiam observar ticks diferentes.
+    expect(snapshot).toEqual({
+      sessions: [SAMPLE_SESSION],
+      scannedAt: tickResult.scannedAt,
+      degradedReason: null,
+      scrubMode: 'cstk+internal',
+    });
   });
 });
 
@@ -135,7 +165,7 @@ describe('startSessionsWatcher — smoke start/stop', () => {
     let tickCount = 0;
     const scanImpl: SessionsWatcherTickOptions['scanImpl'] = async () => {
       tickCount++;
-      return { degraded: false, sessions: [] };
+      return { degraded: false, sessions: [], scrubMode: 'internal' };
     };
 
     const handle = startSessionsWatcher({ scanImpl, intervalMs: 10 });
@@ -152,7 +182,7 @@ describe('startSessionsWatcher — smoke start/stop', () => {
   it('usa DEFAULT_SESSIONS_WATCH_INTERVAL_MS quando intervalMs e omitido', () => {
     vi.useFakeTimers();
     const setIntervalSpy = vi.spyOn(global, 'setInterval');
-    const handle = startSessionsWatcher({ scanImpl: async () => ({ degraded: false, sessions: [] }) });
+    const handle = startSessionsWatcher({ scanImpl: async () => ({ degraded: false, sessions: [], scrubMode: 'internal' }) });
     expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), DEFAULT_SESSIONS_WATCH_INTERVAL_MS);
     handle.stop();
     setIntervalSpy.mockRestore();
@@ -227,7 +257,7 @@ describe('isolamento — sessions-watcher e ingest-watcher sao instancias indepe
     process.env['CSTK_SESSIONS_ROOT'] = join(tmpRoot, 'raiz-ausente');
     const sessionsResult = await runSessionsWatcherTick();
     expect(sessionsResult.degraded).toBe(true);
-    expect(getSessionsIndex()).toEqual([]);
+    expect(getSessionsIndex().sessions).toEqual([]);
 
     // ingest-watcher: novo tick identico ao baseline — o resultado nao
     // mudou por causa da falha do outro watcher (nenhum estado
@@ -244,9 +274,10 @@ describe('isolamento — sessions-watcher e ingest-watcher sao instancias indepe
     const okScan: () => Promise<SessionScanResult> = async () => ({
       degraded: false,
       sessions: [SAMPLE_SESSION],
+      scrubMode: 'internal',
     });
     await runSessionsWatcherTick({ scanImpl: okScan });
-    expect(getSessionsIndex()).toEqual([SAMPLE_SESSION]);
+    expect(getSessionsIndex().sessions).toEqual([SAMPLE_SESSION]);
 
     // ingest-watcher: dbPath ausente degrada seu proprio resultado
     // (`degradedDb: true`, db-missing — ver runWatcherTick), sem lancar.
@@ -257,6 +288,6 @@ describe('isolamento — sessions-watcher e ingest-watcher sao instancias indepe
     expect(ingestResult.degradedDb).toBe(true);
 
     // O indice do sessions-watcher continua intacto — nenhum acoplamento.
-    expect(getSessionsIndex()).toEqual([SAMPLE_SESSION]);
+    expect(getSessionsIndex().sessions).toEqual([SAMPLE_SESSION]);
   });
 });

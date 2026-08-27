@@ -87,7 +87,10 @@ describe('scanSessions — raiz ausente/ilegivel (FR-008, 2.2.3)', () => {
 describe('scanSessions — raiz vazia (2.2.3 / distincao Principio II)', () => {
   it('raiz existe e vazia -> NAO-degradada, sessions: []', async () => {
     const result = await scanSessions();
-    expect(result).toEqual({ degraded: false, sessions: [] });
+    // scrubMode: 'internal' aqui e o default conservador para lote vazio
+    // (nenhum item passou pela cadeia — nunca afirmar 'cstk+internal' sem
+    // um lote de fato processado; ver session-scan.ts scrubSessionSummaries).
+    expect(result).toEqual({ degraded: false, sessions: [], scrubMode: 'internal' });
   });
 });
 
@@ -137,6 +140,9 @@ describe('scanSessions — metadados derivados (SessionSummaryDTO)', () => {
     expect(result.degraded).toBe(false);
     if (result.degraded) throw new Error('unreachable');
     expect(result.sessions).toHaveLength(1);
+    // scrubMode aparece no resultado do scan (achado onda-015 — a rota
+    // GET /api/v1/sessions consome este campo, nao so `sessions`).
+    expect(result.scrubMode).toBe('internal'); // CSTK_SECRETS_FILTER forcado a caminho inexistente nesta suite
     const s = result.sessions[0]!;
     expect(s.sessionId).toBe(VALID_UUID_1);
     expect(s.projectPath).toBe('/Users/jot/projeto-a'); // primeira ocorrencia, nao a ultima (Decision 4)

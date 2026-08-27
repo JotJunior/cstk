@@ -45,6 +45,7 @@ async function buildServer(dbPath: string): Promise<FastifyInstance> {
   const { searchRoutes } = await import('../../src/routes/search.js');
   const { taskRoutes } = await import('../../src/routes/tasks.js');
   const { memoryRoutes } = await import('../../src/routes/memories.js');
+  const { sessionRoutes } = await import('../../src/routes/sessions.js');
 
   await server.register(async (v1) => {
     await v1.register(healthRoutes);
@@ -56,6 +57,7 @@ async function buildServer(dbPath: string): Promise<FastifyInstance> {
     await v1.register(searchRoutes);
     await v1.register(taskRoutes);
     await v1.register(memoryRoutes);
+    await v1.register(sessionRoutes);
   }, { prefix: '/api/v1' });
 
   server.setNotFoundHandler((_req, reply) => {
@@ -89,6 +91,30 @@ describe('GET /health — degradacao de 1a classe', () => {
     const metaDegraded = (body['meta'] as { degraded?: boolean })?.degraded;
     const dataOk = (body['data'] as { ok?: boolean })?.ok;
     expect(metaDegraded === true || dataOk === false).toBe(true);
+  });
+});
+
+// ─── Sanity do registro paralelo (task 5.3.2/5.3.3) ───────────────────────────
+//
+// `sessionRoutes` e registrado aqui e em src/index.ts separadamente (mesma
+// armadilha ja documentada acima para as demais rotas — plan.md §Ponto de
+// atencao). Este teste falha se `sessionRoutes` for removido do registro
+// paralelo deste arquivo, exercitando a rota de fato (nao apenas import).
+
+describe('GET /sessions — sanity do registro paralelo', () => {
+  let server: FastifyInstance;
+
+  beforeAll(async () => {
+    server = await buildServer('/tmp/nao-existe-cstk-test-' + Date.now() + '.db');
+  });
+  afterAll(async () => { await server.close(); });
+
+  it('rota registrada responde 200 (index vazio, watcher nunca ticou nesta suite)', async () => {
+    const res = await server.inject({ method: 'GET', url: '/api/v1/sessions' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { sessions: unknown[]; total: number } | null }>();
+    expect(body.data).not.toBeNull();
+    expect(body.data!.sessions).toEqual([]);
   });
 });
 

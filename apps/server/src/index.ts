@@ -24,7 +24,9 @@ import { eventRoutes } from './routes/events.js';
 import { metricsRoutes } from './routes/metrics.js';
 import { searchRoutes } from './routes/search.js';
 import { memoryRoutes } from './routes/memories.js';
+import { sessionRoutes } from './routes/sessions.js';
 import { startIngestWatcher, DEFAULT_WATCH_INTERVAL_MS, DEFAULT_SUBPROCESS_TIMEOUT_MS } from './watchers/ingest-watcher.js';
+import { startSessionsWatcher, runSessionsWatcherTick, DEFAULT_SESSIONS_WATCH_INTERVAL_MS } from './watchers/sessions-watcher.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -86,6 +88,7 @@ async function main(): Promise<void> {
     await v1.register(metricsRoutes);
     await v1.register(searchRoutes);
     await v1.register(memoryRoutes);
+    await v1.register(sessionRoutes);
   }, { prefix: '/api/v1' });
 
   // Watcher de ingestao em segundo plano (US1, FR-001/FR-004/FR-013). Iniciado
@@ -117,6 +120,29 @@ async function main(): Promise<void> {
   // handle pendente / processo que nao finaliza.
   server.addHook('onClose', (_instance, done) => {
     watcherHandle.stop();
+    done();
+  });
+
+  // Watcher de sessoes do Claude Code (FASE 4/5, session-tail — FR-011).
+  // Instancia independente do ingest-watcher (nenhum estado/timer
+  // compartilhado). Cadencia configuravel via CSTK_SESSIONS_WATCH_INTERVAL_MS
+  // (contracts/sessions-api.md §Configuracao).
+  const sessionsIntervalRaw = process.env['CSTK_SESSIONS_WATCH_INTERVAL_MS'];
+  const sessionsIntervalMs = sessionsIntervalRaw && /^\d+$/.test(sessionsIntervalRaw)
+    ? parseInt(sessionsIntervalRaw, 10)
+    : DEFAULT_SESSIONS_WATCH_INTERVAL_MS;
+  // Tick imediato ANTES de comecar a aceitar conexoes (task 5.3.1): fecha a
+  // janela de cold-start em que `GET /api/v1/sessions` responderia com o
+  // indice em memoria ainda vazio/nao-varrido (setInterval so dispara o
+  // primeiro tick apos `sessionsIntervalMs`, default 5s — tempo real em que
+  // uma requisicao HTTP poderia chegar antes de qualquer varredura). Nunca
+  // lanca (runSessionsWatcherTick, task 4.1.3); falha aqui apenas deixa o
+  // indice degradado, que a rota ja trata como resposta de 1a classe
+  // (Principio II) — nao impede o boot do servidor.
+  await runSessionsWatcherTick();
+  const sessionsWatcherHandle = startSessionsWatcher({ intervalMs: sessionsIntervalMs });
+  server.addHook('onClose', (_instance, done) => {
+    sessionsWatcherHandle.stop();
     done();
   });
 

@@ -29,6 +29,7 @@
  */
 import type { SessionSummaryDTO } from '@cstk-panel/shared-types';
 import { scanSessions, type SessionScanReason, type SessionScanResult } from '../lib/session-scan.js';
+import type { ScrubMode } from '../lib/secret-scrub.js';
 
 /**
  * Cadencia do timer (task 4.1.2). Sem subprocesso envolvido (ao contrario do
@@ -53,6 +54,11 @@ interface SessionsIndexState {
   reason: SessionScanReason | null;
   /** ISO 8601 do instante do ultimo ciclo do watcher que alimentou o indice; null antes do 1o tick. */
   scannedAt: string | null;
+  /** Qual cadeia de scrub produziu `sessions` no ultimo tick bem-sucedido
+   *  (contracts/sessions-api.md `scrubMode`). `'internal'` antes do 1o tick
+   *  ou apos degradacao — leitura conservadora, nunca superestima cobertura
+   *  nao confirmada (Principio III/VI). */
+  scrubMode: ScrubMode;
 }
 
 let indexState: SessionsIndexState = {
@@ -60,23 +66,45 @@ let indexState: SessionsIndexState = {
   degraded: false,
   reason: null,
   scannedAt: null,
+  scrubMode: 'internal',
 };
 
 /**
- * Leitura do indice em memoria pelas rotas (task 4.1.1, contrato). Um tick
- * degradado (raiz ausente/ilegivel/erro inesperado) zera o indice para `[]`
- * em vez de servir dado potencialmente obsoleto/invalidado — coerente com o
- * contrato de `GET /api/v1/sessions`, que responde totalmente degradado
- * (`data: null`) quando a raiz nao esta disponivel, nunca uma lista stale
- * apresentada como fresca (Principio III).
+ * Snapshot atomico e coerente do indice em memoria, lido pelas rotas (task
+ * 4.1.1, contrato; achado onda-015 do ponto em aberto de `GET
+ * /api/v1/sessions`). Devolve UM objeto imutavel — nunca getters separados
+ * por campo — porque a rota precisa de `sessions` + `scannedAt` +
+ * `scrubMode` que sejam TODOS do mesmo tick: com getters separados, um tick
+ * do watcher poderia cair entre duas leituras da rota e produzir uma
+ * resposta que mistura `sessions` de um ciclo com `scannedAt` de outro —
+ * uma mentira sutil de frescor que o Principio III existe para impedir. Uma
+ * unica leitura de `indexState` (sincrona, sem I/O) elimina essa janela.
+ *
+ * Um tick degradado (raiz ausente/ilegivel/erro inesperado) zera `sessions`
+ * para `[]` em vez de servir dado potencialmente obsoleto/invalidado —
+ * coerente com o contrato de `GET /api/v1/sessions`, que responde
+ * totalmente degradado (`data: null`) quando a raiz nao esta disponivel,
+ * nunca uma lista stale apresentada como fresca.
  */
-export function getSessionsIndex(): SessionSummaryDTO[] {
-  return indexState.sessions;
+export interface SessionsIndexSnapshot {
+  sessions: SessionSummaryDTO[];
+  scannedAt: string | null;
+  degradedReason: SessionScanReason | null;
+  scrubMode: ScrubMode;
+}
+
+export function getSessionsIndex(): SessionsIndexSnapshot {
+  return {
+    sessions: indexState.sessions,
+    scannedAt: indexState.scannedAt,
+    degradedReason: indexState.reason,
+    scrubMode: indexState.scrubMode,
+  };
 }
 
 /** Helper de teste, espelhando `resetWatcherCacheForTests` do ingest-watcher. */
 export function resetSessionsIndexForTests(): void {
-  indexState = { sessions: [], degraded: false, reason: null, scannedAt: null };
+  indexState = { sessions: [], degraded: false, reason: null, scannedAt: null, scrubMode: 'internal' };
 }
 
 // ---------------------------------------------------------------------------
@@ -114,10 +142,10 @@ export async function runSessionsWatcherTick(
   try {
     const result = await scanImpl();
     if (result.degraded) {
-      indexState = { sessions: [], degraded: true, reason: result.reason, scannedAt };
+      indexState = { sessions: [], degraded: true, reason: result.reason, scannedAt, scrubMode: 'internal' };
       return { degraded: true, reason: result.reason, sessionCount: 0, scannedAt };
     }
-    indexState = { sessions: result.sessions, degraded: false, reason: null, scannedAt };
+    indexState = { sessions: result.sessions, degraded: false, reason: null, scannedAt, scrubMode: result.scrubMode };
     return { degraded: false, reason: null, sessionCount: result.sessions.length, scannedAt };
   } catch {
     // Defesa em profundidade (4.1.3): mesmo que `scanImpl` viole seu proprio
@@ -125,7 +153,7 @@ export async function runSessionsWatcherTick(
     // processo do servidor. Sem `DegradedReason` especifico disponivel aqui
     // (a excecao escapou da propria camada que os tipa) — `reason: null`
     // sinaliza degradacao sem inventar um motivo que nao foi observado.
-    indexState = { sessions: [], degraded: true, reason: null, scannedAt };
+    indexState = { sessions: [], degraded: true, reason: null, scannedAt, scrubMode: 'internal' };
     return { degraded: true, reason: null, sessionCount: 0, scannedAt };
   }
 }

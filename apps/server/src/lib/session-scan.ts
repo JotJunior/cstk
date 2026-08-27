@@ -40,7 +40,7 @@ import {
 import { join } from 'node:path';
 import type { SessionSummaryDTO } from '@cstk-panel/shared-types';
 import { isValidSessionId, normalizeSessionId, resolveSessionsRootCandidate } from './sessions-root.js';
-import { scrubTextBatch } from './secret-scrub.js';
+import { scrubTextBatch, type ScrubMode } from './secret-scrub.js';
 
 /** Janela de liveness (Decision 6, SC-004) — 5 minutos. */
 export const DEFAULT_LIVE_WINDOW_MS = 300_000;
@@ -64,7 +64,7 @@ const CWD_SCAN_MAX_BYTES = 65_536;
 export type SessionScanReason = 'sessions-root-missing' | 'sessions-root-unreadable';
 
 export type SessionScanResult =
-  | { degraded: false; sessions: SessionSummaryDTO[] }
+  | { degraded: false; sessions: SessionSummaryDTO[]; scrubMode: ScrubMode }
   | { degraded: true; reason: SessionScanReason };
 
 function resolveLiveWindowMs(): number {
@@ -163,15 +163,28 @@ function scanProjectDir(
   return out;
 }
 
+/** Resultado do lote de scrub de metadados de sessao (task 3.4 + achado onda-015). */
+interface ScrubbedSessionSummaries {
+  sessions: SessionSummaryDTO[];
+  scrubMode: ScrubMode;
+}
+
 /**
  * Aplica a cadeia de scrub a `projectPath`/`projectSlug` de TODAS as
  * sessoes em UMA UNICA invocacao de subprocesso (`scrubTextBatch`, task
  * 3.4 — mesma logica de "um spawn por requisicao" de `session-tail.ts`).
  * `projectPath` pode ser `null` (sem `.cwd` encontrado) — nesse caso o
  * campo fica de fora do lote, sem entrada correspondente para escrubar.
+ *
+ * Devolve tambem `scrubMode` (achado da onda-015, resolucao do ponto em
+ * aberto de `GET /api/v1/sessions`): lista vazia nunca invoca
+ * `scrubTextBatch` — reportar `scrubMode` como `'internal'` neste caso e a
+ * leitura CONSERVADORA (nunca afirmar `'cstk+internal'` para um lote que
+ * nunca rodou; Principio VI/III — nao superestimar cobertura nao
+ * confirmada).
  */
-async function scrubSessionSummaries(raw: SessionSummaryDTO[]): Promise<SessionSummaryDTO[]> {
-  if (raw.length === 0) return raw;
+async function scrubSessionSummaries(raw: SessionSummaryDTO[]): Promise<ScrubbedSessionSummaries> {
+  if (raw.length === 0) return { sessions: raw, scrubMode: 'internal' };
 
   // Um par (path?, slug) por sessao, na mesma ordem — permite mapear de
   // volta 1:1 apos o scrub em lote. `path` e omitido do lote quando null.
@@ -187,9 +200,9 @@ async function scrubSessionSummaries(raw: SessionSummaryDTO[]): Promise<SessionS
     texts.push(session.projectSlug);
   });
 
-  const { texts: scrubbedTexts } = await scrubTextBatch(texts);
+  const { texts: scrubbedTexts, scrubMode } = await scrubTextBatch(texts);
 
-  return raw.map((session, sessionIndex) => {
+  const sessions = raw.map((session, sessionIndex) => {
     const pathIdx = pathIndexBySession.get(sessionIndex);
     const slugIdx = slugIndexBySession.get(sessionIndex)!;
     return {
@@ -198,6 +211,7 @@ async function scrubSessionSummaries(raw: SessionSummaryDTO[]): Promise<SessionS
       projectSlug: scrubbedTexts[slugIdx]!,
     };
   });
+  return { sessions, scrubMode };
 }
 
 /**
@@ -253,5 +267,6 @@ export async function scanSessions(): Promise<SessionScanResult> {
     sessions.push(...scanProjectDir(resolvedRoot, entry.name, liveWindowMs, nowMs));
   }
 
-  return { degraded: false, sessions: await scrubSessionSummaries(sessions) };
+  const scrubbed = await scrubSessionSummaries(sessions);
+  return { degraded: false, sessions: scrubbed.sessions, scrubMode: scrubbed.scrubMode };
 }
