@@ -4,6 +4,16 @@
 **Created**: 2026-08-27
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-27
+
+- Q: Qual a unidade e o tamanho-default do tail retornado por `GET /api/v1/sessions/:id/tail`? → A: Linhas, com default de 200 linhas, mais um teto de bytes obrigatorio na resposta como guarda adicional (mesmo modelo mental de `tail -n`; janela de tempo retornaria vazio para sessao parada ha horas; corte por bytes cortaria no meio de uma linha).
+- Q: Qual o comportamento do tail ao encontrar uma linha malformada/parcial no arquivo `.jsonl` (por exemplo, escrita concorrente em andamento)? → A: Pular a linha invalida e continuar processando as demais, sinalizando ao operador quantas linhas foram puladas — nunca truncar silenciosamente nem interromper o processamento.
+- Q: A listagem de sessoes vivas deve se auto-atualizar ou exigir refresh manual do operador? → A: Auto-atualizacao via `refetchInterval` do `@tanstack/react-query` (mecanismo ja presente no painel); SSE rejeitado por introduzir superficie nova sem ganho proporcional, refresh manual rejeitado por poder mostrar estado velho como se fosse atual.
+- Q: O endpoint de tail deve servir conteudo mesmo se a sessao deixou de estar "viva" entre a listagem e a solicitacao? → A: Sim — o tail e servido sob demanda a partir do conteudo do arquivo, independente do atributo derivado de liveness (que muda por conta propria e nao gateia leitura de conteudo ja gravado).
+- Q: O reuso exigido pelo edge case do watcher (FR-011) significa a MESMA instancia do watcher existente (`apps/server/src/watchers/ingest-watcher.ts`) ou um modulo novo seguindo o mesmo padrao? → A: Modulo novo seguindo o MESMO PADRAO de `ingest-watcher.ts` (nao estender a mesma instancia) — as raizes observadas, ciclos de vida e modos de falha sao diferentes, e compartilhar instancia acoplaria a ingestao da knowledge-db a uma falha na descoberta de sessoes.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Ver sessoes ativas do Claude Code (Priority: P1)
@@ -56,7 +66,9 @@ presente.
 
 1. **Given** uma sessao ativa e conhecida pelo seu identificador unico,
    **When** o operador solicita o tail dessa sessao, **Then** o painel
-   exibe a atividade mais recente registrada nela, sob demanda (FR-003).
+   exibe as ultimas 200 linhas (default) da atividade registrada nela,
+   sob demanda, independente de a sessao ainda estar "viva" no momento do
+   pedido (FR-003).
 2. **Given** o transcript de uma sessao contem conteudo com formatacao ou
    comandos embutidos (por exemplo, texto que parece uma instrucao), **When**
    o operador visualiza o tail, **Then** esse conteudo e exibido como texto
@@ -95,7 +107,8 @@ conhecimento ou estado de execucao e alterado.
    como "vivo" (FR-007).
 2. **Given** o transcript de uma sessao e muito grande, **When** o operador
    solicita o tail, **Then** o painel retorna apenas a porcao mais recente
-   (uma fatia limitada), nunca o arquivo inteiro (FR-006).
+   (200 linhas por default, sujeita tambem a um teto de bytes obrigatorio),
+   nunca o arquivo inteiro (FR-006).
 3. **Given** qualquer numero de consultas de listagem ou tail foi feito
    atraves das capacidades somente-leitura desta feature, **When** se
    inspeciona o sistema de arquivos de sessoes e o indice de conhecimento
@@ -113,7 +126,11 @@ conhecimento ou estado de execucao e alterado.
 - Como o sistema lida com um arquivo de transcript sendo escrito no exato
   momento da leitura (sessao realmente ativa, escrita concorrente)? A
   leitura deve considerar apenas o conteudo ja gravado no momento da
-  consulta, sem travar nem corromper a exibicao.
+  consulta, sem travar nem corromper a exibicao. Se a escrita concorrente
+  deixar uma linha `.jsonl` malformada/parcial, essa linha e pulada e o
+  processamento continua com as demais, sinalizando ao operador quantas
+  linhas foram puladas (FR-003a) — nunca truncar silenciosamente nem
+  interromper a resposta.
 - O que acontece se duas sessoes, de projetos diferentes, tiverem o mesmo
   identificador de execucao? A identificacao/roteamento usa o identificador
   proprio da sessao, nunca o identificador de execucao isoladamente.
@@ -126,8 +143,13 @@ conhecimento ou estado de execucao e alterado.
   proximo ciclo de atualizacao da tela, sem exigir acao do operador.
 - O que acontece se ja existir, no painel, um mecanismo de descoberta/
   monitoramento de atividade em segundo plano equivalente ao que esta
-  feature precisaria? Esta feature reusa esse mecanismo em vez de introduzir
-  um segundo watcher concorrente sobre os mesmos dados (FR-011).
+  feature precisaria (`apps/server/src/watchers/ingest-watcher.ts`)? Esta
+  feature reusa o PADRAO desse mecanismo — um modulo novo, com o mesmo
+  desenho — em vez de estender a mesma instancia ou introduzir um segundo
+  watcher concorrente sobre os mesmos dados (FR-011). Raizes observadas
+  (state dirs de execucao vs `~/.claude/projects/**`), ciclos de vida e
+  modos de falha sao diferentes; compartilhar a instancia acoplaria a
+  ingestao da knowledge-db a uma eventual falha na descoberta de sessoes.
 
 ## Requirements
 
@@ -139,9 +161,21 @@ conhecimento ou estado de execucao e alterado.
   manual de quais sessoes existem.
 - **FR-002**: System MUST provide a way to list all currently-live
   sessions, informando a qual projeto (e, quando disponivel, a qual
-  execucao de agente autonomo) cada sessao pertence.
+  execucao de agente autonomo) cada sessao pertence. The listing MUST
+  keep itself current via automatic re-fetch (`refetchInterval` of the
+  panel's existing `@tanstack/react-query` mechanism) rather than
+  requiring a manual refresh from the operator.
 - **FR-003**: System MUST provide a way to retrieve the most recent portion
-  ("tail") of a specific session's activity on demand.
+  ("tail") of a specific session's activity on demand, measured in lines
+  (default: 200 lines), and MUST serve this content regardless of whether
+  the session is still considered "live" at request time — tail reads are
+  never gated by the derived liveness attribute, only by the session's own
+  identifier existing.
+- **FR-003a**: System MUST skip malformed/partial lines encountered while
+  parsing a session's `.jsonl` transcript (e.g., concurrent write in
+  progress) and continue processing the remaining lines, surfacing to the
+  caller how many lines were skipped — it MUST NOT silently truncate the
+  tail nor abort the request because of a malformed line.
 - **FR-004**: System MUST route session-detail/tail requests by the
   session's own unique identifier, never solely by execution identifier
   (execution identifiers are not guaranteed unique across projects).
@@ -149,8 +183,11 @@ conhecimento ou estado de execucao e alterado.
   untrusted data: rendered as literal text, with no interpretation of
   embedded markup or instructions as commands.
 - **FR-006**: System MUST bound the amount of content returned per tail
-  request to a recent slice, rather than transmitting a session's entire
-  history.
+  request to a recent slice (default 200 lines), rather than transmitting
+  a session's entire history, AND MUST additionally enforce a mandatory
+  byte-size cap on the response regardless of line count — a single
+  `.jsonl` line can itself contain megabytes of embedded content (e.g., a
+  file dump), so the line-based bound alone is not a sufficient guard.
 - **FR-007**: System MUST distinguish sessions that are currently live from
   sessions that have gone stale, and MUST NOT present a stale session as
   ongoing.
@@ -164,7 +201,13 @@ conhecimento ou estado de execucao e alterado.
   exclusively through read operations — none of them may alter any data.
 - **FR-011**: System MUST NOT introduce a second, redundant discovery/
   monitoring mechanism for session or execution activity when an
-  equivalent mechanism already exists for that class of problem.
+  equivalent mechanism already exists for that class of problem. This
+  reuse applies at the level of the PATTERN established by the existing
+  watcher (`apps/server/src/watchers/ingest-watcher.ts`) — the feature
+  MUST implement a new module following that same pattern, not extend or
+  share the existing watcher's own instance/lifecycle (different watch
+  roots, different failure modes; sharing the instance would couple
+  knowledge-db ingestion availability to session discovery failures).
 
 > Decisoes de infraestrutura: N/A (feature stateless do ponto de vista do
 > painel — nao ha scheduling novo, criptografia, rotacao de chaves, refresh
