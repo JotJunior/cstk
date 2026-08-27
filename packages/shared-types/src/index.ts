@@ -51,6 +51,8 @@ export type {
   PeriodParam,
   ScoreParam,
   SearchParams,
+  SessionSummaryDTO,
+  SessionTailEntryDTO,
 } from './entities.js';
 
 // Schemas Zod — envelope
@@ -97,6 +99,8 @@ export {
   PlanUsagePointSchema,
   PlanUsageCoverageSchema,
   PlanUsageResultSchema,
+  SessionSummaryDTOSchema,
+  SessionTailEntryDTOSchema,
 } from './schemas/entities.js';
 
 // Schemas Zod — params

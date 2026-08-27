@@ -4,6 +4,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { fetchApi } from './api.js';
+import { AUTO_REFRESH_MS } from './query.js';
 import {
   ExecutionDTOSchema,
   WaveDTOSchema,
@@ -20,6 +21,8 @@ import {
   SuggestionDTOSchema,
   FeatureDocsListDTOSchema,
   FeatureDocDTOSchema,
+  SessionSummaryDTOSchema,
+  SessionTailEntryDTOSchema,
   type PeriodParam,
 } from '@cstk-panel/shared-types';
 import { z } from 'zod';
@@ -418,4 +421,88 @@ export function useMetric(
     queryKey: ['metrics', name, period],
     queryFn: () => fetchApi(`/metrics/${name}${qs}`, MetricDataSchema),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Session Tail (feature session-tail, FASE 6) — contracts/sessions-api.md
+// ---------------------------------------------------------------------------
+
+const SessionsListDataSchema = z.object({
+  sessions: z.array(SessionSummaryDTOSchema),
+  total: z.number(),
+  scannedAt: z.string(),
+  scrubMode: z.enum(['cstk+internal', 'internal']),
+});
+
+const SessionTailDataSchema = z.object({
+  sessionId: z.string(),
+  entries: z.array(SessionTailEntryDTOSchema),
+  requestedLines: z.number(),
+  returnedLines: z.number(),
+  skippedLines: z.number(),
+  truncatedByBytes: z.boolean(),
+  windowTruncated: z.boolean(),
+  live: z.boolean(),
+  lastActivityAt: z.string(),
+  scrubMode: z.enum(['cstk+internal', 'internal']),
+});
+
+/** Path de `GET /sessions` — extraido para teste direto do encoding/clamp de params. */
+export function sessionsListPath(live = true, limit?: number): string {
+  const params = new URLSearchParams();
+  if (!live) params.set('live', 'false');
+  if (limit != null) params.set('limit', String(limit));
+  const qs = params.toString();
+  return qs ? `/sessions?${qs}` : '/sessions';
+}
+
+/** Path de `GET /sessions/:sessionId/tail` — extraido para teste direto do encoding. */
+export function sessionTailPath(sessionId: string, lines?: number): string {
+  const base = `/sessions/${encodeURIComponent(sessionId)}/tail`;
+  return lines != null ? `${base}?lines=${lines}` : base;
+}
+
+/**
+ * Opcoes de `useQuery` para `GET /sessions` — extraidas como funcao pura
+ * (task 6.1.3) para teste direto de `refetchInterval`/`queryKey`/`queryFn`
+ * sem invocar o hook fora de render (Rules of Hooks; sem jsdom neste repo —
+ * mesmo padrao de `hooks-docs.test.ts`).
+ * `refetchInterval` EXPLICITO (FR-002) — reusa `AUTO_REFRESH_MS` do
+ * `queryClient` (plan.md §Complexity Tracking) ate o produto definir um
+ * intervalo mais curto especifico para a trilha ao vivo (CHK038 aberto).
+ */
+export function sessionsQueryOptions(live = true, limit?: number) {
+  return {
+    queryKey: ['sessions', live, limit] as const,
+    queryFn: () => fetchApi(sessionsListPath(live, limit), SessionsListDataSchema),
+    refetchInterval: AUTO_REFRESH_MS,
+  };
+}
+
+/** Lista de sessoes do Claude Code descobertas no disco (US1). */
+export function useSessions(live = true, limit?: number) {
+  return useQuery(sessionsQueryOptions(live, limit));
+}
+
+/**
+ * Opcoes de `useQuery` para `GET /sessions/:sessionId/tail` — mesma
+ * extracao de `sessionsQueryOptions`, pelo mesmo motivo (task 6.1.3).
+ */
+export function sessionTailQueryOptions(sessionId: string, lines?: number) {
+  return {
+    queryKey: ['session-tail', sessionId, lines] as const,
+    queryFn: () => fetchApi(sessionTailPath(sessionId, lines), SessionTailDataSchema),
+    enabled: Boolean(sessionId),
+    refetchInterval: AUTO_REFRESH_MS,
+  };
+}
+
+/**
+ * Tail (ultimas N linhas) do transcript de UMA sessao (US2). Servido
+ * independente de liveness (FR-003) — o hook nao filtra por `live`.
+ * `sessionId` e o identificador UNICO da sessao, nunca o `executionId`
+ * (FR-004) — nao ha join verificado entre sessao e execucao (dec-025).
+ */
+export function useSessionTail(sessionId: string, lines?: number) {
+  return useQuery(sessionTailQueryOptions(sessionId, lines));
 }

@@ -720,3 +720,40 @@ export interface SearchParams extends PaginationParams {
   project?: string;
   feature?: string;
 }
+
+// ---------------------------------------------------------------------------
+// SessionSummaryDTO — grao: 1 por sessao do Claude Code descoberta no disco
+// Feature: session-tail (data-model.md Entity: SessionSummaryDTO, FR-002)
+// ---------------------------------------------------------------------------
+export interface SessionSummaryDTO {
+  sessionId: string;
+  /** @untrusted — derivado de transcript (`.cwd`); passa pelo scrub de segredos
+   *  no servidor antes de sair. `null` quando nenhuma linha lida trouxe `cwd`. */
+  projectPath: string | null;
+  /** @untrusted — derivado do nome do diretorio pai do transcript; chave de
+   *  agrupamento opaca (transformacao lossy, nunca revertida para path).
+   *  Passa pelo scrub de segredos no servidor antes de sair. */
+  projectSlug: string;
+  lastActivityAt: string;
+  live: boolean;
+  sizeBytes: number;
+}
+
+// ---------------------------------------------------------------------------
+// SessionTailEntryDTO — grao: 1 linha util do transcript, ja normalizada
+// Feature: session-tail (data-model.md Entity: SessionTailEntryDTO, FR-003/FR-005)
+// ---------------------------------------------------------------------------
+export interface SessionTailEntryDTO {
+  uuid: string | null;
+  /** Conjunto ABERTO (pertence ao harness do Claude Code, cresce sem aviso) —
+   *  NUNCA modelar como enum/union fechado. Ver data-model.md §SessionTailEntryDTO. */
+  type: string;
+  timestamp: string | null;
+  role: string | null;
+  /** @untrusted — produzido por um LLM, pode conter markup ativo ou texto que se
+   *  parece com instrucao. Ja redigido pelo scrub de segredos no servidor antes
+   *  de sair (FR-005). Renderizar via componente de escaping, nunca
+   *  dangerouslySetInnerHTML. */
+  text: string;
+  textTruncated: boolean;
+}
