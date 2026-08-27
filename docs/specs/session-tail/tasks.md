@@ -200,16 +200,16 @@ Depende de: 0.1 (resolucao via indice), 1.1 (DTOs)
 
 ### 2.2 Descoberta e liveness `session-scan.ts` `[A]`
 
-- [ ] 2.2.1 Criar `apps/server/src/lib/session-scan.ts`: `readdirSync` +
+- [x] 2.2.1 Criar `apps/server/src/lib/session-scan.ts`: `readdirSync` +
       `statSync` sobre `CSTK_SESSIONS_ROOT`, deriva `SessionSummaryDTO[]` sem
       abrir a `knowledge.db` (FR-001, FR-011)
-- [ ] 2.2.2 Aplicar `CSTK_SESSION_LIVE_WINDOW_MS` (default 300000) para
+- [x] 2.2.2 Aplicar `CSTK_SESSION_LIVE_WINDOW_MS` (default 300000) para
       derivar `live` (FR-007) — sessao sem atividade alem da janela nunca e
       apresentada como "vivo"
-- [ ] 2.2.3 Diretorio ausente ⇒ retorno degradado (`sessions-root-missing`);
+- [x] 2.2.3 Diretorio ausente ⇒ retorno degradado (`sessions-root-missing`);
       diretorio vazio ⇒ retorno **nao-degradado** com lista vazia (FR-008,
       distincao do Constitution Check Principio II)
-- [ ] 2.2.4 Teste: cenario de raiz ausente, raiz vazia (nao-degradada), raiz
+- [x] 2.2.4 Teste: cenario de raiz ausente, raiz vazia (nao-degradada), raiz
       com sessoes viva/nao-viva conforme a janela
 
 ### 2.3 Leitura de tail por janela `session-tail.ts` `[A]`

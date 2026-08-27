@@ -67,6 +67,19 @@ export function isValidSessionId(raw: unknown): raw is string {
 }
 
 /**
+ * Candidato de raiz ANTES de qualquer validacao/resolucao de symlink — mesma
+ * ordem de `resolveSessionsRoot`: `CSTK_SESSIONS_ROOT` (config do servidor,
+ * NUNCA do cliente) > default `~/.claude/projects`. Exportado (task 2.2) para
+ * que `session-scan.ts` reaproveite a MESMA fonte de verdade ao inves de
+ * duplicar a constante de default — dois lugares computando o candidato
+ * divergiriam silenciosamente se o default mudasse em um so.
+ */
+export function resolveSessionsRootCandidate(): string {
+  const fromEnv = process.env['CSTK_SESSIONS_ROOT'];
+  return fromEnv && fromEnv.trim() !== '' ? fromEnv.trim() : DEFAULT_SESSIONS_ROOT;
+}
+
+/**
  * Resolve a raiz confinada de sessoes. Ordem de resolucao (mesma familia de
  * `resolveDbPath`/`resolveWebDir` em config.ts): `CSTK_SESSIONS_ROOT`
  * (config do servidor, NUNCA do cliente) > default `~/.claude/projects`.
@@ -74,8 +87,7 @@ export function isValidSessionId(raw: unknown): raw is string {
  * `null` (Principio II — nunca lanca).
  */
 export function resolveSessionsRoot(): string | null {
-  const fromEnv = process.env['CSTK_SESSIONS_ROOT'];
-  const candidate = fromEnv && fromEnv.trim() !== '' ? fromEnv.trim() : DEFAULT_SESSIONS_ROOT;
+  const candidate = resolveSessionsRootCandidate();
   try {
     const resolved = realpathSync(candidate);
     if (!statSync(resolved).isDirectory()) return null;

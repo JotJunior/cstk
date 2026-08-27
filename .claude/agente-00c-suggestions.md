@@ -1,24 +1,26 @@
-# Sugestoes do Agente-00C — feat-dashboard-refactor-20260728T120056Z
+# Sugestoes do Agente-00C — feat-session-tail-20260827T030838Z
 
 Total: 1 sugestoes registradas.
 
-## sug-001 — skill `commit-mode.sh` — severidade: informativa
+## sug-001 — skill `agente-00c-runtime` — severidade: aviso
 
-**Criada em**: 2026-07-28T15:10:37Z
+**Criada em**: 2026-08-27T12:06:27Z
 
 **Issue aberta**: (nenhuma)
 
 **Diagnostico**:
 
-task-message so compara major.minor (cut -d'.' -f2) ao decidir contiguidade de runs; com task-ids de 3 niveis (N.M.K, convencao real deste tasks.md/execute-task), IDs de subsecoes DIFERENTES (ex: 4.1.3 e 4.2.1) tem o mesmo 'major' (4) e minors incrementais (1,2), sendo erroneamente fundidos num range '4.1.3-4.2.1' que mistura duas sub-fases distintas.
+commit-mode.sh stage-derived so trata como 'derivado da onda' arquivos untracked ausentes do commit-baseline.txt; se o orquestrador criar arquivos ANTES de state-ondas.sh start/open_wave rodar (ex.: subagente escreve codigo antes de o Loop principal formalmente abrir a onda), a baseline os captura como pre-existentes e stage-derived os pula silenciosamente (exit 0, so o subconjunto tracked staged), exigindo git add explicito de fallback.
 
 **Proposta**:
 
-task-message deveria comparar o ID completo (todos os niveis) para decidir contiguidade, nao so major.minor; ou documentar explicitamente que --task-ids so deve receber IDs N.M (2 niveis), nunca N.M.K, evitando o uso ambiguo observado nesta execucao (feature dashboard-refactor, onda-012).
+Documentar explicitamente na secao 7.bis/10.qui do orquestrador que 'snapshot'/'start' (que gera commit-baseline.txt) MUST rodar ANTES de qualquer Write/Edit de arquivo novo na onda, nao apenas antes do commit; ou stage-derived emitir um aviso quando encontrar arquivos novos NAO staged que tenham mtime posterior ao commit-baseline.txt, para o orquestrador nao precisar descobrir isso por diff manual.
 
 **Referencias**:
 
-- ~/.claude/skills/agente-00c-runtime/scripts/commit-mode.sh
+- apps/server/src/lib/sessions-root.ts
+- apps/server/test/lib/sessions-root.test.ts
+- .claude/skills/agente-00c-runtime/scripts/commit-mode.sh
 
 ---
 
