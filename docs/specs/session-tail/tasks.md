@@ -740,7 +740,7 @@ sem tocar em nenhuma lógica já existente) — por isso `partial`, não
 `missing`: a validação subjacente já foi feita e passou, falta apenas
 torná-la repetível/committada.
 
-- [ ] 8.1.1 Criar um teste committado (ex.
+- [x] 8.1.1 Criar um teste committado (ex.
       `apps/server/test/integration/sessions-roundtrip.test.ts`) que suba o
       app real (mesmo padrão de `roundtrip.test.ts`/`docs-roundtrip.test.ts`
       já existentes neste repo), faça requisição real às duas rotas
@@ -753,5 +753,37 @@ torná-la repetível/committada.
       nada). Cobrir caminho feliz e ao menos um cenário degradado (ex.:
       `sessionId` inexistente/rejeitado). Asserção explícita de que nenhum
       campo do payload parseado contém a substring `"[object Promise]"`.
+
+      Concluído: `apps/server/test/integration/sessions-roundtrip.test.ts`
+      criado com 4 casos — 8.1.1a/8.1.1b (caminho feliz `GET /sessions` e
+      `GET /sessions/:id/tail`) e 8.1.1c/8.1.1d (degradado
+      `sessions-root-missing` e `session-not-found`). Servidor Fastify real
+      (`sessionRoutes` importado direto do módulo fonte) + watcher real
+      (`runSessionsWatcherTick()` sem `scanImpl`) + fixture isolada em
+      `mkdtempSync(tmpdir())`. Parse via `SessionSummaryDTOSchema`/
+      `SessionTailEntryDTOSchema` importados de `@cstk-panel/shared-types`,
+      compostos em envelope com `ApiEnvelopeSchema` — nenhuma cópia local dos
+      DTOs. Assertiva `findObjectPromiseLeak()` varre recursivamente o
+      payload serializado em busca de `"[object Promise]"`.
+
+      Prova de que o teste falha quando deveria (renomeado
+      `sessionId` → `session_id_deliberately_broken_for_test_proof` em
+      `apps/server/src/routes/sessions.ts`, rodado, e revertido):
+      ```
+      ❯ test/integration/sessions-roundtrip.test.ts  (4 tests | 1 failed) 86ms
+        ❯ ... 8.1.1b GET /sessions/:id/tail: payload real valida contra SessionTailEntryDTOSchema compartilhado
+          → parse falhou: [{"code":"invalid_type","expected":"string","received":"undefined","path":["data","sessionId"],"message":"Required"}]: expected false to be true
+      Test Files  1 failed (1)
+           Tests  1 failed | 3 passed (4)
+      ```
+      `git diff -- apps/server/src/routes/sessions.ts` confirma reversão
+      limpa (diff vazio) após a prova.
+
+      Evidência baseline não regredida (contagem só sobe):
+      ```
+      npm test => Test Files 67 passed | 1 skipped (68); Tests 890 passed | 1 skipped (891)
+      npm run typecheck => rc=0 (server, web, shared-types)
+      npm run lint:readonly-check => "OK: no mutation verbs"
+      ```
 
 <!-- converge-key: f09731b27d4f -->
