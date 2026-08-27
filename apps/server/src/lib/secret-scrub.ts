@@ -129,7 +129,6 @@ const DEFAULT_SECRETS_FILTER_TIMEOUT_MS = 2000;
 
 /** Nunca loga stdin/stdout/stderr — apenas os dois campos fechados do contrato (3.2.4). */
 const defaultFailureLogger: ScrubFailureLogger = (info) => {
-  // eslint-disable-next-line no-console
   console.error(JSON.stringify({ exitCode: info.exitCode, timedOut: info.timedOut }));
 };
 
