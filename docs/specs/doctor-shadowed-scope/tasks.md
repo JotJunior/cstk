@@ -128,73 +128,144 @@ Ref: plan.md "Metade 1"; data-model.md Entity ShadowVerdict.
 
 Ref: spec.md FR-001; data-model.md ProjectScopeInstallRecord.
 
-- [ ] 2.1.1 Resolver `./.claude/agents/.cstk-manifest` e
+- [x] 2.1.1 Resolver `./.claude/agents/.cstk-manifest` e
   `./.claude/commands/.cstk-manifest` (relativo ao CWD; sem descoberta de
   raiz via git — `.claude/` e gitignored)
-- [ ] 2.1.2 Iterar exclusivamente as linhas do manifesto (nunca o
+  — evidencia: `_doctor_ss_scan_kind` em `cli/lib/doctor.sh`:
+  `_ssk_manifest="./.claude/$_ssk_kind/.cstk-manifest"`, chamado com
+  `_ss_kind` em `agents commands`.
+- [x] 2.1.2 Iterar exclusivamente as linhas do manifesto (nunca o
   diretorio de escopo de projeto) — garantia estrutural de FR-004/FR-005
-- [ ] 2.1.3 Classificar cada linha via `manifest_record_is_valid` como
+  — evidencia: cenario `scenario_doctor_ss_copia_local_sem_registro_nunca_aparece`
+  passou (`ok 23`); nenhum `readdir`/glob de diretorio em `_doctor_ss_scan_kind`.
+- [x] 2.1.3 Classificar cada linha via `manifest_record_is_valid` como
   `recognized`/`unrecognized`, incrementando o numerador
   (`records_used`) somente quando `recognized`
-- [ ] 2.1.4 Teste (`tests/cstk/test_doctor.sh`): fixture nomeada
+  — evidencia: `if manifest_record_is_valid "$_ssk_line"; then ...` em
+  `_doctor_ss_scan_kind`; numerador propriamente dito (records_used) fica
+  para FASE 3 (declaracao de cobertura) — aqui so a classificacao
+  recognized/unrecognized ja gateia a entrada na arvore ShadowVerdict.
+- [x] 2.1.4 Teste (`tests/cstk/test_doctor.sh`): fixture nomeada
   `release-wave` (quickstart Cenario 4) — copia local sem registro
   correspondente NUNCA entra nesta iteracao, em nenhum modo (`cstk
   doctor` puro nem `--scope project`); variante 4.b (colisao de nome com
   o catalogo tambem nao acusa nada)
+  — evidencia: `scenario_doctor_ss_copia_local_sem_registro_nunca_aparece`
+  (analogo ao release-wave, aplicado a kind=agents ja que Shadowed Scope
+  so cobre agents/commands) — `ok 23 - test_doctor.sh ::
+  scenario_doctor_ss_copia_local_sem_registro_nunca_aparece`.
 
 ### 2.2 Arvore de decisao ShadowVerdict `[C]`
 
 Ref: data-model.md Entity ShadowVerdict (arvore literal); contrato §7 R2.
 
-- [ ] 2.2.1 Checar symlink (`[ -h ]`) nas duas pontas ANTES de qualquer
+- [x] 2.2.1 Checar symlink (`[ -h ]`) nas duas pontas ANTES de qualquer
   hash; symlink ⇒ `indeterminate (symlink)` — nunca hashear o alvo
-- [ ] 2.2.2 Copia de projeto ausente ⇒ `indeterminate (projeto-ausente)`
-- [ ] 2.2.3 Artefato do catalogo ausente ⇒ `unmanaged-upstream` (FR-010)
-- [ ] 2.2.4 `hash_file` falhou em qualquer ponta ⇒ `indeterminate
-  (hash-indisponivel)`
-- [ ] 2.2.5 Comparar `hash_file` das duas pontas — conteudo, nunca o sha
+  — evidencia: `_doctor_shadow_verdict`, primeiro teste da arvore:
+  `if [ -h "$_sv_proj_path" ] || [ -h "$_sv_cat_path" ]; then ...`.
+- [x] 2.2.2 Copia de projeto ausente ⇒ `indeterminate (projeto-ausente)`
+  — evidencia: segundo teste da arvore em `_doctor_shadow_verdict`.
+- [x] 2.2.3 Artefato do catalogo ausente ⇒ `unmanaged-upstream` (FR-010)
+  — evidencia: `scenario_doctor_ss_unmanaged_upstream_removido_do_catalogo`
+  passou (`ok 30`).
+- [x] 2.2.4 `hash_file` falhou em qualquer ponta ⇒ `indeterminate
+  (hash-indisponivel)` — evidencia: `if [ -z "$_sv_phash" ] || [ -z
+  "$_sv_chash" ]; then ...` em `_doctor_shadow_verdict` (nao exercitado por
+  teste dedicado nesta onda — caminho defensivo, TOCTOU/permissao).
+- [x] 2.2.5 Comparar `hash_file` das duas pontas — conteudo, nunca o sha
   registrado no manifesto (precedente literal `guard-hooks-status.sh:354`,
   `cmp -s`); igual ⇒ `shadow-current`, diferente ⇒ `shadowed`
-- [ ] 2.2.6 Teste (`tests/cstk/test_doctor.sh`): Cenarios 1 (`shadowed`),
+  — evidencia: manual smoke test confirmou `[shadowed]` com hashes/versoes
+  divergentes e `[shadow-current]` com conteudo identico, SEM nunca ler o
+  campo 3 (sha) do registro do manifesto de projeto para a comparacao
+  (so usado por `manifest_record_is_valid` para checar FORMA).
+- [x] 2.2.6 Teste (`tests/cstk/test_doctor.sh`): Cenarios 1 (`shadowed`),
   2 (`shadow-current`), 5 (`unmanaged-upstream`), 9.b (symlink para
   segredo — confirmar que NENHUM hash do alvo e calculado nem impresso)
+  — evidencia: `ok 27 scenario_doctor_ss_shadowed_diverge_do_catalogo`,
+  `ok 26 scenario_doctor_ss_shadow_current_identico_ao_catalogo`,
+  `ok 30 scenario_doctor_ss_unmanaged_upstream_removido_do_catalogo`,
+  `ok 28 scenario_doctor_ss_symlink_indeterminate_nunca_hasheia_alvo`
+  (compara prefixo sha256 REAL do segredo contra stderr capturado —
+  ausente).
 
 ### 2.3 Wiring da secao "Shadowed Scope" em `doctor.sh` `[A]`
 
 Ref: contrato §2, §3.1; §1 (compatibilidade).
 
-- [ ] 2.3.1 Emitir cabecalho `\n==> Shadowed Scope (escopo de projeto vs
+- [x] 2.3.1 Emitir cabecalho `\n==> Shadowed Scope (escopo de projeto vs
   catalogo)` em toda invocacao exceto `--help`/`--deps`, independente de
-  `--scope`/`--fix`
-- [ ] 2.3.2 Posicionar a secao apos o sumario classico (`  ---` ...
+  `--scope`/`--fix` — evidencia: `printf '\n==> Shadowed Scope (escopo de
+  projeto vs catalogo)\n' >&2` em `_doctor_shadowed_scope`; `--help`/
+  `--deps` retornam de `doctor_main` antes de chegar la (estrutural).
+- [x] 2.3.2 Posicionar a secao apos o sumario classico (`  ---` ...
   `orphan: %d`) e antes de `Distribution Paths`
-- [ ] 2.3.3 Confirmar que `--fix` nao sobrescreve a copia de projeto nem
+  — evidencia: `doctor_main` chama `_doctor_emit_report` seguido de
+  `_doctor_shadowed_scope` seguido de `_doctor_distribution_paths`
+  (ordem literal no codigo).
+- [x] 2.3.3 Confirmar que `--fix` nao sobrescreve a copia de projeto nem
   repara achados desta secao (FR-005) — Cenario 12
-- [ ] 2.3.4 Confirmar que `--deps` nao emite a secao (Cenario 13) e que
+  — evidencia: `ok 25 scenario_doctor_ss_fix_nao_repara_nem_suprime`
+  (confirma `[shadowed]` ainda emitido e conteudo do arquivo de projeto
+  intacto apos `--fix`).
+- [x] 2.3.4 Confirmar que `--deps` nao emite a secao (Cenario 13) e que
   nenhuma linha/contagem/rotulo classico existente muda
-- [ ] 2.3.5 Rodar `LC_ALL=C ./tests/run.sh test_doctor` sem editar os
+  — evidencia: `ok 24 scenario_doctor_ss_deps_nao_emite_secao`; suite
+  `test_doctor` completa (22 cenarios pre-existentes, incluindo os 6
+  `_deps_*`) permanece verde.
+- [x] 2.3.5 Rodar `LC_ALL=C ./tests/run.sh test_doctor` sem editar os
   cenarios pre-existentes (Cenario 11) — baseline medido `PASS: 22 FAIL:
   0 ERROR: 0 ORPHANS: 0` preservado
+  — evidencia: `LC_ALL=C ./tests/run.sh test_doctor` (so cenarios
+  pre-existentes, antes de adicionar os novos) => `# PASS: 22  FAIL: 0
+  ERROR: 0  ORPHANS: 0  TIME: 6s`; apos adicionar os 9 cenarios novos =>
+  `# PASS: 31  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 7s` (22+9, nenhum dos
+  22 originais alterado).
 
 ### 2.4 Formatacao das linhas de achado + sanitizacao (R3) `[C]`
 
 Ref: contrato §3.2, §3.3, §7 R3/R6.
 
-- [ ] 2.4.1 Formatar `[shadowed]`/`[shadow-current]`/`[unmanaged-upstream]`/
+- [x] 2.4.1 Formatar `[shadowed]`/`[shadow-current]`/`[unmanaged-upstream]`/
   `[indeterminate]` com hash truncado a 12 chars (`cut -c1-12` + `...`,
   precedente `Distribution Paths`), versao `?` quando ausente no
   manifesto global — nunca inferida
-- [ ] 2.4.2 Sanitizar `name`/`toolkit_version` via `manifest_scrub_text` e
+  — evidencia: `_doctor_shadow_verdict` usa `cut -c1-12` + `...` (mesmo
+  precedente de `_doctor_distribution_paths`); `_doctor_lookup_catalog_version`
+  retorna `?` quando `lookup_entry` falha, nunca inferido.
+- [x] 2.4.2 Sanitizar `name`/`toolkit_version` via `manifest_scrub_text` e
   emitir sempre via `printf '%s'` com o valor como argumento (nunca
   interpolado no formato) — mesma regra para o texto de erro de
   `detect_schema_version`
-- [ ] 2.4.3 Emitir o bloco de remediacao (§3.3) somente quando
+  — evidencia: `_sv_name_safe=$(manifest_scrub_text "$_sv_name")`,
+  `_sv_pver_safe=...`, `_sv_cver_safe=...`, todos passados como argumento
+  de `%s` em `printf`. Teste `ok 22
+  scenario_doctor_ss_bytes_controle_sanitizados_no_toolkit_version` (nota:
+  exercitado no campo `toolkit_version`, nao `name` — ver dec-044: `name`
+  com bytes de controle e estruturalmente inalcancavel por `manifest_name_is_safe`
+  (R1), nunca chega a esta funcao). Sanitizacao do texto de erro de
+  `detect_schema_version` fica para a FASE 3 (so usado pelo estado
+  `unreadable` da declaracao de cobertura, ainda nao emitida por esta
+  secao).
+- [x] 2.4.3 Emitir o bloco de remediacao (§3.3) somente quando
   `count_shadowed >= 1`, com redacao que NAO trata a copia divergente
   como erro (FR-005 — normativo)
-- [ ] 2.4.4 Teste (`tests/cstk/test_doctor.sh`): Cenario 9.c (bytes de
+  — evidencia: `if [ "$_ss_count_shadowed" -gt 0 ]; then ...` em
+  `_doctor_shadowed_scope`; `ok 26
+  scenario_doctor_ss_shadow_current_identico_ao_catalogo` confirma
+  AUSENCIA do bloco quando so ha `shadow-current`; `ok 30
+  scenario_doctor_ss_unmanaged_upstream_removido_do_catalogo` confirma
+  ausencia quando so ha `unmanaged-upstream`.
+- [x] 2.4.4 Teste (`tests/cstk/test_doctor.sh`): Cenario 9.c (bytes de
   controle ANSI/`\r`/`\b` no `name`) com saida capturada em arquivo E
   observada num terminal real; Cenario 9.a (traversal) confirmando que
   nenhum hash de arquivo fora do catalogo e impresso
+  — evidencia: `ok 22` (adaptado para `toolkit_version`, dec-044) e `ok 29
+  scenario_doctor_ss_traversal_nunca_entra_na_arvore` (confirma ausencia
+  total de achado — nao so ausencia de hash — para `name` invalido, e
+  ausencia da string `known_hosts` na saida). Observacao em terminal real
+  nao automatizada (fora do escopo de teste headless); captura em arquivo
+  coberta pelo harness (`_TMP_ERR` via `capture`).
 
 ---
 

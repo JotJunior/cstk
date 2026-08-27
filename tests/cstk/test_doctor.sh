@@ -542,4 +542,221 @@ EOF
   assert_stderr_contains "[undetermined]" || return 1
 }
 
+# ==== Shadowed Scope (feature doctor-shadowed-scope, FASE 2 — US1/US2,
+# FR-001..FR-005/FR-010; contract doctor-shadowed-scope-output.md).
+# Reusa _run_doctor_in (ja resolve cwd=PROJDIR, necessario porque a secao
+# le ./.claude/<kind>/.cstk-manifest RELATIVO ao cwd). Todos os cenarios
+# aqui MUST sair exit 0 (report-only, contrato §4) — a secao nova nunca
+# gateia, independente do achado. ====
+
+# _ss_sha: string de 64 hex chars bem formada (campo 3 do manifesto). O
+# valor NAO precisa bater com hash_file real de nada — _doctor_shadow_verdict
+# nunca le este campo, so manifest_record_is_valid o valida por FORMA.
+_ss_sha() {
+  printf 'a%.0s' $(seq 1 64)
+}
+
+scenario_doctor_ss_shadowed_diverge_do_catalogo() {
+  _h="$TMPDIR_TEST/ss1-h"
+  _proj="$TMPDIR_TEST/ss1-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo (catalogo)\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo (projeto, editado)\n' > "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t0.9.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss shadowed exit" "esperado 0 (report-only), obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "Shadowed Scope" || return 1
+  assert_stderr_contains "[shadowed]" || return 1
+  assert_stderr_contains "agents/foo" || return 1
+  assert_stderr_contains "remediacao:" || return 1
+}
+
+scenario_doctor_ss_shadow_current_identico_ao_catalogo() {
+  _h="$TMPDIR_TEST/ss2-h"
+  _proj="$TMPDIR_TEST/ss2-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo identico\n' > "$_h/.claude/agents/foo.md"
+  cp "$_h/.claude/agents/foo.md" "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t1.0.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss shadow-current exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[shadow-current]" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"[shadowed]"*) _fail "shadow-current" "nao deveria haver [shadowed] quando o conteudo e identico: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"remediacao:"*) _fail "shadow-current" "bloco de remediacao so pode aparecer com count_shadowed >= 1: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_doctor_ss_unmanaged_upstream_removido_do_catalogo() {
+  _h="$TMPDIR_TEST/ss5-h"
+  _proj="$TMPDIR_TEST/ss5-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# bar (projeto)\n' > "$_proj/.claude/agents/bar.md"
+  # $_h/.claude/agents/bar.md deliberadamente AUSENTE: removido/renomeado
+  # upstream (FR-010).
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'bar\t1.0.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss unmanaged-upstream exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[unmanaged-upstream]" || return 1
+  assert_stderr_contains "agents/bar" || return 1
+  assert_stderr_contains "removido/renomeado upstream" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"remediacao:"*) _fail "unmanaged-upstream" "unmanaged-upstream nao e shadowed; nao deve emitir bloco de remediacao: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_doctor_ss_symlink_indeterminate_nunca_hasheia_alvo() {
+  _h="$TMPDIR_TEST/ss9b-h"
+  _proj="$TMPDIR_TEST/ss9b-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf 'SECRET-DO-NOT-LEAK\n' > "$TMPDIR_TEST/secret.txt"
+  ln -s "$TMPDIR_TEST/secret.txt" "$_proj/.claude/agents/x.md"
+  printf '# x (catalogo)\n' > "$_h/.claude/agents/x.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'x\t1.0.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss symlink exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[indeterminate]" || return 1
+  assert_stderr_contains "symlink" || return 1
+  # Nenhum hash do ALVO do symlink (o segredo) pode ter sido calculado nem
+  # impresso: compara o prefixo sha256 real do segredo contra a saida.
+  _secret_sha_prefix=$(
+    env CSTK_LIB="$CSTK_LIB" sh -c '. "$CSTK_LIB/hash.sh"; hash_file "$1"' _ "$TMPDIR_TEST/secret.txt" 2>/dev/null \
+      | cut -c1-12
+  )
+  case "$_CAPTURED_STDERR" in
+    *"$_secret_sha_prefix"*) _fail "ss symlink" "hash do alvo do symlink NUNCA pode ser impresso: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# Cenario 9.a (traversal) + variante "release-wave" (Cenario 4/4.b, task
+# 2.1.4): registro com `name` fora de forma NUNCA entra na arvore de
+# ShadowVerdict (R1) — nao produz achado algum, so conta no denominador da
+# cobertura (FASE 3).
+scenario_doctor_ss_traversal_nunca_entra_na_arvore() {
+  _h="$TMPDIR_TEST/ss9a-h"
+  _proj="$TMPDIR_TEST/ss9a-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf '../../../.ssh/known_hosts\t1.0.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss traversal exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"known_hosts"*) _fail "ss traversal" "name com traversal NUNCA pode aparecer na saida: $_CAPTURED_STDERR"; return 1 ;;
+    *"[shadowed]"*) _fail "ss traversal" "registro com name invalido nao pode produzir veredito shadowed: $_CAPTURED_STDERR"; return 1 ;;
+    *"[indeterminate]"*) _fail "ss traversal" "registro com name invalido nao pode produzir veredito indeterminate: $_CAPTURED_STDERR"; return 1 ;;
+    *"[unmanaged-upstream]"*) _fail "ss traversal" "registro com name invalido nao pode produzir veredito unmanaged-upstream: $_CAPTURED_STDERR"; return 1 ;;
+    *"[shadow-current]"*) _fail "ss traversal" "registro com name invalido nao pode produzir veredito shadow-current: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  assert_stderr_contains "Shadowed Scope" || return 1
+}
+
+# Cenario 4/4.b do quickstart (analogo ao caso release-wave, aqui aplicado
+# a kind=agents ja que Shadowed Scope so cobre agents/commands): copia
+# local sem NENHUMA entrada de manifesto — mesmo com colisao de nome
+# contra o catalogo — e estruturalmente inalcancavel: a iteracao parte do
+# manifesto, nunca do diretorio (FR-004/FR-005).
+scenario_doctor_ss_copia_local_sem_registro_nunca_aparece() {
+  _h="$TMPDIR_TEST/ss4-h"
+  _proj="$TMPDIR_TEST/ss4-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# unregistered (catalogo)\n' > "$_h/.claude/agents/unregistered.md"
+  printf '# unregistered (projeto, sem registro)\n' > "$_proj/.claude/agents/unregistered.md"
+  printf '# cstk manifest v1\n# schema: x\n' > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss copia sem registro exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  # "unregistered" APARECE no sumario CLASSICO (comportamento vizinho,
+  # nao criado por esta feature: --scope global default varre
+  # $HOME/.claude/agents e acusa [ORPHAN] por nao ter entry no manifesto
+  # global — nada a ver com Shadowed Scope). A garantia desta feature e
+  # so sobre a secao NOVA: isola o texto apos o cabecalho antes de checar.
+  _ss_section=$(printf '%s\n' "$_CAPTURED_STDERR" | awk '/^==> Shadowed Scope/{f=1} f')
+  case "$_ss_section" in
+    *"unregistered"*) _fail "ss copia sem registro" "copia local sem registro NAO pode ser mencionada pela Shadowed Scope (FR-004/FR-005): $_ss_section"; return 1 ;;
+  esac
+  assert_stderr_contains "Shadowed Scope" || return 1
+}
+
+scenario_doctor_ss_fix_nao_repara_nem_suprime() {
+  _h="$TMPDIR_TEST/ss12-h"
+  _proj="$TMPDIR_TEST/ss12-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo (catalogo)\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo (projeto, editado)\n' > "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t0.9.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj" --fix
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss --fix exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[shadowed]" || return 1
+  _content=$(cat "$_proj/.claude/agents/foo.md")
+  case "$_content" in
+    *"editado"*) : ;;
+    *) _fail "ss --fix" "--fix NAO pode sobrescrever a copia de projeto (FR-005): $_content"; return 1 ;;
+  esac
+}
+
+scenario_doctor_ss_deps_nao_emite_secao() {
+  _h="$TMPDIR_TEST/ss13-h"
+  _proj="$TMPDIR_TEST/ss13-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo (catalogo)\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo (projeto, editado)\n' > "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t0.9.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj" --deps
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss --deps exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"Shadowed Scope"*) _fail "ss --deps" "--deps NAO pode emitir a secao Shadowed Scope: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# Cenario 9.c: `toolkit_version` (campo 2) NAO passa por
+# manifest_name_is_safe (so o campo 1/name passa) — e o vetor real para
+# forjar saude via bytes de controle. manifest_scrub_text MUST neutraliza-los
+# antes de qualquer impressao (R3).
+scenario_doctor_ss_bytes_controle_sanitizados_no_toolkit_version() {
+  _h="$TMPDIR_TEST/ss9c-h"
+  _proj="$TMPDIR_TEST/ss9c-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo (catalogo)\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo (projeto, editado)\n' > "$_proj/.claude/agents/foo.md"
+  _forged_ver="1.0$(printf '\033')[FAKE-OK]$(printf '\015')$(printf '\010')END"
+  _line=$(printf '%s\t%s\t%s\tts' 'foo' "$_forged_ver" "$(_ss_sha)")
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf '%s\n' "$_line"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss bytes controle exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[shadowed]" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"$(printf '\033')"*) _fail "ss bytes controle" "byte ESC (0x1b) vazou na saida"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"$(printf '\010')"*) _fail "ss bytes controle" "byte backspace (0x08) vazou na saida"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"$(printf '\015')"*) _fail "ss bytes controle" "byte CR (0x0d) vazou na saida"; return 1 ;;
+  esac
+}
+
 run_all_scenarios

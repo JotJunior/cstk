@@ -58,6 +58,22 @@
 # campo version do registro nativo — pode vir "unknown"). Nao interage com
 # --scope/--fix/--deps; roda sempre que aplicavel, independente das outras
 # flags (SC-006: ausencia de plugin = zero diferenca observavel).
+#
+# Secao "Shadowed Scope" (feature doctor-shadowed-scope, FASE 2; contract
+# doctor-shadowed-scope-output.md §2/§3): compara a copia de ESCOPO DE
+# PROJETO (./.claude/<kind>/<name>.md, kind em {agents,commands}) contra o
+# CATALOGO (~/.claude/<kind>/<name>.md) por CONTEUDO (hash_file das duas
+# pontas, nunca o sha gravado no manifesto de projeto — que so descreve o
+# lado de projeto e nunca muda sozinho, entao a comparacao intra-escopo
+# antiga sempre reportava OK). Roda SEMPRE, independente de --scope/--fix
+# (senao o operador que roda `cstk doctor` puro, caso majoritario com
+# default --scope global, continuaria vendo o falso OK). Emitida entre o
+# sumario classico e "Distribution Paths". `./.claude/<kind>/.cstk-manifest`
+# e UNTRUSTED (pode ser versionado por um repositorio de terceiro) — ver
+# regras R1-R6 no contrato §7. section_rc e a CONSTANTE 0 (report-only,
+# contrato §4/INV-RC): nenhuma entrada desta secao move o exit code do
+# `cstk doctor`. Declaracao de cobertura + rotulo de veredito (contrato
+# §3.4/§3.5) ficam para a FASE 3 desta feature.
 
 if [ -n "${_CSTK_DOCTOR_LOADED:-}" ]; then
   return 0 2>/dev/null
@@ -79,6 +95,12 @@ _CSTK_DOCTOR_LOADED=1
 # secao "Distribution Paths" (_doctor_distribution_paths). jq confinado
 # la (amendment 1.1.0); doctor.sh so consome as funcoes exportadas.
 . "${CSTK_LIB}/plugin-detect.sh"
+# shellcheck source=/dev/null
+# manifest-coverage.sh (feature doctor-shadowed-scope): primitivas de
+# validacao/sanitizacao/formatacao para a secao "Shadowed Scope"
+# (_doctor_shadowed_scope). Manifesto de projeto e UNTRUSTED — a lib
+# confina o tratamento hostil (R1-R5); doctor.sh so consome as funcoes.
+. "${CSTK_LIB}/manifest-coverage.sh"
 
 _doctor_print_help() {
   cat >&2 <<'HELP'
@@ -155,6 +177,14 @@ doctor_main() {
   fi
 
   _doctor_emit_report
+
+  # Shadowed Scope (feature doctor-shadowed-scope, FASE 2): report-only por
+  # construcao (section_rc constante 0, contrato §4/INV-RC) — deliberadamente
+  # FORA do OU logico abaixo: nenhuma entrada desta secao pode mover o exit
+  # code do `cstk doctor` (manifesto de projeto e UNTRUSTED, contrato §7 —
+  # ver docstring da funcao). Retorno nao e capturado (sempre 0 por
+  # construcao; capturar so para nunca usar seria ruido morto).
+  _doctor_shadowed_scope
 
   # Distribution Paths (FASE 6, task 6.3): independente de --scope/--fix —
   # nao ha acao de --fix para divergencia entre catalogo classico e
@@ -452,6 +482,204 @@ _doctor_emit_report() {
       fi
     fi
   } >&2
+}
+
+# _doctor_lookup_catalog_version <kind> <name> -> versao do catalogo em
+# stdout, ou "?" quando indisponivel (nome sem entrada no manifesto global,
+# manifesto global ausente/ilegivel). NUNCA inferida — contrato §3.2:
+# "<cver> sai vazio como ? quando o manifesto global nao tem entrada para
+# <name> — nunca inferido". <name> ja foi aprovado por manifest_name_is_safe
+# antes de chegar aqui (chamado so a partir de _doctor_shadow_verdict).
+_doctor_lookup_catalog_version() {
+  _lcv_kind=$1
+  _lcv_name=$2
+  if ! _lcv_gmanifest=$(manifest_default_path global "$_lcv_kind" 2>/dev/null); then
+    printf '?'
+    return 0
+  fi
+  if _lcv_entry=$(lookup_entry "$_lcv_gmanifest" "$_lcv_name" 2>/dev/null); then
+    printf '%s' "$_lcv_entry" | awk -F'\t' '{print $2}'
+  else
+    printf '?'
+  fi
+}
+
+# _doctor_shadow_verdict <kind> <name> <project_version> -> imprime a linha
+# de achado (contrato §3.2) em stderr e o `state` do ShadowVerdict em
+# stdout (data-model.md Entity ShadowVerdict; arvore de decisao literal).
+# Chamado SOMENTE para registros ja `recognized` (manifest_record_is_valid
+# no caller) — <name> ja passou por manifest_name_is_safe (R1).
+#
+# Ordem da arvore (literal, nao reordenar):
+#   1. symlink em qualquer ponta            -> indeterminate (symlink)      [R2]
+#   2. copia de projeto ausente             -> indeterminate (projeto-ausente)
+#   3. artefato do catalogo ausente         -> unmanaged-upstream           [FR-010]
+#   4. hash_file falhou em qualquer ponta   -> indeterminate (hash-indisponivel)
+#   5. project_hash == catalog_hash         -> shadow-current
+#   6. caso contrario                       -> shadowed                    [FR-003]
+_doctor_shadow_verdict() {
+  _sv_kind=$1
+  _sv_name=$2
+  _sv_pver=$3
+
+  _sv_proj_path="./.claude/$_sv_kind/$_sv_name.md"
+  _sv_cat_path="${HOME:?HOME nao setado}/.claude/$_sv_kind/$_sv_name.md"
+  # R3: name sanitizado antes de qualquer impressao (defesa em profundidade
+  # — manifest_name_is_safe ja restringe o charset, mas a regra e a mesma
+  # para todo campo untrusted impresso).
+  _sv_name_safe=$(manifest_scrub_text "$_sv_name")
+
+  # R2: symlink em QUALQUER ponta, ANTES de qualquer stat/hash que possa
+  # seguir o link. `[ -h ]` casa symlink quebrado tambem (path pode nao
+  # existir como arquivo regular) — por isso roda antes dos testes -f.
+  if [ -h "$_sv_proj_path" ] || [ -h "$_sv_cat_path" ]; then
+    printf '  %-22s%s/%s    comparacao impossivel: symlink\n' \
+      "[indeterminate]" "$_sv_kind" "$_sv_name_safe" >&2
+    printf 'indeterminate'
+    return 0
+  fi
+
+  if [ ! -f "$_sv_proj_path" ]; then
+    printf '  %-22s%s/%s    comparacao impossivel: projeto-ausente\n' \
+      "[indeterminate]" "$_sv_kind" "$_sv_name_safe" >&2
+    printf 'indeterminate'
+    return 0
+  fi
+
+  if [ ! -f "$_sv_cat_path" ]; then
+    printf '  %-22s%s/%s    sem correspondente no catalogo atual (removido/renomeado upstream)\n' \
+      "[unmanaged-upstream]" "$_sv_kind" "$_sv_name_safe" >&2
+    printf 'unmanaged-upstream'
+    return 0
+  fi
+
+  # R6: hash so e calculado/impresso para paths que passaram R1 (name_safe,
+  # no caller) e R2 (symlink, acima) — as duas pontas ja satisfazem isso.
+  _sv_phash=$(hash_file "$_sv_proj_path" 2>/dev/null) || _sv_phash=""
+  _sv_chash=$(hash_file "$_sv_cat_path" 2>/dev/null) || _sv_chash=""
+
+  if [ -z "$_sv_phash" ] || [ -z "$_sv_chash" ]; then
+    printf '  %-22s%s/%s    comparacao impossivel: hash-indisponivel\n' \
+      "[indeterminate]" "$_sv_kind" "$_sv_name_safe" >&2
+    printf 'indeterminate'
+    return 0
+  fi
+
+  if [ "$_sv_phash" = "$_sv_chash" ]; then
+    printf '  %-22s%s/%s    identico ao catalogo (%s...)\n' \
+      "[shadow-current]" "$_sv_kind" "$_sv_name_safe" \
+      "$(printf '%s' "$_sv_chash" | cut -c1-12)" >&2
+    printf 'shadow-current'
+    return 0
+  fi
+
+  # FR-005: a saida MUST NOT afirmar qual lado esta desatualizado (sem fonte
+  # rastreavel para isso — mesma postura de _doctor_distribution_paths).
+  # Mostra os dois lados; quem decide e o operador.
+  _sv_cver=$(_doctor_lookup_catalog_version "$_sv_kind" "$_sv_name")
+  [ -n "$_sv_cver" ] || _sv_cver='?'
+  _sv_cver_safe=$(manifest_scrub_text "$_sv_cver")
+  _sv_pver_safe=$(manifest_scrub_text "$_sv_pver")
+
+  printf '  %-22s%s/%s    projeto %s (%s...) != catalogo %s (%s...)\n' \
+    "[shadowed]" "$_sv_kind" "$_sv_name_safe" "$_sv_pver_safe" \
+    "$(printf '%s' "$_sv_phash" | cut -c1-12)" "$_sv_cver_safe" \
+    "$(printf '%s' "$_sv_chash" | cut -c1-12)" >&2
+  printf 'shadowed'
+  return 0
+}
+
+# _doctor_ss_scan_kind <kind> -> numero de registros `shadowed` em stdout
+# (usado so para decidir se o bloco de remediacao e emitido). Emite as
+# linhas de achado (via _doctor_shadow_verdict) em stderr como efeito
+# colateral, uma por registro `recognized`.
+#
+# R4: o laco de iteracao roda sob `set -f` num SUBSHELL (restaurado ao
+# sair por construcao — o subshell termina), IFS=newline — precedente
+# literal `cli/lib/recall.sh fts_query_escape()`. Impede que uma linha de
+# dados contendo `*` sofra pathname expansion (Cenario 9.d).
+#
+# R5: `manifest_within_cap` MUST ser checado antes de iterar — fonte sobre
+# o teto e pulada por completo nesta secao (FASE 3 a reporta como
+# unreadable/teto-excedido na declaracao de cobertura).
+#
+# R1: registros `unrecognized` (nome fora de forma, campos invalidos) NUNCA
+# chegam a _doctor_shadow_verdict — ficam de fora da arvore de decisao por
+# inteiro (contam so no denominador da cobertura, FASE 3).
+_doctor_ss_scan_kind() {
+  _ssk_kind=$1
+  _ssk_manifest="./.claude/$_ssk_kind/.cstk-manifest"
+
+  if [ ! -f "$_ssk_manifest" ]; then
+    printf '0'
+    return 0
+  fi
+  if ! manifest_within_cap "$_ssk_manifest"; then
+    printf '0'
+    return 0
+  fi
+
+  (
+    set -f
+    _ssk_ifs=$IFS
+    IFS='
+'
+    _ssk_shadowed=0
+    # shellcheck disable=SC2013 # for-in-command deliberado: IFS=newline +
+    # set -f (R4) isolam este laco de word-splitting e pathname expansion.
+    for _ssk_line in $(awk '/^[[:space:]]*$/ { next } /^#/ { next } { print }' "$_ssk_manifest" 2>/dev/null); do
+      IFS=$_ssk_ifs
+      if manifest_record_is_valid "$_ssk_line"; then
+        _ssk_name=$(printf '%s' "$_ssk_line" | awk -F'\t' '{print $1}')
+        _ssk_pver=$(printf '%s' "$_ssk_line" | awk -F'\t' '{print $2}')
+        _ssk_state=$(_doctor_shadow_verdict "$_ssk_kind" "$_ssk_name" "$_ssk_pver")
+        if [ "$_ssk_state" = "shadowed" ]; then
+          _ssk_shadowed=$((_ssk_shadowed + 1))
+        fi
+      fi
+      IFS='
+'
+    done
+    IFS=$_ssk_ifs
+    printf '%s' "$_ssk_shadowed"
+  )
+}
+
+# _doctor_shadowed_scope — secao "Shadowed Scope" (feature
+# doctor-shadowed-scope, FASE 2; contract doctor-shadowed-scope-output.md
+# §2/§3.1-3.3, data-model.md Entity ShadowVerdict). Ver docstring no
+# cabecalho do arquivo para o desenho completo (D2-D4, FR-004/FR-005).
+#
+# Declaracao de cobertura + rotulo de veredito (contrato §3.4/§3.5) ainda
+# NAO sao emitidos por esta secao — FASE 3 desta feature.
+#
+# section_rc e a CONSTANTE 0 (contrato §4/INV-RC, data-model.md): produzido
+# por `return 0` no fim da funcao — NUNCA acumulado a partir de
+# count_shadowed ou de qualquer estado. Report-only por desenho: input
+# controlado por terceiro (manifesto de projeto, contrato §7) pode produzir
+# diagnostico, nunca veredito.
+_doctor_shadowed_scope() {
+  printf '\n==> Shadowed Scope (escopo de projeto vs catalogo)\n' >&2
+
+  _ss_count_shadowed=0
+  for _ss_kind in agents commands; do
+    _ss_kind_shadowed=$(_doctor_ss_scan_kind "$_ss_kind")
+    _ss_count_shadowed=$((_ss_count_shadowed + _ss_kind_shadowed))
+  done
+
+  # Bloco de remediacao (§3.3): so quando ha >=1 shadowed. Redacao normativa
+  # por FR-005 — NAO trata a copia divergente como erro (sombrear e fluxo
+  # legitimo: testar uma definicao antes de instalar).
+  if [ "$_ss_count_shadowed" -gt 0 ]; then
+    {
+      printf '  remediacao: para realinhar a copia de projeto ao catalogo, reinstale no\n'
+      printf '              escopo do projeto; para manter a copia local divergente de\n'
+      printf '              proposito, nenhuma acao e necessaria — este relato e\n'
+      printf '              informativo sobre a divergencia, nao uma exigencia.\n'
+    } >&2
+  fi
+
+  return 0
 }
 
 # _doctor_distribution_paths — secao "Distribution Paths" (FASE 6, task
