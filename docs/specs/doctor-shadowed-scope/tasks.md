@@ -432,25 +432,25 @@ Ref: quickstart Cenarios 11-14; CLAUDE.md "Como testar scripts shell" +
 
 Ref: quickstart Cenarios 12, 13, 14.
 
-- [ ] 4.1.1 Cenario 12: `--fix` nao repara nem suprime a secao (copia de
+- [x] 4.1.1 Cenario 12: `--fix` nao repara nem suprime a secao (copia de
   projeto preservada byte-a-byte)
-- [ ] 4.1.2 Cenario 13: `--deps` nao emite a secao (saida stdout
+- [x] 4.1.2 Cenario 13: `--deps` nao emite a secao (saida stdout
   `==> cstk doctor --deps` inalterada)
-- [ ] 4.1.3 Cenario 14: `./tests/run.sh --check-coverage` sai `0` — exige
+- [x] 4.1.3 Cenario 14: `./tests/run.sh --check-coverage` sai `0` — exige
   `tests/cstk/test_manifest-coverage.sh` presente e nao-orfao
 
 ### 4.2 Suite completa e baseline de regressao `[A]`
 
 Ref: quickstart Cenario 11; CLAUDE.md "Como testar scripts shell".
 
-- [ ] 4.2.1 Rodar `LC_ALL=C ./tests/run.sh` (suite completa, sem `tail`
+- [x] 4.2.1 Rodar `LC_ALL=C ./tests/run.sh` (suite completa, sem `tail`
   no output) e confirmar zero regressao nos cenarios pre-existentes de
   `test_doctor.sh` e no restante da suite
-- [ ] 4.2.2 Confirmar o baseline medido `LC_ALL=C ./tests/run.sh
+- [x] 4.2.2 Confirmar o baseline medido `LC_ALL=C ./tests/run.sh
   test_doctor` ⇒ `PASS: 22 FAIL: 0 ERROR: 0 ORPHANS: 0` ANTES de
   comparar com o resultado pos-implementacao (qualquer FAIL novo e
   regressao, nunca "teste desatualizado")
-- [ ] 4.2.3 Registrar o resultado literal (PASS/FAIL/ERROR/ORPHANS/TIME)
+- [x] 4.2.3 Registrar o resultado literal (PASS/FAIL/ERROR/ORPHANS/TIME)
   da execucao pos-implementacao como evidencia citavel na Decisao de
   conclusao da FASE (nunca afirmar "suite verde" sem o output medido —
   Constitution VI)
@@ -460,14 +460,14 @@ Ref: quickstart Cenario 11; CLAUDE.md "Como testar scripts shell".
 Ref: CLAUDE.md "Adicionar skill bumpa count" (mesma classe de risco para
 `cli/lib/` novo).
 
-- [ ] 4.3.1 Checar se `tests/test_doc-counts.sh` e/ou
+- [x] 4.3.1 Checar se `tests/test_doc-counts.sh` e/ou
   `tests/cstk/test_build-release.sh` contam arquivos de `cli/lib/` ou
   `tests/cstk/` — se sim, atualizar o contador esperado para incluir
   `manifest-coverage.sh`/`test_manifest-coverage.sh`; se nao, nao alterar
   nada (registrar o resultado da checagem, nunca supor)
-- [ ] 4.3.2 Rodar os dois testes apos a checagem para confirmar que
+- [x] 4.3.2 Rodar os dois testes apos a checagem para confirmar que
   passam com a contagem correta
-- [ ] 4.3.3 Se a checagem 4.3.1 concluir que os contadores NAO se
+- [x] 4.3.3 Se a checagem 4.3.1 concluir que os contadores NAO se
   aplicam a `cli/lib/`/`tests/cstk/`, registrar essa conclusao como
   Decisao informativa citando a evidencia (grep/leitura) que a
   sustenta — nao deixar a negativa implicita
@@ -477,11 +477,11 @@ Ref: CLAUDE.md "Adicionar skill bumpa count" (mesma classe de risco para
 Ref: CLAUDE.md "GOTCHA de sincronizacao — self-update, nunca install";
 plan.md mesmo titulo.
 
-- [ ] 4.4.1 Buildar tarball local: `./scripts/build-release.sh X.Y.Z-dev`
-- [ ] 4.4.2 Sincronizar o runtime instalado via `cstk self-update --from
+- [x] 4.4.1 Buildar tarball local: `./scripts/build-release.sh X.Y.Z-dev`
+- [x] 4.4.2 Sincronizar o runtime instalado via `cstk self-update --from
   "file://$PWD/dist/cstk-X.Y.Z-dev.tar.gz"` — NUNCA `cstk install`/
   `cstk update` (que so tocam catalogo `~/.claude`, nao `cli/lib/`)
-- [ ] 4.4.3 Confirmar via `cstk doctor` (na maquina de desenvolvimento)
+- [x] 4.4.3 Confirmar via `cstk doctor` (na maquina de desenvolvimento)
   que a copia instalada reflete a mudanca sem drift, e que a secao
   "Shadowed Scope" aparece na saida real
 
