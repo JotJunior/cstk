@@ -836,4 +836,80 @@ scenario_sdhg_sqlite_list_chave_assunto_banco_legado_sem_coluna_nao_falha() {
 
 fi # sqlite3 disponivel
 
+# ==== issue #170: sufixo de axis: validado contra o enum fechado ====
+
+scenario_register_axis_fora_do_enum_falha_alto() {
+  # Regressao issue #170: `axis:<qualquer-coisa>` passava o register limpo e
+  # NUNCA casava no vinculo de consentimento (report.sh itera o mapa) —
+  # bloqueio, resposta e decisao existiam sem nada os ligar. Degradava em
+  # silencio em vez de falhar.
+  _sd="$TMPDIR_TEST/state"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --decisao-id "dec-001" \
+    --pergunta "Pergunta longa o suficiente para passar (>=20 chars)" \
+    --contexto-para-resposta "ctx" \
+    --chave-assunto "axis:exposicao-transcript-sem-scrub"
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "axis fora do enum deveria sair 2" "exit=$_CAPTURED_EXIT stdout=$_CAPTURED_STDOUT"; return 1; }
+  assert_stderr_contains "eixo-invalido" || return 1
+  # Nada foi gravado.
+  capture "$RW" get --state-dir "$_sd" --field '.accumulated_metrics.human_blocks_total'
+  assert_stdout_contains "0" || return 1
+}
+
+scenario_register_axis_erro_lista_eixos_do_mapa() {
+  # A mensagem cita os eixos validos LENDO o mapa (nunca lista hardcoded).
+  _sd="$TMPDIR_TEST/state"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --decisao-id "dec-001" \
+    --pergunta "Pergunta longa o suficiente para passar (>=20 chars)" \
+    --contexto-para-resposta "ctx" \
+    --chave-assunto "axis:eixo-que-nao-existe"
+  assert_stderr_contains "linguagem-runtime" || return 1
+  assert_stderr_contains "tier-entrega" || return 1
+}
+
+scenario_register_todos_os_eixos_do_mapa_sao_aceitos() {
+  # Paridade produtor-consumidor: TODO eixo do mapa passa no register.
+  _sd="$TMPDIR_TEST/state"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  _map="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/references/structural-axis-map.txt"
+  [ -f "$_map" ] || { _error "mapa ausente: $_map" ""; return 2; }
+  _n=0
+  while IFS='|' read -r _eixo _rot; do
+    case "$_eixo" in ''|\#*) continue ;; esac
+    capture "$SCRIPT" register --state-dir "$_sd" \
+      --decisao-id "dec-001" \
+      --pergunta "Pergunta longa o suficiente para passar (>=20 chars)" \
+      --contexto-para-resposta "ctx" \
+      --chave-assunto "axis:$_eixo"
+    [ "$_CAPTURED_EXIT" = 0 ] || { _fail "eixo do mapa rejeitado: $_eixo" "$_CAPTURED_STDERR"; return 1; }
+    _n=$((_n + 1))
+  done < "$_map"
+  [ "$_n" -ge 6 ] || { _fail "mapa com menos eixos que o esperado" "n=$_n"; return 1; }
+}
+
+scenario_register_briefing_item_sufixo_segue_aberto() {
+  # `briefing-item:` NAO tem enum fechado (sufixo e id de item do briefing) —
+  # a trava de #170 vale so para `axis:`.
+  _sd="$TMPDIR_TEST/state"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" register --state-dir "$_sd" \
+    --decisao-id "dec-001" \
+    --pergunta "Pergunta longa o suficiente para passar (>=20 chars)" \
+    --contexto-para-resposta "ctx" \
+    --chave-assunto "briefing-item:um-item-qualquer-do-briefing-abc123"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "briefing-item deveria seguir aberto" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_list_chave_assunto_nao_valida_enum() {
+  # `list --chave-assunto` e QUERY, nao registro: filtrar por chave fora do
+  # enum precisa seguir valido (retorna vazio), nunca virar erro.
+  _sd="$TMPDIR_TEST/state"
+  _setup_with_decisao "$_sd" || { _error "fixture" ""; return 2; }
+  capture "$SCRIPT" list --state-dir "$_sd" --chave-assunto "axis:nao-existe-no-mapa"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "list nao deve validar enum" "exit=$_CAPTURED_EXIT $_CAPTURED_STDERR"; return 1; }
+}
+
 run_all_scenarios

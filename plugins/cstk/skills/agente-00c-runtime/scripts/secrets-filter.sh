@@ -9,9 +9,14 @@
 # Le stdin, escreve stdout com substituicao de cada match por [REDACTED].
 # Aplica em ordem (cada padrao independente, nao excludente):
 #
-#   1. Tokens com palavra-chave proxima:
-#      `(token|key|secret|password|pwd|auth|api_key|access_key)\s*[:=]\s*"?[A-Za-z0-9_-]{20,}"?`
-#      → reduz falsos positivos (hashes git, UUIDs sem contexto NAO sao filtrados)
+#   0. Blocos PEM (`-----BEGIN X-----` ... `-----END X-----`, marcador
+#      sozinho na linha, RFC 7468) → `[REDACTED-PEM-BLOCK]`. O corpo base64
+#      nao tem palavra-chave proxima e escapava de todas as outras regras.
+#   1. Tokens com palavra-chave proxima, em DOIS limiares:
+#      a) generico, `{20,}`: `(token|key|secret|password|pwd|auth|api_key|access_key)\s*[:=]\s*"?[A-Za-z0-9_-]{20,}"?`
+#         → limiar alto reduz falso positivo em prosa (`key: valor`)
+#      b) alta confianca, `{4,}`: `(password|passwd|api_key|access_key|secret_key|private_key|client_secret|*_token|secret)`
+#         → palavras-chave que seguidas de `:`/`=` praticamente nunca sao prosa
 #   2. AWS access keys: `AKIA[A-Z0-9]{16,}`
 #   3. Bearer tokens: `Bearer\s+[A-Za-z0-9._-]+`
 #   4. Basic auth em URLs: `https?://[^:]+:[^@]+@`
@@ -43,6 +48,18 @@
 #   0 sucesso (scrub) ou nenhum secret encontrado (check)
 #   1 secret detectado em check
 #   2 uso incorreto
+#
+# --- Contrato de cobertura (issue #169) ---
+# A cobertura deste filtro e um PISO, NAO uma garantia de ausencia de
+# segredo. "Passou pelo scrub" != "nao contem segredo". Casos conhecidos que
+# CONTINUAM passando em claro:
+#   - segredo curto (<4 chars) sob qualquer palavra-chave;
+#   - segredo de 4..19 chars sob palavra-chave NAO listada na regra 1b
+#     (ex.: `key`, `token`, `auth`, `pwd`, ou um nome proprio de aplicacao);
+#   - segredo sem palavra-chave proxima e sem formato reconhecido
+#     (AKIA/Bearer/basic-auth/PEM) e ausente do `--env-file`.
+# Consumidores que precisem de garantia (e nao de reducao de risco) precisam
+# de controle proprio a montante — nunca tratar este scrub como suficiente.
 #
 # POSIX sh + sed/grep/awk.
 
@@ -147,6 +164,31 @@ _sf_apply_filters() {
   # Caso contrario, o regex generico de token mascararia AKIA/Bearer com
   # [REDACTED] genenrico e perderia o tipo do secret.
 
+  # 0. Blocos PEM (chave privada, certificado, etc). Vem PRIMEIRO porque o
+  #    corpo base64 nao tem palavra-chave proxima e escaparia de todas as
+  #    demais regras (issue #169). Deteccao estrita por RFC 7468: a linha de
+  #    encapsulamento precisa estar SOZINHA na linha (so espacos ao redor) —
+  #    assim uma mencao em prosa/doc (`... o marcador `-----BEGIN X-----` ...`)
+  #    NAO engole o restante do arquivo. Bloco sem `-----END-----` e suprimido
+  #    ate EOF (fail-closed: melhor perder relatorio que vazar chave).
+  #    Guarda `grep -Eq` antes do awk: sem ela o awk rodaria em TODO input e
+  #    normalizaria a ausencia de newline final (`print` sempre a adiciona),
+  #    quebrando a comparacao byte a byte de que `check` depende (input limpo
+  #    sem newline final passaria a acusar secret).
+  if grep -Eq '^[[:space:]]*-----BEGIN [A-Z0-9][A-Z0-9 ]*-----[[:space:]]*$' "$_t1"; then
+    awk '
+      /^[[:space:]]*-----BEGIN [A-Z0-9][A-Z0-9 ]*-----[[:space:]]*$/ && !inpem {
+        inpem = 1; print "[REDACTED-PEM-BLOCK]"; next
+      }
+      inpem && /^[[:space:]]*-----END [A-Z0-9][A-Z0-9 ]*-----[[:space:]]*$/ {
+        inpem = 0; next
+      }
+      inpem { next }
+      { print }
+    ' "$_t1" > "$_t2"
+    mv "$_t2" "$_t1"; _t2=$(mktemp)
+  fi
+
   # 1. AWS access keys (formato unico)
   sed -E 's/AKIA[A-Z0-9]{16,}/[REDACTED-AWS-KEY]/g' "$_t1" > "$_t2"
   mv "$_t2" "$_t1"; _t2=$(mktemp)
@@ -162,6 +204,28 @@ _sf_apply_filters() {
   # 4. Tokens genericos com palavra-chave proxima (proximidade reduz falsos
   #    positivos). Regex: (KEY) WS* [:=] WS* "?" [A-Za-z0-9...]{20,} "?".
   if sed -E -e 's/((token|key|secret|password|pwd|auth|api_?key|access_?key)[[:space:]]*[:=][[:space:]]*"?)[A-Za-z0-9_=+\/-]{20,}("?)/\1[REDACTED]\3/Ig' \
+    "$_t1" > "$_t2" 2>/dev/null; then
+    mv "$_t2" "$_t1"
+    _t2=$(mktemp)
+  fi
+
+  # 4b. Mesma forma da regra 4, porem com limiar de 4 chars, restrita a
+  #     palavras-chave de ALTA confianca — aquelas cuja ocorrencia seguida de
+  #     `:`/`=` praticamente nunca e prosa (issue #169: `password=hunter2`,
+  #     7 chars, escapava do `{20,}` da regra 4 e saia em claro).
+  #
+  #     Por que uma lista SEPARADA em vez de baixar o `{20,}` da regra 4: o
+  #     limiar alto existe para nao redigir prosa comum (`key: valor`,
+  #     `auth: bearer`) — baixa-lo para todas as palavras-chave trocaria
+  #     vazamento por ruido, e ruido num filtro de seguranca leva a ignorar a
+  #     saida dele. Ficam DE FORA de propósito (seguem so na regra 4, {20,}):
+  #       - `key`, `token`, `auth`, `secret` generico em prosa;
+  #       - `pwd`  — `PWD=/algum/caminho` num dump de ambiente viraria
+  #         `[REDACTED]` e destruiria diagnostico legitimo do enforcement-log.
+  #
+  #     Cobertura e PISO, nao garantia: um segredo curto sob palavra-chave
+  #     nao listada continua passando. Ver comentario de contrato no topo.
+  if sed -E -e 's/((password|passwd|api_?key|apikey|access_?key|secret_?key|private_?key|client_?secret|auth_?token|access_?token|refresh_?token|secret)[[:space:]]*[:=][[:space:]]*"?)[A-Za-z0-9_=+\/-]{4,}("?)/\1[REDACTED]\3/Ig' \
     "$_t1" > "$_t2" 2>/dev/null; then
     mv "$_t2" "$_t1"
     _t2=$(mktemp)

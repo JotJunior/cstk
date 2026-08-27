@@ -285,8 +285,25 @@ voce lanca o claude):
     --projeto-alvo-path . --include-loose-usage
   # 5a coluna: endpoint-set (armado) | endpoint-unset (inerte)
 
+O wrapper cobre `claude` DIGITADO no terminal. Os lancadores do proprio
+cstk (`cstk session start --claude`, `cstk 00c`, e a leva paralela do
+roadmap via `parallel-launch.sh emit`) NAO passam por ele: `exec` nunca
+resolve funcao de shell, e esses scripts rodam em `sh` nao-interativo, onde
+o rc sequer e lido. Desde a issue #168 eles ligam a telemetria por conta
+propria — sorteando a porta e exportando as variaveis so no ambiente do
+processo `claude`, com a mesma semantica do snippet. Nada a configurar.
+
+  Desligar essa injecao automatica:  CSTK_TELEMETRY_AUTO=0
+  Ela tambem NAO acontece quando CSTK_OTEL_ENDPOINT ja esta no ambiente, ou
+  quando CLAUDE_CODE_ENABLE_TELEMETRY esta definido com valor != 1
+  (opt-out explicito do operador vence sempre).
+  Excecao deliberada: na leva paralela o CSTK_OTEL_ENDPOINT do ambiente NAO
+  e herdado — cada filha precisa da PROPRIA porta (o exporter vive dentro de
+  cada processo `claude`; duas filhas na mesma porta = uma nao mede).
+
 Snippet canonico: identico ao de cli/install.sh (telemetry_snippet) —
-teste de paridade em tests/cstk/test_cstk-main.sh gateia drift entre os dois.
+teste de paridade em tests/cstk/test_cstk-main.sh gateia drift entre os dois
+E entre eles e os lancadores (conjunto de variaveis).
 TELHELP
       exit "$CSTK_EXIT_OK"
       ;;

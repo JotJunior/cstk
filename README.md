@@ -496,9 +496,19 @@ claude() {
 Zero per-session configuration: each `claude` you type gets an isolated
 exporter and an isolated measurement. As a bonus, the delta's
 "exactly-one-session-grew" guard only ever sees that process's sessions, so
-ambiguity discards (`null` from concurrent sessions) all but disappear. The
-wrapper only covers processes launched from your shell — anything launched
-outside it (IDE, desktop app) still uses the fixed default port.
+ambiguity discards (`null` from concurrent sessions) all but disappear.
+
+> **The wrapper only covers `claude` TYPED in your shell.** It is a shell
+> *function*, and `exec` never resolves one — so until v9.4.0 every session
+> started by `cstk session start --claude`, `cstk 00c` or the roadmap's
+> parallel wave ran with **no** telemetry at all, which is exactly what
+> issue #168 measured. Since v9.4.0 those three launchers set the variables
+> themselves (one drawn port per process), so they no longer depend on your
+> rc, your shell or tmux — and neither does the native-plugin install, which
+> provisions no wrapper. Turn that off with `CSTK_TELEMETRY_AUTO=0`; an
+> explicit `CSTK_OTEL_ENDPOINT` or `CLAUDE_CODE_ENABLE_TELEMETRY` already in
+> the environment also wins. Anything launched outside both paths (IDE,
+> desktop app) still uses the fixed default port.
 
 Quick diagnosis when the panel shows no cost for any wave: check who owns the
 port and whether its working directory is the project you're actually running:

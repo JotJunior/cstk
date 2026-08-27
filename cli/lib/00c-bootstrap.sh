@@ -182,7 +182,8 @@ FLUXO (5 passos):
   2. Criar dir + lock per-path (`<path>/.cstk-00c.lock/`)
   3. Prompts interativos: descricao, stack (JSON, opcional), whitelist
   4. Dry-run preview com confirmacao final
-  5. exec claude com /agente-00c <args> auto-submetido
+  5. exec claude com /agente-00c <args> auto-submetido (telemetria local
+     ligada — desative com CSTK_TELEMETRY_AUTO=0)
 
 PROMPTS [Y/n] aceitam:
   Y/y/yes/sim/s/S/Enter         para SIM
@@ -783,7 +784,7 @@ _00c_dry_run_preview() {
 # especiais; conteudo interno ja e escapado via _00c_escape_sq (`'` -> `'\''`).
 # Stack JSON (ex: `{"runtime":"go"}`) tem aspas DUPLAS internas, mas como o
 # wrapping e single-quote, isso passa intacto para o argv recebido por claude.
-# A invocacao usa `exec claude "$_00c_slash_command"` (sem eval) — o claude
+# A invocacao usa `telemetry_exec_claude "$_00c_slash_command"` (sem eval) — o claude
 # recebe a string inteira como argv[1].
 _00c_build_slash_command() {
   _bsc_desc_esc=$(_00c_escape_sq "$_00c_descricao")
@@ -830,7 +831,8 @@ _00c_confirm_final() {
 
 # ==== _00c_exec_claude (FR-016f) ====
 #
-# (1) cd para o path; (2) release lock explicito (Decision 14); (3) exec claude.
+# (1) cd para o path; (2) release lock explicito (Decision 14); (3) exec do
+# claude via telemetry_exec_claude (issue #168).
 _00c_exec_claude() {
   if ! cd -- "$_00c_resolved_path" 2>/dev/null; then
     log_error "00c: falha em cd para $_00c_resolved_path"
@@ -851,7 +853,15 @@ _00c_exec_claude() {
   # --projeto-alvo-path '...'`). O claude e responsavel por interpretar
   # essa string como slash command auto-submetida (research.md Decision 11).
   # Sem `eval`: as aspas dentro da string sao literais.
-  exec claude "$_00c_slash_command"
+  #
+  # issue #168: via telemetry_exec_claude — `exec claude` cru nao resolve a
+  # funcao `claude()` do wrapper de telemetria (e este script roda em sh
+  # nao-interativo, onde o rc nem e lido), entao TODA execucao 00c iniciada
+  # por `cstk 00c` rodava sem telemetria: otel_usage null em todas as ondas.
+  # Kill switch: CSTK_TELEMETRY_AUTO=0.
+  # shellcheck source=./telemetry-env.sh
+  . "${CSTK_LIB:?CSTK_LIB must be set}/telemetry-env.sh"
+  telemetry_exec_claude "$_00c_slash_command"
 
   # Se exec falhou (claude nao executou), propagar.
   log_error "00c: exec claude falhou (claude nao iniciou)"

@@ -173,7 +173,22 @@ scripts/extract-must.sh --constitution "$CONSTITUTION"
 # exit: 0 sucesso | 1 constitution ausente (CRITICAL por MUST fica
 #       indisponivel; demais severidades SEGUEM se aplicando — nao aborte a
 #       skill so por isso) | 2 erro de uso
+
+scripts/extract-must.sh --constitution "$CONSTITUTION" --coverage
+# stdout: relatorio de cobertura (fontes lidas, contagem INDEPENDENTE da
+#         palavra MUST, linhas reconhecidas pelo parser, principios emitidos,
+#         quantos vieram so do rotulo do heading)
 ```
+
+**Rode as DUAS invocações** (issue #171). A segunda é o que separa "conferi
+tudo e passou" de "conferi uma fração e passou": o modo default responde
+*quais* princípios são MUST, nunca *quanto* do arquivo foi lido. Se
+`linhas de regra MUST reconhecidas pelo parser: 0` com ocorrências > 0, a
+constitution usa uma convenção de marcação que o parser não cobre — **não
+reporte o gate como satisfeito**: registre o número real no relatório da
+ETAPA 7 e trate a verificação de MUST como indisponível (mesmo tratamento do
+`exit 1` acima), nunca como aprovada. O relatório da ETAPA 7 deve citar as
+quatro linhas do `--coverage` verbatim, não uma paráfrase de sucesso.
 
 Cada linha de `extract-intent.sh` é um candidato a `Gap` a avaliar na ETAPA 4.
 A lista de `extract-must.sh` é o inventário de princípios usado na ETAPA 5
@@ -442,8 +457,11 @@ Todos POSIX sh puro, zero dependência obrigatória (`realpath` com fallback
   `docs/constitution.md` → aborta, teto 20 níveis).
 - `extract-intent.sh --tasks <tasks.md> [--plan <plan.md>]` — extração
   determinística de paths + origem (§ETAPA 3).
-- `extract-must.sh --constitution <constitution.md>` — princípios
-  `MUST`/`NON-NEGOTIABLE` (§ETAPA 3).
+- `extract-must.sh --constitution <constitution.md> [--coverage]` —
+  princípios `MUST`/`NON-NEGOTIABLE` (§ETAPA 3). Reconhece `**MUST:**` e as
+  formas em bullet (`- MUST:`, `- **MUST:**`, `* MUST NOT:`). `--coverage`
+  reporta quanto do arquivo o parser de fato leu — obrigatório junto com a
+  invocação default (issue #171).
 - `severity.sh --type <t> --priority <p> --must-violated <bool>` — função
   pura de severidade (§5.3).
 - `converge-tasks.sh {next-phase|existing-keys|append-phase|gap-key}` —

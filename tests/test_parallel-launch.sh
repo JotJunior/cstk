@@ -43,8 +43,25 @@ _pl_path_without_tmux() {
   _shim="$TMPDIR_TEST/nobin"
   mkdir -p "$_shim"
   # Comandos externos usados por parallel-launch.sh (git/sed/awk/grep/date/
-  # dirname/basename/mkdir/cat/tr/cut) + os que o harness usa dentro de `capture`
-  # (mktemp/rm/sh/env). `tmux` NUNCA entra nesta lista.
+  # dirname/basename/mkdir/cat/tr/cut/python3) + os que o harness usa dentro de
+  # `capture` (mktemp/rm/sh/env). `tmux` NUNCA entra nesta lista.
+  #
+  # `python3` PRECISA entrar (issue #168): sem ele o shim escondia o sorteio
+  # de porta e os cenarios de composicao degradada passavam a exercitar,
+  # sem dizer, o caminho SEM telemetria — um falso-verde. A ausencia de
+  # python3 tem cenario proprio (_pl_path_without_tmux_nor_python3).
+  for _c in sh env git sed awk grep date dirname basename mkdir rm cat mktemp chmod ln find sort head tail tr wc cut python3; do
+    _p=$(command -v "$_c" 2>/dev/null) || continue
+    [ -e "$_shim/$_c" ] || ln -s "$_p" "$_shim/$_c" 2>/dev/null || :
+  done
+  printf '%s' "$_shim"
+}
+
+# _pl_path_without_tmux_nor_python3: como _pl_path_without_tmux, porem
+# tambem SEM python3 — exercita a degradacao de telemetria (issue #168).
+_pl_path_without_tmux_nor_python3() {
+  _shim="$TMPDIR_TEST/nobin-nopy"
+  mkdir -p "$_shim"
   for _c in sh env git sed awk grep date dirname basename mkdir rm cat mktemp chmod ln find sort head tail tr wc cut; do
     _p=$(command -v "$_c" 2>/dev/null) || continue
     [ -e "$_shim/$_c" ] || ln -s "$_p" "$_shim/$_c" 2>/dev/null || :
@@ -129,7 +146,8 @@ scenario_emit_composicao_degradada_sem_tmux() {
   assert_stdout_contains "cstk session start auth-basica" || return 1
   assert_stdout_not_contains "tmux new-window" || return 1
   assert_stdout_not_contains "tmux split-window" || return 1
-  assert_stdout_contains "cd \"$_repo-auth-basica\" && claude --name \"cstk-feature/auth-basica\" '/feature-00c \"auth-basica\" auth-basica'" || return 1
+  # issue #168: a composicao vem prefixada por `env ...` com a porta da filha.
+  assert_stdout_match "cd \"$_repo-auth-basica\" && env CLAUDE_CODE_ENABLE_TELEMETRY=1 [^ ]* OTEL_EXPORTER_PROMETHEUS_PORT=[0-9]+ [^ ]* claude --name \"cstk-feature/auth-basica\" '/feature-00c \"auth-basica\" auth-basica'" || return 1
 }
 
 scenario_emit_trecho_claude_identico_com_e_sem_tmux() {
@@ -634,6 +652,93 @@ scenario_resolve_offer_saida_e_sempre_duas_linhas_chave_valor() {
         || { _fail "linha 2 fora do formato max=<inteiro> (src=$_src confirm='$_c')" "obtido: $_CAPTURED_STDOUT"; return 1; }
     done
   done
+}
+
+# ==== issue #168: telemetria da filha ====
+
+scenario_emit_prefixa_telemetria_na_composicao() {
+  # O wrapper `claude()` do rc e funcao de shell e NAO alcanca o `sh -c`
+  # nao-interativo do tmux — sem o prefixo `env`, a filha sobe sem
+  # telemetria e o painel mostra custo/tokens como "-".
+  command -v python3 >/dev/null 2>&1 || { _fail "pre-requisito ausente" "python3"; return 2; }
+  _repo="$TMPDIR_TEST/repo-otel"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "env CLAUDE_CODE_ENABLE_TELEMETRY=1" || return 1
+  assert_stdout_contains "OTEL_METRICS_EXPORTER=prometheus" || return 1
+  assert_stdout_match "OTEL_EXPORTER_PROMETHEUS_PORT=[0-9]+" || return 1
+  assert_stdout_match "CSTK_OTEL_ENDPOINT=http://127\.0\.0\.1:[0-9]+/metrics" || return 1
+  # O prefixo precede `claude`, nunca o substitui.
+  assert_stdout_match "/metrics claude --name" || return 1
+}
+
+scenario_emit_porta_distinta_por_filha() {
+  # O exporter OTel vive DENTRO de cada processo `claude`: duas filhas na
+  # mesma porta = uma delas nao mede.
+  command -v python3 >/dev/null 2>&1 || { _fail "pre-requisito ausente" "python3"; return 2; }
+  _repo="$TMPDIR_TEST/repo-portas"
+  mkdir -p "$_repo"
+  capture "$SCRIPT" emit --repo "$_repo" --feature primeira --feature segunda
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  _portas=$(printf '%s' "$_CAPTURED_STDOUT" | grep -oE 'OTEL_EXPORTER_PROMETHEUS_PORT=[0-9]+' | sort)
+  _total=$(printf '%s\n' "$_portas" | grep -c .)
+  _unicas=$(printf '%s\n' "$_portas" | sort -u | grep -c .)
+  [ "$_total" = 2 ] || { _fail "esperava 2 portas" "obtido $_total: $_portas"; return 1; }
+  [ "$_unicas" = 2 ] || { _fail "portas deveriam ser distintas por filha" "$_portas"; return 1; }
+}
+
+scenario_emit_nao_herda_endpoint_da_coordenadora() {
+  # Diferenca deliberada vs cli/lib/telemetry-env.sh: um CSTK_OTEL_ENDPOINT
+  # ja presente e o da SESSAO COORDENADORA. Herda-lo colocaria a filha na
+  # porta da mae. Cada filha precisa da propria.
+  command -v python3 >/dev/null 2>&1 || { _fail "pre-requisito ausente" "python3"; return 2; }
+  _repo="$TMPDIR_TEST/repo-herdado"
+  mkdir -p "$_repo"
+  capture env CSTK_OTEL_ENDPOINT="http://127.0.0.1:9999/metrics" \
+    CLAUDE_CODE_ENABLE_TELEMETRY=1 \
+    "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_match "CSTK_OTEL_ENDPOINT=http://127\.0\.0\.1:[0-9]+/metrics" || return 1
+  assert_stdout_not_contains "127.0.0.1:9999" || return 1
+}
+
+scenario_emit_kill_switch_desliga_telemetria() {
+  _repo="$TMPDIR_TEST/repo-killswitch"
+  mkdir -p "$_repo"
+  capture env CSTK_TELEMETRY_AUTO=0 "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_not_contains "CLAUDE_CODE_ENABLE_TELEMETRY" || return 1
+  assert_stdout_contains "claude --name \"cstk-feature/auth-basica\"" || return 1
+}
+
+scenario_emit_sem_python3_avisa_e_segue_sem_telemetria() {
+  # N filhas por construcao: cair na porta default fixa 9464 seria pior que
+  # nada (so um processo pode usa-la). Avisa e segue sem telemetria.
+  _fake=$(_pl_path_without_tmux_nor_python3)
+  _repo="$TMPDIR_TEST/repo-nopy"
+  mkdir -p "$_repo"
+  _old_path=$PATH
+  PATH="$_fake"
+  capture "$SCRIPT" emit --repo "$_repo" --feature auth-basica
+  PATH=$_old_path
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "$_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stdout_not_contains "CLAUDE_CODE_ENABLE_TELEMETRY" || return 1
+  assert_stdout_not_contains "9464" || return 1
+  assert_stderr_contains "SEM telemetria" || return 1
+  assert_stdout_contains "claude --name \"cstk-feature/auth-basica\"" || return 1
+}
+
+scenario_emit_aviso_de_telemetria_uma_vez_por_invocacao() {
+  _fake=$(_pl_path_without_tmux_nor_python3)
+  _repo="$TMPDIR_TEST/repo-nopy-multi"
+  mkdir -p "$_repo"
+  _old_path=$PATH
+  PATH="$_fake"
+  capture "$SCRIPT" emit --repo "$_repo" --feature primeira --feature segunda
+  PATH=$_old_path
+  _n=$(printf '%s' "$_CAPTURED_STDERR" | grep -c "SEM telemetria" || :)
+  [ "$_n" = 1 ] || { _fail "aviso deveria sair uma unica vez" "n=$_n"; return 1; }
 }
 
 run_all_scenarios

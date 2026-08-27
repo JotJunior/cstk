@@ -32,6 +32,12 @@
 # tmux) comparaveis byte a byte na parte `claude --name ... "..."` — mesma
 # composicao, so envolvida de forma diferente (§4, decisao de desenho).
 #
+# Telemetria (issue #168): a composicao `claude ...` e prefixada por
+# `env CLAUDE_CODE_ENABLE_TELEMETRY=1 ... CSTK_OTEL_ENDPOINT=...` com UMA
+# porta sorteada POR FILHA — sem isso a filha sobe sem telemetria (o wrapper
+# do rc e funcao de shell e nao alcanca `sh -c` nao-interativo do tmux).
+# Kill switch: CSTK_TELEMETRY_AUTO=0. Detalhe em _pl_otel_prefix.
+#
 # Wrapper tmux: SEMPRE `split-window` (pane irmao no window da
 # coordenadora), nunca `new-window`. O prompt da filha e sempre
 # `/feature-00c "<DESCRICAO>" <SHORT>` — formato REAL do command
@@ -84,7 +90,9 @@ Uso: parallel-launch.sh emit --repo PATH --feature SHORT [--description TEXT]
 
 `emit` compoe e IMPRIME (nunca executa) o par de comandos de lancamento de
 cada --feature: `cstk session start <SHORT>` + `tmux split-window ...` (ou a
-forma degradada `cd ... && claude ...` quando tmux esta ausente). Quem
+forma degradada `cd ... && env ... claude ...` quando tmux esta ausente). A
+composicao `claude ...` vem prefixada por `env` com as variaveis de
+telemetria local (porta por filha; desative com CSTK_TELEMETRY_AUTO=0). Quem
 executa e o chamador (command pai) — este script nunca invoca cli/lib/
 session.sh nem qualquer outro comando de efeito colateral.
 
@@ -393,6 +401,70 @@ _pl_flush_pending() {
   _pl_pending_desc=""
 }
 
+# ==== telemetria da filha (issue #168) ====
+#
+# O wrapper de telemetria que `cstk install` oferece e uma FUNCAO de shell
+# `claude()`. A linha emitida aqui e executada por `tmux split-window`, que
+# roda o comando por um `sh -c` NAO-INTERATIVO — o rc nem e lido, a funcao
+# nao existe, e a filha subia sem telemetria (otel_usage null em todas as
+# ondas dela). Prefixamos a composicao com `env VAR=... ` para nao depender
+# de rc, shell nem tmux. `env` (binario real) em vez do prefixo nu
+# `VAR=v cmd` porque tmux pode executar a lista de argumentos sem passar por
+# shell, e nesse caminho o prefixo nu seria tratado como nome de programa.
+#
+# DIFERENCA DELIBERADA em relacao a cli/lib/telemetry-env.sh: la, um
+# CSTK_OTEL_ENDPOINT ja presente no ambiente significa "ja configurado, nao
+# toca", porque o exec SUBSTITUI o processo corrente. Aqui nao: o ambiente
+# corrente e o da SESSAO COORDENADORA, e cada filha precisa da PROPRIA porta
+# (o exporter vive dentro de cada processo `claude`; duas filhas na mesma
+# porta = uma delas nao mede). Herdar o endpoint da coordenadora seria o bug
+# que `cstk setup` ja avisa em outro contexto.
+#
+# Sem porta sorteavel (python3 ausente) NAO caimos na porta default fixa
+# 9464 — ao contrario do lancador de processo unico: aqui ha N filhas por
+# construcao, e todas na mesma porta fixa e pior que nenhuma. Emite aviso e
+# segue sem telemetria.
+#
+# Kill switch: CSTK_TELEMETRY_AUTO=0.
+_PL_OTEL_OK=0
+
+# _pl_otel_check -> decide UMA vez por invocacao de `emit` se ha como ligar
+# telemetria, e avisa (uma unica linha) se nao ha. Precisa rodar FORA de
+# command substitution: `_pl_otel_prefix` e chamado dentro de `$( )`, que e
+# subshell — um flag setado la nao volta, e o aviso sairia uma vez por
+# filha.
+_pl_otel_check() {
+  _PL_OTEL_OK=0
+  case "${CSTK_TELEMETRY_AUTO:-1}" in
+    0|no|NO|off|OFF|false|FALSE) return 0 ;;
+  esac
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%s: telemetria: python3 ausente — nao ha como sortear porta livre; filha(s) lancada(s) SEM telemetria (custo/tokens ficarao "-" no painel). Ver: cstk help telemetry\n' \
+      "$_PL_NAME" >&2
+    return 0
+  fi
+  _PL_OTEL_OK=1
+}
+
+# _pl_otel_prefix -> imprime `env VAR=... ` (com espaco final) ou nada.
+# Uma porta NOVA por chamada (uma por filha).
+_pl_otel_prefix() {
+  [ "$_PL_OTEL_OK" = 1 ] || return 0
+  _plop_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()' 2>/dev/null) || _plop_port=""
+  case "$_plop_port" in
+    ''|*[!0-9]*) _plop_port="" ;;
+  esac
+  if [ -z "$_plop_port" ]; then
+    # python3 existe mas o bind falhou (raro). Avisa por filha afetada — o
+    # stderr do subshell chega ao chamador normalmente.
+    printf '%s: telemetria: falha ao sortear porta livre — esta filha sobe SEM telemetria.\n' \
+      "$_PL_NAME" >&2
+    return 0
+  fi
+  printf 'env CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_METRICS_EXPORTER=prometheus OTEL_EXPORTER_PROMETHEUS_PORT=%s CSTK_OTEL_ENDPOINT=http://127.0.0.1:%s/metrics ' \
+    "$_plop_port" "$_plop_port"
+}
+
 # ==== emit ====
 
 _pl_cmd_emit() {
@@ -441,6 +513,11 @@ _pl_cmd_emit() {
 
   [ -n "$_pl_repo" ] || { printf '%s: --repo obrigatorio\n' "$_PL_NAME" >&2; exit 2; }
   [ "$_pl_n_features" -ge 1 ] || { printf '%s: pelo menos um --feature obrigatorio\n' "$_PL_NAME" >&2; exit 2; }
+
+  # Decide uma unica vez se ha telemetria (e avisa, uma linha so, se nao ha).
+  # Depois da validacao de argumentos: erro de uso nao deve vir precedido de
+  # aviso de telemetria.
+  _pl_otel_check
 
   # Default do roadmap: <repo>/docs/roadmap.md (contract §4.1a). Ausente =>
   # nenhuma descricao vinda do roadmap, NUNCA erro. `--roadmap` explicito
@@ -525,7 +602,12 @@ _pl_cmd_emit() {
     # crase, `\`, `$` e demais metacaracteres (§4.1).
     _pl_desc=$(_pl_resolve_desc "$_pl_short" "$_pl_desc_raw")
     _pl_prompt=$(printf "'/feature-00c \"%s\" %s'" "$_pl_desc" "$_pl_short")
-    _pl_claude_argv=$(printf 'claude --name "%s" %s' "$_pl_child" "$_pl_prompt")
+    # Prefixo de telemetria: UMA porta por filha (issue #168). Fica FORA do
+    # trecho comparado byte a byte entre os dois caminhos (a comparacao
+    # comeca em `claude --name`), justamente porque a porta e por-filha e
+    # nao poderia ser identica entre duas invocacoes.
+    _pl_claude_argv=$(printf '%sclaude --name "%s" %s' \
+      "$(_pl_otel_prefix)" "$_pl_child" "$_pl_prompt")
 
     _pl_line1=$(printf 'cstk session start %s' "$_pl_short")
     if $_pl_have_tmux; then

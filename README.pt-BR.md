@@ -500,8 +500,19 @@ Zero configuração por sessão: cada `claude` que você digita ganha um exporte
 isolado e uma medição isolada. De bônus, o guard "exatamente uma sessão
 cresceu" do delta passa a ver só as sessões daquele processo — os descartes
 por ambiguidade (`null` por sessões concorrentes) praticamente desaparecem.
-O wrapper só cobre processos lançados do seu shell — o que nascer por fora
-(IDE, app desktop) continua na porta default fixa.
+
+> **O wrapper só cobre o `claude` DIGITADO no seu shell.** Ele é uma *função*
+> de shell, e `exec` nunca resolve função — então, até a v9.4.0, toda sessão
+> iniciada por `cstk session start --claude`, `cstk 00c` ou pela leva
+> paralela do roadmap rodava com telemetria **nenhuma**, que é exatamente o
+> que a issue #168 mediu. Desde a v9.4.0 esses três lançadores ligam as
+> variáveis por conta própria (uma porta sorteada por processo), sem depender
+> do seu rc, do seu shell nem do tmux — e o mesmo vale para quem instala pelo
+> plugin nativo, que não provisiona wrapper algum. Desligue com
+> `CSTK_TELEMETRY_AUTO=0`; um `CSTK_OTEL_ENDPOINT` ou
+> `CLAUDE_CODE_ENABLE_TELEMETRY` já presente no ambiente também vence. O que
+> nascer fora dos dois caminhos (IDE, app desktop) continua na porta default
+> fixa.
 
 Diagnóstico rápido quando o painel não mostra custo em onda nenhuma: veja
 quem é o dono da porta e se o diretório de trabalho dele é mesmo o projeto
