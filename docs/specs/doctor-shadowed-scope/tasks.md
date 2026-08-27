@@ -38,15 +38,15 @@ nunca em escolher um numero sozinho (Constitution VI). As subtarefas 1.3.2
 e 1.3.4 (teto de consumo) e a linha 14/15 do Cenario 19 do quickstart
 dependem desta tarefa.
 
-- [ ] 1.1.1 Verificar se ha bloqueio humano/resposta do operador para o
+- [x] 1.1.1 Verificar se ha bloqueio humano/resposta do operador para o
   CHK034: "O teto numerico de R5 (10.000 linhas / 4.096 bytes por linha) e
   adequado ao apetite de risco do operador para o pior caso plausivel
   (repo hostil clonado + `cstk doctor` executado sem `--scope`), ou
   deveria ser configuravel/revisitado conforme uso real do toolkit?"
-- [ ] 1.1.2 Se a resposta AINDA NAO chegou quando `/execute-task`
+- [x] 1.1.2 Se a resposta AINDA NAO chegou quando `/execute-task`
   alcancar esta tarefa: registrar bloqueio humano citando o CHK034
   literal e PARAR — nao prosseguir para 1.3 com um numero suposto
-- [ ] 1.1.3 Se a resposta ja existe: registrar Decisao auditavel com o
+- [x] 1.1.3 Se a resposta ja existe: registrar Decisao auditavel com o
   valor confirmado (manter 10.000 linhas / 4.096 bytes, outro teto, ou
   torna-lo configuravel) e liberar 1.3
 
@@ -54,16 +54,16 @@ dependem desta tarefa.
 
 Ref: plan.md §Project Structure; contrato §5; contrato §7 R1/R3.
 
-- [ ] 1.2.1 Criar `cli/lib/manifest-coverage.sh` sourceable (sem
+- [x] 1.2.1 Criar `cli/lib/manifest-coverage.sh` sourceable (sem
   side-effect ao source), seguindo o cabecalho POSIX sh padrao ja usado
   por `cli/lib/hash.sh`/`cli/lib/common.sh`
-- [ ] 1.2.2 Implementar `manifest_name_is_safe <name>`: casa
+- [x] 1.2.2 Implementar `manifest_name_is_safe <name>`: casa
   `^[A-Za-z0-9._-]+$`, rejeita `..`, `/`, `\`, `-` inicial, vazio e
   comprimento > 64 — gate obrigatorio antes de qualquer uso do valor
   como componente de path (R1)
-- [ ] 1.2.3 Implementar `manifest_scrub_text <valor>`: remove bytes de
+- [x] 1.2.3 Implementar `manifest_scrub_text <valor>`: remove bytes de
   controle C0/DEL, trunca a 64 caracteres, emite em stdout (R3)
-- [ ] 1.2.4 Criar `tests/cstk/test_manifest-coverage.sh` cobrindo
+- [x] 1.2.4 Criar `tests/cstk/test_manifest-coverage.sh` cobrindo
   `manifest_name_is_safe` e `manifest_scrub_text`: casos validos +
   adversariais (traversal `../../../.ssh/known_hosts`, `/`, `\`, `-`
   inicial, vazio, 500 chars, ESC/`\r`/`\b` embutidos — Cenarios 9.a/9.c)
@@ -72,17 +72,17 @@ Ref: plan.md §Project Structure; contrato §5; contrato §7 R1/R3.
 
 Ref: contrato §5, §7 R4/R5. Bloqueada por 1.1 (valor do teto).
 
-- [ ] 1.3.1 Implementar `manifest_record_is_valid <line>`: exatamente 4
+- [x] 1.3.1 Implementar `manifest_record_is_valid <line>`: exatamente 4
   campos TAB, campos 1-3 nao vazios, campo 3 casa `^[0-9a-f]{64}$`,
   campo 1 aprovado por `manifest_name_is_safe`, `\r` terminal removido
   antes de validar
-- [ ] 1.3.2 Impor o teto de linhas/bytes por **leitura limitada** (nunca
+- [x] 1.3.2 Impor o teto de linhas/bytes por **leitura limitada** (nunca
   checagem de comprimento a posteriori — nota normativa do contrato §7),
   usando o valor confirmado em 1.1.3; BLOQUEADA ate 1.1 resolver
-- [ ] 1.3.3 Implementar o laco de iteracao de linhas do manifesto sob
+- [x] 1.3.3 Implementar o laco de iteracao de linhas do manifesto sob
   `set -f` (restaurado ao sair) — precedente literal `cli/lib/recall.sh
   fts_query_escape()` (R4)
-- [ ] 1.3.4 Estender `tests/cstk/test_manifest-coverage.sh`: linha de
+- [x] 1.3.4 Estender `tests/cstk/test_manifest-coverage.sh`: linha de
   dados contendo `*` (Cenario 9.d — exatamente 1 iteracao, sem inflar o
   numerador), manifesto com 10.001 linhas e registro unico de 50 MB sem
   `\n` (Cenario 19 linhas 14/15 — teto imposto por leitura limitada, nao
@@ -92,13 +92,13 @@ Ref: contrato §5, §7 R4/R5. Bloqueada por 1.1 (valor do teto).
 
 Ref: contrato §5; research.md D6; quickstart Cenario 9.
 
-- [ ] 1.4.1 Implementar `manifest_count_data_lines <path>`: linha nao
+- [x] 1.4.1 Implementar `manifest_count_data_lines <path>`: linha nao
   vazia, nao inicia com `#`, robusta a ausencia de newline final no
   ultimo registro; arquivo ausente ⇒ `0`, exit 0
-- [ ] 1.4.2 Estender `tests/cstk/test_manifest-coverage.sh` com o caso
+- [x] 1.4.2 Estender `tests/cstk/test_manifest-coverage.sh` com o caso
   medido do Cenario 9 (`printf 'a\tb\tc\td'` sem `\n` final deve contar
   1, nao 0 como `grep -cv -e '^[[:space:]]*$' -e '^#'` daria)
-- [ ] 1.4.3 Confirmar que comentarios (`#`) e linhas em branco no MEIO do
+- [x] 1.4.3 Confirmar que comentarios (`#`) e linhas em branco no MEIO do
   arquivo tambem sao excluidos do denominador — nao so o ultimo registro
   sem newline (Cenario 9 cobre a borda; este caso cobre o meio do
   arquivo)
@@ -107,14 +107,14 @@ Ref: contrato §5; research.md D6; quickstart Cenario 9.
 
 Ref: contrato §3.4; §5.
 
-- [ ] 1.5.1 Implementar `manifest_coverage_line <path> <D> <N> <state>`
+- [x] 1.5.1 Implementar `manifest_coverage_line <path> <D> <N> <state>`
   formatando a linha de cobertura por fonte para os 5 `coverage_state`
   (`full`/`partial`/`unreadable`/`inconsistent`/`absent`), incluindo os
   campos `?`/`?` no caso `unreadable`
-- [ ] 1.5.2 Estender `tests/cstk/test_manifest-coverage.sh` cobrindo os 5
+- [x] 1.5.2 Estender `tests/cstk/test_manifest-coverage.sh` cobrindo os 5
   `coverage_state` do formatador, inclusive a nota "reporte este caso" em
   `inconsistent`
-- [ ] 1.5.3 Confirmar que a nota "reporte este caso" so aparece em
+- [x] 1.5.3 Confirmar que a nota "reporte este caso" so aparece em
   `inconsistent` — os demais 4 estados NUNCA a incluem (regressao de
   mensagem cruzada entre estados)
 
