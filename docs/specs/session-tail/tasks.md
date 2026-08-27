@@ -694,3 +694,64 @@ flowchart TD
 | Autenticacao real | Login/token nas rotas novas | Painel roda em localhost, sem auth em nenhuma rota existente (Constitution Check) |
 | Numero concreto do `refetchInterval` da trilha ao vivo (CHK038) | Intervalo mais curto que os 10s globais | Sem fonte/decisao do produto; tarefa 6.1.2 reusa o default global existente e deixa o ajuste fino como gap aberto, nao inventa o numero |
 | Persistencia do indice de sessoes | Guardar o indice em disco/banco | plan.md fixa indice **volatil em memoria**; persistir seria introduzir storage novo sem justificativa (fora do Constitution Check aprovado) |
+
+## FASE 8 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 8.1 Roundtrip Zod de `sessions` sem teste committado (regressao anti-drift) `[C]`
+
+Ref: task 7.1.1/7.1.2 (`tasks.md` FASE 7) · tipo: `partial` · severidade: `HIGH`
+
+Task 7.1.2 documenta que o payload REAL de `GET /sessions` e
+`GET /sessions/:id/tail` foi capturado contra um servidor real e parseado
+com sucesso pelos schemas Zod de produção
+(`ApiEnvelopeSchema`/`SessionSummaryDTOSchema`/`SessionTailEntryDTOSchema`
+de `packages/shared-types`) — a validação em si foi executada de fato, não
+é uma alegação vazia. Porém o script Node que fez esse parse foi ad-hoc
+(rodado manualmente na onda-018) e **não foi commitado**: o commit
+`dbafea9` desta onda tocou apenas `docs/specs/session-tail/tasks.md`.
+Confirmado por leitura direta do repositório:
+- `apps/server/test/lib/roundtrip.test.ts` e
+  `apps/server/test/integration/docs-roundtrip.test.ts` são de features
+  ANTERIORES e nenhum dos dois menciona `sessions` (`grep -l sessions`
+  nos dois arquivos não retornou nada);
+- `apps/server/test/routes/sessions.test.ts` não importa nenhum schema de
+  `@cstk-panel/shared-types` nem chama `safeParse` em nenhum ponto (seus
+  imports são só `vitest`/`fastify`/`node:fs`/`node:os`/`node:path` e as
+  rotas locais).
+
+Consequência: a proteção contra o drift `snake_case`/`camelCase` que já
+sobreviveu 40 ondas neste repo (quickstart.md Scenario 9 cita esse
+histórico explicitamente) não tem guarda automatizada para os DTOs de
+`sessions` — qualquer alteração futura no DTO ou na rota pode reintroduzir
+o drift com a suíte inteira continuando verde, porque nenhum teste
+committado compara o payload real contra o contrato Zod declarado.
+
+Completar esta lacuna é estritamente aditivo (só ADICIONAR um teste novo,
+sem tocar em nenhuma lógica já existente) — por isso `partial`, não
+`missing`: a validação subjacente já foi feita e passou, falta apenas
+torná-la repetível/committada.
+
+- [ ] 8.1.1 Criar um teste committado (ex.
+      `apps/server/test/integration/sessions-roundtrip.test.ts`) que suba o
+      app real (mesmo padrão de `roundtrip.test.ts`/`docs-roundtrip.test.ts`
+      já existentes neste repo), faça requisição real às duas rotas
+      (`GET /sessions` e `GET /sessions/:id/tail`) contra uma fixture de
+      dados ISOLADA (nunca `~/.claude/projects` real), e parseie a resposta
+      com o schema Zod COMPARTILHADO de
+      `packages/shared-types/src/schemas/entities.ts` (nunca fixture escrita
+      à mão comparada por igualdade, nunca type assertion, nunca cópia local
+      do schema — uma fixture escrita para casar nunca falha e não prova
+      nada). Cobrir caminho feliz e ao menos um cenário degradado (ex.:
+      `sessionId` inexistente/rejeitado). Asserção explícita de que nenhum
+      campo do payload parseado contém a substring `"[object Promise]"`.
+
+<!-- converge-key: f09731b27d4f -->
