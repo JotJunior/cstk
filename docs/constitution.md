@@ -1,4 +1,53 @@
 <!--
+Sync Impact Report (emenda 2026-08-26)
+- Version: 1.3.0 → 2.0.0
+- Bump rationale: MAJOR — redefinicao incompativel do Principio I. A regra
+  original proibia QUALQUER escrita no painel ("MUST NOT: existir formulario
+  de mutacao, endpoint nao-`GET`, ou rota que altere dado"). A feature
+  `human-bridge` introduz uma superficie de escrita deliberada: o painel passa
+  a responder perguntas que uma sessao do Claude Code parou para esperar
+  (gates de PreToolUse, decisoes de clarify, validacao de dados do
+  Principio VI). Nenhum consumidor do principio antigo permanece valido sem
+  releitura — logo MAJOR, nao MINOR.
+  O que NAO mudou: o corpus derivado segue intocavel. `knowledge.db` continua
+  aberta em `mode=ro&immutable=1`; `state.json` e o indice do `cstk recall`
+  continuam com dono fora do painel (Principio IV). A escrita nova e confinada
+  a um store proprio (`bridge.db`), que nao e corpus, nao e lido por
+  `cstk recall` e nao e reconstruido por `--reindex`.
+  Fronteira que a emenda estabelece: o painel TRANSPORTA a resposta humana ate
+  o agente; nunca a persiste como verdade. O registro canonico
+  (`record_decision`, `register_human_block`) continua sendo feito pelo agente,
+  do lado do cstk. Sem essa clausula a emenda criaria um segundo autor de
+  estado — exatamente o que o Principio I existia para impedir.
+- Autorizacao: operador humano, 2026-08-26, em resposta ao levantamento de
+  viabilidade da Ponte — escolha explicita "emendar agora, tocar tudo".
+- Principios afetados:
+  - I. Read-Only Absoluto → I. Read-Only sobre o Corpus (REDEFINIDO)
+  - IV. Nao Reimplementar o que Tem Dono (contexto novo: `elicitation/create`
+    tem dono no cstk, spec `mcp-elicitation-optins`; a Ponte NAO o
+    reimplementa — cobre o caso que elicitation nao alcanca, que e responder
+    fora do cliente MCP)
+  - V. Conteudo de Agente e UNTRUSTED (inalterado; passa a cobrir tambem o
+    texto das perguntas e o tail de transcript `.jsonl`)
+- Artefatos a atualizar (nenhum implementado nesta emenda):
+  - docs/specs/human-bridge/{spec,plan,tasks}.md (a criar)
+  - apps/server/src/routes/bridge/* (a criar — unica area nao-`GET`)
+  - apps/server/src/db/bridge.ts (a criar — store proprio, conexao rw)
+  - apps/web/src/screens/Interventions.tsx (a criar)
+  - CLAUDE.md (ausente hoje; SHOULD criar refletindo a fronteira corpus x bridge)
+  - package.json, script `lint:readonly-check` — gate automatizado do
+    Principio I. Hoje varre `apps/server/src` INTEIRO por verbos de mutacao;
+    a clausula Testavel desta emenda restringe a varredura a
+    `apps/server/src/db/queries/**` e exige, em contrapartida, duas
+    verificacoes novas (unica conexao rw aponta para `bridge.db`; toda rota
+    fora de `/api/v1/bridge/*` responde so a `GET`). Enquanto o script nao
+    for atualizado ele permanece MAIS restritivo que a constituicao — falha
+    fechada, segura, mas reprovaria o primeiro commit da Ponte. Atualizar
+    JUNTO com o primeiro codigo de `bridge/`, nunca antes (o gate nao pode
+    afrouxar enquanto nao existe o que ele passa a permitir).
+- Artefatos que permanecem validos sem mudanca: Principios II, III, VI e a
+  secao Padroes de Seguranca e Qualidade.
+
 Sync Impact Report (emenda 2026-08-10)
 - Version: 1.2.0 → 1.3.0
 - Bump rationale: MINOR — terceira expansao material do Principio III, mesmo
@@ -118,22 +167,47 @@ Sync Impact Report (ratificacao inicial)
 
 ## Core Principles
 
-### I. Read-Only Absoluto (NON-NEGOTIABLE)
+### I. Read-Only sobre o Corpus (NON-NEGOTIABLE)
 
-O painel e seu back-end **APENAS observam**. Nenhum caminho de codigo emite
-`INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP` ou qualquer mutacao.
+O painel e seu back-end **nao mutam o corpus derivado**. Nenhum caminho de
+codigo emite `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP` ou qualquer
+mutacao sobre a `knowledge.db`.
 
-- MUST: a conexao SQLite e aberta com `mode=ro&immutable=1`
+- MUST: a conexao com a `knowledge.db` e aberta com `mode=ro&immutable=1`
   (DSN: `file:/abs/path/knowledge.db?mode=ro&immutable=1&_busy_timeout=5000`).
 - MUST NOT: tocar `state.json` (fonte da verdade transacional) nem
   reconstruir o indice (`cstk recall --reindex` tem dono fora do painel).
 - MUST NOT: existir formulario de mutacao, endpoint nao-`GET`, ou rota que
-  altere dado. A superficie de API e exclusivamente `GET /api/v1/*`.
+  altere dado **fora de `/api/v1/bridge/*`**. Toda a superficie de leitura do
+  corpus permanece exclusivamente `GET /api/v1/*`.
 
-**Why**: o painel e um consumidor derivado. Qualquer escrita corromperia a
+**A excecao da Ponte** (feature `human-bridge`) — unica escrita autorizada:
+
+- MUST: a escrita e confinada a um store proprio (`bridge.db`), em conexao
+  SEPARADA e read-write. `bridge.db` NAO e corpus: nao e lido por
+  `cstk recall`, nao e reconstruido por `--reindex`, e sua perda degrada a
+  Ponte sem afetar nenhuma tela de observabilidade (Principio II).
+- MUST: rotas nao-`GET` existem apenas sob `/api/v1/bridge/*`.
+- MUST NOT: a Ponte gravar decisao, bloqueio, onda ou qualquer estado de
+  execucao no corpus. O registro canonico (`record_decision`,
+  `register_human_block`) e feito pelo **agente**, do lado do cstk, ao
+  receber a resposta. O painel entrega a resposta; nunca a persiste como
+  verdade.
+- MUST: toda resposta e roteada por `session_id`, nunca por `execution_id` —
+  `execution_id` nao e unico entre projetos, e rotear por ele entrega a
+  resposta a sessao errada. Alinhado a regra A-4 de
+  `mcp-direct-transport/contracts/server-session-resolution.md`.
+
+**Why**: o painel e um consumidor derivado. Escrever no corpus corromperia a
 separacao fonte-da-verdade ↔ indice e violaria o contrato com `cstk recall`.
-**Testavel**: grep do codebase por verbos de mutacao SQL retorna zero
-ocorrencias em caminhos de dados; toda rota HTTP responde a `GET`.
+A Ponte nao rompe essa separacao porque nao escreve no corpus: ela transporta
+uma resposta humana ate o agente, que segue sendo o unico autor do estado.
+
+**Testavel**:
+- grep por verbos de mutacao SQL em `apps/server/src/db/queries/**` retorna
+  zero ocorrencias;
+- a unica conexao read-write do processo aponta para `bridge.db`;
+- toda rota fora de `/api/v1/bridge/*` responde exclusivamente a `GET`.
 
 ### II. Degradar, Nunca Quebrar
 
@@ -394,4 +468,4 @@ dele e regressao de produto, nao liberdade de implementacao.
   rationale; uma violacao de MUST/NON-NEGOTIABLE invalida o artefato ate
   ser corrigida ou a constituicao ser emendada via SemVer.
 
-**Version**: 1.3.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-08-10
+**Version**: 2.0.0 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-08-26
