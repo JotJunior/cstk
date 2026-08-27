@@ -273,3 +273,63 @@ export async function scrubTranscriptText(
     return { text: scrubTextInternal(rawText), scrubMode: 'internal' };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Batch — UM subprocesso por requisicao, nunca um por item (task 3.3/3.4)
+// ---------------------------------------------------------------------------
+
+export interface ScrubBatchResult {
+  /** Mesma ordem/contagem da lista de entrada — 1:1 garantido mesmo no
+   *  caminho defensivo de fallback (ver abaixo). */
+  texts: string[];
+  /** Modo agregado do lote: 'cstk+internal' somente se TODOS os itens
+   *  passaram pelo passo 1 com sucesso; qualquer degradacao reporta
+   *  'internal' (nunca superestima a cobertura obtida). */
+  scrubMode: ScrubMode;
+}
+
+/**
+ * Marcador de fronteira usado para unir varios textos em UMA UNICA
+ * invocacao do subprocesso (plan.md §Custo e mitigacao — "um spawn por
+ * requisicao de tail", nunca um spawn por entrada/sessao). NUL bytes +
+ * string fixa: nenhum padrao de segredo dos dois passos da cadeia casa
+ * ou remove esta sequencia, e a chance de colisao com conteudo real e
+ * desprezivel; ainda assim ha fallback defensivo abaixo caso colida.
+ */
+const BATCH_JOIN_MARKER = '  CSTK-SCRUB-BATCH-BOUNDARY  ';
+
+/**
+ * Aplica a cadeia de scrub (`scrubTranscriptText`) a uma LISTA de textos
+ * com uma unica invocacao de subprocesso, unindo-os por `BATCH_JOIN_MARKER`
+ * e desfazendo a juncao apos o scrub. Preserva 1:1 a ordem/contagem da
+ * entrada.
+ *
+ * Defesa (nunca deveria ocorrer): se a contagem de pedacos apos o split
+ * nao bater com a contagem original de textos, cai para scrub INDIVIDUAL
+ * por item (mais spawns somente neste caminho defensivo) — em nenhum caso
+ * um texto e devolvido sem ter passado pela cadeia de scrub (Principio II).
+ */
+export async function scrubTextBatch(
+  texts: string[],
+  options: ScrubChainOptions = {}
+): Promise<ScrubBatchResult> {
+  if (texts.length === 0) return { texts: [], scrubMode: 'internal' };
+  if (texts.length === 1) {
+    const r = await scrubTranscriptText(texts[0]!, options);
+    return { texts: [r.text], scrubMode: r.scrubMode };
+  }
+
+  const joined = texts.join(BATCH_JOIN_MARKER);
+  const joinedResult = await scrubTranscriptText(joined, options);
+  const parts = joinedResult.text.split(BATCH_JOIN_MARKER);
+  if (parts.length === texts.length) {
+    return { texts: parts, scrubMode: joinedResult.scrubMode };
+  }
+
+  // Fallback defensivo — marcador nao sobreviveu 1:1 (nao deveria ocorrer).
+  const perItem = await Promise.all(texts.map((t) => scrubTranscriptText(t, options)));
+  const scrubMode: ScrubMode = perItem.every((r) => r.scrubMode === 'cstk+internal')
+    ? 'cstk+internal'
+    : 'internal';
+  return { texts: perItem.map((r) => r.text), scrubMode };
+}

@@ -18,6 +18,14 @@
  * ROTEAMENTO (`GET /sessions/:sessionId/tail`) permanece responsabilidade do
  * indice em memoria do watcher (task 0.1/FASE 4) que consome este modulo —
  * este arquivo apenas produz os metadados brutos por ciclo de varredura.
+ *
+ * Scrub (task 3.4): `projectPath` (`.cwd` do transcript) e `projectSlug`
+ * (nome de diretorio) sao texto derivado do transcript tanto quanto
+ * `entries[].text` da rota de tail — a cobertura de scrub e "por origem
+ * do dado, nao por rota" (plan.md §Superficie coberta). Os dois campos
+ * passam pela MESMA cadeia (`scrubTextBatch`, `secret-scrub.ts`), em lote
+ * (uma unica invocacao de subprocesso por varredura), antes de `scanSessions`
+ * devolver o resultado.
  */
 import {
   closeSync,
@@ -32,6 +40,7 @@ import {
 import { join } from 'node:path';
 import type { SessionSummaryDTO } from '@cstk-panel/shared-types';
 import { isValidSessionId, normalizeSessionId, resolveSessionsRootCandidate } from './sessions-root.js';
+import { scrubTextBatch } from './secret-scrub.js';
 
 /** Janela de liveness (Decision 6, SC-004) — 5 minutos. */
 export const DEFAULT_LIVE_WINDOW_MS = 300_000;
@@ -155,6 +164,43 @@ function scanProjectDir(
 }
 
 /**
+ * Aplica a cadeia de scrub a `projectPath`/`projectSlug` de TODAS as
+ * sessoes em UMA UNICA invocacao de subprocesso (`scrubTextBatch`, task
+ * 3.4 — mesma logica de "um spawn por requisicao" de `session-tail.ts`).
+ * `projectPath` pode ser `null` (sem `.cwd` encontrado) — nesse caso o
+ * campo fica de fora do lote, sem entrada correspondente para escrubar.
+ */
+async function scrubSessionSummaries(raw: SessionSummaryDTO[]): Promise<SessionSummaryDTO[]> {
+  if (raw.length === 0) return raw;
+
+  // Um par (path?, slug) por sessao, na mesma ordem — permite mapear de
+  // volta 1:1 apos o scrub em lote. `path` e omitido do lote quando null.
+  const texts: string[] = [];
+  const pathIndexBySession = new Map<number, number>(); // sessionIndex -> posicao em `texts`
+  const slugIndexBySession = new Map<number, number>();
+  raw.forEach((session, sessionIndex) => {
+    if (session.projectPath !== null) {
+      pathIndexBySession.set(sessionIndex, texts.length);
+      texts.push(session.projectPath);
+    }
+    slugIndexBySession.set(sessionIndex, texts.length);
+    texts.push(session.projectSlug);
+  });
+
+  const { texts: scrubbedTexts } = await scrubTextBatch(texts);
+
+  return raw.map((session, sessionIndex) => {
+    const pathIdx = pathIndexBySession.get(sessionIndex);
+    const slugIdx = slugIndexBySession.get(sessionIndex)!;
+    return {
+      ...session,
+      projectPath: pathIdx !== undefined ? scrubbedTexts[pathIdx]! : null,
+      projectSlug: scrubbedTexts[slugIdx]!,
+    };
+  });
+}
+
+/**
  * Varre `CSTK_SESSIONS_ROOT` (ou default `~/.claude/projects`) e retorna os
  * metadados de todas as sessoes descobertas (FR-001, FR-002, FR-007).
  *
@@ -165,9 +211,10 @@ function scanProjectDir(
  *     `sessions-root-unreadable`;
  *   - raiz presente e vazia -> **nao-degradada**, `sessions: []`.
  *
- * Nunca lanca.
+ * Nunca lanca. Async desde a task 3.4 (scrub de `projectPath`/`projectSlug`
+ * pode invocar um subprocesso) — todo chamador MUST `await`.
  */
-export function scanSessions(): SessionScanResult {
+export async function scanSessions(): Promise<SessionScanResult> {
   const candidate = resolveSessionsRootCandidate();
 
   if (!existsSync(candidate)) {
@@ -206,5 +253,5 @@ export function scanSessions(): SessionScanResult {
     sessions.push(...scanProjectDir(resolvedRoot, entry.name, liveWindowMs, nowMs));
   }
 
-  return { degraded: false, sessions };
+  return { degraded: false, sessions: await scrubSessionSummaries(sessions) };
 }

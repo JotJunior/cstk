@@ -5,25 +5,29 @@
  * contracts/sessions-api.md GET /sessions/:sessionId/tail, tasks.md FASE 2
  * (2.3).
  *
- * Escopo desta task: SOMENTE a mecanica de leitura + parse + normalizacao
- * de uma janela de linhas. NAO inclui: resolucao/confinamento de path
- * (`sessions-root.ts`, task 2.1 — o `confinedPath` recebido aqui JA foi
- * validado la), cadeia de scrub de segredos (FASE 3) nem composicao do
- * envelope HTTP (FASE 5, `sessionId`/`live`/`scrubMode` sao adicionados
- * pela rota).
+ * Escopo desta task: a mecanica de leitura + parse + normalizacao de uma
+ * janela de linhas, agora com o WIRING da cadeia de scrub (task 3.3 —
+ * `scrubTextBatch`, de `secret-scrub.ts`) entre o parse e o truncamento.
+ * NAO inclui: resolucao/confinamento de path (`sessions-root.ts`, task
+ * 2.1 — o `confinedPath` recebido aqui JA foi validado la), o ALGORITMO
+ * de scrub em si (`secret-scrub.ts`) nem composicao do envelope HTTP
+ * (FASE 5, `sessionId`/`live`/`scrubMode` sao adicionados pela rota).
  *
- * Ordem scrub-vs-truncamento (Decision 9, achado MEDIUM de plan.md): as
- * entradas devolvidas aqui ja vem RECORTADAS (janela de bytes do disco +
- * teto de linhas + orcamento de bytes da resposta + teto por entrada), de
- * proposito, para que a cadeia de scrub (task 3.3) rode sobre o recorte e
- * nunca sobre o arquivo inteiro. A task 3.3 e quem vai inserir o scrub
- * ANTES do corte de `textTruncated` implementado aqui (nunca truncar um
- * segredo pela metade antes de redigir) — esta task apenas garante que a
- * interface nao force uma ordem que impeca essa insercao futura.
+ * Ordem scrub-vs-truncamento (Decision 9, achado MEDIUM de plan.md, task
+ * 3.3): a cadeia de scrub (`secret-scrub.ts`) roda ANTES do corte de
+ * `textTruncated` implementado aqui — nunca truncar um segredo pela
+ * metade antes de redigir. As entradas ja vem RECORTADAS por janela de
+ * bytes do disco (`TAIL_READ_WINDOW_BYTES`) antes de chegar ao scrub, para
+ * que a entrada do subprocesso seja limitada pela janela de leitura
+ * (FR-006), nunca pelo arquivo inteiro (plan.md §Custo e mitigacao). Todas
+ * as entradas parseadas da janela sao escrubadas em UMA UNICA invocacao de
+ * subprocesso (`scrubTextBatch`, "um spawn por requisicao de tail"), e so
+ * DEPOIS truncadas individualmente pelo teto por entrada.
  */
 import { statSync } from 'node:fs';
 import type { SessionTailEntryDTO } from '@cstk-panel/shared-types';
 import { readConfinedSessionFile } from './sessions-root.js';
+import { scrubTextBatch } from './secret-scrub.js';
 
 /**
  * Decision 8 (research.md) — janela maxima lida do disco a partir do fim do
@@ -106,9 +110,11 @@ function flattenContent(content: unknown): string {
 }
 
 /**
- * Aplica o teto por entrada (Decision 9). Nesta task roda sobre o texto
- * CRU (o scrub ainda nao existe — sera inserido ANTES deste corte pela
- * task 3.3, nunca depois — ver comentario de topo do arquivo).
+ * Aplica o teto por entrada (Decision 9). Task 3.3: roda SEMPRE sobre
+ * texto **ja escrubado** (o chamador — `readSessionTail` — garante a
+ * ordem: scrub em lote primeiro, este corte depois; nunca truncar um
+ * segredo pela metade antes de redigir — ver comentario de topo do
+ * arquivo). `[REDACTED]` conta para o teto, tal como o restante do texto.
  */
 function truncateEntryText(text: string): { text: string; textTruncated: boolean } {
   const buf = Buffer.from(text, 'utf8');
@@ -118,15 +124,27 @@ function truncateEntryText(text: string): { text: string; textTruncated: boolean
   return { text: buf.subarray(0, ENTRY_TEXT_MAX_BYTES).toString('utf8'), textTruncated: true };
 }
 
+/** Rascunho de UMA linha `.jsonl` ja parseada, ANTES do scrub/truncamento. */
+interface ParsedLineDraft {
+  uuid: string | null;
+  type: string;
+  timestamp: string | null;
+  role: string | null;
+  rawText: string;
+}
+
 /**
- * Normaliza UMA linha `.jsonl` ja parseada em `SessionTailEntryDTO`.
- * Conversao explicita de forma para camelCase acontece aqui — unico lugar
- * de normalizacao (plan.md §Convencoes de Borda): a fonte contem
- * `sessionId` **e** `session_id` no mesmo arquivo, mas nenhum dos dois e
- * lido aqui (o `sessionId` do DTO de resposta e eco do parametro de rota,
- * FASE 5 — nunca extraido do conteudo da linha, FR-004).
+ * Extrai os campos de UMA linha `.jsonl` ja parseada, achatando
+ * `.message.content` em `rawText` — SEM aplicar scrub nem truncamento
+ * (task 3.3: as duas etapas rodam depois, em lote, sobre todas as
+ * entradas da janela). Conversao explicita de forma para camelCase
+ * acontece aqui — unico lugar de normalizacao (plan.md §Convencoes de
+ * Borda): a fonte contem `sessionId` **e** `session_id` no mesmo arquivo,
+ * mas nenhum dos dois e lido aqui (o `sessionId` do DTO de resposta e eco
+ * do parametro de rota, FASE 5 — nunca extraido do conteudo da linha,
+ * FR-004).
  */
-function normalizeLine(parsed: Record<string, unknown>): SessionTailEntryDTO {
+function parseLineDraft(parsed: Record<string, unknown>): ParsedLineDraft {
   const uuid = typeof parsed['uuid'] === 'string' ? (parsed['uuid'] as string) : null;
   const type = typeof parsed['type'] === 'string' ? (parsed['type'] as string) : '';
   const timestamp = typeof parsed['timestamp'] === 'string' ? (parsed['timestamp'] as string) : null;
@@ -139,9 +157,21 @@ function normalizeLine(parsed: Record<string, unknown>): SessionTailEntryDTO {
       : null;
   const rawContent = hasMessage ? (message as { content?: unknown }).content : undefined;
 
-  const { text, textTruncated } = truncateEntryText(flattenContent(rawContent));
+  return { uuid, type, timestamp, role, rawText: flattenContent(rawContent) };
+}
 
-  return { uuid, type, timestamp, role, text, textTruncated };
+/**
+ * Aplica a cadeia de scrub a TODOS os rascunhos da janela em UMA UNICA
+ * invocacao de subprocesso (`scrubTextBatch` — "um spawn por requisicao
+ * de tail", plan.md §Custo e mitigacao), e SO DEPOIS trunca cada entrada
+ * individualmente (task 3.3.1 — scrub antes do corte, nunca depois).
+ */
+async function scrubAndTruncateDrafts(drafts: ParsedLineDraft[]): Promise<SessionTailEntryDTO[]> {
+  const { texts: scrubbedTexts } = await scrubTextBatch(drafts.map((d) => d.rawText));
+  return drafts.map((draft, i) => {
+    const { text, textTruncated } = truncateEntryText(scrubbedTexts[i]!);
+    return { uuid: draft.uuid, type: draft.type, timestamp: draft.timestamp, role: draft.role, text, textTruncated };
+  });
 }
 
 /**
@@ -155,11 +185,17 @@ function normalizeLine(parsed: Record<string, unknown>): SessionTailEntryDTO {
  * Independente de liveness (FR-003/dec-010 desta execucao): esta funcao
  * nao consulta `live`/mtime-freshness para decidir SE le — apenas para
  * relatar `lastActivityAt`.
+ *
+ * Async desde a task 3.3: a cadeia de scrub (`secret-scrub.ts`) pode
+ * invocar um subprocesso (`secrets-filter.sh`), por isso esta funcao
+ * devolve `Promise`. Todo chamador MUST `await` — uma Promise nao
+ * aguardada usada como string vira `"[object Promise]"` silenciosamente
+ * em runtime.
  */
-export function readSessionTail(
+export async function readSessionTail(
   confinedPath: string,
   options: { lines?: number } = {}
-): SessionTailReadResult | null {
+): Promise<SessionTailReadResult | null> {
   let size: number;
   let lastActivityAt: string;
   try {
@@ -187,7 +223,7 @@ export function readSessionTail(
   }
 
   let skippedLines = 0;
-  const parsedEntries: SessionTailEntryDTO[] = [];
+  const drafts: ParsedLineDraft[] = [];
   for (const line of rawLines) {
     const trimmed = line.trim();
     if (trimmed === '') continue;
@@ -205,8 +241,12 @@ export function readSessionTail(
       skippedLines += 1;
       continue;
     }
-    parsedEntries.push(normalizeLine(parsed as Record<string, unknown>));
+    drafts.push(parseLineDraft(parsed as Record<string, unknown>));
   }
+
+  // Scrub em lote (UM subprocesso para a janela inteira) + truncamento
+  // por entrada, nesta ordem (task 3.3.1).
+  const parsedEntries = await scrubAndTruncateDrafts(drafts);
 
   // Seleciona do mais recente para o mais antigo, parando no primeiro teto
   // atingido — linhas (`requestedLines`) ou orcamento de bytes

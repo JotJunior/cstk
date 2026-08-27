@@ -280,21 +280,21 @@ Depende de: 0.2 (criterio anti-ReDoS), 0.3 (criterio de log de falha), 0.4
 
 ### 3.3 Ordem scrub-vs-truncamento `[A]`
 
-- [ ] 3.3.1 Aplicar a cadeia de scrub (3.1+3.2) **antes** do corte de
+- [x] 3.3.1 Aplicar a cadeia de scrub (3.1+3.2) **antes** do corte de
       `textTruncated` em `session-tail.ts` — nunca truncar primeiro (risco de
       cortar um segredo/bloco multi-linha ao meio e escapar das regras,
       conforme plan.md §Ordem em relacao ao truncamento)
-- [ ] 3.3.2 Teste: fixture com segredo posicionado exatamente na fronteira do
+- [x] 3.3.2 Teste: fixture com segredo posicionado exatamente na fronteira do
       teto de bytes, confirmando que o texto truncado e o texto **ja
       redigido** e que `[REDACTED]` conta para o teto
 
 ### 3.4 Superficie coberta por origem do dado, nao por rota `[A]`
 
-- [ ] 3.4.1 Aplicar a mesma cadeia de scrub a `sessions[].projectPath` e
+- [x] 3.4.1 Aplicar a mesma cadeia de scrub a `sessions[].projectPath` e
       `sessions[].projectSlug` (rota de listagem), nao apenas a
       `entries[].text` (rota de tail) — regra e "por origem do dado", nao por
       campo/rota (plan.md §Superficie coberta)
-- [ ] 3.4.2 Teste: fixture com segredo embutido em `.cwd` (que vira
+- [x] 3.4.2 Teste: fixture com segredo embutido em `.cwd` (que vira
       `projectPath`) confirmando scrub tambem na rota de listagem
 
 ---
