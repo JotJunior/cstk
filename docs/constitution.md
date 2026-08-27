@@ -1,4 +1,24 @@
 <!--
+Sync Impact Report (emenda 2026-08-27, segunda do dia)
+- Version: 2.0.1 -> 2.0.2
+- Bump rationale: PATCH — a 2.0.1 corrigiu a afirmacao falsa sobre a conexao
+  (a DSN `mode=ro&immutable=1` que o codigo nunca usou), mas descreveu apenas
+  METADE do mecanismo real: ficou de fora o `db.pragma('query_only = 1')`
+  (`apps/server/src/db/open.ts:121`), que e a barreira de RUNTIME e a garantia
+  mais forte que este projeto tem — o modo de abertura protege contra o
+  descuido, o pragma protege contra o engano.
+  Ironia registrada de proposito: o `CONTRIBUTING.md` ja documentava o pragma
+  corretamente desde antes. Foi a constitution que ficou atrasada em relacao
+  ao proprio repo, pela segunda vez no mesmo dia — primeiro afirmando um
+  mecanismo inexistente, agora omitindo o mais forte que existe.
+- Autorizacao: operador humano, 2026-08-27.
+- Principios afetados: I (texto e clausula Testavel; nenhuma obrigacao nova —
+  o pragma ja estava no codigo desde antes desta emenda).
+- Artefatos atualizados nesta emenda:
+  - CONTRIBUTING.md (secao "Como checar read-only absoluto" — descrevia o grep
+    inline que deixou de existir na 2.0.1)
+  - .gitignore (artefatos INSTALADOS pelo cstk deixam de ser versionaveis)
+
 Sync Impact Report (emenda 2026-08-27)
 - Version: 2.0.0 -> 2.0.1
 - Bump rationale: PATCH — tres clarificacoes/correcoes de texto no Principio I,
@@ -218,6 +238,11 @@ mutacao sobre a `knowledge.db`.
   hoje `new Database(path, { readonly: true, fileMustExist: false, timeout })`
   do better-sqlite3 (`apps/server/src/db/open.ts`), com `timeout` honrando o
   busy-timeout de 5000ms.
+- MUST: `db.pragma('query_only = 1')` logo apos a abertura
+  (`apps/server/src/db/open.ts:121`). Esta e a barreira de RUNTIME e e mais
+  forte que o modo de abertura: mesmo que algum caminho de codigo tentasse
+  mutar, o SQLite recusa. O modo de abertura protege contra o descuido; o
+  pragma protege contra o engano.
   MUST NOT usar `immutable=1`: a `knowledge.db` MUDA sob o painel enquanto ele
   roda, e declarar imutabilidade ao SQLite contradiz o Principio VI ("Snapshot
   que Muda") e pode servir dado obsoleto de cache. (Ate a 2.0.0 esta clausula
@@ -270,6 +295,9 @@ uma resposta humana ate o agente, que segue sendo o unico autor do estado.
   clausula exigiria. O estreitamento para `db/queries/**` acontece JUNTO com
   o primeiro codigo de `bridge/`, nunca antes: o gate nao afrouxa enquanto
   nao existe o que ele passa a permitir;
+- `grep -n 'query_only' apps/server/src/db/open.ts` encontra a barreira de
+  runtime — um gate estatico prova que o texto nao tem verbo de mutacao, mas
+  so o pragma prova que a mutacao seria RECUSADA se existisse;
 - a unica conexao read-write do processo aponta para `bridge.db`;
 - toda rota fora de `/api/v1/bridge/*` responde exclusivamente a `GET`.
 
@@ -532,4 +560,4 @@ dele e regressao de produto, nao liberdade de implementacao.
   rationale; uma violacao de MUST/NON-NEGOTIABLE invalida o artefato ate
   ser corrigida ou a constituicao ser emendada via SemVer.
 
-**Version**: 2.0.1 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-08-27
+**Version**: 2.0.2 | **Ratified**: 2026-05-24 | **Last Amended**: 2026-08-27

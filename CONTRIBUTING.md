@@ -12,6 +12,20 @@ Este documento descreve como rodar testes, verificar invariantes constitucionais
 npm install
 ```
 
+**Hooks e MCP nao vem no clone.** O `.claude/settings.json` e versionado (ele
+declara QUAIS hooks o projeto usa), mas os scripts em `.claude/hooks/` e o
+`.mcp.json` sao artefatos INSTALADOS e ficam fora do git — versionar copia
+instalada e o que faz a copia local divergir do catalogo em silencio. Para
+popular:
+
+```bash
+cstk hooks install     # popula .claude/hooks/
+cstk mcp install       # gera .mcp.json (contem path absoluto da sua maquina)
+```
+
+Sem isso, os hooks declarados em `settings.json` apontam para scripts
+ausentes.
+
 ## Como rodar os testes
 
 ```bash
@@ -33,10 +47,26 @@ npx vitest
 O invariante mais critico: **zero mutacao no banco**.
 
 ```bash
-# Script que falha (exit 1) se qualquer verbo SQL de mutacao for encontrado
-# em apps/server/src/ — INSERT, UPDATE, DELETE, CREATE, DROP, ALTER
+# scripts/readonly-check.sh — falha (exit 1) se um verbo SQL de mutacao
+# aparecer em CODIGO sob apps/server/src/ (INSERT, UPDATE, DELETE, CREATE,
+# DROP, ALTER).
 npm run lint:readonly-check
 ```
+
+A saida **declara a cobertura**, nao so o veredito:
+
+```
+OK: 0 verbos de mutacao em 58 arquivos sob apps/server/src
+```
+
+Isso e proposital. Um gate que responde apenas `OK` nao distingue "varri tudo
+e nao achei" de "nao varri nada" — e a segunda hipotese passa despercebida por
+tempo indeterminado.
+
+Ocorrencia em **linha de comentario** e reportada e ignorada (comentario nao
+executa SQL). Comentario no **fim** da linha, apos codigo, continua reprovando:
+na duvida, o gate reprova. Se voce esbarrar nisso, mova o comentario para
+linha propria em vez de reescrever o codigo.
 
 Adicionalmente, a abertura do banco em `apps/server/src/db/open.ts` usa:
 - `{ readonly: true, fileMustExist: false }` — modo read-only do better-sqlite3
