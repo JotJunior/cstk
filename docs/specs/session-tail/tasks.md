@@ -154,6 +154,19 @@ Borda, data-model.md
 - [x] 1.1.5 Teste: estender
       `packages/shared-types/src/__tests__/parity.test.ts` cobrindo os 2 DTOs
       novos (paridade interface↔schema, mesmo padrao dos DTOs existentes)
+- [x] 1.1.6 Fechar fresta de campo OPCIONAL escapando da paridade (achado da
+      revisao onda-010): a amostra tipada normal de 1.1.5 so cobre a direcao
+      "campo existe hoje nos dois lados". Um campo adicionado **opcional** a
+      interface no futuro compila omitido na amostra, nao entra em
+      `sampleKeys` e, se o schema Zod tambem nao o declarar, o
+      `toEqual(sampleKeys)` passa mesmo havendo drift — exatamente o caso
+      "codigo seta o campo, Zod remove no parse (`.parse()` descarta chave
+      nao declarada)" que a FASE quis impedir. Acrescentar, para os 2 DTOs
+      novos, uma amostra tipada como `Required<SessionSummaryDTO>` /
+      `Required<SessionTailEntryDTO>` (forca TODAS as propriedades a
+      estarem presentes no literal, inclusive as que a interface vier a
+      declarar opcionais) e comparar `Object.keys(sample).sort()` contra
+      `Object.keys(Schema.shape).sort()`
 
 ---
 
@@ -166,22 +179,22 @@ Ref: plan.md §Project Structure (apps/server/src/lib), research.md Decision
 
 Depende de: 0.1 (resolucao via indice), 1.1 (DTOs)
 
-- [ ] 2.1.1 Criar `apps/server/src/lib/sessions-root.ts`: raiz unica
+- [x] 2.1.1 Criar `apps/server/src/lib/sessions-root.ts`: raiz unica
       `CSTK_SESSIONS_ROOT` (config do servidor, nunca do cliente),
       `realpathSync` no candidato e na raiz, rejeicao de escape via `..` ou
       symlink — modelo do guard existente `project-root.ts`, **sem
       reutiliza-lo** (ele lista `~/.claude` como zona proibida — dec-024)
-- [ ] 2.1.2 Validar `sessionId` como UUID via Zod **antes** de qualquer
+- [x] 2.1.2 Validar `sessionId` como UUID via Zod **antes** de qualquer
       path-join (CHK016) — rejeitar formato invalido com `session-rejected`,
       nunca deixar chegar ao `realpathSync` com string arbitraria
-- [ ] 2.1.3 Normalizar caixa do `sessionId` (e do slug, se aplicavel) antes
+- [x] 2.1.3 Normalizar caixa do `sessionId` (e do slug, se aplicavel) antes
       da comparacao/resolucao — filesystem local pode ser case-insensitive
       (CHK018)
-- [ ] 2.1.4 Garantir abertura do arquivo **uma unica vez** pelo path ja
+- [x] 2.1.4 Garantir abertura do arquivo **uma unica vez** pelo path ja
       resolvido (evitar TOCTOU entre checagem de existencia/confinamento e
       leitura — CHK017): um unico `fd`/stream reaproveitado, nunca
       `existsSync` seguido de `readFileSync` em duas chamadas separadas
-- [ ] 2.1.5 Teste: `apps/server/test/lib/sessions-root.test.ts` — escape via
+- [x] 2.1.5 Teste: `apps/server/test/lib/sessions-root.test.ts` — escape via
       `..`, symlink apontando para fora, UUID invalido rejeitado antes do
       path-join, caixa mista resolvendo ao mesmo arquivo, raiz ausente
 

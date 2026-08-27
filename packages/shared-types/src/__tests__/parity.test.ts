@@ -465,6 +465,43 @@ describe('Paridade estrutural DTO <-> Schema — session-tail (FASE 1)', () => {
     expect(r.success).toBe(true);
   });
 
+  it('SessionSummaryDTO: amostra Required<T> (forca TODAS as propriedades, inclusive as futuras opcionais) bate 1:1 com Schema.shape (task 1.1.6)', () => {
+    // Diferente do teste acima: a amostra tipada normal (1.1.5) OMITE um
+    // campo que a interface um dia declare opcional (`campo?: T`), porque
+    // TS permite omitir props opcionais no literal — o campo nunca entra em
+    // `sampleKeys`, e se o schema Zod tambem nunca o tiver ganho, o
+    // `toEqual` passa mesmo havendo drift real ("codigo seta o campo, Zod
+    // remove no parse"). `Required<T>` fecha essa fresta: forca o literal a
+    // declarar TODA propriedade da interface, inclusive as opcionais, entao
+    // qualquer campo que exista so de um lado aparece como diferenca real
+    // entre `sampleKeys` e `schemaKeys` (revisao onda-010).
+    const sample: Required<SessionSummaryDTO> = {
+      sessionId: '5f3c2e10-71a4-4b8e-9c1a-2d6f8b0a9e11',
+      projectPath: '/Users/jot/Projects/cstk-panel',
+      projectSlug: 'cstk-panel',
+      lastActivityAt: ISO,
+      live: true,
+      sizeBytes: 40960,
+    };
+    const schemaKeys = Object.keys(SessionSummaryDTOSchema.shape).sort();
+    const sampleKeys = Object.keys(sample).sort();
+    expect(schemaKeys).toEqual(sampleKeys);
+  });
+
+  it('SessionTailEntryDTO: amostra Required<T> (forca TODAS as propriedades, inclusive as futuras opcionais) bate 1:1 com Schema.shape (task 1.1.6)', () => {
+    const sample: Required<SessionTailEntryDTO> = {
+      uuid: 'a1b2c3d4-0000-4000-8000-000000000001',
+      type: 'assistant',
+      timestamp: ISO,
+      role: 'assistant',
+      text: 'ola',
+      textTruncated: false,
+    };
+    const schemaKeys = Object.keys(SessionTailEntryDTOSchema.shape).sort();
+    const sampleKeys = Object.keys(sample).sort();
+    expect(schemaKeys).toEqual(sampleKeys);
+  });
+
   it('DegradedReason: os 5 literais novos de session-tail sao membros validos do union', () => {
     // Sem contraparte Zod por desenho (data-model.md §Novos literais de
     // DegradedReason: "o lado Zod nao muda" — MetaSchema.reason ja e
