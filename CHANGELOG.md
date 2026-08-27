@@ -5,6 +5,85 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [9.4.0] - 2026-08-27
+
+Fecha quatro issues de "o dado esta ao alcance e o mecanismo nao o usa":
+telemetria anulada pelos proprios lancadores do cstk (#168), segredo curto e
+bloco PEM passando pelo scrub (#169), eixo estrutural fora do enum aceito em
+silencio (#170) e o gate de convergencia lendo 0 de 13 regras MUST e
+reportando sucesso (#171).
+
+### Fixed
+
+- **#168 — lancadores do cstk anulavam a propria telemetria.** O opt-in que
+  `cstk install` oferece e uma FUNCAO de shell `claude()` no rc do operador.
+  Os lancadores chamavam o BINARIO via `exec claude`, e `exec` nunca resolve
+  funcao de shell — pior, rodam em `sh` nao-interativo, onde o rc sequer e
+  lido. Resultado medido: toda execucao iniciada por `cstk session start
+  --claude`, `cstk 00c` ou pela leva paralela do roadmap subia SEM
+  telemetria, com `otel_usage` null em todas as ondas e CUSTO/TOKENS como
+  `—` no painel, mesmo com os 4 hooks corretamente provisionados. Agora os
+  tres lancadores resolvem a porta e exportam as variaveis por conta
+  propria, sem depender de rc, shell ou tmux — e isso vale igual para quem
+  instala pelo plugin nativo, que nao provisiona wrapper nenhum. Nova lib
+  `cli/lib/telemetry-env.sh` (runtime do binario) para `session start
+  --claude` e `cstk 00c`; `parallel-launch.sh emit` prefixa a composicao com
+  `env CLAUDE_CODE_ENABLE_TELEMETRY=1 ... CSTK_OTEL_ENDPOINT=...` usando UMA
+  porta por filha. Escolha explicita do operador vence sempre:
+  `CSTK_TELEMETRY_AUTO=0` desliga, e `CSTK_OTEL_ENDPOINT` ou
+  `CLAUDE_CODE_ENABLE_TELEMETRY` ja definidos no ambiente inibem a injecao —
+  exceto na leva paralela, onde o endpoint do ambiente e o da COORDENADORA e
+  herda-lo colocaria a filha na porta da mae.
+- **#169 — `secrets-filter.sh scrub` deixava passar segredo curto e bloco
+  PEM.** `password=hunter2` (7 chars) escapava do limiar `{20,}` da regra
+  generica e saia em claro; bloco PEM inteiro nao tinha regra alguma (o
+  corpo base64 nao tem palavra-chave proxima). Nova regra de bloco PEM
+  (deteccao estrita RFC 7468 — marcador sozinho na linha, para uma mencao em
+  prosa nao engolir o arquivo) e nova regra de limiar `{4,}` restrita a
+  palavras-chave de ALTA confianca (`password`, `api_key`, `private_key`,
+  `client_secret`, `*_token`, ...). O `{20,}` original fica intacto para as
+  genericas (`key`, `token`, `auth`, `pwd`): baixar o limiar para todas
+  trocaria vazamento por ruido, e `PWD=/algum/caminho` num dump de ambiente
+  viraria `[REDACTED]`. O cabecalho do script passa a declarar que a
+  cobertura e PISO, nao garantia — "passou pelo scrub" nunca significa "nao
+  contem segredo".
+- **#170 — `bloqueios.sh register` aceitava `axis:` fora do enum.** O
+  register validava so o PREFIXO de `--chave-assunto`; o consumidor do
+  vinculo de consentimento (`report.sh`) casa contra o enum COMPLETO
+  iterando `structural-axis-map.txt`. `axis:<qualquer-coisa>` passava limpo
+  e nunca casava: bloqueio, resposta e decisao existiam sem nada os ligar de
+  forma verificavel — buraco silencioso na trilha de auditoria, nao falha.
+  Agora o sufixo de `axis:` e validado contra o mapa (exit 2, citando os
+  eixos validos lidos do proprio arquivo). `briefing-item:` segue com sufixo
+  aberto por desenho, e `list --chave-assunto` segue sem validar (e query,
+  nao registro).
+- **#171 — `converge` reportava sucesso lendo 0 de 13 regras MUST.**
+  `extract-must.sh` reconhecia UMA convencao de marcacao (`**MUST:**`).
+  Contra uma `constitution.md` em bullet (`- MUST:`), formato igualmente
+  valido, lia zero regras — e o unico principio emitido entrava pelo rotulo
+  `(NON-NEGOTIABLE)` do heading, sem nenhuma regra lida. O parser agora
+  aceita as formas em bullet (`- MUST:`, `- **MUST:**`, `* MUST NOT:`, com
+  indentacao opcional), exigindo os dois-pontos para nao capturar `MUST` em
+  prosa corrida.
+
+### Added
+
+- `extract-must.sh --constitution <f> --coverage` — relatorio honesto de
+  cobertura do gate (#171): fontes lidas, contagem INDEPENDENTE da palavra
+  `MUST`, linhas reconhecidas pelo parser, principios emitidos e quantos
+  vieram so do rotulo do heading. A contagem independente usa gramatica
+  deliberadamente diferente da do parser: se compartilhasse, a metrica seria
+  autoconfirmatoria e voltaria a reportar 100%. Emite aviso em stderr quando
+  o arquivo fala de `MUST` e o parser reconhece zero regras. A skill
+  `converge` passa a exigir as DUAS invocacoes e proibe reportar o gate como
+  satisfeito quando a cobertura e zero.
+- `CSTK_TELEMETRY_AUTO=0` — kill switch da injecao automatica de telemetria
+  nos lancadores (#168). Documentado em `cstk help telemetry`.
+- Gate de paridade estendido (`tests/cstk/test_cstk-main.sh`): o conjunto de
+  variaveis de telemetria precisa ser identico entre o snippet canonico e os
+  tres lancadores, e um `exec claude` cru reintroduzido em `session.sh` ou
+  `00c-bootstrap.sh` reprova a suite — a regressao de #168 nao volta calada.
+
 ## [9.3.0] - 2026-08-26
 
 Corrige o lancamento das sessoes-filha da leva paralela do roadmap. O
@@ -7404,6 +7483,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[9.4.0]: https://github.com/JotJunior/cstk/releases/tag/v9.4.0
 [9.3.0]: https://github.com/JotJunior/cstk/releases/tag/v9.3.0
 [9.2.3]: https://github.com/JotJunior/cstk/releases/tag/v9.2.3
 [9.2.2]: https://github.com/JotJunior/cstk/releases/tag/v9.2.2
