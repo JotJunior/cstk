@@ -18,6 +18,13 @@ const REASON_LABELS: Record<string, string> = {
   // de projeto, nao pela knowledge.db (artefatos vem do filesystem).
   'project-path-unresolved': 'caminho do projeto não configurado',
   'project-path-inaccessible': 'caminho do projeto inacessível',
+  // Session Tail (feature session-tail, FASE 6) — degradacoes de
+  // GET /sessions e GET /sessions/:sessionId/tail.
+  'sessions-root-missing': 'raiz de sessões (~/.claude/projects) ausente',
+  'sessions-root-unreadable': 'raiz de sessões sem permissão de leitura',
+  'session-not-found': 'sessão não encontrada',
+  'session-rejected': 'caminho da sessão rejeitado (fora da raiz confinada)',
+  'session-scrub-failed': 'filtro de segredos indisponível — conteúdo não pôde ser exibido',
 };
 
 function fmtRelative(iso: string): string {

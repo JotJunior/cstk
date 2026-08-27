@@ -438,37 +438,69 @@ Depende de: 1.1 (DTOs), 5.* (rotas)
 
 ### 6.1 Hooks de dados `[A]`
 
-- [ ] 6.1.1 Adicionar `useSessions` e `useSessionTail` em
-      `apps/web/src/lib/hooks.ts`, consumindo `fetchApi` +
-      `ApiEnvelopeSchema(...).parse()` (mesmo padrao dos hooks existentes)
-- [ ] 6.1.2 `useSessions` usa `refetchInterval` explicito (FR-002) — valor
-      inicial: reusar `AUTO_REFRESH_MS` (10_000, `apps/web/src/lib/query.ts`,
-      ja verificado no codigo) ate que o produto defina um intervalo mais
-      curto especifico para a trilha ao vivo (CHK038 permanece aberto para
-      esse ajuste fino; nao inventar um numero novo sem fonte)
-- [ ] 6.1.3 Teste: hook usa o schema Zod correto e o `refetchInterval`
-      configurado (nao o comportamento default de `react-query`)
+- [x] 6.1.1 Adicionado `useSessions`/`useSessionTail` em
+      `apps/web/src/lib/hooks.ts`, consumindo `fetchApi` + `SessionsListDataSchema`/
+      `SessionTailDataSchema` (Zod, campos de `SessionSummaryDTOSchema`/
+      `SessionTailEntryDTOSchema` de `@cstk-panel/shared-types`) — mesmo padrao
+      dos hooks existentes (`useExecutions`, `useTasks`, ...)
+- [x] 6.1.2 `useSessions`/`useSessionTail` usam `refetchInterval: AUTO_REFRESH_MS`
+      explicito (importado de `apps/web/src/lib/query.ts`, valor 10_000) — opcoes
+      extraidas em `sessionsQueryOptions`/`sessionTailQueryOptions` (task 6.1.3)
+- [x] 6.1.3 Teste: `apps/web/src/lib/hooks-sessions.test.ts` — DESVIO DELIBERADO
+      do enunciado literal ("testar o hook"): chamar `useSessions`/`useSessionTail`
+      fora de render viola Rules of Hooks (repo sem jsdom, `environment: 'node'`
+      no vitest — mesmo padrao de `hooks-docs.test.ts`). `sessionsQueryOptions`/
+      `sessionTailQueryOptions` foram extraidas como funcoes puras exatamente
+      para permitir este teste; verificado: `.refetchInterval === AUTO_REFRESH_MS`,
+      `.enabled` por `sessionId`, e `queryFn()` parseia envelope real (inclusive
+      `data:null` degradado) via Zod. `npm test` → `apps/web/src/lib/
+      hooks-sessions.test.ts (14 tests)` verde (ver ETAPA 8.2 abaixo)
 
 ### 6.2 Componente de texto multi-linha `TextBlockRaw` `[A]`
 
-- [ ] 6.2.1 Criar `apps/web/src/components/TextBlockRaw.tsx`: variante de
+- [x] 6.2.1 Criado `apps/web/src/components/TextBlockRaw.tsx`: variante de
       `TextRaw` para conteudo multi-linha, `<pre>` com escaping via children
-      React — nunca `dangerouslySetInnerHTML` (FR-005, Principio V)
-- [ ] 6.2.2 Teste: renderizar texto contendo `<script>`/markup ativo e
-      confirmar que aparece como texto literal no DOM, nunca executado
+      React — nunca `dangerouslySetInnerHTML` (FR-005, Principio V). Export em
+      `apps/web/src/components/index.ts`; classe `.text-block-raw` adicionada
+      a `apps/web/src/styles/tokens.css` (mono, `white-space: pre-wrap`)
+- [x] 6.2.2 Teste: `apps/web/src/components/TextBlockRaw.test.ts` — mesma tecnica
+      de `MarkdownView.test.ts` (`renderToStaticMarkup`, prova empirica sobre o
+      HTML de fato produzido, nao so a funcao isolada): `<script>alert(1)</script>`
+      sai como `&lt;script&gt;` no markup, nunca como tag interpretavel; multi-linha
+      preservada dentro do `<pre>`; truncamento por `maxLength`; `null`/`undefined`
+      nunca lancam excecao
 
 ### 6.3 Telas `Sessions` e `SessionDetail` `[A]`
 
-- [ ] 6.3.1 Criar `apps/web/src/screens/Sessions.tsx` (US1): lista de
-      sessoes vivas, 4 estados obrigatorios (carregando/vazio/erro/
-      degradado), drill-down para `/sessions/:sessionId`
-- [ ] 6.3.2 Criar `apps/web/src/screens/SessionDetail.tsx` (US2): tail da
-      sessao via `TextBlockRaw`, indicador de `live`/`skippedLines`/
-      `windowTruncated`
-- [ ] 6.3.3 Registrar as duas rotas em `apps/web/src/App.tsx`
-      (`<Route path="/sessions">`, `<Route path="/sessions/:sessionId">`)
-- [ ] 6.3.4 Teste: os 4 estados de tela (US3) renderizam sem excecao para
-      cada `reason` de degradacao definido no contrato
+- [x] 6.3.1 Criado `apps/web/src/screens/Sessions.tsx` (US1): lista de sessoes
+      vivas (`useSessions(true)`), 4 estados obrigatorios (`LoadingState` variant
+      table / `EmptyState` / `ErrorState` / `DegradedBanner` + `EmptyState` com
+      `sessionsDegradedCopy`), drill-down por clique de linha para
+      `/sessions/:sessionId`. NAO exibe vinculo com execucao (dec-025 — sem join
+      verificado sessao↔execucao); campos exibidos restritos ao `SessionSummaryDTO`
+      real. Adicionado tambem: entrada "Sessões" em `Sidebar.tsx` `NAV_ITEMS`
+      (icone `eye`) — sem ela as telas ficariam inalcancaveis pela navegacao
+      (plan.md linha 77 ja afirma "coerente com a navegacao existente"); fixture
+      espelhada em `Sidebar.test.ts` atualizada (12→13 rotas)
+- [x] 6.3.2 Criado `apps/web/src/screens/SessionDetail.tsx` (US2): tail da sessao
+      via `TextBlockRaw` (uma entry por linha, `type`/`role`/`timestamp` + texto),
+      indicadores de `live`/`skippedLines`/`windowTruncated`/`truncatedByBytes`.
+      Roteia exclusivamente por `sessionId` de `useParams` (FR-004) — nunca
+      `executionId`
+- [x] 6.3.3 Registradas as duas rotas em `apps/web/src/App.tsx`
+      (`<Route path="/sessions">`, `<Route path="/sessions/:sessionId">`),
+      imports de `Sessions`/`SessionDetail`
+- [x] 6.3.4 Teste: `apps/web/src/screens/Sessions.test.ts` +
+      `apps/web/src/screens/SessionDetail.test.ts` — DESVIO DELIBERADO do
+      enunciado literal ("renderizam sem excecao"): sem jsdom neste repo,
+      logica de degradacao extraida como funcao pura (`sessionsDegradedCopy`/
+      `sessionDetailDegradedCopy`, mesmo padrao de `pickDefaultArtifact` em
+      `FeatureDetail.test.ts`) — testes cobrem EXPLICITAMENTE cada `reason` do
+      contrato para cada rota (`sessions-root-missing`/`sessions-root-unreadable`
+      em `GET /sessions`; `session-not-found`/`session-rejected`/
+      `sessions-root-missing`/`session-scrub-failed` em `GET /sessions/:id/tail`)
+      mais `default` para qualquer literal futuro nao mapeado — nunca lanca e
+      sempre devolve title/subtitle nao-vazios
 
 ---
 

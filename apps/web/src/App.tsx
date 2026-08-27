@@ -28,6 +28,8 @@ import { Tasks } from '@/screens/Tasks.js';
 import { Incidents } from '@/screens/Incidents.js';
 import { Memories } from '@/screens/Memories.js';
 import { Source } from '@/screens/Source.js';
+import { Sessions } from '@/screens/Sessions.js';
+import { SessionDetail } from '@/screens/SessionDetail.js';
 import { CheatSheet } from '@/screens/CheatSheet.js';
 import { Faq } from '@/screens/Faq.js';
 import { Placeholder } from '@/screens/Placeholder.js';
@@ -129,6 +131,10 @@ export default function App() {
 
             {/* Memorias (auto-memorias do Claude Code, schema v4) */}
             <Route path="/memories" element={<Memories />} />
+
+            {/* Sessoes do Claude Code (session-tail, US1/US2) */}
+            <Route path="/sessions" element={<Sessions />} />
+            <Route path="/sessions/:sessionId" element={<SessionDetail />} />
 
             {/* Busca FTS5 (US3) */}
             <Route path="/search" element={<Search />} />

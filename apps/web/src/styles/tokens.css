@@ -707,6 +707,17 @@ input, select, textarea { font-family: inherit; }
   font-size: 12px;
 }
 
+/* ---------- TextBlockRaw (UNTRUSTED multi-line content, session-tail) ---------- */
+.text-block-raw {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0;
+}
+
 /* ---------- Select ---------- */
 .select {
   background: var(--bg-1);
