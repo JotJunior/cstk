@@ -59,8 +59,8 @@
 # --scope/--fix/--deps; roda sempre que aplicavel, independente das outras
 # flags (SC-006: ausencia de plugin = zero diferenca observavel).
 #
-# Secao "Shadowed Scope" (feature doctor-shadowed-scope, FASE 2; contract
-# doctor-shadowed-scope-output.md §2/§3): compara a copia de ESCOPO DE
+# Secao "Shadowed Scope" (feature doctor-shadowed-scope; contract
+# doctor-shadowed-scope-output.md §2-§3.5): compara a copia de ESCOPO DE
 # PROJETO (./.claude/<kind>/<name>.md, kind em {agents,commands}) contra o
 # CATALOGO (~/.claude/<kind>/<name>.md) por CONTEUDO (hash_file das duas
 # pontas, nunca o sha gravado no manifesto de projeto — que so descreve o
@@ -72,8 +72,15 @@
 # e UNTRUSTED (pode ser versionado por um repositorio de terceiro) — ver
 # regras R1-R6 no contrato §7. section_rc e a CONSTANTE 0 (report-only,
 # contrato §4/INV-RC): nenhuma entrada desta secao move o exit code do
-# `cstk doctor`. Declaracao de cobertura + rotulo de veredito (contrato
-# §3.4/§3.5) ficam para a FASE 3 desta feature.
+# `cstk doctor`. Declaracao de cobertura (§3.4) e emitida SEMPRE (FR-006/
+# SC-003): a cobertura e medida contra o que o ARQUIVO CONTEM
+# (manifest_count_data_lines, denominador de granularidade de LINHA), nunca
+# contra o que o parser reconhece (manifest_count_recognized, numerador por
+# uso) — os dois caminhos sao deliberadamente independentes (research.md
+# D6). Rotulo de veredito (§3.5) so imprime `[OK]` sob gating triplo: F=R=2
+# E count_shadowed=0 E count_nao_comparado=0 (= count_indeterminate +
+# count_unmanaged_upstream) — `[ACHADOS]` e neutro (nunca `[DIVERGENCIA]`,
+# que afirmaria comparacao onde pode ter havido so ausencia dela).
 
 if [ -n "${_CSTK_DOCTOR_LOADED:-}" ]; then
   return 0 2>/dev/null
@@ -589,10 +596,11 @@ _doctor_shadow_verdict() {
   return 0
 }
 
-# _doctor_ss_scan_kind <kind> -> numero de registros `shadowed` em stdout
-# (usado so para decidir se o bloco de remediacao e emitido). Emite as
-# linhas de achado (via _doctor_shadow_verdict) em stderr como efeito
-# colateral, uma por registro `recognized`.
+# _doctor_ss_scan_kind <kind> -> "<shadowed> <indeterminate> <unmanaged>"
+# em stdout (3 inteiros separados por espaco — FASE 3, contrato §3.5:
+# count_nao_comparado = count_indeterminate + count_unmanaged_upstream).
+# Emite as linhas de achado (via _doctor_shadow_verdict) em stderr como
+# efeito colateral, uma por registro `recognized`.
 #
 # R4: o laco de iteracao roda sob `set -f` num SUBSHELL (restaurado ao
 # sair por construcao — o subshell termina), IFS=newline — precedente
@@ -600,22 +608,36 @@ _doctor_shadow_verdict() {
 # dados contendo `*` sofra pathname expansion (Cenario 9.d).
 #
 # R5: `manifest_within_cap` MUST ser checado antes de iterar — fonte sobre
-# o teto e pulada por completo nesta secao (FASE 3 a reporta como
-# unreadable/teto-excedido na declaracao de cobertura).
+# o teto e pulada por completo nesta secao (a declaracao de cobertura,
+# via _doctor_ss_coverage_source, a reporta como unreadable/teto-excedido).
+#
+# FASE 3: se o schema nao e legivel (`detect_schema_version` falha), esta
+# funcao TAMBEM pula a iteracao por inteiro — interpretar linhas sob um
+# schema que a propria leitura ja rejeitou repetiria, num nivel diferente,
+# o defeito que esta feature existe para matar (afirmar compreensao que
+# nao se tem). A declaracao de cobertura (nao esta funcao) reporta o
+# motivo via _doctor_ss_coverage_source.
 #
 # R1: registros `unrecognized` (nome fora de forma, campos invalidos) NUNCA
 # chegam a _doctor_shadow_verdict — ficam de fora da arvore de decisao por
-# inteiro (contam so no denominador da cobertura, FASE 3).
+# inteiro (contam so no denominador da cobertura).
 _doctor_ss_scan_kind() {
   _ssk_kind=$1
   _ssk_manifest="./.claude/$_ssk_kind/.cstk-manifest"
 
   if [ ! -f "$_ssk_manifest" ]; then
-    printf '0'
+    printf '0 0 0'
     return 0
   fi
+  # R5 ANTES de detect_schema_version (leitura limitada por head -c,
+  # nunca a leitura de linha inteira de detect_schema_version — contrato
+  # §7 nota normativa R5).
   if ! manifest_within_cap "$_ssk_manifest"; then
-    printf '0'
+    printf '0 0 0'
+    return 0
+  fi
+  if ! detect_schema_version "$_ssk_manifest" >/dev/null 2>&1; then
+    printf '0 0 0'
     return 0
   fi
 
@@ -625,6 +647,8 @@ _doctor_ss_scan_kind() {
     IFS='
 '
     _ssk_shadowed=0
+    _ssk_indeterminate=0
+    _ssk_unmanaged=0
     # shellcheck disable=SC2013 # for-in-command deliberado: IFS=newline +
     # set -f (R4) isolam este laco de word-splitting e pathname expansion.
     for _ssk_line in $(awk '/^[[:space:]]*$/ { next } /^#/ { next } { print }' "$_ssk_manifest" 2>/dev/null); do
@@ -633,38 +657,123 @@ _doctor_ss_scan_kind() {
         _ssk_name=$(printf '%s' "$_ssk_line" | awk -F'\t' '{print $1}')
         _ssk_pver=$(printf '%s' "$_ssk_line" | awk -F'\t' '{print $2}')
         _ssk_state=$(_doctor_shadow_verdict "$_ssk_kind" "$_ssk_name" "$_ssk_pver")
-        if [ "$_ssk_state" = "shadowed" ]; then
-          _ssk_shadowed=$((_ssk_shadowed + 1))
-        fi
+        case "$_ssk_state" in
+          shadowed) _ssk_shadowed=$((_ssk_shadowed + 1)) ;;
+          indeterminate) _ssk_indeterminate=$((_ssk_indeterminate + 1)) ;;
+          unmanaged-upstream) _ssk_unmanaged=$((_ssk_unmanaged + 1)) ;;
+        esac
       fi
       IFS='
 '
     done
     IFS=$_ssk_ifs
-    printf '%s' "$_ssk_shadowed"
+    printf '%s %s %s' "$_ssk_shadowed" "$_ssk_indeterminate" "$_ssk_unmanaged"
   )
 }
 
-# _doctor_shadowed_scope — secao "Shadowed Scope" (feature
-# doctor-shadowed-scope, FASE 2; contract doctor-shadowed-scope-output.md
-# §2/§3.1-3.3, data-model.md Entity ShadowVerdict). Ver docstring no
-# cabecalho do arquivo para o desenho completo (D2-D4, FR-004/FR-005).
+# _doctor_ss_coverage_source <path> -> seta globais _dcs_state/_dcs_d/
+# _dcs_n/_dcs_motivo (FASE 3, contrato §3.4, data-model.md
+# CoverageDeclaration). <path> nao precisa de sanitizacao — e sempre um dos
+# 2 caminhos fixos `./.claude/{agents,commands}/.cstk-manifest`, nunca
+# derivado de conteudo do manifesto.
 #
-# Declaracao de cobertura + rotulo de veredito (contrato §3.4/§3.5) ainda
-# NAO sao emitidos por esta secao — FASE 3 desta feature.
+# Ordem das checagens (deliberada, contrato §7 nota normativa R5):
+# manifest_within_cap roda ANTES de detect_schema_version porque o cap usa
+# leitura limitada (`head -c` do orcamento total), enquanto
+# detect_schema_version usa `head -n1` — sobre um unico registro de 50 MB
+# sem `\n` (Cenario 19 linha 15), chamar detect_schema_version primeiro
+# materializaria o arquivo inteiro antes do teto ter chance de agir.
+#
+# coverage_state (data-model.md): absent (found=false) / unreadable
+# (found=true, schema ilegivel OU teto excedido) / full (D==N, inclui
+# 0==0) / partial (D>N) / inconsistent (N>D, NUNCA normalizado).
+_doctor_ss_coverage_source() {
+  _dcs_path=$1
+
+  if [ ! -f "$_dcs_path" ]; then
+    _dcs_state=absent
+    _dcs_d=0
+    _dcs_n=0
+    _dcs_motivo=""
+    return 0
+  fi
+
+  if ! manifest_within_cap "$_dcs_path"; then
+    _dcs_state=unreadable
+    _dcs_d='?'
+    _dcs_n='?'
+    _dcs_motivo="teto-excedido"
+    return 0
+  fi
+
+  _dcs_schema_out=$(detect_schema_version "$_dcs_path" 2>&1)
+  _dcs_schema_rc=$?
+  if [ "$_dcs_schema_rc" -ne 0 ]; then
+    _dcs_state=unreadable
+    _dcs_d='?'
+    _dcs_n='?'
+    # R3: o texto de erro de detect_schema_version ecoa o header lido do
+    # arquivo (linha "obtido: %s") — untrusted, sanitizado antes de
+    # qualquer impressao (contrato §3.2/§7 R3).
+    _dcs_motivo=$(manifest_scrub_text "$_dcs_schema_out")
+    [ -n "$_dcs_motivo" ] || _dcs_motivo="motivo-desconhecido"
+    return 0
+  fi
+
+  _dcs_dn=$(manifest_count_recognized "$_dcs_path")
+  if [ "$_dcs_dn" = "CAP-EXCEEDED" ]; then
+    # Defensivo: manifest_within_cap ja foi checado acima: nunca deveria
+    # chegar aqui, mas manifest_count_recognized re-checa por conta
+    # propria (dec-040) — se algum dia divergir, nao afirmar full/partial
+    # sobre uma leitura que a propria lib recusou.
+    _dcs_state=unreadable
+    _dcs_d='?'
+    _dcs_n='?'
+    _dcs_motivo="teto-excedido"
+    return 0
+  fi
+  _dcs_d=${_dcs_dn%% *}
+  _dcs_n=${_dcs_dn#* }
+
+  if [ "$_dcs_d" -eq "$_dcs_n" ]; then
+    _dcs_state=full
+  elif [ "$_dcs_d" -gt "$_dcs_n" ]; then
+    _dcs_state=partial
+  else
+    # N > D: bug do proprio contador, NUNCA normalizado (contrato §3.4).
+    _dcs_state=inconsistent
+  fi
+  _dcs_motivo=""
+  return 0
+}
+
+# _doctor_shadowed_scope — secao "Shadowed Scope" (feature
+# doctor-shadowed-scope; contract doctor-shadowed-scope-output.md §2-§3.5,
+# data-model.md Entity ShadowVerdict/CoverageDeclaration/ShadowedScopeReport).
+# Ver docstring no cabecalho do arquivo para o desenho completo (D2-D4,
+# FR-004/FR-005). Declaracao de cobertura (§3.4) + rotulo de veredito com
+# gating triplo (§3.5) — FASE 3.
 #
 # section_rc e a CONSTANTE 0 (contrato §4/INV-RC, data-model.md): produzido
 # por `return 0` no fim da funcao — NUNCA acumulado a partir de
-# count_shadowed ou de qualquer estado. Report-only por desenho: input
-# controlado por terceiro (manifesto de projeto, contrato §7) pode produzir
-# diagnostico, nunca veredito.
+# count_shadowed, coverage_state ou qualquer estado. Report-only por
+# desenho: input controlado por terceiro (manifesto de projeto, contrato
+# §7) pode produzir diagnostico, nunca veredito.
 _doctor_shadowed_scope() {
   printf '\n==> Shadowed Scope (escopo de projeto vs catalogo)\n' >&2
 
   _ss_count_shadowed=0
+  _ss_count_indeterminate=0
+  _ss_count_unmanaged=0
   for _ss_kind in agents commands; do
-    _ss_kind_shadowed=$(_doctor_ss_scan_kind "$_ss_kind")
-    _ss_count_shadowed=$((_ss_count_shadowed + _ss_kind_shadowed))
+    _ss_triple=$(_doctor_ss_scan_kind "$_ss_kind")
+    _ss_s=${_ss_triple%% *}
+    _ss_rest=${_ss_triple#* }
+    _ss_i=${_ss_rest%% *}
+    _ss_u=${_ss_rest#* }
+    _ss_count_shadowed=$((_ss_count_shadowed + _ss_s))
+    _ss_count_indeterminate=$((_ss_count_indeterminate + _ss_i))
+    _ss_count_unmanaged=$((_ss_count_unmanaged + _ss_u))
   done
 
   # Bloco de remediacao (§3.3): so quando ha >=1 shadowed. Redacao normativa
@@ -677,6 +786,75 @@ _doctor_shadowed_scope() {
       printf '              proposito, nenhuma acao e necessaria — este relato e\n'
       printf '              informativo sobre a divergencia, nao uma exigencia.\n'
     } >&2
+  fi
+
+  # --- Declaracao de cobertura (§3.4, FR-006/SC-003) — SEMPRE emitida,
+  # inclusive com F=0 e zero achados (fontes ausentes saem como [absent]).
+  _ss_path_agents="./.claude/agents/.cstk-manifest"
+  _ss_path_commands="./.claude/commands/.cstk-manifest"
+
+  _doctor_ss_coverage_source "$_ss_path_agents"
+  _ss_state_agents=$_dcs_state
+  _ss_d_agents=$_dcs_d
+  _ss_n_agents=$_dcs_n
+  _ss_motivo_agents=$_dcs_motivo
+
+  _doctor_ss_coverage_source "$_ss_path_commands"
+  _ss_state_commands=$_dcs_state
+  _ss_d_commands=$_dcs_d
+  _ss_n_commands=$_dcs_n
+  _ss_motivo_commands=$_dcs_motivo
+
+  # F = fontes encontradas (found=true, ou seja, qualquer estado != absent).
+  # R = fontes lidas com sucesso (coverage_state == full). As tres
+  # contagens do §3.4 nunca dependem da linha de veredito para serem
+  # legiveis (cada uma tem sua propria linha rotulada).
+  _ss_f=0
+  _ss_r=0
+  for _ss_src_state in "$_ss_state_agents" "$_ss_state_commands"; do
+    [ "$_ss_src_state" = "absent" ] || _ss_f=$((_ss_f + 1))
+    [ "$_ss_src_state" = "full" ] && _ss_r=$((_ss_r + 1))
+  done
+
+  {
+    printf '  --- cobertura\n'
+    printf '  fontes declaradas: %s, %s\n' "$_ss_path_agents" "$_ss_path_commands"
+    printf '  fontes encontradas: %s de 2\n' "$_ss_f"
+    printf '  fontes lidas com sucesso: %s de 2\n' "$_ss_r"
+    manifest_coverage_line "$_ss_path_agents" "$_ss_d_agents" "$_ss_n_agents" \
+      "$_ss_state_agents" "$_ss_motivo_agents"
+    manifest_coverage_line "$_ss_path_commands" "$_ss_d_commands" "$_ss_n_commands" \
+      "$_ss_state_commands" "$_ss_motivo_commands"
+  } >&2
+
+  # --- Rotulo de veredito (§3.5) — gating triplo do [OK]: F=R=2 E
+  # count_shadowed=0 E count_nao_comparado=0 (dec-023). count_nao_comparado
+  # = count_indeterminate + count_unmanaged_upstream (derivado, nunca
+  # acumulado a parte — data-model.md ShadowedScopeReport). Nenhum destes
+  # calculos alimenta um rc: a funcao termina em `return 0` fixo (INV-RC),
+  # texto e o UNICO canal desde que a postura report-only revogou o gate
+  # por exit code (dec-020/D13).
+  _ss_count_nao_comparado=$((_ss_count_indeterminate + _ss_count_unmanaged))
+
+  if [ "$_ss_f" -eq 0 ]; then
+    printf '  [SEM-FONTE] nenhum manifesto de escopo de projeto encontrado no CWD; nada foi comparado.\n' >&2
+  elif [ "$_ss_f" -eq 2 ] && [ "$_ss_r" -eq 2 ]; then
+    if [ "$_ss_count_shadowed" -eq 0 ] && [ "$_ss_count_nao_comparado" -eq 0 ]; then
+      printf '  [OK] 2 de 2 fontes lidas integralmente; 0 divergencia(s), 0 nao comparado(s).\n' >&2
+    else
+      printf '  [ACHADOS] 2 de 2 fontes lidas integralmente; %s divergencia(s), %s nao comparado(s) — informativo, nao altera o exit code.\n' \
+        "$_ss_count_shadowed" "$_ss_count_nao_comparado" >&2
+    fi
+  else
+    # F=1 (uma fonte absent) OU F=2 com R<2 (alguma fonte partial/
+    # unreadable/inconsistent): "cobertura incompleta" e o guarda-chuva —
+    # o enum de rotulos nao distingue os dois motivos na linha de
+    # veredito (as linhas de achado da declaracao acima ja discriminam
+    # cada fonte pelo seu proprio coverage_state). n = 2 - R: quantas das
+    # 2 fontes declaradas NAO foram lidas integralmente.
+    _ss_n_incompletas=$((2 - _ss_r))
+    printf '  [PARCIAL] cobertura incompleta: %s de 2 fontes lidas apenas em parte — nada nesta secao pode ser lido como saude total.\n' \
+      "$_ss_n_incompletas" >&2
   fi
 
   return 0

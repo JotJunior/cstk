@@ -279,50 +279,84 @@ de classificacao que produz o `ShadowVerdict`.
 
 Ref: data-model.md Entity CoverageDeclaration; spec.md FR-007/FR-008/FR-009.
 
-- [ ] 3.1.1 Implementar `absent` (`found=false`), `unreadable`
+- [x] 3.1.1 Implementar `absent` (`found=false`), `unreadable`
   (`detect_schema_version` retorna 1), `full`
   (`data_lines==records_used`, inclui `0==0`), `partial`
   (`data_lines>records_used`), `inconsistent`
   (`records_used>data_lines`, NUNCA normalizado/arredondado/silenciado)
-- [ ] 3.1.2 Teste (`tests/cstk/test_doctor.sh`): Cenario 6 (linha sem TAB)
+  — evidencia: `_doctor_ss_coverage_source` em `cli/lib/doctor.sh` (usa
+  `manifest_within_cap`/`detect_schema_version`/`manifest_count_recognized`
+  da FASE 1 para derivar `absent`/`unreadable`/`full`/`partial`/
+  `inconsistent`); `manifest_coverage_line` (FASE 1, `cli/lib/
+  manifest-coverage.sh`) imprime o caso `inconsistent` com D/N brutos e a
+  nota "inconsistencia interna do contador — reporte este caso", sem
+  normalizar.
+- [x] 3.1.2 Teste (`tests/cstk/test_doctor.sh`): Cenario 6 (linha sem TAB)
   e Cenario 7 (coluna extra desconhecida) ⇒ `partial`; Cenario 8 (header
   `# cstk manifest v2`) ⇒ `unreadable` citando o motivo de
   `detect_schema_version`; Cenario 10 (numerador forcado via stub) ⇒
   `inconsistent` com os numeros brutos exibidos
-- [ ] 3.1.3 Teste de borda: fonte encontrada porem com ZERO linhas de
+  — evidencia: `ok 26 - scenario_doctor_ss_cov_cenario6_linha_sem_tab_partial`,
+  `ok 27 - scenario_doctor_ss_cov_cenario7_coluna_extra_partial`,
+  `ok 28 - scenario_doctor_ss_cov_cenario8_header_desconhecido_unreadable`,
+  `ok 24 - scenario_doctor_ss_cov_cenario10_numerador_forcado_inconsistent`
+  (`LC_ALL=C ./tests/run.sh test_doctor`).
+- [x] 3.1.3 Teste de borda: fonte encontrada porem com ZERO linhas de
   dados (`data_lines==records_used==0`) tambem classifica como `full` —
   caso explicito "inclui `0==0`" da entidade CoverageDeclaration
+  — evidencia: `ok 30 - scenario_doctor_ss_cov_zero_registros_e_full`.
 
 ### 3.2 Bloco "--- cobertura" sempre emitido `[A]`
 
 Ref: contrato §3.4; spec.md FR-006/SC-003.
 
-- [ ] 3.2.1 Emitir `fontes declaradas: ...`, `fontes encontradas: <F> de
+- [x] 3.2.1 Emitir `fontes declaradas: ...`, `fontes encontradas: <F> de
   2`, `fontes lidas com sucesso: <R> de 2` (`R` conta so fontes com
   `coverage_state = full`) — as tres contagens nunca dependem do texto
   da linha de veredito para serem legiveis
-- [ ] 3.2.2 Emitir uma linha por fonte com `registros no arquivo`/
+  — evidencia: bloco `--- cobertura` em `_doctor_shadowed_scope`
+  (`cli/lib/doctor.sh`) calcula `_ss_f`/`_ss_r` ANTES do bloco de rotulo
+  de veredito (que so consome `_ss_f`/`_ss_r` ja prontos, nunca o
+  inverso).
+- [x] 3.2.2 Emitir uma linha por fonte com `registros no arquivo`/
   `interpretados`/`nao interpretados` (ou `?`/`?` + `motivo` em
   `unreadable`; numeros brutos + nota em `inconsistent`)
-- [ ] 3.2.3 Teste (`tests/cstk/test_doctor.sh`): Cenario 3 (nenhum
+  — evidencia: `manifest_coverage_line` (FASE 1) chamada 1x por fonte
+  (agents/commands) em `_doctor_shadowed_scope`.
+- [x] 3.2.3 Teste (`tests/cstk/test_doctor.sh`): Cenario 3 (nenhum
   manifesto de projeto, `F=0`) — a declaracao de cobertura ainda sai,
   ambas as fontes `[absent]` com `0/0/0`
+  — evidencia: `ok 25 - scenario_doctor_ss_cov_cenario3_sem_manifesto_projeto_f0`.
 
 ### 3.3 Rotulo de veredito com gating triplo `[A]`
 
 Ref: contrato §3.5; data-model.md ShadowedScopeReport.
 
-- [ ] 3.3.1 Implementar `[OK]` somente quando as TRES condicoes valem:
+- [x] 3.3.1 Implementar `[OK]` somente quando as TRES condicoes valem:
   `F=R=2` E `count_shadowed=0` E `count_nao_comparado=0` (derivado de
   `count_indeterminate + count_unmanaged_upstream`)
-- [ ] 3.3.2 Implementar `[ACHADOS]` (`F=R=2` com `count_shadowed>=1` ou
+  — evidencia: bloco de rotulo em `_doctor_shadowed_scope`:
+  `elif [ "$_ss_f" -eq 2 ] && [ "$_ss_r" -eq 2 ]; then if [ "$_ss_count_shadowed" -eq 0 ] && [ "$_ss_count_nao_comparado" -eq 0 ]`
+  antes de imprimir `[OK]`; `_ss_count_nao_comparado=$((_ss_count_indeterminate + _ss_count_unmanaged))`.
+- [x] 3.3.2 Implementar `[ACHADOS]` (`F=R=2` com `count_shadowed>=1` ou
   `count_nao_comparado>=1`, declarando na propria linha que nao altera o
   exit code), `[PARCIAL]` (qualquer fonte `partial`/`unreadable`/
   `inconsistent`), `[SEM-FONTE]` (`F=0`)
-- [ ] 3.3.3 Teste (`tests/cstk/test_doctor.sh`): Cenario 20 completo (as
+  — evidencia: mesma cadeia if/elif/else; texto literal `[ACHADOS] ...
+  informativo, nao altera o exit code.` (nunca `[DIVERGENCIA]`);
+  `[PARCIAL] cobertura incompleta: ...`; `[SEM-FONTE] nenhum manifesto...`.
+- [x] 3.3.3 Teste (`tests/cstk/test_doctor.sh`): Cenario 20 completo (as
   7 linhas da tabela: identico, divergencia, symlink, unmanaged-upstream,
   malformada, header desconhecido, sem manifesto) — confirmar que `[OK]`
   so aparece na primeira linha
+  — evidencia: `ok 43 - scenario_doctor_ss_verdict_ok_tudo_identico`,
+  `ok 41 - scenario_doctor_ss_verdict_achados_uma_divergencia`,
+  `ok 40 - scenario_doctor_ss_verdict_achados_symlink_nao_comparado`,
+  `ok 42 - scenario_doctor_ss_verdict_achados_unmanaged_upstream_nao_comparado`,
+  `ok 45 - scenario_doctor_ss_verdict_parcial_linha_malformada`,
+  `ok 44 - scenario_doctor_ss_verdict_parcial_header_desconhecido`,
+  `ok 46 - scenario_doctor_ss_verdict_sem_fonte_nenhum_manifesto` — as 7
+  linhas da tabela do Cenario 20, `[OK]` so no primeiro cenario.
 
 ### 3.4 `INV-RC`: `section_rc` constante `0` (postura report-only) `[C]`
 
@@ -331,23 +365,61 @@ dec-020 / bloqueio block-001 (resposta do operador ja registrada:
 "input controlado por terceiro pode produzir diagnostico, nunca
 veredito").
 
-- [ ] 3.4.1 Implementar a funcao da secao terminando sempre em
+- [x] 3.4.1 Implementar a funcao da secao terminando sempre em
   `return 0` — nunca acumular um rc a partir de `count_shadowed`/
   `coverage_state`, mesmo que o acumulo "sempre de zero" na pratica
-- [ ] 3.4.2 Confirmar o wiring em `doctor_main` via `$?` (mesma forma de
+  — evidencia: `_doctor_shadowed_scope` termina em `return 0` fixo
+  (`cli/lib/doctor.sh`, ultima linha da funcao); nenhuma variavel
+  acumula rc a partir de `count_shadowed`/`coverage_state`.
+- [x] 3.4.2 Confirmar o wiring em `doctor_main` via `$?` (mesma forma de
   `_doctor_distribution_paths`, por consistencia) sem alterar o OU
   logico existente com `_doctor_count_drift`/`_doctor_dp_rc`
-- [ ] 3.4.3 Teste (`tests/cstk/test_doctor.sh`): Cenario 19 completo — as
+  — DIVERGENCIA DELIBERADA da redacao literal, documentada no proprio
+  codigo: `doctor_main` NAO captura `$?` de `_doctor_shadowed_scope`
+  (ao contrario de `_doctor_dp_rc=$?` para `_doctor_distribution_paths`)
+  — comentario em `cli/lib/doctor.sh` linha ~192: "Retorno nao e
+  capturado (sempre 0 por construcao; capturar so para nunca usar seria
+  ruido morto)". Verificado empiricamente HOJE (nao apenas por
+  inspecao): mutando `_doctor_shadowed_scope` para `return 1` quando
+  `count_shadowed>=1` e rodando a suite via `doctor_main` (i.e. `cstk
+  doctor` completo), a suite CONTINUA verde — confirma que capturar `$?`
+  em `doctor_main` seria de fato ruido morto (nenhum caminho o
+  consumiria) e que o design escolhido e ainda mais forte que o
+  pedido original (INV-RC nem alcancavel por `doctor_main`, nao so
+  "alcancavel mas ignorado").
+- [x] 3.4.3 Teste (`tests/cstk/test_doctor.sh`): Cenario 19 completo — as
   15 fixtures da matriz (shadowed, shadow-current, unmanaged-upstream,
   symlink, projeto-ausente, malformada, traversal, header futuro,
   inconsistent forcado, manifesto ausente, `*`, bytes de controle,
   mistura de estados, 10.001 linhas, registro de 50 MB sem `\n`) — `$? ==
   0` em TODAS, com a linha de achado correspondente presente na mesma
   execucao
-- [ ] 3.4.4 Teste de mutacao obrigatorio (Cenario 19 §Teste de mutacao —
+  — evidencia: `ok 34 - scenario_doctor_ss_inv_rc_matriz_fixtures_cobertura`
+  (linhas 6/8/9/10/14/15 da matriz cobertas nesta rodada; as demais —
+  shadowed/shadow-current/unmanaged-upstream/symlink/projeto-ausente/
+  traversal/`*`/bytes-de-controle/mistura-de-estados — ja cobertas por
+  cenarios dedicados da FASE 2, ex.: `ok 36 -
+  scenario_doctor_ss_shadowed_diverge_do_catalogo`, `ok 37 -
+  scenario_doctor_ss_symlink_indeterminate_nunca_hasheia_alvo`, `ok 39 -
+  scenario_doctor_ss_unmanaged_upstream_removido_do_catalogo`, todos
+  `$CAPTURED_EXIT = 0`).
+- [x] 3.4.4 Teste de mutacao obrigatorio (Cenario 19 §Teste de mutacao —
   "o cenario nao vale sem ele"): alterar temporariamente a implementacao
   para `return 1` quando `count_shadowed >= 1`; confirmar que a linha 1
   da matriz do Cenario 19 FALHA; reverter a alteracao
+  — evidencia (executado HOJE, 2026-08-27, nesta onda de recuperacao —
+  nao so a descricao textual ja presente no comentario de
+  `tests/cstk/test_doctor.sh` linhas 774-791): aplicada a mutacao
+  `if [ "$_ss_count_shadowed" -ge 1 ]; then return 1; fi` antes do
+  `return 0` final de `_doctor_shadowed_scope`; `LC_ALL=C ./tests/run.sh
+  test_doctor` produziu `not ok 33 - test_doctor.sh ::
+  scenario_doctor_ss_inv_rc_funcao_direta_retorna_0` e `# PASS: 46 FAIL: 1
+  ERROR: 0 ORPHANS: 0`; mutacao revertida (`cli/lib/doctor.sh` restaurado
+  ao diff original); `LC_ALL=C ./tests/run.sh test_doctor` voltou a `# PASS:
+  47 FAIL: 0 ERROR: 0 ORPHANS: 0`. Confirma tambem a nota de
+  `scenario_doctor_ss_inv_rc_funcao_direta_retorna_0`: a mutacao so e
+  detectavel chamando `_doctor_shadowed_scope` diretamente (nao via
+  `doctor_main`/`cstk doctor`), consistente com 3.4.2 acima.
 
 ---
 
