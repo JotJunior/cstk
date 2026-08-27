@@ -241,39 +241,39 @@ Depende de: 0.2 (criterio anti-ReDoS), 0.3 (criterio de log de falha), 0.4
 
 ### 3.1 Redactor interno (`secret-scrub.ts`, passo 2 — sempre roda) `[C]`
 
-- [ ] 3.1.1 Criar `apps/server/src/lib/secret-scrub.ts` com o redactor
+- [x] 3.1.1 Criar `apps/server/src/lib/secret-scrub.ts` com o redactor
       interno minimo em TypeScript puro: padroes ancorados, sem quantificador
       aninhado, bloco `BEGIN...PRIVATE KEY` casado linha-a-linha via maquina
       de estados (conforme 0.2.1) — cobre no minimo `password=`/`token=`/
       `secret=`/`api_key=` sem piso de comprimento, e blocos de chave privada
-- [ ] 3.1.2 Repetir cobertura de AWS key e Bearer token no redactor interno
+- [x] 3.1.2 Repetir cobertura de AWS key e Bearer token no redactor interno
       (para que o caminho sem cstk continue cobrindo os 4 padroes exigidos)
-- [ ] 3.1.3 Teste: `apps/server/test/lib/secret-scrub.test.ts` — exercitar a
+- [x] 3.1.3 Teste: `apps/server/test/lib/secret-scrub.test.ts` — exercitar a
       matriz completa da tarefa 0.4 (casos que DEVEM e que NAO PODEM ser
       redigidos), mais o cenario de entrada patologica de 0.2.2 contra o teto
       de tempo documentado
 
 ### 3.2 Cadeia com `secrets-filter.sh` (passo 1, quando disponivel) `[C]`
 
-- [ ] 3.2.1 Invocar `secrets-filter.sh scrub` via subprocesso **sem shell**
+- [x] 3.2.1 Invocar `secrets-filter.sh scrub` via subprocesso **sem shell**
       (`execFile`-style), conteudo por stdin, argumentos fixos, timeout
       `CSTK_SECRETS_FILTER_TIMEOUT_MS` (default 2000)
-- [ ] 3.2.2 Exigir caminho **absoluto** em `CSTK_SECRETS_FILTER`; valor nao
+- [x] 3.2.2 Exigir caminho **absoluto** em `CSTK_SECRETS_FILTER`; valor nao
       absoluto ou ausente ⇒ tratar como indisponivel e cair direto no passo 2
       (`scrubMode: 'internal'`) — nunca resolver por `PATH` (CHK013)
-- [ ] 3.2.3 Falha do subprocesso (exit != 0 ou timeout) ⇒ descartar saida
+- [x] 3.2.3 Falha do subprocesso (exit != 0 ou timeout) ⇒ descartar saida
       parcial, usar a **entrada original** como insumo do passo 2 (nunca
       servir a saida do passo 1 pela metade)
-- [ ] 3.2.4 Em falha, logar **apenas** codigo de saida e flag de timeout
+- [x] 3.2.4 Em falha, logar **apenas** codigo de saida e flag de timeout
       (conforme criterio de 0.3.1) — nunca stdin, stdout parcial ou stderr
       bruto
-- [ ] 3.2.5 Detectar disponibilidade do script **uma vez no startup** do
+- [x] 3.2.5 Detectar disponibilidade do script **uma vez no startup** do
       servidor (nao por requisicao) — mitigacao de amplificacao de spawn
       citada em plan.md §Custo e mitigacao
-- [ ] 3.2.6 Entrada do subprocesso e limitada pela **janela de leitura**
+- [x] 3.2.6 Entrada do subprocesso e limitada pela **janela de leitura**
       (FR-006), nunca pelo arquivo inteiro — declarar isso explicitamente no
       codigo (comentario) e verificar por teste
-- [ ] 3.2.7 Teste: subprocesso ausente/nao-executavel degrada para
+- [x] 3.2.7 Teste: subprocesso ausente/nao-executavel degrada para
       `scrubMode: 'internal'`; subprocesso falha (exit!=0, timeout) preserva
       o log restrito de 3.2.4 (fixture do cenario 0.3.1); caminho relativo em
       `CSTK_SECRETS_FILTER` e tratado como indisponivel
