@@ -203,6 +203,57 @@ Valida que o payload **real** do backend casa com o contrato de
    `grep -rn "'POST'\|'PUT'\|'PATCH'" apps/server/src/routes/sessions.ts`
    retorna vazio.
 
+## Scenario 12: Segredo no transcript nao chega ao navegador (block-004 / §Seguranca de Conteudo)
+
+**Ramo A — cstk disponivel (`scrubMode: 'cstk+internal'`)**
+
+1. Numa raiz de fixture (como no Scenario 7), preparar um `.jsonl` cujo texto de
+   uma entrada contenha, em linhas distintas:
+   - `AKIAIOSFODNN7EXAMPLE`
+   - `Authorization: Bearer abc.def.ghi`
+   - `password=hunter2`  (valor curto — 7 caracteres)
+   - um bloco `-----BEGIN RSA PRIVATE KEY-----` ... `-----END RSA PRIVATE KEY-----`
+2. `curl -s 'http://localhost:3001/api/v1/sessions/<uuid>/tail' | jq -r '.data.entries[].text'`
+3. **Expected**: nenhum dos quatro valores aparece em claro. `data.scrubMode` e
+   `'cstk+internal'`. O bloco de chave privada foi redigido **inteiro**, nao
+   apenas a primeira linha.
+4. **Expected (o ponto do cenario)**: `password=hunter2` **tambem** esta
+   redigido. O filtro do cstk sozinho o deixa passar — a regra de atribuicao
+   exige valor com 20+ caracteres — e e o redactor interno encadeado que o pega.
+   Se este valor aparecer em claro, o passo 2 da cadeia nao esta rodando quando o
+   cstk esta presente.
+
+**Ramo B — cstk ausente (`scrubMode: 'internal'`)**
+
+5. Apontar `CSTK_SECRETS_FILTER` para um caminho inexistente e reiniciar o
+   servidor.
+6. Repetir o passo 2.
+7. **Expected**: resposta `200` normal, `degraded: false`, `data.scrubMode` e
+   `'internal'`, e os quatro valores continuam redigidos. A ausencia do cstk
+   degrada a qualidade do scrub — **nunca** o desativa, nunca serve cru, nunca
+   quebra a tela.
+
+**Ramo C — subprocesso falha no meio**
+
+8. Apontar `CSTK_SECRETS_FILTER` para um script que escreve algumas linhas em
+   stdout e entao sai com `exit 1`.
+9. Repetir o passo 2.
+10. **Expected**: a saida parcial do script e **descartada**; o redactor interno
+    roda sobre a entrada original; nenhum valor sensivel em claro;
+    `scrubMode: 'internal'`; nenhum `5xx`.
+
+**Ramo D — cobertura da listagem**
+
+11. `curl -s 'http://localhost:3001/api/v1/sessions' | jq '.data.sessions[0], .data.scrubMode'`
+12. **Expected**: `scrubMode` presente; `projectPath` e `projectSlug` sao
+    strings ja redigidas (um `cwd` contendo, por exemplo, `.../token=<40 chars>/...`
+    aparece com `[REDACTED]`). O scrub nao e privilegio da rota de tail.
+
+**Ramo E — o scrub e do servidor, nao do cliente**
+
+13. `grep -rn "REDACTED" apps/web/src/` → **vazio**. Nenhuma logica de redacao
+    vive no front-end; se vivesse, o segredo ja teria trafegado.
+
 ---
 
 ## Baseline a nao regredir

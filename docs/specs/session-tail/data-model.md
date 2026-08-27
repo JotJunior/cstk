@@ -37,8 +37,8 @@ listagem de FR-002.
 | Field | Type | Constraints | Origem | Notes |
 |-------|------|-------------|--------|-------|
 | `sessionId` | string | NOT NULL, UUID | Transcript (nome do arquivo, confirmado em `.sessionId`) | Identificador unico e chave de roteamento (FR-004) |
-| `projectPath` | string \| null | — | Transcript (`.cwd`, primeira ocorrencia) | `null` quando nenhuma linha lida traz `cwd`. Ver Decision 4 |
-| `projectSlug` | string | NOT NULL | Nome do diretorio pai | Chave de agrupamento **opaca** — NUNCA revertida para path (transformacao lossy) |
+| `projectPath` | string \| null | — | Transcript (`.cwd`, primeira ocorrencia) | `null` quando nenhuma linha lida traz `cwd`. **Derivado de transcript ⇒ passa pelo scrub**. Ver Decision 4 |
+| `projectSlug` | string | NOT NULL | Nome do diretorio pai | Chave de agrupamento **opaca** — NUNCA revertida para path (transformacao lossy). **Derivado de transcript ⇒ passa pelo scrub** |
 | `lastActivityAt` | string | NOT NULL, ISO 8601 | Derivado (`statSync().mtime`) | Sinal de atividade; base do calculo de `live` |
 | `live` | boolean | NOT NULL | Derivado | `now - lastActivityAt <= LIVE_WINDOW_MS` (default 5 min, SC-004). **Volatil** — recomputado a cada resposta |
 | `sizeBytes` | number | NOT NULL, >= 0 | Derivado (`statSync().size`) | Permite a UI sinalizar transcript grande antes de abrir |
@@ -91,7 +91,7 @@ que foi parseada com sucesso.
 | `type` | string | NOT NULL | Transcript (`.type`) | **Conjunto ABERTO** — modelar como `z.string()`, jamais `z.enum()` (ver nota abaixo) |
 | `timestamp` | string \| null | ISO 8601 quando presente | Transcript (`.timestamp`) | Nullable: apenas 276 de 400 linhas amostradas o possuiam |
 | `role` | string \| null | — | Transcript (`.message.role`) | `'user'` / `'assistant'` observados; `null` quando a linha nao tem `.message` |
-| `text` | string | NOT NULL (pode ser `''`) | Derivado de `.message.content` | Achatamento — ver regra abaixo. Conteudo **UNTRUSTED** (FR-005) |
+| `text` | string | NOT NULL (pode ser `''`) | Derivado de `.message.content` | Achatamento — ver regra abaixo. Conteudo **UNTRUSTED** (FR-005). **Ja redigido**: passou pela cadeia de scrub no servidor, antes do truncamento |
 | `textTruncated` | boolean | NOT NULL | Derivado | `true` quando `text` foi cortado pelo teto por entrada (FR-006) |
 
 **Por que `type` e `string` e nao `enum`**: foram observados 17 valores
@@ -139,6 +139,15 @@ entradas **e** a contabilidade que FR-003a e FR-006 exigem expor.
 | `windowTruncated` | boolean | NOT NULL | Derivado | `true` quando o arquivo e maior que a janela de leitura, isto e, existe historico anterior ao devolvido |
 | `live` | boolean | NOT NULL | Derivado | Mesma regra do sumario. **Informativo** — nunca gateia esta resposta (FR-003) |
 | `lastActivityAt` | string | NOT NULL, ISO 8601 | Derivado (`statSync().mtime`) | Frescor **da sessao**; nao vai em `meta.freshness` (Decision 11) |
+| `scrubMode` | `'cstk+internal'` \| `'internal'` | NOT NULL | Derivado | Qual cadeia de scrub produziu a resposta. Modelar como `z.enum([...])` — ao contrario de `type`, este conjunto **e nosso** e fechado |
+
+**Por que `scrubMode` e um campo e nao um detalhe de implementacao**: pelo
+Principio III. O operador precisa saber **com que qualidade** o conteudo que ele
+esta lendo foi redigido. `'internal'` significa que o filtro do cstk nao estava
+disponivel e apenas o redactor minimo rodou — uma resposta legitima, porem menos
+protegida. Esconder essa diferenca seria apresentar um scrub parcial como se
+fosse o completo. Nao existe valor que signifique "sem scrub": esse estado nao
+e alcancavel.
 
 **Por que `skippedLines`, `truncatedByBytes` e `windowTruncated` sao campos e
 nao silencio**: os tres distinguem "acabou o historico" de "havia mais, e nao
@@ -161,6 +170,7 @@ Payload de resposta de `GET /api/v1/sessions`.
 | `sessions` | SessionSummaryDTO[] | NOT NULL | Derivado | Ordenado por `lastActivityAt` desc |
 | `total` | number | NOT NULL, >= 0 | Derivado | Total **apos** o filtro `live`; `sessions.length` quando nao ha paginacao |
 | `scannedAt` | string | NOT NULL, ISO 8601 | Derivado | Instante do ultimo ciclo do watcher que alimentou o indice |
+| `scrubMode` | `'cstk+internal'` \| `'internal'` | NOT NULL | Derivado | Mesma semantica do `SessionTailDTO`; a listagem tambem redige `projectPath` e `projectSlug` |
 
 Array vazio com `total: 0` e o estado **vazio legitimo** (US1 cenario 2 /
 SC-003) — nunca erro, nunca degradacao. Diretorio ausente ou ilegivel e
@@ -179,7 +189,8 @@ literais TS. Esta feature acrescenta:
 | `sessions-root-unreadable` | existe, mas `readdirSync` falha (permissao) |
 | `session-not-found` | `:sessionId` nao resolve para arquivo sob a raiz |
 | `session-rejected` | o guard de confinamento rejeitou o caminho (symlink/escape) |
+| `session-scrub-failed` | a cadeia de scrub nao pode ser concluida; a rota degrada em vez de servir texto cru |
 
 O lado Zod **nao** muda: `MetaSchema.reason` ja e `z.string().nullable()`.
 Apenas o union TypeScript em `packages/shared-types/src/envelope.ts` recebe os
-quatro literais.
+**cinco** literais.

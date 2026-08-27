@@ -63,10 +63,18 @@ cai no clamp/default (Principio II).
 | `sessions` | `SessionSummaryDTO[]` | Ordenado por `lastActivityAt` desc |
 | `total` | number | Total apos o filtro `live` |
 | `scannedAt` | string (ISO 8601) | Instante do ciclo do watcher que alimentou o indice |
+| `scrubMode` | `'cstk+internal'` \| `'internal'` | Qual cadeia de scrub produziu esta resposta (**FR-scrub**) |
 
 `SessionSummaryDTO`: `sessionId` (string), `projectPath` (string\|null),
 `projectSlug` (string), `lastActivityAt` (string ISO), `live` (boolean),
 `sizeBytes` (number). Definicao normativa em `data-model.md`.
+
+**Scrub obrigatorio tambem nesta rota.** `projectPath` e `projectSlug` derivam
+de conteudo de transcript (`.cwd` e nome de diretorio) e passam pela mesma
+cadeia de scrub do tail antes de sair do servidor. A cobertura e por **origem
+do dado**, nao por rota: qualquer campo de preview/sumario derivado do
+transcript que venha a ser adicionado a listagem entra automaticamente na
+mesma regra. Ver `plan.md` §Seguranca de Conteudo.
 
 ### Response 200 — degradada
 
@@ -123,6 +131,7 @@ proprio, e nao afrouxa `validateProjectRootPath`.
 | `windowTruncated` | boolean | Existe historico anterior ao devolvido |
 | `live` | boolean | Informativo; nao gateia a resposta |
 | `lastActivityAt` | string (ISO 8601) | `mtime` do arquivo |
+| `scrubMode` | `'cstk+internal'` \| `'internal'` | Qual cadeia de scrub produziu esta resposta |
 
 `SessionTailEntryDTO`: `uuid` (string\|null), `type` (string — conjunto
 ABERTO, nunca enum), `timestamp` (string\|null), `role` (string\|null), `text`
@@ -134,6 +143,16 @@ servidor o entrega como string literal, sem sanitizacao criativa; o front-end
 o renderiza via componente de escaping (`TextBlockRaw`), nunca via
 `dangerouslySetInnerHTML`.
 
+**`text` passa por scrub de segredos NO SERVIDOR antes de sair** — obrigatorio,
+sem caminho alternativo. Esta feature le o `.jsonl` direto do disco e portanto
+**nao** herda o scrub da ingestao do cstk; o scrub e proprio e acontece antes do
+`wrap()`, nunca no cliente. A cadeia e `secrets-filter.sh scrub` do cstk quando
+disponivel, **seguido sempre** de um redactor interno minimo; ausencia do cstk
+degrada a qualidade do scrub e nunca o desativa. O scrub roda **antes** do corte
+de `textTruncated`, logo o que e truncado ja e o texto redigido e `[REDACTED]`
+conta para o teto de bytes. Especificacao normativa: `plan.md`
+§Seguranca de Conteudo.
+
 ### Response 200 — degradada
 
 | `reason` | Condicao |
@@ -141,6 +160,7 @@ o renderiza via componente de escaping (`TextBlockRaw`), nunca via
 | `session-not-found` | `sessionId` nao resolve para arquivo sob a raiz |
 | `session-rejected` | guard de confinamento rejeitou o caminho |
 | `sessions-root-missing` | raiz de sessoes ausente |
+| `session-scrub-failed` | a cadeia de scrub nao pode ser concluida. Resposta `200` com `data: null` — **nunca** o texto cru |
 
 `session-not-found` responde **`200` com `degraded: true`**, nao `404`. Motivo:
 o Principio II classifica ausencia de dado como estado de primeira classe, e a
@@ -173,6 +193,21 @@ Invariantes MUST: o timer e `.unref()`'d (nao segura o processo); um tick nunca
 lanca (diretorio ausente vira indice vazio + flag de degradacao); a instancia e
 independente da do `ingest-watcher` — falha de uma nao afeta a outra.
 
+## Scrub de segredos — resumo normativo
+
+| Aspecto | Regra |
+|---------|-------|
+| Onde roda | **servidor**, imediatamente antes do `wrap()`; nunca no cliente |
+| Cadeia | `secrets-filter.sh scrub` (quando disponivel) → redactor interno (**sempre**) |
+| Ausencia do cstk | degrada a **qualidade** (`scrubMode: 'internal'`); jamais desativa o scrub |
+| Falha do subprocesso (exit != 0 / timeout) | descarta a saida parcial e aplica o redactor interno sobre a entrada original |
+| Campos cobertos | `entries[].text`, `sessions[].projectPath`, `sessions[].projectSlug` |
+| Ordem | scrub **antes** do truncamento por bytes |
+| Invocacao | sem shell, argumentos fixos, conteudo por **stdin**; caminho do script vem de config do servidor, nunca do cliente |
+| Conteudo cru | **em nenhum caminho e em nenhuma condicao de erro** |
+
+---
+
 ## Configuracao (variaveis de ambiente)
 
 **[PROPOSTA]**, seguindo o padrao de `apps/server/src/config.ts`
@@ -183,6 +218,8 @@ independente da do `ingest-watcher` — falha de uma nao afeta a outra.
 | `CSTK_SESSIONS_ROOT` | `~/.claude/projects` | Raiz confinada de sessoes |
 | `CSTK_SESSION_LIVE_WINDOW_MS` | `300000` (5 min) | Janela de liveness (SC-004) |
 | `CSTK_SESSIONS_WATCH_INTERVAL_MS` | `5000` | Intervalo do polling do watcher |
+| `CSTK_SECRETS_FILTER` | `~/.claude/skills/agente-00c-runtime/scripts/secrets-filter.sh` | Caminho do filtro do cstk usado no passo 1 do scrub. Caminho inexistente ⇒ `scrubMode: 'internal'`, nunca falha |
+| `CSTK_SECRETS_FILTER_TIMEOUT_MS` | `2000` | Teto por invocacao do subprocesso; estouro ⇒ descarta a saida parcial e cai no redactor interno |
 
 O caminho da raiz vem **exclusivamente** de configuracao do servidor, nunca do
 cliente — mesma regra que a constituicao ja impoe ao caminho do banco.
