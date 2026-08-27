@@ -5,6 +5,24 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.33.0] - 2026-08-27
+
+### Adicionado
+
+- **`roadmap.md` no card de documentação da feature.** O roadmap é de escopo
+  de **projeto**, como o briefing e a constituição — ele ordena as features
+  entre si, não existe um por feature — então aparece em qualquer página de
+  feature, ao lado dos outros dois. Aceita `docs/roadmap.md` ou `roadmap.md`
+  na raiz.
+- **`converge-report.md` no mesmo card**, de escopo de feature. É o relatório
+  da etapa `converge`, que reconcilia o que spec/plano/tarefas afirmam contra
+  o código commitado. Entrou no pipeline depois que o mapa de artefatos foi
+  escrito e ficava invisível no painel.
+- **Teste de paridade para `FeatureDocStage`**, que tem definição dupla
+  (interface TypeScript + enum Zod). Antes, acrescentar um estágio em só um
+  dos dois passava no typecheck e quebrava em runtime — o schema rejeitaria um
+  estágio que o tipo aceita. O teste falha nas duas direções.
+
 ## [0.32.0] - 2026-08-27
 
 ### Adicionado
@@ -1410,6 +1428,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.33.0]: https://github.com/JotJunior/cstk-panel/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/JotJunior/cstk-panel/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/JotJunior/cstk-panel/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/JotJunior/cstk-panel/compare/v0.29.2...v0.30.0

@@ -608,10 +608,12 @@ export interface SuggestionDTO {
 export type FeatureDocStage =
   | 'briefing'
   | 'constitution'
+  | 'roadmap'
   | 'specify'
   | 'plan'
   | 'checklist'
-  | 'create-tasks';
+  | 'create-tasks'
+  | 'converge';
 
 /**
  * Raiz a que `fileName` e relativo — e, portanto, a que a leitura do conteudo

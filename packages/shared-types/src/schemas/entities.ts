@@ -383,7 +383,8 @@ export const SuggestionDTOSchema = z.object({
 // Espelha EXATAMENTE os campos de entities.ts (task 1.2.1) — dual-def.
 // ---------------------------------------------------------------------------
 export const FeatureDocStageSchema = z.enum([
-  'briefing', 'constitution', 'specify', 'plan', 'checklist', 'create-tasks',
+  'briefing', 'constitution', 'roadmap', 'specify', 'plan', 'checklist',
+  'create-tasks', 'converge',
 ]);
 
 export const FeatureDocScopeSchema = z.enum(['project', 'feature']);

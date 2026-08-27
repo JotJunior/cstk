@@ -31,7 +31,8 @@ import {
   ScoreParamSchema,
   SearchParamsSchema,
 } from '../schemas/params.js';
-import type { SessionSummaryDTO, SessionTailEntryDTO } from '../entities.js';
+import type { SessionSummaryDTO, SessionTailEntryDTO, FeatureDocStage } from '../entities.js';
+import { FeatureDocStageSchema } from '../schemas/entities.js';
 import type { DegradedReason } from '../envelope.js';
 
 const ISO = '2025-01-15T10:00:00.000Z';
@@ -568,5 +569,37 @@ describe('Paridade schemas Zod — params', () => {
   it('SearchParamsSchema: query + limit + offset passam', () => {
     const r = SearchParamsSchema.safeParse({ q: 'npm install', limit: 10, offset: 0 });
     expect(r.success).toBe(true);
+  });
+});
+
+/**
+ * Paridade de ENUM: `FeatureDocStage` (type TS manual) <-> `FeatureDocStageSchema`
+ * (enum Zod). Mesma dupla definicao dos DTOs, mesma armadilha: editar so um dos
+ * dois PASSA no `tsc` e quebra em runtime — o schema rejeita um stage que o
+ * type aceita, ou o type ignora um que o schema emite.
+ *
+ * O `Record<FeatureDocStage, true>` abaixo fecha as duas direcoes:
+ *   - stage novo no TYPE e ausente aqui  -> falta propriedade -> quebra o tsc;
+ *   - stage novo no SCHEMA e ausente no type -> o `toEqual` falha em runtime.
+ */
+describe('Paridade de enum — FeatureDocStage <-> FeatureDocStageSchema', () => {
+  it('os dois lados declaram exatamente os mesmos estagios', () => {
+    const doTipo: Record<FeatureDocStage, true> = {
+      briefing: true,
+      constitution: true,
+      roadmap: true,
+      specify: true,
+      plan: true,
+      checklist: true,
+      'create-tasks': true,
+      converge: true,
+    };
+    expect(Object.keys(doTipo).sort()).toEqual([...FeatureDocStageSchema.options].sort());
+  });
+
+  it('roadmap e converge sao membros validos (regressao: entraram depois do mapa)', () => {
+    expect(FeatureDocStageSchema.safeParse('roadmap').success).toBe(true);
+    expect(FeatureDocStageSchema.safeParse('converge').success).toBe(true);
+    expect(FeatureDocStageSchema.safeParse('inexistente').success).toBe(false);
   });
 });
