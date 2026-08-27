@@ -201,4 +201,68 @@ scenario_scrub_env_valor_inicia_asterisco() {
   esac
 }
 
+# ==== issue #169: segredo curto (<20 chars) e bloco PEM ====
+
+scenario_scrub_segredo_curto_alta_confianca() {
+  # Regressao issue #169: `password=hunter2` (7 chars) escapava do `{20,}` da
+  # regra generica e saia EM CLARO. Regra 4b (limiar {4,}) fecha o caso.
+  capture sh -c "printf '%s' 'password=hunter2' | '$SCRIPT' scrub"
+  assert_stdout_contains "[REDACTED]" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *hunter2*) _fail "segredo curto nao redacted" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+scenario_scrub_segredo_curto_variantes_de_palavra_chave() {
+  for _kw in password passwd api_key apikey access_key secret_key private_key client_secret auth_token access_token refresh_token secret; do
+    capture sh -c "printf '%s' '${_kw}: sk4tPr1v' | '$SCRIPT' scrub"
+    case "$_CAPTURED_STDOUT" in
+      *sk4tPr1v*) _fail "palavra-chave $_kw nao cobre segredo curto" "$_CAPTURED_STDOUT"; return 1 ;;
+    esac
+  done
+}
+
+scenario_scrub_curto_nao_redige_prosa_com_palavra_generica() {
+  # Contra-prova do trade-off: `key`/`auth`/`token` genericos NAO entram na
+  # regra 4b — continuam so no `{20,}` para nao redigir prosa comum.
+  capture sh -c "printf '%s' 'a key: valor comum de prosa' | '$SCRIPT' scrub"
+  assert_stdout_contains "key: valor" || return 1
+  capture sh -c "printf '%s' 'auth: bearer' | '$SCRIPT' scrub"
+  assert_stdout_contains "auth: bearer" || return 1
+}
+
+scenario_scrub_pwd_curto_preserva_diagnostico() {
+  # `pwd` fica DE FORA da regra 4b de proposito: `PWD=/algum/caminho` num
+  # dump de ambiente e diagnostico legitimo do enforcement-log.
+  capture sh -c "printf '%s' 'PWD=/tmp/lab' | '$SCRIPT' scrub"
+  assert_stdout_contains "PWD=/tmp/lab" || return 1
+}
+
+scenario_scrub_bloco_pem() {
+  # Regressao issue #169: bloco PEM inteiro saia EM CLARO (corpo base64 nao
+  # tem palavra-chave proxima, escapava de todas as regras).
+  capture sh -c "printf -- '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----\ndepois\n' | '$SCRIPT' scrub"
+  assert_stdout_contains "[REDACTED-PEM-BLOCK]" || return 1
+  assert_stdout_contains "depois" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *MIIEvQIBADANBg*)   _fail "corpo PEM nao redacted" "$_CAPTURED_STDOUT"; return 1 ;;
+    *"BEGIN PRIVATE"*)  _fail "marcador PEM nao removido" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
+scenario_scrub_bloco_pem_check_detecta() {
+  capture sh -c "printf -- '-----BEGIN RSA PRIVATE KEY-----\nZGVhZGJlZWY=\n-----END RSA PRIVATE KEY-----\n' | '$SCRIPT' check"
+  [ "$_CAPTURED_EXIT" -eq 1 ] || { _fail "check deveria detectar PEM" "exit=$_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_scrub_pem_mencionado_em_prosa_nao_engole_arquivo() {
+  # Deteccao estrita RFC 7468 (marcador SOZINHO na linha): uma mencao inline
+  # em doc/prosa nao pode suprimir o restante do arquivo.
+  capture sh -c "printf '%s\n%s\n' 'doc: o marcador \`-----BEGIN PRIVATE KEY-----\` deve ser escrubado' 'linha seguinte preservada' | '$SCRIPT' scrub"
+  assert_stdout_contains "linha seguinte preservada" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *"[REDACTED-PEM-BLOCK]"*) _fail "mencao em prosa virou bloco PEM" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
 run_all_scenarios

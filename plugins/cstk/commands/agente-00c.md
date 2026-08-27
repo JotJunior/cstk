@@ -1104,6 +1104,20 @@ uma sessao-filha — so a coordenadora interage com o operador e lanca.
    copiar/colar quando nao ha tmux ou a execucao nao pode abrir pane
    automaticamente.
 
+   **Execute a linha emitida VERBATIM.** Desde a issue #168 a composicao
+   `claude ...` vem prefixada por `env CLAUDE_CODE_ENABLE_TELEMETRY=1
+   OTEL_METRICS_EXPORTER=prometheus OTEL_EXPORTER_PROMETHEUS_PORT=<porta>
+   CSTK_OTEL_ENDPOINT=http://127.0.0.1:<porta>/metrics` — uma porta
+   sorteada POR FILHA. Nao remova, nao reordene e nao reaproveite a porta
+   entre filhas: o exporter OTel vive DENTRO de cada processo `claude`, e
+   sem esse prefixo a filha roda sem telemetria (custo e tokens de
+   subagente aparecem como `—` no painel, com os hooks todos corretos).
+   O wrapper `claude()` do rc do operador NAO alcanca este caminho — e
+   funcao de shell, e o tmux executa por `sh -c` nao-interativo.
+   Se `parallel-launch.sh` avisar em stderr que nao conseguiu sortear
+   porta, a filha sobe sem telemetria: reporte ao operador em vez de
+   inventar uma porta.
+
    **Sempre split, nunca janela nova**: cada filha entra como pane irmao
    no MESMO window da coordenadora (`tmux split-window -c <WORKTREE> -P -F
    '#{pane_id}'`), o que mantem a leva inteira visivel de uma vez.

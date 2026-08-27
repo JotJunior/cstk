@@ -18,6 +18,12 @@
 #         opcional; prefixo fechado {briefing-item:, axis:} + sufixo
 #         nao-vazio, senao exit 2. Ausente = subject_key NULL (comportamento
 #         atual). Usada para dedup de FR-008 (ver `list` abaixo).
+#       — Para `axis:`, o SUFIXO tambem e validado contra o enum fechado de
+#         references/structural-axis-map.txt (issue #170): eixo fora do mapa
+#         e exit 2 no register, em vez de ser aceito e nunca casar no vinculo
+#         de consentimento. `briefing-item:` nao tem enum equivalente (sufixo
+#         aberto por desenho) e segue so com a checagem de prefixo.
+#         `list --chave-assunto` NAO valida: e query, nao registro.
 #
 #   bloqueios.sh respond --state-dir DIR --block-id ID --resposta TEXT
 #       — Marca bloqueio como `respondido`, registra human_answer e
@@ -56,6 +62,53 @@ _BL_DIR=$(cd "$(dirname -- "$0")" && pwd)
 # Envelope diagnostico aditivo (openspec-hygiene FR-012/FR-015 — escopo-piloto).
 # shellcheck source=./_diag.sh
 . "$_BL_DIR/_diag.sh"
+
+# ---------- Enum fechado de eixo estrutural (issue #170) ----------
+# Ref: docs/specs/structural-decision-human-gate/data-model.md §Enum
+#      structural_axis
+#
+# O consumidor do vinculo de consentimento (report.sh:552, e o `--consentimento`
+# de state-decisions.sh) casa `subject_key == "axis:" + <eixo>` ITERANDO o
+# structural-axis-map.txt. Validar aqui so o PREFIXO deixava passar
+# `axis:<qualquer-coisa>`, que era aceito no register e NUNCA casava no
+# vinculo — bloqueio, resposta e decisao existiam sem nada os ligar de forma
+# verificavel (buraco silencioso na trilha de auditoria, nao falha).
+# Enum fechado no consumidor exige enum fechado no produtor.
+#
+# So vale para `axis:`. `briefing-item:` NAO tem enum equivalente (o sufixo e
+# um id de item do briefing, aberto por desenho) — validar os dois igualmente
+# quebraria esse caminho.
+_BL_AXIS_MAP="$_BL_DIR/../references/structural-axis-map.txt"
+
+# _bl_axis_valid TOKEN -> exit 0 se TOKEN existe no enum de
+# structural-axis-map.txt (linhas 'eixo|rotulo'; '#' e vazias ignoradas).
+# Mapa ausente/ilegivel => REJEITA (fail-closed, sem fail-safe): aceitar eixo
+# desconhecido e exatamente o que esta trava fecha. Espelha _sd_axis_valid
+# de state-decisions.sh; a fonte de verdade unica e o ARQUIVO do mapa.
+_bl_axis_valid() {
+  _bav_tok="$1"
+  [ -n "$_bav_tok" ] || return 1
+  [ -f "$_BL_AXIS_MAP" ] || return 1
+  while IFS='|' read -r _bav_eixo _bav_rot || [ -n "$_bav_eixo" ]; do
+    case "$_bav_eixo" in
+      ''|'#'*) continue ;;
+    esac
+    if [ "$_bav_eixo" = "$_bav_tok" ]; then
+      return 0
+    fi
+  done < "$_BL_AXIS_MAP"
+  return 1
+}
+
+# _bl_axis_list -> eixos validos separados por ', ' (para mensagem de erro).
+# Fonte: o proprio mapa — nunca uma lista hardcoded que possa driftar dele.
+_bl_axis_list() {
+  [ -f "$_BL_AXIS_MAP" ] || { printf '<mapa ausente: %s>' "$_BL_AXIS_MAP"; return 0; }
+  awk -F'|' '
+    /^[[:space:]]*$/ || /^#/ { next }
+    { printf "%s%s", (n++ ? ", " : ""), $1 }
+  ' "$_BL_AXIS_MAP"
+}
 
 # Backend dual (feature state-db-foundation, FASE 3 task 3.5): presenca de
 # <state-dir>/state.db seleciona SQLite; senao, backend JSON (comportamento
@@ -192,7 +245,16 @@ _bl_cmd_register() {
   # e sufixo nao-vazio. Ausente = subject_key NULL (comportamento atual).
   if [ -n "$_subj" ]; then
     case "$_subj" in
-      briefing-item:?*|axis:?*) ;;
+      briefing-item:?*) ;;
+      axis:?*)
+        # issue #170: sufixo de `axis:` precisa estar no enum fechado —
+        # senao a chave e aceita aqui e nunca casa no vinculo de
+        # consentimento (degradacao silenciosa da trilha de auditoria).
+        _bl_axis_suffix=${_subj#axis:}
+        if ! _bl_axis_valid "$_bl_axis_suffix"; then
+          _bl_die "register: --chave-assunto 'axis:$_bl_axis_suffix' fora do enum de structural-axis-map.txt (eixos validos: $(_bl_axis_list)) — chave fora do enum e aceita no registro mas NUNCA casa no vinculo de consentimento [eixo-invalido]" 2
+        fi
+        ;;
       *) _bl_die "register: --chave-assunto invalida (esperado prefixo briefing-item: ou axis: com sufixo nao-vazio, recebido '$_subj')" 2 ;;
     esac
   fi

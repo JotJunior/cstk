@@ -214,4 +214,122 @@ EOF
   fi
 }
 
+# ---------- issue #171: convencao de MUST em bullet ----------
+
+scenario_must_em_bullet_simples() {
+  # Regressao issue #171: `- MUST:` era ignorado; um principio SEM sufixo
+  # (NON-NEGOTIABLE) e com regras MUST em bullet nao era emitido de forma
+  # alguma, e o gate reportava sucesso.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+- MUST: regra a.
+### II. Segundo
+- MUST: regra b.
+- MUST: regra c.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md"
+  assert_stdout_contains "II	Segundo" || return 1
+}
+
+scenario_must_bullet_variantes_de_marcacao() {
+  # `- MUST:`, `* MUST:`, `+ MUST:`, `- **MUST:**`, `MUST:` cru, `MUST NOT:`,
+  # e indentacao — todas sao regra MUST.
+  for _mark in "- MUST:" "* MUST:" "+ MUST:" "- **MUST:**" "MUST:" "- MUST NOT:" "  - MUST:"; do
+    printf '### I. Sem sufixo\n%s regra.\n' "$_mark" > "$TMPDIR_TEST/constitution.md"
+    capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md"
+    assert_stdout_contains "Sem sufixo" || { _fail "marcacao nao reconhecida: $_mark" "$_CAPTURED_STDOUT"; return 1; }
+  done
+}
+
+scenario_must_em_prosa_corrida_nao_conta() {
+  # Exigir os dois-pontos e deliberado: `MUST` em prosa nao vira sinal.
+  _write_const <<'EOF'
+### I. Sem sufixo
+Este principio diz que o time MUST agir com cuidado.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md"
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "prosa com MUST virou principio" "$_CAPTURED_STDOUT"; return 1; }
+}
+
+scenario_should_bullet_continua_excluido() {
+  _write_const <<'EOF'
+### I. Sem sufixo
+- SHOULD: recomendacao.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md"
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "SHOULD virou MUST" "$_CAPTURED_STDOUT"; return 1; }
+}
+
+# ---------- issue #171: relatorio de cobertura ----------
+
+scenario_coverage_reporta_numeros_reais() {
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+- MUST: regra a.
+- MUST: regra b.
+### II. Segundo
+- MUST: regra c.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "coverage exit" "$_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "ocorrencias da palavra MUST no arquivo (contagem independente): 3" || return 1
+  assert_stdout_contains "linhas de regra MUST reconhecidas pelo parser: 3" || return 1
+  assert_stdout_contains "principios emitidos: 2" || return 1
+}
+
+scenario_coverage_expoe_principio_so_por_rotulo_de_heading() {
+  # O caso exato de #171: o principio entra pelo rotulo (NON-NEGOTIABLE) do
+  # heading, sem NENHUMA regra lida. O relatorio precisa dizer isso.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+Texto sem marcacao de regra.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  assert_stdout_contains "principios emitidos: 1" || return 1
+  assert_stdout_contains "principios emitidos so por rotulo de heading (sem regra MUST lida): 1" || return 1
+}
+
+scenario_coverage_avisa_quando_convencao_nao_e_reconhecida() {
+  # Sintoma de #171: arquivo fala de MUST, parser reconhece 0 regras.
+  _write_const <<'EOF'
+### I. Primeiro
+- MUST — regra sem dois-pontos.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  assert_stdout_contains "linhas de regra MUST reconhecidas pelo parser: 0" || return 1
+  assert_stderr_contains "NAO cobre as regras MUST deste arquivo" || return 1
+}
+
+scenario_coverage_contagem_independente_nao_ecoa_o_parser() {
+  # A 2a linha usa gramatica diferente da do parser: um arquivo onde o
+  # parser le 0 e a contagem independente le >0 e o sinal util. Se as duas
+  # compartilhassem gramatica, ambas dariam 0 e a metrica seria inutil.
+  _write_const <<'EOF'
+### I. Primeiro
+Nota: o time MUST revisar. Outra linha: MUST ser auditado.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  assert_stdout_contains "ocorrencias da palavra MUST no arquivo (contagem independente): 1" || return 1
+  assert_stdout_contains "linhas de regra MUST reconhecidas pelo parser: 0" || return 1
+}
+
+scenario_coverage_constitution_ausente_exit_1() {
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/nao-existe.md" --coverage
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "coverage com arquivo ausente" "exit=$_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_default_permanece_tsv_sem_coverage() {
+  # --coverage e ADITIVO: a saida default nao pode mudar de forma.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+**MUST:**
+- A.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md"
+  assert_stdout_contains "I	Primeiro" || return 1
+  case "$_CAPTURED_STDOUT" in
+    *"fontes declaradas"*) _fail "default vazou relatorio de cobertura" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+}
+
 run_all_scenarios

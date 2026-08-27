@@ -94,7 +94,8 @@ SUBCOMANDOS:
                      local; prompt se ha commits nao-mergeados, --force bypassa).
            --reuse:  forca reutilizar HEAD atual de branch ja mergeada.
            --claude: apos criar a sessao, entra no diretorio e inicia o
-                     Claude Code (exec claude). Combinavel com as demais.
+                     Claude Code (exec claude, com telemetria local ligada —
+                     desative com CSTK_TELEMETRY_AUTO=0). Combinavel com as demais.
 
   list     Lista sessoes ativas. Marcadores STATUS (combinaveis):
            CURRENT (worktree atual), * (dirty), STALE (path inexistente).
@@ -556,7 +557,15 @@ EOF
     return 1
   fi
   printf 'Iniciando Claude Code em %s...\n' "$_session_path"
-  exec claude
+  # issue #168: `exec claude` chama o BINARIO e nunca resolve a funcao
+  # `claude()` do wrapper de telemetria — e este script roda em sh
+  # nao-interativo, onde o rc nem e lido. Sem isto, TODA sessao aberta por
+  # `cstk session start --claude` roda sem telemetria e o painel mostra
+  # custo/tokens como "—". telemetry_exec_claude resolve a porta e liga as
+  # variaveis aqui, sem depender de rc, shell ou tmux.
+  # shellcheck source=./telemetry-env.sh
+  . "${CSTK_LIB:?CSTK_LIB must be set}/telemetry-env.sh"
+  telemetry_exec_claude
 }
 
 # ==== Subcomando: list ====

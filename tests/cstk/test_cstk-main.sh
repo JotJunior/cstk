@@ -217,4 +217,58 @@ scenario_help_telemetry_snippet_parity_with_install() {
   [ "$_a" = "$_b" ] || { _fail "parity" "snippet de telemetria divergiu entre cli/install.sh e cli/cstk"; return 1; }
 }
 
+# ==== issue #168: paridade do conjunto de variaveis entre os lancadores ====
+#
+# O snippet canonico (wrapper `claude()` do rc) e os TRES lancadores do
+# proprio cstk precisam ligar o MESMO conjunto de variaveis. Sem este gate,
+# adicionar uma variavel ao snippet e esquecer os lancadores reproduz
+# exatamente a issue #168: telemetria ativa para quem digita `claude` no
+# terminal, e inerte para tudo que o cstk lanca.
+
+# _telemetry_vars_of FILE -> nomes de variaveis de telemetria citados em
+# FILE, um por linha, ordenados e sem repeticao.
+_telemetry_vars_of() {
+  grep -oE '(CLAUDE_CODE_ENABLE_TELEMETRY|OTEL_METRICS_EXPORTER|OTEL_EXPORTER_PROMETHEUS_PORT|CSTK_OTEL_ENDPOINT)=' "$1" \
+    | sed 's/=$//' | sort -u
+}
+
+scenario_telemetry_vars_parity_snippet_vs_lancadores() {
+  _snip="$TMPDIR_TEST/snippet.txt"
+  awk '/^# >>> cstk telemetry >>>$/,/^# <<< cstk telemetry <<<$/' "$REPO_ROOT/cli/install.sh" > "$_snip"
+  [ -s "$_snip" ] || { _fail "extract" "snippet ausente de cli/install.sh"; return 1; }
+
+  _esperado=$(_telemetry_vars_of "$_snip")
+  [ -n "$_esperado" ] || { _fail "extract" "nenhuma variavel de telemetria no snippet"; return 1; }
+
+  # Lancador 1+2 (runtime do binario): cli/lib/telemetry-env.sh.
+  _lib=$(_telemetry_vars_of "$REPO_ROOT/cli/lib/telemetry-env.sh")
+  [ "$_lib" = "$_esperado" ] || {
+    _fail "parity" "cli/lib/telemetry-env.sh diverge do snippet: [$_lib] vs [$_esperado]"; return 1; }
+
+  # Lancador 3 (catalogo): parallel-launch.sh emit.
+  _pl=$(_telemetry_vars_of "$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh")
+  [ "$_pl" = "$_esperado" ] || {
+    _fail "parity" "parallel-launch.sh diverge do snippet: [$_pl] vs [$_esperado]"; return 1; }
+}
+
+scenario_lancadores_nao_usam_exec_claude_cru() {
+  # `exec claude` nunca resolve a funcao `claude()` do rc (e estes scripts
+  # rodam em sh nao-interativo, onde o rc nem e lido). Qualquer reintroducao
+  # de `exec claude` cru nos lancadores e a regressao da issue #168.
+  for _f in cli/lib/session.sh cli/lib/00c-bootstrap.sh; do
+    _hits=$(grep -nE '^[[:space:]]*exec[[:space:]]+claude([[:space:]]|$)' "$REPO_ROOT/$_f" || :)
+    [ -z "$_hits" ] || { _fail "regressao #168" "$_f voltou a usar 'exec claude' cru: $_hits"; return 1; }
+  done
+  # O unico `exec claude` legitimo vive dentro da propria lib de telemetria.
+  grep -qE '^[[:space:]]*exec claude' "$REPO_ROOT/cli/lib/telemetry-env.sh" || {
+    _fail "estrutura" "cli/lib/telemetry-env.sh deveria conter o exec claude"; return 1; }
+}
+
+scenario_lancadores_expoem_kill_switch() {
+  for _f in cli/lib/telemetry-env.sh plugins/cstk/skills/agente-00c-runtime/scripts/parallel-launch.sh; do
+    grep -q 'CSTK_TELEMETRY_AUTO' "$REPO_ROOT/$_f" || {
+      _fail "kill switch" "$_f nao honra CSTK_TELEMETRY_AUTO"; return 1; }
+  done
+}
+
 run_all_scenarios
