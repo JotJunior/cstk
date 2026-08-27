@@ -289,3 +289,19 @@ aberto para `/plan`, por instrucao explicita do operador.
 Precedente citado pelo operador para esta feature: dec-015 — mesma
 patologia de uma ferramenta reportar saude sobre uma fonte que nao
 inspecionou de fato.
+
+### Session 2026-08-27
+
+- Q: O requisito de declaracao de cobertura (FR-006) deve ser
+  implementado AGORA em outros mecanismos de saude/integridade ja
+  existentes no toolkit (ex.: demais secoes do `cstk doctor`,
+  `guard-hooks-status.sh`), ou esta feature entrega apenas a nova
+  checagem de doctor (agents/commands shadowed) com a declaracao de
+  cobertura documentada como padrao de referencia para adocao futura,
+  sem retrofit imediato de mecanismos ja existentes? → A: Escopo desta
+  feature fica limitado a nova checagem de agents/commands shadowed no
+  `cstk doctor`; a declaracao de cobertura (FR-006/FR-007) vira padrao
+  de referencia documentado, reutilizavel por outros mecanismos de
+  saude do toolkit no futuro, mas sem retrofit imediato de mecanismos
+  ja existentes (ex.: demais secoes do doctor, `guard-hooks-status.sh`)
+  dentro desta feature.
