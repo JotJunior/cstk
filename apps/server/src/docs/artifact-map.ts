@@ -127,6 +127,14 @@ const PROJECT_MAP: readonly ProjectMapEntry[] = [
     artifactId: 'constitution',
     candidates: ['docs/constitution.md', 'constitution.md'],
   },
+  {
+    // Escopo de PROJETO, como briefing e constitution: o roadmap ordena as
+    // features entre si, entao serve de contexto em QUALQUER pagina de
+    // feature — nao existe roadmap por feature.
+    stage: 'roadmap',
+    artifactId: 'roadmap',
+    candidates: ['docs/roadmap.md', 'roadmap.md'],
+  },
 ];
 
 /** Diretorio de briefings do projeto: alem do `briefing.md` canonico, a skill
@@ -143,6 +151,10 @@ const FIXED_MAP: readonly FixedMapEntry[] = [
   { stage: 'plan', artifactId: 'data-model', fileName: 'data-model.md' },
   { stage: 'plan', artifactId: 'quickstart', fileName: 'quickstart.md' },
   { stage: 'create-tasks', artifactId: 'tasks', fileName: 'tasks.md' },
+  // Produzido pela etapa `converge` (feature pipeline-converge): reconcilia
+  // o que spec/plan/tasks afirmam contra o codigo commitado. Entrou no
+  // pipeline depois deste mapa e ficava invisivel no painel.
+  { stage: 'converge', artifactId: 'converge-report', fileName: 'converge-report.md' },
 ];
 
 /** Subdiretorios de lista dinamica (Decision 8) — nome do dir, stage dono,

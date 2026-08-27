@@ -34,12 +34,12 @@ afterEach(() => {
 });
 
 describe('buildFeatureDocsList — feature completa', () => {
-  it('marca produced:true para os 6 artefatos fixos quando todos existem', () => {
-    for (const name of ['spec.md', 'plan.md', 'research.md', 'data-model.md', 'quickstart.md', 'tasks.md']) {
+  it('marca produced:true para os 7 artefatos fixos quando todos existem', () => {
+    for (const name of ['spec.md', 'plan.md', 'research.md', 'data-model.md', 'quickstart.md', 'tasks.md', 'converge-report.md']) {
       writeFileSync(join(featureDir, name), `# ${name}`);
     }
     const entries = buildFeatureDocsList(roots);
-    const fixedIds = ['spec', 'plan', 'research', 'data-model', 'quickstart', 'tasks'];
+    const fixedIds = ['spec', 'plan', 'research', 'data-model', 'quickstart', 'tasks', 'converge-report'];
     for (const id of fixedIds) {
       const e = entries.find(x => x.artifactId === id);
       expect(e, `entrada ${id} deve existir`).toBeDefined();
@@ -74,16 +74,17 @@ describe('buildFeatureDocsList — feature parcial (FR-007)', () => {
     expect(entries.find(e => e.artifactId === 'data-model')?.produced).toBe(false);
     expect(entries.find(e => e.artifactId === 'quickstart')?.produced).toBe(false);
     expect(entries.find(e => e.artifactId === 'tasks')?.produced).toBe(false);
+    expect(entries.find(e => e.artifactId === 'converge-report')?.produced).toBe(false);
     // Ausencia nunca remove a entrada do mapa fixo (ela deve sempre aparecer)
-    expect(entries.filter(e => e.scope === 'feature' && !e.extra)).toHaveLength(6);
+    expect(entries.filter(e => e.scope === 'feature' && !e.extra)).toHaveLength(7);
   });
 
   it('degrada para 100% produced:false quando o proprio featureDir nao existe (nunca lanca)', () => {
     const inexistente = artifactRoots(tmpRoot, 'nao-existe');
     expect(() => buildFeatureDocsList(inexistente)).not.toThrow();
     const entries = buildFeatureDocsList(inexistente);
-    // 6 fixos da feature + briefing + constitution (escopo projeto)
-    expect(entries).toHaveLength(8);
+    // 7 fixos da feature + briefing + constitution + roadmap (escopo projeto)
+    expect(entries).toHaveLength(10);
     expect(entries.every(e => e.produced === false)).toBe(true);
   });
 });
@@ -238,5 +239,59 @@ describe('latestArtifactMtimeMs', () => {
     expect(latest).not.toBeNull();
     expect(typeof latest).toBe('number');
     expect(latest!).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Artefatos que entraram no pipeline DEPOIS que este mapa foi escrito e
+ * ficavam invisiveis no painel:
+ *   - `roadmap.md` — escopo PROJETO (ordena as features entre si; nao existe
+ *     roadmap por feature), ao lado de briefing e constitution;
+ *   - `converge-report.md` — escopo FEATURE, produzido pela etapa `converge`
+ *     (feature `pipeline-converge`).
+ */
+describe('buildFeatureDocsList — roadmap (projeto) e converge-report (feature)', () => {
+  it('lista roadmap com scope:project a partir de docs/roadmap.md', () => {
+    mkdirSync(join(tmpRoot, 'docs'), { recursive: true });
+    writeFileSync(join(tmpRoot, 'docs', 'roadmap.md'), '# roadmap');
+
+    expect(buildFeatureDocsList(roots).find(e => e.artifactId === 'roadmap')).toEqual({
+      stage: 'roadmap', artifactId: 'roadmap', scope: 'project',
+      fileName: 'docs/roadmap.md', produced: true, extra: false,
+    });
+  });
+
+  it('aceita roadmap.md na raiz como candidato alternativo', () => {
+    writeFileSync(join(tmpRoot, 'roadmap.md'), '# roadmap na raiz');
+    const e = buildFeatureDocsList(roots).find(x => x.artifactId === 'roadmap');
+    expect(e?.produced).toBe(true);
+    expect(e?.fileName).toBe('roadmap.md');
+  });
+
+  it('lista converge-report com scope:feature', () => {
+    writeFileSync(join(featureDir, 'converge-report.md'), '# convergencia');
+
+    expect(buildFeatureDocsList(roots).find(e => e.artifactId === 'converge-report')).toEqual({
+      stage: 'converge', artifactId: 'converge-report', scope: 'feature',
+      fileName: 'converge-report.md', produced: true, extra: false,
+    });
+  });
+
+  it('marca produced:false (nao erro) quando ausentes — projeto sem roadmap e comum', () => {
+    const entries = buildFeatureDocsList(roots);
+    expect(entries.find(e => e.artifactId === 'roadmap')?.produced).toBe(false);
+    expect(entries.find(e => e.artifactId === 'converge-report')?.produced).toBe(false);
+  });
+
+  it('roadmap vem junto dos demais artefatos de projeto, antes dos da feature', () => {
+    mkdirSync(join(tmpRoot, 'docs'), { recursive: true });
+    writeFileSync(join(tmpRoot, 'docs', 'roadmap.md'), '# roadmap');
+    writeFileSync(join(featureDir, 'spec.md'), '# spec');
+
+    const entries = buildFeatureDocsList(roots);
+    const idxRoadmap = entries.findIndex(e => e.artifactId === 'roadmap');
+    const idxSpec = entries.findIndex(e => e.artifactId === 'spec');
+    expect(idxRoadmap).toBeGreaterThanOrEqual(0);
+    expect(idxRoadmap).toBeLessThan(idxSpec);
   });
 });

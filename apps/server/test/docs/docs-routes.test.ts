@@ -68,8 +68,8 @@ afterEach(() => {
 // ─── GET /docs — listagem (task 3.2.5) ───────────────────────────────────
 
 describe('GET /features/:project/:feature/docs — listagem', () => {
-  it('feature completa: todos os 6 artefatos fixos com produced:true (quickstart Cenario 4/6)', async () => {
-    for (const name of ['spec.md', 'plan.md', 'research.md', 'data-model.md', 'quickstart.md', 'tasks.md']) {
+  it('feature completa: todos os 7 artefatos fixos com produced:true (quickstart Cenario 4/6)', async () => {
+    for (const name of ['spec.md', 'plan.md', 'research.md', 'data-model.md', 'quickstart.md', 'tasks.md', 'converge-report.md']) {
       writeFileSync(join(featureDir, name), `# ${name}`);
     }
     const res = await server.inject({ method: 'GET', url: '/api/v1/features/meu-projeto/minha-feature/docs' });
@@ -79,7 +79,7 @@ describe('GET /features/:project/:feature/docs — listagem', () => {
     expect(body.data.project).toBe('meu-projeto');
     expect(body.data.feature).toBe('minha-feature');
     const ownArtifacts = body.data.artifacts.filter((a: { scope: string }) => a.scope === 'feature');
-    expect(ownArtifacts).toHaveLength(6);
+    expect(ownArtifacts).toHaveLength(7);
     expect(ownArtifacts.every((a: { produced: boolean }) => a.produced === true)).toBe(true);
     // Listagem nunca inclui content (contrato: "Nenhum content, so metadados")
     expect(body.data.artifacts.every((a: Record<string, unknown>) => !('content' in a))).toBe(true);
@@ -140,12 +140,13 @@ describe('docs de escopo projeto — briefing e constitution', () => {
     mkdirSync(join(projectRoot, 'docs', '01-briefing-discovery'), { recursive: true });
     writeFileSync(join(projectRoot, 'docs', '01-briefing-discovery', 'briefing.md'), '# briefing');
     writeFileSync(join(projectRoot, 'docs', 'constitution.md'), '# constituicao');
+    writeFileSync(join(projectRoot, 'docs', 'roadmap.md'), '# roadmap');
 
     const res = await server.inject({ method: 'GET', url: '/api/v1/features/meu-projeto/minha-feature/docs' });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     const project = body.data.artifacts.filter((a: { scope: string }) => a.scope === 'project');
-    expect(project.map((a: { artifactId: string }) => a.artifactId)).toEqual(['briefing', 'constitution']);
+    expect(project.map((a: { artifactId: string }) => a.artifactId)).toEqual(['briefing', 'constitution', 'roadmap']);
     expect(project.every((a: { produced: boolean }) => a.produced === true)).toBe(true);
   });
 
