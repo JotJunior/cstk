@@ -34,6 +34,7 @@ import {
   openSync,
   fstatSync,
   readFileSync,
+  readSync,
   closeSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
@@ -143,23 +144,57 @@ export function resolveConfinedSessionPath(
   }
 }
 
+/** Opcoes de `readConfinedSessionFile` (task 2.3, dec-058). */
+export interface ReadConfinedSessionFileOptions {
+  /**
+   * Quando fornecido, le SOMENTE os ultimos `tailBytes` bytes do arquivo
+   * (research.md Decision 8 da feature `session-tail`) — nunca o arquivo
+   * inteiro. Valores >= tamanho do arquivo resultam no arquivo inteiro
+   * (mesmo efeito que omitir a opcao). Omitido = comportamento legado
+   * (leitura integral), preservado para os chamadores existentes.
+   */
+  tailBytes?: number;
+}
+
 /**
  * Le o conteudo de um arquivo de sessao JA CONFINADO (path retornado por
  * `resolveConfinedSessionPath`) em uma UNICA operacao de abertura (CHK017):
- * `openSync` -> `fstatSync` (no mesmo `fd`) -> `readFileSync` (no mesmo
- * `fd`) -> `closeSync`. Nunca `existsSync` seguido de `readFileSync` em
- * chamadas separadas — essa dupla checagem abriria uma janela de TOCTOU
- * entre a confirmacao de existencia/confinamento e a leitura real (o
- * arquivo poderia ser substituido por um symlink entre as duas chamadas).
+ * `openSync` -> `fstatSync` (no mesmo `fd`) -> leitura (no mesmo `fd`) ->
+ * `closeSync`. Nunca `existsSync` seguido de `readFileSync` em chamadas
+ * separadas — essa dupla checagem abriria uma janela de TOCTOU entre a
+ * confirmacao de existencia/confinamento e a leitura real (o arquivo
+ * poderia ser substituido por um symlink entre as duas chamadas).
  * Retorna `null` em qualquer falha (Principio II — nunca lanca).
+ *
+ * Com `options.tailBytes`, a leitura e POSICIONAL a partir do fim do
+ * arquivo (`readSync` com `position = size - min(size, tailBytes)`),
+ * nunca carregando o conteudo inteiro para depois recortar em memoria —
+ * requisito da feature `session-tail` (FR-006, transcripts de dezenas de
+ * MB). O mesmo `fd`/`fstat` desta funcao e reaproveitado; nao ha segunda
+ * abertura.
  */
-export function readConfinedSessionFile(confinedPath: string): Buffer | null {
+export function readConfinedSessionFile(
+  confinedPath: string,
+  options?: ReadConfinedSessionFileOptions
+): Buffer | null {
   let fd: number | undefined;
   try {
     fd = openSync(confinedPath, 'r');
     const stat = fstatSync(fd);
     if (!stat.isFile()) return null;
-    return readFileSync(fd);
+
+    const tailBytes = options?.tailBytes;
+    if (tailBytes === undefined) {
+      return readFileSync(fd);
+    }
+
+    const size = stat.size;
+    const readLength = Math.min(size, Math.max(0, tailBytes));
+    if (readLength <= 0) return Buffer.alloc(0);
+    const position = size - readLength;
+    const buf = Buffer.alloc(readLength);
+    readSync(fd, buf, 0, readLength, position);
+    return buf;
   } catch {
     return null;
   } finally {

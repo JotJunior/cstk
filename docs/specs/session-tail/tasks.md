@@ -216,15 +216,15 @@ Depende de: 0.1 (resolucao via indice), 1.1 (DTOs)
 
 Depende de: 0.1 (fonte de resolucao), 0.2 (criterio de teste patologico)
 
-- [ ] 2.3.1 Criar `apps/server/src/lib/session-tail.ts`: leitura posicional a
+- [x] 2.3.1 Criar `apps/server/src/lib/session-tail.ts`: leitura posicional a
       partir do fim do arquivo, teto duplo de linhas (default 200, clamp
       1..1000) e bytes (FR-006)
-- [ ] 2.3.2 `JSON.parse` por linha em try/catch; linha malformada e pulada e
+- [x] 2.3.2 `JSON.parse` por linha em try/catch; linha malformada e pulada e
       contabilizada em `skippedLines`, nunca aborta a requisicao (FR-003a)
-- [ ] 2.3.3 Conversao explicita `sessionId`/`session_id` → `sessionId`
+- [x] 2.3.3 Conversao explicita `sessionId`/`session_id` → `sessionId`
       (camelCase) no ponto de leitura — unico lugar de normalizacao (plan.md
       §Convencoes de Borda)
-- [ ] 2.3.4 Teste: `apps/server/test/lib/session-tail.test.ts` — transcript
+- [x] 2.3.4 Teste: `apps/server/test/lib/session-tail.test.ts` — transcript
       grande respeitando os dois tetos, linha malformada pulada e contada,
       fixture com `sessionId` e `session_id` coexistindo confirmando que o
       DTO final usa sempre `sessionId`
