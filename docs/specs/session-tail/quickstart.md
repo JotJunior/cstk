@@ -254,6 +254,131 @@ Valida que o payload **real** do backend casa com o contrato de
 13. `grep -rn "REDACTED" apps/web/src/` → **vazio**. Nenhuma logica de redacao
     vive no front-end; se vivesse, o segredo ja teria trafegado.
 
+**Ramo F — conteudo EXATO do log em falha do subprocesso (CHK012, plan.md
+achado LOW "Vazamento por log")**
+
+14. Repetir o Ramo C (script que sai `exit 1` apos escrever stdout parcial
+    contendo, de proposito, um segredo — ex. `password=hunter2-vazou-no-stdout`)
+    e capturar a saida de log do servidor (stderr/arquivo de log conforme
+    config atual) para esta requisicao.
+15. **Expected — o log contem EXATAMENTE dois campos e nenhum outro**:
+    `{ "exitCode": 1, "timedOut": false }` (nomes de campo ilustrativos; o
+    formato real segue o logger do servidor, mas o CONJUNTO de dados e
+    fechado a estes dois). **Nao aparece no log**: o conteudo enviado ao
+    subprocesso (stdin), a saida parcial do subprocesso (stdout, mesmo que
+    truncada), nem `stderr` bruto do subprocesso. Em particular, a string
+    `password=hunter2-vazou-no-stdout` do passo 14 **MUST NOT** aparecer em
+    lugar nenhum do log — se aparecer, o cenario reprovou.
+16. Repetir os passos 14-15 com um script que **dorme alem do
+    `CSTK_SECRETS_FILTER_TIMEOUT_MS`** em vez de sair com `exit 1`.
+17. **Expected**: mesmo par de campos, agora `{ "exitCode": null, "timedOut":
+    true }` (ou equivalente do logger real) — o codigo de saida e
+    inaplicavel/nulo porque o processo foi morto por timeout, nao terminou
+    sozinho; novamente, nenhum conteudo de stdin/stdout/stderr no log.
+
+## Scenario 12.1: Entrada patologica no redactor interno — teto de tempo medido (CHK009/CHK010, plan.md achado MEDIUM "ReDoS no redactor interno")
+
+**Objetivo**: provar, com numero medido nesta maquina de referencia (nao
+suposto), que a abordagem escolhida (padroes ancorados + maquina de estados
+linha-a-linha) e ordens de magnitude mais rapida que a alternativa proibida
+(regex guloso com quantificador aninhado) sobre o mesmo tipo de entrada
+adversarial.
+
+Ambiente da medicao: macOS (Darwin 25.5.0), `node --version` → `v24.19.0`,
+script de probe descartavel executado via
+`node redos-probe.js` (nao versionado — apenas medicao, sem codigo de
+producao nesta FASE).
+
+1. **Padrao proibido** (o que o redactor **nao pode** usar):
+   `/^(a+)+$/` — quantificador aninhado classico (CWE-1333) — testado contra
+   `'a'.repeat(N) + '!'` (o `!` final forca backtracking completo por nao
+   casar):
+
+   | N (chars) | Tempo medido |
+   |-----------|--------------|
+   | 20 | 30.661 ms |
+   | 24 | 78.711 ms |
+   | 28 | 1251.788 ms |
+
+   **Expected**: crescimento super-linear visivel a olho nu (~16x de tempo
+   para +4 chars de entrada, entre N=24 e N=28) — a assinatura do backtracking
+   catastrofico. Extrapolando a mesma razao, um `sessionId`/transcript
+   adversarial de poucas centenas de caracteres neste padrao travaria o
+   processo Node por minutos a horas — inaceitavel para uma rota servida por
+   requisicao.
+
+2. **Padrao ancorado equivalente, sem aninhamento**: `/^a+$/` contra a MESMA
+   familia de entrada, incluindo tamanhos de producao realistas:
+
+   | N (chars) | Tempo medido |
+   |-----------|--------------|
+   | 20 | 0.056 ms |
+   | 24 | 0.038 ms |
+   | 28 | 0.001 ms |
+   | 1.000.000 | 0.882 ms |
+   | 5.000.000 | 5.707 ms |
+
+   **Expected**: tempo linear e proximo de zero mesmo a 5.000.000 de
+   caracteres — nunca cresce de forma explosiva com o tamanho da entrada.
+
+3. **Maquina de estados linha-a-linha para o bloco `BEGIN...PRIVATE KEY`**
+   (a abordagem real do redactor), contra um blob adversarial de ~5 MB com um
+   bloco de chave privada no meio de ruido:
+
+   **Expected medido**: `input bytes=5243045 -> 12.290 ms`,
+   `contains-marker=true` (bloco foi redigido), `contains-raw-key=false`
+   (nenhum fragmento da chave sobrevive em claro).
+
+**Teto de regressao a documentar no PR de implementacao (tarefa 3.1)**: o
+redactor real, sobre um blob adversarial de ate 5 MB (o teto de bytes da
+janela de tail, FR-006), MUST completar em **menos de 100 ms** nesta classe de
+maquina — teto com folga de ~8x sobre o medido acima (12.29 ms), nao um numero
+redondo inventado. Se a implementacao real medir acima disso, a tarefa 3.1
+reabre com o numero medido, nao com este teto.
+
+4. Teto (revisao de artefato): confirmar que os tres numeros acima (linhas 1-3)
+   tem o comando/ambiente que os gerou citado ao lado — nenhum numero aparece
+   sem a medicao que o produziu (Principio VI).
+
+## Scenario 12.2: Matriz positiva/negativa do scrub (CHK003/CHK005, plan.md §Cobertura medida do filtro do cstk)
+
+**Objetivo**: o `{20,}` piso de comprimento na regra de atribuicao do
+`secrets-filter.sh` existe para evitar falso-positivo em prosa comum; o
+redactor interno encadeado enfrenta o mesmo dilema, agravado por servir
+transcript **e** prosa de conversa no mesmo campo `text`. Um teste que so
+mede cobertura (positivos) passa com um redactor que tambem destroi prosa
+legitima (falsos positivos). Este cenario coloca os dois conjuntos **lado a
+lado**, com entrada e saida esperada explicitas para cada linha — e o
+criterio de aceite que a tarefa 3.1 (redactor interno) e o Scenario 12
+(Ramos A/B) MUST satisfazer.
+
+**Casos que DEVEM ser redigidos** (positivos — entrada por linha isolada,
+saida esperada apos a cadeia `cstk scrub` → redactor interno):
+
+| # | Entrada (linha isolada) | Saida esperada |
+|---|--------------------------|-----------------|
+| P1 | `password=hunter2` (7 chars — abaixo do piso `{20,}` do cstk) | `password=[REDACTED]` (redigido pelo redactor interno, nao pelo cstk) |
+| P2 | `-----BEGIN RSA PRIVATE KEY-----`\n`MIIEowIBAAKCAQEA...`\n`-----END RSA PRIVATE KEY-----` (bloco completo, corpo arbitrario) | bloco inteiro substituido por um unico `[REDACTED]` — nenhuma linha do corpo sobrevive |
+| P3 | `Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abcdefghijklmnop.zzzzzzzzzzzzzzzz` (token longo) | `Authorization: Bearer [REDACTED]` |
+| P4 | `AKIAIOSFODNN7EXAMPLE` (chave AWS, formato `AKIA` + 16 chars) | `[REDACTED-AWS-KEY]` |
+
+**Casos que NAO PODEM ser redigidos** (negativos — a mesma cadeia aplicada a
+prosa legitima de conversa; qualquer redacao aqui e um falso-positivo que
+reprova o cenario):
+
+| # | Entrada (linha isolada) | Saida esperada |
+|---|--------------------------|-----------------|
+| N1 | `o campo password e obrigatorio neste formulario` | identica, sem `[REDACTED]` — nao ha `password=<valor>`, so a palavra em prosa |
+| N2 | `o token de acesso expira em 1 hora` | identica, sem `[REDACTED]` — mencao a "token" sem valor de segredo ao lado |
+| N3 | `nao existe segredo aqui` | identica, sem `[REDACTED]` — palavra "secret"/"segredo" em sentido comum, sem atribuicao `secret=<valor>` |
+
+**Expected**: rodar as 4 linhas positivas (P1-P4) e as 3 linhas negativas
+(N1-N3) através da MESMA cadeia de scrub (`cstk scrub` → redactor interno)
+produz exatamente as saidas da tabela — nenhuma das P1-P4 escapa em claro
+(cobertura), e nenhuma das N1-N3 e alterada (nao ha destruicao de prosa). O
+teste de implementacao (tarefa 3.1) MUST cobrir as 7 linhas como casos
+individuais, nao apenas os 4 positivos.
+
 ---
 
 ## Baseline a nao regredir

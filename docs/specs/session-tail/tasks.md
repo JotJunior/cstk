@@ -33,12 +33,12 @@ SC-005), `plan.md` e `contracts/sessions-api.md`.
 Ref: CHK015 (checklists/security.md), research.md Decision 7, contracts/
 sessions-api.md linha `sessionId`
 
-- [ ] 0.1.1 Editar `contracts/sessions-api.md` (secao `GET .../tail` →
+- [x] 0.1.1 Editar `contracts/sessions-api.md` (secao `GET .../tail` →
       Request) declarando explicitamente que a resolucao de `sessionId` usa
       `getSessionsIndex()` do `sessions-watcher` (a mesma fonte que alimenta
       `GET /api/v1/sessions`) — nunca reconstroi o path `<slug>/<sessionId>
       .jsonl` a partir de dado enviado pelo cliente sem passar pelo indice
-- [ ] 0.1.2 Teste (revisao de artefato): confirmar por `grep` que o texto
+- [x] 0.1.2 Teste (revisao de artefato): confirmar por `grep` que o texto
       editado cita `getSessionsIndex` e que nenhuma frase remanescente sugere
       reconstrucao de path direto do request
 
@@ -47,19 +47,19 @@ sessions-api.md linha `sessionId`
 Ref: CHK009/CHK010 (checklists/security.md), plan.md achado MEDIUM "ReDoS no
 redactor interno"
 
-- [ ] 0.2.1 Editar `plan.md` §Achados residuais (ou `quickstart.md`)
+- [x] 0.2.1 Editar `plan.md` §Achados residuais (ou `quickstart.md`)
       substituindo "deve ser seguro contra ReDoS" por um criterio
       implementavel: padroes ancorados (`^`/`$` ou limites explicitos), zero
       quantificadores aninhados (`(a+)+`), e o bloco `BEGIN...PRIVATE KEY`
       casado **linha-a-linha** via maquina de estados (flag "dentro do
       bloco"), nunca por um regex guloso multi-linha
-- [ ] 0.2.2 Acrescentar a `quickstart.md` um cenario de entrada patologica:
+- [x] 0.2.2 Acrescentar a `quickstart.md` um cenario de entrada patologica:
       texto adversarial multi-megabyte (gerar localmente, ex. repeticao de
       `"a"` seguida de sufixo que force backtracking num regex ingenuo) e
       **medir** o tempo de execucao do redactor contra ele nesta maquina de
       referencia, documentando o numero medido (nao suposto) como teto de
       regressao
-- [ ] 0.2.3 Teste (revisao de artefato): confirmar que o teto de tempo
+- [x] 0.2.3 Teste (revisao de artefato): confirmar que o teto de tempo
       documentado tem o comando/medicao que o gerou citado ao lado (Principio
       VI — zero fabricacao de valor numerico)
 
@@ -67,13 +67,13 @@ redactor interno"
 
 Ref: CHK012 (checklists/security.md), plan.md achado LOW "Vazamento por log"
 
-- [ ] 0.3.1 Acrescentar a `quickstart.md` um cenario que force a falha do
+- [x] 0.3.1 Acrescentar a `quickstart.md` um cenario que force a falha do
       subprocesso `secrets-filter.sh` (ex.: apontar `CSTK_SECRETS_FILTER`
       para um binario que sai com `exit 1`, e outro cenario com um script que
       dorme alem do timeout) e especificar o conteudo **exato** esperado do
       log resultante: apenas codigo de saida e uma flag booleana de timeout —
       nunca stdin, stdout parcial ou stderr bruto
-- [ ] 0.3.2 Teste (revisao de artefato): confirmar que o cenario novo cita os
+- [x] 0.3.2 Teste (revisao de artefato): confirmar que o cenario novo cita os
       dois campos exatos do log esperado e nenhum campo de conteudo
 
 ### 0.4 Definir matriz de teste do scrub — positivos E negativos `[C]`
@@ -87,16 +87,16 @@ dilema, agravado por servir transcript **e** prosa de conversa no mesmo
 campo `text`. Sem um conjunto de casos negativos, um teste que so mede
 cobertura passa com um redactor que destroi o transcript.
 
-- [ ] 0.4.1 Acrescentar a `quickstart.md` (junto ao Scenario 12) uma tabela
+- [x] 0.4.1 Acrescentar a `quickstart.md` (junto ao Scenario 12) uma tabela
       de casos que **DEVEM** ser redigidos: `password=hunter2` (segredo
       curto, sem piso de 20 chars), bloco `-----BEGIN PRIVATE KEY-----`
       completo, `Bearer <token-longo>`, chave `AKIA...` (AWS)
-- [ ] 0.4.2 Acrescentar, na mesma tabela, os casos que **NAO PODEM** ser
+- [x] 0.4.2 Acrescentar, na mesma tabela, os casos que **NAO PODEM** ser
       redigidos: uma linha de prosa dizendo "o campo password e obrigatorio
       neste formulario", uma linha mencionando "o token de acesso expira em
       1 hora" sem valor de segredo ao lado, e uma linha citando a palavra
       "secret" em sentido comum ("nao existe segredo aqui")
-- [ ] 0.4.3 Teste (revisao de artefato): confirmar que os dois conjuntos
+- [x] 0.4.3 Teste (revisao de artefato): confirmar que os dois conjuntos
       (positivo e negativo) estao lado a lado no mesmo cenario, com entrada e
       saida esperada explicitas para cada linha — este e o criterio de aceite
       que a tarefa 3.1 (redactor interno) e o Scenario 12 devem satisfazer
@@ -114,19 +114,19 @@ A tensao e aparente, nao real — sao duas categorias distintas de resposta:
 | Ausencia de dado | raiz de sessoes ausente/vazia, sessao sumida, arquivo ilegivel | `200` com `data` vazio/`null` + `meta.degraded=true` + `reason` tipado | Violaria se fosse `4xx`/`5xx` — por isso e sempre `200` |
 | Excesso de requisicao | cliente excede o rate-limit leve nas duas rotas | `429 Too Many Requests` | **Nao.** O Principio II protege o operador de o painel quebrar quando a **fonte** esta ausente ou degradada; ele nao obriga o servidor a se autodestruir sob carga. `429` e uma resposta honesta e acionavel para excesso de requisicao, categoria ortogonal a "condicao de dado" |
 
-- [ ] 0.5.1 Editar `contracts/sessions-api.md` nas duas secoes "Nao ha
+- [x] 0.5.1 Editar `contracts/sessions-api.md` nas duas secoes "Nao ha
       respostas de erro" acrescentando uma linha explicita: "`429` **e**
       permitido — e a resposta ao rate-limit leve, categoria distinta de
       'condicao de dado'; ver tabela em tasks.md §0.5 / plan.md §Custo e
       mitigacao. Nao remover o rate-limit citando o Principio II — a
       distincao esta registrada aqui precisamente para isso."
-- [ ] 0.5.2 Definir criterio de aceite mensuravel do rate-limit (CHK020):
+- [x] 0.5.2 Definir criterio de aceite mensuravel do rate-limit (CHK020):
       limite numerico e janela de tempo por IP/sessao para as duas rotas,
       registrado em `contracts/sessions-api.md` §Configuracao junto das
       demais variaveis de ambiente (ex.: nova variavel de config, valor
       default a escolher na tarefa 5.4 — nao inventar o numero aqui, apenas o
       mecanismo e onde ele e configurado)
-- [ ] 0.5.3 Teste (revisao de artefato): confirmar que a tabela de distincao
+- [x] 0.5.3 Teste (revisao de artefato): confirmar que a tabela de distincao
       acima foi copiada/citada no contrato e que nenhuma tarefa downstream
       (5.4) pode "corrigir" o 429 para 200 sem violar esta Decisao
 

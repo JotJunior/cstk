@@ -91,6 +91,7 @@ mesma regra. Ver `plan.md` §Seguranca de Conteudo.
 |--------|--------|
 | `4xx` | **nunca** por condicao de dado |
 | `5xx` | **nunca** por condicao de dado (FR-008, Principio II) |
+| `429` | **e permitido** — e a resposta ao rate-limit leve, categoria distinta de "condicao de dado"; ver tabela em `tasks.md` §0.5 / `plan.md` §Custo e mitigacao. Nao remover o rate-limit citando o Principio II — a distincao esta registrada aqui precisamente para isso. |
 
 Diretorio existente e vazio **nao** e degradacao: e
 `{ sessions: [], total: 0 }` com `degraded: false` (US1 cenario 2, SC-003).
@@ -107,6 +108,20 @@ Devolve a porcao mais recente do transcript de uma sessao (FR-003, FR-006).
 |-------|-----|------|----------|---------|------------|
 | `sessionId` | path | string | sim | — | UUID; usado para resolver `<raiz>/<slug>/<sessionId>.jsonl`. **Nunca** um `executionId` (FR-004) |
 | `lines` | query | number | nao | `200` | inteiro 1..1000; clamp silencioso |
+
+**Resolucao de `sessionId` via indice do watcher (obrigatorio, CHK015)**: o
+servidor **nunca** reconstroi `<raiz>/<slug>/<sessionId>.jsonl` diretamente a
+partir do parametro de path enviado pelo cliente. A resolucao MUST passar por
+`getSessionsIndex()` do `sessions-watcher` — a mesma fonte em memoria que
+alimenta `GET /api/v1/sessions` — que mapeia `sessionId` ao par
+`(projectSlug, filePath)` ja descoberto pelo watcher. Se o `sessionId` nao
+existir no indice, a rota responde degradada com `reason: 'session-not-found'`
+(ver tabela abaixo) **antes** de qualquer tentativa de acesso a disco; nao ha
+caminho em que o servidor monta um path candidato a partir de string de
+cliente e so depois verifica existencia. Isso e o que impede um `sessionId`
+adversarial de indexar para fora da raiz mesmo antes do guard de
+`realpathSync` abaixo entrar em jogo — os dois controles sao complementares e
+nenhum substitui o outro (research.md Decision 7).
 
 **Servido independente de liveness** (FR-003): uma sessao com `live: false`
 responde `200` com conteudo normalmente. O unico gate e o `sessionId` resolver
@@ -173,6 +188,7 @@ listagem e o clique — cenario normal, nao erro.
 | Status | Quando |
 |--------|--------|
 | `4xx` / `5xx` | **nunca** por condicao de dado |
+| `429` | **e permitido** — e a resposta ao rate-limit leve, categoria distinta de "condicao de dado"; ver tabela em `tasks.md` §0.5 / `plan.md` §Custo e mitigacao. Nao remover o rate-limit citando o Principio II — a distincao esta registrada aqui precisamente para isso. |
 
 ---
 
@@ -220,6 +236,16 @@ independente da do `ingest-watcher` — falha de uma nao afeta a outra.
 | `CSTK_SESSIONS_WATCH_INTERVAL_MS` | `5000` | Intervalo do polling do watcher |
 | `CSTK_SECRETS_FILTER` | `~/.claude/skills/agente-00c-runtime/scripts/secrets-filter.sh` | Caminho do filtro do cstk usado no passo 1 do scrub. Caminho inexistente ⇒ `scrubMode: 'internal'`, nunca falha |
 | `CSTK_SECRETS_FILTER_TIMEOUT_MS` | `2000` | Teto por invocacao do subprocesso; estouro ⇒ descarta a saida parcial e cai no redactor interno |
+| `CSTK_SESSIONS_RATE_LIMIT_MAX` | **a definir na tarefa 5.4** | Numero maximo de requisicoes na janela abaixo, por IP/sessao, nas duas rotas (`/sessions` e `/sessions/:id/tail`). Excedente responde `429` (ver §Nao ha respostas de erro acima) |
+| `CSTK_SESSIONS_RATE_LIMIT_WINDOW_MS` | **a definir na tarefa 5.4** | Janela deslizante de contagem para `CSTK_SESSIONS_RATE_LIMIT_MAX` |
+
+O mecanismo (duas variaveis de config acima, contagem por IP/sessao, resposta
+`429` ao excedente) e a Decisao fixada nesta FASE (CHK020, tasks.md §0.5); os
+**valores** default ficam para a tarefa 5.4 de implementacao, que MUST usar
+estas duas variaveis (nao inventar um terceiro mecanismo) e MUST citar de onde
+tirou o numero (biblioteca de rate-limit do Fastify ja em uso no projeto, se
+houver, ou um valor conservador documentado com a justificativa) — nunca um
+numero solto sem fonte (Principio VI).
 
 O caminho da raiz vem **exclusivamente** de configuracao do servidor, nunca do
 cliente — mesma regra que a constituicao ja impoe ao caminho do banco.
