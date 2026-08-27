@@ -306,17 +306,17 @@ HTTP)", plan.md §Structure Decision
 
 ### 4.1 `sessions-watcher.ts` — instancia propria e independente `[A]`
 
-- [ ] 4.1.1 Criar `apps/server/src/watchers/sessions-watcher.ts` seguindo o
+- [x] 4.1.1 Criar `apps/server/src/watchers/sessions-watcher.ts` seguindo o
       **padrao** de `ingest-watcher.ts` (nao a instancia): `
       startSessionsWatcher`, `SessionsWatcherHandle`,
       `runSessionsWatcherTick`, `getSessionsIndex`,
       `resetSessionsIndexForTests` (assinaturas de contracts/sessions-api.md)
-- [ ] 4.1.2 Timer `.unref()`'d (nao segura o processo); instancia
+- [x] 4.1.2 Timer `.unref()`'d (nao segura o processo); instancia
       **independente** do `ingest-watcher` — falha de um nao afeta o outro
       (FR-011)
-- [ ] 4.1.3 Um tick nunca lanca: diretorio ausente vira indice vazio + flag
+- [x] 4.1.3 Um tick nunca lanca: diretorio ausente vira indice vazio + flag
       de degradacao, nunca excecao nao capturada
-- [ ] 4.1.4 Teste: `apps/server/test/watchers/sessions-watcher.test.ts` —
+- [x] 4.1.4 Teste: `apps/server/test/watchers/sessions-watcher.test.ts` —
       tick com raiz ausente nao lanca, `getSessionsIndex` reflete o ultimo
       tick, `stop()` encerra o timer, instancia isolada do `ingest-watcher`
       (falha simulada de um nao contamina o outro)
