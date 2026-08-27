@@ -179,18 +179,30 @@ ser lido.
 
 ## Decision 5 — Efeito no exit code
 
-**Decision** `[PROPOSTA — a validar na implementacao]`:
+> **SUPERSEDIDA pela Decision 13** (resposta do operador ao `block-001`,
+> registrada em `dec-020`). A tabela abaixo e preservada como **registro
+> historico** do raciocinio original e das alternativas que ele pesou;
+> ela **NAO** descreve o desenho vigente. O desenho vigente e:
+> **a secao inteira e report-only e devolve `rc = 0` em todas as
+> combinacoes** — ver Decision 13 e contrato §4.
 
-| Condicao | Contribui para exit 1? | Justificativa |
+**Decision (HISTORICA — nao vigente)** `[PROPOSTA]`:
+
+| Condicao | Contribui para exit 1? (HISTORICO) | Justificativa registrada a epoca |
 |----------|------------------------|---------------|
-| `shadowed` (>=1) | **Sim** | divergencia real e acionavel; simetrico a `diverged` do Distribution Paths (MEDIDO: `return 1`) |
-| cobertura **parcial** (denominador > numerador) | **Sim** | FR-008: o escopo afetado MUST NOT ser apresentado como sucesso. Para um gate de CI (`cstk doctor \|\| exit 1`), exit 0 **e** a apresentacao de sucesso |
-| fonte **ininterpretavel** (FR-009) | **Sim** | mesma razao; "nao consegui ler" nunca pode sair como 0 |
-| inconsistencia interna (numerador > denominador) | **Sim** | bug do proprio contador (ver Decision 7) — sair 0 seria o contador mentindo sobre si mesmo |
-| `indeterminate` por registro (>=1) | **Sim** | "nao consegui comparar" nunca pode sair como sucesso; e o mesmo raciocinio de cobertura parcial, aplicado a granularidade de registro |
-| `unmanaged-upstream` (>=1) | **Nao** | ver rationale abaixo |
+| `shadowed` (>=1) | Sim | divergencia real e acionavel; simetrico a `diverged` do Distribution Paths (MEDIDO: `return 1`) |
+| cobertura **parcial** (denominador > numerador) | Sim | FR-008: o escopo afetado MUST NOT ser apresentado como sucesso. Para um gate de CI (`cstk doctor \|\| exit 1`), exit 0 **e** a apresentacao de sucesso |
+| fonte **ininterpretavel** (FR-009) | Sim | mesma razao; "nao consegui ler" nunca pode sair como 0 |
+| inconsistencia interna (numerador > denominador) | Sim | bug do proprio contador (ver Decision 7) — sair 0 seria o contador mentindo sobre si mesmo |
+| `indeterminate` por registro (>=1) | Sim | "nao consegui comparar" nunca pode sair como sucesso; e o mesmo raciocinio de cobertura parcial, aplicado a granularidade de registro |
+| `unmanaged-upstream` (>=1) | **Nao** | ver rationale abaixo — **este ramo sobrevive** a D13, agora generalizado a secao inteira |
 | `shadow-current` apenas | **Nao** | tudo comparado, tudo igual |
 | nenhuma fonte encontrada | **Nao** | nada a comparar; declaracao sai com 0/0/0 |
+
+**O que a D13 preservou desta decisao**: a distincao entre *reportar* e
+*gatear*, e a exigencia (FR-008) de que a linha de veredito da secao
+**nunca** diga `[OK]` sobre cobertura parcial. O que a D13 revogou foi
+exclusivamente o mapeamento `⇒ exit 1` das cinco primeiras linhas.
 
 **Rationale para `unmanaged-upstream` NAO gatear**: precedente literal e
 recente do proprio arquivo. MEDIDO, comentario de `_doctor_record` sobre
@@ -201,20 +213,31 @@ mesma forma: pode ser apenas um rename legitimo upstream, e nao ha acao
 obrigatoria. Ele e **reportado** (FR-010 satisfeito: distinguivel de
 saudavel), mas nao gateia.
 
-**Rationale para cobertura parcial GATEAR**: esta e a decisao central da
-feature. Se cobertura parcial saisse com 0, o comando teria dito
-"cheguei ao fim sem problema" sobre um arquivo que leu pela metade —
-literalmente a classe de defeito que a feature existe para matar,
-reintroduzida no seu proprio mecanismo de honestidade.
+**Rationale HISTORICO para cobertura parcial GATEAR** (revogado pela
+D13): se cobertura parcial saisse com 0, o comando teria dito "cheguei ao
+fim sem problema" sobre um arquivo que leu pela metade — a classe de
+defeito que a feature existe para matar, reintroduzida no seu proprio
+mecanismo de honestidade.
+
+**Por que esse rationale nao sobreviveu**: ele confundia *o comando dizer
+"sem problema"* com *o exit code*. A D13 separa os dois: a afirmacao de
+saude vive na **linha de veredito** da secao (§3.5 do contrato), que
+continua proibida de imprimir `[OK]` sobre cobertura parcial — a
+honestidade textual e integralmente preservada. O exit code e um canal
+diferente, e nele a entrada e controlada por terceiro (D12), o que torna
+"gatear" uma decisao de produto, nao de honestidade.
 
 **Precedentes de exit consultados (MEDIDOS)**: `cstk doctor --deps`
 retorna 1 em anomalia (a Decisao registrada na execucao
 `state-backend-config` escolheu "exit nao-zero em anomalia (gate)" sobre
 "sempre exit 0 (informativo)"); `_doctor_distribution_paths` retorna 1 em
-`diverged` e `duplicated-hooks`, e 0 em `undetermined`. **Divergimos
-deliberadamente** do `undetermined`→0 daquela funcao no nosso
-`indeterminate`, porque la o indeterminado e sobre um plugin opcional,
-e aqui e sobre a fonte que a feature promete ter lido.
+`diverged` e `duplicated-hooks`, e 0 em `undetermined`. A leitura destes
+precedentes **mudou com a D13**: o desenho vigente **alinha-se** ao
+`undetermined`→0 em vez de divergir dele. O argumento de que "la o
+indeterminado e sobre um plugin opcional, e aqui e sobre a fonte que a
+feature promete ter lido" foi reavaliado e **nao se sustenta**: aqui a
+fonte nao e do toolkit, e de terceiro (D12) — o que e ainda menos base
+para gatear do que um plugin opcional, nao mais.
 
 ---
 
@@ -453,4 +476,122 @@ o **mesmo** mecanismo, em vez de competirem por quem decide o veredito.
 
 **TOCTOU**: avaliado e **descartado** como achado — secao read-only, sem
 `--fix`, sem decisao de privilegio; a janela so pode produzir
-`indeterminate`, ja fail-closed.
+`indeterminate`, que e reportado e impede o rotulo `[OK]` (contrato §3.5).
+Sob a D13 o argumento deixou de repousar no exit code e passou a repousar
+no texto — onde, de resto, ja repousava o que de fato importa.
+
+---
+
+## Decision 13 — Diagnostico, nunca veredito: a secao e report-only
+
+**Origem**: `block-001` desta execucao (bloqueio humano aberto pela D12,
+que identificou o manifesto de projeto como entrada controlada por
+terceiro e classificou a escolha de escopo como decisao de produto, nao
+do agente). **Respondido pelo operador; resposta registrada em
+`dec-020`.**
+
+**Decision** `[PROPOSTA — a validar na implementacao]`: a secao Shadowed
+Scope fica **ligada por padrao** (a D4 sobrevive integralmente — le o
+`.cstk-manifest` de escopo de projeto em toda invocacao de `cstk doctor`),
+**mas tudo o que dela deriva e report-only**: entra no relatorio como
+diagnostico e **NUNCA** influencia o exit code nem o veredito de
+conformidade do `cstk doctor`. `section_rc` e a **constante 0**.
+
+**Racional registrado pelo operador (a frase que governa o desenho)**:
+
+> **Input controlado por terceiro pode produzir DIAGNOSTICO, nunca
+> VEREDITO.**
+
+**Rationale**:
+
+- **Limita o raio de acao a texto num relatorio.** A D12 estabeleceu que
+  o conteudo de `./.claude/<kind>/.cstk-manifest` pode ser escrito por um
+  repositorio de terceiro que o operador apenas clonou. Enquanto esse
+  conteudo influenciar o exit code, um terceiro decide se
+  `cstk doctor || exit 1` falha na maquina/CI do operador — isto e,
+  controla um **veredito**. Com a secao report-only, o pior que um
+  manifesto hostil consegue e escrever linhas de diagnostico
+  (ja sanitizadas por R3) num relatorio.
+- **Preserva a US1 no caso majoritario, que e onde o defeito mora.** As
+  duas alternativas que o bloqueio pesava tinham custo inaceitavel: (a)
+  manter o gate deixava o veredito nas maos de terceiro; (b) exigir
+  opt-in reproduzia exatamente o falso OK de hoje para quem roda
+  `cstk doctor` puro — e, pior, para quem **nao sabe** que precisaria
+  habilitar a checagem. A postura (c) entrega o diagnostico a todos por
+  default e nao entrega o veredito a ninguem de fora.
+- **Nao ha conflito com a spec** (verificado por leitura literal dos
+  FRs, e nao por memoria): **nenhum FR desta feature menciona exit code**.
+  FR-003, FR-008, FR-009 e FR-010 dizem `MUST reportar` / `MUST NOT
+  reportar sucesso`. O gate era desenho de plano (a D5 historica), nunca
+  requisito. Em particular, FR-008 exige que a **fonte** nao seja
+  apresentada como sucesso — exigencia satisfeita integralmente pela
+  linha de veredito `[PARCIAL]`/`[SEM-FONTE]` do contrato §3.5, que esta
+  **intacta**.
+- **Separacao explicita de dois canais**, para nao ser "consertada"
+  depois: a **honestidade textual** (o que a secao afirma) e a
+  **conformidade** (o que o exit code afirma) sao canais distintos. Esta
+  decisao muda **apenas o segundo**. Nenhuma linha de saida, nenhum
+  rotulo e nenhuma contagem da secao muda por causa da D13.
+
+**Consequencias normativas** (encodadas no contrato §4 e no data-model):
+
+1. `section_rc` **MUST** ser 0 em toda combinacao de entradas —
+   `shadowed`, `indeterminate`, `unmanaged-upstream`, `shadow-current`,
+   `partial`, `unreadable`, `inconsistent`, `absent`, ou qualquer mistura.
+2. Manifesto que falha validacao de forma e **diagnosticado** (registro
+   `unrecognized` alimentando `partial`; fonte com header desconhecido
+   como `unreadable`), **nunca erro gateante**. Os nomes de estado
+   permanecem como estao — FR-009 exige reportar a condicao
+   *explicitamente*, e colapsar `unreadable` no `indeterminate` de
+   registro perderia essa distincao exigida.
+3. A proibicao de imprimir `[OK]` sobre cobertura parcial/ausente
+   permanece **inalterada e normativa** (contrato §3.5) e ganha um
+   reforco: como o exit code deixou de carregar sinal, o **texto** virou o
+   unico canal, e por isso `[OK]` passa a exigir tambem
+   `count_shadowed = 0` **e** `count_nao_comparado = 0` (este ultimo
+   = `count_indeterminate + count_unmanaged_upstream`). Havendo achado com
+   cobertura integral, o rotulo e o neutro `[ACHADOS]`, com as duas
+   contagens separadas, declarando na propria linha que nao altera o exit
+   code. Antes da D13 o exit `1` fazia essa desambiguacao; sem ele, um
+   `[OK] ... 3 divergencia(s)` seria lido como saude — a feature
+   anti-falso-OK produzindo um falso OK.
+
+   O caso `nao comparado` e o mais sutil e o mais importante: ele **nao
+   afeta a cobertura** (o registro foi lido e interpretado, produzindo
+   veredito), entao a fonte permanece `full` e nada na declaracao de
+   cobertura o denunciaria. Para `unmanaged-upstream` a inclusao e
+   exigencia literal de FR-010 ("ausencia de uma comparacao possivel"), e
+   nao conflita com ele nao gatear o exit — gatear e acionabilidade,
+   chamar de saudavel e veracidade. Sem esta clausula, `[OK] 2 de 2 fontes lidas
+   integralmente` sairia ao lado de `[indeterminate] agents/x  comparacao
+   impossivel: symlink` — afirmando ausencia de divergencia sobre um
+   artefato que a propria ferramenta admite nao ter comparado. Foi um
+   defeito **introduzido pela emenda desta onda** e detectado ao revisar
+   qual sinal restava depois de remover o gate; fica registrado porque a
+   omissao seria invisivel em revisao de codigo.
+4. A garantia deve ser **estrutural e testavel**, nao prosa: o Cenario 19
+   do quickstart e um teste de invariante que varre entradas hostis e
+   afirma que nenhuma delas move o exit code — a mesma disciplina ja
+   usada para FR-004/FR-005 (garantidos por iterar o manifesto e nao o
+   diretorio).
+
+**Alternatives considered** (as tres postas ao operador no `block-001`):
+
+- *(a) Manter o gate com as mitigacoes R1-R6*: rejeitado — R1-R6 fecham
+  traversal, symlink, forja de terminal, glob e DoS, mas **nenhuma delas
+  impede** que um manifesto bem-formado e hostil produza `shadowed` ou
+  `partial` de proposito e derrube o exit code do operador. A mitigacao
+  correta para "controla o veredito" nao e sanitizar melhor a entrada, e
+  tirar o veredito do alcance dela.
+- *(b) Exigir opt-in (flag/config) para ler manifesto de projeto*:
+  rejeitado — reintroduz o falso OK por default, que e o defeito de
+  origem (mesmo argumento da D4), e concentra o beneficio em quem ja sabe
+  do problema.
+- *(c) Ligado por padrao, report-only*: **ESCOLHIDA**.
+
+**O que NAO muda por esta decisao** (delimitacao explicita, para evitar
+retrabalho): D1, D2, D3, D4, D6, D7, D8, D9, D10, D11 e as regras R1-R6
+da D12 permanecem integralmente vigentes. R1-R6 continuam obrigatorias —
+report-only reduz o impacto de um manifesto hostil, mas nao autoriza
+hashear symlink, escapar do catalogo por `name`, nem imprimir bytes de
+controle.

@@ -150,13 +150,25 @@ inclusive quando nada foi encontrado (FR-006, SC-003).
 
 ### `coverage_state` `[PROPOSTA]`
 
-| Valor | Condicao | Gateia exit? |
-|-------|----------|--------------|
-| `absent` | `found = false` | nao |
-| `unreadable` | `found = true`, `readable_schema = false` (FR-009) | **sim** |
-| `full` | `data_lines == records_used` (inclui 0 == 0) | nao |
-| `partial` | `data_lines > records_used` (FR-008) | **sim** |
-| `inconsistent` | `records_used > data_lines` (research.md D7) | **sim** |
+| Valor | Condicao | Gateia exit? | Efeito na linha de veredito (§3.5) |
+|-------|----------|--------------|------------------------------------|
+| `absent` | `found = false` | **nao** | impede `[OK]`; com `F = 0` forca `[SEM-FONTE]` |
+| `unreadable` | `found = true`, `readable_schema = false` (FR-009) | **nao** | impede `[OK]`; forca `[PARCIAL]` |
+| `full` | `data_lines == records_used` (inclui 0 == 0) | **nao** | condicao **necessaria e nao suficiente** para `[OK]`; com `count_shadowed >= 1` ou `count_nao_comparado >= 1` o rotulo e `[ACHADOS]` |
+| `partial` | `data_lines > records_used` (FR-008) | **nao** | impede `[OK]`; forca `[PARCIAL]` |
+| `inconsistent` | `records_used > data_lines` (research.md D7) | **nao** | impede `[OK]`; forca `[PARCIAL]` |
+
+> **Nenhum `coverage_state` gateia** — a secao inteira e report-only
+> (research.md **D13**, resposta do operador ao `block-001` em `dec-020`:
+> *input controlado por terceiro pode produzir diagnostico, nunca
+> veredito*). A coluna "Gateia exit?" e mantida, toda em `nao`,
+> deliberadamente: apaga-la deixaria a propriedade por omissao, e omissao
+> e o que faz a proxima pessoa "consertar" o desenho para gateante.
+>
+> **O que substitui o gate**: a coluna a direita. FR-008/FR-009 sao
+> requisitos sobre **o que a saida afirma**, nao sobre exit code (nenhum
+> FR desta feature menciona exit code — contrato §4.3), e continuam
+> integralmente satisfeitos pela supressao do `[OK]`.
 
 > **Regra dura**: `partial` e `inconsistent` NUNCA sao normalizados nem
 > arredondados para `full`. `records_used` e `data_lines` sao sempre
@@ -185,8 +197,39 @@ defeito que a feature existe para matar.
 |-------|------|-------|
 | `sources[]` | lista de `CoverageDeclaration` | sempre 2 nesta feature: agents e commands |
 | `verdicts[]` | lista de `ShadowVerdict` | pode ser vazia |
-| `count_shadowed` | int | gateia exit |
-| `count_shadow_current` | int | nao gateia |
-| `count_unmanaged_upstream` | int | nao gateia (research.md D5) |
-| `count_indeterminate` | int | gateia exit |
-| `section_rc` | 0 \| 1 | consumido por `doctor_main` via `$?`, igual ao padrao ja usado por `_doctor_distribution_paths` |
+| `count_shadowed` | int | **nao gateia**; `>= 1` troca o rotulo `[OK]` por `[ACHADOS]` (§3.5) |
+| `count_shadow_current` | int | nao gateia; **unico** estado compativel com `[OK]` |
+| `count_unmanaged_upstream` | int | nao gateia (research.md D5, generalizado pela D13); **entra em `count_nao_comparado`** |
+| `count_indeterminate` | int | nao gateia; **entra em `count_nao_comparado`** |
+| `count_nao_comparado` | int (derivado) | `= count_indeterminate + count_unmanaged_upstream`. `>= 1` impede `[OK]` (§3.5) |
+
+> **Por que `count_nao_comparado` e derivado e nao acumulado a parte**: os
+> dois estados que o compoem sao, literalmente, "houve registro mas nao
+> houve comparacao" — `indeterminate` porque a comparacao falhou,
+> `unmanaged-upstream` porque falta o lado direito. FR-010 e explicito
+> para o segundo: "nao pode ser contabilizada como saudavel por ausencia
+> de uma comparacao possivel". Nenhum dos dois afeta a **cobertura** (o
+> registro foi interpretado; a fonte segue `full`), entao sem esta
+> derivada nada impediria `[OK]` de sair ao lado deles.
+>
+> **Nao confundir com nao-gatear**: ambos continuam com `section_rc = 0`.
+> Impedir `[OK]` e sobre **veracidade do texto**; gatear e sobre
+> **acionabilidade**. Canais distintos (contrato §4.3/§4.4).
+| `section_rc` | **`0` (constante)** | consumido por `doctor_main` via `$?` (mesma forma de `_doctor_distribution_paths`, por consistencia de wiring), mas **invariante**: nenhuma entrada o move de `0` |
+
+### Invariante estrutural do `section_rc` `[PROPOSTA]`
+
+```
+INV-RC: para toda entrada possivel de ./.claude/<kind>/.cstk-manifest
+        (bem formada, malformada, hostil, ausente ou ininterpretavel),
+        section_rc == 0.
+```
+
+Consequencia de desenho, e nao so de disciplina: o valor **nao deve ser
+acumulado** a partir das contagens. A implementacao MUST produzir `0`
+por construcao (a funcao termina em `return 0`), em vez de calcular um rc
+a partir de `count_shadowed`/`coverage_state` e por acaso sempre dar zero
+— um acumulador e uma linha de `||` de distancia de voltar a gatear.
+
+Verificado pelo Cenario 19 do quickstart, que e um teste de invariante
+sobre entradas hostis, nao um teste de caso.

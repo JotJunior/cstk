@@ -12,6 +12,21 @@ Cenarios de validacao. Todos rodam contra um `HOME` e um CWD de teste
 > Cobertura parcial reportada como parcial = **sucesso**.
 > Cobertura parcial reportada como sucesso = **falha da feature**.
 
+> **Segundo criterio, que governa TODOS os cenarios quanto ao exit code**
+> (postura report-only — research.md D13, `dec-020`/`block-001`; contrato
+> §4): **a secao Shadowed Scope NUNCA contribui para o exit code**. Em
+> todos os cenarios abaixo o exit esperado e determinado exclusivamente
+> pela varredura CLASSICA e pelo Distribution Paths. Como os fixtures
+> destes cenarios montam um escopo classico limpo, **o exit esperado e `0`
+> em todos eles** — inclusive naqueles com `[shadowed]`, `[partial]`,
+> `[unreadable]`, `[inconsistent]` ou `[indeterminate]`.
+>
+> O que cada cenario de fato verifica e o **texto**: o rotulo de cobertura,
+> o rotulo de veredito e as linhas de achado. Um teste que afirme exit `1`
+> por causa desta secao esta verificando o desenho **antigo** (D5, agora
+> supersedida) — ver Cenario 19, que e o teste de invariante dessa
+> propriedade.
+
 ---
 
 ## Cenario 1 — Copia de projeto divergente do catalogo (US1, FR-002/FR-003)
@@ -23,7 +38,14 @@ Cenarios de validacao. Todos rodam contra um `HOME` e um CWD de teste
 3. Rodar `cstk doctor`.
 
 **Expected**: linha `[shadowed] agents/foo` mostrando os dois hashes
-truncados e as duas versoes; exit `1`.
+truncados e as duas versoes; veredito da secao
+`[ACHADOS] 2 de 2 fontes lidas integralmente; 1 divergencia(s), 0 nao comparado(s) — informativo, nao altera o exit code.`;
+bloco de remediacao (§3.3) emitido; **exit `0`** — a secao e report-only
+(contrato §4) e o escopo classico esta limpo.
+
+**Verificacao explicita do rotulo**: o veredito MUST ser `[ACHADOS]`, nunca
+`[OK]`. Com o exit code fora de jogo, o rotulo e o unico sinal que resta;
+um `[OK]` aqui seria um falso OK produzido pela propria feature.
 
 **Anti-regressao (este e o defeito)**: antes desta feature, o mesmo setup
 produzia `[OK]` (ou silencio, com `--scope global`), porque a unica
@@ -39,7 +61,12 @@ comparacao existente era do artefato de projeto contra o sha do
 
 **Expected**: `[shadow-current] agents/foo`; nenhuma linha `[shadowed]`;
 declaracao de cobertura com `interpretados == registros no arquivo`;
-veredito `[OK] ... 0 divergencia(s)`; exit `0`.
+veredito `[OK] 2 de 2 fontes lidas integralmente; 0 divergencia(s), 0 nao comparado(s).`;
+exit `0`.
+
+Este e o **unico** cenario deste quickstart em que `[OK]` e a saida
+correta: cobertura integral, zero divergencia e zero nao-comparado — as
+tres condicoes de §3.5.
 
 ---
 
@@ -119,8 +146,30 @@ e nenhuma acusacao e feita.
 3. Rodar `cstk doctor`.
 
 **Expected**: `[unmanaged-upstream] agents/bar    sem correspondente no
-catalogo atual (removido/renomeado upstream)`; exit `0` (nao gateia — ver
-contrato §4); `bar` **nao** e contado como saudavel nem como `shadowed`.
+catalogo atual (removido/renomeado upstream)`; exit `0` (a secao nunca
+gateia — contrato §4); `bar` **nao** e contado como saudavel nem como
+`shadowed`.
+
+**Veredito da secao**: `[ACHADOS] 2 de 2 fontes lidas integralmente;
+0 divergencia(s), 1 nao comparado(s) — informativo, nao altera o exit code.`
+
+**`[OK]` aqui e falha da feature.** FR-010 e literal: a definicao "nao
+pode ser contabilizada como saudavel por **ausencia de uma comparacao
+possivel**". `unmanaged-upstream` e exatamente ausencia de comparacao
+possivel — o artefato do catalogo nao existe para servir de lado direito.
+Por isso ele entra na contagem `nao comparado(s)` junto com
+`indeterminate`, e impede `[OK]` pela mesma clausula (§3.5).
+
+**Distincao preservada**: agregar as duas contagens na linha de veredito
+nao as confunde — a linha de achado acima diz `[unmanaged-upstream]` com
+o motivo proprio, e `[indeterminate]` diria outro. O veredito agrega; as
+linhas de achado discriminam.
+
+> Este ponto e independente do exit code, e continua valendo apesar de
+> `unmanaged-upstream` nunca gatear (precedente ORPHAN, contrato §4.4).
+> **Nao gatear** e **nao poder ser chamado de saudavel** sao propriedades
+> de canais diferentes: a primeira e sobre acionabilidade, a segunda sobre
+> veracidade.
 
 **Falha**: reportar `bar` como `[shadow-current]`/OK (afirma comparacao
 que nao houve), ou omiti-lo.
@@ -145,7 +194,8 @@ que nao houve), ou omiti-lo.
   ./.claude/agents/.cstk-manifest  [partial]  registros no arquivo: 3  interpretados: 2  nao interpretados: 1
   [PARCIAL] cobertura incompleta: ... nada nesta secao pode ser lido como saude total.
 ```
-exit `1`.
+exit `0` (a secao e report-only — contrato §4; o sinal e o rotulo
+`[partial]` + o veredito `[PARCIAL]`, nunca o exit code).
 
 **Falha**: `registros no arquivo: 2  interpretados: 2  [full]` — sinal de
 que o denominador herdou a gramatica do parser e so contou o que ja tinha
@@ -164,7 +214,7 @@ em branco + `bar baz malformada` + registro com 5 campos ⇒ denominador
 2. Rodar `cstk doctor`.
 
 **Expected**: a linha de 5 campos conta no denominador e **nao** no
-numerador ⇒ `[partial]`, exit `1`.
+numerador ⇒ `[partial]` + veredito `[PARCIAL]`; exit `0` (report-only).
 
 **Falha**: tolerar silenciosamente o campo extra e contar como
 interpretado. Um registro de forma desconhecida e exatamente o que a
@@ -181,7 +231,16 @@ compreensao que nao se tem.
 
 **Expected**: a fonte aparece explicitamente como
 `[unreadable]  registros no arquivo: ?  interpretados: ?  motivo: <msg>`;
-exit `1`.
+veredito `[PARCIAL]`; exit `0` (report-only).
+
+**Nota sobre a resposta do operador ao `block-001`**: "manifesto que falha
+validacao de forma vira `indeterminate`, nunca erro gateante". O
+"nunca erro gateante" e o que este `exit 0` implementa. O **nome do
+estado** permanece `unreadable`, e nao `indeterminate`, porque FR-009
+exige reportar a condicao *explicitamente* e `indeterminate` ja nomeia
+outra coisa (falha de comparacao **por registro**, §3.2) — colapsar os
+dois perderia a distincao que o proprio FR-009 pede. Ver research.md D13,
+consequencia normativa 2.
 
 **Fonte do comportamento subjacente**: `detect_schema_version` ja retorna
 1 com `manifest: header desconhecido em <path>` nesse caso — a feature
@@ -224,7 +283,10 @@ MUST ser robusto a isso.
 2. Rodar `cstk doctor`.
 
 **Expected**: o registro e `unrecognized` — conta no **denominador**, nao
-no numerador ⇒ `[partial]`, exit `1`. Nenhum `stat`, `hash_file` ou
+no numerador ⇒ `[partial]` + veredito `[PARCIAL]`; exit `0` (report-only:
+um manifesto hostil MUST NOT conseguir mover o exit code do operador —
+e precisamente essa a razao da postura, research.md D13). Nenhum `stat`,
+`hash_file` ou
 qualquer leitura ocorre fora de `./.claude/<kind>/` e
 `$HOME/.claude/<kind>/`. Nenhum hash de arquivo externo e impresso.
 
@@ -241,7 +303,17 @@ com `-` inicial, vazio, com newline embutida, com 500 caracteres.
 2. Rodar `cstk doctor`.
 
 **Expected**: `[indeterminate] agents/x    comparacao impossivel: symlink`;
-**nenhum** hash do alvo e calculado nem impresso; exit `1`.
+**nenhum** hash do alvo e calculado nem impresso; veredito
+`[ACHADOS] ... 0 divergencia(s), 1 nao comparado(s)`; exit `0`
+(report-only).
+
+**Verificacao critica do rotulo**: o veredito MUST NOT ser `[OK]`. Este
+registro **foi interpretado** (produziu veredito), logo a cobertura
+continua `full` e nada na declaracao de cobertura o denunciaria — o unico
+mecanismo que impede o falso OK aqui e a clausula `count_nao_comparado = 0`
+de §3.5. Um `[OK]` ao lado de `comparacao impossivel: symlink` seria a
+ferramenta afirmando ausencia de divergencia sobre um artefato que ela
+mesma admite nao ter comparado.
 
 **Por que este cenario existe**: `[ -f ]` e `hash_file` seguem symlink por
 padrao. Sem o teste `[ -h ]`, a secao hashearia o segredo e imprimiria seu
@@ -292,7 +364,7 @@ input externo — isto e, um terceiro conseguiria acionar a mensagem
 
 **Expected**: `[inconsistent]` com os dois numeros **brutos** exibidos e a
 nota `(N > D: inconsistencia interna do contador — reporte este caso)`;
-exit `1`.
+veredito `[PARCIAL]`; exit `0` (report-only).
 
 **Falha**: normalizar (`min(N, D)`), arredondar, ou silenciar. Um contador
 que se corrige sozinho para caber na narrativa e um contador que mente.
@@ -315,9 +387,17 @@ que se corrige sozinho para caber na narrativa e um contador que mente.
 Qualquer numero de FAIL apos a implementacao e regressao, nao "teste
 desatualizado".
 
-**Nota**: cenarios que hoje afirmam exit `0` num CWD **sem** manifestos de
-projeto continuam valendo — o Cenario 3 garante que "nenhuma fonte
-encontrada" nao gateia.
+**Nota (garantia reforcada pela postura report-only)**: os cenarios
+existentes que afirmam exit `0` continuam valendo **independentemente do
+que houver no CWD** — nao apenas quando nao ha manifesto de projeto. Como
+`section_rc` e a constante `0` (contrato §4.1), nenhum fixture de teste
+pre-existente pode ter seu exit alterado por esta feature, mesmo se o CWD
+em que a suite roda contiver `./.claude/agents/.cstk-manifest`.
+
+Antes da emenda desta onda isso era uma fragilidade real do plano: a suite
+roda no CWD do repo, o repo tem `.claude/`, e um `shadowed` acidental teria
+quebrado cenarios que nada tem a ver com a feature. A postura report-only
+elimina a classe inteira.
 
 ---
 
@@ -327,7 +407,8 @@ encontrada" nao gateia.
 2. Rodar `cstk doctor --fix`.
 
 **Expected**: a copia de projeto **nao** e sobrescrita (FR-005); a linha
-`[shadowed]` continua sendo emitida; exit `1`.
+`[shadowed]` continua sendo emitida; exit `0` (report-only — `--fix` nao
+suprime a **saida** da secao, e nao ha rc dela para suprimir).
 
 **Falha**: `--fix` zerar o achado (equivaleria a destruir o trabalho local
 que a feature promete preservar) ou suprimir a secao.
@@ -352,3 +433,107 @@ que a feature promete preservar) ou suprimir a secao.
 **Expected**: exit `0`. Se a implementacao criar
 `cli/lib/manifest-coverage.sh` sem `tests/cstk/test_manifest-coverage.sh`,
 o check falha com exit `1` — e essa falha e **correta**.
+
+---
+
+## Cenario 19 — INVARIANTE: nenhuma entrada move o exit code (report-only)
+
+> Este cenario e o **teste de invariante** da postura decidida em
+> `block-001`/`dec-020` (research.md D13, contrato §4.1). Nao e um teste
+> de caso: e uma varredura que afirma uma propriedade sobre **todas** as
+> entradas. Enquanto os demais cenarios verificam *o que a secao diz*,
+> este verifica *o que a secao nao faz*.
+
+**Invariante sob teste**:
+
+```
+INV-RC: para toda entrada possivel de ./.claude/<kind>/.cstk-manifest,
+        a secao Shadowed Scope contribui com rc == 0.
+```
+
+### Procedimento
+
+1. Montar um `HOME` e um CWD de teste com o **escopo classico limpo**
+   (`cstk doctor` sairia `0` sem esta secao — baseline verificado antes).
+2. Para **cada** fixture da matriz abaixo, substituir apenas
+   `./.claude/agents/.cstk-manifest` (e/ou `commands`) e rodar
+   `cstk doctor`, capturando `$?`.
+
+| # | Fixture de manifesto de projeto | Estado que induz |
+|---|---|---|
+| 1 | registro divergente do catalogo | `shadowed` |
+| 2 | registro identico ao catalogo | `shadow-current` |
+| 3 | registro cujo artefato sumiu do catalogo | `unmanaged-upstream` |
+| 4 | artefato de projeto e symlink | `indeterminate` (symlink) |
+| 5 | artefato de projeto ausente | `indeterminate` (projeto-ausente) |
+| 6 | linha sem TAB / com 5 campos / sha malformado | `partial` |
+| 7 | `name` = `../../../.ssh/known_hosts` | `partial` (via `unrecognized`) |
+| 8 | header `# cstk manifest v2` | `unreadable` |
+| 9 | numerador forcado > denominador (stub) | `inconsistent` |
+| 10 | manifesto ausente nos dois kinds | `absent` / `F = 0` |
+| 11 | linha de dados contendo `*` | `unrecognized` sem inflar numerador |
+| 12 | `name`/`toolkit_version` com ESC/`\r`/`\b` | texto sanitizado |
+| 13 | mistura: 1 `shadowed` + 1 `partial` + 1 `unreadable` na outra fonte | combinacao |
+| 14 | manifesto com 10.001 linhas de dados | `unreadable` (teto-excedido, R5) |
+| 15 | manifesto de **uma unica linha de 50 MB sem `\n`** | `unreadable` (teto-excedido, R5) — valida que o teto e imposto por **leitura limitada**, nao por checagem de comprimento a posteriori (§7, nota da R5) |
+
+**Expected — para as 15 linhas, sem excecao**: `$? == 0`.
+
+**Expected adicional na linha 15**: o comando termina em tempo e memoria
+limitados pelo teto, nao pelo tamanho do arquivo. Um teto post-hoc passa
+no `exit 0` e falha aqui — motivo pelo qual a linha existe separada da 14.
+
+**Expected complementar**: em cada uma, a secao **emitiu** o diagnostico
+correspondente em stderr (o cenario nao pode passar por a secao ter sido
+silenciosamente pulada — isso daria `0` pelo motivo errado). Verificar as
+duas coisas na mesma execucao: exit `0` **e** presenca da linha de achado
+esperada.
+
+**Falha**: qualquer fixture produzindo `$? != 0`. Nao ha excecao
+legitima — se uma delas gateia, a postura report-only nao foi
+implementada, e um repositorio de terceiro recupera a capacidade de
+decidir o resultado de `cstk doctor || exit 1` na maquina do operador.
+
+### Teste de mutacao (obrigatorio — o cenario nao vale sem ele)
+
+Um teste que so afirma `exit 0` passa trivialmente contra uma
+implementacao que **nao emite a secao**. Para provar que o teste tem
+poder de deteccao:
+
+1. Alterar temporariamente a implementacao para `return 1` quando
+   `count_shadowed >= 1`.
+2. Rodar o Cenario 19.
+3. **A linha 1 da matriz MUST falhar.** Se passar, o teste esta cego e
+   precisa ser corrigido antes de valer como evidencia.
+4. Reverter a alteracao.
+
+> Por que esta exigencia esta escrita aqui: a propriedade sob teste e uma
+> **ausencia** (nada gateia), e teste de ausencia e o que mais falha
+> silenciosamente. E a mesma disciplina que a feature aplica ao contador
+> de cobertura — um mecanismo de honestidade que nao pode ser verificado
+> nao e um mecanismo de honestidade.
+
+---
+
+## Cenario 20 — Rotulo de veredito: `[OK]` so quando as tres condicoes valem
+
+Complementa o Cenario 19: com o exit code fora de jogo, **o rotulo passou
+a ser o unico sinal**, e por isso ganha teste proprio.
+
+| Setup | `F=R=2`? | `count_shadowed` | `count_nao_comparado` | Veredito esperado |
+|---|---|---|---|---|
+| tudo identico ao catalogo | sim | 0 | 0 | `[OK]` |
+| uma divergencia | sim | 1 | 0 | `[ACHADOS]` |
+| um symlink | sim | 0 | 1 | `[ACHADOS]` |
+| um `unmanaged-upstream` | sim | 0 | 1 | `[ACHADOS]` |
+| uma linha malformada | nao (`partial`) | 0 | 0 | `[PARCIAL]` |
+| header desconhecido | nao (`unreadable`) | 0 | 0 | `[PARCIAL]` |
+| nenhum manifesto | `F = 0` | 0 | 0 | `[SEM-FONTE]` |
+
+**Expected**: o rotulo exato de cada linha; exit `0` em **todas**.
+
+**Falha**: `[OK]` em qualquer linha que nao seja a primeira. As linhas 3 e
+4 sao as que mais provavelmente escapam numa implementacao ingenua,
+porque `indeterminate` e `unmanaged-upstream` **nao afetam a cobertura**
+— a fonte segue `full`, e so a clausula `count_nao_comparado = 0` de §3.5
+impede o falso OK.

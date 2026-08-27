@@ -86,9 +86,10 @@ feature *implementa*, nao so respeita):
 docs/specs/doctor-shadowed-scope/
 ├── spec.md
 ├── plan.md          # This file
-├── research.md      # Phase 0 — 11 decisoes com evidencia
+├── research.md      # Phase 0 — 13 decisoes com evidencia
 ├── data-model.md    # Phase 1 — 5 entidades
-├── quickstart.md    # Phase 1 — 14 cenarios (inclui adversariais + release-wave)
+├── quickstart.md    # Phase 1 — 20 cenarios (adversariais, release-wave,
+│                    #           invariante report-only, rotulo de veredito)
 └── contracts/
     └── doctor-shadowed-scope-output.md
 ```
@@ -125,6 +126,55 @@ orfao). `manifest.sh` nao e estendido de proposito — endurecer
 que estao fora do escopo desta feature.
 
 ## Desenho — as duas metades
+
+### Postura que governa as duas: ligado por padrao, report-only
+
+Decidida pelo operador em resposta ao `block-001` (registrada em
+`dec-020`; racional completo em research.md **D13**). Ela e anterior as
+duas metades porque condiciona ambas:
+
+> **Input controlado por terceiro pode produzir DIAGNOSTICO, nunca
+> VEREDITO.**
+
+Traduzido em duas obrigacoes de desenho:
+
+1. **Ligado por padrao.** A secao le o `.cstk-manifest` de escopo de
+   projeto em toda invocacao de `cstk doctor` (a D4 sobrevive integral).
+   Opt-in reproduziria o falso OK exatamente para quem nao sabe que
+   precisaria habilitar a checagem — que e o caso majoritario e a razao
+   de a feature existir.
+2. **Nunca gateia.** Tudo derivado do manifesto de projeto — `shadowed`,
+   `shadow-current`, `unmanaged-upstream`, `indeterminate`, `partial`,
+   `unreadable`, `inconsistent`, `absent` e qualquer mistura deles — entra
+   no relatorio e **NAO** entra no exit code. `section_rc` e a constante
+   `0` (invariante `INV-RC` no data-model; tabela exaustiva por combinacao
+   no contrato §4.1).
+
+**Por que isso nao enfraquece a feature**: nenhum FR desta feature
+menciona exit code — FR-003/008/009/010 dizem, literalmente, `MUST
+reportar` / `MUST NOT reportar sucesso`. Sao requisitos sobre **o que a
+saida afirma**, e a saida nao muda em nada por esta postura: `[OK]`
+continua proibido sobre cobertura parcial, ausente ou ininterpretavel. O
+que muda e apenas quem controla o veredito de conformidade — e a resposta
+passa a ser "nunca um repositorio de terceiro".
+
+**Efeito colateral que exigiu ajuste** (contrato §3.5): enquanto a secao
+gateava, o exit `1` desambiguava um `[OK]` acompanhado de divergencias.
+Sem ele, o texto virou o unico canal — por isso `[OK]` agora exige
+tambem zero divergencias, e o caso "cobertura integral + divergencias"
+ganhou rotulo neutro proprio, `[ACHADOS]`, que declara na propria linha
+que nao altera o exit code. Pelo mesmo motivo, `count_nao_comparado >= 1`
+(= `indeterminate` + `unmanaged-upstream`) tambem passa a impedir `[OK]`:
+esses registros **foram interpretados** (nao afetam a cobertura) mas
+**nao foram comparados**, e antes o exit `1` era o que sinalizava isso.
+Para `unmanaged-upstream` isso e exigencia literal de FR-010 ("nao pode
+ser contabilizada como saudavel por ausencia de uma comparacao
+possivel") — e permanece compativel com ele **nao gatear**, porque
+gatear e sobre acionabilidade e chamar de saudavel e sobre veracidade.
+
+**Regra de manutencao**: voltar a gatear qualquer estado desta secao e
+decisao de produto do operador (novo bloqueio humano), nunca ajuste de
+implementacao.
 
 ### Metade 1: o fix (US1/US2, FR-001..FR-005, FR-010)
 
@@ -164,9 +214,10 @@ Encaixe sem quebrar o existente:
   modo de invocacao**.
 - **FR-010**: nome no manifesto de projeto sem artefato correspondente no
   catalogo ⇒ `unmanaged-upstream` — distinto de `shadowed` (nao houve
-  comparacao) e distinto de saudavel. **Nao gateia o exit**, pelo mesmo
-  argumento ja registrado no codigo para de-gatear ORPHAN (rename upstream
-  nao da acao obrigatoria ao operador).
+  comparacao) e distinto de saudavel. **Nao gateia o exit** — precedente
+  ja registrado no codigo para de-gatear ORPHAN (rename upstream nao da
+  acao obrigatoria ao operador), agora generalizado a secao inteira pela
+  postura report-only acima.
 
 ### Metade 2: a declaracao de cobertura (US3, FR-006..FR-009)
 
@@ -198,13 +249,15 @@ Por que nao colapsam:
 
 Regras de relato:
 
-- `data_lines > records_used` ⇒ `partial`, exit 1 (FR-008). Para um gate
-  de CI (`cstk doctor || exit 1`), **exit 0 e a apresentacao de sucesso**.
+- `data_lines > records_used` ⇒ `partial` (FR-008): a fonte MUST NOT ser
+  apresentada como sucesso — o veredito da secao vira `[PARCIAL]` e `[OK]`
+  fica proibido. **rc da secao: 0** (report-only, ver abaixo).
 - Fonte ininterpretavel (header desconhecido — `detect_schema_version` ja
-  retorna 1 nesse caso) ⇒ `unreadable` **explicito**, exit 1 (FR-009).
-  Nunca omitir a fonte, nunca confundir com `absent`.
-- `records_used > data_lines` ⇒ `inconsistent`, exit 1, numeros brutos
-  exibidos. Proibido normalizar/arredondar/silenciar (research.md D7).
+  retorna 1 nesse caso) ⇒ `unreadable` **explicito** (FR-009). Nunca
+  omitir a fonte, nunca confundir com `absent`. **rc da secao: 0.**
+- `records_used > data_lines` ⇒ `inconsistent`, numeros brutos exibidos.
+  Proibido normalizar/arredondar/silenciar (research.md D7).
+  **rc da secao: 0.**
 - A declaracao sai em **toda** execucao, inclusive com 0 fontes
   encontradas (FR-006/SC-003).
 - `[OK]` MUST NOT ser impresso se qualquer fonte estiver `partial`,
@@ -267,7 +320,10 @@ Como esta feature **nao** toca catalogo (nenhuma skill/command/agent),
 | Traversal via campo `name` (o unico usado para compor path) | `manifest_name_is_safe` como gate obrigatorio; reprovado vira `unrecognized` — entra no denominador, e a cobertura ja o expoe |
 | Relato humano forjavel por bytes de controle no manifesto (ESC/`\r` apagam `[DRIFT]` e forjam `[OK]`) | `manifest_scrub_text` + `printf '%s'` normativos. Exit code nunca foi forjavel — so o texto |
 | Dependencia de CWD (`./.claude/...`) surpreender o operador | declarada no contrato §2 e visivel na saida: fora da raiz, `fontes encontradas: 0 de 2` em vez de silencio. Nao ha descoberta de raiz por git — `.claude/` e gitignored |
-| Ruido de exit em `unmanaged-upstream` | nao gateia, pelo precedente ja registrado no codigo para ORPHAN |
+| **Repositorio de terceiro controlar o veredito de `cstk doctor \|\| exit 1` na maquina/CI do operador** (R1-R6 fecham traversal/symlink/forja/glob/DoS, mas NAO impedem um manifesto bem-formado e hostil de produzir `shadowed`/`partial` de proposito) | postura report-only: `section_rc` e a constante `0` (contrato §4.1, invariante `INV-RC`). Decisao do operador em `block-001`/`dec-020`; research.md D13. Verificado pelo Cenario 19 |
+| Ruido de exit em `unmanaged-upstream` | nao gateia — resolvido de forma mais ampla: **nada** na secao gateia |
+| `[OK]` ao lado de achados virar falso OK depois que o exit deixou de desambiguar | rotulo neutro `[ACHADOS]`; `[OK]` exige `count_shadowed = 0` **e** `count_nao_comparado = 0` (contrato §3.5) — nenhum dos dois afeta a cobertura, entao sem esta clausula um `[OK]` sairia ao lado de `[indeterminate] ... symlink` ou de `[unmanaged-upstream]`; Cenarios 1, 5 e 9.b validam o rotulo |
+| A postura report-only ser "consertada" para gateante por quem le so o codigo | tabela exaustiva de combinacoes (contrato §4.1) + §4.3 explicando por que nao viola FR-008/FR-009 + D5 marcada supersedida + `INV-RC` no data-model + Cenario 19 como teste de invariante |
 | Lib nova sem teste quebrar o gate | `tests/cstk/test_manifest-coverage.sh` previsto no plano; Cenario 14 valida `--check-coverage` |
 | CRLF corromper campo | `\r` terminal removido antes de validar (medido: `awk -F'\t'` mantem `\r` no ultimo campo) |
 
