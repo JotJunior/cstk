@@ -1,0 +1,5 @@
+# whitelist de URLs externas — feature-00c (dashboard-refactor)
+# Necessaria para FASE 2.5 (roundtrip end-to-end contra payload REAL):
+# subir o servidor dev local e chamar o endpoint novo via curl.
+# Escopo: apenas o servidor dev local (127.0.0.1:3001), nenhum host externo.
+http://127.0.0.1:3001/**

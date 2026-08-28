@@ -1,0 +1,2 @@
+# whitelist de URLs externas — agente-00C
+# (vazia: nenhuma URL externa autorizada nesta execucao)

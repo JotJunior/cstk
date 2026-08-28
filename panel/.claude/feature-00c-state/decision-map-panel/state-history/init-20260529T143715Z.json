@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0.0",
+  "execucao": {
+    "id": "decision-map-panel",
+    "projeto_alvo_path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel",
+    "projeto_alvo_descricao": "No painel, o botao \"Arvore de decisoes\" usa o resultado da skill decision-map. Implementar programaticamente (montar opcoes, marcar a escolha, vincular com a proxima decisao; ao clicar na caixa da decisao exibir detalhes em painel no lado direito) e fazer o botao funcionar, sem depender de skill.",
+    "stack_sugerida": null,
+    "status": "em_andamento",
+    "motivo_termino": null,
+    "iniciada_em": "2026-05-29T14:37:15Z",
+    "terminada_em": null
+  },
+  "etapa_corrente": "specify",
+  "proxima_instrucao": "Iniciar etapa briefing — invocar skill briefing do toolkit com a descricao curta do projeto-alvo.",
+  "ondas": [],
+  "decisoes": [],
+  "bloqueios_humanos": [],
+  "orcamentos": {
+    "recursividade_max": 3,
+    "profundidade_corrente_subagentes": 1,
+    "retro_execucoes_max_por_feature": 2,
+    "retro_execucoes_consumidas": 0,
+    "ciclos_max_por_etapa": 5,
+    "ciclos_consumidos_etapa_corrente": 0,
+    "tool_calls_threshold_onda": 80,
+    "wallclock_threshold_segundos": 5400,
+    "estado_size_threshold_bytes": 1048576,
+    "tool_calls_onda_corrente": 0,
+    "inicio_onda_corrente": null
+  },
+  "metricas_acumuladas": {
+    "ondas_total": 0,
+    "tool_calls_total": 0,
+    "tempo_wallclock_total_segundos": 0,
+    "profundidade_max_atingida": 1,
+    "subagentes_spawned": 0,
+    "decisoes_total": 0,
+    "bloqueios_humanos_total": 0,
+    "sugestoes_skills_globais_total": 0,
+    "issues_toolkit_abertas": 0
+  },
+  "whitelist_urls_externas": [],
+  "historico_movimento_circular": [],
+  "aspectos_chave_iniciais": []
+}

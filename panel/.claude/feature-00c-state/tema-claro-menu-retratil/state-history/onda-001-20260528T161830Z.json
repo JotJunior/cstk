@@ -1,0 +1,401 @@
+{
+  "schema_version": "1.0.0",
+  "execucao": {
+    "id": "feat-tema-claro-menu-retratil-20260528130014",
+    "projeto_alvo_path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel",
+    "projeto_alvo_descricao": "Criar a versão clara (atual só possui noturna) e fazer o switch da base do menu funcionar; fazer o menu ser retrátil com opção fina exibindo somente os ícones.",
+    "stack_sugerida": null,
+    "status": "em_andamento",
+    "motivo_termino": null,
+    "iniciada_em": "2026-05-28T16:00:14Z",
+    "terminada_em": null
+  },
+  "etapa_corrente": "execute-task",
+  "proxima_instrucao": "Iniciar execute-task — pipeline SDD: fases 1 e 2 paralelizaveis (tokens claro + sidebar retratil), depois fase 3 (integracao) e fase 4 (qualidade).",
+  "ondas": [
+    {
+      "id": "onda-001",
+      "inicio": "2026-05-28T16:02:06Z",
+      "fim": "2026-05-28T16:15:13Z",
+      "etapas_executadas": [
+        "specify",
+        "clarify",
+        "plan",
+        "checklist",
+        "create-tasks"
+      ],
+      "tool_calls": 0,
+      "wallclock_seconds": 787,
+      "motivo_termino": "etapa_concluida_avancando",
+      "proxima_onda_agendada_para": null,
+      "skills_invoked": [
+        {
+          "skill": "specify",
+          "timestamp": "2026-05-28T16:04:24Z",
+          "decisao_id": null
+        },
+        {
+          "skill": "model-selector",
+          "timestamp": "2026-05-28T16:04:59Z",
+          "decisao_id": "dec-004"
+        },
+        {
+          "skill": "clarify",
+          "timestamp": "2026-05-28T16:05:17Z",
+          "decisao_id": null
+        },
+        {
+          "skill": "plan",
+          "timestamp": "2026-05-28T16:09:25Z",
+          "decisao_id": null
+        },
+        {
+          "skill": "validate-documentation",
+          "timestamp": "2026-05-28T16:09:57Z",
+          "decisao_id": null
+        },
+        {
+          "skill": "checklist",
+          "timestamp": "2026-05-28T16:12:08Z",
+          "decisao_id": null
+        },
+        {
+          "skill": "create-tasks",
+          "timestamp": "2026-05-28T16:14:28Z",
+          "decisao_id": null
+        },
+        {
+          "skill": "validate-docs-rendered",
+          "timestamp": "2026-05-28T16:14:52Z",
+          "decisao_id": null
+        }
+      ]
+    }
+  ],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "onda_id": "init",
+      "timestamp": "2026-05-28T16:00:25Z",
+      "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda init (fase specify)",
+      "opcoes_consideradas": [
+        "haiku",
+        "sonnet",
+        "opus",
+        "manter-atual"
+      ],
+      "escolha": "model:sonnet",
+      "justificativa": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=specify (mapa primario)",
+      "score_justificativa": 0,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-002",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:02:28Z",
+      "etapa": "specify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "read-back PRE-DECISAO: K=20 achados injetados (anti-eco feature=tema-claro-menu-retratil)",
+      "opcoes_consideradas": [
+        "injetar-achados",
+        "no-op"
+      ],
+      "escolha": "injetar-achados",
+      "justificativa": "termos derivados da feature: tema claro theme switch menu retratil sidebar icon only navegacao",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-003",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:04:24Z",
+      "etapa": "specify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "specify: spec.md gerado com 3 user stories e 15 FRs; 0 NEEDS CLARIFICATION",
+      "opcoes_consideradas": [
+        "prosseguir-clarify",
+        "abortar"
+      ],
+      "escolha": "prosseguir-clarify",
+      "justificativa": "spec completa, sem ambiguidades; 3 entregas mapeadas: tema-claro, switch-funcional, sidebar-retratil",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-004",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:04:59Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para subagente feature-00c-clarify-asker",
+      "opcoes_consideradas": [
+        "haiku",
+        "sonnet",
+        "opus",
+        "manter-atual",
+        "fallback-default"
+      ],
+      "escolha": "manter-atual",
+      "justificativa": "nenhum sinal do catalogo detectado nos 48 tokens validos do input; sem evidencia para sugerir troca de modelo (rasa=0 media=0 profunda=0).",
+      "score_justificativa": 0,
+      "evidencia": "nenhum sinal do catalogo detectado nos 48 tokens validos do input; sem evidencia para sugerir troca de modelo (rasa=0 media=0 profunda=0).",
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-005",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:05:17Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "clarify-asker retornou 0 perguntas; spec sem NEEDS CLARIFICATION; fase clarify concluida",
+      "opcoes_consideradas": [
+        "prosseguir-plan",
+        "aguardar-respostas"
+      ],
+      "escolha": "prosseguir-plan",
+      "justificativa": "spec.md auto-suficiente: 15 FRs, 3 US, 7 SC, sem ambiguidades. Invariante I1: answerer NAO spawnado.",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-006",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:05:55Z",
+      "etapa": "plan",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "feature-00c-preflight.sh check: ok=true, 0 findings (briefing+constitution sha256 OK)",
+      "opcoes_consideradas": [
+        "prosseguir-plan",
+        "registrar-bloqueio-humano"
+      ],
+      "escolha": "prosseguir-plan",
+      "justificativa": "preflight JSON: {ok:true, findings:[]}",
+      "score_justificativa": 3,
+      "evidencia": "{\"ok\":true,\"findings\":[]}",
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-007",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:06:08Z",
+      "etapa": "plan",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "read-back PRE-DECISAO: K=20 achados injetados (anti-eco feature=tema-claro-menu-retratil)",
+      "opcoes_consideradas": [
+        "injetar-achados",
+        "no-op"
+      ],
+      "escolha": "injetar-achados",
+      "justificativa": "termos: tema claro theme switch menu retratil sidebar icon only navegacao",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-008",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:09:25Z",
+      "etapa": "plan",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "plan: 3 artefatos gerados (plan.md, research.md, quickstart.md); 5 decisoes tecnicas; constitution PASS",
+      "opcoes_consideradas": [
+        "prosseguir-quality-gates",
+        "abortar"
+      ],
+      "escolha": "prosseguir-quality-gates",
+      "justificativa": "plan.md+research.md+quickstart.md criados; constitution check PASS todos principios; zero NEEDS CLARIFICATION",
+      "score_justificativa": 3,
+      "evidencia": "plan.md quickstart.md research.md spec.md ",
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-009",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:09:57Z",
+      "etapa": "plan",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "gate validate-documentation plan.md: OK=9 AVISO=2 ERRO=0; snippet try/catch incoerente com nota",
+      "opcoes_consideradas": [
+        "aceitar-risco-com-justificativa",
+        "corrigir-agora",
+        "escalar-para-humano"
+      ],
+      "escolha": "corrigir-agora",
+      "justificativa": "2 avisos menores sobre try/catch no snippet FOUC; corrigir plan.md para consistencia antes de prosseguir",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-010",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:10:19Z",
+      "etapa": "plan",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Skip do gate owasp-security: feature e pure front-end CSS+localStorage, sem endpoint/dados sensiveis/auth/banco",
+      "opcoes_consideradas": [
+        "rodar-gate",
+        "skip-com-justificativa"
+      ],
+      "escolha": "skip-com-justificativa",
+      "justificativa": "Feature modifica apenas tokens.css, Sidebar.tsx e index.html. Zero superficie OWASP: sem endpoint novo, sem input de usuario, sem banco, sem auth, sem dados sensiveis. localStorage stores apenas 'dark'|'light' e true|false. Constitution Principio I garante read-only absoluto.",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-011",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:12:08Z",
+      "etapa": "checklist",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "checklist ux.md: 29 items; 27 auto-resolvidos; 0 humano; 2 gaps menores (ARIA e WCAG AA threshold)",
+      "opcoes_consideradas": [
+        "prosseguir-create-tasks",
+        "aguardar-resolucao-gaps"
+      ],
+      "escolha": "prosseguir-create-tasks",
+      "justificativa": "2 gaps menores nao-bloqueantes (acessibilidade ARIA e WCAG AA reference); virao tasks no backlog; feature basica de UI sem auth/dados sensiveis",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-012",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:12:17Z",
+      "etapa": "create-tasks",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Skip gate validate-docs-rendered pre-tasks: tasks.md ainda nao existe; executar pos-geracao",
+      "opcoes_consideradas": [
+        "rodar-gate",
+        "skip-com-justificativa"
+      ],
+      "escolha": "skip-com-justificativa",
+      "justificativa": "Gate validate-docs-rendered sera executado APOS create-tasks gerar tasks.md. Pre-condicao: artefato ainda nao existe.",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-013",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:14:28Z",
+      "etapa": "create-tasks",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "create-tasks: tasks.md gerado com 4 fases, 13 tarefas, 49 subtarefas; 2 gaps CHK024+CHK025 incorporados",
+      "opcoes_consideradas": [
+        "prosseguir-validate-docs",
+        "abortar"
+      ],
+      "escolha": "prosseguir-validate-docs",
+      "justificativa": "tasks.md criado com cobertura completa de FR-001 a FR-016; gaps do checklist mapeados em tarefas 1.1 e 2.4",
+      "score_justificativa": 3,
+      "evidencia": "checklists plan.md quickstart.md research.md spec.md tasks.md ",
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-014",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:14:52Z",
+      "etapa": "create-tasks",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "gate validate-docs-rendered tasks.md: ERRO=0 AVISO=0; Mermaid valido; links OK",
+      "opcoes_consideradas": [
+        "aceitar-e-prosseguir",
+        "corrigir"
+      ],
+      "escolha": "aceitar-e-prosseguir",
+      "justificativa": "validate-docs-rendered PASS: zero erros, zero avisos",
+      "score_justificativa": 3,
+      "evidencia": "ERRO=0 AVISO=0 arquivos=1",
+      "referencias": [],
+      "artefato_originador": null
+    }
+  ],
+  "bloqueios_humanos": [],
+  "orcamentos": {
+    "recursividade_max": 3,
+    "profundidade_corrente_subagentes": 1,
+    "retro_execucoes_max_por_feature": 2,
+    "retro_execucoes_consumidas": 0,
+    "ciclos_max_por_etapa": 5,
+    "ciclos_consumidos_etapa_corrente": 0,
+    "tool_calls_threshold_onda": 80,
+    "wallclock_threshold_segundos": 5400,
+    "estado_size_threshold_bytes": 1048576,
+    "tool_calls_onda_corrente": 0,
+    "inicio_onda_corrente": "2026-05-28T16:02:06Z"
+  },
+  "metricas_acumuladas": {
+    "ondas_total": 1,
+    "tool_calls_total": 0,
+    "tempo_wallclock_total_segundos": 787,
+    "profundidade_max_atingida": 2,
+    "subagentes_spawned": 1,
+    "decisoes_total": 14,
+    "bloqueios_humanos_total": 0,
+    "sugestoes_skills_globais_total": 0,
+    "issues_toolkit_abertas": 0
+  },
+  "whitelist_urls_externas": [],
+  "historico_movimento_circular": [],
+  "aspectos_chave_iniciais": [
+    "tema-claro",
+    "theme-switch",
+    "menu-retratil",
+    "sidebar",
+    "icon-only",
+    "navegacao"
+  ],
+  "aspectos_chave_tecnicos": [],
+  "aspectos_chave_operacionais": [],
+  "eventos": [
+    {
+      "event_type": "recall_consulted",
+      "timestamp": "2026-05-28T16:02:27Z",
+      "descricao": "etapa=specify hits=20"
+    },
+    {
+      "event_type": "recall_consulted",
+      "timestamp": "2026-05-28T16:06:08Z",
+      "descricao": "etapa=plan hits=20"
+    },
+    {
+      "event_type": "schedule_wait",
+      "timestamp": "2026-05-28T16:15:33Z",
+      "descricao": "onda-001 encerrada; proxima fase: execute-task"
+    }
+  ],
+  "pre_requisitos": {
+    "briefing": {
+      "path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel/docs/01-briefing-discovery/briefing.md",
+      "sha256": "7ba801bffdf6f08f13c45dedab933d145b4c0f2e63679f2b62d80340c50adec7"
+    },
+    "constitution": {
+      "path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel/docs/constitution.md",
+      "sha256": "a1b278d4c9a573463325688f5962b666bfa071befc40b57be266bcb2efa53e66",
+      "version": "1.0.0"
+    }
+  },
+  "short_name": "tema-claro-menu-retratil"
+}

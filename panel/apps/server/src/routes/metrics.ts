@@ -1,0 +1,401 @@
+/**
+ * Rotas de metricas agregadas — 8 endpoints.
+ * Ref: contracts/api-read.md §Metricas agregadas; spec.md FR-008, FR-009
+ * Task 4.4.4, 4.4.5
+ *
+ * Principio III (Honestidade de Metrica):
+ * - cost-over-time: toolCalls como proxy; NUNCA "$"/tokens.
+ * - clarify-resolution: meta.approximate=true (taxa derivada/estimada).
+ * - mix de modelos: sem endpoint (card "indisponivel nesta fonte" no FE).
+ */
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { openDb } from '../db/open.js';
+import { wrap, wrapDegraded } from '../lib/envelope.js';
+import { loadConfig } from '../config.js';
+import type { MetricPeriod } from '../db/queries/metrics.js';
+import {
+  getCostOverTime,
+  getThroughputByStage,
+  getTestPassRate,
+  getTestPassRateSeries,
+  getHumanLatency,
+  getClarifyResolution,
+  getDecisionsByScore,
+  getExecutionDuration,
+  getDepthSubagents,
+  getModelMix,
+  getModelMixByStage,
+  getRecallConsultations,
+  getAgentUsage,
+  getOtelUsage,
+  getOtelCostOverTime,
+  getTokensOverTime,
+  getTokensByWave,
+  getModelUsage,
+  getLooseUsage,
+  getPlanUsage,
+} from '../db/queries/metrics.js';
+import type { AgentUsageFilters, LooseUsageFilters, PlanUsageFilters } from '../db/queries/metrics.js';
+import { hasModelUsage, hasLooseUsage, hasPlanUsage } from '../db/queries/waves.js';
+
+const PeriodSchema = z.enum(['24h', '7d', '30d', 'all']).optional();
+const ProjectSchema = z.object({ project: z.string().optional() });
+
+export async function metricsRoutes(server: FastifyInstance): Promise<void> {
+  const config = loadConfig();
+
+  // ─── GET /metrics/cost-over-time ─────────────────────────────────────────
+  // Principio III: rotular como "proxy: tool calls" na UI — nunca "$" ou "tokens"
+  server.get('/metrics/cost-over-time', async (request, reply) => {
+    const q = z.object({ project: z.string().optional(), period: PeriodSchema }).safeParse(request.query);
+    const { project, period } = q.success ? q.data : { project: undefined, period: undefined };
+
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const costFilters: { project?: string; period?: MetricPeriod } = {
+        ...(project !== undefined ? { project } : {}),
+        ...(period !== undefined ? { period: period as MetricPeriod } : {}),
+      };
+      const data = getCostOverTime(db, costFilters);
+      // data.toolCalls e proxy de custo — rotular na UI como "proxy: tool calls"
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/throughput-by-stage ────────────────────────────────────
+  server.get('/metrics/throughput-by-stage', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getThroughputByStage(db);
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/test-pass-rate ─────────────────────────────────────────
+  server.get('/metrics/test-pass-rate', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getTestPassRate(db);
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/test-pass-rate-series ──────────────────────────────────
+  // Serie diaria (agrupa por date(executions.iniciada_em)) para o grafico 14d.
+  server.get('/metrics/test-pass-rate-series', async (request, reply) => {
+    const q = z.object({ period: PeriodSchema }).safeParse(request.query);
+    const period = q.success ? q.data.period : undefined;
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getTestPassRateSeries(db, period !== undefined ? { period: period as MetricPeriod } : {});
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/human-latency ──────────────────────────────────────────
+  server.get('/metrics/human-latency', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getHumanLatency(db);
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/clarify-resolution ─────────────────────────────────────
+  // meta.approximate=TRUE (Principio III — taxa derivada/estimada)
+  server.get('/metrics/clarify-resolution', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getClarifyResolution(db);
+      // OBRIGATORIO: approximate=true (FR-009, Principio III)
+      return reply.status(200).send(wrap(data, { approximate: true }, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/decisions-by-score ─────────────────────────────────────
+  server.get('/metrics/decisions-by-score', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getDecisionsByScore(db);
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/execution-duration ─────────────────────────────────────
+  server.get('/metrics/execution-duration', async (request, reply) => {
+    const q = z.object({ project: z.string().optional(), period: PeriodSchema }).safeParse(request.query);
+    const { project, period } = q.success ? q.data : { project: undefined, period: undefined };
+    void ProjectSchema;
+
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const durFilters: { project?: string; period?: MetricPeriod } = {
+        ...(project !== undefined ? { project } : {}),
+        ...(period !== undefined ? { period: period as MetricPeriod } : {}),
+      };
+      const data = getExecutionDuration(db, durFilters);
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/depth-subagents ────────────────────────────────────────
+  server.get('/metrics/depth-subagents', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getDepthSubagents(db);
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/model-mix ──────────────────────────────────────────────
+  // DERIVADO das decisoes de roteamento (escolha='model:%'). Intenção do
+  // roteador, NAO confirmação da harness. Dono canônico: model-routing-report.sh
+  // (FR-010 — UI rotula como derivado). meta.approximate=true.
+  server.get('/metrics/model-mix', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getModelMix(db);
+      return reply.status(200).send(wrap(data, { approximate: true }, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/model-mix-by-stage ─────────────────────────────────────
+  server.get('/metrics/model-mix-by-stage', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getModelMixByStage(db);
+      return reply.status(200).send(wrap(data, { approximate: true }, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/recall-consultations ───────────────────────────────────
+  // Consultas ao histórico (read-back loop, schema v3). Contagem EXATA
+  // (Princípio III — não proxy/aproximada): total + split produtivas/vazias.
+  server.get('/metrics/recall-consultations', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getRecallConsultations(db);
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── Metricas de consumo de subagente (schema v10) ───────────────────────
+  // NAO sao proxy nem estimativa: o harness mede, o hook do cstk grava e
+  // `cstk recall --ingest` agrega por onda. Por isso NAO levam
+  // meta.approximate. Sao, porem, AMOSTRA — spawns em background nao reportam
+  // uso — e por isso todo payload carrega spawnsTotal/spawnsWithUsage juntos.
+  // Base v<10 -> campos null / array vazio, nunca zero fabricado.
+  function parseUsageQuery(query: unknown): AgentUsageFilters {
+    const q = z.object({
+      project: z.string().trim().min(1).max(200).optional(),
+      feature: z.string().trim().min(1).max(200).optional(),
+      period: PeriodSchema,
+    }).safeParse(query);
+    if (!q.success) return {};
+    const { project, feature, period } = q.data;
+    return {
+      ...(project !== undefined ? { project } : {}),
+      ...(feature !== undefined ? { feature } : {}),
+      ...(period !== undefined ? { period: period as MetricPeriod } : {}),
+    };
+  }
+
+  // ─── GET /metrics/agent-usage ────────────────────────────────────────────
+  server.get('/metrics/agent-usage', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getAgentUsage(db, parseUsageQuery(request.query));
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/otel-usage ─────────────────────────────────────────────
+  // Consumo medido pela telemetria OTel (schema v11) — fonte independente de
+  // agent-usage: cobre tambem o consumo do proprio orquestrador. Unico numero
+  // do painel em USD, e ele vem calculado pelo Claude Code (nao ha tabela de
+  // preco aqui). Base v<11 -> todos os campos null, nunca zero fabricado.
+  server.get('/metrics/otel-usage', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getOtelUsage(db, parseUsageQuery(request.query));
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/otel-cost-over-time ────────────────────────────────────
+  // Dias sem coleta OTel sao OMITIDOS (nao viram 0) — ver getOtelCostOverTime.
+  server.get('/metrics/otel-cost-over-time', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getOtelCostOverTime(db, parseUsageQuery(request.query));
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/tokens-over-time ───────────────────────────────────────
+  // Dias sem medicao sao OMITIDOS (nao viram 0) — ver getTokensOverTime.
+  server.get('/metrics/tokens-over-time', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getTokensOverTime(db, parseUsageQuery(request.query));
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/tokens-by-wave ─────────────────────────────────────────
+  server.get('/metrics/tokens-by-wave', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      const data = getTokensByWave(db, parseUsageQuery(request.query), 20);
+      return reply.status(200).send(wrap(data, {}, config.dbPath, db));
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/model-usage ─────────────────────────────────────────────
+  // Custo/tokens REAIS por modelo (schema v12, `wave_model_usage`). Grao onda x
+  // modelo — distinto de otel-usage (grao onda) e model-mix (DERIVADO, sem
+  // custo/tokens). Ref: contracts/model-usage-endpoint.md.
+  // Invariante 7 do gate de seguranca: exceção em query-time NAO pode escapar
+  // como 5xx — as demais rotas desta familia usam try/finally SEM catch; esta
+  // rota nova precisa do catch explicito (nenhum setErrorHandler global existe).
+  server.get('/metrics/model-usage', async (request, reply) => {
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      let data;
+      try {
+        data = getModelUsage(db, parseUsageQuery(request.query));
+      } catch {
+        // Principio II: excecao em query-time (ex.: coluna ausente na junção
+        // de byStage, SQLITE_CORRUPT mid-read) nunca vira 5xx.
+        return reply.status(200).send(wrapDegraded('db-corrupt', config.dbPath));
+      }
+      // meta.approximate NAO e emitido: dado MEDIDO, nao derivado (contrato §Response 200).
+      const envelope = wrap(data, {}, config.dbPath, db);
+      if (!hasModelUsage(db)) {
+        // Tabela ausente (base v2-v11): o contrato exige `data` com o shape
+        // vazio explicito (byModel:[], byStage:[], coverage com os 3 campos
+        // null) — NAO null — junto de degraded=true/reason='table-empty'
+        // (contrato §Response degradado, Decision 4). `wrap()` nulificaria
+        // `data` se `degraded` fosse passado direto; por isso o override e
+        // feito apos a chamada, preservando o `data` ja no shape correto.
+        envelope.meta.degraded = true;
+        envelope.meta.reason = 'table-empty';
+      }
+      return reply.status(200).send(envelope);
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/loose-usage ─────────────────────────────────────────────
+  // Consumo AVULSO de sessoes interativas (schema v13, `loose_usage`,
+  // cstk 6.6.0) + comparacao avulso x pipeline (`wave_model_usage`).
+  // SEM filtro `feature`: a origem nao tem a dimensao — aceitar o parametro e
+  // ignora-lo fingiria um recorte que nao aconteceu.
+  // Mesmo contrato de degradacao do model-usage: excecao query-time nunca
+  // vira 5xx; tabela ausente -> shape vazio explicito + reason='table-empty'.
+  server.get('/metrics/loose-usage', async (request, reply) => {
+    const q = z.object({
+      project: z.string().trim().min(1).max(200).optional(),
+      period: PeriodSchema,
+    }).safeParse(request.query);
+    const filters: LooseUsageFilters = q.success
+      ? {
+          ...(q.data.project !== undefined ? { project: q.data.project } : {}),
+          ...(q.data.period !== undefined ? { period: q.data.period as MetricPeriod } : {}),
+        }
+      : {};
+
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      let data;
+      try {
+        data = getLooseUsage(db, filters);
+      } catch {
+        // Principio II: excecao em query-time nunca escapa como 5xx.
+        return reply.status(200).send(wrapDegraded('db-corrupt', config.dbPath));
+      }
+      const envelope = wrap(data, {}, config.dbPath, db);
+      if (!hasLooseUsage(db)) {
+        // Base v2-v12: `data` mantem o shape vazio explicito (arrays vazios,
+        // coverage/comparison com todos os campos null) + degraded=true.
+        envelope.meta.degraded = true;
+        envelope.meta.reason = 'table-empty';
+      }
+      return reply.status(200).send(envelope);
+    } finally { db.close(); }
+  });
+
+  // ─── GET /metrics/plan-usage ──────────────────────────────────────────────
+  // Gauge `rate_limits` da CONTA (schema v14, `plan_usage`, cstk 7.2.0):
+  // percentual do plano consumido nas janelas `five_hour` e `seven_day`.
+  // SEM filtro `project`: o medidor e da conta, nao do projeto — recortar por
+  // projeto sugeriria um numero ("plano gasto por projeto") que a fonte nao
+  // produz, mesma regra que faz loose-usage recusar `feature`.
+  // Mesmo contrato de degradacao dos irmaos: excecao query-time nunca vira
+  // 5xx; tabela ausente -> shape vazio explicito + reason='table-empty'.
+  server.get('/metrics/plan-usage', async (request, reply) => {
+    const q = z.object({ period: PeriodSchema }).safeParse(request.query);
+    const filters: PlanUsageFilters = q.success && q.data.period !== undefined
+      ? { period: q.data.period as MetricPeriod }
+      : {};
+
+    const openResult = openDb(config.dbPath, config.supportedSchemaVersions);
+    if (!openResult.ok) return reply.status(200).send(wrapDegraded(openResult.reason, config.dbPath));
+    const { db } = openResult;
+    try {
+      let data;
+      try {
+        data = getPlanUsage(db, filters);
+      } catch {
+        // Principio II: excecao em query-time nunca escapa como 5xx.
+        return reply.status(200).send(wrapDegraded('db-corrupt', config.dbPath));
+      }
+      const envelope = wrap(data, {}, config.dbPath, db);
+      if (!hasPlanUsage(db)) {
+        // Base v2-v13: `data` mantem o shape vazio explicito (arrays vazios,
+        // coverage com todos os campos null) + degraded=true.
+        envelope.meta.degraded = true;
+        envelope.meta.reason = 'table-empty';
+      }
+      return reply.status(200).send(envelope);
+    } finally { db.close(); }
+  });
+}

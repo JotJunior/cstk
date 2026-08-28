@@ -1,0 +1,1509 @@
+{
+  "wave_number": 9,
+  "captured_at": "2026-05-30T15:45:12Z",
+  "state_sha256_self": "a0f0ca2270a0f4bffe81f3cb5766e0d1e8711f4ff6c69142ab61aad6a4b05f57",
+  "state_snapshot": {
+    "schema_version": "1.0.0",
+    "execution": {
+      "id": "new-schema-20260530T131725Z",
+      "target_project_path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel",
+      "target_project_description": "houve uma mudança drástica no ../cstk no que diz respeito aos schemas e funcoes. Muita coisa que estava misturando portugues e ingles agora foram normalizados e canonizados. Precisamos ataptar para anteder ao novo schema.",
+      "suggested_stack": null,
+      "status": "em_andamento",
+      "termination_reason": null,
+      "started_at": "2026-05-30T13:17:25Z",
+      "finished_at": null,
+      "short_name": "new-schema"
+    },
+    "current_stage": "review-task",
+    "next_instruction": "invoke Skill(review-task): backlog status, reconcile .tasks[]↔tasks.md, model-routing aggregation",
+    "waves": [
+      {
+        "id": "onda-001",
+        "started_at": "2026-05-30T13:19:32Z",
+        "finished_at": "2026-05-30T13:26:46Z",
+        "executed_stages": [
+          "specify"
+        ],
+        "tool_calls": 0,
+        "wallclock_seconds": 434,
+        "termination_reason": "concluido",
+        "next_wave_scheduled_for": "2026-05-30T13:31:16Z",
+        "skills_invoked": [
+          {
+            "skill": "specify",
+            "timestamp": "2026-05-30T13:24:46Z",
+            "decision_id": "dec-003"
+          }
+        ]
+      },
+      {
+        "id": "onda-002",
+        "started_at": "2026-05-30T13:51:39Z",
+        "finished_at": "2026-05-30T13:53:07Z",
+        "executed_stages": [
+          "clarify"
+        ],
+        "tool_calls": 0,
+        "wallclock_seconds": 88,
+        "termination_reason": "concluido",
+        "next_wave_scheduled_for": null,
+        "skills_invoked": [
+          {
+            "skill": "clarify",
+            "timestamp": "2026-05-30T13:52:25Z",
+            "decision_id": "dec-005"
+          }
+        ]
+      },
+      {
+        "id": "onda-003",
+        "started_at": "2026-05-30T13:58:54Z",
+        "finished_at": "2026-05-30T14:05:35Z",
+        "executed_stages": [
+          "plan"
+        ],
+        "tool_calls": 0,
+        "wallclock_seconds": 401,
+        "termination_reason": "etapa_concluida_avancando",
+        "next_wave_scheduled_for": "2026-05-30T14:06:35Z",
+        "skills_invoked": [
+          {
+            "skill": "plan",
+            "timestamp": "2026-05-30T14:03:18Z",
+            "decision_id": "dec-009"
+          },
+          {
+            "skill": "validate-documentation",
+            "timestamp": "2026-05-30T14:04:12Z",
+            "decision_id": "dec-010"
+          },
+          {
+            "skill": "owasp-security",
+            "timestamp": "2026-05-30T14:05:09Z",
+            "decision_id": "dec-011"
+          }
+        ]
+      },
+      {
+        "id": "onda-004",
+        "started_at": "2026-05-30T14:09:47Z",
+        "finished_at": "2026-05-30T14:16:41Z",
+        "executed_stages": [
+          "create-tasks"
+        ],
+        "tool_calls": 0,
+        "wallclock_seconds": 414,
+        "termination_reason": "etapa_concluida_avancando",
+        "next_wave_scheduled_for": "2026-05-30T14:17:41Z",
+        "skills_invoked": [
+          {
+            "skill": "create-tasks",
+            "timestamp": "2026-05-30T14:16:41Z",
+            "decision_id": "dec-013"
+          }
+        ]
+      },
+      {
+        "id": "onda-005",
+        "started_at": "2026-05-30T14:20:31Z",
+        "finished_at": "2026-05-30T14:28:19Z",
+        "executed_stages": [
+          "execute-task"
+        ],
+        "tool_calls": 0,
+        "wallclock_seconds": 468,
+        "termination_reason": "etapa_concluida_avancando",
+        "next_wave_scheduled_for": null,
+        "skills_invoked": [
+          {
+            "skill": "execute-task",
+            "timestamp": "2026-05-30T14:27:31Z",
+            "decision_id": "dec-015"
+          }
+        ]
+      },
+      {
+        "id": "onda-006",
+        "started_at": "2026-05-30T14:34:19Z",
+        "finished_at": "2026-05-30T14:42:34Z",
+        "executed_stages": [
+          "execute-task"
+        ],
+        "tool_calls": 0,
+        "wallclock_seconds": 495,
+        "termination_reason": "etapa_concluida_avancando",
+        "next_wave_scheduled_for": null,
+        "skills_invoked": [
+          {
+            "skill": "execute-task",
+            "timestamp": "2026-05-30T14:42:08Z",
+            "decision_id": null
+          }
+        ]
+      },
+      {
+        "id": "onda-007",
+        "started_at": "2026-05-30T14:49:27Z",
+        "finished_at": "2026-05-30T15:06:15Z",
+        "executed_stages": [
+          "execute-task"
+        ],
+        "tool_calls": 0,
+        "wallclock_seconds": 1008,
+        "termination_reason": "etapa_concluida_avancando",
+        "next_wave_scheduled_for": null,
+        "skills_invoked": [
+          {
+            "skill": "execute-task",
+            "timestamp": "2026-05-30T15:05:31Z",
+            "decision_id": "dec-019"
+          }
+        ]
+      },
+      {
+        "id": "onda-008",
+        "started_at": "2026-05-30T15:10:23Z",
+        "finished_at": "2026-05-30T15:27:45Z",
+        "executed_stages": [
+          "execute-task"
+        ],
+        "tool_calls": 0,
+        "wallclock_seconds": 1042,
+        "termination_reason": "concluido",
+        "next_wave_scheduled_for": null,
+        "skills_invoked": [
+          {
+            "skill": "execute-task",
+            "timestamp": "2026-05-30T15:26:48Z",
+            "decision_id": "dec-021"
+          }
+        ]
+      },
+      {
+        "id": "onda-009",
+        "started_at": "2026-05-30T15:37:02Z",
+        "finished_at": null,
+        "executed_stages": [],
+        "tool_calls": 0,
+        "wallclock_seconds": 0,
+        "termination_reason": null,
+        "next_wave_scheduled_for": null,
+        "skills_invoked": [
+          {
+            "skill": "execute-task",
+            "timestamp": "2026-05-30T15:44:31Z",
+            "decision_id": "dec-023"
+          }
+        ]
+      }
+    ],
+    "decisions": [
+      {
+        "id": "dec-001",
+        "wave_id": "init",
+        "timestamp": "2026-05-30T13:17:34Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda init (fase briefing)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=briefing (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-002",
+        "wave_id": "onda-001",
+        "timestamp": "2026-05-30T13:19:54Z",
+        "stage": "specify",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "read-back PRE-DECISAO: K=24 achados injetados (anti-eco feature=new-schema)",
+        "options_considered": [
+          "injetar-achados",
+          "no-op"
+        ],
+        "choice": "injetar-achados",
+        "rationale": "termos derivados da feature: schema canonico normalizacao pt en cstk integracao adaptacao funcoes renomeacao campos",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-003",
+        "wave_id": "onda-001",
+        "timestamp": "2026-05-30T13:24:40Z",
+        "stage": "specify",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "specify-init: spec.md gerada para new-schema",
+        "options_considered": [
+          "iniciar",
+          "abortar"
+        ],
+        "choice": "iniciar",
+        "rationale": "Spec gerada com 4 user stories (P1-P4), 14 FRs, tabela de 47 mapeamentos pt->EN. Migration-map congelado no cstk é a fonte canônica. Back-compat via hasColumn/hasTable documentado.",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-004",
+        "wave_id": "onda-001",
+        "timestamp": "2026-05-30T13:49:36Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda 1 (fase clarify)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=clarify (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-005",
+        "wave_id": "onda-002",
+        "timestamp": "2026-05-30T13:52:17Z",
+        "stage": "clarify",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "clarify-asker avaliou spec.md: nenhuma ambiguidade critica identificada",
+        "options_considered": [
+          "emitir-perguntas",
+          "no-op-sem-perguntas"
+        ],
+        "choice": "no-op-sem-perguntas",
+        "rationale": "Spec cobre todos os FRs com mappings explícitos da migration-map FROZEN. Guards hasColumn/hasTable pattern existente é claro. FR-009 frontend scope definido. n_skills em Provenance UNCHANGED confirmado. Nenhum ponto com score < 2.",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-006",
+        "wave_id": "onda-002",
+        "timestamp": "2026-05-30T13:52:37Z",
+        "stage": "clarify",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "clarify concluido sem ambiguidades — avancando para plan",
+        "options_considered": [
+          "avancar-plan",
+          "aguardar-humano",
+          "abortar"
+        ],
+        "choice": "avancar-plan",
+        "rationale": "Spec new-schema é auto-suficiente: 14 FRs cobertos, migration-map FROZEN como fonte da verdade, padrão hasColumn/hasTable já estabelecido no codebase, FR-013/FR-014 como gates de integração claros.",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-007",
+        "wave_id": "onda-002",
+        "timestamp": "2026-05-30T13:57:16Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda 2 (fase plan)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:opus",
+        "rationale": "sugerido=opus aplicado=opus origem=mapa | faixa=profunda fase=plan (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-008",
+        "wave_id": "onda-003",
+        "timestamp": "2026-05-30T13:59:16Z",
+        "stage": "plan",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "read-back PRE-DECISAO: K=13 achados injetados (anti-eco feature=new-schema)",
+        "options_considered": [
+          "injetar-achados",
+          "no-op"
+        ],
+        "choice": "injetar-achados",
+        "rationale": "termos derivados da feature: schema canonico normalizacao pt en cstk integracao adaptacao funcoes renomeacao campos; achados confirmam v7 migration-map FROZEN e sintoma de NULL/crash em pt-BR contra DB v7",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-009",
+        "wave_id": "onda-003",
+        "timestamp": "2026-05-30T14:03:18Z",
+        "stage": "plan",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Plano gerado: 4 artefatos (plan/research/data-model/quickstart) para migracao v7 EN; Constitution Check PASS em todos os MUST; back-compat via hasColumn/hasTable existente; roundtrip contra DB v7 REAL",
+        "options_considered": [
+          "gerar-plano",
+          "abortar"
+        ],
+        "choice": "gerar-plano",
+        "rationale": "migration-map §3.11 FROZEN e fonte unica; DB instalado JA e v7 (schema_meta.schema_version=7, colunas execution_id/termination_reason/current_stage presentes, tabela blocks presente, 1 execution/2 waves/6 decisions ingeridos) — roundtrip nao-mock viavel",
+        "justification_score": 3,
+        "evidence": "sqlite3 ~/.claude/cstk/knowledge.db 'SELECT value FROM schema_meta WHERE key=schema_version' => 7; PRAGMA table_info(executions) => execution_id/termination_reason/current_stage/started_at; blocks table present; counts executions=1 waves=2 decisions=6 events=1",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-010",
+        "wave_id": "onda-003",
+        "timestamp": "2026-05-30T14:04:12Z",
+        "stage": "plan",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate validate-documentation (doc-quality) sobre plan.md + companions: 0 findings criticos. Sem placeholder/TBD; Constitution Check presente e decisivo (PASS); Convencoes de Borda com fonte-da-verdade declarada; links/migration-map resolvem; sem Mermaid quebrado. Trees de project-structure em fence plano = nota informativa low.",
+        "options_considered": [
+          "aceitar-risco-com-justificativa",
+          "corrigir-agora",
+          "escalar-para-humano"
+        ],
+        "choice": "aceitar-risco-com-justificativa",
+        "rationale": "Unica nota low: fences de arvore de diretorio sem linguagem (intencional, listagem). Nenhum finding critical/high. Plano estruturalmente completo e coerente.",
+        "justification_score": 3,
+        "evidence": "grep TBD/TODO/FIXME/NEEDS-CLARIFICATION => 0 abertos (so heading 'Resolved NEEDS CLARIFICATION'); grep -c 'Constitution Check'=1; 'Convencoes de Borda'=1; migration-map path resolve OK; 0 blocos mermaid",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-011",
+        "wave_id": "onda-003",
+        "timestamp": "2026-05-30T14:05:09Z",
+        "stage": "plan",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate owasp-security sobre arquitetura do plano: 0 findings critical/high/medium. Rename puro de identificadores em painel read-only. A05 Injection N/A (nomes de coluna/tabela sao literais internos do migration-map FROZEN, nao input; hasColumn/hasTable interpolam so literais de tabela; prepared statements mantem ? binding). LLM05/ASI09/Principio V preservado (TextRaw renderiza texto de agente auto-escapado, sem dangerouslySetInnerHTML; rename so troca o NOME do campo-fonte, nao o sink). FTS intocado (FR-012).",
+        "options_considered": [
+          "aceitar-risco-com-justificativa",
+          "corrigir-agora",
+          "escalar-para-humano"
+        ],
+        "choice": "aceitar-risco-com-justificativa",
+        "rationale": "Nenhum finding critical/high => sem BloqueioHumano obrigatorio. Unica nota low/informativa: cross.ts tem interpolacao pre-existente de allowlist interna (periodFilter) FORA do escopo deste rename, ja mitigada por allowlist. Rename nao adiciona superficie de ataque.",
+        "justification_score": 3,
+        "evidence": "grep columns.ts: pragma(table_info(${table})) interpola so literal interno + sqlite_master usa ? binding; queries usam .prepare com ? (bloqueios.ts); web: dangerouslySetInnerHTML aparece SO em comentarios/testes que ASSERTAM ausencia; TextRaw.tsx renderiza {display} como text child React (auto-escape, linha 39 'React escapa automaticamente')",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-012",
+        "wave_id": "onda-003",
+        "timestamp": "2026-05-30T14:08:16Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda 3 (fase create-tasks)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=create-tasks (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-013",
+        "wave_id": "onda-004",
+        "timestamp": "2026-05-30T14:09:57Z",
+        "stage": "create-tasks",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Inicio da onda create-tasks: decompor spec+plan em backlog executavel (tasks.md)",
+        "options_considered": [
+          "iniciar",
+          "abortar"
+        ],
+        "choice": "iniciar",
+        "rationale": "Todas as ondas anteriores concluidas (specify/clarify/plan). Spec ratificada, plan ratificado, data-model.md + quickstart.md presentes. Pronto para decompor em tasks.",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-014",
+        "wave_id": "onda-004",
+        "timestamp": "2026-05-30T14:19:16Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda 4 (fase execute-task)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=rasa fase=execute-task (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-015",
+        "wave_id": "onda-005",
+        "timestamp": "2026-05-30T14:27:25Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "FASE 1 shared-types: renames pt-BR->EN em entities.ts + schemas/entities.ts + index.ts + testes de paridade atualizados",
+        "options_considered": [
+          "executar-fase1-completa",
+          "executar-parcial",
+          "skip"
+        ],
+        "choice": "executar-fase1-completa",
+        "rationale": "11 tarefas (1.1 a 1.11) concluidas: 0 erros tsc, 55 testes passando (vitest run exit 0)",
+        "justification_score": 3,
+        "evidence": "npx tsc --noEmit EXIT_TSC:0; vitest 3 passed (55 tests) exit 0",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-016",
+        "wave_id": "onda-005",
+        "timestamp": "2026-05-30T14:32:13Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda 5 (fase execute-task)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=rasa fase=execute-task (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-017",
+        "wave_id": "onda-006",
+        "timestamp": "2026-05-30T14:41:57Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "FASE 2 server queries concluida: Row interfaces EN, SQL EN, hasColumn guards, bloqueios.ts→blocks.ts",
+        "options_considered": [
+          "concluir-fase2",
+          "parar-por-budget",
+          "abortar"
+        ],
+        "choice": "concluir-fase2",
+        "rationale": "Todos 14 query files atualizados pt-BR→EN snake_case. tsc db/queries=0 errors. Erros remanescentes apenas em mappers e routes (FASE 3 scope)",
+        "justification_score": 3,
+        "evidence": "tsc server: queries=0 errors (gate OK), mappers=59 errors (expected FASE 3), routes=35 errors (expected FASE 3). grep vocab gate: 0 pt-BR in db/queries",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-018",
+        "wave_id": "onda-006",
+        "timestamp": "2026-05-30T14:48:14Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda 6 (fase execute-task)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=rasa fase=execute-task (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-019",
+        "wave_id": "onda-007",
+        "timestamp": "2026-05-30T15:05:19Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "FASE 3 mappers+routes: gate tsc=0 e vitest=146/146",
+        "options_considered": [
+          "concluir-fase3",
+          "aguardar-revisao",
+          "abortar"
+        ],
+        "choice": "concluir-fase3",
+        "rationale": "todos os 8 mappers corrigidos, bloqueio.ts→block.ts, 6 routes corrigidas, fixture migrada pt→EN, schema_version=7 aceito; tsc=0 erros, vitest 146/146 passando",
+        "justification_score": 3,
+        "evidence": "npx tsc --noEmit exit=0; npx vitest run: Test Files 14 passed (14), Tests 146 passed (146)",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-020",
+        "wave_id": "onda-007",
+        "timestamp": "2026-05-30T15:09:15Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda 7 (fase execute-task)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=rasa fase=execute-task (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-021",
+        "wave_id": "onda-008",
+        "timestamp": "2026-05-30T15:26:07Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "FASE 4 apps/web: migrar 12 arquivos de campos pt-BR para EN camelCase nos DTOs",
+        "options_considered": [
+          "executar-fase4",
+          "skip-aguardar-manual",
+          "abortar"
+        ],
+        "choice": "executar-fase4",
+        "rationale": "tsc=0 erros (167→0), vitest 123/123 passing, todas tasks FASE 4 marcadas [x]",
+        "justification_score": 3,
+        "evidence": "tsc --noEmit exit=0 (era 167 erros); vitest run --root apps/web: 123/123 passed, 9 suites, 0 regressoes; git commit 9464e5e (13 files, 210 ins/210 del)",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-022",
+        "wave_id": "onda-008",
+        "timestamp": "2026-05-30T15:35:20Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda 8 (fase execute-task)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=rasa fase=execute-task (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-023",
+        "wave_id": "onda-009",
+        "timestamp": "2026-05-30T15:43:38Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate 5.1: tsc monorepo completo — 3 workspaces",
+        "options_considered": [
+          "pass",
+          "fail"
+        ],
+        "choice": "pass",
+        "rationale": "shared-types=0 erros, server=0 erros, web=0 erros",
+        "justification_score": 3,
+        "evidence": "pnpm --filter @cstk-panel/{shared-types,server,web} exec tsc --noEmit: 0 errors em todos 3 workspaces",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-024",
+        "wave_id": "onda-009",
+        "timestamp": "2026-05-30T15:43:50Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate 5.2: vitest regressão — todas suites passando",
+        "options_considered": [
+          "pass",
+          "regressao-detectada"
+        ],
+        "choice": "pass",
+        "rationale": "Test Files 26 passed (26), Tests 324 passed (324), zero regressoes",
+        "justification_score": 3,
+        "evidence": "npm test: Test Files 26 passed (26); Tests 324 passed (324); Duration 1.27s",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-025",
+        "wave_id": "onda-009",
+        "timestamp": "2026-05-30T15:43:50Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate 5.3: Roundtrip v7 real — schema_version=7, campos EN no payload",
+        "options_considered": [
+          "pass",
+          "fail-campos-ptbr-vivos"
+        ],
+        "choice": "pass",
+        "rationale": "executionId=new-schema-20260530T131725Z presente, 0 chaves PT-BR na resposta, waves=8 EN",
+        "justification_score": 3,
+        "evidence": "sqlite3 knowledge.db schema_version=7; /api/v1/executions: executionId presente, 0 PT-BR keys; waves: startedAt+stages+terminationReason OK",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-026",
+        "wave_id": "onda-009",
+        "timestamp": "2026-05-30T15:44:05Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate 5.4: Cenario C blocks table + hasTable guard — coberto por blocks-backcompat.test.ts",
+        "options_considered": [
+          "pass",
+          "fail"
+        ],
+        "choice": "pass",
+        "rationale": "blocks.ts tem hasTable guard; degradation.test.ts cobre via vitest; novo teste blocks-backcompat.test.ts confirma retorno [] sem excecao",
+        "justification_score": 3,
+        "evidence": "vitest blocks-backcompat.test.ts: 4/4 pass; listBlocksByExecution retorna [] quando tabela blocks ausente",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-027",
+        "wave_id": "onda-009",
+        "timestamp": "2026-05-30T15:44:05Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate 5.5: Cenario D degradacao graceful v6 — hasColumn guards em executions.ts",
+        "options_considered": [
+          "pass",
+          "fail"
+        ],
+        "choice": "pass",
+        "rationale": "degradation.test.ts (17 testes) cobre db-missing/db-corrupt/schema-mismatch/table-empty todos 200 sem 5xx",
+        "justification_score": 3,
+        "evidence": "apps/server/test/lib/degradation.test.ts: 18 passed; hasColumn guards em queries/executions.ts projetam NULL AS termination_reason para v6",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-028",
+        "wave_id": "onda-009",
+        "timestamp": "2026-05-30T15:44:17Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate 5.6: Cenario E grep gate vocabulario PT-BR — zero resultados vivos",
+        "options_considered": [
+          "pass-zero-matches",
+          "fail-ptbr-vivo"
+        ],
+        "choice": "pass-zero-matches",
+        "rationale": "grep -rnE execucao_id|motivo_termino|... | grep -vE hasColumn|//* = zero resultados; unica match e comentario JSDoc em wave.ts",
+        "justification_score": 3,
+        "evidence": "grep PT-BR vocabulario apps/server/src packages/shared-types/src: 0 matches vivos; 1 match em comentario wave.ts:3 ignorado por filtro //*",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-029",
+        "wave_id": "onda-009",
+        "timestamp": "2026-05-30T15:44:17Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate 5.7: back-compat v6 — BlockDTOSchema + listBlocksByExecution fixture v6",
+        "options_considered": [
+          "pass",
+          "skip"
+        ],
+        "choice": "pass",
+        "rationale": "parity.test.ts ja cobria BlockDTOSchema; novo blocks-backcompat.test.ts adicionado com 4 testes cobrindo 5.7.1/5.7.2/5.7.3",
+        "justification_score": 3,
+        "evidence": "vitest blocks-backcompat.test.ts: 4/4 pass; total suite 27 files 328 tests all passed",
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-030",
+        "wave_id": "onda-009",
+        "timestamp": "2026-05-30T15:44:25Z",
+        "stage": "execute-task",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Gate lint:readonly-check — zero verbos de mutacao em apps/server/src",
+        "options_considered": [
+          "pass",
+          "fail"
+        ],
+        "choice": "pass",
+        "rationale": "npm run lint:readonly-check: OK: no mutation verbs",
+        "justification_score": 3,
+        "evidence": "grep -rniE INSERT|UPDATE|DELETE|CREATE|DROP|ALTER apps/server/src: exit 1 (zero matches) => OK: no mutation verbs",
+        "references": [],
+        "originating_artifact": null
+      }
+    ],
+    "human_blocks": [],
+    "budgets": {
+      "max_recursion": 3,
+      "current_subagent_depth": 1,
+      "max_retro_executions_per_feature": 2,
+      "retro_executions_consumed": 0,
+      "max_cycles_per_stage": 5,
+      "cycles_consumed_current_stage": 0,
+      "tool_calls_threshold_wave": 80,
+      "wallclock_threshold_seconds": 5400,
+      "state_size_threshold_bytes": 1048576,
+      "tool_calls_current_wave": 0,
+      "current_wave_start": "2026-05-30T15:37:02Z"
+    },
+    "accumulated_metrics": {
+      "waves_total": 8,
+      "tool_calls_total": 0,
+      "wallclock_total_seconds": 4350,
+      "max_depth_reached": 1,
+      "subagents_spawned": 0,
+      "decisions_total": 30,
+      "human_blocks_total": 0,
+      "global_skill_suggestions_total": 0,
+      "toolkit_issues_opened": 0,
+      "cache": {
+        "tokens_cache_misses_disabled": 1
+      }
+    },
+    "external_urls_whitelist": [],
+    "circular_movement_history": [],
+    "initial_key_aspects": [
+      "schema-canonico",
+      "normalizacao-pt-en",
+      "cstk-integracao",
+      "adaptacao-funcoes",
+      "renomeacao-campos"
+    ],
+    "technical_key_aspects": [],
+    "operational_key_aspects": [],
+    "prerequisites": {
+      "briefing": {
+        "path": "docs/01-briefing-discovery/briefing.md",
+        "sha256": "7ba801bffdf6f08f13c45dedab933d145b4c0f2e63679f2b62d80340c50adec7"
+      },
+      "constitution": {
+        "path": "docs/constitution.md",
+        "sha256": "a1b278d4c9a573463325688f5962b666bfa071befc40b57be266bcb2efa53e66",
+        "version": "1.0.0"
+      }
+    },
+    "events": [
+      {
+        "event_type": "recall_consulted",
+        "timestamp": "2026-05-30T13:19:46Z",
+        "description": "etapa=specify hits=24"
+      },
+      {
+        "event_type": "recall_consulted",
+        "timestamp": "2026-05-30T13:59:06Z",
+        "description": "etapa=plan hits=13"
+      },
+      {
+        "event_type": "schedule_wait",
+        "timestamp": "2026-05-30T14:05:35Z",
+        "description": "onda-003 plan encerrada; aguardando wakeup para create-tasks"
+      },
+      {
+        "event_type": "schedule_wait",
+        "timestamp": "2026-05-30T15:05:40Z",
+        "description": "onda-007 execute-task FASE3 concluida: tsc=0 vitest=146/146"
+      },
+      {
+        "event_type": "schedule_wait",
+        "timestamp": "2026-05-30T15:27:17Z",
+        "description": "onda-008 execute-task FASE4: tsc=0, vitest 123/123, avancando para FASE5"
+      }
+    ],
+    "tasks": [
+      {
+        "task_id": "1.1-1.11",
+        "title": "FASE 1 shared-types: renames pt-BR->EN (ExecutionDTO, WaveDTO, DecisionDTO, TaskDTO, BlockDTO, EventDTO, AlertSignalDTO, RetroDTO, SkillDTO, SuggestionDTO, FeatureRollup)",
+        "wave_id": "onda-005",
+        "outcome": "pass",
+        "tests_run": 55,
+        "tests_passed": 55,
+        "lint_ok": true,
+        "touched_files": [
+          "docs/specs/new-schema/tasks.md",
+          "packages/shared-types/src/__tests__/parity-real.test.ts",
+          "packages/shared-types/src/__tests__/parity.test.ts",
+          "packages/shared-types/src/entities.ts",
+          "packages/shared-types/src/index.ts",
+          "packages/shared-types/src/schemas/entities.ts"
+        ],
+        "recorded_at": "2026-05-30T14:27:47Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.1",
+        "title": "FASE 2 task 2.1 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:16Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.2",
+        "title": "FASE 2 task 2.2 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:16Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.3",
+        "title": "FASE 2 task 2.3 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:16Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.4",
+        "title": "FASE 2 task 2.4 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:17Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.5",
+        "title": "FASE 2 task 2.5 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:17Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.6",
+        "title": "FASE 2 task 2.6 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:17Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.7",
+        "title": "FASE 2 task 2.7 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:17Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.8",
+        "title": "FASE 2 task 2.8 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:17Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.9",
+        "title": "FASE 2 task 2.9 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:17Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.10",
+        "title": "FASE 2 task 2.10 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:17Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.11",
+        "title": "FASE 2 task 2.11 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:17Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "2.12",
+        "title": "FASE 2 task 2.12 — server queries EN migration",
+        "wave_id": "onda-006",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T14:42:17Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "3.1-3.8",
+        "title": "FASE 3: mappers pt→EN + fixture migrada",
+        "wave_id": "onda-007",
+        "outcome": "pass",
+        "tests_run": 146,
+        "tests_passed": 146,
+        "lint_ok": true,
+        "touched_files": [
+          "apps/server/src/mappers/execution.ts",
+          "apps/server/src/mappers/wave.ts",
+          "apps/server/src/mappers/decision.ts",
+          "apps/server/src/mappers/task.ts",
+          "apps/server/src/mappers/event.ts",
+          "apps/server/src/mappers/alert.ts",
+          "apps/server/src/mappers/skill.ts",
+          "apps/server/src/mappers/suggestion.ts",
+          "apps/server/src/mappers/block.ts",
+          "apps/server/src/mappers/index.ts",
+          "apps/server/src/routes/alerts.ts",
+          "apps/server/src/routes/events.ts",
+          "apps/server/src/routes/features.ts",
+          "apps/server/src/routes/overview.ts",
+          "apps/server/src/routes/projects.ts",
+          "apps/server/src/routes/tasks.ts",
+          "apps/server/src/config.ts",
+          "apps/server/test/knowledge-fixture.db"
+        ],
+        "recorded_at": "2026-05-30T15:05:31Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "4.1",
+        "title": "Atualizar hooks.ts: schemas e tipos EN",
+        "wave_id": "onda-008",
+        "outcome": "pass",
+        "tests_run": 123,
+        "tests_passed": 123,
+        "lint_ok": true,
+        "touched_files": [
+          "apps/web/src/App.tsx",
+          "apps/web/src/components/DecisionDetailPane.tsx",
+          "apps/web/src/components/DecisionMapPanel.test.ts",
+          "apps/web/src/components/DecisionMapSvg.tsx",
+          "apps/web/src/lib/decision-map-layout.test.ts",
+          "apps/web/src/lib/decision-map-layout.ts",
+          "apps/web/src/lib/hooks.ts",
+          "apps/web/src/screens/Alerts.tsx",
+          "apps/web/src/screens/DecisionMapScreen.tsx",
+          "apps/web/src/screens/ExecutionDetail.tsx",
+          "apps/web/src/screens/Executions.tsx",
+          "apps/web/src/screens/FeatureDetail.tsx",
+          "docs/specs/new-schema/tasks.md"
+        ],
+        "recorded_at": "2026-05-30T15:27:05Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "4.2",
+        "title": "Atualizar ExecutionDetail.tsx: campos WaveDTO e DecisionDTO",
+        "wave_id": "onda-008",
+        "outcome": "pass",
+        "tests_run": 123,
+        "tests_passed": 123,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:27:05Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "4.9",
+        "title": "Paridade de tipos shared-types vs web (tsc=0)",
+        "wave_id": "onda-008",
+        "outcome": "pass",
+        "tests_run": 123,
+        "tests_passed": 123,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:27:05Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "4.10",
+        "title": "Gate FASE 4: tsc do web completo",
+        "wave_id": "onda-008",
+        "outcome": "pass",
+        "tests_run": 123,
+        "tests_passed": 123,
+        "lint_ok": true,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:27:05Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "5.1",
+        "title": "Gate tsc monorepo completo",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 328,
+        "tests_passed": 328,
+        "lint_ok": true,
+        "touched_files": [
+          "docs/specs/new-schema/tasks.md",
+          "apps/server/test/lib/blocks-backcompat.test.ts"
+        ],
+        "recorded_at": "2026-05-30T15:44:47Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "5.2",
+        "title": "Regressao vitest suites existentes",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 328,
+        "tests_passed": 328,
+        "lint_ok": true,
+        "touched_files": [
+          "docs/specs/new-schema/tasks.md",
+          "apps/server/test/lib/blocks-backcompat.test.ts"
+        ],
+        "recorded_at": "2026-05-30T15:44:47Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "5.3",
+        "title": "Roundtrip v7 real Cenario B",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 328,
+        "tests_passed": 328,
+        "lint_ok": true,
+        "touched_files": [
+          "docs/specs/new-schema/tasks.md",
+          "apps/server/test/lib/blocks-backcompat.test.ts"
+        ],
+        "recorded_at": "2026-05-30T15:44:47Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "5.4",
+        "title": "Cenario C blocks table rename + hasTable guard",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 328,
+        "tests_passed": 328,
+        "lint_ok": true,
+        "touched_files": [
+          "docs/specs/new-schema/tasks.md",
+          "apps/server/test/lib/blocks-backcompat.test.ts"
+        ],
+        "recorded_at": "2026-05-30T15:44:47Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "5.5",
+        "title": "Cenario D degradacao graceful v6",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 328,
+        "tests_passed": 328,
+        "lint_ok": true,
+        "touched_files": [
+          "docs/specs/new-schema/tasks.md",
+          "apps/server/test/lib/blocks-backcompat.test.ts"
+        ],
+        "recorded_at": "2026-05-30T15:44:47Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "5.6",
+        "title": "Cenario E grep gate vocabulario unico",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 328,
+        "tests_passed": 328,
+        "lint_ok": true,
+        "touched_files": [
+          "docs/specs/new-schema/tasks.md",
+          "apps/server/test/lib/blocks-backcompat.test.ts"
+        ],
+        "recorded_at": "2026-05-30T15:44:47Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "5.7",
+        "title": "Testes adicionais back-compat v6",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 328,
+        "tests_passed": 328,
+        "lint_ok": true,
+        "touched_files": [
+          "docs/specs/new-schema/tasks.md",
+          "apps/server/test/lib/blocks-backcompat.test.ts"
+        ],
+        "recorded_at": "2026-05-30T15:44:47Z",
+        "source": "execute-task"
+      },
+      {
+        "task_id": "1.1",
+        "title": "Renomear campos de ExecutionDTO e ExecutionDTOSchema",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.2",
+        "title": "Renomear campos de WaveDTO e WaveDTOSchema",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.3",
+        "title": "Renomear campos de DecisionDTO e DecisionDTOSchema",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.4",
+        "title": "Renomear campos de TaskDTO e TaskDTOSchema",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.5",
+        "title": "Renomear BloqueioDTO→BlockDTO e BloqueioDTOSchema→BlockDTOSchema",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.6",
+        "title": "Renomear campos de EventDTO e EventDTOSchema",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.7",
+        "title": "Renomear campos de AlertSignalDTO e AlertSignalDTOSchema",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.8",
+        "title": "Renomear campos de RetroDTO e RetroDTOSchema",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.9",
+        "title": "Renomear campos de SkillDTO, SuggestionDTO e seus schemas",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.10",
+        "title": "Renomear campos em rollups: FeatureRollup e ProjectRollup",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "1.11",
+        "title": "Gate de fase 1: verificar tsc e paridade DTOs ↔ Zod",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "3.1",
+        "title": "Atualizar mapper execution.ts",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "3.2",
+        "title": "Atualizar mapper wave.ts",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "3.3",
+        "title": "Atualizar mapper decision.ts",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "3.4",
+        "title": "Atualizar mapper task.ts",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "3.5",
+        "title": "Renomear bloqueio.ts → block.ts: mapBloqueio→mapBlock",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "3.6",
+        "title": "Atualizar mappers event.ts, alert.ts, skill.ts, suggestion.ts",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "3.7",
+        "title": "Atualizar mapper retro (se existir)",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "3.8",
+        "title": "Gate de fase 3: tsc do server completo",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "4.3",
+        "title": "Atualizar Executions.tsx: campos de ExecutionDTO",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "4.4",
+        "title": "Atualizar Overview.tsx: campos mistos",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "4.5",
+        "title": "Atualizar Metrics.tsx: campos de métricas EN",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "4.6",
+        "title": "Atualizar Tasks.tsx, Alerts.tsx e Incidents.tsx",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "4.7",
+        "title": "Atualizar DecisionMapScreen.tsx e componentes de decisão",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      },
+      {
+        "task_id": "4.8",
+        "title": "Atualizar DecisionDetailPane e outros componentes",
+        "wave_id": "onda-009",
+        "outcome": "pass",
+        "tests_run": 0,
+        "tests_passed": 0,
+        "lint_ok": null,
+        "touched_files": [],
+        "recorded_at": "2026-05-30T15:44:55Z",
+        "source": "reconcile"
+      }
+    ]
+  }
+}

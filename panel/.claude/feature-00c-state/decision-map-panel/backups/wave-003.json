@@ -1,0 +1,332 @@
+{
+  "wave_number": 3,
+  "captured_at": "2026-05-29T15:15:15Z",
+  "state_sha256_self": "e30bead8e039f83520425e986e801ab572a3c647a0546243784b97064c9948f6",
+  "state_snapshot": {
+    "schema_version": "1.0.0",
+    "execucao": {
+      "id": "decision-map-panel",
+      "projeto_alvo_path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel",
+      "projeto_alvo_descricao": "No painel, o botao \"Arvore de decisoes\" usa o resultado da skill decision-map. Implementar programaticamente (montar opcoes, marcar a escolha, vincular com a proxima decisao; ao clicar na caixa da decisao exibir detalhes em painel no lado direito) e fazer o botao funcionar, sem depender de skill.",
+      "stack_sugerida": null,
+      "status": "em_andamento",
+      "motivo_termino": null,
+      "iniciada_em": "2026-05-29T14:37:15Z",
+      "terminada_em": null
+    },
+    "etapa_corrente": "execute-task",
+    "proxima_instrucao": "Iniciar FASE 0: resolver gaps/ambiguidades do checklist (tasks 0.1, 0.2, 0.3) antes de implementar. Em seguida, iniciar FASE 1: engine de layout (decision-map-layout.ts + testes). Consultar tasks.md para lista completa.",
+    "ondas": [
+      {
+        "id": "onda-001",
+        "inicio": "2026-05-29T14:38:36Z",
+        "fim": "2026-05-29T14:44:15Z",
+        "etapas_executadas": [
+          "specify"
+        ],
+        "tool_calls": 43,
+        "wallclock_seconds": 339,
+        "motivo_termino": "etapa_concluida_avancando",
+        "proxima_onda_agendada_para": "2026-05-29T14:48:45Z",
+        "skills_invoked": [
+          {
+            "skill": "specify",
+            "timestamp": "2026-05-29T14:42:06Z",
+            "decisao_id": null
+          }
+        ]
+      },
+      {
+        "id": "onda-002",
+        "inicio": "2026-05-29T14:51:38Z",
+        "fim": "2026-05-29T15:01:28Z",
+        "etapas_executadas": [
+          "clarify",
+          "plan"
+        ],
+        "tool_calls": 77,
+        "wallclock_seconds": 590,
+        "motivo_termino": "etapa_concluida_avancando",
+        "proxima_onda_agendada_para": "2026-05-29T15:05:58Z",
+        "skills_invoked": [
+          {
+            "skill": "clarify",
+            "timestamp": "2026-05-29T14:53:00Z",
+            "decisao_id": null
+          },
+          {
+            "skill": "plan",
+            "timestamp": "2026-05-29T14:55:54Z",
+            "decisao_id": null
+          }
+        ]
+      },
+      {
+        "id": "onda-003",
+        "inicio": "2026-05-29T15:08:13Z",
+        "fim": null,
+        "etapas_executadas": [],
+        "tool_calls": 0,
+        "wallclock_seconds": 0,
+        "motivo_termino": null,
+        "proxima_onda_agendada_para": null,
+        "skills_invoked": [
+          {
+            "skill": "checklist",
+            "timestamp": "2026-05-29T15:08:33Z",
+            "decisao_id": null
+          },
+          {
+            "skill": "create-tasks",
+            "timestamp": "2026-05-29T15:11:54Z",
+            "decisao_id": null
+          }
+        ]
+      }
+    ],
+    "decisoes": [
+      {
+        "id": "dec-001",
+        "onda_id": "init",
+        "timestamp": "2026-05-29T14:37:23Z",
+        "etapa": "model-routing",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "Selecao de modelo para onda init (fase specify)",
+        "opcoes_consideradas": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "escolha": "model:sonnet",
+        "justificativa": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=specify (mapa primario)",
+        "score_justificativa": 0,
+        "evidencia": null,
+        "referencias": [],
+        "artefato_originador": null
+      },
+      {
+        "id": "dec-002",
+        "onda_id": "onda-001",
+        "timestamp": "2026-05-29T14:39:01Z",
+        "etapa": "specify",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "read-back PRE-DECISAO: K=12 achados injetados (anti-eco feature=decision-map-panel)",
+        "opcoes_consideradas": [
+          "injetar-achados",
+          "no-op"
+        ],
+        "escolha": "injetar-achados",
+        "justificativa": "termos derivados da feature: ",
+        "score_justificativa": 2,
+        "evidencia": null,
+        "referencias": [],
+        "artefato_originador": null
+      },
+      {
+        "id": "dec-003",
+        "onda_id": "onda-001",
+        "timestamp": "2026-05-29T14:42:15Z",
+        "etapa": "specify",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "Spec gerada para decision-map-panel",
+        "opcoes_consideradas": [
+          "gerar-spec",
+          "abortar"
+        ],
+        "escolha": "gerar-spec",
+        "justificativa": "Feature tem 4 user stories, 13 FRs, 7 SCs. Nenhuma ambiguidade crítica (0 NEEDS CLARIFICATION). Escopo delimitado: mapa visual no ExecutionDetail, leitura via API existente, sem novos endpoints. FR-011 e FR-013 explicitam não-reimplementação conforme Princípio IV.",
+        "score_justificativa": 2,
+        "evidencia": null,
+        "referencias": [],
+        "artefato_originador": null
+      },
+      {
+        "id": "dec-004",
+        "onda_id": "onda-001",
+        "timestamp": "2026-05-29T14:50:36Z",
+        "etapa": "model-routing",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "Selecao de modelo para onda 1 (fase clarify)",
+        "opcoes_consideradas": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "escolha": "model:sonnet",
+        "justificativa": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=clarify (mapa primario)",
+        "score_justificativa": 0,
+        "evidencia": null,
+        "referencias": [],
+        "artefato_originador": null
+      },
+      {
+        "id": "dec-005",
+        "onda_id": "onda-002",
+        "timestamp": "2026-05-29T14:55:01Z",
+        "etapa": "clarify",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "Fase clarify concluída: 3 ambiguidades resolvidas inline (layout split, SVG manual, chave sintética de nó)",
+        "opcoes_consideradas": [
+          "integrar-respostas-inline",
+          "bloquear-humano",
+          "pular-clarify"
+        ],
+        "escolha": "integrar-respostas-inline",
+        "justificativa": "Spec tinha 0 NEEDS CLARIFICATION explícitos; scan identificou 3 ambiguidades de implementação (layout, renderização, identidade de nó) resolvidas com score 2-3 por evidência no codebase existente (exec-grid, package.json sem libs de grafo, DecisionDTO sem id)",
+        "score_justificativa": 3,
+        "evidencia": "package.json web: zero deps de grafo (reactflow/d3/vis); exec-grid já usa layout 2-col; DecisionDTO confirmado sem campo id em shared-types/entities.ts",
+        "referencias": [],
+        "artefato_originador": null
+      },
+      {
+        "id": "dec-006",
+        "onda_id": "onda-002",
+        "timestamp": "2026-05-29T14:55:48Z",
+        "etapa": "plan",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "read-back PRE-DECISÃO: K=25 achados injetados (anti-eco feature=decision-map-panel)",
+        "opcoes_consideradas": [
+          "injetar-achados",
+          "no-op"
+        ],
+        "escolha": "injetar-achados",
+        "justificativa": "termos derivados da feature: painel botao Arvore de decisoes skill decision-map programaticamente montar opcoes marcar escolha vincular proxima decisao exibir detalhes painel direito",
+        "score_justificativa": 2,
+        "evidencia": null,
+        "referencias": [],
+        "artefato_originador": null
+      },
+      {
+        "id": "dec-007",
+        "onda_id": "onda-002",
+        "timestamp": "2026-05-29T15:07:21Z",
+        "etapa": "model-routing",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "Selecao de modelo para onda 2 (fase checklist)",
+        "opcoes_consideradas": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "escolha": "model:sonnet",
+        "justificativa": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=checklist (mapa primario)",
+        "score_justificativa": 0,
+        "evidencia": null,
+        "referencias": [],
+        "artefato_originador": null
+      },
+      {
+        "id": "dec-008",
+        "onda_id": "onda-003",
+        "timestamp": "2026-05-29T15:11:32Z",
+        "etapa": "checklist",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "checklist-ux: 35 items gerados, 25 auto-resolvidos, 9 gaps, 1 ambiguidade",
+        "opcoes_consideradas": [
+          "gerar-checklist-ux-requirements",
+          "skip-checklist",
+          "gerar-apenas-ux",
+          "gerar-apenas-requirements"
+        ],
+        "escolha": "gerar-checklist-ux-requirements",
+        "justificativa": "domínios ux+requirements cobrem a feature front-end stateless; security e performance têm baixa superfície de risco (read-only, sem auth nova, sem endpoint novo)",
+        "score_justificativa": 2,
+        "evidencia": null,
+        "referencias": [],
+        "artefato_originador": null
+      },
+      {
+        "id": "dec-009",
+        "onda_id": "onda-003",
+        "timestamp": "2026-05-29T15:11:43Z",
+        "etapa": "checklist",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "gaps-checklist: 13 gaps/ambiguidades identificados; decisão sobre tratamento antes de create-tasks",
+        "opcoes_consideradas": [
+          "avançar-create-tasks-com-gaps-como-tarefas",
+          "parar-para-clarify",
+          "bloquear-humano"
+        ],
+        "escolha": "avançar-create-tasks-com-gaps-como-tarefas",
+        "justificativa": "gaps são detalhes de refinamento (scroll, foco, estados visuais dos nós) que não bloqueiam o MVP; os 9 gaps UX e 7 gaps Requirements serão representados como subtarefas de spec-refinement no backlog; nenhum gap é conflito crítico de arquitetura; o único Conflict (CHK049 - dono do mapVisible) é baixa severidade e resolvível na implementação; Ambiguities CHK017 e CHK054 podem ser auto-decididas: setas=Tab (mais simples), retry=padrão useDecisions (já existe)",
+        "score_justificativa": 2,
+        "evidencia": null,
+        "referencias": [],
+        "artefato_originador": null
+      },
+      {
+        "id": "dec-010",
+        "onda_id": "onda-003",
+        "timestamp": "2026-05-29T15:14:58Z",
+        "etapa": "create-tasks",
+        "agente": "agente-00c-feature-orchestrator",
+        "contexto": "create-tasks: backlog gerado com 8 FASES, 17 tarefas, 118 subtarefas; consumiu 13 gaps/ambiguidades dos checklists",
+        "opcoes_consideradas": [
+          "gerar-backlog-completo",
+          "gerar-backlog-minimo-mvp",
+          "solicitar-aprovacao-humana"
+        ],
+        "escolha": "gerar-backlog-completo",
+        "justificativa": "FASE 0 consiste gaps antes de implementar; FASEs 1-4 são o MVP; FASEs 5-7 são qualidade/hardening; estrutura reflete 6 fases do plan mais FASE 0 de spec-refinement e FASE 7 de review; caminho crítico documentado; paralelismo identificado",
+        "score_justificativa": 2,
+        "evidencia": null,
+        "referencias": [],
+        "artefato_originador": null
+      }
+    ],
+    "bloqueios_humanos": [],
+    "orcamentos": {
+      "recursividade_max": 3,
+      "profundidade_corrente_subagentes": 1,
+      "retro_execucoes_max_por_feature": 2,
+      "retro_execucoes_consumidas": 0,
+      "ciclos_max_por_etapa": 5,
+      "ciclos_consumidos_etapa_corrente": 1,
+      "tool_calls_threshold_onda": 80,
+      "wallclock_threshold_segundos": 5400,
+      "estado_size_threshold_bytes": 1048576,
+      "tool_calls_onda_corrente": 0,
+      "inicio_onda_corrente": "2026-05-29T15:08:13Z"
+    },
+    "metricas_acumuladas": {
+      "ondas_total": 2,
+      "tool_calls_total": 120,
+      "tempo_wallclock_total_segundos": 929,
+      "profundidade_max_atingida": 1,
+      "subagentes_spawned": 0,
+      "decisoes_total": 10,
+      "bloqueios_humanos_total": 0,
+      "sugestoes_skills_globais_total": 0,
+      "issues_toolkit_abertas": 0
+    },
+    "whitelist_urls_externas": [],
+    "historico_movimento_circular": [],
+    "aspectos_chave_iniciais": [],
+    "eventos": [
+      {
+        "event_type": "recall_consulted",
+        "timestamp": "2026-05-29T14:39:01Z",
+        "descricao": "etapa=specify hits=12"
+      },
+      {
+        "event_type": "recall_consulted",
+        "timestamp": "2026-05-29T14:55:36Z",
+        "descricao": "etapa=plan hits=25"
+      }
+    ],
+    "pre_requisitos": {
+      "briefing": {
+        "path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel/docs/01-briefing-discovery/briefing.md",
+        "sha256": "7ba801bffdf6f08f13c45dedab933d145b4c0f2e63679f2b62d80340c50adec7"
+      },
+      "constitution": {
+        "path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel/docs/constitution.md",
+        "sha256": "a1b278d4c9a573463325688f5962b666bfa071befc40b57be266bcb2efa53e66",
+        "version": "1.0.0"
+      }
+    }
+  }
+}

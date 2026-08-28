@@ -1,0 +1,231 @@
+{
+  "wave_number": 2,
+  "captured_at": "2026-05-30T13:52:56Z",
+  "state_sha256_self": "3dae6768accabd2236803db9ceef3a4ac488e3199a75f7fdad288e401b33be0f",
+  "state_snapshot": {
+    "schema_version": "1.0.0",
+    "execution": {
+      "id": "new-schema-20260530T131725Z",
+      "target_project_path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel",
+      "target_project_description": "houve uma mudança drástica no ../cstk no que diz respeito aos schemas e funcoes. Muita coisa que estava misturando portugues e ingles agora foram normalizados e canonizados. Precisamos ataptar para anteder ao novo schema.",
+      "suggested_stack": null,
+      "status": "em_andamento",
+      "termination_reason": null,
+      "started_at": "2026-05-30T13:17:25Z",
+      "finished_at": null,
+      "short_name": "new-schema"
+    },
+    "current_stage": "plan",
+    "next_instruction": "Onda plan — invocar skill plan sobre docs/specs/new-schema/spec.md para gerar plan.md (arquitetura, research, data-model, test scenarios, task decomposition).",
+    "waves": [
+      {
+        "id": "onda-001",
+        "started_at": "2026-05-30T13:19:32Z",
+        "finished_at": "2026-05-30T13:26:46Z",
+        "executed_stages": [
+          "specify"
+        ],
+        "tool_calls": 0,
+        "wallclock_seconds": 434,
+        "termination_reason": "concluido",
+        "next_wave_scheduled_for": "2026-05-30T13:31:16Z",
+        "skills_invoked": [
+          {
+            "skill": "specify",
+            "timestamp": "2026-05-30T13:24:46Z",
+            "decision_id": "dec-003"
+          }
+        ]
+      },
+      {
+        "id": "onda-002",
+        "started_at": "2026-05-30T13:51:39Z",
+        "finished_at": null,
+        "executed_stages": [],
+        "tool_calls": 0,
+        "wallclock_seconds": 0,
+        "termination_reason": null,
+        "next_wave_scheduled_for": null,
+        "skills_invoked": [
+          {
+            "skill": "clarify",
+            "timestamp": "2026-05-30T13:52:25Z",
+            "decision_id": "dec-005"
+          }
+        ]
+      }
+    ],
+    "decisions": [
+      {
+        "id": "dec-001",
+        "wave_id": "init",
+        "timestamp": "2026-05-30T13:17:34Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda init (fase briefing)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=briefing (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-002",
+        "wave_id": "onda-001",
+        "timestamp": "2026-05-30T13:19:54Z",
+        "stage": "specify",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "read-back PRE-DECISAO: K=24 achados injetados (anti-eco feature=new-schema)",
+        "options_considered": [
+          "injetar-achados",
+          "no-op"
+        ],
+        "choice": "injetar-achados",
+        "rationale": "termos derivados da feature: schema canonico normalizacao pt en cstk integracao adaptacao funcoes renomeacao campos",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-003",
+        "wave_id": "onda-001",
+        "timestamp": "2026-05-30T13:24:40Z",
+        "stage": "specify",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "specify-init: spec.md gerada para new-schema",
+        "options_considered": [
+          "iniciar",
+          "abortar"
+        ],
+        "choice": "iniciar",
+        "rationale": "Spec gerada com 4 user stories (P1-P4), 14 FRs, tabela de 47 mapeamentos pt->EN. Migration-map congelado no cstk é a fonte canônica. Back-compat via hasColumn/hasTable documentado.",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-004",
+        "wave_id": "onda-001",
+        "timestamp": "2026-05-30T13:49:36Z",
+        "stage": "model-routing",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "Selecao de modelo para onda 1 (fase clarify)",
+        "options_considered": [
+          "haiku",
+          "sonnet",
+          "opus",
+          "manter-atual"
+        ],
+        "choice": "model:sonnet",
+        "rationale": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=clarify (mapa primario)",
+        "justification_score": 0,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-005",
+        "wave_id": "onda-002",
+        "timestamp": "2026-05-30T13:52:17Z",
+        "stage": "clarify",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "clarify-asker avaliou spec.md: nenhuma ambiguidade critica identificada",
+        "options_considered": [
+          "emitir-perguntas",
+          "no-op-sem-perguntas"
+        ],
+        "choice": "no-op-sem-perguntas",
+        "rationale": "Spec cobre todos os FRs com mappings explícitos da migration-map FROZEN. Guards hasColumn/hasTable pattern existente é claro. FR-009 frontend scope definido. n_skills em Provenance UNCHANGED confirmado. Nenhum ponto com score < 2.",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      },
+      {
+        "id": "dec-006",
+        "wave_id": "onda-002",
+        "timestamp": "2026-05-30T13:52:37Z",
+        "stage": "clarify",
+        "agent": "agente-00c-feature-orchestrator",
+        "context": "clarify concluido sem ambiguidades — avancando para plan",
+        "options_considered": [
+          "avancar-plan",
+          "aguardar-humano",
+          "abortar"
+        ],
+        "choice": "avancar-plan",
+        "rationale": "Spec new-schema é auto-suficiente: 14 FRs cobertos, migration-map FROZEN como fonte da verdade, padrão hasColumn/hasTable já estabelecido no codebase, FR-013/FR-014 como gates de integração claros.",
+        "justification_score": 2,
+        "evidence": null,
+        "references": [],
+        "originating_artifact": null
+      }
+    ],
+    "human_blocks": [],
+    "budgets": {
+      "max_recursion": 3,
+      "current_subagent_depth": 1,
+      "max_retro_executions_per_feature": 2,
+      "retro_executions_consumed": 0,
+      "max_cycles_per_stage": 5,
+      "cycles_consumed_current_stage": 0,
+      "tool_calls_threshold_wave": 80,
+      "wallclock_threshold_seconds": 5400,
+      "state_size_threshold_bytes": 1048576,
+      "tool_calls_current_wave": 0,
+      "current_wave_start": "2026-05-30T13:51:39Z"
+    },
+    "accumulated_metrics": {
+      "waves_total": 1,
+      "tool_calls_total": 0,
+      "wallclock_total_seconds": 434,
+      "max_depth_reached": 1,
+      "subagents_spawned": 0,
+      "decisions_total": 6,
+      "human_blocks_total": 0,
+      "global_skill_suggestions_total": 0,
+      "toolkit_issues_opened": 0,
+      "cache": {
+        "tokens_cache_misses_disabled": 1
+      }
+    },
+    "external_urls_whitelist": [],
+    "circular_movement_history": [],
+    "initial_key_aspects": [
+      "schema-canonico",
+      "normalizacao-pt-en",
+      "cstk-integracao",
+      "adaptacao-funcoes",
+      "renomeacao-campos"
+    ],
+    "technical_key_aspects": [],
+    "operational_key_aspects": [],
+    "prerequisites": {
+      "briefing": {
+        "path": "docs/01-briefing-discovery/briefing.md",
+        "sha256": "7ba801bffdf6f08f13c45dedab933d145b4c0f2e63679f2b62d80340c50adec7"
+      },
+      "constitution": {
+        "path": "docs/constitution.md",
+        "sha256": "a1b278d4c9a573463325688f5962b666bfa071befc40b57be266bcb2efa53e66",
+        "version": "1.0.0"
+      }
+    },
+    "events": [
+      {
+        "event_type": "recall_consulted",
+        "timestamp": "2026-05-30T13:19:46Z",
+        "description": "etapa=specify hits=24"
+      }
+    ]
+  }
+}

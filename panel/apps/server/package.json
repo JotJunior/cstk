@@ -1,0 +1,30 @@
+{
+  "name": "@cstk-panel/server",
+  "version": "0.34.1",
+  "description": "Back-end HTTP read-only — Fastify 5 + better-sqlite3 sobre knowledge.db",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:integration": "vitest run test/integration"
+  },
+  "dependencies": {
+    "@cstk-panel/shared-types": "*",
+    "@fastify/cors": "^11.2.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/static": "^8.0.0",
+    "better-sqlite3": "^12.4.1",
+    "fastify": "^5.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.10",
+    "@types/node": "^20.12.0",
+    "tsx": "^4.10.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
