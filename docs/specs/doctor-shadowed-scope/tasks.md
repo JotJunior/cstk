@@ -598,3 +598,68 @@ implementado, registrando a revogacao de `research.md` D6.
 - [x] 5.1.1 Corrigir `cli/lib/doctor.sh` conforme `FR-007`: fazer o numerador `records_used` da declaracao de cobertura nascer do laco que classifica (`_doctor_ss_scan_kind` -> `_doctor_shadowed_scope`), em vez de `manifest_count_recognized`; OU, se a revisao do desenho for deliberada, atualizar contrato §5 + `data-model.md` §Independencia dos dois contadores e registrar a revogacao de `research.md` D6. Cobrir com teste que faca numerador e denominador divergirem por mudanca no classificador (nao por mudanca no validador).
 
 <!-- converge-key: de67fe401e98 -->
+
+## FASE 6 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 6.1 Docstrings de `doctor.sh` afirmam revogar a D6 que o proprio codigo implementa `[C]`
+
+Ref: task 5.1.1 (Ref: FR-007) · tipo: `contradicts` · severidade: `HIGH`
+
+A correcao da task 5.1.1 (commit `f086c12`) religou corretamente o
+numerador: `records_used` agora nasce do laco que classifica
+(`_doctor_ss_scan_kind`, `cli/lib/doctor.sh:677`) e e repassado a
+`_doctor_ss_coverage_source` (`cli/lib/doctor.sh:827`/`833`); o
+denominador segue vindo de `manifest_count_data_lines`
+(`cli/lib/doctor.sh:755`). **O comportamento observavel satisfaz FR-007** —
+os cenarios de `tests/cstk/test_doctor.sh:905` e `:1128` forcam a
+divergencia via stub do CLASSIFICADOR, nao do validador, como a task exigia.
+
+O defeito e outro, e foi **introduzido pela propria correcao**: as
+docstrings passaram a afirmar, em tres pontos
+(`cli/lib/doctor.sh:82`, `:614`, `:703`), que o desenho implementado
+**"revoga research.md D6"** — e, em `:703`, que "a independencia dos dois
+contadores agora e so no DENOMINADOR". As duas afirmacoes sao contraditas
+pelas fontes que elas mesmas citam:
+
+- `research.md` §Decision 6 prescreve **literalmente** o mecanismo agora
+  implementado: "**Numerador — contagem por USO**: incrementado como
+  efeito colateral do laco que de fato classifica" e "**Contar por uso, e
+  nao por uma segunda passada de validacao**, e o que impede a divergencia
+  silenciosa". Ou seja, a correcao **implementa** a D6; nao a revoga.
+- `research.md:593` declara explicitamente que "D1, D2, D3, D4, **D6**, D7,
+  D8, D9, D10, D11 [...] permanecem integralmente vigentes".
+- `contracts/doctor-shadowed-scope-output.md` §5 cita a D6 como a
+  *rationale* desse mesmo desenho ("Isso e deliberado (research.md D6) —
+  contar por uso, e nao por uma segunda passada de validacao").
+- `data-model.md` §Independencia dos dois contadores mantem a tabela com
+  independencia nos **dois** contadores (numerador = "efeito colateral do
+  laco que classifica"), contradizendo o "so no DENOMINADOR" de `:703`.
+- O mesmo commit escreveu em `cli/lib/manifest-coverage.sh:44-53` a versao
+  **correta** (aponta o contrato §5, sem alegar revogacao) — o repo ficou
+  com duas descricoes mutuamente inconsistentes do mesmo desenho.
+
+A origem provavel: a task 5.1.1 oferecia dois ramos — (A) corrigir o codigo
+ou (B) atualizar contrato/`data-model.md` e "registrar a revogacao de
+`research.md` D6". Executou-se o ramo (A), mas importou-se a linguagem do
+ramo (B) para os comentarios.
+
+Por que nao e cosmetico: a docstring e a fonte de verdade que o proximo
+mantenedor le no ponto exato da religacao. "Revoga D6" autoriza, por
+leitura literal, restaurar `manifest_count_recognized` como numerador —
+reintroduzindo a classe de falso-OK (numerador == denominador por
+construcao) que a feature existe para matar, e que a FASE 5 acabou de
+corrigir. Corrigir exige **alterar** texto ja presente (nao adicionar),
+dai `contradicts`.
+
+- [ ] 6.1.1 Corrigir as tres docstrings de `cli/lib/doctor.sh` (linhas 82, 614, 703): substituir a alegacao "revoga research.md D6" pela descricao correta — o numerador por uso **implementa** a D6 e o contrato §5; o que foi revogado e apenas o arranjo interino da FASE 1 (`manifest_count_recognized` como fonte do numerador, autorizado por `dec-040` so ate o laco de classificacao existir). Ajustar tambem, em `:703`, "a independencia dos dois contadores agora e so no DENOMINADOR" para refletir `data-model.md` §Independencia dos dois contadores, que mantem independencia nos dois (granularidade de linha vs. registro-com-veredito). Nenhuma mudanca de comportamento: FR-007 ja esta satisfeito e coberto por `tests/cstk/test_doctor.sh:905`/`:1128`.
+
+<!-- converge-key: 777f90c64825 -->
