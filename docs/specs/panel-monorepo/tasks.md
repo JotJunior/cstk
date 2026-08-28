@@ -1132,43 +1132,126 @@ portão, não uma verificação posterior.
 
 Ref: quickstart.md Cenário 1, passos 1-8
 
-- [ ] 6.1.1 Em branch de trabalho, com `panel/` já importado (FASE 1-2) e
+**Onde**: repositório PRIVADO descartável `JotJunior/cstk-release-rehearsal`
+(criado para este ensaio). `JotJunior/cstk` NÃO foi tocado — sem push, sem
+tag, sem release. Visibilidade confirmada por estado real, não pela flag
+passada: `gh repo view --json visibility` →
+`{"isPrivate":true,"visibility":"PRIVATE"}`, reconferido antes de cada push.
+
+- [x] 6.1.1 Em branch de trabalho, com `panel/` já importado (FASE 1-2) e
   `serve.sh` já corrigido (FASE 3), criar uma tag de teste sem sufixo SemVer
-  (ex. `v9.6.0-rc1` tratado como não-prerelease — `release.yml:102-104` marca
-  `--prerelease` para tags com sufixo; usar tag sem sufixo ou marcar a release
-  de teste como não-prerelease manualmente, senão o `serve` recusa e produz
-  falso negativo)
-- [ ] 6.1.2 Empurrar a tag e aguardar `release.yml` concluir
-- [ ] 6.1.3 Confirmar que a release publica os quatro artefatos:
-  `cstk-<bare>.tar.gz`, `.sha256`, `cstk-panel-<bare>.tar.gz`, `.sha256` (mais
-  `cli/install.sh`)
-- [ ] 6.1.4 Rodar `CSTK_PANEL_REPO=<owner/repo-de-teste> cstk serve --update`
-  apontando para essa release
-- [ ] 6.1.5 Confirmar Expected (a): a saída informa download do asset do
-  painel — URL impressa em `serve.sh:399` contém `cstk-panel-`, nunca
-  `cstk-<bare>`
-- [ ] 6.1.6 Confirmar Expected (b): outcome `verified` — nenhuma linha nova em
+  — evidência: tag `v9.6.0` (SEM sufixo, para não cair no `--prerelease` de
+  `release.yml:102-104`, que o `serve` recusa e produziria falso negativo).
+  A release publicada confirma o efeito pretendido:
+  `{"draft":false,"prerelease":false,"tag":"v9.6.0"}`. Como os gates de
+  lockstep MP-5/WL-5 comparam os manifestos com a tag, o ensaio exigiu um
+  commit descartável `chore(rehearsal): bump 9.5.0 -> 9.6.0`, exclusivo do
+  repositório de ensaio — NÃO mesclado em `feature/panel-monorepo`. O número
+  9.6.0 é descartável e não é o `10.0.0` reservado pela dec-070 para a FASE 9.
+- [x] 6.1.2 Empurrar a tag e aguardar `release.yml` concluir
+  — evidência: run `33218403222` → `✓ v9.6.0 release`, `FINAL: completed
+  success`, `Build & Publish Release in 9m38s`.
+  **A primeira tentativa (run `33217316761`) REPROVOU** — e é exatamente o
+  achado que justifica esta fase existir. Gates de lockstep passaram
+  (`✓ Validate plugin manifests`, `✓ Validate panel workspace lockstep`) mas
+  `X Run test suite` derrubou 35 cenários (`test_serve.sh` 26 +
+  `test_serve-docker.sh` 9), todos com a mesma linha: `cstk serve: erro:
+  tarball tem 2 diretorios de topo; esperado exatamente 1`. Causa raiz
+  sondada (dec-075): o fixture versionado
+  `tests/cstk/fixtures/serve/panel-fixture.tar.gz` foi criado no macOS e
+  carregava entradas AppleDouble — `python3 tarfile` lista
+  `'._cstk-panel-v0.0.1'`, `'cstk-panel-v0.0.1/._data.b64'`,
+  `'cstk-panel-v0.0.1/._package.json'` com xattr `com.apple.provenance`.
+  `bsdtar` OCULTA essas entradas ao listar; GNU tar (runner Linux) as lista,
+  e `._cstk-panel-v0.0.1` vira um SEGUNDO diretório de topo, fazendo a
+  validação §8.3 rejeitar o próprio fixture. A suite passava 3582/3582 no
+  macOS — o defeito só era alcançável no runner real. A validação §8.3 está
+  CORRETA; o defeito era o fixture não-portável. Corrigido em `57aae33`
+  (regenerado com `COPYFILE_DISABLE=1 --no-mac-metadata --no-xattrs
+  --format=ustar`; verificação independente: `TOPS: ['cstk-panel-v0.0.1'] ->
+  n = 1`, `AppleDouble: []`, 4448 bytes ≥ 1024 do CHK-R23). Auditoria dos
+  demais tarballs versionados: é o único do repositório.
+- [x] 6.1.3 Confirmar que a release publica os artefatos
+  — evidência: os **cinco** presentes — `cstk-9.6.0.tar.gz` (1234602 B),
+  `cstk-9.6.0.tar.gz.sha256` (84 B), `cstk-panel-9.6.0.tar.gz` (1791883 B),
+  `cstk-panel-9.6.0.tar.gz.sha256` (95 B), `install.sh` (13557 B). A presença
+  do **par do toolkit** é o que torna o ensaio significativo: sem ele, a
+  seleção posicional antiga também acertaria por falta de concorrente.
+- [x] 6.1.4 Rodar `CSTK_PANEL_REPO=<owner/repo-de-teste> cstk serve --update`
+  — evidência: executado com `CSTK_PANEL_REPO=JotJunior/cstk-release-rehearsal`
+  e `CSTK_PANEL_DIR` temporário (o `cstk serve` do operador na porta 8080
+  permaneceu intacto — pid 57837 antes e depois; o ensaio usou a porta 45173).
+  Foi usado o `./cli/cstk` DESTA árvore, não o `~/.local/bin/cstk` v9.5.0
+  instalado, que não conhece `CSTK_PANEL_REPO`. Fluxo completo até o fim:
+  `atualizando painel: v0.0.0-antiga -> v9.6.0` → download → verificação →
+  extração → `npm install` → swap → reconciliação → build → `Server listening
+  at http://127.0.0.1:45173`.
+  **Gap residual declarado**: por o repositório de ensaio ser PRIVADO,
+  `browser_download_url` responde 404 mesmo com token (o GitHub só serve
+  asset privado pelo endpoint de asset da API). Foi usado um shim de
+  TRANSPORTE de `curl` que apenas acrescenta `Authorization` e traduz a URL
+  para o endpoint da API — os BYTES são os reais produzidos pelo `release.yml`
+  real, e toda a lógica sob teste (parse do JSON da release, seleção
+  name-bound, checksum, validação pré-extração, extração) rodou intacta. O
+  único trecho não exercitado é o GET anônimo de asset público, que já é o
+  caminho de produção hoje e não foi alterado por esta feature.
+- [x] 6.1.5 Confirmar Expected (a): a saída informa download do asset do
+  painel — URL contém `cstk-panel-`, nunca `cstk-<bare>`
+  — evidência: `cstk serve: release publica asset verificavel; baixando
+  https://github.com/JotJunior/cstk-release-rehearsal/releases/download/v9.6.0/cstk-panel-9.6.0.tar.gz`.
+  Nenhuma ocorrência de `cstk-9.6.0.tar.gz` como pacote baixado.
+- [x] 6.1.6 Confirmar Expected (b): outcome `verified` — nenhuma linha nova em
   `.claude/enforcement-log.jsonl`
-- [ ] 6.1.7 Confirmar Expected (c): `.panel-version` contém a tag da release
-  do `cstk`
-- [ ] 6.1.8 Confirmar Expected (d): árvore extraída contém `apps/server/`,
+  — evidência: `cstk serve: integridade verificada (SHA-256 ok)` (outcome
+  `verified` é silencioso por desenho). Snapshot tomado ANTES do ensaio:
+  `serve-integrity PRE=850 POS=851`. A **única** linha nova é
+  `{"outcome":"panel-repo-override","package_url":"https://api.github.com/repos/JotJunior/cstk-release-rehearsal/releases/latest"}`
+  — evento de auditoria deliberado da FASE 3 (§7.3) por a origem ter sido
+  sobrescrita via `CSTK_PANEL_REPO`, não uma falha de integridade. Zero
+  linhas `unverifiable-*`, `mismatch-blocked` ou `wrong-payload-blocked`.
+- [x] 6.1.7 Confirmar Expected (c): `.panel-version` contém a tag da release
+  do `cstk` — evidência: `cat .panel-version` → `v9.6.0`, idêntico ao
+  `tagName` da release publicada (`v9.6.0`).
+- [x] 6.1.8 Confirmar Expected (d): árvore extraída contém `apps/server/`,
   `apps/web/`, `packages/shared-types/`, `package.json` e `package-lock.json`
-  na raiz
-- [ ] 6.1.9 **Critério de falha que importa**: se (a) falhar mas (b) passar,
-  o defeito original se reproduziu — carimbo de integridade sobre o pacote
-  errado; tratar como falha do ensaio, não prosseguir para FASE 9/10
+  na raiz — evidência: os cinco verificados presentes na raiz do
+  `CSTK_PANEL_DIR` (`OK apps/server`, `OK apps/web`,
+  `OK packages/shared-types`, `OK package.json`, `OK package-lock.json`).
+- [x] 6.1.9 **Critério de falha que importa**: se (a) falhar mas (b) passar,
+  o defeito original se reproduziu — tratar como falha do ensaio
+  — evidência: **NÃO se materializou** — (a) passou E (b) passou. O
+  contrafactual sobre o JSON REAL desta release prova que o resultado não foi
+  acidental: a API devolve os assets com `1 cstk-9.6.0.tar.gz` PRIMEIRO, a
+  regra posicional antiga `ESCOLHERIA: cstk-9.6.0.tar.gz`, a regra name-bound
+  atual `ESCOLHE: cstk-panel-9.6.0.tar.gz`. E o pacote errado teria carimbo
+  `verified`: `publicado : 0fb4f8bac84e1f79a141c1702d36fee2a73818df9fa9901479213ede41b8897c`
+  == `calculado : 0fb4f8bac84e1f79a141c1702d36fee2a73818df9fa9901479213ede41b8897c`,
+  com `tem package.json na raiz? 0` — ou seja, a falha só apareceria depois,
+  como "package.json ausente apos extracao", exatamente o defeito descrito.
 
 ### 6.2 Registrar o resultado como prova formal `[C]`
 
 Ref: FASE 0.6 (mecanismo de atesto definido pelo operador)
 
-- [ ] 6.2.1 Registrar o resultado do ensaio (passo, sucesso, timestamp) usando
+- [x] 6.2.1 Registrar o resultado do ensaio (passo, sucesso, timestamp) usando
   o mecanismo de atesto definido em FASE 0.6.2/0.6.3
-- [ ] 6.2.2 Esta tarefa, junto com 0.6, é pré-requisito formal de **10.2**
+  — evidência: **dec-076** (`choice: ensaio-aprovado`, `score: 3`,
+  `stage: execute-task`), camada 2 do mecanismo fixado em dec-050
+  (confirmação registrada como Decisão auditável com evidência citável). A
+  Decisão cita os fragmentos literais de (a)-(d) e declara o gap residual de
+  transporte.
+- [x] 6.2.2 Esta tarefa, junto com 0.6, é pré-requisito formal de **10.2**
   (arquivamento) na Matriz de Dependências
-- [ ] 6.2.3 (teste) Confirmar que o registro do atesto é consultável
-  independentemente (Decisão auditável, comentário de issue ou checkbox
-  assinado) antes de marcar 6.2 como `[x]`
+  — evidência: 0.6 já `[x]` (dec-048/dec-050 + nota em `spec.md` após FR-019)
+  e 6.2 agora `[x]` com dec-076 — os dois pré-requisitos formais de 10.2.3
+  estão satisfeitos. A ordem sequencial das FASES 7-9 permanece pendente.
+- [x] 6.2.3 (teste) Confirmar que o registro do atesto é consultável
+  independentemente antes de marcar 6.2 como `[x]`
+  — evidência: consulta independente ao state retorna
+  `{"id":"dec-076","stage":"execute-task","choice":"ensaio-aprovado","score":3,"agent":"agente-00c-feature-orchestrator"}`;
+  e o índice derivado também a alcança (`cstk recall --context` devolve as
+  Decisões desta execução), confirmando dois caminhos de consulta distintos
+  do texto deste `tasks.md`.
 
 ---
 
