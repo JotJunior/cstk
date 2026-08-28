@@ -149,10 +149,33 @@ export function SessionDetail() {
               <div key={sessionEntryKey(entry, idx)} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
                 <div className="row gap-2" style={{ fontSize: 10.5, color: 'var(--text-2)', marginBottom: 4 }}>
                   <span style={{ fontFamily: 'var(--font-mono)' }}>{entry.type}</span>
-                  {entry.role && <span style={{ fontFamily: 'var(--font-mono)' }}>· {entry.role}</span>}
+                  {/* `role` so aparece quando ACRESCENTA informacao: a fonte
+                      repete o papel no tipo (assistant/assistant, user/user) e
+                      exibir os dois so gastava espaco. */}
+                  {entry.role && entry.role !== entry.type && (
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>· {entry.role}</span>
+                  )}
+                  {entry.kind === 'tool_use' && entry.toolName && (
+                    <span
+                      className="mono"
+                      style={{
+                        fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+                        background: 'var(--inprogress-soft)', color: 'var(--inprogress)',
+                      }}
+                    >
+                      {entry.toolName}
+                    </span>
+                  )}
                   {entry.timestamp && <span style={{ marginLeft: 'auto' }}>{fmtTimestamp(entry.timestamp)}</span>}
                 </div>
-                <TextBlockRaw value={entry.text} />
+                {/* tool_use sem resumo (input sem chave conhecida) nao rende
+                    bloco de texto vazio — o nome da ferramenta no cabecalho ja
+                    responde "o que a sessao esta fazendo". */}
+                {entry.text !== '' && (
+                  entry.kind === 'tool_result'
+                    ? <div className="mono" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{entry.text}</div>
+                    : <TextBlockRaw value={entry.text} />
+                )}
                 {entry.textTruncated && (
                   <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>[texto truncado]</div>
                 )}

@@ -65,6 +65,10 @@ export interface SessionTailReadResult {
   returnedLines: number;
   /** FR-003a — linhas malformadas puladas ao longo da janela lida. */
   skippedLines: number;
+  /** Entradas DESCARTADAS da janela: sidecar do harness (nao e conversa) ou
+   *  mensagem sem nada a exibir (so `thinking`). Reportado, nunca silencioso —
+   *  sem isto, "12 entradas" esconderia 300 linhas descartadas. */
+  filteredEntries: number;
   /** `true` quando o orcamento de bytes da resposta encerrou a selecao
    *  antes do teto de linhas (FR-006). */
   truncatedByBytes: boolean;
@@ -89,29 +93,139 @@ function clampLines(raw: number | undefined): number {
 }
 
 /**
- * Achatamento de `.message.content` (tipo heterogeneo observado no
- * transcript real — ora `string`, ora `array`) em `text` (plan.md
- * §Convencoes de Borda / data-model.md §Regra de achatamento). Itens de
- * conteudo com `.type` em `thinking`/`tool_use`/`tool_result` NAO
- * contribuem para `text` nesta versao (data-model.md).
+ * Tipos de linha que SAO conversa. ALLOWLIST deliberada, nunca denylist.
+ *
+ * O `.jsonl` do harness mistura conversa com registros de sidecar no MESMO
+ * arquivo. Medido num transcript real de 636 linhas: 280 (44%) eram
+ * `attachment`, `mode`, `permission-mode`, `bridge-session`, `atis-latch`,
+ * `last-prompt`, `pr-link`, `ai-title` e `file-history-snapshot` — nenhum
+ * deles e mensagem, e todos renderizavam como linha vazia.
+ *
+ * Denylist seria a escolha errada: `type` e conjunto ABERTO e "cresce sem
+ * aviso" (ver data-model.md §SessionTailEntryDTO). Cada tipo novo de sidecar
+ * que a Anthropic acrescentar voltaria a poluir a tela sozinho. Com allowlist,
+ * o custo do desconhecido e ficar de fora — visivel em `filteredEntries`, e
+ * nunca ruido silencioso.
  */
-function flattenContent(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    const parts: string[] = [];
-    for (const item of content) {
-      if (
-        item !== null &&
-        typeof item === 'object' &&
-        (item as { type?: unknown }).type === 'text' &&
-        typeof (item as { text?: unknown }).text === 'string'
-      ) {
-        parts.push((item as { text: string }).text);
-      }
-    }
-    return parts.join('\n');
+const CONVERSATION_TYPES: ReadonlySet<string> = new Set(['user', 'assistant', 'system']);
+
+/** Chaves de input de ferramenta que valem como resumo de uma linha, em ordem
+ *  de preferencia. Heuristica: cobre as ferramentas mais frequentes sem
+ *  precisar conhecer o schema de cada uma. */
+const TOOL_SUMMARY_KEYS = [
+  'command', 'file_path', 'path', 'pattern', 'query', 'url',
+  'description', 'prompt', 'skill', 'subagent_type',
+] as const;
+
+/** Teto do resumo de `tool_use`. Aplicado DEPOIS do scrub (ver
+ *  `scrubAndTruncateDrafts`): cortar antes poderia partir um segredo de um
+ *  jeito que ele escapasse das regras do redator. */
+const TOOL_SUMMARY_MAX_BYTES = 240;
+
+function firstStringField(input: unknown): string | null {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return null;
+  const obj = input as Record<string, unknown>;
+  for (const key of TOOL_SUMMARY_KEYS) {
+    const v = obj[key];
+    if (typeof v === 'string' && v.trim() !== '') return v;
   }
-  return '';
+  return null;
+}
+
+/** Tamanho aproximado do retorno de uma ferramenta, so para o marcador. */
+function approxSize(content: unknown): number {
+  if (typeof content === 'string') return Buffer.byteLength(content, 'utf8');
+  try {
+    return Buffer.byteLength(JSON.stringify(content) ?? '', 'utf8');
+  } catch {
+    return 0;
+  }
+}
+
+function humanBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+interface ContentExtract {
+  text: string;
+  kind: 'text' | 'tool_use' | 'tool_result';
+  toolName: string | null;
+  /** `false` quando a mensagem nao produz entrada alguma — conteudo so
+   *  `thinking`, ou vazio. O chamador DESCARTA e contabiliza. */
+  renderable: boolean;
+}
+
+const NOT_RENDERABLE: ContentExtract = { text: '', kind: 'text', toolName: null, renderable: false };
+
+/**
+ * Extrai de `.message.content` (tipo heterogeneo no transcript real — ora
+ * `string`, ora `array`) o texto a exibir, o que o produziu (`kind`) e o nome
+ * da ferramenta quando houver.
+ *
+ * ANTES (ate a 0.33.x) so `type: 'text'` contribuia, por decisao explicita de
+ * escopo do `data-model.md` ("nesta versao"). A medicao contra transcript real
+ * mostrou o custo do adiamento: das 356 mensagens de um arquivo de 636 linhas,
+ * 324 rendiam texto VAZIO — 137 `tool_use`, 137 `tool_result` e 48 `thinking`.
+ * Somando os sidecars, a tela exibia 5% de conteudo util.
+ *
+ * Precedencia: texto > tool_use > tool_result. Uma mensagem com texto E
+ * chamada de ferramenta mostra o texto — e o que o agente DISSE, e mais
+ * informativo que o que ele executou em seguida.
+ */
+function extractContent(content: unknown): ContentExtract {
+  if (typeof content === 'string') {
+    return content.trim() === ''
+      ? NOT_RENDERABLE
+      : { text: content, kind: 'text', toolName: null, renderable: true };
+  }
+  if (!Array.isArray(content)) return NOT_RENDERABLE;
+
+  const texts: string[] = [];
+  let toolUse: { name: string; input: unknown } | null = null;
+  let toolResult: { size: number } | null = null;
+
+  for (const item of content) {
+    if (item === null || typeof item !== 'object') continue;
+    const it = item as { type?: unknown; text?: unknown; name?: unknown; input?: unknown; content?: unknown };
+    if (it.type === 'text' && typeof it.text === 'string') {
+      texts.push(it.text);
+    } else if (it.type === 'tool_use' && toolUse === null) {
+      toolUse = { name: typeof it.name === 'string' ? it.name : 'ferramenta', input: it.input };
+    } else if (it.type === 'tool_result' && toolResult === null) {
+      toolResult = { size: approxSize(it.content) };
+    }
+    // `thinking` e ignorado de proposito (decisao do operador, 2026-08-27).
+  }
+
+  const joined = texts.join('\n');
+  if (joined.trim() !== '') {
+    return { text: joined, kind: 'text', toolName: null, renderable: true };
+  }
+  if (toolUse !== null) {
+    const summary = firstStringField(toolUse.input);
+    return {
+      // Resumo pode ser vazio: a linha ainda vale, porque o NOME da ferramenta
+      // ja responde "o que a sessao esta fazendo".
+      text: summary ?? '',
+      kind: 'tool_use',
+      toolName: toolUse.name,
+      renderable: true,
+    };
+  }
+  if (toolResult !== null) {
+    // Marcador GERADO por nos — o conteudo do retorno nunca sai daqui. Alem de
+    // evitar vazamento, impede que um dump de arquivo consuma o orcamento de
+    // bytes da resposta inteira.
+    return {
+      text: `retorno de ferramenta · ${humanBytes(toolResult.size)}`,
+      kind: 'tool_result',
+      toolName: null,
+      renderable: true,
+    };
+  }
+  return NOT_RENDERABLE;
 }
 
 /**
@@ -121,12 +235,12 @@ function flattenContent(content: unknown): string {
  * segredo pela metade antes de redigir — ver comentario de topo do
  * arquivo). `[REDACTED]` conta para o teto, tal como o restante do texto.
  */
-function truncateEntryText(text: string): { text: string; textTruncated: boolean } {
+function truncateEntryText(text: string, maxBytes: number = ENTRY_TEXT_MAX_BYTES): { text: string; textTruncated: boolean } {
   const buf = Buffer.from(text, 'utf8');
-  if (buf.byteLength <= ENTRY_TEXT_MAX_BYTES) {
+  if (buf.byteLength <= maxBytes) {
     return { text, textTruncated: false };
   }
-  return { text: buf.subarray(0, ENTRY_TEXT_MAX_BYTES).toString('utf8'), textTruncated: true };
+  return { text: buf.subarray(0, maxBytes).toString('utf8'), textTruncated: true };
 }
 
 /** Rascunho de UMA linha `.jsonl` ja parseada, ANTES do scrub/truncamento. */
@@ -136,6 +250,8 @@ interface ParsedLineDraft {
   timestamp: string | null;
   role: string | null;
   rawText: string;
+  kind: 'text' | 'tool_use' | 'tool_result';
+  toolName: string | null;
 }
 
 /**
@@ -149,7 +265,7 @@ interface ParsedLineDraft {
  * do parametro de rota, FASE 5 — nunca extraido do conteudo da linha,
  * FR-004).
  */
-function parseLineDraft(parsed: Record<string, unknown>): ParsedLineDraft {
+function parseLineDraft(parsed: Record<string, unknown>): ParsedLineDraft | null {
   const uuid = typeof parsed['uuid'] === 'string' ? (parsed['uuid'] as string) : null;
   const type = typeof parsed['type'] === 'string' ? (parsed['type'] as string) : '';
   const timestamp = typeof parsed['timestamp'] === 'string' ? (parsed['timestamp'] as string) : null;
@@ -162,7 +278,15 @@ function parseLineDraft(parsed: Record<string, unknown>): ParsedLineDraft {
       : null;
   const rawContent = hasMessage ? (message as { content?: unknown }).content : undefined;
 
-  return { uuid, type, timestamp, role, rawText: flattenContent(rawContent) };
+  const extract = extractContent(rawContent);
+  if (!extract.renderable) return null;
+
+  return {
+    uuid, type, timestamp, role,
+    rawText: extract.text,
+    kind: extract.kind,
+    toolName: extract.toolName,
+  };
 }
 
 /** Resultado do lote de scrub+truncamento das entradas da janela (achado onda-015). */
@@ -189,8 +313,15 @@ async function scrubAndTruncateDrafts(drafts: ParsedLineDraft[]): Promise<Scrubb
   if (drafts.length === 0) return { entries: [], scrubMode: 'internal' };
   const { texts: scrubbedTexts, scrubMode } = await scrubTextBatch(drafts.map((d) => d.rawText));
   const entries = drafts.map((draft, i) => {
-    const { text, textTruncated } = truncateEntryText(scrubbedTexts[i]!);
-    return { uuid: draft.uuid, type: draft.type, timestamp: draft.timestamp, role: draft.role, text, textTruncated };
+    // Teto MENOR para o resumo de tool_use: ele e um resumo por desenho, nao
+    // um corpo de mensagem. Aplicado aqui, DEPOIS do scrub — cortar antes
+    // poderia partir um segredo de um jeito que escapasse das regras.
+    const cap = draft.kind === 'tool_use' ? TOOL_SUMMARY_MAX_BYTES : ENTRY_TEXT_MAX_BYTES;
+    const { text, textTruncated } = truncateEntryText(scrubbedTexts[i]!, cap);
+    return {
+      uuid: draft.uuid, type: draft.type, timestamp: draft.timestamp, role: draft.role,
+      text, textTruncated, kind: draft.kind, toolName: draft.toolName,
+    };
   });
   return { entries, scrubMode };
 }
@@ -244,6 +375,7 @@ export async function readSessionTail(
   }
 
   let skippedLines = 0;
+  let filteredEntries = 0;
   const drafts: ParsedLineDraft[] = [];
   for (const line of rawLines) {
     const trimmed = line.trim();
@@ -262,7 +394,20 @@ export async function readSessionTail(
       skippedLines += 1;
       continue;
     }
-    drafts.push(parseLineDraft(parsed as Record<string, unknown>));
+    const obj = parsed as Record<string, unknown>;
+    const lineType = typeof obj['type'] === 'string' ? (obj['type'] as string) : '';
+    if (!CONVERSATION_TYPES.has(lineType)) {
+      // Sidecar do harness (attachment, mode, pr-link, ...) — nao e conversa.
+      filteredEntries += 1;
+      continue;
+    }
+    const draft = parseLineDraft(obj);
+    if (draft === null) {
+      // Mensagem sem nada a exibir (so `thinking`, ou conteudo vazio).
+      filteredEntries += 1;
+      continue;
+    }
+    drafts.push(draft);
   }
 
   // Scrub em lote (UM subprocesso para a janela inteira) + truncamento
@@ -293,6 +438,7 @@ export async function readSessionTail(
     requestedLines,
     returnedLines: entries.length,
     skippedLines,
+    filteredEntries,
     truncatedByBytes,
     windowTruncated,
     lastActivityAt,

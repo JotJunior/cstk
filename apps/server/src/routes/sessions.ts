@@ -204,6 +204,10 @@ export async function sessionRoutes(server: FastifyInstance): Promise<void> {
         requestedLines: tailResult.requestedLines,
         returnedLines: tailResult.returnedLines,
         skippedLines: tailResult.skippedLines,
+        // Descartadas da janela: sidecar do harness (attachment, mode,
+        // pr-link, ...) e mensagens sem nada a exibir. Reportado para que
+        // "12 entradas" nunca esconda 300 linhas filtradas.
+        filteredEntries: tailResult.filteredEntries,
         truncatedByBytes: tailResult.truncatedByBytes,
         windowTruncated: tailResult.windowTruncated,
         // Servido independente de liveness (FR-003) — apenas informativo.

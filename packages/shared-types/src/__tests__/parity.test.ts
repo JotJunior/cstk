@@ -441,6 +441,8 @@ describe('Paridade estrutural DTO <-> Schema — session-tail (FASE 1)', () => {
       role: 'assistant',
       text: 'ola',
       textTruncated: false,
+      kind: 'text',
+      toolName: null,
     };
     const r = SessionTailEntryDTOSchema.safeParse(sample);
     expect(r.success).toBe(true);
@@ -461,6 +463,8 @@ describe('Paridade estrutural DTO <-> Schema — session-tail (FASE 1)', () => {
       role: null,
       text: '',
       textTruncated: false,
+      kind: 'text',
+      toolName: null,
     };
     const r = SessionTailEntryDTOSchema.safeParse(sample);
     expect(r.success).toBe(true);
@@ -497,6 +501,8 @@ describe('Paridade estrutural DTO <-> Schema — session-tail (FASE 1)', () => {
       role: 'assistant',
       text: 'ola',
       textTruncated: false,
+      kind: 'text',
+      toolName: null,
     };
     const schemaKeys = Object.keys(SessionTailEntryDTOSchema.shape).sort();
     const sampleKeys = Object.keys(sample).sort();

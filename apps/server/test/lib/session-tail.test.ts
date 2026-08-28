@@ -62,6 +62,16 @@ function line(fields: Record<string, unknown>): string {
   return JSON.stringify(fields);
 }
 
+/*
+ * NOTA sobre as fixtures (0.34.0): elas passavam `text` no NIVEL RAIZ da
+ * linha — campo que o extrator nunca leu, porque a fonte real poe o conteudo
+ * em `message.content`. O resultado era que estes testes de teto de linhas e
+ * bytes contavam entradas TODAS VAZIAS: passavam verdes sobre exatamente o
+ * defeito reportado pelo operador (tela com 95% de linhas sem conteudo).
+ * Agora as fixtures montam `message: { role, content }`, e os mesmos tetos
+ * sao exercidos sobre entradas que de fato renderizam.
+ */
+
 describe('readSessionTail — arquivo inexistente/invalido (Principio II)', () => {
   it('path inexistente -> null (nunca lanca)', async () => {
     expect(await readSessionTail(join(base, 'nao-existe.jsonl'))).toBeNull();
@@ -77,7 +87,7 @@ describe('readSessionTail — arquivo inexistente/invalido (Principio II)', () =
 describe('readSessionTail — teto de linhas (default 200, clamp 1..1000)', () => {
   it('arquivo com mais linhas que o default devolve exatamente as ultimas 200, em ordem ascendente', async () => {
     const total = 300;
-    const lines = Array.from({ length: total }, (_, i) => line({ uuid: `u-${i}`, type: 'user', text: `linha ${i}` }));
+    const lines = Array.from({ length: total }, (_, i) => line({ uuid: `u-${i}`, type: 'user', message: { role: 'user', content: `linha ${i}` } }));
     const filePath = writeSession(lines);
 
     const result = await readSessionTail(filePath);
@@ -93,7 +103,7 @@ describe('readSessionTail — teto de linhas (default 200, clamp 1..1000)', () =
   });
 
   it('respeita `lines` explicito dentro do range', async () => {
-    const lines = Array.from({ length: 50 }, (_, i) => line({ uuid: `u-${i}`, type: 'user', text: `x${i}` }));
+    const lines = Array.from({ length: 50 }, (_, i) => line({ uuid: `u-${i}`, type: 'user', message: { role: 'user', content: `x${i}` } }));
     const filePath = writeSession(lines);
 
     const result = await readSessionTail(filePath, { lines: 10 });
@@ -104,7 +114,7 @@ describe('readSessionTail — teto de linhas (default 200, clamp 1..1000)', () =
   });
 
   it('clamp: valor abaixo de 1 vira 1; acima de 1000 vira 1000', async () => {
-    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', text: 'oi' })]);
+    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', message: { role: 'user', content: 'oi' } })]);
 
     expect((await readSessionTail(filePath, { lines: 0 }))!.requestedLines).toBe(1);
     expect((await readSessionTail(filePath, { lines: -5 }))!.requestedLines).toBe(1);
@@ -113,7 +123,7 @@ describe('readSessionTail — teto de linhas (default 200, clamp 1..1000)', () =
   });
 
   it('menos linhas no arquivo do que o solicitado devolve todas as validas', async () => {
-    const lines = Array.from({ length: 5 }, (_, i) => line({ uuid: `u-${i}`, type: 'user', text: `x${i}` }));
+    const lines = Array.from({ length: 5 }, (_, i) => line({ uuid: `u-${i}`, type: 'user', message: { role: 'user', content: `x${i}` } }));
     const filePath = writeSession(lines);
 
     const result = await readSessionTail(filePath, { lines: 50 });
@@ -125,9 +135,9 @@ describe('readSessionTail — teto de linhas (default 200, clamp 1..1000)', () =
 describe('readSessionTail — linha malformada (FR-003a)', () => {
   it('pula linha que nao parseia como JSON e conta em skippedLines, sem abortar', async () => {
     const filePath = writeSession([
-      line({ uuid: 'u-0', type: 'user', text: 'ok-1' }),
+      line({ uuid: 'u-0', type: 'user', message: { role: 'user', content: 'ok-1' } }),
       '{"uuid": "quebrada", NAO_E_JSON_VALIDO',
-      line({ uuid: 'u-2', type: 'user', text: 'ok-2' }),
+      line({ uuid: 'u-2', type: 'user', message: { role: 'user', content: 'ok-2' } }),
     ]);
 
     const result = await readSessionTail(filePath);
@@ -137,7 +147,7 @@ describe('readSessionTail — linha malformada (FR-003a)', () => {
   });
 
   it('pula linha cujo JSON parseia mas nao e um objeto (array/numero/string solta)', async () => {
-    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', text: 'ok' }), '[1,2,3]', '42', '"solta"']);
+    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', message: { role: 'user', content: 'ok' } }), '[1,2,3]', '42', '"solta"']);
 
     const result = await readSessionTail(filePath);
     expect(result!.skippedLines).toBe(3);
@@ -145,7 +155,7 @@ describe('readSessionTail — linha malformada (FR-003a)', () => {
   });
 
   it('linhas em branco sao ignoradas sem contar como skipped', async () => {
-    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', text: 'ok' }), '', '   ']);
+    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', message: { role: 'user', content: 'ok' } }), '', '   ']);
     const result = await readSessionTail(filePath);
     expect(result!.skippedLines).toBe(0);
     expect(result!.returnedLines).toBe(1);
@@ -246,7 +256,7 @@ describe('readSessionTail — ordem scrub-vs-truncamento (Decision 9, achado MED
 
 describe('readSessionTail — janela de leitura a partir do fim do arquivo (Decision 8)', () => {
   it('windowTruncated=false quando o arquivo cabe inteiro na janela', async () => {
-    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', text: 'x' })]);
+    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', message: { role: 'user', content: 'x' } })]);
     const result = await readSessionTail(filePath);
     expect(result!.windowTruncated).toBe(false);
   });
@@ -258,7 +268,7 @@ describe('readSessionTail — janela de leitura a partir do fim do arquivo (Deci
     const totalLines = Math.ceil((TAIL_READ_WINDOW_BYTES * 1.5) / approxLineBytes);
     const lines: string[] = [];
     for (let i = 0; i < totalLines; i++) {
-      lines.push(line({ uuid: `u-${i}`, type: 'user', text: `linha numero ${i}` }));
+      lines.push(line({ uuid: `u-${i}`, type: 'user', message: { role: 'user', content: `linha numero ${i}` } }));
     }
     const filePath = writeSession(lines);
 
@@ -303,17 +313,23 @@ describe('readSessionTail — achatamento de .message.content e normalizacao', (
     expect(result!.entries[0]!.text).toBe('parte 1\nparte 2');
   });
 
-  it('linha sem .message -> role null e text vazio', async () => {
-    const filePath = writeSession([line({ uuid: 'u-0', type: 'file-history-snapshot' })]);
+  it('sidecar do harness e FILTRADO, nao vira entrada vazia (0.34.0)', async () => {
+    // Ate a 0.33.x isto virava uma linha com text:'' na tela. Medido num
+    // transcript real: 280 de 636 linhas eram sidecar deste tipo.
+    const filePath = writeSession([
+      line({ uuid: 'u-0', type: 'file-history-snapshot' }),
+      line({ uuid: 'u-1', type: 'attachment' }),
+      line({ uuid: 'u-2', type: 'user', message: { role: 'user', content: 'unica conversa' } }),
+    ]);
     const result = await readSessionTail(filePath);
-    const entry = result!.entries[0]!;
-    expect(entry.role).toBeNull();
-    expect(entry.text).toBe('');
-    expect(entry.type).toBe('file-history-snapshot');
+    expect(result!.entries).toHaveLength(1);
+    expect(result!.entries[0]!.text).toBe('unica conversa');
+    // Descarte e REPORTADO, nunca silencioso.
+    expect(result!.filteredEntries).toBe(2);
   });
 
   it('uuid/timestamp ausentes -> null, nunca undefined ou lancamento', async () => {
-    const filePath = writeSession([line({ type: 'system' })]);
+    const filePath = writeSession([line({ type: 'system', message: { role: 'system', content: 'aviso' } })]);
     const result = await readSessionTail(filePath);
     const entry = result!.entries[0]!;
     expect(entry.uuid).toBeNull();
@@ -332,7 +348,9 @@ describe('readSessionTail — achatamento de .message.content e normalizacao', (
     ]);
     const result = await readSessionTail(filePath);
     const entry = result!.entries[0]!;
-    expect(Object.keys(entry).sort()).toEqual(['role', 'text', 'textTruncated', 'timestamp', 'type', 'uuid'].sort());
+    expect(Object.keys(entry).sort()).toEqual(
+      ['kind', 'role', 'text', 'textTruncated', 'timestamp', 'toolName', 'type', 'uuid'].sort(),
+    );
     expect((entry as Record<string, unknown>)['sessionId']).toBeUndefined();
     expect((entry as Record<string, unknown>)['session_id']).toBeUndefined();
   });
@@ -340,9 +358,119 @@ describe('readSessionTail — achatamento de .message.content e normalizacao', (
 
 describe('readSessionTail — lastActivityAt (mtime)', () => {
   it('devolve lastActivityAt como ISO 8601 correspondente ao mtime do arquivo', async () => {
-    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', text: 'oi' })]);
+    const filePath = writeSession([line({ uuid: 'u-0', type: 'user', message: { role: 'user', content: 'oi' } })]);
     const result = await readSessionTail(filePath);
     expect(() => new Date(result!.lastActivityAt).toISOString()).not.toThrow();
     expect(new Date(result!.lastActivityAt).toISOString()).toBe(result!.lastActivityAt);
+  });
+});
+
+/**
+ * Chamadas de ferramenta (0.34.0). Ate a 0.33.x, `tool_use`/`tool_result`/
+ * `thinking` NAO contribuiam para `text` — decisao de escopo explicita do
+ * data-model.md ("nesta versao"). A medicao contra transcript real mostrou o
+ * custo: de 356 mensagens num arquivo de 636 linhas, 324 rendiam texto vazio
+ * (137 tool_use + 137 tool_result + 48 thinking).
+ */
+describe('readSessionTail — chamadas de ferramenta', () => {
+  it('tool_use vira entrada com toolName e resumo de uma linha do input', async () => {
+    const filePath = writeSession([
+      line({
+        uuid: 'u-0', type: 'assistant',
+        message: { role: 'assistant', content: [
+          { type: 'tool_use', name: 'Bash', input: { command: 'npm test', description: 'roda a suite' } },
+        ] },
+      }),
+    ]);
+    const e = (await readSessionTail(filePath))!.entries[0]!;
+    expect(e.kind).toBe('tool_use');
+    expect(e.toolName).toBe('Bash');
+    // `command` tem precedencia sobre `description` na lista de chaves.
+    expect(e.text).toBe('npm test');
+  });
+
+  it('tool_use sem chave conhecida no input ainda rende entrada — o NOME ja informa', async () => {
+    const filePath = writeSession([
+      line({
+        uuid: 'u-0', type: 'assistant',
+        message: { role: 'assistant', content: [
+          { type: 'tool_use', name: 'FerramentaExotica', input: { algo_desconhecido: 42 } },
+        ] },
+      }),
+    ]);
+    const e = (await readSessionTail(filePath))!.entries[0]!;
+    expect(e.kind).toBe('tool_use');
+    expect(e.toolName).toBe('FerramentaExotica');
+    expect(e.text).toBe('');
+  });
+
+  it('tool_result colapsa em marcador de tamanho — o conteudo NUNCA sai', async () => {
+    const segredo = 'AKIAIOSFODNN7EXAMPLE conteudo enorme de retorno'.repeat(50);
+    const filePath = writeSession([
+      line({
+        uuid: 'u-0', type: 'user',
+        message: { role: 'user', content: [{ type: 'tool_result', content: segredo }] },
+      }),
+    ]);
+    const e = (await readSessionTail(filePath))!.entries[0]!;
+    expect(e.kind).toBe('tool_result');
+    expect(e.text).toMatch(/^retorno de ferramenta · /);
+    // Defesa dupla: nem o conteudo, nem qualquer fragmento dele, atravessa.
+    expect(e.text).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(e.text).not.toContain('conteudo enorme');
+  });
+
+  it('mensagem so com thinking e DESCARTADA e contabilizada', async () => {
+    const filePath = writeSession([
+      line({
+        uuid: 'u-0', type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'thinking', thinking: 'raciocinio interno longo' }] },
+      }),
+      line({ uuid: 'u-1', type: 'user', message: { role: 'user', content: 'oi' } }),
+    ]);
+    const r = (await readSessionTail(filePath))!;
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0]!.text).toBe('oi');
+    expect(r.filteredEntries).toBe(1);
+  });
+
+  it('texto tem PRECEDENCIA sobre tool_use na mesma mensagem', async () => {
+    const filePath = writeSession([
+      line({
+        uuid: 'u-0', type: 'assistant',
+        message: { role: 'assistant', content: [
+          { type: 'text', text: 'vou rodar os testes' },
+          { type: 'tool_use', name: 'Bash', input: { command: 'npm test' } },
+        ] },
+      }),
+    ]);
+    const e = (await readSessionTail(filePath))!.entries[0]!;
+    // O que o agente DISSE e mais informativo que o que ele executou em seguida.
+    expect(e.kind).toBe('text');
+    expect(e.text).toBe('vou rodar os testes');
+    expect(e.toolName).toBeNull();
+  });
+
+  it('resumo de tool_use e cortado curto, e o corte acontece DEPOIS do scrub', async () => {
+    // Comando longo o suficiente para estourar o teto do resumo (240 B).
+    const cmd = 'echo ' + 'a'.repeat(600);
+    const filePath = writeSession([
+      line({
+        uuid: 'u-0', type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: cmd } }] },
+      }),
+    ]);
+    const e = (await readSessionTail(filePath))!.entries[0]!;
+    expect(e.textTruncated).toBe(true);
+    expect(Buffer.byteLength(e.text, 'utf8')).toBeLessThanOrEqual(240);
+  });
+
+  it('entrada de conversa comum mantem kind text e toolName null (nao-regressao)', async () => {
+    const filePath = writeSession([
+      line({ uuid: 'u-0', type: 'user', message: { role: 'user', content: 'mensagem simples' } }),
+    ]);
+    const e = (await readSessionTail(filePath))!.entries[0]!;
+    expect(e.kind).toBe('text');
+    expect(e.toolName).toBeNull();
   });
 });
