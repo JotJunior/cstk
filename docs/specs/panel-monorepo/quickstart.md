@@ -12,7 +12,7 @@
 
 ## Cenario 1 — Ensaio de release ponta-a-ponta (PROVA PRINCIPAL)
 
-**Cobre**: FR-008, FR-010, FR-011, FR-014, SC-001
+**Cobre**: FR-008, FR-010, FR-011, FR-014, FR-018, FR-019, SC-001
 **Tipo**: manual, uma vez, antes de qualquer arquivamento (FR-019)
 
 1. Em branch de trabalho, com `panel/` ja importado e `serve.sh` ja corrigido,
@@ -290,3 +290,60 @@ falha silenciosamente do ponto de vista da auditoria.
 4. **Expected**: `0`.
 5. `tar -tzf dist/cstk-panel-<bare>.tar.gz | awk -F/ '{print $1}' | sort -u | wc -l`
 6. **Expected**: `1` — um unico diretorio de topo, `cstk-panel-<bare>/`.
+
+---
+
+## Cenario 17 — `tag_name` malformado (fail-closed) (error case)
+
+**Cobre**: FR-023
+**Onde**: `tests/cstk/test_serve.sh`, novo modo em `_stub_curl_release_assets`
+
+1. Novo modo `bad-tag-name`: a resposta stubada da API de releases traz
+   `tag_name` fora do formato esperado apos `bare()` (ex. `v1.2/evil` ou
+   `v1 2.3`, contendo `/` ou espaco).
+2. Rodar `_serve_download_verify_extract`.
+3. **Expected**: fail-closed para o auto-tarball pre-existente — nenhum asset
+   do painel (nem do toolkit) e selecionado por correspondencia de nome
+   vinculada a essa tag.
+4. **Expected**: uma linha em stderr citando o formato esperado
+   (`^[0-9A-Za-z][0-9A-Za-z.+-]*$`).
+
+Um cenario que passasse com ou sem a validacao de I5 nao provaria nada — este
+cenario so passa se o fail-closed de fato disparar diante do `tag_name`
+malformado (`contracts/serve-asset-selection.md` §3.2 I5).
+
+---
+
+## Cenario 18 — Colisao de nomes de topo preservada (FR-004)
+
+**Cobre**: FR-004
+
+1. Antes da migracao, listar os arquivos de topo homonimos existentes em
+   ambos os projetos: `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md` (se
+   existir), workflow de CI.
+2. Apos o `git subtree add`, confirmar que ambas as versoes existem sob paths
+   distintos: `./README.md` (raiz, intacto) e `panel/README.md` (painel,
+   intacto) — mesma verificacao para `CHANGELOG.md` e os demais arquivos
+   homonimos.
+3. **Expected**: nenhum dos dois foi sobrescrito; o conteudo de cada lado
+   permanece identico ao pre-migracao.
+4. **Expected**: `panel/.github/workflows/` nao colide com
+   `.github/workflows/` da raiz — paths distintos, sem merge de conteudo.
+
+---
+
+## Cenario 19 — Historico de mudancas: congelado vs. unico (FR-006)
+
+**Cobre**: FR-006
+
+1. Apos o `git subtree add` (FASE 1) e a nota do cabecalho de
+   `panel/CHANGELOG.md` (FASE 2, task 0.3.2), verificar que
+   `panel/CHANGELOG.md` mantem as entradas anteriores a migracao intactas,
+   sem reescrita — mesmo principio ja aplicado ao `CHANGELOG.md` da raiz no
+   Cenario 15.
+2. Apos o primeiro release pos-migracao que tambem toque o painel, confirmar
+   que a nova entrada foi adicionada ao `CHANGELOG.md` da raiz do
+   repositorio unificado, e **nao** a `panel/CHANGELOG.md`.
+3. **Expected**: `panel/CHANGELOG.md` permanece congelado a partir da
+   migracao — zero entradas novas nele; `CHANGELOG.md` da raiz passa a ser a
+   unica fonte de novas entradas que tambem tocam o painel.

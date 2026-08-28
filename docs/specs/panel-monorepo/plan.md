@@ -222,6 +222,10 @@ A ordem importa por seguranca, nao por conveniencia. Duas restricoes duras:
 9. desativar automacao + arquivar                            (FR-005, FR-019)
 ```
 
+**Nota (FR-007)**: sem passo de implementacao — consequencia estrutural do
+passo 1 (`panel/` ganha `docs/constitution.md` proprio), verificada pelo
+Cenario 8 de `quickstart.md`.
+
 O passo 5 e o unico ponto do plano que **prova** a correcao no caminho real; os
 passos 8 e 9 sao bloqueados por ele.
 

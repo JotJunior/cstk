@@ -41,21 +41,30 @@ falseável. `quickstart.md` Cenário 13 testa `CSTK_PANEL_REPO` (validado por
 regex, campo local), não `tag_name` (campo remoto vindo da resposta da API,
 sem validação de forma equivalente).
 
-- [ ] 0.1.1 Adicionar em `spec.md` um novo Functional Requirement (FR-023)
+- [x] 0.1.1 Adicionar em `spec.md` um novo Functional Requirement (FR-023)
   declarando que o sistema MUST validar que `bare(tag_name)` (tag sem prefixo
   `v`) casa `^[0-9A-Za-z][0-9A-Za-z.+-]*$` antes de qualquer derivação de nome
   de asset/diretório, com fail-closed (fallback ao auto-tarball) e uma linha
   em stderr quando não casar
-- [ ] 0.1.2 Adicionar um Edge Case correspondente em `spec.md` §Edge Cases:
+  — evidência: `spec.md` linha 354 (Requirements) e linha 424 (Delta
+  Requirements, Capability serve-integrity, ADDED); dec-043.
+- [x] 0.1.2 Adicionar um Edge Case correspondente em `spec.md` §Edge Cases:
   "o que acontece quando `tag_name` da resposta da API não casa o formato
   esperado?"
-- [ ] 0.1.3 (teste) Adicionar em `quickstart.md` um cenário de erro novo
+  — evidência: `spec.md` §Edge Cases, bullet "O que acontece quando o
+  `tag_name` da resposta da API de releases não casa o formato esperado...".
+- [x] 0.1.3 (teste) Adicionar em `quickstart.md` um cenário de erro novo
   (Cenário 17) que injete, via stub de `curl`, uma resposta de release com
   `tag_name` malformado (ex. contendo `/` ou espaço) e confirme: (a)
   fail-closed para o auto-tarball, nunca seleção do asset do painel; (b) linha
   em stderr citando o formato esperado; `**Cobre**: FR-023`
-- [ ] 0.1.4 Verificar que a numeração `FR-023` não colide com nenhum FR
+  — evidência: `quickstart.md` linha 296, "Cenario 17 — `tag_name` malformado
+  (fail-closed)", `**Cobre**: FR-023`.
+- [x] 0.1.4 Verificar que a numeração `FR-023` não colide com nenhum FR
   existente em `spec.md` (FR-001..FR-022 já ocupados) antes de commitar
+  — evidência: `grep -oE 'FR-[0-9]{3}' spec.md | sort -u | grep -c FR-023`
+  => `1` (ocorrência única no enum de IDs; as demais 2 ocorrências de texto
+  "FR-023" são referências à mesma FR, não redefinições).
 
 ### 0.2 Acceptance Scenario executável para FR-004 (colisão de nomes de topo) `[A]`
 
@@ -64,22 +73,27 @@ Ref: checklists/requirements.md CHK006 (parte 1); spec.md FR-004
 `grep -oE 'FR-[0-9]{3}' quickstart.md` confirma ausência total de `FR-004` no
 arquivo — a FR só aparece como item de lista em `plan.md` linha 210.
 
-- [ ] 0.2.1 Adicionar em `spec.md`, na User Story 1, um Acceptance Scenario
+- [x] 0.2.1 Adicionar em `spec.md`, na User Story 1, um Acceptance Scenario
   novo com Given/When/Then verificável: **Given** os dois projetos com
   arquivos de topo homônimos (README, CHANGELOG, CONTRIBUTING, workflow de
   CI), **When** a migração incorpora o painel a `panel/`, **Then** cada
   arquivo permanece associado ao seu projeto de origem, sem sobrescrita
   silenciosa de nenhum dos lados
-- [ ] 0.2.2 (teste) Adicionar em `quickstart.md` um cenário novo (Cenário 18)
+  — evidência: `spec.md` User Story 1, Acceptance Scenario 6 (novo).
+- [x] 0.2.2 (teste) Adicionar em `quickstart.md` um cenário novo (Cenário 18)
   com passos verificáveis: listar os arquivos de topo homônimos antes da
   migração (`README.md`, `CHANGELOG.md`, `CONTRIBUTING.md` se existir,
   workflow de CI) em ambos os projetos, confirmar após o `git subtree add`
   que ambas as versões existem sob paths distintos (`./README.md` da raiz
   intacto, `panel/README.md` do painel intacto), e que nenhum dos dois foi
   sobrescrito; `**Cobre**: FR-004`
-- [ ] 0.2.3 Confirmar que a numeração do Acceptance Scenario novo não colide
+  — evidência: `quickstart.md` linha 317, "Cenario 18 — Colisao de nomes de
+  topo preservada (FR-004)", `**Cobre**: FR-004`.
+- [x] 0.2.3 Confirmar que a numeração do Acceptance Scenario novo não colide
   com os 5 já existentes na User Story 1 de `spec.md`, renumerando em
   sequência se necessário
+  — evidência: `sed -n '/### User Story 1/,/^---/p' spec.md | grep -E
+  '^[0-9]\.'` => sequência contígua `1.`..`6.`, sem renumeração necessária.
 
 ### 0.3 Cenário executável para FR-006 (histórico congelado vs. único) `[A]`
 
@@ -88,19 +102,28 @@ Ref: checklists/requirements.md CHK006 (parte 2); spec.md FR-006
 `FR-006` também ausente de toda linha `**Cobre**` de `quickstart.md`; aparece
 apenas em `plan.md` linha 222.
 
-- [ ] 0.3.1 (teste) Adicionar em `quickstart.md` um cenário novo (Cenário 19)
+- [x] 0.3.1 (teste) Adicionar em `quickstart.md` um cenário novo (Cenário 19)
   citando `FR-006` explicitamente na linha `**Cobre**`: verificar que
   `panel/CHANGELOG.md` permanece com as entradas anteriores à migração
   intactas (histórico congelado, sem reescrita — mesmo princípio já aplicado
   ao `CHANGELOG.md` da raiz no Cenário 15), e que a partir do primeiro
   release pós-migração o `CHANGELOG.md` da raiz do repositório unificado
   passa a ser a única fonte de novas entradas que também toquem o painel
+  — evidência: `quickstart.md` linha 335, "Cenario 19 — Historico de
+  mudancas: congelado vs. unico (FR-006)", `**Cobre**: FR-006`.
 - [ ] 0.3.2 Adicionar nota curta em `panel/CHANGELOG.md` (cabeçalho, quando a
   FASE 2 tocar o arquivo) apontando que entradas anteriores à migração são
   histórico congelado — precondição verificada pelo cenário acima
-- [ ] 0.3.3 Confirmar que a numeração do Cenário 19 não colide com o Cenário
+  — não executado: `panel/CHANGELOG.md` ainda não existe nesta árvore
+  (`git subtree add` é FASE 1, ainda não rodou — `ls panel` confirma
+  "No such file or directory"). O próprio texto da subtarefa deferi a edição
+  para "quando a FASE 2 tocar o arquivo"; permanece pendente até lá
+  (dec-045 registra esta constatação).
+- [x] 0.3.3 Confirmar que a numeração do Cenário 19 não colide com o Cenário
   17 (FASE 0.1.3) nem com o Cenário 18 (FASE 0.2.2), mantendo sequência
   contígua em `quickstart.md`
+  — evidência: `grep -n '^## Cenario' quickstart.md` => sequência contígua
+  `Cenario 1`..`Cenario 19`, sem lacunas nem duplicatas.
 
 ### 0.4 Rastreabilidade formal do Cenário 1 (FR-018, FR-019) `[A]`
 
@@ -112,14 +135,21 @@ FR-019 hoje só aparece entre parênteses no campo `**Tipo**` do Cenário 1, nã
 na linha `**Cobre**` — o cenário mais crítico do plano (o único que libera os
 passos 8-9) fica sub-rastreado no artefato que o exercita.
 
-- [ ] 0.4.1 Editar `quickstart.md` Cenário 1, linha `**Cobre**`: de
+- [x] 0.4.1 Editar `quickstart.md` Cenário 1, linha `**Cobre**`: de
   `FR-008, FR-010, FR-011, FR-014, SC-001` para
   `FR-008, FR-010, FR-011, FR-014, FR-018, FR-019, SC-001`
-- [ ] 0.4.2 (teste/verificação) Rodar
+  — evidência: `quickstart.md` linha 15 agora lê
+  `**Cobre**: FR-008, FR-010, FR-011, FR-014, FR-018, FR-019, SC-001`.
+- [x] 0.4.2 (teste/verificação) Rodar
   `grep -oE 'FR-[0-9]{3}' docs/specs/panel-monorepo/quickstart.md | sort -u`
   e confirmar que `FR-018` e `FR-019` aparecem na saída após a edição
-- [ ] 0.4.3 Confirmar que nenhum outro campo do Cenário 1 (`**Tipo**`, passos,
+  — evidência: saída inclui `FR-018` e `FR-019` (lista completa:
+  FR-001,003,004,006,007,008,009,010,011,012,013,014,015,016,017,018,019,020,021,022,023).
+- [x] 0.4.3 Confirmar que nenhum outro campo do Cenário 1 (`**Tipo**`, passos,
   Expected) foi alterado além da linha `**Cobre**`
+  — evidência: `git diff -- docs/specs/panel-monorepo/quickstart.md` mostra
+  um único hunk de 1 linha em Cenário 1 (a linha `**Cobre**`); `**Tipo**` e
+  os passos 1-8 permanecem byte-idênticos.
 
 ### 0.5 Nota editorial: FR-007 sem passo de implementação `[M]`
 
@@ -131,18 +161,28 @@ FR-007 (governança dupla sem falso conflito) não aparece em nenhum dos 9
 passos do plano nem tem nota de dispensa — fica implícito, inferido pelo
 leitor.
 
-- [ ] 0.5.1 Editar `plan.md` §"Ordem de execução e dependências": anotar,
+- [x] 0.5.1 Editar `plan.md` §"Ordem de execução e dependências": anotar,
   junto ao passo 1 (`subtree add + .gitignore ancorado + colisões de topo`),
   a nota "FR-007: sem passo de implementação — consequência estrutural do
   passo 1 (`panel/` ganha `docs/constitution.md` próprio), verificada pelo
   Cenário 8 de `quickstart.md`", no mesmo padrão editorial já usado em
   `plan.md` para outras notas de escopo (ex. §Complexity Tracking)
-- [ ] 0.5.2 (teste/verificação) Confirmar visualmente que a nota aparece
+  — evidência: `plan.md`, logo após o bloco numerado 1-9, parágrafo
+  "**Nota (FR-007)**: sem passo de implementacao — consequencia estrutural
+  do passo 1..." (`git diff plan.md` mostra hunk único de 4 linhas).
+- [x] 0.5.2 (teste/verificação) Confirmar visualmente que a nota aparece
   associada ao passo 1 e não introduz um passo numerado novo (a numeração 1-9
   do plano permanece intacta)
-- [ ] 0.5.3 Confirmar que o `Re-check de Constitution (pós-Phase 1)` de
+  — evidência: bloco de código numerado (```1.``` a ```9.```) inalterado;
+  nota inserida como parágrafo fora do bloco de código, entre o bloco e a
+  frase "O passo 5 e o unico ponto...".
+- [x] 0.5.3 Confirmar que o `Re-check de Constitution (pós-Phase 1)` de
   `plan.md` não precisa de atualização em decorrência desta nota puramente
   editorial (nenhum principio afetado)
+  — evidência: `plan.md` linhas 285-298 tratam de predicado de seleção,
+  enum `outcome` e teste de drift (Princípios I, II, IV) — nenhum item
+  referencia FR-007/governança; nota puramente editorial, sem impacto de
+  princípio a revalidar.
 
 ### 0.6 Decisão de processo: dono do atesto pré-arquivamento (FR-019b) `[C]`
 
@@ -154,20 +194,32 @@ Não há dono explícito do atesto de que a verificação da FR-019(b)
 do passo 9 (arquivamento). É decisão de processo de release — não algo que
 `create-tasks`/`execute-task` resolvam sozinhos.
 
-- [ ] 0.6.1 Registrar bloqueio humano (`bloqueios.sh register`) perguntando ao
+- [x] 0.6.1 Registrar bloqueio humano (`bloqueios.sh register`) perguntando ao
   operador: quem/o que atesta a verificação da FR-019(b) antes do
   arquivamento — um humano seguindo o Cenário 1 do quickstart, ou um gate
   automatizado — e onde esse atesto fica registrado (ex.: Decisão auditável
   no `state.json`/`state.db` da execução, comentário na issue de
   acompanhamento, ou checkbox assinado neste próprio `tasks.md`)
+  — evidência: dec-048 (score 0, classe operacional, escolha
+  `bloqueio-humano-dono-do-atesto`) + `block-003` registrado via
+  `bloqueios.sh register` nesta onda, aguardando resposta do operador.
 - [ ] 0.6.2 Após resposta do operador, registrar a decisão formal (Decisão
   auditável) descrevendo o mecanismo de atesto escolhido
+  — não executado: aguarda resposta do operador a `block-003`.
 - [ ] 0.6.3 Adicionar nota em `spec.md` FR-019 ou em `plan.md` (conforme o
   mecanismo escolhido em 0.6.2) formalizando o dono/mecanismo do atesto, para
   que deixe de ser inferido
-- [ ] 0.6.4 (gate) Esta tarefa é pré-requisito explícito da tarefa **10.2**
+  — não executado: aguarda resposta do operador a `block-003` (depende de
+  0.6.2, que define o mecanismo a formalizar).
+- [x] 0.6.4 (gate) Esta tarefa é pré-requisito explícito da tarefa **10.2**
   (arquivamento do repositório original) na Matriz de Dependências — 10.2 não
   pode ser marcada executável enquanto 0.6 não estiver `[x]`
+  — evidência: `tasks.md` §Matriz de Dependências já declara
+  `F0 -. "0.6: atesto pre-arquivamento" .-> F10` e a nota "FASE 10.2
+  (arquivamento) tem dois pré-requisitos formais adicionais... FASE 0.6
+  (dono do atesto definido)... ambos MUST estar `[x]` antes de 10.2.3" —
+  gate estrutural já presente, confirmado nesta verificação; 0.6 permanece
+  `[ ]` (0.6.2/0.6.3 pendentes) e portanto continua bloqueando 10.2.
 
 ---
 

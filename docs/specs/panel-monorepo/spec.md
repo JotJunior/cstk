@@ -81,6 +81,10 @@ painel foi perdido no processo.
    antes da migração, **When** a migração é concluída, **Then** o mesmo
    conjunto de arquivos permanece rastreado, mesmo que a raiz do repositório
    unificado normalmente não rastreie arquivos dessa categoria.
+6. **Given** os dois projetos com arquivos de topo homônimos (README,
+   CHANGELOG, CONTRIBUTING, workflow de CI), **When** a migração incorpora o
+   painel a `panel/`, **Then** cada arquivo permanece associado ao seu
+   projeto de origem, sem sobrescrita silenciosa de nenhum dos lados.
 
 ---
 
@@ -236,6 +240,10 @@ mudança de local e a ação necessária.
   a distribuição do painel embutido no repositório unificado estar
   publicada e verificada? Esta ordem é um requisito explícito (User Story
   4, Acceptance Scenario 2) — o arquivamento nunca precede a verificação.
+- O que acontece quando o `tag_name` da resposta da API de releases não casa
+  o formato esperado (ex. contém `/` ou espaço)? O sistema falha fechado
+  para o auto-tarball, nunca seleciona o asset do painel em seu lugar, e
+  emite uma linha em stderr citando o formato esperado (FR-023).
 
 ## Requirements
 
@@ -343,6 +351,13 @@ mudança de local e a ação necessária.
   já que o fluxo de atualização do sistema (`cstk serve --update`) consome
   somente `tag_name` e `tarball_url` da API de releases e nunca exibe o
   corpo/notas da release ao operador.
+- **FR-023**: O sistema MUST validar que `bare(tag_name)` (a tag da resposta
+  da API de releases, sem o prefixo `v`) casa o formato
+  `^[0-9A-Za-z][0-9A-Za-z.+-]*$` antes de qualquer derivação de nome de
+  asset/diretório esperado a partir dele; quando o valor não casar o
+  formato, o sistema MUST falhar fechado (fallback ao auto-tarball
+  pré-existente, nunca seleção de um asset do painel) e MUST emitir uma
+  linha em stderr citando o formato esperado.
 
 > Decisões de infraestrutura: N/A (esta feature é uma migração de
 > repositório/pipeline de release; não introduz scheduler, criptografia de
@@ -403,6 +418,16 @@ mudança de local e a ação necessária.
   painel não está de fato presente, o sistema MUST tratar isso como falha de
   seleção/integridade — a confirmação de checksum anterior MUST NOT ser
   reportada como confirmação suficiente de que o pacote correto foi obtido.
+
+#### ADDED
+
+- **FR-023**: O sistema MUST validar que `bare(tag_name)` (a tag da resposta
+  da API de releases, sem o prefixo `v`) casa o formato
+  `^[0-9A-Za-z][0-9A-Za-z.+-]*$` antes de qualquer derivação de nome de
+  asset/diretório esperado a partir dele; quando o valor não casar o
+  formato, o sistema MUST falhar fechado (fallback ao auto-tarball
+  pré-existente, nunca seleção de um asset do painel) e MUST emitir uma
+  linha em stderr citando o formato esperado.
 
 ### Capability: trusted-release-hosts
 
