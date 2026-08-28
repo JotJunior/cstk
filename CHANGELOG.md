@@ -5,6 +5,28 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.34.1] - 2026-08-28
+
+### Corrigido
+
+- **`converge-report.md` abria em branco no card de documentação.** Apesar do
+  nome, o arquivo não é um relatório em prosa: é um *ledger* append-only de
+  vereditos gravado como comentários HTML, lido por `converge-status.sh`.
+  Markdown não renderiza comentário, então o card marcava `produced: true` e a
+  página vinha vazia — parecendo defeito.
+
+  Isso foi um erro meu na 0.34.0 anterior: adicionei o artefato ao card
+  descrevendo-o como "o relatório da etapa converge" **sem ter aberto nenhum
+  dos arquivos**. Verificados agora, os seis que existem em todos os projetos
+  locais têm zero linhas de conteúdo visível.
+
+  O conteúdo dos marcadores é observabilidade real — veredito, quando, quantos
+  itens acionáveis, digest do `tasks.md` — e passa a ser renderizado como
+  histórico legível: dá para ver a feature convergir ao longo das ondas. Campo
+  ausente no marcador vira travessão, nunca um valor inventado, e prosa que
+  exista junto é preservada: traduzir para exibir não pode esconder o que
+  alguém escreveu.
+
 ## [0.34.0] - 2026-08-27
 
 ### Corrigido
@@ -1496,6 +1518,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.34.1]: https://github.com/JotJunior/cstk-panel/compare/v0.34.0...v0.34.1
 [0.34.0]: https://github.com/JotJunior/cstk-panel/compare/v0.33.1...v0.34.0
 [0.33.1]: https://github.com/JotJunior/cstk-panel/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/JotJunior/cstk-panel/compare/v0.32.0...v0.33.0
