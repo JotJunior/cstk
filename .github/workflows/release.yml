@@ -15,13 +15,23 @@
 #   4. Suite de testes do toolkit (`tests/run.sh` + `tests/cstk/test_*.sh`)
 #      como pre-requisito — release falha se qualquer teste falhar
 #   5. Build deterministico do tarball via `scripts/build-release.sh <tag>`
-#   6. Criacao do GitHub Release com upload de:
+#   6. Empacotamento do painel via `git archive HEAD:panel` (FR-010, FR-011;
+#      docs/specs/panel-monorepo/contracts/serve-asset-selection.md §4) —
+#      `panel/.gitattributes` (export-ignore) garante `.claude/`/`.github/`
+#      fora do pacote; `panel/package.json`+`package-lock.json` ficam na raiz
+#      da arvore extraida por herdarem de `HEAD:panel`
+#   7. Criacao do GitHub Release com upload de:
 #        - cstk-<bare-version>.tar.gz
 #        - cstk-<bare-version>.tar.gz.sha256
-#        - cli/install.sh        (asset standalone para one-liner FR-005a)
+#        - cli/install.sh                    (asset standalone, one-liner FR-005a)
+#        - cstk-panel-<bare-version>.tar.gz          (mesma release, FR-011)
+#        - cstk-panel-<bare-version>.tar.gz.sha256
 #
 # Ambiente: ubuntu-latest. GNU tar do runner garante determinismo via
 # --sort=name + --mtime=@0 (caminho preferencial em scripts/build-release.sh).
+# O empacotamento do painel (`git archive`) e determinístico por natureza do
+# proprio comando (mesma arvore git => mesmos bytes), sem necessidade de
+# normalizacao adicional de mtime/uid/gid.
 
 name: release
 
@@ -79,6 +89,21 @@ jobs:
       - name: Build release tarball
         run: ./scripts/build-release.sh "${{ steps.tag.outputs.tag }}"
 
+      - name: Package panel distribution
+        # Ref: docs/specs/panel-monorepo/tasks.md FASE 4.1
+        #      contracts/serve-asset-selection.md §4 (EXPECTED = "cstk-panel-" + bare + ".tar.gz")
+        # `git archive ... HEAD:panel` usa panel/ como raiz do arquivo, entao
+        # panel/.gitattributes (export-ignore de .claude/ e .github/) se aplica
+        # e package.json + package-lock.json ficam na raiz da arvore extraida
+        # (FR-010) sem passo adicional de copia/rename.
+        run: |
+          set -eu
+          BARE="${{ steps.tag.outputs.bare }}"
+          mkdir -p dist
+          git archive --format=tar.gz --prefix="cstk-panel-${BARE}/" \
+            -o "dist/cstk-panel-${BARE}.tar.gz" HEAD:panel
+          sha256sum "dist/cstk-panel-${BARE}.tar.gz" > "dist/cstk-panel-${BARE}.tar.gz.sha256"
+
       - name: Verify build artifacts
         run: |
           set -eu
@@ -86,8 +111,12 @@ jobs:
           test -f "dist/cstk-${BARE}.tar.gz" || { echo "::error::tarball ausente"; exit 1; }
           test -f "dist/cstk-${BARE}.tar.gz.sha256" || { echo "::error::sha256 ausente"; exit 1; }
           test -f "cli/install.sh" || { echo "::error::cli/install.sh ausente"; exit 1; }
+          test -f "dist/cstk-panel-${BARE}.tar.gz" || { echo "::error::tarball do painel ausente"; exit 1; }
+          test -f "dist/cstk-panel-${BARE}.tar.gz.sha256" || { echo "::error::sha256 do painel ausente"; exit 1; }
           echo "Artifacts:"
-          ls -la "dist/cstk-${BARE}.tar.gz" "dist/cstk-${BARE}.tar.gz.sha256" cli/install.sh
+          ls -la \
+            "dist/cstk-${BARE}.tar.gz" "dist/cstk-${BARE}.tar.gz.sha256" cli/install.sh \
+            "dist/cstk-panel-${BARE}.tar.gz" "dist/cstk-panel-${BARE}.tar.gz.sha256"
 
       - name: Create GitHub Release
         env:
@@ -107,7 +136,9 @@ jobs:
             --generate-notes \
             "dist/cstk-${BARE}.tar.gz" \
             "dist/cstk-${BARE}.tar.gz.sha256" \
-            "cli/install.sh"
+            "cli/install.sh" \
+            "dist/cstk-panel-${BARE}.tar.gz" \
+            "dist/cstk-panel-${BARE}.tar.gz.sha256"
 
       - name: Summary
         run: |
@@ -119,9 +150,12 @@ jobs:
             echo "- \`cstk-${BARE}.tar.gz\` ($(stat -c %s dist/cstk-${BARE}.tar.gz) bytes)"
             echo "- \`cstk-${BARE}.tar.gz.sha256\`"
             echo "- \`install.sh\` (bootstrap one-liner)"
+            echo "- \`cstk-panel-${BARE}.tar.gz\` ($(stat -c %s dist/cstk-panel-${BARE}.tar.gz) bytes)"
+            echo "- \`cstk-panel-${BARE}.tar.gz.sha256\`"
             echo ""
             echo "## SHA-256"
             echo '```'
             cat "dist/cstk-${BARE}.tar.gz.sha256"
+            cat "dist/cstk-panel-${BARE}.tar.gz.sha256"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

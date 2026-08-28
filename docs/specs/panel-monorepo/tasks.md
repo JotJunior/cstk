@@ -886,43 +886,76 @@ Ref: plan.md linha 215-216 (FR-010, FR-011); contracts/serve-asset-selection.md
 
 Ref: contracts/serve-asset-selection.md §4
 
-- [ ] 4.1.1 Adicionar passo em `.github/workflows/release.yml` executando
+- [x] 4.1.1 Adicionar passo em `.github/workflows/release.yml` executando
   `git archive --format=tar.gz --prefix="cstk-panel-${BARE}/" -o
   "dist/cstk-panel-${BARE}.tar.gz" HEAD:panel`
-- [ ] 4.1.2 Gerar o sha256 sibling:
+  — evidência: passo `Package panel distribution` adicionado em
+  `.github/workflows/release.yml` (após `Build release tarball`), comando
+  literal conforme a tarefa, `BARE="${{ steps.tag.outputs.bare }}"` (mesma
+  fonte já usada por `cstk-${BARE}.tar.gz`, sem duplicar derivação).
+- [x] 4.1.2 Gerar o sha256 sibling:
   `sha256sum "dist/cstk-panel-${BARE}.tar.gz" >
   "dist/cstk-panel-${BARE}.tar.gz.sha256"`
-- [ ] 4.1.3 Publicar os quatro artefatos na mesma release versionada:
+  — evidência: linha `sha256sum ... > ....sha256` no mesmo passo. Sonda
+  local (macOS, `shasum -a 256` equivalente ao `sha256sum` do runner
+  ubuntu-latest — mesmo formato `HASH  filename`):
+  `3afded2200d6de23aaca8420fee1649ea6423f216c0a23971958f81da8abb116  cstk-panel-9.9.9-probe.tar.gz`.
+- [x] 4.1.3 Publicar os quatro artefatos na mesma release versionada:
   `cstk-<bare>.tar.gz`, `.sha256`, `cstk-panel-<bare>.tar.gz`, `.sha256` (FR-011
   — mesmo processo de release, não pipeline separado)
-- [ ] 4.1.4 Estender o passo "Verify build artifacts" do workflow para
+  — evidência: `gh release create` (passo `Create GitHub Release`) agora
+  lista os 5 assets: `dist/cstk-${BARE}.tar.gz`,
+  `dist/cstk-${BARE}.tar.gz.sha256`, `cli/install.sh`,
+  `dist/cstk-panel-${BARE}.tar.gz`, `dist/cstk-panel-${BARE}.tar.gz.sha256` —
+  todos no mesmo job/step, mesma release, sem pipeline separado.
+- [x] 4.1.4 Estender o passo "Verify build artifacts" do workflow para
   também confirmar a presença e o nome exato dos dois artefatos do painel
+  — evidência: duas linhas `test -f "dist/cstk-panel-${BARE}.tar.gz" ||
+  ...` / `.sha256 || ...` adicionadas ao passo `Verify build artifacts`,
+  mesmo padrão fail-fast (`::error::` + `exit 1`) dos dois artefatos já
+  existentes; `ls -la` estendido para listar os 5 arquivos.
 
 ### 4.2 Estrutura exigida do pacote (FR-010) `[A]`
 
 Ref: contracts/serve-asset-selection.md §4 (tabela); serve.sh:488;
 serve-docker.sh:356
 
-- [ ] 4.2.1 Confirmar que `--prefix="cstk-panel-${BARE}/"` do `git archive`
+- [x] 4.2.1 Confirmar que `--prefix="cstk-panel-${BARE}/"` do `git archive`
   produz exatamente um diretório de topo (satisfaz `tar
   --strip-components 1` em `serve.sh:480`)
-- [ ] 4.2.2 Confirmar que `package.json` e `package-lock.json` do painel
+  — evidência (sonda local, `BARE=9.9.9-probe`, HEAD=`a4ec959` da branch
+  `feature/panel-monorepo`): `tar -tzf cstk-panel-9.9.9-probe.tar.gz | awk
+  -F/ '{print $1}' | sort -u | wc -l` => `1`.
+- [x] 4.2.2 Confirmar que `package.json` e `package-lock.json` do painel
   ficam na raiz da árvore extraída (herdados de `HEAD:panel`, sem passo
   adicional)
-- [ ] 4.2.3 (teste) Extrair localmente o tarball gerado pela FASE 4.1 e
+  — evidência: `tar -xzf cstk-panel-9.9.9-probe.tar.gz --strip-components 1
+  -C extracted` seguido de `test -f extracted/package.json && echo YES` =>
+  `YES`; `test -f extracted/package-lock.json && echo YES` => `YES`.
+- [x] 4.2.3 (teste) Extrair localmente o tarball gerado pela FASE 4.1 e
   confirmar via `tar -tzf` que ambos os arquivos aparecem imediatamente sob o
   único diretório de topo, sem passo de build adicional
+  — evidência: `ls -la extracted` lista `package.json` e
+  `package-lock.json` (junto de `apps/`, `packages/`, `docs/`, etc.)
+  diretamente sob a raiz da árvore extraída — nenhum passo de build rodou
+  entre o `git archive` e a extração.
 
 ### 4.3 Testes: tarball sem config de agente, um único diretório de topo `[A]`
 
 Ref: quickstart.md Cenário 16 (linhas 281-292); FASE 2.5 (`.gitattributes`)
 
-- [ ] 4.3.1 (teste) `tar -tzf dist/cstk-panel-<bare>.tar.gz | grep -c
+- [x] 4.3.1 (teste) `tar -tzf dist/cstk-panel-<bare>.tar.gz | grep -c
   '\.claude/'` — confirmar `0`
-- [ ] 4.3.2 (teste) `tar -tzf dist/cstk-panel-<bare>.tar.gz | grep -c
+  — evidência: `tar -tzf cstk-panel-9.9.9-probe.tar.gz | grep -c
+  '\.claude/'` => `0`.
+- [x] 4.3.2 (teste) `tar -tzf dist/cstk-panel-<bare>.tar.gz | grep -c
   '\.github/'` — confirmar `0`
-- [ ] 4.3.3 (teste) `tar -tzf dist/cstk-panel-<bare>.tar.gz | awk -F/
+  — evidência: `tar -tzf cstk-panel-9.9.9-probe.tar.gz | grep -c
+  '\.github/'` => `0`.
+- [x] 4.3.3 (teste) `tar -tzf dist/cstk-panel-<bare>.tar.gz | awk -F/
   '{print $1}' | sort -u | wc -l` — confirmar `1`
+  — evidência: mesmo comando de 4.2.1 => `1` (único diretório de topo
+  `cstk-panel-9.9.9-probe/`).
 
 ---
 
