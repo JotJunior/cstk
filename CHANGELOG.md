@@ -5,6 +5,58 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [9.5.0] - 2026-08-27
+
+O `cstk doctor` era cego para o escopo de PROJETO: definicoes instaladas em
+`.claude/agents/` e `.claude/commands/` do projeto-alvo nunca eram comparadas
+contra o catalogo, e o relatorio saia `[OK]` sobre o que jamais foi conferido.
+Foi assim que uma copia local do `agente-00c-feature-orchestrator` (sem
+nenhuma tool MCP) sombreou por semanas o orquestrador do catalogo com o
+doctor reportando saude. Alem do fix, esta release estabelece a **declaracao
+de cobertura** como formato da classe: quem afirma saude diz tambem o que
+consultou, quanto achou e quanto de fato leu.
+
+### Added
+
+- **Secao `Shadowed Scope` no `cstk doctor`.** Le os registros de instalacao
+  de escopo de projeto (`.claude/agents/.cstk-manifest` e
+  `.claude/commands/.cstk-manifest` do CWD) e compara cada definicao contra o
+  conteudo que o catalogo instalado tem HOJE — nao contra o hash que o proprio
+  manifesto capturou no dia da instalacao (FR-002). Quatro veredictos
+  distinguiveis: `shadowed` (divergente do catalogo), `shadow-current`
+  (identico), `unmanaged-upstream` (sem correspondente no catalogo atual —
+  removido/renomeado upstream, FR-010) e `indeterminate` (registro nao
+  interpretavel). Nenhum deles e contabilizado como saudavel por ausencia de
+  comparacao possivel.
+- **Declaracao de cobertura (FR-006/007/008/009).** Toda inspecao passa a
+  emitir quais fontes foram declaradas, quantas foram encontradas e quantas
+  foram lidas com sucesso, mais, por fonte, `registros no arquivo: N
+  interpretados: M nao interpretados: K` com o estado (`[absent]`,
+  `[partial]`). Fonte lida so em parte marca o escopo como `[PARCIAL]`;
+  ausencia total de manifesto sai como `[SEM-FONTE] ... nada foi comparado`,
+  nunca como sucesso.
+- **Nova lib `cli/lib/manifest-coverage.sh`** (`manifest_count_data_lines`,
+  `manifest_count_recognized`, `manifest_within_cap`, `detect_schema_version`)
+  e `tests/cstk/test_manifest-coverage.sh` (37 cenarios); `test_doctor.sh`
+  passa a 47 cenarios.
+
+### Fixed
+
+- **Falso `[OK]` sobre escopo nunca comparado.** Uma definicao de projeto
+  divergente do catalogo era reportada como saudavel; agora aparece como
+  `shadowed`. Copia local SEM registro de instalacao continua sendo conteudo
+  legitimo nao-gerenciado e NAO e reportada como problema (FR-004/FR-005) —
+  o objetivo e eliminar o falso relato de saude, nunca desencorajar a copia
+  local. A secao e report-only: nao gateia o exit do `doctor`.
+- **Numerador da cobertura nao mede mais o proprio parser.** O denominador
+  conta linhas de dados do arquivo (`manifest_count_data_lines`) e o
+  numerador e incrementado pelo laco que de fato classifica, uma vez por
+  veredito produzido — nunca por uma segunda passada de validacao com o mesmo
+  criterio, que daria 100% de cobertura por construcao (research.md D6,
+  vigente). Alterar o classificador muda o numerador por construcao, e os
+  testes que forcam divergencia entre os dois contadores stubam o
+  classificador, nao o validador (`tests/cstk/test_doctor.sh:905` e `:1128`).
+
 ## [9.4.0] - 2026-08-27
 
 Fecha quatro issues de "o dado esta ao alcance e o mecanismo nao o usa":
@@ -7483,6 +7535,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[9.5.0]: https://github.com/JotJunior/cstk/releases/tag/v9.5.0
 [9.4.0]: https://github.com/JotJunior/cstk/releases/tag/v9.4.0
 [9.3.0]: https://github.com/JotJunior/cstk/releases/tag/v9.3.0
 [9.2.3]: https://github.com/JotJunior/cstk/releases/tag/v9.2.3
