@@ -5,6 +5,51 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.34.0] - 2026-08-27
+
+### Corrigido
+
+- **O transcript de sessão exibia 5% de conteúdo útil.** Medido contra um
+  arquivo real de 636 linhas: 280 (44%) eram registros de *sidecar* do harness
+  — `attachment`, `mode`, `permission-mode`, `bridge-session`, `atis-latch`,
+  `last-prompt`, `pr-link`, `ai-title`, `file-history-snapshot` — que não são
+  conversa e renderizavam como linha vazia. Das 356 mensagens restantes, 324
+  também saíam vazias, porque só conteúdo `type: 'text'` contribuía. Sobravam
+  **34 linhas com conteúdo**.
+
+  O filtro de tipos é **allowlist** (`user`/`assistant`/`system`), nunca
+  denylist: `type` é conjunto aberto e cresce sem aviso, então cada tipo novo
+  de sidecar voltaria a poluir a tela sozinho. O que é descartado passa a ser
+  reportado em `filteredEntries` — sem isso, "12 entradas" esconderia 300
+  linhas filtradas.
+
+  No mesmo arquivo, agora: **319 linhas com conteúdo (48%)**.
+
+### Adicionado
+
+- **Chamadas de ferramenta no transcript.** `tool_use` vira entrada com o nome
+  da ferramenta e um resumo de uma linha do input — é o sinal mais informativo
+  sobre o que uma sessão está fazendo, e antes era descartado. `tool_result`
+  colapsa num marcador de tamanho, e o conteúdo do retorno **nunca sai do
+  servidor**: isso resolve a preocupação original com payload gigante sem
+  pagar o preço de esconder a chamada. `thinking` continua fora.
+
+  Texto tem precedência sobre chamada de ferramenta na mesma mensagem — o que
+  o agente **disse** informa mais que o que ele executou em seguida.
+
+  O resumo do `tool_use` é cortado em 240 B, e o corte acontece **depois** do
+  scrub de segredos: cortar antes poderia partir um segredo de um jeito que
+  ele escapasse das regras do redator.
+
+- Campos `kind` e `toolName` em `SessionTailEntryDTO`, e `filteredEntries` na
+  resposta do tail.
+
+### Alterado
+
+- O cabeçalho de cada linha deixa de repetir o papel quando ele é igual ao
+  tipo — a fonte grava `assistant`/`assistant` e `user`/`user`, e exibir os
+  dois só gastava espaço.
+
 ## [0.33.1] - 2026-08-27
 
 ### Corrigido
@@ -1451,6 +1496,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.34.0]: https://github.com/JotJunior/cstk-panel/compare/v0.33.1...v0.34.0
 [0.33.1]: https://github.com/JotJunior/cstk-panel/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/JotJunior/cstk-panel/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/JotJunior/cstk-panel/compare/v0.31.0...v0.32.0

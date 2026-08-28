@@ -758,4 +758,19 @@ export interface SessionTailEntryDTO {
    *  dangerouslySetInnerHTML. */
   text: string;
   textTruncated: boolean;
+  /**
+   * O que PRODUZIU `text`. Conjunto FECHADO — ao contrario de `type`, quem
+   * define este campo somos nos, nao o harness:
+   * - `text`       — o proprio texto da mensagem;
+   * - `tool_use`   — chamada de ferramenta; `text` traz um resumo de UMA linha
+   *                  do input (heuristica, ver session-tail.ts) e `toolName` o
+   *                  nome da ferramenta;
+   * - `tool_result`— retorno de ferramenta, colapsado num marcador de tamanho.
+   *
+   * Entradas cujo conteudo e SO `thinking` nao viram entrada alguma.
+   */
+  kind: 'text' | 'tool_use' | 'tool_result';
+  /** Nome da ferramenta quando `kind === 'tool_use'`; `null` nos demais.
+   *  `tool_result` nao carrega o nome no protocolo (so `tool_use_id`). */
+  toolName: string | null;
 }

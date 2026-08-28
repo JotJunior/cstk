@@ -67,6 +67,7 @@ const SessionTailDataSchema = z.object({
   requestedLines: z.number(),
   returnedLines: z.number(),
   skippedLines: z.number(),
+  filteredEntries: z.number(),
   truncatedByBytes: z.boolean(),
   windowTruncated: z.boolean(),
   live: z.boolean(),

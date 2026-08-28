@@ -141,11 +141,13 @@ describe('sessionTailQueryOptions().queryFn — parse do envelope real', () => {
       data: {
         sessionId: 's1',
         entries: [
-          { uuid: null, type: 'user', timestamp: null, role: null, text: 'oi', textTruncated: false },
+          { uuid: null, type: 'user', timestamp: null, role: null, text: 'oi', textTruncated: false,
+            kind: 'text', toolName: null },
         ],
         requestedLines: 200,
         returnedLines: 1,
         skippedLines: 0,
+        filteredEntries: 0,
         truncatedByBytes: false,
         windowTruncated: false,
         live: true,

@@ -121,6 +121,21 @@ arbitrariamente grande — o vetor natural de uma linha de megabytes) e
 confirmados no arquivo real (`text`, `thinking`, `tool_result`, `tool_use`); os
 itens `text` tem exatamente as chaves `["text","type"]`.
 
+> **SUPERADO na 0.34.0.** O adiamento acima ("nesta versao") foi medido contra
+> um transcript real e nao se sustentou: de 356 mensagens num arquivo de 636
+> linhas, **324 rendiam texto vazio** (137 `tool_use`, 137 `tool_result`, 48
+> `thinking`); somados os 280 registros de sidecar do harness, a tela exibia
+> **5% de conteudo util**.
+>
+> Comportamento vigente: `tool_use` vira entrada com `toolName` e um resumo de
+> UMA linha do input (heuristica sobre chaves conhecidas, teto de 240 B
+> aplicado DEPOIS do scrub); `tool_result` colapsa num marcador de tamanho e
+> seu conteudo **nunca** sai do servidor — o que resolve a preocupacao
+> original com payload gigante sem pagar o preco de esconder a chamada;
+> `thinking` continua fora, por decisao do operador. Mensagem sem nada a
+> exibir e DESCARTADA e contabilizada em `filteredEntries`, nunca renderizada
+> como linha vazia. Ver `SessionTailEntryDTO.kind`.
+
 ---
 
 ## Entity: SessionTailDTO

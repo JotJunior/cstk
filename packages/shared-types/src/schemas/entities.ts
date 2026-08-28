@@ -486,4 +486,7 @@ export const SessionTailEntryDTOSchema = z.object({
   role: z.string().nullable(),
   text: z.string(),
   textTruncated: z.boolean(),
+  // FECHADO de proposito: quem define `kind` e o painel, nao o harness.
+  kind: z.enum(['text', 'tool_use', 'tool_result']),
+  toolName: z.string().nullable(),
 });
