@@ -62,8 +62,118 @@ _SERVE_LOADED=1
 # shellcheck source=/dev/null
 . "${CSTK_LIB:?CSTK_LIB must be set}/trusted-hosts.sh"
 
-# URL da API do GitHub para consultar o release mais recente.
-_SERVE_GITHUB_API="https://api.github.com/repos/JotJunior/cstk-panel/releases/latest"
+# Repositorio de origem das releases do painel (panel-monorepo FR-012).
+# O painel deixou de ter repositorio proprio: passou a viver em `panel/` deste
+# mesmo repositorio e a ser publicado nas releases do cstk. `CSTK_PANEL_REPO`
+# existe para forks/ensaios e e paridade explicita com `CSTK_REPO` de
+# cli/install.sh:44 e cli/lib/self-update.sh — antes deste ponto o serve era o
+# unico dos tres com o repo hardcoded.
+#
+# Aceita SOMENTE `owner/repo`: o host permanece fixo em api.github.com por
+# construcao da string (FR-013), nunca configuravel. Ver
+# docs/specs/panel-monorepo/contracts/serve-asset-selection.md §1 e §7.
+_SERVE_PANEL_REPO_DEFAULT="JotJunior/cstk"
+
+# _serve_valid_repo_slug SLUG
+# Valida `owner/repo` contra ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$
+# em POSIX sh puro (sem grep -E: esta funcao roda no caminho quente do serve).
+# Rejeita `..`, `@`, `%`, espaco, barra a mais/a menos e vazio.
+# exit 0 = valido; exit 1 = invalido (silencioso; o caller emite a mensagem).
+_serve_valid_repo_slug() {
+  _svrs_v="$1"
+  # Exatamente uma barra, e nao no fim.
+  case "$_svrs_v" in
+    */*/*|*/) return 1 ;;
+    */*) : ;;
+    *) return 1 ;;
+  esac
+  _svrs_owner="${_svrs_v%%/*}"
+  _svrs_repo="${_svrs_v#*/}"
+  [ -n "$_svrs_owner" ] || return 1
+  [ -n "$_svrs_repo" ] || return 1
+  # Primeiro caractere de cada parte MUST ser alfanumerico (barra `..` fora).
+  case "$_svrs_owner" in [A-Za-z0-9]*) : ;; *) return 1 ;; esac
+  case "$_svrs_repo" in [A-Za-z0-9]*) : ;; *) return 1 ;; esac
+  # Conjunto de caracteres permitido no restante: [A-Za-z0-9._-].
+  case "$_svrs_owner$_svrs_repo" in
+    *[!A-Za-z0-9._-]*) return 1 ;;
+  esac
+  return 0
+}
+
+# _serve_panel_api_url [quiet]
+# Ecoa a URL da API de release mais recente do repositorio efetivo do painel.
+# Fail-closed (exit 1, stderr) quando CSTK_PANEL_REPO esta definido e fora do
+# formato: cair silenciosamente no default mascararia configuracao errada
+# (contrato §7.1). Valor nao-default e evento AUDITAVEL, nao preferencia
+# silenciosa: emite aviso em stderr + linha no enforcement-log (§7.3).
+#
+# `quiet` suprime SO o anuncio (§7.3) -- nunca a validacao (§7.1) nem a
+# allowlist (§7.2). Existe porque os dois call sites rodam na MESMA execucao
+# de `--update` e o contrato pede UMA linha de auditoria, nao uma por chamada:
+# _serve_latest_tag (best-effort, silencioso por contrato) passa `quiet`, e
+# _serve_download_verify_extract -- o caminho que de fato BAIXA o pacote da
+# origem sobrescrita, que e quando a proveniencia importa -- anuncia.
+# Um guard por variavel NAO serviria aqui: ambos os call sites consomem esta
+# funcao via $(...), e a atribuicao morreria no subshell.
+_serve_panel_api_url() {
+  _spau_quiet="${1:-}"
+  _spau_repo="${CSTK_PANEL_REPO:-}"
+  if [ -n "$_spau_repo" ]; then
+    if ! _serve_valid_repo_slug "$_spau_repo"; then
+      printf 'cstk serve: erro: CSTK_PANEL_REPO invalido: %s\n' "$_spau_repo" >&2
+      printf 'cstk serve: formato esperado: owner/repo (ex.: %s); apenas [A-Za-z0-9._-], sem barra extra\n' \
+        "$_SERVE_PANEL_REPO_DEFAULT" >&2
+      printf 'cstk serve: corrija ou remova CSTK_PANEL_REPO do ambiente -- o default NAO e aplicado silenciosamente\n' >&2
+      return 1
+    fi
+  else
+    _spau_repo="$_SERVE_PANEL_REPO_DEFAULT"
+  fi
+
+  _spau_url="https://api.github.com/repos/${_spau_repo}/releases/latest"
+
+  # §7.2: a URL composta passa pela MESMA allowlist antes do primeiro request,
+  # nao so as URLs de asset. Redundante hoje (host literal na string) e defesa
+  # em profundidade contra refatoracao futura.
+  if ! _serve_check_host_allowlist "$_spau_url"; then
+    return 1
+  fi
+
+  if [ "$_spau_repo" != "$_SERVE_PANEL_REPO_DEFAULT" ] && [ "$_spau_quiet" != "quiet" ]; then
+    printf 'cstk serve: AVISO -- origem do painel sobrescrita via CSTK_PANEL_REPO=%s (default: %s)\n' \
+      "$_spau_repo" "$_SERVE_PANEL_REPO_DEFAULT" >&2
+    _serve_write_integrity_log "panel-repo-override" "$_spau_url" "" "" ""
+  fi
+
+  printf '%s' "$_spau_url"
+  return 0
+}
+
+# _serve_valid_bare_tag BARE
+# Invariante I5 do contrato §3.2: `tag_name` vem da resposta da API (entrada
+# nao confiavel) e vira DOIS nomes de caminho -- o asset esperado (§3.2) e o
+# diretorio de topo exigido do tarball (§8.3). Logo a forma e validada ANTES
+# de qualquer derivacao: ^[0-9A-Za-z][0-9A-Za-z.+-]*$.
+# exit 0 = valido; exit 1 = invalido (silencioso; o caller emite a mensagem).
+_serve_valid_bare_tag() {
+  _svbt_v="$1"
+  [ -n "$_svbt_v" ] || return 1
+  case "$_svbt_v" in [0-9A-Za-z]*) : ;; *) return 1 ;; esac
+  case "$_svbt_v" in *[!0-9A-Za-z.+-]*) return 1 ;; esac
+  return 0
+}
+
+# _serve_asset_basename URL
+# Ecoa o basename da URL apos remover `#fragment` e `?query` (invariante I2).
+# A comparacao de §3.2(a) e sobre ESTE valor, nunca sobre a URL inteira.
+_serve_asset_basename() {
+  _sab_v="$1"
+  _sab_v="${_sab_v%%#*}"
+  _sab_v="${_sab_v%%\?*}"
+  _sab_v="${_sab_v##*/}"
+  printf '%s' "$_sab_v"
+}
 
 # _serve_check_host_allowlist URL
 # Wrapper fino sobre trusted_host_check (cli/lib/trusted-hosts.sh). Mantido
@@ -182,8 +292,9 @@ _serve_node_preflight() {
 _serve_latest_tag() {
   # shellcheck source=/dev/null
   . "${CSTK_LIB}/http.sh"
+  _slt_api=$(_serve_panel_api_url quiet) || return 1
   _slt_tmp=$(mktemp -d 2>/dev/null) || return 1
-  if ! http_download "$_SERVE_GITHUB_API" "$_slt_tmp/release.json" 2>/dev/null; then
+  if ! http_download "$_slt_api" "$_slt_tmp/release.json" 2>/dev/null; then
     rm -rf -- "$_slt_tmp"
     return 1
   fi
@@ -234,7 +345,11 @@ _serve_json_escape() {
 # <cwd>/.claude/enforcement-log.jsonl usado por pretooluse-bash-guard.sh
 # (contract enforcement-log.md; data-model.md::IntegrityVerificationOutcome).
 # OUTCOME esperado: unverifiable-blocked | unverifiable-bypassed |
-# mismatch-blocked. NUNCA chamar para "verified" (task 3.3.3 — sucesso
+# mismatch-blocked | wrong-payload-blocked | panel-repo-override (os dois
+# ultimos de panel-monorepo, contrato serve-asset-selection.md §5 e §7.3; o
+# consumidor pretooluse-bash-guard.sh filtra por `source`, sem validar enum
+# fechado, entao acrescentar valor e retrocompativel).
+# NUNCA chamar para "verified" (task 3.3.3 — sucesso
 # silencioso, sem linha; o caso feliz ja e coberto pelo printf informativo).
 # EXPECTED/ACTUAL/BYPASS_METHOD: "" quando nao aplicavel -> vira `null` no
 # JSON emitido (data-model.md: expected_sha256/actual_sha256/bypass_method
@@ -278,6 +393,81 @@ _serve_write_integrity_log() {
   mkdir -p "$_swl_dir" 2>/dev/null || :
   printf '%s\n' "$_swl_line" >>"$_swl_dir/enforcement-log.jsonl" 2>/dev/null \
     || printf 'cstk serve: aviso: falha ao gravar enforcement-log.jsonl\n' >&2
+  return 0
+}
+
+# _serve_validate_tarball_members ARCHIVE EXPECTED_TOPDIR
+# Validacao PRE-extracao (contrato §8). Roda apos o checksum e ANTES de
+# `tar -x`: checar `package.json` so depois de extrair tem dois defeitos --
+# (i) `package.json` presente nao significa "e o painel" (qualquer tarball
+# npm passa) e (ii) quando a checagem roda, a arvore hostil JA foi escrita
+# em disco.
+#
+# EXPECTED_TOPDIR = "" desliga SOMENTE a exigencia de nome do diretorio de
+# topo (§8.3), preservando §8.2. Usado no fallback ao auto-tarball da API,
+# cujo diretorio de topo e `<owner>-<repo>-<sha>/` -- nome que a API escolhe,
+# nao derivavel da tag. As checagens estruturais de §8.2 valem em TODO
+# caminho de extracao.
+#
+# Ordem: §8.2 (caminho absoluto, `..`, symlink/hardlink/device) roda ANTES de
+# §8.3, para rejeitar `..`/caminho-absoluto antes de `<bare>` entrar em
+# comparacao de caminho.
+#
+# exit 0 = aceito; exit 1 = rejeitado (motivo em stderr, no formato
+# `cstk serve: erro: ...`). O caller e quem grava wrong-payload-blocked.
+_serve_validate_tarball_members() {
+  _svtm_archive="$1"
+  _svtm_expect="$2"
+
+  _svtm_names=$(tar -tzf "$_svtm_archive" 2>/dev/null) || {
+    printf 'cstk serve: erro: nao foi possivel listar os membros do tarball (arquivo corrompido)\n' >&2
+    return 1
+  }
+  if [ -z "$_svtm_names" ]; then
+    printf 'cstk serve: erro: tarball sem membros (pacote vazio)\n' >&2
+    return 1
+  fi
+
+  # §8.2a -- caminho absoluto ou componente `..` em qualquer membro.
+  _svtm_bad=$(printf '%s\n' "$_svtm_names" | awk '
+    /^\// { print "absoluto: " $0; exit }
+    /(^|\/)\.\.(\/|$)/ { print "componente ..: " $0; exit }
+  ')
+  if [ -n "$_svtm_bad" ]; then
+    printf 'cstk serve: erro: tarball contem caminho inseguro (%s)\n' "$_svtm_bad" >&2
+    return 1
+  fi
+
+  # §8.2b -- tipos de entrada. Aceitos SOMENTE `-` (arquivo regular) e `d`
+  # (diretorio); `l` symlink, `h` hardlink, `c`/`b` device, `p` fifo, `s`
+  # socket sao rejeitados. A coluna de tipo e o 1o caractere de cada linha de
+  # `tar -tv`, formato comum a bsdtar e GNU tar (verificado empiricamente em
+  # bsdtar 3.5.3/libarchive 3.7.4). O NOME nao e parseado daqui (a linha traz
+  # ` -> alvo` / ` link to alvo`); nomes vem de `tar -tzf`, acima.
+  _svtm_type=$(tar -tvzf "$_svtm_archive" 2>/dev/null | awk '
+    { t = substr($0, 1, 1) }
+    t != "-" && t != "d" { print t; exit }
+  ')
+  if [ -n "$_svtm_type" ]; then
+    printf 'cstk serve: erro: tarball contem entrada de tipo nao permitido (%s -- symlink/hardlink/device)\n' \
+      "$_svtm_type" >&2
+    return 1
+  fi
+
+  # §8.3 -- um unico diretorio de topo, com o nome exato exigido.
+  _svtm_tops=$(printf '%s\n' "$_svtm_names" | sed 's|/.*||' | sort -u | sed '/^$/d')
+  _svtm_ntops=$(printf '%s\n' "$_svtm_tops" | wc -l | tr -d ' ')
+  if [ "${_svtm_ntops:-0}" != "1" ]; then
+    printf 'cstk serve: erro: tarball tem %s diretorios de topo; esperado exatamente 1\n' \
+      "${_svtm_ntops:-0}" >&2
+    return 1
+  fi
+  if [ -n "$_svtm_expect" ] && [ "$_svtm_tops" != "$_svtm_expect" ]; then
+    printf 'cstk serve: erro: diretorio de topo do tarball e "%s"; esperado "%s"\n' \
+      "$_svtm_tops" "$_svtm_expect" >&2
+    return 1
+  fi
+
   return 0
 }
 
@@ -342,9 +532,15 @@ _serve_download_verify_extract() {
 
   printf 'cstk serve: consultando GitHub para release mais recente...\n'
 
-  # Consulta API GitHub (CHK-R26: falha HTTP -> exit 1)
+  # Consulta API GitHub (CHK-R26: falha HTTP -> exit 1). A URL vem de
+  # _serve_panel_api_url: CSTK_PANEL_REPO validado fail-closed + allowlist de
+  # host aplicada ANTES do primeiro request (contrato §7).
+  _sdve_api_url=$(_serve_panel_api_url) || {
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  }
   _sdve_api_file="$_sdve_tmp/release.json"
-  if ! http_download "$_SERVE_GITHUB_API" "$_sdve_api_file"; then
+  if ! http_download "$_sdve_api_url" "$_sdve_api_file"; then
     printf 'cstk serve: erro: falha ao consultar API do GitHub\n' >&2
     rm -rf -- "$_sdve_tmp"
     return 1
@@ -378,24 +574,67 @@ _serve_download_verify_extract() {
   # Fonte verificavel preferida (fecha o gap do research.md D2): o
   # auto-tarball da API nao tem como ter `.sha256` publicado; um par de
   # assets `<nome>.tar.gz` + `<nome>.tar.gz.sha256` na release e a UNICA
-  # fonte capaz de outcome `verified`. Selecao: primeiro asset `.tar.gz`
-  # (ordem da API) cujo sibling EXATO `.sha256` tambem exista na MESMA
-  # release; sem par completo, fallback ao auto-tarball (comportamento
-  # anterior, fail-closed intacto). Pareamento por igualdade de string
-  # completa (lookup associativo do awk), nunca substring — mesma
-  # disciplina anti-spoofing de trusted-hosts.sh.
-  _sdve_assets=$(grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' "$_sdve_api_file" \
-    | sed 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-  _sdve_asset_pkg=$(printf '%s\n' "$_sdve_assets" | awk '
-    { seen[$0] = 1; url[NR] = $0 }
-    END {
-      for (i = 1; i <= NR; i++)
-        if (url[i] ~ /\.tar\.gz$/ && (url[i] ".sha256") in seen) { print url[i]; exit }
-    }')
+  # fonte capaz de outcome `verified`.
+  #
+  # Selecao NAME-BOUND (panel-monorepo FR-008; contrato §3.2). A regra
+  # anterior era POSICIONAL -- "primeiro asset .tar.gz com sibling .sha256"
+  # -- e quebrou quando o painel passou a ser publicado nas releases do
+  # proprio cstk, que ja carregam `cstk-<bare>.tar.gz` + `.sha256`: o awk
+  # escolhia o tarball do TOOLKIT, o checksum CONFERIA (o par esta correto,
+  # so e o pacote errado), o outcome virava `verified` -- que por desenho
+  # NAO grava no enforcement-log -- e a falha so aparecia depois, em
+  # "package.json ausente apos extracao". Carimbo de integridade sobre o
+  # pacote errado, sem rastro.
+  #
+  #   EXPECTED = "cstk-panel-" + bare(tag_name) + ".tar.gz"
+  #   (a) basename(URL), sem ?query/#fragment, IGUAL a EXPECTED   [I1, I2]
+  #   (b) URL + ".sha256" existe na MESMA release (igualdade de string)
+  #
+  # I1: igualdade, NUNCA prefixo/substring -- `cstk-` e prefixo proprio de
+  # `cstk-panel-`, e `cstk-panel-` e prefixo de `cstk-panel-docs-`; relaxar
+  # para prefixo reabre a confusao de asset por outra porta.
+  # I3: sem candidato satisfazendo (a)+(b), fallback ao auto-tarball --
+  # NUNCA selecionar outro asset. "Nao achei o do painel" jamais vira
+  # "entao levo esse outro".
+  # I4: como EXPECTED deriva da tag, o nome fica vinculado a VERSAO da
+  # release: asset de painel de outra versao na mesma release nao casa.
+  _sdve_bare="${_sdve_tag#v}"
+  _sdve_asset_pkg=""
+  _sdve_is_panel_asset=0
+
+  # I5: `tag_name` vem da API (entrada nao confiavel) e vira nome de caminho
+  # em DOIS lugares (EXPECTED aqui, diretorio de topo em §8.3). Forma
+  # validada ANTES de qualquer derivacao; fora do formato = fail-closed para
+  # o auto-tarball, com linha em stderr.
+  if ! _serve_valid_bare_tag "$_sdve_bare"; then
+    printf 'cstk serve: aviso: tag_name da release ("%s") fora do formato esperado; ignorando assets e usando o tarball da API\n' \
+      "$_sdve_tag" >&2
+  else
+    _sdve_expected_asset="cstk-panel-${_sdve_bare}.tar.gz"
+    _sdve_assets=$(grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' "$_sdve_api_file" \
+      | sed 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    _sdve_asset_pkg=$(printf '%s\n' "$_sdve_assets" \
+      | awk -v want="$_sdve_expected_asset" '
+      { seen[$0] = 1; url[NR] = $0 }
+      END {
+        for (i = 1; i <= NR; i++) {
+          u = url[i]
+          b = u
+          sub(/#.*$/, "", b)
+          sub(/\?.*$/, "", b)
+          sub(/^.*\//, "", b)
+          # I2: basename com `%` e rejeitado, para nao casar via
+          # percent-encoding.
+          if (index(b, "%") > 0) continue
+          if (b == want && ((u ".sha256") in seen)) { print u; exit }
+        }
+      }')
+  fi
 
   if [ -n "$_sdve_asset_pkg" ]; then
     _sdve_pkg_url="$_sdve_asset_pkg"
     _sdve_sha256_url="${_sdve_asset_pkg}.sha256"
+    _sdve_is_panel_asset=1
     printf 'cstk serve: release publica asset verificavel; baixando %s\n' "$_sdve_pkg_url"
   else
     _sdve_pkg_url="$_sdve_tarball"
@@ -472,20 +711,55 @@ _serve_download_verify_extract() {
     fi
   fi
 
+  # Validacao PRE-extracao (contrato §8; FR-009). O checksum ja conferiu --
+  # e conferir o checksum prova apenas que o pacote e o que o publicador
+  # assinou, NUNCA que e o painel. Rejeitar ANTES de escrever a arvore em
+  # disco. O nome do diretorio de topo so e exigido quando a fonte e o asset
+  # name-bound: o auto-tarball da API tem topo `<owner>-<repo>-<sha>/`, que
+  # nao deriva da tag (§8.3 nao se aplica a ele; §8.2 sim).
+  if [ "$_sdve_is_panel_asset" = "1" ]; then
+    _sdve_expect_top="cstk-panel-${_sdve_bare}"
+  else
+    _sdve_expect_top=""
+  fi
+  if ! _serve_validate_tarball_members "$_sdve_archive" "$_sdve_expect_top"; then
+    # Linha DISTINTA em stderr alem do motivo ja emitido pelo validador: o
+    # enforcement-log e best-effort e escreve em $(pwd)/.claude, entao um
+    # bloqueio de seguranca nunca pode depender so dele (§8, nota final).
+    printf 'cstk serve: erro: pacote baixado rejeitado antes da extracao (payload nao e o painel); nada foi escrito em disco\n' >&2
+    # expected/actual sao iguais e nao-nulos quando o checksum conferiu --
+    # e precisamente essa igualdade que documenta o ponto de FR-009: o
+    # checksum conferiu e ainda assim o pacote estava errado. No caminho de
+    # bypass explicito nao houve verificacao, e ambos ficam null (honesto).
+    _serve_write_integrity_log "wrong-payload-blocked" "$_sdve_pkg_url" \
+      "$_sdve_expected" "$_sdve_actual" ""
+    rm -rf -- "$_sdve_tmp"
+    return 1
+  fi
+
   # Extracao com strip-components=1 -- direto em DEST_DIR (do caller), SEMPRE
   # limpo antes (garante arvore fresca mesmo se DEST_DIR ja existia de uma
   # execucao anterior, ex.: cache do modo alternativo entre invocacoes).
+  # --no-same-owner/--no-same-permissions: nao honrar uid/gid nem setuid/
+  # setgid vindos do arquivo (§8.4).
   rm -rf -- "$_sdve_dest"
   mkdir -p "$_sdve_dest"
-  if ! tar -xzf "$_sdve_archive" --strip-components 1 -C "$_sdve_dest" 2>/dev/null; then
+  if ! tar -xzf "$_sdve_archive" --strip-components 1 \
+       --no-same-owner --no-same-permissions -C "$_sdve_dest" 2>/dev/null; then
     printf 'cstk serve: erro: falha ao extrair tarball (arquivo corrompido ou sem espaco em disco)\n' >&2
     rm -rf -- "$_sdve_tmp"
     return 1
   fi
 
-  # Verificar que package.json existe apos extracao
+  # Backstop pos-extracao (§8.5): package.json na raiz extraida. Deixou de
+  # ser a UNICA deteccao -- o outcome wrong-payload-blocked cobre os dois
+  # pontos.
   if [ ! -f "$_sdve_dest/package.json" ]; then
     printf 'cstk serve: erro: package.json ausente apos extracao (estrutura de tarball inesperada)\n' >&2
+    printf 'cstk serve: erro: pacote baixado rejeitado (payload nao e o painel)\n' >&2
+    _serve_write_integrity_log "wrong-payload-blocked" "$_sdve_pkg_url" \
+      "$_sdve_expected" "$_sdve_actual" ""
+    rm -rf -- "$_sdve_dest"
     rm -rf -- "$_sdve_tmp"
     return 1
   fi

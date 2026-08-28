@@ -1682,7 +1682,18 @@ scenario_docker_flag_host_nao_loopback_aviso_ainda_aplica() {
 _stub_curl_release_assets() {
   _scra_bin="$1"
   _scra_mode="$2"
-  _scra_tarball="$SERVE_FIXTURE_DIR/panel-fixture.tar.gz"
+  # Fixture do caminho de ASSET: diretorio de topo `cstk-panel-<bare>/`,
+  # exatamente o que o produtor real emite
+  # (`git archive --prefix="cstk-panel-${BARE}/"`, contrato §4) e o que a
+  # validacao pre-extracao §8.3 exige. O fixture em disco
+  # (panel-fixture.tar.gz) tem topo `cstk-panel-v0.0.1/` -- com o `v` -- e
+  # continua servindo o caminho de AUTO-TARBALL, onde §8.3 nao se aplica
+  # (o topo do auto-tarball e `<owner>-<repo>-<sha>/`, escolhido pela API).
+  # Essa diferenca deliberada e o que prova que o check de topo esta escopado
+  # ao asset name-bound: se vazasse para o fallback, os scenarios de
+  # auto-tarball quebrariam.
+  _scra_tarball="$TMPDIR_TEST/asset-panel-0.0.1.tar.gz"
+  _serve_make_tarball "$_scra_tarball" "cstk-panel-0.0.1" panel
   _scra_sha256=$(_serve_fixture_sha256 "$_scra_tarball")
 
   _scra_asset_base="https://github.com/JotJunior/cstk-panel/releases/download/v0.0.1/cstk-panel-0.0.1.tar.gz"
@@ -2288,6 +2299,697 @@ STUB
       return 1
     fi
   done
+}
+
+# ---------------------------------------------------------------------------
+# panel-monorepo FASE 3 — selecao NAME-BOUND do asset do painel + validacao
+# pre-extracao + CSTK_PANEL_REPO.
+#
+# O defeito que estes cenarios provam: as releases do cstk ja publicam
+# `cstk-<bare>.tar.gz` + `.sha256`. A selecao POSICIONAL anterior ("primeiro
+# .tar.gz com sibling .sha256") escolhia o tarball do TOOLKIT, o checksum
+# CONFERIA (o par esta correto, so e o pacote errado), o outcome virava
+# `verified` -- que por desenho NAO grava no enforcement-log -- e a falha so
+# aparecia depois, em "package.json ausente apos extracao". Carimbo de
+# integridade sobre o pacote errado, sem rastro.
+#
+# O cenario decisivo e `both-pairs` (par do toolkit listado ANTES do par do
+# painel): e o unico em que a implementacao antiga e a nova divergem no asset
+# escolhido. Ordem invertida e essencial -- com o painel primeiro, o codigo
+# antigo tambem passaria e o teste nao provaria nada.
+# ---------------------------------------------------------------------------
+
+# _serve_make_tarball DEST TOPDIR MODE
+# Gera um tarball .tar.gz em DEST com um unico diretorio de topo TOPDIR.
+# Sempre acima de 1024 bytes (CHK-R23 rejeita tarball menor antes de qualquer
+# verificacao de integridade).
+# MODE:
+#   panel      TOPDIR/package.json + padding            (pacote bem-formado)
+#   nopkg      idem, SEM package.json                   (Cenario 4: wrong-payload)
+#   symlink    idem panel + symlink para fora da arvore (§8.2b)
+#   hardlink   idem panel + hardlink                    (§8.2b)
+#   twotops    dois diretorios de topo                  (§8.3)
+#   traversal  membros com componente `..`              (§8.2a; exige tar -P)
+#   abs        membro com caminho absoluto              (§8.2a; exige tar -P)
+_serve_make_tarball() {
+  _smt_dest="$1"
+  _smt_top="$2"
+  _smt_mode="${3:-panel}"
+  _smt_work=$(mktemp -d "$TMPDIR_TEST/mk.XXXXXX") || return 1
+  mkdir -p "$_smt_work/$_smt_top"
+  # Padding: garante > 1024 bytes mesmo depois do gzip.
+  awk 'BEGIN { for (i = 0; i < 400; i++)
+    print "linha-de-padding-" i "-para-o-tarball-passar-do-minimo-de-1024-bytes" }' \
+    > "$_smt_work/$_smt_top/data.txt"
+  if [ "$_smt_mode" != "nopkg" ]; then
+    printf '{"name":"cstk-panel","version":"9.9.9","workspaces":["apps/*"]}\n' \
+      > "$_smt_work/$_smt_top/package.json"
+  fi
+  (
+    cd "$_smt_work" || exit 1
+    case "$_smt_mode" in
+      symlink)
+        ln -s /etc/passwd "$_smt_top/link-para-fora"
+        tar -czf "$_smt_dest" "$_smt_top"
+        ;;
+      hardlink)
+        ln "$_smt_top/data.txt" "$_smt_top/data-hardlink.txt"
+        tar -czf "$_smt_dest" "$_smt_top"
+        ;;
+      twotops)
+        mkdir -p outro-topo
+        printf 'x\n' > outro-topo/f
+        tar -czf "$_smt_dest" "$_smt_top" outro-topo
+        ;;
+      traversal)
+        # -P e obrigatorio: sem ele o tar normaliza `..` na criacao e o
+        # fixture sairia inofensivo (fixture que codifica o bug e sai verde).
+        mkdir -p inner
+        ( cd inner && tar -czPf "$_smt_dest" "../$_smt_top" )
+        ;;
+      abs)
+        tar -czPf "$_smt_dest" /etc/hosts "$_smt_top"
+        ;;
+      *)
+        tar -czf "$_smt_dest" "$_smt_top"
+        ;;
+    esac
+  ) || return 1
+  [ -s "$_smt_dest" ]
+}
+
+# _stub_curl_asset_matrix BIN_DIR MODE
+# Stub de curl para a matriz de decisao de
+# docs/specs/panel-monorepo/contracts/serve-asset-selection.md §3.3, na tag
+# v9.9.9. Loga toda URL requisitada em $TMPDIR_TEST/curl-urls.log, que e como
+# se asserta QUAL asset foi de fato baixado.
+#
+# Cada `.tar.gz` servido tem o SEU proprio `.sha256` correto: nenhum cenario
+# aqui falha por mismatch: o ponto e provar QUAL asset e escolhido, nunca
+# mascarar a escolha errada atras de um checksum quebrado.
+# O `.sha256` do AUTO-TARBALL sempre 404a (estado real do endpoint da API).
+#
+# MODE:
+#   both-pairs              par do TOOLKIT primeiro, depois o do painel
+#   both-pairs-panel-first  par do painel primeiro, depois o do toolkit
+#   toolkit-only            so o par `cstk-*`
+#   docs-decoy              so o par `cstk-panel-docs-*`
+#   docs-decoy-then-panel   decoy `cstk-panel-docs-*` antes do par do painel
+#   other-version           par `cstk-panel-8.8.8` numa release v9.9.9 (I4)
+#   bad-tag                 tag_name malformada + par do painel valido (I5)
+#   wrong-payload           par do painel, checksum confere, payload sem package.json
+#   hostile-symlink         par do painel, checksum confere, payload com symlink
+_stub_curl_asset_matrix() {
+  _scam_bin="$1"
+  _scam_mode="$2"
+  _scam_dl="https://github.com/JotJunior/cstk/releases/download/v9.9.9"
+
+  # Tarballs distintos por asset: se o asset errado for baixado, o conteudo
+  # extraido tambem e outro -- a asserção nao depende so do log de URLs.
+  _scam_panel="$TMPDIR_TEST/am-panel.tar.gz"
+  _scam_toolkit="$TMPDIR_TEST/am-toolkit.tar.gz"
+  _scam_auto="$TMPDIR_TEST/am-auto.tar.gz"
+  case "$_scam_mode" in
+    wrong-payload)   _serve_make_tarball "$_scam_panel" "cstk-panel-9.9.9" nopkg ;;
+    hostile-symlink) _serve_make_tarball "$_scam_panel" "cstk-panel-9.9.9" symlink ;;
+    *)               _serve_make_tarball "$_scam_panel" "cstk-panel-9.9.9" panel ;;
+  esac
+  # Topo `cstk-9.9.9/` = o pacote do TOOLKIT, nao o do painel.
+  _serve_make_tarball "$_scam_toolkit" "cstk-9.9.9" panel
+  # Topo do auto-tarball da API: `<owner>-<repo>-<sha>/`, nome que a API
+  # escolhe e que NAO deriva da tag -- por isso §8.3 nao se aplica a ele.
+  _serve_make_tarball "$_scam_auto" "JotJunior-cstk-a1b2c3d" panel
+
+  _scam_panel_sha=$(_serve_fixture_sha256 "$_scam_panel")
+  _scam_toolkit_sha=$(_serve_fixture_sha256 "$_scam_toolkit")
+
+  _scam_tag="v9.9.9"
+  _scam_pair_panel="{\"name\":\"cstk-panel-9.9.9.tar.gz\",\"browser_download_url\":\"${_scam_dl}/cstk-panel-9.9.9.tar.gz\"},{\"name\":\"cstk-panel-9.9.9.tar.gz.sha256\",\"browser_download_url\":\"${_scam_dl}/cstk-panel-9.9.9.tar.gz.sha256\"}"
+  _scam_pair_toolkit="{\"name\":\"cstk-9.9.9.tar.gz\",\"browser_download_url\":\"${_scam_dl}/cstk-9.9.9.tar.gz\"},{\"name\":\"cstk-9.9.9.tar.gz.sha256\",\"browser_download_url\":\"${_scam_dl}/cstk-9.9.9.tar.gz.sha256\"}"
+  _scam_pair_docs="{\"name\":\"cstk-panel-docs-9.9.9.tar.gz\",\"browser_download_url\":\"${_scam_dl}/cstk-panel-docs-9.9.9.tar.gz\"},{\"name\":\"cstk-panel-docs-9.9.9.tar.gz.sha256\",\"browser_download_url\":\"${_scam_dl}/cstk-panel-docs-9.9.9.tar.gz.sha256\"}"
+  _scam_pair_other="{\"name\":\"cstk-panel-8.8.8.tar.gz\",\"browser_download_url\":\"${_scam_dl}/cstk-panel-8.8.8.tar.gz\"},{\"name\":\"cstk-panel-8.8.8.tar.gz.sha256\",\"browser_download_url\":\"${_scam_dl}/cstk-panel-8.8.8.tar.gz.sha256\"}"
+
+  case "$_scam_mode" in
+    both-pairs)             _scam_assets="${_scam_pair_toolkit},${_scam_pair_panel}" ;;
+    both-pairs-panel-first) _scam_assets="${_scam_pair_panel},${_scam_pair_toolkit}" ;;
+    toolkit-only)           _scam_assets="${_scam_pair_toolkit}" ;;
+    docs-decoy)             _scam_assets="${_scam_pair_docs}" ;;
+    docs-decoy-then-panel)  _scam_assets="${_scam_pair_docs},${_scam_pair_panel}" ;;
+    other-version)          _scam_assets="${_scam_pair_other}" ;;
+    bad-tag)
+      _scam_assets="${_scam_pair_panel}"
+      # `..` e `/` fora do formato ^[0-9A-Za-z][0-9A-Za-z.+-]*$ exigido por I5.
+      _scam_tag="v9.9.9/../../etc"
+      ;;
+    *)                      _scam_assets="${_scam_pair_panel}" ;;
+  esac
+
+  cat > "$_scam_bin/curl" <<STUB
+#!/bin/sh
+_url=""
+_output=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    -o) shift; _output="\$1" ;;
+    --) shift; _url="\$1" ;;
+    https://*|http://*) _url="\$1" ;;
+    *) ;;
+  esac
+  shift
+done
+printf '%s\n' "\$_url" >> "$TMPDIR_TEST/curl-urls.log"
+_emit_file() {
+  if [ -n "\$_output" ]; then cp "\$1" "\$_output"; else cat "\$1"; fi
+}
+_emit_text() {
+  if [ -n "\$_output" ]; then printf '%s\n' "\$1" > "\$_output"; else printf '%s\n' "\$1"; fi
+}
+case "\$_url" in
+  *releases/latest*)
+    _emit_text '{"tag_name":"${_scam_tag}","tarball_url":"https://github.com/JotJunior/cstk/archive/v9.9.9.tar.gz","prerelease":false,"draft":false,"assets":[${_scam_assets}]}'
+    ;;
+  */cstk-panel-9.9.9.tar.gz.sha256)
+    _emit_text '${_scam_panel_sha}  cstk-panel-9.9.9.tar.gz'
+    ;;
+  */cstk-9.9.9.tar.gz.sha256)
+    _emit_text '${_scam_toolkit_sha}  cstk-9.9.9.tar.gz'
+    ;;
+  */cstk-panel-docs-9.9.9.tar.gz.sha256|*/cstk-panel-8.8.8.tar.gz.sha256)
+    # Assets-chamariz: par completo e checksum coerente. Se a selecao os
+    # escolhesse, o serve instalaria sem reclamar -- e por isso que a
+    # rejeicao precisa vir do NOME, nao da integridade.
+    _emit_text '${_scam_panel_sha}  chamariz.tar.gz'
+    ;;
+  *.sha256)
+    # .sha256 do AUTO-TARBALL da API: nunca existe -> 404
+    exit 1
+    ;;
+  */cstk-panel-9.9.9.tar.gz)
+    _emit_file "${_scam_panel}"
+    ;;
+  */cstk-9.9.9.tar.gz)
+    _emit_file "${_scam_toolkit}"
+    ;;
+  */cstk-panel-docs-9.9.9.tar.gz|*/cstk-panel-8.8.8.tar.gz)
+    _emit_file "${_scam_panel}"
+    ;;
+  *archive/v9.9.9.tar.gz)
+    _emit_file "${_scam_auto}"
+    ;;
+  *)
+    printf 'stub-curl: URL inesperada: %s\n' "\$_url" >&2
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "$_scam_bin/curl"
+}
+
+# _assert_curl_baixou PADRAO ROTULO  -> falha se PADRAO nao esta no log de URLs
+_assert_curl_baixou() {
+  if ! grep -q "$1" "$TMPDIR_TEST/curl-urls.log" 2>/dev/null; then
+    _fail "$2" "esperado download casando '$1'; log=$(cat "$TMPDIR_TEST/curl-urls.log" 2>/dev/null)"
+    return 1
+  fi
+}
+
+# _assert_curl_nao_baixou PADRAO ROTULO -> falha se PADRAO esta no log de URLs
+_assert_curl_nao_baixou() {
+  if grep -q "$1" "$TMPDIR_TEST/curl-urls.log" 2>/dev/null; then
+    _fail "$2" "NAO deveria ter baixado '$1'; log=$(cat "$TMPDIR_TEST/curl-urls.log" 2>/dev/null)"
+    return 1
+  fi
+}
+
+# ---- §3.3 linha 3: ambos os pares, TOOLKIT primeiro -> painel --------------
+# O cenario decisivo desta fase, e literalmente o que hoje falha em producao.
+# Reprova contra a implementacao antiga: a selecao posicional escolheria
+# `cstk-9.9.9.tar.gz` (primeiro `.tar.gz` com sibling `.sha256`), o checksum
+# conferiria e o outcome seria `verified` sem nenhuma linha de log.
+scenario_asset_matrix_ambos_pares_toolkit_primeiro_seleciona_painel() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_asset_matrix "$_STUB_BIN" both-pairs
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "matrix_both_exit" "esperado exit 0 (asset do painel verificado), obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _assert_curl_baixou 'releases/download/v9.9.9/cstk-panel-9.9.9\.tar\.gz' matrix_both_baixou_painel || return 1
+  _assert_curl_nao_baixou 'releases/download/v9.9.9/cstk-9.9.9\.tar\.gz' matrix_both_nao_baixou_toolkit || return 1
+  _assert_curl_nao_baixou 'archive/v9.9.9\.tar\.gz' matrix_both_nao_caiu_no_fallback || return 1
+  # A arvore extraida veio do pacote do PAINEL (topo cstk-panel-9.9.9), nao do
+  # toolkit: a prova nao depende so do log de URLs.
+  if ! grep -q 'cstk-panel' "$CSTK_PANEL_DIR/package.json" 2>/dev/null; then
+    _fail "matrix_both_arvore" "package.json instalado nao e o do painel: $(cat "$CSTK_PANEL_DIR/package.json" 2>/dev/null)"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  if [ -n "$_log" ]; then
+    _fail "matrix_both_sem_log" "outcome verified NAO deve gravar linha no enforcement-log; log=$_log"
+    return 1
+  fi
+  _assert_no_repo_root_leak || return 1
+}
+
+# ---- §3.3 linha 4: ambos os pares, PAINEL primeiro -> painel --------------
+scenario_asset_matrix_ambos_pares_painel_primeiro_seleciona_painel() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_asset_matrix "$_STUB_BIN" both-pairs-panel-first
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "matrix_panel_first_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _assert_curl_baixou 'cstk-panel-9.9.9\.tar\.gz' matrix_panel_first_baixou_painel || return 1
+  _assert_curl_nao_baixou 'download/v9.9.9/cstk-9.9.9\.tar\.gz' matrix_panel_first_nao_toolkit || return 1
+}
+
+# ---- §3.3 linha 2: so o par do TOOLKIT -> nenhum -> auto-tarball -----------
+# "Nao achei o do painel" jamais pode virar "entao levo esse outro": o asset
+# do toolkit NUNCA pode ser baixado, e o fallback bate no fail-closed default.
+scenario_asset_matrix_so_par_do_toolkit_cai_no_fallback() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_asset_matrix "$_STUB_BIN" toolkit-only
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "matrix_toolkit_exit" "esperado exit 1 (fallback unverifiable-blocked), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  _assert_curl_nao_baixou 'releases/download/v9.9.9/cstk-9.9.9\.tar\.gz' matrix_toolkit_nao_baixou || return 1
+  _assert_curl_baixou 'archive/v9.9.9\.tar\.gz' matrix_toolkit_fallback || return 1
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"unverifiable-blocked"'*) : ;;
+    *) _fail "matrix_toolkit_log" "esperado outcome=unverifiable-blocked; log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# ---- §3.3 linha 6: `cstk-panel-docs-*` -> nenhum -> auto-tarball -----------
+# Prova que a comparacao e por IGUALDADE (I1). Prefixo `cstk-panel-` casaria
+# o decoy e o bug voltaria por outra porta.
+scenario_asset_matrix_docs_decoy_nao_casa_por_prefixo() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_asset_matrix "$_STUB_BIN" docs-decoy
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "matrix_docs_exit" "esperado exit 1 (nenhum candidato -> fallback fail-closed), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  _assert_curl_nao_baixou 'cstk-panel-docs-9.9.9\.tar\.gz$' matrix_docs_nao_baixou_decoy || return 1
+  _assert_curl_baixou 'archive/v9.9.9\.tar\.gz' matrix_docs_fallback || return 1
+}
+
+# ---- decoy `cstk-panel-docs-*` listado ANTES do par real -> painel ---------
+# Prova mais forte do anti-prefixo: o decoy vence por ordem da API, mas perde
+# por nome. Nao esta na matriz de 7 linhas; e o par simetrico da linha 3.
+scenario_asset_matrix_docs_decoy_antes_do_par_real_seleciona_painel() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_asset_matrix "$_STUB_BIN" docs-decoy-then-panel
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "matrix_docs_then_panel_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _assert_curl_baixou 'download/v9.9.9/cstk-panel-9.9.9\.tar\.gz' matrix_docs_then_panel_baixou || return 1
+  _assert_curl_nao_baixou 'cstk-panel-docs-9.9.9\.tar\.gz$' matrix_docs_then_panel_nao_decoy || return 1
+}
+
+# ---- §3.3 linha 7: asset de OUTRA versao -> nenhum -> auto-tarball (I4) ----
+scenario_asset_matrix_outra_versao_nao_casa() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_asset_matrix "$_STUB_BIN" other-version
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "matrix_outra_versao_exit" "esperado exit 1 (I4: asset de outra versao nao casa), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  _assert_curl_nao_baixou 'cstk-panel-8.8.8\.tar\.gz$' matrix_outra_versao_nao_baixou || return 1
+  _assert_curl_baixou 'archive/v9.9.9\.tar\.gz' matrix_outra_versao_fallback || return 1
+}
+
+# ---- I5 / FR-023: tag_name malformada -> fail-closed para o auto-tarball ---
+# `tag_name` vem da rede e vira nome de arquivo em dois lugares. Fora do
+# formato, nenhum asset e considerado -- nem o par do painel, que aqui esta
+# presente e integro.
+scenario_asset_matrix_tag_name_invalida_ignora_assets() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_asset_matrix "$_STUB_BIN" bad-tag
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "1" ]; then
+    _fail "matrix_bad_tag_exit" "esperado exit 1 (fallback fail-closed), obtido $_CAPTURED_EXIT"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'tag_name'; then
+    _fail "matrix_bad_tag_stderr" "stderr deve citar tag_name fora do formato; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _assert_curl_nao_baixou 'download/v9.9.9/cstk-panel-9.9.9\.tar\.gz' matrix_bad_tag_nao_baixou_asset || return 1
+}
+
+# ---- §8: validacao PRE-extracao, unit-style sobre o helper -----------------
+# Cobre de uma vez as formas hostis que um e2e com stub de curl encareceria
+# sem ganho: caminho absoluto, componente `..`, symlink, hardlink, mais de um
+# diretorio de topo e topo com nome divergente. E confirma o caso BOM, para o
+# teste nao passar por rejeitar tudo.
+scenario_validate_tarball_members_rejeita_estruturas_hostis() {
+  _setup_serve_env
+  _vtm_run() {
+    capture env CSTK_LIB="$CSTK_LIB" \
+      sh -c '. "$CSTK_LIB/serve.sh" && _serve_validate_tarball_members "$1" "$2"' \
+      vtm_test "$1" "$2"
+  }
+
+  # (a) caso BOM: topo exato -> aceito
+  _serve_make_tarball "$TMPDIR_TEST/vtm-ok.tar.gz" "cstk-panel-9.9.9" panel || return 1
+  _vtm_run "$TMPDIR_TEST/vtm-ok.tar.gz" "cstk-panel-9.9.9"
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "vtm_ok" "tarball bem-formado deveria ser aceito; exit=$_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+
+  # (b) topo divergente -> rejeitado (§8.3)
+  _vtm_run "$TMPDIR_TEST/vtm-ok.tar.gz" "cstk-panel-1.2.3"
+  if [ "$_CAPTURED_EXIT" = "0" ]; then
+    _fail "vtm_topdir" "topo divergente deveria ser rejeitado"
+    return 1
+  fi
+
+  # (b2) topo divergente NAO e checado quando EXPECTED_TOPDIR e vazio
+  # (fallback ao auto-tarball, cujo topo e <owner>-<repo>-<sha>/).
+  _vtm_run "$TMPDIR_TEST/vtm-ok.tar.gz" ""
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "vtm_topdir_opcional" "sem EXPECTED_TOPDIR o nome do topo nao deve ser exigido; exit=$_CAPTURED_EXIT"
+    return 1
+  fi
+
+  # (c) symlink, (d) hardlink -> rejeitados (§8.2b)
+  for _vtm_m in symlink hardlink; do
+    _serve_make_tarball "$TMPDIR_TEST/vtm-$_vtm_m.tar.gz" "cstk-panel-9.9.9" "$_vtm_m" || return 1
+    _vtm_run "$TMPDIR_TEST/vtm-$_vtm_m.tar.gz" "cstk-panel-9.9.9"
+    if [ "$_CAPTURED_EXIT" = "0" ]; then
+      _fail "vtm_$_vtm_m" "tarball com $_vtm_m deveria ser rejeitado"
+      return 1
+    fi
+  done
+
+  # (e) mais de um diretorio de topo -> rejeitado (§8.3)
+  _serve_make_tarball "$TMPDIR_TEST/vtm-twotops.tar.gz" "cstk-panel-9.9.9" twotops || return 1
+  _vtm_run "$TMPDIR_TEST/vtm-twotops.tar.gz" "cstk-panel-9.9.9"
+  if [ "$_CAPTURED_EXIT" = "0" ]; then
+    _fail "vtm_twotops" "tarball com dois diretorios de topo deveria ser rejeitado"
+    return 1
+  fi
+
+  # (f) componente `..` -> rejeitado ANTES da comparacao de topo (§8.2a)
+  _serve_make_tarball "$TMPDIR_TEST/vtm-traversal.tar.gz" "cstk-panel-9.9.9" traversal || return 1
+  if ! tar -tzf "$TMPDIR_TEST/vtm-traversal.tar.gz" 2>/dev/null | grep -q '\.\.'; then
+    _fail "vtm_traversal_fixture" "fixture de traversal nao contem componente '..' -- o tar normalizou na criacao; o teste nao provaria nada"
+    return 1
+  fi
+  _vtm_run "$TMPDIR_TEST/vtm-traversal.tar.gz" "cstk-panel-9.9.9"
+  if [ "$_CAPTURED_EXIT" = "0" ]; then
+    _fail "vtm_traversal" "tarball com componente '..' deveria ser rejeitado"
+    return 1
+  fi
+
+  # (g) caminho absoluto -> rejeitado (§8.2a)
+  _serve_make_tarball "$TMPDIR_TEST/vtm-abs.tar.gz" "cstk-panel-9.9.9" abs || return 1
+  if ! tar -tzf "$TMPDIR_TEST/vtm-abs.tar.gz" 2>/dev/null | grep -q '^/'; then
+    _fail "vtm_abs_fixture" "fixture de caminho absoluto nao contem membro iniciando em '/' -- o teste nao provaria nada"
+    return 1
+  fi
+  _vtm_run "$TMPDIR_TEST/vtm-abs.tar.gz" "cstk-panel-9.9.9"
+  if [ "$_CAPTURED_EXIT" = "0" ]; then
+    _fail "vtm_abs" "tarball com caminho absoluto deveria ser rejeitado"
+    return 1
+  fi
+}
+
+# ---- Cenario 4 do quickstart: wrong-payload --------------------------------
+# Checksum CONFERE e o pacote ainda assim nao e o painel. E o ponto exato de
+# FR-009: expected == actual, nao-nulos, e mesmo assim bloqueado.
+scenario_wrong_payload_checksum_confere_mas_bloqueia_e_loga() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_asset_matrix "$_STUB_BIN" wrong-payload
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" = "0" ]; then
+    _fail "wrong_payload_exit" "payload sem package.json na raiz deveria bloquear; exit=$_CAPTURED_EXIT"
+    return 1
+  fi
+  if [ -f "$CSTK_PANEL_DIR/package.json" ]; then
+    _fail "wrong_payload_sem_instalacao" "nada deveria ter sido instalado"
+    return 1
+  fi
+  # stderr NAO pode depender do log (best-effort, escreve em $(pwd)/.claude).
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -qi 'payload nao e o painel'; then
+    _fail "wrong_payload_stderr" "stderr deve ter linha distinta de rejeicao; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"wrong-payload-blocked"'*) : ;;
+    *) _fail "wrong_payload_log" "esperado outcome=wrong-payload-blocked; log=$_log"; return 1 ;;
+  esac
+  case "$_log" in
+    *'cstk-panel-9.9.9.tar.gz'*) : ;;
+    *) _fail "wrong_payload_log_url" "package_url do log deveria ser o asset baixado; log=$_log"; return 1 ;;
+  esac
+  # expected_sha256 e actual_sha256 iguais e NAO-nulos: e essa igualdade que
+  # documenta "o checksum conferiu e o pacote estava errado".
+  _wp_exp=$(printf '%s' "$_log" | sed 's/.*"expected_sha256":"\([^"]*\)".*/\1/')
+  _wp_act=$(printf '%s' "$_log" | sed 's/.*"actual_sha256":"\([^"]*\)".*/\1/')
+  if [ -z "$_wp_exp" ] || [ "$_wp_exp" != "$_wp_act" ]; then
+    _fail "wrong_payload_shas" "expected/actual devem ser iguais e nao-nulos; exp=$_wp_exp act=$_wp_act log=$_log"
+    return 1
+  fi
+  _assert_no_repo_root_leak || return 1
+}
+
+# ---- §8: payload hostil e barrado ANTES de escrever a arvore em disco -----
+scenario_wrong_payload_symlink_bloqueia_antes_da_extracao() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_asset_matrix "$_STUB_BIN" hostile-symlink
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" = "0" ]; then
+    _fail "hostile_symlink_exit" "tarball com symlink deveria bloquear; exit=$_CAPTURED_EXIT"
+    return 1
+  fi
+  # Nada escrito em disco: nem o package.json (que existe no tarball hostil),
+  # nem o symlink. Esta e a diferenca entre validar antes e validar depois.
+  if [ -e "$CSTK_PANEL_DIR/package.json" ] || [ -e "$CSTK_PANEL_DIR/link-para-fora" ]; then
+    _fail "hostile_symlink_disco" "arvore hostil foi escrita em disco antes da rejeicao"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"wrong-payload-blocked"'*) : ;;
+    *) _fail "hostile_symlink_log" "esperado outcome=wrong-payload-blocked; log=$_log"; return 1 ;;
+  esac
+}
+
+# ---- §7: CSTK_PANEL_REPO ---------------------------------------------------
+
+# _run_serve_com_repo REPO_VALUE ARGS...
+# Como _run_serve, mas com CSTK_PANEL_REPO no ambiente.
+_run_serve_com_repo() {
+  _rsr_repo="$1"
+  shift
+  _rsr_cwd="$TMPDIR_TEST/cwd"
+  mkdir -p "$_rsr_cwd"
+  capture env \
+    CSTK_LIB="$CSTK_LIB" \
+    CSTK_PANEL_DIR="$CSTK_PANEL_DIR" \
+    CSTK_PANEL_REPO="$_rsr_repo" \
+    PATH="${_SERVE_INNER_PATH:-$PATH}" \
+    HOME="$TMPDIR_TEST" \
+    sh -c "cd \"$_rsr_cwd\" && . \$CSTK_LIB/serve.sh && serve_main \"\$@\"" serve_test "$@"
+}
+
+# Fork valido: instala normalmente, mas a origem nao-default e anunciada em
+# stderr E auditada no enforcement-log -- evento, nao preferencia silenciosa.
+scenario_panel_repo_fork_valido_avisa_e_audita() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_asset_matrix "$_STUB_BIN" both-pairs
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve_com_repo "fulano/cstk-fork"
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "panel_repo_fork_exit" "fork valido deveria instalar; exit=$_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  if ! printf '%s' "$_CAPTURED_STDERR" | grep -q 'CSTK_PANEL_REPO=fulano/cstk-fork'; then
+    _fail "panel_repo_fork_aviso" "stderr deve anunciar a origem sobrescrita; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _assert_curl_baixou 'api.github.com/repos/fulano/cstk-fork/releases/latest' panel_repo_fork_url || return 1
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'"outcome":"panel-repo-override"'*) : ;;
+    *) _fail "panel_repo_fork_log" "esperado linha panel-repo-override no enforcement-log; log=$_log"; return 1 ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# Valor invalido: fail-closed, NUNCA cair silenciosamente no default (o que
+# mascararia configuracao errada). Inclui a tentativa de escapar do formato
+# `owner/repo` mantendo o host final em api.github.com.
+scenario_panel_repo_invalido_fail_closed_sem_cair_no_default() {
+  _setup_serve_env
+  _make_bin_dir
+  _stub_curl_asset_matrix "$_STUB_BIN" both-pairs
+  _stub_npm_ok "$_STUB_BIN"
+  for _prv in '../../etc' 'JotJunior/cstk/../../evil' 'JotJunior' 'JotJunior/' '/cstk' \
+              'JotJunior/cstk cstk' 'Jot%2FJunior/cstk' 'user@host/cstk' '.hidden/cstk'; do
+    : > "$TMPDIR_TEST/curl-urls.log"
+    _run_serve_com_repo "$_prv"
+    if [ "$_CAPTURED_EXIT" = "0" ]; then
+      _fail "panel_repo_invalido" "CSTK_PANEL_REPO='$_prv' deveria ser rejeitado fail-closed; exit=$_CAPTURED_EXIT"
+      return 1
+    fi
+    if ! printf '%s' "$_CAPTURED_STDERR" | grep -q 'CSTK_PANEL_REPO'; then
+      _fail "panel_repo_invalido_msg" "stderr deve ser acionavel para '$_prv'; stderr=$_CAPTURED_STDERR"
+      return 1
+    fi
+    # Nunca cair no default: nenhuma consulta a JotJunior/cstk pode acontecer.
+    if grep -q 'repos/JotJunior/cstk/releases' "$TMPDIR_TEST/curl-urls.log" 2>/dev/null; then
+      _fail "panel_repo_invalido_default" "valor invalido '$_prv' caiu silenciosamente no default; log=$(cat "$TMPDIR_TEST/curl-urls.log")"
+      return 1
+    fi
+  done
+}
+
+# Sem a variavel: default silencioso -- sem aviso, sem linha de auditoria.
+scenario_panel_repo_ausente_usa_default_silenciosamente() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  _stub_curl_asset_matrix "$_STUB_BIN" both-pairs
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "panel_repo_default_exit" "esperado exit 0; obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _assert_curl_baixou 'api.github.com/repos/JotJunior/cstk/releases/latest' panel_repo_default_url || return 1
+  if printf '%s' "$_CAPTURED_STDERR" | grep -q 'CSTK_PANEL_REPO'; then
+    _fail "panel_repo_default_silencioso" "default NAO deve anunciar nada; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _log=$(_serve_enforcement_log)
+  case "$_log" in
+    *'panel-repo-override'*) _fail "panel_repo_default_log" "default NAO deve gravar linha de override; log=$_log"; return 1 ;;
+    *) : ;;
+  esac
+  _assert_no_repo_root_leak || return 1
+}
+
+# ---- FASE 3.5: drift entre os majors de Node do serve e do painel ---------
+# `_SERVE_SUPPORTED_NODE_MAJORS` e constante fixa por decisao (research.md
+# Decision 5: derivar em runtime exigiria parse de JSON no caminho quente do
+# serve). O preco de uma constante duplicada e um teste que falha quando as
+# duas fontes divergem -- e a unica coisa que impede o drift silencioso agora
+# que `panel/` vive neste mesmo repositorio.
+scenario_node_majors_em_sincronia_com_panel_package_json() {
+  _nm_pkg="$REPO_ROOT/panel/package.json"
+  if [ ! -f "$_nm_pkg" ]; then
+    _fail "node_majors_pkg" "panel/package.json ausente em $_nm_pkg (o painel deveria viver neste repositorio apos a FASE 1)"
+    return 1
+  fi
+  # engines.node vem como "20.x || 22.x || 23.x || 24.x": extrair os majors
+  # em awk POSIX (sem jq -- mesma restricao de dependencia do serve).
+  _nm_do_painel=$(awk '
+    /"engines"/ { in_eng = 1 }
+    in_eng && /"node"/ {
+      line = $0
+      sub(/.*"node"[ \t]*:[ \t]*"/, "", line)
+      sub(/".*/, "", line)
+      n = split(line, parts, /\|\|/)
+      for (i = 1; i <= n; i++) {
+        v = parts[i]
+        gsub(/[ \t]/, "", v)
+        sub(/[.].*$/, "", v)
+        if (v != "") printf "%s%s", (out++ ? " " : ""), v
+      }
+      exit
+    }
+  ' "$_nm_pkg")
+  if [ -z "$_nm_do_painel" ]; then
+    _fail "node_majors_parse" "nao foi possivel extrair engines.node de $_nm_pkg"
+    return 1
+  fi
+  _nm_do_serve=$(capture env CSTK_LIB="$CSTK_LIB" \
+    sh -c '. "$CSTK_LIB/serve.sh" && printf "%s" "$_SERVE_SUPPORTED_NODE_MAJORS"' node_majors_test
+    printf '%s' "$_CAPTURED_STDOUT")
+  if [ "$_nm_do_painel" != "$_nm_do_serve" ]; then
+    _fail "node_majors_drift" \
+      "majors de Node divergem: panel/package.json (engines.node) = '$_nm_do_painel' vs cli/lib/serve.sh (_SERVE_SUPPORTED_NODE_MAJORS) = '$_nm_do_serve' -- atualize os DOIS arquivos em sincronia"
+    return 1
+  fi
+}
+
+# Anuncio de origem sobrescrita e UM evento por execucao, nao um por chamada.
+# `--update` resolve a URL da API DUAS vezes na mesma execucao
+# (_serve_latest_tag para decidir se reinstala, depois
+# _serve_download_verify_extract para baixar). Sem cuidado, isso vira dois
+# avisos e duas linhas de auditoria para o mesmo evento. Um guard por
+# variavel nao resolve: os dois call sites consomem a funcao via $(...) e a
+# atribuicao morre no subshell -- este cenario e o que torna isso visivel.
+scenario_panel_repo_override_anuncia_uma_vez_no_update() {
+  _setup_serve_env
+  _make_bin_dir
+  _snapshot_repo_root_log
+  mkdir -p "$CSTK_PANEL_DIR"
+  printf '{"name":"cstk-panel","version":"0.0.0"}\n' > "$CSTK_PANEL_DIR/package.json"
+  printf 'v0.0.0\n' > "$CSTK_PANEL_DIR/.panel-version"
+  _stub_curl_asset_matrix "$_STUB_BIN" both-pairs
+  _stub_npm_ok "$_STUB_BIN"
+  _run_serve_com_repo "fulano/cstk-fork" --update
+  if [ "$_CAPTURED_EXIT" != "0" ]; then
+    _fail "panel_repo_update_exit" "esperado exit 0, obtido $_CAPTURED_EXIT stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  # As DUAS resolucoes de URL aconteceram (senao o cenario nao exercita nada).
+  _pru_api=$(grep -c 'api.github.com/repos/fulano/cstk-fork/releases/latest' \
+    "$TMPDIR_TEST/curl-urls.log" 2>/dev/null | tr -d ' ')
+  if [ "${_pru_api:-0}" -lt 2 ]; then
+    _fail "panel_repo_update_dois_gets" "esperado >=2 consultas a API na mesma execucao de --update (foram ${_pru_api:-0}); sem elas o cenario nao prova nada; log=$(cat "$TMPDIR_TEST/curl-urls.log" 2>/dev/null)"
+    return 1
+  fi
+  # ...e mesmo assim UM aviso e UMA linha de auditoria.
+  _pru_avisos=$(printf '%s\n' "$_CAPTURED_STDERR" | grep -c 'CSTK_PANEL_REPO=fulano/cstk-fork' | tr -d ' ')
+  if [ "${_pru_avisos:-0}" != "1" ]; then
+    _fail "panel_repo_update_aviso_unico" "esperado exatamente 1 aviso de origem sobrescrita, obtidos ${_pru_avisos:-0}; stderr=$_CAPTURED_STDERR"
+    return 1
+  fi
+  _pru_linhas=$(_serve_enforcement_log | grep -c 'panel-repo-override' | tr -d ' ')
+  if [ "${_pru_linhas:-0}" != "1" ]; then
+    _fail "panel_repo_update_log_unico" "esperado exatamente 1 linha panel-repo-override, obtidas ${_pru_linhas:-0}; log=$(_serve_enforcement_log)"
+    return 1
+  fi
+  _assert_no_repo_root_leak || return 1
 }
 
 run_all_scenarios

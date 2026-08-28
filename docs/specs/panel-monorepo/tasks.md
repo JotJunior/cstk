@@ -531,71 +531,211 @@ contracts/serve-asset-selection.md §3.2, §7, §8
 (plan.md linha 214) — nenhuma release nova pode ser publicada com os dois
 pares de assets antes disto (restrição dura #1 do plano, linhas 201-203).
 
+**Baseline de cenários**: onda-010 fechou em `PASS: 3556 FAIL: 0 ERROR: 0
+ORPHANS: 0`. Esta fase ACRESCENTA **15** cenários, todos em
+`tests/cstk/test_serve.sh` (74 → 89) — total esperado **3571**. O critério é
+`FAIL: 0 ERROR: 0 ORPHANS: 0` mais um crescimento explicável linha a linha,
+nunca "bater 3556".
+
+**Prova de que os testes testam a correção** (não apenas passam): com
+`git show HEAD:cli/lib/serve.sh > cli/lib/serve.sh` (implementação ANTIGA) e
+os cenários novos no lugar, `tests/cstk/test_serve.sh` dá
+`PASS: 76 FAIL: 12 ERROR: 0`. Os 12 reprovados são exatamente os cenários que
+dependem da correção. Os 2 novos que passam nos dois lados são deliberados e
+não provam nada por desenho: `..._ambos_pares_painel_primeiro_...` é a linha 4
+da matriz §3.3, onde `[ATUAL]` e `[PROPOSTA]` concordam (guarda de regressão),
+e `..._node_majors_...` não toca a lógica de seleção. Ver dec-060 — a primeira
+sonda (rodar com `CSTK_LIB` apontando para uma cópia do serve.sh antigo) deu
+falso verde porque `tests/cstk/test_serve.sh:18` sobrescreve `CSTK_LIB`
+incondicionalmente; só a troca do arquivo real mede o que se quer medir.
+
 ### 3.1 Seleção de asset name-bound (I1-I5) `[C]`
 
 Ref: contracts/serve-asset-selection.md §3.2 (linhas 39-70); FASE 0.1 (I5)
 
-- [ ] 3.1.1 Implementar `EXPECTED = "cstk-panel-" + bare(tag_name) +
+- [x] 3.1.1 Implementar `EXPECTED = "cstk-panel-" + bare(tag_name) +
   ".tar.gz"` em `cli/lib/serve.sh`, substituindo a lógica posicional atual
   (`serve.sh:390-393`)
-- [ ] 3.1.2 Implementar comparação por **igualdade** de basename (após strip
+  — evidência: `_sdve_bare="${_sdve_tag#v}"` +
+  `_sdve_expected_asset="cstk-panel-${_sdve_bare}.tar.gz"` em
+  `cli/lib/serve.sh`; o `awk` posicional (`url[i] ~ /\.tar\.gz$/ &&
+  (url[i] ".sha256") in seen`) foi substituído por `awk -v want=...` com
+  `if (b == want && ((u ".sha256") in seen))`.
+- [x] 3.1.2 Implementar comparação por **igualdade** de basename (após strip
   de `?query`/`#fragment`), nunca prefixo/substring (I1, I2) — rejeitar
   basename contendo `%`
-- [ ] 3.1.3 Implementar validação de forma de `tag_name` (I5, FR-023 da FASE
+  — evidência: no `awk`, `sub(/#.*$/,"",b); sub(/\?.*$/,"",b);
+  sub(/^.*\//,"",b); if (index(b,"%") > 0) continue; if (b == want ...)`.
+  Helper equivalente exposto para reuso: `_serve_asset_basename`.
+  Prova comportamental: `scenario_asset_matrix_docs_decoy_nao_casa_por_prefixo`
+  (o decoy `cstk-panel-docs-9.9.9.tar.gz` tem par `.sha256` íntegro e ainda
+  assim NÃO é baixado) e
+  `scenario_asset_matrix_docs_decoy_antes_do_par_real_seleciona_painel`.
+- [x] 3.1.3 Implementar validação de forma de `tag_name` (I5, FR-023 da FASE
   0.1): `bare(tag_name)` MUST casar `^[0-9A-Za-z][0-9A-Za-z.+-]*$` antes de
   qualquer derivação; fail-closed com linha em stderr se não casar
-- [ ] 3.1.4 Implementar fallback ao auto-tarball existente quando nenhum
+  — evidência: `_serve_valid_bare_tag` (case POSIX: primeiro caractere
+  `[0-9A-Za-z]`, resto sem `[!0-9A-Za-z.+-]`), chamada ANTES de compor
+  `EXPECTED`. Stderr: `cstk serve: aviso: tag_name da release ("%s") fora do
+  formato esperado; ignorando assets e usando o tarball da API`. Cenário
+  `scenario_asset_matrix_tag_name_invalida_ignora_assets` usa
+  `tag_name="v9.9.9/../../etc"` com o par do painel PRESENTE e íntegro, e
+  assere que ele não é baixado.
+- [x] 3.1.4 Implementar fallback ao auto-tarball existente quando nenhum
   candidato satisfizer (a)+(b) simultaneamente (I3) — nunca selecionar outro
   asset
-- [ ] 3.1.5 (teste) Cobrir a matriz de decisão completa de
+  — evidência: `if [ -n "$_sdve_asset_pkg" ]; then ... else
+  _sdve_pkg_url="$_sdve_tarball"`. Provas de que "não achei o do painel"
+  nunca vira "então levo esse outro":
+  `scenario_asset_matrix_so_par_do_toolkit_cai_no_fallback` assere
+  `_assert_curl_nao_baixou 'releases/download/v9.9.9/cstk-9.9.9\.tar\.gz'` +
+  `_assert_curl_baixou 'archive/v9.9.9\.tar\.gz'` + `outcome":"
+  unverifiable-blocked`; idem `..._outra_versao_nao_casa` (I4) e
+  `..._docs_decoy_nao_casa_por_prefixo`.
+- [x] 3.1.5 (teste) Cobrir a matriz de decisão completa de
   `contracts/serve-asset-selection.md` §3.3 (7 linhas) com os cenários da
   tarefa 3.4
+  — evidência (mapa linha-da-matriz → cenário):
+  1 (só par painel) = `scenario_asset_par_verificavel_instala_sem_bypass`
+  (pré-existente, modo `ok`);
+  2 (só par toolkit) = `..._so_par_do_toolkit_cai_no_fallback`;
+  3 (ambos, toolkit primeiro) =
+  `..._ambos_pares_toolkit_primeiro_seleciona_painel`;
+  4 (ambos, painel primeiro) =
+  `..._ambos_pares_painel_primeiro_seleciona_painel`;
+  5 (painel sem `.sha256`) =
+  `scenario_asset_sem_sibling_sha256_cai_no_fallback` (pré-existente);
+  6 (`cstk-panel-docs-*` antes) = `..._docs_decoy_nao_casa_por_prefixo`;
+  7 (painel de outra versão) = `..._outra_versao_nao_casa`.
 
 ### 3.2 Validação pré-extração do tarball `[C]`
 
 Ref: contracts/serve-asset-selection.md §8 (linhas 116-136); spec.md FR-009
 
-- [ ] 3.2.1 Após checksum conferir e antes de `tar -x`: listar membros via
+**Escopo do nome do diretório de topo (dec-058)**: §8.2 (caminho absoluto,
+`..`, symlink/hardlink/device, número de diretórios de topo) vale em TODO
+caminho de extração; a exigência de o topo se chamar exatamente
+`cstk-panel-<bare>/` (§8.3) vale só quando a fonte é o asset **name-bound** —
+o auto-tarball da API tem topo `<owner>-<repo>-<sha>/`, nome escolhido pela
+API e não derivável da tag. O helper recebe `EXPECTED_TOPDIR=""` nesse caso.
+
+- [x] 3.2.1 Após checksum conferir e antes de `tar -x`: listar membros via
   `tar -tzf` e rejeitar caminho absoluto, componente `..`, symlink/hardlink,
   ou entrada de device
-- [ ] 3.2.2 Rejeitar se houver mais de um diretório de topo, ou se o único
+  — evidência: `_serve_validate_tarball_members` em `cli/lib/serve.sh`, com
+  `awk '/^\// {...} /(^|\/)\.\.(\/|$)/ {...}'` sobre `tar -tzf`, mais o teste
+  de tipo pelo 1º caractere de `tar -tvzf` (`t != "-" && t != "d"`). Formato
+  verificado empiricamente, não suposto — `bsdtar 3.5.3 - libarchive 3.7.4`:
+  `drwxr-xr-x ... cstk-panel-9.9.9/`, `lrwxr-xr-x ... evil-symlink ->
+  /etc/passwd`, `hrw-r--r-- ... real link to ... evil-hardlink`. Devices
+  ficam cobertos pela mesma allowlist de tipos (`c`/`b` ≠ `-`/`d`).
+- [x] 3.2.2 Rejeitar se houver mais de um diretório de topo, ou se o único
   diretório de topo não for exatamente `cstk-panel-<bare>/` (mesmo `<bare>`
   validado por I5 em 3.1.3) — ordem: passo 3.2.1 roda antes deste, para
   rejeitar `..`/caminho-absoluto antes de `<bare>` entrar em comparação de
   caminho
-- [ ] 3.2.3 Extrair com `--no-same-owner --no-same-permissions`
-- [ ] 3.2.4 Manter a checagem pós-extração de `package.json` como backstop
-- [ ] 3.2.5 Gravar outcome `wrong-payload-blocked` no
+  — evidência: no helper, o bloco §8.2 (absoluto/`..`) e o de tipos precedem
+  textualmente o bloco §8.3 (`sed 's|/.*||' | sort -u`, `wc -l`, comparação
+  com `EXPECTED_TOPDIR`). Cenário unitário
+  `scenario_validate_tarball_members_rejeita_estruturas_hostis` cobre topo
+  divergente, dois topos, symlink, hardlink, `..` e caminho absoluto — e
+  também o caso BOM e o caso `EXPECTED_TOPDIR=""`, para o teste não passar
+  por rejeitar tudo. Os fixtures hostis são auto-verificados antes do
+  assert (`if ! tar -tzf ... | grep -q '\.\.'` → `_fail
+  "vtm_traversal_fixture"`; idem `grep -q '^/'`), porque `tar` normaliza `..`
+  na criação sem `-P` e o fixture sairia inofensivo — fixture que codifica o
+  bug e sai verde é o modo de falha recorrente desta execução.
+- [x] 3.2.3 Extrair com `--no-same-owner --no-same-permissions`
+  — evidência: `tar -xzf "$_sdve_archive" --strip-components 1
+  --no-same-owner --no-same-permissions -C "$_sdve_dest"`. Suporte das flags
+  confirmado empiricamente no bsdtar do ambiente (`FLAGS OK`).
+- [x] 3.2.4 Manter a checagem pós-extração de `package.json` como backstop
+  — evidência: o bloco `if [ ! -f "$_sdve_dest/package.json" ]` permanece,
+  agora também gravando `wrong-payload-blocked` e removendo `$_sdve_dest`.
+- [x] 3.2.5 Gravar outcome `wrong-payload-blocked` no
   `enforcement-log.jsonl` (via `_serve_write_integrity_log`) em qualquer
   rejeição de 3.2.1/3.2.2/3.2.4, com `expected_sha256`/`actual_sha256` iguais
   e não-nulos, **e** emitir linha distinta em stderr (o log é best-effort;
   stderr não pode depender só dele)
-- [ ] 3.2.6 (teste) Cenário 4 do quickstart (`wrong-payload`, linhas 79-95):
+  — evidência: `_serve_write_integrity_log "wrong-payload-blocked"
+  "$_sdve_pkg_url" "$_sdve_expected" "$_sdve_actual" ""` nos dois pontos de
+  rejeição, precedido de `cstk serve: erro: pacote baixado rejeitado antes da
+  extracao (payload nao e o painel); nada foi escrito em disco`. O enum em
+  `_serve_write_integrity_log` foi atualizado (retrocompatível: o consumidor
+  `pretooluse-bash-guard.sh` filtra por `source`, sem validar enum fechado).
+  Ressalva registrada: no caminho de **bypass explícito**
+  (`--allow-unverified`) não houve verificação, e os dois campos ficam `null`
+  — honesto, em vez de fabricar um "expected" que nunca existiu; a exigência
+  "iguais e não-nulos" descreve o caminho em que o checksum conferiu, que é o
+  ponto de FR-009 e o que 3.2.6 assere.
+- [x] 3.2.6 (teste) Cenário 4 do quickstart (`wrong-payload`, linhas 79-95):
   checksum correto, payload sem `package.json` na raiz pós-strip; confirmar
   falha (exit != 0) e a linha exata do `enforcement-log.jsonl`
+  — evidência: `scenario_wrong_payload_checksum_confere_mas_bloqueia_e_loga`
+  assere exit != 0, ausência de `$CSTK_PANEL_DIR/package.json`, stderr com
+  `payload nao e o painel`, `"outcome":"wrong-payload-blocked"` e
+  `cstk-panel-9.9.9.tar.gz` como `package_url`, mais a igualdade explícita
+  `expected_sha256 == actual_sha256` e ambos não-vazios. Complementar:
+  `scenario_wrong_payload_symlink_bloqueia_antes_da_extracao` prova o "antes"
+  — nem `package.json` (que existe no tarball hostil) nem `link-para-fora`
+  chegam ao disco.
 
 ### 3.3 `CSTK_PANEL_REPO` override + validação + allowlist + anúncio `[A]`
 
 Ref: spec.md FR-012, FR-013; contracts/serve-asset-selection.md §7 (linhas
 104-115); research.md Decision 3 (linhas 133-164)
 
-- [ ] 3.3.1 Introduzir `CSTK_PANEL_REPO="${CSTK_PANEL_REPO:-JotJunior/cstk}"`
+- [x] 3.3.1 Introduzir `CSTK_PANEL_REPO="${CSTK_PANEL_REPO:-JotJunior/cstk}"`
   em `cli/lib/serve.sh`, substituindo a constante hardcoded
   `_SERVE_GITHUB_API` que hoje aponta para `JotJunior/cstk-panel`
-- [ ] 3.3.2 Validar formato antes de qualquer uso:
+  — evidência: `_SERVE_PANEL_REPO_DEFAULT="JotJunior/cstk"` +
+  `_serve_panel_api_url`; `grep -n "_SERVE_GITHUB_API" cli/lib/serve.sh` =>
+  `(nenhuma)`. Os DOIS consumidores da API foram migrados
+  (`_serve_latest_tag` e `_serve_download_verify_extract`) — a assimetria com
+  `cli/install.sh:44` (`CSTK_REPO`) e `cli/lib/self-update.sh` está fechada.
+- [x] 3.3.2 Validar formato antes de qualquer uso:
   `^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`; valor inválido =
   erro fail-closed com mensagem acionável, **nunca** cair silenciosamente no
   default
-- [ ] 3.3.3 Passar a URL composta por `trusted_host_check`
+  — evidência: `_serve_valid_repo_slug` (POSIX `case`, sem `grep -E`: roda no
+  caminho quente). Mensagem: `cstk serve: erro: CSTK_PANEL_REPO invalido: %s`
+  + `formato esperado: owner/repo` + `corrija ou remova CSTK_PANEL_REPO do
+  ambiente -- o default NAO e aplicado silenciosamente`.
+- [x] 3.3.3 Passar a URL composta por `trusted_host_check`
   (`_serve_check_host_allowlist`, `serve.sh:407`) antes do primeiro request —
-  mesma allowlist constante de `cli/lib/trusted-hosts.sh:47`, não lida de env
-- [ ] 3.3.4 Emitir aviso em stderr e uma linha no `enforcement-log.jsonl`
+  mesma allowlist constante de `cli/trusted-hosts.sh:47`, não lida de env
+  — evidência: dentro de `_serve_panel_api_url`,
+  `if ! _serve_check_host_allowlist "$_spau_url"; then return 1; fi`, antes
+  do `return` que ecoa a URL e, portanto, antes de qualquer `http_download`.
+- [x] 3.3.4 Emitir aviso em stderr e uma linha no `enforcement-log.jsonl`
   quando o valor efetivo divergir do default `JotJunior/cstk`
-- [ ] 3.3.5 (teste) Cenário 13 do quickstart (linhas 227-244): fork válido
+  — evidência: `cstk serve: AVISO -- origem do painel sobrescrita via
+  CSTK_PANEL_REPO=%s (default: %s)` + `_serve_write_integrity_log
+  "panel-repo-override" ...`. **UMA** linha por execução, não uma por
+  chamada: ver dec-061 — a primeira implementação usava guard por variável
+  (`_SERVE_PANEL_REPO_ANNOUNCED`) que morria no subshell de `$(...)` e
+  duplicava no caminho `--update`; a suíte de 88 cenários estava verde e não
+  via. Correção: parâmetro `quiet` no call site silencioso por contrato
+  (`_serve_latest_tag`).
+- [x] 3.3.5 (teste) Cenário 13 do quickstart (linhas 227-244): fork válido
   (aviso + log), `../../etc` rejeitado fail-closed sem cair no default, valor
   com barra construído para tentar escapar do formato `owner/repo` mas cujo
   host final continua `api.github.com`, e caso sem a variável definida
   (default silencioso, sem log)
+  — evidência: `scenario_panel_repo_fork_valido_avisa_e_audita` (exit 0,
+  stderr com `CSTK_PANEL_REPO=fulano/cstk-fork`, download de
+  `api.github.com/repos/fulano/cstk-fork/releases/latest`,
+  `"outcome":"panel-repo-override"`);
+  `scenario_panel_repo_invalido_fail_closed_sem_cair_no_default` itera 9
+  valores — `../../etc`, `JotJunior/cstk/../../evil` (barra extra, host final
+  ainda `api.github.com`), `JotJunior`, `JotJunior/`, `/cstk`, `JotJunior/cstk
+  cstk`, `Jot%2FJunior/cstk`, `user@host/cstk`, `.hidden/cstk` — e para cada
+  um assere exit != 0, stderr acionável e **ausência** de
+  `repos/JotJunior/cstk/releases` no log de URLs (nunca cair no default);
+  `scenario_panel_repo_ausente_usa_default_silenciosamente` (default usado,
+  stderr sem menção a `CSTK_PANEL_REPO`, log sem `panel-repo-override`);
+  `scenario_panel_repo_override_anuncia_uma_vez_no_update` (>=2 consultas à
+  API na mesma execução, exatamente 1 aviso e 1 linha de auditoria).
 
 ### 3.4 Testes de seleção: 3 modos novos de stub + 3 cenários `[A]`
 
@@ -603,50 +743,140 @@ Ref: quickstart.md Cenários 2, 3, 4; tests/cstk/test_serve.sh (bloco
 `_stub_curl_release_assets`, ~linhas 1670-1755, já tem `ok`/`no-sibling`/
 `bad-sha`/`evil-host`)
 
-- [ ] 3.4.1 Implementar modo `both-pairs`: `assets[]` lista o par do toolkit
+Implementado como stub NOVO `_stub_curl_asset_matrix` (tag `v9.9.9`, 9 modos)
+em vez de estender `_stub_curl_release_assets` (tag `v0.0.1`), para os 4
+modos pré-existentes ficarem literalmente intocados (3.4.4). Acompanha o
+gerador de fixtures `_serve_make_tarball DEST TOPDIR MODE`.
+
+- [x] 3.4.1 Implementar modo `both-pairs`: `assets[]` lista o par do toolkit
   antes do par do painel; confirmar download de `cstk-panel-9.9.9.tar.gz` e
   **não** de `cstk-9.9.9.tar.gz` (Cenário 2) — ordem invertida é essencial: com
   o painel primeiro, o código antigo também passaria e o teste não provaria
   nada
-- [ ] 3.4.2 Implementar modo `toolkit-only`: `assets[]` só tem o par
+  — evidência: modo `both-pairs` monta
+  `_scam_assets="${_scam_pair_toolkit},${_scam_pair_panel}"`. O cenário
+  `scenario_asset_matrix_ambos_pares_toolkit_primeiro_seleciona_painel`
+  assere download de `releases/download/v9.9.9/cstk-panel-9.9.9\.tar\.gz`,
+  NÃO-download de `releases/download/v9.9.9/cstk-9.9.9\.tar\.gz` e
+  NÃO-fallback, mais `grep -q 'cstk-panel' "$CSTK_PANEL_DIR/package.json"`
+  (a árvore instalada veio do pacote do painel — a prova não depende só do
+  log de URLs, já que os dois assets são tarballs distintos com topos
+  `cstk-panel-9.9.9/` e `cstk-9.9.9/`) e enforcement-log vazio (`verified` é
+  silencioso). Reprova contra a implementação antiga: `not ok 3 -
+  scenario_asset_matrix_ambos_pares_toolkit_primeiro_seleciona_painel`.
+- [x] 3.4.2 Implementar modo `toolkit-only`: `assets[]` só tem o par
   `cstk-*`; confirmar fallback ao auto-tarball, nunca download de
   `cstk-9.9.9.tar.gz` (Cenário 3)
-- [ ] 3.4.3 Implementar modo `wrong-payload` (Cenário 4 — usa a validação da
+  — evidência: ver 3.1.4. Reprova contra a antiga: `not ok 7 -
+  scenario_asset_matrix_so_par_do_toolkit_cai_no_fallback`.
+- [x] 3.4.3 Implementar modo `wrong-payload` (Cenário 4 — usa a validação da
   FASE 3.2)
-- [ ] 3.4.4 (teste) Confirmar que os 4 modos pré-existentes (`ok`,
+  — evidência: `wrong-payload` gera o tarball do painel no modo `nopkg`
+  (`_serve_make_tarball ... cstk-panel-9.9.9 nopkg`) e serve o `.sha256`
+  correto **desse** arquivo, de modo que o checksum confere. Ver 3.2.6.
+  Adicionado também `hostile-symlink` (mesmo par íntegro, payload com
+  symlink) — não previsto na tarefa, exigido por §8.2b.
+- [x] 3.4.4 (teste) Confirmar que os 4 modos pré-existentes (`ok`,
   `no-sibling`, `bad-sha`, `evil-host`) continuam passando sem alteração de
   comportamento (FR-014, "todos os cenários pré-existentes MUST continuar
   passando")
+  — evidência: `ok 3 - scenario_asset_par_verificavel_instala_sem_bypass`,
+  `ok 4 - scenario_asset_sem_sibling_sha256_cai_no_fallback`,
+  `scenario_asset_mismatch_bloqueia_mesmo_com_allow_unverified` e
+  `scenario_asset_host_fora_da_allowlist_exit1` — todos verdes, com as
+  asserções originais intactas. **Única mudança**: o fixture servido no
+  caminho de asset passou de `panel-fixture.tar.gz` (topo
+  `cstk-panel-v0.0.1/`, com o `v`) para um gerado com topo
+  `cstk-panel-0.0.1/`, que é o que o produtor real emite (`git archive
+  --prefix="cstk-panel-${BARE}/"`, contrato §4) e o que §8.3 exige. Correção
+  de fixture, não de comportamento: sem ela, `not ok 3 -
+  scenario_asset_par_verificavel_instala_sem_bypass`. O fixture em disco
+  segue com o topo antigo e continua servindo o caminho de auto-tarball, onde
+  §8.3 não se aplica — essa diferença deliberada é o que prova que o check de
+  topo está escopado ao asset name-bound.
 
 ### 3.5 Teste de drift de majors de Node `[M]`
 
 Ref: research.md Decision 5 (linhas 226-257); quickstart.md Cenário 11
 
-- [ ] 3.5.1 Criar teste novo sob `tests/cstk/` que lê `panel/package.json`
+Implementado como cenário dentro de `tests/cstk/test_serve.sh`, não como
+arquivo novo: um `tests/cstk/test_serve-node-majors.sh` não casaria nenhum
+script em `cli/lib/` nem `*/scripts/` e `_compute_orphans` (`tests/run.sh`)
+o classificaria como teste órfão — `ORPHANS > 0` é critério de falha do gate
+3.6.4. Ver dec-059.
+
+- [x] 3.5.1 Criar teste novo sob `tests/cstk/` que lê `panel/package.json`
   (`engines.node`) com `awk` POSIX e compara contra
   `_SERVE_SUPPORTED_NODE_MAJORS="20 22 23 24"` de `cli/lib/serve.sh:127`
-- [ ] 3.5.2 (teste) Confirmar verde no estado atual (`engines.node =
+  — evidência: `scenario_node_majors_em_sincronia_com_panel_package_json`,
+  `awk` puro sobre `$REPO_ROOT/panel/package.json` (split por `||`, strip do
+  `.x`) comparado ao valor lido de `_SERVE_SUPPORTED_NODE_MAJORS` sourceando
+  o próprio `serve.sh`. A constante hoje está em `cli/lib/serve.sh:232`
+  (a linha 127 da tarefa é anterior às inserções desta fase).
+- [x] 3.5.2 (teste) Confirmar verde no estado atual (`engines.node =
   "20.x || 22.x || 23.x || 24.x"` casa a constante)
-- [ ] 3.5.3 (teste) Alterar temporariamente `engines.node` (remover `24.x`),
+  — evidência: `panel/package.json` => `"node": "20.x || 22.x || 23.x ||
+  24.x"`; `cli/lib/serve.sh:232` => `_SERVE_SUPPORTED_NODE_MAJORS="20 22 23
+  24"`; cenário verde em `PASS: 89 FAIL: 0`.
+- [x] 3.5.3 (teste) Alterar temporariamente `engines.node` (remover `24.x`),
   confirmar que o teste falha apontando os dois arquivos, depois reverter
+  — evidência (falha real, não simulada): `assert: node_majors_drift` /
+  `message: majors de Node divergem: panel/package.json (engines.node) =
+  '20 22 23' vs cli/lib/serve.sh (_SERVE_SUPPORTED_NODE_MAJORS) =
+  '20 22 23 24' -- atualize os DOIS arquivos em sincronia` /
+  `not ok 43 - ... scenario_node_majors_em_sincronia_com_panel_package_json`
+  / `# PASS: 87 FAIL: 1`. Os dois lados parseiam para valores REAIS e
+  distintos, o que descarta um verde por vazio-contra-vazio. Revertido:
+  `git checkout -- panel/package.json` => `0 diffs`.
 
 ### 3.6 Gate: `./tests/run.sh` verde `[C]`
 
 Ref: quickstart.md Cenário 7 (linhas 134-153); plan.md linha 214
 
-- [ ] 3.6.1 Rodar `./tests/run.sh` na raiz e confirmar verde
-- [ ] 3.6.2 Confirmar `./tests/run.sh cstk/test_serve.sh` contra o baseline
+- [x] 3.6.1 Rodar `./tests/run.sh` na raiz e confirmar verde
+  — evidência: `# PASS: 3571  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 1149s`.
+  Crescimento explicado: 3556 (baseline onda-010) + 15 cenários novos, todos
+  em `tests/cstk/test_serve.sh` (74 → 89) — enumerados em 3.6.2. Nenhum outro
+  arquivo de teste mudou, e nenhum cenário pré-existente foi removido ou
+  renomeado. **GATE bloqueante da FASE 3 satisfeito** (plan.md linha 214):
+  a FASE 4 pode publicar release com os dois pares de assets.
+- [x] 3.6.2 Confirmar `./tests/run.sh cstk/test_serve.sh` contra o baseline
   medido **74** (`PASS: 74 FAIL: 0 ERROR: 0 ORPHANS: 0`, commit `90c0417`,
   dec-025) — **não** contra o número do plano-insumo (55), que esconderia 19
   cenários numa regressão (FR-014)
-- [ ] 3.6.3 Confirmar `./tests/run.sh cstk/test_serve-docker.sh` contra o
+  — evidência: `# PASS: 89 FAIL: 0 ERROR: 0 ORPHANS: 0` = 74 + 15 cenários
+  novos, enumerados um a um: 7 da matriz/I5 (`..._ambos_pares_toolkit_
+  primeiro_...`, `..._ambos_pares_painel_primeiro_...`, `..._so_par_do_
+  toolkit_...`, `..._docs_decoy_nao_casa_por_prefixo`, `..._docs_decoy_antes_
+  do_par_real_...`, `..._outra_versao_nao_casa`, `..._tag_name_invalida_...`),
+  3 de validação pré-extração (`scenario_validate_tarball_members_rejeita_
+  estruturas_hostis`, `scenario_wrong_payload_checksum_confere_mas_bloqueia_
+  e_loga`, `scenario_wrong_payload_symlink_bloqueia_antes_da_extracao`),
+  4 de `CSTK_PANEL_REPO` (`..._fork_valido_avisa_e_audita`, `..._invalido_
+  fail_closed_...`, `..._ausente_usa_default_silenciosamente`, `..._override_
+  anuncia_uma_vez_no_update`) e 1 de drift de Node.
+- [x] 3.6.3 Confirmar `./tests/run.sh cstk/test_serve-docker.sh` contra o
   baseline **53**
-- [ ] 3.6.4 Rodar `./tests/run.sh --check-coverage` e confirmar sem órfãos
-- [ ] 3.6.5 Rodar `cd panel && npm test && npm run typecheck && npm run
+  — evidência: `# PASS: 53 FAIL: 0 ERROR: 0 ORPHANS: 0 TIME: 15s`, medido
+  DEPOIS da correção final de `serve.sh` (o modo `--docker` compartilha
+  `_serve_download_verify_extract`, então o baseline precisa ser reconfirmado
+  ao fim, não no meio).
+- [x] 3.6.4 Rodar `./tests/run.sh --check-coverage` e confirmar sem órfãos
+  — evidência: `Cobertura de testes para scripts em
+  plugins/cstk/skills/**/scripts/ + cli/lib/` / `Cobertura completa: zero
+  orfaos.`
+- [x] 3.6.5 Rodar `cd panel && npm test && npm run typecheck && npm run
   build` e confirmar verde, como projeto autocontido
-
----
-
+  — evidência: **a ordem literal da tarefa falha** a partir de um `npm ci`
+  limpo (dec-062): `sh: vitest: command not found`, e depois `Error: Failed
+  to resolve entry for package "@cstk-panel/shared-types"` com `Test Files 15
+  failed | 52 passed`. O workspace `shared-types` precisa emitir `dist/`
+  antes. Com `npm run build` primeiro: `✓ built in 5.63s`; `Test Files 65
+  passed | 4 skipped (69)` / `Tests 868 passed | 48 skipped (916)`;
+  `typecheck` limpo nos dois workspaces (`@cstk-panel/web@0.34.1` e
+  `@cstk-panel/shared-types@0.34.1`, `tsc --noEmit` sem saída). **A FASE 4
+  (`release.yml`) deve usar build-antes-de-test**, senão o workflow reproduz
+  este falso vermelho.
 ## FASE 4 - `release.yml`: empacotamento do painel `[A]`
 
 Ref: plan.md linha 215-216 (FR-010, FR-011); contracts/serve-asset-selection.md
