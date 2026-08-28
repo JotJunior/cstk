@@ -883,11 +883,12 @@ scenario_doctor_ss_cov_cenario8_header_desconhecido_unreadable() {
   esac
 }
 
-# Cenario 10 (quickstart): numerador forcado > denominador via stub de
-# manifest_count_recognized (unico jeito de alcancar este estado — nenhuma
-# entrada real de manifesto o produz, dado que N so incrementa por registro
-# valido e todo registro valido e tambem uma linha de dados). Expected:
-# [inconsistent] com os NUMEROS BRUTOS (nunca normalizados/min()); [PARCIAL].
+# Cenario 10 (quickstart) / FASE 5 FR-007: numerador forcado > denominador
+# via stub de _doctor_ss_scan_kind (o LACO QUE CLASSIFICA, nao mais o
+# validador manifest_count_recognized — apos a correcao FR-007 o numerador
+# records_used nasce do classificador, entao so uma mudanca NELE consegue
+# produzir esta divergencia). Expected: [inconsistent] com os NUMEROS
+# BRUTOS (nunca normalizados/min()); [PARCIAL].
 scenario_doctor_ss_cov_cenario10_numerador_forcado_inconsistent() {
   _h="$TMPDIR_TEST/cov10-h"
   _proj="$TMPDIR_TEST/cov10-proj"
@@ -901,7 +902,7 @@ scenario_doctor_ss_cov_cenario10_numerador_forcado_inconsistent() {
   capture env HOME="$_h" CSTK_LIB="$CSTK_LIB" sh -c '
     cd "$1" && shift
     . "$CSTK_LIB/doctor.sh"
-    manifest_count_recognized() { printf "1 5"; }
+    _doctor_ss_scan_kind() { printf "0 0 0 5"; }
     doctor_main "$@"
   ' doctor_test "$_proj"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "cov10 exit" "esperado 0 (report-only mesmo com contador inconsistente), obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
@@ -1114,7 +1115,8 @@ scenario_doctor_ss_inv_rc_matriz_fixtures_cobertura() {
   if [ "$_CAPTURED_EXIT" != 0 ]; then _fail "invrc-8" "exit $_CAPTURED_EXIT"; _fail_any=1; fi
   case "$_CAPTURED_STDERR" in *"[unreadable]"*) : ;; *) _fail "invrc-8" "sem achado [unreadable]: $_CAPTURED_STDERR"; _fail_any=1 ;; esac
 
-  # Linha 9: numerador forcado > denominador (stub) -> inconsistent.
+  # Linha 9: numerador forcado > denominador via stub do CLASSIFICADOR
+  # (_doctor_ss_scan_kind — FR-007) -> inconsistent.
   _h="$TMPDIR_TEST/invrc9-h"; _proj="$TMPDIR_TEST/invrc9-proj"
   mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
   printf '# foo\n' > "$_h/.claude/agents/foo.md"
@@ -1123,7 +1125,7 @@ scenario_doctor_ss_inv_rc_matriz_fixtures_cobertura() {
   capture env HOME="$_h" CSTK_LIB="$CSTK_LIB" sh -c '
     cd "$1" && shift
     . "$CSTK_LIB/doctor.sh"
-    manifest_count_recognized() { printf "1 5"; }
+    _doctor_ss_scan_kind() { printf "0 0 0 5"; }
     doctor_main "$@"
   ' doctor_test "$_proj"
   if [ "$_CAPTURED_EXIT" != 0 ]; then _fail "invrc-9" "exit $_CAPTURED_EXIT"; _fail_any=1; fi

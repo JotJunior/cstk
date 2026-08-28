@@ -595,6 +595,6 @@ Alternativa legitima, se o desenho mudou de proposito: atualizar
 §Independencia dos dois contadores para descreverem o mecanismo realmente
 implementado, registrando a revogacao de `research.md` D6.
 
-- [ ] 5.1.1 Corrigir `cli/lib/doctor.sh` conforme `FR-007`: fazer o numerador `records_used` da declaracao de cobertura nascer do laco que classifica (`_doctor_ss_scan_kind` -> `_doctor_shadowed_scope`), em vez de `manifest_count_recognized`; OU, se a revisao do desenho for deliberada, atualizar contrato §5 + `data-model.md` §Independencia dos dois contadores e registrar a revogacao de `research.md` D6. Cobrir com teste que faca numerador e denominador divergirem por mudanca no classificador (nao por mudanca no validador).
+- [x] 5.1.1 Corrigir `cli/lib/doctor.sh` conforme `FR-007`: fazer o numerador `records_used` da declaracao de cobertura nascer do laco que classifica (`_doctor_ss_scan_kind` -> `_doctor_shadowed_scope`), em vez de `manifest_count_recognized`; OU, se a revisao do desenho for deliberada, atualizar contrato §5 + `data-model.md` §Independencia dos dois contadores e registrar a revogacao de `research.md` D6. Cobrir com teste que faca numerador e denominador divergirem por mudanca no classificador (nao por mudanca no validador).
 
 <!-- converge-key: de67fe401e98 -->

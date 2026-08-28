@@ -74,10 +74,14 @@
 # contrato §4/INV-RC): nenhuma entrada desta secao move o exit code do
 # `cstk doctor`. Declaracao de cobertura (§3.4) e emitida SEMPRE (FR-006/
 # SC-003): a cobertura e medida contra o que o ARQUIVO CONTEM
-# (manifest_count_data_lines, denominador de granularidade de LINHA), nunca
-# contra o que o parser reconhece (manifest_count_recognized, numerador por
-# uso) — os dois caminhos sao deliberadamente independentes (research.md
-# D6). Rotulo de veredito (§3.5) so imprime `[OK]` sob gating triplo: F=R=2
+# (manifest_count_data_lines, denominador de granularidade de LINHA) versus
+# o que o LACO DE CLASSIFICACAO efetivamente processou (records_used,
+# contador incrementado por _doctor_ss_scan_kind a cada chamada de
+# _doctor_shadow_verdict — efeito colateral do laco que classifica, nunca
+# uma segunda passada de validacao independente; contrato §5, FR-007,
+# revoga research.md D6). Divergencia entre os dois so pode nascer de uma
+# mudanca no CLASSIFICADOR, nunca no validador. Rotulo de veredito (§3.5)
+# so imprime `[OK]` sob gating triplo: F=R=2
 # E count_shadowed=0 E count_nao_comparado=0 (= count_indeterminate +
 # count_unmanaged_upstream) — `[ACHADOS]` e neutro (nunca `[DIVERGENCIA]`,
 # que afirmaria comparacao onde pode ter havido so ausencia dela).
@@ -596,11 +600,23 @@ _doctor_shadow_verdict() {
   return 0
 }
 
-# _doctor_ss_scan_kind <kind> -> "<shadowed> <indeterminate> <unmanaged>"
-# em stdout (3 inteiros separados por espaco — FASE 3, contrato §3.5:
-# count_nao_comparado = count_indeterminate + count_unmanaged_upstream).
-# Emite as linhas de achado (via _doctor_shadow_verdict) em stderr como
-# efeito colateral, uma por registro `recognized`.
+# _doctor_ss_scan_kind <kind> -> "<shadowed> <indeterminate> <unmanaged>
+# <records_used>" em stdout (4 inteiros separados por espaco — FASE 3,
+# contrato §3.5: count_nao_comparado = count_indeterminate +
+# count_unmanaged_upstream; FASE 5/FR-007: records_used = numerador da
+# CoverageDeclaration, contrato §5). Emite as linhas de achado (via
+# _doctor_shadow_verdict) em stderr como efeito colateral, uma por registro
+# `recognized`.
+#
+# records_used (FR-007, contrato §5, data-model.md §CoverageDeclaration):
+# contador incrementado UMA VEZ por chamada a _doctor_shadow_verdict —
+# efeito colateral do proprio laco de classificacao, nao uma segunda
+# passada de validacao independente (revoga research.md D6). Conta TODOS
+# os vereditos produzidos, inclusive `shadow-current` (que nao entra nos 3
+# contadores acima, mas ainda representa um registro que o classificador
+# de fato processou). Se o classificador algum dia deixar de produzir
+# veredito para alguma classe de registro reconhecido, records_used cai
+# sozinho e a cobertura acusa a mudanca sem tocar no denominador.
 #
 # R4: o laco de iteracao roda sob `set -f` num SUBSHELL (restaurado ao
 # sair por construcao — o subshell termina), IFS=newline — precedente
@@ -626,18 +642,18 @@ _doctor_ss_scan_kind() {
   _ssk_manifest="./.claude/$_ssk_kind/.cstk-manifest"
 
   if [ ! -f "$_ssk_manifest" ]; then
-    printf '0 0 0'
+    printf '0 0 0 0'
     return 0
   fi
   # R5 ANTES de detect_schema_version (leitura limitada por head -c,
   # nunca a leitura de linha inteira de detect_schema_version — contrato
   # §7 nota normativa R5).
   if ! manifest_within_cap "$_ssk_manifest"; then
-    printf '0 0 0'
+    printf '0 0 0 0'
     return 0
   fi
   if ! detect_schema_version "$_ssk_manifest" >/dev/null 2>&1; then
-    printf '0 0 0'
+    printf '0 0 0 0'
     return 0
   fi
 
@@ -649,6 +665,7 @@ _doctor_ss_scan_kind() {
     _ssk_shadowed=0
     _ssk_indeterminate=0
     _ssk_unmanaged=0
+    _ssk_used=0
     # shellcheck disable=SC2013 # for-in-command deliberado: IFS=newline +
     # set -f (R4) isolam este laco de word-splitting e pathname expansion.
     for _ssk_line in $(awk '/^[[:space:]]*$/ { next } /^#/ { next } { print }' "$_ssk_manifest" 2>/dev/null); do
@@ -657,6 +674,10 @@ _doctor_ss_scan_kind() {
         _ssk_name=$(printf '%s' "$_ssk_line" | awk -F'\t' '{print $1}')
         _ssk_pver=$(printf '%s' "$_ssk_line" | awk -F'\t' '{print $2}')
         _ssk_state=$(_doctor_shadow_verdict "$_ssk_kind" "$_ssk_name" "$_ssk_pver")
+        # records_used (FR-007): incrementa para TODO veredito produzido,
+        # nao so para os 3 rotulados abaixo — shadow-current tambem conta
+        # (o registro FOI processado pelo classificador).
+        _ssk_used=$((_ssk_used + 1))
         case "$_ssk_state" in
           shadowed) _ssk_shadowed=$((_ssk_shadowed + 1)) ;;
           indeterminate) _ssk_indeterminate=$((_ssk_indeterminate + 1)) ;;
@@ -667,15 +688,21 @@ _doctor_ss_scan_kind() {
 '
     done
     IFS=$_ssk_ifs
-    printf '%s %s %s' "$_ssk_shadowed" "$_ssk_indeterminate" "$_ssk_unmanaged"
+    printf '%s %s %s %s' "$_ssk_shadowed" "$_ssk_indeterminate" "$_ssk_unmanaged" "$_ssk_used"
   )
 }
 
-# _doctor_ss_coverage_source <path> -> seta globais _dcs_state/_dcs_d/
-# _dcs_n/_dcs_motivo (FASE 3, contrato §3.4, data-model.md
-# CoverageDeclaration). <path> nao precisa de sanitizacao — e sempre um dos
-# 2 caminhos fixos `./.claude/{agents,commands}/.cstk-manifest`, nunca
-# derivado de conteudo do manifesto.
+# _doctor_ss_coverage_source <path> <records_used> -> seta globais
+# _dcs_state/_dcs_d/_dcs_n/_dcs_motivo (FASE 3/5, contrato §3.4/§5,
+# data-model.md CoverageDeclaration). <path> nao precisa de sanitizacao —
+# e sempre um dos 2 caminhos fixos `./.claude/{agents,commands}/
+# .cstk-manifest`, nunca derivado de conteudo do manifesto. <records_used>
+# e o numerador (FR-007): SEMPRE o valor ja computado pelo laco que
+# classifica (_doctor_ss_scan_kind, mesmo <path>/kind), nunca recalculado
+# aqui por uma segunda passada de validacao — este helper NUNCA chama
+# manifest_count_recognized (revoga research.md D6; a independencia dos
+# dois contadores agora e so no DENOMINADOR, que continua vindo do
+# arquivo via manifest_count_data_lines).
 #
 # Ordem das checagens (deliberada, contrato §7 nota normativa R5):
 # manifest_within_cap roda ANTES de detect_schema_version porque o cap usa
@@ -686,9 +713,11 @@ _doctor_ss_scan_kind() {
 #
 # coverage_state (data-model.md): absent (found=false) / unreadable
 # (found=true, schema ilegivel OU teto excedido) / full (D==N, inclui
-# 0==0) / partial (D>N) / inconsistent (N>D, NUNCA normalizado).
+# 0==0) / partial (D>N) / inconsistent (N>D, NUNCA normalizado — so
+# alcancavel hoje forcando o classificador, nao mais o validador).
 _doctor_ss_coverage_source() {
   _dcs_path=$1
+  _dcs_records_used=$2
 
   if [ ! -f "$_dcs_path" ]; then
     _dcs_state=absent
@@ -720,20 +749,11 @@ _doctor_ss_coverage_source() {
     return 0
   fi
 
-  _dcs_dn=$(manifest_count_recognized "$_dcs_path")
-  if [ "$_dcs_dn" = "CAP-EXCEEDED" ]; then
-    # Defensivo: manifest_within_cap ja foi checado acima: nunca deveria
-    # chegar aqui, mas manifest_count_recognized re-checa por conta
-    # propria (dec-040) — se algum dia divergir, nao afirmar full/partial
-    # sobre uma leitura que a propria lib recusou.
-    _dcs_state=unreadable
-    _dcs_d='?'
-    _dcs_n='?'
-    _dcs_motivo="teto-excedido"
-    return 0
-  fi
-  _dcs_d=${_dcs_dn%% *}
-  _dcs_n=${_dcs_dn#* }
+  # D = denominador de granularidade de LINHA (arquivo), independente do
+  # classificador. N = records_used, produzido pelo caller a partir do
+  # laco que classifica (_doctor_ss_scan_kind) — FR-007.
+  _dcs_d=$(manifest_count_data_lines "$_dcs_path")
+  _dcs_n=$_dcs_records_used
 
   if [ "$_dcs_d" -eq "$_dcs_n" ]; then
     _dcs_state=full
@@ -765,15 +785,26 @@ _doctor_shadowed_scope() {
   _ss_count_shadowed=0
   _ss_count_indeterminate=0
   _ss_count_unmanaged=0
+  # records_used por kind (FR-007) — capturado aqui, unica execucao do
+  # laco que classifica, e repassado a _doctor_ss_coverage_source abaixo
+  # (nunca recalculado por uma segunda passada de validacao).
+  _ss_used_agents=0
+  _ss_used_commands=0
   for _ss_kind in agents commands; do
-    _ss_triple=$(_doctor_ss_scan_kind "$_ss_kind")
-    _ss_s=${_ss_triple%% *}
-    _ss_rest=${_ss_triple#* }
+    _ss_quad=$(_doctor_ss_scan_kind "$_ss_kind")
+    _ss_s=${_ss_quad%% *}
+    _ss_rest=${_ss_quad#* }
     _ss_i=${_ss_rest%% *}
-    _ss_u=${_ss_rest#* }
+    _ss_rest=${_ss_rest#* }
+    _ss_u=${_ss_rest%% *}
+    _ss_used=${_ss_rest#* }
     _ss_count_shadowed=$((_ss_count_shadowed + _ss_s))
     _ss_count_indeterminate=$((_ss_count_indeterminate + _ss_i))
     _ss_count_unmanaged=$((_ss_count_unmanaged + _ss_u))
+    case "$_ss_kind" in
+      agents) _ss_used_agents=$_ss_used ;;
+      commands) _ss_used_commands=$_ss_used ;;
+    esac
   done
 
   # Bloco de remediacao (§3.3): so quando ha >=1 shadowed. Redacao normativa
@@ -793,13 +824,13 @@ _doctor_shadowed_scope() {
   _ss_path_agents="./.claude/agents/.cstk-manifest"
   _ss_path_commands="./.claude/commands/.cstk-manifest"
 
-  _doctor_ss_coverage_source "$_ss_path_agents"
+  _doctor_ss_coverage_source "$_ss_path_agents" "$_ss_used_agents"
   _ss_state_agents=$_dcs_state
   _ss_d_agents=$_dcs_d
   _ss_n_agents=$_dcs_n
   _ss_motivo_agents=$_dcs_motivo
 
-  _doctor_ss_coverage_source "$_ss_path_commands"
+  _doctor_ss_coverage_source "$_ss_path_commands" "$_ss_used_commands"
   _ss_state_commands=$_dcs_state
   _ss_d_commands=$_dcs_d
   _ss_n_commands=$_dcs_n

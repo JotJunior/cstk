@@ -35,15 +35,23 @@
 #        NUNCA e materializado por inteiro.
 #   manifest_count_recognized <path>
 #     -> "D N" em stdout (D=denominador, N=numerador de linhas
-#        'recognized' via manifest_record_is_valid). Helper interno
-#        (alem das 5 funcoes do contrato §5 — dec pendente, ver Decisao
-#        na execucao) que exercita R4: o laco de iteracao roda sob
-#        `set -f` (subshell, restaurado ao sair), precedente literal
-#        `cli/lib/recall.sh fts_query_escape()` — impede que uma linha de
-#        dados contendo `*` sofra pathname expansion e infle o numerador
-#        acima do denominador. Chama manifest_within_cap ANTES de iterar;
-#        se excedido, imprime "CAP-EXCEEDED" e devolve exit 1 (caller
-#        trata como coverage_state=unreadable, motivo=teto-excedido).
+#        'recognized' via manifest_record_is_valid — uma segunda passada
+#        de VALIDACAO, independente do classificador). Helper interno
+#        (alem das 5 funcoes do contrato §5 — dec-040) que exercita R4: o
+#        laco de iteracao roda sob `set -f` (subshell, restaurado ao
+#        sair), precedente literal `cli/lib/recall.sh
+#        fts_query_escape()` — impede que uma linha de dados contendo `*`
+#        sofra pathname expansion e infle o numerador acima do
+#        denominador. Chama manifest_within_cap ANTES de iterar; se
+#        excedido, imprime "CAP-EXCEEDED" e devolve exit 1.
+#        NAO consumida por `cli/lib/doctor.sh` (FASE 5/FR-007): o
+#        numerador `records_used` da CoverageDeclaration nasce do laco que
+#        classifica (`_doctor_ss_scan_kind`), nao desta segunda passada de
+#        validacao — ver `docs/specs/doctor-shadowed-scope/contracts/
+#        doctor-shadowed-scope-output.md` §5. Preservada como primitiva
+#        interna com cobertura propria em
+#        `tests/cstk/test_manifest-coverage.sh` (R4/CAP-EXCEEDED
+#        continuam relevantes fora do caminho da declaracao de cobertura).
 #
 # POSIX sh puro. Deps: awk, tr, cut, head, wc, printf.
 
