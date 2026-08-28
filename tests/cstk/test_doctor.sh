@@ -542,4 +542,624 @@ EOF
   assert_stderr_contains "[undetermined]" || return 1
 }
 
+# ==== Shadowed Scope (feature doctor-shadowed-scope, FASE 2 — US1/US2,
+# FR-001..FR-005/FR-010; contract doctor-shadowed-scope-output.md).
+# Reusa _run_doctor_in (ja resolve cwd=PROJDIR, necessario porque a secao
+# le ./.claude/<kind>/.cstk-manifest RELATIVO ao cwd). Todos os cenarios
+# aqui MUST sair exit 0 (report-only, contrato §4) — a secao nova nunca
+# gateia, independente do achado. ====
+
+# _ss_sha: string de 64 hex chars bem formada (campo 3 do manifesto). O
+# valor NAO precisa bater com hash_file real de nada — _doctor_shadow_verdict
+# nunca le este campo, so manifest_record_is_valid o valida por FORMA.
+_ss_sha() {
+  printf 'a%.0s' $(seq 1 64)
+}
+
+scenario_doctor_ss_shadowed_diverge_do_catalogo() {
+  _h="$TMPDIR_TEST/ss1-h"
+  _proj="$TMPDIR_TEST/ss1-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo (catalogo)\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo (projeto, editado)\n' > "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t0.9.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss shadowed exit" "esperado 0 (report-only), obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "Shadowed Scope" || return 1
+  assert_stderr_contains "[shadowed]" || return 1
+  assert_stderr_contains "agents/foo" || return 1
+  assert_stderr_contains "remediacao:" || return 1
+}
+
+scenario_doctor_ss_shadow_current_identico_ao_catalogo() {
+  _h="$TMPDIR_TEST/ss2-h"
+  _proj="$TMPDIR_TEST/ss2-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo identico\n' > "$_h/.claude/agents/foo.md"
+  cp "$_h/.claude/agents/foo.md" "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t1.0.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss shadow-current exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[shadow-current]" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"[shadowed]"*) _fail "shadow-current" "nao deveria haver [shadowed] quando o conteudo e identico: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"remediacao:"*) _fail "shadow-current" "bloco de remediacao so pode aparecer com count_shadowed >= 1: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_doctor_ss_unmanaged_upstream_removido_do_catalogo() {
+  _h="$TMPDIR_TEST/ss5-h"
+  _proj="$TMPDIR_TEST/ss5-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# bar (projeto)\n' > "$_proj/.claude/agents/bar.md"
+  # $_h/.claude/agents/bar.md deliberadamente AUSENTE: removido/renomeado
+  # upstream (FR-010).
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'bar\t1.0.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss unmanaged-upstream exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[unmanaged-upstream]" || return 1
+  assert_stderr_contains "agents/bar" || return 1
+  assert_stderr_contains "removido/renomeado upstream" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"remediacao:"*) _fail "unmanaged-upstream" "unmanaged-upstream nao e shadowed; nao deve emitir bloco de remediacao: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_doctor_ss_symlink_indeterminate_nunca_hasheia_alvo() {
+  _h="$TMPDIR_TEST/ss9b-h"
+  _proj="$TMPDIR_TEST/ss9b-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf 'SECRET-DO-NOT-LEAK\n' > "$TMPDIR_TEST/secret.txt"
+  ln -s "$TMPDIR_TEST/secret.txt" "$_proj/.claude/agents/x.md"
+  printf '# x (catalogo)\n' > "$_h/.claude/agents/x.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'x\t1.0.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss symlink exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[indeterminate]" || return 1
+  assert_stderr_contains "symlink" || return 1
+  # Nenhum hash do ALVO do symlink (o segredo) pode ter sido calculado nem
+  # impresso: compara o prefixo sha256 real do segredo contra a saida.
+  _secret_sha_prefix=$(
+    env CSTK_LIB="$CSTK_LIB" sh -c '. "$CSTK_LIB/hash.sh"; hash_file "$1"' _ "$TMPDIR_TEST/secret.txt" 2>/dev/null \
+      | cut -c1-12
+  )
+  case "$_CAPTURED_STDERR" in
+    *"$_secret_sha_prefix"*) _fail "ss symlink" "hash do alvo do symlink NUNCA pode ser impresso: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# Cenario 9.a (traversal) + variante "release-wave" (Cenario 4/4.b, task
+# 2.1.4): registro com `name` fora de forma NUNCA entra na arvore de
+# ShadowVerdict (R1) — nao produz achado algum, so conta no denominador da
+# cobertura (FASE 3).
+scenario_doctor_ss_traversal_nunca_entra_na_arvore() {
+  _h="$TMPDIR_TEST/ss9a-h"
+  _proj="$TMPDIR_TEST/ss9a-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf '../../../.ssh/known_hosts\t1.0.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss traversal exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"known_hosts"*) _fail "ss traversal" "name com traversal NUNCA pode aparecer na saida: $_CAPTURED_STDERR"; return 1 ;;
+    *"[shadowed]"*) _fail "ss traversal" "registro com name invalido nao pode produzir veredito shadowed: $_CAPTURED_STDERR"; return 1 ;;
+    *"[indeterminate]"*) _fail "ss traversal" "registro com name invalido nao pode produzir veredito indeterminate: $_CAPTURED_STDERR"; return 1 ;;
+    *"[unmanaged-upstream]"*) _fail "ss traversal" "registro com name invalido nao pode produzir veredito unmanaged-upstream: $_CAPTURED_STDERR"; return 1 ;;
+    *"[shadow-current]"*) _fail "ss traversal" "registro com name invalido nao pode produzir veredito shadow-current: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  assert_stderr_contains "Shadowed Scope" || return 1
+}
+
+# Cenario 4/4.b do quickstart (analogo ao caso release-wave, aqui aplicado
+# a kind=agents ja que Shadowed Scope so cobre agents/commands): copia
+# local sem NENHUMA entrada de manifesto — mesmo com colisao de nome
+# contra o catalogo — e estruturalmente inalcancavel: a iteracao parte do
+# manifesto, nunca do diretorio (FR-004/FR-005).
+scenario_doctor_ss_copia_local_sem_registro_nunca_aparece() {
+  _h="$TMPDIR_TEST/ss4-h"
+  _proj="$TMPDIR_TEST/ss4-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# unregistered (catalogo)\n' > "$_h/.claude/agents/unregistered.md"
+  printf '# unregistered (projeto, sem registro)\n' > "$_proj/.claude/agents/unregistered.md"
+  printf '# cstk manifest v1\n# schema: x\n' > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss copia sem registro exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  # "unregistered" APARECE no sumario CLASSICO (comportamento vizinho,
+  # nao criado por esta feature: --scope global default varre
+  # $HOME/.claude/agents e acusa [ORPHAN] por nao ter entry no manifesto
+  # global — nada a ver com Shadowed Scope). A garantia desta feature e
+  # so sobre a secao NOVA: isola o texto apos o cabecalho antes de checar.
+  _ss_section=$(printf '%s\n' "$_CAPTURED_STDERR" | awk '/^==> Shadowed Scope/{f=1} f')
+  case "$_ss_section" in
+    *"unregistered"*) _fail "ss copia sem registro" "copia local sem registro NAO pode ser mencionada pela Shadowed Scope (FR-004/FR-005): $_ss_section"; return 1 ;;
+  esac
+  assert_stderr_contains "Shadowed Scope" || return 1
+}
+
+scenario_doctor_ss_fix_nao_repara_nem_suprime() {
+  _h="$TMPDIR_TEST/ss12-h"
+  _proj="$TMPDIR_TEST/ss12-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo (catalogo)\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo (projeto, editado)\n' > "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t0.9.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj" --fix
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss --fix exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[shadowed]" || return 1
+  _content=$(cat "$_proj/.claude/agents/foo.md")
+  case "$_content" in
+    *"editado"*) : ;;
+    *) _fail "ss --fix" "--fix NAO pode sobrescrever a copia de projeto (FR-005): $_content"; return 1 ;;
+  esac
+}
+
+scenario_doctor_ss_deps_nao_emite_secao() {
+  _h="$TMPDIR_TEST/ss13-h"
+  _proj="$TMPDIR_TEST/ss13-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo (catalogo)\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo (projeto, editado)\n' > "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t0.9.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj" --deps
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss --deps exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  case "$_CAPTURED_STDERR" in
+    *"Shadowed Scope"*) _fail "ss --deps" "--deps NAO pode emitir a secao Shadowed Scope: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# Cenario 9.c: `toolkit_version` (campo 2) NAO passa por
+# manifest_name_is_safe (so o campo 1/name passa) — e o vetor real para
+# forjar saude via bytes de controle. manifest_scrub_text MUST neutraliza-los
+# antes de qualquer impressao (R3).
+scenario_doctor_ss_bytes_controle_sanitizados_no_toolkit_version() {
+  _h="$TMPDIR_TEST/ss9c-h"
+  _proj="$TMPDIR_TEST/ss9c-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo (catalogo)\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo (projeto, editado)\n' > "$_proj/.claude/agents/foo.md"
+  _forged_ver="1.0$(printf '\033')[FAKE-OK]$(printf '\015')$(printf '\010')END"
+  _line=$(printf '%s\t%s\t%s\tts' 'foo' "$_forged_ver" "$(_ss_sha)")
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf '%s\n' "$_line"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "ss bytes controle exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[shadowed]" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"$(printf '\033')"*) _fail "ss bytes controle" "byte ESC (0x1b) vazou na saida"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"$(printf '\010')"*) _fail "ss bytes controle" "byte backspace (0x08) vazou na saida"; return 1 ;;
+  esac
+  case "$_CAPTURED_STDERR" in
+    *"$(printf '\015')"*) _fail "ss bytes controle" "byte CR (0x0d) vazou na saida"; return 1 ;;
+  esac
+}
+
+# ==== Declaracao de cobertura (feature doctor-shadowed-scope, FASE 3 —
+# US3, FR-006..FR-009; contract §3.4/§3.5, data-model.md
+# CoverageDeclaration/ShadowedScopeReport). Isola o texto da secao
+# (_ss_section helper local) para nao colidir com o achado classico do
+# --scope global default. ====
+
+# Isola o bloco "==> Shadowed Scope" ate a proxima secao (ou fim), mesma
+# tecnica de scenario_doctor_ss_copia_local_sem_registro_nunca_aparece.
+_ss_section_of() {
+  printf '%s\n' "$1" | awk '/^==> Shadowed Scope/{f=1} f'
+}
+
+# INV-RC (task 3.4.3/3.4.4) — teste de mutacao PROVOU que `cstk doctor`
+# (via doctor_main) NAO tem poder de deteccao para regressoes no `return`
+# de _doctor_shadowed_scope: doctor_main chama a funcao como statement
+# solto, sem jamais ler `$?` (nem capturar, nem usar em `if`) — o retorno
+# interno da secao e estruturalmente inalcancavel pelo exit code do
+# comando, ainda mais forte que "sempre retorna 0" (nenhum bug de
+# `return 1` la dentro poderia mover o exit mesmo que quisesse). Prova
+# empirica (2026-08-27, ANTES desta funcao existir): com
+# `_doctor_shadowed_scope` mutada para `return 1` quando
+# `count_shadowed >= 1`, a suite inteira (46/46, incluindo
+# scenario_doctor_ss_shadowed_diverge_do_catalogo que produz exatamente
+# essa condicao) continuou PASS — `cstk doctor` sempre saiu exit 0,
+# confirmando que aquele canal e cego para este tipo de regressao.
+# Por isso o teste de mutacao real do INV-RC precisa chamar
+# _doctor_shadowed_scope DIRETAMENTE (nao via doctor_main) e checar o
+# `$?` da propria funcao — e o UNICO caminho que de fato falha sob a
+# mutacao (confirmado abaixo: rc=1 direto vs rc=0 via doctor_main, mesma
+# mutacao, mesmo fixture).
+_run_doctor_ss_direct() {
+  _rdsd_home=$1; shift
+  _rdsd_proj=$1; shift
+  capture env HOME="$_rdsd_home" CSTK_LIB="$CSTK_LIB" sh -c '
+    cd "$1" && . "$CSTK_LIB/doctor.sh" && _doctor_shadowed_scope
+  ' doctor_test "$_rdsd_proj"
+}
+
+scenario_doctor_ss_inv_rc_funcao_direta_retorna_0() {
+  _h="$TMPDIR_TEST/invrc-direct-h"
+  _proj="$TMPDIR_TEST/invrc-direct-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo cat\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo proj\n' > "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_ss_direct "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "inv-rc direto" "_doctor_shadowed_scope MUST sempre devolver 0 (INV-RC), mesmo com count_shadowed>=1: obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[shadowed]" || return 1
+}
+
+# Cenario 6 (quickstart): 2 registros bem formados + 1 linha sem TAB algum
+# ("bar baz malformada"). Expected: D=3, N=2, U=1, [partial]; exit 0
+# (report-only). A linha malformada NUNCA produz achado (R1/FR-007).
+scenario_doctor_ss_cov_cenario6_linha_sem_tab_partial() {
+  _h="$TMPDIR_TEST/cov6-h"
+  _proj="$TMPDIR_TEST/cov6-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo\n' > "$_h/.claude/agents/foo.md"
+  cp "$_h/.claude/agents/foo.md" "$_proj/.claude/agents/foo.md"
+  printf '# bar\n' > "$_h/.claude/agents/bar.md"
+  cp "$_h/.claude/agents/bar.md" "$_proj/.claude/agents/bar.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t1.0\t%s\tts\n' "$(_ss_sha)"
+    printf 'bar\t1.0\t%s\tts\n' "$(_ss_sha)"
+    printf 'bar baz malformada\n'
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "cov6 exit" "esperado 0 (report-only), obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "./.claude/agents/.cstk-manifest    [partial]  registros no arquivo: 3  interpretados: 2  nao interpretados: 1" || return 1
+  assert_stderr_contains "[PARCIAL]" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"bar baz malformada"*) _fail "cov6" "linha malformada NUNCA pode aparecer na saida: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# Cenario 7 (quickstart): linha de 5 campos TAB (coluna extra desconhecida)
+# conta no denominador e NAO no numerador. Expected: [partial] + [PARCIAL].
+scenario_doctor_ss_cov_cenario7_coluna_extra_partial() {
+  _h="$TMPDIR_TEST/cov7-h"
+  _proj="$TMPDIR_TEST/cov7-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo\n' > "$_h/.claude/agents/foo.md"
+  cp "$_h/.claude/agents/foo.md" "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t1.0\t%s\tts\n' "$(_ss_sha)"
+    printf 'extra\t1.0\t%s\tts\tcampo-a-mais\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "cov7 exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "./.claude/agents/.cstk-manifest    [partial]  registros no arquivo: 2  interpretados: 1  nao interpretados: 1" || return 1
+  assert_stderr_contains "[PARCIAL]" || return 1
+}
+
+# Cenario 8 (quickstart, FR-009): header `# cstk manifest v2` (schema
+# futuro/desconhecido). Expected: [unreadable] com D=? N=? e motivo citando
+# detect_schema_version (sanitizado — R3); veredito [PARCIAL]; exit 0. A
+# fonte NUNCA e omitida nem tratada como [absent] (FR-009 literal).
+scenario_doctor_ss_cov_cenario8_header_desconhecido_unreadable() {
+  _h="$TMPDIR_TEST/cov8-h"
+  _proj="$TMPDIR_TEST/cov8-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# cstk manifest v2\nfoo\t1.0\t%s\tts\n' "$(_ss_sha)" > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "cov8 exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "./.claude/agents/.cstk-manifest    [unreadable]  registros no arquivo: ?  interpretados: ?  motivo: manifest: header desconhecido em ./.claude/agents/.cstk-manifest" || return 1
+  assert_stderr_contains "[PARCIAL]" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"[absent]"*"agents"*) _fail "cov8" "fonte com schema ilegivel NAO pode ser tratada como [absent] (FR-009): $_CAPTURED_STDERR"; return 1 ;;
+  esac
+  # A linha "foo" sob schema desconhecido NAO pode produzir achado algum
+  # (nem shadow-current nem shadowed): interpretar dados sob um schema que
+  # a propria leitura ja rejeitou repetiria o defeito da feature.
+  _ss_sec=$(_ss_section_of "$_CAPTURED_STDERR")
+  case "$_ss_sec" in
+    *"[shadow-current]"*"agents/foo"*|*"[shadowed]"*"agents/foo"*)
+      _fail "cov8" "registro sob schema ilegivel nao pode produzir veredito: $_ss_sec"; return 1 ;;
+  esac
+}
+
+# Cenario 10 (quickstart) / FASE 5 FR-007: numerador forcado > denominador
+# via stub de _doctor_ss_scan_kind (o LACO QUE CLASSIFICA, nao mais o
+# validador manifest_count_recognized — apos a correcao FR-007 o numerador
+# records_used nasce do classificador, entao so uma mudanca NELE consegue
+# produzir esta divergencia). Expected: [inconsistent] com os NUMEROS
+# BRUTOS (nunca normalizados/min()); [PARCIAL].
+scenario_doctor_ss_cov_cenario10_numerador_forcado_inconsistent() {
+  _h="$TMPDIR_TEST/cov10-h"
+  _proj="$TMPDIR_TEST/cov10-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo\n' > "$_h/.claude/agents/foo.md"
+  cp "$_h/.claude/agents/foo.md" "$_proj/.claude/agents/foo.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  capture env HOME="$_h" CSTK_LIB="$CSTK_LIB" sh -c '
+    cd "$1" && shift
+    . "$CSTK_LIB/doctor.sh"
+    _doctor_ss_scan_kind() { printf "0 0 0 5"; }
+    doctor_main "$@"
+  ' doctor_test "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "cov10 exit" "esperado 0 (report-only mesmo com contador inconsistente), obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "./.claude/agents/.cstk-manifest  [inconsistent]  registros no arquivo: 1  interpretados: 5  (N > D: inconsistencia interna do contador — reporte este caso)" || return 1
+  assert_stderr_contains "[PARCIAL]" || return 1
+}
+
+# Task 3.1.3 — borda explicita da entidade CoverageDeclaration: fonte
+# encontrada mas com ZERO linhas de dados (so header/schema, sem
+# registros) classifica como [full] (D=0 == N=0), nunca [partial] nem
+# [absent]. Combinada com a outra fonte tambem full (identica ao
+# catalogo) => veredito [OK].
+scenario_doctor_ss_cov_zero_registros_e_full() {
+  _h="$TMPDIR_TEST/cov-zero-h"
+  _proj="$TMPDIR_TEST/cov-zero-proj"
+  mkdir -p "$_h/.claude/agents" "$_h/.claude/commands" "$_proj/.claude/agents" "$_proj/.claude/commands"
+  printf '# cstk manifest v1\n# schema: x\n' > "$_proj/.claude/agents/.cstk-manifest"
+  printf '# cmd\n' > "$_h/.claude/commands/cmd.md"
+  cp "$_h/.claude/commands/cmd.md" "$_proj/.claude/commands/cmd.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'cmd\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/commands/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "cov-zero exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "./.claude/agents/.cstk-manifest    [full]  registros no arquivo: 0  interpretados: 0  nao interpretados: 0" || return 1
+  assert_stderr_contains "[OK] 2 de 2 fontes lidas integralmente; 0 divergencia(s), 0 nao comparado(s)." || return 1
+}
+
+# Cenario 3 (quickstart) / task 3.2.3: nenhum manifesto de projeto em
+# NENHUM dos dois kinds. A declaracao de cobertura ainda sai, com ambas as
+# fontes [absent] e 0/0/0 — ausencia DECLARADA, nunca omitida (FR-006).
+scenario_doctor_ss_cov_cenario3_sem_manifesto_projeto_f0() {
+  _h="$TMPDIR_TEST/cov3-h"
+  _proj="$TMPDIR_TEST/cov3-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "cov3 exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "fontes declaradas: ./.claude/agents/.cstk-manifest, ./.claude/commands/.cstk-manifest" || return 1
+  assert_stderr_contains "fontes encontradas: 0 de 2" || return 1
+  assert_stderr_contains "fontes lidas com sucesso: 0 de 2" || return 1
+  assert_stderr_contains "./.claude/agents/.cstk-manifest    [absent]  registros no arquivo: 0  interpretados: 0  nao interpretados: 0" || return 1
+  assert_stderr_contains "./.claude/commands/.cstk-manifest    [absent]  registros no arquivo: 0  interpretados: 0  nao interpretados: 0" || return 1
+  assert_stderr_contains "[SEM-FONTE] nenhum manifesto de escopo de projeto encontrado no CWD; nada foi comparado." || return 1
+}
+
+# Task 3.1.1 (edge): F=1 — uma fonte ausente (agents), a outra full
+# (commands). Corner nao explicitado literalmente pela tabela do Cenario
+# 20 do quickstart (que so cobre F=0 e F=2); decisao operacional registrada
+# na execucao: PARCIAL generaliza "cobertura incompleta" para qualquer
+# combinacao != (F=0) e != (F=R=2), incluindo fonte ausente isolada — o
+# enum tem so 4 rotulos e nenhum deles seria mais preciso que PARCIAL aqui.
+scenario_doctor_ss_cov_f1_uma_fonte_ausente_parcial() {
+  _h="$TMPDIR_TEST/covf1-h"
+  _proj="$TMPDIR_TEST/covf1-proj"
+  mkdir -p "$_h/.claude/commands" "$_proj/.claude/commands"
+  printf '# cmd\n' > "$_h/.claude/commands/cmd.md"
+  cp "$_h/.claude/commands/cmd.md" "$_proj/.claude/commands/cmd.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'cmd\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/commands/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "covf1 exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "fontes encontradas: 1 de 2" || return 1
+  assert_stderr_contains "fontes lidas com sucesso: 1 de 2" || return 1
+  assert_stderr_contains "./.claude/agents/.cstk-manifest    [absent]  registros no arquivo: 0  interpretados: 0  nao interpretados: 0" || return 1
+  assert_stderr_contains "[PARCIAL] cobertura incompleta: 1 de 2 fontes lidas apenas em parte" || return 1
+  case "$_CAPTURED_STDERR" in
+    *"[OK]"*) _fail "covf1" "[OK] MUST NOT sair com F < 2: $_CAPTURED_STDERR"; return 1 ;;
+    *"[SEM-FONTE]"*) _fail "covf1" "F=1 != F=0, SEM-FONTE seria falso: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+# ==== Cenario 20 (quickstart) — rotulo de veredito: [OK] so quando as
+# tres condicoes valem. 7 linhas da tabela, uma funcao por linha. ====
+
+scenario_doctor_ss_verdict_ok_tudo_identico() {
+  _h="$TMPDIR_TEST/v1-h"
+  _proj="$TMPDIR_TEST/v1-proj"
+  mkdir -p "$_h/.claude/agents" "$_h/.claude/commands" "$_proj/.claude/agents" "$_proj/.claude/commands"
+  printf '# foo\n' > "$_h/.claude/agents/foo.md"
+  cp "$_h/.claude/agents/foo.md" "$_proj/.claude/agents/foo.md"
+  printf '# cmd\n' > "$_h/.claude/commands/cmd.md"
+  cp "$_h/.claude/commands/cmd.md" "$_proj/.claude/commands/cmd.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'cmd\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/commands/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "v1 exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[OK] 2 de 2 fontes lidas integralmente; 0 divergencia(s), 0 nao comparado(s)." || return 1
+}
+
+scenario_doctor_ss_verdict_achados_uma_divergencia() {
+  _h="$TMPDIR_TEST/v2-h"
+  _proj="$TMPDIR_TEST/v2-proj"
+  mkdir -p "$_h/.claude/agents" "$_h/.claude/commands" "$_proj/.claude/agents" "$_proj/.claude/commands"
+  printf '# foo cat\n' > "$_h/.claude/agents/foo.md"
+  printf '# foo proj\n' > "$_proj/.claude/agents/foo.md"
+  printf '# cmd\n' > "$_h/.claude/commands/cmd.md"
+  cp "$_h/.claude/commands/cmd.md" "$_proj/.claude/commands/cmd.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'cmd\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/commands/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "v2 exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[ACHADOS] 2 de 2 fontes lidas integralmente; 1 divergencia(s), 0 nao comparado(s) — informativo, nao altera o exit code." || return 1
+  case "$_CAPTURED_STDERR" in
+    *"[OK]"*) _fail "v2" "[OK] MUST NOT sair ao lado de uma divergencia real: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_doctor_ss_verdict_achados_symlink_nao_comparado() {
+  _h="$TMPDIR_TEST/v3-h"
+  _proj="$TMPDIR_TEST/v3-proj"
+  mkdir -p "$_h/.claude/agents" "$_h/.claude/commands" "$_proj/.claude/agents" "$_proj/.claude/commands"
+  printf 'SECRET\n' > "$TMPDIR_TEST/v3-secret.txt"
+  ln -s "$TMPDIR_TEST/v3-secret.txt" "$_proj/.claude/agents/foo.md"
+  printf '# foo cat\n' > "$_h/.claude/agents/foo.md"
+  printf '# cmd\n' > "$_h/.claude/commands/cmd.md"
+  cp "$_h/.claude/commands/cmd.md" "$_proj/.claude/commands/cmd.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'foo\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'cmd\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/commands/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "v3 exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  # Registro FOI interpretado (produziu veredito indeterminate) => a fonte
+  # segue [full]; so a clausula count_nao_comparado>=1 impede [OK].
+  assert_stderr_contains "./.claude/agents/.cstk-manifest    [full]  registros no arquivo: 1  interpretados: 1  nao interpretados: 0" || return 1
+  assert_stderr_contains "[ACHADOS] 2 de 2 fontes lidas integralmente; 0 divergencia(s), 1 nao comparado(s) — informativo, nao altera o exit code." || return 1
+  case "$_CAPTURED_STDERR" in
+    *"[OK]"*) _fail "v3" "[OK] ao lado de comparacao impossivel por symlink e o falso OK que a feature existe para matar: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_doctor_ss_verdict_achados_unmanaged_upstream_nao_comparado() {
+  _h="$TMPDIR_TEST/v4-h"
+  _proj="$TMPDIR_TEST/v4-proj"
+  mkdir -p "$_h/.claude/agents" "$_h/.claude/commands" "$_proj/.claude/agents" "$_proj/.claude/commands"
+  printf '# bar proj\n' > "$_proj/.claude/agents/bar.md"
+  # $_h/.claude/agents/bar.md deliberadamente ausente (removido upstream).
+  printf '# cmd\n' > "$_h/.claude/commands/cmd.md"
+  cp "$_h/.claude/commands/cmd.md" "$_proj/.claude/commands/cmd.md"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'bar\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    printf 'cmd\t1.0\t%s\tts\n' "$(_ss_sha)"
+  } > "$_proj/.claude/commands/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "v4 exit" "esperado 0, obtido $_CAPTURED_EXIT / $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "[ACHADOS] 2 de 2 fontes lidas integralmente; 0 divergencia(s), 1 nao comparado(s) — informativo, nao altera o exit code." || return 1
+  case "$_CAPTURED_STDERR" in
+    *"[OK]"*) _fail "v4" "FR-010: unmanaged-upstream nao pode ser contabilizado como saudavel (ausencia de comparacao possivel): $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_doctor_ss_verdict_parcial_linha_malformada() {
+  scenario_doctor_ss_cov_cenario6_linha_sem_tab_partial
+}
+
+scenario_doctor_ss_verdict_parcial_header_desconhecido() {
+  scenario_doctor_ss_cov_cenario8_header_desconhecido_unreadable
+}
+
+scenario_doctor_ss_verdict_sem_fonte_nenhum_manifesto() {
+  scenario_doctor_ss_cov_cenario3_sem_manifesto_projeto_f0
+}
+
+# ==== INV-RC (task 3.4.3) — matriz de fixtures adversariais NOVAS desta
+# FASE (as demais linhas da tabela de 15 do Cenario 19 — shadowed,
+# shadow-current, unmanaged-upstream, symlink, projeto-ausente, traversal,
+# bytes de controle — ja tem cobertura individual de exit==0 nos cenarios
+# da FASE 2 acima; esta funcao cobre as linhas 6/7/8/9/10/14/15, que sao as
+# introduzidas pela declaracao de cobertura). Para cada fixture: exit == 0
+# E a secao emitiu o diagnostico esperado (nunca pulada silenciosamente).
+scenario_doctor_ss_inv_rc_matriz_fixtures_cobertura() {
+  _fail_any=0
+
+  # Linha 6: linha sem TAB -> partial.
+  _h="$TMPDIR_TEST/invrc6-h"; _proj="$TMPDIR_TEST/invrc6-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  { printf '# cstk manifest v1\n# schema: x\n'; printf 'bar baz malformada\n'; } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then _fail "invrc-6" "exit $_CAPTURED_EXIT"; _fail_any=1; fi
+  case "$_CAPTURED_STDERR" in *"[partial]"*) : ;; *) _fail "invrc-6" "sem achado [partial]: $_CAPTURED_STDERR"; _fail_any=1 ;; esac
+
+  # Linha 8: header desconhecido -> unreadable.
+  _h="$TMPDIR_TEST/invrc8-h"; _proj="$TMPDIR_TEST/invrc8-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# cstk manifest v2\n' > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then _fail "invrc-8" "exit $_CAPTURED_EXIT"; _fail_any=1; fi
+  case "$_CAPTURED_STDERR" in *"[unreadable]"*) : ;; *) _fail "invrc-8" "sem achado [unreadable]: $_CAPTURED_STDERR"; _fail_any=1 ;; esac
+
+  # Linha 9: numerador forcado > denominador via stub do CLASSIFICADOR
+  # (_doctor_ss_scan_kind — FR-007) -> inconsistent.
+  _h="$TMPDIR_TEST/invrc9-h"; _proj="$TMPDIR_TEST/invrc9-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  printf '# foo\n' > "$_h/.claude/agents/foo.md"
+  cp "$_h/.claude/agents/foo.md" "$_proj/.claude/agents/foo.md"
+  { printf '# cstk manifest v1\n# schema: x\n'; printf 'foo\t1.0\t%s\tts\n' "$(_ss_sha)"; } > "$_proj/.claude/agents/.cstk-manifest"
+  capture env HOME="$_h" CSTK_LIB="$CSTK_LIB" sh -c '
+    cd "$1" && shift
+    . "$CSTK_LIB/doctor.sh"
+    _doctor_ss_scan_kind() { printf "0 0 0 5"; }
+    doctor_main "$@"
+  ' doctor_test "$_proj"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then _fail "invrc-9" "exit $_CAPTURED_EXIT"; _fail_any=1; fi
+  case "$_CAPTURED_STDERR" in *"[inconsistent]"*) : ;; *) _fail "invrc-9" "sem achado [inconsistent]: $_CAPTURED_STDERR"; _fail_any=1 ;; esac
+
+  # Linha 10: manifesto ausente nos dois kinds -> absent / F=0.
+  _h="$TMPDIR_TEST/invrc10-h"; _proj="$TMPDIR_TEST/invrc10-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj"
+  _run_doctor_in "$_h" "$_proj"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then _fail "invrc-10" "exit $_CAPTURED_EXIT"; _fail_any=1; fi
+  case "$_CAPTURED_STDERR" in *"[SEM-FONTE]"*) : ;; *) _fail "invrc-10" "sem veredito [SEM-FONTE]: $_CAPTURED_STDERR"; _fail_any=1 ;; esac
+
+  # Linha 14: manifesto com 10.001 linhas de dados -> unreadable (teto-excedido).
+  _h="$TMPDIR_TEST/invrc14-h"; _proj="$TMPDIR_TEST/invrc14-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  { printf '# cstk manifest v1\n# schema: x\n'; awk 'BEGIN { for (i=0;i<10001;i++) print "line" i }'; } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then _fail "invrc-14" "exit $_CAPTURED_EXIT"; _fail_any=1; fi
+  case "$_CAPTURED_STDERR" in *"[unreadable]"*"teto-excedido"*) : ;; *) _fail "invrc-14" "sem achado [unreadable]/teto-excedido: $_CAPTURED_STDERR"; _fail_any=1 ;; esac
+
+  # Linha 15: registro unico de 50 MB sem \n -> unreadable (teto-excedido),
+  # imposto por LEITURA LIMITADA (nao por checagem a posteriori — §7 R5).
+  _h="$TMPDIR_TEST/invrc15-h"; _proj="$TMPDIR_TEST/invrc15-proj"
+  mkdir -p "$_h/.claude/agents" "$_proj/.claude/agents"
+  {
+    printf '# cstk manifest v1\n# schema: x\n'
+    dd if=/dev/zero bs=1M count=50 2>/dev/null | tr '\0' 'a'
+  } > "$_proj/.claude/agents/.cstk-manifest"
+  _run_doctor_in "$_h" "$_proj"
+  if [ "$_CAPTURED_EXIT" != 0 ]; then _fail "invrc-15" "exit $_CAPTURED_EXIT"; _fail_any=1; fi
+  case "$_CAPTURED_STDERR" in *"[unreadable]"*"teto-excedido"*) : ;; *) _fail "invrc-15" "sem achado [unreadable]/teto-excedido: $_CAPTURED_STDERR"; _fail_any=1 ;; esac
+
+  [ "$_fail_any" = 0 ] || return 1
+  return 0
+}
+
 run_all_scenarios
