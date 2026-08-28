@@ -5,6 +5,29 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [0.33.1] - 2026-08-27
+
+### Corrigido
+
+- **Barra de progresso ficava inteira cinza em execuções na etapa `converge`.**
+  A etapa foi inserida no pipeline do cstk entre `execute-task` e
+  `review-task` (feature `pipeline-converge`), e a lista canônica do painel
+  não a conhecia. O sintoma não era um erro visível: `indexOf` devolvia `-1`,
+  nenhuma etapa satisfazia `i < idx` nem `i === idx`, e as 9 barras
+  renderizavam apagadas — dando a entender que nada havia começado, numa
+  execução com 10 ondas concluídas.
+
+  É a segunda ocorrência do mesmo sintoma por causas diferentes: a primeira
+  foram os marcadores terminais (`concluida`/`abortada`) gravados no campo de
+  etapa, resolvida acendendo pelo status em vez do índice. Aquela correção
+  tratou o caso conhecido; este é o caso geral — uma etapa real que o painel
+  não conhece.
+
+  A lista agora tem 10 etapas, com um comentário registrando o acoplamento ao
+  pipeline do cstk e o sintoma a procurar quando ele voltar. Um teste novo
+  documenta explicitamente a limitação que permanece: o painel não tem como
+  posicionar uma etapa que ainda não existe.
+
 ## [0.33.0] - 2026-08-27
 
 ### Adicionado
@@ -1428,6 +1451,7 @@ execuções dos orquestradores `agente-00c` / `feature-00c`, lido diretamente da
 - Invariantes constitucionais I–VI verificáveis por scripts de _lint_.
 - `npm run lint:readonly-check` garante zero verbos de mutação SQL em `apps/server/src`.
 
+[0.33.1]: https://github.com/JotJunior/cstk-panel/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/JotJunior/cstk-panel/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/JotJunior/cstk-panel/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/JotJunior/cstk-panel/compare/v0.30.0...v0.31.0

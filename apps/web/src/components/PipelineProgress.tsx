@@ -1,5 +1,5 @@
 /**
- * PipelineProgress — barra de progresso das 9 etapas SDD.
+ * PipelineProgress — barra de progresso das 10 etapas SDD.
  * Portado do prototipo: modo compacto (.pipeline) e rotulado (.pipeline-labeled).
  * Ref: docs/06-ui-ux-design/castk-panel/project/components.jsx
  */
@@ -11,7 +11,7 @@ export type Status = 'em_andamento' | 'aguardando_humano' | 'concluida' | 'abort
 export type StageState = 'done' | 'current' | 'aborted' | 'idle';
 
 /**
- * Classifica cada uma das 9 etapas SDD para um dado (etapa, status).
+ * Classifica cada uma das 10 etapas SDD para um dado (etapa, status).
  * Fonte unica consumida pelos dois modos de render (compacto e rotulado).
  *
  * Nota: execucoes terminais gravam etapa='concluida'/'abortada', marcadores
