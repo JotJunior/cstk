@@ -78,8 +78,11 @@
 # o que o LACO DE CLASSIFICACAO efetivamente processou (records_used,
 # contador incrementado por _doctor_ss_scan_kind a cada chamada de
 # _doctor_shadow_verdict — efeito colateral do laco que classifica, nunca
-# uma segunda passada de validacao independente; contrato §5, FR-007,
-# revoga research.md D6). Divergencia entre os dois so pode nascer de uma
+# uma segunda passada de validacao independente; contrato §5, FR-007 —
+# implementa research.md D6, que continua integralmente vigente. O que foi
+# revogado e so o arranjo interino da FASE 1 (`manifest_count_recognized`
+# como fonte do numerador, autorizado por dec-040 so ate o laco de
+# classificacao existir)). Divergencia entre os dois so pode nascer de uma
 # mudanca no CLASSIFICADOR, nunca no validador. Rotulo de veredito (§3.5)
 # so imprime `[OK]` sob gating triplo: F=R=2
 # E count_shadowed=0 E count_nao_comparado=0 (= count_indeterminate +
@@ -611,7 +614,8 @@ _doctor_shadow_verdict() {
 # records_used (FR-007, contrato §5, data-model.md §CoverageDeclaration):
 # contador incrementado UMA VEZ por chamada a _doctor_shadow_verdict —
 # efeito colateral do proprio laco de classificacao, nao uma segunda
-# passada de validacao independente (revoga research.md D6). Conta TODOS
+# passada de validacao independente (implementa research.md D6 — revoga
+# apenas o arranjo interino da FASE 1 autorizado por dec-040). Conta TODOS
 # os vereditos produzidos, inclusive `shadow-current` (que nao entra nos 3
 # contadores acima, mas ainda representa um registro que o classificador
 # de fato processou). Se o classificador algum dia deixar de produzir
@@ -700,9 +704,13 @@ _doctor_ss_scan_kind() {
 # e o numerador (FR-007): SEMPRE o valor ja computado pelo laco que
 # classifica (_doctor_ss_scan_kind, mesmo <path>/kind), nunca recalculado
 # aqui por uma segunda passada de validacao — este helper NUNCA chama
-# manifest_count_recognized (revoga research.md D6; a independencia dos
-# dois contadores agora e so no DENOMINADOR, que continua vindo do
-# arquivo via manifest_count_data_lines).
+# manifest_count_recognized (implementa research.md D6; revoga apenas o
+# arranjo interino da FASE 1 autorizado por dec-040). A independencia dos
+# dois contadores permanece nos DOIS (data-model.md §Independencia dos
+# dois contadores): o denominador continua vindo do arquivo via
+# manifest_count_data_lines (granularidade de linha, nao conhece schema);
+# o numerador segue sendo efeito colateral do laco que classifica
+# (granularidade de registro-com-veredito).
 #
 # Ordem das checagens (deliberada, contrato §7 nota normativa R5):
 # manifest_within_cap roda ANTES de detect_schema_version porque o cap usa
