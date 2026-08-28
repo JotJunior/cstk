@@ -536,3 +536,65 @@ flowchart TD
 | `cli/lib/manifest.sh` | Endurecimento do leitor `read_manifest` existente | Mudaria o comportamento de `install`/`update`/`plugin-detect`, fora de escopo (plan.md) |
 | `--fix` para os estados novos | Reparo automatico de divergencias `shadowed` | Sobrescrever a copia de projeto destruiria trabalho local que FR-005 manda preservar (contrato §6) |
 | `sug-001` (backup por onda dentro do `end`) | Sugestao de outra feature, nao relacionada a esta | Fila separada, fora de escopo por instrucao explicita do operador desta execucao |
+
+## FASE 5 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 5.1 Numerador da cobertura nasce de passada de validacao propria, nao do laco que classifica `[C]`
+
+Ref: FR-007 · tipo: `contradicts` · severidade: `HIGH`
+
+`contracts/doctor-shadowed-scope-output.md` §5 fixa que **"o numerador nao
+tem funcao propria: e um contador incrementado pelo laco de classificacao
+em `doctor.sh`, ao produzir cada veredito"**, e `data-model.md`
+§CoverageDeclaration define `records_used` como "**registros que
+produziram veredito**", com a tabela §Independencia dos dois contadores
+declarando "Como e obtido: **efeito colateral do laco que classifica**".
+A consequencia desejada esta escrita literalmente: "alterar o classificador
+**muda o numerador** sem mexer no denominador, e a cobertura acusa a
+mudanca sozinha".
+
+O codigo presente em `cli/lib/doctor.sh` nao faz isso. `_doctor_shadowed_scope`
+obtem o numerador `N` de `_doctor_ss_coverage_source`, que por sua vez chama
+`manifest_count_recognized` (`cli/lib/manifest-coverage.sh:176`) — uma
+**segunda passada de validacao independente** que reitera as linhas do
+manifesto aplicando `manifest_record_is_valid` e **nunca invoca o
+classificador** `_doctor_shadow_verdict`. O laco que de fato classifica
+(`_doctor_ss_scan_kind`, `cli/lib/doctor.sh:624`) conta apenas os tres
+vereditos (`shadowed`/`indeterminate`/`unmanaged-upstream`) e **nao
+propaga** contagem alguma para a declaracao de cobertura.
+
+Hoje os dois numeros coincidem (todo registro `recognized` produz um
+veredito), entao nao ha divergencia numerica observavel — mas a garantia
+estrutural que o desenho nomeia como razao-de-ser do acoplamento esta
+ausente: se o classificador deixasse de produzir veredito para alguma
+classe de registro, a cobertura continuaria reportando esse registro como
+"interpretado", reintroduzindo dentro do proprio contador a classe de
+falso-OK que a feature existe para matar (`research.md` D6).
+
+`dec-040` autorizou `manifest_count_recognized` como primitiva interna
+para tornar R4/R5 testaveis **na FASE 1, antes do laco real de
+classificacao existir em `doctor.sh` (FASE 2)** — nao autorizou que ela
+permanecesse como fonte definitiva do numerador depois que o laco de
+classificacao passou a existir. A religacao prevista pelo contrato nunca
+ocorreu.
+
+Corrigir exige **mudar** logica ja presente (fazer `_doctor_ss_scan_kind`
+devolver `records_used` por fonte e alimentar `_doctor_ss_coverage_source`
+com ele), nao apenas adicionar codigo — dai a classificacao `contradicts`.
+Alternativa legitima, se o desenho mudou de proposito: atualizar
+`contracts/doctor-shadowed-scope-output.md` §5 e `data-model.md`
+§Independencia dos dois contadores para descreverem o mecanismo realmente
+implementado, registrando a revogacao de `research.md` D6.
+
+- [ ] 5.1.1 Corrigir `cli/lib/doctor.sh` conforme `FR-007`: fazer o numerador `records_used` da declaracao de cobertura nascer do laco que classifica (`_doctor_ss_scan_kind` -> `_doctor_shadowed_scope`), em vez de `manifest_count_recognized`; OU, se a revisao do desenho for deliberada, atualizar contrato §5 + `data-model.md` §Independencia dos dois contadores e registrar a revogacao de `research.md` D6. Cobrir com teste que faca numerador e denominador divergirem por mudanca no classificador (nao por mudanca no validador).
+
+<!-- converge-key: de67fe401e98 -->
