@@ -248,19 +248,40 @@ está isolado e a reversão não se mistura com outras mudanças.
 Ref: plan.md linha 210 (FR-001..FR-004, FR-006); research.md linha 181 (sonda:
 `git subtree add --prefix=panel sub main`)
 
-- [ ] 1.1.1 Adicionar remote temporário apontando para o repositório
+- [x] 1.1.1 Adicionar remote temporário apontando para o repositório
   `cstk-panel` (origem real do projeto, mesma fonte hoje usada por
   `CSTK_PANEL_REPO` default `JotJunior/cstk-panel` antes desta migração)
-- [ ] 1.1.2 Rodar `git fetch <remote-panel> <branch-default>` e confirmar que
+  — evidência: remote `panel-import` apontado ao clone local de
+  `cstk-panel` (`/Users/jot/Projects/_lab/Jot/misc/cstk-panel`), verificado
+  BYTE-IDÊNTICO ao remoto real antes de usar: `git rev-parse HEAD` (local) =
+  `git rev-parse origin/main` (local) = `66f3849f43aaa652e7b9777d1f44d554a282615f`
+  em ambos, e `origin` desse clone é `git@github.com:JotJunior/cstk-panel.git`
+  (mesma fonte de `CSTK_PANEL_REPO` default).
+- [x] 1.1.2 Rodar `git fetch <remote-panel> <branch-default>` e confirmar que
   a contagem de commits buscados bate com os **248 commits** medidos em
   `plan.md`/`research.md` (`git rev-list --count <remote-panel>/<branch>`)
-- [ ] 1.1.3 Rodar `git subtree add --prefix=panel <remote-panel>
+  — evidência: `git fetch panel-import main` → `* [new branch] main ->
+  panel-import/main`; `git rev-list --count panel-import/main` => `248`.
+- [x] 1.1.3 Rodar `git subtree add --prefix=panel <remote-panel>
   <branch-default>` **sem** `--squash` — squash colapsaria os 248 commits em
   um só, quebrando FR-001 (`git log --follow` deixaria de mostrar autoria e
   datas originais por arquivo)
-- [ ] 1.1.4 Remover o remote temporário após o `subtree add` concluir
-- [ ] 1.1.5 Commitar o resultado do subtree isoladamente (nenhuma outra
+  — evidência: `git subtree add --prefix=panel panel-import main -m "..."` →
+  `Added dir 'panel'`; commit resultante `d5b490d` (merge, 2 pais:
+  `8343d90` mainline e `66f3849` split), trailers `git-subtree-dir: panel`,
+  `git-subtree-mainline: 8343d909...`, `git-subtree-split: 66f3849f...`
+  confirmados via `git log -1 d5b490d` — sem `--squash` (2 pais preservados,
+  não um único commit sintético).
+- [x] 1.1.4 Remover o remote temporário após o `subtree add` concluir
+  — evidência: `git remote remove panel-import`; `git remote -v` só lista
+  `origin`; `git for-each-ref refs/remotes` não retorna nenhuma ref
+  `panel-import` remanescente.
+- [x] 1.1.5 Commitar o resultado do subtree isoladamente (nenhuma outra
   mudança de arquivo no mesmo commit)
+  — evidência: satisfeito por construção — `git subtree add` já cria o
+  commit `d5b490d` como parte da própria operação; `git status --short`
+  vazio antes e depois; `git diff --stat 8343d90 d5b490d -- cli/ plugins/
+  tests/` vazio (nenhuma mudança fora de `panel/`).
 
 ### 1.2 Verificar empiricamente o import antes de prosseguir `[C]`
 
@@ -268,19 +289,57 @@ Ref: quickstart.md Cenário 6 (linhas 122-131); Cenário 5 passos 1-2 (linhas
 107-108, apenas a contagem — o restante do Cenário 5 depende do `.gitignore`
 ancorado, que só existe após FASE 2.1)
 
-- [ ] 1.2.1 (teste) Rodar `git log --follow -- panel/package.json | tail -5` e
+- [!] 1.2.1 (teste) Rodar `git log --follow -- panel/package.json | tail -5` e
   confirmar commits anteriores à migração, com autoria/datas originais
   (Cenário 6 passo 1-2)
-- [ ] 1.2.2 (teste) Rodar `git blame panel/apps/server/src/lib/project-root.ts
+  — **BLOQUEADO (block-004/dec-054)**: o comando literal retorna VAZIO (0
+  commits) — testado com 5+ variantes (`-M` explícito, sem `--oneline`,
+  `--diff-merges=1`, `--all`, outro arquivo `panel/README.md`, outro arquivo
+  `panel/apps/server/src/lib/project-root.ts`) — sempre 0. `git log --oneline
+  -- panel/` também retorna `1` (só o commit de merge `d5b490d`), não os 248
+  commits importados. Causa raiz: `git subtree add` cria um único commit de
+  merge cuja árvore tem o prefixo `panel/`, mas o segundo pai (`66f3849`,
+  split point) mantém sua própria árvore SEM o prefixo — não há cadeia de
+  commits com o path prefixado para `--follow`/`log` atravessarem via diff
+  restrito a esse pathspec exato (limitação conhecida do git: `--follow` não
+  detecta rename cross-path através de fronteira de merge). O histórico NÃO
+  foi perdido — ver evidência alternativa em 1.2.2 e nota abaixo — mas a
+  forma literal de prová-lo pedida aqui/no Cenário 6 não funciona. Bloqueio
+  humano registrado (block-004) perguntando se blame + `git log <split-sha>
+  -- <path-original>` é prova suficiente de FR-001/SC-002 e se `quickstart.md`
+  Cenário 6 passo 1 deve ser corrigido para um comando que funcione.
+  — evidência (comando pedido, vazio): `git log --follow -- panel/package.json
+  | tail -5` => (0 linhas); `git log --oneline -- panel/` => `1`.
+  — evidência (prova alternativa de que o histórico está intacto):
+  `git log 66f3849 -- package.json | wc -l` => `63` (histórico completo
+  pré-migração, acessível via o commit apontado pelo trailer
+  `git-subtree-split`); `git rev-list --count panel-import/main` => `248`.
+- [x] 1.2.2 (teste) Rodar `git blame panel/apps/server/src/lib/project-root.ts
   | head -3` e confirmar atribuição a commits do histórico do painel, não ao
   commit de subtree (Cenário 6 passo 3-4)
-- [ ] 1.2.3 (teste) Rodar `git ls-files panel/.claude | wc -l` e confirmar que
+  — evidência: `b90d0149 apps/server/src/lib/project-root.ts (jot 2026-07-15
+  15:47:35 -0300 1) /**` — atribuído ao commit original de 2026-07-15, NÃO ao
+  commit de merge `d5b490d` (2026-08-28). Confirma preservação real de
+  autoria/datas por linha através do subtree merge.
+- [x] 1.2.3 (teste) Rodar `git ls-files panel/.claude | wc -l` e confirmar que
   o total bate com o medido antes da migração (**173** arquivos, `research.md`
   linha 108) — sabendo que este teste passaria verde mesmo sem o fix de
   `.gitignore` da FASE 2.1 (dano é prospectivo, não retroativo — `research.md`
   Decision 4)
-- [ ] 1.2.4 Confirmar árvore de trabalho limpa (`git status --short` vazio)
+  — evidência: `git ls-files panel/.claude | wc -l` => `173`.
+- [x] 1.2.4 Confirmar árvore de trabalho limpa (`git status --short` vazio)
   antes de iniciar a FASE 2
+  — evidência: `git status --short` => (vazio).
+
+**Gate baseline (`./tests/run.sh`, exigido pelo operador nesta onda)**:
+suíte completa rodada após o subtree add, confirmando que a descoberta de
+testes/cobertura do toolkit não foi afetada por `panel/` — evidência:
+`# PASS: 3556  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 1129s` /
+`[exited with code 0]`.
+
+**FASE 1 pausada em 1.2.1** (bloqueio humano `block-004`/`dec-054` — ver
+acima). Tarefas 1.1 (subtree add) e 1.2.2-1.2.4 completas e verificadas;
+FASE 2 NÃO iniciada, aguardando resposta do operador.
 
 ---
 
