@@ -1,0 +1,20 @@
+{
+  "session_id": "<uuid da sessao>",
+  "transcript_path": "<path do transcript>",
+  "cwd": "<cwd do projeto>",
+  "prompt_id": "<uuid do prompt>",
+  "hook_event_name": "Elicitation",
+  "mcp_server_name": "spike-url-elicit",
+  "message": "qual a resposta?",
+  "mode": "form",
+  "requested_schema": {
+    "type": "object",
+    "properties": {
+      "answer": {
+        "type": "string",
+        "title": "answer",
+        "description": "resposta"
+      }
+    }
+  }
+}
