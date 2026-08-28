@@ -25,6 +25,7 @@ import type Database from 'better-sqlite3';
 import type { Freshness } from '@cstk-panel/shared-types';
 import { openDb } from '../db/open.js';
 import { wrap, wrapDegraded } from '../lib/envelope.js';
+import { renderConvergeLedger } from '../docs/converge-ledger.js';
 import { generateETag, etagMatches } from '../lib/etag.js';
 import { loadConfig } from '../config.js';
 import { resolveProjectRoot } from '../lib/project-root.js';
@@ -197,7 +198,15 @@ export async function docsRoutes(server: FastifyInstance): Promise<void> {
         return reply.status(200).send(envelope);
       }
 
-      const content = readConfinedArtifact(confineResult.realPath);
+      const raw = readConfinedArtifact(confineResult.realPath);
+      // `converge-report.md` e um LEDGER de marcadores HTML, nao prosa —
+      // servido cru renderiza uma pagina em branco. Traduz para tabela
+      // legivel; devolve `null` (e servimos o original) quando nao ha
+      // marcador algum. Ver docs/converge-ledger.ts.
+      const content =
+        entry.artifactId === 'converge-report' && raw !== null
+          ? (renderConvergeLedger(raw) ?? raw)
+          : raw;
       const envelope = wrap({ ...entry, content }, {}, config.dbPath, db);
 
       const fileFreshness: Freshness = { mtime: new Date(confineResult.mtimeMs).toISOString(), maxIngestedAt: '' };
