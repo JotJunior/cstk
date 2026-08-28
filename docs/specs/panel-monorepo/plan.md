@@ -86,7 +86,10 @@ achados `high` sao de **postura de seguranca pre-existente** que esta feature
 amplia ou herda (ausencia de attestation/assinatura no par asset+`.sha256`;
 `curl -fsSL` seguindo redirect com allowlist checada so na URL pre-redirect, em
 `cli/lib/http.sh`) e foram escalados como BloqueioHumano — a tabela de gates
-exige decisao do operador para finding `high` em gate de seguranca.
+exige decisao do operador para finding `high` em gate de seguranca. O operador
+respondeu **aceitar o risco com rastro** (block-002 / dec-029); os termos do
+aceite, com o argumento de raio de dano e as issues abertas, estao em
+**§Achados residuais aceitos** e sao parte normativa deste plano.
 
 ## Convencoes de Borda
 
@@ -98,7 +101,7 @@ cada uma tem **uma** fonte da verdade:
 |--------|-----------|-----------|------------------|
 | Nome de asset de release | `cstk-<bare>.tar.gz` (toolkit), `cstk-panel-<bare>.tar.gz` (painel) | passo "Verify build artifacts" do workflow + cenario `both-pairs` | `.github/workflows/release.yml` |
 | Par de integridade | `<asset>` + `<asset>.sha256`, igualdade de string completa | `_serve_download_verify_extract` | `cli/lib/serve.sh` |
-| Prefixo discriminador | `cstk-panel-` sobre o **basename** (nunca substring de URL) | cenarios `both-pairs` / `toolkit-only` | `contracts/serve-asset-selection.md` §3.2 |
+| Discriminador de asset | nome **exato** `cstk-panel-<bare>.tar.gz`, derivado de `tag_name`, comparado por **igualdade** sobre o basename (nunca prefixo, nunca substring de URL) | cenarios `both-pairs` / `toolkit-only` (matriz de decisao, incl. o caso `cstk-panel-docs-*`, em `contracts/serve-asset-selection.md` §3.3) | `contracts/serve-asset-selection.md` §3.2 |
 | Estrutura do tarball | um diretorio de topo `cstk-panel-<bare>/`, com `package.json` + `package-lock.json` na raiz | `serve.sh:488`, `serve-docker.sh:356` | `git archive --prefix=... HEAD:panel` |
 | Host de download | allowlist constante, nao-configuravel por env | `trusted_host_check` | `cli/lib/trusted-hosts.sh:47` |
 | Origem (owner/repo) | `CSTK_PANEL_REPO`, default `JotJunior/cstk` | composicao de string com host fixo | `cli/lib/serve.sh` |
@@ -234,6 +237,46 @@ feature: o painel nao tem CI de testes, e o `cstk` nao roda os testes de
 permanecem em `panel/.github/workflows/` sem execucao automatica, como
 constatacao do estado herdado — nao como nova obrigacao desta migracao.
 Fechar essa lacuna e feature propria.
+
+## Achados residuais aceitos (block-002 / dec-029)
+
+Dois achados `high` do gate `owasp-security` **nao sao corrigidos por esta
+feature**. Foram escalados ao operador e o aceite foi explicito: prosseguir,
+com rastro. Esta secao e o rastro — nao um apendice de bloqueio.
+
+**O que os dois achados sao, e por que ficam:**
+
+| # | Achado | Onde | Issue |
+|---|--------|------|-------|
+| R1 | O par `<asset>` + `<asset>.sha256` prova **integridade**, nunca **proveniencia**: quem consegue publicar o asset publica o hash junto. Nao ha attestation nem assinatura. | `cli/lib/serve.sh` (`_serve_download_verify_extract`) | [#177](https://github.com/JotJunior/cstk/issues/177) |
+| R2 | `curl -fsSL` segue redirect, e a allowlist de hosts e checada **apenas na URL pre-redirect**. O destino final nunca e revalidado. | `cli/lib/http.sh:50`, allowlist em `cli/lib/trusted-hosts.sh:47` | [#178](https://github.com/JotJunior/cstk/issues/178) |
+
+**Os dois sao PRE-EXISTENTES e ortogonais a migracao.** A fusao nao cria
+nenhuma das duas lacunas: elas ja governam hoje o download do toolkit. O que a
+migracao muda e o **raio de dano**:
+
+> Hoje, um comprometimento da release do `cstk-panel` atinge o painel e **nao**
+> o toolkit — sao dois repositorios, duas releases, dois raios. Depois da
+> fusao, **uma** release publica os dois pares de assets, e um comprometimento
+> dessa release atinge **ambos**. O risco por evento nao muda; a superficie
+> atingida por evento, sim.
+
+Esse e o motivo pelo qual o aceite foi registrado com issues abertas em vez de
+absorvido em silencio: o custo de R1/R2 sobe com esta feature, ainda que a
+causa seja anterior a ela.
+
+**Sobre R2, uma distincao que MUST ficar escrita:** hoje aquilo funciona por
+**coincidencia de configuracao do GitHub** — o redirect de release vai para
+`objects.githubusercontent.com`, que ja consta da allowlist constante
+(`cli/lib/trusted-hosts.sh:47`, verificado por leitura) — e **nao** por
+verificacao. Nada no codigo confere o host apos o redirect. **"Funciona hoje" e
+diferente de "esta protegido"**: se o GitHub mudar o destino de redirect, o
+download passa a sair de um host fora da allowlist sem que nenhum gate acuse.
+
+**Escopo do aceite**: vale para esta feature. Nenhuma tarefa deste plano pode
+citar R1 ou R2 como resolvidos, e nenhuma pode ampliar a exposicao a eles alem
+do raio descrito acima. O fechamento de R1 e R2 e trabalho proprio, rastreado
+nas issues #177 e #178.
 
 ## Re-check de Constitution (pos-Phase 1)
 

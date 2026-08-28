@@ -83,6 +83,16 @@ Invariantes que MUST valer:
   FR-008/AC2 chama de "reconhecer a ausencia do pacote do painel como tal".
 - **I4**: como EXPECTED deriva de `tag_name`, o nome fica **vinculado a versao
   da release**: um asset de painel de outra versao na mesma release nao casa.
+- **I5**: `tag_name` vem da **resposta da API**, nao de fonte local, e I4 o
+  tornou carga util em dois lugares (EXPECTED aqui, e o nome exigido do
+  diretorio de topo em §8.3). Logo `bare(tag_name)` MUST casar
+  `^[0-9A-Za-z][0-9A-Za-z.+-]*$` **antes** de qualquer derivacao; valor fora
+  do formato = fail-closed para o auto-tarball, com linha em stderr. Sem I5, o
+  unico campo da API que vira nome de caminho seria o unico sem validacao de
+  forma — enquanto `CSTK_PANEL_REPO`, que vem de env, e validado em §7.
+  (Nao ha exploracao conhecida: a comparacao de (a) e por igualdade e falha
+  fechado. I5 e defesa em profundidade e paridade com §7, nao correcao de
+  furo.)
 
 ### 3.3 Matriz de decisao
 
@@ -198,7 +208,9 @@ MUST, apos o checksum conferir e **antes** de extrair:
 2. Rejeitar se houver caminho absoluto (`/...`), componente `..`, entrada de
    symlink/hardlink, ou entrada de device.
 3. Rejeitar se houver mais de um diretorio de topo, ou se o unico diretorio de
-   topo nao for exatamente `cstk-panel-<bare>/` (mesmo `<bare>` de §3.2).
+   topo nao for exatamente `cstk-panel-<bare>/` (mesmo `<bare>` de §3.2, ja
+   validado por I5). A ordem 2 -> 3 importa: o passo 2 rejeita `..` e caminho
+   absoluto **antes** de `<bare>` ser usado em comparacao de caminho.
 4. Extrair com `--no-same-owner --no-same-permissions` (nao honrar setuid/
    setgid vindos do arquivo).
 5. A checagem pos-extracao de `package.json` permanece como **backstop**; o
