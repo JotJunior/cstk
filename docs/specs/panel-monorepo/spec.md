@@ -4,6 +4,41 @@
 **Created**: 2026-08-28
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-28
+
+- Q: Como o hook local de pre-commit do cstk (REPO hardcoded, shellcheck/testes
+  POSIX por prefixo de path) deve tratar arquivos sob `panel/` após a
+  migração? → A: Excluir `panel/**` do dispatch de shellcheck/testes POSIX do
+  hook local (`.claude/settings.local.json`) — o painel mantém governança e
+  suíte de testes próprias e não deve ser varrido pelo hook do restante do
+  repositório.
+- Q: Após a migração, onde devem residir os workflows de CI de build/test do
+  painel (não o de release) para continuar existindo? → A: Permanecem em
+  `panel/.github/workflows/`, sem execução automática via GitHub Actions — o
+  monorepo unificado não dispara Actions a partir de subdiretórios
+  automaticamente. É uma constatação do estado herdado, não uma nova
+  obrigação desta migração.
+- Q: Qual o momento exato para desativar a automação de release do
+  repositório `cstk-panel` em relação à publicação da release-ponte, e por
+  qual meio o aviso de transição deve chegar ao operador? → A: A ordem é
+  publicar a release-ponte primeiro, pelo fluxo normal de release já
+  existente (tag → workflow), e só depois desativar essa automação e
+  arquivar o repositório original — nunca antes, porque o par
+  tar.gz+checksum gerado pelo workflow é o que o guard de integridade do
+  `cstk serve` exige para o veredito `verified`; gerá-lo manualmente abriria
+  uma janela de release sem esses artefatos, degradando `--update` para
+  `unverifiable-blocked`. Além disso, como `cstk serve` só lê `tag_name` e
+  `tarball_url` da API de releases e nunca exibe as notas/corpo da release
+  ao operador, um aviso apenas nas release notes é invisível para quem
+  executa `--update` sem visitar o GitHub manualmente. O aviso de transição
+  MUST, portanto, ser exibido na própria interface (UI) do painel a partir
+  da release-ponte, nunca apenas nas notas de release. Alternativa
+  rejeitada: publicar um pacote que aborta/quebra o start do painel para
+  forçar visibilidade — rejeitada por quebrar deliberadamente uma
+  ferramenta que o operador não pediu para quebrar.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Repositório único com histórico preservado (Priority: P1)
@@ -279,12 +314,16 @@ mudança de local e a ação necessária.
   atualizada para refletir que ele passa a ser distribuído como parte das
   releases do próprio repositório unificado.
 - **FR-018**: Antes de o repositório original do painel ser
-  desativado/arquivado, o sistema MUST ter publicado nele uma release de
-  transição comunicando explicitamente a mudança de local e a ação
-  necessária (atualização) para o operador continuar recebendo versões
-  atuais do painel.
-- **FR-019**: O sistema MUST NOT desativar/arquivar o repositório original do
-  painel antes de a distribuição do painel embutido no repositório unificado
+  desativado/arquivado, o sistema MUST ter publicado nele, pelo fluxo normal
+  de release já existente (tag → workflow, nunca artefatos gerados
+  manualmente), uma release de transição comunicando explicitamente a
+  mudança de local e a ação necessária (atualização) para o operador
+  continuar recebendo versões atuais do painel.
+- **FR-019**: O sistema MUST NOT desativar a automação de publicação de
+  release independente do painel (FR-005), nem desativar/arquivar o
+  repositório original do painel, antes de, nesta ordem: (a) a release de
+  transição da FR-018 ter sido publicada com sucesso pelo fluxo normal de
+  release; e (b) a distribuição do painel embutido no repositório unificado
   estar publicada e ter sua correta seleção/integridade verificada — para
   que nenhuma instalação fique, durante a transição, sem nenhum caminho de
   atualização funcional.
@@ -297,6 +336,13 @@ mudança de local e a ação necessária.
   os arquivos de acompanhamento/estado de execução MUST permanecer isolados
   ao escopo desse subdiretório, e MUST NOT ser resolvidos como se
   pertencessem ao escopo do projeto da raiz (nem o inverso).
+- **FR-022**: O aviso de transição da FR-018 MUST ser entregue por meio de um
+  elemento visível e persistente na própria interface (UI) do painel
+  executável, exibido a partir da release de transição em diante, e MUST NOT
+  depender apenas das notas/descrição da release publicada no repositório —
+  já que o fluxo de atualização do sistema (`cstk serve --update`) consome
+  somente `tag_name` e `tarball_url` da API de releases e nunca exibe o
+  corpo/notas da release ao operador.
 
 > Decisões de infraestrutura: N/A (esta feature é uma migração de
 > repositório/pipeline de release; não introduz scheduler, criptografia de
@@ -366,3 +412,30 @@ mudança de local e a ação necessária.
   de sobrescrita da FR-012 (busca de releases do painel) MUST passar pela
   mesma validação de host confiável já aplicada às demais origens remotas de
   download do sistema.
+
+### Capability: bridge-release-transition
+
+#### MODIFIED
+
+- **FR-018**: Antes de o repositório original do painel ser
+  desativado/arquivado, o sistema MUST ter publicado nele, pelo fluxo normal
+  de release já existente (tag → workflow, nunca artefatos gerados
+  manualmente), uma release de transição comunicando explicitamente a
+  mudança de local e a ação necessária (atualização) para o operador
+  continuar recebendo versões atuais do painel.
+- **FR-019**: O sistema MUST NOT desativar a automação de publicação de
+  release independente do painel (FR-005), nem desativar/arquivar o
+  repositório original do painel, antes de, nesta ordem: (a) a release de
+  transição da FR-018 ter sido publicada com sucesso pelo fluxo normal de
+  release; e (b) a distribuição do painel embutido no repositório unificado
+  estar publicada e ter sua correta seleção/integridade verificada.
+
+#### ADDED
+
+- **FR-022**: O aviso de transição da FR-018 MUST ser entregue por meio de um
+  elemento visível e persistente na própria interface (UI) do painel
+  executável, exibido a partir da release de transição em diante, e MUST NOT
+  depender apenas das notas/descrição da release publicada no repositório —
+  já que o fluxo de atualização do sistema (`cstk serve --update`) consome
+  somente `tag_name` e `tarball_url` da API de releases e nunca exibe o
+  corpo/notas da release ao operador.
