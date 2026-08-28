@@ -1,0 +1,9 @@
+# Este arquivo (nao o .gitattributes da raiz) e o que de fato governa
+# `git archive HEAD:panel` — o comando usado pela FASE 4 (release.yml) para
+# empacotar o painel. Nesse modo `panel/` vira a raiz da arvore archivada,
+# entao os padroes aqui sao relativos (sem prefixo `panel/`). Sonda
+# empirica (dec-056): com este arquivo AUSENTE ou so o da raiz presente,
+# `git archive <commit>:panel | tar t | grep -c '^\.claude/'` da 185 (nao
+# filtrado, falha silenciosa); com este arquivo, da 0.
+.claude export-ignore
+.github export-ignore

@@ -5,6 +5,15 @@ Todas as mudanças notáveis deste projeto são documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+> **Histórico congelado a partir da migração para o monorepo** (feature
+> `panel-monorepo`, FR-006). As entradas abaixo registram a história do
+> painel enquanto repositório `cstk-panel` independente e permanecem
+> intactas, sem reescrita — para consultá-las junto ao código correspondente
+> (paths sem o prefixo `panel/`), ver `panel/CONTRIBUTING.md` §Histórico
+> anterior à migração. A partir daqui, novas entradas que tocam o painel
+> passam a ser registradas no `CHANGELOG.md` da raiz do repositório
+> unificado — este arquivo não recebe novas entradas.
+
 ## [0.34.1] - 2026-08-28
 
 ### Corrigido

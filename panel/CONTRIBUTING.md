@@ -26,6 +26,32 @@ cstk mcp install       # gera .mcp.json (contem path absoluto da sua maquina)
 Sem isso, os hooks declarados em `settings.json` apontam para scripts
 ausentes.
 
+## Historico anterior a migracao para o monorepo
+
+Este pacote foi importado para dentro do repositorio unico via
+`git subtree add --prefix=panel` (sem `--squash`), preservando os 248
+commits originais. O comando de verificacao natural, `git log --follow --
+panel/<arquivo>`, **nao funciona** aqui: o subtree add traz os commits com
+o path ORIGINAL (`apps/...`, sem o prefixo `panel/`) e cria um unico commit
+de merge cuja arvore ja tem o prefixo — nao ha cadeia de commits com o path
+prefixado para `--follow`/`log` atravessarem.
+
+Para consultar o historico de um arquivo anterior a migracao, use o
+split-sha (o segundo pai do commit de merge, tambem citado no trailer
+`git-subtree-split` desse commit) com o path SEM o prefixo `panel/`:
+
+```bash
+# split-sha do import: 66f3849f43aaa652e7b9777d1f44d554a282615f
+git log 66f3849f43aaa652e7b9777d1f44d554a282615f -- <path-sem-prefixo-panel>
+# exemplo:
+git log 66f3849f43aaa652e7b9777d1f44d554a282615f -- package.json
+```
+
+`git blame panel/<arquivo>` continua funcionando normalmente e atravessa o
+merge sozinho (mostra autoria/data original, com o path exibido SEM o
+prefixo `panel/` como prova de que atravessou). Detalhes completos:
+`docs/specs/panel-monorepo/quickstart.md` Cenario 6.
+
 ## Como rodar os testes
 
 ```bash

@@ -1,0 +1,10 @@
+# Cobre git archive rodado a partir da raiz do repositorio (ex.: tarball
+# "Source code" gerado pelo GitHub, ou `git archive HEAD -- panel`). NAO
+# cobre `git archive HEAD:panel` (usado pela FASE 4/release.yml para
+# empacotar o painel) — nesse modo a raiz da arvore archivada passa a ser
+# panel/, e a resolucao de atributos usa panel/.gitattributes (padroes
+# relativos, sem o prefixo panel/), nao este arquivo. Sonda empirica:
+# `git archive HEAD:panel | tar t | grep -c '^\.claude/'` deve dar 0 (fix
+# em panel/.gitattributes), nao 0 por causa deste arquivo.
+panel/.claude export-ignore
+panel/.github export-ignore

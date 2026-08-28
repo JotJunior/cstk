@@ -123,11 +123,24 @@ falha silenciosamente do ponto de vista da auditoria.
 
 **Cobre**: FR-001, SC-002
 
-1. `git log --follow -- panel/package.json | tail -5`
-2. **Expected**: commits anteriores a migracao, com autoria e datas originais.
-3. `git blame panel/apps/server/src/lib/project-root.ts | head -3`
-4. **Expected**: atribuicao a commits do historico do painel, nao ao commit de
-   subtree.
+> `--follow`/`git log -- panel/<arquivo>` NAO servem aqui: `git subtree add`
+> traz os 248 commits com o path ORIGINAL (`apps/...`, sem prefixo `panel/`)
+> e cria um unico commit de merge cuja arvore tem o prefixo — nao ha cadeia
+> de commits com o path prefixado para `--follow`/`log` atravessarem via
+> diff restrito a esse pathspec (limitacao conhecida do git: deteccao de
+> rename cross-path nao atravessa fronteira de merge). Historico intacto;
+> so o instrumento de verificacao muda (block-004/dec-054).
+
+1. `git blame -L1,3 panel/apps/server/src/lib/project-root.ts`
+2. **Expected**: atribuicao a commits do historico do painel (path exibido
+   SEM o prefixo `panel/`, prova de que atravessou o merge), autoria/datas
+   anteriores a migracao — nao ao commit de subtree.
+3. `git log <split-sha> -- <path-sem-prefixo-panel>` (ex.:
+   `git log 66f3849 -- package.json | wc -l`)
+4. **Expected**: commits anteriores a migracao, com autoria e datas
+   originais (exemplo medido: 63 commits para `package.json`).
+5. `git rev-list --count <split-sha>` (ex.: `git rev-list --count 66f3849`)
+6. **Expected**: **248** — total de commits importados pelo subtree add.
 
 ---
 

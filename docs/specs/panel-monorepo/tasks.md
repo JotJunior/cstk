@@ -289,31 +289,38 @@ Ref: quickstart.md Cenário 6 (linhas 122-131); Cenário 5 passos 1-2 (linhas
 107-108, apenas a contagem — o restante do Cenário 5 depende do `.gitignore`
 ancorado, que só existe após FASE 2.1)
 
-- [!] 1.2.1 (teste) Rodar `git log --follow -- panel/package.json | tail -5` e
-  confirmar commits anteriores à migração, com autoria/datas originais
-  (Cenário 6 passo 1-2)
-  — **BLOQUEADO (block-004/dec-054)**: o comando literal retorna VAZIO (0
-  commits) — testado com 5+ variantes (`-M` explícito, sem `--oneline`,
-  `--diff-merges=1`, `--all`, outro arquivo `panel/README.md`, outro arquivo
-  `panel/apps/server/src/lib/project-root.ts`) — sempre 0. `git log --oneline
-  -- panel/` também retorna `1` (só o commit de merge `d5b490d`), não os 248
-  commits importados. Causa raiz: `git subtree add` cria um único commit de
-  merge cuja árvore tem o prefixo `panel/`, mas o segundo pai (`66f3849`,
-  split point) mantém sua própria árvore SEM o prefixo — não há cadeia de
-  commits com o path prefixado para `--follow`/`log` atravessarem via diff
-  restrito a esse pathspec exato (limitação conhecida do git: `--follow` não
-  detecta rename cross-path através de fronteira de merge). O histórico NÃO
-  foi perdido — ver evidência alternativa em 1.2.2 e nota abaixo — mas a
-  forma literal de prová-lo pedida aqui/no Cenário 6 não funciona. Bloqueio
-  humano registrado (block-004) perguntando se blame + `git log <split-sha>
-  -- <path-original>` é prova suficiente de FR-001/SC-002 e se `quickstart.md`
-  Cenário 6 passo 1 deve ser corrigido para um comando que funcione.
-  — evidência (comando pedido, vazio): `git log --follow -- panel/package.json
-  | tail -5` => (0 linhas); `git log --oneline -- panel/` => `1`.
-  — evidência (prova alternativa de que o histórico está intacto):
-  `git log 66f3849 -- package.json | wc -l` => `63` (histórico completo
-  pré-migração, acessível via o commit apontado pelo trailer
-  `git-subtree-split`); `git rev-list --count panel-import/main` => `248`.
+- [x] 1.2.1 (teste) Confirmar histórico preservado via os instrumentos que
+  funcionam através da fronteira do merge de subtree (Cenário 6 passo 1-6,
+  reescrito em `quickstart.md` conforme block-004/dec-054)
+  — **RESOLVIDO (block-004/dec-054, resposta do operador — opção (a))**: o
+  comando originalmente prescrito, `git log --follow -- panel/package.json`,
+  retorna VAZIO — não por perda de histórico, mas porque `git subtree add`
+  NÃO reescreve os paths dos 248 commits importados (entram com o path
+  ORIGINAL, `apps/...`, sem prefixo `panel/`) e cria um único commit de
+  merge cuja árvore tem o prefixo — não há cadeia de commits com o path
+  prefixado para `--follow`/`log` atravessarem via diff restrito a esse
+  pathspec (limitação conhecida do git: detecção de rename cross-path não
+  atravessa fronteira de merge). O operador aceitou `git blame` +
+  `git log <split-sha> -- <path-original>` como prova suficiente de
+  FR-001/SC-002, preferindo preservar os 248 SHAs originais (referenciados
+  em decisões/PRs/docs) a reescrever o histórico só para fazer `--follow`
+  funcionar (`filter-repo --to-subdirectory-filter` mudaria todos os SHAs).
+  `quickstart.md` Cenário 6 foi reescrito para os comandos corretos;
+  `panel/CONTRIBUTING.md` ganhou a seção "Histórico anterior à migração para
+  o monorepo" documentando o split-sha; `plan.md` foi auditado (grep
+  exaustivo) e não contém a afirmação `git log -- panel/` questionada —
+  nenhuma edição foi necessária lá.
+  — evidência (comando originalmente prescrito, vazio): `git log --follow
+  -- panel/package.json | tail -5` => (0 linhas); `git log --oneline --
+  panel/` => `1`.
+  — evidência (instrumentos que funcionam, agora prescritos no Cenário 6):
+  `git blame -L1,3 panel/apps/server/src/lib/project-root.ts` =>
+  `b90d0149 apps/server/src/lib/project-root.ts (jot 2026-07-15 15:47:35
+  -0300 1) /**` (path SEM prefixo `panel/`, prova de que atravessou o
+  merge); split-sha = `66f3849f43aaa652e7b9777d1f44d554a282615f` (2º pai de
+  `d5b490d`, confirmado via `git log --format='%H %P' -1 d5b490d`);
+  `git log 66f3849 -- package.json | wc -l` => `63`; `git rev-list --count
+  66f3849` => `248`.
 - [x] 1.2.2 (teste) Rodar `git blame panel/apps/server/src/lib/project-root.ts
   | head -3` e confirmar atribuição a commits do histórico do painel, não ao
   commit de subtree (Cenário 6 passo 3-4)
@@ -337,9 +344,9 @@ testes/cobertura do toolkit não foi afetada por `panel/` — evidência:
 `# PASS: 3556  FAIL: 0  ERROR: 0  ORPHANS: 0  TIME: 1129s` /
 `[exited with code 0]`.
 
-**FASE 1 pausada em 1.2.1** (bloqueio humano `block-004`/`dec-054` — ver
-acima). Tarefas 1.1 (subtree add) e 1.2.2-1.2.4 completas e verificadas;
-FASE 2 NÃO iniciada, aguardando resposta do operador.
+**FASE 1 CONCLUÍDA** (1.2.1 resolvida via resposta do operador a
+`block-004`/`dec-054` — ver acima; dec-055 registra a aplicação). Tarefas
+1.1-1.2 completas e verificadas.
 
 ---
 
@@ -352,30 +359,53 @@ FASE 0.2/0.3/0.5 (cenários e nota que esta fase precisa satisfazer)
 
 Ref: research.md Decision 4 (linhas 167-223); quickstart.md Cenário 5
 
-- [ ] 2.1.1 Editar `.gitignore` da raiz linha 3: de `.claude` para `/.claude`
-- [ ] 2.1.2 Editar `.gitignore` da raiz linha 4: de `CLAUDE.md` para
+- [x] 2.1.1 Editar `.gitignore` da raiz linha 3: de `.claude` para `/.claude`
+  — evidência: linha 3 agora `/.claude` (era `.claude`).
+- [x] 2.1.2 Editar `.gitignore` da raiz linha 4: de `CLAUDE.md` para
   `/CLAUDE.md` (achado colateral latente de `research.md` linha 215-222 —
   fecha a armadilha antes que alguém crie o arquivo)
-- [ ] 2.1.3 (teste) Executar `quickstart.md` Cenário 5 completo: criar
+  — evidência: linha 4 agora `/CLAUDE.md` (era `CLAUDE.md`).
+- [x] 2.1.3 (teste) Executar `quickstart.md` Cenário 5 completo: criar
   `panel/.claude/probe.md`, confirmar `git add` aceito; criar `.claude/probe.md`
   na raiz, confirmar `git add` recusado; limpar os arquivos de sonda ao final
-- [ ] 2.1.4 (teste) Confirmar que os demais padrões não-ancorados
+  — evidência (sonda 1, `panel/.claude/.gitignore-probe`, `git add` + `git
+  status --short`): `A  panel/.claude/.gitignore-probe` (aceito;
+  `git check-ignore -v` não casou, exit 1). — evidência (sonda 2,
+  `.claude/.gitignore-probe` na raiz, `git add`): `The following paths are
+  ignored by one of your .gitignore files: .claude` (recusado); `git
+  check-ignore -v .claude/.gitignore-probe` => `.gitignore:3:/.claude
+  .claude/.gitignore-probe` (exit 0). Ambas as sondas removidas ao final
+  (`git status --short` confirma árvore sem sobra).
+- [x] 2.1.4 (teste) Confirmar que os demais padrões não-ancorados
   (`dist/`, `tmp/`, `.idea`, `.DS_Store`) não requerem ajuste — nenhum arquivo
   rastreado casa (`git ls-files | grep -E '(^|/)(dist|tmp)/'` vazio,
   `research.md` linha 220-222)
+  — evidência: `git ls-files | grep -E '(^|/)(dist|tmp)/'` => (vazio);
+  `git ls-files | grep -E '(^|/)\.idea(/|$)'` => (vazio); `git ls-files |
+  grep -E '(^|/)\.DS_Store$'` => (vazio).
 
 ### 2.2 Resolver colisões de nome de topo `[A]`
 
 Ref: spec.md FR-004; FASE 0.2 (Acceptance Scenario + Cenário 18)
 
-- [ ] 2.2.1 Confirmar que `README.md`, `CHANGELOG.md` e demais arquivos de
+- [x] 2.2.1 Confirmar que `README.md`, `CHANGELOG.md` e demais arquivos de
   topo homônimos entre a raiz e `panel/` permanecem em paths distintos após o
   `subtree add` (nenhuma sobrescrita — comportamento nativo de
   `git subtree add`, que mescla trees sem colidir paths de subdiretório)
-- [ ] 2.2.2 Confirmar que `panel/.github/workflows/` não colide com
+  — evidência: `git ls-files | grep -E '^(README\.md|panel/README\.md|
+  CHANGELOG\.md|panel/CHANGELOG\.md)$'` => os 4 paths distintos, tamanhos
+  diferentes (`README.md` 35056 bytes vs `panel/README.md` 12433 bytes;
+  `CHANGELOG.md` 435917 bytes vs `panel/CHANGELOG.md` 83621 bytes) — nenhum
+  sobrescrito.
+- [x] 2.2.2 Confirmar que `panel/.github/workflows/` não colide com
   `.github/workflows/` da raiz (paths distintos, sem merge de conteúdo)
-- [ ] 2.2.3 (teste) Rodar o Cenário 18 (FASE 0.2.2) e confirmar ambas as
+  — evidência: `.github/workflows/` = `publish-site.yml, release.yml,
+  shellcheck.yml`; `panel/.github/workflows/` = `release.yml` — mesmo nome
+  de arquivo (`release.yml`) coexiste em paths distintos, sem colisão.
+- [x] 2.2.3 (teste) Rodar o Cenário 18 (FASE 0.2.2) e confirmar ambas as
   versões dos arquivos homônimos intactas em seus paths de origem
+  — evidência: mesma verificação de 2.2.1/2.2.2 acima (Cenário 18 passos 1-4)
+  — todos os pares homônimos intactos, sem sobrescrita.
 
 ### 2.3 Congelar histórico do painel / iniciar histórico único `[A]`
 
@@ -383,14 +413,26 @@ Ref: spec.md FR-006; FASE 0.3 (Cenário 19); research.md Decision 11
 (referenciada em quickstart.md Cenário 15 passo 5 — `CHANGELOG.md` da raiz
 nunca é reescrito)
 
-- [ ] 2.3.1 (movida de 0.3.2) Adicionar nota de cabeçalho em
+- [x] 2.3.1 (movida de 0.3.2) Adicionar nota de cabeçalho em
   `panel/CHANGELOG.md` marcando as entradas anteriores à migração como
   histórico congelado — só executável aqui porque o arquivo passa a existir
   a partir da FASE 1 (`git subtree add`)
-- [ ] 2.3.2 Confirmar que `CHANGELOG.md` da raiz não é reescrito — apenas
+  — evidência: bloco de citação adicionado logo após o cabeçalho existente
+  de `panel/CHANGELOG.md`, informando que as entradas são histórico
+  congelado (referenciando `panel/CONTRIBUTING.md` para o split-sha) e que
+  novas entradas que tocam o painel passam a ser registradas no
+  `CHANGELOG.md` da raiz.
+- [x] 2.3.2 Confirmar que `CHANGELOG.md` da raiz não é reescrito — apenas
   passa a acumular novas entradas que também tocam o painel a partir daqui
-- [ ] 2.3.3 (teste) Rodar o Cenário 19 (FASE 0.3.1) e confirmar histórico
+  — evidência: `git diff --stat CHANGELOG.md` => (vazio, nenhuma mudança).
+- [x] 2.3.3 (teste) Rodar o Cenário 19 (FASE 0.3.1) e confirmar histórico
   congelado intacto em `panel/CHANGELOG.md`
+  — evidência (passo 1, entradas intactas): `git diff panel/CHANGELOG.md |
+  grep '^-' | grep -v '^---'` => (vazio — nenhuma linha removida, só adição
+  do header). Passo 2 (nova entrada pós-migração vai para o `CHANGELOG.md`
+  da raiz, não `panel/CHANGELOG.md`): não executado — nenhum release
+  pós-migração ocorreu ainda nesta execução; a regra está documentada no
+  header adicionado em 2.3.1 e será verificável no primeiro release real.
 
 ### 2.4 Verificar governança dupla sem falso conflito `[M]`
 
@@ -401,26 +443,82 @@ Nenhuma mudança de código — `_pl_cmd_constitution_conflict` já compara apen
 `--projeto-alvo-path` + `--feature-dir`, nunca varre subdiretórios (Decision
 7). Esta tarefa é verificação, não implementação.
 
-- [ ] 2.4.1 (teste) Rodar `pipeline.sh constitution-conflict
+- [x] 2.4.1 (teste) Rodar `pipeline.sh constitution-conflict
   --projeto-alvo-path <repo> --feature-dir <repo>/docs/specs/<f>` e confirmar
   `status: pre-skill-alert` (exit 2)
-- [ ] 2.4.2 (teste) Rodar `pipeline.sh constitution-conflict
+  — evidência (`--feature-dir <repo>/docs/specs/panel-monorepo`):
+  `status: pre-skill-alert`, `root: <repo>/docs/constitution.md`, exit 2.
+- [x] 2.4.2 (teste) Rodar `pipeline.sh constitution-conflict
   --projeto-alvo-path <repo>/panel --feature-dir <repo>/panel/docs/specs/<f>`
   e confirmar `status: pre-skill-alert` (exit 2)
-- [ ] 2.4.3 (teste) Confirmar que em nenhuma das duas execuções a constituição
+  — evidência (`--feature-dir <repo>/panel/docs/specs/cstk-panel`):
+  `status: pre-skill-alert`, `root: <repo>/panel/docs/constitution.md`,
+  exit 2.
+- [x] 2.4.3 (teste) Confirmar que em nenhuma das duas execuções a constituição
   do outro projeto aparece na saída
+  — evidência: saída de 2.4.1 cita apenas `<repo>/docs/constitution.md`;
+  saída de 2.4.2 cita apenas `<repo>/panel/docs/constitution.md` — nenhuma
+  menção cruzada em nenhuma das duas.
 
 ### 2.5 `.gitattributes` export-ignore de `panel/.claude` e `panel/.github` `[A]`
 
 Ref: plan.md linha 139 (`.gitattributes [NOVO]`); quickstart.md Cenário 16
 
-- [ ] 2.5.1 Criar `.gitattributes` na raiz com `panel/.claude export-ignore` e
-  `panel/.github export-ignore`
-- [ ] 2.5.2 (teste) Confirmar que `panel/.claude/` e `panel/.github/`
+**Correção de escopo (dec-056)**: a verificação original desta tarefa testou
+`git archive HEAD -- panel` a partir da raiz, e um `.gitattributes` só na
+raiz (`panel/.claude export-ignore`) filtrou corretamente nesse modo — mas a
+FASE 4/`release.yml` empacota com `git archive HEAD:panel` (sintaxe
+`<tree-ish>:<path>`, plan.md linha 210/216), onde `panel/` vira a RAIZ da
+árvore arquivada e os caminhos internos passam a ser `.claude/...`, não
+`panel/.claude/...`. Sonda contra o comando real usado pela FASE 4 mostrou
+o `.gitattributes` da raiz **não filtrando nada** (185/3, falha silenciosa —
+mesma classe de defeito do `.gitignore` original: parece certo, só a sonda
+contra o comando de produção acusa). Fix: `panel/.gitattributes` **novo**,
+com padrões relativos (`.claude export-ignore`, `.github export-ignore`,
+sem o prefixo `panel/`) — é este arquivo que governa `git archive
+HEAD:panel`. O `.gitattributes` da raiz foi mantido (cobre outros modos de
+archive, ex. tarball "Source code" do GitHub sobre o repo inteiro) e ganhou
+um comentário explicando o limite de escopo.
+
+- [x] 2.5.1 Criar `.gitattributes` na raiz com `panel/.claude export-ignore` e
+  `panel/.github export-ignore`; **e** `panel/.gitattributes` com `.claude
+  export-ignore`/`.github export-ignore` (padrões relativos — necessário
+  para o modo `HEAD:panel` usado pela FASE 4, ver correção de escopo acima)
+  — evidência: os 2 arquivos criados; `git check-attr --all -- panel/.claude`
+  (a partir da raiz) => `panel/.claude: export-ignore: set`; `git check-attr
+  --all -- .claude` (a partir de dentro de `panel/`) => `.claude:
+  export-ignore: set`.
+- [x] 2.5.2 (teste) Confirmar que `panel/.claude/` e `panel/.github/`
   continuam versionados normalmente (`git ls-files` inalterado) — o
   `export-ignore` só afeta `git archive`, não o índice
+  — evidência (índice inalterado): `git ls-files panel/.claude | wc -l` =>
+  `173`; `git ls-files panel/.github | wc -l` => `1`. — evidência (efeito
+  real, comando exato da FASE 4 — `git archive <tree-ish>:panel`, sem
+  flags): testado contra um commit real via `git stash create` (snapshot do
+  worktree corrente sem tocar HEAD/index) para simular pós-commit sem
+  poluir o histórico: `git archive $(git stash create):panel | tar -t |
+  grep -c '^\.claude/'` => `0`; mesmo comando para `^\.github/` => `0`.
+  Antes do fix (só `.gitattributes` da raiz, sem `panel/.gitattributes`):
+  o mesmo comando dava `185`/`3` — não filtrado.
 - [ ] 2.5.3 Este teste completo (tarball final sem `.claude`/`.github`) só é
   verificável após a FASE 4 gerar um tarball real — ver 4.3
+  — não executado: depende de `release.yml` (FASE 4, fora do escopo desta
+  onda) gerar um tarball real. A sonda de 2.5.2 já exercita o comando exato
+  (`git archive <tree-ish>:panel`) contra um commit real, então este item
+  restante é apenas a confirmação end-to-end via workflow publicado.
+
+**Gate baseline (`./tests/run.sh`, exigido pelo operador nesta onda)**: suíte
+completa rerodada após as mudanças da FASE 2 (`.gitignore` da raiz e
+`.gitattributes` novo — ambos afetam o repositório inteiro), comparando
+contra o baseline da FASE 1 (onda-009: `PASS: 3556 FAIL: 0 ERROR: 0
+ORPHANS: 0`) — evidência: `# PASS: 3556  FAIL: 0  ERROR: 0  ORPHANS: 0
+TIME: 1154s` / `[exited with code 0]`. Números idênticos ao baseline —
+nenhuma regressão em `cli/`, `plugins/` ou `tests/` introduzida pela âncora
+de `.gitignore` nem pelo `.gitattributes`.
+
+**FASE 2 CONCLUÍDA.** Tarefas 2.1-2.5 completas e verificadas (2.5.3 é a
+única exceção documentada, pendente de FASE 4 por desenho). FASE 3 NÃO
+iniciada, conforme instrução do operador nesta onda.
 
 ---
 
