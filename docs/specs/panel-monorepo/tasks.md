@@ -987,11 +987,16 @@ Ref: spec.md FR-015
   step "Validate panel workspace lockstep (WL-1..WL-5)" em
   `.github/workflows/release.yml` (`--version "${{ steps.tag.outputs.bare
   }}" --strict`) bloqueia a release sempre que `panel/package.json`
-  divergir da tag — mecanismo testado (ver RED/GREEN abaixo). O número
-  concreto para o PRIMEIRO alinhamento (painel em `0.34.1`, toolkit em
-  `9.5.0`) é decisão do operador — ver Decisão `dec-068`/bloqueio
-  `block-005` registrados nesta onda; o mecanismo de "avançar junto a cada
-  release" não depende de qual número for escolhido.
+  divergir da tag — mecanismo testado (ver RED/GREEN abaixo). Baseline
+  aplicado nesta onda: `9.5.0` nos 4 `package.json` + `panel/package-lock.json`
+  (regenerado via `npm install --package-lock-only`, diff mínimo — apenas os
+  5 campos `.version`, sem churn de dependências) — decisão do operador em
+  `block-005`/`dec-068`, aplicação registrada em `dec-071`. Prova RED→GREEN:
+  `--version 9.5.0 --strict` ANTES do bump → `ERROR: WL-5: panel/package.json
+  version '0.34.1' != --version '9.5.0'` exit=1; DEPOIS → `validate-panel-
+  workspace-lockstep: OK (0 aviso(s))` exit=0. A próxima tag do repositório
+  unificado (`10.0.0`, major) foi reservada pelo operador para a FASE 9 —
+  ver `dec-070` — e NÃO foi aplicada nesta onda.
 - [ ] 5.1.3 (teste) Após o primeiro release unificado, confirmar que
   `panel/package.json` `version` não diverge da tag publicada
   — nao executado: depende do ciclo de release da FASE 6 (ainda não
@@ -1066,6 +1071,47 @@ Suite completa (`./tests/run.sh`): baseline da FASE 4 fechou em `PASS:
 ERROR: 0 ORPHANS: 0` — delta de +11 cenários explicado integralmente
 pelos 11 cenários novos de
 `tests/cstk/test_validate-panel-workspace-lockstep.sh`.
+
+**Aplicação do baseline `9.5.0` (decisão do operador em `block-005`/`dec-068`,
+onda-014, `dec-070`/`dec-071`)** — evidência RED→GREEN do eixo WL-5
+especificamente (o eixo que estava de fato desalinhado; WL-3/WL-4, lockstep
+*interno* entre os 4 arquivos, já passavam antes e depois porque os 4
+arquivos sempre estiveram consistentes entre si em `0.34.1`):
+
+- **RED (antes do bump, `--version 9.5.0 --strict`)**: `ERROR: WL-5:
+  panel/package.json version '0.34.1' != --version '9.5.0'` exit=1.
+- Bump dos 4 `package.json` para `9.5.0` + regeneração do
+  `panel/package-lock.json` via `npm install --package-lock-only` (não
+  edição manual) — diff mínimo: apenas os 5 campos `.version` (raiz,
+  `.packages[""]`, `apps/server`, `apps/web`, `packages/shared-types`),
+  zero churn de dependências, `grep -c '0.34.1' panel/package-lock.json` →
+  `0` (nenhuma ocorrência residual).
+- **GREEN (depois do bump, `--version 9.5.0 --strict`)**: `validate-panel-
+  workspace-lockstep: OK (0 aviso(s))` exit=0.
+- **Escopo deliberado de WL-5, não furo**: sem `--version` o eixo
+  tag↔painel é pulado com aviso — `WARN: WL-5: --version nao informado,
+  lockstep com a tag de release pulado` / `validate-panel-workspace-
+  lockstep: OK (1 aviso(s))` exit=0. Fora de `--strict` (fluxo do dia a
+  dia, fora de release) o gate nunca bloqueia por esse eixo; só em
+  `release.yml` (`--strict`) ele passa a valer.
+- **Prova de que o gate vai proteger a PRÓXIMA tag (`10.0.0`, reservada
+  para a FASE 9 em `dec-070`)**: `--version 10.0.0 --strict` contra o
+  estado atual (painel em `9.5.0`) → `ERROR: WL-5: panel/package.json
+  version '9.5.0' != --version '10.0.0'` exit=1 — confirma que, quando
+  `v10.0.0` for de fato publicada, o gate REPROVA a release se alguém
+  esquecer de bumpar o painel junto.
+- Build (`cd panel && npm run build`): exit=0; os 3 workspaces resolveram
+  a dependência interna corretamente na nova versão —
+  `@cstk-panel/shared-types@9.5.0 build`, `@cstk-panel/server@9.5.0
+  build`, `@cstk-panel/web@9.5.0 build`.
+- Test (`cd panel && npm test`): exit=0 — `Test Files 65 passed | 4
+  skipped (69)`, `Tests 868 passed | 48 skipped (916)`.
+- Suite completa pós-bump (`./tests/run.sh`): `PASS: 3582 FAIL: 0 ERROR: 0
+  ORPHANS: 0` — idêntico ao baseline da onda-013 (nenhum cenário novo
+  previsto para esta onda; não houve regressão nem crescimento).
+
+Tarefas 5.1.3 e 5.3.1–5.3.3 permanecem `[ ]` — dependem do ciclo de
+release real da FASE 6 (gate crítico, não iniciado nesta onda).
 
 ---
 
