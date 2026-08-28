@@ -1041,6 +1041,14 @@ Environment:
                                 directory is what gets mounted read-only into
                                 the container (default:
                                 ~/.claude/cstk/knowledge.db).
+  CSTK_PANEL_REPO               Override the source repository of the panel
+                                release (owner/repo only; the host stays
+                                fixed at api.github.com). For forks/
+                                rehearsals; same override pattern as
+                                CSTK_REPO in cstk install/self-update
+                                (default: JotJunior/cstk). A non-default
+                                value is audited: warning on stderr + line
+                                in .claude/enforcement-log.jsonl.
 HELP
         return 0
         ;;

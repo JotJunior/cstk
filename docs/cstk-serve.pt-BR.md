@@ -2,11 +2,12 @@
 
 # Painel Web (`cstk serve`)
 
-Inicia a interface web do cstk panel localmente. Na primeira execução, baixa
-automaticamente a release mais recente de
-[JotJunior/cstk-panel](https://github.com/JotJunior/cstk-panel) e instala em
-`~/.local/share/cstk/panel`. Execuções subsequentes reutilizam a instalação em
-cache.
+Inicia a interface web do cstk panel localmente. O painel é distribuído como
+parte das releases do [JotJunior/cstk](https://github.com/JotJunior/cstk)
+(pacote `panel/` neste mesmo repositório) — deixou de ter repositório
+próprio. Na primeira execução, baixa automaticamente o asset do painel da
+release mais recente do `cstk` e instala em `~/.local/share/cstk/panel`.
+Execuções subsequentes reutilizam a instalação em cache.
 
 O `cstk serve` compila os workspaces (`npm run build` — shared-types, server e
 web) e então sobe um **único processo Fastify** (`npm run start`) que serve a
@@ -44,6 +45,12 @@ cstk serve --docker             # roda o painel num container Docker local (sem 
 - `CSTK_KNOWLEDGE_DB` — Caminho do `knowledge.db`; com `--docker`, o
   **diretório** deste arquivo é montado somente leitura no container
   (padrão: `~/.claude/cstk/knowledge.db`).
+- `CSTK_PANEL_REPO` — Substitui o repositório de origem da release do painel
+  (apenas formato `owner/repo`; o host permanece fixo em `api.github.com`).
+  Destinado a forks/ensaios, mesmo padrão de override de `CSTK_REPO` em
+  `cstk install`/`cstk self-update` (padrão: `JotJunior/cstk`). Um valor
+  não-default é auditado: aviso em stderr + linha em
+  `.claude/enforcement-log.jsonl`.
 
 **Exit codes**: `0` sucesso · `1` erro geral (prereq ausente, download/build
 falhou, instalação corrompida; com `--docker` também: Docker ausente/daemon

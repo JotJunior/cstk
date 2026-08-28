@@ -1264,27 +1264,114 @@ Ref: plan.md linha 219 (FR-017); quickstart.md Cenário 15
 Ref: spec.md FR-017; plan.md linhas 145, 153, 155 (lista de arquivos a
 modificar/revisar)
 
-- [ ] 7.1.1 Atualizar `docs/cstk-serve.md` e `docs/cstk-serve.pt-BR.md`:
+**Nota (lista derivada por busca, não pelo plano)**: o operador instruiu
+explicitamente não confiar na enumeração do `plan.md`/`quickstart.md`
+Cenário 15 (`CHANGELOG.md`, artigo datado, `panel/**`) e derivar por grep. A
+busca (`git ls-files '*.md' | grep -v '^docs/specs/_archived/' | xargs grep
+-l 'cstk-panel'`) devolveu 61 arquivos; inspecionados um a um (contexto de 5
+linhas em cada ocorrência), apenas 4 fazem afirmação em tempo presente de que
+o painel é obtido de repositório externo separado — exatamente os 4 de
+7.1.1/7.1.2. Os demais são: (a) `CHANGELOG.md` e o artigo datado (exceção já
+prevista); (b) `panel/**` (próprio subtree, exceção já prevista); (c)
+`docs/cstk-panel/{backend,frontend}-brief.md` — mencionam "cstk-panel" só
+como nome do produto/consumidor read-only, nunca como origem de distribuição
+(ver 7.1.3); (d) **divergência real do plano**: `docs/specs/feature-reopen/
+{checklists/requirements.md,tasks.md}`, `docs/specs/human-bridge/contracts/
+mcp-tool-ask-operator.md`, `docs/specs/pipeline-converge/{plan,research,
+tasks}.md` e `docs/specs/plan-usage-capture/tasks.md` — specs de OUTRAS
+features, já concluídas/históricas, que citam "cstk-panel" apenas como nome
+do produto ou path de arquivo (`docs/cstk-panel/frontend-brief.md:39`),
+nunca afirmando origem externa. São historicamente legítimas pela mesma
+razão que `CHANGELOG.md` é (registro congelado de decisão passada), mesmo
+sem estarem no enunciado original do Cenário 15. `docs/specs/panel-monorepo/
+**` (a própria spec desta feature) também aparece — trivialmente legítimo,
+descreve o ANTES/DEPOIS da mudança.
+
+- [x] 7.1.1 Atualizar `docs/cstk-serve.md` e `docs/cstk-serve.pt-BR.md`:
   origem passa a ser as releases do próprio repositório unificado
-- [ ] 7.1.2 Atualizar `cli/README.md` e `cli/README.pt-BR.md`: idem
-- [ ] 7.1.3 Revisar `docs/cstk-panel/*-brief.md`: ajustar menções que
+  — evidência: linhas 5-8 (EN) / 5-9 (pt-BR) reescritas — "The panel is
+  distributed as part of the [JotJunior/cstk](...) releases (package
+  `panel/` in this same repository) — it no longer has a separate
+  repository. On first run, it automatically downloads the panel asset
+  from the latest `cstk` release [...]" (espelhado em pt-BR). Seção
+  "Environment variables"/"Variáveis de ambiente" ganhou a entrada
+  `CSTK_PANEL_REPO` (ver 7.1.5).
+- [x] 7.1.2 Atualizar `cli/README.md` e `cli/README.pt-BR.md`: idem
+  — evidência: seção `### cstk serve` reescrita — "The panel is distributed
+  as part of the `cstk` releases (own repository, package `panel/`) — it no
+  longer has a separate repository. On the first run it queries the GitHub
+  Releases API, downloads the panel asset from the latest `JotJunior/cstk`
+  release [...]" (espelhado em pt-BR).
+- [x] 7.1.3 Revisar `docs/cstk-panel/*-brief.md`: ajustar menções que
   descrevem o painel como projeto externo (preservando menções históricas
   legítimas, ex. `CHANGELOG.md`)
-- [ ] 7.1.4 Confirmar que `README.md` da raiz permanece sem menção ao painel
+  — evidência: `grep -in "reposit\|externo\|github\|separad\|independente"
+  docs/cstk-panel/backend-brief.md docs/cstk-panel/frontend-brief.md`
+  retorna apenas "endpoint separado" (nomenclatura de rota, não de
+  repositório) e "standalone separado" (opção de empacotamento em aberto,
+  seção "Decisões em aberto", nunca resolvida como afirmação de origem).
+  Nenhuma das duas menciona repositório/deploy externo do painel. **Nenhuma
+  edição necessária** — revisado, sem achado.
+- [x] 7.1.4 Confirmar que `README.md` da raiz permanece sem menção ao painel
   (não tocar, conforme `plan.md` linha 142)
+  — evidência: `grep -in "cstk-panel" README.md` → 0 ocorrências (README.md
+  não aparece na lista dos 61 arquivos que mencionam a string `cstk-panel`).
+  **Correção ao plano**: a premissa "README.md sem menção ao painel" é
+  imprecisa — `grep -in panel README.md` retorna 8 linhas (screenshots do
+  painel, link para `docs/cstk-serve.md`), mas nenhuma delas afirma origem
+  externa nem contém a string `cstk-panel`; portanto o critério real de
+  FR-017 (nenhuma afirmação de origem externa) está satisfeito e o "não
+  tocar" permanece correto, ainda que por um motivo mais estreito do que o
+  texto do plano sugeria.
+- [x] 7.1.5 **(adicional, fora da enumeração original do plan.md, pedido
+  explícito do operador nesta onda)** Documentar `CSTK_PANEL_REPO` no mesmo
+  local onde `CSTK_REPO` já é documentado para `install`/`self-update`
+  — evidência: `cli/lib/self-update.sh --help` já lista `CSTK_REPO` em um
+  bloco "ENV (overrides para testes/forks)"; o bloco equivalente de
+  `cstk serve --help` ("Environment:", `cli/lib/serve.sh`) NÃO listava
+  `CSTK_PANEL_REPO` apesar de a variável já existir em código desde a FASE
+  3 (`_serve_panel_api_url`, tasks.md 3.3.1). Adicionada entrada simétrica
+  em `cli/lib/serve.sh` (verificada rodando `CSTK_LIB=./cli/lib ./cli/cstk
+  serve --help`, saída confirmada com a nova entrada `CSTK_PANEL_REPO`) e
+  em `docs/cstk-serve.md`/`docs/cstk-serve.pt-BR.md` (seção "Environment
+  variables"/"Variáveis de ambiente").
 
 ### 7.2 Teste: nenhum documento afirma origem externa `[M]`
 
 Ref: quickstart.md Cenário 15 (linhas 263-278)
 
-- [ ] 7.2.1 (teste) Rodar `git ls-files '*.md' | grep -v
+- [x] 7.2.1 (teste) Rodar `git ls-files '*.md' | grep -v
   '^docs/specs/_archived/' | xargs grep -l 'cstk-panel'` e confirmar que os
   arquivos retornados são apenas menção histórica legítima
   (`CHANGELOG.md`, artigo datado, `panel/**`)
-- [ ] 7.2.2 (teste) Inspecionar os 4 arquivos da tarefa 7.1.1/7.1.2 e
+  — evidência: comando executado, 61 arquivos retornados (após os edits de
+  7.1.1/7.1.2). **Critério corrigido pela nota acima**: além dos 3 grupos
+  citados no Cenário 15 original, o conjunto real de exceções legítimas
+  também inclui `docs/cstk-panel/*-brief.md` (produto/consumidor, não
+  origem) e specs congeladas de OUTRAS features já concluídas
+  (`feature-reopen`, `human-bridge`, `pipeline-converge`,
+  `plan-usage-capture`) que citam "cstk-panel" só como nome de produto ou
+  path de arquivo. `grep -n 'JotJunior/cstk-panel'` (afirmação mais
+  específica de origem) sobre o mesmo conjunto, excluindo `panel/`, retorna
+  SOMENTE `CHANGELOG.md` (entradas passadas), o artigo datado, e os
+  próprios artefatos de `docs/specs/panel-monorepo/` (que descrevem o
+  ANTES/DEPOIS desta migração) — zero ocorrências fora dessas categorias.
+- [x] 7.2.2 (teste) Inspecionar os 4 arquivos da tarefa 7.1.1/7.1.2 e
   confirmar que descrevem a origem como as releases do repositório unificado
-- [ ] 7.2.3 (teste) Confirmar que `CHANGELOG.md` da raiz não foi reescrito
+  — evidência: `grep -n "distribu\|no longer has a separate" cli/README.md
+  cli/README.pt-BR.md docs/cstk-serve.md docs/cstk-serve.pt-BR.md` retorna
+  uma linha por arquivo confirmando a nova redação ("The panel is
+  distributed as part [...]" / "O painel e distribuido como parte [...]" /
+  "O painel é distribuído como" + "it no longer has a separate
+  repository."); nenhuma referência a `JotJunior/cstk-panel` restante
+  nesses 4 arquivos (`grep -c 'JotJunior/cstk-panel' <arquivo>` → `0` nos
+  quatro).
+- [x] 7.2.3 (teste) Confirmar que `CHANGELOG.md` da raiz não foi reescrito
   (research.md Decision 11)
+  — evidência: `git status` / `git diff --stat` desta onda não lista
+  `CHANGELOG.md` entre os arquivos modificados (apenas `cli/README.md`,
+  `cli/README.pt-BR.md`, `cli/lib/serve.sh`, `docs/cstk-serve.md`,
+  `docs/cstk-serve.pt-BR.md` e este `tasks.md`).
 
 ---
 
@@ -1488,11 +1575,11 @@ flowchart TD
 | 4 - release.yml | 3 | 10 | A |
 | 5 - Versionamento e lockstep | 3 | 9 | A/M |
 | 6 - Ensaio ponta-a-ponta | 2 | 12 | C |
-| 7 - Documentação | 2 | 7 | A/M |
+| 7 - Documentação | 2 | 8 | A/M |
 | 8 - canonical-project | 3 | 9 | A/M |
 | 9 - Release-ponte + banner | 3 | 9 | C/M |
 | 10 - Desativar + arquivar | 3 | 9 | C/M |
-| **Total** | **38** | **137** | - |
+| **Total** | **38** | **138** | - |
 
 ## Escopo Coberto
 
