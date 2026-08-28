@@ -337,7 +337,7 @@ malformado (`contracts/serve-asset-selection.md` §3.2 I5).
 **Cobre**: FR-006
 
 1. Apos o `git subtree add` (FASE 1) e a nota do cabecalho de
-   `panel/CHANGELOG.md` (FASE 2, task 0.3.2), verificar que
+   `panel/CHANGELOG.md` (FASE 2, task 2.3.1 — movida de 0.3.2), verificar que
    `panel/CHANGELOG.md` mantem as entradas anteriores a migracao intactas,
    sem reescrita — mesmo principio ja aplicado ao `CHANGELOG.md` da raiz no
    Cenario 15.

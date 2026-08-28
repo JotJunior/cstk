@@ -335,6 +335,21 @@ mudança de local e a ação necessária.
   estar publicada e ter sua correta seleção/integridade verificada — para
   que nenhuma instalação fique, durante a transição, sem nenhum caminho de
   atualização funcional.
+
+  **Nota (mecanismo do atesto de FR-019(b))**: a verificação de FR-019(b) é
+  atestada em duas camadas, ambas obrigatórias antes do passo de
+  arquivamento (plan.md, passo 9): (1) um teste automatizado na suíte do
+  painel (`renderToStaticMarkup`, mesmo padrão de `TextBlockRaw.test.ts`)
+  que reprova se o elemento de aviso (FR-022) não aparecer no markup
+  renderizado — camada que sobrevive a regressões futuras; e (2) confirmação
+  visual humana, seguindo o Cenário 1 de `quickstart.md`, registrada como
+  Decisão auditável no `state.json`/`state.db` da execução (nunca apenas no
+  corpo da release — o `cstk serve` nunca lê notas de release, achado que
+  originou a FR-022), com evidência citável (versão publicada, o que foi
+  visto, onde). A camada 1 prova que o componente renderiza; a camada 2
+  prova que uma pessoa de fato viu o aviso (o banner pode estar abaixo da
+  dobra, oculto por CSS, ou numa tela que ninguém abre). Decisão de processo
+  registrada em `block-003`/dec-048/dec-050 (execução `panel-monorepo`).
 - **FR-020**: O sistema MUST preservar a identidade de projeto própria do
   painel no seu armazenamento de histórico/conhecimento entre execuções, de
   modo que uma execução de pipeline iniciada a partir do subdiretório do

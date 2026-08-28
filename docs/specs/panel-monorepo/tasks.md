@@ -111,14 +111,16 @@ apenas em `plan.md` linha 222.
   passa a ser a única fonte de novas entradas que também toquem o painel
   — evidência: `quickstart.md` linha 335, "Cenario 19 — Historico de
   mudancas: congelado vs. unico (FR-006)", `**Cobre**: FR-006`.
-- [ ] 0.3.2 Adicionar nota curta em `panel/CHANGELOG.md` (cabeçalho, quando a
-  FASE 2 tocar o arquivo) apontando que entradas anteriores à migração são
-  histórico congelado — precondição verificada pelo cenário acima
-  — não executado: `panel/CHANGELOG.md` ainda não existe nesta árvore
-  (`git subtree add` é FASE 1, ainda não rodou — `ls panel` confirma
-  "No such file or directory"). O próprio texto da subtarefa deferi a edição
-  para "quando a FASE 2 tocar o arquivo"; permanece pendente até lá
-  (dec-045 registra esta constatação).
+- **0.3.2 MOVIDA para a FASE 2 (subtarefa 2.3.1)** — correção de
+  sequenciamento do próprio backlog, registrada como Decisão auditável
+  (não muda escopo). A subtarefa pedia nota de cabeçalho em
+  `panel/CHANGELOG.md`, arquivo que só passa a existir após o `git subtree
+  add` (FASE 1) — o cabeçalho da FASE 0 exige todas as tarefas `[x]` antes
+  da FASE 1, o que tornava 0.3.2 impossível de completar sem quebrar a
+  ordem. FASE 2.3.1 já tratava exatamente este trabalho (era referenciada
+  como "(FASE 0.3.2)"); a subtarefa foi absorvida lá, onde o arquivo existe
+  e a fase já trata colisões de topo pós-import. Este item não bloqueia
+  mais a conclusão da FASE 0 nem a transição para a FASE 1.
 - [x] 0.3.3 Confirmar que a numeração do Cenário 19 não colide com o Cenário
   17 (FASE 0.1.3) nem com o Cenário 18 (FASE 0.2.2), mantendo sequência
   contígua em `quickstart.md`
@@ -203,14 +205,19 @@ do passo 9 (arquivamento). É decisão de processo de release — não algo que
   — evidência: dec-048 (score 0, classe operacional, escolha
   `bloqueio-humano-dono-do-atesto`) + `block-003` registrado via
   `bloqueios.sh register` nesta onda, aguardando resposta do operador.
-- [ ] 0.6.2 Após resposta do operador, registrar a decisão formal (Decisão
+- [x] 0.6.2 Após resposta do operador, registrar a decisão formal (Decisão
   auditável) descrevendo o mecanismo de atesto escolhido
-  — não executado: aguarda resposta do operador a `block-003`.
-- [ ] 0.6.3 Adicionar nota em `spec.md` FR-019 ou em `plan.md` (conforme o
+  — evidência: dec-050 (onda-008, `choice: teste-mais-confirmacao-humana`) —
+  duas camadas obrigatórias: (1) teste automatizado (`renderToStaticMarkup`,
+  padrão `TextBlockRaw.test.ts`) que reprova se o aviso não estiver no
+  markup; (2) confirmação visual humana registrada como Decisão auditável no
+  state, com evidência citável. Aplica-se às tarefas 0.6/10.2 (FR-019(b)).
+- [x] 0.6.3 Adicionar nota em `spec.md` FR-019 ou em `plan.md` (conforme o
   mecanismo escolhido em 0.6.2) formalizando o dono/mecanismo do atesto, para
   que deixe de ser inferido
-  — não executado: aguarda resposta do operador a `block-003` (depende de
-  0.6.2, que define o mecanismo a formalizar).
+  — evidência: `spec.md`, logo após FR-019 (linha ~338), parágrafo "**Nota
+  (mecanismo do atesto de FR-019(b))**" descrevendo as duas camadas e
+  referenciando `block-003`/dec-048/dec-050.
 - [x] 0.6.4 (gate) Esta tarefa é pré-requisito explícito da tarefa **10.2**
   (arquivamento do repositório original) na Matriz de Dependências — 10.2 não
   pode ser marcada executável enquanto 0.6 não estiver `[x]`
@@ -218,8 +225,10 @@ do passo 9 (arquivamento). É decisão de processo de release — não algo que
   `F0 -. "0.6: atesto pre-arquivamento" .-> F10` e a nota "FASE 10.2
   (arquivamento) tem dois pré-requisitos formais adicionais... FASE 0.6
   (dono do atesto definido)... ambos MUST estar `[x]` antes de 10.2.3" —
-  gate estrutural já presente, confirmado nesta verificação; 0.6 permanece
-  `[ ]` (0.6.2/0.6.3 pendentes) e portanto continua bloqueando 10.2.
+  gate estrutural já presente, confirmado nesta verificação; 0.6 agora está
+  completa (0.1-0.4 `[x]`) — 10.2 deixa de estar bloqueada por este gate,
+  mas continua dependendo de 6.2 (prova do ensaio registrada) e da ordem
+  sequencial das fases 1-9.
 
 ---
 
@@ -315,8 +324,10 @@ Ref: spec.md FR-006; FASE 0.3 (Cenário 19); research.md Decision 11
 (referenciada em quickstart.md Cenário 15 passo 5 — `CHANGELOG.md` da raiz
 nunca é reescrito)
 
-- [ ] 2.3.1 Adicionar nota de cabeçalho em `panel/CHANGELOG.md` marcando as
-  entradas anteriores à migração como histórico congelado (FASE 0.3.2)
+- [ ] 2.3.1 (movida de 0.3.2) Adicionar nota de cabeçalho em
+  `panel/CHANGELOG.md` marcando as entradas anteriores à migração como
+  histórico congelado — só executável aqui porque o arquivo passa a existir
+  a partir da FASE 1 (`git subtree add`)
 - [ ] 2.3.2 Confirmar que `CHANGELOG.md` da raiz não é reescrito — apenas
   passa a acumular novas entradas que também tocam o painel a partir daqui
 - [ ] 2.3.3 (teste) Rodar o Cenário 19 (FASE 0.3.1) e confirmar histórico
@@ -834,6 +845,11 @@ flowchart TD
 - FASE 0 é pré-requisito de **todas** as fases de implementação (1-10) —
   nenhuma tarefa de implementação é executável antes da FASE 0 estar
   completa.
+- Correção de sequenciamento (registrada como Decisão, não muda escopo): a
+  subtarefa 0.3.2 (nota de cabeçalho em `panel/CHANGELOG.md`) foi movida
+  para a FASE 2 (task 2.3.1) — o arquivo só existe após o `git subtree add`
+  da FASE 1, e o cabeçalho original da FASE 0 exigia todas as tarefas `[x]`
+  antes de iniciar a FASE 1. FASE 0 está completa sem esta subtarefa.
 - FASE 1 (`git subtree add`) é isolada e verificada em commit próprio antes de
   qualquer outra mudança no repositório (inclusive antes da FASE 2).
 - FASE 6 (ensaio ponta-a-ponta) é o portão que libera FASE 9 e FASE 10 (passos
@@ -847,7 +863,7 @@ flowchart TD
 
 | Fase | Tarefas | Subtarefas | Criticidade |
 |------|---------|------------|-------------|
-| 0 - Especificação e Rastreabilidade | 6 | 20 | C/A/M |
+| 0 - Especificação e Rastreabilidade | 6 | 19 | C/A/M |
 | 1 - Import do histórico | 2 | 9 | C |
 | 2 - Estrutura pós-import | 5 | 16 | C/A/M |
 | 3 - serve.sh + testes | 6 | 28 | C/A/M |
@@ -858,7 +874,7 @@ flowchart TD
 | 8 - canonical-project | 3 | 9 | A/M |
 | 9 - Release-ponte + banner | 3 | 9 | C/M |
 | 10 - Desativar + arquivar | 3 | 9 | C/M |
-| **Total** | **38** | **138** | - |
+| **Total** | **38** | **137** | - |
 
 ## Escopo Coberto
 
