@@ -12,6 +12,9 @@
 #   3. Validacao dos manifestos de plugin/marketplace (MP-1..MP-6,
 #      `scripts/validate-plugin-manifests.sh --strict`) — ver
 #      docs/specs/claude-plugin-packaging/contracts/plugin-artifacts.md
+#   3b. Validacao do lockstep de versao dos workspaces npm do painel
+#      (WL-1..WL-5, `scripts/validate-panel-workspace-lockstep.sh --strict`)
+#      — ver docs/specs/panel-monorepo/spec.md FR-015/FR-016
 #   4. Suite de testes do toolkit (`tests/run.sh` + `tests/cstk/test_*.sh`)
 #      como pre-requisito — release falha se qualquer teste falhar
 #   5. Build deterministico do tarball via `scripts/build-release.sh <tag>`
@@ -80,6 +83,17 @@ jobs:
         # mesmo script roda sem --version/--strict — MP-5 vira aviso, os
         # demais invariantes (MP-1..4/6) continuam sempre bloqueantes.
         run: ./scripts/validate-plugin-manifests.sh --version "${{ steps.tag.outputs.bare }}" --strict
+
+      - name: Validate panel workspace lockstep (WL-1..WL-5)
+        # Ref: docs/specs/panel-monorepo/tasks.md FASE 5.1/5.2/5.3
+        #      docs/specs/panel-monorepo/spec.md FR-015 (a numeracao de
+        #      versao do painel passa a avancar junto com a tag do
+        #      repositorio unificado, substituindo a serie independente que
+        #      tinha antes da migracao), FR-016 (lockstep entre os 3
+        #      workspaces npm do painel)
+        # --strict torna WL-5 (lockstep de versao com a tag) bloqueante
+        # SOMENTE aqui, no release — mesmo padrao do gate MP-5 acima.
+        run: ./scripts/validate-panel-workspace-lockstep.sh --version "${{ steps.tag.outputs.bare }}" --strict
 
       - name: Run test suite (main + cstk integrados)
         # FASE 9.3 integrou tests/cstk/ no runner principal; tests/run.sh

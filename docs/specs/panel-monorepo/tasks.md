@@ -967,26 +967,60 @@ Ref: plan.md linha 217 (FR-015, FR-016); quickstart.md Cenário 14
 
 Ref: spec.md FR-015
 
-- [ ] 5.1.1 Remover a numeração de versão independente do painel
+- [x] 5.1.1 Remover a numeração de versão independente do painel
   (`panel/package.json` `version`) do fluxo de release próprio do
   `cstk-panel` (automação desativada apenas na FASE 10 — aqui apenas deixa de
   ser a fonte de verdade)
-- [ ] 5.1.2 Fazer `panel/package.json` `version` avançar junto com a tag
+  — evidência: `panel/.github/workflows/release.yml` já derivava `BARE`
+  direto de `GITHUB_REF_NAME` (a tag), nunca de `package.json` — não havia
+  fonte de verdade em `version` a remover no código; o que faltava era a
+  convenção/gate impedindo `panel/package.json` de divergir por conta
+  própria. `CONTRIBUTING.md`/`CONTRIBUTING.pt-BR.md` §4 agora documentam
+  explicitamente "O painel não tem mais série de versão própria" e o gate
+  `scripts/validate-panel-workspace-lockstep.sh` (WL-5, `--strict` em
+  `release.yml`) reprova qualquer release do repositório unificado em que
+  `panel/package.json` não bata com a tag — a numeração independente deixou
+  de ser possível, não só de ser a fonte de verdade.
+- [x] 5.1.2 Fazer `panel/package.json` `version` avançar junto com a tag
   SemVer do repositório unificado a cada release
+  — evidência: `scripts/validate-panel-workspace-lockstep.sh` (WL-5) +
+  step "Validate panel workspace lockstep (WL-1..WL-5)" em
+  `.github/workflows/release.yml` (`--version "${{ steps.tag.outputs.bare
+  }}" --strict`) bloqueia a release sempre que `panel/package.json`
+  divergir da tag — mecanismo testado (ver RED/GREEN abaixo). O número
+  concreto para o PRIMEIRO alinhamento (painel em `0.34.1`, toolkit em
+  `9.5.0`) é decisão do operador — ver Decisão `dec-068`/bloqueio
+  `block-005` registrados nesta onda; o mecanismo de "avançar junto a cada
+  release" não depende de qual número for escolhido.
 - [ ] 5.1.3 (teste) Após o primeiro release unificado, confirmar que
   `panel/package.json` `version` não diverge da tag publicada
+  — nao executado: depende do ciclo de release da FASE 6 (ainda não
+  existe nenhuma release unificada publicada).
 
 ### 5.2 Lockstep dos 3 workspaces `[A]`
 
 Ref: spec.md FR-016
 
-- [ ] 5.2.1 Garantir que `apps/server`, `apps/web` e `packages/shared-types`
+- [x] 5.2.1 Garantir que `apps/server`, `apps/web` e `packages/shared-types`
   recebam a mesma versão `X.Y.Z` da release, sem divergência entre si
-- [ ] 5.2.2 Garantir que `panel/package-lock.json` reflete as mesmas versões
-- [ ] 5.2.3 Confirmar que os 3 arquivos de versão do toolkit
+  — evidência: `scripts/validate-panel-workspace-lockstep.sh` WL-3, gate
+  bloqueante em `release.yml` e `shellcheck.yml` (structural, sem
+  `continue-on-error`); rodando contra o repo real (`scenario_repo_real_em_
+  lockstep` em `tests/cstk/test_validate-panel-workspace-lockstep.sh`) →
+  `validate-panel-workspace-lockstep: OK (1 aviso(s))` exit=0 (os 4
+  `package.json` estão hoje em `0.34.1`).
+- [x] 5.2.2 Garantir que `panel/package-lock.json` reflete as mesmas versões
+  — evidência: mesmo gate, invariante WL-4 (`.version`, `.packages[""]`. e
+  `.packages["<workspace>"]` do lockfile `lockfileVersion 3`); mesma sonda
+  contra o repo real acima cobre também esta checagem (exit 0).
+- [x] 5.2.3 Confirmar que os 3 arquivos de versão do toolkit
   (`.claude-plugin/marketplace.json` e os 2 `plugin.json`) permanecem em
   lockstep — já gate bloqueante existente (`validate-plugin-manifests.sh
   --strict`, MP-5), não requer mudança
+  — evidência: `scripts/validate-plugin-manifests.sh` inalterado nesta
+  fase; `tests/cstk/test_validate-plugin-manifests.sh` continua verde na
+  suite completa (`PASS: 3582 FAIL: 0 ERROR: 0 ORPHANS: 0`, ver FASE 5.4
+  abaixo) — nenhuma mudança necessária, confirmado.
 
 ### 5.3 Teste: lockstep completo `[M]`
 
@@ -994,9 +1028,44 @@ Ref: quickstart.md Cenário 14 (linhas 247-260)
 
 - [ ] 5.3.1 (teste) Após um ciclo de release de `vX.Y.Z`, confirmar
   `panel/package.json` `version = X.Y.Z`
+  — nao executado: depende do ciclo de release da FASE 6.
 - [ ] 5.3.2 (teste) Confirmar os três workspaces com a mesma `X.Y.Z`
+  — nao executado: depende do ciclo de release da FASE 6.
 - [ ] 5.3.3 (teste) Confirmar `panel/package-lock.json` e os 3 manifestos do
   toolkit também em `X.Y.Z`
+  — nao executado: depende do ciclo de release da FASE 6.
+
+### 5.4 Gate automatizado de lockstep (evidência RED/GREEN)
+
+Novo script `scripts/validate-panel-workspace-lockstep.sh` (WL-1..WL-5, par
+simétrico de `scripts/validate-plugin-manifests.sh`/MP-5), com suite de
+regressão dedicada (`tests/cstk/test_validate-panel-workspace-lockstep.sh`,
+11 cenários) e gates em `.github/workflows/release.yml` (bloqueante,
+`--strict`) e `.github/workflows/shellcheck.yml` (bloqueante em PR para
+WL-1..WL-4; WL-5 é aviso fora de release, mesmo padrão de MP-5).
+
+Demonstração empírica de que o gate reprova de verdade (divergência
+proposital introduzida e desfeita no repo real, revertida em seguida —
+`git status --short panel/` limpo antes e depois):
+
+- **GREEN (baseline)**: `./scripts/validate-panel-workspace-lockstep.sh
+  --repo-root <PAP>` → `validate-panel-workspace-lockstep: OK (1
+  aviso(s))` exit=0.
+- **RED (divergência proposital em `apps/web/package.json`, `0.34.1` →
+  `0.34.2`)**: → `ERROR: WL-3: apps/web/package.json version '0.34.2' !=
+  panel/package.json version '0.34.1'` exit=1.
+- **GREEN (revertido)**: mesmo comando do baseline → `validate-panel-
+  workspace-lockstep: OK (1 aviso(s))` exit=0.
+- (cobertura adicional, mesmo padrão RED/GREEN, para `package-lock.json`):
+  RED → `ERROR: WL-4: package-lock.json .packages["apps/server"].version
+  '0.34.9' != panel/package.json version '0.34.1'` exit=1; revertido →
+  GREEN exit=0.
+
+Suite completa (`./tests/run.sh`): baseline da FASE 4 fechou em `PASS:
+3571 FAIL: 0 ERROR: 0 ORPHANS: 0`; após esta fase, `PASS: 3582 FAIL: 0
+ERROR: 0 ORPHANS: 0` — delta de +11 cenários explicado integralmente
+pelos 11 cenários novos de
+`tests/cstk/test_validate-panel-workspace-lockstep.sh`.
 
 ---
 

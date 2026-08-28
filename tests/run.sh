@@ -202,6 +202,12 @@ _is_internal_test() {
       # da convencao cli/lib | skills/*/scripts — mesmo tratamento de
       # test_build-release.sh). FASE 5.1.3/5.1.4 de claude-plugin-packaging.
       return 0 ;;
+    test_validate-panel-workspace-lockstep.sh)
+      # Cobre scripts/validate-panel-workspace-lockstep.sh (top-level
+      # scripts/, fora da convencao cli/lib | skills/*/scripts — mesmo
+      # tratamento de test_validate-plugin-manifests.sh). FASE 5.1-5.3 de
+      # panel-monorepo (FR-015/FR-016).
+      return 0 ;;
     test_plugin-hooks-manifest.sh)
       # Cobre plugins/cstk/hooks/hooks.json — manifesto de dados estatico,
       # sem script .sh "dono" sob a convencao de FASE 9.3. FASE 5.3.4 de

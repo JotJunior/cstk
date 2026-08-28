@@ -14,6 +14,13 @@
 # e aviso aqui, porque nao ha tag corrente para comparar fora do release
 # (o gate estrito de MP-5 vive em release.yml).
 #
+# Mesma excecao (panel-monorepo, FASE 5.2/5.3): o step "Validate panel
+# workspace lockstep" tambem NAO tem continue-on-error — WL-1..WL-4
+# (os 4 package.json + package-lock.json do painel fora de lockstep entre
+# si) sao bugs reais e devem bloquear PR mesmo fora de release; so WL-5
+# (lockstep de versao com a tag) e aviso aqui pelo mesmo motivo de MP-5
+# (o gate estrito de WL-5 vive em release.yml).
+#
 # Config de severidade/ruido vem do .shellcheckrc na raiz (compartilhado com o
 # dev local). shellcheck ja vem instalado na imagem ubuntu-latest.
 #
@@ -30,6 +37,10 @@ on:
       - '.claude-plugin/**'
       - 'plugins/*/.claude-plugin/**'
       - 'plugins/cstk/hooks/hooks.json'
+      - 'panel/package.json'
+      - 'panel/package-lock.json'
+      - 'panel/apps/*/package.json'
+      - 'panel/packages/*/package.json'
   push:
     branches: [main]
     paths:
@@ -39,6 +50,10 @@ on:
       - '.claude-plugin/**'
       - 'plugins/*/.claude-plugin/**'
       - 'plugins/cstk/hooks/hooks.json'
+      - 'panel/package.json'
+      - 'panel/package-lock.json'
+      - 'panel/apps/*/package.json'
+      - 'panel/packages/*/package.json'
 
 permissions:
   contents: read
@@ -61,6 +76,15 @@ jobs:
         # ha tag corrente para comparar. O gate estrito de MP-5 vive em
         # release.yml (--version "$BARE" --strict).
         run: ./scripts/validate-plugin-manifests.sh
+
+      - name: Validate panel workspace lockstep (structural gate; version lockstep advisory)
+        # Ref: docs/specs/panel-monorepo/spec.md FR-015/FR-016
+        # Sem --version/--strict: WL-1..WL-4 continuam bloqueantes (drift
+        # real entre os 4 package.json + package-lock.json do painel) — SO
+        # WL-5 (lockstep com a tag) vira aviso aqui, porque fora do release
+        # nao ha tag corrente para comparar. O gate estrito de WL-5 vive em
+        # release.yml (--version "$BARE" --strict).
+        run: ./scripts/validate-panel-workspace-lockstep.sh
 
       - name: Run shellcheck (non-gating)
         continue-on-error: true

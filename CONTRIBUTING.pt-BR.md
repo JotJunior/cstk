@@ -169,6 +169,26 @@ O projeto segue [Semantic Versioning](https://semver.org/) com
 Release: `git tag vX.Y.Z` + push dispara `.github/workflows/release.yml`, que
 gera e publica o tarball. Depois, na máquina: `cstk update`.
 
+**Lockstep de versão.** Dois conjuntos independentes de manifestos DEVEM
+carregar a versão exata `X.Y.Z` da release antes de criar a tag — ambos têm
+gate (`scripts/validate-*.sh`, não-advisory em PR via `shellcheck.yml`,
+`--strict` na release via `release.yml`):
+
+- Manifestos de plugin do toolkit: `.claude-plugin/marketplace.json` e os 2
+  `plugins/*/.claude-plugin/plugin.json`
+  (`scripts/validate-plugin-manifests.sh`, MP-5).
+- Workspaces npm do painel: `panel/package.json`,
+  `panel/apps/server/package.json`, `panel/apps/web/package.json`,
+  `panel/packages/shared-types/package.json` e `panel/package-lock.json`
+  (`scripts/validate-panel-workspace-lockstep.sh`, WL-5). O painel **não**
+  tem mais série de versão própria — ele migrou para este monorepo
+  (`panel-monorepo`) e sua versão passa a avançar junto com a tag do
+  repositório unificado, do mesmo jeito que os manifestos de plugin já
+  faziam.
+
+Suba cada um dos arquivos acima para `X.Y.Z` no mesmo commit que precede a
+tag; os gates acima reprovam a release caso contrário.
+
 ---
 
 ## 5. Checklist de PR
