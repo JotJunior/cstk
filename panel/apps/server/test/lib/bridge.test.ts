@@ -11,8 +11,8 @@
  *
  * Cada teste usa tmpdir isolado — sem side effects entre casos.
  */
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, statSync, unlinkSync } from 'node:fs';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { mkdtempSync, statSync, unlinkSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
@@ -231,6 +231,54 @@ describe('openBridgeDb — conexao separada de open.ts (corpus)', () => {
     } finally {
       corpusDb.close();
       bridgeDb.close();
+    }
+  });
+});
+
+describe('openBridgeDb — PRAGMA quick_check (achado 6.3 da convergencia, contracts/panel-bridge-api.md:102)', () => {
+  it('corrupcao que nao afeta o DDL (CREATE TABLE IF NOT EXISTS ja tem o schema) ainda assim faz openBridgeDb lancar, porque quick_check a detecta', () => {
+    const path = tmpBridgeDbPath();
+
+    // 1. cria um bridge.db valido com schema aplicado + uma linha, faz
+    //    checkpoint p/ consolidar tudo no arquivo principal (sem WAL
+    //    pendente que mascare a corrupcao).
+    const db = openBridgeDb(path);
+    db.prepare(
+      `INSERT INTO interventions
+        (question_id, project_path, project, execution_kind, kind, question, default_value, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run('q-corrupt', '/tmp/proj', 'proj', 'agente-00c', 'text', 'texto?', 'default', '2026-01-01', '2026-01-01');
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    db.close();
+
+    // 2. corrompe bytes de uma pagina de DADOS (offset 4096, alem da pagina
+    //    1 de header/schema) — `CREATE TABLE IF NOT EXISTS` nao le essa
+    //    pagina (o schema ja esta la), entao o DDL sozinho NAO detectaria
+    //    isso (medido empiricamente: sem quick_check, `db.exec(DDL)` nao
+    //    lanca aqui).
+    const buf = readFileSync(path);
+    for (let i = 4096; i < Math.min(buf.length, 4096 + 50); i++) buf[i] = 0xff;
+    writeFileSync(path, buf);
+
+    // 3. reabrir: com quick_check, openBridgeDb lanca (evidencia do fix).
+    expect(() => openBridgeDb(path)).toThrow(/malformed|quick_check/i);
+  });
+});
+
+describe('openBridgeDb — fecha o handle quando falha apos abrir (achado 6.4 da convergencia, plan.md:126)', () => {
+  it('erro em pragma/quick_check/DDL apos new Database() fecha o handle antes de propagar (nunca vaza)', () => {
+    const path = tmpBridgeDbPath();
+    // Arquivo que nao e um SQLite valido: `new Database()` abre o handle
+    // (lazy — so falha ao tocar paginas), e o primeiro `db.pragma(...)`
+    // lanca "file is not a database" (medido empiricamente).
+    writeFileSync(path, Buffer.from('not a valid sqlite file'.repeat(50)));
+
+    const closeSpy = vi.spyOn(Database.prototype, 'close');
+    try {
+      expect(() => openBridgeDb(path)).toThrow(/not a database/i);
+      expect(closeSpy).toHaveBeenCalled();
+    } finally {
+      closeSpy.mockRestore();
     }
   });
 });

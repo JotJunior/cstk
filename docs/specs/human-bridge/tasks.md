@@ -250,7 +250,7 @@ valor-fonte, no MESMO commit.
 - [x] 2.6.2 Confirmar que o launcher (`mcp-launch.sh:276-279`) propaga a env
       var sem trabalho adicional — `exec node` preserva o ambiente herdado
       (já **VERIFICADO**; esta subtarefa é validação, não implementação)
-- [x] 2.6.3 Atualizar `tests/test_mcp.sh`: `cstk mcp install` gera
+- [x] 2.6.3 Atualizar `tests/cstk/test_mcp.sh`: `cstk mcp install` gera
       `.mcp.json` com `timeout` e `env.CSTK_CLIENT_TOOL_TIMEOUT_MS`
       numericamente idênticos, para o valor default e para um override
 
@@ -730,7 +730,7 @@ Efeito observável: com `bridge.db` indisponível no momento do UPDATE, o
 operador clica "Responder", não vê erro algum, a fila é revalidada — e nada
 foi persistido. A resposta humana é silenciosamente perdida.
 
-- [ ] 6.1.1 Corrigir `panel/apps/web/src/lib/hooks-bridge.ts` (e o caminho
+- [x] 6.1.1 Corrigir `panel/apps/web/src/lib/hooks-bridge.ts` (e o caminho
       de `mutateApi` em `panel/apps/web/src/lib/api.ts`, que hoje descarta
       `meta`) conforme `contracts/panel-bridge-api.md:127-129`: a resposta
       `200 + meta.degraded=true` do `answer` MUST levar o
@@ -757,7 +757,7 @@ test.ts`, apesar do nome, exercita só `GET /bridge/interventions`
 
 Completar é aditivo: acrescentar cenários sem alterar teste existente.
 
-- [ ] 6.2.1 Completar `panel/apps/server/test/routes/bridge.test.ts`
+- [x] 6.2.1 Completar `panel/apps/server/test/routes/bridge.test.ts`
       conforme a task 3.1.10: cenário de `bridge.db` indisponível na rota
       `POST /bridge/interventions/:questionId/answer` asserindo `200`,
       `data === null`, `meta.degraded === true` e
@@ -783,7 +783,7 @@ O desfecho hoje coincide (corrupção faz o DDL/prepare lançar e cair no
 não existe: uma corrupção que não atrapalhe o DDL passaria despercebida.
 Completar é aditivo (acrescentar o pragma), sem alterar lógica existente.
 
-- [ ] 6.3.1 Implementar em `panel/apps/server/src/db/bridge.ts` a checagem
+- [x] 6.3.1 Implementar em `panel/apps/server/src/db/bridge.ts` a checagem
       `PRAGMA quick_check` que `contracts/panel-bridge-api.md:102` nomeia
       como gatilho de degradação — ou, se a decisão for não tê-la na v1,
       corrigir o contrato e `packages/shared-types/src/envelope.ts:65` para
@@ -820,7 +820,7 @@ frescor do corpus, não vazamento de recurso. Por isso `must_violated=false`
 e a severidade **não** escala para `CRITICAL`; a contradição é contra a
 afirmação de `plan.md:126`, que é o lado citável.
 
-- [ ] 6.4.1 Corrigir `panel/apps/server/src/db/bridge.ts` conforme
+- [x] 6.4.1 Corrigir `panel/apps/server/src/db/bridge.ts` conforme
       `plan.md:126`: garantir que um erro em qualquer passo posterior a
       `new Database(dbPath)` feche o handle antes de propagar, para que a
       promessa "aberto por request e fechado no `finally`" valha em todos
@@ -844,7 +844,7 @@ num path inexistente. Impacto limitado a rastreabilidade — registrado
 porque a rubrica exige que divergências citáveis não desapareçam, não
 porque haja código a corrigir.
 
-- [ ] 6.5.1 Corrigir a referência de path da task 2.6.3 para
+- [x] 6.5.1 Corrigir a referência de path da task 2.6.3 para
       `tests/cstk/test_mcp.sh` (o arquivo real, `tests/cstk/test_mcp.sh:
       947-959`), preservando o estado `[x]` — a implementação está
       completa, só a citação está errada

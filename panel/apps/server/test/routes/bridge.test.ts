@@ -360,6 +360,28 @@ describe('POST /api/v1/bridge/interventions/:questionId/answer', () => {
     const res = await answer(questionId, { resolution: 'answered', value: 'a', text: null });
     expect(res.statusCode).toBe(409);
   });
+
+  // Achado 6.2 da convergencia (task 3.1.10): esta era a UNICA das 4 rotas
+  // sem o caso degradado (`200 + meta.degraded`) exercitado. Mesma tecnica
+  // do teste de `create()` (linha ~123): dir pai vira arquivo regular, entao
+  // `openBridgeDb()` lanca dentro do try/catch da rota (`routes/bridge.ts:
+  // 462-463`), justamente o ramo cuja metade cliente quebrou (achado 6.1).
+  it('bridge.db indisponivel no UPDATE -> 200 + degraded=true + reason=bridge_unavailable (achado 6.2)', async () => {
+    const created = await create();
+    const { questionId } = created.json().data;
+
+    const blockerFile = join(base, 'blocker-answer');
+    rmSync(blockerFile, { force: true });
+    writeFileSync(blockerFile, 'x');
+    process.env['CSTK_BRIDGE_DB'] = join(blockerFile, 'bridge.db');
+
+    const res = await answer(questionId, { resolution: 'answered', value: 'a', text: null });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.data).toBeNull();
+    expect(body.meta.degraded).toBe(true);
+    expect(body.meta.reason).toBe('bridge_unavailable');
+  });
 });
 
 // ─────────────────────────────────────────────────────────

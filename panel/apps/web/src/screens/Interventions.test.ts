@@ -21,6 +21,7 @@ import {
   kindColor,
   utf8ByteLength,
   isAnswerReady,
+  answerMutationFeedback,
 } from './Interventions.js';
 
 describe('interventionsDegradedCopy — titulo/subtitulo por reason (4o estado obrigatorio, task 4.3.1)', () => {
@@ -130,5 +131,44 @@ describe('isAnswerReady — validacao de UX NAO-autoritativa por kind (task 4.3.
 
   it('kind desconhecido nunca fica pronto (fail-closed) e nunca lanca', () => {
     expect(isAnswerReady('futuro-tipo', 'x', 'y')).toBe(false);
+  });
+});
+
+describe('answerMutationFeedback — o achado 6.1 da convergência (degradado do answer não pode ficar mudo, contracts/panel-bridge-api.md:127-129)', () => {
+  it('mutation.isError vence e usa a mensagem do erro', () => {
+    const fb = answerMutationFeedback({ isError: true, error: { message: 'boom' }, data: null });
+    expect(fb.tone).toBe('error');
+    expect(fb.message).toBe('boom');
+  });
+
+  it('erro sem mensagem cai no fallback generico', () => {
+    const fb = answerMutationFeedback({ isError: true, error: null, data: null });
+    expect(fb.tone).toBe('error');
+    expect(fb.message).toBe('Falha ao enviar resposta.');
+  });
+
+  it('sucesso 200 com meta.degraded=true produz feedback tone=degraded (nunca fica mudo/sucesso silencioso)', () => {
+    const fb = answerMutationFeedback({
+      isError: false,
+      data: { meta: { degraded: true, reason: 'bridge_unavailable' } },
+    });
+    expect(fb.tone).toBe('degraded');
+    expect(fb.message).toMatch(/ponte de intervenções indisponível/i);
+    expect(fb.message).toMatch(/pode não ter sido salva/i);
+  });
+
+  it('sucesso pleno (degraded=false) nao produz feedback nenhum', () => {
+    const fb = answerMutationFeedback({
+      isError: false,
+      data: { meta: { degraded: false, reason: null } },
+    });
+    expect(fb.tone).toBeNull();
+    expect(fb.message).toBeNull();
+  });
+
+  it('sem data ainda (mutation idle/pending) nao produz feedback', () => {
+    const fb = answerMutationFeedback({ isError: false, data: null });
+    expect(fb.tone).toBeNull();
+    expect(fb.message).toBeNull();
   });
 });

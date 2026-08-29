@@ -48,6 +48,43 @@ export function interventionsDegradedCopy(reason: DegradedReason | string | null
   }
 }
 
+/**
+ * Feedback do `AnswerForm` apos a mutacao de `answer` (achado 6.1 da
+ * convergencia; contracts/panel-bridge-api.md:127-129). Extraida como
+ * funcao pura (mesmo padrao de `interventionsDegradedCopy`/`isAnswerReady`)
+ * para ser testavel sem jsdom.
+ *
+ * ANTES desta funcao existir, `mutation.isError` era o UNICO ramo de
+ * feedback em `AnswerForm` — uma resposta `200 + meta.degraded=true`
+ * (servidor com `bridge.db` indisponivel no UPDATE) nao lancava, entao
+ * `mutation.isSuccess` ficava `true` e nada era exibido: sucesso silencioso
+ * sem persistencia real. Aqui o caso `degraded` e tratado com o MESMO
+ * "estado degradado da UI" que a leitura da fila ja usa
+ * (`interventionsDegradedCopy`), nunca como sucesso pleno nem como `409`.
+ */
+export interface AnswerFeedback {
+  tone: 'error' | 'degraded' | null;
+  message: string | null;
+}
+
+export function answerMutationFeedback(mutation: {
+  isError: boolean;
+  error?: { message?: string | null } | null | undefined;
+  data?: { meta: { degraded: boolean; reason: string | null } } | null | undefined;
+}): AnswerFeedback {
+  if (mutation.isError) {
+    return { tone: 'error', message: mutation.error?.message ?? 'Falha ao enviar resposta.' };
+  }
+  if (mutation.data?.meta.degraded) {
+    const copy = interventionsDegradedCopy(mutation.data.meta.reason);
+    return {
+      tone: 'degraded',
+      message: `${copy.title} — a resposta pode não ter sido salva; tente novamente.`,
+    };
+  }
+  return { tone: null, message: null };
+}
+
 /** Rotulo legivel por tipo de intervencao (FR-015). */
 export function kindLabel(kind: InterventionKind | string): string {
   switch (kind) {
@@ -111,6 +148,7 @@ function AnswerForm({ item }: { item: InterventionQueueItemDTO }) {
 
   const disabled = !item.reachable || mutation.isPending;
   const ready = isAnswerReady(item.kind, value, text);
+  const feedback = answerMutationFeedback(mutation);
 
   const submit = () => {
     if (!ready || disabled) return;
@@ -214,9 +252,14 @@ function AnswerForm({ item }: { item: InterventionQueueItemDTO }) {
             Projeto não encontrado em disco — resposta desabilitada.
           </span>
         )}
-        {mutation.isError && (
-          <span style={{ fontSize: 11, color: 'var(--critical)' }}>
-            {mutation.error?.message ?? 'Falha ao enviar resposta.'}
+        {feedback.tone && (
+          <span
+            style={{
+              fontSize: 11,
+              color: feedback.tone === 'error' ? 'var(--critical)' : 'var(--warning)',
+            }}
+          >
+            {feedback.message}
           </span>
         )}
       </div>

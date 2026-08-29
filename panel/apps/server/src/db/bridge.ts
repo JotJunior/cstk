@@ -111,19 +111,44 @@ function normalizePermsBestEffort(dbPath: string): void {
  * degradacao — o corpus pode estar ausente/corrompido/desatualizado),
  * `openBridgeDb` nao tem estado "degradado": o arquivo e criado sob demanda
  * pelo proprio processo que o possui. Erros de abertura (ex.: diretorio
- * sem permissao de escrita) propagam como excecao — o mapeamento para
- * `meta.degraded=true` na resposta HTTP e responsabilidade das rotas
- * (`routes/bridge.ts`, tarefa 3.1, decisao 1.1.2).
+ * sem permissao de escrita, ou `quick_check` acusando corrupcao) propagam
+ * como excecao — o mapeamento para `meta.degraded=true` na resposta HTTP e
+ * responsabilidade das rotas (`routes/bridge.ts`, tarefa 3.1, decisao
+ * 1.1.2).
+ *
+ * Achado 6.3/6.4 da convergencia (`contracts/panel-bridge-api.md:102`;
+ * `plan.md:126`): os passos pos-`new Database()` (pragmas, `PRAGMA
+ * quick_check`, DDL, normalizacao de permissoes) rodam dentro de um
+ * try/catch que fecha o handle antes de repropagar. Sem isso, uma falha
+ * nesses passos deixava a atribuicao `db = openBridgeDb()` do chamador
+ * nunca completar — o `finally { db?.close(); }` das rotas encontrava
+ * `null` e virava no-op, vazando o handle SQLite. `PRAGMA quick_check`
+ * (nomeado pelo contrato como gatilho de degradacao, junto com
+ * `packages/shared-types/src/envelope.ts:65`) detecta corrupcao que o DDL
+ * sozinho (`CREATE TABLE IF NOT EXISTS`, que nao toca paginas de dados ja
+ * existentes) pode nao acusar.
  */
 export function openBridgeDb(dbPath: string = resolveBridgeDbPath()): Database.Database {
   const dir = dirname(dbPath);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
 
   const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.exec(DDL);
-  normalizePermsBestEffort(dbPath);
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+
+    const qcRows = db.pragma('quick_check') as Array<{ quick_check: string }>;
+    const qcResult = qcRows[0]?.quick_check ?? 'error';
+    if (qcResult !== 'ok') {
+      throw new Error(`bridge.db quick_check falhou: ${qcResult}`);
+    }
+
+    db.exec(DDL);
+    normalizePermsBestEffort(dbPath);
+  } catch (err) {
+    db.close();
+    throw err;
+  }
 
   return db;
 }
