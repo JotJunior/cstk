@@ -5,6 +5,65 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.1.0] - 2026-08-29
+
+O gate de MUST do `converge` lia **zero regras** em constituicoes escritas no
+formato que a propria skill `constitution` produz — `MUST` como verbo no meio
+da frase (prosa RFC 2119) — e ainda assim reportava o gate como satisfeito.
+Principios cujo heading nao carrega `(NON-NEGOTIABLE)` sumiam inteiros da
+verificacao. E a mesma classe da #171 e da #162: **ausencia aparecendo como
+sucesso**. Agora cobertura zero e um achado acionavel, e as constituicoes novas
+ja nascem no formato que o gate reconhece.
+
+### Fixed
+
+- **`converge` recusa cobertura de MUST zerada (issue #173).** Quando a
+  constituicao do projeto-alvo contem a palavra `MUST` mas o parser nao
+  reconhece **nenhuma** linha de regra, `extract-must.sh --coverage` passa a
+  emitir uma 6a linha `cobertura de MUST: zero-reconhecida` e sair com
+  `exit 3`. A `converge/SKILL.md` converte esse sinal num achado estruturado
+  `contradicts` de severidade **HIGH** (`severity.sh --type contradicts
+  --priority P1 --must-violated false`), que conta nas pendencias acionaveis —
+  o resultado "convergido, sem pendencias" deixa de ser possivel enquanto a
+  condicao persistir. `severity.sh` e `converge-status.sh` ficaram intocados.
+- **Fail-open silencioso em contador nao-numerico.** Se `grep` falhasse por
+  erro de I/O, os contadores `N`/`M` ficavam vazios e `[ "" -gt 0 ]` avaliava
+  como falso sem abortar, produzindo veredito sem base. `extract-must.sh` ganha
+  guarda de integridade numerica que emite diagnostico em stderr e sai
+  `exit 1`. Achado do `owasp-security` incorporado ao contrato antes de existir
+  codigo.
+
+### Added
+
+- **Skill `constitution` emite formato marcado.** `constitution/SKILL.md` passa
+  a apresentar a linha rotulada (`**MUST:**`) como forma esperada de escrever
+  uma obrigacao, com contra-exemplo explicito da armadilha do blockquote; o
+  texto-semente do principio-base de Veracidade de Dados foi migrado de
+  blockquote para bloco de codigo cercado, e `templates/constitution.md` ganhou
+  o esqueleto `**MUST:**` sob cada principio. Constituicoes geradas a partir de
+  agora ja passam no gate sem edicao manual.
+- **5 cenarios de regressao** em `tests/test_extract-must.sh` cobrindo os tres
+  ramos do veredito (`ok` / `zero-reconhecida` / `sem-must-declarado`), a
+  preservacao byte-identica das 5 linhas anteriores do modo `--coverage` e a
+  anti-regressao do texto-semente.
+
+### Changed
+
+- **`extract-must.sh --coverage` ganha `exit 3` como sinal de estado**, nao
+  erro. Os exits `0`, `1` e `2` existentes permanecem inalterados e a saida
+  anterior e preservada byte-a-byte — a mudanca e estritamente aditiva. A regra
+  da ETAPA 3 da `converge/SKILL.md` passou de implicita a **allowlist** de 5
+  ramos.
+
+### Notas
+
+- Constituicoes **ja ratificadas** nao sao migradas automaticamente: o efeito
+  do formato marcado vale para geracoes e edicoes futuras. Constituicoes
+  antigas escritas em prosa passam a ser **sinalizadas** pelo novo achado, mas
+  a conversao continua sendo decisao humana.
+- A sugestao 3 da issue #173 (parser aceitar prosa restrita a linha de bullet)
+  ficou **fora de escopo** por decisao do operador.
+
 ## [10.0.0] - 2026-08-28
 
 O painel deixou de ser um repositorio separado: `cstk-panel` foi absorvido em
@@ -7601,6 +7660,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.1.0]: https://github.com/JotJunior/cstk/releases/tag/v10.1.0
 [10.0.0]: https://github.com/JotJunior/cstk/releases/tag/v10.0.0
 [9.5.0]: https://github.com/JotJunior/cstk/releases/tag/v9.5.0
 [9.4.0]: https://github.com/JotJunior/cstk/releases/tag/v9.4.0
