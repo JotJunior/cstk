@@ -191,6 +191,75 @@ describe('GET /api/v1/bridge/interventions', () => {
     expect(interventions[0].question).toBe('primeira');
   });
 
+  // Task 5.2.1 (Cenario 2 do quickstart, US1/SC-001): duas execucoes em
+  // PROJETOS DIFERENTES aparecem na MESMA lista (sem filtro), cada uma com
+  // `project`/`executionKind`/`shortName` proprios, ordenadas por
+  // createdAt ASC — nenhuma navegacao por-projeto necessaria.
+  it('5.2.1: intervencoes de projetos DIFERENTES aparecem na MESMA fila (sem filtro), com project/executionKind/shortName distintos', async () => {
+    await create({
+      projectPath: '/tmp/projA',
+      project: 'projA',
+      executionKind: 'agente-00c',
+      shortName: null,
+      question: 'pergunta do projeto A',
+    });
+    await create({
+      projectPath: '/tmp/projB',
+      project: 'projB',
+      executionKind: 'feature-00c',
+      shortName: 'human-bridge',
+      question: 'pergunta do projeto B',
+    });
+    const res = await server.inject({ method: 'GET', url: '/api/v1/bridge/interventions', headers: VALID_HOST });
+    expect(res.statusCode).toBe(200);
+    const { interventions } = res.json().data;
+    expect(interventions.length).toBe(2);
+    // Ordenado por createdAt ASC — quem chegou primeiro (projA) aparece primeiro.
+    expect(interventions[0].project).toBe('projA');
+    expect(interventions[0].executionKind).toBe('agente-00c');
+    expect(interventions[0].shortName).toBeNull();
+    expect(interventions[1].project).toBe('projB');
+    expect(interventions[1].executionKind).toBe('feature-00c');
+    expect(interventions[1].shortName).toBe('human-bridge');
+  });
+
+  // Task 5.2.1 passo 4: responder SO a primeira nao destrava a segunda —
+  // o item do projeto B continua `open` na fila.
+  it('5.2.1: responder a intervencao do projeto A nao afeta o item aberto do projeto B (FR-003/SC-005)', async () => {
+    const createdA = await create({ projectPath: '/tmp/projA', project: 'projA', question: 'pergunta A' });
+    await create({ projectPath: '/tmp/projB', project: 'projB', question: 'pergunta B' });
+    const { questionId: idA } = createdA.json().data;
+
+    const answerRes = await server.inject({
+      method: 'POST',
+      url: `/api/v1/bridge/interventions/${idA}/answer`,
+      headers: { 'content-type': 'application/json', ...VALID_HOST },
+      payload: { resolution: 'answered', value: 'a', text: null },
+    });
+    expect(answerRes.statusCode).toBe(200);
+
+    const openRes = await server.inject({ method: 'GET', url: '/api/v1/bridge/interventions', headers: VALID_HOST });
+    const { interventions: openList } = openRes.json().data;
+    expect(openList.length).toBe(1);
+    expect(openList[0].project).toBe('projB');
+    expect(openList[0].state).toBe('open');
+  });
+
+  // Task 5.2.1: filtro `?project=` (contrato §6) exclui ruido cross-projeto.
+  it('5.2.1: filtro ?project= retorna SO as intervencoes do projeto pedido', async () => {
+    await create({ projectPath: '/tmp/projA', project: 'projA', question: 'pergunta A' });
+    await create({ projectPath: '/tmp/projB', project: 'projB', question: 'pergunta B' });
+    const res = await server.inject({
+      method: 'GET',
+      url: '/api/v1/bridge/interventions?project=projA',
+      headers: VALID_HOST,
+    });
+    expect(res.statusCode).toBe(200);
+    const { interventions } = res.json().data;
+    expect(interventions.length).toBe(1);
+    expect(interventions[0].project).toBe('projA');
+  });
+
   it('reachable=false quando projectPath nao existe mais em disco', async () => {
     await create({ projectPath: '/caminho/que/nao/existe/jamais' });
     const res = await server.inject({ method: 'GET', url: '/api/v1/bridge/interventions', headers: VALID_HOST });

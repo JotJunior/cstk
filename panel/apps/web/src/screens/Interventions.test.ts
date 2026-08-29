@@ -40,6 +40,33 @@ describe('interventionsDegradedCopy — titulo/subtitulo por reason (4o estado o
   });
 });
 
+// Task 5.2.2 (Cenario 3 do quickstart, US1 cenario 2): fila vazia (sem
+// filas pendentes, SEM degradacao) precisa do estado "vazio explicito" —
+// nao tela em branco. Sem jsdom/@testing-library neste repo (ver
+// cabecalho), a verificacao e por VARREDURA ESTATICA do source-file: o
+// branch `interventions.length === 0` MUST renderizar `<EmptyState .../>`
+// com titulo/subtitulo NAO-vazios (nunca `null`/fragmento vazio/apenas a
+// lista vazia sem nenhum feedback visual).
+describe('5.2.2 — fila vazia usa EmptyState explicito (nao tela em branco, task 4.3.1)', () => {
+  it('o branch interventions.length === 0 renderiza EmptyState com title/subtitle nao-vazios', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(here, 'Interventions.tsx'), 'utf8');
+
+    const idx = src.indexOf('interventions.length === 0');
+    expect(idx, 'branch de fila vazia (interventions.length === 0) nao encontrado').toBeGreaterThan(-1);
+
+    // Trecho logo apos o branch — deve conter o EmptyState com title/subtitle
+    // literais nao-vazios (nunca `undefined`/omitido).
+    const snippet = src.slice(idx, idx + 300);
+    expect(snippet).toMatch(/<EmptyState\b/);
+    expect(snippet).toMatch(/title=["'].+["']/);
+    expect(snippet).toMatch(/subtitle=["'].+["']/);
+  });
+});
+
 describe('kindLabel — rotulo legivel por tipo de intervencao (FR-015, task 4.3.4)', () => {
   it('traduz os 3 tipos fechados', () => {
     expect(kindLabel('choice')).toBe('Escolha');

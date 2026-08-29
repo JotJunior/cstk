@@ -491,55 +491,149 @@ Ref: `docs/specs/human-bridge/spec.md` FR-001/FR-013/FR-014/FR-015 ·
 
 Ref: `docs/specs/human-bridge/quickstart.md` Cenarios 1, 9, 10, 13
 
-- [ ] 5.1.1 Cenário 1 (OBRIGATÓRIO) — Roundtrip end-to-end com chamada REAL:
+- [x] 5.1.1 Cenário 1 (OBRIGATÓRIO) — Roundtrip end-to-end com chamada REAL:
       criar intervenção via `ask_operator`, responder via painel real
       (servidor + banco de fato rodando), confirmar que a tool retorna
       `answered` com o valor correto e que `.operator_answers[]` foi
-      gravado corretamente
-- [ ] 5.1.2 Cenário 9 — Isolamento do corpus (FR-018): teste de regressão
+      gravado corretamente. Teste:
+      `mcp/state-server/test/bridge-e2e-real.test.ts` — sobe
+      `panel/apps/server/dist/index.js` como processo real (nao
+      `server.inject()`) com `bridge.db` sqlite real em tmp, chama
+      `handleAskOperator` com `createBridgeClient` real (fetch HTTP real,
+      sem mock), responde via `POST .../answer` real (mesmo contrato da
+      UI), confirma `outcome=answered`/`applied_value` e `.operator_answers[]`
+      via `state-rw.sh` REAL instalado. Achado + fix no mesmo commit desta
+      task (ver Decisao dec-055, onda-012): registrar `@fastify/cors` de
+      novo em `routes/bridge.ts` colidia com o cors global de `index.ts`
+      (`FST_ERR_DEC_ALREADY_PRESENT`) e derrubava o boot REAL do servidor —
+      nenhum teste anterior detectava porque todos registravam
+      `bridgeRoutes` isolado. Corrigido com `hasRequestDecorator` +
+      override por rota (`config.cors`) so quando ha cors global ativo.
+      Contrato §10 atualizado de `[PROPOSTA]` para `[MEDIDO]`.
+- [x] 5.1.2 Cenário 9 — Isolamento do corpus (FR-018): teste de regressão
       AUTOMATIZADO confirmando que nenhum registro de intervenção
       (pergunta/resposta/texto livre) se torna parte do que é ingerido em
       `knowledge.db` — hoje verdadeiro por propriedade acidental do
       código, não por invariante declarada (achado explícito do
-      `plan.md`)
-- [ ] 5.1.3 Cenário 10 — Gate de read-only e o commit único (Princípio I
+      `plan.md`). Teste: `tests/cstk/test_recall.sh
+      scenario_hb_5_1_2_operator_answers_nunca_ingeridas` — ingere um
+      `state.json` sintetico com `.operator_answers[]` carregando um canary
+      distintivo em `applied_value`/`untrusted_text`, confirma (a) busca FTS
+      pelo canary retorna vazio e (b) dump COMPLETO (`sqlite3 .dump`, todas
+      as tabelas) do `knowledge.db` nao contem o canary em lugar nenhum —
+      falha se algum caminho futuro passar a varrer `.operator_answers[]`.
+- [x] 5.1.3 Cenário 10 — Gate de read-only e o commit único (Princípio I
       do painel): verificar no histórico git que o afrouxamento de
       `readonly-check.sh` (tarefa 3.1.9) está no MESMO commit do primeiro
-      código de `bridge/` (nem antes, nem depois)
-- [ ] 5.1.4 Cenário 13 — Não-exfiltração do `session_id`: confirmar que o
+      código de `bridge/` (nem antes, nem depois). Teste:
+      `panel/apps/server/test/lib/readonly-check-bridge-commit.test.ts` —
+      via `git log --diff-filter=A` acha o commit que PRIMEIRO adiciona
+      `routes/bridge.ts`, confirma que o MESMO commit (`git show
+      --name-only`) toca `readonly-check.sh`, e que o diff desse arquivo
+      NESSE commit de fato introduz `db/queries` (o estreitamento de
+      escopo, nao um toque incidental). Confirmado: commit `cbe96e3`.
+- [x] 5.1.4 Cenário 13 — Não-exfiltração do `session_id`: confirmar que o
       token nunca atravessa a fronteira HTTP `/api/v1/bridge/*` (payload
       de criação não tem `sessionId`, contrato §4) e nunca aparece em log,
-      artefato ou mensagem de commit gerados por esta feature
+      artefato ou mensagem de commit gerados por esta feature. Teste:
+      `mcp/state-server/test/bridge-session-non-exfiltration.test.ts` (4
+      casos): (a) payload HTTP real de criação tem EXATAMENTE as 9 chaves
+      do contrato, sem `sessionId`/`session_id`/`token`; (b)
+      `handleAskOperator` nunca repassa `session.token` para
+      `createIntervention()`; (c) a entrada persistida em
+      `.operator_answers[]` nunca carrega o token; (d) varredura estática
+      de `routes/bridge.ts` + schema compartilhado + `client.ts` +
+      `ask_operator.ts` confirma ausência de qualquer campo
+      `sessionId`/`session_id`. Achado documentado (fora de escopo, não
+      corrigido aqui): `enforcement-log.jsonl` grava `session_id` em texto
+      claro — padrão PRÉ-EXISTENTE compartilhado com `collect_optins.ts`
+      (dec-053/CHK057), nunca alcança git (`.claude/` sempre gitignored,
+      confirmado) nem relatório/commit desta feature.
 
 ### 5.2 Cenarios funcionais e de erro do quickstart `[A]`
 
 Ref: `docs/specs/human-bridge/quickstart.md` Cenarios 2-8, 11, 12
 
-- [ ] 5.2.1 Cenário 2 — Fila cross-projeto (US1/SC-001): intervenções de
-      projetos diferentes aparecem na mesma fila, com `project` visível
-- [ ] 5.2.2 Cenário 3 — Fila vazia não é tela em branco (US1 cenário 2):
-      validar o estado "vazio" explícito da tarefa 4.3.1
-- [ ] 5.2.3 Cenário 4 — Os três tipos de intervenção (US2/FR-004):
-      `choice`/`confirm`/`text` end-to-end
-- [ ] 5.2.4 Cenário 5 (ERROR CASE) — Painel fora do ar (US3
+- [x] 5.2.1 Cenário 2 — Fila cross-projeto (US1/SC-001): intervenções de
+      projetos diferentes aparecem na mesma fila, com `project` visível.
+      3 testes novos em `test/routes/bridge.test.ts`: 2 projetos distintos
+      na mesma fila (project/executionKind/shortName próprios, ordem por
+      createdAt ASC); responder o item de A não afeta o `open` de B
+      (FR-003/SC-005); filtro `?project=` isola corretamente.
+- [x] 5.2.2 Cenário 3 — Fila vazia não é tela em branco (US1 cenário 2):
+      validar o estado "vazio" explícito da tarefa 4.3.1. Confirmado por
+      leitura de `Interventions.tsx` (4 estados: loading/error/degraded/
+      vazio, todos via `LoadingState`/`ErrorState`/`DegradedBanner`/
+      `EmptyState` compartilhados) + teste novo em `Interventions.test.ts`
+      (varredura estática confirmando `EmptyState` com title/subtitle
+      não-vazios no branch `interventions.length === 0`).
+- [x] 5.2.3 Cenário 4 — Os três tipos de intervenção (US2/FR-004):
+      `choice`/`confirm`/`text` end-to-end. Já coberto por
+      `test/routes/bridge.test.ts` (as 3 respostas via `server.inject()`
+      direto na rota — regra é do servidor, não da UI: `value fora de
+      options -> 400`, `kind=confirm exige value yes|no`, `kind=text:
+      untrusted_text em campo próprio`) — confirmado por leitura nesta
+      onda, nenhuma alteração necessária.
+- [x] 5.2.4 Cenário 5 (ERROR CASE) — Painel fora do ar (US3
       cenário 3/FR-010/FR-021): a chamada de criação falhando produz
-      `unavailable` por si só, sem healthcheck dedicado
-- [ ] 5.2.5 Cenário 6 (ERROR CASE) — Expiração sem resposta (US3/FR-009/
+      `unavailable` por si só, sem healthcheck dedicado. Já coberto por
+      `ask_operator.test.ts` (`outcome=unavailable (criação falhou) — C-4
+      aplica default_value, sem chamar poll`; `.operator_answers[]`
+      gravado ANTES do retorno mesmo em `outcome=unavailable`). Confirmado
+      nesta onda: `grep -rn 'api/v1/health' mcp/state-server/src/` → zero
+      ocorrências (FR-021, nunca reusa `/health`); nenhum consumidor
+      (`review-task`, `report.sh`, `recall.sh`) trata `outcome=unavailable`
+      como terminal (R-2) — ausência de qualquer tratamento especial
+      confirma a propriedade por construção.
+- [x] 5.2.5 Cenário 6 (ERROR CASE) — Expiração sem resposta (US3/FR-009/
       SC-003): teto do servidor estoura, `outcome=timeout`,
-      `default_value` aplicado
-- [ ] 5.2.6 Cenário 7 (ERROR CASE) — Duas respostas simultâneas (Edge
+      `default_value` aplicado. Já coberto por `ask_operator.test.ts`
+      (`outcome=timeout (state=expired)`), `bridge.test.ts` (`resposta
+      apos expirar -> 409`), `ask-operator-clock.test.ts` (piso/teto
+      derivados) e `tests/test_report.sh` (matriz 2x2 do finding
+      `ask-operator-short-window`, R-AUDIT-1, incl. precedência por
+      `recorded_at`) — confirmado por leitura nesta onda.
+- [x] 5.2.6 Cenário 7 (ERROR CASE) — Duas respostas simultâneas (Edge
       Case/FR-016/SC-006): validar `200`/`409` da invariante de banco
-      (tarefa 3.1.5) sob concorrência real, não simulada
-- [ ] 5.2.7 Cenário 8 (ERROR CASE) — Degradação isolada do `bridge.db`
+      (tarefa 3.1.5) sob concorrência real, não simulada. Teste novo:
+      `panel/apps/server/test/integration/bridge-real-concurrency.test.ts`
+      — servidor com `.listen()` (socket TCP real), 2 `fetch()` HTTP reais
+      concorrentes contra `POST .../answer`, confirma exatamente um 200 e
+      um 409 (fecha a lacuna do teste existente em `bridge.test.ts`, que
+      usa `server.inject()`/`Promise.all` in-process, sem socket real).
+- [x] 5.2.7 Cenário 8 (ERROR CASE) — Degradação isolada do `bridge.db`
       (FR-017/Princípio II): derrubar/tornar ilegível `bridge.db` e
       confirmar que só a fila degrada — nenhuma outra área do painel
-      (sessões, corpus) é afetada
-- [ ] 5.2.8 Cenário 11 — Provisionamento dos relógios (R-CLOCK-5): `cstk
+      (sessões, corpus) é afetada. Teste:
+      `panel/apps/server/test/integration/bridge-degradation-isolation.test.ts`
+      (3 casos) — `healthRoutes`+`bridgeRoutes` no MESMO servidor real;
+      `bridge.db` quebrado → fila degrada com `reason=bridge_unavailable`,
+      `/health` degrada por `db-missing` (motivo PRÓPRIO, nunca
+      `bridge_unavailable`); resposta de `/health` idêntica byte-a-byte
+      antes/depois da quebra; fila volta a `degraded:false` sem reiniciar
+      o processo ao restaurar `bridge.db`.
+- [x] 5.2.8 Cenário 11 — Provisionamento dos relógios (R-CLOCK-5): `cstk
       mcp install` gera `.mcp.json` com `timeout` + `env` consistentes
-      (tarefa 2.6), servidor valida no boot
-- [ ] 5.2.9 Cenário 12 — Cobertura da 9a tool nos três sítios (contrato
+      (tarefa 2.6), servidor valida no boot. Já coberto por
+      `tests/cstk/test_mcp.sh` (heredoc de `cli/lib/mcp.sh`, literal
+      `300000` único interpolado nos dois campos) e
+      `mcp/state-server/test/ask-operator-clock.test.ts` (boot sem
+      `CSTK_CLIENT_TOOL_TIMEOUT_MS` sobe com aviso; `30000` ilegal recusa
+      subir; `240000`/`ASK_MIN_TIMEOUT_MS`/`CLOCK_SAFETY_MARGIN_MS` sempre
+      derivados, nunca literal solto) — confirmado por leitura destes dois
+      arquivos nesta onda, nenhuma alteração necessária.
+- [x] 5.2.9 Cenário 12 — Cobertura da 9a tool nos três sítios (contrato
       §9): confirmar que os três sítios da tarefa 2.7 estão de fato
-      sincronizados após merge (não apenas no momento do commit)
+      sincronizados após merge (não apenas no momento do commit).
+      `tests/test_orchestrator-allowlist-guard.sh::scenario_allowlist_declara_as_9_tools_mcp`
+      já cobria o passo 1; **achado desta task**: o comentário do arquivo
+      referenciava um `scenario_prova_deteccao_mutacao_collect_optins` que
+      nunca chegou a existir (comentário órfão) — os passos 2-3 (prova por
+      mutação) nunca tinham teste automatizado. Adicionado
+      `scenario_prova_mutacao_ask_operator_removido_de_cada_orquestrador`:
+      copia cada orquestrador real para fixture, remove SÓ
+      `mcp__cstk-state__ask_operator`, confirma que o parser detecta a
+      ausência preservando as outras 8 tools — para os DOIS orquestradores.
 
 ---
 

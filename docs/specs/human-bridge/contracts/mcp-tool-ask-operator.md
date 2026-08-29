@@ -456,7 +456,37 @@ justamente na superficie nova.
   (300000 ms lido no binario do cliente, nao medido). Este contrato cobre
   stdio, que e o transporte do `cstk-state`
   `[VERIFICADO: mode=direct, execFile de node]`.
-- **Long-poll ponta-a-ponta contra o painel**: NAO exercitado. Os relogios
-  foram medidos com `sleep`, que do ponto de vista do cliente e equivalente,
-  mas o caminho painel<->servidor pertence ao `cstk-panel` e permanece sem
-  medicao nesta linha de trabalho.
+- **Long-poll ponta-a-ponta contra o painel**: `[MEDIDO]` (task 5.1.1,
+  onda-012 do feature-00c, `human-bridge`). `mcp/state-server/test/
+  bridge-e2e-real.test.ts` sobe `panel/apps/server/dist/index.js` como
+  processo real (`node dist/index.js`, nao `server.inject()`) escutando
+  numa porta real, com `bridge.db` sqlite real em arquivo tmp isolado, e
+  chama `handleAskOperator` com `createBridgeClient` REAL (HTTP real via
+  `fetch`, sem `bridgeClient` mockado). "Responder via painel" e simulado
+  pela MESMA chamada `POST /api/v1/bridge/interventions/:id/answer` que a
+  UI do painel usa. Resultado: `outcome=answered`, `applied_value` correto,
+  e `.operator_answers[]` gravado via `state-rw.sh` REAL instalado
+  (`~/.claude/skills/agente-00c-runtime/scripts/state-rw.sh`), confirmado
+  por `state-rw.sh get --field .operator_answers`. Evidencia literal:
+  `node --test dist/test/bridge-e2e-real.test.js` -> `tests 1 / pass 1 /
+  fail 0` (~1.1s).
+
+  Este teste tambem revelou (e corrigiu, mesmo commit) um defeito de boot
+  REAL antes invisivel: `routes/bridge.ts` registrava `@fastify/cors` de
+  novo num escopo aninhado, colidindo com o `@fastify/cors` global de
+  `index.ts` (`FastifyError: FST_ERR_DEC_ALREADY_PRESENT
+  ('corsPreflightEnabled')`, `@fastify/cors` decora `corsPreflightEnabled`
+  incondicionalmente a cada registro, e Fastify nao permite redeclarar um
+  decorator ja presente em qualquer ancestral da cadeia de encapsulamento).
+  `test/routes/bridge.test.ts` nunca detectou isso porque registra
+  `bridgeRoutes` ISOLADO, sem o cors global — exatamente a fronteira que
+  este bloqueio ja apontava como nunca exercitada. Fix: `hasRequestDecorator
+  ('corsPreflightEnabled')` detecta se ha cors ja ativo no ancestral; se
+  sim, usa o mecanismo OFICIAL de override por rota do proprio
+  `@fastify/cors` (`req.routeOptions.config?.cors`) via 2 rotas `OPTIONS`
+  explicitas (mais especificas que a wildcard `'*'` do plugin) so para os 2
+  endpoints POST da Ponte — o CORS global do resto da API nunca e alargado.
+  Ainda **nao coberto**: automacao de browser real (a UI Web de fato
+  clicando "responder") — fora do orcamento desta tarefa; o contrato HTTP
+  exercitado e identico ao que a UI usa, mas o clique em si nao foi
+  automatizado.

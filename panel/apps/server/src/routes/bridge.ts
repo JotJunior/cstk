@@ -21,7 +21,7 @@
  */
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import type Database from 'better-sqlite3';
 import {
@@ -40,6 +40,18 @@ import {
   TEXT_MAX_BYTES,
 } from '../lib/bridge-sanitize.js';
 import { z } from 'zod';
+
+// ---------------------------------------------------------------------------
+// Augmentacao de tipo p/ o override por rota de `@fastify/cors`
+// (`req.routeOptions.config?.cors`, mecanismo REAL usado por
+// `addCorsHeadersHandler` em `@fastify/cors/index.js` — nao publicado nos
+// tipos oficiais do pacote, so no runtime). Task 5.1.1 (onda-012).
+// ---------------------------------------------------------------------------
+declare module 'fastify' {
+  interface FastifyContextConfig {
+    cors?: { methods?: readonly string[] };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // §11.6 — formato estrito de `:questionId`, validado na borda ANTES de
@@ -110,17 +122,54 @@ function parseOptions(optionsJson: string | null): string[] | null {
 export async function bridgeRoutes(server: FastifyInstance): Promise<void> {
   const config = loadConfig();
 
-  // Escopo Fastify PROPRIO para `/bridge/*` — CORS com `methods: ['GET',
-  // 'POST', 'OPTIONS']` (§11.1). MUST NOT alargar o CORS GLOBAL
-  // (`index.ts`, `['GET','OPTIONS']`) — isso abriria escrita CORS para toda
-  // a API. `origin` continua restrito a MESMA allowlist do painel (§11.2 —
-  // controle de SEGURANCA, nao conveniencia de dev; MUST NOT usar
-  // `origin: true`/`'*'`/reflexao do header `Origin`).
+  // Achado task 5.1.1 (onda-012, E2E real OBRIGATORIO): registrar
+  // `@fastify/cors` de novo aqui SEMPRE que a arvore ancestral JA tem um
+  // cors global (composicao real via `index.ts`) faz o servidor CRASHAR no
+  // boot com `FST_ERR_DEC_ALREADY_PRESENT('corsPreflightEnabled')` —
+  // `@fastify/cors` chama `fastify.decorateRequest('corsPreflightEnabled',
+  // false)` INCONDICIONALMENTE (`@fastify/cors/index.js:46`) toda vez que o
+  // plugin roda, e Fastify nao permite redeclarar um decorator ja presente
+  // em QUALQUER ancestral da cadeia de encapsulamento (nao so no proprio
+  // contexto). Nenhum teste anterior pegou isso porque
+  // `test/routes/bridge.test.ts` registra `bridgeRoutes` ISOLADO (sem o cors
+  // global de `index.ts`) — a PRIMEIRA vez que as duas coisas convivem na
+  // MESMA arvore e quando o processo real sobe de verdade.
+  //
+  // Fix: registrar `@fastify/cors` aqui SO quando nao ha nenhum ja ativo no
+  // ancestral (`hasRequestDecorator`, cobre o caso standalone dos testes —
+  // a Ponte continua autossuficiente sem depender de `index.ts`). Quando ja
+  // ha um cors global ativo (composicao real), usar o mecanismo OFICIAL de
+  // override por rota do proprio `@fastify/cors` (`req.routeOptions.config
+  // ?.cors`, ver `addCorsHeadersHandler` em `@fastify/cors/index.js`):
+  // registrar rotas `OPTIONS` explicitas — MAIS ESPECIFICAS que a wildcard
+  // `'*'` do plugin global — SO para os 2 endpoints POST desta Ponte, com
+  // `config.cors.methods` ampliando o preflight so para eles. O CORS GLOBAL
+  // (`index.ts`, `['GET','OPTIONS']`) continua intocado para o resto da API
+  // — nunca alargado (§11.1/§11.2). `origin` sempre restrito a MESMA
+  // allowlist do painel (controle de SEGURANCA, nao conveniencia de dev;
+  // MUST NOT usar `origin: true`/`'*'`/reflexao do header `Origin`).
+  const globalCorsAlreadyActive = server.hasRequestDecorator('corsPreflightEnabled');
+  const BRIDGE_CORS_METHODS = ['GET', 'POST', 'OPTIONS'] as const;
+
   await server.register(async (scoped) => {
-    await scoped.register(cors, {
-      origin: config.corsOrigin,
-      methods: ['GET', 'POST', 'OPTIONS'],
-    });
+    if (!globalCorsAlreadyActive) {
+      await scoped.register(cors, {
+        origin: config.corsOrigin,
+        methods: [...BRIDGE_CORS_METHODS],
+      });
+    } else {
+      const preflightRouteOpts = { config: { cors: { methods: [...BRIDGE_CORS_METHODS] } } };
+      // Handler nunca deveria executar de fato: o onRequest hook do cors
+      // GLOBAL (herdado do ancestral) intercepta e responde o preflight
+      // ANTES do preHandler/handler (mesmo comentario de
+      // `@fastify/cors/index.js`: "preflight reply must occur in the
+      // hook"). Existe so para dar a Fastify uma rota MAIS ESPECIFICA que a
+      // wildcard `'*'` do plugin para casar `req.routeOptions.config.cors`.
+      const preflightHandler = async (_request: FastifyRequest, reply: FastifyReply) =>
+        reply.status(204).send();
+      scoped.options('/bridge/interventions', preflightRouteOpts, preflightHandler);
+      scoped.options('/bridge/interventions/:questionId/answer', preflightRouteOpts, preflightHandler);
+    }
 
     // §11.2/§11.4 — defesa em profundidade contra CSRF e DNS rebinding,
     // aplicada a TODA rota deste escopo (leitura e escrita).

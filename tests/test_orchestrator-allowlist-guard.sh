@@ -358,6 +358,60 @@ mcp__cstk-state__ask_operator"
   return 0
 }
 
+# scenario_prova_mutacao_ask_operator_removido_de_cada_orquestrador
+# (human-bridge task 5.2.9, Cenario 12 do quickstart, passos 2-3): prova
+# por mutacao de que `scenario_allowlist_declara_as_9_tools_mcp` NAO e cega
+# — a comentario da linha ~318 referenciava um
+# `scenario_prova_deteccao_mutacao_collect_optins` que nunca chegou a
+# existir neste arquivo (achado desta task); esta e a prova real,
+# equivalente, para a 9a tool (`ask_operator`). Copia CADA orquestrador
+# REAL para uma fixture em $TMPDIR_TEST (harness NUNCA edita os agentes
+# reais), remove SO a entrada `mcp__cstk-state__ask_operator` do `tools:`
+# inline, e roda a MESMA logica de required-set de
+# scenario_allowlist_declara_as_9_tools_mcp contra a fixture mutada —
+# confirmando FAIL citando o orquestrador. Repete para os DOIS
+# orquestradores reais (passos 2 e 3 do Cenario 12).
+scenario_prova_mutacao_ask_operator_removido_de_cada_orquestrador() {
+  _targets=$(_list_orchestrator_targets)
+  if [ -z "$_targets" ]; then
+    _error "sem_alvos" "nenhum orquestrador encontrado para avaliar"
+    return 2
+  fi
+  _old_ifs="$IFS"
+  IFS='
+'
+  for _t in $_targets; do
+    IFS="$_old_ifs"
+    _base=$(basename "$_t")
+    _mutant="$TMPDIR_TEST/mutant-$_base"
+    # Remove SO a 9a tool da linha `tools:` inline — preserva as outras 8 e
+    # todo o resto do arquivo intacto (mutacao minima e representativa).
+    sed 's/, mcp__cstk-state__ask_operator//' "$_t" > "$_mutant"
+    if grep -q 'mcp__cstk-state__ask_operator' "$_mutant"; then
+      _fail "mutante_ainda_contem_ask_operator" "$_base: sed nao removeu a entrada — fixture nao reproduz a mutacao pretendida"
+      return 1
+    fi
+    _present=$(_mcp_entries "$_mutant")
+    case "$_present" in
+      *"mcp__cstk-state__ask_operator"*)
+        _fail "mutacao_nao_detectada" "$_base: fixture mutada ainda reporta ask_operator presente"
+        return 1
+        ;;
+    esac
+    # A logica real (scenario_allowlist_declara_as_9_tools_mcp) FALHARIA
+    # para esta fixture: confirma que a ausencia e VISIVEL ao parser, nao
+    # so ausente do grep isolado acima (evita falso-positivo por parsing
+    # quebrado que "some" com tudo, nao so com a 9a tool).
+    _outras_presentes=$(printf '%s\n' "$_present" | grep -c '^mcp__cstk-state__' || :)
+    [ "$_outras_presentes" -eq 8 ] || {
+      _fail "parsing_quebrado" "$_base: fixture mutada deveria preservar EXATAMENTE as outras 8 tools mcp__cstk-state__*, achou $_outras_presentes"
+      return 1
+    }
+  done
+  IFS="$_old_ifs"
+  return 0
+}
+
 # scenario_allowlist_preserva_bash (FR-004: "no minimo, a tool de
 # execucao de comandos")
 scenario_allowlist_preserva_bash() {
