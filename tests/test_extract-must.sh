@@ -332,4 +332,91 @@ EOF
   esac
 }
 
+# ---------- converge-must-coverage-fail-closed: veredito + exit 3 ----------
+# Ref: docs/specs/converge-must-coverage-fail-closed/tasks.md 2.1.1-2.1.5
+#      docs/specs/converge-must-coverage-fail-closed/quickstart.md Cenarios 1-5
+
+scenario_coverage_veredito_zero_reconhecida_exit3() {
+  # Quickstart Scenario 1: MUST so em prosa -> zero-reconhecida, exit 3.
+  _write_const <<'EOF'
+### I. Primeiro
+Nota: o time MUST revisar cada release antes de publicar.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "exit" "esperado 3, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "ocorrencias da palavra MUST no arquivo (contagem independente): 1" || return 1
+  assert_stdout_contains "linhas de regra MUST reconhecidas pelo parser: 0" || return 1
+  assert_stdout_contains "cobertura de MUST: zero-reconhecida" || return 1
+  assert_stderr_contains "NAO cobre as regras MUST deste arquivo" || return 1
+}
+
+scenario_coverage_veredito_ok_exit0() {
+  # Quickstart Scenario 2: pelo menos 1 linha rotulada + MUST em prosa -> ok.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+**MUST:** toda escrita e atomica.
+Nota: o time MUST revisar.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  _n=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -oE 'linhas de regra MUST reconhecidas pelo parser: [0-9]+' | grep -oE '[0-9]+$')
+  [ "$_n" -ge 1 ] || { _fail "linhas reconhecidas" "esperado >= 1, obtido $_n"; return 1; }
+  assert_stdout_contains "cobertura de MUST: ok" || return 1
+}
+
+scenario_coverage_veredito_sem_must_declarado_exit0_sem_aviso() {
+  # Quickstart Scenario 3: nenhuma ocorrencia de MUST -> sem-must-declarado.
+  _write_const <<'EOF'
+### I. Primeiro
+Preferimos simplicidade a abstracao prematura.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stdout_contains "ocorrencias da palavra MUST no arquivo (contagem independente): 0" || return 1
+  assert_stdout_contains "cobertura de MUST: sem-must-declarado" || return 1
+  [ -z "$_CAPTURED_STDERR" ] || { _fail "stderr" "esperado vazio (nenhum aviso), obtido: $_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_coverage_constitution_ausente_permanece_exit1_sem_veredito() {
+  # Quickstart Scenario 4: erro (constitution ausente) e estado distinto de
+  # sem-must-declarado (INV-3, data-model.md) — nenhuma linha de veredito.
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/nao-existe.md" --coverage
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "exit" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  [ -z "$_CAPTURED_STDOUT" ] || { _fail "stdout" "esperado vazio (sem linha de veredito), obtido: $_CAPTURED_STDOUT"; return 1; }
+  assert_stderr_contains "constitution.md ausente" || return 1
+}
+
+scenario_coverage_aditividade_5_linhas_byte_identicas_mais_6a() {
+  # Quickstart Scenario 5: modo default sem linha de cobertura; --coverage
+  # preserva as 5 linhas existentes byte-identicas com a 6a estritamente nova.
+  _write_const <<'EOF'
+### I. Primeiro (NON-NEGOTIABLE)
+**MUST:** toda escrita e atomica.
+Nota: o time MUST revisar.
+EOF
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "exit default" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$_CAPTURED_STDOUT" in
+    *"cobertura de MUST"*) _fail "default vazou linha de cobertura" "$_CAPTURED_STDOUT"; return 1 ;;
+  esac
+
+  capture "$SCRIPT" --constitution "$TMPDIR_TEST/constitution.md" --coverage
+  _nlines=$(printf '%s\n' "$_CAPTURED_STDOUT" | grep -c .)
+  [ "$_nlines" = 6 ] || { _fail "contagem de linhas" "esperado 6, obtido $_nlines"; return 1; }
+  _line6=$(printf '%s\n' "$_CAPTURED_STDOUT" | sed -n '6p')
+  case "$_line6" in
+    "cobertura de MUST: "*) : ;;
+    *) _fail "6a linha" "esperado prefixo 'cobertura de MUST: ', obtido: $_line6"; return 1 ;;
+  esac
+  _first5=$(printf '%s\n' "$_CAPTURED_STDOUT" | sed -n '1,5p')
+  case "$_first5" in
+    *"fontes declaradas"*) : ;;
+    *) _fail "1a linha ausente" "$_first5"; return 1 ;;
+  esac
+  case "$_first5" in
+    *"principios emitidos so por rotulo de heading"*) : ;;
+    *) _fail "5a linha ausente" "$_first5"; return 1 ;;
+  esac
+}
+
 run_all_scenarios

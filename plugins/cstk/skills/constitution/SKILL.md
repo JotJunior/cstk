@@ -133,22 +133,52 @@ TODOS os placeholders `[ALL_CAPS]` por texto concreto. Estrutura:
 - Remover comentarios HTML do template ao preencher
 - Manter hierarquia de headings exatamente como no template
 - Nao deixar nenhum placeholder `[...]` sem justificativa explicita
+- **Formato de obrigacao (gate `converge` depende disto — issue #173):** toda
+  obrigacao de principio (MUST/MUST NOT) se escreve como **linha rotulada
+  iniciando a linha**, nunca como MUST em prosa corrida nem sob prefixo de
+  blockquote (`> `). Formas reconhecidas pelo parser do gate
+  (`extract-must.sh`, regex `_EM_MUST_RE`):
+
+  ```
+  **MUST:**            RECONHECIDA
+  **MUST NOT:**        RECONHECIDA
+  - MUST: <regra>      RECONHECIDA
+  * MUST NOT: <regra>  RECONHECIDA
+    **MUST:**          RECONHECIDA  (indentacao ok)
+  > **MUST:**          NAO reconhecida  (prefixo de blockquote quebra o rotulo — medido)
+  ```
+
+  Um principio cujas obrigacoes so aparecem como "o time MUST fazer X" em
+  prosa corrida, ou dentro de um blockquote, e **invisivel** ao gate
+  `converge` (`extract-must.sh --coverage` reporta `cobertura de MUST:
+  zero-reconhecida` e o achado correspondente entra como `HIGH` na proxima
+  execucao de `converge`) — mesmo que a intencao normativa esteja clara para
+  um leitor humano.
 
 **Principio-base obrigatorio (sempre incluir):** toda constituicao gerada DEVE conter
 um principio NON-NEGOTIABLE de **Veracidade de Dados — Zero Fabricacao**, mesmo que o
-usuario nao peca. Texto-semente (adaptar ao dominio do projeto):
+usuario nao peca. Texto-semente (adaptar ao dominio do projeto) — **bloco de codigo
+cercado, nunca blockquote** (o prefixo `> ` quebra o reconhecimento do gate `converge`
+se transcrito verbatim — medido), com a linha `**MUST:**` abrindo as obrigacoes:
 
-> ### Veracidade de Dados — Zero Fabricacao (NON-NEGOTIABLE)
-> Nenhum artefato pode conter dado factual inventado. Assinaturas de request/response,
-> URLs/endpoints/querystrings e valores concretos (financeiros, quantidades, status,
-> IDs, datas, resultados de API) so podem ser escritos se vierem de fonte rastreavel
-> (codigo, OpenAPI/Swagger, doc oficial, resposta real observada). Esgotadas as fontes,
-> a acao correta e **bloqueio humano**, nunca suposicao plausivel. Plausibilidade nao e
-> veracidade.
+```
+### Veracidade de Dados — Zero Fabricacao (NON-NEGOTIABLE)
+
+**MUST:**
+
+- Nenhum artefato pode conter dado factual inventado. Assinaturas de request/response,
+  URLs/endpoints/querystrings e valores concretos (financeiros, quantidades, status,
+  IDs, datas, resultados de API) so podem ser escritos se vierem de fonte rastreavel
+  (codigo, OpenAPI/Swagger, doc oficial, resposta real observada). Esgotadas as fontes,
+  a acao correta e **bloqueio humano**, nunca suposicao plausivel. Plausibilidade nao e
+  veracidade.
+```
 
 Razao: agentes autonomos confabulam dados de sistemas externos sob pressao de entrega;
 o principio impresso na constituicao do projeto e o que sustenta o bloqueio em vez da
-invencao. Espelha o Principio VI da constituicao deste toolkit.
+invencao. Espelha o Principio VI da constituicao deste toolkit. A linha `**MUST:**`
+garante `M >= 1` para este principio (nenhuma obrigacao foi adicionada, removida ou
+enfraquecida — so a marcacao mudou de blockquote para bloco de codigo cercado).
 
 ---
 
@@ -260,3 +290,16 @@ Se "Moving Fast" e "Zero Bugs" coexistem como principios MUST, o projeto nao tem
 ### Sync Impact Report e obrigatorio em atualizacoes
 
 Bumps MAJOR/MINOR precisam listar quais artefatos (CLAUDE.md, plans, tasks) precisam atualizacao. Sem isso, a constituicao desinterna-se dos outros documentos silenciosamente.
+
+### Blockquote quebra o reconhecimento de MUST pelo gate `converge` (medido)
+
+`> **MUST:**` (prefixo de blockquote) **nao** e reconhecido pelo parser de
+`extract-must.sh` (`_EM_MUST_RE`) — so a forma sem `> ` conta como linha de
+regra. Isso ja causou regressao real: o texto-semente de Veracidade de Dados
+desta propria skill viveu em blockquote por um tempo, e uma constituicao
+gerada a partir dele nascia com `cobertura de MUST: zero-reconhecida`
+(cobertura zero) mesmo tendo a intencao normativa clara para um leitor
+humano. Ao escrever ou revisar QUALQUER bloco de obrigacao nesta skill (o
+principio-base, exemplos de §5, o proprio template), nunca reintroduza o
+prefixo `> ` num bloco que contem `**MUST:**`/`- MUST:` — use bloco de
+codigo cercado (` ``` `) ou paragrafo solto. Ver §3.2 "Formato de obrigacao".

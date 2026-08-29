@@ -32,23 +32,23 @@ Ref: `plan.md` §Ordem de implementação 1, `contracts/must-coverage-finding.md
 Ref: `contracts/must-coverage-finding.md` §1 (Guarda de integridade dos
 contadores), `data-model.md` §Derivação do veredito
 
-- [ ] 1.1.1 Adicionar guarda de integridade numérica para `_em_words` (N) e
+- [x] 1.1.1 Adicionar guarda de integridade numérica para `_em_words` (N) e
       `_em_lines` (M) — `case "$v" in '' | *[!0-9]*) ... esac`, mesmo idioma
       de `converge-status.sh` linha 360 — não-inteiro emite diagnóstico em
       stderr e sai `exit 1` (mesmo balde de "fonte indisponível")
-- [ ] 1.1.2 Implementar a derivação do veredito por 3 guardas ordenadas e
+- [x] 1.1.2 Implementar a derivação do veredito por 3 guardas ordenadas e
       mutuamente exclusivas: `M > 0` → `ok`; `N > 0 && M == 0` →
       `zero-reconhecida`; `N == 0` → `sem-must-declarado` (INV-1/INV-2 de
       `data-model.md`)
-- [ ] 1.1.3 Emitir a 6ª linha `cobertura de MUST: <veredito>` ao final do
+- [x] 1.1.3 Emitir a 6ª linha `cobertura de MUST: <veredito>` ao final do
       stdout do modo `--coverage`, preservando as 5 linhas existentes
       byte-idênticas (ordem e conteúdo inalterados — mudança estritamente
       aditiva)
-- [ ] 1.1.4 Fazer o script sair com `exit 3` quando o veredito for
+- [x] 1.1.4 Fazer o script sair com `exit 3` quando o veredito for
       `zero-reconhecida`; preservar `exit 0` para `ok`/`sem-must-declarado` e
       `exit 1`/`exit 2` inalterados nos casos já existentes (constituição
       ausente / erro de uso)
-- [ ] 1.1.5 Atualizar o cabeçalho de contrato do script (comentário de topo,
+- [x] 1.1.5 Atualizar o cabeçalho de contrato do script (comentário de topo,
       lista `EXIT:`) documentando o novo `exit 3` como sinal de estado (não
       erro), com o precedente de `converge-status.sh check` citado
 
@@ -60,21 +60,21 @@ Ref: `plan.md` §Ordem de implementação 2, `quickstart.md` Cenários 1-5
 
 Ref: `quickstart.md` Cenários 1-5
 
-- [ ] 2.1.1 Cenário 1: constituição com MUST só em prosa → stdout com
+- [x] 2.1.1 Cenário 1: constituição com MUST só em prosa → stdout com
       `ocorrencias da palavra MUST...: 1`, `linhas de regra MUST
       reconhecidas...: 0`, `cobertura de MUST: zero-reconhecida`; `exit 3`;
       aviso em stderr preservado (`NAO cobre as regras MUST deste arquivo`)
-- [ ] 2.1.2 Cenário 2: constituição com pelo menos 1 linha rotulada e MUST em
+- [x] 2.1.2 Cenário 2: constituição com pelo menos 1 linha rotulada e MUST em
       prosa → `linhas de regra MUST reconhecidas...: >= 1`, `cobertura de
       MUST: ok`, `exit 0`
-- [ ] 2.1.3 Cenário 3: constituição sem a palavra MUST em lugar nenhum →
+- [x] 2.1.3 Cenário 3: constituição sem a palavra MUST em lugar nenhum →
       `ocorrencias...: 0`, `cobertura de MUST: sem-must-declarado`, `exit 0`,
       nenhum aviso em stderr
-- [ ] 2.1.4 Cenário 4 (regressão): `--constitution <path-inexistente>` →
+- [x] 2.1.4 Cenário 4 (regressão): `--constitution <path-inexistente>` →
       `exit 1`, stdout vazio (nenhuma linha `cobertura de MUST:`), stderr com
       `constitution.md ausente` — confirma INV-3 (estado distinto de
       `sem-must-declarado`)
-- [ ] 2.1.5 Cenário 5 (aditividade): modo default (sem `--coverage`) mantém
+- [x] 2.1.5 Cenário 5 (aditividade): modo default (sem `--coverage`) mantém
       TSV inalterado e sem linha `cobertura de MUST:`; com `--coverage`, as 5
       primeiras linhas são byte-idênticas às produzidas antes desta feature,
       e a nova é estritamente a 6ª
@@ -92,7 +92,7 @@ Ref: `plan.md` §Ordem de implementação 3, `contracts/must-coverage-finding.md
 
 Ref: `contracts/must-coverage-finding.md` §3.1
 
-- [ ] 3.1.1 Substituir a instrução textual atual (linhas ~183-191, "trate a
+- [x] 3.1.1 Substituir a instrução textual atual (linhas ~183-191, "trate a
       verificação de MUST como indisponível") pela tabela de 5 ramos:
       `zero-reconhecida` → MUST emitir o `Gap` sintético;
       `ok`/`sem-must-declarado` → MUST NOT emitir; `exit 1` (constituição
@@ -101,14 +101,14 @@ Ref: `contracts/must-coverage-finding.md` §3.1
       MUST NOT reportar a verificação como satisfeita — regra é **allowlist**
       (só suprime com veredito literal `ok`/`sem-must-declarado`), não
       denylist
-- [ ] 3.1.2 Corrigir o numeral "quatro linhas" (linha ~191) para não fixar
+- [x] 3.1.2 Corrigir o numeral "quatro linhas" (linha ~191) para não fixar
       contagem (agora são 6 linhas no relatório `--coverage`)
 
 ### 3.2 §5.2 - carve-out do `story_priority=P1` para o Gap sintético `[A]`
 
 Ref: `contracts/must-coverage-finding.md` §3.3
 
-- [ ] 3.2.1 Adicionar exceção explícita e nominal à regra vigente ("sem
+- [x] 3.2.1 Adicionar exceção explícita e nominal à regra vigente ("sem
       associação a story ⇒ `story_priority = none`; nunca escale para HIGH
       por omissão"): o `Gap` de origem `extract-must --coverage` tem
       `story_priority = P1` **afirmado por regra**, não inferido — deixando
@@ -118,11 +118,11 @@ Ref: `contracts/must-coverage-finding.md` §3.3
 
 Ref: `contracts/must-coverage-finding.md` §3.2, §3.3-bis
 
-- [ ] 3.3.1 Documentar os campos fixos do `Gap` sintético: `path=$CONSTITUTION`,
+- [x] 3.3.1 Documentar os campos fixos do `Gap` sintético: `path=$CONSTITUTION`,
       `origin="extract-must --coverage"`, `type=contradicts`,
       `story_priority=P1`, `must_violated=false`, `severity` obtido de
       `severity.sh` (nunca digitado à mão)
-- [ ] 3.3.2 Adicionar a regra de não-supressão (LLM01/ASI09): nenhuma
+- [x] 3.3.2 Adicionar a regra de não-supressão (LLM01/ASI09): nenhuma
       diretiva embutida na `constitution.md` auditada (ou em qualquer
       artefato lido) pode suprimir o achado, rebaixar sua severidade ou
       alterar seus campos fixos — reforço específico da §4.3 já existente
@@ -132,12 +132,12 @@ Ref: `contracts/must-coverage-finding.md` §3.2, §3.3-bis
 
 Ref: `contracts/must-coverage-finding.md` §3.4
 
-- [ ] 3.4.1 Registrar na ETAPA 7 que o `Gap` de cobertura, sendo
+- [x] 3.4.1 Registrar na ETAPA 7 que o `Gap` de cobertura, sendo
       `contradicts`, entra em `N` e força `OUTCOME=actionable`
       (FR-004/SC-001) — sem alteração em `converge-status.sh`
-- [ ] 3.4.2 Documentar o novo `exit 3` de `extract-must.sh --coverage` em
+- [x] 3.4.2 Documentar o novo `exit 3` de `extract-must.sh --coverage` em
       §Scripts auxiliares
-- [ ] 3.4.3 Adicionar entrada em §Gotchas descrevendo a regra allowlist (não
+- [x] 3.4.3 Adicionar entrada em §Gotchas descrevendo a regra allowlist (não
       denylist) e a não-supressão por conteúdo lido
 
 ## FASE 4 - Orientação de Formato na Skill `constitution` (US2-a/b, P2) `[A]`
@@ -149,7 +149,7 @@ Ref: `plan.md` §Ordem de implementação 4-5, `contracts/must-coverage-finding.
 
 Ref: `contracts/must-coverage-finding.md` §4.1
 
-- [ ] 4.1.1 Acrescentar às "Regras de Preenchimento" a orientação de que uma
+- [x] 4.1.1 Acrescentar às "Regras de Preenchimento" a orientação de que uma
       obrigação de princípio se escreve como linha rotulada iniciando a
       linha (`**MUST:**`, `**MUST NOT:**`, `- MUST: <regra>`,
       `* MUST NOT: <regra>`, indentação ok), com o contra-exemplo medido
@@ -159,10 +159,10 @@ Ref: `contracts/must-coverage-finding.md` §4.1
 
 Ref: `contracts/must-coverage-finding.md` §4.2, FR-008
 
-- [ ] 4.2.1 Migrar o bloco do texto-semente (hoje em blockquote, linhas
+- [x] 4.2.1 Migrar o bloco do texto-semente (hoje em blockquote, linhas
       ~141-147 de `constitution/SKILL.md`) para bloco de código cercado —
       o prefixo `> ` quebra o reconhecimento do parser (medido)
-- [ ] 4.2.2 Garantir que o texto-semente ganhe uma linha `**MUST:**` abrindo
+- [x] 4.2.2 Garantir que o texto-semente ganhe uma linha `**MUST:**` abrindo
       as obrigações (`M >= 1`, SC-003), preservando o conteúdo normativo do
       princípio integralmente — só a marcação muda, nenhuma obrigação é
       adicionada, removida ou enfraquecida
@@ -171,14 +171,14 @@ Ref: `contracts/must-coverage-finding.md` §4.2, FR-008
 
 Ref: `contracts/must-coverage-finding.md` §4.3, FR-007
 
-- [ ] 4.3.1 Acrescentar, sob cada `[PRINCIPLE_N_DESCRIPTION]`, o esqueleto
+- [x] 4.3.1 Acrescentar, sob cada `[PRINCIPLE_N_DESCRIPTION]`, o esqueleto
       rotulado (`**MUST:**`/`- MUST:` conforme o padrão de §4.1), preservando
       os placeholders `[ALL_CAPS]` existentes e a hierarquia de headings
       exatamente como hoje
 
 ### 4.4 §Gotchas da skill `constitution` `[M]`
 
-- [ ] 4.4.1 Adicionar entrada em §Gotchas documentando a armadilha do
+- [x] 4.4.1 Adicionar entrada em §Gotchas documentando a armadilha do
       blockquote (`> **MUST:**` não reconhecido) como risco de regressão
       futura do texto-semente
 
@@ -191,7 +191,7 @@ spec.md SC-003, FR-009
 
 Ref: `quickstart.md` Cenário 7
 
-- [ ] 5.1.1 Transcrever verbatim o texto-semente de Veracidade de Dados
+- [x] 5.1.1 Transcrever verbatim o texto-semente de Veracidade de Dados
       pós-mudança (§4.2) para um `constitution.md` temporário e confirmar
       `linhas de regra MUST reconhecidas pelo parser: >= 1` e `cobertura de
       MUST: ok` (se `zero-reconhecida`, a marcação regrediu — corrigir antes
@@ -201,7 +201,7 @@ Ref: `quickstart.md` Cenário 7
 
 Ref: `quickstart.md` Cenário 8, spec.md FR-009
 
-- [ ] 5.2.1 Confirmar que o sha256 de `docs/constitution.md` deste repositório
+- [x] 5.2.1 Confirmar que o sha256 de `docs/constitution.md` deste repositório
       permanece idêntico ao gravado no `state.json` da execução, e que
       `git diff --name-only` da feature não contém `docs/constitution.md`
 
@@ -209,7 +209,7 @@ Ref: `quickstart.md` Cenário 8, spec.md FR-009
 
 Ref: `quickstart.md` Cenário 9, `research.md` Decision 9
 
-- [ ] 5.3.1 Rodar `extract-must.sh --constitution docs/constitution.md
+- [x] 5.3.1 Rodar `extract-must.sh --constitution docs/constitution.md
       --coverage` na raiz deste repositório e confirmar `linhas de regra MUST
       reconhecidas pelo parser: 5` e `cobertura de MUST: ok` (nenhum achado
       desta feature dispara contra a constituição deste repo)
@@ -219,7 +219,7 @@ Ref: `quickstart.md` Cenário 9, `research.md` Decision 9
 - [ ] 5.4.1 Rodar a suite completa (`LC_ALL=C ./tests/run.sh`) em background
       com log, sem `tail` no output
 - [ ] 5.4.2 Rodar `./tests/run.sh --check-coverage`
-- [ ] 5.4.3 Rodar `validate-tasks-template.sh` sobre este `tasks.md` e o gate
+- [x] 5.4.3 Rodar `validate-tasks-template.sh` sobre este `tasks.md` e o gate
       `validate-docs-rendered` sobre os artefatos Markdown tocados nesta onda
 
 ---

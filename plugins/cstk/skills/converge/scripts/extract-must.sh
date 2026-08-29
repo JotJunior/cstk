@@ -18,12 +18,21 @@
 # §"Relatorio de cobertura" abaixo).
 #
 # EXIT:
-#   0  sucesso (0+ linhas)
+#   0  sucesso (0+ linhas); em --coverage tambem cobre os vereditos `ok` e
+#      `sem-must-declarado` (ver "Veredito de cobertura" abaixo)
 #   1  --constitution ausente (Scenario 15: escalada CRITICAL por violacao
 #      de MUST fica indisponivel; demais criterios de severidade SEGUEM se
 #      aplicando — quem chama este script NAO aborta a skill inteira so
-#      porque este script retornou 1)
+#      porque este script retornou 1); tambem usado se a contagem numerica
+#      interna do --coverage vier corrompida (guarda de integridade)
 #   2  erro de uso
+#   3  --coverage APENAS: veredito `zero-reconhecida` — o arquivo contem a
+#      palavra MUST mas o parser nao reconheceu NENHUMA linha de regra
+#      (mesmo sintoma da issue #171). Este exit NAO e erro de execucao do
+#      script — e um SINAL DE ESTADO fail-closed para quem chama: o
+#      caminho `--coverage && ...` (ou equivalente) deve tratar exit 3 como
+#      "cobertura indeterminada, nao prosseguir silenciosamente", nunca
+#      como falha do proprio extract-must.sh.
 #
 # --- Por que NAO assumir numeracao romana (I, II, III...) ---
 # O template generico da skill `constitution` (templates/constitution.md)
@@ -99,6 +108,25 @@
 # seria autoconfirmatoria e voltaria a reportar 100%. Por ser independente,
 # ela e um limite SUPERIOR grosseiro (conta MUST em prosa tambem): N > M nao
 # prova lacuna, mas N >> M com M == 0 e exatamente o sintoma de #171.
+#
+# --- Veredito de cobertura + exit 3 (converge-must-coverage-fail-closed) ---
+# O relatorio acima e informativo, mas nada IMPEDIA um consumidor de ler
+# "linhas de regra MUST reconhecidas pelo parser: 0" e seguir em frente
+# como se a ausencia de MUST fosse garantida (fail-open). A 6a linha
+# `cobertura de MUST: <veredito>` + o exit code tornam esse estado
+# detectavel programaticamente, sem novo parsing de texto. N = ocorrencias
+# da palavra MUST (contagem independente); M = linhas de regra reconhecidas
+# pelo parser. 3 guardas ORDENADAS e mutuamente exclusivas — a primeira que
+# casar decide, nenhuma reavalia a anterior:
+#   1. M > 0             -> `ok`                  (parser leu regra real)
+#   2. N > 0 e M == 0     -> `zero-reconhecida`     (sintoma #171: fala de
+#                                                    MUST, parser nao le)
+#   3. N == 0             -> `sem-must-declarado`   (constitution de fato
+#                                                    nao declara MUST)
+# `zero-reconhecida` e o UNICO veredito que sai com `exit 3` — sinal de
+# estado fail-closed para quem chama (ver bloco EXIT no cabecalho). `ok` e
+# `sem-must-declarado` sao ambos `exit 0`: legitimamente nao ha lacuna a
+# reportar em nenhum dos dois.
 #
 # POSIX sh + awk (ferramentas POSIX canonicas, Constitution II). Zero eval
 # sobre conteudo lido (SEC-1). Todas as variaveis quotadas. Sem Bash-isms.
@@ -184,6 +212,24 @@ if [ "$_COVERAGE" = 1 ]; then
   # so — duas copias mediriam um parser diferente do que roda).
   _em_lines=$(grep -cE "$_EM_MUST_RE" "$_CONST" || :)
 
+  # Guarda de integridade numerica (mesmo idioma de converge-status.sh
+  # ~linha 360 — `case "$v" in '' | *[!0-9]*)`): `grep -c` sempre emite um
+  # inteiro >=0 em condicoes normais, mas o veredito de cobertura abaixo faz
+  # aritmetica/comparacao sobre esses valores — uma saida inesperada NUNCA
+  # deve virar um veredito silenciosamente errado.
+  case "$_em_words" in
+    '' | *[!0-9]*)
+      printf '%s: contagem invalida de ocorrencias de MUST (esperado inteiro): %s\n' "$_EM_NAME" "$_em_words" >&2
+      exit 1
+      ;;
+  esac
+  case "$_em_lines" in
+    '' | *[!0-9]*)
+      printf '%s: contagem invalida de linhas de regra MUST (esperado inteiro): %s\n' "$_EM_NAME" "$_em_lines" >&2
+      exit 1
+      ;;
+  esac
+
   # Classificacao de cada principio emitido: `with-must` (alguma regra MUST
   # foi de fato lida no corpo) x `heading-only` (entrou so pelo rotulo
   # "(NON-NEGOTIABLE)" do heading, sem nenhuma regra lida). Um unico passo —
@@ -215,13 +261,29 @@ if [ "$_COVERAGE" = 1 ]; then
   printf 'principios emitidos: %s\n' "$_em_emitted"
   printf 'principios emitidos so por rotulo de heading (sem regra MUST lida): %s\n' "$_em_heading_only"
 
+  # Veredito de cobertura (converge-must-coverage-fail-closed) — 3 guardas
+  # ordenadas e mutuamente exclusivas; ver bloco de comentario "Veredito de
+  # cobertura + exit 3" no cabecalho do script.
+  if [ "$_em_lines" -gt 0 ]; then
+    _em_verdict=ok
+  elif [ "$_em_words" -gt 0 ]; then
+    _em_verdict=zero-reconhecida
+  else
+    _em_verdict=sem-must-declarado
+  fi
+  printf 'cobertura de MUST: %s\n' "$_em_verdict"
+
   # Sintoma exato de #171: o arquivo fala de MUST e o parser nao reconheceu
   # NENHUMA regra. Nesse estado o resultado do gate nao cobre as regras do
   # arquivo — dizer isso alto e o ponto do relatorio.
   if [ "$_em_words" -gt 0 ] && [ "$_em_lines" -eq 0 ]; then
     printf '%s: AVISO: o arquivo contem a palavra MUST mas NENHUMA linha de regra foi reconhecida — convencao de marcacao provavelmente nao suportada; o resultado NAO cobre as regras MUST deste arquivo.\n' "$_EM_NAME" >&2
   fi
-  exit 0
+
+  case "$_em_verdict" in
+    zero-reconhecida) exit 3 ;;
+    *) exit 0 ;;
+  esac
 fi
 
 awk -v must_re="$_EM_MUST_RE" '
