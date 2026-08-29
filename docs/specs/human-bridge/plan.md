@@ -47,9 +47,13 @@ desenho.
 1. **Correcao factual — as duas lacunas do scrub citadas no contrato estao
    FECHADAS** `[MEDIDO 2026-08-29]`. `printf 'password=hunter2' | scrub` devolve
    `password=[REDACTED]`, e blocos PEM viram `[REDACTED-PEM-BLOCK]`
-   (`secrets-filter.sh:166` e `:228`, issue #169). O requisito nao muda — as tres
+   (`secrets-filter.sh:167` — regra 0, PEM; e `:228` — regra 4b, `{4,}`; issue #169). O requisito nao muda — as tres
    defesas seguem obrigatorias — mas o **motivo** escrito no contrato ficou
-   obsoleto. Detalhe em `research.md` Decision 0.
+   obsoleto. Detalhe em `research.md` Decision 0. **Aplicado ao contrato na
+   onda-005**: a nota R-TEXT-3 de `mcp-tool-ask-operator.md` foi reescrita com a
+   medicao nova, e "o scrub e o piso, nao a garantia" passou a valer **por
+   principio** (um filtro de segredos e allowlist de formatos conhecidos), nao
+   por uma lacuna especifica que se possa esperar ver corrigida.
 2. **Achado de seguranca — o `session_id` NAO pode atravessar HTTP.** Ele e token
    de capacidade e o toolkit ja o redige em toda fronteira
    `[VERIFICADO: exec.ts:111 `SENSITIVE_FLAGS`]`. O modelo evita a exfiltracao
@@ -76,7 +80,8 @@ desenho.
 | **Scripts POSIX novos** | **NENHUM.** Escrita pela primitiva generica `state-rw.sh set` | contrato §7 |
 | **Ambiente-alvo** | localhost do operador; painel faz bind em `127.0.0.1` | `[VERIFICADO: panel/apps/server/src/config.ts:168]` |
 | **Testing** | vitest (painel), `node --test` (MCP), harness POSIX `tests/run.sh` (cstk) | `[VERIFICADO: package.json de cada modulo]` |
-| **Constraints de relogio** | teto servidor `[5000, clientTimeout-60000]` **derivado**; folga >= 60000 ms | contrato R-CLOCK-1/2/4 |
+| **Constraints de relogio** | teto servidor `[ASK_MIN_TIMEOUT_MS, clientTimeout-60000]` **derivado nos dois extremos**; folga >= 60000 ms; piso `ASK_MIN_TIMEOUT_MS = 60000` ms proprio da superficie | contrato R-CLOCK-1/2/4/7 |
+| **Auditoria da janela** | `effective_timeout_ms` persistido em `.operator_answers[]`; finding `ask-operator-short-window` no `review-task` | contrato R-AUDIT-1 + `data-model.md` |
 | **Escala** | 1 operador, N sessoes locais; fila esperada na ordem de dezenas de itens | spec US1 |
 
 **Target Platform**: localhost do operador (macOS/Linux) — dois processos Node locais (painel Fastify + servidor MCP stdio) falando por HTTP loopback; sem deploy, sem container, sem host remoto.
@@ -273,11 +278,12 @@ Feito com o design fechado, nao por inercia:
 ## Gate de Seguranca (`owasp-security`, 2026-08-29)
 
 Rodado sobre `plan.md` + `contracts/panel-bridge-api.md` + `data-model.md`. Seis
-achados; **cinco corrigidos nesta onda**, **um escalado ao operador**.
+achados; **cinco corrigidos na onda-004**, **um escalado ao operador e resolvido
+na onda-005** (block-005 / dec-031).
 
 | # | Sev | Achado | Desfecho |
 |---|-----|--------|----------|
-| F1 | **HIGH** | `timeout_ms` e `default_value` sao ambos escolhidos pelo AGENTE, e a faixa derivada admite piso `5000` ms — janela curta demais para um humano. Um agente pode "perguntar" com 5 s e colher o proprio default como `timeout`, deixando trilha que parece consulta humana. | **escalar-para-humano** — ver §Bloqueio |
+| F1 | **HIGH** | `timeout_ms` e `default_value` sao ambos escolhidos pelo AGENTE, e a faixa derivada admitia piso `5000` ms — janela curta demais para um humano. Um agente pode "perguntar" com 5 s e colher o proprio default como `timeout`, deixando trilha que parece consulta humana. | **RESOLVIDO** pelo operador (block-005) — ver §Resolucao |
 | F2 | MEDIUM | CORS global e `methods: ['GET','OPTIONS']` `[VERIFICADO: index.ts:43-46]` — a propria UI nao conseguiria `POST` em modo dev | corrigir-agora (contrato §11.1) |
 | F3 | MEDIUM | `origin` restrito virou controle de seguranca load-bearing; faltava CSRF/Content-Type/Host | corrigir-agora (contrato §11.2) |
 | F4 | MEDIUM | `question`/`options[]` persistiam **sem** scrub, enquanto `untrusted_text` era scrubado (LLM02) | corrigir-agora (contrato §11.3) |
@@ -305,14 +311,49 @@ Isso e consequencia inerente da feature, nao defeito do desenho — e esta escri
 aqui para que uma revisao futura de `corsOrigin` ou de bind saiba o que esta em
 jogo.
 
-### Bloqueio humano aberto (F1)
+### Resolucao de F1 (block-005 / dec-031) — opcao D: piso + auditoria
 
-F1 nao e corrigivel por inferencia: exige fixar uma **politica de autonomia** —
+F1 nao era corrigivel por inferencia: exigia fixar uma **politica de autonomia** —
 quanto tempo um agente MUST esperar antes de poder aplicar o proprio
-`default_value` — e isso contradiz o piso `5000` ja fixado pelo contrato
-(R-CLOCK-4, herdado de `MIN_ELICIT_TIMEOUT_MS`). Decidir sozinho seria o agente
-escolhendo as regras da propria supervisao. Escalado ao operador; a etapa `plan`
-so fecha apos a resposta.
+`default_value` — e isso contradizia o piso `5000` entao herdado de
+`MIN_ELICIT_TIMEOUT_MS`. Decidir sozinho seria o agente escolhendo as regras da
+propria supervisao. Escalado; **o operador respondeu a opcao D (defesa em
+profundidade)**, e o desenho abaixo e o dele, nao inferencia deste plano:
+
+**(1) Piso** — `ASK_MIN_TIMEOUT_MS = 60000` ms, constante **propria da superficie
+`ask_operator`**, **separada** do piso `5000` de `MIN_ELICIT_TIMEOUT_MS` do
+`collect_optins`. `timeout_ms` abaixo do piso **cai no default (`240000`)**,
+**nunca** e clampado para a borda — espelha o precedente ja `[VERIFICADO]` de
+`parseElicitTimeoutMs` (`collect_optins.ts:196-205`). Escrito em
+`contracts/mcp-tool-ask-operator.md` **R-CLOCK-7**.
+
+**(2) Auditoria** — o `timeout_ms` **efetivo** persiste em `.operator_answers[]`
+como `effective_timeout_ms`, e o `review-task` reporta finding para toda entrada
+com `outcome = timeout` **e** janela efetiva `< 60000` ms. Escrito como
+**R-AUDIT-1** no contrato e detalhado em `data-model.md` §"Auditoria da janela
+efetiva".
+
+**Ressalva explicita do operador, preservada no contrato**: o piso e uma
+**constante nomeada com justificativa propria** (janela minima plausivel de
+resposta humana) e **NAO** deve ser derivado dos `60000` da R-CLOCK-2 — la o
+numero significa outra coisa (overshoot de ~30s do watchdog de ociosidade +
+margem). *"Acoplar os dois por coincidencia numerica seria pior que ter duas
+constantes."*
+
+**Efeito na R-CLOCK-4**: a faixa continua **derivada** — muda so o piso, de
+`5000` para `ASK_MIN_TIMEOUT_MS`:
+
+```
+[ ASK_MIN_TIMEOUT_MS , client_timeout_ms - 60000 ]   ->   [60000, 240000]
+```
+
+O **teto** permanece derivado de `client_timeout_ms`; nao virou literal. Os dois
+extremos seguem sem numero escrito no codigo.
+
+**Fora de escopo, deliberadamente**: se houver variavel de ambiente para ajustar
+este piso, seu **nome e comportamento sao `[PROPOSTA]` nao decididos** — nem este
+plano nem o contrato os fixam (Principio VI: o operador decidiu o piso, o
+comportamento e a auditoria, nada alem disso).
 
 ---
 
@@ -344,6 +385,7 @@ nao o altera. Um modelo de auth seria mudanca de escopo do painel inteiro.
 ### Proximos passos
 
 1. `/checklist` — quality gate dos requisitos antes de implementar
-2. `/create-tasks` — decompor em backlog (incluindo a task de corrigir a nota
-   R-TEXT-3 do contrato com a medicao de 2026-08-29)
+2. `/create-tasks` — decompor em backlog (a task de corrigir a nota R-TEXT-3 do
+   contrato **ja foi executada na onda-005**, junto da propagacao de R-CLOCK-7 /
+   R-AUDIT-1; o backlog cobre a implementacao, nao mais essa correcao)
 3. `/analyze` — consistencia cross-artifact apos as tasks

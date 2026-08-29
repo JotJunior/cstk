@@ -115,10 +115,28 @@ Convencao: `1. Passo -> 2. Passo -> **Expected**: resultado.`
 
 ## Cenario 6 (ERROR CASE) — Expiracao sem resposta (US3 / FR-009 / SC-003)
 
-1. Criar intervencao com `MCP_ASK_TIMEOUT_MS` baixo (ex.: `10000`, dentro da faixa
-   derivada `[5000, clientTimeout-60000]`) e nao responder.
-   **Expected**: a tool retorna em ~10 s com `result.outcome:"timeout"` e
+1. Criar intervencao com `MCP_ASK_TIMEOUT_MS` no **piso** da faixa derivada
+   `[ASK_MIN_TIMEOUT_MS, clientTimeout-60000]` — isto e, `60000` (R-CLOCK-7) — e
+   nao responder.
+   **Expected**: a tool retorna em ~60 s com `result.outcome:"timeout"` e
    `applied_value == default_value`.
+   > O cenario **nao pode** usar uma janela mais curta: valor abaixo do piso cai
+   > no default `240000` (passo 1.bis), nao no valor pedido. Os ~60 s sao o custo
+   > deliberado do piso — ver `plan.md` §Resolucao de F1.
+1.bis **R-CLOCK-7 — abaixo do piso cai no DEFAULT, nao clampa.** Chamar a tool
+   com `timeout_ms: 5000` (abaixo de `ASK_MIN_TIMEOUT_MS`).
+   **Expected**: a janela efetiva e `MCP_ASK_TIMEOUT_MS` (default `240000`), **nao**
+   `60000` e **nao** `5000`. Verificar em `.operator_answers[]`:
+   `effective_timeout_ms == 240000`. Clampar para a borda seria a falha que este
+   passo existe para pegar.
+1.ter **R-AUDIT-1 — a janela efetiva e auditada.** Com a entrada de `timeout` do
+   passo 1 gravada, rodar `review-task`.
+   **Expected**: `effective_timeout_ms` presente em **toda** entrada de
+   `.operator_answers[]`; nenhum finding `ask-operator-short-window` neste caso
+   (janela `60000` **nao** e `< 60000`). O finding so dispara na conjuncao
+   `outcome == "timeout"` **E** `effective_timeout_ms < 60000` — que, com o piso
+   vigente, **so** e alcancavel por bug ou regressao. E esse e o ponto: ele e a
+   rede que pega o afrouxamento do piso.
 2. Olhar a fila depois.
    **Expected**: o item aparece como `expired`, com `appliedValue: null` e
    `resolvedAt: null` — **visualmente distinto** de uma resposta humana
@@ -221,10 +239,17 @@ Convencao: `1. Passo -> 2. Passo -> **Expected**: resultado.`
    **Expected**: o servidor **recusa subir**, com diagnostico citando a faixa
    derivada. Combinacao explicitamente ilegal e caso diferente de variavel ausente
    — a distincao e deliberada.
-5. `grep -nE '\b(5000|240000)\b' mcp/state-server/src/tools/ask_operator.ts`
+5. `grep -nE '\b240000\b' mcp/state-server/src/tools/ask_operator.ts`
    **Expected**: `240000` **nao** aparece como literal de faixa — e derivado
-   (`clientTimeoutMs - CLOCK_SAFETY_MARGIN_MS`). R-CLOCK-4 exige faixa derivada,
-   nunca constante escrita.
+   (`clientTimeoutMs - CLOCK_SAFETY_MARGIN_MS`). R-CLOCK-4 exige os **dois**
+   extremos derivados, nunca constante escrita.
+6. `grep -nE 'ASK_MIN_TIMEOUT_MS|CLOCK_SAFETY_MARGIN_MS' mcp/state-server/src/`
+   **Expected**: **duas** constantes distintas, cada uma com seu proprio
+   comentario de justificativa — `ASK_MIN_TIMEOUT_MS` (janela minima de resposta
+   humana, R-CLOCK-7) e `CLOCK_SAFETY_MARGIN_MS` (overshoot do watchdog +
+   margem, R-CLOCK-2). Ambas valem `60000`, e isso e **coincidencia**: uma
+   derivar da outra, ou compartilharem um `const`, e violacao da decisao do
+   operador em block-005 e reprova este cenario.
 
 ---
 

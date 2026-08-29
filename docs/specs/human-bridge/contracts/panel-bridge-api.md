@@ -113,11 +113,29 @@ Cria a intervencao **e** e o unico detector de indisponibilidade (FR-021).
   "question":      "texto exibido ao operador",
   "options":       ["a", "b"],                // array<string>, obrigatorio sse kind="choice"
   "defaultValue":  "a",                       // string, obrigatorio (C-4)
-  "timeoutMs":     240000                     // number, obrigatorio — teto JA clampado pelo servidor MCP
+  "timeoutMs":     240000                     // number, obrigatorio — janela EFETIVA, ja resolvida pelo servidor MCP
 }
 ```
 
 **`sessionId` NAO existe neste payload.** Ausencia deliberada — ver §1.
+
+**`timeoutMs` e a janela EFETIVA, nunca o valor cru pedido pelo agente.** O
+servidor MCP ja resolveu `timeout_ms` contra a faixa **derivada**
+`[ ASK_MIN_TIMEOUT_MS , client_timeout_ms - 60000 ]` antes de montar este payload
+`[VERIFICADO: `mcp-tool-ask-operator.md` R-CLOCK-4 + R-CLOCK-7]`. Valor fora da
+faixa **cai no default** (`MCP_ASK_TIMEOUT_MS`), nunca e clampado para a borda —
+por isso "clampado" saiu desta linha: descrevia um comportamento que o contrato da
+superficie explicitamente rejeita.
+
+Consequencia para o painel, que e o unico ponto que importa aqui: `expiresAt =
+now + timeoutMs` (abaixo) sempre reflete o prazo real que o operador tem, e a
+menor janela que o painel pode legitimamente receber e `ASK_MIN_TIMEOUT_MS`
+(**60000 ms** `[PROPOSTA]`). O painel **MUST NOT** re-derivar, re-clampar ou
+"corrigir" `timeoutMs` — a politica de relogio pertence ao servidor MCP; a Ponte
+so transporta. Se um `timeoutMs` menor que `ASK_MIN_TIMEOUT_MS` chegar aqui, isso
+e sintoma de bug do lado do servidor, e o caminho de deteccao e a auditoria de
+`.operator_answers[]` (`../data-model.md` §"Auditoria da janela efetiva"), nao uma
+correcao silenciosa na borda HTTP.
 
 Validacao por Zod na borda, no mesmo idioma das rotas existentes
 `[VERIFICADO: panel/apps/server/src/routes/tasks.ts, `const QuerySchema = z.object({...})` + `safeParse`]`.

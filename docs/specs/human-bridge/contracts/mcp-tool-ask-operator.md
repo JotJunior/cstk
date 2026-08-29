@@ -38,7 +38,7 @@ evidencia medida em [`../spikes/README.md`](../spikes/README.md).
 | `kind` | `"choice"` \| `"confirm"` \| `"text"` | **sim** | Enum fechado. |
 | `options` | array\<string\> | so em `choice` | Enum fechado das respostas aceitas. |
 | `default_value` | string | **sim** | Valor seguro aplicado em TODO desfecho != `answered`. Sem ele a tool vira trava. |
-| `timeout_ms` | number | nao | Clampado pelo servidor (§4). |
+| `timeout_ms` | number | nao | Validado contra a faixa **derivada** da R-CLOCK-4, cujo piso nesta superficie e `ASK_MIN_TIMEOUT_MS` (R-CLOCK-7). Valor fora da faixa cai no **default**, nunca clampado para a borda. |
 
 ---
 
@@ -124,11 +124,17 @@ modelo nunca ve erro.
 A faixa valida de `MCP_ASK_TIMEOUT_MS` e:
 
 ```
-[ 5000 , client_timeout_ms - 60000 ]
+[ ASK_MIN_TIMEOUT_MS , client_timeout_ms - 60000 ]
 ```
 
-Com `client_timeout_ms = 300000`, isso da **[5000, 240000]** — e o default
-240000 e o **topo** da faixa, o que e coerente por construcao.
+Com `ASK_MIN_TIMEOUT_MS = 60000` (R-CLOCK-7) e `client_timeout_ms = 300000`, isso
+da **[60000, 240000]** — e o default 240000 e o **topo** da faixa, o que e
+coerente por construcao.
+
+**Os dois extremos sao derivados, nenhum e literal.** O piso vem da constante
+nomeada da R-CLOCK-7; o teto, de `client_timeout_ms` menos a folga da R-CLOCK-2.
+Fixar qualquer um dos dois como numero escrito no codigo reintroduz o modo de
+falha descrito abaixo.
 
 A faixa MUST ser **derivada** de `client_timeout_ms`, nunca escrita como
 constante literal. Motivo: uma faixa fixada permite configuracao ILEGAL pela
@@ -176,6 +182,52 @@ chamada fica pendurada para sempre e a sessao junto. E e desnecessario: o
 `timeout` por servidor da janela longa E limitada, com erro legivel quando
 estoura `[MEDIDO: "timeout":60000 sobrepos CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=10000
 hostil e a tool de 45s completou]`.
+
+### R-CLOCK-7 (obrigatoria) — `ASK_MIN_TIMEOUT_MS`, o piso desta superficie
+
+```
+ASK_MIN_TIMEOUT_MS = 60000   // ms  [PROPOSTA]
+```
+
+Constante nomeada, **propria da superficie `ask_operator`**. `timeout_ms` abaixo
+dela e tratado como fora da faixa (R-CLOCK-4): cai no **default** (`240000`),
+**nunca** e clampado para a borda `[PROPOSTA; espelha o precedente VERIFICADO de
+parseElicitTimeoutMs, collect_optins.ts:196-205]`.
+
+**Justificativa propria — e ela e o conteudo da regra, nao enfeite**: 60000 ms e
+a janela minima plausivel para um humano notar a fila, ler a pergunta com a
+procedencia exigida pelo §11.7 do contrato do painel, e responder. Abaixo disso a
+espera nao e consulta, e formalidade: o desfecho `timeout` fica praticamente
+garantido e o agente colhe o proprio `default_value` deixando trilha que **parece**
+consulta humana. Esse e exatamente o achado **F1 (HIGH)** do gate `owasp-security`
+sobre o `plan` — a defesa e temporal, nao textual.
+
+**NAO derivar dos `60000` da R-CLOCK-2.** A coincidencia numerica e coincidencia:
+la o numero significa *overshoot de ~30s do watchdog de ociosidade + 30s de
+margem*, e muda se o comportamento do watchdog do cliente mudar; aqui significa
+*janela minima de resposta humana*, e muda se a ergonomia da fila mudar. Sao duas
+grandezas sem relacao causal. Acoplar as duas por um `const` compartilhado — ou
+por um comentario dizendo "mesmo valor da R-CLOCK-2" — faz o primeiro ajuste
+legitimo de uma delas corromper a outra em silencio. **Duas constantes, dois
+porques, duas vidas.**
+
+**Piso separado do `collect_optins`, tambem de proposito.** `MIN_ELICIT_TIMEOUT_MS
+= 5000` continua valendo intacto na sua superficie `[VERIFICADO: collect_optins.ts]`
+— la o portador e um formulario nativo que ja esta na frente do operador, e 5 s e
+plausivel. Aqui o portador e uma fila que o operador pode nem estar olhando.
+Superficies com ergonomia diferente MUST ter pisos diferentes; unifica-los seria
+escolher o piso errado para uma das duas.
+
+**Override**: se uma variavel de ambiente para ajustar este piso vier a existir,
+seu nome e comportamento sao `[PROPOSTA]` ainda **nao decididos** — este contrato
+NAO os fixa. Ate que sejam decididos, `ASK_MIN_TIMEOUT_MS` e constante do
+servidor, sem override.
+
+**Contrapartida aceita e declarada**: um piso de 60 s torna impossivel uma
+pergunta legitimamente curta (ex.: confirmacao que o operador ja esta esperando).
+O operador aceitou esse custo — a alternativa (permitir janela curta e detectar
+abuso so depois) foi rejeitada como defesa unica. A auditoria da §7 e o
+**segundo** anel, nao o primeiro.
 
 ---
 
@@ -230,19 +282,40 @@ que alimenta a linha de log — nunca o cru, e nunca dois subprocessos de scrub
 `[VERIFICADO: mesma disciplina L1 do campo reason, collect_optins.ts:394-408]`.
 Strip de caracteres de controle + truncamento aplicados junto.
 
-> **A cobertura do filtro e o PISO, nao a garantia.** `secrets-filter.sh scrub`
-> tem lacunas conhecidas e MEDIDAS (2026-08-27, script do repo):
-> `printf 'password=hunter2' | scrub` devolve **`password=hunter2` em claro** —
-> a regra de atribuicao exige valor com **20+ caracteres**
-> `[VERIFICADO: secrets-filter.sh:164, quantificador `{20,}`]`, entao segredo
-> curto passa; e nao existe regra alguma para blocos PEM
-> (`-----BEGIN PRIVATE KEY-----` atravessa intacto)
-> `[VERIFICADO: zero ocorrencias de PEM/PRIVATE KEY no script]`.
-> Aplicar o scrub continua obrigatorio, mas o desenho **NAO PODE** tratar
-> "passou pelo scrub" como "nao contem segredo" — em `untrusted_text` o valor
-> vem de humano colando de sistema externo, que e exatamente o cenario que
-> motiva a regra. As demais defesas (teto de 2048 bytes, rotulo estrutural,
-> R-TEXT-4) nao sao redundancia: sao o que segura o que o filtro deixa passar.
+> **CORRECAO (2026-08-29) — as duas lacunas citadas aqui estao FECHADAS.** A
+> redacao anterior deste bloco afirmava, como `[VERIFICADO]` com medicao de
+> 2026-08-27, que `printf 'password=hunter2' | scrub` devolvia o valor em claro
+> (quantificador `{20,}`) e que blocos PEM atravessavam intactos. **As duas
+> afirmacoes sao falsas hoje** — a issue #169 as fechou na v9.4.0. Medido agora,
+> no script do repo:
+>
+> | Entrada | Saida `[MEDIDO 2026-08-29]` |
+> |---------|------------------------------|
+> | `printf 'password=hunter2' \| scrub` | `password=[REDACTED]` |
+> | bloco `-----BEGIN PRIVATE KEY-----` ... `-----END PRIVATE KEY-----` | `[REDACTED-PEM-BLOCK]` |
+>
+> Mecanismo, no script: a **regra 4b** replica a forma da regra 4 com limiar
+> `{4,}` sobre uma lista separada de palavras-chave de alta confianca
+> `[VERIFICADO: secrets-filter.sh:228, quantificador `{4,}`; comentario :214-215
+> nomeia a issue #169 e o caso `password=hunter2`]`; a **regra 0** detecta blocos
+> PEM por RFC 7468 (marcador sozinho na linha) e vem PRIMEIRO
+> `[VERIFICADO: secrets-filter.sh:167 e :181, `print "[REDACTED-PEM-BLOCK]"`]`.
+>
+> **O requisito NAO muda — mudou o motivo.** As tres defesas restantes (teto de
+> 2048 bytes R-TEXT-2, rotulo estrutural R-TEXT-1, fronteira valor-vs-instrucao
+> R-TEXT-4) **permanecem obrigatorias**, e nao como redundancia.
+>
+> **A cobertura do filtro segue sendo o PISO, nao a garantia** — agora por
+> principio, nao por uma lacuna especifica que se possa "esperar ser corrigida".
+> O proprio script declara isso na sua fonte: *"Cobertura e PISO, nao garantia:
+> um segredo curto sob palavra-chave nao listada continua passando"*
+> `[VERIFICADO: secrets-filter.sh:226-227]` — e `pwd`, `key`, `token` e `auth`
+> genericos ficam **deliberadamente de fora** da lista `{4,}` para nao redigir
+> prosa comum `[VERIFICADO: secrets-filter.sh:221-224]`. Um filtro de segredos e
+> uma allowlist de formatos conhecidos; ele nunca reconhece o formato que ainda
+> nao viu. O desenho **NAO PODE** tratar "passou pelo scrub" como "nao contem
+> segredo" — em `untrusted_text` o valor vem de humano colando de sistema
+> externo, que e exatamente o cenario que motiva a regra.
 
 ### R-TEXT-4 — VALOR sim, INSTRUCAO nao
 
@@ -292,8 +365,32 @@ Shape — os **mesmos 6 campos** de `StoredOptinResponse`
 { question_id, channel, outcome, applied_value, recorded_at, reason }
 ```
 
-`untrusted_text` persiste como campo adicional, ja escrubado, sujeito a
-R-TEXT-2.
+Mais **dois** campos adicionais:
+
+- `untrusted_text` — ja escrubado, sujeito a R-TEXT-2.
+- `effective_timeout_ms` — **numero**, obrigatorio. A janela que de fato
+  vigorou nesta pergunta, ja resolvida pela R-CLOCK-4/R-CLOCK-7 (ou seja: o
+  `timeout_ms` pedido quando dentro da faixa, ou `MCP_ASK_TIMEOUT_MS` quando o
+  pedido caiu fora dela). **Nao** e o valor pedido pelo agente — e o que o
+  operador realmente teve para responder.
+
+### R-AUDIT-1 (obrigatoria) — a janela efetiva e auditavel, e auditada
+
+Registrar `effective_timeout_ms` e o **segundo** anel de defesa do achado F1
+(HIGH) do gate `owasp-security`; o primeiro e o piso da R-CLOCK-7. O piso impede
+a janela curta; a auditoria detecta o caso em que ela acontece assim mesmo — por
+bug, por refactor que afrouxe o piso, ou por um caminho de configuracao que
+ninguem previu.
+
+`review-task` MUST reportar finding para **toda** entrada de `.operator_answers[]`
+com `outcome = "timeout"` **e** `effective_timeout_ms < 60000`. Detalhe da regra
+em [`../data-model.md`](../data-model.md) §"Auditoria da janela efetiva".
+
+Por que o gatilho e a conjuncao das duas condicoes, e nao cada uma sozinha:
+`timeout` com janela adequada e desfecho legitimo (o operador nao estava);
+janela curta com `answered` significa que o humano respondeu mesmo assim, e a
+trilha e verdadeira. So a **conjuncao** descreve o padrao que F1 nomeia — espera
+curta demais colhendo o proprio default e passando por consulta.
 
 Primitiva de escrita: a generica ja existente, **sem script novo** —
 `state-rw.sh set --state-dir <SD> --field '.operator_answers' --value <json-array>`

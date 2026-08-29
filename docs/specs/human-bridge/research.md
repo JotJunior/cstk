@@ -37,7 +37,7 @@ $ printf -- '-----BEGIN PRIVATE KEY-----\nMIIBVgIBADANBgkqhkiG9w0BAQ\n-----END P
 ```
 
 Causa da divergencia `[VERIFICADO]`: o script ganhou (a) uma regra de blocos PEM
-por RFC 7468 (`secrets-filter.sh:166` e seguintes, "Vem PRIMEIRO porque o corpo
+por RFC 7468 (`secrets-filter.sh:167` e seguintes, "Vem PRIMEIRO porque o corpo
 base64 nao tem palavra-chave proxima... (issue #169)") e (b) uma regra separada de
 alta confianca com quantificador `{4,}` (`secrets-filter.sh:228`), alem da regra
 generica `{20,}` preexistente (`secrets-filter.sh:206`) que o contrato citou.
@@ -283,15 +283,34 @@ espelha a condicao (b) do carve-out de deps opcionais da constitution raiz
 `CSTK_CLIENT_TOOL_TIMEOUT_MS`, nunca de literais:
 
 ```
-CLIENT_TIMEOUT_FLOOR_MS = 5000       // piso absoluto, herdado de MIN_ELICIT_TIMEOUT_MS
-CLOCK_SAFETY_MARGIN_MS  = 60000      // R-CLOCK-2
-min = CLIENT_TIMEOUT_FLOOR_MS
+ASK_MIN_TIMEOUT_MS     = 60000       // R-CLOCK-7 — piso PROPRIO desta superficie
+CLOCK_SAFETY_MARGIN_MS = 60000       // R-CLOCK-2 — overshoot do watchdog + margem
+min = ASK_MIN_TIMEOUT_MS
 max = clientTimeoutMs - CLOCK_SAFETY_MARGIN_MS
 default = max                        // topo da faixa, coerente por construcao
 ```
 
-Com `clientTimeoutMs = 300000` isso rende `[5000, 240000]` e default `240000` —
+Com `clientTimeoutMs = 300000` isso rende `[60000, 240000]` e default `240000` —
 os mesmos numeros do contrato §4, agora **derivados** em vez de escritos.
+
+**As duas constantes valem 60000 e isso e coincidencia — nao unifique**
+(decisao do operador em block-005/dec-031). `ASK_MIN_TIMEOUT_MS` mede *janela
+minima plausivel de resposta humana*; `CLOCK_SAFETY_MARGIN_MS` mede *overshoot de
+~30s do watchdog de ociosidade + 30s de margem*. Nao ha relacao causal: cada uma
+muda por um motivo proprio. Um `const` compartilhado — ou um comentario "mesmo
+valor da R-CLOCK-2" — faz o primeiro ajuste legitimo de uma corromper a outra em
+silencio. **Duas constantes, dois porques, duas vidas.**
+
+**Piso ANTERIOR a block-005 era `5000`**, herdado de `MIN_ELICIT_TIMEOUT_MS`. O
+gate `owasp-security` (achado F1, HIGH) mostrou que ele permitia ao agente
+"perguntar" com janela curta demais para um humano e colher o proprio
+`default_value` como `timeout`, deixando trilha que parece consulta. O operador
+escolheu a opcao D (piso + auditoria): o piso subiu para `60000` **nesta
+superficie**, e `MIN_ELICIT_TIMEOUT_MS = 5000` segue **intacto** na sua — la o
+portador e um formulario nativo ja na frente do operador; aqui e uma fila que ele
+pode nem estar olhando. Superficies com ergonomia diferente MUST ter pisos
+diferentes. Segundo anel: `effective_timeout_ms` persistido +
+finding `ask-operator-short-window` no `review-task` (contrato R-AUDIT-1).
 
 **Precedente do comportamento fora-da-faixa** `[VERIFICADO: mcp/state-server/src/tools/collect_optins.ts:196-205]`
 — `parseElicitTimeoutMs` retorna o DEFAULT (nao clampa para a borda) quando o

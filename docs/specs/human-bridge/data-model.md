@@ -146,7 +146,7 @@ com enum fechado de campos e e lido pela guarda que recusa abrir a onda-001
 Shape — os **mesmos 6 campos** de `StoredOptinResponse`
 `[VERIFICADO: mcp/state-server/src/tools/collect_optins.ts:328-334 —
 field/channel/outcome/applied_value/recorded_at/reason]`, com `field` -> `question_id`,
-mais um setimo campo:
+mais **dois** campos adicionais:
 
 | Campo (snake_case) | Tipo | Null? | Notas |
 |--------------------|------|-------|-------|
@@ -157,6 +157,7 @@ mais um setimo campo:
 | `recorded_at` | string | NOT NULL | ISO 8601 UTC. |
 | `reason` | string \| null | NULL ok | Motivo da degradacao. Escrubado + truncado a 2048 bytes. |
 | `untrusted_text` | string \| null | NULL ok | **Campo adicional.** So em `kind='text'` + `outcome='answered'`. Ja escrubado (R-TEXT-3) e truncado (R-TEXT-2). |
+| `effective_timeout_ms` | number | NOT NULL | **Campo adicional (auditoria).** Janela que de fato vigorou, ja resolvida por R-CLOCK-4/R-CLOCK-7 — o `timeout_ms` pedido quando dentro da faixa, ou `MCP_ASK_TIMEOUT_MS` quando caiu fora dela. **Nao** e o valor pedido pelo agente. |
 
 ### Regras de leitura (identicas as de `.optin_responses[]`, para nao criar um segundo dialeto)
 
@@ -171,6 +172,43 @@ mais um setimo campo:
 `.operator_answers[]` e gravado **antes** de a tool retornar. Nunca trava, nunca
 fica sem rastro. Combinado com C-1 (degradacao retorna `outcome:"accepted"` no
 envelope de tool), o orquestrador nunca ve erro e nunca precisa reter ou repetir.
+
+### Auditoria da janela efetiva — finding do `review-task` (R-AUDIT-1)
+
+`effective_timeout_ms` existe para ser **lido**, nao so gravado. Ele e o segundo
+anel de defesa do achado **F1 (HIGH)** do gate `owasp-security`; o primeiro e o
+piso `ASK_MIN_TIMEOUT_MS = 60000` (contrato R-CLOCK-7). O piso impede a janela
+curta; a auditoria detecta o caso em que ela ocorre assim mesmo — bug, refactor
+que afrouxe o piso, ou caminho de configuracao nao previsto.
+
+**Regra** `[PROPOSTA]` — `review-task` MUST emitir finding para **toda** entrada
+de `.operator_answers[]` que satisfaca as **duas** condicoes:
+
+```
+outcome == "timeout"   E   effective_timeout_ms < 60000
+```
+
+| Aspecto | Valor |
+|---------|-------|
+| Chave do finding | `ask-operator-short-window` |
+| Severidade | `warning` (padrao dos findings de governanca da skill) |
+| Escopo da varredura | `.operator_answers[]` da execucao corrente |
+| Linha do relatorio | `question_id`, `effective_timeout_ms`, `applied_value`, `recorded_at` |
+| Sitio | subsecao numerada de auditoria do `review-task`, no mesmo idioma das existentes `[VERIFICADO: plugins/cstk/skills/review-task/SKILL.md §4.8 :426 (decisoes estruturais) e §4.9 :467 (convergencia pendente)]` |
+
+**Por que a conjuncao, e nao cada condicao sozinha**: `timeout` com janela
+adequada e desfecho legitimo — o operador simplesmente nao estava. Janela curta
+com `answered` significa que o humano respondeu mesmo assim, e a trilha e
+verdadeira. So a conjuncao descreve o padrao que F1 nomeia: **espera curta demais
+colhendo o proprio `default_value` e passando por consulta humana.**
+
+**Por que o `60000` aparece aqui como literal e isso NAO contradiz a R-CLOCK-4**:
+a faixa de configuracao e derivada (R-CLOCK-4); ja o limiar de auditoria e o
+**proprio** `ASK_MIN_TIMEOUT_MS` da R-CLOCK-7, que e a constante nomeada de
+origem. O auditor compara contra o piso declarado — se ele comparasse contra um
+valor derivado da configuracao corrente, um afrouxamento do piso tornaria o
+finding invisivel exatamente quando ele mais importa. **A auditoria e ancorada na
+politica, nao na configuracao.**
 
 ### Trilha de auditoria
 
