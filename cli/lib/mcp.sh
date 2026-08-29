@@ -78,7 +78,7 @@
 #   cstk mcp start --state-dir DIR
 #   cstk mcp stop --state-dir DIR
 #   cstk mcp gc [--dry-run]
-#   cstk mcp install [--project-path PATH] [--dry-run]
+#   cstk mcp install [--project-path PATH] [--dry-run] [--client-timeout-ms MS]
 #
 # Saida (stdout, uma chave por linha — mesmo estilo de `state-backend.sh
 # resolve`):
@@ -939,17 +939,35 @@ _mcp_cmd_gc() {
 _mcp_cmd_install() {
   _mci_project_path="."
   _mci_dry_run=""
+  _mci_client_timeout_ms=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --project-path) _mci_project_path=$2; shift 2 ;;
       --dry-run) _mci_dry_run="1"; shift ;;
+      # human-bridge FASE 2 (task 2.6): override do teto do relogio do
+      # CLIENTE (default 300000ms) — mesmo valor propagado para
+      # env.CSTK_CLIENT_TOOL_TIMEOUT_MS (R-CLOCK-5, fonte unica).
+      --client-timeout-ms) _mci_client_timeout_ms=$2; shift 2 ;;
       *)
         printf 'cstk mcp install: flag desconhecida: %s\n' "$1" >&2
         return 2
         ;;
     esac
   done
+
+  case "$_mci_client_timeout_ms" in
+    "") ;;
+    *[!0-9]*)
+      printf 'cstk mcp install: --client-timeout-ms precisa ser inteiro positivo (ms): %s\n' \
+        "$_mci_client_timeout_ms" >&2
+      return 2
+      ;;
+    0)
+      printf 'cstk mcp install: --client-timeout-ms precisa ser > 0: %s\n' "$_mci_client_timeout_ms" >&2
+      return 2
+      ;;
+  esac
 
   if [ ! -d "$_mci_project_path" ]; then
     printf 'cstk mcp install: --project-path nao e diretorio: %s\n' "$_mci_project_path" >&2
@@ -988,17 +1006,29 @@ _mcp_cmd_install() {
     return 1
   }
 
+  # human-bridge FASE 2 (task 2.6, R-CLOCK-5): `timeout` (relogio do
+  # CLIENTE) e `env.CSTK_CLIENT_TOOL_TIMEOUT_MS` (o MESMO valor, para o
+  # SERVIDOR validar a faixa de `MCP_ASK_TIMEOUT_MS`) MUST vir de UMA
+  # UNICA variavel de shell — nunca duas, que poderiam divergir em
+  # silencio [VERIFICADO: docs/specs/human-bridge/contracts/
+  # mcp-tool-ask-operator.md §4 R-CLOCK-5]. `mcp-launch.sh` (`exec node`)
+  # ja propaga o `env` herdado sem trabalho adicional (task 2.6.2,
+  # VERIFICADO).
+  : "${_mci_client_timeout_ms:=300000}"
+
   # Forma da entrada [contracts/mcp-session-lifecycle.md §`cstk mcp
   # install`]: chaves type/command/args conforme doc oficial do .mcp.json.
   # POSIX puro (sem jq) — o payload e estatico, sem dado dinamico alem do
-  # path resolvido do launcher.
+  # path resolvido do launcher e do teto de relogio acima.
   cat > "$_mci_tmp_src" <<MCPJSON
 {
   "mcpServers": {
     "cstk-state": {
       "type": "stdio",
       "command": "$_mci_launcher",
-      "args": []
+      "args": [],
+      "timeout": $_mci_client_timeout_ms,
+      "env": { "CSTK_CLIENT_TOOL_TIMEOUT_MS": "$_mci_client_timeout_ms" }
     }
   }
 }
@@ -1060,12 +1090,17 @@ USO:
       --dry-run so reporta, sem remover. Best-effort: docker indisponivel
       e exit 0, nao erro.
 
-  cstk mcp install [--project-path PATH] [--dry-run]
+  cstk mcp install [--project-path PATH] [--dry-run] [--client-timeout-ms MS]
       Registra a entrada estatica mcpServers.cstk-state em
       <PATH>/.mcp.json, apontando para mcp-launch.sh do catalogo. Roda
       uma vez por projeto. Idempotente: entrada ja presente e
       equivalente nao gera erro. Recusa --project-path $HOME (exit 3).
       Sem jq, imprime bloco para colagem manual em vez de falhar.
+      --client-timeout-ms (default 300000): teto do relogio do CLIENTE
+      ("timeout" por servidor) — o MESMO valor e escrito em
+      env.CSTK_CLIENT_TOOL_TIMEOUT_MS, para o servidor MCP validar a
+      janela de MCP_ASK_TIMEOUT_MS da tool ask_operator (R-CLOCK-5,
+      human-bridge). Uma UNICA fonte, nunca dois valores independentes.
 
 EXIT CODES (status):
   0 consulta bem-sucedida (inclusive status=unavailable)

@@ -125,24 +125,24 @@ Ref: `docs/specs/human-bridge/plan.md` (Project Structure,
 `bridge/client.ts` NOVO) · `docs/specs/human-bridge/contracts/panel-bridge-api.md`
 §4/§5/§11.5 · `docs/specs/human-bridge/research.md` Decision 6
 
-- [ ] 2.1.1 Implementar `createIntervention()` — `POST
+- [x] 2.1.1 Implementar `createIntervention()` — `POST
       /api/v1/bridge/interventions`, timeout `BRIDGE_CREATE_TIMEOUT_MS =
       5000` via `AbortSignal.timeout(5000)`; tratar `meta.degraded===true`
       na resposta `200` como equivalente a falha de conexao para fins de
       outcome `unavailable` (decisao 1.1.2)
-- [ ] 2.1.2 Implementar `pollIntervention()` — `GET
+- [x] 2.1.2 Implementar `pollIntervention()` — `GET
       /api/v1/bridge/interventions/:questionId`, cadencia
       `BRIDGE_POLL_INTERVAL_MS = 1500`; `404` mapeia para `failed` (nao
       `unavailable` — o painel respondeu, so nao conhece o id, contrato §5)
-- [ ] 2.1.3 Implementar mapper `camelCase` (HTTP) <-> `snake_case` (envelope
+- [x] 2.1.3 Implementar mapper `camelCase` (HTTP) <-> `snake_case` (envelope
       MCP/state) — unico lugar do servidor MCP que faz essa conversao
       (Convencoes de Borda, `plan.md`)
-- [ ] 2.1.4 Implementar guard de `CSTK_PANEL_URL` fora de loopback (§11.5):
+- [x] 2.1.4 Implementar guard de `CSTK_PANEL_URL` fora de loopback (§11.5):
       recusar (outcome `failed` + 1 linha em stderr) host que nao seja
       `127.0.0.1`/`::1`/`localhost` sem uma segunda variavel de opt-in
       explicito; `http://` para host nao-loopback MUST NOT ser aceito em
       nenhuma hipotese
-- [ ] 2.1.5 Escrever testes (node:test) mockando `fetch`: create com sucesso
+- [x] 2.1.5 Escrever testes (node:test) mockando `fetch`: create com sucesso
       (201), create degradado (200+degraded=true) -> tratado como falha,
       create com timeout/5xx -> `unavailable`, poll 404 -> `failed`, poll
       `expired` -> `timeout`, guard de loopback rejeita host remoto sem
@@ -152,28 +152,28 @@ Ref: `docs/specs/human-bridge/plan.md` (Project Structure,
 
 Ref: `docs/specs/human-bridge/contracts/mcp-tool-ask-operator.md` §1/§2/§3/§5/§8
 
-- [ ] 2.2.1 Implementar schema Zod do request (`session_id`, `question`,
+- [x] 2.2.1 Implementar schema Zod do request (`session_id`, `question`,
       `kind`, `options` so em `choice`, `default_value`, `timeout_ms`
       opcional) — schema PROPRIO, espelhado, sem importar `shared-types` do
       painel (repos/instalacoes distintas, Convencoes de Borda)
-- [ ] 2.2.2 Implementar resolucao de `session_id` reusando
+- [x] 2.2.2 Implementar resolucao de `session_id` reusando
       `session/resolve.ts` (fail-closed, `SESSION_MISMATCH`) — roteamento
       **exclusivamente** pelo id da PROPRIA chamada, nunca `execution_id`
-- [ ] 2.2.3 Implementar o loop principal: `createIntervention()` ->
+- [x] 2.2.3 Implementar o loop principal: `createIntervention()` ->
       se falhar/degradado, `outcome=unavailable`; senao `pollIntervention()`
       em loop ate `answered`/`declined`/`expired` (mapeia para `timeout`)
       ou o teto do SERVIDOR (`MCP_ASK_TIMEOUT_MS`) estourar
       (`outcome=timeout` via excecao — R-CLOCK-3, o servidor desiste
       ANTES do cliente)
-- [ ] 2.2.4 Implementar C-4: aplicar `default_value` em TODO desfecho
+- [x] 2.2.4 Implementar C-4: aplicar `default_value` em TODO desfecho
       `!= answered`, e C-1: nenhum desfecho (`declined`/`timeout`/
       `unavailable`/`failed`) e erro de tool — todos retornam
       `outcome:"accepted"` com o desfecho dentro de `result`
       (`channel:"panel"`, C-5)
-- [ ] 2.2.5 Registrar como 9a tool em
+- [x] 2.2.5 Registrar como 9a tool em
       `mcp/state-server/src/index.ts:228..375` (hoje 8) —
       `mcp__cstk-state__ask_operator`
-- [ ] 2.2.6 Escrever testes (node:test): os 5 outcomes do mapeamento
+- [x] 2.2.6 Escrever testes (node:test): os 5 outcomes do mapeamento
       sinal->desfecho (§5), C-4 aplicado em todos os nao-`answered`, C-1
       (nenhum retorno de erro de tool), `SESSION_MISMATCH` fail-closed
 
@@ -182,12 +182,12 @@ Ref: `docs/specs/human-bridge/contracts/mcp-tool-ask-operator.md` §1/§2/§3/§
 Ref: `docs/specs/human-bridge/contracts/mcp-tool-ask-operator.md` §7
 (trilha de auditoria)
 
-- [ ] 2.3.1 Adicionar `source: "mcp-ask-operator"` ao módulo de audit log,
+- [x] 2.3.1 Adicionar `source: "mcp-ask-operator"` ao módulo de audit log,
       reusando `REASON_MAX_BYTES = 2048` já existente (`audit/log.ts:66`) —
       nenhuma constante nova
-- [ ] 2.3.2 Garantir best-effort (nunca lança) no mesmo contrato de
+- [x] 2.3.2 Garantir best-effort (nunca lança) no mesmo contrato de
       `appendOptinDecisionRecord`
-- [ ] 2.3.3 Escrever teste confirmando 1 linha por resposta persistida e
+- [x] 2.3.3 Escrever teste confirmando 1 linha por resposta persistida e
       que falha do audit log não propaga exceção
 
 ### 2.4 Persistencia `.operator_answers[]` (sem script POSIX novo) `[A]`
@@ -195,17 +195,17 @@ Ref: `docs/specs/human-bridge/contracts/mcp-tool-ask-operator.md` §7
 Ref: `docs/specs/human-bridge/data-model.md` §"Entity: OperatorAnswer" ·
 `docs/specs/human-bridge/contracts/mcp-tool-ask-operator.md` §7
 
-- [ ] 2.4.1 Implementar a escrita via a primitiva GENERICA já existente —
+- [x] 2.4.1 Implementar a escrita via a primitiva GENERICA já existente —
       `state-rw.sh set --state-dir <SD> --field '.operator_answers' --value
       <json-array>` invocada de `ask_operator.ts` via `runHelper` (reuso do
       padrão de `runtime/exec.ts`) — MUST NOT criar script POSIX novo nem
       editar `_state-rw-db.sh`
-- [ ] 2.4.2 Montar o array com os 8 campos do contrato: `question_id`,
+- [x] 2.4.2 Montar o array com os 8 campos do contrato: `question_id`,
       `channel` (`"panel"`, C-5), `outcome`, `applied_value`, `recorded_at`,
       `reason`, `untrusted_text`, `effective_timeout_ms`
-- [ ] 2.4.3 Garantir gravação ANTES do retorno da tool em TODO desfecho
+- [x] 2.4.3 Garantir gravação ANTES do retorno da tool em TODO desfecho
       (C-4) — nunca trava, nunca fica sem rastro
-- [ ] 2.4.4 Escrever teste confirmando: shape com os 8 campos, escrita
+- [x] 2.4.4 Escrever teste confirmando: shape com os 8 campos, escrita
       antes do retorno, e que sob backend SQLite cai em
       `execution.extra_fields` sem exigir edição em `_state-rw-db.sh`
       (mesmo precedente de `.suggestions`)
@@ -219,16 +219,16 @@ efetiva"
 Segundo anel de defesa do achado F1 (HIGH) do gate `owasp-security`
 (primeiro anel = piso `ASK_MIN_TIMEOUT_MS`, tarefa 1.3).
 
-- [ ] 2.5.1 Implementar em `plugins/cstk/skills/review-task/` a checagem:
+- [x] 2.5.1 Implementar em `plugins/cstk/skills/review-task/` a checagem:
       para toda entrada de `.operator_answers[]` com `outcome="timeout"`
       **e** `effective_timeout_ms < 60000`, emitir finding
       `ask-operator-short-window` (a conjunção das duas condições, nunca
       cada uma isoladamente — `timeout` com janela adequada é desfecho
       legítimo; janela curta com `answered` é trilha verdadeira)
-- [ ] 2.5.2 Aplicar regras de leitura idênticas a `.optin_responses[]`:
+- [x] 2.5.2 Aplicar regras de leitura idênticas a `.optin_responses[]`:
       R-1 (precedência do maior `recorded_at`), R-2 (`unavailable`/`failed`
       são NÃO-terminais; `answered`/`declined`/`timeout` são terminais)
-- [ ] 2.5.3 Escrever teste cobrindo a matriz 2x2 (outcome x janela) e
+- [x] 2.5.3 Escrever teste cobrindo a matriz 2x2 (outcome x janela) e
       confirmando que só a conjunção dispara o finding
 
 ### 2.6 `cli/lib/mcp.sh` — `timeout` + `env` de UMA única fonte `[C]`
@@ -242,15 +242,15 @@ sao dois dos tres acoplamentos que a `plan.md` proibe fazer fora de ordem —
 `timeout` e `CSTK_CLIENT_TOOL_TIMEOUT_MS` MUST entrar juntos, do mesmo
 valor-fonte, no MESMO commit.
 
-- [ ] 2.6.1 No heredoc `MCPJSON` (`cli/lib/mcp.sh:995-1005`), introduzir
+- [x] 2.6.1 No heredoc `MCPJSON` (`cli/lib/mcp.sh:995-1005`), introduzir
       **uma** variável de shell `_mci_client_timeout_ms` (default `300000`)
       interpolada nos DOIS lugares: `"timeout": $_mci_client_timeout_ms`
       (relógio do cliente) e `"env": {"CSTK_CLIENT_TOOL_TIMEOUT_MS":
       "$_mci_client_timeout_ms"}` (para o servidor)
-- [ ] 2.6.2 Confirmar que o launcher (`mcp-launch.sh:276-279`) propaga a env
+- [x] 2.6.2 Confirmar que o launcher (`mcp-launch.sh:276-279`) propaga a env
       var sem trabalho adicional — `exec node` preserva o ambiente herdado
       (já **VERIFICADO**; esta subtarefa é validação, não implementação)
-- [ ] 2.6.3 Atualizar `tests/test_mcp.sh`: `cstk mcp install` gera
+- [x] 2.6.3 Atualizar `tests/test_mcp.sh`: `cstk mcp install` gera
       `.mcp.json` com `timeout` e `env.CSTK_CLIENT_TOOL_TIMEOUT_MS`
       numericamente idênticos, para o valor default e para um override
 
@@ -264,14 +264,14 @@ obrigatorio" item 2
 tarefa/commit — faltando qualquer um, a tool nova fica sem cobertura na
 superfície nova.
 
-- [ ] 2.7.1 `tests/test_orchestrator-allowlist-guard.sh:323` — atualizar
+- [x] 2.7.1 `tests/test_orchestrator-allowlist-guard.sh:323` — atualizar
       `_required` de 8 para 9 tools (adicionar `ask_operator`)
-- [ ] 2.7.2 `plugins/cstk/agents/agente-00c-orchestrator.md:4` —
+- [x] 2.7.2 `plugins/cstk/agents/agente-00c-orchestrator.md:4` —
       adicionar `mcp__cstk-state__ask_operator` ao frontmatter `tools:`
-- [ ] 2.7.3 `plugins/cstk/agents/agente-00c-feature-orchestrator.md:4` —
+- [x] 2.7.3 `plugins/cstk/agents/agente-00c-feature-orchestrator.md:4` —
       adicionar `mcp__cstk-state__ask_operator` ao frontmatter `tools:`
       (mesma linha desta prórpia definição de agente)
-- [ ] 2.7.4 Rodar `tests/test_orchestrator-allowlist-guard.sh` e confirmar
+- [x] 2.7.4 Rodar `tests/test_orchestrator-allowlist-guard.sh` e confirmar
       que os dois orquestradores E a allowlist citam as 9 tools de forma
       consistente (nenhum dos três sítios divergindo dos outros dois)
 

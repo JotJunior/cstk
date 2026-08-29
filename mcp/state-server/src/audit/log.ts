@@ -217,3 +217,64 @@ export async function appendOptinDecisionRecord(
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// human-bridge FASE 2 (task 2.3): 1 linha em enforcement-log.jsonl por
+// resposta PERSISTIDA em `.operator_answers[]` pela tool `ask_operator`.
+// MESMO arquivo, `source` proprio ("mcp-ask-operator") para distinguir de
+// "mcp-state-tool" (appendAuditRecord) e "mcp-collect-optins"
+// (appendOptinDecisionRecord) — nenhuma constante nova, reusa
+// REASON_MAX_BYTES = 2048 (task 2.3.1).
+//
+// Ref: docs/specs/human-bridge/contracts/mcp-tool-ask-operator.md §7
+// ---------------------------------------------------------------------------
+
+export interface AskOperatorAuditInput {
+  readonly sessionId: string;
+  readonly questionId: string;
+  readonly channel: string;
+  readonly outcome: string;
+  readonly appliedValue: string;
+  readonly effectiveTimeoutMs: number;
+  /** Ja escrubado pelo chamador (mesmo padrao de OptinDecisionAuditInput.reason). */
+  readonly reason: string | null;
+}
+
+/**
+ * Monta e persiste UMA linha JSONL por resposta de `ask_operator` — mesmo
+ * contrato best-effort de `appendAuditRecord`/`appendOptinDecisionRecord`
+ * (falha ao ESCREVER nunca lanca; a mutacao que este registro documenta ja
+ * aconteceu independentemente de conseguirmos persistir o rastro).
+ */
+export async function appendAskOperatorRecord(
+  input: AskOperatorAuditInput,
+  deps: Pick<AppendAuditRecordDeps, "logPath" | "env" | "now"> = {},
+): Promise<boolean> {
+  try {
+    const reason =
+      input.reason !== null
+        ? truncateUtf8ByteBudget(stripControlChars(input.reason).trim(), REASON_MAX_BYTES)
+        : null;
+
+    // Serialize (SEC-M3): JSON.stringify real — mesmo racional das duas
+    // funcoes irmas acima (texto livre em `reason` nao pode quebrar a linha).
+    const line = JSON.stringify({
+      source: "mcp-ask-operator",
+      timestamp: isoTimestamp(deps.now),
+      session_id: input.sessionId,
+      question_id: input.questionId,
+      channel: input.channel,
+      outcome: input.outcome,
+      applied_value: input.appliedValue,
+      effective_timeout_ms: input.effectiveTimeoutMs,
+      reason,
+    });
+
+    const logPath = deps.logPath ?? resolveEnforcementLogPath(deps.env);
+    await mkdir(dirname(logPath), { recursive: true });
+    await appendFile(logPath, `${line}\n`, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}

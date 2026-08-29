@@ -1076,4 +1076,73 @@ JSON
   assert_stdout_contains "**dec-001** — eixo \`persistencia\` — escolha \`SQLite\` sem consentimento humano valido" || return 1
 }
 
+# Secao "## Auditoria ask_operator — Janela Efetiva" — finding
+# ask-operator-short-window (human-bridge FASE 2, task 2.5, contrato
+# mcp-tool-ask-operator.md §7 R-AUDIT-1). Matriz 2x2 outcome x janela:
+# so a CONJUNCAO outcome=timeout + effective_timeout_ms < 60000 dispara.
+
+scenario_generate_sem_ask_operator_nao_emite_secao() {
+  _sd="$TMPDIR_TEST/state-no-ask-operator"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_not_contains "Auditoria ask_operator" || return 1
+}
+
+scenario_generate_ask_operator_matriz_2x2_so_conjuncao_dispara_finding() {
+  _sd="$TMPDIR_TEST/state-ask-operator-matrix"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.operator_answers' --value '[
+    {"question_id":"q-timeout-curto","channel":"panel","outcome":"timeout","applied_value":"default-a","recorded_at":"2026-08-29T18:00:00Z","reason":null,"untrusted_text":null,"effective_timeout_ms":30000},
+    {"question_id":"q-timeout-normal","channel":"panel","outcome":"timeout","applied_value":"default-b","recorded_at":"2026-08-29T18:01:00Z","reason":null,"untrusted_text":null,"effective_timeout_ms":240000},
+    {"question_id":"q-answered-curto","channel":"panel","outcome":"answered","applied_value":"sim","recorded_at":"2026-08-29T18:02:00Z","reason":null,"untrusted_text":null,"effective_timeout_ms":1000},
+    {"question_id":"q-answered-normal","channel":"panel","outcome":"answered","applied_value":"nao","recorded_at":"2026-08-29T18:03:00Z","reason":null,"untrusted_text":null,"effective_timeout_ms":240000}
+  ]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed operator_answers" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "## Auditoria ask_operator — Janela Efetiva (human-bridge, R-AUDIT-1)" || return 1
+  assert_stdout_contains "Total de respostas ask_operator nesta execucao: 4." || return 1
+  assert_stdout_contains "Total: 1 (esperado 0 — piso ASK_MIN_TIMEOUT_MS=60000ms" || return 1
+  assert_stdout_contains "**q-timeout-curto**" || return 1
+  assert_stdout_not_contains "q-timeout-normal" || return 1
+  assert_stdout_not_contains "q-answered-curto" || return 1
+}
+
+scenario_generate_ask_operator_zero_findings_quando_todas_janelas_adequadas() {
+  _sd="$TMPDIR_TEST/state-ask-operator-clean"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.operator_answers' --value '[
+    {"question_id":"q-1","channel":"panel","outcome":"timeout","applied_value":"default","recorded_at":"2026-08-29T18:00:00Z","reason":null,"untrusted_text":null,"effective_timeout_ms":240000}
+  ]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed operator_answers" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "Total: 0 (esperado 0 — piso ASK_MIN_TIMEOUT_MS=60000ms" || return 1
+  assert_stdout_contains "(Nenhuma janela curta detectada.)" || return 1
+}
+
+# R-1 (precedencia, task 2.5.2): 2 entradas com o MESMO question_id —
+# vence a de maior recorded_at. A mais antiga (timeout+curto, que
+# dispararia o finding se contasse) e SUPERADA pela mais recente
+# (answered+normal) — o finding NAO deve disparar.
+scenario_generate_ask_operator_r1_precedencia_por_recorded_at() {
+  _sd="$TMPDIR_TEST/state-ask-operator-precedencia"
+  _init "$_sd"
+  _run_wave_with_decision "$_sd"
+  capture "$RW" set --state-dir "$_sd" --field '.operator_answers' --value '[
+    {"question_id":"q-dup","channel":"panel","outcome":"timeout","applied_value":"default","recorded_at":"2026-08-29T18:00:00Z","reason":null,"untrusted_text":null,"effective_timeout_ms":10000},
+    {"question_id":"q-dup","channel":"panel","outcome":"answered","applied_value":"sim","recorded_at":"2026-08-29T18:05:00Z","reason":null,"untrusted_text":null,"effective_timeout_ms":240000}
+  ]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "seed operator_answers" "$_CAPTURED_STDERR"; return 1; }
+  capture "$SCRIPT" generate --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "generate" "$_CAPTURED_STDERR"; return 1; }
+  assert_stdout_contains "Total de respostas ask_operator nesta execucao: 1." || return 1
+  assert_stdout_contains "Total: 0 (esperado 0 — piso ASK_MIN_TIMEOUT_MS=60000ms" || return 1
+  assert_stdout_contains "(Nenhuma janela curta detectada.)" || return 1
+}
+
 run_all_scenarios

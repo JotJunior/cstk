@@ -1,5 +1,5 @@
 // test/index.test.ts — cobertura do bootstrap (task 1.1.4, mcp-direct-transport
-// FASE 1): as 8 tools registram INCONDICIONALMENTE, mesmo sem
+// FASE 1): as tools registram INCONDICIONALMENTE, mesmo sem
 // MCP_SESSION_TOKEN/CSTK_MCP_PROJECT_PATH validos — o fail-closed (SEC-H3)
 // mudou de lugar (do boot para a chamada). Cobre tambem o caminho de
 // rejeicao por chamada (SESSION_MISMATCH quando o token nao resolve),
@@ -42,7 +42,7 @@ function registeredTool(server: McpServer, name: string): RegisteredTool {
   return tool;
 }
 
-const ALL_EIGHT_TOOLS = [
+const ALL_NINE_TOOLS = [
   "record_skill",
   "record_decision",
   "open_wave",
@@ -51,9 +51,10 @@ const ALL_EIGHT_TOOLS = [
   "get_status",
   "close_wave",
   "collect_optins",
+  "ask_operator",
 ];
 
-test("bootstrap (C-1): registra as 8 tools do MVP mesmo com sessao resolvivel (F2 + F3 + get_status/dec-064 + F4 close_wave)", async () => {
+test("bootstrap (C-1): registra as 9 tools do MVP mesmo com sessao resolvivel (F2 + F3 + get_status/dec-064 + F4 close_wave + human-bridge ask_operator)", async () => {
   const server = await bootstrap({
     ...process.env,
     MCP_SESSION_TOKEN: "synthetic-token-abc123",
@@ -62,10 +63,10 @@ test("bootstrap (C-1): registra as 8 tools do MVP mesmo com sessao resolvivel (F
   });
 
   assert.ok(server instanceof McpServer);
-  assert.deepEqual(registeredToolNames(server), ALL_EIGHT_TOOLS);
+  assert.deepEqual(registeredToolNames(server), ALL_NINE_TOOLS);
 });
 
-test("bootstrap (C-1/C-3, task 1.1.4): SEM MCP_SESSION_TOKEN e SEM CSTK_MCP_PROJECT_PATH, as 8 tools registram do mesmo jeito, e bootstrap() nunca lanca", async () => {
+test("bootstrap (C-1/C-3, task 1.1.4): SEM MCP_SESSION_TOKEN e SEM CSTK_MCP_PROJECT_PATH, as 9 tools registram do mesmo jeito, e bootstrap() nunca lanca", async () => {
   const server = await bootstrap({
     ...process.env,
     MCP_SESSION_TOKEN: "",
@@ -74,10 +75,10 @@ test("bootstrap (C-1/C-3, task 1.1.4): SEM MCP_SESSION_TOKEN e SEM CSTK_MCP_PROJ
   });
 
   assert.ok(server instanceof McpServer);
-  assert.deepEqual(registeredToolNames(server), ALL_EIGHT_TOOLS);
+  assert.deepEqual(registeredToolNames(server), ALL_NINE_TOOLS);
 });
 
-test("bootstrap (C-1, defesa extra): scriptsDir apontando para helper inexistente ainda assim registra as 8 tools (a resolucao so acontece na CHAMADA)", async () => {
+test("bootstrap (C-1, defesa extra): scriptsDir apontando para helper inexistente ainda assim registra as 9 tools (a resolucao so acontece na CHAMADA)", async () => {
   const server = await bootstrap({
     ...process.env,
     MCP_SESSION_TOKEN: "qualquer-coisa",
@@ -85,7 +86,7 @@ test("bootstrap (C-1, defesa extra): scriptsDir apontando para helper inexistent
     CSTK_MCP_SCRIPTS_DIR: join(FIXTURES_DIR, "does-not-exist-dir"),
   });
 
-  assert.deepEqual(registeredToolNames(server), ALL_EIGHT_TOOLS);
+  assert.deepEqual(registeredToolNames(server), ALL_NINE_TOOLS);
 });
 
 test("chamada (A-2, fail-closed por chamada): session_id que nao resolve para nenhuma sessao e rejeitada com SESSION_MISMATCH — tool continua registrada, servidor nao cai", async () => {

@@ -303,18 +303,20 @@ scenario_allowlist_nunca_vazia_nem_so_mcp() {
   return 0
 }
 
-# scenario_allowlist_declara_as_8_tools_mcp (FR-003 + FASE 7.2/dec-087,
-# dec-089)
-# Comparacao LITERAL contra as 8 entradas exatas — nunca regex
+# scenario_allowlist_declara_as_9_tools_mcp (FR-003 + FASE 7.2/dec-087,
+# dec-089; human-bridge FASE 2 task 2.7 — 9a tool `ask_operator`)
+# Comparacao LITERAL contra as 9 entradas exatas — nunca regex
 # `mcp__cstk-state__.*` (plan.md "Convencoes de Borda", protege contra
 # typo silencioso). A 8a tool (`collect_optins`, feature
 # `mcp-elicitation-optins`) foi incluida no required set porque e o
 # PRIMEIRO ato do orquestrador (bootstrap da onda-001) — sem este scenario
 # exigindo-a, a tool pode ser removida do frontmatter sem que o guard
 # acuse (mesma classe do guard inerte revogado em
-# orchestrator-mcp-allowlist). Prova por mutacao em
+# orchestrator-mcp-allowlist). A 9a tool (`ask_operator`, feature
+# `human-bridge`, contrato mcp-tool-ask-operator.md §9 "Cobertura") entra
+# pelo MESMO motivo. Prova por mutacao em
 # scenario_prova_deteccao_mutacao_collect_optins abaixo.
-scenario_allowlist_declara_as_8_tools_mcp() {
+scenario_allowlist_declara_as_9_tools_mcp() {
   _targets=$(_list_orchestrator_targets)
   if [ -z "$_targets" ]; then
     _error "sem_alvos" "nenhum orquestrador encontrado para avaliar"
@@ -327,7 +329,8 @@ mcp__cstk-state__record_task
 mcp__cstk-state__register_human_block
 mcp__cstk-state__close_wave
 mcp__cstk-state__get_status
-mcp__cstk-state__collect_optins"
+mcp__cstk-state__collect_optins
+mcp__cstk-state__ask_operator"
   _old_ifs="$IFS"
   IFS='
 '

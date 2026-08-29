@@ -84,6 +84,12 @@ import {
   type CollectOptinsResponse,
 } from "./tools/collect_optins.js";
 import { grantElicitationAccess } from "./runtime/elicitation-gate.js";
+import {
+  askOperatorInputSchema,
+  handleAskOperator,
+  type AskOperatorResponse,
+} from "./tools/ask_operator.js";
+import { resolveAndValidateBootTimeout, BootTimeoutError } from "./tools/ask-operator-clock.js";
 
 const SERVER_NAME = "cstk-state";
 // F3 (task 3.6-3.9 + tool get_status/dec-064): 5 tools novas registradas —
@@ -96,7 +102,10 @@ const SERVER_NAME = "cstk-state";
 // 0.5.0: close_wave ganha advance/terminal_phase (wave-close-advance FR-008)
 // 0.6.0: 8a tool `collect_optins` (mcp-elicitation-optins FASE 3+4.1) —
 // aditiva (nenhuma tool/campo existente removido ou redefinido).
-const SERVER_VERSION = "0.6.0";
+// 0.7.0: 9a tool `ask_operator` (human-bridge FASE 2, superficie 1) —
+// aditiva. Boot passa a validar a combinacao de relogios (R-CLOCK-5,
+// `resolveAndValidateBootTimeout`) e recusa subir se explicitamente ilegal.
+const SERVER_VERSION = "0.7.0";
 
 // SEC-L1 (LLM10 — consumo nao-limitado): teto de chamadas de tool por
 // sessao/processo. dec-093 ratificou o adiamento pos-MVP; consumado aqui.
@@ -186,6 +195,14 @@ export async function bootstrap(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<McpServer> {
   const projectPath = env.CSTK_MCP_PROJECT_PATH ?? "";
+
+  // R-CLOCK-5 (human-bridge, contrato mcp-tool-ask-operator.md §4): valida a
+  // combinacao de relogios da superficie `ask_operator` NO BOOT — env
+  // ausente/invalida degrada para o default com 1 aviso (nunca recusa por
+  // variavel OPCIONAL ausente); combinacao EXPLICITAMENTE ilegal lanca
+  // `BootTimeoutError`, que propaga daqui para fora de `bootstrap()` e faz
+  // o processo recusar-se a subir (tratado em `main()`).
+  const { clientTimeoutMs } = resolveAndValidateBootTimeout(env);
 
   // mcp-direct-transport FASE 1 (C-1..C-4): as 7 tools registram
   // INCONDICIONALMENTE, independente de existir token ou de qualquer sessao
@@ -402,6 +419,31 @@ export async function bootstrap(
     },
   );
 
+  server.registerTool(
+    "ask_operator",
+    {
+      title: "Ask the operator a blocking question",
+      description:
+        "Pergunta BLOQUEANTE ao operador, cuja resposta chega pelo painel " +
+        "(cstk-panel) — human-bridge superficie 1. Nunca e erro de tool: " +
+        "declined/timeout/unavailable/failed retornam outcome accepted com " +
+        "default_value aplicado (C-1/C-4).",
+      inputSchema: askOperatorInputSchema,
+    },
+    async (input) => {
+      const limited = checkCallLimit();
+      if (limited) return toCallToolResult("ask_operator", limited);
+      const resolved = await resolveCallSession(sessionCache, projectPath, env, input.session_id);
+      if ("envelope" in resolved) return toCallToolResult("ask_operator", resolved.envelope);
+      const response: AskOperatorResponse = await handleAskOperator(input, {
+        session: resolved.session,
+        env,
+        clientTimeoutMs,
+      });
+      return toCallToolResult("ask_operator", response);
+    },
+  );
+
   return server;
 }
 
@@ -412,7 +454,23 @@ async function main(): Promise<void> {
   // a sessao nao resolvia no startup; ausencia de token deixou de impedir o
   // processo de subir. Qualquer excecao verdadeiramente inesperada aqui cai
   // no `.catch` generico registrado abaixo, em `main().catch(...)`.
-  const server = await bootstrap();
+  //
+  // human-bridge FASE 2 (R-CLOCK-5): `bootstrap()` PODE lancar
+  // `BootTimeoutError` quando `CSTK_CLIENT_TOOL_TIMEOUT_MS` produz uma
+  // combinacao EXPLICITAMENTE ilegal para `ask_operator` — o `.catch`
+  // generico ja cobre esse caso (exitCode=1), mas capturamos aqui para uma
+  // mensagem de diagnostico mais direta (sem stack trace irrelevante).
+  let server: McpServer;
+  try {
+    server = await bootstrap();
+  } catch (err) {
+    if (err instanceof BootTimeoutError) {
+      process.stderr.write(`cstk-state: recusando subir (R-CLOCK-5): ${err.message}\n`);
+      process.exitCode = 1;
+      return;
+    }
+    throw err;
+  }
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
