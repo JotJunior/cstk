@@ -5,6 +5,72 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.0.0] - 2026-08-28
+
+O painel deixou de ser um repositorio separado: `cstk-panel` foi absorvido em
+`panel/`, com os 248 commits preservados. O motivo do MAJOR nao e a mudanca de
+pasta — e uma ruptura de **distribuicao**. Quem ficar em `cstk <= 9.5.0`
+congela no painel `0.34.1` **em silencio**: o `cstk serve --update` continua
+retornando sucesso, porque a logica antiga procura o painel nas releases do
+repositorio antigo. Nada no terminal avisa. Atualizar o toolkit e obrigatorio.
+
+A correcao central estava a um passo de embarcar o artefato errado com selo de
+verificado. O `serve.sh` escolhia **o primeiro** `.tar.gz` que tivesse um
+`.sha256` irmao na release; como as releases do `cstk` ja publicavam
+`cstk-<bare>.tar.gz` + `.sha256`, ele pegaria o tarball do TOOLKIT, o checksum
+CONFERIRIA (o par esta correto — so e o pacote errado), o outcome sairia
+`verified`, e `verified` nao escreve no enforcement-log. A falha so apareceria
+depois, em "package.json ausente apos extracao": carimbo de integridade sobre o
+payload errado, sem rastro. Reproduzido no ensaio real antes de corrigir.
+
+### Added
+
+- **Selecao de asset name-bound no `cstk serve`.** `EXPECTED = "cstk-panel-" +
+  bare(tag_name) + ".tar.gz"`, comparado por **igualdade** de basename (apos
+  strip de `?query`/`#fragment`), nunca por prefixo — prefixo faria
+  `cstk-panel-docs-*.tar.gz` casar e o bug voltaria por outra porta. Sem
+  candidato, cai no auto-tarball; "nao achei o do painel" nunca vira "entao
+  levo esse outro".
+- **Validacao de `tag_name` antes de qualquer derivacao**: `bare(tag_name)`
+  deve casar `^[0-9A-Za-z][0-9A-Za-z.+-]*$`, fail-closed. Vem da rede e vira
+  nome de caminho em dois lugares.
+- **Validacao pre-extracao do tarball**: apos o checksum e antes do `tar -x`,
+  rejeita caminho absoluto, componente `..`, symlink/hardlink, entrada de
+  device e mais de um diretorio de topo.
+- **`CSTK_PANEL_REPO`**, com validacao fail-closed e allowlist de host —
+  corrige a assimetria com `CSTK_REPO` (`install.sh`/`self-update.sh` ja
+  tinham escape; so o `serve` estava hardcoded).
+- **`scripts/validate-panel-workspace-lockstep.sh`** (WL-1..WL-5), par
+  simetrico do MP-5: trava os 4 `package.json` do painel e o lockfile entre si
+  e contra a tag da release. Antes disto, o lockstep do painel era convencao
+  manual — e convencao manual drifta em silencio ate a release.
+- **`--canonical-project`** nos commands, preservando a identidade
+  `cstk-panel` na knowledge.db para execucoes rodadas de `panel/`.
+- Empacotamento do painel no `release.yml` (`git archive HEAD:panel`),
+  publicado como `cstk-panel-<bare>.tar.gz` + `.sha256` na mesma release.
+
+### Changed
+
+- O `cstk serve` passa a buscar o painel nas releases do **`JotJunior/cstk`**.
+- Versionamento unificado: painel e os 3 manifestos do toolkit em lockstep.
+- Documentacao (`cli/README*`, `docs/cstk-serve*`, `serve --help`) atualizada.
+
+### Fixed
+
+- **Fixture `panel-fixture.tar.gz` com metadados AppleDouble.** O `bsdtar` do
+  macOS OCULTA entradas `._*`; o GNU tar do CI as LISTA, e `._X` vira um
+  segundo diretorio de topo. A suite passava 3582/3582 localmente e derrubaria
+  35 cenarios na release. Achado pelo ensaio ponta-a-ponta — nenhum teste
+  contra stub de `curl` alcancaria, porque o defeito estava no binario
+  versionado, nao na logica.
+
+### Notas de migracao
+
+- **`cstk self-update` e obrigatorio.** Sem ele o painel para na `0.34.1` sem
+  aviso.
+- O repositorio `cstk-panel` **ainda nao foi arquivado** e a release-ponte
+  **ainda nao foi publicada** — estao pendentes deliberadamente.
+
 ## [9.5.0] - 2026-08-27
 
 O `cstk doctor` era cego para o escopo de PROJETO: definicoes instaladas em
@@ -7535,6 +7601,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.0.0]: https://github.com/JotJunior/cstk/releases/tag/v10.0.0
 [9.5.0]: https://github.com/JotJunior/cstk/releases/tag/v9.5.0
 [9.4.0]: https://github.com/JotJunior/cstk/releases/tag/v9.4.0
 [9.3.0]: https://github.com/JotJunior/cstk/releases/tag/v9.3.0
