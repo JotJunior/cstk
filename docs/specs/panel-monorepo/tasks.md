@@ -1521,41 +1521,101 @@ Ref: plan.md linha 221 (FR-018, FR-022); depende de FASE 6 (ver Matriz)
 deletada depois, quem já baixou já baixou. Não inicia antes de FASE 6 (Cenário
 1) ter passado.
 
+**Decisão do operador (block-007/dec-089, resposta registrada em dec-090,
+onda-018)**: apenas 9.1 (banner) foi concluída — implementada **fora deste
+repositório**, no `cstk-panel` standalone. 9.2, 9.3 e a FASE 10 inteira ficam
+**ADIADAS** (não autorizadas nesta execução). O merge deste PR e a tag
+`v10.0.0` do repositório unificado são decisão humana subsequente, feita
+**sem** publicar release-ponte no `cstk-panel` nem arquivá-lo. Antes de
+tocar em `v10.0.0`, ver nota de bump obrigatório ao final desta fase.
+
 ### 9.1 Banner estático embutido no bundle `[C]`
 
 Ref: spec.md FR-022; research.md Decision 6 (linhas 260-286) — zero rede,
 offline-safe (Princípio IV)
 
-- [ ] 9.1.1 Implementar elemento visível e persistente na UI do painel
+**Implementado fora deste repositório, deliberadamente**: `cstk-panel`
+standalone (`/Users/jot/Projects/_lab/Jot/misc/cstk-panel`), branch
+`feat/transition-banner`, commit `da3ad7c`, **não publicado/mergeado**.
+Motivo: o texto do banner ("o painel mudou de lugar, rode `cstk
+self-update`") só é verdadeiro na distribuição antiga (standalone); dentro
+do monorepo ele seria falso e permanente — todo usuário do painel unificado
+veria um aviso de uma mudança que já aconteceu. Por isso o componente carrega,
+no próprio código e na mensagem do commit, a instrução de ser removido caso
+alguém porte o painel para `panel/` deste monorepo.
+
+- [x] 9.1.1 Implementar elemento visível e persistente na UI do painel
   informando a mudança de local e a ação necessária (`cstk self-update`)
-- [ ] 9.1.2 Confirmar que o banner é estático (embutido no bundle), sem
+  — evidência: `TransitionBanner.tsx` (cstk-panel standalone, commit
+  `da3ad7c`, branch `feat/transition-banner`), padrão de
+  `TextBlockRaw.test.ts`; `TransitionBanner.test.ts` com 5 cenários via
+  `renderToStaticMarkup` (sem jsdom).
+- [x] 9.1.2 Confirmar que o banner é estático (embutido no bundle), sem
   feature-flag remoto, sem fetch à API de releases
+  — evidência: verificado no bundle produzido,
+  `apps/web/dist/assets/index-1W9PoMQP.js` contém a string `cstk
+  self-update`; sem chamada de rede/feature-flag remoto associada
+  (Princípio IV). `npm run typecheck` limpo, `npm run build` ok, suite
+  `920 passed | 1 skipped` (915 anteriores + 5 novos),
+  `lint:readonly-check` → `OK: 0 verbos de mutação em 59 arquivos`.
 - [ ] 9.1.3 (teste) Confirmar visualmente que o texto do banner cita a ação
   necessária (`cstk self-update`) de forma acionável, não apenas "o painel
   mudou de lugar"
+  — CAMADA 1 (automatizada) feita: sonda de eficácia nos 5 cenários do
+  `TransitionBanner.test.ts` — esvaziando o texto para "O painel mudou de
+  lugar." (sem a ação), **3 dos 5 cenários reprovam**; o teste não é
+  decorativo. **CAMADA 2 (confirmação visual humana) segue PENDENTE** — é
+  pré-requisito do arquivamento (FASE 10), não desta entrega; não marco
+  este item sozinho.
 
 ### 9.2 Publicar release-ponte pelo fluxo normal `[C]`
 
 Ref: spec.md FR-018; quickstart.md Cenário 1 nota (linha 16) — FR-019(a)
 
+**ADIADA por decisão do operador** (block-007/dec-089 → dec-090): a
+release-ponte no `cstk-panel` não foi publicada nesta execução. Até ela
+sair, quem estiver em `cstk <= 9.5.0` permanece congelado no painel `0.34.1`
+em silêncio (sem o aviso de transição) — consequência explícita e aceita
+desta decisão, não uma lacuna descoberta depois.
+
 - [ ] 9.2.1 Publicar a release-ponte no repositório `cstk-panel` pelo fluxo
   normal já existente (tag → workflow) — **nunca** artefato manual (a release
   manual degradaria o guard de integridade do `cstk serve` para
   `unverifiable-blocked`, spec.md §Clarifications)
+  — nao executado: adiado por decisão do operador (dec-090); depende de
+  autorização humana futura.
 - [ ] 9.2.2 Confirmar que a release-ponte contém o banner da tarefa 9.1
+  — nao executado: depende de 9.2.1.
 - [ ] 9.2.3 (teste) Confirmar que o par `<asset>`/`<asset>.sha256` da
   release-ponte foi gerado pelo workflow, nunca por upload manual
+  — nao executado: depende de 9.2.1.
 
 ### 9.3 Teste: aviso de transição visível e offline-safe `[M]`
 
 Ref: quickstart.md Cenário 12 (linhas 212-223)
 
+**ADIADA por decisão do operador** (mesma decisão de 9.2 — depende da
+release-ponte existir).
+
 - [ ] 9.3.1 (teste) Instalar o painel na versão da release-ponte, abrir a UI,
   confirmar aviso visível e persistente
+  — nao executado: depende de 9.2 (release-ponte adiada).
 - [ ] 9.3.2 (teste) Desconectar a rede e recarregar; confirmar que o aviso
   continua visível (estático, não depende de fetch)
+  — nao executado: depende de 9.2 (release-ponte adiada).
 - [ ] 9.3.3 (teste) Confirmar que nenhuma requisição de rede nova aparece no
   console/network do navegador associada ao banner (Princípio IV)
+  — nao executado: depende de 9.2 (release-ponte adiada).
+
+**Nota obrigatória para a próxima onda/pessoa (bump de versão pré-`v10.0.0`)**:
+antes de qualquer tag `v10.0.0`, é necessário um commit de bump levando à
+`10.0.0` os 3 manifestos do toolkit (`.claude-plugin/marketplace.json` +
+2 `plugin.json`, gate MP-5) **e** os 4 `package.json` do painel + o
+`panel/package-lock.json` (gate WL-5) — hoje em `9.5.0` (dec-070/dec-071).
+Sem esse bump prévio, `scripts/validate-plugin-manifests.sh --strict` (MP-5)
+e `scripts/validate-panel-workspace-lockstep.sh --version 10.0.0 --strict`
+(WL-5) reprovam a release (RED confirmado na FASE 5.4 contra o estado atual:
+`ERROR: WL-5: panel/package.json version '9.5.0' != --version '10.0.0'`).
 
 ---
 
@@ -1567,18 +1627,26 @@ Ref: plan.md linha 222 (FR-005, FR-019); depende de FASE 6 **e** FASE 0.6/6.2
 **Irreversível na prática**: arquivar o `cstk-panel` é tecnicamente reversível
 no GitHub, mas o sinal de "projeto encerrado" já foi dado ao ecossistema.
 
+**FASE INTEIRA ADIADA por decisão do operador** (block-007/dec-089 → dec-090,
+onda-018): depende de FASE 9.2 (release-ponte publicada), que foi adiada.
+Nenhuma subtarefa desta fase é executável enquanto 9.2 não sair. Não é
+"esquecida" nem "bloqueada por erro" — é adiamento deliberado, registrado.
+
 ### 10.1 Desativar automação de release independente `[C]`
 
 Ref: spec.md FR-005; FASE 9.2 (pré-requisito: release-ponte já publicada)
 
 - [ ] 10.1.1 Confirmar que a release-ponte (FASE 9.2) foi publicada com
   sucesso antes de tocar a automação
+  — nao executado: FASE 9.2 adiada por decisão do operador (dec-090).
 - [ ] 10.1.2 Remover/desativar `panel/.github/workflows/release.yml` (plan.md
   linha 177, `[REMOVER]`) — publicação já absorvida pelo processo do
   repositório unificado (FASE 4)
+  — nao executado: depende de 10.1.1.
 - [ ] 10.1.3 (teste) Confirmar que nenhum outro workflow de
   `panel/.github/workflows/` (CI de build/test, mantido por decisão da spec
   §Clarifications Q2) foi removido por engano junto com o de release
+  — nao executado: depende de 10.1.2.
 
 ### 10.2 Arquivar o repositório original `[C]`
 
@@ -1588,11 +1656,17 @@ registrada) — **pré-requisitos formais explícitos**, não apenas ordem lógi
 - [ ] 10.2.1 **Gate**: confirmar que FASE 0.6 (dono do atesto definido) e
   FASE 6.2 (ensaio ponta-a-ponta registrado como prova) estão `[x]` — sem
   isso, esta subtarefa não é executável
+  — nao executado: pré-requisito FASE 9.2 adiado (dec-090); FASE 0.6 e 6.2
+  em si estão `[x]`, mas 10.2 como um todo não é executável sem 9.2.
 - [ ] 10.2.2 Confirmar ordem FR-019: (a) release-ponte da FASE 9.2 publicada
   com sucesso; **e** (b) distribuição do painel embutido (FASE 6) publicada e
   com correta seleção/integridade verificada — ambas satisfeitas antes de
   prosseguir
+  — nao executado: (a) não satisfeita — FASE 9.2 adiada por decisão do
+  operador.
 - [ ] 10.2.3 Arquivar o repositório `cstk-panel` original no GitHub
+  — nao executado: depende de 10.2.1/10.2.2; explicitamente fora de escopo
+  desta execução (o operador instruiu não tocar no repositório `cstk-panel`).
 
 ### 10.3 Verificação final pós-arquivamento `[M]`
 
@@ -1600,12 +1674,16 @@ registrada) — **pré-requisitos formais explícitos**, não apenas ordem lógi
   à migração, ao executar o fluxo de atualização padrão contra o repositório
   agora arquivado, ainda recebe o aviso de transição da FASE 9.1 (release-
   ponte permanece acessível mesmo com repositório arquivado)
+  — nao executado: depende de arquivamento (10.2), adiado.
 - [ ] 10.3.2 Atualizar `Escopo Coberto` deste `tasks.md` (ver rodapé) marcando
   a migração como concluída, se aplicável ao processo de fechamento da
   execução
+  — nao executado: migração ainda não está concluída (9.2/9.3/10 adiadas);
+  `Escopo Coberto` permanece como está até essas fases rodarem.
 - [ ] 10.3.3 (teste) Confirmar SC-001..SC-008 de `spec.md` §Success Criteria
   um a um contra o estado final do repositório, registrando qualquer
   divergência como achado antes de fechar a execução
+  — nao executado: depende do estado final pós-FASE 10, ainda não atingido.
 
 ---
 
