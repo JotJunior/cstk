@@ -1,6 +1,6 @@
 ---
 description: 'Inicia execucao do orquestrador autonomo agente-00C sobre um projeto-alvo. Cria state em <projeto-alvo>/.claude/agente-00c-state/ e delega pipeline SDD ao agente-00c-orchestrator.'
-argument-hint: "<descricao-curta> [--stack <stack-json>] [--whitelist <path>] [--projeto-alvo-path <path>]"
+argument-hint: "<descricao-curta> [--stack <stack-json>] [--whitelist <path>] [--projeto-alvo-path <path>] [--canonical-project <name>]"
 allowed-tools:
   - Agent
   - Read
@@ -124,7 +124,17 @@ execucao nao-interativa e abortar inviabilizaria automacao"`.
 ### 1. Parse de argumentos
 
 Extrair `descricao-curta` (primeiro posicional, minimo 10 chars),
-`--stack`, `--whitelist`, `--projeto-alvo-path` (default = cwd).
+`--stack`, `--whitelist`, `--projeto-alvo-path` (default = cwd),
+`--canonical-project NAME` (opcional, capturar em `_canonical_flag`).
+
+`--canonical-project` fixa a identidade de projeto na knowledge.db/anti-eco
+com PRECEDENCIA sobre a deteccao de worktree (secao 2, `_canonical`). Uso:
+PROJETO_ALVO_PATH resolve para uma subarvore autocontida de um monorepo que
+NAO e worktree git (ex: `<repo>/panel`, identidade `cstk-panel`) — nesses
+casos `.git` do PAP e diretorio, nao arquivo, e a deteccao de worktree
+produziria `_canonical=""` (identidade cairia no fallback
+`basename(target_project_path)` = `panel`, orfa do historico real). Ver
+`docs/specs/panel-monorepo/research.md` Decision 8.
 
 #### Checklist pre-execucao (multi-workspace)
 
@@ -292,6 +302,16 @@ state-lock.sh acquire --state-dir <SD> || {
     fi
   fi
   # .git diretorio (projeto raiz): _canonical e _session permanecem vazios (flags omitidas).
+
+  # --canonical-project explicito (flag do passo 1) tem PRECEDENCIA sobre a
+  # deteccao de worktree acima — cobre PAP em subarvore autocontida de um
+  # monorepo que NAO e worktree git (ex: PAP=<repo>/panel, .git do PAP e
+  # diretorio -> deteccao acima produz _canonical="" -> sem a flag, o
+  # fallback de camada 3 do recall_derive_canonical seria basename(PAP)=
+  # "panel", orfa do historico real da identidade cstk-panel). Nao mexe em
+  # _session: o caso monorepo-subdir nao e worktree, --session-name segue
+  # independente.
+  [ -n "$_canonical_flag" ] && _canonical="$_canonical_flag"
   ```
 
 #### 2.bis Decisao de ramo: MCP estruturado vs prosa legada (FASE 5 — mcp-elicitation-optins, dec-080)

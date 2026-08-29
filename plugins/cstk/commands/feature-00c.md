@@ -1,6 +1,6 @@
 ---
 description: 'Inicia execucao feature-00c sobre UMA feature individual em projeto com briefing+constitution ratificados. Cria state em .claude/feature-00c-state/<short-name>/ e delega pipeline SDD (specify→clarify→plan→checklist→create-tasks→execute-task→converge→review-task) ao agente-00c-feature-orchestrator.'
-argument-hint: '"<descricao-curta>" [<short-name>] [--projeto <path>] [--whitelist <urls>]'
+argument-hint: '"<descricao-curta>" [<short-name>] [--projeto <path>] [--whitelist <urls>] [--canonical-project <name>]'
 allowed-tools:
   - Agent
   - Read
@@ -115,6 +115,17 @@ short_name       = segundo argumento posicional opcional (kebab-case);
                    se omitido, derivar via specify
 --projeto PATH   = default = cwd
 --whitelist CSV  = URLs externas adicionais ao .env (opcional)
+--canonical-project NAME = opcional; capturar em `_canonical_flag`.
+                   Identidade de projeto explicita para a knowledge.db/
+                   anti-eco, com PRECEDENCIA sobre a deteccao de worktree da
+                   secao 3 (`_canonical`). Uso: PAP resolve para uma
+                   subarvore autocontida de um monorepo que NAO e worktree
+                   git (ex: `<repo>/panel`, identidade `cstk-panel`) — nesses
+                   casos `.git` do PAP e diretorio, nao arquivo, e a deteccao
+                   de worktree produziria `_canonical=""` (identidade cairia
+                   no fallback `basename(target_project_path)` = `panel`,
+                   orfa do historico real). Ver `docs/specs/panel-monorepo/
+                   research.md` Decision 8.
 ```
 
 Validar:
@@ -639,6 +650,15 @@ if [ -f "$_proj/.git" ]; then
   fi
 fi
 # .git diretorio (projeto raiz): _canonical e _session permanecem vazios (flags omitidas).
+
+# --canonical-project explicito (flag do passo 1) tem PRECEDENCIA sobre a
+# deteccao de worktree acima — cobre PAP em subarvore autocontida de um
+# monorepo que NAO e worktree git (ex: PAP=<repo>/panel, .git do PAP e
+# diretorio -> deteccao acima produz _canonical="" -> sem a flag, o fallback
+# de camada 3 do recall_derive_canonical seria basename(PAP)="panel", orfa
+# do historico real da identidade cstk-panel). Nao mexe em _session: o caso
+# monorepo-subdir nao e worktree, --session-name segue independente.
+[ -n "$_canonical_flag" ] && _canonical="$_canonical_flag"
 
 # Decisao de ramo: MCP estruturado vs prosa legada (FASE 5 — mcp-elicitation-optins,
 # dec-080). Probe best-effort ANTES do prompt de opt-in — NUNCA bloqueia (FR-005/FR-012).

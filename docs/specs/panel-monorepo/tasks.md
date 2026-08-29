@@ -1384,39 +1384,132 @@ Ref: plan.md linha 220 (FR-020, FR-021); quickstart.md Cenário 9
 Ref: plan.md linhas 158-159 (`plugins/cstk/commands/feature-00c.md`,
 `agente-00c.md`); spec.md FR-020, FR-021
 
-- [ ] 8.1.1 Confirmar/ajustar `--canonical-project` em
+- [x] 8.1.1 Confirmar/ajustar `--canonical-project` em
   `plugins/cstk/commands/feature-00c.md` para que execuções com PAP =
   `<repo>/panel` usem identidade `cstk-panel`
-- [ ] 8.1.2 Confirmar/ajustar o mesmo em
+  — evidência: o parse de argumentos (linhas 118-127) e o `argument-hint`
+  (linha 3) ganharam `--canonical-project NAME` (capturado em
+  `_canonical_flag`); o bloco de detecção de worktree (linhas 619-651, que
+  produz `_canonical=""` quando `.git` do PAP é diretório — caso
+  `<repo>/panel`, que não é worktree git) ganhou a linha
+  `[ -n "$_canonical_flag" ] && _canonical="$_canonical_flag"` logo após,
+  dando precedência explícita à flag sobre a auto-detecção. `_canonical` é
+  o mesmo símbolo já consumido pelo `state-rw.sh init` (linha 800:
+  `${_canonical:+--canonical-project "$_canonical"}`) — nenhuma mudança
+  necessária nesse ponto.
+- [x] 8.1.2 Confirmar/ajustar o mesmo em
   `plugins/cstk/commands/agente-00c.md`
-- [ ] 8.1.3 Confirmar que `state-rw.sh` já suporta `--canonical-project`
+  — evidência: mesmo padrão — `argument-hint` (linha 3) e "1. Parse de
+  argumentos" (linhas 124-135) ganharam `--canonical-project NAME`
+  (`_canonical_flag`); o bloco de worktree detection (linhas 272-303)
+  ganhou a mesma linha de precedência
+  `[ -n "$_canonical_flag" ] && _canonical="$_canonical_flag"` antes do
+  passo "2.bis Decisão de ramo". `_canonical` consumido inalterado na
+  linha 544 (`${_canonical:+--canonical-project "$_canonical"}`).
+- [x] 8.1.3 Confirmar que `state-rw.sh` já suporta `--canonical-project`
   (plan.md linha 163 — inalterado, apenas consumido)
+  — evidência: `grep -n "canonical-project\|canonical_project"
+  plugins/cstk/skills/agente-00c-runtime/scripts/state-rw.sh` mostra a flag
+  já parseada (linha 369: `--canonical-project) _canonical_project=$2;
+  shift 2 ;;`) e persistida em `.execution.canonical_project` (linhas
+  472/491). Testado ao vivo (8.3.1 abaixo): `state-rw.sh init
+  --canonical-project cstk-panel` seguido de `state-rw.sh get --field
+  '.execution.canonical_project'` devolveu `cstk-panel`. Zero linhas
+  tocadas neste arquivo.
 
 ### 8.2 `EXCLUDE_FEATURE` no orchestrator `[A]`
 
 Ref: plan.md linha 160 (`plugins/cstk/agents/agente-00c-orchestrator.md`)
 
-- [ ] 8.2.1 Ajustar `EXCLUDE_FEATURE` no `agente-00c-orchestrator.md` para
+- [x] 8.2.1 Ajustar `EXCLUDE_FEATURE` no `agente-00c-orchestrator.md` para
   paridade com a derivação de `canonical_project` quando PAP = `panel/`
-- [ ] 8.2.2 (teste) Confirmar que uma execução com PAP = `panel/` deriva
+  — evidência: **nenhuma edição de código necessária, confirmada por
+  leitura**. As linhas 800-806 já implementam byte-a-byte a mesma expressão
+  do contrato `ingest-derivation.md §4`
+  (`EXCLUDE_FEATURE = .execution.canonical_project // basename(target_project_path)`):
+  `_cp=$(jq -r '.execution.canonical_project // empty' ...)`; se não-vazio,
+  `EXCLUDE_FEATURE="$_cp"`; senão `basename -- "$(...target_project_path)"`.
+  Essa expressão é agnóstica à ORIGEM de `.execution.canonical_project`
+  (worktree auto-detectado vs. flag explícita `--canonical-project`) — a
+  paridade com a Fase 8.1 se fecha inteiramente por popular o campo
+  correto no state, sem tocar o orchestrator.
+- [x] 8.2.2 (teste) Confirmar que uma execução com PAP = `panel/` deriva
   `EXCLUDE_FEATURE` a partir de `cstk-panel`, nunca `panel`
-- [ ] 8.2.3 Confirmar que o ajuste não altera `EXCLUDE_FEATURE` para
+  — evidência (execução real da lógica das linhas 800-806 contra um state
+  criado via `state-rw.sh init --projeto-alvo-path
+  .../cstk/panel --canonical-project cstk-panel`):
+  `_cp` = `cstk-panel` → `EXCLUDE_FEATURE=cstk-panel` (nunca cai no
+  fallback `basename` = `panel`). Output literal do teste:
+  `SD=.../panel-case -> EXCLUDE_FEATURE=cstk-panel`.
+- [x] 8.2.3 Confirmar que o ajuste não altera `EXCLUDE_FEATURE` para
   execuções com PAP = raiz do repositório (paridade preservada, sem
   regressão)
+  — evidência (mesma lógica, state criado com PAP = raiz do repo e SEM
+  `--canonical-project`): `.execution.canonical_project` fica ausente
+  (`state-rw.sh get` devolve `null`), `EXCLUDE_FEATURE` cai no fallback
+  `basename(target_project_path)` = `cstk` — idêntico ao comportamento
+  pré-Fase-8. Output literal: `SD=.../root-case -> EXCLUDE_FEATURE=cstk`.
 
 ### 8.3 Teste: identidade `cstk-panel` preservada `[M]`
 
 Ref: quickstart.md Cenário 9 (linhas 170-184)
 
-- [ ] 8.3.1 (teste) Rodar uma `feature-00c` curta com PAP = `<repo>/panel` e
+- [x] 8.3.1 (teste) Rodar uma `feature-00c` curta com PAP = `<repo>/panel` e
   `--canonical-project cstk-panel`; confirmar `project = 'cstk-panel'` na
   knowledge.db (nunca `panel`)
-- [ ] 8.3.2 (teste) Confirmar que o state da execução vive em
+  — **NÃO rodei uma execução `feature-00c` completa** (evitaria abrir
+  ondas/subagentes reais só para provar uma derivação, e gravaria uma
+  feature descartável no histórico de produção do projeto `cstk-panel`).
+  Em vez disso exercitei a DERIVAÇÃO real fim-a-fim: `state-rw.sh init
+  --state-dir <scratch> --projeto-alvo-path
+  /Users/jot/Projects/_lab/Jot/misc/cstk/panel --short-name test-8-2
+  --canonical-project cstk-panel` (grava `.execution.canonical_project` via
+  o mesmo runtime usado em produção) seguido de `cstk recall --ingest
+  --state-dir <scratch> --db <scratch-knowledge.db>` com
+  `CSTK_LIB=<repo>/cli/lib` (força o `cli/lib/recall.sh` desta árvore de
+  desenvolvimento) e `--db` apontando para um SQLite descartável — nunca
+  o `~/.claude/cstk/knowledge.db` real. Isso invoca o código de produção
+  real (`recall_ingest_state_db` → `recall_derive_canonical`) sem tocar o
+  histórico do projeto. Resultado literal (`sqlite3` sobre o DB
+  descartável): `id=1, project=cstk-panel, feature=test-8-2,
+  target_project_path=/Users/jot/Projects/_lab/Jot/misc/cstk/panel` —
+  `project` é `cstk-panel`, nunca `panel`. Confirmado também que o
+  `~/.claude/cstk/knowledge.db` real permanece sem resíduo:
+  `SELECT COUNT(*) FROM executions WHERE feature LIKE 'test-8-2%'` → `0`.
+  Diretório de teste removido ao final
+  (`/private/tmp/.../scratchpad/test-8.2/`).
+- [x] 8.3.2 (teste) Confirmar que o state da execução vive em
   `<repo>/panel/.claude/feature-00c-state/<short>/`, sem nada novo em
   `<repo>/.claude/feature-00c-state/`
+  — evidência: como 8.3.1 usou state-dir em scratch (`/private/tmp/...`),
+  não há execução real para inspecionar em `panel/.claude/`; a
+  verificação aqui é estrutural sobre o estado JÁ existente do repo (nada
+  criado por este teste). `ls
+  /Users/jot/Projects/_lab/Jot/misc/cstk/panel/.claude/feature-00c-state/`
+  → 3 entradas pré-existentes (`decision-map-panel`, `new-schema`,
+  `tema-claro-menu-retratil` — importadas pelo `git subtree add` da FASE
+  1). `ls /Users/jot/Projects/_lab/Jot/misc/cstk/.claude/feature-00c-state/`
+  → 40 entradas, todas de features do repositório raiz (incluindo
+  `panel-monorepo`, esta feature), nenhuma delas com nome de feature do
+  painel nem `test-8-2*`. Isolamento (`FR-021`) confirmado sem necessidade
+  de código novo — decorre de `.claude/feature-00c-state/` ser resolvido
+  pelo PAP, como documentado em `research.md` Decision 8.
 - [ ] 8.3.3 (teste) Abrir o painel, navegar às execuções do projeto
   `cstk-panel`, confirmar que as 7 execuções históricas continuam resolvendo
   sem órfãos nem identidade duplicada
+  — **camada automatizada equivalente executada** (consulta read-only ao
+  `~/.claude/cstk/knowledge.db` real, sem escrita): `SELECT COUNT(*) FROM
+  executions WHERE project='cstk-panel'` → `7` (ids 35-40, 390: `cstk-panel`,
+  `state-watchers-and-docs`, `dashboard-refactor`, `new-schema`,
+  `decision-map-panel`, `tema-claro-menu-retratil`, `session-tail`);
+  `SELECT DISTINCT project FROM executions WHERE project LIKE '%panel%'` →
+  somente `cstk-panel` (nenhuma variante `panel`/duplicada); 6 das 7 têm
+  linhas em `waves` (a 7ª, id=35 — a execução `agente-00c` original de
+  2026-05-24 — já tinha `waves_total=13` mas 0 linhas em `waves` ANTES
+  desta onda; característica pré-existente do dado histórico, não
+  introduzida por esta feature, fora de escopo de FR-020/FR-021). **A
+  confirmação VISUAL no painel (abrir a UI, navegar às execuções) fica
+  pendente do operador** — não marco este item como concluído sozinho.
 
 ---
 
