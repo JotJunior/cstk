@@ -4,6 +4,14 @@
 **Created**: 2026-08-29
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-08-29
+
+- Q: Quando `ask_operator` e chamada, quem cria a intervencao pendente em `bridge.db` e como ela e correlacionada ao `question_id`? → A: O proprio processo MCP (efemero, resolvido por chamada) gera o `question_id` e cria a intervencao via chamada HTTP a `/api/v1/bridge/*` do painel — mecanismo cross-processo, ja que MCP e `bridge.db` pertencem a processos/apps distintos e a superficie de escrita da Ponte e HTTP por design da emenda 2.0.0 da constitution do painel (`panel/docs/constitution.md`). O nome exato da subrota fica em aberto para `plan.md`/contrato tecnico — so o mecanismo (HTTP, familia `/api/v1/bridge/*`) esta decidido aqui.
+
+4 perguntas adicionais geradas nesta sessao (mecanismo de espera do MCP efemero por resposta; retencao/expurgo de intervencoes resolvidas; deteccao de painel indisponivel; descoberta de base URL do painel pelo MCP) nao tinham evidencia suficiente (score < 2) nas fontes disponiveis para decisao automatica e foram escaladas como bloqueio humano (ver `bloqueios` da execucao `feature-00c` desta feature, blocks 001-004).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Fila unica de intervencoes pendentes (Priority: P1)
