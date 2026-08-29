@@ -490,3 +490,90 @@ export const SessionTailEntryDTOSchema = z.object({
   kind: z.enum(['text', 'tool_use', 'tool_result']),
   toolName: z.string().nullable(),
 });
+
+// ---------------------------------------------------------------------------
+// Intervention* schemas (feature human-bridge, contracts/panel-bridge-api.md)
+// ---------------------------------------------------------------------------
+export const InterventionKindSchema = z.enum(['choice', 'confirm', 'text']);
+export const InterventionExecutionKindSchema = z.enum(['agente-00c', 'feature-00c']);
+export const InterventionStateSchema = z.enum(['open', 'answered', 'declined', 'expired']);
+
+// Base sem `.superRefine()` — exportada A PARTE so para introspeccao de
+// CHAVES (`.shape`) por testes de paridade (`.superRefine()` devolve um
+// `ZodEffects` que nao expoe `.shape`). Uso normal de validacao MUST
+// continuar via `CreateInterventionRequestDTOSchema` (com o refine).
+export const CreateInterventionRequestDTOBaseSchema = z.object({
+  projectPath: z.string().min(1),
+  project: z.string().min(1),
+  shortName: z.string().nullable(),
+  executionKind: InterventionExecutionKindSchema,
+  kind: InterventionKindSchema,
+  question: z.string().min(1),
+  options: z.array(z.string()).nullable(),
+  defaultValue: z.string().min(1),
+  timeoutMs: z.number().int().positive(),
+});
+
+export const CreateInterventionRequestDTOSchema = CreateInterventionRequestDTOBaseSchema.superRefine((val, ctx) => {
+    if (val.kind === 'choice' && (!val.options || val.options.length === 0)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['options'],
+        message: "options obrigatorio (>=1 item) quando kind='choice' (contrato §4)",
+      });
+    }
+  });
+
+export const CreateInterventionResponseDTOSchema = z.object({
+  questionId: z.string(),
+  expiresAt: z.string(),
+  state: z.literal('open'),
+});
+
+export const PollInterventionResponseDTOSchema = z.object({
+  questionId: z.string(),
+  state: InterventionStateSchema,
+  appliedValue: z.string().nullable(),
+  untrustedText: z.string().nullable(),
+  resolvedAt: z.string().nullable(),
+});
+
+export const InterventionQueueItemDTOSchema = z.object({
+  questionId: z.string(),
+  project: z.string(),
+  shortName: z.string().nullable(),
+  executionKind: InterventionExecutionKindSchema,
+  kind: InterventionKindSchema,
+  question: z.string(),
+  options: z.array(z.string()).nullable(),
+  defaultValue: z.string(),
+  state: InterventionStateSchema,
+  reachable: z.boolean(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  waitingMs: z.number(),
+  appliedValue: z.string().nullable(),
+  untrustedText: z.string().nullable(),
+  resolvedAt: z.string().nullable(),
+});
+
+export const InterventionsQueueResultDTOSchema = z.object({
+  interventions: z.array(InterventionQueueItemDTOSchema),
+  pagination: PaginationParamsSchema,
+});
+
+export const AnswerInterventionRequestDTOSchema = z
+  .object({
+    resolution: z.enum(['answered', 'declined']),
+    value: z.string().nullable().optional(),
+    text: z.string().nullable().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.resolution === 'answered' && (val.value === undefined || val.value === null || val.value === '')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['value'],
+        message: "value obrigatorio quando resolution='answered' (contrato §7)",
+      });
+    }
+  });

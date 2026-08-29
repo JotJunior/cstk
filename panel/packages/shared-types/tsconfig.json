@@ -10,5 +10,9 @@
     "rootDir": "src"
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/__tests__/bridge-mcp-parity.test.ts"
+  ]
 }

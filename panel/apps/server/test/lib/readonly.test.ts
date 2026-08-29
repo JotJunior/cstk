@@ -77,23 +77,21 @@ function findMutationPatterns(srcDir: string): { file: string; line: number; con
     // Excluir arquivos de teste
     if (file.includes('/test/') || file.includes('.test.ts')) continue;
 
-    // Excecao NOMEADA e UNICA: db/bridge.ts (feature human-bridge, task 1.2,
-    // achado registrado onda-008). Este e o UNICO arquivo autorizado pela
-    // constitution 2.0.0 (Principio I, "Read-Only sobre o CORPUS") a manter
-    // uma conexao read-write — para `bridge.db`, um store PROPRIO que NAO e
-    // o corpus (`knowledge.db`) e nao e tocado por esta funcao de outro
-    // jeito (open.ts permanece 100% coberto pelo grep). A exclusao e do
-    // ARQUIVO INTEIRO, nao de uma linha/padrao generico, porque so este
-    // arquivo tem autorizacao textual explicita em
-    // panel/docs/constitution.md (Sync Impact Report da emenda 2026-08-26:
-    // "apps/server/src/db/bridge.ts (a criar — store proprio, conexao rw)").
-    // `panel/scripts/readonly-check.sh` (gate irmao, fora do npm test) NAO
-    // ganha a mesma excecao agora — seu estreitamento para `db/queries/**`
-    // permanece tarefa 3.1.9, no MESMO commit de `routes/bridge.ts`, "nunca
-    // antes" (regra textual da constitution). Este teste e diferente: nao e
-    // citado pela constitution, roda dentro de `npm test`/CI, e bloquearia
-    // TODA a suite por um arquivo ja autorizado a existir nesta onda.
-    if (file.endsWith(`${sep}db${sep}bridge.ts`)) continue;
+    // Excecao NOMEADA e RESTRITA: db/bridge.ts + routes/bridge.ts (feature
+    // human-bridge). Sao os DOIS UNICOS arquivos autorizados pela
+    // constitution 2.0.0 (Principio I, "Read-Only sobre o CORPUS") a conter
+    // verbo de mutacao SQL — `db/bridge.ts` guarda o DDL/conexao rw de
+    // `bridge.db` (store PROPRIO, NAO e o corpus `knowledge.db`; achado
+    // registrado onda-008, task 1.2); `routes/bridge.ts` guarda os
+    // `INSERT`/`UPDATE` das 4 rotas da Ponte (task 3.1.1-3.1.9, MESMO
+    // commit do estreitamento de `panel/scripts/readonly-check.sh` — regra
+    // textual da constitution, "nunca antes"). `open.ts` permanece 100%
+    // coberto pelo grep. A exclusao e do ARQUIVO INTEIRO, nao de uma
+    // linha/padrao generico, porque so estes dois arquivos tem autorizacao
+    // textual explicita em panel/docs/constitution.md (Sync Impact Report
+    // da emenda 2026-08-26). Este teste roda dentro de `npm test`/CI —
+    // bloquearia TODA a suite por arquivos ja autorizados a existir.
+    if (file.endsWith(`${sep}db${sep}bridge.ts`) || file.endsWith(`${sep}routes${sep}bridge.ts`)) continue;
 
     let content: string;
     try {
@@ -135,9 +133,13 @@ describe('7.3.1 Read-Only Absoluto — grep de verbos de mutacao em src/', () =>
     ).toHaveLength(0);
   });
 
-  it('a excecao do bridge e restrita ao arquivo db/bridge.ts — nenhum outro arquivo com verbo de mutacao escapa por acidente', () => {
+  it('a excecao do bridge e restrita a db/bridge.ts + routes/bridge.ts — nenhum outro arquivo com verbo de mutacao escapa por acidente', () => {
     const files = collectTsFiles(SERVER_SRC).filter(
-      (f) => !f.includes('/test/') && !f.includes('.test.ts') && !f.endsWith(`${sep}db${sep}bridge.ts`),
+      (f) =>
+        !f.includes('/test/') &&
+        !f.includes('.test.ts') &&
+        !f.endsWith(`${sep}db${sep}bridge.ts`) &&
+        !f.endsWith(`${sep}routes${sep}bridge.ts`),
     );
     const withMutationVerb = files.filter((f) => {
       const content = readFileSync(f, 'utf8');
@@ -145,11 +147,16 @@ describe('7.3.1 Read-Only Absoluto — grep de verbos de mutacao em src/', () =>
     });
     expect(
       withMutationVerb.map((f) => f.replace(SERVER_SRC, 'src')),
-      'nenhum arquivo alem de db/bridge.ts pode conter verbo de mutacao SQL',
+      'nenhum arquivo alem de db/bridge.ts / routes/bridge.ts pode conter verbo de mutacao SQL',
     ).toHaveLength(0);
   });
 
-  it('nao ha endpoint nao-GET registrado (router.post/put/patch/delete ausentes)', () => {
+  it('endpoint nao-GET so existe em routes/bridge.ts (Principio I, "toda rota fora de /api/v1/bridge/* responde so a GET")', () => {
+    // ATE a feature human-bridge (FASE 3), esta suite exigia ZERO endpoints
+    // nao-GET no servidor inteiro. A constitution 2.0.0 (emenda 2026-08-26,
+    // "A excecao da Ponte") autoriza EXATAMENTE UM arquivo — routes/bridge.ts
+    // — a registrar POST (as 4 rotas de `/api/v1/bridge/*`). Este teste
+    // continua fail-closed para qualquer OUTRO arquivo.
     const NON_GET_PATTERNS = [
       /\bserver\.(post|put|patch|delete)\b/i,
       /\bscoped\.(post|put|patch|delete)\b/i,
@@ -161,6 +168,8 @@ describe('7.3.1 Read-Only Absoluto — grep de verbos de mutacao em src/', () =>
 
     for (const file of files) {
       if (file.includes('/test/') || file.includes('.test.ts')) continue;
+      // Excecao NOMEADA e UNICA — ver comentario acima de findMutationPatterns.
+      if (file.endsWith(`${sep}routes${sep}bridge.ts`)) continue;
       let content: string;
       try { content = readFileSync(file, 'utf8'); } catch { continue; }
 
@@ -180,8 +189,18 @@ describe('7.3.1 Read-Only Absoluto — grep de verbos de mutacao em src/', () =>
 
     expect(
       matches,
-      `Endpoints nao-GET encontrados:\n${matches.map((m) => `  ${m.file}:${m.line}: ${m.content}`).join('\n')}`
+      `Endpoints nao-GET encontrados fora de routes/bridge.ts:\n${matches.map((m) => `  ${m.file}:${m.line}: ${m.content}`).join('\n')}`
     ).toHaveLength(0);
+  });
+
+  it('routes/bridge.ts registra POST APENAS sob o path /bridge/... (nunca fora do prefixo da Ponte)', () => {
+    const bridgeRoutesPath = resolve(join(SERVER_SRC, 'routes', 'bridge.ts'));
+    const content = readFileSync(bridgeRoutesPath, 'utf8');
+    const postCalls = Array.from(content.matchAll(/\bscoped\.(post|put|patch|delete)\(\s*['"`]([^'"`]+)['"`]/g));
+    expect(postCalls.length, 'routes/bridge.ts deveria registrar pelo menos 1 rota de mutacao').toBeGreaterThan(0);
+    for (const match of postCalls) {
+      expect(match[2], `path de mutacao fora de /bridge/*: ${match[2]}`).toMatch(/^\/bridge\//);
+    }
   });
 });
 

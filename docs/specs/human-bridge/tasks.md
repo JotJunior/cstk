@@ -291,29 +291,29 @@ estreitado no MESMO commit do primeiro código de `bridge/`, nunca antes
 (deixaria o commit legítimo reprovado) nem depois (janela em que o painel
 inteiro fica sem o gate).
 
-- [ ] 3.1.1 Implementar `POST /api/v1/bridge/interventions` (criar): gerar
+- [x] 3.1.1 Implementar `POST /api/v1/bridge/interventions` (criar): gerar
       `questionId` CSPRNG no painel, `expiresAt = now + timeoutMs`
       (`timeoutMs` é a janela EFETIVA já resolvida pelo MCP — o painel MUST
       NOT re-derivar/re-clampar), validação Zod na borda (`400` se
       inválido), resposta degradada `200+meta.degraded=true` per §3.1
       quando `bridge.db` está indisponível (decisão 1.1)
-- [ ] 3.1.2 Aplicar o pipeline strip-de-controle -> `secrets-filter.sh
+- [x] 3.1.2 Aplicar o pipeline strip-de-controle -> `secrets-filter.sh
       scrub` (UMA vez) -> truncamento por budget de bytes em `question` e
       cada elemento de `options[]` NA CRIAÇÃO (§11.3 — mesma disciplina já
       aplicada a `untrusted_text`, corrigindo a assimetria identificada
       pelo gate `owasp-security`)
-- [ ] 3.1.3 Implementar `GET /api/v1/bridge/interventions/:questionId`
+- [x] 3.1.3 Implementar `GET /api/v1/bridge/interventions/:questionId`
       (polling): `state` DERIVADO na leitura (nunca coluna, nunca `UPDATE`
       disparado por `GET` — `resolution IS NOT NULL` -> `answered|declined`;
       `now >= expires_at` -> `expired`; senão `open`); `404` se
       `questionId` desconhecido
-- [ ] 3.1.4 Implementar `GET /api/v1/bridge/interventions` (fila):
+- [x] 3.1.4 Implementar `GET /api/v1/bridge/interventions` (fila):
       paginação obrigatória via `safeParsePagination` (reuso), query params
       `state`/`project`/`limit`/`offset` (default `state=open`), ordenação
       `createdAt ASC`, `waitingMs` derivado (`now - createdAt`, nunca
       coluna), `reachable=false` quando `projectPath` não existe mais em
       disco (linha continua visível, ação de responder desabilitada)
-- [ ] 3.1.5 Implementar `POST
+- [x] 3.1.5 Implementar `POST
       /api/v1/bridge/interventions/:questionId/answer` (responder):
       idempotência via invariante de banco — `UPDATE interventions SET
       resolution=?, applied_value=?, untrusted_text=?, resolved_at=? WHERE
@@ -325,15 +325,15 @@ inteiro fica sem o gate).
       strip -> scrub -> truncamento a 2048 bytes na ENTRADA; resposta
       degradada `200+meta.degraded=true` quando `bridge.db` indisponível
       no momento do UPDATE (decisão 1.1, distinto de `409`)
-- [ ] 3.1.6 Validar `:questionId` na borda contra formato estrito
+- [x] 3.1.6 Validar `:questionId` na borda contra formato estrito
       (`^[A-Za-z0-9_-]{22,64}$`, §11.6) antes de qualquer uso — é parâmetro
       de SQL via placeholder, mas também compõe caminho de URL
-- [ ] 3.1.7 Implementar o mapper `snake_case` (bridge.db) <-> `camelCase`
+- [x] 3.1.7 Implementar o mapper `snake_case` (bridge.db) <-> `camelCase`
       (HTTP) em `routes/bridge.ts`, mesmo idioma de `routes/tasks.ts`
       (`executionId: r.execution_id`, etc.) — sem ORM/auto-mapping
-- [ ] 3.1.8 Registrar `await v1.register(bridgeRoutes)` em
+- [x] 3.1.8 Registrar `await v1.register(bridgeRoutes)` em
       `panel/apps/server/src/index.ts:74-92`
-- [ ] 3.1.9 Afrouxar `panel/scripts/readonly-check.sh` para reconhecer a
+- [x] 3.1.9 Afrouxar `panel/scripts/readonly-check.sh` para reconhecer a
       exceção da Ponte (escrita confinada a `bridge.db` em conexão
       separada) — **NO MESMO COMMIT** desta tarefa (3.1.1-3.1.8), nunca em
       commit separado. **Achado registrado na onda-008 (task 1.2)**:
@@ -348,7 +348,7 @@ inteiro fica sem o gate).
       gates (`readonly-check.sh` + `readonly.test.ts`) sincronizados — hoje
       eles têm escopos ligeiramente diferentes e correm o risco de divergir
       se só um for atualizado aqui
-- [ ] 3.1.10 Escrever testes vitest para as 4 rotas: caminho feliz, os 3
+- [x] 3.1.10 Escrever testes vitest para as 4 rotas: caminho feliz, os 3
       casos de erro documentados por rota, resposta degradada (`200+
       meta.degraded`) simulando `bridge.db` indisponível, idempotência do
       `answer` sob concorrência simulada (duas chamadas, uma `200` uma
@@ -359,18 +359,18 @@ inteiro fica sem o gate).
 Ref: `docs/specs/human-bridge/research.md` Decision 8 ·
 `docs/specs/human-bridge/contracts/panel-bridge-api.md` §3
 
-- [ ] 3.2.1 Implementar `wrapBridge<T>(data, opts, bridgeDbPath, bridgeDb)`
+- [x] 3.2.1 Implementar `wrapBridge<T>(data, opts, bridgeDbPath, bridgeDb)`
       em `panel/apps/server/src/lib/envelope.ts`, preservando a FORMA do
       envelope padrão (`{ data, meta: { degraded, reason, freshness,
       schemaVersion } }`) sem chamar `wrap()` nem abrir `knowledge.db`
       (acoplaria a Ponte ao corpus, violando FR-017)
-- [ ] 3.2.2 Computar `freshness` a partir do `mtime` de `bridge.db` +
+- [x] 3.2.2 Computar `freshness` a partir do `mtime` de `bridge.db` +
       timestamp mais recente por linha — **nota de inconsistência
       resolvida**: `research.md`/contrato §3 mencionam `max(updated_at)`,
       mas o DDL real de `data-model.md` não tem coluna `updated_at`; usar
       `MAX(created_at, resolved_at)` por linha (as duas colunas que de
       fato existem), agregado com `MAX(...)` entre linhas
-- [ ] 3.2.3 Escrever teste vitest confirmando que `wrapBridge()` nunca abre
+- [x] 3.2.3 Escrever teste vitest confirmando que `wrapBridge()` nunca abre
       `knowledge.db` (nenhum handle do corpus é tocado) e que `freshness`
       reflete `mtime`/timestamps reais de `bridge.db`
 
@@ -379,21 +379,21 @@ Ref: `docs/specs/human-bridge/research.md` Decision 8 ·
 Ref: `docs/specs/human-bridge/contracts/panel-bridge-api.md` §11.1/§11.2 ·
 `docs/specs/human-bridge/plan.md` achado F2 (MEDIUM)
 
-- [ ] 3.3.1 Registrar um escopo Fastify dedicado para o prefixo
+- [x] 3.3.1 Registrar um escopo Fastify dedicado para o prefixo
       `/bridge/*` com `cors` configurado `methods: ['GET', 'POST',
       'OPTIONS']` — MUST NOT alargar o `methods` GLOBAL
       (`index.ts:43-46`, hoje `['GET', 'OPTIONS']`), mesmo idioma do
       rate-limit escopado já existente (`routes/search.ts:49`)
-- [ ] 3.3.2 Manter `origin` restrito à allowlist existente também no
+- [x] 3.3.2 Manter `origin` restrito à allowlist existente também no
       escopo `/bridge/*` — MUST NOT usar `origin: true`/`'*'`/reflexão do
       header `Origin` em nenhuma circunstância (§11.2)
-- [ ] 3.3.3 Implementar rejeição `415` para `Content-Type` !=
+- [x] 3.3.3 Implementar rejeição `415` para `Content-Type` !=
       `application/json` nas rotas de mutação (defesa em profundidade
       CWE-352 — corpo `text/plain`/form-urlencoded não dispara preflight)
-- [ ] 3.3.4 Implementar validação SHOULD do header `Host` contra
+- [x] 3.3.4 Implementar validação SHOULD do header `Host` contra
       `127.0.0.1`/`localhost` no escopo `/bridge/*` (mitigação DNS
       rebinding)
-- [ ] 3.3.5 Escrever teste vitest: `POST` de origem fora da allowlist é
+- [x] 3.3.5 Escrever teste vitest: `POST` de origem fora da allowlist é
       rejeitado; `Content-Type` não-JSON recebe `415`; preflight de
       `/bridge/*` aceita `POST` (regressão do achado F2 — a própria UI em
       dev conseguiria responder)
@@ -403,14 +403,14 @@ Ref: `docs/specs/human-bridge/contracts/panel-bridge-api.md` §11.1/§11.2 ·
 Ref: `docs/specs/human-bridge/plan.md` "Convencoes de Borda" ·
 `docs/specs/human-bridge/contracts/panel-bridge-api.md` §2
 
-- [ ] 3.4.1 Adicionar os DTOs `camelCase` da Ponte (`Intervention`,
+- [x] 3.4.1 Adicionar os DTOs `camelCase` da Ponte (`Intervention`,
       `CreateInterventionRequest`, `AnswerInterventionRequest`, etc.) em
       `panel/packages/shared-types/src/`, com schema Zod para validação
       dos DOIS lados (request no painel, response no cliente web)
-- [ ] 3.4.2 Confirmar que o servidor MCP MANTÉM schema Zod próprio,
+- [x] 3.4.2 Confirmar que o servidor MCP MANTÉM schema Zod próprio,
       espelhado (`ask_operator.ts`, tarefa 2.2.1) — MUST NOT importar
       `shared-types` (repos/instalações distintas)
-- [ ] 3.4.3 Escrever teste smoke comparando os dois schemas Zod (painel
+- [x] 3.4.3 Escrever teste smoke comparando os dois schemas Zod (painel
       `shared-types` vs. servidor MCP) campo-a-campo sobre um payload REAL
       (não mock) — é o cenário que detecta divergência `snake_case` vs.
       `camelCase` introduzida por refactor futuro (mesmo padrão exigido
