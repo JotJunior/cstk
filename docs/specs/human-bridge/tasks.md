@@ -691,3 +691,162 @@ flowchart TD
 | Multiplos paineis simultaneos | Nao exercitado | Dependeria de WAL + busy_timeout; fora do escopo da v1 (contrato §10) |
 | Transporte nao-loopback com TLS/auth | Nao coberto | `CSTK_PANEL_URL` permite apontar para outro host, mas nenhuma garantia de transporte foi desenhada alem do guard de opt-in (tarefa 2.1.4) |
 | `elicitation/create` para esta superficie | Nao usada | Cliente Claude Code nao suporta url mode; form mode renderiza na TUI (oposto do requisito) — contrato §1 |
+
+## FASE 6 - Convergência
+
+> Fase gerada automaticamente pela skill `converge` (reconciliação
+> spec-vs-código). Cada tarefa abaixo corresponde a um achado (`Gap`)
+> entre o que `spec.md`/`plan.md`/`tasks.md` descreveram e o estado
+> presente do código. Tarefas sem o prefixo `[Revisar]` são acionáveis
+> (`missing`/`partial`/`contradicts`); tarefas com `[Revisar]` são item de
+> revisão (`unrequested`, FR-013) — nunca "implementar", o código já
+> existe. Append-only: esta fase nunca reescreve fases/tarefas anteriores
+> do arquivo (FR-009).
+
+### 6.1 Cliente web ignora `meta.degraded=true` na resposta do `answer` `[C]`
+
+Ref: task 4.3 / panel-bridge-api.md §3.1 · tipo: `contradicts` · severidade: `HIGH`
+
+`contracts/panel-bridge-api.md:127-129` determina: "O cliente web
+(`Interventions.tsx`) trata esse `meta.degraded=true` da MESMA forma que
+trata a leitura degradada da fila (estado 'degradado' da UI [...]), nunca
+como `409`." O servidor cumpre sua metade (`panel/apps/server/src/routes/
+bridge.ts:462-463` devolve `200` + `wrapBridgeDegraded`), mas o cliente
+trata essa resposta como sucesso pleno:
+
+- `panel/apps/web/src/lib/api.ts:170` — `if (!res.ok)` deixa qualquer `200`
+  passar, degradado ou não;
+- `panel/apps/web/src/lib/api.ts:179` — `mutateApi` devolve só o `data`
+  parseado e descarta `meta`; `data: null` não lança porque o envelope é
+  `.nullable()` (`packages/shared-types/src/schemas/envelope.ts:20`);
+- `panel/apps/web/src/lib/hooks-bridge.ts:114-119` — `onSuccess` dispara
+  incondicionalmente e invalida a query da fila;
+- `panel/apps/web/src/screens/Interventions.tsx:217-221` — o único ramo de
+  feedback do `AnswerForm` é `mutation.isError`; não há ramo para
+  `meta.degraded`. O estado degradado existe só para a QUERY da fila
+  (`Interventions.tsx:290`, `:296-305`), nunca para a mutação.
+
+Efeito observável: com `bridge.db` indisponível no momento do UPDATE, o
+operador clica "Responder", não vê erro algum, a fila é revalidada — e nada
+foi persistido. A resposta humana é silenciosamente perdida.
+
+- [ ] 6.1.1 Corrigir `panel/apps/web/src/lib/hooks-bridge.ts` (e o caminho
+      de `mutateApi` em `panel/apps/web/src/lib/api.ts`, que hoje descarta
+      `meta`) conforme `contracts/panel-bridge-api.md:127-129`: a resposta
+      `200 + meta.degraded=true` do `answer` MUST levar o
+      `screens/Interventions.tsx` ao mesmo estado "degradado" já usado pela
+      leitura da fila, nunca a um sucesso silencioso
+
+<!-- converge-key: 0151913f7002 -->
+
+### 6.2 Caminho degradado do `answer` nunca exercitado por teste `[A]`
+
+Ref: task 3.1.10 · tipo: `partial` · severidade: `MEDIUM`
+
+A task 3.1.10 pede testes vitest "para as 4 rotas: caminho feliz, os 3
+casos de erro documentados por rota, resposta degradada (`200+
+meta.degraded`) simulando `bridge.db` indisponível". A rota `answer` é a
+única sem o caso degradado: `panel/apps/server/test/routes/bridge.test.ts:
+282-366` cobre `200` de sucesso, `400` (x4), `404` e `409` (x3), e nenhuma
+asserção de degradação. O `catch` de `panel/apps/server/src/routes/
+bridge.ts:462-463` é, portanto, código não exercitado — foi exatamente o
+ramo cuja metade cliente quebrou (achado 6.1). `create` (`bridge.test.ts:
+123-136`) e a fila (`:269-276`) têm o caso; a `bridge-degradation-isolation.
+test.ts`, apesar do nome, exercita só `GET /bridge/interventions`
+(`:90-94`, `:115-119`, `:149-153`).
+
+Completar é aditivo: acrescentar cenários sem alterar teste existente.
+
+- [ ] 6.2.1 Completar `panel/apps/server/test/routes/bridge.test.ts`
+      conforme a task 3.1.10: cenário de `bridge.db` indisponível na rota
+      `POST /bridge/interventions/:questionId/answer` asserindo `200`,
+      `data === null`, `meta.degraded === true` e
+      `meta.reason === 'bridge_unavailable'` (o literal do `reason` também
+      não é asserido hoje no caso degradado do `create`)
+
+<!-- converge-key: e5a8d79a12e0 -->
+
+### 6.3 `PRAGMA quick_check` nomeado no contrato não existe no caminho da Ponte `[A]`
+
+Ref: task 1.2 / panel-bridge-api.md §3.1 · tipo: `partial` · severidade: `MEDIUM`
+
+`contracts/panel-bridge-api.md:102` lista os gatilhos de degradação como
+"`bridge.db` ausente/ilegivel/`quick_check` falhando", e
+`panel/packages/shared-types/src/envelope.ts:65` repete o mesmo texto no
+comentário do enum. `openBridgeDb` (`panel/apps/server/src/db/bridge.ts:
+118-129`) executa `journal_mode`, `foreign_keys` e o DDL — não executa
+`PRAGMA quick_check`. No repositório inteiro o pragma só aparece no caminho
+do corpus (`panel/apps/server/src/db/open.ts:123-128`).
+
+O desfecho hoje coincide (corrupção faz o DDL/prepare lançar e cair no
+`catch` que devolve `200+degraded`), mas o mecanismo nomeado pelo contrato
+não existe: uma corrupção que não atrapalhe o DDL passaria despercebida.
+Completar é aditivo (acrescentar o pragma), sem alterar lógica existente.
+
+- [ ] 6.3.1 Implementar em `panel/apps/server/src/db/bridge.ts` a checagem
+      `PRAGMA quick_check` que `contracts/panel-bridge-api.md:102` nomeia
+      como gatilho de degradação — ou, se a decisão for não tê-la na v1,
+      corrigir o contrato e `packages/shared-types/src/envelope.ts:65` para
+      não afirmar um mecanismo inexistente
+
+<!-- converge-key: 4f7c350345bb -->
+
+### 6.4 Conexão vaza quando `openBridgeDb` falha após abrir o handle `[A]`
+
+Ref: task 1.2 / plan.md Constitution Check VI · tipo: `contradicts` · severidade: `MEDIUM`
+
+`plan.md:126` declara **PASS** para o Princípio VI do painel afirmando:
+"Sem conexao de longa duracao: `bridge.db` aberto por request e **fechado
+no `finally`**". O código contradiz isso num caminho real:
+`panel/apps/server/src/db/bridge.ts:122-127` abre o handle
+(`const db = new Database(dbPath);`) e só depois executa
+`db.pragma('journal_mode = WAL')`, `db.pragma('foreign_keys = ON')`,
+`db.exec(DDL)` e `normalizePermsBestEffort(dbPath)`. Se qualquer um deles
+lançar, a função propaga a exceção **sem fechar** `db` — e nas quatro rotas
+a atribuição `db = openBridgeDb()` nunca chega a completar
+(`panel/apps/server/src/routes/bridge.ts:210`, `:268`, `:315`, `:390`),
+de modo que o `finally { db?.close(); }` (`:252-254`, `:294-296`,
+`:367-369`, `:464-466`) encontra `null` e é no-op. Cada falha desse tipo
+vaza um handle SQLite pelo tempo de vida do processo.
+
+Corrigir exige MUDAR lógica já presente (envolver os passos pós-construção
+em try/catch com `close()` antes de repropagar), não apenas adicionar —
+por isso `contradicts` e não `partial`.
+
+Nota de escopo: o `MUST NOT` literal do Princípio VI
+(`panel/docs/constitution.md:487-488`) é sobre "segurar uma conexao de
+longa duracao **assumindo que o snapshot nunca muda**" — semântica de
+frescor do corpus, não vazamento de recurso. Por isso `must_violated=false`
+e a severidade **não** escala para `CRITICAL`; a contradição é contra a
+afirmação de `plan.md:126`, que é o lado citável.
+
+- [ ] 6.4.1 Corrigir `panel/apps/server/src/db/bridge.ts` conforme
+      `plan.md:126`: garantir que um erro em qualquer passo posterior a
+      `new Database(dbPath)` feche o handle antes de propagar, para que a
+      promessa "aberto por request e fechado no `finally`" valha em todos
+      os caminhos
+
+<!-- converge-key: 69276b2267bb -->
+
+### 6.5 Task 2.6.3 cita `tests/test_mcp.sh`, que não existe `[A]`
+
+Ref: task 2.6.3 · tipo: `contradicts` · severidade: `MEDIUM`
+
+A task 2.6.3 (`docs/specs/human-bridge/tasks.md:351`, marcada `[x]`) diz
+"Atualizar `tests/test_mcp.sh`". Esse arquivo não existe no repositório. A
+capacidade **foi** implementada, no caminho correto pela convenção do
+`CLAUDE.md` (`cli/lib/<n>.sh` → `tests/cstk/test_<n>.sh`):
+`tests/cstk/test_mcp.sh:947-959` contém os cenários de `timeout` +
+`env.CSTK_CLIENT_TOOL_TIMEOUT_MS` idênticos no default e no override.
+
+Divergência de documentação, não de comportamento: quem seguir a task cai
+num path inexistente. Impacto limitado a rastreabilidade — registrado
+porque a rubrica exige que divergências citáveis não desapareçam, não
+porque haja código a corrigir.
+
+- [ ] 6.5.1 Corrigir a referência de path da task 2.6.3 para
+      `tests/cstk/test_mcp.sh` (o arquivo real, `tests/cstk/test_mcp.sh:
+      947-959`), preservando o estado `[x]` — a implementação está
+      completa, só a citação está errada
+
+<!-- converge-key: cf5d36d27446 -->
