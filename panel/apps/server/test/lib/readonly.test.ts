@@ -15,7 +15,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import type { FastifyInstance } from 'fastify';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { resolve, join, dirname } from 'node:path';
+import { resolve, join, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -77,6 +77,24 @@ function findMutationPatterns(srcDir: string): { file: string; line: number; con
     // Excluir arquivos de teste
     if (file.includes('/test/') || file.includes('.test.ts')) continue;
 
+    // Excecao NOMEADA e UNICA: db/bridge.ts (feature human-bridge, task 1.2,
+    // achado registrado onda-008). Este e o UNICO arquivo autorizado pela
+    // constitution 2.0.0 (Principio I, "Read-Only sobre o CORPUS") a manter
+    // uma conexao read-write — para `bridge.db`, um store PROPRIO que NAO e
+    // o corpus (`knowledge.db`) e nao e tocado por esta funcao de outro
+    // jeito (open.ts permanece 100% coberto pelo grep). A exclusao e do
+    // ARQUIVO INTEIRO, nao de uma linha/padrao generico, porque so este
+    // arquivo tem autorizacao textual explicita em
+    // panel/docs/constitution.md (Sync Impact Report da emenda 2026-08-26:
+    // "apps/server/src/db/bridge.ts (a criar — store proprio, conexao rw)").
+    // `panel/scripts/readonly-check.sh` (gate irmao, fora do npm test) NAO
+    // ganha a mesma excecao agora — seu estreitamento para `db/queries/**`
+    // permanece tarefa 3.1.9, no MESMO commit de `routes/bridge.ts`, "nunca
+    // antes" (regra textual da constitution). Este teste e diferente: nao e
+    // citado pela constitution, roda dentro de `npm test`/CI, e bloquearia
+    // TODA a suite por um arquivo ja autorizado a existir nesta onda.
+    if (file.endsWith(`${sep}db${sep}bridge.ts`)) continue;
+
     let content: string;
     try {
       content = readFileSync(file, 'utf8');
@@ -114,6 +132,20 @@ describe('7.3.1 Read-Only Absoluto — grep de verbos de mutacao em src/', () =>
     expect(
       matches,
       `Verbos de mutacao encontrados:\n${matches.map((m) => `  ${m.file}:${m.line}: ${m.content}`).join('\n')}`
+    ).toHaveLength(0);
+  });
+
+  it('a excecao do bridge e restrita ao arquivo db/bridge.ts — nenhum outro arquivo com verbo de mutacao escapa por acidente', () => {
+    const files = collectTsFiles(SERVER_SRC).filter(
+      (f) => !f.includes('/test/') && !f.includes('.test.ts') && !f.endsWith(`${sep}db${sep}bridge.ts`),
+    );
+    const withMutationVerb = files.filter((f) => {
+      const content = readFileSync(f, 'utf8');
+      return /\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\s+\w/i.test(content);
+    });
+    expect(
+      withMutationVerb.map((f) => f.replace(SERVER_SRC, 'src')),
+      'nenhum arquivo alem de db/bridge.ts pode conter verbo de mutacao SQL',
     ).toHaveLength(0);
   });
 

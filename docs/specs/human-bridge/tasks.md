@@ -61,23 +61,23 @@ Conexao **separada** de `open.ts` (que fica INTOCADO — corpus continua
 `readonly:true` + `query_only=1`). `db/bridge.ts` e a UNICA conexao
 read-write do processo.
 
-- [ ] 1.2.1 Criar `panel/apps/server/src/db/bridge.ts` com `better-sqlite3`
+- [x] 1.2.1 Criar `panel/apps/server/src/db/bridge.ts` com `better-sqlite3`
       apontando para `~/.claude/cstk/bridge.db` (override `CSTK_BRIDGE_DB`,
       Decision 2 de `research.md`), instancia distinta de `open.ts`
-- [ ] 1.2.2 Definir DDL da tabela `interventions` com as 13 colunas
+- [x] 1.2.2 Definir DDL da tabela `interventions` com as 13 colunas
       `snake_case` da tabela de `data-model.md` (`question_id` PK,
       `project_path`, `project`, `short_name`, `execution_kind`, `kind` CHECK
       `IN ('choice','confirm','text')`, `question`, `options_json`,
       `default_value`, `resolution` CHECK `IN ('answered','declined')`,
       `applied_value`, `untrusted_text`, `expires_at`, `created_at`,
       `resolved_at`)
-- [ ] 1.2.3 Criar os dois indices propostos: `idx_interventions_open ON
+- [x] 1.2.3 Criar os dois indices propostos: `idx_interventions_open ON
       interventions(expires_at) WHERE resolution IS NULL` e
       `idx_interventions_created ON interventions(created_at DESC)`
-- [ ] 1.2.4 Aplicar permissoes de arquivo best-effort `700` (diretorio) /
+- [x] 1.2.4 Aplicar permissoes de arquivo best-effort `700` (diretorio) /
       `600` (arquivo) no mesmo idioma de `recall_normalize_db_perms`
       (`cli/lib/recall.sh:750-758`) — nunca bloqueia o caller (§11.4)
-- [ ] 1.2.5 Escrever teste vitest cobrindo: conexao separada de `open.ts`
+- [x] 1.2.5 Escrever teste vitest cobrindo: conexao separada de `open.ts`
       (nenhuma query de bridge passa pelo handle do corpus), DDL aplicado
       (CHECK constraints rejeitam `kind`/`resolution` fora do enum),
       permissao de arquivo aplicada
@@ -91,24 +91,24 @@ Criticidade `[C]`: e a defesa temporal do achado F1 (HIGH) do gate
 `owasp-security` — piso baixo demais permite ao agente colher o proprio
 `default_value` deixando trilha que parece consulta humana.
 
-- [ ] 1.3.1 Definir as duas constantes nomeadas e SEPARADAS em
+- [x] 1.3.1 Definir as duas constantes nomeadas e SEPARADAS em
       `mcp/state-server/src/tools/ask_operator.ts` (ou modulo de config
       dedicado): `ASK_MIN_TIMEOUT_MS = 60000` (R-CLOCK-7) e
       `CLOCK_SAFETY_MARGIN_MS = 60000` (R-CLOCK-2) — MUST NOT compartilhar
       `const` nem comentario "mesmo valor de", mesmo sendo numericamente
       iguais (motivos independentes, ver research.md Decision 7)
-- [ ] 1.3.2 Implementar `parseAskTimeoutMs(clientTimeoutMs, requested)`
+- [x] 1.3.2 Implementar `parseAskTimeoutMs(clientTimeoutMs, requested)`
       espelhando a politica **VERIFICADA** de `parseElicitTimeoutMs`
       (`collect_optins.ts:196-205`): faixa `[ASK_MIN_TIMEOUT_MS,
       clientTimeoutMs - CLOCK_SAFETY_MARGIN_MS]`; valor fora da faixa cai no
       **default** (`max` da faixa), nunca clampado para a borda
-- [ ] 1.3.3 Implementar validacao no boot (`index.ts` ou modulo de config):
+- [x] 1.3.3 Implementar validacao no boot (`index.ts` ou modulo de config):
       recusar subir quando a combinacao for **explicitamente ilegal**
       (ex.: `CSTK_CLIENT_TOOL_TIMEOUT_MS` que produz `max < min`); quando a
       env var estiver **ausente**, assumir `clientTimeoutMs = 300000`
       (teto `240000`) e emitir **1** linha de aviso em stderr — nunca
       recusar subir por variavel opcional ausente
-- [ ] 1.3.4 Escrever teste (node:test, `mcp/state-server/test/`) cobrindo:
+- [x] 1.3.4 Escrever teste (node:test, `mcp/state-server/test/`) cobrindo:
       faixa derivada correta para `clientTimeoutMs=300000` ->
       `[60000,240000]`; valor fora da faixa cai no default (nao clampa);
       combinacao ilegal recusa subir; env ausente assume `300000` +
@@ -336,7 +336,18 @@ inteiro fica sem o gate).
 - [ ] 3.1.9 Afrouxar `panel/scripts/readonly-check.sh` para reconhecer a
       exceção da Ponte (escrita confinada a `bridge.db` em conexão
       separada) — **NO MESMO COMMIT** desta tarefa (3.1.1-3.1.8), nunca em
-      commit separado
+      commit separado. **Achado registrado na onda-008 (task 1.2)**:
+      `panel/apps/server/test/lib/readonly.test.ts` é um SEGUNDO gate
+      (vitest, dentro de `npm test`/CI) que duplica a mesma varredura de
+      `apps/server/src` inteiro e que a constitution/tasks.md não citam —
+      ele já recebeu uma exceção NOMEADA e restrita a `db/bridge.ts` (única
+      linha `if (file.endsWith(...db/bridge.ts...)) continue;`) para não
+      quebrar `npm test` a partir da task 1.2. Esta tarefa deve *também*
+      estender/generalizar essa exceção (ou substituí-la por algo equivalente
+      a `db/queries/**`) quando `routes/bridge.ts` landar, mantendo os dois
+      gates (`readonly-check.sh` + `readonly.test.ts`) sincronizados — hoje
+      eles têm escopos ligeiramente diferentes e correm o risco de divergir
+      se só um for atualizado aqui
 - [ ] 3.1.10 Escrever testes vitest para as 4 rotas: caminho feliz, os 3
       casos de erro documentados por rota, resposta degradada (`200+
       meta.degraded`) simulando `bridge.db` indisponível, idempotência do
