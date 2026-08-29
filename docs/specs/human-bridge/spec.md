@@ -9,8 +9,10 @@
 ### Session 2026-08-29
 
 - Q: Quando `ask_operator` e chamada, quem cria a intervencao pendente em `bridge.db` e como ela e correlacionada ao `question_id`? → A: O proprio processo MCP (efemero, resolvido por chamada) gera o `question_id` e cria a intervencao via chamada HTTP a `/api/v1/bridge/*` do painel — mecanismo cross-processo, ja que MCP e `bridge.db` pertencem a processos/apps distintos e a superficie de escrita da Ponte e HTTP por design da emenda 2.0.0 da constitution do painel (`panel/docs/constitution.md`). O nome exato da subrota fica em aberto para `plan.md`/contrato tecnico — so o mecanismo (HTTP, familia `/api/v1/bridge/*`) esta decidido aqui.
-
-4 perguntas adicionais geradas nesta sessao (mecanismo de espera do MCP efemero por resposta; retencao/expurgo de intervencoes resolvidas; deteccao de painel indisponivel; descoberta de base URL do painel pelo MCP) nao tinham evidencia suficiente (score < 2) nas fontes disponiveis para decisao automatica e foram escaladas como bloqueio humano (ver `bloqueios` da execucao `feature-00c` desta feature, blocks 001-004).
+- Q: Enquanto `ask_operator` esta bloqueada esperando resposta, o processo MCP faz polling HTTP curto contra o painel, ou o painel mantem a requisicao aberta em long-poll ate a resposta chegar? → A: Polling curto — o processo MCP faz GET periodico (intervalo curto, ordem de 1-2s) contra `/api/v1/bridge/*` ate o outcome `answered` ou ate estourar o teto do servidor (`MCP_ASK_TIMEOUT_MS`). Long-poll NAO e usado na v1 (ver FR-019). Valor exato do intervalo fica em aberto para `plan.md`.
+- Q: Intervencoes resolvidas (respondidas/expiradas/nao-alcancadas) em `bridge.db` sao expurgadas automaticamente apos uma janela fixa, ou permanecem indefinidamente em v1 sem rotina de purge? → A: Sem expurgo automatico na v1 — intervencoes resolvidas permanecem em `bridge.db` indefinidamente; nenhuma rotina de purge nem scheduling periodico e introduzido por esta feature (ver FR-020).
+- Q: `ask_operator` detecta painel indisponivel reusando a propria chamada de criacao da intervencao, ou existe um healthcheck HTTP dedicado chamado antes de criar a intervencao? → A: Reusar a propria chamada de criacao da intervencao — falha ou timeout dela ja produz outcome `unavailable` (contrato secao 5). Nenhum healthcheck dedicado e criado; `GET /api/v1/health` NAO e reusado para isso, pois mede `knowledge.db`, nao `bridge.db` (ver FR-021).
+- Q: Como o processo MCP efemero (sem estado compartilhado com o painel) descobre a base URL/porta do painel para chamar `/api/v1/bridge/*`? → A: Default fixo + override por variavel de ambiente, mesmo padrao ja usado por `CSTK_PANEL_DIR`/`CSTK_KNOWLEDGE_DB`. O default MUST ser a porta 5173 (`cli/lib/serve.sh:897`), nunca 3001 (fallback interno do node quando ninguem exporta `PORT`) (ver FR-022). Nome exato da variavel de ambiente e da subrota ficam em aberto para `plan.md`/contrato tecnico.
 
 ## User Scenarios & Testing
 
@@ -136,6 +138,12 @@ algo).
   projeto que nao existe mais / foi removido do disco? A pendencia
   continua visivel na fila (para nao esconder historico), mas marcada como
   organicamente inalcancavel se uma resposta for tentada.
+- O que acontece se a propria chamada de criacao da intervencao falhar ou
+  expirar (painel fora do ar, rede indisponivel)? Essa falha e o unico
+  sinal usado para declarar o painel indisponivel (FR-021) — nao ha
+  checagem dedicada antes dela; a sessao de origem segue direto pelo
+  caminho seguro pre-definido (FR-010), sem nunca chegar a esperar
+  resposta.
 
 ## Requirements
 
@@ -207,14 +215,48 @@ algo).
   entre projetos (o corpus historico usado para buscas e relatorios) — sao
   dados operacionais de curto prazo, nao material de analise de longo
   prazo.
+- **FR-019**: Enquanto uma sessao esta esperando resposta, o processo MCP
+  efemero que originou a intervencao MUST aguardar via polling HTTP curto
+  (GET periodico, intervalo da ordem de 1-2 segundos) contra o endpoint da
+  Ponte ate o outcome `answered` ou ate o teto de espera do servidor se
+  esgotar. O sistema MUST NOT usar long-poll (requisicao HTTP mantida
+  aberta ate a resposta chegar) na v1. Valor exato do intervalo e nome
+  exato do endpoint ficam em aberto para `plan.md`/contrato tecnico.
+- **FR-020**: Intervencoes resolvidas (respondidas, expiradas ou
+  nao-alcancadas por indisponibilidade) MUST NOT ser expurgadas
+  automaticamente na v1 — permanecem no armazenamento da Ponte
+  indefinidamente. Esta feature MUST NOT introduzir nenhuma rotina de
+  purge nem scheduling periodico para esse fim.
+- **FR-021**: A deteccao de indisponibilidade do painel exigida por
+  FR-010 MUST reusar a propria chamada de criacao da intervencao — uma
+  falha ou timeout dessa chamada MUST, por si so, produzir o outcome
+  `unavailable`. O sistema MUST NOT introduzir um healthcheck HTTP
+  dedicado para esse fim, e MUST NOT reusar o endpoint existente do
+  painel `GET /api/v1/health` para essa deteccao, pois ele mede a
+  disponibilidade do acervo de conhecimento entre projetos, nao do
+  armazenamento da Ponte.
+- **FR-022**: O processo MCP efemero MUST descobrir a base URL do painel
+  por meio de um default fixo com override por variavel de ambiente,
+  seguindo o mesmo padrao ja usado no projeto para outros caminhos/portas
+  configuraveis (ex.: variaveis que controlam o diretorio do painel e o
+  caminho do acervo de conhecimento). O default fixo MUST ser a porta
+  5173 — a porta que o operador de fato ve ao rodar o comando de subir o
+  painel — nunca a porta 3001, que e apenas o fallback interno do
+  processo do painel quando nenhuma porta e explicitamente configurada.
+  Nome exato da variavel de ambiente fica em aberto para
+  `plan.md`/contrato tecnico. O sistema MUST NOT depender de descoberta
+  dinamica via arquivo de descritor em disco na v1.
 
 > Decisoes de infraestrutura: FR-009/FR-010 cobrem a politica de prazo
 > maximo + fallback seguro (equivalente a uma politica de timeout); FR-016
 > cobre idempotencia de resposta (uma intervencao resolvida nao pode ser
-> resolvida de novo). Nao ha scheduling periodico, rotacao de chave,
-> refresh de token externo, mutex multi-pod nem backup/restore aplicavel a
-> esta feature — o dado e operacional e de curta duracao por natureza
-> (FR-018).
+> resolvida de novo); FR-019 cobre o mecanismo de espera (polling curto,
+> nao long-poll); FR-020 cobre retencao (sem expurgo automatico na v1);
+> FR-021 cobre o mecanismo de deteccao de indisponibilidade (reuso da
+> chamada de criacao); FR-022 cobre a descoberta de base URL do painel
+> (default fixo + env var). Nao ha rotacao de chave, refresh de token
+> externo, mutex multi-pod nem backup/restore aplicavel a esta feature —
+> o dado e operacional e de curta duracao por natureza (FR-018).
 
 ### Key Entities
 
