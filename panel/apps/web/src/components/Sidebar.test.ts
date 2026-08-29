@@ -44,6 +44,7 @@ const ROUTES = [
   { id: 'features', label: 'Features', icon: 'git-branch', path: '/features' },
   { id: 'executions', label: 'Execuções', icon: 'activity', path: '/executions' },
   { id: 'sessions', label: 'Sessões', icon: 'eye', path: '/sessions' },
+  { id: 'interventions', label: 'Intervenções', icon: 'wait', path: '/interventions' },
   { id: 'alerts', label: 'Alertas', icon: 'alert', path: '/alerts' },
   { id: 'metrics', label: 'Métricas', icon: 'bar', path: '/metrics' },
   { id: 'tasks', label: 'Tarefas', icon: 'check', path: '/tasks' },
@@ -124,7 +125,7 @@ describe('Sidebar — tema (FR-003, FR-004)', () => {
 
 describe('Sidebar — rotas de navegação (SC-005)', () => {
   it('4.2.3 todas as 10 rotas têm label para uso como data-tooltip no modo colapsado', () => {
-    expect(ROUTES).toHaveLength(13);
+    expect(ROUTES).toHaveLength(14);
     ROUTES.forEach((route) => {
       expect(typeof route.label).toBe('string');
       expect(route.label.length).toBeGreaterThan(0);

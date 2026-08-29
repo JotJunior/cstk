@@ -25,6 +25,9 @@ const REASON_LABELS: Record<string, string> = {
   'session-not-found': 'sessão não encontrada',
   'session-rejected': 'caminho da sessão rejeitado (fora da raiz confinada)',
   'session-scrub-failed': 'filtro de segredos indisponível — conteúdo não pôde ser exibido',
+  // Ponte de intervenção humana (feature human-bridge) — degradacao de
+  // GET/POST /api/v1/bridge/* (bridge.db ausente/ilegivel/erro de escrita).
+  bridge_unavailable: 'ponte de intervenção indisponível (bridge.db)',
 };
 
 function fmtRelative(iso: string): string {

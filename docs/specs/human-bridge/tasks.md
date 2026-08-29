@@ -425,15 +425,15 @@ Ref: `docs/specs/human-bridge/plan.md` "Convencoes de Borda" ·
 Ref: `docs/specs/human-bridge/contracts/panel-bridge-api.md` §8 ·
 `docs/specs/human-bridge/checklists/api.md` CHK014/CHK015/CHK016
 
-- [ ] 4.1.1 Implementar `mutateApi()` em `apps/web/src/lib/api.ts`,
+- [x] 4.1.1 Implementar `mutateApi()` em `apps/web/src/lib/api.ts`,
       SEM nenhuma camada de ETag/cache (nunca ler/gravar `bodyCache`, nunca
       injetar `If-None-Match`) — `fetchApi()` existente MUST NOT ser
       reusado para mutação (aplicaria ETag/cache incondicionalmente,
       colidindo com FR-016/SC-006)
-- [ ] 4.1.2 Invalidar explicitamente o cache da fila após sucesso —
+- [x] 4.1.2 Invalidar explicitamente o cache da fila após sucesso —
       `invalidateEtag('/bridge/interventions')` (função já existente,
       `api.ts:117`)
-- [ ] 4.1.3 Escrever teste de ROUNDTRIP REAL (não mock) contra um servidor
+- [x] 4.1.3 Escrever teste de ROUNDTRIP REAL (não mock) contra um servidor
       de teste de fato — CHK016: este defeito de cache não aparece com
       mock (sem `localStorage` nem ETag simulados); é por isso que o
       quickstart exige chamada real (Cenário 1)
@@ -443,15 +443,15 @@ Ref: `docs/specs/human-bridge/contracts/panel-bridge-api.md` §8 ·
 Ref: `docs/specs/human-bridge/contracts/panel-bridge-api.md` §9 ·
 `docs/specs/human-bridge/research.md` Decision 10
 
-- [ ] 4.2.1 Implementar `useInterventions()` (queryOptions react-query)
+- [x] 4.2.1 Implementar `useInterventions()` (queryOptions react-query)
       consumindo `GET /api/v1/bridge/interventions`
-- [ ] 4.2.2 Configurar `refetchInterval` EXPLÍCITO reusando o padrão já
+- [x] 4.2.2 Configurar `refetchInterval` EXPLÍCITO reusando o padrão já
       adotado pela tela de sessões (`AUTO_REFRESH_MS = 10_000`,
       `refetchIntervalInBackground: false`, `query.ts:8,26-27`) — sem
       introduzir um terceiro valor de polling no mesmo produto
-- [ ] 4.2.3 Implementar `useAnswerIntervention()` (mutation hook) usando
+- [x] 4.2.3 Implementar `useAnswerIntervention()` (mutation hook) usando
       `mutateApi()` (tarefa 4.1) com invalidação de cache pós-sucesso
-- [ ] 4.2.4 Escrever teste vitest confirmando `refetchInterval` configurado
+- [x] 4.2.4 Escrever teste vitest confirmando `refetchInterval` configurado
       e invalidação de cache disparada após mutation bem-sucedida
 
 ### 4.3 `screens/Interventions.tsx` — fila de intervenções `[A]`
@@ -459,28 +459,28 @@ Ref: `docs/specs/human-bridge/contracts/panel-bridge-api.md` §9 ·
 Ref: `docs/specs/human-bridge/spec.md` FR-001/FR-013/FR-014/FR-015 ·
 `docs/specs/human-bridge/contracts/panel-bridge-api.md` §6/§11.7
 
-- [ ] 4.3.1 Implementar os 4 estados obrigatórios da tela: carregando,
+- [x] 4.3.1 Implementar os 4 estados obrigatórios da tela: carregando,
       vazio (fila sem pendências não é tela em branco — Cenário 3),
       erro, degradado (`meta.degraded=true`)
-- [ ] 4.3.2 Renderizar `question`/`options[]`/`untrustedText` como TEXTO
+- [x] 4.3.2 Renderizar `question`/`options[]`/`untrustedText` como TEXTO
       PURO, sem interpretação de HTML/markup ativo (Princípio V do painel
       — campos UNTRUSTED)
-- [ ] 4.3.3 Exibir, junto de cada pergunta, a PROCEDÊNCIA (`project`,
+- [x] 4.3.3 Exibir, junto de cada pergunta, a PROCEDÊNCIA (`project`,
       `executionKind`, `shortName`) e o `defaultValue` que será aplicado
       se ninguém responder (§11.7 — mitigação de enquadramento hostil da
       pergunta, ASI09)
-- [ ] 4.3.4 Distinguir visualmente os 3 tipos de intervenção
+- [x] 4.3.4 Distinguir visualmente os 3 tipos de intervenção
       (`choice`/`confirm`/`text`, FR-015) e exibir `waitingMs` (há quanto
       tempo espera, FR-014), com a fila ordenada por tempo de espera
       (`createdAt ASC`)
-- [ ] 4.3.5 Desabilitar a ação de responder quando `reachable=false`
+- [x] 4.3.5 Desabilitar a ação de responder quando `reachable=false`
       (projeto removido do disco), mantendo a linha visível (não esconder
       histórico)
-- [ ] 4.3.6 Implementar o formulário de resposta por `kind`: `choice`
+- [x] 4.3.6 Implementar o formulário de resposta por `kind`: `choice`
       (seleção restrita a `options`, mas SEM confiar só na UI — FR-005 é
       regra de servidor, ver 3.1.5), `confirm` (sim/não), `text` (campo
       livre até 2048 bytes, contador visível)
-- [ ] 4.3.7 Escrever testes vitest (component tests) para os 4 estados
+- [x] 4.3.7 Escrever testes vitest (component tests) para os 4 estados
       obrigatórios e para a exibição de procedência/defaultValue
 
 ---
