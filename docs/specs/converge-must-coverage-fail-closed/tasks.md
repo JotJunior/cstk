@@ -78,7 +78,7 @@ Ref: `quickstart.md` Cenários 1-5
       TSV inalterado e sem linha `cobertura de MUST:`; com `--coverage`, as 5
       primeiras linhas são byte-idênticas às produzidas antes desta feature,
       e a nova é estritamente a 6ª
-- [ ] 2.1.6 Rodar `./tests/run.sh --check-coverage` e a suite completa
+- [x] 2.1.6 Rodar `./tests/run.sh --check-coverage` e a suite completa
       (`LC_ALL=C ./tests/run.sh`, background com log, ~12min) confirmando
       zero regressão nos cenários pré-existentes de `test_extract-must.sh` e
       `test_severity.sh`
@@ -216,9 +216,9 @@ Ref: `quickstart.md` Cenário 9, `research.md` Decision 9
 
 ### 5.4 Suite completa + gates de qualidade `[A]`
 
-- [ ] 5.4.1 Rodar a suite completa (`LC_ALL=C ./tests/run.sh`) em background
+- [x] 5.4.1 Rodar a suite completa (`LC_ALL=C ./tests/run.sh`) em background
       com log, sem `tail` no output
-- [ ] 5.4.2 Rodar `./tests/run.sh --check-coverage`
+- [x] 5.4.2 Rodar `./tests/run.sh --check-coverage`
 - [x] 5.4.3 Rodar `validate-tasks-template.sh` sobre este `tasks.md` e o gate
       `validate-docs-rendered` sobre os artefatos Markdown tocados nesta onda
 
