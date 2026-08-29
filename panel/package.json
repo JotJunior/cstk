@@ -1,0 +1,32 @@
+{
+  "name": "cstk-panel",
+  "version": "9.5.0",
+  "private": true,
+  "description": "Dashboard de Observabilidade Read-Only para execucoes agente-00c/feature-00c",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently --names \"server,web\" --prefix-colors \"cyan,magenta\" \"npm run dev -w @cstk-panel/server\" \"npm run dev -w @cstk-panel/web\"",
+    "build": "npm run build -w @cstk-panel/shared-types && npm run build -w @cstk-panel/server && npm run build -w @cstk-panel/web",
+    "start": "node apps/server/dist/index.js",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "lint:readonly-check": "sh scripts/readonly-check.sh",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": "20.x || 22.x || 23.x || 24.x",
+    "npm": ">=10.0.0"
+  }
+}

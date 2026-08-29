@@ -1,0 +1,104 @@
+# release.yml — publica assets verificaveis da release do cstk-panel.
+#
+# Motivo: o `cstk serve` (cstk >= 5.18.0) verifica integridade FAIL-CLOSED e
+# so consegue outcome `verified` quando a release publica o par
+# `cstk-panel-<versao>.tar.gz` + `cstk-panel-<versao>.tar.gz.sha256`. O
+# auto-tarball da API do GitHub (`tarball_url`) nao tem como ter checksum
+# publicado; sem estes assets, `cstk serve --update` bloqueia
+# (`unverifiable-blocked`) e exige `--allow-unverified`. Convencao de
+# nomenclatura espelhada do release.yml do proprio cstk
+# (cstk-<bare-version>.tar.gz + .sha256).
+#
+# Disparo: push de tag SemVer (`v*`). Idempotente com release criada
+# manualmente (`gh release create` antes do workflow rodar): se a release da
+# tag ja existe, apenas anexa/substitui os assets (--clobber); senao cria a
+# release com eles.
+#
+# O tarball e gerado com `git archive` usando prefixo de diretorio unico —
+# mesma estrutura do auto-tarball da API (o `cstk serve` extrai com
+# `--strip-components 1` e espera `package.json` na raiz resultante).
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # necessario para gh release create/upload
+
+jobs:
+  release:
+    name: Build & Publish Release Assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v5
+
+      - name: Validate tag format
+        id: tag
+        run: |
+          set -eu
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            v[0-9]*) ;;
+            *)
+              echo "::error::tag invalida: $TAG (esperado vX.Y.Z[-suffix])"
+              exit 1
+              ;;
+          esac
+          BARE="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "bare=$BARE" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG (bare: $BARE)"
+
+      - name: Build source tarball + sha256
+        run: |
+          set -eu
+          BARE="${{ steps.tag.outputs.bare }}"
+          mkdir -p dist
+          # HEAD = commit da tag (checkout de tag push); prefixo garante um
+          # unico diretorio de topo no tarball.
+          git archive --format=tar.gz --prefix="cstk-panel-${BARE}/" \
+            -o "dist/cstk-panel-${BARE}.tar.gz" HEAD
+          (cd dist && sha256sum "cstk-panel-${BARE}.tar.gz" > "cstk-panel-${BARE}.tar.gz.sha256")
+          ls -la dist/
+          cat "dist/cstk-panel-${BARE}.tar.gz.sha256"
+
+      - name: Create release or attach assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          TAG="${{ steps.tag.outputs.tag }}"
+          BARE="${{ steps.tag.outputs.bare }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG ja existe; anexando/substituindo assets"
+            gh release upload "$TAG" --clobber \
+              "dist/cstk-panel-${BARE}.tar.gz" \
+              "dist/cstk-panel-${BARE}.tar.gz.sha256"
+          else
+            gh release create "$TAG" \
+              --title "cstk-panel $TAG" \
+              --generate-notes \
+              "dist/cstk-panel-${BARE}.tar.gz" \
+              "dist/cstk-panel-${BARE}.tar.gz.sha256"
+          fi
+
+      - name: Summary
+        run: |
+          BARE="${{ steps.tag.outputs.bare }}"
+          {
+            echo "# cstk-panel ${{ steps.tag.outputs.tag }} — assets publicados"
+            echo ""
+            echo "- \`cstk-panel-${BARE}.tar.gz\`"
+            echo "- \`cstk-panel-${BARE}.tar.gz.sha256\`"
+            echo ""
+            echo "## SHA-256"
+            echo '```'
+            cat "dist/cstk-panel-${BARE}.tar.gz.sha256"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

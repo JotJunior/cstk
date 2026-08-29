@@ -1,0 +1,220 @@
+{
+  "schema_version": "1.0.0",
+  "execucao": {
+    "id": "feat-tema-claro-menu-retratil-20260528130014",
+    "projeto_alvo_path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel",
+    "projeto_alvo_descricao": "Criar a versão clara (atual só possui noturna) e fazer o switch da base do menu funcionar; fazer o menu ser retrátil com opção fina exibindo somente os ícones.",
+    "stack_sugerida": null,
+    "status": "em_andamento",
+    "motivo_termino": null,
+    "iniciada_em": "2026-05-28T16:00:14Z",
+    "terminada_em": null
+  },
+  "etapa_corrente": "plan",
+  "proxima_instrucao": "Iniciar etapa specify — converter a descricao curta da feature em spec SDD.",
+  "ondas": [
+    {
+      "id": "onda-001",
+      "inicio": "2026-05-28T16:02:06Z",
+      "fim": null,
+      "etapas_executadas": [],
+      "tool_calls": 0,
+      "wallclock_seconds": 0,
+      "motivo_termino": null,
+      "proxima_onda_agendada_para": null,
+      "skills_invoked": [
+        {
+          "skill": "specify",
+          "timestamp": "2026-05-28T16:04:24Z",
+          "decisao_id": null
+        },
+        {
+          "skill": "model-selector",
+          "timestamp": "2026-05-28T16:04:59Z",
+          "decisao_id": "dec-004"
+        },
+        {
+          "skill": "clarify",
+          "timestamp": "2026-05-28T16:05:17Z",
+          "decisao_id": null
+        }
+      ]
+    }
+  ],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "onda_id": "init",
+      "timestamp": "2026-05-28T16:00:25Z",
+      "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda init (fase specify)",
+      "opcoes_consideradas": [
+        "haiku",
+        "sonnet",
+        "opus",
+        "manter-atual"
+      ],
+      "escolha": "model:sonnet",
+      "justificativa": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=specify (mapa primario)",
+      "score_justificativa": 0,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-002",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:02:28Z",
+      "etapa": "specify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "read-back PRE-DECISAO: K=20 achados injetados (anti-eco feature=tema-claro-menu-retratil)",
+      "opcoes_consideradas": [
+        "injetar-achados",
+        "no-op"
+      ],
+      "escolha": "injetar-achados",
+      "justificativa": "termos derivados da feature: tema claro theme switch menu retratil sidebar icon only navegacao",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-003",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:04:24Z",
+      "etapa": "specify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "specify: spec.md gerado com 3 user stories e 15 FRs; 0 NEEDS CLARIFICATION",
+      "opcoes_consideradas": [
+        "prosseguir-clarify",
+        "abortar"
+      ],
+      "escolha": "prosseguir-clarify",
+      "justificativa": "spec completa, sem ambiguidades; 3 entregas mapeadas: tema-claro, switch-funcional, sidebar-retratil",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-004",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:04:59Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para subagente feature-00c-clarify-asker",
+      "opcoes_consideradas": [
+        "haiku",
+        "sonnet",
+        "opus",
+        "manter-atual",
+        "fallback-default"
+      ],
+      "escolha": "manter-atual",
+      "justificativa": "nenhum sinal do catalogo detectado nos 48 tokens validos do input; sem evidencia para sugerir troca de modelo (rasa=0 media=0 profunda=0).",
+      "score_justificativa": 0,
+      "evidencia": "nenhum sinal do catalogo detectado nos 48 tokens validos do input; sem evidencia para sugerir troca de modelo (rasa=0 media=0 profunda=0).",
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-005",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:05:17Z",
+      "etapa": "clarify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "clarify-asker retornou 0 perguntas; spec sem NEEDS CLARIFICATION; fase clarify concluida",
+      "opcoes_consideradas": [
+        "prosseguir-plan",
+        "aguardar-respostas"
+      ],
+      "escolha": "prosseguir-plan",
+      "justificativa": "spec.md auto-suficiente: 15 FRs, 3 US, 7 SC, sem ambiguidades. Invariante I1: answerer NAO spawnado.",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-006",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-28T16:05:55Z",
+      "etapa": "plan",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "feature-00c-preflight.sh check: ok=true, 0 findings (briefing+constitution sha256 OK)",
+      "opcoes_consideradas": [
+        "prosseguir-plan",
+        "registrar-bloqueio-humano"
+      ],
+      "escolha": "prosseguir-plan",
+      "justificativa": "preflight JSON: {ok:true, findings:[]}",
+      "score_justificativa": 3,
+      "evidencia": "{\"ok\":true,\"findings\":[]}",
+      "referencias": [],
+      "artefato_originador": null
+    }
+  ],
+  "bloqueios_humanos": [],
+  "orcamentos": {
+    "recursividade_max": 3,
+    "profundidade_corrente_subagentes": 1,
+    "retro_execucoes_max_por_feature": 2,
+    "retro_execucoes_consumidas": 0,
+    "ciclos_max_por_etapa": 5,
+    "ciclos_consumidos_etapa_corrente": 0,
+    "tool_calls_threshold_onda": 80,
+    "wallclock_threshold_segundos": 5400,
+    "estado_size_threshold_bytes": 1048576,
+    "tool_calls_onda_corrente": 0,
+    "inicio_onda_corrente": "2026-05-28T16:02:06Z"
+  },
+  "metricas_acumuladas": {
+    "ondas_total": 0,
+    "tool_calls_total": 0,
+    "tempo_wallclock_total_segundos": 0,
+    "profundidade_max_atingida": 2,
+    "subagentes_spawned": 1,
+    "decisoes_total": 6,
+    "bloqueios_humanos_total": 0,
+    "sugestoes_skills_globais_total": 0,
+    "issues_toolkit_abertas": 0
+  },
+  "whitelist_urls_externas": [],
+  "historico_movimento_circular": [],
+  "aspectos_chave_iniciais": [
+    "tema-claro",
+    "theme-switch",
+    "menu-retratil",
+    "sidebar",
+    "icon-only",
+    "navegacao"
+  ],
+  "aspectos_chave_tecnicos": [],
+  "aspectos_chave_operacionais": [],
+  "eventos": [
+    {
+      "event_type": "recall_consulted",
+      "timestamp": "2026-05-28T16:02:27Z",
+      "descricao": "etapa=specify hits=20"
+    },
+    {
+      "event_type": "recall_consulted",
+      "timestamp": "2026-05-28T16:06:08Z",
+      "descricao": "etapa=plan hits=20"
+    }
+  ],
+  "pre_requisitos": {
+    "briefing": {
+      "path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel/docs/01-briefing-discovery/briefing.md",
+      "sha256": "7ba801bffdf6f08f13c45dedab933d145b4c0f2e63679f2b62d80340c50adec7"
+    },
+    "constitution": {
+      "path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel/docs/constitution.md",
+      "sha256": "a1b278d4c9a573463325688f5962b666bfa071befc40b57be266bcb2efa53e66",
+      "version": "1.0.0"
+    }
+  },
+  "short_name": "tema-claro-menu-retratil"
+}

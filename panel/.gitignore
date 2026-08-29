@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+
+tmp/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# test fixtures / generated db (binarios derivados, nao versionar)
+test/fixtures/*.db
+apps/server/test/*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# logs / os
+*.log
+.DS_Store
+
+# agente-00c runtime churn (state.json/report sao versionados; locks e history nao)
+.claude/agente-00c-state/.lock/
+.claude/agente-00c-state/state-history/
+.claude/scheduled_tasks.lock
+.claude/*.lock
+
+# Artefatos INSTALADOS pelo cstk — nunca versionar.
+# Versionar copia instalada e o padrao de sombreamento que a auditoria de
+# 2026-08-27 encontrou 4 vezes no toolkit: a copia local diverge do catalogo,
+# fica invisivel ao git e ao diagnostico, e a ferramenta segue reportando OK.
+# `cstk hooks install` e `cstk mcp install` regeneram os dois.
+.claude/hooks/
+.mcp.json
+
+# Runtime churn
+.claude/enforcement-log.jsonl
+*.bak

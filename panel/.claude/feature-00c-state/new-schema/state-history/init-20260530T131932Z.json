@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0.0",
+  "execucao": {
+    "id": "new-schema-20260530T131725Z",
+    "projeto_alvo_path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel",
+    "projeto_alvo_descricao": "houve uma mudança drástica no ../cstk no que diz respeito aos schemas e funcoes. Muita coisa que estava misturando portugues e ingles agora foram normalizados e canonizados. Precisamos ataptar para anteder ao novo schema.",
+    "stack_sugerida": null,
+    "status": "em_andamento",
+    "motivo_termino": null,
+    "iniciada_em": "2026-05-30T13:17:25Z",
+    "terminada_em": null,
+    "short_name": "new-schema"
+  },
+  "etapa_corrente": "specify",
+  "proxima_instrucao": "Iniciar onda specify — invocar skill specify com a descricao da feature para gerar docs/specs/new-schema/spec.md (adaptar cstk-panel ao novo schema canonizado de ../cstk).",
+  "ondas": [],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "onda_id": "init",
+      "timestamp": "2026-05-30T13:17:34Z",
+      "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda init (fase briefing)",
+      "opcoes_consideradas": [
+        "haiku",
+        "sonnet",
+        "opus",
+        "manter-atual"
+      ],
+      "escolha": "model:sonnet",
+      "justificativa": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=briefing (mapa primario)",
+      "score_justificativa": 0,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    }
+  ],
+  "bloqueios_humanos": [],
+  "orcamentos": {
+    "recursividade_max": 3,
+    "profundidade_corrente_subagentes": 1,
+    "retro_execucoes_max_por_feature": 2,
+    "retro_execucoes_consumidas": 0,
+    "ciclos_max_por_etapa": 5,
+    "ciclos_consumidos_etapa_corrente": 0,
+    "tool_calls_threshold_onda": 80,
+    "wallclock_threshold_segundos": 5400,
+    "estado_size_threshold_bytes": 1048576,
+    "tool_calls_onda_corrente": 0,
+    "inicio_onda_corrente": null
+  },
+  "metricas_acumuladas": {
+    "ondas_total": 0,
+    "tool_calls_total": 0,
+    "tempo_wallclock_total_segundos": 0,
+    "profundidade_max_atingida": 1,
+    "subagentes_spawned": 0,
+    "decisoes_total": 1,
+    "bloqueios_humanos_total": 0,
+    "sugestoes_skills_globais_total": 0,
+    "issues_toolkit_abertas": 0
+  },
+  "whitelist_urls_externas": [],
+  "historico_movimento_circular": [],
+  "aspectos_chave_iniciais": [
+    "schema-canonico",
+    "normalizacao-pt-en",
+    "cstk-integracao",
+    "adaptacao-funcoes",
+    "renomeacao-campos"
+  ],
+  "aspectos_chave_tecnicos": [],
+  "aspectos_chave_operacionais": [],
+  "pre_requisitos": {
+    "briefing": {
+      "path": "docs/01-briefing-discovery/briefing.md",
+      "sha256": "7ba801bffdf6f08f13c45dedab933d145b4c0f2e63679f2b62d80340c50adec7"
+    },
+    "constitution": {
+      "path": "docs/constitution.md",
+      "sha256": "a1b278d4c9a573463325688f5962b666bfa071befc40b57be266bcb2efa53e66",
+      "version": "1.0.0"
+    }
+  }
+}

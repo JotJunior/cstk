@@ -171,6 +171,23 @@ The project follows [Semantic Versioning](https://semver.org/) with a
 Release: `git tag vX.Y.Z` + push triggers `.github/workflows/release.yml`, which
 builds and publishes the tarball. Then, on the machine: `cstk update`.
 
+**Version lockstep.** Two independent sets of manifests MUST carry the exact
+release version `X.Y.Z` before tagging — both are gated (`scripts/validate-*.sh`,
+non-advisory on PR via `shellcheck.yml`, `--strict` on release via `release.yml`):
+
+- Toolkit plugin manifests: `.claude-plugin/marketplace.json` and the 2
+  `plugins/*/.claude-plugin/plugin.json` (`scripts/validate-plugin-manifests.sh`,
+  MP-5).
+- Panel npm workspaces: `panel/package.json`, `panel/apps/server/package.json`,
+  `panel/apps/web/package.json`, `panel/packages/shared-types/package.json` and
+  `panel/package-lock.json` (`scripts/validate-panel-workspace-lockstep.sh`,
+  WL-5). The panel does **not** have its own version series anymore — it moved
+  into this monorepo (`panel-monorepo`) and its version now advances together
+  with the unified repo tag, the same way the plugin manifests already did.
+
+Bump every one of the files above to `X.Y.Z` in the same commit that precedes
+the tag; the gates above fail the release otherwise.
+
 ---
 
 ## 5. PR checklist

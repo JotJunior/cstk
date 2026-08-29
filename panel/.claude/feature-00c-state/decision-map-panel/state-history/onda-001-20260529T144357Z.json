@@ -1,0 +1,127 @@
+{
+  "schema_version": "1.0.0",
+  "execucao": {
+    "id": "decision-map-panel",
+    "projeto_alvo_path": "/Users/jot/Projects/_lab/Jot/misc/cstk-panel",
+    "projeto_alvo_descricao": "No painel, o botao \"Arvore de decisoes\" usa o resultado da skill decision-map. Implementar programaticamente (montar opcoes, marcar a escolha, vincular com a proxima decisao; ao clicar na caixa da decisao exibir detalhes em painel no lado direito) e fazer o botao funcionar, sem depender de skill.",
+    "stack_sugerida": null,
+    "status": "em_andamento",
+    "motivo_termino": null,
+    "iniciada_em": "2026-05-29T14:37:15Z",
+    "terminada_em": null
+  },
+  "etapa_corrente": "clarify",
+  "proxima_instrucao": "Iniciar etapa specify — gerar spec da feature decision-map-panel a partir da descricao curta, briefing e constitution.",
+  "ondas": [
+    {
+      "id": "onda-001",
+      "inicio": "2026-05-29T14:38:36Z",
+      "fim": null,
+      "etapas_executadas": [],
+      "tool_calls": 0,
+      "wallclock_seconds": 0,
+      "motivo_termino": null,
+      "proxima_onda_agendada_para": null,
+      "skills_invoked": [
+        {
+          "skill": "specify",
+          "timestamp": "2026-05-29T14:42:06Z",
+          "decisao_id": null
+        }
+      ]
+    }
+  ],
+  "decisoes": [
+    {
+      "id": "dec-001",
+      "onda_id": "init",
+      "timestamp": "2026-05-29T14:37:23Z",
+      "etapa": "model-routing",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Selecao de modelo para onda init (fase specify)",
+      "opcoes_consideradas": [
+        "haiku",
+        "sonnet",
+        "opus",
+        "manter-atual"
+      ],
+      "escolha": "model:sonnet",
+      "justificativa": "sugerido=sonnet aplicado=sonnet origem=mapa | faixa=media fase=specify (mapa primario)",
+      "score_justificativa": 0,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-002",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-29T14:39:01Z",
+      "etapa": "specify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "read-back PRE-DECISAO: K=12 achados injetados (anti-eco feature=decision-map-panel)",
+      "opcoes_consideradas": [
+        "injetar-achados",
+        "no-op"
+      ],
+      "escolha": "injetar-achados",
+      "justificativa": "termos derivados da feature: ",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    },
+    {
+      "id": "dec-003",
+      "onda_id": "onda-001",
+      "timestamp": "2026-05-29T14:42:15Z",
+      "etapa": "specify",
+      "agente": "agente-00c-feature-orchestrator",
+      "contexto": "Spec gerada para decision-map-panel",
+      "opcoes_consideradas": [
+        "gerar-spec",
+        "abortar"
+      ],
+      "escolha": "gerar-spec",
+      "justificativa": "Feature tem 4 user stories, 13 FRs, 7 SCs. Nenhuma ambiguidade crítica (0 NEEDS CLARIFICATION). Escopo delimitado: mapa visual no ExecutionDetail, leitura via API existente, sem novos endpoints. FR-011 e FR-013 explicitam não-reimplementação conforme Princípio IV.",
+      "score_justificativa": 2,
+      "evidencia": null,
+      "referencias": [],
+      "artefato_originador": null
+    }
+  ],
+  "bloqueios_humanos": [],
+  "orcamentos": {
+    "recursividade_max": 3,
+    "profundidade_corrente_subagentes": 1,
+    "retro_execucoes_max_por_feature": 2,
+    "retro_execucoes_consumidas": 0,
+    "ciclos_max_por_etapa": 5,
+    "ciclos_consumidos_etapa_corrente": 0,
+    "tool_calls_threshold_onda": 80,
+    "wallclock_threshold_segundos": 5400,
+    "estado_size_threshold_bytes": 1048576,
+    "tool_calls_onda_corrente": 43,
+    "inicio_onda_corrente": "2026-05-29T14:38:36Z"
+  },
+  "metricas_acumuladas": {
+    "ondas_total": 0,
+    "tool_calls_total": 0,
+    "tempo_wallclock_total_segundos": 0,
+    "profundidade_max_atingida": 1,
+    "subagentes_spawned": 0,
+    "decisoes_total": 3,
+    "bloqueios_humanos_total": 0,
+    "sugestoes_skills_globais_total": 0,
+    "issues_toolkit_abertas": 0
+  },
+  "whitelist_urls_externas": [],
+  "historico_movimento_circular": [],
+  "aspectos_chave_iniciais": [],
+  "eventos": [
+    {
+      "event_type": "recall_consulted",
+      "timestamp": "2026-05-29T14:39:01Z",
+      "descricao": "etapa=specify hits=12"
+    }
+  ]
+}

@@ -93,8 +93,10 @@ use a new tag, preferred).
 
 ### `cstk serve`
 
-Downloads and runs the cstk panel web interface. On the first run it queries the
-GitHub Releases API, downloads the latest tarball from `JotJunior/cstk-panel`,
+Downloads and runs the cstk panel web interface. The panel is distributed as
+part of the `cstk` releases (own repository, package `panel/`) — it no longer
+has a separate repository. On the first run it queries the GitHub Releases
+API, downloads the panel asset from the latest `JotJunior/cstk` release,
 extracts it and runs `npm install`. Subsequent runs reuse the cache (no
 download).
 
@@ -107,6 +109,8 @@ PORT=4000 cstk serve         # port via environment variable
 
 Options: `--port PORT` (1024-65535), `--host HOST` (default: 127.0.0.1),
 `--reinstall`, `--help`. Override the directory via `$CSTK_PANEL_DIR`.
+Override the source repository (forks/rehearsals only) via `$CSTK_PANEL_REPO`
+(default: `JotJunior/cstk`).
 
 ## Conventions
 
