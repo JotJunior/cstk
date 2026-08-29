@@ -95,6 +95,46 @@ proprio. **Nunca `5xx` por condicao de dado.** Erro de *validacao de request*
 ja aplicado globalmente `[VERIFICADO: panel/apps/server/src/index.ts:54,
 `void reply.header('X-Content-Type-Options', 'nosniff');`]`.
 
+### 3.1 Reconciliacao com as rotas de ESCRITA (`create`/`answer`) — resolve checklist CHK002
+
+`[PROPOSTA]`. O MUST de §3 ("nunca `5xx` por condicao de dado") vale **sem
+excecao** tambem para `create` e `answer` — nao ha uma segunda politica de
+degradacao para rotas de escrita. `bridge.db` ausente/ilegivel/`quick_check`
+falhando responde, nas quatro rotas, `200` com `data: null` e
+`meta.degraded=true` + `reason` proprio (`"bridge_unavailable"`). Nunca `503`,
+nunca outro `5xx`.
+
+**Isso NAO contradiz FR-021** ("falha ou timeout desta chamada MUST, por si so,
+produzir `unavailable`") — reconcilia expandindo o que conta como "falha desta
+chamada" no cliente MCP, nao abrindo excecao no servidor HTTP:
+
+- `bridge/client.ts` (servidor MCP), ao chamar `POST /interventions`, trata
+  **dois** sinais como equivalentes para fins do outcome `unavailable`: (a) falha
+  de rede, timeout (`AbortSignal.timeout(BRIDGE_CREATE_TIMEOUT_MS)`) ou `5xx`
+  inesperado — o caminho ja previsto por FR-021; **e** (b) resposta `200` com
+  `meta.degraded===true` — o caminho novo que esta secao acrescenta. Em ambos, o
+  cliente MCP produz `unavailable`, nunca cria um `questionId` local nem espera
+  por polling.
+- **`data.questionId` e omitido quando `degraded=true`** (nada foi persistido —
+  nao ha correlator para devolver). A resposta `201` de sucesso continua exigindo
+  `data.questionId` nao-nulo; a resposta degradada usa `200` com `data: null`
+  (nunca `201` — `201` significa "criado", e nada foi criado).
+- `answer` (rota de escrita sobre uma intervencao **ja** existente) segue a
+  MESMA forma: `bridge.db` indisponivel no momento do `PATCH`-equivalente
+  responde `200` com `data: null` + `meta.degraded=true`, **distinto** dos tres
+  desfechos ja tabelados (`400`/`404`/`409`) — nenhum deles descreve
+  corretamente "o dado pode ate existir, mas o armazenamento esta inacessivel
+  agora". O cliente web (`Interventions.tsx`) trata esse `meta.degraded=true` da
+  MESMA forma que trata a leitura degradada da fila (estado "degradado" da UI,
+  ver §"os quatro estados obrigatorios"), nunca como `409` (que implicaria
+  resolucao concorrente real).
+
+**Por que nao um `503` dedicado para escrita** (alternativa considerada e
+rejeitada): introduziria uma SEGUNDA politica de status para condicao de dado,
+exatamente o que §3 probe. Um cliente que trata `200+degraded` para leitura e
+`5xx` para escrita precisaria de dois caminhos de parsing para o mesmo tipo de
+falha — o proprio motivo pelo qual FR-017 exige degradacao isolada e uniforme.
+
 ---
 
 ## 4. `POST /api/v1/bridge/interventions` — criar (chamador: servidor MCP)
@@ -152,6 +192,9 @@ Payload invalido -> `400` com `reason` descritivo (nao e condicao de dado).
 
 `questionId` e gerado **pelo painel** (contrato §3 do `mcp-tool-ask-operator.md`:
 "Correlator, gerado pelo servidor"), com CSPRNG. `expiresAt = now + timeoutMs`.
+
+**Resposta degradada (`bridge.db` indisponivel — §3.1)**: `200`, nao `201`, com
+`data: null` e `meta.degraded=true`; `data.questionId` e omitido (ver §3.1).
 
 ### FR-021 — esta chamada E o healthcheck
 
@@ -284,7 +327,7 @@ Atende US2/FR-002/FR-005/FR-006/FR-016.
 
 | Status | Quando |
 |--------|--------|
-| `200` | aplicado; devolve o estado final da intervencao |
+| `200` | aplicado; devolve o estado final da intervencao. **Tambem** usado (com `data: null` + `meta.degraded=true`, distinguivel do sucesso pelo campo `meta.degraded`) quando `bridge.db` esta indisponivel no momento do UPDATE — ver §3.1. Nunca `409`/`404`/`5xx` nesse caso. |
 | `400` | `value` fora de `options`; `text` presente com `kind != "text"`; shape invalida |
 | `404` | `questionId` desconhecido |
 | `409` | **ja resolvida** (`resolution IS NOT NULL`) **ou** ja expirada (`now >= expires_at`) — FR-016 |
