@@ -5,6 +5,42 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.2.1] - 2026-08-30
+
+O guard de `Host` das rotas da Ponte recusava, sem escape, qualquer hostname
+fora de loopback — o que deixava `/api/v1/bridge/*` inteiramente inacessivel
+atras de proxy reverso, o deployment em que o `Host` repassado e o dominio
+publico e nunca seria loopback. Relatado em uso real (`HTTP 400`, "Host header
+rejeitado").
+
+### Fixed
+
+- **Opt-in explicito de `Host` nao-loopback: `CSTK_PANEL_ALLOWED_HOSTS`** (lista
+  separada por virgula, contrato §11.2). Vazia ou ausente ⇒ **so loopback**, o
+  mesmo comportamento de antes desta configuracao existir: zero regressao, e o
+  default nunca depende de o operador lembrar de fechar nada.
+  Comparacao por **igualdade exata, case-insensitive**, nunca substring nem
+  wildcard — mesma disciplina de `cli/lib/trusted-hosts.sh` e pelo mesmo motivo
+  (CWE-290): sem ela, `painel.exemplo.com.evil.com` casaria uma entrada
+  `painel.exemplo.com`. Dois testes cobrem a armadilha (sufixo e prefixo) e
+  foram verificados por mutacao — trocando a igualdade por `includes()`, ambos
+  reprovam.
+  A mitigacao de DNS rebinding sobrevive ao opt-in: o hostname que o atacante
+  faz resolver para loopback nao esta na lista do operador.
+  > O opt-in **nao adiciona autenticacao**. O painel nao tem authn/authz
+  > propria e faz bind fixo em `127.0.0.1` (FR-017); expor sem controle de
+  > acesso na frente (proxy com auth, VPN, mTLS) publica rotas de **escrita**:
+  > quem alcanca o dominio le a fila — que carrega contexto de execucao dos
+  > agentes — e responde intervencoes, destravando o agente de outra pessoa.
+- **Assimetria de desenho entre cliente e servidor.** O contrato ja previa
+  deployment nao-loopback do lado CLIENTE (§11.5, opt-in
+  `CSTK_PANEL_ALLOW_NONLOOPBACK`) mas nao do lado servidor, e a §11.2 diz
+  `SHOULD` enquanto o codigo implementava `MUST` incondicional. As duas pontas
+  agora tem a mesma forma de escape explicito.
+- **Mensagem de erro citava a secao errada do contrato**: dizia `§11.4`
+  (permissoes de arquivo do `bridge.db`) em vez de `§11.2` (guard de `Host`) —
+  mandava um debugger futuro para o lugar errado.
+
 ## [10.2.0] - 2026-08-30
 
 A Ponte humana: uma fila unica, cross-projeto, de tudo que qualquer sessao do
@@ -7750,6 +7786,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.2.1]: https://github.com/JotJunior/cstk/releases/tag/v10.2.1
 [10.2.0]: https://github.com/JotJunior/cstk/releases/tag/v10.2.0
 [10.1.0]: https://github.com/JotJunior/cstk/releases/tag/v10.1.0
 [10.0.0]: https://github.com/JotJunior/cstk/releases/tag/v10.0.0

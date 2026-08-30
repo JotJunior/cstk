@@ -461,6 +461,30 @@ visite de responder intervencoes via `fetch` para `127.0.0.1`.
   futuro reabriria o vetor CSRF em silencio.
 - **SHOULD**: validar o header `Host` contra `127.0.0.1`/`localhost` no escopo
   `/bridge/*` (mitigacao de DNS rebinding).
+- **MUST**: hostname fora de loopback so passa quando listado no opt-in
+  explicito `CSTK_PANEL_ALLOWED_HOSTS` (lista separada por virgula). Vazio ou
+  ausente ⇒ so loopback — o default nunca depende de o operador lembrar de
+  fechar nada. A comparacao e por **igualdade exata, case-insensitive**
+  (DNS e case-insensitive), **NUNCA** substring nem wildcard
+  `[VERIFICADO: mesma disciplina de cli/lib/trusted-hosts.sh, cabecalho
+  "CWE-290 — authentication/allowlist bypass"]`: sem isso,
+  `painel.exemplo.com.evil.com` casaria uma entrada `painel.exemplo.com`.
+  A mitigacao de DNS rebinding sobrevive ao opt-in porque o hostname que o
+  atacante faz resolver para loopback nao esta na lista do operador.
+
+  **Motivo de existir** — e ele precisa sobreviver a refactor: o painel faz
+  bind fixo em `127.0.0.1` (FR-017) e **nao tem autenticacao propria**. Atras
+  de proxy reverso o `Host` repassado e o dominio publico, que nunca e
+  loopback; sem o opt-in, a Ponte inteira fica inacessivel nesse deployment
+  — que e legitimo e observado em uso real.
+
+  > **O opt-in NAO adiciona autenticacao.** Ele apenas para de recusar o
+  > `Host`. Setar `CSTK_PANEL_ALLOWED_HOSTS` sem um controle de acesso na
+  > frente (proxy com auth, VPN, mTLS) publica rotas de **escrita** sem
+  > authn/authz: qualquer um que alcance o dominio le a fila — que carrega
+  > contexto de execucao dos agentes — e **responde** intervencoes,
+  > destravando e direcionando o agente de outra pessoa. Ver §"Transporte
+  > nao-loopback: nao coberto" nas limitacoes declaradas.
 
 ### 11.3 `question` tambem passa por scrub — a assimetria atual e um vazamento
 
