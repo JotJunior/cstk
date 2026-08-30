@@ -5,6 +5,96 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.2.0] - 2026-08-30
+
+A Ponte humana: uma fila unica, cross-projeto, de tudo que qualquer sessao do
+Claude Code parou para esperar. O agente pergunta pela tool MCP bloqueante
+`ask_operator`, o operador responde no painel, e a sessao especifica que
+perguntou e destravada. E a **primeira superficie de escrita** da historia do
+painel — autorizada pela emenda 2.0.0 da sua constituicao, que redefiniu o
+Principio I de "Read-Only Absoluto" para "Read-Only sobre o Corpus".
+
+O escopo desta v1 e deliberadamente a superficie 1 (pergunta que nasce de uma
+tool do `cstk-state`). O gate de `PreToolUse` e as elicitations levantadas por
+outros servidores MCP ficam para depois.
+
+### Added
+
+- **Tool MCP `ask_operator`** (`mcp/state-server/src/tools/ask_operator.ts`), a
+  9a `registerTool` do `cstk-state`. Bloqueante, com `kind` em
+  `choice|confirm|text`, `default_value` obrigatorio e desfecho em
+  `answered|declined|timeout|unavailable|failed`. Degradacao **nunca** e erro
+  de tool (invariante C-1): retorna `outcome:"accepted"` com o desfecho dentro
+  de `result`, e o `default_value` e gravado ANTES do retorno (C-4).
+- **`ASK_MIN_TIMEOUT_MS = 60000`** (R-CLOCK-7), piso proprio desta superficie,
+  separado do piso `5000` do `collect_optins`. A faixa valida segue **derivada
+  nos dois extremos** (`[ASK_MIN_TIMEOUT_MS, client_timeout_ms - 60000]`),
+  nenhum literal. Valor fora da faixa cai no default, nunca e clampado para a
+  borda. Fecha o vetor em que um agente colhia `timeout` deterministicamente e
+  auto-aplicava o proprio default com trilha indistinguivel de consulta humana.
+- **Auditoria da janela efetiva** (R-AUDIT-1): `effective_timeout_ms` em
+  `.operator_answers[]` e finding `ask-operator-short-window` no `review-task`,
+  disparando na conjuncao `outcome=="timeout"` E janela `< 60000`.
+- **`mcp/state-server/src/bridge/client.ts`** — unico arquivo do servidor MCP
+  com `fetch()`, com mapper camelCase/snake_case e guard de loopback para
+  `CSTK_PANEL_URL` (default `http://127.0.0.1:5173`, a porta que o operador de
+  fato ve ao rodar `cstk serve`).
+- **`bridge.db`** (`panel/apps/server/src/db/bridge.ts`), store proprio em
+  conexao SEPARADA read-write. Nao e corpus: `knowledge.db` continua
+  `mode=ro&immutable=1` e `open.ts` fica intocado.
+- **4 rotas sob `/api/v1/bridge/*`** (`panel/apps/server/src/routes/bridge.ts`)
+  — as unicas nao-`GET` do painel — com validacao Zod, idempotencia por
+  invariante de banco (`changes===1`/`409`), CORS de escopo proprio e guards de
+  `Content-Type` (415) e `Host` (400).
+- **Tela `Intervencoes`** (`panel/apps/web/src/screens/Interventions.tsx`) com
+  fila cross-projeto, composer por `kind` e estados de loading/vazio/erro/
+  degradado. Atualiza por **polling** (`refetchInterval`), nunca SSE.
+- **Persistencia em `.operator_answers[]`**, append-only, pela primitiva
+  generica `state-rw.sh set` ja existente — **nenhum script POSIX novo, nenhuma
+  dependencia nova**.
+- **`cstk mcp install`** passa a escrever o par `timeout` (cliente) +
+  `env.CSTK_CLIENT_TOOL_TIMEOUT_MS` (servidor) no `.mcp.json`, ambos a partir
+  de **um unico valor-fonte** em `cli/lib/mcp.sh` — nao podem divergir por
+  construcao (R-CLOCK-5). Novo override `--client-timeout-ms`.
+
+### Changed
+
+- **`panel/scripts/readonly-check.sh` reescrito**: saiu de "nenhum verbo de
+  mutacao em lugar nenhum" — mais restritivo que a propria constituicao — para
+  tres checagens que espelham as clausulas reais: verbos de mutacao em
+  `db/queries/**`, unica conexao rw autorizada, unica rota nao-`GET`
+  autorizada. Afrouxado no MESMO commit do primeiro codigo de `bridge/`, com
+  teste automatizado (`readonly-check-bridge-commit.test.ts`) que falha se um
+  refactor futuro separar os dois.
+- **Cobertura da 9a tool nos tres sitios exigidos**: `_required` de
+  `tests/test_orchestrator-allowlist-guard.sh` e a frontmatter dos dois
+  orquestradores.
+
+### Fixed
+
+- **Colisao de CORS derrubava o servidor real no boot.** `routes/bridge.ts`
+  registrava `@fastify/cors` em escopo aninhado, colidindo com o global:
+  `FST_ERR_DEC_ALREADY_PRESENT('corsPreflightEnabled')`. Nenhum dos testes
+  pegava — todos registravam as rotas isoladas. Corrigido com
+  `hasRequestDecorator` + override por rota. Achado pelo cenario E2E contra
+  servidor de verdade.
+- **Resposta perdida em silencio.** O servidor cumpria a §3.1 devolvendo
+  `200 + meta.degraded=true` quando `bridge.db` estava fora, mas o cliente web
+  tratava qualquer `200` como sucesso: o operador respondia, **nao via erro**, a
+  fila revalidava e nada era persistido — numa feature cujo proposito e
+  destravar quem espera. `answerMutationFeedback()` passa a tratar o caso
+  degradado com a mesma copy da leitura degradada da fila.
+- **Handle de `bridge.db` vazava.** `openBridgeDb` abria o handle e so depois
+  rodava pragmas/DDL; se algum lancasse, o `finally { db?.close(); }` do
+  chamador era no-op. Pragmas/DDL agora rodam dentro de try/catch com
+  `db.close()` antes de repropagar, e o `PRAGMA quick_check` foi adicionado.
+  Corrige tambem a afirmacao PASS de `plan.md` sobre fechamento no `finally`.
+- **Afirmacao caducada no contrato.** A R-TEXT-3 citava, como `[VERIFICADO]`,
+  que `secrets-filter.sh` deixava `password=hunter2` passar em claro e que
+  blocos PEM atravessavam intactos. Medido de novo: da `password=[REDACTED]` e
+  `[REDACTED-PEM-BLOCK]` (a issue #169 fechou isso na v9.4.0). As tres defesas
+  seguem obrigatorias — mudou o motivo, nao o requisito.
+
 ## [10.1.0] - 2026-08-29
 
 O gate de MUST do `converge` lia **zero regras** em constituicoes escritas no
@@ -7660,6 +7750,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.2.0]: https://github.com/JotJunior/cstk/releases/tag/v10.2.0
 [10.1.0]: https://github.com/JotJunior/cstk/releases/tag/v10.1.0
 [10.0.0]: https://github.com/JotJunior/cstk/releases/tag/v10.0.0
 [9.5.0]: https://github.com/JotJunior/cstk/releases/tag/v9.5.0
