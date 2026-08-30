@@ -1,6 +1,6 @@
 {
   "name": "@cstk-panel/server",
-  "version": "10.1.0",
+  "version": "10.2.0",
   "description": "Back-end HTTP read-only — Fastify 5 + better-sqlite3 sobre knowledge.db",
   "main": "./dist/index.js",
   "scripts": {
