@@ -59,4 +59,7 @@ export type DegradedReason =
   | 'sessions-root-unreadable'   // raiz existe, mas `readdirSync` falha (permissao)
   | 'session-not-found'          // `:sessionId` nao resolve para arquivo sob a raiz
   | 'session-rejected'           // guard de confinamento rejeitou o caminho (symlink/escape)
-  | 'session-scrub-failed';      // cadeia de scrub nao pode ser concluida; degrada em vez de servir texto cru
+  | 'session-scrub-failed'       // cadeia de scrub nao pode ser concluida; degrada em vez de servir texto cru
+  // feature human-bridge, FASE 3 (contracts/panel-bridge-api.md §3.1): literal
+  // com underscore (nao kebab-case) — citado assim, verbatim, pelo contrato.
+  | 'bridge_unavailable';        // `bridge.db` ausente/ilegivel/`quick_check` falhou no momento da chamada

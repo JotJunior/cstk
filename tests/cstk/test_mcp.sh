@@ -944,6 +944,43 @@ scenario_install_flag_desconhecida_exit_2() {
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "install flag desconhecida exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
 }
 
+# ---------- install: timeout + env.CSTK_CLIENT_TOOL_TIMEOUT_MS (human-bridge
+# FASE 2, task 2.6.3, R-CLOCK-5) — os DOIS campos MUST vir de uma unica
+# fonte, numericamente identicos, tanto no default quanto num override.
+
+scenario_install_timeout_e_env_identicos_no_default() {
+  _ip="$TMPDIR_TEST/install-clock-default"
+  mkdir -p "$_ip"
+  capture _cstk_mcp install --project-path "$_ip"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install exit" "$_CAPTURED_STDERR"; return 1; }
+  _timeout=$(jq -r '.mcpServers["cstk-state"].timeout' "$_ip/.mcp.json")
+  _env_ms=$(jq -r '.mcpServers["cstk-state"].env.CSTK_CLIENT_TOOL_TIMEOUT_MS' "$_ip/.mcp.json")
+  [ "$_timeout" = "300000" ] || { _fail "timeout default" "esperado 300000, obtido $_timeout"; return 1; }
+  [ "$_env_ms" = "300000" ] || { _fail "env.CSTK_CLIENT_TOOL_TIMEOUT_MS default" "esperado 300000, obtido $_env_ms"; return 1; }
+  [ "$_timeout" = "$_env_ms" ] || { _fail "timeout != env.CSTK_CLIENT_TOOL_TIMEOUT_MS" "$_timeout vs $_env_ms"; return 1; }
+}
+
+scenario_install_timeout_e_env_identicos_com_override() {
+  _ip="$TMPDIR_TEST/install-clock-override"
+  mkdir -p "$_ip"
+  capture _cstk_mcp install --project-path "$_ip" --client-timeout-ms 600000
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "install override exit" "$_CAPTURED_STDERR"; return 1; }
+  _timeout=$(jq -r '.mcpServers["cstk-state"].timeout' "$_ip/.mcp.json")
+  _env_ms=$(jq -r '.mcpServers["cstk-state"].env.CSTK_CLIENT_TOOL_TIMEOUT_MS' "$_ip/.mcp.json")
+  [ "$_timeout" = "600000" ] || { _fail "timeout override" "esperado 600000, obtido $_timeout"; return 1; }
+  [ "$_env_ms" = "600000" ] || { _fail "env.CSTK_CLIENT_TOOL_TIMEOUT_MS override" "esperado 600000, obtido $_env_ms"; return 1; }
+}
+
+scenario_install_client_timeout_ms_nao_numerico_exit_2() {
+  capture _cstk_mcp install --client-timeout-ms abc
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "install --client-timeout-ms nao-numerico exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_install_client_timeout_ms_zero_exit_2() {
+  capture _cstk_mcp install --client-timeout-ms 0
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "install --client-timeout-ms 0 exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
 scenario_mcp_uso_lista_install() {
   capture _cstk_mcp
   assert_stdout_contains "install" || return 1

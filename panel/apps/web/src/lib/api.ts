@@ -123,3 +123,64 @@ export function invalidateEtag(path: string): void {
   }
   bodyCache.delete(path);
 }
+
+/**
+ * mutateApi<T> — cliente para mutacoes (POST/PATCH/PUT/DELETE).
+ *
+ * Ref: docs/specs/human-bridge/contracts/panel-bridge-api.md §8; task 4.1.
+ *
+ * `fetchApi()` MUST NOT ser reusado para mutacao: ele le o ETag PERSISTIDO
+ * POR PATH e injeta `If-None-Match` incondicionalmente e, em `304`, devolve
+ * o corpo do `bodyCache` sem tocar a rede. Numa mutacao isso e um defeito,
+ * nao uma otimizacao — uma re-submissao (retry, double-click) poderia
+ * devolver um corpo STALE do cache em vez do resultado real da chamada,
+ * colidindo com FR-016/SC-006 (idempotencia visivel ao operador).
+ *
+ * `mutateApi()` portanto:
+ *  - NUNCA le ETag armazenado, NUNCA envia `If-None-Match`;
+ *  - NUNCA grava em `bodyCache`/ETag para o path da propria mutacao;
+ *  - invalida explicitamente os paths passados em `invalidatePaths` (ex.:
+ *    a fila `/bridge/interventions`) apos sucesso — via `invalidateEtag()`
+ *    ja existente (contrato §8, 2a metade do requisito).
+ *
+ * Erro de VALIDACAO do servidor (4xx da Ponte, `bridgeErrorEnvelope`) chega
+ * com `data: null` + campo `error` — a mensagem de excecao lancada prefere
+ * esse `error` textual ao generico `HTTP <status>`.
+ */
+export async function mutateApi<T>(
+  path: string,
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+  body: unknown,
+  dataSchema: z.ZodType<T>,
+  invalidatePaths: readonly string[] = []
+): Promise<ApiEnvelope<T>> {
+  const url = `${BASE_URL}${path}`;
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const json: unknown = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    const message =
+      json != null && typeof json === 'object' && 'error' in json &&
+      typeof (json as { error: unknown }).error === 'string'
+        ? (json as { error: string }).error
+        : `HTTP ${res.status} em ${path}`;
+    throw new Error(message);
+  }
+
+  const data = parseEnvelope(json, dataSchema);
+
+  for (const p of invalidatePaths) {
+    invalidateEtag(p);
+  }
+
+  return data;
+}

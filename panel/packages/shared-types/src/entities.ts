@@ -774,3 +774,100 @@ export interface SessionTailEntryDTO {
    *  `tool_result` nao carrega o nome no protocolo (so `tool_use_id`). */
   toolName: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Intervention* — DTOs da Ponte de intervencao humana (feature human-bridge).
+// Payload HTTP `/api/v1/bridge/*` — SEMPRE camelCase (contracts/
+// panel-bridge-api.md §2). Espelhado, campo-a-campo, pelo schema Zod PROPRIO
+// do servidor MCP (`mcp/state-server/src/tools/ask_operator.ts` +
+// `mcp/state-server/src/bridge/client.ts`) — que MUST NOT importar este
+// pacote (repos/instalacoes distintas, §2). A paridade entre os dois e
+// verificada por teste smoke, nao por tipo compartilhado.
+// ---------------------------------------------------------------------------
+
+/** Enum fechado do tipo de intervencao (FR-004). */
+export type InterventionKind = 'choice' | 'confirm' | 'text';
+
+/** Origem da execucao que perguntou (contracts/panel-bridge-api.md §4). */
+export type InterventionExecutionKind = 'agente-00c' | 'feature-00c';
+
+/**
+ * Estado DERIVADO na leitura (nunca coluna, nunca `UPDATE` disparado por
+ * `GET` — data-model.md §"Estados derivados"). `absent` NAO existe nesta
+ * superficie (contrato §5, diferenca deliberada face a `collect_optins`).
+ */
+export type InterventionState = 'open' | 'answered' | 'declined' | 'expired';
+
+/** Corpo de `POST /api/v1/bridge/interventions` (contrato §4). */
+export interface CreateInterventionRequestDTO {
+  projectPath: string;
+  project: string;
+  shortName: string | null;
+  executionKind: InterventionExecutionKind;
+  kind: InterventionKind;
+  /** @untrusted — vem de um agente; scrubbed na ENTRADA antes de persistir (§11.3). */
+  question: string;
+  /** obrigatorio (>=1 item) sse `kind==='choice'`; @untrusted por elemento. */
+  options: string[] | null;
+  defaultValue: string;
+  /** Janela EFETIVA, ja resolvida pelo servidor MCP — o painel MUST NOT re-derivar/re-clampar (§4). */
+  timeoutMs: number;
+}
+
+/** Resposta `201` de sucesso (ou `200+meta.degraded=true`, com `questionId` omitido — §3.1/§4). */
+export interface CreateInterventionResponseDTO {
+  questionId: string;
+  expiresAt: string;
+  state: 'open';
+}
+
+/** Resposta `200` de `GET /api/v1/bridge/interventions/:questionId` (contrato §5). */
+export interface PollInterventionResponseDTO {
+  questionId: string;
+  state: InterventionState;
+  /** nao-null sse `state` em {answered, declined}. */
+  appliedValue: string | null;
+  /** @untrusted — nao-null so em `kind==='text'` + `state==='answered'`. */
+  untrustedText: string | null;
+  resolvedAt: string | null;
+}
+
+/** 1 linha da fila (`GET /api/v1/bridge/interventions`, contrato §6). */
+export interface InterventionQueueItemDTO {
+  questionId: string;
+  project: string;
+  shortName: string | null;
+  executionKind: InterventionExecutionKind;
+  kind: InterventionKind;
+  /** @untrusted — renderizar como texto puro, nunca HTML/markup ativo (Principio V do painel). */
+  question: string;
+  /** @untrusted por elemento — idem `question`. */
+  options: string[] | null;
+  defaultValue: string;
+  state: InterventionState;
+  /** `false` quando `projectPath` nao existe mais em disco (linha continua visivel, acao de responder desabilitada). */
+  reachable: boolean;
+  createdAt: string;
+  expiresAt: string;
+  /** Derivado (`now - createdAt`), nunca coluna. */
+  waitingMs: number;
+  appliedValue: string | null;
+  /** @untrusted */
+  untrustedText: string | null;
+  resolvedAt: string | null;
+}
+
+/** Corpo de `GET /api/v1/bridge/interventions` (contrato §6). */
+export interface InterventionsQueueResultDTO {
+  interventions: InterventionQueueItemDTO[];
+  pagination: PaginationParams;
+}
+
+/** Corpo de `POST /api/v1/bridge/interventions/:questionId/answer` (contrato §7). */
+export interface AnswerInterventionRequestDTO {
+  resolution: 'answered' | 'declined';
+  /** obrigatorio sse `resolution==='answered'`; regra por `kind` validada no SERVIDOR (FR-005). */
+  value: string | null;
+  /** permitido so em `kind==='text'`; passa pelo pipeline strip->scrub->truncamento na ENTRADA. */
+  text: string | null;
+}

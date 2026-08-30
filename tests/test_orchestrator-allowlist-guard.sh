@@ -303,18 +303,20 @@ scenario_allowlist_nunca_vazia_nem_so_mcp() {
   return 0
 }
 
-# scenario_allowlist_declara_as_8_tools_mcp (FR-003 + FASE 7.2/dec-087,
-# dec-089)
-# Comparacao LITERAL contra as 8 entradas exatas — nunca regex
+# scenario_allowlist_declara_as_9_tools_mcp (FR-003 + FASE 7.2/dec-087,
+# dec-089; human-bridge FASE 2 task 2.7 — 9a tool `ask_operator`)
+# Comparacao LITERAL contra as 9 entradas exatas — nunca regex
 # `mcp__cstk-state__.*` (plan.md "Convencoes de Borda", protege contra
 # typo silencioso). A 8a tool (`collect_optins`, feature
 # `mcp-elicitation-optins`) foi incluida no required set porque e o
 # PRIMEIRO ato do orquestrador (bootstrap da onda-001) — sem este scenario
 # exigindo-a, a tool pode ser removida do frontmatter sem que o guard
 # acuse (mesma classe do guard inerte revogado em
-# orchestrator-mcp-allowlist). Prova por mutacao em
+# orchestrator-mcp-allowlist). A 9a tool (`ask_operator`, feature
+# `human-bridge`, contrato mcp-tool-ask-operator.md §9 "Cobertura") entra
+# pelo MESMO motivo. Prova por mutacao em
 # scenario_prova_deteccao_mutacao_collect_optins abaixo.
-scenario_allowlist_declara_as_8_tools_mcp() {
+scenario_allowlist_declara_as_9_tools_mcp() {
   _targets=$(_list_orchestrator_targets)
   if [ -z "$_targets" ]; then
     _error "sem_alvos" "nenhum orquestrador encontrado para avaliar"
@@ -327,7 +329,8 @@ mcp__cstk-state__record_task
 mcp__cstk-state__register_human_block
 mcp__cstk-state__close_wave
 mcp__cstk-state__get_status
-mcp__cstk-state__collect_optins"
+mcp__cstk-state__collect_optins
+mcp__cstk-state__ask_operator"
   _old_ifs="$IFS"
   IFS='
 '
@@ -350,6 +353,60 @@ mcp__cstk-state__collect_optins"
       _fail "mcp_tools_missing" "$_t: faltam tools mcp__cstk-state__* =>$_missing"
       return 1
     fi
+  done
+  IFS="$_old_ifs"
+  return 0
+}
+
+# scenario_prova_mutacao_ask_operator_removido_de_cada_orquestrador
+# (human-bridge task 5.2.9, Cenario 12 do quickstart, passos 2-3): prova
+# por mutacao de que `scenario_allowlist_declara_as_9_tools_mcp` NAO e cega
+# — a comentario da linha ~318 referenciava um
+# `scenario_prova_deteccao_mutacao_collect_optins` que nunca chegou a
+# existir neste arquivo (achado desta task); esta e a prova real,
+# equivalente, para a 9a tool (`ask_operator`). Copia CADA orquestrador
+# REAL para uma fixture em $TMPDIR_TEST (harness NUNCA edita os agentes
+# reais), remove SO a entrada `mcp__cstk-state__ask_operator` do `tools:`
+# inline, e roda a MESMA logica de required-set de
+# scenario_allowlist_declara_as_9_tools_mcp contra a fixture mutada —
+# confirmando FAIL citando o orquestrador. Repete para os DOIS
+# orquestradores reais (passos 2 e 3 do Cenario 12).
+scenario_prova_mutacao_ask_operator_removido_de_cada_orquestrador() {
+  _targets=$(_list_orchestrator_targets)
+  if [ -z "$_targets" ]; then
+    _error "sem_alvos" "nenhum orquestrador encontrado para avaliar"
+    return 2
+  fi
+  _old_ifs="$IFS"
+  IFS='
+'
+  for _t in $_targets; do
+    IFS="$_old_ifs"
+    _base=$(basename "$_t")
+    _mutant="$TMPDIR_TEST/mutant-$_base"
+    # Remove SO a 9a tool da linha `tools:` inline — preserva as outras 8 e
+    # todo o resto do arquivo intacto (mutacao minima e representativa).
+    sed 's/, mcp__cstk-state__ask_operator//' "$_t" > "$_mutant"
+    if grep -q 'mcp__cstk-state__ask_operator' "$_mutant"; then
+      _fail "mutante_ainda_contem_ask_operator" "$_base: sed nao removeu a entrada — fixture nao reproduz a mutacao pretendida"
+      return 1
+    fi
+    _present=$(_mcp_entries "$_mutant")
+    case "$_present" in
+      *"mcp__cstk-state__ask_operator"*)
+        _fail "mutacao_nao_detectada" "$_base: fixture mutada ainda reporta ask_operator presente"
+        return 1
+        ;;
+    esac
+    # A logica real (scenario_allowlist_declara_as_9_tools_mcp) FALHARIA
+    # para esta fixture: confirma que a ausencia e VISIVEL ao parser, nao
+    # so ausente do grep isolado acima (evita falso-positivo por parsing
+    # quebrado que "some" com tudo, nao so com a 9a tool).
+    _outras_presentes=$(printf '%s\n' "$_present" | grep -c '^mcp__cstk-state__' || :)
+    [ "$_outras_presentes" -eq 8 ] || {
+      _fail "parsing_quebrado" "$_base: fixture mutada deveria preservar EXATAMENTE as outras 8 tools mcp__cstk-state__*, achou $_outras_presentes"
+      return 1
+    }
   done
   IFS="$_old_ifs"
   return 0

@@ -584,6 +584,64 @@ _rp_render_secao_estrutural() {
   ' "$1"
 }
 
+# _rp_render_secao_ask_operator STATE_FILE — secao OPCIONAL (nao uma das 6
+# fixas), feature human-bridge FASE 2 task 2.5 (contrato
+# mcp-tool-ask-operator.md §7 R-AUDIT-1 + data-model.md §"Auditoria da
+# janela efetiva"). `.operator_answers[]` ausente/vazia — retro-compat E a
+# imensa maioria das execucoes, que nunca chama `ask_operator` — faz a
+# secao inteira ser OMITIDA (mesmo padrao de _rp_render_secao_roadmap:
+# silenciosa quando nao aplicavel; diferente de _rp_render_secao_estrutural,
+# que e governanca core e por isso sempre presente). Finding
+# `ask-operator-short-window`: a CONJUNCAO de outcome="timeout" E
+# effective_timeout_ms < 60000 (ASK_MIN_TIMEOUT_MS) — nenhuma das duas
+# condicoes isoladas caracteriza o padrao (timeout com janela adequada e
+# legitimo; janela curta com answered e trilha verdadeira).
+#
+# Regras de leitura IDENTICAS a `.optin_responses[]` (task 2.5.2,
+# data-model.md §"Regras de leitura"): R-1 (precedencia) — dedupe por
+# `question_id`, vence o registro de maior `recorded_at`, ANTES de aplicar
+# o predicado do finding (protege contra double-count caso um dia exista
+# retry que grave 2 entradas para o mesmo question_id — hoje cada chamada
+# de `ask_operator` gera um `question_id` novo, entao o dedupe e no-op na
+# pratica, mas a disciplina de leitura e a mesma dos demais consumidores).
+# R-2 (terminalidade) — `unavailable`/`failed` sao NAO-terminais e
+# `answered`/`declined`/`timeout` sao terminais; nao exige jq adicional
+# aqui porque o predicado do finding ja e restrito a `outcome=="timeout"`
+# (terminal por definicao).
+_rp_render_secao_ask_operator() {
+  _rao_sf="$1"
+  _rao_n=$(jq -r '((.operator_answers // []) | length)' "$_rao_sf" 2>/dev/null) || _rao_n=0
+  case "$_rao_n" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  [ "$_rao_n" -gt 0 ] || return 0
+
+  jq -r '
+    ((.operator_answers // [])
+      | group_by(.question_id)
+      | map(max_by(.recorded_at))) as $answers
+    | ($answers | map(select(
+        .outcome == "timeout" and ((.effective_timeout_ms // 999999999) < 60000)
+      ))) as $short
+    | "## Auditoria ask_operator — Janela Efetiva (human-bridge, R-AUDIT-1)",
+      "",
+      "Total de respostas ask_operator nesta execucao: \($answers | length).",
+      "",
+      "### Finding ask-operator-short-window",
+      "",
+      "Total: \($short | length) (esperado 0 — piso ASK_MIN_TIMEOUT_MS=60000ms, contrato R-CLOCK-7).",
+      "",
+      (if ($short | length) == 0 then
+         "(Nenhuma janela curta detectada.)"
+       else
+         ($short[] |
+           "- **\(.question_id)** — outcome `\(.outcome)` — effective_timeout_ms: \(.effective_timeout_ms) — applied_value: `\(.applied_value)` — recorded_at: \(.recorded_at)"
+         )
+       end),
+      ""
+  ' "$_rao_sf"
+}
+
 # _rp_render_apendice STATE_FILE
 _rp_render_apendice() {
   jq -r '
@@ -635,6 +693,7 @@ _rp_cmd_generate() {
   _rp_render_secao_6 "$_licoes" "$_final"
   _rp_render_secao_roadmap "$_sf"
   _rp_render_secao_estrutural "$_sf"
+  _rp_render_secao_ask_operator "$_sf"
   _rp_render_apendice "$_sf"
 }
 
@@ -752,6 +811,7 @@ _rp_cmd_emit() {
     _rp_render_secao_6 "$_licoes" "$_final"
     _rp_render_secao_roadmap "$_sf"
     _rp_render_secao_estrutural "$_sf"
+    _rp_render_secao_ask_operator "$_sf"
     _rp_render_apendice "$_sf"
   } > "$_raw"
 

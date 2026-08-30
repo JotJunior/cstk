@@ -5492,4 +5492,65 @@ scenario_rk_15c_env_vars_ignoradas_stdout_identico() {
   [ ! -f "/tmp/evil-rk15.db" ] || { _fail "rk15c" "arquivo /tmp/evil-rk15.db foi criado"; rm -f "/tmp/evil-rk15.db"; return 1; }
 }
 
+# =========================================================================
+# Cenario hb1 — Isolamento do corpus (human-bridge task 5.1.2, FR-018 de
+# docs/specs/human-bridge). `.operator_answers[]` (pergunta/resposta/texto
+# livre da Ponte de intervencao humana) vive no MESMO state.json ingerido
+# aqui — hoje NUNCA aparece no knowledge.db por PROPRIEDADE ACIDENTAL do
+# codigo (recall.sh nao enumera esse campo, achado explicito do plan.md da
+# human-bridge), nao por invariante declarada. Este teste transforma o
+# acidente em regressao: se algum dia recall.sh passar a varrer
+# `.operator_answers[]` (ou qualquer campo novo carregando texto livre do
+# operador), este cenario falha.
+# =========================================================================
+scenario_hb_5_1_2_operator_answers_nunca_ingeridas() {
+  _have_deps || return 0
+  _hb_dir="$TMPDIR_TEST/hb512"
+  mkdir -p "$_hb_dir"
+  _canary="CANARYHUMANBRIDGE9f3a2c1d7e"
+  cat > "$_hb_dir/state.json" <<JSON
+{
+  "short_name": "hb512feat",
+  "execucao": { "id": "exec-hb512feat", "projeto_alvo_path": "/tmp/projHb512" },
+  "operator_answers": [
+    { "question_id": "q-$_canary", "channel": "panel", "outcome": "answered",
+      "applied_value": "$_canary-applied-value",
+      "recorded_at": "2026-01-01T00:00:00Z", "reason": null,
+      "untrusted_text": "$_canary texto livre respondido pelo operador via painel",
+      "effective_timeout_ms": 60000 }
+  ],
+  "decisoes": [
+    { "id": "dec-001", "onda_id": "onda-001", "timestamp": "2026-01-01T00:00:00Z",
+      "etapa": "specify", "agente": "orch", "escolha": "iniciar", "score_justificativa": 2,
+      "opcoes_consideradas": ["iniciar", "adiar"],
+      "contexto": "decisao sem relacao com a ponte", "justificativa": "motivo generico", "evidencia": null }
+  ]
+}
+JSON
+  assert_exit 0 _rc --ingest --state-dir "$_hb_dir" --db "$TMPDIR_TEST/hb512.db" || return 1
+
+  # 1) Busca FTS pelo canary retorna vazio (exit 0, SC-004/FR-013 — sem
+  #    resultado nao e erro), NUNCA acha o texto do operador. A mensagem de
+  #    "sem resultado" ECOA o termo buscado (`nenhum resultado para '%s'`,
+  #    recall.sh:3130) — por isso a asserção é IGUALDADE com essa mensagem
+  #    exata, não ausência de substring (que sempre falsearia aqui).
+  capture _rc "$_canary" --db "$TMPDIR_TEST/hb512.db"
+  [ "$_CAPTURED_EXIT" = "0" ] || { _fail "hb512 busca exit" "obtido $_CAPTURED_EXIT"; return 1; }
+  [ "$_CAPTURED_STDOUT" = "nenhum resultado para '$_canary'" ] \
+    || { _fail "hb512 busca stdout" "esperava mensagem de zero resultados, obtido: $_CAPTURED_STDOUT"; return 1; }
+
+  # 2) Invariante mais forte e schema-agnostica: dump COMPLETO do
+  #    knowledge.db (todas as tabelas, nao so a FTS) nao contem o canary em
+  #    lugar NENHUM — protege contra qualquer tabela nova/futura que passe a
+  #    espelhar .operator_answers[] sem passar pela camada de busca.
+  _dump=$(sqlite3 "$TMPDIR_TEST/hb512.db" ".dump" 2>/dev/null)
+  case "$_dump" in
+    *"$_canary"*)
+      _fail "hb512 dump completo" "canary do operator_answers vazou para dentro do knowledge.db"
+      return 1
+      ;;
+  esac
+  return 0
+}
+
 run_all_scenarios

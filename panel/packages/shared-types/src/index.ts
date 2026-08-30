@@ -53,6 +53,15 @@ export type {
   SearchParams,
   SessionSummaryDTO,
   SessionTailEntryDTO,
+  InterventionKind,
+  InterventionExecutionKind,
+  InterventionState,
+  CreateInterventionRequestDTO,
+  CreateInterventionResponseDTO,
+  PollInterventionResponseDTO,
+  InterventionQueueItemDTO,
+  InterventionsQueueResultDTO,
+  AnswerInterventionRequestDTO,
 } from './entities.js';
 
 // Schemas Zod — envelope
@@ -101,6 +110,16 @@ export {
   PlanUsageResultSchema,
   SessionSummaryDTOSchema,
   SessionTailEntryDTOSchema,
+  InterventionKindSchema,
+  InterventionExecutionKindSchema,
+  InterventionStateSchema,
+  CreateInterventionRequestDTOBaseSchema,
+  CreateInterventionRequestDTOSchema,
+  CreateInterventionResponseDTOSchema,
+  PollInterventionResponseDTOSchema,
+  InterventionQueueItemDTOSchema,
+  InterventionsQueueResultDTOSchema,
+  AnswerInterventionRequestDTOSchema,
 } from './schemas/entities.js';
 
 // Schemas Zod — params

@@ -30,6 +30,7 @@ import { Memories } from '@/screens/Memories.js';
 import { Source } from '@/screens/Source.js';
 import { Sessions } from '@/screens/Sessions.js';
 import { SessionDetail } from '@/screens/SessionDetail.js';
+import { Interventions } from '@/screens/Interventions.js';
 import { CheatSheet } from '@/screens/CheatSheet.js';
 import { Faq } from '@/screens/Faq.js';
 import { Placeholder } from '@/screens/Placeholder.js';
@@ -135,6 +136,9 @@ export default function App() {
             {/* Sessoes do Claude Code (session-tail, US1/US2) */}
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/sessions/:sessionId" element={<SessionDetail />} />
+
+            {/* Ponte de intervencao humana (human-bridge, US1/US2) */}
+            <Route path="/interventions" element={<Interventions />} />
 
             {/* Busca FTS5 (US3) */}
             <Route path="/search" element={<Search />} />

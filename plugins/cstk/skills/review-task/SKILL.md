@@ -526,6 +526,45 @@ manual).
 silenciosamente, sem bloquear o restante do `review-task` — mesmo padrao
 das secoes 4.6/4.7/4.8.
 
+### 4.10 Auditoria da janela efetiva de `ask_operator` (human-bridge — R-AUDIT-1)
+
+> Origem: feature `human-bridge`, FASE 2 (task 2.5). Aplica-se a QUALQUER
+> execucao (`agente-00c` ou `feature-00c`) cujo `state.json`/`state.db`
+> contenha `.operator_answers[]` (a tool MCP `ask_operator` — humano
+> respondendo pelo painel `cstk-panel`). Execucao que nunca chamou
+> `ask_operator` nao tem este array — subsecao AUSENTE do relatorio nesse
+> caso (nao e finding, e nao-aplicavel).
+
+**Nao reimplemente o predicado aqui.** Ja existe em
+`agente-00c-runtime/scripts/report.sh`, funcao
+`_rp_render_secao_ask_operator`: para cada entrada de `.operator_answers[]`,
+`outcome == "timeout"` **E** `effective_timeout_ms < 60000`
+(`ASK_MIN_TIMEOUT_MS`, contrato `mcp-tool-ask-operator.md` R-CLOCK-7). A
+CONJUNCAO das duas condicoes — nunca cada uma isoladamente: `timeout` com
+janela adequada e desfecho legitimo (o operador nao estava); janela curta
+com `answered` e trilha verdadeira (o humano respondeu mesmo assim).
+
+1. Rode `report.sh generate --state-dir <SD>` (mesmo `<SD>` do passo 1
+   desta skill). Quando `.operator_answers[]` existe e nao esta vazia, o
+   relatorio inclui a secao `## Auditoria ask_operator — Janela Efetiva
+   (human-bridge, R-AUDIT-1)`.
+2. Extraia dessa secao: "Total de respostas ask_operator nesta execucao:
+   N." e o "Total: M (esperado 0 ...)" da subsecao "Finding
+   ask-operator-short-window".
+3. Reporte as duas contagens no relatorio agregado do review-task. `M ==
+   0` e uma execucao saudavel (nao e finding); `M > 0` **e** finding —
+   liste os `question_id` das entradas anomalas (ja presentes na propria
+   secao gerada) em "Recomendacoes" com severidade `warning` (padrao dos
+   findings de governanca da skill, data-model.md §"Auditoria da janela
+   efetiva").
+
+**Defesa em profundidade**: `report.sh` ausente/nao-executavel, ou
+state-dir sem `.operator_answers[]` (execucao anterior a esta feature, ou
+que nunca usou `ask_operator` — a imensa maioria) → subsecao AUSENTE do
+relatorio (nunca renderizada com contagem zero forcada) e pulada
+silenciosamente aqui, sem bloquear o restante do `review-task` — mesmo
+padrao de degradacao das secoes 4.6/4.7/4.8/4.9.
+
 ### 5. Acoes Automaticas
 
 Ao identificar inconsistencias:
@@ -653,6 +692,20 @@ Veredito (`converge-status.sh check`): `<converged|risk-accepted|pending actiona
      o caminho de aceite (Decisao auditavel + accept-risk --decisao-id em
      execucao autonoma; accept-risk --justificativa direto em execucao
      manual) — ver §4.9. -->
+
+---
+
+<!-- INSERIR AQUI quando aplicavel (so quando .operator_answers[] existe
+     e nao esta vazia) — vide §4.10 (Auditoria da janela efetiva de
+     ask_operator) -->
+## Auditoria ask_operator (human-bridge — R-AUDIT-1)
+
+Total de respostas ask_operator: N
+Finding ask-operator-short-window: M (esperado 0 — piso ASK_MIN_TIMEOUT_MS=60000ms)
+
+<!-- se M > 0, listar question_id + outcome + effective_timeout_ms +
+     applied_value + recorded_at, mesmos dados da secao gerada por
+     report.sh; severidade warning (nao bloqueia) — ver §4.10 -->
 
 ---
 

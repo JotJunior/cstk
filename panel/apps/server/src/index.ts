@@ -25,6 +25,7 @@ import { metricsRoutes } from './routes/metrics.js';
 import { searchRoutes } from './routes/search.js';
 import { memoryRoutes } from './routes/memories.js';
 import { sessionRoutes } from './routes/sessions.js';
+import { bridgeRoutes } from './routes/bridge.js';
 import { startIngestWatcher, DEFAULT_WATCH_INTERVAL_MS, DEFAULT_SUBPROCESS_TIMEOUT_MS } from './watchers/ingest-watcher.js';
 import { startSessionsWatcher, runSessionsWatcherTick, DEFAULT_SESSIONS_WATCH_INTERVAL_MS } from './watchers/sessions-watcher.js';
 
@@ -89,6 +90,10 @@ async function main(): Promise<void> {
     await v1.register(searchRoutes);
     await v1.register(memoryRoutes);
     await v1.register(sessionRoutes);
+    // Ponte de intervencao humana (feature human-bridge) — PRIMEIRA
+    // superficie nao-GET do painel, confinada a /api/v1/bridge/*
+    // (panel/docs/constitution.md Principio I, emenda 2.0.0).
+    await v1.register(bridgeRoutes);
   }, { prefix: '/api/v1' });
 
   // Watcher de ingestao em segundo plano (US1, FR-001/FR-004/FR-013). Iniciado

@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { appendAuditRecord, scrubText } from "../src/audit/log.js";
+import { appendAuditRecord, appendAskOperatorRecord, scrubText } from "../src/audit/log.js";
 
 const FIXTURES_DIR = join(process.cwd(), "test", "fixtures");
 const REAL_SCRUB = join(FIXTURES_DIR, "fake-secrets-filter-scrub.sh");
@@ -247,6 +247,86 @@ test("appendAuditRecord: falha ao escrever (diretorio impossivel de criar) NUNCA
           arguments: {},
         },
         { logPath: impossibleLogPath, scrubHelperPath: REAL_SCRUB },
+      );
+      assert.equal(ok, false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// --- appendAskOperatorRecord (human-bridge FASE 2, task 2.3.3) -------------
+
+test("appendAskOperatorRecord: happy path — 1 linha JSONL, source proprio, todos os campos", async () => {
+  await withTempLogFile(async (logPath) => {
+    const ok = await appendAskOperatorRecord(
+      {
+        sessionId: "synthetic-token-abc123",
+        questionId: "q-abc123",
+        channel: "panel",
+        outcome: "answered",
+        appliedValue: "sim",
+        effectiveTimeoutMs: 240000,
+        reason: null,
+      },
+      { logPath, now: () => new Date("2026-08-29T18:00:00.000Z") },
+    );
+    assert.equal(ok, true);
+
+    const content = await readFile(logPath, "utf8");
+    assert.equal(content.trim().split("\n").length, 1, "exatamente 1 linha por resposta persistida");
+
+    const entry = await readLastLine(logPath);
+    assert.equal(entry.source, "mcp-ask-operator");
+    assert.equal(entry.timestamp, "2026-08-29T18:00:00Z");
+    assert.equal(entry.session_id, "synthetic-token-abc123");
+    assert.equal(entry.question_id, "q-abc123");
+    assert.equal(entry.channel, "panel");
+    assert.equal(entry.outcome, "answered");
+    assert.equal(entry.applied_value, "sim");
+    assert.equal(entry.effective_timeout_ms, 240000);
+    assert.equal(entry.reason, null);
+  });
+});
+
+test("appendAskOperatorRecord: reason respeita o teto de 2 KiB (SEC-M1, mesmo REASON_MAX_BYTES)", async () => {
+  await withTempLogFile(async (logPath) => {
+    await appendAskOperatorRecord(
+      {
+        sessionId: "tok",
+        questionId: "q-1",
+        channel: "panel",
+        outcome: "unavailable",
+        appliedValue: "default",
+        effectiveTimeoutMs: 240000,
+        reason: "x".repeat(5000),
+      },
+      { logPath },
+    );
+    const entry = await readLastLine(logPath);
+    assert.equal(Buffer.byteLength(entry.reason as string, "utf8"), 2048);
+  });
+});
+
+test("appendAskOperatorRecord: falha ao escrever NUNCA lanca -- retorna false", async () => {
+  await withTempLogFile(async (baseLogPath) => {
+    const dir = await mkdtemp(join(tmpdir(), "audit-log-ask-operator-blocker-"));
+    try {
+      const blockerFile = join(dir, "blocker");
+      await writeFile(blockerFile, "not a dir");
+      const impossibleLogPath = join(blockerFile, "enforcement-log.jsonl");
+
+      const ok = await appendAskOperatorRecord(
+        {
+          sessionId: "tok",
+          questionId: "q-1",
+          channel: "panel",
+          outcome: "failed",
+          appliedValue: "default",
+          effectiveTimeoutMs: 240000,
+          reason: null,
+        },
+        { logPath: impossibleLogPath },
       );
       assert.equal(ok, false);
     } finally {

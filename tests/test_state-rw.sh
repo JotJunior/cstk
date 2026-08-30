@@ -1587,4 +1587,28 @@ scenario_set_multi_erros_de_uso_do_parser() {
   [ "$_v" != "plan" ] || { _fail "erro de uso nao pode escrever par valido do lote" "current_stage=plan"; return 1; }
 }
 
+# human-bridge FASE 2 (task 2.4.4): `.operator_answers[]` (array, nao
+# escalar) roundtrip sob backend SQLite via o MESMO fallback generico de
+# extra_fields ja provado por scenario_sqlite_set_campo_novo_cai_em_extra_fields
+# — nenhuma edicao em _state-rw-db.sh, nenhum script POSIX novo (mesmo
+# precedente de `.suggestions`, contrato mcp-tool-ask-operator.md §7).
+scenario_sqlite_operator_answers_array_cai_em_extra_fields() {
+  _sd="$TMPDIR_TEST/migrated"
+  _seed_sqlite_backend "$_sd" || return 1
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.operator_answers // []'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "get inicial exit" "$_CAPTURED_STDERR"; return 1; }
+  [ "$(printf '%s' "$_CAPTURED_STDOUT" | tr -d ' \n')" = "[]" ] \
+    || { _fail "get inicial deveria ser []" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+
+  capture "$SCRIPT" set --state-dir "$_sd" --field '.operator_answers' --value '[
+    {"question_id":"q-1","channel":"panel","outcome":"answered","applied_value":"sim","recorded_at":"2026-08-29T18:00:00Z","reason":null,"untrusted_text":null,"effective_timeout_ms":240000}
+  ]'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "set operator_answers exit" "$_CAPTURED_STDERR"; return 1; }
+
+  capture "$SCRIPT" get --state-dir "$_sd" --field '.operator_answers'
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "get pos-set exit" "$_CAPTURED_STDERR"; return 1; }
+  _qid=$(printf '%s' "$_CAPTURED_STDOUT" | jq -r '.[0].question_id')
+  [ "$_qid" = "q-1" ] || { _fail "operator_answers nao persistiu (roundtrip)" "obtido '$_CAPTURED_STDOUT'"; return 1; }
+}
+
 run_all_scenarios
