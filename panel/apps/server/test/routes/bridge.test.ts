@@ -110,7 +110,7 @@ describe('POST /api/v1/bridge/interventions', () => {
     expect(res.statusCode).toBe(415);
   });
 
-  it('Host nao-loopback -> 400 (contrato §11.4)', async () => {
+  it('Host nao-loopback SEM allowlist -> 400 (contrato §11.2)', async () => {
     const res = await server.inject({
       method: 'POST',
       url: '/api/v1/bridge/interventions',
@@ -118,6 +118,83 @@ describe('POST /api/v1/bridge/interventions', () => {
       payload: createBody(),
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  /**
+   * Opt-in de Host nao-loopback (contrato §11.2).
+   *
+   * `bridgeRoutes` resolve a config no REGISTRO, entao a allowlist congela
+   * junto com o server. Estes casos montam instancia propria com a env ja
+   * setada — o `server` compartilhado do beforeAll nunca a enxergaria.
+   */
+  describe('allowlist de Host (CSTK_PANEL_ALLOWED_HOSTS, §11.2)', () => {
+    async function serverWithAllowlist(value: string): Promise<FastifyInstance> {
+      process.env['CSTK_PANEL_ALLOWED_HOSTS'] = value;
+      const s = Fastify({ logger: false });
+      await s.register(async (v1) => {
+        await v1.register(bridgeRoutes);
+      }, { prefix: '/api/v1' });
+      await s.ready();
+      return s;
+    }
+
+    async function statusForHost(s: FastifyInstance, host: string): Promise<number> {
+      const res = await s.inject({
+        method: 'POST',
+        url: '/api/v1/bridge/interventions',
+        headers: { 'content-type': 'application/json', host },
+        payload: createBody(),
+      });
+      return res.statusCode;
+    }
+
+    it('host allowlistado passa o guard (nao e mais 400)', async () => {
+      const s = await serverWithAllowlist('painel.exemplo.com');
+      expect(await statusForHost(s, 'painel.exemplo.com:443')).not.toBe(400);
+      await s.close();
+    });
+
+    it('loopback continua passando mesmo com allowlist setada', async () => {
+      const s = await serverWithAllowlist('painel.exemplo.com');
+      expect(await statusForHost(s, '127.0.0.1:5173')).not.toBe(400);
+      await s.close();
+    });
+
+    it('CWE-290: sufixo NAO casa — painel.exemplo.com.evil.com -> 400', async () => {
+      // A armadilha que torna allowlist por substring inutil. A comparacao e
+      // por igualdade exata; se um dia virar `endsWith`/`includes`, este teste
+      // quebra e deve quebrar.
+      const s = await serverWithAllowlist('painel.exemplo.com');
+      expect(await statusForHost(s, 'painel.exemplo.com.evil.com')).toBe(400);
+      await s.close();
+    });
+
+    it('CWE-290: prefixo NAO casa — evil-painel.exemplo.com -> 400', async () => {
+      const s = await serverWithAllowlist('painel.exemplo.com');
+      expect(await statusForHost(s, 'evil-painel.exemplo.com')).toBe(400);
+      await s.close();
+    });
+
+    it('DNS e case-insensitive: Painel.Exemplo.COM casa entrada minuscula', async () => {
+      const s = await serverWithAllowlist('painel.exemplo.com');
+      expect(await statusForHost(s, 'Painel.Exemplo.COM:443')).not.toBe(400);
+      await s.close();
+    });
+
+    it('lista com multiplos hosts e espacos: cada entrada vale', async () => {
+      const s = await serverWithAllowlist(' a.exemplo.com , b.exemplo.com ');
+      expect(await statusForHost(s, 'a.exemplo.com')).not.toBe(400);
+      expect(await statusForHost(s, 'b.exemplo.com')).not.toBe(400);
+      expect(await statusForHost(s, 'c.exemplo.com')).toBe(400);
+      await s.close();
+    });
+
+    it('env vazia/so-virgulas degrada para so-loopback (default seguro)', async () => {
+      const s = await serverWithAllowlist(' , , ');
+      expect(await statusForHost(s, 'painel.exemplo.com')).toBe(400);
+      expect(await statusForHost(s, '127.0.0.1:5173')).not.toBe(400);
+      await s.close();
+    });
   });
 
   it('bridge.db indisponivel (dir sem permissao) -> 200 + degraded=true, sem questionId', async () => {

@@ -71,6 +71,23 @@ export interface ServerConfig {
    * sobe so a API e loga aviso (Principio II).
    */
   webDir: string;
+  /**
+   * Hostnames aceitos no header `Host` das rotas `/api/v1/bridge/*` ALEM dos
+   * loopback (contrato §11.2). Vazio por default: sem opt-in explicito, so
+   * loopback passa — comportamento identico ao de antes desta configuracao
+   * existir.
+   *
+   * Existe para o deployment atras de proxy reverso: o proxy repassa o `Host`
+   * original (ex.: `painel.exemplo.com`), que nao e loopback e seria recusado.
+   * O opt-in e do OPERADOR, nunca inferido — a mitigacao de DNS rebinding
+   * depende de o hostname do atacante NAO estar nesta lista.
+   *
+   * ATENCAO: o painel nao tem autenticacao propria e faz bind em 127.0.0.1
+   * (FR-017). Setar esta variavel NAO adiciona auth — pressupoe que quem expoe
+   * o painel colocou um controle de acesso na frente (proxy com auth, VPN,
+   * mTLS). Ver §11.2 do contrato.
+   */
+  bridgeAllowedHosts: ReadonlySet<string>;
 }
 
 function resolveDbPath(): string {
@@ -161,6 +178,29 @@ export function listConfiguredProjectPaths(): string[] {
   return Object.values(resolveProjectPathsMap());
 }
 
+/**
+ * Resolve a allowlist de `Host` das rotas de Ponte (contrato §11.2) a partir de
+ * `CSTK_PANEL_ALLOWED_HOSTS` (lista separada por virgula).
+ *
+ * Disciplina de comparacao — MESMA de `cli/lib/trusted-hosts.sh`
+ * (`trusted_host_check`), pelo mesmo motivo (CWE-290, allowlist bypass):
+ * igualdade EXATA, case-insensitive (DNS e case-insensitive), NUNCA substring
+ * nem wildcard. Sem isso, `painel.exemplo.com.evil.com` casaria com uma entrada
+ * `painel.exemplo.com` e o controle viraria decoracao.
+ *
+ * Entradas vazias sao descartadas; env ausente ou so-espacos ⇒ set vazio.
+ * Nunca lanca — env malformada degrada para "so loopback", que e o default
+ * seguro (Principio II).
+ */
+export function resolveBridgeAllowedHosts(): ReadonlySet<string> {
+  const raw = process.env['CSTK_PANEL_ALLOWED_HOSTS'] ?? '';
+  const entries = raw
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => h !== '');
+  return new Set(entries);
+}
+
 export function loadConfig(): ServerConfig {
   return {
     dbPath: resolveDbPath(),
@@ -169,5 +209,6 @@ export function loadConfig(): ServerConfig {
     corsOrigin: process.env['CORS_ORIGIN'] ?? 'http://localhost:5173',
     supportedSchemaVersions: resolveSchemaVersions(),
     webDir: resolveWebDir(),
+    bridgeAllowedHosts: resolveBridgeAllowedHosts(),
   };
 }

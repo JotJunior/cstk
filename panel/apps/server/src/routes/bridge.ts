@@ -61,7 +61,13 @@ declare module 'fastify' {
 const QUESTION_ID_PATTERN = /^[A-Za-z0-9_-]{22,64}$/;
 
 // ---------------------------------------------------------------------------
-// §11.4/§11.2 — defesa DNS-rebinding (SHOULD): Host aceito so em loopback.
+// §11.2 — defesa DNS-rebinding: Host aceito em loopback e, com opt-in
+// EXPLICITO do operador (`CSTK_PANEL_ALLOWED_HOSTS`), nos hostnames listados.
+//
+// O opt-in existe para o deployment atras de proxy reverso, onde o `Host`
+// repassado e o dominio publico e nunca seria loopback. Sem ele o default
+// permanece "so loopback" — a mitigacao vale porque o hostname que o atacante
+// faz resolver para 127.0.0.1 nao esta na lista do operador.
 // ---------------------------------------------------------------------------
 const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
 
@@ -185,9 +191,14 @@ export async function bridgeRoutes(server: FastifyInstance): Promise<void> {
 
       const hostHeader = request.headers.host ?? '';
       if (hostHeader !== '') {
-        const hostname = extractHostname(hostHeader);
-        if (!LOOPBACK_HOSTNAMES.has(hostname)) {
-          return reply.status(400).send(bridgeErrorEnvelope('Host header rejeitado (contrato §11.4)'));
+        // DNS e case-insensitive: normalizar ANTES de comparar, senao
+        // `Painel.Exemplo.Com` falharia contra uma allowlist em minusculas.
+        // Comparacao por igualdade EXATA — nunca substring/wildcard (CWE-290).
+        const hostname = extractHostname(hostHeader).toLowerCase();
+        const allowed =
+          LOOPBACK_HOSTNAMES.has(hostname) || config.bridgeAllowedHosts.has(hostname);
+        if (!allowed) {
+          return reply.status(400).send(bridgeErrorEnvelope('Host header rejeitado (contrato §11.2)'));
         }
       }
 
