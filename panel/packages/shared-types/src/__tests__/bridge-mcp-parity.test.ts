@@ -1,13 +1,13 @@
 /**
  * Teste smoke de paridade: schema Zod do painel (`shared-types`) vs. cliente
- * HTTP do servidor MCP (`mcp/state-server/src/bridge/client.ts`).
+ * HTTP do servidor MCP (`plugins/cstk/mcp/state-server/src/bridge/client.ts`).
  * Ref: docs/specs/human-bridge/contracts/panel-bridge-api.md §2
  *      docs/specs/human-bridge/tasks.md 3.4.2, 3.4.3
  *
  * Os dois lados vivem em repos/instalacoes DISTINTAS de proposito (contrato
  * §2 — "MUST NOT importar shared-types") — este teste e o UNICO lugar do
  * repo que os importa juntos, e SO em tempo de teste (nunca em producao):
- * `mcp/state-server/src/bridge/client.ts` nao depende de `zod` nem de
+ * `plugins/cstk/mcp/state-server/src/bridge/client.ts` nao depende de `zod` nem de
  * nenhum pacote do painel (so `node:crypto`), entao importa-lo aqui nao
  * reintroduz o acoplamento que o contrato probe.
  *
@@ -35,7 +35,7 @@ import {
 import {
   createBridgeClient,
   type CreateInterventionRequest,
-} from '../../../../../mcp/state-server/src/bridge/client.js';
+} from '../../../../../plugins/cstk/mcp/state-server/src/bridge/client.js';
 
 const REAL_REQUEST: CreateInterventionRequest = {
   projectPath: '/Users/jot/Projects/example',
@@ -50,13 +50,13 @@ const REAL_REQUEST: CreateInterventionRequest = {
 };
 
 describe('Paridade HTTP: bridge/client.ts (MCP) <-> CreateInterventionRequestDTOSchema (painel)', () => {
-  it('task 3.4.2 — mcp/state-server nao importa @cstk-panel/shared-types em NENHUM arquivo de producao', async () => {
+  it('task 3.4.2 — plugins/cstk/mcp/state-server nao importa @cstk-panel/shared-types em NENHUM arquivo de producao', async () => {
     // Confirmacao estatica (nao so grep de repo): a propria funcao usada
     // abaixo nao carrega nenhum modulo do escopo @cstk-panel/*.
-    const mod = await import('../../../../../mcp/state-server/src/bridge/client.js');
+    const mod = await import('../../../../../plugins/cstk/mcp/state-server/src/bridge/client.js');
     expect(typeof mod.createBridgeClient).toBe('function');
     // Se o arquivo importasse shared-types, o import acima falharia (o
-    // pacote nao esta instalado como dependencia de mcp/state-server) —
+    // pacote nao esta instalado como dependencia de plugins/cstk/mcp/state-server) —
     // a propria ausencia de erro de resolucao de modulo E a confirmacao.
   });
 

@@ -101,6 +101,9 @@ labels are stripped before touching disk.
 │   │   ├── commands/            # The 7 /agente-00c*, /feature-00c*, /roadmap-wave slash commands
 │   │   ├── agents/              # Orchestrators, clarify asker/answerer, data-veracity
 │   │   ├── hooks/hooks.json     # 3 enforced guard hooks (bash-guard, tool-call-tick, agent-usage)
+│   │   ├── .mcp.json            # registers the cstk-state MCP server (auto-starts on the plugin path)
+│   │   ├── mcp/state-server/    # MCP server source (Node/TS, stdio) — ships INSIDE the plugin
+│   │   ├── evals/               # `claude plugin eval` suite (generated from the skills' triggers.jsonl)
 │   │   └── skills/               # 21 global skills (each skill is a folder)
 │   │       ├── advisor/
 │   │       ├── agente-00c-runtime/ # internal POSIX runtime (not user-invocable)
@@ -326,6 +329,7 @@ process environment or it captures nothing
 |---|---|---|
 | Install step | bootstrap one-liner + `cstk install` | `/plugin marketplace add` + `/plugin install` |
 | Provides the `cstk` binary (`recall`, `usage`, `mcp`, `session`, `serve`, `self-update`) | Yes | **No** — the plugin format does not install a persistent binary on `PATH` (FR-006); use the classic bootstrap for these |
+| `cstk-state` MCP server (the 7 state tools) | Mirrored to `~/.claude/mcp/state-server` by `cstk install`; registered per project with `cstk mcp install` | Ships inside the plugin and is registered by its own `.mcp.json` — **auto-starts, no per-project step** |
 | Guard hooks activation | Requires `cstk hooks install` per project | Automatic on session start, zero per-project step |
 | Integrity verification | SHA-256 of the tarball, fail-closed (`serve-integrity`), fixed trusted-host allowlist | Commit pin (`gitCommitSha`) recorded by the harness + its own "Will install" trust dialog |
 | Update propagation | `cstk update` (explicit, per invocation) | **Not automatic**: `claude plugin marketplace update` then `claude plugin update cstk --scope <scope>`, plus a session restart — the plugin CLI itself prints `Restart to apply changes.` |

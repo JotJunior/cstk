@@ -31,6 +31,9 @@ fluxograma-decisoes*.html
 
 # Config local de MCP (por maquina/sessao — nunca versionar)
 .mcp*
+# ... EXCETO o descritor do plugin: ele e o que faz o servidor MCP subir
+# sozinho no caminho `/plugin install` (nao e config de maquina).
+!plugins/cstk/.mcp.json
 
 # Documentos binarios de escritorio, em qualquer diretorio
 *.docx

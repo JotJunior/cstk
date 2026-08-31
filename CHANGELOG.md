@@ -5,6 +5,59 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.3.0] - 2026-08-30
+
+O caminho de instalacao por plugin nativo entregava skills, commands, agents e
+hooks — mas nunca o servidor MCP de estado. A causa e estrutural: o harness
+copia APENAS o subtree do plugin para
+`~/.claude/plugins/cache/<marketplace>/<plugin>/<versao>/` (verificado em
+`installed_plugins.json`), e a fonte do servidor morava na RAIZ do repo, onde
+nada viaja junto. Quem instalava so o plugin ficava com os orquestradores sem
+as tools de estado. Esta release fecha isso e, de quebra, converte as queries
+de trigger-eval ja existentes na suite nativa `claude plugin eval`.
+
+### Added
+
+- **`plugins/cstk/.mcp.json`** registra `mcpServers.cstk-state` com
+  `command: sh`, `args: ["${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/mcp-launch.sh"]`
+  e `env.CLAUDE_PLUGIN_ROOT` — habilitar o plugin passa a subir o servidor
+  sozinho, sem `cstk mcp install` nem passo por projeto. Verificado
+  empiricamente com `claude -p --plugin-dir` a partir de um diretorio SEM
+  `.mcp.json`: as 9 tools aparecem.
+- **Terceiro passo na resolucao do diretorio-fonte em `mcp-launch.sh`**:
+  `$CSTK_MCP_STATE_SERVER_DIR` > `$CLAUDE_PLUGIN_ROOT/mcp/state-server` >
+  `~/.claude/mcp/state-server`. Coberto por 3 cenarios novos em
+  `tests/test_mcp-launch.sh` (plugin resolve, fallback classico, override
+  vence).
+- **Suite nativa `claude plugin eval` em `plugins/cstk/evals/`**: 110 cases
+  (`case.yaml` com grader `type: tool_used`), GERADOS de
+  `plugins/cstk/skills/*/evals/triggers.jsonl` + `negatives.jsonl` por
+  `tests/trigger-eval/gen-eval-cases.sh` (modo `--check` para CI). O `.jsonl`
+  continua sendo a fonte de verdade unica; o schema do case foi extraido do
+  validador embarcado no binario do Claude Code (a feature esta em early
+  access e nao tem doc publica).
+- **Evals de disparo para 3 skills que estavam descobertas**:
+  `model-selector` (6 queries, tinha 0), `checklist` (de 1 para 5) e
+  `agente-00c-runtime` (3 casos `expect: none` — skill interna, disparo
+  positivo seria sem sentido).
+
+### Changed
+
+- **`mcp/state-server/` -> `plugins/cstk/mcp/state-server/`** (`git mv`, 95
+  arquivos, sem mudanca de conteudo). O destino INSTALADO nao muda:
+  `scripts/build-release.sh` le a fonte no lugar novo e segue publicando como
+  `catalog/mcp/state-server`, que `cstk install`/`cstk update` continuam
+  espelhando em `~/.claude/mcp/state-server`.
+- **Allowlist dos dois orquestradores ganha os nomes namespaced do caminho
+  plugin** (`mcp__plugin_cstk_cstk-state__*`, ao lado dos classicos
+  `mcp__cstk-state__*`). Medido: o harness renomeia tools de plugin para
+  `mcp__plugin_<plugin>_<server>__<tool>` — sem os dois conjuntos no
+  frontmatter, o orquestrador rodando sob o plugin nao enxergaria tool MCP
+  alguma.
+- **`.gitignore`**: negacao explicita `!plugins/cstk/.mcp.json`. A regra
+  `.mcp*` (config local de maquina) capturava tambem o descritor do plugin,
+  que some do pacote em silencio se a negacao for removida.
+
 ## [10.2.1] - 2026-08-30
 
 O guard de `Host` das rotas da Ponte recusava, sem escape, qualquer hostname
@@ -7786,6 +7839,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.3.0]: https://github.com/JotJunior/cstk/releases/tag/v10.3.0
 [10.2.1]: https://github.com/JotJunior/cstk/releases/tag/v10.2.1
 [10.2.0]: https://github.com/JotJunior/cstk/releases/tag/v10.2.0
 [10.1.0]: https://github.com/JotJunior/cstk/releases/tag/v10.1.0

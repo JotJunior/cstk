@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "checklist-003"
+description: "trigger eval: a query deve disparar a skill checklist"
+tags: ["trigger", "checklist", "base"]
+execution:
+  prompt: "quero um checklist de requisitos de API pra conferir se nao ficou buraco no que especifiquei"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-checklist"
+    tool: "Skill"
+    input_match: "checklist"
+    min: 1

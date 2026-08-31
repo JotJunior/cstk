@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "briefing-002"
+description: "trigger eval: a query deve disparar a skill briefing"
+tags: ["trigger", "briefing", "gen"]
+execution:
+  prompt: "quero construir um sistema de agendamento de consultas medicas. nao sei por onde comecar, tenho algumas ideias mas preciso organizar tudo — quem vai usar, quais as restricoes tecnicas, o que e obrigatorio na versao 1"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-briefing"
+    tool: "Skill"
+    input_match: "briefing"
+    min: 1

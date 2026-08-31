@@ -1,0 +1,16 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "none-009"
+description: "trigger eval: a query NAO deve disparar skill alguma"
+tags: ["trigger", "none", "hard"]
+execution:
+  prompt: "roda a suite de testes e me diz se passou"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "no-skill-fires"
+    tool: "Skill"
+    max: 0

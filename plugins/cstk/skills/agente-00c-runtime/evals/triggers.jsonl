@@ -1,0 +1,3 @@
+{"query":"o state.json dessa execucao ta com o lock preso; como eu libero?","expect":"none"}
+{"query":"me explica como o hash de integridade do estado e calculado nesse projeto","expect":"none"}
+{"query":"filtra os segredos desse log antes de eu colar no ticket","expect":"none","tier":"hard"}

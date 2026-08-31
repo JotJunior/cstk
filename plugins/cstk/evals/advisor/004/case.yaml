@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "advisor-004"
+description: "trigger eval: a query deve disparar a skill advisor"
+tags: ["trigger", "advisor", "gen"]
+execution:
+  prompt: "o cache de sessão tá expirando antes do esperado e eu suspeito que é culpa do design atual — TTL configurado no lugar errado. você acha que vale mudar a arquitetura ou é melhor corrigir o TTL pontualmente?"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-advisor"
+    tool: "Skill"
+    input_match: "advisor"
+    min: 1

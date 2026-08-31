@@ -184,14 +184,29 @@ _ml_script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) \
 # chamada (contracts/server-session-resolution.md §3), nao so no boot.
 _ml_project_path="${CSTK_MCP_PROJECT_PATH:-$(pwd)}"
 
-# Diretorio-fonte do servidor MCP: path fixo no catalogo instalado
-# (L-3; [REAL] cli/lib/install.sh::_install_apply_mcp_server escreve em
-# ~/.claude/mcp/state-server). Override so para testes/dev (fixture sem
-# depender de HOME real nem de instalacao de verdade).
-_ml_state_server_dir="${CSTK_MCP_STATE_SERVER_DIR:-${HOME:-}/.claude/mcp/state-server}"
+# Diretorio-fonte do servidor MCP, em ordem de precedencia:
+#   1. $CSTK_MCP_STATE_SERVER_DIR — override so para testes/dev (fixture sem
+#      depender de HOME real nem de instalacao de verdade).
+#   2. $CLAUDE_PLUGIN_ROOT/mcp/state-server — caminho PLUGIN nativo. O
+#      harness copia o subtree do plugin para
+#      ~/.claude/plugins/cache/<marketplace>/<plugin>/<versao>/ (so o
+#      subtree: nada da raiz do repo viaja junto), entao a fonte precisa
+#      morar DENTRO de plugins/cstk/. `CLAUDE_PLUGIN_ROOT` chega por
+#      plugins/cstk/.mcp.json (bloco `env`, substituido pelo harness).
+#   3. ~/.claude/mcp/state-server — caminho CLASSICO (L-3; [REAL]
+#      cli/lib/install.sh::_install_apply_mcp_server escreve ali).
+_ml_state_server_dir="${CSTK_MCP_STATE_SERVER_DIR:-}"
+if [ -z "$_ml_state_server_dir" ]; then
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && \
+     [ -f "${CLAUDE_PLUGIN_ROOT}/mcp/state-server/package.json" ]; then
+    _ml_state_server_dir="${CLAUDE_PLUGIN_ROOT}/mcp/state-server"
+  else
+    _ml_state_server_dir="${HOME:-}/.claude/mcp/state-server"
+  fi
+fi
 
 if [ ! -d "$_ml_state_server_dir" ] || [ ! -f "$_ml_state_server_dir/package.json" ]; then
-  _ml_unavailable "mcp/state-server nao instalado em $_ml_state_server_dir (rode: cstk install)"
+  _ml_unavailable "mcp/state-server nao encontrado em $_ml_state_server_dir (rode: cstk install, ou habilite o plugin cstk)"
 fi
 
 # Preflight de Node (L-6, mesmo padrao de cli/lib/serve.sh

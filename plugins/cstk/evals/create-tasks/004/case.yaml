@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "create-tasks-004"
+description: "trigger eval: a query deve disparar a skill create-tasks"
+tags: ["trigger", "create-tasks", "gen"]
+execution:
+  prompt: "baseado no que a gente ja escreveu sobre a feature de onboarding, queria quebrar isso em pedacos menores para o time conseguir trabalhar em paralelo — com fases e prioridades"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-create-tasks"
+    tool: "Skill"
+    input_match: "create-tasks"
+    min: 1

@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "apply-insights-002"
+description: "trigger eval: a query deve disparar a skill apply-insights"
+tags: ["trigger", "apply-insights", "gen"]
+execution:
+  prompt: "Tenho percebido que o Claude repete as mesmas perguntas de permissão toda hora e perde contexto entre sessões. Tem alguma forma de ajustar o projeto pra corrigir isso com base no que ele mesmo usa?"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-apply-insights"
+    tool: "Skill"
+    input_match: "apply-insights"
+    min: 1

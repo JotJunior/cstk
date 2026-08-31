@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "advisor-002"
+description: "trigger eval: a query deve disparar a skill advisor"
+tags: ["trigger", "advisor", "base"]
+execution:
+  prompt: "avalia se minha ideia de cache distribuido faz sentido"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-advisor"
+    tool: "Skill"
+    input_match: "advisor"
+    min: 1

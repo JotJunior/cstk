@@ -1,5 +1,6 @@
 #!/bin/sh
-# mcp-build-lazy.sh — instalacao + build lazy de mcp/state-server, com
+# mcp-build-lazy.sh — instalacao + build lazy de plugins/cstk/mcp/state-server,
+# com
 # mitigacao de supply chain (R8, severidade HIGH).
 #
 # Ref: docs/specs/mcp-direct-transport/spec.md FR-004;
@@ -31,7 +32,7 @@
 #      install (A03/ASI04/CICD-SEC-3).
 #
 # Auditoria empirica (task 2.2.1, executada nesta onda sobre
-# mcp/state-server/package-lock.json + node_modules/ resolvidos):
+# plugins/cstk/mcp/state-server/package-lock.json + node_modules/ resolvidos):
 # nenhuma das 116 entradas node_modules/* do lockfile (lockfileVersion 3,
 # que marca pacotes com scripts de instalacao via o campo
 # "hasInstallScript") declara scripts.install/preinstall/postinstall; zero

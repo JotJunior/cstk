@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "converge-002"
+description: "trigger eval: a query deve disparar a skill converge"
+tags: ["trigger", "converge", "base"]
+execution:
+  prompt: "reconcilia o que a spec e o tasks.md pediram com o que de fato existe implementado no codigo-fonte agora"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-converge"
+    tool: "Skill"
+    input_match: "converge"
+    min: 1

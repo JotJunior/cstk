@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "review-features-003"
+description: "trigger eval: a query deve disparar a skill review-features"
+tags: ["trigger", "review-features", "gen"]
+execution:
+  prompt: "tem tres features rodando em paralelo e preciso decidir qual priorizar no proximo sprint — me da um quadro geral de cada uma"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-review-features"
+    tool: "Skill"
+    input_match: "review-features"
+    min: 1

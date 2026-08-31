@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "bugfix-002"
+description: "trigger eval: a query deve disparar a skill bugfix"
+tags: ["trigger", "bugfix", "base"]
+execution:
+  prompt: "o fluxo de checkout esta quebrando em producao, investiga a causa"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-bugfix"
+    tool: "Skill"
+    input_match: "bugfix"
+    min: 1

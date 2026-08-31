@@ -98,7 +98,7 @@ scenario_aviso_stderr_somente_failed() {
 # (collect_optins.ts) continua declarando os 6 valores; a prosa dos
 # orquestradores nunca deve inventar um 7o outcome.
 scenario_seis_valores_outcome_preservados() {
-  _src="$REPO_ROOT/mcp/state-server/src/tools/collect_optins.ts"
+  _src="$REPO_ROOT/plugins/cstk/mcp/state-server/src/tools/collect_optins.ts"
   [ -f "$_src" ] || { _error "arquivo ausente" "$_src"; return 2; }
   for _v in accepted declined absent timeout unavailable failed; do
     assert_exit 0 grep -Fq "\"$_v\"" "$_src" || return 1

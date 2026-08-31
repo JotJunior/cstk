@@ -302,7 +302,7 @@ _is_internal_test() {
       # ordem do ramo estruturado, preservacao do ramo legado, correcao dos
       # comentarios stale sobre mode=bash-fallback, condicionalidade de
       # --allow-downgrade e escopo negativo feature-00c*. Assert sobre os 4
-      # commands + 2 agents + mcp/state-server/src/tools/collect_optins.ts —
+      # commands + 2 agents + plugins/cstk/mcp/state-server/src/tools/collect_optins.ts —
       # nao em um unico script sob a convencao de FASE 9.3 —
       # existence-guarded ao command portador do ramo estruturado
       # (plugins/cstk/commands/agente-00c.md). Se a fonte sumir, volta a

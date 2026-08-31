@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "constitution-003"
+description: "trigger eval: a query deve disparar a skill constitution"
+tags: ["trigger", "constitution", "gen"]
+execution:
+  prompt: "o projeto cresceu e o time novo nao sabe o que e intocavel: quais sao as regras que nao podem mudar, quem pode mudar o que, e como a gente faz amendment quando precisar"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-constitution"
+    tool: "Skill"
+    input_match: "constitution"
+    min: 1

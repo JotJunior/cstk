@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "validate-docs-rendered-003"
+description: "trigger eval: a query deve disparar a skill validate-docs-rendered"
+tags: ["trigger", "validate-docs-rendered", "gen"]
+execution:
+  prompt: "meus diagramas de sequencia no docs/02-requisitos estao abrindo brancos no GitHub, quero checar se o Mermaid ta correto antes de mandar o PR"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-validate-docs-rendered"
+    tool: "Skill"
+    input_match: "validate-docs-rendered"
+    min: 1
