@@ -49,9 +49,9 @@ import type { ResolvedSession } from "../src/session/resolve.js";
 
 const execFile = promisify(execFileCb);
 
-// dist/test/bridge-e2e-real.test.js -> dist -> state-server -> mcp -> <repo root>
+// dist/test/... -> dist -> state-server -> mcp -> cstk -> plugins -> <repo root>
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(HERE, "..", "..", "..", "..");
+const REPO_ROOT = join(HERE, "..", "..", "..", "..", "..", "..");
 const PANEL_SERVER_DIR = join(REPO_ROOT, "panel", "apps", "server");
 const RUNTIME_SCRIPTS_DIR = join(
   process.env["HOME"] ?? "",

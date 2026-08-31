@@ -37,12 +37,11 @@ import {
 } from "../src/session/resolve.js";
 
 const FIXTURES_DIR = join(process.cwd(), "test", "fixtures");
+// cwd = plugins/cstk/mcp/state-server -> "../.." JA e plugins/cstk
 const REAL_MCP_SESSION_SH = join(
   process.cwd(),
   "..",
   "..",
-  "plugins",
-  "cstk",
   "skills",
   "agente-00c-runtime",
   "scripts",

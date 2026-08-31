@@ -48,7 +48,7 @@ import type { ResolvedSession } from "../src/session/resolve.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // dist/test -> dist -> state-server -> mcp -> <repo root>
-const REPO_ROOT = join(HERE, "..", "..", "..", "..");
+const REPO_ROOT = join(HERE, "..", "..", "..", "..", "..", "..");
 
 const SESSION_TOKEN = "SECRET-CAPABILITY-TOKEN-nao-deveria-vazar-9f3a2c1d";
 const FAKE_SESSION: ResolvedSession = {
@@ -139,7 +139,7 @@ test("5.1.4(b) handleAskOperator nunca repassa session.token para createInterven
     default_value: "nao",
   });
 
-  const noopHelperPath = join(REPO_ROOT, "mcp", "state-server", "test", "fixtures",
+  const noopHelperPath = join(REPO_ROOT, "plugins", "cstk", "mcp", "state-server", "test", "fixtures",
     "fake-ask-operator-state-rw-captures-set.sh");
   const result = await handleAskOperator(input, {
     session: FAKE_SESSION,
@@ -178,7 +178,7 @@ test("5.1.4(c) entrada persistida em .operator_answers[] nunca carrega session.t
   const { tmpdir } = await import("node:os");
   const dir = await mkdtemp(join(tmpdir(), "hb-nonexfil-"));
   const setValueFile = join(dir, "captured-set-values.txt");
-  const fixture = join(REPO_ROOT, "mcp", "state-server", "test", "fixtures",
+  const fixture = join(REPO_ROOT, "plugins", "cstk", "mcp", "state-server", "test", "fixtures",
     "fake-ask-operator-state-rw-captures-set.sh");
   const original = process.env.FAKE_SET_VALUE_FILE;
   process.env.FAKE_SET_VALUE_FILE = setValueFile;
@@ -233,8 +233,8 @@ test("5.1.4(d) varredura estatica: routes/bridge.ts e o schema compartilhado nun
   const sharedSchemasPath = join(
     REPO_ROOT, "panel", "packages", "shared-types", "src", "schemas", "entities.ts",
   );
-  const clientPath = join(REPO_ROOT, "mcp", "state-server", "src", "bridge", "client.ts");
-  const askOperatorPath = join(REPO_ROOT, "mcp", "state-server", "src", "tools", "ask_operator.ts");
+  const clientPath = join(REPO_ROOT, "plugins", "cstk", "mcp", "state-server", "src", "bridge", "client.ts");
+  const askOperatorPath = join(REPO_ROOT, "plugins", "cstk", "mcp", "state-server", "src", "tools", "ask_operator.ts");
 
   const bridgeRoutesSrc = readFileSync(bridgeRoutesPath, "utf8");
   const clientSrc = readFileSync(clientPath, "utf8");
