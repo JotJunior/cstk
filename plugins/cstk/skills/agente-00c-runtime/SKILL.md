@@ -162,7 +162,7 @@ DE CAPACIDADE (SEC-H3): dado um token (`--token`/`--token-file`/env
 e sempre por posse do token, nunca por precedencia de ambiente — divergencia,
 ausencia ou colisao de token e sempre `SESSION_MISMATCH` (exit 3,
 fail-closed), sem fallback para "a execucao ativa mais provavel". Consumido
-pelo servidor MCP de estado (`mcp/state-server/src/session/resolve.ts`) e
+pelo servidor MCP de estado (`plugins/cstk/mcp/state-server/src/session/resolve.ts`) e
 pelo `mcp-launch.sh` (abaixo).
 
 `mcp-launch.sh` e o comando registrado em `.mcp.json` (via `cstk mcp

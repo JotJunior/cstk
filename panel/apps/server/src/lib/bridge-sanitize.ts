@@ -19,11 +19,11 @@
  */
 import { scrubTextBatch } from './secret-scrub.js';
 
-/** Padrao de caracteres de controle (mesmo conjunto de `mcp/state-server/src/runtime/sanitize.ts`),
+/** Padrao de caracteres de controle (mesmo conjunto de `plugins/cstk/mcp/state-server/src/runtime/sanitize.ts`),
  *  construido via `RegExp` com codigos hex escritos como TEXTO (nunca `\\u`
  *  literal no fonte) para nao virar um NUL/controle real dentro deste arquivo. */
 // Disable deliberado: e o pattern que remove caracteres de controle da
-// entrada UNTRUSTED (mesmo racional de mcp/state-server/src/runtime/sanitize.ts).
+// entrada UNTRUSTED (mesmo racional de plugins/cstk/mcp/state-server/src/runtime/sanitize.ts).
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS_PATTERN = new RegExp('[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]', 'g');
 

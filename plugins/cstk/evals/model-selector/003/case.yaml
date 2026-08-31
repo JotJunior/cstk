@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "model-selector-003"
+description: "trigger eval: a query deve disparar a skill model-selector"
+tags: ["trigger", "model-selector", "base"]
+execution:
+  prompt: "me sugere qual modelo usar pra esse trabalho aqui, olhando so o texto da tarefa"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-model-selector"
+    tool: "Skill"
+    input_match: "model-selector"
+    min: 1

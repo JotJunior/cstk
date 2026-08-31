@@ -1,0 +1,6 @@
+{"query":"essa tarefa ai e complexa o suficiente pra valer opus ou da pra rodar em haiku mesmo?","expect":"model-selector"}
+{"query":"classifica a complexidade dessa tarefa antes de eu gastar um subagente caro nela","expect":"model-selector"}
+{"query":"me sugere qual modelo usar pra esse trabalho aqui, olhando so o texto da tarefa","expect":"model-selector"}
+{"query":"antes de spawnar o orquestrador, quero uma heuristica de que faixa (rasa/media/profunda) essa etapa cai","expect":"model-selector","tier":"hard"}
+{"query":"vou executar uma task de ajuste de string num arquivo so; isso justifica modelo grande ou e desperdicio?","expect":"model-selector","tier":"gen"}
+{"query":"tenho aqui a descricao de uma tarefa e queria uma segunda opiniao deterministica sobre o tamanho dela antes de decidir quanto poder computacional jogar nisso","expect":"model-selector","tier":"gen"}

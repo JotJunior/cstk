@@ -1,1 +1,5 @@
 {"query":"esses requisitos que escrevi sao bons o suficiente pra virar historia de usuario decente? tem algum criterio que eu esqueci de cobrir?","expect":"checklist","tier":"gen"}
+{"query":"roda um quality gate nos requisitos de seguranca dessa feature antes da gente seguir","expect":"checklist"}
+{"query":"quero um checklist de requisitos de API pra conferir se nao ficou buraco no que especifiquei","expect":"checklist"}
+{"query":"esses criterios de aceite estao testaveis ou estao vagos demais?","expect":"checklist","tier":"hard"}
+{"query":"antes de virar backlog, valida a QUALIDADE do que foi pedido: ambiguidade, criterio faltando, requisito que nao da pra verificar","expect":"checklist","tier":"gen"}

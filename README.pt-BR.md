@@ -102,6 +102,9 @@ descartados antes de tocar o disco.
 │   │   ├── commands/            # Os 7 slash commands /agente-00c*, /feature-00c*, /roadmap-wave
 │   │   ├── agents/              # Orquestradores, clarify asker/answerer, data-veracity
 │   │   ├── hooks/hooks.json     # 3 guard hooks enforced (bash-guard, tool-call-tick, agent-usage)
+│   │   ├── .mcp.json            # registra o servidor MCP cstk-state (sobe sozinho no caminho plugin)
+│   │   ├── mcp/state-server/    # fonte do servidor MCP (Node/TS, stdio) — viaja DENTRO do plugin
+│   │   ├── evals/               # suite do `claude plugin eval` (gerada dos triggers.jsonl das skills)
 │   │   └── skills/               # 21 skills globais (cada skill é uma pasta)
 │   │       ├── advisor/
 │   │       ├── agente-00c-runtime/ # runtime POSIX interno (não user-invocável)
@@ -326,6 +329,7 @@ processo `claude`, senão não captura nada
 |---|---|---|
 | Passo de instalação | one-liner de bootstrap + `cstk install` | `/plugin marketplace add` + `/plugin install` |
 | Fornece o binário `cstk` (`recall`, `usage`, `mcp`, `session`, `serve`, `self-update`) | Sim | **Não** — o formato de plugin não instala binário persistente no `PATH` (FR-006); use o bootstrap clássico para esses |
+| Servidor MCP `cstk-state` (as 7 tools de estado) | Espelhado em `~/.claude/mcp/state-server` pelo `cstk install`; registrado por projeto com `cstk mcp install` | Viaja dentro do plugin e é registrado pelo próprio `.mcp.json` — **sobe sozinho, sem passo por projeto** |
 | Ativação dos guard hooks | Exige `cstk hooks install` por projeto | Automática ao abrir a sessão, zero passo por projeto |
 | Verificação de integridade | SHA-256 do tarball, fail-closed (`serve-integrity`), allowlist fixa de hosts confiáveis | Pin de commit (`gitCommitSha`) registrado pelo harness + diálogo de confiança "Will install" do próprio harness |
 | Propagação de update | `cstk update` (explícito, por invocação) | **Não é automática**: `claude plugin marketplace update` e depois `claude plugin update cstk --scope <escopo>`, mais reinício de sessão — o próprio CLI de plugin imprime `Restart to apply changes.` |

@@ -28,7 +28,7 @@ CMD_FEATURE="$REPO_ROOT/plugins/cstk/commands/feature-00c.md"
 CMD_FEATURE_RES="$REPO_ROOT/plugins/cstk/commands/feature-00c-resume.md"
 AGENT_AGENTE="$REPO_ROOT/plugins/cstk/agents/agente-00c-orchestrator.md"
 AGENT_FEATURE="$REPO_ROOT/plugins/cstk/agents/agente-00c-feature-orchestrator.md"
-COLLECT_OPTINS_TS="$REPO_ROOT/mcp/state-server/src/tools/collect_optins.ts"
+COLLECT_OPTINS_TS="$REPO_ROOT/plugins/cstk/mcp/state-server/src/tools/collect_optins.ts"
 
 _first_line_of() {
   # $1=arquivo $2=pattern (grep -E) -> numero da 1a linha casada, ou vazio
@@ -191,7 +191,7 @@ scenario_precedente_mcp_token_vazio_intacto() {
 
 # ---------- 10.1.5: condicionalidade de --allow-downgrade (A2/dec-047) ----------
 #
-# Fonte: mcp/state-server/src/tools/collect_optins.ts (unico ponto que monta
+# Fonte: plugins/cstk/mcp/state-server/src/tools/collect_optins.ts (unico ponto que monta
 # o argv de `delivery-tier.sh set`). Nao ha teste Node gateado (dec-027) —
 # a assercao aqui e sobre o CODIGO-FONTE que decide o argv, nao sobre uma
 # execucao real (quickstart.md Scenario 1b cobre a prova funcional,

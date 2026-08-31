@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "plan-002"
+description: "trigger eval: a query deve disparar a skill plan"
+tags: ["trigger", "plan", "hard"]
+execution:
+  prompt: "como construir isso na pratica? quero o desenho tecnico — camadas, contratos, dados — antes de codar"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-plan"
+    tool: "Skill"
+    input_match: "plan"
+    min: 1

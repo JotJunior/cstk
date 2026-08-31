@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cstk-state": {
+      "type": "stdio",
+      "command": "sh",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/skills/agente-00c-runtime/scripts/mcp-launch.sh"],
+      "env": {
+        "CLAUDE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}"
+      }
+    }
+  }
+}

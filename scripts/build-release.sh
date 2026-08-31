@@ -253,16 +253,17 @@ find "$STAGE_ROOT/catalog" -type d -name evals -prune -exec rm -rf -- {} +
 # `docker build` (npm ci + tsc dentro da imagem): src/, package.json,
 # package-lock.json, tsconfig.json, .dockerignore — NUNCA node_modules/,
 # dist/ ou test/.
-# Tolerante a arvores sem mcp/ (fixtures de teste com REPO_ROOT fake); no
+# Tolerante a arvores sem plugins/cstk/mcp/ (fixtures de teste com REPO_ROOT
+# fake); no
 # repo real a presenca e gateada por scenario_build_release_estrutura_layout.
-if [ -f "$REPO_ROOT/mcp/state-server/package.json" ]; then
+if [ -f "$REPO_ROOT/plugins/cstk/mcp/state-server/package.json" ]; then
   mkdir -p -- "$STAGE_ROOT/catalog/mcp/state-server"
-  cp -R -- "$REPO_ROOT/mcp/state-server/src" "$STAGE_ROOT/catalog/mcp/state-server/src"
+  cp -R -- "$REPO_ROOT/plugins/cstk/mcp/state-server/src" "$STAGE_ROOT/catalog/mcp/state-server/src"
   for _mcpf in package.json package-lock.json tsconfig.json .dockerignore; do
-    cp -- "$REPO_ROOT/mcp/state-server/$_mcpf" "$STAGE_ROOT/catalog/mcp/state-server/$_mcpf"
+    cp -- "$REPO_ROOT/plugins/cstk/mcp/state-server/$_mcpf" "$STAGE_ROOT/catalog/mcp/state-server/$_mcpf"
   done
 else
-  printf 'build-release: aviso: mcp/state-server ausente em %s — tarball sem fonte do servidor MCP\n' "$REPO_ROOT" >&2
+  printf 'build-release: aviso: plugins/cstk/mcp/state-server ausente em %s — tarball sem fonte do servidor MCP\n' "$REPO_ROOT" >&2
 fi
 
 # ==== 4. catalog/VERSION ====

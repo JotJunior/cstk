@@ -30,6 +30,25 @@ O runner devolve `{accuracy, byExpect, confusionPairs, misfires}`. O sinal
 mais útil é `confusionPairs` (`esperado → escolhido`) e `misfires` (com a
 justificativa do juiz) — é onde mora o problema de description.
 
+## Duas saidas a partir do MESMO dado
+
+O `.jsonl` de cada skill alimenta dois consumidores:
+
+| Consumidor | Script | Mede |
+|------------|--------|------|
+| harness proprio (este) | `collect.sh` + `run.workflow.js` | matriz de confusao entre skills |
+| `claude plugin eval` (nativo) | `gen-eval-cases.sh` -> `plugins/cstk/evals/` | disparo binario por case + relatorio oficial |
+
+```sh
+sh tests/trigger-eval/gen-eval-cases.sh          # (re)gera os case.yaml
+sh tests/trigger-eval/gen-eval-cases.sh --check  # exit 1 se fora de sync (CI)
+claude plugin eval plugins/cstk --ablation none  # roda a suite nativa
+```
+
+Ao editar qualquer `triggers.jsonl`, **regenere** — o `--check` falha se os
+`case.yaml` derivados ficarem defasados. Detalhes em
+[`plugins/cstk/evals/README.md`](../../plugins/cstk/evals/README.md).
+
 ## Formato do dado
 
 Cada skill é dona das suas queries em `plugins/cstk/skills/<nome>/evals/triggers.jsonl`

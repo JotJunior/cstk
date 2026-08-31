@@ -779,8 +779,8 @@ export interface SessionTailEntryDTO {
 // Intervention* — DTOs da Ponte de intervencao humana (feature human-bridge).
 // Payload HTTP `/api/v1/bridge/*` — SEMPRE camelCase (contracts/
 // panel-bridge-api.md §2). Espelhado, campo-a-campo, pelo schema Zod PROPRIO
-// do servidor MCP (`mcp/state-server/src/tools/ask_operator.ts` +
-// `mcp/state-server/src/bridge/client.ts`) — que MUST NOT importar este
+// do servidor MCP (`plugins/cstk/mcp/state-server/src/tools/ask_operator.ts` +
+// `plugins/cstk/mcp/state-server/src/bridge/client.ts`) — que MUST NOT importar este
 // pacote (repos/instalacoes distintas, §2). A paridade entre os dois e
 // verificada por teste smoke, nao por tipo compartilhado.
 // ---------------------------------------------------------------------------

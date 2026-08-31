@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "model-selector-004"
+description: "trigger eval: a query deve disparar a skill model-selector"
+tags: ["trigger", "model-selector", "hard"]
+execution:
+  prompt: "antes de spawnar o orquestrador, quero uma heuristica de que faixa (rasa/media/profunda) essa etapa cai"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-model-selector"
+    tool: "Skill"
+    input_match: "model-selector"
+    min: 1

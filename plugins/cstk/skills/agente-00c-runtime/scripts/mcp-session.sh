@@ -195,7 +195,7 @@ _ms_check_descriptor() {
 # funcao esta DENTRO do container, onde o path do host nao existe no
 # filesystem — so o mount `/data/state` (ou o que veio em
 # CSTK_MCP_STATE_DIR) e valido ali. Sem este override, toda tool MCP que
-# usa `session.stateDir` (mcp/state-server/src/session/resolve.ts) recebia
+# usa `session.stateDir` (plugins/cstk/mcp/state-server/src/session/resolve.ts) recebia
 # o path do HOST e falhava (`state-ondas.sh wave-status: state.json
 # ausente em <path-do-host>`, sonda: `docker logs` de um container real
 # apos `cstk mcp start` bem-sucedido). No modo `--project-path`

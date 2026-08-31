@@ -1,0 +1,17 @@
+# GERADO por tests/trigger-eval/gen-eval-cases.sh — nao edite a mao.
+# Fonte: plugins/cstk/skills/*/evals/triggers.jsonl + tests/trigger-eval/negatives.jsonl
+schema_version: "1.0"
+name: "bugfix-004"
+description: "trigger eval: a query deve disparar a skill bugfix"
+tags: ["trigger", "bugfix", "gen"]
+execution:
+  prompt: "o fluxo de checkout ta quebrando quando o usuario clica em confirmar pedido — o botao some e a tela trava, mas nao sei se e no frontend ou na api. preciso rastrear de onde vem o problema"
+  max_turns: 3
+  timeout_seconds: 120
+runs: 1
+graders:
+  - type: tool_used
+    name: "fires-bugfix"
+    tool: "Skill"
+    input_match: "bugfix"
+    min: 1

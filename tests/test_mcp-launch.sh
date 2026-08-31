@@ -36,7 +36,8 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # _make_state_server_dir DIR -> cria o esqueleto minimo de
-# ~/.claude/mcp/state-server (package.json presente).
+# ~/.claude/mcp/state-server ou $CLAUDE_PLUGIN_ROOT/mcp/state-server
+# (package.json presente).
 _make_state_server_dir() {
   _mssd_dir="$1"
   mkdir -p "$_mssd_dir"
@@ -127,7 +128,7 @@ scenario_state_server_ausente_serve_idle_exit_0() {
   mkdir -p "$_proj"
   _run_launch "$TMPDIR_TEST/nao-existe-xyz" "$_proj"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "state-server ausente exit" "esperado 0 (idle), obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
-  assert_stderr_contains "nao instalado" || return 1
+  assert_stderr_contains "nao encontrado" || return 1
   assert_stderr_contains "modo IDLE" || return 1
   [ -z "$(_node_calls)" ] || { _fail "node nao deveria ter sido invocado" "$(_node_calls)"; return 1; }
 }
@@ -139,7 +140,7 @@ scenario_state_server_sem_package_json_serve_idle_exit_0() {
   mkdir -p "$_ssd"
   _run_launch "$_ssd" "$_proj"
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "sem package.json exit" "esperado 0 (idle), obtido $_CAPTURED_EXIT"; return 1; }
-  assert_stderr_contains "nao instalado" || return 1
+  assert_stderr_contains "nao encontrado" || return 1
 }
 
 # ---------- L-6: preflight de Node ----------
@@ -288,7 +289,7 @@ scenario_preflight_ready_quando_dist_presente() {
 scenario_preflight_idle_state_server_ausente_exit_3() {
   _run_preflight "$TMPDIR_TEST/nao-existe-pf"
   [ "$_CAPTURED_EXIT" = 3 ] || { _fail "preflight idle exit" "esperado 3, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
-  assert_stdout_contains "idle|mcp/state-server nao instalado" || return 1
+  assert_stdout_contains "idle|mcp/state-server nao encontrado" || return 1
   # em preflight NAO serve o stub: sem "modo IDLE" em stderr
   case "$_CAPTURED_STDERR" in
     *"modo IDLE"*) _fail "preflight nao deveria servir o stub idle" "$_CAPTURED_STDERR"; return 1 ;;
@@ -335,6 +336,79 @@ scenario_argumento_desconhecido_exit_2_sem_servir() {
   capture env CSTK_MCP_STATE_SERVER_DIR="$_ssd" "$SCRIPT" bogus < /dev/null
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "arg desconhecido exit" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
   assert_stderr_contains "argumento desconhecido: bogus" || return 1
+}
+
+# ---------- L-3 (plugin): precedencia de resolucao do state-server ----------
+# Ordem: $CSTK_MCP_STATE_SERVER_DIR > $CLAUDE_PLUGIN_ROOT/mcp/state-server >
+# ~/.claude/mcp/state-server. O passo do plugin existe porque o harness copia
+# APENAS o subtree do plugin para ~/.claude/plugins/cache/<mkt>/<plugin>/<ver>/
+# — nada da raiz do repo viaja junto, entao a fonte mora em plugins/cstk/mcp/.
+
+# _run_launch_plugin PLUGIN_ROOT PROJECT_PATH [OVERRIDE_SSD] -> roda o
+# launcher SEM CSTK_MCP_STATE_SERVER_DIR (a menos que OVERRIDE_SSD venha),
+# com HOME falso (hermetico: nunca resolve a instalacao real do operador).
+_run_launch_plugin() {
+  _rlp_root="$1"
+  _rlp_proj="$2"
+  _rlp_override="${3:-}"
+  _rlp_bin="$TMPDIR_TEST/stubs"
+  mkdir -p "$_rlp_bin"
+  _stub_node "$_rlp_bin" 24
+  _rlp_home="$TMPDIR_TEST/home-vazio"
+  mkdir -p "$_rlp_home"
+  if [ -n "$_rlp_override" ]; then
+    capture env PATH="$_rlp_bin:$PATH" HOME="$_rlp_home" \
+      CLAUDE_PLUGIN_ROOT="$_rlp_root" CSTK_MCP_STATE_SERVER_DIR="$_rlp_override" \
+      CSTK_MCP_PROJECT_PATH="$_rlp_proj" "$SCRIPT" < /dev/null
+  else
+    capture env -u CSTK_MCP_STATE_SERVER_DIR PATH="$_rlp_bin:$PATH" \
+      HOME="$_rlp_home" CLAUDE_PLUGIN_ROOT="$_rlp_root" \
+      CSTK_MCP_PROJECT_PATH="$_rlp_proj" "$SCRIPT" < /dev/null
+  fi
+}
+
+scenario_plugin_root_resolve_state_server_do_plugin() {
+  _proj="$TMPDIR_TEST/proj-plug1"
+  mkdir -p "$_proj"
+  _root="$TMPDIR_TEST/plugin-root1"
+  _make_state_server_dir_with_dist "$_root/mcp/state-server"
+  _run_launch_plugin "$_root" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "plugin root exit" "esperado 0, obtido $_CAPTURED_EXIT: $_CAPTURED_STDERR"; return 1; }
+  # node foi invocado com o entrypoint DENTRO do plugin (nao no HOME)
+  case "$(_node_calls)" in
+    *"$_root/mcp/state-server/dist/src/index.js"*) : ;;
+    *) _fail "entrypoint do plugin" "node nao rodou o dist do plugin: $(_node_calls)"; return 1 ;;
+  esac
+}
+
+scenario_plugin_root_sem_state_server_cai_no_classico() {
+  _proj="$TMPDIR_TEST/proj-plug2"
+  mkdir -p "$_proj"
+  _root="$TMPDIR_TEST/plugin-root-sem-mcp"
+  mkdir -p "$_root/skills"
+  _run_launch_plugin "$_root" "$_proj"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "fallback classico exit" "esperado 0 (idle), obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "nao encontrado" || return 1
+  # a mensagem deve citar o caminho CLASSICO (HOME), nao o do plugin
+  case "$_CAPTURED_STDERR" in
+    *".claude/mcp/state-server"*) : ;;
+    *) _fail "fallback classico" "stderr nao cita ~/.claude/mcp/state-server: $_CAPTURED_STDERR"; return 1 ;;
+  esac
+}
+
+scenario_override_env_vence_plugin_root() {
+  _proj="$TMPDIR_TEST/proj-plug3"
+  mkdir -p "$_proj"
+  _root="$TMPDIR_TEST/plugin-root3"
+  _make_state_server_dir_with_dist "$_root/mcp/state-server"
+  _ovr="$TMPDIR_TEST/ssd-override"
+  _make_state_server_dir_with_dist "$_ovr"
+  _run_launch_plugin "$_root" "$_proj" "$_ovr"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "override exit" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+  case "$(_node_calls)" in
+    *"$_ovr/dist/src/index.js"*) : ;;
+    *) _fail "override vence" "node nao rodou o dist do override: $(_node_calls)"; return 1 ;;
+  esac
 }
 
 # ---------- fonte: mensagem stale do header corrigida (8.3.1) ----------
