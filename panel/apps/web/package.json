@@ -1,6 +1,6 @@
 {
   "name": "@cstk-panel/web",
-  "version": "10.2.1",
+  "version": "10.3.0",
   "description": "Front-end SPA React 19 + Vite 5 — Dashboard de Observabilidade Read-Only",
   "private": true,
   "type": "module",
