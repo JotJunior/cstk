@@ -20,6 +20,11 @@
 # Analise por SEGMENTO (split em `;|&`): o bypass historico de package
 # manager ("basta 'docker run' coexistir em qualquer trecho") foi fechado —
 # o prefixo docker exec/run precisa estar no MESMO segmento do install.
+# Prefixos aceitos como wrapper de container: `docker exec/run`,
+# `docker compose exec/run` e o legado `docker-compose exec/run` (issue
+# #186 — a forma de 3 palavras e a documentada nos CLAUDE.md de
+# projeto-alvo com container; o nivel de confianca dos quatro e o mesmo,
+# muda so a sintaxe).
 # Limitacao documentada: extracao de alvos de `rm` nao parseia quoting;
 # caminhos via variavel ($VAR/...) passam — o guard e defesa em
 # profundidade, nao sandbox.
@@ -75,11 +80,13 @@ _bg_check_blocklist_cmd() {
   fi
 
   # 2. Package managers no host — bloqueia a menos que o PROPRIO segmento
-  # comece com docker exec/run (`docker exec foo npm install` passa).
+  # comece com um wrapper de container: `docker exec/run`,
+  # `docker compose exec/run` ou `docker-compose exec/run`
+  # (`docker compose exec api npm install zod` passa).
   # Segment-aware: fecha o bypass em que a mera coexistencia de
   # "docker run" liberava o comando inteiro (`npm install x; docker run y`).
   if _bg_pkg_violation '(^|[[:space:]])(npm|pnpm|yarn|pip|pip3|gem|brew)[[:space:]]+(install|i|add|update|upgrade)\b'; then
-    _bg_emit_block "package-manager" "package install no host bloqueado (use 'docker exec/run' como wrapper no MESMO segmento)"
+    _bg_emit_block "package-manager" "package install no host bloqueado (use 'docker exec/run' ou 'docker compose exec/run' como wrapper no MESMO segmento)"
     return 1
   fi
   # `go install` / `cargo install`
@@ -174,11 +181,15 @@ _bg_segments() {
 }
 
 # _bg_pkg_violation ERE -> 0 (violacao) se ALGUM segmento casa o padrao de
-# install SEM comecar com docker exec/run.
+# install SEM comecar com um wrapper de container reconhecido.
+# Wrappers reconhecidos (issue #186): `docker exec/run`,
+# `docker compose exec/run` e o legado `docker-compose exec/run`. A ancora
+# `^` preserva a propriedade segment-aware — um `docker compose exec` em
+# OUTRO segmento nao libera o segmento que instala.
 _bg_pkg_violation() {
   _bg_segments \
     | grep -E "$1" 2>/dev/null \
-    | grep -Ev '^[[:space:]]*docker[[:space:]]+(exec|run)[[:space:]]' \
+    | grep -Ev '^[[:space:]]*docker([[:space:]]+compose|-compose)?[[:space:]]+(exec|run)[[:space:]]' \
     >/dev/null 2>&1
 }
 

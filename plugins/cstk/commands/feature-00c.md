@@ -243,6 +243,11 @@ Exporte: `AGENTE_00C_STATE_DIR=<projeto>/.claude/feature-00c-state/<short_name>`
    _lock="$AGENTE_00C_STATE_DIR/.lock"
    state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR"
    - se ocupado, stderr "outra sessao ativa para $SHORT"; exit 3
+   - NAO force aqui. O dono do lock e um shell efemero deste command (morre
+     assim que o Bash retorna) enquanto o subagente segue trabalhando —
+     `pid morto` NAO e sinal de lock stale (issue #182). Lock ocupado numa
+     invocacao NOVA significa execucao ativa ou nao reconciliada: retome
+     com `/feature-00c-resume` ou encerre com `/feature-00c-abort`.
 
 8. coleta de consumo: PEDIR instalacao ao operador (nunca instalar sozinho)
    guard-hooks-status.sh check --projeto-alvo-path "$_proj" || :

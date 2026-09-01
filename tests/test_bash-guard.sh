@@ -338,4 +338,44 @@ scenario_blocklist_docker_run_npm_mesmo_segmento_passa() {
   [ "$_CAPTURED_EXIT" = 0 ] || { _fail "docker run npm" "$_CAPTURED_STDERR"; return 1; }
 }
 
+# ==== Wrapper de container em 3 palavras (issue #186) ====
+# `docker compose exec` e a forma canonica documentada nos CLAUDE.md de
+# projeto-alvo com container; a ancora de 2 palavras a bloqueava.
+
+scenario_blocklist_docker_compose_exec_npm_passa() {
+  capture "$SCRIPT" check-blocklist --command "docker compose exec api npm install zod"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "docker compose exec npm" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_blocklist_docker_compose_hifen_exec_npm_passa() {
+  capture "$SCRIPT" check-blocklist --command "docker-compose exec api npm install zod"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "docker-compose exec npm" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_blocklist_docker_compose_run_npm_passa() {
+  capture "$SCRIPT" check-blocklist --command "docker compose run --rm api npm install zod"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "docker compose run npm" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_blocklist_docker_compose_exec_go_install_passa() {
+  # A mesma ampliacao vale para a regra go/cargo install (mesmo helper).
+  capture "$SCRIPT" check-blocklist --command "docker compose exec api go install ./cmd/x"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "docker compose exec go install" "$_CAPTURED_STDERR"; return 1; }
+}
+
+scenario_blocklist_dockerfoo_exec_npm_bloqueado() {
+  # Negativo: prefixo parecido (nao e a palavra "docker") segue bloqueado.
+  capture "$SCRIPT" check-blocklist --command "dockerfoo exec api npm install zod"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "dockerfoo exec npm" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "package-manager" || return 1
+}
+
+scenario_blocklist_docker_compose_outro_segmento_bloqueado() {
+  # Negativo: segment-awareness preservada — `docker compose exec` em OUTRO
+  # segmento nao libera o segmento que instala.
+  capture "$SCRIPT" check-blocklist --command "echo docker compose exec; npm install zod"
+  [ "$_CAPTURED_EXIT" = 1 ] || { _fail "docker compose coexist" "esperado 1, obtido $_CAPTURED_EXIT"; return 1; }
+  assert_stderr_contains "package-manager" || return 1
+}
+
 run_all_scenarios

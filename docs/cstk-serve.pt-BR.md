@@ -58,8 +58,11 @@ inacessível, build da imagem falhou, container remanescente irreconciliável) �
 `2` erro de uso (porta inválida, flag desconhecida).
 
 **Segurança**: apenas URLs de `api.github.com`, `github.com`,
-`codeload.github.com` e `objects.githubusercontent.com` são autorizadas no
-download (SSRF allowlist). Integridade **fail-closed por padrão**: pacote sem
+`codeload.github.com`, `objects.githubusercontent.com` e
+`release-assets.githubusercontent.com` são autorizadas no download (SSRF
+allowlist). A allowlist é reconferida a **cada salto de redirect**, não só na
+URL inicial: o download caminha a cadeia um salto por vez e recusa um
+`Location` fora da lista antes de fazer qualquer requisição a ele. Integridade **fail-closed por padrão**: pacote sem
 `.sha256` bloqueia (`unverifiable-blocked`); bypass explícito e auditado via
 `--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1`; divergência de checksum
 bloqueia sempre. Host `127.0.0.1` é o único com suporte completo.

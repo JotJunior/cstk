@@ -352,6 +352,111 @@ scenario_force_flag_invalida_fora_do_acquire() {
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "release --force" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
   capture "$SCRIPT" check --state-dir "$_sd" --owner-pid 123
   [ "$_CAPTURED_EXIT" = 2 ] || { _fail "check --owner-pid" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+  capture "$SCRIPT" release --state-dir "$_sd" --force-abandoned
+  [ "$_CAPTURED_EXIT" = 2 ] || { _fail "release --force-abandoned" "esperado 2, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+# --- Guarda de onda aberta no --force (issue #182) ------------------------
+# O dono do lock e um shell EFEMERO do command pai: "pid morto" e o estado
+# NORMAL enquanto o subagente orquestrador trabalha. Quem distingue pausa
+# entre ondas de onda em voo e o estado, nao o pid.
+
+# Prepara state-dir com lock detido por pid morto + state.json com uma onda
+# no estado pedido ("aberta" | "fechada").
+_mk_lock_com_onda() {
+  _mlo_sd=$1
+  _mlo_estado=$2
+  mkdir -p "$_mlo_sd/.lock"
+  printf 'pid=%s\nacquired_at=2026-08-29T20:39:13Z\n' "$_MLO_DEAD_PID" > "$_mlo_sd/.lock/owner"
+  if [ "$_mlo_estado" = "aberta" ]; then
+    printf '{"waves":[{"id":"onda-009","started_at":"2026-08-29T20:40:29Z","finished_at":null}]}\n' \
+      > "$_mlo_sd/state.json"
+  else
+    printf '{"waves":[{"id":"onda-009","started_at":"2026-08-29T20:40:29Z","finished_at":"2026-08-29T21:00:00Z"}]}\n' \
+      > "$_mlo_sd/state.json"
+  fi
+}
+
+# PID comprovadamente morto, reaproveitado pelos cenarios abaixo.
+_MLO_DEAD_PID=""
+_mlo_dead_pid() {
+  if [ -z "$_MLO_DEAD_PID" ]; then
+    sh -c 'exit 0' &
+    _MLO_DEAD_PID=$!
+    wait "$_MLO_DEAD_PID" 2>/dev/null || :
+  fi
+}
+
+scenario_force_onda_aberta_recusa_exit_3() {
+  _mlo_dead_pid
+  _sd="$TMPDIR_TEST/force-wave-open"
+  _mk_lock_com_onda "$_sd" aberta
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "force com onda aberta" "esperado 3, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "DIAG|error|lock-force-denied-wave-open|" || return 1
+  assert_stderr_contains "onda-009" || return 1
+  # NAO pode ter consumado: owner antigo intacto.
+  case "$_CAPTURED_STDERR" in
+    *lock-force-acquired*) _fail "force consumou com onda aberta" "$_CAPTURED_STDERR"; return 1 ;;
+  esac
+  grep -q "^pid=$_MLO_DEAD_PID\$" "$_sd/.lock/owner" \
+    || { _fail "owner alterado apos recusa" "$(cat "$_sd/.lock/owner")"; return 1; }
+}
+
+scenario_force_onda_fechada_readquire() {
+  # Lock orfao COM a ultima onda fechada e o caso normal entre ondas.
+  _mlo_dead_pid
+  _sd="$TMPDIR_TEST/force-wave-closed"
+  _mk_lock_com_onda "$_sd" fechada
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "force com onda fechada" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "DIAG|warning|lock-force-acquired|" || return 1
+}
+
+scenario_force_abandoned_passa_por_cima_de_onda_aberta() {
+  # Caminho do abort e da retomada deliberada de onda abandonada.
+  _mlo_dead_pid
+  _sd="$TMPDIR_TEST/force-wave-abandoned"
+  _mk_lock_com_onda "$_sd" aberta
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force-abandoned
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "force-abandoned com onda aberta" "esperado 0, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "DIAG|warning|lock-force-abandoned-override|" || return 1
+  assert_stderr_contains "DIAG|warning|lock-force-acquired|" || return 1
+}
+
+scenario_force_estado_ilegivel_recusa_fail_closed() {
+  # Estado presente mas ilegivel: nao da para AFIRMAR que nao ha onda em
+  # voo => recusa (nunca tratar "nao consegui ler" como "nao ha onda").
+  _mlo_dead_pid
+  _sd="$TMPDIR_TEST/force-state-broken"
+  mkdir -p "$_sd/.lock"
+  printf 'pid=%s\nacquired_at=2026-08-29T20:39:13Z\n' "$_MLO_DEAD_PID" > "$_sd/.lock/owner"
+  printf '{"waves": [ISTO NAO E JSON\n' > "$_sd/state.json"
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "force com estado ilegivel" "esperado 3, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "DIAG|error|lock-force-denied-state-unreadable|" || return 1
+  # --force-abandoned continua sendo a saida explicita.
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force-abandoned
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "force-abandoned com estado ilegivel" "esperado 0, obtido $_CAPTURED_EXIT"; return 1; }
+}
+
+scenario_sqlite_force_onda_aberta_recusa() {
+  # Paridade de backend: a guarda le o estado via _state-read.sh, entao vale
+  # igual sob state.db (nenhum leitor novo de state.json direto).
+  _sqlite3_adequate || { printf "# skip: sqlite3 indisponivel\n"; return 0; }
+  _mlo_dead_pid
+  _sd="$TMPDIR_TEST/state-sqlite-force"
+  _init_sqlite "$_sd" || { _fail "fixture sqlite" "init nao gerou state.db"; return 1; }
+  _ondas="$REPO_ROOT/plugins/cstk/skills/agente-00c-runtime/scripts/state-ondas.sh"
+  capture "$_ondas" start --state-dir "$_sd"
+  [ "$_CAPTURED_EXIT" = 0 ] || { _fail "fixture onda sqlite" "$_CAPTURED_STDERR"; return 1; }
+  mkdir -p "$_sd/.lock"
+  printf 'pid=%s\nacquired_at=2026-08-29T20:39:13Z\n' "$_MLO_DEAD_PID" > "$_sd/.lock/owner"
+  capture "$SCRIPT" acquire --state-dir "$_sd" --force
+  [ "$_CAPTURED_EXIT" = 3 ] || { _fail "force sqlite onda aberta" "esperado 3, obtido $_CAPTURED_EXIT; $_CAPTURED_STDERR"; return 1; }
+  assert_stderr_contains "DIAG|error|lock-force-denied-wave-open|" || return 1
+  # A materializacao nao pode deixar espelho no state-dir (FR-003).
+  [ ! -f "$_sd/state.json" ] || { _fail "anti-mirror" "state.json espelho criado no state-dir"; return 1; }
 }
 
 run_all_scenarios

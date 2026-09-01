@@ -92,8 +92,14 @@ if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then
   fi
 fi
 
-# Force-acquire do lock (mesmo se PID encerrou graciosamente, normalize estado)
-state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" --force
+# Force-acquire do lock (mesmo se PID encerrou graciosamente, normalize estado).
+# `--force-abandoned` (nao `--force`) porque derrubar onda VIVA e exatamente o
+# que o abort faz: o `--force` simples recusa quando ha onda aberta no estado
+# (issue #182 — o dono do lock e um shell efemero, "pid morto" nao prova onda
+# encerrada). O override fica auditado como
+# `DIAG|warning|lock-force-abandoned-override`. Pre-condicao contratual ja
+# cumprida acima: SIGTERM + grace period.
+state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" --force-abandoned
 ```
 
 ### 5. Marcar status=abortada + finished_at + motivo

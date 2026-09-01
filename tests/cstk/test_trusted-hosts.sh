@@ -34,8 +34,12 @@ scenario_trusted_host_github_com_aceito() {
   fi
 }
 
-scenario_trusted_host_todos_os_4_aceitos() {
-  for _h in github.com codeload.github.com objects.githubusercontent.com api.github.com; do
+scenario_trusted_host_todos_os_5_aceitos() {
+  # release-assets.githubusercontent.com entrou na lista pela issue #178: e o
+  # host de destino real da cadeia de redirects de um asset de release
+  # (medido; ver o cabecalho de cli/lib/trusted-hosts.sh).
+  for _h in github.com codeload.github.com objects.githubusercontent.com \
+            release-assets.githubusercontent.com api.github.com; do
     capture sh -c ". \"$CSTK_LIB/trusted-hosts.sh\" && trusted_host_check 'https://$_h/path/to/asset.tar.gz'"
     if [ "$_CAPTURED_EXIT" != "0" ]; then
       _fail "host_${_h}_aceito" "esperado exit 0, obtido $_CAPTURED_EXIT"
