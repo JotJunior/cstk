@@ -197,6 +197,59 @@ de rodar o gate de convergência em si.
   sobre orientação consumida em gerações/edições futuras da constituição,
   nunca uma migração automática de arquivos já ratificados.
 
+**Revisão de escopo (issue #188, incremento pós-round-1)**: as FRs abaixo
+revogam/emendam deliberadamente a FR-006 desta mesma especificação e o Edge
+Case "Constituição contém MUST misturando formato reconhecido e prosa
+corrida no mesmo arquivo... fora de escopo desta feature (equivale à 3ª
+sugestão da issue #173, deferida)". Medição adicional feita neste
+incremento mostrou que a guarda original também deixava passar, sem achado,
+uma constituição com um único princípio anunciado só pelo rótulo do heading
+(`(NON-NEGOTIABLE)`) e corpo sem nenhuma regra MUST — caso que caía no
+veredito `sem-must-declarado`, também suprimido. Isto não é correção de
+defeito de implementação do round anterior: é revisão deliberada de escopo,
+autorizada pelo operador ao reabrir esta feature.
+
+- **FR-010**: Quando a verificação de cobertura de `MUST` identificar pelo
+  menos um princípio emitido sem nenhuma regra `MUST` legível (hoje
+  contabilizado como "emitido só por rótulo de heading"), o sistema MUST
+  classificar esse resultado com um veredito distinto de `ok`, de
+  `zero-reconhecida` e de `sem-must-declarado` — mesmo quando outras regras
+  `MUST` da mesma constituição já tiverem sido reconhecidas, e mesmo quando
+  nenhuma outra regra `MUST` tiver sido reconhecida em lugar nenhum. Este
+  requisito substitui, para este cenário específico, a preservação de
+  comportamento afirmada pela FR-006 e pelo Edge Case citado acima:
+  cobertura mista (ou cobertura só-de-heading) deixa de ser tratada como
+  "sem achado".
+- **FR-011**: O veredito descrito na FR-010 MUST ser exposto por um sinal de
+  saída (exit code) que um consumidor automatizado da verificação de
+  cobertura consiga distinguir, sem inspecionar texto, dos sinais já usados
+  para `ok`, `zero-reconhecida` e `sem-must-declarado`.
+- **FR-012**: Quando a etapa de convergência observar o veredito descrito na
+  FR-010, o sistema MUST registrar um achado estruturado no relatório de
+  convergência com os mesmos campos fixos (artefato afetado = constituição
+  do projeto-alvo; origem = a própria verificação de cobertura de `MUST`;
+  classificação e severidade calculadas pela mesma regra determinística já
+  usada hoje para o veredito `zero-reconhecida`, conforme FR-002/FR-003
+  desta especificação) usados para aquele veredito. O achado desta FR-012
+  MUST também contar na contagem de pendências acionáveis referida pela
+  FR-004 — o resultado "convergido, sem pendências" MUST NOT ser produzido
+  enquanto essa condição persistir.
+- **FR-013**: Quando houver pelo menos um princípio classificado conforme a
+  FR-010, a verificação de cobertura de `MUST` MUST identificar
+  nominalmente, na sua saída, qual(is) princípio(s) da constituição do
+  projeto-alvo carecem de uma regra `MUST` legível — hoje a saída informa
+  apenas a contagem, sem nomear os princípios afetados. A forma exata de
+  onde essa identificação nominal aparece na saída (por exemplo: linhas
+  adicionais de um relatório já existente, ou um canal de saída separado)
+  é uma decisão técnica **deferida para `/plan`**, não fixada por esta
+  especificação — existe um contrato de saída já validado (ver FR-014) que
+  a decisão técnica precisa respeitar.
+- **FR-014**: Quando NÃO houver nenhum princípio classificado conforme a
+  FR-010 (contagem zero), a saída da verificação de cobertura de `MUST`
+  MUST permanecer byte-idêntica ao formato hoje validado para esse caso,
+  sem nenhum conteúdo adicional — a identificação nominal da FR-013 só se
+  aplica quando há pelo menos um princípio a nomear.
+
 ### Key Entities
 
 - **Achado de Convergência (achado estruturado no relatório da etapa de
@@ -230,4 +283,47 @@ de rodar o gate de convergência em si.
 
 ## Delta Requirements
 
-**Skip**: corpus `docs/specs/current/` não documenta capacidade das skills `converge`/`constitution` alteradas por esta feature — sem capability existente para atualizar. — agente-00c-feature-orchestrator, 2026-08-29
+### Capability: converge-must-coverage-fail-closed
+
+#### ADDED
+
+- **FR-010**: Quando a verificação de cobertura de `MUST` identificar pelo
+  menos um princípio emitido sem nenhuma regra `MUST` legível (hoje
+  contabilizado como "emitido só por rótulo de heading"), o sistema MUST
+  classificar esse resultado com um veredito distinto de `ok`, de
+  `zero-reconhecida` e de `sem-must-declarado` — mesmo quando outras regras
+  `MUST` da mesma constituição já tiverem sido reconhecidas, e mesmo quando
+  nenhuma outra regra `MUST` tiver sido reconhecida em lugar nenhum. Este
+  requisito substitui, para este cenário específico, a preservação de
+  comportamento afirmada pela FR-006 e pelo Edge Case citado acima:
+  cobertura mista (ou cobertura só-de-heading) deixa de ser tratada como
+  "sem achado".
+- **FR-011**: O veredito descrito na FR-010 MUST ser exposto por um sinal de
+  saída (exit code) que um consumidor automatizado da verificação de
+  cobertura consiga distinguir, sem inspecionar texto, dos sinais já usados
+  para `ok`, `zero-reconhecida` e `sem-must-declarado`.
+- **FR-012**: Quando a etapa de convergência observar o veredito descrito na
+  FR-010, o sistema MUST registrar um achado estruturado no relatório de
+  convergência com os mesmos campos fixos (artefato afetado = constituição
+  do projeto-alvo; origem = a própria verificação de cobertura de `MUST`;
+  classificação e severidade calculadas pela mesma regra determinística já
+  usada hoje para o veredito `zero-reconhecida`, conforme FR-002/FR-003
+  desta especificação) usados para aquele veredito. O achado desta FR-012
+  MUST também contar na contagem de pendências acionáveis referida pela
+  FR-004 — o resultado "convergido, sem pendências" MUST NOT ser produzido
+  enquanto essa condição persistir.
+- **FR-013**: Quando houver pelo menos um princípio classificado conforme a
+  FR-010, a verificação de cobertura de `MUST` MUST identificar
+  nominalmente, na sua saída, qual(is) princípio(s) da constituição do
+  projeto-alvo carecem de uma regra `MUST` legível — hoje a saída informa
+  apenas a contagem, sem nomear os princípios afetados. A forma exata de
+  onde essa identificação nominal aparece na saída (por exemplo: linhas
+  adicionais de um relatório já existente, ou um canal de saída separado)
+  é uma decisão técnica **deferida para `/plan`**, não fixada por esta
+  especificação — existe um contrato de saída já validado (ver FR-014) que
+  a decisão técnica precisa respeitar.
+- **FR-014**: Quando NÃO houver nenhum princípio classificado conforme a
+  FR-010 (contagem zero), a saída da verificação de cobertura de `MUST`
+  MUST permanecer byte-idêntica ao formato hoje validado para esse caso,
+  sem nenhum conteúdo adicional — a identificação nominal da FR-013 só se
+  aplica quando há pelo menos um princípio a nomear.
