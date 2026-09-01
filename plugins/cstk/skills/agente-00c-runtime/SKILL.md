@@ -206,6 +206,16 @@ nenhum leitor constroi o path `state.json` na mao:
   pre-condicao CONTRATUAL (SIGTERM + grace 60s) e do caller. Sem
   `--force`, lock ocupado segue exit 3. `check-execution-busy` le o estado
   pelos DOIS backends (FR-010).
+  **Guarda de onda aberta (issue #182)**: o dono do lock e um shell efemero
+  do command pai, nao o subagente que faz a onda — "pid morto" e o estado
+  NORMAL com onda em voo. Por isso o `--force` tambem consulta o estado
+  antes de consumar e RECUSA (exit 3) quando a ultima onda esta aberta
+  (`lock-force-denied-wave-open`) ou quando o estado esta ilegivel
+  (`lock-force-denied-state-unreadable`, fail-closed). O override explicito
+  e `--force-abandoned` (caminho do `/feature-00c-abort` e da retomada de
+  onda comprovadamente abandonada), auditado como
+  `DIAG|warning|lock-force-abandoned-override`. A guarda NAO cobre a janela
+  entre o spawn do subagente e o `open_wave` da onda nova.
 - **`report.sh generate|emit` exit 7**: estado ausente (nem `state.json`
   nem `state.db` legivel) retorna exit 7 contratual (FR-008, alinha o
   contrato de invocacao do feature-00c); exit 2 (uso) e exit 1 (falha

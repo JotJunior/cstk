@@ -5,6 +5,85 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e
 este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [10.4.0] - 2026-09-01
+
+Tres guardas que davam a resposta errada em execucao real. A allowlist de
+hosts era conferida so na URL inicial e nunca no salto final do redirect — e a
+medicao mostrou que esse salto ja saia da lista havia tempo. O `--force` do
+lock lia "pid morto" como "lock orfao entre ondas", quando o dono do lock e um
+shell efemero do command pai e o subagente segue trabalhando. E o bash-guard
+bloqueava `docker compose exec ... npm install`, que e a forma canonica
+documentada nos `CLAUDE.md` de projeto-alvo com container.
+
+### Security
+
+- **`cli/lib/http.sh` revalida a allowlist a cada salto de redirect**
+  (issue #178). O `-L` do curl foi removido: a cadeia e caminhada
+  manualmente, um salto por vez, e cada URL — a inicial e cada `Location` —
+  passa por `trusted_host_check` ANTES da requisicao correspondente. Salto
+  fora da allowlist nao gera requisicao alguma aquele host (nao e "baixa e
+  descarta depois"). Junto: redirect para `file://` recusado (so a origem
+  inicial pode ser `file://`, FR-014), teto de 10 saltos, e `3xx` sem
+  `Location` utilizavel vira erro em vez de o corpo do redirect virar
+  payload. 6 cenarios novos em `tests/cstk/test_http.sh`, com stub de curl e
+  log de chamadas — o log e o que prova que a URL recusada nunca chegou a ser
+  requisitada.
+- **`release-assets.githubusercontent.com` entra na
+  `CSTK_TRUSTED_RELEASE_HOSTS`** — achado da correcao acima, medido e nao
+  suposto. A cadeia real de um asset de release deste repositorio, caminhada
+  com `curl -w '%{http_code} %{redirect_url}'` sem `-L`, e
+  `github.com` -> `github.com` -> `release-assets.githubusercontent.com`; a
+  entrada `objects.githubusercontent.com`, herdada da epoca em que era esse o
+  CDN, so parecia cobrir o caso porque ninguem conferia o salto final. Sem
+  esta adicao, a revalidacao recusaria todo `install`/`self-update`/`serve` a
+  partir de asset de release. Medicao registrada no cabecalho de
+  `cli/lib/trusted-hosts.sh`; `tests/cstk/test_trusted-hosts.sh` cobre os 5
+  hosts.
+
+### Added
+
+- **`state-lock.sh acquire --force-abandoned`**: override explicito e
+  auditado (`DIAG|warning|lock-force-abandoned-override`) da guarda de onda
+  aberta. E o caminho do `/feature-00c-abort` — derrubar onda viva e
+  exatamente o que o abort faz — e o da retomada deliberada de onda
+  abandonada, depois de reconciliar.
+
+### Fixed
+
+- **`acquire --force` nao readquire mais lock com onda em voo** (issue #182).
+  A liveness do pid do dono NAO e proxy da liveness da onda: quem faz o
+  `acquire` e um shell efemero do command pai, que morre assim que o Bash
+  retorna, enquanto o subagente orquestrador segue trabalhando — por isso
+  "dono morto" e o estado NORMAL durante uma onda. O `--force` passa a
+  consultar o estado antes de consumar e recusa com exit 3 quando a ultima
+  onda esta aberta (`lock-force-denied-wave-open`, nomeando onda e
+  `started_at`) ou quando o estado esta ilegivel
+  (`lock-force-denied-state-unreadable`, fail-closed — "nao consegui ler"
+  nunca vira "nao ha onda"). Estado ausente continua liberando. A guarda le
+  via `_state-read.sh`, entao vale nos dois backends; ha cenario sqlite com
+  checagem anti-mirror. LIMITE documentado no codigo, no `--help`, na
+  `SKILL.md` do runtime e na prosa: a guarda nao cobre a janela entre o spawn
+  do subagente e o `open_wave` da onda nova. 5 cenarios novos em
+  `tests/test_state-lock.sh`.
+- **Prosa dos commands do `feature-00c` deixou de induzir ao erro**
+  (issue #182): `feature-00c-resume.md` trocou "lock orfao (dono morto) e o
+  caso NORMAL entre ondas" pela condicao real — lock orfao COM a ultima onda
+  FECHADA — citando o motivo e listando a arvore de decisao na recusa
+  (`reconcile-wave` / abort / `--force-abandoned`); o item 7 de
+  `feature-00c.md` ganhou a nota de "nao force aqui".
+  `feature-00c-abort.md` passou a usar `--force-abandoned`, sem o que o
+  proprio abort teria quebrado com a guarda nova.
+- **`bash-guard.sh` reconhece o wrapper de container de tres palavras**
+  (issue #186): `_bg_pkg_violation` so aceitava `docker exec/run`, entao
+  `docker compose exec api npm install zod` — a forma documentada nos
+  `CLAUDE.md` de projeto-alvo com container — caia na blocklist, junto com o
+  legado `docker-compose exec`. Nao abre superficie nova (`docker compose
+  exec` alcanca o mesmo container que `docker exec`; `docker compose run` tem
+  o mesmo poder de montagem de `docker run`, ja liberado) e preserva a
+  propriedade segment-aware: `echo docker compose exec; npm install zod`
+  segue bloqueado. A mensagem do bloqueio passou a citar as duas formas.
+  6 cenarios novos em `tests/test_bash-guard.sh`.
+
 ## [10.3.0] - 2026-08-30
 
 O caminho de instalacao por plugin nativo entregava skills, commands, agents e
@@ -7839,6 +7918,7 @@ Primeira versão publicada do toolkit.
 - README documentando estrutura, pipeline SDD sugerido e convenções de
   nomenclatura
 
+[10.4.0]: https://github.com/JotJunior/cstk/releases/tag/v10.4.0
 [10.3.0]: https://github.com/JotJunior/cstk/releases/tag/v10.3.0
 [10.2.1]: https://github.com/JotJunior/cstk/releases/tag/v10.2.1
 [10.2.0]: https://github.com/JotJunior/cstk/releases/tag/v10.2.0

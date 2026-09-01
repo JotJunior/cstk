@@ -70,18 +70,40 @@ fi
    com lock livre e prossegue com lock ocupado.
    state-lock.sh check --state-dir "$AGENTE_00C_STATE_DIR" || _lock_detido=1
 
-2. adquirir lock — lock ORFAO (dono morto) e o caso NORMAL entre ondas: o
-   processo que fez o `acquire` da onda anterior ja saiu. Quem distingue
-   vivo de morto e o `acquire --force`: readquire emitindo
-   `DIAG|warning|lock-force-acquired` quando o dono esta morto, e RECUSA
-   com exit 3 quando o dono esta VIVO.
+2. adquirir lock — quem fez o `acquire` e um shell EFEMERO deste command
+   pai, que morre assim que o Bash retorna; quem faz o trabalho da onda e o
+   SUBAGENTE orquestrador, que segue vivo depois disso. Logo **"dono morto"
+   NAO significa onda encerrada** — durante uma onda em pleno voo o dono do
+   lock aparece como morto. O discriminador real esta no ESTADO, nao no
+   pid: lock orfao **com a ultima onda FECHADA** e o caso normal entre
+   ondas. `acquire --force` aplica exatamente essa regra (issue #182):
+   readquire com `DIAG|warning|lock-force-acquired` quando o dono esta
+   morto E nao ha onda aberta; RECUSA com exit 3 quando o dono esta VIVO
+   (`lock-force-denied-owner-alive`), quando ha onda ABERTA
+   (`lock-force-denied-wave-open`) ou quando o estado nao pode ser lido
+   (`lock-force-denied-state-unreadable`, fail-closed).
    state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" \
      || state-lock.sh acquire --state-dir "$AGENTE_00C_STATE_DIR" --force \
-     || { stderr "outra sessao ativa para $SHORT (dono do lock VIVO)"; exit 3; }
+     || { stderr "lock nao readquirido para $SHORT — ver o DIAG acima (dono VIVO, onda aberta ou estado ilegivel)"; exit 3; }
 
    > Preferivel a `--force`: o command pai libera o lock ANTES de agendar a
    > proxima onda (passo 5, Cleanup). Ai a retomada adquire limpo e o
    > `--force` nunca precisa disparar.
+   >
+   > **Recusa do `--force` NAO se resolve insistindo.** Identifique o caso:
+   > - onda aberta com trabalho reconciliavel => `reconcile-wave` fecha a
+   >   onda; depois disso o `--force` passa sozinho;
+   > - execucao que deve ser derrubada => `/feature-00c-abort` (que ja usa
+   >   o caminho `--force-abandoned`);
+   > - onda comprovadamente abandonada e JA reconciliada => repetir com
+   >   `--force-abandoned`, que e deliberado e fica auditado
+   >   (`DIAG|warning|lock-force-abandoned-override`).
+   >
+   > LIMITE CONHECIDO da guarda: ela nao cobre a janela entre o spawn do
+   > subagente e o `open_wave` da onda nova — nessa janela o estado ainda
+   > nao tem onda aberta, embora ja possa haver trabalho em disco. Antes de
+   > usar `--force-abandoned`, confira `git status --porcelain` e o mtime
+   > dos arquivos do escopo da feature.
 
 3. validar hash state.json contra .sha256 (FR-014)
    NOTA (backend SQLite): `sha256-verify` e no-op e sai 0 — a integridade

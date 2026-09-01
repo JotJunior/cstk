@@ -58,8 +58,11 @@ unreachable, image build failed, unreconcilable leftover container) ·
 `2` usage error (invalid port, unknown flag).
 
 **Security**: only URLs from `api.github.com`, `github.com`,
-`codeload.github.com`, and `objects.githubusercontent.com` are authorized for
-the download (SSRF allowlist). Integrity is **fail-closed by default**: a package
+`codeload.github.com`, `objects.githubusercontent.com`, and
+`release-assets.githubusercontent.com` are authorized for the download (SSRF
+allowlist). The allowlist is re-checked on **every redirect hop**, not just on
+the initial URL: the download walks the chain one hop at a time and refuses a
+`Location` pointing outside the list before issuing any request to it. Integrity is **fail-closed by default**: a package
 without `.sha256` blocks (`unverifiable-blocked`); explicit and audited bypass
 via `--allow-unverified`/`CSTK_SERVE_ALLOW_UNVERIFIED=1`; a checksum mismatch
 always blocks. Host `127.0.0.1` is the only fully supported one.

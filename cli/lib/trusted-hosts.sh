@@ -42,9 +42,34 @@ fi
 _CSTK_TRUSTED_HOSTS_LOADED=1
 
 # Lista estatica de hosts confiaveis para download de releases do toolkit.
-# Fonte: cli/lib/serve.sh:31 (_SERVE_ALLOWED_HOSTS), ja em producao antes
-# desta feature. NAO overridable via env — ver nota acima.
-CSTK_TRUSTED_RELEASE_HOSTS="github.com codeload.github.com objects.githubusercontent.com api.github.com"
+# Fonte original: cli/lib/serve.sh:31 (_SERVE_ALLOWED_HOSTS), ja em producao
+# antes da feature enforced-guards. NAO overridable via env — ver nota acima.
+#
+# release-assets.githubusercontent.com (issue #178, 2026-09-01): host de
+# destino REAL dos assets de release do GitHub hoje. Medido, nao suposto —
+# a cadeia de uma release deste proprio repositorio foi caminhada salto a
+# salto (`curl -w '%{http_code} %{redirect_url}'`, sem -L):
+#
+#   hop1 302 github.com
+#   hop2 302 github.com
+#   hop3 200 release-assets.githubusercontent.com
+#
+# (a cadeia de `tarball_url` da API termina em codeload.github.com, ja
+# listado). Enquanto o download seguia redirects DENTRO do curl (-L) sem
+# revalidar host, esse salto final nunca era conferido e a entrada
+# `objects.githubusercontent.com` — herdada da epoca em que era esse o CDN —
+# dava a impressao de cobrir o caso. Com a revalidacao por salto de
+# cli/lib/http.sh, a lista precisa refletir o destino real, senao todo
+# `cstk install`/`self-update`/`serve` a partir de asset de release passa a
+# ser recusado. objects.githubusercontent.com permanece na lista (continua
+# servindo outros artefatos do GitHub).
+#
+# NOTA OPERACIONAL: se o GitHub mudar de host outra vez, o download passa a
+# ser recusado com o host novo nomeado no stderr (fail-closed deliberado, em
+# vez de confianca silenciosa). O caminho de recuperacao nao depende desta
+# lista: o bootstrap `curl -fsSL .../install.sh | sh` (cli/install.sh) baixa
+# com curl direto e permite instalar a release nova que corrija a allowlist.
+CSTK_TRUSTED_RELEASE_HOSTS="github.com codeload.github.com objects.githubusercontent.com release-assets.githubusercontent.com api.github.com"
 
 # trusted_host_check URL
 # Verifica que URL usa esquema https:// com host na allowlist, ou file://
