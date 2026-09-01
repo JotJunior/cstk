@@ -46,6 +46,26 @@ bloqueio humano, não ser decidido unilateralmente.
 > altera apenas o comportamento determinístico de duas skills de
 > documentação/auditoria estático).
 
+## Clarifications
+
+### Session 2026-09-01
+
+- Q: FR-010 exige um veredito distinto de `ok`/`zero-reconhecida`/
+  `sem-must-declarado`, mas não fixa o token literal exposto na linha
+  `cobertura de MUST: <veredito>`. Qual token nomeia esse veredito? → A:
+  `cobertura-parcial` — mantém a mesma convenção kebab-case/pt-BR dos
+  vereditos existentes e reflete o conceito já usado na prosa desta
+  especificação ("cobertura mista (ou cobertura só-de-heading)"): pelo
+  menos um princípio elegível não teve sua regra `MUST` confirmada, mesmo
+  quando outros princípios (ou nenhum outro) já tiveram.
+- Q: FR-011 exige um exit code novo, distinto dos já usados por
+  `extract-must.sh --coverage` (0, 1, 2, 3), mas não fixa o número. Qual
+  valor? → A: `4` — confirmado por leitura de
+  `plugins/cstk/skills/converge/scripts/extract-must.sh`: os exit codes 0
+  (sucesso/`ok`/`sem-must-declarado`), 1 (`--constitution` ausente ou
+  contagem corrompida), 2 (erro de uso) e 3 (`zero-reconhecida`) já estão
+  em uso; nenhum outro script da skill `converge` reserva o valor 4.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Gate de convergência não aprova silenciosamente uma constituição não coberta (Priority: P1)
@@ -219,11 +239,14 @@ autorizada pelo operador ao reabrir esta feature.
   requisito substitui, para este cenário específico, a preservação de
   comportamento afirmada pela FR-006 e pelo Edge Case citado acima:
   cobertura mista (ou cobertura só-de-heading) deixa de ser tratada como
-  "sem achado".
+  "sem achado". O token literal deste veredito (exposto na linha
+  `cobertura de MUST: <veredito>`) MUST ser `cobertura-parcial` (ver
+  Clarifications, sessão 2026-09-01).
 - **FR-011**: O veredito descrito na FR-010 MUST ser exposto por um sinal de
   saída (exit code) que um consumidor automatizado da verificação de
   cobertura consiga distinguir, sem inspecionar texto, dos sinais já usados
-  para `ok`, `zero-reconhecida` e `sem-must-declarado`.
+  para `ok`, `zero-reconhecida` e `sem-must-declarado`. Este exit code MUST
+  ser `4` (ver Clarifications, sessão 2026-09-01).
 - **FR-012**: Quando a etapa de convergência observar o veredito descrito na
   FR-010, o sistema MUST registrar um achado estruturado no relatório de
   convergência com os mesmos campos fixos (artefato afetado = constituição
@@ -297,11 +320,14 @@ autorizada pelo operador ao reabrir esta feature.
   requisito substitui, para este cenário específico, a preservação de
   comportamento afirmada pela FR-006 e pelo Edge Case citado acima:
   cobertura mista (ou cobertura só-de-heading) deixa de ser tratada como
-  "sem achado".
+  "sem achado". O token literal deste veredito (exposto na linha
+  `cobertura de MUST: <veredito>`) MUST ser `cobertura-parcial` (ver
+  Clarifications, sessão 2026-09-01).
 - **FR-011**: O veredito descrito na FR-010 MUST ser exposto por um sinal de
   saída (exit code) que um consumidor automatizado da verificação de
   cobertura consiga distinguir, sem inspecionar texto, dos sinais já usados
-  para `ok`, `zero-reconhecida` e `sem-must-declarado`.
+  para `ok`, `zero-reconhecida` e `sem-must-declarado`. Este exit code MUST
+  ser `4` (ver Clarifications, sessão 2026-09-01).
 - **FR-012**: Quando a etapa de convergência observar o veredito descrito na
   FR-010, o sistema MUST registrar um achado estruturado no relatório de
   convergência com os mesmos campos fixos (artefato afetado = constituição
