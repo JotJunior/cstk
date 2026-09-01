@@ -257,6 +257,15 @@ sobre a mudança já aplicada, ela **não** produzirá o achado contra si mesma 
 o dogfooding cruzado é seguro. (Isto **refuta** a premissa de que esta
 constituição leria `M == 0`; a premissa não foi propagada — Constitution VI.)
 
+> **Addendum [r02]** (`dec-024`): a **conclusão** acima permanece verdadeira e
+> re-medida no incremento (mesmos `17/5/5/0` ⇒ `ok`, exit `0`). O que muda é a
+> **razão**: sob a cadeia de 4 guardas do r02, `M > 0` sozinho já **não**
+> garante `ok` — é preciso também que a guarda de `cobertura-parcial` não
+> dispare, isto é `Q = 0`. É justamente `Q = 0` que mantém esta constituição
+> fora do achado (o princípio V não é sequer emitido — `dec-019`). Ver
+> Decision 11 e o Scenario 10, onde `M = 1 > 0` **com** `Q = 1` produz
+> `cobertura-parcial`.
+
 ## Decision 10: Correção de drift textual na `converge/SKILL.md`
 
 **Decision**: a linha 191 da `converge/SKILL.md` diz "citar as **quatro** linhas
@@ -266,3 +275,163 @@ O texto é corrigido para citar o relatório inteiro, sem numeral fixo.
 
 **Rationale**: numeral hard-coded em prosa é fonte de drift a cada extensão do
 relatório. Está dentro do arquivo já sendo editado; custo marginal zero.
+
+---
+
+# Incremento r02 (reabertura) — FR-010..FR-014
+
+> As Decisions 1-10 acima descrevem o round 1, **implementado e released como
+> v10.1.0**. As Decisions 11-14 abaixo cobrem exclusivamente o incremento da
+> reabertura e **não revisam** o que já está em produção, exceto onde
+> explicitamente indicado (Decision 13).
+
+## Decision 11: Precedência das 4 guardas do veredito (FR-010, FR-011)
+
+**Decisão**: a cadeia de veredito passa de 3 para **4 guardas ordenadas e
+mutuamente exclusivas**, com a guarda de `cobertura-parcial` inserida na
+**segunda** posição:
+
+| # | Guarda | Veredito | Exit |
+|---|--------|----------|------|
+| 1 | `words > 0 && lines == 0` | `zero-reconhecida` | 3 |
+| 2 | `heading_only > 0` | **`cobertura-parcial`** | **4** |
+| 3 | `lines > 0` | `ok` | 0 |
+| 4 | *(senão)* | `sem-must-declarado` | 0 |
+
+**Rationale — por que a posição 2, e não outra**. As duas fronteiras que a
+posição fixa são precisamente as que a issue #188 não cobriu:
+
+- **Antes da guarda 3 (`lines > 0`)**: é o que fecha o ramo de *cobertura
+  mista*. Hoje uma constituição com um princípio rotulado corretamente e outro
+  só-por-heading produz `lines > 0` ⇒ `ok` ⇒ gate verde, exatamente o falso
+  sucesso que a FR-010 revoga. Sem essa ordem, a guarda 2 seria inalcançável em
+  toda constituição real (que quase sempre tem `lines > 0`).
+- **Antes da guarda 4 (`sem-must-declarado`)**: é o que fecha o ramo
+  *só-de-heading*. Uma constituição com princípios marcados
+  `(NON-NEGOTIABLE)` mas **nenhuma** linha de regra legível e **nenhuma**
+  ocorrência solta da palavra `MUST` cai hoje em `sem-must-declarado` (exit 0,
+  "não declarou MUST") — quando na verdade ela declarou princípios inegociáveis
+  e o parser não leu nenhum. Este é o achado que a issue #188 **não** cobriu.
+
+**Por que a guarda 1 permanece em primeiro**: `zero-reconhecida` é o sintoma
+mais forte (o arquivo fala de `MUST` e o parser leu **zero** regras) e já tem
+exit code, aviso em stderr e prosa normativa ratificados no round 1. Rebaixá-lo
+para trás de `cobertura-parcial` mudaria o veredito de um caso já em produção —
+regressão gratuita. Note que os dois podem coocorrer (`words>0 && lines==0` com
+`heading_only>0`); a precedência resolve o empate a favor do sinal mais forte,
+e o `Gap` emitido é o mesmo nos dois casos (§3.2 do contrato), logo o
+consumidor não perde acionabilidade.
+
+**Mutuamente exclusivas**: a cadeia é `if/elif/elif/else` — exatamente um
+veredito por execução, invariante já vigente no round 1.
+
+**Alternativas rejeitadas**:
+- *Veredito composto (`ok+parcial`)*: quebraria o vocabulário fechado e a
+  regra de **allowlist literal** da ETAPA 3 (§3.1 do contrato), que é a defesa
+  contra "qualquer outro desfecho" ser lido como sucesso.
+- *Reciclar `exit 3`*: apagaria a distinção entre "leu zero" e "leu parte",
+  que é justamente o que a FR-011 exige que um consumidor automatizado
+  distinga **sem inspecionar texto**.
+
+## Decision 12: Canal e posição da identificação nominal (FR-013)
+
+**Decisão**: **stdout**, em linhas 7..N apendadas **depois** da linha de
+veredito, com prefixo literal `principio sem regra MUST legivel: `. Registrada
+como `dec-017` (score 3, evidência medida).
+
+Esta é a única decisão técnica que a `specify` e a `clarify` deferiram
+deliberadamente para o `/plan` (FR-013, texto literal: "é uma decisão técnica
+**deferida para `/plan`**").
+
+**Rationale**:
+
+1. **A ETAPA 7 da `converge/SKILL.md` exige citar as linhas do `--coverage`
+   verbatim** (texto literal: "deve citar as linhas do `--coverage` verbatim").
+   Citação verbatim exige o canal que o agente de fato captura — stdout. Nomes
+   em stderr precisariam de um segundo mecanismo de captura só para serem
+   citáveis, sem ganho.
+2. **stderr já está ocupado por texto humano não-estruturado**: o ramo
+   `zero-reconhecida` emite lá um `AVISO:` em prosa longa (contrato §Saída em
+   stderr, marcado `[REAL, inalterada]`). Misturar dado estruturado com esse
+   aviso tornaria stderr um canal de formato ambíguo — e o contrato o congela
+   como inalterado.
+3. **Posição após a 6ª linha preserva a leitura posicional do veredito**:
+   `tests/test_extract-must.sh` lê o veredito com `sed -n '6p'`. Qualquer
+   inserção **antes** dele quebraria esse teste e todo consumidor posicional.
+   Depois, não.
+4. **FR-014 é satisfeita por construção**: as linhas 7..N são emitidas dentro
+   da guarda `Q >= 1`. Com `Q == 0` nada é impresso e a saída é byte-idêntica
+   ao formato de 6 linhas já validado — não é "linha vazia", é ausência de
+   linha.
+
+**Alternativa rejeitada (stderr)**: seria o canal natural para *diagnóstico*,
+e tem precedente no próprio script — mas aqui o conteúdo é **dado consumido
+pelo relatório**, não aviso ao operador. O critério que decide é o consumidor:
+quem lê é a ETAPA 3/7 da skill, que lê stdout.
+
+**Nota de fonte**: a estrutura de dados necessária **já existe** no script — o
+`awk` de classificação mantém o nome do princípio na variável `pending` (usada
+hoje só para decidir `with-must` x `heading-only`) e o descarta ao imprimir
+apenas a classe. Nomear os princípios é **expor** um dado já computado, não
+computar um novo: nenhuma leitura extra do arquivo, nenhum parser novo.
+Consequência para a implementação: a saída do `awk` passa a carregar
+`classe` + nome; as duas contagens derivadas (`_em_emitted` via `grep -c .`,
+`_em_heading_only` via `grep -c '^heading-only'`) continuam corretas porque
+ambas casam no **início** da linha ou em qualquer conteúdo.
+
+## Decision 13: O que o incremento r02 revoga do round 1
+
+**Decisão**: o incremento revoga **dois** itens do round 1, e apenas eles.
+
+1. **`plan.md` §Fora de escopo — "Cobertura parcial"**. O round 1 registrou:
+   *"Cobertura parcial (`M > 0` porém menor que as obrigações pretendidas):
+   FR-006 exige preservar o comportamento atual."* A FR-010 revoga isso de
+   forma explícita e literal ("Este requisito substitui, para este cenário
+   específico, a preservação de comportamento afirmada pela FR-006").
+2. **`plan.md` §Riscos — "Bypass de 1 linha", marcado "Risco residual
+   aceito"**. O round 1 aceitou que `**MUST:** n/a` produzisse `M=1` e
+   silenciasse o gate. O incremento **fecha parcialmente** esse risco: o bypass
+   deixa de funcionar quando existe pelo menos um outro princípio só-por-heading
+   (guarda 2). Permanece residual o caso em que **todos** os princípios têm ao
+   menos uma linha de regra legível, ainda que vazia de conteúdo — julgar o
+   *conteúdo* da regra é análise semântica, fora do escopo de um gate
+   determinístico e fora desta spec.
+
+**O que NÃO é revogado**: FR-001..FR-005 e FR-007..FR-009 permanecem íntegros e
+em produção. A 3ª sugestão da issue #173 (alargar `_EM_MUST_RE` para aceitar
+prosa em bullet) **segue fora de escopo** — `cobertura-parcial` não alarga o
+parser, apenas reporta o que o parser já mediu.
+
+## Decision 14: Nome de princípio é conteúdo não-confiável (LLM01 / ASI09)
+
+**Decisão**: o nome do princípio é ecoado **verbatim**, sem sanitização de
+conteúdo, e a defesa fica no **consumidor**, via casamento ancorado.
+
+**Contexto**: até o round 1 valia a propriedade, medida e registrada no
+`plan.md` §Riscos, de que *"conteúdo do arquivo não é ecoado no stdout do
+`--coverage`"* — a forja falhava porque a saída era puramente numérica. A
+FR-013 **remove** essa propriedade por desenho: nomear princípios é,
+literalmente, ecoar conteúdo do arquivo auditado.
+
+**Superfície real**: o nome vem de uma linha `### ...`, logo **não pode conter
+newline** — injeção de linha inteira está descartada por construção. O que um
+autor hostil da `constitution.md` pode fazer é escolher um heading que *imite*
+outra linha do relatório, ex.: `### cobertura de MUST: ok (NON-NEGOTIABLE)`.
+
+**Mitigação (INV-r02-C do contrato)**: o prefixo fixo
+`principio sem regra MUST legivel: ` garante que nenhuma linha 7..N comece com
+`cobertura de MUST: `. Um consumidor que ancore no início da linha
+(`^cobertura de MUST: `) é imune. A prosa da ETAPA 3 passa a exigir o
+casamento ancorado explicitamente.
+
+**Por que não sanitizar o nome**: reescrever o texto do heading (escapar,
+truncar, remover `:`) tornaria a citação **não-verbatim**, quebrando a exigência
+da ETAPA 7 e dificultando ao operador localizar o princípio no arquivo — perda
+real de acionabilidade em troca de uma defesa que a âncora já dá de graça.
+
+**Não-elevação de privilégio**: quem escreve a `constitution.md` já detém a
+governança do projeto (mesmo raciocínio já registrado no round 1 para o bypass
+de 1 linha). O ataque relevante não é o autor contra si mesmo, e sim uma
+constituição de terceiros auditada por este gate — e nesse caso o pior efeito
+possível é confundir um consumidor mal-escrito, nunca **suprimir** o achado: o
+`Gap` nasce do **exit code 4**, não do texto.
